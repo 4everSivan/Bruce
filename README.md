@@ -42,7 +42,7 @@ mddd/
 
 运行：`python3 agent-usage/collector/collect_usage.py [--out 路径]`
 
-## 模块二 · github（GitHub 贡献日历）
+## 模块二 · GitHub（贡献日历）
 
 - 通过本机 `gh` CLI 的 GraphQL API 拉取 contributionCalendar
 - 产出：总贡献数、今日、当前 / 最长连续 streak、最佳单日、53 周日历
@@ -51,7 +51,7 @@ mddd/
 
 运行：`python3 github/collector/collect_github.py [--out 路径]`
 
-## 模块三 · gitlab（私有 GitLab 贡献日历）
+## 模块三 · GitLab（私有实例贡献日历）
 
 - 实例地址由用户在 App 设置中配置，CLI 使用 `--base-url` 显式传入
 - 使用 Events API 分页拉取后按天聚合，产出结构与 GitHub 模块一致
@@ -94,8 +94,8 @@ python3 gitlab/collector/collect_gitlab.py     \
 | agent-usage | `~/.cc-switch/cc-switch.db` | 服务凭证发现 + 价目补充（可选，缺失自动降级） |
 | agent-usage | `~/.cc-switch/codex_oauth_auth.json` | Codex 多账号库（轮换写回，留 `.bak-kimi` 备份） |
 | agent-usage | `~/.gemini/antigravity-cli/` | agy 的 Google OAuth 与活动计数 |
-| github | `gh` CLI 登录态 | GraphQL 查询 |
-| gitlab | App Keychain 或 `~/.config/mddd/gitlab.token` | GitLab PAT |
+| GitHub | `gh` CLI 登录态 | GraphQL 查询 |
+| GitLab | App Keychain 或 `~/.config/mddd/gitlab.token` | GitLab PAT |
 
 ## 设计规范
 
