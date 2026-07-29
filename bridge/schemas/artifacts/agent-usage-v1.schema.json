@@ -1,0 +1,194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mddd.local/schemas/artifacts/agent-usage-v1.schema.json",
+  "title": "mddd Agent usage artifact v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "module",
+    "generatedAt",
+    "agents",
+    "services",
+    "totalCostUsd"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "module": {
+      "const": "agent-usage"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "agents": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/agent"
+      }
+    },
+    "services": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/service"
+      }
+    },
+    "totalCostUsd": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    }
+  },
+  "$defs": {
+    "tokenBucket": {
+      "type": "object",
+      "required": [
+        "input",
+        "output",
+        "cacheRead",
+        "cacheCreation",
+        "total"
+      ],
+      "properties": {
+        "input": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cacheRead": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cacheCreation": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "daily": {
+      "type": "object",
+      "required": [
+        "date",
+        "input",
+        "output",
+        "total"
+      ],
+      "properties": {
+        "date": {
+          "type": "string",
+          "format": "date"
+        },
+        "input": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "agent": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "status",
+        "today",
+        "daily",
+        "hours"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        },
+        "quota": {},
+        "today": {
+          "$ref": "#/$defs/tokenBucket"
+        },
+        "daily": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/daily"
+          }
+        },
+        "models": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "todayModels": {
+          "type": "array"
+        },
+        "projects": {
+          "type": "array"
+        },
+        "hours": {
+          "type": "array",
+          "minItems": 24,
+          "maxItems": 24,
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "todayCostUsd": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "service": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "status",
+        "windows"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "windows": {
+          "type": "array"
+        }
+      }
+    }
+  }
+}

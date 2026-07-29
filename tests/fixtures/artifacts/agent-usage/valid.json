@@ -1,0 +1,111 @@
+{
+  "artifact": {
+    "generatedAt": "2026-07-28T12:00:00+08:00",
+    "agents": [
+      {
+        "id": "kimi-code-cli",
+        "name": "Kimi Code CLI",
+        "status": "ok",
+        "note": "fixture",
+        "quota": null,
+        "today": {
+          "input": 84000,
+          "output": 16000,
+          "cacheRead": 24000,
+          "cacheCreation": 0,
+          "total": 124000
+        },
+        "daily": [
+          {"date": "2026-07-27", "input": 72000, "output": 12000, "total": 84000},
+          {"date": "2026-07-28", "input": 108000, "output": 16000, "total": 124000}
+        ],
+        "models": {"kimi-k2.5": 124000},
+        "todayModels": [
+          {
+            "model": "kimi-k2.5",
+            "total": 124000,
+            "input": 108000,
+            "output": 16000,
+            "costUsd": 0.1128
+          }
+        ],
+        "projects": [
+          {"name": "fixture/project-a", "total": 92000},
+          {"name": "fixture/project-b", "total": 32000}
+        ],
+        "hours": [0, 0, 0, 0, 0, 0, 0, 0, 12000, 22000, 41000, 49000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "todayCostUsd": 0.1128
+      },
+      {
+        "id": "codex",
+        "name": "Codex CLI",
+        "status": "ok",
+        "note": "fixture",
+        "quota": null,
+        "today": {
+          "input": 41000,
+          "output": 9000,
+          "cacheRead": 10000,
+          "cacheCreation": 0,
+          "total": 60000
+        },
+        "daily": [
+          {"date": "2026-07-27", "input": 36000, "output": 7000, "total": 43000},
+          {"date": "2026-07-28", "input": 51000, "output": 9000, "total": 60000}
+        ],
+        "models": {"gpt-5.4": 60000},
+        "todayModels": [
+          {
+            "model": "gpt-5.4",
+            "total": 60000,
+            "input": 51000,
+            "output": 9000,
+            "costUsd": 0.2625
+          }
+        ],
+        "projects": [{"name": "fixture/project-a", "total": 60000}],
+        "hours": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 18000, 22000, 20000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "todayCostUsd": 0.2625
+      },
+      {
+        "id": "claude-code",
+        "name": "Claude Code",
+        "status": "not_found",
+        "note": "fixture: 未发现会话",
+        "quota": null,
+        "today": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheCreation": 0,
+          "total": 0
+        },
+        "daily": [],
+        "models": {},
+        "todayModels": [],
+        "projects": [],
+        "hours": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "todayCostUsd": null
+      }
+    ],
+    "services": [
+      {
+        "id": "kimi_coding",
+        "name": "Kimi",
+        "app": "fixture",
+        "isCurrent": true,
+        "status": "ok",
+        "kind": "windows",
+        "plan": "Fixture Plan",
+        "windows": [
+          {"label": "5h", "usedPercent": 32, "resetAt": "2026-07-28T15:00:00+08:00"}
+        ],
+        "balance": null,
+        "currency": null,
+        "capturedAt": "2026-07-28T12:00:00+08:00",
+        "note": "fixture"
+      }
+    ],
+    "totalCostUsd": 0.3753
+  }
+}

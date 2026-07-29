@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mddd.local/schemas/bridge/request-v1.schema.json",
+  "title": "mddd Bridge v1 request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "module",
+    "timeouts",
+    "context",
+    "credentials"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "runId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "module": {
+      "enum": [
+        "agent-usage",
+        "github",
+        "gitlab"
+      ]
+    },
+    "timeouts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "localScanSeconds",
+        "externalRequestSeconds",
+        "moduleSeconds"
+      ],
+      "properties": {
+        "localScanSeconds": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 300
+        },
+        "externalRequestSeconds": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 300
+        },
+        "moduleSeconds": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 600
+        }
+      }
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "home": {
+          "type": "string",
+          "minLength": 1
+        },
+        "now": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1
+        },
+        "days": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 366
+        },
+        "paths": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "baseUrl": {
+          "type": "string",
+          "format": "uri"
+        },
+        "username": {
+          "type": "string"
+        },
+        "caFile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ghPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "localSessions",
+              "localPricing",
+              "externalQuotas"
+            ]
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "credentials": {
+      "$ref": "#/$defs/credentials"
+    }
+  },
+  "$defs": {
+    "oauthTokens": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "access_token": {
+          "type": "string"
+        },
+        "refresh_token": {
+          "type": "string"
+        },
+        "id_token": {
+          "type": "string"
+        },
+        "expiry": {
+          "type": "string"
+        }
+      }
+    },
+    "credentials": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kimiWebTokens": {
+          "$ref": "#/$defs/oauthTokens"
+        },
+        "codexOAuthAccounts": {
+          "type": "object"
+        },
+        "codexAuth": {
+          "type": "object"
+        },
+        "orcaCodexAuth": {
+          "type": "object"
+        },
+        "antigravityOAuth": {
+          "type": "object"
+        },
+        "providerEnv": {
+          "type": "object"
+        },
+        "providerMeta": {
+          "type": "object"
+        },
+        "gitlabToken": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

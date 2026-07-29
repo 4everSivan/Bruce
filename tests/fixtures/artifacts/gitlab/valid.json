@@ -1,0 +1,46 @@
+{
+  "artifact": {
+    "generatedAt": "2026-07-28T12:00:00+08:00",
+    "login": "fixture-gitlab-user",
+    "displayName": "Fixture User",
+    "totalContributions": 31,
+    "today": 2,
+    "currentStreak": 3,
+    "longestStreak": 7,
+    "bestDay": {"date": "2026-07-23", "count": 7},
+    "weeks": [
+      {"days": [
+        {"date": "2026-07-05", "count": 0, "level": "NONE", "weekday": 0},
+        {"date": "2026-07-06", "count": 2, "level": "FIRST_QUARTILE", "weekday": 1},
+        {"date": "2026-07-07", "count": 3, "level": "SECOND_QUARTILE", "weekday": 2},
+        {"date": "2026-07-08", "count": 0, "level": "NONE", "weekday": 3},
+        {"date": "2026-07-09", "count": 5, "level": "SECOND_QUARTILE", "weekday": 4},
+        {"date": "2026-07-10", "count": 0, "level": "NONE", "weekday": 5},
+        {"date": "2026-07-11", "count": 1, "level": "FIRST_QUARTILE", "weekday": 6}
+      ]},
+      {"days": [
+        {"date": "2026-07-12", "count": 0, "level": "NONE", "weekday": 0},
+        {"date": "2026-07-13", "count": 4, "level": "SECOND_QUARTILE", "weekday": 1},
+        {"date": "2026-07-14", "count": 1, "level": "FIRST_QUARTILE", "weekday": 2},
+        {"date": "2026-07-15", "count": 0, "level": "NONE", "weekday": 3},
+        {"date": "2026-07-16", "count": 6, "level": "THIRD_QUARTILE", "weekday": 4},
+        {"date": "2026-07-17", "count": 0, "level": "NONE", "weekday": 5},
+        {"date": "2026-07-18", "count": 0, "level": "NONE", "weekday": 6}
+      ]},
+      {"days": [
+        {"date": "2026-07-19", "count": 0, "level": "NONE", "weekday": 0},
+        {"date": "2026-07-20", "count": 0, "level": "NONE", "weekday": 1},
+        {"date": "2026-07-21", "count": 1, "level": "FIRST_QUARTILE", "weekday": 2},
+        {"date": "2026-07-22", "count": 2, "level": "FIRST_QUARTILE", "weekday": 3},
+        {"date": "2026-07-23", "count": 7, "level": "FOURTH_QUARTILE", "weekday": 4},
+        {"date": "2026-07-24", "count": 0, "level": "NONE", "weekday": 5},
+        {"date": "2026-07-25", "count": 0, "level": "NONE", "weekday": 6}
+      ]},
+      {"days": [
+        {"date": "2026-07-26", "count": 0, "level": "NONE", "weekday": 0},
+        {"date": "2026-07-27", "count": 1, "level": "FIRST_QUARTILE", "weekday": 1},
+        {"date": "2026-07-28", "count": 2, "level": "FIRST_QUARTILE", "weekday": 2}
+      ]}
+    ]
+  }
+}

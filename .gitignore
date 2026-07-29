@@ -1,0 +1,26 @@
+# macOS
+.DS_Store
+
+# Python runtime
+__pycache__/
+*.py[cod]
+
+# Local collector output and diagnostics
+data/
+diagnostics/
+*.mddd-diagnostics.zip
+.mddd-runtime/
+
+# Swift Package Manager and Xcode user state
+.build/
+.swiftpm/
+DerivedData/
+*.xcuserstate
+**/xcuserdata/
+
+# Agent-generated planning scratch space
+.agents/superpowers/
+.agents/openspec/
+docs/superpowers/
+
+# docs/openspec/ is the tracked OpenSpec source of truth.

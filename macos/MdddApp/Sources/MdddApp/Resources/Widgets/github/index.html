@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' data:; connect-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>GitHub 贡献热力图</title>
+<style>
+  :root {
+    --c-accent: var(--kimi-color-accent, #0f7b6c);
+    --c-positive: var(--kimi-color-positive, #1a7f37);
+    --c-warning: var(--kimi-color-warning, #b25e09);
+    --c-danger: var(--kimi-color-danger, #cf222e);
+    --c-purple: #8b5cf6;
+    /* GitHub 贡献绿 */
+    --lv0: #ebedf0; --lv1: #9be9a8; --lv2: #40c463; --lv3: #30a14e; --lv4: #216e39;
+    --pad-x: 16px;
+    --fs-meta: 10px;
+    /* Claude 风格字体: 英文 Times New Roman + 中文宋体，全组件统一 */
+    --font-serif: "Times New Roman", "Songti SC", "Noto Serif CJK SC", "Source Han Serif SC", serif;
+    --font-kai: var(--font-serif);
+  }
+  /* ---------- Claude 官网风格主题: 米白书卷底 + 暖灰文字（热力墙保留 GitHub 绿） ---------- */
+  body {
+    --kimi-color-text: #1f1d1a;
+    --kimi-color-text-secondary: #4d483d;
+    --kimi-color-text-tertiary: #7a7362;
+    --kimi-color-text-quaternary: #aaa493;
+    --kimi-color-border: #e7e3d5;
+    background: #f7f5ee;
+  }
+  @media (prefers-color-scheme: dark) {
+    body {
+      --kimi-color-text: #ece8dd;
+      --kimi-color-text-secondary: #c8c2b1;
+      --kimi-color-text-tertiary: #99927d;
+      --kimi-color-text-quaternary: #6d6758;
+      --kimi-color-border: #3d3a31;
+      background: #232220;
+    }
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --lv0: #161b22; --lv1: #0e4429; --lv2: #006d32; --lv3: #26a641; --lv4: #39d353; }
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { background: transparent; }
+  /* Claude 主题底色：必须晚于上面的 background: transparent 才能生效 */
+  body { background: #f7f5ee; --c-accent: #d97757; }
+  @media (prefers-color-scheme: dark) { body { background: #232220; } }
+  body {
+    font-family: var(--font-serif);
+    color: var(--kimi-color-text, #1c1c1a);
+    font-size: 12px; line-height: 1.45;
+  }
+  main { padding: 14px var(--pad-x) 10px; }
+
+  /* ---------- 头部（与额度看板同风格） ---------- */
+  .top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .brand {
+    font-size: 12px; font-weight: 700; letter-spacing: .02em;
+    font-family: var(--font-serif);
+    color: var(--kimi-color-text-secondary);
+    display: flex; align-items: center; gap: 6px; white-space: nowrap;
+  }
+  .live { width: 6px; height: 6px; border-radius: 50%; background: var(--c-positive); flex: none; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+  .updated { font-size: var(--fs-meta); color: var(--kimi-color-text-quaternary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .hero { margin-top: 10px; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .hero .num {
+    font-size: 34px; font-weight: 700; letter-spacing: -.02em; line-height: 1;
+    font-family: var(--font-serif);
+    font-variant-numeric: tabular-nums;
+  }
+  .hero .unit { font-size: 11px; color: var(--kimi-color-text-tertiary); }
+  .hero .sub { width: 100%; font-size: 12px; font-family: var(--font-kai); color: var(--kimi-color-text-secondary); margin-top: 4px; }
+  .hero .sub b { color: var(--c-positive); font-weight: 600; }
+
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .chip {
+    font-size: var(--fs-meta); font-family: var(--font-serif);
+    color: var(--kimi-color-text-tertiary);
+    border: 1px solid var(--kimi-color-border, #e6e6e0); border-radius: 4px;
+    padding: 1px 7px; white-space: nowrap;
+  }
+  .chip b { color: var(--kimi-color-text-secondary); font-weight: 600; }
+  .chip.hot b { color: var(--c-positive); }
+
+  /* ---------- 热力图 ---------- */
+  .sec-title {
+    margin: 14px 0 8px; font-size: 13px; font-weight: 700;
+    font-family: var(--font-serif); letter-spacing: .03em;
+    color: var(--kimi-color-text-secondary);
+    display: flex; align-items: baseline; justify-content: space-between;
+  }
+  .sec-title .hint { font-weight: 400; color: var(--kimi-color-text-quaternary); letter-spacing: 0; }
+
+  .hm { display: flex; gap: 6px; }
+  .hm-wdays {
+    flex: none; display: grid; grid-template-rows: repeat(7, 1fr);
+    font-size: 8px; color: var(--kimi-color-text-quaternary);
+    padding-top: 14px; /* 对齐月份标签下方 */
+  }
+  .hm-wdays span { display: flex; align-items: center; }
+  .hm-body { flex: 1 1 0; min-width: 0; }
+  .hm-months { position: relative; height: 12px; margin-bottom: 2px; }
+  .hm-months span {
+    position: absolute; top: 0; transform: translateX(-1px);
+    font-size: 8px; color: var(--kimi-color-text-quaternary); white-space: nowrap;
+  }
+  .hm-grid {
+    display: grid; grid-template-rows: repeat(7, 1fr);
+    grid-template-columns: repeat(26, 1fr);
+    grid-auto-flow: column; gap: 2px;
+  }
+  .hm-grid .cell {
+    aspect-ratio: 1; width: 100%; border-radius: 1.5px;
+    background: var(--lv0); transition: transform .12s ease, outline .12s ease;
+  }
+  .hm-grid .cell.l1 { background: var(--lv1); }
+  .hm-grid .cell.l2 { background: var(--lv2); }
+  .hm-grid .cell.l3 { background: var(--lv3); }
+  .hm-grid .cell.l4 { background: var(--lv4); }
+  .hm-grid .cell:hover { outline: 1px solid var(--kimi-color-text-secondary); transform: scale(1.35); z-index: 2; }
+  .hm-grid .cell.today { outline: 1.5px solid var(--c-accent); }
+
+  .hm-foot { display: flex; justify-content: flex-end; align-items: center; gap: 4px; margin-top: 6px; }
+  .hm-foot .lbl { font-size: 8px; color: var(--kimi-color-text-quaternary); }
+  .hm-foot .sw { width: 8px; height: 8px; border-radius: 1.5px; }
+
+  footer {
+    margin-top: 12px; padding-top: 8px;
+    border-top: 1px solid var(--kimi-color-border, #e6e6e0);
+    font-size: var(--fs-meta); color: var(--kimi-color-text-quaternary);
+  }
+  .empty { padding: 24px 0; text-align: center; color: var(--kimi-color-text-quaternary); font-size: 11px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <span class="brand"><span class="live"></span>GitHub 贡献 · @<span data-login>…</span></span>
+    <span class="updated">更新 <span data-updated>—</span></span>
+  </div>
+
+  <div class="hero">
+    <span class="num" data-total>—</span>
+    <span class="unit">次贡献 · 近一年</span>
+    <span class="sub" data-herosub></span>
+  </div>
+
+  <div class="chips">
+    <span class="chip hot">今日 <b data-c-today>—</b></span>
+    <span class="chip">当前连续 <b data-c-cur>—</b> 天</span>
+    <span class="chip">最长连续 <b data-c-long>—</b> 天</span>
+    <span class="chip">最佳单日 <b data-c-best>—</b></span>
+  </div>
+
+  <h2 class="sec-title">贡献热力 · 近 26 周<span class="hint">悬停查看单日</span></h2>
+  <div class="hm">
+    <div class="hm-wdays">
+      <span></span><span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span>
+    </div>
+    <div class="hm-body">
+      <div class="hm-months" data-months></div>
+      <div class="hm-grid" data-grid></div>
+      <div class="hm-foot">
+        <span class="lbl">Less</span>
+        <span class="sw" style="background:var(--lv0)"></span>
+        <span class="sw" style="background:var(--lv1)"></span>
+        <span class="sw" style="background:var(--lv2)"></span>
+        <span class="sw" style="background:var(--lv3)"></span>
+        <span class="sw" style="background:var(--lv4)"></span>
+        <span class="lbl">More</span>
+      </div>
+    </div>
+  </div>
+
+  <footer>数据：本机 gh CLI · GitHub GraphQL · 每小时刷新</footer>
+  <p class="empty" data-empty hidden>正在读取 GitHub 贡献数据…</p>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  function $(sel) { return document.querySelector(sel); }
+  function esc(value) {
+    return String(value == null ? "" : value).replace(/[&<>"']/g, function (ch) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch];
+    });
+  }
+  var LV = { NONE: 0, FIRST_QUARTILE: 1, SECOND_QUARTILE: 2, THIRD_QUARTILE: 3, FOURTH_QUARTILE: 4 };
+  var MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+  function render(d) {
+    if (!d || !d.weeks || !d.weeks.length) return;
+    $("[data-login]").textContent = d.login || "—";
+    $("[data-updated]").textContent = (d.generatedAt || "").slice(5, 16).replace("T", " ");
+    $("[data-total]").textContent = d.totalContributions == null ? "—" : d.totalContributions;
+
+    var best = d.bestDay;
+    $("[data-c-today]").textContent = d.today == null ? "—" : d.today;
+    $("[data-c-cur]").textContent = d.currentStreak == null ? "—" : d.currentStreak;
+    $("[data-c-long]").textContent = d.longestStreak == null ? "—" : d.longestStreak;
+    $("[data-c-best]").textContent = best ? best.count : "—";
+    var heroSub = $("[data-herosub]");
+    heroSub.replaceChildren();
+    if (best) {
+      heroSub.append("最勤奋的一天是 ");
+      var bestDate = document.createElement("b");
+      bestDate.textContent = best.date.slice(5).replace("-", "/");
+      heroSub.append(bestDate, "，单日 " + best.count + " 次贡献");
+    }
+
+    // 窄栏宽度下全年 53 周格子会糊成噪点，只渲染最近 26 周（头部统计仍是全年）
+    var weeks = d.weeks.slice(-26);
+    var grid = $("[data-grid]");
+    grid.style.gridTemplateColumns = "repeat(" + weeks.length + ", 1fr)";
+    var todayStr = new Date().toISOString().slice(0, 10);
+    var html = "";
+    weeks.forEach(function (w) {
+      (w.days || []).forEach(function (day) {
+        var lv = LV[day.level] || 0;
+        html += '<span class="cell' + (lv ? " l" + lv : "") + (day.date === todayStr ? " today" : "") +
+          '" title="' + esc(day.date) + " · " + esc(day.count) + ' 次贡献"></span>';
+      });
+    });
+    grid.innerHTML = html;
+
+    // 月份标签：每周第一格所属月变化时标注，位置按周序号百分比
+    var months = $("[data-months]");
+    var mhtml = "";
+    var lastM = -1, lastI = -99;
+    weeks.forEach(function (w, i) {
+      var first = w.days && w.days[0];
+      if (!first) return;
+      var m = parseInt(first.date.slice(5, 7), 10) - 1;
+      if (m !== lastM && i - lastI >= 3) {
+        mhtml += "<span style=\"left:" + ((i / weeks.length) * 100).toFixed(2) + "%\">" + MONTHS[m] + "</span>";
+        lastM = m; lastI = i;
+      } else if (m !== lastM) {
+        lastM = m;
+      }
+    });
+    months.innerHTML = mhtml;
+    $("[data-empty]").hidden = true;
+  }
+
+  var host = window.DaimonWidget;
+  if (host && host.data && host.data.main) {
+    render(host.data.main);
+  } else if (host && typeof host.onDataChange === "function") {
+    host.onDataChange(function (data) { if (data && data.main) render(data.main); });
+  } else {
+    $("[data-empty]").hidden = false;
+  }
+})();
+</script>
+</body>
+</html>

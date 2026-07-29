@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mddd.local/schemas/bridge/response-v1.schema.json",
+  "title": "mddd Bridge v1 response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "generatedAt",
+    "status",
+    "artifact",
+    "credentialUpdates",
+    "diagnostics"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "runId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "enum": [
+        "success",
+        "partial",
+        "error"
+      ]
+    },
+    "artifact": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "credentialUpdates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/credentialUpdate"
+      }
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/diagnostic"
+      }
+    }
+  },
+  "$defs": {
+    "credentialUpdate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "accountId",
+        "kind",
+        "operation",
+        "credentials"
+      ],
+      "properties": {
+        "provider": {
+          "enum": [
+            "kimi",
+            "codex",
+            "antigravity"
+          ]
+        },
+        "accountId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "kind": {
+          "const": "oauthTokens"
+        },
+        "operation": {
+          "const": "replace"
+        },
+        "credentials": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "access_token": {
+              "type": "string"
+            },
+            "refresh_token": {
+              "type": "string"
+            },
+            "id_token": {
+              "type": "string"
+            },
+            "expiry": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "category",
+        "stage",
+        "message",
+        "retryable"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "pattern": "^[A-Z0-9_]+$"
+        },
+        "category": {
+          "enum": [
+            "protocol",
+            "security",
+            "collector",
+            "schema",
+            "auth",
+            "network",
+            "storage",
+            "internal"
+          ]
+        },
+        "stage": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

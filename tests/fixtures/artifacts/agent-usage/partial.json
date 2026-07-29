@@ -1,0 +1,66 @@
+{
+  "artifact": {
+    "generatedAt": "2026-07-28T12:00:00+08:00",
+    "collectionStatus": "partial",
+    "warnings": ["deepseek-quota-unavailable"],
+    "agents": [
+      {
+        "id": "codex",
+        "name": "Codex CLI",
+        "status": "ok",
+        "note": "fixture",
+        "quota": null,
+        "today": {
+          "input": 12000,
+          "output": 3000,
+          "cacheRead": 5000,
+          "cacheCreation": 0,
+          "total": 20000
+        },
+        "daily": [{"date": "2026-07-28", "input": 17000, "output": 3000, "total": 20000}],
+        "models": {"gpt-5.4": 20000},
+        "todayModels": [],
+        "projects": [],
+        "hours": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "todayCostUsd": 0.075
+      },
+      {
+        "id": "kimi-code-cli",
+        "name": "Kimi Code CLI",
+        "status": "not_found",
+        "note": "fixture: 会话不可用",
+        "quota": null,
+        "today": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheCreation": 0,
+          "total": 0
+        },
+        "daily": [],
+        "models": {},
+        "todayModels": [],
+        "projects": [],
+        "hours": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "todayCostUsd": null
+      }
+    ],
+    "services": [
+      {
+        "id": "deepseek",
+        "name": "DeepSeek",
+        "app": "fixture",
+        "isCurrent": false,
+        "status": "error",
+        "kind": null,
+        "plan": null,
+        "windows": [],
+        "balance": null,
+        "currency": null,
+        "capturedAt": "2026-07-28T12:00:00+08:00",
+        "note": "fixture: 临时不可用"
+      }
+    ],
+    "totalCostUsd": 0.075
+  }
+}
