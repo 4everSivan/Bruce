@@ -15,6 +15,14 @@ COLLECTORS = {
 }
 
 
+def cli_args(module_name, *extra):
+    args = []
+    if module_name == "gitlab":
+        args.extend(["--base-url", "https://gitlab.example.test"])
+    args.extend(extra)
+    return args
+
+
 def load_module(name, relative_path):
     spec = importlib.util.spec_from_file_location(name, REPO_ROOT / relative_path)
     module = importlib.util.module_from_spec(spec)
@@ -47,7 +55,11 @@ class CollectorCliCompatibilityTests(unittest.TestCase):
                     stdout = io.StringIO()
                     with contextlib.redirect_stdout(stdout):
                         collector.main(
-                            ["--out", str(output_path)],
+                            cli_args(
+                                module_name,
+                                "--out",
+                                str(output_path),
+                            ),
                             run_func=lambda _ctx, value=expected: value,
                         )
 
@@ -72,9 +84,44 @@ class CollectorCliCompatibilityTests(unittest.TestCase):
                 )
                 stdout = io.StringIO()
                 with contextlib.redirect_stdout(stdout):
-                    collector.main([], run_func=lambda _ctx: expected)
+                    collector.main(
+                        cli_args(module_name),
+                        run_func=lambda _ctx: expected,
+                    )
 
                 self.assertEqual(json.loads(stdout.getvalue()), expected)
+
+    def test_gitlab_cli_passes_explicit_base_url_to_collector(self):
+        collector = load_module(
+            "collector_cli_gitlab_context",
+            COLLECTORS["gitlab"],
+        )
+        captured = {}
+
+        def run_func(ctx):
+            captured.update(ctx)
+            return {"artifact": {}}
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            collector.main(
+                ["--base-url", "https://gitlab.example.test"],
+                run_func=run_func,
+            )
+
+        self.assertEqual(
+            captured,
+            {"base_url": "https://gitlab.example.test"},
+        )
+
+    def test_gitlab_cli_requires_base_url(self):
+        collector = load_module(
+            "collector_cli_gitlab_required_base_url",
+            COLLECTORS["gitlab"],
+        )
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as caught:
+                collector.main([], run_func=lambda _ctx: {"artifact": {}})
+        self.assertEqual(caught.exception.code, 2)
 
 
 if __name__ == "__main__":

@@ -11,6 +11,24 @@ diagnostics/
 *.mddd-diagnostics.zip
 .mddd-runtime/
 
+# Credentials and private local overrides
+.env
+.env.*
+!.env.example
+*.token
+*.pat
+*.secrets.json
+*.pem
+*.key
+*.p12
+*.pfx
+*.kdbx
+*.keychain-db
+*.mobileprovision
+*.sqlite
+*.sqlite3
+*.db
+
 # Swift Package Manager and Xcode user state
 .build/
 .swiftpm/

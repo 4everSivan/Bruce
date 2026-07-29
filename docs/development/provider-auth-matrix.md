@@ -9,7 +9,7 @@
 | Claude Code | 只读本机会话; 服务额度来自 CC Switch provider | 既有 Claude Code/CC Switch 登录或 API key | 首版不复制 Claude 登录态; 扫描会话, 额度凭证按 provider 单独配置 | 取决于对应 provider |
 | Codex CLI / Orca | 只读会话及既有 Codex 登录缓存 | `codex login` 浏览器登录、`codex login --device-auth`、API key stdin | 从应用启动官方 CLI 登录并检查 `codex login status`; 不复用仓库内硬编码 OAuth client | Codex 官方登录自动刷新; API key 无刷新令牌 |
 | GitHub | `gh api graphql` 使用本机 `gh` 登录态 | `gh auth login --web`; PAT 可通过 stdin | 首选从应用启动 `gh auth login --web`; 应用内只显示状态和官方页面进度 | 由 `gh` 凭证存储维护 |
-| 私有 GitLab | 当前从本机明文文件读取 PAT | OAuth authorization code + PKCE、GitLab 17.1+ device flow、PAT、`glab auth` | 实例注册 OAuth app 时使用 PKCE; 否则使用 `glab` web flow 或 Keychain PAT | OAuth refresh token; PAT 到期后重新配置 |
+| 私有 GitLab | App 使用 Keychain PAT; CLI 可从用户级本机文件读取 | OAuth authorization code + PKCE、GitLab 17.1+ device flow、PAT、`glab auth` | 实例注册 OAuth app 时使用 PKCE; 否则使用 `glab` web flow 或 Keychain PAT | OAuth refresh token; PAT 到期后重新配置 |
 | DeepSeek | CC Switch provider env | API key | 应用安全输入后写入 Keychain; 不提供账号密码窗口 | 不适用 |
 | 火山引擎 Coding Plan | CC Switch provider env/meta | Access Key / Secret Key 或对应官方授权能力 | 首版使用 Keychain 手动配置; 不把 AK/SK 写入 Artifact | 不适用 |
 | Antigravity / Google Cloud Code | 读取 Antigravity OAuth token 与只读会话库 | 由官方 Antigravity/Google 客户端完成 OAuth | 扫描既有登录态; 首版启动官方登录入口, 不复用第三方 client secret | 由官方客户端维护 |

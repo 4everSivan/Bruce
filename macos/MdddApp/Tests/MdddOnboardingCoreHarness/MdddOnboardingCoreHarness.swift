@@ -1086,12 +1086,12 @@ struct MdddOnboardingCoreHarness {
         }
         let verifier = ProviderConnectionVerifier()
         let status = await verifier.verifyGitLab(
-            baseURL: baseURL, pat: "glpat-test-secret", session: session
+            baseURL: baseURL, pat: "fixture-pat-value", session: session
         )
         try coreExpect(status == .connected, "200 should map to connected, got \(status)")
         let request = session.lastRequest
         try coreExpect(
-            request?.value(forHTTPHeaderField: "PRIVATE-TOKEN") == "glpat-test-secret",
+            request?.value(forHTTPHeaderField: "PRIVATE-TOKEN") == "fixture-pat-value",
             "PAT must be sent via PRIVATE-TOKEN header"
         )
         try coreExpect(

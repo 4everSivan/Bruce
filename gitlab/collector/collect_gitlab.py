@@ -1,17 +1,16 @@
-"""采集公司私有 GitLab (gitlab.gzky.com) 的用户事件，聚合成贡献日历。
-calendar.json 在该实例为空，改用 Events API（支持 after/before 过滤）分页拉取后按天聚合。
+"""采集用户配置的私有 GitLab 事件，聚合成贡献日历。
+使用 Events API（支持 after/before 过滤）分页拉取后按天聚合。
 产出结构与 GitHub 贡献采集一致，Widget 逻辑可直接复用。
 """
 import json
 import ssl
 import time
+import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-HOST = "https://gitlab.gzky.com"
-USERNAME = "barry.shen"
 DAYS = 371  # 53 周
 
 LEVELS = ["NONE", "FIRST_QUARTILE", "SECOND_QUARTILE", "THIRD_QUARTILE", "FOURTH_QUARTILE"]
@@ -59,10 +58,37 @@ def _resolve_token(ctx):
     token_file = Path(
         paths.get(
             "gitlab_token",
-            home / ".config" / "kimi-dashboard" / "gitlab-gzky-token",
+            home / ".config" / "mddd" / "gitlab.token",
         )
     ).expanduser()
     return token_file.read_text(encoding="utf-8").strip()
+
+
+def _resolve_base_url(ctx):
+    raw_value = ctx.get("base_url")
+    if not isinstance(raw_value, str) or not raw_value.strip():
+        raise ValueError("缺少 GitLab base_url 配置")
+
+    value = raw_value.strip()
+    parsed = urllib.parse.urlsplit(value)
+    try:
+        parsed.port
+    except ValueError as error:
+        raise ValueError("GitLab base_url 包含无效端口") from error
+    if (
+        parsed.scheme.lower() != "https"
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError("GitLab base_url 必须是不含凭证、查询或片段的 HTTPS URL")
+
+    path = parsed.path.rstrip("/")
+    return urllib.parse.urlunsplit(
+        ("https", parsed.netloc, path, "", "")
+    )
 
 
 def _ssl_context(ctx):
@@ -87,11 +113,11 @@ def _event_date(value, timezone_value):
 
 
 def api(ctx, ssl_context, token, path, retries=2):
-    """带有限重试：公司内网 / VPN 抖动时偶发 SSL EOF，直接重试即可恢复。"""
+    """带有限重试，容忍私有网络 / VPN 的短暂连接抖动。"""
     custom_get = ctx.get("http_get_json")
     if custom_get:
         return custom_get(path, token)
-    base_url = (ctx.get("base_url") or HOST).rstrip("/")
+    base_url = _resolve_base_url(ctx)
     opener = ctx.get("urlopen") or urllib.request.urlopen
     timeout = float(ctx.get("request_timeout", 10))
     sleeper = ctx.get("sleep") or time.sleep
@@ -112,6 +138,8 @@ def api(ctx, ssl_context, token, path, retries=2):
 
 def run(ctx):
     ctx = ctx or {}
+    ctx = dict(ctx)
+    ctx["base_url"] = _resolve_base_url(ctx)
     token = _resolve_token(ctx)
     ssl_context = _ssl_context(ctx)
     now_value = _resolve_now(ctx)
@@ -194,7 +222,7 @@ def run(ctx):
     return {
         "artifact": {
             "generatedAt": now_value.isoformat(timespec="seconds"),
-            "login": user.get("username", ctx.get("username") or USERNAME),
+            "login": user.get("username") or "",
             "displayName": user.get("name") or "",
             "totalContributions": sum(per_day.values()),
             "today": today_count,
@@ -209,10 +237,21 @@ def run(ctx):
 def main(argv=None, run_func=run):
     import argparse
     import os
-    ap = argparse.ArgumentParser(description="采集公司 GitLab 贡献日历（令牌读取自本机文件）")
+    ap = argparse.ArgumentParser(
+        description="采集用户配置的 GitLab 贡献日历（令牌读取自本机文件）"
+    )
+    ap.add_argument(
+        "--base-url",
+        required=True,
+        help="GitLab 实例的 HTTPS base URL",
+    )
     ap.add_argument("--out", help="把结果 JSON 原子写入指定文件（缺省打印到 stdout）")
     args = ap.parse_args(argv)
-    text = json.dumps(run_func({}), ensure_ascii=False, indent=2)
+    text = json.dumps(
+        run_func({"base_url": args.base_url}),
+        ensure_ascii=False,
+        indent=2,
+    )
     if args.out:
         out = os.path.expanduser(args.out)
         parent = os.path.dirname(out)

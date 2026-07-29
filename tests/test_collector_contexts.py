@@ -603,6 +603,37 @@ class GitLabCollectorContextTests(unittest.TestCase):
         self.assertEqual(paths[0], "/api/v4/user")
         self.assertIn("/api/v4/users/7/events", paths[1])
 
+    def test_run_requires_explicit_base_url(self):
+        with self.assertRaisesRegex(ValueError, "缺少 GitLab base_url 配置"):
+            self.module.run(
+                {
+                    "credentials": {"gitlab_token": "fixture-token"},
+                    "http_get_json": lambda _path, _token: {},
+                }
+            )
+
+    def test_base_url_rejects_unsafe_values(self):
+        rejected = [
+            "",
+            "http://gitlab.example.test",
+            "https://user:fixture@gitlab.example.test",
+            "https://gitlab.example.test:not-a-port",
+            "https://gitlab.example.test?token=fixture",
+            "https://gitlab.example.test#fragment",
+        ]
+        for value in rejected:
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    self.module._resolve_base_url({"base_url": value})
+
+    def test_base_url_normalizes_trailing_slash(self):
+        self.assertEqual(
+            self.module._resolve_base_url(
+                {"base_url": "https://gitlab.example.test/group/"}
+            ),
+            "https://gitlab.example.test/group",
+        )
+
     def test_default_tls_context_verifies_certificate_and_hostname(self):
         context = self.module._ssl_context({})
         self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
@@ -613,8 +644,8 @@ class GitLabCollectorContextTests(unittest.TestCase):
             token_file = (
                 Path(temp_home)
                 / ".config"
-                / "kimi-dashboard"
-                / "gitlab-gzky-token"
+                / "mddd"
+                / "gitlab.token"
             )
             token_file.parent.mkdir(parents=True)
             token_file.write_text("legacy-token\n", encoding="utf-8")
@@ -630,8 +661,8 @@ class GitLabCollectorContextTests(unittest.TestCase):
             token_file = (
                 Path(temp_home)
                 / ".config"
-                / "kimi-dashboard"
-                / "gitlab-gzky-token"
+                / "mddd"
+                / "gitlab.token"
             )
             token_file.parent.mkdir(parents=True)
             token_file.write_text("legacy-token\n", encoding="utf-8")

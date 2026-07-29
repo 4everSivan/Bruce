@@ -12,7 +12,7 @@ mddd/
 ├── github/                 # 模块二：GitHub 贡献日历（个人开源活动）
 │   ├── collector/collect_github.py
 │   └── widget/index.html
-├── gitlab/                 # 模块三：公司私有 GitLab 贡献日历（工作活动）
+├── gitlab/                 # 模块三：用户配置的私有 GitLab 贡献日历
 │   ├── collector/collect_gitlab.py
 │   └── widget/index.html
 └── docs/
@@ -51,15 +51,16 @@ mddd/
 
 运行：`python3 github/collector/collect_github.py [--out 路径]`
 
-## 模块三 · gitlab（公司 GitLab 贡献日历）
+## 模块三 · gitlab（私有 GitLab 贡献日历）
 
-- 目标实例 `https://gitlab.gzky.com`（用户 barry.shen），需公司内网 / VPN 可达
-- 该实例 calendar.json 为空，改用 Events API 分页拉取后按天聚合，
-  产出结构与 GitHub 模块一致，界面为橙色热力墙以作区分
-- 令牌从本机文件读取，不落仓库：`~/.config/kimi-dashboard/gitlab-gzky-token`
-- 请求自带 2 次重试，容忍内网抖动导致的 SSL EOF
+- 实例地址由用户在 App 设置中配置，CLI 使用 `--base-url` 显式传入
+- 使用 Events API 分页拉取后按天聚合，产出结构与 GitHub 模块一致
+- App 将 PAT 保存到 macOS Keychain；CLI 默认从
+  `~/.config/mddd/gitlab.token` 读取，不落仓库
+- 请求自带 2 次重试，容忍私有网络 / VPN 的短暂连接抖动
+- 界面使用橙色热力墙，与 GitHub 模块区分
 
-运行：`python3 gitlab/collector/collect_gitlab.py [--out 路径]`
+运行：`python3 gitlab/collector/collect_gitlab.py --base-url https://gitlab.example.com [--out 路径]`
 
 ---
 
@@ -72,7 +73,8 @@ mddd/
 ```bash
 python3 agent-usage/collector/collect_usage.py --out data/agent-usage.json
 python3 github/collector/collect_github.py     --out data/github.json
-python3 gitlab/collector/collect_gitlab.py     --out data/gitlab.json
+python3 gitlab/collector/collect_gitlab.py     \
+  --base-url https://gitlab.example.com --out data/gitlab.json
 ```
 
 `data/` 目录为运行产物，请勿提交。
@@ -93,7 +95,7 @@ python3 gitlab/collector/collect_gitlab.py     --out data/gitlab.json
 | agent-usage | `~/.cc-switch/codex_oauth_auth.json` | Codex 多账号库（轮换写回，留 `.bak-kimi` 备份） |
 | agent-usage | `~/.gemini/antigravity-cli/` | agy 的 Google OAuth 与活动计数 |
 | github | `gh` CLI 登录态 | GraphQL 查询 |
-| gitlab | `~/.config/kimi-dashboard/gitlab-gzky-token` | GitLab PAT |
+| gitlab | App Keychain 或 `~/.config/mddd/gitlab.token` | GitLab PAT |
 
 ## 设计规范
 

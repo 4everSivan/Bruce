@@ -88,7 +88,7 @@
 |------|------|
 | `python3 agent-usage/collector/collect_usage.py --out data/agent-usage.json` | 实时采集 Agent 用量和额度; 可能刷新并写回 OAuth, 必须先获得明确授权 |
 | `python3 github/collector/collect_github.py --out data/github.json` | 使用当前 `gh` 登录态采集 GitHub 贡献 |
-| `python3 gitlab/collector/collect_gitlab.py --out data/gitlab.json` | 使用本机 PAT 采集私有 GitLab 活动 |
+| `python3 gitlab/collector/collect_gitlab.py --base-url https://gitlab.example.com --out data/gitlab.json` | 使用用户配置的实例地址和本机 PAT 采集私有 GitLab 活动 |
 | `python3 -c 'import ast,pathlib; [ast.parse(p.read_text()) for p in pathlib.Path(".").glob("*/collector/*.py")]'` | 无外部调用的 Python 语法验证 |
 | `node --check -` | 对从 Widget 提取的 JavaScript 执行语法验证 |
 | `python3 -m pytest tests/` | Python 单元与契约测试 (bridge, collector, widget 安全); 42 项 |

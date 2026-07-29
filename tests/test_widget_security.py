@@ -55,6 +55,16 @@ class WidgetSecurityTests(unittest.TestCase):
         self.assertNotIn("addScriptMessageHandler", host)
         self.assertNotIn("userContentController.add(", host)
 
+    def test_gitlab_footer_does_not_embed_instance_hostname(self):
+        html = (
+            REPO_ROOT / "gitlab" / "widget" / "index.html"
+        ).read_text(encoding="utf-8")
+        self.assertIn("数据：GitLab Events API · 每小时刷新", html)
+        self.assertNotRegex(
+            html,
+            r"数据：(?:https?://)?[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+",
+        )
+
     def test_dynamic_strings_are_escaped_or_rendered_as_text(self):
         agent = (
             REPO_ROOT / "agent-usage" / "widget" / "index.html"
