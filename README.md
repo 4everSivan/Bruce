@@ -1,110 +1,167 @@
-# mddd · 个人研发数据看板
+# mddd
 
-本机 AI 编程活动的统一监控项目，由三个**互相独立**的模块组成。
-每个模块结构相同：`collector/` 采集数据（输出 JSON），`widget/` 渲染界面
-（Daimon/Kimi Work Blueprint Widget，单文件 HTML）。
+本地优先的 macOS Dock 研发活动看板。
 
-```
-mddd/
-├── agent-usage/            # 模块一：本机 AI agent 额度与 token 用量
-│   ├── collector/collect_usage.py
-│   └── widget/index.html
-├── github/                 # 模块二：GitHub 贡献日历（个人开源活动）
-│   ├── collector/collect_github.py
-│   └── widget/index.html
-├── gitlab/                 # 模块三：用户配置的私有 GitLab 贡献日历
-│   ├── collector/collect_gitlab.py
-│   └── widget/index.html
-└── docs/
-```
+`mddd` 将本机 AI Agent 的 token 用量、成本估算和额度状态，与 GitHub、GitLab 仓库活动热力图集中到一个原生 macOS 应用中。应用负责依赖扫描、登录授权、凭证管理、定时刷新、缓存和故障恢复；Python Collector 负责采集，隔离的 Web Widget 负责保留现有数据可视化风格。
 
----
+> **Development Preview**
+>
+> 当前版本可从源码构建和运行，最低支持 macOS 13。签名、公证、可下载的 `.app` 发布包和真实账号发布验收尚未完成。
 
-## 模块一 · agent-usage（AI agent 额度与用量）
+## 核心能力
 
-一个页面看清每个 agent 今天烧了多少 token、折多少钱，以及各家云服务额度还剩多少。
-
-**用量区（全部来自本机会话日志，零外部依赖）**
-
-- Kimi Work、Kimi Code CLI、Claude Code、Codex CLI、Codex · Orca 的今日消耗
-- 14 日分 agent 堆叠柱状图、逐小时折线图、分模型 / 分项目明细
-- 按内置价目表（174 个模型，USD / 1M tokens）估算今日成本
-
-**额度区（实时查询）**
-
-| 服务 | 数据来源 | 窗口 |
+| 模块 | 能力 | 数据边界 |
 |---|---|---|
-| Kimi | kimi.com 会员接口（本机浏览器令牌，自动刷新） | 5 小时 / 7 天 / 每月 / 赠送额度 / 加量包 |
-| DeepSeek | 官方 balance 接口 | 余额（CNY） |
-| 火山引擎（Coding Plan） | 火山 OpenAPI（AK/SK 签名） | 5 小时 / 每周 / 每月 |
-| Codex（多账号） | OpenAI wham/usage 接口（OAuth 自动轮换写回） | 5 小时 / 每周 |
-| Antigravity (agy) | Google Cloud Code 接口（OAuth 自动刷新） | Gemini、Claude/GPT 分组 |
+| Agent 用量 | 汇总 Kimi Work、Kimi Code、Claude Code、Codex 和 Orca 会话的 token、成本、趋势及可用额度状态 | 以本机会话和用户授权的 Provider 为来源 |
+| GitHub | 展示总贡献、今日贡献、连续贡献、最佳单日和 53 周贡献热力图 | 复用本机 `gh` CLI 登录态 |
+| GitLab | 展示用户配置的私有实例活动和 53 周热力图 | HTTPS base URL + 存入 macOS Keychain 的 PAT |
 
-运行：`python3 agent-usage/collector/collect_usage.py [--out 路径]`
+应用还提供:
 
-## 模块二 · GitHub（贡献日历）
+- 独立 Dock 生命周期、主窗口、模块导航和通用状态 badge。
+- 首次启动 Onboarding、依赖扫描、登录配置和统一授权摘要。
+- 默认每 30 分钟自动刷新，以及手动刷新、防重入、超时、退避和系统唤醒补采。
+- 最后成功快照优先展示；单模块失败不会阻止其他模块更新。
+- 经典书卷风主题，以及受系统版本支持时可选的 Liquid Glass 外观。
 
-- 通过本机 `gh` CLI 的 GraphQL API 拉取 contributionCalendar
-- 产出：总贡献数、今日、当前 / 最长连续 streak、最佳单日、53 周日历
-- 界面为绿色热力墙（GitHub 风格）
-- 依赖：`gh` CLI 已登录
+## 界面预览
 
-运行：`python3 github/collector/collect_github.py [--out 路径]`
+预览使用仓库内的脱敏 fixture 数据。
 
-## 模块三 · GitLab（私有实例贡献日历）
+| Agent 用量 | GitHub | GitLab |
+|---|---|---|
+| ![Agent 用量 Widget](tests/visual/baselines/agent-usage-valid.jpg) | ![GitHub Widget](tests/visual/baselines/github-valid.jpg) | ![GitLab Widget](tests/visual/baselines/gitlab-valid.jpg) |
 
-- 实例地址由用户在 App 设置中配置，CLI 使用 `--base-url` 显式传入
-- 使用 Events API 分页拉取后按天聚合，产出结构与 GitHub 模块一致
-- App 将 PAT 保存到 macOS Keychain；CLI 默认从
-  `~/.config/mddd/gitlab.token` 读取，不落仓库
-- 请求自带 2 次重试，容忍私有网络 / VPN 的短暂连接抖动
-- 界面使用橙色热力墙，与 GitHub 模块区分
+## 快速开始
 
-运行：`python3 gitlab/collector/collect_gitlab.py --base-url https://gitlab.example.com [--out 路径]`
+### 环境要求
 
----
+- macOS 13 Ventura 或更高版本。
+- Swift 6 工具链；当前验证版本为 Apple Swift 6.2.1。
+- Python 3.9 或更高版本；Collector 仅依赖 Python 标准库。
+- GitHub 模块需要已安装的 `gh` CLI。
+- GitLab 模块需要可访问的 HTTPS 实例和用户提供的 PAT；私有实例可能还需要 VPN 或内部 CA。
+- Agent 用量模块需要至少一个受支持的本机会话数据源。
 
-## 统一落盘参数 `--out`
+只有 Apple Command Line Tools 时即可完成 SwiftPM 构建。签名、归档和公证需要完整 Xcode。
 
-三个 collector 都支持 `--out <路径>`：把结果 JSON **原子写入**指定文件
-（先写 `.tmp` 再替换，读取方不会拿到半截文件），缺省则打印到 stdout。
-目录不存在会自动创建，适合作为 macOS app / 定时任务的统一数据出口，例如：
+### 构建并运行
 
 ```bash
-python3 agent-usage/collector/collect_usage.py --out data/agent-usage.json
-python3 github/collector/collect_github.py     --out data/github.json
-python3 gitlab/collector/collect_gitlab.py     \
-  --base-url https://gitlab.example.com --out data/gitlab.json
+swift build --package-path macos/MdddApp
+swift run --package-path macos/MdddApp MdddApp
 ```
 
-`data/` 目录为运行产物，请勿提交。
+首次运行后:
 
----
+1. 在设置页扫描 Python、`gh` CLI、本机会话和可选 SQLite 数据源。
+2. 选择需要启用的 Agent 用量、GitHub 和 GitLab 模块。
+3. 按引导完成 GitHub 官方登录，或配置 GitLab HTTPS 地址与 PAT。
+4. 阅读统一授权摘要并确认后，应用才会启动对应 Collector 和自动刷新。
 
-## 本机数据依赖（除注明外均只读）
+真实账号访问和外部请求只应在个人 Mac 上、由用户明确授权后执行。
 
-| 模块 | 路径 | 用途 |
-|---|---|---|
-| agent-usage | `~/Library/Application Support/kimi-desktop/.../sessions` | Kimi Work 会话日志 |
-| agent-usage | `~/.kimi-code/sessions` | Kimi Code CLI 会话日志 |
-| agent-usage | `~/.claude/projects` | Claude Code 会话日志 |
-| agent-usage | `~/.codex/sessions`、`~/.codex/auth.json` | Codex 会话与当前账号令牌（轮换写回） |
-| agent-usage | `~/Library/Application Support/orca` | Orca 托管的 Codex 会话 |
-| agent-usage | `~/.config/kimi-dashboard/kimi-web-tokens.json` | Kimi 网页端令牌（自动刷新写回） |
-| agent-usage | `~/.cc-switch/cc-switch.db` | 服务凭证发现 + 价目补充（可选，缺失自动降级） |
-| agent-usage | `~/.cc-switch/codex_oauth_auth.json` | Codex 多账号库（轮换写回，留 `.bak-kimi` 备份） |
-| agent-usage | `~/.gemini/antigravity-cli/` | agy 的 Google OAuth 与活动计数 |
-| GitHub | `gh` CLI 登录态 | GraphQL 查询 |
-| GitLab | App Keychain 或 `~/.config/mddd/gitlab.token` | GitLab PAT |
+## 应用架构
 
-## 设计规范
+```text
+SwiftUI / AppKit Dock App
+  ├─ Onboarding + Settings
+  │    ├─ 本机只读依赖扫描
+  │    ├─ GitHub 官方登录
+  │    └─ GitLab 配置 + Keychain
+  ├─ RefreshScheduler
+  │    └─ CollectorRunner
+  │         └─ Python Bridge (stdin/stdout JSON)
+  │              ├─ Agent Usage Collector
+  │              ├─ GitHub Collector
+  │              └─ GitLab Collector
+  └─ ArtifactStore
+       └─ 隔离 WKWebView
+            └─ Agent / GitHub / GitLab Widgets
+```
 
-- 视觉：Claude 官网书卷风——米白底 `#f7f5ee`、陶土橙 `#d97757` 强调色
-- 字体：英文 Times New Roman，中文宋体（同一衬线栈）
-- 图表：纯静态展示，无悬停高亮；额度用量统一量条（≥60% 橙、≥85% 红）
-- 热力墙配色：GitHub 绿 / GitLab 橙，两个模块一眼区分
+运行链路:
 
-## 注意
+1. 原生层根据 Onboarding 结果和用户授权决定允许启动的模块。
+2. Scheduler 为每个模块创建受控运行任务，并通过 Bridge 的 stdin 传入最小 context 和 credentials。
+3. Collector 返回 `{"artifact": ...}`；Bridge 验证 schema、错误语义和凭证更新。
+4. ArtifactStore 原子保存最后成功快照。
+5. WidgetHost 将验证后的 Artifact 映射为 `DaimonWidget.data.main`，由现有 Widget 渲染。
 
-- 仓库内不含任何令牌 / 凭证，请勿把上述本机配置文件提交进来
-- 采集脚本仅兼容 macOS 目录结构
+Collector 仍保留独立 CLI 入口，用于开发、测试和故障排查，但不再是产品的主要使用方式。
+
+## 安全与隐私
+
+- 本地优先，无项目自有服务端，也不默认同步活动数据。
+- GitLab PAT 保存在 macOS Keychain；GitHub 凭证继续由 `gh` 管理。
+- 凭证通过 Bridge stdin 的单次请求传递，不进入命令行参数、Artifact 或日志。
+- App 模式下 Python 不直接写 Keychain，也不写回第三方认证文件。
+- Widget 使用非持久化、受 CSP 限制的 WKWebView，不访问 Keychain、文件系统、进程通道或第三方 API。
+- 配置和快照写入用户级 Application Support；真实凭证、账号活动和 `data/*.json` 不得进入仓库。
+- Dock badge 仅显示通用状态，不显示账号、仓库或 token 明细。
+
+## 项目结构
+
+```text
+mddd/
+├── macos/MdddApp/          # SwiftUI/AppKit Dock 应用、Scheduler、缓存和 WidgetHost
+│   ├── Sources/MdddApp/
+│   ├── Sources/MdddOnboardingCore/
+│   └── Tests/
+├── bridge/                 # Swift 与 Python 之间的版本化 JSON 协议和安全校验
+├── agent-usage/            # Agent 用量 Collector 与 Widget
+├── github/                 # GitHub Collector 与 Widget
+├── gitlab/                 # GitLab Collector 与 Widget
+├── tests/                  # Python 契约、Collector、Widget 和视觉 fixture 测试
+└── docs/                   # OpenSpec、工具链和授权设计文档
+```
+
+关键入口:
+
+- macOS App: `macos/MdddApp/Sources/MdddApp/MdddApp.swift`
+- Python Bridge: `bridge/run_bridge.py`
+- Collectors: `*/collector/*.py`
+- Widget 源文件: `*/widget/index.html`
+- Artifact schemas: `bridge/schemas/`
+
+## 开发与验证
+
+Python 语法和测试:
+
+```bash
+python3 -m py_compile \
+  agent-usage/collector/collect_usage.py \
+  github/collector/collect_github.py \
+  gitlab/collector/collect_gitlab.py \
+  bridge/*.py
+
+python3 -m pytest -q
+```
+
+Swift 构建和 Core Harness:
+
+```bash
+swift build --package-path macos/MdddApp
+swift run --package-path macos/MdddApp MdddOnboardingCoreHarness
+```
+
+Widget JavaScript 语法、安全隔离和 Bundle 副本一致性由 Python 测试覆盖。真实 Collector、OAuth、PAT、签名和 `.app` 发布验证不属于默认测试流程，需要单独授权和对应环境。
+
+更多资料:
+
+- [工具链基线](docs/development/toolchain.md)
+- [Provider 授权矩阵](docs/development/provider-auth-matrix.md)
+- [产品化设计](docs/openspec/changes/productize-macos-dock-dashboard/design.md)
+- [实现任务状态](docs/openspec/changes/productize-macos-dock-dashboard/tasks.md)
+
+## 当前限制
+
+- 尚未提供签名、公证和可下载的 `.app` 发布包。
+- 完整 Xcode 下的 archive、entitlement、Keychain 和 Dock 生命周期发布验证尚未完成。
+- 真实 GitHub、GitLab 和 Agent Provider 登录验收需要用户在个人 Mac 上明确授权。
+- 30 分钟自动刷新、系统睡眠补偿、凭证续期和撤销仍需真实环境验收。
+- 脱敏诊断导出和部分可访问性优化仍在后续计划中。
+
+## License
+
+[MIT](LICENSE)
