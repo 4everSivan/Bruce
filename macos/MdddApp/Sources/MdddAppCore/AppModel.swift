@@ -127,23 +127,6 @@ package struct ModuleStatus: Equatable, Sendable {
     }
 }
 
-package enum DockBadgeState: Equatable, Sendable {
-    case none
-    case attention
-    case refreshFailed
-
-    package var label: String? {
-        switch self {
-        case .none:
-            return nil
-        case .attention:
-            return "•"
-        case .refreshFailed:
-            return "!"
-        }
-    }
-}
-
 @MainActor
 package final class AppModel: ObservableObject {
     @Published package var selectedModule: DashboardModule = .agentUsage
@@ -155,7 +138,6 @@ package final class AppModel: ObservableObject {
     @Published package private(set) var busyModules: Set<CollectorModule> = []
     /// 设置页操作失败的用户可读错误, 不含凭证.
     @Published package private(set) var settingsErrorMessage: String?
-    @Published package private(set) var dockBadgeState: DockBadgeState = .none
     @Published package private(set) var menuBarMetrics: [MenuBarMetric]
     /// 当前外观主题, 默认经典; 由 OnboardingCoordinator 从配置恢复和持久化.
     @Published package var theme: AppTheme = .classic
@@ -178,7 +160,6 @@ package final class AppModel: ObservableObject {
 
     package func setStatus(_ status: ModuleStatus, for module: DashboardModule) {
         moduleStatuses[module] = status
-        updateDockBadge()
     }
 
     package func setArtifact(_ artifact: JSONValue?, for module: DashboardModule) {
@@ -279,21 +260,6 @@ package final class AppModel: ObservableObject {
             return .ready
         case .failed:
             return .missingDependency
-        }
-    }
-
-    private func updateDockBadge() {
-        let states = moduleStatuses
-            .filter { $0.key != .settings }
-            .map(\.value.state)
-        if states.contains(.failed) {
-            dockBadgeState = .refreshFailed
-        } else if states.contains(where: {
-            [.partial, .stale, .authRequired, .offline].contains($0)
-        }) {
-            dockBadgeState = .attention
-        } else {
-            dockBadgeState = .none
         }
     }
 }

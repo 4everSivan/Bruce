@@ -91,6 +91,7 @@
 | `python3 gitlab/collector/collect_gitlab.py --base-url https://gitlab.example.com --out data/gitlab.json` | 使用用户配置的实例地址和本机 PAT 采集私有 GitLab 活动 |
 | `python3 -c 'import ast,pathlib; [ast.parse(p.read_text()) for p in pathlib.Path(".").glob("*/collector/*.py")]'` | 无外部调用的 Python 语法验证 |
 | `node --check -` | 对从 Widget 提取的 JavaScript 执行语法验证 |
+| `zsh scripts/verify-local.sh` | 标准本地验证: Python 语法 + pytest + swift build + 全部 7 个 Harness |
 | `python3 -m pytest tests/` | Python 单元与契约测试 (bridge, collector, widget 安全); 42 项 |
 | `swift build --package-path macos/MdddApp` | macOS App 与 MdddOnboardingCore 构建验证 |
 | `swift run --package-path macos/MdddApp MdddOnboardingCoreHarness` | Onboarding Core 边界测试 (进程, SQLite, Keychain, Gate); 74 项 |

@@ -75,13 +75,13 @@ def test_host_state_matrix_is_live_and_textual():
 
 
 def test_native_primary_actions_have_keyboard_and_accessibility_contracts():
-    dashboard = (
+    menu_bar = (
         REPO_ROOT
         / "macos"
         / "MdddApp"
         / "Sources"
         / "MdddApp"
-        / "DashboardView.swift"
+        / "MenuBarViews.swift"
     ).read_text()
     settings = (
         REPO_ROOT
@@ -91,9 +91,10 @@ def test_native_primary_actions_have_keyboard_and_accessibility_contracts():
         / "MdddApp"
         / "SettingsView.swift"
     ).read_text()
-    assert '.keyboardShortcut("r", modifiers: .command)' in dashboard
-    assert 'accessibilityLabel("刷新\\(module.title)")' in dashboard
-    assert "module.title), \\(model.status(for: module).state.title)" in dashboard
+    assert '.keyboardShortcut("r", modifiers: .command)' in menu_bar
+    assert 'accessibilityLabel("刷新\\(module.title)")' in menu_bar
+    assert ".accessibilityValue(" in menu_bar
+    assert "model.status(for: module).state.title" in menu_bar
     assert "NSAccessibility.post(" in settings
     assert 'accessibilityLabel("GitLab 个人访问令牌")' in settings
     assert 'accessibilityLabel("脱敏诊断 JSON 预览")' in settings

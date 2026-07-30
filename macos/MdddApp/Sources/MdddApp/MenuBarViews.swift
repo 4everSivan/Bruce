@@ -172,7 +172,9 @@ struct MenuBarDashboardView: View {
             } label: {
                 Label("刷新", systemImage: "arrow.clockwise")
             }
+            .keyboardShortcut("r", modifiers: .command)
             .disabled(!canRefresh)
+            .accessibilityLabel("刷新\(module.title)")
             .accessibilityHint("使用当前授权重新采集\(module.title)")
             Spacer()
             Button(action: openSettings) {
@@ -199,5 +201,36 @@ struct MenuBarDashboardView: View {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .short
         return formatter.localizedString(for: date, relativeTo: Date())
+    }
+}
+
+
+/// 无缓存且未就绪时的占位视图: 图标 + 状态 + 可执行建议.
+struct WidgetPlaceholder: View {
+    let module: DashboardModule
+    let status: ModuleStatus
+    var theme: AppTheme = .classic
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: module.systemImage)
+                .font(.system(size: 34))
+                .foregroundStyle(.secondary)
+            Text("WidgetHost 将在此加载现有视觉")
+                .font(.headline)
+            if let guidance = status.detail {
+                Text(guidance)
+                    .font(.subheadline)
+                    .foregroundStyle(.orange)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+            } else {
+                Text(status.state.title)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .glassCardBackground(theme: theme)
+        .accessibilityElement(children: .combine)
     }
 }

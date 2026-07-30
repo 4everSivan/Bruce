@@ -18,7 +18,7 @@
 
 应用还提供:
 
-- 独立 Dock 生命周期、主窗口、模块导航和通用状态 badge。
+- 菜单栏常驻形态、弹出式模块面板和可配置的菜单栏指标 (1 至 3 项)。
 - 首次启动 Onboarding、依赖扫描、登录配置和统一授权摘要。
 - 默认每 30 分钟自动刷新，以及手动刷新、防重入、超时、退避和系统唤醒补采。
 - 最后成功快照优先展示；单模块失败不会阻止其他模块更新。
@@ -103,13 +103,13 @@ Collector 仍保留独立 CLI 入口，用于开发、测试和故障排查，�
 - Widget 使用非持久化、受 CSP 限制的 WKWebView，不访问 Keychain、文件系统、进程通道或第三方 API。
 - 配置和快照写入用户级 Application Support；真实凭证、账号活动和 `data/*.json` 不得进入仓库。
 - 诊断包采用白名单字段，生成后会解压复核文件清单并再次扫描敏感形态。
-- Dock badge 仅显示通用状态，不显示账号、仓库或 token 明细。
+- 菜单栏指标仅显示通用状态和聚合数字, 不显示账号、仓库或 token 明细。
 
 ## 项目结构
 
 ```text
 mddd/
-├── macos/MdddApp/          # SwiftUI/AppKit Dock 应用、Scheduler、缓存和 WidgetHost
+├── macos/MdddApp/          # SwiftUI/AppKit 菜单栏应用、Scheduler、缓存和 WidgetHost
 │   ├── Sources/MdddApp/
 │   ├── Sources/MdddAppCore/
 │   ├── Sources/MdddOnboardingCore/

@@ -24,22 +24,6 @@ private func expect(
 }
 
 @MainActor
-private final class WindowPresenter: MainWindowPresenting {
-    private(set) var windowCount = 1
-    private(set) var presentationCount = 0
-    private(set) var isVisible = true
-
-    func close() {
-        isVisible = false
-    }
-
-    func presentMainWindow() {
-        presentationCount += 1
-        isVisible = true
-    }
-}
-
-@MainActor
 private final class Runtime: ApplicationRuntimeControlling {
     var hasRunningTasks = false
     private(set) var schedulerStartCount = 0
@@ -71,41 +55,13 @@ private final class Runtime: ApplicationRuntimeControlling {
 @MainActor
 struct NativeLifecycleHarness {
     static func main() throws {
-        try closeReopenKeepsOneWindowAndScheduler()
         try exitForcesRemainingTasksAfterGracePeriod()
         try exitCompletesImmediatelyWithoutRunningTasks()
-        try dockBadgeNeverContainsIdentifiers()
         try widgetStatesMapEveryNativeState()
         try metricSelectionNormalizes()
         try menuBarSummaryUsesValidQuotaWindows()
         try metricFormatterUsesCompactValues()
-        print("Native lifecycle tests passed: 8")
-    }
-
-    private static func closeReopenKeepsOneWindowAndScheduler() throws {
-        let runtime = Runtime()
-        let presenter = WindowPresenter()
-        let coordinator = ApplicationLifecycleCoordinator(
-            runtime: runtime,
-            windowPresenter: presenter
-        )
-        runtime.startSchedulerIfNeeded()
-        runtime.startSchedulerIfNeeded()
-
-        presenter.close()
-        coordinator.reopenMainWindow()
-        coordinator.reopenMainWindow()
-
-        try expect(presenter.isVisible, "reopen should show the main window")
-        try expect(presenter.windowCount == 1, "reopen created another window")
-        try expect(
-            presenter.presentationCount == 2,
-            "repeated activation was not handled"
-        )
-        try expect(
-            runtime.schedulerStartCount == 1,
-            "reopen created another scheduler"
-        )
+        print("Native lifecycle tests passed: 6")
     }
 
     private static func exitForcesRemainingTasksAfterGracePeriod() throws {
@@ -115,7 +71,6 @@ struct NativeLifecycleHarness {
         var completionCount = 0
         let coordinator = ApplicationLifecycleCoordinator(
             runtime: runtime,
-            windowPresenter: WindowPresenter(),
             scheduleGracePeriod: { action in graceAction = action }
         )
 
@@ -135,34 +90,20 @@ struct NativeLifecycleHarness {
         let runtime = Runtime()
         var completed = false
         let coordinator = ApplicationLifecycleCoordinator(
-            runtime: runtime,
-            windowPresenter: WindowPresenter()
+            runtime: runtime
         )
         coordinator.beginTermination {
             completed = true
         }
         try expect(completed, "idle exit should complete immediately")
         try expect(runtime.forceCount == 0, "idle exit forced a task")
-    }
 
-    private static func dockBadgeNeverContainsIdentifiers() throws {
-        let model = AppModel()
-        model.setStatus(
-            ModuleStatus(
-                state: .authRequired,
-                detail: "fixture@example.test"
-            ),
-            for: .github
+        runtime.startSchedulerIfNeeded()
+        runtime.startSchedulerIfNeeded()
+        try expect(
+            runtime.schedulerStartCount == 1,
+            "scheduler started more than once"
         )
-        try expect(model.dockBadgeState.label == "•", "attention badge changed")
-        model.setStatus(
-            ModuleStatus(
-                state: .failed,
-                detail: "private/repository"
-            ),
-            for: .gitlab
-        )
-        try expect(model.dockBadgeState.label == "!", "failure badge changed")
     }
 
     private static func widgetStatesMapEveryNativeState() throws {
