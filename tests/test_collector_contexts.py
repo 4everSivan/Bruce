@@ -1,6 +1,7 @@
 import hashlib
 import importlib.util
 import json
+import os
 import sqlite3
 import ssl
 import tempfile
@@ -521,6 +522,314 @@ class AgentCollectorCapabilityTests(unittest.TestCase):
         )
         self.assertEqual(kimi["status"], "ok")
         self.assertTrue(kimi["windows"])
+
+
+class AgentCollectorAppServicesTests(unittest.TestCase):
+    def setUp(self):
+        self.module = load_module(
+            "collect_usage_app_services_test",
+            "agent-usage/collector/collect_usage.py",
+        )
+
+    def _kimi_post_json(self, url, payload, headers):
+        self.assertIn("Authorization", headers)
+        if url == self.module.KIMI_STATS_URL:
+            return {
+                "ratelimitCode5h": {"ratio": 0.25},
+                "ratelimitCode7d": {"ratio": 0.5},
+            }
+        if url == self.module.KIMI_SUB_URL:
+            return {"plan": "Moderato"}
+        self.fail("unexpected POST URL: %s" % url)
+
+    def _quota_get_json(self, url, headers):
+        if "deepseek" in url:
+            return {
+                "balance_infos": [
+                    {"total_balance": "12.34", "currency": "CNY"}
+                ]
+            }
+        if "volcengineapi" in url:
+            self.assertIn("Authorization", headers)
+            return {
+                "Result": {
+                    "Status": "active",
+                    "QuotaUsage": [
+                        {"Level": "session", "Percent": 40},
+                        {"Level": "weekly", "Percent": 10},
+                    ],
+                }
+            }
+        self.fail("unexpected GET URL: %s" % url)
+
+    def _configure_app(self, temp_home, credentials, http):
+        self.module._configure_runtime(
+            {
+                "home": temp_home,
+                "app_mode": True,
+                "capabilities": [
+                    "localSessions",
+                    "localPricing",
+                    "externalQuotas",
+                ],
+                "now": "2026-07-28T12:00:00+08:00",
+                "timezone": "Asia/Shanghai",
+                "credentials": credentials,
+                "http": http,
+            }
+        )
+
+    def _full_credentials(self):
+        return {
+            "kimi_web_tokens": {
+                "access_token": "fixture-access",
+                "refresh_token": "fixture-refresh",
+            },
+            "provider_env": {
+                "deepseek": {"ANTHROPIC_AUTH_TOKEN": "fixture-deepseek-key"}
+            },
+            "provider_meta": {
+                "volcengine": {
+                    "usage_script": {
+                        "accessKeyId": "fixture-ak",
+                        "secretAccessKey": "fixture-sk",
+                    }
+                }
+            },
+        }
+
+    def _assert_service_shape(self, svc):
+        for key in (
+            "id",
+            "name",
+            "app",
+            "isCurrent",
+            "status",
+            "kind",
+            "plan",
+            "windows",
+            "balance",
+            "currency",
+            "capturedAt",
+            "note",
+        ):
+            self.assertIn(key, svc)
+        self.assertFalse(svc["isCurrent"])
+        self.assertIsInstance(svc["windows"], list)
+
+    def test_app_mode_synthesizes_three_services_without_cc_db(self):
+        with tempfile.TemporaryDirectory() as temp_home:
+            # 不创建 ~/.cc-switch/cc-switch.db, 证明 App 模式不依赖 CC
+            self._configure_app(
+                temp_home,
+                self._full_credentials(),
+                {
+                    "post_json": self._kimi_post_json,
+                    "get_json": self._quota_get_json,
+                },
+            )
+            self.assertFalse(os.path.exists(self.module.CC_SWITCH_DB))
+            services = self.module.collect_services()
+
+        self.assertEqual(
+            [svc["id"] for svc in services],
+            ["kimi_coding", "deepseek", "volcengine"],
+        )
+        for svc in services:
+            self._assert_service_shape(svc)
+            self.assertEqual(svc["status"], "ok")
+
+        kimi, deepseek, volc = services
+        self.assertEqual(kimi["name"], "Kimi")
+        self.assertEqual(kimi["kind"], "windows")
+        self.assertEqual(kimi["plan"], "Moderato")
+        self.assertEqual(len(kimi["windows"]), 2)
+
+        self.assertEqual(deepseek["name"], "DeepSeek")
+        self.assertEqual(deepseek["kind"], "balance")
+        self.assertAlmostEqual(deepseek["balance"], 12.34)
+        self.assertEqual(deepseek["currency"], "CNY")
+
+        self.assertEqual(volc["name"], "火山引擎（Coding Plan）")
+        self.assertEqual(volc["kind"], "windows")
+        self.assertEqual(volc["plan"], "active")
+        self.assertEqual(
+            [w["label"] for w in volc["windows"]], ["5小时窗口", "每周窗口"]
+        )
+
+    def test_app_mode_partial_injection_yields_only_matching_services(self):
+        with tempfile.TemporaryDirectory() as temp_home:
+            self._configure_app(
+                temp_home,
+                {
+                    "provider_env": {
+                        "deepseek": {
+                            "ANTHROPIC_AUTH_TOKEN": "fixture-deepseek-key"
+                        }
+                    }
+                },
+                {"get_json": self._quota_get_json},
+            )
+            services = self.module.collect_services()
+
+        self.assertEqual([svc["id"] for svc in services], ["deepseek"])
+        self._assert_service_shape(services[0])
+        self.assertEqual(services[0]["status"], "ok")
+
+    def test_app_mode_without_injection_returns_empty_services(self):
+        calls = []
+
+        def deny(name):
+            def call(*_args, **_kwargs):
+                calls.append(name)
+                raise AssertionError("unexpected external HTTP: %s" % name)
+
+            return call
+
+        with tempfile.TemporaryDirectory() as temp_home:
+            self._configure_app(
+                temp_home,
+                {},
+                {
+                    "get_json": deny("get_json"),
+                    "post_json": deny("post_json"),
+                    "urlopen": deny("urlopen"),
+                },
+            )
+            services = self.module.collect_services()
+
+        self.assertEqual(services, [])
+        self.assertEqual(calls, [])
+
+    def test_app_mode_network_failure_marks_error_with_diagnostic_note(self):
+        def failing_get_json(_url, _headers):
+            raise OSError("fixture network down")
+
+        with tempfile.TemporaryDirectory() as temp_home:
+            self._configure_app(
+                temp_home,
+                {
+                    "provider_env": {
+                        "deepseek": {
+                            "ANTHROPIC_AUTH_TOKEN": "fixture-deepseek-key"
+                        }
+                    },
+                    "provider_meta": {
+                        "volcengine": {
+                            "usage_script": {
+                                "accessKeyId": "fixture-ak",
+                                "secretAccessKey": "fixture-sk",
+                            }
+                        }
+                    },
+                },
+                {"get_json": failing_get_json},
+            )
+            services = self.module.collect_services()
+
+        self.assertEqual(
+            [svc["id"] for svc in services], ["deepseek", "volcengine"]
+        )
+        for svc in services:
+            self._assert_service_shape(svc)
+            self.assertEqual(svc["status"], "error")
+            self.assertIn("查询失败: ", svc["note"])
+            self.assertIn("fixture network down", svc["note"])
+
+    def test_cli_mode_cc_db_driven_behavior_unchanged(self):
+        post_json = self._kimi_post_json
+        get_json = self._quota_get_json
+
+        with tempfile.TemporaryDirectory() as temp_home:
+            db_path = Path(temp_home) / ".cc-switch" / "cc-switch.db"
+            db_path.parent.mkdir(parents=True)
+            with sqlite3.connect(db_path) as db:
+                db.execute(
+                    "CREATE TABLE providers (id TEXT, name TEXT, app_type TEXT,"
+                    " settings_config TEXT, meta TEXT, is_current INTEGER)"
+                )
+                db.execute(
+                    "INSERT INTO providers VALUES (?, ?, ?, ?, ?, ?)",
+                    ("p1", "Kimi For Coding", "claude", '{"env": {}}', "{}", 1),
+                )
+                db.execute(
+                    "INSERT INTO providers VALUES (?, ?, ?, ?, ?, ?)",
+                    (
+                        "p2",
+                        "DeepSeek",
+                        "claude",
+                        '{"env": {"ANTHROPIC_AUTH_TOKEN": "cc-deepseek-key"}}',
+                        "{}",
+                        0,
+                    ),
+                )
+                db.execute(
+                    "INSERT INTO providers VALUES (?, ?, ?, ?, ?, ?)",
+                    (
+                        "p3",
+                        "火山Codingplan",
+                        "claude",
+                        '{"env": {}}',
+                        '{"usage_script": {"accessKeyId": "cc-ak",'
+                        ' "secretAccessKey": "cc-sk"}}',
+                        0,
+                    ),
+                )
+                db.execute(
+                    "INSERT INTO providers VALUES (?, ?, ?, ?, ?, ?)",
+                    ("p4", "无关 Provider", "claude", '{"env": {}}', "{}", 0),
+                )
+            self.module._configure_runtime(
+                {
+                    "home": temp_home,
+                    "now": "2026-07-28T12:00:00+08:00",
+                    "timezone": "Asia/Shanghai",
+                    "credentials": {
+                        "kimi_web_tokens": {
+                            "access_token": "fixture-access",
+                            "refresh_token": "fixture-refresh",
+                        }
+                    },
+                    "http": {"post_json": post_json, "get_json": get_json},
+                }
+            )
+            services = self.module.collect_services()
+
+        self.assertEqual(
+            [svc["id"] for svc in services],
+            ["kimi_coding", "deepseek", "volcengine"],
+        )
+        kimi, deepseek, volc = services
+        # app/isCurrent 来自 CC 行, 名称走 display_names 映射
+        self.assertEqual(kimi["name"], "Kimi")
+        self.assertEqual(kimi["app"], "claude")
+        self.assertTrue(kimi["isCurrent"])
+        self.assertEqual(kimi["status"], "ok")
+        self.assertEqual(deepseek["name"], "DeepSeek")
+        self.assertFalse(deepseek["isCurrent"])
+        self.assertEqual(deepseek["status"], "ok")
+        self.assertAlmostEqual(deepseek["balance"], 12.34)
+        self.assertEqual(volc["name"], "火山引擎（Coding Plan）")
+        self.assertEqual(volc["status"], "ok")
+        self.assertEqual(
+            [w["label"] for w in volc["windows"]], ["5小时窗口", "每周窗口"]
+        )
+
+    def test_cli_mode_without_cc_db_returns_empty_services(self):
+        with tempfile.TemporaryDirectory() as temp_home:
+            self.module._configure_runtime(
+                {
+                    "home": temp_home,
+                    "now": "2026-07-28T12:00:00+08:00",
+                    "timezone": "Asia/Shanghai",
+                    "credentials": self._full_credentials(),
+                    "http": {},
+                }
+            )
+            self.assertFalse(os.path.exists(self.module.CC_SWITCH_DB))
+            services = self.module.collect_services()
+
+        self.assertEqual(services, [])
 
 
 class GitHubCollectorContextTests(unittest.TestCase):

@@ -205,8 +205,19 @@ struct CollectorRunnerHarness {
         try await enforcesModuleAndGlobalConcurrency()
         try await handlesTimeoutCancellationAndCrash()
         try await rejectsMismatchedAndPollutedResponses()
+        try runInputDeniesQuotasWithoutConsent()
+        try runInputLocalCapabilitiesOnlyWithoutProviders()
+        try runInputAssemblesKimiWebTokens()
+        try runInputAssemblesDeepSeekProviderEnv()
+        try runInputAssemblesVolcengineProviderMeta()
+        try runInputAssemblesCodexAccounts()
+        try runInputAssemblesAntigravityOAuth()
+        try runInputAssemblesAllProvidersCombined()
+        try runInputDeniesQuotasWhenCredentialMissing()
+        try runInputDeniesQuotasWhenCredentialCorrupted()
+        try runInputDeniesQuotasWhenProviderDisabled()
         try await runsTheRealBridgeInAnIsolatedHome()
-        print("CollectorRunner tests passed: 5")
+        print("CollectorRunner tests passed: 16")
     }
 
     private static func waitForLaunches(
@@ -509,6 +520,389 @@ struct CollectorRunnerHarness {
         try runnerExpect(
             output.response.artifact != nil,
             "isolated real Bridge returned no artifact"
+        )
+    }
+
+    // MARK: - OnboardingRunInputProvider 凭证装配矩阵
+    // 全部使用临时目录配置与内存凭证存储, 不触碰真实 Keychain 与用户配置.
+
+    /// 构造临时目录配置 + 内存凭证存储的 run input 提供器.
+    private static func makeRunInputProvider(
+        consentVersion: Int?,
+        providers: [String: SubscriptionProviderConfiguration],
+        credentials: InMemoryCredentialStore
+    ) throws -> (OnboardingRunInputProvider, URL) {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "mddd-runinput-\(UUID().uuidString)",
+                isDirectory: true
+            )
+        try FileManager.default.createDirectory(
+            at: tempDir, withIntermediateDirectories: true
+        )
+        let store = try OnboardingConfigurationStore(configDirectory: tempDir)
+        let config = OnboardingConfiguration(
+            consentVersion: consentVersion,
+            subscriptionProviders: providers
+        )
+        try store.save(config)
+        return (
+            OnboardingRunInputProvider(
+                configStore: store,
+                credentialStore: credentials
+            ),
+            tempDir
+        )
+    }
+
+    private static func capabilityStrings(
+        _ input: CollectorRunInput
+    ) -> [String] {
+        guard case .array(let values)? = input.context["capabilities"] else {
+            return []
+        }
+        return values.compactMap { value in
+            if case .string(let string) = value { return string }
+            return nil
+        }
+    }
+
+    private static func enabledProvider(
+        _ id: SubscriptionProviderID
+    ) -> [String: SubscriptionProviderConfiguration] {
+        [id.rawValue: SubscriptionProviderConfiguration(enabled: true)]
+    }
+
+    /// 统一授权未确认时, 即使 provider enabled 且凭证齐全也不授予 externalQuotas.
+    private static func runInputDeniesQuotasWithoutConsent() throws {
+        let credentials = InMemoryCredentialStore()
+        try credentials.saveCredential(
+            "{\"access_token\":\"a\",\"refresh_token\":\"r\"}",
+            forAccount: SubscriptionCredentialAccount.kimiWebTokens
+        )
+        let (provider, tempDir) = try makeRunInputProvider(
+            consentVersion: nil,
+            providers: enabledProvider(.kimi),
+            credentials: credentials
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let input = try provider.runInput(for: .agentUsage)
+        try runnerExpect(
+            !capabilityStrings(input).contains("externalQuotas"),
+            "未确认统一授权时不得授予 externalQuotas"
+        )
+        try runnerExpect(
+            input.credentials.isEmpty,
+            "未确认统一授权时不得装配任何凭证"
+        )
+    }
+
+    /// 已确认授权但一个 provider 都没配置: 只有基础能力, 凭证为空.
+    private static func runInputLocalCapabilitiesOnlyWithoutProviders() throws {
+        let (provider, tempDir) = try makeRunInputProvider(
+            consentVersion: 1,
+            providers: [:],
+            credentials: InMemoryCredentialStore()
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let input = try provider.runInput(for: .agentUsage)
+        try runnerExpect(
+            capabilityStrings(input) == ["localSessions", "localPricing"],
+            "未配置 provider 时必须只有 localSessions/localPricing"
+        )
+        try runnerExpect(
+            input.credentials.isEmpty,
+            "未配置 provider 时凭证必须为空"
+        )
+    }
+
+    private static func runInputAssemblesKimiWebTokens() throws {
+        let credentials = InMemoryCredentialStore()
+        try credentials.saveCredential(
+            "{\"access_token\":\"a\",\"refresh_token\":\"r\"}",
+            forAccount: SubscriptionCredentialAccount.kimiWebTokens
+        )
+        let (provider, tempDir) = try makeRunInputProvider(
+            consentVersion: 1,
+            providers: enabledProvider(.kimi),
+            credentials: credentials
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let input = try provider.runInput(for: .agentUsage)
+        try runnerExpect(
+            capabilityStrings(input).contains("externalQuotas"),
+            "kimi 已配置时必须授予 externalQuotas"
+        )
+        try runnerExpect(
+            input.credentials["kimiWebTokens"] == .object([
+                "access_token": .string("a"),
+                "refresh_token": .string("r"),
+            ]),
+            "kimiWebTokens 注入结构必须与 collect_usage.py 消费一致"
+        )
+    }
+
+    private static func runInputAssemblesDeepSeekProviderEnv() throws {
+        let credentials = InMemoryCredentialStore()
+        try credentials.saveCredential(
+            "sk-fixture",
+            forAccount: SubscriptionCredentialAccount.deepseekAPIKey
+        )
+        let (provider, tempDir) = try makeRunInputProvider(
+            consentVersion: 1,
+            providers: enabledProvider(.deepseek),
+            credentials: credentials
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let input = try provider.runInput(for: .agentUsage)
+        try runnerExpect(
+            capabilityStrings(input).contains("externalQuotas"),
+            "deepseek 已配置时必须授予 externalQuotas"
+        )
+        try runnerExpect(
+            input.credentials["providerEnv"] == .object([
+                "deepseek": .object([
+                    "ANTHROPIC_AUTH_TOKEN": .string("sk-fixture"),
+                ]),
+            ]),
+            "providerEnv.deepseek.ANTHROPIC_AUTH_TOKEN 注入结构不符"
+        )
+    }
+
+    private static func runInputAssemblesVolcengineProviderMeta() throws {
+        let credentials = InMemoryCredentialStore()
+        try credentials.saveCredential(
+            "AK-fixture",
+            forAccount: SubscriptionCredentialAccount.volcengineAccessKey
+        )
+        try credentials.saveCredential(
+            "SK-fixture",
+            forAccount: SubscriptionCredentialAccount.volcengineSecretKey
+        )
+        let (provider, tempDir) = try makeRunInputProvider(
+            consentVersion: 1,
+            providers: enabledProvider(.volcengine),
+            credentials: credentials
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let input = try provider.runInput(for: .agentUsage)
+        try runnerExpect(
+            capabilityStrings(input).contains("externalQuotas"),
+            "volcengine 已配置时必须授予 externalQuotas"
+        )
+        try runnerExpect(
+            input.credentials["providerMeta"] == .object([
+                "volcengine": .object([
+                    "usage_script": .object([
+                        "accessKeyId": .string("AK-fixture"),
+                        "secretAccessKey": .string("SK-fixture"),
+                    ]),
+                ]),
+            ]),
+            "providerMeta.volcengine.usage_script 注入结构不符"
+        )
+    }
+
+    private static func runInputAssemblesCodexAccounts() throws {
+        let credentials = InMemoryCredentialStore()
+        try credentials.saveCredential(
+            "{\"accounts\":{\"acc-1\":{\"email\":\"u@example.com\"," +
+                "\"refresh_token\":\"rt\",\"access_token\":\"at\",\"id_token\":\"it\"}}}",
+            forAccount: SubscriptionCredentialAccount.codexAccounts
+        )
+        let (provider, tempDir) = try makeRunInputProvider(
+            consentVersion: 1,
+            providers: enabledProvider(.codex),
+            credentials: credentials
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let input = try provider.runInput(for: .agentUsage)
+        try runnerExpect(
+            capabilityStrings(input).contains("externalQuotas"),
+            "codex 已配置时必须授予 externalQuotas"
+        )
+        guard case .object(let injected)? = input.credentials["codexOAuthAccounts"],
+              case .object(let accounts)? = injected["accounts"],
+              case .object(let account)? = accounts["acc-1"] else {
+            throw RunnerTestFailure.expectation(
+                "codexOAuthAccounts 注入结构必须与 CC Switch 同构"
+            )
+        }
+        try runnerExpect(
+            account["refresh_token"] == .string("rt")
+                && account["access_token"] == .string("at")
+                && account["email"] == .string("u@example.com"),
+            "codex 账号字段注入不完整"
+        )
+    }
+
+    private static func runInputAssemblesAntigravityOAuth() throws {
+        let credentials = InMemoryCredentialStore()
+        try credentials.saveCredential(
+            "{\"token\":{\"access_token\":\"at\",\"refresh_token\":\"rt\"}}",
+            forAccount: SubscriptionCredentialAccount.antigravityOAuth
+        )
+        let (provider, tempDir) = try makeRunInputProvider(
+            consentVersion: 1,
+            providers: enabledProvider(.antigravity),
+            credentials: credentials
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let input = try provider.runInput(for: .agentUsage)
+        try runnerExpect(
+            capabilityStrings(input).contains("externalQuotas"),
+            "antigravity 已配置时必须授予 externalQuotas"
+        )
+        guard case .object(let injected)? = input.credentials["antigravityOAuth"],
+              case .object(let token)? = injected["token"] else {
+            throw RunnerTestFailure.expectation(
+                "antigravityOAuth 注入结构必须与令牌文件同构"
+            )
+        }
+        try runnerExpect(
+            token["refresh_token"] == .string("rt"),
+            "antigravity refresh_token 注入缺失"
+        )
+    }
+
+    /// 五 provider 全部配置: 注入键齐全且互不干扰.
+    private static func runInputAssemblesAllProvidersCombined() throws {
+        let credentials = InMemoryCredentialStore()
+        try credentials.saveCredential(
+            "{\"access_token\":\"a\",\"refresh_token\":\"r\"}",
+            forAccount: SubscriptionCredentialAccount.kimiWebTokens
+        )
+        try credentials.saveCredential(
+            "sk-fixture",
+            forAccount: SubscriptionCredentialAccount.deepseekAPIKey
+        )
+        try credentials.saveCredential(
+            "AK-fixture",
+            forAccount: SubscriptionCredentialAccount.volcengineAccessKey
+        )
+        try credentials.saveCredential(
+            "SK-fixture",
+            forAccount: SubscriptionCredentialAccount.volcengineSecretKey
+        )
+        try credentials.saveCredential(
+            "{\"accounts\":{\"acc-1\":{\"refresh_token\":\"rt\",\"access_token\":\"at\"}}}",
+            forAccount: SubscriptionCredentialAccount.codexAccounts
+        )
+        try credentials.saveCredential(
+            "{\"token\":{\"refresh_token\":\"rt\"}}",
+            forAccount: SubscriptionCredentialAccount.antigravityOAuth
+        )
+        var providers: [String: SubscriptionProviderConfiguration] = [:]
+        for id in SubscriptionProviderID.allCases {
+            providers[id.rawValue] = SubscriptionProviderConfiguration(enabled: true)
+        }
+        let (provider, tempDir) = try makeRunInputProvider(
+            consentVersion: 1,
+            providers: providers,
+            credentials: credentials
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let input = try provider.runInput(for: .agentUsage)
+        try runnerExpect(
+            capabilityStrings(input).contains("externalQuotas"),
+            "全部配置时必须授予 externalQuotas"
+        )
+        try runnerExpect(
+            Set(input.credentials.keys) == [
+                "kimiWebTokens", "codexOAuthAccounts",
+                "antigravityOAuth", "providerEnv", "providerMeta",
+            ],
+            "注入键集合不符: \(input.credentials.keys.sorted())"
+        )
+        guard case .object(let env)? = input.credentials["providerEnv"],
+              case .object(let meta)? = input.credentials["providerMeta"] else {
+            throw RunnerTestFailure.expectation("providerEnv/providerMeta 结构不符")
+        }
+        try runnerExpect(
+            env["deepseek"] != nil && meta["volcengine"] != nil,
+            "providerEnv/providerMeta 内容不完整"
+        )
+    }
+
+    /// provider enabled 但 Keychain 凭证缺失: 不授予 externalQuotas.
+    private static func runInputDeniesQuotasWhenCredentialMissing() throws {
+        let (provider, tempDir) = try makeRunInputProvider(
+            consentVersion: 1,
+            providers: enabledProvider(.deepseek),
+            credentials: InMemoryCredentialStore()
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let input = try provider.runInput(for: .agentUsage)
+        try runnerExpect(
+            !capabilityStrings(input).contains("externalQuotas"),
+            "凭证缺失时不得授予 externalQuotas"
+        )
+        try runnerExpect(
+            input.credentials.isEmpty,
+            "凭证缺失时不得装配注入键"
+        )
+    }
+
+    /// Keychain 里凭证 JSON 损坏: fail-closed, 不授予也不注入.
+    private static func runInputDeniesQuotasWhenCredentialCorrupted() throws {
+        let credentials = InMemoryCredentialStore()
+        try credentials.saveCredential(
+            "not-json-at-all",
+            forAccount: SubscriptionCredentialAccount.kimiWebTokens
+        )
+        let (provider, tempDir) = try makeRunInputProvider(
+            consentVersion: 1,
+            providers: enabledProvider(.kimi),
+            credentials: credentials
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let input = try provider.runInput(for: .agentUsage)
+        try runnerExpect(
+            !capabilityStrings(input).contains("externalQuotas"),
+            "凭证 JSON 损坏时不得授予 externalQuotas"
+        )
+        try runnerExpect(
+            input.credentials.isEmpty,
+            "凭证 JSON 损坏时不得装配注入键"
+        )
+    }
+
+    /// 凭证存在但 provider 未 enabled: 不授予不注入.
+    private static func runInputDeniesQuotasWhenProviderDisabled() throws {
+        let credentials = InMemoryCredentialStore()
+        try credentials.saveCredential(
+            "sk-fixture",
+            forAccount: SubscriptionCredentialAccount.deepseekAPIKey
+        )
+        let providers = [
+            SubscriptionProviderID.deepseek.rawValue:
+                SubscriptionProviderConfiguration(enabled: false),
+        ]
+        let (provider, tempDir) = try makeRunInputProvider(
+            consentVersion: 1,
+            providers: providers,
+            credentials: credentials
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let input = try provider.runInput(for: .agentUsage)
+        try runnerExpect(
+            !capabilityStrings(input).contains("externalQuotas"),
+            "provider 未 enabled 时不得授予 externalQuotas"
+        )
+        try runnerExpect(
+            input.credentials.isEmpty,
+            "provider 未 enabled 时不得装配注入键"
         )
     }
 }

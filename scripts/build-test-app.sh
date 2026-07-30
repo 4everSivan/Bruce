@@ -5,7 +5,6 @@ set -euo pipefail
 MDDD_SCRIPT_DIR=${0:A:h}
 MDDD_REPO_ROOT=${MDDD_SCRIPT_DIR:h}
 MDDD_SWIFT_PACKAGE="$MDDD_REPO_ROOT/macos/MdddApp"
-MDDD_WIDGETS_SOURCE="$MDDD_SWIFT_PACKAGE/Sources/MdddApp/Resources/Widgets"
 MDDD_DIST_DIR="$MDDD_REPO_ROOT/dist"
 MDDD_OUTPUT_APP="$MDDD_DIST_DIR/mddd-test.app"
 MDDD_OUTPUT_ZIP="$MDDD_DIST_DIR/mddd-test.zip"
@@ -29,7 +28,6 @@ for required_command in "${required_commands[@]}"; do
 done
 
 required_sources=(
-    "$MDDD_WIDGETS_SOURCE"
     "$MDDD_REPO_ROOT/bridge/__init__.py"
     "$MDDD_REPO_ROOT/bridge/run_bridge.py"
     "$MDDD_REPO_ROOT/bridge/security.py"
@@ -71,7 +69,6 @@ mkdir -p "$MDDD_CONTENTS/MacOS" "$MDDD_RESOURCES" \
 ditto "$MDDD_EXECUTABLE" "$MDDD_CONTENTS/MacOS/MdddApp"
 chmod 755 "$MDDD_CONTENTS/MacOS/MdddApp"
 strip -S "$MDDD_CONTENTS/MacOS/MdddApp"
-ditto "$MDDD_WIDGETS_SOURCE" "$MDDD_RESOURCES/Widgets"
 ditto "$MDDD_REPO_ROOT/bridge/__init__.py" \
     "$MDDD_RUNTIME/bridge/__init__.py"
 ditto "$MDDD_REPO_ROOT/bridge/run_bridge.py" \
@@ -101,7 +98,7 @@ plutil -insert CFBundlePackageType -string "APPL" "$MDDD_INFO_PLIST"
 plutil -insert CFBundleShortVersionString -string "0.1.0" \
     "$MDDD_INFO_PLIST"
 plutil -insert CFBundleVersion -string "1" "$MDDD_INFO_PLIST"
-plutil -insert LSMinimumSystemVersion -string "13.0" "$MDDD_INFO_PLIST"
+plutil -insert LSMinimumSystemVersion -string "26.0" "$MDDD_INFO_PLIST"
 plutil -insert LSUIElement -bool YES "$MDDD_INFO_PLIST"
 plutil -insert NSHighResolutionCapable -bool YES "$MDDD_INFO_PLIST"
 plutil -insert NSPrincipalClass -string "NSApplication" "$MDDD_INFO_PLIST"
@@ -117,11 +114,6 @@ if [[ ! -x "$MDDD_CONTENTS/MacOS/MdddApp" ]]; then
 fi
 
 packaged_resources=(
-    "$MDDD_RESOURCES/Widgets/host-bootstrap.js"
-    "$MDDD_RESOURCES/Widgets/glass-theme.css"
-    "$MDDD_RESOURCES/Widgets/agent-usage/index.html"
-    "$MDDD_RESOURCES/Widgets/github/index.html"
-    "$MDDD_RESOURCES/Widgets/gitlab/index.html"
     "$MDDD_RUNTIME/bridge/run_bridge.py"
     "$MDDD_RUNTIME/agent-usage/collector/collect_usage.py"
     "$MDDD_RUNTIME/github/collector/collect_github.py"

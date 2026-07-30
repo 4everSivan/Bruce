@@ -1,6 +1,9 @@
 (function () {
   "use strict";
 
+  // DaimonWidget 宿主导入: 视觉 harness 专用的状态层模拟,
+  // 迁移自已拆除的 App 内嵌 WKWebView 资源, 仅保留 Daimon 场景
+  // 需要的数据/状态契约和文字状态覆盖层.
   var dataCallbacks = [];
   var statusCallbacks = [];
   var themeCallbacks = [];
@@ -62,46 +65,6 @@
     element.hidden = !label;
     element.textContent = label || "";
   }
-
-  window.__mdddUpdate = function (artifact, state) {
-    host.data = { main: artifact || null };
-    host.status = typeof state === "string" ? state : "fresh";
-    dataCallbacks.slice().forEach(function (callback) {
-      callback(host.data);
-    });
-    statusCallbacks.slice().forEach(function (callback) {
-      callback(host.status);
-    });
-    renderState();
-  };
-
-  window.__mdddThemeChanged = function () {
-    themeCallbacks.slice().forEach(function (callback) {
-      callback();
-    });
-  };
-
-  // 主题切换: name 为 "classic" / "liquid-glass".
-  // liquid-glass 时把原生侧传入的 glass-theme.css 文本注入为 <style>
-  // (loadFileURL 读取范围只覆盖 Widgets/<module>/, 共享 CSS 由 Swift 读入后传入),
-  // 并给 body 加 mddd-theme-glass class; classic 时移除, 行为与之前完全一致.
-  var glassStyleId = "mddd-glass-theme-style";
-  window.__mdddSetTheme = function (name, cssText) {
-    var existing = document.getElementById(glassStyleId);
-    if (name === "liquid-glass") {
-      if (!existing && typeof cssText === "string" && cssText) {
-        var style = document.createElement("style");
-        style.id = glassStyleId;
-        style.textContent = cssText;
-        document.head.appendChild(style);
-      }
-      if (document.body) document.body.classList.add("mddd-theme-glass");
-    } else {
-      if (existing) existing.remove();
-      if (document.body) document.body.classList.remove("mddd-theme-glass");
-    }
-    window.__mdddThemeChanged();
-  };
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", renderState, { once: true });

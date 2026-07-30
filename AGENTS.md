@@ -13,7 +13,7 @@
 
 ## 1. 项目目标
 
-`mddd` 用于制作一个运行在 macOS Dock 栏场景中的研发活动看板. 核心能力是分析本机 AI Agent 的 token 用量, 成本和额度, 同时提供 GitHub 与私有 GitLab 等仓库活动热力图. 项目采用本机 Collector 采集数据, 输出 JSON artifact, 再由 Daimon/Kimi Work Blueprint 单文件 Widget 展示.
+`mddd` 用于制作一个运行在 macOS 菜单栏场景中的研发活动看板. 核心能力是分析本机 AI Agent 的 token 用量, 成本和额度, 同时提供 GitHub 与私有 GitLab 等仓库活动热力图. 项目采用本机 Collector 采集数据, 输出 JSON artifact; macOS App 以原生 SwiftUI 液态玻璃看板渲染 (macOS 26), 仓库根 `*/widget/` 单文件 Widget 继续服务 Daimon/Kimi Work Blueprint 场景.
 
 项目是本地优先工具, 但会读取真实会话记录和认证信息, 并调用外部服务. 任何实现都必须优先保护凭证, 个人活动数据和其他应用维护的本机数据库.
 <!-- source: user-input -->
@@ -68,7 +68,7 @@
 | `github/widget/` | 渲染 GitHub 贡献热力图 |
 | `gitlab/collector/` | 通过私有 GitLab Events API 聚合用户活动 |
 | `gitlab/widget/` | 渲染 GitLab 活动热力图 |
-| `macos/MdddApp/` | SwiftPM 包: `MdddApp` (SwiftUI 应用), `MdddOnboardingCore` (扫描, 授权, Gate 纯逻辑), `MdddOnboardingCoreHarness` (边界测试) |
+| `macos/MdddApp/` | SwiftPM 包 (macOS 26): `MdddApp` (SwiftUI 菜单栏应用, 原生液态玻璃看板, `Sources/MdddApp/Views/` 五卡组件), `MdddAppCore` (AppModel, 调度, PanelViewModel 映射), `MdddOnboardingCore` (扫描, 授权, Gate, 订阅凭证纯逻辑), 多个 Harness 边界测试 |
 | `data/` | 本机运行产物; 可能包含个人活动和使用量数据, 不得提交 |
 | `docs/` | 项目设计, 决策和说明文档 |
 | `.agents/skills/` | 项目级 AI skills; 不属于看板运行时 |
@@ -91,10 +91,11 @@
 | `python3 gitlab/collector/collect_gitlab.py --base-url https://gitlab.example.com --out data/gitlab.json` | 使用用户配置的实例地址和本机 PAT 采集私有 GitLab 活动 |
 | `python3 -c 'import ast,pathlib; [ast.parse(p.read_text()) for p in pathlib.Path(".").glob("*/collector/*.py")]'` | 无外部调用的 Python 语法验证 |
 | `node --check -` | 对从 Widget 提取的 JavaScript 执行语法验证 |
-| `zsh scripts/verify-local.sh` | 标准本地验证: Python 语法 + pytest + swift build + 全部 7 个 Harness |
-| `python3 -m pytest tests/` | Python 单元与契约测试 (bridge, collector, widget 安全); 42 项 |
+| `zsh scripts/verify-local.sh` | 标准本地验证: Python 语法 + pytest + swift build + 全部 8 个 Harness |
+| `python3 -m pytest tests/` | Python 单元与契约测试 (bridge, collector, widget 安全); 61 项 |
 | `swift build --package-path macos/MdddApp` | macOS App 与 MdddOnboardingCore 构建验证 |
-| `swift run --package-path macos/MdddApp MdddOnboardingCoreHarness` | Onboarding Core 边界测试 (进程, SQLite, Keychain, Gate); 74 项 |
+| `swift run --package-path macos/MdddApp MdddOnboardingCoreHarness` | Onboarding Core 边界测试 (进程, SQLite, Keychain, Gate, 订阅凭证); 102 项 |
+| `swift run --package-path macos/MdddApp PanelViewModelHarness` | 面板 view model 映射边界测试 (措辞, 分组, 条件渲染, 热力图); 23 项 |
 | 尚未配置 | lint 和 CI 命令 |
 
 执行前三个实时命令前必须应用 `constitution.md` 的 Production Operation Mode. 静态分析或普通代码审查不得把实时采集作为默认验证步骤.
@@ -107,7 +108,8 @@
 ```text
 macOS 本机会话与认证文件
   ├─ Kimi Work / Kimi Code / Claude / Codex / Orca 会话
-  ├─ CC Switch SQLite 与 OAuth 账号库
+  ├─ CC Switch SQLite 与 OAuth 账号库 (App 模式仅一次性只读导入)
+  ├─ App Keychain (订阅凭证: Kimi/DeepSeek/火山/Codex/Antigravity)
   └─ GitLab PAT, Kimi 与 Antigravity OAuth
                   │
                   ▼
@@ -116,17 +118,20 @@ Python Collectors ──出站请求──> GitHub, GitLab, Kimi, DeepSeek,
                   ▼
            {"artifact": ...} JSON
                   │
-                  ▼
-        DaimonWidget.data.main
-                  │
-                  ▼
-       macOS Dock 栏单文件 Widgets
+        ┌─────────┴─────────┐
+        ▼                   ▼
+DaimonWidget.data.main   AppModel + PanelViewModelMapper
+        │                   │
+        ▼                   ▼
+Daimon 单文件 Widgets   macOS 菜单栏原生液态玻璃看板
 ```
 
 - Collector 是唯一数据采集边界, Widget 不直接读取凭证.
 - `run(ctx)` 返回 `{"artifact": ...}`; Daimon host 将 artifact 映射为 Widget 的 `data.main`.
 - `data/*.json` 是可选本机落盘产物, 不是源代码或测试 fixture.
 - `agent-usage` 实时采集可能轮换本机 OAuth; 该副作用必须被显式识别和授权.
+- `agent-usage` 云端额度条目在 CLI 模式由 CC Switch providers 行驱动; App 模式改由注入凭证 (`kimi_web_tokens` / `provider_env.deepseek` / `provider_meta.volcengine` / `codex_oauth_auth` / `antigravity_oauth`) 驱动合成, 不再要求 CC Switch 数据库存在.
+- App 订阅凭证存 Keychain (`com.mddd.dashboard.credentials`), 在设置「订阅额度」分区配置或从本机/CC Switch 一次性只读导入; 令牌轮换经 `credentialUpdates` 只写回 Keychain, 不回写 CC Switch.
 - 外部 API 和 CC Switch 数据库 schema 未在仓库内锁定, 解析失败必须保留可诊断证据.
 <!-- source: scan/security, confidence: HIGH -->
 <!-- source: infer, confidence: MEDIUM -->

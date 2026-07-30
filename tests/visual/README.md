@@ -29,7 +29,7 @@ http://127.0.0.1:8765/tests/visual/widget_harness.html?module=gitlab
 ?module=github&variant=valid&state=authRequired&deterministic=1
 ```
 
-支持的状态矩阵为 `fresh`、`refreshing`、`stale`、`offline`、`authRequired`、`partial`、`error` 和 `notConfigured`. 状态层使用与 App Bundle 相同的 `host-bootstrap.js`, 因而可在无真实账号时复核文字、图标外状态线索和减少动态效果。
+支持的状态矩阵为 `fresh`、`refreshing`、`stale`、`offline`、`authRequired`、`partial`、`error` 和 `notConfigured`. 状态层使用 `tests/visual/host-bootstrap.js` (Daimon 宿主导入, 原 App Bundle 内嵌资源已随 WKWebView 链路拆除), 因而可在无真实账号时复核文字、图标外状态线索和减少动态效果。
 
 ## 确定性截图模式
 

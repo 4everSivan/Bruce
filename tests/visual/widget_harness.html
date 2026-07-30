@@ -70,7 +70,6 @@
     var variant = params.get("variant") || "valid";
     var state = params.get("state") || "fresh";
     var deterministic = params.get("deterministic") === "1";
-    var liquidGlass = params.get("theme") === "liquid-glass";
     var selected = modules[moduleName];
     if (!selected) throw new Error("Unknown module: " + moduleName);
     if (!/^(valid|partial|empty)$/.test(variant)) {
@@ -78,24 +77,16 @@
     }
     selected.fixture = selected.fixture.replace("valid.json", variant + ".json");
 
-    // 液态玻璃主题的 CSS 必须在 document.write 之前拉取:
+    // 状态层脚本必须在 document.write 之前拉取:
     // 写入后页面继承 widget 的 CSP (connect-src 'none'), 无法再 fetch.
-    var fetches = [
+    var responses = await Promise.all([
       fetch(selected.widget),
       fetch(selected.fixture),
-      fetch("/macos/MdddApp/Sources/MdddApp/Resources/Widgets/host-bootstrap.js")
-    ];
-    if (liquidGlass) {
-      fetches.push(fetch(
-        "/macos/MdddApp/Sources/MdddApp/Resources/Widgets/glass-theme.css"
-      ));
-    }
-    var responses = await Promise.all(fetches);
+      fetch("/tests/visual/host-bootstrap.js")
+    ]);
     if (!responses[0].ok || !responses[1].ok) throw new Error("Fixture or widget could not be loaded");
     if (!responses[2].ok) throw new Error("host-bootstrap.js could not be loaded");
-    if (liquidGlass && !responses[3].ok) throw new Error("glass-theme.css could not be loaded");
     var hostBootstrap = await responses[2].text();
-    var glassCSS = liquidGlass ? await responses[3].text() : "";
 
     var widgetHtml = await responses[0].text();
     var fixture = await responses[1].json();
@@ -135,17 +126,6 @@
     document.open();
     document.write(widgetHtml.replace("<head>", "<head>" + bootstrap));
     document.close();
-
-    // 液态玻璃主题: 注入共享 glass-theme.css 文本 (style-src 允许 'unsafe-inline')
-    // 并加 body class, 与原生侧 __mdddSetTheme("liquid-glass", cssText) 等效.
-    // 不加该参数时行为完全不变 (默认 classic).
-    if (liquidGlass) {
-      var glassStyle = document.createElement("style");
-      glassStyle.id = "mddd-glass-theme-style";
-      glassStyle.textContent = glassCSS;
-      document.head.appendChild(glassStyle);
-      document.body.classList.add("mddd-theme-glass");
-    }
   } catch (error) {
     document.body.innerHTML = "";
     var message = document.createElement("pre");

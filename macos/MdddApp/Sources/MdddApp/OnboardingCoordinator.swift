@@ -62,14 +62,426 @@ final class OnboardingCoordinator: ObservableObject {
             }
         )
         self.consentConfirmed = confirmedVersion == consentVersion
-        publishTheme(from: config)
         publishMenuBarMetrics(from: config)
+        publishSubscriptionState(from: config)
     }
 
-    /// 从配置恢复主题并发布到 model; 未知值或低系统的液态玻璃回退 classic.
-    private func publishTheme(from config: OnboardingConfiguration?) {
-        let stored = config?.theme.flatMap { AppTheme(rawValue: $0) } ?? .classic
-        model.theme = GlassTheme.resolved(stored)
+    // MARK: - 订阅额度
+
+    private let ccSwitchImporter = CCSwitchVolcengineImporter()
+
+    /// 从配置与 Keychain 恢复订阅 provider 展示状态.
+    /// Keychain 只判断凭证是否存在, 凭证值不进入 UI 状态.
+    private func publishSubscriptionState(from config: OnboardingConfiguration?) {
+        var providers: [SubscriptionProviderID: SubscriptionProviderConfiguration] = [:]
+        for (key, value) in config?.subscriptionProviders ?? [:] {
+            if let id = SubscriptionProviderID(rawValue: key) {
+                providers[id] = value
+            }
+        }
+        model.setSubscriptionProviders(providers)
+        for id in SubscriptionProviderID.allCases {
+            model.setSubscriptionCredentialConfigured(
+                credentialConfigured(id), for: id
+            )
+        }
+        if let json = try? credentialStore.loadCredential(
+            forAccount: SubscriptionCredentialAccount.codexAccounts
+        ) {
+            model.setCodexAccountSummary(CodexAccountsLibrary.summary(of: json))
+        } else {
+            model.setCodexAccountSummary(nil)
+        }
+    }
+
+    /// 判断 provider 的 Keychain 凭证是否完整配置.
+    private func credentialConfigured(_ id: SubscriptionProviderID) -> Bool {
+        for account in id.credentialAccounts {
+            guard let value = try? credentialStore.loadCredential(
+                forAccount: account
+            ), !value.isEmpty else {
+                return false
+            }
+        }
+        return true
+    }
+
+    /// 持久化单个订阅 provider 的非敏感配置并发布.
+    /// 保存失败发布错误并返回 false (fail-closed), 不在会话内假装成功.
+    private func persistSubscription(
+        _ id: SubscriptionProviderID,
+        mutate: (inout SubscriptionProviderConfiguration) -> Void
+    ) -> Bool {
+        guard let configStore else {
+            model.setSettingsError("配置存储不可用, 无法保存订阅配置")
+            return false
+        }
+        var config = configStore.load() ?? OnboardingConfiguration()
+        var entry = config.subscriptionProviders[id.rawValue]
+            ?? SubscriptionProviderConfiguration()
+        mutate(&entry)
+        config.subscriptionProviders[id.rawValue] = entry
+        do {
+            try configStore.save(config)
+        } catch {
+            model.setSettingsError("\(id.displayName) 订阅配置保存失败")
+            return false
+        }
+        publishSubscriptionState(from: config)
+        return true
+    }
+
+    /// 验证完成后统一收尾: 写状态迁移, 失败原因进入设置错误提示.
+    private func finishVerification(
+        _ id: SubscriptionProviderID,
+        status: SubscriptionVerificationStatus
+    ) {
+        let now = ISO8601DateFormatter().string(from: Date())
+        guard persistSubscription(id, mutate: {
+            $0 = $0.applyingVerification(status, verifiedAt: now)
+        }) else { return }
+        switch status {
+        case .ok:
+            model.setSettingsError(nil)
+        case .failed(let reason):
+            model.setSettingsError("\(id.displayName) 验证失败: \(reason)")
+        case .needsRelogin:
+            model.setSettingsError("\(id.displayName) 需要重新登录")
+        case .none:
+            break
+        }
+    }
+
+    /// DeepSeek: API key 写 Keychain 后做真实网络试查 (用户点击触发).
+    func saveAndVerifyDeepSeek(apiKey: String) {
+        Task { @MainActor in
+            let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !key.isEmpty else {
+                model.setSettingsError("请输入 DeepSeek API key")
+                return
+            }
+            model.setBusySubscription(true, for: .deepseek)
+            defer { model.setBusySubscription(false, for: .deepseek) }
+            do {
+                try credentialStore.saveCredential(
+                    key, forAccount: SubscriptionCredentialAccount.deepseekAPIKey
+                )
+            } catch {
+                model.setSettingsError("DeepSeek 凭证写入 Keychain 失败")
+                return
+            }
+            model.setSubscriptionCredentialConfigured(true, for: .deepseek)
+            let status = await verifier.verifyDeepSeek(apiKey: key)
+            finishVerification(.deepseek, status: status)
+        }
+    }
+
+    /// 火山引擎手动录入: 仅结构校验, 完整额度试查由 Collector 运行时承担.
+    func saveAndVerifyVolcengine(accessKey: String, secretKey: String) {
+        let status = ProviderConnectionVerifier.verifyVolcengineCredentials(
+            accessKey: accessKey, secretKey: secretKey
+        )
+        guard status == .ok else {
+            finishVerification(.volcengine, status: status)
+            return
+        }
+        do {
+            try credentialStore.saveCredential(
+                accessKey.trimmingCharacters(in: .whitespacesAndNewlines),
+                forAccount: SubscriptionCredentialAccount.volcengineAccessKey
+            )
+            try credentialStore.saveCredential(
+                secretKey.trimmingCharacters(in: .whitespacesAndNewlines),
+                forAccount: SubscriptionCredentialAccount.volcengineSecretKey
+            )
+        } catch {
+            model.setSettingsError("火山引擎凭证写入 Keychain 失败")
+            return
+        }
+        model.setSubscriptionCredentialConfigured(true, for: .volcengine)
+        finishVerification(.volcengine, status: status)
+    }
+
+    /// 火山引擎从 CC Switch 导入 (用户在确认对话框同意后调用).
+    /// 只读 CC 数据库, 禁止任何写入.
+    func importVolcengineFromCCSwitch() {
+        Task { @MainActor in
+            model.setBusySubscription(true, for: .volcengine)
+            defer { model.setBusySubscription(false, for: .volcengine) }
+            let databaseURL = homeURL
+                .appendingPathComponent(".cc-switch/cc-switch.db")
+            let result = await ccSwitchImporter.importCredentials(
+                databaseURL: databaseURL
+            )
+            switch result {
+            case .failure(let error):
+                model.setSettingsError("从 CC Switch 导入火山引擎失败: \(error.description)")
+            case .success(let credentials):
+                saveAndVerifyVolcengine(
+                    accessKey: credentials.accessKey,
+                    secretKey: credentials.secretKey
+                )
+            }
+        }
+    }
+
+    /// Kimi: 从本机 kimi-dashboard 令牌文件一键导入 (用户点击触发).
+    func importKimiFromLocalFile() {
+        let fileURL = homeURL.appendingPathComponent(
+            ".config/kimi-dashboard/kimi-web-tokens.json"
+        )
+        guard let json = readCredentialFile(fileURL, usage: "Kimi 本机令牌文件") else {
+            return
+        }
+        saveKimiTokensJSON(json)
+    }
+
+    /// Kimi: 引导粘贴导入 (整段 JSON 或两段 token).
+    func importKimiFromPaste(_ paste: String) {
+        switch KimiPasteParser.parse(paste) {
+        case .failure(let error):
+            model.setSettingsError("Kimi 凭证解析失败: \(error.description)")
+        case .success(let json):
+            saveKimiTokensJSON(json)
+        }
+    }
+
+    private func saveKimiTokensJSON(_ json: String) {
+        let status = ProviderConnectionVerifier.verifyKimiWebTokensJSON(json)
+        if status == .ok || status == .needsRelogin {
+            do {
+                try credentialStore.saveCredential(
+                    json, forAccount: SubscriptionCredentialAccount.kimiWebTokens
+                )
+            } catch {
+                model.setSettingsError("Kimi 凭证写入 Keychain 失败")
+                return
+            }
+            model.setSubscriptionCredentialConfigured(true, for: .kimi)
+        }
+        finishVerification(.kimi, status: status)
+    }
+
+    /// Codex: 从 CLI `~/.codex/auth.json` 导入当前账号, 合并进账号库
+    /// 并设为 active (用户点击触发).
+    func importCodexFromLocalCLI() {
+        let fileURL = homeURL.appendingPathComponent(".codex/auth.json")
+        guard let json = readCredentialFile(fileURL, usage: "Codex CLI 认证文件") else {
+            return
+        }
+        switch CodexAuthFileParser.parse(json) {
+        case .failure(let error):
+            model.setSettingsError("Codex 认证文件解析失败: \(error.description)")
+        case .success(let account):
+            let existing = try? credentialStore.loadCredential(
+                forAccount: SubscriptionCredentialAccount.codexAccounts
+            )
+            switch CodexAccountsLibrary.merging(
+                existingJSON: existing, account: account
+            ) {
+            case .failure(let error):
+                model.setSettingsError("Codex 账号库合并失败: \(error.description)")
+            case .success(let merged):
+                saveCodexAccountsLibrary(merged, activeAccountID: account.accountID)
+            }
+        }
+    }
+
+    /// Codex: 从 CC Switch 账号库一次性导入 (用户在确认对话框同意后调用).
+    /// 只读 `~/.cc-switch/codex_oauth_auth.json`, 不回写 CC.
+    /// active 账号优先取 CLI 当前账号, 其次保留既有 active.
+    func importCodexFromCCSwitch() {
+        let fileURL = homeURL.appendingPathComponent(
+            ".cc-switch/codex_oauth_auth.json"
+        )
+        guard let json = readCredentialFile(fileURL, usage: "CC Switch Codex 账号库") else {
+            return
+        }
+        let status = ProviderConnectionVerifier.verifyCodexAccountsJSON(json)
+        guard status == .ok else {
+            finishVerification(.codex, status: status)
+            return
+        }
+        let accountIDs = CodexAccountsLibrary.accountIDs(of: json)
+        let cliAccountID = readCodexCLIActiveAccountID()
+        let existingActive = try? credentialStore.loadCredential(
+            forAccount: SubscriptionCredentialAccount.codexActiveAccount
+        )
+        let active = CodexAccountsLibrary.chooseActiveAccount(
+            cliAccountID: cliAccountID,
+            existingActive: existingActive,
+            accountIDs: accountIDs
+        )
+        saveCodexAccountsLibrary(json, activeAccountID: active)
+    }
+
+    private func saveCodexAccountsLibrary(
+        _ json: String, activeAccountID: String?
+    ) {
+        do {
+            try credentialStore.saveCredential(
+                json, forAccount: SubscriptionCredentialAccount.codexAccounts
+            )
+            if let activeAccountID {
+                try credentialStore.saveCredential(
+                    activeAccountID,
+                    forAccount: SubscriptionCredentialAccount.codexActiveAccount
+                )
+            }
+        } catch {
+            model.setSettingsError("Codex 凭证写入 Keychain 失败")
+            return
+        }
+        model.setSubscriptionCredentialConfigured(true, for: .codex)
+        model.setCodexAccountSummary(CodexAccountsLibrary.summary(of: json))
+        finishVerification(
+            .codex,
+            status: ProviderConnectionVerifier.verifyCodexAccountsJSON(json)
+        )
+    }
+
+    /// 读取 CLI `~/.codex/auth.json` 的当前账号 id; 读不到返回 nil (非致命).
+    private func readCodexCLIActiveAccountID() -> String? {
+        let fileURL = homeURL.appendingPathComponent(".codex/auth.json")
+        guard let data = try? Data(contentsOf: fileURL),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let dict = object as? [String: Any],
+              let tokens = dict["tokens"] as? [String: Any] else {
+            return nil
+        }
+        let accountID = (tokens["account_id"] as? String ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return accountID.isEmpty ? nil : accountID
+    }
+
+    /// Antigravity: 从本机令牌文件导入 (用户点击触发).
+    func importAntigravityFromLocalFile() {
+        let fileURL = homeURL.appendingPathComponent(
+            ".gemini/antigravity-cli/antigravity-oauth-token"
+        )
+        guard let json = readCredentialFile(fileURL, usage: "Antigravity 令牌文件") else {
+            return
+        }
+        let status = ProviderConnectionVerifier.verifyAntigravityOAuthJSON(json)
+        guard status == .ok else {
+            finishVerification(.antigravity, status: status)
+            return
+        }
+        do {
+            try credentialStore.saveCredential(
+                json, forAccount: SubscriptionCredentialAccount.antigravityOAuth
+            )
+        } catch {
+            model.setSettingsError("Antigravity 凭证写入 Keychain 失败")
+            return
+        }
+        model.setSubscriptionCredentialConfigured(true, for: .antigravity)
+        finishVerification(.antigravity, status: status)
+    }
+
+    /// 移除 provider: 删除其全部 Keychain 凭证并重置非敏感配置.
+    /// Keychain 删除失败时报错且不重置配置 (fail-closed).
+    func removeSubscriptionProvider(_ id: SubscriptionProviderID) {
+        do {
+            for account in id.credentialAccounts {
+                try credentialStore.deleteCredential(forAccount: account)
+            }
+        } catch {
+            model.setSettingsError(
+                "\(id.displayName) 凭证删除失败, 请在 Keychain 中手动检查"
+            )
+            return
+        }
+        guard persistSubscription(id, mutate: {
+            $0 = SubscriptionProviderConfiguration()
+        }) else { return }
+        if id == .codex {
+            model.setCodexAccountSummary(nil)
+        }
+        model.setSettingsError(nil)
+    }
+
+    /// enabled 开关: 只有凭证已配置才允许开启; 保存失败不变更 (fail-closed).
+    func setSubscriptionProviderEnabled(
+        _ id: SubscriptionProviderID, _ enabled: Bool
+    ) {
+        if enabled {
+            guard credentialConfigured(id) else {
+                model.setSettingsError("请先配置 \(id.displayName) 凭证再启用")
+                return
+            }
+        }
+        guard persistSubscription(id, mutate: { $0.enabled = enabled }) else {
+            return
+        }
+        model.setSettingsError(nil)
+    }
+
+    /// 读取用户主目录下的凭证文件 (仅由用户点击触发), 失败给出可诊断错误.
+    private func readCredentialFile(_ fileURL: URL, usage: String) -> String? {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            model.setSettingsError("未找到\(usage): \(fileURL.path)")
+            return nil
+        }
+        do {
+            let data = try Data(contentsOf: fileURL)
+            guard let text = String(data: data, encoding: .utf8),
+                  !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                model.setSettingsError("\(usage)内容为空或不是 UTF-8 文本")
+                return nil
+            }
+            return text
+        } catch {
+            model.setSettingsError("\(usage)读取失败: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    // MARK: - 订阅额度本机文件检测 (供设置页条件渲染)
+
+    func kimiLocalTokensFileExists() -> Bool {
+        FileManager.default.fileExists(
+            atPath: homeURL
+                .appendingPathComponent(".config/kimi-dashboard/kimi-web-tokens.json")
+                .path
+        )
+    }
+
+    func codexCLIAuthFileExists() -> Bool {
+        FileManager.default.fileExists(
+            atPath: homeURL.appendingPathComponent(".codex/auth.json").path
+        )
+    }
+
+    func codexCCAccountsFileExists() -> Bool {
+        FileManager.default.fileExists(
+            atPath: homeURL
+                .appendingPathComponent(".cc-switch/codex_oauth_auth.json").path
+        )
+    }
+
+    func antigravityTokenFileExists() -> Bool {
+        FileManager.default.fileExists(
+            atPath: homeURL
+                .appendingPathComponent(
+                    ".gemini/antigravity-cli/antigravity-oauth-token"
+                ).path
+        )
+    }
+
+    func ccSwitchDatabaseExists() -> Bool {
+        FileManager.default.fileExists(
+            atPath: homeURL.appendingPathComponent(".cc-switch/cc-switch.db").path
+        )
+    }
+
+    /// 已配置且启用的订阅 provider 列表, 供统一授权摘要展示.
+    /// 与 CollectorActivationGate 的 hasConfiguredSubscriptionProvider 语义一致.
+    var enabledConfiguredSubscriptionProviders: [SubscriptionProviderID] {
+        SubscriptionProviderID.allCases.filter { id in
+            (model.subscriptionProviders[id]?.enabled ?? false)
+                && (model.subscriptionCredentialConfigured[id] ?? false)
+        }
     }
 
     private func publishMenuBarMetrics(
@@ -107,7 +519,6 @@ final class OnboardingCoordinator: ObservableObject {
         let config = configStore?.load()
         let consentValid = config?.consentVersion == Self.currentConsentVersion
         let persistedStates = config?.connectionStates ?? [:]
-        publishTheme(from: config)
         publishMenuBarMetrics(from: config)
 
         for module in CollectorModule.allCases {
@@ -396,25 +807,6 @@ final class OnboardingCoordinator: ObservableObject {
             model.setSettingsError(nil)
             rescan()
         }
-    }
-
-    /// 用户切换外观主题: 先持久化再发布, 保存失败时不切换 (fail-closed).
-    /// 液态玻璃在低系统不可用时回退 classic 展示, 配置仍保留用户选择.
-    func setTheme(_ theme: AppTheme) {
-        guard let configStore else {
-            model.setSettingsError("配置存储不可用, 无法保存外观设置")
-            return
-        }
-        var config = configStore.load() ?? OnboardingConfiguration()
-        config.theme = theme.rawValue
-        do {
-            try configStore.save(config)
-        } catch {
-            model.setSettingsError("外观设置保存失败, 主题未切换")
-            return
-        }
-        model.theme = GlassTheme.resolved(theme)
-        model.setSettingsError(nil)
     }
 
     /// 保存有序菜单栏指标. 先持久化再发布, 避免 UI 与磁盘配置分叉.

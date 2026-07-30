@@ -9,25 +9,6 @@ MODULES = ("agent-usage", "github", "gitlab")
 
 
 class WidgetSecurityTests(unittest.TestCase):
-    def test_bundled_widgets_match_reviewed_sources(self):
-        for module in MODULES:
-            with self.subTest(module=module):
-                source = (
-                    REPO_ROOT / module / "widget" / "index.html"
-                ).read_bytes()
-                bundled = (
-                    REPO_ROOT
-                    / "macos"
-                    / "MdddApp"
-                    / "Sources"
-                    / "MdddApp"
-                    / "Resources"
-                    / "Widgets"
-                    / module
-                    / "index.html"
-                ).read_bytes()
-                self.assertEqual(source, bundled)
-
     def test_widgets_block_network_and_have_no_native_message_channel(self):
         for module in MODULES:
             with self.subTest(module=module):
@@ -40,20 +21,6 @@ class WidgetSecurityTests(unittest.TestCase):
                 self.assertNotIn("XMLHttpRequest", html)
                 self.assertNotIn("WebSocket", html)
                 self.assertNotIn("webkit.messageHandlers", html)
-
-        host = (
-            REPO_ROOT
-            / "macos"
-            / "MdddApp"
-            / "Sources"
-            / "MdddApp"
-            / "WidgetHost.swift"
-        ).read_text(encoding="utf-8")
-        self.assertIn("websiteDataStore = .nonPersistent()", host)
-        self.assertIn("allowingReadAccessTo: pageURL.deletingLastPathComponent()", host)
-        self.assertIn("allowed ? .allow : .cancel", host)
-        self.assertNotIn("addScriptMessageHandler", host)
-        self.assertNotIn("userContentController.add(", host)
 
     def test_gitlab_footer_does_not_embed_instance_hostname(self):
         html = (
@@ -93,14 +60,7 @@ class WidgetSecurityTests(unittest.TestCase):
 
     def test_host_states_use_text_content_and_cover_required_conditions(self):
         bootstrap = (
-            REPO_ROOT
-            / "macos"
-            / "MdddApp"
-            / "Sources"
-            / "MdddApp"
-            / "Resources"
-            / "Widgets"
-            / "host-bootstrap.js"
+            REPO_ROOT / "tests" / "visual" / "host-bootstrap.js"
         ).read_text(encoding="utf-8")
         for state in (
             "loading",
@@ -132,14 +92,7 @@ class WidgetSecurityTests(unittest.TestCase):
             )
         scripts.append(
             (
-                REPO_ROOT
-                / "macos"
-                / "MdddApp"
-                / "Sources"
-                / "MdddApp"
-                / "Resources"
-                / "Widgets"
-                / "host-bootstrap.js"
+                REPO_ROOT / "tests" / "visual" / "host-bootstrap.js"
             ).read_text(encoding="utf-8")
         )
         for index, script in enumerate(scripts):

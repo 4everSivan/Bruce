@@ -1,0 +1,400 @@
+import Charts
+import MdddAppCore
+import SwiftUI
+
+// 订阅用量卡: 原生 SwiftUI 版, 视觉以 panel-layout-v8.html 的订阅用量区为准.
+// 只排内容, 卡片容器 (液态玻璃背景, 圆角, 阴影) 由 wave 3 统一装配.
+// 数据全部来自 MdddAppCore 的 SubscriptionViewModel, 组件不读取任何凭证或 artifact.
+
+/// 订阅用量卡: 标题行 + 若干 provider 段, 段间 1pt 分隔线.
+struct SubscriptionCard: View {
+    let viewModel: SubscriptionViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("订阅用量")
+                    .font(.system(size: 12.5, weight: .semibold))
+                Spacer()
+                Text("在设置中配置 · 自动刷新")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.secondary)
+            }
+
+            ForEach(Array(viewModel.sections.enumerated()), id: \.element.id) { index, section in
+                if index > 0 {
+                    Rectangle()
+                        .fill(Color.black.opacity(0.05))
+                        .frame(height: 1)
+                }
+                ProviderSectionView(section: section, isFirst: index == 0)
+            }
+        }
+    }
+}
+
+// MARK: - provider 段
+
+/// 单个 provider 段: 名称 + plan chip + 账号数, 下方窗口行 / Codex 子卡 / 余额行.
+private struct ProviderSectionView: View {
+    let section: SubscriptionProviderSection
+    let isFirst: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            head
+                .padding(.bottom, 3)
+
+            ForEach(Array(section.windows.enumerated()), id: \.offset) { _, row in
+                WindowRowView(row: row)
+            }
+
+            if let accounts = section.codexAccounts, !accounts.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(accounts, id: \.id) { account in
+                        CodexAccountCard(account: account)
+                    }
+                }
+                .padding(.top, 4)
+                .padding(.bottom, 2)
+            }
+
+            if let balance = section.balance {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(balance.label)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(balance.amountText)
+                        .font(.system(size: 14, weight: .bold))
+                        .monospacedDigit()
+                }
+                .padding(.vertical, 2)
+            }
+
+            // error 段保留 collector 说明, 不静默吞掉.
+            if section.status == "error", let note = section.note {
+                Text(note)
+                    .font(.system(size: 10))
+                    .foregroundStyle(Color(hex: "#ff9f0a"))
+                    .padding(.top, 2)
+            }
+        }
+        .padding(.top, isFirst ? 4 : 8)
+        .padding(.bottom, 8)
+    }
+
+    private var head: some View {
+        HStack(spacing: 6) {
+            Text(section.name)
+                .font(.system(size: 11, weight: .semibold))
+            if let plan = section.plan {
+                PlanChip(text: plan)
+            }
+            if let accountCountText = section.accountCountText {
+                Text(accountCountText)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.secondary)
+            }
+            if let extraText = section.extraText {
+                Text(extraText)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+// MARK: - 窗口行
+
+/// 窗口量条行: label 固定 62pt + 量条 + 百分比固定 46pt + 重置文案固定 48pt.
+/// ownRow 行在本布局中天然独占一行, 不做缩进或并排处理.
+private struct WindowRowView: View {
+    let row: SubscriptionWindowRow
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(row.label)
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+                .frame(width: 62, alignment: .leading)
+            // usedPercent 是已用比例, 量条填充剩余比例; 剩余 <= 15% 转橙.
+            MeterBar(
+                remainingFraction: (100 - row.usedPercent) / 100,
+                isWarning: row.usedPercent >= 85
+            )
+            Text(row.percentText)
+                .font(.system(size: 10, weight: .semibold))
+                .monospacedDigit()
+                .frame(width: 46, alignment: .trailing)
+            Text(row.resetText)
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
+                .frame(width: 48, alignment: .trailing)
+        }
+        .padding(.vertical, 2.5)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// 量条: 高 5pt 圆角, 绿渐变; 剩余不足时橙渐变. 出现动画尊重 Reduce Motion.
+private struct MeterBar: View {
+    let remainingFraction: Double
+    let isWarning: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var appeared = false
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(Color.black.opacity(0.07))
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(fillGradient)
+                    .frame(width: proxy.size.width * fillWidth)
+            }
+        }
+        .frame(height: 5)
+        .onAppear {
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.45)) {
+                appeared = true
+            }
+        }
+    }
+
+    private var fillWidth: CGFloat {
+        guard appeared else {
+            return 0
+        }
+        return CGFloat(min(max(remainingFraction, 0), 1))
+    }
+
+    private var fillGradient: LinearGradient {
+        let colors = isWarning
+            ? [Color(hex: "#ff9f0a"), Color(hex: "#ffd60a")]
+            : [Color(hex: "#30d158"), Color(hex: "#66d4a3")]
+        return LinearGradient(colors: colors, startPoint: .leading, endPoint: .trailing)
+    }
+}
+
+// MARK: - Codex 账号子卡
+
+/// Codex 多账号子卡: 圆角 10pt 内层玻璃, 头部账号名 + 套餐, 下方各自窗口行.
+private struct CodexAccountCard: View {
+    let account: CodexAccountViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text(account.name)
+                    .font(.system(size: 10.5, weight: .semibold))
+                Spacer()
+                if let plan = account.plan {
+                    Text(plan)
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.bottom, 2)
+
+            ForEach(Array(account.windows.enumerated()), id: \.offset) { _, row in
+                WindowRowView(row: row)
+            }
+
+            // 分组段本身不带 note, 账号级 error 说明在子卡内展示.
+            if account.status == "error", let note = account.note {
+                Text(note)
+                    .font(.system(size: 10))
+                    .foregroundStyle(Color(hex: "#ff9f0a"))
+                    .padding(.top, 2)
+            }
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(Color.white.opacity(0.35), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.5), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - plan chip
+
+/// 套餐胶囊: 9pt, 白底描边, 与 mockup .plan 一致.
+private struct PlanChip: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 9))
+            .foregroundStyle(Color.primary.opacity(0.7))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
+            .background(Color.white.opacity(0.55), in: Capsule())
+            .overlay(Capsule().strokeBorder(Color.white.opacity(0.6), lineWidth: 1))
+    }
+}
+
+// MARK: - 颜色工具
+
+private extension Color {
+    /// 以 "#RRGGBB" 十六进制构造颜色, 仅供本文件内的 mockup 配色使用.
+    init(hex: String) {
+        var value = hex
+        if value.hasPrefix("#") {
+            value.removeFirst()
+        }
+        let rgba = UInt64(value, radix: 16) ?? 0
+        self.init(
+            red: Double((rgba >> 16) & 0xff) / 255,
+            green: Double((rgba >> 8) & 0xff) / 255,
+            blue: Double(rgba & 0xff) / 255
+        )
+    }
+}
+
+// MARK: - 预览 fixture
+
+private extension SubscriptionViewModel {
+    /// 覆盖 mockup 全部数据形态: 多窗口 provider, ownRow, 低剩余告警, extraText,
+    /// Codex 多账号子卡 (含账号级 error note), error 段 note, 余额沉底段.
+    static var previewFixture: SubscriptionViewModel {
+        SubscriptionViewModel(sections: [
+            SubscriptionProviderSection(
+                id: "kimi",
+                name: "Kimi",
+                plan: "Fixture Plan",
+                status: "ok",
+                note: nil,
+                extraText: "加量包余额 38%",
+                windows: [
+                    SubscriptionWindowRow(label: "每 5 小时", usedPercent: 68, resetText: "15:00", ownRow: false),
+                    SubscriptionWindowRow(label: "每周", usedPercent: 39, resetText: "3 天后", ownRow: false),
+                    SubscriptionWindowRow(label: "每月", usedPercent: 52, resetText: "18 天后", ownRow: false),
+                    SubscriptionWindowRow(label: "赠送额度", usedPercent: 81, resetText: "", ownRow: true),
+                    SubscriptionWindowRow(label: "加量包", usedPercent: 88, resetText: "", ownRow: true),
+                ],
+                codexAccounts: nil,
+                balance: nil,
+                accountCountText: nil
+            ),
+            SubscriptionProviderSection(
+                id: "volcengine",
+                name: "火山引擎",
+                plan: "Coding Plan",
+                status: "ok",
+                note: nil,
+                extraText: nil,
+                windows: [
+                    SubscriptionWindowRow(label: "每 5 小时", usedPercent: 74, resetText: "14:00", ownRow: false),
+                    SubscriptionWindowRow(label: "每周", usedPercent: 46, resetText: "5 天后", ownRow: false),
+                    SubscriptionWindowRow(label: "每月", usedPercent: 63, resetText: "21 天后", ownRow: false),
+                ],
+                codexAccounts: nil,
+                balance: nil,
+                accountCountText: nil
+            ),
+            SubscriptionProviderSection(
+                id: "codex",
+                name: "Codex",
+                plan: nil,
+                status: "error",
+                note: nil,
+                extraText: nil,
+                windows: [],
+                codexAccounts: [
+                    CodexAccountViewModel(
+                        id: "codex-personal",
+                        name: "sivan…",
+                        plan: "个人版",
+                        status: "ok",
+                        note: nil,
+                        windows: [
+                            SubscriptionWindowRow(label: "每 5 小时", usedPercent: 57, resetText: "16:00", ownRow: false),
+                            SubscriptionWindowRow(label: "每周", usedPercent: 92, resetText: "2 天后", ownRow: false),
+                        ]
+                    ),
+                    CodexAccountViewModel(
+                        id: "codex-work",
+                        name: "work…",
+                        plan: "团队版",
+                        status: "error",
+                        note: "授权已过期, 请重新登录",
+                        windows: [
+                            SubscriptionWindowRow(label: "每 5 小时", usedPercent: 92, resetText: "13:30", ownRow: false),
+                            SubscriptionWindowRow(label: "每周", usedPercent: 71, resetText: "4 天后", ownRow: false),
+                        ]
+                    ),
+                ],
+                balance: nil,
+                accountCountText: "2 个账号"
+            ),
+            SubscriptionProviderSection(
+                id: "antigravity",
+                name: "Antigravity",
+                plan: nil,
+                status: "ok",
+                note: nil,
+                extraText: nil,
+                windows: [
+                    SubscriptionWindowRow(label: "Gemini", usedPercent: 64, resetText: "", ownRow: false),
+                    SubscriptionWindowRow(label: "Claude / GPT", usedPercent: 33, resetText: "", ownRow: false),
+                ],
+                codexAccounts: nil,
+                balance: nil,
+                accountCountText: nil
+            ),
+            SubscriptionProviderSection(
+                id: "openai",
+                name: "OpenAI",
+                plan: nil,
+                status: "error",
+                note: "用量接口超时, 显示上次快照",
+                extraText: nil,
+                windows: [
+                    SubscriptionWindowRow(label: "每月", usedPercent: 12, resetText: "24 天后", ownRow: false),
+                ],
+                codexAccounts: nil,
+                balance: nil,
+                accountCountText: nil
+            ),
+            SubscriptionProviderSection(
+                id: "deepseek",
+                name: "DeepSeek",
+                plan: nil,
+                status: "ok",
+                note: nil,
+                extraText: nil,
+                windows: [],
+                codexAccounts: nil,
+                balance: BalanceRow(amount: 38.21, currency: "CNY"),
+                accountCountText: "按量付费"
+            ),
+        ])
+    }
+}
+
+// MARK: - 预览
+
+// 命令行 swift build 无法解析 #Preview 宏插件 (PreviewsMacros),
+// 这里用 PreviewProvider, Xcode 画布同样可直接预览.
+struct SubscriptionCard_Previews: PreviewProvider {
+    static var previews: some View {
+        SubscriptionCard(viewModel: .previewFixture)
+            .padding(.horizontal, 15)
+            .padding(.vertical, 13)
+            .background(Color.white.opacity(0.45), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .padding(12)
+            .frame(width: 400)
+            .background(
+                LinearGradient(
+                    colors: [Color(hex: "#dce8f2"), Color(hex: "#e9e4ef"), Color(hex: "#f2ede4")],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .previewDisplayName("订阅用量卡")
+    }
+}

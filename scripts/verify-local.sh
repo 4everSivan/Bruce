@@ -31,6 +31,9 @@ swift build --package-path "$MDDD_SWIFT_PACKAGE"
 echo "运行 Onboarding Core Harness"
 swift run --package-path "$MDDD_SWIFT_PACKAGE" MdddOnboardingCoreHarness
 
+echo "运行 PanelViewModel Harness"
+swift run --package-path "$MDDD_SWIFT_PACKAGE" PanelViewModelHarness
+
 echo "运行 ArtifactStore Harness"
 swift run --package-path "$MDDD_SWIFT_PACKAGE" \
   ArtifactStoreHarness "$MDDD_REPO_ROOT"

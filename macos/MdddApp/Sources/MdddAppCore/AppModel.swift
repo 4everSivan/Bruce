@@ -138,9 +138,18 @@ package final class AppModel: ObservableObject {
     @Published package private(set) var busyModules: Set<CollectorModule> = []
     /// 设置页操作失败的用户可读错误, 不含凭证.
     @Published package private(set) var settingsErrorMessage: String?
+    /// 订阅 provider 非敏感配置 (来自 OnboardingConfiguration), 供设置页渲染状态.
+    @Published package private(set) var subscriptionProviders: [SubscriptionProviderID: SubscriptionProviderConfiguration] = [:]
+    /// 各订阅 provider 的 Keychain 凭证是否已配置.
+    @Published package private(set) var subscriptionCredentialConfigured: [SubscriptionProviderID: Bool] = [:]
+    /// 正在保存, 验证或导入的订阅 provider, 供设置页禁用对应按钮.
+    @Published package private(set) var busySubscriptionProviders: Set<SubscriptionProviderID> = []
+    /// Codex 已导入账号摘要 (数量与邮箱前缀), 供设置页展示.
+    @Published package private(set) var codexAccountSummary: (count: Int, emailPrefixes: [String])?
     @Published package private(set) var menuBarMetrics: [MenuBarMetric]
-    /// 当前外观主题, 默认经典; 由 OnboardingCoordinator 从配置恢复和持久化.
-    @Published package var theme: AppTheme = .classic
+    /// 最近一次面板映射产生的诊断, 随 artifact 与模块状态变更重算.
+    /// 不进 UI; 供诊断路径与 harness 读取, 诊断包 schema 锁定期暂不外发.
+    package private(set) var panelDiagnostics: [PanelDiagnostic] = []
 
     package init(menuBarMetricRawValues: [String]? = nil) {
         menuBarMetrics = MenuBarMetricConfiguration(
@@ -160,10 +169,12 @@ package final class AppModel: ObservableObject {
 
     package func setStatus(_ status: ModuleStatus, for module: DashboardModule) {
         moduleStatuses[module] = status
+        refreshPanelDiagnostics()
     }
 
     package func setArtifact(_ artifact: JSONValue?, for module: DashboardModule) {
         moduleArtifacts[module] = artifact
+        refreshPanelDiagnostics()
     }
 
     /// 发布 Core 的就绪评估结果, 并把 readiness 映射为 Dashboard 状态.
@@ -224,6 +235,34 @@ package final class AppModel: ObservableObject {
         settingsErrorMessage = message
     }
 
+    package func setSubscriptionProviders(
+        _ providers: [SubscriptionProviderID: SubscriptionProviderConfiguration]
+    ) {
+        subscriptionProviders = providers
+    }
+
+    package func setSubscriptionCredentialConfigured(
+        _ configured: Bool, for provider: SubscriptionProviderID
+    ) {
+        subscriptionCredentialConfigured[provider] = configured
+    }
+
+    package func setBusySubscription(
+        _ busy: Bool, for provider: SubscriptionProviderID
+    ) {
+        if busy {
+            busySubscriptionProviders.insert(provider)
+        } else {
+            busySubscriptionProviders.remove(provider)
+        }
+    }
+
+    package func setCodexAccountSummary(
+        _ summary: (count: Int, emailPrefixes: [String])?
+    ) {
+        codexAccountSummary = summary
+    }
+
     package func setMenuBarMetrics(_ metrics: [MenuBarMetric]) {
         menuBarMetrics = MenuBarMetricConfiguration(metrics: metrics).metrics
     }
@@ -232,6 +271,55 @@ package final class AppModel: ObservableObject {
     package func canRunCollector(for module: CollectorModule) -> Bool {
         let readiness = moduleResults[module]?.readiness
         return readiness == .ready || readiness == .partial
+    }
+
+    // MARK: - 面板 view model
+
+    /// 组装菜单栏面板的五卡 view model: 三份 artifact 加模块状态经映射层
+    /// 条件渲染, 卡片为 nil 即不渲染. artifact 缺失或校验失败按缺失处理,
+    /// 由映射层写入对应诊断.
+    package func makePanelViewModel() -> PanelViewModel {
+        PanelViewModelMapper().make(
+            agentUsage: decodedAgentUsageArtifact(),
+            github: decodedContributionArtifact(for: .github),
+            gitlab: decodedContributionArtifact(for: .gitlab),
+            moduleStatuses: moduleStatuses
+        )
+    }
+
+    /// 重算面板诊断; artifact 或模块状态变更时调用, 保证诊断路径取到最新值.
+    private func refreshPanelDiagnostics() {
+        panelDiagnostics = makePanelViewModel().diagnostics
+    }
+
+    /// 校验并解码 agent-usage artifact; 任何失败都视为缺失.
+    private func decodedAgentUsageArtifact() -> AgentUsageArtifact? {
+        guard let artifact = moduleArtifacts[.agentUsage],
+              case .agentUsage(let decoded) = try? ArtifactValidator()
+                  .validate(artifact, for: .agentUsage)
+        else {
+            return nil
+        }
+        return decoded
+    }
+
+    /// 校验并解码贡献类 artifact (GitHub / GitLab); 任何失败都视为缺失.
+    private func decodedContributionArtifact(
+        for module: DashboardModule
+    ) -> ContributionArtifact? {
+        guard let collectorModule = module.collectorModule,
+              let artifact = moduleArtifacts[module],
+              let decoded = try? ArtifactValidator()
+                  .validate(artifact, for: collectorModule)
+        else {
+            return nil
+        }
+        switch decoded {
+        case .github(let contribution), .gitlab(let contribution):
+            return contribution
+        case .agentUsage:
+            return nil
+        }
     }
 
     /// 返回 Core 的 ModuleReadiness 枚举, 供 ActivationGate 使用.

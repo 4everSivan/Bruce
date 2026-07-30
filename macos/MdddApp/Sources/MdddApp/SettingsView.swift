@@ -16,6 +16,16 @@ struct SettingsView: View {
     @State private var diagnosticsPreview = ""
     @State private var showsDiagnosticsPreview = false
     @FocusState private var patFieldFocused: Bool
+    // 订阅额度分区输入与编辑态
+    @State private var deepseekKeyText = ""
+    @State private var deepseekEditing = false
+    @State private var volcengineAKText = ""
+    @State private var volcengineSKText = ""
+    @State private var volcengineEditing = false
+    @State private var showsVolcengineCCImportConfirm = false
+    @State private var kimiPasteText = ""
+    @State private var kimiEditing = false
+    @State private var showsCodexCCImportConfirm = false
 
     var body: some View {
         Form {
@@ -27,9 +37,9 @@ struct SettingsView: View {
                 }
             }
 
-            appearanceSection
             menuBarDisplaySection
             agentUsageCard
+            subscriptionSection
             githubCard
             gitlabCard
             consentSection
@@ -49,34 +59,6 @@ struct SettingsView: View {
                 announce(message)
             }
         }
-    }
-
-    // MARK: - 外观区
-
-    /// 主题手动切换: 选择经 coordinator.setTheme 持久化, 保存失败时
-    /// model.theme 不变, Picker 自动回退到当前主题 (fail-closed).
-    private var appearanceSection: some View {
-        Section("外观") {
-            Picker("主题", selection: themeBinding) {
-                Text(AppTheme.classic.title).tag(AppTheme.classic)
-                if GlassTheme.isLiquidGlassAvailable {
-                    Text(AppTheme.liquidGlass.title).tag(AppTheme.liquidGlass)
-                }
-            }
-            if !GlassTheme.isLiquidGlassAvailable {
-                Text("液态玻璃需要 macOS 26 或更高版本")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .glassFormRowBackground(theme: model.theme)
-    }
-
-    private var themeBinding: Binding<AppTheme> {
-        Binding(
-            get: { model.theme },
-            set: { coordinator.setTheme($0) }
-        )
     }
 
     // MARK: - 菜单栏显示
@@ -122,8 +104,8 @@ struct SettingsView: View {
                 }
             }
         }
-        .glassFormRowBackground(theme: model.theme)
-        .glassButtonStyle(theme: model.theme)
+        .glassFormRowBackground()
+        .glassButtonStyle()
     }
 
     private func menuBarMetricBinding(
@@ -211,8 +193,350 @@ struct SettingsView: View {
             }
         }
         .accessibilityElement(children: .contain)
-        .glassFormRowBackground(theme: model.theme)
-        .glassButtonStyle(theme: model.theme)
+        .glassFormRowBackground()
+        .glassButtonStyle()
+    }
+
+    // MARK: - 订阅额度
+
+    /// 五个订阅 provider 的凭证配置与状态. 读取本机文件和真实网络验证
+    /// 都只由用户点击触发; 失败经 model.settingsErrorMessage 提示 (fail-closed).
+    private var subscriptionSection: some View {
+        Section("订阅额度") {
+            Text("配置并启用后, Agent 用量将在统一授权生效时查询对应云端额度")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            deepSeekGroup
+            volcengineGroup
+            kimiGroup
+            codexGroup
+            antigravityGroup
+        }
+        .accessibilityElement(children: .contain)
+        .glassFormRowBackground()
+        .glassButtonStyle()
+        .confirmationDialog(
+            "从 CC Switch 导入火山引擎凭证?",
+            isPresented: $showsVolcengineCCImportConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("导入") {
+                coordinator.importVolcengineFromCCSwitch()
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("只读访问 CC Switch 数据库, 不会修改 CC Switch 的任何数据")
+        }
+        .confirmationDialog(
+            "从 CC Switch 导入 Codex 账号库?",
+            isPresented: $showsCodexCCImportConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("导入") {
+                coordinator.importCodexFromCCSwitch()
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("只读导入一次, 导入后由本应用自管, 不会回写 CC Switch")
+        }
+    }
+
+    private var deepSeekGroup: some View {
+        let configured = model.subscriptionCredentialConfigured[.deepseek] ?? false
+        let busy = model.busySubscriptionProviders.contains(.deepseek)
+        let editing = deepseekEditing || !configured
+
+        return subscriptionGroup("DeepSeek") {
+            subscriptionStatusLine(.deepseek)
+            subscriptionEnabledToggle(.deepseek)
+            if editing {
+                SecureField("API key (输入后不回显)", text: $deepseekKeyText)
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(busy)
+                    .accessibilityLabel("DeepSeek API key")
+                    .accessibilityHint("密钥只保存到本应用的 Keychain")
+                HStack {
+                    Button("保存并验证") {
+                        coordinator.saveAndVerifyDeepSeek(apiKey: deepseekKeyText)
+                        // API key 只进 Keychain, 提交后清空输入框
+                        deepseekKeyText = ""
+                        deepseekEditing = false
+                    }
+                    .disabled(busy || deepseekKeyText.isEmpty)
+                    .accessibilityHint("保存到 Keychain 并联网验证 DeepSeek 余额接口")
+                    if configured {
+                        Button("取消") {
+                            deepseekKeyText = ""
+                            deepseekEditing = false
+                        }
+                        .disabled(busy)
+                    }
+                    if busy {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                }
+            } else {
+                HStack {
+                    Button("更换") { deepseekEditing = true }
+                        .disabled(busy)
+                        .accessibilityHint("输入新的 DeepSeek API key")
+                    Button("移除") {
+                        coordinator.removeSubscriptionProvider(.deepseek)
+                    }
+                    .disabled(busy)
+                    .accessibilityHint("删除本应用保存的 DeepSeek API key")
+                }
+            }
+        }
+    }
+
+    private var volcengineGroup: some View {
+        let configured = model.subscriptionCredentialConfigured[.volcengine] ?? false
+        let busy = model.busySubscriptionProviders.contains(.volcengine)
+        let editing = volcengineEditing || !configured
+
+        return subscriptionGroup("火山引擎") {
+            subscriptionStatusLine(.volcengine)
+            subscriptionEnabledToggle(.volcengine)
+            if editing {
+                SecureField("AccessKey (输入后不回显)", text: $volcengineAKText)
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(busy)
+                    .accessibilityLabel("火山引擎 AccessKey")
+                SecureField("SecretKey (输入后不回显)", text: $volcengineSKText)
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(busy)
+                    .accessibilityLabel("火山引擎 SecretKey")
+                    .accessibilityHint("密钥只保存到本应用的 Keychain")
+                HStack {
+                    Button("保存并验证") {
+                        coordinator.saveAndVerifyVolcengine(
+                            accessKey: volcengineAKText,
+                            secretKey: volcengineSKText
+                        )
+                        volcengineAKText = ""
+                        volcengineSKText = ""
+                        volcengineEditing = false
+                    }
+                    .disabled(
+                        busy || volcengineAKText.isEmpty || volcengineSKText.isEmpty
+                    )
+                    .accessibilityHint("保存到 Keychain 并做本地格式校验")
+                    if configured {
+                        Button("取消") {
+                            volcengineAKText = ""
+                            volcengineSKText = ""
+                            volcengineEditing = false
+                        }
+                        .disabled(busy)
+                    }
+                }
+                Text("此处仅做本地格式校验, 完整额度试查由 Collector 运行时承担")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                HStack {
+                    Button("更换") { volcengineEditing = true }
+                        .disabled(busy)
+                        .accessibilityHint("输入新的火山引擎 AK/SK")
+                    Button("移除") {
+                        coordinator.removeSubscriptionProvider(.volcengine)
+                    }
+                    .disabled(busy)
+                    .accessibilityHint("删除本应用保存的火山引擎 AK/SK")
+                }
+            }
+            if coordinator.ccSwitchDatabaseExists() {
+                Button("从 CC Switch 导入") {
+                    showsVolcengineCCImportConfirm = true
+                }
+                .disabled(busy)
+                .accessibilityHint("只读导入 CC Switch 中火山 Codingplan 的 AK/SK")
+            }
+        }
+    }
+
+    private var kimiGroup: some View {
+        let configured = model.subscriptionCredentialConfigured[.kimi] ?? false
+        let needsRelogin = model.subscriptionProviders[.kimi]?
+            .verificationStatus == .needsRelogin
+        let localFileExists = coordinator.kimiLocalTokensFileExists()
+        // needsRelogin 时保留粘贴入口, 便于重新登录
+        let showPaste = kimiEditing || !configured || (needsRelogin && !localFileExists)
+
+        return subscriptionGroup("Kimi") {
+            subscriptionStatusLine(.kimi)
+            subscriptionEnabledToggle(.kimi)
+            if localFileExists {
+                Button("从本机导入") {
+                    coordinator.importKimiFromLocalFile()
+                }
+                .accessibilityHint("读取 kimi-dashboard 保存的本机浏览器令牌")
+            }
+            if showPaste && !localFileExists {
+                Text("打开 kimi.com 并登录 → 开发者工具 → Application → 复制 access_token 与 refresh_token, 粘贴整段 JSON 或两段 token")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextEditor(text: $kimiPasteText)
+                    .font(.system(.caption, design: .monospaced))
+                    .frame(minHeight: 56, maxHeight: 96)
+                    .accessibilityLabel("Kimi 令牌粘贴框")
+                HStack {
+                    Button("验证并保存") {
+                        coordinator.importKimiFromPaste(kimiPasteText)
+                        kimiPasteText = ""
+                        kimiEditing = false
+                    }
+                    .disabled(kimiPasteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityHint("校验后保存到本应用的 Keychain")
+                    if configured {
+                        Button("取消") {
+                            kimiPasteText = ""
+                            kimiEditing = false
+                        }
+                    }
+                }
+            }
+            if configured {
+                HStack {
+                    if !localFileExists && !showPaste {
+                        Button("更换") { kimiEditing = true }
+                            .accessibilityHint("重新粘贴 Kimi 令牌")
+                    }
+                    Button("移除") {
+                        coordinator.removeSubscriptionProvider(.kimi)
+                        kimiEditing = false
+                    }
+                    .accessibilityHint("删除本应用保存的 Kimi 令牌")
+                }
+            }
+        }
+    }
+
+    private var codexGroup: some View {
+        let configured = model.subscriptionCredentialConfigured[.codex] ?? false
+
+        return subscriptionGroup("Codex") {
+            subscriptionStatusLine(.codex)
+            subscriptionEnabledToggle(.codex)
+            if let summary = model.codexAccountSummary, summary.count > 0 {
+                let shown = summary.emailPrefixes.prefix(5).joined(separator: ", ")
+                let suffix = summary.emailPrefixes.count > 5 ? " 等" : ""
+                Text("已导入 \(summary.count) 个账号: \(shown)\(suffix)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            HStack {
+                if coordinator.codexCLIAuthFileExists() {
+                    Button("从本机导入当前账号") {
+                        coordinator.importCodexFromLocalCLI()
+                    }
+                    .accessibilityHint("读取 Codex CLI 的当前登录账号")
+                }
+                if coordinator.codexCCAccountsFileExists() {
+                    Button("从 CC Switch 导入账号库") {
+                        showsCodexCCImportConfirm = true
+                    }
+                    .accessibilityHint("只读导入 CC Switch 管理的 Codex 多账号")
+                }
+            }
+            if configured {
+                Button("移除") {
+                    coordinator.removeSubscriptionProvider(.codex)
+                }
+                .accessibilityHint("删除本应用保存的全部 Codex 账号凭证")
+            }
+        }
+    }
+
+    private var antigravityGroup: some View {
+        let configured = model.subscriptionCredentialConfigured[.antigravity] ?? false
+
+        return subscriptionGroup("Antigravity") {
+            subscriptionStatusLine(.antigravity)
+            subscriptionEnabledToggle(.antigravity)
+            if coordinator.antigravityTokenFileExists() {
+                Button("从本机导入") {
+                    coordinator.importAntigravityFromLocalFile()
+                }
+                .accessibilityHint("读取 Antigravity CLI 的本机 OAuth 令牌")
+            } else if !configured {
+                Text("未检测到本机 Antigravity 令牌文件, 请先通过 Antigravity CLI 登录")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if configured {
+                Button("移除") {
+                    coordinator.removeSubscriptionProvider(.antigravity)
+                }
+                .accessibilityHint("删除本应用保存的 Antigravity 令牌")
+            }
+        }
+    }
+
+    private func subscriptionGroup<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.subheadline.weight(.medium))
+            content()
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .contain)
+    }
+
+    /// 状态行: 未配置 / 已配置 · 验证通过 / 验证失败(原因) / 需要重新登录.
+    private func subscriptionStatusLine(
+        _ id: SubscriptionProviderID
+    ) -> some View {
+        let configured = model.subscriptionCredentialConfigured[id] ?? false
+        let status = model.subscriptionProviders[id]?.verificationStatus ?? .none
+        let text: String
+        let icon: String
+        if !configured {
+            text = "未配置"
+            icon = "circle.dashed"
+        } else {
+            switch status {
+            case .ok:
+                text = "已配置 · 验证通过"
+                icon = "checkmark.circle.fill"
+            case .failed(let reason):
+                text = "验证失败: \(reason)"
+                icon = "exclamationmark.triangle.fill"
+            case .needsRelogin:
+                text = "需要重新登录"
+                icon = "exclamationmark.triangle.fill"
+            case .none:
+                text = "已配置 · 未验证"
+                icon = "circle.dashed"
+            }
+        }
+        return Label(text, systemImage: icon)
+            .font(.caption)
+            .foregroundStyle(configured && status == .ok ? .secondary : .primary)
+            .accessibilityLabel("\(id.displayName) 状态: \(text)")
+    }
+
+    /// enabled 开关: 有凭证才可开, 保存失败由 coordinator 报错并回退.
+    private func subscriptionEnabledToggle(
+        _ id: SubscriptionProviderID
+    ) -> some View {
+        let configured = model.subscriptionCredentialConfigured[id] ?? false
+        return Toggle(
+            isOn: Binding(
+                get: { model.subscriptionProviders[id]?.enabled ?? false },
+                set: { coordinator.setSubscriptionProviderEnabled(id, $0) }
+            )
+        ) {
+            Text("启用云端额度查询")
+                .font(.caption)
+        }
+        .disabled(!configured)
+        .accessibilityHint(configured ? "启用后 Collector 将查询该 Provider 云端额度" : "请先配置凭证")
     }
 
     // MARK: - GitHub 卡
@@ -259,8 +583,8 @@ struct SettingsView: View {
                 }
             }
         }
-        .glassFormRowBackground(theme: model.theme)
-        .glassButtonStyle(theme: model.theme)
+        .glassFormRowBackground()
+        .glassButtonStyle()
     }
 
     // MARK: - GitLab 卡
@@ -322,8 +646,8 @@ struct SettingsView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .glassFormRowBackground(theme: model.theme)
-        .glassButtonStyle(theme: model.theme)
+        .glassFormRowBackground()
+        .glassButtonStyle()
     }
 
     // MARK: - 统一授权区
@@ -344,7 +668,15 @@ struct SettingsView: View {
                     summaryLine("访问 \(host) (使用已保存的 PAT)")
                 }
                 summaryLine("默认每 30 分钟自动刷新已授权模块")
-                summaryLine("Agent 云端额度 Provider 当前未启用, 不会访问云端额度接口")
+                let enabledProviders = coordinator
+                    .enabledConfiguredSubscriptionProviders
+                if enabledProviders.isEmpty {
+                    summaryLine("未配置启用的订阅额度 Provider, 不会访问云端额度接口")
+                } else {
+                    let names = enabledProviders.map(\.displayName)
+                        .joined(separator: " / ")
+                    summaryLine("确认授权后查询已启用订阅 Provider 的云端额度: \(names)")
+                }
                 summaryLine("可随时在此撤销授权暂停采集, 或通过 GitLab 卡的\"断开\"删除已保存的 PAT")
             }
             .padding(.vertical, 4)
@@ -368,8 +700,8 @@ struct SettingsView: View {
                 .accessibilityHint("允许已选模块按默认 30 分钟周期采集")
             }
         }
-        .glassFormRowBackground(theme: model.theme)
-        .glassButtonStyle(theme: model.theme)
+        .glassFormRowBackground()
+        .glassButtonStyle()
     }
 
     // MARK: - 诊断
@@ -396,8 +728,8 @@ struct SettingsView: View {
                 .accessibilityHint("选择位置保存不含业务数据的 ZIP 文件")
             }
         }
-        .glassFormRowBackground(theme: model.theme)
-        .glassButtonStyle(theme: model.theme)
+        .glassFormRowBackground()
+        .glassButtonStyle()
     }
 
     private var diagnosticsPreviewSheet: some View {

@@ -9,27 +9,6 @@ SOURCE_WIDGETS = {
     module: REPO_ROOT / module / "widget" / "index.html"
     for module in MODULES
 }
-PACKAGED_WIDGETS = {
-    module: (
-        REPO_ROOT
-        / "macos"
-        / "MdddApp"
-        / "Sources"
-        / "MdddApp"
-        / "Resources"
-        / "Widgets"
-        / module
-        / "index.html"
-    )
-    for module in MODULES
-}
-
-
-def test_packaged_widgets_match_canonical_sources():
-    for module in MODULES:
-        assert PACKAGED_WIDGETS[module].read_text() == SOURCE_WIDGETS[
-            module
-        ].read_text()
 
 
 def test_every_widget_has_reduced_motion_fallback():
@@ -50,14 +29,7 @@ def test_repository_heatmaps_have_keyboard_and_non_color_labels():
 
 def test_host_state_matrix_is_live_and_textual():
     source = (
-        REPO_ROOT
-        / "macos"
-        / "MdddApp"
-        / "Sources"
-        / "MdddApp"
-        / "Resources"
-        / "Widgets"
-        / "host-bootstrap.js"
+        REPO_ROOT / "tests" / "visual" / "host-bootstrap.js"
     ).read_text()
     for state in (
         "loading",
@@ -92,9 +64,9 @@ def test_native_primary_actions_have_keyboard_and_accessibility_contracts():
         / "SettingsView.swift"
     ).read_text()
     assert '.keyboardShortcut("r", modifiers: .command)' in menu_bar
-    assert 'accessibilityLabel("刷新\\(module.title)")' in menu_bar
-    assert ".accessibilityValue(" in menu_bar
-    assert "model.status(for: module).state.title" in menu_bar
+    assert 'accessibilityLabel("刷新全部模块")' in menu_bar
+    assert ".accessibilityElement(children: .ignore)" in menu_bar
+    assert "accessibilityLabel(accessibilitySummary(formatter: formatter))" in menu_bar
     assert "NSAccessibility.post(" in settings
     assert 'accessibilityLabel("GitLab 个人访问令牌")' in settings
     assert 'accessibilityLabel("脱敏诊断 JSON 预览")' in settings

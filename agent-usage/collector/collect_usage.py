@@ -1399,7 +1399,85 @@ def service_antigravity():
     return [svc]
 
 
+def _quota_service_entry(service_id, name, app):
+    """App 模式合成条目模板: 字段与 CC 驱动条目同构; 无 CC 概念, isCurrent 置 False."""
+    return {
+        "id": service_id,
+        "name": name,
+        "app": app,
+        "isCurrent": False,
+        "status": "ok",
+        "kind": None,
+        "plan": None,
+        "windows": [],
+        "balance": None,
+        "currency": None,
+        "capturedAt": now.isoformat(timespec="seconds"),
+        "note": "",
+    }
+
+
+def _finalize_quota_service(svc, query):
+    """执行额度查询并折叠结果/错误, 与 CC 驱动路径共用同一套 status/note 语义."""
+    try:
+        result = query()
+        if result:
+            svc.update(result)
+            if svc["kind"] == "windows" and not svc["windows"]:
+                svc["status"] = "empty"
+                svc["note"] = "接口已通但未返回额度窗口"
+        else:
+            svc["status"] = "empty"
+            svc["note"] = "未取到额度数据"
+    except Exception as e:
+        svc["status"] = "error"
+        msg = str(e)
+        svc["note"] = ("查询失败: " + msg[:60]) if msg else "查询失败"
+    return svc
+
+
+def _collect_app_services():
+    """App 模式: 由注入凭证驱动合成额度条目, 完全不读取 CC Switch 数据库.
+
+    - kimi_web_tokens -> Kimi (service_kimi_coding 注入分支)
+    - provider_env.deepseek.ANTHROPIC_AUTH_TOKEN -> DeepSeek
+    - provider_meta.volcengine.usage_script.ak/sk -> 火山引擎
+    """
+    services = []
+    provider_env = _runtime_credential("provider_env") or {}
+    provider_meta = _runtime_credential("provider_meta") or {}
+
+    if _runtime_credential("kimi_web_tokens") is not None:
+        svc = _quota_service_entry("kimi_coding", "Kimi", "kimi")
+        services.append(
+            _finalize_quota_service(svc, lambda: service_kimi_coding({}))
+        )
+
+    deepseek_env = provider_env.get("deepseek") or {}
+    if deepseek_env.get("ANTHROPIC_AUTH_TOKEN"):
+        svc = _quota_service_entry("deepseek", "DeepSeek", "deepseek")
+        services.append(
+            _finalize_quota_service(
+                svc, lambda: service_deepseek(dict(deepseek_env))
+            )
+        )
+
+    volc_meta = provider_meta.get("volcengine") or {}
+    volc_script = volc_meta.get("usage_script") or {}
+    if volc_script.get("accessKeyId") and volc_script.get("secretAccessKey"):
+        svc = _quota_service_entry("volcengine", "火山引擎（Coding Plan）", "volcengine")
+        services.append(
+            _finalize_quota_service(
+                svc, lambda: service_volcengine({}, dict(volc_meta))
+            )
+        )
+
+    return services
+
+
 def collect_services():
+    if _APP_MODE:
+        return _collect_app_services()
     services = []
     if not os.path.exists(CC_SWITCH_DB):
         return services

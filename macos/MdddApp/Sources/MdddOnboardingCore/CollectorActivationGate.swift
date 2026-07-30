@@ -47,9 +47,13 @@ public struct CollectorActivationGate: Sendable {
     }
 
     /// 生成模块的执行策略. 决定 Collector 获得哪些能力.
+    /// hasConfiguredSubscriptionProvider 为 true 时 agent-usage 追加
+    /// externalQuotas (至少一个订阅 provider enabled 且 Keychain 凭证完整,
+    /// 由调用方依据配置与凭证装配结果给出).
     public func executionPolicy(
         for module: CollectorModule,
-        readiness: ModuleReadiness
+        readiness: ModuleReadiness,
+        hasConfiguredSubscriptionProvider: Bool = false
     ) -> CollectorExecutionPolicy? {
         guard canActivate(
             module: module,
@@ -62,10 +66,15 @@ public struct CollectorActivationGate: Sendable {
 
         switch module {
         case .agentUsage:
-            // 首阶段只允许本地会话和本地定价, 不授予 externalQuotas
+            // 本地会话和本地定价是基础能力; 订阅 provider 已配置时
+            // 才追加 externalQuotas, 未配置任何 provider 不授予
+            var capabilities: Set<CollectorCapability> = [.localSessions, .localPricing]
+            if hasConfiguredSubscriptionProvider {
+                capabilities.insert(.externalQuotas)
+            }
             return CollectorExecutionPolicy(
                 module: module,
-                capabilities: [.localSessions, .localPricing]
+                capabilities: capabilities
             )
         case .github:
             // GitHub 通过 gh CLI 执行, 不需要额外能力
@@ -111,7 +120,8 @@ public struct ActivationGateEvaluator: Sendable {
     public func evaluate(
         readinessByModule: [CollectorModule: ModuleReadiness],
         selectedModules: Set<CollectorModule>,
-        appIsAcceptingNewTasks: Bool
+        appIsAcceptingNewTasks: Bool,
+        hasConfiguredSubscriptionProvider: Bool = false
     ) -> [CollectorActivationDecision] {
         CollectorModule.allCases.map { module in
             let readiness = readinessByModule[module] ?? .missingDependency
@@ -123,7 +133,11 @@ public struct ActivationGateEvaluator: Sendable {
                 appIsAcceptingNewTasks: appIsAcceptingNewTasks
             )
             let policy = allowed
-                ? gate.executionPolicy(for: module, readiness: readiness)
+                ? gate.executionPolicy(
+                    for: module,
+                    readiness: readiness,
+                    hasConfiguredSubscriptionProvider: hasConfiguredSubscriptionProvider
+                )
                 : nil
             return CollectorActivationDecision(
                 module: module, allowed: allowed, policy: policy

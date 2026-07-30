@@ -114,7 +114,35 @@ struct MdddOnboardingCoreHarness {
         try gitlabRedirectPolicyAllowsSameHostOnly()
         try await githubStatusCheckMappings()
         try firstLaunchDecisionFlow()
-        print("MdddOnboardingCore tests passed: 74")
+        try configStoreLoadsV1WithSubscriptionDefaults()
+        try configStoreRejectsNewerSchemaV3()
+        try configStoreSubscriptionProvidersRoundTrip()
+        try credentialStoreSubscriptionAccountsRoundTrip()
+        try keychainSubscriptionAccountsRoundTrip()
+        try await verifierDeepSeekConnectedWithMockSession()
+        try await verifierDeepSeekFailClosed()
+        try verifierKimiWebTokensJSONMappings()
+        try verifierCodexAccountsJSONMappings()
+        try verifierAntigravityOAuthJSONMappings()
+        try verifierVolcengineCredentialsMappings()
+        try gateAgentPolicyGrantsExternalQuotasWhenConfigured()
+        try gateEvaluatorPropagatesSubscriptionFlag()
+        try volcDecoderStopsWhenNotBase64()
+        try volcDecoderSingleAndDoubleEncoded()
+        try volcFullyDecodedPicksDeepestCandidate()
+        try kimiPasteParsesFullJSON()
+        try kimiPasteParsesTokenPairs()
+        try kimiPasteRejectsEmptyAndBrokenJSON()
+        try codexAuthFileParsesValidAccount()
+        try codexAuthFileRejectsMissingFields()
+        try codexLibraryMergingCreatesPreservesUpdates()
+        try codexLibrarySummaryCountAndPrefixes()
+        try codexChooseActiveAccountPriority()
+        try await ccSwitchVolcImportReadsFixtureDatabase()
+        try await ccSwitchVolcImportMissingProviderRow()
+        try await ccSwitchVolcImportMissingFile()
+        try subscriptionConfigApplyingVerificationTransitions()
+        print("MdddOnboardingCore tests passed: 102")
     }
 
     // MARK: - Python version parsing
@@ -1302,6 +1330,797 @@ struct MdddOnboardingCoreHarness {
         try coreExpect(
             upgradedDecisions.allSatisfy { !$0.allowed },
             "授权版本变化后所有模块必须 denied"
+        )
+    }
+
+    // MARK: - 订阅额度配置 (schema v2)
+
+    /// v1 配置文件没有 subscriptionProviders 键, 加载必须按缺省处理且不崩溃.
+    private static func configStoreLoadsV1WithSubscriptionDefaults() throws {
+        let tempDir = makeTempDir("config-v1")
+        try FileManager.default.createDirectory(
+            at: tempDir, withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let store = try OnboardingConfigurationStore(configDirectory: tempDir)
+
+        let v1Config: [String: Any] = [
+            "schemaVersion": 1,
+            "selectedModules": ["github"],
+            "consentVersion": 1,
+        ]
+        let data = try JSONSerialization.data(withJSONObject: v1Config)
+        let configURL = tempDir.appendingPathComponent("onboarding-v1.json")
+        try data.write(to: configURL)
+
+        let loaded = store.load()
+        try coreExpect(loaded != nil, "v1 配置必须可加载")
+        try coreExpect(
+            loaded?.subscriptionProviders.isEmpty == true,
+            "v1 配置的订阅 provider 必须按缺省 (空) 处理"
+        )
+        try coreExpect(
+            loaded?.selectedModules == ["github"],
+            "v1 配置的既有字段必须保留"
+        )
+        try coreExpect(
+            OnboardingConfiguration.currentSchemaVersion == 2,
+            "当前 schema 版本必须为 2"
+        )
+    }
+
+    /// 高于当前版本 (v3) 的配置必须拒绝加载.
+    private static func configStoreRejectsNewerSchemaV3() throws {
+        let tempDir = makeTempDir("config-v3")
+        try FileManager.default.createDirectory(
+            at: tempDir, withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let store = try OnboardingConfigurationStore(configDirectory: tempDir)
+
+        let v3Config: [String: Any] = [
+            "schemaVersion": 3,
+            "selectedModules": ["github"],
+        ]
+        let data = try JSONSerialization.data(withJSONObject: v3Config)
+        let configURL = tempDir.appendingPathComponent("onboarding-v1.json")
+        try data.write(to: configURL)
+
+        try coreExpect(store.load() == nil, "v3 配置必须拒绝加载")
+    }
+
+    /// 订阅 provider 配置 (含 failed 原因与 needsRelogin) 原子读写往返一致.
+    private static func configStoreSubscriptionProvidersRoundTrip() throws {
+        let tempDir = makeTempDir("config-sub")
+        try FileManager.default.createDirectory(
+            at: tempDir, withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let store = try OnboardingConfigurationStore(configDirectory: tempDir)
+
+        var config = OnboardingConfiguration(consentVersion: 1)
+        config.subscriptionProviders = [
+            SubscriptionProviderID.kimi.rawValue: SubscriptionProviderConfiguration(
+                enabled: true,
+                lastVerifiedAt: "2026-07-30T12:00:00+08:00",
+                verificationStatus: .ok
+            ),
+            SubscriptionProviderID.deepseek.rawValue: SubscriptionProviderConfiguration(
+                enabled: true,
+                verificationStatus: .failed(reason: "API key 无效或已过期")
+            ),
+            SubscriptionProviderID.codex.rawValue: SubscriptionProviderConfiguration(
+                enabled: false,
+                verificationStatus: .needsRelogin
+            ),
+        ]
+        try store.save(config)
+        let loaded = store.load()
+
+        try coreExpect(loaded != nil, "配置必须可加载")
+        let kimi = loaded?.subscriptionProviders[SubscriptionProviderID.kimi.rawValue]
+        try coreExpect(kimi?.enabled == true, "kimi enabled 丢失")
+        try coreExpect(
+            kimi?.verificationStatus == .ok,
+            "kimi 验证状态丢失, got \(String(describing: kimi?.verificationStatus))"
+        )
+        try coreExpect(
+            kimi?.lastVerifiedAt == "2026-07-30T12:00:00+08:00",
+            "kimi lastVerifiedAt 丢失"
+        )
+        let deepseek = loaded?.subscriptionProviders[
+            SubscriptionProviderID.deepseek.rawValue
+        ]
+        try coreExpect(
+            deepseek?.verificationStatus == .failed(reason: "API key 无效或已过期"),
+            "deepseek failed 原因丢失"
+        )
+        let codex = loaded?.subscriptionProviders[
+            SubscriptionProviderID.codex.rawValue
+        ]
+        try coreExpect(
+            codex?.verificationStatus == .needsRelogin,
+            "codex needsRelogin 状态丢失"
+        )
+    }
+
+    // MARK: - 订阅凭证 account 键 (内存实现)
+
+    /// 七个新 account 键的增删改查与隔离; PAT 键不受影响.
+    private static func credentialStoreSubscriptionAccountsRoundTrip() throws {
+        let store = InMemoryCredentialStore()
+        let accounts = [
+            SubscriptionCredentialAccount.kimiWebTokens,
+            SubscriptionCredentialAccount.deepseekAPIKey,
+            SubscriptionCredentialAccount.volcengineAccessKey,
+            SubscriptionCredentialAccount.volcengineSecretKey,
+            SubscriptionCredentialAccount.codexAccounts,
+            SubscriptionCredentialAccount.codexActiveAccount,
+            SubscriptionCredentialAccount.antigravityOAuth,
+        ]
+        for (index, account) in accounts.enumerated() {
+            try store.saveCredential("value-\(index)", forAccount: account)
+        }
+        for (index, account) in accounts.enumerated() {
+            let loaded = try store.loadCredential(forAccount: account)
+            try coreExpect(
+                loaded == "value-\(index)",
+                "\(account) 往返失败, got \(String(describing: loaded))"
+            )
+        }
+        // update 优先语义: 覆盖写不经过删除窗口
+        try store.saveCredential(
+            "{\"access_token\":\"a2\",\"refresh_token\":\"r2\"}",
+            forAccount: SubscriptionCredentialAccount.kimiWebTokens
+        )
+        let updated = try store.loadCredential(
+            forAccount: SubscriptionCredentialAccount.kimiWebTokens
+        )
+        try coreExpect(
+            updated?.contains("\"access_token\":\"a2\"") == true,
+            "kimi:web-tokens 覆盖写失败"
+        )
+
+        try store.deleteCredential(
+            forAccount: SubscriptionCredentialAccount.deepseekAPIKey
+        )
+        let deleted = try store.loadCredential(
+            forAccount: SubscriptionCredentialAccount.deepseekAPIKey
+        )
+        try coreExpect(deleted == nil, "deepseek:api-key 删除失败")
+        let intact = try store.loadCredential(
+            forAccount: SubscriptionCredentialAccount.volcengineAccessKey
+        )
+        try coreExpect(intact == "value-2", "其他 account 键被误删")
+
+        // PAT 与订阅 account 共用存储但键空间隔离
+        try store.savePAT("glpat-x", forHost: "gitlab.example.com")
+        let pat = try store.loadPAT(forHost: "gitlab.example.com")
+        try coreExpect(pat == "glpat-x", "PAT 读写受影响")
+    }
+
+    // MARK: - 订阅凭证 account 键 (真实 Keychain, 独立测试 service)
+
+    /// 真实 Keychain 验证新 account 键的 update 优先语义;
+    /// 使用独立 harness service, 测试结束清理, 不触碰正式凭证.
+    private static func keychainSubscriptionAccountsRoundTrip() throws {
+        let store = KeychainCredentialStore(service: keychainTestService)
+        let suffix = UUID().uuidString
+        let kimiAccount = SubscriptionCredentialAccount.kimiWebTokens
+        let volcAK = SubscriptionCredentialAccount.volcengineAccessKey
+        defer {
+            try? store.deleteCredential(forAccount: kimiAccount)
+            try? store.deleteCredential(forAccount: volcAK)
+        }
+
+        let tokensV1 = "{\"access_token\":\"a-\(suffix)\",\"refresh_token\":\"r-\(suffix)\"}"
+        try store.saveCredential(tokensV1, forAccount: kimiAccount)
+        let first = try store.loadCredential(forAccount: kimiAccount)
+        try coreExpect(first == tokensV1, "kimi:web-tokens 初次写入失败")
+
+        let tokensV2 = "{\"access_token\":\"a2-\(suffix)\",\"refresh_token\":\"r2-\(suffix)\"}"
+        try store.saveCredential(tokensV2, forAccount: kimiAccount)
+        let updated = try store.loadCredential(forAccount: kimiAccount)
+        try coreExpect(
+            updated == tokensV2,
+            "kimi:web-tokens update 覆盖失败, got \(String(describing: updated))"
+        )
+
+        try store.saveCredential("AK\(suffix.replacingOccurrences(of: "-", with: ""))",
+                                 forAccount: volcAK)
+        let ak = try store.loadCredential(forAccount: volcAK)
+        try coreExpect(ak?.hasPrefix("AK") == true, "volcengine:ak 写入失败")
+
+        try store.deleteCredential(forAccount: kimiAccount)
+        let deleted = try store.loadCredential(forAccount: kimiAccount)
+        try coreExpect(deleted == nil, "kimi:web-tokens 删除失败")
+        let intactAK = try store.loadCredential(forAccount: volcAK)
+        try coreExpect(intactAK != nil, "volcengine:ak 被误删")
+    }
+
+    // MARK: - 订阅 provider 验证器
+
+    /// DeepSeek 200 -> ok; 请求必须带 Bearer header 且指向 user/balance.
+    private static func verifierDeepSeekConnectedWithMockSession() async throws {
+        let session = MockURLSession { request in
+            (
+                Data("{\"balance_infos\":[]}".utf8),
+                HTTPURLResponse(
+                    url: request.url!, statusCode: 200,
+                    httpVersion: nil, headerFields: nil
+                )!
+            )
+        }
+        let verifier = ProviderConnectionVerifier()
+        let status = await verifier.verifyDeepSeek(
+            apiKey: "sk-fixture-key", session: session
+        )
+        try coreExpect(status == .ok, "200 必须映射 ok, got \(status)")
+        let request = session.lastRequest
+        try coreExpect(
+            request?.value(forHTTPHeaderField: "Authorization") == "Bearer sk-fixture-key",
+            "API key 必须经 Bearer header 发送"
+        )
+        try coreExpect(
+            request?.url?.absoluteString == "https://api.deepseek.com/user/balance",
+            "必须请求 user/balance, got \(String(describing: request?.url))"
+        )
+    }
+
+    /// fail-closed: 401/403, 网络错误和空 key 一律 failed, 不静默通过.
+    private static func verifierDeepSeekFailClosed() async throws {
+        let verifier = ProviderConnectionVerifier()
+
+        for code in [401, 403] {
+            let session = MockURLSession { request in
+                (
+                    Data(),
+                    HTTPURLResponse(
+                        url: request.url!, statusCode: code,
+                        httpVersion: nil, headerFields: nil
+                    )!
+                )
+            }
+            let status = await verifier.verifyDeepSeek(
+                apiKey: "sk-expired", session: session
+            )
+            guard case .failed = status else {
+                throw CoreTestFailure.expectation(
+                    "\(code) 必须映射 failed, got \(status)"
+                )
+            }
+        }
+
+        let networkFail = MockURLSession { _ in
+            throw URLError(.cannotFindHost)
+        }
+        let unreachable = await verifier.verifyDeepSeek(
+            apiKey: "sk-any", session: networkFail
+        )
+        guard case .failed = unreachable else {
+            throw CoreTestFailure.expectation(
+                "网络错误必须映射 failed, got \(unreachable)"
+            )
+        }
+
+        // 空 key 不得发起网络请求
+        let emptyKey = await verifier.verifyDeepSeek(apiKey: "   ")
+        guard case .failed(let reason) = emptyKey else {
+            throw CoreTestFailure.expectation(
+                "空 key 必须映射 failed, got \(emptyKey)"
+            )
+        }
+        try coreExpect(reason == "API key 为空", "空 key 原因不符: \(reason)")
+    }
+
+    private static func verifierKimiWebTokensJSONMappings() throws {
+        let ok = ProviderConnectionVerifier.verifyKimiWebTokensJSON(
+            "{\"access_token\":\"a\",\"refresh_token\":\"r\"}"
+        )
+        try coreExpect(ok == .ok, "完整令牌必须 ok, got \(ok)")
+
+        let relogin = ProviderConnectionVerifier.verifyKimiWebTokensJSON(
+            "{\"access_token\":\"a\"}"
+        )
+        try coreExpect(
+            relogin == .needsRelogin,
+            "缺 refresh_token 必须 needsRelogin, got \(relogin)"
+        )
+
+        let invalid = ProviderConnectionVerifier.verifyKimiWebTokensJSON("not json")
+        guard case .failed = invalid else {
+            throw CoreTestFailure.expectation("非法 JSON 必须 failed, got \(invalid)")
+        }
+        let empty = ProviderConnectionVerifier.verifyKimiWebTokensJSON("{}")
+        guard case .failed = empty else {
+            throw CoreTestFailure.expectation("空对象必须 failed, got \(empty)")
+        }
+    }
+
+    private static func verifierCodexAccountsJSONMappings() throws {
+        let valid = """
+            {"accounts": {"acc-1": {"email": "u@example.com",
+             "refresh_token": "rt", "access_token": "at", "id_token": "it"}}}
+            """
+        try coreExpect(
+            ProviderConnectionVerifier.verifyCodexAccountsJSON(valid) == .ok,
+            "完整账号库必须 ok"
+        )
+        let noAccounts = ProviderConnectionVerifier.verifyCodexAccountsJSON(
+            "{\"accounts\": {}}"
+        )
+        guard case .failed = noAccounts else {
+            throw CoreTestFailure.expectation("空 accounts 必须 failed")
+        }
+        let noRefresh = ProviderConnectionVerifier.verifyCodexAccountsJSON(
+            "{\"accounts\": {\"acc-1\": {\"access_token\": \"at\"}}}"
+        )
+        guard case .failed(let reason) = noRefresh else {
+            throw CoreTestFailure.expectation("缺 refresh_token 必须 failed")
+        }
+        try coreExpect(
+            reason.contains("refresh_token"),
+            "failed 原因必须指出缺失字段, got \(reason)"
+        )
+        let invalid = ProviderConnectionVerifier.verifyCodexAccountsJSON("[]")
+        guard case .failed = invalid else {
+            throw CoreTestFailure.expectation("非对象 JSON 必须 failed")
+        }
+    }
+
+    private static func verifierAntigravityOAuthJSONMappings() throws {
+        let valid = """
+            {"token": {"access_token": "at", "refresh_token": "rt",
+             "expiry": "2026-07-30T12:00:00Z"}}
+            """
+        try coreExpect(
+            ProviderConnectionVerifier.verifyAntigravityOAuthJSON(valid) == .ok,
+            "完整令牌文件必须 ok"
+        )
+        // access_token 可由 collector 刷新恢复, 仅 refresh_token 必备
+        let refreshOnly = ProviderConnectionVerifier.verifyAntigravityOAuthJSON(
+            "{\"token\": {\"refresh_token\": \"rt\"}}"
+        )
+        try coreExpect(refreshOnly == .ok, "仅 refresh_token 必须 ok")
+        let noToken = ProviderConnectionVerifier.verifyAntigravityOAuthJSON("{}")
+        guard case .failed = noToken else {
+            throw CoreTestFailure.expectation("缺 token 节点必须 failed")
+        }
+        let noRefresh = ProviderConnectionVerifier.verifyAntigravityOAuthJSON(
+            "{\"token\": {\"access_token\": \"at\"}}"
+        )
+        guard case .failed = noRefresh else {
+            throw CoreTestFailure.expectation("缺 refresh_token 必须 failed")
+        }
+    }
+
+    private static func verifierVolcengineCredentialsMappings() throws {
+        try coreExpect(
+            ProviderConnectionVerifier.verifyVolcengineCredentials(
+                accessKey: "AKLTfixture-ak",
+                secretKey: "fixture-secret-key-0123456789"
+            ) == .ok,
+            "合理 AK/SK 必须 ok"
+        )
+        let cases: [(String, String)] = [
+            ("", "fixture-secret-key-0123456789"),
+            ("AKLTfixture-ak", ""),
+            ("AK with space", "fixture-secret-key-0123456789"),
+            ("short", "fixture-secret-key-0123456789"),
+        ]
+        for (ak, sk) in cases {
+            guard case .failed = ProviderConnectionVerifier
+                .verifyVolcengineCredentials(accessKey: ak, secretKey: sk) else {
+                throw CoreTestFailure.expectation(
+                    "AK=\(ak) SK=\(sk) 必须 failed"
+                )
+            }
+        }
+    }
+
+    // MARK: - externalQuotas 门禁
+
+    /// agent-usage 策略: 订阅 provider 已配置时追加 externalQuotas,
+    /// 默认 (未配置) 不授予.
+    private static func gateAgentPolicyGrantsExternalQuotasWhenConfigured() throws {
+        let gate = CollectorActivationGate(consentVersion: 1, confirmedConsentVersion: 1)
+
+        let withoutProvider = gate.executionPolicy(for: .agentUsage, readiness: .ready)
+        try coreExpect(
+            withoutProvider?.capabilities.contains(.externalQuotas) == false,
+            "未配置订阅 provider 时不得授予 externalQuotas"
+        )
+        let withProvider = gate.executionPolicy(
+            for: .agentUsage,
+            readiness: .ready,
+            hasConfiguredSubscriptionProvider: true
+        )
+        try coreExpect(
+            withProvider?.capabilities.contains(.externalQuotas) == true,
+            "订阅 provider 已配置时必须授予 externalQuotas"
+        )
+        try coreExpect(
+            withProvider?.capabilities.contains(.localSessions) == true
+                && withProvider?.capabilities.contains(.localPricing) == true,
+            "基础能力必须保留"
+        )
+    }
+
+    /// evaluator 把订阅配置标记透传到策略; 未授权时仍不生成策略.
+    private static func gateEvaluatorPropagatesSubscriptionFlag() throws {
+        let gate = CollectorActivationGate(consentVersion: 1, confirmedConsentVersion: 1)
+        let evaluator = ActivationGateEvaluator(gate: gate)
+        let decisions = evaluator.evaluate(
+            readinessByModule: [.agentUsage: .ready],
+            selectedModules: [.agentUsage],
+            appIsAcceptingNewTasks: true,
+            hasConfiguredSubscriptionProvider: true
+        )
+        let agent = decisions.first { $0.module == .agentUsage }
+        try coreExpect(
+            agent?.policy?.capabilities.contains(.externalQuotas) == true,
+            "evaluator 必须透传订阅配置标记"
+        )
+
+        let deniedGate = CollectorActivationGate(
+            consentVersion: 2, confirmedConsentVersion: 1
+        )
+        let deniedDecisions = ActivationGateEvaluator(gate: deniedGate).evaluate(
+            readinessByModule: [.agentUsage: .ready],
+            selectedModules: [.agentUsage],
+            appIsAcceptingNewTasks: true,
+            hasConfiguredSubscriptionProvider: true
+        )
+        let deniedAgent = deniedDecisions.first { $0.module == .agentUsage }
+        try coreExpect(
+            deniedAgent?.allowed == false && deniedAgent?.policy == nil,
+            "授权不匹配时即使已配置订阅 provider 也必须 deny"
+        )
+    }
+
+    // MARK: - 订阅凭证导入纯逻辑 (全部临时目录 fixture, 禁真实主目录)
+
+    /// 与 collect_usage.py _volc_decode_secret 对齐: 非 base64 立即停止,
+    /// 只保留原始候选. "notbase64!" 去掉非字母表字符后长度 % 4 == 1, 必然解码失败.
+    private static func volcDecoderStopsWhenNotBase64() throws {
+        let candidates = VolcengineSecretDecoder.decodeCandidates("notbase64!")
+        try coreExpect(candidates == ["notbase64!"], "非 base64 必须只保留 raw, got \(candidates)")
+    }
+
+    /// 一次编码与两次编码都要完整展开候选链.
+    private static func volcDecoderSingleAndDoubleEncoded() throws {
+        let plain = "sk-real-secret-0001"
+        let single = Data(plain.utf8).base64EncodedString()
+        let double = Data(single.utf8).base64EncodedString()
+        try coreExpect(
+            VolcengineSecretDecoder.decodeCandidates(single) == [single, plain],
+            "一次编码候选链不符"
+        )
+        try coreExpect(
+            VolcengineSecretDecoder.decodeCandidates(double) == [double, single, plain],
+            "两次编码候选链不符"
+        )
+    }
+
+    /// 导入 Keychain 取最深成功解码; 不可解码时保留 raw.
+    private static func volcFullyDecodedPicksDeepestCandidate() throws {
+        let plain = "sk-real-secret-0002"
+        let double = Data(Data(plain.utf8).base64EncodedString().utf8)
+            .base64EncodedString()
+        try coreExpect(
+            VolcengineSecretDecoder.fullyDecoded(double) == plain,
+            "两次编码必须解到原文"
+        )
+        try coreExpect(
+            VolcengineSecretDecoder.fullyDecoded("notbase64!") == "notbase64!",
+            "不可解码必须保留 raw"
+        )
+    }
+
+    private static func kimiPasteParsesFullJSON() throws {
+        let result = KimiPasteParser.parse(
+            " {\"access_token\":\"a1\",\"refresh_token\":\"r1\"} "
+        )
+        guard case .success(let json) = result else {
+            throw CoreTestFailure.expectation("整段 JSON 必须解析成功, got \(result)")
+        }
+        try coreExpect(
+            ProviderConnectionVerifier.verifyKimiWebTokensJSON(json) == .ok,
+            "解析结果必须通过结构校验"
+        )
+    }
+
+    /// 两段 token (空白或换行分隔) 与单段 token 的映射.
+    private static func kimiPasteParsesTokenPairs() throws {
+        guard case .success(let pair) = KimiPasteParser.parse("a2\nr2") else {
+            throw CoreTestFailure.expectation("两段 token 必须解析成功")
+        }
+        try coreExpect(
+            pair.contains("\"access_token\":\"a2\"")
+                && pair.contains("\"refresh_token\":\"r2\""),
+            "两段 token 顺序映射不符: \(pair)"
+        )
+        try coreExpect(
+            ProviderConnectionVerifier.verifyKimiWebTokensJSON(pair) == .ok,
+            "两段 token 必须 ok"
+        )
+        // 单段 token 只有 access, 结构校验必须 needsRelogin
+        guard case .success(let single) = KimiPasteParser.parse("a-only") else {
+            throw CoreTestFailure.expectation("单段 token 必须解析成功")
+        }
+        try coreExpect(
+            ProviderConnectionVerifier.verifyKimiWebTokensJSON(single) == .needsRelogin,
+            "单段 token 必须 needsRelogin"
+        )
+    }
+
+    private static func kimiPasteRejectsEmptyAndBrokenJSON() throws {
+        guard case .failure(let empty) = KimiPasteParser.parse("   ") else {
+            throw CoreTestFailure.expectation("空输入必须失败")
+        }
+        guard case .missingField = empty else {
+            throw CoreTestFailure.expectation("空输入必须 missingField, got \(empty)")
+        }
+        guard case .failure(let broken) = KimiPasteParser.parse("{not json") else {
+            throw CoreTestFailure.expectation("坏 JSON 必须失败")
+        }
+        try coreExpect(broken == .invalidJSON, "坏 JSON 必须 invalidJSON, got \(broken)")
+        guard case .failure = KimiPasteParser.parse("{}") else {
+            throw CoreTestFailure.expectation("空对象必须失败")
+        }
+    }
+
+    /// 结构与 collect_usage.py:1128-1143 的消费方式对齐.
+    private static func codexAuthFileParsesValidAccount() throws {
+        let json = """
+            {"tokens": {"account_id": "acc-1", "refresh_token": "rt",
+             "access_token": "at", "id_token": "it", "email": "u@example.com"}}
+            """
+        guard case .success(let account) = CodexAuthFileParser.parse(json) else {
+            throw CoreTestFailure.expectation("合法 auth.json 必须解析成功")
+        }
+        try coreExpect(account.accountID == "acc-1", "account_id 不符")
+        try coreExpect(account.email == "u@example.com", "email 不符")
+        try coreExpect(account.refreshToken == "rt", "refresh_token 不符")
+        try coreExpect(account.idToken == "it", "id_token 不符")
+    }
+
+    private static func codexAuthFileRejectsMissingFields() throws {
+        let cases = [
+            ("not json", "非 JSON"),
+            ("{}", "缺 tokens"),
+            ("{\"tokens\": {}}", "缺 account_id"),
+            ("{\"tokens\": {\"account_id\": \"a\"}}", "缺 refresh_token"),
+            ("{\"tokens\": {\"account_id\": \"a\", \"refresh_token\": \"rt\"}}",
+             "缺 access_token"),
+        ]
+        for (json, label) in cases {
+            guard case .failure = CodexAuthFileParser.parse(json) else {
+                throw CoreTestFailure.expectation("\(label) 必须解析失败")
+            }
+        }
+    }
+
+    /// 合并: 空库创建, 异 id 保留, 同 id 覆盖; 合并结果必须通过账号库结构校验.
+    private static func codexLibraryMergingCreatesPreservesUpdates() throws {
+        let account1 = CodexCLIAuthAccount(
+            accountID: "acc-1", email: "u1@example.com",
+            refreshToken: "rt1", accessToken: "at1", idToken: nil
+        )
+        guard case .success(let created) = CodexAccountsLibrary.merging(
+            existingJSON: nil, account: account1
+        ) else {
+            throw CoreTestFailure.expectation("空库合并必须成功")
+        }
+        try coreExpect(
+            ProviderConnectionVerifier.verifyCodexAccountsJSON(created) == .ok,
+            "新建账号库必须通过结构校验"
+        )
+
+        let account2 = CodexCLIAuthAccount(
+            accountID: "acc-2", email: nil,
+            refreshToken: "rt2", accessToken: "at2", idToken: "it2"
+        )
+        guard case .success(let merged) = CodexAccountsLibrary.merging(
+            existingJSON: created, account: account2
+        ) else {
+            throw CoreTestFailure.expectation("追加合并必须成功")
+        }
+        try coreExpect(
+            CodexAccountsLibrary.accountIDs(of: merged) == ["acc-1", "acc-2"],
+            "异 id 必须保留两个账号"
+        )
+
+        let account1Updated = CodexCLIAuthAccount(
+            accountID: "acc-1", email: "u1@example.com",
+            refreshToken: "rt1-new", accessToken: "at1-new", idToken: nil
+        )
+        guard case .success(let updated) = CodexAccountsLibrary.merging(
+            existingJSON: merged, account: account1Updated
+        ) else {
+            throw CoreTestFailure.expectation("同 id 合并必须成功")
+        }
+        try coreExpect(
+            CodexAccountsLibrary.accountIDs(of: updated) == ["acc-1", "acc-2"],
+            "同 id 覆盖不得增加账号数"
+        )
+        try coreExpect(
+            updated.contains("rt1-new"),
+            "同 id 必须覆盖为新 token"
+        )
+    }
+
+    /// 摘要: 邮箱取 @ 前缀, 无 email 回落 id 前 8 位 (collect_usage.py:1148).
+    private static func codexLibrarySummaryCountAndPrefixes() throws {
+        let json = """
+            {"accounts": {
+             "acc-aaaaaaaabbbb": {"email": "alice@example.com",
+              "refresh_token": "rt", "access_token": "at"},
+             "acc-bbbbbbbbcccc": {"refresh_token": "rt", "access_token": "at"}}}
+            """
+        let summary = CodexAccountsLibrary.summary(of: json)
+        try coreExpect(summary.count == 2, "账号数不符: \(summary.count)")
+        try coreExpect(
+            summary.emailPrefixes == ["alice", "acc-bbbb"],
+            "前缀列表不符: \(summary.emailPrefixes)"
+        )
+        let empty = CodexAccountsLibrary.summary(of: "not json")
+        try coreExpect(
+            empty.count == 0 && empty.emailPrefixes.isEmpty,
+            "非法 JSON 摘要必须为空"
+        )
+    }
+
+    private static func codexChooseActiveAccountPriority() throws {
+        let ids = ["acc-1", "acc-2"]
+        try coreExpect(
+            CodexAccountsLibrary.chooseActiveAccount(
+                cliAccountID: "acc-2", existingActive: "acc-1", accountIDs: ids
+            ) == "acc-2",
+            "CLI 当前账号必须优先"
+        )
+        try coreExpect(
+            CodexAccountsLibrary.chooseActiveAccount(
+                cliAccountID: "gone", existingActive: "acc-1", accountIDs: ids
+            ) == "acc-1",
+            "CLI 不在库中必须保留既有 active"
+        )
+        try coreExpect(
+            CodexAccountsLibrary.chooseActiveAccount(
+                cliAccountID: nil, existingActive: nil, accountIDs: ids
+            ) == "acc-1",
+            "都不可用必须回落第一个账号"
+        )
+        try coreExpect(
+            CodexAccountsLibrary.chooseActiveAccount(
+                cliAccountID: nil, existingActive: nil, accountIDs: []
+            ) == nil,
+            "空库必须返回 nil"
+        )
+    }
+
+    // MARK: - CC Switch 火山导入 (临时目录 fixture, 禁写入)
+
+    /// 构造带火山 provider 行的 CC Switch fixture 数据库.
+    private static func createVolcCCSwitchFixture(
+        at dbURL: URL, metaJSON: String
+    ) throws {
+        try createSQLiteFixture(at: dbURL, sql: """
+            CREATE TABLE providers (
+                id TEXT, name TEXT, app_type TEXT,
+                settings_config TEXT, meta TEXT, is_current INTEGER
+            );
+            INSERT INTO providers VALUES (
+                'p1', '火山Codingplan', 'ark', '{}', '\(metaJSON)', 1);
+            """)
+    }
+
+    /// 只读导入: AK 原样, SK 按 _volc_decode_secret 解码; 数据库字节不得变化.
+    private static func ccSwitchVolcImportReadsFixtureDatabase() async throws {
+        let tempDir = makeTempDir("ccvolc-ok")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let dbURL = tempDir.appendingPathComponent("cc-switch.db")
+        let plainSK = "sk-real-secret-0003"
+        let encodedSK = Data(plainSK.utf8).base64EncodedString()
+        try createVolcCCSwitchFixture(
+            at: dbURL,
+            metaJSON: "{\"usage_script\": {\"accessKeyId\": \"AKLTfixture0000\", \"secretAccessKey\": \"\(encodedSK)\"}}"
+        )
+        let bytesBefore = try Data(contentsOf: dbURL)
+
+        let importer = CCSwitchVolcengineImporter()
+        let result = await importer.importCredentials(databaseURL: dbURL)
+        guard case .success(let credentials) = result else {
+            throw CoreTestFailure.expectation("导入必须成功, got \(result)")
+        }
+        try coreExpect(
+            credentials.accessKey == "AKLTfixture0000",
+            "AK 不符: \(credentials.accessKey)"
+        )
+        try coreExpect(
+            credentials.secretKey == plainSK,
+            "SK 必须解码, got \(credentials.secretKey)"
+        )
+
+        // 只读红线: 数据库文件不得被修改
+        let bytesAfter = try Data(contentsOf: dbURL)
+        try coreExpect(bytesBefore == bytesAfter, "导入不得修改 CC Switch 数据库")
+    }
+
+    /// CC 中无火山 provider 行时必须给出可诊断错误, 不静默为空.
+    private static func ccSwitchVolcImportMissingProviderRow() async throws {
+        let tempDir = makeTempDir("ccvolc-norow")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let dbURL = tempDir.appendingPathComponent("cc-switch.db")
+        try createSQLiteFixture(at: dbURL, sql: """
+            CREATE TABLE providers (
+                id TEXT, name TEXT, app_type TEXT,
+                settings_config TEXT, meta TEXT, is_current INTEGER
+            );
+            INSERT INTO providers VALUES ('p2', 'DeepSeek', 'ds', '{}', '{}', 1);
+            """)
+
+        let importer = CCSwitchVolcengineImporter()
+        let result = await importer.importCredentials(databaseURL: dbURL)
+        guard case .failure(let error) = result else {
+            throw CoreTestFailure.expectation("无火山行必须失败")
+        }
+        guard case .providerRowNotFound = error else {
+            throw CoreTestFailure.expectation(
+                "必须 providerRowNotFound, got \(error)"
+            )
+        }
+    }
+
+    private static func ccSwitchVolcImportMissingFile() async throws {
+        let importer = CCSwitchVolcengineImporter()
+        let result = await importer.importCredentials(
+            databaseURL: URL(fileURLWithPath: "/nonexistent/cc-\(UUID().uuidString).db")
+        )
+        guard case .failure(let error) = result else {
+            throw CoreTestFailure.expectation("文件缺失必须失败")
+        }
+        guard case .fileNotFound = error else {
+            throw CoreTestFailure.expectation("必须 fileNotFound, got \(error)")
+        }
+    }
+
+    // MARK: - 订阅配置状态迁移
+
+    /// applyingVerification: ok 才启用; failed / needsRelogin 即使之前
+    /// 已启用也必须回落禁用 (fail-closed).
+    private static func subscriptionConfigApplyingVerificationTransitions() throws {
+        var entry = SubscriptionProviderConfiguration()
+        entry = entry.applyingVerification(.ok, verifiedAt: "2026-07-30T00:00:00Z")
+        try coreExpect(entry.enabled, "ok 必须启用")
+        try coreExpect(
+            entry.lastVerifiedAt == "2026-07-30T00:00:00Z",
+            "ok 必须记录验证时间"
+        )
+
+        let failed = entry.applyingVerification(
+            .failed(reason: "API key 无效或已过期"),
+            verifiedAt: "2026-07-30T01:00:00Z"
+        )
+        try coreExpect(!failed.enabled, "failed 必须禁用")
+        try coreExpect(
+            failed.verificationStatus == .failed(reason: "API key 无效或已过期"),
+            "failed 必须保留原因"
+        )
+        try coreExpect(
+            failed.lastVerifiedAt == "2026-07-30T01:00:00Z",
+            "failed 必须更新验证时间"
+        )
+
+        let relogin = entry.applyingVerification(
+            .needsRelogin, verifiedAt: "2026-07-30T02:00:00Z"
+        )
+        try coreExpect(!relogin.enabled, "needsRelogin 必须禁用")
+        try coreExpect(
+            relogin.verificationStatus == .needsRelogin,
+            "needsRelogin 状态必须保留"
         )
     }
 }

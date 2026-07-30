@@ -1,4 +1,3 @@
-import AppKit
 import MdddAppCore
 import MdddOnboardingCore
 import SwiftUI
@@ -37,145 +36,129 @@ struct MenuBarLabelView: View {
     }
 }
 
+/// 菜单栏原生液态玻璃面板: 纵向五卡 (按 PanelViewModel 非 nil 渲染) + 底栏.
+/// 无 ScrollView, 高度自适应内容; 五卡全空时展示未配置引导.
 struct MenuBarDashboardView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var coordinator: OnboardingCoordinator
+    @Environment(\.colorScheme) private var colorScheme
 
     let openSettings: @MainActor () -> Void
     let terminateApplication: @MainActor () -> Void
 
-    private let modules: [DashboardModule] = [
-        .agentUsage,
-        .github,
-        .gitlab,
-    ]
-
-    private var selectedModule: DashboardModule {
-        modules.contains(model.selectedModule)
-            ? model.selectedModule
-            : .agentUsage
-    }
-
     var body: some View {
-        HStack(spacing: 0) {
-            moduleRail
-            Divider()
-            VStack(spacing: 0) {
-                moduleHeader
-                Divider()
-                moduleContent
-                Divider()
-                actionFooter
-            }
+        let panel = model.makePanelViewModel()
+        VStack(spacing: 0) {
+            cardStack(panel)
+            footerHairline
+            actionFooter
         }
-        .frame(width: 440, height: 500)
-        .background {
-            if GlassTheme.usesGlass(model.theme) {
-                WidgetGlassBacking(theme: model.theme)
-            }
+        .frame(width: 440)
+        .background { panelGlassBackground }
+    }
+
+    // MARK: 面板玻璃背景
+
+    /// macOS 26 用 Liquid Glass, 低系统退化为材料质感; 圆角 22 对齐 mockup.
+    @ViewBuilder
+    private var panelGlassBackground: some View {
+        if #available(macOS 26, *) {
+            Color.clear.glassEffect(.regular, in: .rect(cornerRadius: 22))
+        } else {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(.regularMaterial)
         }
     }
 
-    private var moduleRail: some View {
-        VStack(spacing: 10) {
-            ForEach(modules) { module in
-                Button {
-                    model.selectedModule = module
-                } label: {
-                    Image(systemName: module.systemImage)
-                        .font(.system(size: 15, weight: .semibold))
-                        .frame(width: 32, height: 32)
-                        .background {
-                            RoundedRectangle(cornerRadius: 9)
-                                .fill(
-                                    selectedModule == module
-                                        ? Color.accentColor
-                                        : Color.clear
-                                )
-                        }
-                        .foregroundStyle(
-                            selectedModule == module
-                                ? Color.white
-                                : Color.secondary
-                        )
-                }
-                .buttonStyle(.plain)
-                .help(module.title)
-                .accessibilityLabel(module.title)
-                .accessibilityValue(
-                    model.status(for: module).state.title
-                )
-            }
-            Spacer()
-        }
-        .padding(.vertical, 14)
-        .frame(width: 52)
-    }
-
-    private var moduleHeader: some View {
-        let status = model.status(for: selectedModule)
-        return HStack(spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(selectedModule.title)
-                    .font(.headline)
-                Text(lastUpdatedText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Label(status.state.title, systemImage: status.state.symbolName)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .glassStatusPill(theme: model.theme)
-                .accessibilityLabel("模块状态: \(status.state.title)")
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 11)
-    }
+    // MARK: 卡片栈
 
     @ViewBuilder
-    private var moduleContent: some View {
-        let module = selectedModule
-        let status = model.status(for: module)
-        let hasArtifact = model.moduleArtifacts[module] != nil
-        if let collectorModule = module.collectorModule,
-           hasArtifact || model.canRunCollector(for: collectorModule) {
-            WidgetHostView(
-                module: collectorModule,
-                artifact: model.moduleArtifacts[module],
-                state: WidgetDisplayState(moduleState: status.state),
-                theme: model.theme
-            )
-            .background {
-                WidgetGlassBacking(theme: model.theme)
+    private func cardStack(_ panel: PanelViewModel) -> some View {
+        let hasCards = panel.usage != nil
+            || panel.subscription != nil
+            || panel.hourly != nil
+            || panel.github != nil
+            || panel.gitlab != nil
+        VStack(spacing: 10) {
+            if let usage = panel.usage {
+                PanelCardContainer {
+                    UsageHeroCard(viewModel: usage)
+                }
             }
-        } else {
-            WidgetPlaceholder(
-                module: module,
-                status: status,
-                theme: model.theme
-            )
-            .padding(12)
+            if let subscription = panel.subscription {
+                PanelCardContainer {
+                    SubscriptionCard(viewModel: subscription)
+                }
+            }
+            if let hourly = panel.hourly {
+                PanelCardContainer {
+                    HourlyLineCard(viewModel: hourly)
+                }
+            }
+            if let github = panel.github {
+                PanelCardContainer {
+                    HeatmapCardView(viewModel: github)
+                }
+            }
+            if let gitlab = panel.gitlab {
+                PanelCardContainer {
+                    HeatmapCardView(viewModel: gitlab)
+                }
+            }
+            if !hasCards {
+                emptyPanelState
+            }
         }
+        .padding(.horizontal, 12)
+        .padding(.top, 12)
+        .padding(.bottom, 4)
+    }
+
+    /// 五卡全 nil 时的兜底: 居中玻璃卡 + 设置入口.
+    private var emptyPanelState: some View {
+        PanelCardContainer {
+            VStack(spacing: 10) {
+                Image(systemName: "square.grid.2x2")
+                    .font(.system(size: 28))
+                    .foregroundStyle(.secondary)
+                Text("未配置模块, 前往设置")
+                    .font(.headline)
+                Button("打开设置", action: openSettings)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 18)
+        }
+    }
+
+    // MARK: 底栏
+
+    /// mockup 底栏顶部分隔: 白 0.5 发线, 深色下弱化为常规分隔色.
+    private var footerHairline: some View {
+        Rectangle()
+            .fill(
+                colorScheme == .dark
+                    ? Color.primary.opacity(0.15)
+                    : Color.white.opacity(0.5)
+            )
+            .frame(height: 1)
     }
 
     private var actionFooter: some View {
-        let module = selectedModule
-        let canRefresh = module.collectorModule.map {
+        let refreshableModules = CollectorModule.allCases.filter {
             model.canRunCollector(for: $0)
-        } ?? false
+        }
         return HStack(spacing: 8) {
             Button {
-                if let collectorModule = module.collectorModule {
-                    coordinator.refresh(collectorModule)
+                for module in refreshableModules {
+                    coordinator.refresh(module)
                 }
             } label: {
                 Label("刷新", systemImage: "arrow.clockwise")
             }
             .keyboardShortcut("r", modifiers: .command)
-            .disabled(!canRefresh)
-            .accessibilityLabel("刷新\(module.title)")
-            .accessibilityHint("使用当前授权重新采集\(module.title)")
+            .disabled(refreshableModules.isEmpty)
+            .accessibilityLabel("刷新全部模块")
+            .accessibilityHint("使用当前授权重新采集全部已就绪模块")
             Spacer()
             Button(action: openSettings) {
                 Label("设置", systemImage: "gearshape")
@@ -188,49 +171,6 @@ struct MenuBarDashboardView: View {
         .help("刷新、设置或退出 mddd")
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
-        .glassButtonStyle(theme: model.theme)
-    }
-
-    private var lastUpdatedText: String {
-        guard let artifact = model.moduleArtifacts[selectedModule],
-              case .object(let object) = artifact,
-              case .string(let generatedAt)? = object["generatedAt"],
-              let date = ISO8601DateFormatter().date(from: generatedAt) else {
-            return "尚无数据"
-        }
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .short
-        return formatter.localizedString(for: date, relativeTo: Date())
-    }
-}
-
-
-/// 无缓存且未就绪时的占位视图: 图标 + 状态 + 可执行建议.
-struct WidgetPlaceholder: View {
-    let module: DashboardModule
-    let status: ModuleStatus
-    var theme: AppTheme = .classic
-
-    var body: some View {
-        VStack(spacing: 10) {
-            Image(systemName: module.systemImage)
-                .font(.system(size: 34))
-                .foregroundStyle(.secondary)
-            Text("WidgetHost 将在此加载现有视觉")
-                .font(.headline)
-            if let guidance = status.detail {
-                Text(guidance)
-                    .font(.subheadline)
-                    .foregroundStyle(.orange)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 40)
-            } else {
-                Text(status.state.title)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .glassCardBackground(theme: theme)
-        .accessibilityElement(children: .combine)
+        .panelGlassButtonStyle()
     }
 }

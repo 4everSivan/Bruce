@@ -22,6 +22,11 @@ package struct AgentDailyUsage: Codable, Equatable, Sendable {
     let total: Int
 }
 
+package struct AgentProjectUsage: Codable, Equatable, Sendable {
+    let name: String
+    let total: Int
+}
+
 package struct AgentUsageItem: Codable, Equatable, Sendable {
     let id: String
     let name: String
@@ -31,6 +36,10 @@ package struct AgentUsageItem: Codable, Equatable, Sendable {
     let daily: [AgentDailyUsage]
     let hours: [Int]
     let todayCostUsd: Double?
+    /// 今日按模型聚合的 token 总量 (模型名 -> total), collector 已按量降序截断.
+    let models: [String: Int]?
+    /// 今日按项目聚合的分布 (collector 只保留 Top 3).
+    let projects: [AgentProjectUsage]?
 }
 
 package struct AgentServiceItem: Codable, Equatable, Sendable {
@@ -38,6 +47,17 @@ package struct AgentServiceItem: Codable, Equatable, Sendable {
     let name: String
     let status: String
     let windows: [JSONValue]
+    /// 来源应用标记, codex 账号条目为 "codex", App 合成条目为 kimi/deepseek/volcengine.
+    let app: String?
+    let isCurrent: Bool?
+    /// "windows" 为量条型, "balance" 为余额型, 未授权占位为 nil.
+    let kind: String?
+    let plan: String?
+    let balance: Double?
+    let currency: String?
+    let note: String?
+    /// 附加说明 (如 Kimi 加量包余额文案), 与 windows 并列展示.
+    let extra: String?
 }
 
 package struct AgentUsageArtifact: Codable, Equatable, Sendable {

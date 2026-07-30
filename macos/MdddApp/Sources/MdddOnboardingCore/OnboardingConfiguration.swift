@@ -1,10 +1,50 @@
 import Foundation
 
+// MARK: - SubscriptionProviderID
+
+/// 订阅额度 provider 标识. 持久化为配置字典键和 Keychain account 前缀.
+public enum SubscriptionProviderID: String, Codable, Sendable, CaseIterable {
+    case kimi
+    case deepseek
+    case volcengine
+    case codex
+    case antigravity
+}
+
+// MARK: - SubscriptionVerificationStatus
+
+/// 订阅 provider 的验证状态. failed 携带可诊断原因.
+public enum SubscriptionVerificationStatus: Codable, Equatable, Sendable {
+    case none
+    case ok
+    case failed(reason: String)
+    case needsRelogin
+}
+
+// MARK: - SubscriptionProviderConfiguration
+
+/// 单个订阅 provider 的非敏感配置. 凭证本体存 Keychain, 不进入此结构.
+public struct SubscriptionProviderConfiguration: Codable, Equatable, Sendable {
+    public var enabled: Bool
+    public var lastVerifiedAt: String?
+    public var verificationStatus: SubscriptionVerificationStatus
+
+    public init(
+        enabled: Bool = false,
+        lastVerifiedAt: String? = nil,
+        verificationStatus: SubscriptionVerificationStatus = .none
+    ) {
+        self.enabled = enabled
+        self.lastVerifiedAt = lastVerifiedAt
+        self.verificationStatus = verificationStatus
+    }
+}
+
 // MARK: - OnboardingConfiguration
 
 /// 非敏感配置. 持久化到 Application Support/mddd/config/onboarding-v1.json.
 public struct OnboardingConfiguration: Codable, Equatable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     public var pythonPath: String?
@@ -13,10 +53,11 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
     public var consentVersion: Int?
     public var connectionStates: [String: String]
     public var lastVerifiedAt: [String: String]
-    /// 外观主题 ("classic" / "liquid-glass"). nil 按 classic 处理, 旧配置文件无此键.
-    public var theme: String?
     /// 菜单栏指标 rawValue 有序列表. nil 使用应用默认值.
     public var menuBarMetrics: [String]?
+    /// 订阅 provider 配置, 键为 SubscriptionProviderID rawValue.
+    /// v1 配置文件无此键, 加载时按缺省 (全部未配置) 处理.
+    public var subscriptionProviders: [String: SubscriptionProviderConfiguration]
 
     public init(
         schemaVersion: Int = OnboardingConfiguration.currentSchemaVersion,
@@ -26,8 +67,8 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         consentVersion: Int? = nil,
         connectionStates: [String: String] = [:],
         lastVerifiedAt: [String: String] = [:],
-        theme: String? = nil,
-        menuBarMetrics: [String]? = nil
+        menuBarMetrics: [String]? = nil,
+        subscriptionProviders: [String: SubscriptionProviderConfiguration] = [:]
     ) {
         self.schemaVersion = schemaVersion
         self.pythonPath = pythonPath
@@ -36,8 +77,25 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         self.consentVersion = consentVersion
         self.connectionStates = connectionStates
         self.lastVerifiedAt = lastVerifiedAt
-        self.theme = theme
         self.menuBarMetrics = menuBarMetrics
+        self.subscriptionProviders = subscriptionProviders
+    }
+
+    /// 自定义解码: 旧版本配置缺失的键一律回落缺省, 不因新增字段拒绝加载.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        pythonPath = try container.decodeIfPresent(String.self, forKey: .pythonPath)
+        gitlabBaseURL = try container.decodeIfPresent(String.self, forKey: .gitlabBaseURL)
+        selectedModules = try container.decodeIfPresent(Set<String>.self, forKey: .selectedModules) ?? []
+        consentVersion = try container.decodeIfPresent(Int.self, forKey: .consentVersion)
+        connectionStates = try container.decodeIfPresent([String: String].self, forKey: .connectionStates) ?? [:]
+        lastVerifiedAt = try container.decodeIfPresent([String: String].self, forKey: .lastVerifiedAt) ?? [:]
+        menuBarMetrics = try container.decodeIfPresent([String].self, forKey: .menuBarMetrics)
+        subscriptionProviders = try container.decodeIfPresent(
+            [String: SubscriptionProviderConfiguration].self,
+            forKey: .subscriptionProviders
+        ) ?? [:]
     }
 }
 
@@ -162,6 +220,27 @@ public enum OnboardingConfigError: Error, Equatable {
     case unknownSchema
 }
 
+// MARK: - SubscriptionCredentialAccount
+
+/// 订阅 provider 的 Keychain account 键. service 统一为
+/// com.mddd.dashboard.credentials, 与 GitLab PAT 共用 update 优先语义.
+public enum SubscriptionCredentialAccount {
+    /// JSON {"access_token": ..., "refresh_token": ...}
+    public static let kimiWebTokens = "kimi:web-tokens"
+    /// DeepSeek API key 字符串
+    public static let deepseekAPIKey = "deepseek:api-key"
+    /// 火山引擎 AccessKey 字符串
+    public static let volcengineAccessKey = "volcengine:ak"
+    /// 火山引擎 SecretKey 字符串
+    public static let volcengineSecretKey = "volcengine:sk"
+    /// CC Switch 同构 JSON {"accounts": {id: {email, refresh_token, access_token, id_token}}}
+    public static let codexAccounts = "codex:accounts"
+    /// Codex 当前账号 id 字符串
+    public static let codexActiveAccount = "codex:active-account"
+    /// Antigravity 令牌文件同构 JSON
+    public static let antigravityOAuth = "antigravity:oauth"
+}
+
 // MARK: - CredentialStore
 
 /// 凭证存储协议. 系统实现使用 macOS Keychain, 测试使用内存 fake.
@@ -169,6 +248,10 @@ public protocol CredentialStore: Sendable {
     func savePAT(_ pat: String, forHost host: String) throws
     func loadPAT(forHost host: String) throws -> String?
     func deletePAT(forHost host: String) throws
+    /// 通用 account 读写, 供订阅 provider 凭证使用.
+    func saveCredential(_ value: String, forAccount account: String) throws
+    func loadCredential(forAccount account: String) throws -> String?
+    func deleteCredential(forAccount account: String) throws
 }
 
 // MARK: - InMemoryCredentialStore
@@ -181,20 +264,32 @@ public final class InMemoryCredentialStore: CredentialStore, @unchecked Sendable
     public init() {}
 
     public func savePAT(_ pat: String, forHost host: String) throws {
-        lock.lock()
-        storage[host] = pat
-        lock.unlock()
+        try saveCredential(pat, forAccount: KeychainCredentialStore.account(forHost: host))
     }
 
     public func loadPAT(forHost host: String) throws -> String? {
-        lock.lock()
-        defer { lock.unlock() }
-        return storage[host]
+        try loadCredential(forAccount: KeychainCredentialStore.account(forHost: host))
     }
 
     public func deletePAT(forHost host: String) throws {
+        try deleteCredential(forAccount: KeychainCredentialStore.account(forHost: host))
+    }
+
+    public func saveCredential(_ value: String, forAccount account: String) throws {
         lock.lock()
-        storage[host] = nil
+        storage[account] = value
+        lock.unlock()
+    }
+
+    public func loadCredential(forAccount account: String) throws -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage[account]
+    }
+
+    public func deleteCredential(forAccount account: String) throws {
+        lock.lock()
+        storage[account] = nil
         lock.unlock()
     }
 }
@@ -213,8 +308,19 @@ public final class KeychainCredentialStore: CredentialStore, @unchecked Sendable
     }
 
     public func savePAT(_ pat: String, forHost host: String) throws {
-        let account = Self.account(forHost: host)
-        let data = Data(pat.utf8)
+        try saveCredential(pat, forAccount: Self.account(forHost: host))
+    }
+
+    public func loadPAT(forHost host: String) throws -> String? {
+        try loadCredential(forAccount: Self.account(forHost: host))
+    }
+
+    public func deletePAT(forHost host: String) throws {
+        try deleteCredential(forAccount: Self.account(forHost: host))
+    }
+
+    public func saveCredential(_ value: String, forAccount account: String) throws {
+        let data = Data(value.utf8)
 
         let baseQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -246,8 +352,7 @@ public final class KeychainCredentialStore: CredentialStore, @unchecked Sendable
         }
     }
 
-    public func loadPAT(forHost host: String) throws -> String? {
-        let account = Self.account(forHost: host)
+    public func loadCredential(forAccount account: String) throws -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -271,8 +376,7 @@ public final class KeychainCredentialStore: CredentialStore, @unchecked Sendable
         return String(data: data, encoding: .utf8)
     }
 
-    public func deletePAT(forHost host: String) throws {
-        let account = Self.account(forHost: host)
+    public func deleteCredential(forAccount account: String) throws {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

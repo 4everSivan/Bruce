@@ -1,11 +1,11 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
 
 import PackageDescription
 
 let package = Package(
     name: "MdddApp",
     platforms: [
-        .macOS(.v13),
+        .macOS(.v26),
     ],
     products: [
         .executable(name: "MdddApp", targets: ["MdddApp"]),
@@ -22,8 +22,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "MdddApp",
-            dependencies: ["MdddAppCore", "MdddOnboardingCore"],
-            exclude: ["Resources"]
+            dependencies: ["MdddAppCore", "MdddOnboardingCore"]
         ),
         .executableTarget(
             name: "MdddOnboardingCoreHarness",
@@ -59,6 +58,11 @@ let package = Package(
             name: "LocalIntegrationHarness",
             dependencies: ["MdddAppCore", "MdddOnboardingCore"],
             path: "Tests/Harnesses/LocalIntegrationHarness"
+        ),
+        .executableTarget(
+            name: "PanelViewModelHarness",
+            dependencies: ["MdddAppCore", "MdddOnboardingCore"],
+            path: "Tests/Harnesses/PanelViewModelHarness"
         ),
     ]
 )
