@@ -63,12 +63,23 @@ final class OnboardingCoordinator: ObservableObject {
         )
         self.consentConfirmed = confirmedVersion == consentVersion
         publishTheme(from: config)
+        publishMenuBarMetrics(from: config)
     }
 
     /// 从配置恢复主题并发布到 model; 未知值或低系统的液态玻璃回退 classic.
     private func publishTheme(from config: OnboardingConfiguration?) {
         let stored = config?.theme.flatMap { AppTheme(rawValue: $0) } ?? .classic
         model.theme = GlassTheme.resolved(stored)
+    }
+
+    private func publishMenuBarMetrics(
+        from config: OnboardingConfiguration?
+    ) {
+        model.setMenuBarMetrics(
+            MenuBarMetricConfiguration(
+                rawValues: config?.menuBarMetrics
+            ).metrics
+        )
     }
 
     // MARK: - 扫描
@@ -97,6 +108,7 @@ final class OnboardingCoordinator: ObservableObject {
         let consentValid = config?.consentVersion == Self.currentConsentVersion
         let persistedStates = config?.connectionStates ?? [:]
         publishTheme(from: config)
+        publishMenuBarMetrics(from: config)
 
         for module in CollectorModule.allCases {
             model.setBusy(true, for: module)
@@ -402,6 +414,25 @@ final class OnboardingCoordinator: ObservableObject {
             return
         }
         model.theme = GlassTheme.resolved(theme)
+        model.setSettingsError(nil)
+    }
+
+    /// 保存有序菜单栏指标. 先持久化再发布, 避免 UI 与磁盘配置分叉.
+    func setMenuBarMetrics(_ metrics: [MenuBarMetric]) {
+        guard let configStore else {
+            model.setSettingsError("配置存储不可用, 无法保存菜单栏设置")
+            return
+        }
+        let normalized = MenuBarMetricConfiguration(metrics: metrics).metrics
+        var config = configStore.load() ?? OnboardingConfiguration()
+        config.menuBarMetrics = normalized.map(\.rawValue)
+        do {
+            try configStore.save(config)
+        } catch {
+            model.setSettingsError("菜单栏设置保存失败")
+            return
+        }
+        model.setMenuBarMetrics(normalized)
         model.setSettingsError(nil)
     }
 

@@ -28,6 +28,7 @@ struct SettingsView: View {
             }
 
             appearanceSection
+            menuBarDisplaySection
             agentUsageCard
             githubCard
             gitlabCard
@@ -76,6 +77,90 @@ struct SettingsView: View {
             get: { model.theme },
             set: { coordinator.setTheme($0) }
         )
+    }
+
+    // MARK: - 菜单栏显示
+
+    private var menuBarDisplaySection: some View {
+        Section("菜单栏显示") {
+            Text("选择 1 至 3 项指标, 菜单栏将按下列顺序紧凑展示")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            ForEach(MenuBarMetric.allCases) { metric in
+                HStack {
+                    Toggle(
+                        isOn: menuBarMetricBinding(metric)
+                    ) {
+                        Label(metric.title, systemImage: metric.systemImage)
+                    }
+                    .disabled(
+                        (!model.menuBarMetrics.contains(metric)
+                            && model.menuBarMetrics.count
+                                >= MenuBarMetricConfiguration.maximumCount)
+                            || (model.menuBarMetrics.contains(metric)
+                                && model.menuBarMetrics.count == 1)
+                    )
+                    Spacer()
+                    if let index = model.menuBarMetrics.firstIndex(of: metric) {
+                        Button {
+                            moveMenuBarMetric(metric, offset: -1)
+                        } label: {
+                            Image(systemName: "arrow.up")
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(index == 0)
+                        .accessibilityLabel("上移\(metric.title)")
+                        Button {
+                            moveMenuBarMetric(metric, offset: 1)
+                        } label: {
+                            Image(systemName: "arrow.down")
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(index == model.menuBarMetrics.count - 1)
+                        .accessibilityLabel("下移\(metric.title)")
+                    }
+                }
+            }
+        }
+        .glassFormRowBackground(theme: model.theme)
+        .glassButtonStyle(theme: model.theme)
+    }
+
+    private func menuBarMetricBinding(
+        _ metric: MenuBarMetric
+    ) -> Binding<Bool> {
+        Binding(
+            get: { model.menuBarMetrics.contains(metric) },
+            set: { selected in
+                var metrics = model.menuBarMetrics
+                if selected {
+                    guard !metrics.contains(metric),
+                          metrics.count
+                            < MenuBarMetricConfiguration.maximumCount else {
+                        return
+                    }
+                    metrics.append(metric)
+                } else {
+                    guard metrics.count > 1 else { return }
+                    metrics.removeAll { $0 == metric }
+                }
+                coordinator.setMenuBarMetrics(metrics)
+            }
+        )
+    }
+
+    private func moveMenuBarMetric(
+        _ metric: MenuBarMetric,
+        offset: Int
+    ) {
+        guard let index = model.menuBarMetrics.firstIndex(of: metric) else {
+            return
+        }
+        let target = index + offset
+        guard model.menuBarMetrics.indices.contains(target) else { return }
+        var metrics = model.menuBarMetrics
+        metrics.swapAt(index, target)
+        coordinator.setMenuBarMetrics(metrics)
     }
 
     // MARK: - Agent 用量卡

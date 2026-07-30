@@ -35,6 +35,19 @@ package enum DashboardModule: String, CaseIterable, Codable, Identifiable, Senda
         }
     }
 
+    package var collectorModule: CollectorModule? {
+        switch self {
+        case .agentUsage:
+            return .agentUsage
+        case .github:
+            return .github
+        case .gitlab:
+            return .gitlab
+        case .settings:
+            return nil
+        }
+    }
+
     package init(_ module: CollectorModule) {
         switch module {
         case .agentUsage:
@@ -143,10 +156,14 @@ package final class AppModel: ObservableObject {
     /// 设置页操作失败的用户可读错误, 不含凭证.
     @Published package private(set) var settingsErrorMessage: String?
     @Published package private(set) var dockBadgeState: DockBadgeState = .none
+    @Published package private(set) var menuBarMetrics: [MenuBarMetric]
     /// 当前外观主题, 默认经典; 由 OnboardingCoordinator 从配置恢复和持久化.
     @Published package var theme: AppTheme = .classic
 
-    package init() {
+    package init(menuBarMetricRawValues: [String]? = nil) {
+        menuBarMetrics = MenuBarMetricConfiguration(
+            rawValues: menuBarMetricRawValues
+        ).metrics
         moduleStatuses = Dictionary(
             uniqueKeysWithValues: DashboardModule.allCases.map {
                 ($0, .notConfigured)
@@ -224,6 +241,10 @@ package final class AppModel: ObservableObject {
 
     package func setSettingsError(_ message: String?) {
         settingsErrorMessage = message
+    }
+
+    package func setMenuBarMetrics(_ metrics: [MenuBarMetric]) {
+        menuBarMetrics = MenuBarMetricConfiguration(metrics: metrics).metrics
     }
 
     /// 判断模块是否满足前置依赖, 允许执行 Collector.

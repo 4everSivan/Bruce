@@ -106,22 +106,7 @@ private struct ModuleDetailView: View {
     }
 }
 
-private extension DashboardModule {
-    var collectorModule: CollectorModule? {
-        switch self {
-        case .agentUsage:
-            return .agentUsage
-        case .github:
-            return .github
-        case .gitlab:
-            return .gitlab
-        case .settings:
-            return nil
-        }
-    }
-}
-
-private struct WidgetPlaceholder: View {
+struct WidgetPlaceholder: View {
     let module: DashboardModule
     let status: ModuleStatus
     var theme: AppTheme = .classic

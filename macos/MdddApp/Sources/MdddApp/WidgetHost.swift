@@ -26,22 +26,22 @@ enum WidgetResourceError: Error {
 
 struct BundledWidgetResources {
     static func pageURL(for module: CollectorModule) throws -> URL {
-        guard let url = Bundle.module.url(
-            forResource: "index",
-            withExtension: "html",
-            subdirectory: "Widgets/\(module.rawValue)"
-        ) else {
+        guard let rootURL = widgetRootURL(),
+              let url = existingURL(
+                rootURL.appendingPathComponent(
+                    "\(module.rawValue)/index.html"
+                )
+              ) else {
             throw WidgetResourceError.missingResource
         }
         return url
     }
 
     static func bootstrapSource() throws -> String {
-        guard let url = Bundle.module.url(
-            forResource: "host-bootstrap",
-            withExtension: "js",
-            subdirectory: "Widgets"
-        ) else {
+        guard let rootURL = widgetRootURL(),
+              let url = existingURL(
+                rootURL.appendingPathComponent("host-bootstrap.js")
+              ) else {
             throw WidgetResourceError.missingResource
         }
         return try String(contentsOf: url, encoding: .utf8)
@@ -50,14 +50,59 @@ struct BundledWidgetResources {
     /// 液态玻璃主题 CSS 文本. 共享文件位于 Widgets/ 根目录,
     /// 超出 loadFileURL 的读取范围, 由原生侧读入后经 JS 注入.
     static func glassThemeCSS() -> String? {
-        guard let url = Bundle.module.url(
-            forResource: "glass-theme",
-            withExtension: "css",
-            subdirectory: "Widgets"
-        ) else {
+        guard let rootURL = widgetRootURL(),
+              let url = existingURL(
+                rootURL.appendingPathComponent("glass-theme.css")
+              ) else {
             return nil
         }
         return try? String(contentsOf: url, encoding: .utf8)
+    }
+
+    private static func widgetRootURL() -> URL? {
+        if let resourceURL = Bundle.main.resourceURL,
+           let packagedRoot = existingURL(
+               resourceURL.appendingPathComponent("Widgets")
+           ) {
+            return packagedRoot
+        }
+
+        let executableRoot = URL(fileURLWithPath: CommandLine.arguments[0])
+            .deletingLastPathComponent()
+        let workingRoot = URL(
+            fileURLWithPath: FileManager.default.currentDirectoryPath
+        )
+        for initialRoot in [executableRoot, workingRoot] {
+            var currentRoot = initialRoot
+            for _ in 0..<10 {
+                let packageCandidate = currentRoot
+                    .appendingPathComponent("Sources")
+                    .appendingPathComponent("MdddApp")
+                    .appendingPathComponent("Resources")
+                    .appendingPathComponent("Widgets")
+                if let root = existingURL(packageCandidate) {
+                    return root
+                }
+                let repositoryCandidate = currentRoot
+                    .appendingPathComponent("macos")
+                    .appendingPathComponent("MdddApp")
+                    .appendingPathComponent("Sources")
+                    .appendingPathComponent("MdddApp")
+                    .appendingPathComponent("Resources")
+                    .appendingPathComponent("Widgets")
+                if let root = existingURL(repositoryCandidate) {
+                    return root
+                }
+                currentRoot = currentRoot.deletingLastPathComponent()
+            }
+        }
+        return nil
+    }
+
+    private static func existingURL(_ candidate: URL) -> URL? {
+        FileManager.default.fileExists(atPath: candidate.path)
+            ? candidate
+            : nil
     }
 }
 

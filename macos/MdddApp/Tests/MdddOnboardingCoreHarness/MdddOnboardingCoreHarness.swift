@@ -484,6 +484,10 @@ struct MdddOnboardingCoreHarness {
         config.gitlabBaseURL = "https://gitlab.example.com"
         config.selectedModules = ["github", "gitlab"]
         config.consentVersion = 1
+        config.menuBarMetrics = [
+            "minimumRemainingQuota",
+            "todayTokens",
+        ]
 
         try store.save(config)
         let loaded = store.load()
@@ -493,6 +497,13 @@ struct MdddOnboardingCoreHarness {
         try coreExpect(loaded?.gitlabBaseURL == "https://gitlab.example.com", "gitlabBaseURL mismatch")
         try coreExpect(loaded?.selectedModules == ["github", "gitlab"], "selectedModules mismatch")
         try coreExpect(loaded?.consentVersion == 1, "consentVersion mismatch")
+        try coreExpect(
+            loaded?.menuBarMetrics == [
+                "minimumRemainingQuota",
+                "todayTokens",
+            ],
+            "menuBarMetrics mismatch"
+        )
     }
 
     private static func configStoreReturnsEmptyWhenMissing() throws {

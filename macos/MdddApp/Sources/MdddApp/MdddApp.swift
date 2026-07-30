@@ -12,6 +12,8 @@ struct MdddApp: App {
     private let runtime: AppRuntime
     private let scheduler: RefreshScheduler
     private let runner: CollectorRunner
+    private let bootstrap: ApplicationBootstrap
+    private let settingsWindowController: SettingsWindowController
 
     init() {
         let pythonURL = URL(fileURLWithPath: "/usr/bin/python3")
@@ -54,51 +56,68 @@ struct MdddApp: App {
             credentialStore: credentialStore
         )
         _coordinator = StateObject(wrappedValue: coordinator)
-        _diagnostics = StateObject(wrappedValue: DiagnosticService(
+        let diagnostics = DiagnosticService(
             model: model,
             scheduler: scheduler,
             store: resolvedStore
-        ))
+        )
+        _diagnostics = StateObject(wrappedValue: diagnostics)
+        bootstrap = ApplicationBootstrap(
+            runtime: runtime,
+            scheduler: scheduler,
+            runner: runner,
+            coordinator: coordinator,
+            model: model
+        )
+        settingsWindowController = SettingsWindowController(
+            model: model,
+            coordinator: coordinator,
+            diagnostics: diagnostics
+        )
     }
 
     var body: some Scene {
-        Window("mddd", id: MainWindow.identifier.rawValue) {
-            DashboardView()
+        MenuBarExtra {
+            MenuBarDashboardView(
+                openSettings: {
+                    settingsWindowController.present()
+                },
+                terminateApplication: {
+                    NSApplication.shared.terminate(nil)
+                }
+            )
                 .environmentObject(model)
                 .environmentObject(coordinator)
-                .environmentObject(diagnostics)
-                .background(MainWindowRegistration())
+        } label: {
+            MenuBarLabelView(model: model)
                 .onAppear {
-                    wireScheduler()
-                    appDelegate.configure(runtime: runtime)
-                    runtime.startSchedulerIfNeeded()
-                    coordinator.scanAndReconcile()
-                    appDelegate.setDockBadge(model.dockBadgeState)
-                }
-                .onReceive(model.$dockBadgeState) { state in
-                    appDelegate.setDockBadge(state)
+                    startApplicationIfNeeded()
                 }
         }
-        .defaultSize(width: 980, height: 680)
-        .commands {
-            CommandGroup(replacing: .newItem) {}
-        }
+        .menuBarExtraStyle(.window)
     }
 
-    private func wireScheduler() {
-        scheduler.onStatusChange = { [weak model] module, runState, detail in
-            model?.setStatus(
-                ModuleStatus(state: runState, detail: detail),
-                for: DashboardModule(module)
-            )
+    private func startApplicationIfNeeded() {
+        appDelegate.configure(runtime: runtime)
+        let didStart = bootstrap.startIfNeeded()
+        if didStart, !coordinator.consentConfirmed {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                settingsWindowController.present()
+            }
         }
-        scheduler.onArtifactChange = { [weak model] module, artifact in
-            model?.setArtifact(artifact, for: DashboardModule(module))
-        }
-        runtime.configure(scheduler: scheduler, runner: runner)
     }
 
     private static func resolveBridgeURL() -> URL? {
+        if let resourceURL = Bundle.main.resourceURL {
+            let packagedBridge = resourceURL
+                .appendingPathComponent("runtime")
+                .appendingPathComponent("bridge")
+                .appendingPathComponent("run_bridge.py")
+            if FileManager.default.fileExists(atPath: packagedBridge.path) {
+                return packagedBridge
+            }
+        }
+
         let executable = CommandLine.arguments[0]
         var current = URL(fileURLWithPath: executable)
             .deletingLastPathComponent()

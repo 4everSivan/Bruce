@@ -15,6 +15,8 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
     public var lastVerifiedAt: [String: String]
     /// 外观主题 ("classic" / "liquid-glass"). nil 按 classic 处理, 旧配置文件无此键.
     public var theme: String?
+    /// 菜单栏指标 rawValue 有序列表. nil 使用应用默认值.
+    public var menuBarMetrics: [String]?
 
     public init(
         schemaVersion: Int = OnboardingConfiguration.currentSchemaVersion,
@@ -24,7 +26,8 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         consentVersion: Int? = nil,
         connectionStates: [String: String] = [:],
         lastVerifiedAt: [String: String] = [:],
-        theme: String? = nil
+        theme: String? = nil,
+        menuBarMetrics: [String]? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.pythonPath = pythonPath
@@ -34,6 +37,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         self.connectionStates = connectionStates
         self.lastVerifiedAt = lastVerifiedAt
         self.theme = theme
+        self.menuBarMetrics = menuBarMetrics
     }
 }
 

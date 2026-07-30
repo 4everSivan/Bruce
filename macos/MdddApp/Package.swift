@@ -23,9 +23,7 @@ let package = Package(
         .executableTarget(
             name: "MdddApp",
             dependencies: ["MdddAppCore", "MdddOnboardingCore"],
-            resources: [
-                .copy("Resources/Widgets"),
-            ]
+            exclude: ["Resources"]
         ),
         .executableTarget(
             name: "MdddOnboardingCoreHarness",
