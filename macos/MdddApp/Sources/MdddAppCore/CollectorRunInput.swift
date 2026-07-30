@@ -3,7 +3,7 @@ import MdddOnboardingCore
 
 /// 单次 Collector 运行的受控输入. 凭证只经 Bridge stdin JSON 传递,
 /// 不进入命令行参数或日志.
-struct CollectorRunInput: Sendable {
+package struct CollectorRunInput: Sendable {
     let context: [String: JSONValue]
     let credentials: [String: JSONValue]
 }
@@ -26,11 +26,11 @@ protocol CollectorRunInputProviding {
 /// GitHub: 不传 token, 由 gh 官方登录态承载.
 /// GitLab: 从配置读规范化 base URL, 从 Keychain 读 PAT; 两者缺失都阻止启动.
 @MainActor
-final class OnboardingRunInputProvider: CollectorRunInputProviding {
+package final class OnboardingRunInputProvider: CollectorRunInputProviding {
     private let configStore: OnboardingConfigurationStore?
     private let credentialStore: CredentialStore
 
-    init(
+    package init(
         configStore: OnboardingConfigurationStore?,
         credentialStore: CredentialStore
     ) {

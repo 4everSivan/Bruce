@@ -5,7 +5,7 @@ import Foundation
 // MARK: - RefreshClock
 
 @MainActor
-protocol RefreshClock: AnyObject {
+package protocol RefreshClock: AnyObject {
     func now() -> Date
 }
 
@@ -75,7 +75,7 @@ struct ModuleScheduleState: Equatable, Sendable {
 // MARK: - RefreshScheduler
 
 @MainActor
-final class RefreshScheduler {
+package final class RefreshScheduler {
     private let executor: CollectorExecuting
     private let store: ArtifactStore
     private let clock: RefreshClock
@@ -94,8 +94,27 @@ final class RefreshScheduler {
     private var wakeObserver: NSObjectProtocol?
     private var reactivationObserver: NSObjectProtocol?
 
-    var onStatusChange: ((CollectorModule, ModuleRunState, String?) -> Void)?
-    var onArtifactChange: ((CollectorModule, JSONValue?) -> Void)?
+    package var onStatusChange: ((CollectorModule, ModuleRunState, String?) -> Void)?
+    package var onArtifactChange: ((CollectorModule, JSONValue?) -> Void)?
+
+    package convenience init(
+        executor: CollectorRunner,
+        store: ArtifactStore,
+        runInputProvider: OnboardingRunInputProvider? = nil
+    ) {
+        self.init(
+            executor: executor,
+            store: store,
+            clock: SystemRefreshClock(),
+            timerScheduler: DispatchRunnerTimerScheduler(),
+            configuration: .default,
+            jitterProvider: { capped in
+                capped * Double.random(in: 0...0.1)
+            },
+            registerWakeNotifications: true,
+            runInputProvider: runInputProvider
+        )
+    }
 
     init(
         executor: CollectorExecuting,
@@ -125,7 +144,7 @@ final class RefreshScheduler {
 
     // MARK: - Lifecycle
 
-    func start() {
+    package func start() {
         guard !started else { return }
         started = true
         stopped = false
@@ -151,7 +170,7 @@ final class RefreshScheduler {
         }
     }
 
-    func stop() {
+    package func stop() {
         stopped = true
         for (_, timer) in timers { timer.cancel() }
         timers.removeAll()
@@ -169,7 +188,7 @@ final class RefreshScheduler {
 
     // MARK: - Module control
 
-    func enableModule(_ module: CollectorModule) {
+    package func enableModule(_ module: CollectorModule) {
         guard var state = states[module] else { return }
         state.enabled = true
         if state.phase == .disabled { state.phase = .idle }
@@ -181,7 +200,7 @@ final class RefreshScheduler {
         updateStatus(for: module)
     }
 
-    func disableModule(_ module: CollectorModule) {
+    package func disableModule(_ module: CollectorModule) {
         guard var state = states[module] else { return }
         state.enabled = false
         state.phase = .disabled
@@ -192,7 +211,7 @@ final class RefreshScheduler {
         updateStatus(for: module)
     }
 
-    func setAutoRefresh(_ enabled: Bool, for module: CollectorModule) {
+    package func setAutoRefresh(_ enabled: Bool, for module: CollectorModule) {
         guard var state = states[module] else { return }
         state.autoRefreshEnabled = enabled
         states[module] = state
@@ -206,18 +225,18 @@ final class RefreshScheduler {
 
     // MARK: - Manual refresh
 
-    func refresh(_ module: CollectorModule) {
+    package func refresh(_ module: CollectorModule) {
         guard let state = states[module], state.enabled else { return }
         triggerRefresh(for: module, isManual: true)
     }
 
-    func refreshAll() {
+    package func refreshAll() {
         for module in CollectorModule.allCases { refresh(module) }
     }
 
     // MARK: - Sleep / wake
 
-    func handleWakeOrReactivation() {
+    package func handleWakeOrReactivation() {
         let now = clock.now()
         for (module, state) in states {
             guard state.enabled, state.autoRefreshEnabled else { continue }
@@ -405,6 +424,7 @@ final class RefreshScheduler {
         if shouldScheduleNext && state.autoRefreshEnabled && !stopped {
             scheduleNextRefresh(for: module)
         }
+        startQueuedModulesIfCapacityAvailable()
     }
 
     private func handleResult(
@@ -505,6 +525,7 @@ final class RefreshScheduler {
         } else if shouldScheduleNext && state.autoRefreshEnabled && !stopped {
             scheduleNextRefresh(for: module)
         }
+        startQueuedModulesIfCapacityAvailable()
     }
 
     private func handleCancellation(for module: CollectorModule) {
@@ -520,6 +541,26 @@ final class RefreshScheduler {
             hasCache ? .stale : .notConfigured,
             nil
         )
+        startQueuedModulesIfCapacityAvailable()
+    }
+
+    /// 某个模块释放并发槽位后启动等待中的模块. pendingRerun 同时承载
+    /// 同模块合并请求和跨模块容量排队, 这里只消费 idle 模块.
+    private func startQueuedModulesIfCapacityAvailable() {
+        guard !stopped else { return }
+        while states.values.filter({ $0.phase == .running }).count
+            < configuration.capacityLimit {
+            guard let module = CollectorModule.allCases.first(where: {
+                guard let state = states[$0] else { return false }
+                return state.enabled
+                    && state.phase == .idle
+                    && state.pendingRerun
+            }) else {
+                return
+            }
+            states[module]?.pendingRerun = false
+            startRefresh(for: module)
+        }
     }
 
     // MARK: - Internal: backoff

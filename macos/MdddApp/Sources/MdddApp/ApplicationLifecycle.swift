@@ -1,13 +1,9 @@
 import AppKit
 import Foundation
+import MdddAppCore
 
 enum MainWindow {
     static let identifier = NSUserInterfaceItemIdentifier("mddd.main-window")
-}
-
-@MainActor
-protocol MainWindowPresenting: AnyObject {
-    func presentMainWindow()
 }
 
 @MainActor
@@ -23,55 +19,6 @@ final class AppKitMainWindowPresenter: MainWindowPresenting {
         }
         window.makeKeyAndOrderFront(nil)
         NSApplication.shared.activate(ignoringOtherApps: true)
-    }
-}
-
-@MainActor
-final class ApplicationLifecycleCoordinator {
-    typealias GracePeriodScheduler = (
-        @escaping @MainActor () -> Void
-    ) -> Void
-
-    private let runtime: ApplicationRuntimeControlling
-    private let windowPresenter: MainWindowPresenting
-    private let scheduleGracePeriod: GracePeriodScheduler
-    private var terminationStarted = false
-
-    init(
-        runtime: ApplicationRuntimeControlling,
-        windowPresenter: MainWindowPresenting,
-        scheduleGracePeriod: @escaping GracePeriodScheduler = { action in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                MainActor.assumeIsolated {
-                    action()
-                }
-            }
-        }
-    ) {
-        self.runtime = runtime
-        self.windowPresenter = windowPresenter
-        self.scheduleGracePeriod = scheduleGracePeriod
-    }
-
-    func reopenMainWindow() {
-        windowPresenter.presentMainWindow()
-    }
-
-    func beginTermination(completion: @escaping @MainActor () -> Void) {
-        guard !terminationStarted else { return }
-        terminationStarted = true
-        runtime.stopScheduling()
-        runtime.cancelRunningTasks()
-        guard runtime.hasRunningTasks else {
-            completion()
-            return
-        }
-        scheduleGracePeriod { [runtime] in
-            if runtime.hasRunningTasks {
-                runtime.forceTerminateRunningTasks()
-            }
-            completion()
-        }
     }
 }
 

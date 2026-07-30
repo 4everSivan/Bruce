@@ -43,16 +43,31 @@ python3 -m py_compile \
 
 ## 测试
 
-### MdddOnboardingCore library target (已接入构建)
+### Core targets
 
 - `MdddOnboardingCore` 是不含 SwiftUI/AppKit 的纯 library target, 可以被测试 harness 通过 `@testable import` 正常链接和运行.
-- `MdddOnboardingCoreHarness` 是依赖 Core library 的 `@main` 可执行 harness, 已接入 `Package.swift` 构建目标.
-- 运行: `swift run --package-path macos/MdddApp MdddOnboardingCoreHarness`
-- 当前包含 49 个测试, 覆盖 Python 版本解析, 路径解析, ActivationGate, ReadinessEvaluator, 配置存储, Keychain 抽象和 schema profile.
+- `MdddAppCore` 承载 AppModel, CollectorRunner, RefreshScheduler, ArtifactStore, Widget 状态, 生命周期协调和诊断服务.
+- `MdddApp` executable target 只保留 `@main`, SwiftUI/AppKit 界面, AppDelegate 装配和 Widget 资源.
+- 包内跨 target API 使用 Swift `package` 访问级别, 不扩大为对包外公开的接口.
 
-### 旧 harness (依赖 executable target, 未接入构建)
+### 已接入 SwiftPM 的 Harness
 
-- `macos/MdddApp/Tests/Harnesses/` 下有五个 `@main` 可执行测试 harness: `ArtifactStoreHarness`, `CollectorRunnerHarness`, `NativeLifecycleHarness`, `OnboardingScannerHarness` 和 `RefreshSchedulerHarness`.
-- 这些 harness 依赖 `MdddApp` executable target, 当前在 Command Line Tools 下因 executable 符号无法被外部 target 链接而未接入构建.
-- 每个 harness 接受仓库根路径作为唯一参数, 在完整 Xcode 可用后可通过添加 `executableTarget` 依赖来编译和运行.
-- 后续可将这些 harness 迁移到依赖 `MdddOnboardingCore` 或新建的 library target, 以复用已验证的 library target 测试模式.
+| Harness | 当前用例数 | 覆盖 |
+|---|---:|---|
+| `MdddOnboardingCoreHarness` | 74 | 路径、版本、扫描、readiness、授权 Gate、配置、Keychain 抽象 |
+| `ArtifactStoreHarness` | 4 | schema、私有权限、原子发布、previous 回退和迁移 |
+| `CollectorRunnerHarness` | 5 | stdin 凭证、协议、并发、超时、取消和隔离 Bridge |
+| `RefreshSchedulerHarness` | 9 | 30 分钟定时、合并、退避、授权失败、唤醒、容量和停止 |
+| `NativeLifecycleHarness` | 5 | 单窗口、退出、Dock badge 和原生到 Widget 状态映射 |
+| `DiagnosticsHarness` | 5 | 白名单报告、敏感扫描、最小 ZIP、权限和命名 |
+| `LocalIntegrationHarness` | 1 | 临时 HOME/Application Support、真实本地 Bridge、缓存重启、诊断和清理 |
+
+全部 Harness 可在只有 Apple Command Line Tools 的环境中构建和运行, 不依赖 executable target 链接.
+
+## 统一验证
+
+```bash
+./scripts/verify-local.sh
+```
+
+脚本默认不访问真实账号或 Keychain. `LocalIntegrationHarness` 会在随机临时 HOME 中调用真实 Agent Bridge/Collector 代码, 但只授权本地会话和本地计价能力, 不启用外部额度或仓库平台网络采集.

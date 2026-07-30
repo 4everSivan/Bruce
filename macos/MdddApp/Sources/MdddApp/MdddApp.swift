@@ -1,4 +1,5 @@
 import AppKit
+import MdddAppCore
 import MdddOnboardingCore
 import SwiftUI
 
@@ -7,6 +8,7 @@ struct MdddApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var model: AppModel
     @StateObject private var coordinator: OnboardingCoordinator
+    @StateObject private var diagnostics: DiagnosticService
     private let runtime: AppRuntime
     private let scheduler: RefreshScheduler
     private let runner: CollectorRunner
@@ -52,6 +54,11 @@ struct MdddApp: App {
             credentialStore: credentialStore
         )
         _coordinator = StateObject(wrappedValue: coordinator)
+        _diagnostics = StateObject(wrappedValue: DiagnosticService(
+            model: model,
+            scheduler: scheduler,
+            store: resolvedStore
+        ))
     }
 
     var body: some Scene {
@@ -59,6 +66,7 @@ struct MdddApp: App {
             DashboardView()
                 .environmentObject(model)
                 .environmentObject(coordinator)
+                .environmentObject(diagnostics)
                 .background(MainWindowRegistration())
                 .onAppear {
                     wireScheduler()

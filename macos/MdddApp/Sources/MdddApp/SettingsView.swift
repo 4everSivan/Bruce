@@ -1,15 +1,20 @@
 import AppKit
+import MdddAppCore
 import MdddOnboardingCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Onboarding 设置页: 三张模块状态卡 + 统一授权区.
 /// 状态同时使用图标和文字; 扫描或验证中的卡片只禁用对应按钮, 不阻塞其他模块.
 struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var coordinator: OnboardingCoordinator
+    @EnvironmentObject private var diagnostics: DiagnosticService
 
     @State private var gitlabBaseURLText = ""
     @State private var gitlabPATText = ""
+    @State private var diagnosticsPreview = ""
+    @State private var showsDiagnosticsPreview = false
     @FocusState private var patFieldFocused: Bool
 
     var body: some View {
@@ -27,11 +32,20 @@ struct SettingsView: View {
             githubCard
             gitlabCard
             consentSection
+            diagnosticsSection
         }
         .formStyle(.grouped)
         .onAppear {
             if gitlabBaseURLText.isEmpty {
                 gitlabBaseURLText = coordinator.configuredGitLabBaseURL ?? ""
+            }
+        }
+        .sheet(isPresented: $showsDiagnosticsPreview) {
+            diagnosticsPreviewSheet
+        }
+        .onChange(of: model.settingsErrorMessage) { message in
+            if let message {
+                announce(message)
             }
         }
     }
@@ -101,8 +115,10 @@ struct SettingsView: View {
             HStack {
                 Button("选择 Python…") { choosePython() }
                     .disabled(busy)
+                    .accessibilityHint("选择 Python 3.9 或更高版本的可执行文件")
                 Button("重新检查") { coordinator.rescan() }
                     .disabled(busy)
+                    .accessibilityLabel("重新检查 Agent 用量依赖")
                 if busy {
                     ProgressView()
                         .controlSize(.small)
@@ -145,8 +161,10 @@ struct SettingsView: View {
             HStack {
                 Button("登录 GitHub") { coordinator.loginGitHub() }
                     .disabled(busy || ghProbe?.status != .available)
+                    .accessibilityHint("在浏览器中完成 GitHub 官方登录")
                 Button("重新检查") { coordinator.rescan() }
                     .disabled(busy)
+                    .accessibilityLabel("重新检查 GitHub 连接")
                 if busy {
                     ProgressView()
                         .controlSize(.small)
@@ -170,10 +188,13 @@ struct SettingsView: View {
             TextField("HTTPS base URL", text: $gitlabBaseURLText)
                 .textFieldStyle(.roundedBorder)
                 .disabled(busy)
+                .accessibilityLabel("GitLab HTTPS 地址")
             SecureField("PAT (输入后不回显)", text: $gitlabPATText)
                 .textFieldStyle(.roundedBorder)
                 .focused($patFieldFocused)
                 .disabled(busy)
+                .accessibilityLabel("GitLab 个人访问令牌")
+                .accessibilityHint("令牌只保存到本应用的 Keychain")
             LabeledContent("连接状态") {
                 statusText(
                     connectionStatusText(result?.connection),
@@ -194,16 +215,19 @@ struct SettingsView: View {
                     gitlabPATText = ""
                 }
                 .disabled(busy || gitlabBaseURLText.isEmpty || gitlabPATText.isEmpty)
+                .accessibilityHint("保存到 Keychain 并验证 GitLab 连接")
                 Button("更换 PAT") {
                     gitlabPATText = ""
                     patFieldFocused = true
                 }
                 .disabled(busy)
+                .accessibilityHint("清空令牌输入框并移动键盘焦点")
                 Button("断开") {
                     coordinator.revokeModule(.gitlab)
                     gitlabPATText = ""
                 }
                 .disabled(busy)
+                .accessibilityHint("停止 GitLab 调度并删除本应用保存的令牌")
                 if busy {
                     ProgressView()
                         .controlSize(.small)
@@ -247,6 +271,7 @@ struct SettingsView: View {
                     Button("撤销全部授权") {
                         coordinator.revokeAllConsent()
                     }
+                    .accessibilityHint("停止所有模块的自动采集")
                 }
             } else {
                 Button("确认授权") {
@@ -255,10 +280,94 @@ struct SettingsView: View {
                     )
                 }
                 .disabled(coordinator.selectedModules.isEmpty)
+                .accessibilityHint("允许已选模块按默认 30 分钟周期采集")
             }
         }
         .glassFormRowBackground(theme: model.theme)
         .glassButtonStyle(theme: model.theme)
+    }
+
+    // MARK: - 诊断
+
+    private var diagnosticsSection: some View {
+        Section("诊断") {
+            Text("诊断包仅包含应用与系统版本、模块状态、依赖状态和快照校验结果, 不包含 Artifact、账号信息或凭证")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack {
+                Button("预览诊断") {
+                    do {
+                        diagnosticsPreview = try diagnostics.preview()
+                        model.setSettingsError(nil)
+                        showsDiagnosticsPreview = true
+                    } catch {
+                        model.setSettingsError("诊断预览生成失败")
+                    }
+                }
+                .accessibilityHint("显示导出前的脱敏 JSON 内容")
+                Button("导出诊断包…") {
+                    exportDiagnostics()
+                }
+                .accessibilityHint("选择位置保存不含业务数据的 ZIP 文件")
+            }
+        }
+        .glassFormRowBackground(theme: model.theme)
+        .glassButtonStyle(theme: model.theme)
+    }
+
+    private var diagnosticsPreviewSheet: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("诊断预览")
+                    .font(.title2.weight(.semibold))
+                Spacer()
+                Button("关闭") {
+                    showsDiagnosticsPreview = false
+                }
+                .keyboardShortcut(.cancelAction)
+            }
+            Text("以下内容与导出包中的 report.json 一致")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            ScrollView([.horizontal, .vertical]) {
+                Text(diagnosticsPreview)
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .accessibilityLabel("脱敏诊断 JSON 预览")
+        }
+        .padding(20)
+        .frame(minWidth: 640, minHeight: 460)
+    }
+
+    private func exportDiagnostics() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.zip]
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = diagnostics.suggestedFilename()
+        panel.message = "导出不含 Artifact、账号信息或凭证的最小诊断包"
+        guard panel.runModal() == .OK, let destination = panel.url else {
+            return
+        }
+        do {
+            try diagnostics.export(to: destination)
+            model.setSettingsError(nil)
+            announce("诊断包已导出")
+        } catch {
+            model.setSettingsError("诊断包导出失败, 未写入业务数据")
+        }
+    }
+
+    private func announce(_ message: String) {
+        NSAccessibility.post(
+            element: NSApplication.shared,
+            notification: .announcementRequested,
+            userInfo: [
+                .announcement: message,
+                .priority: NSAccessibilityPriorityLevel.high.rawValue,
+            ]
+        )
     }
 
     // MARK: - Helpers

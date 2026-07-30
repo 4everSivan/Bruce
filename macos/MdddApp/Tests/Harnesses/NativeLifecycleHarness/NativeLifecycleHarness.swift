@@ -1,5 +1,6 @@
 import Foundation
-@testable import MdddApp
+@testable import MdddAppCore
+import MdddOnboardingCore
 
 enum TestFailure: Error, CustomStringConvertible {
     case expectation(String)
@@ -74,7 +75,8 @@ struct NativeLifecycleHarness {
         try exitForcesRemainingTasksAfterGracePeriod()
         try exitCompletesImmediatelyWithoutRunningTasks()
         try dockBadgeNeverContainsIdentifiers()
-        print("Native lifecycle tests passed: 4")
+        try widgetStatesMapEveryNativeState()
+        print("Native lifecycle tests passed: 5")
     }
 
     private static func closeReopenKeepsOneWindowAndScheduler() throws {
@@ -158,5 +160,25 @@ struct NativeLifecycleHarness {
             for: .gitlab
         )
         try expect(model.dockBadgeState.label == "!", "failure badge changed")
+    }
+
+    private static func widgetStatesMapEveryNativeState() throws {
+        let expected: [(ModuleRunState, WidgetDisplayState)] = [
+            (.notConfigured, .notConfigured),
+            (.ready, .loading),
+            (.refreshing, .refreshing),
+            (.fresh, .fresh),
+            (.partial, .partial),
+            (.stale, .stale),
+            (.authRequired, .authRequired),
+            (.offline, .offline),
+            (.failed, .error),
+        ]
+        for (native, widget) in expected {
+            try expect(
+                WidgetDisplayState(moduleState: native) == widget,
+                "Widget state mapping failed for \(native.rawValue)"
+            )
+        }
     }
 }

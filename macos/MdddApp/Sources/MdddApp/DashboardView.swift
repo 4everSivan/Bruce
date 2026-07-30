@@ -1,4 +1,5 @@
 import AppKit
+import MdddAppCore
 import MdddOnboardingCore
 import SwiftUI
 
@@ -22,7 +23,12 @@ struct DashboardView: View {
                     Image(systemName: module.systemImage)
                 }
                 .tag(module)
-                .accessibilityLabel(module.title)
+                .accessibilityLabel(
+                    module == .settings
+                        ? module.title
+                        : "\(module.title), \(model.status(for: module).state.title)"
+                )
+                .accessibilityHint("选择后打开\(module.title)")
             }
             .navigationTitle("mddd")
             .navigationSplitViewColumnWidth(min: 180, ideal: 210)
@@ -35,6 +41,7 @@ struct DashboardView: View {
 
 private struct ModuleDetailView: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var coordinator: OnboardingCoordinator
     let module: DashboardModule
 
     var body: some View {
@@ -54,6 +61,21 @@ private struct ModuleDetailView: View {
                     .foregroundStyle(.secondary)
                     .glassStatusPill(theme: model.theme)
                     .accessibilityLabel("模块状态: \(status.state.title)")
+                if let collectorModule = module.collectorModule {
+                    Button {
+                        coordinator.refresh(collectorModule)
+                    } label: {
+                        Label("刷新", systemImage: "arrow.clockwise")
+                    }
+                    .keyboardShortcut("r", modifiers: .command)
+                    .disabled(!isReady)
+                    .accessibilityLabel("刷新\(module.title)")
+                    .accessibilityHint(
+                        status.state == .refreshing
+                            ? "当前刷新完成后再执行一次"
+                            : "使用当前授权重新采集此模块"
+                    )
+                }
             }
             Group {
                 if module == .settings {

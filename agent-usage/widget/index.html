@@ -123,7 +123,10 @@
     animation: blink 2.4s ease-in-out infinite;
   }
   @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
-  @media (prefers-reduced-motion: reduce) { .live::before { animation: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    .live::before { animation: none; }
+    .m-fill, .h-bar { transition: none; }
+  }
   .stamp {
     margin-left: auto; font-size: var(--fs-meta);
     font-family: var(--font-serif);

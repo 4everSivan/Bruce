@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 import MdddOnboardingCore
 
-enum JSONValue: Codable, Equatable, Sendable {
+package enum JSONValue: Codable, Equatable, Sendable {
     case string(String)
     case integer(Int)
     case double(Double)
@@ -11,7 +11,7 @@ enum JSONValue: Codable, Equatable, Sendable {
     case array([JSONValue])
     case null
 
-    init(from decoder: Decoder) throws {
+    package init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         if container.decodeNil() {
             self = .null
@@ -37,7 +37,7 @@ enum JSONValue: Codable, Equatable, Sendable {
         }
     }
 
-    func encode(to encoder: Encoder) throws {
+    package func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         switch self {
         case .string(let value):
@@ -62,6 +62,7 @@ struct CollectorTimeouts: Encodable, Equatable, Sendable {
     let localScanSeconds: Double
     let externalRequestSeconds: Double
     let moduleSeconds: Double
+    /// Swift 侧取消子进程的宽限期, 不属于 Bridge 请求协议.
     let cancellationGraceSeconds: Double
 
     static let `default` = CollectorTimeouts(
@@ -219,6 +220,14 @@ struct SystemCollectorProcessLauncher: CollectorProcessLaunching {
 
         process.executableURL = executableURL
         process.arguments = arguments
+        // Bridge 凭证只经 stdin 传递. 子进程不继承可能含 token、
+        // proxy credentials 或 provider key 的应用环境.
+        process.environment = [
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "LANG": "en_US.UTF-8",
+            "LC_ALL": "en_US.UTF-8",
+            "TMPDIR": FileManager.default.temporaryDirectory.path,
+        ]
         process.standardInput = stdinPipe
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
@@ -311,7 +320,7 @@ struct DispatchRunnerTimerScheduler: RunnerTimerScheduling {
 }
 
 @MainActor
-final class CollectorRunner {
+package final class CollectorRunner {
     private enum RequestedEnd {
         case none
         case cancelled
@@ -344,10 +353,21 @@ final class CollectorRunner {
     private let timeouts: CollectorTimeouts
     private var activeRuns: [CollectorModule: ActiveRun] = [:]
 
+    package convenience init(
+        pythonURL: URL,
+        bridgeURL: URL
+    ) {
+        self.init(
+            pythonURL: pythonURL,
+            bridgeURL: bridgeURL,
+            timeouts: .default
+        )
+    }
+
     init(
         pythonURL: URL,
         bridgeURL: URL,
-        timeouts: CollectorTimeouts = .default
+        timeouts: CollectorTimeouts
     ) {
         self.pythonURL = pythonURL
         self.bridgeURL = bridgeURL
@@ -370,7 +390,7 @@ final class CollectorRunner {
         self.timeouts = timeouts
     }
 
-    var activeModuleCount: Int {
+    package var activeModuleCount: Int {
         activeRuns.count
     }
 
@@ -398,7 +418,7 @@ final class CollectorRunner {
         }
     }
 
-    func cancel(module: CollectorModule) {
+    package func cancel(module: CollectorModule) {
         guard let active = activeRuns[module] else { return }
         guard active.requestedEnd == .none else { return }
         active.requestedEnd = .cancelled
@@ -406,13 +426,13 @@ final class CollectorRunner {
         scheduleForceTermination(module: module, active: active)
     }
 
-    func cancelAll() {
+    package func cancelAll() {
         for module in Array(activeRuns.keys) {
             cancel(module: module)
         }
     }
 
-    func forceTerminateAll() {
+    package func forceTerminateAll() {
         activeRuns.values.forEach { $0.handle.forceTerminate() }
     }
 

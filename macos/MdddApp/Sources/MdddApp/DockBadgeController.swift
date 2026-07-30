@@ -1,4 +1,5 @@
 import AppKit
+import MdddAppCore
 
 @MainActor
 protocol DockBadgeControlling: AnyObject {

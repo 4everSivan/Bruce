@@ -22,6 +22,8 @@
 - 首次启动 Onboarding、依赖扫描、登录配置和统一授权摘要。
 - 默认每 30 分钟自动刷新，以及手动刷新、防重入、超时、退避和系统唤醒补采。
 - 最后成功快照优先展示；单模块失败不会阻止其他模块更新。
+- 设置页提供脱敏诊断预览和最小 ZIP 导出，不包含 Artifact 或账号活动数据。
+- 支持键盘导航、VoiceOver 状态语义和 macOS 减少动态效果偏好。
 - 经典书卷风主题，以及受系统版本支持时可选的 Liquid Glass 外观。
 
 ## 界面预览
@@ -80,6 +82,8 @@ SwiftUI / AppKit Dock App
             └─ Agent / GitHub / GitLab Widgets
 ```
 
+可测试业务逻辑位于 `MdddAppCore` library target；`MdddApp` executable target 只保留应用入口、SwiftUI/AppKit 界面装配和 Widget 资源。所有 Swift Harness 直接依赖 Core target。
+
 运行链路:
 
 1. 原生层根据 Onboarding 结果和用户授权决定允许启动的模块。
@@ -98,6 +102,7 @@ Collector 仍保留独立 CLI 入口，用于开发、测试和故障排查，�
 - App 模式下 Python 不直接写 Keychain，也不写回第三方认证文件。
 - Widget 使用非持久化、受 CSP 限制的 WKWebView，不访问 Keychain、文件系统、进程通道或第三方 API。
 - 配置和快照写入用户级 Application Support；真实凭证、账号活动和 `data/*.json` 不得进入仓库。
+- 诊断包采用白名单字段，生成后会解压复核文件清单并再次扫描敏感形态。
 - Dock badge 仅显示通用状态，不显示账号、仓库或 token 明细。
 
 ## 项目结构
@@ -106,6 +111,7 @@ Collector 仍保留独立 CLI 入口，用于开发、测试和故障排查，�
 mddd/
 ├── macos/MdddApp/          # SwiftUI/AppKit Dock 应用、Scheduler、缓存和 WidgetHost
 │   ├── Sources/MdddApp/
+│   ├── Sources/MdddAppCore/
 │   ├── Sources/MdddOnboardingCore/
 │   └── Tests/
 ├── bridge/                 # Swift 与 Python 之间的版本化 JSON 协议和安全校验
@@ -124,7 +130,36 @@ mddd/
 - Widget 源文件: `*/widget/index.html`
 - Artifact schemas: `bridge/schemas/`
 
+## 数据位置、清理与回滚
+
+应用自有数据位于:
+
+- `~/Library/Application Support/mddd/config/onboarding-v1.json`: 非敏感配置和授权版本。
+- `~/Library/Application Support/mddd/snapshots/`: 当前和 previous Artifact 快照。
+- `~/Library/Application Support/mddd/metadata/modules.json`: 最近成功、尝试时间和错误分类。
+- macOS Keychain service `com.mddd.dashboard.credentials`: 应用持有的 GitLab PAT。
+
+清理前先退出应用。在设置页使用“断开”删除单个 GitLab 凭证，或使用“撤销全部授权”停止全部调度；需要完全重置时，再通过 Finder 删除 `~/Library/Application Support/mddd/`，并在“钥匙串访问”中删除上述 service 的项目。删除快照和 Keychain 项不可由应用自动恢复，操作前应确认不再需要最后成功数据和现有授权。
+
+出现回归时可先撤销受影响模块并继续使用其他模块；回退到兼容 Bridge v1 / Artifact v1 的旧构建不会改写第三方数据库。若新快照损坏，应用优先回退 previous；不要通过修改 CC Switch 或 Antigravity 数据库来修复 mddd。
+
+## 故障排查
+
+- 设置页“重新检查”用于复核 Python、`gh`、会话位置和只读 SQLite 状态。
+- GitHub 无法连接时先在终端执行 `gh auth status`；登录仍由 `gh auth login --web` 官方流程完成。
+- GitLab 无法连接时检查 HTTPS base URL、VPN/内部 CA、PAT 是否过期以及最小读取权限。
+- 有旧快照时，刷新失败不会清空主视图；状态文案会区分过期、离线、授权失效和部分成功。
+- 导出支持信息前先使用设置页“预览诊断”，确认其中只有状态和校验元数据。
+
 ## 开发与验证
+
+默认离线验证入口:
+
+```bash
+./scripts/verify-local.sh
+```
+
+该脚本检查 Python 语法，运行全部 Python/Bridge/schema/Widget 测试，构建 Swift 包，并执行 Onboarding、缓存、Runner、调度、生命周期、诊断和隔离集成 Harness。隔离集成只在随机临时 HOME 中运行 Agent Collector，关闭外部额度能力，不访问真实账号、Keychain 或第三方数据库。
 
 Python 语法和测试:
 
@@ -138,11 +173,12 @@ python3 -m py_compile \
 python3 -m pytest -q
 ```
 
-Swift 构建和 Core Harness:
+Swift 构建和单个 Core Harness:
 
 ```bash
 swift build --package-path macos/MdddApp
 swift run --package-path macos/MdddApp MdddOnboardingCoreHarness
+swift run --package-path macos/MdddApp RefreshSchedulerHarness "$PWD"
 ```
 
 Widget JavaScript 语法、安全隔离和 Bundle 副本一致性由 Python 测试覆盖。真实 Collector、OAuth、PAT、签名和 `.app` 发布验证不属于默认测试流程，需要单独授权和对应环境。
@@ -151,6 +187,7 @@ Widget JavaScript 语法、安全隔离和 Bundle 副本一致性由 Python 测�
 
 - [工具链基线](docs/development/toolchain.md)
 - [Provider 授权矩阵](docs/development/provider-auth-matrix.md)
+- [发布人工验收清单](docs/development/release-acceptance.md)
 - [产品化设计](docs/openspec/changes/productize-macos-dock-dashboard/design.md)
 - [实现任务状态](docs/openspec/changes/productize-macos-dock-dashboard/tasks.md)
 
@@ -160,7 +197,7 @@ Widget JavaScript 语法、安全隔离和 Bundle 副本一致性由 Python 测�
 - 完整 Xcode 下的 archive、entitlement、Keychain 和 Dock 生命周期发布验证尚未完成。
 - 真实 GitHub、GitLab 和 Agent Provider 登录验收需要用户在个人 Mac 上明确授权。
 - 30 分钟自动刷新、系统睡眠补偿、凭证续期和撤销仍需真实环境验收。
-- 脱敏诊断导出和部分可访问性优化仍在后续计划中。
+- VoiceOver、增加对比度和全键盘流程仍需在签名发布构建上完成人工验收。
 
 ## License
 

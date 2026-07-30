@@ -1,4 +1,5 @@
 import Foundation
+import MdddAppCore
 import MdddOnboardingCore
 
 /// 协调 Onboarding 扫描, 连接验证, 授权确认和 Scheduler 启用.
@@ -84,6 +85,11 @@ final class OnboardingCoordinator: ObservableObject {
     /// 用户主动触发的重新检查.
     func rescan() {
         scanAndReconcile()
+    }
+
+    /// 用户从模块页主动刷新. Scheduler 负责同模块合并与容量排队.
+    func refresh(_ module: CollectorModule) {
+        scheduler.refresh(module)
     }
 
     private func performScan() async {

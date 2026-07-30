@@ -1,5 +1,6 @@
 import Foundation
-@testable import MdddApp
+@testable import MdddAppCore
+import MdddOnboardingCore
 
 private enum RefreshTestFailure: Error, CustomStringConvertible {
     case expectation(String)
@@ -95,6 +96,7 @@ private final class MockCollectorExecutor: CollectorExecuting {
     private(set) var cancelModuleCount: [CollectorModule: Int] = [:]
     private(set) var cancelAllCount = 0
     var blocksUntilReleased = false
+    var repository: URL?
 
     private var pending: [CollectorModule: [CheckedContinuation<CollectorRunOutput, Error>]] = [:]
 
@@ -152,13 +154,20 @@ private final class MockCollectorExecutor: CollectorExecuting {
     }
 
     private func makeOutput(for module: CollectorModule) throws -> CollectorRunOutput {
-        // Return a minimal valid response
+        guard let repository else {
+            throw RefreshTestFailure.expectation(
+                "mock collector has no fixture repository"
+            )
+        }
         let response = BridgeResponse(
             schemaVersion: 1,
             runId: UUID().uuidString.lowercased(),
             generatedAt: "2026-07-28T12:00:00Z",
             status: .success,
-            artifact: .object(["fixture": .boolean(true)]),
+            artifact: try loadFixture(
+                repository: repository,
+                module: module
+            ),
             credentialUpdates: [],
             diagnostics: []
         )
@@ -242,6 +251,7 @@ private func makeScheduler(
     clock: ManualClock,
     timers: FakeTimerScheduler
 ) throws -> (RefreshScheduler, ArtifactStore, URL) {
+    executor.repository = repository
     let root = FileManager.default.temporaryDirectory
         .appendingPathComponent("mddd-sched-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -272,8 +282,9 @@ private func waitForRunCount(
     _ provider: @escaping @MainActor () -> Int,
     count: Int
 ) async {
-    while provider() < count {
-        await Task.yield()
+    for _ in 0..<1_000 {
+        if provider() >= count { return }
+        try? await Task.sleep(for: .milliseconds(1))
     }
 }
 
@@ -283,8 +294,9 @@ private func waitForPhase(
     module: CollectorModule,
     phase: ModuleScheduleState.Phase
 ) async {
-    while scheduler.moduleState(for: module)?.phase != phase {
-        await Task.yield()
+    for _ in 0..<1_000 {
+        if scheduler.moduleState(for: module)?.phase == phase { return }
+        try? await Task.sleep(for: .milliseconds(1))
     }
 }
 
@@ -302,14 +314,23 @@ struct RefreshSchedulerHarness {
             isDirectory: true
         )
 
+        print("Refresh scheduler: timer")
         try await timerFiresTriggersRefresh(repository: repository)
+        print("Refresh scheduler: manual rerun")
         try await manualRefreshWhileRunningMergesToRerun(repository: repository)
+        print("Refresh scheduler: backoff")
         try await failureBackoffRetriesExponentially(repository: repository)
+        print("Refresh scheduler: auth")
         try await authErrorStopsRetrying(repository: repository)
+        print("Refresh scheduler: disabled")
         try await moduleDisabledStopsAutoRefresh(repository: repository)
+        print("Refresh scheduler: wake")
         try await wakeCompensationAtMostOnce(repository: repository)
+        print("Refresh scheduler: partial")
         try await partialResultPublishesArtifact(repository: repository)
+        print("Refresh scheduler: capacity")
         try await capacityLimitQueuesRequest(repository: repository)
+        print("Refresh scheduler: stop")
         try await stopCancelsRunningTasks(repository: repository)
         print("Refresh scheduler tests passed: 9")
     }

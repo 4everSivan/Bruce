@@ -1,13 +1,13 @@
 import Foundation
 import MdddOnboardingCore
 
-struct ArtifactHeader: Codable, Equatable, Sendable {
+package struct ArtifactHeader: Codable, Equatable, Sendable {
     let schemaVersion: Int
     let module: CollectorModule
     let generatedAt: String
 }
 
-struct AgentTokenBucket: Codable, Equatable, Sendable {
+package struct AgentTokenBucket: Codable, Equatable, Sendable {
     let input: Int
     let output: Int
     let cacheRead: Int
@@ -15,14 +15,14 @@ struct AgentTokenBucket: Codable, Equatable, Sendable {
     let total: Int
 }
 
-struct AgentDailyUsage: Codable, Equatable, Sendable {
+package struct AgentDailyUsage: Codable, Equatable, Sendable {
     let date: String
     let input: Int
     let output: Int
     let total: Int
 }
 
-struct AgentUsageItem: Codable, Equatable, Sendable {
+package struct AgentUsageItem: Codable, Equatable, Sendable {
     let id: String
     let name: String
     let status: String
@@ -33,14 +33,14 @@ struct AgentUsageItem: Codable, Equatable, Sendable {
     let todayCostUsd: Double?
 }
 
-struct AgentServiceItem: Codable, Equatable, Sendable {
+package struct AgentServiceItem: Codable, Equatable, Sendable {
     let id: String
     let name: String
     let status: String
     let windows: [JSONValue]
 }
 
-struct AgentUsageArtifact: Codable, Equatable, Sendable {
+package struct AgentUsageArtifact: Codable, Equatable, Sendable {
     let schemaVersion: Int
     let module: CollectorModule
     let generatedAt: String
@@ -49,23 +49,23 @@ struct AgentUsageArtifact: Codable, Equatable, Sendable {
     let totalCostUsd: Double?
 }
 
-struct ContributionDay: Codable, Equatable, Sendable {
+package struct ContributionDay: Codable, Equatable, Sendable {
     let date: String
     let count: Int
     let level: String
     let weekday: Int
 }
 
-struct ContributionWeek: Codable, Equatable, Sendable {
+package struct ContributionWeek: Codable, Equatable, Sendable {
     let days: [ContributionDay]
 }
 
-struct ContributionBestDay: Codable, Equatable, Sendable {
+package struct ContributionBestDay: Codable, Equatable, Sendable {
     let date: String
     let count: Int
 }
 
-struct ContributionArtifact: Codable, Equatable, Sendable {
+package struct ContributionArtifact: Codable, Equatable, Sendable {
     let schemaVersion: Int
     let module: CollectorModule
     let generatedAt: String
@@ -79,13 +79,13 @@ struct ContributionArtifact: Codable, Equatable, Sendable {
     let weeks: [ContributionWeek]
 }
 
-enum DecodedArtifact: Equatable, Sendable {
+package enum DecodedArtifact: Equatable, Sendable {
     case agentUsage(AgentUsageArtifact)
     case github(ContributionArtifact)
     case gitlab(ContributionArtifact)
 }
 
-enum ArtifactValidationError: Error, Equatable {
+package enum ArtifactValidationError: Error, Equatable {
     case notAnObject
     case unsupportedSchema(Int)
     case moduleMismatch
@@ -95,10 +95,12 @@ enum ArtifactValidationError: Error, Equatable {
     case decodeFailed
 }
 
-struct ArtifactValidator {
-    static let currentSchemaVersion = 1
+package struct ArtifactValidator {
+    package static let currentSchemaVersion = 1
 
-    func validate(
+    package init() {}
+
+    package func validate(
         _ artifact: JSONValue,
         for expectedModule: CollectorModule
     ) throws -> DecodedArtifact {

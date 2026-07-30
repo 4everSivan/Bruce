@@ -1,5 +1,6 @@
 import Foundation
-@testable import MdddApp
+@testable import MdddAppCore
+import MdddOnboardingCore
 
 private enum StoreTestFailure: Error, CustomStringConvertible {
     case expectation(String)

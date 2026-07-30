@@ -1,5 +1,6 @@
 import Foundation
-@testable import MdddApp
+@testable import MdddAppCore
+import MdddOnboardingCore
 
 private enum RunnerTestFailure: Error, CustomStringConvertible {
     case expectation(String)
@@ -265,6 +266,10 @@ struct CollectorRunnerHarness {
             timeouts?["moduleSeconds"] as? Double == 90,
             "module timeout changed"
         )
+        try runnerExpect(
+            timeouts?["cancellationGraceSeconds"] == nil,
+            "Swift-only cancellation grace leaked into Bridge protocol"
+        )
 
         try launcher.succeed(
             0,
@@ -490,12 +495,16 @@ struct CollectorRunnerHarness {
             context: [
                 "home": .string(fakeHome.path),
                 "now": .string("2026-07-28T12:00:00+08:00"),
-                "timezone": .string("Asia/Shanghai")
+                "timezone": .string("Asia/Shanghai"),
+                "capabilities": .array([
+                    .string("localSessions"),
+                    .string("localPricing"),
+                ]),
             ]
         )
         try runnerExpect(
-            output.response.status == .success,
-            "isolated real Bridge run failed"
+            [.success, .partial].contains(output.response.status),
+            "isolated real Bridge did not return usable data"
         )
         try runnerExpect(
             output.response.artifact != nil,

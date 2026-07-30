@@ -122,7 +122,13 @@
   .hm-grid .cell.l3 { background: var(--lv3); }
   .hm-grid .cell.l4 { background: var(--lv4); }
   .hm-grid .cell:hover { outline: 1px solid var(--kimi-color-text-secondary); transform: scale(1.35); z-index: 2; }
+  .hm-grid .cell:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 1px; z-index: 3; }
   .hm-grid .cell.today { outline: 1.5px solid var(--c-accent); }
+  @media (prefers-reduced-motion: reduce) {
+    .live { animation: none; }
+    .hm-grid .cell { transition: none; }
+    .hm-grid .cell:hover { transform: none; }
+  }
 
   .hm-foot { display: flex; justify-content: flex-end; align-items: center; gap: 4px; margin-top: 6px; }
   .hm-foot .lbl { font-size: 8px; color: var(--kimi-color-text-quaternary); }
@@ -156,14 +162,14 @@
     <span class="chip">最佳单日 <b data-c-best>—</b></span>
   </div>
 
-  <h2 class="sec-title">贡献热力 · 近 26 周<span class="hint">悬停查看单日</span></h2>
+  <h2 class="sec-title">贡献热力 · 近 26 周<span class="hint">聚焦或悬停查看单日</span></h2>
   <div class="hm">
     <div class="hm-wdays">
       <span></span><span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span>
     </div>
     <div class="hm-body">
       <div class="hm-months" data-months></div>
-      <div class="hm-grid" data-grid></div>
+      <div class="hm-grid" data-grid role="grid" aria-label="GitHub 每日贡献热力图"></div>
       <div class="hm-foot">
         <span class="lbl">Less</span>
         <span class="sw" style="background:var(--lv0)"></span>
@@ -221,7 +227,10 @@
     weeks.forEach(function (w) {
       (w.days || []).forEach(function (day) {
         var lv = LV[day.level] || 0;
+        var label = day.date + "，" + day.count + " 次贡献，强度 " + lv +
+          (day.date === todayStr ? "，今天" : "");
         html += '<span class="cell' + (lv ? " l" + lv : "") + (day.date === todayStr ? " today" : "") +
+          '" role="gridcell" tabindex="0" aria-label="' + esc(label) +
           '" title="' + esc(day.date) + " · " + esc(day.count) + ' 次贡献"></span>';
       });
     });

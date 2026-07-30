@@ -1,7 +1,7 @@
 import Foundation
 import MdddOnboardingCore
 
-enum SnapshotErrorCategory: String, Codable, Equatable, Sendable {
+package enum SnapshotErrorCategory: String, Codable, Equatable, Sendable {
     case auth
     case dependency
     case network
@@ -61,7 +61,7 @@ enum ArtifactStoreError: Error, Equatable {
 }
 
 @MainActor
-final class ArtifactStore {
+package final class ArtifactStore {
     typealias FaultInjector = (ArtifactStoreStage) throws -> Void
 
     let rootURL: URL
@@ -72,7 +72,7 @@ final class ArtifactStore {
     private let validator: ArtifactValidator
     private let faultInjector: FaultInjector?
 
-    convenience init() throws {
+    package convenience init() throws {
         guard let applicationSupport = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
@@ -84,6 +84,15 @@ final class ArtifactStore {
                 "mddd",
                 isDirectory: true
             )
+        )
+    }
+
+    package convenience init(rootURL: URL) throws {
+        try self.init(
+            rootURL: rootURL,
+            fileManager: .default,
+            validator: ArtifactValidator(),
+            faultInjector: nil
         )
     }
 
@@ -242,6 +251,51 @@ final class ArtifactStore {
         snapshotsURL.appendingPathComponent(
             "\(module.rawValue).schema-v0.backup.json"
         )
+    }
+
+    package func diagnosticSnapshotSummary(
+        for module: CollectorModule
+    ) -> DiagnosticSnapshotSummary {
+        let metadata = (try? readMetadata()).flatMap {
+            $0.modules[module.rawValue]
+        }
+        return DiagnosticSnapshotSummary(
+            module: module.rawValue,
+            current: diagnosticValidation(
+                at: snapshotURL(for: module),
+                module: module
+            ),
+            previous: diagnosticValidation(
+                at: previousSnapshotURL(for: module),
+                module: module
+            ),
+            lastSuccessAt: metadata?.lastSuccessAt,
+            lastAttemptAt: metadata?.lastAttemptAt,
+            isStale: metadata?.isStale ?? true,
+            errorCategory: metadata?.errorCategory?.rawValue
+        )
+    }
+
+    private func diagnosticValidation(
+        at url: URL,
+        module: CollectorModule
+    ) -> DiagnosticSnapshotValidation {
+        guard fileManager.fileExists(atPath: url.path) else {
+            return .missing
+        }
+        do {
+            let data = try Data(contentsOf: url)
+            let artifact = try JSONDecoder().decode(
+                JSONValue.self,
+                from: data
+            )
+            _ = try validator.validate(artifact, for: module)
+            return .valid
+        } catch ArtifactValidationError.unsupportedSchema {
+            return .unsupportedSchema
+        } catch {
+            return .invalid
+        }
     }
 
     private func prepareDirectories() throws {
