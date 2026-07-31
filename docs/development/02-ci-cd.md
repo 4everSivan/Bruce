@@ -20,6 +20,7 @@ mddd 的 CI/CD 目标是: 每次代码变更都经过与本地完全一致的验
 - 运行器: `macos-26` (macOS 26, 与项目最低系统版本一致; 仓库公开后也可选用 arm64 变体).
 - 工具链: 运行器自带 Xcode 工具链, `swift --version` 与本地 Apple Swift 6.2.1 同族; Python 默认 3.9+.
 - Python 最低版本验证: 单独 job 用 `actions/setup-python` 固定 3.9 运行, 保证 Collector 的 3.9 兼容声明不被破坏.
+- 运行环境准备: macos-26 镜像默认 `python3` 为 3.14 且不含 pytest, `setup-python` 后 `python3` 别名仍指向系统解释器, 因此 Python 相关 job 统一用 `python` 命令并显式安装 pytest; 镜像不含 `rg`, 测试包构建 job 先用 `brew install ripgrep` 准备 `build-test-app.sh` 的前置依赖.
 - 与本地一致性: CI 的核心 job 直接调用仓库内 `scripts/verify-local.sh` 和 `scripts/build-test-app.sh`, 不复制脚本逻辑, 保证 CI 与本地验证同源.
 
 ## 3. 工作流与触发策略
