@@ -183,6 +183,7 @@ struct PanelViewModelHarness {
         try chartBuilds14DaysWithStableSegments()
         try legendOnlyIncludesActiveAgents()
         try hourlyRowsFilterAndShape()
+        try hourlyRowsSortByTodayTotalDesc()
         try hourlyDetailAggregatesTopAndOther()
         try resetTextVariants()
         try negativeResetEpochYieldsEmptyResetText()
@@ -193,7 +194,7 @@ struct PanelViewModelHarness {
         try subscriptionUpdatedTextFormatsGeneratedAt()
         try subscriptionUpdatedTextNilForBadDate()
         try subscriptionEmptyStatusStillRenders()
-        print("PanelViewModel tests passed: 23")
+        print("PanelViewModel tests passed: 24")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -544,6 +545,27 @@ struct PanelViewModelHarness {
             )),
             "缺少 agentIssue 诊断"
         )
+    }
+
+    // 逐小时卡: 行按今日用量从高到低排序.
+    private static func hourlyRowsSortByTodayTotalDesc() throws {
+        let low = makeAgent(
+            id: "kimi-code-cli",
+            name: "Kimi Code CLI",
+            today: makeBucket(input: 9000, output: 1000)
+        )
+        let high = makeAgent(
+            id: "codex-cli",
+            name: "Codex CLI",
+            today: makeBucket(input: 50000, output: 5000)
+        )
+        let artifact = makeAgentUsageArtifact(agents: [low, high], services: [])
+        let vm = makeMapper().make(
+            agentUsage: artifact,
+            moduleStatuses: readyStatuses
+        )
+        let ids = vm.hourly?.rows.map(\.agentID) ?? []
+        try expect(ids == ["codex-cli", "kimi-code-cli"], "行应按今日用量降序: \(ids)")
     }
 
     // 明细: 模型 Top 3 + 其他; 项目 collector 只给 Top 3, 其他由总量补差.

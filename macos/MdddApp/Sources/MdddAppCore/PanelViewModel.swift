@@ -784,6 +784,8 @@ package struct PanelViewModelMapper: Sendable {
                     projects: projects
                 )
             }
+            // 按今日用量从高到低动态排序.
+            .sorted { $0.todayTotal > $1.todayTotal }
         return HourlyLineViewModel(rows: rows)
     }
 
