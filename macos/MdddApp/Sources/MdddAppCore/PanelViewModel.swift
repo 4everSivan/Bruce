@@ -218,6 +218,13 @@ package struct UsageBreakdownItem: Equatable, Sendable {
         self.value = value
         self.valueText = PanelFormat.tokenCount(value)
     }
+
+    /// 文本型数值 (如百分比命中率), value 仅占位.
+    package init(label: String, valueText: String) {
+        self.label = label
+        self.value = 0
+        self.valueText = valueText
+    }
 }
 
 package struct UsageHeroViewModel: Equatable, Sendable {
@@ -225,7 +232,7 @@ package struct UsageHeroViewModel: Equatable, Sendable {
     package let totalTokensText: String
     /// 总成本文案, 定价缺失时为 nil (UI 隐藏成本位).
     package let costText: String?
-    /// 输入 / 输出 / 缓存读取 / 缓存创建 四格.
+    /// 输入 / 输出 / 缓存读取 / 缓存命中率 四格.
     package let breakdown: [UsageBreakdownItem]
     /// 14 日堆叠柱状图数据, 日期升序, 今天在最后.
     package let days: [UsageChartDay]
@@ -565,6 +572,12 @@ package struct PanelViewModelMapper: Sendable {
             isLive = false
         }
 
+        // 缓存命中率: 缓存读取 / (输入 + 缓存读取 + 缓存创建), 分母为 0 显示占位符.
+        let cacheBase = totals.input + totals.cacheRead + totals.cacheCreation
+        let cacheHitRateText = cacheBase > 0
+            ? String(format: "%.0f%%", Double(totals.cacheRead) / Double(cacheBase) * 100)
+            : "—"
+
         return UsageHeroViewModel(
             totalTokens: totals.total,
             costText: artifact.totalCostUsd.map(PanelFormat.costText),
@@ -572,7 +585,7 @@ package struct PanelViewModelMapper: Sendable {
                 UsageBreakdownItem(label: "输入", value: totals.input),
                 UsageBreakdownItem(label: "输出", value: totals.output),
                 UsageBreakdownItem(label: "缓存读取", value: totals.cacheRead),
-                UsageBreakdownItem(label: "缓存创建", value: totals.cacheCreation),
+                UsageBreakdownItem(label: "缓存命中率", valueText: cacheHitRateText),
             ],
             days: days,
             legend: legend,

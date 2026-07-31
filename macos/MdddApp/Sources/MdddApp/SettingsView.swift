@@ -3,6 +3,7 @@ import MdddAppCore
 import MdddOnboardingCore
 import SwiftUI
 import UniformTypeIdentifiers
+import UserNotifications
 
 /// Onboarding 设置页: 三张模块状态卡 + 统一授权区.
 /// 状态同时使用图标和文字; 扫描或验证中的卡片只禁用对应按钮, 不阻塞其他模块.
@@ -27,6 +28,8 @@ struct SettingsView: View {
     @State private var addedSubscriptionProviders: Set<SubscriptionProviderID> = []
     @State private var expandedSubscriptionProviders: Set<SubscriptionProviderID> = []
     @State private var providerToAdd: SubscriptionProviderID?
+    // 通知权限状态: denied 时预警通知无法投递, 提示用户前往系统设置
+    @State private var notificationDenied = false
 
     var body: some View {
         Form {
@@ -106,6 +109,27 @@ struct SettingsView: View {
             }
             .accessibilityHint("已授权模块的自动采集周期, 变更后立即按新间隔重新计时")
 
+            HStack {
+                Label("系统通知", systemImage: "bell.badge")
+                Spacer()
+                if notificationDenied {
+                    Text("未开启")
+                        .foregroundStyle(.orange)
+                    Button("前往系统设置") {
+                        NSWorkspace.shared.open(
+                            URL(string: "x-apple.systempreferences:com.apple.preference.notifications")!
+                        )
+                    }
+                    .accessibilityHint("打开系统设置的通知面板, 为本应用开启通知权限")
+                } else {
+                    Text("已开启")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(notificationDenied ? "系统通知未开启" : "系统通知已开启")
+            .onAppear(perform: refreshNotificationStatus)
+
             Text("选择 1 至 3 项指标, 菜单栏将按下列顺序紧凑展示")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -147,6 +171,14 @@ struct SettingsView: View {
         }
         .glassFormRowBackground()
         .glassButtonStyle()
+    }
+
+    /// 查询系统通知授权状态; 仅 denied 视为未开启, notDetermined 会在首次预警时弹授权.
+    private func refreshNotificationStatus() {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            let denied = settings.authorizationStatus == .denied
+            Task { @MainActor in notificationDenied = denied }
+        }
     }
 
     private func menuBarMetricBinding(

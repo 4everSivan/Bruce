@@ -70,6 +70,10 @@ struct ModuleScheduleState: Equatable, Sendable {
     var backoffRetryCount: Int = 0
     var pendingRerun: Bool = false
     var lastErrorCategory: SnapshotErrorCategory? = nil
+    /// 本轮刷新是否由手动触发; 手动刷新不弹额度预警.
+    var lastTriggerWasManual: Bool = false
+    /// 上次刷新后已超预警阈值的 5h 窗口 key 集合; 只有新跨越的窗口才报警.
+    var quotaAlertedKeys: Set<String> = []
 }
 
 // MARK: - RefreshScheduler
@@ -98,6 +102,8 @@ package final class RefreshScheduler {
     package var onArtifactChange: ((CollectorModule, JSONValue?) -> Void)?
     /// Collector 轮换令牌候选 (仅 App 模式非空); 由宿主写回 Keychain.
     package var onCredentialUpdates: ((CollectorModule, [JSONValue]) -> Void)?
+    /// 后台刷新发现 5h 窗口用量新跨越 80% 阈值; 手动刷新不触发.
+    package var onQuotaAlerts: ((CollectorModule, [QuotaAlert]) -> Void)?
 
     package convenience init(
         executor: CollectorRunner,
@@ -284,6 +290,11 @@ package final class RefreshScheduler {
             if var state = states[module] {
                 state.lastSuccessAt = stored.metadata.lastSuccessAt
                     .flatMap { ISO8601DateFormatter().date(from: $0) }
+                // 用缓存快照回填预警阈值状态, 重启后不对已超的窗口重复报警
+                state.quotaAlertedKeys = Set(
+                    QuotaAlertEvaluator.overThresholdEntries(artifact: stored.artifact)
+                        .map(\.key)
+                )
                 states[module] = state
             }
         } catch {
@@ -339,6 +350,7 @@ package final class RefreshScheduler {
             return
         }
 
+        states[module]?.lastTriggerWasManual = isManual
         startRefresh(for: module)
     }
 
@@ -493,6 +505,19 @@ package final class RefreshScheduler {
                         state.lastErrorCategory = nil
                         state.phase = .idle
                         onArtifactChange?(module, artifact)
+
+                        // 额度预警: 阈值状态每次都同步 (回落后再次跨越会重新报警),
+                        // 但只有后台刷新且窗口新跨越 80% 才弹通知.
+                        let entries = QuotaAlertEvaluator.overThresholdEntries(
+                            artifact: artifact
+                        )
+                        let newAlerts = state.lastTriggerWasManual
+                            ? []
+                            : entries.filter { !state.quotaAlertedKeys.contains($0.key) }
+                        state.quotaAlertedKeys = Set(entries.map(\.key))
+                        if !newAlerts.isEmpty {
+                            onQuotaAlerts?(module, newAlerts.map(\.alert))
+                        }
 
                         if response.status == .partial {
                             let detail = response.diagnostics.first?.message

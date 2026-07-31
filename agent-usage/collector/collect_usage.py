@@ -1045,7 +1045,8 @@ def _volc_parse(result):
                     "resetsAt": reset_ts,
                 }
             )
-        plan = result.get("Status") or None
+        # Status (如 running) 是订阅生命周期状态, 不是套餐信息, 不上卡片
+        plan = None
         return {"kind": "windows", "plan": plan, "windows": windows}
 
     def pick(node, names):
@@ -1374,7 +1375,7 @@ def service_antigravity():
             return []
     svc = {
         "id": "antigravity",
-        "name": "Antigravity (agy)",
+        "name": "Antigravity",
         "app": "antigravity",
         "isCurrent": False,
         "status": "ok",
@@ -1688,7 +1689,7 @@ def _quota_denied_service(service_id, name, app):
 def _quota_denied_services():
     return [
         _quota_denied_service("cc_switch_providers", "CC Switch 云端额度", "cc-switch"),
-        _quota_denied_service("antigravity", "Antigravity (agy)", "antigravity"),
+        _quota_denied_service("antigravity", "Antigravity", "antigravity"),
         _quota_denied_service("codex_accounts", "Codex 账号额度", "codex"),
     ]
 

@@ -11,6 +11,7 @@ final class ApplicationBootstrap {
     private let runner: CollectorRunner
     private let coordinator: OnboardingCoordinator
     private let runInputProvider: OnboardingRunInputProvider
+    private let quotaAlertNotifier = QuotaAlertNotifier()
     private weak var model: AppModel?
     private var started = false
     private var appearanceObserver: AnyCancellable?
@@ -47,6 +48,10 @@ final class ApplicationBootstrap {
         // Collector 轮换的新令牌写回 Keychain, 保证下次刷新用有效令牌.
         scheduler.onCredentialUpdates = { [runInputProvider] _, updates in
             runInputProvider.apply(credentialUpdates: updates)
+        }
+        // 后台刷新发现 5h 额度新跨越 80% 阈值时弹系统通知.
+        scheduler.onQuotaAlerts = { [quotaAlertNotifier] _, alerts in
+            quotaAlertNotifier.deliver(alerts)
         }
         // 外观偏好应用级生效: SwiftUI preferredColorScheme 只影响环境,
         // 玻璃与 material 的真实配色由窗口 appearance 驱动.

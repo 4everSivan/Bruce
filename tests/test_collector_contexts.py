@@ -940,7 +940,8 @@ class AgentCollectorAppServicesTests(unittest.TestCase):
 
         self.assertEqual(volc["name"], "火山引擎（Coding Plan）")
         self.assertEqual(volc["kind"], "windows")
-        self.assertEqual(volc["plan"], "active")
+        # 订阅生命周期 Status (active/running) 不作为套餐展示
+        self.assertIsNone(volc["plan"])
         self.assertEqual(
             [w["label"] for w in volc["windows"]], ["5小时窗口", "每周窗口"]
         )

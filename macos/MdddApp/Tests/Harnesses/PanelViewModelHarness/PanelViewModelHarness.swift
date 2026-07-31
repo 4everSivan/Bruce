@@ -423,9 +423,11 @@ struct PanelViewModelHarness {
         try expect(usage?.totalTokensText == "230K", "K 格式化错误: \(usage?.totalTokensText ?? "")")
         try expect(usage?.costText == "≈ ¥2.70", "成本文案错误: \(usage?.costText ?? "nil")")
         let labels = usage?.breakdown.map(\.label) ?? []
-        try expect(labels == ["输入", "输出", "缓存读取", "缓存创建"], "细分顺序错误: \(labels)")
+        try expect(labels == ["输入", "输出", "缓存读取", "缓存命中率"], "细分顺序错误: \(labels)")
         try expect(usage?.breakdown[0].value == 159000, "输入聚合错误")
         try expect(usage?.breakdown[2].value == 34000, "缓存读取聚合错误")
+        // 命中率 = 34000 / (159000 + 34000 + 12000) ≈ 16.6% -> "17%".
+        try expect(usage?.breakdown[3].valueText == "17%", "缓存命中率错误: \(usage?.breakdown[3].valueText ?? "nil")")
         try expect(usage?.isLive == true, "新鲜 artifact 应为 LIVE")
     }
 

@@ -4,7 +4,7 @@ import MdddAppCore
 import SwiftUI
 
 /// 逐小时卡: 每个 agent 一行色点 + 名称 + 今日总量, 下方 24 点折线;
-/// 有模型或项目明细的行可整行点击展开内层玻璃明细区.
+/// 有模型或项目明细的行可整行点击展开, 明细直接排在折线下方 (无内层卡片).
 /// 视觉与条件渲染以 panel-layout-v8.html 的逐小时卡为准.
 struct HourlyLineCard: View {
     let viewModel: HourlyLineViewModel
@@ -147,7 +147,7 @@ struct HourlyLineCard: View {
         }
     }
 
-    /// 内层玻璃明细区: 模型占比 + 项目分布两组 DistributionBar.
+    /// 明细区: 模型占比 + 项目分布两组 DistributionBar, 直接排在折线下方, 无内层卡片容器.
     private func detailSection(_ row: HourlyAgentRow) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             if !row.models.isEmpty {
@@ -158,18 +158,8 @@ struct HourlyLineCard: View {
                     .padding(.top, row.models.isEmpty ? 0 : 7)
             }
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 7)
-        .background(
-            Color.adaptive(light: Color.white.opacity(0.35), dark: Color.white.opacity(0.10)),
-            in: RoundedRectangle(cornerRadius: 10)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.adaptive(light: Color.white.opacity(0.5), dark: Color.white.opacity(0.18)), lineWidth: 1)
-        )
         .padding(.leading, 14)
-        .padding(.top, 2)
+        .padding(.top, 3)
     }
 
     private func distributionGroup(title: String, bars: [DistributionBar], color: Color) -> some View {
