@@ -16,10 +16,16 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: 安装 pytest
+        run: python -m pip install pytest
       - name: 显示工具链版本
         run: |
           swift --version
-          python3 --version
+          python --version
       - name: 运行标准本地验证 (verify-local.sh)
         run: zsh scripts/verify-local.sh
 
@@ -32,10 +38,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.9"
+          cache: pip
+      - name: 安装 pytest
+        run: python -m pip install pytest
       - name: Python 语法检查
-        run: python3 -m py_compile agent-usage/collector/collect_usage.py bridge/*.py
+        run: python -m py_compile agent-usage/collector/collect_usage.py bridge/*.py
       - name: 运行 Python 测试套件
-        run: python3 -m pytest -q
+        run: python -m pytest -q
 
   build-release-app:
     name: 构建测试版 App
@@ -43,6 +52,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: 安装 ripgrep (build-test-app.sh 前置依赖)
+        run: brew install ripgrep
       - name: 构建并组装测试版 App
         run: zsh scripts/build-test-app.sh
       - uses: actions/upload-artifact@v4
