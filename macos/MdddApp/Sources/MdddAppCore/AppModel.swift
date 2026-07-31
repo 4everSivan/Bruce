@@ -115,6 +115,9 @@ package final class AppModel: ObservableObject {
     @Published package private(set) var subscriptionProviders: [SubscriptionProviderID: SubscriptionProviderConfiguration] = [:]
     /// 各订阅 provider 的 Keychain 凭证是否已配置.
     @Published package private(set) var subscriptionCredentialConfigured: [SubscriptionProviderID: Bool] = [:]
+    /// 本机是否存在可导入的 Antigravity 登录态 (文件或登录 Keychain);
+    /// 由 coordinator 显式刷新, 设置页不得在 body 中直接探测.
+    @Published package private(set) var antigravityLocalAvailable = false
     /// 正在保存, 验证或导入的订阅 provider, 供设置页禁用对应按钮.
     @Published package private(set) var busySubscriptionProviders: Set<SubscriptionProviderID> = []
     /// Codex 已导入账号摘要 (数量与邮箱前缀), 供设置页展示.
@@ -218,6 +221,10 @@ package final class AppModel: ObservableObject {
         _ configured: Bool, for provider: SubscriptionProviderID
     ) {
         subscriptionCredentialConfigured[provider] = configured
+    }
+
+    package func setAntigravityLocalAvailable(_ available: Bool) {
+        antigravityLocalAvailable = available
     }
 
     package func setBusySubscription(

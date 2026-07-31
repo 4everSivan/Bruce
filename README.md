@@ -12,14 +12,14 @@
 
 | 模块 | 能力 | 数据边界 |
 |---|---|---|
-| Agent 用量 | 汇总 Kimi Work、Kimi Code、Claude Code 和 Codex (含 Orca 托管会话) 的 token、成本、趋势及可用额度状态 | 以本机会话和用户授权的 Provider 为来源 |
+| Agent 用量 | 汇总 Kimi Work、Kimi Code、Claude Code、Codex 和 Orca 会话的 token、成本、趋势及可用额度状态 | 以本机会话和用户授权的 Provider 为来源 |
 
 应用还提供:
 
-- 菜单栏常驻形态 (LSUIElement)、MenuBarExtra 弹出式看板面板和可配置的菜单栏指标 (1 至 3 项)。
-- 原生液态玻璃看板: 用量、订阅用量、逐小时卡片按模块配置条件渲染，面板高度随内容自适应，无滚动条。
-- 设置窗口含「订阅额度」分区: Kimi、DeepSeek、火山引擎、Codex、Antigravity 凭证可手动配置，或从本机/CC Switch 一次性只读导入。
-- 首次启动 Onboarding、依赖扫描、登录配置和统一授权摘要。
+- 菜单栏常驻形态 (LSUIElement)、MenuBarExtra 弹出式液态玻璃面板、可配置的菜单栏指标 (1 至 3 项) 和自动刷新指示。
+- 原生 SwiftUI 玻璃卡片看板: 用量卡 (hero 总量、四格细分、14 日堆叠趋势)、订阅用量卡 (多 Provider 窗口量条、Codex 账号子卡、余额) 和逐小时卡 (24 点折线、模型/项目明细展开)，按数据可用性条件渲染，面板高度随内容自适应，无滚动条。
+- 设置窗口分区: 通用 (配色模式、液态玻璃强度、刷新间隔、菜单栏指标)、Agent 用量依赖卡、订阅额度 (Provider 标签式管理，凭证只进 Keychain)、统一授权和诊断。
+- 首次启动 Onboarding、本机依赖扫描、统一授权摘要和 Activation Gate (未确认授权不启动任何 Collector)。
 - 默认每 30 分钟自动刷新，以及手动刷新、防重入、超时、退避和系统唤醒补采。
 - 最后成功快照优先展示；单模块失败不会阻止其他模块更新。
 - 设置页提供脱敏诊断预览和最小 ZIP 导出，不包含 Artifact 或账号活动数据。
@@ -27,11 +27,14 @@
 
 ## 界面预览
 
-预览使用仓库内的脱敏 fixture 数据。以下截图是 Daimon 场景单文件 Widget 的视觉基线，不是菜单栏原生面板。
+原生菜单栏面板截图待补充。运行测试版 App (`dist/mddd-test.app`，由 `scripts/build-test-app.sh` 生成) 后，对菜单栏面板和设置窗口截图，替换到本节的占位即可:
 
-| Agent 用量 |
-|---|
-| ![Agent 用量 Widget](tests/visual/baselines/agent-usage-valid.jpg) |
+| 场景 | 截图 |
+|---|---|
+| 菜单栏面板 (用量 / 订阅用量 / 逐小时卡片) | _待补充_ |
+| 设置窗口 (通用 / 订阅额度 / 统一授权 / 诊断) | _待补充_ |
+
+> Widget 场景 (Daimon/Kimi Work Blueprint) 的视觉基线见 `tests/visual/baselines/agent-usage-valid.jpg`，由 `tests/visual/` 的确定性测试维护。
 
 ## 快速开始
 
@@ -56,8 +59,17 @@ swift run --package-path macos/MdddApp MdddApp
 1. 在设置页扫描 Python、本机会话和可选 SQLite 数据源。
 2. 选择需要启用的 Agent 用量模块。
 3. 在「订阅额度」分区按需配置或导入订阅凭证；未配置任何 Provider 时订阅卡片不渲染。
+4. 阅读统一授权摘要并确认后，应用才会启动对应 Collector 和自动刷新。
 
 真实账号访问和外部请求只应在个人 Mac 上、由用户明确授权后执行。
+
+### 构建测试版 App
+
+```bash
+zsh scripts/build-test-app.sh
+```
+
+生成 `dist/mddd-test.app` 和 `dist/mddd-test.zip`（测试用，不入库）。
 
 ## 应用架构
 
@@ -94,10 +106,10 @@ Collector 仍保留独立 CLI 入口，用于开发、测试和故障排查，�
 - 订阅额度凭证 (Kimi、DeepSeek、火山引擎、Codex、Antigravity) 保存在 macOS Keychain。
 - 凭证通过 Bridge stdin 的单次请求传递，不进入命令行参数、Artifact 或日志。
 - App 模式下 Python 不直接写 Keychain，也不写回第三方认证文件；订阅令牌轮换经 `credentialUpdates` 只写回 Keychain，不回写 CC Switch 或 CLI 认证文件。
-- App 不再内嵌 WebView，菜单栏看板为纯 SwiftUI 渲染，不接触凭证。仓库根 `*/widget/` 单文件 Widget 仅由 Daimon host 以受 CSP 限制的 WebView 加载，其安全契约由 Python 测试继续覆盖。
+- 菜单栏面板为纯 SwiftUI 渲染，不接触凭证。仓库根 `*/widget/` 单文件 Widget 仅由 Daimon host 以受 CSP 限制的 WebView 加载，其安全契约由 Python 测试继续覆盖。
 - 配置和快照写入用户级 Application Support；真实凭证、账号活动和 `data/*.json` 不得进入仓库。
 - 诊断包采用白名单字段，生成后会解压复核文件清单并再次扫描敏感形态。
-- 菜单栏指标仅显示通用状态和聚合数字, 不显示账号、仓库或 token 明细。
+- 菜单栏指标仅显示通用状态和聚合数字，不显示账号或 token 明细。
 
 ## 项目结构
 
@@ -111,7 +123,8 @@ mddd/
 ├── bridge/                 # Swift 与 Python 之间的版本化 JSON 协议和安全校验
 ├── agent-usage/            # Agent 用量 Collector 与 Daimon Widget
 ├── tests/                  # Python 契约、Collector、Widget 安全和视觉基线测试
-└── docs/                   # OpenSpec、工具链和授权设计文档
+├── scripts/                # 本地验证与测试版 App 打包脚本
+└── docs/                   # 设计、工具链和授权说明文档
 ```
 
 关键入口:
@@ -119,8 +132,8 @@ mddd/
 - macOS App: `macos/MdddApp/Sources/MdddApp/MdddApp.swift`
 - 面板卡片组件: `macos/MdddApp/Sources/MdddApp/Views/`
 - Python Bridge: `bridge/run_bridge.py`
-- Collectors: `*/collector/*.py`
-- Widget 源文件 (Daimon 场景): `*/widget/index.html`
+- Collector: `agent-usage/collector/collect_usage.py`
+- Widget 源文件 (Daimon 场景): `agent-usage/widget/index.html`
 - Artifact schemas: `bridge/schemas/`
 
 ## 数据位置、清理与回滚
@@ -150,7 +163,7 @@ mddd/
 ./scripts/verify-local.sh
 ```
 
-该脚本检查 Python 语法，运行全部 Python/Bridge/schema/Widget 测试 (49 项)，构建 Swift 包，并依次执行 Onboarding (98 项)、缓存、Runner、调度、生命周期、诊断和隔离集成 Harness。面板 View Model 映射 Harness (20 项) 单独运行，见下方命令。隔离集成只在随机临时 HOME 中运行 Agent Collector，关闭外部额度能力，不访问真实账号、Keychain 或第三方数据库。
+该脚本检查 Python 语法，运行全部 Python/Bridge/schema/Widget 测试 (59 项)，构建 Swift 包，并依次执行 Onboarding (98 项)、面板映射 (23 项)、缓存、Runner、调度、生命周期、诊断和隔离集成 Harness。隔离集成只在随机临时 HOME 中运行 Agent Collector，关闭外部额度能力，不访问真实账号、Keychain 或第三方数据库。
 
 Python 语法和测试:
 
@@ -171,15 +184,14 @@ swift run --package-path macos/MdddApp PanelViewModelHarness
 swift run --package-path macos/MdddApp RefreshSchedulerHarness "$PWD"
 ```
 
-Widget JavaScript 语法和安全隔离由 Python 测试继续覆盖 (面向 Daimon 场景)。真实 Collector、OAuth、PAT、签名和 `.app` 发布验证不属于默认测试流程，需要单独授权和对应环境。
+Widget JavaScript 语法和安全隔离由 Python 测试继续覆盖 (面向 Daimon 场景)。真实 Collector、OAuth、签名和 `.app` 发布验证不属于默认测试流程，需要单独授权和对应环境。
 
 更多资料:
 
 - [工具链基线](docs/development/toolchain.md)
 - [Provider 授权矩阵](docs/development/provider-auth-matrix.md)
 - [发布人工验收清单](docs/development/release-acceptance.md)
-- [产品化设计](docs/openspec/changes/productize-macos-dock-dashboard/design.md)
-- [实现任务状态](docs/openspec/changes/productize-macos-dock-dashboard/tasks.md)
+- [mddd 设计文档](docs/development/mddd%20设计文档.md)
 
 ## 当前限制
 

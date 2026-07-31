@@ -15,8 +15,8 @@
 - [ ] 使用 Xcode Archive 生成 Release 构建。
 - [ ] 核对 entitlements、Hardened Runtime、网络和 Keychain 能力均为最小范围。
 - [ ] 验证签名链、notarization 和 Gatekeeper。
-- [ ] 从干净目录安装 `.app`, 首次启动只出现一个主窗口和一个 Dock 图标。
-- [ ] 关闭窗口后点击 Dock 图标可恢复同一窗口, 不创建第二个 Scheduler。
+- [ ] 从干净目录安装 `.app`, 首次启动菜单栏出现品牌图标, 无多余进程。
+- [ ] 点击菜单栏标签弹出面板, 关闭设置窗口后再次打开不创建第二个 Scheduler。
 - [ ] 退出时运行中的 Collector 在宽限期内取消, 无残留 Python 子进程。
 
 ## 真实登录与撤销
@@ -40,8 +40,8 @@
 
 ## 可访问性与视觉
 
-- [ ] VoiceOver 可读出侧栏模块名、当前状态、刷新、设置和诊断操作。
-- [ ] 仅使用键盘可完成模块切换、`⌘R` 刷新、设置操作和诊断预览/关闭。
+- [ ] VoiceOver 可读出菜单栏标签摘要、面板卡片、模块状态、刷新、设置和诊断操作。
+- [ ] 仅使用键盘可完成刷新 (`⌘R`)、设置操作和诊断预览/关闭。
 - [ ] refreshing、partial、stale、offline、authRequired、error 和 notConfigured 同时具有文字、图标和可访问性语义。
 - [ ] 增加对比度、减少动态效果、浅色和深色模式下保持现有视觉语言, 无不可读状态。
 - [ ] Agent 的基线布局、字体层级和卡片表达没有非预期变化。

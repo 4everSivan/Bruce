@@ -6,7 +6,7 @@
 边界:
 
 - 红线, 证据分级和工作模式定义 -> `constitution.md`
-- 领域知识与排查程序 -> `.agents/skills/*`
+- 项目事实, 路径, 脚本, 数据模型, 服务拓扑和已确认环境能力策略 -> 本文件
 - 输出格式, 模板和自审清单 -> `templates/*` 或对应 skill 内置模板
 
 ---
@@ -31,15 +31,14 @@
 
 ## 3. 规则层级与单一事实源映射
 
-优先级从高到低: 平台/System/Developer/工具强制安全指令 > `constitution.md` > 本文件 `AGENTS.md` > 工具入口 > generated subagent body > `.agents/skills/*` > 设计说明 > 单次偏好.
+优先级从高到低: 平台/System/Developer/工具强制安全指令 > `constitution.md` > 本文件 `AGENTS.md` > 工具入口 > generated subagent body > 设计说明 > 单次偏好.
 
 冲突裁决: 项目路径, 脚本和数据入口以本文件为准; 用户授权不能覆盖 `constitution.md` 红线.
 
 | 概念 | 唯一归属 |
 |------|---------|
 | 红线, 证据分级, 工作模式 | `constitution.md` |
-| 项目事实, 路径, 脚本, 拓扑, 已确认环境能力策略 | `AGENTS.md` |
-| 领域知识与排查程序 | `.agents/skills/*` |
+| 项目事实, 路径, 脚本, 拓扑 | `AGENTS.md` |
 | 输出格式, 模板, 自审清单 | `templates/*` 或对应 skill 内置模板 |
 
 ---
@@ -67,13 +66,13 @@
 | `macos/MdddApp/` | SwiftPM 包 (macOS 26): `MdddApp` (SwiftUI 菜单栏应用, 原生液态玻璃看板, `Sources/MdddApp/Views/` 卡片组件), `MdddAppCore` (AppModel, 调度, PanelViewModel 映射), `MdddOnboardingCore` (扫描, 授权, Gate, 订阅凭证纯逻辑), 多个 Harness 边界测试 |
 | `data/` | 本机运行产物; 可能包含个人活动和使用量数据, 不得提交 |
 | `docs/` | 项目设计, 决策和说明文档 |
-| `.agents/skills/` | 项目级 AI skills; 不属于看板运行时 |
+| `scripts/` | 本地验证脚本 (`verify-local.sh`) 与测试版 App 打包脚本 (`build-test-app.sh`) |
 
 ### 5.2 参考资料
 
 - `README.md`: 项目目标, 模块说明, 本机数据源和运行命令.
 - `constitution.md`: 安全红线, 证据要求和工作模式.
-- `.agents/skills/generate-governance/SKILL.md`: 治理文档生成和刷新流程.
+- `docs/development/mddd 设计文档.md`: 产品需求, UI 规范, 数据契约和验收标准.
 <!-- source: scan/code-structure, confidence: HIGH -->
 
 ---
@@ -86,11 +85,12 @@
 | `python3 -c 'import ast,pathlib; [ast.parse(p.read_text()) for p in pathlib.Path(".").glob("*/collector/*.py")]'` | 无外部调用的 Python 语法验证 |
 | `node --check -` | 对从 Widget 提取的 JavaScript 执行语法验证 |
 | `zsh scripts/verify-local.sh` | 标准本地验证: Python 语法 + pytest + swift build + 全部 8 个 Harness |
-| `python3 -m pytest tests/` | Python 单元与契约测试 (bridge, collector, widget 安全); 55 项 |
+| `python3 -m pytest tests/` | Python 单元与契约测试 (bridge, collector, widget 安全); 59 项 |
 | `swift build --package-path macos/MdddApp` | macOS App 与 MdddOnboardingCore 构建验证 |
 | `swift run --package-path macos/MdddApp MdddOnboardingCoreHarness` | Onboarding Core 边界测试 (进程, SQLite, Keychain, Gate, 订阅凭证, 设备码登录, 令牌轮换合并); 98 项 |
-| `swift run --package-path macos/MdddApp PanelViewModelHarness` | 面板 view model 映射边界测试 (措辞, 分组, 条件渲染); 22 项 |
-| 尚未配置 | lint 和 CI 命令 |
+| `swift run --package-path macos/MdddApp PanelViewModelHarness` | 面板 view model 映射边界测试 (措辞, 分组, 条件渲染); 23 项 |
+| `zsh scripts/build-test-app.sh` | 生成 `dist/mddd-test.app` 测试版 App (Release 构建 + 打包 + 签名校验) |
+| GitHub Actions `.github/workflows/ci.yml` | push/PR 触发: verify-local.sh + Python 3.9 兼容 + 测试包构建; tag `v*` 触发草稿 Release |
 
 执行第一个实时命令前必须应用 `constitution.md` 的 Production Operation Mode. 静态分析或普通代码审查不得把实时采集作为默认验证步骤.
 <!-- source: scan/config, confidence: HIGH -->
@@ -125,6 +125,8 @@ Daimon 单文件 Widgets   macOS 菜单栏原生液态玻璃看板
 - `data/*.json` 是可选本机落盘产物, 不是源代码或测试 fixture.
 - `agent-usage` 实时采集可能轮换本机 OAuth; 该副作用必须被显式识别和授权.
 - `agent-usage` 云端额度条目在 CLI 模式由 CC Switch providers 行驱动; App 模式改由注入凭证 (`kimi_web_tokens` / `provider_env.deepseek` / `provider_meta.volcengine` / `codex_oauth_auth` + `codex_auth` / `antigravity_oauth`) 驱动合成, 不再要求 CC Switch 数据库存在; App 模式不读 `~/.codex/auth.json`, Codex 活跃账号由 `codex_auth` 注入承载.
+- agy (Antigravity CLI) >= 1.1.8 把 OAuth 令牌存进登录 Keychain (go-keyring, service `gemini` / account `antigravity`, 值带 `go-keyring-base64:` 前缀), 不再写 `~/.gemini/antigravity-cli/antigravity-oauth-token`; collector CLI 模式与 App 导入链路均按「文件优先, Keychain 回退」读取, Keychain 来源只读不回写.
+- Antigravity 额度查询的 OAuth client 凭证 (`AGY_CLIENT_ID` / `AGY_CLIENT_SECRET`) 由运行环境注入, 不硬编码入库; 缺省为空时刷新链路安全降级, 不得伪造非空凭证.
 - App 订阅凭证存 Keychain (`com.mddd.dashboard.credentials`), 在设置「订阅额度」分区配置或从本机/CC Switch 一次性只读导入; 令牌轮换经 `credentialUpdates` 只写回 Keychain, 不回写 CC Switch.
 - 外部 API 和 CC Switch 数据库 schema 未在仓库内锁定, 解析失败必须保留可诊断证据.
 <!-- source: scan/security, confidence: HIGH -->
@@ -140,7 +142,7 @@ Daimon 单文件 Widgets   macOS 菜单栏原生液态玻璃看板
 - 框架: 无应用框架; Python 使用标准库, Widget 使用 DaimonWidget host contract.
 - 构建系统: 无; Collector 直接执行, Widget 无构建步骤.
 - 入口文件: `agent-usage/collector/collect_usage.py`, `agent-usage/widget/index.html`.
-- 架构模式: 模块化 Collector-Artifact-Widget 管道, 三个业务模块相互独立 (confidence: HIGH).
+- 架构模式: 模块化 Collector-Artifact-Widget 管道, 业务模块相互独立 (confidence: HIGH).
 
 ### 编码规范
 

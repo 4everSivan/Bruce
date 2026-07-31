@@ -77,15 +77,15 @@ private struct ProviderSectionView: View {
                 .padding(.vertical, 2)
             }
 
-            // error 段保留 collector 说明, 不静默吞掉.
-            if section.status == "error", let note = section.note {
+            // error/empty 段保留 collector 说明, 不静默吞掉.
+            if section.status == "error" || section.status == "empty", let note = section.note {
                 Text(note)
                     .font(.system(size: 10))
                     .foregroundStyle(Color(hex: "#ff9f0a"))
                     .padding(.top, 2)
             }
         }
-        .padding(.top, isFirst ? 4 : 8)
+        .padding(.top, isFirst ? 10 : 8)
         .padding(.bottom, 8)
     }
 
@@ -396,8 +396,8 @@ private extension SubscriptionViewModel {
                 note: nil,
                 extraText: nil,
                 windows: [
-                    SubscriptionWindowRow(label: "Gemini", usedPercent: 64, resetText: "", ownRow: false),
-                    SubscriptionWindowRow(label: "Claude / GPT", usedPercent: 33, resetText: "", ownRow: false),
+                    SubscriptionWindowRow(label: "5小时窗口", usedPercent: 64, resetText: "15:00", ownRow: false),
+                    SubscriptionWindowRow(label: "每周窗口", usedPercent: 33, resetText: "3 天后", ownRow: false),
                 ],
                 codexAccounts: nil,
                 balance: nil,

@@ -282,6 +282,9 @@ struct SettingsView: View {
         .accessibilityElement(children: .contain)
         .glassFormRowBackground()
         .glassButtonStyle()
+        .onAppear {
+            coordinator.refreshAntigravityLocalAvailability()
+        }
         .confirmationDialog(
             "从 CC Switch 导入火山引擎凭证?",
             isPresented: $showsVolcengineCCImportConfirm,
@@ -382,19 +385,50 @@ struct SettingsView: View {
         expandedSubscriptionProviders.remove(id)
     }
 
+    /// 管理区统一容器: 左缩进 14pt + 8pt 垂直间距, 各 provider 管理组共用.
+    private func managementStack<Content: View>(
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            content()
+        }
+        .padding(.leading, 14)
+    }
+
+    /// 管理区操作行: 主操作按钮在左, 移除按钮统一居右 (destructive).
+    private func managementActionRow<Primary: View>(
+        configured: Bool,
+        removeHint: String,
+        remove: @escaping () -> Void,
+        @ViewBuilder primary: () -> Primary
+    ) -> some View {
+        HStack(spacing: 8) {
+            primary()
+            Spacer()
+            if configured {
+                Button("移除", role: .destructive, action: remove)
+                    .accessibilityHint(removeHint)
+            }
+        }
+    }
+
     private var deepSeekGroup: some View {
         let configured = model.subscriptionCredentialConfigured[.deepseek] ?? false
         let busy = model.busySubscriptionProviders.contains(.deepseek)
         let editing = deepseekEditing || !configured
 
-        return Group {
+        return managementStack {
             if editing {
                 SecureField("API key (输入后不回显)", text: $deepseekKeyText)
                     .textFieldStyle(.roundedBorder)
                     .disabled(busy)
                     .accessibilityLabel("DeepSeek API key")
                     .accessibilityHint("密钥只保存到本应用的 Keychain")
-                HStack {
+                managementActionRow(
+                    configured: configured,
+                    removeHint: "删除本应用保存的 DeepSeek API key",
+                    remove: { removeSubscriptionProvider(.deepseek) }
+                ) {
                     Button("保存并验证") {
                         coordinator.saveAndVerifyDeepSeek(apiKey: deepseekKeyText)
                         // API key 只进 Keychain, 提交后清空输入框
@@ -416,15 +450,14 @@ struct SettingsView: View {
                     }
                 }
             } else {
-                HStack {
+                managementActionRow(
+                    configured: configured,
+                    removeHint: "删除本应用保存的 DeepSeek API key",
+                    remove: { removeSubscriptionProvider(.deepseek) }
+                ) {
                     Button("更换") { deepseekEditing = true }
                         .disabled(busy)
                         .accessibilityHint("输入新的 DeepSeek API key")
-                    Button("移除") {
-                        removeSubscriptionProvider(.deepseek)
-                    }
-                    .disabled(busy)
-                    .accessibilityHint("删除本应用保存的 DeepSeek API key")
                 }
             }
         }
@@ -435,7 +468,7 @@ struct SettingsView: View {
         let busy = model.busySubscriptionProviders.contains(.volcengine)
         let editing = volcengineEditing || !configured
 
-        return Group {
+        return managementStack {
             if editing {
                 SecureField("AccessKey (输入后不回显)", text: $volcengineAKText)
                     .textFieldStyle(.roundedBorder)
@@ -446,7 +479,11 @@ struct SettingsView: View {
                     .disabled(busy)
                     .accessibilityLabel("火山引擎 SecretKey")
                     .accessibilityHint("密钥只保存到本应用的 Keychain")
-                HStack {
+                managementActionRow(
+                    configured: configured,
+                    removeHint: "删除本应用保存的火山引擎 AK/SK",
+                    remove: { removeSubscriptionProvider(.volcengine) }
+                ) {
                     Button("保存并验证") {
                         coordinator.saveAndVerifyVolcengine(
                             accessKey: volcengineAKText,
@@ -473,15 +510,14 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                HStack {
+                managementActionRow(
+                    configured: configured,
+                    removeHint: "删除本应用保存的火山引擎 AK/SK",
+                    remove: { removeSubscriptionProvider(.volcengine) }
+                ) {
                     Button("更换") { volcengineEditing = true }
                         .disabled(busy)
                         .accessibilityHint("输入新的火山引擎 AK/SK")
-                    Button("移除") {
-                        removeSubscriptionProvider(.volcengine)
-                    }
-                    .disabled(busy)
-                    .accessibilityHint("删除本应用保存的火山引擎 AK/SK")
                 }
             }
             if coordinator.ccSwitchDatabaseExists() {
@@ -502,12 +538,26 @@ struct SettingsView: View {
         // needsRelogin 时保留粘贴入口, 便于重新登录
         let showPaste = kimiEditing || !configured || (needsRelogin && !localFileExists)
 
-        return Group {
-            if localFileExists {
-                Button("从本机导入") {
-                    coordinator.importKimiFromLocalFile()
+        return managementStack {
+            if localFileExists || (configured && !showPaste) {
+                managementActionRow(
+                    configured: configured,
+                    removeHint: "删除本应用保存的 Kimi 令牌",
+                    remove: {
+                        removeSubscriptionProvider(.kimi)
+                        kimiEditing = false
+                    }
+                ) {
+                    if localFileExists {
+                        Button("从本机导入") {
+                            coordinator.importKimiFromLocalFile()
+                        }
+                        .accessibilityHint("读取 kimi-dashboard 保存的本机浏览器令牌")
+                    } else {
+                        Button("更换") { kimiEditing = true }
+                            .accessibilityHint("重新粘贴 Kimi 令牌")
+                    }
                 }
-                .accessibilityHint("读取 kimi-dashboard 保存的本机浏览器令牌")
             }
             if showPaste && !localFileExists {
                 Text("打开 kimi.com 并登录 → 开发者工具 → Application → 复制 access_token 与 refresh_token, 粘贴整段 JSON 或两段 token")
@@ -517,7 +567,14 @@ struct SettingsView: View {
                     .font(.system(.caption, design: .monospaced))
                     .frame(minHeight: 56, maxHeight: 96)
                     .accessibilityLabel("Kimi 令牌粘贴框")
-                HStack {
+                managementActionRow(
+                    configured: configured,
+                    removeHint: "删除本应用保存的 Kimi 令牌",
+                    remove: {
+                        removeSubscriptionProvider(.kimi)
+                        kimiEditing = false
+                    }
+                ) {
                     Button("验证并保存") {
                         coordinator.importKimiFromPaste(kimiPasteText)
                         kimiPasteText = ""
@@ -533,19 +590,6 @@ struct SettingsView: View {
                     }
                 }
             }
-            if configured {
-                HStack {
-                    if !localFileExists && !showPaste {
-                        Button("更换") { kimiEditing = true }
-                            .accessibilityHint("重新粘贴 Kimi 令牌")
-                    }
-                    Button("移除") {
-                        removeSubscriptionProvider(.kimi)
-                        kimiEditing = false
-                    }
-                    .accessibilityHint("删除本应用保存的 Kimi 令牌")
-                }
-            }
         }
     }
 
@@ -553,7 +597,7 @@ struct SettingsView: View {
         let configured = model.subscriptionCredentialConfigured[.codex] ?? false
         let busy = model.busySubscriptionProviders.contains(.codex)
 
-        return Group {
+        return managementStack {
             if let summary = model.codexAccountSummary, summary.count > 0 {
                 let shown = summary.emailPrefixes.prefix(5).joined(separator: ", ")
                 let suffix = summary.emailPrefixes.count > 5 ? " 等" : ""
@@ -561,7 +605,11 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            HStack {
+            managementActionRow(
+                configured: configured,
+                removeHint: "删除本应用保存的全部 Codex 账号凭证",
+                remove: { removeSubscriptionProvider(.codex) }
+            ) {
                 Button("登录新账号") {
                     coordinator.loginCodexNewAccount()
                 }
@@ -574,13 +622,13 @@ struct SettingsView: View {
                     .disabled(busy)
                     .accessibilityHint("读取 Codex CLI 的当前登录账号")
                 }
-                if coordinator.codexCCAccountsFileExists() {
-                    Button("从 CC Switch 导入账号库") {
-                        showsCodexCCImportConfirm = true
-                    }
-                    .disabled(busy)
-                    .accessibilityHint("只读导入 CC Switch 管理的 Codex 多账号")
+            }
+            if coordinator.codexCCAccountsFileExists() {
+                Button("从 CC Switch 导入账号库") {
+                    showsCodexCCImportConfirm = true
                 }
+                .disabled(busy)
+                .accessibilityHint("只读导入 CC Switch 管理的 Codex 多账号")
             }
             if let login = coordinator.codexDeviceLogin {
                 deviceLoginView(
@@ -588,13 +636,6 @@ struct SettingsView: View {
                     openPage: { coordinator.reopenCodexLoginPage() },
                     cancel: { coordinator.cancelCodexLogin() }
                 )
-            }
-            if configured {
-                Button("移除") {
-                    removeSubscriptionProvider(.codex)
-                }
-                .disabled(busy)
-                .accessibilityHint("删除本应用保存的全部 Codex 账号凭证")
             }
         }
     }
@@ -655,22 +696,23 @@ struct SettingsView: View {
     private var antigravityGroup: some View {
         let configured = model.subscriptionCredentialConfigured[.antigravity] ?? false
 
-        return Group {
-            if coordinator.antigravityTokenFileExists() {
-                Button("从本机导入") {
-                    coordinator.importAntigravityFromLocalFile()
-                }
-                .accessibilityHint("读取 Antigravity CLI 的本机 OAuth 令牌")
-            } else if !configured {
-                Text("未检测到本机 Antigravity 令牌文件, 请先通过 Antigravity CLI 登录")
+        return managementStack {
+            if !configured && !model.antigravityLocalAvailable {
+                Text("未检测到 Antigravity 登录态, 请先通过 Antigravity CLI 登录")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            if configured {
-                Button("移除") {
-                    removeSubscriptionProvider(.antigravity)
+            managementActionRow(
+                configured: configured,
+                removeHint: "删除本应用保存的 Antigravity 令牌",
+                remove: { removeSubscriptionProvider(.antigravity) }
+            ) {
+                if model.antigravityLocalAvailable {
+                    Button("从本机导入") {
+                        coordinator.importAntigravityFromLocalFile()
+                    }
+                    .accessibilityHint("读取 Antigravity CLI 的本机 OAuth 令牌 (文件或钥匙串)")
                 }
-                .accessibilityHint("删除本应用保存的 Antigravity 令牌")
             }
         }
     }

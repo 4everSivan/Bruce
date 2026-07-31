@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import importlib.util
 import json
@@ -6,6 +7,7 @@ import sqlite3
 import ssl
 import tempfile
 import unittest
+import urllib.parse
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -355,6 +357,185 @@ class AgentCollectorContextTests(unittest.TestCase):
             ],
             "new-access",
         )
+
+    def test_load_agy_oauth_keychain_fallback_decodes_go_keyring(self):
+        payload = {
+            "token": {"access_token": "a", "refresh_token": "r"},
+            "auth_method": "oauth",
+        }
+        encoded = base64.b64encode(json.dumps(payload).encode("utf-8")).decode("ascii")
+        with tempfile.TemporaryDirectory() as temp_home:
+            self.module._configure_runtime(
+                {"home": temp_home, "now": "2026-07-28T12:00:00+08:00"}
+            )
+            original = self.module._security_find_generic_password
+            self.module._security_find_generic_password = (
+                lambda service, account: "go-keyring-base64:" + encoded
+            )
+            try:
+                data, source = self.module._load_agy_oauth()
+            finally:
+                self.module._security_find_generic_password = original
+
+        self.assertEqual(source, "keychain")
+        self.assertEqual(data, payload)
+
+    def test_load_agy_oauth_prefers_file_over_keychain(self):
+        payload = {"token": {"access_token": "file-access"}}
+        with tempfile.TemporaryDirectory() as temp_home:
+            token_path = (
+                Path(temp_home)
+                / ".gemini"
+                / "antigravity-cli"
+                / "antigravity-oauth-token"
+            )
+            token_path.parent.mkdir(parents=True)
+            token_path.write_text(json.dumps(payload), encoding="utf-8")
+            self.module._configure_runtime(
+                {"home": temp_home, "now": "2026-07-28T12:00:00+08:00"}
+            )
+            original = self.module._security_find_generic_password
+            self.module._security_find_generic_password = (
+                lambda service, account: "go-keyring-base64:should-not-be-used"
+            )
+            try:
+                data, source = self.module._load_agy_oauth()
+            finally:
+                self.module._security_find_generic_password = original
+
+        self.assertEqual(source, "file")
+        self.assertEqual(data, payload)
+
+    def test_service_antigravity_keychain_source_no_writeback(self):
+        class FakeResponse:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self):
+                return json.dumps(self.payload).encode("utf-8")
+
+        keychain_payload = {
+            "token": {"access_token": "old-access", "refresh_token": "old-refresh"}
+        }
+        encoded = base64.b64encode(
+            json.dumps(keychain_payload).encode("utf-8")
+        ).decode("ascii")
+        responses = iter(
+            [
+                {"access_token": "new-access", "expires_in": 3600},
+                {"groups": []},
+            ]
+        )
+        request_bodies = []
+
+        def fake_urlopen(req, *_args, **_kwargs):
+            request_bodies.append(req.data or b"")
+            return FakeResponse(next(responses))
+
+        with tempfile.TemporaryDirectory() as temp_home:
+            self.module._configure_runtime(
+                {
+                    "home": temp_home,
+                    "now": "2026-07-28T12:00:00+08:00",
+                    "http": {"urlopen": fake_urlopen},
+                }
+            )
+            original_pass = self.module._security_find_generic_password
+            original_client_id = self.module.AGY_CLIENT_ID
+            self.module._security_find_generic_password = (
+                lambda service, account: "go-keyring-base64:" + encoded
+            )
+            self.module.AGY_CLIENT_ID = "mock-client-id"
+            try:
+                services = self.module.service_antigravity()
+            finally:
+                self.module._security_find_generic_password = original_pass
+                self.module.AGY_CLIENT_ID = original_client_id
+            token_path = (
+                Path(temp_home)
+                / ".gemini"
+                / "antigravity-cli"
+                / "antigravity-oauth-token"
+            )
+
+        self.assertEqual(services[0]["status"], "empty")
+        self.assertFalse(
+            token_path.exists(), "Keychain 来源不得创建或写回令牌文件"
+        )
+        self.assertIn(
+            "client_id=mock-client-id",
+            request_bodies[0].decode("utf-8"),
+            "刷新请求必须携带运行时注入的 client_id",
+        )
+
+    def test_service_antigravity_merges_model_groups_by_window(self):
+        class FakeResponse:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self):
+                return json.dumps(self.payload).encode("utf-8")
+
+        quota = {
+            "groups": [
+                {
+                    "displayName": "Gemini",
+                    "buckets": [
+                        {"window": "5h", "remainingFraction": 0.4, "resetTime": None},
+                        {"window": "weekly", "remainingFraction": 0.9, "resetTime": None},
+                    ],
+                },
+                {
+                    "displayName": "Claude/GPT",
+                    "buckets": [
+                        {"window": "5h", "remainingFraction": 0.7, "resetTime": None},
+                        {"window": "weekly", "remainingFraction": 0.2, "resetTime": None},
+                    ],
+                },
+            ]
+        }
+        responses = iter([{"access_token": "a", "expires_in": 3600}, quota])
+        with tempfile.TemporaryDirectory() as temp_home:
+            self.module._configure_runtime(
+                {
+                    "home": temp_home,
+                    "app_mode": True,
+                    "now": "2026-07-28T12:00:00+08:00",
+                    "credentials": {
+                        "antigravity_oauth": {
+                            "token": {"access_token": "x", "refresh_token": "r"}
+                        }
+                    },
+                    "http": {
+                        "urlopen": lambda *_a, **_k: FakeResponse(next(responses))
+                    },
+                }
+            )
+            services = self.module.service_antigravity()
+
+        svc = services[0]
+        self.assertEqual(svc["status"], "ok")
+        labels = [w["label"] for w in svc["windows"]]
+        self.assertEqual(labels, ["5小时窗口", "每周窗口"])
+        used = {w["label"]: w["usedPercent"] for w in svc["windows"]}
+        # 跨模型取用量最高的池: 5h -> Gemini 60%, weekly -> Claude/GPT 80%
+        self.assertAlmostEqual(used["5小时窗口"], 60.0)
+        self.assertAlmostEqual(used["每周窗口"], 80.0)
+        minutes = {w["label"]: w["windowMinutes"] for w in svc["windows"]}
+        self.assertEqual(minutes["5小时窗口"], 300)
+        self.assertIsNone(minutes["每周窗口"])
 
     def test_run_app_returns_updates_separate_from_artifact(self):
         original_collect = self.module.collect

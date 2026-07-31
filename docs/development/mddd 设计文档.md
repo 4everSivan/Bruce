@@ -3,8 +3,8 @@
 | 项目 | 定义 |
 |---|---|
 | 文档版本 | 1.0 |
-| 适用平台 | macOS 13 及以上 |
-| 产品形态 | 原生 macOS Dock 应用 |
+| 适用平台 | macOS 26 及以上 |
+| 产品形态 | 原生 macOS 菜单栏应用 (LSUIElement) |
 | 技术基线 | Swift 6, SwiftUI, AppKit, WebKit, Python 3.9+ |
 
 ## 1. 文档目的
@@ -15,12 +15,12 @@
 
 ### 2.1 产品定位
 
-`mddd` 是一个本地优先的 macOS Dock 研发活动看板。它把分散在本机 AI Agent 会话和本地工具数据库中的研发活动汇总到一个原生应用中, 为开发者提供:
+`mddd` 是一个本地优先的 macOS 菜单栏研发活动看板。它把分散在本机 AI Agent 会话和本地工具数据库中的研发活动汇总到一个原生应用中, 为开发者提供:
 
 - AI Agent token 使用量、成本估算和趋势分析。
 - 本机依赖扫描、登录配置、最小授权和凭证管理。
-- 自动刷新、最后成功快照、故障隔离和 Dock 状态提醒。
-- 保留现有 Widget 视觉风格的统一原生容器。
+- 自动刷新、最后成功快照、故障隔离和菜单栏状态提醒。
+- 保留现有 Widget 视觉风格的统一原生菜单栏容器。
 
 应用不依赖项目自有服务端, 不默认上传本机活动记录, 不要求用户把真实凭证写入项目文件。
 
@@ -28,7 +28,7 @@
 
 - 同时使用多个 AI 编程 Agent 的 macOS 开发者。
 - 需要快速理解每日 token 消耗、模型使用分布和成本的个人用户。
-- 希望在一个低打扰 Dock 应用中查看研发节奏的用户。
+- 希望在一个低打扰菜单栏应用中查看研发节奏的用户。
 
 ### 2.3 核心目标
 
@@ -77,53 +77,53 @@ Agent 用量具有独立的就绪度、刷新状态、缓存和失败恢复。�
 
 ### 4.1 主导航
 
-应用使用 `NavigationSplitView` 构建左右结构:
+应用以 `MenuBarExtra` 承载菜单栏形态: 点击菜单栏图标弹出原生面板, 面板内纵向排列玻璃卡片 (用量 / 订阅用量 / 逐小时), 底部为固定操作栏 (刷新 / 设置 / 退出); 设置通过独立窗口打开。
 
 ```text
-┌──────────────────────┬────────────────────────────────────────────┐
-│ mddd                 │ 模块标题                         状态胶囊   │
-│                      │                                            │
-│ Agent 用量  最新     │              WidgetHost                    │
-│ 设置                 │                                            │
-│                      │                                            │
-└──────────────────────┴────────────────────────────────────────────┘
+┌───────────────────────────────────────────┐
+│ 菜单栏标签: 品牌图标 + 1-3 项指标 + 警示符号 │  ← 常驻菜单栏
+└───────────────────────────────────────────┘
+       点击弹出 ↓
+┌───────────────────────────────────────────────┐
+│ 用量卡 (hero 总量 / 四格细分 / 14 日趋势)       │
+│ 订阅用量卡 (Provider 窗口量条 / Codex 子卡)     │
+│ 逐小时卡 (24 点折线 / 模型与项目明细)           │
+│ ───────────────────────────────────────────── │
+│ [刷新]                      [设置] [退出]       │
+└───────────────────────────────────────────────┘
 ```
 
-侧栏固定包含:
+菜单栏标签由品牌图标、已选指标 (1 至 3 项, 可排序) 和需要干预时的警示符号组成; 刷新中品牌图标切换为旋转指示。面板宽度固定 440pt, 高度随卡片内容自适应, 内容超出屏幕可用高度时出现滚动条。
 
-1. Agent 用量。
-2. 设置。
+### 4.2 窗口与菜单栏行为
 
-每个数据模块在标题下显示简短状态。设置模块不显示采集状态。
-
-### 4.2 窗口与 Dock 行为
-
-- 默认窗口尺寸为 `980 × 680 pt`。
-- 最小窗口尺寸为 `760 × 540 pt`。
-- 侧栏最小宽度为 `180 pt`, 理想宽度为 `210 pt`。
-- 应用只维护一个主窗口, 稳定窗口标识为 `mddd.main-window`。
-- 用户关闭窗口后再次点击 Dock 图标, 应恢复、取消最小化并激活原主窗口, 不创建重复窗口。
+- 应用以 `LSUIElement` 常驻菜单栏, 不显示 Dock 图标。
+- 菜单栏面板宽度固定 `440 pt`, 高度随卡片内容自适应。
+- 面板内容超出所在屏幕 `visibleFrame` 时封顶并出现滚动条, 底栏 (刷新 / 设置 / 退出) 始终固定在滚动区外。
+- 设置窗口是唯一的主窗口; 关闭设置窗口不会停止调度, 再次打开复用同一窗口, 不创建重复 Scheduler。
 - 应用退出时先停止调度和接受新任务, 再取消运行中的任务; 宽限 2 秒后仍未退出的子进程强制终止。
 
-### 4.3 Dock Badge
+### 4.3 菜单栏指标
 
-Dock Badge 只表达通用严重程度, 不包含账号、仓库、host、token 或活动数量:
+菜单栏标签除品牌图标外, 可配置 1 至 3 项指标 (默认项可排序、增删):
 
-| Badge | 含义 |
-|---|---|
-| 无 | 所有模块处于正常、可运行或刷新中状态 |
-| `•` | 至少一个模块部分可用、数据过期、需要授权或网络不可用 |
-| `!` | 至少一个模块刷新失败且没有更高层的可恢复展示语义 |
+- 今日 tokens。
+- 今日成本。
+- 最低剩余额度。
+- 平均剩余额度。
+- 整体状态。
+
+指标只显示聚合数字和通用状态, 不显示账号、仓库、host、token 明细或活动数量。
 
 ## 5. 核心用户流程
 
 ### 5.1 首次启动
 
-1. 应用创建单一主窗口并启动 Scheduler。
-2. Scheduler 尝试载入各模块最后成功快照。
-3. Onboarding 执行本机只读扫描, 检查 Python、Agent 会话目录和可选 SQLite schema。
-4. 应用展示各模块的依赖、连接和阻塞原因。
-5. 用户选择需要启用的模块。
+1. 应用启动 Scheduler 并尝试载入最后成功快照。
+2. Onboarding 执行本机只读扫描, 检查 Python、Agent 会话目录和可选 SQLite schema。
+3. 设置页展示依赖扫描结果、阻塞原因和模块选择开关。
+4. 用户选择需要启用的模块。
+5. 用户在「订阅额度」分区按需配置或导入订阅凭证。
 6. 应用展示统一授权摘要。
 7. 用户确认当前授权版本后, Activation Gate 逐模块计算是否允许调度。
 8. 允许的模块立即执行首轮采集, 后续按默认周期自动刷新。
@@ -253,14 +253,15 @@ current 损坏时加载 previous, 并强制标记为 stale。未知高版本 sch
 
 ### 7.1 全局布局
 
-详情区使用 `24 pt` 外边距, 标题与主体间距为 `18 pt`。顶部由大标题、弹性空间和状态胶囊组成。主体区域由设置表单、Widget 或空状态占满。
+菜单栏面板为纵向卡片栈, 宽度固定 `440 pt`。卡片间垂直间距 `10 pt`, 水平外边距 `12 pt`。每张卡片由统一 `PanelCardContainer` 提供液态玻璃背景 (圆角 22)、描边和阴影; 面板整体背景为系统玻璃效果 (圆角 22, 强度随设置)。
 
-空状态必须包含:
+面板内容由卡片按数据可用性条件渲染, 无任何卡片时展示居中空状态 (图标 + 「未配置模块, 前往设置」 + 打开设置按钮)。底部固定操作栏包含刷新 (`⌘R`)、设置和退出按钮, 与卡片区以 0.5pt 发线分隔。面板高度实测内容后取 `min(内容高, 屏幕可见高 - 底栏)`。
 
-- 模块 SF Symbol。
-- “WidgetHost 将在此加载现有视觉”主提示。
-- 具体阻塞原因或模块状态。
-- 图标和文字组合, 不只依赖颜色表达状态。
+面板布局约束:
+
+- 卡片全空时面板不塌陷, 展示空状态引导。
+- 内容超出屏幕可用高度时出现滚动条, 底栏不随内容滚动。
+- 面板显示效果跟随配色模式 (系统/浅色/深色) 和液态玻璃强度 (标准/通透/哑光)。
 
 ### 7.2 模块状态
 
@@ -276,84 +277,101 @@ current 损坏时加载 previous, 并强制标记为 stale。未知高版本 sch
 | `offline` | 网络不可用 | `wifi.slash` | 展示本地快照 |
 | `failed` | 刷新失败 | `xmark.circle` | 保留快照或展示错误空态 |
 
-Widget 右下角使用 `role="status"` 和 `aria-live="polite"` 的状态胶囊, 覆盖 loading、refreshing、stale、authRequired、offline、partial、error 和 notConfigured。
+Widget 右下角使用 `role="status"` 和 `aria-live="polite"` 的状态胶囊, 覆盖 loading、refreshing、stale、authRequired、offline、partial、error 和 notConfigured (Daimon 场景)。
 
-### 7.3 Agent 用量 Widget
+### 7.3 菜单栏玻璃卡片
 
-Agent 用量 Widget 的视觉层级:
+#### 用量卡 (UsageHeroCard)
 
-1. 顶部品牌行: “Agent 额度 · 用量”、LIVE 状态和更新时间。
-2. 今日主指标: 大号 token 总数、成本、在线 Agent 数和领先 Agent。
-3. 用量拆分: input、output、cache read。
-4. 额度区: 统一使用 meter 表达窗口已用/剩余, 余额使用数值。
-5. 14 日趋势: 按 Agent 堆叠的全机 token 柱状图。
-6. Agent 列表: 排名、名称、今日 token 和成本。
-7. Agent 详情: 24 小时折线、模型 chips 和项目 chips。
+- 标题行: 「用量」+ LIVE 呼吸灯 (绿色光晕, 2.4 秒周期, Reduce Motion 时静止常亮)。
+- Hero 行: 今日 token 总数 (40pt bold, 渐变着色, 蓝色强调)、单位 `tokens` 和今日成本。
+- 四格细分: input / output / cache read / cache creation, 格间 1pt 分隔线。
+- 14 日堆叠柱状图 (Charts): 按 Agent 堆叠, 固定 Y 域, 逐列自下而上生长动画 (Reduce Motion 时直接就位), 每列顶端标注当日总量。
+- 日期轴 (14 天前 / 7 天前 / 今天) 与 Agent 图例。
 
-颜色语义:
+#### 订阅用量卡 (SubscriptionCard)
 
-- 主要强调色为陶土橙。
-- 正常状态为绿色。
-- 接近用尽为黄色。
-- 高风险或失败为红色。
-- 不可用或未配置项降低对比度, 但保留可读文字。
+- 标题行: 「订阅用量」+ 更新时间。
+- 每个 Provider 一段: 名称 + 套餐 chip + 账号数, 段间 1pt 分隔线。
+- 窗口行: label (62pt) + 量条 + 已用百分比 (46pt) + 重置文案 (48pt)。量条为消耗式填充, 已用 >= 85% 橙色, >= 95% 红色; 出现动画尊重 Reduce Motion。
+- Codex 多账号以圆角 10 内层玻璃子卡展示, 账号级 error 说明在子卡内展示。
+- 余额行沉底 (如 DeepSeek 按量付费余额)。
+- error / empty 段保留 Collector 说明文字, 不静默吞掉。
 
-视觉基线:
+#### 逐小时卡 (HourlyLineCard)
 
-![Agent 用量视觉基线](../../Tests/visual/baselines/agent-usage-valid.jpg)
+- 标题行: 「逐小时」+ 「0 – 23 时」。
+- 每个 Agent 一行: 色点 + 名称 + 今日总量, 行间 1pt 分隔线。
+- 24 点折线 (Charts): agent 色 1.5pt 线 + 淡渐变面积, 隐藏坐标轴。
+- 有模型或项目明细的行整行可点击, 展开内层玻璃明细区 (模型占比 + 项目分布两组量条, 名称 92pt + 条 4pt + 数值 56pt, 按位次降透明度 1.0 / 0.65 / 0.4)。
+
+#### 视觉基线
+
+Widget 场景 (Daimon) 的视觉基线见 `tests/visual/baselines/agent-usage-valid.jpg`; 原生菜单栏面板的截图基线待真实环境验收补充。
 
 ### 7.4 设置页
 
-设置页采用原生 grouped `Form`, 按以下顺序组织:
+设置窗口采用原生 grouped `Form`, 按以下顺序组织:
 
-#### 外观
+#### 通用
 
-- 主题 Picker。
-- “经典”始终可选。
-- “液态玻璃”只在 macOS 26 及以上显示为可选项。
-- 低版本读取到液态玻璃配置时安全回退为经典主题。
+- 配色模式 Picker (跟随系统 / 浅色 / 深色), 立即作用于面板与设置窗口。
+- 液态玻璃 Picker (标准 / 通透 / 哑光); 哑光退化为材质质感。
+- 刷新间隔 Picker (允许值由配置约束), 变更后立即按新间隔重新计时。
+- 菜单栏指标 1 至 3 项: 开关 + 上下移排序, 满 3 项时其余项禁用, 保留最后 1 项不可关闭。
 
 #### Agent 用量
 
 - Python 可用性和版本。
 - 有效会话源数量。
 - 数据源 warning 和阻塞原因。
-- “选择 Python…”和“重新检查”操作。
+- 「选择 Python…」和「重新检查」操作。
 - 扫描期间只禁用本模块按钮, 不阻塞其他模块。
+
+#### 订阅额度
+
+- Provider 标签式管理: 顶部 Picker 只列未配置的 Provider, 点击添加后出现在下方列表 (默认收起为一行)。
+- 每个 Provider 行: 名称 (可展开) + 状态行 (未配置 / 已配置 · 验证通过 / 验证失败 / 需要重新登录) + 「启用云端额度查询」开关 (有凭证才可开)。
+- 展开管理区按 Provider 类型提供: DeepSeek API key 输入、火山引擎 AK/SK 输入 (仅本地格式校验)、Kimi 令牌粘贴或本机导入、Codex 设备码登录 / 本机 CLI 导入 / CC Switch 账号库只读导入、Antigravity 本机登录态导入 (文件或 Keychain)。
+- 密钥输入均使用 SecureField 不回显, 提交后清空; 凭证只进 Keychain。
+- 「移除」按钮统一居右 (destructive), 只删除本应用保存的凭证。
 
 #### 统一授权
 
 - Agent 用量模块开关。
-- 明确列出本机只读扫描、外部 host、凭证用途和 30 分钟自动刷新。
-- 明确说明 Agent 云端额度 Provider 的授权状态。
-- 未确认时显示“确认授权”。
-- 已确认时显示“当前授权有效”和“撤销全部授权”。
+- 授权摘要列出: 本机只读扫描范围、刷新间隔、已启用订阅 Provider 的云端额度查询, 以及「可随时撤销授权」。
+- 未确认时显示「确认授权」; 已确认时显示「当前授权有效」和「撤销全部授权」。
+- 未配置任何启用 Provider 时明确说明不会访问云端额度接口。
+
+#### 诊断
+
+- 说明诊断包只包含应用/系统版本、模块状态、依赖状态和快照校验结果。
+- 「预览诊断」以 Sheet 展示脱敏 JSON; 「导出诊断包…」经 NSSavePanel 导出最小 ZIP。
 
 ### 7.5 主题
 
-经典主题要求:
+面板和设置窗口支持:
 
-- 米白书卷底。
-- 暖灰文字。
-- 细边框和低对比度分隔。
-- Agent 陶土橙保持模块辨识度。
-- 原有衬线标题、数字层级和 Widget 布局保持不变。
+- 配色模式: 跟随系统 / 浅色 / 深色, 以 `preferredColorScheme` 强制覆盖。
+- 液态玻璃强度: 标准 / 通透 (系统 Liquid Glass) / 哑光 (退化为材质质感)。
 
-液态玻璃主题要求:
+深浅色自适应:
 
-- 使用系统 glass effect、半透明背景、模糊、细描边和柔和阴影。
-- 使用系统字体栈和深浅色自适应语义色。
-- 不修改尺寸、定位、边距、热力网格或信息层级。
-- WKWebView 背景透明, 由原生 `NSGlassEffectView` 提供玻璃垫层。
-- 主题切换通过 `window.__mdddSetTheme(name, cssText)` 同步到 Widget。
+- 所有自定义颜色通过 `Color.adaptive(light:dark:)` 随外观切换 (如发线、量条底色、子卡背景、hero 渐变)。
+- 玻璃卡内容在深色下自动提高文字对比度 (如 LIVE 绿文字深色退回亮绿)。
+
+主题偏好持久化在配置中, 面板、设置窗口一致生效。
 
 ### 7.6 可访问性
 
-- 导航模块、模块状态和设置错误必须提供可读 accessibility label。
+- 菜单栏标签以单一 accessibility 元素朗读整体摘要 (品牌 + 状态 + 各项指标)。
+- 面板卡片、状态、设置操作和诊断操作必须提供明确 label; 状态提供 accessibility value 和必要 hint。
 - 所有状态同时使用图标和文字, 不以颜色作为唯一信号。
-- Widget 状态变化使用 polite live region。
-- 支持 `prefers-reduced-motion`; 动画和过渡在减少动态效果时降到最小。
-- 动态账号名、模型名、项目名、日期和数值必须转义或使用 `textContent`。
+- 刷新、设置、退出按钮提供 shortcut 与 hint; 刷新可用 `⌘R`。
+- 支持 `prefers-reduced-motion`; 柱状图生长、量条填充、呼吸灯和旋转指示在减少动态效果时降到最小或直达终态。
+- 忙碌或禁用按钮说明原因, 不只表现为灰色。
+- 设置页错误以 accessibility announcement 播报。
+- 动态账号名、模型名、项目名、日期和数值必须转义或使用 `textContent` (Widget 场景)。
 - 最小窗口尺寸下不得遮挡主要导航、状态或设置操作。
 
 ## 8. Onboarding 与就绪度设计
@@ -367,7 +385,7 @@ Agent 用量 Widget 的视觉层级:
 - CC Switch SQLite schema。
 - Antigravity SQLite schema。
 
-Python 路径按“用户选择路径 -> 固定候选路径”解析, 不依赖 GUI 进程的 shell `PATH`。
+Python 路径按“用户选择路径 -> 固定候选路径”解析, 不依赖 GUI 进程的 shell `PATH`。Antigravity OAuth 令牌优先读本机文件, 回退读登录 Keychain (go-keyring, service `gemini` / account `antigravity`, 值带 `go-keyring-base64:` 前缀), Keychain 来源只读不回写。
 
 扫描状态统一为:
 
@@ -401,7 +419,9 @@ Agent 用量在 `ready` 或 `partial` 时可运行。
 
 ```mermaid
 flowchart LR
-    UI["SwiftUI / AppKit<br/>主窗口与设置"] --> CO["OnboardingCoordinator"]
+    MENU["MenuBarExtra<br/>菜单栏标签 + 面板"] --> APP["AppModel"]
+    APP --> SCHED["RefreshScheduler"]
+    SETTINGS["SettingsView"] --> CO["OnboardingCoordinator"]
     CO --> SCAN["LocalDependencyScanner"]
     CO --> GATE["CollectorActivationGate"]
     GATE --> SCHED["RefreshScheduler"]
@@ -411,22 +431,24 @@ flowchart LR
     AGENT -->|Artifact v1| BRIDGE
     BRIDGE -->|stdout: BridgeResponse v1| RUNNER
     RUNNER --> STORE["ArtifactStore"]
-    STORE --> MODEL["AppModel"]
-    MODEL --> HOST["隔离 WKWebView"]
-    HOST --> WIDGET["模块 Widget"]
+    STORE --> APP
+    APP -->|PanelViewModel| PANEL["原生玻璃卡片<br/>用量 / 订阅用量 / 逐小时"]
     KEYCHAIN["macOS Keychain"] --> CO
     KEYCHAIN --> SCHED
+    WIDGET["Daimon 单文件 Widget<br/>WidgetHost 场景"] --> AGENT
 ```
 
 ### 9.1 原生层职责
 
-- `MdddApp`: 依赖装配、窗口场景和生命周期入口。
-- `AppModel`: UI 单一状态源, 保存模块状态、Artifact、就绪结果、busy 状态、错误、Dock Badge 和主题。
+- `MdddApp`: 依赖装配、菜单栏场景、设置窗口和生命周期入口。
+- `AppModel`: UI 单一状态源, 保存模块状态、Artifact、就绪结果、busy 状态、错误、菜单栏指标和外观偏好。
 - `OnboardingCoordinator`: 扫描、连接验证、授权、配置持久化和 Scheduler 协调。
 - `RefreshScheduler`: 周期、唤醒补偿、防重入、容量、退避和模块状态。
 - `CollectorRunner`: 子进程启动、超时、取消、stdin/stdout 协议和响应校验。
 - `ArtifactStore`: Artifact 校验、私有原子存储、回退和迁移。
-- `WidgetHost`: Widget 资源加载、导航隔离、Artifact 注入、状态和主题同步。
+- `MenuBarViews`: 菜单栏标签与面板装配, 卡片栈高度自适应和滚动抑制。
+- `Views/`: 原生玻璃卡片组件 (UsageHeroCard / SubscriptionCard / HourlyLineCard / PanelCardContainer)。
+- `WidgetHost`: 仅 Daimon 场景使用, 负责 Widget 资源加载、导航隔离、Artifact 注入、状态和主题同步。
 
 ### 9.2 Core 层职责
 
@@ -438,13 +460,17 @@ flowchart LR
 - CollectorActivationGate。
 - OnboardingConfigurationStore。
 - CredentialStore 与 Keychain 实现。
+- 设备码登录与订阅凭证导入的纯逻辑。
+- 令牌轮换合并 (credentialUpdates 只写回 Keychain)。
+
+`MdddAppCore` 提供 AppModel、CollectorRunner、RefreshScheduler、ArtifactStore、PanelViewModel 映射、WidgetDisplayState、菜单栏指标/摘要/格式化、生命周期协调和诊断服务, 全部可被 Harness 直接链接测试。
 
 ### 9.3 Python 层职责
 
 - Collector 只负责采集和聚合。
 - Bridge 是 Swift 与 Collector 之间的唯一协议边界。
 - Collector 不向 stdout 输出调试信息。
-- App 模式下 Collector 不回退读取旧项目 token 文件。
+- App 模式下 Collector 不回退读取旧项目 token 文件, 不写回第三方认证文件。
 - Widget 不直接调用 Collector。
 
 ## 10. Bridge 协议
@@ -553,7 +579,9 @@ Artifact 任意层级的字段名不得包含以下语义:
 
 Artifact 在 Bridge、ArtifactStore 和 WidgetHost 三个边界重复验证。
 
-## 12. WidgetHost 契约
+## 12. WidgetHost 契约 (Daimon 场景)
+
+原生菜单栏面板为纯 SwiftUI 渲染, 不接触 WidgetHost。WidgetHost 仅服务 Daimon/Kimi Work Blueprint 场景, 由 Daimon host 以受 CSP 限制的 WebView 加载单文件 Widget。
 
 ### 12.1 数据注入
 
@@ -649,7 +677,7 @@ Artifact 快照位于用户级 Application Support 的 `mddd/snapshots` 下, met
 - 用户主目录绝对路径。
 - URL query 和 fragment。
 
-CLI 原始输出、HTTP header、HTTP body、PAT、OAuth token 和完整本机路径不得进入 UI、日志或 Dock Badge。
+CLI 原始输出、HTTP header、HTTP body、PAT、OAuth token 和完整本机路径不得进入 UI、日志或菜单栏标签。
 
 ### 14.3 故障展示
 
@@ -664,7 +692,7 @@ CLI 原始输出、HTTP header、HTTP body、PAT、OAuth token 和完整本机�
 
 ### 15.1 兼容性
 
-- 最低支持 macOS 13。
+- 最低支持 macOS 26 (Liquid Glass 与菜单栏面板依赖)。
 - SwiftPM 使用 Swift 6 工具链。
 - Collector 支持 Python 3.9 及以上。
 - Collector 只依赖 Python 标准库。
@@ -699,13 +727,13 @@ CLI 原始输出、HTTP header、HTTP body、PAT、OAuth token 和完整本机�
 
 ### 16.1 产品验收
 
-1. 首次打开时能够看到导航项和每个数据模块的状态。
+1. 菜单栏常驻 (LSUIElement), 点击标签弹出面板, 卡片按数据可用性条件渲染。
 2. 未确认授权时所有 Collector 均保持禁用。
 3. Agent 模块在 Python 3.9+ 且至少一个主要会话源可读时可运行。
 4. 自动刷新默认每 30 分钟执行, 睡眠恢复后只补采过期模块。
 5. 任一模块失败时其他模块继续刷新。
-6. 有最后成功快照时, 刷新失败不清空页面。
-7. Dock 重开只恢复一个主窗口。
+6. 有最后成功快照时, 刷新失败不清空面板。
+7. 关闭设置窗口不停止调度, 重新打开不创建重复 Scheduler。
 8. 退出时停止调度并回收 Collector 子进程。
 
 ### 16.2 数据验收
@@ -714,23 +742,27 @@ CLI 原始输出、HTTP header、HTTP body、PAT、OAuth token 和完整本机�
 2. 成本按 input、output、cache read 和 cache creation 定价计算。
 3. schema、module、runId 或日期无效时拒绝发布。
 4. Artifact 出现敏感字段时在 Bridge 和原生层均拒绝。
+5. PanelViewModel 映射: 措辞、分组、条件渲染 (空/部分/错误状态) 有边界测试覆盖。
 
 ### 16.3 安全验收
 
 1. SQLite 以 `mode=ro` 打开且不执行写入。
-2. Widget 无网络能力、无原生消息通道、无持久 Cookie。
+2. Widget 无网络能力、无原生消息通道、无持久 Cookie (Daimon 场景)。
 3. 子进程 stderr 原文被抑制。
 4. 配置、快照和 metadata 使用 `0600`, 目录使用 `0700`。
-5. Dock Badge 和用户可读诊断不包含身份标识。
+5. 菜单栏标签和用户可读诊断不包含身份标识或 token 明细。
 
 ### 16.4 UI 与视觉验收
 
-视觉基线使用 `782 × 356 px`、浅色主题和脱敏 `valid.json` fixture。确定性截图固定时间并关闭动画。
+原生菜单栏面板验收:
 
-视觉一致性要求:
+- 面板在空数据、部分数据、完整数据和刷新中四种形态下布局稳定, 无滚动条遮挡底栏。
+- 浅色 / 深色 / 三种玻璃强度下文字对比度可读, 卡片内容不重叠。
+- Reduce Motion 下柱状图、量条、呼吸灯和旋转指示直达终态。
+
+Widget 场景 (Daimon) 视觉基线使用脱敏 `valid.json` fixture, 确定性截图固定时间并关闭动画:
 
 - 颜色、字体层级、卡片、meter、chips 保持既有风格。
-- Agent 陶土橙不被主题统一色覆盖。
 - 状态胶囊不遮挡核心数据。
 - 液态玻璃不改变布局尺寸。
 - PNG 与 JPG 基线比较时, 差异像素参考阈值小于 5%, RMSE 小于 10。
@@ -740,10 +772,11 @@ CLI 原始输出、HTTP header、HTTP body、PAT、OAuth token 和完整本机�
 | 层级 | 覆盖内容 |
 |---|---|
 | Onboarding Core Harness | 路径解析、版本、扫描、SQLite、Keychain、连接验证、Readiness、Activation Gate |
+| PanelViewModel Harness | 措辞、分组、条件渲染 |
 | CollectorRunner Harness | stdin 隐私、绝对路径、并发、超时、取消、协议污染、真实 Bridge 隔离运行 |
 | RefreshScheduler Harness | 定时、pending rerun、退避、认证暂停、禁用、唤醒补采、partial、容量和停止 |
 | ArtifactStore Harness | schema、权限、原子写、损坏回退、迁移和未知版本 |
-| Native Lifecycle Harness | 单窗口、Dock 重开、退出回收和 Badge 隐私 |
+| Native Lifecycle Harness | 调度启动、退出回收、Widget 状态映射和菜单栏指标/摘要 |
 | Python 测试 | Bridge 契约、Collector context、聚合、CLI 和敏感数据隔离 |
 | Widget 测试 | CSP、无网络、无原生通道、动态转义、状态覆盖、JS 语法和 Bundle 一致性 |
 | 视觉基线 | Widget 的固定尺寸确定性截图 |
@@ -775,22 +808,26 @@ python3 -m pytest -q
 
 | 设计领域 | 主要代码 |
 |---|---|
-| 应用入口与依赖装配 | `macos/MdddApp/Sources/MdddApp/MdddApp.swift` |
-| 主导航与详情 | `macos/MdddApp/Sources/MdddApp/DashboardView.swift` |
+| 应用入口与依赖装配 | `macos/MdddApp/Sources/MdddApp/MdddApp.swift`, `ApplicationBootstrap.swift` |
+| 菜单栏标签与面板 | `macos/MdddApp/Sources/MdddApp/MenuBarViews.swift` |
 | 设置与授权 UI | `macos/MdddApp/Sources/MdddApp/SettingsView.swift` |
-| UI 状态模型 | `macos/MdddApp/Sources/MdddApp/AppModel.swift` |
-| 主题 | `macos/MdddApp/Sources/MdddApp/GlassTheme.swift` |
+| UI 状态模型 | `macos/MdddApp/Sources/MdddAppCore/AppModel.swift` |
+| 面板卡片组件 | `macos/MdddApp/Sources/MdddApp/Views/` (UsageHeroCard / SubscriptionCard / HourlyLineCard / PanelCardContainer) |
+| 主题与玻璃样式 | `macos/MdddApp/Sources/MdddApp/GlassTheme.swift` |
 | Onboarding 协调 | `macos/MdddApp/Sources/MdddApp/OnboardingCoordinator.swift` |
 | 本机扫描与就绪度 | `macos/MdddApp/Sources/MdddOnboardingCore/` |
-| 调度 | `macos/MdddApp/Sources/MdddApp/RefreshScheduler.swift` |
-| Collector 进程 | `macos/MdddApp/Sources/MdddApp/CollectorRunner.swift` |
-| 快照与校验 | `ArtifactStore.swift`, `ArtifactModels.swift` |
-| WidgetHost | `macos/MdddApp/Sources/MdddApp/WidgetHost.swift` |
+| 调度 | `macos/MdddApp/Sources/MdddAppCore/RefreshScheduler.swift` |
+| Collector 进程 | `macos/MdddApp/Sources/MdddAppCore/CollectorRunner.swift` |
+| 快照与校验 | `macos/MdddApp/Sources/MdddAppCore/ArtifactStore.swift`, `ArtifactModels.swift` |
+| 面板映射 | `macos/MdddApp/Sources/MdddAppCore/PanelViewModel.swift` |
+| 菜单栏指标 | `macos/MdddApp/Sources/MdddAppCore/MenuBarMetrics.swift` |
+| 诊断服务 | `macos/MdddApp/Sources/MdddAppCore/Diagnostics.swift` |
+| WidgetHost (Daimon 场景) | `macos/MdddApp/Sources/MdddApp/WidgetHost.swift` |
 | Bridge | `bridge/run_bridge.py`, `bridge/security.py` |
 | Agent 用量 | `agent-usage/collector/collect_usage.py` |
 | Widget | `agent-usage/widget/` |
 | 契约 schema | `bridge/schemas/` |
-| 测试与视觉基线 | `Tests/`, `macos/MdddApp/Tests/` |
+| 测试与视觉基线 | `tests/`, `macos/MdddApp/Tests/` |
 
 ## 19. 本地可验证收尾设计
 
@@ -935,10 +972,10 @@ DiagnosticReport
 
 #### 19.5.1 原生 UI
 
-- 侧栏、模块标题、状态胶囊、设置操作和诊断操作必须提供明确 label。
+- 菜单栏标签、面板卡片、模块状态、设置操作和诊断操作必须提供明确 label。
 - 状态提供 accessibility value 和必要 hint。
 - 忙碌或禁用按钮说明原因, 不只表现为灰色。
-- 设置页使用稳定的键盘顺序; Python、统一授权和诊断区可连续 Tab 导航。
+- 设置页使用稳定的键盘顺序; 通用、Agent 用量、订阅额度、统一授权和诊断区可连续 Tab 导航。
 - 诊断 Sheet 打开时焦点进入标题或预览内容, 关闭后返回触发按钮。
 - 错误提示使用 live announcement 或等价的原生可访问性通知。
 
@@ -1031,7 +1068,7 @@ LocalIntegrationHarness 使用:
 新增发布人工验收说明, 包含:
 
 - Xcode archive、entitlement、签名、公证和 Gatekeeper。
-- `.app` 从干净目录安装、首次启动、关闭和 Dock 重开。
+- `.app` 从干净目录安装、首次启动、菜单栏面板与设置窗口行为。
 - 真实 Agent Provider 授权、失效和撤销。
 - 30 分钟运行、跨睡眠周期补偿和退出回收。
 - VoiceOver、全键盘、增加对比度、减少动态效果和浅深色主题。

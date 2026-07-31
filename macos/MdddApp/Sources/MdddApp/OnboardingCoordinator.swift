@@ -487,13 +487,24 @@ final class OnboardingCoordinator: ObservableObject {
         return accountID.isEmpty ? nil : accountID
     }
 
-    /// Antigravity: 从本机令牌文件导入 (用户点击触发).
+    /// Antigravity: 从本机导入 (用户点击触发); 优先令牌文件,
+    /// 其次 agy >= 1.1.8 的登录 Keychain 条目.
     func importAntigravityFromLocalFile() {
         let fileURL = homeURL.appendingPathComponent(
             ".gemini/antigravity-cli/antigravity-oauth-token"
         )
-        guard let json = readCredentialFile(fileURL, usage: "Antigravity 令牌文件") else {
-            return
+        let json: String
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+            guard let text = readCredentialFile(fileURL, usage: "Antigravity 令牌文件") else {
+                return
+            }
+            json = text
+        } else {
+            guard let text = readAgyKeychainCredential() else {
+                model.setSettingsError("未找到 Antigravity 登录态, 请先通过 Antigravity CLI 登录")
+                return
+            }
+            json = text
         }
         let status = ProviderConnectionVerifier.verifyAntigravityOAuthJSON(json)
         guard status == .ok else {
@@ -593,13 +604,92 @@ final class OnboardingCoordinator: ObservableObject {
         )
     }
 
-    func antigravityTokenFileExists() -> Bool {
-        FileManager.default.fileExists(
+    /// 刷新 Antigravity 本机登录态可用性, 结果写入 model 供设置页渲染.
+    /// 文件检查同步; Keychain 探测放后台队列 — 子进程 waitUntilExit 会泵 runloop,
+    /// 在视图 body 内直接执行会与 AttributeGraph 事务重入导致崩溃.
+    func refreshAntigravityLocalAvailability() {
+        let fileExists = FileManager.default.fileExists(
             atPath: homeURL
                 .appendingPathComponent(
                     ".gemini/antigravity-cli/antigravity-oauth-token"
                 ).path
         )
+        if fileExists {
+            model.setAntigravityLocalAvailable(true)
+            return
+        }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let exists = self?.agyKeychainItemExists() ?? false
+            DispatchQueue.main.async {
+                self?.model.setAntigravityLocalAvailable(exists)
+            }
+        }
+    }
+
+    // MARK: - Antigravity Keychain 来源 (agy >= 1.1.8)
+
+    /// agy >= 1.1.8 把 OAuth 令牌存进登录 Keychain (go-keyring), 不再写令牌文件.
+    private static let agyKeychainService = "gemini"
+    private static let agyKeychainAccount = "antigravity"
+
+    /// 探测登录 Keychain 是否存在 agy 令牌条目 (不读密码数据, 不触发授权弹窗).
+    private func agyKeychainItemExists() -> Bool {
+        runSecurity(arguments: [
+            "find-generic-password",
+            "-s", Self.agyKeychainService,
+            "-a", Self.agyKeychainAccount,
+        ]) != nil
+    }
+
+    /// 读取并解码 agy Keychain 令牌 ("go-keyring-base64:" 前缀 + base64 JSON);
+    /// 读取密码数据会触发系统钥匙串授权弹窗, 仅在用户点击导入时调用.
+    private func readAgyKeychainCredential() -> String? {
+        guard var raw = runSecurity(arguments: [
+            "find-generic-password",
+            "-s", Self.agyKeychainService,
+            "-a", Self.agyKeychainAccount,
+            "-w",
+        ]) else {
+            return nil
+        }
+        let prefix = "go-keyring-base64:"
+        guard raw.hasPrefix(prefix) else {
+            return raw
+        }
+        raw = String(raw.dropFirst(prefix.count))
+        guard let data = Data(base64Encoded: raw),
+              let text = String(data: data, encoding: .utf8),
+              !text.isEmpty else {
+            model.setSettingsError("Antigravity Keychain 令牌解码失败")
+            return nil
+        }
+        return text
+    }
+
+    /// 执行 /usr/bin/security, 退出码 0 返回 stdout (去首尾空白), 否则 nil.
+    private func runSecurity(arguments: [String]) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        process.arguments = arguments
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+        } catch {
+            return nil
+        }
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            return nil
+        }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard let text = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !text.isEmpty else {
+            return nil
+        }
+        return text
     }
 
     func ccSwitchDatabaseExists() -> Bool {

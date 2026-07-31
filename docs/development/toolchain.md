@@ -2,8 +2,8 @@
 
 ## 平台与标识
 
-- 最低系统版本: macOS 13 Ventura.
-- 应用形态: 独立 Dock 应用.
+- 最低系统版本: macOS 26 (Liquid Glass 与菜单栏面板依赖).
+- 应用形态: 菜单栏常驻应用 (LSUIElement), MenuBarExtra 弹出式面板 + 独立设置窗口.
 - 开发 bundle identifier: `com.mddd.dashboard`.
 - 发布前必须根据最终签名团队确认 bundle identifier; 数据目录和 Keychain service 名称不得在发布后随意变化.
 
@@ -35,7 +35,7 @@ python3 -m py_compile \
 
 ## 构建边界
 
-- SwiftPM 验证只证明源码可以编译, 不证明应用签名、沙盒权限、Keychain entitlement 或 Dock 生命周期已经完成.
+- SwiftPM 验证只证明源码可以编译, 不证明应用签名、沙盒权限、Keychain entitlement 或菜单栏生命周期已经完成.
 - `.app` 打包、签名、公证和真实授权窗口验收必须在完整 Xcode 可用后执行.
 - 真实 Collector、OAuth 和 PAT 验收不属于静态工具链检查, 必须另行获得用户明确授权.
 
@@ -53,11 +53,11 @@ python3 -m py_compile \
 | Harness | 当前用例数 | 覆盖 |
 |---|---:|---|
 | `MdddOnboardingCoreHarness` | 98 | 路径、版本、扫描、readiness、授权 Gate、配置、Keychain 抽象、订阅凭证、设备码登录、令牌轮换合并 |
-| `PanelViewModelHarness` | 20 | 措辞、分组、条件渲染 |
+| `PanelViewModelHarness` | 23 | 措辞、分组、条件渲染 |
 | `ArtifactStoreHarness` | 4 | schema、私有权限、原子发布、previous 回退和迁移 |
 | `CollectorRunnerHarness` | 16 | stdin 凭证、协议、并发、超时、取消和隔离 Bridge |
 | `RefreshSchedulerHarness` | 10 | 30 分钟定时、合并、退避、授权失败、唤醒、容量和停止 |
-| `NativeLifecycleHarness` | 6 | 单窗口、退出、Dock badge 和原生到 Widget 状态映射 |
+| `NativeLifecycleHarness` | 6 | 调度启动、退出回收、原生到 Widget 状态映射和菜单栏指标/摘要 |
 | `DiagnosticsHarness` | 5 | 白名单报告、敏感扫描、最小 ZIP、权限和命名 |
 | `LocalIntegrationHarness` | 1 | 临时 HOME/Application Support、真实本地 Bridge、缓存重启、诊断和清理 |
 
@@ -69,4 +69,4 @@ python3 -m py_compile \
 ./scripts/verify-local.sh
 ```
 
-脚本默认不访问真实账号或 Keychain. `LocalIntegrationHarness` 会在随机临时 HOME 中调用真实 Agent Bridge/Collector 代码, 但只授权本地会话和本地计价能力, 不启用外部额度或仓库平台网络采集.
+脚本默认不访问真实账号或 Keychain. `LocalIntegrationHarness` 会在随机临时 HOME 中调用真实 Agent Bridge/Collector 代码, 但只授权本地会话和本地计价能力, 不启用外部额度采集.

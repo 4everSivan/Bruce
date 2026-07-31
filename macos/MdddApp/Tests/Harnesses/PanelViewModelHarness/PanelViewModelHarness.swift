@@ -192,7 +192,8 @@ struct PanelViewModelHarness {
         try emptyArtifactsProduceDiagnostics()
         try subscriptionUpdatedTextFormatsGeneratedAt()
         try subscriptionUpdatedTextNilForBadDate()
-        print("PanelViewModel tests passed: 22")
+        try subscriptionEmptyStatusStillRenders()
+        print("PanelViewModel tests passed: 23")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -723,5 +724,27 @@ struct PanelViewModelHarness {
             moduleStatuses: readyStatuses
         )
         try expect(vm.subscription?.updatedText == nil, "坏日期不应渲染更新时间")
+    }
+
+    // status=empty (瞬时故障未取到数据) 不是未授权占位, 必须保留段和 note.
+    private static func subscriptionEmptyStatusStillRenders() throws {
+        let service = makeService(
+            id: "kimi",
+            name: "Kimi",
+            status: "empty",
+            note: "未取到额度数据"
+        )
+        let vm = makeMapper().make(
+            agentUsage: makeAgentUsageArtifact(agents: [], services: [service]),
+            moduleStatuses: readyStatuses
+        )
+        let section = vm.subscription?.sections.first
+        try expect(section?.id == "kimi", "empty 段应保留: \(vm.subscription?.sections.map(\.id) ?? [])")
+        try expect(section?.note == "未取到额度数据", "empty 段 note 错误: \(section?.note ?? "nil")")
+        let issues = vm.diagnostics.filter {
+            if case .serviceIssue = $0 { return true }
+            return false
+        }
+        try expect(issues.count == 1, "empty 应留一条 serviceIssue 诊断: \(vm.diagnostics)")
     }
 }

@@ -1,0 +1,74 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: 本地验证套件 (macOS 26)
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: 显示工具链版本
+        run: |
+          swift --version
+          python3 --version
+      - name: 运行标准本地验证 (verify-local.sh)
+        run: zsh scripts/verify-local.sh
+
+  python-min-version:
+    name: Python 3.9 最低版本兼容
+    runs-on: macos-26
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+      - name: Python 语法检查
+        run: python3 -m py_compile agent-usage/collector/collect_usage.py bridge/*.py
+      - name: 运行 Python 测试套件
+        run: python3 -m pytest -q
+
+  build-release-app:
+    name: 构建测试版 App
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: 构建并组装测试版 App
+        run: zsh scripts/build-test-app.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mddd-test-app
+          path: dist/
+          if-no-files-found: error
+
+  release:
+    name: 发布草稿
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [verify, python-min-version, build-release-app]
+    runs-on: macos-26
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: 构建测试版 App
+        run: zsh scripts/build-test-app.sh
+      - name: 创建草稿 Release 并上传 zip
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            dist/mddd-test.zip \
+            --draft \
+            --title "mddd $GITHUB_REF_NAME" \
+            --notes "Development Preview 测试包。签名、公证和真实账号验收尚未完成。"

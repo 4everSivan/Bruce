@@ -599,8 +599,10 @@ package struct PanelViewModelMapper: Sendable {
             let hasBalance = service.balance != nil
 
             // 未授权占位 (status partial, 无窗口无余额) 视为未启用, 排除并留诊断.
+            // 仅 partial 是占位; empty 是查询未取到数据的真实诊断状态, 必须渲染,
+            // 否则一次瞬时失败会让整个 provider 段消失.
             let isPlaceholder = kind == nil && !hasWindows && !hasBalance
-                && service.status != "ok" && service.status != "error"
+                && service.status == "partial"
             if isPlaceholder {
                 diagnostics.append(.serviceSkipped(
                     serviceID: service.id,

@@ -22,6 +22,7 @@ import os
 import re
 import shutil
 import sqlite3
+import subprocess
 import sys
 import threading
 import urllib.parse
@@ -50,6 +51,11 @@ CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
 AGY_OAUTH_TOKEN = os.path.join(HOME, ".gemini/antigravity-cli/antigravity-oauth-token")
 AGY_SUMMARIES_DB = os.path.join(HOME, ".gemini/antigravity-cli/conversation_summaries.db")
 KIMI_WEB_TOKENS = os.path.join(HOME, ".config/kimi-dashboard/kimi-web-tokens.json")
+# agy >= 1.1.8 把 OAuth 令牌存进登录 Keychain (go-keyring), 不再写令牌文件
+AGY_KEYCHAIN_SERVICE = "gemini"
+AGY_KEYCHAIN_ACCOUNT = "antigravity"
+# Antigravity 桌面 OAuth client: installed-app 凭证, 公开内置于 agy/IDE,
+# 无保密要求 (PKCE 提供安全); 凭证由运行环境注入, 不入库
 AGY_CLIENT_ID = os.getenv("AGY_CLIENT_ID", "")
 AGY_CLIENT_SECRET = os.getenv("AGY_CLIENT_SECRET", "")
 AGY_QUOTA_URL = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
@@ -1307,17 +1313,65 @@ def service_codex_accounts():
 
 # ---------------------------------------------------------------- antigravity (agy)
 
+def _security_find_generic_password(service, account):
+    """包装 security CLI 读取登录 Keychain 通用密码, 便于测试替换; 未找到返回 None."""
+    try:
+        proc = subprocess.run(
+            ["/usr/bin/security", "find-generic-password",
+             "-s", service, "-a", account, "-w"],
+            capture_output=True, text=True, timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.strip() or None
+
+
+def _load_agy_oauth():
+    """读取 agy OAuth 凭证, 返回 (data, source); source 为 "file" 或 "keychain".
+
+    agy < 1.1.8 写令牌文件; >= 1.1.8 改用登录 Keychain (go-keyring,
+    值带 "go-keyring-base64:" 前缀的 base64 JSON). 均无凭证返回 (None, None).
+    """
+    if os.path.exists(AGY_OAUTH_TOKEN):
+        with open(AGY_OAUTH_TOKEN, encoding="utf-8") as fh:
+            return json.load(fh), "file"
+    raw = _security_find_generic_password(AGY_KEYCHAIN_SERVICE, AGY_KEYCHAIN_ACCOUNT)
+    if not raw:
+        return None, None
+    prefix = "go-keyring-base64:"
+    if raw.startswith(prefix):
+        try:
+            raw = base64.b64decode(raw[len(prefix):]).decode("utf-8", "replace")
+        except Exception:
+            return None, None
+    try:
+        return json.loads(raw), "keychain"
+    except Exception:
+        return None, None
+
+
 def service_antigravity():
     """读取 agy (Antigravity CLI) 的 Google OAuth 凭证，查询分组额度。
 
-    CLI 兼容模式会写回刷新后的 access token. App 模式只返回候选更新.
+    CLI 兼容模式会写回刷新后的 access token (仅文件来源; Keychain 来源只读,
+    不回写第三方钥匙串). App 模式只返回候选更新.
     agy 不在本地记录 token 用量，只提供额度与活动计数。
     """
     injected_auth = _runtime_credential("antigravity_oauth")
-    if injected_auth is None and _APP_MODE:
-        return []
-    if injected_auth is None and not os.path.exists(AGY_OAUTH_TOKEN):
-        return []
+    source = None
+    if injected_auth is not None:
+        data = json.loads(json.dumps(injected_auth))
+    else:
+        if _APP_MODE:
+            return []
+        try:
+            data, source = _load_agy_oauth()
+        except Exception:
+            return []
+        if data is None:
+            return []
     svc = {
         "id": "antigravity",
         "name": "Antigravity (agy)",
@@ -1333,11 +1387,6 @@ def service_antigravity():
         "note": "",
     }
     try:
-        if injected_auth is not None:
-            data = json.loads(json.dumps(injected_auth))
-        else:
-            with open(AGY_OAUTH_TOKEN, encoding="utf-8") as fh:
-                data = json.load(fh)
         tok = data.get("token") or {}
         body = urllib.parse.urlencode(
             {
@@ -1362,7 +1411,8 @@ def service_antigravity():
                     now + datetime.timedelta(seconds=int(refreshed["expires_in"]) - 60)
                 ).isoformat()
             _record_credential_update("antigravity", "default", tok)
-            if injected_auth is None and not _APP_MODE:
+            if source == "file":
+                # 仅文件来源写回刷新后的令牌; Keychain 来源只读, 不动第三方钥匙串
                 try:
                     shutil.copy2(AGY_OAUTH_TOKEN, AGY_OAUTH_TOKEN + ".bak-kimi")
                     with open(AGY_OAUTH_TOKEN, "w", encoding="utf-8") as fh:
@@ -1382,31 +1432,36 @@ def service_antigravity():
         )
         with _urlopen(req, timeout=HTTP_TIMEOUT) as resp:
             q = json.loads(resp.read().decode("utf-8", "replace"))
-        windows = []
+        # 跨模型分组聚合: 不同模型池各自有 quota bucket, 按窗口类型合并,
+        # 取用量最高的池作为约束 (额度够不够由最紧张的池决定),
+        # 重置时间跟随该池; 不再按模型单独展示剩余用量.
+        merged = {}
         for g in q.get("groups") or []:
-            gname = g.get("displayName") or ""
-            if "Gemini" in gname:
-                short = "Gemini"
-            elif "Claude" in gname or "GPT" in gname:
-                short = "Claude/GPT"
-            else:
-                short = gname or "模型"
             for b in g.get("buckets") or []:
                 frac = b.get("remainingFraction")
                 if frac is None:
                     continue
-                win = b.get("window")
-                label = short + " · " + (
-                    "5小时" if win == "5h" else "每周" if win == "weekly" else (b.get("displayName") or "窗口")
-                )
-                windows.append(
-                    {
-                        "label": label,
-                        "usedPercent": max(0.0, min(100.0, (1 - float(frac)) * 100)),
-                        "windowMinutes": 300 if win == "5h" else None,
+                win = b.get("window") or ""
+                used = max(0.0, min(100.0, (1 - float(frac)) * 100))
+                cur = merged.get(win)
+                if cur is None or used > cur["usedPercent"]:
+                    merged[win] = {
+                        "usedPercent": used,
                         "resetsAt": epoch_from_iso(b.get("resetTime")),
                     }
-                )
+        window_order = {"5h": 0, "weekly": 1, "monthly": 2}
+        window_labels = {"5h": "5小时窗口", "weekly": "每周窗口", "monthly": "每月窗口"}
+        windows = []
+        for win in sorted(merged, key=lambda w: window_order.get(w, 99)):
+            entry = merged[win]
+            windows.append(
+                {
+                    "label": window_labels.get(win, win or "窗口"),
+                    "usedPercent": entry["usedPercent"],
+                    "windowMinutes": 300 if win == "5h" else None,
+                    "resetsAt": entry["resetsAt"],
+                }
+            )
         extra = None
         summaries_error = False
         if os.path.exists(AGY_SUMMARIES_DB):
@@ -1424,13 +1479,18 @@ def service_antigravity():
                     extra = "今日 %d 个会话 · %d 步" % (row[0], row[1])
                 else:
                     extra = "agy 不在本地记录 token 用量"
-            except sqlite3.Error:
+            except sqlite3.Error as e:
+                # 只有缺表/缺列才是 schema 不兼容; 占用等其他错误如实展示
                 summaries_error = True
-                extra = "本机会话库 schema 不兼容"
+                msg = str(e)
+                if "no such table" in msg or "no such column" in msg:
+                    extra = "本机会话库 schema 不兼容"
+                else:
+                    extra = "本机会话库暂不可读: " + msg[:40]
         svc.update({"kind": "windows", "plan": None, "windows": windows, "extra": extra})
         if summaries_error:
             svc["status"] = "partial"
-            svc["note"] = "额度可用, 本机会话库 schema 不兼容"
+            svc["note"] = "额度可用, " + extra
         if not windows:
             svc["status"] = "empty"
             svc["note"] = "接口已通但未返回额度窗口"

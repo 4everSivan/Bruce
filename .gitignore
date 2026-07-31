@@ -37,10 +37,14 @@ dist/
 *.xcuserstate
 **/xcuserdata/
 
-# Agent-generated planning scratch space
+# AI 工具本地配置 (openspec 工作流 skills/commands, 不入库)
+.agent/
+.agents/
+.claude/
+.codex/
+.kimi/
 .superpowers/
-.agents/superpowers/
-.agents/openspec/
-docs/superpowers/
 
-# docs/openspec/ is the tracked OpenSpec source of truth.
+# 工作流规划文档 (OpenSpec change 与 Superpowers 计划/设计, 本地维护)
+docs/openspec/
+docs/superpowers/
