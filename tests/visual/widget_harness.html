@@ -28,41 +28,8 @@
     "agent-usage": {
       widget: "/agent-usage/widget/index.html",
       fixture: "/tests/fixtures/artifacts/agent-usage/valid.json"
-    },
-    "github": {
-      widget: "/github/widget/index.html",
-      fixture: "/tests/fixtures/artifacts/github/valid.json"
-    },
-    "gitlab": {
-      widget: "/gitlab/widget/index.html",
-      fixture: "/tests/fixtures/artifacts/gitlab/valid.json"
     }
   };
-
-  function expandHeatmapWeeks(artifact) {
-    if (!artifact.weeks || !artifact.weeks.length || artifact.weeks.length >= 26) return;
-    var pattern = artifact.weeks.reduce(function (days, week) {
-      return days.concat(week.days || []);
-    }, []);
-    if (!pattern.length) return;
-
-    var start = new Date("2026-02-01T00:00:00Z");
-    artifact.weeks = Array.from({length: 26}, function (_, weekIndex) {
-      return {
-        days: Array.from({length: 7}, function (_, weekday) {
-          var source = pattern[(weekIndex * 7 + weekday) % pattern.length];
-          var date = new Date(start);
-          date.setUTCDate(start.getUTCDate() + weekIndex * 7 + weekday);
-          return {
-            date: date.toISOString().slice(0, 10),
-            count: source.count,
-            level: source.level,
-            weekday: weekday
-          };
-        })
-      };
-    });
-  }
 
   try {
     var params = new URLSearchParams(location.search);
@@ -90,9 +57,6 @@
 
     var widgetHtml = await responses[0].text();
     var fixture = await responses[1].json();
-    if (moduleName === "github" || moduleName === "gitlab") {
-      expandHeatmapWeeks(fixture.artifact);
-    }
     var serialized = JSON.stringify(fixture.artifact).replace(/</g, "\\u003c");
     var serializedState = JSON.stringify(state).replace(/</g, "\\u003c");
     var deterministicHead = "";
@@ -120,7 +84,7 @@
       "onThemeChange:function(){}" +
       "};" +
       "</scr" + "ipt><script>" +
-      hostBootstrap.split("<" + "/script").join("<\\\\/script") +
+      hostBootstrap.split("<" + "/script").join("<\\/script") +
       "</scr" + "ipt>";
 
     document.open();

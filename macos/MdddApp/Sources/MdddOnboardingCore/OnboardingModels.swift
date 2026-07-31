@@ -45,10 +45,6 @@ public enum ModuleReadiness: String, Equatable, Sendable {
 public enum SetupAction: String, Equatable, Sendable {
     case choosePython
     case installPython
-    case installGitHubCLI
-    case loginGitHub
-    case configureGitLab
-    case replaceGitLabPAT
     case retryLocalScan
     case retryConnection
     case reviewAuthorization
@@ -129,10 +125,8 @@ public struct ModuleReadinessResult: Equatable, Sendable {
 public struct DependencyProbe: Equatable, Sendable {
     public enum Kind: String, Sendable {
         case python
-        case ghCli
         case sessionDirectory
         case sqliteDatabase
-        case gitlabReachability
     }
 
     public let kind: Kind

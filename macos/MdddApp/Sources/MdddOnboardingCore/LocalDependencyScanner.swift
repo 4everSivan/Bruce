@@ -28,23 +28,17 @@ public struct LocalDependencyScanPaths: Sendable {
 
     public var userPreferredPythonPath: String?
     public var pythonCandidates: [String]
-    public var userPreferredGhPath: String?
-    public var ghCandidates: [String]
     public var sessionDirectories: [SessionDirectory]
     public var sqliteDatabases: [SQLiteDatabase]
 
     public init(
         userPreferredPythonPath: String? = nil,
         pythonCandidates: [String] = PythonPathResolver.defaultCandidates,
-        userPreferredGhPath: String? = nil,
-        ghCandidates: [String] = GhCliPathResolver.defaultCandidates,
         sessionDirectories: [SessionDirectory] = [],
         sqliteDatabases: [SQLiteDatabase] = []
     ) {
         self.userPreferredPythonPath = userPreferredPythonPath
         self.pythonCandidates = pythonCandidates
-        self.userPreferredGhPath = userPreferredGhPath
-        self.ghCandidates = ghCandidates
         self.sessionDirectories = sessionDirectories
         self.sqliteDatabases = sqliteDatabases
     }
@@ -113,7 +107,6 @@ public struct LocalDependencyScanner: Sendable {
     public func scan() async -> [DependencyProbe] {
         var probes: [DependencyProbe] = []
         probes.append(await scanPython())
-        probes.append(await scanGhCli())
         probes.append(contentsOf: scanSessionDirectories())
         for database in paths.sqliteDatabases {
             probes.append(await scanSQLite(database))
@@ -158,37 +151,6 @@ public struct LocalDependencyScanner: Sendable {
             return DependencyProbe(kind: .python, status: .timedOut)
         case .launchFailed:
             return DependencyProbe(kind: .python, status: .missing)
-        }
-    }
-
-    /// 扫描 gh CLI: 只检查可执行性和版本, 不检查登录态.
-    public func scanGhCli() async -> DependencyProbe {
-        guard let ghPath = GhCliPathResolver.resolve(
-            userPreferred: paths.userPreferredGhPath,
-            candidates: paths.ghCandidates,
-            fileManager: .default
-        ) else {
-            return DependencyProbe(kind: .ghCli, status: .missing)
-        }
-
-        let result = await processProbe.run(
-            executablePath: ghPath,
-            arguments: ["--version"]
-        )
-        switch result {
-        case .success:
-            return DependencyProbe(
-                kind: .ghCli, status: .available,
-                detail: result.firstLine
-            )
-        case .timedOut:
-            return DependencyProbe(kind: .ghCli, status: .timedOut)
-        case .nonZeroExit:
-            return DependencyProbe(kind: .ghCli, status: .incompatible)
-        case .cancelled:
-            return DependencyProbe(kind: .ghCli, status: .timedOut)
-        case .launchFailed:
-            return DependencyProbe(kind: .ghCli, status: .missing)
         }
     }
 

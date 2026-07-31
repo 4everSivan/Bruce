@@ -334,8 +334,6 @@ private enum UsageHeroPreviewFixture {
         )
         let panel = PanelViewModelMapper().make(
             agentUsage: artifact,
-            github: nil,
-            gitlab: nil,
             moduleStatuses: [:]
         )
         guard let usage = panel.usage else {

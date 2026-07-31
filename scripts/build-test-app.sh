@@ -33,8 +33,6 @@ required_sources=(
     "$MDDD_REPO_ROOT/bridge/security.py"
     "$MDDD_REPO_ROOT/bridge/schemas"
     "$MDDD_REPO_ROOT/agent-usage/collector/collect_usage.py"
-    "$MDDD_REPO_ROOT/github/collector/collect_github.py"
-    "$MDDD_REPO_ROOT/gitlab/collector/collect_gitlab.py"
 )
 for required_source in "${required_sources[@]}"; do
     if [[ ! -e "$required_source" ]]; then
@@ -62,9 +60,7 @@ fi
 echo "组装 mddd-test.app"
 mkdir -p "$MDDD_CONTENTS/MacOS" "$MDDD_RESOURCES" \
     "$MDDD_RUNTIME/bridge" \
-    "$MDDD_RUNTIME/agent-usage/collector" \
-    "$MDDD_RUNTIME/github/collector" \
-    "$MDDD_RUNTIME/gitlab/collector"
+    "$MDDD_RUNTIME/agent-usage/collector"
 
 ditto "$MDDD_EXECUTABLE" "$MDDD_CONTENTS/MacOS/MdddApp"
 chmod 755 "$MDDD_CONTENTS/MacOS/MdddApp"
@@ -79,10 +75,6 @@ ditto "$MDDD_REPO_ROOT/bridge/schemas" \
     "$MDDD_RUNTIME/bridge/schemas"
 ditto "$MDDD_REPO_ROOT/agent-usage/collector/collect_usage.py" \
     "$MDDD_RUNTIME/agent-usage/collector/collect_usage.py"
-ditto "$MDDD_REPO_ROOT/github/collector/collect_github.py" \
-    "$MDDD_RUNTIME/github/collector/collect_github.py"
-ditto "$MDDD_REPO_ROOT/gitlab/collector/collect_gitlab.py" \
-    "$MDDD_RUNTIME/gitlab/collector/collect_gitlab.py"
 
 MDDD_INFO_PLIST="$MDDD_CONTENTS/Info.plist"
 plutil -create xml1 "$MDDD_INFO_PLIST"
@@ -116,8 +108,6 @@ fi
 packaged_resources=(
     "$MDDD_RUNTIME/bridge/run_bridge.py"
     "$MDDD_RUNTIME/agent-usage/collector/collect_usage.py"
-    "$MDDD_RUNTIME/github/collector/collect_github.py"
-    "$MDDD_RUNTIME/gitlab/collector/collect_gitlab.py"
 )
 for packaged_resource in "${packaged_resources[@]}"; do
     if [[ ! -f "$packaged_resource" ]]; then

@@ -83,14 +83,14 @@ class BridgeSchemaTests(unittest.TestCase):
 
 class BridgeContractTests(unittest.TestCase):
     def test_success_response_uses_one_versioned_envelope(self):
-        artifact = load_fixture("github")
+        artifact = load_fixture("agent-usage")
         expected_artifact = dict(artifact)
-        expected_artifact.update({"schemaVersion": 1, "module": "github"})
-        request = bridge_request("github")
+        expected_artifact.update({"schemaVersion": 1, "module": "agent-usage"})
+        request = bridge_request("agent-usage")
         response = execute_request(
             request,
             collector_overrides={
-                "github": lambda _ctx: {"artifact": artifact}
+                "agent-usage": lambda _ctx: {"artifact": artifact}
             },
         )
         self.assertEqual(response["status"], "success")
@@ -107,7 +107,7 @@ class BridgeContractTests(unittest.TestCase):
             executor=lambda value: execute_request(
                 value,
                 collector_overrides={
-                    "github": lambda _ctx: {"artifact": artifact}
+                    "agent-usage": lambda _ctx: {"artifact": artifact}
                 },
             ),
         )
@@ -133,7 +133,7 @@ class BridgeContractTests(unittest.TestCase):
         )
 
     def test_missing_field_and_unknown_version_are_protocol_errors(self):
-        missing = bridge_request("github")
+        missing = bridge_request("agent-usage")
         missing.pop("credentials")
         missing_response = execute_request(missing)
         self.assertEqual(missing_response["status"], "error")
@@ -142,7 +142,7 @@ class BridgeContractTests(unittest.TestCase):
             "BRIDGE_INVALID_REQUEST",
         )
 
-        unknown = bridge_request("github")
+        unknown = bridge_request("agent-usage")
         unknown["schemaVersion"] = 2
         unknown_response = execute_request(unknown)
         self.assertEqual(unknown_response["status"], "error")
@@ -154,11 +154,11 @@ class BridgeContractTests(unittest.TestCase):
     def test_collector_stdout_is_captured_and_rejected(self):
         def noisy_collector(_ctx):
             print("token=must-not-escape")
-            return {"artifact": load_fixture("github")}
+            return {"artifact": load_fixture("agent-usage")}
 
         response = execute_request(
-            bridge_request("github"),
-            collector_overrides={"github": noisy_collector},
+            bridge_request("agent-usage"),
+            collector_overrides={"agent-usage": noisy_collector},
         )
         serialized = json.dumps(response)
         self.assertEqual(response["status"], "error")
@@ -175,8 +175,8 @@ class BridgeContractTests(unittest.TestCase):
             )
 
         response = execute_request(
-            bridge_request("github"),
-            collector_overrides={"github": failed_collector},
+            bridge_request("agent-usage"),
+            collector_overrides={"agent-usage": failed_collector},
         )
         serialized = json.dumps(response)
         self.assertEqual(response["status"], "error")
@@ -201,9 +201,9 @@ class BridgeContractTests(unittest.TestCase):
 
     def test_sensitive_artifact_and_invalid_update_are_rejected(self):
         sensitive = execute_request(
-            bridge_request("github"),
+            bridge_request("agent-usage"),
             collector_overrides={
-                "github": lambda _ctx: {
+                "agent-usage": lambda _ctx: {
                     "artifact": {"access_token": "must-not-publish"}
                 }
             },
@@ -240,8 +240,8 @@ class BridgeContractTests(unittest.TestCase):
     def test_credentials_are_scoped_to_the_selected_module(self):
         response = execute_request(
             bridge_request(
-                "github",
-                credentials={"gitlabToken": "must-not-be-routed"},
+                "agent-usage",
+                credentials={"unknownCredential": "must-not-be-routed"},
             )
         )
         self.assertEqual(response["status"], "error")
@@ -328,7 +328,7 @@ class BridgeCapabilityTests(unittest.TestCase):
 
 
 class BridgeIsolationTests(unittest.TestCase):
-    def test_all_collectors_run_with_isolated_inputs(self):
+    def test_agent_collector_runs_with_isolated_inputs(self):
         with tempfile.TemporaryDirectory() as temp_home:
             temp_root = Path(temp_home)
             db_path = temp_root / ".cc-switch" / "cc-switch.db"
@@ -372,57 +372,8 @@ class BridgeIsolationTests(unittest.TestCase):
             )
             after = hashlib.sha256(db_path.read_bytes()).hexdigest()
 
-            github_payload = {
-                "data": {
-                    "viewer": {
-                        "login": "fixture-user",
-                        "contributionsCollection": {
-                            "contributionCalendar": {
-                                "totalContributions": 0,
-                                "weeks": [],
-                            }
-                        },
-                    }
-                }
-            }
-            github_response = execute_request(
-                bridge_request("github", context=common_context),
-                runtime_overrides={
-                    "github": {"graphql": lambda _query: github_payload}
-                },
-            )
-
-            def gitlab_http(path, token):
-                self.assertEqual(token, "fixture-gitlab-token")
-                if path == "/api/v4/user":
-                    return {
-                        "id": 7,
-                        "username": "fixture-user",
-                        "name": "Fixture",
-                    }
-                return []
-
-            gitlab_context = dict(common_context)
-            gitlab_context["baseUrl"] = "https://gitlab.example.test"
-            gitlab_response = execute_request(
-                bridge_request(
-                    "gitlab",
-                    context=gitlab_context,
-                    credentials={"gitlabToken": "fixture-gitlab-token"},
-                ),
-                runtime_overrides={
-                    "gitlab": {"http_get_json": gitlab_http}
-                },
-            )
-
         self.assertEqual(before, after)
         self.assertEqual(agent_response["status"], "partial")
-        self.assertEqual(github_response["status"], "success")
-        self.assertEqual(gitlab_response["status"], "success")
-        self.assertNotIn(
-            "fixture-gitlab-token",
-            json.dumps(gitlab_response),
-        )
 
 
 if __name__ == "__main__":

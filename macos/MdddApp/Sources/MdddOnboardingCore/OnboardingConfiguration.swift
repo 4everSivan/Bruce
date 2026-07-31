@@ -63,7 +63,6 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
 
     public let schemaVersion: Int
     public var pythonPath: String?
-    public var gitlabBaseURL: String?
     public var selectedModules: Set<String>
     public var consentVersion: Int?
     public var connectionStates: [String: String]
@@ -107,7 +106,6 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
     public init(
         schemaVersion: Int = OnboardingConfiguration.currentSchemaVersion,
         pythonPath: String? = nil,
-        gitlabBaseURL: String? = nil,
         selectedModules: Set<String> = [],
         consentVersion: Int? = nil,
         connectionStates: [String: String] = [:],
@@ -120,7 +118,6 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
     ) {
         self.schemaVersion = schemaVersion
         self.pythonPath = pythonPath
-        self.gitlabBaseURL = gitlabBaseURL
         self.selectedModules = selectedModules
         self.consentVersion = consentVersion
         self.connectionStates = connectionStates
@@ -137,7 +134,6 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
         pythonPath = try container.decodeIfPresent(String.self, forKey: .pythonPath)
-        gitlabBaseURL = try container.decodeIfPresent(String.self, forKey: .gitlabBaseURL)
         selectedModules = try container.decodeIfPresent(Set<String>.self, forKey: .selectedModules) ?? []
         consentVersion = try container.decodeIfPresent(Int.self, forKey: .consentVersion)
         connectionStates = try container.decodeIfPresent([String: String].self, forKey: .connectionStates) ?? [:]
@@ -286,7 +282,7 @@ public enum OnboardingConfigError: Error, Equatable {
 // MARK: - SubscriptionCredentialAccount
 
 /// 订阅 provider 的 Keychain account 键. service 统一为
-/// com.mddd.dashboard.credentials, 与 GitLab PAT 共用 update 优先语义.
+/// com.mddd.dashboard.credentials.
 public enum SubscriptionCredentialAccount {
     /// JSON {"access_token": ..., "refresh_token": ...}
     public static let kimiWebTokens = "kimi:web-tokens"
@@ -308,9 +304,6 @@ public enum SubscriptionCredentialAccount {
 
 /// 凭证存储协议. 系统实现使用 macOS Keychain, 测试使用内存 fake.
 public protocol CredentialStore: Sendable {
-    func savePAT(_ pat: String, forHost host: String) throws
-    func loadPAT(forHost host: String) throws -> String?
-    func deletePAT(forHost host: String) throws
     /// 通用 account 读写, 供订阅 provider 凭证使用.
     func saveCredential(_ value: String, forAccount account: String) throws
     func loadCredential(forAccount account: String) throws -> String?
@@ -325,18 +318,6 @@ public final class InMemoryCredentialStore: CredentialStore, @unchecked Sendable
     private var storage: [String: String] = [:]
 
     public init() {}
-
-    public func savePAT(_ pat: String, forHost host: String) throws {
-        try saveCredential(pat, forAccount: KeychainCredentialStore.account(forHost: host))
-    }
-
-    public func loadPAT(forHost host: String) throws -> String? {
-        try loadCredential(forAccount: KeychainCredentialStore.account(forHost: host))
-    }
-
-    public func deletePAT(forHost host: String) throws {
-        try deleteCredential(forAccount: KeychainCredentialStore.account(forHost: host))
-    }
 
     public func saveCredential(_ value: String, forAccount account: String) throws {
         lock.lock()
@@ -359,7 +340,7 @@ public final class InMemoryCredentialStore: CredentialStore, @unchecked Sendable
 
 // MARK: - KeychainCredentialStore
 
-/// macOS Keychain 实现. PAT 按 gitlab:<normalized-host> 区分.
+/// macOS Keychain 实现.
 /// 保存为 update 优先的原子语义: 不先删后加, 添加失败不会丢失原凭证.
 public final class KeychainCredentialStore: CredentialStore, @unchecked Sendable {
     public static let defaultService = "com.mddd.dashboard.credentials"
@@ -368,18 +349,6 @@ public final class KeychainCredentialStore: CredentialStore, @unchecked Sendable
 
     public init(service: String = KeychainCredentialStore.defaultService) {
         self.service = service
-    }
-
-    public func savePAT(_ pat: String, forHost host: String) throws {
-        try saveCredential(pat, forAccount: Self.account(forHost: host))
-    }
-
-    public func loadPAT(forHost host: String) throws -> String? {
-        try loadCredential(forAccount: Self.account(forHost: host))
-    }
-
-    public func deletePAT(forHost host: String) throws {
-        try deleteCredential(forAccount: Self.account(forHost: host))
     }
 
     public func saveCredential(_ value: String, forAccount account: String) throws {
@@ -450,10 +419,6 @@ public final class KeychainCredentialStore: CredentialStore, @unchecked Sendable
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw KeychainError.deleteFailed(status)
         }
-    }
-
-    public static func account(forHost host: String) -> String {
-        "gitlab:\(host)"
     }
 }
 

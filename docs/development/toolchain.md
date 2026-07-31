@@ -30,9 +30,7 @@ swift build --package-path macos/MdddApp
 
 ```bash
 python3 -m py_compile \
-  agent-usage/collector/collect_usage.py \
-  github/collector/collect_github.py \
-  gitlab/collector/collect_gitlab.py
+  agent-usage/collector/collect_usage.py
 ```
 
 ## 构建边界
@@ -54,11 +52,12 @@ python3 -m py_compile \
 
 | Harness | 当前用例数 | 覆盖 |
 |---|---:|---|
-| `MdddOnboardingCoreHarness` | 74 | 路径、版本、扫描、readiness、授权 Gate、配置、Keychain 抽象 |
+| `MdddOnboardingCoreHarness` | 98 | 路径、版本、扫描、readiness、授权 Gate、配置、Keychain 抽象、订阅凭证、设备码登录、令牌轮换合并 |
+| `PanelViewModelHarness` | 20 | 措辞、分组、条件渲染 |
 | `ArtifactStoreHarness` | 4 | schema、私有权限、原子发布、previous 回退和迁移 |
-| `CollectorRunnerHarness` | 5 | stdin 凭证、协议、并发、超时、取消和隔离 Bridge |
-| `RefreshSchedulerHarness` | 9 | 30 分钟定时、合并、退避、授权失败、唤醒、容量和停止 |
-| `NativeLifecycleHarness` | 5 | 单窗口、退出、Dock badge 和原生到 Widget 状态映射 |
+| `CollectorRunnerHarness` | 16 | stdin 凭证、协议、并发、超时、取消和隔离 Bridge |
+| `RefreshSchedulerHarness` | 10 | 30 分钟定时、合并、退避、授权失败、唤醒、容量和停止 |
+| `NativeLifecycleHarness` | 6 | 单窗口、退出、Dock badge 和原生到 Widget 状态映射 |
 | `DiagnosticsHarness` | 5 | 白名单报告、敏感扫描、最小 ZIP、权限和命名 |
 | `LocalIntegrationHarness` | 1 | 临时 HOME/Application Support、真实本地 Bridge、缓存重启、诊断和清理 |
 

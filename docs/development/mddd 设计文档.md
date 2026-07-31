@@ -11,16 +11,13 @@
 
 本文档定义 `mddd` 的完整产品需求、交互体验、UI 规范、系统架构、数据契约、安全边界和验收标准。设计以仓库内的 macOS 应用、Onboarding Core、Python Collector、Bridge、Artifact Store、Widget 和测试代码为依据。
 
-本文档中的“代码托管活动”统一指 GitHub 与 GitLab 两类仓库活动能力。产品界面仍保留 GitHub 和 GitLab 两个独立模块, 以便分别表达登录方式、数据来源和品牌色。
-
 ## 2. 产品定义
 
 ### 2.1 产品定位
 
-`mddd` 是一个本地优先的 macOS Dock 研发活动看板。它把分散在本机 AI Agent 会话、代码托管平台和本地工具数据库中的研发活动汇总到一个原生应用中, 为开发者提供:
+`mddd` 是一个本地优先的 macOS Dock 研发活动看板。它把分散在本机 AI Agent 会话和本地工具数据库中的研发活动汇总到一个原生应用中, 为开发者提供:
 
 - AI Agent token 使用量、成本估算和趋势分析。
-- GitHub 与 GitLab 代码托管活动概览和热力图。
 - 本机依赖扫描、登录配置、最小授权和凭证管理。
 - 自动刷新、最后成功快照、故障隔离和 Dock 状态提醒。
 - 保留现有 Widget 视觉风格的统一原生容器。
@@ -31,34 +28,30 @@
 
 - 同时使用多个 AI 编程 Agent 的 macOS 开发者。
 - 需要快速理解每日 token 消耗、模型使用分布和成本的个人用户。
-- 同时使用 GitHub 与私有 GitLab 的开发者。
 - 希望在一个低打扰 Dock 应用中查看研发节奏的用户。
 
 ### 2.3 核心目标
 
 1. 用户打开应用后能够快速判断今日 Agent 消耗、主要消耗来源和近期趋势。
-2. 用户能够在同一应用中查看 GitHub 与 GitLab 的代码托管活动。
-3. 任何 Collector 运行前都必须经过依赖检查、模块选择、当前授权版本和运行态 Gate。
-4. 凭证、会话内容和外部应用数据库必须保持最小读取、最小传递和最小持久化。
-5. 单模块失败不得阻断其他模块, 失败时优先保留最后一次有效展示。
-6. 经典视觉和既有 Widget 布局必须保留; 新主题只改变材质和语义色, 不改变信息结构。
+2. 任何 Collector 运行前都必须经过依赖检查、模块选择、当前授权版本和运行态 Gate。
+3. 凭证、会话内容和外部应用数据库必须保持最小读取、最小传递和最小持久化。
+4. 单模块失败不得阻断其他模块, 失败时优先保留最后一次有效展示。
+5. 经典视觉和既有 Widget 布局必须保留; 新主题只改变材质和语义色, 不改变信息结构。
 
 ### 2.4 产品边界
 
 `mddd` 负责聚合与展示个人研发活动, 不承担以下职责:
 
 - 不作为聊天客户端、Agent 执行器或代码编辑器。
-- 不修改 Agent 会话、CC Switch、Antigravity 或代码托管平台的业务数据。
-- 不保存 GitHub token; GitHub 登录态由官方 `gh` CLI 管理。
+- 不修改 Agent 会话、CC Switch 或 Antigravity 的业务数据。
 - 不在 Widget 中直接访问网络、Keychain、本机文件或原生进程。
 - 不把本地快照视为团队统计、财务结算或平台账单的权威来源。
-- 不自动撤销代码托管平台上的远端凭证; 应用只删除自身保存的本地凭证。
 
 ## 3. 产品原则
 
 ### 3.1 本地优先
 
-会话扫描、聚合、缓存和渲染均在本机完成。外部请求只用于用户启用的代码托管模块和明确授权的 Provider 能力。
+会话扫描、聚合、缓存和渲染均在本机完成。外部请求只用于明确授权的 Provider 能力。
 
 ### 3.2 默认拒绝
 
@@ -74,11 +67,11 @@
 
 ### 3.5 模块隔离
 
-Agent 用量、GitHub 和 GitLab 具有独立的就绪度、刷新状态、缓存和失败恢复。一个模块的故障不得影响其他模块。
+Agent 用量具有独立的就绪度、刷新状态、缓存和失败恢复。故障不得影响其他模块。
 
 ### 3.6 视觉连续性
 
-应用使用原生导航和设置页承载产品流程, 数据展示继续使用现有 Widget。经典主题采用米白书卷底、暖灰文字和低饱和边框; Agent 使用陶土橙, GitHub 使用贡献绿, GitLab 使用贡献橙。
+应用使用原生导航和设置页承载产品流程, 数据展示继续使用现有 Widget。经典主题采用米白书卷底、暖灰文字和低饱和边框; Agent 使用陶土橙。
 
 ## 4. 信息架构
 
@@ -90,9 +83,7 @@ Agent 用量、GitHub 和 GitLab 具有独立的就绪度、刷新状态、缓�
 ┌──────────────────────┬────────────────────────────────────────────┐
 │ mddd                 │ 模块标题                         状态胶囊   │
 │                      │                                            │
-│ Agent 用量  最新     │                                            │
-│ GitHub      最新     │              WidgetHost                    │
-│ GitLab      需要授权 │                                            │
+│ Agent 用量  最新     │              WidgetHost                    │
 │ 设置                 │                                            │
 │                      │                                            │
 └──────────────────────┴────────────────────────────────────────────┘
@@ -101,9 +92,7 @@ Agent 用量、GitHub 和 GitLab 具有独立的就绪度、刷新状态、缓�
 侧栏固定包含:
 
 1. Agent 用量。
-2. GitHub。
-3. GitLab。
-4. 设置。
+2. 设置。
 
 每个数据模块在标题下显示简短状态。设置模块不显示采集状态。
 
@@ -132,13 +121,12 @@ Dock Badge 只表达通用严重程度, 不包含账号、仓库、host、token 
 
 1. 应用创建单一主窗口并启动 Scheduler。
 2. Scheduler 尝试载入各模块最后成功快照。
-3. Onboarding 执行本机只读扫描, 检查 Python、`gh` CLI、Agent 会话目录和可选 SQLite schema。
+3. Onboarding 执行本机只读扫描, 检查 Python、Agent 会话目录和可选 SQLite schema。
 4. 应用展示各模块的依赖、连接和阻塞原因。
 5. 用户选择需要启用的模块。
-6. 用户从应用设置页发起 GitHub 官方 Web 登录, 或填写 GitLab HTTPS 地址和 PAT。
-7. 应用展示统一授权摘要。
-8. 用户确认当前授权版本后, Activation Gate 逐模块计算是否允许调度。
-9. 允许的模块立即执行首轮采集, 后续按默认周期自动刷新。
+6. 应用展示统一授权摘要。
+7. 用户确认当前授权版本后, Activation Gate 逐模块计算是否允许调度。
+8. 允许的模块立即执行首轮采集, 后续按默认周期自动刷新。
 
 本机扫描本身不产生外部请求。未确认授权时, 应用只能使用已持久化的非敏感连接状态, 不得自动复核外部连接。
 
@@ -150,40 +138,10 @@ Dock Badge 只表达通用严重程度, 不包含账号、仓库、host、token 
 4. 没有成功快照的模块在启用后立即采集。
 5. 系统唤醒或应用重新激活时, 对超过刷新周期的模块补采一次。
 
-### 5.3 GitHub 登录
-
-1. 用户在设置页点击“登录 GitHub”。
-2. 应用确认 `gh` CLI 可用。
-3. 应用启动 `gh auth login --web --hostname github.com`。
-4. 用户在官方浏览器流程中完成登录。
-5. 应用通过 `gh auth status --active --hostname github.com` 复核状态。
-6. 应用只保存“已连接/待授权/已失效”等非敏感状态, 不读取或保存 GitHub token。
-
-用户取消登录或登录超时后保持未连接, 不启动 GitHub Collector。
-
-### 5.4 GitLab 配置
-
-1. 用户在设置页输入 GitLab HTTPS base URL 和 PAT。
-2. 应用规范化 URL, 拒绝 HTTP、内嵌用户名或密码、query 和 fragment。
-3. PAT 以规范化 host 为隔离键写入 macOS Keychain。
-4. 应用使用临时、无 Cookie 的会话请求同 host 下的 `/api/v4/user`。
-5. 仅同 host 重定向可继续; 跨 host 重定向必须拒绝。
-6. 输入框提交后立即清空 PAT, 后续不回显。
-7. 验证状态映射为已连接、授权失效或网络不可达。
-
-用户点击“断开”后:
-
-- 立即停止 GitLab 调度。
-- 从模块选择中移除 GitLab。
-- 删除本应用按该 host 保存的 Keychain PAT。
-- 清除本地连接状态和验证时间。
-- 提示用户如需彻底撤销, 还应在 GitLab 端删除远端 PAT。
-
-### 5.5 授权撤销
+### 5.3 授权撤销
 
 - “撤销全部授权”清除当前 consent version, 并停止所有模块调度。
-- 撤销全部授权保留模块选择和 GitLab PAT, 便于用户重新审阅授权后恢复。
-- 单独断开 GitLab 时删除对应 PAT。
+- 撤销全部授权保留模块选择, 便于用户重新审阅授权后恢复。
 - 授权版本升级后, 旧授权自动失效, 用户必须重新确认。
 
 ## 6. 功能设计
@@ -240,42 +198,7 @@ Agent Artifact 保留 `services` 额度展示契约, 可表达额度窗口、余
 
 任何额度扩展都必须继续遵守 capability 显式授权、Provider 级凭证路由和 credential update 白名单。
 
-### 6.2 代码托管活动模块
-
-#### 6.2.1 通用指标
-
-GitHub 与 GitLab 使用统一的贡献 Artifact 结构, 提供:
-
-- 用户登录名。
-- GitLab 可选展示名。
-- 近一年活动总数。
-- 今日活动数。
-- 当前连续活跃天数。
-- 最长连续活跃天数。
-- 最佳单日日期与次数。
-- 以周为单位的每日活动数组。
-
-“当前连续”允许今天尚无活动时从昨天开始计算, 避免当天尚未结束就错误中断连续记录。
-
-#### 6.2.2 GitHub
-
-- 复用本机 `gh` CLI 的官方登录态。
-- 使用 `gh api graphql` 查询当前 viewer 的 contribution calendar。
-- 不调用 `gh auth token`, 不使用 `--show-token`。
-- 使用 GitHub 返回的贡献等级作为热力颜色级别。
-- Collector 保留完整 contribution calendar; Widget 聚焦展示最近 26 周。
-
-#### 6.2.3 GitLab
-
-- 支持用户配置的私有 GitLab HTTPS 实例。
-- 使用 `/api/v4/user` 确认当前用户。
-- 使用 `/api/v4/users/{id}/events` 分页获取近 371 日事件。
-- 单页最多 100 条, 最多读取 20 页, 防止无界请求。
-- 事件时间按用户运行时区转换后再聚合到日期。
-- 活动等级划分为 0、1-2、3-5、6-9、10 及以上五档。
-- Collector 构造与 GitHub 相同的周结构; Widget 聚焦展示最近 26 周。
-
-### 6.3 自动刷新
+### 6.2 自动刷新
 
 默认调度参数:
 
@@ -303,7 +226,7 @@ GitHub 与 GitLab 使用统一的贡献 Artifact 结构, 提供:
 - 达到重试上限后等待下一个正常刷新周期。
 - 系统唤醒和应用重新激活只对过期模块补采, 不对 `authRequired` 模块自动重试。
 
-### 6.4 缓存与恢复
+### 6.3 缓存与恢复
 
 每个模块维护:
 
@@ -379,34 +302,7 @@ Agent 用量 Widget 的视觉层级:
 
 ![Agent 用量视觉基线](../../Tests/visual/baselines/agent-usage-valid.jpg)
 
-### 7.4 GitHub Widget
-
-GitHub Widget 的视觉层级:
-
-1. 顶部品牌行、用户名和更新时间。
-2. 近一年总贡献大数字。
-3. 最勤奋日期和单日贡献摘要。
-4. 今日、当前连续、最长连续、最佳单日四个 chips。
-5. 最近 26 周热力墙。
-6. 月份、周内日期和 Less-More 图例。
-7. 当日格使用描边强调, hover title 展示日期与次数。
-
-GitHub 活动等级使用由浅到深的贡献绿色。
-
-![GitHub 视觉基线](../../Tests/visual/baselines/github-valid.jpg)
-
-### 7.5 GitLab Widget
-
-GitLab Widget 与 GitHub 使用相同的信息结构和尺寸, 以降低跨平台认知成本。差异包括:
-
-- 品牌标题为“GitLab 动态”。
-- 同时展示 username 和可选 display name。
-- 指标文案使用“动态”。
-- 活动等级使用由浅到深的 GitLab 橙色。
-
-![GitLab 视觉基线](../../Tests/visual/baselines/gitlab-valid.jpg)
-
-### 7.6 设置页
+### 7.4 设置页
 
 设置页采用原生 grouped `Form`, 按以下顺序组织:
 
@@ -425,37 +321,22 @@ GitLab Widget 与 GitHub 使用相同的信息结构和尺寸, 以降低跨平�
 - “选择 Python…”和“重新检查”操作。
 - 扫描期间只禁用本模块按钮, 不阻塞其他模块。
 
-#### GitHub
-
-- GitHub CLI 可用性和版本。
-- 登录状态。
-- “登录 GitHub”和“重新检查”操作。
-- 登录期间提示用户在浏览器中完成官方流程。
-
-#### GitLab
-
-- HTTPS base URL 文本框。
-- 不回显的 PAT SecureField。
-- 连接状态。
-- “保存并验证”“更换 PAT”“断开”操作。
-- 断开操作的本地和远端撤销边界说明。
-
 #### 统一授权
 
-- Agent 用量、GitHub、GitLab 三个模块开关。
+- Agent 用量模块开关。
 - 明确列出本机只读扫描、外部 host、凭证用途和 30 分钟自动刷新。
 - 明确说明 Agent 云端额度 Provider 的授权状态。
 - 未确认时显示“确认授权”。
 - 已确认时显示“当前授权有效”和“撤销全部授权”。
 
-### 7.7 主题
+### 7.5 主题
 
 经典主题要求:
 
 - 米白书卷底。
 - 暖灰文字。
 - 细边框和低对比度分隔。
-- Agent 陶土橙、GitHub 绿、GitLab 橙保持模块辨识度。
+- Agent 陶土橙保持模块辨识度。
 - 原有衬线标题、数字层级和 Widget 布局保持不变。
 
 液态玻璃主题要求:
@@ -466,7 +347,7 @@ GitLab Widget 与 GitHub 使用相同的信息结构和尺寸, 以降低跨平�
 - WKWebView 背景透明, 由原生 `NSGlassEffectView` 提供玻璃垫层。
 - 主题切换通过 `window.__mdddSetTheme(name, cssText)` 同步到 Widget。
 
-### 7.8 可访问性
+### 7.6 可访问性
 
 - 导航模块、模块状态和设置错误必须提供可读 accessibility label。
 - 所有状态同时使用图标和文字, 不以颜色作为唯一信号。
@@ -482,12 +363,11 @@ GitLab Widget 与 GitHub 使用相同的信息结构和尺寸, 以降低跨平�
 扫描项包括:
 
 - Python 绝对路径与 `--version`, 最低版本 3.9。
-- `gh` CLI 绝对路径与 `--version`。
 - Kimi Work、Kimi Code CLI、Claude Code 和 Codex CLI 会话目录。
 - CC Switch SQLite schema。
 - Antigravity SQLite schema。
 
-Python 和 `gh` 路径按“用户选择路径 -> 固定候选路径”解析, 不依赖 GUI 进程的 shell `PATH`。
+Python 路径按“用户选择路径 -> 固定候选路径”解析, 不依赖 GUI 进程的 shell `PATH`。
 
 扫描状态统一为:
 
@@ -503,8 +383,6 @@ Python 和 `gh` 路径按“用户选择路径 -> 固定候选路径”解析, �
 | 模块 | 运行必要条件 | 可降级条件 | 阻塞条件 |
 |---|---|---|---|
 | Agent 用量 | Python 3.9+; 至少一个主要会话源可读 | 部分会话源不可用时允许 partial; Orca 作为补充来源; 可选 SQLite 异常只 warning | Python 不可用; 所有主要会话源不可用 |
-| GitHub | Python 3.9+; `gh` 可用; GitHub 已登录 | 无 | 依赖缺失或未登录 |
-| GitLab | Python 3.9+; 合法 HTTPS base URL; PAT 验证成功 | 无 | 地址/PAT 缺失、授权失效、网络不可达 |
 
 ### 8.3 Activation Gate
 
@@ -517,7 +395,7 @@ Collector 的允许条件为:
   AND 应用仍接受新任务
 ```
 
-Agent 用量在 `ready` 或 `partial` 时可运行。GitHub 和 GitLab 仅在 `ready` 时可运行。
+Agent 用量在 `ready` 或 `partial` 时可运行。
 
 ## 9. 系统架构
 
@@ -530,11 +408,7 @@ flowchart LR
     SCHED --> RUNNER["CollectorRunner"]
     RUNNER -->|stdin: BridgeRequest v1| BRIDGE["Python Bridge"]
     BRIDGE --> AGENT["Agent Collector"]
-    BRIDGE --> GH["GitHub Collector"]
-    BRIDGE --> GL["GitLab Collector"]
     AGENT -->|Artifact v1| BRIDGE
-    GH -->|Artifact v1| BRIDGE
-    GL -->|Artifact v1| BRIDGE
     BRIDGE -->|stdout: BridgeResponse v1| RUNNER
     RUNNER --> STORE["ArtifactStore"]
     STORE --> MODEL["AppModel"]
@@ -559,8 +433,7 @@ flowchart LR
 `MdddOnboardingCore` 保持 UI 无关和可测试, 提供:
 
 - 模块身份与数据模型。
-- Python、`gh` 和 SQLite 探测。
-- GitHub 登录态与 GitLab 连接验证。
+- Python 和 SQLite 探测。
 - ReadinessEvaluator。
 - CollectorActivationGate。
 - OnboardingConfigurationStore。
@@ -584,7 +457,7 @@ Bridge Request v1 必须包含:
 |---|---|
 | `schemaVersion` | 固定为 1 |
 | `runId` | 有效 UUID, 用于请求响应关联 |
-| `module` | `agent-usage`、`github` 或 `gitlab` |
+| `module` | `agent-usage` |
 | `timeouts` | 本地扫描、外部请求和模块超时 |
 | `context` | 经白名单允许的非敏感运行上下文 |
 | `credentials` | 按模块白名单传入的最小凭证 |
@@ -602,8 +475,6 @@ Bridge Request v1 必须包含:
 | 模块 | 凭证 |
 |---|---|
 | Agent 用量 | 仅允许白名单 Provider 结构; 默认 App 输入为空 |
-| GitHub | 不允许传入凭证 |
-| GitLab | 仅允许 `gitlabToken` |
 
 ### 10.2 响应
 
@@ -647,7 +518,7 @@ Bridge 必须:
 ```json
 {
   "schemaVersion": 1,
-  "module": "agent-usage | github | gitlab",
+  "module": "agent-usage",
   "generatedAt": "ISO-8601 date-time"
 }
 ```
@@ -667,28 +538,7 @@ Bridge 必须:
 - 日期使用严格 `yyyy-MM-dd`。
 - 成本允许为 `null`, 表示无法可靠估算。
 
-### 11.3 贡献 Artifact
-
-必需字段:
-
-- `login`。
-- `totalContributions`。
-- `today`。
-- `currentStreak`。
-- `longestStreak`。
-- `bestDay`。
-- `weeks`。
-
-GitLab 额外包含 `displayName`。
-
-关键约束:
-
-- 数量不得为负数。
-- 每周最多 7 天。
-- weekday 范围为 0 到 6。
-- 日期使用严格 `yyyy-MM-dd`。
-
-### 11.4 敏感字段禁令
+### 11.3 敏感字段禁令
 
 Artifact 任意层级的字段名不得包含以下语义:
 
@@ -736,7 +586,7 @@ Widget 使用 `onDataChange` 和 `onStatusChange` 接收更新。Artifact 为空
 
 ### 12.3 资源一致性
 
-仓库根目录下的三个 Widget 源文件是受评审视觉源。App Bundle 中的副本必须与源文件逐字节一致, 共享 bootstrap 和主题 CSS 由原生资源目录统一提供。
+仓库根目录下的 Widget 源文件是受评审视觉源。App Bundle 中的副本必须与源文件逐字节一致, 共享 bootstrap 和主题 CSS 由原生资源目录统一提供。
 
 ## 13. 配置、凭证与本地数据
 
@@ -745,7 +595,6 @@ Widget 使用 `onDataChange` 和 `onStatusChange` 接收更新。Artifact 为空
 Onboarding 配置 schema v1 包含:
 
 - Python 路径。
-- GitLab base URL。
 - 已选模块集合。
 - 已确认 consent version。
 - 非敏感连接状态。
@@ -756,11 +605,10 @@ Onboarding 配置 schema v1 包含:
 
 ### 13.2 凭证
 
-- GitHub 凭证完全由 `gh` CLI 管理。
-- GitLab PAT 使用 macOS Keychain generic password 存储。
-- Keychain service 固定, account 按规范化 GitLab host 隔离。
-- 更新 PAT 时优先原位 update, 不采用先删后加, 避免添加失败时丢失旧凭证。
-- PAT 只在 SecureField、原生进程内存、Keychain、验证请求、单次 Bridge stdin、Collector 进程内存和 GitLab API 请求 header 中按需短暂存在。
+- 订阅额度凭证 (Kimi、DeepSeek、火山引擎、Codex、Antigravity) 使用 macOS Keychain generic password 存储。
+- Keychain service 固定, account 按 Provider 账号隔离。
+- 更新凭证时优先原位 update, 不采用先删后加, 避免添加失败时丢失旧凭证。
+- 凭证只在 SecureField、原生进程内存、Keychain、单次 Bridge stdin 和 Collector 进程内存中按需短暂存在。
 
 ### 13.3 快照
 
@@ -827,7 +675,7 @@ CLI 原始输出、HTTP header、HTTP body、PAT、OAuth token 和完整本机�
 - UI 主线程不得执行文件扫描、SQLite 查询、网络请求或 Python 聚合。
 - 本机进程探测默认 8 秒超时, 输出收集上限 16 KiB。
 - stderr 分类摘要上限 1 KiB。
-- GitLab API 分页和 Collector 并发必须有明确上限。
+- Collector 并发必须有明确上限。
 - Widget 数据更新应复用已加载页面, 不因每次刷新重新创建 WKWebView。
 
 ### 15.3 可靠性
@@ -851,37 +699,29 @@ CLI 原始输出、HTTP header、HTTP body、PAT、OAuth token 和完整本机�
 
 ### 16.1 产品验收
 
-1. 首次打开时能够看到四个导航项和每个数据模块的状态。
+1. 首次打开时能够看到导航项和每个数据模块的状态。
 2. 未确认授权时所有 Collector 均保持禁用。
 3. Agent 模块在 Python 3.9+ 且至少一个主要会话源可读时可运行。
-4. GitHub 必须在 `gh` 可用且官方登录态有效后运行。
-5. GitLab 必须在 HTTPS 地址和 PAT 验证成功后运行。
-6. 自动刷新默认每 30 分钟执行, 睡眠恢复后只补采过期模块。
-7. 任一模块失败时其他模块继续刷新。
-8. 有最后成功快照时, 刷新失败不清空页面。
-9. Dock 重开只恢复一个主窗口。
-10. 退出时停止调度并回收 Collector 子进程。
+4. 自动刷新默认每 30 分钟执行, 睡眠恢复后只补采过期模块。
+5. 任一模块失败时其他模块继续刷新。
+6. 有最后成功快照时, 刷新失败不清空页面。
+7. Dock 重开只恢复一个主窗口。
+8. 退出时停止调度并回收 Collector 子进程。
 
 ### 16.2 数据验收
 
 1. Agent token bucket、14 日每日数据和 24 小时数据均通过非负数校验。
 2. 成本按 input、output、cache read 和 cache creation 定价计算。
-3. GitHub 和 GitLab 的今日数据使用用户时区。
-4. 当前连续允许今天为 0 时从昨天计算。
-5. GitLab 活动正确映射为五级热力颜色。
-6. schema、module、runId 或日期无效时拒绝发布。
-7. Artifact 出现敏感字段时在 Bridge 和原生层均拒绝。
+3. schema、module、runId 或日期无效时拒绝发布。
+4. Artifact 出现敏感字段时在 Bridge 和原生层均拒绝。
 
 ### 16.3 安全验收
 
-1. GitHub 流程不读取或记录 token。
-2. GitLab PAT 只存在于 SecureField、原生进程内存、Keychain、验证请求、Bridge stdin、Collector 进程内存和 GitLab API 请求 header。
-3. GitLab 跨 host 重定向被拒绝。
-4. SQLite 以 `mode=ro` 打开且不执行写入。
-5. Widget 无网络能力、无原生消息通道、无持久 Cookie。
-6. 子进程 stderr 原文被抑制。
-7. 配置、快照和 metadata 使用 `0600`, 目录使用 `0700`。
-8. Dock Badge 和用户可读诊断不包含身份标识。
+1. SQLite 以 `mode=ro` 打开且不执行写入。
+2. Widget 无网络能力、无原生消息通道、无持久 Cookie。
+3. 子进程 stderr 原文被抑制。
+4. 配置、快照和 metadata 使用 `0600`, 目录使用 `0700`。
+5. Dock Badge 和用户可读诊断不包含身份标识。
 
 ### 16.4 UI 与视觉验收
 
@@ -889,8 +729,8 @@ CLI 原始输出、HTTP header、HTTP body、PAT、OAuth token 和完整本机�
 
 视觉一致性要求:
 
-- 颜色、字体层级、卡片、meter、chips 和热力格保持既有风格。
-- Agent 陶土橙、GitHub 绿和 GitLab 橙不被主题统一色覆盖。
+- 颜色、字体层级、卡片、meter、chips 保持既有风格。
+- Agent 陶土橙不被主题统一色覆盖。
 - 状态胶囊不遮挡核心数据。
 - 液态玻璃不改变布局尺寸。
 - PNG 与 JPG 基线比较时, 差异像素参考阈值小于 5%, RMSE 小于 10。
@@ -906,7 +746,7 @@ CLI 原始输出、HTTP header、HTTP body、PAT、OAuth token 和完整本机�
 | Native Lifecycle Harness | 单窗口、Dock 重开、退出回收和 Badge 隐私 |
 | Python 测试 | Bridge 契约、Collector context、聚合、CLI 和敏感数据隔离 |
 | Widget 测试 | CSP、无网络、无原生通道、动态转义、状态覆盖、JS 语法和 Bundle 一致性 |
-| 视觉基线 | 三个 Widget 的固定尺寸确定性截图 |
+| 视觉基线 | Widget 的固定尺寸确定性截图 |
 
 标准验证命令:
 
@@ -920,7 +760,7 @@ python3 -m pytest -q
 
 ## 17. 扩展约束
 
-新增 Agent、代码托管平台或 Provider 时必须:
+新增 Agent、Provider 或未来代码托管平台时必须:
 
 1. 新增明确模块或数据源身份, 不复用不相干的凭证范围。
 2. 在 Onboarding 中声明依赖、连接状态、用户动作和就绪规则。
@@ -948,9 +788,7 @@ python3 -m pytest -q
 | WidgetHost | `macos/MdddApp/Sources/MdddApp/WidgetHost.swift` |
 | Bridge | `bridge/run_bridge.py`, `bridge/security.py` |
 | Agent 用量 | `agent-usage/collector/collect_usage.py` |
-| GitHub | `github/collector/collect_github.py` |
-| GitLab | `gitlab/collector/collect_gitlab.py` |
-| Widget | `agent-usage/widget/`, `github/widget/`, `gitlab/widget/` |
+| Widget | `agent-usage/widget/` |
 | 契约 schema | `bridge/schemas/` |
 | 测试与视觉基线 | `Tests/`, `macos/MdddApp/Tests/` |
 
@@ -970,7 +808,7 @@ python3 -m pytest -q
 
 以下内容属于外部人工门禁, 不通过文档或 mock 结果伪装为已完成:
 
-- 真实 GitHub、私有 GitLab 和 Agent Provider 登录。
+- 真实 Agent Provider 登录。
 - 真实凭证失效、轮换和远端撤销。
 - 完整 Xcode archive、entitlement、签名、公证和 `.app` 安装。
 - 真实 30 分钟周期、睡眠唤醒、VPN 和长时间运行。
@@ -1072,7 +910,7 @@ DiagnosticReport
 报告禁止包含:
 
 - Artifact 内容、token 数量、成本、模型、项目和贡献记录。
-- 账号、邮箱、仓库、GitLab host、URL 和完整文件路径。
+- 账号、邮箱、完整文件路径。
 - PAT、OAuth、Cookie、API key、HTTP header/body 和 Keychain 内容。
 - Collector 原始 stdout/stderr。
 - 本机用户名、HOME 和其他用户标识。
@@ -1100,8 +938,7 @@ DiagnosticReport
 - 侧栏、模块标题、状态胶囊、设置操作和诊断操作必须提供明确 label。
 - 状态提供 accessibility value 和必要 hint。
 - 忙碌或禁用按钮说明原因, 不只表现为灰色。
-- 设置页使用稳定的键盘顺序; Python、GitHub、GitLab、统一授权和诊断区可连续 Tab 导航。
-- 提交 GitLab PAT 后焦点返回连接状态或错误提示。
+- 设置页使用稳定的键盘顺序; Python、统一授权和诊断区可连续 Tab 导航。
 - 诊断 Sheet 打开时焦点进入标题或预览内容, 关闭后返回触发按钮。
 - 错误提示使用 live announcement 或等价的原生可访问性通知。
 
@@ -1117,13 +954,12 @@ DiagnosticReport
 - error。
 - notConfigured。
 
-高对比度或无法分辨颜色时, 用户仍能通过图标形状、边框或状态文案判断状态。现有模块品牌色、卡片、热力图格和字体层级保持不变。
+高对比度或无法分辨颜色时, 用户仍能通过图标形状、边框或状态文案判断状态。现有模块品牌色、卡片和字体层级保持不变。
 
 #### 19.5.3 减少动态效果
 
-- 三个 Widget 共享 `prefers-reduced-motion` 规则。
+- Widget 共享 `prefers-reduced-motion` 规则。
 - Agent 数字递增、背景动画、状态闪烁和图表过渡在减少动态效果时直达终态或缩短到不可感知时长。
-- GitHub 和 GitLab 热力图不得因状态更新产生非必要位移动画。
 - 确定性视觉 Harness 冻结时间并模拟减少动态效果。
 
 ### 19.6 自动化验证
@@ -1158,7 +994,7 @@ LocalIntegrationHarness 使用:
 
 1. Python Collector 和 Bridge AST 语法解析。
 2. `python3 -m pytest -q`。
-3. Bridge request/response 和三个 Artifact schema/fixture 校验。
+3. Bridge request/response 和 Agent Artifact schema/fixture 校验。
 4. Widget 源文件与 Bundle 副本一致性检查。
 5. 所有 Widget 内联 JavaScript 和 bootstrap 的 `node --check`。
 6. `swift build --package-path macos/MdddApp`。
@@ -1170,7 +1006,7 @@ LocalIntegrationHarness 使用:
 12. LocalIntegrationHarness。
 13. 诊断包敏感信息扫描和临时目录清理检查。
 
-脚本默认离线, 不读取真实 HOME、Keychain、Agent 会话或第三方数据库。隔离集成会在空的临时 HOME 中运行真实 Agent Collector 代码, 但不启用外部额度或仓库平台网络采集。任一步失败立即以非零状态退出。输出只包含步骤、测试数量和脱敏错误摘要。
+脚本默认离线, 不读取真实 HOME、Keychain、Agent 会话或第三方数据库。隔离集成会在空的临时 HOME 中运行真实 Agent Collector 代码, 但不启用外部额度采集。任一步失败立即以非零状态退出。输出只包含步骤、测试数量和脱敏错误摘要。
 
 ### 19.7 OpenSpec 收口
 
@@ -1196,8 +1032,6 @@ LocalIntegrationHarness 使用:
 
 - Xcode archive、entitlement、签名、公证和 Gatekeeper。
 - `.app` 从干净目录安装、首次启动、关闭和 Dock 重开。
-- GitHub 官方 Web 登录成功、取消和失效。
-- 私有 GitLab 正常、VPN 缺失、401/403 和跨 host 重定向。
 - 真实 Agent Provider 授权、失效和撤销。
 - 30 分钟运行、跨睡眠周期补偿和退出回收。
 - VoiceOver、全键盘、增加对比度、减少动态效果和浅深色主题。

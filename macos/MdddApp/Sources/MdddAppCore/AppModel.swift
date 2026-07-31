@@ -3,8 +3,6 @@ import MdddOnboardingCore
 
 package enum DashboardModule: String, CaseIterable, Codable, Identifiable, Sendable {
     case agentUsage
-    case github
-    case gitlab
     case settings
 
     package var id: String { rawValue }
@@ -13,10 +11,6 @@ package enum DashboardModule: String, CaseIterable, Codable, Identifiable, Senda
         switch self {
         case .agentUsage:
             return "Agent 用量"
-        case .github:
-            return "GitHub"
-        case .gitlab:
-            return "GitLab"
         case .settings:
             return "设置"
         }
@@ -26,25 +20,8 @@ package enum DashboardModule: String, CaseIterable, Codable, Identifiable, Senda
         switch self {
         case .agentUsage:
             return "gauge.with.dots.needle.67percent"
-        case .github:
-            return "chevron.left.forwardslash.chevron.right"
-        case .gitlab:
-            return "square.grid.3x3.fill"
         case .settings:
             return "gearshape"
-        }
-    }
-
-    package var collectorModule: CollectorModule? {
-        switch self {
-        case .agentUsage:
-            return .agentUsage
-        case .github:
-            return .github
-        case .gitlab:
-            return .gitlab
-        case .settings:
-            return nil
         }
     }
 
@@ -52,10 +29,6 @@ package enum DashboardModule: String, CaseIterable, Codable, Identifiable, Senda
         switch module {
         case .agentUsage:
             self = .agentUsage
-        case .github:
-            self = .github
-        case .gitlab:
-            self = .gitlab
         }
     }
 }
@@ -275,14 +248,12 @@ package final class AppModel: ObservableObject {
 
     // MARK: - 面板 view model
 
-    /// 组装菜单栏面板的五卡 view model: 三份 artifact 加模块状态经映射层
-    /// 条件渲染, 卡片为 nil 即不渲染. artifact 缺失或校验失败按缺失处理,
+    /// 组装菜单栏面板的卡片 view model: artifact 经映射层条件渲染,
+    /// 卡片为 nil 即不渲染. artifact 缺失或校验失败按缺失处理,
     /// 由映射层写入对应诊断.
     package func makePanelViewModel() -> PanelViewModel {
         PanelViewModelMapper().make(
             agentUsage: decodedAgentUsageArtifact(),
-            github: decodedContributionArtifact(for: .github),
-            gitlab: decodedContributionArtifact(for: .gitlab),
             moduleStatuses: moduleStatuses
         )
     }
@@ -301,25 +272,6 @@ package final class AppModel: ObservableObject {
             return nil
         }
         return decoded
-    }
-
-    /// 校验并解码贡献类 artifact (GitHub / GitLab); 任何失败都视为缺失.
-    private func decodedContributionArtifact(
-        for module: DashboardModule
-    ) -> ContributionArtifact? {
-        guard let collectorModule = module.collectorModule,
-              let artifact = moduleArtifacts[module],
-              let decoded = try? ArtifactValidator()
-                  .validate(artifact, for: collectorModule)
-        else {
-            return nil
-        }
-        switch decoded {
-        case .github(let contribution), .gitlab(let contribution):
-            return contribution
-        case .agentUsage:
-            return nil
-        }
     }
 
     /// 返回 Core 的 ModuleReadiness 枚举, 供 ActivationGate 使用.

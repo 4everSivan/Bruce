@@ -1138,7 +1138,8 @@ def service_codex_accounts():
         cli_auth = json.loads(json.dumps(injected_cli_auth))
         cli_tokens = cli_auth.get("tokens") or {}
         active_id = cli_tokens.get("account_id")
-    else:
+    elif not _APP_MODE:
+        # CLI 兼容模式读本机 CLI 侧认证; App 模式凭证只经注入, 不读盘
         try:
             with open(CODEX_AUTH, encoding="utf-8") as fh:
                 cli_auth = json.load(fh)

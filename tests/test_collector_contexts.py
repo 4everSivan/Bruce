@@ -235,6 +235,58 @@ class AgentCollectorContextTests(unittest.TestCase):
             },
         )
 
+    def test_app_mode_does_not_read_cli_auth_from_disk(self):
+        """App 模式未注入 codex_auth 时不得回退读 ~/.codex/auth.json."""
+        with tempfile.TemporaryDirectory() as temp_home:
+            cli_auth_path = Path(temp_home) / ".codex" / "auth.json"
+            cli_auth_path.parent.mkdir(parents=True)
+            cli_auth_path.write_text(
+                json.dumps(
+                    {
+                        "tokens": {
+                            "account_id": "account-1",
+                            "refresh_token": "cli-refresh",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.module._configure_runtime(
+                {
+                    "home": temp_home,
+                    "app_mode": True,
+                    "credentials": {
+                        "codex_oauth_auth": {
+                            "accounts": {
+                                "account-1": {"refresh_token": "cc-refresh"}
+                            }
+                        },
+                    },
+                    "http": {
+                        "get_json": lambda *_: {
+                            "plan_type": "fixture",
+                            "rate_limit": {},
+                        }
+                    },
+                }
+            )
+            attempts = []
+            original_refresh = self.module._codex_refresh
+            self.module._codex_refresh = lambda token: attempts.append(
+                token
+            ) or {"access_token": "a", "refresh_token": "r"}
+            try:
+                services = self.module.service_codex_accounts()
+            finally:
+                self.module._codex_refresh = original_refresh
+
+        self.assertEqual(services[0]["status"], "empty")
+        self.assertEqual(
+            attempts,
+            ["cc-refresh"],
+            "App 模式未注入 codex_auth 时不得使用磁盘 CLI 令牌",
+        )
+
     def test_app_mode_returns_antigravity_update_without_writing_auth_file(self):
         class FakeResponse:
             def __init__(self, payload):
@@ -830,153 +882,6 @@ class AgentCollectorAppServicesTests(unittest.TestCase):
             services = self.module.collect_services()
 
         self.assertEqual(services, [])
-
-
-class GitHubCollectorContextTests(unittest.TestCase):
-    def setUp(self):
-        self.module = load_module(
-            "collect_github_context_test",
-            "github/collector/collect_github.py",
-        )
-
-    def test_graphql_clock_and_timezone_are_injectable(self):
-        payload = {
-            "data": {
-                "viewer": {
-                    "login": "fixture-user",
-                    "contributionsCollection": {
-                        "contributionCalendar": {
-                            "totalContributions": 3,
-                            "weeks": [
-                                {
-                                    "contributionDays": [
-                                        {
-                                            "date": "2026-07-28",
-                                            "contributionCount": 3,
-                                            "contributionLevel": "SECOND_QUARTILE",
-                                            "weekday": 2,
-                                        }
-                                    ]
-                                }
-                            ],
-                        }
-                    },
-                }
-            }
-        }
-        result = self.module.run(
-            {
-                "graphql": lambda query: payload,
-                "now": "2026-07-28T12:00:00+08:00",
-                "timezone": "Asia/Shanghai",
-            }
-        )["artifact"]
-        self.assertEqual(result["generatedAt"], "2026-07-28T12:00:00+08:00")
-        self.assertEqual(result["login"], "fixture-user")
-        self.assertEqual(result["today"], 3)
-
-
-class GitLabCollectorContextTests(unittest.TestCase):
-    def setUp(self):
-        self.module = load_module(
-            "collect_gitlab_context_test",
-            "gitlab/collector/collect_gitlab.py",
-        )
-
-    def test_http_token_base_url_and_clock_are_injectable(self):
-        paths = []
-
-        def http_get_json(path, token):
-            self.assertEqual(token, "fixture-token")
-            paths.append(path)
-            if path == "/api/v4/user":
-                return {"id": 7, "username": "fixture-user", "name": "Fixture"}
-            return [
-                {"created_at": "2026-07-28T08:00:00Z"},
-                {"created_at": "2026-07-27T08:00:00Z"},
-            ]
-
-        result = self.module.run(
-            {
-                "base_url": "https://gitlab.example.test",
-                "credentials": {"gitlab_token": "fixture-token"},
-                "http_get_json": http_get_json,
-                "now": "2026-07-28T12:00:00+08:00",
-                "timezone": "Asia/Shanghai",
-            }
-        )["artifact"]
-
-        self.assertEqual(result["generatedAt"], "2026-07-28T12:00:00+08:00")
-        self.assertEqual(result["login"], "fixture-user")
-        self.assertEqual(result["today"], 1)
-        self.assertEqual(paths[0], "/api/v4/user")
-        self.assertIn("/api/v4/users/7/events", paths[1])
-
-    def test_run_requires_explicit_base_url(self):
-        with self.assertRaisesRegex(ValueError, "缺少 GitLab base_url 配置"):
-            self.module.run(
-                {
-                    "credentials": {"gitlab_token": "fixture-token"},
-                    "http_get_json": lambda _path, _token: {},
-                }
-            )
-
-    def test_base_url_rejects_unsafe_values(self):
-        rejected = [
-            "",
-            "http://gitlab.example.test",
-            "https://user:fixture@gitlab.example.test",
-            "https://gitlab.example.test:not-a-port",
-            "https://gitlab.example.test?token=fixture",
-            "https://gitlab.example.test#fragment",
-        ]
-        for value in rejected:
-            with self.subTest(value=value):
-                with self.assertRaises(ValueError):
-                    self.module._resolve_base_url({"base_url": value})
-
-    def test_base_url_normalizes_trailing_slash(self):
-        self.assertEqual(
-            self.module._resolve_base_url(
-                {"base_url": "https://gitlab.example.test/group/"}
-            ),
-            "https://gitlab.example.test/group",
-        )
-
-    def test_default_tls_context_verifies_certificate_and_hostname(self):
-        context = self.module._ssl_context({})
-        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
-        self.assertTrue(context.check_hostname)
-
-    def test_app_mode_without_token_raises_auth_error_before_legacy_file(self):
-        with tempfile.TemporaryDirectory() as temp_home:
-            token_file = (
-                Path(temp_home)
-                / ".config"
-                / "mddd"
-                / "gitlab.token"
-            )
-            token_file.parent.mkdir(parents=True)
-            token_file.write_text("legacy-token\n", encoding="utf-8")
-            with self.assertRaises(PermissionError) as caught:
-                self.module._resolve_token(
-                    {"home": temp_home, "app_mode": True}
-                )
-        # 只有新增分支会报这条信息, 证明未触碰旧 token 文件
-        self.assertEqual(str(caught.exception), "App 模式缺少 gitlab_token 凭证")
-
-    def test_cli_mode_keeps_legacy_token_file_fallback(self):
-        with tempfile.TemporaryDirectory() as temp_home:
-            token_file = (
-                Path(temp_home)
-                / ".config"
-                / "mddd"
-                / "gitlab.token"
-            )
-            token_file.parent.mkdir(parents=True)
-            token_file.write_text("legacy-token\n", encoding="utf-8")
-            token = self.module._resolve_token({"home": temp_home})
-        self.assertEqual(token, "legacy-token")
 
 
 class VolcengineResetTimestampTests(unittest.TestCase):

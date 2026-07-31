@@ -50,41 +50,28 @@ struct MdddOnboardingCoreHarness {
         try pythonPathResolvesUserPreferred()
         try pythonPathFallsBackToCandidates()
         try pythonPathReturnsNilWhenNoneFound()
-        try ghCliPathResolvesUserPreferred()
-        try ghCliPathFallsBackToCandidates()
         try gateDeniesAllBeforeConsent()
         try gateDeniesWhenConsentVersionMismatch()
         try gateAllowsAgentReady()
         try gateAllowsAgentPartial()
-        try gateDeniesGitHubPartial()
-        try gateDeniesGitLabPartial()
         try gateDeniesUnselectedModule()
         try gateDeniesWhenAppNotAcceptingTasks()
         try gateDeniesPendingAuthorization()
         try gateDeniesNetworkUnreachable()
         try agentPolicyOnlyLocalCapabilities()
-        try githubPolicyHasNoCapabilities()
         try policyNilWhenNotReady()
         try evaluatorAgentReady()
         try evaluatorAgentPartial()
         try evaluatorAgentMissingPython()
         try evaluatorAgentNoSessions()
         try evaluatorAgentCcSwitchAloneNotReady()
-        try evaluatorGitHubReady()
-        try evaluatorGitHubNotLoggedIn()
-        try evaluatorGitHubGhMissing()
-        try evaluatorGitLabReady()
-        try evaluatorGitLabExpired()
-        try evaluatorGitLabUnreachable()
-        try evaluatorGitLabNoURL()
-        try evaluatorGitLabHttpURL()
         try configStoreRoundTrip()
         try configStoreReturnsEmptyWhenMissing()
         try configStoreReturnsNilForUnknownSchema()
         try configStoreFilePermissions()
         try credentialStoreRoundTrip()
         try credentialStoreDelete()
-        try credentialStoreIsolatesByHost()
+        try credentialStoreIsolatesByAccount()
         try gateEvaluatorDeniesAllBeforeConsent()
         try gateEvaluatorEnablesOnlyReadyAndSelected()
         try ccSwitchProfileHasExpectedTables()
@@ -105,14 +92,7 @@ struct MdddOnboardingCoreHarness {
         try sqliteTableInfoParsesColumnNames()
         try keychainUpdatePreservesAndOverwrites()
         try await scannerFindsPythonSessionsAndSQLite()
-        try await scannerReportsMissingPythonAndGh()
-        try gitlabURLNormalizationAcceptsHTTPS()
-        try gitlabURLRejectsNonHTTPSAndCredentials()
-        try await gitlabVerifyConnectedWithMockSession()
-        try await gitlabVerifyExpiredOn401And403()
-        try await gitlabVerifyUnreachableOnNetworkError()
-        try gitlabRedirectPolicyAllowsSameHostOnly()
-        try await githubStatusCheckMappings()
+        try await scannerReportsMissingPython()
         try firstLaunchDecisionFlow()
         try configStoreLoadsV1WithSubscriptionDefaults()
         try configStoreRejectsNewerSchemaV3()
@@ -143,11 +123,6 @@ struct MdddOnboardingCoreHarness {
         try await ccSwitchVolcImportMissingProviderRow()
         try await ccSwitchVolcImportMissingFile()
         try subscriptionConfigApplyingVerificationTransitions()
-        try githubDeviceStartRequestAndParse()
-        try await githubDeviceStartFailClosed()
-        try githubDevicePollOutcomeMappings()
-        try await githubDeviceFullFlowMockSession()
-        try await githubDeviceDeniedAndTimeoutPaths()
         try await probeStandardInputPipesToProcess()
         try codexPKCEVerifierFormat()
         try codexDeviceStartRequestAndParse()
@@ -163,7 +138,7 @@ struct MdddOnboardingCoreHarness {
         try rotationMergeFiltersKeysAndRejectsUnknown()
         try configAppearanceModeDecodeAndFallback()
         try configGlassStyleDecodeAndFallback()
-        print("MdddOnboardingCore tests passed: 123")
+        print("MdddOnboardingCore tests passed: 98")
     }
 
     // MARK: - Python version parsing
@@ -236,18 +211,6 @@ struct MdddOnboardingCoreHarness {
         try coreExpect(path == nil, "should be nil when no python found")
     }
 
-    private static func ghCliPathResolvesUserPreferred() throws {
-        let fm = TestFileManager(executables: ["/custom/gh"])
-        let path = GhCliPathResolver.resolve(userPreferred: "/custom/gh", fileManager: fm)
-        try coreExpect(path == "/custom/gh", "user preferred not resolved")
-    }
-
-    private static func ghCliPathFallsBackToCandidates() throws {
-        let fm = TestFileManager(executables: ["/opt/homebrew/bin/gh"])
-        let path = GhCliPathResolver.resolve(fileManager: fm)
-        try coreExpect(path == "/opt/homebrew/bin/gh", "candidate not resolved")
-    }
-
     // MARK: - ActivationGate
 
     private static func gateDeniesAllBeforeConsent() throws {
@@ -264,7 +227,7 @@ struct MdddOnboardingCoreHarness {
     private static func gateDeniesWhenConsentVersionMismatch() throws {
         let gate = CollectorActivationGate(consentVersion: 2, confirmedConsentVersion: 1)
         let allowed = gate.canActivate(
-            module: .github, readiness: .ready,
+            module: .agentUsage, readiness: .ready,
             isModuleSelected: true, appIsAcceptingNewTasks: true
         )
         try coreExpect(!allowed, "version mismatch should deny")
@@ -288,28 +251,10 @@ struct MdddOnboardingCoreHarness {
         try coreExpect(allowed, "agent partial should be allowed")
     }
 
-    private static func gateDeniesGitHubPartial() throws {
-        let gate = CollectorActivationGate(consentVersion: 1, confirmedConsentVersion: 1)
-        let allowed = gate.canActivate(
-            module: .github, readiness: .partial,
-            isModuleSelected: true, appIsAcceptingNewTasks: true
-        )
-        try coreExpect(!allowed, "github partial should be denied")
-    }
-
-    private static func gateDeniesGitLabPartial() throws {
-        let gate = CollectorActivationGate(consentVersion: 1, confirmedConsentVersion: 1)
-        let allowed = gate.canActivate(
-            module: .gitlab, readiness: .partial,
-            isModuleSelected: true, appIsAcceptingNewTasks: true
-        )
-        try coreExpect(!allowed, "gitlab partial should be denied")
-    }
-
     private static func gateDeniesUnselectedModule() throws {
         let gate = CollectorActivationGate(consentVersion: 1, confirmedConsentVersion: 1)
         let allowed = gate.canActivate(
-            module: .github, readiness: .ready,
+            module: .agentUsage, readiness: .ready,
             isModuleSelected: false, appIsAcceptingNewTasks: true
         )
         try coreExpect(!allowed, "unselected should be denied")
@@ -318,7 +263,7 @@ struct MdddOnboardingCoreHarness {
     private static func gateDeniesWhenAppNotAcceptingTasks() throws {
         let gate = CollectorActivationGate(consentVersion: 1, confirmedConsentVersion: 1)
         let allowed = gate.canActivate(
-            module: .github, readiness: .ready,
+            module: .agentUsage, readiness: .ready,
             isModuleSelected: true, appIsAcceptingNewTasks: false
         )
         try coreExpect(!allowed, "should deny when app not accepting tasks")
@@ -357,16 +302,9 @@ struct MdddOnboardingCoreHarness {
         try coreExpect(policy?.capabilities.contains(.externalQuotas) == false, "should NOT have externalQuotas")
     }
 
-    private static func githubPolicyHasNoCapabilities() throws {
-        let gate = CollectorActivationGate(consentVersion: 1, confirmedConsentVersion: 1)
-        let policy = gate.executionPolicy(for: .github, readiness: .ready)
-        try coreExpect(policy != nil, "policy should not be nil")
-        try coreExpect(policy?.capabilities.isEmpty == true, "github should have no capabilities")
-    }
-
     private static func policyNilWhenNotReady() throws {
         let gate = CollectorActivationGate(consentVersion: 1, confirmedConsentVersion: 1)
-        let policy = gate.executionPolicy(for: .github, readiness: .pendingAuthorization)
+        let policy = gate.executionPolicy(for: .agentUsage, readiness: .pendingAuthorization)
         try coreExpect(policy == nil, "policy should be nil when not ready")
     }
 
@@ -435,91 +373,6 @@ struct MdddOnboardingCoreHarness {
         try coreExpect(result.readiness == .missingDependency, "CC Switch alone should not make ready")
     }
 
-    private static func evaluatorGitHubReady() throws {
-        let evaluator = ReadinessEvaluator()
-        let result = evaluator.evaluateGitHub(
-            pythonStatus: .available, pythonVersion: "Python 3.9.6",
-            ghCliStatus: .available, ghVersion: "gh version 2.50.0",
-            ghLoggedIn: true
-        )
-        try coreExpect(result.readiness == .ready, "github should be ready")
-        try coreExpect(result.connection == .connected, "should be connected")
-    }
-
-    private static func evaluatorGitHubNotLoggedIn() throws {
-        let evaluator = ReadinessEvaluator()
-        let result = evaluator.evaluateGitHub(
-            pythonStatus: .available, pythonVersion: "Python 3.9.6",
-            ghCliStatus: .available, ghVersion: "gh version 2.50.0",
-            ghLoggedIn: false
-        )
-        try coreExpect(result.readiness == .pendingAuthorization, "should be pendingAuthorization")
-        try coreExpect(result.actions.contains(.loginGitHub), "should suggest loginGitHub")
-    }
-
-    private static func evaluatorGitHubGhMissing() throws {
-        let evaluator = ReadinessEvaluator()
-        let result = evaluator.evaluateGitHub(
-            pythonStatus: .available, pythonVersion: "Python 3.9.6",
-            ghCliStatus: .missing, ghVersion: nil,
-            ghLoggedIn: false
-        )
-        try coreExpect(result.readiness == .missingDependency, "should be missingDependency")
-        try coreExpect(result.actions.contains(.installGitHubCLI), "should suggest installGitHubCLI")
-    }
-
-    private static func evaluatorGitLabReady() throws {
-        let evaluator = ReadinessEvaluator()
-        let url = URL(string: "https://gitlab.example.com")!
-        let result = evaluator.evaluateGitLab(
-            pythonStatus: .available, pythonVersion: "Python 3.9.6",
-            baseURL: url, connectionStatus: .connected
-        )
-        try coreExpect(result.readiness == .ready, "gitlab should be ready")
-    }
-
-    private static func evaluatorGitLabExpired() throws {
-        let evaluator = ReadinessEvaluator()
-        let url = URL(string: "https://gitlab.example.com")!
-        let result = evaluator.evaluateGitLab(
-            pythonStatus: .available, pythonVersion: "Python 3.9.6",
-            baseURL: url, connectionStatus: .expired
-        )
-        try coreExpect(result.readiness == .authorizationExpired, "should be authorizationExpired")
-        try coreExpect(result.actions.contains(.replaceGitLabPAT), "should suggest replaceGitLabPAT")
-    }
-
-    private static func evaluatorGitLabUnreachable() throws {
-        let evaluator = ReadinessEvaluator()
-        let url = URL(string: "https://gitlab.example.com")!
-        let result = evaluator.evaluateGitLab(
-            pythonStatus: .available, pythonVersion: "Python 3.9.6",
-            baseURL: url, connectionStatus: .unreachable
-        )
-        try coreExpect(result.readiness == .networkUnreachable, "should be networkUnreachable")
-        try coreExpect(result.actions.contains(.retryConnection), "should suggest retryConnection")
-    }
-
-    private static func evaluatorGitLabNoURL() throws {
-        let evaluator = ReadinessEvaluator()
-        let result = evaluator.evaluateGitLab(
-            pythonStatus: .available, pythonVersion: "Python 3.9.6",
-            baseURL: nil, connectionStatus: .notChecked
-        )
-        try coreExpect(result.readiness == .pendingAuthorization, "should be pendingAuthorization")
-        try coreExpect(result.actions.contains(.configureGitLab), "should suggest configureGitLab")
-    }
-
-    private static func evaluatorGitLabHttpURL() throws {
-        let evaluator = ReadinessEvaluator()
-        let url = URL(string: "http://gitlab.example.com")!
-        let result = evaluator.evaluateGitLab(
-            pythonStatus: .available, pythonVersion: "Python 3.9.6",
-            baseURL: url, connectionStatus: .notChecked
-        )
-        try coreExpect(result.readiness == .pendingAuthorization, "HTTP should be pendingAuthorization")
-    }
-
     // MARK: - Config store
 
     private static func configStoreRoundTrip() throws {
@@ -530,8 +383,7 @@ struct MdddOnboardingCoreHarness {
 
         var config = OnboardingConfiguration()
         config.pythonPath = "/usr/bin/python3"
-        config.gitlabBaseURL = "https://gitlab.example.com"
-        config.selectedModules = ["github", "gitlab"]
+        config.selectedModules = ["agent-usage"]
         config.consentVersion = 1
         config.menuBarMetrics = [
             "minimumRemainingQuota",
@@ -543,8 +395,7 @@ struct MdddOnboardingCoreHarness {
 
         try coreExpect(loaded != nil, "loaded config should not be nil")
         try coreExpect(loaded?.pythonPath == "/usr/bin/python3", "pythonPath mismatch")
-        try coreExpect(loaded?.gitlabBaseURL == "https://gitlab.example.com", "gitlabBaseURL mismatch")
-        try coreExpect(loaded?.selectedModules == ["github", "gitlab"], "selectedModules mismatch")
+        try coreExpect(loaded?.selectedModules == ["agent-usage"], "selectedModules mismatch")
         try coreExpect(loaded?.consentVersion == 1, "consentVersion mismatch")
         try coreExpect(
             loaded?.menuBarMetrics == [
@@ -575,7 +426,7 @@ struct MdddOnboardingCoreHarness {
 
         let futureConfig: [String: Any] = [
             "schemaVersion": 99,
-            "selectedModules": ["github"],
+            "selectedModules": ["agent-usage"],
         ]
         let data = try JSONSerialization.data(withJSONObject: futureConfig)
         let configURL = tempDir.appendingPathComponent("onboarding-v1.json")
@@ -604,32 +455,42 @@ struct MdddOnboardingCoreHarness {
 
     private static func credentialStoreRoundTrip() throws {
         let store = InMemoryCredentialStore()
-        try store.savePAT("glpat-xxxxxxxx", forHost: "gitlab.example.com")
-        let loaded = try store.loadPAT(forHost: "gitlab.example.com")
-        try coreExpect(loaded == "glpat-xxxxxxxx", "PAT roundtrip failed")
+        try store.saveCredential(
+            "fixture-value", forAccount: SubscriptionCredentialAccount.deepseekAPIKey
+        )
+        let loaded = try store.loadCredential(
+            forAccount: SubscriptionCredentialAccount.deepseekAPIKey
+        )
+        try coreExpect(loaded == "fixture-value", "credential roundtrip failed")
     }
 
     private static func credentialStoreDelete() throws {
         let store = InMemoryCredentialStore()
-        try store.savePAT("glpat-xxxxxxxx", forHost: "gitlab.example.com")
-        try store.deletePAT(forHost: "gitlab.example.com")
-        let loaded = try store.loadPAT(forHost: "gitlab.example.com")
-        try coreExpect(loaded == nil, "PAT should be deleted")
+        try store.saveCredential(
+            "fixture-value", forAccount: SubscriptionCredentialAccount.deepseekAPIKey
+        )
+        try store.deleteCredential(
+            forAccount: SubscriptionCredentialAccount.deepseekAPIKey
+        )
+        let loaded = try store.loadCredential(
+            forAccount: SubscriptionCredentialAccount.deepseekAPIKey
+        )
+        try coreExpect(loaded == nil, "credential should be deleted")
     }
 
-    private static func credentialStoreIsolatesByHost() throws {
+    private static func credentialStoreIsolatesByAccount() throws {
         let store = InMemoryCredentialStore()
-        try store.savePAT("pat-a", forHost: "gitlab-a.com")
-        try store.savePAT("pat-b", forHost: "gitlab-b.com")
-        let loadedA = try store.loadPAT(forHost: "gitlab-a.com")
-        let loadedB = try store.loadPAT(forHost: "gitlab-b.com")
-        try coreExpect(loadedA == "pat-a", "host A mismatch")
-        try coreExpect(loadedB == "pat-b", "host B mismatch")
-        try store.deletePAT(forHost: "gitlab-a.com")
-        let deletedA = try store.loadPAT(forHost: "gitlab-a.com")
-        let intactB = try store.loadPAT(forHost: "gitlab-b.com")
-        try coreExpect(deletedA == nil, "host A should be nil")
-        try coreExpect(intactB == "pat-b", "host B should be intact")
+        try store.saveCredential("value-a", forAccount: "account-a")
+        try store.saveCredential("value-b", forAccount: "account-b")
+        let loadedA = try store.loadCredential(forAccount: "account-a")
+        let loadedB = try store.loadCredential(forAccount: "account-b")
+        try coreExpect(loadedA == "value-a", "account A mismatch")
+        try coreExpect(loadedB == "value-b", "account B mismatch")
+        try store.deleteCredential(forAccount: "account-a")
+        let deletedA = try store.loadCredential(forAccount: "account-a")
+        let intactB = try store.loadCredential(forAccount: "account-b")
+        try coreExpect(deletedA == nil, "account A should be nil")
+        try coreExpect(intactB == "value-b", "account B should be intact")
     }
 
     // MARK: - Gate evaluator
@@ -639,7 +500,7 @@ struct MdddOnboardingCoreHarness {
         let evaluator = ActivationGateEvaluator(gate: gate)
         let decisions = evaluator.evaluate(
             readinessByModule: [
-                .agentUsage: .ready, .github: .ready, .gitlab: .ready
+                .agentUsage: .ready
             ],
             selectedModules: Set(CollectorModule.allCases),
             appIsAcceptingNewTasks: true
@@ -654,20 +515,14 @@ struct MdddOnboardingCoreHarness {
         let evaluator = ActivationGateEvaluator(gate: gate)
         let decisions = evaluator.evaluate(
             readinessByModule: [
-                .agentUsage: .ready,
-                .github: .pendingAuthorization,
-                .gitlab: .ready
+                .agentUsage: .ready
             ],
-            selectedModules: [.agentUsage, .github],
+            selectedModules: [.agentUsage],
             appIsAcceptingNewTasks: true
         )
         let agentDecision = decisions.first { $0.module == .agentUsage }
-        let githubDecision = decisions.first { $0.module == .github }
-        let gitlabDecision = decisions.first { $0.module == .gitlab }
 
         try coreExpect(agentDecision?.allowed == true, "agent should be allowed")
-        try coreExpect(githubDecision?.allowed == false, "github should be denied (pendingAuth)")
-        try coreExpect(gitlabDecision?.allowed == false, "gitlab should be denied (not selected)")
     }
 
     // MARK: - Schema profiles
@@ -956,27 +811,27 @@ struct MdddOnboardingCoreHarness {
 
     private static let keychainTestService = "com.mddd.dashboard.credentials.harness"
 
-    /// 验证 update 优先语义: 预置旧值后 savePAT 是就地更新而非先删后加,
+    /// 验证 update 优先语义: 预置旧值后 saveCredential 是就地更新而非先删后加,
     /// 任何时刻凭证不丢失; 测试结束清理测试项.
     private static func keychainUpdatePreservesAndOverwrites() throws {
         let store = KeychainCredentialStore(service: keychainTestService)
-        let host = "harness-\(UUID().uuidString).example.com"
-        defer { try? store.deletePAT(forHost: host) }
+        let account = "harness-\(UUID().uuidString)"
+        defer { try? store.deleteCredential(forAccount: account) }
 
-        try store.savePAT("glpat-old-value", forHost: host)
-        let first = try store.loadPAT(forHost: host)
-        try coreExpect(first == "glpat-old-value", "initial save failed")
+        try store.saveCredential("old-value", forAccount: account)
+        let first = try store.loadCredential(forAccount: account)
+        try coreExpect(first == "old-value", "initial save failed")
 
         // 再次保存必须是更新语义: 新值可读, 且过程中不经过"已删除"窗口
-        try store.savePAT("glpat-new-value", forHost: host)
-        let updated = try store.loadPAT(forHost: host)
+        try store.saveCredential("new-value", forAccount: account)
+        let updated = try store.loadCredential(forAccount: account)
         try coreExpect(
-            updated == "glpat-new-value",
+            updated == "new-value",
             "update should overwrite, got \(String(describing: updated))"
         )
 
-        try store.deletePAT(forHost: host)
-        let deleted = try store.loadPAT(forHost: host)
+        try store.deleteCredential(forAccount: account)
+        let deleted = try store.loadCredential(forAccount: account)
         try coreExpect(deleted == nil, "delete should remove the item")
     }
 
@@ -1005,10 +860,6 @@ struct MdddOnboardingCoreHarness {
             in: tempDir, name: "python3",
             body: "echo 'Python 3.11.4'"
         )
-        let fakeGh = try makeExecutableScript(
-            in: tempDir, name: "gh",
-            body: "echo 'gh version 2.50.0 (2024-01-01)'"
-        )
         let sessionDir = tempDir.appendingPathComponent("sessions")
         try FileManager.default.createDirectory(at: sessionDir, withIntermediateDirectories: true)
         let dbURL = tempDir.appendingPathComponent("cc-switch.db")
@@ -1017,8 +868,6 @@ struct MdddOnboardingCoreHarness {
         let paths = LocalDependencyScanPaths(
             userPreferredPythonPath: fakePython,
             pythonCandidates: ["/nonexistent/python3"],
-            userPreferredGhPath: fakeGh,
-            ghCandidates: ["/nonexistent/gh"],
             sessionDirectories: [
                 .init(displayName: "Kimi Code CLI", url: sessionDir),
                 .init(displayName: "Claude Code",
@@ -1037,8 +886,6 @@ struct MdddOnboardingCoreHarness {
             python?.detail?.contains("3.11.4") == true,
             "python detail mismatch: \(String(describing: python?.detail))"
         )
-        let gh = probes.first { $0.kind == .ghCli }
-        try coreExpect(gh?.status == .available, "gh should be available")
         let sessions = probes.filter { $0.kind == .sessionDirectory }
         try coreExpect(sessions.count == 2, "should have 2 session probes")
         try coreExpect(
@@ -1054,19 +901,16 @@ struct MdddOnboardingCoreHarness {
         try coreExpect(sqlite?.detail == "CC Switch", "sqlite detail should be display name")
     }
 
-    private static func scannerReportsMissingPythonAndGh() async throws {
+    private static func scannerReportsMissingPython() async throws {
         let paths = LocalDependencyScanPaths(
             pythonCandidates: ["/nonexistent/python3-a", "/nonexistent/python3-b"],
-            ghCandidates: ["/nonexistent/gh"],
             sessionDirectories: [],
             sqliteDatabases: []
         )
         let scanner = LocalDependencyScanner(paths: paths)
         let probes = await scanner.scan()
         let python = probes.first { $0.kind == .python }
-        let gh = probes.first { $0.kind == .ghCli }
         try coreExpect(python?.status == .missing, "python should be missing")
-        try coreExpect(gh?.status == .missing, "gh should be missing")
     }
 
     // MARK: - ProviderConnectionVerifier
@@ -1099,162 +943,6 @@ struct MdddOnboardingCoreHarness {
         }
     }
 
-    private static func gitlabURLNormalizationAcceptsHTTPS() throws {
-        let url = ProviderConnectionVerifier.normalizedGitLabBaseURL(
-            "  https://GitLab.Example.com/  "
-        )
-        try coreExpect(url != nil, "valid https URL should parse")
-        try coreExpect(url?.host == "gitlab.example.com", "host should be lowercased")
-        try coreExpect(
-            url?.absoluteString.hasSuffix("/") == false,
-            "trailing slash should be stripped"
-        )
-        let withPort = ProviderConnectionVerifier.normalizedGitLabBaseURL(
-            "https://gitlab.example.com:8443"
-        )
-        try coreExpect(withPort?.port == 8443, "port should be preserved")
-    }
-
-    private static func gitlabURLRejectsNonHTTPSAndCredentials() throws {
-        let rejected = [
-            "http://gitlab.example.com",
-            "https://user@gitlab.example.com",
-            "https://user:pass@gitlab.example.com",
-            "https://gitlab.example.com?foo=bar",
-            "https://gitlab.example.com#frag",
-            "",
-            "not a url",
-        ]
-        for raw in rejected {
-            try coreExpect(
-                ProviderConnectionVerifier.normalizedGitLabBaseURL(raw) == nil,
-                "\(raw) should be rejected"
-            )
-        }
-    }
-
-    private static func gitlabVerifyConnectedWithMockSession() async throws {
-        let baseURL = URL(string: "https://gitlab.example.com")!
-        let session = MockURLSession { request in
-            (
-                Data("{}".utf8),
-                HTTPURLResponse(
-                    url: request.url!, statusCode: 200,
-                    httpVersion: nil, headerFields: nil
-                )!
-            )
-        }
-        let verifier = ProviderConnectionVerifier()
-        let status = await verifier.verifyGitLab(
-            baseURL: baseURL, pat: "fixture-pat-value", session: session
-        )
-        try coreExpect(status == .connected, "200 should map to connected, got \(status)")
-        let request = session.lastRequest
-        try coreExpect(
-            request?.value(forHTTPHeaderField: "PRIVATE-TOKEN") == "fixture-pat-value",
-            "PAT must be sent via PRIVATE-TOKEN header"
-        )
-        try coreExpect(
-            request?.url?.absoluteString == "https://gitlab.example.com/api/v4/user",
-            "must call same-host /api/v4/user, got \(String(describing: request?.url))"
-        )
-    }
-
-    private static func gitlabVerifyExpiredOn401And403() async throws {
-        let baseURL = URL(string: "https://gitlab.example.com")!
-        for code in [401, 403] {
-            let session = MockURLSession { request in
-                (
-                    Data(),
-                    HTTPURLResponse(
-                        url: request.url!, statusCode: code,
-                        httpVersion: nil, headerFields: nil
-                    )!
-                )
-            }
-            let verifier = ProviderConnectionVerifier()
-            let status = await verifier.verifyGitLab(
-                baseURL: baseURL, pat: "glpat-expired", session: session
-            )
-            try coreExpect(status == .expired, "\(code) should map to expired, got \(status)")
-        }
-    }
-
-    private static func gitlabVerifyUnreachableOnNetworkError() async throws {
-        let baseURL = URL(string: "https://gitlab.example.com")!
-        // DNS, TLS 和超时等 URLError 都映射为 unreachable, 保留可重试语义
-        let errors: [URLError.Code] = [.cannotFindHost, .timedOut, .secureConnectionFailed]
-        for code in errors {
-            let session = MockURLSession { _ in
-                throw URLError(code)
-            }
-            let verifier = ProviderConnectionVerifier()
-            let status = await verifier.verifyGitLab(
-                baseURL: baseURL, pat: "glpat-any", session: session
-            )
-            try coreExpect(
-                status == .unreachable,
-                "\(code) should map to unreachable, got \(status)"
-            )
-        }
-    }
-
-    private static func gitlabRedirectPolicyAllowsSameHostOnly() throws {
-        let original = URL(string: "https://gitlab.example.com/api/v4/user")!
-        try coreExpect(
-            GitLabRedirectPolicy.allowsRedirect(
-                from: original,
-                to: URL(string: "https://gitlab.example.com/login")!
-            ),
-            "same host redirect should be allowed"
-        )
-        try coreExpect(
-            !GitLabRedirectPolicy.allowsRedirect(
-                from: original,
-                to: URL(string: "https://evil.example.net/steal")!
-            ),
-            "cross host redirect must be rejected"
-        )
-        try coreExpect(
-            !GitLabRedirectPolicy.allowsRedirect(
-                from: original,
-                to: URL(string: "https://sub.gitlab.example.com/x")!
-            ),
-            "subdomain must be rejected"
-        )
-    }
-
-    /// 用假 gh 脚本验证登录态映射, 不调用真实 gh, 不接触真实登录态.
-    private static func githubStatusCheckMappings() async throws {
-        let tempDir = makeTempDir("gh-fake")
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDir) }
-
-        let loggedInGh = try makeExecutableScript(in: tempDir, name: "gh-ok", body: "exit 0")
-        let loggedOutGh = try makeExecutableScript(in: tempDir, name: "gh-no", body: "exit 1")
-
-        let verifier = ProviderConnectionVerifier()
-        let connected = await verifier.checkGitHubStatus(
-            ghPath: loggedInGh, hasConnectedBefore: false
-        )
-        try coreExpect(connected == .connected, "exit 0 should be connected")
-
-        let pending = await verifier.checkGitHubStatus(
-            ghPath: loggedOutGh, hasConnectedBefore: false
-        )
-        try coreExpect(
-            pending == .pendingAuthorization,
-            "never connected failure should be pendingAuthorization, got \(pending)"
-        )
-        let expired = await verifier.checkGitHubStatus(
-            ghPath: loggedOutGh, hasConnectedBefore: true
-        )
-        try coreExpect(
-            expired == .expired,
-            "previously connected failure should be expired, got \(expired)"
-        )
-    }
-
     // MARK: - 首次启动决策流 (临时目录配置, 只用 Core 类型)
 
     /// 完整决策流: 无授权全部 denied -> 写入授权后仅选中且 ready 的模块
@@ -1269,8 +957,6 @@ struct MdddOnboardingCoreHarness {
 
         let readiness: [CollectorModule: ModuleReadiness] = [
             .agentUsage: .ready,
-            .github: .ready,
-            .gitlab: .ready,
         ]
 
         // 阶段 1: 无授权记录, 所有模块 denied
@@ -1292,11 +978,10 @@ struct MdddOnboardingCoreHarness {
             "无授权时不得生成执行策略"
         )
 
-        // 阶段 2: 写入授权 (选中 agentUsage 和 github, github 未 ready),
-        // 仅选中且 ready 的 agentUsage allowed
+        // 阶段 2: 写入授权 (选中 agentUsage), 选中且 ready 的 agentUsage allowed
         var config = store.load() ?? OnboardingConfiguration()
         config.consentVersion = 1
-        config.selectedModules = ["agent-usage", "github"]
+        config.selectedModules = ["agent-usage"]
         try store.save(config)
 
         let confirmedGate = CollectorActivationGate(
@@ -1308,8 +993,6 @@ struct MdddOnboardingCoreHarness {
         ).evaluate(
             readinessByModule: [
                 .agentUsage: .ready,
-                .github: .pendingAuthorization,
-                .gitlab: .ready,
             ],
             selectedModules: Set(
                 (store.load()?.selectedModules ?? []).compactMap {
@@ -1319,8 +1002,6 @@ struct MdddOnboardingCoreHarness {
             appIsAcceptingNewTasks: true
         )
         let agentDecision = confirmedDecisions.first { $0.module == .agentUsage }
-        let githubDecision = confirmedDecisions.first { $0.module == .github }
-        let gitlabDecision = confirmedDecisions.first { $0.module == .gitlab }
         try coreExpect(
             agentDecision?.allowed == true,
             "选中且 ready 的 agent-usage 必须 allowed"
@@ -1328,14 +1009,6 @@ struct MdddOnboardingCoreHarness {
         try coreExpect(
             agentDecision?.policy?.capabilities == [.localSessions, .localPricing],
             "agent 策略只含 localSessions/localPricing"
-        )
-        try coreExpect(
-            githubDecision?.allowed == false,
-            "github 未 ready 必须 denied"
-        )
-        try coreExpect(
-            gitlabDecision?.allowed == false,
-            "未选中的 gitlab 必须 denied"
         )
 
         // 阶段 3: 授权版本升级后, 已确认版本不再匹配, 全部 denied
@@ -1367,7 +1040,7 @@ struct MdddOnboardingCoreHarness {
 
         let v1Config: [String: Any] = [
             "schemaVersion": 1,
-            "selectedModules": ["github"],
+            "selectedModules": ["agent-usage"],
             "consentVersion": 1,
         ]
         let data = try JSONSerialization.data(withJSONObject: v1Config)
@@ -1381,7 +1054,7 @@ struct MdddOnboardingCoreHarness {
             "v1 配置的订阅 provider 必须按缺省 (空) 处理"
         )
         try coreExpect(
-            loaded?.selectedModules == ["github"],
+            loaded?.selectedModules == ["agent-usage"],
             "v1 配置的既有字段必须保留"
         )
         try coreExpect(
@@ -1401,7 +1074,7 @@ struct MdddOnboardingCoreHarness {
 
         let v3Config: [String: Any] = [
             "schemaVersion": 3,
-            "selectedModules": ["github"],
+            "selectedModules": ["agent-usage"],
         ]
         let data = try JSONSerialization.data(withJSONObject: v3Config)
         let configURL = tempDir.appendingPathComponent("onboarding-v1.json")
@@ -1654,7 +1327,7 @@ struct MdddOnboardingCoreHarness {
 
     // MARK: - 订阅凭证 account 键 (内存实现)
 
-    /// 七个新 account 键的增删改查与隔离; PAT 键不受影响.
+    /// 七个订阅 provider account 键的增删改查与隔离.
     private static func credentialStoreSubscriptionAccountsRoundTrip() throws {
         let store = InMemoryCredentialStore()
         let accounts = [
@@ -1700,11 +1373,6 @@ struct MdddOnboardingCoreHarness {
             forAccount: SubscriptionCredentialAccount.volcengineAccessKey
         )
         try coreExpect(intact == "value-2", "其他 account 键被误删")
-
-        // PAT 与订阅 account 共用存储但键空间隔离
-        try store.savePAT("glpat-x", forHost: "gitlab.example.com")
-        let pat = try store.loadPAT(forHost: "gitlab.example.com")
-        try coreExpect(pat == "glpat-x", "PAT 读写受影响")
     }
 
     // MARK: - 订阅凭证 account 键 (真实 Keychain, 独立测试 service)
@@ -2411,215 +2079,6 @@ struct MdddOnboardingCoreHarness {
     private static func requestBodyString(_ request: URLRequest?) -> String {
         guard let data = request?.httpBody else { return "" }
         return String(data: data, encoding: .utf8) ?? ""
-    }
-
-    // MARK: GitHub 设备码流程
-
-    /// 申请请求指向 device/code 且带 gh client_id; 解析字段齐备.
-    private static func githubDeviceStartRequestAndParse() throws {
-        let request = GitHubDeviceFlow.startRequest()
-        try coreExpect(request.httpMethod == "POST", "必须是 POST")
-        try coreExpect(
-            request.url == GitHubDeviceFlow.deviceCodeURL,
-            "必须指向 device/code, got \(String(describing: request.url))"
-        )
-        let body = requestBodyString(request)
-        try coreExpect(
-            body.contains("client_id=178c6fc778ccc68e1d6a"),
-            "body 必须带 gh client_id, got \(body)"
-        )
-        try coreExpect(body.contains("scope="), "body 必须带 scope")
-        try coreExpect(
-            request.value(forHTTPHeaderField: "Accept") == "application/json",
-            "Accept 必须是 application/json"
-        )
-
-        let json = """
-            {"device_code":"dc-1","user_code":"ABCD-1234",
-             "verification_uri":"https://github.com/login/device",
-             "expires_in":900,"interval":5}
-            """
-        guard case .success(let auth) = GitHubDeviceFlow.parseStartResponse(
-            Data(json.utf8), statusCode: 200
-        ) else {
-            throw CoreTestFailure.expectation("合法设备码响应必须解析成功")
-        }
-        try coreExpect(auth.deviceCode == "dc-1", "device_code 不符")
-        try coreExpect(auth.userCode == "ABCD-1234", "user_code 不符")
-        try coreExpect(auth.interval == 5, "interval 不符: \(auth.interval)")
-        try coreExpect(auth.expiresIn == 900, "expires_in 不符")
-        try coreExpect(
-            auth.verificationURL.absoluteString == "https://github.com/login/device",
-            "verification_uri 不符"
-        )
-        // 缺字段与非 JSON 必须 fail-closed
-        guard case .failure = GitHubDeviceFlow.parseStartResponse(
-            Data("{}".utf8), statusCode: 200
-        ) else {
-            throw CoreTestFailure.expectation("缺字段必须失败")
-        }
-        guard case .failure = GitHubDeviceFlow.parseStartResponse(
-            Data("not json".utf8), statusCode: 200
-        ) else {
-            throw CoreTestFailure.expectation("非 JSON 必须失败")
-        }
-    }
-
-    /// 申请阶段 fail-closed: 网络错误, 5xx 和坏响应都可诊断.
-    private static func githubDeviceStartFailClosed() async throws {
-        let flow = GitHubDeviceFlow()
-        let netFail = CountingMockSession { _, _ in
-            throw URLError(.cannotFindHost)
-        }
-        let unreachable = await flow.start(session: netFail)
-        try coreExpect(
-            unreachable == .failure(.networkUnreachable),
-            "网络错误必须 networkUnreachable, got \(unreachable)"
-        )
-        let server500 = CountingMockSession { request, _ in
-            (Data(), httpResponse(request, 500))
-        }
-        let httpFailure = await flow.start(session: server500)
-        try coreExpect(
-            httpFailure == .failure(.httpError(statusCode: 500)),
-            "500 必须 httpError, got \(httpFailure)"
-        )
-        let badJSON = CountingMockSession { request, _ in
-            (Data("[]".utf8), httpResponse(request, 200))
-        }
-        let invalid = await flow.start(session: badJSON)
-        guard case .failure(.invalidResponse) = invalid else {
-            throw CoreTestFailure.expectation(
-                "坏 JSON 必须 invalidResponse, got \(invalid)"
-            )
-        }
-    }
-
-    /// 轮询解析映射: pending/slow_down/成功/拒绝/过期/未知错误.
-    private static func githubDevicePollOutcomeMappings() throws {
-        let pollRequest = GitHubDeviceFlow.pollRequest(deviceCode: "dc-1")
-        let body = requestBodyString(pollRequest)
-        try coreExpect(body.contains("device_code=dc-1"), "轮询必须带 device_code")
-        try coreExpect(
-            body.contains("grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code"),
-            "轮询必须带 device_code grant, got \(body)"
-        )
-
-        func parse(_ json: String, _ code: Int = 200)
-            -> Result<GitHubDeviceFlow.PollOutcome, DeviceAuthError> {
-            GitHubDeviceFlow.parsePollResponse(Data(json.utf8), statusCode: code)
-        }
-        try coreExpect(
-            parse(#"{"access_token":"gho_x"}"#) == .success(.authorized(accessToken: "gho_x")),
-            "access_token 必须 authorized"
-        )
-        try coreExpect(
-            parse(#"{"error":"authorization_pending"}"#) == .success(.pending),
-            "authorization_pending 必须 pending"
-        )
-        try coreExpect(
-            parse(#"{"error":"slow_down"}"#) == .success(.slowDown),
-            "slow_down 必须 slowDown"
-        )
-        try coreExpect(
-            parse(#"{"error":"expired_token"}"#) == .success(.expired),
-            "expired_token 必须 expired"
-        )
-        try coreExpect(
-            parse(#"{"error":"access_denied"}"#) == .success(.denied),
-            "access_denied 必须 denied"
-        )
-        guard case .failure(.invalidResponse) = parse(#"{"error":"weird"}"#) else {
-            throw CoreTestFailure.expectation("未知 error 必须 invalidResponse")
-        }
-        try coreExpect(
-            parse("", 500) == .failure(.httpError(statusCode: 500)),
-            "非 200 必须 httpError"
-        )
-    }
-
-    /// 全流程状态机: usercode -> poll pending -> poll success -> 返回 token.
-    private static func githubDeviceFullFlowMockSession() async throws {
-        let session = CountingMockSession { request, nth in
-            let url = request.url?.absoluteString ?? ""
-            if url == GitHubDeviceFlow.deviceCodeURL.absoluteString {
-                let json = """
-                    {"device_code":"dc-1","user_code":"ABCD-1234",
-                     "verification_uri":"https://github.com/login/device",
-                     "expires_in":900,"interval":0}
-                    """
-                return (Data(json.utf8), httpResponse(request, 200))
-            }
-            if nth == 1 {
-                return (
-                    Data(#"{"error":"authorization_pending"}"#.utf8),
-                    httpResponse(request, 200)
-                )
-            }
-            return (
-                Data(#"{"access_token":"gho_fixture"}"#.utf8),
-                httpResponse(request, 200)
-            )
-        }
-        let box = LockedBox<DeviceAuthorization?>(nil)
-        let result = await GitHubDeviceFlow().login(session: session) { auth in
-            box.set(auth)
-        }
-        try coreExpect(
-            result == .success("gho_fixture"),
-            "全流程必须拿到 token, got \(result)"
-        )
-        try coreExpect(
-            box.value?.userCode == "ABCD-1234",
-            "onAuthorization 必须回传验证码"
-        )
-        let pollCount = session.requests.filter {
-            $0.url == GitHubDeviceFlow.accessTokenURL
-        }.count
-        try coreExpect(pollCount == 2, "必须轮询两次, got \(pollCount)")
-    }
-
-    /// 拒绝与超时路径: 用户拒绝 -> denied; 设备码过期不发任何轮询请求.
-    private static func githubDeviceDeniedAndTimeoutPaths() async throws {
-        let deniedSession = CountingMockSession { request, _ in
-            let url = request.url?.absoluteString ?? ""
-            if url == GitHubDeviceFlow.deviceCodeURL.absoluteString {
-                let json = """
-                    {"device_code":"dc-1","user_code":"ABCD-1234",
-                     "expires_in":900,"interval":0}
-                    """
-                return (Data(json.utf8), httpResponse(request, 200))
-            }
-            return (
-                Data(#"{"error":"access_denied"}"#.utf8),
-                httpResponse(request, 200)
-            )
-        }
-        let denied = await GitHubDeviceFlow().login(session: deniedSession) { _ in }
-        try coreExpect(
-            denied == .failure(.authorizationDenied),
-            "拒绝必须 authorizationDenied, got \(denied)"
-        )
-
-        let expiredAuth = DeviceAuthorization(
-            deviceCode: "dc-1", userCode: "ABCD-1234",
-            verificationURL: GitHubDeviceFlow.verificationURL,
-            interval: 0, expiresIn: 0
-        )
-        let noPollSession = CountingMockSession { request, _ in
-            (Data(), httpResponse(request, 200))
-        }
-        let expired = await GitHubDeviceFlow().pollUntilAuthorized(
-            expiredAuth, session: noPollSession
-        )
-        try coreExpect(
-            expired == .failure(.authorizationExpired),
-            "过期必须 authorizationExpired, got \(expired)"
-        )
-        try coreExpect(
-            noPollSession.requests.isEmpty,
-            "已过期不得发起轮询请求"
-        )
     }
 
     /// stdin 注入: 凭证经管道传给子进程 (gh --with-token 的依赖能力).

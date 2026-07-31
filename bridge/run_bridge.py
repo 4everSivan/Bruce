@@ -35,8 +35,6 @@ else:
 REPO_ROOT = Path(__file__).resolve().parents[1]
 COLLECTOR_PATHS = {
     "agent-usage": REPO_ROOT / "agent-usage" / "collector" / "collect_usage.py",
-    "github": REPO_ROOT / "github" / "collector" / "collect_github.py",
-    "gitlab": REPO_ROOT / "gitlab" / "collector" / "collect_gitlab.py",
 }
 
 

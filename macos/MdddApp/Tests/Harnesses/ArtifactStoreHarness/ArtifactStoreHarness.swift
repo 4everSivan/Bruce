@@ -107,28 +107,28 @@ struct ArtifactStoreHarness {
 
         var wrongModule = try fixture(
             repository: repository,
-            module: .github
+            module: .agentUsage
         )
         if case .object(var object) = wrongModule {
-            object["module"] = .string("gitlab")
+            object["module"] = .string("other-module")
             wrongModule = .object(object)
         }
         do {
-            _ = try validator.validate(wrongModule, for: .github)
+            _ = try validator.validate(wrongModule, for: .agentUsage)
             throw StoreTestFailure.expectation("module mismatch accepted")
         } catch ArtifactValidationError.moduleMismatch {
         }
 
         var sensitive = try fixture(
             repository: repository,
-            module: .github
+            module: .agentUsage
         )
         if case .object(var object) = sensitive {
             object["access_token"] = .string("fixture-secret")
             sensitive = .object(object)
         }
         do {
-            _ = try validator.validate(sensitive, for: .github)
+            _ = try validator.validate(sensitive, for: .agentUsage)
             throw StoreTestFailure.expectation("sensitive artifact accepted")
         } catch ArtifactValidationError.sensitiveField {
         }
@@ -142,19 +142,19 @@ struct ArtifactStoreHarness {
         let store = try ArtifactStore(rootURL: root)
         let artifact = try fixture(
             repository: repository,
-            module: .github
+            module: .agentUsage
         )
         let successDate = Date(timeIntervalSince1970: 1_786_000_000)
         try store.publish(
             artifact,
-            for: .github,
+            for: .agentUsage,
             attemptedAt: successDate
         )
 
         let rootPermissions = try permissions(root)
         let snapshotDirectoryPermissions = try permissions(store.snapshotsURL)
         let snapshotPermissions = try permissions(
-            store.snapshotURL(for: .github)
+            store.snapshotURL(for: .agentUsage)
         )
         let metadataPermissions = try permissions(store.metadataURL)
         try storeExpect(
@@ -175,18 +175,18 @@ struct ArtifactStoreHarness {
         )
 
         let fresh = try store.load(
-            .github,
+            .agentUsage,
             now: successDate.addingTimeInterval(1_800),
             staleAfter: 3_600
         )
         try storeExpect(!fresh.metadata.isStale, "fresh snapshot is stale")
         try store.recordAttempt(
-            for: .github,
+            for: .agentUsage,
             at: successDate.addingTimeInterval(2_000),
             errorCategory: .network
         )
         let failedAttempt = try store.load(
-            .github,
+            .agentUsage,
             now: successDate.addingTimeInterval(2_100),
             staleAfter: 3_600
         )
@@ -209,20 +209,20 @@ struct ArtifactStoreHarness {
         let baselineStore = try ArtifactStore(rootURL: root)
         let first = try fixture(
             repository: repository,
-            module: .github
+            module: .agentUsage
         )
         var second = first
         if case .object(var object) = second {
             object["login"] = .string("second-fixture")
             second = .object(object)
         }
-        try baselineStore.publish(first, for: .github)
-        try baselineStore.publish(second, for: .github)
+        try baselineStore.publish(first, for: .agentUsage)
+        try baselineStore.publish(second, for: .agentUsage)
         try Data("{corrupted".utf8).write(
-            to: baselineStore.snapshotURL(for: .github)
+            to: baselineStore.snapshotURL(for: .agentUsage)
         )
 
-        let fallback = try baselineStore.load(.github)
+        let fallback = try baselineStore.load(.agentUsage)
         try storeExpect(
             fallback.source == .previous,
             "corrupt current snapshot did not use previous success"
@@ -237,7 +237,7 @@ struct ArtifactStoreHarness {
         )
 
         let currentBeforeFailure = try Data(
-            contentsOf: baselineStore.snapshotURL(for: .github)
+            contentsOf: baselineStore.snapshotURL(for: .agentUsage)
         )
         let failingStore = try ArtifactStore(
             rootURL: root,
@@ -248,12 +248,12 @@ struct ArtifactStoreHarness {
             }
         )
         do {
-            try failingStore.publish(first, for: .github)
+            try failingStore.publish(first, for: .agentUsage)
             throw StoreTestFailure.expectation("replace failure was ignored")
         } catch ArtifactStoreError.storageFailure {
         }
         let currentAfterFailure = try Data(
-            contentsOf: baselineStore.snapshotURL(for: .github)
+            contentsOf: baselineStore.snapshotURL(for: .agentUsage)
         )
         try storeExpect(
             currentBeforeFailure == currentAfterFailure,
@@ -276,18 +276,18 @@ struct ArtifactStoreHarness {
         let store = try ArtifactStore(rootURL: migrationRoot)
         let v0 = try fixture(
             repository: repository,
-            module: .gitlab,
+            module: .agentUsage,
             versioned: false
         )
         let v0Data = try JSONEncoder().encode(v0)
-        try v0Data.write(to: store.snapshotURL(for: .gitlab))
-        let migrated = try store.load(.gitlab)
+        try v0Data.write(to: store.snapshotURL(for: .agentUsage))
+        let migrated = try store.load(.agentUsage)
         try storeExpect(
             migrated.source == .migrated,
             "v0 snapshot was not migrated"
         )
         let migrationBackup = try Data(
-            contentsOf: store.migrationBackupURL(for: .gitlab)
+            contentsOf: store.migrationBackupURL(for: .agentUsage)
         )
         try storeExpect(
             migrationBackup == v0Data,
@@ -306,17 +306,17 @@ struct ArtifactStoreHarness {
                 }
             }
         )
-        try v0Data.write(to: failedStore.snapshotURL(for: .gitlab))
+        try v0Data.write(to: failedStore.snapshotURL(for: .agentUsage))
         let beforeMigration = try Data(
-            contentsOf: failedStore.snapshotURL(for: .gitlab)
+            contentsOf: failedStore.snapshotURL(for: .agentUsage)
         )
         do {
-            _ = try failedStore.load(.gitlab)
+            _ = try failedStore.load(.agentUsage)
             throw StoreTestFailure.expectation("migration failure was ignored")
         } catch ArtifactStoreError.migrationFailed {
         }
         let afterFailedMigration = try Data(
-            contentsOf: failedStore.snapshotURL(for: .gitlab)
+            contentsOf: failedStore.snapshotURL(for: .agentUsage)
         )
         try storeExpect(
             afterFailedMigration == beforeMigration,
@@ -328,22 +328,22 @@ struct ArtifactStoreHarness {
         let unknownStore = try ArtifactStore(rootURL: unknownRoot)
         var unknown = try fixture(
             repository: repository,
-            module: .github
+            module: .agentUsage
         )
         if case .object(var object) = unknown {
             object["schemaVersion"] = .integer(99)
             unknown = .object(object)
         }
         let unknownData = try JSONEncoder().encode(unknown)
-        try unknownData.write(to: unknownStore.snapshotURL(for: .github))
+        try unknownData.write(to: unknownStore.snapshotURL(for: .agentUsage))
         do {
-            _ = try unknownStore.load(.github)
+            _ = try unknownStore.load(.agentUsage)
             throw StoreTestFailure.expectation("unknown schema was accepted")
         } catch ArtifactStoreError.unknownSchema(let version) {
             try storeExpect(version == 99, "unknown version changed")
         }
         let afterUnknownLoad = try Data(
-            contentsOf: unknownStore.snapshotURL(for: .github)
+            contentsOf: unknownStore.snapshotURL(for: .agentUsage)
         )
         try storeExpect(
             afterUnknownLoad == unknownData,

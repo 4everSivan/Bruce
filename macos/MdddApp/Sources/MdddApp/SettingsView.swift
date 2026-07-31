@@ -11,11 +11,8 @@ struct SettingsView: View {
     @EnvironmentObject private var coordinator: OnboardingCoordinator
     @EnvironmentObject private var diagnostics: DiagnosticService
 
-    @State private var gitlabBaseURLText = ""
-    @State private var gitlabPATText = ""
     @State private var diagnosticsPreview = ""
     @State private var showsDiagnosticsPreview = false
-    @FocusState private var patFieldFocused: Bool
     // 订阅额度分区输入与编辑态
     @State private var deepseekKeyText = ""
     @State private var deepseekEditing = false
@@ -44,19 +41,12 @@ struct SettingsView: View {
             generalSection
             agentUsageCard
             subscriptionSection
-            githubCard
-            gitlabCard
             consentSection
             diagnosticsSection
         }
         .formStyle(.grouped)
         .preferredColorScheme(coordinator.appearanceMode.colorScheme)
         .environment(\.mdddGlassStyle, coordinator.glassStyle)
-        .onAppear {
-            if gitlabBaseURLText.isEmpty {
-                gitlabBaseURLText = coordinator.configuredGitLabBaseURL ?? ""
-            }
-        }
         .sheet(isPresented: $showsDiagnosticsPreview) {
             diagnosticsPreviewSheet
         }
@@ -609,6 +599,59 @@ struct SettingsView: View {
         }
     }
 
+    /// 设备码登录展示: 一次性验证码大字 + 打开登录页 + 轮询状态.
+    /// 验证码由服务端下发, 可展示可复制; token 不进入 UI.
+    private func deviceLoginView(
+        _ login: DeviceLoginPresentation,
+        openPage: @escaping () -> Void,
+        cancel: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("一次性验证码")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(login.userCode)
+                .font(.system(.title3, design: .monospaced).weight(.semibold))
+                .textSelection(.enabled)
+                .accessibilityLabel("一次性验证码 \(login.userCode)")
+            HStack {
+                Button("打开登录页", action: openPage)
+                    .accessibilityHint("在浏览器中打开验证页并输入验证码")
+                switch login.stage {
+                case .waitingAuthorization, .finishing:
+                    Button("取消", role: .cancel, action: cancel)
+                        .accessibilityHint("停止等待授权")
+                case .succeeded, .failed, .timedOut:
+                    Button("关闭", action: cancel)
+                        .accessibilityHint("收起登录状态")
+                }
+            }
+            switch login.stage {
+            case .waitingAuthorization:
+                Label("等待浏览器授权…", systemImage: "arrow.clockwise")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            case .finishing:
+                Label("正在完成登录…", systemImage: "arrow.clockwise")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            case .succeeded:
+                Label("登录成功", systemImage: "checkmark.circle.fill")
+                    .font(.caption)
+            case .failed(let reason):
+                Label("登录失败: \(reason)", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            case .timedOut:
+                Label("等待授权超时, 请重新点击登录", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .contain)
+    }
+
     private var antigravityGroup: some View {
         let configured = model.subscriptionCredentialConfigured[.antigravity] ?? false
 
@@ -683,191 +726,16 @@ struct SettingsView: View {
         .accessibilityHint(configured ? "启用后 Collector 将查询该 Provider 云端额度" : "请先配置凭证")
     }
 
-    // MARK: - GitHub 卡
-
-    private var githubCard: some View {
-        let result = model.moduleResults[.github]
-        let ghProbe = result?.localDependencies.first { $0.kind == .ghCli }
-        let busy = model.busyModules.contains(.github)
-
-        return Section("GitHub") {
-            LabeledContent("GitHub CLI") {
-                statusText(
-                    probeStatusText(ghProbe),
-                    icon: probeStatusIcon(ghProbe)
-                )
-            }
-            if let version = ghProbe?.detail {
-                LabeledContent("版本", value: version)
-            }
-            LabeledContent("登录状态") {
-                statusText(
-                    connectionStatusText(result?.connection),
-                    icon: connectionStatusIcon(result?.connection)
-                )
-            }
-            if let reason = result?.blockingReason {
-                Text(reason)
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            }
-            HStack {
-                Button("登录 GitHub") { coordinator.loginGitHub() }
-                    .disabled(busy || ghProbe?.status != .available)
-                    .accessibilityHint("在浏览器中完成 GitHub 官方登录")
-                Button("重新检查") { coordinator.rescan() }
-                    .disabled(busy)
-                    .accessibilityLabel("重新检查 GitHub 连接")
-                if busy, coordinator.githubDeviceLogin == nil {
-                    ProgressView()
-                        .controlSize(.small)
-                }
-            }
-            if let login = coordinator.githubDeviceLogin {
-                deviceLoginView(
-                    login,
-                    openPage: { coordinator.reopenGitHubLoginPage() },
-                    cancel: { coordinator.cancelGitHubLogin() }
-                )
-            }
-        }
-        .glassFormRowBackground()
-        .glassButtonStyle()
-    }
-
-    /// 设备码登录展示: 一次性验证码大字 + 打开登录页 + 轮询状态.
-    /// 验证码由服务端下发, 可展示可复制; token 不进入 UI.
-    private func deviceLoginView(
-        _ login: DeviceLoginPresentation,
-        openPage: @escaping () -> Void,
-        cancel: @escaping () -> Void
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("一次性验证码")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(login.userCode)
-                .font(.system(.title3, design: .monospaced).weight(.semibold))
-                .textSelection(.enabled)
-                .accessibilityLabel("一次性验证码 \(login.userCode)")
-            HStack {
-                Button("打开登录页", action: openPage)
-                    .accessibilityHint("在浏览器中打开验证页并输入验证码")
-                switch login.stage {
-                case .waitingAuthorization, .finishing:
-                    Button("取消", role: .cancel, action: cancel)
-                        .accessibilityHint("停止等待授权")
-                case .succeeded, .failed, .timedOut:
-                    Button("关闭", action: cancel)
-                        .accessibilityHint("收起登录状态")
-                }
-            }
-            switch login.stage {
-            case .waitingAuthorization:
-                Label("等待浏览器授权…", systemImage: "arrow.clockwise")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            case .finishing:
-                Label("正在完成登录…", systemImage: "arrow.clockwise")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            case .succeeded:
-                Label("登录成功", systemImage: "checkmark.circle.fill")
-                    .font(.caption)
-            case .failed(let reason):
-                Label("登录失败: \(reason)", systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            case .timedOut:
-                Label("等待授权超时, 请重新点击登录", systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            }
-        }
-        .padding(.vertical, 4)
-        .accessibilityElement(children: .contain)
-    }
-
-    // MARK: - GitLab 卡
-
-    private var gitlabCard: some View {
-        let result = model.moduleResults[.gitlab]
-        let busy = model.busyModules.contains(.gitlab)
-
-        return Section("GitLab") {
-            TextField("HTTPS base URL", text: $gitlabBaseURLText)
-                .textFieldStyle(.roundedBorder)
-                .disabled(busy)
-                .accessibilityLabel("GitLab HTTPS 地址")
-            SecureField("PAT (输入后不回显)", text: $gitlabPATText)
-                .textFieldStyle(.roundedBorder)
-                .focused($patFieldFocused)
-                .disabled(busy)
-                .accessibilityLabel("GitLab 个人访问令牌")
-                .accessibilityHint("令牌只保存到本应用的 Keychain")
-            LabeledContent("连接状态") {
-                statusText(
-                    connectionStatusText(result?.connection),
-                    icon: connectionStatusIcon(result?.connection)
-                )
-            }
-            if let reason = result?.blockingReason {
-                Text(reason)
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            }
-            HStack {
-                Button("保存并验证") {
-                    coordinator.saveAndVerifyGitLab(
-                        baseURL: gitlabBaseURLText, pat: gitlabPATText
-                    )
-                    // PAT 只进 Keychain, 提交后清空输入框
-                    gitlabPATText = ""
-                }
-                .disabled(busy || gitlabBaseURLText.isEmpty || gitlabPATText.isEmpty)
-                .accessibilityHint("保存到 Keychain 并验证 GitLab 连接")
-                Button("更换 PAT") {
-                    gitlabPATText = ""
-                    patFieldFocused = true
-                }
-                .disabled(busy)
-                .accessibilityHint("清空令牌输入框并移动键盘焦点")
-                Button("断开") {
-                    coordinator.revokeModule(.gitlab)
-                    gitlabPATText = ""
-                }
-                .disabled(busy)
-                .accessibilityHint("停止 GitLab 调度并删除本应用保存的令牌")
-                if busy {
-                    ProgressView()
-                        .controlSize(.small)
-                }
-            }
-            Text("断开会停止 GitLab 调度并删除本应用保存的 PAT; 远端 PAT 请在 GitLab 设置中撤销")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .glassFormRowBackground()
-        .glassButtonStyle()
-    }
-
     // MARK: - 统一授权区
 
     private var consentSection: some View {
         Section("统一授权") {
             Toggle("Agent 用量", isOn: moduleBinding(.agentUsage))
-            Toggle("GitHub", isOn: moduleBinding(.github))
-            Toggle("GitLab", isOn: moduleBinding(.gitlab))
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("授权后应用将:")
                     .font(.subheadline.weight(.medium))
                 summaryLine("扫描本机 Agent 会话目录和 CC Switch / Antigravity 数据库 (只读)")
-                summaryLine("访问 github.com (通过 gh 官方登录态)")
-                if let host = coordinator.configuredGitLabBaseURL
-                    .flatMap({ URL(string: $0)?.host }) {
-                    summaryLine("访问 \(host) (使用已保存的 PAT)")
-                }
                 summaryLine("每 \(coordinator.refreshIntervalMinutes) 分钟自动刷新已授权模块")
                 let enabledProviders = coordinator
                     .enabledConfiguredSubscriptionProviders
@@ -878,7 +746,7 @@ struct SettingsView: View {
                         .joined(separator: " / ")
                     summaryLine("确认授权后查询已启用订阅 Provider 的云端额度: \(names)")
                 }
-                summaryLine("可随时在此撤销授权暂停采集, 或通过 GitLab 卡的\"断开\"删除已保存的 PAT")
+                summaryLine("可随时在此撤销授权暂停采集")
             }
             .padding(.vertical, 4)
 

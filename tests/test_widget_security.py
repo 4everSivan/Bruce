@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-MODULES = ("agent-usage", "github", "gitlab")
+MODULES = ("agent-usage",)
 
 
 class WidgetSecurityTests(unittest.TestCase):
@@ -21,16 +21,6 @@ class WidgetSecurityTests(unittest.TestCase):
                 self.assertNotIn("XMLHttpRequest", html)
                 self.assertNotIn("WebSocket", html)
                 self.assertNotIn("webkit.messageHandlers", html)
-
-    def test_gitlab_footer_does_not_embed_instance_hostname(self):
-        html = (
-            REPO_ROOT / "gitlab" / "widget" / "index.html"
-        ).read_text(encoding="utf-8")
-        self.assertIn("数据：GitLab Events API · 每小时刷新", html)
-        self.assertNotRegex(
-            html,
-            r"数据：(?:https?://)?[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+",
-        )
 
     def test_dynamic_strings_are_escaped_or_rendered_as_text(self):
         agent = (
@@ -48,15 +38,6 @@ class WidgetSecurityTests(unittest.TestCase):
             "+ p.name +",
         ):
             self.assertNotIn(unsafe_expression, agent)
-
-        for module in ("github", "gitlab"):
-            html = (
-                REPO_ROOT / module / "widget" / "index.html"
-            ).read_text(encoding="utf-8")
-            self.assertIn("bestDate.textContent", html)
-            self.assertNotIn('[data-herosub]").innerHTML', html)
-            self.assertIn("esc(day.date)", html)
-            self.assertIn("esc(day.count)", html)
 
     def test_host_states_use_text_content_and_cover_required_conditions(self):
         bootstrap = (

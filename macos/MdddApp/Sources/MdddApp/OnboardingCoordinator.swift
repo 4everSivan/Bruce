@@ -3,7 +3,7 @@ import Foundation
 import MdddAppCore
 import MdddOnboardingCore
 
-/// 设备码登录的 UI 展示状态 (GitHub / Codex 共用).
+/// 设备码登录的 UI 展示状态 (Codex 共用).
 /// userCode 是一次性验证码, 可展示; 不含 token.
 struct DeviceLoginPresentation: Equatable {
     enum Stage: Equatable {
@@ -39,17 +39,9 @@ final class OnboardingCoordinator: ObservableObject {
     /// 液态玻璃风格偏好, 与配置持久化同步; 经环境注入面板与设置页.
     @Published private(set) var glassStyle: GlassStylePreference
 
-    /// 已配置的 GitLab base URL (非敏感), 供设置页预填.
-    var configuredGitLabBaseURL: String? {
-        configStore?.load()?.gitlabBaseURL
-    }
-
-    /// GitHub 设备码登录展示状态, nil 表示无进行中的流程.
-    @Published private(set) var githubDeviceLogin: DeviceLoginPresentation?
     /// Codex 设备码登录展示状态, nil 表示无进行中的流程.
     @Published private(set) var codexDeviceLogin: DeviceLoginPresentation?
 
-    private var githubLoginTask: Task<Void, Never>?
     private var codexLoginTask: Task<Void, Never>?
 
     private let scheduler: RefreshScheduler
@@ -658,8 +650,6 @@ final class OnboardingCoordinator: ObservableObject {
 
     private func performScan() async {
         let config = configStore?.load()
-        let consentValid = config?.consentVersion == Self.currentConsentVersion
-        let persistedStates = config?.connectionStates ?? [:]
         publishMenuBarMetrics(from: config)
 
         for module in CollectorModule.allCases {
@@ -678,7 +668,6 @@ final class OnboardingCoordinator: ObservableObject {
         let pythonProbe = probes.first { $0.kind == .python }
         let pythonStatus = pythonProbe?.status ?? .missing
         let pythonVersion = pythonProbe?.detail
-        let ghProbe = probes.first { $0.kind == .ghCli }
         let sessionProbes = probes.filter { $0.kind == .sessionDirectory }
         let ccSwitchStatus = sqliteResult(
             from: probes, displayName: SQLiteSchemaProfile.ccSwitch.displayName
@@ -689,59 +678,12 @@ final class OnboardingCoordinator: ObservableObject {
 
         let evaluator = ReadinessEvaluator()
 
-        // GitHub 登录态: 未授权只用持久化状态; 授权有效且模块已选才复核
-        var ghLoggedIn = persistedStates[CollectorModule.github.rawValue]
-            == ConnectionStatus.connected.rawValue
-        if consentValid, selectedModules.contains(.github),
-           let ghPath = GhCliPathResolver.resolve() {
-            let status = await verifier.checkGitHubStatus(
-                ghPath: ghPath, hasConnectedBefore: ghLoggedIn
-            )
-            persistConnectionState(status, for: .github)
-            ghLoggedIn = status == .connected
-        }
-
-        // GitLab 连接态: 同上; 复核前先从 Keychain 取 PAT, 取不到不发起请求
-        var gitlabStatus: ConnectionStatus =
-            ConnectionStatus(
-                rawValue: persistedStates[CollectorModule.gitlab.rawValue] ?? ""
-            ) ?? .notChecked
-        let gitlabBaseURL = config?.gitlabBaseURL.flatMap {
-            ProviderConnectionVerifier.normalizedGitLabBaseURL($0)
-        }
-        if consentValid, selectedModules.contains(.gitlab),
-           let baseURL = gitlabBaseURL, let host = baseURL.host {
-            if let pat = try? credentialStore.loadPAT(forHost: host),
-               !pat.isEmpty {
-                gitlabStatus = await verifier.verifyGitLab(
-                    baseURL: baseURL, pat: pat
-                )
-                persistConnectionState(gitlabStatus, for: .gitlab)
-            } else {
-                // 取不到 PAT 按待授权处理, 不发起请求
-                gitlabStatus = .pendingAuthorization
-            }
-        }
-
         model.setModuleResult(evaluator.evaluateAgentUsage(
             pythonStatus: pythonStatus,
             pythonVersion: pythonVersion,
             sessionSources: sessionProbes,
             ccSwitchStatus: ccSwitchStatus,
             antigravityStatus: antigravityStatus
-        ))
-        model.setModuleResult(evaluator.evaluateGitHub(
-            pythonStatus: pythonStatus,
-            pythonVersion: pythonVersion,
-            ghCliStatus: ghProbe?.status ?? .missing,
-            ghVersion: ghProbe?.detail,
-            ghLoggedIn: ghLoggedIn
-        ))
-        model.setModuleResult(evaluator.evaluateGitLab(
-            pythonStatus: pythonStatus,
-            pythonVersion: pythonVersion,
-            baseURL: gitlabBaseURL,
-            connectionStatus: gitlabBaseURL == nil ? .pendingAuthorization : gitlabStatus
         ))
 
         reconcileScheduler()
@@ -896,7 +838,7 @@ final class OnboardingCoordinator: ObservableObject {
     }
 
     /// 撤销全部授权: 清除已确认版本, 所有模块停止调度.
-    /// 保留模块选择和 GitLab PAT, 用户可分别通过 Toggle 和"断开"处理.
+    /// 保留模块选择, 用户可稍后重新确认授权.
     func revokeAllConsent() {
         guard let configStore else {
             model.setSettingsError("配置存储不可用, 无法撤销授权")
@@ -919,22 +861,9 @@ final class OnboardingCoordinator: ObservableObject {
     }
 
     /// 撤销单个模块: 停止调度并从已选集合移除.
-    /// GitLab 断开时同时删除 Keychain 中对应 host 的 PAT.
-    /// 远端 PAT 撤销由用户在 GitLab 完成.
     func revokeModule(_ module: CollectorModule) {
         scheduler.disableModule(module)
         selectedModules.remove(module)
-
-        if module == .gitlab,
-           let host = configStore?.load()?.gitlabBaseURL
-            .flatMap({ ProviderConnectionVerifier.normalizedGitLabBaseURL($0) })
-            .flatMap({ $0.host }) {
-            do {
-                try credentialStore.deletePAT(forHost: host)
-            } catch {
-                model.setSettingsError("GitLab 凭证删除失败, 请在 Keychain 中手动检查")
-            }
-        }
 
         guard let configStore else { return }
         var config = configStore.load() ?? OnboardingConfiguration()
@@ -973,119 +902,6 @@ final class OnboardingCoordinator: ObservableObject {
         rescan()
     }
 
-    /// 用户主动登录 GitHub: 走 gh 官方同源设备码流程.
-    /// 旧实现以无 TTY 的 Process 静默跑 `gh auth login --web`, 一次性验证码
-    /// 被 stdout 捕获但从不展示, 浏览器打开也不可靠, 失败后无任何提示.
-    /// 现改为应用自己驱动设备码流程: UI 展示验证码, NSWorkspace 打开验证页,
-    /// 轮询拿到 token 后经 stdin 管道写回 `gh auth login --with-token`.
-    /// 全程 fail-closed, 每步失败都给可诊断错误.
-    func loginGitHub() {
-        githubLoginTask?.cancel()
-        guard let ghPath = GhCliPathResolver.resolve() else {
-            model.setSettingsError("未找到 GitHub CLI, 请先安装 gh")
-            return
-        }
-        model.setBusy(true, for: .github)
-        model.setSettingsError(nil)
-        githubLoginTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            defer { self.model.setBusy(false, for: .github) }
-            let flow = GitHubDeviceFlow()
-
-            let authorization: DeviceAuthorization
-            switch await flow.start() {
-            case .failure(let error):
-                guard error != .cancelled else { return }
-                self.githubDeviceLogin = nil
-                self.model.setSettingsError(
-                    "GitHub 登录发起失败: \(error.description)"
-                )
-                return
-            case .success(let parsed):
-                authorization = parsed
-            }
-
-            self.githubDeviceLogin = DeviceLoginPresentation(
-                userCode: authorization.userCode,
-                verificationURL: authorization.verificationURL,
-                stage: .waitingAuthorization
-            )
-            self.openInBrowser(authorization.verificationURL)
-
-            let accessToken: String
-            switch await flow.pollUntilAuthorized(authorization) {
-            case .failure(let error):
-                if error == .cancelled { self.githubDeviceLogin = nil }
-                else { self.finishGitHubLogin(with: error) }
-                return
-            case .success(let token):
-                accessToken = token
-            }
-
-            self.githubDeviceLogin?.stage = .finishing
-            // token 经 stdin 管道写回 gh 官方登录态, 不进 argv 和磁盘;
-            // gh 会做真实校验, 非零退出即 fail-closed
-            let writeResult = await AsyncProcessProbe(timeout: 60).run(
-                executablePath: ghPath,
-                arguments: ["auth", "login", "--hostname", "github.com", "--with-token"],
-                standardInput: accessToken + "\n"
-            )
-            guard case .success = writeResult else {
-                self.githubDeviceLogin = nil
-                self.model.setSettingsError(
-                    "GitHub 登录态写入 gh 失败, 未保存任何凭证"
-                )
-                return
-            }
-
-            let status = await verifier.checkGitHubStatus(
-                ghPath: ghPath, hasConnectedBefore: false
-            )
-            guard status == .connected else {
-                self.githubDeviceLogin = nil
-                self.model.setSettingsError("GitHub 登录复核未通过, 请重试")
-                return
-            }
-            persistConnectionState(status, for: .github)
-            self.model.setSettingsError(nil)
-            // 登录成功后把 GitHub 加入已选模块并持久化,
-            // 否则 Scheduler 只调度已选模块, 永远不会采集 GitHub
-            self.persistModuleSelection(.github)
-            self.githubDeviceLogin?.stage = .succeeded
-            // 成功状态短暂展示后收起
-            try? await Task.sleep(nanoseconds: 1_500_000_000)
-            self.githubDeviceLogin = nil
-            rescan()
-        }
-    }
-
-    /// 取消进行中的 GitHub 设备码登录并收起展示.
-    func cancelGitHubLogin() {
-        githubLoginTask?.cancel()
-        githubLoginTask = nil
-        githubDeviceLogin = nil
-        model.setBusy(false, for: .github)
-    }
-
-    /// 重新打开 GitHub 验证页 (用户误关浏览器时点击).
-    func reopenGitHubLoginPage() {
-        guard let url = githubDeviceLogin?.verificationURL else { return }
-        openInBrowser(url)
-    }
-
-    /// 轮询失败的统一收尾: 超时与被拒绝区分展示, 均 fail-closed.
-    private func finishGitHubLogin(with error: DeviceAuthError) {
-        switch error {
-        case .authorizationExpired:
-            githubDeviceLogin?.stage = .timedOut
-        case .authorizationDenied:
-            githubDeviceLogin?.stage = .failed("授权被拒绝")
-        default:
-            githubDeviceLogin?.stage = .failed(error.description)
-        }
-        model.setSettingsError("GitHub 登录未完成: \(error.description)")
-    }
-
     /// LSUIElement 下打开浏览器: 先激活再 open; 打开失败 fail-closed,
     /// 提示用户手动访问, 验证码已在界面上展示.
     private func openInBrowser(_ url: URL) {
@@ -1094,52 +910,6 @@ final class OnboardingCoordinator: ObservableObject {
             model.setSettingsError(
                 "无法自动打开浏览器, 请手动访问: \(url.absoluteString)"
             )
-        }
-    }
-
-    /// 用户保存并验证 GitLab: 校验 HTTPS URL, PAT 写 Keychain,
-    /// 调用 /api/v4/user 验证, 只持久化非敏感状态. PAT 永不回显.
-    func saveAndVerifyGitLab(baseURL rawURL: String, pat: String) {
-        Task { @MainActor in
-            guard let baseURL = ProviderConnectionVerifier
-                .normalizedGitLabBaseURL(rawURL),
-                  let host = baseURL.host else {
-                model.setSettingsError("GitLab 地址必须是合法的 HTTPS URL")
-                return
-            }
-            guard !pat.isEmpty else {
-                model.setSettingsError("请输入 GitLab PAT")
-                return
-            }
-            model.setBusy(true, for: .gitlab)
-            defer { model.setBusy(false, for: .gitlab) }
-            do {
-                try credentialStore.savePAT(pat, forHost: host)
-            } catch {
-                model.setSettingsError("GitLab 凭证写入 Keychain 失败")
-                return
-            }
-            let status = await verifier.verifyGitLab(baseURL: baseURL, pat: pat)
-            guard let configStore else {
-                model.setSettingsError("配置存储不可用, 无法保存 GitLab 地址")
-                return
-            }
-            var config = configStore.load() ?? OnboardingConfiguration()
-            config.gitlabBaseURL = baseURL.absoluteString
-            do {
-                try configStore.save(config)
-            } catch {
-                model.setSettingsError("GitLab 地址保存失败")
-                return
-            }
-            persistConnectionState(status, for: .gitlab)
-            model.setSettingsError(nil)
-            // 验证通过后把 GitLab 加入已选模块并持久化,
-            // 否则 Scheduler 只调度已选模块, 永远不会采集 GitLab
-            if status == .connected {
-                persistModuleSelection(.gitlab)
-            }
-            rescan()
         }
     }
 

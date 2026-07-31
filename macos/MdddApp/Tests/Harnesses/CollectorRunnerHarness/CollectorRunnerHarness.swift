@@ -202,7 +202,7 @@ private struct RunnerFixture {
 struct CollectorRunnerHarness {
     static func main() async throws {
         try await requestUsesAbsolutePathsAndPrivateStdin()
-        try await enforcesModuleAndGlobalConcurrency()
+        try await enforcesModuleConcurrency()
         try await handlesTimeoutCancellationAndCrash()
         try await rejectsMismatchedAndPollutedResponses()
         try runInputDeniesQuotasWithoutConsent()
@@ -211,13 +211,15 @@ struct CollectorRunnerHarness {
         try runInputAssemblesDeepSeekProviderEnv()
         try runInputAssemblesVolcengineProviderMeta()
         try runInputAssemblesCodexAccounts()
+        try runInputAssemblesCodexCLIAuth()
+        try runInputOmitsCodexCLIAuthWithoutActiveAccount()
         try runInputAssemblesAntigravityOAuth()
         try runInputAssemblesAllProvidersCombined()
         try runInputDeniesQuotasWhenCredentialMissing()
         try runInputDeniesQuotasWhenCredentialCorrupted()
         try runInputDeniesQuotasWhenProviderDisabled()
         try await runsTheRealBridgeInAnIsolatedHome()
-        print("CollectorRunner tests passed: 16")
+        print("CollectorRunner tests passed: 18")
     }
 
     private static func waitForLaunches(
@@ -242,9 +244,12 @@ struct CollectorRunnerHarness {
         )
         let task = Task {
             try await runner.run(
-                module: .gitlab,
+                module: .agentUsage,
                 credentials: [
-                    "gitlabToken": .string("fixture-secret")
+                    "kimiWebTokens": .object([
+                        "access_token": .string("fixture-secret"),
+                        "refresh_token": .string("fixture-refresh"),
+                    ])
                 ]
             )
         }
@@ -298,7 +303,7 @@ struct CollectorRunnerHarness {
         )
     }
 
-    private static func enforcesModuleAndGlobalConcurrency() async throws {
+    private static func enforcesModuleConcurrency() async throws {
         let fixture = try RunnerFixture()
         defer { fixture.remove() }
         let launcher = FakeProcessLauncher()
@@ -313,6 +318,7 @@ struct CollectorRunnerHarness {
         }
         await waitForLaunches(launcher, count: 1)
 
+        // 同模块运行中重复提交必须拒绝
         do {
             _ = try await runner.run(module: .agentUsage)
             throw RunnerTestFailure.expectation(
@@ -320,29 +326,14 @@ struct CollectorRunnerHarness {
             )
         } catch CollectorRunnerError.alreadyRunning {
         }
+        try runnerExpect(runner.activeModuleCount == 1, "active count changed")
 
-        let github = Task {
-            try await runner.run(module: .github)
-        }
-        await waitForLaunches(launcher, count: 2)
-        try runnerExpect(runner.activeModuleCount == 2, "global limit not reached")
-
-        do {
-            _ = try await runner.run(module: .gitlab)
-            throw RunnerTestFailure.expectation(
-                "third concurrent module was accepted"
-            )
-        } catch CollectorRunnerError.capacityExceeded {
-        }
-
-        try launcher.succeed(1)
-        _ = try await github.value
-        try runnerExpect(
-            runner.activeModuleCount == 1,
-            "one module completion affected another module"
-        )
         try launcher.succeed(0)
         _ = try await agent.value
+        try runnerExpect(
+            runner.activeModuleCount == 0,
+            "module completion did not clear active count"
+        )
     }
 
     private static func handlesTimeoutCancellationAndCrash() async throws {
@@ -364,7 +355,7 @@ struct CollectorRunnerHarness {
             )
         )
         let timedTask = Task {
-            try await timeoutRunner.run(module: .github)
+            try await timeoutRunner.run(module: .agentUsage)
         }
         await waitForLaunches(timeoutLauncher, count: 1)
         timeoutTimers.tokens[0].fire()
@@ -392,10 +383,10 @@ struct CollectorRunnerHarness {
             timerScheduler: FakeTimerScheduler()
         )
         let cancelledTask = Task {
-            try await cancelRunner.run(module: .gitlab)
+            try await cancelRunner.run(module: .agentUsage)
         }
         await waitForLaunches(cancelLauncher, count: 1)
-        cancelRunner.cancel(module: .gitlab)
+        cancelRunner.cancel(module: .agentUsage)
         cancelLauncher.complete(0, exitCode: SIGTERM)
         do {
             _ = try await cancelledTask.value
@@ -411,7 +402,7 @@ struct CollectorRunnerHarness {
             timerScheduler: FakeTimerScheduler()
         )
         let crashTask = Task {
-            try await crashRunner.run(module: .github)
+            try await crashRunner.run(module: .agentUsage)
         }
         await waitForLaunches(crashLauncher, count: 1)
         crashLauncher.complete(
@@ -443,7 +434,7 @@ struct CollectorRunnerHarness {
             timerScheduler: FakeTimerScheduler()
         )
         let mismatchTask = Task {
-            try await mismatchRunner.run(module: .github)
+            try await mismatchRunner.run(module: .agentUsage)
         }
         await waitForLaunches(mismatchLauncher, count: 1)
         try mismatchLauncher.succeed(
@@ -464,7 +455,7 @@ struct CollectorRunnerHarness {
             timerScheduler: FakeTimerScheduler()
         )
         let pollutedTask = Task {
-            try await pollutedRunner.run(module: .github)
+            try await pollutedRunner.run(module: .agentUsage)
         }
         await waitForLaunches(pollutedLauncher, count: 1)
         pollutedLauncher.complete(
@@ -739,6 +730,69 @@ struct CollectorRunnerHarness {
                 && account["access_token"] == .string("at")
                 && account["email"] == .string("u@example.com"),
             "codex 账号字段注入不完整"
+        )
+    }
+
+    /// 活跃账号存在时同步装配 codexAuth 注入, 结构对齐 collector
+    /// 对 ~/.codex/auth.json 的消费 (tokens.account_id/refresh_token).
+    private static func runInputAssemblesCodexCLIAuth() throws {
+        let credentials = InMemoryCredentialStore()
+        try credentials.saveCredential(
+            "{\"accounts\":{\"acc-1\":{\"email\":\"u@example.com\"," +
+                "\"refresh_token\":\"rt\",\"access_token\":\"at\",\"id_token\":\"it\"}}}",
+            forAccount: SubscriptionCredentialAccount.codexAccounts
+        )
+        try credentials.saveCredential(
+            "acc-1",
+            forAccount: SubscriptionCredentialAccount.codexActiveAccount
+        )
+        let (provider, tempDir) = try makeRunInputProvider(
+            consentVersion: 1,
+            providers: enabledProvider(.codex),
+            credentials: credentials
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let input = try provider.runInput(for: .agentUsage)
+        guard case .object(let cliAuth)? = input.credentials["codexAuth"],
+              case .object(let tokens)? = cliAuth["tokens"] else {
+            throw RunnerTestFailure.expectation(
+                "活跃账号存在时必须装配 codexAuth.tokens"
+            )
+        }
+        try runnerExpect(
+            tokens["account_id"] == .string("acc-1")
+                && tokens["refresh_token"] == .string("rt")
+                && tokens["access_token"] == .string("at")
+                && tokens["id_token"] == .string("it")
+                && tokens["email"] == .string("u@example.com"),
+            "codexAuth.tokens 字段注入不完整, got \(tokens)"
+        )
+    }
+
+    /// 未记录活跃账号或活跃账号不在库中: 不注入 codexAuth,
+    /// collector 按无 CLI 侧候选处理.
+    private static func runInputOmitsCodexCLIAuthWithoutActiveAccount() throws {
+        let credentials = InMemoryCredentialStore()
+        try credentials.saveCredential(
+            "{\"accounts\":{\"acc-1\":{\"refresh_token\":\"rt\",\"access_token\":\"at\"}}}",
+            forAccount: SubscriptionCredentialAccount.codexAccounts
+        )
+        let (provider, tempDir) = try makeRunInputProvider(
+            consentVersion: 1,
+            providers: enabledProvider(.codex),
+            credentials: credentials
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let input = try provider.runInput(for: .agentUsage)
+        try runnerExpect(
+            input.credentials["codexAuth"] == nil,
+            "无活跃账号时不得注入 codexAuth"
+        )
+        try runnerExpect(
+            input.credentials["codexOAuthAccounts"] != nil,
+            "账号库注入不受活跃账号缺失影响"
         )
     }
 

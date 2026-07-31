@@ -311,26 +311,3 @@ public enum PythonPathResolver {
         return candidates.first { fileManager.isExecutableFile(atPath: $0) }
     }
 }
-
-// MARK: - GhCliPathResolver
-
-/// 按固定优先级解析 gh CLI 绝对路径.
-public enum GhCliPathResolver {
-    public static let defaultCandidates = [
-        "/opt/homebrew/bin/gh",
-        "/usr/local/bin/gh",
-        "/usr/bin/gh"
-    ]
-
-    public static func resolve(
-        userPreferred: String? = nil,
-        candidates: [String] = GhCliPathResolver.defaultCandidates,
-        fileManager: FileManager = .default
-    ) -> String? {
-        if let preferred = userPreferred,
-           fileManager.isExecutableFile(atPath: preferred) {
-            return preferred
-        }
-        return candidates.first { fileManager.isExecutableFile(atPath: $0) }
-    }
-}

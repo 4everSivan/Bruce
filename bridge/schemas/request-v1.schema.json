@@ -22,9 +22,7 @@
     },
     "module": {
       "enum": [
-        "agent-usage",
-        "github",
-        "gitlab"
+        "agent-usage"
       ]
     },
     "timeouts": {
@@ -91,10 +89,6 @@
           "type": "string",
           "minLength": 1
         },
-        "ghPath": {
-          "type": "string",
-          "minLength": 1
-        },
         "capabilities": {
           "type": "array",
           "items": {
@@ -156,9 +150,6 @@
         },
         "providerMeta": {
           "type": "object"
-        },
-        "gitlabToken": {
-          "type": "string"
         }
       }
     }

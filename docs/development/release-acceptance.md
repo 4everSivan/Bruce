@@ -6,7 +6,7 @@
 
 - 安装并选择完整 Xcode, 确认发布 Team、bundle identifier 和版本号。
 - 使用隔离的验收账号或用户明确指定的个人账号。
-- 明确本轮允许访问的 GitHub、私有 GitLab 和 Agent Provider。
+- 明确本轮允许访问的 Agent Provider。
 - 验收前记录 `~/Library/Application Support/mddd/` 和 Keychain service `com.mddd.dashboard.credentials` 的初始状态。
 - 不在录屏、截图、终端历史或缺陷文档中记录 PAT、OAuth code、Cookie、邮箱、仓库私有名称或完整用户路径。
 
@@ -20,19 +20,6 @@
 - [ ] 退出时运行中的 Collector 在宽限期内取消, 无残留 Python 子进程。
 
 ## 真实登录与撤销
-
-### GitHub
-
-- [ ] 未登录、登录中、用户取消、登录成功和授权失效状态文案正确。
-- [ ] 登录只通过 `gh auth login --web` 官方流程, mddd 不读取或显示 GitHub token。
-- [ ] 重新登录 GitHub 不影响 GitLab 和 Agent 模块。
-
-### 私有 GitLab
-
-- [ ] 正常 HTTPS 实例和有效 PAT 可连接。
-- [ ] VPN 缺失、内部 CA 错误、401、403、超时和跨 host 重定向均安全失败。
-- [ ] PAT 输入不回显, 只进入 Keychain, 不进入进程参数、日志、Artifact 或诊断包。
-- [ ] “断开”停止 GitLab 调度并删除本应用的 Keychain 项; 远端 PAT 由用户在 GitLab 撤销。
 
 ### Agent Provider
 
@@ -56,9 +43,8 @@
 - [ ] VoiceOver 可读出侧栏模块名、当前状态、刷新、设置和诊断操作。
 - [ ] 仅使用键盘可完成模块切换、`⌘R` 刷新、设置操作和诊断预览/关闭。
 - [ ] refreshing、partial、stale、offline、authRequired、error 和 notConfigured 同时具有文字、图标和可访问性语义。
-- [ ] GitHub/GitLab 热力格可通过键盘聚焦并读出日期、数量、强度和“今天”。
 - [ ] 增加对比度、减少动态效果、浅色和深色模式下保持现有视觉语言, 无不可读状态。
-- [ ] Agent、GitHub 和 GitLab 的基线布局、字体层级、卡片和热力图表达没有非预期变化。
+- [ ] Agent 的基线布局、字体层级和卡片表达没有非预期变化。
 
 ## 敏感信息复核
 

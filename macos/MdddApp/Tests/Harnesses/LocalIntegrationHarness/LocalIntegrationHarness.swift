@@ -219,8 +219,6 @@ struct LocalIntegrationHarness {
             repository.appendingPathComponent(
                 "agent-usage/widget/index.html"
             ),
-            repository.appendingPathComponent("github/widget/index.html"),
-            repository.appendingPathComponent("gitlab/widget/index.html"),
         ]
         for widget in widgetFiles {
             let source = try String(contentsOf: widget, encoding: .utf8)

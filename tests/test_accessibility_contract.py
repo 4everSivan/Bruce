@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-MODULES = ("agent-usage", "github", "gitlab")
+MODULES = ("agent-usage",)
 SOURCE_WIDGETS = {
     module: REPO_ROOT / module / "widget" / "index.html"
     for module in MODULES
@@ -16,15 +16,6 @@ def test_every_widget_has_reduced_motion_fallback():
         source = path.read_text()
         assert "prefers-reduced-motion: reduce" in source
         assert "transition: none" in source
-
-
-def test_repository_heatmaps_have_keyboard_and_non_color_labels():
-    for module in ("github", "gitlab"):
-        source = SOURCE_WIDGETS[module].read_text()
-        assert 'role="grid"' in source
-        assert 'role="gridcell" tabindex="0" aria-label="' in source
-        assert ":focus-visible" in source
-        assert "强度 " in source
 
 
 def test_host_state_matrix_is_live_and_textual():
@@ -68,7 +59,6 @@ def test_native_primary_actions_have_keyboard_and_accessibility_contracts():
     assert ".accessibilityElement(children: .ignore)" in menu_bar
     assert "accessibilityLabel(accessibilitySummary(formatter: formatter))" in menu_bar
     assert "NSAccessibility.post(" in settings
-    assert 'accessibilityLabel("GitLab 个人访问令牌")' in settings
     assert 'accessibilityLabel("脱敏诊断 JSON 预览")' in settings
 
 

@@ -97,9 +97,9 @@ private struct SpinningRefreshIcon: View {
     }
 }
 
-/// 菜单栏原生液态玻璃面板: 纵向五卡 (按 PanelViewModel 非 nil 渲染) + 底栏.
+/// 菜单栏原生液态玻璃面板: 纵向卡片 (按 PanelViewModel 非 nil 渲染) + 底栏.
 /// 卡片栈包 ScrollView: 内容超出屏幕可用高度时封顶出滚动条, 不足时高度自适应;
-/// 底栏在滚动区外固定; 五卡全空时展示未配置引导.
+/// 底栏在滚动区外固定; 卡片全空时展示未配置引导.
 struct MenuBarDashboardView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var coordinator: OnboardingCoordinator
@@ -187,8 +187,6 @@ struct MenuBarDashboardView: View {
         let hasCards = panel.usage != nil
             || panel.subscription != nil
             || panel.hourly != nil
-            || panel.github != nil
-            || panel.gitlab != nil
         VStack(spacing: 10) {
             if let usage = panel.usage {
                 PanelCardContainer {
@@ -205,16 +203,6 @@ struct MenuBarDashboardView: View {
                     HourlyLineCard(viewModel: hourly)
                 }
             }
-            if let github = panel.github {
-                PanelCardContainer {
-                    HeatmapCardView(viewModel: github)
-                }
-            }
-            if let gitlab = panel.gitlab {
-                PanelCardContainer {
-                    HeatmapCardView(viewModel: gitlab)
-                }
-            }
             if !hasCards {
                 emptyPanelState
             }
@@ -224,7 +212,7 @@ struct MenuBarDashboardView: View {
         .padding(.bottom, 4)
     }
 
-    /// 五卡全 nil 时的兜底: 居中玻璃卡 + 设置入口.
+    /// 卡片全 nil 时的兜底: 居中玻璃卡 + 设置入口.
     private var emptyPanelState: some View {
         PanelCardContainer {
             VStack(spacing: 10) {

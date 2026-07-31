@@ -328,15 +328,13 @@ struct RefreshSchedulerHarness {
         try await wakeCompensationAtMostOnce(repository: repository)
         print("Refresh scheduler: partial")
         try await partialResultPublishesArtifact(repository: repository)
-        print("Refresh scheduler: capacity")
-        try await capacityLimitQueuesRequest(repository: repository)
         print("Refresh scheduler: stop")
         try await stopCancelsRunningTasks(repository: repository)
         print("Refresh scheduler: interval update")
         try await updateRefreshIntervalReschedulesIdleModule(repository: repository)
         print("Refresh scheduler: credential updates")
         try await credentialUpdatesForwardedOnSuccess(repository: repository)
-        print("Refresh scheduler tests passed: 11")
+        print("Refresh scheduler tests passed: 10")
     }
 
     // 10.1: Timer fires -> module refreshes
@@ -353,7 +351,7 @@ struct RefreshSchedulerHarness {
         defer { try? FileManager.default.removeItem(at: root) }
 
         scheduler.start()
-        scheduler.enableModule(.github)
+        scheduler.enableModule(.agentUsage)
 
         // EnableModule schedules a refresh with delay 0 (no lastSuccessAt)
         // Fire the timer
@@ -361,16 +359,16 @@ struct RefreshSchedulerHarness {
         timers.fireFirst()
 
         // Wait for the executor to be called
-        await waitForRunCount({ executor.runCount[.github] ?? 0 }, count: 1)
+        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 1)
         try refreshExpect(
-            scheduler.moduleState(for: .github)?.phase == .running,
+            scheduler.moduleState(for: .agentUsage)?.phase == .running,
             "module should be running"
         )
 
-        executor.release(module: .github)
-        await waitForPhase(scheduler, module: .github, phase: .idle)
+        executor.release(module: .agentUsage)
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
         try refreshExpect(
-            executor.runCount[.github] == 1,
+            executor.runCount[.agentUsage] == 1,
             "expected exactly one run"
         )
         // After success, next refresh should be scheduled
@@ -394,42 +392,42 @@ struct RefreshSchedulerHarness {
         defer { try? FileManager.default.removeItem(at: root) }
 
         scheduler.start()
-        scheduler.enableModule(.gitlab)
+        scheduler.enableModule(.agentUsage)
         timers.fireFirst() // trigger initial refresh
-        await waitForRunCount({ executor.runCount[.gitlab] ?? 0 }, count: 1)
+        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 1)
 
         // While running, trigger multiple manual refreshes
-        scheduler.refresh(.gitlab)
-        scheduler.refresh(.gitlab)
-        scheduler.refresh(.gitlab)
+        scheduler.refresh(.agentUsage)
+        scheduler.refresh(.agentUsage)
+        scheduler.refresh(.agentUsage)
 
         try refreshExpect(
-            scheduler.moduleState(for: .gitlab)?.pendingRerun == true,
+            scheduler.moduleState(for: .agentUsage)?.pendingRerun == true,
             "pendingRerun should be set"
         )
 
         // Release first run
-        executor.release(module: .gitlab)
-        await waitForRunCount({ executor.runCount[.gitlab] ?? 0 }, count: 2)
+        executor.release(module: .agentUsage)
+        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 2)
 
         // The rerun should be running now
         try refreshExpect(
-            scheduler.moduleState(for: .gitlab)?.phase == .running,
+            scheduler.moduleState(for: .agentUsage)?.phase == .running,
             "rerun should be running"
         )
         try refreshExpect(
-            scheduler.moduleState(for: .gitlab)?.pendingRerun == false,
+            scheduler.moduleState(for: .agentUsage)?.pendingRerun == false,
             "pendingRerun should be cleared"
         )
 
         // Release the rerun
-        executor.release(module: .gitlab)
-        await waitForPhase(scheduler, module: .gitlab, phase: .idle)
+        executor.release(module: .agentUsage)
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
 
         // Should have exactly 2 runs: initial + one rerun
         try refreshExpect(
-            executor.runCount[.gitlab] == 2,
-            "expected exactly 2 runs (initial + one rerun), got \(executor.runCount[.gitlab] ?? 0)"
+            executor.runCount[.agentUsage] == 2,
+            "expected exactly 2 runs (initial + one rerun), got \(executor.runCount[.agentUsage] ?? 0)"
         )
     }
 
@@ -465,19 +463,19 @@ struct RefreshSchedulerHarness {
         _ = root // unused
 
         scheduler2.start()
-        scheduler2.enableModule(.github)
+        scheduler2.enableModule(.agentUsage)
         timers.fireFirst() // trigger initial refresh
 
         // Wait for the first run to complete (fails immediately)
-        await waitForRunCount({ errorExecutor.runCount[.github] ?? 0 }, count: 1)
+        await waitForRunCount({ errorExecutor.runCount[.agentUsage] ?? 0 }, count: 1)
 
         // Should be in backoff with retry count 1
         try refreshExpect(
-            scheduler2.moduleState(for: .github)?.phase == .backoff,
+            scheduler2.moduleState(for: .agentUsage)?.phase == .backoff,
             "should be in backoff after first failure"
         )
         try refreshExpect(
-            scheduler2.moduleState(for: .github)?.backoffRetryCount == 1,
+            scheduler2.moduleState(for: .agentUsage)?.backoffRetryCount == 1,
             "retry count should be 1"
         )
 
@@ -489,9 +487,9 @@ struct RefreshSchedulerHarness {
 
         // Fire backoff timer -> second retry
         timers.fireFirst()
-        await waitForRunCount({ errorExecutor.runCount[.github] ?? 0 }, count: 2)
+        await waitForRunCount({ errorExecutor.runCount[.agentUsage] ?? 0 }, count: 2)
         try refreshExpect(
-            scheduler2.moduleState(for: .github)?.backoffRetryCount == 2,
+            scheduler2.moduleState(for: .agentUsage)?.backoffRetryCount == 2,
             "retry count should be 2"
         )
         try refreshExpect(
@@ -501,21 +499,21 @@ struct RefreshSchedulerHarness {
 
         // Fire backoff timer -> third retry
         timers.fireFirst()
-        await waitForRunCount({ errorExecutor.runCount[.github] ?? 0 }, count: 3)
+        await waitForRunCount({ errorExecutor.runCount[.agentUsage] ?? 0 }, count: 3)
         try refreshExpect(
-            scheduler2.moduleState(for: .github)?.backoffRetryCount == 3,
+            scheduler2.moduleState(for: .agentUsage)?.backoffRetryCount == 3,
             "retry count should be 3"
         )
 
         // Fire backoff timer -> exceeds max retries (3)
         timers.fireFirst()
-        await waitForRunCount({ errorExecutor.runCount[.github] ?? 0 }, count: 4)
+        await waitForRunCount({ errorExecutor.runCount[.agentUsage] ?? 0 }, count: 4)
         try refreshExpect(
-            scheduler2.moduleState(for: .github)?.phase == .idle,
+            scheduler2.moduleState(for: .agentUsage)?.phase == .idle,
             "should be idle after max retries exceeded"
         )
         try refreshExpect(
-            scheduler2.moduleState(for: .github)?.backoffRetryCount == 0,
+            scheduler2.moduleState(for: .agentUsage)?.backoffRetryCount == 0,
             "retry count should be reset after max retries"
         )
     }
@@ -536,13 +534,13 @@ struct RefreshSchedulerHarness {
         defer { try? FileManager.default.removeItem(at: root) }
 
         scheduler.start()
-        scheduler.enableModule(.github)
+        scheduler.enableModule(.agentUsage)
         timers.fireFirst()
 
-        await waitForRunCount({ executor.runCount[.github] ?? 0 }, count: 1)
+        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 1)
 
         try refreshExpect(
-            scheduler.moduleState(for: .github)?.phase == .authRequired,
+            scheduler.moduleState(for: .agentUsage)?.phase == .authRequired,
             "should be authRequired after auth error"
         )
 
@@ -554,7 +552,7 @@ struct RefreshSchedulerHarness {
 
         // Auto-refresh should not trigger (fire any remaining timers)
         try refreshExpect(
-            executor.runCount[.github] == 1,
+            executor.runCount[.agentUsage] == 1,
             "should not retry after auth error"
         )
     }
@@ -573,13 +571,13 @@ struct RefreshSchedulerHarness {
         defer { try? FileManager.default.removeItem(at: root) }
 
         scheduler.start()
-        scheduler.enableModule(.github)
+        scheduler.enableModule(.agentUsage)
 
         // Disable the module
-        scheduler.disableModule(.github)
+        scheduler.disableModule(.agentUsage)
 
         try refreshExpect(
-            scheduler.moduleState(for: .github)?.phase == .disabled,
+            scheduler.moduleState(for: .agentUsage)?.phase == .disabled,
             "module should be disabled"
         )
         try refreshExpect(
@@ -588,9 +586,9 @@ struct RefreshSchedulerHarness {
         )
 
         // Manual refresh on disabled module should do nothing
-        scheduler.refresh(.github)
+        scheduler.refresh(.agentUsage)
         try refreshExpect(
-            executor.runCount[.github] == nil || executor.runCount[.github] == 0,
+            executor.runCount[.agentUsage] == nil || executor.runCount[.agentUsage] == 0,
             "disabled module should not run collector"
         )
     }
@@ -609,13 +607,13 @@ struct RefreshSchedulerHarness {
         defer { try? FileManager.default.removeItem(at: root) }
 
         scheduler.start()
-        scheduler.enableModule(.github)
+        scheduler.enableModule(.agentUsage)
 
         // Fire initial refresh and complete it
         timers.fireFirst()
-        await waitForRunCount({ executor.runCount[.github] ?? 0 }, count: 1)
-        executor.release(module: .github)
-        await waitForPhase(scheduler, module: .github, phase: .idle)
+        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 1)
+        executor.release(module: .agentUsage)
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
 
         // Advance time past refresh interval (30 min)
         clock.advance(by: 2000)
@@ -626,38 +624,38 @@ struct RefreshSchedulerHarness {
         scheduler.handleWakeOrReactivation()
 
         // Should have started only one refresh (the first call)
-        await waitForRunCount({ executor.runCount[.github] ?? 0 }, count: 2)
+        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 2)
         try refreshExpect(
-            executor.runCount[.github] == 2,
+            executor.runCount[.agentUsage] == 2,
             "wake should trigger at most one compensating refresh"
         )
 
         // The second and third wake calls should have set pendingRerun (merged)
         // since the module is running
         try refreshExpect(
-            scheduler.moduleState(for: .github)?.pendingRerun == true,
+            scheduler.moduleState(for: .agentUsage)?.pendingRerun == true,
             "repeated wake should merge into pendingRerun"
         )
 
         // Release the compensating refresh
-        executor.release(module: .github)
-        await waitForRunCount({ executor.runCount[.github] ?? 0 }, count: 3)
+        executor.release(module: .agentUsage)
+        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 3)
         // The rerun from pendingRerun
 
         try refreshExpect(
-            executor.runCount[.github] == 3,
+            executor.runCount[.agentUsage] == 3,
             "pendingRerun should trigger one additional run"
         )
 
-        executor.release(module: .github)
-        await waitForPhase(scheduler, module: .github, phase: .idle)
+        executor.release(module: .agentUsage)
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
     }
 
     // 10.5: Partial result publishes artifact
     private static func partialResultPublishesArtifact(
         repository: URL
     ) async throws {
-        let artifact = try loadFixture(repository: repository, module: .github)
+        let artifact = try loadFixture(repository: repository, module: .agentUsage)
         let executor = PartialSuccessExecutor(artifact: artifact)
         let clock = ManualClock()
         let timers = FakeTimerScheduler()
@@ -675,11 +673,11 @@ struct RefreshSchedulerHarness {
         scheduler.onStatusChange = { _, s, _ in receivedStatus = s }
 
         scheduler.start()
-        scheduler.enableModule(.github)
+        scheduler.enableModule(.agentUsage)
         timers.fireFirst()
 
-        await waitForRunCount({ executor.runCount[.github] ?? 0 }, count: 1)
-        await waitForPhase(scheduler, module: .github, phase: .idle)
+        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 1)
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
 
         try refreshExpect(receivedArtifact != nil, "artifact should be published")
         try refreshExpect(
@@ -697,7 +695,7 @@ struct RefreshSchedulerHarness {
     private static func credentialUpdatesForwardedOnSuccess(
         repository: URL
     ) async throws {
-        let artifact = try loadFixture(repository: repository, module: .github)
+        let artifact = try loadFixture(repository: repository, module: .agentUsage)
         let updates: [JSONValue] = [
             .object([
                 "provider": .string("codex"),
@@ -725,11 +723,11 @@ struct RefreshSchedulerHarness {
         scheduler.onCredentialUpdates = { _, value in received = value }
 
         scheduler.start()
-        scheduler.enableModule(.github)
+        scheduler.enableModule(.agentUsage)
         timers.fireFirst()
 
-        await waitForRunCount({ executor.runCount[.github] ?? 0 }, count: 1)
-        await waitForPhase(scheduler, module: .github, phase: .idle)
+        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 1)
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
 
         try refreshExpect(
             received == updates,
@@ -738,55 +736,6 @@ struct RefreshSchedulerHarness {
     }
 
     // 10.1: Capacity limit queues request
-    private static func capacityLimitQueuesRequest(
-        repository: URL
-    ) async throws {
-        let executor = MockCollectorExecutor()
-        executor.blocksUntilReleased = true
-        let clock = ManualClock()
-        let timers = FakeTimerScheduler()
-        let (scheduler, _, root) = try makeScheduler(
-            repository: repository, executor: executor, clock: clock, timers: timers
-        )
-        defer { try? FileManager.default.removeItem(at: root) }
-
-        scheduler.start()
-        scheduler.enableModule(.github)
-        scheduler.enableModule(.gitlab)
-        scheduler.enableModule(.agentUsage)
-
-        // Fire all three timers
-        timers.fireAll()
-
-        // Only 2 should start (capacity limit)
-        await waitForRunCount({ executor.runCount[.github] ?? 0 }, count: 1)
-        await waitForRunCount({ executor.runCount[.gitlab] ?? 0 }, count: 1)
-
-        try refreshExpect(
-            scheduler.runningModuleCount == 2,
-            "should have 2 running modules (capacity limit)"
-        )
-
-        // The third module should have pendingRerun set
-        try refreshExpect(
-            scheduler.moduleState(for: .agentUsage)?.pendingRerun == true,
-            "third module should be queued"
-        )
-
-        // Complete one module
-        executor.release(module: .github)
-        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 1)
-
-        try refreshExpect(
-            scheduler.moduleState(for: .agentUsage)?.phase == .running,
-            "third module should start after capacity freed"
-        )
-
-        // Cleanup
-        executor.release(module: .gitlab)
-        executor.release(module: .agentUsage)
-    }
-
     // Stop cancels running tasks
     private static func stopCancelsRunningTasks(
         repository: URL
@@ -801,12 +750,12 @@ struct RefreshSchedulerHarness {
         defer { try? FileManager.default.removeItem(at: root) }
 
         scheduler.start()
-        scheduler.enableModule(.github)
+        scheduler.enableModule(.agentUsage)
         timers.fireFirst()
-        await waitForRunCount({ executor.runCount[.github] ?? 0 }, count: 1)
+        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 1)
 
         try refreshExpect(
-            scheduler.moduleState(for: .github)?.phase == .running,
+            scheduler.moduleState(for: .agentUsage)?.phase == .running,
             "module should be running"
         )
 
@@ -838,11 +787,11 @@ struct RefreshSchedulerHarness {
         defer { try? FileManager.default.removeItem(at: root) }
 
         scheduler.start()
-        scheduler.enableModule(.github)
+        scheduler.enableModule(.agentUsage)
         timers.fireFirst()
-        await waitForRunCount({ executor.runCount[.github] ?? 0 }, count: 1)
-        executor.release(module: .github)
-        await waitForPhase(scheduler, module: .github, phase: .idle)
+        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 1)
+        executor.release(module: .agentUsage)
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
 
         // 成功后按旧间隔 1800s 排了下一次刷新
         try refreshExpect(
@@ -859,9 +808,9 @@ struct RefreshSchedulerHarness {
         )
         try refreshExpect(timers.pendingCount == 1, "expected one rescheduled timer")
         timers.fireFirst()
-        await waitForRunCount({ executor.runCount[.github] ?? 0 }, count: 2)
-        executor.release(module: .github)
-        await waitForPhase(scheduler, module: .github, phase: .idle)
+        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 2)
+        executor.release(module: .agentUsage)
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
 
         // 延长间隔到 3600s, 距上次成功 100s -> 重排 delay 为 3500s
         clock.advance(by: 100)

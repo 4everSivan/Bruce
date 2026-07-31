@@ -40,9 +40,6 @@ public struct CollectorActivationGate: Sendable {
         case .agentUsage:
             // Agent: ready 或 partial (有有效会话源) 可以运行本地分析
             return readiness == .ready || readiness == .partial
-        case .github, .gitlab:
-            // GitHub 和 GitLab: 只有 ready 可以运行
-            return readiness == .ready
         }
     }
 
@@ -75,18 +72,6 @@ public struct CollectorActivationGate: Sendable {
             return CollectorExecutionPolicy(
                 module: module,
                 capabilities: capabilities
-            )
-        case .github:
-            // GitHub 通过 gh CLI 执行, 不需要额外能力
-            return CollectorExecutionPolicy(
-                module: module,
-                capabilities: []
-            )
-        case .gitlab:
-            // GitLab 需要 base URL 和 PAT (由 run input 提供)
-            return CollectorExecutionPolicy(
-                module: module,
-                capabilities: []
             )
         }
     }

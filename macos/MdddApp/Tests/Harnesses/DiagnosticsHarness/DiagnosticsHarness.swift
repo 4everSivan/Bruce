@@ -95,10 +95,10 @@ struct DiagnosticsHarness {
                 state: .stale,
                 detail: "Bearer fixture-secret user@example.test /Users/alice"
             ),
-            for: .github
+            for: .agentUsage
         )
         model.setModuleResult(ModuleReadinessResult(
-            module: .github,
+            module: .agentUsage,
             readiness: .partial,
             localDependencies: [
                 DependencyProbe(
@@ -130,7 +130,7 @@ struct DiagnosticsHarness {
         defer { try? FileManager.default.removeItem(at: root) }
         let preview = try service.preview()
         try diagnosticsExpect(
-            preview.contains("\"module\" : \"github\""),
+            preview.contains("\"module\" : \"agent-usage\""),
             "preview omitted module state"
         )
         try diagnosticsExpect(
@@ -197,7 +197,7 @@ struct DiagnosticsHarness {
         }
         try diagnosticsExpect(
             !DiagnosticContentPolicy.containsSensitiveContent(
-                Data(#"{"status":"authRequired","module":"github"}"#.utf8)
+                Data(#"{"status":"authRequired","module":"agent-usage"}"#.utf8)
             ),
             "safe status was rejected"
         )

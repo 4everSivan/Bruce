@@ -20,10 +20,8 @@ CONTEXT_FIELDS = {
     "timezone",
     "days",
     "paths",
-    "baseUrl",
     "username",
     "caFile",
-    "ghPath",
     "capabilities",
 }
 CAPABILITY_VALUES = {
@@ -46,8 +44,6 @@ CREDENTIAL_FIELDS_BY_MODULE = {
         "providerEnv",
         "providerMeta",
     },
-    "github": set(),
-    "gitlab": {"gitlabToken"},
 }
 RUNTIME_CREDENTIAL_NAMES = {
     "kimiWebTokens": "kimi_web_tokens",
@@ -57,12 +53,9 @@ RUNTIME_CREDENTIAL_NAMES = {
     "antigravityOAuth": "antigravity_oauth",
     "providerEnv": "provider_env",
     "providerMeta": "provider_meta",
-    "gitlabToken": "gitlab_token",
 }
 RUNTIME_CONTEXT_NAMES = {
-    "baseUrl": "base_url",
     "caFile": "ca_file",
-    "ghPath": "gh_path",
 }
 SENSITIVE_KEY_PARTS = {
     "accesstoken",
@@ -250,8 +243,7 @@ def validate_request(request):
             "请求包含当前模块不需要的凭证",
         )
     for key, value in credentials.items():
-        expected_type = str if key == "gitlabToken" else dict
-        if not isinstance(value, expected_type):
+        if not isinstance(value, dict):
             raise ValidationError(
                 "BRIDGE_INVALID_REQUEST",
                 "protocol",

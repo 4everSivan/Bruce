@@ -25,8 +25,6 @@ protocol CollectorRunInputProviding {
 /// Agent: 授予 localSessions/localPricing; 统一授权已确认且至少一个订阅
 /// provider enabled 且 Keychain 凭证完整时追加 externalQuotas, 并把凭证
 /// 装配进 Bridge 注入键 (对照 bridge/security.py 白名单).
-/// GitHub: 不传 token, 由 gh 官方登录态承载.
-/// GitLab: 从配置读规范化 base URL, 从 Keychain 读 PAT; 两者缺失都阻止启动.
 @MainActor
 package final class OnboardingRunInputProvider: CollectorRunInputProviding {
     private let configStore: OnboardingConfigurationStore?
@@ -44,10 +42,6 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
         switch module {
         case .agentUsage:
             return agentUsageInput()
-        case .github:
-            return CollectorRunInput(context: [:], credentials: [:])
-        case .gitlab:
-            return try gitLabInput()
         }
     }
 
@@ -126,6 +120,11 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
            let raw = load(SubscriptionCredentialAccount.codexAccounts),
            let accounts = jsonObjectValue(from: raw) {
             credentials["codexOAuthAccounts"] = accounts
+            // 活跃账号同步装配为 codex_auth 注入, collector 不再回退读
+            // ~/.codex/auth.json (App 模式凭证只经注入).
+            if let cliAuth = assembleCodexCLIAuth(accounts: accounts) {
+                credentials["codexAuth"] = cliAuth
+            }
         }
         if isEnabled(.antigravity),
            let raw = load(SubscriptionCredentialAccount.antigravityOAuth),
@@ -139,6 +138,28 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
             credentials["providerMeta"] = .object(providerMeta)
         }
         return credentials
+    }
+
+    /// 把 Keychain 活跃账号装配为 collector 的 codex_auth 注入,
+    /// 结构对齐 collect_usage.py 对 ~/.codex/auth.json 的消费 (tokens.*).
+    /// 无活跃账号, 账号不在库中或缺 refresh_token 时不注入.
+    private func assembleCodexCLIAuth(accounts: JSONValue) -> JSONValue? {
+        guard let activeId = try? credentialStore.loadCredential(
+            forAccount: SubscriptionCredentialAccount.codexActiveAccount
+        ), !activeId.isEmpty,
+              case .object(let root) = accounts,
+              case .object(let all)? = root["accounts"],
+              case .object(let entry)? = all[activeId] else {
+            return nil
+        }
+        var tokens: [String: JSONValue] = ["account_id": .string(activeId)]
+        for key in ["refresh_token", "access_token", "id_token", "email"] {
+            if let value = entry[key] {
+                tokens[key] = value
+            }
+        }
+        guard tokens["refresh_token"] != nil else { return nil }
+        return .object(["tokens": .object(tokens)])
     }
 
     /// 把 Keychain 读出的 JSON 字符串解析为 JSONValue 对象;
@@ -240,28 +261,6 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
             provider: provider,
             accountId: accountId,
             tokens: tokens
-        )
-    }
-
-    private func gitLabInput() throws -> CollectorRunInput {
-        guard let rawBaseURL = configStore?.load()?.gitlabBaseURL,
-              let baseURL = ProviderConnectionVerifier.normalizedGitLabBaseURL(rawBaseURL),
-              let host = baseURL.host else {
-            throw CollectorRunInputError.missingDependency(
-                module: .gitlab,
-                reason: "未配置私有 GitLab HTTPS 地址"
-            )
-        }
-        guard let pat = try credentialStore.loadPAT(forHost: host),
-              !pat.isEmpty else {
-            throw CollectorRunInputError.missingAuthorization(
-                module: .gitlab,
-                reason: "GitLab 凭证缺失, 请在设置中重新配置 PAT"
-            )
-        }
-        return CollectorRunInput(
-            context: ["baseUrl": .string(baseURL.absoluteString)],
-            credentials: ["gitlabToken": .string(pat)]
         )
     }
 }

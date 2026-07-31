@@ -159,54 +159,12 @@ private func makeAgentUsageArtifact(
     )
 }
 
-private func makeContributionArtifact(
-    module: CollectorModule,
-    weeks: [ContributionWeek],
-    login: String = "fixture-user",
-    displayName: String? = nil,
-    totalContributions: Int = 42,
-    today: Int = 3,
-    currentStreak: Int = 4,
-    longestStreak: Int = 9,
-    bestDay: ContributionBestDay? = ContributionBestDay(date: "2026-07-01", count: 8)
-) -> ContributionArtifact {
-    ContributionArtifact(
-        schemaVersion: 1,
-        module: module,
-        generatedAt: "2026-07-30T13:50:00+00:00",
-        login: login,
-        displayName: displayName,
-        totalContributions: totalContributions,
-        today: today,
-        currentStreak: currentStreak,
-        longestStreak: longestStreak,
-        bestDay: bestDay,
-        weeks: weeks
-    )
-}
-
-private func makeWeeks(count: Int, daysPerWeek: Int = 7) -> [ContributionWeek] {
-    (0..<count).map { weekIndex in
-        let days = (0..<daysPerWeek).map { weekday in
-            ContributionDay(
-                date: "2026-01-\(String(format: "%02d", (weekIndex % 28) + 1))",
-                count: (weekIndex + weekday) % 5,
-                level: "SECOND_QUARTILE",
-                weekday: weekday
-            )
-        }
-        return ContributionWeek(days: days)
-    }
-}
-
 private func makeMapper() -> PanelViewModelMapper {
     PanelViewModelMapper(now: { fixedNow }, calendar: utcCalendar)
 }
 
 private let readyStatuses: [DashboardModule: ModuleStatus] = [
     .agentUsage: ModuleStatus(state: .fresh, detail: nil),
-    .github: ModuleStatus(state: .fresh, detail: nil),
-    .gitlab: ModuleStatus(state: .fresh, detail: nil),
 ]
 
 @main
@@ -226,18 +184,13 @@ struct PanelViewModelHarness {
         try legendOnlyIncludesActiveAgents()
         try hourlyRowsFilterAndShape()
         try hourlyDetailAggregatesTopAndOther()
-        try heatmapProduces26x7Columns()
-        try heatmapPadsShortWeeksAndAlignsWeekday()
-        try heatmapMapsIntensityAndUnknownLevel()
-        try heatmapStatsChipsMapDirectly()
-        try conditionalRenderingHidesUnconfiguredCards()
         try resetTextVariants()
         try negativeResetEpochYieldsEmptyResetText()
         try tokenAndBalanceFormatting()
         try costTextConvertsUsdToCny()
         try unknownAgentColorIsStable()
         try emptyArtifactsProduceDiagnostics()
-        print("PanelViewModel tests passed: 25")
+        print("PanelViewModel tests passed: 20")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -389,8 +342,6 @@ struct PanelViewModelHarness {
         let artifact = makeAgentUsageArtifact(agents: [], services: placeholders)
         let vm = makeMapper().make(
             agentUsage: artifact,
-            github: nil,
-            gitlab: nil,
             moduleStatuses: readyStatuses
         )
         try expect(vm.subscription == nil, "未授权占位不应渲染订阅卡")
@@ -462,8 +413,6 @@ struct PanelViewModelHarness {
         )
         let vm = makeMapper().make(
             agentUsage: artifact,
-            github: nil,
-            gitlab: nil,
             moduleStatuses: readyStatuses
         )
         let usage = vm.usage
@@ -487,8 +436,6 @@ struct PanelViewModelHarness {
         )
         let vm = makeMapper().make(
             agentUsage: stale,
-            github: nil,
-            gitlab: nil,
             moduleStatuses: readyStatuses
         )
         try expect(vm.usage?.isLive == false, "过期 artifact 不应 LIVE")
@@ -500,8 +447,6 @@ struct PanelViewModelHarness {
         )
         let vm2 = makeMapper().make(
             agentUsage: badDate,
-            github: nil,
-            gitlab: nil,
             moduleStatuses: readyStatuses
         )
         try expect(vm2.usage?.isLive == false, "无法解析的 generatedAt 不应 LIVE")
@@ -522,8 +467,6 @@ struct PanelViewModelHarness {
         let artifact = makeAgentUsageArtifact(agents: [cli, claude], services: [])
         let usage = makeMapper().make(
             agentUsage: artifact,
-            github: nil,
-            gitlab: nil,
             moduleStatuses: readyStatuses
         ).usage
         let days = usage?.days ?? []
@@ -551,8 +494,6 @@ struct PanelViewModelHarness {
         let artifact = makeAgentUsageArtifact(agents: [active, idle], services: [])
         let usage = makeMapper().make(
             agentUsage: artifact,
-            github: nil,
-            gitlab: nil,
             moduleStatuses: readyStatuses
         ).usage
         let legend = usage?.legend ?? []
@@ -581,8 +522,6 @@ struct PanelViewModelHarness {
         let artifact = makeAgentUsageArtifact(agents: [cli, missing], services: [])
         let vm = makeMapper().make(
             agentUsage: artifact,
-            github: nil,
-            gitlab: nil,
             moduleStatuses: readyStatuses
         )
         let rows = vm.hourly?.rows ?? []
@@ -617,8 +556,6 @@ struct PanelViewModelHarness {
         let artifact = makeAgentUsageArtifact(agents: [agent], services: [])
         let row = makeMapper().make(
             agentUsage: artifact,
-            github: nil,
-            gitlab: nil,
             moduleStatuses: readyStatuses
         ).hourly?.rows.first
         let models = row?.models ?? []
@@ -632,135 +569,9 @@ struct PanelViewModelHarness {
         let noDetail = makeAgent(id: "codex", name: "Codex CLI", today: makeBucket(input: 100))
         let row2 = makeMapper().make(
             agentUsage: makeAgentUsageArtifact(agents: [noDetail], services: []),
-            github: nil,
-            gitlab: nil,
             moduleStatuses: readyStatuses
         ).hourly?.rows.first
         try expect(row2?.isExpandable == false, "无明细不应可展开")
-    }
-
-    // 热力图: 53 周输入截取近 26 列, 每列 7 行.
-    private static func heatmapProduces26x7Columns() throws {
-        let artifact = makeContributionArtifact(
-            module: .github,
-            weeks: makeWeeks(count: 53)
-        )
-        let vm = makeMapper().make(
-            agentUsage: nil,
-            github: artifact,
-            gitlab: nil,
-            moduleStatuses: readyStatuses
-        )
-        let card = vm.github
-        try expect(card?.columns.count == 26, "应为 26 列: \(card?.columns.count ?? -1)")
-        try expect(card?.columns.allSatisfy { $0.count == 7 } == true, "每列应为 7 行")
-        try expect(card?.columns.flatMap { $0 }.allSatisfy { !$0.isPlaceholder } == true, "53 周不应有占位格")
-        try expect(card?.heroTotal == 42, "年度总量错误")
-        try expect(card?.unitText == "次贡献 · 近一年", "GitHub 单位文案错误")
-        try expect(card?.captionText == "@fixture-user", "GitHub caption 错误")
-    }
-
-    // 不足 26 周前补占位列; 周对齐按 weekday 落格.
-    private static func heatmapPadsShortWeeksAndAlignsWeekday() throws {
-        var weeks = makeWeeks(count: 20)
-        weeks.append(ContributionWeek(days: [
-            ContributionDay(date: "2026-07-28", count: 2, level: "FIRST_QUARTILE", weekday: 2),
-            ContributionDay(date: "2026-07-30", count: 5, level: "FOURTH_QUARTILE", weekday: 4),
-        ]))
-        let artifact = makeContributionArtifact(module: .gitlab, weeks: weeks)
-        let card = makeMapper().make(
-            agentUsage: nil,
-            github: nil,
-            gitlab: artifact,
-            moduleStatuses: readyStatuses
-        ).gitlab
-        try expect(card?.columns.count == 26, "不足 26 周应补齐: \(card?.columns.count ?? -1)")
-        try expect(card?.columns.prefix(5).flatMap { $0 }.allSatisfy { $0.isPlaceholder } == true, "前部应为占位列")
-        let last = card?.columns.last ?? []
-        try expect(last[0].isPlaceholder && last[1].isPlaceholder, "未到的 weekday 应占位")
-        try expect(last[2].date == "2026-07-28" && last[2].count == 2, "weekday 对位错误")
-        try expect(last[4].intensity == 4, "FOURTH_QUARTILE 应为强度 4")
-        try expect(last[6].isPlaceholder, "行尾应占位")
-        try expect(card?.unitText == "次动态 · 近一年", "GitLab 单位文案错误")
-    }
-
-    // level 映射 0-4; 未知 level 按 count 推断并产生诊断.
-    private static func heatmapMapsIntensityAndUnknownLevel() throws {
-        let week = ContributionWeek(days: [
-            ContributionDay(date: "2026-07-26", count: 0, level: "NONE", weekday: 0),
-            ContributionDay(date: "2026-07-27", count: 1, level: "FIRST_QUARTILE", weekday: 1),
-            ContributionDay(date: "2026-07-28", count: 3, level: "SECOND_QUARTILE", weekday: 2),
-            ContributionDay(date: "2026-07-29", count: 6, level: "THIRD_QUARTILE", weekday: 3),
-            ContributionDay(date: "2026-07-30", count: 9, level: "FOURTH_QUARTILE", weekday: 4),
-            ContributionDay(date: "2026-07-31", count: 2, level: "FUTURE_LEVEL", weekday: 5),
-        ])
-        let vm = makeMapper().make(
-            agentUsage: nil,
-            github: makeContributionArtifact(module: .github, weeks: [week]),
-            gitlab: nil,
-            moduleStatuses: readyStatuses
-        )
-        let column = vm.github?.columns.last ?? []
-        try expect(column[0].intensity == 0, "NONE 应为 0")
-        try expect(column[1].intensity == 1, "FIRST_QUARTILE 应为 1")
-        try expect(column[2].intensity == 2, "SECOND_QUARTILE 应为 2")
-        try expect(column[3].intensity == 3, "THIRD_QUARTILE 应为 3")
-        try expect(column[4].intensity == 4, "FOURTH_QUARTILE 应为 4")
-        try expect(column[5].intensity == 1, "未知 level 有量应推断为 1")
-        try expect(
-            vm.diagnostics.contains(.heatmapLevelUnknown(
-                module: .github,
-                date: "2026-07-31",
-                level: "FUTURE_LEVEL"
-            )),
-            "缺少 heatmapLevelUnknown 诊断"
-        )
-    }
-
-    // 统计 chips 直接映射 collector 已算好的值.
-    private static func heatmapStatsChipsMapDirectly() throws {
-        let artifact = makeContributionArtifact(
-            module: .github,
-            weeks: makeWeeks(count: 26),
-            totalContributions: 42,
-            today: 3,
-            currentStreak: 4,
-            longestStreak: 9,
-            bestDay: ContributionBestDay(date: "2026-07-01", count: 8)
-        )
-        let stats = makeMapper().make(
-            agentUsage: nil,
-            github: artifact,
-            gitlab: nil,
-            moduleStatuses: readyStatuses
-        ).github?.stats
-        try expect(stats?.chips == ["今日 3", "连续 4 天", "最长 9 天", "最佳单日 8"], "chips 错误: \(stats?.chips ?? [])")
-        try expect(stats?.today == 3 && stats?.currentStreak == 4, "统计值错误")
-        try expect(stats?.longestStreak == 9 && stats?.bestDayCount == 8, "统计值错误")
-    }
-
-    // 条件渲染: 标记未配置或 artifact 缺失时整卡为 nil 并留诊断.
-    private static func conditionalRenderingHidesUnconfiguredCards() throws {
-        let artifact = makeContributionArtifact(module: .github, weeks: makeWeeks(count: 26))
-        var statuses = readyStatuses
-        statuses[.github] = .notConfigured
-        let vm = makeMapper().make(
-            agentUsage: nil,
-            github: artifact,
-            gitlab: artifact,
-            moduleStatuses: statuses
-        )
-        try expect(vm.github == nil, "未配置时 GitHub 卡应为 nil")
-        try expect(
-            vm.diagnostics.contains(.cardHiddenNotConfigured(module: .github)),
-            "缺少 cardHiddenNotConfigured 诊断"
-        )
-        try expect(vm.gitlab != nil, "已配置的 GitLab 卡应渲染")
-        try expect(vm.usage == nil && vm.hourly == nil, "缺 agent-usage artifact 时相关卡为 nil")
-        try expect(
-            vm.diagnostics.contains(.missingArtifact(module: .agentUsage)),
-            "缺少 missingArtifact 诊断"
-        )
     }
 
     // 重置时间文案: 当天 HH:mm, 跨天 N 天后, 过期与空值.
@@ -847,21 +658,14 @@ struct PanelViewModelHarness {
         try expect(PanelAgentColor.resolve(agentID: "codex-orca") == .purple, "Codex · Orca 配色错误")
     }
 
-    // 空 agents / 空 weeks / 全缺失全部产生可诊断状态.
+    // 空 agents / 全缺失全部产生可诊断状态.
     private static func emptyArtifactsProduceDiagnostics() throws {
         let emptyUsage = makeAgentUsageArtifact(agents: [], services: [])
-        let emptyContribution = makeContributionArtifact(module: .gitlab, weeks: [])
         let vm = makeMapper().make(
             agentUsage: emptyUsage,
-            github: nil,
-            gitlab: emptyContribution,
             moduleStatuses: readyStatuses
         )
         try expect(vm.diagnostics.contains(.emptyUsageAgents), "空 agents 应有诊断")
-        try expect(vm.diagnostics.contains(.emptyHeatmap(module: .gitlab)), "空 weeks 应有诊断")
-        try expect(vm.diagnostics.contains(.missingArtifact(module: .github)), "缺 GitHub artifact 应有诊断")
-        let columns = vm.gitlab?.columns ?? []
-        try expect(columns.count == 26 && columns.allSatisfy { $0.count == 7 }, "空热力图仍输出 26x7 占位")
         try expect(vm.usage != nil, "空 agents 仍渲染用量卡骨架")
         try expect(vm.usage?.days.isEmpty == true, "空 agents 无日期轴")
         try expect(vm.subscription == nil, "无 provider 时订阅卡为 nil")
@@ -881,8 +685,6 @@ struct PanelViewModelHarness {
         let artifact = makeAgentUsageArtifact(agents: [], services: services)
         let vm = makeMapper().make(
             agentUsage: artifact,
-            github: nil,
-            gitlab: nil,
             moduleStatuses: readyStatuses
         )
         guard let subscription = vm.subscription else {

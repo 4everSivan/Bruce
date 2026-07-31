@@ -154,8 +154,6 @@ struct NativeLifecycleHarness {
         let artifact = agentUsageArtifact()
         let statuses: [DashboardModule: ModuleStatus] = [
             .agentUsage: ModuleStatus(state: .fresh, detail: nil),
-            .github: ModuleStatus(state: .partial, detail: nil),
-            .gitlab: ModuleStatus(state: .offline, detail: nil),
         ]
         let summary = MenuBarSummaryBuilder().build(
             agentArtifact: artifact,
@@ -172,7 +170,7 @@ struct NativeLifecycleHarness {
         try expect(summary.todayTokens == 124_000, "today tokens are invalid")
         try expect(summary.todayCostUsd == 1.28, "today cost is invalid")
         try expect(
-            summary.overallStatus == .offline,
+            summary.overallStatus == .fresh,
             "overall status priority is invalid"
         )
     }

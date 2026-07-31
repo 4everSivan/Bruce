@@ -69,40 +69,8 @@ package struct AgentUsageArtifact: Codable, Equatable, Sendable {
     let totalCostUsd: Double?
 }
 
-package struct ContributionDay: Codable, Equatable, Sendable {
-    let date: String
-    let count: Int
-    let level: String
-    let weekday: Int
-}
-
-package struct ContributionWeek: Codable, Equatable, Sendable {
-    let days: [ContributionDay]
-}
-
-package struct ContributionBestDay: Codable, Equatable, Sendable {
-    let date: String
-    let count: Int
-}
-
-package struct ContributionArtifact: Codable, Equatable, Sendable {
-    let schemaVersion: Int
-    let module: CollectorModule
-    let generatedAt: String
-    let login: String
-    let displayName: String?
-    let totalContributions: Int
-    let today: Int
-    let currentStreak: Int
-    let longestStreak: Int
-    let bestDay: ContributionBestDay?
-    let weeks: [ContributionWeek]
-}
-
 package enum DecodedArtifact: Equatable, Sendable {
     case agentUsage(AgentUsageArtifact)
-    case github(ContributionArtifact)
-    case gitlab(ContributionArtifact)
 }
 
 package enum ArtifactValidationError: Error, Equatable {
@@ -183,40 +151,6 @@ package struct ArtifactValidator {
                 }
             }
             return .agentUsage(decoded)
-        case .github, .gitlab:
-            let decoded: ContributionArtifact = try decode(data)
-            try validateHeader(
-                version: decoded.schemaVersion,
-                module: decoded.module,
-                generatedAt: decoded.generatedAt,
-                expectedModule: expectedModule
-            )
-            guard decoded.totalContributions >= 0,
-                  decoded.today >= 0,
-                  decoded.currentStreak >= 0,
-                  decoded.longestStreak >= 0 else {
-                throw ArtifactValidationError.invalidValue
-            }
-            if let best = decoded.bestDay {
-                guard validDay(best.date), best.count >= 0 else {
-                    throw ArtifactValidationError.invalidValue
-                }
-            }
-            for week in decoded.weeks {
-                guard week.days.count <= 7 else {
-                    throw ArtifactValidationError.invalidValue
-                }
-                for day in week.days {
-                    guard validDay(day.date),
-                          day.count >= 0,
-                          (0...6).contains(day.weekday) else {
-                        throw ArtifactValidationError.invalidValue
-                    }
-                }
-            }
-            return expectedModule == .github
-                ? .github(decoded)
-                : .gitlab(decoded)
         }
     }
 

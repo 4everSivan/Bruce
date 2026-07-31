@@ -155,8 +155,6 @@ package enum PanelFormat {
 package enum PanelDiagnostic: Equatable, Sendable {
     /// 模块 artifact 缺失, 对应卡片为 nil.
     case missingArtifact(module: DashboardModule)
-    /// 模块被标记未配置, 对应卡片强制为 nil.
-    case cardHiddenNotConfigured(module: DashboardModule)
     /// agent 条目状态非 ok (error / not_found / partial).
     case agentIssue(agentID: String, status: String, note: String)
     /// service 条目状态非 ok 但仍展示 (保留 note 供 UI).
@@ -165,12 +163,8 @@ package enum PanelDiagnostic: Equatable, Sendable {
     case serviceSkipped(serviceID: String, status: String, note: String)
     /// 单个窗口条目解析失败被丢弃.
     case windowDropped(serviceID: String, reason: String)
-    /// 热力图等级字符串未知, 按 count 推断强度.
-    case heatmapLevelUnknown(module: DashboardModule, date: String, level: String)
     /// agent-usage artifact 存在但 agents 为空.
     case emptyUsageAgents
-    /// 热力图 weeks 为空, 输出全占位 26x7 网格.
-    case emptyHeatmap(module: DashboardModule)
 }
 
 // MARK: - 用量卡
@@ -432,104 +426,23 @@ package struct HourlyLineViewModel: Equatable, Sendable {
     }
 }
 
-// MARK: - 热力图卡 (GitHub / GitLab 共用)
-
-package struct HeatmapCell: Equatable, Sendable {
-    package let date: String
-    package let count: Int
-    /// 强度 0...4, 由 collector level 映射.
-    package let intensity: Int
-    /// 周对齐补位格 (该周未满 7 天或不满 26 列).
-    package let isPlaceholder: Bool
-
-    package init(date: String, count: Int, intensity: Int, isPlaceholder: Bool) {
-        self.date = date
-        self.count = count
-        self.intensity = intensity
-        self.isPlaceholder = isPlaceholder
-    }
-}
-
-package struct HeatmapStats: Equatable, Sendable {
-    package let today: Int
-    package let currentStreak: Int
-    package let longestStreak: Int
-    package let bestDayCount: Int
-    /// 预格式化 chips: 今日 / 连续 / 最长 / 最佳单日.
-    package let chips: [String]
-
-    package init(
-        today: Int,
-        currentStreak: Int,
-        longestStreak: Int,
-        bestDayCount: Int
-    ) {
-        self.today = today
-        self.currentStreak = currentStreak
-        self.longestStreak = longestStreak
-        self.bestDayCount = bestDayCount
-        self.chips = [
-            "今日 \(today)",
-            "连续 \(currentStreak) 天",
-            "最长 \(longestStreak) 天",
-            "最佳单日 \(bestDayCount)",
-        ]
-    }
-}
-
-package struct HeatmapViewModel: Equatable, Sendable {
-    package let module: DashboardModule
-    package let heroTotal: Int
-    package let heroText: String
-    /// "次贡献 · 近一年" / "次动态 · 近一年".
-    package let unitText: String
-    /// 标题右侧 chip: GitHub 为 "@login", GitLab 为 displayName 或 "@login".
-    package let captionText: String
-    /// 26 列 x 7 行, 列优先 (每列一周, 行内索引 0-6 对应周日到周六).
-    package let columns: [[HeatmapCell]]
-    package let stats: HeatmapStats
-
-    package init(
-        module: DashboardModule,
-        heroTotal: Int,
-        unitText: String,
-        captionText: String,
-        columns: [[HeatmapCell]],
-        stats: HeatmapStats
-    ) {
-        self.module = module
-        self.heroTotal = heroTotal
-        self.heroText = "\(heroTotal)"
-        self.unitText = unitText
-        self.captionText = captionText
-        self.columns = columns
-        self.stats = stats
-    }
-}
-
 // MARK: - 面板容器
 
 package struct PanelViewModel: Equatable, Sendable {
     package let usage: UsageHeroViewModel?
     package let subscription: SubscriptionViewModel?
     package let hourly: HourlyLineViewModel?
-    package let github: HeatmapViewModel?
-    package let gitlab: HeatmapViewModel?
     package let diagnostics: [PanelDiagnostic]
 
     package init(
         usage: UsageHeroViewModel?,
         subscription: SubscriptionViewModel?,
         hourly: HourlyLineViewModel?,
-        github: HeatmapViewModel?,
-        gitlab: HeatmapViewModel?,
         diagnostics: [PanelDiagnostic]
     ) {
         self.usage = usage
         self.subscription = subscription
         self.hourly = hourly
-        self.github = github
-        self.gitlab = gitlab
         self.diagnostics = diagnostics
     }
 }
@@ -554,8 +467,6 @@ package struct PanelViewModelMapper: Sendable {
 
     package func make(
         agentUsage: AgentUsageArtifact?,
-        github: ContributionArtifact?,
-        gitlab: ContributionArtifact?,
         moduleStatuses: [DashboardModule: ModuleStatus]
     ) -> PanelViewModel {
         var diagnostics: [PanelDiagnostic] = []
@@ -572,25 +483,10 @@ package struct PanelViewModelMapper: Sendable {
             diagnostics.append(.missingArtifact(module: .agentUsage))
         }
 
-        let githubCard = makeHeatmapCard(
-            artifact: github,
-            module: .github,
-            statuses: moduleStatuses,
-            diagnostics: &diagnostics
-        )
-        let gitlabCard = makeHeatmapCard(
-            artifact: gitlab,
-            module: .gitlab,
-            statuses: moduleStatuses,
-            diagnostics: &diagnostics
-        )
-
         return PanelViewModel(
             usage: usage,
             subscription: subscription,
             hourly: hourly,
-            github: githubCard,
-            gitlab: gitlabCard,
             diagnostics: diagnostics
         )
     }
@@ -891,117 +787,6 @@ package struct PanelViewModelMapper: Sendable {
             ))
         }
         return bars
-    }
-
-    // MARK: 热力图卡
-
-    private func makeHeatmapCard(
-        artifact: ContributionArtifact?,
-        module: DashboardModule,
-        statuses: [DashboardModule: ModuleStatus],
-        diagnostics: inout [PanelDiagnostic]
-    ) -> HeatmapViewModel? {
-        // 条件渲染: 标记未配置或 artifact 缺失时整卡不渲染.
-        if statuses[module]?.state == .notConfigured {
-            diagnostics.append(.cardHiddenNotConfigured(module: module))
-            return nil
-        }
-        guard let artifact else {
-            diagnostics.append(.missingArtifact(module: module))
-            return nil
-        }
-        if artifact.weeks.isEmpty {
-            diagnostics.append(.emptyHeatmap(module: module))
-        }
-        return makeHeatmap(artifact, module: module, diagnostics: &diagnostics)
-    }
-
-    private func makeHeatmap(
-        _ artifact: ContributionArtifact,
-        module: DashboardModule,
-        diagnostics: inout [PanelDiagnostic]
-    ) -> HeatmapViewModel {
-        // 近 26 周, 不足时前补占位列; 每列 7 行按 weekday 对齐.
-        let weeks = artifact.weeks.suffix(26)
-        var columns: [[HeatmapCell]] = []
-        for week in weeks {
-            var column = (0...6).map { _ in
-                HeatmapCell(date: "", count: 0, intensity: 0, isPlaceholder: true)
-            }
-            for day in week.days {
-                let intensity = Self.heatmapIntensity(
-                    level: day.level,
-                    count: day.count,
-                    module: module,
-                    date: day.date,
-                    diagnostics: &diagnostics
-                )
-                column[day.weekday] = HeatmapCell(
-                    date: day.date,
-                    count: day.count,
-                    intensity: intensity,
-                    isPlaceholder: false
-                )
-            }
-            columns.append(column)
-        }
-        while columns.count < 26 {
-            columns.insert(
-                (0...6).map { _ in
-                    HeatmapCell(date: "", count: 0, intensity: 0, isPlaceholder: true)
-                },
-                at: 0
-            )
-        }
-
-        let caption: String
-        switch module {
-        case .github:
-            caption = "@" + artifact.login
-        case .gitlab:
-            let displayName = artifact.displayName ?? ""
-            caption = displayName.isEmpty ? "@" + artifact.login : displayName
-        default:
-            caption = artifact.login
-        }
-
-        return HeatmapViewModel(
-            module: module,
-            heroTotal: artifact.totalContributions,
-            unitText: module == .gitlab ? "次动态 · 近一年" : "次贡献 · 近一年",
-            captionText: caption,
-            columns: columns,
-            stats: HeatmapStats(
-                today: artifact.today,
-                currentStreak: artifact.currentStreak,
-                longestStreak: artifact.longestStreak,
-                bestDayCount: artifact.bestDay?.count ?? 0
-            )
-        )
-    }
-
-    private static func heatmapIntensity(
-        level: String,
-        count: Int,
-        module: DashboardModule,
-        date: String,
-        diagnostics: inout [PanelDiagnostic]
-    ) -> Int {
-        switch level {
-        case "NONE":
-            return 0
-        case "FIRST_QUARTILE":
-            return 1
-        case "SECOND_QUARTILE":
-            return 2
-        case "THIRD_QUARTILE":
-            return 3
-        case "FOURTH_QUARTILE":
-            return 4
-        default:
-            diagnostics.append(.heatmapLevelUnknown(module: module, date: date, level: level))
-            return count > 0 ? 1 : 0
-        }
     }
 
     // MARK: 工具
