@@ -72,7 +72,7 @@
 
 - `README.md`: 项目目标, 模块说明, 本机数据源和运行命令.
 - `constitution.md`: 安全红线, 证据要求和工作模式.
-- `docs/development/mddd 设计文档.md`: 产品需求, UI 规范, 数据契约和验收标准.
+- `docs/development/01-mddd-design.md`: 产品需求, UI 规范, 数据契约和验收标准.
 <!-- source: scan/code-structure, confidence: HIGH -->
 
 ---

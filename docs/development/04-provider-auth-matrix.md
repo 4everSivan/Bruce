@@ -1,5 +1,11 @@
 # Provider 登录与授权矩阵
 
+| 项目 | 定义 |
+|---|---|
+| 文档版本 | 1.0 |
+| 文档路径 | `docs/development/04-provider-auth-matrix.md` |
+| 适用平台 | mddd 支持的 Agent Provider (Kimi / Codex / DeepSeek / 火山引擎 / Antigravity) |
+
 本矩阵区分“读取既有本机会话”和“应用持有可访问外部服务的凭证”. 首版不得复制第三方 OAuth client secret, 不得模拟账号密码登录, 也不得在未注册桌面 OAuth 应用时截获其他 CLI 的回调.
 
 | Provider / 数据源 | 当前仓库证据 | 官方可用方式 | mddd MVP 策略 | 自动续期 |

@@ -188,10 +188,11 @@ Widget JavaScript 语法和安全隔离由 Python 测试继续覆盖 (面向 Dai
 
 更多资料:
 
-- [工具链基线](docs/development/toolchain.md)
-- [Provider 授权矩阵](docs/development/provider-auth-matrix.md)
-- [发布人工验收清单](docs/development/release-acceptance.md)
-- [mddd 设计文档](docs/development/mddd%20设计文档.md)
+- [mddd 设计文档](docs/development/01-mddd-design.md)
+- [CI/CD 设计](docs/development/02-ci-cd.md)
+- [工具链基线](docs/development/03-toolchain.md)
+- [Provider 授权矩阵](docs/development/04-provider-auth-matrix.md)
+- [发布人工验收清单](docs/development/05-release-acceptance.md)
 
 ## 当前限制
 

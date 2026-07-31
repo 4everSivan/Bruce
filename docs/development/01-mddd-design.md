@@ -2,7 +2,8 @@
 
 | 项目 | 定义 |
 |---|---|
-| 文档版本 | 1.0 |
+| 文档版本 | 1.1 |
+| 文档路径 | `docs/development/01-mddd-design.md` |
 | 适用平台 | macOS 26 及以上 |
 | 产品形态 | 原生 macOS 菜单栏应用 (LSUIElement) |
 | 技术基线 | Swift 6, SwiftUI, AppKit, WebKit, Python 3.9+ |

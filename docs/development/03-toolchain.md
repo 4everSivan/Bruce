@@ -1,5 +1,11 @@
 # macOS 应用工具链基线
 
+| 项目 | 定义 |
+|---|---|
+| 文档版本 | 1.0 |
+| 文档路径 | `docs/development/03-toolchain.md` |
+| 适用平台 | macOS 26 及以上 (Liquid Glass 与菜单栏面板依赖) |
+
 ## 平台与标识
 
 - 最低系统版本: macOS 26 (Liquid Glass 与菜单栏面板依赖).
