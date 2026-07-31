@@ -24,7 +24,10 @@ struct SubscriptionCard: View {
             ForEach(Array(viewModel.sections.enumerated()), id: \.element.id) { index, section in
                 if index > 0 {
                     Rectangle()
-                        .fill(Color.black.opacity(0.05))
+                        .fill(Color.adaptive(
+                            light: Color.black.opacity(0.05),
+                            dark: Color.white.opacity(0.10)
+                        ))
                         .frame(height: 1)
                 }
                 ProviderSectionView(section: section, isFirst: index == 0)
@@ -118,10 +121,11 @@ private struct WindowRowView: View {
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
                 .frame(width: 62, alignment: .leading)
-            // usedPercent 是已用比例, 量条填充剩余比例; 剩余 <= 15% 转橙.
+            // usedPercent 是已用比例, 量条从 0 向 100 填充已用量 (消耗式);
+            // 百分比文字 percentText 同样是已用值 (如 "68%"), 与量条语义一致.
             MeterBar(
-                remainingFraction: (100 - row.usedPercent) / 100,
-                isWarning: row.usedPercent >= 85
+                usedFraction: row.usedPercent / 100,
+                level: MeterLevel(usedPercent: row.usedPercent)
             )
             Text(row.percentText)
                 .font(.system(size: 10, weight: .semibold))
@@ -137,10 +141,29 @@ private struct WindowRowView: View {
     }
 }
 
-/// 量条: 高 5pt 圆角, 绿渐变; 剩余不足时橙渐变. 出现动画尊重 Reduce Motion.
+/// 量条告警级别 (消耗式, 阈值唯一来源): 已用 >= 85% 橙, >= 95% 红.
+private enum MeterLevel {
+    case normal
+    case warning
+    case critical
+
+    init(usedPercent: Double) {
+        switch usedPercent {
+        case 95...:
+            self = .critical
+        case 85...:
+            self = .warning
+        default:
+            self = .normal
+        }
+    }
+}
+
+/// 量条: 高 5pt 圆角, 消耗式填充 (已用量从 0 向 100 增长);
+/// 正常绿渐变, >= 85% 橙渐变, >= 95% 红渐变. 出现动画尊重 Reduce Motion.
 private struct MeterBar: View {
-    let remainingFraction: Double
-    let isWarning: Bool
+    let usedFraction: Double
+    let level: MeterLevel
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var appeared = false
@@ -149,7 +172,10 @@ private struct MeterBar: View {
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .fill(Color.black.opacity(0.07))
+                    .fill(Color.adaptive(
+                        light: Color.black.opacity(0.07),
+                        dark: Color.white.opacity(0.12)
+                    ))
                 RoundedRectangle(cornerRadius: 3, style: .continuous)
                     .fill(fillGradient)
                     .frame(width: proxy.size.width * fillWidth)
@@ -167,13 +193,19 @@ private struct MeterBar: View {
         guard appeared else {
             return 0
         }
-        return CGFloat(min(max(remainingFraction, 0), 1))
+        return CGFloat(min(max(usedFraction, 0), 1))
     }
 
     private var fillGradient: LinearGradient {
-        let colors = isWarning
-            ? [Color(hex: "#ff9f0a"), Color(hex: "#ffd60a")]
-            : [Color(hex: "#30d158"), Color(hex: "#66d4a3")]
+        let colors: [Color]
+        switch level {
+        case .normal:
+            colors = [Color(hex: "#30d158"), Color(hex: "#66d4a3")]
+        case .warning:
+            colors = [Color(hex: "#ff9f0a"), Color(hex: "#ffd60a")]
+        case .critical:
+            colors = [Color(hex: "#ff453a"), Color(hex: "#ff6961")]
+        }
         return LinearGradient(colors: colors, startPoint: .leading, endPoint: .trailing)
     }
 }
@@ -212,17 +244,26 @@ private struct CodexAccountCard: View {
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 6)
-        .background(Color.white.opacity(0.35), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(
+            Color.adaptive(
+                light: Color.white.opacity(0.35),
+                dark: Color.white.opacity(0.10)
+            ),
+            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+        )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.5), lineWidth: 1)
+                .strokeBorder(Color.adaptive(
+                    light: Color.white.opacity(0.5),
+                    dark: Color.white.opacity(0.18)
+                ), lineWidth: 1)
         )
     }
 }
 
 // MARK: - plan chip
 
-/// 套餐胶囊: 9pt, 白底描边, 与 mockup .plan 一致.
+/// 套餐胶囊: 9pt, 白底描边, 与 mockup .plan 一致; 深色下退化为低透明白底.
 private struct PlanChip: View {
     let text: String
 
@@ -232,8 +273,14 @@ private struct PlanChip: View {
             .foregroundStyle(Color.primary.opacity(0.7))
             .padding(.horizontal, 6)
             .padding(.vertical, 1)
-            .background(Color.white.opacity(0.55), in: Capsule())
-            .overlay(Capsule().strokeBorder(Color.white.opacity(0.6), lineWidth: 1))
+            .background(Color.adaptive(
+                light: Color.white.opacity(0.55),
+                dark: Color.white.opacity(0.12)
+            ), in: Capsule())
+            .overlay(Capsule().strokeBorder(Color.adaptive(
+                light: Color.white.opacity(0.6),
+                dark: Color.white.opacity(0.2)
+            ), lineWidth: 1))
     }
 }
 
@@ -253,12 +300,20 @@ private extension Color {
             blue: Double(rgba & 0xff) / 255
         )
     }
+
+    /// 深浅色自适应: 浅色外观用 light, 深色外观用 dark.
+    static func adaptive(light: Color, dark: Color) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return NSColor(isDark ? dark : light)
+        })
+    }
 }
 
 // MARK: - 预览 fixture
 
 private extension SubscriptionViewModel {
-    /// 覆盖 mockup 全部数据形态: 多窗口 provider, ownRow, 低剩余告警, extraText,
+    /// 覆盖 mockup 全部数据形态: 多窗口 provider, ownRow, 高消耗橙/红告警, extraText,
     /// Codex 多账号子卡 (含账号级 error note), error 段 note, 余额沉底段.
     static var previewFixture: SubscriptionViewModel {
         SubscriptionViewModel(sections: [
@@ -313,7 +368,7 @@ private extension SubscriptionViewModel {
                         note: nil,
                         windows: [
                             SubscriptionWindowRow(label: "每 5 小时", usedPercent: 57, resetText: "16:00", ownRow: false),
-                            SubscriptionWindowRow(label: "每周", usedPercent: 92, resetText: "2 天后", ownRow: false),
+                            SubscriptionWindowRow(label: "每周", usedPercent: 96, resetText: "2 天后", ownRow: false),
                         ]
                     ),
                     CodexAccountViewModel(

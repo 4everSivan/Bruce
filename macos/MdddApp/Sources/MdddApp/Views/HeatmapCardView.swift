@@ -46,14 +46,14 @@ struct HeatmapCardView: View {
             Spacer()
             Text(viewModel.captionText)
                 .font(.system(size: 9.5))
-                .foregroundStyle(Color(red: 60 / 255, green: 60 / 255, blue: 67 / 255).opacity(0.8))
+                .foregroundStyle(Self.chipInk)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 2.5)
                 .background(
                     Capsule()
-                        .fill(Color.white.opacity(0.55))
+                        .fill(Self.chipBackground)
                         .overlay(
-                            Capsule().strokeBorder(Color.white.opacity(0.65), lineWidth: 1)
+                            Capsule().strokeBorder(Self.chipStroke, lineWidth: 1)
                         )
                 )
         }
@@ -69,7 +69,7 @@ struct HeatmapCardView: View {
                 .foregroundStyle(
                     LinearGradient(
                         colors: [
-                            Color(hex: "#1c1c1e"),
+                            Color.adaptive(light: Color(hex: "#1c1c1e"), dark: Color(hex: "#ffffff")),
                             moduleAccent,
                         ],
                         startPoint: .topLeading,
@@ -121,14 +121,14 @@ struct HeatmapCardView: View {
                 Text(chip)
                     .font(.system(size: 9.5))
                     .monospacedDigit()
-                    .foregroundStyle(Color(red: 60 / 255, green: 60 / 255, blue: 67 / 255).opacity(0.8))
+                    .foregroundStyle(Self.chipInk)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 2.5)
                     .background(
                         Capsule()
-                            .fill(Color.white.opacity(0.55))
+                            .fill(Self.chipBackground)
                             .overlay(
-                                Capsule().strokeBorder(Color.white.opacity(0.65), lineWidth: 1)
+                                Capsule().strokeBorder(Self.chipStroke, lineWidth: 1)
                             )
                     )
             }
@@ -138,6 +138,21 @@ struct HeatmapCardView: View {
 
     // MARK: 模块配置
 
+    /// chips 与账号胶囊的文字色: 浅色为 mockup 的 #3c3c43 80%, 深色为白 80%.
+    private static let chipInk = Color.adaptive(
+        light: Color(hex: "#3c3c43").opacity(0.8),
+        dark: Color.white.opacity(0.8)
+    )
+    /// chips 底色: 浅色半透明白, 深色退化为低透明白.
+    private static let chipBackground = Color.adaptive(
+        light: Color.white.opacity(0.55),
+        dark: Color.white.opacity(0.12)
+    )
+    private static let chipStroke = Color.adaptive(
+        light: Color.white.opacity(0.65),
+        dark: Color.white.opacity(0.2)
+    )
+
     private var isGitLab: Bool {
         viewModel.module == .gitlab
     }
@@ -146,9 +161,12 @@ struct HeatmapCardView: View {
         isGitLab ? "GitLab 动态" : "GitHub 贡献"
     }
 
-    /// hero 渐变终点色: github 主绿 / gitlab 主橙.
+    /// hero 渐变终点色: github 主绿 / gitlab 主橙; 深色下用各自的浅阶保证可见.
     private var moduleAccent: Color {
-        Color(hex: isGitLab ? "#e8590c" : "#30a14e")
+        Color.adaptive(
+            light: Color(hex: isGitLab ? "#e8590c" : "#30a14e"),
+            dark: Color(hex: isGitLab ? "#f69546" : "#40c463")
+        )
     }
 
     /// 强度 1...4 色阶; 0 级与占位格单独处理.
@@ -170,13 +188,16 @@ struct HeatmapCardView: View {
     }
 
     private func cellColor(_ cell: HeatmapCell) -> Color {
-        // 周对齐补位格: 半透明灰白.
+        // 周对齐补位格: 半透明灰白, 深色下退化为低透明白.
         if cell.isPlaceholder {
-            return Color.white.opacity(0.35)
+            return Color.adaptive(light: Color.white.opacity(0.35), dark: Color.white.opacity(0.10))
         }
-        // 0 级 (有日期无活动): mockup 的浅底色.
+        // 0 级 (有日期无活动): mockup 的浅底色, 深色下用低透明白格.
         if cell.intensity <= 0 {
-            return Color(hex: isGitLab ? "#f3ece6" : "#ebedf0")
+            return Color.adaptive(
+                light: Color(hex: isGitLab ? "#f3ece6" : "#ebedf0"),
+                dark: Color.white.opacity(0.08)
+            )
         }
         return intensityPalette[min(cell.intensity, 4) - 1]
     }
@@ -198,6 +219,14 @@ private extension Color {
             green: Double((rgb >> 8) & 0xff) / 255,
             blue: Double(rgb & 0xff) / 255
         )
+    }
+
+    /// 深浅色自适应: 浅色外观用 light, 深色外观用 dark.
+    static func adaptive(light: Color, dark: Color) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return NSColor(isDark ? dark : light)
+        })
     }
 }
 

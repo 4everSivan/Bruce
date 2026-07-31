@@ -63,13 +63,17 @@ package enum PanelFormat {
         return trimDecimal(String(format: "%.1f", Double(value) / 1_000_000)) + "M"
     }
 
-    /// 成本文案, 至少两位小数, 最多三位 (mockup "≈ $0.375").
+    /// 美元转人民币汇率; 暂为固定常量, 后续可做成配置项.
+    package static let cnyPerUsd: Double = 7.2
+
+    /// 成本文案: 输入 USD, 按 cnyPerUsd 换算为人民币, 至少两位小数, 最多三位 (如 "≈ ¥2.70").
     package static func costText(_ usd: Double) -> String {
-        var text = String(format: "%.3f", usd)
+        let cny = usd * cnyPerUsd
+        var text = String(format: "%.3f", cny)
         while text.hasSuffix("0"), text.components(separatedBy: ".").last.map({ $0.count > 2 }) ?? false {
             text.removeLast()
         }
-        return "≈ $" + text
+        return "≈ ¥" + text
     }
 
     /// 余额文案, 左右排版右侧大数字 (mockup "¥ 38.21").
@@ -1016,9 +1020,10 @@ package struct PanelViewModelMapper: Sendable {
     private static func parseResetDate(_ value: JSONValue) -> Date? {
         switch value {
         case .integer(let seconds):
-            return Date(timeIntervalSince1970: TimeInterval(seconds))
+            // 非正 epoch (如火山未开始窗口的 ResetTimestamp=-1) 视为无重置时间, 避免解析成 1970.
+            return seconds > 0 ? Date(timeIntervalSince1970: TimeInterval(seconds)) : nil
         case .double(let seconds):
-            return Date(timeIntervalSince1970: seconds)
+            return seconds > 0 ? Date(timeIntervalSince1970: seconds) : nil
         case .string(let text):
             return parseISODate(text)
         default:

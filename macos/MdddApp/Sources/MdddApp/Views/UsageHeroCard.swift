@@ -30,7 +30,8 @@ struct UsageHeroCard: View {
             sectionHeader
                 .padding(.top, 12)
             usageChart
-                .padding(.top, 6)
+                // 小节标题与柱顶总量标注之间留足间距, 避免高柱标注遮挡标题.
+                .padding(.top, 12)
             dateAxis
                 .padding(.top, 3)
             legendRow
@@ -112,7 +113,7 @@ struct UsageHeroCard: View {
     // MARK: 图区小节标题
 
     private var sectionHeader: some View {
-        Text("14 日 · 按 Agent 堆叠")
+        Text("14 日")
             .font(.system(size: 10, weight: .semibold))
             .tracking(0.4)
             .foregroundStyle(Self.faint)
@@ -221,19 +222,29 @@ struct UsageHeroCard: View {
         .foregroundStyle(Self.legendInk)
     }
 
-    // MARK: 颜色常量 (换算自 mockup CSS)
+    // MARK: 颜色常量 (浅色值换算自 mockup CSS, 深色值见 adaptive 调用)
 
     private static let accent = Color(hex: "#0a84ff")
-    private static let ink = Color(hex: "#1c1c1e")
-    private static let subdued = Color(hex: "#3c3c43").opacity(0.5)
-    private static let faint = Color(hex: "#3c3c43").opacity(0.55)
-    private static let legendInk = Color(hex: "#3c3c43").opacity(0.75)
-    private static let hairline = Color.black.opacity(0.07)
+    private static let ink = Color.primary
+    private static let subdued = Color.primary.opacity(0.5)
+    private static let faint = Color.primary.opacity(0.55)
+    private static let legendInk = Color.primary.opacity(0.75)
+    private static let hairline = Color.adaptive(
+        light: Color.black.opacity(0.07),
+        dark: Color.white.opacity(0.12)
+    )
     /// mockup 渐变 135deg 从 #1c1c1e (30%) 到 #0a84ff (130%); 终点超出部分按 1.0 收敛.
+    /// 深色下起点改为白色系, 终点改为蓝色浅阶, 保证在深色玻璃上可见.
     private static let heroGradient = LinearGradient(
         stops: [
-            .init(color: Color(hex: "#1c1c1e"), location: 0.3),
-            .init(color: Color(hex: "#0a84ff"), location: 1.0),
+            .init(
+                color: Color.adaptive(light: Color(hex: "#1c1c1e"), dark: Color(hex: "#ffffff")),
+                location: 0.3
+            ),
+            .init(
+                color: Color.adaptive(light: Color(hex: "#0a84ff"), dark: Color(hex: "#66b2ff")),
+                location: 1.0
+            ),
         ],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
@@ -276,7 +287,8 @@ private struct LiveIndicator: View {
     }
 
     private static let green = Color(hex: "#30d158")
-    private static let textGreen = Color(hex: "#0a7d3b")
+    /// 深绿文字在深色玻璃上对比度不足, 深色下退回亮绿.
+    private static let textGreen = Color.adaptive(light: Color(hex: "#0a7d3b"), dark: Color(hex: "#30d158"))
 }
 
 // MARK: - 十六进制颜色
@@ -295,6 +307,14 @@ private extension Color {
             green: Double((value >> 8) & 0xff) / 255,
             blue: Double(value & 0xff) / 255
         )
+    }
+
+    /// 深浅色自适应: 浅色外观用 light, 深色外观用 dark.
+    static func adaptive(light: Color, dark: Color) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return NSColor(isDark ? dark : light)
+        })
     }
 }
 

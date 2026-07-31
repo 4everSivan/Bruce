@@ -92,10 +92,10 @@
 | `python3 -c 'import ast,pathlib; [ast.parse(p.read_text()) for p in pathlib.Path(".").glob("*/collector/*.py")]'` | 无外部调用的 Python 语法验证 |
 | `node --check -` | 对从 Widget 提取的 JavaScript 执行语法验证 |
 | `zsh scripts/verify-local.sh` | 标准本地验证: Python 语法 + pytest + swift build + 全部 8 个 Harness |
-| `python3 -m pytest tests/` | Python 单元与契约测试 (bridge, collector, widget 安全); 61 项 |
+| `python3 -m pytest tests/` | Python 单元与契约测试 (bridge, collector, widget 安全); 63 项 |
 | `swift build --package-path macos/MdddApp` | macOS App 与 MdddOnboardingCore 构建验证 |
-| `swift run --package-path macos/MdddApp MdddOnboardingCoreHarness` | Onboarding Core 边界测试 (进程, SQLite, Keychain, Gate, 订阅凭证); 102 项 |
-| `swift run --package-path macos/MdddApp PanelViewModelHarness` | 面板 view model 映射边界测试 (措辞, 分组, 条件渲染, 热力图); 23 项 |
+| `swift run --package-path macos/MdddApp MdddOnboardingCoreHarness` | Onboarding Core 边界测试 (进程, SQLite, Keychain, Gate, 订阅凭证, 设备码登录, 令牌轮换合并); 123 项 |
+| `swift run --package-path macos/MdddApp PanelViewModelHarness` | 面板 view model 映射边界测试 (措辞, 分组, 条件渲染, 热力图); 25 项 |
 | 尚未配置 | lint 和 CI 命令 |
 
 执行前三个实时命令前必须应用 `constitution.md` 的 Production Operation Mode. 静态分析或普通代码审查不得把实时采集作为默认验证步骤.

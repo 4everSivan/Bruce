@@ -81,15 +81,19 @@ public struct AsyncProcessProbe: Sendable {
     }
 
     /// 运行指定可执行文件并返回结构化结果.
+    /// standardInput 非空时经管道写入子进程 stdin (不进入 argv 和磁盘),
+    /// 用于 `gh auth login --with-token` 这类只从 stdin 收凭证的交互.
     public func run(
         executablePath: String,
-        arguments: [String]
+        arguments: [String],
+        standardInput: String? = nil
     ) async -> ProcessProbeResult {
         return await withTaskGroup(of: ProcessProbeResult.self) { group in
             group.addTask { [self] in
                 return await self.runProcess(
                     executablePath: executablePath,
-                    arguments: arguments
+                    arguments: arguments,
+                    standardInput: standardInput
                 )
             }
 
@@ -112,7 +116,8 @@ public struct AsyncProcessProbe: Sendable {
 
     private func runProcess(
         executablePath: String,
-        arguments: [String]
+        arguments: [String],
+        standardInput: String?
     ) async -> ProcessProbeResult {
         guard FileManager.default.isExecutableFile(atPath: executablePath) else {
             return .launchFailed
@@ -125,6 +130,17 @@ public struct AsyncProcessProbe: Sendable {
         let stderrPipe = Pipe()
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
+
+        if let standardInput {
+            let pipe = Pipe()
+            process.standardInput = pipe
+            // 启动后异步写入并关闭写端, 让子进程读到 EOF
+            let data = Data(standardInput.utf8)
+            DispatchQueue.global(qos: .utility).async {
+                try? pipe.fileHandleForWriting.write(contentsOf: data)
+                try? pipe.fileHandleForWriting.close()
+            }
+        }
 
         let stdoutCollector = BoundedOutputCollector(limit: maxOutputBytes)
         let stderrCollector = BoundedOutputCollector(

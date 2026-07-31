@@ -32,7 +32,7 @@ extension CollectorRunner: CollectorExecuting {}
 // MARK: - Scheduler configuration
 
 struct SchedulerConfiguration: Sendable {
-    let refreshInterval: TimeInterval
+    var refreshInterval: TimeInterval
     let staleAfter: TimeInterval
     let maxBackoffRetries: Int
     let baseBackoffSeconds: Double
@@ -80,7 +80,7 @@ package final class RefreshScheduler {
     private let store: ArtifactStore
     private let clock: RefreshClock
     private let timerScheduler: RunnerTimerScheduling
-    private let configuration: SchedulerConfiguration
+    private var configuration: SchedulerConfiguration
     private let jitterProvider: (Double) -> Double
     private let registerWakeNotifications: Bool
     /// 可选运行输入提供器; nil 时保持空 context/credentials 的旧行为.
@@ -96,6 +96,8 @@ package final class RefreshScheduler {
 
     package var onStatusChange: ((CollectorModule, ModuleRunState, String?) -> Void)?
     package var onArtifactChange: ((CollectorModule, JSONValue?) -> Void)?
+    /// Collector 轮换令牌候选 (仅 App 模式非空); 由宿主写回 Keychain.
+    package var onCredentialUpdates: ((CollectorModule, [JSONValue]) -> Void)?
 
     package convenience init(
         executor: CollectorRunner,
@@ -220,6 +222,20 @@ package final class RefreshScheduler {
         } else if !enabled {
             timers[module]?.cancel()
             timers[module] = nil
+        }
+    }
+
+    /// 更新自动刷新间隔 (用户配置变更后调用).
+    /// 沿用 setAutoRefresh 的更新模式: 按新间隔重排已启用 idle 模块的
+    /// 计时器 (重启计时); 距上次成功已超过新间隔的模块 delay 为 0,
+    /// 立即触发一次刷新.
+    package func updateRefreshInterval(_ interval: TimeInterval) {
+        configuration.refreshInterval = interval
+        for module in CollectorModule.allCases {
+            guard let state = states[module],
+                  state.enabled, state.autoRefreshEnabled,
+                  state.phase == .idle else { continue }
+            scheduleNextRefresh(for: module)
         }
     }
 
@@ -465,6 +481,10 @@ package final class RefreshScheduler {
                     shouldScheduleNext = scheduleNext
                 }
             } else {
+                // 轮换令牌先于 artifact 发布写回, 即使本次发布失败也不丢失新令牌.
+                if !response.credentialUpdates.isEmpty {
+                    onCredentialUpdates?(module, response.credentialUpdates)
+                }
                 if let artifact = response.artifact {
                     do {
                         try store.publish(artifact, for: module, attemptedAt: now)

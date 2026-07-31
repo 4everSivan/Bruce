@@ -232,10 +232,12 @@ struct PanelViewModelHarness {
         try heatmapStatsChipsMapDirectly()
         try conditionalRenderingHidesUnconfiguredCards()
         try resetTextVariants()
+        try negativeResetEpochYieldsEmptyResetText()
         try tokenAndBalanceFormatting()
+        try costTextConvertsUsdToCny()
         try unknownAgentColorIsStable()
         try emptyArtifactsProduceDiagnostics()
-        print("PanelViewModel tests passed: 23")
+        print("PanelViewModel tests passed: 25")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -467,7 +469,7 @@ struct PanelViewModelHarness {
         let usage = vm.usage
         try expect(usage?.totalTokens == 230000, "总量聚合错误: \(usage?.totalTokens ?? -1)")
         try expect(usage?.totalTokensText == "230K", "K 格式化错误: \(usage?.totalTokensText ?? "")")
-        try expect(usage?.costText == "≈ $0.375", "成本文案错误: \(usage?.costText ?? "nil")")
+        try expect(usage?.costText == "≈ ¥2.70", "成本文案错误: \(usage?.costText ?? "nil")")
         let labels = usage?.breakdown.map(\.label) ?? []
         try expect(labels == ["输入", "输出", "缓存读取", "缓存创建"], "细分顺序错误: \(labels)")
         try expect(usage?.breakdown[0].value == 159000, "输入聚合错误")
@@ -793,6 +795,26 @@ struct PanelViewModelHarness {
         try expect(texts[3] == "", "无 resetsAt 应为空串")
     }
 
+    // 防御: 非正 epoch (如火山未开始窗口的 ResetTimestamp=-1) 不得解析成 1970 误判「已到期」.
+    private static func negativeResetEpochYieldsEmptyResetText() throws {
+        let service = makeService(
+            id: "volcengine",
+            name: "火山引擎（Coding Plan）",
+            windows: [
+                makeWindow(label: "5小时窗口", usedPercent: 0, resetsAt: .integer(-1)),
+                makeWindow(label: "每周窗口", usedPercent: 10, resetsAt: .double(0)),
+            ]
+        )
+        let vm = try subscriptionSectionsWithDiagnostics(services: [service])
+        let texts = vm.sections[0].windows.map(\.resetText)
+        try expect(texts == ["", ""], "resetsAt 非正数应为空串: \(texts)")
+        let dropped = vm.diagnostics.filter {
+            if case .windowDropped = $0 { return true }
+            return false
+        }
+        try expect(dropped.isEmpty, "resetsAt 非正数不应产生诊断: \(vm.diagnostics)")
+    }
+
     // K 格式化与余额格式化边界.
     private static func tokenAndBalanceFormatting() throws {
         try expect(PanelFormat.tokenCount(0) == "0", "0 格式化错误")
@@ -802,8 +824,15 @@ struct PanelViewModelHarness {
         try expect(PanelFormat.tokenCount(1_200_000) == "1.2M", "M 格式化错误")
         try expect(PanelFormat.balanceText(38.2, currency: "CNY") == "¥ 38.20", "CNY 格式化错误")
         try expect(PanelFormat.balanceText(5, currency: "USD") == "$ 5.00", "USD 格式化错误")
-        try expect(PanelFormat.costText(0.4) == "≈ $0.40", "成本两位下限错误")
-        try expect(PanelFormat.costText(0.375) == "≈ $0.375", "成本三位错误")
+        try expect(PanelFormat.costText(0.4) == "≈ ¥2.88", "成本两位下限错误")
+        try expect(PanelFormat.costText(0.375) == "≈ ¥2.70", "成本小数裁剪错误")
+    }
+
+    // 成本按 cnyPerUsd (7.2) 从 USD 换算为 CNY.
+    private static func costTextConvertsUsdToCny() throws {
+        try expect(PanelFormat.costText(1.0) == "≈ ¥7.20", "1 USD 应换算为 ¥7.20")
+        try expect(PanelFormat.costText(2.5) == "≈ ¥18.00", "2.5 USD 应换算为 ¥18.00")
+        try expect(PanelFormat.costText(0.05) == "≈ ¥0.36", "0.05 USD 应换算为 ¥0.36")
     }
 
     // 未知 agent 颜色稳定落在调色板内.

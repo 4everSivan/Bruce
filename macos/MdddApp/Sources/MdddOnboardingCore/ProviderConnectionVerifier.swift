@@ -58,17 +58,13 @@ private final class GitLabRedirectGuard: NSObject, URLSessionTaskDelegate {
 /// 原始 CLI 输出, 响应正文和 header 不进入日志或诊断.
 public struct ProviderConnectionVerifier: Sendable {
     private let statusProbe: AsyncProcessProbe
-    private let loginProbe: AsyncProcessProbe
     private let requestTimeout: TimeInterval
 
     public init(
         statusTimeout: TimeInterval = 10,
-        loginTimeout: TimeInterval = 300,
         requestTimeout: TimeInterval = 15
     ) {
         self.statusProbe = AsyncProcessProbe(timeout: statusTimeout)
-        // 登录是交互流程, 使用独立的更长超时
-        self.loginProbe = AsyncProcessProbe(timeout: loginTimeout)
         self.requestTimeout = requestTimeout
     }
 
@@ -91,24 +87,6 @@ public struct ProviderConnectionVerifier: Sendable {
             return .notChecked
         case .nonZeroExit, .timedOut, .launchFailed:
             return hasConnectedBefore ? .expired : .pendingAuthorization
-        }
-    }
-
-    /// 通过 gh 官方 web 流程登录. 支持调用方取消, 使用独立交互超时.
-    /// 一次性设备码和 CLI 原始输出只存在于本次进程会话, 不写日志.
-    public func loginGitHub(ghPath: String) async -> ConnectionStatus {
-        let result = await loginProbe.run(
-            executablePath: ghPath,
-            arguments: ["auth", "login", "--web", "--hostname", "github.com"]
-        )
-        switch result {
-        case .success:
-            return .connected
-        case .cancelled, .timedOut:
-            // 用户取消或交互超时: 保持未连接
-            return .notChecked
-        case .nonZeroExit, .launchFailed:
-            return .pendingAuthorization
         }
     }
 

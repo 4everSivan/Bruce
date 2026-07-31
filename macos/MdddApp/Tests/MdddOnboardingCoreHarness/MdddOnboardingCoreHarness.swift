@@ -117,6 +117,7 @@ struct MdddOnboardingCoreHarness {
         try configStoreLoadsV1WithSubscriptionDefaults()
         try configStoreRejectsNewerSchemaV3()
         try configStoreSubscriptionProvidersRoundTrip()
+        try configRefreshIntervalDecodeAndFallback()
         try credentialStoreSubscriptionAccountsRoundTrip()
         try keychainSubscriptionAccountsRoundTrip()
         try await verifierDeepSeekConnectedWithMockSession()
@@ -142,7 +143,27 @@ struct MdddOnboardingCoreHarness {
         try await ccSwitchVolcImportMissingProviderRow()
         try await ccSwitchVolcImportMissingFile()
         try subscriptionConfigApplyingVerificationTransitions()
-        print("MdddOnboardingCore tests passed: 102")
+        try githubDeviceStartRequestAndParse()
+        try await githubDeviceStartFailClosed()
+        try githubDevicePollOutcomeMappings()
+        try await githubDeviceFullFlowMockSession()
+        try await githubDeviceDeniedAndTimeoutPaths()
+        try await probeStandardInputPipesToProcess()
+        try codexPKCEVerifierFormat()
+        try codexDeviceStartRequestAndParse()
+        try codexDevicePollAndExchangeParsing()
+        try codexIDTokenClaimsParsing()
+        try await codexDeviceFullFlowStoresAccount()
+        try await codexDeviceErrorPaths()
+        try await codexDeviceExpiredSkipsPolling()
+        try rotationMergeMapsKnownProviders()
+        try rotationMergeKimiFlatTokens()
+        try rotationMergeCodexPreservesOtherAccounts()
+        try rotationMergeAntigravityTokenSubObject()
+        try rotationMergeFiltersKeysAndRejectsUnknown()
+        try configAppearanceModeDecodeAndFallback()
+        try configGlassStyleDecodeAndFallback()
+        print("MdddOnboardingCore tests passed: 123")
     }
 
     // MARK: - Python version parsing
@@ -1444,6 +1465,193 @@ struct MdddOnboardingCoreHarness {
         )
     }
 
+    /// refreshIntervalMinutes: 缺键, 显式 null 与非法值一律回落默认 30 分钟,
+    /// 合法值 (5/15/30/60) 原样保留; 原子读写往返一致.
+    private static func configRefreshIntervalDecodeAndFallback() throws {
+        // 缺键 -> nil -> 默认 30
+        let missing = try JSONDecoder().decode(
+            OnboardingConfiguration.self,
+            from: Data(#"{"schemaVersion": 2}"#.utf8)
+        )
+        try coreExpect(missing.refreshIntervalMinutes == nil, "缺键必须为 nil")
+        try coreExpect(
+            missing.resolvedRefreshIntervalMinutes == 30,
+            "缺键必须回落默认 30 分钟"
+        )
+
+        // 显式 null (用户真实配置中已存在该键) -> nil -> 默认 30
+        let explicitNull = try JSONDecoder().decode(
+            OnboardingConfiguration.self,
+            from: Data(
+                #"{"schemaVersion": 2, "refreshIntervalMinutes": null}"#.utf8
+            )
+        )
+        try coreExpect(
+            explicitNull.refreshIntervalMinutes == nil,
+            "显式 null 必须按 nil 处理"
+        )
+        try coreExpect(
+            explicitNull.resolvedRefreshIntervalMinutes == 30,
+            "显式 null 必须回落默认 30 分钟"
+        )
+
+        // 非法值: 原始值保留可诊断, resolved 回落默认 30
+        let invalid = try JSONDecoder().decode(
+            OnboardingConfiguration.self,
+            from: Data(#"{"schemaVersion": 2, "refreshIntervalMinutes": 7}"#.utf8)
+        )
+        try coreExpect(
+            invalid.refreshIntervalMinutes == 7,
+            "非法原始值必须保留"
+        )
+        try coreExpect(
+            invalid.resolvedRefreshIntervalMinutes == 30,
+            "非法值必须回落默认 30 分钟"
+        )
+
+        // 合法值原样生效
+        let valid = try JSONDecoder().decode(
+            OnboardingConfiguration.self,
+            from: Data(
+                #"{"schemaVersion": 2, "refreshIntervalMinutes": 15}"#.utf8
+            )
+        )
+        try coreExpect(
+            valid.resolvedRefreshIntervalMinutes == 15,
+            "合法值 15 必须原样生效"
+        )
+
+        // 原子读写往返
+        let tempDir = makeTempDir("config-refresh-interval")
+        try FileManager.default.createDirectory(
+            at: tempDir, withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let store = try OnboardingConfigurationStore(configDirectory: tempDir)
+        var config = OnboardingConfiguration()
+        config.refreshIntervalMinutes = 60
+        try store.save(config)
+        try coreExpect(
+            store.load()?.refreshIntervalMinutes == 60,
+            "refreshIntervalMinutes 往返必须一致"
+        )
+    }
+
+    /// appearanceMode: 缺键, 显式 null 与非法字符串一律回落跟随系统,
+    /// 合法值原样保留; 原子读写往返一致.
+    private static func configAppearanceModeDecodeAndFallback() throws {
+        // 缺键 -> nil -> 跟随系统
+        let missing = try JSONDecoder().decode(
+            OnboardingConfiguration.self,
+            from: Data(#"{"schemaVersion": 2}"#.utf8)
+        )
+        try coreExpect(missing.appearanceMode == nil, "缺键必须为 nil")
+        try coreExpect(
+            missing.resolvedAppearanceMode == .system,
+            "缺键必须回落跟随系统"
+        )
+
+        // 显式 null -> nil -> 跟随系统
+        let explicitNull = try JSONDecoder().decode(
+            OnboardingConfiguration.self,
+            from: Data(#"{"schemaVersion": 2, "appearanceMode": null}"#.utf8)
+        )
+        try coreExpect(
+            explicitNull.appearanceMode == nil,
+            "显式 null 必须按 nil 处理"
+        )
+
+        // 非法字符串 -> nil -> 跟随系统, 不拒绝加载
+        let invalid = try JSONDecoder().decode(
+            OnboardingConfiguration.self,
+            from: Data(#"{"schemaVersion": 2, "appearanceMode": "neon"}"#.utf8)
+        )
+        try coreExpect(
+            invalid.appearanceMode == nil,
+            "非法字符串必须按 nil 处理"
+        )
+        try coreExpect(
+            invalid.resolvedAppearanceMode == .system,
+            "非法值必须回落跟随系统"
+        )
+
+        // 合法值原样生效
+        let valid = try JSONDecoder().decode(
+            OnboardingConfiguration.self,
+            from: Data(#"{"schemaVersion": 2, "appearanceMode": "dark"}"#.utf8)
+        )
+        try coreExpect(
+            valid.resolvedAppearanceMode == .dark,
+            "合法值 dark 必须原样生效"
+        )
+
+        // 原子读写往返
+        let tempDir = makeTempDir("config-appearance")
+        try FileManager.default.createDirectory(
+            at: tempDir, withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let store = try OnboardingConfigurationStore(configDirectory: tempDir)
+        var config = OnboardingConfiguration()
+        config.appearanceMode = .light
+        try store.save(config)
+        try coreExpect(
+            store.load()?.appearanceMode == .light,
+            "appearanceMode 往返必须一致"
+        )
+    }
+
+    /// glassStyle: 缺键, 显式 null 与非法字符串一律回落标准玻璃,
+    /// 合法值原样保留; 原子读写往返一致.
+    private static func configGlassStyleDecodeAndFallback() throws {
+        // 缺键 -> nil -> 标准玻璃
+        let missing = try JSONDecoder().decode(
+            OnboardingConfiguration.self,
+            from: Data(#"{"schemaVersion": 2}"#.utf8)
+        )
+        try coreExpect(missing.glassStyle == nil, "缺键必须为 nil")
+        try coreExpect(
+            missing.resolvedGlassStyle == .regular,
+            "缺键必须回落标准玻璃"
+        )
+
+        // 非法字符串 -> nil -> 标准玻璃, 不拒绝加载
+        let invalid = try JSONDecoder().decode(
+            OnboardingConfiguration.self,
+            from: Data(#"{"schemaVersion": 2, "glassStyle": "neon"}"#.utf8)
+        )
+        try coreExpect(invalid.glassStyle == nil, "非法字符串必须按 nil 处理")
+        try coreExpect(
+            invalid.resolvedGlassStyle == .regular,
+            "非法值必须回落标准玻璃"
+        )
+
+        // 合法值原样生效
+        let valid = try JSONDecoder().decode(
+            OnboardingConfiguration.self,
+            from: Data(#"{"schemaVersion": 2, "glassStyle": "clear"}"#.utf8)
+        )
+        try coreExpect(
+            valid.resolvedGlassStyle == .clear,
+            "合法值 clear 必须原样生效"
+        )
+
+        // 原子读写往返
+        let tempDir = makeTempDir("config-glass-style")
+        try FileManager.default.createDirectory(
+            at: tempDir, withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let store = try OnboardingConfigurationStore(configDirectory: tempDir)
+        var config = OnboardingConfiguration()
+        config.glassStyle = .material
+        try store.save(config)
+        try coreExpect(
+            store.load()?.glassStyle == .material,
+            "glassStyle 往返必须一致"
+        )
+    }
+
     // MARK: - 订阅凭证 account 键 (内存实现)
 
     /// 七个新 account 键的增删改查与隔离; PAT 键不受影响.
@@ -2121,6 +2329,797 @@ struct MdddOnboardingCoreHarness {
         try coreExpect(
             relogin.verificationStatus == .needsRelogin,
             "needsRelogin 状态必须保留"
+        )
+    }
+
+    // MARK: - 设备码登录 (全部 mock session, 禁真实外网)
+
+    /// 按 URL 分桶计数的假 URLSession, handler 收到该 URL 第 N 次调用序号.
+    private final class CountingMockSession: URLSessionProtocol, @unchecked Sendable {
+        private let lock = NSLock()
+        private var counts: [String: Int] = [:]
+        private var recordedRequests: [URLRequest] = []
+        let handler: (URLRequest, Int) throws -> (Data, URLResponse)
+
+        init(handler: @escaping (URLRequest, Int) throws -> (Data, URLResponse)) {
+            self.handler = handler
+        }
+
+        var requests: [URLRequest] {
+            lock.lock()
+            defer { lock.unlock() }
+            return recordedRequests
+        }
+
+        func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+            let nth = record(request)
+            return try handler(request, nth)
+        }
+
+        /// 记录请求并返回该 URL 的调用序号; 同步方法避开 async 上下文锁限制.
+        private func record(_ request: URLRequest) -> Int {
+            lock.lock()
+            defer { lock.unlock() }
+            let key = request.url?.absoluteString ?? ""
+            counts[key, default: 0] += 1
+            recordedRequests.append(request)
+            return counts[key] ?? 0
+        }
+    }
+
+    /// 线程安全的值盒子, 供 @Sendable 回调回传捕获.
+    private final class LockedBox<Value>: @unchecked Sendable {
+        private let lock = NSLock()
+        private var storage: Value
+
+        init(_ value: Value) { storage = value }
+
+        func set(_ value: Value) {
+            lock.lock()
+            storage = value
+            lock.unlock()
+        }
+
+        var value: Value {
+            lock.lock()
+            defer { lock.unlock() }
+            return storage
+        }
+    }
+
+    private static func httpResponse(
+        _ request: URLRequest, _ code: Int
+    ) -> URLResponse {
+        HTTPURLResponse(
+            url: request.url!, statusCode: code,
+            httpVersion: nil, headerFields: nil
+        )!
+    }
+
+    /// 构造未签名的测试 JWT (仅 payload 有效).
+    private static func makeUnsignedJWT(payload: [String: Any]) throws -> String {
+        let data = try JSONSerialization.data(
+            withJSONObject: payload, options: [.sortedKeys]
+        )
+        let b64 = data.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        return "eyJhbGciOiJub25lIn0.\(b64)."
+    }
+
+    private static func requestBodyString(_ request: URLRequest?) -> String {
+        guard let data = request?.httpBody else { return "" }
+        return String(data: data, encoding: .utf8) ?? ""
+    }
+
+    // MARK: GitHub 设备码流程
+
+    /// 申请请求指向 device/code 且带 gh client_id; 解析字段齐备.
+    private static func githubDeviceStartRequestAndParse() throws {
+        let request = GitHubDeviceFlow.startRequest()
+        try coreExpect(request.httpMethod == "POST", "必须是 POST")
+        try coreExpect(
+            request.url == GitHubDeviceFlow.deviceCodeURL,
+            "必须指向 device/code, got \(String(describing: request.url))"
+        )
+        let body = requestBodyString(request)
+        try coreExpect(
+            body.contains("client_id=178c6fc778ccc68e1d6a"),
+            "body 必须带 gh client_id, got \(body)"
+        )
+        try coreExpect(body.contains("scope="), "body 必须带 scope")
+        try coreExpect(
+            request.value(forHTTPHeaderField: "Accept") == "application/json",
+            "Accept 必须是 application/json"
+        )
+
+        let json = """
+            {"device_code":"dc-1","user_code":"ABCD-1234",
+             "verification_uri":"https://github.com/login/device",
+             "expires_in":900,"interval":5}
+            """
+        guard case .success(let auth) = GitHubDeviceFlow.parseStartResponse(
+            Data(json.utf8), statusCode: 200
+        ) else {
+            throw CoreTestFailure.expectation("合法设备码响应必须解析成功")
+        }
+        try coreExpect(auth.deviceCode == "dc-1", "device_code 不符")
+        try coreExpect(auth.userCode == "ABCD-1234", "user_code 不符")
+        try coreExpect(auth.interval == 5, "interval 不符: \(auth.interval)")
+        try coreExpect(auth.expiresIn == 900, "expires_in 不符")
+        try coreExpect(
+            auth.verificationURL.absoluteString == "https://github.com/login/device",
+            "verification_uri 不符"
+        )
+        // 缺字段与非 JSON 必须 fail-closed
+        guard case .failure = GitHubDeviceFlow.parseStartResponse(
+            Data("{}".utf8), statusCode: 200
+        ) else {
+            throw CoreTestFailure.expectation("缺字段必须失败")
+        }
+        guard case .failure = GitHubDeviceFlow.parseStartResponse(
+            Data("not json".utf8), statusCode: 200
+        ) else {
+            throw CoreTestFailure.expectation("非 JSON 必须失败")
+        }
+    }
+
+    /// 申请阶段 fail-closed: 网络错误, 5xx 和坏响应都可诊断.
+    private static func githubDeviceStartFailClosed() async throws {
+        let flow = GitHubDeviceFlow()
+        let netFail = CountingMockSession { _, _ in
+            throw URLError(.cannotFindHost)
+        }
+        let unreachable = await flow.start(session: netFail)
+        try coreExpect(
+            unreachable == .failure(.networkUnreachable),
+            "网络错误必须 networkUnreachable, got \(unreachable)"
+        )
+        let server500 = CountingMockSession { request, _ in
+            (Data(), httpResponse(request, 500))
+        }
+        let httpFailure = await flow.start(session: server500)
+        try coreExpect(
+            httpFailure == .failure(.httpError(statusCode: 500)),
+            "500 必须 httpError, got \(httpFailure)"
+        )
+        let badJSON = CountingMockSession { request, _ in
+            (Data("[]".utf8), httpResponse(request, 200))
+        }
+        let invalid = await flow.start(session: badJSON)
+        guard case .failure(.invalidResponse) = invalid else {
+            throw CoreTestFailure.expectation(
+                "坏 JSON 必须 invalidResponse, got \(invalid)"
+            )
+        }
+    }
+
+    /// 轮询解析映射: pending/slow_down/成功/拒绝/过期/未知错误.
+    private static func githubDevicePollOutcomeMappings() throws {
+        let pollRequest = GitHubDeviceFlow.pollRequest(deviceCode: "dc-1")
+        let body = requestBodyString(pollRequest)
+        try coreExpect(body.contains("device_code=dc-1"), "轮询必须带 device_code")
+        try coreExpect(
+            body.contains("grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code"),
+            "轮询必须带 device_code grant, got \(body)"
+        )
+
+        func parse(_ json: String, _ code: Int = 200)
+            -> Result<GitHubDeviceFlow.PollOutcome, DeviceAuthError> {
+            GitHubDeviceFlow.parsePollResponse(Data(json.utf8), statusCode: code)
+        }
+        try coreExpect(
+            parse(#"{"access_token":"gho_x"}"#) == .success(.authorized(accessToken: "gho_x")),
+            "access_token 必须 authorized"
+        )
+        try coreExpect(
+            parse(#"{"error":"authorization_pending"}"#) == .success(.pending),
+            "authorization_pending 必须 pending"
+        )
+        try coreExpect(
+            parse(#"{"error":"slow_down"}"#) == .success(.slowDown),
+            "slow_down 必须 slowDown"
+        )
+        try coreExpect(
+            parse(#"{"error":"expired_token"}"#) == .success(.expired),
+            "expired_token 必须 expired"
+        )
+        try coreExpect(
+            parse(#"{"error":"access_denied"}"#) == .success(.denied),
+            "access_denied 必须 denied"
+        )
+        guard case .failure(.invalidResponse) = parse(#"{"error":"weird"}"#) else {
+            throw CoreTestFailure.expectation("未知 error 必须 invalidResponse")
+        }
+        try coreExpect(
+            parse("", 500) == .failure(.httpError(statusCode: 500)),
+            "非 200 必须 httpError"
+        )
+    }
+
+    /// 全流程状态机: usercode -> poll pending -> poll success -> 返回 token.
+    private static func githubDeviceFullFlowMockSession() async throws {
+        let session = CountingMockSession { request, nth in
+            let url = request.url?.absoluteString ?? ""
+            if url == GitHubDeviceFlow.deviceCodeURL.absoluteString {
+                let json = """
+                    {"device_code":"dc-1","user_code":"ABCD-1234",
+                     "verification_uri":"https://github.com/login/device",
+                     "expires_in":900,"interval":0}
+                    """
+                return (Data(json.utf8), httpResponse(request, 200))
+            }
+            if nth == 1 {
+                return (
+                    Data(#"{"error":"authorization_pending"}"#.utf8),
+                    httpResponse(request, 200)
+                )
+            }
+            return (
+                Data(#"{"access_token":"gho_fixture"}"#.utf8),
+                httpResponse(request, 200)
+            )
+        }
+        let box = LockedBox<DeviceAuthorization?>(nil)
+        let result = await GitHubDeviceFlow().login(session: session) { auth in
+            box.set(auth)
+        }
+        try coreExpect(
+            result == .success("gho_fixture"),
+            "全流程必须拿到 token, got \(result)"
+        )
+        try coreExpect(
+            box.value?.userCode == "ABCD-1234",
+            "onAuthorization 必须回传验证码"
+        )
+        let pollCount = session.requests.filter {
+            $0.url == GitHubDeviceFlow.accessTokenURL
+        }.count
+        try coreExpect(pollCount == 2, "必须轮询两次, got \(pollCount)")
+    }
+
+    /// 拒绝与超时路径: 用户拒绝 -> denied; 设备码过期不发任何轮询请求.
+    private static func githubDeviceDeniedAndTimeoutPaths() async throws {
+        let deniedSession = CountingMockSession { request, _ in
+            let url = request.url?.absoluteString ?? ""
+            if url == GitHubDeviceFlow.deviceCodeURL.absoluteString {
+                let json = """
+                    {"device_code":"dc-1","user_code":"ABCD-1234",
+                     "expires_in":900,"interval":0}
+                    """
+                return (Data(json.utf8), httpResponse(request, 200))
+            }
+            return (
+                Data(#"{"error":"access_denied"}"#.utf8),
+                httpResponse(request, 200)
+            )
+        }
+        let denied = await GitHubDeviceFlow().login(session: deniedSession) { _ in }
+        try coreExpect(
+            denied == .failure(.authorizationDenied),
+            "拒绝必须 authorizationDenied, got \(denied)"
+        )
+
+        let expiredAuth = DeviceAuthorization(
+            deviceCode: "dc-1", userCode: "ABCD-1234",
+            verificationURL: GitHubDeviceFlow.verificationURL,
+            interval: 0, expiresIn: 0
+        )
+        let noPollSession = CountingMockSession { request, _ in
+            (Data(), httpResponse(request, 200))
+        }
+        let expired = await GitHubDeviceFlow().pollUntilAuthorized(
+            expiredAuth, session: noPollSession
+        )
+        try coreExpect(
+            expired == .failure(.authorizationExpired),
+            "过期必须 authorizationExpired, got \(expired)"
+        )
+        try coreExpect(
+            noPollSession.requests.isEmpty,
+            "已过期不得发起轮询请求"
+        )
+    }
+
+    /// stdin 注入: 凭证经管道传给子进程 (gh --with-token 的依赖能力).
+    private static func probeStandardInputPipesToProcess() async throws {
+        let probe = AsyncProcessProbe()
+        let result = await probe.run(
+            executablePath: "/bin/cat",
+            arguments: [],
+            standardInput: "fixture-token-123\n"
+        )
+        try coreExpect(
+            result == .success(output: "fixture-token-123"),
+            "stdin 必须原样到达子进程, got \(result)"
+        )
+    }
+
+    // MARK: Codex 设备码流程
+
+    /// PKCE code_verifier: 43 字符 base64url, 两次生成不相同.
+    private static func codexPKCEVerifierFormat() throws {
+        let v1 = CodexPKCE.codeVerifier()
+        let v2 = CodexPKCE.codeVerifier()
+        try coreExpect(v1.count == 43, "verifier 必须 43 字符, got \(v1.count)")
+        let pattern = #"^[A-Za-z0-9\-_]+$"#
+        try coreExpect(
+            v1.range(of: pattern, options: .regularExpression) != nil,
+            "verifier 必须只含 base64url 字符, got \(v1)"
+        )
+        try coreExpect(v1 != v2, "两次生成必须不同")
+    }
+
+    /// Codex 申请请求: POST JSON client_id; 解析 device_auth_id/user_code.
+    private static func codexDeviceStartRequestAndParse() throws {
+        let request = CodexDeviceFlow.startRequest()
+        try coreExpect(request.httpMethod == "POST", "必须是 POST")
+        try coreExpect(
+            request.url == CodexDeviceFlow.userCodeURL,
+            "必须指向 deviceauth/usercode"
+        )
+        let body = requestBodyString(request)
+        try coreExpect(
+            body.contains(#""client_id":"app_EMoamEEZ73f0CkXaXp7hrann""#),
+            "body 必须带 client_id, got \(body)"
+        )
+        try coreExpect(
+            request.value(forHTTPHeaderField: "Content-Type") == "application/json",
+            "Content-Type 必须是 application/json"
+        )
+
+        guard case .success(let auth) = CodexDeviceFlow.parseStartResponse(
+            Data(#"{"device_auth_id":"da-1","user_code":"WXYZ-00"}"#.utf8),
+            statusCode: 200
+        ) else {
+            throw CoreTestFailure.expectation("合法响应必须解析成功")
+        }
+        try coreExpect(auth.deviceCode == "da-1", "device_auth_id 不符")
+        try coreExpect(auth.userCode == "WXYZ-00", "user_code 不符")
+        try coreExpect(
+            auth.verificationURL.absoluteString == "https://auth.openai.com/codex/device",
+            "验证页 URL 不符: \(auth.verificationURL)"
+        )
+        try coreExpect(auth.interval == 5, "缺省 interval 必须 5")
+        try coreExpect(auth.expiresIn == 900, "缺省 expires_in 必须 900")
+
+        guard case .success(let custom) = CodexDeviceFlow.parseStartResponse(
+            Data(
+                #"{"device_auth_id":"da","user_code":"uc","interval":2,"expires_in":60}"#
+                    .utf8
+            ),
+            statusCode: 200
+        ) else {
+            throw CoreTestFailure.expectation("带 interval 响应必须解析成功")
+        }
+        try coreExpect(
+            custom.interval == 2 && custom.expiresIn == 60,
+            "服务端 interval/expires_in 必须生效"
+        )
+        guard case .failure = CodexDeviceFlow.parseStartResponse(
+            Data("{}".utf8), statusCode: 200
+        ) else {
+            throw CoreTestFailure.expectation("缺字段必须失败")
+        }
+        try coreExpect(
+            CodexDeviceFlow.parseStartResponse(Data(), statusCode: 500)
+                == .failure(.httpError(statusCode: 500)),
+            "500 必须 httpError"
+        )
+    }
+
+    /// 轮询与换码编解码: 403/404 pending, 200 带 code_verifier,
+    /// 缺省回落本地 PKCE; 换码表单带齐 grant_type/redirect_uri/code_verifier.
+    private static func codexDevicePollAndExchangeParsing() throws {
+        let pollRequest = CodexDeviceFlow.pollRequest(
+            deviceAuthID: "da-1", userCode: "WXYZ-00"
+        )
+        let body = requestBodyString(pollRequest)
+        try coreExpect(
+            body.contains(#""device_auth_id":"da-1""#),
+            "轮询必须带 device_auth_id, got \(body)"
+        )
+        try coreExpect(
+            body.contains(#""user_code":"WXYZ-00""#),
+            "轮询必须带 user_code, got \(body)"
+        )
+
+        for pendingCode in [403, 404] {
+            try coreExpect(
+                CodexDeviceFlow.parsePollResponse(Data(), statusCode: pendingCode)
+                    == .success(.pending),
+                "\(pendingCode) 必须 pending"
+            )
+        }
+        let granted = CodexDeviceFlow.parsePollResponse(
+            Data(#"{"authorization_code":"ac-1","code_verifier":"cv-1"}"#.utf8),
+            statusCode: 200
+        )
+        try coreExpect(
+            granted == .success(.authorized(
+                CodexDeviceFlow.DeviceGrant(
+                    authorizationCode: "ac-1", codeVerifier: "cv-1"
+                )
+            )),
+            "200 必须 authorized, got \(granted)"
+        )
+        // 服务端缺省 code_verifier 时回落本地 PKCE 生成
+        guard case .success(.authorized(let fallback)) = CodexDeviceFlow
+            .parsePollResponse(
+                Data(#"{"authorization_code":"ac-2"}"#.utf8), statusCode: 200
+            ) else {
+            throw CoreTestFailure.expectation("缺 verifier 必须回落生成")
+        }
+        try coreExpect(
+            fallback.codeVerifier.count == 43,
+            "回落 verifier 必须 43 字符"
+        )
+        guard case .failure(.invalidResponse) = CodexDeviceFlow.parsePollResponse(
+            Data("{}".utf8), statusCode: 200
+        ) else {
+            throw CoreTestFailure.expectation("缺 authorization_code 必须失败")
+        }
+        try coreExpect(
+            CodexDeviceFlow.parsePollResponse(Data(), statusCode: 500)
+                == .failure(.httpError(statusCode: 500)),
+            "500 必须 httpError"
+        )
+
+        let grant = CodexDeviceFlow.DeviceGrant(
+            authorizationCode: "ac-1", codeVerifier: "cv-1"
+        )
+        let exchangeBody = requestBodyString(
+            CodexDeviceFlow.exchangeRequest(grant)
+        )
+        for fragment in [
+            "grant_type=authorization_code",
+            "client_id=app_EMoamEEZ73f0CkXaXp7hrann",
+            "code=ac-1",
+            "redirect_uri=https%3A%2F%2Fauth.openai.com%2Fdeviceauth%2Fcallback",
+            "code_verifier=cv-1",
+        ] {
+            try coreExpect(
+                exchangeBody.contains(fragment),
+                "换码表单缺少 \(fragment), got \(exchangeBody)"
+            )
+        }
+        let tokenJSON = """
+            {"id_token":"it","access_token":"at","refresh_token":"rt"}
+            """
+        try coreExpect(
+            CodexDeviceFlow.parseTokenResponse(
+                Data(tokenJSON.utf8), statusCode: 200
+            ) == .success(CodexDeviceFlow.TokenSet(
+                idToken: "it", accessToken: "at", refreshToken: "rt"
+            )),
+            "三令牌齐备必须解析成功"
+        )
+        guard case .failure(.invalidResponse) = CodexDeviceFlow
+            .parseTokenResponse(
+                Data(#"{"id_token":"it","access_token":"at"}"#.utf8),
+                statusCode: 200
+            ) else {
+            throw CoreTestFailure.expectation("缺 refresh_token 必须失败")
+        }
+    }
+
+    /// id_token claim 提取: namespaced 优先, 顶层其次, organizations 兜底.
+    private static func codexIDTokenClaimsParsing() throws {
+        let namespaced = try makeUnsignedJWT(payload: [
+            "https://api.openai.com/auth": ["chatgpt_account_id": "acct-1"],
+            "email": "u@example.com",
+        ])
+        try coreExpect(
+            CodexIDTokenParser.accountID(of: namespaced) == "acct-1",
+            "namespaced claim 必须优先"
+        )
+        try coreExpect(
+            CodexIDTokenParser.email(of: namespaced) == "u@example.com",
+            "email 必须提取"
+        )
+        let topLevel = try makeUnsignedJWT(payload: [
+            "chatgpt_account_id": "acct-2",
+        ])
+        try coreExpect(
+            CodexIDTokenParser.accountID(of: topLevel) == "acct-2",
+            "顶层 claim 必须兜底"
+        )
+        let orgs = try makeUnsignedJWT(payload: [
+            "organizations": [["id": "org-9"]],
+        ])
+        try coreExpect(
+            CodexIDTokenParser.accountID(of: orgs) == "org-9",
+            "organizations 必须兜底"
+        )
+        let none = try makeUnsignedJWT(payload: ["sub": "x"])
+        try coreExpect(
+            CodexIDTokenParser.accountID(of: none) == nil,
+            "无 claim 必须 nil"
+        )
+        try coreExpect(
+            CodexIDTokenParser.accountID(of: "not-a-jwt") == nil,
+            "非法 JWT 必须 nil"
+        )
+    }
+
+    /// 全流程状态机: usercode -> poll 403 pending -> poll 200 -> 换码 -> 入库.
+    private static func codexDeviceFullFlowStoresAccount() async throws {
+        let idToken = try makeUnsignedJWT(payload: [
+            "https://api.openai.com/auth": ["chatgpt_account_id": "acct-42"],
+            "email": "dev@example.com",
+        ])
+        let session = CountingMockSession { request, nth in
+            let url = request.url?.absoluteString ?? ""
+            switch url {
+            case CodexDeviceFlow.userCodeURL.absoluteString:
+                let json = """
+                    {"device_auth_id":"da-1","user_code":"WXYZ-00","interval":0}
+                    """
+                return (Data(json.utf8), httpResponse(request, 200))
+            case CodexDeviceFlow.deviceTokenURL.absoluteString:
+                if nth == 1 {
+                    return (Data(), httpResponse(request, 403))
+                }
+                let json = #"{"authorization_code":"ac-1","code_verifier":"cv-1"}"#
+                return (Data(json.utf8), httpResponse(request, 200))
+            default:
+                let json = """
+                    {"id_token":"\(idToken)","access_token":"at-1",
+                     "refresh_token":"rt-1"}
+                    """
+                return (Data(json.utf8), httpResponse(request, 200))
+            }
+        }
+        let box = LockedBox<DeviceAuthorization?>(nil)
+        let result = await CodexDeviceFlow().login(session: session) { auth in
+            box.set(auth)
+        }
+        guard case .success(let account) = result else {
+            throw CoreTestFailure.expectation("全流程必须成功, got \(result)")
+        }
+        try coreExpect(account.accountID == "acct-42", "账号 id 不符")
+        try coreExpect(account.email == "dev@example.com", "email 不符")
+        try coreExpect(account.refreshToken == "rt-1", "refresh_token 不符")
+        try coreExpect(account.accessToken == "at-1", "access_token 不符")
+        try coreExpect(account.idToken == idToken, "id_token 不符")
+        try coreExpect(
+            box.value?.userCode == "WXYZ-00",
+            "onAuthorization 必须回传验证码"
+        )
+        // 换码请求必须带服务端下发的 code_verifier
+        let exchangeRequest = session.requests.last {
+            $0.url == CodexDeviceFlow.oauthTokenURL
+        }
+        try coreExpect(
+            requestBodyString(exchangeRequest).contains("code_verifier=cv-1"),
+            "换码必须带服务端 code_verifier"
+        )
+        // 入库: 复用账号库合并, 结果必须通过结构校验
+        guard case .success(let merged) = CodexAccountsLibrary.merging(
+            existingJSON: nil, account: account
+        ) else {
+            throw CoreTestFailure.expectation("账号库合并必须成功")
+        }
+        try coreExpect(
+            ProviderConnectionVerifier.verifyCodexAccountsJSON(merged) == .ok,
+            "入库 JSON 必须通过结构校验"
+        )
+        try coreExpect(
+            CodexAccountsLibrary.accountIDs(of: merged) == ["acct-42"],
+            "入库账号列表不符"
+        )
+        let summary = CodexAccountsLibrary.summary(of: merged)
+        try coreExpect(
+            summary.count == 1 && summary.emailPrefixes == ["dev"],
+            "摘要不符: \(summary)"
+        )
+    }
+
+    /// 错误路径可诊断: 申请网络失败, 轮询网络失败, 换码 500,
+    /// id_token 缺账号 id 均 fail-closed.
+    private static func codexDeviceErrorPaths() async throws {
+        let flow = CodexDeviceFlow()
+        let startNetFail = CountingMockSession { _, _ in
+            throw URLError(.timedOut)
+        }
+        let startResult = await flow.start(session: startNetFail)
+        try coreExpect(
+            startResult == .failure(.networkUnreachable),
+            "申请网络错误必须 networkUnreachable, got \(startResult)"
+        )
+
+        let pollNetFail = CountingMockSession { _, _ in
+            throw URLError(.secureConnectionFailed)
+        }
+        let auth = DeviceAuthorization(
+            deviceCode: "da-1", userCode: "WXYZ-00",
+            verificationURL: CodexDeviceFlow.verificationURL,
+            interval: 0, expiresIn: 60
+        )
+        let pollResult = await flow.pollUntilAuthorized(
+            auth, session: pollNetFail
+        )
+        try coreExpect(
+            pollResult == .failure(.networkUnreachable),
+            "轮询网络错误必须 networkUnreachable, got \(pollResult)"
+        )
+
+        let grant = CodexDeviceFlow.DeviceGrant(
+            authorizationCode: "ac-1", codeVerifier: "cv-1"
+        )
+        let exchange500 = CountingMockSession { request, _ in
+            (Data(), httpResponse(request, 500))
+        }
+        let exchangeResult = await flow.exchange(grant, session: exchange500)
+        try coreExpect(
+            exchangeResult == .failure(.httpError(statusCode: 500)),
+            "换码 500 必须 httpError, got \(exchangeResult)"
+        )
+
+        let noAccountJWT = try makeUnsignedJWT(payload: ["sub": "x"])
+        let noAccountSession = CountingMockSession { request, _ in
+            let json = """
+                {"id_token":"\(noAccountJWT)","access_token":"at",
+                 "refresh_token":"rt"}
+                """
+            return (Data(json.utf8), httpResponse(request, 200))
+        }
+        let noAccount = await flow.exchange(grant, session: noAccountSession)
+        guard case .failure(.invalidResponse) = noAccount else {
+            throw CoreTestFailure.expectation(
+                "id_token 缺账号 id 必须 invalidResponse, got \(noAccount)"
+            )
+        }
+    }
+
+    /// 设备码已过期: 不发任何轮询请求即 authorizationExpired.
+    private static func codexDeviceExpiredSkipsPolling() async throws {
+        let session = CountingMockSession { request, _ in
+            (Data(), httpResponse(request, 200))
+        }
+        let expired = DeviceAuthorization(
+            deviceCode: "da-1", userCode: "WXYZ-00",
+            verificationURL: CodexDeviceFlow.verificationURL,
+            interval: 0, expiresIn: 0
+        )
+        let result = await CodexDeviceFlow().pollUntilAuthorized(
+            expired, session: session
+        )
+        try coreExpect(
+            result == .failure(.authorizationExpired),
+            "过期必须 authorizationExpired, got \(result)"
+        )
+        try coreExpect(session.requests.isEmpty, "已过期不得发起轮询请求")
+    }
+
+    // MARK: - Credential rotation merge
+
+    /// provider -> Keychain account 映射; 未知 provider 返回 nil.
+    private static func rotationMergeMapsKnownProviders() throws {
+        try coreExpect(
+            CredentialRotationMerge.keychainAccount(forProvider: "kimi")
+                == SubscriptionCredentialAccount.kimiWebTokens,
+            "kimi 映射失败"
+        )
+        try coreExpect(
+            CredentialRotationMerge.keychainAccount(forProvider: "codex")
+                == SubscriptionCredentialAccount.codexAccounts,
+            "codex 映射失败"
+        )
+        try coreExpect(
+            CredentialRotationMerge.keychainAccount(forProvider: "antigravity")
+                == SubscriptionCredentialAccount.antigravityOAuth,
+            "antigravity 映射失败"
+        )
+        try coreExpect(
+            CredentialRotationMerge.keychainAccount(forProvider: "deepseek") == nil,
+            "无轮换的 provider 不得映射"
+        )
+    }
+
+    /// kimi: 顶层平铺合并, 既有 refresh 被新值覆盖, 缺省时以空结构起步.
+    private static func rotationMergeKimiFlatTokens() throws {
+        let existing = #"{"access_token":"old-a","refresh_token":"old-r"}"#
+        let merged = CredentialRotationMerge.mergedJSON(
+            existingJSON: existing,
+            update: CredentialRotationUpdate(
+                provider: "kimi",
+                accountId: "default",
+                tokens: ["access_token": "new-a", "refresh_token": "new-r"]
+            )
+        )
+        try coreExpect(
+            merged == #"{"access_token":"new-a","refresh_token":"new-r"}"#,
+            "kimi 平铺合并错误, got \(merged ?? "nil")"
+        )
+        let created = CredentialRotationMerge.mergedJSON(
+            existingJSON: nil,
+            update: CredentialRotationUpdate(
+                provider: "kimi",
+                accountId: "default",
+                tokens: ["access_token": "a", "refresh_token": "r"]
+            )
+        )
+        try coreExpect(
+            created == #"{"access_token":"a","refresh_token":"r"}"#,
+            "kimi 缺省时必须可创建, got \(created ?? "nil")"
+        )
+    }
+
+    /// codex: 只合并目标账号, 保留 email 和其他账号.
+    private static func rotationMergeCodexPreservesOtherAccounts() throws {
+        let existing = """
+        {"accounts":{"acc-1":{"email":"a@x.com","refresh_token":"r1"},\
+        "acc-2":{"email":"b@x.com","refresh_token":"r2"}}}
+        """
+        let merged = CredentialRotationMerge.mergedJSON(
+            existingJSON: existing,
+            update: CredentialRotationUpdate(
+                provider: "codex",
+                accountId: "acc-1",
+                tokens: ["access_token": "na", "refresh_token": "nr"]
+            )
+        )
+        try coreExpect(
+            merged == """
+            {"accounts":{"acc-1":{"access_token":"na","email":"a@x.com",\
+            "refresh_token":"nr"},"acc-2":{"email":"b@x.com","refresh_token":"r2"}}}
+            """,
+            "codex 合并错误, got \(merged ?? "nil")"
+        )
+    }
+
+    /// antigravity: 合并 token 子对象并保留顶层其他键.
+    private static func rotationMergeAntigravityTokenSubObject() throws {
+        let existing = #"{"extra":"keep","token":{"access_token":"old","refresh_token":"rr"}}"#
+        let merged = CredentialRotationMerge.mergedJSON(
+            existingJSON: existing,
+            update: CredentialRotationUpdate(
+                provider: "antigravity",
+                accountId: "default",
+                tokens: ["access_token": "new", "expiry": "2026-08-01T00:00:00"]
+            )
+        )
+        try coreExpect(
+            merged == #"{"extra":"keep","token":{"access_token":"new","expiry":"2026-08-01T00:00:00","refresh_token":"rr"}}"#,
+            "antigravity 合并错误, got \(merged ?? "nil")"
+        )
+    }
+
+    /// 白名单外键被过滤; 未知 provider 与空令牌返回 nil.
+    private static func rotationMergeFiltersKeysAndRejectsUnknown() throws {
+        let merged = CredentialRotationMerge.mergedJSON(
+            existingJSON: nil,
+            update: CredentialRotationUpdate(
+                provider: "kimi",
+                accountId: "default",
+                tokens: ["access_token": "a", "evil": "x"]
+            )
+        )
+        try coreExpect(
+            merged == #"{"access_token":"a"}"#,
+            "白名单外键必须过滤, got \(merged ?? "nil")"
+        )
+        try coreExpect(
+            CredentialRotationMerge.mergedJSON(
+                existingJSON: nil,
+                update: CredentialRotationUpdate(
+                    provider: "unknown", accountId: "default",
+                    tokens: ["access_token": "a"]
+                )
+            ) == nil,
+            "未知 provider 必须返回 nil"
+        )
+        try coreExpect(
+            CredentialRotationMerge.mergedJSON(
+                existingJSON: nil,
+                update: CredentialRotationUpdate(
+                    provider: "kimi", accountId: "default",
+                    tokens: ["access_token": ""]
+                )
+            ) == nil,
+            "空令牌必须返回 nil"
         )
     }
 }

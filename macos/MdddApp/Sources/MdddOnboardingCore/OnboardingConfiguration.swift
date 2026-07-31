@@ -42,6 +42,21 @@ public struct SubscriptionProviderConfiguration: Codable, Equatable, Sendable {
 
 // MARK: - OnboardingConfiguration
 
+/// 应用外观偏好. system 跟随系统; 持久化为 rawValue 字符串.
+public enum AppearancePreference: String, Codable, Equatable, Sendable, CaseIterable {
+    case system
+    case light
+    case dark
+}
+
+/// 液态玻璃风格偏好. regular 系统标准玻璃, clear 更通透,
+/// material 退化为材质质感; 持久化为 rawValue 字符串.
+public enum GlassStylePreference: String, Codable, Equatable, Sendable, CaseIterable {
+    case regular
+    case clear
+    case material
+}
+
 /// 非敏感配置. 持久化到 Application Support/mddd/config/onboarding-v1.json.
 public struct OnboardingConfiguration: Codable, Equatable, Sendable {
     public static let currentSchemaVersion = 2
@@ -58,6 +73,36 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
     /// 订阅 provider 配置, 键为 SubscriptionProviderID rawValue.
     /// v1 配置文件无此键, 加载时按缺省 (全部未配置) 处理.
     public var subscriptionProviders: [String: SubscriptionProviderConfiguration]
+    /// 自动刷新间隔 (分钟). nil (含 JSON 显式 null) 表示使用默认 30 分钟.
+    public var refreshIntervalMinutes: Int?
+    /// 外观偏好. nil (含 JSON 显式 null 或非法值) 表示跟随系统.
+    public var appearanceMode: AppearancePreference?
+    /// 液态玻璃风格偏好. nil (含 JSON 显式 null 或非法值) 表示标准玻璃.
+    public var glassStyle: GlassStylePreference?
+
+    /// 默认自动刷新间隔 (分钟).
+    public static let defaultRefreshIntervalMinutes = 30
+    /// 设置页可选的刷新间隔 (分钟).
+    public static let allowedRefreshIntervalMinutes: [Int] = [5, 15, 30, 60]
+
+    /// 解析后的刷新间隔: nil 或非法值一律回落默认 30 分钟.
+    public var resolvedRefreshIntervalMinutes: Int {
+        guard let value = refreshIntervalMinutes,
+              Self.allowedRefreshIntervalMinutes.contains(value) else {
+            return Self.defaultRefreshIntervalMinutes
+        }
+        return value
+    }
+
+    /// 解析后的外观偏好: nil 一律回落跟随系统.
+    public var resolvedAppearanceMode: AppearancePreference {
+        appearanceMode ?? .system
+    }
+
+    /// 解析后的玻璃风格: nil 一律回落标准玻璃.
+    public var resolvedGlassStyle: GlassStylePreference {
+        glassStyle ?? .regular
+    }
 
     public init(
         schemaVersion: Int = OnboardingConfiguration.currentSchemaVersion,
@@ -68,7 +113,10 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         connectionStates: [String: String] = [:],
         lastVerifiedAt: [String: String] = [:],
         menuBarMetrics: [String]? = nil,
-        subscriptionProviders: [String: SubscriptionProviderConfiguration] = [:]
+        subscriptionProviders: [String: SubscriptionProviderConfiguration] = [:],
+        refreshIntervalMinutes: Int? = nil,
+        appearanceMode: AppearancePreference? = nil,
+        glassStyle: GlassStylePreference? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.pythonPath = pythonPath
@@ -79,6 +127,9 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         self.lastVerifiedAt = lastVerifiedAt
         self.menuBarMetrics = menuBarMetrics
         self.subscriptionProviders = subscriptionProviders
+        self.refreshIntervalMinutes = refreshIntervalMinutes
+        self.appearanceMode = appearanceMode
+        self.glassStyle = glassStyle
     }
 
     /// 自定义解码: 旧版本配置缺失的键一律回落缺省, 不因新增字段拒绝加载.
@@ -96,6 +147,18 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
             [String: SubscriptionProviderConfiguration].self,
             forKey: .subscriptionProviders
         ) ?? [:]
+        // 显式 null 与缺键一样按 nil (默认 30 分钟) 处理
+        refreshIntervalMinutes = try container.decodeIfPresent(
+            Int.self, forKey: .refreshIntervalMinutes
+        )
+        // 非法字符串与缺键一样按 nil (跟随系统) 处理
+        appearanceMode = try? container.decodeIfPresent(
+            AppearancePreference.self, forKey: .appearanceMode
+        )
+        // 非法字符串与缺键一样按 nil (标准玻璃) 处理
+        glassStyle = try? container.decodeIfPresent(
+            GlassStylePreference.self, forKey: .glassStyle
+        )
     }
 }
 

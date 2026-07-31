@@ -197,6 +197,52 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
         }
     }
 
+    /// 把 Collector 轮换的新令牌写回 Keychain. 只处理已知 provider 的
+    /// oauthTokens/replace 条目; 单条解析或写入失败跳过该条, 不影响其他条目,
+    /// 也不阻断 artifact 发布 (下次刷新会重试轮换).
+    package func apply(credentialUpdates: [JSONValue]) {
+        for value in credentialUpdates {
+            guard let update = Self.rotationUpdate(from: value),
+                  let account = CredentialRotationMerge.keychainAccount(
+                      forProvider: update.provider
+                  ) else { continue }
+            let existing = try? credentialStore.loadCredential(forAccount: account)
+            guard let merged = CredentialRotationMerge.mergedJSON(
+                existingJSON: existing ?? nil,
+                update: update
+            ) else { continue }
+            try? credentialStore.saveCredential(merged, forAccount: account)
+        }
+    }
+
+    /// Bridge credentialUpdates JSON -> 纯更新结构; 只接受
+    /// kind=oauthTokens, operation=replace 且含有效令牌的条目.
+    private static func rotationUpdate(from value: JSONValue) -> CredentialRotationUpdate? {
+        guard case .object(let dict) = value,
+              case .string(let provider)? = dict["provider"],
+              case .string(let kind)? = dict["kind"], kind == "oauthTokens",
+              case .string(let operation)? = dict["operation"], operation == "replace",
+              case .object(let credentials)? = dict["credentials"] else {
+            return nil
+        }
+        var tokens: [String: String] = [:]
+        for (key, child) in credentials {
+            if case .string(let string) = child {
+                tokens[key] = string
+            }
+        }
+        guard !tokens.isEmpty else { return nil }
+        var accountId = "default"
+        if case .string(let raw)? = dict["accountId"], !raw.isEmpty {
+            accountId = raw
+        }
+        return CredentialRotationUpdate(
+            provider: provider,
+            accountId: accountId,
+            tokens: tokens
+        )
+    }
+
     private func gitLabInput() throws -> CollectorRunInput {
         guard let rawBaseURL = configStore?.load()?.gitlabBaseURL,
               let baseURL = ProviderConnectionVerifier.normalizedGitLabBaseURL(rawBaseURL),

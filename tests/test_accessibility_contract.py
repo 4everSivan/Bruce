@@ -64,7 +64,7 @@ def test_native_primary_actions_have_keyboard_and_accessibility_contracts():
         / "SettingsView.swift"
     ).read_text()
     assert '.keyboardShortcut("r", modifiers: .command)' in menu_bar
-    assert 'accessibilityLabel("刷新全部模块")' in menu_bar
+    assert 'accessibilityLabel(refreshing ? "正在刷新全部模块" : "刷新全部模块")' in menu_bar
     assert ".accessibilityElement(children: .ignore)" in menu_bar
     assert "accessibilityLabel(accessibilitySummary(formatter: formatter))" in menu_bar
     assert "NSAccessibility.post(" in settings

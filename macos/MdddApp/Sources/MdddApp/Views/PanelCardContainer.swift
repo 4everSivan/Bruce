@@ -1,12 +1,14 @@
+import MdddOnboardingCore
 import SwiftUI
 
 // 面板装配层共享的卡片容器与底栏按钮样式.
-// 视觉以 panel-layout-v8.html 的 .g 卡片为准; 不依赖 AppTheme, 只有玻璃一种形态.
 
-/// 面板卡片容器: 白 0.45 底 + 白 0.6 描边 + 圆角 16 + 顶部 1pt 高光线.
-/// 深色模式退化为材料质感 (regularMaterial), 描边与高光同步弱化.
+/// 面板卡片容器: macOS 26 液态玻璃 (glassEffect, 圆角 16) + 弱描边 + 顶部高光.
+/// 玻璃强度随 mdddGlassStyle 环境 (标准/通透); 哑光风格退化为
+/// 材料质感 (regularMaterial), 描边与高光同步弱化.
 struct PanelCardContainer<Content: View>: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.mdddGlassStyle) private var glassStyle
     private let content: Content
 
     init(@ViewBuilder content: () -> Content) {
@@ -21,13 +23,7 @@ struct PanelCardContainer<Content: View>: View {
         content
             .padding(.horizontal, 15)
             .padding(.vertical, 13)
-            .background {
-                if colorScheme == .dark {
-                    shape.fill(.regularMaterial)
-                } else {
-                    shape.fill(Color.white.opacity(0.45))
-                }
-            }
+            .background { cardBackground }
             .overlay {
                 shape.strokeBorder(strokeColor, lineWidth: 1)
             }
@@ -45,6 +41,18 @@ struct PanelCardContainer<Content: View>: View {
                 radius: 5,
                 y: 1
             )
+    }
+
+    /// 玻璃风格用系统 glassEffect; 哑光退化为材质/白底填充.
+    @ViewBuilder
+    private var cardBackground: some View {
+        if glassStyle.usesGlass {
+            Color.clear.glassEffect(glassStyle.glass, in: shape)
+        } else if colorScheme == .dark {
+            shape.fill(.regularMaterial)
+        } else {
+            shape.fill(Color.white.opacity(0.45))
+        }
     }
 
     private var strokeColor: Color {

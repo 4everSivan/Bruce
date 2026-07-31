@@ -332,7 +332,11 @@ struct RefreshSchedulerHarness {
         try await capacityLimitQueuesRequest(repository: repository)
         print("Refresh scheduler: stop")
         try await stopCancelsRunningTasks(repository: repository)
-        print("Refresh scheduler tests passed: 9")
+        print("Refresh scheduler: interval update")
+        try await updateRefreshIntervalReschedulesIdleModule(repository: repository)
+        print("Refresh scheduler: credential updates")
+        try await credentialUpdatesForwardedOnSuccess(repository: repository)
+        print("Refresh scheduler tests passed: 11")
     }
 
     // 10.1: Timer fires -> module refreshes
@@ -689,6 +693,50 @@ struct RefreshSchedulerHarness {
         )
     }
 
+    // 10.6: credentialUpdates forwarded on success
+    private static func credentialUpdatesForwardedOnSuccess(
+        repository: URL
+    ) async throws {
+        let artifact = try loadFixture(repository: repository, module: .github)
+        let updates: [JSONValue] = [
+            .object([
+                "provider": .string("codex"),
+                "accountId": .string("acc-1"),
+                "kind": .string("oauthTokens"),
+                "operation": .string("replace"),
+                "credentials": .object([
+                    "access_token": .string("na"),
+                    "refresh_token": .string("nr"),
+                ]),
+            ]),
+        ]
+        let executor = CredentialUpdateExecutor(artifact: artifact, updates: updates)
+        let clock = ManualClock()
+        let timers = FakeTimerScheduler()
+        let (scheduler, _, root) = try makeSchedulerWithError(
+            repository: repository,
+            executor: executor,
+            clock: clock,
+            timers: timers
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        var received: [JSONValue] = []
+        scheduler.onCredentialUpdates = { _, value in received = value }
+
+        scheduler.start()
+        scheduler.enableModule(.github)
+        timers.fireFirst()
+
+        await waitForRunCount({ executor.runCount[.github] ?? 0 }, count: 1)
+        await waitForPhase(scheduler, module: .github, phase: .idle)
+
+        try refreshExpect(
+            received == updates,
+            "credentialUpdates 必须原样转发, got \(received)"
+        )
+    }
+
     // 10.1: Capacity limit queues request
     private static func capacityLimitQueuesRequest(
         repository: URL
@@ -773,6 +821,56 @@ struct RefreshSchedulerHarness {
             timers.pendingCount == 0,
             "all timers should be cancelled"
         )
+    }
+
+    // 配置变更后新间隔立即生效: 缩短时按重启计时立即补刷,
+    // 延长时按新间隔重排 idle 模块计时器.
+    private static func updateRefreshIntervalReschedulesIdleModule(
+        repository: URL
+    ) async throws {
+        let executor = MockCollectorExecutor()
+        executor.blocksUntilReleased = true
+        let clock = ManualClock()
+        let timers = FakeTimerScheduler()
+        let (scheduler, _, root) = try makeScheduler(
+            repository: repository, executor: executor, clock: clock, timers: timers
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        scheduler.start()
+        scheduler.enableModule(.github)
+        timers.fireFirst()
+        await waitForRunCount({ executor.runCount[.github] ?? 0 }, count: 1)
+        executor.release(module: .github)
+        await waitForPhase(scheduler, module: .github, phase: .idle)
+
+        // 成功后按旧间隔 1800s 排了下一次刷新
+        try refreshExpect(
+            timers.lastDelay == 1800,
+            "expected next refresh at old interval, got \(timers.lastDelay ?? -1)"
+        )
+
+        // 缩短间隔到 300s, 距上次成功已 600s -> 重启计时 delay 为 0, 立即补刷
+        clock.advance(by: 600)
+        scheduler.updateRefreshInterval(300)
+        try refreshExpect(
+            timers.lastDelay == 0,
+            "shortened interval should trigger immediate refresh, got \(timers.lastDelay ?? -1)"
+        )
+        try refreshExpect(timers.pendingCount == 1, "expected one rescheduled timer")
+        timers.fireFirst()
+        await waitForRunCount({ executor.runCount[.github] ?? 0 }, count: 2)
+        executor.release(module: .github)
+        await waitForPhase(scheduler, module: .github, phase: .idle)
+
+        // 延长间隔到 3600s, 距上次成功 100s -> 重排 delay 为 3500s
+        clock.advance(by: 100)
+        scheduler.updateRefreshInterval(3600)
+        try refreshExpect(
+            timers.lastDelay == 3500,
+            "lengthened interval should reschedule with remaining delay, got \(timers.lastDelay ?? -1)"
+        )
+        try refreshExpect(timers.pendingCount == 1, "expected one rescheduled timer")
     }
 }
 
@@ -884,4 +982,41 @@ private func makeSchedulerWithError(
         registerWakeNotifications: false
     )
     return (scheduler, store, root)
+}
+
+
+/// 成功响应携带 credentialUpdates 的执行器, 用于验证 Scheduler 转发.
+@MainActor
+private final class CredentialUpdateExecutor: CollectorExecuting {
+    let artifact: JSONValue
+    let updates: [JSONValue]
+    private(set) var runCount: [CollectorModule: Int] = [:]
+
+    init(artifact: JSONValue, updates: [JSONValue]) {
+        self.artifact = artifact
+        self.updates = updates
+    }
+
+    func run(
+        module: CollectorModule,
+        context: [String: JSONValue],
+        credentials: [String: JSONValue]
+    ) async throws -> CollectorRunOutput {
+        runCount[module, default: 0] += 1
+        return CollectorRunOutput(
+            response: BridgeResponse(
+                schemaVersion: 1,
+                runId: UUID().uuidString.lowercased(),
+                generatedAt: "2026-07-28T12:00:00Z",
+                status: .success,
+                artifact: artifact,
+                credentialUpdates: updates,
+                diagnostics: []
+            ),
+            stderrDiagnostic: nil
+        )
+    }
+
+    func cancel(module: CollectorModule) {}
+    func cancelAll() {}
 }

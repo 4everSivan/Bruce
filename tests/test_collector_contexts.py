@@ -979,5 +979,52 @@ class GitLabCollectorContextTests(unittest.TestCase):
         self.assertEqual(token, "legacy-token")
 
 
+class VolcengineResetTimestampTests(unittest.TestCase):
+    def setUp(self):
+        self.module = load_module(
+            "collect_usage_volc_reset_test",
+            "agent-usage/collector/collect_usage.py",
+        )
+
+    def test_unstarted_window_reset_timestamp_minus_one_becomes_none(self):
+        # 真实响应证据: 火山 GetCodingPlanUsage 对未开始的 5 小时窗口返回
+        # ResetTimestamp=-1, 透传会被面板解析成 1970 误判「已到期」
+        result = self.module._volc_parse(
+            {
+                "Status": "active",
+                "QuotaUsage": [
+                    {
+                        "Level": "session",
+                        "Percent": 0,
+                        "ResetTimestamp": -1,
+                    },
+                    {
+                        "Level": "weekly",
+                        "Percent": 10,
+                        "ResetTimestamp": 1785000000,
+                    },
+                ],
+            }
+        )
+
+        windows = result["windows"]
+        self.assertEqual(
+            [w["label"] for w in windows], ["5小时窗口", "每周窗口"]
+        )
+        self.assertIsNone(windows[0]["resetsAt"])
+        self.assertEqual(windows[1]["resetsAt"], 1785000000)
+
+    def test_missing_reset_timestamp_becomes_none(self):
+        result = self.module._volc_parse(
+            {
+                "QuotaUsage": [
+                    {"Level": "session", "Percent": 5},
+                ],
+            }
+        )
+
+        self.assertIsNone(result["windows"][0]["resetsAt"])
+
+
 if __name__ == "__main__":
     unittest.main()

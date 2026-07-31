@@ -67,6 +67,7 @@ struct MdddApp: App {
             scheduler: scheduler,
             runner: runner,
             coordinator: coordinator,
+            runInputProvider: runInputProvider,
             model: model
         )
         settingsWindowController = SettingsWindowController(

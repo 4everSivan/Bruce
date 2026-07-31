@@ -26,6 +26,10 @@ struct SettingsView: View {
     @State private var kimiPasteText = ""
     @State private var kimiEditing = false
     @State private var showsCodexCCImportConfirm = false
+    // 订阅额度标签式管理: 本次会话点击添加的 provider 与展开态
+    @State private var addedSubscriptionProviders: Set<SubscriptionProviderID> = []
+    @State private var expandedSubscriptionProviders: Set<SubscriptionProviderID> = []
+    @State private var providerToAdd: SubscriptionProviderID?
 
     var body: some View {
         Form {
@@ -37,7 +41,7 @@ struct SettingsView: View {
                 }
             }
 
-            menuBarDisplaySection
+            generalSection
             agentUsageCard
             subscriptionSection
             githubCard
@@ -46,6 +50,8 @@ struct SettingsView: View {
             diagnosticsSection
         }
         .formStyle(.grouped)
+        .preferredColorScheme(coordinator.appearanceMode.colorScheme)
+        .environment(\.mdddGlassStyle, coordinator.glassStyle)
         .onAppear {
             if gitlabBaseURLText.isEmpty {
                 gitlabBaseURLText = coordinator.configuredGitLabBaseURL ?? ""
@@ -61,10 +67,55 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - 菜单栏显示
+    // MARK: - 通用
 
-    private var menuBarDisplaySection: some View {
-        Section("菜单栏显示") {
+    /// 通用偏好: 外观, 自动刷新与菜单栏指标.
+    private var generalSection: some View {
+        Section("通用") {
+            Picker(
+                "配色模式",
+                selection: Binding(
+                    get: { coordinator.appearanceMode },
+                    set: { coordinator.setAppearanceMode($0) }
+                )
+            ) {
+                Text("跟随系统").tag(AppearancePreference.system)
+                Text("浅色").tag(AppearancePreference.light)
+                Text("深色").tag(AppearancePreference.dark)
+            }
+            .pickerStyle(.segmented)
+            .accessibilityHint("立即作用于菜单栏面板与本设置窗口, 跟随系统时与 macOS 外观一致")
+
+            Picker(
+                "液态玻璃",
+                selection: Binding(
+                    get: { coordinator.glassStyle },
+                    set: { coordinator.setGlassStyle($0) }
+                )
+            ) {
+                Text("标准").tag(GlassStylePreference.regular)
+                Text("通透").tag(GlassStylePreference.clear)
+                Text("哑光").tag(GlassStylePreference.material)
+            }
+            .pickerStyle(.segmented)
+            .accessibilityHint("标准与通透为系统液态玻璃, 哑光退化为材质质感")
+
+            Picker(
+                "刷新间隔",
+                selection: Binding(
+                    get: { coordinator.refreshIntervalMinutes },
+                    set: { coordinator.setRefreshIntervalMinutes($0) }
+                )
+            ) {
+                ForEach(
+                    OnboardingConfiguration.allowedRefreshIntervalMinutes,
+                    id: \.self
+                ) { minutes in
+                    Text("\(minutes) 分钟").tag(minutes)
+                }
+            }
+            .accessibilityHint("已授权模块的自动采集周期, 变更后立即按新间隔重新计时")
+
             Text("选择 1 至 3 项指标, 菜单栏将按下列顺序紧凑展示")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -199,18 +250,44 @@ struct SettingsView: View {
 
     // MARK: - 订阅额度
 
-    /// 五个订阅 provider 的凭证配置与状态. 读取本机文件和真实网络验证
-    /// 都只由用户点击触发; 失败经 model.settingsErrorMessage 提示 (fail-closed).
+    /// 订阅 provider 的标签式管理: 顶部 Picker 只列未配置的 provider,
+    /// 点击添加后其管理组出现在下方列表 (默认收起为一行).
+    /// 读取本机文件和真实网络验证都只由用户点击触发;
+    /// 失败经 model.settingsErrorMessage 提示 (fail-closed).
     private var subscriptionSection: some View {
         Section("订阅额度") {
             Text("配置并启用后, Agent 用量将在统一授权生效时查询对应云端额度")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            deepSeekGroup
-            volcengineGroup
-            kimiGroup
-            codexGroup
-            antigravityGroup
+            if !unconfiguredSubscriptionProviders.isEmpty {
+                HStack {
+                    Picker("添加 Provider", selection: $providerToAdd) {
+                        Text("选择 Provider")
+                            .tag(SubscriptionProviderID?.none)
+                        ForEach(unconfiguredSubscriptionProviders, id: \.self) { id in
+                            Text(id.displayName)
+                                .tag(SubscriptionProviderID?.some(id))
+                        }
+                    }
+                    .accessibilityHint("只列出尚未配置的订阅 Provider")
+                    Button("添加") {
+                        guard let id = providerToAdd else { return }
+                        addedSubscriptionProviders.insert(id)
+                        expandedSubscriptionProviders.insert(id)
+                        providerToAdd = nil
+                    }
+                    .disabled(providerToAdd == nil)
+                    .accessibilityHint("将所选 Provider 加入下方已配置列表并展开")
+                }
+            }
+            if visibleSubscriptionProviders.isEmpty {
+                Text("尚未配置任何订阅 Provider, 从上方选择并添加")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(visibleSubscriptionProviders, id: \.self) { id in
+                subscriptionProviderRow(id)
+            }
         }
         .accessibilityElement(children: .contain)
         .glassFormRowBackground()
@@ -241,14 +318,86 @@ struct SettingsView: View {
         }
     }
 
+    /// 已在列表中展示的 provider: 凭证已配置, 或本次会话刚点击添加.
+    private var visibleSubscriptionProviders: [SubscriptionProviderID] {
+        SubscriptionProviderID.allCases.filter { id in
+            (model.subscriptionCredentialConfigured[id] ?? false)
+                || addedSubscriptionProviders.contains(id)
+        }
+    }
+
+    /// 尚未进入列表的 provider, 供添加 Picker 选择.
+    private var unconfiguredSubscriptionProviders: [SubscriptionProviderID] {
+        SubscriptionProviderID.allCases.filter {
+            !visibleSubscriptionProviders.contains($0)
+        }
+    }
+
+    /// 单个 provider 行: 收起时为一行 (名称 + 状态 + 启用开关),
+    /// 点击名称展开现有管理 UI (凭证录入 / 导入 / 验证 / 移除).
+    private func subscriptionProviderRow(
+        _ id: SubscriptionProviderID
+    ) -> some View {
+        let expanded = expandedSubscriptionProviders.contains(id)
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Button {
+                    if expanded {
+                        expandedSubscriptionProviders.remove(id)
+                    } else {
+                        expandedSubscriptionProviders.insert(id)
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(id.displayName)
+                            .font(.subheadline.weight(.medium))
+                        Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(id.displayName) \(expanded ? "收起" : "展开")")
+                Spacer()
+                subscriptionStatusLine(id)
+                subscriptionEnabledToggle(id)
+            }
+            if expanded {
+                subscriptionProviderManagement(id)
+            }
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .contain)
+    }
+
+    /// 展开后的管理 UI, 复用各 provider 现有实现.
+    @ViewBuilder
+    private func subscriptionProviderManagement(
+        _ id: SubscriptionProviderID
+    ) -> some View {
+        switch id {
+        case .kimi: kimiGroup
+        case .deepseek: deepSeekGroup
+        case .volcengine: volcengineGroup
+        case .codex: codexGroup
+        case .antigravity: antigravityGroup
+        }
+    }
+
+    /// 移除 provider: 凭证与配置由 coordinator 处理 (fail-closed),
+    /// 成功后该行从列表消失并回到添加 Picker.
+    private func removeSubscriptionProvider(_ id: SubscriptionProviderID) {
+        coordinator.removeSubscriptionProvider(id)
+        addedSubscriptionProviders.remove(id)
+        expandedSubscriptionProviders.remove(id)
+    }
+
     private var deepSeekGroup: some View {
         let configured = model.subscriptionCredentialConfigured[.deepseek] ?? false
         let busy = model.busySubscriptionProviders.contains(.deepseek)
         let editing = deepseekEditing || !configured
 
-        return subscriptionGroup("DeepSeek") {
-            subscriptionStatusLine(.deepseek)
-            subscriptionEnabledToggle(.deepseek)
+        return Group {
             if editing {
                 SecureField("API key (输入后不回显)", text: $deepseekKeyText)
                     .textFieldStyle(.roundedBorder)
@@ -282,7 +431,7 @@ struct SettingsView: View {
                         .disabled(busy)
                         .accessibilityHint("输入新的 DeepSeek API key")
                     Button("移除") {
-                        coordinator.removeSubscriptionProvider(.deepseek)
+                        removeSubscriptionProvider(.deepseek)
                     }
                     .disabled(busy)
                     .accessibilityHint("删除本应用保存的 DeepSeek API key")
@@ -296,9 +445,7 @@ struct SettingsView: View {
         let busy = model.busySubscriptionProviders.contains(.volcengine)
         let editing = volcengineEditing || !configured
 
-        return subscriptionGroup("火山引擎") {
-            subscriptionStatusLine(.volcengine)
-            subscriptionEnabledToggle(.volcengine)
+        return Group {
             if editing {
                 SecureField("AccessKey (输入后不回显)", text: $volcengineAKText)
                     .textFieldStyle(.roundedBorder)
@@ -341,7 +488,7 @@ struct SettingsView: View {
                         .disabled(busy)
                         .accessibilityHint("输入新的火山引擎 AK/SK")
                     Button("移除") {
-                        coordinator.removeSubscriptionProvider(.volcengine)
+                        removeSubscriptionProvider(.volcengine)
                     }
                     .disabled(busy)
                     .accessibilityHint("删除本应用保存的火山引擎 AK/SK")
@@ -365,9 +512,7 @@ struct SettingsView: View {
         // needsRelogin 时保留粘贴入口, 便于重新登录
         let showPaste = kimiEditing || !configured || (needsRelogin && !localFileExists)
 
-        return subscriptionGroup("Kimi") {
-            subscriptionStatusLine(.kimi)
-            subscriptionEnabledToggle(.kimi)
+        return Group {
             if localFileExists {
                 Button("从本机导入") {
                     coordinator.importKimiFromLocalFile()
@@ -405,7 +550,7 @@ struct SettingsView: View {
                             .accessibilityHint("重新粘贴 Kimi 令牌")
                     }
                     Button("移除") {
-                        coordinator.removeSubscriptionProvider(.kimi)
+                        removeSubscriptionProvider(.kimi)
                         kimiEditing = false
                     }
                     .accessibilityHint("删除本应用保存的 Kimi 令牌")
@@ -416,10 +561,9 @@ struct SettingsView: View {
 
     private var codexGroup: some View {
         let configured = model.subscriptionCredentialConfigured[.codex] ?? false
+        let busy = model.busySubscriptionProviders.contains(.codex)
 
-        return subscriptionGroup("Codex") {
-            subscriptionStatusLine(.codex)
-            subscriptionEnabledToggle(.codex)
+        return Group {
             if let summary = model.codexAccountSummary, summary.count > 0 {
                 let shown = summary.emailPrefixes.prefix(5).joined(separator: ", ")
                 let suffix = summary.emailPrefixes.count > 5 ? " 等" : ""
@@ -428,23 +572,38 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
             HStack {
+                Button("登录新账号") {
+                    coordinator.loginCodexNewAccount()
+                }
+                .disabled(busy)
+                .accessibilityHint("在浏览器中完成 Codex 官方设备码登录并入库")
                 if coordinator.codexCLIAuthFileExists() {
                     Button("从本机导入当前账号") {
                         coordinator.importCodexFromLocalCLI()
                     }
+                    .disabled(busy)
                     .accessibilityHint("读取 Codex CLI 的当前登录账号")
                 }
                 if coordinator.codexCCAccountsFileExists() {
                     Button("从 CC Switch 导入账号库") {
                         showsCodexCCImportConfirm = true
                     }
+                    .disabled(busy)
                     .accessibilityHint("只读导入 CC Switch 管理的 Codex 多账号")
                 }
             }
+            if let login = coordinator.codexDeviceLogin {
+                deviceLoginView(
+                    login,
+                    openPage: { coordinator.reopenCodexLoginPage() },
+                    cancel: { coordinator.cancelCodexLogin() }
+                )
+            }
             if configured {
                 Button("移除") {
-                    coordinator.removeSubscriptionProvider(.codex)
+                    removeSubscriptionProvider(.codex)
                 }
+                .disabled(busy)
                 .accessibilityHint("删除本应用保存的全部 Codex 账号凭证")
             }
         }
@@ -453,9 +612,7 @@ struct SettingsView: View {
     private var antigravityGroup: some View {
         let configured = model.subscriptionCredentialConfigured[.antigravity] ?? false
 
-        return subscriptionGroup("Antigravity") {
-            subscriptionStatusLine(.antigravity)
-            subscriptionEnabledToggle(.antigravity)
+        return Group {
             if coordinator.antigravityTokenFileExists() {
                 Button("从本机导入") {
                     coordinator.importAntigravityFromLocalFile()
@@ -468,24 +625,11 @@ struct SettingsView: View {
             }
             if configured {
                 Button("移除") {
-                    coordinator.removeSubscriptionProvider(.antigravity)
+                    removeSubscriptionProvider(.antigravity)
                 }
                 .accessibilityHint("删除本应用保存的 Antigravity 令牌")
             }
         }
-    }
-
-    private func subscriptionGroup<Content: View>(
-        _ title: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.subheadline.weight(.medium))
-            content()
-        }
-        .padding(.vertical, 4)
-        .accessibilityElement(children: .contain)
     }
 
     /// 状态行: 未配置 / 已配置 · 验证通过 / 验证失败(原因) / 需要重新登录.
@@ -574,17 +718,74 @@ struct SettingsView: View {
                 Button("重新检查") { coordinator.rescan() }
                     .disabled(busy)
                     .accessibilityLabel("重新检查 GitHub 连接")
-                if busy {
+                if busy, coordinator.githubDeviceLogin == nil {
                     ProgressView()
                         .controlSize(.small)
-                    Text("登录在浏览器中完成, 关闭浏览器页面即可取消")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
+            }
+            if let login = coordinator.githubDeviceLogin {
+                deviceLoginView(
+                    login,
+                    openPage: { coordinator.reopenGitHubLoginPage() },
+                    cancel: { coordinator.cancelGitHubLogin() }
+                )
             }
         }
         .glassFormRowBackground()
         .glassButtonStyle()
+    }
+
+    /// 设备码登录展示: 一次性验证码大字 + 打开登录页 + 轮询状态.
+    /// 验证码由服务端下发, 可展示可复制; token 不进入 UI.
+    private func deviceLoginView(
+        _ login: DeviceLoginPresentation,
+        openPage: @escaping () -> Void,
+        cancel: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("一次性验证码")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(login.userCode)
+                .font(.system(.title3, design: .monospaced).weight(.semibold))
+                .textSelection(.enabled)
+                .accessibilityLabel("一次性验证码 \(login.userCode)")
+            HStack {
+                Button("打开登录页", action: openPage)
+                    .accessibilityHint("在浏览器中打开验证页并输入验证码")
+                switch login.stage {
+                case .waitingAuthorization, .finishing:
+                    Button("取消", role: .cancel, action: cancel)
+                        .accessibilityHint("停止等待授权")
+                case .succeeded, .failed, .timedOut:
+                    Button("关闭", action: cancel)
+                        .accessibilityHint("收起登录状态")
+                }
+            }
+            switch login.stage {
+            case .waitingAuthorization:
+                Label("等待浏览器授权…", systemImage: "arrow.clockwise")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            case .finishing:
+                Label("正在完成登录…", systemImage: "arrow.clockwise")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            case .succeeded:
+                Label("登录成功", systemImage: "checkmark.circle.fill")
+                    .font(.caption)
+            case .failed(let reason):
+                Label("登录失败: \(reason)", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            case .timedOut:
+                Label("等待授权超时, 请重新点击登录", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .contain)
     }
 
     // MARK: - GitLab 卡
@@ -667,7 +868,7 @@ struct SettingsView: View {
                     .flatMap({ URL(string: $0)?.host }) {
                     summaryLine("访问 \(host) (使用已保存的 PAT)")
                 }
-                summaryLine("默认每 30 分钟自动刷新已授权模块")
+                summaryLine("每 \(coordinator.refreshIntervalMinutes) 分钟自动刷新已授权模块")
                 let enabledProviders = coordinator
                     .enabledConfiguredSubscriptionProviders
                 if enabledProviders.isEmpty {
@@ -697,7 +898,7 @@ struct SettingsView: View {
                     )
                 }
                 .disabled(coordinator.selectedModules.isEmpty)
-                .accessibilityHint("允许已选模块按默认 30 分钟周期采集")
+                .accessibilityHint("允许已选模块按 \(coordinator.refreshIntervalMinutes) 分钟周期采集")
             }
         }
         .glassFormRowBackground()

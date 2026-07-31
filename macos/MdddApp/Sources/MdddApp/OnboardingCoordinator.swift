@@ -1,6 +1,25 @@
+import AppKit
 import Foundation
 import MdddAppCore
 import MdddOnboardingCore
+
+/// 设备码登录的 UI 展示状态 (GitHub / Codex 共用).
+/// userCode 是一次性验证码, 可展示; 不含 token.
+struct DeviceLoginPresentation: Equatable {
+    enum Stage: Equatable {
+        /// 等待用户在浏览器输入验证码完成授权
+        case waitingAuthorization
+        /// 已授权, 正在换 token 并写入
+        case finishing
+        case succeeded
+        case failed(String)
+        case timedOut
+    }
+
+    let userCode: String
+    let verificationURL: URL
+    var stage: Stage
+}
 
 /// 协调 Onboarding 扫描, 连接验证, 授权确认和 Scheduler 启用.
 /// 本机扫描不产生外部请求; 外部验证只在用户主动操作或授权版本有效时触发.
@@ -13,11 +32,25 @@ final class OnboardingCoordinator: ObservableObject {
     @Published var selectedModules: Set<CollectorModule>
     /// 当前是否处于授权版本有效状态.
     @Published private(set) var consentConfirmed: Bool
+    /// 自动刷新间隔 (分钟), 与配置持久化同步.
+    @Published private(set) var refreshIntervalMinutes: Int
+    /// 外观偏好, 与配置持久化同步; 面板和设置窗口据此覆盖 colorScheme.
+    @Published private(set) var appearanceMode: AppearancePreference
+    /// 液态玻璃风格偏好, 与配置持久化同步; 经环境注入面板与设置页.
+    @Published private(set) var glassStyle: GlassStylePreference
 
     /// 已配置的 GitLab base URL (非敏感), 供设置页预填.
     var configuredGitLabBaseURL: String? {
         configStore?.load()?.gitlabBaseURL
     }
+
+    /// GitHub 设备码登录展示状态, nil 表示无进行中的流程.
+    @Published private(set) var githubDeviceLogin: DeviceLoginPresentation?
+    /// Codex 设备码登录展示状态, nil 表示无进行中的流程.
+    @Published private(set) var codexDeviceLogin: DeviceLoginPresentation?
+
+    private var githubLoginTask: Task<Void, Never>?
+    private var codexLoginTask: Task<Void, Never>?
 
     private let scheduler: RefreshScheduler
     private let model: AppModel
@@ -62,6 +95,12 @@ final class OnboardingCoordinator: ObservableObject {
             }
         )
         self.consentConfirmed = confirmedVersion == consentVersion
+        let resolvedInterval = config?.resolvedRefreshIntervalMinutes
+            ?? OnboardingConfiguration.defaultRefreshIntervalMinutes
+        self.refreshIntervalMinutes = resolvedInterval
+        scheduler.updateRefreshInterval(TimeInterval(resolvedInterval * 60))
+        self.appearanceMode = config?.resolvedAppearanceMode ?? .system
+        self.glassStyle = config?.resolvedGlassStyle ?? .regular
         publishMenuBarMetrics(from: config)
         publishSubscriptionState(from: config)
     }
@@ -338,6 +377,108 @@ final class OnboardingCoordinator: ObservableObject {
             .codex,
             status: ProviderConnectionVerifier.verifyCodexAccountsJSON(json)
         )
+    }
+
+    /// Codex: 设备码登录新账号 (用户点击触发, 全程网络只由该点击发起).
+    /// UI 展示 user_code 并打开官方验证页; 轮询带过期超时与任务取消;
+    /// 成功后复用账号库合并逻辑写入 Keychain 并设为 active, 刷新摘要.
+    /// 每步失败都给出可诊断错误, 不写半成品凭证 (fail-closed).
+    func loginCodexNewAccount() {
+        codexLoginTask?.cancel()
+        model.setBusySubscription(true, for: .codex)
+        model.setSettingsError(nil)
+        codexLoginTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.model.setBusySubscription(false, for: .codex) }
+            let flow = CodexDeviceFlow()
+
+            let authorization: DeviceAuthorization
+            switch await flow.start() {
+            case .failure(let error):
+                guard error != .cancelled else { return }
+                self.codexDeviceLogin = nil
+                self.model.setSettingsError(
+                    "Codex 登录发起失败: \(error.description)"
+                )
+                return
+            case .success(let parsed):
+                authorization = parsed
+            }
+
+            self.codexDeviceLogin = DeviceLoginPresentation(
+                userCode: authorization.userCode,
+                verificationURL: authorization.verificationURL,
+                stage: .waitingAuthorization
+            )
+            self.openInBrowser(authorization.verificationURL)
+
+            let grant: CodexDeviceFlow.DeviceGrant
+            switch await flow.pollUntilAuthorized(authorization) {
+            case .failure(let error):
+                if error == .cancelled { self.codexDeviceLogin = nil }
+                else { self.finishCodexLogin(with: error) }
+                return
+            case .success(let parsed):
+                grant = parsed
+            }
+
+            self.codexDeviceLogin?.stage = .finishing
+            switch await flow.exchange(grant) {
+            case .failure(let error):
+                if error == .cancelled { self.codexDeviceLogin = nil }
+                else { self.finishCodexLogin(with: error) }
+                return
+            case .success(let account):
+                let existing = try? credentialStore.loadCredential(
+                    forAccount: SubscriptionCredentialAccount.codexAccounts
+                )
+                switch CodexAccountsLibrary.merging(
+                    existingJSON: existing, account: account
+                ) {
+                case .failure(let error):
+                    self.codexDeviceLogin = nil
+                    self.model.setSettingsError(
+                        "Codex 账号库合并失败: \(error.description)"
+                    )
+                case .success(let merged):
+                    saveCodexAccountsLibrary(
+                        merged, activeAccountID: account.accountID
+                    )
+                    guard self.codexDeviceLogin != nil else { return }
+                    self.codexDeviceLogin?.stage = .succeeded
+                    // 成功状态短暂展示后收起
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                    self.codexDeviceLogin = nil
+                }
+            }
+        }
+    }
+
+    /// 取消进行中的 Codex 设备码登录并收起展示.
+    func cancelCodexLogin() {
+        codexLoginTask?.cancel()
+        codexLoginTask = nil
+        codexDeviceLogin = nil
+        model.setBusySubscription(false, for: .codex)
+    }
+
+    /// 重新打开 Codex 验证页 (用户误关浏览器时点击).
+    func reopenCodexLoginPage() {
+        guard let url = codexDeviceLogin?.verificationURL else { return }
+        openInBrowser(url)
+    }
+
+    /// Codex 轮询或换码失败的统一收尾, 均 fail-closed.
+    private func finishCodexLogin(with error: DeviceAuthError) {
+        switch error {
+        case .authorizationExpired:
+            codexDeviceLogin?.stage = .timedOut
+        case .authorizationDenied:
+            codexDeviceLogin?.stage = .failed("授权被拒绝")
+        default:
+            codexDeviceLogin?.stage = .failed(error.description)
+        }
+        model.setSettingsError("Codex 登录未完成: \(error.description)")
     }
 
     /// 读取 CLI `~/.codex/auth.json` 的当前账号 id; 读不到返回 nil (非致命).
@@ -641,6 +782,91 @@ final class OnboardingCoordinator: ObservableObject {
         try? configStore?.save(config)
     }
 
+    /// 连接成功后把模块加入已选集合并持久化, 使 reconcileScheduler
+    /// 能把该模块交给 Scheduler 调度. 保存失败发布错误并返回 false
+    /// (fail-closed), 不更新内存选中状态.
+    @discardableResult
+    private func persistModuleSelection(_ module: CollectorModule) -> Bool {
+        guard let configStore else {
+            model.setSettingsError("配置存储不可用, 无法启用模块")
+            return false
+        }
+        var config = configStore.load() ?? OnboardingConfiguration()
+        guard !config.selectedModules.contains(module.rawValue) else {
+            return true
+        }
+        config.selectedModules.insert(module.rawValue)
+        do {
+            try configStore.save(config)
+        } catch {
+            model.setSettingsError("模块启用保存失败, 自动调度不会生效")
+            return false
+        }
+        selectedModules.insert(module)
+        return true
+    }
+
+    /// 用户变更自动刷新间隔: 先持久化再通知 Scheduler 重启计时
+    /// (先存后生效); 非法值回落默认 30 分钟, 保存失败不变更运行中间隔.
+    func setRefreshIntervalMinutes(_ minutes: Int) {
+        let normalized = OnboardingConfiguration
+            .allowedRefreshIntervalMinutes.contains(minutes)
+            ? minutes : OnboardingConfiguration.defaultRefreshIntervalMinutes
+        guard let configStore else {
+            model.setSettingsError("配置存储不可用, 无法保存刷新间隔")
+            return
+        }
+        var config = configStore.load() ?? OnboardingConfiguration()
+        config.refreshIntervalMinutes = normalized
+        do {
+            try configStore.save(config)
+        } catch {
+            model.setSettingsError("刷新间隔保存失败")
+            return
+        }
+        refreshIntervalMinutes = normalized
+        scheduler.updateRefreshInterval(TimeInterval(normalized * 60))
+        model.setSettingsError(nil)
+    }
+
+    /// 用户变更外观偏好: 先持久化再发布 (先存后生效);
+    /// 保存失败不变更运行中外观.
+    func setAppearanceMode(_ mode: AppearancePreference) {
+        guard let configStore else {
+            model.setSettingsError("配置存储不可用, 无法保存外观偏好")
+            return
+        }
+        var config = configStore.load() ?? OnboardingConfiguration()
+        config.appearanceMode = mode
+        do {
+            try configStore.save(config)
+        } catch {
+            model.setSettingsError("外观偏好保存失败")
+            return
+        }
+        appearanceMode = mode
+        model.setSettingsError(nil)
+    }
+
+    /// 用户变更液态玻璃风格: 先持久化再发布 (先存后生效);
+    /// 保存失败不变更运行中风格.
+    func setGlassStyle(_ style: GlassStylePreference) {
+        guard let configStore else {
+            model.setSettingsError("配置存储不可用, 无法保存玻璃风格")
+            return
+        }
+        var config = configStore.load() ?? OnboardingConfiguration()
+        config.glassStyle = style
+        do {
+            try configStore.save(config)
+        } catch {
+            model.setSettingsError("玻璃风格保存失败")
+            return
+        }
+        glassStyle = style
+        model.setSettingsError(nil)
+    }
+
     // MARK: - 授权
 
     /// 用户确认统一授权后调用.
@@ -747,24 +973,127 @@ final class OnboardingCoordinator: ObservableObject {
         rescan()
     }
 
-    /// 用户主动登录 GitHub: 走 gh 官方 web 流程, 完成后复核一次状态.
-    /// 只持久化非敏感连接状态. 用户取消或超时保持未连接.
+    /// 用户主动登录 GitHub: 走 gh 官方同源设备码流程.
+    /// 旧实现以无 TTY 的 Process 静默跑 `gh auth login --web`, 一次性验证码
+    /// 被 stdout 捕获但从不展示, 浏览器打开也不可靠, 失败后无任何提示.
+    /// 现改为应用自己驱动设备码流程: UI 展示验证码, NSWorkspace 打开验证页,
+    /// 轮询拿到 token 后经 stdin 管道写回 `gh auth login --with-token`.
+    /// 全程 fail-closed, 每步失败都给可诊断错误.
     func loginGitHub() {
-        Task { @MainActor in
-            guard let ghPath = GhCliPathResolver.resolve() else {
-                model.setSettingsError("未找到 GitHub CLI, 请先安装 gh")
+        githubLoginTask?.cancel()
+        guard let ghPath = GhCliPathResolver.resolve() else {
+            model.setSettingsError("未找到 GitHub CLI, 请先安装 gh")
+            return
+        }
+        model.setBusy(true, for: .github)
+        model.setSettingsError(nil)
+        githubLoginTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.model.setBusy(false, for: .github) }
+            let flow = GitHubDeviceFlow()
+
+            let authorization: DeviceAuthorization
+            switch await flow.start() {
+            case .failure(let error):
+                guard error != .cancelled else { return }
+                self.githubDeviceLogin = nil
+                self.model.setSettingsError(
+                    "GitHub 登录发起失败: \(error.description)"
+                )
+                return
+            case .success(let parsed):
+                authorization = parsed
+            }
+
+            self.githubDeviceLogin = DeviceLoginPresentation(
+                userCode: authorization.userCode,
+                verificationURL: authorization.verificationURL,
+                stage: .waitingAuthorization
+            )
+            self.openInBrowser(authorization.verificationURL)
+
+            let accessToken: String
+            switch await flow.pollUntilAuthorized(authorization) {
+            case .failure(let error):
+                if error == .cancelled { self.githubDeviceLogin = nil }
+                else { self.finishGitHubLogin(with: error) }
+                return
+            case .success(let token):
+                accessToken = token
+            }
+
+            self.githubDeviceLogin?.stage = .finishing
+            // token 经 stdin 管道写回 gh 官方登录态, 不进 argv 和磁盘;
+            // gh 会做真实校验, 非零退出即 fail-closed
+            let writeResult = await AsyncProcessProbe(timeout: 60).run(
+                executablePath: ghPath,
+                arguments: ["auth", "login", "--hostname", "github.com", "--with-token"],
+                standardInput: accessToken + "\n"
+            )
+            guard case .success = writeResult else {
+                self.githubDeviceLogin = nil
+                self.model.setSettingsError(
+                    "GitHub 登录态写入 gh 失败, 未保存任何凭证"
+                )
                 return
             }
-            model.setBusy(true, for: .github)
-            defer { model.setBusy(false, for: .github) }
-            let loginResult = await verifier.loginGitHub(ghPath: ghPath)
-            guard loginResult == .connected else { return }
+
             let status = await verifier.checkGitHubStatus(
                 ghPath: ghPath, hasConnectedBefore: false
             )
+            guard status == .connected else {
+                self.githubDeviceLogin = nil
+                self.model.setSettingsError("GitHub 登录复核未通过, 请重试")
+                return
+            }
             persistConnectionState(status, for: .github)
-            model.setSettingsError(nil)
+            self.model.setSettingsError(nil)
+            // 登录成功后把 GitHub 加入已选模块并持久化,
+            // 否则 Scheduler 只调度已选模块, 永远不会采集 GitHub
+            self.persistModuleSelection(.github)
+            self.githubDeviceLogin?.stage = .succeeded
+            // 成功状态短暂展示后收起
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            self.githubDeviceLogin = nil
             rescan()
+        }
+    }
+
+    /// 取消进行中的 GitHub 设备码登录并收起展示.
+    func cancelGitHubLogin() {
+        githubLoginTask?.cancel()
+        githubLoginTask = nil
+        githubDeviceLogin = nil
+        model.setBusy(false, for: .github)
+    }
+
+    /// 重新打开 GitHub 验证页 (用户误关浏览器时点击).
+    func reopenGitHubLoginPage() {
+        guard let url = githubDeviceLogin?.verificationURL else { return }
+        openInBrowser(url)
+    }
+
+    /// 轮询失败的统一收尾: 超时与被拒绝区分展示, 均 fail-closed.
+    private func finishGitHubLogin(with error: DeviceAuthError) {
+        switch error {
+        case .authorizationExpired:
+            githubDeviceLogin?.stage = .timedOut
+        case .authorizationDenied:
+            githubDeviceLogin?.stage = .failed("授权被拒绝")
+        default:
+            githubDeviceLogin?.stage = .failed(error.description)
+        }
+        model.setSettingsError("GitHub 登录未完成: \(error.description)")
+    }
+
+    /// LSUIElement 下打开浏览器: 先激活再 open; 打开失败 fail-closed,
+    /// 提示用户手动访问, 验证码已在界面上展示.
+    private func openInBrowser(_ url: URL) {
+        NSApp.activate()
+        if !NSWorkspace.shared.open(url) {
+            model.setSettingsError(
+                "无法自动打开浏览器, 请手动访问: \(url.absoluteString)"
+            )
         }
     }
 
@@ -805,6 +1134,11 @@ final class OnboardingCoordinator: ObservableObject {
             }
             persistConnectionState(status, for: .gitlab)
             model.setSettingsError(nil)
+            // 验证通过后把 GitLab 加入已选模块并持久化,
+            // 否则 Scheduler 只调度已选模块, 永远不会采集 GitLab
+            if status == .connected {
+                persistModuleSelection(.gitlab)
+            }
             rescan()
         }
     }

@@ -1006,12 +1006,17 @@ def _volc_parse(result):
             pct = item.get("Percent")
             if pct is None:
                 continue
+            reset_ts = item.get("ResetTimestamp")
+            # 火山 GetCodingPlanUsage 对未开始的窗口 (如未使用的 5 小时窗口) 返回
+            # ResetTimestamp=-1, 透传会被下游解析成 1970 误判「已到期」, 非正数一律置 None
+            if isinstance(reset_ts, (int, float)) and reset_ts <= 0:
+                reset_ts = None
             windows.append(
                 {
                     "label": label,
                     "usedPercent": max(0.0, min(100.0, float(pct))),
                     "windowMinutes": None,
-                    "resetsAt": item.get("ResetTimestamp"),
+                    "resetsAt": reset_ts,
                 }
             )
         plan = result.get("Status") or None

@@ -50,9 +50,10 @@ struct HourlyLineCard: View {
 
     // MARK: - agent 行
 
-    /// 行间 1pt 分隔线, 对应 mockup `border-top: 1px solid rgba(0,0,0,.05)`.
+    /// 行间 1pt 分隔线, 对应 mockup `border-top: 1px solid rgba(0,0,0,.05)`;
+    /// 深色下改为低透明白.
     private var rowDivider: some View {
-        Color.black.opacity(0.05)
+        Color.adaptive(light: Color.black.opacity(0.05), dark: Color.white.opacity(0.10))
             .frame(height: 1)
     }
 
@@ -159,10 +160,13 @@ struct HourlyLineCard: View {
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 7)
-        .background(Color.white.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
+        .background(
+            Color.adaptive(light: Color.white.opacity(0.35), dark: Color.white.opacity(0.10)),
+            in: RoundedRectangle(cornerRadius: 10)
+        )
         .overlay(
             RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.white.opacity(0.5), lineWidth: 1)
+                .stroke(Color.adaptive(light: Color.white.opacity(0.5), dark: Color.white.opacity(0.18)), lineWidth: 1)
         )
         .padding(.leading, 14)
         .padding(.top, 2)
@@ -190,7 +194,7 @@ struct HourlyLineCard: View {
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 2)
-                        .fill(Color.black.opacity(0.07))
+                        .fill(Color.adaptive(light: Color.black.opacity(0.07), dark: Color.white.opacity(0.12)))
                     RoundedRectangle(cornerRadius: 2)
                         .fill(color.opacity(opacity))
                         .frame(width: max(2, proxy.size.width * min(max(bar.share, 0), 1)))
@@ -238,6 +242,14 @@ private extension Color {
             green: Double((value >> 8) & 0xff) / 255,
             blue: Double(value & 0xff) / 255
         )
+    }
+
+    /// 深浅色自适应: 浅色外观用 light, 深色外观用 dark.
+    static func adaptive(light: Color, dark: Color) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return NSColor(isDark ? dark : light)
+        })
     }
 }
 
