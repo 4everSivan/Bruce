@@ -304,8 +304,8 @@ private extension HourlyLineViewModel {
                 projects: []
             ),
             HourlyAgentRow(
-                agentID: "codex-orca",
-                name: "Codex · Orca",
+                agentID: "codex",
+                name: "Codex",
                 color: .purple,
                 todayTotal: 13_000,
                 points: [100, 200, 300, 250, 500, 800, 650, 1100, 1400, 1200, 1500, 1300,

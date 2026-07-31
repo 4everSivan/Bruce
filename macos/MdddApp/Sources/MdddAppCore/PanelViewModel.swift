@@ -35,7 +35,7 @@ package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
             return .cyan
         case "claude-code":
             return .orange
-        case "codex", "codex-orca":
+        case "codex":
             return .purple
         default:
             var hash: UInt64 = 0xcbf29ce484222325
@@ -359,9 +359,12 @@ package struct SubscriptionProviderSection: Equatable, Sendable {
 package struct SubscriptionViewModel: Equatable, Sendable {
     /// 余额型 provider 已沉底, 其余保持 artifact 顺序.
     package let sections: [SubscriptionProviderSection]
+    /// 卡片右上角最后更新时间 ("最后更新 HH:mm"); generatedAt 解析失败为 nil.
+    package let updatedText: String?
 
-    package init(sections: [SubscriptionProviderSection]) {
+    package init(sections: [SubscriptionProviderSection], updatedText: String? = nil) {
         self.sections = sections
+        self.updatedText = updatedText
     }
 }
 
@@ -685,7 +688,20 @@ package struct PanelViewModelMapper: Sendable {
             return lhs.offset < rhs.offset
         }.map(\.element)
 
-        return SubscriptionViewModel(sections: sorted)
+        return SubscriptionViewModel(
+            sections: sorted,
+            updatedText: updatedText(from: artifact.generatedAt)
+        )
+    }
+
+    /// 订阅卡右上角更新时间: "最后更新 HH:mm" (24 小时制, 跟随 mapper 时区);
+    /// generatedAt 解析失败返回 nil, 卡片不渲染该文案.
+    private func updatedText(from generatedAt: String) -> String? {
+        guard let date = Self.parseISODate(generatedAt) else { return nil }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        formatter.timeZone = calendar.timeZone
+        return "最后更新 " + formatter.string(from: date)
     }
 
     private func parseWindow(

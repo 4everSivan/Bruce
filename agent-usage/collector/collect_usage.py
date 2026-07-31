@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Aggregate local AI-agent token usage, cost estimates, and provider quotas.
 
-Agents: Kimi Work (daimon), Kimi Code CLI, Claude Code, Codex CLI; detection
-only for Gemini/Antigravity, GitHub Copilot, Cursor.
+Agents: Kimi Work (daimon), Kimi Code CLI, Claude Code, Codex (CLI and
+Orca-hosted sessions merged into one agent); detection only for
+Gemini/Antigravity, GitHub Copilot, Cursor.
 Services (quota): read CC Switch's provider database and query the providers
 it knows how to meter (Kimi For Coding, DeepSeek balance, Volcengine Coding
 Plan via signed OpenAPI). Cost estimates use CC Switch's model_pricing table.
@@ -22,8 +23,10 @@ import re
 import shutil
 import sqlite3
 import sys
+import threading
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from zoneinfo import ZoneInfo
 
 HOME = os.path.expanduser("~")
@@ -64,6 +67,7 @@ _RUNTIME_CREDENTIALS = {}
 _RUNTIME_CREDENTIAL_UPDATES = []
 _RUNTIME_CAPABILITIES = None
 _APP_MODE = False
+_CREDENTIAL_UPDATE_LOCK = threading.Lock()
 
 
 def _path_override(overrides, name, default):
@@ -215,15 +219,17 @@ def _record_credential_update(provider, account_id, credentials):
     }
     if not values:
         return
-    _RUNTIME_CREDENTIAL_UPDATES.append(
-        {
-            "provider": provider,
-            "accountId": account_id or "default",
-            "kind": "oauthTokens",
-            "operation": "replace",
-            "credentials": values,
-        }
-    )
+    # services 采集并行后, 多个账号可能同时 append, 需要锁保护
+    with _CREDENTIAL_UPDATE_LOCK:
+        _RUNTIME_CREDENTIAL_UPDATES.append(
+            {
+                "provider": provider,
+                "accountId": account_id or "default",
+                "kind": "oauthTokens",
+                "operation": "replace",
+                "credentials": values,
+            }
+        )
 
 
 def _urlopen(request, **kwargs):
@@ -673,6 +679,14 @@ def scan_claude(agent):
 
 
 def scan_codex(agent, session_dirs=None):
+    """扫描 Codex rollout 会话, 返回 (found, quota_candidate).
+
+    quota_candidate 为 {"ts": float, "quota": dict} 或 None; agent["quota"]
+    的写入上移到调用方, 便于跨来源 (CLI/Orca) 取 ts 最大者.
+    文件按 mtime 降序遍历: quota 快照只需最新一份, 已在更新文件拿到 quota
+    后, mtime 早于 CUTOFF_TS 的旧文件直接短路, 不再整文件读取; 用量统计
+    逻辑不变 (旧文件本就不计入 14 日窗口).
+    """
     found = False
     latest_quota = None
     latest_quota_ts = -1.0
@@ -681,15 +695,20 @@ def scan_codex(agent, session_dirs=None):
         files.extend(
             glob.glob(os.path.join(d, "**/rollout-*.jsonl"), recursive=True)
         )
-    files = sorted(set(files))
-    for path in files:
+    timed = []
+    for path in set(files):
         try:
-            mtime = os.path.getmtime(path)
+            timed.append((os.path.getmtime(path), path))
         except OSError:
             continue
+    timed.sort(reverse=True)
+    for mtime, path in timed:
         recent = mtime >= CUTOFF_TS
         if recent:
             found = True
+        elif latest_quota is not None:
+            # quota 只需最新一份: 已捕获后更旧的文件不再整文件扫描
+            break
         try:
             with open(path, encoding="utf-8", errors="replace") as fh:
                 for line in fh:
@@ -724,27 +743,28 @@ def scan_codex(agent, session_dirs=None):
                     )
         except OSError:
             continue
-    if latest_quota:
-        windows = []
-        for key, label in (("primary", "5小时窗口"), ("secondary", "每周窗口")):
-            w = latest_quota.get(key)
-            if w:
-                windows.append(
-                    {
-                        "label": label,
-                        "usedPercent": float(w.get("used_percent") or 0),
-                        "windowMinutes": w.get("window_minutes"),
-                        "resetsAt": w.get("resets_at"),
-                    }
-                )
-        agent["quota"] = {
-            "plan": latest_quota.get("plan_type"),
-            "windows": windows,
-            "capturedAt": datetime.datetime.fromtimestamp(
-                latest_quota_ts, _RUNTIME_TZ
-            ).isoformat(timespec="seconds"),
-        }
-    return found
+    if not latest_quota:
+        return found, None
+    windows = []
+    for key, label in (("primary", "5小时窗口"), ("secondary", "每周窗口")):
+        w = latest_quota.get(key)
+        if w:
+            windows.append(
+                {
+                    "label": label,
+                    "usedPercent": float(w.get("used_percent") or 0),
+                    "windowMinutes": w.get("window_minutes"),
+                    "resetsAt": w.get("resets_at"),
+                }
+            )
+    quota = {
+        "plan": latest_quota.get("plan_type"),
+        "windows": windows,
+        "capturedAt": datetime.datetime.fromtimestamp(
+            latest_quota_ts, _RUNTIME_TZ
+        ).isoformat(timespec="seconds"),
+    }
+    return found, {"ts": latest_quota_ts, "quota": quota}
 
 
 # ---------------------------------------------------------------- cc-switch services
@@ -1147,10 +1167,13 @@ def service_codex_accounts():
             active_id = cli_tokens.get("account_id")
         except Exception:
             pass
-    cli_rotated = False
-    changed = False
-    services = []
-    for acc_id, acc in accounts.items():
+    def query_account(item):
+        """单账号查询: 账号内 candidates 顺序重试保持串行 (refresh token
+        一次性轮换语义不变); 返回 (svc, 凭证是否变化, CLI 侧是否轮换),
+        CLI 模式文件写回由主线程在 join 后统一执行."""
+        acc_id, acc = item
+        acc_changed = False
+        acc_cli_rotated = False
         email = acc.get("email") or (acc_id[:8] if acc_id else "未知账号")
         svc = {
             "id": "codex_" + (acc_id or "unknown")[:8],
@@ -1186,7 +1209,7 @@ def service_codex_accounts():
                 raise RuntimeError("登录态已失效，请重新登录该账号")
             if tokens.get("refresh_token"):
                 acc["refresh_token"] = tokens["refresh_token"]
-                changed = True
+                acc_changed = True
             for k in ("access_token", "id_token"):
                 if tokens.get(k):
                     acc[k] = tokens[k]
@@ -1196,7 +1219,7 @@ def service_codex_accounts():
                 for k in ("access_token", "id_token", "refresh_token"):
                     if tokens.get(k):
                         cli_tokens[k] = tokens[k]
-                cli_rotated = True
+                acc_cli_rotated = True
             access_token = tokens.get("access_token") or acc.get("access_token") or ""
             d = http_get_json(
                 CODEX_USAGE_URL,
@@ -1243,7 +1266,20 @@ def service_codex_accounts():
             svc["status"] = "error"
             msg = str(e)
             svc["note"] = ("查询失败: " + msg[:60]) if msg else "查询失败"
-        services.append(svc)
+        return svc, acc_changed, acc_cli_rotated
+
+    # 跨账号并行 (每账号一个 future, map 保持账号顺序); 各 worker 只写
+    # 自己账号的 acc 与 (仅活跃账号的) cli_tokens, 无共享可变状态冲突
+    services = []
+    changed = False
+    cli_rotated = False
+    with ThreadPoolExecutor(max_workers=min(4, len(accounts))) as pool:
+        for svc, acc_changed, acc_cli_rotated in pool.map(
+            query_account, accounts.items()
+        ):
+            services.append(svc)
+            changed = changed or acc_changed
+            cli_rotated = cli_rotated or acc_cli_rotated
     if changed and injected_accounts is None and not _APP_MODE:
         try:
             shutil.copy2(CODEX_OAUTH_AUTH, CODEX_OAUTH_AUTH + ".bak-kimi")
@@ -1601,18 +1637,7 @@ def collect(ctx=None):
     _configure_runtime(ctx)
     # 未授权 localPricing 时降级为空定价, 成本估算全部为 None
     pricing = load_pricing() if _capability_allowed("localPricing") else {}
-    agents = []
     sessions_allowed = _capability_allowed("localSessions")
-
-    kimi_work = make_agent("kimi-work", "Kimi Work")
-    if not sessions_allowed:
-        _mark_sessions_denied(kimi_work)
-    elif scan_kimi(kimi_work, DAIMON_KIMI_SESSIONS):
-        kimi_work["note"] = "额度见下方 Kimi 服务"
-    else:
-        kimi_work["status"] = "not_found"
-        kimi_work["note"] = "未发现会话记录"
-    agents.append(finalize(kimi_work, pricing))
 
     def kimi_cli_project(path):
         # .../sessions/wd_<name>_<hash>/conv-xxx/agents/main/wire.jsonl
@@ -1622,37 +1647,8 @@ def collect(ctx=None):
                 return p[3:].rsplit("_", 1)[0].replace("-", "/") or p
         return None
 
-    kimi_cli = make_agent("kimi-code-cli", "Kimi Code CLI")
-    if not sessions_allowed:
-        _mark_sessions_denied(kimi_cli)
-    elif scan_kimi(kimi_cli, KIMI_CLI_SESSIONS, project_from_path=kimi_cli_project):
-        kimi_cli["note"] = "额度见下方 Kimi 服务"
-    else:
-        kimi_cli["status"] = "not_found"
-        kimi_cli["note"] = "未发现会话记录"
-    agents.append(finalize(kimi_cli, pricing))
-
-    claude = make_agent("claude-code", "Claude Code")
-    if not sessions_allowed:
-        _mark_sessions_denied(claude)
-    elif scan_claude(claude):
-        claude["note"] = "当前经 CC Switch 路由，额度见下方对应服务"
-    else:
-        claude["status"] = "not_found"
-        claude["note"] = "未发现会话记录"
-    agents.append(finalize(claude, pricing))
-
-    codex = make_agent("codex", "Codex CLI")
-    if not sessions_allowed:
-        _mark_sessions_denied(codex)
-    elif scan_codex(codex):
-        codex["note"] = "额度见下方 Codex 账号（实时查询）"
-    else:
-        codex["status"] = "not_found"
-        codex["note"] = "未发现会话记录"
-    agents.append(finalize(codex, pricing))
-
-    # Orca 用自己的 CODEX_HOME 托管运行 Codex，会话不在 ~/.codex 下，单独统计
+    # Orca 用自己的 CODEX_HOME 托管运行 Codex, 会话不在 ~/.codex 下;
+    # 扫描时灌进同一个 codex agent, record_usage 桶自动合并
     def orca_account_label():
         try:
             orca_auth = _runtime_credential("orca_codex_auth")
@@ -1681,29 +1677,92 @@ def collect(ctx=None):
         except Exception:
             return None
 
-    orca_dirs = [ORCA_CODEX_SESSIONS] + glob.glob(
-        os.path.join(ORCA_CODEX_ACCOUNTS, "*/home/sessions")
-    )
-    codex_orca = make_agent("codex-orca", "Codex · Orca")
-    if not sessions_allowed:
-        _mark_sessions_denied(codex_orca)
-    elif os.path.isdir(ORCA_HOME) and scan_codex(codex_orca, orca_dirs):
-        label = orca_account_label()
-        codex_orca["note"] = "Orca 托管运行" + (" · 账号 " + label if label else "")
-    elif os.path.isdir(ORCA_HOME):
-        codex_orca["status"] = "not_found"
-        codex_orca["note"] = "Orca 已安装，近 15 天无托管会话"
-    else:
-        codex_orca["status"] = "not_found"
-        codex_orca["note"] = "未检测到 Orca"
-    codex_orca["quota"] = None  # 额度由实时接口按账号展示
-    agents.append(finalize(codex_orca, pricing))
+    def build_kimi_work():
+        agent = make_agent("kimi-work", "Kimi Work")
+        if not sessions_allowed:
+            _mark_sessions_denied(agent)
+        elif scan_kimi(agent, DAIMON_KIMI_SESSIONS):
+            agent["note"] = "额度见下方 Kimi 服务"
+        else:
+            agent["status"] = "not_found"
+            agent["note"] = "未发现会话记录"
+        return finalize(agent, pricing)
+
+    def build_kimi_cli():
+        agent = make_agent("kimi-code-cli", "Kimi Code CLI")
+        if not sessions_allowed:
+            _mark_sessions_denied(agent)
+        elif scan_kimi(agent, KIMI_CLI_SESSIONS, project_from_path=kimi_cli_project):
+            agent["note"] = "额度见下方 Kimi 服务"
+        else:
+            agent["status"] = "not_found"
+            agent["note"] = "未发现会话记录"
+        return finalize(agent, pricing)
+
+    def build_claude():
+        agent = make_agent("claude-code", "Claude Code")
+        if not sessions_allowed:
+            _mark_sessions_denied(agent)
+        elif scan_claude(agent):
+            agent["note"] = "当前经 CC Switch 路由，额度见下方对应服务"
+        else:
+            agent["status"] = "not_found"
+            agent["note"] = "未发现会话记录"
+        return finalize(agent, pricing)
+
+    def build_codex():
+        agent = make_agent("codex", "Codex")
+        quota_candidate = None
+        found_cli = False
+        found_orca = False
+        if sessions_allowed:
+            found_cli, candidate = scan_codex(agent)
+            if candidate:
+                quota_candidate = candidate
+            # Orca 托管会话灌进同一 agent; quota 取两侧候选中 ts 最大者
+            if os.path.isdir(ORCA_HOME):
+                orca_dirs = [ORCA_CODEX_SESSIONS] + glob.glob(
+                    os.path.join(ORCA_CODEX_ACCOUNTS, "*/home/sessions")
+                )
+                found_orca, candidate = scan_codex(agent, orca_dirs)
+                if candidate and (
+                    quota_candidate is None
+                    or candidate["ts"] > quota_candidate["ts"]
+                ):
+                    quota_candidate = candidate
+        agent["quota"] = quota_candidate["quota"] if quota_candidate else None
+        if not sessions_allowed:
+            _mark_sessions_denied(agent)
+        elif found_cli or found_orca:
+            agent["note"] = "额度见下方 Codex 账号（实时查询）"
+            if found_orca:
+                label = orca_account_label()
+                agent["note"] += " · 含 Orca 托管会话" + (
+                    " · 账号 " + label if label else ""
+                )
+        else:
+            agent["status"] = "not_found"
+            agent["note"] = "未发现会话记录"
+        return finalize(agent, pricing)
+
+    # 4 个本地扫描互不共享状态 (各自累积独立 agent, 全局窗口配置只读),
+    # 并行执行; join 后按固定顺序组装, artifact 结构不变
+    builders = [build_kimi_work, build_kimi_cli, build_claude, build_codex]
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        agents = list(pool.map(lambda build: build(), builders))
 
     if _capability_allowed("externalQuotas"):
-        services = collect_services()
-        services.extend(service_antigravity())
-        codex_svcs = service_codex_accounts()
-        services.extend(codex_svcs)
+        # 三路服务采集互不依赖 (CC 库为 mode=ro 独立连接), 并行后按原顺序拼接
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            futures = [
+                pool.submit(collect_services),
+                pool.submit(service_antigravity),
+                pool.submit(service_codex_accounts),
+            ]
+            cc_services = futures[0].result()
+            agy_services = futures[1].result()
+            codex_svcs = futures[2].result()
+        services = cc_services + agy_services + codex_svcs
         if any(s["status"] == "ok" and s["windows"] for s in codex_svcs):
             # 实时接口数据更准：隐藏 Codex agent 行上过期的会话快照额度
             for a in agents:

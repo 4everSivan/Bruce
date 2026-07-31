@@ -27,11 +27,9 @@ struct UsageHeroCard: View {
                 .padding(.top, 12)
             breakdownRow
                 .padding(.top, 10)
-            sectionHeader
-                .padding(.top, 12)
             usageChart
-                // 小节标题与柱顶总量标注之间留足间距, 避免高柱标注遮挡标题.
-                .padding(.top, 12)
+                // 与上方输入/输出指标之间留足间距, 避免高柱标注遮挡.
+                .padding(.top, 16)
             dateAxis
                 .padding(.top, 3)
             legendRow
@@ -108,15 +106,6 @@ struct UsageHeroCard: View {
             }
         }
         .fixedSize(horizontal: false, vertical: true)
-    }
-
-    // MARK: 图区小节标题
-
-    private var sectionHeader: some View {
-        Text("14 日")
-            .font(.system(size: 10, weight: .semibold))
-            .tracking(0.4)
-            .foregroundStyle(Self.faint)
     }
 
     // MARK: 14 日堆叠柱状图
@@ -392,7 +381,7 @@ private enum UsageHeroPreviewFixture {
                     today: (34000, 6000, 8000, 3000, 52000))),
         \(agentJSON(id: "claude-code", name: "Claude Code", totals: claudeTotals,
                     today: (18000, 3000, 4000, 1200, 21000))),
-        \(agentJSON(id: "codex-orca", name: "Codex · Orca", totals: codexTotals,
+        \(agentJSON(id: "codex", name: "Codex", totals: codexTotals,
                     today: (9000, 2000, 2000, 800, 13000)))
         ],"services":[],"totalCostUsd":0.375}
         """

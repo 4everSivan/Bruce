@@ -406,6 +406,61 @@ class AgentCollectorContextTests(unittest.TestCase):
         self.assertEqual(before, after)
 
 
+    def test_concurrent_account_refreshes_do_not_lose_credential_updates(self):
+        """跨账号并行 refresh 时 _RUNTIME_CREDENTIAL_UPDATES 不丢条目 (C1)."""
+        accounts = {
+            "acc-one-0001": {"email": "one@example.test", "refresh_token": "rt-one"},
+            "acc-two-0002": {"email": "two@example.test", "refresh_token": "rt-two"},
+            "acc-three-03": {"email": "three@example.test", "refresh_token": "rt-three"},
+        }
+        with tempfile.TemporaryDirectory() as temp_home:
+            self.module._configure_runtime(
+                {
+                    "home": temp_home,
+                    "app_mode": True,
+                    "now": "2026-07-28T12:00:00+08:00",
+                    "credentials": {
+                        "codex_oauth_auth": {"accounts": accounts},
+                        "codex_auth": {
+                            "tokens": {
+                                "account_id": "acc-one-0001",
+                                "refresh_token": "rt-one-cli",
+                            }
+                        },
+                    },
+                    "http": {
+                        "get_json": lambda *_: {
+                            "plan_type": "fixture",
+                            "rate_limit": {},
+                        }
+                    },
+                }
+            )
+            original_refresh = self.module._codex_refresh
+            self.module._codex_refresh = lambda token: {
+                "access_token": "access-" + token,
+                "refresh_token": "rotated-" + token,
+            }
+            try:
+                services = self.module.service_codex_accounts()
+            finally:
+                self.module._codex_refresh = original_refresh
+
+        # pool.map 保持账号顺序
+        self.assertEqual(
+            [svc["id"] for svc in services],
+            ["codex_" + acc_id[:8] for acc_id in accounts],
+        )
+        updates = self.module._RUNTIME_CREDENTIAL_UPDATES
+        self.assertEqual(len(updates), 3)
+        self.assertEqual(
+            {u["accountId"] for u in updates}, set(accounts)
+        )
+        for update in updates:
+            self.assertEqual(update["provider"], "codex")
+            self.assertEqual(update["operation"], "replace")
+
+
 class AgentCollectorCapabilityTests(unittest.TestCase):
     def setUp(self):
         self.module = load_module(

@@ -160,7 +160,7 @@ Agent Collector 以只读方式识别和聚合以下本机会话源:
 
 CC Switch 的 `model_pricing` 用于本地成本估算。CC Switch 和 Antigravity SQLite 仅按真实查询契约探测 schema, 均使用只读模式打开, 不执行 DDL、迁移或修复。
 
-Onboarding 把 Kimi Work、Kimi Code CLI、Claude Code 和 Codex CLI 作为主要会话源进行就绪判断。Orca 会话由 Collector 作为补充来源单独聚合, 但不单独解除“没有可用主要会话源”的运行阻塞。
+Onboarding 把 Kimi Work、Kimi Code CLI、Claude Code 和 Codex CLI 作为主要会话源进行就绪判断。Orca 托管的 Codex 会话由 Collector 合并进 Codex 条目统一聚合, 但不单独解除“没有可用主要会话源”的运行阻塞。
 
 #### 6.1.2 聚合维度
 

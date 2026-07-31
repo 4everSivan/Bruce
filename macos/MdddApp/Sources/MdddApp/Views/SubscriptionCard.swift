@@ -16,9 +16,11 @@ struct SubscriptionCard: View {
                 Text("订阅用量")
                     .font(.system(size: 12.5, weight: .semibold))
                 Spacer()
-                Text("在设置中配置 · 自动刷新")
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(.secondary)
+                if let updatedText = viewModel.updatedText {
+                    Text(updatedText)
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(.secondary)
+                }
             }
 
             ForEach(Array(viewModel.sections.enumerated()), id: \.element.id) { index, section in

@@ -190,7 +190,9 @@ struct PanelViewModelHarness {
         try costTextConvertsUsdToCny()
         try unknownAgentColorIsStable()
         try emptyArtifactsProduceDiagnostics()
-        print("PanelViewModel tests passed: 20")
+        try subscriptionUpdatedTextFormatsGeneratedAt()
+        try subscriptionUpdatedTextNilForBadDate()
+        print("PanelViewModel tests passed: 22")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -655,7 +657,7 @@ struct PanelViewModelHarness {
         try expect(PanelAgentColor.resolve(agentID: "kimi-code-cli") == .blue, "Kimi Code CLI 配色错误")
         try expect(PanelAgentColor.resolve(agentID: "kimi-work") == .cyan, "Kimi Work 配色错误")
         try expect(PanelAgentColor.resolve(agentID: "claude-code") == .orange, "Claude 配色错误")
-        try expect(PanelAgentColor.resolve(agentID: "codex-orca") == .purple, "Codex · Orca 配色错误")
+        try expect(PanelAgentColor.resolve(agentID: "codex") == .purple, "Codex 配色错误")
     }
 
     // 空 agents / 全缺失全部产生可诊断状态.
@@ -691,5 +693,35 @@ struct PanelViewModelHarness {
             throw PanelTestFailure.expectation("订阅卡意外为 nil, diagnostics: \(vm.diagnostics)")
         }
         return (subscription.sections, vm.diagnostics)
+    }
+
+    // 订阅卡右上角展示 artifact generatedAt 的本地 HH:mm.
+    private static func subscriptionUpdatedTextFormatsGeneratedAt() throws {
+        let service = makeService(
+            id: "kimi",
+            name: "Kimi",
+            kind: "windows",
+            windows: [makeWindow(label: "5小时窗口", usedPercent: 68, windowMinutes: 300)]
+        )
+        let vm = makeMapper().make(
+            agentUsage: makeAgentUsageArtifact(agents: [], services: [service]),
+            moduleStatuses: readyStatuses
+        )
+        try expect(vm.subscription?.updatedText == "最后更新 13:50", "更新时间文本错误: \(vm.subscription?.updatedText ?? "nil")")
+    }
+
+    // generatedAt 无法解析时不渲染更新时间.
+    private static func subscriptionUpdatedTextNilForBadDate() throws {
+        let service = makeService(
+            id: "kimi",
+            name: "Kimi",
+            kind: "windows",
+            windows: [makeWindow(label: "5小时窗口", usedPercent: 68, windowMinutes: 300)]
+        )
+        let vm = makeMapper().make(
+            agentUsage: makeAgentUsageArtifact(agents: [], services: [service], generatedAt: "not-a-date"),
+            moduleStatuses: readyStatuses
+        )
+        try expect(vm.subscription?.updatedText == nil, "坏日期不应渲染更新时间")
     }
 }
