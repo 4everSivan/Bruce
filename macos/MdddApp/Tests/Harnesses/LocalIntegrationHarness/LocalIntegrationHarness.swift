@@ -88,7 +88,160 @@ struct LocalIntegrationHarness {
             bridge: bridge
         )
         try await codexMigrationLifecycleClosedLoop()
-        print("Local integration tests passed: 2")
+        try deepSeekArtifactToLedgerPipeline()
+        print("Local integration tests passed: 3")
+    }
+
+    /// DeepSeek Artifact -> AppModel -> 账本 -> ViewModel 链路 (隔离 fixture).
+    /// 验证: 有效 DeepSeek 余额观察喂账本, 派生月度状态成为唯一 UI 状态源,
+    /// 追踪 ID 变化立即失效, 无效 Artifact 不读写账本.
+    private static func deepSeekArtifactToLedgerPipeline() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "mddd-ledger-pipeline-\(UUID().uuidString)",
+                isDirectory: true
+            )
+        defer { try? FileManager.default.removeItem(at: root) }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+        let ledger = DeepSeekUsageLedger(rootURL: root, calendar: calendar)
+        let model = AppModel(deepSeekLedger: ledger)
+
+        // 预置 DeepSeek 配置 (usageTrackingID) 走 subscriptionProviders 发布链路
+        model.setSubscriptionProviders([
+            .deepseek: SubscriptionProviderConfiguration(
+                enabled: true,
+                verificationStatus: .ok,
+                usageTrackingID: "pipeline-tracking-1"
+            ),
+        ])
+
+        // 1. 首次有效 Artifact: 建立基线
+        let firstArtifact = makeDeepSeekArtifact(
+            generatedAt: "2026-08-03T04:00:00+08:00",
+            balance: 100
+        )
+        model.setArtifact(firstArtifact, for: .agentUsage)
+        guard case .baseline = model.deepSeekMonthlyUsage else {
+            throw IntegrationTestFailure.expectation(
+                "首次有效 Artifact 必须建立基线, got \(String(describing: model.deepSeekMonthlyUsage))"
+            )
+        }
+
+        // 2. 第二次有效 Artifact: 余额下降, 进入 trend
+        let secondArtifact = makeDeepSeekArtifact(
+            generatedAt: "2026-08-03T12:00:00+08:00",
+            balance: 80
+        )
+        model.setArtifact(secondArtifact, for: .agentUsage)
+        guard case .trend(let trend) = model.deepSeekMonthlyUsage else {
+            throw IntegrationTestFailure.expectation(
+                "第二次有效 Artifact 必须进入 trend, got \(String(describing: model.deepSeekMonthlyUsage))"
+            )
+        }
+        try integrationExpect(trend.estimatedConsumption == 20, "推算消费应为 20")
+
+        // 3. 无效 Artifact (DeepSeek 条目 status != ok): 不读写账本, 保留当前状态
+        let failedArtifact = makeDeepSeekArtifact(
+            generatedAt: "2026-08-03T13:00:00+08:00",
+            balance: 70,
+            serviceStatus: "error"
+        )
+        model.setArtifact(failedArtifact, for: .agentUsage)
+        guard case .trend(let afterFailure) = model.deepSeekMonthlyUsage else {
+            throw IntegrationTestFailure.expectation("无效 Artifact 不得改变月度状态")
+        }
+        try integrationExpect(
+            afterFailure.estimatedConsumption == 20,
+            "无效 Artifact 不得记账"
+        )
+
+        // 4. 追踪 ID 变化: 立即失效, 等待下一条有效观察重建基线
+        model.setSubscriptionProviders([
+            .deepseek: SubscriptionProviderConfiguration(
+                enabled: true,
+                verificationStatus: .ok,
+                usageTrackingID: "pipeline-tracking-2"
+            ),
+        ])
+        guard case .unavailable = model.deepSeekMonthlyUsage else {
+            throw IntegrationTestFailure.expectation(
+                "追踪 ID 变化必须立即失效月度状态, got \(String(describing: model.deepSeekMonthlyUsage))"
+            )
+        }
+        // 新 ID 下首次有效观察: 重建基线, 不继承旧消费
+        let thirdArtifact = makeDeepSeekArtifact(
+            generatedAt: "2026-08-04T04:00:00+08:00",
+            balance: 60
+        )
+        model.setArtifact(thirdArtifact, for: .agentUsage)
+        guard case .baseline(let newBaseline) = model.deepSeekMonthlyUsage else {
+            throw IntegrationTestFailure.expectation(
+                "新追踪 ID 首次观察必须重建基线, got \(String(describing: model.deepSeekMonthlyUsage))"
+            )
+        }
+        try integrationExpect(newBaseline.currentBalance == 60, "新基线余额应为 60")
+
+        // 5. ViewModel 映射: 仅 DeepSeek section 携带月度状态
+        let panel = model.makePanelViewModel()
+        let deepSeekSection = panel.subscription?.sections.first {
+            $0.id == "deepseek"
+        }
+        try integrationExpect(
+            deepSeekSection?.deepSeekMonthlyUsage != nil,
+            "DeepSeek section 必须携带月度 view model"
+        )
+        for section in panel.subscription?.sections ?? [] where section.id != "deepseek" {
+            try integrationExpect(
+                section.deepSeekMonthlyUsage == nil,
+                "非 DeepSeek section 不得携带月度 view model"
+            )
+        }
+
+        // 6. 落盘账本不包含敏感字段
+        let ledgerDir = root.appendingPathComponent("usage-ledger")
+        let fileURL = ledgerDir.appendingPathComponent("deepseek-monthly.json")
+        let text = try String(
+            data: Data(contentsOf: fileURL), encoding: .utf8
+        ) ?? ""
+        try integrationExpect(
+            !text.localizedCaseInsensitiveContains("apiKey")
+                && !text.localizedCaseInsensitiveContains("token")
+                && !text.localizedCaseInsensitiveContains("account"),
+            "账本落盘不得包含敏感字段"
+        )
+    }
+
+    /// 构造含单个 DeepSeek 余额条目的静态 fixture Artifact.
+    private static func makeDeepSeekArtifact(
+        generatedAt: String,
+        balance: Double,
+        serviceStatus: String = "ok",
+        serviceKind: String = "balance"
+    ) -> JSONValue {
+        let object: [String: Any] = [
+            "schemaVersion": 1,
+            "module": "agent-usage",
+            "generatedAt": generatedAt,
+            "totalCostUsd": 0.0,
+            "agents": [],
+            "services": [
+                [
+                    "id": "deepseek",
+                    "name": "DeepSeek",
+                    "status": serviceStatus,
+                    "kind": serviceKind,
+                    "windows": [],
+                    "balance": balance,
+                    "currency": "CNY",
+                    "app": "deepseek",
+                ],
+            ],
+        ]
+        let data = try! JSONSerialization.data(
+            withJSONObject: object, options: [.sortedKeys]
+        )
+        return try! JSONDecoder().decode(JSONValue.self, from: data)
     }
 
     /// 任务 11 迁移闭环: 旧整体账号库 -> metadata-only v2 (不含 token),

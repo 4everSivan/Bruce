@@ -199,7 +199,9 @@ struct PanelViewModelHarness {
         try subscriptionEmptyStatusStillRenders()
         try quota100PercentRendersNormally()
         try codexErrorShowsLastSuccessTime()
-        print("PanelViewModel tests passed: 27")
+        try deepSeekMonthlyUsageOnlyOnDeepSeekSection()
+        try deepSeekMonthlyUsageMapsStates()
+        print("PanelViewModel tests passed: 29")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -727,6 +729,157 @@ struct PanelViewModelHarness {
     }
 
     // MARK: - 辅助
+
+    /// DeepSeek 月度状态仅映射到 DeepSeek section; 其他 Provider (含余额型) 不受影响.
+    private static func deepSeekMonthlyUsageOnlyOnDeepSeekSection() throws {
+        let deepseek = makeService(
+            id: "deepseek",
+            name: "DeepSeek",
+            status: "ok",
+            kind: "balance",
+            balance: 80,
+            currency: "CNY"
+        )
+        let kimi = makeService(
+            id: "kimi",
+            name: "Kimi",
+            kind: "windows",
+            windows: [makeWindow(label: "5小时窗口", usedPercent: 68, windowMinutes: 300)]
+        )
+        let artifact = makeAgentUsageArtifact(
+            agents: [], services: [deepseek, kimi]
+        )
+        let trendUsage = DeepSeekMonthlyUsage.trend(TrendSummary(
+            estimatedConsumption: 20,
+            currentBalance: 80,
+            currency: "CNY",
+            coverageText: "自 2026-08-03T04:00:00+08:00 起累计推算",
+            trendPoints: [
+                TrendPoint(observedAt: "2026-08-03T04:00:00+08:00", cumulativeConsumption: 0),
+                TrendPoint(observedAt: "2026-08-03T12:00:00+08:00", cumulativeConsumption: 20),
+            ],
+            recentCreditNote: nil
+        ))
+        let vm = makeMapper().make(
+            agentUsage: artifact,
+            moduleStatuses: readyStatuses,
+            deepSeekMonthlyUsage: trendUsage
+        )
+        let deepSeekSection = vm.subscription?.sections.first {
+            $0.id == "deepseek"
+        }
+        try expect(
+            deepSeekSection?.deepSeekMonthlyUsage != nil,
+            "DeepSeek section 必须携带月度 view model"
+        )
+        for section in vm.subscription?.sections ?? [] where section.id != "deepseek" {
+            try expect(
+                section.deepSeekMonthlyUsage == nil,
+                "非 DeepSeek section 不得携带月度 view model, got \(section.id)"
+            )
+        }
+        // DeepSeek section 本身同时保留余额行
+        try expect(
+            deepSeekSection?.balance != nil,
+            "DeepSeek section 必须保留余额行"
+        )
+    }
+
+    /// 月度状态的三种映射: trend 携带推算消费与趋势点, baseline 不可绘制,
+    /// unavailable 显示不可用文案, nil 不渲染.
+    private static func deepSeekMonthlyUsageMapsStates() throws {
+        let deepseek = makeService(
+            id: "deepseek",
+            name: "DeepSeek",
+            status: "ok",
+            kind: "balance",
+            balance: 80,
+            currency: "CNY"
+        )
+        let artifact = makeAgentUsageArtifact(agents: [], services: [deepseek])
+
+        // trend: 推算消费文本 + 可绘制
+        let trend = makeMapper().make(
+            agentUsage: artifact,
+            moduleStatuses: readyStatuses,
+            deepSeekMonthlyUsage: .trend(TrendSummary(
+                estimatedConsumption: 20,
+                currentBalance: 80,
+                currency: "CNY",
+                coverageText: "自 2026-08-03T04:00:00+08:00 起累计推算",
+                trendPoints: [
+                    TrendPoint(observedAt: "2026-08-03T04:00:00+08:00", cumulativeConsumption: 0),
+                    TrendPoint(observedAt: "2026-08-03T12:00:00+08:00", cumulativeConsumption: 20),
+                ],
+                recentCreditNote: nil
+            ))
+        )
+        let trendVM = trend.subscription?.sections.first {
+            $0.id == "deepseek"
+        }?.deepSeekMonthlyUsage
+        try expect(
+            trendVM?.state == .trend && trendVM?.canDrawTrend == true,
+            "trend 状态必须可绘制"
+        )
+        try expect(
+            trendVM?.estimatedConsumptionText == "¥ 20.00",
+            "推算消费格式化错误: \(trendVM?.estimatedConsumptionText ?? "nil")"
+        )
+        try expect(trendVM?.trendPoints.count == 2, "trend 必须携带 2 个趋势点")
+
+        // baseline: 不可绘制, 无趋势点
+        let baseline = makeMapper().make(
+            agentUsage: artifact,
+            moduleStatuses: readyStatuses,
+            deepSeekMonthlyUsage: .baseline(BaselineSummary(
+                currentBalance: 100,
+                currency: "CNY",
+                coverageStartText: "自 2026-08-03T04:00:00+08:00 起首次记录"
+            ))
+        )
+        let baselineVM = baseline.subscription?.sections.first {
+            $0.id == "deepseek"
+        }?.deepSeekMonthlyUsage
+        try expect(
+            baselineVM?.state == .baseline && baselineVM?.canDrawTrend == false,
+            "baseline 状态不得可绘制"
+        )
+        try expect(
+            baselineVM?.coverageText.contains("首次记录") == true,
+            "baseline 覆盖文案错误: \(baselineVM?.coverageText ?? "nil")"
+        )
+
+        // unavailable: 显示不可用文案, 不暴露内部细节
+        let unavailable = makeMapper().make(
+            agentUsage: artifact,
+            moduleStatuses: readyStatuses,
+            deepSeekMonthlyUsage: .unavailable
+        )
+        let unavailableVM = unavailable.subscription?.sections.first {
+            $0.id == "deepseek"
+        }?.deepSeekMonthlyUsage
+        try expect(
+            unavailableVM?.state == .unavailable,
+            "unavailable 状态必须映射"
+        )
+        try expect(
+            unavailableVM?.coverageText == "月度统计暂不可用",
+            "unavailable 文案错误: \(unavailableVM?.coverageText ?? "nil")"
+        )
+
+        // nil: 不渲染月度区块
+        let noUsage = makeMapper().make(
+            agentUsage: artifact,
+            moduleStatuses: readyStatuses,
+            deepSeekMonthlyUsage: nil
+        )
+        try expect(
+            noUsage.subscription?.sections.first {
+                $0.id == "deepseek"
+            }?.deepSeekMonthlyUsage == nil,
+            "nil 月度状态不得渲染"
+        )
+    }
 
     private static func subscriptionSections(
         services: [AgentServiceItem]
