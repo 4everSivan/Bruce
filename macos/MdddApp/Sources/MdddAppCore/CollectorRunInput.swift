@@ -16,44 +16,49 @@ enum CollectorRunInputError: Error, Equatable {
 }
 
 /// Codex 短期 access token 的注入源 (任务 5 起由 token manager 承载).
+/// 批量决议协议: 返回单账号的 Outcome, 由 CodexTokenBatchResolver 并行调度.
 package protocol CodexAccessTokenInjecting: AnyObject, Sendable {
-    /// 返回该账号当前有效 access token; 失败或不存在返回 nil.
-    func validAccessToken(
+    /// 返回该账号的 token 决议结果; 失败返回对应 Outcome.
+    func resolveToken(
         for accountID: String
-    ) async -> String?
+    ) async -> CodexTokenDecision.Outcome
 }
 
-/// CodexTokenManager 作为注入源: 把分类结果折叠为可选的短期 access token.
+/// CodexTokenManager 作为注入源: 把 TokenResolution 映射为 Outcome.
 extension CodexTokenManager: CodexAccessTokenInjecting {
-    package func validAccessToken(for accountID: String) async -> String? {
+    package func resolveToken(
+        for accountID: String
+    ) async -> CodexTokenDecision.Outcome {
         switch await validAccessToken(for: accountID, now: nil) {
-        case .success(let resolution):
-            return resolution.accessToken
-        case .failure:
-            return nil
+        case .success(accessToken: let accessToken, expiresAt: let expiresAt):
+            return .available(
+                accessToken: accessToken,
+                expiresAt: expiresAt
+            )
+        case .failure(let error):
+            switch error {
+            case .needsReauthorization:
+                return .needsReauthorization
+            case .storageBlocked:
+                return .storageBlocked
+            case .refreshFailed(_, let reason):
+                if reason == "暂缓重试" {
+                    return .temporarilyUnavailable(retryAt: nil)
+                }
+                return .temporarilyUnavailable(retryAt: nil)
+            case .notFound:
+                return .credentialNotFound
+            }
         }
     }
 }
 
-/// CodexCredentialStore 作为 App 启动迁移执行器 (任务 11):
+/// CodexCredentialStore 作为 App 启动迁移执行器:
 /// 幂等迁移旧整体账号库 -> metadata-only v2 记录.
-/// 迁移失败保留旧键 (可重试), 返回 false 供启动流程暂停 Codex 外部额度.
+/// 迁移结果控制 Codex quota gate (失败/损坏只暂停 Codex 外部额度).
 extension CodexCredentialStore: CodexMigrationExecuting {
-    package func executeCodexMigration() async -> Bool {
-        do {
-            _ = try migrateLegacyAccounts(now: Date())
-            return true
-        } catch {
-            return false
-        }
-    }
-}
-
-/// 无 store 的提供器按迁移已完成处理 (兼容未装配 codexStore 的旧路径,
-/// 此时本就没有 Codex 输入可开放).
-extension OnboardingRunInputProvider: CodexMigrationExecuting {
-    package func executeCodexMigration() async -> Bool {
-        true
+    package func executeCodexMigration() async -> CodexMigrationResult {
+        migrateLegacyAccounts(now: Date())
     }
 }
 
@@ -63,22 +68,28 @@ extension OnboardingRunInputProvider: CodexMigrationExecuting {
 protocol CollectorRunInputProviding {
     func runInput(for module: CollectorModule) async throws -> CollectorRunInput
 
-    /// Codex 定向重试输入 (任务 9): 只针对被 challenge 的账号.
-    /// 返回 nil 表示该账号没有可注入凭证, 不执行重试.
-    /// 实现方默认只支持 agentUsage; 其他模块返回 nil.
+    /// Codex 定向重试输入 (任务 8): 一次组装全部被挑战账号的短期
+    /// access token, 上下文标记 codexQuotaRetryOnly.
+    /// 只包含本轮刷新成功的账号; 决议失败或未连接账号不进入重试.
     func retryInput(
         for module: CollectorModule,
-        accountID: String
+        accountIDs: [String]
     ) async throws -> CollectorRunInput?
+
+    /// 本轮全部 Codex 账号 token 决议 (含成功与失败), 供四源合并器
+    /// 为未出现在 collector 结果中的账号合成失败状态. 无 Codex 时为空.
+    var codexTokenDecisions: [CodexTokenDecision] { get }
 }
 
-/// App 启动前的 Codex v2 迁移入口 (任务 11).
+/// App 启动前的 Codex v2 迁移入口.
 /// 由 ApplicationBootstrap 在启动 Scheduler 前调用; 测试注入内存实现.
+/// 生产组合根必须注入真实 CodexCredentialStore, 禁止使用返回成功的空迁移器.
 @MainActor
 package protocol CodexMigrationExecuting: AnyObject {
     /// 幂等迁移旧整体账号库 -> metadata-only v2 记录.
-    /// 成功或确认无旧数据返回 true; 失败返回 false (旧键保留, 可重试).
-    func executeCodexMigration() async -> Bool
+    /// 结果控制 Codex quota gate: noLegacyData/migrated/cleanupPending 开放,
+    /// corruptedJSON/failed 关闭.
+    func executeCodexMigration() async -> CodexMigrationResult
 }
 
 /// 基于 Onboarding 配置和 Keychain 的运行输入提供器.
@@ -97,6 +108,9 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
     /// 已决议的 Codex 账号列表 (accountID + displayName), 只供 Swift 内使用,
     /// 不编码到 Bridge 请求.
     private var codexQuotaAccountIDs: [String] = []
+    /// 本轮全部账号的 token 决议 (任务 5). 含成功和失败, 供 Scheduler/
+    /// 合并器按账号生成 stale/unavailable 状态. 全失败时清空旧值.
+    private(set) var codexTokenDecisions: [CodexTokenDecision] = []
     /// v2 账号索引读取 (Codex v2 store; 由 App 装配, 测试可注入).
     private var codexStore: CodexCredentialStore?
     /// 旧库迁移完成前不开放 v2 Codex quota 输入 (任务 11).
@@ -125,10 +139,16 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
         codexQuotaAccountIDs
     }
 
-    /// 设置旧库迁移完成状态 (任务 11). App 启动时按幂等迁移结果调用;
-    /// 迁移失败只暂停 Codex 外部额度, 不阻断本地统计和其他 provider.
-    package func setCodexMigrationCompleted(_ completed: Bool) {
-        codexMigrationCompleted = completed
+    /// 设置旧库迁移结果. App 启动时按幂等迁移结果调用;
+    /// noLegacyData/migrated/cleanupPending 开放 Codex 外部额度,
+    /// corruptedJSON/failed 关闭 (不阻断本地统计和其他 provider).
+    package func setCodexMigrationResult(_ result: CodexMigrationResult) {
+        switch result {
+        case .noLegacyData, .migrated, .cleanupPending:
+            codexMigrationCompleted = true
+        case .corruptedJSON, .incompatibleSchema, .failed:
+            codexMigrationCompleted = false
+        }
     }
 
     func runInput(for module: CollectorModule) async throws -> CollectorRunInput {
@@ -138,51 +158,90 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
         }
     }
 
-    /// 定向重试: 只含被 challenge 账号的短期 access token, 上下文标记
-    /// codexQuotaRetryOnly. 账号未连接或 token 决议失败返回 nil, 不重试.
+    /// 定向重试 (任务 8): 一次组装全部被 challenge 账号的短期 access token,
+    /// 上下文标记 codexQuotaRetryOnly. 账号未连接或 token 决议失败不进入
+    /// 重试; 全部失败时返回 nil, 不执行 retry-only Collector.
     /// 旧库迁移完成前不开放 (与首轮输入 gate 一致, 任务 11).
+    /// 任务 6: 账号按 v2 index 重新排序 (不采用 challenge 到达顺序),
+    /// 并携带与 codexQuotaAccounts 集合一致的 codexQuotaAccountOrder.
     func retryInput(
         for module: CollectorModule,
-        accountID: String
+        accountIDs: [String]
     ) async throws -> CollectorRunInput? {
         guard module == .agentUsage,
               codexMigrationCompleted,
               let injector = codexTokenInjector,
-              let accessToken = await injector.validAccessToken(
-                  for: accountID
-              ) else {
+              !accountIDs.isEmpty else {
             return nil
         }
-        let displayName: String
-        if let record = try? codexStore?.loadRecord(for: accountID) {
-            displayName = record.displayName
-        } else {
-            displayName = "Codex · " + String(accountID.prefix(8))
+        // 按本轮决议 index 重新排序; 未出现在决议中的账号按 accountID
+        // 排尾 (确定性).
+        let decisionIndexByAccount: [String: Int] = {
+            var result: [String: Int] = [:]
+            for decision in codexTokenDecisions {
+                if result[decision.accountID] == nil {
+                    result[decision.accountID] = decision.index
+                }
+            }
+            return result
+        }()
+        let orderedAccountIDs = accountIDs.sorted {
+            let left = decisionIndexByAccount[$0] ?? Int.max
+            let right = decisionIndexByAccount[$1] ?? Int.max
+            if left != right { return left < right }
+            return $0 < $1
         }
+        var credentials: [String: JSONValue] = [:]
+        for accountID in orderedAccountIDs {
+            let outcome = await injector.resolveToken(for: accountID)
+            guard case .available(let accessToken, _) = outcome else {
+                continue
+            }
+            let displayName: String
+            if let record = try? codexStore?.loadRecord(for: accountID) {
+                displayName = record.displayName
+            } else {
+                displayName = "Codex · " + String(accountID.prefix(8))
+            }
+            credentials[accountID] = .object([
+                "display_name": .string(displayName),
+                "access_token": .string(accessToken),
+            ])
+        }
+        guard !credentials.isEmpty else {
+            return nil
+        }
+        // 任务 6: 重试输入携带与 codexQuotaAccounts 集合一致的 order,
+        // 顺序保留 index 排序后的账号顺序, 不采用 challenge 到达顺序.
+        let order = orderedAccountIDs.filter { credentials[$0] != nil }
+        var context: [String: JSONValue] = [
+            "capabilities": .array([
+                .string(CollectorCapability.externalQuotas.rawValue),
+            ]),
+            "codexQuotaRetryOnly": .boolean(true),
+        ]
+        context["codexQuotaAccountOrder"] = .array(
+            order.map { .string($0) }
+        )
         return CollectorRunInput(
-            context: [
-                "capabilities": .array([
-                    .string(CollectorCapability.externalQuotas.rawValue),
-                ]),
-                "codexQuotaRetryOnly": .boolean(true),
-            ],
+            context: context,
             credentials: [
-                "codexQuotaAccounts": .object([
-                    accountID: .object([
-                        "display_name": .string(displayName),
-                        "access_token": .string(accessToken),
-                    ]),
-                ]),
+                "codexQuotaAccounts": .object(credentials),
             ]
         )
     }
 
     private func agentUsageInput() async throws -> CollectorRunInput {
+        // 每个首轮输入都是新的决议边界. 无授权、provider 被禁用、v2 index
+        // 读取失败或账号为空时都不能沿用上一轮 decisions/order.
+        codexTokenDecisions = []
+        codexQuotaAccountIDs = []
         var capabilities: [JSONValue] = [
             .string(CollectorCapability.localSessions.rawValue),
             .string(CollectorCapability.localPricing.rawValue),
         ]
         var credentials: [String: JSONValue] = [:]
+        var context: [String: JSONValue] = [:]
 
         let config = configStore?.load()
         // 统一授权未确认时永远不授予 externalQuotas;
@@ -196,10 +255,22 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
                     .string(CollectorCapability.externalQuotas.rawValue)
                 )
                 credentials = assembled
+                // codexQuotaAccountOrder: 按 v2 index 排序的账号 ID 列表,
+                // Python 按此调度并恢复输出顺序; 集合必须与 codexQuotaAccounts
+                // 键完全一致, 顺序即 Swift 决议的 index 顺序 (任务 6).
+                if let codexAccounts = credentials["codexQuotaAccounts"],
+                   case .object(let accountsObject) = codexAccounts {
+                    context["codexQuotaAccountOrder"] = .array(
+                        codexQuotaAccountIDs
+                            .filter { accountsObject[$0] != nil }
+                            .map { .string($0) }
+                    )
+                }
             }
         }
+        context["capabilities"] = .array(capabilities)
         return CollectorRunInput(
-            context: ["capabilities": .array(capabilities)],
+            context: context,
             credentials: credentials
         )
     }
@@ -269,43 +340,76 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
         return credentials
     }
 
-    /// 从 v2 索引取全部账号, 交给 token manager 决议短期 access token.
+    /// 从 v2 索引取全部账号, 交给批量决议器最多 4 并行决议.
     /// 注入结构: {accountID: {"display_name": ..., "access_token": ...}},
     /// 与 bridge/security.py 白名单 (codex_quota_accounts) 对齐.
-    /// 账号无 token 时只影响该账号, 不阻断其他账号.
+    /// 只有 .available 账号写入 Bridge credentials; 全部失败时清空旧值,
+    /// 但决议结果仍保留供 Scheduler/合并器生成失败状态.
     private func resolveCodexQuotaAccounts() async -> JSONValue? {
         guard let injector = codexTokenInjector else { return nil }
-        let accountIDs: [String]
-        if let index = try? codexStore?.loadIndex() {
-            accountIDs = index.accounts.map(\.accountID)
-        } else {
+        let index: CodexAccountIndex
+        do {
+            guard let codexStore else {
+                return nil
+            }
+            index = try codexStore.loadIndex()
+        } catch {
+            // agentUsageInput 已在本轮开始清空状态. 读取失败保持空决议,
+            // 不把上一轮账号合并进当前 artifact.
             return nil
         }
-        guard !accountIDs.isEmpty else { return nil }
+        guard !index.accounts.isEmpty else {
+            codexTokenDecisions = []
+            codexQuotaAccountIDs = []
+            return nil
+        }
 
+        // 从 v2 index 生成带 index 的有序 descriptor
+        let descriptors: [CodexTokenBatchResolver.Descriptor] = index.accounts
+            .sorted { $0.accountID < $1.accountID }
+            .enumerated()
+            .map { offset, entry in
+                let displayName: String
+                if let record = try? codexStore?.loadRecord(for: entry.accountID) {
+                    displayName = record.displayName
+                } else {
+                    displayName = "Codex · " + String(entry.accountID.prefix(8))
+                }
+                return CodexTokenBatchResolver.Descriptor(
+                    index: offset,
+                    accountID: entry.accountID,
+                    displayName: displayName
+                )
+            }
+
+        let resolver = CodexTokenBatchResolver()
+        let decisions = await resolver.resolve(
+            accounts: descriptors,
+            using: { accountID in
+                await injector.resolveToken(for: accountID)
+            }
+        )
+        // 每轮无条件刷新决议; 全失败时清空旧值
+        codexTokenDecisions = decisions
+        codexQuotaAccountIDs = decisions
+            .filter {
+                if case .available = $0.outcome { return true }
+                return false
+            }
+            .map(\.accountID)
+
+        // 只有 .available 账号写入 Bridge credentials
         var resolved: [String: JSONValue] = [:]
-        var succeeded: [String] = []
-        for accountID in accountIDs {
-            guard let accessToken = await injector.validAccessToken(
-                for: accountID
-            ) else {
+        for decision in decisions {
+            guard case .available(let accessToken, _) = decision.outcome else {
                 continue
             }
-            let displayName: String
-            if let record = try? codexStore?.loadRecord(for: accountID) {
-                displayName = record.displayName
-            } else {
-                displayName = "Codex · " + String(accountID.prefix(8))
-            }
-            resolved[accountID] = .object([
-                "display_name": .string(displayName),
+            resolved[decision.accountID] = .object([
+                "display_name": .string(decision.displayName),
                 "access_token": .string(accessToken),
             ])
-            succeeded.append(accountID)
         }
-        guard !resolved.isEmpty else { return nil }
-        codexQuotaAccountIDs = succeeded
-        return .object(resolved)
+        return resolved.isEmpty ? nil : .object(resolved)
     }
 
     /// 把 Keychain 读出的 JSON 字符串解析为 JSONValue 对象;

@@ -106,6 +106,9 @@ package final class RefreshScheduler {
     package var onQuotaAlerts: ((CollectorModule, [QuotaAlert]) -> Void)?
     /// 每个运行周期完成 (无论成败) 后触发, 供宿主刷新非敏感状态.
     package var onRunCycleCompleted: (() -> Void)?
+    /// 最近一次成功发布的响应诊断 (去重后, 任务 7): 供诊断展示/记录
+    /// 边界读取; 合并期诊断 (merger) 与首轮/重试诊断统一经过 finalizer 去重.
+    package private(set) var lastPublishedDiagnostics: [BridgeDiagnostic] = []
 
     package convenience init(
         executor: CollectorRunner,
@@ -375,10 +378,16 @@ package final class RefreshScheduler {
     // MARK: - Internal: execution
 
     /// 定向重试所需的 token manager 访问器; App 装配, 测试可注入.
-    /// Codex challenge 处理只经它读取记录与刷新令牌.
-    package var codexTokenManager: (any CodexTokenManaging)?
-    /// Codex v2 账号记录读取; 重试输入需要账号名时回退用.
-    package var codexCredentialStore: CodexCredentialStore?
+    /// Codex challenge 处理只经它读取记录、刷新令牌与持久化重新授权状态.
+    package var codexTokenManager: (any CodexChallengeHandling)?
+
+    /// 本轮 Codex 挑战处理阶段的结果 (任务 5): 三类数据显式表达,
+    /// 不用异常或提前 return 隐式表达.
+    private struct CodexRetryPhaseResult {
+        let retryArtifact: JSONValue?
+        let tokenDecisions: [CodexTokenDecision]
+        let diagnostics: [BridgeDiagnostic]
+    }
 
     private func executeRefresh(for module: CollectorModule) async {
         // 启动进程前取受控输入; 取不到时不启动进程, 按分类进入
@@ -405,6 +414,19 @@ package final class RefreshScheduler {
             }
         }
 
+        // 任务 5: 刷新开始时读取并保存 previousArtifact (同一轮内不得二次
+        // 读取已被覆盖的 artifact).
+        let previousArtifact: JSONValue?
+        do {
+            previousArtifact = try store.load(
+                module,
+                now: clock.now(),
+                staleAfter: configuration.staleAfter
+            ).artifact
+        } catch {
+            previousArtifact = nil
+        }
+
         let result = await runCollector(
             module: module,
             context: context,
@@ -415,105 +437,85 @@ package final class RefreshScheduler {
             return
         }
         guard case .success(let output) = result else {
+            // 首轮 Collector 自身失败且无 artifact: 不发布半成品, previous 保持
             handleResult(result, for: module)
             onRunCycleCompleted?()
             return
         }
 
         // Codex 定向重试: 首次响应携带 accessRejected challenge 时,
-        // 强制刷新该账号并以 retry-only 上下文重跑一次 (每轮最多一次).
+        // 全量处理本轮合法 challenge, 最多执行一轮 retry-only Collector.
+        // 任务 5: 无论 challenge/决议/retry 结果如何, first artifact 存在时
+        // 都从唯一 finalizer 四源合并后发布一次.
         if module == .agentUsage {
-            if let challenge = output.response.credentialChallenges
-                .compactMap(CodexChallenge.init(json:))
-                .first {
-                let retryOutput = await handleCodexChallenge(
-                    challenge: challenge,
-                    module: module,
-                    firstOutput: output
-                )
-                guard !stopped else {
-                    handleCancellation(for: module)
-                    return
-                }
-                handleResult(.success(retryOutput), for: module)
-                onRunCycleCompleted?()
+            let retryPhase = await handleCodexChallenges(
+                module: module,
+                firstOutput: output,
+                firstCredentials: credentials
+            )
+            guard !stopped else {
+                handleCancellation(for: module)
                 return
             }
+            let finalOutput = finalizeAgentUsage(
+                firstOutput: output,
+                retryPhase: retryPhase,
+                previousArtifact: previousArtifact
+            )
+            handleResult(.success(finalOutput), for: module)
+            onRunCycleCompleted?()
+            return
         }
 
         handleResult(.success(output), for: module)
         onRunCycleCompleted?()
     }
 
-    /// 单次定向重试: 强制刷新被挑战账号后以 retry-only 输入再跑一次,
-    /// 与首次结果合并 (旧额度保留规则见 CodexQuotaSnapshotMerger).
-    /// 刷新失败 (需要重登/暂缓) 或重试运行失败不覆盖首次结果.
-    private func handleCodexChallenge(
-        challenge: CodexChallenge,
-        module: CollectorModule,
-        firstOutput: CollectorRunOutput
-    ) async -> CollectorRunOutput {
-        guard !stopped else { return firstOutput }
-        let accountID = challenge.accountID
-        var refreshed = false
-        if let tokenManager = codexTokenManager {
-            await tokenManager.invalidateAccessToken(for: accountID)
-            let resolution = await tokenManager.forceRefresh(
-                for: accountID, now: nil
-            )
-            if case .success = resolution {
-                refreshed = true
-            }
-        }
-        guard !stopped, refreshed, let runInputProvider else {
+    /// 任务 5 唯一 finalizer: previous + first + retry + decisions 四源合并,
+    /// 合并 first/retry/merger 诊断并去重, 生成最终 artifact.
+    /// 调用方只发布该输出一次.
+    private func finalizeAgentUsage(
+        firstOutput: CollectorRunOutput,
+        retryPhase: CodexRetryPhaseResult,
+        previousArtifact: JSONValue?
+    ) -> CollectorRunOutput {
+        guard let firstArtifact = firstOutput.response.artifact else {
+            // 首轮无 artifact (异常响应): 维持原响应, 不发布半成品
             return firstOutput
         }
-
-        let retryInput: CollectorRunInput?
-        do {
-            retryInput = try await runInputProvider.retryInput(
-                for: module,
-                accountID: accountID
-            )
-        } catch {
-            return firstOutput
-        }
-        guard let retryInput else {
-            return firstOutput
-        }
-        let retryResult = await runCollector(
-            module: module,
-            context: retryInput.context,
-            credentials: retryInput.credentials
-        )
-        guard !stopped else { return firstOutput }
-        guard case .success(let retryOutput) = retryResult,
-              let firstArtifact = firstOutput.response.artifact,
-              let retryArtifact = retryOutput.response.artifact else {
-            return firstOutput
-        }
-
-        // 合并: 非 Codex 部分保留首次, Codex 条目按成功/失败保留或覆盖.
+        let decisions = retryPhase.tokenDecisions.isEmpty
+            ? (runInputProvider?.codexTokenDecisions ?? [])
+            : retryPhase.tokenDecisions
         let merged = CodexQuotaSnapshotMerger().merge(
+            previous: previousArtifact,
             first: firstArtifact,
-            retry: retryArtifact
+            retry: retryPhase.retryArtifact,
+            decisions: decisions
         )
-        // 合并结果仍有 error/partial 条目时保留首轮与重试诊断 (去重);
-        // 自愈成功 (全部 ok) 时不残留 partial 诊断.
-        let mergedDiagnostics: [BridgeDiagnostic]
-        if !merged.artifact.hasFailedEntries {
-            mergedDiagnostics = []
-        } else {
-            var seen = Set<String>()
-            var collected: [BridgeDiagnostic] = []
-            for diagnostic in firstOutput.response.diagnostics
-                + retryOutput.response.diagnostics {
+        // 合并 first/retry/token 与 merger 诊断, 按稳定 key 去重
+        var collected: [BridgeDiagnostic] = []
+        var seen = Set<String>()
+        func appendDiagnostics(_ diagnostics: [BridgeDiagnostic]) {
+            for diagnostic in diagnostics {
                 let key = "\(diagnostic.code)|\(diagnostic.stage)|\(diagnostic.message)"
                 if seen.insert(key).inserted {
                     collected.append(diagnostic)
                 }
             }
-            mergedDiagnostics = collected
+        }
+        // 首轮与重试诊断: 仅当最终 artifact 有失败条目时保留 (自愈成功不残留)
+        if merged.artifact.hasFailedEntries {
+            appendDiagnostics(firstOutput.response.diagnostics)
+            appendDiagnostics(retryPhase.diagnostics)
+        }
+        for diagnostic in merged.diagnostics {
+            appendDiagnostics([BridgeDiagnostic(
+                code: diagnostic.code,
+                category: diagnostic.category,
+                stage: diagnostic.stage,
+                message: diagnostic.message,
+                retryable: diagnostic.retryable
+            )])
         }
         return CollectorRunOutput(
             response: BridgeResponse(
@@ -521,14 +523,267 @@ package final class RefreshScheduler {
                 runId: firstOutput.response.runId,
                 generatedAt: merged.generatedAtValue
                     ?? firstOutput.response.generatedAt,
-                status: retryOutput.response.status,
+                status: merged.recomputedStatus,
                 artifact: merged.artifact,
                 credentialUpdates: firstOutput.response.credentialUpdates,
-                diagnostics: mergedDiagnostics,
+                diagnostics: collected,
                 credentialChallenges: []
             ),
             stderrDiagnostic: firstOutput.stderrDiagnostic
         )
+    }
+
+    /// 多账号定向重试 (任务 8 + 任务 5): 全量处理本轮合法 accessRejected
+    /// challenge, 返回 CodexRetryPhaseResult. 每轮最多执行一轮 retry-only
+    /// Collector, 单账号 OAuth 调用不重复. 任何失败分支都返回空 retry phase
+    /// 并携带诊断, 由唯一 finalizer 四源合并 (任务 5).
+    private func handleCodexChallenges(
+        module: CollectorModule,
+        firstOutput: CollectorRunOutput,
+        firstCredentials: [String: JSONValue]
+    ) async -> CodexRetryPhaseResult {
+        let empty = CodexRetryPhaseResult(
+            retryArtifact: nil,
+            tokenDecisions: [],
+            diagnostics: []
+        )
+        guard !stopped else { return empty }
+        guard !firstOutput.response.credentialChallenges.isEmpty else {
+            return empty
+        }
+
+        // 本轮已注入账号: 只接受属于注入账号的 challenge.
+        let injectedAccounts: Set<String>
+        if case .object(let codexAccounts)? = firstCredentials["codexQuotaAccounts"] {
+            injectedAccounts = Set(codexAccounts.keys)
+        } else {
+            injectedAccounts = []
+        }
+        let challenges = firstOutput.response.credentialChallenges
+            .compactMap(CodexChallenge.init(json:))
+        let accountedChallenges = challenges
+            .filter { injectedAccounts.contains($0.accountID) }
+        guard !accountedChallenges.isEmpty else {
+            // 非法/不属于本轮的 challenge: 不重试, 空 retry phase
+            return empty
+        }
+
+        // 按账号去重并排序 (本轮 index 顺序; 未出现在决议中的账号按
+        // accountID 排序, 保证确定性).
+        let orderedAccounts = Self.orderedChallengeAccounts(
+            accountedChallenges,
+            decisions: runInputProvider?.codexTokenDecisions ?? []
+        )
+        guard !orderedAccounts.isEmpty, let runInputProvider else {
+            return empty
+        }
+
+        // 最多 4 账号并行 refreshAfterAccessRejected (OAuth 调用不重复).
+        var refreshedAccounts: [String] = []
+        let challengeHandler = codexTokenManager
+        if let challengeHandler {
+            let chunks = stride(
+                from: 0,
+                to: orderedAccounts.count,
+                by: CodexTokenBatchResolver.maxConcurrency
+            ).map {
+                Array(orderedAccounts[$0..<min($0 + CodexTokenBatchResolver.maxConcurrency, orderedAccounts.count)])
+            }
+            for chunk in chunks {
+                let results = await withTaskGroup(
+                    of: (String, TokenResolution).self
+                ) { group in
+                    for accountID in chunk {
+                        group.addTask {
+                            let resolution = await challengeHandler
+                                .refreshAfterAccessRejected(
+                                    for: accountID, now: nil
+                                )
+                            return (accountID, resolution)
+                        }
+                    }
+                    var collected: [(String, TokenResolution)] = []
+                    for await result in group {
+                        collected.append(result)
+                    }
+                    return collected
+                }
+                for (accountID, resolution) in results {
+                    if case .success = resolution {
+                        refreshedAccounts.append(accountID)
+                    }
+                }
+            }
+        }
+        guard !stopped else { return empty }
+        var diagnostics: [BridgeDiagnostic] = []
+        guard !refreshedAccounts.isEmpty else {
+            // 全部刷新失败: 保留 decisions 与诊断, retryArtifact=nil
+            diagnostics.append(BridgeDiagnostic(
+                code: "CODEX_REFRESH_FAILED",
+                category: "collector",
+                stage: "challenge",
+                message: "全部账号令牌刷新失败, 未发起定向重试",
+                retryable: true
+            ))
+            return CodexRetryPhaseResult(
+                retryArtifact: nil,
+                tokenDecisions: runInputProvider.codexTokenDecisions,
+                diagnostics: diagnostics
+            )
+        }
+
+        let retryInput: CollectorRunInput?
+        do {
+            retryInput = try await runInputProvider.retryInput(
+                for: module,
+                accountIDs: refreshedAccounts
+            )
+        } catch {
+            diagnostics.append(BridgeDiagnostic(
+                code: "CODEX_RETRY_INPUT_FAILED",
+                category: "collector",
+                stage: "challenge",
+                message: "重试输入组装失败, 未发起定向重试",
+                retryable: true
+            ))
+            return CodexRetryPhaseResult(
+                retryArtifact: nil,
+                tokenDecisions: runInputProvider.codexTokenDecisions,
+                diagnostics: diagnostics
+            )
+        }
+        guard let retryInput else {
+            diagnostics.append(BridgeDiagnostic(
+                code: "CODEX_RETRY_INPUT_MISSING",
+                category: "collector",
+                stage: "challenge",
+                message: "重试输入为空, 未发起定向重试",
+                retryable: true
+            ))
+            return CodexRetryPhaseResult(
+                retryArtifact: nil,
+                tokenDecisions: runInputProvider.codexTokenDecisions,
+                diagnostics: diagnostics
+            )
+        }
+        let retryResult = await runCollector(
+            module: module,
+            context: retryInput.context,
+            credentials: retryInput.credentials
+        )
+        guard !stopped else { return empty }
+        guard case .success(let retryOutput) = retryResult else {
+            diagnostics.append(BridgeDiagnostic(
+                code: "CODEX_RETRY_COLLECTOR_FAILED",
+                category: "collector",
+                stage: "retry",
+                message: "定向重试采集失败",
+                retryable: true
+            ))
+            return CodexRetryPhaseResult(
+                retryArtifact: nil,
+                tokenDecisions: runInputProvider.codexTokenDecisions,
+                diagnostics: diagnostics
+            )
+        }
+        let decisions = runInputProvider.codexTokenDecisions
+        let retryArtifact = retryOutput.response.artifact
+
+        // 重试仍 401 (freshness=unavailable + failureKind=auth) 的账号
+        // 持久化为 needsReauthorization (任务 8, 只影响对应账号).
+        if let challengeHandler, let retryArtifact {
+            let services: [JSONValue] = {
+                guard case .object(let object) = retryArtifact else {
+                    return []
+                }
+                return object["services"]?.arrayValue ?? []
+            }()
+            let refreshedSet = Set(refreshedAccounts)
+            for service in services {
+                guard let account = retryAccountID(
+                    service: service,
+                    decisions: decisions
+                ),
+                    refreshedSet.contains(account),
+                    isAuthFailure(service: service) else {
+                    continue
+                }
+                await challengeHandler.markNeedsReauthorization(
+                    for: account,
+                    now: nil
+                )
+            }
+        }
+        // 任务 7 (UI-05): 重试输出自身的诊断也进入最终合并 (finalizer 去重),
+        // 与首轮/merger 诊断统一呈现, 不单独丢弃.
+        return CodexRetryPhaseResult(
+            retryArtifact: retryArtifact,
+            tokenDecisions: decisions,
+            diagnostics: retryOutput.response.diagnostics
+        )
+    }
+
+    /// challenge 账号去重并按本轮决议 index 排序; 决议中不存在的账号
+    /// 按 accountID 字典序排尾 (确定性强).
+    private static func orderedChallengeAccounts(
+        _ challenges: [CodexChallenge],
+        decisions: [CodexTokenDecision]
+    ) -> [String] {
+        var indexByAccount: [String: Int] = [:]
+        for decision in decisions {
+            if indexByAccount[decision.accountID] == nil {
+                indexByAccount[decision.accountID] = decision.index
+            }
+        }
+        let unique = Array(Set(challenges.map(\.accountID)))
+        return unique.sorted {
+            let left = indexByAccount[$0] ?? Int.max
+            let right = indexByAccount[$1] ?? Int.max
+            if left != right { return left < right }
+            return $0 < $1
+        }
+    }
+
+    /// 从合并后 service 反查账号: 优先按 currentID 匹配决议,
+    /// 失败时按 legacy ID 唯一匹配 (与合并器同规则).
+    private func retryAccountID(
+        service: JSONValue,
+        decisions: [CodexTokenDecision]
+    ) -> String? {
+        guard case .object(let object) = service,
+              case .string(let id)? = object["id"] else {
+            return nil
+        }
+        for decision in decisions where decision.serviceID == id {
+            return decision.accountID
+        }
+        var matched: String?
+        for decision in decisions {
+            if CodexAccountIdentity.legacyServiceID(for: decision.accountID) == id {
+                if matched != nil { return nil }
+                matched = decision.accountID
+            }
+        }
+        return matched
+    }
+
+    /// 该 service 是否仍为授权失败 (unavailable + auth, 或 legacy 无
+    /// freshness 的 error + auth note). 403/429/网络等不视为授权失效.
+    private func isAuthFailure(service: JSONValue) -> Bool {
+        guard case .object(let object) = service,
+              case .string(let status)? = object["status"],
+              status == "error" else {
+            return false
+        }
+        if case .string(let failureKind)? = object["failureKind"] {
+            return failureKind == "auth"
+        }
+        // 旧 artifact 无 failureKind: 按 note 文案判断
+        if case .string(let note)? = object["note"] {
+            return note.contains("登录态已失效")
+        }
+        return false
     }
 
     private func runCollector(
@@ -653,6 +908,11 @@ package final class RefreshScheduler {
                 if let artifact = response.artifact {
                     do {
                         try store.publish(artifact, for: module, attemptedAt: now)
+                        // 任务 7: 成功发布的响应诊断进入可观察边界
+                        // (finalizer 已按 code|stage|message 去重).
+                        if module == .agentUsage {
+                            lastPublishedDiagnostics = response.diagnostics
+                        }
                         state.lastSuccessAt = now
                         state.backoffRetryCount = 0
                         state.lastErrorCategory = nil

@@ -126,7 +126,9 @@ private func makeService(
     currency: String? = nil,
     note: String? = nil,
     extra: String? = nil,
-    capturedAt: String? = nil
+    capturedAt: String? = nil,
+    freshness: String? = nil,
+    failureKind: String? = nil
 ) -> AgentServiceItem {
     AgentServiceItem(
         id: id,
@@ -141,7 +143,9 @@ private func makeService(
         currency: currency,
         note: note,
         extra: extra,
-        capturedAt: capturedAt
+        capturedAt: capturedAt,
+        freshness: freshness,
+        failureKind: failureKind
     )
 }
 
@@ -199,7 +203,10 @@ struct PanelViewModelHarness {
         try subscriptionEmptyStatusStillRenders()
         try quota100PercentRendersNormally()
         try codexErrorShowsLastSuccessTime()
-        print("PanelViewModel tests passed: 27")
+        try codexFreshnessStaleShowsLastSuccess()
+        try codexFreshnessUnavailableHidesLastSuccess()
+        try codexDisplayNameStripsPrefixOnly()
+        print("PanelViewModel tests passed: 30")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -812,8 +819,8 @@ struct PanelViewModelHarness {
         try expect(issues.isEmpty, "100% 额度不应产生 serviceIssue 诊断: \(vm.diagnostics)")
     }
 
-    // 13.1.2: 非 ok 的 Codex 账号显示"上次成功 HH:mm" (保留的旧 capturedAt),
-    // ok 状态不显示.
+    // 13.1.2: freshness=stale 的 Codex 账号显示"上次成功 HH:mm" (保留的旧
+    // capturedAt); freshness=fresh 不显示.
     private static func codexErrorShowsLastSuccessTime() throws {
         let service = makeService(
             id: "codex_acc-1",
@@ -823,7 +830,9 @@ struct PanelViewModelHarness {
             windows: [],
             app: "codex",
             note: "额度查询暂时失败, 请稍后重试",
-            capturedAt: "2026-07-30T13:50:00+00:00"
+            capturedAt: "2026-07-30T13:50:00+00:00",
+            freshness: "stale",
+            failureKind: "network"
         )
         let vm = makeMapper().make(
             agentUsage: makeAgentUsageArtifact(agents: [], services: [service]),
@@ -832,10 +841,10 @@ struct PanelViewModelHarness {
         let account = vm.subscription?.sections.first?.codexAccounts?.first
         try expect(
             account?.lastSuccessText == "上次成功 13:50",
-            "error 状态应显示上次成功时间, got \(account?.lastSuccessText ?? "nil")"
+            "stale 状态应显示上次成功时间, got \(account?.lastSuccessText ?? "nil")"
         )
 
-        // ok 状态不显示
+        // fresh 状态不显示
         let okService = makeService(
             id: "codex_acc-2",
             name: "Codex · other",
@@ -843,7 +852,8 @@ struct PanelViewModelHarness {
             kind: "windows",
             windows: [],
             app: "codex",
-            capturedAt: "2026-07-30T13:50:00+00:00"
+            capturedAt: "2026-07-30T13:50:00+00:00",
+            freshness: "fresh"
         )
         let okVM = makeMapper().make(
             agentUsage: makeAgentUsageArtifact(agents: [], services: [okService]),
@@ -852,7 +862,80 @@ struct PanelViewModelHarness {
         let okAccount = okVM.subscription?.sections.first?.codexAccounts?.first
         try expect(
             okAccount?.lastSuccessText == nil,
-            "ok 状态不应显示上次成功时间"
+            "fresh 状态不应显示上次成功时间"
+        )
+    }
+
+    // freshness=stale 且有 capturedAt 时显示"上次成功 HH:mm".
+    private static func codexFreshnessStaleShowsLastSuccess() throws {
+        let service = makeService(
+            id: "codex_acc-1",
+            name: "Codex · user",
+            status: "error",
+            kind: "windows",
+            windows: [],
+            app: "codex",
+            note: "额度查询暂时失败, 请稍后重试",
+            capturedAt: "2026-07-30T13:50:00+00:00",
+            freshness: "stale",
+            failureKind: "network"
+        )
+        let vm = makeMapper().make(
+            agentUsage: makeAgentUsageArtifact(agents: [], services: [service]),
+            moduleStatuses: readyStatuses
+        )
+        let account = vm.subscription?.sections.first?.codexAccounts?.first
+        try expect(
+            account?.lastSuccessText == "上次成功 13:50",
+            "stale + capturedAt 应显示上次成功时间: \(account?.lastSuccessText ?? "nil")"
+        )
+    }
+
+    // freshness=unavailable 不显示"上次成功", 即使 capturedAt 存在也不显示.
+    private static func codexFreshnessUnavailableHidesLastSuccess() throws {
+        let service = makeService(
+            id: "codex_acc-1",
+            name: "Codex · user",
+            status: "error",
+            kind: "windows",
+            windows: [],
+            app: "codex",
+            note: "额度查询暂时失败, 请稍后重试",
+            capturedAt: "2026-07-30T13:50:00+00:00",
+            freshness: "unavailable",
+            failureKind: "network"
+        )
+        let vm = makeMapper().make(
+            agentUsage: makeAgentUsageArtifact(agents: [], services: [service]),
+            moduleStatuses: readyStatuses
+        )
+        let account = vm.subscription?.sections.first?.codexAccounts?.first
+        try expect(
+            account?.lastSuccessText == nil,
+            "unavailable 不应显示上次成功时间: \(account?.lastSuccessText ?? "nil")"
+        )
+    }
+
+    // 账号行名称只删除开头固定前缀 "Codex · ", 不用 replacingOccurrences 全局替换.
+    // 账号名内部包含 "Codex · " 时不应被误改.
+    private static func codexDisplayNameStripsPrefixOnly() throws {
+        let service = makeService(
+            id: "codex_acc-1",
+            name: "Codex · Codex · sivan",
+            status: "ok",
+            kind: "windows",
+            windows: [makeWindow(label: "5小时窗口", usedPercent: 42, windowMinutes: 300)],
+            app: "codex",
+            plan: "plus"
+        )
+        let vm = makeMapper().make(
+            agentUsage: makeAgentUsageArtifact(agents: [], services: [service]),
+            moduleStatuses: readyStatuses
+        )
+        let account = vm.subscription?.sections.first?.codexAccounts?.first
+        try expect(
+            account?.name == "Codex · sivan",
+            "只应删开头前缀, 保留内部: \(account?.name ?? "nil")"
         )
     }
 

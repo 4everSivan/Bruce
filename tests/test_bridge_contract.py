@@ -283,6 +283,7 @@ class BridgeCodexAccessOnlyContractTests(unittest.TestCase):
                 "agent-usage",
                 context={
                     "capabilities": ["localSessions", "externalQuotas"],
+                    "codexQuotaAccountOrder": ["acc-1"],
                 },
                 credentials={
                     "codexQuotaAccounts": {
@@ -353,6 +354,7 @@ class BridgeCodexAccessOnlyContractTests(unittest.TestCase):
         response = execute_request(
             bridge_request(
                 "agent-usage",
+                context={"codexQuotaAccountOrder": ["acc-1"]},
                 credentials={
                     "codexQuotaAccounts": {
                         "acc-1": {
@@ -629,7 +631,6 @@ class BridgeIsolationTests(unittest.TestCase):
                     context=common_context,
                     credentials={
                         "kimiWebTokens": {},
-                        "codexQuotaAccounts": {},
                         "antigravityOAuth": {},
                     },
                 ),
@@ -735,6 +736,7 @@ class BridgeCodexQuotaIsolationTests(unittest.TestCase):
                         "now": "2026-07-28T12:00:00+08:00",
                         "timezone": "Asia/Shanghai",
                         "capabilities": ["localSessions", "externalQuotas"],
+                        "codexQuotaAccountOrder": ["acc-1"],
                     },
                     credentials={
                         "codexQuotaAccounts": {
@@ -799,6 +801,7 @@ class BridgeCodexQuotaIsolationTests(unittest.TestCase):
                         "now": "2026-07-28T12:00:00+08:00",
                         "timezone": "Asia/Shanghai",
                         "capabilities": ["localSessions", "externalQuotas"],
+                        "codexQuotaAccountOrder": ["acc-1"],
                     },
                     credentials={
                         "codexQuotaAccounts": {
@@ -828,6 +831,300 @@ class BridgeCodexQuotaIsolationTests(unittest.TestCase):
         serialized = json.dumps(response)
         self.assertNotIn("cc-rotatable-rt", serialized)
         self.assertNotIn("fixture-short-lived-token", serialized)
+
+
+class BridgeCodexQuotaOrderContractTests(unittest.TestCase):
+    """任务 6 契约: codexQuotaAccountOrder 校验, 长度限制, 端点覆盖拒绝."""
+
+    def test_order_must_match_account_keys(self):
+        response = execute_request(
+            bridge_request(
+                "agent-usage",
+                context={
+                    "codexQuotaAccountOrder": ["acc-1"],
+                },
+                credentials={
+                    "codexQuotaAccounts": {
+                        "acc-1": {
+                            "display_name": "Codex · user",
+                            "access_token": "at",
+                        },
+                        "acc-2": {
+                            "display_name": "Codex · other",
+                            "access_token": "at2",
+                        },
+                    },
+                },
+            )
+        )
+        self.assertEqual(response["status"], "error")
+        self.assertEqual(
+            response["diagnostics"][0]["code"], "BRIDGE_INVALID_REQUEST"
+        )
+
+    def test_order_rejects_duplicates(self):
+        response = execute_request(
+            bridge_request(
+                "agent-usage",
+                context={
+                    "codexQuotaAccountOrder": ["acc-1", "acc-1"],
+                },
+                credentials={
+                    "codexQuotaAccounts": {
+                        "acc-1": {
+                            "display_name": "Codex · user",
+                            "access_token": "at",
+                        },
+                    },
+                },
+            )
+        )
+        self.assertEqual(response["status"], "error")
+        self.assertEqual(
+            response["diagnostics"][0]["code"], "BRIDGE_INVALID_REQUEST"
+        )
+
+    def test_order_accepts_matching_keys(self):
+        captured = {}
+
+        def collector(ctx):
+            captured.update(ctx)
+            return {"artifact": load_fixture("agent-usage")}
+
+        response = execute_request(
+            bridge_request(
+                "agent-usage",
+                context={
+                    "codexQuotaAccountOrder": ["acc-1", "acc-2"],
+                },
+                credentials={
+                    "codexQuotaAccounts": {
+                        "acc-1": {
+                            "display_name": "Codex · user",
+                            "access_token": "at",
+                        },
+                        "acc-2": {
+                            "display_name": "Codex · other",
+                            "access_token": "at2",
+                        },
+                    },
+                },
+            ),
+            collector_overrides={"agent-usage": collector},
+        )
+        self.assertEqual(response["status"], "success")
+        self.assertEqual(
+            captured["codex_quota_account_order"], ["acc-1", "acc-2"]
+        )
+
+    def test_map_without_order_rejected(self):
+        """ORD-03: 有 codexQuotaAccounts 无 codexQuotaAccountOrder 拒绝."""
+        response = execute_request(
+            bridge_request(
+                "agent-usage",
+                credentials={
+                    "codexQuotaAccounts": {
+                        "acc-1": {
+                            "display_name": "Codex · user",
+                            "access_token": "at",
+                        }
+                    },
+                },
+            )
+        )
+        self.assertEqual(response["status"], "error")
+        self.assertEqual(
+            response["diagnostics"][0]["code"], "BRIDGE_INVALID_REQUEST"
+        )
+
+    def test_order_without_map_rejected(self):
+        """ORD-04: 有 codexQuotaAccountOrder 无 codexQuotaAccounts 拒绝."""
+        response = execute_request(
+            bridge_request(
+                "agent-usage",
+                context={"codexQuotaAccountOrder": ["acc-1"]},
+            )
+        )
+        self.assertEqual(response["status"], "error")
+        self.assertEqual(
+            response["diagnostics"][0]["code"], "BRIDGE_INVALID_REQUEST"
+        )
+
+    def test_empty_map_rejected(self):
+        """ORD-05: 空 codexQuotaAccounts 拒绝 (不再静默降级为空服务)."""
+        response = execute_request(
+            bridge_request(
+                "agent-usage",
+                context={"codexQuotaAccountOrder": []},
+                credentials={"codexQuotaAccounts": {}},
+            )
+        )
+        self.assertEqual(response["status"], "error")
+        self.assertEqual(
+            response["diagnostics"][0]["code"], "BRIDGE_INVALID_REQUEST"
+        )
+
+    def test_entry_missing_display_name_rejected(self):
+        """ORD-06: 账号条目缺 display_name 拒绝."""
+        response = execute_request(
+            bridge_request(
+                "agent-usage",
+                context={"codexQuotaAccountOrder": ["acc-1"]},
+                credentials={
+                    "codexQuotaAccounts": {
+                        "acc-1": {"access_token": "at"},
+                    }
+                },
+            )
+        )
+        self.assertEqual(response["status"], "error")
+        self.assertEqual(
+            response["diagnostics"][0]["code"], "BRIDGE_INVALID_REQUEST"
+        )
+
+    def test_display_name_over_protocol_limit_rejected(self):
+        """schema 与运行时 validator 都拒绝超过 256 字符的展示名."""
+        response = execute_request(
+            bridge_request(
+                "agent-usage",
+                context={"codexQuotaAccountOrder": ["acc-1"]},
+                credentials={
+                    "codexQuotaAccounts": {
+                        "acc-1": {
+                            "display_name": "x" * 257,
+                            "access_token": "at",
+                        }
+                    }
+                },
+            )
+        )
+        self.assertEqual(response["status"], "error")
+        self.assertEqual(
+            response["diagnostics"][0]["code"], "BRIDGE_INVALID_REQUEST"
+        )
+
+    def test_request_rejects_codex_usage_url_override(self):
+        """正式 Bridge 请求拒绝 codexUsageUrl 端点覆盖."""
+        response = execute_request(
+            bridge_request(
+                "agent-usage",
+                context={"codexUsageUrl": "http://127.0.0.1:9999/usage"},
+            )
+        )
+        self.assertEqual(response["status"], "error")
+        self.assertEqual(
+            response["diagnostics"][0]["code"], "BRIDGE_INVALID_REQUEST"
+        )
+
+    def test_request_rejects_codex_token_url_override(self):
+        """正式 Bridge 请求拒绝 codexTokenUrl 端点覆盖."""
+        response = execute_request(
+            bridge_request(
+                "agent-usage",
+                context={"codexTokenUrl": "http://127.0.0.1:9999/token"},
+            )
+        )
+        self.assertEqual(response["status"], "error")
+        self.assertEqual(
+            response["diagnostics"][0]["code"], "BRIDGE_INVALID_REQUEST"
+        )
+
+    def test_response_rejects_codex_credential_update(self):
+        """response schema 不再接受 codex provider 的 credentialUpdate."""
+        def collector(ctx):
+            return {
+                "artifact": load_fixture("agent-usage"),
+                "credentialUpdates": [
+                    {
+                        "provider": "codex",
+                        "accountId": "acc-1",
+                        "kind": "oauthTokens",
+                        "operation": "replace",
+                        "credentials": {
+                            "access_token": "at",
+                            "refresh_token": "rt",
+                        },
+                    }
+                ],
+            }
+
+        response = execute_request(
+            bridge_request("agent-usage"),
+            collector_overrides={"agent-usage": collector},
+        )
+        self.assertEqual(response["status"], "error")
+        self.assertEqual(
+            response["diagnostics"][0]["code"],
+            "BRIDGE_INVALID_CREDENTIAL_UPDATE",
+        )
+
+
+class AppCoreResidualContractTests(unittest.TestCase):
+    """任务 10 残留扫描契约: AppCore 关键路径不得出现旧 Codex auth
+    契约或可旋转凭证字段; App 层不得读取第三方 Codex 凭证文件 (除
+    用户点击触发的元数据发现)."""
+
+    APP_CORE = REPO_ROOT / "macos" / "MdddApp" / "Sources" / "MdddAppCore"
+    APP_LAYER = REPO_ROOT / "macos" / "MdddApp" / "Sources" / "MdddApp"
+
+    def test_app_core_has_no_legacy_codex_auth_contracts(self):
+        """CollectorRunner/RefreshScheduler/Merger 不得出现旧 Codex auth
+        注入键与 URL 覆盖字符串."""
+        files = [
+            "CollectorRunner.swift",
+            "RefreshScheduler.swift",
+            "CodexQuotaSnapshotMerger.swift",
+        ]
+        for name in files:
+            source = (self.APP_CORE / name).read_text(encoding="utf-8")
+            for forbidden in (
+                "codexOAuthAccounts",
+                "codexAuth",
+                "codexUsageUrl",
+                "codexTokenUrl",
+            ):
+                self.assertNotIn(forbidden, source, "%s 含 %s" % (name, forbidden))
+
+    def test_app_core_has_no_rotatable_token_fields(self):
+        """CollectorRunner/RefreshScheduler/Merger/CollectorRunInput 不得
+        出现 refresh_token / id_token 字段契约."""
+        files = [
+            "CollectorRunner.swift",
+            "RefreshScheduler.swift",
+            "CodexQuotaSnapshotMerger.swift",
+            "CollectorRunInput.swift",
+        ]
+        for name in files:
+            source = (self.APP_CORE / name).read_text(encoding="utf-8")
+            for forbidden in ("refresh_token", "id_token"):
+                self.assertNotIn(forbidden, source, "%s 含 %s" % (name, forbidden))
+
+    def test_app_does_not_read_third_party_codex_credential_files(self):
+        """App 层读取 ~/.codex/auth.json 只发生在用户点击触发的元数据
+        发现 (importCodexFromLocalCLI), 无自动读取回退."""
+        coordinator = (self.APP_LAYER / "OnboardingCoordinator.swift").read_text(
+            encoding="utf-8"
+        )
+        # 三处: 发现按钮注释 + importCodexFromLocalCLI 实际读取 (用户点击
+        # 触发) + codexCLIAuthFileExists 存在性检查 (不读取令牌内容).
+        # 均不是自动读取第三方认证文件的回退.
+        self.assertEqual(coordinator.count(".codex/auth.json"), 3)
+        # 无读取第三方认证文件的自动回退 (死代码已删)
+        self.assertNotIn("readCodexCLIActiveAccountID", coordinator)
+
+    def test_collector_orca_label_disk_oauth_fallback_is_cli_only(self):
+        """任务 11 契约: orca_account_label 读取 ~/.cc-switch/codex_oauth_auth.json
+        的磁盘回退必须受 not _APP_MODE 保护 (App 模式只消费注入凭证)."""
+        source = (
+            REPO_ROOT / "agent-usage" / "collector" / "collect_usage.py"
+        ).read_text(encoding="utf-8")
+        label_start = source.index("def orca_account_label")
+        label_end = source.index("    # 4 个本地扫描互不共享状态")
+        label = source[label_start:label_end]
+        self.assertIn("not _APP_MODE", label)
+        # 磁盘回退是受保护的单点; App 模式注入 orca_codex_auth 时
+        # 不得存在任何无 _APP_MODE guard 的 CODEX_OAUTH_AUTH 打开路径
+        self.assertIn("and not _APP_MODE", label)
 
 
 if __name__ == "__main__":

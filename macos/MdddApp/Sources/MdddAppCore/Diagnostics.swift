@@ -160,6 +160,9 @@ package final class DiagnosticService: ObservableObject {
     private let applicationVersion: () -> String
     private let operatingSystem: () -> String
     private let architecture: () -> String
+    /// 最近一次已发布 Bridge/merger 诊断的脱敏来源. 生产默认读取 Scheduler;
+    /// 测试可注入固定值, 不需要开放 Scheduler 状态写入口.
+    private let publishedDiagnostics: (CollectorModule) -> [BridgeDiagnostic]
 
     package convenience init(
         model: AppModel,
@@ -202,7 +205,8 @@ package final class DiagnosticService: ObservableObject {
         now: @escaping () -> Date,
         applicationVersion: @escaping () -> String,
         operatingSystem: @escaping () -> String,
-        architecture: @escaping () -> String
+        architecture: @escaping () -> String,
+        publishedDiagnostics: ((CollectorModule) -> [BridgeDiagnostic])? = nil
     ) {
         self.model = model
         self.scheduler = scheduler
@@ -213,6 +217,10 @@ package final class DiagnosticService: ObservableObject {
         self.applicationVersion = applicationVersion
         self.operatingSystem = operatingSystem
         self.architecture = architecture
+        self.publishedDiagnostics = publishedDiagnostics ?? { [weak scheduler] module in
+            guard module == .agentUsage else { return [] }
+            return scheduler?.lastPublishedDiagnostics ?? []
+        }
     }
 
     package func preview() throws -> String {
@@ -322,6 +330,29 @@ package final class DiagnosticService: ObservableObject {
         let modules = CollectorModule.allCases.map { module in
             let result = model.moduleResults[module]
             let state = scheduler.moduleState(for: module)
+            var issues: [DiagnosticIssue] = (result?.issues ?? []).map {
+                DiagnosticIssue(
+                    code: $0.code,
+                    stage: $0.stage,
+                    category: $0.category.rawValue,
+                    retryable: $0.retryable,
+                    suggestedAction: $0.suggestedAction?.rawValue
+                )
+            }
+            var seenIssueKeys = Set(
+                issues.map { "\($0.code)|\($0.stage)|\($0.category)" }
+            )
+            for diagnostic in publishedDiagnostics(module) {
+                let key = "\(diagnostic.code)|\(diagnostic.stage)|\(diagnostic.category)"
+                guard seenIssueKeys.insert(key).inserted else { continue }
+                issues.append(DiagnosticIssue(
+                    code: diagnostic.code,
+                    stage: diagnostic.stage,
+                    category: diagnostic.category,
+                    retryable: diagnostic.retryable,
+                    suggestedAction: nil
+                ))
+            }
             return DiagnosticModule(
                 module: module.rawValue,
                 displayState: model.status(
@@ -340,15 +371,7 @@ package final class DiagnosticService: ObservableObject {
                         status: $0.status.rawValue
                     )
                 },
-                issues: (result?.issues ?? []).map {
-                    DiagnosticIssue(
-                        code: $0.code,
-                        stage: $0.stage,
-                        category: $0.category.rawValue,
-                        retryable: $0.retryable,
-                        suggestedAction: $0.suggestedAction?.rawValue
-                    )
-                }
+                issues: issues
             )
         }
         let report = DiagnosticReport(

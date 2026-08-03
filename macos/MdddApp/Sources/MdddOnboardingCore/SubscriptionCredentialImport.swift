@@ -152,19 +152,27 @@ public struct CodexCLIAuthAccount: Equatable, Sendable {
     public let refreshToken: String
     public let accessToken: String
     public let idToken: String?
+    /// OAuth 响应的 `expires_in` (秒); 缺失为 nil, 由上层按 JWT exp 或 1 小时回落.
+    public let expiresIn: TimeInterval?
+    /// OAuth 响应收到时刻; 与 `expiresIn` 配合计算过期时间.
+    public let receivedAt: Date
 
     public init(
         accountID: String,
         email: String?,
         refreshToken: String,
         accessToken: String,
-        idToken: String?
+        idToken: String?,
+        expiresIn: TimeInterval? = nil,
+        receivedAt: Date = Date()
     ) {
         self.accountID = accountID
         self.email = email
         self.refreshToken = refreshToken
         self.accessToken = accessToken
         self.idToken = idToken
+        self.expiresIn = expiresIn
+        self.receivedAt = receivedAt
     }
 }
 

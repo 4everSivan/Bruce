@@ -663,6 +663,18 @@ struct SettingsView: View {
                 .accessibilityHint("只读发现 CC Switch 管理的 Codex 账号元数据, 不导入登录令牌")
             }
             codexAccountStatusesList
+            // 迁移结果提示 (任务 7): 阻断性错误显示可操作提示, 不泄露
+            // 账号 ID/邮箱/token 或 Keychain 名称.
+            if let message = model.codexMigrationStatus.userMessage {
+                Label(message, systemImage: model.codexMigrationStatus.isBlocking
+                    ? "xmark.octagon.fill"
+                    : "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(model.codexMigrationStatus.isBlocking
+                        ? Color.orange
+                        : Color.secondary)
+                    .padding(.vertical, 2)
+            }
             if let login = coordinator.codexDeviceLogin {
                 deviceLoginView(
                     login,

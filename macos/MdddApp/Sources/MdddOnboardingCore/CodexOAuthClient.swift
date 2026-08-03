@@ -259,15 +259,21 @@ public struct CodexOAuthClient: CodexOAuthClientProtocol, Sendable {
 // MARK: - 过期时间计算
 
 /// Codex token 过期时间计算: `expires_in` 优先于 JWT `exp`, 缺失回落 1 小时.
-/// 非法、负数或过去时间按立即过期处理.
+/// 非正数、NaN 或无穷 `expires_in` 视为立即过期, 不回退掩盖错误值.
 public enum CodexTokenExpiry {
     /// 从 token 响应计算过期时刻.
+    /// 优先级: 有效 expires_in > JWT exp (未来) > 1 小时回落.
+    /// 非正数、NaN 或无穷 expires_in 视为立即过期 (返回 receivedAt).
     public static func expiresAt(
         from response: CodexTokenResponse,
         jwtExp: TimeInterval?
     ) -> Date {
-        if let expiresIn = response.expiresIn, expiresIn >= 0 {
-            return response.receivedAt.addingTimeInterval(expiresIn)
+        if let expiresIn = response.expiresIn {
+            // 非正数、NaN 或无穷视为立即过期, 不回退
+            if expiresIn.isFinite, expiresIn > 0 {
+                return response.receivedAt.addingTimeInterval(expiresIn)
+            }
+            return response.receivedAt
         }
         if let jwtExp {
             let date = Date(timeIntervalSince1970: jwtExp)

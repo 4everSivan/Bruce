@@ -99,11 +99,15 @@ def _configure_runtime(ctx):
     global AGY_SUMMARIES_DB, KIMI_WEB_TOKENS
     global DAYS, HTTP_TIMEOUT, now, TODAY, CUTOFF_TS, DAY_LIST
     global _RUNTIME_TZ, _RUNTIME_HTTP, _RUNTIME_CREDENTIALS
+    global _RUNTIME_CONTEXT
     global _RUNTIME_CREDENTIAL_UPDATES, _RUNTIME_CAPABILITIES, _APP_MODE
     global _RUNTIME_CREDENTIAL_CHALLENGES
     global CODEX_TOKEN_URL, CODEX_USAGE_URL
 
     ctx = ctx or {}
+    # 运行时上下文全量快照 (含 codex_quota_account_order 等协议映射键);
+    # 每次运行重建, 禁止进程复用时残留 (任务 6, ORD-09).
+    _RUNTIME_CONTEXT = dict(ctx)
     HOME = os.path.abspath(os.path.expanduser(ctx.get("home") or "~"))
     paths = ctx.get("paths") or {}
     DAIMON_KIMI_SESSIONS = _path_override(
@@ -161,14 +165,12 @@ def _configure_runtime(ctx):
         "kimi_web_tokens",
         os.path.join(HOME, ".config/kimi-dashboard/kimi-web-tokens.json"),
     )
-    # App/测试可覆盖出站 URL (本地 fake server 用 loopback 地址);
-    # 默认值保持生产端点不变.
-    CODEX_TOKEN_URL = str(
-        ctx.get("codex_token_url") or CODEX_TOKEN_URL
-    )
-    CODEX_USAGE_URL = str(
-        ctx.get("codex_usage_url") or CODEX_USAGE_URL
-    )
+    # Codex 出站 URL 覆盖: 仅接受进程内 runtime_overrides 注入 (本地 fake
+    # server 测试用 loopback 地址), 不经 Bridge 协议序列化; 正式请求无法覆盖.
+    if ctx.get("codex_usage_url"):
+        CODEX_USAGE_URL = str(ctx["codex_usage_url"])
+    if ctx.get("codex_token_url"):
+        CODEX_TOKEN_URL = str(ctx["codex_token_url"])
 
     timezone_value = ctx.get("timezone")
     if isinstance(timezone_value, str):
@@ -221,6 +223,11 @@ def _capability_allowed(name):
 
 def _runtime_credential(name, default=None):
     return _RUNTIME_CREDENTIALS.get(name, default)
+
+
+def _runtime_context(name, default=None):
+    """读取运行时顶层 context 键 (协议映射键, 如 codex_quota_account_order)."""
+    return _RUNTIME_CONTEXT.get(name, default)
 
 
 def _record_credential_update(provider, account_id, credentials):
@@ -1148,6 +1155,26 @@ def _codex_refresh(refresh_token):
         return json.loads(resp.read().decode("utf-8", "replace"))
 
 
+def _codex_service_id(acc_id):
+    """codex_ + SHA256(accountID) 前 16 位 hex. 跨 Swift/Python 统一."""
+    return "codex_" + hashlib.sha256((acc_id or "").encode("utf-8")).hexdigest()[:16]
+
+
+def _codex_failure_kind(exc):
+    """从异常分类固定 failureKind: auth/permission/rateLimit/network/server/invalidResponse."""
+    code = getattr(exc, "code", None)
+    message = str(exc)
+    if code == 401 or "HTTP 401" in message:
+        return "auth"
+    if code == 403 or "HTTP 403" in message:
+        return "permission"
+    if code == 429 or "HTTP 429" in message:
+        return "rateLimit"
+    if code is not None and 500 <= code < 600:
+        return "server"
+    return "network"
+
+
 def _codex_query_single_account(acc_id, access_token, display_name, style):
     """查询单账号 wham/usage 额度, 两种调用方共用同一查询主体.
 
@@ -1155,10 +1182,15 @@ def _codex_query_single_account(acc_id, access_token, display_name, style):
     (401 -> accessRejected challenge; 403 -> 权限/套餐错误; 其余 -> 暂时
     失败), 不解析响应体进 note. style="legacy": 保留 CLI 兼容行为, 错误
     文案带原始消息.
+
+    display_name 由 Swift 传入最终展示名 (含 "Codex · " 前缀), 原样写入
+    service.name, 不添加或删除前缀.
+    成功: freshness=fresh, capturedAt=本轮成功时间.
+    失败: freshness=unavailable, failureKind=分类, 不写 capturedAt.
     """
     svc = {
-        "id": "codex_" + (acc_id or "unknown")[:8],
-        "name": "Codex · " + (display_name or "账号"),
+        "id": _codex_service_id(acc_id),
+        "name": display_name or "账号",
         "app": "codex",
         "isCurrent": False,
         "status": "ok",
@@ -1168,6 +1200,8 @@ def _codex_query_single_account(acc_id, access_token, display_name, style):
         "balance": None,
         "currency": None,
         "capturedAt": now.isoformat(timespec="seconds"),
+        "freshness": "fresh",
+        "failureKind": None,
         "note": "",
     }
     try:
@@ -1214,6 +1248,7 @@ def _codex_query_single_account(acc_id, access_token, display_name, style):
             svc["note"] = "接口已通但未返回额度窗口"
     except Exception as e:
         code = getattr(e, "code", None)
+        kind = _codex_failure_kind(e)
         if style == "app":
             message = str(e)
             if code == 401 or "HTTP 401" in message:
@@ -1237,6 +1272,10 @@ def _codex_query_single_account(acc_id, access_token, display_name, style):
             svc["status"] = "error"
             msg = str(e)
             svc["note"] = ("查询失败: " + msg[:60]) if msg else "查询失败"
+        # 失败时不写 capturedAt (不伪造成功时间); freshness=unavailable
+        del svc["capturedAt"]
+        svc["freshness"] = "unavailable"
+        svc["failureKind"] = kind
     return svc
 
 
@@ -1246,26 +1285,53 @@ def service_codex_accounts():
     App access-only 路径: 只消费注入的 `codex_quota_accounts` (每账号仅
     display_name + 短期 access_token), 直接请求 wham/usage; 无刷新, 无
     磁盘读取, 无 rotation update, 401 记录定向 challenge.
+    按 `codex_quota_account_order` 调度并恢复输出顺序; 空 map 防御性
+    返回空数组, 不创建零 worker 线程池.
     CLI legacy 路径: 未注入时保留原行为 (读 CC Switch / Codex CLI 认证
     文件, candidates 轮换重试, CLI 文件写回).
     """
     injected_accounts = _runtime_credential("codex_quota_accounts")
     if injected_accounts is not None:
         accounts = json.loads(json.dumps(injected_accounts))
-        with ThreadPoolExecutor(max_workers=min(4, len(accounts))) as pool:
-            services = [
-                svc
-                for svc in pool.map(
-                    lambda item: _codex_query_single_account(
-                        item[0],
-                        (item[1] or {}).get("access_token"),
-                        (item[1] or {}).get("display_name"),
-                        "app",
-                    ),
-                    accounts.items(),
-                )
+        if not accounts:
+            return []
+        # 任务 6: order 由 Bridge 映射到运行时 context
+        # (codex_quota_account_order), 不进入 credentials; CLI 直跑
+        # 兼容旧 credentials 注入路径.
+        order = _runtime_context("codex_quota_account_order")
+        if order is None:
+            order = _runtime_credential("codex_quota_account_order")
+        order = order or []
+        if isinstance(order, list) and order:
+            # App 模式 order 与 map 必须严格一致 (Bridge validator 已保证);
+            # 不一致表示请求组装错误, 返回可诊断协议错误, 不自行补账号掩盖.
+            if _APP_MODE:
+                order_set = set(order)
+                account_keys = set(accounts.keys())
+                if len(order_set) != len(order) or order_set != account_keys:
+                    raise ValueError(
+                        "codex_quota_account_order 与 codex_quota_accounts "
+                        "不一致 (App 模式)"
+                    )
+            # 按 order 排序; order 之外的账号追加到末尾 (CLI 保持稳定)
+            ordered_keys = [
+                k for k in order if k in accounts
+            ] + [
+                k for k in accounts if k not in set(order)
             ]
-        return services
+        else:
+            ordered_keys = list(accounts.keys())
+        with ThreadPoolExecutor(max_workers=min(4, len(ordered_keys))) as pool:
+            results = list(pool.map(
+                lambda item: _codex_query_single_account(
+                    item[0],
+                    (item[1] or {}).get("access_token"),
+                    (item[1] or {}).get("display_name"),
+                    "app",
+                ),
+                [(k, accounts[k]) for k in ordered_keys],
+            ))
+        return results
 
     injected_oauth = _runtime_credential("codex_oauth_auth")
     if injected_oauth is not None:
@@ -1341,11 +1407,11 @@ def service_codex_accounts():
                 acc_cli_rotated = True
             access_token = tokens.get("access_token") or acc.get("access_token") or ""
             svc = _codex_query_single_account(
-                acc_id, access_token, email.split("@")[0], "legacy"
+                acc_id, access_token, "Codex · " + email.split("@")[0], "legacy"
             )
         except Exception as e:
             svc = {
-                "id": "codex_" + (acc_id or "unknown")[:8],
+                "id": _codex_service_id(acc_id),
                 "name": "Codex · " + email.split("@")[0],
                 "app": "codex",
                 "isCurrent": acc_id == active_id,
@@ -1355,7 +1421,8 @@ def service_codex_accounts():
                 "windows": [],
                 "balance": None,
                 "currency": None,
-                "capturedAt": now.isoformat(timespec="seconds"),
+                "freshness": "unavailable",
+                "failureKind": _codex_failure_kind(e),
                 "note": ("查询失败: " + str(e)[:60]) if str(e) else "查询失败",
             }
         return svc, acc_changed, acc_cli_rotated
@@ -1827,7 +1894,12 @@ def collect(ctx=None):
                 ) as fh:
                     acc_id = (json.load(fh).get("tokens") or {}).get("account_id")
             oauth_data = _runtime_credential("codex_oauth_auth")
-            if oauth_data is None and acc_id and os.path.exists(CODEX_OAUTH_AUTH):
+            if (
+                oauth_data is None
+                and acc_id
+                and not _APP_MODE
+                and os.path.exists(CODEX_OAUTH_AUTH)
+            ):
                 with open(CODEX_OAUTH_AUTH, encoding="utf-8") as fh:
                     oauth_data = json.load(fh)
             if acc_id and oauth_data:

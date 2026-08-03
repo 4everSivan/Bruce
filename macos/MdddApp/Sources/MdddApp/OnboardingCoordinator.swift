@@ -151,10 +151,13 @@ final class OnboardingCoordinator: ObservableObject {
     }
 
     /// 判断 provider 的 Keychain 凭证是否完整配置.
-    /// Codex 以 v2 账号索引非空为准, 不再读旧整体账号库键.
+    /// Codex: 至少一个账号处于 connected 且有完整凭证 (access token +
+    /// refresh token + 过期时间); metadata-only 发现账号不算已配置.
     private func credentialConfigured(_ id: SubscriptionProviderID) -> Bool {
         if id == .codex {
-            return (try? codexStore.loadIndex().accounts.isEmpty == false) ?? false
+            // 只发现账号元数据 (metadata-only) 不算已配置;
+            // 按真实完整 record 判定, 索引状态不作数 (fail-closed).
+            return (try? codexStore.hasConfiguredCredentials()) ?? false
         }
         for account in id.credentialAccounts {
             guard let value = try? credentialStore.loadCredential(
@@ -364,10 +367,18 @@ final class OnboardingCoordinator: ObservableObject {
     }
 
     /// 发现导入的公共收尾: 发布摘要与验证状态.
+    /// 发现的账号是 metadata-only (无 token), 不标记"已配置";
+    /// "已配置"只在存在真实完整 record 时成立 (fail-closed).
     private func finishCodexDiscoveryImport() {
         publishCodexSummaryFromIndex()
-        model.setSubscriptionCredentialConfigured(true, for: .codex)
+        publishCodexCredentialConfigured()
         finishVerification(.codex, status: .none)
+    }
+
+    /// 按真实完整 record 发布 Codex"已配置"状态, 索引状态不作数.
+    private func publishCodexCredentialConfigured() {
+        let configured = (try? codexStore.hasConfiguredCredentials()) ?? false
+        model.setSubscriptionCredentialConfigured(configured, for: .codex)
     }
 
     /// Codex: 设备码登录新账号 (用户点击触发, 全程网络只由该点击发起).
@@ -423,6 +434,8 @@ final class OnboardingCoordinator: ObservableObject {
                 do {
                     // 交由 token manager 保存完整 v2 记录 (credentialOrigin=mddd),
                     // 独立 token 链, 不再合并进旧整体账号库.
+                    // 保留服务端 expires_in 和收到时刻, 按
+                    // expires_in > JWT exp > 1 小时 计算过期时间.
                     try await self.codexTokenManager.storeLoginResult(
                         accountID: account.accountID,
                         email: account.email,
@@ -434,8 +447,8 @@ final class OnboardingCoordinator: ObservableObject {
                                 accessToken: account.accessToken,
                                 refreshToken: account.refreshToken,
                                 idToken: account.idToken,
-                                expiresIn: nil,
-                                receivedAt: Date()
+                                expiresIn: account.expiresIn,
+                                receivedAt: account.receivedAt
                             ),
                             jwtExp: CodexTokenExpiry.jwtExp(of: account.idToken)
                         )
@@ -447,7 +460,7 @@ final class OnboardingCoordinator: ObservableObject {
                     )
                     return
                 }
-                self.model.setSubscriptionCredentialConfigured(true, for: .codex)
+                self.publishCodexCredentialConfigured()
                 self.publishCodexSummaryFromIndex()
                 self.finishVerification(.codex, status: .ok)
                 guard self.codexDeviceLogin != nil else { return }
@@ -484,20 +497,6 @@ final class OnboardingCoordinator: ObservableObject {
             codexDeviceLogin?.stage = .failed(error.description)
         }
         model.setSettingsError("Codex 登录未完成: \(error.description)")
-    }
-
-    /// 读取 CLI `~/.codex/auth.json` 的当前账号 id; 读不到返回 nil (非致命).
-    private func readCodexCLIActiveAccountID() -> String? {
-        let fileURL = homeURL.appendingPathComponent(".codex/auth.json")
-        guard let data = try? Data(contentsOf: fileURL),
-              let object = try? JSONSerialization.jsonObject(with: data),
-              let dict = object as? [String: Any],
-              let tokens = dict["tokens"] as? [String: Any] else {
-            return nil
-        }
-        let accountID = (tokens["account_id"] as? String ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return accountID.isEmpty ? nil : accountID
     }
 
     /// Antigravity: 从本机导入 (用户点击触发); 优先令牌文件,

@@ -502,7 +502,9 @@ public struct CodexDeviceFlow: Sendable {
             email: CodexIDTokenParser.email(of: tokens.idToken),
             refreshToken: tokens.refreshToken,
             accessToken: tokens.accessToken,
-            idToken: tokens.idToken
+            idToken: tokens.idToken,
+            expiresIn: tokens.expiresIn,
+            receivedAt: tokens.receivedAt
         ))
     }
 

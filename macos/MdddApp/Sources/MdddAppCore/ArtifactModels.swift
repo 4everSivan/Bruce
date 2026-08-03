@@ -58,9 +58,47 @@ package struct AgentServiceItem: Codable, Equatable, Sendable {
     let note: String?
     /// 附加说明 (如 Kimi 加量包余额文案), 与 windows 并列展示.
     let extra: String?
-    /// 本条 service 数据采集时间 (ISO-8601); 任务 9 起用于
-    /// 非 ok 状态显示"上次成功"时间.
+    /// 该账号当前展示额度数据的成功采集时间 (ISO-8601).
+    /// freshness=fresh 时等于本轮成功时间; stale 时为旧额度时间; unavailable 时为 nil.
     let capturedAt: String?
+    /// 额度新鲜度: fresh (本轮成功), stale (保留旧额度), unavailable (从未成功).
+    let freshness: String?
+    /// 失败类型: auth | permission | rateLimit | network | server | invalidResponse | storage | tokenUnavailable.
+    let failureKind: String?
+
+    package init(
+        id: String,
+        name: String,
+        status: String,
+        windows: [JSONValue],
+        app: String? = nil,
+        isCurrent: Bool? = nil,
+        kind: String? = nil,
+        plan: String? = nil,
+        balance: Double? = nil,
+        currency: String? = nil,
+        note: String? = nil,
+        extra: String? = nil,
+        capturedAt: String? = nil,
+        freshness: String? = nil,
+        failureKind: String? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.status = status
+        self.windows = windows
+        self.app = app
+        self.isCurrent = isCurrent
+        self.kind = kind
+        self.plan = plan
+        self.balance = balance
+        self.currency = currency
+        self.note = note
+        self.extra = extra
+        self.capturedAt = capturedAt
+        self.freshness = freshness
+        self.failureKind = failureKind
+    }
 }
 
 package struct AgentUsageArtifact: Codable, Equatable, Sendable {

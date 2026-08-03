@@ -11,8 +11,9 @@ final class ApplicationBootstrap {
     private let runner: CollectorRunner
     private let coordinator: OnboardingCoordinator
     private let runInputProvider: OnboardingRunInputProvider
-    /// Codex v2 迁移执行器 (任务 11): 启动 Scheduler 前幂等迁移旧整体
-    /// 账号库; 失败时只暂停 Codex 外部额度, 不阻断本地统计.
+    /// Codex v2 迁移执行器: 启动 Scheduler 前幂等迁移旧整体账号库;
+    /// 失败时只暂停 Codex 外部额度, 不阻断本地统计.
+    /// 生产组合根必须注入真实 CodexCredentialStore, 不得使用空迁移器.
     private let codexMigration: any CodexMigrationExecuting
     /// Codex token manager: 启动时发布一次非敏感状态,
     /// 并在每个调度周期后刷新, 供设置页订阅.
@@ -31,7 +32,7 @@ final class ApplicationBootstrap {
         runInputProvider: OnboardingRunInputProvider,
         codexTokenManager: CodexTokenManager,
         model: AppModel,
-        codexMigration: (any CodexMigrationExecuting)? = nil
+        codexMigration: any CodexMigrationExecuting
     ) {
         self.runtime = runtime
         self.scheduler = scheduler
@@ -40,7 +41,7 @@ final class ApplicationBootstrap {
         self.runInputProvider = runInputProvider
         self.codexTokenManager = codexTokenManager
         self.model = model
-        self.codexMigration = codexMigration ?? runInputProvider
+        self.codexMigration = codexMigration
     }
 
     @discardableResult
@@ -74,11 +75,14 @@ final class ApplicationBootstrap {
         appearanceObserver = coordinator.$appearanceMode.sink { [weak self] mode in
             self?.applyAppearance(mode)
         }
-        // 任务 11: 启动 Scheduler 前先执行幂等迁移, 迁移成功或确认无
-        // 旧数据后才开放 v2 Codex quota 输入; 失败只暂停 Codex 外部额度,
-        // 本地 Agent token 统计和其他 provider 不受影响.
-        let codexMigrationCompleted = await codexMigration.executeCodexMigration()
-        runInputProvider.setCodexMigrationCompleted(codexMigrationCompleted)
+        // 启动 Scheduler 前先执行幂等迁移, 迁移结果控制 Codex quota gate:
+        // noLegacyData/migrated/cleanupPending 开放, corruptedJSON/failed 关闭.
+        // 失败只暂停 Codex 外部额度, 本地 Agent token 统计和其他 provider 不受影响.
+        let migrationResult = await codexMigration.executeCodexMigration()
+        runInputProvider.setCodexMigrationResult(migrationResult)
+        // 任务 7: 把迁移结果映射为脱敏展示状态 (不暴露账号 ID/邮箱/token),
+        // 供设置页渲染阻断与非阻断提示.
+        model?.setCodexMigrationStatus(.from(migrationResult))
         runtime.configure(scheduler: scheduler, runner: runner)
         runtime.startSchedulerIfNeeded()
         coordinator.scanAndReconcile()

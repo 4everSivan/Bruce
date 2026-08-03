@@ -5,6 +5,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 APP_CORE = (
     REPO_ROOT / "macos" / "MdddApp" / "Sources" / "MdddAppCore"
 )
+ONBOARDING_CORE = (
+    REPO_ROOT / "macos" / "MdddApp" / "Sources" / "MdddOnboardingCore"
+)
 
 
 def test_collector_subprocess_uses_an_environment_allowlist():
@@ -101,8 +104,32 @@ def test_subscription_card_marks_stale_codex_data():
 
 
 def test_panel_mapper_exposes_last_success_time_for_codex_errors():
-    """任务 10 契约: PanelViewModel 映射层为非 ok Codex 账号提供上次成功时间."""
+    """任务 9 契约: PanelViewModel 映射层为 stale Codex 账号提供上次成功时间.
+    lastSuccessText 只在 freshness == stale 且 capturedAt 存在时生成."""
     mapper = (APP_CORE / "PanelViewModel.swift").read_text()
     assert "lastSuccessText" in mapper
     assert '"上次成功 "' in mapper
     assert "service.capturedAt" in mapper
+    assert 'service.freshness == "stale"' in mapper
+
+
+def test_codex_configured_flag_requires_complete_record():
+    """任务 9 契约: Codex"已配置"按真实完整 record 判定 (fail-closed),
+    发现导入的 metadata-only 账号不算已配置, 索引状态不作数."""
+    store = (ONBOARDING_CORE / "CodexCredentialStore.swift").read_text()
+    assert "hasConfiguredCredentials" in store
+    assert "resolvedAuthorizationState" in store
+    assert '== .connected' in store
+
+
+def test_coordinator_uses_hasConfiguredCredentials_for_codex():
+    """任务 9 契约: Coordinator 的 Codex"已配置"与发现导入收尾都走
+    hasConfiguredCredentials, 不再以索引 connected 代判或无条件标 true."""
+    coordinator = (
+        REPO_ROOT / "macos" / "MdddApp" / "Sources" / "MdddApp"
+        / "OnboardingCoordinator.swift"
+    ).read_text()
+    assert "hasConfiguredCredentials()" in coordinator
+    # 发现导入收尾不再无条件标"已配置"
+    assert "finishCodexDiscoveryImport" in coordinator
+    assert 'setSubscriptionCredentialConfigured(true, for: .codex)' not in coordinator

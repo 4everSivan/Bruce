@@ -24,10 +24,7 @@ CONTEXT_FIELDS = {
     "caFile",
     "capabilities",
     "codexQuotaRetryOnly",
-    # 本地 fake server 测试用: 覆盖出站 quota/token URL (loopback 地址),
-    # 生产请求不携带; 默认值仍是生产端点.
-    "codexUsageUrl",
-    "codexTokenUrl",
+    "codexQuotaAccountOrder",
 }
 CAPABILITY_VALUES = {
     "localSessions",
@@ -60,14 +57,19 @@ RUNTIME_CREDENTIAL_NAMES = {
 RUNTIME_CONTEXT_NAMES = {
     "caFile": "ca_file",
     "codexQuotaRetryOnly": "codex_quota_retry_only",
-    "codexUsageUrl": "codex_usage_url",
-    "codexTokenUrl": "codex_token_url",
+    "codexQuotaAccountOrder": "codex_quota_account_order",
 }
 # 短期 access token 注入的账号条目允许的字段 (白名单, 拒绝 refresh/id token)
 CODEX_QUOTA_ACCOUNT_FIELDS = {
     "display_name",
     "access_token",
 }
+# Codex 账号数量上限 (与 schemas/request-v1.schema.json 一致)
+CODEX_QUOTA_ACCOUNT_MAX = 64
+# Codex 账号 ID / 展示名 / access token 长度上限
+CODEX_QUOTA_ACCOUNT_ID_MAX = 256
+CODEX_QUOTA_DISPLAY_NAME_MAX = 256
+CODEX_QUOTA_ACCESS_TOKEN_MAX = 8192
 # Codex quota challenge 上限, 与 schemas/response-v1.schema.json 保持一致
 CREDENTIAL_CHALLENGE_ACCOUNT_ID_MAX = 256
 SENSITIVE_KEY_PARTS = {
@@ -96,7 +98,7 @@ UPDATE_CREDENTIAL_FIELDS = {
     "id_token",
     "expiry",
 }
-UPDATE_PROVIDERS = {"kimi", "codex", "antigravity"}
+UPDATE_PROVIDERS = {"kimi", "antigravity"}
 
 
 class ValidationError(ValueError):
@@ -248,6 +250,22 @@ def validate_request(request):
             "protocol",
             "codexQuotaRetryOnly 必须是布尔值",
         )
+    if "codexQuotaAccountOrder" in context:
+        order = context["codexQuotaAccountOrder"]
+        if not isinstance(order, list) or not all(
+            isinstance(item, str) and item for item in order
+        ):
+            raise ValidationError(
+                "BRIDGE_INVALID_REQUEST",
+                "protocol",
+                "codexQuotaAccountOrder 必须是非空字符串数组",
+            )
+        if len(order) > CODEX_QUOTA_ACCOUNT_MAX:
+            raise ValidationError(
+                "BRIDGE_INVALID_REQUEST",
+                "protocol",
+                "codexQuotaAccountOrder 超过账号数量上限",
+            )
 
     credentials = request["credentials"]
     if not isinstance(credentials, dict):
@@ -271,19 +289,59 @@ def validate_request(request):
                 "凭证上下文类型无效",
             )
     if "codexQuotaAccounts" in credentials:
-        _validate_codex_quota_accounts(credentials["codexQuotaAccounts"])
+        if "codexQuotaAccountOrder" not in context:
+            raise ValidationError(
+                "BRIDGE_INVALID_REQUEST",
+                "protocol",
+                "codexQuotaAccounts 必须携带 codexQuotaAccountOrder",
+            )
+        _validate_codex_quota_accounts(
+            credentials["codexQuotaAccounts"], context["codexQuotaAccountOrder"]
+        )
+    elif "codexQuotaAccountOrder" in context:
+        raise ValidationError(
+            "BRIDGE_INVALID_REQUEST",
+            "protocol",
+            "codexQuotaAccountOrder 必须携带 codexQuotaAccounts",
+        )
     return request
 
 
-def _validate_codex_quota_accounts(accounts):
+def _validate_codex_quota_accounts(accounts, order=None):
     """Codex 短期 access token 注入: 每账号只允许 display_name + access_token,
-    不得携带 refresh token / id token / 完整邮箱等可旋转凭证."""
+    不得携带 refresh token / id token / 完整邮箱等可旋转凭证.
+    限制账号数、ID、展示名和 access token 长度.
+    校验 order 和账号 map 一一对应且无重复."""
+    if not isinstance(accounts, dict):
+        raise ValidationError(
+            "BRIDGE_INVALID_REQUEST",
+            "protocol",
+            "codexQuotaAccounts 必须是 JSON object",
+        )
+    if len(accounts) > CODEX_QUOTA_ACCOUNT_MAX:
+        raise ValidationError(
+            "BRIDGE_INVALID_REQUEST",
+            "protocol",
+            "codexQuotaAccounts 超过账号数量上限",
+        )
+    if not accounts:
+        raise ValidationError(
+            "BRIDGE_INVALID_REQUEST",
+            "protocol",
+            "codexQuotaAccounts 不能为空",
+        )
     for account_id, entry in accounts.items():
         if not isinstance(account_id, str) or not account_id:
             raise ValidationError(
                 "BRIDGE_INVALID_REQUEST",
                 "protocol",
                 "codexQuotaAccounts 账号 id 无效",
+            )
+        if len(account_id) > CODEX_QUOTA_ACCOUNT_ID_MAX:
+            raise ValidationError(
+                "BRIDGE_INVALID_REQUEST",
+                "protocol",
+                "codexQuotaAccounts 账号 id 超过长度上限",
             )
         if not isinstance(entry, dict) or set(entry) - CODEX_QUOTA_ACCOUNT_FIELDS:
             raise ValidationError(
@@ -297,6 +355,47 @@ def _validate_codex_quota_accounts(accounts):
                 "BRIDGE_INVALID_REQUEST",
                 "protocol",
                 "codexQuotaAccounts 缺少 access_token",
+            )
+        if len(access) > CODEX_QUOTA_ACCESS_TOKEN_MAX:
+            raise ValidationError(
+                "BRIDGE_INVALID_REQUEST",
+                "protocol",
+                "codexQuotaAccounts access_token 超过长度上限",
+            )
+        display_name = entry.get("display_name")
+        if display_name is None:
+            raise ValidationError(
+                "BRIDGE_INVALID_REQUEST",
+                "protocol",
+                "codexQuotaAccounts 缺少 display_name",
+            )
+        if not isinstance(display_name, str) or not display_name:
+            raise ValidationError(
+                "BRIDGE_INVALID_REQUEST",
+                "protocol",
+                "codexQuotaAccounts display_name 无效",
+            )
+        if len(display_name) > CODEX_QUOTA_DISPLAY_NAME_MAX:
+            raise ValidationError(
+                "BRIDGE_INVALID_REQUEST",
+                "protocol",
+                "codexQuotaAccounts display_name 超过长度上限",
+            )
+    # order 和账号 map 一一对应且无重复
+    if order is not None:
+        order_set = set(order)
+        if len(order_set) != len(order):
+            raise ValidationError(
+                "BRIDGE_INVALID_REQUEST",
+                "protocol",
+                "codexQuotaAccountOrder 包含重复账号",
+            )
+        account_keys = set(accounts.keys())
+        if order_set != account_keys:
+            raise ValidationError(
+                "BRIDGE_INVALID_REQUEST",
+                "protocol",
+                "codexQuotaAccountOrder 与 codexQuotaAccounts 不一致",
             )
 
 
