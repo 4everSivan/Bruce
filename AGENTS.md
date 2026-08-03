@@ -87,7 +87,7 @@
 | `zsh scripts/verify-local.sh` | 标准本地验证: Python 语法 + pytest + swift build + 全部 8 个 Harness |
 | `python3 -m pytest tests/` | Python 单元与契约测试 (bridge, collector, widget 安全); 87 项 |
 | `swift build --package-path macos/MdddApp` | macOS App 与 MdddOnboardingCore 构建验证 |
-| `swift run --package-path macos/MdddApp MdddOnboardingCoreHarness` | Onboarding Core 边界测试 (进程, SQLite, Keychain, Gate, 订阅凭证, 设备码登录, 令牌轮换合并, Codex v2 迁移); 134 项 |
+| `swift run --package-path macos/MdddApp MdddOnboardingCoreHarness` | Onboarding Core 边界测试 (进程, SQLite, Keychain, Gate, 订阅凭证, 设备码登录, 令牌轮换合并, Codex v2 迁移); 135 项 |
 | `swift run --package-path macos/MdddApp PanelViewModelHarness` | 面板 view model 映射边界测试 (措辞, 分组, 条件渲染, Codex 账号上次成功时间); 27 项 |
 | `zsh scripts/build-test-app.sh` | 生成 `dist/mddd-test.app` 测试版 App (Release 构建 + 打包 + 签名校验) |
 | GitHub Actions `.github/workflows/ci.yml` | push/PR 触发: verify-local.sh + Python 3.9 兼容 + 测试包构建; tag `v*` 触发草稿 Release |

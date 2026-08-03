@@ -147,7 +147,7 @@ struct MdddOnboardingCoreHarness {
         try await disconnectRemovesRecordButKeepsOthers()
         try configAppearanceModeDecodeAndFallback()
         try configGlassStyleDecodeAndFallback()
-        print("MdddOnboardingCore tests passed: 134")
+        print("MdddOnboardingCore tests passed: 135")
     }
 
     // MARK: - Python version parsing

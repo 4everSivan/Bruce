@@ -418,15 +418,17 @@ public actor CodexTokenManager: CodexTokenManaging {
             cache.refreshNotBefore = nil
             cache.updatedAt = now
             do {
+                // 轮换落盘必须保留既有邮箱与凭证来源, 否则显示名退化为账号 ID 前缀.
+                let existing = try? store.loadRecord(for: accountID)
                 try store.saveRecord(CodexAccountRecord(
                     accountID: accountID,
-                    email: nil,
+                    email: existing?.email,
                     accessToken: token.accessToken,
                     refreshToken: newRefreshToken,
                     idToken: cache.idToken,
                     accessTokenExpiresAt: expiresAt,
                     authorizationState: .connected,
-                    credentialOrigin: .mddd,
+                    credentialOrigin: existing?.credentialOrigin ?? .mddd,
                     updatedAt: now
                 ))
                 cache.storageBlocked = false
@@ -463,15 +465,17 @@ public actor CodexTokenManager: CodexTokenManaging {
                 attempt += 1
                 guard !Task.isCancelled else { return }
                 do {
+                    // 与 performRefresh 一致: 重试落盘同样保留既有邮箱与凭证来源.
+                    let existing = try? self.store.loadRecord(for: accountID)
                     try self.store.saveRecord(CodexAccountRecord(
                         accountID: accountID,
-                        email: nil,
+                        email: existing?.email,
                         accessToken: accessToken,
                         refreshToken: refreshToken,
                         idToken: idToken,
                         accessTokenExpiresAt: expiresAt,
                         authorizationState: .connected,
-                        credentialOrigin: .mddd,
+                        credentialOrigin: existing?.credentialOrigin ?? .mddd,
                         updatedAt: self.clock()
                     ))
                     self.caches[accountID]?.storageBlocked = false

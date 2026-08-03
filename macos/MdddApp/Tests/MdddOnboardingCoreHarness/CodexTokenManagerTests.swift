@@ -19,7 +19,8 @@ enum CodexTokenManagerTests {
         try await storageRetrySequenceAndStop()
         try await forceRefreshSkipsCacheButReusesInflight()
         try await tokenCallsTrackExpiryNotQuotaCycles()
-        print("CodexTokenManager tests passed: 12")
+        try await rotationPreservesEmailAndOrigin()
+        print("CodexTokenManager tests passed: 13")
     }
 
     private static let fixedNow = Date(timeIntervalSince1970: 1_752_000_000)
@@ -519,6 +520,44 @@ enum CodexTokenManagerTests {
             throw CodexTestFailure.expectation(
                 "token 调用数必须等于过期次数, got \(fake.totalRefreshCount())"
             )
+        }
+    }
+
+    // 13. 轮换落盘保留既有邮箱与凭证来源, 显示名不退化为账号 ID 前缀
+    private static func rotationPreservesEmailAndOrigin() async throws {
+        let memory = InMemoryCredentialStore()
+        let store = CodexCredentialStore(store: memory)
+        try store.saveRecord(CodexAccountRecord(
+            accountID: "acc-1",
+            email: "user@example.test",
+            accessToken: "at",
+            refreshToken: "rt",
+            accessTokenExpiresAt: fixedNow.addingTimeInterval(30),
+            authorizationState: .connected,
+            credentialOrigin: .legacyCCSwitchDiscovery,
+            updatedAt: fixedNow
+        ))
+        let fake = FakeOAuthClient { _, _ in
+            .success(CodexTokenResponse(
+                accessToken: "at-new", refreshToken: "rt-new",
+                idToken: nil, expiresIn: 3600, receivedAt: fixedNow
+            ))
+        }
+        let manager = makeManager(
+            store: store, client: fake, clock: TestClock(start: fixedNow)
+        )
+        guard case .success = await manager.validAccessToken(for: "acc-1") else {
+            throw CodexTestFailure.expectation("刷新应成功")
+        }
+        let record = try store.loadRecord(for: "acc-1")
+        guard record?.email == "user@example.test" else {
+            throw CodexTestFailure.expectation("轮换后邮箱丢失: \(record?.email ?? "nil")")
+        }
+        guard record?.displayName == "Codex · user" else {
+            throw CodexTestFailure.expectation("显示名退化: \(record?.displayName ?? "nil")")
+        }
+        guard record?.credentialOrigin == .legacyCCSwitchDiscovery else {
+            throw CodexTestFailure.expectation("凭证来源被覆盖")
         }
     }
 }
