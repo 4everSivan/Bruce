@@ -213,7 +213,10 @@ struct CollectorRunnerHarness {
         try await runInputAssemblesDeepSeekProviderEnv()
         try await runInputAssemblesVolcengineProviderMeta()
         try await runInputResolvesCodexQuotaAccounts()
+        try await runInputFirstOrderMatchesResolvedAccounts()
+        try await runInputRetryOrderFollowsIndexNotChallengeOrder()
         try await runInputCodexPartialFailureDoesNotBlockOthers()
+        try await runInputIndexReadFailureClearsPreviousDecisions()
         try await runInputCodexInjectsOnlyShortLivedAccessToken()
         try await runInputCodexGatedUntilMigrationCompleted()
         try runInputRejectsCodexRotationUpdates()
@@ -223,7 +226,9 @@ struct CollectorRunnerHarness {
         try await runInputDeniesQuotasWhenCredentialCorrupted()
         try await runInputDeniesQuotasWhenProviderDisabled()
         try await runsTheRealBridgeInAnIsolatedHome()
-        print("CollectorRunner tests passed: 21")
+        try await codexBatchResolverMaxConcurrencyIs4()
+        try await codexBatchResolverOutputOrderStable()
+        print("CollectorRunner tests passed: 26")
     }
 
     private static func waitForLaunches(
@@ -748,10 +753,9 @@ struct CollectorRunnerHarness {
         )
     }
 
-    /// 活跃账号存在时同步装配 codexAuth 注入, 结构对齐 collector
-    /// 对 ~/.codex/auth.json 的消费 (tokens.account_id/refresh_token).
-    /// 未记录活跃账号或活跃账号不在库中: 不注入 codexAuth,
-    /// collector 按无 CLI 侧候选处理.
+    /// Antigravity OAuth 注入: 结构对齐 collector 对 antigravity_oauth 的消费.
+    /// App 模式不注入 codexAuth 或 codexOAuthAccounts; Codex 凭证只经
+    /// codexQuotaAccounts (短期 access token) 注入.
     private static func runInputAssemblesAntigravityOAuth() async throws {
         let credentials = InMemoryCredentialStore()
         try credentials.saveCredential(
@@ -866,9 +870,18 @@ struct CollectorRunnerHarness {
             self.resolutions = resolutions
         }
 
-        func validAccessToken(for accountID: String) async -> String? {
+        func resolveToken(
+            for accountID: String
+        ) async -> CodexTokenDecision.Outcome {
             requested.append(accountID)
-            return resolutions[accountID] ?? nil
+            if let token = resolutions[accountID] ?? nil {
+                return .available(
+                    accessToken: token,
+                    expiresAt: Date(timeIntervalSince1970: 1_752_000_000)
+                        .addingTimeInterval(3600)
+                )
+            }
+            return .credentialNotFound
         }
     }
 
@@ -950,6 +963,100 @@ struct CollectorRunnerHarness {
         )
     }
 
+    /// ORD-01: 首轮 codexQuotaAccountOrder 与 codexQuotaAccounts 集合一致,
+    /// 顺序为 v2 index 顺序 (b 决议失败时 order 只含成功账号).
+    private static func runInputFirstOrderMatchesResolvedAccounts() async throws {
+        let (codexStore, memory) = try makeCodexStore(accounts: [
+            "acc-a": "a@example.com",
+            "acc-b": "b@example.com",
+        ])
+        // acc-b 决议失败 (需要重新授权) -> 只注入 acc-a
+        let injector = StubCodexInjector(resolutions: [
+            "acc-a": "short-at-a",
+            "acc-b": nil,
+        ])
+        let (provider, tempDir) = try makeRunInputProvider(
+            consentVersion: 1,
+            providers: enabledProvider(.codex),
+            credentials: memory,
+            codexInjector: injector,
+            codexStore: codexStore
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let input = try await provider.runInput(for: .agentUsage)
+        guard case .object(let quotaAccounts)? = input.credentials["codexQuotaAccounts"] else {
+            throw RunnerTestFailure.expectation("codexQuotaAccounts 注入缺失")
+        }
+        guard case .array(let orderValues)? = input.context["codexQuotaAccountOrder"] else {
+            throw RunnerTestFailure.expectation("codexQuotaAccountOrder 缺失")
+        }
+        let order = orderValues.compactMap { value in
+            if case .string(let string) = value { return string }
+            return nil
+        }
+        try runnerExpect(
+            order == ["acc-a"],
+            "order 必须只含成功账号且按 index 顺序, got \(order)"
+        )
+        try runnerExpect(
+            Set(order) == Set(quotaAccounts.keys),
+            "order 集合必须与 codexQuotaAccounts 键一致"
+        )
+    }
+
+    /// ORD-02: retryInput 按 v2 index 重新排序 challenge 账号, 并携带
+    /// 与 codexQuotaAccounts 集合一致的 codexQuotaAccountOrder.
+    private static func runInputRetryOrderFollowsIndexNotChallengeOrder() async throws {
+        let (codexStore, memory) = try makeCodexStore(accounts: [
+            "acc-b": "b@example.com",
+            "acc-a": "a@example.com",
+        ])
+        let injector = StubCodexInjector(resolutions: [
+            "acc-b": "short-at-b",
+            "acc-a": "short-at-a",
+        ])
+        let (provider, tempDir) = try makeRunInputProvider(
+            consentVersion: 1,
+            providers: enabledProvider(.codex),
+            credentials: memory,
+            codexInjector: injector,
+            codexStore: codexStore
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        _ = try await provider.runInput(for: .agentUsage)
+        try runnerExpect(
+            provider.resolvedCodexAccountIDs() == ["acc-a", "acc-b"],
+            "v2 index 顺序应为 acc-a, acc-b (索引按 accountID 排序)"
+        )
+        // challenge 按到达顺序传入 (b 在前, 与 index 相反)
+        guard let retry = try await provider.retryInput(
+            for: .agentUsage,
+            accountIDs: ["acc-b", "acc-a"]
+        ) else {
+            throw RunnerTestFailure.expectation("retryInput 返回 nil")
+        }
+        guard case .object(let retryAccounts)? = retry.credentials["codexQuotaAccounts"] else {
+            throw RunnerTestFailure.expectation("retry codexQuotaAccounts 缺失")
+        }
+        guard case .array(let orderValues)? = retry.context["codexQuotaAccountOrder"] else {
+            throw RunnerTestFailure.expectation("retry codexQuotaAccountOrder 缺失")
+        }
+        let order = orderValues.compactMap { value in
+            if case .string(let string) = value { return string }
+            return nil
+        }
+        try runnerExpect(
+            order == ["acc-a", "acc-b"],
+            "retry order 必须按 v2 index 而非 challenge 顺序, got \(order)"
+        )
+        try runnerExpect(
+            Set(order) == Set(retryAccounts.keys),
+            "retry order 集合必须与 retry accounts 键一致"
+        )
+    }
+
     /// 单账号暂时失败或需要授权时不阻断其他账号和本地会话采集.
     private static func runInputCodexPartialFailureDoesNotBlockOthers() async throws {
         let (codexStore, memory) = try makeCodexStore(accounts: [
@@ -992,6 +1099,81 @@ struct CollectorRunnerHarness {
         try runnerExpect(
             provider.resolvedCodexAccountIDs() == ["acc-2"],
             "决议列表必须只含成功账号"
+        )
+    }
+
+    /// v2 index 读取失败不能沿用上一轮账号与 token decisions. 否则本轮没有
+    /// Codex credentials 时, Scheduler 仍可能按旧账号合成或发布错误快照.
+    private static func runInputIndexReadFailureClearsPreviousDecisions() async throws {
+        final class ToggleIndexLoadStore: CredentialStore, @unchecked Sendable {
+            let inner: InMemoryCredentialStore
+            var failIndexLoad = false
+
+            init(inner: InMemoryCredentialStore) {
+                self.inner = inner
+            }
+
+            func saveCredential(
+                _ value: String,
+                forAccount account: String
+            ) throws {
+                try inner.saveCredential(value, forAccount: account)
+            }
+
+            func loadCredential(forAccount account: String) throws -> String? {
+                if failIndexLoad,
+                   account == CodexCredentialKeys.accountIndexV2 {
+                    throw KeychainError.loadFailed(-1)
+                }
+                return try inner.loadCredential(forAccount: account)
+            }
+
+            func deleteCredential(forAccount account: String) throws {
+                try inner.deleteCredential(forAccount: account)
+            }
+        }
+
+        let memory = InMemoryCredentialStore()
+        let writer = CodexCredentialStore(store: memory)
+        try writer.saveRecord(CodexAccountRecord(
+            accountID: "acc-1",
+            email: "user@example.com",
+            accessToken: "at",
+            refreshToken: "rt",
+            accessTokenExpiresAt: Date(timeIntervalSince1970: 1_752_000_000)
+                .addingTimeInterval(3600),
+            authorizationState: .connected,
+            credentialOrigin: .mddd,
+            updatedAt: Date(timeIntervalSince1970: 1_752_000_000)
+        ))
+        let toggled = ToggleIndexLoadStore(inner: memory)
+        let codexStore = CodexCredentialStore(store: toggled)
+        let injector = StubCodexInjector(resolutions: ["acc-1": "short-at"])
+        let (provider, tempDir) = try makeRunInputProvider(
+            consentVersion: 1,
+            providers: enabledProvider(.codex),
+            credentials: memory,
+            codexInjector: injector,
+            codexStore: codexStore
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        _ = try await provider.runInput(for: .agentUsage)
+        try runnerExpect(
+            provider.resolvedCodexAccountIDs() == ["acc-1"],
+            "前置: 首轮应决议 acc-1"
+        )
+
+        toggled.failIndexLoad = true
+        let failed = try await provider.runInput(for: .agentUsage)
+        try runnerExpect(
+            failed.credentials["codexQuotaAccounts"] == nil,
+            "index 读取失败不得注入 Codex credentials"
+        )
+        try runnerExpect(
+            provider.resolvedCodexAccountIDs().isEmpty
+                && provider.codexTokenDecisions.isEmpty,
+            "index 读取失败必须清空上一轮账号与 decisions"
         )
     }
 
@@ -1057,7 +1239,7 @@ struct CollectorRunnerHarness {
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
         // 迁移未完成: 无 Codex 注入, 但 externalQuotas 与本地能力保留
-        provider.setCodexMigrationCompleted(false)
+        provider.setCodexMigrationResult(.failed)
         let gated = try await provider.runInput(for: .agentUsage)
         try runnerExpect(
             gated.credentials["codexQuotaAccounts"] == nil,
@@ -1069,7 +1251,7 @@ struct CollectorRunnerHarness {
         )
 
         // 迁移完成: 恢复注入
-        provider.setCodexMigrationCompleted(true)
+        provider.setCodexMigrationResult(.migrated(accountCount: 1))
         let opened = try await provider.runInput(for: .agentUsage)
         guard case .object(let quotaAccounts)? = opened.credentials["codexQuotaAccounts"],
               case .object(let account)? = quotaAccounts["acc-1"] else {
@@ -1187,5 +1369,75 @@ struct CollectorRunnerHarness {
             input.credentials.isEmpty,
             "provider 未 enabled 时不得装配注入键"
         )
+    }
+
+    // MARK: - 任务 5: 批量 token 决议
+
+    /// 8 个账号的实测最大并发量为 4 (任务 5 验收).
+    private static func codexBatchResolverMaxConcurrencyIs4() async throws {
+        let resolver = CodexTokenBatchResolver()
+        let accounts = (0..<8).map { i in
+            CodexTokenBatchResolver.Descriptor(
+                index: i, accountID: "acc-\(i)", displayName: "Codex · u\(i)"
+            )
+        }
+        // 用 actor 记录当前并发数和峰值
+        actor ConcurrencyTracker {
+            var current = 0
+            var peak = 0
+            func enter() { current += 1; if current > peak { peak = current } }
+            func leave() { current -= 1 }
+            func getPeak() -> Int { peak }
+        }
+        let tracker = ConcurrencyTracker()
+        let decisions = await resolver.resolve(accounts: accounts) { _ in
+            await tracker.enter()
+            try? await Task.sleep(nanoseconds: 5_000_000)
+            await tracker.leave()
+            return .available(
+                accessToken: "at", expiresAt: Date(timeIntervalSince1970: 1_752_000_000)
+            )
+        }
+        let peak = await tracker.getPeak()
+        try runnerExpect(
+            peak <= 4,
+            "并发峰值不得超过 4, got \(peak)"
+        )
+        try runnerExpect(
+            decisions.count == 8,
+            "决议结果数必须等于账号数: \(decisions.count)"
+        )
+    }
+
+    /// 任意完成顺序下输出顺序保持稳定 (按 index 排序, 任务 5 验收).
+    private static func codexBatchResolverOutputOrderStable() async throws {
+        let resolver = CodexTokenBatchResolver()
+        let accounts = (0..<6).map { i in
+            CodexTokenBatchResolver.Descriptor(
+                index: i, accountID: "acc-\(i)", displayName: "Codex · u\(i)"
+            )
+        }
+        // 让偶数 index 账号延迟更久, 模拟乱序完成
+        let decisions = await resolver.resolve(accounts: accounts) { accountID in
+            let idx = Int(accountID.split(separator: "-").last.map(String.init) ?? "0") ?? 0
+            if idx % 2 == 0 {
+                try? await Task.sleep(nanoseconds: 10_000_000)
+            }
+            return .available(
+                accessToken: "at-\(idx)",
+                expiresAt: Date(timeIntervalSince1970: 1_752_000_000)
+            )
+        }
+        // 输出必须按 index 0..5 排序, 不受完成顺序影响
+        for (position, decision) in decisions.enumerated() {
+            try runnerExpect(
+                decision.index == position,
+                "输出顺序必须按 index 排序: position \(position) got index \(decision.index)"
+            )
+            try runnerExpect(
+                decision.accountID == "acc-\(position)",
+                "账号 ID 顺序不符: \(decision.accountID)"
+            )
+        }
     }
 }

@@ -137,6 +137,8 @@ struct MdddOnboardingCoreHarness {
         try await codexDeviceFullFlowStoresAccount()
         try await codexDeviceErrorPaths()
         try await codexDeviceExpiredSkipsPolling()
+        try await codexDeviceFlowPreservesExpiresIn()
+        try codexExpiryPriorityExpiresInOverJWTAndFallback()
         try rotationMergeMapsKnownProviders()
         try rotationMergeKimiFlatTokens()
         try rotationMergeCodexRejected()
@@ -153,7 +155,9 @@ struct MdddOnboardingCoreHarness {
         try await disconnectRemovesRecordButKeepsOthers()
         try configAppearanceModeDecodeAndFallback()
         try configGlassStyleDecodeAndFallback()
-        print("MdddOnboardingCore tests passed: 141")
+        try codexAccountIdentityServiceIDMatchesPython()
+        try codexAccountIdentityLegacyID()
+        print("MdddOnboardingCore tests passed: 143")
     }
 
     // MARK: - Python version parsing
@@ -2396,6 +2400,106 @@ struct MdddOnboardingCoreHarness {
         )
     }
 
+    /// 设备码换码保留服务端 expires_in 和 receivedAt, 不丢失过期信息.
+    private static func codexDeviceFlowPreservesExpiresIn() async throws {
+        let idToken = try makeUnsignedJWT(payload: [
+            "https://api.openai.com/auth": ["chatgpt_account_id": "acct-ei"],
+            "email": "ei@example.com",
+        ])
+        let session = CountingMockSession { request, nth in
+            let url = request.url?.absoluteString ?? ""
+            switch url {
+            case CodexDeviceFlow.userCodeURL.absoluteString:
+                let json = #"{"device_auth_id":"da-1","user_code":"WX-00","interval":0}"#
+                return (Data(json.utf8), httpResponse(request, 200))
+            case CodexDeviceFlow.deviceTokenURL.absoluteString:
+                if nth == 1 {
+                    return (Data(), httpResponse(request, 403))
+                }
+                let json = #"{"authorization_code":"ac-1","code_verifier":"cv-1"}"#
+                return (Data(json.utf8), httpResponse(request, 200))
+            default:
+                let json = """
+                    {"id_token":"\(idToken)","access_token":"at-1",\
+                    "refresh_token":"rt-1","expires_in":7200}
+                    """
+                return (Data(json.utf8), httpResponse(request, 200))
+            }
+        }
+        let result = await CodexDeviceFlow().login(session: session) { _ in }
+        guard case .success(let account) = result else {
+            throw CoreTestFailure.expectation("换码应成功, got \(result)")
+        }
+        try coreExpect(
+            account.expiresIn == 7200,
+            "expires_in 必须保留: \(account.expiresIn ?? -1)"
+        )
+        // receivedAt 由 exchange() 内部 Date() 写入, 非空即保留
+        try coreExpect(
+            account.receivedAt <= Date(),
+            "receivedAt 应为换码时刻"
+        )
+        // 按 expires_in > JWT exp > 1 小时 计算过期时间, expires_in 优先
+        let expiresAt = CodexTokenExpiry.expiresAt(
+            from: CodexTokenResponse(
+                accessToken: account.accessToken,
+                refreshToken: account.refreshToken,
+                idToken: account.idToken,
+                expiresIn: account.expiresIn,
+                receivedAt: account.receivedAt
+            ),
+            jwtExp: CodexTokenExpiry.jwtExp(of: account.idToken)
+        )
+        let expected = account.receivedAt.addingTimeInterval(7200)
+        try coreExpect(
+            expiresAt == expected,
+            "expires_in 优先计算过期时间: \(expiresAt) != \(expected)"
+        )
+    }
+
+    /// 过期时间三层优先级: 有效 expires_in > JWT exp (未来) > 1 小时回落.
+    private static func codexExpiryPriorityExpiresInOverJWTAndFallback() throws {
+        let receivedAt = Date(timeIntervalSince1970: 1_750_000_000)
+
+        // 1. expires_in 优先于 JWT exp
+        let jwtWithExp = try makeUnsignedJWT(payload: [
+            "exp": receivedAt.addingTimeInterval(9999).timeIntervalSince1970,
+        ])
+        let withBoth = CodexTokenResponse(
+            accessToken: "at", refreshToken: nil, idToken: jwtWithExp,
+            expiresIn: 1800, receivedAt: receivedAt
+        )
+        try coreExpect(
+            CodexTokenExpiry.expiresAt(
+                from: withBoth, jwtExp: CodexTokenExpiry.jwtExp(of: jwtWithExp)
+            ) == receivedAt.addingTimeInterval(1800),
+            "expires_in 必须优先于 JWT exp"
+        )
+
+        // 2. 无 expires_in 时使用 JWT exp (未来)
+        let futureExp = receivedAt.addingTimeInterval(5400).timeIntervalSince1970
+        let jwtOnly = CodexTokenResponse(
+            accessToken: "at", refreshToken: nil, idToken: nil,
+            expiresIn: nil, receivedAt: receivedAt
+        )
+        try coreExpect(
+            CodexTokenExpiry.expiresAt(from: jwtOnly, jwtExp: futureExp)
+                == receivedAt.addingTimeInterval(5400),
+            "无 expires_in 时必须使用 JWT exp"
+        )
+
+        // 3. 两者都缺失: 回落 1 小时
+        let neither = CodexTokenResponse(
+            accessToken: "at", refreshToken: nil, idToken: nil,
+            expiresIn: nil, receivedAt: receivedAt
+        )
+        try coreExpect(
+            CodexTokenExpiry.expiresAt(from: neither, jwtExp: nil)
+                == receivedAt.addingTimeInterval(3600),
+            "两者缺失必须回落 1 小时"
+        )
+    }
+
     /// 错误路径可诊断: 申请网络失败, 轮询网络失败, 换码 500,
     /// id_token 缺账号 id 均 fail-closed.
     private static func codexDeviceErrorPaths() async throws {
@@ -3058,5 +3162,20 @@ struct MdddOnboardingCoreHarness {
             ids.count == 5,
             "5 次保存必须生成 5 个不同追踪 ID, got \(ids.count)"
         )
+    }
+    // MARK: - Codex account identity (任务 1)
+
+    /// service ID 必须与 Python `_codex_service_id` 生成完全相同值.
+    /// 固定向量: accountID = "acc-1" -> SHA256 前 16 位 hex.
+    private static func codexAccountIdentityServiceIDMatchesPython() throws {
+        // Python: hashlib.sha256(b"acc-1").hexdigest()[:16] = "cf9df9b99fc0a24b"
+        let id = CodexAccountIdentity.serviceID(for: "acc-1")
+        try coreExpect(id == "codex_cf9df9b99fc0a24b", "service ID 不匹配 Python: \(id)")
+    }
+
+    /// legacy ID 保留旧格式供合并器惰性迁移.
+    private static func codexAccountIdentityLegacyID() throws {
+        let legacy = CodexAccountIdentity.legacyServiceID(for: "acc-1")
+        try coreExpect(legacy == "codex_acc-1", "legacy ID 错误: \(legacy)")
     }
 }

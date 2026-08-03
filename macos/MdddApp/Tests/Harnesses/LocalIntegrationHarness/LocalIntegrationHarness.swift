@@ -26,6 +26,7 @@ private func integrationExpect(
 private struct IsolatedRunInputProvider: CollectorRunInputProviding {
     let home: URL
     let secret: String
+    var codexTokenDecisions: [CodexTokenDecision] = []
 
     func runInput(for module: CollectorModule) async throws -> CollectorRunInput {
         guard module == .agentUsage else {
@@ -55,7 +56,7 @@ private struct IsolatedRunInputProvider: CollectorRunInputProviding {
     /// 隔离集成不启用 Codex 定向重试.
     func retryInput(
         for module: CollectorModule,
-        accountID: String
+        accountIDs: [String]
     ) async throws -> CollectorRunInput? {
         nil
     }
@@ -264,8 +265,10 @@ struct LocalIntegrationHarness {
         )
 
         // 2. 幂等迁移执行
-        let executed = try store.migrateLegacyAccounts(now: fixedNow)
-        try integrationExpect(executed, "旧库存在时迁移必须实际执行")
+        let executed = store.migrateLegacyAccounts(now: fixedNow)
+        guard case .migrated = executed else {
+            throw IntegrationTestFailure.expectation("旧库存在时迁移必须返回 .migrated: \(executed)")
+        }
 
         // 3. v2 记录是 metadata-only: 任何 token 字段都是 nil, 状态需重新授权
         guard let record = try store.loadRecord(for: "acc-1") else {
@@ -296,9 +299,11 @@ struct LocalIntegrationHarness {
         )
         try integrationExpect(legacyActive == nil, "旧 active 项未被删除")
 
-        // 5. 再次迁移幂等返回 false, 不重复写入
-        let again = try store.migrateLegacyAccounts(now: fixedNow)
-        try integrationExpect(!again, "无旧键时迁移必须幂等返回 false")
+        // 5. 再次迁移幂等返回 .noLegacyData, 不重复写入
+        let again = store.migrateLegacyAccounts(now: fixedNow)
+        guard case .noLegacyData = again else {
+            throw IntegrationTestFailure.expectation("无旧键时迁移必须幂等返回 .noLegacyData: \(again)")
+        }
         let index = try store.loadIndex()
         try integrationExpect(
             index.accounts.count == 1 && index.migrationCompletedAt != nil,

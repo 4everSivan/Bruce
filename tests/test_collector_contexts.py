@@ -638,7 +638,10 @@ class AgentCollectorContextTests(unittest.TestCase):
 
         self.assertEqual(refresh_attempts, [])
         self.assertEqual(len(usage_hits), 1)
-        self.assertEqual(services[0]["id"], "codex_acc-1")
+        self.assertEqual(
+            services[0]["id"],
+            "codex_" + hashlib.sha256(b"acc-1").hexdigest()[:16],
+        )
         self.assertEqual(before, after)
 
     def test_app_mode_without_codex_quota_accounts_returns_empty(self):
@@ -849,7 +852,10 @@ class AgentCollectorContextTests(unittest.TestCase):
 
         self.assertEqual(scan_calls, [])
         service_ids = [s["id"] for s in artifact["services"]]
-        self.assertEqual(service_ids, ["codex_acc-1"])
+        self.assertEqual(
+            service_ids,
+            ["codex_" + hashlib.sha256(b"acc-1").hexdigest()[:16]],
+        )
         self.assertEqual(artifact["agents"], [])
         self.assertIsNone(artifact["totalCostUsd"])
 
@@ -922,7 +928,10 @@ class AgentCollectorContextTests(unittest.TestCase):
         # pool.map 保持账号顺序
         self.assertEqual(
             [svc["id"] for svc in services],
-            ["codex_" + acc_id[:8] for acc_id in accounts],
+            [
+                "codex_" + hashlib.sha256(acc_id.encode("utf-8")).hexdigest()[:16]
+                for acc_id in accounts
+            ],
         )
         updates = self.module._RUNTIME_CREDENTIAL_UPDATES
         self.assertEqual(len(updates), 3)
@@ -1413,6 +1422,247 @@ class AgentCollectorAppServicesTests(unittest.TestCase):
         self.assertEqual(services, [])
 
 
+class CodexServiceContractTests(unittest.TestCase):
+    """任务 1: Codex service ID (SHA256), displayName 透传, freshness/capturedAt 契约."""
+
+    def setUp(self):
+        self.module = load_module(
+            "collect_usage_codex_contract_test",
+            "agent-usage/collector/collect_usage.py",
+        )
+
+    def _configure_app(self, temp_home, credentials, http):
+        self.module._configure_runtime(
+            {
+                "home": temp_home,
+                "app_mode": True,
+                "now": "2026-07-28T12:00:00+08:00",
+                "timezone": "Asia/Shanghai",
+                "credentials": credentials,
+                "http": http,
+            }
+        )
+
+    def _usage_ok(self):
+        return {
+            "plan_type": "fixture-plan",
+            "rate_limit": {
+                "primary_window": {
+                    "limit_window_seconds": 18000,
+                    "used_percent": 42,
+                    "reset_at": "2026-07-28T17:00:00+08:00",
+                }
+            },
+        }
+
+    def _expected_service_id(self, account_id):
+        digest = hashlib.sha256(account_id.encode("utf-8")).hexdigest()
+        return "codex_" + digest[:16]
+
+    def test_service_id_is_sha256_hex_prefix_16(self):
+        """service ID 必须是 codex_ + SHA256(accountID)[:16], 不是 accountID[:8]."""
+        with tempfile.TemporaryDirectory() as temp_home:
+            self._configure_app(
+                temp_home,
+                {
+                    "codex_quota_accounts": {
+                        "acc-1": {
+                            "display_name": "Codex · user",
+                            "access_token": "fixture-at",
+                        }
+                    }
+                },
+                {"get_json": lambda *_: self._usage_ok()},
+            )
+            services = self.module.service_codex_accounts()
+        self.assertEqual(len(services), 1)
+        self.assertEqual(
+            services[0]["id"],
+            self._expected_service_id("acc-1"),
+        )
+
+    def test_display_name_passed_through_verbatim(self):
+        """Python 原样使用 Swift 传入的 display_name, 不添加或删除前缀."""
+        with tempfile.TemporaryDirectory() as temp_home:
+            self._configure_app(
+                temp_home,
+                {
+                    "codex_quota_accounts": {
+                        "acc-1": {
+                            "display_name": "Codex · sivan",
+                            "access_token": "fixture-at",
+                        }
+                    }
+                },
+                {"get_json": lambda *_: self._usage_ok()},
+            )
+            services = self.module.service_codex_accounts()
+        self.assertEqual(services[0]["name"], "Codex · sivan")
+
+    def test_success_includes_freshness_fresh_and_captured_at(self):
+        """成功响应: freshness=fresh, capturedAt 存在."""
+        with tempfile.TemporaryDirectory() as temp_home:
+            self._configure_app(
+                temp_home,
+                {
+                    "codex_quota_accounts": {
+                        "acc-1": {
+                            "display_name": "Codex · user",
+                            "access_token": "fixture-at",
+                        }
+                    }
+                },
+                {"get_json": lambda *_: self._usage_ok()},
+            )
+            services = self.module.service_codex_accounts()
+        self.assertEqual(services[0]["status"], "ok")
+        self.assertEqual(services[0]["freshness"], "fresh")
+        self.assertIsNotNone(services[0].get("capturedAt"))
+        self.assertIsNone(services[0].get("failureKind"))
+
+    def test_first_failure_is_unavailable_without_captured_at(self):
+        """首次失败: freshness=unavailable, 不写 capturedAt, 有 failureKind."""
+        with tempfile.TemporaryDirectory() as temp_home:
+            self._configure_app(
+                temp_home,
+                {
+                    "codex_quota_accounts": {
+                        "acc-1": {
+                            "display_name": "Codex · user",
+                            "access_token": "fixture-at",
+                        }
+                    }
+                },
+                {"get_json": lambda *_: (_ for _ in ()).throw(
+                    RuntimeError("fixture network down")
+                )},
+            )
+            services = self.module.service_codex_accounts()
+        self.assertEqual(services[0]["status"], "error")
+        self.assertEqual(services[0]["freshness"], "unavailable")
+        self.assertNotIn("capturedAt", services[0])
+        self.assertIsNotNone(services[0].get("failureKind"))
+
+    def test_401_failure_kind_is_auth(self):
+        """401 失败: freshness=unavailable, failureKind=auth."""
+        class HTTP401(Exception):
+            code = 401
+
+        with tempfile.TemporaryDirectory() as temp_home:
+            self._configure_app(
+                temp_home,
+                {
+                    "codex_quota_accounts": {
+                        "acc-1": {
+                            "display_name": "Codex · user",
+                            "access_token": "fixture-at",
+                        }
+                    }
+                },
+                {"get_json": lambda *_: (_ for _ in ()).throw(HTTP401())},
+            )
+            services = self.module.service_codex_accounts()
+        self.assertEqual(services[0]["freshness"], "unavailable")
+        self.assertEqual(services[0]["failureKind"], "auth")
+        self.assertNotIn("capturedAt", services[0])
+
+    def test_empty_map_returns_empty_without_thread_pool(self):
+        """空 map 防御性返回空数组, 不创建零 worker 线程池."""
+        with tempfile.TemporaryDirectory() as temp_home:
+            self._configure_app(
+                temp_home,
+                {"codex_quota_accounts": {}},
+                {"get_json": lambda *_: self.fail("unexpected GET")},
+            )
+            services = self.module.service_codex_accounts()
+        self.assertEqual(services, [])
+
+    def test_account_order_preserves_output_sequence(self):
+        """codex_quota_account_order 控制 Python 调度顺序, 输出按此顺序."""
+        with tempfile.TemporaryDirectory() as temp_home:
+            self._configure_app(
+                temp_home,
+                {
+                    "codex_quota_accounts": {
+                        "acc-1": {
+                            "display_name": "Codex · one",
+                            "access_token": "at-1",
+                        },
+                        "acc-2": {
+                            "display_name": "Codex · two",
+                            "access_token": "at-2",
+                        },
+                        "acc-3": {
+                            "display_name": "Codex · three",
+                            "access_token": "at-3",
+                        },
+                    },
+                    "codex_quota_account_order": ["acc-3", "acc-1", "acc-2"],
+                },
+                {"get_json": lambda *_: self._usage_ok()},
+            )
+            services = self.module.service_codex_accounts()
+        # 输出顺序必须与 order 一致
+        expected_ids = [
+            self._expected_service_id("acc-3"),
+            self._expected_service_id("acc-1"),
+            self._expected_service_id("acc-2"),
+        ]
+        self.assertEqual([s["id"] for s in services], expected_ids)
+
+    def test_second_run_not_polluted_by_first_runtime_order(self):
+        """ORD-09: 同一 runtime 连续运行, 第二轮使用新 order 不受第一轮污染
+        (_configure_runtime 每次重建 credentials, 禁止进程复用时残留)."""
+        with tempfile.TemporaryDirectory() as temp_home:
+            self._configure_app(
+                temp_home,
+                {
+                    "codex_quota_accounts": {
+                        "acc-1": {
+                            "display_name": "Codex · one",
+                            "access_token": "at-1",
+                        },
+                        "acc-2": {
+                            "display_name": "Codex · two",
+                            "access_token": "at-2",
+                        },
+                    },
+                    "codex_quota_account_order": ["acc-2", "acc-1"],
+                },
+                {"get_json": lambda *_: self._usage_ok()},
+            )
+            first = self.module.service_codex_accounts()
+        with tempfile.TemporaryDirectory() as temp_home:
+            self._configure_app(
+                temp_home,
+                {
+                    "codex_quota_accounts": {
+                        "acc-1": {
+                            "display_name": "Codex · one",
+                            "access_token": "at-1",
+                        },
+                        "acc-2": {
+                            "display_name": "Codex · two",
+                            "access_token": "at-2",
+                        },
+                    },
+                    "codex_quota_account_order": ["acc-1", "acc-2"],
+                },
+                {"get_json": lambda *_: self._usage_ok()},
+            )
+            second = self.module.service_codex_accounts()
+        expected_first = [
+            self._expected_service_id("acc-2"),
+            self._expected_service_id("acc-1"),
+        ]
+        expected_second = [
+            self._expected_service_id("acc-1"),
+            self._expected_service_id("acc-2"),
+        ]
+        self.assertEqual([s["id"] for s in first], expected_first)
+        self.assertEqual([s["id"] for s in second], expected_second)
+
+
 class VolcengineResetTimestampTests(unittest.TestCase):
     def setUp(self):
         self.module = load_module(
@@ -1461,12 +1711,13 @@ class VolcengineResetTimestampTests(unittest.TestCase):
 
 
 class BridgeSubprocessCodexQuotaIntegrationTests(unittest.TestCase):
-    """任务 11 端到端隔离: 真实子进程 (python3 -> run_bridge.py ->
+    """任务 6 端到端隔离: 进程内 execute_request (run_bridge.py ->
     collect_usage.py) + 本地 fake HTTP server (loopback), 不触碰任何
     真实文件或网络.
 
-    fake server 路径经 Bridge 白名单 (context 键由 security.py 映射) 到达
-    collector; 旧认证文件只作为磁盘存在的 fixture 验证「不被触碰」.
+    fake server URL 经 runtime_overrides (进程内, 不可序列化) 注入 collector;
+    正式 Bridge 请求不携带 URL 覆盖. 旧认证文件只作为磁盘存在的 fixture
+    验证「不被触碰」.
     """
 
     def _fake_server(self, usage_status=200):
@@ -1529,18 +1780,23 @@ class BridgeSubprocessCodexQuotaIntegrationTests(unittest.TestCase):
         token_url=None,
         context_extra=None,
     ):
-        import subprocess
+        """进程内 execute_request; fake server URL 经 runtime_overrides 注入
+        (不可序列化, 不经 Bridge context)."""
+        from bridge.run_bridge import execute_request
 
         context = {
             "home": temp_home,
             "now": "2026-07-28T12:00:00+08:00",
             "timezone": "Asia/Shanghai",
             "capabilities": ["localSessions", "localPricing", "externalQuotas"],
-            "codexUsageUrl": usage_url,
         }
-        if token_url:
-            context["codexTokenUrl"] = token_url
         context.update(context_extra or {})
+        # 任务 6 契约: codexQuotaAccounts 必须携带一致 order (账号键集合)
+        if "codexQuotaAccounts" in credentials:
+            context.setdefault(
+                "codexQuotaAccountOrder",
+                list(credentials["codexQuotaAccounts"].keys()),
+            )
         request = {
             "schemaVersion": 1,
             "runId": "12345678-1234-4234-9234-123456789abc",
@@ -1553,20 +1809,15 @@ class BridgeSubprocessCodexQuotaIntegrationTests(unittest.TestCase):
             "context": context,
             "credentials": credentials,
         }
-        result = subprocess.run(
-            [
-                sys.executable,
-                str(REPO_ROOT / "bridge" / "run_bridge.py"),
-            ],
-            input=json.dumps(request),
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        self.assertEqual(
-            result.returncode, 0, "bridge subprocess failed: %s" % result.stderr
-        )
-        return json.loads(result.stdout)
+        # runtime_overrides: 进程内注入 fake server URL, 不经 Bridge 协议序列化
+        runtime_overrides = {
+            "agent-usage": {
+                "codex_usage_url": usage_url,
+            }
+        }
+        if token_url:
+            runtime_overrides["agent-usage"]["codex_token_url"] = token_url
+        return execute_request(request, runtime_overrides=runtime_overrides)
 
     def _file_snapshot(self, paths):
         snapshot = {}
@@ -1692,6 +1943,81 @@ class BridgeSubprocessCodexQuotaIntegrationTests(unittest.TestCase):
         serialized = json.dumps(response)
         self.assertNotIn("cc-rotatable-rt", serialized)
         self.assertNotIn("fixture-short-lived-token", serialized)
+
+    def test_quota_reverse_order_via_fake_server_controls_output(self):
+        """ORD-10: Bridge -> 真实 collect_usage.py runtime, map 顺序 a,b,
+        order b,a, 实际服务输出必须 b,a. 证明生产读取的是 context order,
+        不只是测试专用注入路径."""
+        server, calls, base = self._fake_server()
+        try:
+            with tempfile.TemporaryDirectory() as temp_home:
+                response = self._run_bridge(
+                    temp_home,
+                    {
+                        "codexQuotaAccounts": {
+                            "acc-1": {
+                                "display_name": "Codex · one",
+                                "access_token": "at-1",
+                            },
+                            "acc-2": {
+                                "display_name": "Codex · two",
+                                "access_token": "at-2",
+                            },
+                        },
+                    },
+                    base + "/wham/usage",
+                    context_extra={
+                        # 与账号键集合一致但顺序相反
+                        "codexQuotaAccountOrder": ["acc-2", "acc-1"],
+                    },
+                )
+        finally:
+            server.shutdown()
+        self.assertEqual(response["status"], "success")
+        codex = [
+            s for s in response["artifact"]["services"] if s.get("app") == "codex"
+        ]
+        self.assertEqual([s["id"] for s in codex], [
+            self._expected_service_id("acc-2"),
+            self._expected_service_id("acc-1"),
+        ])
+        self.assertEqual(calls["usage"], 2)
+
+    def test_quota_mismatched_order_is_diagnosable_protocol_error(self):
+        """App 模式 order/map 不一致: 返回可诊断协议错误, 不自行补账号."""
+        server, calls, base = self._fake_server()
+        try:
+            with tempfile.TemporaryDirectory() as temp_home:
+                response = self._run_bridge(
+                    temp_home,
+                    {
+                        "codexQuotaAccounts": {
+                            "acc-1": {
+                                "display_name": "Codex · one",
+                                "access_token": "at-1",
+                            },
+                            "acc-2": {
+                                "display_name": "Codex · two",
+                                "access_token": "at-2",
+                            },
+                        },
+                    },
+                    base + "/wham/usage",
+                    context_extra={
+                        "codexQuotaAccountOrder": ["acc-1"],
+                    },
+                )
+        finally:
+            server.shutdown()
+        self.assertEqual(response["status"], "error")
+        self.assertEqual(
+            response["diagnostics"][0]["code"], "BRIDGE_INVALID_REQUEST"
+        )
+        self.assertEqual(calls["usage"], 0)
+
+    def _expected_service_id(self, account_id):
+        digest = hashlib.sha256(account_id.encode("utf-8")).hexdigest()
+        return "codex_" + digest[:16]
 
 
 if __name__ == "__main__":

@@ -51,10 +51,9 @@ struct MdddApp: App {
             executor: runner, store: resolvedStore,
             runInputProvider: runInputProvider
         )
-        // 任务 9: 把 Codex token manager 与 store 挂到 Scheduler, 支持
+        // 任务 9: 把 Codex token manager 挂到 Scheduler, 支持
         // quota 401 定向重试自愈 (强制刷新被挑战账号).
         scheduler.codexTokenManager = codexTokenManager
-        scheduler.codexCredentialStore = codexStore
         self.scheduler = scheduler
 
         // DeepSeek 月度账本: 基于 ArtifactStore 根目录隔离存储.
@@ -94,7 +93,8 @@ struct MdddApp: App {
             coordinator: coordinator,
             runInputProvider: runInputProvider,
             codexTokenManager: codexTokenManager,
-            model: model
+            model: model,
+            codexMigration: codexStore
         )
         settingsWindowController = SettingsWindowController(
             model: model,

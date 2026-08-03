@@ -29,6 +29,11 @@ package enum QuotaAlertEvaluator {
                   case .array(let windows)? = svc["windows"] else {
                 continue
             }
+            // 任务 7: stale 条目 (本轮失败保留旧额度) 不得重复触发阈值通知.
+            if case .string(let freshness)? = svc["freshness"],
+               freshness == "stale" {
+                continue
+            }
             let name: String
             if case .string(let serviceName)? = svc["name"] {
                 name = serviceName

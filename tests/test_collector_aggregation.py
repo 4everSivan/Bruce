@@ -263,6 +263,64 @@ class CodexMergedAgentTests(unittest.TestCase):
         self.assertIn("含 Orca 托管会话", codex["note"])
         self.assertIn("账号 fixture", codex["note"])
 
+    def test_app_mode_orca_label_does_not_read_cc_switch_oauth_from_disk(
+        self,
+    ):
+        """任务 11 契约: App 模式注入 orca_codex_auth 时, 账号标签只能来自
+        注入的 codex_oauth_auth; 磁盘 ~/.cc-switch/codex_oauth_auth.json
+        存在也不得读取 (标签显示同样受 _APP_MODE 磁盘隔离)."""
+        with tempfile.TemporaryDirectory() as temp_home:
+            self._orca_rollout(
+                temp_home,
+                [
+                    _token_count_record(
+                        "2026-07-28T10:00:00+08:00",
+                        usage={
+                            "input_tokens": 500,
+                            "cached_input_tokens": 0,
+                            "output_tokens": 50,
+                        },
+                    )
+                ],
+                "2026-07-28T10:30:00+08:00",
+            )
+            # 磁盘上存在唯一含 email 的 oauth 文件; App 模式不得读取
+            oauth_path = (
+                Path(temp_home) / ".cc-switch" / "codex_oauth_auth.json"
+            )
+            oauth_path.parent.mkdir(parents=True, exist_ok=True)
+            oauth_path.write_text(
+                json.dumps(
+                    {
+                        "accounts": {
+                            "acc-12345678": {"email": "fixture@example.test"}
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            ctx = self._ctx(temp_home)
+            ctx["app_mode"] = True
+            ctx["credentials"] = {
+                "orca_codex_auth": {
+                    "tokens": {"account_id": "acc-12345678"}
+                },
+                # 不注入 codex_oauth_auth: 若实现读取磁盘 oauth 文件,
+                # 唯一能拿到 email 的途径就是磁盘, 测试才能暴露违规读取
+            }
+            artifact = self.module.run(ctx)["artifact"]
+
+        codex = self._codex_agent(artifact)
+        self.assertEqual(codex["status"], "ok")
+        self.assertIn("含 Orca 托管会话", codex["note"])
+        self.assertNotIn(
+            "账号 fixture",
+            codex["note"],
+            "App 模式不得读取 ~/.cc-switch/codex_oauth_auth.json 获取标签",
+        )
+        # 标签回落为注入 account_id 前缀, 不依赖磁盘
+        self.assertIn("· 账号 acc-1234", codex["note"])
+
     def test_no_sessions_marks_codex_not_found(self):
         with tempfile.TemporaryDirectory() as temp_home:
             artifact = self.module.run(self._ctx(temp_home))["artifact"]

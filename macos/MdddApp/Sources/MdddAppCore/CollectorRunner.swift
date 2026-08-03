@@ -94,7 +94,9 @@ enum BridgeStatus: String, Codable, Sendable {
     case error
 }
 
-struct BridgeDiagnostic: Codable, Equatable, Sendable {
+/// 采集响应的脱敏诊断 (任务 7): Scheduler 成功发布后保留在可观察边界,
+/// 供诊断展示/记录读取; 内容不包含凭证或账号标识.
+package struct BridgeDiagnostic: Codable, Equatable, Sendable {
     let code: String
     let category: String
     let stage: String

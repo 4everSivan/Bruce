@@ -97,9 +97,9 @@ enum CodexOAuthClientTests {
         }
     }
 
-    // 4. 非法、负数或过去时间按立即过期处理
+    // 4. 非正数、NaN 或无穷 expires_in 视为立即过期, 不回退掩盖错误值
     private static func invalidExpiryMeansImmediatelyExpired() async throws {
-        // 负数 expires_in: 回落 1 小时
+        // 负数 expires_in: 立即过期 (不回退到 1 小时)
         let negativeClient = makeClient { _ in
             (Data(#"{"access_token":"at","expires_in":-5}"#.utf8),
              httpResponse(status: 200))
@@ -110,10 +110,34 @@ enum CodexOAuthClientTests {
             throw CodexTestFailure.expectation("perform 应成功")
         }
         let expiresAt = CodexTokenExpiry.expiresAt(from: token, jwtExp: nil)
-        guard expiresAt == fixedNow.addingTimeInterval(3600) else {
+        guard expiresAt == token.receivedAt else {
             throw CodexTestFailure.expectation(
-                "负数 expires_in 必须回落, got \(expiresAt)"
+                "负数 expires_in 必须立即过期, got \(expiresAt)"
             )
+        }
+        // 零 expires_in: 立即过期
+        let zeroToken = CodexTokenResponse(
+            accessToken: "at", refreshToken: nil, idToken: nil,
+            expiresIn: 0, receivedAt: fixedNow
+        )
+        guard CodexTokenExpiry.expiresAt(from: zeroToken, jwtExp: nil) == fixedNow else {
+            throw CodexTestFailure.expectation("零 expires_in 必须立即过期")
+        }
+        // NaN expires_in: 立即过期
+        let nanToken = CodexTokenResponse(
+            accessToken: "at", refreshToken: nil, idToken: nil,
+            expiresIn: .nan, receivedAt: fixedNow
+        )
+        guard CodexTokenExpiry.expiresAt(from: nanToken, jwtExp: nil) == fixedNow else {
+            throw CodexTestFailure.expectation("NaN expires_in 必须立即过期")
+        }
+        // 无穷 expires_in: 立即过期
+        let infToken = CodexTokenResponse(
+            accessToken: "at", refreshToken: nil, idToken: nil,
+            expiresIn: .infinity, receivedAt: fixedNow
+        )
+        guard CodexTokenExpiry.expiresAt(from: infToken, jwtExp: nil) == fixedNow else {
+            throw CodexTestFailure.expectation("无穷 expires_in 必须立即过期")
         }
         // 过去 JWT exp: 按立即过期
         let past = fixedNow.addingTimeInterval(-100).timeIntervalSince1970

@@ -759,7 +759,7 @@ package struct PanelViewModelMapper: Sendable {
                 }
                 codexAccounts.append(CodexAccountViewModel(
                     id: service.id,
-                    name: service.name.replacingOccurrences(of: "Codex · ", with: ""),
+                    name: codexAccountShortName(from: service.name),
                     plan: service.plan,
                     status: service.status,
                     note: note,
@@ -891,13 +891,23 @@ package struct PanelViewModelMapper: Sendable {
         return extra == "加量包未启用" ? nil : extra
     }
 
-    /// 非 ok 状态显示 "上次成功 HH:mm" (来自保留的旧 capturedAt);
-    /// ok 或 capturedAt 不可解析时不显示.
+    /// 从 "Codex · <短名>" 中只删除开头固定前缀, 不用 replacingOccurrences
+    /// 全局替换, 避免账号名内部包含相同文本时被误改.
+    private func codexAccountShortName(from displayName: String) -> String {
+        let prefix = "Codex · "
+        if displayName.hasPrefix(prefix) {
+            return String(displayName.dropFirst(prefix.count))
+        }
+        return displayName
+    }
+
+    /// freshness=stale 且有 capturedAt 时显示"上次成功 HH:mm";
+    /// freshness=fresh/unavailable 或无 capturedAt 时不显示.
     private func lastSuccessText(
         for service: AgentServiceItem,
         now: Date
     ) -> String? {
-        guard service.status != "ok",
+        guard service.freshness == "stale",
               let capturedAt = service.capturedAt,
               let date = Self.parseISODate(capturedAt) else {
             return nil

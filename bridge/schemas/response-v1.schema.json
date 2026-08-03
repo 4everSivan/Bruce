@@ -94,7 +94,6 @@
         "provider": {
           "enum": [
             "kimi",
-            "codex",
             "antigravity"
           ]
         },

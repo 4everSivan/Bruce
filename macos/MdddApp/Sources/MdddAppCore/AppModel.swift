@@ -100,6 +100,49 @@ package struct ModuleStatus: Equatable, Sendable {
     }
 }
 
+/// Codex 旧凭证迁移结果的脱敏展示状态 (任务 7).
+/// 不携带账号 ID, 邮箱, token 或 Keychain service/account 名称;
+/// 文案只说明「旧 Codex 账号数据无法安全迁移/清理」.
+package enum CodexMigrationDisplayStatus: Equatable, Sendable {
+    /// 尚未执行迁移 (App 启动前).
+    case notStarted
+    /// 无旧数据或迁移成功: 正常, Codex gate 开放.
+    case completed
+    /// v2 数据已写入并校验, 旧键清理待重试: 非阻断, 下次启动重试清理.
+    case cleanupPending
+    /// 损坏 / 结构不支持 / 读写校验失败: 阻断, Codex 外部额度关闭.
+    case blocked
+
+    package var isBlocking: Bool {
+        self == .blocked
+    }
+
+    /// 迁移结果 -> 脱敏展示状态 (任务 7).
+    /// migrated / noLegacyData 正常; cleanupPending 非阻断 (v2 可用);
+    /// corruptedJSON / incompatibleSchema / failed 阻断 Codex 外部额度.
+    package static func from(_ result: CodexMigrationResult) -> CodexMigrationDisplayStatus {
+        switch result {
+        case .noLegacyData, .migrated:
+            return .completed
+        case .cleanupPending:
+            return .cleanupPending
+        case .corruptedJSON, .incompatibleSchema, .failed:
+            return .blocked
+        }
+    }
+
+    package var userMessage: String? {
+        switch self {
+        case .notStarted, .completed:
+            return nil
+        case .cleanupPending:
+            return "旧 Codex 账号数据清理未完成, 下次启动将自动重试"
+        case .blocked:
+            return "旧 Codex 账号数据无法安全迁移, 已暂停 Codex 外部额度查询"
+        }
+    }
+}
+
 @MainActor
 package final class AppModel: ObservableObject {
     @Published package var selectedModule: DashboardModule = .agentUsage
@@ -125,6 +168,10 @@ package final class AppModel: ObservableObject {
     /// Codex 非敏感账号状态 (授权状态, 来源, 存储健康), 供设置页渲染;
     /// 由 bootstrap 从 token manager 快照刷新.
     @Published package private(set) var codexAccountStatuses: [CodexAccountStatus] = []
+    /// Codex 旧凭证迁移结果 (任务 7): 只保存脱敏可展示状态, 不暴露
+    /// 存储错误对象或原始 Keychain 内容. 阻断性错误关闭 Codex 外部额度,
+    /// 非阻断 (cleanupPending) 保留额度并提示下次启动重试清理.
+    @Published package private(set) var codexMigrationStatus: CodexMigrationDisplayStatus = .notStarted
     @Published package private(set) var menuBarMetrics: [MenuBarMetric]
     /// 最近一次面板映射产生的诊断, 随 artifact 与模块状态变更重算.
     /// 不进 UI; 供诊断路径与 harness 读取, 诊断包 schema 锁定期暂不外发.
@@ -315,6 +362,12 @@ package final class AppModel: ObservableObject {
 
     package func setCodexAccountStatuses(_ statuses: [CodexAccountStatus]) {
         codexAccountStatuses = statuses
+    }
+
+    /// 发布脱敏的 Codex 迁移结果 (任务 7). 只接收可展示状态,
+    /// 不暴露存储错误对象或原始 Keychain 内容.
+    package func setCodexMigrationStatus(_ status: CodexMigrationDisplayStatus) {
+        codexMigrationStatus = status
     }
 
     package func setMenuBarMetrics(_ metrics: [MenuBarMetric]) {
