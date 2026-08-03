@@ -53,7 +53,7 @@ final class OnboardingCoordinator: ObservableObject {
     private let codexStore: CodexCredentialStore
     private let codexTokenManager: CodexTokenManager
     private let scanner: LocalDependencyScanner
-    private let verifier: ProviderConnectionVerifier
+    private let verifier: any DeepSeekCredentialVerifier
     private let homeURL: URL
     private var gate: CollectorActivationGate
 
@@ -66,7 +66,7 @@ final class OnboardingCoordinator: ObservableObject {
         codexStore: CodexCredentialStore? = nil,
         codexTokenManager: CodexTokenManager? = nil,
         scanner: LocalDependencyScanner? = nil,
-        verifier: ProviderConnectionVerifier = ProviderConnectionVerifier(),
+        verifier: any DeepSeekCredentialVerifier = ProviderConnectionVerifier(),
         homeURL: URL = FileManager.default.homeDirectoryForCurrentUser,
         consentVersion: Int = OnboardingCoordinator.currentConsentVersion
     ) {
@@ -213,6 +213,14 @@ final class OnboardingCoordinator: ObservableObject {
     }
 
     /// DeepSeek: API key 写 Keychain 后做真实网络试查 (用户点击触发).
+    ///
+    /// 保存事务 (避免新旧凭证混算, 见 deepseek-monthly-consumption 设计):
+    /// 1. 预写携带新 usageTrackingID 的禁用配置 (fail-closed: 阻止并发刷新
+    ///    用旧追踪 ID 记账). 预写失败不写 Keychain.
+    /// 2. 写 Keychain. 失败时恢复完整旧配置 (含旧 usageTrackingID);
+    ///    恢复失败则保留预写的禁用配置并报错.
+    /// 3. 用户触发的网络验证. 验证成功才重新启用外部额度查询.
+    ///    验证失败保留新 ID 且维持禁用/失败状态, 不回滚到旧 ID.
     func saveAndVerifyDeepSeek(apiKey: String) {
         Task { @MainActor in
             let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -222,17 +230,62 @@ final class OnboardingCoordinator: ObservableObject {
             }
             model.setBusySubscription(true, for: .deepseek)
             defer { model.setBusySubscription(false, for: .deepseek) }
+
+            // 1. 预写禁用配置 + 新追踪 ID
+            guard let oldEntry = prewriteDisabledDeepSeek() else {
+                model.setSettingsError("DeepSeek 订阅配置保存失败")
+                return
+            }
+
+            // 2. 写 Keychain; 失败恢复旧配置
             do {
                 try credentialStore.saveCredential(
                     key, forAccount: SubscriptionCredentialAccount.deepseekAPIKey
                 )
             } catch {
+                restoreDeepSeekConfig(oldEntry)
                 model.setSettingsError("DeepSeek 凭证写入 Keychain 失败")
                 return
             }
             model.setSubscriptionCredentialConfigured(true, for: .deepseek)
-            let status = await verifier.verifyDeepSeek(apiKey: key)
+
+            // 3. 验证; 成功才重新启用 (finishVerification 内部走 persistSubscription)
+            let status = await verifier.verifyDeepSeek(apiKey: key, session: nil)
             finishVerification(.deepseek, status: status)
+        }
+    }
+
+    /// 预写 DeepSeek 禁用配置并携带新 usageTrackingID. 返回旧配置快照供回滚;
+    /// 保存失败返回 nil (fail-closed, 调用方不得继续写 Keychain).
+    private func prewriteDisabledDeepSeek() -> SubscriptionProviderConfiguration?? {
+        guard let configStore else {
+            model.setSettingsError("配置存储不可用, 无法保存订阅配置")
+            return nil
+        }
+        let result: DeepSeekSaveTransaction.PrewriteResult
+        do {
+            result = try DeepSeekSaveTransaction.prewriteDisabled(in: configStore)
+        } catch {
+            return nil
+        }
+        publishSubscriptionState(from: configStore.load())
+        return result.oldEntry
+    }
+
+    /// Keychain 写入失败时恢复旧 DeepSeek 配置 (含旧 usageTrackingID).
+    /// 旧配置为 nil 表示原本不存在该 provider, 恢复为移除该键.
+    /// 恢复失败时保留预写的禁用配置 (fail-closed, 不混算).
+    private func restoreDeepSeekConfig(
+        _ oldEntry: SubscriptionProviderConfiguration?
+    ) {
+        guard let configStore else { return }
+        do {
+            try DeepSeekSaveTransaction.restore(
+                oldEntry: oldEntry, in: configStore
+            )
+            publishSubscriptionState(from: configStore.load())
+        } catch {
+            // 恢复失败: 保留预写的新 ID + 禁用配置, 不发布旧状态.
         }
     }
 

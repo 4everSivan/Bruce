@@ -35,11 +35,22 @@ private final class SameHostRedirectGuard: NSObject, URLSessionTaskDelegate {
     }
 }
 
+// MARK: - DeepSeekCredentialVerifier
+
+/// DeepSeek 凭证验证抽象, 便于在 OnboardingCoordinator 注入 mock (保存事务测试).
+/// 生产实现为 ProviderConnectionVerifier; 测试可注入固定返回值的 fake.
+public protocol DeepSeekCredentialVerifier: Sendable {
+    func verifyDeepSeek(
+        apiKey: String,
+        session: (any URLSessionProtocol)?
+    ) async -> SubscriptionVerificationStatus
+}
+
 // MARK: - ProviderConnectionVerifier
 
 /// 外部连接验证. 与本机扫描分离, 只能由用户主动操作或既有授权触发.
 /// 原始 CLI 输出, 响应正文和 header 不进入日志或诊断.
-public struct ProviderConnectionVerifier: Sendable {
+public struct ProviderConnectionVerifier: Sendable, DeepSeekCredentialVerifier {
     private let statusProbe: AsyncProcessProbe
     private let requestTimeout: TimeInterval
 
