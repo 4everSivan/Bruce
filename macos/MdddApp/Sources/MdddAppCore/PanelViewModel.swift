@@ -90,6 +90,11 @@ package enum PanelFormat {
         return "\(symbol) \(String(format: "%.2f", amount))"
     }
 
+    /// 余额文案的 Decimal 版 (月度账本金额).
+    package static func decimalBalanceText(_ amount: Decimal, currency: String?) -> String {
+        balanceText(NSDecimalNumber(decimal: amount).doubleValue, currency: currency)
+    }
+
     /// 窗口措辞映射: windowMinutes 优先, 其次 collector 规范 label, 其余原样.
     package static func windowLabel(rawLabel: String, windowMinutes: Int?) -> String {
         if let minutes = windowMinutes {
@@ -295,6 +300,52 @@ package struct BalanceRow: Equatable, Sendable {
     }
 }
 
+// MARK: - DeepSeek 月度用量
+
+/// DeepSeek 月度统计的展示 view model, 仅由 DeepSeek 的 SubscriptionProviderSection
+/// 携带. 其他 provider 恒为 nil.
+package struct DeepSeekMonthlyUsageViewModel: Equatable, Sendable {
+    /// 展示状态: 正常趋势 / 仅有基线 / 月度统计不可用.
+    package enum State: Equatable, Sendable {
+        case trend
+        case baseline
+        case unavailable
+    }
+
+    package let state: State
+    /// 本月推算消费 (已格式化, 非官方账单).
+    package let estimatedConsumptionText: String
+    /// 当前余额 (已格式化).
+    package let currentBalanceText: String
+    /// 覆盖说明, 如 "自 2026-08-03 起".
+    package let coverageText: String
+    /// 累计趋势点 (已格式化金额), 供图表绘制.
+    package let trendPoints: [TrendPoint]
+    /// 入账注记; nil 表示无非消费入账.
+    package let creditNote: String?
+
+    package init(
+        state: State,
+        estimatedConsumptionText: String,
+        currentBalanceText: String,
+        coverageText: String,
+        trendPoints: [TrendPoint],
+        creditNote: String?
+    ) {
+        self.state = state
+        self.estimatedConsumptionText = estimatedConsumptionText
+        self.currentBalanceText = currentBalanceText
+        self.coverageText = coverageText
+        self.trendPoints = trendPoints
+        self.creditNote = creditNote
+    }
+
+    /// 是否存在至少两条可显示观察 (可绘制趋势图).
+    package var canDrawTrend: Bool {
+        state == .trend
+    }
+}
+
 package struct CodexAccountViewModel: Equatable, Sendable {
     package let id: String
     /// 去掉 "Codex · " 前缀的账号名.
@@ -342,8 +393,8 @@ package struct SubscriptionProviderSection: Equatable, Sendable {
     /// 余额型条目 (DeepSeek), 排序沉底, 左右排版.
     package let balance: BalanceRow?
     package let accountCountText: String?
-    /// DeepSeek 月度统计 (仅 DeepSeek 提供, 其他 provider 为 nil).
-    package let deepSeekMonthlyUsage: DeepSeekMonthlyUsage?
+    /// DeepSeek 月度统计展示 view model (仅 DeepSeek 提供, 其他 provider 为 nil).
+    package let deepSeekMonthlyUsage: DeepSeekMonthlyUsageViewModel?
 
     package init(
         id: String,
@@ -356,7 +407,7 @@ package struct SubscriptionProviderSection: Equatable, Sendable {
         codexAccounts: [CodexAccountViewModel]?,
         balance: BalanceRow?,
         accountCountText: String?,
-        deepSeekMonthlyUsage: DeepSeekMonthlyUsage? = nil
+        deepSeekMonthlyUsage: DeepSeekMonthlyUsageViewModel? = nil
     ) {
         self.id = id
         self.name = name
@@ -608,6 +659,55 @@ package struct PanelViewModelMapper: Sendable {
         )
     }
 
+    /// 领域月度状态 -> 展示 view model.
+    /// nil -> nil (映射层未启用账本, 订阅卡不显示月度统计).
+    /// unavailable -> 显示"月度统计暂不可用" (不暴露内部错误细节).
+    /// baseline -> 只有覆盖说明与"正在建立本月趋势", 不可绘制趋势.
+    /// trend -> 推算消费, 余额, 覆盖说明, 趋势点和入账注记.
+    private func deepSeekMonthlyUsageViewModel(
+        _ usage: DeepSeekMonthlyUsage?
+    ) -> DeepSeekMonthlyUsageViewModel? {
+        switch usage {
+        case .trend(let trend):
+            return DeepSeekMonthlyUsageViewModel(
+                state: .trend,
+                estimatedConsumptionText: PanelFormat.decimalBalanceText(
+                    trend.estimatedConsumption, currency: trend.currency
+                ),
+                currentBalanceText: PanelFormat.decimalBalanceText(
+                    trend.currentBalance, currency: trend.currency
+                ),
+                coverageText: trend.coverageText,
+                trendPoints: trend.trendPoints,
+                creditNote: trend.recentCreditNote
+            )
+        case .baseline(let baseline):
+            return DeepSeekMonthlyUsageViewModel(
+                state: .baseline,
+                estimatedConsumptionText: PanelFormat.decimalBalanceText(
+                    baseline.currentBalance, currency: baseline.currency
+                ),
+                currentBalanceText: PanelFormat.decimalBalanceText(
+                    baseline.currentBalance, currency: baseline.currency
+                ),
+                coverageText: baseline.coverageStartText,
+                trendPoints: [],
+                creditNote: nil
+            )
+        case .unavailable:
+            return DeepSeekMonthlyUsageViewModel(
+                state: .unavailable,
+                estimatedConsumptionText: "",
+                currentBalanceText: "",
+                coverageText: "月度统计暂不可用",
+                trendPoints: [],
+                creditNote: nil
+            )
+        case nil:
+            return nil
+        }
+    }
+
     // MARK: 订阅卡
 
     private func makeSubscription(
@@ -673,8 +773,9 @@ package struct PanelViewModelMapper: Sendable {
             }
 
             // 月度统计仅映射到 DeepSeek section; 其他余额型 Provider 不受影响.
-            let monthlyUsage: DeepSeekMonthlyUsage? =
-                (service.id == "deepseek") ? deepSeekMonthlyUsage : nil
+            let monthlyUsage = service.id == "deepseek"
+                ? deepSeekMonthlyUsageViewModel(deepSeekMonthlyUsage)
+                : nil
 
             sections.append(SubscriptionProviderSection(
                 id: service.id,
