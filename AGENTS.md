@@ -84,11 +84,12 @@
 | `python3 agent-usage/collector/collect_usage.py --out data/agent-usage.json` | 实时采集 Agent 用量和额度; 可能刷新并写回 OAuth, 必须先获得明确授权 |
 | `python3 -c 'import ast,pathlib; [ast.parse(p.read_text()) for p in pathlib.Path(".").glob("*/collector/*.py")]'` | 无外部调用的 Python 语法验证 |
 | `node --check -` | 对从 Widget 提取的 JavaScript 执行语法验证 |
-| `zsh scripts/verify-local.sh` | 标准本地验证: Python 语法 + pytest + swift build + 全部 8 个 Harness |
+| `zsh scripts/verify-local.sh` | 标准本地验证: Python 语法 + pytest + swift build + 全部 9 个 Harness |
 | `python3 -m pytest tests/` | Python 单元与契约测试 (bridge, collector, widget 安全); 87 项 |
 | `swift build --package-path macos/MdddApp` | macOS App 与 MdddOnboardingCore 构建验证 |
-| `swift run --package-path macos/MdddApp MdddOnboardingCoreHarness` | Onboarding Core 边界测试 (进程, SQLite, Keychain, Gate, 订阅凭证, 设备码登录, 令牌轮换合并, Codex v2 迁移); 135 项 |
-| `swift run --package-path macos/MdddApp PanelViewModelHarness` | 面板 view model 映射边界测试 (措辞, 分组, 条件渲染, Codex 账号上次成功时间); 27 项 |
+| `swift run --package-path macos/MdddApp MdddOnboardingCoreHarness` | Onboarding Core 边界测试 (进程, SQLite, Keychain, Gate, 订阅凭证, 设备码登录, 令牌轮换合并, Codex v2 迁移, DeepSeek 追踪 ID 与保存事务); 141 项 |
+| `swift run --package-path macos/MdddApp PanelViewModelHarness` | 面板 view model 映射边界测试 (措辞, 分组, 条件渲染, Codex 账号上次成功时间, DeepSeek 月度映射); 29 项 |
+| `swift run --package-path macos/MdddApp DeepSeekUsageLedgerHarness` | DeepSeek 月度账本边界测试 (领域差分, 时区跨日, 持久化权限, 损坏恢复, 敏感字段); 17 项 |
 | `zsh scripts/build-test-app.sh` | 生成 `dist/mddd-test.app` 测试版 App (Release 构建 + 打包 + 签名校验) |
 | GitHub Actions `.github/workflows/ci.yml` | push/PR 触发: verify-local.sh + Python 3.9 兼容 + 测试包构建; tag `v*` 触发草稿 Release |
 

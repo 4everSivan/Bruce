@@ -28,15 +28,49 @@ public struct SubscriptionProviderConfiguration: Codable, Equatable, Sendable {
     public var enabled: Bool
     public var lastVerifiedAt: String?
     public var verificationStatus: SubscriptionVerificationStatus
+    /// 账本追踪边界 (仅 DeepSeek 使用). 值为随机 UUID, 非敏感;
+    /// 保存或更换 DeepSeek API key 时生成新值, 用于隔离新旧账户的月度账本.
+    /// 其他 provider 一律为 nil. 旧配置缺该键时解码为 nil, 无需 schema 升级.
+    public var usageTrackingID: String?
 
     public init(
         enabled: Bool = false,
         lastVerifiedAt: String? = nil,
-        verificationStatus: SubscriptionVerificationStatus = .none
+        verificationStatus: SubscriptionVerificationStatus = .none,
+        usageTrackingID: String? = nil
     ) {
         self.enabled = enabled
         self.lastVerifiedAt = lastVerifiedAt
         self.verificationStatus = verificationStatus
+        self.usageTrackingID = usageTrackingID
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case enabled
+        case lastVerifiedAt
+        case verificationStatus
+        case usageTrackingID
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+        lastVerifiedAt = try container.decodeIfPresent(String.self, forKey: .lastVerifiedAt)
+        verificationStatus = try container.decodeIfPresent(
+            SubscriptionVerificationStatus.self, forKey: .verificationStatus
+        ) ?? .none
+        // 旧配置缺该键或显式 null 一律按 nil, 不因新增字段拒绝加载.
+        usageTrackingID = try container.decodeIfPresent(
+            String.self, forKey: .usageTrackingID
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(enabled, forKey: .enabled)
+        try container.encodeIfPresent(lastVerifiedAt, forKey: .lastVerifiedAt)
+        try container.encode(verificationStatus, forKey: .verificationStatus)
+        try container.encodeIfPresent(usageTrackingID, forKey: .usageTrackingID)
     }
 }
 

@@ -59,4 +59,8 @@ swift run --package-path "$MDDD_SWIFT_PACKAGE" \
   "$MDDD_PYTHON_BIN" \
   "$MDDD_BRIDGE"
 
+echo "运行 DeepSeek 月度账本 Harness"
+swift run --package-path "$MDDD_SWIFT_PACKAGE" \
+  DeepSeekUsageLedgerHarness
+
 echo "mddd 本地验证全部通过"

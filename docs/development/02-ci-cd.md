@@ -37,7 +37,7 @@ mddd 的 CI/CD 目标是: 每次代码变更都经过与本地完全一致的验
 
 | Job | 运行器 | 内容 | 失败影响 |
 |---|---|---|---|
-| `verify` | macos-26 | 打印工具链版本, 运行 `scripts/verify-local.sh` (Python 语法 + pytest + swift build + 全部 8 个 Harness) | 阻塞合并与发布 |
+| `verify` | macos-26 | 打印工具链版本, 运行 `scripts/verify-local.sh` (Python 语法 + pytest + swift build + 全部 9 个 Harness) | 阻塞合并与发布 |
 | `python-min-version` | macos-26 | Python 3.9 下 py_compile + pytest | 阻塞合并与发布 |
 | `build-release-app` | macos-26 | 运行 `scripts/build-test-app.sh`, 上传 `dist/` 为 Actions artifact (`mddd-test-app`) | 阻塞合并与发布 |
 | `release` | macos-26 | 仅 tag 触发, 依赖前三个 job; 重建测试包并创建**草稿** GitHub Release, 附 `mddd-test.zip` | 不阻塞 PR |

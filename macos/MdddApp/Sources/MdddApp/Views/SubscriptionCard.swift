@@ -77,6 +77,12 @@ private struct ProviderSectionView: View {
                 .padding(.vertical, 2)
             }
 
+            // DeepSeek 月度统计: 仅当映射层提供了 ViewModel 时渲染
+            // (映射层保证只有 DeepSeek section 携带它), 不硬编码 provider id.
+            if let monthlyUsage = section.deepSeekMonthlyUsage {
+                DeepSeekMonthlyUsageSection(viewModel: monthlyUsage)
+            }
+
             // error/empty 段保留 collector 说明, 不静默吞掉.
             if section.status == "error" || section.status == "empty", let note = section.note {
                 Text(note)
@@ -109,6 +115,135 @@ private struct ProviderSectionView: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+}
+
+// MARK: - DeepSeek 月度统计
+
+/// DeepSeek 月度统计区块: "本月推算消费" + 当前余额 + 覆盖说明,
+/// 存在至少两条可显示观察时绘制单条橙色累计趋势线.
+/// 只消费映射层提供的 DeepSeekMonthlyUsageViewModel, 不读取任何凭证或 artifact.
+private struct DeepSeekMonthlyUsageSection: View {
+    let viewModel: DeepSeekMonthlyUsageViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            switch viewModel.state {
+            case .trend:
+                trendContent
+            case .baseline:
+                baselineContent
+            case .unavailable:
+                unavailableContent
+            }
+        }
+        .padding(.top, 2)
+        .padding(.bottom, 2)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    // MARK: 状态内容
+
+    private var trendContent: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("本月推算消费")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(viewModel.estimatedConsumptionText)
+                    .font(.system(size: 13, weight: .bold))
+                    .monospacedDigit()
+            }
+            HStack(alignment: .firstTextBaseline) {
+                Text("当前余额")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(viewModel.currentBalanceText)
+                    .font(.system(size: 13, weight: .bold))
+                    .monospacedDigit()
+            }
+
+            DeepSeekMonthlyUsageChart(points: viewModel.trendPoints)
+
+            HStack(spacing: 4) {
+                Text(viewModel.coverageText)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if let creditNote = viewModel.creditNote {
+                    Text(creditNote)
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private var baselineContent: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("当前余额")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(viewModel.currentBalanceText)
+                    .font(.system(size: 13, weight: .bold))
+                    .monospacedDigit()
+            }
+            Text("正在建立本月趋势 · 自首次记录起")
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var unavailableContent: some View {
+        HStack(spacing: 4) {
+            Text("月度统计暂不可用")
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+    }
+
+    /// 合并后的辅助功能标签: 正常趋势 / 仅有基线 / 不可用三种状态明确措辞,
+    /// 不暴露内部错误细节.
+    private var accessibilityLabel: String {
+        switch viewModel.state {
+        case .trend:
+            var label = "DeepSeek 本月推算消费 \(viewModel.estimatedConsumptionText), " +
+                "当前余额 \(viewModel.currentBalanceText), \(viewModel.coverageText)"
+            if let creditNote = viewModel.creditNote {
+                label += ", \(creditNote)"
+            }
+            return label
+        case .baseline:
+            return "DeepSeek 当前余额 \(viewModel.currentBalanceText), 正在建立本月趋势"
+        case .unavailable:
+            return "DeepSeek 月度统计暂不可用"
+        }
+    }
+}
+
+/// 单条橙色"累计已用"趋势线. 语义简单: 不添加第二曲线, 双轴或复杂图例.
+private struct DeepSeekMonthlyUsageChart: View {
+    let points: [TrendPoint]
+
+    var body: some View {
+        Chart(points, id: \.observedAt) { point in
+            LineMark(
+                x: .value("时间", point.observedAt),
+                y: .value("累计已用", NSDecimalNumber(decimal: point.cumulativeConsumption).doubleValue)
+            )
+            .interpolationMethod(.monotone)
+            .foregroundStyle(Color(hex: "#ff9f0a"))
+        }
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .frame(height: 44)
+        .accessibilityHidden(false)
     }
 }
 

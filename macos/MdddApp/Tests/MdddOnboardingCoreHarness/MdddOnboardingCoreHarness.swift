@@ -123,6 +123,12 @@ struct MdddOnboardingCoreHarness {
         try await ccSwitchVolcImportMissingProviderRow()
         try await ccSwitchVolcImportMissingFile()
         try subscriptionConfigApplyingVerificationTransitions()
+        try subscriptionUsageTrackingIDDecodeAndFallback()
+        try applyingVerificationPreservesUsageTrackingID()
+        try deepSeekSaveTransactionPrewriteDisabled()
+        try deepSeekSaveTransactionRestoreOldEntry()
+        try deepSeekSaveTransactionRestoreRemovesWhenAbsent()
+        try deepSeekSaveTransactionIsolatesEachSave()
         try await probeStandardInputPipesToProcess()
         try codexPKCEVerifierFormat()
         try codexDeviceStartRequestAndParse()
@@ -151,7 +157,7 @@ struct MdddOnboardingCoreHarness {
         try configGlassStyleDecodeAndFallback()
         try codexAccountIdentityServiceIDMatchesPython()
         try codexAccountIdentityLegacyID()
-        print("MdddOnboardingCore tests passed: 140")
+        print("MdddOnboardingCore tests passed: 143")
     }
 
     // MARK: - Python version parsing
@@ -2960,6 +2966,203 @@ struct MdddOnboardingCoreHarness {
         try coreExpect(index.accounts.first?.accountID == "acct-b", "索引剩余账号不符")
     }
 
+    // MARK: - DeepSeek 月度账本: 配置追踪 ID 与保存事务
+
+    /// usageTrackingID: 旧配置缺键或显式 null 一律解码为 nil (无需 schema 升级);
+    /// 新配置 round-trip 保留; 非 deepseek provider 保持 nil.
+    private static func subscriptionUsageTrackingIDDecodeAndFallback() throws {
+        // 旧 v2 配置 (无 usageTrackingID 键, verificationStatus 缺省为 none) -> nil
+        let legacy = try JSONDecoder().decode(
+            OnboardingConfiguration.self,
+            from: Data(#"""
+            {"schemaVersion":2,"subscriptionProviders":{"deepseek":{"enabled":true}}}
+            """#.utf8)
+        )
+        try coreExpect(
+            legacy.subscriptionProviders[SubscriptionProviderID.deepseek.rawValue]?.usageTrackingID == nil,
+            "旧配置缺键必须解码为 nil"
+        )
+
+        // 显式 null -> nil
+        let explicitNull = try JSONDecoder().decode(
+            OnboardingConfiguration.self,
+            from: Data(#"""
+            {"schemaVersion":2,"subscriptionProviders":{"deepseek":{"enabled":false,"usageTrackingID":null}}}
+            """#.utf8)
+        )
+        try coreExpect(
+            explicitNull.subscriptionProviders[SubscriptionProviderID.deepseek.rawValue]?.usageTrackingID == nil,
+            "显式 null 必须解码为 nil"
+        )
+
+        // round-trip 保留
+        let tempDir = makeTempDir("config-tracking")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let store = try OnboardingConfigurationStore(configDirectory: tempDir)
+        var config = OnboardingConfiguration(consentVersion: 1)
+        let trackingID = "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"
+        config.subscriptionProviders = [
+            SubscriptionProviderID.deepseek.rawValue: SubscriptionProviderConfiguration(
+                enabled: true,
+                verificationStatus: .ok,
+                usageTrackingID: trackingID
+            ),
+            SubscriptionProviderID.kimi.rawValue: SubscriptionProviderConfiguration(
+                enabled: true,
+                verificationStatus: .ok
+            ),
+        ]
+        try store.save(config)
+        let loaded = store.load()
+        try coreExpect(
+            loaded?.subscriptionProviders[SubscriptionProviderID.deepseek.rawValue]?.usageTrackingID == trackingID,
+            "deepseek usageTrackingID round-trip 丢失"
+        )
+        try coreExpect(
+            loaded?.subscriptionProviders[SubscriptionProviderID.kimi.rawValue]?.usageTrackingID == nil,
+            "非 deepseek provider 必须 nil"
+        )
+    }
+
+    /// applyingVerification 状态迁移必须保留既有 usageTrackingID (不重置追踪边界).
+    private static func applyingVerificationPreservesUsageTrackingID() throws {
+        let trackingID = "11111111-2222-3333-4444-555555555555"
+        let entry = SubscriptionProviderConfiguration(
+            enabled: false,
+            verificationStatus: .none,
+            usageTrackingID: trackingID
+        )
+        let ok = entry.applyingVerification(.ok, verifiedAt: "2026-08-03T00:00:00Z")
+        try coreExpect(ok.enabled, "ok 必须启用")
+        try coreExpect(
+            ok.usageTrackingID == trackingID,
+            "ok 迁移不得重置 usageTrackingID"
+        )
+        let failed = entry.applyingVerification(
+            .failed(reason: "凭证无效"), verifiedAt: "2026-08-03T01:00:00Z"
+        )
+        try coreExpect(!failed.enabled, "failed 必须禁用")
+        try coreExpect(
+            failed.usageTrackingID == trackingID,
+            "failed 迁移不得重置 usageTrackingID"
+        )
+    }
+
+    /// prewriteDisabled: 写入禁用配置, 生成新 UUID, 返回旧 entry;
+    /// 原本不存在 provider 时 oldEntry 为 nil.
+    private static func deepSeekSaveTransactionPrewriteDisabled() throws {
+        let tempDir = makeTempDir("ds-tx-prewrite")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let store = try OnboardingConfigurationStore(configDirectory: tempDir)
+
+        // 原本不存在 -> oldEntry nil
+        let first = try DeepSeekSaveTransaction.prewriteDisabled(in: store)
+        try coreExpect(first.oldEntry == nil, "首次预写 oldEntry 必须为 nil")
+        try coreExpect(!first.newTrackingID.isEmpty, "新追踪 ID 不得为空")
+
+        let loadedAfterFirst = store.load()
+        let entry = loadedAfterFirst?.subscriptionProviders[
+            SubscriptionProviderID.deepseek.rawValue
+        ]
+        try coreExpect(entry != nil, "预写后必须存在 deepseek 配置")
+        try coreExpect(entry?.enabled == false, "预写配置必须禁用")
+        try coreExpect(entry?.usageTrackingID == first.newTrackingID, "预写配置追踪 ID 不符")
+        try coreExpect(
+            entry?.verificationStatus == SubscriptionVerificationStatus.none,
+            "预写配置验证状态必须为 none"
+        )
+
+        // 已有旧配置 -> oldEntry 携带旧 ID
+        let second = try DeepSeekSaveTransaction.prewriteDisabled(in: store)
+        try coreExpect(
+            second.oldEntry?.usageTrackingID == first.newTrackingID,
+            "二次预写 oldEntry 必须携带旧追踪 ID"
+        )
+        try coreExpect(
+            second.newTrackingID != first.newTrackingID,
+            "每次预写必须生成新追踪 ID"
+        )
+    }
+
+    /// restore: Keychain 失败时恢复旧 entry (含旧 usageTrackingID).
+    private static func deepSeekSaveTransactionRestoreOldEntry() throws {
+        let tempDir = makeTempDir("ds-tx-restore")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let store = try OnboardingConfigurationStore(configDirectory: tempDir)
+
+        let oldTrackingID = "OLD-TRACKING-ID-AAAA"
+        var config = OnboardingConfiguration(consentVersion: 1)
+        config.subscriptionProviders = [
+            SubscriptionProviderID.deepseek.rawValue: SubscriptionProviderConfiguration(
+                enabled: true,
+                verificationStatus: .ok,
+                usageTrackingID: oldTrackingID
+            ),
+        ]
+        try store.save(config)
+
+        // 预写禁用配置 (模拟即将写 Keychain)
+        let prewrite = try DeepSeekSaveTransaction.prewriteDisabled(in: store)
+        try coreExpect(
+            prewrite.oldEntry?.usageTrackingID == oldTrackingID,
+            "oldEntry 必须保留旧追踪 ID"
+        )
+        // 模拟 Keychain 失败 -> 恢复
+        try DeepSeekSaveTransaction.restore(
+            oldEntry: prewrite.oldEntry, in: store
+        )
+        let restored = store.load()?.subscriptionProviders[
+            SubscriptionProviderID.deepseek.rawValue
+        ]
+        try coreExpect(restored?.enabled == true, "恢复后必须还原 enabled")
+        try coreExpect(
+            restored?.usageTrackingID == oldTrackingID,
+            "恢复后必须还原旧 usageTrackingID"
+        )
+        try coreExpect(
+            restored?.verificationStatus == .ok,
+            "恢复后必须还原验证状态"
+        )
+    }
+
+    /// restore: 旧 entry 为 nil 时移除该 provider 键 (恢复到未配置状态).
+    private static func deepSeekSaveTransactionRestoreRemovesWhenAbsent() throws {
+        let tempDir = makeTempDir("ds-tx-restore-absent")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let store = try OnboardingConfigurationStore(configDirectory: tempDir)
+
+        // 首次预写 (oldEntry nil), 再恢复 -> deepseek 键被移除
+        let prewrite = try DeepSeekSaveTransaction.prewriteDisabled(in: store)
+        try coreExpect(prewrite.oldEntry == nil, "首次预写 oldEntry 必须为 nil")
+        try DeepSeekSaveTransaction.restore(oldEntry: nil, in: store)
+        let loaded = store.load()
+        try coreExpect(
+            loaded?.subscriptionProviders[SubscriptionProviderID.deepseek.rawValue] == nil,
+            "oldEntry nil 时恢复必须移除 deepseek 键"
+        )
+    }
+
+    /// 每次保存事务生成不同的追踪 ID, 隔离新旧账户的月度账本.
+    private static func deepSeekSaveTransactionIsolatesEachSave() throws {
+        let tempDir = makeTempDir("ds-tx-isolate")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let store = try OnboardingConfigurationStore(configDirectory: tempDir)
+
+        var ids: Set<String> = []
+        for _ in 0..<5 {
+            let result = try DeepSeekSaveTransaction.prewriteDisabled(in: store)
+            ids.insert(result.newTrackingID)
+        }
+        try coreExpect(
+            ids.count == 5,
+            "5 次保存必须生成 5 个不同追踪 ID, got \(ids.count)"
+        )
+    }
     // MARK: - Codex account identity (任务 1)
 
     /// service ID 必须与 Python `_codex_service_id` 生成完全相同值.

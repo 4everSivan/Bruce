@@ -64,7 +64,9 @@ enum ArtifactStoreError: Error, Equatable {
 package final class ArtifactStore {
     typealias FaultInjector = (ArtifactStoreStage) throws -> Void
 
-    let rootURL: URL
+    /// Artifact 根目录 (Application Support/mddd 或测试注入目录).
+    /// DeepSeek 月度账本等衍生存储以它为根隔离.
+    package let rootURL: URL
     let snapshotsURL: URL
     let metadataURL: URL
 
