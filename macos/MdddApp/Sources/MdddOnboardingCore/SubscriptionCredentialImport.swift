@@ -50,6 +50,8 @@ extension SubscriptionProviderID {
     }
 
     /// 该 provider 在 Keychain 中占用的全部 account 键.
+    /// Codex 返回空数组: v2 分账号键不在此枚举 (由 CodexCredentialStore
+    /// 管理), 旧整体库键只供迁移读取, 不得作为运行时删除/读取目标.
     public var credentialAccounts: [String] {
         switch self {
         case .kimi:
@@ -62,10 +64,7 @@ extension SubscriptionProviderID {
                 SubscriptionCredentialAccount.volcengineSecretKey,
             ]
         case .codex:
-            return [
-                SubscriptionCredentialAccount.codexAccounts,
-                SubscriptionCredentialAccount.codexActiveAccount,
-            ]
+            return []
         case .antigravity:
             return [SubscriptionCredentialAccount.antigravityOAuth]
         }

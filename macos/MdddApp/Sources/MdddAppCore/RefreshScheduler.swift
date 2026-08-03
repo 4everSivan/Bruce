@@ -88,7 +88,7 @@ package final class RefreshScheduler {
     private let jitterProvider: (Double) -> Double
     private let registerWakeNotifications: Bool
     /// 可选运行输入提供器; nil 时保持空 context/credentials 的旧行为.
-    private let runInputProvider: (any CollectorRunInputProviding)?
+    private var runInputProvider: (any CollectorRunInputProviding)?
 
     private var states: [CollectorModule: ModuleScheduleState] = [:]
     private var timers: [CollectorModule: RunnerTimerToken] = [:]
@@ -104,6 +104,8 @@ package final class RefreshScheduler {
     package var onCredentialUpdates: ((CollectorModule, [JSONValue]) -> Void)?
     /// 后台刷新发现 5h 窗口用量新跨越 80% 阈值; 手动刷新不触发.
     package var onQuotaAlerts: ((CollectorModule, [QuotaAlert]) -> Void)?
+    /// 每个运行周期完成 (无论成败) 后触发, 供宿主刷新非敏感状态.
+    package var onRunCycleCompleted: (() -> Void)?
 
     package convenience init(
         executor: CollectorRunner,
@@ -372,6 +374,12 @@ package final class RefreshScheduler {
 
     // MARK: - Internal: execution
 
+    /// 定向重试所需的 token manager 访问器; App 装配, 测试可注入.
+    /// Codex challenge 处理只经它读取记录与刷新令牌.
+    package var codexTokenManager: (any CodexTokenManaging)?
+    /// Codex v2 账号记录读取; 重试输入需要账号名时回退用.
+    package var codexCredentialStore: CodexCredentialStore?
+
     private func executeRefresh(for module: CollectorModule) async {
         // 启动进程前取受控输入; 取不到时不启动进程, 按分类进入
         // authRequired 或 backoff, 避免空 context/空凭证运行 Collector.
@@ -379,11 +387,12 @@ package final class RefreshScheduler {
         var credentials: [String: JSONValue] = [:]
         if let runInputProvider {
             do {
-                let input = try runInputProvider.runInput(for: module)
+                let input = try await runInputProvider.runInput(for: module)
                 context = input.context
                 credentials = input.credentials
             } catch let inputError as CollectorRunInputError {
                 handleRunInputFailure(inputError, for: module)
+                onRunCycleCompleted?()
                 return
             } catch {
                 // 凭证存储读取等未知错误按依赖缺失走 backoff
@@ -391,31 +400,172 @@ package final class RefreshScheduler {
                     .missingDependency(module: module, reason: "读取运行输入失败"),
                     for: module
                 )
+                onRunCycleCompleted?()
                 return
             }
         }
 
-        let result: Result<CollectorRunOutput, Error>
+        let result = await runCollector(
+            module: module,
+            context: context,
+            credentials: credentials
+        )
+        guard !stopped else {
+            handleCancellation(for: module)
+            return
+        }
+        guard case .success(let output) = result else {
+            handleResult(result, for: module)
+            onRunCycleCompleted?()
+            return
+        }
+
+        // Codex 定向重试: 首次响应携带 accessRejected challenge 时,
+        // 强制刷新该账号并以 retry-only 上下文重跑一次 (每轮最多一次).
+        if module == .agentUsage {
+            if let challenge = output.response.credentialChallenges
+                .compactMap(CodexChallenge.init(json:))
+                .first {
+                let retryOutput = await handleCodexChallenge(
+                    challenge: challenge,
+                    module: module,
+                    firstOutput: output
+                )
+                guard !stopped else {
+                    handleCancellation(for: module)
+                    return
+                }
+                handleResult(.success(retryOutput), for: module)
+                onRunCycleCompleted?()
+                return
+            }
+        }
+
+        handleResult(.success(output), for: module)
+        onRunCycleCompleted?()
+    }
+
+    /// 单次定向重试: 强制刷新被挑战账号后以 retry-only 输入再跑一次,
+    /// 与首次结果合并 (旧额度保留规则见 CodexQuotaSnapshotMerger).
+    /// 刷新失败 (需要重登/暂缓) 或重试运行失败不覆盖首次结果.
+    private func handleCodexChallenge(
+        challenge: CodexChallenge,
+        module: CollectorModule,
+        firstOutput: CollectorRunOutput
+    ) async -> CollectorRunOutput {
+        guard !stopped else { return firstOutput }
+        let accountID = challenge.accountID
+        var refreshed = false
+        if let tokenManager = codexTokenManager {
+            await tokenManager.invalidateAccessToken(for: accountID)
+            let resolution = await tokenManager.forceRefresh(
+                for: accountID, now: nil
+            )
+            if case .success = resolution {
+                refreshed = true
+            }
+        }
+        guard !stopped, refreshed, let runInputProvider else {
+            return firstOutput
+        }
+
+        let retryInput: CollectorRunInput?
+        do {
+            retryInput = try await runInputProvider.retryInput(
+                for: module,
+                accountID: accountID
+            )
+        } catch {
+            return firstOutput
+        }
+        guard let retryInput else {
+            return firstOutput
+        }
+        let retryResult = await runCollector(
+            module: module,
+            context: retryInput.context,
+            credentials: retryInput.credentials
+        )
+        guard !stopped else { return firstOutput }
+        guard case .success(let retryOutput) = retryResult,
+              let firstArtifact = firstOutput.response.artifact,
+              let retryArtifact = retryOutput.response.artifact else {
+            return firstOutput
+        }
+
+        // 合并: 非 Codex 部分保留首次, Codex 条目按成功/失败保留或覆盖.
+        let merged = CodexQuotaSnapshotMerger().merge(
+            first: firstArtifact,
+            retry: retryArtifact
+        )
+        // 合并结果仍有 error/partial 条目时保留首轮与重试诊断 (去重);
+        // 自愈成功 (全部 ok) 时不残留 partial 诊断.
+        let mergedDiagnostics: [BridgeDiagnostic]
+        if !merged.artifact.hasFailedEntries {
+            mergedDiagnostics = []
+        } else {
+            var seen = Set<String>()
+            var collected: [BridgeDiagnostic] = []
+            for diagnostic in firstOutput.response.diagnostics
+                + retryOutput.response.diagnostics {
+                let key = "\(diagnostic.code)|\(diagnostic.stage)|\(diagnostic.message)"
+                if seen.insert(key).inserted {
+                    collected.append(diagnostic)
+                }
+            }
+            mergedDiagnostics = collected
+        }
+        return CollectorRunOutput(
+            response: BridgeResponse(
+                schemaVersion: 1,
+                runId: firstOutput.response.runId,
+                generatedAt: merged.generatedAtValue
+                    ?? firstOutput.response.generatedAt,
+                status: retryOutput.response.status,
+                artifact: merged.artifact,
+                credentialUpdates: firstOutput.response.credentialUpdates,
+                diagnostics: mergedDiagnostics,
+                credentialChallenges: []
+            ),
+            stderrDiagnostic: firstOutput.stderrDiagnostic
+        )
+    }
+
+    private func runCollector(
+        module: CollectorModule,
+        context: [String: JSONValue],
+        credentials: [String: JSONValue]
+    ) async -> Result<CollectorRunOutput, Error> {
         do {
             let output = try await executor.run(
                 module: module,
                 context: context,
                 credentials: credentials
             )
-            result = .success(output)
+            return .success(output)
         } catch is CancellationError {
-            handleCancellation(for: module)
-            return
+            return .failure(CancellationError())
         } catch {
-            result = .failure(error)
+            return .failure(error)
         }
+    }
 
-        guard !stopped else {
-            handleCancellation(for: module)
-            return
+    /// Codex challenge 协议字段解析 (provider=codex, reason=accessRejected).
+    private struct CodexChallenge: Equatable {
+        let accountID: String
+
+        init?(json: JSONValue) {
+            guard case .object(let object) = json,
+                  case .string(let provider)? = object["provider"],
+                  provider == "codex",
+                  case .string(let reason)? = object["reason"],
+                  reason == "accessRejected",
+                  case .string(let accountID)? = object["accountId"],
+                  !accountID.isEmpty else {
+                return nil
+            }
+            self.accountID = accountID
         }
-
-        handleResult(result, for: module)
     }
 
     /// 运行输入获取失败: 不启动进程.
@@ -475,7 +625,10 @@ package final class RefreshScheduler {
                 $0.category == "auth"
             }
 
-            if hasAuthError {
+            // 任务 9: auth diagnostic 只在拿不到 artifact 时整模块 authRequired.
+            // 部分结果 (artifact 存在) 按部分成功处理: 保留并发布可用数据,
+            // Codex 账号级认证状态只影响该账号 (见 handleCodexChallenge).
+            if hasAuthError && response.artifact == nil {
                 state.phase = .authRequired
                 state.lastErrorCategory = .auth
                 onStatusChange?(module, .authRequired, "请前往设置重新登录")
@@ -742,6 +895,13 @@ package final class RefreshScheduler {
 
     func moduleState(for module: CollectorModule) -> ModuleScheduleState? {
         states[module]
+    }
+
+    /// 测试专用: 替换运行输入提供器 (默认 nil 的旧行为).
+    func setRunInputProviderForTesting(
+        _ provider: (any CollectorRunInputProviding)?
+    ) {
+        runInputProvider = provider
     }
 
     var runningModuleCount: Int {

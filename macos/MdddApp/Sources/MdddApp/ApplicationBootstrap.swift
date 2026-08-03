@@ -11,10 +11,17 @@ final class ApplicationBootstrap {
     private let runner: CollectorRunner
     private let coordinator: OnboardingCoordinator
     private let runInputProvider: OnboardingRunInputProvider
+    /// Codex v2 迁移执行器 (任务 11): 启动 Scheduler 前幂等迁移旧整体
+    /// 账号库; 失败时只暂停 Codex 外部额度, 不阻断本地统计.
+    private let codexMigration: any CodexMigrationExecuting
+    /// Codex token manager: 启动时发布一次非敏感状态,
+    /// 并在每个调度周期后刷新, 供设置页订阅.
+    private let codexTokenManager: CodexTokenManager
     private let quotaAlertNotifier = QuotaAlertNotifier()
     private weak var model: AppModel?
     private var started = false
     private var appearanceObserver: AnyCancellable?
+    private var lastStatusRefresh = Date.distantPast
 
     init(
         runtime: AppRuntime,
@@ -22,18 +29,22 @@ final class ApplicationBootstrap {
         runner: CollectorRunner,
         coordinator: OnboardingCoordinator,
         runInputProvider: OnboardingRunInputProvider,
-        model: AppModel
+        codexTokenManager: CodexTokenManager,
+        model: AppModel,
+        codexMigration: (any CodexMigrationExecuting)? = nil
     ) {
         self.runtime = runtime
         self.scheduler = scheduler
         self.runner = runner
         self.coordinator = coordinator
         self.runInputProvider = runInputProvider
+        self.codexTokenManager = codexTokenManager
         self.model = model
+        self.codexMigration = codexMigration ?? runInputProvider
     }
 
     @discardableResult
-    func startIfNeeded() -> Bool {
+    func startIfNeeded() async -> Bool {
         guard !started else { return false }
         started = true
         scheduler.onStatusChange = { [weak model] module, runState, detail in
@@ -53,16 +64,48 @@ final class ApplicationBootstrap {
         scheduler.onQuotaAlerts = { [quotaAlertNotifier] _, alerts in
             quotaAlertNotifier.deliver(alerts)
         }
+        // 每个调度周期后刷新 Codex 账号状态 (token 决议会改变授权/存储状态).
+        scheduler.onRunCycleCompleted = { [weak self] in
+            self?.refreshCodexAccountStatuses()
+        }
         // 外观偏好应用级生效: SwiftUI preferredColorScheme 只影响环境,
         // 玻璃与 material 的真实配色由窗口 appearance 驱动.
         applyAppearance(coordinator.appearanceMode)
         appearanceObserver = coordinator.$appearanceMode.sink { [weak self] mode in
             self?.applyAppearance(mode)
         }
+        // 任务 11: 启动 Scheduler 前先执行幂等迁移, 迁移成功或确认无
+        // 旧数据后才开放 v2 Codex quota 输入; 失败只暂停 Codex 外部额度,
+        // 本地 Agent token 统计和其他 provider 不受影响.
+        let codexMigrationCompleted = await codexMigration.executeCodexMigration()
+        runInputProvider.setCodexMigrationCompleted(codexMigrationCompleted)
         runtime.configure(scheduler: scheduler, runner: runner)
         runtime.startSchedulerIfNeeded()
         coordinator.scanAndReconcile()
+        refreshCodexAccountStatuses()
         return true
+    }
+
+    /// 发布 token manager 的非敏感状态快照 (≤5 秒节流, 由调用方异步触发).
+    private func refreshCodexAccountStatuses() {
+        let now = Date()
+        guard now.timeIntervalSince(lastStatusRefresh) >= 5 else { return }
+        lastStatusRefresh = now
+        Task { @MainActor [weak self, codexTokenManager] in
+            let state = await codexTokenManager.statusSnapshot()
+            self?.model?.setCodexAccountStatuses(
+                state.accounts.map { account in
+                    CodexAccountStatus(
+                        accountID: account.accountID,
+                        displayName: account.displayName,
+                        authorizationState: account.authorizationState,
+                        credentialOrigin: account.credentialOrigin,
+                        storageBlocked: account.storageBlocked,
+                        updatedAt: account.updatedAt
+                    )
+                }
+            )
+        }
     }
 
     /// system 恢复跟随系统 (nil), light/dark 强制应用级配色.

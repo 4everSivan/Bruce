@@ -49,6 +49,9 @@ final class OnboardingCoordinator: ObservableObject {
     private let runtime: AppRuntime
     private let configStore: OnboardingConfigurationStore?
     private let credentialStore: CredentialStore
+    /// Codex v2 凭证存储与 token manager (App 装配时注入, 与运行输入提供器共享).
+    private let codexStore: CodexCredentialStore
+    private let codexTokenManager: CodexTokenManager
     private let scanner: LocalDependencyScanner
     private let verifier: ProviderConnectionVerifier
     private let homeURL: URL
@@ -60,6 +63,8 @@ final class OnboardingCoordinator: ObservableObject {
         runtime: AppRuntime,
         configStore: OnboardingConfigurationStore? = try? OnboardingConfigurationStore(),
         credentialStore: CredentialStore = KeychainCredentialStore(),
+        codexStore: CodexCredentialStore? = nil,
+        codexTokenManager: CodexTokenManager? = nil,
         scanner: LocalDependencyScanner? = nil,
         verifier: ProviderConnectionVerifier = ProviderConnectionVerifier(),
         homeURL: URL = FileManager.default.homeDirectoryForCurrentUser,
@@ -70,6 +75,13 @@ final class OnboardingCoordinator: ObservableObject {
         self.runtime = runtime
         self.configStore = configStore
         self.credentialStore = credentialStore
+        let resolvedStore = codexStore
+            ?? CodexCredentialStore(store: credentialStore)
+        self.codexStore = resolvedStore
+        self.codexTokenManager = codexTokenManager ?? CodexTokenManager(
+            store: resolvedStore,
+            client: CodexOAuthClient.defaultClient()
+        )
         self.verifier = verifier
         self.homeURL = homeURL
         let config = configStore?.load()
@@ -103,6 +115,7 @@ final class OnboardingCoordinator: ObservableObject {
 
     /// 从配置与 Keychain 恢复订阅 provider 展示状态.
     /// Keychain 只判断凭证是否存在, 凭证值不进入 UI 状态.
+    /// Codex 摘要改读 v2 账号索引 (元数据), 不再读旧整体账号库.
     private func publishSubscriptionState(from config: OnboardingConfiguration?) {
         var providers: [SubscriptionProviderID: SubscriptionProviderConfiguration] = [:]
         for (key, value) in config?.subscriptionProviders ?? [:] {
@@ -116,17 +129,33 @@ final class OnboardingCoordinator: ObservableObject {
                 credentialConfigured(id), for: id
             )
         }
-        if let json = try? credentialStore.loadCredential(
-            forAccount: SubscriptionCredentialAccount.codexAccounts
-        ) {
-            model.setCodexAccountSummary(CodexAccountsLibrary.summary(of: json))
-        } else {
+        publishCodexSummaryFromIndex()
+    }
+
+    /// 从 v2 账号索引发布 Codex 账号摘要 (数量与邮箱前缀, 与旧摘要格式一致).
+    private func publishCodexSummaryFromIndex() {
+        guard let index = try? codexStore.loadIndex() else {
             model.setCodexAccountSummary(nil)
+            return
         }
+        let entries = index.accounts.sorted { $0.accountID < $1.accountID }
+        let prefixes = entries.map { entry -> String in
+            if let email = entry.email, !email.isEmpty {
+                return email.split(separator: "@").first.map(String.init) ?? email
+            }
+            return String(entry.accountID.prefix(8))
+        }
+        model.setCodexAccountSummary(
+            entries.isEmpty ? nil : (entries.count, prefixes)
+        )
     }
 
     /// 判断 provider 的 Keychain 凭证是否完整配置.
+    /// Codex 以 v2 账号索引非空为准, 不再读旧整体账号库键.
     private func credentialConfigured(_ id: SubscriptionProviderID) -> Bool {
+        if id == .codex {
+            return (try? codexStore.loadIndex().accounts.isEmpty == false) ?? false
+        }
         for account in id.credentialAccounts {
             guard let value = try? credentialStore.loadCredential(
                 forAccount: account
@@ -293,34 +322,28 @@ final class OnboardingCoordinator: ObservableObject {
         finishVerification(.kimi, status: status)
     }
 
-    /// Codex: 从 CLI `~/.codex/auth.json` 导入当前账号, 合并进账号库
-    /// 并设为 active (用户点击触发).
+    /// Codex: 从 CLI `~/.codex/auth.json` 发现账号 (用户点击触发).
+    /// 只保存账号元数据 (needsReauthorization), 不导入 token.
     func importCodexFromLocalCLI() {
         let fileURL = homeURL.appendingPathComponent(".codex/auth.json")
         guard let json = readCredentialFile(fileURL, usage: "Codex CLI 认证文件") else {
             return
         }
-        switch CodexAuthFileParser.parse(json) {
-        case .failure(let error):
-            model.setSettingsError("Codex 认证文件解析失败: \(error.description)")
-        case .success(let account):
-            let existing = try? credentialStore.loadCredential(
-                forAccount: SubscriptionCredentialAccount.codexAccounts
+        do {
+            let accounts = try CodexDiscovery.fromCLIAuthJSON(json)
+            try codexStore.saveDiscoveredAccounts(
+                accounts, now: Date()
             )
-            switch CodexAccountsLibrary.merging(
-                existingJSON: existing, account: account
-            ) {
-            case .failure(let error):
-                model.setSettingsError("Codex 账号库合并失败: \(error.description)")
-            case .success(let merged):
-                saveCodexAccountsLibrary(merged, activeAccountID: account.accountID)
-            }
+        } catch {
+            model.setSettingsError("Codex 认证文件解析失败, 仅发现账号元数据")
+            return
         }
+        finishCodexDiscoveryImport()
     }
 
-    /// Codex: 从 CC Switch 账号库一次性导入 (用户在确认对话框同意后调用).
+    /// Codex: 从 CC Switch 账号库发现账号 (用户在确认对话框同意后调用).
     /// 只读 `~/.cc-switch/codex_oauth_auth.json`, 不回写 CC.
-    /// active 账号优先取 CLI 当前账号, 其次保留既有 active.
+    /// 只保存账号元数据 (needsReauthorization), 不导入 token.
     func importCodexFromCCSwitch() {
         let fileURL = homeURL.appendingPathComponent(
             ".cc-switch/codex_oauth_auth.json"
@@ -328,47 +351,23 @@ final class OnboardingCoordinator: ObservableObject {
         guard let json = readCredentialFile(fileURL, usage: "CC Switch Codex 账号库") else {
             return
         }
-        let status = ProviderConnectionVerifier.verifyCodexAccountsJSON(json)
-        guard status == .ok else {
-            finishVerification(.codex, status: status)
+        do {
+            let accounts = try CodexDiscovery.fromCCSwitchAccountsJSON(json)
+            try codexStore.saveDiscoveredAccounts(
+                accounts, now: Date()
+            )
+        } catch {
+            model.setSettingsError("CC Switch Codex 账号库解析失败, 仅发现账号元数据")
             return
         }
-        let accountIDs = CodexAccountsLibrary.accountIDs(of: json)
-        let cliAccountID = readCodexCLIActiveAccountID()
-        let existingActive = try? credentialStore.loadCredential(
-            forAccount: SubscriptionCredentialAccount.codexActiveAccount
-        )
-        let active = CodexAccountsLibrary.chooseActiveAccount(
-            cliAccountID: cliAccountID,
-            existingActive: existingActive,
-            accountIDs: accountIDs
-        )
-        saveCodexAccountsLibrary(json, activeAccountID: active)
+        finishCodexDiscoveryImport()
     }
 
-    private func saveCodexAccountsLibrary(
-        _ json: String, activeAccountID: String?
-    ) {
-        do {
-            try credentialStore.saveCredential(
-                json, forAccount: SubscriptionCredentialAccount.codexAccounts
-            )
-            if let activeAccountID {
-                try credentialStore.saveCredential(
-                    activeAccountID,
-                    forAccount: SubscriptionCredentialAccount.codexActiveAccount
-                )
-            }
-        } catch {
-            model.setSettingsError("Codex 凭证写入 Keychain 失败")
-            return
-        }
+    /// 发现导入的公共收尾: 发布摘要与验证状态.
+    private func finishCodexDiscoveryImport() {
+        publishCodexSummaryFromIndex()
         model.setSubscriptionCredentialConfigured(true, for: .codex)
-        model.setCodexAccountSummary(CodexAccountsLibrary.summary(of: json))
-        finishVerification(
-            .codex,
-            status: ProviderConnectionVerifier.verifyCodexAccountsJSON(json)
-        )
+        finishVerification(.codex, status: .none)
     }
 
     /// Codex: 设备码登录新账号 (用户点击触发, 全程网络只由该点击发起).
@@ -421,27 +420,41 @@ final class OnboardingCoordinator: ObservableObject {
                 else { self.finishCodexLogin(with: error) }
                 return
             case .success(let account):
-                let existing = try? credentialStore.loadCredential(
-                    forAccount: SubscriptionCredentialAccount.codexAccounts
-                )
-                switch CodexAccountsLibrary.merging(
-                    existingJSON: existing, account: account
-                ) {
-                case .failure(let error):
+                do {
+                    // 交由 token manager 保存完整 v2 记录 (credentialOrigin=mddd),
+                    // 独立 token 链, 不再合并进旧整体账号库.
+                    try await self.codexTokenManager.storeLoginResult(
+                        accountID: account.accountID,
+                        email: account.email,
+                        accessToken: account.accessToken,
+                        refreshToken: account.refreshToken,
+                        idToken: account.idToken,
+                        expiresAt: CodexTokenExpiry.expiresAt(
+                            from: CodexTokenResponse(
+                                accessToken: account.accessToken,
+                                refreshToken: account.refreshToken,
+                                idToken: account.idToken,
+                                expiresIn: nil,
+                                receivedAt: Date()
+                            ),
+                            jwtExp: CodexTokenExpiry.jwtExp(of: account.idToken)
+                        )
+                    )
+                } catch {
                     self.codexDeviceLogin = nil
                     self.model.setSettingsError(
-                        "Codex 账号库合并失败: \(error.description)"
+                        "Codex 凭证写入 Keychain 失败, 登录未完成"
                     )
-                case .success(let merged):
-                    saveCodexAccountsLibrary(
-                        merged, activeAccountID: account.accountID
-                    )
-                    guard self.codexDeviceLogin != nil else { return }
-                    self.codexDeviceLogin?.stage = .succeeded
-                    // 成功状态短暂展示后收起
-                    try? await Task.sleep(nanoseconds: 1_500_000_000)
-                    self.codexDeviceLogin = nil
+                    return
                 }
+                self.model.setSubscriptionCredentialConfigured(true, for: .codex)
+                self.publishCodexSummaryFromIndex()
+                self.finishVerification(.codex, status: .ok)
+                guard self.codexDeviceLogin != nil else { return }
+                self.codexDeviceLogin?.stage = .succeeded
+                // 成功状态短暂展示后收起
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                self.codexDeviceLogin = nil
             }
         }
     }
@@ -525,7 +538,14 @@ final class OnboardingCoordinator: ObservableObject {
 
     /// 移除 provider: 删除其全部 Keychain 凭证并重置非敏感配置.
     /// Keychain 删除失败时报错且不重置配置 (fail-closed).
+    /// Codex 经 token manager 断开: 取消任务、删除全部 v2 记录, 不写第三方文件.
     func removeSubscriptionProvider(_ id: SubscriptionProviderID) {
+        if id == .codex {
+            Task { @MainActor in
+                await self.removeCodexProvider()
+            }
+            return
+        }
         do {
             for account in id.credentialAccounts {
                 try credentialStore.deleteCredential(forAccount: account)
@@ -539,9 +559,26 @@ final class OnboardingCoordinator: ObservableObject {
         guard persistSubscription(id, mutate: {
             $0 = SubscriptionProviderConfiguration()
         }) else { return }
-        if id == .codex {
-            model.setCodexAccountSummary(nil)
+        model.setSettingsError(nil)
+    }
+
+    /// Codex 移除: 经 token manager 断开全部账号, 不写第三方文件.
+    private func removeCodexProvider() async {
+        do {
+            let index = try codexStore.loadIndex()
+            for entry in index.accounts {
+                try await codexTokenManager.disconnect(accountID: entry.accountID)
+            }
+        } catch {
+            model.setSettingsError(
+                "Codex 凭证删除失败, 请在 Keychain 中手动检查"
+            )
+            return
         }
+        publishCodexSummaryFromIndex()
+        guard persistSubscription(.codex, mutate: {
+            $0 = SubscriptionProviderConfiguration()
+        }) else { return }
         model.setSettingsError(nil)
     }
 

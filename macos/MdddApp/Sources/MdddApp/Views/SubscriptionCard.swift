@@ -40,7 +40,7 @@ struct SubscriptionCard: View {
 
 // MARK: - provider 段
 
-/// 单个 provider 段: 名称 + plan chip + 账号数, 下方窗口行 / Codex 子卡 / 余额行.
+/// 单个 provider 段: 品牌徽章 + 名称 + plan chip + 账号数, 下方窗口行 / Codex 子卡 / 余额行.
 private struct ProviderSectionView: View {
     let section: SubscriptionProviderSection
     let isFirst: Bool
@@ -91,6 +91,8 @@ private struct ProviderSectionView: View {
 
     private var head: some View {
         HStack(spacing: 6) {
+            ProviderLogoBadge(providerID: section.id, name: section.name)
+                .accessibilityHidden(true)
             Text(section.name)
                 .font(.system(size: 11, weight: .semibold))
             if let plan = section.plan {
@@ -243,6 +245,14 @@ private struct CodexAccountCard: View {
                     .foregroundStyle(Color(hex: "#ff9f0a"))
                     .padding(.top, 2)
             }
+            // 非 ok 且保留有上次成功数据: 明确标注这是上次成功快照.
+            if let lastSuccessText = account.lastSuccessText {
+                Text(lastSuccessText)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 2)
+                    .accessibilityLabel("这是上次成功的数据")
+            }
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 6)
@@ -260,6 +270,43 @@ private struct CodexAccountCard: View {
                     dark: Color.white.opacity(0.18)
                 ), lineWidth: 1)
         )
+    }
+}
+
+// MARK: - provider 徽章
+
+/// 品牌色首字母徽章: 按 provider id 解析品牌色, 取名称首字符;
+/// 15pt 圆角方块, 白色粗体字母, 深浅色通用.
+private struct ProviderLogoBadge: View {
+    let providerID: String
+    let name: String
+
+    var body: some View {
+        Text(String(name.prefix(1)).uppercased())
+            .font(.system(size: 9, weight: .bold))
+            .foregroundStyle(.white)
+            .frame(width: 15, height: 15)
+            .background(
+                Self.brandColor(for: providerID),
+                in: RoundedRectangle(cornerRadius: 4.5, style: .continuous)
+            )
+    }
+
+    private static func brandColor(for providerID: String) -> Color {
+        switch providerID {
+        case "kimi":
+            return Color(hex: "#0a84ff")
+        case "deepseek":
+            return Color(hex: "#4d6bfe")
+        case "volcengine":
+            return Color(hex: "#ff6a00")
+        case "codex", "openai":
+            return Color(hex: "#10a37f")
+        case "antigravity":
+            return Color(hex: "#4285f4")
+        default:
+            return Color(hex: "#8e8e93")
+        }
     }
 }
 
@@ -340,7 +387,7 @@ private extension SubscriptionViewModel {
             SubscriptionProviderSection(
                 id: "volcengine",
                 name: "火山引擎",
-                plan: "Coding Plan",
+                plan: nil,
                 status: "ok",
                 note: nil,
                 extraText: nil,
@@ -355,7 +402,7 @@ private extension SubscriptionViewModel {
             ),
             SubscriptionProviderSection(
                 id: "codex",
-                name: "Codex",
+                name: "ChatGPT",
                 plan: nil,
                 status: "error",
                 note: nil,

@@ -300,6 +300,14 @@ public enum SubscriptionCredentialAccount {
     public static let antigravityOAuth = "antigravity:oauth"
 }
 
+/// Codex v2 Keychain 键别名 (供既有调用方引用; 旧键只供迁移读取).
+extension SubscriptionCredentialAccount {
+    public static let codexAccountIndexV2 = CodexCredentialKeys.accountIndexV2
+    public static let codexAccountV2Prefix = CodexCredentialKeys.accountV2Prefix
+    public static let codexLegacyAccounts = CodexCredentialKeys.legacyAccounts
+    public static let codexLegacyActiveAccount = CodexCredentialKeys.legacyActiveAccount
+}
+
 // MARK: - CredentialStore
 
 /// 凭证存储协议. 系统实现使用 macOS Keychain, 测试使用内存 fake.

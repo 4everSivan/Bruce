@@ -44,6 +44,12 @@
         "$ref": "#/$defs/credentialUpdate"
       }
     },
+    "credentialChallenges": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/credentialChallenge"
+      }
+    },
     "diagnostics": {
       "type": "array",
       "items": {
@@ -52,6 +58,28 @@
     }
   },
   "$defs": {
+    "credentialChallenge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "accountId",
+        "reason"
+      ],
+      "properties": {
+        "provider": {
+          "const": "codex"
+        },
+        "accountId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "reason": {
+          "const": "accessRejected"
+        }
+      }
+    },
     "credentialUpdate": {
       "type": "object",
       "additionalProperties": false,

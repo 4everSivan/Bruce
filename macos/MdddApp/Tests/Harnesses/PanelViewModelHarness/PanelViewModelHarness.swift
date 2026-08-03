@@ -125,7 +125,8 @@ private func makeService(
     balance: Double? = nil,
     currency: String? = nil,
     note: String? = nil,
-    extra: String? = nil
+    extra: String? = nil,
+    capturedAt: String? = nil
 ) -> AgentServiceItem {
     AgentServiceItem(
         id: id,
@@ -139,7 +140,8 @@ private func makeService(
         balance: balance,
         currency: currency,
         note: note,
-        extra: extra
+        extra: extra,
+        capturedAt: capturedAt
     )
 }
 
@@ -174,6 +176,7 @@ struct PanelViewModelHarness {
         try windowWordingFallsBackToKnownLabels()
         try ownRowFlagIsPreserved()
         try balanceSinksToBottom()
+        try kimiDisabledBoosterExtraIsHidden()
         try codexAccountsGroupIntoOneSection()
         try subscriptionIsNilWhenAllPlaceholders()
         try serviceErrorKeepsNoteAndDiagnoses()
@@ -194,7 +197,9 @@ struct PanelViewModelHarness {
         try subscriptionUpdatedTextFormatsGeneratedAt()
         try subscriptionUpdatedTextNilForBadDate()
         try subscriptionEmptyStatusStillRenders()
-        print("PanelViewModel tests passed: 24")
+        try quota100PercentRendersNormally()
+        try codexErrorShowsLastSuccessTime()
+        print("PanelViewModel tests passed: 27")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -282,6 +287,27 @@ struct PanelViewModelHarness {
         try expect(vm[1].windows.isEmpty, "余额型不应有量条")
     }
 
+    // Kimi 加量包未启用的附加文案不展示, 余额文案保留.
+    private static func kimiDisabledBoosterExtraIsHidden() throws {
+        let disabled = makeService(
+            id: "kimi",
+            name: "Kimi",
+            kind: "windows",
+            windows: [makeWindow(label: "5小时窗口", usedPercent: 68, windowMinutes: 300)],
+            extra: "加量包未启用"
+        )
+        let withBalance = makeService(
+            id: "kimi2",
+            name: "Kimi",
+            kind: "windows",
+            windows: [makeWindow(label: "5小时窗口", usedPercent: 20, windowMinutes: 300)],
+            extra: "加量包余额 ¥12.00"
+        )
+        let vm = try subscriptionSections(services: [disabled, withBalance])
+        try expect(vm[0].extraText == nil, "加量包未启用应隐藏: \(vm[0].extraText ?? "nil")")
+        try expect(vm[1].extraText == "加量包余额 ¥12.00", "余额文案应保留: \(vm[1].extraText ?? "nil")")
+    }
+
     // app=="codex" 的多账号分组成一张卡内多个账号子卡.
     private static func codexAccountsGroupIntoOneSection() throws {
         let personal = makeService(
@@ -314,7 +340,7 @@ struct PanelViewModelHarness {
         let vm = try subscriptionSections(services: [kimi, personal, work])
         try expect(vm.count == 2, "codex 应合并为一段: \(vm.map(\.id))")
         let group = vm[1]
-        try expect(group.id == "codex" && group.name == "Codex", "codex 分组头错误")
+        try expect(group.id == "codex" && group.name == "ChatGPT", "codex 分组头错误")
         try expect(group.accountCountText == "2 个账号", "账号数文案错误")
         try expect(group.status == "partial", "分组状态应取最差: \(group.status)")
         let accounts = group.codexAccounts ?? []
@@ -536,6 +562,7 @@ struct PanelViewModelHarness {
         try expect(rows[0].points[9] == 5000, "折线数据错位")
         try expect(rows[0].todayTotal == 10000, "今日总量错误")
         try expect(rows[0].todayTotalText == "10K", "今日总量文案错误")
+        try expect(rows[0].name == "Kimi Code", "展示名应简化: \(rows[0].name)")
         try expect(rows[0].isExpandable == true, "有模型明细应可展开")
         try expect(
             vm.diagnostics.contains(.agentIssue(
@@ -644,6 +671,7 @@ struct PanelViewModelHarness {
             ]
         )
         let vm = try subscriptionSectionsWithDiagnostics(services: [service])
+        try expect(vm.sections[0].name == "火山引擎", "Coding Plan 后缀应剥离: \(vm.sections[0].name)")
         let texts = vm.sections[0].windows.map(\.resetText)
         try expect(texts == ["", ""], "resetsAt 非正数应为空串: \(texts)")
         let dropped = vm.diagnostics.filter {
@@ -750,9 +778,86 @@ struct PanelViewModelHarness {
         try expect(vm.subscription?.updatedText == nil, "坏日期不应渲染更新时间")
     }
 
-    // status=empty (瞬时故障未取到数据) 不是未授权占位, 必须保留段和 note.
-    private static func subscriptionEmptyStatusStillRenders() throws {
+    // 12.1.11: 额度 100% 不进入 authRequired, 正常渲染窗口与重置时间.
+    private static func quota100PercentRendersNormally() throws {        let service = makeService(
+            id: "codex_acc-1",
+            name: "Codex · user",
+            status: "ok",
+            kind: "windows",
+            windows: [
+                makeWindow(
+                    label: "5小时窗口",
+                    usedPercent: 100,
+                    windowMinutes: 300,
+                    resetsAt: .string("2026-07-30T16:00:00+00:00")
+                ),
+            ],
+            app: "codex",
+            plan: "team"
+        )
+        let vm = makeMapper().make(
+            agentUsage: makeAgentUsageArtifact(agents: [], services: [service]),
+            moduleStatuses: readyStatuses
+        )
+        let section = vm.subscription?.sections.first
+        try expect(section?.status == "ok", "100% 额度不应改变认证状态: \(section?.status ?? "nil")")
+        let account = section?.codexAccounts?.first
+        try expect(account?.windows.first?.usedPercent == 100, "100% 窗口应保留")
+        try expect(account?.windows.first?.percentText == "100%", "百分比文案错误")
+        try expect(account?.windows.first?.resetText == "16:00", "重置时间错误: \(account?.windows.first?.resetText ?? "nil")")
+        let issues = vm.diagnostics.filter {
+            if case .serviceIssue = $0 { return true }
+            return false
+        }
+        try expect(issues.isEmpty, "100% 额度不应产生 serviceIssue 诊断: \(vm.diagnostics)")
+    }
+
+    // 13.1.2: 非 ok 的 Codex 账号显示"上次成功 HH:mm" (保留的旧 capturedAt),
+    // ok 状态不显示.
+    private static func codexErrorShowsLastSuccessTime() throws {
         let service = makeService(
+            id: "codex_acc-1",
+            name: "Codex · user",
+            status: "error",
+            kind: "windows",
+            windows: [],
+            app: "codex",
+            note: "额度查询暂时失败, 请稍后重试",
+            capturedAt: "2026-07-30T13:50:00+00:00"
+        )
+        let vm = makeMapper().make(
+            agentUsage: makeAgentUsageArtifact(agents: [], services: [service]),
+            moduleStatuses: readyStatuses
+        )
+        let account = vm.subscription?.sections.first?.codexAccounts?.first
+        try expect(
+            account?.lastSuccessText == "上次成功 13:50",
+            "error 状态应显示上次成功时间, got \(account?.lastSuccessText ?? "nil")"
+        )
+
+        // ok 状态不显示
+        let okService = makeService(
+            id: "codex_acc-2",
+            name: "Codex · other",
+            status: "ok",
+            kind: "windows",
+            windows: [],
+            app: "codex",
+            capturedAt: "2026-07-30T13:50:00+00:00"
+        )
+        let okVM = makeMapper().make(
+            agentUsage: makeAgentUsageArtifact(agents: [], services: [okService]),
+            moduleStatuses: readyStatuses
+        )
+        let okAccount = okVM.subscription?.sections.first?.codexAccounts?.first
+        try expect(
+            okAccount?.lastSuccessText == nil,
+            "ok 状态不应显示上次成功时间"
+        )
+    }
+
+    // status=empty (瞬时故障未取到数据) 不是未授权占位, 必须保留段和 note.
+    private static func subscriptionEmptyStatusStillRenders() throws {        let service = makeService(
             id: "kimi",
             name: "Kimi",
             status: "empty",

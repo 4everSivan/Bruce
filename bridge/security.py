@@ -23,6 +23,11 @@ CONTEXT_FIELDS = {
     "username",
     "caFile",
     "capabilities",
+    "codexQuotaRetryOnly",
+    # 本地 fake server 测试用: 覆盖出站 quota/token URL (loopback 地址),
+    # 生产请求不携带; 默认值仍是生产端点.
+    "codexUsageUrl",
+    "codexTokenUrl",
 }
 CAPABILITY_VALUES = {
     "localSessions",
@@ -37,8 +42,7 @@ TIMEOUT_FIELDS = {
 CREDENTIAL_FIELDS_BY_MODULE = {
     "agent-usage": {
         "kimiWebTokens",
-        "codexOAuthAccounts",
-        "codexAuth",
+        "codexQuotaAccounts",
         "orcaCodexAuth",
         "antigravityOAuth",
         "providerEnv",
@@ -47,8 +51,7 @@ CREDENTIAL_FIELDS_BY_MODULE = {
 }
 RUNTIME_CREDENTIAL_NAMES = {
     "kimiWebTokens": "kimi_web_tokens",
-    "codexOAuthAccounts": "codex_oauth_auth",
-    "codexAuth": "codex_auth",
+    "codexQuotaAccounts": "codex_quota_accounts",
     "orcaCodexAuth": "orca_codex_auth",
     "antigravityOAuth": "antigravity_oauth",
     "providerEnv": "provider_env",
@@ -56,7 +59,17 @@ RUNTIME_CREDENTIAL_NAMES = {
 }
 RUNTIME_CONTEXT_NAMES = {
     "caFile": "ca_file",
+    "codexQuotaRetryOnly": "codex_quota_retry_only",
+    "codexUsageUrl": "codex_usage_url",
+    "codexTokenUrl": "codex_token_url",
 }
+# 短期 access token 注入的账号条目允许的字段 (白名单, 拒绝 refresh/id token)
+CODEX_QUOTA_ACCOUNT_FIELDS = {
+    "display_name",
+    "access_token",
+}
+# Codex quota challenge 上限, 与 schemas/response-v1.schema.json 保持一致
+CREDENTIAL_CHALLENGE_ACCOUNT_ID_MAX = 256
 SENSITIVE_KEY_PARTS = {
     "accesstoken",
     "refreshtoken",
@@ -227,6 +240,14 @@ def validate_request(request):
                 "security",
                 "请求包含未知能力",
             )
+    if "codexQuotaRetryOnly" in context and not isinstance(
+        context["codexQuotaRetryOnly"], bool
+    ):
+        raise ValidationError(
+            "BRIDGE_INVALID_REQUEST",
+            "protocol",
+            "codexQuotaRetryOnly 必须是布尔值",
+        )
 
     credentials = request["credentials"]
     if not isinstance(credentials, dict):
@@ -249,7 +270,34 @@ def validate_request(request):
                 "protocol",
                 "凭证上下文类型无效",
             )
+    if "codexQuotaAccounts" in credentials:
+        _validate_codex_quota_accounts(credentials["codexQuotaAccounts"])
     return request
+
+
+def _validate_codex_quota_accounts(accounts):
+    """Codex 短期 access token 注入: 每账号只允许 display_name + access_token,
+    不得携带 refresh token / id token / 完整邮箱等可旋转凭证."""
+    for account_id, entry in accounts.items():
+        if not isinstance(account_id, str) or not account_id:
+            raise ValidationError(
+                "BRIDGE_INVALID_REQUEST",
+                "protocol",
+                "codexQuotaAccounts 账号 id 无效",
+            )
+        if not isinstance(entry, dict) or set(entry) - CODEX_QUOTA_ACCOUNT_FIELDS:
+            raise ValidationError(
+                "BRIDGE_CREDENTIAL_SCOPE",
+                "security",
+                "codexQuotaAccounts 账号条目包含不允许的字段",
+            )
+        access = entry.get("access_token")
+        if not isinstance(access, str) or not access:
+            raise ValidationError(
+                "BRIDGE_INVALID_REQUEST",
+                "protocol",
+                "codexQuotaAccounts 缺少 access_token",
+            )
 
 
 def build_collector_context(request):
@@ -345,6 +393,73 @@ def validate_credential_updates(updates):
 
 
 _BEARER_RE = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+")
+
+# credentialChallenges 字段 (白名单严格, 与 schemas/response-v1.schema.json 一致)
+CHALLENGE_FIELDS = {
+    "provider",
+    "accountId",
+    "reason",
+}
+CHALLENGE_PROVIDERS = {"codex"}
+CHALLENGE_REASONS = {"accessRejected"}
+
+
+def validate_credential_challenges(challenges):
+    """校验 collector 返回的 credentialChallenges (严格白名单).
+
+    - 必须是数组; 每条只允许精确字段 provider / accountId / reason.
+    - provider 仅允许 codex, reason 仅允许 accessRejected,
+      account ID 必须非空且不超过上限.
+    校验失败抛 ValidationError (BRIDGE_INVALID_CREDENTIAL_CHALLENGE).
+    """
+    if not isinstance(challenges, list):
+        raise ValidationError(
+            "BRIDGE_INVALID_CREDENTIAL_CHALLENGE",
+            "security",
+            "credentialChallenges 必须是数组",
+        )
+    validated = []
+    for challenge in challenges:
+        if not isinstance(challenge, dict) or set(challenge) - CHALLENGE_FIELDS:
+            raise ValidationError(
+                "BRIDGE_INVALID_CREDENTIAL_CHALLENGE",
+                "security",
+                "credentialChallenge 字段无效",
+            )
+        missing = CHALLENGE_FIELDS - set(challenge)
+        if missing:
+            raise ValidationError(
+                "BRIDGE_INVALID_CREDENTIAL_CHALLENGE",
+                "security",
+                "credentialChallenge 缺少必需字段",
+            )
+        if challenge["provider"] not in CHALLENGE_PROVIDERS:
+            raise ValidationError(
+                "BRIDGE_INVALID_CREDENTIAL_CHALLENGE",
+                "security",
+                "credentialChallenge provider 不受支持",
+            )
+        if challenge["reason"] not in CHALLENGE_REASONS:
+            raise ValidationError(
+                "BRIDGE_INVALID_CREDENTIAL_CHALLENGE",
+                "security",
+                "credentialChallenge reason 不受支持",
+            )
+        account_id = challenge["accountId"]
+        if (
+            not isinstance(account_id, str)
+            or not account_id
+            or len(account_id) > CREDENTIAL_CHALLENGE_ACCOUNT_ID_MAX
+        ):
+            raise ValidationError(
+                "BRIDGE_INVALID_CREDENTIAL_CHALLENGE",
+                "security",
+                "credentialChallenge accountId 无效",
+            )
+        validated.append(copy.deepcopy(challenge))
+    return validated
+
+
 _ASSIGNMENT_RE = re.compile(
     r"(?i)\b(token|secret|password|api[_-]?key|authorization)"
     r"\s*[:=]\s*[^\s,;]+"

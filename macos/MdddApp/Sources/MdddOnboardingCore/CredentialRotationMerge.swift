@@ -21,8 +21,10 @@ public struct CredentialRotationUpdate: Equatable, Sendable {
 
 /// Collector 轮换令牌写回 Keychain 的纯合并逻辑.
 /// 结构对齐 collect_usage.py 的消费方式:
-/// kimi 顶层平铺 access/refresh; codex 合并 accounts[accountId] 并保留 email;
-/// antigravity 合并 token 子对象. 输出 JSON 使用 sortedKeys 保证稳定.
+/// kimi 顶层平铺 access/refresh; antigravity 合并 token 子对象.
+/// 输出 JSON 使用 sortedKeys 保证稳定.
+/// Codex 不在此写回: 令牌链由 CodexTokenManager 独占持有并持久化,
+/// 不消费 Collector 的 rotation 条目 (任务 6 起).
 public enum CredentialRotationMerge {
     /// 允许写回的令牌键, 与 collect_usage.py 的白名单一致.
     private static let allowedKeys: Set<String> = [
@@ -30,12 +32,12 @@ public enum CredentialRotationMerge {
     ]
 
     /// provider -> Keychain account 映射; 未知 provider 返回 nil (不写回).
+    /// Codex 明确排除: App 不向旧 `codex:accounts` 整体库写回轮换令牌
+    /// (任务 11, 旧键只供迁移读取).
     public static func keychainAccount(forProvider provider: String) -> String? {
         switch provider {
         case "kimi":
             return SubscriptionCredentialAccount.kimiWebTokens
-        case "codex":
-            return SubscriptionCredentialAccount.codexAccounts
         case "antigravity":
             return SubscriptionCredentialAccount.antigravityOAuth
         default:
@@ -69,12 +71,6 @@ public enum CredentialRotationMerge {
         switch update.provider {
         case "kimi":
             for (key, value) in tokens { root[key] = value }
-        case "codex":
-            var accounts = root["accounts"] as? [String: Any] ?? [:]
-            var entry = accounts[update.accountId] as? [String: Any] ?? [:]
-            for (key, value) in tokens { entry[key] = value }
-            accounts[update.accountId] = entry
-            root["accounts"] = accounts
         case "antigravity":
             var token = root["token"] as? [String: Any] ?? [:]
             for (key, value) in tokens { token[key] = value }

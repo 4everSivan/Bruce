@@ -5,6 +5,7 @@ import json
 import os
 import sqlite3
 import ssl
+import sys
 import tempfile
 import unittest
 import urllib.parse
@@ -560,6 +561,297 @@ class AgentCollectorContextTests(unittest.TestCase):
             result["credentialUpdates"][0]["provider"],
             "fixture",
         )
+
+    # ---- 任务 1 冻结契约: App 路径不刷新 Codex token, 不读第三方认证文件 ----
+
+    def test_app_mode_quota_uses_injected_access_token_without_refresh(self):
+        """App 模式注入有效 access token 时直接查额度, _codex_refresh 调用数为 0."""
+        with tempfile.TemporaryDirectory() as temp_home:
+            cc_auth_path = Path(temp_home) / ".cc-switch" / "codex_oauth_auth.json"
+            cli_auth_path = Path(temp_home) / ".codex" / "auth.json"
+            cc_auth_path.parent.mkdir(parents=True)
+            cli_auth_path.parent.mkdir(parents=True)
+            cc_auth_path.write_text(
+                json.dumps(
+                    {
+                        "accounts": {
+                            "acc-1": {
+                                "email": "fixture@example.test",
+                                "refresh_token": "rotatable-rt",
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            cli_auth_path.write_text(
+                json.dumps(
+                    {
+                        "tokens": {
+                            "account_id": "acc-1",
+                            "refresh_token": "rotatable-cli-rt",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            before = {
+                str(path): hashlib.sha256(path.read_bytes()).hexdigest()
+                for path in (cc_auth_path, cli_auth_path)
+            }
+            refresh_attempts = []
+            original_refresh = self.module._codex_refresh
+            self.module._codex_refresh = lambda token: refresh_attempts.append(
+                token
+            ) or {"access_token": "rotated"}
+            usage_hits = []
+            original_get = self.module.http_get_json
+            self.module.http_get_json = (
+                lambda url, headers: usage_hits.append(url)
+                or {"plan_type": "fixture", "rate_limit": {}}
+            )
+            try:
+                self.module._configure_runtime(
+                    {
+                        "home": temp_home,
+                        "app_mode": True,
+                        "now": "2026-07-28T12:00:00+08:00",
+                        "credentials": {
+                            "codex_quota_accounts": {
+                                "acc-1": {
+                                    "display_name": "Codex · user",
+                                    "access_token": "short-lived-at",
+                                }
+                            },
+                        },
+                        "http": {"get_json": self.module.http_get_json},
+                    }
+                )
+                services = self.module.service_codex_accounts()
+            finally:
+                self.module._codex_refresh = original_refresh
+                self.module.http_get_json = original_get
+            after = {
+                str(path): hashlib.sha256(path.read_bytes()).hexdigest()
+                for path in (cc_auth_path, cli_auth_path)
+            }
+
+        self.assertEqual(refresh_attempts, [])
+        self.assertEqual(len(usage_hits), 1)
+        self.assertEqual(services[0]["id"], "codex_acc-1")
+        self.assertEqual(before, after)
+
+    def test_app_mode_without_codex_quota_accounts_returns_empty(self):
+        """App 模式未注入 codex_quota_accounts 时不得读取任何磁盘认证文件."""
+        with tempfile.TemporaryDirectory() as temp_home:
+            cc_auth_path = Path(temp_home) / ".cc-switch" / "codex_oauth_auth.json"
+            cli_auth_path = Path(temp_home) / ".codex" / "auth.json"
+            cc_auth_path.parent.mkdir(parents=True)
+            cli_auth_path.parent.mkdir(parents=True)
+            cc_auth_path.write_text(
+                json.dumps({"accounts": {"acc-1": {"refresh_token": "rt"}}}),
+                encoding="utf-8",
+            )
+            cli_auth_path.write_text(
+                json.dumps({"tokens": {"refresh_token": "cli-rt"}}),
+                encoding="utf-8",
+            )
+            refresh_attempts = []
+            original_refresh = self.module._codex_refresh
+            self.module._codex_refresh = lambda token: refresh_attempts.append(
+                token
+            ) or {"access_token": "rotated"}
+            try:
+                self.module._configure_runtime(
+                    {
+                        "home": temp_home,
+                        "app_mode": True,
+                        "now": "2026-07-28T12:00:00+08:00",
+                    }
+                )
+                services = self.module.service_codex_accounts()
+            finally:
+                self.module._codex_refresh = original_refresh
+
+        self.assertEqual(services, [])
+        self.assertEqual(refresh_attempts, [])
+
+    def test_run_app_never_emits_codex_credential_updates(self):
+        """App 模式 run_app 不返回 Codex rotation update."""
+        with tempfile.TemporaryDirectory() as temp_home:
+            self.module._configure_runtime(
+                {
+                    "home": temp_home,
+                    "app_mode": True,
+                    "now": "2026-07-28T12:00:00+08:00",
+                    "credentials": {
+                        "codex_quota_accounts": {
+                            "acc-1": {
+                                "display_name": "Codex · user",
+                                "access_token": "short-lived-at",
+                            }
+                        },
+                    },
+                    "http": {
+                        "get_json": lambda *_: {"plan_type": "fixture", "rate_limit": {}}
+                    },
+                }
+            )
+            result = self.module.run_app({})
+            updates = result.get("credentialUpdates") or []
+            self.assertFalse(
+                [u for u in updates if u.get("provider") == "codex"],
+                "run_app 不得返回 Codex rotation update",
+            )
+
+    def test_app_mode_quota_first_401_generates_access_rejected_challenge(self):
+        """quota 首次 401 只生成白名单 challenge, 不解析响应体进 note."""
+        with tempfile.TemporaryDirectory() as temp_home:
+            self.module._configure_runtime(
+                {
+                    "home": temp_home,
+                    "app_mode": True,
+                    "now": "2026-07-28T12:00:00+08:00",
+                    "credentials": {
+                        "codex_quota_accounts": {
+                            "acc-1": {
+                                "display_name": "Codex · user",
+                                "access_token": "short-lived-at",
+                            }
+                        },
+                    },
+                    "http": {
+                        "get_json": lambda *_a, **_k: (_ for _ in ()).throw(
+                            RuntimeError("HTTP 401")
+                        )
+                    },
+                }
+            )
+            services = self.module.service_codex_accounts()
+            challenges = self.module._RUNTIME_CREDENTIAL_CHALLENGES
+
+        self.assertEqual(services[0]["status"], "error")
+        self.assertEqual(
+            challenges,
+            [
+                {
+                    "provider": "codex",
+                    "accountId": "acc-1",
+                    "reason": "accessRejected",
+                }
+            ],
+        )
+        self.assertNotIn("HTTP 401", services[0]["note"])
+
+    def test_app_mode_quota_403_does_not_generate_challenge(self):
+        """quota 403 返回权限/套餐错误, 不生成 challenge, 不触发重新登录."""
+        with tempfile.TemporaryDirectory() as temp_home:
+            self.module._configure_runtime(
+                {
+                    "home": temp_home,
+                    "app_mode": True,
+                    "now": "2026-07-28T12:00:00+08:00",
+                    "credentials": {
+                        "codex_quota_accounts": {
+                            "acc-1": {
+                                "display_name": "Codex · user",
+                                "access_token": "short-lived-at",
+                            }
+                        },
+                    },
+                    "http": {
+                        "get_json": lambda *_a, **_k: (_ for _ in ()).throw(
+                            RuntimeError("HTTP 403")
+                        )
+                    },
+                }
+            )
+            services = self.module.service_codex_accounts()
+            challenges = self.module._RUNTIME_CREDENTIAL_CHALLENGES
+
+        self.assertEqual(services[0]["status"], "error")
+        self.assertEqual(challenges, [])
+
+    def test_app_mode_quota_transient_failure_does_not_generate_challenge(self):
+        """quota 429/5xx/断网/超时返回暂时失败, 不生成 challenge, 不在同轮重试."""
+        for message in ("HTTP 429", "HTTP 503", "timed out"):
+            with self.subTest(message=message):
+                self.module._configure_runtime(
+                    {
+                        "home": tempfile.mkdtemp(),
+                        "app_mode": True,
+                        "now": "2026-07-28T12:00:00+08:00",
+                        "credentials": {
+                            "codex_quota_accounts": {
+                                "acc-1": {
+                                    "display_name": "Codex · user",
+                                    "access_token": "short-lived-at",
+                                }
+                            },
+                        },
+                        "http": {
+                            "get_json": lambda *_a, **_k: (_ for _ in ()).throw(
+                                RuntimeError(message)
+                            )
+                        },
+                    }
+                )
+                services = self.module.service_codex_accounts()
+                self.assertEqual(services[0]["status"], "error")
+                self.assertEqual(
+                    self.module._RUNTIME_CREDENTIAL_CHALLENGES,
+                    [],
+                )
+
+    def test_codex_quota_retry_only_mode_skips_local_scan_and_other_services(self):
+        """codex_quota_retry_only=true 时不扫描本地会话, 不调用其他 provider."""
+        with tempfile.TemporaryDirectory() as temp_home:
+            scan_calls = []
+            original_scan = self.module.scan_codex
+            self.module.scan_codex = lambda *a, **k: scan_calls.append(1) or (
+                False, None
+            )
+            original_services = self.module._collect_app_services
+            self.module._collect_app_services = (
+                lambda: scan_calls.append(2) or []
+            )
+            original_antigravity = self.module.service_antigravity
+            self.module.service_antigravity = (
+                lambda: scan_calls.append(3) or []
+            )
+            try:
+                artifact = self.module.run_app(
+                    {
+                        "home": temp_home,
+                        "app_mode": True,
+                        "now": "2026-07-28T12:00:00+08:00",
+                        "codex_quota_retry_only": True,
+                        "credentials": {
+                            "codex_quota_accounts": {
+                                "acc-1": {
+                                    "display_name": "Codex · user",
+                                    "access_token": "short-lived-at",
+                                }
+                            },
+                        },
+                        "http": {
+                            "get_json": lambda *_: {
+                                "plan_type": "fixture",
+                                "rate_limit": {},
+                            }
+                        },
+                    }
+                )["artifact"]
+            finally:
+                self.module.scan_codex = original_scan
+                self.module._collect_app_services = original_services
+                self.module.service_antigravity = original_antigravity
+
+        self.assertEqual(scan_calls, [])
+        service_ids = [s["id"] for s in artifact["services"]]
+        self.assertEqual(service_ids, ["codex_acc-1"])
+        self.assertEqual(artifact["agents"], [])
+        self.assertIsNone(artifact["totalCostUsd"])
 
     def test_cc_switch_schema_error_is_not_reported_as_empty(self):
         with tempfile.TemporaryDirectory() as temp_home:
@@ -1166,6 +1458,240 @@ class VolcengineResetTimestampTests(unittest.TestCase):
         )
 
         self.assertIsNone(result["windows"][0]["resetsAt"])
+
+
+class BridgeSubprocessCodexQuotaIntegrationTests(unittest.TestCase):
+    """任务 11 端到端隔离: 真实子进程 (python3 -> run_bridge.py ->
+    collect_usage.py) + 本地 fake HTTP server (loopback), 不触碰任何
+    真实文件或网络.
+
+    fake server 路径经 Bridge 白名单 (context 键由 security.py 映射) 到达
+    collector; 旧认证文件只作为磁盘存在的 fixture 验证「不被触碰」.
+    """
+
+    def _fake_server(self, usage_status=200):
+        """loopback fake server: /wham/usage 返回配额, /oauth/token 计数
+        (本地测试预期不被调用)."""
+        import http.server
+        import threading
+
+        calls = {"usage": 0, "token": 0}
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_GET(self):
+                calls["usage"] += 1
+                if usage_status == 401:
+                    self.send_response(401)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(b'{"error": "unauthorized"}')
+                    return
+                body = json.dumps(
+                    {
+                        "plan_type": "fixture-plan",
+                        "rate_limit": {
+                            "primary_window": {
+                                "limit_window_seconds": 18000,
+                                "used_percent": 42,
+                                "reset_at": "2026-07-28T17:00:00+08:00",
+                            }
+                        },
+                    }
+                ).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_POST(self):
+                calls["token"] += 1
+                body = json.dumps(
+                    {"access_token": "rotated", "refresh_token": "rotated-rt"}
+                ).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(body)
+
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        port = server.server_address[1]
+        return server, calls, "http://127.0.0.1:%d" % port
+
+    def _run_bridge(
+        self,
+        temp_home,
+        credentials,
+        usage_url,
+        token_url=None,
+        context_extra=None,
+    ):
+        import subprocess
+
+        context = {
+            "home": temp_home,
+            "now": "2026-07-28T12:00:00+08:00",
+            "timezone": "Asia/Shanghai",
+            "capabilities": ["localSessions", "localPricing", "externalQuotas"],
+            "codexUsageUrl": usage_url,
+        }
+        if token_url:
+            context["codexTokenUrl"] = token_url
+        context.update(context_extra or {})
+        request = {
+            "schemaVersion": 1,
+            "runId": "12345678-1234-4234-9234-123456789abc",
+            "module": "agent-usage",
+            "timeouts": {
+                "localScanSeconds": 30,
+                "externalRequestSeconds": 10,
+                "moduleSeconds": 90,
+            },
+            "context": context,
+            "credentials": credentials,
+        }
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(REPO_ROOT / "bridge" / "run_bridge.py"),
+            ],
+            input=json.dumps(request),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        self.assertEqual(
+            result.returncode, 0, "bridge subprocess failed: %s" % result.stderr
+        )
+        return json.loads(result.stdout)
+
+    def _file_snapshot(self, paths):
+        snapshot = {}
+        for path in paths:
+            stat = os.stat(path)
+            snapshot[str(path)] = (
+                hashlib.sha256(path.read_bytes()).hexdigest(),
+                stat.st_size,
+                stat.st_mtime_ns,
+            )
+        return snapshot
+
+    def test_quota_only_path_hits_fake_server_and_never_touches_auth_files(self):
+        """App quota 全流程: 真实子进程 + loopback fake server, 磁盘上的
+        fake CC Switch / Codex CLI 文件哈希与元数据不变, token endpoint
+        不被调用."""
+        with tempfile.TemporaryDirectory() as temp_home:
+            cc_auth = Path(temp_home) / ".cc-switch" / "codex_oauth_auth.json"
+            cli_auth = Path(temp_home) / ".codex" / "auth.json"
+            cc_auth.parent.mkdir(parents=True)
+            cli_auth.parent.mkdir(parents=True)
+            cc_auth.write_text(
+                json.dumps(
+                    {
+                        "accounts": {
+                            "acc-1": {
+                                "email": "fixture@example.test",
+                                "refresh_token": "cc-rotatable-rt",
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            cli_auth.write_text(
+                json.dumps(
+                    {
+                        "tokens": {
+                            "account_id": "acc-1",
+                            "refresh_token": "cli-rotatable-rt",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            before = self._file_snapshot([cc_auth, cli_auth])
+            server, calls, base = self._fake_server()
+            try:
+                response = self._run_bridge(
+                    temp_home,
+                    {
+                        "codexQuotaAccounts": {
+                            "acc-1": {
+                                "display_name": "Codex · user",
+                                "access_token": "fixture-short-lived-token",
+                            }
+                        },
+                    },
+                    base + "/wham/usage",
+                    token_url=base + "/oauth/token",
+                )
+                after = self._file_snapshot([cc_auth, cli_auth])
+            finally:
+                server.shutdown()
+        self.assertEqual(response["status"], "success")
+        codex = [
+            s for s in response["artifact"]["services"] if s.get("app") == "codex"
+        ]
+        self.assertEqual(len(codex), 1)
+        self.assertEqual(codex[0]["status"], "ok")
+        self.assertEqual(codex[0]["plan"], "fixture-plan")
+        self.assertEqual(calls["usage"], 1)
+        self.assertEqual(calls["token"], 0)
+        serialized = json.dumps(response)
+        self.assertNotIn("cc-rotatable-rt", serialized)
+        self.assertNotIn("cli-rotatable-rt", serialized)
+        self.assertNotIn("fixture-short-lived-token", serialized)
+        # 全流程前后 hash/size/mtime 不变 (快照值在 temp 目录内采集)
+        self.assertEqual(after, before)
+
+    def test_quota_401_via_fake_server_returns_only_whitelisted_challenge(self):
+        """真实子进程 + 401 fake server: 响应只有白名单 challenge,
+        不含 token 或旧认证文件内容."""
+        with tempfile.TemporaryDirectory() as temp_home:
+            cc_auth = Path(temp_home) / ".cc-switch" / "codex_oauth_auth.json"
+            cc_auth.parent.mkdir(parents=True)
+            cc_auth.write_text(
+                json.dumps(
+                    {"accounts": {"acc-1": {"refresh_token": "cc-rotatable-rt"}}}
+                ),
+                encoding="utf-8",
+            )
+            server, calls, base = self._fake_server(usage_status=401)
+            try:
+                response = self._run_bridge(
+                    temp_home,
+                    {
+                        "codexQuotaAccounts": {
+                            "acc-1": {
+                                "display_name": "Codex · user",
+                                "access_token": "fixture-short-lived-token",
+                            }
+                        },
+                    },
+                    base + "/wham/usage",
+                    token_url=base + "/oauth/token",
+                )
+            finally:
+                server.shutdown()
+
+        self.assertEqual(response["status"], "partial")
+        self.assertEqual(
+            response["credentialChallenges"],
+            [
+                {
+                    "provider": "codex",
+                    "accountId": "acc-1",
+                    "reason": "accessRejected",
+                }
+            ],
+        )
+        self.assertEqual(calls["token"], 0)
+        serialized = json.dumps(response)
+        self.assertNotIn("cc-rotatable-rt", serialized)
+        self.assertNotIn("fixture-short-lived-token", serialized)
 
 
 if __name__ == "__main__":

@@ -71,6 +71,8 @@ _RUNTIME_TZ = None
 _RUNTIME_HTTP = {}
 _RUNTIME_CREDENTIALS = {}
 _RUNTIME_CREDENTIAL_UPDATES = []
+# App 模式 quota 401 收集的定向重试挑战; Bridge 每次运行重置, 测试直接断言
+_RUNTIME_CREDENTIAL_CHALLENGES = []
 _RUNTIME_CAPABILITIES = None
 _APP_MODE = False
 _CREDENTIAL_UPDATE_LOCK = threading.Lock()
@@ -98,6 +100,8 @@ def _configure_runtime(ctx):
     global DAYS, HTTP_TIMEOUT, now, TODAY, CUTOFF_TS, DAY_LIST
     global _RUNTIME_TZ, _RUNTIME_HTTP, _RUNTIME_CREDENTIALS
     global _RUNTIME_CREDENTIAL_UPDATES, _RUNTIME_CAPABILITIES, _APP_MODE
+    global _RUNTIME_CREDENTIAL_CHALLENGES
+    global CODEX_TOKEN_URL, CODEX_USAGE_URL
 
     ctx = ctx or {}
     HOME = os.path.abspath(os.path.expanduser(ctx.get("home") or "~"))
@@ -157,6 +161,14 @@ def _configure_runtime(ctx):
         "kimi_web_tokens",
         os.path.join(HOME, ".config/kimi-dashboard/kimi-web-tokens.json"),
     )
+    # App/测试可覆盖出站 URL (本地 fake server 用 loopback 地址);
+    # 默认值保持生产端点不变.
+    CODEX_TOKEN_URL = str(
+        ctx.get("codex_token_url") or CODEX_TOKEN_URL
+    )
+    CODEX_USAGE_URL = str(
+        ctx.get("codex_usage_url") or CODEX_USAGE_URL
+    )
 
     timezone_value = ctx.get("timezone")
     if isinstance(timezone_value, str):
@@ -192,6 +204,7 @@ def _configure_runtime(ctx):
     _RUNTIME_HTTP = dict(ctx.get("http") or {})
     _RUNTIME_CREDENTIALS = dict(ctx.get("credentials") or {})
     _RUNTIME_CREDENTIAL_UPDATES = []
+    _RUNTIME_CREDENTIAL_CHALLENGES = []
     _APP_MODE = bool(ctx.get("app_mode"))
     # 只有 ctx 显式携带 capabilities 时才启用门禁 (Bridge App 模式总会携带);
     # CLI 直跑不带该键, 保持现状行为完全不变
@@ -1135,15 +1148,128 @@ def _codex_refresh(refresh_token):
         return json.loads(resp.read().decode("utf-8", "replace"))
 
 
-def service_codex_accounts():
-    """读取 CC Switch 管理的 Codex OAuth 多账号，逐个查询实时额度。
+def _codex_query_single_account(acc_id, access_token, display_name, style):
+    """查询单账号 wham/usage 额度, 两种调用方共用同一查询主体.
 
-    CLI 兼容模式继续同步本机认证文件. App 模式只返回候选更新, 由
-    Swift 验证后写入应用自己的 Keychain.
+    style="app": 消费注入的短期 access token, 错误分类生成固定文案
+    (401 -> accessRejected challenge; 403 -> 权限/套餐错误; 其余 -> 暂时
+    失败), 不解析响应体进 note. style="legacy": 保留 CLI 兼容行为, 错误
+    文案带原始消息.
     """
-    injected_accounts = _runtime_credential("codex_oauth_auth")
+    svc = {
+        "id": "codex_" + (acc_id or "unknown")[:8],
+        "name": "Codex · " + (display_name or "账号"),
+        "app": "codex",
+        "isCurrent": False,
+        "status": "ok",
+        "kind": None,
+        "plan": None,
+        "windows": [],
+        "balance": None,
+        "currency": None,
+        "capturedAt": now.isoformat(timespec="seconds"),
+        "note": "",
+    }
+    try:
+        d = http_get_json(
+            CODEX_USAGE_URL,
+            {
+                "Authorization": "Bearer " + (access_token or ""),
+                "chatgpt-account-id": acc_id or "",
+                "User-Agent": "codex-cli/1.0",
+                "Accept": "application/json",
+            },
+        )
+        windows = []
+        rl = d.get("rate_limit") or {}
+        for key in ("primary_window", "secondary_window"):
+            w = rl.get(key)
+            if not w:
+                continue
+            secs = w.get("limit_window_seconds")
+            windows.append(
+                {
+                    "label": _codex_window_label(secs),
+                    "usedPercent": max(0.0, min(100.0, float(w.get("used_percent") or 0))),
+                    "windowMinutes": int(secs) // 60 if secs else None,
+                    "resetsAt": w.get("reset_at"),
+                }
+            )
+        extra = None
+        cr = d.get("credits") or {}
+        if cr.get("unlimited"):
+            extra = "Credits 不限量"
+        elif cr.get("has_credits"):
+            extra = "Credits 余额 " + str(cr.get("balance"))
+        svc.update(
+            {
+                "kind": "windows",
+                "plan": d.get("plan_type") or None,
+                "windows": windows,
+                "extra": extra,
+            }
+        )
+        if not windows:
+            svc["status"] = "empty"
+            svc["note"] = "接口已通但未返回额度窗口"
+    except Exception as e:
+        code = getattr(e, "code", None)
+        if style == "app":
+            message = str(e)
+            if code == 401 or "HTTP 401" in message:
+                svc["status"] = "error"
+                svc["note"] = "登录态已失效, 请重新登录该账号"
+                with _CREDENTIAL_UPDATE_LOCK:
+                    _RUNTIME_CREDENTIAL_CHALLENGES.append(
+                        {
+                            "provider": "codex",
+                            "accountId": acc_id,
+                            "reason": "accessRejected",
+                        }
+                    )
+            elif code == 403 or "HTTP 403" in message:
+                svc["status"] = "error"
+                svc["note"] = "当前账号无权访问该额度接口"
+            else:
+                svc["status"] = "error"
+                svc["note"] = "额度查询暂时失败, 请稍后重试"
+        else:
+            svc["status"] = "error"
+            msg = str(e)
+            svc["note"] = ("查询失败: " + msg[:60]) if msg else "查询失败"
+    return svc
+
+
+def service_codex_accounts():
+    """查询 Codex OAuth 多账号的实时额度.
+
+    App access-only 路径: 只消费注入的 `codex_quota_accounts` (每账号仅
+    display_name + 短期 access_token), 直接请求 wham/usage; 无刷新, 无
+    磁盘读取, 无 rotation update, 401 记录定向 challenge.
+    CLI legacy 路径: 未注入时保留原行为 (读 CC Switch / Codex CLI 认证
+    文件, candidates 轮换重试, CLI 文件写回).
+    """
+    injected_accounts = _runtime_credential("codex_quota_accounts")
     if injected_accounts is not None:
-        data = json.loads(json.dumps(injected_accounts))
+        accounts = json.loads(json.dumps(injected_accounts))
+        with ThreadPoolExecutor(max_workers=min(4, len(accounts))) as pool:
+            services = [
+                svc
+                for svc in pool.map(
+                    lambda item: _codex_query_single_account(
+                        item[0],
+                        (item[1] or {}).get("access_token"),
+                        (item[1] or {}).get("display_name"),
+                        "app",
+                    ),
+                    accounts.items(),
+                )
+            ]
+        return services
+
+    injected_oauth = _runtime_credential("codex_oauth_auth")
+    if injected_oauth is not None:
+        data = json.loads(json.dumps(injected_oauth))
     else:
         if _APP_MODE:
             return []
@@ -1182,20 +1308,6 @@ def service_codex_accounts():
         acc_changed = False
         acc_cli_rotated = False
         email = acc.get("email") or (acc_id[:8] if acc_id else "未知账号")
-        svc = {
-            "id": "codex_" + (acc_id or "unknown")[:8],
-            "name": "Codex · " + email.split("@")[0],
-            "app": "codex",
-            "isCurrent": acc_id == active_id,
-            "status": "ok",
-            "kind": None,
-            "plan": None,
-            "windows": [],
-            "balance": None,
-            "currency": None,
-            "capturedAt": now.isoformat(timespec="seconds"),
-            "note": "",
-        }
         try:
             # OpenAI refresh_token 用一次即轮换，且 Codex CLI 与 CC Switch 各存一份。
             # 当前账号优先用 CLI 侧（~/.codex/auth.json，通常最新），失败再试 CC 侧。
@@ -1228,51 +1340,24 @@ def service_codex_accounts():
                         cli_tokens[k] = tokens[k]
                 acc_cli_rotated = True
             access_token = tokens.get("access_token") or acc.get("access_token") or ""
-            d = http_get_json(
-                CODEX_USAGE_URL,
-                {
-                    "Authorization": "Bearer " + access_token,
-                    "chatgpt-account-id": acc_id or "",
-                    "User-Agent": "codex-cli/1.0",
-                    "Accept": "application/json",
-                },
+            svc = _codex_query_single_account(
+                acc_id, access_token, email.split("@")[0], "legacy"
             )
-            windows = []
-            rl = d.get("rate_limit") or {}
-            for key in ("primary_window", "secondary_window"):
-                w = rl.get(key)
-                if not w:
-                    continue
-                secs = w.get("limit_window_seconds")
-                windows.append(
-                    {
-                        "label": _codex_window_label(secs),
-                        "usedPercent": max(0.0, min(100.0, float(w.get("used_percent") or 0))),
-                        "windowMinutes": int(secs) // 60 if secs else None,
-                        "resetsAt": w.get("reset_at"),
-                    }
-                )
-            extra = None
-            cr = d.get("credits") or {}
-            if cr.get("unlimited"):
-                extra = "Credits 不限量"
-            elif cr.get("has_credits"):
-                extra = "Credits 余额 " + str(cr.get("balance"))
-            svc.update(
-                {
-                    "kind": "windows",
-                    "plan": d.get("plan_type") or None,
-                    "windows": windows,
-                    "extra": extra,
-                }
-            )
-            if not windows:
-                svc["status"] = "empty"
-                svc["note"] = "接口已通但未返回额度窗口"
         except Exception as e:
-            svc["status"] = "error"
-            msg = str(e)
-            svc["note"] = ("查询失败: " + msg[:60]) if msg else "查询失败"
+            svc = {
+                "id": "codex_" + (acc_id or "unknown")[:8],
+                "name": "Codex · " + email.split("@")[0],
+                "app": "codex",
+                "isCurrent": acc_id == active_id,
+                "status": "error",
+                "kind": None,
+                "plan": None,
+                "windows": [],
+                "balance": None,
+                "currency": None,
+                "capturedAt": now.isoformat(timespec="seconds"),
+                "note": ("查询失败: " + str(e)[:60]) if str(e) else "查询失败",
+            }
         return svc, acc_changed, acc_cli_rotated
 
     # 跨账号并行 (每账号一个 future, map 保持账号顺序); 各 worker 只写
@@ -1287,7 +1372,7 @@ def service_codex_accounts():
             services.append(svc)
             changed = changed or acc_changed
             cli_rotated = cli_rotated or acc_cli_rotated
-    if changed and injected_accounts is None and not _APP_MODE:
+    if changed and injected_oauth is None and not _APP_MODE:
         try:
             shutil.copy2(CODEX_OAUTH_AUTH, CODEX_OAUTH_AUTH + ".bak-kimi")
             with open(CODEX_OAUTH_AUTH, "w", encoding="utf-8") as fh:
@@ -1694,6 +1779,22 @@ def _quota_denied_services():
     ]
 
 
+def collect_codex_quota_retry_only(ctx):
+    """App 定向重试: 只构造 Codex service 部分 artifact.
+
+    不扫描本地会话, 不加载定价, 不调用其他 provider. 保留 agent-usage
+    契约结构 (agents/services/totalCostUsd), agents 为空数组.
+    """
+    _configure_runtime(ctx)
+    codex_svcs = service_codex_accounts()
+    return {
+        "generatedAt": now.isoformat(timespec="seconds"),
+        "agents": [],
+        "services": codex_svcs,
+        "totalCostUsd": None,
+    }
+
+
 def collect(ctx=None):
     _configure_runtime(ctx)
     # 未授权 localPricing 时降级为空定价, 成本估算全部为 None
@@ -1850,11 +1951,17 @@ def run(ctx):
 def run_app(ctx):
     app_ctx = dict(ctx or {})
     app_ctx["app_mode"] = True
-    artifact = collect(app_ctx)
+    if app_ctx.get("codex_quota_retry_only"):
+        artifact = collect_codex_quota_retry_only(app_ctx)
+    else:
+        artifact = collect(app_ctx)
     return {
         "artifact": artifact,
         "credentialUpdates": json.loads(
             json.dumps(_RUNTIME_CREDENTIAL_UPDATES)
+        ),
+        "credentialChallenges": json.loads(
+            json.dumps(_RUNTIME_CREDENTIAL_CHALLENGES)
         ),
     }
 

@@ -58,6 +58,9 @@ package struct AgentServiceItem: Codable, Equatable, Sendable {
     let note: String?
     /// 附加说明 (如 Kimi 加量包余额文案), 与 windows 并列展示.
     let extra: String?
+    /// 本条 service 数据采集时间 (ISO-8601); 任务 9 起用于
+    /// 非 ok 状态显示"上次成功"时间.
+    let capturedAt: String?
 }
 
 package struct AgentUsageArtifact: Codable, Equatable, Sendable {

@@ -27,7 +27,7 @@ private struct IsolatedRunInputProvider: CollectorRunInputProviding {
     let home: URL
     let secret: String
 
-    func runInput(for module: CollectorModule) throws -> CollectorRunInput {
+    func runInput(for module: CollectorModule) async throws -> CollectorRunInput {
         guard module == .agentUsage else {
             throw CollectorRunInputError.missingDependency(
                 module: module,
@@ -50,6 +50,14 @@ private struct IsolatedRunInputProvider: CollectorRunInputProviding {
                 ]),
             ]
         )
+    }
+
+    /// 隔离集成不启用 Codex 定向重试.
+    func retryInput(
+        for module: CollectorModule,
+        accountID: String
+    ) async throws -> CollectorRunInput? {
+        nil
     }
 }
 
@@ -79,7 +87,84 @@ struct LocalIntegrationHarness {
             python: python,
             bridge: bridge
         )
-        print("Local integration tests passed: 1")
+        try await codexMigrationLifecycleClosedLoop()
+        print("Local integration tests passed: 2")
+    }
+
+    /// 任务 11 迁移闭环: 旧整体账号库 -> metadata-only v2 (不含 token),
+    /// 旧键删除, 幂等重试, 迁移产物不向任何注入路径暴露旧 token.
+    private static func codexMigrationLifecycleClosedLoop() async throws {
+        let memory = InMemoryCredentialStore()
+        let store = CodexCredentialStore(store: memory)
+        let fixedNow = Date(timeIntervalSince1970: 1_752_000_000)
+
+        // 1. 预置旧整体账号库 (含 token 与完整邮箱) + 旧 active 项
+        let legacyJSON = """
+        {"accounts":{"acc-1":{"email":"fixture@example.test",\
+        "refresh_token":"legacy-rt","access_token":"legacy-at","id_token":"legacy-it"}}}
+        """
+        try memory.saveCredential(
+            legacyJSON, forAccount: CodexCredentialKeys.legacyAccounts
+        )
+        try memory.saveCredential(
+            "acc-1", forAccount: CodexCredentialKeys.legacyActiveAccount
+        )
+
+        // 2. 幂等迁移执行
+        let executed = try store.migrateLegacyAccounts(now: fixedNow)
+        try integrationExpect(executed, "旧库存在时迁移必须实际执行")
+
+        // 3. v2 记录是 metadata-only: 任何 token 字段都是 nil, 状态需重新授权
+        guard let record = try store.loadRecord(for: "acc-1") else {
+            throw IntegrationTestFailure.expectation("迁移后 v2 记录缺失")
+        }
+        try integrationExpect(
+            record.accessToken == nil && record.refreshToken == nil
+                && record.idToken == nil,
+            "迁移复制了 token"
+        )
+        try integrationExpect(
+            record.authorizationState == .needsReauthorization
+                && record.credentialOrigin == .legacyCCSwitchDiscovery,
+            "迁移记录状态/来源不符"
+        )
+        try integrationExpect(
+            record.email == "fixture@example.test",
+            "迁移丢失 email 元数据"
+        )
+
+        // 4. 旧键已删除
+        let legacyAccounts = try memory.loadCredential(
+            forAccount: CodexCredentialKeys.legacyAccounts
+        )
+        try integrationExpect(legacyAccounts == nil, "旧整体库未被删除")
+        let legacyActive = try memory.loadCredential(
+            forAccount: CodexCredentialKeys.legacyActiveAccount
+        )
+        try integrationExpect(legacyActive == nil, "旧 active 项未被删除")
+
+        // 5. 再次迁移幂等返回 false, 不重复写入
+        let again = try store.migrateLegacyAccounts(now: fixedNow)
+        try integrationExpect(!again, "无旧键时迁移必须幂等返回 false")
+        let index = try store.loadIndex()
+        try integrationExpect(
+            index.accounts.count == 1 && index.migrationCompletedAt != nil,
+            "迁移完成标记/账号数不符"
+        )
+
+        // 6. 迁移产物不会以旧 token 形式进入任何运行输入:
+        // 无 injector 时 resolveCodexQuotaAccounts 不产生注入
+        let provider = OnboardingRunInputProvider(
+            configStore: nil,
+            credentialStore: memory,
+            codexTokenInjector: nil,
+            codexStore: store
+        )
+        let input = try await provider.runInput(for: .agentUsage)
+        try integrationExpect(
+            input.credentials["codexQuotaAccounts"] == nil,
+            "未授权的迁移账号不得注入 quota 输入"
+        )
     }
 
     private static func startupRefreshCacheDiagnosticsAndCleanup(

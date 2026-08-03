@@ -303,6 +303,9 @@ package struct CodexAccountViewModel: Equatable, Sendable {
     package let status: String
     package let note: String?
     package let windows: [SubscriptionWindowRow]
+    /// 非 ok 状态时显示的上次成功时间文案 ("上次成功 HH:mm"),
+    /// 来自保留的旧 capturedAt; ok 状态为 nil.
+    package let lastSuccessText: String?
 
     package init(
         id: String,
@@ -310,7 +313,8 @@ package struct CodexAccountViewModel: Equatable, Sendable {
         plan: String?,
         status: String,
         note: String?,
-        windows: [SubscriptionWindowRow]
+        windows: [SubscriptionWindowRow],
+        lastSuccessText: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -318,6 +322,7 @@ package struct CodexAccountViewModel: Equatable, Sendable {
         self.status = status
         self.note = note
         self.windows = windows
+        self.lastSuccessText = lastSuccessText
     }
 }
 
@@ -647,18 +652,22 @@ package struct PanelViewModelMapper: Sendable {
                     plan: service.plan,
                     status: service.status,
                     note: note,
-                    windows: windows
+                    windows: windows,
+                    lastSuccessText: lastSuccessText(
+                        for: service,
+                        now: now
+                    )
                 ))
                 continue
             }
 
             sections.append(SubscriptionProviderSection(
                 id: service.id,
-                name: service.name,
+                name: subscriptionDisplayName(service),
                 plan: service.plan,
                 status: service.status,
                 note: note,
-                extraText: normalizedNote(service.extra),
+                extraText: subscriptionExtraText(service),
                 windows: windows,
                 codexAccounts: nil,
                 balance: service.balance.map { BalanceRow(amount: $0, currency: service.currency) },
@@ -675,7 +684,7 @@ package struct PanelViewModelMapper: Sendable {
             let groupStatus = statusRank.first(where: { $0.value == worst })?.key ?? "partial"
             let group = SubscriptionProviderSection(
                 id: "codex",
-                name: "Codex",
+                name: "ChatGPT",
                 plan: nil,
                 status: groupStatus,
                 note: nil,
@@ -752,6 +761,36 @@ package struct PanelViewModelMapper: Sendable {
         )
     }
 
+    /// 订阅展示名: 火山引擎剥离 collector 名称里的 Coding Plan 后缀, 仅显示层覆盖.
+    private func subscriptionDisplayName(_ service: AgentServiceItem) -> String {
+        guard service.id == "volcengine" else { return service.name }
+        return service.name.replacingOccurrences(of: "（Coding Plan）", with: "")
+    }
+
+    /// 附加文案: 「加量包未启用」对用户无信息量, 不展示; 余额等其他文案保留.
+    private func subscriptionExtraText(_ service: AgentServiceItem) -> String? {
+        let extra = normalizedNote(service.extra)
+        return extra == "加量包未启用" ? nil : extra
+    }
+
+    /// 非 ok 状态显示 "上次成功 HH:mm" (来自保留的旧 capturedAt);
+    /// ok 或 capturedAt 不可解析时不显示.
+    private func lastSuccessText(
+        for service: AgentServiceItem,
+        now: Date
+    ) -> String? {
+        guard service.status != "ok",
+              let capturedAt = service.capturedAt,
+              let date = Self.parseISODate(capturedAt) else {
+            return nil
+        }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        formatter.timeZone = calendar.timeZone
+        let prefix = "上次成功 "
+        return prefix + formatter.string(from: date)
+    }
+
     // MARK: 逐小时卡
 
     private func makeHourly(
@@ -776,7 +815,7 @@ package struct PanelViewModelMapper: Sendable {
                 )
                 return HourlyAgentRow(
                     agentID: agent.id,
-                    name: agent.name,
+                    name: hourlyDisplayName(id: agent.id, fallback: agent.name),
                     color: PanelAgentColor.resolve(agentID: agent.id),
                     todayTotal: agent.today.total,
                     points: agent.hours,
@@ -787,6 +826,11 @@ package struct PanelViewModelMapper: Sendable {
             // 按今日用量从高到低动态排序.
             .sorted { $0.todayTotal > $1.todayTotal }
         return HourlyLineViewModel(rows: rows)
+    }
+
+    /// 逐小时卡展示名: 仅显示层覆盖, 不动 artifact 契约名.
+    private func hourlyDisplayName(id: String, fallback: String) -> String {
+        id == "kimi-code-cli" ? "Kimi Code" : fallback
     }
 
     /// Top N + 其他聚合; base 为分组总量 (份额分母).

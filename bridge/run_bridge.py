@@ -17,6 +17,7 @@ if __package__:
         build_collector_context,
         diagnostic,
         find_sensitive_field,
+        validate_credential_challenges,
         validate_credential_updates,
         validate_request,
     )
@@ -27,6 +28,7 @@ else:
         build_collector_context,
         diagnostic,
         find_sensitive_field,
+        validate_credential_challenges,
         validate_credential_updates,
         validate_request,
     )
@@ -80,6 +82,7 @@ def _error_response(run_id, fault):
         "status": "error",
         "artifact": None,
         "credentialUpdates": [],
+        "credentialChallenges": [],
         "diagnostics": [
             diagnostic(
                 fault.code,
@@ -203,6 +206,9 @@ def execute_request(
         updates = validate_credential_updates(
             result.get("credentialUpdates", [])
         )
+        challenges = validate_credential_challenges(
+            result.get("credentialChallenges", [])
+        )
         diagnostics = _partial_diagnostics(module_name, artifact)
         if stderr_buffer.getvalue():
             diagnostics.append(
@@ -222,6 +228,7 @@ def execute_request(
             "status": "partial" if diagnostics else "success",
             "artifact": artifact,
             "credentialUpdates": updates,
+            "credentialChallenges": challenges,
             "diagnostics": diagnostics,
         }
     except ValidationError as exc:

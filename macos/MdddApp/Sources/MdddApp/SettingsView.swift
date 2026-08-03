@@ -330,16 +330,16 @@ struct SettingsView: View {
             Text("只读访问 CC Switch 数据库, 不会修改 CC Switch 的任何数据")
         }
         .confirmationDialog(
-            "从 CC Switch 导入 Codex 账号库?",
+            "从 CC Switch 发现 Codex 账号?",
             isPresented: $showsCodexCCImportConfirm,
             titleVisibility: .visible
         ) {
-            Button("导入") {
+            Button("发现账号") {
                 coordinator.importCodexFromCCSwitch()
             }
             Button("取消", role: .cancel) {}
         } message: {
-            Text("只读导入一次, 导入后由本应用自管, 不会回写 CC Switch")
+            Text("只读发现账号元数据. 不导入、不保存、不使用 CC Switch 持有的 Codex 登录令牌, 也不会回写 CC Switch")
         }
     }
 
@@ -633,7 +633,7 @@ struct SettingsView: View {
             if let summary = model.codexAccountSummary, summary.count > 0 {
                 let shown = summary.emailPrefixes.prefix(5).joined(separator: ", ")
                 let suffix = summary.emailPrefixes.count > 5 ? " 等" : ""
-                Text("已导入 \(summary.count) 个账号: \(shown)\(suffix)")
+                Text("已发现 \(summary.count) 个账号: \(shown)\(suffix)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -648,20 +648,21 @@ struct SettingsView: View {
                 .disabled(busy)
                 .accessibilityHint("在浏览器中完成 Codex 官方设备码登录并入库")
                 if coordinator.codexCLIAuthFileExists() {
-                    Button("从本机导入当前账号") {
+                    Button("发现本机 CLI 账号") {
                         coordinator.importCodexFromLocalCLI()
                     }
                     .disabled(busy)
-                    .accessibilityHint("读取 Codex CLI 的当前登录账号")
+                    .accessibilityHint("只读发现 Codex CLI 的当前登录账号元数据, 不导入登录令牌")
                 }
             }
             if coordinator.codexCCAccountsFileExists() {
-                Button("从 CC Switch 导入账号库") {
+                Button("发现 CC Switch 账号") {
                     showsCodexCCImportConfirm = true
                 }
                 .disabled(busy)
-                .accessibilityHint("只读导入 CC Switch 管理的 Codex 多账号")
+                .accessibilityHint("只读发现 CC Switch 管理的 Codex 账号元数据, 不导入登录令牌")
             }
+            codexAccountStatusesList
             if let login = coordinator.codexDeviceLogin {
                 deviceLoginView(
                     login,
@@ -670,6 +671,61 @@ struct SettingsView: View {
                 )
             }
         }
+    }
+
+    /// Codex 账号级状态列表: 区分 connected / needsReauthorization /
+    /// storageBlocked; needsReauthorization 提供"在 mddd 中重新授权"操作
+    /// (复用设备码登录流程). 只展示脱敏账号名与状态, 不显示 token 或完整账号 ID.
+    @ViewBuilder
+    private var codexAccountStatusesList: some View {
+        let statuses = model.codexAccountStatuses
+        if !statuses.isEmpty {
+            ForEach(Array(statuses.enumerated()), id: \.element.accountID) {
+                _, status in
+                HStack(spacing: 6) {
+                    Text(status.displayName)
+                        .font(.caption)
+                        .lineLimit(1)
+                    Spacer()
+                    accountStatusLabel(status)
+                    if status.authorizationState == .needsReauthorization {
+                        Button("重新授权") {
+                            coordinator.loginCodexNewAccount()
+                        }
+                        .font(.caption)
+                        .accessibilityHint("在浏览器中重新完成该账号的 Codex 官方设备码登录")
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
+    }
+
+    /// 账号授权状态文案 (非敏感, 不含 token/完整账号 ID).
+    private func accountStatusLabel(_ status: CodexAccountStatus) -> some View {
+        let (text, icon): (String, String)
+        switch status.authorizationState {
+        case .connected:
+            if status.storageBlocked {
+                text = "存储异常, 正在重试"
+                icon = "exclamationmark.triangle.fill"
+            } else {
+                text = "已连接"
+                icon = "checkmark.circle.fill"
+            }
+        case .needsReauthorization:
+            text = "需要重新授权"
+            icon = "exclamationmark.triangle.fill"
+        case .revoked:
+            text = "已撤销"
+            icon = "xmark.circle.fill"
+        }
+        let isHealthy = status.authorizationState == .connected
+            && !status.storageBlocked
+        return Label(text, systemImage: icon)
+            .font(.caption)
+            .foregroundStyle(isHealthy ? Color.secondary : Color.orange)
+            .accessibilityLabel("\(status.displayName) 状态: \(text)")
     }
 
     /// 设备码登录展示: 一次性验证码大字 + 打开登录页 + 轮询状态.

@@ -45,3 +45,64 @@ def test_diagnostics_archive_is_reexpanded_and_allowlisted_before_publish():
     assert '"mddd-diagnostics/README.txt"' in source
     assert '"mddd-diagnostics/report.json"' in source
     assert "isSymbolicLink" in source
+
+
+APP_LAYER = REPO_ROOT / "macos" / "MdddApp" / "Sources" / "MdddApp"
+
+
+def test_settings_codex_actions_use_discovery_not_import():
+    """任务 10 契约: Codex 入口只使用「发现」语义, 不暗示 token 导入."""
+    settings = (APP_LAYER / "SettingsView.swift").read_text()
+    assert "发现 CC Switch 账号" in settings
+    assert "发现本机 CLI 账号" in settings
+    assert "从 CC Switch 导入账号库" not in settings
+    assert "从本机导入当前账号" not in settings
+    # 确认文案明确说明不导入、不保存、不使用 CC Switch token
+    assert "不导入、不保存、不使用 CC Switch 持有的 Codex 登录令牌" in settings
+
+
+def test_settings_codex_status_distinguishes_authorization_states():
+    """任务 10 契约: 设置页可区分 connected / needsReauthorization / revoked,
+    needsReauthorization 提供「在 mddd 中重新授权」操作."""
+    settings = (APP_LAYER / "SettingsView.swift").read_text()
+    assert "case .connected:" in settings
+    assert "case .needsReauthorization:" in settings
+    assert "case .revoked:" in settings
+    assert '"需要重新授权"' in settings
+    assert 'Button("重新授权")' in settings
+    assert "accountStatusLabel" in settings
+    # 状态列表不携带 token 或完整账号 ID 的渲染路径
+    assert "codexAccountStatuses" in settings
+
+
+def test_settings_codex_ui_never_renders_sensitive_values():
+    """任务 10 契约: Codex 管理区 UI 不得把 token 或完整账号 ID 渲染进文本."""
+    settings = (APP_LAYER / "SettingsView.swift").read_text()
+    codex_group_start = settings.index("private var codexGroup")
+    codex_group_end = settings.index("private var antigravityGroup")
+    group_source = settings[codex_group_start:codex_group_end]
+    for forbidden in ("access_token", "refresh_token", "id_token"):
+        assert forbidden not in group_source
+    # 账号行只展示脱敏账号名与状态; 状态列表用 accountID 仅作稳定 id, 不进文本
+    assert "Text(status.displayName)" in group_source
+    assert "Text(status.accountID)" not in group_source
+
+
+def test_subscription_card_marks_stale_codex_data():
+    """任务 10 契约: 额度卡对非 ok 的 Codex 账号显示上次成功时间文案."""
+    card = (
+        APP_LAYER / "Views" / "SubscriptionCard.swift"
+    ).read_text()
+    assert "lastSuccessText" in card
+    assert "Text(lastSuccessText)" in card
+    assert "上次成功的数据" in card
+    # 复用现有玻璃卡片结构 (Color.adaptive 深浅色), 不新增自定义材质
+    assert "Color.adaptive" in card
+
+
+def test_panel_mapper_exposes_last_success_time_for_codex_errors():
+    """任务 10 契约: PanelViewModel 映射层为非 ok Codex 账号提供上次成功时间."""
+    mapper = (APP_CORE / "PanelViewModel.swift").read_text()
+    assert "lastSuccessText" in mapper
+    assert '"上次成功 "' in mapper
+    assert "service.capturedAt" in mapper

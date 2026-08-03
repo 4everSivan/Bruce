@@ -171,7 +171,8 @@ private final class MockCollectorExecutor: CollectorExecuting {
                 module: module
             ),
             credentialUpdates: [],
-            diagnostics: []
+            diagnostics: [],
+        credentialChallenges: []
         )
         return CollectorRunOutput(response: response, stderrDiagnostic: nil)
     }
@@ -220,7 +221,8 @@ private func makeSuccessOutput(artifact: JSONValue) -> CollectorRunOutput {
             status: .success,
             artifact: artifact,
             credentialUpdates: [],
-            diagnostics: []
+            diagnostics: [],
+        credentialChallenges: []
         ),
         stderrDiagnostic: nil
     )
@@ -245,7 +247,8 @@ private func makeErrorOutput(
                 stage: "collect",
                 message: "fixture error",
                 retryable: true
-            )]
+            )],
+        credentialChallenges: []
         ),
         stderrDiagnostic: nil
     )
@@ -351,7 +354,21 @@ struct RefreshSchedulerHarness {
         try await quotaAlertSuppressedOnManualRefresh(repository: repository)
         print("Refresh scheduler: quota alert recovery")
         try await quotaAlertRefiresAfterRecovery(repository: repository)
-        print("Refresh scheduler tests passed: 14")
+        print("Refresh scheduler: codex challenge retry")
+        try await codexChallengeTriggersSingleTargetedRetry(repository: repository)
+        print("Refresh scheduler: codex retry no third run")
+        try await codexRetryChallengeDoesNotTriggerThirdRun(repository: repository)
+        print("Refresh scheduler: codex refresh failure")
+        try await codexForceRefreshFailureKeepsFirstArtifact(repository: repository)
+        print("Refresh scheduler: codex retry error preserves quota")
+        try await codexRetryErrorPreservesLastGoodQuota(repository: repository)
+        print("Refresh scheduler: codex no challenge single run")
+        try await codexWithoutChallengeRunsOnce(repository: repository)
+        print("Refresh scheduler: codex retry gate closed")
+        try await codexRetryInputNilWhenGatedKeepsFirstArtifact(repository: repository)
+        print("Refresh scheduler: codex merger multi account")
+        try await codexMergerMultiAccountAndNewEntries()
+        print("Refresh scheduler tests passed: 21")
     }
 
     // 10.1: Timer fires -> module refreshes
@@ -1002,9 +1019,729 @@ struct RefreshSchedulerHarness {
             "第二次预警内容错误: \(alerts.items)"
         )
     }
-}
 
 // MARK: - Custom executors for specific test scenarios
+
+/// 按调用轮次返回不同响应: 首轮含 Codex accessRejected challenge,
+/// 后续轮次由脚本控制. 记录每次收到的 context/credentials.
+@MainActor
+private final class ChallengeSequenceExecutor: CollectorExecuting {
+    private let firstArtifact: JSONValue
+    private let retryArtifact: JSONValue
+    private(set) var runCount: [CollectorModule: Int] = [:]
+    private(set) var receivedContexts: [[String: JSONValue]] = []
+    private(set) var receivedCredentials: [[String: JSONValue]] = []
+    /// 第二轮 (重试) 是否带 challenge (默认 false -> 不触发第三轮).
+    var retryHasChallenge = false
+    /// 首轮是否带 challenge (默认 true; 无 challenge 场景置 false).
+    var firstHasChallenge = true
+
+    init(firstArtifact: JSONValue, retryArtifact: JSONValue) {
+        self.firstArtifact = firstArtifact
+        self.retryArtifact = retryArtifact
+    }
+
+    func run(
+        module: CollectorModule,
+        context: [String: JSONValue],
+        credentials: [String: JSONValue]
+    ) async throws -> CollectorRunOutput {
+        runCount[module, default: 0] += 1
+        receivedContexts.append(context)
+        receivedCredentials.append(credentials)
+        let isRetry = (runCount[module] ?? 0) > 1
+        let artifact = isRetry ? retryArtifact : firstArtifact
+        let challengeJSON: JSONValue = .object([
+            "provider": .string("codex"),
+            "accountId": .string("acc-1"),
+            "reason": .string("accessRejected"),
+        ])
+        let challenges: [JSONValue]
+        if isRetry {
+            challenges = retryHasChallenge ? [challengeJSON] : []
+        } else {
+            challenges = firstHasChallenge ? [challengeJSON] : []
+        }
+        let diagnostics: [BridgeDiagnostic] = isRetry ? [] : [
+            BridgeDiagnostic(
+                code: "COLLECTOR_PARTIAL_RESULT",
+                category: "collector",
+                stage: "collect",
+                message: "部分数据源采集失败",
+                retryable: true
+            ),
+        ]
+        return CollectorRunOutput(
+            response: BridgeResponse(
+                schemaVersion: 1,
+                runId: UUID().uuidString.lowercased(),
+                generatedAt: "2026-07-28T12:00:00Z",
+                // 首轮带 challenge 时按 Bridge 契约整体为 partial
+                status: isRetry ? .success : .partial,
+                artifact: artifact,
+                credentialUpdates: [],
+                diagnostics: isRetry ? [] : diagnostics,
+                credentialChallenges: challenges
+            ),
+            stderrDiagnostic: nil
+        )
+    }
+
+    func cancel(module: CollectorModule) {}
+    func cancelAll() {}
+}
+
+/// 记录刷新调用但默认拒绝的 token manager fake (任务 9).
+@MainActor
+private final class StubCodexTokenManager: CodexTokenManaging {
+    var resolutions: [String: TokenResolution] = [:]
+    private(set) var invalidated: [String] = []
+    private(set) var forcedRefreshCount: [String: Int] = [:]
+
+    func invalidateAccessToken(for accountID: String) async {
+        invalidated.append(accountID)
+    }
+
+    func forceRefresh(
+        for accountID: String,
+        now: Date?
+    ) async -> TokenResolution {
+        forcedRefreshCount[accountID, default: 0] += 1
+        return resolutions[accountID]
+            ?? .failure(.notFound(accountID: accountID))
+    }
+}
+
+/// 定向重试输入提供器 (任务 9): 记录首轮与重试调用.
+@MainActor
+private final class RetryInputProvider: CollectorRunInputProviding {
+    var codexRetryInput: CollectorRunInput?
+    var firstInput = CollectorRunInput(context: [:], credentials: [:])
+    private(set) var retriedAccounts: [String] = []
+
+    func runInput(for module: CollectorModule) async throws -> CollectorRunInput {
+        firstInput
+    }
+
+    func retryInput(
+        for module: CollectorModule,
+        accountID: String
+    ) async throws -> CollectorRunInput? {
+        retriedAccounts.append(accountID)
+        return codexRetryInput
+    }
+}
+
+/// 构造带 codex token manager 的调度器.
+@MainActor
+private static func makeSchedulerWithCodex(
+    repository: URL,
+    executor: CollectorExecuting,
+    tokenManager: StubCodexTokenManager,
+    retryProvider: RetryInputProvider? = nil
+) throws -> (RefreshScheduler, ArtifactStore, URL) {
+    let (scheduler, store, root) = try makeSchedulerWithError(
+        repository: repository,
+        executor: executor,
+        clock: ManualClock(),
+        timers: FakeTimerScheduler()
+    )
+    scheduler.codexTokenManager = tokenManager
+    if let retryProvider {
+        scheduler.setRunInputProviderForTesting(retryProvider)
+    }
+    return (scheduler, store, root)
+}
+
+/// Codex 额度 artifact 构造: 一个 codex 账号 + 一个非 codex service + agents.
+@MainActor
+private static func makeCodexQuotaArtifact(
+    status: String,
+    usedPercent: Double,
+    generatedAt: String,
+    note: String? = nil
+) -> JSONValue {
+    var serviceObject: [String: JSONValue] = [
+        "id": .string("codex_acc-1"),
+        "name": .string("Codex · user"),
+        "app": .string("codex"),
+        "status": .string(status),
+        "kind": .string("windows"),
+        "plan": .string("team"),
+        "capturedAt": .string(generatedAt),
+        "windows": .array([
+            .object([
+                "label": .string("5小时窗口"),
+                "usedPercent": .double(usedPercent),
+                "windowMinutes": .integer(300),
+                "resetsAt": .null,
+            ]),
+        ]),
+    ]
+    if let note {
+        serviceObject["note"] = .string(note)
+    }
+    return .object([
+        "schemaVersion": .integer(1),
+        "module": .string("agent-usage"),
+        "generatedAt": .string(generatedAt),
+        "agents": .array([
+            .object([
+                "id": .string("codex"),
+                "name": .string("Codex"),
+                "status": .string("ok"),
+                "today": .object([
+                    "input": .integer(100), "output": .integer(50),
+                    "cacheRead": .integer(0), "cacheCreation": .integer(0),
+                    "total": .integer(150),
+                ]),
+                "daily": .array([]),
+                "hours": .array(Array(repeating: .integer(0), count: 24)),
+            ]),
+        ]),
+        "services": .array([
+            .object(serviceObject),
+            .object([
+                "id": .string("kimi"),
+                "name": .string("Kimi"),
+                "status": .string("ok"),
+                "kind": .string("windows"),
+                "windows": .array([]),
+            ]),
+        ]),
+        "totalCostUsd": .null,
+    ])
+}
+
+/// 12.1.1: 首轮 challenge 触发一次定向重试 (强制刷新 + retry-only), 全轮只发布一次.
+private static func codexChallengeTriggersSingleTargetedRetry(
+    repository: URL
+) async throws {
+    let first = makeCodexQuotaArtifact(
+        status: "error",
+        usedPercent: 0,
+        generatedAt: "2026-07-28T12:00:00Z",
+        note: "登录态已失效, 请重新登录该账号"
+    )
+    let retry = makeCodexQuotaArtifact(
+        status: "ok",
+        usedPercent: 40,
+        generatedAt: "2026-07-28T12:01:00Z"
+    )
+    let executor = ChallengeSequenceExecutor(
+        firstArtifact: first,
+        retryArtifact: retry
+    )
+    let tokenManager = StubCodexTokenManager()
+    tokenManager.resolutions = [
+        "acc-1": .success(
+            accessToken: "fresh-at",
+            expiresAt: Date(timeIntervalSince1970: 1_752_000_000)
+        ),
+    ]
+    let retryProvider = RetryInputProvider()
+    retryProvider.codexRetryInput = CollectorRunInput(
+        context: [
+            "codexQuotaRetryOnly": .boolean(true),
+        ],
+        credentials: [
+            "codexQuotaAccounts": .object([
+                "acc-1": .object([
+                    "display_name": .string("Codex · user"),
+                    "access_token": .string("fresh-at"),
+                ]),
+            ]),
+        ]
+    )
+    let (scheduler, store, root) = try makeSchedulerWithCodex(
+        repository: repository,
+        executor: executor,
+        tokenManager: tokenManager,
+        retryProvider: retryProvider
+    )
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    var publishedCount = 0
+    scheduler.onArtifactChange = { _, _ in publishedCount += 1 }
+    scheduler.start()
+    scheduler.enableModule(.agentUsage)
+    // 直接触发一次运行 (不依赖计时器)
+    let timers = FakeTimerScheduler()
+    _ = timers
+    try await triggerFirstRefresh(scheduler: scheduler, repository: repository)
+
+    await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+
+    // 首轮 + 重试共 2 次运行, 重试上下文只含被挑战账号
+    try refreshExpect(
+        executor.runCount[.agentUsage] == 2,
+        "应执行首轮 + 一次定向重试, got \(executor.runCount[.agentUsage] ?? 0)"
+    )
+    let retryContext = executor.receivedContexts.last ?? [:]
+    try refreshExpect(
+        retryContext["codexQuotaRetryOnly"] == .boolean(true),
+        "重试上下文必须带 codexQuotaRetryOnly=true"
+    )
+    try refreshExpect(
+        retryProvider.retriedAccounts == ["acc-1"],
+        "只应重试被挑战账号, got \(retryProvider.retriedAccounts)"
+    )
+    try refreshExpect(
+        tokenManager.invalidated == ["acc-1"],
+        "必须失效被挑战账号的 access token"
+    )
+    try refreshExpect(
+        tokenManager.forcedRefreshCount["acc-1"] == 1,
+        "每轮最多一次强制刷新"
+    )
+    // 全轮只发布一次 (合并后)
+    try refreshExpect(publishedCount == 1, "全轮只能发布一次 artifact, got \(publishedCount)")
+    // 重试成功: 发布的是新额度与新 capturedAt, 非 Codex 部分保留
+    let stored = try store.load(.agentUsage, now: Date(), staleAfter: 3600)
+    guard case .object(let storedObject) = stored.artifact,
+          case .array(let services)? = storedObject["services"] else {
+        throw RefreshTestFailure.expectation("发布 artifact 结构不符")
+    }
+    let codexService = services.first { $0.stringId() == "codex_acc-1" }
+    guard case .object(let codexObject)? = codexService,
+          case .string(let status)? = codexObject["status"],
+          case .string(let capturedAt)? = codexObject["capturedAt"] else {
+        throw RefreshTestFailure.expectation("codex service 结构不符")
+    }
+    try refreshExpect(status == "ok", "重试成功应发布 ok 状态")
+    try refreshExpect(capturedAt == "2026-07-28T12:01:00Z", "应使用新 capturedAt")
+    // agents 保留首轮
+    guard case .array(let agents)? = storedObject["agents"],
+          case .object(let agent)? = agents.first,
+          case .string(let agentID)? = agent["id"] else {
+        throw RefreshTestFailure.expectation("agents 结构不符")
+    }
+    try refreshExpect(agentID == "codex", "agents 必须保留首次结果")
+    // 非 codex service 保留首轮
+    try refreshExpect(
+        services.contains { $0.stringId() == "kimi" },
+        "非 codex service 必须保留"
+    )
+}
+
+/// 12.1.3: 重试响应仍带 challenge 时不再触发第三次 Collector.
+private static func codexRetryChallengeDoesNotTriggerThirdRun(
+    repository: URL
+) async throws {
+    let first = makeCodexQuotaArtifact(
+        status: "error",
+        usedPercent: 0,
+        generatedAt: "2026-07-28T12:00:00Z"
+    )
+    let retry = makeCodexQuotaArtifact(
+        status: "error",
+        usedPercent: 0,
+        generatedAt: "2026-07-28T12:01:00Z"
+    )
+    let executor = ChallengeSequenceExecutor(
+        firstArtifact: first,
+        retryArtifact: retry
+    )
+    executor.retryHasChallenge = true
+    let tokenManager = StubCodexTokenManager()
+    tokenManager.resolutions = [
+        "acc-1": .success(
+            accessToken: "fresh-at-2",
+            expiresAt: Date(timeIntervalSince1970: 1_752_000_000)
+        ),
+    ]
+    let retryProvider = RetryInputProvider()
+    retryProvider.codexRetryInput = CollectorRunInput(
+        context: ["codexQuotaRetryOnly": .boolean(true)],
+        credentials: [:]
+    )
+    let (scheduler, _, root) = try makeSchedulerWithCodex(
+        repository: repository,
+        executor: executor,
+        tokenManager: tokenManager,
+        retryProvider: retryProvider
+    )
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    scheduler.start()
+    scheduler.enableModule(.agentUsage)
+    try await triggerFirstRefresh(scheduler: scheduler, repository: repository)
+    await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+
+    try refreshExpect(
+        executor.runCount[.agentUsage] == 2,
+        "重试中的 challenge 不得触发第三次 Collector, got \(executor.runCount[.agentUsage] ?? 0)"
+    )
+    try refreshExpect(
+        tokenManager.forcedRefreshCount["acc-1"] == 1,
+        "每轮最多一次强制刷新"
+    )
+}
+
+/// 12.1.4: 强制刷新失败 (需要重新授权) 不重试, 首次结果原样发布, 不整模块 authRequired.
+private static func codexForceRefreshFailureKeepsFirstArtifact(
+    repository: URL
+) async throws {
+    let first = makeCodexQuotaArtifact(
+        status: "error",
+        usedPercent: 0,
+        generatedAt: "2026-07-28T12:00:00Z"
+    )
+    let executor = ChallengeSequenceExecutor(
+        firstArtifact: first,
+        retryArtifact: first
+    )
+    let tokenManager = StubCodexTokenManager()
+    tokenManager.resolutions = [
+        "acc-1": .failure(.needsReauthorization(accountID: "acc-1")),
+    ]
+    let retryProvider = RetryInputProvider()
+    retryProvider.codexRetryInput = CollectorRunInput(context: [:], credentials: [:])
+    let (scheduler, _, root) = try makeSchedulerWithCodex(
+        repository: repository,
+        executor: executor,
+        tokenManager: tokenManager,
+        retryProvider: retryProvider
+    )
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    var lastStatus: ModuleRunState?
+    scheduler.onStatusChange = { _, state, _ in lastStatus = state }
+    scheduler.start()
+    scheduler.enableModule(.agentUsage)
+    try await triggerFirstRefresh(scheduler: scheduler, repository: repository)
+    await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+
+    // 刷新失败 -> 不重试, 只跑首轮
+    try refreshExpect(
+        executor.runCount[.agentUsage] == 1,
+        "刷新失败不得发起重试, got \(executor.runCount[.agentUsage] ?? 0)"
+    )
+    try refreshExpect(
+        retryProvider.retriedAccounts.isEmpty,
+        "刷新失败不得请求重试输入"
+    )
+    // 模块级状态不进入 authRequired (artifact 存在, 部分结果照常发布)
+    try refreshExpect(
+        scheduler.moduleState(for: .agentUsage)?.phase == .idle,
+        "部分失败不得使整个模块 authRequired"
+    )
+    try refreshExpect(
+        lastStatus == .partial,
+        "部分失败状态应为 partial, got \(String(describing: lastStatus))"
+    )
+}
+
+/// 12.1.8/12.1.9: 重试 error 保留旧 windows/plan/extra/capturedAt, 只更新 status/note.
+private static func codexRetryErrorPreservesLastGoodQuota(
+    repository: URL
+) async throws {
+    let first = makeCodexQuotaArtifact(
+        status: "ok",
+        usedPercent: 45,
+        generatedAt: "2026-07-28T10:00:00Z"
+    )
+    let retry = makeCodexQuotaArtifact(
+        status: "error",
+        usedPercent: 0,
+        generatedAt: "2026-07-28T12:01:00Z",
+        note: "额度查询暂时失败, 请稍后重试"
+    )
+    let executor = ChallengeSequenceExecutor(
+        firstArtifact: first,
+        retryArtifact: retry
+    )
+    let tokenManager = StubCodexTokenManager()
+    tokenManager.resolutions = [
+        "acc-1": .success(
+            accessToken: "fresh-at-3",
+            expiresAt: Date(timeIntervalSince1970: 1_752_000_000)
+        ),
+    ]
+    let retryProvider = RetryInputProvider()
+    retryProvider.codexRetryInput = CollectorRunInput(
+        context: ["codexQuotaRetryOnly": .boolean(true)],
+        credentials: [:]
+    )
+    let (scheduler, store, root) = try makeSchedulerWithCodex(
+        repository: repository,
+        executor: executor,
+        tokenManager: tokenManager,
+        retryProvider: retryProvider
+    )
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    scheduler.start()
+    scheduler.enableModule(.agentUsage)
+    try await triggerFirstRefresh(scheduler: scheduler, repository: repository)
+    await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+
+    let stored = try store.load(.agentUsage, now: Date(), staleAfter: 3600)
+    guard case .object(let storedObject) = stored.artifact,
+          case .array(let services)? = storedObject["services"],
+          case .object(let codexObject)? = services.first(where: {
+              $0.stringId() == "codex_acc-1"
+          }) else {
+        throw RefreshTestFailure.expectation("发布 artifact 结构不符")
+    }
+    try refreshExpect(
+        codexObject["status"] == .string("error"),
+        "重试 error 应保留 error 状态"
+    )
+    // 旧额度数据保留: windows 仍带 45%
+    guard case .array(let windows)? = codexObject["windows"],
+          let window = windows.first,
+          let windowObject = window.objectValue,
+          let usedPercent = JSONNumber.double(windowObject["usedPercent"]) else {
+        throw RefreshTestFailure.expectation("旧 windows 必须保留")
+    }
+    try refreshExpect(usedPercent == 45, "暂时失败必须保留旧额度窗口")
+    try refreshExpect(
+        codexObject["capturedAt"] == .string("2026-07-28T10:00:00Z"),
+        "暂时失败必须保留旧 capturedAt"
+    )
+    try refreshExpect(
+        codexObject["plan"] == .string("team"),
+        "暂时失败必须保留旧 plan"
+    )
+}
+
+/// 12.1.5/12.1.6: 无 challenge 时单轮发布, 不重试.
+private static func codexWithoutChallengeRunsOnce(
+    repository: URL
+) async throws {
+    let first = makeCodexQuotaArtifact(
+        status: "ok",
+        usedPercent: 10,
+        generatedAt: "2026-07-28T12:00:00Z"
+    )
+    let executor = ChallengeSequenceExecutor(
+        firstArtifact: first,
+        retryArtifact: first
+    )
+    executor.firstHasChallenge = false
+    let tokenManager = StubCodexTokenManager()
+    let (scheduler, _, root) = try makeSchedulerWithCodex(
+        repository: repository,
+        executor: executor,
+        tokenManager: tokenManager
+    )
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    var publishedCount = 0
+    scheduler.onArtifactChange = { _, _ in publishedCount += 1 }
+    scheduler.start()
+    scheduler.enableModule(.agentUsage)
+    try await triggerFirstRefresh(scheduler: scheduler, repository: repository)
+    await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+
+    try refreshExpect(
+        executor.runCount[.agentUsage] == 1,
+        "无 challenge 只运行一次, got \(executor.runCount[.agentUsage] ?? 0)"
+    )
+    try refreshExpect(publishedCount == 1, "无 challenge 只发布一次")
+    try refreshExpect(
+        tokenManager.invalidated.isEmpty,
+        "无 challenge 不得失效 token"
+    )
+}
+
+/// 任务 11: 迁移 gate 未开放时 retryInput 返回 nil (调度器持有
+/// 自定义提供器), 即使刷新成功也不发起定向重试, 首轮结果原样保留.
+private static func codexRetryInputNilWhenGatedKeepsFirstArtifact(
+    repository: URL
+) async throws {
+    let first = makeCodexQuotaArtifact(
+        status: "error",
+        usedPercent: 0,
+        generatedAt: "2026-07-28T12:00:00Z",
+        note: "登录态已失效, 请重新登录该账号"
+    )
+    let executor = ChallengeSequenceExecutor(
+        firstArtifact: first,
+        retryArtifact: first
+    )
+    let tokenManager = StubCodexTokenManager()
+    tokenManager.resolutions = [
+        "acc-1": .success(
+            accessToken: "fresh-at-gated",
+            expiresAt: Date(timeIntervalSince1970: 1_752_000_000)
+        ),
+    ]
+    // gate 关闭: 提供器对定向重试返回 nil
+    let retryProvider = RetryInputProvider()
+    retryProvider.codexRetryInput = nil
+    let (scheduler, _, root) = try makeSchedulerWithCodex(
+        repository: repository,
+        executor: executor,
+        tokenManager: tokenManager,
+        retryProvider: retryProvider
+    )
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    var lastStatus: ModuleRunState?
+    scheduler.onStatusChange = { _, state, _ in lastStatus = state }
+    scheduler.start()
+    scheduler.enableModule(.agentUsage)
+    try await triggerFirstRefresh(scheduler: scheduler, repository: repository)
+    await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+
+    try refreshExpect(
+        executor.runCount[.agentUsage] == 1,
+        "retryInput 返回 nil 时不得发起重试运行, got \(executor.runCount[.agentUsage] ?? 0)"
+    )
+    try refreshExpect(
+        tokenManager.invalidated == ["acc-1"],
+        "challenge 仍应先失效 access token"
+    )
+    try refreshExpect(
+        retryProvider.retriedAccounts == ["acc-1"],
+        "retryInput 应被询问被挑战账号"
+    )
+    try refreshExpect(
+        scheduler.moduleState(for: .agentUsage)?.phase == .idle,
+        "无重试时模块保持 idle"
+    )
+    try refreshExpect(
+        lastStatus == .partial,
+        "gate 关闭时保留首轮 partial 结果, got \(String(describing: lastStatus))"
+    )
+}
+
+/// 直接触发一次刷新运行 (start 后 enableModule 会排 0 延迟计时器).
+@MainActor
+private static func triggerFirstRefresh(
+    scheduler: RefreshScheduler,
+    repository: URL
+) async throws {
+    scheduler.refresh(.agentUsage)
+}
+
+/// 12.1.10/12.1.2 补充: merger 纯逻辑 — 多账号只合并被覆盖项,
+/// 重试新增的账号条目并入, 非 codex service 与 agents 不动.
+private static func codexMergerMultiAccountAndNewEntries() throws {
+    func codexService(
+        _ id: String,
+        status: String,
+        used: Int,
+        capturedAt: String
+    ) -> JSONValue {
+        .object([
+            "id": .string(id),
+            "name": .string("Codex · user"),
+            "app": .string("codex"),
+            "status": .string(status),
+            "kind": .string("windows"),
+            "plan": .string("team"),
+            "capturedAt": .string(capturedAt),
+            "windows": .array([
+                .object([
+                    "label": .string("5小时窗口"),
+                    "usedPercent": .integer(used),
+                    "windowMinutes": .integer(300),
+                    "resetsAt": .null,
+                ]),
+            ]),
+        ])
+    }
+    func kimiService() -> JSONValue {
+        .object([
+            "id": .string("kimi"),
+            "name": .string("Kimi"),
+            "status": .string("ok"),
+            "kind": .string("windows"),
+            "windows": .array([]),
+        ])
+    }
+    func makeArtifact(codex: [JSONValue]) -> JSONValue {
+        .object([
+            "schemaVersion": .integer(1),
+            "module": .string("agent-usage"),
+            "generatedAt": .string("2026-07-28T12:00:00Z"),
+            "agents": .array([
+                .object([
+                    "id": .string("codex"),
+                    "name": .string("Codex"),
+                    "status": .string("ok"),
+                    "today": .object([
+                        "input": .integer(100), "output": .integer(50),
+                        "cacheRead": .integer(0), "cacheCreation": .integer(0),
+                        "total": .integer(150),
+                    ]),
+                    "daily": .array([]),
+                    "hours": .array(Array(repeating: .integer(0), count: 24)),
+                ]),
+            ]),
+            "services": .array(codex + [kimiService()]),
+            "totalCostUsd": .null,
+        ])
+    }
+
+    let first = makeArtifact(codex: [
+        codexService("codex_acc-1", status: "ok", used: 20, capturedAt: "2026-07-28T10:00:00Z"),
+    ])
+    let retry = makeArtifact(codex: [
+        codexService("codex_acc-1", status: "error", used: 0, capturedAt: "2026-07-28T12:01:00Z"),
+        codexService("codex_acc-2", status: "ok", used: 55, capturedAt: "2026-07-28T12:01:00Z"),
+    ])
+    let result = CodexQuotaSnapshotMerger().merge(first: first, retry: retry)
+    guard case .object(let mergedObject) = result.artifact,
+          case .array(let services)? = mergedObject["services"] else {
+        throw RefreshTestFailure.expectation("合并结果结构不符")
+    }
+    let byID = Dictionary(
+        uniqueKeysWithValues: services.compactMap { service -> (String, JSONValue)? in
+            guard let id = service.stringId() else { return nil }
+            return (id, service)
+        }
+    )
+    // acc-1: retry error 保留旧 windows (20%) 与旧 capturedAt
+    guard case .object(let acc1)? = byID["codex_acc-1"],
+          case .array(let acc1Windows)? = acc1["windows"],
+          case .object(let window)? = acc1Windows.first,
+          case .integer(let used)? = window["usedPercent"] else {
+        throw RefreshTestFailure.expectation("acc-1 合并结果结构不符")
+    }
+    try refreshExpect(used == 20, "error 重试必须保留旧窗口, got \(used)")
+    try refreshExpect(
+        acc1["capturedAt"] == .string("2026-07-28T10:00:00Z"),
+        "error 重试必须保留旧 capturedAt"
+    )
+    // acc-2: 重试新增条目并入
+    try refreshExpect(
+        byID["codex_acc-2"] != nil,
+        "重试新增账号条目必须并入"
+    )
+    // kimi 非 codex service 保留, agents 保留
+    try refreshExpect(byID["kimi"] != nil, "非 codex service 必须保留")
+    guard case .array(let agents)? = mergedObject["agents"],
+          !agents.isEmpty else {
+        throw RefreshTestFailure.expectation("agents 必须保留")
+    }
+    try refreshExpect(result.mergedCount == 1, "只应合并 1 个已存在条目, got \(result.mergedCount)")
+}
+
+/// JSON 数值宽容取值: JSONValue 解码时整数优先 (45.0 -> .integer(45)).
+private enum JSONNumber {
+    static func double(_ value: JSONValue?) -> Double? {
+        switch value {
+        case .double(let number):
+            return number
+        case .integer(let number):
+            return Double(number)
+        default:
+            return nil
+        }
+    }
+}
+}
+
+private extension JSONValue {
+    var objectValue: [String: JSONValue]? {
+        if case .object(let object) = self { return object }
+        return nil
+    }
+}
 
 @MainActor
 private final class FailingExecutor: CollectorExecuting {
@@ -1070,7 +1807,8 @@ private final class PartialSuccessExecutor: CollectorExecuting {
                     stage: "collect",
                     message: "部分数据源采集失败",
                     retryable: true
-                )]
+                )],
+            credentialChallenges: []
             ),
             stderrDiagnostic: nil
         )
@@ -1141,7 +1879,8 @@ private final class CredentialUpdateExecutor: CollectorExecuting {
                 status: .success,
                 artifact: artifact,
                 credentialUpdates: updates,
-                diagnostics: []
+                diagnostics: [],
+            credentialChallenges: []
             ),
             stderrDiagnostic: nil
         )

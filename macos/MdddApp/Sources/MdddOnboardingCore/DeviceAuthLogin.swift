@@ -230,16 +230,27 @@ public struct CodexDeviceFlow: Sendable {
         case authorized(DeviceGrant)
     }
 
-    /// 换码得到的三个令牌.
+    /// 换码得到的令牌与生命周期数据. `expiresIn` 为空时由上层按
+    /// JWT exp 或 1 小时回落; `receivedAt` 由调用方在收到响应时写入.
     public struct TokenSet: Equatable, Sendable {
         public let idToken: String
         public let accessToken: String
         public let refreshToken: String
+        public let expiresIn: TimeInterval?
+        public let receivedAt: Date
 
-        public init(idToken: String, accessToken: String, refreshToken: String) {
+        public init(
+            idToken: String,
+            accessToken: String,
+            refreshToken: String,
+            expiresIn: TimeInterval? = nil,
+            receivedAt: Date = Date()
+        ) {
             self.idToken = idToken
             self.accessToken = accessToken
             self.refreshToken = refreshToken
+            self.expiresIn = expiresIn
+            self.receivedAt = receivedAt
         }
     }
 
@@ -359,8 +370,11 @@ public struct CodexDeviceFlow: Sendable {
     }
 
     /// 解析换码响应: 200 且 id/access/refresh 三个令牌齐备才成功.
+    /// `expires_in` 与收到时刻被保留, 供上层计算过期时间 (缺失时可回落).
     public static func parseTokenResponse(
-        _ data: Data, statusCode: Int
+        _ data: Data,
+        statusCode: Int,
+        receivedAt: Date = Date()
     ) -> Result<TokenSet, DeviceAuthError> {
         guard statusCode == 200 else {
             return .failure(.httpError(statusCode: statusCode))
@@ -377,10 +391,13 @@ public struct CodexDeviceFlow: Sendable {
               !token("refresh_token").isEmpty else {
             return .failure(.invalidResponse("缺少 id/access/refresh token"))
         }
+        let expiresIn = (dict["expires_in"] as? NSNumber)?.doubleValue
         return .success(TokenSet(
             idToken: token("id_token"),
             accessToken: token("access_token"),
-            refreshToken: token("refresh_token")
+            refreshToken: token("refresh_token"),
+            expiresIn: expiresIn,
+            receivedAt: receivedAt
         ))
     }
 
@@ -462,7 +479,9 @@ public struct CodexDeviceFlow: Sendable {
             let (data, statusCode) = try await DeviceFlowHTTP.send(
                 Self.exchangeRequest(grant), session: activeSession
             )
-            switch Self.parseTokenResponse(data, statusCode: statusCode) {
+            switch Self.parseTokenResponse(
+                data, statusCode: statusCode, receivedAt: Date()
+            ) {
             case .failure(let error):
                 return .failure(error)
             case .success(let parsed):

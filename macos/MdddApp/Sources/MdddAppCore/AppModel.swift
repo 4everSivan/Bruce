@@ -122,6 +122,9 @@ package final class AppModel: ObservableObject {
     @Published package private(set) var busySubscriptionProviders: Set<SubscriptionProviderID> = []
     /// Codex 已导入账号摘要 (数量与邮箱前缀), 供设置页展示.
     @Published package private(set) var codexAccountSummary: (count: Int, emailPrefixes: [String])?
+    /// Codex 非敏感账号状态 (授权状态, 来源, 存储健康), 供设置页渲染;
+    /// 由 bootstrap 从 token manager 快照刷新.
+    @Published package private(set) var codexAccountStatuses: [CodexAccountStatus] = []
     @Published package private(set) var menuBarMetrics: [MenuBarMetric]
     /// 最近一次面板映射产生的诊断, 随 artifact 与模块状态变更重算.
     /// 不进 UI; 供诊断路径与 harness 读取, 诊断包 schema 锁定期暂不外发.
@@ -241,6 +244,10 @@ package final class AppModel: ObservableObject {
         _ summary: (count: Int, emailPrefixes: [String])?
     ) {
         codexAccountSummary = summary
+    }
+
+    package func setCodexAccountStatuses(_ statuses: [CodexAccountStatus]) {
+        codexAccountStatuses = statuses
     }
 
     package func setMenuBarMetrics(_ metrics: [MenuBarMetric]) {

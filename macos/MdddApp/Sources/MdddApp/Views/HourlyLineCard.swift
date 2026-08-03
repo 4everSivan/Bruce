@@ -4,7 +4,7 @@ import MdddAppCore
 import SwiftUI
 
 /// 逐小时卡: 每个 agent 一行色点 + 名称 + 今日总量, 下方 24 点折线;
-/// 有模型或项目明细的行可整行点击展开, 明细直接排在折线下方 (无内层卡片).
+/// 有模型或项目明细的行可整行点击展开, 明细 (100% 堆叠占比条 + 图例行) 直接排在折线下方.
 /// 视觉与条件渲染以 panel-layout-v8.html 的逐小时卡为准.
 struct HourlyLineCard: View {
     let viewModel: HourlyLineViewModel
@@ -162,42 +162,71 @@ struct HourlyLineCard: View {
         .padding(.top, 3)
     }
 
+    /// 占比组: 标题 + 通宽 100% 堆叠条 + 图例行 (色点 + 名称 + 百分比 + 数值).
     private func distributionGroup(title: String, bars: [DistributionBar], color: Color) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.system(size: 9, weight: .semibold))
                 .tracking(0.3)
                 .foregroundStyle(.secondary)
-                .padding(.bottom, 1)
+                .padding(.bottom, 2)
+            stackedShareBar(bars, color: color)
+                .padding(.bottom, 3)
             ForEach(Array(bars.enumerated()), id: \.offset) { index, bar in
-                distributionBarRow(bar, color: color, opacity: Self.barOpacity(at: index))
+                shareLegendRow(bar, color: color, opacity: Self.barOpacity(at: index))
             }
         }
     }
 
-    /// 单条分布: 名称 92pt + 细条 4pt + 右侧数值.
-    private func distributionBarRow(_ bar: DistributionBar, color: Color, opacity: Double) -> some View {
-        HStack(spacing: 7) {
-            Text(bar.name)
-                .lineLimit(1)
-                .frame(width: 92, alignment: .leading)
-            GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(Color.adaptive(light: Color.black.opacity(0.07), dark: Color.white.opacity(0.12)))
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(color.opacity(opacity))
-                        .frame(width: max(2, proxy.size.width * min(max(bar.share, 0), 1)))
+    /// 100% 堆叠占比条: 分段按份额拼接, 同组按位次降透明度, 份额不足 100% 时余量露出轨道色.
+    private func stackedShareBar(_ bars: [DistributionBar], color: Color) -> some View {
+        GeometryReader { proxy in
+            let available = proxy.size.width - CGFloat(max(bars.count - 1, 0))
+            HStack(spacing: 1) {
+                ForEach(Array(bars.enumerated()), id: \.offset) { index, bar in
+                    Rectangle()
+                        .fill(color.opacity(Self.barOpacity(at: index)))
+                        .frame(width: max(2, available * min(max(bar.share, 0), 1)))
                 }
             }
-            .frame(height: 4)
-            Text(bar.totalText)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(Color.adaptive(light: Color.black.opacity(0.07), dark: Color.white.opacity(0.12)))
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+        }
+        .frame(height: 6)
+        .accessibilityHidden(true)
+    }
+
+    /// 图例行: 色点 + 名称 + 右侧「百分比 · 数值」, 百分比为主数值.
+    private func shareLegendRow(_ bar: DistributionBar, color: Color, opacity: Double) -> some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(color.opacity(opacity))
+                .frame(width: 5, height: 5)
+            Text(bar.name)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Text(Self.sharePercentText(bar.share))
                 .font(.system(size: 9.5, weight: .semibold))
                 .monospacedDigit()
-                .frame(width: 56, alignment: .trailing)
+            + Text(" · \(bar.totalText)")
+                .font(.system(size: 9.5))
+                .foregroundStyle(.secondary)
         }
         .font(.system(size: 9.5))
         .foregroundStyle(Color.primary.opacity(0.85))
+        .accessibilityElement(children: .combine)
+    }
+
+    /// 份额文案: 0 到 0.5% 之间显示 <1%, 避免四舍五入成误导性的 0%.
+    private static func sharePercentText(_ share: Double) -> String {
+        if share > 0, share < 0.005 {
+            return "<1%"
+        }
+        return String(format: "%.0f%%", share * 100)
     }
 
     // MARK: - 颜色
@@ -251,7 +280,7 @@ private extension HourlyLineViewModel {
         HourlyLineViewModel(rows: [
             HourlyAgentRow(
                 agentID: "kimi-code-cli",
-                name: "Kimi Code CLI",
+                name: "Kimi Code",
                 color: .blue,
                 todayTotal: 98_000,
                 points: [900, 1400, 2100, 2600, 3200, 4100, 3800, 5200, 6100, 5800, 7200, 6600,

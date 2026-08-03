@@ -110,6 +110,32 @@ struct BridgeResponse: Codable, Equatable, Sendable {
     let artifact: JSONValue?
     let credentialUpdates: [JSONValue]
     let diagnostics: [BridgeDiagnostic]
+    let credentialChallenges: [JSONValue]
+}
+
+extension BridgeResponse {
+    /// 任务 1 冻结契约: 旧 Bridge v1 响应缺失 credentialChallenges 时按空数组解码,
+    /// schemaVersion 保持 1, 向后兼容.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        runId = try container.decode(String.self, forKey: .runId)
+        generatedAt = try container.decode(String.self, forKey: .generatedAt)
+        status = try container.decode(BridgeStatus.self, forKey: .status)
+        artifact = try container.decodeIfPresent(JSONValue.self, forKey: .artifact)
+        credentialUpdates = try container.decode(
+            [JSONValue].self,
+            forKey: .credentialUpdates
+        )
+        diagnostics = try container.decode(
+            [BridgeDiagnostic].self,
+            forKey: .diagnostics
+        )
+        credentialChallenges = try container.decodeIfPresent(
+            [JSONValue].self,
+            forKey: .credentialChallenges
+        ) ?? []
+    }
 }
 
 struct SanitizedProcessDiagnostic: Equatable, Sendable {

@@ -33,14 +33,28 @@ struct MdddApp: App {
         // 配置与凭证存储在 Scheduler 输入提供器和 Coordinator 之间共享同一实例
         let configStore = try? OnboardingConfigurationStore()
         let credentialStore = KeychainCredentialStore()
+        // Codex v2: 单一 store / OAuth client / token manager, 供登录、
+        // 运行输入提供器和 Coordinator 共享 (任务 5 装配).
+        let codexStore = CodexCredentialStore(store: credentialStore)
+        let codexTokenManager = CodexTokenManager(
+            store: codexStore,
+            client: CodexOAuthClient.defaultClient()
+        )
         let runInputProvider = OnboardingRunInputProvider(
             configStore: configStore,
-            credentialStore: credentialStore
+            credentialStore: credentialStore,
+            codexTokenInjector: codexTokenManager,
+            codexStore: codexStore
         )
+        runInputProvider.attachCodexTokenInjector(codexTokenManager)
         let scheduler = RefreshScheduler(
             executor: runner, store: resolvedStore,
             runInputProvider: runInputProvider
         )
+        // 任务 9: 把 Codex token manager 与 store 挂到 Scheduler, 支持
+        // quota 401 定向重试自愈 (强制刷新被挑战账号).
+        scheduler.codexTokenManager = codexTokenManager
+        scheduler.codexCredentialStore = codexStore
         self.scheduler = scheduler
 
         // 单一 AppModel: UI 和 Coordinator 共享同一实例
@@ -53,7 +67,9 @@ struct MdddApp: App {
             model: model,
             runtime: runtime,
             configStore: configStore,
-            credentialStore: credentialStore
+            credentialStore: credentialStore,
+            codexStore: codexStore,
+            codexTokenManager: codexTokenManager
         )
         _coordinator = StateObject(wrappedValue: coordinator)
         let diagnostics = DiagnosticService(
@@ -68,6 +84,7 @@ struct MdddApp: App {
             runner: runner,
             coordinator: coordinator,
             runInputProvider: runInputProvider,
+            codexTokenManager: codexTokenManager,
             model: model
         )
         settingsWindowController = SettingsWindowController(
@@ -100,10 +117,12 @@ struct MdddApp: App {
 
     private func startApplicationIfNeeded() {
         appDelegate.configure(runtime: runtime)
-        let didStart = bootstrap.startIfNeeded()
-        if didStart, !coordinator.consentConfirmed {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                settingsWindowController.present()
+        Task { @MainActor in
+            let didStart = await bootstrap.startIfNeeded()
+            if didStart, !coordinator.consentConfirmed {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    settingsWindowController.present()
+                }
             }
         }
     }
