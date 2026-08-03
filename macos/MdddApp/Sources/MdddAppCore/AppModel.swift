@@ -129,8 +129,17 @@ package final class AppModel: ObservableObject {
     /// 最近一次面板映射产生的诊断, 随 artifact 与模块状态变更重算.
     /// 不进 UI; 供诊断路径与 harness 读取, 诊断包 schema 锁定期暂不外发.
     package private(set) var panelDiagnostics: [PanelDiagnostic] = []
+    /// DeepSeek 月度账本. 由 MdddApp 装配注入; nil 表示账本未启用
+    /// (测试或账本创建失败), 此时月度统计不可用但余额卡不受影响.
+    private let deepSeekLedger: DeepSeekUsageLedger?
+    /// DeepSeek 月度派生状态 (唯一 UI 状态源). 账本不可用时为 nil.
+    @Published package private(set) var deepSeekMonthlyUsage: DeepSeekMonthlyUsage?
 
-    package init(menuBarMetricRawValues: [String]? = nil) {
+    package init(
+        menuBarMetricRawValues: [String]? = nil,
+        deepSeekLedger: DeepSeekUsageLedger? = nil
+    ) {
+        self.deepSeekLedger = deepSeekLedger
         menuBarMetrics = MenuBarMetricConfiguration(
             rawValues: menuBarMetricRawValues
         ).metrics
@@ -140,6 +149,9 @@ package final class AppModel: ObservableObject {
             }
         )
         moduleStatuses[.settings] = ModuleStatus(state: .ready, detail: nil)
+        if deepSeekLedger != nil {
+            deepSeekMonthlyUsage = .unavailable
+        }
     }
 
     package func status(for module: DashboardModule) -> ModuleStatus {
@@ -153,7 +165,56 @@ package final class AppModel: ObservableObject {
 
     package func setArtifact(_ artifact: JSONValue?, for module: DashboardModule) {
         moduleArtifacts[module] = artifact
+        if module == .agentUsage {
+            updateDeepSeekMonthlyUsage(from: artifact)
+        }
         refreshPanelDiagnostics()
+    }
+
+    /// 追踪 ID 变化时立即失效当前派生月度状态 (等下一次有效余额观察重建基线).
+    /// 由 OnboardingCoordinator 在发布 subscriptionProviders 后调用.
+    package func invalidateDeepSeekMonthlyUsage() {
+        deepSeekMonthlyUsage = deepSeekLedger != nil ? .unavailable : nil
+    }
+
+    /// 重新解码 Artifact, 只把有效 DeepSeek 余额观察交给账本,
+    /// 派生月度状态作为唯一 UI 状态源保存. 无效/空/失败/未授权
+    /// 的 DeepSeek Artifact 不读写账本.
+    private func updateDeepSeekMonthlyUsage(from artifact: JSONValue?) {
+        guard let ledger = deepSeekLedger else {
+            deepSeekMonthlyUsage = nil
+            return
+        }
+        guard let artifact,
+              case .agentUsage(let decoded) = try? ArtifactValidator()
+                  .validate(artifact, for: .agentUsage) else {
+            // 无效/空 Artifact: 不读写账本, 保留当前状态.
+            return
+        }
+        guard let service = decoded.services.first(where: {
+            $0.id == "deepseek"
+        }) else {
+            return
+        }
+        // 仅接受已校验 Artifact 中 id==deepseek, status==ok, kind==balance,
+        // 余额为非负有限值的观察.
+        guard service.status == "ok",
+              service.kind == "balance",
+              let balance = service.balance,
+              balance.isFinite,
+              balance >= 0,
+              let currency = service.currency else {
+            return
+        }
+        let trackingID = subscriptionProviders[.deepseek]?.usageTrackingID
+        ledger.setTrackingID(trackingID)
+        deepSeekMonthlyUsage = ledger.record(
+            DeepSeekUsageObservation(
+                observedAt: decoded.generatedAt,
+                balance: Decimal(balance),
+                currency: currency
+            )
+        )
     }
 
     /// 发布 Core 的就绪评估结果, 并把 readiness 映射为 Dashboard 状态.
@@ -217,7 +278,13 @@ package final class AppModel: ObservableObject {
     package func setSubscriptionProviders(
         _ providers: [SubscriptionProviderID: SubscriptionProviderConfiguration]
     ) {
+        let oldTrackingID = subscriptionProviders[.deepseek]?.usageTrackingID
         subscriptionProviders = providers
+        // 追踪 ID 变化 (保存/更换 API key) 时立即失效派生月度状态,
+        // 等下一次有效余额观察重建基线, 避免新旧账户混算.
+        if providers[.deepseek]?.usageTrackingID != oldTrackingID {
+            invalidateDeepSeekMonthlyUsage()
+        }
     }
 
     package func setSubscriptionCredentialConfigured(
@@ -268,7 +335,8 @@ package final class AppModel: ObservableObject {
     package func makePanelViewModel() -> PanelViewModel {
         PanelViewModelMapper().make(
             agentUsage: decodedAgentUsageArtifact(),
-            moduleStatuses: moduleStatuses
+            moduleStatuses: moduleStatuses,
+            deepSeekMonthlyUsage: deepSeekMonthlyUsage
         )
     }
 

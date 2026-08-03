@@ -342,6 +342,8 @@ package struct SubscriptionProviderSection: Equatable, Sendable {
     /// 余额型条目 (DeepSeek), 排序沉底, 左右排版.
     package let balance: BalanceRow?
     package let accountCountText: String?
+    /// DeepSeek 月度统计 (仅 DeepSeek 提供, 其他 provider 为 nil).
+    package let deepSeekMonthlyUsage: DeepSeekMonthlyUsage?
 
     package init(
         id: String,
@@ -353,7 +355,8 @@ package struct SubscriptionProviderSection: Equatable, Sendable {
         windows: [SubscriptionWindowRow],
         codexAccounts: [CodexAccountViewModel]?,
         balance: BalanceRow?,
-        accountCountText: String?
+        accountCountText: String?,
+        deepSeekMonthlyUsage: DeepSeekMonthlyUsage? = nil
     ) {
         self.id = id
         self.name = name
@@ -365,6 +368,7 @@ package struct SubscriptionProviderSection: Equatable, Sendable {
         self.codexAccounts = codexAccounts
         self.balance = balance
         self.accountCountText = accountCountText
+        self.deepSeekMonthlyUsage = deepSeekMonthlyUsage
     }
 }
 
@@ -482,7 +486,8 @@ package struct PanelViewModelMapper: Sendable {
 
     package func make(
         agentUsage: AgentUsageArtifact?,
-        moduleStatuses: [DashboardModule: ModuleStatus]
+        moduleStatuses: [DashboardModule: ModuleStatus],
+        deepSeekMonthlyUsage: DeepSeekMonthlyUsage? = nil
     ) -> PanelViewModel {
         var diagnostics: [PanelDiagnostic] = []
         let currentNow = now()
@@ -492,7 +497,12 @@ package struct PanelViewModelMapper: Sendable {
         var hourly: HourlyLineViewModel?
         if let agentUsage {
             usage = makeUsage(agentUsage, now: currentNow, diagnostics: &diagnostics)
-            subscription = makeSubscription(agentUsage, now: currentNow, diagnostics: &diagnostics)
+            subscription = makeSubscription(
+                agentUsage,
+                now: currentNow,
+                deepSeekMonthlyUsage: deepSeekMonthlyUsage,
+                diagnostics: &diagnostics
+            )
             hourly = makeHourly(agentUsage, diagnostics: &diagnostics)
         } else {
             diagnostics.append(.missingArtifact(module: .agentUsage))
@@ -603,6 +613,7 @@ package struct PanelViewModelMapper: Sendable {
     private func makeSubscription(
         _ artifact: AgentUsageArtifact,
         now: Date,
+        deepSeekMonthlyUsage: DeepSeekMonthlyUsage?,
         diagnostics: inout [PanelDiagnostic]
     ) -> SubscriptionViewModel? {
         var sections: [SubscriptionProviderSection] = []
@@ -661,6 +672,10 @@ package struct PanelViewModelMapper: Sendable {
                 continue
             }
 
+            // 月度统计仅映射到 DeepSeek section; 其他余额型 Provider 不受影响.
+            let monthlyUsage: DeepSeekMonthlyUsage? =
+                (service.id == "deepseek") ? deepSeekMonthlyUsage : nil
+
             sections.append(SubscriptionProviderSection(
                 id: service.id,
                 name: subscriptionDisplayName(service),
@@ -671,7 +686,8 @@ package struct PanelViewModelMapper: Sendable {
                 windows: windows,
                 codexAccounts: nil,
                 balance: service.balance.map { BalanceRow(amount: $0, currency: service.currency) },
-                accountCountText: nil
+                accountCountText: nil,
+                deepSeekMonthlyUsage: monthlyUsage
             ))
         }
 
@@ -692,7 +708,8 @@ package struct PanelViewModelMapper: Sendable {
                 windows: [],
                 codexAccounts: codexAccounts,
                 balance: nil,
-                accountCountText: "\(codexAccounts.count) 个账号"
+                accountCountText: "\(codexAccounts.count) 个账号",
+                deepSeekMonthlyUsage: nil
             )
             let insertion = min(codexIndex ?? sections.count, sections.count)
             sections.insert(group, at: insertion)
