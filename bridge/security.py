@@ -20,8 +20,6 @@ CONTEXT_FIELDS = {
     "timezone",
     "days",
     "paths",
-    "username",
-    "caFile",
     "capabilities",
     "codexQuotaRetryOnly",
     "codexQuotaAccountOrder",
@@ -55,7 +53,6 @@ RUNTIME_CREDENTIAL_NAMES = {
     "providerMeta": "provider_meta",
 }
 RUNTIME_CONTEXT_NAMES = {
-    "caFile": "ca_file",
     "codexQuotaRetryOnly": "codex_quota_retry_only",
     "codexQuotaAccountOrder": "codex_quota_account_order",
 }
@@ -413,7 +410,6 @@ def build_collector_context(request):
         request["timeouts"]["externalRequestSeconds"]
     )
     context["http_timeout"] = external_timeout
-    context["request_timeout"] = external_timeout
     context["app_mode"] = True
     return context
 

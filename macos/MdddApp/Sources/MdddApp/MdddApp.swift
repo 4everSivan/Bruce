@@ -16,7 +16,15 @@ struct MdddApp: App {
     private let settingsWindowController: SettingsWindowController
 
     init() {
-        let pythonURL = URL(fileURLWithPath: "/usr/bin/python3")
+        // 阶段 E (07 §6.1): 优先使用设置页选择的 Python 路径; 未配置时
+        // 回退到系统 Python. 路径可执行性由 CollectorRunner 运行时验证,
+        // 失败时抛 pythonNotExecutable, 不静默降级.
+        let configStore = try? OnboardingConfigurationStore()
+        let configuredPath = configStore?.load()?.pythonPath
+        let pythonPath = (configuredPath?.isEmpty == false)
+            ? configuredPath!
+            : "/usr/bin/python3"
+        let pythonURL = URL(fileURLWithPath: pythonPath)
         let bridgeURL = MdddApp.resolveBridgeURL()
             ?? URL(fileURLWithPath: "bridge/run_bridge.py")
         let runner = CollectorRunner(pythonURL: pythonURL, bridgeURL: bridgeURL)
@@ -31,7 +39,6 @@ struct MdddApp: App {
                 .appendingPathComponent("mddd-fallback")
         ))
         // 配置与凭证存储在 Scheduler 输入提供器和 Coordinator 之间共享同一实例
-        let configStore = try? OnboardingConfigurationStore()
         let credentialStore = KeychainCredentialStore()
         // Codex v2: 单一 store / OAuth client / token manager, 供登录、
         // 运行输入提供器和 Coordinator 共享 (任务 5 装配).
