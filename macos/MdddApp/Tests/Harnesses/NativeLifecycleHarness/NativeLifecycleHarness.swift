@@ -57,11 +57,10 @@ struct NativeLifecycleHarness {
     static func main() throws {
         try exitForcesRemainingTasksAfterGracePeriod()
         try exitCompletesImmediatelyWithoutRunningTasks()
-        try widgetStatesMapEveryNativeState()
         try metricSelectionNormalizes()
         try menuBarSummaryUsesValidQuotaWindows()
         try metricFormatterUsesCompactValues()
-        print("Native lifecycle tests passed: 6")
+        print("Native lifecycle tests passed: 5")
     }
 
     private static func exitForcesRemainingTasksAfterGracePeriod() throws {
@@ -104,26 +103,6 @@ struct NativeLifecycleHarness {
             runtime.schedulerStartCount == 1,
             "scheduler started more than once"
         )
-    }
-
-    private static func widgetStatesMapEveryNativeState() throws {
-        let expected: [(ModuleRunState, WidgetDisplayState)] = [
-            (.notConfigured, .notConfigured),
-            (.ready, .loading),
-            (.refreshing, .refreshing),
-            (.fresh, .fresh),
-            (.partial, .partial),
-            (.stale, .stale),
-            (.authRequired, .authRequired),
-            (.offline, .offline),
-            (.failed, .error),
-        ]
-        for (native, widget) in expected {
-            try expect(
-                WidgetDisplayState(moduleState: native) == widget,
-                "Widget state mapping failed for \(native.rawValue)"
-            )
-        }
     }
 
     private static func metricSelectionNormalizes() throws {

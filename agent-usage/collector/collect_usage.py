@@ -344,9 +344,6 @@ def finalize(agent, pricing):
     agent["daily"] = [day_entry(d) for d in DAY_LIST]
     agent["today"] = agent["_by_day"].get(TODAY, new_bucket())
 
-    def cost_of(b):
-        return estimate_cost(agent.get("_model_for_cost", ""), b, pricing) if pricing else None
-
     today_models = []
     total_cost = 0.0
     cost_known = False

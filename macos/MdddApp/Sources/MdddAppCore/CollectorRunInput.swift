@@ -30,7 +30,7 @@ extension CodexTokenManager: CodexAccessTokenInjecting {
         for accountID: String
     ) async -> CodexTokenDecision.Outcome {
         switch await validAccessToken(for: accountID, now: nil) {
-        case .success(accessToken: let accessToken, expiresAt: let expiresAt):
+        case .success(let accessToken, let expiresAt):
             return .available(
                 accessToken: accessToken,
                 expiresAt: expiresAt
@@ -41,10 +41,7 @@ extension CodexTokenManager: CodexAccessTokenInjecting {
                 return .needsReauthorization
             case .storageBlocked:
                 return .storageBlocked
-            case .refreshFailed(_, let reason):
-                if reason == "暂缓重试" {
-                    return .temporarilyUnavailable(retryAt: nil)
-                }
+            case .refreshFailed:
                 return .temporarilyUnavailable(retryAt: nil)
             case .notFound:
                 return .credentialNotFound

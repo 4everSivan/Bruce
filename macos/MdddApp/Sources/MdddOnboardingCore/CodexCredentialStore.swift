@@ -269,18 +269,6 @@ public final class CodexCredentialStore: Sendable {
         return false
     }
 
-    /// 更新单账号授权状态 (保留凭证字段).
-    public func updateAuthorizationState(
-        _ state: CodexAuthorizationState,
-        for accountID: String,
-        now: Date
-    ) throws {
-        guard var record = try loadRecord(for: accountID) else { return }
-        record.authorizationState = state
-        record.updatedAt = now
-        try saveRecord(record)
-    }
-
     // MARK: 旧库迁移
 
     /// 旧 `codex:accounts` 整体 JSON 的只读解析: 只提取 account ID 和 email,

@@ -43,26 +43,9 @@ extension View {
         buttonStyle(.glass)
     }
 
-    /// 详情区状态 Label 的胶囊底色; 哑光风格退化为材质.
-    func glassStatusPill() -> some View {
-        modifier(GlassStatusPillModifier())
-    }
-
     /// Form 分组行背景; 哑光风格退化为材质填充.
     func glassFormRowBackground() -> some View {
         modifier(GlassFormRowBackgroundModifier())
-    }
-}
-
-private struct GlassStatusPillModifier: ViewModifier {
-    @Environment(\.mdddGlassStyle) private var style
-
-    func body(content: Content) -> some View {
-        if style.usesGlass {
-            content.glassEffect(style.glass, in: .capsule)
-        } else {
-            content
-        }
     }
 }
 

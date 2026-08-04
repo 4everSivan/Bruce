@@ -1894,7 +1894,7 @@ private static func schRefreshFailureSinglePublish(
     let tokenManager = StubCodexTokenManager()
     tokenManager.resolutions = [
         mergerAccount1: .failure(.refreshFailed(
-            accountID: mergerAccount1, reason: "网络错误"
+            accountID: mergerAccount1, reason: .networkError
         )),
     ]
     let retryProvider = RetryInputProvider()

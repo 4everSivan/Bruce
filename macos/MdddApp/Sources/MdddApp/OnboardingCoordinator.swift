@@ -890,43 +890,6 @@ final class OnboardingCoordinator: ObservableObject {
         return SQLiteSchemaProbeResult(rawValue: status.rawValue) ?? .missing
     }
 
-    /// 只持久化非敏感的连接状态和验证时间. 保存失败不阻塞主流程,
-    /// 下一轮扫描或验证会重试.
-    private func persistConnectionState(
-        _ status: ConnectionStatus,
-        for module: CollectorModule
-    ) {
-        guard var config = configStore?.load() else { return }
-        config.connectionStates[module.rawValue] = status.rawValue
-        config.lastVerifiedAt[module.rawValue] =
-            ISO8601DateFormatter().string(from: Date())
-        try? configStore?.save(config)
-    }
-
-    /// 连接成功后把模块加入已选集合并持久化, 使 reconcileScheduler
-    /// 能把该模块交给 Scheduler 调度. 保存失败发布错误并返回 false
-    /// (fail-closed), 不更新内存选中状态.
-    @discardableResult
-    private func persistModuleSelection(_ module: CollectorModule) -> Bool {
-        guard let configStore else {
-            model.setSettingsError("配置存储不可用, 无法启用模块")
-            return false
-        }
-        var config = configStore.load() ?? OnboardingConfiguration()
-        guard !config.selectedModules.contains(module.rawValue) else {
-            return true
-        }
-        config.selectedModules.insert(module.rawValue)
-        do {
-            try configStore.save(config)
-        } catch {
-            model.setSettingsError("模块启用保存失败, 自动调度不会生效")
-            return false
-        }
-        selectedModules.insert(module)
-        return true
-    }
-
     /// 用户变更自动刷新间隔: 先持久化再通知 Scheduler 重启计时
     /// (先存后生效); 非法值回落默认 30 分钟, 保存失败不变更运行中间隔.
     func setRefreshIntervalMinutes(_ minutes: Int) {
@@ -1036,24 +999,6 @@ final class OnboardingCoordinator: ObservableObject {
             consentVersion: Self.currentConsentVersion,
             confirmedConsentVersion: nil
         )
-        reconcileScheduler()
-    }
-
-    /// 撤销单个模块: 停止调度并从已选集合移除.
-    func revokeModule(_ module: CollectorModule) {
-        scheduler.disableModule(module)
-        selectedModules.remove(module)
-
-        guard let configStore else { return }
-        var config = configStore.load() ?? OnboardingConfiguration()
-        config.selectedModules.remove(module.rawValue)
-        config.connectionStates.removeValue(forKey: module.rawValue)
-        config.lastVerifiedAt.removeValue(forKey: module.rawValue)
-        do {
-            try configStore.save(config)
-        } catch {
-            model.setSettingsError("模块撤销保存失败, 重启后可能恢复")
-        }
         reconcileScheduler()
     }
 

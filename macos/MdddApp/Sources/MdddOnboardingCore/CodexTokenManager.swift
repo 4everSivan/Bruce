@@ -1,11 +1,41 @@
 import Foundation
 
+// MARK: - CodexRefreshFailureReason
+
+/// Codex token 刷新失败的分类原因. 替代旧的字符串 reason,
+/// 禁止在调用方做字符串比较. description 面向用户, 不含 token 值.
+public enum CodexRefreshFailureReason: String, Equatable, Sendable {
+    /// 刷新退避未到, 本轮暂缓 (可复用未过期 token 或返回暂时不可用).
+    case deferred
+    /// OAuth 服务端限流.
+    case rateLimited
+    /// OAuth 服务端 5xx 或暂时不可用.
+    case serviceUnavailable
+    /// 网络/DNS/TLS/超时.
+    case networkError
+    /// 响应体无法解析或字段缺失.
+    case invalidResponse
+    /// 任务被取消.
+    case cancelled
+
+    public var description: String {
+        switch self {
+        case .deferred: return "暂缓重试"
+        case .rateLimited: return "限流"
+        case .serviceUnavailable: return "服务暂时不可用"
+        case .networkError: return "网络错误"
+        case .invalidResponse: return "响应无效"
+        case .cancelled: return "已取消"
+        }
+    }
+}
+
 // MARK: - CodexTokenError
 
 /// Token 决议的分类错误. description 面向用户, 不含 token 值.
 public enum CodexTokenError: Error, Equatable, CustomStringConvertible {
     case needsReauthorization(accountID: String)
-    case refreshFailed(accountID: String, reason: String)
+    case refreshFailed(accountID: String, reason: CodexRefreshFailureReason)
     case storageBlocked(accountID: String)
     case notFound(accountID: String)
 
@@ -14,7 +44,7 @@ public enum CodexTokenError: Error, Equatable, CustomStringConvertible {
         case .needsReauthorization:
             return "需要在 mddd 内重新授权"
         case .refreshFailed(_, let reason):
-            return "续期失败: \(reason)"
+            return "续期失败: \(reason.description)"
         case .storageBlocked:
             return "Keychain 存储异常"
         case .notFound:
@@ -554,7 +584,7 @@ public actor CodexTokenManager: CodexChallengeHandling {
                expiresAt.timeIntervalSince(now) > 0 {
                 return .success(accessToken: accessToken, expiresAt: expiresAt)
             }
-            return .failure(.refreshFailed(accountID: accountID, reason: "暂缓重试"))
+            return .failure(.refreshFailed(accountID: accountID, reason: .deferred))
         }
 
         // 复用同账号 in-flight task
@@ -609,21 +639,21 @@ public actor CodexTokenManager: CodexChallengeHandling {
                     retryAfter ?? 300
                 )
                 caches[accountID] = cache
-                return .failure(.refreshFailed(accountID: accountID, reason: "限流"))
+                return .failure(.refreshFailed(accountID: accountID, reason: .rateLimited))
             case .serverError:
                 cache.refreshNotBefore = now.addingTimeInterval(300)
                 caches[accountID] = cache
                 return .failure(.refreshFailed(
-                    accountID: accountID, reason: "服务暂时不可用"
+                    accountID: accountID, reason: .serviceUnavailable
                 ))
             case .networkUnreachable, .httpStatus:
                 cache.refreshNotBefore = now.addingTimeInterval(300)
                 caches[accountID] = cache
-                return .failure(.refreshFailed(accountID: accountID, reason: "网络错误"))
+                return .failure(.refreshFailed(accountID: accountID, reason: .networkError))
             case .invalidResponse:
-                return .failure(.refreshFailed(accountID: accountID, reason: "响应无效"))
+                return .failure(.refreshFailed(accountID: accountID, reason: .invalidResponse))
             case .cancelled:
-                return .failure(.refreshFailed(accountID: accountID, reason: "已取消"))
+                return .failure(.refreshFailed(accountID: accountID, reason: .cancelled))
             }
         case .success(let token):
             // 先更新内存, 再写 Keychain

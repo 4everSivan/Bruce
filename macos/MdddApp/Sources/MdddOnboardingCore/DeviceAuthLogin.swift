@@ -206,7 +206,6 @@ public struct CodexDeviceFlow: Sendable {
         string: "https://auth.openai.com/oauth/token"
     )!
     public static let redirectURI = "https://auth.openai.com/deviceauth/callback"
-    public static let scope = "openid profile email"
     public static let verificationURL = URL(
         string: "https://auth.openai.com/codex/device"
     )!

@@ -1,12 +1,6 @@
 import Foundation
 import MdddOnboardingCore
 
-package struct ArtifactHeader: Codable, Equatable, Sendable {
-    let schemaVersion: Int
-    let module: CollectorModule
-    let generatedAt: String
-}
-
 package struct AgentTokenBucket: Codable, Equatable, Sendable {
     let input: Int
     let output: Int

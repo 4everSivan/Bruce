@@ -46,7 +46,6 @@ struct MdddApp: App {
             codexTokenInjector: codexTokenManager,
             codexStore: codexStore
         )
-        runInputProvider.attachCodexTokenInjector(codexTokenManager)
         let scheduler = RefreshScheduler(
             executor: runner, store: resolvedStore,
             runInputProvider: runInputProvider

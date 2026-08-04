@@ -1054,29 +1054,4 @@ struct SettingsView: View {
         case .locked, .timedOut, .corrupted: return "xmark.circle"
         }
     }
-
-    private func connectionStatusText(_ status: ConnectionStatus?) -> String {
-        guard let status else { return "未检查" }
-        switch status {
-        case .notRequired: return "无需连接"
-        case .notChecked: return "未检查"
-        case .pendingAuthorization: return "待授权"
-        case .verifying: return "验证中"
-        case .connected: return "已连接"
-        case .expired: return "授权失效"
-        case .unreachable: return "网络不可达"
-        case .unsupported: return "不支持"
-        }
-    }
-
-    private func connectionStatusIcon(_ status: ConnectionStatus?) -> String {
-        guard let status else { return "circle.dashed" }
-        switch status {
-        case .connected: return "checkmark.circle.fill"
-        case .pendingAuthorization, .expired: return "exclamationmark.triangle.fill"
-        case .unreachable: return "wifi.slash"
-        case .verifying: return "arrow.clockwise"
-        case .notRequired, .notChecked, .unsupported: return "circle.dashed"
-        }
-    }
 }
