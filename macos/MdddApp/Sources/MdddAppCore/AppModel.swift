@@ -161,6 +161,12 @@ package final class AppModel: ObservableObject {
     /// 本机是否存在可导入的 Antigravity 登录态 (文件或登录 Keychain);
     /// 由 coordinator 显式刷新, 设置页不得在 body 中直接探测.
     @Published package private(set) var antigravityLocalAvailable = false
+    /// 本机是否存在 Claude CLI 登录态 (Keychain 或 ~/.claude/.credentials.json);
+    /// 由 coordinator 显式刷新, 同时作为 claude provider 的 configured 语义.
+    @Published package private(set) var claudeLocalAvailable = false
+    /// 本机是否存在 Grok CLI 登录态 (~/.grok/auth.json 含可用条目);
+    /// 由 coordinator 显式刷新, 同时作为 grok provider 的 configured 语义.
+    @Published package private(set) var grokLocalAvailable = false
     /// 正在保存, 验证或导入的订阅 provider, 供设置页禁用对应按钮.
     @Published package private(set) var busySubscriptionProviders: Set<SubscriptionProviderID> = []
     /// Codex 已导入账号摘要 (数量与邮箱前缀), 供设置页展示.
@@ -420,6 +426,14 @@ package final class AppModel: ObservableObject {
 
     package func setAntigravityLocalAvailable(_ available: Bool) {
         antigravityLocalAvailable = available
+    }
+
+    package func setClaudeLocalAvailable(_ available: Bool) {
+        claudeLocalAvailable = available
+    }
+
+    package func setGrokLocalAvailable(_ available: Bool) {
+        grokLocalAvailable = available
     }
 
     package func setBusySubscription(

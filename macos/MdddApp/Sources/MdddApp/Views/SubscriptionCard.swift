@@ -394,6 +394,10 @@ private struct ProviderLogoBadge: View {
             return Color(hex: "#10a37f")
         case "antigravity":
             return Color(hex: "#4285f4")
+        case "claude":
+            return Color(hex: "#d97757")
+        case "grok":
+            return Color(hex: "#111111")
         default:
             return Color(hex: "#8e8e93")
         }

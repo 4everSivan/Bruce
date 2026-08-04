@@ -37,6 +37,7 @@ from pricing import BUILTIN_PRICING, estimate_cost, load_pricing  # noqa: E402
 import runtime
 from runtime import day_of, hour_of, parse_iso, epoch_from_iso  # noqa: E402
 import quota_services
+import quota_official
 import local_usage
 from local_usage import finalize, make_agent, new_bucket, record_usage, scan_claude, scan_codex, scan_kimi  # noqa: E402
 import codex_compat
@@ -905,6 +906,60 @@ def _collect_app_services():
             )
         )
 
+    if (provider_meta.get("claude") or {}).get("enabled"):
+        svc = _quota_service_entry("claude", "Claude", "claude")
+        services.append(_finalize_quota_service(svc, _claude_query_or_missing))
+
+    if (provider_meta.get("grok") or {}).get("enabled"):
+        svc = _quota_service_entry("grok", "Grok", "grok")
+        services.append(_finalize_quota_service(svc, _grok_query_or_missing))
+
+    return services
+
+
+def _claude_query_or_missing():
+    result = quota_official.service_claude(HOME, now, HTTP_TIMEOUT)
+    if result is None:
+        raise RuntimeError("未检测到 Claude 本机凭证 (Keychain 或 ~/.claude/.credentials.json)")
+    return result
+
+
+def _grok_query_or_missing():
+    result = quota_official.service_grok(HOME, now, HTTP_TIMEOUT)
+    if result is None:
+        raise RuntimeError("未检测到 Grok 本机凭证 (~/.grok/auth.json)")
+    return result
+
+
+def _collect_official_services():
+    """CLI 模式: 探测本机 Claude / Grok 凭证并查询官方订阅额度.
+
+    与 CC Switch 同策略: 实时只读凭证, 不刷新, 不回写.
+    无凭证的平台不出条目; 凭证过期给出可操作 error 条目.
+    """
+    services = []
+    now_ts = now.timestamp()
+    probes = (
+        ("claude", "Claude", "claude", quota_official.read_claude_token,
+         quota_official.service_claude),
+        ("grok", "Grok", "grok", quota_official.read_grok_token,
+         quota_official.service_grok),
+    )
+    for service_id, name, app, read_token, query in probes:
+        try:
+            token = read_token(HOME, now_ts)
+        except Exception as e:
+            svc = _quota_service_entry(service_id, name, app)
+            svc["status"] = "error"
+            svc["note"] = str(e)[:60] or "凭证不可用"
+            services.append(svc)
+            continue
+        if token is None:
+            continue
+        svc = _quota_service_entry(service_id, name, app)
+        services.append(
+            _finalize_quota_service(svc, lambda q=query: q(HOME, now, HTTP_TIMEOUT))
+        )
     return services
 
 
@@ -913,7 +968,7 @@ def collect_services():
         return _collect_app_services()
     services = []
     if not os.path.exists(CC_SWITCH_DB):
-        return services
+        return services + _collect_official_services()
     try:
         with sqlite3.connect("file:%s?mode=ro" % CC_SWITCH_DB, uri=True) as db:
             rows = db.execute(
@@ -936,7 +991,7 @@ def collect_services():
                 "capturedAt": now.isoformat(timespec="seconds"),
                 "note": "只读数据库 schema 不兼容",
             }
-        ]
+        ] + _collect_official_services()
 
     handlers = {
         "Kimi For Coding": ("kimi_coding", service_kimi_coding),
@@ -989,7 +1044,7 @@ def collect_services():
             msg = str(e)
             svc["note"] = ("查询失败: " + msg[:60]) if msg else "查询失败"
         services.append(svc)
-    return services
+    return services + _collect_official_services()
 
 
 # ---------------------------------------------------------------- main

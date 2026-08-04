@@ -46,6 +46,8 @@ extension SubscriptionProviderID {
         case .volcengine: return "火山引擎"
         case .codex: return "Codex"
         case .antigravity: return "Antigravity"
+        case .claude: return "Claude"
+        case .grok: return "Grok"
         }
     }
 
@@ -67,6 +69,11 @@ extension SubscriptionProviderID {
             return []
         case .antigravity:
             return [SubscriptionCredentialAccount.antigravityOAuth]
+        // Claude / Grok 不持有应用凭证: 运行时实时只读本机 CLI 登录态
+        // (Keychain "Claude Code-credentials" / ~/.claude/.credentials.json /
+        // ~/.grok/auth.json), 不导入, 不刷新, 不回写.
+        case .claude, .grok:
+            return []
         }
     }
 }

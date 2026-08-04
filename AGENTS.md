@@ -85,7 +85,7 @@
 | `python3 -c 'import ast,pathlib; [ast.parse(p.read_text()) for p in pathlib.Path(".").glob("*/collector/*.py")]'` | 无外部调用的 Python 语法验证 |
 | `node --check -` | 对从 Widget 提取的 JavaScript 执行语法验证 |
 | `zsh scripts/verify-local.sh` | 标准本地验证: Python 语法 + pytest + swift build + 全部 9 个 Harness |
-| `python3 -m pytest tests/` | Python 单元与契约测试 (bridge, collector, widget 安全); 116 项 |
+| `python3 -m pytest tests/` | Python 单元与契约测试 (bridge, collector, widget 安全); 146 项 |
 | `swift build --package-path macos/MdddApp` | macOS App 与 MdddOnboardingCore 构建验证 |
 | `swift run --package-path macos/MdddApp MdddOnboardingCoreHarness` | Onboarding Core 边界测试 (进程, SQLite, Keychain, Gate, 订阅凭证, 设备码登录, 令牌轮换合并, Codex v2 迁移, DeepSeek 追踪 ID 与保存事务); 143 项 |
 | `swift run --package-path macos/MdddApp PanelViewModelHarness` | 面板 view model 映射边界测试 (措辞, 分组, 条件渲染, Codex 账号上次成功时间, DeepSeek 月度映射); 32 项 |
@@ -109,7 +109,8 @@ macOS 本机会话与认证文件
                   │
                   ▼
 Python Collectors ──出站请求──> Kimi, DeepSeek,
-                  │             火山引擎, OpenAI, Google Cloud Code
+                  │             火山引擎, OpenAI, Google Cloud Code,
+                  │             Anthropic (Claude), Grok
                   ▼
            {"artifact": ...} JSON
                   │
@@ -128,6 +129,7 @@ Daimon 单文件 Widgets   macOS 菜单栏原生液态玻璃看板
 - `agent-usage` 云端额度条目在 CLI 模式由 CC Switch providers 行驱动; App 模式改由注入凭证 (`kimi_web_tokens` / `provider_env.deepseek` / `provider_meta.volcengine` / `codex_oauth_auth` + `codex_auth` / `antigravity_oauth`) 驱动合成, 不再要求 CC Switch 数据库存在; App 模式不读 `~/.codex/auth.json`, Codex 活跃账号由 `codex_auth` 注入承载.
 - agy (Antigravity CLI) >= 1.1.8 把 OAuth 令牌存进登录 Keychain (go-keyring, service `gemini` / account `antigravity`, 值带 `go-keyring-base64:` 前缀), 不再写 `~/.gemini/antigravity-cli/antigravity-oauth-token`; collector CLI 模式与 App 导入链路均按「文件优先, Keychain 回退」读取, Keychain 来源只读不回写.
 - Antigravity 额度查询的 OAuth client 凭证 (`AGY_CLIENT_ID` / `AGY_CLIENT_SECRET`) 由运行环境注入, 不硬编码入库; 缺省为空时刷新链路安全降级, 不得伪造非空凭证.
+- Claude / Grok 订阅额度 (`quota_official.py`) 实时只读本机 CLI 登录态, 不刷新, 不回写, 不做一次性导入: Claude 按「Keychain `Claude Code-credentials` (无 account) 优先, `~/.claude/.credentials.json` 兜底」读取, 调用 `api.anthropic.com/api/oauth/usage`; Grok 读取 `~/.grok/auth.json` (OIDC scope 优先, legacy `/sign-in` 兜底), 调用 `grok.com` gRPC-web 账单接口, protobuf 启发式解析失败必须抛可诊断错误, 不得伪造用量. App 模式由 `provider_meta.claude/grok.enabled` 标记驱动 (无凭证注入), CLI 模式自动探测本机凭证; Swift 侧以本机检测结果作为 configured 语义 (fail-closed).
 - App 订阅凭证存 Keychain (`com.mddd.dashboard.credentials`), 在设置「订阅额度」分区配置或从本机/CC Switch 一次性只读导入; 令牌轮换经 `credentialUpdates` 只写回 Keychain, 不回写 CC Switch.
 - 外部 API 和 CC Switch 数据库 schema 未在仓库内锁定, 解析失败必须保留可诊断证据.
 <!-- source: scan/security, confidence: HIGH -->

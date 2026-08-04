@@ -320,6 +320,7 @@ struct SettingsView: View {
         .glassButtonStyle()
         .onAppear {
             coordinator.refreshAntigravityLocalAvailability()
+            coordinator.refreshOfficialLocalAvailability()
         }
         .confirmationDialog(
             "从 CC Switch 导入火山引擎凭证?",
@@ -410,6 +411,8 @@ struct SettingsView: View {
         case .volcengine: volcengineGroup
         case .codex: codexGroup
         case .antigravity: antigravityGroup
+        case .claude: claudeGroup
+        case .grok: grokGroup
         }
     }
 
@@ -819,6 +822,46 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+    /// Claude / Grok 共用管理组: 应用不持有凭证, 运行时实时只读本机
+    /// CLI 登录态; 无导入和移除按钮, 仅提示检测状态并支持重新检测.
+    private func officialLocalGroup(
+        _ id: SubscriptionProviderID, available: Bool, missingHint: String
+    ) -> some View {
+        managementStack {
+            if available {
+                Text("已检测到本机登录态, 打开启用开关即可查询额度")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text(missingHint)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            HStack(spacing: 8) {
+                Button("重新检测") {
+                    coordinator.refreshOfficialLocalAvailability()
+                }
+                .accessibilityHint("重新读取本机 \(id.displayName) CLI 登录态")
+            }
+        }
+    }
+
+    private var claudeGroup: some View {
+        officialLocalGroup(
+            .claude,
+            available: model.claudeLocalAvailable,
+            missingHint: "未检测到 Claude 登录态, 请先登录 Claude CLI"
+        )
+    }
+
+    private var grokGroup: some View {
+        officialLocalGroup(
+            .grok,
+            available: model.grokLocalAvailable,
+            missingHint: "未检测到 Grok 登录态, 请先通过 Grok CLI 登录 (~/.grok/auth.json)"
+        )
     }
 
     /// 状态行: 未配置 / 已配置 · 验证通过 / 验证失败(原因) / 需要重新登录.

@@ -159,6 +159,14 @@ final class OnboardingCoordinator: ObservableObject {
             // 按真实完整 record 判定, 索引状态不作数 (fail-closed).
             return (try? codexStore.hasConfiguredCredentials()) ?? false
         }
+        // Claude / Grok 无应用持有凭证: configured 语义为本机 CLI 登录态检测结果
+        // (由 refreshOfficialLocalAvailability 显式刷新).
+        if id == .claude {
+            return model.claudeLocalAvailable
+        }
+        if id == .grok {
+            return model.grokLocalAvailable
+        }
         for account in id.credentialAccounts {
             guard let value = try? credentialStore.loadCredential(
                 forAccount: account
@@ -727,6 +735,68 @@ final class OnboardingCoordinator: ObservableObject {
             "find-generic-password",
             "-s", Self.agyKeychainService,
             "-a", Self.agyKeychainAccount,
+        ]) != nil
+    }
+
+    // MARK: - Claude / Grok 本机登录态检测 (实时只读, 不导入不回写)
+
+    /// Claude CLI 凭证 Keychain service 名 (Claude Code-credentials, 无 account).
+    private static let claudeKeychainService = "Claude Code-credentials"
+
+    /// 刷新 Claude / Grok 本机登录态可用性, 结果写入 model 供设置页渲染,
+    /// 并作为对应 provider 的 configured 语义 (fail-closed).
+    /// Grok auth.json 解析同步; Claude Keychain 探测放后台队列
+    /// (子进程 waitUntilExit 会泵 runloop, 同 Antigravity 的重入崩溃规避).
+    func refreshOfficialLocalAvailability() {
+        let grokAvailable = grokLocalAuthAvailable()
+        model.setGrokLocalAvailable(grokAvailable)
+        model.setSubscriptionCredentialConfigured(grokAvailable, for: .grok)
+
+        let claudeFileExists = FileManager.default.fileExists(
+            atPath: homeURL
+                .appendingPathComponent(".claude/.credentials.json").path
+        )
+        if claudeFileExists {
+            model.setClaudeLocalAvailable(true)
+            model.setSubscriptionCredentialConfigured(true, for: .claude)
+            return
+        }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let exists = self?.claudeKeychainItemExists() ?? false
+            DispatchQueue.main.async {
+                self?.model.setClaudeLocalAvailable(exists)
+                self?.model.setSubscriptionCredentialConfigured(exists, for: .claude)
+            }
+        }
+    }
+
+    /// 解析 ~/.grok/auth.json: 顶层 scope 映射中存在 OIDC (SuperGrok)
+    /// 或 legacy 登录条目且 key 非空即视为可用; 损坏或缺失返回 false.
+    private func grokLocalAuthAvailable() -> Bool {
+        let url = homeURL.appendingPathComponent(".grok/auth.json")
+        guard let data = try? Data(contentsOf: url),
+              let root = try? JSONSerialization.jsonObject(with: data)
+                  as? [String: Any] else {
+            return false
+        }
+        for (scope, value) in root {
+            guard let entry = value as? [String: Any],
+                  let key = entry["key"] as? String, !key.isEmpty else {
+                continue
+            }
+            if scope.hasPrefix("https://auth.x.ai::") || scope.contains("/sign-in") {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// 探测登录 Keychain 是否存在 Claude CLI 凭证条目
+    /// (不读密码数据, 不触发授权弹窗).
+    private func claudeKeychainItemExists() -> Bool {
+        runSecurity(arguments: [
+            "find-generic-password",
+            "-s", Self.claudeKeychainService,
         ]) != nil
     }
 

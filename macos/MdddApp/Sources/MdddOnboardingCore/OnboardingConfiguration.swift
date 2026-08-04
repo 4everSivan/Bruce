@@ -9,6 +9,8 @@ public enum SubscriptionProviderID: String, Codable, Sendable, CaseIterable {
     case volcengine
     case codex
     case antigravity
+    case claude
+    case grok
 }
 
 // MARK: - SubscriptionVerificationStatus
