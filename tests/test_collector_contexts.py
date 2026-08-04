@@ -47,7 +47,7 @@ class AgentCollectorContextTests(unittest.TestCase):
 
         artifact = result["artifact"]
         self.assertEqual(artifact["generatedAt"], "2026-07-28T12:00:00+08:00")
-        self.assertEqual(self.module.DAY_LIST, ["2026-07-27", "2026-07-28"])
+        self.assertEqual(self.module.runtime.DAY_LIST, ["2026-07-27", "2026-07-28"])
         self.assertTrue(
             all(
                 [entry["date"] for entry in agent["daily"]]

@@ -15,6 +15,11 @@ _RUNTIME_TZ = None
 # HTTP 注入覆盖 (get_json/post_json/urlopen); 测试用, 生产为空.
 _RUNTIME_HTTP = {}
 
+# 日期桶状态; 由 collect_usage._configure_runtime 每次运行重置.
+TODAY = None
+CUTOFF_TS = None
+DAY_LIST = []
+
 
 def set_timezone(tz):
     """由 _configure_runtime 调用, 设置本轮运行时时区."""
@@ -26,6 +31,14 @@ def set_http_overrides(overrides):
     """由 _configure_runtime 调用, 设置本轮 HTTP 注入覆盖."""
     global _RUNTIME_HTTP
     _RUNTIME_HTTP = overrides or {}
+
+
+def set_date_buckets(today, cutoff_ts, day_list):
+    """由 _configure_runtime 调用, 设置本轮日期桶边界."""
+    global TODAY, CUTOFF_TS, DAY_LIST
+    TODAY = today
+    CUTOFF_TS = cutoff_ts
+    DAY_LIST = day_list
 
 
 def day_of(ts_seconds):

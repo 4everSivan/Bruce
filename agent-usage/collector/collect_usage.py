@@ -37,6 +37,9 @@ from pricing import BUILTIN_PRICING, estimate_cost, load_pricing  # noqa: E402
 import runtime
 from runtime import day_of, hour_of, parse_iso, epoch_from_iso  # noqa: E402
 import quota_services
+import local_usage
+from local_usage import finalize, make_agent, new_bucket, record_usage, scan_claude, scan_codex, scan_kimi  # noqa: E402
+import codex_compat
 
 HOME = os.path.expanduser("~")
 DAIMON_KIMI_SESSIONS = os.path.join(
@@ -203,12 +206,14 @@ def _configure_runtime(ctx):
     if DAYS < 1:
         raise ValueError("ctx.days must be at least 1")
     HTTP_TIMEOUT = float(ctx.get("http_timeout", 8))
-    TODAY = now.strftime("%Y-%m-%d")
-    CUTOFF_TS = (now - datetime.timedelta(days=DAYS + 1)).timestamp()
-    DAY_LIST = [
-        (now - datetime.timedelta(days=i)).strftime("%Y-%m-%d")
-        for i in range(DAYS - 1, -1, -1)
-    ]
+    runtime.set_date_buckets(
+        now.strftime("%Y-%m-%d"),
+        (now - datetime.timedelta(days=DAYS + 1)).timestamp(),
+        [
+            (now - datetime.timedelta(days=i)).strftime("%Y-%m-%d")
+            for i in range(DAYS - 1, -1, -1)
+        ],
+    )
     runtime.set_http_overrides(dict(ctx.get("http") or {}))
     _RUNTIME_CREDENTIALS = dict(ctx.get("credentials") or {})
     _RUNTIME_CREDENTIAL_UPDATES = []
@@ -267,285 +272,6 @@ def _record_credential_update(provider, account_id, credentials):
 def _urlopen(request, **kwargs):
     return runtime.urlopen(request, **kwargs)
 
-
-def new_bucket():
-    return {"input": 0, "output": 0, "cacheRead": 0, "cacheCreation": 0, "total": 0}
-
-
-def make_agent(agent_id, name):
-    return {
-        "id": agent_id,
-        "name": name,
-        "status": "ok",
-        "note": "",
-        "quota": None,
-        "today": new_bucket(),
-        "daily": [],
-        "models": {},
-        "todayModels": [],
-        "projects": [],
-        "hours": [0] * 24,
-        "todayCostUsd": None,
-        "_by_day": collections.defaultdict(new_bucket),
-        "_models_today": collections.defaultdict(new_bucket),
-        "_projects_today": collections.defaultdict(int),
-        "_hours": [0] * 24,
-    }
-
-
-def record_usage(agent, ts_seconds, model, inp, out, cache_read, cache_creation, project=None):
-    day = day_of(ts_seconds)
-    if day < DAY_LIST[0] or day > TODAY:
-        return
-    total = inp + out + cache_read + cache_creation
-    b = agent["_by_day"][day]
-    b["input"] += inp
-    b["output"] += out
-    b["cacheRead"] += cache_read
-    b["cacheCreation"] += cache_creation
-    b["total"] += total
-    if day == TODAY:
-        mb = agent["_models_today"][model or "unknown"]
-        mb["input"] += inp
-        mb["output"] += out
-        mb["cacheRead"] += cache_read
-        mb["cacheCreation"] += cache_creation
-        mb["total"] += total
-        agent["_hours"][hour_of(ts_seconds)] += total
-        if project:
-            agent["_projects_today"][project] += total
-
-
-def finalize(agent, pricing):
-    empty = new_bucket()
-
-    def day_entry(d):
-        b = agent["_by_day"].get(d, empty)
-        return {
-            "date": d,
-            "input": b["input"] + b["cacheRead"] + b["cacheCreation"],
-            "output": b["output"],
-            "total": b["total"],
-        }
-
-    agent["daily"] = [day_entry(d) for d in DAY_LIST]
-    agent["today"] = agent["_by_day"].get(TODAY, new_bucket())
-
-    today_models = []
-    total_cost = 0.0
-    cost_known = False
-    for model, b in sorted(agent["_models_today"].items(), key=lambda kv: -kv[1]["total"]):
-        if model == "<synthetic>" or b["total"] <= 0:
-            continue
-        c = estimate_cost(model, b, pricing) if pricing else None
-        if c is not None:
-            total_cost += c
-            cost_known = True
-        today_models.append(
-            {
-                "model": model,
-                "total": b["total"],
-                "input": b["input"] + b["cacheRead"] + b["cacheCreation"],
-                "output": b["output"],
-                "costUsd": round(c, 4) if c is not None else None,
-            }
-        )
-    agent["todayModels"] = today_models[:5]
-    agent["models"] = {m["model"]: m["total"] for m in today_models}
-    agent["todayCostUsd"] = round(total_cost, 4) if cost_known else None
-    agent["projects"] = [
-        {"name": k, "total": v}
-        for k, v in sorted(agent["_projects_today"].items(), key=lambda kv: -kv[1])[:3]
-    ]
-    agent["hours"] = agent["_hours"]
-    for k in ("_by_day", "_models_today", "_projects_today", "_hours", "_model_for_cost"):
-        agent.pop(k, None)
-    return agent
-
-
-# ---------------------------------------------------------------- scanners
-
-def iter_recent_jsonl(root, pattern="**/*.jsonl"):
-    if not os.path.isdir(root):
-        return
-    for path in glob.glob(os.path.join(root, pattern), recursive=True):
-        try:
-            if os.path.getmtime(path) < CUTOFF_TS:
-                continue
-        except OSError:
-            continue
-        yield path
-
-
-def scan_kimi(agent, root, project_from_path=None):
-    found = False
-    for path in iter_recent_jsonl(root):
-        found = True
-        try:
-            with open(path, encoding="utf-8", errors="replace") as fh:
-                for line in fh:
-                    if '"usage.record"' not in line:
-                        continue
-                    try:
-                        r = json.loads(line)
-                    except Exception:
-                        continue
-                    if r.get("type") != "usage.record":
-                        continue
-                    u = r.get("usage") or {}
-                    ts = r.get("time")
-                    if not isinstance(ts, (int, float)):
-                        continue
-                    record_usage(
-                        agent,
-                        ts / 1000.0,
-                        r.get("model"),
-                        int(u.get("inputOther") or 0),
-                        int(u.get("output") or 0),
-                        int(u.get("inputCacheRead") or 0),
-                        int(u.get("inputCacheCreation") or 0),
-                        project=project_from_path(path) if project_from_path else None,
-                    )
-        except OSError:
-            continue
-    return found
-
-
-def scan_claude(agent):
-    found = False
-    seen_msg = set()
-    for path in iter_recent_jsonl(CLAUDE_PROJECTS):
-        found = True
-        proj = os.path.basename(os.path.dirname(path))
-        if "-project-" in proj:
-            proj = proj.split("-project-")[-1]
-        elif proj.startswith("-Users-"):
-            proj = proj.split("-")[-1]
-        if "/subagents/" in path:
-            proj += " ·子代理"
-        try:
-            with open(path, encoding="utf-8", errors="replace") as fh:
-                for line in fh:
-                    if '"usage"' not in line or '"assistant"' not in line:
-                        continue
-                    try:
-                        r = json.loads(line)
-                    except Exception:
-                        continue
-                    if r.get("type") != "assistant":
-                        continue
-                    msg = r.get("message") or {}
-                    u = msg.get("usage") or {}
-                    mid = msg.get("id")
-                    ts = parse_iso(r.get("timestamp") or "")
-                    if ts is None:
-                        continue
-                    if mid:
-                        if mid in seen_msg:
-                            continue
-                        seen_msg.add(mid)
-                    record_usage(
-                        agent,
-                        ts,
-                        msg.get("model"),
-                        int(u.get("input_tokens") or 0),
-                        int(u.get("output_tokens") or 0),
-                        int(u.get("cache_read_input_tokens") or 0),
-                        int(u.get("cache_creation_input_tokens") or 0),
-                        project=proj,
-                    )
-        except OSError:
-            continue
-    return found
-
-
-def scan_codex(agent, session_dirs=None):
-    """扫描 Codex rollout 会话, 返回 (found, quota_candidate).
-
-    quota_candidate 为 {"ts": float, "quota": dict} 或 None; agent["quota"]
-    的写入上移到调用方, 便于跨来源 (CLI/Orca) 取 ts 最大者.
-    文件按 mtime 降序遍历: quota 快照只需最新一份, 已在更新文件拿到 quota
-    后, mtime 早于 CUTOFF_TS 的旧文件直接短路, 不再整文件读取; 用量统计
-    逻辑不变 (旧文件本就不计入 14 日窗口).
-    """
-    found = False
-    latest_quota = None
-    latest_quota_ts = -1.0
-    files = []
-    for d in session_dirs or [CODEX_SESSIONS]:
-        files.extend(
-            glob.glob(os.path.join(d, "**/rollout-*.jsonl"), recursive=True)
-        )
-    timed = []
-    for path in set(files):
-        try:
-            timed.append((os.path.getmtime(path), path))
-        except OSError:
-            continue
-    timed.sort(reverse=True)
-    for mtime, path in timed:
-        recent = mtime >= CUTOFF_TS
-        if recent:
-            found = True
-        elif latest_quota is not None:
-            # quota 只需最新一份: 已捕获后更旧的文件不再整文件扫描
-            break
-        try:
-            with open(path, encoding="utf-8", errors="replace") as fh:
-                for line in fh:
-                    if '"token_count"' not in line:
-                        continue
-                    try:
-                        r = json.loads(line)
-                    except Exception:
-                        continue
-                    payload = r.get("payload") or {}
-                    if payload.get("type") != "token_count":
-                        continue
-                    ts = parse_iso(r.get("timestamp") or "")
-                    rl = payload.get("rate_limits")
-                    if rl and ts and ts > latest_quota_ts:
-                        latest_quota_ts = ts
-                        latest_quota = rl
-                    if not recent or ts is None:
-                        continue
-                    info = payload.get("info") or {}
-                    u = info.get("last_token_usage") or {}
-                    if not u:
-                        continue
-                    record_usage(
-                        agent,
-                        ts,
-                        "codex",
-                        int(u.get("input_tokens") or 0) - int(u.get("cached_input_tokens") or 0),
-                        int(u.get("output_tokens") or 0),
-                        int(u.get("cached_input_tokens") or 0),
-                        0,
-                    )
-        except OSError:
-            continue
-    if not latest_quota:
-        return found, None
-    windows = []
-    for key, label in (("primary", "5小时窗口"), ("secondary", "每周窗口")):
-        w = latest_quota.get(key)
-        if w:
-            windows.append(
-                {
-                    "label": label,
-                    "usedPercent": float(w.get("used_percent") or 0),
-                    "windowMinutes": w.get("window_minutes"),
-                    "resetsAt": w.get("resets_at"),
-                }
-            )
-    quota = {
-        "plan": latest_quota.get("plan_type"),
-        "windows": windows,
-        "capturedAt": datetime.datetime.fromtimestamp(
-            latest_quota_ts, runtime._RUNTIME_TZ
-        ).isoformat(timespec="seconds"),
-    }
-    return found, {"ts": latest_quota_ts, "quota": quota}
 
 
 # ---------------------------------------------------------------- cc-switch services
@@ -690,160 +416,26 @@ def service_kimi_coding(env):
     return {"kind": "windows", "plan": plan, "windows": windows, "extra": " · ".join(extras) or None}
 
 
-
-# ---------------------------------------------------------------- codex multi-account
-
-def _codex_window_label(seconds):
-    try:
-        s = int(seconds)
-    except (TypeError, ValueError):
-        return "窗口"
-    if s <= 6 * 3600:
-        return "5小时窗口"
-    if s <= 8 * 24 * 3600:
-        return "每周窗口"
-    return "每月窗口"
+def record_codex_challenge(acc_id):
+    """App 模式 401: 记录 accessRejected 定向重试挑战 (线程安全)."""
+    with _CREDENTIAL_UPDATE_LOCK:
+        _RUNTIME_CREDENTIAL_CHALLENGES.append(
+            {
+                "provider": "codex",
+                "accountId": acc_id,
+                "reason": "accessRejected",
+            }
+        )
 
 
 def _codex_refresh(refresh_token):
-    body = urllib.parse.urlencode(
-        {
-            "grant_type": "refresh_token",
-            "client_id": CODEX_OAUTH_CLIENT_ID,
-            "refresh_token": refresh_token,
-        }
-    ).encode()
-    req = urllib.request.Request(
-        CODEX_TOKEN_URL,
-        data=body,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    """CLI legacy refresh 的薄包装 (委托 codex_compat). 测试 monkeypatch 此名."""
+    return codex_compat.refresh(
+        refresh_token, CODEX_TOKEN_URL, CODEX_OAUTH_CLIENT_ID, _urlopen, HTTP_TIMEOUT
     )
-    with _urlopen(req, timeout=HTTP_TIMEOUT) as resp:
-        return json.loads(resp.read().decode("utf-8", "replace"))
 
 
-def _codex_service_id(acc_id):
-    """codex_ + SHA256(accountID) 前 16 位 hex. 跨 Swift/Python 统一."""
-    return "codex_" + hashlib.sha256((acc_id or "").encode("utf-8")).hexdigest()[:16]
-
-
-def _codex_failure_kind(exc):
-    """从异常分类固定 failureKind: auth/permission/rateLimit/network/server/invalidResponse."""
-    code = getattr(exc, "code", None)
-    message = str(exc)
-    if code == 401 or "HTTP 401" in message:
-        return "auth"
-    if code == 403 or "HTTP 403" in message:
-        return "permission"
-    if code == 429 or "HTTP 429" in message:
-        return "rateLimit"
-    if code is not None and 500 <= code < 600:
-        return "server"
-    return "network"
-
-
-def _codex_query_single_account(acc_id, access_token, display_name, style):
-    """查询单账号 wham/usage 额度, 两种调用方共用同一查询主体.
-
-    style="app": 消费注入的短期 access token, 错误分类生成固定文案
-    (401 -> accessRejected challenge; 403 -> 权限/套餐错误; 其余 -> 暂时
-    失败), 不解析响应体进 note. style="legacy": 保留 CLI 兼容行为, 错误
-    文案带原始消息.
-
-    display_name 由 Swift 传入最终展示名 (含 "Codex · " 前缀), 原样写入
-    service.name, 不添加或删除前缀.
-    成功: freshness=fresh, capturedAt=本轮成功时间.
-    失败: freshness=unavailable, failureKind=分类, 不写 capturedAt.
-    """
-    svc = {
-        "id": _codex_service_id(acc_id),
-        "name": display_name or "账号",
-        "app": "codex",
-        "isCurrent": False,
-        "status": "ok",
-        "kind": None,
-        "plan": None,
-        "windows": [],
-        "balance": None,
-        "currency": None,
-        "capturedAt": now.isoformat(timespec="seconds"),
-        "freshness": "fresh",
-        "failureKind": None,
-        "note": "",
-    }
-    try:
-        d = http_get_json(
-            CODEX_USAGE_URL,
-            {
-                "Authorization": "Bearer " + (access_token or ""),
-                "chatgpt-account-id": acc_id or "",
-                "User-Agent": "codex-cli/1.0",
-                "Accept": "application/json",
-            },
-        )
-        windows = []
-        rl = d.get("rate_limit") or {}
-        for key in ("primary_window", "secondary_window"):
-            w = rl.get(key)
-            if not w:
-                continue
-            secs = w.get("limit_window_seconds")
-            windows.append(
-                {
-                    "label": _codex_window_label(secs),
-                    "usedPercent": max(0.0, min(100.0, float(w.get("used_percent") or 0))),
-                    "windowMinutes": int(secs) // 60 if secs else None,
-                    "resetsAt": w.get("reset_at"),
-                }
-            )
-        extra = None
-        cr = d.get("credits") or {}
-        if cr.get("unlimited"):
-            extra = "Credits 不限量"
-        elif cr.get("has_credits"):
-            extra = "Credits 余额 " + str(cr.get("balance"))
-        svc.update(
-            {
-                "kind": "windows",
-                "plan": d.get("plan_type") or None,
-                "windows": windows,
-                "extra": extra,
-            }
-        )
-        if not windows:
-            svc["status"] = "empty"
-            svc["note"] = "接口已通但未返回额度窗口"
-    except Exception as e:
-        code = getattr(e, "code", None)
-        kind = _codex_failure_kind(e)
-        if style == "app":
-            message = str(e)
-            if code == 401 or "HTTP 401" in message:
-                svc["status"] = "error"
-                svc["note"] = "登录态已失效, 请重新登录该账号"
-                with _CREDENTIAL_UPDATE_LOCK:
-                    _RUNTIME_CREDENTIAL_CHALLENGES.append(
-                        {
-                            "provider": "codex",
-                            "accountId": acc_id,
-                            "reason": "accessRejected",
-                        }
-                    )
-            elif code == 403 or "HTTP 403" in message:
-                svc["status"] = "error"
-                svc["note"] = "当前账号无权访问该额度接口"
-            else:
-                svc["status"] = "error"
-                svc["note"] = "额度查询暂时失败, 请稍后重试"
-        else:
-            svc["status"] = "error"
-            msg = str(e)
-            svc["note"] = ("查询失败: " + msg[:60]) if msg else "查询失败"
-        # 失败时不写 capturedAt (不伪造成功时间); freshness=unavailable
-        del svc["capturedAt"]
-        svc["freshness"] = "unavailable"
-        svc["failureKind"] = kind
-    return svc
+# ---------------------------------------------------------------- codex multi-account
 
 
 def service_codex_accounts():
@@ -890,11 +482,15 @@ def service_codex_accounts():
             ordered_keys = list(accounts.keys())
         with ThreadPoolExecutor(max_workers=min(4, len(ordered_keys))) as pool:
             results = list(pool.map(
-                lambda item: _codex_query_single_account(
+                lambda item: codex_compat.query_single_account(
                     item[0],
                     (item[1] or {}).get("access_token"),
                     (item[1] or {}).get("display_name"),
                     "app",
+                    CODEX_USAGE_URL,
+                    now,
+                    http_get_json,
+                    lambda acc_id: record_codex_challenge(acc_id),
                 ),
                 [(k, accounts[k]) for k in ordered_keys],
             ))
@@ -973,12 +569,19 @@ def service_codex_accounts():
                         cli_tokens[k] = tokens[k]
                 acc_cli_rotated = True
             access_token = tokens.get("access_token") or acc.get("access_token") or ""
-            svc = _codex_query_single_account(
-                acc_id, access_token, "Codex · " + email.split("@")[0], "legacy"
+            svc = codex_compat.query_single_account(
+                acc_id,
+                access_token,
+                "Codex · " + email.split("@")[0],
+                "legacy",
+                CODEX_USAGE_URL,
+                now,
+                http_get_json,
+                lambda acc_id: None,
             )
         except Exception as e:
             svc = {
-                "id": _codex_service_id(acc_id),
+                "id": codex_compat.service_id(acc_id),
                 "name": "Codex · " + email.split("@")[0],
                 "app": "codex",
                 "isCurrent": acc_id == active_id,
@@ -989,7 +592,7 @@ def service_codex_accounts():
                 "balance": None,
                 "currency": None,
                 "freshness": "unavailable",
-                "failureKind": _codex_failure_kind(e),
+                "failureKind": codex_compat.failure_kind(e),
                 "note": ("查询失败: " + str(e)[:60]) if str(e) else "查询失败",
             }
         return svc, acc_changed, acc_cli_rotated
@@ -1193,7 +796,7 @@ def service_antigravity():
                         "SELECT COUNT(*), COALESCE(SUM(step_count),0) "
                         "FROM conversation_summaries "
                         "WHERE date(last_modified_time) = date(?)",
-                        (TODAY,),
+                        (runtime.TODAY,),
                     ).fetchone()
                 if row and row[0]:
                     extra = "今日 %d 个会话 · %d 步" % (row[0], row[1])
@@ -1504,7 +1107,7 @@ def collect(ctx=None):
         agent = make_agent("claude-code", "Claude Code")
         if not sessions_allowed:
             _mark_sessions_denied(agent)
-        elif scan_claude(agent):
+        elif scan_claude(agent, CLAUDE_PROJECTS):
             agent["note"] = "当前经 CC Switch 路由，额度见下方对应服务"
         else:
             agent["status"] = "not_found"
@@ -1517,7 +1120,7 @@ def collect(ctx=None):
         found_cli = False
         found_orca = False
         if sessions_allowed:
-            found_cli, candidate = scan_codex(agent)
+            found_cli, candidate = scan_codex(agent, [CODEX_SESSIONS])
             if candidate:
                 quota_candidate = candidate
             # Orca 托管会话灌进同一 agent; quota 取两侧候选中 ts 最大者
