@@ -1,4 +1,3 @@
-import Charts
 import MdddAppCore
 import SwiftUI
 
@@ -166,8 +165,6 @@ private struct DeepSeekMonthlyUsageSection: View {
                     .monospacedDigit()
             }
 
-            DeepSeekMonthlyUsageChart(points: viewModel.trendPoints)
-
             HStack(spacing: 4) {
                 Text(viewModel.coverageText)
                     .font(.system(size: 9))
@@ -224,26 +221,6 @@ private struct DeepSeekMonthlyUsageSection: View {
         case .unavailable:
             return "DeepSeek 月度统计暂不可用"
         }
-    }
-}
-
-/// 单条橙色"累计已用"趋势线. 语义简单: 不添加第二曲线, 双轴或复杂图例.
-private struct DeepSeekMonthlyUsageChart: View {
-    let points: [TrendPoint]
-
-    var body: some View {
-        Chart(points, id: \.observedAt) { point in
-            LineMark(
-                x: .value("时间", point.observedAt),
-                y: .value("累计已用", NSDecimalNumber(decimal: point.cumulativeConsumption).doubleValue)
-            )
-            .interpolationMethod(.monotone)
-            .foregroundStyle(Color(hex: "#ff9f0a"))
-        }
-        .chartXAxis(.hidden)
-        .chartYAxis(.hidden)
-        .frame(height: 44)
-        .accessibilityHidden(false)
     }
 }
 
