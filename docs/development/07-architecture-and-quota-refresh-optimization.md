@@ -3,7 +3,7 @@
 > 版本: 1.0  
 > 日期: 2026-08-04  
 > 目标: 在保留现有 UI、artifact 契约和 CLI 兼容能力的前提下, 降低刷新链路复杂度, 让 Codex 额度刷新可预测、可测试、可诊断
-> 实施进度: 阶段 A 完成 (CodexTokenError.refreshFailed 字符串 reason 收敛为 CodexRefreshFailureReason 枚举); 阶段 B 完成 (handleCodexChallenges + 3 辅助方法 + CodexChallenge/CodexRetryPhaseResult 提取到 CodexQuotaRecovery.swift, RefreshScheduler 从 1164 行减到 900 行, verify-local.sh 全绿); 阶段 C-E 待续
+> 实施进度: 阶段 A 完成 (CodexTokenError.refreshFailed 字符串 reason 收敛为 CodexRefreshFailureReason 枚举); 阶段 B 完成 (handleCodexChallenges + 3 辅助方法 + CodexChallenge/CodexRetryPhaseResult 提取到 CodexQuotaRecovery.swift); 阶段 C 完成 (ArtifactFinalizer 提取四源合并+诊断去重, RefreshBackoffPolicy 提取退避计算, RefreshErrorClassifier 提取错误分类; RefreshScheduler 从 1164 行减到 789 行, verify-local.sh 全绿); 阶段 D-E 待续
 
 ## 1. 优化目标与边界
 

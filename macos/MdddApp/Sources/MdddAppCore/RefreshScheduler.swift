@@ -460,10 +460,11 @@ package final class RefreshScheduler {
                 handleCancellation(for: module)
                 return
             }
-            let finalOutput = finalizeAgentUsage(
+            let finalOutput = ArtifactFinalizer().finalize(
                 firstOutput: output,
                 retryPhase: retryPhase,
-                previousArtifact: previousArtifact
+                previousArtifact: previousArtifact,
+                fallbackDecisions: runInputProvider?.codexTokenDecisions ?? []
             )
             handleResult(.success(finalOutput), for: module)
             onRunCycleCompleted?()
@@ -472,68 +473,6 @@ package final class RefreshScheduler {
 
         handleResult(.success(output), for: module)
         onRunCycleCompleted?()
-    }
-
-    /// 任务 5 唯一 finalizer: previous + first + retry + decisions 四源合并,
-    /// 合并 first/retry/merger 诊断并去重, 生成最终 artifact.
-    /// 调用方只发布该输出一次.
-    private func finalizeAgentUsage(
-        firstOutput: CollectorRunOutput,
-        retryPhase: CodexRetryPhaseResult,
-        previousArtifact: JSONValue?
-    ) -> CollectorRunOutput {
-        guard let firstArtifact = firstOutput.response.artifact else {
-            // 首轮无 artifact (异常响应): 维持原响应, 不发布半成品
-            return firstOutput
-        }
-        let decisions = retryPhase.tokenDecisions.isEmpty
-            ? (runInputProvider?.codexTokenDecisions ?? [])
-            : retryPhase.tokenDecisions
-        let merged = CodexQuotaSnapshotMerger().merge(
-            previous: previousArtifact,
-            first: firstArtifact,
-            retry: retryPhase.retryArtifact,
-            decisions: decisions
-        )
-        // 合并 first/retry/token 与 merger 诊断, 按稳定 key 去重
-        var collected: [BridgeDiagnostic] = []
-        var seen = Set<String>()
-        func appendDiagnostics(_ diagnostics: [BridgeDiagnostic]) {
-            for diagnostic in diagnostics {
-                let key = "\(diagnostic.code)|\(diagnostic.stage)|\(diagnostic.message)"
-                if seen.insert(key).inserted {
-                    collected.append(diagnostic)
-                }
-            }
-        }
-        // 首轮与重试诊断: 仅当最终 artifact 有失败条目时保留 (自愈成功不残留)
-        if merged.artifact.hasFailedEntries {
-            appendDiagnostics(firstOutput.response.diagnostics)
-            appendDiagnostics(retryPhase.diagnostics)
-        }
-        for diagnostic in merged.diagnostics {
-            appendDiagnostics([BridgeDiagnostic(
-                code: diagnostic.code,
-                category: diagnostic.category,
-                stage: diagnostic.stage,
-                message: diagnostic.message,
-                retryable: diagnostic.retryable
-            )])
-        }
-        return CollectorRunOutput(
-            response: BridgeResponse(
-                schemaVersion: 1,
-                runId: firstOutput.response.runId,
-                generatedAt: merged.generatedAtValue
-                    ?? firstOutput.response.generatedAt,
-                status: merged.recomputedStatus,
-                artifact: merged.artifact,
-                credentialUpdates: firstOutput.response.credentialUpdates,
-                diagnostics: collected,
-                credentialChallenges: []
-            ),
-            stderrDiagnostic: firstOutput.stderrDiagnostic
-        )
     }
 
     private func runCollector(
@@ -620,7 +559,7 @@ package final class RefreshScheduler {
                 state.lastErrorCategory = .auth
                 onStatusChange?(module, .authRequired, "请前往设置重新登录")
             } else if response.status == .error {
-                let category = classifyBridgeError(response)
+                let category = RefreshErrorClassifier().classifyBridgeError(response)
                 if category == .auth {
                     state.phase = .authRequired
                     state.lastErrorCategory = .auth
@@ -688,7 +627,7 @@ package final class RefreshScheduler {
             }
 
         case .failure(let error):
-            let (category, isAuth) = classifyRunnerError(error)
+            let (category, isAuth) = RefreshErrorClassifier().classifyRunnerError(error)
             if isAuth {
                 state.phase = .authRequired
                 state.lastErrorCategory = .auth
@@ -778,7 +717,10 @@ package final class RefreshScheduler {
         }
 
         newState.phase = .backoff
-        let backoff = computeBackoff(
+        let backoff = RefreshBackoffPolicy(
+            configuration: configuration,
+            jitterProvider: jitterProvider
+        ).computeBackoff(
             retryCount: newState.backoffRetryCount,
             category: category
         )
@@ -794,60 +736,6 @@ package final class RefreshScheduler {
             self?.startRefresh(for: module)
         }
         return (newState, false)
-    }
-
-    private func computeBackoff(
-        retryCount: Int,
-        category: SnapshotErrorCategory?
-    ) -> Double {
-        if category == .rateLimit {
-            return configuration.rateLimitBackoffSeconds
-        }
-
-        let exponential = configuration.baseBackoffSeconds
-            * pow(2.0, Double(retryCount - 1))
-        let capped = min(exponential, configuration.maxBackoffSeconds)
-        let jitter = jitterProvider(capped)
-        return min(capped + jitter, configuration.maxBackoffSeconds)
-    }
-
-    // MARK: - Internal: error classification
-
-    private func classifyRunnerError(_ error: Error) -> (SnapshotErrorCategory, Bool) {
-        guard let runnerError = error as? CollectorRunnerError else {
-            return (.collector, false)
-        }
-        switch runnerError {
-        case .timedOut: return (.collector, false)
-        case .processFailed: return (.collector, false)
-        case .invalidEnvelope: return (.schema, false)
-        case .launchFailed: return (.dependency, false)
-        case .pythonNotExecutable: return (.dependency, false)
-        case .bridgeNotReadable: return (.dependency, false)
-        case .alreadyRunning: return (.collector, false)
-        case .capacityExceeded: return (.collector, false)
-        case .invalidExecutablePath: return (.dependency, false)
-        case .unsupportedSchema: return (.schema, false)
-        case .runIdMismatch: return (.schema, false)
-        }
-    }
-
-    private func classifyBridgeError(_ response: BridgeResponse) -> SnapshotErrorCategory {
-        for diagnostic in response.diagnostics {
-            switch diagnostic.category {
-            case "auth": return .auth
-            case "network": return .network
-            case "rateLimit": return .rateLimit
-            case "schema": return .schema
-            case "collector": return .collector
-            case "dependency": return .dependency
-            case "storage": return .storage
-            case "cancelled": return .cancelled
-            case "protocol", "security", "internal": return .schema
-            default: break
-            }
-        }
-        return .collector
     }
 
     // MARK: - Internal: status
