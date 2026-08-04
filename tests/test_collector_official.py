@@ -349,10 +349,31 @@ class QuotaOfficialModuleTests(unittest.TestCase):
         self.assertEqual(
             self.module._grok_tier_label(NOW_TS + 30 * 86400, NOW_TS), "每月"
         )
+        # < 1 天 -> 每 5 小时 (之前误判为"额度")
+        self.assertEqual(
+            self.module._grok_tier_label(NOW_TS + 3 * 3600, NOW_TS), "每 5 小时"
+        )
+        # 2 天 -> 额度 (非标准窗口)
         self.assertEqual(
             self.module._grok_tier_label(NOW_TS + 2 * 86400, NOW_TS), "额度"
         )
         self.assertEqual(self.module._grok_tier_label(None, NOW_TS), "额度")
+
+    def test_grok_window_minutes_inference(self):
+        """windowMinutes 供 Swift 精确映射 (300=5h, 10080=周, 43200=月)."""
+        self.assertEqual(
+            self.module._grok_window_minutes(NOW_TS + 3 * 3600, NOW_TS), 300
+        )
+        self.assertEqual(
+            self.module._grok_window_minutes(NOW_TS + 7 * 86400, NOW_TS), 10080
+        )
+        self.assertEqual(
+            self.module._grok_window_minutes(NOW_TS + 30 * 86400, NOW_TS), 43200
+        )
+        self.assertIsNone(
+            self.module._grok_window_minutes(NOW_TS + 2 * 86400, NOW_TS)
+        )
+        self.assertIsNone(self.module._grok_window_minutes(None, NOW_TS))
 
     # ---------------------------------------------------------- Grok 查询
 
@@ -546,6 +567,111 @@ class CollectUsageOfficialWiringTests(unittest.TestCase):
             self._configure(home, app_mode=True, credentials={"provider_meta": {}})
             services = self.module._collect_app_services()
         self.assertEqual(services, [])
+
+    # Phase 5: App 模式注入凭证优先于本机文件
+
+    def test_read_claude_token_injected_preferred_over_file(self):
+        with tempfile.TemporaryDirectory() as home:
+            os.makedirs(os.path.join(home, ".claude"), exist_ok=True)
+            with open(
+                os.path.join(home, ".claude", ".credentials.json"), "w", encoding="utf-8"
+            ) as fh:
+                json.dump({"claudeAiOauth": {"accessToken": "file-token"}}, fh)
+            injected = json.dumps(
+                {"claudeAiOauth": {"accessToken": "injected-token"}}
+            )
+            token = self.module.quota_official.read_claude_token(
+                home, NOW_TS, injected=injected
+            )
+        self.assertEqual(token, "injected-token")
+
+    def test_read_claude_token_injected_expired_raises(self):
+        injected = json.dumps(
+            {"claudeAiOauth": {"accessToken": "tok", "expiresAt": NOW_TS - 100}}
+        )
+        with tempfile.TemporaryDirectory() as home:
+            with self.assertRaises(RuntimeError):
+                self.module.quota_official.read_claude_token(
+                    home, NOW_TS, injected=injected
+                )
+
+    def test_read_grok_token_injected_preferred_over_file(self):
+        with tempfile.TemporaryDirectory() as home:
+            os.makedirs(os.path.join(home, ".grok"), exist_ok=True)
+            with open(os.path.join(home, ".grok", "auth.json"), "w", encoding="utf-8") as fh:
+                json.dump({"https://auth.x.ai::file": {"key": "file-key"}}, fh)
+            injected = json.dumps(
+                {"https://auth.x.ai::injected": {"key": "injected-key"}}
+            )
+            token = self.module.quota_official.read_grok_token(
+                home, NOW_TS, injected=injected
+            )
+        self.assertEqual(token, "injected-key")
+
+    def test_read_grok_token_injected_expired_raises(self):
+        injected = json.dumps(
+            {"https://auth.x.ai::injected": {"key": "k", "expires_at": NOW_TS - 100}}
+        )
+        with tempfile.TemporaryDirectory() as home:
+            with self.assertRaises(RuntimeError):
+                self.module.quota_official.read_grok_token(
+                    home, NOW_TS, injected=injected
+                )
+
+    def test_read_grok_token_injected_unparsable_falls_back_to_file(self):
+        with tempfile.TemporaryDirectory() as home:
+            os.makedirs(os.path.join(home, ".grok"), exist_ok=True)
+            with open(os.path.join(home, ".grok", "auth.json"), "w", encoding="utf-8") as fh:
+                json.dump({"https://auth.x.ai::file": {"key": "file-key"}}, fh)
+            token = self.module.quota_official.read_grok_token(
+                home, NOW_TS, injected="not-json"
+            )
+        self.assertEqual(token, "file-key")
+
+    def test_app_mode_injected_claude_credential_produces_entry(self):
+        injected = json.dumps(
+            {"claudeAiOauth": {"accessToken": "tok", "expiresAt": NOW_TS + 3600}}
+        )
+        with tempfile.TemporaryDirectory() as home:
+            self._configure(
+                home,
+                app_mode=True,
+                credentials={
+                    "provider_meta": {"claude": {"enabled": True}},
+                    "claude_oauth": injected,
+                },
+                http={
+                    "get_json": lambda *_a, **_k: {"five_hour": {"utilization": 10}}
+                },
+            )
+            services = self.module._collect_app_services()
+        self.assertEqual([s["id"] for s in services], ["claude"])
+        self.assertEqual(services[0]["status"], "ok")
+
+    def test_app_mode_injected_grok_credential_produces_entry(self):
+        injected = json.dumps(
+            {"https://auth.x.ai::injected": {"key": "k", "expires_at": NOW_TS + 3600}}
+        )
+        with tempfile.TemporaryDirectory() as home:
+            self._configure(
+                home,
+                app_mode=True,
+                credentials={
+                    "provider_meta": {"grok": {"enabled": True}},
+                    "grok_oauth": injected,
+                },
+                http={
+                    "urlopen": lambda *_a, **_k: _FakeResponse(b"")
+                },
+            )
+            # service_grok 需要 protobuf 载荷; 只验证凭证读取层不抛"未检测到"
+            from unittest import mock
+            with mock.patch.object(
+                self.module.quota_official, "parse_billing_payload",
+                return_value=(10.0, None),
+            ):
+                services = self.module._collect_app_services()
+        self.assertEqual([s["id"] for s in services], ["grok"])
 
 
 if __name__ == "__main__":

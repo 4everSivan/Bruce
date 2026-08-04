@@ -23,6 +23,8 @@ struct SettingsView: View {
     @State private var showsVolcengineCCImportConfirm = false
     @State private var kimiPasteText = ""
     @State private var kimiEditing = false
+    @State private var claudePasteText = ""
+    @State private var grokPasteText = ""
     @State private var showsCodexCCImportConfirm = false
     // 订阅额度标签式管理: 本次会话点击添加的 provider 与展开态
     @State private var addedSubscriptionProviders: Set<SubscriptionProviderID> = []
@@ -298,6 +300,8 @@ struct SettingsView: View {
                     .accessibilityHint("只列出尚未配置的订阅 Provider")
                     Button("添加") {
                         guard let id = providerToAdd else { return }
+                        // Phase 4: 持久化"已添加"状态, 跨会话保持
+                        coordinator.addSubscriptionProvider(id)
                         addedSubscriptionProviders.insert(id)
                         expandedSubscriptionProviders.insert(id)
                         providerToAdd = nil
@@ -348,10 +352,11 @@ struct SettingsView: View {
         }
     }
 
-    /// 已在列表中展示的 provider: 凭证已配置, 或本次会话刚点击添加.
+    /// 已在列表中展示的 provider: 配置中已添加 (持久化) 或本次会话刚添加.
+    /// Phase 4: 未手动添加不显示 (与"全部手动添加"决策一致).
     private var visibleSubscriptionProviders: [SubscriptionProviderID] {
         SubscriptionProviderID.allCases.filter { id in
-            (model.subscriptionCredentialConfigured[id] ?? false)
+            (model.subscriptionProviders[id] != nil)
                 || addedSubscriptionProviders.contains(id)
         }
     }
@@ -464,8 +469,8 @@ struct SettingsView: View {
                     .accessibilityLabel("DeepSeek API key")
                     .accessibilityHint("密钥只保存到本应用的 Keychain")
                 managementActionRow(
-                    configured: configured,
-                    removeHint: "删除本应用保存的 DeepSeek API key",
+                    configured: model.subscriptionProviders[.deepseek] != nil,
+                    removeHint: "从列表移除 DeepSeek 订阅",
                     remove: { removeSubscriptionProvider(.deepseek) }
                 ) {
                     Button("保存并验证") {
@@ -490,8 +495,8 @@ struct SettingsView: View {
                 }
             } else {
                 managementActionRow(
-                    configured: configured,
-                    removeHint: "删除本应用保存的 DeepSeek API key",
+                    configured: model.subscriptionProviders[.deepseek] != nil,
+                    removeHint: "从列表移除 DeepSeek 订阅",
                     remove: { removeSubscriptionProvider(.deepseek) }
                 ) {
                     Button("更换") { deepseekEditing = true }
@@ -519,8 +524,8 @@ struct SettingsView: View {
                     .accessibilityLabel("火山引擎 SecretKey")
                     .accessibilityHint("密钥只保存到本应用的 Keychain")
                 managementActionRow(
-                    configured: configured,
-                    removeHint: "删除本应用保存的火山引擎 AK/SK",
+                    configured: model.subscriptionProviders[.volcengine] != nil,
+                    removeHint: "从列表移除火山引擎订阅",
                     remove: { removeSubscriptionProvider(.volcengine) }
                 ) {
                     Button("保存并验证") {
@@ -550,8 +555,8 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             } else {
                 managementActionRow(
-                    configured: configured,
-                    removeHint: "删除本应用保存的火山引擎 AK/SK",
+                    configured: model.subscriptionProviders[.volcengine] != nil,
+                    removeHint: "从列表移除火山引擎订阅",
                     remove: { removeSubscriptionProvider(.volcengine) }
                 ) {
                     Button("更换") { volcengineEditing = true }
@@ -580,8 +585,8 @@ struct SettingsView: View {
         return managementStack {
             if localFileExists || (configured && !showPaste) {
                 managementActionRow(
-                    configured: configured,
-                    removeHint: "删除本应用保存的 Kimi 令牌",
+                    configured: model.subscriptionProviders[.kimi] != nil,
+                    removeHint: "从列表移除 Kimi 订阅",
                     remove: {
                         removeSubscriptionProvider(.kimi)
                         kimiEditing = false
@@ -607,8 +612,8 @@ struct SettingsView: View {
                     .frame(minHeight: 56, maxHeight: 96)
                     .accessibilityLabel("Kimi 令牌粘贴框")
                 managementActionRow(
-                    configured: configured,
-                    removeHint: "删除本应用保存的 Kimi 令牌",
+                    configured: model.subscriptionProviders[.kimi] != nil,
+                    removeHint: "从列表移除 Kimi 订阅",
                     remove: {
                         removeSubscriptionProvider(.kimi)
                         kimiEditing = false
@@ -645,8 +650,8 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
             managementActionRow(
-                configured: configured,
-                removeHint: "删除本应用保存的全部 Codex 账号凭证",
+                configured: model.subscriptionProviders[.codex] != nil,
+                removeHint: "从列表移除 Codex 订阅",
                 remove: { removeSubscriptionProvider(.codex) }
             ) {
                 Button("登录新账号") {
@@ -810,8 +815,8 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
             managementActionRow(
-                configured: configured,
-                removeHint: "删除本应用保存的 Antigravity 令牌",
+                configured: model.subscriptionProviders[.antigravity] != nil,
+                removeHint: "从列表移除 Antigravity 订阅",
                 remove: { removeSubscriptionProvider(.antigravity) }
             ) {
                 if model.antigravityLocalAvailable {
@@ -824,27 +829,60 @@ struct SettingsView: View {
         }
     }
 
-    /// Claude / Grok 共用管理组: 应用不持有凭证, 运行时实时只读本机
-    /// CLI 登录态; 无导入和移除按钮, 仅提示检测状态并支持重新检测.
+    /// Claude / Grok 共用管理组 (Phase 4): 支持手动粘贴导入与从本机 CLI 导入.
+    /// 应用持有凭证存 Keychain; 本机登录态检测作为"从本机导入"按钮的显隐条件.
     private func officialLocalGroup(
-        _ id: SubscriptionProviderID, available: Bool, missingHint: String
+        _ id: SubscriptionProviderID,
+        available: Bool,
+        missingHint: String,
+        pasteText: Binding<String>,
+        importFromLocal: @escaping () -> Void,
+        savePaste: @escaping (String) -> Void
     ) -> some View {
-        managementStack {
+        let needsRelogin = model.subscriptionProviders[id]?
+            .verificationStatus == .needsRelogin
+        return managementStack {
             if available {
-                Text("已检测到本机登录态, 打开启用开关即可查询额度")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
+                Button("从本机导入") {
+                    importFromLocal()
+                }
+                .accessibilityHint("读取本机 \(id.displayName) CLI 登录凭证")
+            } else if !needsRelogin {
                 Text(missingHint)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            HStack(spacing: 8) {
-                Button("重新检测") {
-                    coordinator.refreshOfficialLocalAvailability()
-                }
-                .accessibilityHint("重新读取本机 \(id.displayName) CLI 登录态")
+            if needsRelogin {
+                Text("登录已过期, 请重新粘贴 \(id.displayName) 凭证或重新登录 CLI")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
             }
+            Text("粘贴 \(id.displayName) 访问令牌或凭证 JSON")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            TextEditor(text: pasteText)
+                .font(.system(.caption, design: .monospaced))
+                .frame(minHeight: 48, maxHeight: 80)
+                .accessibilityLabel("\(id.displayName) 凭证粘贴框")
+            // 移除按钮基于"已添加"(配置条目存在), 而非凭证是否有效;
+            // 过期/无效时用户仍需能删除订阅回到"未添加".
+            managementActionRow(
+                configured: model.subscriptionProviders[id] != nil,
+                removeHint: "从列表移除 \(id.displayName) 订阅",
+                remove: { removeSubscriptionProvider(id) }
+            ) {
+                Button("验证并保存") {
+                    savePaste(pasteText.wrappedValue)
+                    pasteText.wrappedValue = ""
+                }
+                .disabled(pasteText.wrappedValue
+                    .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityHint("校验后保存到本应用的 Keychain")
+            }
+            Button("重新检测") {
+                coordinator.refreshOfficialLocalAvailability()
+            }
+            .accessibilityHint("重新读取本机 \(id.displayName) CLI 登录态")
         }
     }
 
@@ -852,7 +890,10 @@ struct SettingsView: View {
         officialLocalGroup(
             .claude,
             available: model.claudeLocalAvailable,
-            missingHint: "未检测到 Claude 登录态, 请先登录 Claude CLI"
+            missingHint: "未检测到 Claude 登录态, 请先登录 Claude CLI",
+            pasteText: $claudePasteText,
+            importFromLocal: { coordinator.importClaudeFromLocal() },
+            savePaste: { coordinator.importClaudeFromPaste($0) }
         )
     }
 
@@ -860,7 +901,10 @@ struct SettingsView: View {
         officialLocalGroup(
             .grok,
             available: model.grokLocalAvailable,
-            missingHint: "未检测到 Grok 登录态, 请先通过 Grok CLI 登录 (~/.grok/auth.json)"
+            missingHint: "未检测到 Grok 登录态, 请先通过 Grok CLI 登录 (~/.grok/auth.json)",
+            pasteText: $grokPasteText,
+            importFromLocal: { coordinator.importGrokFromLocal() },
+            savePaste: { coordinator.importGrokFromPaste($0) }
         )
     }
 

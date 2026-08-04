@@ -328,13 +328,22 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
            let oauth = jsonObjectValue(from: raw) {
             credentials["antigravityOAuth"] = oauth
         }
-        // Claude / Grok: 应用不持有凭证, 仅注入 enabled 标记;
-        // collector 运行时实时只读本机 CLI 登录态 (不刷新, 不回写).
+        // Claude / Grok (Phase 5): 应用持有凭证 (claude:oauth/grok:oauth) 时
+        // 注入 claudeOAuth/grokOAuth (collector 优先消费); 无应用凭证时
+        // 仅注入 enabled 标记, collector 回退本机 CLI 登录态.
         if isEnabled(.claude) {
             providerMeta["claude"] = .object(["enabled": .boolean(true)])
+            if let raw = load(SubscriptionCredentialAccount.claudeOAuth),
+               let oauth = jsonObjectValue(from: raw) {
+                credentials["claudeOAuth"] = oauth
+            }
         }
         if isEnabled(.grok) {
             providerMeta["grok"] = .object(["enabled": .boolean(true)])
+            if let raw = load(SubscriptionCredentialAccount.grokOAuth),
+               let oauth = jsonObjectValue(from: raw) {
+                credentials["grokOAuth"] = oauth
+            }
         }
         if !providerEnv.isEmpty {
             credentials["providerEnv"] = .object(providerEnv)

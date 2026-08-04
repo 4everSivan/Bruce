@@ -69,5 +69,10 @@ let package = Package(
             dependencies: ["MdddAppCore", "MdddOnboardingCore"],
             path: "Tests/Harnesses/DeepSeekUsageLedgerHarness"
         ),
+        .executableTarget(
+            name: "SubscriptionCredentialsHarness",
+            dependencies: ["MdddAppCore", "MdddOnboardingCore"],
+            path: "Tests/Harnesses/SubscriptionCredentialsHarness"
+        ),
     ]
 )

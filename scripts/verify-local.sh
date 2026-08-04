@@ -63,4 +63,7 @@ echo "运行 DeepSeek 月度账本 Harness"
 swift run --package-path "$MDDD_SWIFT_PACKAGE" \
   DeepSeekUsageLedgerHarness
 
+echo "运行订阅凭证注入 Harness"
+swift run --package-path "$MDDD_SWIFT_PACKAGE" SubscriptionCredentialsHarness
+
 echo "mddd 本地验证全部通过"

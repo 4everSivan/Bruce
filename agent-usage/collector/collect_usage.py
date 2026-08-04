@@ -918,14 +918,18 @@ def _collect_app_services():
 
 
 def _claude_query_or_missing():
-    result = quota_official.service_claude(HOME, now, HTTP_TIMEOUT)
+    # Phase 5: App 模式优先消费 Swift 注入的 claude_oauth, 回退本机 CLI 凭证
+    injected = _runtime_credential("claude_oauth")
+    result = quota_official.service_claude(HOME, now, HTTP_TIMEOUT, injected=injected)
     if result is None:
         raise RuntimeError("未检测到 Claude 本机凭证 (Keychain 或 ~/.claude/.credentials.json)")
     return result
 
 
 def _grok_query_or_missing():
-    result = quota_official.service_grok(HOME, now, HTTP_TIMEOUT)
+    # Phase 5: App 模式优先消费 Swift 注入的 grok_oauth, 回退本机 CLI 凭证
+    injected = _runtime_credential("grok_oauth")
+    result = quota_official.service_grok(HOME, now, HTTP_TIMEOUT, injected=injected)
     if result is None:
         raise RuntimeError("未检测到 Grok 本机凭证 (~/.grok/auth.json)")
     return result

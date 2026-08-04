@@ -69,11 +69,12 @@ extension SubscriptionProviderID {
             return []
         case .antigravity:
             return [SubscriptionCredentialAccount.antigravityOAuth]
-        // Claude / Grok 不持有应用凭证: 运行时实时只读本机 CLI 登录态
-        // (Keychain "Claude Code-credentials" / ~/.claude/.credentials.json /
-        // ~/.grok/auth.json), 不导入, 不刷新, 不回写.
-        case .claude, .grok:
-            return []
+        // Claude / Grok 支持手动导入 (Phase 2): 应用可持有凭证存 Keychain,
+        // 优先于本机 CLI 登录态; 移除时同时删除应用持有凭证.
+        case .claude:
+            return [SubscriptionCredentialAccount.claudeOAuth]
+        case .grok:
+            return [SubscriptionCredentialAccount.grokOAuth]
         }
     }
 }
@@ -420,5 +421,188 @@ public struct CCSwitchVolcengineImporter: Sendable {
             accessKey: ak,
             secretKey: VolcengineSecretDecoder.fullyDecoded(rawSK)
         ))
+    }
+}
+
+// MARK: - ClaudePasteParser
+
+/// Claude 引导粘贴解析 (Phase 2): 接受纯 token 或 `claudeAiOauth` 同构 JSON,
+/// 输出规范 `{"claudeAiOauth":{"accessToken":...}}` JSON 字符串.
+/// 无过期信息的 token 存 expiresAt null -> 双方按"未知未过期"处理.
+public enum ClaudePasteParser {
+    public static func parse(_ input: String) -> Result<String, SubscriptionImportError> {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return .failure(.missingField("Claude token"))
+        }
+
+        var accessToken = ""
+        var refreshToken = ""
+        var expiresAt: Any? = nil
+
+        if trimmed.hasPrefix("{") {
+            guard let data = trimmed.data(using: .utf8),
+                  let object = try? JSONSerialization.jsonObject(with: data),
+                  let dict = object as? [String: Any] else {
+                return .failure(.invalidJSON)
+            }
+            let entry = (dict["claudeAiOauth"] as? [String: Any])
+                ?? (dict["claude.ai_oauth"] as? [String: Any])
+                ?? dict
+            accessToken = (entry["accessToken"] as? String ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            refreshToken = (entry["refreshToken"] as? String ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            expiresAt = entry["expiresAt"]
+        } else {
+            // 纯 token: 单段或空白分隔 (token [refreshToken])
+            let tokens = trimmed.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+            accessToken = tokens.first ?? ""
+            if tokens.count > 1 { refreshToken = tokens[1] }
+        }
+
+        guard !accessToken.isEmpty else {
+            return .failure(.missingField("Claude access token"))
+        }
+
+        var entry: [String: Any] = ["accessToken": accessToken]
+        if !refreshToken.isEmpty {
+            entry["refreshToken"] = refreshToken
+        }
+        if let expiresAt {
+            entry["expiresAt"] = expiresAt
+        }
+        let payload: [String: Any] = ["claudeAiOauth": entry]
+        guard let data = try? JSONSerialization.data(
+            withJSONObject: payload, options: [.sortedKeys]
+        ), let json = String(data: data, encoding: .utf8) else {
+            return .failure(.invalidJSON)
+        }
+        return .success(json)
+    }
+}
+
+// MARK: - GrokPasteParser
+
+/// Grok 引导粘贴解析 (Phase 2): 接受纯 token 或 auth.json 同构 JSON,
+/// 输出固定 OIDC scope 条目的规范 JSON.
+/// 无过期信息的 token 存 expires_at null -> 双方按"未知未过期"处理.
+public enum GrokPasteParser {
+    private static let injectedScope = "https://auth.x.ai::injected"
+
+    public static func parse(_ input: String) -> Result<String, SubscriptionImportError> {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return .failure(.missingField("Grok token"))
+        }
+
+        var key = ""
+        var expiresAt: Any? = nil
+
+        if trimmed.hasPrefix("{") {
+            guard let data = trimmed.data(using: .utf8),
+                  let object = try? JSONSerialization.jsonObject(with: data),
+                  let dict = object as? [String: Any] else {
+                return .failure(.invalidJSON)
+            }
+            // 优先取现有 scope 条目 (OIDC 前缀), 兜底找任意含 key 的条目
+            for (scope, value) in dict {
+                guard let entry = value as? [String: Any] else { continue }
+                if scope.hasPrefix("https://auth.x.ai::") {
+                    key = (entry["key"] as? String ?? "")
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    expiresAt = entry["expires_at"]
+                    break
+                }
+            }
+            if key.isEmpty {
+                for (_, value) in dict {
+                    guard let entry = value as? [String: Any],
+                          let k = entry["key"] as? String,
+                          !k.isEmpty else { continue }
+                    key = k.trimmingCharacters(in: .whitespacesAndNewlines)
+                    expiresAt = entry["expires_at"]
+                    break
+                }
+            }
+        } else {
+            key = trimmed
+        }
+
+        guard !key.isEmpty else {
+            return .failure(.missingField("Grok token"))
+        }
+
+        var entry: [String: Any] = ["key": key]
+        if let expiresAt {
+            entry["expires_at"] = expiresAt
+        }
+        let payload: [String: Any] = [injectedScope: entry]
+        guard let data = try? JSONSerialization.data(
+            withJSONObject: payload, options: [.sortedKeys]
+        ), let json = String(data: data, encoding: .utf8) else {
+            return .failure(.invalidJSON)
+        }
+        return .success(json)
+    }
+}
+
+// MARK: - ClaudeCLICredentialImporter
+
+/// 只读导入 Claude CLI 本机凭证 (~/.claude/.credentials.json).
+/// 路径可注入便于测试; 保留原始 expiresAt.
+public struct ClaudeCLICredentialImporter: Sendable {
+    public static let defaultFileURL: @Sendable (URL) -> URL = { home in
+        home.appendingPathComponent(".claude/.credentials.json")
+    }
+
+    public init() {}
+
+    public func importCredentials(
+        fileURL: URL,
+        fileManager: FileManager = .default
+    ) -> Result<String, SubscriptionImportError> {
+        guard fileManager.fileExists(atPath: fileURL.path) else {
+            return .failure(.fileNotFound("Claude CLI 凭证文件"))
+        }
+        do {
+            let data = try Data(contentsOf: fileURL)
+            guard let json = String(data: data, encoding: .utf8) else {
+                return .failure(.unreadable("Claude CLI 凭证文件非 UTF-8"))
+            }
+            return ClaudePasteParser.parse(json)
+        } catch {
+            return .failure(.unreadable("读取 Claude CLI 凭证文件失败"))
+        }
+    }
+}
+
+// MARK: - GrokCLICredentialImporter
+
+/// 只读导入 Grok CLI 本机凭证 (~/.grok/auth.json).
+/// 路径可注入便于测试; 保留原始 expires_at.
+public struct GrokCLICredentialImporter: Sendable {
+    public static let defaultFileURL: @Sendable (URL) -> URL = { home in
+        home.appendingPathComponent(".grok/auth.json")
+    }
+
+    public init() {}
+
+    public func importCredentials(
+        fileURL: URL,
+        fileManager: FileManager = .default
+    ) -> Result<String, SubscriptionImportError> {
+        guard fileManager.fileExists(atPath: fileURL.path) else {
+            return .failure(.fileNotFound("Grok CLI 凭证文件"))
+        }
+        do {
+            let data = try Data(contentsOf: fileURL)
+            guard let json = String(data: data, encoding: .utf8) else {
+                return .failure(.unreadable("Grok CLI 凭证文件非 UTF-8"))
+            }
+            return GrokPasteParser.parse(json)
+        } catch {
+            return .failure(.unreadable("读取 Grok CLI 凭证文件失败"))
+        }
     }
 }

@@ -159,12 +159,26 @@ final class OnboardingCoordinator: ObservableObject {
             // 按真实完整 record 判定, 索引状态不作数 (fail-closed).
             return (try? codexStore.hasConfiguredCredentials()) ?? false
         }
-        // Claude / Grok 无应用持有凭证: configured 语义为本机 CLI 登录态检测结果
-        // (由 refreshOfficialLocalAvailability 显式刷新).
+        // Claude / Grok (Phase 2): 应用持有凭证 (Keychain 新键且未过期) 优先,
+        // 否则回退本机 CLI 登录态检测 (由 refreshOfficialLocalAvailability 刷新).
         if id == .claude {
+            if let raw = try? credentialStore.loadCredential(
+                forAccount: SubscriptionCredentialAccount.claudeOAuth
+            ), !raw.isEmpty {
+                return SubscriptionCredentialEvaluator.claudeStatus(
+                    of: raw, now: Date()
+                ) == .valid
+            }
             return model.claudeLocalAvailable
         }
         if id == .grok {
+            if let raw = try? credentialStore.loadCredential(
+                forAccount: SubscriptionCredentialAccount.grokOAuth
+            ), !raw.isEmpty {
+                return SubscriptionCredentialEvaluator.grokStatus(
+                    of: raw, now: Date()
+                ) == .valid
+            }
             return model.grokLocalAvailable
         }
         for account in id.credentialAccounts {
@@ -386,6 +400,106 @@ final class OnboardingCoordinator: ObservableObject {
         finishVerification(.kimi, status: status)
     }
 
+    // MARK: - Claude / Grok 手动导入 (Phase 2/3)
+
+    /// Claude: 从本机 CLI 凭证文件只读导入.
+    func importClaudeFromLocal() {
+        let fileURL = ClaudeCLICredentialImporter.defaultFileURL(homeURL)
+        switch ClaudeCLICredentialImporter().importCredentials(fileURL: fileURL) {
+        case .failure(let error):
+            model.setSettingsError("Claude 本机凭证导入失败: \(error.description)")
+        case .success(let json):
+            saveClaudeOAuthJSON(json)
+        }
+    }
+
+    /// Claude: 引导粘贴导入 (纯 token 或 claudeAiOauth 同构 JSON).
+    func importClaudeFromPaste(_ paste: String) {
+        switch ClaudePasteParser.parse(paste) {
+        case .failure(let error):
+            model.setSettingsError("Claude 凭证解析失败: \(error.description)")
+        case .success(let json):
+            saveClaudeOAuthJSON(json)
+        }
+    }
+
+    /// Claude: 统一保存入口 (evaluator 判定 -> Keychain -> 状态迁移).
+    private func saveClaudeOAuthJSON(_ json: String) {
+        let status = SubscriptionCredentialEvaluator.claudeStatus(
+            of: json, now: Date()
+        )
+        switch status {
+        case .missing, .malformed:
+            model.setSettingsError("Claude 凭证无效, 请重新粘贴")
+            return
+        case .valid:
+            do {
+                try credentialStore.saveCredential(
+                    json, forAccount: SubscriptionCredentialAccount.claudeOAuth
+                )
+            } catch {
+                model.setSettingsError("Claude 凭证写入 Keychain 失败")
+                return
+            }
+            model.setSubscriptionCredentialConfigured(true, for: .claude)
+            finishVerification(.claude, status: .ok)
+        case .expired:
+            // 过期凭证保留粘贴入口, 提示重新登录 (不写入 Keychain)
+            model.setSettingsError("Claude 登录已过期, 请粘贴新凭证")
+            finishVerification(.claude, status: .needsRelogin)
+        }
+        refreshOfficialLocalAvailability()
+    }
+
+    /// Grok: 从本机 CLI 凭证文件只读导入.
+    func importGrokFromLocal() {
+        let fileURL = GrokCLICredentialImporter.defaultFileURL(homeURL)
+        switch GrokCLICredentialImporter().importCredentials(fileURL: fileURL) {
+        case .failure(let error):
+            model.setSettingsError("Grok 本机凭证导入失败: \(error.description)")
+        case .success(let json):
+            saveGrokOAuthJSON(json)
+        }
+    }
+
+    /// Grok: 引导粘贴导入 (纯 token 或 auth.json 同构 JSON).
+    func importGrokFromPaste(_ paste: String) {
+        switch GrokPasteParser.parse(paste) {
+        case .failure(let error):
+            model.setSettingsError("Grok 凭证解析失败: \(error.description)")
+        case .success(let json):
+            saveGrokOAuthJSON(json)
+        }
+    }
+
+    /// Grok: 统一保存入口 (evaluator 判定 -> Keychain -> 状态迁移).
+    private func saveGrokOAuthJSON(_ json: String) {
+        let status = SubscriptionCredentialEvaluator.grokStatus(
+            of: json, now: Date()
+        )
+        switch status {
+        case .missing, .malformed:
+            model.setSettingsError("Grok 凭证无效, 请重新粘贴")
+            return
+        case .valid:
+            do {
+                try credentialStore.saveCredential(
+                    json, forAccount: SubscriptionCredentialAccount.grokOAuth
+                )
+            } catch {
+                model.setSettingsError("Grok 凭证写入 Keychain 失败")
+                return
+            }
+            model.setSubscriptionCredentialConfigured(true, for: .grok)
+            finishVerification(.grok, status: .ok)
+        case .expired:
+            // 过期凭证保留粘贴入口, 提示重新登录 (不写入 Keychain)
+            model.setSettingsError("Grok 登录已过期, 请粘贴新凭证")
+            finishVerification(.grok, status: .needsRelogin)
+        }
+        refreshOfficialLocalAvailability()
+    }
+
     /// Codex: 从 CLI `~/.codex/auth.json` 发现账号 (用户点击触发).
     /// 只保存账号元数据 (needsReauthorization), 不导入 token.
     func importCodexFromLocalCLI() {
@@ -596,7 +710,28 @@ final class OnboardingCoordinator: ObservableObject {
         finishVerification(.antigravity, status: status)
     }
 
-    /// 移除 provider: 删除其全部 Keychain 凭证并重置非敏感配置.
+    /// 手动添加 provider (Phase 4): 持久化空配置条目, 使"已添加"跨会话保持.
+    /// 幂等; 已存在条目时不覆盖.
+    func addSubscriptionProvider(_ id: SubscriptionProviderID) {
+        guard let configStore else {
+            model.setSettingsError("配置存储不可用, 无法添加订阅")
+            return
+        }
+        var config = configStore.load() ?? OnboardingConfiguration()
+        guard config.subscriptionProviders[id.rawValue] == nil else {
+            return // 已添加, 幂等
+        }
+        config.subscriptionProviders[id.rawValue] = SubscriptionProviderConfiguration()
+        do {
+            try configStore.save(config)
+        } catch {
+            model.setSettingsError("订阅添加保存失败, 重启后可能恢复")
+            return
+        }
+        publishSubscriptionState(from: config)
+    }
+
+    /// 移除 provider: 删除其全部 Keychain 凭证并从配置中移除条目.
     /// Keychain 删除失败时报错且不重置配置 (fail-closed).
     /// Codex 经 token manager 断开: 取消任务、删除全部 v2 记录, 不写第三方文件.
     func removeSubscriptionProvider(_ id: SubscriptionProviderID) {
@@ -616,10 +751,29 @@ final class OnboardingCoordinator: ObservableObject {
             )
             return
         }
-        guard persistSubscription(id, mutate: {
-            $0 = SubscriptionProviderConfiguration()
-        }) else { return }
+        // Phase 4: 移除配置条目 (非重置), 使 provider 回到"未添加"状态
+        guard removeSubscriptionFromConfig(id) else { return }
         model.setSettingsError(nil)
+    }
+
+    /// 从配置删除 provider 条目; 失败发布错误并返回 false.
+    private func removeSubscriptionFromConfig(_ id: SubscriptionProviderID) -> Bool {
+        guard let configStore else {
+            model.setSettingsError("配置存储不可用, 无法移除订阅")
+            return false
+        }
+        var config = configStore.load() ?? OnboardingConfiguration()
+        guard config.subscriptionProviders.removeValue(forKey: id.rawValue) != nil else {
+            return true // 本来就不在配置中, 视为成功
+        }
+        do {
+            try configStore.save(config)
+        } catch {
+            model.setSettingsError("订阅移除保存失败, 重启后可能恢复")
+            return false
+        }
+        publishSubscriptionState(from: config)
+        return true
     }
 
     /// Codex 移除: 经 token manager 断开全部账号, 不写第三方文件.
@@ -752,11 +906,18 @@ final class OnboardingCoordinator: ObservableObject {
         model.setGrokLocalAvailable(grokAvailable)
         model.setSubscriptionCredentialConfigured(grokAvailable, for: .grok)
 
-        let claudeFileExists = FileManager.default.fileExists(
-            atPath: homeURL
-                .appendingPathComponent(".claude/.credentials.json").path
-        )
-        if claudeFileExists {
+        let claudeFileURL = homeURL
+            .appendingPathComponent(".claude/.credentials.json")
+        let claudeFileData = try? Data(contentsOf: claudeFileURL)
+        let claudeFileValid: Bool
+        if let data = claudeFileData, let json = String(data: data, encoding: .utf8) {
+            claudeFileValid = SubscriptionCredentialEvaluator.claudeStatus(
+                of: json, now: Date()
+            ) == .valid
+        } else {
+            claudeFileValid = false
+        }
+        if claudeFileValid {
             model.setClaudeLocalAvailable(true)
             model.setSubscriptionCredentialConfigured(true, for: .claude)
             return
@@ -770,25 +931,18 @@ final class OnboardingCoordinator: ObservableObject {
         }
     }
 
-    /// 解析 ~/.grok/auth.json: 顶层 scope 映射中存在 OIDC (SuperGrok)
-    /// 或 legacy 登录条目且 key 非空即视为可用; 损坏或缺失返回 false.
+    /// 解析 ~/.grok/auth.json: OIDC/legacy 条目 key 非空且未过期视为可用
+    /// (Phase 1 统一过期检测, 与 Python read_grok_token 同语义).
+    /// 损坏/缺失/过期返回 false.
     private func grokLocalAuthAvailable() -> Bool {
         let url = homeURL.appendingPathComponent(".grok/auth.json")
         guard let data = try? Data(contentsOf: url),
-              let root = try? JSONSerialization.jsonObject(with: data)
-                  as? [String: Any] else {
+              let json = String(data: data, encoding: .utf8) else {
             return false
         }
-        for (scope, value) in root {
-            guard let entry = value as? [String: Any],
-                  let key = entry["key"] as? String, !key.isEmpty else {
-                continue
-            }
-            if scope.hasPrefix("https://auth.x.ai::") || scope.contains("/sign-in") {
-                return true
-            }
-        }
-        return false
+        return SubscriptionCredentialEvaluator.grokStatus(
+            of: json, now: Date()
+        ) == .valid
     }
 
     /// 探测登录 Keychain 是否存在 Claude CLI 凭证条目

@@ -251,6 +251,24 @@ class BridgeContractTests(unittest.TestCase):
         )
         self.assertNotIn("must-not-be-routed", json.dumps(response))
 
+    def test_claude_and_grok_oauth_credentials_accepted(self):
+        """Phase 5: claudeOAuth/grokOAuth 新注入键必须通过 Bridge 白名单校验."""
+        response = execute_request(
+            bridge_request(
+                "agent-usage",
+                credentials={
+                    "claudeOAuth": {"claudeAiOauth": {"accessToken": "ct"}},
+                    "grokOAuth": {"https://auth.x.ai::injected": {"key": "gk"}},
+                },
+            )
+        )
+        # 校验通过后进入 collector 执行 (partial = 凭证被接受, 无真实额度数据);
+        # 若是白名单拒绝会返回 BRIDGE_CREDENTIAL_SCOPE 错误.
+        self.assertNotEqual(response["status"], "error")
+        self.assertNotEqual(
+            response["diagnostics"][0]["code"], "BRIDGE_CREDENTIAL_SCOPE"
+        )
+
     def test_redaction_removes_common_diagnostic_secrets(self):
         redacted = redact_text(
             "Bearer abc.def token=my-token fixture@example.test "

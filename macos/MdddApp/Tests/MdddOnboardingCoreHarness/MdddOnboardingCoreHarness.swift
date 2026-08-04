@@ -157,7 +157,24 @@ struct MdddOnboardingCoreHarness {
         try configGlassStyleDecodeAndFallback()
         try codexAccountIdentityServiceIDMatchesPython()
         try codexAccountIdentityLegacyID()
-        print("MdddOnboardingCore tests passed: 143")
+        try evaluatorGrokExpiredReturnsExpired()
+        try evaluatorGrokValidOIDCPreferredOverLegacy()
+        try evaluatorGrokMillisTimestamp()
+        try evaluatorGrokISOString()
+        try evaluatorGrokMissingKeyAndCorrupt()
+        try evaluatorClaudeExpiredAndLegacyKey()
+        try evaluatorClaudeMissingToken()
+        try evaluatorKimiRefreshMissing()
+        try evaluatorAntigravityRefreshMissing()
+        try evaluatorIsExpiredSemanticsMatchPython()
+        try claudePasteParserTokenAndJSON()
+        try claudePasteParserRejectsEmpty()
+        try grokPasteParserTokenAndJSON()
+        try grokPasteParserRejectsEmpty()
+        try claudeCLIImporterReadsFixture()
+        try grokCLIImporterReadsFixture()
+        try claudeGrokCredentialAccountsReturnNewKeys()
+        print("MdddOnboardingCore tests passed: 161")
     }
 
     // MARK: - Python version parsing
@@ -3177,5 +3194,324 @@ struct MdddOnboardingCoreHarness {
     private static func codexAccountIdentityLegacyID() throws {
         let legacy = CodexAccountIdentity.legacyServiceID(for: "acc-1")
         try coreExpect(legacy == "codex_acc-1", "legacy ID 错误: \(legacy)")
+    }
+
+    // MARK: - SubscriptionCredentialEvaluator (Phase 1 统一过期检测)
+
+    /// 回归: 带过期 expires_at 的 grok auth.json 必须判定为 .expired
+    /// (当前 bug: Swift 显示层只看 key 非空, 不查过期).
+    private static func evaluatorGrokExpiredReturnsExpired() throws {
+        let now = Date(timeIntervalSince1970: 1_786_000_000) // 2026-08-04
+        let json = """
+        {"https://auth.x.ai::b1a00492": {"key": "some-key", "expires_at": "2026-07-28T12:17:14.147765Z"}}
+        """
+        try coreExpect(
+            SubscriptionCredentialEvaluator.grokStatus(of: json, now: now) == .expired,
+            "过期 grok token 应判定为 expired"
+        )
+    }
+
+    /// OIDC scope 优先于 legacy; 未过期返回 valid.
+    private static func evaluatorGrokValidOIDCPreferredOverLegacy() throws {
+        let now = Date(timeIntervalSince1970: 1_786_000_000)
+        // 1789000000 = 2026-09-08 (未来), 1785000000 = 2026-07-25 (过去)
+        let json = """
+        {"https://accounts.x.ai/sign-in": {"key": "legacy-key", "expires_at": 1789000000},
+         "https://auth.x.ai::oidc-id": {"key": "oidc-key", "expires_at": 1789000000}}
+        """
+        let status = SubscriptionCredentialEvaluator.grokStatus(of: json, now: now)
+        try coreExpect(status == .valid, "OIDC 优先且未过期应 valid, got \(status)")
+        // legacy 过期但 OIDC 有效: 仍应 valid (OIDC 优先)
+        let legacyExpired = """
+        {"https://accounts.x.ai/sign-in": {"key": "legacy-key", "expires_at": 1785000000},
+         "https://auth.x.ai::oidc-id": {"key": "oidc-key", "expires_at": 1789000000}}
+        """
+        let status2 = SubscriptionCredentialEvaluator.grokStatus(of: legacyExpired, now: now)
+        try coreExpect(status2 == .valid, "OIDC 有效时 legacy 过期不影响, got \(status2)")
+    }
+
+    /// 毫秒时间戳 (Python _is_expired 的 >1e12 分支).
+    private static func evaluatorGrokMillisTimestamp() throws {
+        let now = Date(timeIntervalSince1970: 1_786_000_000)
+        let json = """
+        {"https://auth.x.ai::a": {"key": "k", "expires_at": 1786000000000}}
+        """
+        try coreExpect(
+            SubscriptionCredentialEvaluator.grokStatus(of: json, now: now) == .valid,
+            "毫秒时间戳未来应 valid"
+        )
+        let expired = """
+        {"https://auth.x.ai::a": {"key": "k", "expires_at": 1780000000000}}
+        """
+        try coreExpect(
+            SubscriptionCredentialEvaluator.grokStatus(of: expired, now: now) == .expired,
+            "毫秒时间戳过去应 expired"
+        )
+    }
+
+    /// ISO 字符串时间戳.
+    private static func evaluatorGrokISOString() throws {
+        let now = Date(timeIntervalSince1970: 1_786_000_000)
+        let future = """
+        {"https://auth.x.ai::a": {"key": "k", "expires_at": "2026-12-31T12:00:00Z"}}
+        """
+        try coreExpect(
+            SubscriptionCredentialEvaluator.grokStatus(of: future, now: now) == .valid,
+            "ISO 未来时间应 valid"
+        )
+    }
+
+    /// 空 key 条目跳过; 损坏 JSON 或缺失条目 -> missing/malformed.
+    private static func evaluatorGrokMissingKeyAndCorrupt() throws {
+        let now = Date(timeIntervalSince1970: 1_786_000_000)
+        let emptyKey = """
+        {"https://auth.x.ai::a": {"key": ""}}
+        """
+        try coreExpect(
+            SubscriptionCredentialEvaluator.grokStatus(of: emptyKey, now: now) == .missing,
+            "空 key 应 missing"
+        )
+        try coreExpect(
+            SubscriptionCredentialEvaluator.grokStatus(of: "not-json", now: now) == .malformed,
+            "损坏 JSON 应 malformed"
+        )
+        let noExpiry = """
+        {"https://auth.x.ai::a": {"key": "k"}}
+        """
+        try coreExpect(
+            SubscriptionCredentialEvaluator.grokStatus(of: noExpiry, now: now) == .valid,
+            "无 expires_at 应视为未过期 (与 Python 同语义)"
+        )
+    }
+
+    /// Claude: 过期返回 expired; 支持 claude.ai_oauth legacy 键.
+    private static func evaluatorClaudeExpiredAndLegacyKey() throws {
+        let now = Date(timeIntervalSince1970: 1_786_000_000)
+        let expired = """
+        {"claudeAiOauth": {"accessToken": "tok", "expiresAt": "2026-07-01T00:00:00Z"}}
+        """
+        try coreExpect(
+            SubscriptionCredentialEvaluator.claudeStatus(of: expired, now: now) == .expired,
+            "Claude 过期应 expired"
+        )
+        let legacy = """
+        {"claude.ai_oauth": {"accessToken": "tok", "expiresAt": "2026-12-31T00:00:00Z"}}
+        """
+        try coreExpect(
+            SubscriptionCredentialEvaluator.claudeStatus(of: legacy, now: now) == .valid,
+            "legacy 键且未过期应 valid"
+        )
+    }
+
+    /// Claude: 空 token -> missing.
+    private static func evaluatorClaudeMissingToken() throws {
+        let now = Date(timeIntervalSince1970: 1_786_000_000)
+        let noToken = """
+        {"claudeAiOauth": {"expiresAt": "2026-12-31T00:00:00Z"}}
+        """
+        try coreExpect(
+            SubscriptionCredentialEvaluator.claudeStatus(of: noToken, now: now) == .missing,
+            "Claude 无 token 应 missing"
+        )
+    }
+
+    /// Kimi: 缺 refresh_token -> malformed (可续期性).
+    private static func evaluatorKimiRefreshMissing() throws {
+        let noRefresh = """
+        {"access_token": "a"}
+        """
+        try coreExpect(
+            SubscriptionCredentialEvaluator.kimiStatus(of: noRefresh) == .malformed,
+            "Kimi 缺 refresh_token 应 malformed"
+        )
+        let both = """
+        {"access_token": "a", "refresh_token": "r"}
+        """
+        try coreExpect(
+            SubscriptionCredentialEvaluator.kimiStatus(of: both) == .valid,
+            "Kimi 双 token 应 valid"
+        )
+    }
+
+    /// Antigravity: 缺 refresh_token -> missing.
+    private static func evaluatorAntigravityRefreshMissing() throws {
+        let noRefresh = """
+        {"token": {"access_token": "a"}}
+        """
+        try coreExpect(
+            SubscriptionCredentialEvaluator.antigravityStatus(of: noRefresh) == .missing,
+            "Antigravity 缺 refresh_token 应 missing"
+        )
+        let ok = """
+        {"token": {"refresh_token": "r"}}
+        """
+        try coreExpect(
+            SubscriptionCredentialEvaluator.antigravityStatus(of: ok) == .valid,
+            "Antigravity 有 refresh_token 应 valid"
+        )
+    }
+
+    /// isExpired 与 Python _is_expired 语义逐条对齐: nil/不可解析 -> false.
+    private static func evaluatorIsExpiredSemanticsMatchPython() throws {
+        let now = Date(timeIntervalSince1970: 1_786_000_000)
+        try coreExpect(
+            !SubscriptionCredentialEvaluator.isExpired(nil, now: now),
+            "nil 应视为未过期"
+        )
+        try coreExpect(
+            !SubscriptionCredentialEvaluator.isExpired("garbage", now: now),
+            "不可解析字符串应视为未过期"
+        )
+        try coreExpect(
+            SubscriptionCredentialEvaluator.isExpired(1_785_000_000.0, now: now),
+            "过去秒时间戳应过期"
+        )
+        try coreExpect(
+            !SubscriptionCredentialEvaluator.isExpired(1_786_000_000_000.0, now: now),
+            "毫秒时间戳应换算后比较 (1.786e12 ms = 未来)"
+        )
+    }
+
+    // MARK: - Claude / Grok Parser 与 Importer (Phase 2)
+
+    /// ClaudePasteParser: 纯 token 与 claudeAiOauth JSON 规范化.
+    private static func claudePasteParserTokenAndJSON() throws {
+        // 纯 token -> {"claudeAiOauth":{"accessToken":"tok"}}
+        let tokenResult = ClaudePasteParser.parse("tok-123")
+        guard case .success(let json) = tokenResult else {
+            throw CoreTestFailure.expectation("Claude 纯 token 解析失败")
+        }
+        try coreExpect(
+            SubscriptionCredentialEvaluator.claudeStatus(of: json, now: Date()) == .valid,
+            "Claude 解析产物应 valid"
+        )
+        // 同构 JSON -> 保留 accessToken
+        let jsonResult = ClaudePasteParser.parse(
+            #"{"claudeAiOauth":{"accessToken":"tok-a","refreshToken":"tok-r"}}"#
+        )
+        guard case .success(let parsed) = jsonResult else {
+            throw CoreTestFailure.expectation("Claude JSON 解析失败")
+        }
+        try coreExpect(
+            SubscriptionCredentialEvaluator.claudeStatus(of: parsed, now: Date()) == .valid,
+            "Claude JSON 解析产物应 valid"
+        )
+        // legacy 键
+        let legacyResult = ClaudePasteParser.parse(
+            #"{"claude.ai_oauth":{"accessToken":"tok-l"}}"#
+        )
+        guard case .success(let legacy) = legacyResult else {
+            throw CoreTestFailure.expectation("Claude legacy 键解析失败")
+        }
+        try coreExpect(
+            SubscriptionCredentialEvaluator.claudeStatus(of: legacy, now: Date()) == .valid,
+            "Claude legacy 键解析产物应 valid"
+        )
+    }
+
+    /// ClaudePasteParser: 空输入与损坏 JSON 拒绝.
+    private static func claudePasteParserRejectsEmpty() throws {
+        guard case .failure = ClaudePasteParser.parse("   ") else {
+            throw CoreTestFailure.expectation("空输入应拒绝")
+        }
+        guard case .failure = ClaudePasteParser.parse("{broken") else {
+            throw CoreTestFailure.expectation("损坏 JSON 应拒绝")
+        }
+        guard case .failure = ClaudePasteParser.parse(#"{"claudeAiOauth":{"refreshToken":"r"}}"#) else {
+            throw CoreTestFailure.expectation("无 accessToken 应拒绝")
+        }
+    }
+
+    /// GrokPasteParser: 纯 token 与 auth.json 同构 JSON 规范化.
+    private static func grokPasteParserTokenAndJSON() throws {
+        let tokenResult = GrokPasteParser.parse("key-456")
+        guard case .success(let json) = tokenResult else {
+            throw CoreTestFailure.expectation("Grok 纯 token 解析失败")
+        }
+        try coreExpect(
+            SubscriptionCredentialEvaluator.grokStatus(of: json, now: Date()) == .valid,
+            "Grok 解析产物应 valid"
+        )
+        // auth.json 同构 -> 提取 OIDC 条目
+        let jsonResult = GrokPasteParser.parse(
+            #"{"https://auth.x.ai::b1a": {"key": "k1", "expires_at": 1789000000}}"#
+        )
+        guard case .success(let parsed) = jsonResult else {
+            throw CoreTestFailure.expectation("Grok JSON 解析失败")
+        }
+        try coreExpect(
+            SubscriptionCredentialEvaluator.grokStatus(
+                of: parsed, now: Date(timeIntervalSince1970: 1_786_000_000)
+            ) == .valid,
+            "Grok JSON 解析产物应 valid"
+        )
+    }
+
+    /// GrokPasteParser: 空输入与损坏 JSON 拒绝.
+    private static func grokPasteParserRejectsEmpty() throws {
+        guard case .failure = GrokPasteParser.parse("   ") else {
+            throw CoreTestFailure.expectation("空输入应拒绝")
+        }
+        guard case .failure = GrokPasteParser.parse("{broken") else {
+            throw CoreTestFailure.expectation("损坏 JSON 应拒绝")
+        }
+        guard case .failure = GrokPasteParser.parse(#"{"https://auth.x.ai::a": {"email": "e"}}"#) else {
+            throw CoreTestFailure.expectation("无 key 条目应拒绝")
+        }
+    }
+
+    /// ClaudeCLIImporter: fixture 文件读取并规范化.
+    private static func claudeCLIImporterReadsFixture() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("claude-importer-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = dir.appendingPathComponent(".credentials.json")
+        try Data(#"{"claudeAiOauth":{"accessToken":"tok","expiresAt":"2026-12-31T00:00:00Z"}}"#.utf8)
+            .write(to: file)
+        let result = ClaudeCLICredentialImporter().importCredentials(fileURL: file)
+        guard case .success(let json) = result else {
+            throw CoreTestFailure.expectation("Claude fixture 读取失败")
+        }
+        try coreExpect(
+            SubscriptionCredentialEvaluator.claudeStatus(of: json, now: Date()) == .valid,
+            "Claude fixture 导入产物应 valid"
+        )
+    }
+
+    /// GrokCLIImporter: fixture 文件读取并规范化.
+    private static func grokCLIImporterReadsFixture() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grok-importer-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = dir.appendingPathComponent("auth.json")
+        try Data(
+            #"{"https://auth.x.ai::b1a": {"key": "k1", "expires_at": "2026-12-31T00:00:00Z"}}"#.utf8
+        ).write(to: file)
+        let result = GrokCLICredentialImporter().importCredentials(fileURL: file)
+        guard case .success(let json) = result else {
+            throw CoreTestFailure.expectation("Grok fixture 读取失败")
+        }
+        try coreExpect(
+            SubscriptionCredentialEvaluator.grokStatus(of: json, now: Date()) == .valid,
+            "Grok fixture 导入产物应 valid"
+        )
+    }
+
+    /// credentialAccounts 对 claude/grok 返回新键 (移除时自动删 Keychain).
+    private static func claudeGrokCredentialAccountsReturnNewKeys() throws {
+        try coreExpect(
+            SubscriptionProviderID.claude.credentialAccounts == [
+                SubscriptionCredentialAccount.claudeOAuth
+            ],
+            "claude credentialAccounts 应含 claude:oauth"
+        )
+        try coreExpect(
+            SubscriptionProviderID.grok.credentialAccounts == [
+                SubscriptionCredentialAccount.grokOAuth
+            ],
+            "grok credentialAccounts 应含 grok:oauth"
+        )
     }
 }

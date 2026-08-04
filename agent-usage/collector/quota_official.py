@@ -80,8 +80,14 @@ def _parse_claude_credentials(content, now_ts):
     return token
 
 
-def read_claude_token(home, now_ts, keychain_reader=None):
-    """Keychain 优先, ~/.claude/.credentials.json 兜底; 均无返回 None."""
+def read_claude_token(home, now_ts, keychain_reader=None, injected=None):
+    """App 模式注入凭证优先, 其次 Keychain, 最后 ~/.claude/.credentials.json 兜底.
+
+    injected 为 Swift 注入的 claude_oauth JSON (claudeAiOauth 同构);
+    解析失败 (过期/无效) 抛错, 不静默回退本机 (避免注入与本地分叉).
+    """
+    if injected:
+        return _parse_claude_credentials(injected, now_ts)
     reader = keychain_reader or _security_find
     raw = reader(CLAUDE_KEYCHAIN_SERVICE)
     if raw:
@@ -115,8 +121,26 @@ def _select_grok_entry(root):
     return oidc or legacy
 
 
-def read_grok_token(home, now_ts):
-    """读取 ~/.grok/auth.json 的首选条目 token; 无可用条目返回 None, 过期抛错."""
+def read_grok_token(home, now_ts, injected=None):
+    """App 模式注入凭证优先, 否则读取 ~/.grok/auth.json 首选条目.
+
+    injected 为 Swift 注入的 grok_oauth JSON (scope 映射同构);
+    注入内容不可解析时回退本机文件; 解析成功但过期时抛错
+    (不静默回退, 避免注入与本地分叉).
+    """
+    if injected:
+        parsed = injected
+        if isinstance(parsed, str):
+            try:
+                parsed = json.loads(parsed)
+            except ValueError:
+                parsed = None
+        if isinstance(parsed, dict):
+            entry = _select_grok_entry(parsed)
+            if entry is not None:
+                if _is_expired(entry.get("expires_at"), now_ts):
+                    raise RuntimeError("Grok OAuth token 已过期, 请重新 grok login")
+                return entry["key"]
     auth_path = os.path.join(home, ".grok", "auth.json")
     if not os.path.exists(auth_path):
         return None
@@ -137,10 +161,10 @@ def read_grok_token(home, now_ts):
 
 # ---------------------------------------------------------------- Claude 查询
 
-def service_claude(home, now, http_timeout, keychain_reader=None):
+def service_claude(home, now, http_timeout, keychain_reader=None, injected=None):
     """查询 Claude 官方订阅额度. 无凭证返回 None, 查询失败抛异常."""
     now_ts = now.timestamp()
-    token = read_claude_token(home, now_ts, keychain_reader)
+    token = read_claude_token(home, now_ts, keychain_reader, injected=injected)
     if not token:
         return None
     d = runtime.http_get_json(
@@ -370,14 +394,32 @@ def parse_billing_payload(data, now_ts):
 
 
 def _grok_tier_label(resets_at, now_ts):
-    """按重置距今天数推断窗口标签 (CC 阈值): 4-12 天每周, 20-45 天每月, 其余额度."""
+    """按重置距今天数推断窗口标签 (CC 阈值):
+    < 1 天 -> 每 5 小时; 4-12 天每周; 20-45 天每月; 其余额度."""
     if resets_at:
         days = round((resets_at - now_ts) / 86400.0)
+        if days < 1:
+            return "每 5 小时"
         if 4 <= days <= 12:
             return "每周"
         if 20 <= days <= 45:
             return "每月"
     return "额度"
+
+
+def _grok_window_minutes(resets_at, now_ts):
+    """根据重置距今天数推断窗口分钟数 (供 Swift 精确映射):
+    < 1 天 -> 300 (5h); 4-12 天 -> 10080 (周); 20-45 天 -> 43200 (月)."""
+    if not resets_at:
+        return None
+    days = round((resets_at - now_ts) / 86400.0)
+    if days < 1:
+        return 300
+    if 4 <= days <= 12:
+        return 10080
+    if 20 <= days <= 45:
+        return 43200
+    return None
 
 
 def _grok_auth_failure(status, message):
@@ -409,10 +451,10 @@ def _grok_raise_for_grpc_status(status, message):
     raise RuntimeError("Grok 账单 RPC 失败 (grpc-status %d): %s" % (status, message[:60]))
 
 
-def service_grok(home, now, http_timeout):
+def service_grok(home, now, http_timeout, injected=None):
     """查询 Grok 官方订阅额度. 无凭证返回 None, 查询失败抛异常."""
     now_ts = now.timestamp()
-    token = read_grok_token(home, now_ts)
+    token = read_grok_token(home, now_ts, injected=injected)
     if not token:
         return None
     # 空 gRPC-web 帧: 1 字节 flags + 4 字节大端长度 0
@@ -462,7 +504,7 @@ def service_grok(home, now, http_timeout):
             {
                 "label": _grok_tier_label(reset, now_ts),
                 "usedPercent": max(0.0, min(100.0, percent)),
-                "windowMinutes": None,
+                "windowMinutes": _grok_window_minutes(reset, now_ts),
                 "resetsAt": reset,
             }
         ],

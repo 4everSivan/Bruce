@@ -334,6 +334,10 @@ public enum SubscriptionCredentialAccount {
     public static let codexActiveAccount = "codex:active-account"
     /// Antigravity 令牌文件同构 JSON
     public static let antigravityOAuth = "antigravity:oauth"
+    /// Claude 手动导入凭证: claudeAiOauth 同构 JSON (Phase 2)
+    public static let claudeOAuth = "claude:oauth"
+    /// Grok 手动导入凭证: scope 映射同构 JSON (Phase 2)
+    public static let grokOAuth = "grok:oauth"
 }
 
 /// Codex v2 Keychain 键别名 (供既有调用方引用; 旧键只供迁移读取).

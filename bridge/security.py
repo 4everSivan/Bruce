@@ -40,6 +40,8 @@ CREDENTIAL_FIELDS_BY_MODULE = {
         "codexQuotaAccounts",
         "orcaCodexAuth",
         "antigravityOAuth",
+        "claudeOAuth",
+        "grokOAuth",
         "providerEnv",
         "providerMeta",
     },
@@ -49,6 +51,8 @@ RUNTIME_CREDENTIAL_NAMES = {
     "codexQuotaAccounts": "codex_quota_accounts",
     "orcaCodexAuth": "orca_codex_auth",
     "antigravityOAuth": "antigravity_oauth",
+    "claudeOAuth": "claude_oauth",
+    "grokOAuth": "grok_oauth",
     "providerEnv": "provider_env",
     "providerMeta": "provider_meta",
 }
