@@ -300,6 +300,23 @@ package final class ArtifactStore {
         }
     }
 
+    /// 清理可再生缓存: 快照目录与元数据文件, 下次刷新自动重建.
+    /// 只触碰本应用 Application Support/mddd 下的 snapshots 与 metadata,
+    /// 不影响配置, Keychain 凭证和 DeepSeek 月度账本.
+    package func clearSnapshotCaches() throws {
+        do {
+            if fileManager.fileExists(atPath: snapshotsURL.path) {
+                try fileManager.removeItem(at: snapshotsURL)
+            }
+            if fileManager.fileExists(atPath: metadataURL.path) {
+                try fileManager.removeItem(at: metadataURL)
+            }
+            try prepareDirectories()
+        } catch {
+            throw ArtifactStoreError.storageFailure
+        }
+    }
+
     private func prepareDirectories() throws {
         do {
             try createPrivateDirectory(rootURL)

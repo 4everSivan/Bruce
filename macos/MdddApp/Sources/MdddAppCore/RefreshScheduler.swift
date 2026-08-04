@@ -155,6 +155,12 @@ package final class RefreshScheduler {
         }
     }
 
+    /// 清理可再生快照缓存 (设置页数据管理入口); 下次刷新自动重建,
+    /// 内存中的面板数据不受影响.
+    package func clearSnapshotCaches() throws {
+        try store.clearSnapshotCaches()
+    }
+
     // MARK: - Lifecycle
 
     package func start() {

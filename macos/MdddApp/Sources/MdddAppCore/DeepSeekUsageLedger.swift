@@ -321,11 +321,22 @@ package final class DeepSeekUsageLedger {
     }
 
     private func coverageText(for state: LedgerState) -> String {
-        "自 \(state.coverageStart) 起累计推算"
+        "自 \(shortDateText(state.coverageStart)) 起累计推算"
     }
 
     private func baselineText(for state: LedgerState) -> String {
-        "自 \(state.coverageStart) 起首次记录"
+        "自 \(shortDateText(state.coverageStart)) 起首次记录"
+    }
+
+    /// 覆盖起点日期文案: YY/MM/DD 短格式, 解析失败时原样透传.
+    private func shortDateText(_ iso: String) -> String {
+        guard let date = parseDate(iso) else { return iso }
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = calendar.timeZone
+        formatter.dateFormat = "yy/MM/dd"
+        return formatter.string(from: date)
     }
 
     private func parseDate(_ iso: String) -> Date? {

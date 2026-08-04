@@ -827,6 +827,11 @@ final class OnboardingCoordinator: ObservableObject {
         scheduler.refresh(module)
     }
 
+    /// 设置页数据管理: 清理可再生快照缓存 (不影响配置, 凭证与账本).
+    func clearSnapshotCaches() throws {
+        try scheduler.clearSnapshotCaches()
+    }
+
     private func performScan() async {
         let config = configStore?.load()
         publishMenuBarMetrics(from: config)

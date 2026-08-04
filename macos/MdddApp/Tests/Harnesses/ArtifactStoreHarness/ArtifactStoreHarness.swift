@@ -38,7 +38,8 @@ struct ArtifactStoreHarness {
         try writesPrivateAtomicSnapshots(repository: repository)
         try fallsBackAfterCorruptionAndWriteFailure(repository: repository)
         try migratesAndRejectsUnknownSchemas(repository: repository)
-        print("ArtifactStore tests passed: 4")
+        try clearCachesRemovesSnapshotsAndStaysUsable(repository: repository)
+        print("ArtifactStore tests passed: 5")
     }
 
     private static func fixture(
@@ -348,6 +349,34 @@ struct ArtifactStoreHarness {
         try storeExpect(
             afterUnknownLoad == unknownData,
             "unknown schema snapshot was modified"
+        )
+    }
+
+    private static func clearCachesRemovesSnapshotsAndStaysUsable(
+        repository: URL
+    ) throws {
+        let root = try temporaryRoot("clear")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try ArtifactStore(rootURL: root)
+        let artifact = try fixture(repository: repository, module: .agentUsage)
+        try store.publish(artifact, for: .agentUsage)
+        try store.clearSnapshotCaches()
+        do {
+            _ = try store.load(.agentUsage)
+            throw StoreTestFailure.expectation("cleared snapshot still loads")
+        } catch ArtifactStoreError.noSnapshot {
+        }
+        // 清理后目录已重建且可再次发布 (下次刷新自动重建语义).
+        try store.publish(artifact, for: .agentUsage)
+        let reloaded = try store.load(.agentUsage)
+        try storeExpect(
+            reloaded.artifact == artifact,
+            "republish after clear failed"
+        )
+        let rebuiltPermissions = try permissions(store.snapshotsURL)
+        try storeExpect(
+            rebuiltPermissions == 0o700,
+            "rebuilt snapshot directory is not private"
         )
     }
 }

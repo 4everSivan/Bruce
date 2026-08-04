@@ -30,6 +30,9 @@ struct SettingsView: View {
     @State private var providerToAdd: SubscriptionProviderID?
     // 通知权限状态: denied 时预警通知无法投递, 提示用户前往系统设置
     @State private var notificationDenied = false
+    // 数据管理: 清理确认与操作反馈
+    @State private var showsClearCacheConfirm = false
+    @State private var dataActionMessage: String?
 
     var body: some View {
         Form {
@@ -45,6 +48,7 @@ struct SettingsView: View {
             agentUsageCard
             subscriptionSection
             consentSection
+            dataSection
             diagnosticsSection
         }
         .formStyle(.grouped)
@@ -913,6 +917,91 @@ struct SettingsView: View {
         }
         .glassFormRowBackground()
         .glassButtonStyle()
+    }
+
+    // MARK: - 数据
+
+    /// 数据管理: 清理可再生缓存 (仅本应用快照) 与账单导出.
+    private var dataSection: some View {
+        Section("数据") {
+            Text("缓存仅包含本应用生成的快照数据, 清理后下次刷新自动重建; 不影响配置, 凭证与账单统计")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack {
+                Button("清理缓存") {
+                    showsClearCacheConfirm = true
+                }
+                .accessibilityHint("删除本应用生成的快照缓存, 不影响配置与凭证")
+                Button("导出账单…") {
+                    exportBilling()
+                }
+                .accessibilityHint("选择位置保存 token 用量与花费统计 CSV")
+            }
+            if let dataActionMessage {
+                Text(dataActionMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .glassFormRowBackground()
+        .glassButtonStyle()
+        .confirmationDialog(
+            "确认清理缓存?",
+            isPresented: $showsClearCacheConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("清理", role: .destructive) {
+                clearCache()
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("仅删除本应用生成的快照缓存, 配置, 凭证与账单统计不受影响")
+        }
+    }
+
+    private func clearCache() {
+        do {
+            try coordinator.clearSnapshotCaches()
+            dataActionMessage = "缓存已清理"
+            model.setSettingsError(nil)
+        } catch {
+            dataActionMessage = nil
+            model.setSettingsError("缓存清理失败")
+        }
+    }
+
+    private func exportBilling() {
+        guard let csv = model.billingReportCSV() else {
+            model.setSettingsError("暂无可导出的用量数据, 请先刷新")
+            return
+        }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.commaSeparatedText]
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = Self.billingFilename()
+        panel.message = "导出 token 用量与花费统计 (CSV)"
+        guard panel.runModal() == .OK, let destination = panel.url else {
+            return
+        }
+        do {
+            // BOM 保证 Excel 正确识别 UTF-8 中文.
+            try ("\u{FEFF}" + csv).write(
+                to: destination,
+                atomically: true,
+                encoding: .utf8
+            )
+            dataActionMessage = "账单已导出"
+            model.setSettingsError(nil)
+        } catch {
+            dataActionMessage = nil
+            model.setSettingsError("账单导出失败")
+        }
+    }
+
+    private static func billingFilename() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmm"
+        return "mddd-billing-\(formatter.string(from: Date())).csv"
     }
 
     // MARK: - 诊断

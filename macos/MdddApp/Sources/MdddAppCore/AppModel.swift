@@ -224,6 +224,84 @@ package final class AppModel: ObservableObject {
         deepSeekMonthlyUsage = deepSeekLedger != nil ? .unavailable : nil
     }
 
+    // MARK: - 账单导出
+
+    /// 账单导出 CSV: 当前 artifact 的逐日 token 明细, 今日成本与 DeepSeek 月度摘要.
+    /// 无有效 artifact 时返回 nil (设置页提示先刷新).
+    package func billingReportCSV() -> String? {
+        guard let artifact = decodedAgentUsageArtifact() else { return nil }
+        var lines: [String] = [
+            "# mddd 账单导出",
+            "# 数据时间,\(artifact.generatedAt)",
+            "",
+            "日期,Agent,输入 tokens,输出 tokens,合计 tokens",
+        ]
+        for agent in artifact.agents {
+            for day in agent.daily {
+                lines.append([
+                    day.date,
+                    Self.csvField(agent.name),
+                    String(day.input),
+                    String(day.output),
+                    String(day.total),
+                ].joined(separator: ","))
+            }
+        }
+        lines.append("")
+        lines.append("# 今日成本 (CNY 按汇率 \(PanelFormat.cnyPerUsd) 换算)")
+        lines.append("Agent,成本 USD,成本 CNY")
+        var hasCost = false
+        for agent in artifact.agents {
+            guard let usd = agent.todayCostUsd else { continue }
+            hasCost = true
+            lines.append([
+                Self.csvField(agent.name),
+                Self.moneyText(usd),
+                Self.moneyText(usd * PanelFormat.cnyPerUsd),
+            ].joined(separator: ","))
+        }
+        if let total = artifact.totalCostUsd {
+            hasCost = true
+            lines.append(
+                "合计,\(Self.moneyText(total)),"
+                    + Self.moneyText(total * PanelFormat.cnyPerUsd)
+            )
+        }
+        if !hasCost {
+            lines.append("无定价数据")
+        }
+        switch deepSeekMonthlyUsage {
+        case .trend(let trend):
+            lines.append("")
+            lines.append("# DeepSeek 月度")
+            lines.append("本月消费 \(trend.currency),\(Self.decimalText(trend.estimatedConsumption))")
+            lines.append("当前余额 \(trend.currency),\(Self.decimalText(trend.currentBalance))")
+        case .baseline(let baseline):
+            lines.append("")
+            lines.append("# DeepSeek 月度")
+            lines.append("当前余额 \(baseline.currency),\(Self.decimalText(baseline.currentBalance))")
+        case .unavailable, .none:
+            break
+        }
+        return lines.joined(separator: "\n") + "\n"
+    }
+
+    /// CSV 字段转义: 含逗号, 引号或换行时加双引号包裹.
+    private static func csvField(_ text: String) -> String {
+        guard text.contains(",") || text.contains("\"") || text.contains("\n") else {
+            return text
+        }
+        return "\"" + text.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+    }
+
+    private static func moneyText(_ value: Double) -> String {
+        String(format: "%.4f", value)
+    }
+
+    private static func decimalText(_ value: Decimal) -> String {
+        NSDecimalNumber(decimal: value).stringValue
+    }
+
     /// 重新解码 Artifact, 只把有效 DeepSeek 余额观察交给账本,
     /// 派生月度状态作为唯一 UI 状态源保存. 无效/空/失败/未授权
     /// 的 DeepSeek Artifact 不读写账本.

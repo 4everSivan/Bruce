@@ -299,7 +299,7 @@ struct DeepSeekUsageLedgerHarness {
         )
         // 新 ID 的账本不继承旧 ID 的消费
         try ledgerExpect(
-            baseline.coverageStartText.contains("2026-08-04"),
+            baseline.coverageStartText.contains("26/08/04"),
             "新基线覆盖起点应为新观察时间"
         )
     }
@@ -404,7 +404,7 @@ struct DeepSeekUsageLedgerHarness {
             throw LedgerTestFailure.expectation("首次观察必须是 baseline")
         }
         try ledgerExpect(
-            baseline.coverageStartText.contains("2026-08-03"),
+            baseline.coverageStartText.contains("26/08/03"),
             "覆盖起点必须从首次记录开始"
         )
 
