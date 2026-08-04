@@ -81,3 +81,46 @@ jobs:
             --draft \
             --title "mddd $GITHUB_REF_NAME" \
             --notes "Development Preview 测试包。签名、公证和真实账号验收尚未完成。"
+
+  # 正式版发布 (08-production-packaging-and-release.md §4)
+  # 仅 tag v* 触发; 签名/公证凭证从仓库 Secret 读取, PR 永不接触
+  release-sign:
+    name: 正式版签名与公证 (Release)
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [verify, python-min-version]
+    runs-on: macos-26
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    env:
+      MDDD_RELEASE_BUNDLE_ID: ${{ vars.MDDD_RELEASE_BUNDLE_ID }}
+      MDDD_DEVELOPER_ID: ${{ secrets.MDDD_DEVELOPER_ID }}
+      MDDD_NOTARY_KEY_ID: ${{ secrets.MDDD_NOTARY_KEY_ID }}
+      MDDD_NOTARY_ISSUER_ID: ${{ secrets.MDDD_NOTARY_ISSUER_ID }}
+      MDDD_NOTARY_KEY_PATH: ${{ secrets.MDDD_NOTARY_KEY_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: 安装 ripgrep (build 脚本前置依赖)
+        run: brew install ripgrep
+      - name: 运行正式版构建 (含 verify-local + 签名 + 公证 + Gatekeeper)
+        run: zsh scripts/build-release-app.sh "$GITHUB_REF_NAME"
+      - name: 上传正式版产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: mddd-release
+          path: dist/mddd-*/
+          if-no-files-found: error
+      - name: 创建草稿 Release 并上传 zip + 校验和 + 说明
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RELEASE_DIR="dist/mddd-${GITHUB_REF_NAME#v}-macos"
+          gh release create "$GITHUB_REF_NAME" \
+            "$RELEASE_DIR"/*.zip \
+            "$RELEASE_DIR"/SHA256SUMS \
+            "$RELEASE_DIR"/release-notes-*.md \
+            --draft \
+            --title "mddd ${GITHUB_REF_NAME#v}" \
+            --notes "正式版。Developer ID 签名 + notarization。人工确认后发布。"

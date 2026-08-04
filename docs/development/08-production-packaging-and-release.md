@@ -3,7 +3,7 @@
 > 版本: 1.0  
 > 日期: 2026-08-04  
 > 适用范围: macOS 菜单栏 App 的预览版和正式版构建、签名、公证、验收与回滚  
-> 实施状态: 纯流程规范文档, 不含代码改动. 前置条件 (Developer ID 证书/公证 API Key/正式 bundle ID/release entitlements) 尚未配置, 当前只能生成 Preview 测试包.
+> 实施状态: 流程规范已落地为脚本与 CI. `scripts/build-release-app.sh` 已实现 (08 §3 五阶段, 版本来源 Git tag, Developer ID + Hardened Runtime + notarization, 产物含 SHA256SUMS/release-notes); `scripts/entitlements-release.plist` 最小 entitlement; `.github/workflows/ci.yml` 增加 protected `release-sign` job (仅 tag v* 触发, 凭证从 Secret 读取, PR 永不接触). `scripts/build-test-app.sh` 修复阶段 D 拆分后 collector 子模块未打包的回归 (6 个 .py 模块全部复制). 前置条件 (Developer ID 证书/公证 API Key/正式 bundle ID) 仍未配置, 未配置时脚本在对应阶段清晰失败, 不生成半成品.
 
 ## 1. 发布渠道定义
 

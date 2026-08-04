@@ -33,6 +33,11 @@ required_sources=(
     "$MDDD_REPO_ROOT/bridge/security.py"
     "$MDDD_REPO_ROOT/bridge/schemas"
     "$MDDD_REPO_ROOT/agent-usage/collector/collect_usage.py"
+    "$MDDD_REPO_ROOT/agent-usage/collector/pricing.py"
+    "$MDDD_REPO_ROOT/agent-usage/collector/runtime.py"
+    "$MDDD_REPO_ROOT/agent-usage/collector/quota_services.py"
+    "$MDDD_REPO_ROOT/agent-usage/collector/local_usage.py"
+    "$MDDD_REPO_ROOT/agent-usage/collector/codex_compat.py"
 )
 for required_source in "${required_sources[@]}"; do
     if [[ ! -e "$required_source" ]]; then
@@ -75,6 +80,11 @@ ditto "$MDDD_REPO_ROOT/bridge/schemas" \
     "$MDDD_RUNTIME/bridge/schemas"
 ditto "$MDDD_REPO_ROOT/agent-usage/collector/collect_usage.py" \
     "$MDDD_RUNTIME/agent-usage/collector/collect_usage.py"
+# 阶段 D 拆分出的 collector 子模块必须一并打包, 否则运行时 import 失败
+for module in pricing runtime quota_services local_usage codex_compat; do
+    ditto "$MDDD_REPO_ROOT/agent-usage/collector/$module.py" \
+        "$MDDD_RUNTIME/agent-usage/collector/$module.py"
+done
 
 MDDD_INFO_PLIST="$MDDD_CONTENTS/Info.plist"
 plutil -create xml1 "$MDDD_INFO_PLIST"
