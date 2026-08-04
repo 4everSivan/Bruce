@@ -330,24 +330,31 @@ class AgentCollectorContextTests(unittest.TestCase):
                 ]
             )
             before = hashlib.sha256(token_path.read_bytes()).hexdigest()
-            self.module._configure_runtime(
-                {
-                    "home": temp_home,
-                    "app_mode": True,
-                    "now": "2026-07-28T12:00:00+08:00",
-                    "credentials": {
-                        "antigravity_oauth": json.loads(
-                            token_path.read_text(encoding="utf-8")
-                        )
-                    },
-                    "http": {
-                        "urlopen": lambda *_args, **_kwargs: FakeResponse(
-                            next(responses)
-                        )
-                    },
-                }
-            )
-            services = self.module.service_antigravity()
+            # 阶段 E (07 §6.2): App 模式必须注入 AGY_CLIENT 凭证, 缺失时
+            # 返回可诊断状态; 本测试模拟已配置场景.
+            original_client_id = self.module.AGY_CLIENT_ID
+            self.module.AGY_CLIENT_ID = "mock-client-id"
+            try:
+                self.module._configure_runtime(
+                    {
+                        "home": temp_home,
+                        "app_mode": True,
+                        "now": "2026-07-28T12:00:00+08:00",
+                        "credentials": {
+                            "antigravity_oauth": json.loads(
+                                token_path.read_text(encoding="utf-8")
+                            )
+                        },
+                        "http": {
+                            "urlopen": lambda *_args, **_kwargs: FakeResponse(
+                                next(responses)
+                            )
+                        },
+                    }
+                )
+                services = self.module.service_antigravity()
+            finally:
+                self.module.AGY_CLIENT_ID = original_client_id
             after = hashlib.sha256(token_path.read_bytes()).hexdigest()
 
         self.assertEqual(services[0]["status"], "empty")
@@ -358,6 +365,28 @@ class AgentCollectorContextTests(unittest.TestCase):
             ],
             "new-access",
         )
+
+    def test_app_mode_without_agy_client_returns_diagnosable_state(self):
+        """07 §6.2 选项 2: App 模式未注入 AGY_CLIENT 时返回可诊断 error,
+        不伪造空凭证做 refresh."""
+        with tempfile.TemporaryDirectory() as temp_home:
+            self.module._configure_runtime(
+                {
+                    "home": temp_home,
+                    "app_mode": True,
+                    "now": "2026-07-28T12:00:00+08:00",
+                    "credentials": {
+                        "antigravity_oauth": {
+                            "token": {"refresh_token": "old-refresh"}
+                        }
+                    },
+                }
+            )
+            services = self.module.service_antigravity()
+        self.assertEqual(services[0]["status"], "error")
+        self.assertEqual(services[0]["freshness"], "unavailable")
+        self.assertIn("未配置", services[0]["note"])
+        self.assertNotIn("capturedAt", services[0])
 
     def test_load_agy_oauth_keychain_fallback_decodes_go_keyring(self):
         payload = {
@@ -508,23 +537,28 @@ class AgentCollectorContextTests(unittest.TestCase):
             ]
         }
         responses = iter([{"access_token": "a", "expires_in": 3600}, quota])
-        with tempfile.TemporaryDirectory() as temp_home:
-            self.module._configure_runtime(
-                {
-                    "home": temp_home,
-                    "app_mode": True,
-                    "now": "2026-07-28T12:00:00+08:00",
-                    "credentials": {
-                        "antigravity_oauth": {
-                            "token": {"access_token": "x", "refresh_token": "r"}
-                        }
-                    },
-                    "http": {
-                        "urlopen": lambda *_a, **_k: FakeResponse(next(responses))
-                    },
-                }
-            )
-            services = self.module.service_antigravity()
+        original_client_id = self.module.AGY_CLIENT_ID
+        self.module.AGY_CLIENT_ID = "mock-client-id"
+        try:
+            with tempfile.TemporaryDirectory() as temp_home:
+                self.module._configure_runtime(
+                    {
+                        "home": temp_home,
+                        "app_mode": True,
+                        "now": "2026-07-28T12:00:00+08:00",
+                        "credentials": {
+                            "antigravity_oauth": {
+                                "token": {"access_token": "x", "refresh_token": "r"}
+                            }
+                        },
+                        "http": {
+                            "urlopen": lambda *_a, **_k: FakeResponse(next(responses))
+                        },
+                    }
+                )
+                services = self.module.service_antigravity()
+        finally:
+            self.module.AGY_CLIENT_ID = original_client_id
 
         svc = services[0]
         self.assertEqual(svc["status"], "ok")

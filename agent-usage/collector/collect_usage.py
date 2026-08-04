@@ -711,6 +711,14 @@ def service_antigravity():
     }
     try:
         tok = data.get("token") or {}
+        # 阶段 E (07 §6.2 选项 2): App 模式必须由运行环境注入 AGY_CLIENT 凭证.
+        # 缺失时不伪造空凭证做 refresh, 返回可诊断状态 (CLI 直跑保留旧行为).
+        if _APP_MODE and not AGY_CLIENT_ID:
+            svc["status"] = "error"
+            svc["note"] = "Antigravity 客户端凭证未配置, App 模式暂不支持该查询"
+            svc["freshness"] = "unavailable"
+            svc.pop("capturedAt", None)
+            return [svc]
         body = urllib.parse.urlencode(
             {
                 "grant_type": "refresh_token",
