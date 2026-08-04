@@ -34,6 +34,9 @@ from zoneinfo import ZoneInfo
 # 加载 (__package__ 为空), 需把同目录加入 sys.path 才能 import 同级模块.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pricing import BUILTIN_PRICING, estimate_cost, load_pricing  # noqa: E402
+import runtime
+from runtime import day_of, hour_of, parse_iso, epoch_from_iso  # noqa: E402
+import quota_services
 
 HOME = os.path.expanduser("~")
 DAIMON_KIMI_SESSIONS = os.path.join(
@@ -72,8 +75,6 @@ now = None
 TODAY = None
 CUTOFF_TS = None
 DAY_LIST = []
-_RUNTIME_TZ = None
-_RUNTIME_HTTP = {}
 _RUNTIME_CREDENTIALS = {}
 _RUNTIME_CREDENTIAL_UPDATES = []
 # App 模式 quota 401 收集的定向重试挑战; Bridge 每次运行重置, 测试直接断言
@@ -103,7 +104,7 @@ def _configure_runtime(ctx):
     global CC_SWITCH_DB, CODEX_OAUTH_AUTH, CODEX_AUTH, AGY_OAUTH_TOKEN
     global AGY_SUMMARIES_DB, KIMI_WEB_TOKENS
     global DAYS, HTTP_TIMEOUT, now, TODAY, CUTOFF_TS, DAY_LIST
-    global _RUNTIME_TZ, _RUNTIME_HTTP, _RUNTIME_CREDENTIALS
+    global _RUNTIME_CREDENTIALS
     global _RUNTIME_CONTEXT
     global _RUNTIME_CREDENTIAL_UPDATES, _RUNTIME_CAPABILITIES, _APP_MODE
     global _RUNTIME_CREDENTIAL_CHALLENGES
@@ -179,11 +180,11 @@ def _configure_runtime(ctx):
 
     timezone_value = ctx.get("timezone")
     if isinstance(timezone_value, str):
-        _RUNTIME_TZ = ZoneInfo(timezone_value)
+        runtime._RUNTIME_TZ = ZoneInfo(timezone_value)
     elif isinstance(timezone_value, datetime.tzinfo):
-        _RUNTIME_TZ = timezone_value
+        runtime._RUNTIME_TZ = timezone_value
     else:
-        _RUNTIME_TZ = datetime.datetime.now().astimezone().tzinfo
+        runtime._RUNTIME_TZ = datetime.datetime.now().astimezone().tzinfo
 
     now_value = ctx.get("now")
     if callable(now_value):
@@ -191,12 +192,12 @@ def _configure_runtime(ctx):
     if isinstance(now_value, str):
         now_value = datetime.datetime.fromisoformat(now_value.replace("Z", "+00:00"))
     if now_value is None:
-        now_value = datetime.datetime.now(_RUNTIME_TZ)
+        now_value = datetime.datetime.now(runtime._RUNTIME_TZ)
     if not isinstance(now_value, datetime.datetime):
         raise TypeError("ctx.now must be a datetime, ISO-8601 string, or callable")
     if now_value.tzinfo is None:
-        now_value = now_value.replace(tzinfo=_RUNTIME_TZ)
-    now = now_value.astimezone(_RUNTIME_TZ)
+        now_value = now_value.replace(tzinfo=runtime._RUNTIME_TZ)
+    now = now_value.astimezone(runtime._RUNTIME_TZ)
 
     DAYS = int(ctx.get("days", 14))
     if DAYS < 1:
@@ -208,7 +209,7 @@ def _configure_runtime(ctx):
         (now - datetime.timedelta(days=i)).strftime("%Y-%m-%d")
         for i in range(DAYS - 1, -1, -1)
     ]
-    _RUNTIME_HTTP = dict(ctx.get("http") or {})
+    runtime.set_http_overrides(dict(ctx.get("http") or {}))
     _RUNTIME_CREDENTIALS = dict(ctx.get("credentials") or {})
     _RUNTIME_CREDENTIAL_UPDATES = []
     _RUNTIME_CREDENTIAL_CHALLENGES = []
@@ -264,26 +265,7 @@ def _record_credential_update(provider, account_id, credentials):
 
 
 def _urlopen(request, **kwargs):
-    opener = _RUNTIME_HTTP.get("urlopen") or urllib.request.urlopen
-    return opener(request, **kwargs)
-
-
-def day_of(ts_seconds):
-    return datetime.datetime.fromtimestamp(ts_seconds, _RUNTIME_TZ).strftime("%Y-%m-%d")
-
-
-def hour_of(ts_seconds):
-    return datetime.datetime.fromtimestamp(ts_seconds, _RUNTIME_TZ).hour
-
-
-def parse_iso(ts):
-    try:
-        value = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=_RUNTIME_TZ)
-        return value.timestamp()
-    except Exception:
-        return None
+    return runtime.urlopen(request, **kwargs)
 
 
 def new_bucket():
@@ -560,7 +542,7 @@ def scan_codex(agent, session_dirs=None):
         "plan": latest_quota.get("plan_type"),
         "windows": windows,
         "capturedAt": datetime.datetime.fromtimestamp(
-            latest_quota_ts, _RUNTIME_TZ
+            latest_quota_ts, runtime._RUNTIME_TZ
         ).isoformat(timespec="seconds"),
     }
     return found, {"ts": latest_quota_ts, "quota": quota}
@@ -569,17 +551,7 @@ def scan_codex(agent, session_dirs=None):
 # ---------------------------------------------------------------- cc-switch services
 
 def http_get_json(url, headers):
-    override = _RUNTIME_HTTP.get("get_json")
-    if override:
-        return override(url, headers)
-    req = urllib.request.Request(url, headers=headers)
-    with _urlopen(req, timeout=HTTP_TIMEOUT) as resp:
-        return json.loads(resp.read().decode("utf-8", "replace"))
-
-
-def epoch_from_iso(ts):
-    t = parse_iso(ts or "")
-    return int(t) if t else None
+    return runtime.http_get_json(url, headers, HTTP_TIMEOUT)
 
 
 KIMI_STATS_URL = "https://www.kimi.com/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats"
@@ -588,13 +560,7 @@ KIMI_REFRESH_URL = "https://www.kimi.com/api/auth/token/refresh"
 
 
 def http_post_json(url, payload, headers):
-    override = _RUNTIME_HTTP.get("post_json")
-    if override:
-        return override(url, payload, headers)
-    body = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
-    with _urlopen(req, timeout=HTTP_TIMEOUT) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    return runtime.http_post_json(url, payload, headers, HTTP_TIMEOUT)
 
 
 def _kimi_web_refresh(tokens):
@@ -723,178 +689,6 @@ def service_kimi_coding(env):
             extras.append("加量包余额 ¥%.2f" % (int(cents) / 100.0))
     return {"kind": "windows", "plan": plan, "windows": windows, "extra": " · ".join(extras) or None}
 
-
-def service_deepseek(env):
-    key = env.get("ANTHROPIC_AUTH_TOKEN") or ""
-    if not key:
-        return None
-    d = http_get_json(
-        "https://api.deepseek.com/user/balance",
-        {"Authorization": "Bearer " + key, "Accept": "application/json"},
-    )
-    infos = d.get("balance_infos") or []
-    if not infos:
-        return None
-    info = infos[0]
-    return {
-        "kind": "balance",
-        "plan": None,
-        "windows": [],
-        "balance": float(info.get("total_balance") or 0),
-        "currency": info.get("currency") or "CNY",
-    }
-
-
-def _volc_decode_secret(raw):
-    candidates = [raw]
-    cur = raw
-    for _ in range(2):
-        try:
-            dec = base64.b64decode(cur).decode("utf-8")
-        except Exception:
-            break
-        candidates.append(dec)
-        cur = dec
-    return candidates
-
-
-def _volc_sign(method, host, query, payload, ak, sk, region="cn-beijing", service="ark"):
-    x_date = now.astimezone(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    short_date = x_date[:8]
-    payload_hash = hashlib.sha256(payload.encode("utf-8")).hexdigest()
-    headers = {
-        "host": host,
-        "x-date": x_date,
-        "x-content-sha256": payload_hash,
-        "content-type": "application/json; charset=utf-8",
-    }
-    signed = "host;x-date;x-content-sha256;content-type"
-    canonical_headers = "".join("%s:%s\n" % (k, headers[k]) for k in signed.split(";"))
-    canonical_query = urllib.parse.urlencode(sorted(query.items()))
-    canonical = "\n".join(
-        [method, "/", canonical_query, canonical_headers, signed, payload_hash]
-    )
-    scope = "%s/%s/%s/request" % (short_date, region, service)
-    to_sign = "\n".join(
-        ["HMAC-SHA256", x_date, scope, hashlib.sha256(canonical.encode()).hexdigest()]
-    )
-    k_date = hmac.new(sk.encode(), short_date.encode(), hashlib.sha256).digest()
-    k_region = hmac.new(k_date, region.encode(), hashlib.sha256).digest()
-    k_service = hmac.new(k_region, service.encode(), hashlib.sha256).digest()
-    k_signing = hmac.new(k_service, b"request", hashlib.sha256).digest()
-    signature = hmac.new(k_signing, to_sign.encode(), hashlib.sha256).hexdigest()
-    headers["Authorization"] = (
-        "HMAC-SHA256 Credential=%s/%s, SignedHeaders=%s, Signature=%s"
-        % (ak, scope, signed, signature)
-    )
-    return headers
-
-
-def service_volcengine(env, meta):
-    us = meta.get("usage_script") or {}
-    ak = us.get("accessKeyId") or meta.get("accessKeyId") or ""
-    sk_raw = us.get("secretAccessKey") or meta.get("secretAccessKey") or ""
-    if not ak or not sk_raw:
-        return None
-    host = "open.volcengineapi.com"
-    last_err = None
-    for sk in _volc_decode_secret(sk_raw):
-        for action in ("GetCodingPlanUsage", "GetAFPUsage"):
-            try:
-                query = {"Action": action, "Version": "2024-01-01"}
-                headers = _volc_sign("GET", host, query, "", ak, sk)
-                headers.pop("host", None)
-                url = "https://%s/?%s" % (host, urllib.parse.urlencode(query))
-                d = http_get_json(url, headers)
-                result = d.get("Result") or d.get("result") or d
-                return _volc_parse(result)
-            except Exception as e:  # try next candidate/action
-                last_err = e
-                continue
-    raise last_err or RuntimeError("volcengine query failed")
-
-
-def _volc_parse(result):
-    windows = []
-    label_map = {"session": "5小时窗口", "weekly": "每周窗口", "monthly": "每月窗口"}
-    quota_usage = result.get("QuotaUsage") if isinstance(result, dict) else None
-    if isinstance(quota_usage, list):
-        for item in quota_usage:
-            level = str(item.get("Level") or "").lower()
-            label = label_map.get(level, level or "窗口")
-            pct = item.get("Percent")
-            if pct is None:
-                continue
-            reset_ts = item.get("ResetTimestamp")
-            # 火山 GetCodingPlanUsage 对未开始的窗口 (如未使用的 5 小时窗口) 返回
-            # ResetTimestamp=-1, 透传会被下游解析成 1970 误判「已到期」, 非正数一律置 None
-            if isinstance(reset_ts, (int, float)) and reset_ts <= 0:
-                reset_ts = None
-            windows.append(
-                {
-                    "label": label,
-                    "usedPercent": max(0.0, min(100.0, float(pct))),
-                    "windowMinutes": None,
-                    "resetsAt": reset_ts,
-                }
-            )
-        # Status (如 running) 是订阅生命周期状态, 不是套餐信息, 不上卡片
-        plan = None
-        return {"kind": "windows", "plan": plan, "windows": windows}
-
-    def pick(node, names):
-        if not isinstance(node, dict):
-            return None
-        for n in names:
-            for k, v in node.items():
-                if k.lower() == n.lower():
-                    return v
-        return None
-
-    def window_from(node, label):
-        if not isinstance(node, dict):
-            return
-        limit = pick(node, ["Limit", "Total", "Quota", "TotalQuota"])
-        used = pick(node, ["Used", "Usage", "UsedQuota"])
-        remain = pick(node, ["Remaining", "Remain"])
-        reset = pick(node, ["ResetTime", "QuotaResetTime"])
-        try:
-            if limit and used is not None:
-                pct = float(used) / float(limit) * 100
-            elif limit and remain is not None:
-                pct = (1 - float(remain) / float(limit)) * 100
-            else:
-                return
-        except (TypeError, ValueError, ZeroDivisionError):
-            return
-        windows.append(
-            {
-                "label": label,
-                "usedPercent": max(0.0, min(100.0, pct)),
-                "windowMinutes": None,
-                "resetsAt": epoch_from_iso(reset) if isinstance(reset, str) else reset,
-            }
-        )
-
-    window_from(pick(result, ["AFPFiveHour", "FiveHour"]), "5小时窗口")
-    window_from(pick(result, ["AFPWeekly", "Weekly"]), "每周窗口")
-    window_from(pick(result, ["AFPMonthly", "Monthly"]), "每月窗口")
-    if not windows and isinstance(result, dict):
-        # flat structure: search one level deep for anything quota-like
-        for k, v in result.items():
-            lk = k.lower()
-            if "fivehour" in lk or "5hour" in lk:
-                window_from(v, "5小时窗口")
-            elif "weekly" in lk or "week" in lk:
-                window_from(v, "每周窗口")
-            elif "monthly" in lk or "month" in lk:
-                window_from(v, "每月窗口")
-    plan = None
-    for k in ("PlanType", "Plan", "PlanName"):
-        if isinstance(result, dict) and result.get(k):
-            plan = str(result[k])
-            break
-    return {"kind": "windows", "plan": plan, "windows": windows}
 
 
 # ---------------------------------------------------------------- codex multi-account
@@ -1486,7 +1280,7 @@ def _collect_app_services():
         svc = _quota_service_entry("deepseek", "DeepSeek", "deepseek")
         services.append(
             _finalize_quota_service(
-                svc, lambda: service_deepseek(dict(deepseek_env))
+                svc, lambda: quota_services.service_deepseek(dict(deepseek_env), HTTP_TIMEOUT)
             )
         )
 
@@ -1496,7 +1290,7 @@ def _collect_app_services():
         svc = _quota_service_entry("volcengine", "火山引擎（Coding Plan）", "volcengine")
         services.append(
             _finalize_quota_service(
-                svc, lambda: service_volcengine({}, dict(volc_meta))
+                svc, lambda: quota_services.service_volcengine({}, dict(volc_meta), now, HTTP_TIMEOUT)
             )
         )
 
@@ -1535,7 +1329,7 @@ def collect_services():
 
     handlers = {
         "Kimi For Coding": ("kimi_coding", service_kimi_coding),
-        "DeepSeek": ("deepseek", service_deepseek),
+        "DeepSeek": ("deepseek", lambda env: quota_services.service_deepseek(env, HTTP_TIMEOUT)),
         "火山Codingplan": ("volcengine", None),  # needs meta
     }
     # 看板展示名（cc-switch 里的 provider 名不动，仅改显示）
@@ -1568,7 +1362,7 @@ def collect_services():
             provider_meta = _runtime_credential("provider_meta", {})
             meta.update(provider_meta.get(svc["id"], {}))
             if name == "火山Codingplan":
-                result = service_volcengine(env, meta)
+                result = quota_services.service_volcengine(env, meta, now, HTTP_TIMEOUT)
             else:
                 result = handlers[name][1](env)
             if result:

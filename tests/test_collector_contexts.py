@@ -1673,7 +1673,7 @@ class VolcengineResetTimestampTests(unittest.TestCase):
     def test_unstarted_window_reset_timestamp_minus_one_becomes_none(self):
         # 真实响应证据: 火山 GetCodingPlanUsage 对未开始的 5 小时窗口返回
         # ResetTimestamp=-1, 透传会被面板解析成 1970 误判「已到期」
-        result = self.module._volc_parse(
+        result = self.module.quota_services._volc_parse(
             {
                 "Status": "active",
                 "QuotaUsage": [
@@ -1699,7 +1699,7 @@ class VolcengineResetTimestampTests(unittest.TestCase):
         self.assertEqual(windows[1]["resetsAt"], 1785000000)
 
     def test_missing_reset_timestamp_becomes_none(self):
-        result = self.module._volc_parse(
+        result = self.module.quota_services._volc_parse(
             {
                 "QuotaUsage": [
                     {"Level": "session", "Percent": 5},
