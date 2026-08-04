@@ -208,7 +208,10 @@ struct PanelViewModelHarness {
         try codexDisplayNameStripsPrefixOnly()
         try deepSeekMonthlyUsageOnlyOnDeepSeekSection()
         try deepSeekMonthlyUsageMapsStates()
-        print("PanelViewModel tests passed: 32")
+        try providerOrderOverridesDefaultSort()
+        try providerOrderUnknownIDsGoLast()
+        try providerOrderNormalizesKimiCodingID()
+        print("PanelViewModel tests passed: 35")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -1111,5 +1114,115 @@ struct PanelViewModelHarness {
             return false
         }
         try expect(issues.count == 1, "empty 应留一条 serviceIssue 诊断: \(vm.diagnostics)")
+    }
+
+    // 用户自定义 provider 顺序优先于默认的"余额沉底"排序.
+    private static func providerOrderOverridesDefaultSort() throws {
+        let deepseek = makeService(
+            id: "deepseek",
+            name: "DeepSeek",
+            kind: "balance",
+            balance: 38.21,
+            currency: "CNY"
+        )
+        let kimi = makeService(
+            id: "kimi",
+            name: "Kimi",
+            kind: "windows",
+            windows: [makeWindow(label: "5小时窗口", usedPercent: 68, windowMinutes: 300)]
+        )
+        let volcengine = makeService(
+            id: "volcengine",
+            name: "火山引擎",
+            kind: "windows",
+            windows: [makeWindow(label: "5小时窗口", usedPercent: 50, windowMinutes: 300)]
+        )
+
+        // 默认 (无自定义顺序): 余额型沉底 -> [kimi, volcengine, deepseek]
+        let defaultVM = try subscriptionSections(services: [deepseek, kimi, volcengine])
+        try expect(defaultVM.count == 3, "默认段数量错误: \(defaultVM.count)")
+        try expect(defaultVM[0].id == "kimi", "默认 kimi 应在前: \(defaultVM.map(\.id))")
+        try expect(defaultVM[2].id == "deepseek", "默认 deepseek 应沉底: \(defaultVM.map(\.id))")
+
+        // 自定义顺序: deepseek 在前, kimi 在后
+        let order = ["deepseek", "volcengine", "kimi"]
+        let artifact = makeAgentUsageArtifact(agents: [], services: [deepseek, kimi, volcengine])
+        let customVM = makeMapper().make(
+            agentUsage: artifact,
+            moduleStatuses: readyStatuses,
+            providerOrder: order
+        )
+        guard let sections = customVM.subscription?.sections else {
+            throw PanelTestFailure.expectation("自定义顺序订阅卡意外为 nil")
+        }
+        try expect(sections.count == 3, "自定义顺序段数量错误: \(sections.count)")
+        try expect(sections[0].id == "deepseek", "自定义顺序 deepseek 应在前: \(sections.map(\.id))")
+        try expect(sections[1].id == "volcengine", "自定义顺序 volcengine 应居中: \(sections.map(\.id))")
+        try expect(sections[2].id == "kimi", "自定义顺序 kimi 应在后: \(sections.map(\.id))")
+    }
+
+    // 不在自定义顺序中的 service ID 排在已知 ID 之后, 保持 artifact 顺序.
+    private static func providerOrderUnknownIDsGoLast() throws {
+        let kimi = makeService(
+            id: "kimi",
+            name: "Kimi",
+            kind: "windows",
+            windows: [makeWindow(label: "5小时窗口", usedPercent: 68, windowMinutes: 300)]
+        )
+        let unknown = makeService(
+            id: "custom-provider",
+            name: "Custom",
+            kind: "windows",
+            windows: [makeWindow(label: "5小时窗口", usedPercent: 50, windowMinutes: 300)]
+        )
+        let artifact = makeAgentUsageArtifact(agents: [], services: [kimi, unknown])
+        let vm = makeMapper().make(
+            agentUsage: artifact,
+            moduleStatuses: readyStatuses,
+            providerOrder: ["kimi"]
+        )
+        guard let sections = vm.subscription?.sections else {
+            throw PanelTestFailure.expectation("订阅卡意外为 nil")
+        }
+        try expect(sections.count == 2, "段数量错误: \(sections.count)")
+        try expect(sections[0].id == "kimi", "已知 ID 应在前: \(sections.map(\.id))")
+        try expect(sections[1].id == "custom-provider", "未知 ID 应在后: \(sections.map(\.id))")
+    }
+
+    // artifact 中 Kimi 的 service ID 是 "kimi_coding", 用户顺序中用 "kimi";
+    // 映射器必须归一化后匹配, 否则 Kimi 不受自定义顺序控制.
+    private static func providerOrderNormalizesKimiCodingID() throws {
+        let kimi = makeService(
+            id: "kimi_coding",
+            name: "Kimi",
+            kind: "windows",
+            windows: [makeWindow(label: "5小时窗口", usedPercent: 68, windowMinutes: 300)]
+        )
+        let deepseek = makeService(
+            id: "deepseek",
+            name: "DeepSeek",
+            kind: "balance",
+            balance: 38.21,
+            currency: "CNY"
+        )
+        let artifact = makeAgentUsageArtifact(agents: [], services: [kimi, deepseek])
+        // 用户顺序: kimi (rawValue) 在前, deepseek 在后
+        let vm = makeMapper().make(
+            agentUsage: artifact,
+            moduleStatuses: readyStatuses,
+            providerOrder: ["kimi", "deepseek"]
+        )
+        guard let sections = vm.subscription?.sections else {
+            throw PanelTestFailure.expectation("订阅卡意外为 nil")
+        }
+        try expect(sections.count == 2, "段数量错误: \(sections.count)")
+        try expect(
+            sections[0].id == "kimi_coding",
+            "kimi_coding 应被 'kimi' 顺序匹配并排在前面: \(sections.map(\.id))"
+        )
+        try expect(
+            sections[1].id == "deepseek",
+            "deepseek 应排在后面: \(sections.map(\.id))"
+        )
     }
 }

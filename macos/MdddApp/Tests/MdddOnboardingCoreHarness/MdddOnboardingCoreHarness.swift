@@ -174,7 +174,8 @@ struct MdddOnboardingCoreHarness {
         try claudeCLIImporterReadsFixture()
         try grokCLIImporterReadsFixture()
         try claudeGrokCredentialAccountsReturnNewKeys()
-        print("MdddOnboardingCore tests passed: 161")
+        try configSubscriptionProviderOrderRoundTrip()
+        print("MdddOnboardingCore tests passed: 162")
     }
 
     // MARK: - Python version parsing
@@ -3512,6 +3513,41 @@ struct MdddOnboardingCoreHarness {
                 SubscriptionCredentialAccount.grokOAuth
             ],
             "grok credentialAccounts 应含 grok:oauth"
+        )
+    }
+
+    // subscriptionProviderOrder 字段编解码往返, 兼容旧配置缺键.
+    private static func configSubscriptionProviderOrderRoundTrip() throws {
+        // 编解码往返
+        var config = OnboardingConfiguration()
+        config.subscriptionProviderOrder = ["grok", "kimi", "deepseek"]
+        let encoded = try JSONEncoder().encode(config)
+        let decoded = try JSONDecoder().decode(OnboardingConfiguration.self, from: encoded)
+        try coreExpect(
+            decoded.subscriptionProviderOrder == ["grok", "kimi", "deepseek"],
+            "subscriptionProviderOrder 往返不一致: \(decoded.subscriptionProviderOrder ?? [])"
+        )
+
+        // 旧配置 (无该键) 解码为 nil
+        let oldJSON = """
+        {"schemaVersion":2,"selectedModules":[],"connectionStates":{},"lastVerifiedAt":{},"subscriptionProviders":{}}
+        """
+        let oldData = Data(oldJSON.utf8)
+        let oldDecoded = try JSONDecoder().decode(OnboardingConfiguration.self, from: oldData)
+        try coreExpect(
+            oldDecoded.subscriptionProviderOrder == nil,
+            "旧配置缺键应解码为 nil"
+        )
+
+        // 显式 null 也解码为 nil
+        let nullJSON = """
+        {"schemaVersion":2,"selectedModules":[],"connectionStates":{},"lastVerifiedAt":{},"subscriptionProviders":{},"subscriptionProviderOrder":null}
+        """
+        let nullData = Data(nullJSON.utf8)
+        let nullDecoded = try JSONDecoder().decode(OnboardingConfiguration.self, from: nullData)
+        try coreExpect(
+            nullDecoded.subscriptionProviderOrder == nil,
+            "显式 null 应解码为 nil"
         )
     }
 }

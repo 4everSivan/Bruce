@@ -114,6 +114,9 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
     public var appearanceMode: AppearancePreference?
     /// 液态玻璃风格偏好. nil (含 JSON 显式 null 或非法值) 表示标准玻璃.
     public var glassStyle: GlassStylePreference?
+    /// 订阅 provider 展示顺序 (rawValue 列表). nil 表示使用 CaseIterable 默认顺序;
+    /// 用户在设置页调整顺序后写入. 仅包含已添加的 provider.
+    public var subscriptionProviderOrder: [String]?
 
     /// 默认自动刷新间隔 (分钟).
     public static let defaultRefreshIntervalMinutes = 30
@@ -150,7 +153,8 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         subscriptionProviders: [String: SubscriptionProviderConfiguration] = [:],
         refreshIntervalMinutes: Int? = nil,
         appearanceMode: AppearancePreference? = nil,
-        glassStyle: GlassStylePreference? = nil
+        glassStyle: GlassStylePreference? = nil,
+        subscriptionProviderOrder: [String]? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.pythonPath = pythonPath
@@ -163,6 +167,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         self.refreshIntervalMinutes = refreshIntervalMinutes
         self.appearanceMode = appearanceMode
         self.glassStyle = glassStyle
+        self.subscriptionProviderOrder = subscriptionProviderOrder
     }
 
     /// 自定义解码: 旧版本配置缺失的键一律回落缺省, 不因新增字段拒绝加载.
@@ -190,6 +195,10 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         // 非法字符串与缺键一样按 nil (标准玻璃) 处理
         glassStyle = try? container.decodeIfPresent(
             GlassStylePreference.self, forKey: .glassStyle
+        )
+        // 旧配置缺该键或显式 null 一律按 nil, 不因新增字段拒绝加载
+        subscriptionProviderOrder = try container.decodeIfPresent(
+            [String].self, forKey: .subscriptionProviderOrder
         )
     }
 }

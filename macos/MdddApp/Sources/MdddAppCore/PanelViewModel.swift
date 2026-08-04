@@ -538,7 +538,8 @@ package struct PanelViewModelMapper: Sendable {
     package func make(
         agentUsage: AgentUsageArtifact?,
         moduleStatuses: [DashboardModule: ModuleStatus],
-        deepSeekMonthlyUsage: DeepSeekMonthlyUsage? = nil
+        deepSeekMonthlyUsage: DeepSeekMonthlyUsage? = nil,
+        providerOrder: [String] = []
     ) -> PanelViewModel {
         var diagnostics: [PanelDiagnostic] = []
         let currentNow = now()
@@ -552,6 +553,7 @@ package struct PanelViewModelMapper: Sendable {
                 agentUsage,
                 now: currentNow,
                 deepSeekMonthlyUsage: deepSeekMonthlyUsage,
+                providerOrder: providerOrder,
                 diagnostics: &diagnostics
             )
             hourly = makeHourly(agentUsage, diagnostics: &diagnostics)
@@ -714,6 +716,7 @@ package struct PanelViewModelMapper: Sendable {
         _ artifact: AgentUsageArtifact,
         now: Date,
         deepSeekMonthlyUsage: DeepSeekMonthlyUsage?,
+        providerOrder: [String],
         diagnostics: inout [PanelDiagnostic]
     ) -> SubscriptionViewModel? {
         var sections: [SubscriptionProviderSection] = []
@@ -820,20 +823,46 @@ package struct PanelViewModelMapper: Sendable {
             return nil
         }
 
-        // 余额型 (DeepSeek 等按量付费) 稳定沉底.
-        let sorted = sections.enumerated().sorted { lhs, rhs in
-            let lhsBalance = lhs.element.balance != nil
-            let rhsBalance = rhs.element.balance != nil
-            if lhsBalance != rhsBalance {
-                return !lhsBalance
-            }
-            return lhs.offset < rhs.offset
-        }.map(\.element)
+        // 用户自定义顺序优先; 无自定义顺序时余额型沉底, 其余保持 artifact 顺序.
+        let sorted: [SubscriptionProviderSection]
+        if providerOrder.isEmpty {
+            sorted = sections.enumerated().sorted { lhs, rhs in
+                let lhsBalance = lhs.element.balance != nil
+                let rhsBalance = rhs.element.balance != nil
+                if lhsBalance != rhsBalance {
+                    return !lhsBalance
+                }
+                return lhs.offset < rhs.offset
+            }.map(\.element)
+        } else {
+            let orderIndex = Dictionary(
+                providerOrder.enumerated().map { ($0.element, $0.offset) },
+                uniquingKeysWith: { a, _ in a }
+            )
+            sorted = sections.enumerated().sorted { lhs, rhs in
+                let lhsIdx = orderIndex[Self.providerID(forServiceID: lhs.element.id)] ?? Int.max
+                let rhsIdx = orderIndex[Self.providerID(forServiceID: rhs.element.id)] ?? Int.max
+                if lhsIdx != rhsIdx {
+                    return lhsIdx < rhsIdx
+                }
+                return lhs.offset < rhs.offset
+            }.map(\.element)
+        }
 
         return SubscriptionViewModel(
             sections: sorted,
             updatedText: updatedText(from: artifact.generatedAt)
         )
+    }
+
+    /// 把 artifact service ID 归一化为 SubscriptionProviderID rawValue,
+    /// 供用户自定义顺序查找. Kimi 的 service ID 是 "kimi_coding" 而
+    /// provider rawValue 是 "kimi"; 其他 service ID 与 provider rawValue 一致.
+    private static func providerID(forServiceID serviceID: String) -> String {
+        switch serviceID {
+        case "kimi_coding": return "kimi"
+        default: return serviceID
+        }
     }
 
     /// 订阅卡右上角更新时间: "最后更新 HH:mm" (24 小时制, 跟随 mapper 时区);

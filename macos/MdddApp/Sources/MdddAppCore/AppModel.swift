@@ -178,6 +178,8 @@ package final class AppModel: ObservableObject {
     /// 存储错误对象或原始 Keychain 内容. 阻断性错误关闭 Codex 外部额度,
     /// 非阻断 (cleanupPending) 保留额度并提示下次启动重试清理.
     @Published package private(set) var codexMigrationStatus: CodexMigrationDisplayStatus = .notStarted
+    /// 订阅 provider 展示顺序, 供设置页排列与面板映射排序使用.
+    @Published package private(set) var subscriptionProviderOrder: [SubscriptionProviderID] = []
     @Published package private(set) var menuBarMetrics: [MenuBarMetric]
     /// 最近一次面板映射产生的诊断, 随 artifact 与模块状态变更重算.
     /// 不进 UI; 供诊断路径与 harness 读取, 诊断包 schema 锁定期暂不外发.
@@ -466,6 +468,10 @@ package final class AppModel: ObservableObject {
         menuBarMetrics = MenuBarMetricConfiguration(metrics: metrics).metrics
     }
 
+    package func setSubscriptionProviderOrder(_ order: [SubscriptionProviderID]) {
+        subscriptionProviderOrder = order
+    }
+
     /// 判断模块是否满足前置依赖, 允许执行 Collector.
     package func canRunCollector(for module: CollectorModule) -> Bool {
         let readiness = moduleResults[module]?.readiness
@@ -481,7 +487,8 @@ package final class AppModel: ObservableObject {
         PanelViewModelMapper().make(
             agentUsage: decodedAgentUsageArtifact(),
             moduleStatuses: moduleStatuses,
-            deepSeekMonthlyUsage: deepSeekMonthlyUsage
+            deepSeekMonthlyUsage: deepSeekMonthlyUsage,
+            providerOrder: subscriptionProviderOrder.map(\.rawValue)
         )
     }
 

@@ -136,44 +136,10 @@ struct SettingsView: View {
             .accessibilityLabel(notificationDenied ? "系统通知未开启" : "系统通知已开启")
             .onAppear(perform: refreshNotificationStatus)
 
-            Text("选择 1 至 3 项指标, 菜单栏将按下列顺序紧凑展示")
+            Text("选择 1 至 3 项指标, 菜单栏将按下列顺序紧凑展示; 拖拽已选指标调整顺序")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            ForEach(MenuBarMetric.allCases) { metric in
-                HStack {
-                    Toggle(
-                        isOn: menuBarMetricBinding(metric)
-                    ) {
-                        Label(metric.title, systemImage: metric.systemImage)
-                    }
-                    .disabled(
-                        (!model.menuBarMetrics.contains(metric)
-                            && model.menuBarMetrics.count
-                                >= MenuBarMetricConfiguration.maximumCount)
-                            || (model.menuBarMetrics.contains(metric)
-                                && model.menuBarMetrics.count == 1)
-                    )
-                    Spacer()
-                    if let index = model.menuBarMetrics.firstIndex(of: metric) {
-                        Button {
-                            moveMenuBarMetric(metric, offset: -1)
-                        } label: {
-                            Image(systemName: "arrow.up")
-                        }
-                        .buttonStyle(.borderless)
-                        .disabled(index == 0)
-                        .accessibilityLabel("上移\(metric.title)")
-                        Button {
-                            moveMenuBarMetric(metric, offset: 1)
-                        } label: {
-                            Image(systemName: "arrow.down")
-                        }
-                        .buttonStyle(.borderless)
-                        .disabled(index == model.menuBarMetrics.count - 1)
-                        .accessibilityLabel("下移\(metric.title)")
-                    }
-                }
-            }
+            menuBarMetricList
         }
         .glassFormRowBackground()
         .glassButtonStyle()
@@ -187,41 +153,84 @@ struct SettingsView: View {
         }
     }
 
-    private func menuBarMetricBinding(
-        _ metric: MenuBarMetric
-    ) -> Binding<Bool> {
-        Binding(
-            get: { model.menuBarMetrics.contains(metric) },
-            set: { selected in
-                var metrics = model.menuBarMetrics
-                if selected {
+    private func moveMenuBarMetric(
+        _ dragged: MenuBarMetric,
+        onto target: MenuBarMetric
+    ) {
+        var metrics = model.menuBarMetrics
+        metrics.removeAll { $0 == dragged }
+        guard let targetIndex = metrics.firstIndex(of: target) else { return }
+        metrics.insert(dragged, at: targetIndex)
+        coordinator.setMenuBarMetrics(metrics)
+    }
+
+    /// 菜单栏指标列表: 已选指标可拖拽排序, 未选指标点击添加.
+    private var menuBarMetricList: some View {
+        VStack {
+            ForEach(model.menuBarMetrics) { metric in
+                menuBarMetricRow(metric, selected: true)
+                    .draggable(metric.rawValue)
+                    .dropDestination(for: String.self) { items, _ in
+                        guard let raw = items.first,
+                              let dragged = MenuBarMetric(rawValue: raw),
+                              dragged != metric else { return false }
+                        moveMenuBarMetric(dragged, onto: metric)
+                        return true
+                    }
+            }
+            ForEach(
+                MenuBarMetric.allCases.filter { !model.menuBarMetrics.contains($0) }
+            ) { metric in
+                menuBarMetricRow(metric, selected: false)
+            }
+        }
+    }
+
+    /// 单个菜单栏指标行: 已选行有拖拽手柄和移除按钮, 未选行有添加按钮.
+    private func menuBarMetricRow(_ metric: MenuBarMetric, selected: Bool) -> some View {
+        HStack {
+            if selected {
+                Image(systemName: "line.3.horizontal")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
+            Label(metric.title, systemImage: metric.systemImage)
+                .font(.subheadline)
+                .foregroundStyle(selected ? .primary : .secondary)
+            Spacer()
+            if selected {
+                Button {
+                    var metrics = model.menuBarMetrics
+                    guard metrics.count > 1 else { return }
+                    metrics.removeAll { $0 == metric }
+                    coordinator.setMenuBarMetrics(metrics)
+                } label: {
+                    Image(systemName: "minus.circle")
+                        .foregroundStyle(.red)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("移除\(metric.title)")
+            } else {
+                Button {
+                    var metrics = model.menuBarMetrics
                     guard !metrics.contains(metric),
-                          metrics.count
-                            < MenuBarMetricConfiguration.maximumCount else {
+                          metrics.count < MenuBarMetricConfiguration.maximumCount else {
                         return
                     }
                     metrics.append(metric)
-                } else {
-                    guard metrics.count > 1 else { return }
-                    metrics.removeAll { $0 == metric }
+                    coordinator.setMenuBarMetrics(metrics)
+                } label: {
+                    Image(systemName: "plus.circle")
+                        .foregroundStyle(Color.accentColor)
                 }
-                coordinator.setMenuBarMetrics(metrics)
+                .buttonStyle(.borderless)
+                .disabled(
+                    model.menuBarMetrics.count >= MenuBarMetricConfiguration.maximumCount
+                )
+                .accessibilityLabel("添加\(metric.title)")
             }
-        )
-    }
-
-    private func moveMenuBarMetric(
-        _ metric: MenuBarMetric,
-        offset: Int
-    ) {
-        guard let index = model.menuBarMetrics.firstIndex(of: metric) else {
-            return
         }
-        let target = index + offset
-        guard model.menuBarMetrics.indices.contains(target) else { return }
-        var metrics = model.menuBarMetrics
-        metrics.swapAt(index, target)
-        coordinator.setMenuBarMetrics(metrics)
     }
 
     // MARK: - Agent 用量卡
@@ -284,7 +293,7 @@ struct SettingsView: View {
     /// 失败经 model.settingsErrorMessage 提示 (fail-closed).
     private var subscriptionSection: some View {
         Section("订阅额度") {
-            Text("配置并启用后, Agent 用量将在统一授权生效时查询对应云端额度")
+            Text("配置并启用后, Agent 用量将在统一授权生效时查询对应云端额度; 拖拽行调整看板展示顺序")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if !unconfiguredSubscriptionProviders.isEmpty {
@@ -317,6 +326,14 @@ struct SettingsView: View {
             }
             ForEach(visibleSubscriptionProviders, id: \.self) { id in
                 subscriptionProviderRow(id)
+                    .draggable(id.rawValue)
+                    .dropDestination(for: String.self) { items, _ in
+                        guard let raw = items.first,
+                              let dragged = SubscriptionProviderID(rawValue: raw),
+                              dragged != id else { return false }
+                        moveSubscriptionProvider(dragged, onto: id)
+                        return true
+                    }
             }
         }
         .accessibilityElement(children: .contain)
@@ -355,10 +372,17 @@ struct SettingsView: View {
     /// 已在列表中展示的 provider: 配置中已添加 (持久化) 或本次会话刚添加.
     /// Phase 4: 未手动添加不显示 (与"全部手动添加"决策一致).
     private var visibleSubscriptionProviders: [SubscriptionProviderID] {
-        SubscriptionProviderID.allCases.filter { id in
-            (model.subscriptionProviders[id] != nil)
-                || addedSubscriptionProviders.contains(id)
+        let order = model.subscriptionProviderOrder
+        let inOrder = Set(order)
+        let isVisible = { (id: SubscriptionProviderID) -> Bool in
+            (self.model.subscriptionProviders[id] != nil)
+                || self.addedSubscriptionProviders.contains(id)
         }
+        let ordered = order.filter(isVisible)
+        let unordered = SubscriptionProviderID.allCases.filter {
+            !inOrder.contains($0) && isVisible($0)
+        }
+        return ordered + unordered
     }
 
     /// 尚未进入列表的 provider, 供添加 Picker 选择.
@@ -376,6 +400,10 @@ struct SettingsView: View {
         let expanded = expandedSubscriptionProviders.contains(id)
         return VStack(alignment: .leading, spacing: 6) {
             HStack {
+                Image(systemName: "line.3.horizontal")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
                 Button {
                     if expanded {
                         expandedSubscriptionProviders.remove(id)
@@ -427,6 +455,18 @@ struct SettingsView: View {
         coordinator.removeSubscriptionProvider(id)
         addedSubscriptionProviders.remove(id)
         expandedSubscriptionProviders.remove(id)
+    }
+
+    /// 调整订阅 provider 在列表中的顺序; 顺序同时作用于面板用量卡展示.
+    private func moveSubscriptionProvider(
+        _ dragged: SubscriptionProviderID,
+        onto target: SubscriptionProviderID
+    ) {
+        var order = visibleSubscriptionProviders
+        order.removeAll { $0 == dragged }
+        guard let targetIndex = order.firstIndex(of: target) else { return }
+        order.insert(dragged, at: targetIndex)
+        coordinator.setSubscriptionProviderOrder(order)
     }
 
     /// 管理区统一容器: 左缩进 14pt + 8pt 垂直间距, 各 provider 管理组共用.

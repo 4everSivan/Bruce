@@ -38,6 +38,8 @@ final class OnboardingCoordinator: ObservableObject {
     @Published private(set) var appearanceMode: AppearancePreference
     /// 液态玻璃风格偏好, 与配置持久化同步; 经环境注入面板与设置页.
     @Published private(set) var glassStyle: GlassStylePreference
+    /// 订阅 provider 展示顺序, 与配置持久化同步; 设置页据此排列, 面板映射据此排序.
+    @Published private(set) var subscriptionProviderOrder: [SubscriptionProviderID]
 
     /// Codex 设备码登录展示状态, nil 表示无进行中的流程.
     @Published private(set) var codexDeviceLogin: DeviceLoginPresentation?
@@ -105,6 +107,7 @@ final class OnboardingCoordinator: ObservableObject {
         scheduler.updateRefreshInterval(TimeInterval(resolvedInterval * 60))
         self.appearanceMode = config?.resolvedAppearanceMode ?? .system
         self.glassStyle = config?.resolvedGlassStyle ?? .regular
+        self.subscriptionProviderOrder = []
         publishMenuBarMetrics(from: config)
         publishSubscriptionState(from: config)
     }
@@ -124,12 +127,42 @@ final class OnboardingCoordinator: ObservableObject {
             }
         }
         model.setSubscriptionProviders(providers)
+        subscriptionProviderOrder = reconcileProviderOrder(
+            from: config, configured: providers
+        )
+        model.setSubscriptionProviderOrder(subscriptionProviderOrder)
         for id in SubscriptionProviderID.allCases {
             model.setSubscriptionCredentialConfigured(
                 credentialConfigured(id), for: id
             )
         }
         publishCodexSummaryFromIndex()
+    }
+
+    /// 对齐 provider 顺序与实际配置: 移除已删除的, 追加新增的 (按 allCases 序).
+    /// config 顺序为 nil 时全部走 allCases 追加, 语义等同旧版默认顺序.
+    private func reconcileProviderOrder(
+        from config: OnboardingConfiguration?,
+        configured: [SubscriptionProviderID: SubscriptionProviderConfiguration]? = nil
+    ) -> [SubscriptionProviderID] {
+        let providers = configured
+            ?? Dictionary(
+                uniqueKeysWithValues: (config?.subscriptionProviders ?? [:])
+                    .compactMap { (key, value) in
+                        SubscriptionProviderID(rawValue: key).map { ($0, value) }
+                    }
+            )
+        let configuredIDs = Set(providers.keys)
+        let rawOrder = config?.subscriptionProviderOrder ?? []
+        var order = rawOrder.compactMap { SubscriptionProviderID(rawValue: $0) }
+            .filter { configuredIDs.contains($0) }
+        let inOrder = Set(order)
+        for id in SubscriptionProviderID.allCases {
+            if configuredIDs.contains(id) && !inOrder.contains(id) {
+                order.append(id)
+            }
+        }
+        return order
     }
 
     /// 从 v2 账号索引发布 Codex 账号摘要 (数量与邮箱前缀, 与旧摘要格式一致).
@@ -722,6 +755,12 @@ final class OnboardingCoordinator: ObservableObject {
             return // 已添加, 幂等
         }
         config.subscriptionProviders[id.rawValue] = SubscriptionProviderConfiguration()
+        if var order = config.subscriptionProviderOrder {
+            if !order.contains(id.rawValue) {
+                order.append(id.rawValue)
+            }
+            config.subscriptionProviderOrder = order
+        }
         do {
             try configStore.save(config)
         } catch {
@@ -766,6 +805,10 @@ final class OnboardingCoordinator: ObservableObject {
         guard config.subscriptionProviders.removeValue(forKey: id.rawValue) != nil else {
             return true // 本来就不在配置中, 视为成功
         }
+        if var order = config.subscriptionProviderOrder {
+            order.removeAll { $0 == id.rawValue }
+            config.subscriptionProviderOrder = order
+        }
         do {
             try configStore.save(config)
         } catch {
@@ -809,6 +852,26 @@ final class OnboardingCoordinator: ObservableObject {
         guard persistSubscription(id, mutate: { $0.enabled = enabled }) else {
             return
         }
+        model.setSettingsError(nil)
+    }
+
+    /// 用户调整订阅 provider 展示顺序: 持久化并发布.
+    /// 顺序同时作用于设置页排列与面板用量卡展示.
+    func setSubscriptionProviderOrder(_ order: [SubscriptionProviderID]) {
+        guard let configStore else {
+            model.setSettingsError("配置存储不可用, 无法保存订阅顺序")
+            return
+        }
+        var config = configStore.load() ?? OnboardingConfiguration()
+        config.subscriptionProviderOrder = order.map(\.rawValue)
+        do {
+            try configStore.save(config)
+        } catch {
+            model.setSettingsError("订阅顺序保存失败")
+            return
+        }
+        subscriptionProviderOrder = order
+        model.setSubscriptionProviderOrder(order)
         model.setSettingsError(nil)
     }
 
