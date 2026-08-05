@@ -22,11 +22,25 @@ private func credentialsExpect(
     }
 }
 
-/// 订阅凭证注入链路测试 (Phase 5):
+/// saveCredential 恒抛错的 fake store, 用于验证 Coordinator 失败路径.
+private final class ThrowingCredentialStore: CredentialStore, @unchecked Sendable {
+    func loadCredential(forAccount account: String) throws -> String? { nil }
+
+    func saveCredential(_ value: String, forAccount account: String) throws {
+        throw NSError(domain: "test", code: 1, userInfo: [
+            NSLocalizedDescriptionKey: "keychain denied",
+        ])
+    }
+
+    func deleteCredential(forAccount account: String) throws {}
+}
+
+/// 订阅凭证注入链路测试 (Phase 5) + CredentialUpdateCoordinator (Task 3):
 /// OnboardingRunInputProvider 对 claude/grok 的凭证注入语义.
 /// - 应用持有 claude:oauth/grok:oauth 时注入 claudeOAuth/grokOAuth
 /// - 无应用凭证时仅注入 providerMeta enabled 标记 (collector 回退本机)
 /// - 禁用 provider 时两者皆无
+/// - Coordinator: save 失败记 failed; codex 跳过; 成功写回可加载
 @main
 @MainActor
 struct SubscriptionCredentialsHarness {
@@ -37,7 +51,11 @@ struct SubscriptionCredentialsHarness {
         try await grokFallbackToMetaWhenNoCredential()
         try await noInjectionWhenProviderDisabled()
         try await nonCredentialProvidersUnaffected()
-        print("Subscription credentials tests passed: 6")
+        try coordinatorSaveFailureRecordsFailed()
+        try coordinatorSkipsCodexWithoutSave()
+        try coordinatorAppliesKimiToInMemoryStore()
+        try coordinatorSkipsBadShapeAndUnknownProvider()
+        print("Subscription credentials tests passed: 10")
     }
 
     /// 构造 OnboardingRunInputProvider: 配置 claude 启用 + Keychain 持有 claude:oauth.
@@ -195,5 +213,144 @@ struct SubscriptionCredentialsHarness {
             credentials["claudeOAuth"] == nil && credentials["grokOAuth"] == nil,
             "kimi 启用时不应注入 claude/grok 凭证"
         )
+    }
+
+    // MARK: - CredentialUpdateCoordinator (Task 3)
+
+    /// 构造 oauthTokens/replace 条目.
+    private static func oauthUpdate(
+        provider: String,
+        accountId: String = "default",
+        tokens: [String: String]
+    ) -> JSONValue {
+        .object([
+            "provider": .string(provider),
+            "kind": .string("oauthTokens"),
+            "operation": .string("replace"),
+            "accountId": .string(accountId),
+            "credentials": .object(
+                Dictionary(uniqueKeysWithValues: tokens.map { ($0.key, .string($0.value)) })
+            ),
+        ])
+    }
+
+    /// saveCredential 抛错 → failed 计数, applied 为 0; reason 不含 token 明文.
+    private static func coordinatorSaveFailureRecordsFailed() throws {
+        let secretToken = "rotated-secret-token-value-xyz"
+        let coordinator = CredentialUpdateCoordinator(
+            credentialStore: ThrowingCredentialStore()
+        )
+        let result = coordinator.apply(credentialUpdates: [
+            oauthUpdate(
+                provider: "kimi",
+                accountId: "acc-kimi-1",
+                tokens: [
+                    "access_token": secretToken,
+                    "refresh_token": "rt-\(secretToken)",
+                ]
+            ),
+        ])
+        try credentialsExpect(result.appliedCount == 0, "抛错时 applied 应为 0")
+        try credentialsExpect(result.skippedCount == 0, "有效条目不应记 skipped")
+        try credentialsExpect(result.failed.count == 1, "应记录 1 条 failed")
+        let failure = result.failed[0]
+        try credentialsExpect(failure.provider == "kimi", "failed.provider 应为 kimi")
+        try credentialsExpect(
+            failure.accountId == "acc-kimi-1",
+            "failed.accountId 应保留"
+        )
+        try credentialsExpect(
+            failure.reason == "keychain denied",
+            "reason 应为错误描述, got \(failure.reason)"
+        )
+        try credentialsExpect(
+            !failure.reason.contains(secretToken),
+            "failure.reason 不得包含 token 明文"
+        )
+    }
+
+    /// codex rotation 明确跳过, 不写 Keychain.
+    private static func coordinatorSkipsCodexWithoutSave() throws {
+        let store = InMemoryCredentialStore()
+        let coordinator = CredentialUpdateCoordinator(credentialStore: store)
+        let result = coordinator.apply(credentialUpdates: [
+            oauthUpdate(
+                provider: "codex",
+                accountId: "acc-1",
+                tokens: [
+                    "refresh_token": "rotated-rt",
+                    "access_token": "rotated-at",
+                ]
+            ),
+        ])
+        try credentialsExpect(result.appliedCount == 0, "codex 不得 applied")
+        try credentialsExpect(result.skippedCount == 1, "codex 应记 skipped")
+        try credentialsExpect(result.failed.isEmpty, "codex 不是 failed")
+        let stored = try store.loadCredential(
+            forAccount: SubscriptionCredentialAccount.codexAccounts
+        )
+        try credentialsExpect(stored == nil, "Codex rotation 不得写回 Keychain")
+        let legacy = try store.loadCredential(
+            forAccount: SubscriptionCredentialAccount.codexLegacyAccounts
+        )
+        try credentialsExpect(legacy == nil, "Codex rotation 不得写旧库")
+    }
+
+    /// 有效 kimi 更新写入 InMemory store, appliedCount == 1, 可加载合并后令牌.
+    private static func coordinatorAppliesKimiToInMemoryStore() throws {
+        let store = InMemoryCredentialStore()
+        try store.saveCredential(
+            #"{"access_token":"old-a","refresh_token":"old-r"}"#,
+            forAccount: SubscriptionCredentialAccount.kimiWebTokens
+        )
+        let coordinator = CredentialUpdateCoordinator(credentialStore: store)
+        let result = coordinator.apply(credentialUpdates: [
+            oauthUpdate(
+                provider: "kimi",
+                tokens: [
+                    "access_token": "new-a",
+                    "refresh_token": "new-r",
+                ]
+            ),
+        ])
+        try credentialsExpect(result.appliedCount == 1, "成功应 applied=1")
+        try credentialsExpect(result.skippedCount == 0, "成功不应 skipped")
+        try credentialsExpect(result.failed.isEmpty, "成功不应 failed")
+        let loaded = try store.loadCredential(
+            forAccount: SubscriptionCredentialAccount.kimiWebTokens
+        )
+        try credentialsExpect(
+            loaded == #"{"access_token":"new-a","refresh_token":"new-r"}"#,
+            "合并后 JSON 不符, got \(loaded ?? "nil")"
+        )
+    }
+
+    /// 坏形状与未知 provider 记 skipped, 不写 store.
+    private static func coordinatorSkipsBadShapeAndUnknownProvider() throws {
+        let store = InMemoryCredentialStore()
+        let coordinator = CredentialUpdateCoordinator(credentialStore: store)
+        let result = coordinator.apply(credentialUpdates: [
+            .string("not-an-object"),
+            .object([
+                "provider": .string("kimi"),
+                "kind": .string("other"),
+                "operation": .string("replace"),
+                "credentials": .object(["access_token": .string("a")]),
+            ]),
+            oauthUpdate(
+                provider: "deepseek",
+                tokens: ["access_token": "ds-token"]
+            ),
+        ])
+        try credentialsExpect(result.appliedCount == 0, "坏条目不得 applied")
+        try credentialsExpect(
+            result.skippedCount == 3,
+            "坏形状/未知 provider 应全记 skipped, got \(result.skippedCount)"
+        )
+        try credentialsExpect(result.failed.isEmpty, "坏条目不是 failed")
+        let kimi = try store.loadCredential(
+            forAccount: SubscriptionCredentialAccount.kimiWebTokens
+        )
+        try credentialsExpect(kimi == nil, "坏条目不得写入 kimi")
     }
 }
