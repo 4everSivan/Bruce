@@ -690,9 +690,10 @@ static func codexTwoAccounts401SingleCycle(
         tokenManager.refreshAfterAccessRejectedCount[account2] == 1,
         "acc-2 刷新必须只调用一次"
     )
-    // retry 输入一次包含两个账号
+    // retry 输入一次包含两个账号 (集合相等: 并行恢复路径不保证账号顺序)
+    let lastRetried = Set(retryProvider.retriedAccountIDs.last ?? [])
     try refreshExpect(
-        retryProvider.retriedAccountIDs.last == [mergerAccount1, account2],
+        lastRetried == Set([mergerAccount1, account2]),
         "retry 输入必须一次包含两个账号, got \(retryProvider.retriedAccountIDs)"
     )
     // 全轮只发布一次
