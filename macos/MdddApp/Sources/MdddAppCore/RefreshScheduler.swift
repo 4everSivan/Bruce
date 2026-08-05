@@ -339,11 +339,11 @@ package final class RefreshScheduler {
         let isManual = intent.reason == .manual || intent.includesManual
 
         if state.phase == .running {
-            // Preserve prior bool semantics: always queue on manual; only set when
-            // empty for non-manual. Intent payload records the trigger source.
-            if isManual || state.pendingIntent == nil {
-                states[module]?.pendingIntent = intent
-            }
+            // Intent-aware coalesce: merge preserves includesManual across sources.
+            states[module]?.pendingIntent = RefreshIntentMerge.merge(
+                existing: state.pendingIntent,
+                incoming: intent
+            )
             return
         }
 
@@ -356,18 +356,23 @@ package final class RefreshScheduler {
 
         let runningCount = states.values.filter { $0.phase == .running }.count
         if runningCount >= configuration.capacityLimit {
-            states[module]?.pendingIntent = intent
+            // Capacity queue also merges so a later timer cannot drop manual.
+            states[module]?.pendingIntent = RefreshIntentMerge.merge(
+                existing: state.pendingIntent,
+                incoming: intent
+            )
             return
         }
 
-        states[module]?.lastTriggerWasManual = isManual
-        startRefresh(for: module)
+        startRefresh(for: module, intent: intent)
     }
 
-    private func startRefresh(for module: CollectorModule) {
+    private func startRefresh(for module: CollectorModule, intent: RefreshIntent) {
         guard var state = states[module], state.enabled else { return }
         state.phase = .running
         state.lastAttemptAt = clock.now()
+        state.lastTriggerWasManual = intent.includesManual
+        state.pendingIntent = nil
         states[module] = state
 
         timers[module]?.cancel()
@@ -551,7 +556,6 @@ package final class RefreshScheduler {
         guard var state = states[module] else { return }
         let now = clock.now()
         var shouldScheduleNext = false
-        var shouldRerun = false
 
         switch result {
         case .success(let output):
@@ -650,18 +654,27 @@ package final class RefreshScheduler {
             }
         }
 
+        // Drain same-module pending with the stored intent (manual-preserving merge).
+        if let pending = state.pendingIntent, state.phase == .idle {
+            state.pendingIntent = nil
+            states[module] = state
+            runningTasks[module] = nil
+            if !stopped {
+                startRefresh(for: module, intent: pending)
+            }
+            startQueuedModulesIfCapacityAvailable()
+            return
+        }
+
+        // Non-idle completion drops any pending that cannot run yet (prior clear).
         if state.pendingIntent != nil {
             state.pendingIntent = nil
-            if state.phase == .idle { shouldRerun = true }
         }
 
         states[module] = state
         runningTasks[module] = nil
 
-        if shouldRerun && !stopped {
-            // Preserve prior behavior: queued rerun restarts as manual.
-            triggerRefresh(for: module, intent: .manual())
-        } else if shouldScheduleNext && state.autoRefreshEnabled && !stopped {
+        if shouldScheduleNext && state.autoRefreshEnabled && !stopped {
             scheduleNextRefresh(for: module)
         }
         startQueuedModulesIfCapacityAvailable()
@@ -697,8 +710,9 @@ package final class RefreshScheduler {
             }) else {
                 return
             }
+            guard let intent = states[module]?.pendingIntent else { return }
             states[module]?.pendingIntent = nil
-            startRefresh(for: module)
+            startRefresh(for: module, intent: intent)
         }
     }
 
@@ -743,7 +757,14 @@ package final class RefreshScheduler {
 
         timers[module]?.cancel()
         timers[module] = timerScheduler.schedule(after: backoff) { [weak self] in
-            self?.startRefresh(for: module)
+            guard let self else { return }
+            // Preserve prior lastTriggerWasManual across automatic backoff retries.
+            let includesManual = self.states[module]?.lastTriggerWasManual ?? false
+            let intent = RefreshIntent(
+                reason: includesManual ? .manual : .timer,
+                includesManual: includesManual
+            )
+            self.startRefresh(for: module, intent: intent)
         }
         return (newState, false)
     }

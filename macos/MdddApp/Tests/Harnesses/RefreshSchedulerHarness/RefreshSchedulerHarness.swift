@@ -442,7 +442,9 @@ struct RefreshSchedulerHarness {
         try intentMergeTimerIntoManualKeepsManual()
         print("Refresh scheduler: intent merge nil existing uses incoming")
         try intentMergeNilExistingUsesIncoming()
-        print("Refresh scheduler tests passed: 58")
+        print("Refresh scheduler: manual coalesce suppresses quota alerts")
+        try await manualCoalescedRerunSuppressesQuotaAlerts(repository: repository)
+        print("Refresh scheduler tests passed: 59")
     }
 
     // MARK: - RefreshIntent merge (pure unit tests)
@@ -467,6 +469,68 @@ struct RefreshSchedulerHarness {
         let incoming = RefreshIntent(reason: .wake, includesManual: false)
         let merged = RefreshIntentMerge.merge(existing: nil, incoming: incoming)
         try refreshExpect(merged == incoming, "nil existing")
+    }
+
+    /// Manual coalesce while running + non-manual merge after: drained run keeps
+    /// includesManual and must not fire quota alerts; run count +1 only.
+    private static func manualCoalescedRerunSuppressesQuotaAlerts(
+        repository: URL
+    ) async throws {
+        let executor = MockCollectorExecutor()
+        executor.blocksUntilReleased = true
+        // First (background) run under threshold so it does not seed alert keys.
+        executor.artifactOverride = makeQuotaArtifact(usedPercent: 50)
+        let timers = FakeTimerScheduler()
+        let alerts = AlertCapture()
+        let (scheduler, root) = try makeAlertScheduler(
+            repository: repository, executor: executor, timers: timers, alerts: alerts
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        scheduler.start()
+        scheduler.enableModule(.agentUsage)
+        timers.fireFirst()
+        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 1)
+
+        // While running: multiple manuals + a non-manual wake merge into one pending.
+        scheduler.refresh(.agentUsage)
+        scheduler.refresh(.agentUsage)
+        scheduler.handleWakeOrReactivation()
+
+        try refreshExpect(
+            scheduler.moduleState(for: .agentUsage)?.pendingIntent?.includesManual == true,
+            "merged pending must preserve includesManual after wake"
+        )
+        try refreshExpect(
+            scheduler.moduleState(for: .agentUsage)?.pendingIntent?.reason == .manual,
+            "merged pending reason must stay manual"
+        )
+
+        // Release first (still under threshold, background trigger may alert if over).
+        executor.release(module: .agentUsage)
+        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 2)
+        try refreshExpect(
+            scheduler.moduleState(for: .agentUsage)?.lastTriggerWasManual == true,
+            "drained coalesced run must set lastTriggerWasManual from intent"
+        )
+        try refreshExpect(
+            alerts.items.isEmpty,
+            "first under-threshold run must not alert: \(alerts.items)"
+        )
+
+        // Second (coalesced) run publishes over-threshold; includesManual suppresses.
+        executor.artifactOverride = makeQuotaArtifact(usedPercent: 85)
+        executor.release(module: .agentUsage)
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+
+        try refreshExpect(
+            executor.runCount[.agentUsage] == 2,
+            "coalesced manuals/wake drain to exactly one extra run, got \(executor.runCount[.agentUsage] ?? 0)"
+        )
+        try refreshExpect(
+            alerts.items.isEmpty,
+            "manual-including coalesced run must not fire quota alerts: \(alerts.items)"
+        )
     }
 
     // 10.1: Timer fires -> module refreshes
