@@ -151,11 +151,19 @@ struct HourlyLineCard: View {
     private func detailSection(_ row: HourlyAgentRow) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             if !row.models.isEmpty {
-                distributionGroup(title: "模型占比", bars: row.models, color: agentColor(row))
+                distributionGroup(
+                    title: "模型占比",
+                    bars: row.models,
+                    colorAt: { Color(hex: row.color.distributionHex(at: $0)) }
+                )
             }
             if !row.projects.isEmpty {
-                distributionGroup(title: "项目分布", bars: row.projects, color: Self.projectBarColor)
-                    .padding(.top, row.models.isEmpty ? 0 : 7)
+                distributionGroup(
+                    title: "项目分布",
+                    bars: row.projects,
+                    colorAt: { Color(hex: Self.projectBarShades[min($0, Self.projectBarShades.count - 1)]) }
+                )
+                .padding(.top, row.models.isEmpty ? 0 : 7)
             }
         }
         .padding(.leading, 14)
@@ -163,29 +171,37 @@ struct HourlyLineCard: View {
     }
 
     /// 占比组: 标题 + 通宽 100% 堆叠条 + 图例行 (色点 + 名称 + 百分比 + 数值).
-    private func distributionGroup(title: String, bars: [DistributionBar], color: Color) -> some View {
+    /// 分段用同色系阶梯色, 而非同一色只降透明度, 避免明细进度条视觉重复.
+    private func distributionGroup(
+        title: String,
+        bars: [DistributionBar],
+        colorAt: @escaping (Int) -> Color
+    ) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.system(size: 9, weight: .semibold))
                 .tracking(0.3)
                 .foregroundStyle(.secondary)
                 .padding(.bottom, 2)
-            stackedShareBar(bars, color: color)
+            stackedShareBar(bars, colorAt: colorAt)
                 .padding(.bottom, 3)
             ForEach(Array(bars.enumerated()), id: \.offset) { index, bar in
-                shareLegendRow(bar, color: color, opacity: Self.barOpacity(at: index))
+                shareLegendRow(bar, color: colorAt(index))
             }
         }
     }
 
-    /// 100% 堆叠占比条: 分段按份额拼接, 同组按位次降透明度, 份额不足 100% 时余量露出轨道色.
-    private func stackedShareBar(_ bars: [DistributionBar], color: Color) -> some View {
+    /// 100% 堆叠占比条: 分段按份额拼接, 各段独立色阶, 份额不足 100% 时余量露出轨道色.
+    private func stackedShareBar(
+        _ bars: [DistributionBar],
+        colorAt: @escaping (Int) -> Color
+    ) -> some View {
         GeometryReader { proxy in
             let available = proxy.size.width - CGFloat(max(bars.count - 1, 0))
             HStack(spacing: 1) {
                 ForEach(Array(bars.enumerated()), id: \.offset) { index, bar in
                     Rectangle()
-                        .fill(color.opacity(Self.barOpacity(at: index)))
+                        .fill(colorAt(index))
                         .frame(width: max(2, available * min(max(bar.share, 0), 1)))
                 }
             }
@@ -201,10 +217,10 @@ struct HourlyLineCard: View {
     }
 
     /// 图例行: 色点 + 名称 + 右侧「百分比 · 数值」, 百分比为主数值.
-    private func shareLegendRow(_ bar: DistributionBar, color: Color, opacity: Double) -> some View {
+    private func shareLegendRow(_ bar: DistributionBar, color: Color) -> some View {
         HStack(spacing: 5) {
             Circle()
-                .fill(color.opacity(opacity))
+                .fill(color)
                 .frame(width: 5, height: 5)
             Text(bar.name)
                 .lineLimit(1)
@@ -235,14 +251,13 @@ struct HourlyLineCard: View {
         Color(hex: row.color.hex)
     }
 
-    /// 项目分布量条色, 对应 mockup 的 teal (#30b0c7), 与 agent 色无关.
-    private static let projectBarColor = Color(hex: "#30b0c7")
-
-    /// 同组量条按位次降透明度, 对应 mockup 的 1.0 / .65 / .4.
-    private static func barOpacity(at index: Int) -> Double {
-        let steps: [Double] = [1.0, 0.65, 0.4]
-        return steps[min(index, steps.count - 1)]
-    }
+    /// 项目分布同色系阶梯 (青→浅青), 与 agent 主色分离且段间可区分.
+    private static let projectBarShades = [
+        "#30b0c7",
+        "#55c2d4",
+        "#7ad4e1",
+        "#9fe5ed",
+    ]
 }
 
 // MARK: - 私有 hex 颜色初始化
@@ -315,7 +330,7 @@ private extension HourlyLineViewModel {
             HourlyAgentRow(
                 agentID: "claude-code",
                 name: "Claude Code",
-                color: .orange,
+                color: .coral,
                 todayTotal: 21_000,
                 points: [300, 500, 800, 700, 1100, 1400, 1200, 1600, 1900, 1700, 2100, 1800,
                          1500, 1300, 1000, 900, 700, 600, 500, 400, 350, 300, 250, 200],

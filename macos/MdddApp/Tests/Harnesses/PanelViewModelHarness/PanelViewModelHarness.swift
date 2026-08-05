@@ -523,7 +523,7 @@ struct PanelViewModelHarness {
         try expect(lastSegments.count == 2, "有量的 agent 各占一段")
         try expect(lastSegments[0].agentID == "kimi-code-cli", "分段顺序应与 artifact 一致")
         try expect(lastSegments[0].color == .blue, "Kimi Code CLI 应为蓝色")
-        try expect(lastSegments[1].color == .orange, "Claude 应为橙色")
+        try expect(lastSegments[1].color == .coral, "Claude 应为珊瑚暖色")
         try expect(days[7].segments.count == 2, "中间日两段")
         try expect(days[0].segments.count == 1, "无量的 agent 不占段")
     }
@@ -714,16 +714,31 @@ struct PanelViewModelHarness {
         try expect(PanelFormat.costText(0.05) == "≈ ¥0.36", "0.05 USD 应换算为 ¥0.36")
     }
 
-    // 未知 agent 颜色稳定落在调色板内.
+    // 已知 agent 固定配色 + 未知 id 稳定落在调色板; Claude/Grok 必须互不重合.
     private static func unknownAgentColorIsStable() throws {
         let first = PanelAgentColor.resolve(agentID: "some-future-agent")
         let second = PanelAgentColor.resolve(agentID: "some-future-agent")
         try expect(first == second, "同一 id 颜色必须稳定")
         try expect(PanelAgentColor.allCases.contains(first), "必须落在调色板内")
-        try expect(PanelAgentColor.resolve(agentID: "kimi-code-cli") == .blue, "Kimi Code CLI 配色错误")
         try expect(PanelAgentColor.resolve(agentID: "kimi-work") == .cyan, "Kimi Work 配色错误")
-        try expect(PanelAgentColor.resolve(agentID: "claude-code") == .orange, "Claude 配色错误")
+        try expect(PanelAgentColor.resolve(agentID: "kimi-code-cli") == .blue, "Kimi Code CLI 配色错误")
+        try expect(PanelAgentColor.resolve(agentID: "grok") == .indigo, "Grok 配色错误")
         try expect(PanelAgentColor.resolve(agentID: "codex") == .purple, "Codex 配色错误")
+        try expect(PanelAgentColor.resolve(agentID: "claude-code") == .coral, "Claude 配色错误")
+        try expect(
+            PanelAgentColor.resolve(agentID: "claude-code")
+                != PanelAgentColor.resolve(agentID: "grok"),
+            "Claude 与 Grok 不得共用同一色"
+        )
+        try expect(
+            PanelAgentColor.coral.distributionHex(at: 0) == PanelAgentColor.coral.hex,
+            "占比条 0 档应为主色"
+        )
+        try expect(
+            PanelAgentColor.coral.distributionHex(at: 1)
+                != PanelAgentColor.coral.distributionHex(at: 0),
+            "占比条相邻档必须可区分"
+        )
     }
 
     // 空 agents / 全缺失全部产生可诊断状态.

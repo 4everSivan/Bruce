@@ -6,37 +6,63 @@ import Foundation
 
 // MARK: - Agent 配色
 
-/// 面板 agent 配色, 与 mockup 一致的 macOS 系统色.
+/// 面板 agent 配色: 冷色→暖色相邻渐变, 堆叠柱与图例有连续感且互可区分.
+/// 色阶贴近 macOS 系统色, 避免高饱和撞色.
 package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
-    case blue
+    /// Kimi Work — 浅蓝青
     case cyan
-    case orange
+    /// Kimi Code CLI — 系统蓝
+    case blue
+    /// Grok — 靛蓝 (介于蓝与紫, 与 Claude 暖色拉开)
+    case indigo
+    /// Codex — 紫
     case purple
+    /// Claude Code — 暖珊瑚 (原 orange 易与散列碰撞重合)
+    case coral
+    /// 未知 agent 散列兜底
+    case mint
+    case rose
 
     package var hex: String {
         switch self {
-        case .blue:
-            return "#0a84ff"
         case .cyan:
             return "#5ac8fa"
-        case .orange:
-            return "#ff9f0a"
+        case .blue:
+            return "#0a84ff"
+        case .indigo:
+            return "#6c63ff"
         case .purple:
             return "#bf5af2"
+        case .coral:
+            return "#ff7a59"
+        case .mint:
+            return "#40c8e0"
+        case .rose:
+            return "#ff6482"
         }
     }
 
-    /// 已知 agent 固定配色; 未知 agent 用 FNV-1a 散列稳定落到调色板.
+    /// 同 agent 内模型/项目占比条的相邻色阶 (由主色向浅/邻近色过渡, 避免纯透明度重复).
+    /// index 0 为主色, 后续逐级变浅并略偏邻近色相.
+    package func distributionHex(at index: Int) -> String {
+        let shades = Self.distributionShades(for: self)
+        return shades[min(max(index, 0), shades.count - 1)]
+    }
+
+    /// 已知 agent 固定配色 (冷→暖: work → code → grok → codex → claude);
+    /// 未知 agent 用 FNV-1a 散列稳定落到调色板.
     package static func resolve(agentID: String) -> PanelAgentColor {
         switch agentID {
-        case "kimi-code-cli":
-            return .blue
         case "kimi-work":
             return .cyan
-        case "claude-code":
-            return .orange
+        case "kimi-code-cli":
+            return .blue
+        case "grok":
+            return .indigo
         case "codex":
             return .purple
+        case "claude-code":
+            return .coral
         default:
             var hash: UInt64 = 0xcbf29ce484222325
             for byte in agentID.utf8 {
@@ -45,6 +71,26 @@ package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
             }
             let palette = PanelAgentColor.allCases
             return palette[Int(hash % UInt64(palette.count))]
+        }
+    }
+
+    /// 每色 4 档占比条色阶: 主色 → 中亮 → 浅 → 极浅, 同色系渐变.
+    private static func distributionShades(for color: PanelAgentColor) -> [String] {
+        switch color {
+        case .cyan:
+            return ["#5ac8fa", "#7dd4fb", "#a6e2fc", "#c8edfd"]
+        case .blue:
+            return ["#0a84ff", "#3d9fff", "#70b8ff", "#a3d0ff"]
+        case .indigo:
+            return ["#6c63ff", "#8b84ff", "#aaa5ff", "#c9c6ff"]
+        case .purple:
+            return ["#bf5af2", "#cd7cf5", "#db9ef8", "#e9c0fb"]
+        case .coral:
+            return ["#ff7a59", "#ff9580", "#ffb0a6", "#ffcbcb"]
+        case .mint:
+            return ["#40c8e0", "#66d4e6", "#8cdfed", "#b2ebf3"]
+        case .rose:
+            return ["#ff6482", "#ff839c", "#ffa2b6", "#ffc1d0"]
         }
     }
 }
