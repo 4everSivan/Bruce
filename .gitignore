@@ -48,3 +48,6 @@ dist/
 # 工作流规划文档 (OpenSpec change 与 Superpowers 计划/设计, 本地维护)
 docs/openspec/
 docs/superpowers/
+
+# Git worktrees
+.worktrees/
