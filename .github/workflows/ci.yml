@@ -61,7 +61,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    name: 发布草稿
+    name: 发布草稿 Release
     if: startsWith(github.ref, 'refs/tags/')
     needs: [verify, python-min-version, build-release-app]
     runs-on: macos-26
@@ -70,17 +70,24 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+      - name: 安装 ripgrep (build-test-app.sh 前置依赖)
+        run: brew install ripgrep
       - name: 构建测试版 App
         run: zsh scripts/build-test-app.sh
-      - name: 创建草稿 Release 并上传 zip
+      - name: 生成 SHA256 校验和
+        run: |
+          cd dist
+          shasum -a 256 mddd-test.zip > SHA256SUMS
+      - name: 创建草稿 Release 并上传 App
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            dist/mddd.zip \
+            dist/mddd-test.zip \
+            dist/SHA256SUMS \
             --draft \
             --title "mddd $GITHUB_REF_NAME" \
-            --notes "Development Preview 测试包。签名、公证和真实账号验收尚未完成。"
+            --generate-notes
 
   # 正式版发布 (08-production-packaging-and-release.md §4)
   # 仅 tag v* 触发; 签名/公证凭证从仓库 Secret 读取, PR 永不接触
