@@ -181,14 +181,15 @@ package final class AppModel: ObservableObject {
     /// 订阅 provider 展示顺序, 供设置页排列与面板映射排序使用.
     @Published package private(set) var subscriptionProviderOrder: [SubscriptionProviderID] = []
     @Published package private(set) var menuBarMetrics: [MenuBarMetric]
-    /// 最近一次面板映射产生的诊断, 随 artifact 与模块状态变更重算.
-    /// 不进 UI; 供诊断路径与 harness 读取, 诊断包 schema 锁定期暂不外发.
-    package private(set) var panelDiagnostics: [PanelDiagnostic] = []
     /// DeepSeek 月度账本. 由 MdddApp 装配注入; nil 表示账本未启用
     /// (测试或账本创建失败), 此时月度统计不可用但余额卡不受影响.
     private let deepSeekLedger: DeepSeekUsageLedger?
     /// DeepSeek 月度派生状态 (唯一 UI 状态源). 账本不可用时为 nil.
     @Published package private(set) var deepSeekMonthlyUsage: DeepSeekMonthlyUsage?
+    /// 解码缓存: 避免同一 artifact 在 updateDeepSeekMonthlyUsage 和
+    /// makePanelViewModel 之间重复执行 ArtifactValidator decode.
+    private var cachedDecodedArtifact: AgentUsageArtifact?
+    private var cachedArtifactRef: JSONValue?
 
     package init(
         menuBarMetricRawValues: [String]? = nil,
@@ -215,15 +216,14 @@ package final class AppModel: ObservableObject {
 
     package func setStatus(_ status: ModuleStatus, for module: DashboardModule) {
         moduleStatuses[module] = status
-        refreshPanelDiagnostics()
     }
 
     package func setArtifact(_ artifact: JSONValue?, for module: DashboardModule) {
         moduleArtifacts[module] = artifact
         if module == .agentUsage {
+            invalidateDecodedArtifactCache()
             updateDeepSeekMonthlyUsage(from: artifact)
         }
-        refreshPanelDiagnostics()
     }
 
     /// 追踪 ID 变化时立即失效当前派生月度状态 (等下一次有效余额观察重建基线).
@@ -318,9 +318,7 @@ package final class AppModel: ObservableObject {
             deepSeekMonthlyUsage = nil
             return
         }
-        guard let artifact,
-              case .agentUsage(let decoded) = try? ArtifactValidator()
-                  .validate(artifact, for: .agentUsage) else {
+        guard let decoded = decodedAgentUsageArtifact(from: artifact) else {
             // 无效/空 Artifact: 不读写账本, 保留当前状态.
             return
         }
@@ -492,20 +490,33 @@ package final class AppModel: ObservableObject {
         )
     }
 
-    /// 重算面板诊断; artifact 或模块状态变更时调用, 保证诊断路径取到最新值.
-    private func refreshPanelDiagnostics() {
-        panelDiagnostics = makePanelViewModel().diagnostics
+    /// 校验并解码 agent-usage artifact; 任何失败都视为缺失.
+    /// 结果按 artifact 内容缓存, 避免同一 artifact 多次解码.
+    private func decodedAgentUsageArtifact() -> AgentUsageArtifact? {
+        let raw = moduleArtifacts[.agentUsage]
+        return decodedAgentUsageArtifact(from: raw)
     }
 
-    /// 校验并解码 agent-usage artifact; 任何失败都视为缺失.
-    private func decodedAgentUsageArtifact() -> AgentUsageArtifact? {
-        guard let artifact = moduleArtifacts[.agentUsage],
-              case .agentUsage(let decoded) = try? ArtifactValidator()
-                  .validate(artifact, for: .agentUsage)
-        else {
+    /// 从指定 raw JSONValue 解码 agent-usage artifact, 带内容缓存.
+    /// updateDeepSeekMonthlyUsage 和 makePanelViewModel 共享同一解码结果.
+    private func decodedAgentUsageArtifact(from raw: JSONValue?) -> AgentUsageArtifact? {
+        guard let raw else { return nil }
+        if cachedArtifactRef == raw, let cached = cachedDecodedArtifact {
+            return cached
+        }
+        guard case .agentUsage(let decoded) = try? ArtifactValidator()
+            .validate(raw, for: .agentUsage) else {
             return nil
         }
+        cachedDecodedArtifact = decoded
+        cachedArtifactRef = raw
         return decoded
+    }
+
+    /// 使解码缓存失效 (artifact 变更时调用).
+    private func invalidateDecodedArtifactCache() {
+        cachedDecodedArtifact = nil
+        cachedArtifactRef = nil
     }
 
     /// 返回 Core 的 ModuleReadiness 枚举, 供 ActivationGate 使用.

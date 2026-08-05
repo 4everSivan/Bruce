@@ -116,9 +116,9 @@ final class OnboardingCoordinator: ObservableObject {
 
     private let ccSwitchImporter = CCSwitchVolcengineImporter()
 
-    /// 从配置与 Keychain 恢复订阅 provider 展示状态.
+    /// 从配置与 Keychain 恢复订阅 provider 展示状态 (全量刷新).
     /// Keychain 只判断凭证是否存在, 凭证值不进入 UI 状态.
-    /// Codex 摘要改读 v2 账号索引 (元数据), 不再读旧整体账号库.
+    /// 仅在 init / add / remove 等需要全量重建时调用.
     private func publishSubscriptionState(from config: OnboardingConfiguration?) {
         var providers: [SubscriptionProviderID: SubscriptionProviderConfiguration] = [:]
         for (key, value) in config?.subscriptionProviders ?? [:] {
@@ -139,20 +139,30 @@ final class OnboardingCoordinator: ObservableObject {
         publishCodexSummaryFromIndex()
     }
 
+    /// 轻量刷新: 只更新 providers 字典与顺序, 单个 provider 凭证状态.
+    /// persistSubscription 调用, 避免 7 次 Keychain 读取.
+    private func publishSubscriptionProviders(from config: OnboardingConfiguration?) {
+        var providers: [SubscriptionProviderID: SubscriptionProviderConfiguration] = [:]
+        for (key, value) in config?.subscriptionProviders ?? [:] {
+            if let id = SubscriptionProviderID(rawValue: key) {
+                providers[id] = value
+            }
+        }
+        model.setSubscriptionProviders(providers)
+        subscriptionProviderOrder = reconcileProviderOrder(
+            from: config, configured: providers
+        )
+        model.setSubscriptionProviderOrder(subscriptionProviderOrder)
+        publishCodexSummaryFromIndex()
+    }
+
     /// 对齐 provider 顺序与实际配置: 移除已删除的, 追加新增的 (按 allCases 序).
     /// config 顺序为 nil 时全部走 allCases 追加, 语义等同旧版默认顺序.
     private func reconcileProviderOrder(
         from config: OnboardingConfiguration?,
-        configured: [SubscriptionProviderID: SubscriptionProviderConfiguration]? = nil
+        configured: [SubscriptionProviderID: SubscriptionProviderConfiguration]
     ) -> [SubscriptionProviderID] {
-        let providers = configured
-            ?? Dictionary(
-                uniqueKeysWithValues: (config?.subscriptionProviders ?? [:])
-                    .compactMap { (key, value) in
-                        SubscriptionProviderID(rawValue: key).map { ($0, value) }
-                    }
-            )
-        let configuredIDs = Set(providers.keys)
+        let configuredIDs = Set(configured.keys)
         let rawOrder = config?.subscriptionProviderOrder ?? []
         var order = rawOrder.compactMap { SubscriptionProviderID(rawValue: $0) }
             .filter { configuredIDs.contains($0) }
@@ -226,6 +236,7 @@ final class OnboardingCoordinator: ObservableObject {
 
     /// 持久化单个订阅 provider 的非敏感配置并发布.
     /// 保存失败发布错误并返回 false (fail-closed), 不在会话内假装成功.
+    /// 只刷新被修改的 provider 凭证状态, 不全量扫描 Keychain.
     private func persistSubscription(
         _ id: SubscriptionProviderID,
         mutate: (inout SubscriptionProviderConfiguration) -> Void
@@ -245,7 +256,10 @@ final class OnboardingCoordinator: ObservableObject {
             model.setSettingsError("\(id.displayName) 订阅配置保存失败")
             return false
         }
-        publishSubscriptionState(from: config)
+        publishSubscriptionProviders(from: config)
+        model.setSubscriptionCredentialConfigured(
+            credentialConfigured(id), for: id
+        )
         return true
     }
 
