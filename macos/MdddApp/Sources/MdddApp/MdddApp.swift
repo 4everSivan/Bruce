@@ -53,9 +53,14 @@ struct MdddApp: App {
             codexTokenInjector: codexTokenManager,
             codexStore: codexStore
         )
+        // 与 runInputProvider 共享同一 Keychain 实例, 保证轮换写回与注入一致.
+        let credentialUpdateCoordinator = CredentialUpdateCoordinator(
+            credentialStore: credentialStore
+        )
         let scheduler = RefreshScheduler(
             executor: runner, store: resolvedStore,
-            runInputProvider: runInputProvider
+            runInputProvider: runInputProvider,
+            credentialUpdateCoordinator: credentialUpdateCoordinator
         )
         // 任务 9: 把 Codex token manager 挂到 Scheduler, 支持
         // quota 401 定向重试自愈 (强制刷新被挑战账号).

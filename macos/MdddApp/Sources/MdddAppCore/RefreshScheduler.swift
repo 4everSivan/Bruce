@@ -89,6 +89,8 @@ package final class RefreshScheduler {
     private let registerWakeNotifications: Bool
     /// 可选运行输入提供器; nil 时保持空 context/credentials 的旧行为.
     private var runInputProvider: (any CollectorRunInputProviding)?
+    /// 可选凭证写回协调器; nil 时跳过 credentialUpdates 应用 (测试/无凭证场景).
+    private let credentialUpdateCoordinator: CredentialUpdateCoordinator?
 
     private var states: [CollectorModule: ModuleScheduleState] = [:]
     private var timers: [CollectorModule: RunnerTimerToken] = [:]
@@ -100,20 +102,20 @@ package final class RefreshScheduler {
 
     package var onStatusChange: ((CollectorModule, ModuleRunState, String?) -> Void)?
     package var onArtifactChange: ((CollectorModule, JSONValue?) -> Void)?
-    /// Collector 轮换令牌候选 (仅 App 模式非空); 由宿主写回 Keychain.
-    package var onCredentialUpdates: ((CollectorModule, [JSONValue]) -> Void)?
     /// 后台刷新发现 5h 窗口用量新跨越 80% 阈值; 手动刷新不触发.
     package var onQuotaAlerts: ((CollectorModule, [QuotaAlert]) -> Void)?
     /// 每个运行周期完成 (无论成败) 后触发, 供宿主刷新非敏感状态.
     package var onRunCycleCompleted: (() -> Void)?
     /// 最近一次成功发布的响应诊断 (去重后, 任务 7): 供诊断展示/记录
     /// 边界读取; 合并期诊断 (merger) 与首轮/重试诊断统一经过 finalizer 去重.
+    /// 含 credential 写回失败时追加的 CREDENTIAL_PERSIST_FAILED (无令牌明文).
     package private(set) var lastPublishedDiagnostics: [BridgeDiagnostic] = []
 
     package convenience init(
         executor: CollectorRunner,
         store: ArtifactStore,
-        runInputProvider: OnboardingRunInputProvider? = nil
+        runInputProvider: OnboardingRunInputProvider? = nil,
+        credentialUpdateCoordinator: CredentialUpdateCoordinator? = nil
     ) {
         self.init(
             executor: executor,
@@ -125,7 +127,8 @@ package final class RefreshScheduler {
                 capped * Double.random(in: 0...0.1)
             },
             registerWakeNotifications: true,
-            runInputProvider: runInputProvider
+            runInputProvider: runInputProvider,
+            credentialUpdateCoordinator: credentialUpdateCoordinator
         )
     }
 
@@ -139,7 +142,8 @@ package final class RefreshScheduler {
             capped * Double.random(in: 0...0.1)
         },
         registerWakeNotifications: Bool = true,
-        runInputProvider: (any CollectorRunInputProviding)? = nil
+        runInputProvider: (any CollectorRunInputProviding)? = nil,
+        credentialUpdateCoordinator: CredentialUpdateCoordinator? = nil
     ) {
         self.executor = executor
         self.store = store
@@ -149,6 +153,7 @@ package final class RefreshScheduler {
         self.jitterProvider = jitterProvider
         self.registerWakeNotifications = registerWakeNotifications
         self.runInputProvider = runInputProvider
+        self.credentialUpdateCoordinator = credentialUpdateCoordinator
 
         for module in CollectorModule.allCases {
             states[module] = ModuleScheduleState()
@@ -586,8 +591,27 @@ package final class RefreshScheduler {
                 }
             } else {
                 // 轮换令牌先于 artifact 发布写回, 即使本次发布失败也不丢失新令牌.
+                // 写回失败进入可观察诊断, 并在有 artifact 时将 success 降级为 partial.
+                var publishedDiagnostics = response.diagnostics
+                var effectiveStatus = response.status
                 if !response.credentialUpdates.isEmpty {
-                    onCredentialUpdates?(module, response.credentialUpdates)
+                    let applyResult = credentialUpdateCoordinator?.apply(
+                        credentialUpdates: response.credentialUpdates
+                    ) ?? CredentialUpdateApplyResult()
+                    if !applyResult.failed.isEmpty {
+                        for failure in applyResult.failed {
+                            publishedDiagnostics.append(BridgeDiagnostic(
+                                code: "CREDENTIAL_PERSIST_FAILED",
+                                category: "storage",
+                                stage: "credentialUpdate",
+                                message: "\(failure.provider) 凭证写回失败",
+                                retryable: true
+                            ))
+                        }
+                        if effectiveStatus == .success, response.artifact != nil {
+                            effectiveStatus = .partial
+                        }
+                    }
                 }
                 if let artifact = response.artifact {
                     do {
@@ -595,7 +619,7 @@ package final class RefreshScheduler {
                         // 任务 7: 成功发布的响应诊断进入可观察边界
                         // (finalizer 已按 code|stage|message 去重).
                         if module == .agentUsage {
-                            lastPublishedDiagnostics = response.diagnostics
+                            lastPublishedDiagnostics = publishedDiagnostics
                         }
                         state.lastSuccessAt = now
                         state.backoffRetryCount = 0
@@ -616,8 +640,8 @@ package final class RefreshScheduler {
                             onQuotaAlerts?(module, newAlerts.map(\.alert))
                         }
 
-                        if response.status == .partial {
-                            let detail = response.diagnostics.first?.message
+                        if effectiveStatus == .partial {
+                            let detail = publishedDiagnostics.first?.message
                             onStatusChange?(module, .partial, detail)
                         } else {
                             onStatusChange?(module, .fresh, nil)

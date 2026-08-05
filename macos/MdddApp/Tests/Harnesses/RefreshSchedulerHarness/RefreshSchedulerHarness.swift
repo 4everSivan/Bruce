@@ -344,8 +344,8 @@ struct RefreshSchedulerHarness {
         try await stopCancelsRunningTasks(repository: repository)
         print("Refresh scheduler: interval update")
         try await updateRefreshIntervalReschedulesIdleModule(repository: repository)
-        print("Refresh scheduler: credential updates")
-        try await credentialUpdatesForwardedOnSuccess(repository: repository)
+        print("Refresh scheduler: credential persist failure demotes partial")
+        try await credentialPersistFailureDemotesToPartial(repository: repository)
         print("Refresh scheduler: quota alert crossing")
         try await quotaAlertFiresOnBackgroundCrossing(repository: repository)
         print("Refresh scheduler: quota alert dedup")
@@ -889,36 +889,48 @@ struct RefreshSchedulerHarness {
         )
     }
 
-    // 10.6: credentialUpdates forwarded on success
-    private static func credentialUpdatesForwardedOnSuccess(
+    // 10.6: credentialUpdates 写回失败 → partial + CREDENTIAL_PERSIST_FAILED, artifact 仍发布
+    private static func credentialPersistFailureDemotesToPartial(
         repository: URL
     ) async throws {
         let artifact = try loadFixture(repository: repository, module: .agentUsage)
+        // kimi (非 codex) 才会走 Keychain 写回; 用抛错 store 触发 failed.
+        let secretToken = "rotated-secret-token-should-not-leak"
         let updates: [JSONValue] = [
             .object([
-                "provider": .string("codex"),
-                "accountId": .string("acc-1"),
+                "provider": .string("kimi"),
+                "accountId": .string("acc-kimi-1"),
                 "kind": .string("oauthTokens"),
                 "operation": .string("replace"),
                 "credentials": .object([
-                    "access_token": .string("na"),
-                    "refresh_token": .string("nr"),
+                    "access_token": .string(secretToken),
+                    "refresh_token": .string("rt-\(secretToken)"),
                 ]),
             ]),
         ]
         let executor = CredentialUpdateExecutor(artifact: artifact, updates: updates)
         let clock = ManualClock()
         let timers = FakeTimerScheduler()
-        let (scheduler, _, root) = try makeSchedulerWithError(
+        let coordinator = CredentialUpdateCoordinator(
+            credentialStore: ThrowingCredentialStoreForScheduler()
+        )
+        let (scheduler, store, root) = try makeSchedulerWithError(
             repository: repository,
             executor: executor,
             clock: clock,
-            timers: timers
+            timers: timers,
+            credentialUpdateCoordinator: coordinator
         )
         defer { try? FileManager.default.removeItem(at: root) }
 
-        var received: [JSONValue] = []
-        scheduler.onCredentialUpdates = { _, value in received = value }
+        var receivedArtifact: JSONValue?
+        var receivedStatus: ModuleRunState?
+        var receivedDetail: String?
+        scheduler.onArtifactChange = { _, value in receivedArtifact = value }
+        scheduler.onStatusChange = { _, status, detail in
+            receivedStatus = status
+            receivedDetail = detail
+        }
 
         scheduler.start()
         scheduler.enableModule(.agentUsage)
@@ -928,8 +940,35 @@ struct RefreshSchedulerHarness {
         await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
 
         try refreshExpect(
-            received == updates,
-            "credentialUpdates 必须原样转发, got \(received)"
+            receivedStatus == .partial,
+            "写回失败时应为 partial, got \(String(describing: receivedStatus))"
+        )
+        try refreshExpect(receivedArtifact != nil, "写回失败时 artifact 仍应发布到回调")
+        let stored = try store.load(.agentUsage, now: clock.now(), staleAfter: 3600)
+        try refreshExpect(
+            stored.artifact == artifact,
+            "写回失败时 store 仍应持有 artifact"
+        )
+        let published = scheduler.lastPublishedDiagnostics
+        try refreshExpect(
+            published.contains(where: { $0.code == "CREDENTIAL_PERSIST_FAILED" }),
+            "应发布 CREDENTIAL_PERSIST_FAILED, got \(published.map(\.code))"
+        )
+        let persistDiag = published.first { $0.code == "CREDENTIAL_PERSIST_FAILED" }
+        try refreshExpect(
+            persistDiag?.category == "storage"
+                && persistDiag?.stage == "credentialUpdate",
+            "CREDENTIAL_PERSIST_FAILED category/stage 不符"
+        )
+        try refreshExpect(
+            persistDiag?.message == "kimi 凭证写回失败",
+            "message 应为 provider 写回失败文案, got \(persistDiag?.message ?? "nil")"
+        )
+        try refreshExpect(
+            !(persistDiag?.message.contains(secretToken) ?? true)
+                && !(receivedDetail?.contains(secretToken) ?? false)
+                && !published.contains(where: { $0.message.contains(secretToken) }),
+            "诊断/detail 不得泄漏 token 明文"
         )
     }
 
@@ -3901,7 +3940,8 @@ private func makeSchedulerWithError(
     repository: URL,
     executor: CollectorExecuting,
     clock: ManualClock,
-    timers: FakeTimerScheduler
+    timers: FakeTimerScheduler,
+    credentialUpdateCoordinator: CredentialUpdateCoordinator? = nil
 ) throws -> (RefreshScheduler, ArtifactStore, URL) {
     let root = FileManager.default.temporaryDirectory
         .appendingPathComponent("mddd-sched-\(UUID().uuidString)", isDirectory: true)
@@ -3923,13 +3963,26 @@ private func makeSchedulerWithError(
         timerScheduler: timers,
         configuration: config,
         jitterProvider: { _ in 0 },
-        registerWakeNotifications: false
+        registerWakeNotifications: false,
+        credentialUpdateCoordinator: credentialUpdateCoordinator
     )
     return (scheduler, store, root)
 }
 
+/// saveCredential 恒抛错, 用于验证 Scheduler 写回失败 → partial 路径.
+private final class ThrowingCredentialStoreForScheduler: CredentialStore, @unchecked Sendable {
+    func loadCredential(forAccount account: String) throws -> String? { nil }
 
-/// 成功响应携带 credentialUpdates 的执行器, 用于验证 Scheduler 转发.
+    func saveCredential(_ value: String, forAccount account: String) throws {
+        throw NSError(domain: "test", code: 1, userInfo: [
+            NSLocalizedDescriptionKey: "keychain denied",
+        ])
+    }
+
+    func deleteCredential(forAccount account: String) throws {}
+}
+
+/// 成功响应携带 credentialUpdates 的执行器, 用于验证 Scheduler 写回路径.
 @MainActor
 private final class CredentialUpdateExecutor: CollectorExecuting {
     let artifact: JSONValue

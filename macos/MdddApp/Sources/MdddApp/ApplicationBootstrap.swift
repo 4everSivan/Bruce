@@ -57,10 +57,8 @@ final class ApplicationBootstrap {
         scheduler.onArtifactChange = { [weak model] module, artifact in
             model?.setArtifact(artifact, for: DashboardModule(module))
         }
-        // Collector 轮换的新令牌写回 Keychain, 保证下次刷新用有效令牌.
-        scheduler.onCredentialUpdates = { [runInputProvider] _, updates in
-            runInputProvider.apply(credentialUpdates: updates)
-        }
+        // credentialUpdates 由 RefreshScheduler 注入的 CredentialUpdateCoordinator
+        // 在 handleResult 中于 publish 前应用; 写回失败降级为 partial + 诊断.
         // 后台刷新发现 5h 额度新跨越 80% 阈值时弹系统通知.
         scheduler.onQuotaAlerts = { [quotaAlertNotifier] _, alerts in
             quotaAlertNotifier.deliver(alerts)
