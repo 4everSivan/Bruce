@@ -190,7 +190,7 @@ private struct DeepSeekMonthlyUsageSection: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text(viewModel.estimatedConsumptionText)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: 14, weight: .bold))
                     .monospacedDigit()
             }
             if !viewModel.coverageText.isEmpty {
