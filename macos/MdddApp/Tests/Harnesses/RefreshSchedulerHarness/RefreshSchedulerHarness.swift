@@ -444,7 +444,11 @@ struct RefreshSchedulerHarness {
         try intentMergeNilExistingUsesIncoming()
         print("Refresh scheduler: manual coalesce suppresses quota alerts")
         try await manualCoalescedRerunSuppressesQuotaAlerts(repository: repository)
-        print("Refresh scheduler tests passed: 59")
+        print("Refresh scheduler: pipeline skeleton cancelled when stopped")
+        try await pipelineSkeletonReturnsCancelledWhenStopped(repository: repository)
+        print("Refresh scheduler: pipeline skeleton cancelled when running")
+        try await pipelineSkeletonReturnsCancelledWhenNotStopped(repository: repository)
+        print("Refresh scheduler tests passed: 61")
     }
 
     // MARK: - RefreshIntent merge (pure unit tests)
@@ -530,6 +534,84 @@ struct RefreshSchedulerHarness {
         try refreshExpect(
             alerts.items.isEmpty,
             "manual-including coalesced run must not fire quota alerts: \(alerts.items)"
+        )
+    }
+
+    // MARK: - RefreshExecutionPipeline skeleton (Task 5)
+
+    /// Compile-only: construct pipeline + run while stopped → `.cancelled`.
+    private static func pipelineSkeletonReturnsCancelledWhenStopped(
+        repository: URL
+    ) async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mddd-pipeline-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let store = try ArtifactStore(rootURL: root)
+        let executor = MockCollectorExecutor()
+        executor.repository = repository
+        let pipeline = RefreshExecutionPipeline(
+            executor: executor,
+            store: store,
+            runInputProvider: nil,
+            credentialUpdates: nil,
+            codexTokenManager: nil,
+            isStopped: { true }
+        )
+        let request = RefreshPipelineRequest(
+            module: .agentUsage,
+            intent: .timer(),
+            staleAfter: 3600,
+            now: Date(timeIntervalSince1970: 1_786_000_000)
+        )
+        let result = await pipeline.run(request)
+        guard case .cancelled = result else {
+            throw RefreshTestFailure.expectation(
+                "stopped pipeline skeleton must return .cancelled, got \(result)"
+            )
+        }
+        try refreshExpect(
+            executor.runCount[.agentUsage] == nil || executor.runCount[.agentUsage] == 0,
+            "skeleton must not invoke collector while cancelled"
+        )
+    }
+
+    /// Compile-only: not stopped still returns `.cancelled` until Task 6 ports body.
+    private static func pipelineSkeletonReturnsCancelledWhenNotStopped(
+        repository: URL
+    ) async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mddd-pipeline-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let store = try ArtifactStore(rootURL: root)
+        let executor = MockCollectorExecutor()
+        executor.repository = repository
+        let pipeline = RefreshExecutionPipeline(
+            executor: executor,
+            store: store,
+            runInputProvider: nil,
+            credentialUpdates: nil,
+            codexTokenManager: nil,
+            isStopped: { false }
+        )
+        let request = RefreshPipelineRequest(
+            module: .agentUsage,
+            intent: .manual(),
+            staleAfter: 3600,
+            now: Date(timeIntervalSince1970: 1_786_000_000)
+        )
+        let result = await pipeline.run(request)
+        guard case .cancelled = result else {
+            throw RefreshTestFailure.expectation(
+                "unwired pipeline skeleton must return .cancelled, got \(result)"
+            )
+        }
+        try refreshExpect(
+            executor.runCount[.agentUsage] == nil || executor.runCount[.agentUsage] == 0,
+            "skeleton must not invoke collector until Task 6"
         )
     }
 
