@@ -1,0 +1,15 @@
+{
+  "id": "claude_bad_date",
+  "description": "Claude unparseable expiresAt string -> not expired (fail-open) / valid",
+  "now_ts": 1786000000,
+  "provider": "claude",
+  "expires_value": "not-a-date",
+  "expected_is_expired": false,
+  "expected_status": "valid",
+  "credential": {
+    "claudeAiOauth": {
+      "accessToken": "fixture-claude-bad-date-token",
+      "expiresAt": "not-a-date"
+    }
+  }
+}

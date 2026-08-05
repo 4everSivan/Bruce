@@ -167,6 +167,7 @@ struct MdddOnboardingCoreHarness {
         try evaluatorKimiRefreshMissing()
         try evaluatorAntigravityRefreshMissing()
         try evaluatorIsExpiredSemanticsMatchPython()
+        try evaluatorSharedExpiryFixtures()
         try claudePasteParserTokenAndJSON()
         try claudePasteParserRejectsEmpty()
         try grokPasteParserTokenAndJSON()
@@ -184,7 +185,7 @@ struct MdddOnboardingCoreHarness {
         try configuredRuleGrokFallsBackToLocal()
         try configuredRuleGrokExpiredAppFallsBackToLocal()
         try configuredRuleRegistryMatchesProviders()
-        print("MdddOnboardingCore tests passed: 171")
+        print("MdddOnboardingCore tests passed: 172")
     }
 
     // MARK: - Python version parsing
@@ -3379,6 +3380,117 @@ struct MdddOnboardingCoreHarness {
         try coreExpect(
             !SubscriptionCredentialEvaluator.isExpired(1_786_000_000_000.0, now: now),
             "毫秒时间戳应换算后比较 (1.786e12 ms = 未来)"
+        )
+    }
+
+    /// Task 11: 与 Python 共用 `tests/fixtures/credential-expiry/*.json`,
+    /// 锁定 isExpired + claudeStatus/grokStatus 与 pytest 同矩阵.
+    private static func evaluatorSharedExpiryFixtures() throws {
+        let dir = try credentialExpiryFixturesDirectory()
+        let required: Set<String> = [
+            "claude_valid.json",
+            "claude_expired_ms.json",
+            "claude_expired_s.json",
+            "claude_bad_date.json",
+            "grok_valid.json",
+            "grok_expired.json",
+        ]
+        let urls = try FileManager.default.contentsOfDirectory(
+            at: dir,
+            includingPropertiesForKeys: nil
+        ).filter { $0.pathExtension == "json" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+        try coreExpect(!urls.isEmpty, "credential-expiry fixtures 目录为空: \(dir.path)")
+        let found = Set(urls.map(\.lastPathComponent))
+        let missing = required.subtracting(found)
+        try coreExpect(missing.isEmpty, "缺少共享过期 fixture: \(missing.sorted())")
+
+        for url in urls {
+            let root = try JSONSerialization.jsonObject(with: Data(contentsOf: url))
+            guard let fixture = root as? [String: Any] else {
+                throw CoreTestFailure.expectation("\(url.lastPathComponent) 根节点必须是对象")
+            }
+            guard let nowTS = fixture["now_ts"] as? Double
+                    ?? (fixture["now_ts"] as? NSNumber)?.doubleValue,
+                  let expectedExpired = fixture["expected_is_expired"] as? Bool,
+                  let expectedStatus = fixture["expected_status"] as? String,
+                  let provider = fixture["provider"] as? String,
+                  let credential = fixture["credential"] else {
+                throw CoreTestFailure.expectation(
+                    "\(url.lastPathComponent) 缺少 now_ts/expected_*/provider/credential"
+                )
+            }
+            let now = Date(timeIntervalSince1970: nowTS)
+            let expiredGot = SubscriptionCredentialEvaluator.isExpired(
+                fixture["expires_value"], now: now
+            )
+            try coreExpect(
+                expiredGot == expectedExpired,
+                "\(url.lastPathComponent): isExpired=\(expiredGot), expected \(expectedExpired)"
+            )
+
+            let credentialData = try JSONSerialization.data(withJSONObject: credential)
+            guard let credentialJSON = String(data: credentialData, encoding: .utf8) else {
+                throw CoreTestFailure.expectation(
+                    "\(url.lastPathComponent) credential 无法编码为 UTF-8"
+                )
+            }
+            let status: SubscriptionCredentialStatus
+            switch provider {
+            case "claude":
+                status = SubscriptionCredentialEvaluator.claudeStatus(
+                    of: credentialJSON, now: now
+                )
+            case "grok":
+                status = SubscriptionCredentialEvaluator.grokStatus(
+                    of: credentialJSON, now: now
+                )
+            default:
+                throw CoreTestFailure.expectation(
+                    "\(url.lastPathComponent) 未知 provider: \(provider)"
+                )
+            }
+            let statusName: String
+            switch status {
+            case .missing: statusName = "missing"
+            case .valid: statusName = "valid"
+            case .expired: statusName = "expired"
+            case .malformed: statusName = "malformed"
+            }
+            try coreExpect(
+                statusName == expectedStatus,
+                "\(url.lastPathComponent): status=\(statusName), expected \(expectedStatus)"
+            )
+        }
+    }
+
+    /// 定位仓库根下 `tests/fixtures/credential-expiry`.
+    /// 优先从本 harness 源文件向上走; 回退 cwd (verify-local 在仓库根执行).
+    private static func credentialExpiryFixturesDirectory() throws -> URL {
+        var url = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        for _ in 0..<10 {
+            let candidate = url.appendingPathComponent(
+                "tests/fixtures/credential-expiry", isDirectory: true
+            )
+            var isDir: ObjCBool = false
+            if FileManager.default.fileExists(atPath: candidate.path, isDirectory: &isDir),
+               isDir.boolValue {
+                return candidate
+            }
+            let parent = url.deletingLastPathComponent()
+            if parent.path == url.path { break }
+            url = parent
+        }
+        let cwd = URL(
+            fileURLWithPath: FileManager.default.currentDirectoryPath,
+            isDirectory: true
+        ).appendingPathComponent("tests/fixtures/credential-expiry", isDirectory: true)
+        var isDir: ObjCBool = false
+        if FileManager.default.fileExists(atPath: cwd.path, isDirectory: &isDir),
+           isDir.boolValue {
+            return cwd
+        }
+        throw CoreTestFailure.expectation(
+            "无法定位 tests/fixtures/credential-expiry (从 #filePath 与 cwd 均未找到)"
         )
     }
 

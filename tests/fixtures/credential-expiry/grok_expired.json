@@ -1,0 +1,15 @@
+{
+  "id": "grok_expired",
+  "description": "Grok OIDC entry with past ISO expires_at -> expired",
+  "now_ts": 1786000000,
+  "provider": "grok",
+  "expires_value": "2026-07-28T12:17:14.147765Z",
+  "expected_is_expired": true,
+  "expected_status": "expired",
+  "credential": {
+    "https://auth.x.ai::fixture-expired": {
+      "key": "fixture-grok-expired-key",
+      "expires_at": "2026-07-28T12:17:14.147765Z"
+    }
+  }
+}

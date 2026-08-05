@@ -1,0 +1,15 @@
+{
+  "id": "claude_expired_s",
+  "description": "Claude expiresAt past Unix seconds (<=1e12) -> expired",
+  "now_ts": 1786000000,
+  "provider": "claude",
+  "expires_value": 1785000000,
+  "expected_is_expired": true,
+  "expected_status": "expired",
+  "credential": {
+    "claudeAiOauth": {
+      "accessToken": "fixture-claude-expired-s-token",
+      "expiresAt": 1785000000
+    }
+  }
+}

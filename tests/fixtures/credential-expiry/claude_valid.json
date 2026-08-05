@@ -1,0 +1,15 @@
+{
+  "id": "claude_valid",
+  "description": "Claude OAuth with future ISO expiresAt -> valid / not expired",
+  "now_ts": 1786000000,
+  "provider": "claude",
+  "expires_value": "2026-12-31T00:00:00Z",
+  "expected_is_expired": false,
+  "expected_status": "valid",
+  "credential": {
+    "claudeAiOauth": {
+      "accessToken": "fixture-claude-valid-token",
+      "expiresAt": "2026-12-31T00:00:00Z"
+    }
+  }
+}
