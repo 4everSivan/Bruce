@@ -102,6 +102,7 @@ required_sources=(
     "$MDDD_REPO_ROOT/agent-usage/collector/local_usage.py"
     "$MDDD_REPO_ROOT/agent-usage/collector/codex_compat.py"
     "$MDDD_REPO_ROOT/agent-usage/collector/quota_official.py"
+    "$MDDD_REPO_ROOT/agent-usage/collector/service_catalog.py"
 )
 for required_source in "${required_sources[@]}"; do
     if [[ ! -e "$required_source" ]]; then
@@ -146,7 +147,7 @@ ditto "$MDDD_REPO_ROOT/bridge/schemas" \
     "$MDDD_RUNTIME/bridge/schemas"
 ditto "$MDDD_REPO_ROOT/agent-usage/collector/collect_usage.py" \
     "$MDDD_RUNTIME/agent-usage/collector/collect_usage.py"
-for module in pricing runtime quota_services local_usage codex_compat quota_official; do
+for module in pricing runtime quota_services local_usage codex_compat quota_official service_catalog; do
     ditto "$MDDD_REPO_ROOT/agent-usage/collector/$module.py" \
         "$MDDD_RUNTIME/agent-usage/collector/$module.py"
 done

@@ -41,6 +41,7 @@ import quota_official
 import local_usage
 from local_usage import finalize, make_agent, new_bucket, record_usage, scan_claude, scan_codex, scan_kimi, scan_grok  # noqa: E402
 import codex_compat
+import service_catalog
 
 HOME = os.path.expanduser("~")
 DAIMON_KIMI_SESSIONS = os.path.join(
@@ -904,222 +905,48 @@ def service_antigravity():
     return [svc]
 
 
-def _quota_service_entry(service_id, name, app):
-    """App 模式合成条目模板: 字段与 CC 驱动条目同构; 无 CC 概念, isCurrent 置 False."""
-    return {
-        "id": service_id,
-        "name": name,
-        "app": app,
-        "isCurrent": False,
-        "status": "ok",
-        "kind": None,
-        "plan": None,
-        "windows": [],
-        "balance": None,
-        "currency": None,
-        "capturedAt": now.isoformat(timespec="seconds"),
-        "note": "",
-    }
+def _require_run_context():
+    """取最近一次 _configure_runtime 绑定的 RunContext; 未配置则失败."""
+    if _ACTIVE_RUN_CONTEXT is None:
+        raise RuntimeError("RunContext not configured; call _configure_runtime/collect first")
+    return _ACTIVE_RUN_CONTEXT
+
+
+def _quota_service_entry(service_id, name, app, is_current=False):
+    """兼容包装: 委托 service_catalog.quota_service_entry."""
+    return service_catalog.quota_service_entry(
+        service_id, name, app, now, is_current=is_current
+    )
 
 
 def _finalize_quota_service(svc, query):
-    """执行额度查询并折叠结果/错误, 与 CC 驱动路径共用同一套 status/note 语义."""
-    try:
-        result = query()
-        if result:
-            svc.update(result)
-            if svc["kind"] == "windows" and not svc["windows"]:
-                svc["status"] = "empty"
-                svc["note"] = "接口已通但未返回额度窗口"
-        else:
-            svc["status"] = "empty"
-            svc["note"] = "未取到额度数据"
-    except Exception as e:
-        svc["status"] = "error"
-        msg = str(e)
-        svc["note"] = ("查询失败: " + msg[:60]) if msg else "查询失败"
-    return svc
+    """兼容包装: 委托 service_catalog.finalize_quota_service."""
+    return service_catalog.finalize_quota_service(svc, query)
 
 
 def _collect_app_services():
-    """App 模式: 由注入凭证驱动合成额度条目, 完全不读取 CC Switch 数据库.
+    """App 模式额度条目 (薄包装; 实现见 service_catalog.build_quota_services).
 
-    - kimi_web_tokens -> Kimi (service_kimi_coding 注入分支)
-    - provider_env.deepseek.ANTHROPIC_AUTH_TOKEN -> DeepSeek
-    - provider_meta.volcengine.usage_script.ak/sk -> 火山引擎
+    测试可 monkeypatch 此名拦截 App 路径; 生产路径经 collect_services 同样进 catalog.
     """
-    services = []
-    provider_env = _runtime_credential("provider_env") or {}
-    provider_meta = _runtime_credential("provider_meta") or {}
-
-    if _runtime_credential("kimi_web_tokens") is not None:
-        svc = _quota_service_entry("kimi_coding", "Kimi", "kimi")
-        services.append(
-            _finalize_quota_service(svc, lambda: service_kimi_coding({}))
-        )
-
-    deepseek_env = provider_env.get("deepseek") or {}
-    if deepseek_env.get("ANTHROPIC_AUTH_TOKEN"):
-        svc = _quota_service_entry("deepseek", "DeepSeek", "deepseek")
-        services.append(
-            _finalize_quota_service(
-                svc, lambda: quota_services.service_deepseek(dict(deepseek_env), HTTP_TIMEOUT)
-            )
-        )
-
-    volc_meta = provider_meta.get("volcengine") or {}
-    volc_script = volc_meta.get("usage_script") or {}
-    if volc_script.get("accessKeyId") and volc_script.get("secretAccessKey"):
-        svc = _quota_service_entry("volcengine", "火山引擎（Coding Plan）", "volcengine")
-        services.append(
-            _finalize_quota_service(
-                svc, lambda: quota_services.service_volcengine({}, dict(volc_meta), now, HTTP_TIMEOUT)
-            )
-        )
-
-    if (provider_meta.get("claude") or {}).get("enabled"):
-        svc = _quota_service_entry("claude", "Claude", "claude")
-        services.append(_finalize_quota_service(svc, _claude_query_or_missing))
-
-    if (provider_meta.get("grok") or {}).get("enabled"):
-        svc = _quota_service_entry("grok", "Grok", "grok")
-        services.append(_finalize_quota_service(svc, _grok_query_or_missing))
-
-    return services
-
-
-def _claude_query_or_missing():
-    # Phase 5: App 模式优先消费 Swift 注入的 claude_oauth, 回退本机 CLI 凭证
-    injected = _runtime_credential("claude_oauth")
-    result = quota_official.service_claude(HOME, now, HTTP_TIMEOUT, injected=injected)
-    if result is None:
-        raise RuntimeError("未检测到 Claude 本机凭证 (Keychain 或 ~/.claude/.credentials.json)")
-    return result
-
-
-def _grok_query_or_missing():
-    # Phase 5: App 模式优先消费 Swift 注入的 grok_oauth, 回退本机 CLI 凭证
-    injected = _runtime_credential("grok_oauth")
-    result = quota_official.service_grok(HOME, now, HTTP_TIMEOUT, injected=injected)
-    if result is None:
-        raise RuntimeError("未检测到 Grok 本机凭证 (~/.grok/auth.json)")
-    return result
-
-
-def _collect_official_services():
-    """CLI 模式: 探测本机 Claude / Grok 凭证并查询官方订阅额度.
-
-    与 CC Switch 同策略: 实时只读凭证, 不刷新, 不回写.
-    无凭证的平台不出条目; 凭证过期给出可操作 error 条目.
-    """
-    services = []
-    now_ts = now.timestamp()
-    probes = (
-        ("claude", "Claude", "claude", quota_official.read_claude_token,
-         quota_official.service_claude),
-        ("grok", "Grok", "grok", quota_official.read_grok_token,
-         quota_official.service_grok),
+    return service_catalog.build_quota_services(
+        _require_run_context(),
+        kimi_coding=service_kimi_coding,
     )
-    for service_id, name, app, read_token, query in probes:
-        try:
-            token = read_token(HOME, now_ts)
-        except Exception as e:
-            svc = _quota_service_entry(service_id, name, app)
-            svc["status"] = "error"
-            svc["note"] = str(e)[:60] or "凭证不可用"
-            services.append(svc)
-            continue
-        if token is None:
-            continue
-        svc = _quota_service_entry(service_id, name, app)
-        services.append(
-            _finalize_quota_service(svc, lambda q=query: q(HOME, now, HTTP_TIMEOUT))
-        )
-    return services
 
 
 def collect_services():
+    """App/CLI 统一入口: 最终均走 service_catalog.build_quota_services.
+
+    App 经 `_collect_app_services` 薄包装, 保留既有 monkeypatch 点;
+    CLI 直接调 catalog. Mode 仅影响凭证解析; note/status 语义不变.
+    """
     if _APP_MODE:
         return _collect_app_services()
-    services = []
-    if not os.path.exists(CC_SWITCH_DB):
-        return services + _collect_official_services()
-    try:
-        with sqlite3.connect("file:%s?mode=ro" % CC_SWITCH_DB, uri=True) as db:
-            rows = db.execute(
-                "SELECT id, name, app_type, settings_config, meta, is_current "
-                "FROM providers"
-            ).fetchall()
-    except sqlite3.Error:
-        return [
-            {
-                "id": "cc_switch_schema",
-                "name": "CC Switch",
-                "app": "cc-switch",
-                "isCurrent": False,
-                "status": "error",
-                "kind": None,
-                "plan": None,
-                "windows": [],
-                "balance": None,
-                "currency": None,
-                "capturedAt": now.isoformat(timespec="seconds"),
-                "note": "只读数据库 schema 不兼容",
-            }
-        ] + _collect_official_services()
-
-    handlers = {
-        "Kimi For Coding": ("kimi_coding", service_kimi_coding),
-        "DeepSeek": ("deepseek", lambda env: quota_services.service_deepseek(env, HTTP_TIMEOUT)),
-        "火山Codingplan": ("volcengine", None),  # needs meta
-    }
-    # 看板展示名（cc-switch 里的 provider 名不动，仅改显示）
-    display_names = {
-        "Kimi For Coding": "Kimi",
-        "火山Codingplan": "火山引擎（Coding Plan）",
-    }
-    for pid, name, app_type, settings_config, meta_json, is_current in rows:
-        if name not in handlers:
-            continue
-        svc = {
-            "id": handlers[name][0],
-            "name": display_names.get(name, name),
-            "app": app_type,
-            "isCurrent": bool(is_current),
-            "status": "ok",
-            "kind": None,
-            "plan": None,
-            "windows": [],
-            "balance": None,
-            "currency": None,
-            "capturedAt": now.isoformat(timespec="seconds"),
-            "note": "",
-        }
-        try:
-            env = (json.loads(settings_config or "{}")).get("env") or {}
-            meta = json.loads(meta_json or "{}")
-            provider_env = _runtime_credential("provider_env", {})
-            env.update(provider_env.get(svc["id"], {}))
-            provider_meta = _runtime_credential("provider_meta", {})
-            meta.update(provider_meta.get(svc["id"], {}))
-            if name == "火山Codingplan":
-                result = quota_services.service_volcengine(env, meta, now, HTTP_TIMEOUT)
-            else:
-                result = handlers[name][1](env)
-            if result:
-                svc.update(result)
-                if svc["kind"] == "windows" and not svc["windows"]:
-                    svc["status"] = "empty"
-                    svc["note"] = "接口已通但未返回额度窗口"
-            else:
-                svc["status"] = "empty"
-                svc["note"] = "未取到额度数据"
-        except Exception as e:
-            svc["status"] = "error"
-            msg = str(e)
-            svc["note"] = ("查询失败: " + msg[:60]) if msg else "查询失败"
-        services.append(svc)
-    return services + _collect_official_services()
+    return service_catalog.build_quota_services(
+        _require_run_context(),
+        kimi_coding=service_kimi_coding,
+    )
 
 
 # ---------------------------------------------------------------- main

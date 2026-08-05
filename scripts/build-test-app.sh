@@ -39,6 +39,7 @@ required_sources=(
     "$MDDD_REPO_ROOT/agent-usage/collector/local_usage.py"
     "$MDDD_REPO_ROOT/agent-usage/collector/codex_compat.py"
     "$MDDD_REPO_ROOT/agent-usage/collector/quota_official.py"
+    "$MDDD_REPO_ROOT/agent-usage/collector/service_catalog.py"
     "$MDDD_REPO_ROOT/macos/MdddApp/Assets/AppIcon.icns"
 )
 for required_source in "${required_sources[@]}"; do
@@ -83,7 +84,7 @@ ditto "$MDDD_REPO_ROOT/bridge/schemas" \
 ditto "$MDDD_REPO_ROOT/agent-usage/collector/collect_usage.py" \
     "$MDDD_RUNTIME/agent-usage/collector/collect_usage.py"
 # 阶段 D 拆分出的 collector 子模块必须一并打包, 否则运行时 import 失败
-for module in pricing runtime quota_services local_usage codex_compat quota_official; do
+for module in pricing runtime quota_services local_usage codex_compat quota_official service_catalog; do
     ditto "$MDDD_REPO_ROOT/agent-usage/collector/$module.py" \
         "$MDDD_RUNTIME/agent-usage/collector/$module.py"
 done
