@@ -356,7 +356,7 @@ struct PanelViewModelHarness {
         try expect(group.id == "codex" && group.name == "ChatGPT", "codex 分组头错误")
         try expect(group.accountCountText == "2 个账号", "账号数文案错误")
         try expect(group.status == "partial", "分组状态应取最差: \(group.status)")
-        let accounts = group.codexAccounts ?? []
+        let accounts = group.accounts
         try expect(accounts.count == 2, "账号子卡数量错误")
         try expect(accounts[0].name == "sivan", "应去掉 Codex 前缀: \(accounts[0].name)")
         try expect(accounts[0].plan == "plus", "账号 plan 丢失")
@@ -980,10 +980,10 @@ struct PanelViewModelHarness {
         )
         let section = vm.subscription?.sections.first
         try expect(section?.status == "ok", "100% 额度不应改变认证状态: \(section?.status ?? "nil")")
-        let account = section?.codexAccounts?.first
-        try expect(account?.windows.first?.usedPercent == 100, "100% 窗口应保留")
-        try expect(account?.windows.first?.percentText == "100%", "百分比文案错误")
-        try expect(account?.windows.first?.resetText == "16:00", "重置时间错误: \(account?.windows.first?.resetText ?? "nil")")
+        let window = section?.windows.first
+        try expect(window?.usedPercent == 100, "100% 窗口应保留")
+        try expect(window?.percentText == "100%", "百分比文案错误")
+        try expect(window?.resetText == "16:00", "重置时间错误: \(window?.resetText ?? "nil")")
         let issues = vm.diagnostics.filter {
             if case .serviceIssue = $0 { return true }
             return false
@@ -1010,7 +1010,7 @@ struct PanelViewModelHarness {
             agentUsage: makeAgentUsageArtifact(agents: [], services: [service]),
             moduleStatuses: readyStatuses
         )
-        let account = vm.subscription?.sections.first?.codexAccounts?.first
+        let account = vm.subscription?.sections.first?.accounts.first
         try expect(
             account?.lastSuccessText == "上次成功 13:50",
             "stale 状态应显示上次成功时间, got \(account?.lastSuccessText ?? "nil")"
@@ -1031,7 +1031,7 @@ struct PanelViewModelHarness {
             agentUsage: makeAgentUsageArtifact(agents: [], services: [okService]),
             moduleStatuses: readyStatuses
         )
-        let okAccount = okVM.subscription?.sections.first?.codexAccounts?.first
+        let okAccount = okVM.subscription?.sections.first?.accounts.first
         try expect(
             okAccount?.lastSuccessText == nil,
             "fresh 状态不应显示上次成功时间"
@@ -1056,7 +1056,7 @@ struct PanelViewModelHarness {
             agentUsage: makeAgentUsageArtifact(agents: [], services: [service]),
             moduleStatuses: readyStatuses
         )
-        let account = vm.subscription?.sections.first?.codexAccounts?.first
+        let account = vm.subscription?.sections.first?.accounts.first
         try expect(
             account?.lastSuccessText == "上次成功 13:50",
             "stale + capturedAt 应显示上次成功时间: \(account?.lastSuccessText ?? "nil")"
@@ -1081,7 +1081,7 @@ struct PanelViewModelHarness {
             agentUsage: makeAgentUsageArtifact(agents: [], services: [service]),
             moduleStatuses: readyStatuses
         )
-        let account = vm.subscription?.sections.first?.codexAccounts?.first
+        let account = vm.subscription?.sections.first?.accounts.first
         try expect(
             account?.lastSuccessText == nil,
             "unavailable 不应显示上次成功时间: \(account?.lastSuccessText ?? "nil")"
@@ -1104,7 +1104,7 @@ struct PanelViewModelHarness {
             agentUsage: makeAgentUsageArtifact(agents: [], services: [service]),
             moduleStatuses: readyStatuses
         )
-        let account = vm.subscription?.sections.first?.codexAccounts?.first
+        let account = vm.subscription?.sections.first?.accounts.first
         try expect(
             account?.name == "Codex · sivan",
             "只应删开头前缀, 保留内部: \(account?.name ?? "nil")"

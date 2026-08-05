@@ -169,6 +169,9 @@ package final class AppModel: ObservableObject {
     @Published package private(set) var grokLocalAvailable = false
     /// 正在保存, 验证或导入的订阅 provider, 供设置页禁用对应按钮.
     @Published package private(set) var busySubscriptionProviders: Set<SubscriptionProviderID> = []
+    /// 各 provider 多账号摘要 (数量与账号名列表), 供设置页渲染账号列表.
+    /// Codex 摘要复用 codexAccountSummary; 其余 provider 经 ProviderAccountStore 发布.
+    @Published package private(set) var providerAccountSummaries: [SubscriptionProviderID: [ProviderAccountSummary]] = [:]
     /// Codex 已导入账号摘要 (数量与邮箱前缀), 供设置页展示.
     @Published package private(set) var codexAccountSummary: (count: Int, emailPrefixes: [String])?
     /// Codex 非敏感账号状态 (授权状态, 来源, 存储健康), 供设置页渲染;
@@ -422,6 +425,14 @@ package final class AppModel: ObservableObject {
         _ configured: Bool, for provider: SubscriptionProviderID
     ) {
         subscriptionCredentialConfigured[provider] = configured
+    }
+
+    package func setProviderAccountSummaries(
+        _ summaries: [ProviderAccountSummary], for provider: SubscriptionProviderID
+    ) {
+        var updated = providerAccountSummaries
+        updated[provider] = summaries
+        providerAccountSummaries = updated
     }
 
     package func setAntigravityLocalAvailable(_ available: Bool) {

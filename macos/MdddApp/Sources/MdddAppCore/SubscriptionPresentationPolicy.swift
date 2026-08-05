@@ -1,4 +1,5 @@
 import Foundation
+import MdddOnboardingCore
 
 // MARK: - SubscriptionPresentationPolicy
 
@@ -12,7 +13,16 @@ package enum SubscriptionPresentationPolicy: Sendable {
     package static func providerID(forServiceID serviceID: String) -> String {
         switch serviceID {
         case "kimi_coding": return "kimi"
-        default: return serviceID
+        default:
+            // 多账号 service ID 格式: <provider>_<accountID> (如 codex_a1b2c3d4).
+            // 按 provider rawValue 前缀分组.
+            for provider in SubscriptionProviderID.allCases {
+                let prefix = provider.rawValue + "_"
+                if serviceID.hasPrefix(prefix) {
+                    return provider.rawValue
+                }
+            }
+            return serviceID
         }
     }
 
@@ -59,10 +69,60 @@ package enum SubscriptionPresentationPolicy: Sendable {
         return displayName
     }
 
+    /// 多账号分组的展示名: 按 provider ID 取固定名称.
+    package static func groupDisplayName(providerID: String) -> String {
+        switch providerID {
+        case "codex": return "ChatGPT"
+        case "kimi": return "Kimi"
+        case "deepseek": return "DeepSeek"
+        case "volcengine": return "火山引擎"
+        case "antigravity": return "Antigravity"
+        case "claude": return "Claude"
+        case "grok": return "Grok"
+        default: return providerID
+        }
+    }
+
+    /// 通用账号短名: 按 provider 剥离前缀. Codex 剥离 "Codex · ",
+    /// 其他 provider 剥离 "<Provider displayName> · " 前缀 (如有).
+    package static func accountShortName(
+        from displayName: String, providerID: String
+    ) -> String {
+        if providerID == "codex" {
+            return codexAccountShortName(from: displayName)
+        }
+        // 通用: 剥离 "X · " 前缀 (X 为 provider 显示名或 service 名)
+        if let range = displayName.range(of: " · ") {
+            return String(displayName[range.upperBound...])
+        }
+        return displayName
+    }
+
     /// Codex 分组状态: 取账号中最差状态 (ok < partial < error).
     package static func codexGroupStatus(from statuses: [String]) -> String {
         let statusRank = ["ok": 0, "partial": 1, "error": 2]
         let worst = statuses.map { statusRank[$0] ?? 1 }.max() ?? 0
         return statusRank.first(where: { $0.value == worst })?.key ?? "partial"
+    }
+
+    /// 多账号折叠态窗口摘要: 取所有账号中 usedPercent 最高的
+    /// 最短重置周期窗口 (windowMinutes 最小).
+    package static func collapsedWindow(
+        from accounts: [CodexAccountViewModel]
+    ) -> SubscriptionWindowRow? {
+        let allWindows = accounts.flatMap { account in
+            account.windows.map { (window: $0, account: account) }
+        }
+        guard !allWindows.isEmpty else { return nil }
+        // 先按 windowMinutes 升序 (最短窗口优先), 再按 usedPercent 降序 (最高用量优先)
+        let sorted = allWindows.sorted { lhs, rhs in
+            let lhsMin = lhs.window.windowMinutes ?? Int.max
+            let rhsMin = rhs.window.windowMinutes ?? Int.max
+            if lhsMin != rhsMin {
+                return lhsMin < rhsMin
+            }
+            return lhs.window.usedPercent > rhs.window.usedPercent
+        }
+        return sorted.first?.window
     }
 }

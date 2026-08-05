@@ -681,13 +681,21 @@ struct CollectorRunnerHarness {
             capabilityStrings(input).contains("externalQuotas"),
             "kimi 已配置时必须授予 externalQuotas"
         )
-        try runnerExpect(
-            input.credentials["kimiWebTokens"] == .object([
-                "access_token": .string("a"),
-                "refresh_token": .string("r"),
-            ]),
-            "kimiWebTokens 注入结构必须与 collect_usage.py 消费一致"
-        )
+        // 多账号注入格式: kimiQuotaAccounts 字典, 每个账号含 display_name + tokens
+        guard case .object(let accounts)? = input.credentials["kimiQuotaAccounts"] else {
+            throw RunnerTestFailure.expectation(
+                "kimiQuotaAccounts 注入缺失: \(input.credentials.keys.sorted())"
+            )
+        }
+        try runnerExpect(accounts.count == 1, "kimi 应有 1 个账号: \(accounts.count)")
+        let firstPayload = accounts.values.first
+        guard case .object(let payload)? = firstPayload else {
+            throw RunnerTestFailure.expectation("kimi 账号 payload 结构不符")
+        }
+        guard case .object(let tokens)? = payload["tokens"],
+              tokens["access_token"] == .string("a") else {
+            throw RunnerTestFailure.expectation("kimi tokens.access_token 注入缺失")
+        }
     }
 
     private static func runInputAssemblesDeepSeekProviderEnv() async throws {
@@ -708,14 +716,19 @@ struct CollectorRunnerHarness {
             capabilityStrings(input).contains("externalQuotas"),
             "deepseek 已配置时必须授予 externalQuotas"
         )
-        try runnerExpect(
-            input.credentials["providerEnv"] == .object([
-                "deepseek": .object([
-                    "ANTHROPIC_AUTH_TOKEN": .string("sk-fixture"),
-                ]),
-            ]),
-            "providerEnv.deepseek.ANTHROPIC_AUTH_TOKEN 注入结构不符"
-        )
+        // 多账号注入格式: deepseekQuotaAccounts 字典
+        guard case .object(let accounts)? = input.credentials["deepseekQuotaAccounts"] else {
+            throw RunnerTestFailure.expectation(
+                "deepseekQuotaAccounts 注入缺失: \(input.credentials.keys.sorted())"
+            )
+        }
+        try runnerExpect(accounts.count == 1, "deepseek 应有 1 个账号")
+        let firstPayload = accounts.values.first
+        guard case .object(let payload)? = firstPayload,
+              case .string(let key)? = payload["api_key"] else {
+            throw RunnerTestFailure.expectation("deepseek api_key 注入缺失")
+        }
+        try runnerExpect(key == "sk-fixture", "deepseek api_key 值不符: \(key)")
     }
 
     private static func runInputAssemblesVolcengineProviderMeta() async throws {
@@ -740,17 +753,21 @@ struct CollectorRunnerHarness {
             capabilityStrings(input).contains("externalQuotas"),
             "volcengine 已配置时必须授予 externalQuotas"
         )
-        try runnerExpect(
-            input.credentials["providerMeta"] == .object([
-                "volcengine": .object([
-                    "usage_script": .object([
-                        "accessKeyId": .string("AK-fixture"),
-                        "secretAccessKey": .string("SK-fixture"),
-                    ]),
-                ]),
-            ]),
-            "providerMeta.volcengine.usage_script 注入结构不符"
-        )
+        // 多账号注入格式: volcengineQuotaAccounts 字典
+        guard case .object(let accounts)? = input.credentials["volcengineQuotaAccounts"] else {
+            throw RunnerTestFailure.expectation(
+                "volcengineQuotaAccounts 注入缺失: \(input.credentials.keys.sorted())"
+            )
+        }
+        try runnerExpect(accounts.count == 1, "volcengine 应有 1 个账号")
+        let firstPayload = accounts.values.first
+        guard case .object(let payload)? = firstPayload,
+              case .string(let ak)? = payload["access_key"],
+              case .string(let sk)? = payload["secret_key"] else {
+            throw RunnerTestFailure.expectation("volcengine access_key/secret_key 注入缺失")
+        }
+        try runnerExpect(ak == "AK-fixture", "volcengine AK 值不符: \(ak)")
+        try runnerExpect(sk == "SK-fixture", "volcengine SK 值不符: \(sk)")
     }
 
     /// Antigravity OAuth 注入: 结构对齐 collector 对 antigravity_oauth 的消费.
@@ -774,11 +791,18 @@ struct CollectorRunnerHarness {
             capabilityStrings(input).contains("externalQuotas"),
             "antigravity 已配置时必须授予 externalQuotas"
         )
-        guard case .object(let injected)? = input.credentials["antigravityOAuth"],
-              case .object(let token)? = injected["token"] else {
+        // 多账号注入格式: antigravityQuotaAccounts 字典
+        guard case .object(let accounts)? = input.credentials["antigravityQuotaAccounts"] else {
             throw RunnerTestFailure.expectation(
-                "antigravityOAuth 注入结构必须与令牌文件同构"
+                "antigravityQuotaAccounts 注入缺失: \(input.credentials.keys.sorted())"
             )
+        }
+        try runnerExpect(accounts.count == 1, "antigravity 应有 1 个账号")
+        let firstPayload = accounts.values.first
+        guard case .object(let payload)? = firstPayload,
+              case .object(let oauth)? = payload["oauth"],
+              case .object(let token)? = oauth["token"] else {
+            throw RunnerTestFailure.expectation("antigravity oauth.token 注入结构不符")
         }
         try runnerExpect(
             token["refresh_token"] == .string("rt"),
@@ -833,20 +857,25 @@ struct CollectorRunnerHarness {
             capabilityStrings(input).contains("externalQuotas"),
             "全部配置时必须授予 externalQuotas"
         )
-        try runnerExpect(
-            Set(input.credentials.keys) == [
-                "kimiWebTokens", "codexQuotaAccounts",
-                "antigravityOAuth", "providerEnv", "providerMeta",
-            ],
-            "注入键集合不符: \(input.credentials.keys.sorted())"
-        )
-        guard case .object(let env)? = input.credentials["providerEnv"],
-              case .object(let meta)? = input.credentials["providerMeta"] else {
-            throw RunnerTestFailure.expectation("providerEnv/providerMeta 结构不符")
+        // 多账号注入格式: 各 provider 的 *QuotaAccounts + codexQuotaAccounts + providerMeta
+        // Claude/Grok 无凭证时只有 providerMeta enabled 标记, 无 *QuotaAccounts
+        let expectedKeys: Set<String> = [
+            "kimiQuotaAccounts", "deepseekQuotaAccounts",
+            "volcengineQuotaAccounts", "antigravityQuotaAccounts",
+            "codexQuotaAccounts", "providerMeta",
+        ]
+        for key in expectedKeys {
+            try runnerExpect(
+                input.credentials[key] != nil,
+                "注入键缺失: \(key) (现有: \(input.credentials.keys.sorted()))"
+            )
+        }
+        guard case .object(let meta)? = input.credentials["providerMeta"] else {
+            throw RunnerTestFailure.expectation("providerMeta 结构不符")
         }
         try runnerExpect(
-            env["deepseek"] != nil && meta["volcengine"] != nil,
-            "providerEnv/providerMeta 内容不完整"
+            meta["claude"] != nil && meta["grok"] != nil,
+            "providerMeta claude/grok enabled 标记缺失"
         )
         guard case .object(let quotaAccounts)? = input.credentials["codexQuotaAccounts"],
               case .object(let account)? = quotaAccounts["acc-1"] else {

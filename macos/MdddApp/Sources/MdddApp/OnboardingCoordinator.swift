@@ -208,6 +208,26 @@ final class OnboardingCoordinator: ObservableObject {
         subscriptions.setSubscriptionProviderOrder(order)
     }
 
+    // MARK: - 多账号管理 (Phase 2)
+
+    func accountSummaries(for id: SubscriptionProviderID) -> [ProviderAccountSummary] {
+        subscriptions.accountSummaries(for: id)
+    }
+
+    func removeAccount(accountID: String, from id: SubscriptionProviderID) {
+        subscriptions.removeAccount(accountID: accountID, from: id)
+    }
+
+    func updateAccountAuthorizationState(
+        accountID: String,
+        from id: SubscriptionProviderID,
+        state: ProviderAccountAuthorizationState
+    ) {
+        subscriptions.updateAccountAuthorizationState(
+            accountID: accountID, from: id, state: state
+        )
+    }
+
     func kimiLocalTokensFileExists() -> Bool {
         subscriptions.kimiLocalTokensFileExists()
     }

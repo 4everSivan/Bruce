@@ -39,28 +39,22 @@ struct SubscriptionCard: View {
 
 // MARK: - provider 段
 
-/// 单个 provider 段: 品牌徽章 + 名称 + plan chip + 账号数, 下方窗口行 / Codex 子卡 / 余额行.
+/// 单个 provider 段: 品牌徽章 + 名称 + plan chip + 账号数, 下方窗口行 / 账号子卡 / 余额行.
+/// 多账号 (>=2) 默认折叠, 折叠态展示最关键窗口摘要; 展开后按账号子卡展示.
 private struct ProviderSectionView: View {
     let section: SubscriptionProviderSection
     let isFirst: Bool
+    @State private var expanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             head
                 .padding(.bottom, 3)
 
-            ForEach(Array(section.windows.enumerated()), id: \.offset) { _, row in
-                WindowRowView(row: row)
-            }
-
-            if let accounts = section.codexAccounts, !accounts.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    ForEach(accounts, id: \.id) { account in
-                        CodexAccountCard(account: account)
-                    }
-                }
-                .padding(.top, 4)
-                .padding(.bottom, 2)
+            if section.isMultiAccount {
+                multiAccountContent
+            } else {
+                singleAccountContent
             }
 
             if let balance = section.balance {
@@ -94,12 +88,57 @@ private struct ProviderSectionView: View {
         .padding(.bottom, 8)
     }
 
+    // MARK: 多账号内容
+
+    @ViewBuilder
+    private var multiAccountContent: some View {
+        if expanded {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(section.accounts, id: \.id) { account in
+                    ProviderAccountCard(account: account)
+                }
+            }
+            .padding(.top, 4)
+            .padding(.bottom, 2)
+        } else if let collapsed = section.collapsedWindow {
+            WindowRowView(row: collapsed)
+        }
+    }
+
+    // MARK: 单账号内容
+
+    @ViewBuilder
+    private var singleAccountContent: some View {
+        ForEach(Array(section.windows.enumerated()), id: \.offset) { _, row in
+            WindowRowView(row: row)
+        }
+    }
+
+    // MARK: 头部
+
     private var head: some View {
         HStack(spacing: 6) {
             ProviderLogoBadge(providerID: section.id, name: section.name)
                 .accessibilityHidden(true)
-            Text(section.name)
-                .font(.system(size: 11, weight: .semibold))
+            if section.isMultiAccount {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        expanded.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(section.name)
+                            .font(.system(size: 11, weight: .semibold))
+                        Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 8))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .buttonStyle(.plain)
+            } else {
+                Text(section.name)
+                    .font(.system(size: 11, weight: .semibold))
+            }
             if let plan = section.plan {
                 PlanChip(text: plan)
             }
@@ -299,8 +338,8 @@ private struct MeterBar: View {
 
 // MARK: - Codex 账号子卡
 
-/// Codex 多账号子卡: 圆角 10pt 内层玻璃, 头部账号名 + 套餐, 下方各自窗口行.
-private struct CodexAccountCard: View {
+/// 多账号子卡 (原 CodexAccountCard): 圆角 10pt 内层玻璃, 头部账号名 + 套餐, 下方各自窗口行.
+private struct ProviderAccountCard: View {
     let account: CodexAccountViewModel
 
     var body: some View {
@@ -467,7 +506,6 @@ private extension SubscriptionViewModel {
                     SubscriptionWindowRow(label: "赠送额度", usedPercent: 81, resetText: "", ownRow: true),
                     SubscriptionWindowRow(label: "加量包", usedPercent: 88, resetText: "", ownRow: true),
                 ],
-                codexAccounts: nil,
                 balance: nil,
                 accountCountText: nil
             ),
@@ -483,7 +521,6 @@ private extension SubscriptionViewModel {
                     SubscriptionWindowRow(label: "每周", usedPercent: 46, resetText: "5 天后", ownRow: false),
                     SubscriptionWindowRow(label: "每月", usedPercent: 63, resetText: "21 天后", ownRow: false),
                 ],
-                codexAccounts: nil,
                 balance: nil,
                 accountCountText: nil
             ),
@@ -495,7 +532,7 @@ private extension SubscriptionViewModel {
                 note: nil,
                 extraText: nil,
                 windows: [],
-                codexAccounts: [
+                accounts: [
                     CodexAccountViewModel(
                         id: "codex-personal",
                         name: "sivan…",
@@ -519,6 +556,7 @@ private extension SubscriptionViewModel {
                         ]
                     ),
                 ],
+                collapsedWindow: SubscriptionWindowRow(label: "每 5 小时", usedPercent: 92, resetText: "13:30", ownRow: false),
                 balance: nil,
                 accountCountText: "2 个账号"
             ),
@@ -533,7 +571,6 @@ private extension SubscriptionViewModel {
                     SubscriptionWindowRow(label: "5小时窗口", usedPercent: 64, resetText: "15:00", ownRow: false),
                     SubscriptionWindowRow(label: "每周窗口", usedPercent: 33, resetText: "3 天后", ownRow: false),
                 ],
-                codexAccounts: nil,
                 balance: nil,
                 accountCountText: nil
             ),
@@ -547,7 +584,7 @@ private extension SubscriptionViewModel {
                 windows: [
                     SubscriptionWindowRow(label: "每月", usedPercent: 12, resetText: "24 天后", ownRow: false),
                 ],
-                codexAccounts: nil,
+                
                 balance: nil,
                 accountCountText: nil
             ),
@@ -559,7 +596,7 @@ private extension SubscriptionViewModel {
                 note: nil,
                 extraText: nil,
                 windows: [],
-                codexAccounts: nil,
+                
                 balance: BalanceRow(amount: 38.21, currency: "CNY"),
                 accountCountText: "按量付费"
             ),

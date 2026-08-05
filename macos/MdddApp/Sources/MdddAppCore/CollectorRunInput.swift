@@ -113,6 +113,15 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
     /// 旧库迁移完成前不开放 v2 Codex quota 输入 (任务 11).
     /// 默认 true 兼容未装配 store 的旧测试; App 启动时按迁移结果设置.
     private var codexMigrationCompleted = true
+    /// 通用多账号 store 缓存 (按 provider).
+    private lazy var accountStores: [SubscriptionProviderID: ProviderAccountStore] = {
+        var stores: [SubscriptionProviderID: ProviderAccountStore] = [:]
+        for id in SubscriptionProviderID.allCases where id != .codex {
+            stores[id] = ProviderAccountStore(provider: id, credentialStore: credentialStore)
+        }
+        migrateLegacyCredentialsIfNeeded()
+        return stores
+    }()
 
     package init(
         configStore: OnboardingConfigurationStore?,
@@ -129,6 +138,19 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
     /// 装配 Codex access token 注入器 (App 启动时调用一次).
     package func attachCodexTokenInjector(_ injector: any CodexAccessTokenInjecting) {
         codexTokenInjector = injector
+    }
+
+    /// 检测旧单条 Keychain 凭证, 迁移为 ProviderAccountStore 的 account-index + record.
+    /// 迁移只读取不删除旧键; 成功后下次访问时清理.
+    /// 实现位于 MdddOnboardingCore.ProviderAccountStore.migrateLegacyAccountsIfNeeded,
+    /// 与 SubscriptionService 共享, 避免在两处维护凭证格式逻辑.
+    private func migrateLegacyCredentialsIfNeeded() {
+        for provider in SubscriptionProviderID.allCases where provider != .codex {
+            let store = ProviderAccountStore(provider: provider, credentialStore: credentialStore)
+            _ = try? store.migrateLegacyAccountsIfNeeded(
+                legacyKeys: ProviderAccountKeys.legacyKeys(for: provider)
+            )
+        }
     }
 
     /// 已决议的 Codex 账号 id (非敏感, 仅 Swift 内使用).
@@ -288,61 +310,67 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
         func isEnabled(_ id: SubscriptionProviderID) -> Bool {
             providers[id.rawValue]?.enabled == true
         }
-        func load(_ account: String) -> String? {
-            guard let value = try? credentialStore.loadCredential(forAccount: account),
-                  !value.isEmpty else {
-                return nil
-            }
-            return value
-        }
-        /// 按 descriptor.credentialAccounts 顺序加载全部非空值; 缺任一则 nil.
-        func loadAllAccounts(_ accounts: [String]) -> [String]? {
-            var values: [String] = []
-            values.reserveCapacity(accounts.count)
-            for account in accounts {
-                guard let value = load(account) else { return nil }
-                values.append(value)
-            }
-            return values
-        }
 
+        // 从 ProviderAccountStore 按账号加载凭证, 注入为多账号结构.
+        // Codex 仍走独立的 token manager 决议路径.
         for descriptor in ProviderRegistry.all {
             guard isEnabled(descriptor.id) else { continue }
+
             switch descriptor.injectionKind {
             case .kimiWebTokensJSON:
-                // 顶层 kimiWebTokens = Keychain JSON 对象
-                guard let accounts = loadAllAccounts(descriptor.credentialAccounts),
-                      let raw = accounts.first,
-                      let tokens = jsonObjectValue(from: raw) else {
-                    continue
+                guard let store = accountStores[descriptor.id],
+                      let index = try? store.loadIndex(),
+                      !index.accounts.isEmpty else { continue }
+                var accounts: [String: JSONValue] = [:]
+                for entry in index.accounts {
+                    guard let record = try? store.loadRecord(for: entry.accountID),
+                          let tokens = jsonObjectValue(from: record.credentialJSON) else { continue }
+                    accounts[entry.accountID] = .object([
+                        "display_name": .string(entry.displayName),
+                        "tokens": tokens,
+                    ])
                 }
-                credentials["kimiWebTokens"] = tokens
+                if !accounts.isEmpty {
+                    credentials["kimiQuotaAccounts"] = .object(accounts)
+                }
 
             case .deepseekAPIKeyEnv:
-                // collect_usage.py service_deepseek 消费 env.ANTHROPIC_AUTH_TOKEN
-                guard let accounts = loadAllAccounts(descriptor.credentialAccounts),
-                      let key = accounts.first else {
-                    continue
+                guard let store = accountStores[descriptor.id],
+                      let index = try? store.loadIndex(),
+                      !index.accounts.isEmpty else { continue }
+                var accounts: [String: JSONValue] = [:]
+                for entry in index.accounts {
+                    guard let record = try? store.loadRecord(for: entry.accountID) else { continue }
+                    accounts[entry.accountID] = .object([
+                        "display_name": .string(entry.displayName),
+                        "api_key": .string(record.credentialJSON),
+                    ])
                 }
-                providerEnv["deepseek"] = .object([
-                    "ANTHROPIC_AUTH_TOKEN": .string(key),
-                ])
+                if !accounts.isEmpty {
+                    credentials["deepseekQuotaAccounts"] = .object(accounts)
+                }
 
             case .volcengineUsageScriptKeys:
-                // collect_usage.py service_volcengine 消费
-                // meta.usage_script.accessKeyId/secretAccessKey
-                guard let accounts = loadAllAccounts(descriptor.credentialAccounts),
-                      accounts.count >= 2 else {
-                    continue
+                guard let store = accountStores[descriptor.id],
+                      let index = try? store.loadIndex(),
+                      !index.accounts.isEmpty else { continue }
+                var accounts: [String: JSONValue] = [:]
+                for entry in index.accounts {
+                    guard let record = try? store.loadRecord(for: entry.accountID) else { continue }
+                    // credentialJSON 是 {"accessKey":..., "secretKey":...}
+                    guard let data = record.credentialJSON.data(using: .utf8),
+                          let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          let ak = dict["accessKey"] as? String,
+                          let sk = dict["secretKey"] as? String else { continue }
+                    accounts[entry.accountID] = .object([
+                        "display_name": .string(entry.displayName),
+                        "access_key": .string(ak),
+                        "secret_key": .string(sk),
+                    ])
                 }
-                let ak = accounts[0]
-                let sk = accounts[1]
-                providerMeta["volcengine"] = .object([
-                    "usage_script": .object([
-                        "accessKeyId": .string(ak),
-                        "secretAccessKey": .string(sk),
-                    ]),
-                ])
+                if !accounts.isEmpty {
+                    credentials["volcengineQuotaAccounts"] = .object(accounts)
+                }
 
             case .codexQuotaAccounts:
                 guard codexMigrationCompleted,
@@ -352,29 +380,58 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
                 credentials["codexQuotaAccounts"] = codexAccounts
 
             case .antigravityOAuthJSON:
-                guard let accounts = loadAllAccounts(descriptor.credentialAccounts),
-                      let raw = accounts.first,
-                      let oauth = jsonObjectValue(from: raw) else {
-                    continue
+                guard let store = accountStores[descriptor.id],
+                      let index = try? store.loadIndex(),
+                      !index.accounts.isEmpty else { continue }
+                var accounts: [String: JSONValue] = [:]
+                for entry in index.accounts {
+                    guard let record = try? store.loadRecord(for: entry.accountID),
+                          let oauth = jsonObjectValue(from: record.credentialJSON) else { continue }
+                    accounts[entry.accountID] = .object([
+                        "display_name": .string(entry.displayName),
+                        "oauth": oauth,
+                    ])
                 }
-                credentials["antigravityOAuth"] = oauth
+                if !accounts.isEmpty {
+                    credentials["antigravityQuotaAccounts"] = .object(accounts)
+                }
 
             case .claudeMetaEnabledPlusOptionalOAuth:
-                // 应用持有凭证时注入 claudeOAuth; 无凭证时仅 enabled 标记,
-                // collector 回退本机 CLI 登录态.
                 providerMeta["claude"] = .object(["enabled": .boolean(true)])
-                if let accounts = loadAllAccounts(descriptor.credentialAccounts),
-                   let raw = accounts.first,
-                   let oauth = jsonObjectValue(from: raw) {
-                    credentials["claudeOAuth"] = oauth
+                if let store = accountStores[descriptor.id],
+                   let index = try? store.loadIndex(),
+                   !index.accounts.isEmpty {
+                    var accounts: [String: JSONValue] = [:]
+                    for entry in index.accounts {
+                        guard let record = try? store.loadRecord(for: entry.accountID),
+                              let oauth = jsonObjectValue(from: record.credentialJSON) else { continue }
+                        accounts[entry.accountID] = .object([
+                            "display_name": .string(entry.displayName),
+                            "oauth": oauth,
+                        ])
+                    }
+                    if !accounts.isEmpty {
+                        credentials["claudeQuotaAccounts"] = .object(accounts)
+                    }
                 }
 
             case .grokMetaEnabledPlusOptionalOAuth:
                 providerMeta["grok"] = .object(["enabled": .boolean(true)])
-                if let accounts = loadAllAccounts(descriptor.credentialAccounts),
-                   let raw = accounts.first,
-                   let oauth = jsonObjectValue(from: raw) {
-                    credentials["grokOAuth"] = oauth
+                if let store = accountStores[descriptor.id],
+                   let index = try? store.loadIndex(),
+                   !index.accounts.isEmpty {
+                    var accounts: [String: JSONValue] = [:]
+                    for entry in index.accounts {
+                        guard let record = try? store.loadRecord(for: entry.accountID),
+                              let oauth = jsonObjectValue(from: record.credentialJSON) else { continue }
+                        accounts[entry.accountID] = .object([
+                            "display_name": .string(entry.displayName),
+                            "oauth": oauth,
+                        ])
+                    }
+                    if !accounts.isEmpty {
+                        credentials["grokQuotaAccounts"] = .object(accounts)
+                    }
                 }
             }
         }

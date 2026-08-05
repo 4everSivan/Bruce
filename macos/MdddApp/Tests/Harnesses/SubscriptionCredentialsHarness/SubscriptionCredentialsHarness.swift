@@ -55,7 +55,18 @@ struct SubscriptionCredentialsHarness {
         try coordinatorSkipsCodexWithoutSave()
         try coordinatorAppliesKimiToInMemoryStore()
         try coordinatorSkipsBadShapeAndUnknownProvider()
-        print("Subscription credentials tests passed: 10")
+        try providerAccountStoreAddRemoveAndIndex()
+        try providerAccountStoreDuplicateRejected()
+        try providerAccountStoreUpdateAuthorizationState()
+        try providerAccountStoreHasConnectedAndCount()
+        try providerAccountStoreLegacyKeyMigration()
+        try providerAccountStoreMigrationSkipsWithExistingIndex()
+        try providerAccountStoreCleanupAfterMigration()
+        try coordinatorRotationMultiAccountWritesPerAccountRecord()
+        try coordinatorRotationMultiAccountUnknownAccountFallsBack()
+        try providerAccountSummariesExposeNonSensitiveInfo()
+        try providerAccountStoreRemoveLastAccountKeepsEmptyIndex()
+        print("Subscription credentials tests passed: 21")
     }
 
     /// 构造 OnboardingRunInputProvider: 配置 claude 启用 + Keychain 持有 claude:oauth.
@@ -101,17 +112,23 @@ struct SubscriptionCredentialsHarness {
             credentials: [SubscriptionCredentialAccount.claudeOAuth: claudeJSON]
         )
         let (_, credentials) = try await runInput(provider)
-        guard case .object(let claude)? = credentials["claudeOAuth"] else {
-            throw CredentialsTestFailure.expectation("claudeOAuth 未注入")
+        // 多账号注入格式: claudeQuotaAccounts 字典
+        guard case .object(let accounts)? = credentials["claudeQuotaAccounts"] else {
+            throw CredentialsTestFailure.expectation("claudeQuotaAccounts 未注入: \(credentials.keys.sorted())")
         }
+        try credentialsExpect(accounts.count == 1, "claude 应有 1 个账号")
+        guard case .object(let payload)? = accounts.values.first,
+              case .object(let oauth)? = payload["oauth"] else {
+            throw CredentialsTestFailure.expectation("claude oauth 结构不符")
+        }
+        try credentialsExpect(
+            oauth["claudeAiOauth"] != nil,
+            "claudeQuotaAccounts 应包含 claudeAiOauth 节点"
+        )
         guard case .object(let meta)? = credentials["providerMeta"],
               case .object(let claudeMeta)? = meta["claude"] else {
             throw CredentialsTestFailure.expectation("providerMeta.claude 缺失")
         }
-        try credentialsExpect(
-            claude["claudeAiOauth"] != nil,
-            "claudeOAuth 应包含 claudeAiOauth 节点"
-        )
         try credentialsExpect(
             claudeMeta["enabled"] != nil,
             "providerMeta.claude.enabled 应保留"
@@ -125,12 +142,17 @@ struct SubscriptionCredentialsHarness {
             credentials: [SubscriptionCredentialAccount.grokOAuth: grokJSON]
         )
         let (_, credentials) = try await runInput(provider)
-        guard case .object(let grok)? = credentials["grokOAuth"] else {
-            throw CredentialsTestFailure.expectation("grokOAuth 未注入")
+        guard case .object(let accounts)? = credentials["grokQuotaAccounts"] else {
+            throw CredentialsTestFailure.expectation("grokQuotaAccounts 未注入: \(credentials.keys.sorted())")
+        }
+        try credentialsExpect(accounts.count == 1, "grok 应有 1 个账号")
+        guard case .object(let payload)? = accounts.values.first,
+              case .object(let oauth)? = payload["oauth"] else {
+            throw CredentialsTestFailure.expectation("grok oauth 结构不符")
         }
         try credentialsExpect(
-            grok["https://auth.x.ai::injected"] != nil,
-            "grokOAuth 应包含 scope 条目"
+            oauth["https://auth.x.ai::injected"] != nil,
+            "grokQuotaAccounts 应包含 scope 条目"
         )
     }
 
@@ -141,8 +163,8 @@ struct SubscriptionCredentialsHarness {
         )
         let (_, credentials) = try await runInput(provider)
         try credentialsExpect(
-            credentials["claudeOAuth"] == nil,
-            "无应用凭证时不应注入 claudeOAuth"
+            credentials["claudeQuotaAccounts"] == nil,
+            "无应用凭证时不应注入 claudeQuotaAccounts"
         )
         guard case .object(let meta)? = credentials["providerMeta"],
               case .object(let claudeMeta)? = meta["claude"] else {
@@ -161,8 +183,8 @@ struct SubscriptionCredentialsHarness {
         )
         let (_, credentials) = try await runInput(provider)
         try credentialsExpect(
-            credentials["grokOAuth"] == nil,
-            "无应用凭证时不应注入 grokOAuth"
+            credentials["grokQuotaAccounts"] == nil,
+            "无应用凭证时不应注入 grokQuotaAccounts"
         )
         guard case .object(let meta)? = credentials["providerMeta"],
               case .object(let grokMeta)? = meta["grok"] else {
@@ -186,7 +208,7 @@ struct SubscriptionCredentialsHarness {
         )
         let (_, credentials) = try await runInput(provider)
         try credentialsExpect(
-            credentials["claudeOAuth"] == nil && credentials["grokOAuth"] == nil,
+            credentials["claudeQuotaAccounts"] == nil && credentials["grokQuotaAccounts"] == nil,
             "禁用 provider 时不应注入任何凭证"
         )
         try credentialsExpect(
@@ -202,15 +224,12 @@ struct SubscriptionCredentialsHarness {
             credentials: [SubscriptionCredentialAccount.kimiWebTokens: kimiJSON]
         )
         let (_, credentials) = try await runInput(provider)
-        guard case .object(let kimi)? = credentials["kimiWebTokens"] else {
-            throw CredentialsTestFailure.expectation("kimiWebTokens 未注入")
+        guard case .object(let accounts)? = credentials["kimiQuotaAccounts"] else {
+            throw CredentialsTestFailure.expectation("kimiQuotaAccounts 未注入: \(credentials.keys.sorted())")
         }
+        try credentialsExpect(accounts.count == 1, "kimi 应有 1 个账号")
         try credentialsExpect(
-            kimi["access_token"] != nil,
-            "kimi 注入不受 claude/grok 改动影响"
-        )
-        try credentialsExpect(
-            credentials["claudeOAuth"] == nil && credentials["grokOAuth"] == nil,
+            credentials["claudeQuotaAccounts"] == nil && credentials["grokQuotaAccounts"] == nil,
             "kimi 启用时不应注入 claude/grok 凭证"
         )
     }
@@ -352,5 +371,362 @@ struct SubscriptionCredentialsHarness {
             forAccount: SubscriptionCredentialAccount.kimiWebTokens
         )
         try credentialsExpect(kimi == nil, "坏条目不得写入 kimi")
+    }
+
+    // MARK: - ProviderAccountStore 测试
+
+    /// 添加、移除账号, 验证 index 和 record 读写.
+    private static func providerAccountStoreAddRemoveAndIndex() throws {
+        let credStore = InMemoryCredentialStore()
+        let store = ProviderAccountStore(provider: .kimi, credentialStore: credStore)
+
+        // 空索引
+        let emptyIndex = try store.loadIndex()
+        try credentialsExpect(emptyIndex.accounts.isEmpty, "初始索引应为空")
+
+        // 添加账号
+        let added = try store.addAccount(
+            accountID: "abc123",
+            displayName: "Kimi · personal",
+            credentialJSON: "{\"access_token\":\"tok_a\",\"refresh_token\":\"tok_b\"}"
+        )
+        try credentialsExpect(added, "添加新账号应返回 true")
+
+        // 验证 index
+        let index = try store.loadIndex()
+        try credentialsExpect(index.accounts.count == 1, "索引应有 1 条: \(index.accounts.count)")
+        try credentialsExpect(index.accounts[0].accountID == "abc123", "accountID 不匹配")
+        try credentialsExpect(index.accounts[0].displayName == "Kimi · personal", "displayName 不匹配")
+
+        // 验证 record
+        let record = try store.loadRecord(for: "abc123")
+        try credentialsExpect(record != nil, "record 应存在")
+        try credentialsExpect(record?.credentialJSON.contains("tok_a") == true, "凭证内容不匹配")
+        try credentialsExpect(record?.authorizationState == .needsReauthorization, "初始状态应为 needsReauthorization")
+
+        // 添加第二个账号
+        _ = try store.addAccount(
+            accountID: "def456",
+            displayName: "Kimi · work",
+            credentialJSON: "{\"access_token\":\"tok_c\",\"refresh_token\":\"tok_d\"}"
+        )
+        let count2 = try store.accountCount(); try credentialsExpect(count2 == 2, "应有 2 个账号")
+
+        // 移除第一个账号
+        try store.removeAccount(accountID: "abc123")
+        let count1 = try store.accountCount(); try credentialsExpect(count1 == 1, "移除后应有 1 个账号")
+        let afterRemove = try store.loadIndex()
+        try credentialsExpect(afterRemove.accounts[0].accountID == "def456", "剩余账号应为 def456")
+        let removedRecord = try store.loadRecord(for: "abc123")
+        try credentialsExpect(removedRecord == nil, "移除的账号 record 应不存在")
+    }
+
+    /// 重复 accountID 被拒绝.
+    private static func providerAccountStoreDuplicateRejected() throws {
+        let credStore = InMemoryCredentialStore()
+        let store = ProviderAccountStore(provider: .deepseek, credentialStore: credStore)
+
+        _ = try store.addAccount(
+            accountID: "sk-12345",
+            displayName: "DeepSeek · 1",
+            credentialJSON: "sk-1234567890"
+        )
+        let duplicate = try store.addAccount(
+            accountID: "sk-12345",
+            displayName: "DeepSeek · 2",
+            credentialJSON: "sk-different"
+        )
+        try credentialsExpect(!duplicate, "重复 accountID 应返回 false")
+        let dupCount = try store.accountCount(); try credentialsExpect(dupCount == 1, "重复添加后仍应只有 1 个账号")
+
+        // 原始凭证未被覆盖
+        let record = try store.loadRecord(for: "sk-12345")
+        try credentialsExpect(record?.credentialJSON == "sk-1234567890", "原始凭证不应被覆盖")
+    }
+
+    /// 更新账号授权状态.
+    private static func providerAccountStoreUpdateAuthorizationState() throws {
+        let credStore = InMemoryCredentialStore()
+        let store = ProviderAccountStore(provider: .claude, credentialStore: credStore)
+
+        _ = try store.addAccount(
+            accountID: "a1b2c3d4e5f6g7h8",
+            displayName: "Claude · personal",
+            credentialJSON: "{\"claudeAiOauth\":{\"accessToken\":\"tok\"}}"
+        )
+
+        try store.updateAuthorizationState(.connected, for: "a1b2c3d4e5f6g7h8")
+        let index = try store.loadIndex()
+        try credentialsExpect(
+            index.accounts[0].authorizationState == .connected,
+            "index 状态应为 connected"
+        )
+        let record = try store.loadRecord(for: "a1b2c3d4e5f6g7h8")
+        try credentialsExpect(
+            record?.authorizationState == .connected,
+            "record 状态应为 connected"
+        )
+
+        // hasConnectedAccount
+        let hasConnected = try store.hasConnectedAccount()
+        try credentialsExpect(hasConnected == true, "应有 connected 账号")
+
+        // 改回 needsReauthorization
+        try store.updateAuthorizationState(.needsReauthorization, for: "a1b2c3d4e5f6g7h8")
+        let hasConnectedAfter = try store.hasConnectedAccount()
+        try credentialsExpect(hasConnectedAfter == false, "无 connected 账号时应返回 false")
+    }
+
+    /// hasConnectedAccount 和 accountCount.
+    private static func providerAccountStoreHasConnectedAndCount() throws {
+        let credStore = InMemoryCredentialStore()
+        let store = ProviderAccountStore(provider: .grok, credentialStore: credStore)
+
+        let emptyCount = try store.accountCount(); try credentialsExpect(emptyCount == 0, "空 store count 应为 0")
+        let emptyHasConnected = try store.hasConnectedAccount()
+        try credentialsExpect(emptyHasConnected == false, "空 store 无 connected")
+
+        _ = try store.addAccount(
+            accountID: "grok-001",
+            displayName: "Grok · 1",
+            credentialJSON: "{\"key\":\"k1\"}"
+        )
+        _ = try store.addAccount(
+            accountID: "grok-002",
+            displayName: "Grok · 2",
+            credentialJSON: "{\"key\":\"k2\"}"
+        )
+
+        let count2 = try store.accountCount(); try credentialsExpect(count2 == 2, "应有 2 个账号")
+        try store.updateAuthorizationState(.connected, for: "grok-002")
+        let grokHasConnected = try store.hasConnectedAccount()
+        try credentialsExpect(grokHasConnected == true, "应有 connected 账号")
+    }
+
+    /// 旧单条凭证迁移: 读取旧 Keychain 键, 写入 account-index + record.
+    private static func providerAccountStoreLegacyKeyMigration() throws {
+        let credStore = InMemoryCredentialStore()
+
+        // 模拟旧 DeepSeek 单条凭证
+        let oldKey = SubscriptionCredentialAccount.deepseekAPIKey
+        try credStore.saveCredential("sk-legacy1234", forAccount: oldKey)
+
+        // 迁移: 用旧键值创建 account + record
+        let store = ProviderAccountStore(provider: .deepseek, credentialStore: credStore)
+        let accountID = ProviderAccountIDGenerator.deepseekAccountID(apiKey: "sk-legacy1234")
+        let migrated = try store.addAccount(
+            accountID: accountID,
+            displayName: "DeepSeek · \(accountID)",
+            credentialJSON: "sk-legacy1234"
+        )
+        try credentialsExpect(migrated, "迁移应成功添加账号")
+
+        // 验证新 record
+        let record = try store.loadRecord(for: accountID)
+        try credentialsExpect(record?.credentialJSON == "sk-legacy1234", "迁移后凭证应匹配")
+
+        // 验证旧键仍存在 (迁移后下次启动才删除)
+        let oldVal = try credStore.loadCredential(forAccount: oldKey)
+        try credentialsExpect(oldVal == "sk-legacy1234", "旧键在迁移后应仍存在")
+
+        // 迁移后删除旧键
+        try credStore.deleteCredential(forAccount: oldKey)
+        let oldAfterDelete = try credStore.loadCredential(forAccount: oldKey)
+        try credentialsExpect(oldAfterDelete == nil, "旧键删除后应为 nil")
+
+        // 新 record 仍可用
+        let recordAfterCleanup = try store.loadRecord(for: accountID)
+        try credentialsExpect(recordAfterCleanup != nil, "删除旧键后新 record 应仍可用")
+    }
+
+    /// 已有 index 的 provider 不重复迁移.
+    private static func providerAccountStoreMigrationSkipsWithExistingIndex() throws {
+        let credStore = InMemoryCredentialStore()
+        let store = ProviderAccountStore(provider: .deepseek, credentialStore: credStore)
+
+        // 先手动添加一个账号
+        _ = try store.addAccount(
+            accountID: "manual01",
+            displayName: "DeepSeek · manual",
+            credentialJSON: "sk-manualkey1"
+        )
+
+        // 模拟旧键存在
+        let oldKey = SubscriptionCredentialAccount.deepseekAPIKey
+        try credStore.saveCredential("sk-legacy999", forAccount: oldKey)
+
+        // 迁移应跳过 (index 已有账号)
+        let index = try store.loadIndex()
+        try credentialsExpect(index.accounts.count == 1, "不应重复迁移: \(index.accounts.count)")
+        try credentialsExpect(index.accounts[0].accountID == "manual01", "应保留手动添加的账号")
+
+        // 旧键仍存在 (未被迁移消费)
+        let oldVal = try credStore.loadCredential(forAccount: oldKey)
+        try credentialsExpect(oldVal == "sk-legacy999", "旧键应未被迁移消费")
+    }
+
+    /// 迁移成功后清理旧键.
+    private static func providerAccountStoreCleanupAfterMigration() throws {
+        let credStore = InMemoryCredentialStore()
+
+        // 模拟旧 Kimi 凭证
+        let oldKey = SubscriptionCredentialAccount.kimiWebTokens
+        let kimiJSON = "{\"access_token\":\"tok_abc\",\"refresh_token\":\"tok_def\"}"
+        try credStore.saveCredential(kimiJSON, forAccount: oldKey)
+
+        let store = ProviderAccountStore(provider: .kimi, credentialStore: credStore)
+
+        // 迁移: 读取旧键, 添加账号
+        let accountID = ProviderAccountIDGenerator.kimiAccountID(accessToken: "tok_abc")
+        _ = try store.addAccount(
+            accountID: accountID,
+            displayName: "Kimi · \(String(accountID.prefix(8)))",
+            credentialJSON: kimiJSON
+        )
+        try store.updateAuthorizationState(.connected, for: accountID)
+
+        // 验证迁移成功
+        let index = try store.loadIndex()
+        try credentialsExpect(index.accounts.count == 1, "迁移后应有 1 个账号")
+        try credentialsExpect(
+            index.accounts[0].authorizationState == .connected,
+            "迁移后状态应为 connected"
+        )
+
+        // 清理旧键 (模拟 cleanupLegacyCredentials)
+        try credStore.deleteCredential(forAccount: oldKey)
+        let oldAfterCleanup = try credStore.loadCredential(forAccount: oldKey)
+        try credentialsExpect(oldAfterCleanup == nil, "清理后旧键应为 nil")
+
+        // 新 record 仍可用
+        let record = try store.loadRecord(for: accountID)
+        try credentialsExpect(record?.credentialJSON == kimiJSON, "清理后 record 应仍可用")
+        try credentialsExpect(
+            record?.authorizationState == .connected,
+            "清理后状态应仍为 connected"
+        )
+    }
+
+    /// 多账号轮换: 按 accountId 写回 per-account record, 不影响其他账号.
+    private static func coordinatorRotationMultiAccountWritesPerAccountRecord() throws {
+        let store = InMemoryCredentialStore()
+        let accountStore = ProviderAccountStore(provider: .kimi, credentialStore: store)
+        _ = try accountStore.addAccount(
+            accountID: "acct-a",
+            displayName: "Kimi · a",
+            credentialJSON: "{\"access_token\":\"old-a\",\"refresh_token\":\"old-ra\"}"
+        )
+        _ = try accountStore.addAccount(
+            accountID: "acct-b",
+            displayName: "Kimi · b",
+            credentialJSON: "{\"access_token\":\"keep-b\",\"refresh_token\":\"keep-rb\"}"
+        )
+
+        let coordinator = CredentialUpdateCoordinator(credentialStore: store)
+        let result = coordinator.apply(credentialUpdates: [
+            oauthUpdate(
+                provider: "kimi",
+                accountId: "acct-a",
+                tokens: ["access_token": "new-a", "refresh_token": "new-ra"]
+            ),
+        ])
+        try credentialsExpect(result.appliedCount == 1, "多账号轮换应 applied=1")
+        try credentialsExpect(result.failed.isEmpty, "多账号轮换不应 failed")
+
+        // acct-a 已轮换
+        let recordA = try accountStore.loadRecord(for: "acct-a")
+        try credentialsExpect(
+            recordA?.credentialJSON.contains("new-a") == true,
+            "acct-a 应含新 access_token"
+        )
+        try credentialsExpect(
+            recordA?.authorizationState == .connected,
+            "轮换后 acct-a 应为 connected"
+        )
+        // acct-b 不受影响
+        let recordB = try accountStore.loadRecord(for: "acct-b")
+        try credentialsExpect(
+            recordB?.credentialJSON.contains("keep-b") == true,
+            "acct-b 凭证不应被轮换影响"
+        )
+    }
+
+    /// 多账号轮换: 未知 accountId 回退旧键路径 (兼容未迁移单账号).
+    private static func coordinatorRotationMultiAccountUnknownAccountFallsBack() throws {
+        let store = InMemoryCredentialStore()
+        try store.saveCredential(
+            #"{"access_token":"old-a","refresh_token":"old-r"}"#,
+            forAccount: SubscriptionCredentialAccount.kimiWebTokens
+        )
+        let coordinator = CredentialUpdateCoordinator(credentialStore: store)
+        let result = coordinator.apply(credentialUpdates: [
+            oauthUpdate(
+                provider: "kimi",
+                accountId: "unknown-acct",
+                tokens: ["access_token": "new-a", "refresh_token": "new-r"]
+            ),
+        ])
+        try credentialsExpect(result.appliedCount == 1, "未知账号回退旧键应 applied=1")
+        let loaded = try store.loadCredential(
+            forAccount: SubscriptionCredentialAccount.kimiWebTokens
+        )
+        try credentialsExpect(
+            loaded?.contains("new-a") == true,
+            "旧键应写入轮换后的 token"
+        )
+    }
+
+    /// 账号摘要只暴露非敏感信息 (displayName + 状态), 不含凭证.
+    private static func providerAccountSummariesExposeNonSensitiveInfo() throws {
+        let credStore = InMemoryCredentialStore()
+        let store = ProviderAccountStore(provider: .deepseek, credentialStore: credStore)
+        _ = try store.addAccount(
+            accountID: "sk-12345",
+            displayName: "DeepSeek · sk-12345",
+            credentialJSON: "sk-secret-key-here"
+        )
+        try store.updateAuthorizationState(.connected, for: "sk-12345")
+
+        let summaries = try store.summaries()
+        try credentialsExpect(summaries.count == 1, "应有 1 条摘要")
+        try credentialsExpect(
+            summaries[0].accountID == "sk-12345",
+            "摘要应含 accountID"
+        )
+        try credentialsExpect(
+            summaries[0].displayName == "DeepSeek · sk-12345",
+            "摘要应含 displayName"
+        )
+        try credentialsExpect(
+            summaries[0].authorizationState == .connected,
+            "摘要应含授权状态"
+        )
+        // 序列化后不得含凭证明文
+        let encoded = try JSONEncoder().encode(summaries)
+        let json = String(data: encoded, encoding: .utf8) ?? ""
+        try credentialsExpect(
+            !json.contains("sk-secret-key-here"),
+            "摘要不得含凭证明文"
+        )
+    }
+
+    /// 移除最后一个账号后 index 为空 (provider 仍保留, 可再添加).
+    private static func providerAccountStoreRemoveLastAccountKeepsEmptyIndex() throws {
+        let credStore = InMemoryCredentialStore()
+        let store = ProviderAccountStore(provider: .claude, credentialStore: credStore)
+        _ = try store.addAccount(
+            accountID: "claude-001",
+            displayName: "Claude · 1",
+            credentialJSON: "{\"claudeAiOauth\":{\"accessToken\":\"tok\"}}"
+        )
+
+        try store.removeAccount(accountID: "claude-001")
+
+        let index = try store.loadIndex()
+        try credentialsExpect(index.accounts.isEmpty, "移除后 index 应为空")
+        let count = try store.accountCount()
+        try credentialsExpect(count == 0, "账号数应为 0")
+        let record = try store.loadRecord(for: "claude-001")
+        try credentialsExpect(record == nil, "record 应已删除")
     }
 }

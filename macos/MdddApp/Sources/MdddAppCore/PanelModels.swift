@@ -321,18 +321,22 @@ package struct SubscriptionWindowRow: Equatable, Sendable {
     package let resetText: String
     /// collector 标记单独占一行的量条 (如赠送额度).
     package let ownRow: Bool
+    /// 原始窗口周期 (分钟), 供折叠态排序; 无数据为 nil.
+    package let windowMinutes: Int?
 
     package init(
         label: String,
         usedPercent: Double,
         resetText: String,
-        ownRow: Bool
+        ownRow: Bool,
+        windowMinutes: Int? = nil
     ) {
         self.label = label
         self.usedPercent = usedPercent
         self.percentText = String(format: "%.0f%%", usedPercent)
         self.resetText = resetText
         self.ownRow = ownRow
+        self.windowMinutes = windowMinutes
     }
 }
 
@@ -434,8 +438,10 @@ package struct SubscriptionProviderSection: Equatable, Sendable {
     /// 附加文案 (如 Kimi 加量包余额).
     package let extraText: String?
     package let windows: [SubscriptionWindowRow]
-    /// app=="codex" 时为多账号子卡, 否则为 nil.
-    package let codexAccounts: [CodexAccountViewModel]?
+    /// 多账号子卡; 单账号为 nil. 适用于所有 provider (不仅限 codex).
+    package let accounts: [CodexAccountViewModel]
+    /// 多账号折叠态的窗口摘要; 单账号为 nil.
+    package let collapsedWindow: SubscriptionWindowRow?
     /// 余额型条目 (DeepSeek), 排序沉底, 左右排版.
     package let balance: BalanceRow?
     package let accountCountText: String?
@@ -450,7 +456,8 @@ package struct SubscriptionProviderSection: Equatable, Sendable {
         note: String?,
         extraText: String?,
         windows: [SubscriptionWindowRow],
-        codexAccounts: [CodexAccountViewModel]?,
+        accounts: [CodexAccountViewModel],
+        collapsedWindow: SubscriptionWindowRow?,
         balance: BalanceRow?,
         accountCountText: String?,
         deepSeekMonthlyUsage: DeepSeekMonthlyUsageViewModel? = nil
@@ -462,10 +469,38 @@ package struct SubscriptionProviderSection: Equatable, Sendable {
         self.note = note
         self.extraText = extraText
         self.windows = windows
-        self.codexAccounts = codexAccounts
+        self.accounts = accounts
+        self.collapsedWindow = collapsedWindow
         self.balance = balance
         self.accountCountText = accountCountText
         self.deepSeekMonthlyUsage = deepSeekMonthlyUsage
+    }
+
+    /// 是否为多账号 section (>= 2 个账号).
+    package var isMultiAccount: Bool {
+        accounts.count >= 2
+    }
+
+    /// 单账号便捷构造 (无 accounts, 无 collapsedWindow).
+    package init(
+        id: String,
+        name: String,
+        plan: String?,
+        status: String,
+        note: String?,
+        extraText: String?,
+        windows: [SubscriptionWindowRow],
+        balance: BalanceRow?,
+        accountCountText: String?,
+        deepSeekMonthlyUsage: DeepSeekMonthlyUsageViewModel? = nil
+    ) {
+        self.init(
+            id: id, name: name, plan: plan, status: status,
+            note: note, extraText: extraText, windows: windows,
+            accounts: [], collapsedWindow: nil,
+            balance: balance, accountCountText: accountCountText,
+            deepSeekMonthlyUsage: deepSeekMonthlyUsage
+        )
     }
 }
 

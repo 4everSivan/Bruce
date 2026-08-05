@@ -142,12 +142,34 @@ def _grok_query_or_missing(run_ctx):
 
 
 def _resolve_app(run_ctx: RunContext, *, kimi_coding) -> List[_Resolved]:
-    """App 模式: 注入凭证驱动; 完全不读 CC Switch 数据库."""
+    """App 模式: 注入凭证驱动; 完全不读 CC Switch 数据库.
+
+    支持多账号注入: 每个 provider 的凭证以 `<provider>QuotaAccounts` 字典传入,
+    键为 accountID, 值含 display_name 和凭证体. 单账号也走同一路径.
+    向后兼容: 旧格式 (kimi_web_tokens / provider_env / provider_meta / claudeOAuth 等)
+    仍可识别, 用作迁移前的回退.
+    """
     resolved: List[_Resolved] = []
     provider_env = run_ctx.credential("provider_env") or {}
     provider_meta = run_ctx.credential("provider_meta") or {}
 
-    if run_ctx.credential("kimi_web_tokens") is not None:
+    # --- Kimi (多账号) ---
+    kimi_accounts = run_ctx.credential("kimi_quota_accounts")
+    if isinstance(kimi_accounts, dict) and kimi_accounts:
+        for account_id, payload in kimi_accounts.items():
+            display = (payload or {}).get("display_name") or "Kimi · " + account_id[:8]
+            tokens = (payload or {}).get("tokens") or {}
+            resolved.append(
+                _Resolved(
+                    service_id="kimi_coding_" + account_id,
+                    display_name=display,
+                    app="kimi",
+                    is_current=False,
+                    query=lambda t=tokens: kimi_coding(t),
+                )
+            )
+    elif run_ctx.credential("kimi_web_tokens") is not None:
+        # 旧格式回退
         resolved.append(
             _Resolved(
                 service_id="kimi_coding",
@@ -158,39 +180,95 @@ def _resolve_app(run_ctx: RunContext, *, kimi_coding) -> List[_Resolved]:
             )
         )
 
-    deepseek_env = provider_env.get("deepseek") or {}
-    if deepseek_env.get("ANTHROPIC_AUTH_TOKEN"):
-        env = dict(deepseek_env)
-        timeout = run_ctx.http_timeout
-        resolved.append(
-            _Resolved(
-                service_id="deepseek",
-                display_name="DeepSeek",
-                app="deepseek",
-                is_current=False,
-                query=lambda e=env, t=timeout: quota_services.service_deepseek(e, t),
+    # --- DeepSeek (多账号) ---
+    ds_accounts = run_ctx.credential("deepseek_quota_accounts")
+    if isinstance(ds_accounts, dict) and ds_accounts:
+        for account_id, payload in ds_accounts.items():
+            display = (payload or {}).get("display_name") or "DeepSeek · " + account_id[:8]
+            key = (payload or {}).get("api_key") or ""
+            timeout = run_ctx.http_timeout
+            resolved.append(
+                _Resolved(
+                    service_id="deepseek_" + account_id,
+                    display_name=display,
+                    app="deepseek",
+                    is_current=False,
+                    query=lambda k=key, t=timeout: quota_services.service_deepseek(
+                        {"ANTHROPIC_AUTH_TOKEN": k}, t
+                    ),
+                )
             )
-        )
-
-    volc_meta = provider_meta.get("volcengine") or {}
-    volc_script = volc_meta.get("usage_script") or {}
-    if volc_script.get("accessKeyId") and volc_script.get("secretAccessKey"):
-        meta = dict(volc_meta)
-        now = run_ctx.now
-        timeout = run_ctx.http_timeout
-        resolved.append(
-            _Resolved(
-                service_id="volcengine",
-                display_name="火山引擎（Coding Plan）",
-                app="volcengine",
-                is_current=False,
-                query=lambda m=meta, n=now, t=timeout: quota_services.service_volcengine(
-                    {}, m, n, t
-                ),
+    else:
+        deepseek_env = provider_env.get("deepseek") or {}
+        if deepseek_env.get("ANTHROPIC_AUTH_TOKEN"):
+            env = dict(deepseek_env)
+            timeout = run_ctx.http_timeout
+            resolved.append(
+                _Resolved(
+                    service_id="deepseek",
+                    display_name="DeepSeek",
+                    app="deepseek",
+                    is_current=False,
+                    query=lambda e=env, t=timeout: quota_services.service_deepseek(e, t),
+                )
             )
-        )
 
-    if (provider_meta.get("claude") or {}).get("enabled"):
+    # --- 火山引擎 (多账号) ---
+    volc_accounts = run_ctx.credential("volcengine_quota_accounts")
+    if isinstance(volc_accounts, dict) and volc_accounts:
+        for account_id, payload in volc_accounts.items():
+            display = (payload or {}).get("display_name") or "火山引擎 · " + account_id[:8]
+            ak = (payload or {}).get("access_key") or ""
+            sk = (payload or {}).get("secret_key") or ""
+            meta = {"usage_script": {"accessKeyId": ak, "secretAccessKey": sk}}
+            now = run_ctx.now
+            timeout = run_ctx.http_timeout
+            resolved.append(
+                _Resolved(
+                    service_id="volcengine_" + account_id,
+                    display_name=display,
+                    app="volcengine",
+                    is_current=False,
+                    query=lambda m=meta, n=now, t=timeout: quota_services.service_volcengine(
+                        {}, m, n, t
+                    ),
+                )
+            )
+    else:
+        volc_meta = provider_meta.get("volcengine") or {}
+        volc_script = volc_meta.get("usage_script") or {}
+        if volc_script.get("accessKeyId") and volc_script.get("secretAccessKey"):
+            meta = dict(volc_meta)
+            now = run_ctx.now
+            timeout = run_ctx.http_timeout
+            resolved.append(
+                _Resolved(
+                    service_id="volcengine",
+                    display_name="火山引擎（Coding Plan）",
+                    app="volcengine",
+                    is_current=False,
+                    query=lambda m=meta, n=now, t=timeout: quota_services.service_volcengine(
+                        {}, m, n, t
+                    ),
+                )
+            )
+
+    # --- Claude (多账号) ---
+    claude_accounts = run_ctx.credential("claude_quota_accounts")
+    if isinstance(claude_accounts, dict) and claude_accounts:
+        for account_id, payload in claude_accounts.items():
+            display = (payload or {}).get("display_name") or "Claude · " + account_id[:8]
+            oauth = (payload or {}).get("oauth")
+            resolved.append(
+                _Resolved(
+                    service_id="claude_" + account_id,
+                    display_name=display,
+                    app="claude",
+                    is_current=False,
+                    query=lambda o=oauth: _claude_query_with_inject(run_ctx, o),
+                )
+            )
+    elif (provider_meta.get("claude") or {}).get("enabled"):
         resolved.append(
             _Resolved(
                 service_id="claude",
@@ -201,7 +279,22 @@ def _resolve_app(run_ctx: RunContext, *, kimi_coding) -> List[_Resolved]:
             )
         )
 
-    if (provider_meta.get("grok") or {}).get("enabled"):
+    # --- Grok (多账号) ---
+    grok_accounts = run_ctx.credential("grok_quota_accounts")
+    if isinstance(grok_accounts, dict) and grok_accounts:
+        for account_id, payload in grok_accounts.items():
+            display = (payload or {}).get("display_name") or "Grok · " + account_id[:8]
+            oauth = (payload or {}).get("oauth")
+            resolved.append(
+                _Resolved(
+                    service_id="grok_" + account_id,
+                    display_name=display,
+                    app="grok",
+                    is_current=False,
+                    query=lambda o=oauth: _grok_query_with_inject(run_ctx, o),
+                )
+            )
+    elif (provider_meta.get("grok") or {}).get("enabled"):
         resolved.append(
             _Resolved(
                 service_id="grok",
@@ -212,7 +305,59 @@ def _resolve_app(run_ctx: RunContext, *, kimi_coding) -> List[_Resolved]:
             )
         )
 
+    # --- Antigravity (多账号) ---
+    agy_accounts = run_ctx.credential("antigravity_quota_accounts")
+    if isinstance(agy_accounts, dict) and agy_accounts:
+        for account_id, payload in agy_accounts.items():
+            display = (payload or {}).get("display_name") or "Antigravity · " + account_id[:8]
+            oauth = (payload or {}).get("oauth")
+            resolved.append(
+                _Resolved(
+                    service_id="antigravity_" + account_id,
+                    display_name=display,
+                    app="antigravity",
+                    is_current=False,
+                    query=lambda o=oauth: _agy_query_with_inject(run_ctx, o),
+                )
+            )
+    elif run_ctx.credential("antigravity_oauth") is not None:
+        # 旧格式回退: antigravity 由 collect_usage.service_antigravity 处理,
+        # 不在此解析; 留空让 collect_usage 自行读取.
+        pass
+
     return resolved
+
+
+def _claude_query_with_inject(run_ctx, injected_oauth):
+    """Claude 多账号查询: 使用注入的 oauth 凭证."""
+    service_claude = getattr(quota_official, "service_claude")
+    result = service_claude(
+        run_ctx.home, run_ctx.now, run_ctx.http_timeout, injected=injected_oauth
+    )
+    if result is None:
+        raise RuntimeError("Claude 凭证无效或已过期")
+    return result
+
+
+def _grok_query_with_inject(run_ctx, injected_oauth):
+    """Grok 多账号查询: 使用注入的 oauth 凭证."""
+    service_grok = getattr(quota_official, "service_grok")
+    result = service_grok(
+        run_ctx.home, run_ctx.now, run_ctx.http_timeout, injected=injected_oauth
+    )
+    if result is None:
+        raise RuntimeError("Grok 凭证无效或已过期")
+    return result
+
+
+def _agy_query_with_inject(run_ctx, injected_oauth):
+    """Antigravity 多账号查询: 使用注入的 oauth 凭证.
+
+    Antigravity 的 service 函数在 collect_usage 中, 这里通过 run_ctx 间接调用.
+    """
+    # Antigravity 仍由 collect_usage.service_antigravity 处理,
+    # 多账号注入在后续阶段实现. 目前返回 None 让 finalize 标记 empty.
+    return None
 
 
 def _resolve_official_cli(run_ctx: RunContext) -> List[_Resolved]:

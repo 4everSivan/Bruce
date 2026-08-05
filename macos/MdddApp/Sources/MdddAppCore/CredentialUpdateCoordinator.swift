@@ -53,6 +53,8 @@ package struct CredentialUpdateCoordinator: Sendable {
     /// - Skip: 坏形状, codex, 未知 provider, merge 返回 nil
     /// - Fail: `saveCredential` 抛错 → reason 为截断后的 localizedDescription
     /// - Success: appliedCount +1
+    /// 多账号 provider: 按 accountId 写回 per-account record (ProviderAccountStore);
+    /// 单账号/旧格式: 写回旧 Keychain 键 (向后兼容).
     package func apply(credentialUpdates: [JSONValue]) -> CredentialUpdateApplyResult {
         var result = CredentialUpdateApplyResult()
         for value in credentialUpdates {
@@ -62,13 +64,64 @@ package struct CredentialUpdateCoordinator: Sendable {
             }
             // codex 明确跳过 (keychainAccount 也会返回 nil; 先判 provider 语义更清晰)
             guard update.provider != "codex",
-                  let account = CredentialRotationMerge.keychainAccount(
-                      forProvider: update.provider
-                  ) else {
+                  let providerID = SubscriptionProviderID(rawValue: update.provider) else {
                 result.skippedCount += 1
                 continue
             }
-            // load 失败按无既有凭证起步 (与历史 try? 语义一致)
+
+            if CredentialRotationMerge.supportsAccountScopedRotation(
+                forProvider: update.provider
+            ) {
+                // 多账号路径: 写回 per-account record.
+                // 仅当 index 中存在该账号时使用; 否则回退旧键 (兼容未迁移的单账号).
+                let store = ProviderAccountStore(
+                    provider: providerID,
+                    credentialStore: credentialStore
+                )
+                let index = try? store.loadIndex()
+                if let index, index.entry(for: update.accountId) != nil {
+                    do {
+                        let record = try store.loadRecord(for: update.accountId)
+                        guard let merged = CredentialRotationMerge.mergedAccountJSON(
+                            existingCredentialJSON: record?.credentialJSON,
+                            update: update,
+                            providerID: providerID
+                        ) else {
+                            result.skippedCount += 1
+                            continue
+                        }
+                        var updated = record ?? ProviderAccountRecord(
+                            accountID: update.accountId,
+                            displayName: index.entry(for: update.accountId)?.displayName ?? update.accountId,
+                            credentialJSON: merged,
+                            authorizationState: .connected,
+                            updatedAt: Date()
+                        )
+                        updated.credentialJSON = merged
+                        updated.authorizationState = .connected
+                        updated.updatedAt = Date()
+                        try store.saveRecord(updated)
+                        try store.updateAuthorizationState(.connected, for: update.accountId)
+                        result.appliedCount += 1
+                    } catch {
+                        result.failed.append(CredentialUpdateFailure(
+                            provider: update.provider,
+                            accountId: update.accountId,
+                            reason: Self.sanitizedFailureReason(from: error)
+                        ))
+                    }
+                    continue
+                }
+                // index 无该账号: 回退旧键路径 (见下方)
+            }
+
+            // 旧格式回退: 写回旧 Keychain 键
+            guard let account = CredentialRotationMerge.keychainAccount(
+                forProvider: update.provider
+            ) else {
+                result.skippedCount += 1
+                continue
+            }
             let existing = try? credentialStore.loadCredential(forAccount: account)
             guard let merged = CredentialRotationMerge.mergedJSON(
                 existingJSON: existing ?? nil,

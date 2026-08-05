@@ -498,11 +498,71 @@ struct SettingsView: View {
                 subscriptionEnabledToggle(id)
             }
             if expanded {
+                providerAccountList(id)
                 subscriptionProviderManagement(id)
             }
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .contain)
+    }
+
+    /// 多账号列表: 显示该 provider 的全部账号 (名称 + 状态 + 移除按钮).
+    /// 单账号 (0 或 1 个) 不显示列表, 保持现有管理 UI.
+    /// Codex 走专用 codexGroup (已有账号状态列表).
+    private func providerAccountList(_ id: SubscriptionProviderID) -> some View {
+        let summaries = model.providerAccountSummaries[id] ?? []
+        guard id != .codex, summaries.count >= 1 else {
+            return AnyView(EmptyView())
+        }
+        return AnyView(
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Array(summaries.enumerated()), id: \.element.accountID) {
+                    _, summary in
+                    HStack(spacing: 6) {
+                        Text(summary.displayName)
+                            .font(.caption)
+                            .lineLimit(1)
+                        Spacer()
+                        accountStateLabel(summary)
+                        Button {
+                            coordinator.removeAccount(
+                                accountID: summary.accountID, from: id
+                            )
+                        } label: {
+                            Image(systemName: "xmark.circle")
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("移除账号 \(summary.displayName)")
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+            .padding(.vertical, 2)
+        )
+    }
+
+    /// 账号状态文案 (非敏感).
+    private func accountStateLabel(
+        _ summary: ProviderAccountSummary
+    ) -> some View {
+        let (text, icon): (String, String)
+        switch summary.authorizationState {
+        case .connected:
+            text = "已连接"
+            icon = "checkmark.circle.fill"
+        case .needsReauthorization:
+            text = "需要重新登录"
+            icon = "exclamationmark.triangle.fill"
+        case .revoked:
+            text = "已撤销"
+            icon = "xmark.circle.fill"
+        }
+        return Label(text, systemImage: icon)
+            .font(.caption)
+            .foregroundStyle(summary.authorizationState == .connected
+                ? Color.secondary : Color.orange)
+            .accessibilityLabel("\(summary.displayName) 状态: \(text)")
     }
 
     /// 展开后的管理 UI, 委托各 provider 独立 section (layout-identical extract).

@@ -59,18 +59,23 @@ extension PanelViewModelMapper {
         providerOrder: [String],
         diagnostics: inout [PanelDiagnostic]
     ) -> SubscriptionViewModel? {
-        var sections: [SubscriptionProviderSection] = []
-        var codexAccounts: [CodexAccountViewModel] = []
-        var codexIndex: Int?
+        // 按 provider 分组所有 service.
+        // 同一 provider 的多个 service (多账号) 分组成一个 section;
+        // 单个 service 直接作为 section.
+        struct ProviderGroup {
+            let providerID: String
+            let displayName: String
+            var services: [(service: AgentServiceItem, windows: [SubscriptionWindowRow], note: String?)] = []
+        }
+        var groups: [String: ProviderGroup] = [:]
+        var groupOrder: [String] = []
 
         for service in artifact.services {
             let kind = service.kind
             let note = normalizedNote(service.note)
-            let isCodex = SubscriptionPresentationPolicy.isCodex(app: service.app)
             let hasWindows = !service.windows.isEmpty
             let hasBalance = service.balance != nil
 
-            // 未授权占位视为未启用, 排除并留诊断 (规则见 PresentationPolicy).
             if SubscriptionPresentationPolicy.shouldSkipPlaceholder(
                 kind: kind,
                 hasWindows: hasWindows,
@@ -97,70 +102,99 @@ extension PanelViewModelMapper {
                 parseWindow(raw, serviceID: service.id, now: now, diagnostics: &diagnostics)
             }
 
-            if isCodex {
-                if codexIndex == nil {
-                    codexIndex = sections.count
-                }
-                codexAccounts.append(CodexAccountViewModel(
-                    id: service.id,
-                    name: SubscriptionPresentationPolicy.codexAccountShortName(from: service.name),
-                    plan: service.plan,
-                    status: service.status,
-                    note: note,
-                    windows: windows,
-                    lastSuccessText: lastSuccessText(
-                        for: service,
-                        now: now
-                    )
-                ))
-                continue
-            }
-
-            // 月度统计仅映射到 DeepSeek section; 其他余额型 Provider 不受影响.
-            let monthlyUsage = SubscriptionPresentationPolicy.shouldAttachDeepSeekMonthly(
-                serviceID: service.id
+            let providerID = SubscriptionPresentationPolicy.providerID(forServiceID: service.id)
+            let displayName = SubscriptionPresentationPolicy.displayName(
+                serviceID: service.id, serviceName: service.name
             )
-                ? deepSeekMonthlyUsageViewModel(deepSeekMonthlyUsage)
-                : nil
 
-            sections.append(SubscriptionProviderSection(
-                id: service.id,
-                name: SubscriptionPresentationPolicy.displayName(
-                    serviceID: service.id,
-                    serviceName: service.name
-                ),
-                plan: service.plan,
-                status: service.status,
-                note: note,
-                extraText: SubscriptionPresentationPolicy.extraText(normalizedNote(service.extra)),
-                windows: windows,
-                codexAccounts: nil,
-                balance: service.balance.map { BalanceRow(amount: $0, currency: service.currency) },
-                accountCountText: nil,
-                deepSeekMonthlyUsage: monthlyUsage
-            ))
+            if groups[providerID] == nil {
+                groups[providerID] = ProviderGroup(providerID: providerID, displayName: displayName)
+                groupOrder.append(providerID)
+            }
+            groups[providerID]?.services.append((service, windows, note))
         }
 
-        // Codex 多账号分组成一张卡, 位置取第一个 codex 条目处.
-        if !codexAccounts.isEmpty {
-            let groupStatus = SubscriptionPresentationPolicy.codexGroupStatus(
-                from: codexAccounts.map(\.status)
-            )
-            let group = SubscriptionProviderSection(
-                id: "codex",
-                name: "ChatGPT",
-                plan: nil,
-                status: groupStatus,
-                note: nil,
-                extraText: nil,
-                windows: [],
-                codexAccounts: codexAccounts,
-                balance: nil,
-                accountCountText: "\(codexAccounts.count) 个账号",
-                deepSeekMonthlyUsage: nil
-            )
-            let insertion = min(codexIndex ?? sections.count, sections.count)
-            sections.insert(group, at: insertion)
+        // 按 provider 组装 sections.
+        var sections: [SubscriptionProviderSection] = []
+        for providerID in groupOrder {
+            guard let group = groups[providerID] else { continue }
+            let services = group.services
+
+            if services.count == 1 {
+                // 单账号: 直接作为 section, 保持现有展示.
+                // accounts 携带单条记录 (供测试和 UI 取 lastSuccessText 等),
+                // 但 isMultiAccount 为 false, 不触发折叠.
+                let svc = services[0]
+                let monthlyUsage = SubscriptionPresentationPolicy.shouldAttachDeepSeekMonthly(
+                    serviceID: providerID
+                ) ? deepSeekMonthlyUsageViewModel(deepSeekMonthlyUsage) : nil
+
+                let accountVM = CodexAccountViewModel(
+                    id: svc.service.id,
+                    name: SubscriptionPresentationPolicy.accountShortName(
+                        from: svc.service.name, providerID: providerID
+                    ),
+                    plan: svc.service.plan,
+                    status: svc.service.status,
+                    note: svc.note,
+                    windows: svc.windows,
+                    lastSuccessText: lastSuccessText(for: svc.service, now: now)
+                )
+
+                sections.append(SubscriptionProviderSection(
+                    id: svc.service.id,
+                    name: group.displayName,
+                    plan: svc.service.plan,
+                    status: svc.service.status,
+                    note: svc.note,
+                    extraText: SubscriptionPresentationPolicy.extraText(normalizedNote(svc.service.extra)),
+                    windows: svc.windows,
+                    accounts: [accountVM],
+                    collapsedWindow: nil,
+                    balance: svc.service.balance.map { BalanceRow(amount: $0, currency: svc.service.currency) },
+                    accountCountText: nil,
+                    deepSeekMonthlyUsage: monthlyUsage
+                ))
+            } else {
+                // 多账号: 分组成 section + accounts + collapsedWindow.
+                let accountVMs: [CodexAccountViewModel] = services.map { item in
+                    CodexAccountViewModel(
+                        id: item.service.id,
+                        name: SubscriptionPresentationPolicy.accountShortName(
+                            from: item.service.name, providerID: providerID
+                        ),
+                        plan: item.service.plan,
+                        status: item.service.status,
+                        note: item.note,
+                        windows: item.windows,
+                        lastSuccessText: lastSuccessText(for: item.service, now: now)
+                    )
+                }
+                let groupStatus = SubscriptionPresentationPolicy.codexGroupStatus(
+                    from: accountVMs.map(\.status)
+                )
+                let collapsed = SubscriptionPresentationPolicy.collapsedWindow(
+                    from: accountVMs
+                )
+                let monthlyUsage = SubscriptionPresentationPolicy.shouldAttachDeepSeekMonthly(
+                    serviceID: providerID
+                ) ? deepSeekMonthlyUsageViewModel(deepSeekMonthlyUsage) : nil
+
+                sections.append(SubscriptionProviderSection(
+                    id: providerID,
+                    name: SubscriptionPresentationPolicy.groupDisplayName(providerID: providerID),
+                    plan: nil,
+                    status: groupStatus,
+                    note: nil,
+                    extraText: nil,
+                    windows: [],
+                    accounts: accountVMs,
+                    collapsedWindow: collapsed,
+                    balance: nil,
+                    accountCountText: "\(accountVMs.count) 个账号",
+                    deepSeekMonthlyUsage: monthlyUsage
+                ))
+            }
         }
 
         guard !sections.isEmpty else {
@@ -238,7 +272,8 @@ extension PanelViewModelMapper {
                 now: now,
                 calendar: calendar
             ),
-            ownRow: object["ownRow"]?.boolValue ?? false
+            ownRow: object["ownRow"]?.boolValue ?? false,
+            windowMinutes: minutes
         )
     }
 

@@ -68,7 +68,28 @@ final class SubscriptionService {
         self.homeURL = homeURL
         self.localProbe = localProbe
         let config = configStore?.load()
+        migrateLegacyCredentials()
         publishSubscriptionState(from: config)
+    }
+
+    // MARK: - 旧凭证迁移
+
+    /// 检测旧单条 Keychain 凭证, 迁移为 ProviderAccountStore 的 account-index + record.
+    /// 迁移只读取不删除旧键; 成功后清理旧键.
+    /// 实现位于 MdddOnboardingCore.ProviderAccountStore.migrateLegacyAccountsIfNeeded,
+    /// 与 CollectorRunInput 共享, 避免在两处维护凭证格式逻辑.
+    private func migrateLegacyCredentials() {
+        for provider in SubscriptionProviderID.allCases where provider != .codex {
+            let store = ProviderAccountStore(provider: provider, credentialStore: credentialStore)
+            let migrated = (try? store.migrateLegacyAccountsIfNeeded(
+                legacyKeys: ProviderAccountKeys.legacyKeys(for: provider)
+            )) ?? false
+            if migrated {
+                for key in ProviderAccountKeys.legacyKeys(for: provider) {
+                    try? credentialStore.deleteCredential(forAccount: key)
+                }
+            }
+        }
     }
 
     /// Coordinator 在自身 init 完成后挂载 objectWillChange 转发.
@@ -117,7 +138,17 @@ final class SubscriptionService {
         from: config, configured: providers
         )
         model.setSubscriptionProviderOrder(subscriptionProviderOrder)
+        publishAllProviderAccountSummaries()
         publishCodexSummaryFromIndex()
+    }
+
+    /// 发布全部非 Codex provider 的多账号摘要到 AppModel.
+    private func publishAllProviderAccountSummaries() {
+        for provider in SubscriptionProviderID.allCases where provider != .codex {
+            let store = ProviderAccountStore(provider: provider, credentialStore: credentialStore)
+            let summaries = (try? store.summaries()) ?? []
+            model.setProviderAccountSummaries(summaries, for: provider)
+        }
     }
 
     /// 对齐 provider 顺序与实际配置: 移除已删除的, 追加新增的 (按 allCases 序).
@@ -769,6 +800,48 @@ final class SubscriptionService {
         // Phase 4: 移除配置条目 (非重置), 使 provider 回到"未添加"状态
         guard removeSubscriptionFromConfig(id) else { return }
         model.setSettingsError(nil)
+    }
+
+    // MARK: - 多账号管理 (Phase 2)
+
+    /// 当前 provider 的账号摘要列表 (非 Codex). Codex 走 codexAccountStatuses.
+    func accountSummaries(for id: SubscriptionProviderID) -> [ProviderAccountSummary] {
+        guard id != .codex else { return [] }
+        let store = ProviderAccountStore(provider: id, credentialStore: credentialStore)
+        return (try? store.summaries()) ?? []
+    }
+
+    /// 移除单个账号: 删除 per-account record + index 条目.
+    /// 移除后若 provider 无任何账号, 保留 provider 配置条目 (用户可再添加).
+    func removeAccount(accountID: String, from id: SubscriptionProviderID) {
+        let store = ProviderAccountStore(provider: id, credentialStore: credentialStore)
+        do {
+            try store.removeAccount(accountID: accountID)
+            publishAllProviderAccountSummaries()
+            model.setSubscriptionCredentialConfigured(
+                credentialConfigured(id), for: id
+            )
+            model.setSettingsError(nil)
+        } catch {
+            model.setSettingsError(
+                "\(id.displayName) 账号移除失败, 请在 Keychain 中手动检查"
+            )
+        }
+    }
+
+    /// 更新账号授权状态 (验证失败标记 needsReauthorization, 成功后 connected).
+    func updateAccountAuthorizationState(
+        accountID: String,
+        from id: SubscriptionProviderID,
+        state: ProviderAccountAuthorizationState
+    ) {
+        let store = ProviderAccountStore(provider: id, credentialStore: credentialStore)
+        do {
+            try store.updateAuthorizationState(state, for: accountID)
+            publishAllProviderAccountSummaries()
+        } catch {
+            model.setSettingsError("\(id.displayName) 账号状态更新失败")
+        }
     }
 
     /// 从配置删除 provider 条目; 失败发布错误并返回 false.
