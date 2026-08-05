@@ -27,29 +27,35 @@ struct RefreshPipelineRequest: Sendable {
     }
 }
 
-/// 一次刷新成功走完全链路后的可观察结果 (Task 6 填充).
+/// 一次刷新走完可发布链路 (或明确的不可发布 bridge 结果) 后的可观察结果.
 ///
 /// 类型对齐本仓库真实命名:
 /// - 运行产物: `CollectorRunOutput` (`BridgeResponse` + 可选 stderr 诊断)
 /// - 凭证写回: `CredentialUpdateApplyResult`
 /// - 额度预警候选: `QuotaAlertEvaluator.overThresholdEntries` 返回的
 ///   `[(key: String, alert: QuotaAlert)]` (无独立 `Entry` 类型)
+/// - `publishedArtifact`: 非 nil 表示 Pipeline 已 `store.publish`; nil 表示
+///   auth/error/无 artifact 等未写入路径, Scheduler 只做 phase 映射
 struct CompletedRun: Sendable {
     let output: CollectorRunOutput
     let credentialApply: CredentialUpdateApplyResult
     let quotaAlertEntries: [(key: String, alert: QuotaAlert)]
     let includesManual: Bool
+    /// 已成功 publish 的 artifact; nil = 本轮未写 store.
+    let publishedArtifact: JSONValue?
 
     init(
         output: CollectorRunOutput,
         credentialApply: CredentialUpdateApplyResult,
         quotaAlertEntries: [(key: String, alert: QuotaAlert)],
-        includesManual: Bool
+        includesManual: Bool,
+        publishedArtifact: JSONValue?
     ) {
         self.output = output
         self.credentialApply = credentialApply
         self.quotaAlertEntries = quotaAlertEntries
         self.includesManual = includesManual
+        self.publishedArtifact = publishedArtifact
     }
 }
 
@@ -62,13 +68,21 @@ enum RefreshPipelineResult: Sendable {
     case cancelled
 }
 
-// MARK: - Pipeline skeleton
+// MARK: - Pipeline
 
 /// 编排单次完整刷新 (run input → collect → Codex recovery → finalize →
 /// credential apply → publish → quota entries). 不持有 timer 或 ModuleScheduleState.
 ///
-/// Task 5: 仅骨架, `run` 在 stopped 或未接线时返回 `.cancelled`.
-/// Task 6: 迁入 `RefreshScheduler.executeRefresh` 主体.
+/// 固定顺序 (S2 / Task 6):
+/// 1. resolveRunInput
+/// 2. loadPreviousArtifact (一轮只读一次)
+/// 3. firstCollect
+/// 4. optionalCodexRecovery (仅 agentUsage)
+/// 5. finalize (ArtifactFinalizer)
+/// 6. applyCredentialUpdates
+/// 7. publish + 合并 credential 失败诊断 / success→partial 降级
+/// 8. evaluateQuotaAlerts (纯候选; 是否弹由 Scheduler 结合 includesManual)
+/// 9. return `.completed`
 @MainActor
 struct RefreshExecutionPipeline {
     private let executor: any CollectorExecuting
@@ -94,20 +108,222 @@ struct RefreshExecutionPipeline {
         self.isStopped = isStopped
     }
 
-    /// 执行一次刷新. Task 5 骨架: stopped 或未实现路径均返回 `.cancelled`.
+    /// 执行一次完整刷新生命周期. 不触碰 ModuleScheduleState / timer.
     func run(_ request: RefreshPipelineRequest) async -> RefreshPipelineResult {
-        // 保留 request 引用, 避免骨架期未使用参数告警; Task 6 使用全部字段.
-        _ = request
-        _ = executor
-        _ = store
-        _ = runInputProvider
-        _ = credentialUpdates
-        _ = codexTokenManager
-
         if isStopped() {
             return .cancelled
         }
-        // 完整链路在 Task 6 迁入; 在 Scheduler 接线前保持无副作用.
-        return .cancelled
+
+        // 1. resolveRunInput — 取不到时不启动进程
+        var context: [String: JSONValue] = [:]
+        var credentials: [String: JSONValue] = [:]
+        if let runInputProvider {
+            do {
+                let input = try await runInputProvider.runInput(for: request.module)
+                context = input.context
+                credentials = input.credentials
+            } catch let inputError as CollectorRunInputError {
+                return .runInputFailed(inputError)
+            } catch {
+                // 凭证存储读取等未知错误按依赖缺失走 backoff
+                return .runInputFailed(
+                    .missingDependency(
+                        module: request.module,
+                        reason: "读取运行输入失败"
+                    )
+                )
+            }
+        }
+        if isStopped() {
+            return .cancelled
+        }
+
+        // 2. loadPreviousArtifact — 同一轮内只读一次, 避免读到本轮 publish 覆盖
+        let previousArtifact: JSONValue?
+        do {
+            previousArtifact = try store.load(
+                request.module,
+                now: request.now,
+                staleAfter: request.staleAfter
+            ).artifact
+        } catch {
+            previousArtifact = nil
+        }
+
+        // 3. firstCollect
+        let firstResult = await runCollector(
+            module: request.module,
+            context: context,
+            credentials: credentials
+        )
+        if isStopped() {
+            return .cancelled
+        }
+        let firstOutput: CollectorRunOutput
+        switch firstResult {
+        case .success(let output):
+            firstOutput = output
+        case .failure(let error):
+            return .collectorFailed(error)
+        }
+
+        // 4-5. Codex recovery (agentUsage only) + finalize
+        // 无论 challenge/决议/retry 结果如何, first artifact 存在时都四源合并后一次发布.
+        let output: CollectorRunOutput
+        if request.module == .agentUsage {
+            let recovery = CodexQuotaRecovery()
+            let retryPhase = await recovery.handle(
+                firstOutput: firstOutput,
+                firstCredentials: credentials,
+                module: request.module,
+                runInputProvider: runInputProvider,
+                challengeHandler: codexTokenManager,
+                isStopped: isStopped,
+                runCollector: { [self] module, context, credentials in
+                    await self.runCollector(
+                        module: module,
+                        context: context,
+                        credentials: credentials
+                    )
+                }
+            )
+            if isStopped() {
+                return .cancelled
+            }
+            output = ArtifactFinalizer().finalize(
+                firstOutput: firstOutput,
+                retryPhase: retryPhase,
+                previousArtifact: previousArtifact,
+                fallbackDecisions: runInputProvider?.codexTokenDecisions ?? []
+            )
+        } else {
+            output = firstOutput
+        }
+
+        // 6-8. credential apply → publish → quota (仅可发布路径)
+        return finishPublishablePath(output: output, request: request)
+    }
+
+    // MARK: - Publishable path
+
+    /// 对齐原 handleResult success 分支: auth-no-artifact / status.error 不写回不发布;
+    /// 其余路径先 apply 凭证, 再 publish, 失败诊断与 partial 降级在 Pipeline 落地.
+    private func finishPublishablePath(
+        output: CollectorRunOutput,
+        request: RefreshPipelineRequest
+    ) -> RefreshPipelineResult {
+        let response = output.response
+        let includesManual = request.intent.includesManual
+        let emptyApply = CredentialUpdateApplyResult()
+
+        let hasAuthError = response.diagnostics.contains { $0.category == "auth" }
+        // 任务 9: auth diagnostic 只在拿不到 artifact 时整模块 authRequired.
+        if hasAuthError && response.artifact == nil {
+            return .completed(CompletedRun(
+                output: output,
+                credentialApply: emptyApply,
+                quotaAlertEntries: [],
+                includesManual: includesManual,
+                publishedArtifact: nil
+            ))
+        }
+        if response.status == .error {
+            return .completed(CompletedRun(
+                output: output,
+                credentialApply: emptyApply,
+                quotaAlertEntries: [],
+                includesManual: includesManual,
+                publishedArtifact: nil
+            ))
+        }
+
+        // 6. applyCredentialUpdates — 轮换令牌先于 artifact 发布写回
+        var publishedDiagnostics = response.diagnostics
+        var effectiveStatus = response.status
+        var applyResult = emptyApply
+        if !response.credentialUpdates.isEmpty {
+            applyResult = credentialUpdates?.apply(
+                credentialUpdates: response.credentialUpdates
+            ) ?? emptyApply
+            if !applyResult.failed.isEmpty {
+                for failure in applyResult.failed {
+                    publishedDiagnostics.append(BridgeDiagnostic(
+                        code: "CREDENTIAL_PERSIST_FAILED",
+                        category: "storage",
+                        stage: "credentialUpdate",
+                        message: "\(failure.provider) 凭证写回失败",
+                        retryable: true
+                    ))
+                }
+                // 有 artifact 时将 success 降级为 partial (在 Pipeline 落地)
+                if effectiveStatus == .success, response.artifact != nil {
+                    effectiveStatus = .partial
+                }
+            }
+        }
+
+        let finalOutput = CollectorRunOutput(
+            response: BridgeResponse(
+                schemaVersion: response.schemaVersion,
+                runId: response.runId,
+                generatedAt: response.generatedAt,
+                status: effectiveStatus,
+                artifact: response.artifact,
+                credentialUpdates: response.credentialUpdates,
+                diagnostics: publishedDiagnostics,
+                credentialChallenges: response.credentialChallenges
+            ),
+            stderrDiagnostic: output.stderrDiagnostic
+        )
+
+        guard let artifact = response.artifact else {
+            // 凭证可能已写回; 无 artifact → Scheduler 走 schema backoff
+            return .completed(CompletedRun(
+                output: finalOutput,
+                credentialApply: applyResult,
+                quotaAlertEntries: [],
+                includesManual: includesManual,
+                publishedArtifact: nil
+            ))
+        }
+
+        // 7. publish
+        do {
+            try store.publish(artifact, for: request.module, attemptedAt: request.now)
+        } catch {
+            // 凭证已 apply; 发布失败不更新 lastPublishedDiagnostics
+            return .publishFailed(error)
+        }
+
+        // 8. evaluateQuotaAlerts — 纯候选; 是否弹由 Scheduler 结合 includesManual
+        let entries = QuotaAlertEvaluator.overThresholdEntries(artifact: artifact)
+        return .completed(CompletedRun(
+            output: finalOutput,
+            credentialApply: applyResult,
+            quotaAlertEntries: entries,
+            includesManual: includesManual,
+            publishedArtifact: artifact
+        ))
+    }
+
+    // MARK: - Collector
+
+    private func runCollector(
+        module: CollectorModule,
+        context: [String: JSONValue],
+        credentials: [String: JSONValue]
+    ) async -> Result<CollectorRunOutput, Error> {
+        do {
+            let output = try await executor.run(
+                module: module,
+                context: context,
+                credentials: credentials
+            )
+            return .success(output)
+        } catch is CancellationError {
+            return .failure(CancellationError())
+        } catch {
+            return .failure(error)
+        }
     }
 }

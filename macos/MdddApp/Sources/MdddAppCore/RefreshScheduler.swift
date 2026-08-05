@@ -386,7 +386,7 @@ package final class RefreshScheduler {
         onStatusChange?(module, .refreshing, nil)
 
         runningTasks[module] = Task { [weak self] in
-            await self?.executeRefresh(for: module)
+            await self?.executeRefresh(for: module, intent: intent)
         }
     }
 
@@ -396,125 +396,58 @@ package final class RefreshScheduler {
     /// Codex challenge 处理只经它读取记录、刷新令牌与持久化重新授权状态.
     package var codexTokenManager: (any CodexChallengeHandling)?
 
-    // CodexRetryPhaseResult 和 CodexChallenge 已移至 CodexQuotaRecovery.swift (阶段 B).
-
-
-    private func executeRefresh(for module: CollectorModule) async {
-        // 启动进程前取受控输入; 取不到时不启动进程, 按分类进入
-        // authRequired 或 backoff, 避免空 context/空凭证运行 Collector.
-        var context: [String: JSONValue] = [:]
-        var credentials: [String: JSONValue] = [:]
-        if let runInputProvider {
-            do {
-                let input = try await runInputProvider.runInput(for: module)
-                context = input.context
-                credentials = input.credentials
-            } catch let inputError as CollectorRunInputError {
-                handleRunInputFailure(inputError, for: module)
-                onRunCycleCompleted?()
-                return
-            } catch {
-                // 凭证存储读取等未知错误按依赖缺失走 backoff
-                handleRunInputFailure(
-                    .missingDependency(module: module, reason: "读取运行输入失败"),
-                    for: module
-                )
-                onRunCycleCompleted?()
-                return
-            }
-        }
-
-        // 任务 5: 刷新开始时读取并保存 previousArtifact (同一轮内不得二次
-        // 读取已被覆盖的 artifact).
-        let previousArtifact: JSONValue?
-        do {
-            previousArtifact = try store.load(
-                module,
-                now: clock.now(),
-                staleAfter: configuration.staleAfter
-            ).artifact
-        } catch {
-            previousArtifact = nil
-        }
-
-        let result = await runCollector(
-            module: module,
-            context: context,
-            credentials: credentials
+    /// 一次刷新 = Pipeline 一次调用; 本方法只组装请求并映射结果到 phase/timer.
+    /// 无内联 recovery / finalizer / publish (S2 / Task 6).
+    private func executeRefresh(
+        for module: CollectorModule,
+        intent: RefreshIntent
+    ) async {
+        let pipeline = RefreshExecutionPipeline(
+            executor: executor,
+            store: store,
+            runInputProvider: runInputProvider,
+            credentialUpdates: credentialUpdateCoordinator,
+            codexTokenManager: codexTokenManager,
+            isStopped: { [weak self] in self?.stopped ?? true }
         )
-        guard !stopped else {
-            handleCancellation(for: module)
+        let result = await pipeline.run(RefreshPipelineRequest(
+            module: module,
+            intent: intent,
+            staleAfter: configuration.staleAfter,
+            now: clock.now()
+        ))
+        apply(result, for: module)
+        // 取消路径不触发 onRunCycleCompleted (与迁出前一致).
+        if case .cancelled = result {
             return
         }
-        guard case .success(let output) = result else {
-            // 首轮 Collector 自身失败且无 artifact: 不发布半成品, previous 保持
-            handleResult(result, for: module)
-            onRunCycleCompleted?()
-            return
-        }
-
-        // Codex 定向重试: 首次响应携带 accessRejected challenge 时,
-        // 全量处理本轮合法 challenge, 最多执行一轮 retry-only Collector.
-        // 任务 5: 无论 challenge/决议/retry 结果如何, first artifact 存在时
-        // 都从唯一 finalizer 四源合并后发布一次.
-        // 阶段 B: 恢复逻辑已移至 CodexQuotaRecovery.
-        if module == .agentUsage {
-            let recovery = CodexQuotaRecovery()
-            let retryPhase = await recovery.handle(
-                firstOutput: output,
-                firstCredentials: credentials,
-                module: module,
-                runInputProvider: runInputProvider,
-                challengeHandler: codexTokenManager,
-                isStopped: { [weak self] in self?.stopped ?? true },
-                runCollector: { [weak self] module, context, credentials in
-                    await self?.runCollector(
-                        module: module,
-                        context: context,
-                        credentials: credentials
-                    ) ?? .failure(CancellationError())
-                }
-            )
-            guard !stopped else {
-                handleCancellation(for: module)
-                return
-            }
-            let finalOutput = ArtifactFinalizer().finalize(
-                firstOutput: output,
-                retryPhase: retryPhase,
-                previousArtifact: previousArtifact,
-                fallbackDecisions: runInputProvider?.codexTokenDecisions ?? []
-            )
-            handleResult(.success(finalOutput), for: module)
-            onRunCycleCompleted?()
-            return
-        }
-
-        handleResult(.success(output), for: module)
         onRunCycleCompleted?()
     }
 
-    private func runCollector(
-        module: CollectorModule,
-        context: [String: JSONValue],
-        credentials: [String: JSONValue]
-    ) async -> Result<CollectorRunOutput, Error> {
-        do {
-            let output = try await executor.run(
-                module: module,
-                context: context,
-                credentials: credentials
-            )
-            return .success(output)
-        } catch is CancellationError {
-            return .failure(CancellationError())
-        } catch {
-            return .failure(error)
+    /// 将 Pipeline 结果映射到 phase / 状态回调 / timer / 额度预警 / pending 排空.
+    /// 不重复 apply 凭证或 publish (已在 Pipeline 落地).
+    private func apply(_ result: RefreshPipelineResult, for module: CollectorModule) {
+        switch result {
+        case .cancelled:
+            handleCancellation(for: module)
+
+        case .runInputFailed(let error):
+            handleRunInputFailure(error, for: module)
+
+        case .collectorFailed(let error):
+            applyCollectorFailure(error, for: module)
+
+        case .publishFailed:
+            applyStorageFailure(for: module)
+
+        case .completed(let run):
+            applyCompleted(run, for: module)
         }
     }
 
     /// 运行输入获取失败: 不启动进程.
     /// 授权缺失进入 authRequired 等待用户处理; 依赖缺失走标准 backoff.
+    /// 注意: 与 completed 路径不同, 此处一律丢弃 pendingIntent (不 drain 重跑).
     private func handleRunInputFailure(
         _ error: CollectorRunInputError,
         for module: CollectorModule
@@ -550,10 +483,8 @@ package final class RefreshScheduler {
         startQueuedModulesIfCapacityAvailable()
     }
 
-    private func handleResult(
-        _ result: Result<CollectorRunOutput, Error>,
-        for module: CollectorModule
-    ) {
+    /// Collector 进程/执行失败 (无 bridge 响应).
+    private func applyCollectorFailure(_ error: Error, for module: CollectorModule) {
         guard !stopped else {
             handleCancellation(for: module)
             return
@@ -562,16 +493,94 @@ package final class RefreshScheduler {
         let now = clock.now()
         var shouldScheduleNext = false
 
-        switch result {
-        case .success(let output):
-            let response = output.response
+        let (category, isAuth) = RefreshErrorClassifier().classifyRunnerError(error)
+        if isAuth {
+            state.phase = .authRequired
+            state.lastErrorCategory = .auth
+            onStatusChange?(module, .authRequired, "请前往设置重新登录")
+        } else {
+            let (newState, scheduleNext) = handleBackoff(
+                state: state, module: module, now: now, category: category
+            )
+            state = newState
+            shouldScheduleNext = scheduleNext
+        }
+
+        finishCycle(
+            state: state,
+            module: module,
+            shouldScheduleNext: shouldScheduleNext
+        )
+    }
+
+    /// store.publish 失败 (凭证可能已在 Pipeline 写回).
+    private func applyStorageFailure(for module: CollectorModule) {
+        guard !stopped else {
+            handleCancellation(for: module)
+            return
+        }
+        guard var state = states[module] else { return }
+        let now = clock.now()
+        let (newState, scheduleNext) = handleBackoff(
+            state: state, module: module, now: now, category: .storage
+        )
+        state = newState
+        finishCycle(
+            state: state,
+            module: module,
+            shouldScheduleNext: scheduleNext
+        )
+    }
+
+    /// Pipeline 已完成 credential apply / 可选 publish / quota 候选计算.
+    /// 此处只做 phase 映射, 状态回调与额度预警决策.
+    private func applyCompleted(_ run: CompletedRun, for module: CollectorModule) {
+        guard !stopped else {
+            handleCancellation(for: module)
+            return
+        }
+        guard var state = states[module] else { return }
+        let now = clock.now()
+        var shouldScheduleNext = false
+        let response = run.output.response
+
+        if let artifact = run.publishedArtifact {
+            // Pipeline 已 publish; 同步成功态与可观察诊断.
+            if module == .agentUsage {
+                lastPublishedDiagnostics = response.diagnostics
+            }
+            state.lastSuccessAt = now
+            state.backoffRetryCount = 0
+            state.lastErrorCategory = nil
+            state.phase = .idle
+            onArtifactChange?(module, artifact)
+
+            // 额度预警: 阈值状态每次都同步 (回落后再次跨越会重新报警),
+            // 但只有非 manual 且窗口新跨越 80% 才弹通知.
+            // includesManual 来自本轮 intent (与 lastTriggerWasManual 一致).
+            let entries = run.quotaAlertEntries
+            let newAlerts = run.includesManual
+                ? []
+                : entries.filter { !state.quotaAlertedKeys.contains($0.key) }
+            state.quotaAlertedKeys = Set(entries.map(\.key))
+            if !newAlerts.isEmpty {
+                onQuotaAlerts?(module, newAlerts.map(\.alert))
+            }
+
+            if response.status == .partial {
+                let detail = response.diagnostics.first?.message
+                onStatusChange?(module, .partial, detail)
+            } else {
+                onStatusChange?(module, .fresh, nil)
+            }
+            shouldScheduleNext = true
+        } else {
+            // 未 publish: auth / bridge error / 无 artifact (schema)
             let hasAuthError = response.diagnostics.contains {
                 $0.category == "auth"
             }
-
             // 任务 9: auth diagnostic 只在拿不到 artifact 时整模块 authRequired.
-            // 部分结果 (artifact 存在) 按部分成功处理: 保留并发布可用数据,
-            // Codex 账号级认证状态只影响该账号 (见 handleCodexChallenge).
+            // 部分结果 (artifact 存在) 已在 Pipeline 发布路径处理.
             if hasAuthError && response.artifact == nil {
                 state.phase = .authRequired
                 state.lastErrorCategory = .auth
@@ -590,93 +599,30 @@ package final class RefreshScheduler {
                     shouldScheduleNext = scheduleNext
                 }
             } else {
-                // 轮换令牌先于 artifact 发布写回, 即使本次发布失败也不丢失新令牌.
-                // 写回失败进入可观察诊断, 并在有 artifact 时将 success 降级为 partial.
-                var publishedDiagnostics = response.diagnostics
-                var effectiveStatus = response.status
-                if !response.credentialUpdates.isEmpty {
-                    let applyResult = credentialUpdateCoordinator?.apply(
-                        credentialUpdates: response.credentialUpdates
-                    ) ?? CredentialUpdateApplyResult()
-                    if !applyResult.failed.isEmpty {
-                        for failure in applyResult.failed {
-                            publishedDiagnostics.append(BridgeDiagnostic(
-                                code: "CREDENTIAL_PERSIST_FAILED",
-                                category: "storage",
-                                stage: "credentialUpdate",
-                                message: "\(failure.provider) 凭证写回失败",
-                                retryable: true
-                            ))
-                        }
-                        if effectiveStatus == .success, response.artifact != nil {
-                            effectiveStatus = .partial
-                        }
-                    }
-                }
-                if let artifact = response.artifact {
-                    do {
-                        try store.publish(artifact, for: module, attemptedAt: now)
-                        // 任务 7: 成功发布的响应诊断进入可观察边界
-                        // (finalizer 已按 code|stage|message 去重).
-                        if module == .agentUsage {
-                            lastPublishedDiagnostics = publishedDiagnostics
-                        }
-                        state.lastSuccessAt = now
-                        state.backoffRetryCount = 0
-                        state.lastErrorCategory = nil
-                        state.phase = .idle
-                        onArtifactChange?(module, artifact)
-
-                        // 额度预警: 阈值状态每次都同步 (回落后再次跨越会重新报警),
-                        // 但只有后台刷新且窗口新跨越 80% 才弹通知.
-                        let entries = QuotaAlertEvaluator.overThresholdEntries(
-                            artifact: artifact
-                        )
-                        let newAlerts = state.lastTriggerWasManual
-                            ? []
-                            : entries.filter { !state.quotaAlertedKeys.contains($0.key) }
-                        state.quotaAlertedKeys = Set(entries.map(\.key))
-                        if !newAlerts.isEmpty {
-                            onQuotaAlerts?(module, newAlerts.map(\.alert))
-                        }
-
-                        if effectiveStatus == .partial {
-                            let detail = publishedDiagnostics.first?.message
-                            onStatusChange?(module, .partial, detail)
-                        } else {
-                            onStatusChange?(module, .fresh, nil)
-                        }
-                        shouldScheduleNext = true
-                    } catch {
-                        let (newState, scheduleNext) = handleBackoff(
-                            state: state, module: module, now: now, category: .storage
-                        )
-                        state = newState
-                        shouldScheduleNext = scheduleNext
-                    }
-                } else {
-                    let (newState, scheduleNext) = handleBackoff(
-                        state: state, module: module, now: now, category: .schema
-                    )
-                    state = newState
-                    shouldScheduleNext = scheduleNext
-                }
-            }
-
-        case .failure(let error):
-            let (category, isAuth) = RefreshErrorClassifier().classifyRunnerError(error)
-            if isAuth {
-                state.phase = .authRequired
-                state.lastErrorCategory = .auth
-                onStatusChange?(module, .authRequired, "请前往设置重新登录")
-            } else {
+                // 无 artifact 且非 error → schema backoff (凭证可能已写回)
                 let (newState, scheduleNext) = handleBackoff(
-                    state: state, module: module, now: now, category: category
+                    state: state, module: module, now: now, category: .schema
                 )
                 state = newState
                 shouldScheduleNext = scheduleNext
             }
         }
+
+        finishCycle(
+            state: state,
+            module: module,
+            shouldScheduleNext: shouldScheduleNext
+        )
+    }
+
+    /// 周期收尾: idle 时 drain 同模块 pendingIntent; 否则丢弃 pending;
+    /// 再按需排程与启动容量队列.
+    private func finishCycle(
+        state: ModuleScheduleState,
+        module: CollectorModule,
+        shouldScheduleNext: Bool
+    ) {
+        var state = state
 
         // Drain same-module pending with the stored intent (manual-preserving merge).
         if let pending = state.pendingIntent, state.phase == .idle {

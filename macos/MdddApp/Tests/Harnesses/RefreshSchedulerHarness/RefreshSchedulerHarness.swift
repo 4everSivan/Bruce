@@ -444,10 +444,10 @@ struct RefreshSchedulerHarness {
         try intentMergeNilExistingUsesIncoming()
         print("Refresh scheduler: manual coalesce suppresses quota alerts")
         try await manualCoalescedRerunSuppressesQuotaAlerts(repository: repository)
-        print("Refresh scheduler: pipeline skeleton cancelled when stopped")
-        try await pipelineSkeletonReturnsCancelledWhenStopped(repository: repository)
-        print("Refresh scheduler: pipeline skeleton cancelled when running")
-        try await pipelineSkeletonReturnsCancelledWhenNotStopped(repository: repository)
+        print("Refresh scheduler: pipeline cancelled when stopped")
+        try await pipelineReturnsCancelledWhenStopped(repository: repository)
+        print("Refresh scheduler: pipeline completes publish when running")
+        try await pipelineCompletesAndPublishesWhenNotStopped(repository: repository)
         print("Refresh scheduler tests passed: 61")
     }
 
@@ -537,10 +537,10 @@ struct RefreshSchedulerHarness {
         )
     }
 
-    // MARK: - RefreshExecutionPipeline skeleton (Task 5)
+    // MARK: - RefreshExecutionPipeline (Task 6)
 
-    /// Compile-only: construct pipeline + run while stopped → `.cancelled`.
-    private static func pipelineSkeletonReturnsCancelledWhenStopped(
+    /// Stopped pipeline short-circuits to `.cancelled` without collector side effects.
+    private static func pipelineReturnsCancelledWhenStopped(
         repository: URL
     ) async throws {
         let root = FileManager.default.temporaryDirectory
@@ -568,17 +568,17 @@ struct RefreshSchedulerHarness {
         let result = await pipeline.run(request)
         guard case .cancelled = result else {
             throw RefreshTestFailure.expectation(
-                "stopped pipeline skeleton must return .cancelled, got \(result)"
+                "stopped pipeline must return .cancelled, got \(result)"
             )
         }
         try refreshExpect(
             executor.runCount[.agentUsage] == nil || executor.runCount[.agentUsage] == 0,
-            "skeleton must not invoke collector while cancelled"
+            "stopped pipeline must not invoke collector"
         )
     }
 
-    /// Compile-only: not stopped still returns `.cancelled` until Task 6 ports body.
-    private static func pipelineSkeletonReturnsCancelledWhenNotStopped(
+    /// Live pipeline: one collect + publish; includesManual preserved on CompletedRun.
+    private static func pipelineCompletesAndPublishesWhenNotStopped(
         repository: URL
     ) async throws {
         let root = FileManager.default.temporaryDirectory
@@ -597,21 +597,47 @@ struct RefreshSchedulerHarness {
             codexTokenManager: nil,
             isStopped: { false }
         )
+        let now = Date(timeIntervalSince1970: 1_786_000_000)
         let request = RefreshPipelineRequest(
             module: .agentUsage,
             intent: .manual(),
             staleAfter: 3600,
-            now: Date(timeIntervalSince1970: 1_786_000_000)
+            now: now
         )
         let result = await pipeline.run(request)
-        guard case .cancelled = result else {
+        guard case .completed(let run) = result else {
             throw RefreshTestFailure.expectation(
-                "unwired pipeline skeleton must return .cancelled, got \(result)"
+                "live pipeline must return .completed, got \(result)"
             )
         }
         try refreshExpect(
-            executor.runCount[.agentUsage] == nil || executor.runCount[.agentUsage] == 0,
-            "skeleton must not invoke collector until Task 6"
+            executor.runCount[.agentUsage] == 1,
+            "pipeline first collect must run once, got \(executor.runCount[.agentUsage] ?? 0)"
+        )
+        try refreshExpect(
+            run.includesManual,
+            "CompletedRun must preserve request intent.includesManual"
+        )
+        try refreshExpect(
+            run.publishedArtifact != nil,
+            "fixture success path must publish artifact"
+        )
+        try refreshExpect(
+            run.output.response.status == .success,
+            "fixture path status should remain success"
+        )
+        // Store must hold the published artifact (publish once).
+        guard let published = run.publishedArtifact else {
+            throw RefreshTestFailure.expectation("expected publishedArtifact")
+        }
+        let loaded = try store.load(
+            .agentUsage,
+            now: now,
+            staleAfter: 3600
+        )
+        try refreshExpect(
+            loaded.artifact == published,
+            "loaded store artifact must match pipeline publishedArtifact"
         )
     }
 
