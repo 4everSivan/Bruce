@@ -211,7 +211,8 @@ struct PanelViewModelHarness {
         try providerOrderOverridesDefaultSort()
         try providerOrderUnknownIDsGoLast()
         try providerOrderNormalizesKimiCodingID()
-        print("PanelViewModel tests passed: 35")
+        try presentationPolicyTableDrivenRules()
+        print("PanelViewModel tests passed: 36")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -1225,4 +1226,114 @@ struct PanelViewModelHarness {
             "deepseek 应排在后面: \(sections.map(\.id))"
         )
     }
+    // S5a: SubscriptionPresentationPolicy 纯规则表驱动锁定.
+    private static func presentationPolicyTableDrivenRules() throws {
+        // kimi_coding → kimi 排序键; 其他原样.
+        let providerIDCases: [(String, String)] = [
+            ("kimi_coding", "kimi"),
+            ("kimi", "kimi"),
+            ("deepseek", "deepseek"),
+            ("volcengine", "volcengine"),
+            ("codex", "codex"),
+        ]
+        for (input, expected) in providerIDCases {
+            let got = SubscriptionPresentationPolicy.providerID(forServiceID: input)
+            try expect(got == expected, "providerID(\(input)) => \(got), expected \(expected)")
+        }
+
+        // volcengine 显示名剥离 Coding Plan 后缀; 其他保留.
+        let displayCases: [(String, String, String)] = [
+            ("volcengine", "火山引擎（Coding Plan）", "火山引擎"),
+            ("volcengine", "火山引擎", "火山引擎"),
+            ("kimi", "Kimi Coding", "Kimi Coding"),
+            ("deepseek", "DeepSeek", "DeepSeek"),
+        ]
+        for (id, name, expected) in displayCases {
+            let got = SubscriptionPresentationPolicy.displayName(serviceID: id, serviceName: name)
+            try expect(got == expected, "displayName(\(id), \(name)) => \(got)")
+        }
+
+        // 加量包未启用隐藏; 其他 extra 保留.
+        let extraCases: [(String?, String?)] = [
+            ("加量包未启用", nil),
+            ("加量包余额 ¥12.00", "加量包余额 ¥12.00"),
+            (nil, nil),
+            ("其他说明", "其他说明"),
+        ]
+        for (input, expected) in extraCases {
+            let got = SubscriptionPresentationPolicy.extraText(input)
+            try expect(
+                got == expected,
+                "extraText(\(String(describing: input))) => \(String(describing: got))"
+            )
+        }
+
+        // partial 占位 skip; empty 仍渲染; 有窗口/余额不 skip.
+        struct SkipCase {
+            let kind: String?
+            let hasWindows: Bool
+            let hasBalance: Bool
+            let status: String
+            let skip: Bool
+        }
+        let skipCases: [SkipCase] = [
+            SkipCase(kind: nil, hasWindows: false, hasBalance: false, status: "partial", skip: true),
+            SkipCase(kind: nil, hasWindows: false, hasBalance: false, status: "empty", skip: false),
+            SkipCase(kind: nil, hasWindows: false, hasBalance: false, status: "error", skip: false),
+            SkipCase(kind: "windows", hasWindows: false, hasBalance: false, status: "partial", skip: false),
+            SkipCase(kind: nil, hasWindows: true, hasBalance: false, status: "partial", skip: false),
+            SkipCase(kind: nil, hasWindows: false, hasBalance: true, status: "partial", skip: false),
+        ]
+        for c in skipCases {
+            let got = SubscriptionPresentationPolicy.shouldSkipPlaceholder(
+                kind: c.kind, hasWindows: c.hasWindows, hasBalance: c.hasBalance, status: c.status
+            )
+            try expect(
+                got == c.skip,
+                "skip(kind:\(String(describing: c.kind)), win:\(c.hasWindows), bal:\(c.hasBalance), \(c.status)) => \(got)"
+            )
+        }
+
+        // codex 分组判定.
+        try expect(SubscriptionPresentationPolicy.isCodex(app: "codex"), "app=codex 应为 codex")
+        try expect(!SubscriptionPresentationPolicy.isCodex(app: "claude"), "app=claude 不应为 codex")
+        try expect(!SubscriptionPresentationPolicy.isCodex(app: nil), "app=nil 不应为 codex")
+
+        // deepseek 月度挂载.
+        try expect(
+            SubscriptionPresentationPolicy.shouldAttachDeepSeekMonthly(serviceID: "deepseek"),
+            "deepseek 应挂载月度"
+        )
+        try expect(
+            !SubscriptionPresentationPolicy.shouldAttachDeepSeekMonthly(serviceID: "kimi"),
+            "kimi 不应挂载月度"
+        )
+
+        // Codex 账号短名: 只剥开头前缀.
+        let nameCases: [(String, String)] = [
+            ("Codex · work", "work"),
+            ("Codex · Codex · nested", "Codex · nested"),
+            ("plain", "plain"),
+            ("My Codex · account", "My Codex · account"),
+        ]
+        for (input, expected) in nameCases {
+            let got = SubscriptionPresentationPolicy.codexAccountShortName(from: input)
+            try expect(got == expected, "codexShortName(\(input)) => \(got)")
+        }
+
+        // Codex 分组最差状态.
+        // 空列表沿用原公式 max() ?? 0 → "ok" (生产路径有 isEmpty 守卫不会调用).
+        let statusCases: [([String], String)] = [
+            (["ok", "ok"], "ok"),
+            (["ok", "partial"], "partial"),
+            (["ok", "error", "partial"], "error"),
+            (["unknown"], "partial"),
+            ([], "ok"),
+        ]
+        for (statuses, expected) in statusCases {
+            let got = SubscriptionPresentationPolicy.codexGroupStatus(from: statuses)
+            try expect(got == expected, "groupStatus(\(statuses)) => \(got)")
+        }
+    }
+
 }
