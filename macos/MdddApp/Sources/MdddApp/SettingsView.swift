@@ -433,19 +433,51 @@ struct SettingsView: View {
         .accessibilityElement(children: .contain)
     }
 
-    /// 展开后的管理 UI, 复用各 provider 现有实现.
+    /// 展开后的管理 UI, 委托各 provider 独立 section (layout-identical extract).
     @ViewBuilder
     private func subscriptionProviderManagement(
         _ id: SubscriptionProviderID
     ) -> some View {
         switch id {
-        case .kimi: kimiGroup
-        case .deepseek: deepSeekGroup
-        case .volcengine: volcengineGroup
-        case .codex: codexGroup
-        case .antigravity: antigravityGroup
-        case .claude: claudeGroup
-        case .grok: grokGroup
+        case .kimi:
+            KimiProviderSettingsSection(
+                kimiPasteText: $kimiPasteText,
+                kimiEditing: $kimiEditing,
+                onRemove: { removeSubscriptionProvider(.kimi) }
+            )
+        case .deepseek:
+            DeepSeekProviderSettingsSection(
+                deepseekKeyText: $deepseekKeyText,
+                deepseekEditing: $deepseekEditing,
+                onRemove: { removeSubscriptionProvider(.deepseek) }
+            )
+        case .volcengine:
+            VolcengineProviderSettingsSection(
+                volcengineAKText: $volcengineAKText,
+                volcengineSKText: $volcengineSKText,
+                volcengineEditing: $volcengineEditing,
+                showsVolcengineCCImportConfirm: $showsVolcengineCCImportConfirm,
+                onRemove: { removeSubscriptionProvider(.volcengine) }
+            )
+        case .codex:
+            CodexProviderSettingsSection(
+                showsCodexCCImportConfirm: $showsCodexCCImportConfirm,
+                onRemove: { removeSubscriptionProvider(.codex) }
+            )
+        case .antigravity:
+            AntigravityProviderSettingsSection(
+                onRemove: { removeSubscriptionProvider(.antigravity) }
+            )
+        case .claude:
+            ClaudeProviderSettingsSection(
+                claudePasteText: $claudePasteText,
+                onRemove: { removeSubscriptionProvider(.claude) }
+            )
+        case .grok:
+            GrokProviderSettingsSection(
+                grokPasteText: $grokPasteText,
+                onRemove: { removeSubscriptionProvider(.grok) }
+            )
         }
     }
 
@@ -467,485 +499,6 @@ struct SettingsView: View {
         guard let targetIndex = order.firstIndex(of: target) else { return }
         order.insert(dragged, at: targetIndex)
         coordinator.setSubscriptionProviderOrder(order)
-    }
-
-    /// 管理区统一容器: 左缩进 14pt + 8pt 垂直间距, 各 provider 管理组共用.
-    private func managementStack<Content: View>(
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            content()
-        }
-        .padding(.leading, 14)
-    }
-
-    /// 管理区操作行: 主操作按钮在左, 移除按钮统一居右 (destructive).
-    private func managementActionRow<Primary: View>(
-        configured: Bool,
-        removeHint: String,
-        remove: @escaping () -> Void,
-        @ViewBuilder primary: () -> Primary
-    ) -> some View {
-        HStack(spacing: 8) {
-            primary()
-            Spacer()
-            if configured {
-                Button("移除", role: .destructive, action: remove)
-                    .accessibilityHint(removeHint)
-            }
-        }
-    }
-
-    private var deepSeekGroup: some View {
-        let configured = model.subscriptionCredentialConfigured[.deepseek] ?? false
-        let busy = model.busySubscriptionProviders.contains(.deepseek)
-        let editing = deepseekEditing || !configured
-
-        return managementStack {
-            if editing {
-                SecureField("API key (输入后不回显)", text: $deepseekKeyText)
-                    .textFieldStyle(.roundedBorder)
-                    .disabled(busy)
-                    .accessibilityLabel("DeepSeek API key")
-                    .accessibilityHint("密钥只保存到本应用的 Keychain")
-                managementActionRow(
-                    configured: model.subscriptionProviders[.deepseek] != nil,
-                    removeHint: "从列表移除 DeepSeek 订阅",
-                    remove: { removeSubscriptionProvider(.deepseek) }
-                ) {
-                    Button("保存并验证") {
-                        coordinator.saveAndVerifyDeepSeek(apiKey: deepseekKeyText)
-                        // API key 只进 Keychain, 提交后清空输入框
-                        deepseekKeyText = ""
-                        deepseekEditing = false
-                    }
-                    .disabled(busy || deepseekKeyText.isEmpty)
-                    .accessibilityHint("保存到 Keychain 并联网验证 DeepSeek 余额接口")
-                    if configured {
-                        Button("取消") {
-                            deepseekKeyText = ""
-                            deepseekEditing = false
-                        }
-                        .disabled(busy)
-                    }
-                    if busy {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-                }
-            } else {
-                managementActionRow(
-                    configured: model.subscriptionProviders[.deepseek] != nil,
-                    removeHint: "从列表移除 DeepSeek 订阅",
-                    remove: { removeSubscriptionProvider(.deepseek) }
-                ) {
-                    Button("更换") { deepseekEditing = true }
-                        .disabled(busy)
-                        .accessibilityHint("输入新的 DeepSeek API key")
-                }
-            }
-        }
-    }
-
-    private var volcengineGroup: some View {
-        let configured = model.subscriptionCredentialConfigured[.volcengine] ?? false
-        let busy = model.busySubscriptionProviders.contains(.volcengine)
-        let editing = volcengineEditing || !configured
-
-        return managementStack {
-            if editing {
-                SecureField("AccessKey (输入后不回显)", text: $volcengineAKText)
-                    .textFieldStyle(.roundedBorder)
-                    .disabled(busy)
-                    .accessibilityLabel("火山引擎 AccessKey")
-                SecureField("SecretKey (输入后不回显)", text: $volcengineSKText)
-                    .textFieldStyle(.roundedBorder)
-                    .disabled(busy)
-                    .accessibilityLabel("火山引擎 SecretKey")
-                    .accessibilityHint("密钥只保存到本应用的 Keychain")
-                managementActionRow(
-                    configured: model.subscriptionProviders[.volcengine] != nil,
-                    removeHint: "从列表移除火山引擎订阅",
-                    remove: { removeSubscriptionProvider(.volcengine) }
-                ) {
-                    Button("保存并验证") {
-                        coordinator.saveAndVerifyVolcengine(
-                            accessKey: volcengineAKText,
-                            secretKey: volcengineSKText
-                        )
-                        volcengineAKText = ""
-                        volcengineSKText = ""
-                        volcengineEditing = false
-                    }
-                    .disabled(
-                        busy || volcengineAKText.isEmpty || volcengineSKText.isEmpty
-                    )
-                    .accessibilityHint("保存到 Keychain 并做本地格式校验")
-                    if configured {
-                        Button("取消") {
-                            volcengineAKText = ""
-                            volcengineSKText = ""
-                            volcengineEditing = false
-                        }
-                        .disabled(busy)
-                    }
-                }
-                Text("此处仅做本地格式校验, 完整额度试查由 Collector 运行时承担")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                managementActionRow(
-                    configured: model.subscriptionProviders[.volcengine] != nil,
-                    removeHint: "从列表移除火山引擎订阅",
-                    remove: { removeSubscriptionProvider(.volcengine) }
-                ) {
-                    Button("更换") { volcengineEditing = true }
-                        .disabled(busy)
-                        .accessibilityHint("输入新的火山引擎 AK/SK")
-                }
-            }
-            if coordinator.ccSwitchDatabaseExists() {
-                Button("从 CC Switch 导入") {
-                    showsVolcengineCCImportConfirm = true
-                }
-                .disabled(busy)
-                .accessibilityHint("只读导入 CC Switch 中火山 Codingplan 的 AK/SK")
-            }
-        }
-    }
-
-    private var kimiGroup: some View {
-        let configured = model.subscriptionCredentialConfigured[.kimi] ?? false
-        let needsRelogin = model.subscriptionProviders[.kimi]?
-            .verificationStatus == .needsRelogin
-        let localFileExists = coordinator.kimiLocalTokensFileExists()
-        // needsRelogin 时保留粘贴入口, 便于重新登录
-        let showPaste = kimiEditing || !configured || (needsRelogin && !localFileExists)
-
-        return managementStack {
-            if localFileExists || (configured && !showPaste) {
-                managementActionRow(
-                    configured: model.subscriptionProviders[.kimi] != nil,
-                    removeHint: "从列表移除 Kimi 订阅",
-                    remove: {
-                        removeSubscriptionProvider(.kimi)
-                        kimiEditing = false
-                    }
-                ) {
-                    if localFileExists {
-                        Button("从本机导入") {
-                            coordinator.importKimiFromLocalFile()
-                        }
-                        .accessibilityHint("读取 kimi-dashboard 保存的本机浏览器令牌")
-                    } else {
-                        Button("更换") { kimiEditing = true }
-                            .accessibilityHint("重新粘贴 Kimi 令牌")
-                    }
-                }
-            }
-            if showPaste && !localFileExists {
-                Text("打开 kimi.com 并登录 → 开发者工具 → Application → 复制 access_token 与 refresh_token, 粘贴整段 JSON 或两段 token")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                TextEditor(text: $kimiPasteText)
-                    .font(.system(.caption, design: .monospaced))
-                    .frame(minHeight: 56, maxHeight: 96)
-                    .accessibilityLabel("Kimi 令牌粘贴框")
-                managementActionRow(
-                    configured: model.subscriptionProviders[.kimi] != nil,
-                    removeHint: "从列表移除 Kimi 订阅",
-                    remove: {
-                        removeSubscriptionProvider(.kimi)
-                        kimiEditing = false
-                    }
-                ) {
-                    Button("验证并保存") {
-                        coordinator.importKimiFromPaste(kimiPasteText)
-                        kimiPasteText = ""
-                        kimiEditing = false
-                    }
-                    .disabled(kimiPasteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .accessibilityHint("校验后保存到本应用的 Keychain")
-                    if configured {
-                        Button("取消") {
-                            kimiPasteText = ""
-                            kimiEditing = false
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private var codexGroup: some View {
-        let configured = model.subscriptionCredentialConfigured[.codex] ?? false
-        let busy = model.busySubscriptionProviders.contains(.codex)
-
-        return managementStack {
-            if let summary = model.codexAccountSummary, summary.count > 0 {
-                let shown = summary.emailPrefixes.prefix(5).joined(separator: ", ")
-                let suffix = summary.emailPrefixes.count > 5 ? " 等" : ""
-                Text("已发现 \(summary.count) 个账号: \(shown)\(suffix)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            managementActionRow(
-                configured: model.subscriptionProviders[.codex] != nil,
-                removeHint: "从列表移除 Codex 订阅",
-                remove: { removeSubscriptionProvider(.codex) }
-            ) {
-                Button("登录新账号") {
-                    coordinator.loginCodexNewAccount()
-                }
-                .disabled(busy)
-                .accessibilityHint("在浏览器中完成 Codex 官方设备码登录并入库")
-                if coordinator.codexCLIAuthFileExists() {
-                    Button("发现本机 CLI 账号") {
-                        coordinator.importCodexFromLocalCLI()
-                    }
-                    .disabled(busy)
-                    .accessibilityHint("只读发现 Codex CLI 的当前登录账号元数据, 不导入登录令牌")
-                }
-            }
-            if coordinator.codexCCAccountsFileExists() {
-                Button("发现 CC Switch 账号") {
-                    showsCodexCCImportConfirm = true
-                }
-                .disabled(busy)
-                .accessibilityHint("只读发现 CC Switch 管理的 Codex 账号元数据, 不导入登录令牌")
-            }
-            codexAccountStatusesList
-            // 迁移结果提示 (任务 7): 阻断性错误显示可操作提示, 不泄露
-            // 账号 ID/邮箱/token 或 Keychain 名称.
-            if let message = model.codexMigrationStatus.userMessage {
-                Label(message, systemImage: model.codexMigrationStatus.isBlocking
-                    ? "xmark.octagon.fill"
-                    : "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(model.codexMigrationStatus.isBlocking
-                        ? Color.orange
-                        : Color.secondary)
-                    .padding(.vertical, 2)
-            }
-            if let login = coordinator.codexDeviceLogin {
-                deviceLoginView(
-                    login,
-                    openPage: { coordinator.reopenCodexLoginPage() },
-                    cancel: { coordinator.cancelCodexLogin() }
-                )
-            }
-        }
-    }
-
-    /// Codex 账号级状态列表: 区分 connected / needsReauthorization /
-    /// storageBlocked; needsReauthorization 提供"在 mddd 中重新授权"操作
-    /// (复用设备码登录流程). 只展示脱敏账号名与状态, 不显示 token 或完整账号 ID.
-    @ViewBuilder
-    private var codexAccountStatusesList: some View {
-        let statuses = model.codexAccountStatuses
-        if !statuses.isEmpty {
-            ForEach(Array(statuses.enumerated()), id: \.element.accountID) {
-                _, status in
-                HStack(spacing: 6) {
-                    Text(status.displayName)
-                        .font(.caption)
-                        .lineLimit(1)
-                    Spacer()
-                    accountStatusLabel(status)
-                    if status.authorizationState == .needsReauthorization {
-                        Button("重新授权") {
-                            coordinator.loginCodexNewAccount()
-                        }
-                        .font(.caption)
-                        .accessibilityHint("在浏览器中重新完成该账号的 Codex 官方设备码登录")
-                    }
-                }
-                .padding(.vertical, 2)
-            }
-        }
-    }
-
-    /// 账号授权状态文案 (非敏感, 不含 token/完整账号 ID).
-    private func accountStatusLabel(_ status: CodexAccountStatus) -> some View {
-        let (text, icon): (String, String)
-        switch status.authorizationState {
-        case .connected:
-            if status.storageBlocked {
-                text = "存储异常, 正在重试"
-                icon = "exclamationmark.triangle.fill"
-            } else {
-                text = "已连接"
-                icon = "checkmark.circle.fill"
-            }
-        case .needsReauthorization:
-            text = "需要重新授权"
-            icon = "exclamationmark.triangle.fill"
-        case .revoked:
-            text = "已撤销"
-            icon = "xmark.circle.fill"
-        }
-        let isHealthy = status.authorizationState == .connected
-            && !status.storageBlocked
-        return Label(text, systemImage: icon)
-            .font(.caption)
-            .foregroundStyle(isHealthy ? Color.secondary : Color.orange)
-            .accessibilityLabel("\(status.displayName) 状态: \(text)")
-    }
-
-    /// 设备码登录展示: 一次性验证码大字 + 打开登录页 + 轮询状态.
-    /// 验证码由服务端下发, 可展示可复制; token 不进入 UI.
-    private func deviceLoginView(
-        _ login: DeviceLoginPresentation,
-        openPage: @escaping () -> Void,
-        cancel: @escaping () -> Void
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("一次性验证码")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(login.userCode)
-                .font(.system(.title3, design: .monospaced).weight(.semibold))
-                .textSelection(.enabled)
-                .accessibilityLabel("一次性验证码 \(login.userCode)")
-            HStack {
-                Button("打开登录页", action: openPage)
-                    .accessibilityHint("在浏览器中打开验证页并输入验证码")
-                switch login.stage {
-                case .waitingAuthorization, .finishing:
-                    Button("取消", role: .cancel, action: cancel)
-                        .accessibilityHint("停止等待授权")
-                case .succeeded, .failed, .timedOut:
-                    Button("关闭", action: cancel)
-                        .accessibilityHint("收起登录状态")
-                }
-            }
-            switch login.stage {
-            case .waitingAuthorization:
-                Label("等待浏览器授权…", systemImage: "arrow.clockwise")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            case .finishing:
-                Label("正在完成登录…", systemImage: "arrow.clockwise")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            case .succeeded:
-                Label("登录成功", systemImage: "checkmark.circle.fill")
-                    .font(.caption)
-            case .failed(let reason):
-                Label("登录失败: \(reason)", systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            case .timedOut:
-                Label("等待授权超时, 请重新点击登录", systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            }
-        }
-        .padding(.vertical, 4)
-        .accessibilityElement(children: .contain)
-    }
-
-    private var antigravityGroup: some View {
-        let configured = model.subscriptionCredentialConfigured[.antigravity] ?? false
-
-        return managementStack {
-            if !configured && !model.antigravityLocalAvailable {
-                Text("未检测到 Antigravity 登录态, 请先通过 Antigravity CLI 登录")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            managementActionRow(
-                configured: model.subscriptionProviders[.antigravity] != nil,
-                removeHint: "从列表移除 Antigravity 订阅",
-                remove: { removeSubscriptionProvider(.antigravity) }
-            ) {
-                if model.antigravityLocalAvailable {
-                    Button("从本机导入") {
-                        coordinator.importAntigravityFromLocalFile()
-                    }
-                    .accessibilityHint("读取 Antigravity CLI 的本机 OAuth 令牌 (文件或钥匙串)")
-                }
-            }
-        }
-    }
-
-    /// Claude / Grok 共用管理组 (Phase 4): 支持手动粘贴导入与从本机 CLI 导入.
-    /// 应用持有凭证存 Keychain; 本机登录态检测作为"从本机导入"按钮的显隐条件.
-    private func officialLocalGroup(
-        _ id: SubscriptionProviderID,
-        available: Bool,
-        missingHint: String,
-        pasteText: Binding<String>,
-        importFromLocal: @escaping () -> Void,
-        savePaste: @escaping (String) -> Void
-    ) -> some View {
-        let needsRelogin = model.subscriptionProviders[id]?
-            .verificationStatus == .needsRelogin
-        return managementStack {
-            if available {
-                Button("从本机导入") {
-                    importFromLocal()
-                }
-                .accessibilityHint("读取本机 \(id.displayName) CLI 登录凭证")
-            } else if !needsRelogin {
-                Text(missingHint)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            if needsRelogin {
-                Text("登录已过期, 请重新粘贴 \(id.displayName) 凭证或重新登录 CLI")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            }
-            Text("粘贴 \(id.displayName) 访问令牌或凭证 JSON")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            TextEditor(text: pasteText)
-                .font(.system(.caption, design: .monospaced))
-                .frame(minHeight: 48, maxHeight: 80)
-                .accessibilityLabel("\(id.displayName) 凭证粘贴框")
-            // 移除按钮基于"已添加"(配置条目存在), 而非凭证是否有效;
-            // 过期/无效时用户仍需能删除订阅回到"未添加".
-            managementActionRow(
-                configured: model.subscriptionProviders[id] != nil,
-                removeHint: "从列表移除 \(id.displayName) 订阅",
-                remove: { removeSubscriptionProvider(id) }
-            ) {
-                Button("验证并保存") {
-                    savePaste(pasteText.wrappedValue)
-                    pasteText.wrappedValue = ""
-                }
-                .disabled(pasteText.wrappedValue
-                    .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .accessibilityHint("校验后保存到本应用的 Keychain")
-            }
-            Button("重新检测") {
-                coordinator.refreshOfficialLocalAvailability()
-            }
-            .accessibilityHint("重新读取本机 \(id.displayName) CLI 登录态")
-        }
-    }
-
-    private var claudeGroup: some View {
-        officialLocalGroup(
-            .claude,
-            available: model.claudeLocalAvailable,
-            missingHint: "未检测到 Claude 登录态, 请先登录 Claude CLI",
-            pasteText: $claudePasteText,
-            importFromLocal: { coordinator.importClaudeFromLocal() },
-            savePaste: { coordinator.importClaudeFromPaste($0) }
-        )
-    }
-
-    private var grokGroup: some View {
-        officialLocalGroup(
-            .grok,
-            available: model.grokLocalAvailable,
-            missingHint: "未检测到 Grok 登录态, 请先通过 Grok CLI 登录 (~/.grok/auth.json)",
-            pasteText: $grokPasteText,
-            importFromLocal: { coordinator.importGrokFromLocal() },
-            savePaste: { coordinator.importGrokFromPaste($0) }
-        )
     }
 
     /// 状态行: 未配置 / 已配置 · 验证通过 / 验证失败(原因) / 需要重新登录.

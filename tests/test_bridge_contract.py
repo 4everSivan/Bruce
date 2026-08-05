@@ -1119,16 +1119,25 @@ class AppCoreResidualContractTests(unittest.TestCase):
 
     def test_app_does_not_read_third_party_codex_credential_files(self):
         """App 层读取 ~/.codex/auth.json 只发生在用户点击触发的元数据
-        发现 (importCodexFromLocalCLI), 无自动读取回退."""
-        coordinator = (self.APP_LAYER / "OnboardingCoordinator.swift").read_text(
+        发现 (importCodexFromLocalCLI), 无自动读取回退.
+        Task 9 后实现落在 SubscriptionService + LocalCredentialProbe."""
+        service = (self.APP_LAYER / "SubscriptionService.swift").read_text(
             encoding="utf-8"
         )
-        # 三处: 发现按钮注释 + importCodexFromLocalCLI 实际读取 (用户点击
-        # 触发) + codexCLIAuthFileExists 存在性检查 (不读取令牌内容).
+        probe = (self.APP_LAYER / "LocalCredentialProbe.swift").read_text(
+            encoding="utf-8"
+        )
+        # 三处: 发现注释 + importCodexFromLocalCLI 实际读取 (用户点击触发)
+        # + codexCLIAuthFileExists 存在性检查 (不读取令牌内容).
         # 均不是自动读取第三方认证文件的回退.
-        self.assertEqual(coordinator.count(".codex/auth.json"), 3)
+        total = service.count(".codex/auth.json") + probe.count(".codex/auth.json")
+        self.assertEqual(total, 3)
         # 无读取第三方认证文件的自动回退 (死代码已删)
-        self.assertNotIn("readCodexCLIActiveAccountID", coordinator)
+        app_layer = "\n".join(
+            p.read_text(encoding="utf-8")
+            for p in self.APP_LAYER.rglob("*.swift")
+        )
+        self.assertNotIn("readCodexCLIActiveAccountID", app_layer)
 
     def test_collector_orca_label_disk_oauth_fallback_is_cli_only(self):
         """任务 11 契约: orca_account_label 读取 ~/.cc-switch/codex_oauth_auth.json

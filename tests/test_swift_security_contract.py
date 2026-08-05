@@ -51,11 +51,22 @@ def test_diagnostics_archive_is_reexpanded_and_allowlisted_before_publish():
 
 
 APP_LAYER = REPO_ROOT / "macos" / "MdddApp" / "Sources" / "MdddApp"
+SETTINGS_DIR = APP_LAYER / "Settings"
+CODEX_SETTINGS = SETTINGS_DIR / "CodexProviderSettingsSection.swift"
+
+
+def _settings_layer_source() -> str:
+    """SettingsView + Settings/ 下全部 section (Task 10 文件拆分后契约扫描面)."""
+    parts = [(APP_LAYER / "SettingsView.swift").read_text()]
+    if SETTINGS_DIR.is_dir():
+        for path in sorted(SETTINGS_DIR.glob("*.swift")):
+            parts.append(path.read_text())
+    return "\n".join(parts)
 
 
 def test_settings_codex_actions_use_discovery_not_import():
     """任务 10 契约: Codex 入口只使用「发现」语义, 不暗示 token 导入."""
-    settings = (APP_LAYER / "SettingsView.swift").read_text()
+    settings = _settings_layer_source()
     assert "发现 CC Switch 账号" in settings
     assert "发现本机 CLI 账号" in settings
     assert "从 CC Switch 导入账号库" not in settings
@@ -67,7 +78,7 @@ def test_settings_codex_actions_use_discovery_not_import():
 def test_settings_codex_status_distinguishes_authorization_states():
     """任务 10 契约: 设置页可区分 connected / needsReauthorization / revoked,
     needsReauthorization 提供「在 mddd 中重新授权」操作."""
-    settings = (APP_LAYER / "SettingsView.swift").read_text()
+    settings = _settings_layer_source()
     assert "case .connected:" in settings
     assert "case .needsReauthorization:" in settings
     assert "case .revoked:" in settings
@@ -80,10 +91,7 @@ def test_settings_codex_status_distinguishes_authorization_states():
 
 def test_settings_codex_ui_never_renders_sensitive_values():
     """任务 10 契约: Codex 管理区 UI 不得把 token 或完整账号 ID 渲染进文本."""
-    settings = (APP_LAYER / "SettingsView.swift").read_text()
-    codex_group_start = settings.index("private var codexGroup")
-    codex_group_end = settings.index("private var antigravityGroup")
-    group_source = settings[codex_group_start:codex_group_end]
+    group_source = CODEX_SETTINGS.read_text()
     for forbidden in ("access_token", "refresh_token", "id_token"):
         assert forbidden not in group_source
     # 账号行只展示脱敏账号名与状态; 状态列表用 accountID 仅作稳定 id, 不进文本
@@ -123,13 +131,14 @@ def test_codex_configured_flag_requires_complete_record():
 
 
 def test_coordinator_uses_hasConfiguredCredentials_for_codex():
-    """任务 9 契约: Coordinator 的 Codex"已配置"与发现导入收尾都走
-    hasConfiguredCredentials, 不再以索引 connected 代判或无条件标 true."""
-    coordinator = (
+    """任务 9 契约: SubscriptionService (Coordinator 门面后的实现体) 的 Codex
+    "已配置"与发现导入收尾都走 hasConfiguredCredentials, 不再以索引 connected
+    代判或无条件标 true."""
+    service = (
         REPO_ROOT / "macos" / "MdddApp" / "Sources" / "MdddApp"
-        / "OnboardingCoordinator.swift"
+        / "SubscriptionService.swift"
     ).read_text()
-    assert "hasConfiguredCredentials()" in coordinator
+    assert "hasConfiguredCredentials()" in service
     # 发现导入收尾不再无条件标"已配置"
-    assert "finishCodexDiscoveryImport" in coordinator
-    assert 'setSubscriptionCredentialConfigured(true, for: .codex)' not in coordinator
+    assert "finishCodexDiscoveryImport" in service
+    assert 'setSubscriptionCredentialConfigured(true, for: .codex)' not in service
