@@ -1,14 +1,14 @@
 <div align="center">
   <img src="docs/app-icon.png" width="120" height="120" alt="mddd" />
   <h1>mddd</h1>
-  <p>本地优先的 macOS 26 菜单栏研发活动看板</p>
+  <p>本地优先的 macOS 菜单栏研发活动看板</p>
 </div>
 
-`mddd` 将本机 AI Agent 的 token 用量、成本估算和额度状态集中到一个原生 macOS 菜单栏应用中。应用负责依赖扫描、登录授权、凭证管理、定时刷新、缓存和故障恢复；Python Collector 负责采集；菜单栏弹出面板以原生 SwiftUI 液态玻璃看板渲染。仓库根 `*/widget/` 单文件 Widget 保留，仅服务 Daimon/Kimi Work Blueprint 场景。
+`mddd` 将本机 AI Agent 的 token 用量、成本估算和额度状态集中到一个原生 macOS 菜单栏应用中。应用负责依赖扫描、登录授权、凭证管理、定时刷新、缓存和故障恢复；Python Collector 负责采集；菜单栏弹出面板以原生 SwiftUI 看板渲染 (macOS 26+ 可选液态玻璃, 更低系统使用经典材质风格)。仓库根 `*/widget/` 单文件 Widget 保留，仅服务 Daimon/Kimi Work Blueprint 场景。
 
 > **v0.1 Release**
 >
-> 支持从源码构建运行或生成可下载的 `.app` 发布包（位于 `dist/mddd.app`），最低支持 macOS 26。
+> 支持从源码构建运行或生成可下载的 `.app` 发布包（位于 `dist/mddd.app`），最低支持 macOS 14；液态玻璃主题需 macOS 26。
 
 ## 核心能力
 
@@ -18,9 +18,10 @@
 
 应用还提供:
 
-- 菜单栏常驻形态 (LSUIElement)、MenuBarExtra 弹出式液态玻璃面板、可配置的菜单栏指标 (1 至 3 项) 和自动刷新指示。
-- 原生 SwiftUI 玻璃卡片看板: 用量卡 (hero 总量、四格细分、14 日堆叠趋势)、订阅用量卡 (多 Provider 窗口量条、Codex 账号子卡、DeepSeek 月度消费与余额) 和逐小时卡 (24 点折线、模型/项目明细展开)，按数据可用性条件渲染，面板高度随内容自适应，无滚动条。
-- 设置窗口分区: 通用 (配色模式、液态玻璃强度、刷新间隔、菜单栏指标拖拽排序)、Agent 用量依赖卡、订阅额度 (Provider 标签式管理，拖拽排序，凭证只进 Keychain)、统一授权和诊断。
+- 菜单栏常驻形态 (LSUIElement)、MenuBarExtra 弹出式面板、可配置的菜单栏指标 (1 至 3 项) 和自动刷新指示。
+- 原生 SwiftUI 卡片看板: 用量卡 (hero 总量、四格细分、14 日堆叠趋势)、订阅用量卡 (多 Provider 窗口量条、Codex 账号子卡、DeepSeek 月度消费与余额) 和逐小时卡 (24 点折线、模型/项目明细展开)，按数据可用性条件渲染，面板高度随内容自适应，无滚动条。
+- 主题: 经典 / 液态玻璃两档; 液态玻璃仅 macOS 26+ 可选, 其下可调标准/通透/哑光模糊风格; 更低系统强制经典材质。
+- 设置窗口分区: 通用 (配色模式、界面风格、模糊风格、刷新间隔、菜单栏指标拖拽排序)、Agent 用量依赖卡、订阅额度 (Provider 标签式管理，拖拽排序，凭证只进 Keychain)、统一授权和诊断。
 - 首次启动 Onboarding、本机依赖扫描、统一授权摘要和 Activation Gate (未确认授权不启动任何 Collector)。
 - 默认每 30 分钟自动刷新，以及手动刷新、防重入、超时、退避和系统唤醒补采。
 - 最后成功快照优先展示；单模块失败不会阻止其他模块更新。
@@ -42,7 +43,7 @@
 
 ### 环境要求
 
-- macOS 26 或更高版本 (部署目标 `LSMinimumSystemVersion` 26.0)。
+- macOS 14 或更高版本 (部署目标 `LSMinimumSystemVersion` 14.0)；液态玻璃主题需要 macOS 26 或更高。
 - Swift 6 工具链；当前验证版本为 Apple Swift 6.2.1。
 - Python 3.9 或更高版本；Collector 仅依赖 Python 标准库。
 - Agent 用量模块需要至少一个受支持的本机会话数据源。
@@ -76,7 +77,7 @@ zsh scripts/build-test-app.sh
 ## 应用架构
 
 ```text
-macOS 26 菜单栏应用 (LSUIElement)
+macOS 菜单栏应用 (LSUIElement, 最低 14)
   ├─ Onboarding + Settings
   │    ├─ 本机只读依赖扫描
   │    └─ 订阅额度凭证 (Keychain, 可一次性只读导入)
@@ -86,7 +87,7 @@ macOS 26 菜单栏应用 (LSUIElement)
   │              └─ Agent Usage Collector
   └─ ArtifactStore
        └─ AppModel + PanelViewModelMapper
-            └─ MenuBarExtra 原生液态玻璃看板
+            └─ MenuBarExtra 原生看板 (经典 / 液态玻璃)
                  (用量 / 订阅用量 / 逐小时玻璃卡)
 ```
 
@@ -117,7 +118,7 @@ Collector 仍保留独立 CLI 入口，用于开发、测试和故障排查，�
 
 ```text
 mddd/
-├── macos/MdddApp/          # macOS 26 菜单栏应用、Scheduler、缓存和原生液态玻璃看板
+├── macos/MdddApp/          # macOS 菜单栏应用 (最低 14)、Scheduler、缓存和原生看板
 │   ├── Sources/MdddApp/       # 应用入口、MenuBarExtra、设置窗口和 Views/ 卡片组件
 │   ├── Sources/MdddAppCore/
 │   ├── Sources/MdddOnboardingCore/

@@ -107,7 +107,7 @@ plutil -insert CFBundleShortVersionString -string "0.1.0" \
     "$MDDD_INFO_PLIST"
 plutil -insert CFBundleVersion -string "1" "$MDDD_INFO_PLIST"
 plutil -insert CFBundleIconFile -string "AppIcon" "$MDDD_INFO_PLIST"
-plutil -insert LSMinimumSystemVersion -string "26.0" "$MDDD_INFO_PLIST"
+plutil -insert LSMinimumSystemVersion -string "14.0" "$MDDD_INFO_PLIST"
 plutil -insert LSUIElement -bool YES "$MDDD_INFO_PLIST"
 plutil -insert NSHighResolutionCapable -bool YES "$MDDD_INFO_PLIST"
 plutil -insert NSPrincipalClass -string "NSApplication" "$MDDD_INFO_PLIST"

@@ -3,12 +3,10 @@ import SwiftUI
 
 // 面板装配层共享的卡片容器与底栏按钮样式.
 
-/// 面板卡片容器: macOS 26 液态玻璃 (glassEffect, 圆角 16) + 弱描边 + 顶部高光.
-/// 玻璃强度随 mdddGlassStyle 环境 (标准/通透); 哑光风格退化为
-/// 材料质感 (regularMaterial), 描边与高光同步弱化.
+/// 面板卡片容器: 液态玻璃模式下 glassEffect (圆角 16); 经典/哑光退化为材质或半透明填充.
 struct PanelCardContainer<Content: View>: View {
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.mdddGlassStyle) private var glassStyle
+    @Environment(\.mdddResolvedTheme) private var theme
     private let content: Content
 
     init(@ViewBuilder content: () -> Content) {
@@ -43,12 +41,22 @@ struct PanelCardContainer<Content: View>: View {
             )
     }
 
-    /// 玻璃风格用系统 glassEffect; 哑光退化为材质/白底填充.
     @ViewBuilder
     private var cardBackground: some View {
-        if glassStyle.usesGlass {
-            Color.clear.glassEffect(glassStyle.glass, in: shape)
-        } else if colorScheme == .dark {
+        if theme.usesLiquidGlassEffects {
+            if #available(macOS 26, *) {
+                Color.clear.glassEffect(theme.glassStyle.liquidGlassAPI, in: shape)
+            } else {
+                classicFill
+            }
+        } else {
+            classicFill
+        }
+    }
+
+    @ViewBuilder
+    private var classicFill: some View {
+        if colorScheme == .dark {
             shape.fill(.regularMaterial)
         } else {
             shape.fill(Color.white.opacity(0.45))
@@ -74,13 +82,25 @@ struct PanelCardContainer<Content: View>: View {
 }
 
 extension View {
-    /// 面板底栏按钮: macOS 26 用系统 .glass 样式, 低系统保持默认.
+    /// 面板底栏按钮: 液态玻璃模式且 macOS 26+ 用 .glass, 否则默认.
     @ViewBuilder
     func panelGlassButtonStyle() -> some View {
-        if #available(macOS 26, *) {
-            self.buttonStyle(.glass)
+        modifier(PanelGlassButtonStyleModifier())
+    }
+}
+
+private struct PanelGlassButtonStyleModifier: ViewModifier {
+    @Environment(\.mdddResolvedTheme) private var theme
+
+    func body(content: Content) -> some View {
+        if theme.usesLiquidGlassEffects {
+            if #available(macOS 26, *) {
+                content.buttonStyle(.glass)
+            } else {
+                content
+            }
         } else {
-            self
+            content
         }
     }
 }

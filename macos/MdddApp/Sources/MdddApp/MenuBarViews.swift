@@ -151,7 +151,7 @@ struct MenuBarDashboardView: View {
         .frame(width: 440)
         .background { panelGlassBackground }
         .preferredColorScheme(coordinator.appearanceMode.colorScheme)
-        .environment(\.mdddGlassStyle, coordinator.glassStyle)
+        .environment(\.mdddResolvedTheme, coordinator.resolvedTheme)
     }
 
     /// 卡片栈高度上限: 铺满面板窗口所在屏 visibleFrame, 只留约 10pt 小边距;
@@ -167,13 +167,19 @@ struct MenuBarDashboardView: View {
 
     // MARK: 面板玻璃背景
 
-    /// macOS 26 用 Liquid Glass (强度随设置), 哑光风格退化为材料质感; 圆角 22 对齐 mockup.
+    /// 液态玻璃模式用系统 glassEffect; 经典/哑光退化为材料质感; 圆角 22 对齐 mockup.
     @ViewBuilder
     private var panelGlassBackground: some View {
-        if coordinator.glassStyle.usesGlass {
-            Color.clear.glassEffect(
-                coordinator.glassStyle.glass, in: .rect(cornerRadius: 22)
-            )
+        let theme = coordinator.resolvedTheme
+        if theme.usesLiquidGlassEffects {
+            if #available(macOS 26, *) {
+                Color.clear.glassEffect(
+                    theme.glassStyle.liquidGlassAPI, in: .rect(cornerRadius: 22)
+                )
+            } else {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(.regularMaterial)
+            }
         } else {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(.regularMaterial)

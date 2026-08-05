@@ -5,7 +5,7 @@ import PackageDescription
 let package = Package(
     name: "MdddApp",
     platforms: [
-        .macOS(.v26),
+        .macOS(.v14),
     ],
     products: [
         .executable(name: "MdddApp", targets: ["MdddApp"]),

@@ -1,23 +1,103 @@
 import MdddOnboardingCore
 import SwiftUI
 
-// MARK: - 玻璃风格环境
+// MARK: - 主题环境
 
-/// 面板与设置页共享的玻璃风格环境键; 默认值与配置回落一致 (标准玻璃).
-private struct MdddGlassStyleKey: EnvironmentKey {
-    static let defaultValue: GlassStylePreference = .regular
+/// 面板与设置页共享的已解析主题; 默认 classic + regular (安全回落).
+private struct MdddResolvedThemeKey: EnvironmentKey {
+    static let defaultValue = ResolvedTheme(
+        interfaceStyle: .classic,
+        glassStyle: .regular,
+        usesLiquidGlassEffects: false
+    )
 }
 
 extension EnvironmentValues {
+    var mdddResolvedTheme: ResolvedTheme {
+        get { self[MdddResolvedThemeKey.self] }
+        set { self[MdddResolvedThemeKey.self] = newValue }
+    }
+
+    /// 兼容旧调用点: 等价于 resolvedTheme.glassStyle.
     var mdddGlassStyle: GlassStylePreference {
-        get { self[MdddGlassStyleKey.self] }
-        set { self[MdddGlassStyleKey.self] = newValue }
+        get { mdddResolvedTheme.glassStyle }
+        set {
+            let current = mdddResolvedTheme
+            mdddResolvedTheme = ResolvedTheme(
+                interfaceStyle: current.interfaceStyle,
+                glassStyle: newValue,
+                usesLiquidGlassEffects: current.interfaceStyle == .liquidGlass
+                    && current.usesLiquidGlassEffects
+                    && newValue.usesGlassMaterial
+            )
+        }
     }
 }
 
-/// 风格 -> 系统 Glass 映射; material 不走 Glass, 由各调用点退化为材质填充.
+// MARK: - 设置页 / 面板玻璃样式
+
+extension View {
+    /// 按钮样式: 液态玻璃模式下用系统 .glass; 经典或低系统用默认.
+    @ViewBuilder
+    func glassButtonStyle() -> some View {
+        modifier(GlassButtonStyleModifier())
+    }
+
+    /// Form 分组行背景; classic / 哑光退化为材质填充.
+    func glassFormRowBackground() -> some View {
+        modifier(GlassFormRowBackgroundModifier())
+    }
+}
+
+private struct GlassButtonStyleModifier: ViewModifier {
+    @Environment(\.mdddResolvedTheme) private var theme
+
+    func body(content: Content) -> some View {
+        if theme.usesLiquidGlassEffects {
+            if #available(macOS 26, *) {
+                content.buttonStyle(.glass)
+            } else {
+                content
+            }
+        } else {
+            content
+        }
+    }
+}
+
+private struct GlassFormRowBackgroundModifier: ViewModifier {
+    @Environment(\.mdddResolvedTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
+
+    @ViewBuilder
+    private var rowBackground: some View {
+        if theme.usesLiquidGlassEffects {
+            if #available(macOS 26, *) {
+                Color.clear.glassEffect(theme.glassStyle.liquidGlassAPI, in: .rect(cornerRadius: 10))
+            } else {
+                classicRowFill
+            }
+        } else {
+            classicRowFill
+        }
+    }
+
+    private var classicRowFill: some View {
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(.regularMaterial)
+    }
+
+    func body(content: Content) -> some View {
+        content.listRowBackground(rowBackground)
+    }
+}
+
+// MARK: - GlassStyle -> 系统 Glass (仅 26+)
+
 extension GlassStylePreference {
-    var glass: Glass {
+    /// 映射到系统 Glass 类型; 调用方必须包在 #available(macOS 26, *).
+    @available(macOS 26, *)
+    var liquidGlassAPI: Glass {
         switch self {
         case .regular, .material:
             return .regular
@@ -26,43 +106,6 @@ extension GlassStylePreference {
         }
     }
 
-    /// 是否使用真实液态玻璃 (material 为唯一退化形态).
-    var usesGlass: Bool {
-        self != .material
-    }
-}
-
-// MARK: - 设置页玻璃样式
-
-/// 设置页统一液态玻璃样式: 按钮, 状态胶囊与 Form 行背景.
-/// 部署目标为 macOS 26, 系统玻璃能力始终可用.
-
-extension View {
-    /// 系统 .glass 按钮样式.
-    func glassButtonStyle() -> some View {
-        buttonStyle(.glass)
-    }
-
-    /// Form 分组行背景; 哑光风格退化为材质填充.
-    func glassFormRowBackground() -> some View {
-        modifier(GlassFormRowBackgroundModifier())
-    }
-}
-
-private struct GlassFormRowBackgroundModifier: ViewModifier {
-    @Environment(\.mdddGlassStyle) private var style
-
-    @ViewBuilder
-    private var rowBackground: some View {
-        if style.usesGlass {
-            Color.clear.glassEffect(style.glass, in: .rect(cornerRadius: 10))
-        } else {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(.regularMaterial)
-        }
-    }
-
-    func body(content: Content) -> some View {
-        content.listRowBackground(rowBackground)
-    }
+    /// 兼容旧属性名.
+    var usesGlass: Bool { usesGlassMaterial }
 }

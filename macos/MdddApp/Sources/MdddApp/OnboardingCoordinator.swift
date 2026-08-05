@@ -18,8 +18,21 @@ final class OnboardingCoordinator: ObservableObject {
     @Published private(set) var refreshIntervalMinutes: Int
     /// 外观偏好, 与配置持久化同步; 面板和设置窗口据此覆盖 colorScheme.
     @Published private(set) var appearanceMode: AppearancePreference
-    /// 液态玻璃风格偏好, 与配置持久化同步; 经环境注入面板与设置页.
+    /// 界面风格 (经典 / 液态玻璃), 与配置持久化同步; 低系统强制经典.
+    @Published private(set) var interfaceStyle: InterfaceStylePreference
+    /// 模糊风格偏好, 与配置持久化同步; 仅液态玻璃模式下驱动渲染.
     @Published private(set) var glassStyle: GlassStylePreference
+    /// 可注入的能力探测 (测试); 默认读系统.
+    var liquidGlassSupported: () -> Bool = { LiquidGlassCapability.isSupported }
+
+    /// 当前解析主题 (界面 + 模糊 + 是否用玻璃 API); 始终按能力回落.
+    var resolvedTheme: ResolvedTheme {
+        ThemeResolution.resolve(
+            interfaceStyle: interfaceStyle,
+            glassStyle: glassStyle,
+            isSupported: liquidGlassSupported()
+        )
+    }
 
     /// 订阅 provider 展示顺序 (转发 SubscriptionService, 保持 Settings 观察入口).
     var subscriptionProviderOrder: [SubscriptionProviderID] {
@@ -86,7 +99,15 @@ final class OnboardingCoordinator: ObservableObject {
         self.refreshIntervalMinutes = resolvedInterval
         scheduler.updateRefreshInterval(TimeInterval(resolvedInterval * 60))
         self.appearanceMode = config?.resolvedAppearanceMode ?? .system
-        self.glassStyle = config?.resolvedGlassStyle ?? .regular
+        let supported = LiquidGlassCapability.isSupported
+        let theme = ThemeResolution.resolve(
+            interfaceStyle: config?.interfaceStyle,
+            glassStyle: config?.glassStyle,
+            isSupported: supported
+        )
+        // UI 绑定使用解析后的界面风格 (不支持时为 classic); 模糊风格保留磁盘/默认.
+        self.interfaceStyle = theme.interfaceStyle
+        self.glassStyle = theme.glassStyle
 
         // SubscriptionService 在 self 部分初始化后创建; objectWillChange 经回调转发.
         // 使用临时无回调初始化, 随后在下方挂载 (init 内无法弱引用 self 前完成全量).
@@ -357,11 +378,32 @@ final class OnboardingCoordinator: ObservableObject {
         model.setSettingsError(nil)
     }
 
-    /// 用户变更液态玻璃风格: 先持久化再发布 (先存后生效);
-    /// 保存失败不变更运行中风格.
+    /// 用户变更界面风格: 不支持液态玻璃时拒绝 liquidGlass (fail-closed).
+    func setInterfaceStyle(_ style: InterfaceStylePreference) {
+        if style == .liquidGlass, !liquidGlassSupported() {
+            model.setSettingsError("液态玻璃需要 macOS 26 或更高版本")
+            return
+        }
+        guard let configStore else {
+            model.setSettingsError("配置存储不可用, 无法保存界面风格")
+            return
+        }
+        var config = configStore.load() ?? OnboardingConfiguration()
+        config.interfaceStyle = style
+        do {
+            try configStore.save(config)
+        } catch {
+            model.setSettingsError("界面风格保存失败")
+            return
+        }
+        interfaceStyle = style
+        model.setSettingsError(nil)
+    }
+
+    /// 用户变更模糊风格 (仅液态玻璃模式下有意义): 先持久化再发布.
     func setGlassStyle(_ style: GlassStylePreference) {
         guard let configStore else {
-            model.setSettingsError("配置存储不可用, 无法保存玻璃风格")
+            model.setSettingsError("配置存储不可用, 无法保存模糊风格")
             return
         }
         var config = configStore.load() ?? OnboardingConfiguration()
@@ -369,7 +411,7 @@ final class OnboardingCoordinator: ObservableObject {
         do {
             try configStore.save(config)
         } catch {
-            model.setSettingsError("玻璃风格保存失败")
+            model.setSettingsError("模糊风格保存失败")
             return
         }
         glassStyle = style

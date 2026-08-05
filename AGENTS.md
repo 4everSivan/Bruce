@@ -13,7 +13,7 @@
 
 ## 1. 项目目标
 
-`mddd` 用于制作一个运行在 macOS 菜单栏场景中的研发活动看板. 核心能力是分析本机 AI Agent 的 token 用量, 成本和额度. 项目采用本机 Collector 采集数据, 输出 JSON artifact; macOS App 以原生 SwiftUI 液态玻璃看板渲染 (macOS 26), 仓库根 `*/widget/` 单文件 Widget 继续服务 Daimon/Kimi Work Blueprint 场景.
+`mddd` 用于制作一个运行在 macOS 菜单栏场景中的研发活动看板. 核心能力是分析本机 AI Agent 的 token 用量, 成本和额度. 项目采用本机 Collector 采集数据, 输出 JSON artifact; macOS App 以原生 SwiftUI 看板渲染 (最低 macOS 14; 液态玻璃主题需 macOS 26), 仓库根 `*/widget/` 单文件 Widget 继续服务 Daimon/Kimi Work Blueprint 场景.
 
 项目是本地优先工具, 但会读取真实会话记录和认证信息, 并调用外部服务. 任何实现都必须优先保护凭证, 个人活动数据和其他应用维护的本机数据库.
 <!-- source: user-input -->
@@ -63,7 +63,7 @@
 |------|------|
 | `agent-usage/collector/` | 扫描本机 Agent 会话, 聚合 token, 估算成本并查询服务额度 |
 | `agent-usage/widget/` | 渲染 Agent token, 成本, 额度和趋势的单文件 Widget |
-| `macos/MdddApp/` | SwiftPM 包 (macOS 26): `MdddApp` (SwiftUI 菜单栏应用, 原生液态玻璃看板, `Sources/MdddApp/Views/` 卡片组件), `MdddAppCore` (AppModel, 调度, PanelViewModel 映射), `MdddOnboardingCore` (扫描, 授权, Gate, 订阅凭证纯逻辑), 多个 Harness 边界测试 |
+| `macos/MdddApp/` | SwiftPM 包 (最低 macOS 14): `MdddApp` (SwiftUI 菜单栏应用, 经典/液态玻璃主题, `Sources/MdddApp/Views/` 卡片组件), `MdddAppCore` (AppModel, 调度, PanelViewModel 映射), `MdddOnboardingCore` (扫描, 授权, Gate, 订阅凭证, 主题解析纯逻辑), 多个 Harness 边界测试 |
 | `data/` | 本机运行产物; 可能包含个人活动和使用量数据, 不得提交 |
 | `docs/` | 项目设计, 决策和说明文档 |
 | `scripts/` | 本地验证脚本 (`verify-local.sh`) 与测试版 App 打包脚本 (`build-test-app.sh`) |

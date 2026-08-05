@@ -55,7 +55,7 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .preferredColorScheme(coordinator.appearanceMode.colorScheme)
-        .environment(\.mdddGlassStyle, coordinator.glassStyle)
+        .environment(\.mdddResolvedTheme, coordinator.resolvedTheme)
         .sheet(isPresented: $showsDiagnosticsPreview) {
             diagnosticsPreviewSheet
         }
@@ -68,9 +68,13 @@ struct SettingsView: View {
 
     // MARK: - 通用
 
-    /// 通用偏好: 外观, 自动刷新与菜单栏指标.
+    /// 通用偏好: 外观, 界面风格, 模糊风格, 自动刷新与菜单栏指标.
     private var generalSection: some View {
-        Section("通用") {
+        let glassSupported = coordinator.liquidGlassSupported()
+        let showBlurStyles = glassSupported
+            && coordinator.resolvedTheme.interfaceStyle == .liquidGlass
+
+        return Section("通用") {
             Picker(
                 "配色模式",
                 selection: Binding(
@@ -85,19 +89,48 @@ struct SettingsView: View {
             .pickerStyle(.segmented)
             .accessibilityHint("立即作用于菜单栏面板与本设置窗口, 跟随系统时与 macOS 外观一致")
 
-            Picker(
-                "液态玻璃",
-                selection: Binding(
-                    get: { coordinator.glassStyle },
-                    set: { coordinator.setGlassStyle($0) }
+            VStack(alignment: .leading, spacing: 6) {
+                Picker(
+                    "界面风格",
+                    selection: Binding(
+                        get: { coordinator.interfaceStyle },
+                        set: { coordinator.setInterfaceStyle($0) }
+                    )
+                ) {
+                    Text("经典").tag(InterfaceStylePreference.classic)
+                    Text("液态玻璃").tag(InterfaceStylePreference.liquidGlass)
+                }
+                .pickerStyle(.segmented)
+                // 不支持液态玻璃时整段禁用 (强制经典), 旁注说明原因.
+                .disabled(!glassSupported)
+                .opacity(glassSupported ? 1 : 0.55)
+                .accessibilityHint(
+                    glassSupported
+                        ? "经典为材质面板; 液态玻璃使用系统玻璃效果"
+                        : "液态玻璃需要 macOS 26; 当前仅可使用经典"
                 )
-            ) {
-                Text("标准").tag(GlassStylePreference.regular)
-                Text("通透").tag(GlassStylePreference.clear)
-                Text("哑光").tag(GlassStylePreference.material)
+                if !glassSupported {
+                    Text("液态玻璃需要 macOS 26 或更高版本")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
-            .pickerStyle(.segmented)
-            .accessibilityHint("标准与通透为系统液态玻璃, 哑光退化为材质质感")
+
+            if showBlurStyles {
+                Picker(
+                    "模糊风格",
+                    selection: Binding(
+                        get: { coordinator.glassStyle },
+                        set: { coordinator.setGlassStyle($0) }
+                    )
+                ) {
+                    Text("标准").tag(GlassStylePreference.regular)
+                    Text("通透").tag(GlassStylePreference.clear)
+                    Text("哑光").tag(GlassStylePreference.material)
+                }
+                .pickerStyle(.segmented)
+                .accessibilityHint("标准与通透为系统液态玻璃, 哑光退化为材质质感")
+            }
 
             Picker(
                 "刷新间隔",

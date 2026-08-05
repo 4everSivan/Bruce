@@ -85,8 +85,8 @@ public enum AppearancePreference: String, Codable, Equatable, Sendable, CaseIter
     case dark
 }
 
-/// 液态玻璃风格偏好. regular 系统标准玻璃, clear 更通透,
-/// material 退化为材质质感; 持久化为 rawValue 字符串.
+/// 模糊风格偏好 (仅液态玻璃模式下展示). regular 标准, clear 通透,
+/// material 哑光/材质; 持久化为 rawValue 字符串.
 public enum GlassStylePreference: String, Codable, Equatable, Sendable, CaseIterable {
     case regular
     case clear
@@ -112,7 +112,9 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
     public var refreshIntervalMinutes: Int?
     /// 外观偏好. nil (含 JSON 显式 null 或非法值) 表示跟随系统.
     public var appearanceMode: AppearancePreference?
-    /// 液态玻璃风格偏好. nil (含 JSON 显式 null 或非法值) 表示标准玻璃.
+    /// 界面风格. nil 表示缺键: 由 ThemeResolution 按能力回落.
+    public var interfaceStyle: InterfaceStylePreference?
+    /// 模糊风格 (液态玻璃子选项). nil 表示标准玻璃.
     public var glassStyle: GlassStylePreference?
     /// 订阅 provider 展示顺序 (rawValue 列表). nil 表示使用 CaseIterable 默认顺序;
     /// 用户在设置页调整顺序后写入. 仅包含已添加的 provider.
@@ -137,9 +139,25 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         appearanceMode ?? .system
     }
 
-    /// 解析后的玻璃风格: nil 一律回落标准玻璃.
+    /// 解析后的模糊风格: nil 一律回落标准.
     public var resolvedGlassStyle: GlassStylePreference {
         glassStyle ?? .regular
+    }
+
+    /// 按当前进程能力解析完整主题 (界面风格 + 模糊 + 是否用玻璃 API).
+    public func resolvedTheme(
+        isLiquidGlassSupported: Bool = LiquidGlassCapability.isSupported
+    ) -> ResolvedTheme {
+        ThemeResolution.resolve(
+            interfaceStyle: interfaceStyle,
+            glassStyle: glassStyle,
+            isSupported: isLiquidGlassSupported
+        )
+    }
+
+    /// 解析后的界面风格 (依赖当前系统能力).
+    public var resolvedInterfaceStyle: InterfaceStylePreference {
+        resolvedTheme().interfaceStyle
     }
 
     public init(
@@ -153,6 +171,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         subscriptionProviders: [String: SubscriptionProviderConfiguration] = [:],
         refreshIntervalMinutes: Int? = nil,
         appearanceMode: AppearancePreference? = nil,
+        interfaceStyle: InterfaceStylePreference? = nil,
         glassStyle: GlassStylePreference? = nil,
         subscriptionProviderOrder: [String]? = nil
     ) {
@@ -166,6 +185,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         self.subscriptionProviders = subscriptionProviders
         self.refreshIntervalMinutes = refreshIntervalMinutes
         self.appearanceMode = appearanceMode
+        self.interfaceStyle = interfaceStyle
         self.glassStyle = glassStyle
         self.subscriptionProviderOrder = subscriptionProviderOrder
     }
@@ -192,7 +212,11 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         appearanceMode = try? container.decodeIfPresent(
             AppearancePreference.self, forKey: .appearanceMode
         )
-        // 非法字符串与缺键一样按 nil (标准玻璃) 处理
+        // 非法字符串与缺键一样按 nil (由 ThemeResolution 回落)
+        interfaceStyle = try? container.decodeIfPresent(
+            InterfaceStylePreference.self, forKey: .interfaceStyle
+        )
+        // 非法字符串与缺键一样按 nil (标准模糊)
         glassStyle = try? container.decodeIfPresent(
             GlassStylePreference.self, forKey: .glassStyle
         )

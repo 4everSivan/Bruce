@@ -365,10 +365,9 @@ extension MdddOnboardingCoreHarness {
         )
     }
 
-    /// glassStyle: 缺键, 显式 null 与非法字符串一律回落标准玻璃,
-    /// 合法值原样保留; 原子读写往返一致.
+    /// glassStyle / interfaceStyle: 缺键与非法值回落; 主题解析能力矩阵.
     static func configGlassStyleDecodeAndFallback() throws {
-        // 缺键 -> nil -> 标准玻璃
+        // 缺键 -> nil -> 标准模糊
         let missing = try JSONDecoder().decode(
             OnboardingConfiguration.self,
             from: Data(#"{"schemaVersion": 2}"#.utf8)
@@ -378,8 +377,9 @@ extension MdddOnboardingCoreHarness {
             missing.resolvedGlassStyle == .regular,
             "缺键必须回落标准玻璃"
         )
+        try coreExpect(missing.interfaceStyle == nil, "interfaceStyle 缺键为 nil")
 
-        // 非法字符串 -> nil -> 标准玻璃, 不拒绝加载
+        // 非法字符串 -> nil, 不拒绝加载
         let invalid = try JSONDecoder().decode(
             OnboardingConfiguration.self,
             from: Data(#"{"schemaVersion": 2, "glassStyle": "neon"}"#.utf8)
@@ -400,6 +400,72 @@ extension MdddOnboardingCoreHarness {
             "合法值 clear 必须原样生效"
         )
 
+        // 旧配置仅 glassStyle: 支持系统 -> 液态玻璃 + clear
+        let legacyTheme = ThemeResolution.resolve(
+            interfaceStyle: valid.interfaceStyle,
+            glassStyle: valid.glassStyle,
+            isSupported: true
+        )
+        try coreExpect(
+            legacyTheme.interfaceStyle == .liquidGlass,
+            "旧配置在支持系统上默认液态玻璃"
+        )
+        try coreExpect(legacyTheme.glassStyle == .clear, "保留 clear 模糊")
+        try coreExpect(legacyTheme.usesLiquidGlassEffects, "clear 应使用玻璃 API")
+
+        // 旧配置: 不支持系统 -> classic
+        let legacyClassic = ThemeResolution.resolve(
+            interfaceStyle: nil,
+            glassStyle: .clear,
+            isSupported: false
+        )
+        try coreExpect(
+            legacyClassic.interfaceStyle == .classic,
+            "不支持系统必须 classic"
+        )
+        try coreExpect(
+            !legacyClassic.usesLiquidGlassEffects,
+            "classic 不得使用玻璃 API"
+        )
+
+        // 注入: 存储 liquidGlass 但不支持 -> classic
+        let forced = ThemeResolution.resolve(
+            interfaceStyle: .liquidGlass,
+            glassStyle: .regular,
+            isSupported: false
+        )
+        try coreExpect(forced.interfaceStyle == .classic, "注入不支持强制 classic")
+
+        // 注入: 支持 + liquidGlass
+        let ok = ThemeResolution.resolve(
+            interfaceStyle: .liquidGlass,
+            glassStyle: .material,
+            isSupported: true
+        )
+        try coreExpect(ok.interfaceStyle == .liquidGlass, "支持时保留 liquidGlass")
+        try coreExpect(
+            !ok.usesLiquidGlassEffects,
+            "material 不走 glassEffect"
+        )
+
+        // interfaceStyle 往返
+        let withInterface = try JSONDecoder().decode(
+            OnboardingConfiguration.self,
+            from: Data(
+                #"{"schemaVersion": 2, "interfaceStyle": "classic", "glassStyle": "clear"}"#
+                    .utf8
+            )
+        )
+        try coreExpect(
+            withInterface.interfaceStyle == .classic,
+            "interfaceStyle classic 解码"
+        )
+        try coreExpect(
+            withInterface.resolvedTheme(isLiquidGlassSupported: true).interfaceStyle
+                == .classic,
+            "显式 classic 在支持系统上仍为 classic"
+        )
+
         // 原子读写往返
         let tempDir = makeTempDir("config-glass-style")
         try FileManager.default.createDirectory(
@@ -409,10 +475,15 @@ extension MdddOnboardingCoreHarness {
         let store = try OnboardingConfigurationStore(configDirectory: tempDir)
         var config = OnboardingConfiguration()
         config.glassStyle = .material
+        config.interfaceStyle = .classic
         try store.save(config)
         try coreExpect(
             store.load()?.glassStyle == .material,
             "glassStyle 往返必须一致"
+        )
+        try coreExpect(
+            store.load()?.interfaceStyle == .classic,
+            "interfaceStyle 往返必须一致"
         )
     }
 
