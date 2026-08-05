@@ -23,8 +23,8 @@ public enum InjectionKind: Sendable, Equatable {
 
 // MARK: - ConfiguredRule
 
-/// Provider "已配置" 判定规则. 求值实现见 Task 8 (`LocalCredentialProbe` 等);
-/// 本任务只登记规则, 不改 Coordinator 行为.
+/// Provider "已配置" 判定规则. 纯求值见 `ConfiguredRuleEvaluator`;
+/// 本机文件/Keychain I/O 由 App 层 `LocalCredentialProbe` 负责.
 public enum ConfiguredRule: Sendable, Equatable {
     /// 全部 `credentialAccounts` 在 Keychain 非空
     case allCredentialAccountsNonEmpty
@@ -34,6 +34,78 @@ public enum ConfiguredRule: Sendable, Equatable {
     case claudeAppOrLocalProbe
     /// Grok: 应用 Keychain 凭证优先, 否则本机 CLI 登录态探测
     case grokAppOrLocalProbe
+}
+
+// MARK: - ConfiguredRuleEvaluator
+
+/// 纯规则求值: 无 I/O, 输入由调用方预加载 (Keychain 值 / Codex 探测 / 本机可用性).
+public enum ConfiguredRuleEvaluator {
+    /// 求值输入. `accountValues` 只收录非空字符串; 缺失键视为未配置.
+    public struct Inputs: Sendable, Equatable {
+        public var accountValues: [String: String]
+        public var codexHasConfiguredRecords: Bool
+        public var claudeLocalAvailable: Bool
+        public var grokLocalAvailable: Bool
+        public var now: Date
+
+        public init(
+            accountValues: [String: String] = [:],
+            codexHasConfiguredRecords: Bool = false,
+            claudeLocalAvailable: Bool = false,
+            grokLocalAvailable: Bool = false,
+            now: Date = Date()
+        ) {
+            self.accountValues = accountValues
+            self.codexHasConfiguredRecords = codexHasConfiguredRecords
+            self.claudeLocalAvailable = claudeLocalAvailable
+            self.grokLocalAvailable = grokLocalAvailable
+            self.now = now
+        }
+    }
+
+    /// 按 `ConfiguredRule` 判定 provider 是否已配置.
+    ///
+    /// - `allCredentialAccountsNonEmpty`: 每个 account 均有非空值
+    /// - `codexHasConfiguredRecords`: 透传 Codex store 结果 (fail-closed 由调用方保证)
+    /// - `claudeAppOrLocalProbe` / `grokAppOrLocalProbe`: 应用 Keychain 有效凭证优先,
+    ///   否则回退本机 CLI 登录态标志
+    public static func evaluate(
+        _ rule: ConfiguredRule,
+        accounts: [String],
+        inputs: Inputs
+    ) -> Bool {
+        switch rule {
+        case .allCredentialAccountsNonEmpty:
+            // 空 accounts 视为 true (与历史 for-loop 空迭代语义一致; Codex 不用本规则).
+            for account in accounts {
+                guard let value = inputs.accountValues[account], !value.isEmpty else {
+                    return false
+                }
+            }
+            return true
+
+        case .codexHasConfiguredRecords:
+            return inputs.codexHasConfiguredRecords
+
+        case .claudeAppOrLocalProbe:
+            if let raw = inputs.accountValues[SubscriptionCredentialAccount.claudeOAuth],
+               !raw.isEmpty {
+                return SubscriptionCredentialEvaluator.claudeStatus(
+                    of: raw, now: inputs.now
+                ) == .valid
+            }
+            return inputs.claudeLocalAvailable
+
+        case .grokAppOrLocalProbe:
+            if let raw = inputs.accountValues[SubscriptionCredentialAccount.grokOAuth],
+               !raw.isEmpty {
+                return SubscriptionCredentialEvaluator.grokStatus(
+                    of: raw, now: inputs.now
+                ) == .valid
+            }
+            return inputs.grokLocalAvailable
+        }
+    }
 }
 
 // MARK: - ProviderDescriptor

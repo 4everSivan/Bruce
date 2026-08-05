@@ -175,7 +175,16 @@ struct MdddOnboardingCoreHarness {
         try grokCLIImporterReadsFixture()
         try claudeGrokCredentialAccountsReturnNewKeys()
         try configSubscriptionProviderOrderRoundTrip()
-        print("MdddOnboardingCore tests passed: 162")
+        try configuredRuleAllAccountsNonEmpty()
+        try configuredRuleCodexRecords()
+        try configuredRuleClaudeAppPrefersOverLocal()
+        try configuredRuleClaudeFallsBackToLocal()
+        try configuredRuleClaudeExpiredAppFallsBackToLocal()
+        try configuredRuleGrokAppPrefersOverLocal()
+        try configuredRuleGrokFallsBackToLocal()
+        try configuredRuleGrokExpiredAppFallsBackToLocal()
+        try configuredRuleRegistryMatchesProviders()
+        print("MdddOnboardingCore tests passed: 171")
     }
 
     // MARK: - Python version parsing
@@ -3514,6 +3523,210 @@ struct MdddOnboardingCoreHarness {
             ],
             "grok credentialAccounts 应含 grok:oauth"
         )
+    }
+
+    // MARK: - ConfiguredRuleEvaluator (Task 8)
+
+    private static func configuredRuleAllAccountsNonEmpty() throws {
+        let accounts = [
+            SubscriptionCredentialAccount.volcengineAccessKey,
+            SubscriptionCredentialAccount.volcengineSecretKey,
+        ]
+        let full = ConfiguredRuleEvaluator.Inputs(accountValues: [
+            SubscriptionCredentialAccount.volcengineAccessKey: "ak",
+            SubscriptionCredentialAccount.volcengineSecretKey: "sk",
+        ])
+        try coreExpect(
+            ConfiguredRuleEvaluator.evaluate(
+                .allCredentialAccountsNonEmpty, accounts: accounts, inputs: full
+            ),
+            "全部非空应 configured"
+        )
+        let partial = ConfiguredRuleEvaluator.Inputs(accountValues: [
+            SubscriptionCredentialAccount.volcengineAccessKey: "ak",
+        ])
+        try coreExpect(
+            !ConfiguredRuleEvaluator.evaluate(
+                .allCredentialAccountsNonEmpty, accounts: accounts, inputs: partial
+            ),
+            "缺 SK 应未配置"
+        )
+        let emptyValue = ConfiguredRuleEvaluator.Inputs(accountValues: [
+            SubscriptionCredentialAccount.volcengineAccessKey: "ak",
+            SubscriptionCredentialAccount.volcengineSecretKey: "",
+        ])
+        try coreExpect(
+            !ConfiguredRuleEvaluator.evaluate(
+                .allCredentialAccountsNonEmpty, accounts: accounts, inputs: emptyValue
+            ),
+            "空字符串应未配置"
+        )
+    }
+
+    private static func configuredRuleCodexRecords() throws {
+        try coreExpect(
+            ConfiguredRuleEvaluator.evaluate(
+                .codexHasConfiguredRecords,
+                accounts: [],
+                inputs: .init(codexHasConfiguredRecords: true)
+            ),
+            "codex store true → configured"
+        )
+        try coreExpect(
+            !ConfiguredRuleEvaluator.evaluate(
+                .codexHasConfiguredRecords,
+                accounts: [],
+                inputs: .init(codexHasConfiguredRecords: false)
+            ),
+            "codex store false → 未配置 (metadata-only fail-closed)"
+        )
+    }
+
+    private static let validClaudeJSON =
+        #"{"claudeAiOauth":{"accessToken":"tok","expiresAt":"2099-01-01T00:00:00Z"}}"#
+    private static let expiredClaudeJSON =
+        #"{"claudeAiOauth":{"accessToken":"tok","expiresAt":"2020-01-01T00:00:00Z"}}"#
+    private static let validGrokJSON = """
+    {"https://auth.x.ai::offline_access":{"key":"k","expires_at":4099680000}}
+    """
+    private static let expiredGrokJSON = """
+    {"https://auth.x.ai::offline_access":{"key":"k","expires_at":1}}
+    """
+
+    private static func configuredRuleClaudeAppPrefersOverLocal() throws {
+        let now = Date(timeIntervalSince1970: 1_786_000_000)
+        let inputs = ConfiguredRuleEvaluator.Inputs(
+            accountValues: [
+                SubscriptionCredentialAccount.claudeOAuth: validClaudeJSON
+            ],
+            claudeLocalAvailable: false,
+            now: now
+        )
+        try coreExpect(
+            ConfiguredRuleEvaluator.evaluate(
+                .claudeAppOrLocalProbe,
+                accounts: [SubscriptionCredentialAccount.claudeOAuth],
+                inputs: inputs
+            ),
+            "应用有效凭证优先于本机 false"
+        )
+    }
+
+    private static func configuredRuleClaudeFallsBackToLocal() throws {
+        let inputs = ConfiguredRuleEvaluator.Inputs(claudeLocalAvailable: true)
+        try coreExpect(
+            ConfiguredRuleEvaluator.evaluate(
+                .claudeAppOrLocalProbe,
+                accounts: [SubscriptionCredentialAccount.claudeOAuth],
+                inputs: inputs
+            ),
+            "无应用凭证时本机 true → configured"
+        )
+        try coreExpect(
+            !ConfiguredRuleEvaluator.evaluate(
+                .claudeAppOrLocalProbe,
+                accounts: [SubscriptionCredentialAccount.claudeOAuth],
+                inputs: .init(claudeLocalAvailable: false)
+            ),
+            "无应用凭证且本机 false → 未配置"
+        )
+    }
+
+    private static func configuredRuleClaudeExpiredAppFallsBackToLocal() throws {
+        let now = Date(timeIntervalSince1970: 1_786_000_000)
+        // 应用凭证过期不算 valid, 且不回退本机 (与历史 credentialConfigured 一致:
+        // 有非空 raw 时只看 evaluator, 不看 local).
+        let expiredOnly = ConfiguredRuleEvaluator.Inputs(
+            accountValues: [
+                SubscriptionCredentialAccount.claudeOAuth: expiredClaudeJSON
+            ],
+            claudeLocalAvailable: true,
+            now: now
+        )
+        try coreExpect(
+            !ConfiguredRuleEvaluator.evaluate(
+                .claudeAppOrLocalProbe,
+                accounts: [SubscriptionCredentialAccount.claudeOAuth],
+                inputs: expiredOnly
+            ),
+            "应用凭证过期时不回退本机 (fail-closed on app branch)"
+        )
+    }
+
+    private static func configuredRuleGrokAppPrefersOverLocal() throws {
+        let now = Date(timeIntervalSince1970: 1_786_000_000)
+        let inputs = ConfiguredRuleEvaluator.Inputs(
+            accountValues: [
+                SubscriptionCredentialAccount.grokOAuth: validGrokJSON
+            ],
+            grokLocalAvailable: false,
+            now: now
+        )
+        try coreExpect(
+            ConfiguredRuleEvaluator.evaluate(
+                .grokAppOrLocalProbe,
+                accounts: [SubscriptionCredentialAccount.grokOAuth],
+                inputs: inputs
+            ),
+            "Grok 应用有效凭证优先于本机 false"
+        )
+    }
+
+    private static func configuredRuleGrokFallsBackToLocal() throws {
+        try coreExpect(
+            ConfiguredRuleEvaluator.evaluate(
+                .grokAppOrLocalProbe,
+                accounts: [SubscriptionCredentialAccount.grokOAuth],
+                inputs: .init(grokLocalAvailable: true)
+            ),
+            "无应用凭证时本机 true → configured"
+        )
+        try coreExpect(
+            !ConfiguredRuleEvaluator.evaluate(
+                .grokAppOrLocalProbe,
+                accounts: [SubscriptionCredentialAccount.grokOAuth],
+                inputs: .init(grokLocalAvailable: false)
+            ),
+            "无应用凭证且本机 false → 未配置"
+        )
+    }
+
+    private static func configuredRuleGrokExpiredAppFallsBackToLocal() throws {
+        let now = Date(timeIntervalSince1970: 1_786_000_000)
+        let expiredOnly = ConfiguredRuleEvaluator.Inputs(
+            accountValues: [
+                SubscriptionCredentialAccount.grokOAuth: expiredGrokJSON
+            ],
+            grokLocalAvailable: true,
+            now: now
+        )
+        try coreExpect(
+            !ConfiguredRuleEvaluator.evaluate(
+                .grokAppOrLocalProbe,
+                accounts: [SubscriptionCredentialAccount.grokOAuth],
+                inputs: expiredOnly
+            ),
+            "Grok 应用凭证过期时不回退本机"
+        )
+    }
+
+    private static func configuredRuleRegistryMatchesProviders() throws {
+        let expected: [SubscriptionProviderID: ConfiguredRule] = [
+            .kimi: .allCredentialAccountsNonEmpty,
+            .deepseek: .allCredentialAccountsNonEmpty,
+            .volcengine: .allCredentialAccountsNonEmpty,
+            .codex: .codexHasConfiguredRecords,
+            .antigravity: .allCredentialAccountsNonEmpty,
+            .claude: .claudeAppOrLocalProbe,
+            .grok: .grokAppOrLocalProbe,
+        ]
+        for id in SubscriptionProviderID.allCases {
+            let rule = ProviderRegistry.descriptor(for: id).configuredRule
+            try coreExpect(
+                rule == expected[id],
+                "\(id.rawValue) configuredRule 应为 \(String(describing: expected[id])), 得 \(rule)"
+            )
+        }
     }
 
     // subscriptionProviderOrder 字段编解码往返, 兼容旧配置缺键.
