@@ -151,6 +151,9 @@ for module in pricing runtime quota_services local_usage codex_compat quota_offi
         "$MDDD_RUNTIME/agent-usage/collector/$module.py"
 done
 
+ditto "$MDDD_REPO_ROOT/macos/MdddApp/Assets/AppIcon.icns" \
+    "$MDDD_RESOURCES/AppIcon.icns"
+
 MDDD_INFO_PLIST="$MDDD_CONTENTS/Info.plist"
 plutil -create xml1 "$MDDD_INFO_PLIST"
 plutil -insert CFBundleDevelopmentRegion -string "zh_CN" "$MDDD_INFO_PLIST"
@@ -162,6 +165,7 @@ plutil -insert CFBundleName -string "mddd" "$MDDD_INFO_PLIST"
 plutil -insert CFBundlePackageType -string "APPL" "$MDDD_INFO_PLIST"
 plutil -insert CFBundleShortVersionString -string "$MDDD_VERSION" "$MDDD_INFO_PLIST"
 plutil -insert CFBundleVersion -string "$MDDD_BUILD_NUMBER" "$MDDD_INFO_PLIST"
+plutil -insert CFBundleIconFile -string "AppIcon" "$MDDD_INFO_PLIST"
 plutil -insert LSMinimumSystemVersion -string "26.0" "$MDDD_INFO_PLIST"
 plutil -insert LSUIElement -bool YES "$MDDD_INFO_PLIST"
 plutil -insert NSHighResolutionCapable -bool YES "$MDDD_INFO_PLIST"

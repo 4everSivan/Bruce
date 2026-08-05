@@ -12,13 +12,13 @@
 
 | 模块 | 能力 | 数据边界 |
 |---|---|---|
-| Agent 用量 | 汇总 Kimi Work、Kimi Code、Claude Code、Codex 和 Orca 会话的 token、成本、趋势及可用额度状态 | 以本机会话和用户授权的 Provider 为来源 |
+| Agent 用量 | 汇总 Kimi Work、Kimi Code、Claude Code、Codex、Grok 和 Orca 会话的 token、成本、趋势及可用额度状态 | 以本机会话和用户授权的 Provider 为来源 |
 
 应用还提供:
 
 - 菜单栏常驻形态 (LSUIElement)、MenuBarExtra 弹出式液态玻璃面板、可配置的菜单栏指标 (1 至 3 项) 和自动刷新指示。
-- 原生 SwiftUI 玻璃卡片看板: 用量卡 (hero 总量、四格细分、14 日堆叠趋势)、订阅用量卡 (多 Provider 窗口量条、Codex 账号子卡、余额) 和逐小时卡 (24 点折线、模型/项目明细展开)，按数据可用性条件渲染，面板高度随内容自适应，无滚动条。
-- 设置窗口分区: 通用 (配色模式、液态玻璃强度、刷新间隔、菜单栏指标)、Agent 用量依赖卡、订阅额度 (Provider 标签式管理，凭证只进 Keychain)、统一授权和诊断。
+- 原生 SwiftUI 玻璃卡片看板: 用量卡 (hero 总量、四格细分、14 日堆叠趋势)、订阅用量卡 (多 Provider 窗口量条、Codex 账号子卡、DeepSeek 月度消费与余额) 和逐小时卡 (24 点折线、模型/项目明细展开)，按数据可用性条件渲染，面板高度随内容自适应，无滚动条。
+- 设置窗口分区: 通用 (配色模式、液态玻璃强度、刷新间隔、菜单栏指标拖拽排序)、Agent 用量依赖卡、订阅额度 (Provider 标签式管理，拖拽排序，凭证只进 Keychain)、统一授权和诊断。
 - 首次启动 Onboarding、本机依赖扫描、统一授权摘要和 Activation Gate (未确认授权不启动任何 Collector)。
 - 默认每 30 分钟自动刷新，以及手动刷新、防重入、超时、退避和系统唤醒补采。
 - 最后成功快照优先展示；单模块失败不会阻止其他模块更新。
@@ -119,6 +119,7 @@ mddd/
 │   ├── Sources/MdddApp/       # 应用入口、MenuBarExtra、设置窗口和 Views/ 卡片组件
 │   ├── Sources/MdddAppCore/
 │   ├── Sources/MdddOnboardingCore/
+│   ├── Assets/                # AppIcon.icns 应用图标
 │   └── Tests/                 # 独立 Harness target
 ├── bridge/                 # Swift 与 Python 之间的版本化 JSON 协议和安全校验
 ├── agent-usage/            # Agent 用量 Collector 与 Daimon Widget
@@ -163,7 +164,7 @@ mddd/
 ./scripts/verify-local.sh
 ```
 
-该脚本检查 Python 语法，运行全部 Python/Bridge/schema/Widget 测试 (59 项)，构建 Swift 包，并依次执行 Onboarding (98 项)、面板映射 (23 项)、缓存、Runner、调度、生命周期、诊断和隔离集成 Harness。隔离集成只在随机临时 HOME 中运行 Agent Collector，关闭外部额度能力，不访问真实账号、Keychain 或第三方数据库。
+该脚本检查 Python 语法，运行全部 Python/Bridge/schema/Widget 测试，构建 Swift 包，并依次执行 Onboarding (162 项)、面板映射 (35 项)、DeepSeek 月度账本 (17 项)、缓存、Runner、调度、生命周期、诊断、订阅凭证和隔离集成 Harness。隔离集成只在随机临时 HOME 中运行 Agent Collector，关闭外部额度能力，不访问真实账号、Keychain 或第三方数据库。
 
 Python 语法和测试:
 

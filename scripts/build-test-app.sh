@@ -39,6 +39,7 @@ required_sources=(
     "$MDDD_REPO_ROOT/agent-usage/collector/local_usage.py"
     "$MDDD_REPO_ROOT/agent-usage/collector/codex_compat.py"
     "$MDDD_REPO_ROOT/agent-usage/collector/quota_official.py"
+    "$MDDD_REPO_ROOT/macos/MdddApp/Assets/AppIcon.icns"
 )
 for required_source in "${required_sources[@]}"; do
     if [[ ! -e "$required_source" ]]; then
@@ -87,6 +88,9 @@ for module in pricing runtime quota_services local_usage codex_compat quota_offi
         "$MDDD_RUNTIME/agent-usage/collector/$module.py"
 done
 
+ditto "$MDDD_REPO_ROOT/macos/MdddApp/Assets/AppIcon.icns" \
+    "$MDDD_RESOURCES/AppIcon.icns"
+
 MDDD_INFO_PLIST="$MDDD_CONTENTS/Info.plist"
 plutil -create xml1 "$MDDD_INFO_PLIST"
 plutil -insert CFBundleDevelopmentRegion -string "zh_CN" "$MDDD_INFO_PLIST"
@@ -101,6 +105,7 @@ plutil -insert CFBundlePackageType -string "APPL" "$MDDD_INFO_PLIST"
 plutil -insert CFBundleShortVersionString -string "0.1.0" \
     "$MDDD_INFO_PLIST"
 plutil -insert CFBundleVersion -string "1" "$MDDD_INFO_PLIST"
+plutil -insert CFBundleIconFile -string "AppIcon" "$MDDD_INFO_PLIST"
 plutil -insert LSMinimumSystemVersion -string "26.0" "$MDDD_INFO_PLIST"
 plutil -insert LSUIElement -bool YES "$MDDD_INFO_PLIST"
 plutil -insert NSHighResolutionCapable -bool YES "$MDDD_INFO_PLIST"
