@@ -90,7 +90,7 @@
 | `swift run --package-path macos/MdddApp MdddOnboardingCoreHarness` | Onboarding Core 边界测试 (进程, SQLite, Keychain, Gate, 订阅凭证, 设备码登录, 令牌轮换合并, Codex v2 迁移, DeepSeek 追踪 ID 与保存事务, 统一过期判定器, Claude/Grok 导入器); 161 项 |
 | `swift run --package-path macos/MdddApp PanelViewModelHarness` | 面板 view model 映射边界测试 (措辞, 分组, 条件渲染, Codex 账号上次成功时间, DeepSeek 月度映射); 32 项 |
 | `swift run --package-path macos/MdddApp DeepSeekUsageLedgerHarness` | DeepSeek 月度账本边界测试 (领域差分, 时区跨日, 持久化权限, 损坏恢复, 敏感字段); 17 项 |
-| `zsh scripts/build-test-app.sh` | 生成 `dist/mddd-test.app` 测试版 App (Release 构建 + 打包 + 签名校验) |
+| `zsh scripts/build-test-app.sh` | 生成 `dist/mddd.app` 本地构建 App (Release 构建 + 打包 + 签名校验) |
 | GitHub Actions `.github/workflows/ci.yml` | push/PR 触发: verify-local.sh + Python 3.9 兼容 + 测试包构建; tag `v*` 触发草稿 Release |
 
 执行第一个实时命令前必须应用 `constitution.md` 的 Production Operation Mode. 静态分析或普通代码审查不得把实时采集作为默认验证步骤.

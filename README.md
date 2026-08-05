@@ -6,9 +6,9 @@
 
 `mddd` 将本机 AI Agent 的 token 用量、成本估算和额度状态集中到一个原生 macOS 菜单栏应用中。应用负责依赖扫描、登录授权、凭证管理、定时刷新、缓存和故障恢复；Python Collector 负责采集；菜单栏弹出面板以原生 SwiftUI 液态玻璃看板渲染。仓库根 `*/widget/` 单文件 Widget 保留，仅服务 Daimon/Kimi Work Blueprint 场景。
 
-> **Development Preview**
+> **v0.1 Release**
 >
-> 当前版本可从源码构建和运行，最低支持 macOS 26。签名、公证、可下载的 `.app` 发布包和真实账号发布验收尚未完成。
+> 支持从源码构建运行或生成可下载的 `.app` 发布包（位于 `dist/mddd.app`），最低支持 macOS 26。
 
 ## 核心能力
 
@@ -29,7 +29,7 @@
 
 ## 界面预览
 
-原生菜单栏面板截图待补充。运行测试版 App (`dist/mddd-test.app`，由 `scripts/build-test-app.sh` 生成) 后，对菜单栏面板和设置窗口截图，替换到本节的占位即可:
+原生菜单栏面板截图待补充。运行 App (`dist/mddd.app`，由 `scripts/build-test-app.sh` 生成) 后，对菜单栏面板和设置窗口截图，替换到本节的占位即可:
 
 | 场景 | 截图 |
 |---|---|
