@@ -240,7 +240,6 @@ struct SettingsView: View {
         let pythonProbe = result?.localDependencies.first { $0.kind == .python }
         let sessionProbes = (result?.localDependencies ?? [])
             .filter { $0.kind == .sessionDirectory }
-        let availableSessions = sessionProbes.filter { $0.status == .available }
         let busy = model.busyModules.contains(.agentUsage)
 
         return Section("Agent 用量") {
@@ -253,10 +252,7 @@ struct SettingsView: View {
             if let version = pythonProbe?.detail {
                 LabeledContent("版本", value: version)
             }
-            LabeledContent(
-                "有效会话源",
-                value: "\(availableSessions.count) / \(sessionProbes.count)"
-            )
+            sessionSourceTagsSection(sessionProbes)
             ForEach(result?.warnings ?? [], id: \.self) { warning in
                 Label(warning, systemImage: "exclamationmark.triangle")
                     .font(.caption)
@@ -283,6 +279,49 @@ struct SettingsView: View {
         .accessibilityElement(children: .contain)
         .glassFormRowBackground()
         .glassButtonStyle()
+    }
+
+    /// 有效会话源: 药丸标签展示; 本机可用绿色, 不可用灰色; 只展示不可点.
+    private func sessionSourceTagsSection(_ probes: [DependencyProbe]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("有效会话源")
+            if probes.isEmpty {
+                Text("尚未检查, 点击下方重新检查")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                SessionSourceFlowLayout(spacing: 6) {
+                    ForEach(Array(probes.enumerated()), id: \.offset) { _, probe in
+                        sessionSourcePill(
+                            name: probe.detail ?? "会话源",
+                            available: probe.status == .available
+                        )
+                    }
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("有效会话源")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// 药丸标签: 中间为 agent 名称; 绿 = 本机目录可用, 灰 = 未发现.
+    private func sessionSourcePill(name: String, available: Bool) -> some View {
+        Text(name)
+            .font(.caption.weight(.medium))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .foregroundStyle(available ? Color.white : Color.secondary)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(
+                        available
+                            ? Color.green.opacity(0.85)
+                            : Color.secondary.opacity(0.16)
+                    )
+            )
+            .accessibilityLabel("\(name), \(available ? "本机可用" : "本机未发现")")
+            .accessibilityAddTraits(.isStaticText)
     }
 
     // MARK: - 订阅额度
@@ -822,5 +861,65 @@ struct SettingsView: View {
         case .missing, .incompatible: return "exclamationmark.triangle.fill"
         case .locked, .timedOut, .corrupted: return "xmark.circle"
         }
+    }
+}
+
+// MARK: - 会话源标签流式布局
+
+/// 从左到右排布子视图, 超出宽度自动换行 (设置页有效会话源药丸标签).
+private struct SessionSourceFlowLayout: Layout {
+    var spacing: CGFloat = 6
+
+    func sizeThatFits(
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) -> CGSize {
+        arrange(proposal: proposal, subviews: subviews).size
+    }
+
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) {
+        let frames = arrange(proposal: proposal, subviews: subviews).frames
+        for index in subviews.indices {
+            guard index < frames.count else { continue }
+            let frame = frames[index]
+            subviews[index].place(
+                at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+                proposal: ProposedViewSize(frame.size)
+            )
+        }
+    }
+
+    private func arrange(
+        proposal: ProposedViewSize,
+        subviews: Subviews
+    ) -> (size: CGSize, frames: [CGRect]) {
+        let maxWidth = proposal.width ?? .infinity
+        var frames: [CGRect] = []
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var totalWidth: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > maxWidth {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            frames.append(CGRect(origin: CGPoint(x: x, y: y), size: size))
+            rowHeight = max(rowHeight, size.height)
+            x += size.width + spacing
+            totalWidth = max(totalWidth, x - spacing)
+        }
+
+        let height = subviews.isEmpty ? 0 : y + rowHeight
+        return (CGSize(width: totalWidth, height: height), frames)
     }
 }
