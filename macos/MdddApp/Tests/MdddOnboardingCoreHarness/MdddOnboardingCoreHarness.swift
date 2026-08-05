@@ -113,6 +113,7 @@ struct MdddOnboardingCoreHarness {
         try rotationMergeFiltersKeysAndRejectsUnknown()
         try CodexCredentialStoreTests.runAll()
         try await CodexOAuthClientTests.runAll()
+        try CredentialStateReducerTests.runAll()
         try await CodexTokenManagerTests.runAll()
         try await codexLoginStoresCompleteV2Record()
         try await ccSwitchDiscoveryKeepsMetadataOnly()

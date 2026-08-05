@@ -112,13 +112,14 @@ def test_subscription_card_marks_stale_codex_data():
 
 
 def test_panel_mapper_exposes_last_success_time_for_codex_errors():
-    """任务 9 契约: PanelViewModel 映射层为 stale Codex 账号提供上次成功时间.
-    lastSuccessText 只在 freshness == stale 且 capturedAt 存在时生成."""
-    mapper = (APP_CORE / "PanelViewModel.swift").read_text()
-    assert "lastSuccessText" in mapper
-    assert '"上次成功 "' in mapper
-    assert "service.capturedAt" in mapper
-    assert 'service.freshness == "stale"' in mapper
+    """任务 9 契约: Panel 映射层为 stale Codex 账号提供上次成功时间.
+    lastSuccessText 只在 freshness == stale 且 capturedAt 存在时生成.
+    S5a 后实现落在 SubscriptionMapping (PanelViewModel 仅保留入口)."""
+    mapping = (APP_CORE / "SubscriptionMapping.swift").read_text()
+    assert "lastSuccessText" in mapping
+    assert '"上次成功 "' in mapping
+    assert "service.capturedAt" in mapping
+    assert 'service.freshness == "stale"' in mapping
 
 
 def test_codex_configured_flag_requires_complete_record():
