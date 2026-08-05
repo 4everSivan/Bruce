@@ -39,7 +39,7 @@ from runtime import day_of, hour_of, parse_iso, epoch_from_iso  # noqa: E402
 import quota_services
 import quota_official
 import local_usage
-from local_usage import finalize, make_agent, new_bucket, record_usage, scan_claude, scan_codex, scan_kimi  # noqa: E402
+from local_usage import finalize, make_agent, new_bucket, record_usage, scan_claude, scan_codex, scan_kimi, scan_grok  # noqa: E402
 import codex_compat
 
 HOME = os.path.expanduser("~")
@@ -54,6 +54,7 @@ CODEX_SESSIONS = os.path.join(HOME, ".codex/sessions")
 ORCA_HOME = os.path.join(HOME, "Library/Application Support/orca")
 ORCA_CODEX_SESSIONS = os.path.join(ORCA_HOME, "codex-runtime-home/home/sessions")
 ORCA_CODEX_ACCOUNTS = os.path.join(ORCA_HOME, "codex-accounts")
+GROK_HOME = os.path.join(HOME, ".grok")
 CC_SWITCH_DB = os.path.join(HOME, ".cc-switch/cc-switch.db")
 CODEX_OAUTH_AUTH = os.path.join(HOME, ".cc-switch/codex_oauth_auth.json")
 CODEX_AUTH = os.path.join(HOME, ".codex/auth.json")
@@ -1216,10 +1217,21 @@ def collect(ctx=None):
             agent["note"] = "未发现会话记录"
         return finalize(agent, pricing)
 
-    # 4 个本地扫描互不共享状态 (各自累积独立 agent, 全局窗口配置只读),
+    def build_grok():
+        agent = make_agent("grok", "Grok")
+        if not sessions_allowed:
+            _mark_sessions_denied(agent)
+        elif scan_grok(agent, GROK_HOME):
+            agent["note"] = "按消息内容估算, 非精确 token 计数"
+        else:
+            agent["status"] = "not_found"
+            agent["note"] = "未发现会话记录"
+        return finalize(agent, pricing)
+
+    # 5 个本地扫描互不共享状态 (各自累积独立 agent, 全局窗口配置只读),
     # 并行执行; join 后按固定顺序组装, artifact 结构不变
-    builders = [build_kimi_work, build_kimi_cli, build_claude, build_codex]
-    with ThreadPoolExecutor(max_workers=4) as pool:
+    builders = [build_kimi_work, build_kimi_cli, build_claude, build_codex, build_grok]
+    with ThreadPoolExecutor(max_workers=5) as pool:
         agents = list(pool.map(lambda build: build(), builders))
 
     if _capability_allowed("externalQuotas"):

@@ -686,9 +686,7 @@ package struct PanelViewModelMapper: Sendable {
         case .baseline(let baseline):
             return DeepSeekMonthlyUsageViewModel(
                 state: .baseline,
-                estimatedConsumptionText: PanelFormat.decimalBalanceText(
-                    baseline.currentBalance, currency: baseline.currency
-                ),
+                estimatedConsumptionText: "",
                 currentBalanceText: PanelFormat.decimalBalanceText(
                     baseline.currentBalance, currency: baseline.currency
                 ),

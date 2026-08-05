@@ -294,3 +294,93 @@ def scan_codex(agent, session_dirs):
         ).isoformat(timespec="seconds"),
     }
     return found, {"ts": latest_quota_ts, "quota": quota}
+
+
+def scan_grok(agent, root):
+    """扫描 Grok Build 会话目录.
+
+    Grok 的 chat_history.jsonl 只存储对话内容, 不含 token 计数
+    (token 用量由 cc-switch 代理拦截 API 响应获得, 不写入会话文件).
+    本扫描器按消息内容长度估算 token: 每条消息取 content 文本长度 / 4
+    (近似 4 字符 = 1 token), user 消息计入输入, assistant 消息计入输出.
+
+    会话目录结构 (参考 cc-switch grokbuild.rs):
+      root/sessions/<encoded_project>/<session_id>/chat_history.jsonl
+      root/sessions/<encoded_project>/<session_id>/summary.json
+    也兼容 root/archived_sessions/ 路径.
+
+    时间戳: chat_history.jsonl 的单条消息不带 timestamp, 使用文件 mtime
+    作为会话的近似时间; 若 mtime 落在 14 日窗口内则计入用量.
+    """
+    found = False
+    for sub in ("sessions", "archived_sessions"):
+        sub_root = os.path.join(root, sub)
+        if not os.path.isdir(sub_root):
+            continue
+        for path in iter_recent_jsonl(sub_root):
+            found = True
+            project = None
+            # 路径形如 .../sessions/<encoded_project>/<session_id>/chat_history.jsonl
+            parts = path.split(os.sep)
+            if len(parts) >= 3:
+                encoded = parts[-3]
+                from urllib.parse import unquote
+                decoded = unquote(encoded)
+                project = os.path.basename(decoded) if decoded != encoded else encoded
+            # 用文件 mtime 作为会话的近似时间 (秒)
+            try:
+                mtime = os.path.getmtime(path)
+            except OSError:
+                continue
+            try:
+                with open(path, encoding="utf-8", errors="replace") as fh:
+                    for line in fh:
+                        if '"type"' not in line:
+                            continue
+                        try:
+                            r = json.loads(line)
+                        except Exception:
+                            continue
+                        msg_type = r.get("type")
+                        if msg_type not in ("user", "assistant"):
+                            continue
+                        content = _extract_grok_content(r.get("content"))
+                        if not content:
+                            continue
+                        estimated_tokens = max(1, len(content) // 4)
+                        if msg_type == "user":
+                            record_usage(
+                                agent, mtime, "grok",
+                                estimated_tokens, 0, 0, 0,
+                                project=project,
+                            )
+                        else:
+                            record_usage(
+                                agent, mtime, "grok",
+                                0, estimated_tokens, 0, 0,
+                                project=project,
+                            )
+            except OSError:
+                continue
+    return found
+
+
+def _extract_grok_content(content):
+    """从 Grok chat_history.jsonl 的 content 字段提取纯文本.
+
+    content 可能是字符串或列表 (列表元素含 type/text 键).
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict):
+                text = item.get("text")
+                if isinstance(text, str) and text.strip():
+                    parts.append(text)
+            elif isinstance(item, str):
+                parts.append(item)
+        return " ".join(parts)
+    return ""
+

@@ -119,7 +119,7 @@ private struct ProviderSectionView: View {
 
 // MARK: - DeepSeek 月度统计
 
-/// DeepSeek 月度统计区块: 只保留「本月消费」与「当前余额」两行.
+/// DeepSeek 月度统计区块: 只保留「本月消费」一行 + 底部记账起始时间.
 /// 只消费映射层提供的 DeepSeekMonthlyUsageViewModel, 不读取任何凭证或 artifact.
 private struct DeepSeekMonthlyUsageSection: View {
     let viewModel: DeepSeekMonthlyUsageViewModel
@@ -154,27 +154,21 @@ private struct DeepSeekMonthlyUsageSection: View {
                     .font(.system(size: 13, weight: .bold))
                     .monospacedDigit()
             }
-            HStack(alignment: .firstTextBaseline) {
-                Text("当前余额")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(viewModel.currentBalanceText)
-                    .font(.system(size: 13, weight: .bold))
-                    .monospacedDigit()
+            if !viewModel.coverageText.isEmpty {
+                Text(viewModel.coverageText)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
             }
         }
     }
 
     private var baselineContent: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("当前余额")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-            Spacer()
-            Text(viewModel.currentBalanceText)
-                .font(.system(size: 13, weight: .bold))
-                .monospacedDigit()
+        VStack(alignment: .leading, spacing: 4) {
+            if !viewModel.coverageText.isEmpty {
+                Text(viewModel.coverageText)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+            }
         }
     }
 
@@ -192,10 +186,9 @@ private struct DeepSeekMonthlyUsageSection: View {
     private var accessibilityLabel: String {
         switch viewModel.state {
         case .trend:
-            return "DeepSeek 本月消费 \(viewModel.estimatedConsumptionText), " +
-                "当前余额 \(viewModel.currentBalanceText)"
+            return "DeepSeek 本月消费 \(viewModel.estimatedConsumptionText)"
         case .baseline:
-            return "DeepSeek 当前余额 \(viewModel.currentBalanceText)"
+            return "DeepSeek 月度统计正在建立, \(viewModel.coverageText)"
         case .unavailable:
             return "DeepSeek 月度统计暂不可用"
         }
