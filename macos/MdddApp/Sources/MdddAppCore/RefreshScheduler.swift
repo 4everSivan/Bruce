@@ -408,7 +408,9 @@ package final class RefreshScheduler {
             runInputProvider: runInputProvider,
             credentialUpdates: credentialUpdateCoordinator,
             codexTokenManager: codexTokenManager,
-            isStopped: { [weak self] in self?.stopped ?? true }
+            isStopped: { [weak self] in self?.stopped ?? true },
+            // publish 用实时 clock; request.now 仅服务 load-previous 入口快照.
+            now: { [clock] in clock.now() }
         )
         let result = await pipeline.run(RefreshPipelineRequest(
             module: module,

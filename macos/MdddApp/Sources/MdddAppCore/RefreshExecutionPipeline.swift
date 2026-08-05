@@ -91,6 +91,9 @@ struct RefreshExecutionPipeline {
     private let credentialUpdates: CredentialUpdateCoordinator?
     private let codexTokenManager: (any CodexChallengeHandling)?
     private let isStopped: () -> Bool
+    /// Publish-time clock. `request.now` is entry-time (load-previous / stale);
+    /// store metadata must use end-of-run time so lastSuccessAt matches Scheduler.
+    private let now: () -> Date
 
     init(
         executor: any CollectorExecuting,
@@ -98,7 +101,8 @@ struct RefreshExecutionPipeline {
         runInputProvider: (any CollectorRunInputProviding)?,
         credentialUpdates: CredentialUpdateCoordinator?,
         codexTokenManager: (any CodexChallengeHandling)?,
-        isStopped: @escaping () -> Bool
+        isStopped: @escaping () -> Bool,
+        now: @escaping () -> Date = { Date() }
     ) {
         self.executor = executor
         self.store = store
@@ -106,6 +110,7 @@ struct RefreshExecutionPipeline {
         self.credentialUpdates = credentialUpdates
         self.codexTokenManager = codexTokenManager
         self.isStopped = isStopped
+        self.now = now
     }
 
     /// 执行一次完整刷新生命周期. 不触碰 ModuleScheduleState / timer.
@@ -287,9 +292,11 @@ struct RefreshExecutionPipeline {
             ))
         }
 
-        // 7. publish
+        // 7. publish — attemptedAt 取发布时刻 (非 request.now / 入口时刻),
+        // 与迁出前 handleResult 使用 clock.now() 的语义一致, 避免 collect/recovery
+        // 耗时导致 store lastSuccessAt 与 Scheduler lastSuccessAt 分叉.
         do {
-            try store.publish(artifact, for: request.module, attemptedAt: request.now)
+            try store.publish(artifact, for: request.module, attemptedAt: now())
         } catch {
             // 凭证已 apply; 发布失败不更新 lastPublishedDiagnostics
             return .publishFailed(error)

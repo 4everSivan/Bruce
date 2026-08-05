@@ -448,7 +448,9 @@ struct RefreshSchedulerHarness {
         try await pipelineReturnsCancelledWhenStopped(repository: repository)
         print("Refresh scheduler: pipeline completes publish when running")
         try await pipelineCompletesAndPublishesWhenNotStopped(repository: repository)
-        print("Refresh scheduler tests passed: 61")
+        print("Refresh scheduler: pipeline publish uses end-of-run clock")
+        try await pipelinePublishUsesEndOfRunClock(repository: repository)
+        print("Refresh scheduler tests passed: 62")
     }
 
     // MARK: - RefreshIntent merge (pure unit tests)
@@ -638,6 +640,67 @@ struct RefreshSchedulerHarness {
         try refreshExpect(
             loaded.artifact == published,
             "loaded store artifact must match pipeline publishedArtifact"
+        )
+    }
+
+    /// store.publish attemptedAt must use publish-time clock, not request.now
+    /// captured at executeRefresh entry (collect/recovery duration must not freeze metadata).
+    private static func pipelinePublishUsesEndOfRunClock(
+        repository: URL
+    ) async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mddd-pipeline-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let store = try ArtifactStore(rootURL: root)
+        let executor = MockCollectorExecutor()
+        executor.repository = repository
+        let entryNow = Date(timeIntervalSince1970: 1_786_000_000)
+        let publishNow = entryNow.addingTimeInterval(120)
+        let pipeline = RefreshExecutionPipeline(
+            executor: executor,
+            store: store,
+            runInputProvider: nil,
+            credentialUpdates: nil,
+            codexTokenManager: nil,
+            isStopped: { false },
+            now: { publishNow }
+        )
+        let request = RefreshPipelineRequest(
+            module: .agentUsage,
+            intent: .timer(),
+            staleAfter: 3600,
+            now: entryNow
+        )
+        let result = await pipeline.run(request)
+        guard case .completed(let run) = result else {
+            throw RefreshTestFailure.expectation(
+                "publish-clock pipeline must return .completed, got \(result)"
+            )
+        }
+        try refreshExpect(
+            run.publishedArtifact != nil,
+            "publish-clock path must publish artifact"
+        )
+        let loaded = try store.load(
+            .agentUsage,
+            now: publishNow,
+            staleAfter: 3600
+        )
+        let expected = ISO8601DateFormatter().string(from: publishNow)
+        let frozen = ISO8601DateFormatter().string(from: entryNow)
+        try refreshExpect(
+            loaded.metadata.lastSuccessAt == expected,
+            "store lastSuccessAt must be publish-time \(expected), got \(loaded.metadata.lastSuccessAt ?? "nil")"
+        )
+        try refreshExpect(
+            loaded.metadata.lastAttemptAt == expected,
+            "store lastAttemptAt must be publish-time \(expected), got \(loaded.metadata.lastAttemptAt ?? "nil")"
+        )
+        try refreshExpect(
+            loaded.metadata.lastSuccessAt != frozen,
+            "store lastSuccessAt must not freeze at request.now entry time \(frozen)"
         )
     }
 
