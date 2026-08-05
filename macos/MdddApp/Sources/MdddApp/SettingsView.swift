@@ -59,7 +59,7 @@ struct SettingsView: View {
         .sheet(isPresented: $showsDiagnosticsPreview) {
             diagnosticsPreviewSheet
         }
-        .onChange(of: model.settingsErrorMessage) { message in
+        .onChange(of: model.settingsErrorMessage) { _, message in
             if let message {
                 announce(message)
             }

@@ -225,12 +225,15 @@ struct HourlyLineCard: View {
             Text(bar.name)
                 .lineLimit(1)
             Spacer(minLength: 8)
-            Text(Self.sharePercentText(bar.share))
-                .font(.system(size: 9.5, weight: .semibold))
-                .monospacedDigit()
-            + Text(" · \(bar.totalText)")
-                .font(.system(size: 9.5))
-                .foregroundStyle(.secondary)
+            // 分两段 Text 保留字重/颜色差异; 避免 macOS 26 弃用的 Text + 拼接.
+            HStack(spacing: 0) {
+                Text(Self.sharePercentText(bar.share))
+                    .font(.system(size: 9.5, weight: .semibold))
+                    .monospacedDigit()
+                Text(" · \(bar.totalText)")
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(.secondary)
+            }
         }
         .font(.system(size: 9.5))
         .foregroundStyle(Color.primary.opacity(0.85))

@@ -314,7 +314,10 @@ private final class SuppressorView: NSView {
         // 用轻量看门狗持续压制; 面板关闭 (离窗) 时停止.
         watchdog = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) {
             [weak self] _ in
-            self?.enforce()
+            // Timer 回调非隔离; 调度回主线程再碰 NSView 层级.
+            DispatchQueue.main.async {
+                self?.enforce()
+            }
         }
     }
 

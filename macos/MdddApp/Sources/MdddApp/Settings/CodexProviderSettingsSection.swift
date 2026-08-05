@@ -11,7 +11,6 @@ struct CodexProviderSettingsSection: View {
     var onRemove: () -> Void
 
     var body: some View {
-        let configured = model.subscriptionCredentialConfigured[.codex] ?? false
         let busy = model.busySubscriptionProviders.contains(.codex)
 
         return managementStack {

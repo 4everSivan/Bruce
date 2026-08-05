@@ -129,6 +129,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     private let coordinator: OnboardingCoordinator
     private let diagnostics: DiagnosticService
     private var window: NSWindow?
+    /// 配置窗口是否处于「应显示 Dock」状态 (可见或最小化).
+    private var isDockPresentationActive = false
 
     init(
         model: AppModel,
@@ -141,14 +143,32 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         super.init()
     }
 
+    /// 打开或前置设置窗口, 并显示 Dock 图标.
     func present() {
         let window = window ?? makeWindow()
+        setDockIconVisible(true)
         NSApplication.shared.activate(ignoringOtherApps: true)
         if window.isMiniaturized {
             window.deminiaturize(nil)
         }
         window.makeKeyAndOrderFront(nil)
     }
+
+    /// Dock 图标被点击时: 若配置会话仍在, 重新前置设置窗口.
+    func handleDockReopen() {
+        guard isDockPresentationActive else { return }
+        present()
+    }
+
+    // MARK: - NSWindowDelegate
+
+    func windowWillClose(_ notification: Notification) {
+        // isReleasedWhenClosed = false: 关闭后窗口对象保留, 仅隐藏.
+        // 关闭配置窗口后恢复菜单栏-only, 去掉 Dock 图标.
+        setDockIconVisible(false)
+    }
+
+    // MARK: - Private
 
     private func makeWindow() -> NSWindow {
         let rootView = SettingsView()
@@ -173,5 +193,14 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         window.center()
         self.window = window
         return window
+    }
+
+    /// LSUIElement 菜单栏 App: accessory 隐藏 Dock; regular 显示 Dock.
+    /// 仅在状态变化时切换, 避免重复 setActivationPolicy 闪烁.
+    private func setDockIconVisible(_ visible: Bool) {
+        guard isDockPresentationActive != visible else { return }
+        isDockPresentationActive = visible
+        let policy: NSApplication.ActivationPolicy = visible ? .regular : .accessory
+        _ = NSApp.setActivationPolicy(policy)
     }
 }

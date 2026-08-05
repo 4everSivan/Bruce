@@ -136,7 +136,10 @@ struct MdddApp: App {
     }
 
     private func startApplicationIfNeeded() {
-        appDelegate.configure(runtime: runtime)
+        appDelegate.configure(
+            runtime: runtime,
+            settingsWindowController: settingsWindowController
+        )
         Task { @MainActor in
             let didStart = await bootstrap.startIfNeeded()
             if didStart, !coordinator.consentConfirmed {
