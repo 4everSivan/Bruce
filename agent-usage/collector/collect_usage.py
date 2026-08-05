@@ -35,7 +35,7 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pricing import BUILTIN_PRICING, estimate_cost, load_pricing  # noqa: E402
 import runtime
-from runtime import day_of, hour_of, parse_iso, epoch_from_iso  # noqa: E402
+from runtime import RunContext, day_of, hour_of, parse_iso, epoch_from_iso  # noqa: E402
 import quota_services
 import quota_official
 import local_usage
@@ -87,6 +87,9 @@ _RUNTIME_CREDENTIAL_CHALLENGES = []
 _RUNTIME_CAPABILITIES = None
 _APP_MODE = False
 _CREDENTIAL_UPDATE_LOCK = threading.Lock()
+# 最近一次 _configure_runtime 绑定的 RunContext; run_app 读 updates/challenges.
+# 过渡期指针, S4d 随 global 一并清理; 新逻辑应直接持有返回的 RunContext.
+_ACTIVE_RUN_CONTEXT = None
 
 
 def _path_override(overrides, name, default):
@@ -94,16 +97,136 @@ def _path_override(overrides, name, default):
     return os.path.abspath(os.path.expanduser(value))
 
 
-def _configure_runtime(ctx):
-    """Configure per-run boundaries without performing I/O.
+def _build_run_context(ctx):
+    """从输入 dict 构造 RunContext (纯计算, 不做 I/O, 不写模块 global)."""
+    ctx = dict(ctx or {})
+    home = os.path.abspath(os.path.expanduser(ctx.get("home") or "~"))
+    path_overrides = ctx.get("paths") or {}
+    paths = {
+        "daimon_kimi_sessions": _path_override(
+            path_overrides,
+            "daimon_kimi_sessions",
+            os.path.join(
+                home,
+                "Library/Application Support/kimi-desktop/daimon-share/daimon/"
+                "runtime/kimi-code/home/sessions",
+            ),
+        ),
+        "kimi_cli_sessions": _path_override(
+            path_overrides, "kimi_cli_sessions", os.path.join(home, ".kimi-code/sessions")
+        ),
+        "claude_projects": _path_override(
+            path_overrides, "claude_projects", os.path.join(home, ".claude/projects")
+        ),
+        "codex_sessions": _path_override(
+            path_overrides, "codex_sessions", os.path.join(home, ".codex/sessions")
+        ),
+        "orca_home": _path_override(
+            path_overrides,
+            "orca_home",
+            os.path.join(home, "Library/Application Support/orca"),
+        ),
+    }
+    paths["orca_codex_sessions"] = _path_override(
+        path_overrides,
+        "orca_codex_sessions",
+        os.path.join(paths["orca_home"], "codex-runtime-home/home/sessions"),
+    )
+    paths["orca_codex_accounts"] = _path_override(
+        path_overrides,
+        "orca_codex_accounts",
+        os.path.join(paths["orca_home"], "codex-accounts"),
+    )
+    paths["cc_switch_db"] = _path_override(
+        path_overrides, "cc_switch_db", os.path.join(home, ".cc-switch/cc-switch.db")
+    )
+    paths["codex_oauth_auth"] = _path_override(
+        path_overrides,
+        "codex_oauth_auth",
+        os.path.join(home, ".cc-switch/codex_oauth_auth.json"),
+    )
+    paths["codex_auth"] = _path_override(
+        path_overrides, "codex_auth", os.path.join(home, ".codex/auth.json")
+    )
+    paths["antigravity_oauth_token"] = _path_override(
+        path_overrides,
+        "antigravity_oauth_token",
+        os.path.join(home, ".gemini/antigravity-cli/antigravity-oauth-token"),
+    )
+    paths["antigravity_summaries_db"] = _path_override(
+        path_overrides,
+        "antigravity_summaries_db",
+        os.path.join(home, ".gemini/antigravity-cli/conversation_summaries.db"),
+    )
+    paths["kimi_web_tokens"] = _path_override(
+        path_overrides,
+        "kimi_web_tokens",
+        os.path.join(home, ".config/kimi-dashboard/kimi-web-tokens.json"),
+    )
 
-    Supported test/App overrides:
-    - home / paths: isolate all local file and SQLite reads.
-    - now / timezone: make date buckets deterministic.
-    - http: inject get_json, post_json, or urlopen callables.
-    - credentials: provide in-memory provider credentials.
-    - capabilities: capability allowlist; only present in Bridge App mode.
-    """
+    timezone_value = ctx.get("timezone")
+    if isinstance(timezone_value, str):
+        tz = ZoneInfo(timezone_value)
+    elif isinstance(timezone_value, datetime.tzinfo):
+        tz = timezone_value
+    else:
+        tz = datetime.datetime.now().astimezone().tzinfo
+
+    now_value = ctx.get("now")
+    if callable(now_value):
+        now_value = now_value()
+    if isinstance(now_value, str):
+        now_value = datetime.datetime.fromisoformat(now_value.replace("Z", "+00:00"))
+    if now_value is None:
+        now_value = datetime.datetime.now(tz)
+    if not isinstance(now_value, datetime.datetime):
+        raise TypeError("ctx.now must be a datetime, ISO-8601 string, or callable")
+    if now_value.tzinfo is None:
+        now_value = now_value.replace(tzinfo=tz)
+    now_value = now_value.astimezone(tz)
+
+    days = int(ctx.get("days", 14))
+    if days < 1:
+        raise ValueError("ctx.days must be at least 1")
+    http_timeout = float(ctx.get("http_timeout", 8))
+    today = now_value.strftime("%Y-%m-%d")
+    cutoff_ts = (now_value - datetime.timedelta(days=days + 1)).timestamp()
+    day_list = [
+        (now_value - datetime.timedelta(days=i)).strftime("%Y-%m-%d")
+        for i in range(days - 1, -1, -1)
+    ]
+
+    # 只有 ctx 显式携带 capabilities 时才启用门禁 (Bridge App 模式总会携带);
+    # CLI 直跑不带该键, 保持现状行为完全不变
+    if "capabilities" in ctx:
+        capabilities = set(ctx.get("capabilities") or [])
+    else:
+        capabilities = None
+
+    return RunContext(
+        app_mode=bool(ctx.get("app_mode")),
+        home=home,
+        now=now_value,
+        credentials=dict(ctx.get("credentials") or {}),
+        credential_updates=[],
+        credential_challenges=[],
+        paths=paths,
+        timezone=tz,
+        http=dict(ctx.get("http") or {}),
+        days=days,
+        http_timeout=http_timeout,
+        capabilities=capabilities,
+        raw=ctx,
+        today=today,
+        cutoff_ts=cutoff_ts,
+        day_list=day_list,
+        codex_usage_url=str(ctx["codex_usage_url"]) if ctx.get("codex_usage_url") else None,
+        codex_token_url=str(ctx["codex_token_url"]) if ctx.get("codex_token_url") else None,
+    )
+
+
+def _apply_run_context(run_ctx):
+    """把 RunContext 同步到模块 global (过渡期兼容; S4d 清理死 global)."""
     global HOME, DAIMON_KIMI_SESSIONS, KIMI_CLI_SESSIONS, CLAUDE_PROJECTS
     global CODEX_SESSIONS, ORCA_HOME, ORCA_CODEX_SESSIONS, ORCA_CODEX_ACCOUNTS
     global CC_SWITCH_DB, CODEX_OAUTH_AUTH, CODEX_AUTH, AGY_OAUTH_TOKEN
@@ -114,119 +237,66 @@ def _configure_runtime(ctx):
     global _RUNTIME_CREDENTIAL_UPDATES, _RUNTIME_CAPABILITIES, _APP_MODE
     global _RUNTIME_CREDENTIAL_CHALLENGES
     global CODEX_TOKEN_URL, CODEX_USAGE_URL
+    global _ACTIVE_RUN_CONTEXT
 
-    ctx = ctx or {}
+    _ACTIVE_RUN_CONTEXT = run_ctx
     # 运行时上下文全量快照 (含 codex_quota_account_order 等协议映射键);
     # 每次运行重建, 禁止进程复用时残留 (任务 6, ORD-09).
-    _RUNTIME_CONTEXT = dict(ctx)
-    HOME = os.path.abspath(os.path.expanduser(ctx.get("home") or "~"))
-    paths = ctx.get("paths") or {}
-    DAIMON_KIMI_SESSIONS = _path_override(
-        paths,
-        "daimon_kimi_sessions",
-        os.path.join(
-            HOME,
-            "Library/Application Support/kimi-desktop/daimon-share/daimon/"
-            "runtime/kimi-code/home/sessions",
-        ),
-    )
-    KIMI_CLI_SESSIONS = _path_override(
-        paths, "kimi_cli_sessions", os.path.join(HOME, ".kimi-code/sessions")
-    )
-    CLAUDE_PROJECTS = _path_override(
-        paths, "claude_projects", os.path.join(HOME, ".claude/projects")
-    )
-    CODEX_SESSIONS = _path_override(
-        paths, "codex_sessions", os.path.join(HOME, ".codex/sessions")
-    )
-    ORCA_HOME = _path_override(
-        paths, "orca_home", os.path.join(HOME, "Library/Application Support/orca")
-    )
-    ORCA_CODEX_SESSIONS = _path_override(
-        paths,
-        "orca_codex_sessions",
-        os.path.join(ORCA_HOME, "codex-runtime-home/home/sessions"),
-    )
-    ORCA_CODEX_ACCOUNTS = _path_override(
-        paths, "orca_codex_accounts", os.path.join(ORCA_HOME, "codex-accounts")
-    )
-    CC_SWITCH_DB = _path_override(
-        paths, "cc_switch_db", os.path.join(HOME, ".cc-switch/cc-switch.db")
-    )
-    CODEX_OAUTH_AUTH = _path_override(
-        paths,
-        "codex_oauth_auth",
-        os.path.join(HOME, ".cc-switch/codex_oauth_auth.json"),
-    )
-    CODEX_AUTH = _path_override(
-        paths, "codex_auth", os.path.join(HOME, ".codex/auth.json")
-    )
-    AGY_OAUTH_TOKEN = _path_override(
-        paths,
-        "antigravity_oauth_token",
-        os.path.join(HOME, ".gemini/antigravity-cli/antigravity-oauth-token"),
-    )
-    AGY_SUMMARIES_DB = _path_override(
-        paths,
-        "antigravity_summaries_db",
-        os.path.join(HOME, ".gemini/antigravity-cli/conversation_summaries.db"),
-    )
-    KIMI_WEB_TOKENS = _path_override(
-        paths,
-        "kimi_web_tokens",
-        os.path.join(HOME, ".config/kimi-dashboard/kimi-web-tokens.json"),
-    )
+    _RUNTIME_CONTEXT = dict(run_ctx.raw)
+    HOME = run_ctx.home
+    paths = run_ctx.paths
+    DAIMON_KIMI_SESSIONS = paths["daimon_kimi_sessions"]
+    KIMI_CLI_SESSIONS = paths["kimi_cli_sessions"]
+    CLAUDE_PROJECTS = paths["claude_projects"]
+    CODEX_SESSIONS = paths["codex_sessions"]
+    ORCA_HOME = paths["orca_home"]
+    ORCA_CODEX_SESSIONS = paths["orca_codex_sessions"]
+    ORCA_CODEX_ACCOUNTS = paths["orca_codex_accounts"]
+    CC_SWITCH_DB = paths["cc_switch_db"]
+    CODEX_OAUTH_AUTH = paths["codex_oauth_auth"]
+    CODEX_AUTH = paths["codex_auth"]
+    AGY_OAUTH_TOKEN = paths["antigravity_oauth_token"]
+    AGY_SUMMARIES_DB = paths["antigravity_summaries_db"]
+    KIMI_WEB_TOKENS = paths["kimi_web_tokens"]
+
     # Codex 出站 URL 覆盖: 仅接受进程内 runtime_overrides 注入 (本地 fake
     # server 测试用 loopback 地址), 不经 Bridge 协议序列化; 正式请求无法覆盖.
-    if ctx.get("codex_usage_url"):
-        CODEX_USAGE_URL = str(ctx["codex_usage_url"])
-    if ctx.get("codex_token_url"):
-        CODEX_TOKEN_URL = str(ctx["codex_token_url"])
+    # 注意: 未注入时保持模块默认常量, 不在跨 run 间重置 (与改造前一致).
+    if run_ctx.codex_usage_url:
+        CODEX_USAGE_URL = run_ctx.codex_usage_url
+    if run_ctx.codex_token_url:
+        CODEX_TOKEN_URL = run_ctx.codex_token_url
 
-    timezone_value = ctx.get("timezone")
-    if isinstance(timezone_value, str):
-        runtime._RUNTIME_TZ = ZoneInfo(timezone_value)
-    elif isinstance(timezone_value, datetime.tzinfo):
-        runtime._RUNTIME_TZ = timezone_value
-    else:
-        runtime._RUNTIME_TZ = datetime.datetime.now().astimezone().tzinfo
+    runtime.set_timezone(run_ctx.timezone)
+    now = run_ctx.now
+    DAYS = run_ctx.days
+    HTTP_TIMEOUT = run_ctx.http_timeout
+    runtime.set_date_buckets(run_ctx.today, run_ctx.cutoff_ts, list(run_ctx.day_list))
+    runtime.set_http_overrides(dict(run_ctx.http))
+    # 与 RunContext 共享同一可变容器, service 路径 append 后 run_app 可直接读
+    _RUNTIME_CREDENTIALS = run_ctx.credentials
+    _RUNTIME_CREDENTIAL_UPDATES = run_ctx.credential_updates
+    _RUNTIME_CREDENTIAL_CHALLENGES = run_ctx.credential_challenges
+    _APP_MODE = run_ctx.app_mode
+    _RUNTIME_CAPABILITIES = run_ctx.capabilities
 
-    now_value = ctx.get("now")
-    if callable(now_value):
-        now_value = now_value()
-    if isinstance(now_value, str):
-        now_value = datetime.datetime.fromisoformat(now_value.replace("Z", "+00:00"))
-    if now_value is None:
-        now_value = datetime.datetime.now(runtime._RUNTIME_TZ)
-    if not isinstance(now_value, datetime.datetime):
-        raise TypeError("ctx.now must be a datetime, ISO-8601 string, or callable")
-    if now_value.tzinfo is None:
-        now_value = now_value.replace(tzinfo=runtime._RUNTIME_TZ)
-    now = now_value.astimezone(runtime._RUNTIME_TZ)
 
-    DAYS = int(ctx.get("days", 14))
-    if DAYS < 1:
-        raise ValueError("ctx.days must be at least 1")
-    HTTP_TIMEOUT = float(ctx.get("http_timeout", 8))
-    runtime.set_date_buckets(
-        now.strftime("%Y-%m-%d"),
-        (now - datetime.timedelta(days=DAYS + 1)).timestamp(),
-        [
-            (now - datetime.timedelta(days=i)).strftime("%Y-%m-%d")
-            for i in range(DAYS - 1, -1, -1)
-        ],
-    )
-    runtime.set_http_overrides(dict(ctx.get("http") or {}))
-    _RUNTIME_CREDENTIALS = dict(ctx.get("credentials") or {})
-    _RUNTIME_CREDENTIAL_UPDATES = []
-    _RUNTIME_CREDENTIAL_CHALLENGES = []
-    _APP_MODE = bool(ctx.get("app_mode"))
-    # 只有 ctx 显式携带 capabilities 时才启用门禁 (Bridge App 模式总会携带);
-    # CLI 直跑不带该键, 保持现状行为完全不变
-    if "capabilities" in ctx:
-        _RUNTIME_CAPABILITIES = set(ctx.get("capabilities") or [])
-    else:
-        _RUNTIME_CAPABILITIES = None
+def _configure_runtime(ctx):
+    """Configure per-run boundaries without performing I/O.
+
+    构造 RunContext, 同步到模块 global (过渡兼容), 并返回 RunContext.
+    新代码应持有返回值; 禁止再新增对 global 的依赖.
+
+    Supported test/App overrides:
+    - home / paths: isolate all local file and SQLite reads.
+    - now / timezone: make date buckets deterministic.
+    - http: inject get_json, post_json, or urlopen callables.
+    - credentials: provide in-memory provider credentials.
+    - capabilities: capability allowlist; only present in Bridge App mode.
+    """
+    run_ctx = _build_run_context(ctx)
+    _apply_run_context(run_ctx)
+    return run_ctx
 
 
 def _capability_allowed(name):
@@ -1090,10 +1160,15 @@ def collect_codex_quota_retry_only(ctx):
     不扫描本地会话, 不加载定价, 不调用其他 provider. 保留 agent-usage
     契约结构 (agents/services/totalCostUsd), agents 为空数组.
     """
-    _configure_runtime(ctx)
+    run_ctx = _configure_runtime(ctx)
+    return _collect_codex_quota_retry_only(run_ctx)
+
+
+def _collect_codex_quota_retry_only(run_ctx):
+    """RunContext 接线后的 Codex 定向重试实现."""
     codex_svcs = service_codex_accounts()
     return {
-        "generatedAt": now.isoformat(timespec="seconds"),
+        "generatedAt": run_ctx.now.isoformat(timespec="seconds"),
         "agents": [],
         "services": codex_svcs,
         "totalCostUsd": None,
@@ -1101,10 +1176,24 @@ def collect_codex_quota_retry_only(ctx):
 
 
 def collect(ctx=None):
-    _configure_runtime(ctx)
+    """采集本机用量与额度; 返回 artifact dict.
+
+    每次调用构造 RunContext 并贯穿 _collect; 过渡期仍同步模块 global,
+    使 service 路径与既有测试无需立刻全量迁移.
+    """
+    run_ctx = _configure_runtime(ctx)
+    return _collect(run_ctx)
+
+
+def _collect(run_ctx):
+    """RunContext 接线后的主采集实现 (service 业务逻辑仍读过渡 global)."""
     # 未授权 localPricing 时降级为空定价, 成本估算全部为 None
-    pricing = load_pricing(CC_SWITCH_DB) if _capability_allowed("localPricing") else {}
-    sessions_allowed = _capability_allowed("localSessions")
+    pricing = (
+        load_pricing(run_ctx.paths["cc_switch_db"])
+        if run_ctx.capability_allowed("localPricing")
+        else {}
+    )
+    sessions_allowed = run_ctx.capability_allowed("localSessions")
 
     def kimi_cli_project(path):
         # .../sessions/wd_<name>_<hash>/conv-xxx/agents/main/wire.jsonl
@@ -1116,9 +1205,19 @@ def collect(ctx=None):
 
     # Orca 用自己的 CODEX_HOME 托管运行 Codex, 会话不在 ~/.codex 下;
     # 扫描时灌进同一个 codex agent, record_usage 桶自动合并
+    paths = run_ctx.paths
+    daimon_kimi_sessions = paths["daimon_kimi_sessions"]
+    kimi_cli_sessions = paths["kimi_cli_sessions"]
+    claude_projects = paths["claude_projects"]
+    codex_sessions = paths["codex_sessions"]
+    orca_home = paths["orca_home"]
+    orca_codex_sessions = paths["orca_codex_sessions"]
+    orca_codex_accounts = paths["orca_codex_accounts"]
+    codex_oauth_auth = paths["codex_oauth_auth"]
+
     def orca_account_label():
         try:
-            orca_auth = _runtime_credential("orca_codex_auth")
+            orca_auth = run_ctx.credential("orca_codex_auth")
             if orca_auth is not None:
                 acc_id = (orca_auth.get("tokens") or {}).get("account_id")
             elif _APP_MODE:
@@ -1126,19 +1225,19 @@ def collect(ctx=None):
             else:
                 with open(
                     os.path.join(
-                        ORCA_HOME, "codex-runtime-home/home/auth.json"
+                        orca_home, "codex-runtime-home/home/auth.json"
                     ),
                     encoding="utf-8",
                 ) as fh:
                     acc_id = (json.load(fh).get("tokens") or {}).get("account_id")
-            oauth_data = _runtime_credential("codex_oauth_auth")
+            oauth_data = run_ctx.credential("codex_oauth_auth")
             if (
                 oauth_data is None
                 and acc_id
                 and not _APP_MODE
-                and os.path.exists(CODEX_OAUTH_AUTH)
+                and os.path.exists(codex_oauth_auth)
             ):
-                with open(CODEX_OAUTH_AUTH, encoding="utf-8") as fh:
+                with open(codex_oauth_auth, encoding="utf-8") as fh:
                     oauth_data = json.load(fh)
             if acc_id and oauth_data:
                 acc = (oauth_data.get("accounts") or {}).get(acc_id) or {}
@@ -1153,7 +1252,7 @@ def collect(ctx=None):
         agent = make_agent("kimi-work", "Kimi Work")
         if not sessions_allowed:
             _mark_sessions_denied(agent)
-        elif scan_kimi(agent, DAIMON_KIMI_SESSIONS):
+        elif scan_kimi(agent, daimon_kimi_sessions):
             agent["note"] = "额度见下方 Kimi 服务"
         else:
             agent["status"] = "not_found"
@@ -1164,7 +1263,7 @@ def collect(ctx=None):
         agent = make_agent("kimi-code-cli", "Kimi Code CLI")
         if not sessions_allowed:
             _mark_sessions_denied(agent)
-        elif scan_kimi(agent, KIMI_CLI_SESSIONS, project_from_path=kimi_cli_project):
+        elif scan_kimi(agent, kimi_cli_sessions, project_from_path=kimi_cli_project):
             agent["note"] = "额度见下方 Kimi 服务"
         else:
             agent["status"] = "not_found"
@@ -1175,7 +1274,7 @@ def collect(ctx=None):
         agent = make_agent("claude-code", "Claude Code")
         if not sessions_allowed:
             _mark_sessions_denied(agent)
-        elif scan_claude(agent, CLAUDE_PROJECTS):
+        elif scan_claude(agent, claude_projects):
             agent["note"] = "当前经 CC Switch 路由，额度见下方对应服务"
         else:
             agent["status"] = "not_found"
@@ -1188,13 +1287,13 @@ def collect(ctx=None):
         found_cli = False
         found_orca = False
         if sessions_allowed:
-            found_cli, candidate = scan_codex(agent, [CODEX_SESSIONS])
+            found_cli, candidate = scan_codex(agent, [codex_sessions])
             if candidate:
                 quota_candidate = candidate
             # Orca 托管会话灌进同一 agent; quota 取两侧候选中 ts 最大者
-            if os.path.isdir(ORCA_HOME):
-                orca_dirs = [ORCA_CODEX_SESSIONS] + glob.glob(
-                    os.path.join(ORCA_CODEX_ACCOUNTS, "*/home/sessions")
+            if os.path.isdir(orca_home):
+                orca_dirs = [orca_codex_sessions] + glob.glob(
+                    os.path.join(orca_codex_accounts, "*/home/sessions")
                 )
                 found_orca, candidate = scan_codex(agent, orca_dirs)
                 if candidate and (
@@ -1234,7 +1333,7 @@ def collect(ctx=None):
     with ThreadPoolExecutor(max_workers=5) as pool:
         agents = list(pool.map(lambda build: build(), builders))
 
-    if _capability_allowed("externalQuotas"):
+    if run_ctx.capability_allowed("externalQuotas"):
         # 三路服务采集互不依赖 (CC 库为 mode=ro 独立连接), 并行后按原顺序拼接
         with ThreadPoolExecutor(max_workers=4) as pool:
             futures = [
@@ -1258,7 +1357,7 @@ def collect(ctx=None):
 
     total_cost = sum(a["todayCostUsd"] or 0 for a in agents)
     return {
-        "generatedAt": now.isoformat(timespec="seconds"),
+        "generatedAt": run_ctx.now.isoformat(timespec="seconds"),
         "agents": agents,
         "services": services,
         "totalCostUsd": round(total_cost, 4) if total_cost > 0 else None,
@@ -1266,24 +1365,34 @@ def collect(ctx=None):
 
 
 def run(ctx):
+    # collect 内部构造 RunContext 并贯穿采集; 对外契约仍是 dict ctx -> artifact
     return {"artifact": collect(ctx)}
 
 
 def run_app(ctx):
+    """App 入口: 强制 app_mode, 返回 artifact + 凭证轮换/挑战旁路字段.
+
+    collect / collect_codex_quota_retry_only 内部构造 RunContext; 旁路字段
+    从 _ACTIVE_RUN_CONTEXT (最近一次 configure 的 RunContext) 读出, 与
+    模块 global 共享同一 list, 兼容测试对 collect 的 monkeypatch.
+    """
     app_ctx = dict(ctx or {})
     app_ctx["app_mode"] = True
     if app_ctx.get("codex_quota_retry_only"):
         artifact = collect_codex_quota_retry_only(app_ctx)
     else:
         artifact = collect(app_ctx)
+    run_ctx = _ACTIVE_RUN_CONTEXT
+    updates = run_ctx.credential_updates if run_ctx is not None else _RUNTIME_CREDENTIAL_UPDATES
+    challenges = (
+        run_ctx.credential_challenges
+        if run_ctx is not None
+        else _RUNTIME_CREDENTIAL_CHALLENGES
+    )
     return {
         "artifact": artifact,
-        "credentialUpdates": json.loads(
-            json.dumps(_RUNTIME_CREDENTIAL_UPDATES)
-        ),
-        "credentialChallenges": json.loads(
-            json.dumps(_RUNTIME_CREDENTIAL_CHALLENGES)
-        ),
+        "credentialUpdates": json.loads(json.dumps(updates)),
+        "credentialChallenges": json.loads(json.dumps(challenges)),
     }
 
 
