@@ -275,8 +275,9 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
     /// 从 Keychain 装配订阅 provider 的 Bridge 注入凭证.
     /// 只装配 enabled 且凭证完整的 provider; 凭证 JSON 损坏按缺失处理
     /// (fail-closed, 不授予 externalQuotas).
-    /// Codex: 调用 token manager 决议全部索引账号, 只注入成功账号的
-    /// 短期 access token; 单账号失败不阻断其他账号和本地会话采集.
+    /// 按 `ProviderRegistry` 的 `InjectionKind` 派发, 输出 JSON 键/嵌套与
+    /// 既有 harness 期望逐字段一致. Codex 仍委托 token manager 决议短期
+    /// access token; 单账号失败不阻断其他账号和本地会话采集.
     private func assembleSubscriptionCredentials(
         providers: [String: SubscriptionProviderConfiguration]
     ) async -> [String: JSONValue] {
@@ -294,57 +295,90 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
             }
             return value
         }
+        /// 按 descriptor.credentialAccounts 顺序加载全部非空值; 缺任一则 nil.
+        func loadAllAccounts(_ accounts: [String]) -> [String]? {
+            var values: [String] = []
+            values.reserveCapacity(accounts.count)
+            for account in accounts {
+                guard let value = load(account) else { return nil }
+                values.append(value)
+            }
+            return values
+        }
 
-        if isEnabled(.kimi),
-           let raw = load(SubscriptionCredentialAccount.kimiWebTokens),
-           let tokens = jsonObjectValue(from: raw) {
-            credentials["kimiWebTokens"] = tokens
-        }
-        if isEnabled(.deepseek),
-           let key = load(SubscriptionCredentialAccount.deepseekAPIKey) {
-            // collect_usage.py service_deepseek 消费 env.ANTHROPIC_AUTH_TOKEN
-            providerEnv["deepseek"] = .object([
-                "ANTHROPIC_AUTH_TOKEN": .string(key),
-            ])
-        }
-        if isEnabled(.volcengine),
-           let ak = load(SubscriptionCredentialAccount.volcengineAccessKey),
-           let sk = load(SubscriptionCredentialAccount.volcengineSecretKey) {
-            // collect_usage.py service_volcengine 消费 meta.usage_script.accessKeyId/secretAccessKey
-            providerMeta["volcengine"] = .object([
-                "usage_script": .object([
-                    "accessKeyId": .string(ak),
-                    "secretAccessKey": .string(sk),
-                ]),
-            ])
-        }
-        if isEnabled(.codex),
-           codexMigrationCompleted,
-           let codexAccounts = await resolveCodexQuotaAccounts() {
-            credentials["codexQuotaAccounts"] = codexAccounts
-        }
-        if isEnabled(.antigravity),
-           let raw = load(SubscriptionCredentialAccount.antigravityOAuth),
-           let oauth = jsonObjectValue(from: raw) {
-            credentials["antigravityOAuth"] = oauth
-        }
-        // Claude / Grok (Phase 5): 应用持有凭证 (claude:oauth/grok:oauth) 时
-        // 注入 claudeOAuth/grokOAuth (collector 优先消费); 无应用凭证时
-        // 仅注入 enabled 标记, collector 回退本机 CLI 登录态.
-        if isEnabled(.claude) {
-            providerMeta["claude"] = .object(["enabled": .boolean(true)])
-            if let raw = load(SubscriptionCredentialAccount.claudeOAuth),
-               let oauth = jsonObjectValue(from: raw) {
-                credentials["claudeOAuth"] = oauth
+        for descriptor in ProviderRegistry.all {
+            guard isEnabled(descriptor.id) else { continue }
+            switch descriptor.injectionKind {
+            case .kimiWebTokensJSON:
+                // 顶层 kimiWebTokens = Keychain JSON 对象
+                guard let accounts = loadAllAccounts(descriptor.credentialAccounts),
+                      let raw = accounts.first,
+                      let tokens = jsonObjectValue(from: raw) else {
+                    continue
+                }
+                credentials["kimiWebTokens"] = tokens
+
+            case .deepseekAPIKeyEnv:
+                // collect_usage.py service_deepseek 消费 env.ANTHROPIC_AUTH_TOKEN
+                guard let accounts = loadAllAccounts(descriptor.credentialAccounts),
+                      let key = accounts.first else {
+                    continue
+                }
+                providerEnv["deepseek"] = .object([
+                    "ANTHROPIC_AUTH_TOKEN": .string(key),
+                ])
+
+            case .volcengineUsageScriptKeys:
+                // collect_usage.py service_volcengine 消费
+                // meta.usage_script.accessKeyId/secretAccessKey
+                guard let accounts = loadAllAccounts(descriptor.credentialAccounts),
+                      accounts.count >= 2 else {
+                    continue
+                }
+                let ak = accounts[0]
+                let sk = accounts[1]
+                providerMeta["volcengine"] = .object([
+                    "usage_script": .object([
+                        "accessKeyId": .string(ak),
+                        "secretAccessKey": .string(sk),
+                    ]),
+                ])
+
+            case .codexQuotaAccounts:
+                guard codexMigrationCompleted,
+                      let codexAccounts = await resolveCodexQuotaAccounts() else {
+                    continue
+                }
+                credentials["codexQuotaAccounts"] = codexAccounts
+
+            case .antigravityOAuthJSON:
+                guard let accounts = loadAllAccounts(descriptor.credentialAccounts),
+                      let raw = accounts.first,
+                      let oauth = jsonObjectValue(from: raw) else {
+                    continue
+                }
+                credentials["antigravityOAuth"] = oauth
+
+            case .claudeMetaEnabledPlusOptionalOAuth:
+                // 应用持有凭证时注入 claudeOAuth; 无凭证时仅 enabled 标记,
+                // collector 回退本机 CLI 登录态.
+                providerMeta["claude"] = .object(["enabled": .boolean(true)])
+                if let accounts = loadAllAccounts(descriptor.credentialAccounts),
+                   let raw = accounts.first,
+                   let oauth = jsonObjectValue(from: raw) {
+                    credentials["claudeOAuth"] = oauth
+                }
+
+            case .grokMetaEnabledPlusOptionalOAuth:
+                providerMeta["grok"] = .object(["enabled": .boolean(true)])
+                if let accounts = loadAllAccounts(descriptor.credentialAccounts),
+                   let raw = accounts.first,
+                   let oauth = jsonObjectValue(from: raw) {
+                    credentials["grokOAuth"] = oauth
+                }
             }
         }
-        if isEnabled(.grok) {
-            providerMeta["grok"] = .object(["enabled": .boolean(true)])
-            if let raw = load(SubscriptionCredentialAccount.grokOAuth),
-               let oauth = jsonObjectValue(from: raw) {
-                credentials["grokOAuth"] = oauth
-            }
-        }
+
         if !providerEnv.isEmpty {
             credentials["providerEnv"] = .object(providerEnv)
         }

@@ -52,30 +52,11 @@ extension SubscriptionProviderID {
     }
 
     /// 该 provider 在 Keychain 中占用的全部 account 键.
-    /// Codex 返回空数组: v2 分账号键不在此枚举 (由 CodexCredentialStore
-    /// 管理), 旧整体库键只供迁移读取, 不得作为运行时删除/读取目标.
+    /// 单一事实源: `ProviderRegistry.descriptor(for:).credentialAccounts`.
+    /// Codex 返回空数组: v2 分账号键由 CodexCredentialStore 管理,
+    /// 旧整体库键只供迁移读取, 不得作为运行时删除/读取目标.
     public var credentialAccounts: [String] {
-        switch self {
-        case .kimi:
-            return [SubscriptionCredentialAccount.kimiWebTokens]
-        case .deepseek:
-            return [SubscriptionCredentialAccount.deepseekAPIKey]
-        case .volcengine:
-            return [
-                SubscriptionCredentialAccount.volcengineAccessKey,
-                SubscriptionCredentialAccount.volcengineSecretKey,
-            ]
-        case .codex:
-            return []
-        case .antigravity:
-            return [SubscriptionCredentialAccount.antigravityOAuth]
-        // Claude / Grok 支持手动导入 (Phase 2): 应用可持有凭证存 Keychain,
-        // 优先于本机 CLI 登录态; 移除时同时删除应用持有凭证.
-        case .claude:
-            return [SubscriptionCredentialAccount.claudeOAuth]
-        case .grok:
-            return [SubscriptionCredentialAccount.grokOAuth]
-        }
+        ProviderRegistry.descriptor(for: self).credentialAccounts
     }
 }
 
