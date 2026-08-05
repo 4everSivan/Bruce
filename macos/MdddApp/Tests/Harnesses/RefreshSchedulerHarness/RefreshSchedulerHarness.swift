@@ -436,7 +436,37 @@ struct RefreshSchedulerHarness {
         try refreshExpect(
             true, "只有 agentUsage 一个模块, 无跨模块路径 (静态验证)"
         )
-        print("Refresh scheduler tests passed: 55")
+        print("Refresh scheduler: intent merge manual wins over timer")
+        try intentMergeManualWinsOverTimer()
+        print("Refresh scheduler: intent merge timer into manual keeps manual")
+        try intentMergeTimerIntoManualKeepsManual()
+        print("Refresh scheduler: intent merge nil existing uses incoming")
+        try intentMergeNilExistingUsesIncoming()
+        print("Refresh scheduler tests passed: 58")
+    }
+
+    // MARK: - RefreshIntent merge (pure unit tests)
+
+    private static func intentMergeManualWinsOverTimer() throws {
+        let existing = RefreshIntent(reason: .timer, includesManual: false)
+        let incoming = RefreshIntent(reason: .manual, includesManual: true)
+        let merged = RefreshIntentMerge.merge(existing: existing, incoming: incoming)
+        try refreshExpect(merged.reason == .manual, "manual reason")
+        try refreshExpect(merged.includesManual, "includesManual")
+    }
+
+    private static func intentMergeTimerIntoManualKeepsManual() throws {
+        let existing = RefreshIntent(reason: .manual, includesManual: true)
+        let incoming = RefreshIntent(reason: .timer, includesManual: false)
+        let merged = RefreshIntentMerge.merge(existing: existing, incoming: incoming)
+        try refreshExpect(merged.reason == .manual, "stay manual")
+        try refreshExpect(merged.includesManual, "stay includesManual")
+    }
+
+    private static func intentMergeNilExistingUsesIncoming() throws {
+        let incoming = RefreshIntent(reason: .wake, includesManual: false)
+        let merged = RefreshIntentMerge.merge(existing: nil, incoming: incoming)
+        try refreshExpect(merged == incoming, "nil existing")
     }
 
     // 10.1: Timer fires -> module refreshes
@@ -504,8 +534,8 @@ struct RefreshSchedulerHarness {
         scheduler.refresh(.agentUsage)
 
         try refreshExpect(
-            scheduler.moduleState(for: .agentUsage)?.pendingRerun == true,
-            "pendingRerun should be set"
+            scheduler.moduleState(for: .agentUsage)?.pendingIntent != nil,
+            "pendingIntent should be set"
         )
 
         // Release first run
@@ -518,8 +548,8 @@ struct RefreshSchedulerHarness {
             "rerun should be running"
         )
         try refreshExpect(
-            scheduler.moduleState(for: .agentUsage)?.pendingRerun == false,
-            "pendingRerun should be cleared"
+            scheduler.moduleState(for: .agentUsage)?.pendingIntent == nil,
+            "pendingIntent should be cleared"
         )
 
         // Release the rerun
@@ -732,21 +762,21 @@ struct RefreshSchedulerHarness {
             "wake should trigger at most one compensating refresh"
         )
 
-        // The second and third wake calls should have set pendingRerun (merged)
+        // The second and third wake calls should have set pendingIntent (merged)
         // since the module is running
         try refreshExpect(
-            scheduler.moduleState(for: .agentUsage)?.pendingRerun == true,
-            "repeated wake should merge into pendingRerun"
+            scheduler.moduleState(for: .agentUsage)?.pendingIntent != nil,
+            "repeated wake should merge into pendingIntent"
         )
 
         // Release the compensating refresh
         executor.release(module: .agentUsage)
         await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 3)
-        // The rerun from pendingRerun
+        // The rerun from pendingIntent
 
         try refreshExpect(
             executor.runCount[.agentUsage] == 3,
-            "pendingRerun should trigger one additional run"
+            "pendingIntent should trigger one additional run"
         )
 
         executor.release(module: .agentUsage)

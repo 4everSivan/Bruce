@@ -68,7 +68,7 @@ struct ModuleScheduleState: Equatable, Sendable {
     var lastSuccessAt: Date? = nil
     var lastAttemptAt: Date? = nil
     var backoffRetryCount: Int = 0
-    var pendingRerun: Bool = false
+    var pendingIntent: RefreshIntent? = nil
     var lastErrorCategory: SnapshotErrorCategory? = nil
     /// 本轮刷新是否由手动触发; 手动刷新不弹额度预警.
     var lastTriggerWasManual: Bool = false
@@ -223,7 +223,7 @@ package final class RefreshScheduler {
         guard var state = states[module] else { return }
         state.enabled = false
         state.phase = .disabled
-        state.pendingRerun = false
+        state.pendingIntent = nil
         states[module] = state
         timers[module]?.cancel()
         timers[module] = nil
@@ -260,7 +260,7 @@ package final class RefreshScheduler {
 
     package func refresh(_ module: CollectorModule) {
         guard let state = states[module], state.enabled else { return }
-        triggerRefresh(for: module, isManual: true)
+        triggerRefresh(for: module, intent: .manual())
     }
 
     // MARK: - Sleep / wake
@@ -277,7 +277,7 @@ package final class RefreshScheduler {
             } else {
                 isStale = true
             }
-            if isStale { triggerRefresh(for: module, isManual: false) }
+            if isStale { triggerRefresh(for: module, intent: .wake()) }
         }
     }
 
@@ -327,19 +327,22 @@ package final class RefreshScheduler {
         }
 
         timers[module] = timerScheduler.schedule(after: delay) { [weak self] in
-            self?.triggerRefresh(for: module, isManual: false)
+            self?.triggerRefresh(for: module, intent: .timer())
         }
     }
 
     // MARK: - Internal: trigger
 
-    private func triggerRefresh(for module: CollectorModule, isManual: Bool) {
+    private func triggerRefresh(for module: CollectorModule, intent: RefreshIntent) {
         guard !stopped else { return }
         guard let state = states[module], state.enabled else { return }
+        let isManual = intent.reason == .manual || intent.includesManual
 
         if state.phase == .running {
-            if isManual || !state.pendingRerun {
-                states[module]?.pendingRerun = true
+            // Preserve prior bool semantics: always queue on manual; only set when
+            // empty for non-manual. Intent payload records the trigger source.
+            if isManual || state.pendingIntent == nil {
+                states[module]?.pendingIntent = intent
             }
             return
         }
@@ -353,7 +356,7 @@ package final class RefreshScheduler {
 
         let runningCount = states.values.filter { $0.phase == .running }.count
         if runningCount >= configuration.capacityLimit {
-            states[module]?.pendingRerun = true
+            states[module]?.pendingIntent = intent
             return
         }
 
@@ -527,7 +530,7 @@ package final class RefreshScheduler {
             shouldScheduleNext = scheduleNext
         }
 
-        state.pendingRerun = false
+        state.pendingIntent = nil
         states[module] = state
         runningTasks[module] = nil
 
@@ -647,8 +650,8 @@ package final class RefreshScheduler {
             }
         }
 
-        if state.pendingRerun {
-            state.pendingRerun = false
+        if state.pendingIntent != nil {
+            state.pendingIntent = nil
             if state.phase == .idle { shouldRerun = true }
         }
 
@@ -656,7 +659,8 @@ package final class RefreshScheduler {
         runningTasks[module] = nil
 
         if shouldRerun && !stopped {
-            triggerRefresh(for: module, isManual: true)
+            // Preserve prior behavior: queued rerun restarts as manual.
+            triggerRefresh(for: module, intent: .manual())
         } else if shouldScheduleNext && state.autoRefreshEnabled && !stopped {
             scheduleNextRefresh(for: module)
         }
@@ -666,7 +670,7 @@ package final class RefreshScheduler {
     private func handleCancellation(for module: CollectorModule) {
         guard var state = states[module] else { return }
         state.phase = state.lastSuccessAt != nil ? .idle : .disabled
-        state.pendingRerun = false
+        state.pendingIntent = nil
         states[module] = state
         runningTasks[module] = nil
 
@@ -679,7 +683,7 @@ package final class RefreshScheduler {
         startQueuedModulesIfCapacityAvailable()
     }
 
-    /// 某个模块释放并发槽位后启动等待中的模块. pendingRerun 同时承载
+    /// 某个模块释放并发槽位后启动等待中的模块. pendingIntent 同时承载
     /// 同模块合并请求和跨模块容量排队, 这里只消费 idle 模块.
     private func startQueuedModulesIfCapacityAvailable() {
         guard !stopped else { return }
@@ -689,11 +693,11 @@ package final class RefreshScheduler {
                 guard let state = states[$0] else { return false }
                 return state.enabled
                     && state.phase == .idle
-                    && state.pendingRerun
+                    && state.pendingIntent != nil
             }) else {
                 return
             }
-            states[module]?.pendingRerun = false
+            states[module]?.pendingIntent = nil
             startRefresh(for: module)
         }
     }
