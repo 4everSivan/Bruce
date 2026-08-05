@@ -1,6 +1,8 @@
-# mddd
-
-本地优先的 macOS 26 菜单栏研发活动看板。
+<div align="center">
+  <img src="docs/app-icon.png" width="120" height="120" alt="mddd" />
+  <h1>mddd</h1>
+  <p>本地优先的 macOS 26 菜单栏研发活动看板</p>
+</div>
 
 `mddd` 将本机 AI Agent 的 token 用量、成本估算和额度状态集中到一个原生 macOS 菜单栏应用中。应用负责依赖扫描、登录授权、凭证管理、定时刷新、缓存和故障恢复；Python Collector 负责采集；菜单栏弹出面板以原生 SwiftUI 液态玻璃看板渲染。仓库根 `*/widget/` 单文件 Widget 保留，仅服务 Daimon/Kimi Work Blueprint 场景。
 
