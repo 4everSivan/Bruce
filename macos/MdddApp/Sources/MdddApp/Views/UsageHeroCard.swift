@@ -1,18 +1,13 @@
-import Charts
 import Foundation
 import MdddAppCore
 import SwiftUI
 
 /// 用量卡: 标题 + LIVE 呼吸灯, hero 总量, 输入/输出/缓存四格细分,
-/// 14 日按 agent 堆叠柱状图与图例.
+/// 按月 chip 网格与半年热力图; 14 日柱状图与 agent 图例已移至逐小时卡顶部.
 /// 视觉以 panel-layout-v8.html 为准; 外层玻璃卡片容器由面板装配层统一提供,
 /// 本组件只排内容.
 struct UsageHeroCard: View {
     let viewModel: UsageHeroViewModel
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// 已完成生长的列 (按日期); 逐列延迟插入驱动柱状图自下而上生长.
-    @State private var grownColumns: Set<String> = []
 
     init(viewModel: UsageHeroViewModel) {
         self.viewModel = viewModel
@@ -27,16 +22,9 @@ struct UsageHeroCard: View {
                 .padding(.top, 12)
             breakdownRow
                 .padding(.top, 10)
-            usageChart
-                // 与上方输入/输出指标之间留足间距, 避免高柱标注遮挡.
-                .padding(.top, 16)
-            dateAxis
-                .padding(.top, 3)
-            legendRow
-                .padding(.top, 4)
             if !viewModel.monthly.isEmpty {
                 monthlySection
-                    .padding(.top, 10)
+                    .padding(.top, 12)
             }
             if !viewModel.heatmap.isEmpty {
                 sectionTitle("热力图 · 近半年")
@@ -58,7 +46,7 @@ struct UsageHeroCard: View {
 
     private var titleRow: some View {
         HStack {
-            Text("用量")
+            Text("Token 用量")
                 .font(.system(size: 12.5, weight: .semibold))
                 .foregroundStyle(Self.ink)
             Spacer()
@@ -123,78 +111,6 @@ struct UsageHeroCard: View {
             }
         }
         .fixedSize(horizontal: false, vertical: true)
-    }
-
-    // MARK: 14 日堆叠柱状图
-
-    private var maxDayTotal: Int {
-        max(viewModel.days.map(\.total).max() ?? 0, 1)
-    }
-
-    private var usageChart: some View {
-        Chart {
-            ForEach(viewModel.days, id: \.date) { day in
-                if day.segments.isEmpty {
-                    // 无量日保留零值占位, 让总量标注和列位不塌掉.
-                    BarMark(
-                        x: .value("日期", day.date),
-                        y: .value("Tokens", 0)
-                    )
-                    .foregroundStyle(.clear)
-                    .annotation(position: .top) {
-                        dayTotalLabel(day)
-                    }
-                } else {
-                    ForEach(day.segments, id: \.agentID) { segment in
-                        BarMark(
-                            x: .value("日期", day.date),
-                            y: .value("Tokens", grownColumns.contains(day.date) ? segment.value : 0)
-                        )
-                        .foregroundStyle(Color(hex: segment.color.hex))
-                        .cornerRadius(1.5)
-                        .annotation(position: .top) {
-                            // 只在每列最顶端分段上标注当日总量.
-                            if segment.agentID == day.segments.last?.agentID {
-                                dayTotalLabel(day)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        // 固定 Y 域, 生长动画期间已出现的列不会因新列出现而重新缩放.
-        .chartYScale(domain: 0...maxDayTotal)
-        .chartXAxis(.hidden)
-        .chartYAxis(.hidden)
-        .frame(height: 68)
-        .task {
-            await growColumns()
-        }
-    }
-
-    private func dayTotalLabel(_ day: UsageChartDay) -> some View {
-        Text(day.totalText)
-            .font(.system(size: 7.5))
-            .monospacedDigit()
-            .foregroundStyle(.secondary)
-    }
-
-    /// 逐列延迟 0.03 秒把列值从 0 推到真实值, 形成自下而上的生长动画;
-    /// Reduce Motion 时直接全部就位.
-    private func growColumns() async {
-        if reduceMotion {
-            grownColumns = Set(viewModel.days.map(\.date))
-            return
-        }
-        for day in viewModel.days {
-            try? await Task.sleep(for: .milliseconds(30))
-            guard !Task.isCancelled else {
-                return
-            }
-            withAnimation(.easeOut(duration: 0.5)) {
-                _ = grownColumns.insert(day.date)
-            }
-        }
     }
 
     // MARK: 按月统计
@@ -373,44 +289,12 @@ struct UsageHeroCard: View {
         return Self.tierColors(for: tier).0
     }
 
-    // MARK: 日期轴
-
-    private var dateAxis: some View {
-        HStack {
-            Text("14 天前")
-            Spacer()
-            Text("7 天前")
-            Spacer()
-            Text("今天")
-        }
-        .font(.system(size: 9))
-        .foregroundStyle(Self.faint)
-    }
-
-    // MARK: 图例
-
-    private var legendRow: some View {
-        HStack(spacing: 10) {
-            ForEach(viewModel.legend, id: \.agentID) { item in
-                HStack(spacing: 4) {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(Color(hex: item.color.hex))
-                        .frame(width: 7, height: 7)
-                    Text(item.name)
-                }
-            }
-        }
-        .font(.system(size: 9.5))
-        .foregroundStyle(Self.legendInk)
-    }
-
     // MARK: 颜色常量 (浅色值换算自 mockup CSS, 深色值见 adaptive 调用)
 
     private static let accent = Color(hex: "#0a84ff")
     private static let ink = Color.primary
     private static let subdued = Color.primary.opacity(0.5)
     private static let faint = Color.primary.opacity(0.55)
-    private static let legendInk = Color.primary.opacity(0.75)
     private static let hairline = Color.adaptive(
         light: Color.black.opacity(0.07),
         dark: Color.white.opacity(0.12)

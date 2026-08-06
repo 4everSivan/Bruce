@@ -203,7 +203,11 @@ struct MenuBarDashboardView: View {
             }
             if let hourly = panel.hourly {
                 PanelCardContainer {
-                    HourlyLineCard(viewModel: hourly)
+                    HourlyLineCard(
+                        viewModel: hourly,
+                        dailyDays: panel.usage?.days ?? [],
+                        dailyLegend: panel.usage?.legend ?? []
+                    )
                 }
             }
             if !hasCards {

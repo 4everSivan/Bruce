@@ -3,26 +3,49 @@ import Foundation
 import MdddAppCore
 import SwiftUI
 
-/// 逐小时卡: 每个 agent 一行色点 + 名称 + 今日总量, 下方 24 点折线;
+/// Agent 用量卡: 卡片标题 + 14 日按 agent 堆叠柱状图 (从用量卡迁入) + 日期轴 + 图例;
+/// 下方「逐小时」区块每个 agent 一行色点 + 名称 + 今日总量, 24 点折线;
 /// 有模型或项目明细的行可整行点击展开, 明细 (100% 堆叠占比条 + 图例行) 直接排在折线下方.
 /// 视觉与条件渲染以 panel-layout-v8.html 的逐小时卡为准.
 struct HourlyLineCard: View {
     let viewModel: HourlyLineViewModel
+    /// 14 日柱状图数据 (UsageHeroViewModel.days); 为空时整个顶部区块不渲染.
+    let dailyDays: [UsageChartDay]
+    /// 柱状图分段图例 (UsageHeroViewModel.legend).
+    let dailyLegend: [UsageLegendItem]
 
     /// 已展开明细的 agent id 集合.
     @State private var expandedAgentIDs: Set<String>
+    /// 已完成生长的列 (按日期); 逐列延迟插入驱动柱状图自下而上生长.
+    @State private var grownColumns: Set<String> = []
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// - Parameters:
     ///   - viewModel: 逐小时卡 view model.
+    ///   - dailyDays: 14 日柱状图数据, 默认空 (预览用).
+    ///   - dailyLegend: 柱状图分段图例, 默认空 (预览用).
     ///   - initiallyExpandedAgentIDs: 初始展开的 agent id, 默认全收起 (预览用).
-    init(viewModel: HourlyLineViewModel, initiallyExpandedAgentIDs: Set<String> = []) {
+    init(
+        viewModel: HourlyLineViewModel,
+        dailyDays: [UsageChartDay] = [],
+        dailyLegend: [UsageLegendItem] = [],
+        initiallyExpandedAgentIDs: Set<String> = []
+    ) {
         self.viewModel = viewModel
+        self.dailyDays = dailyDays
+        self.dailyLegend = dailyLegend
         _expandedAgentIDs = State(initialValue: initiallyExpandedAgentIDs)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if !dailyDays.isEmpty {
+                dailySection
+                rowDivider
+                    .padding(.top, 10)
+                    .padding(.bottom, 8)
+            }
+
             titleRow
                 .padding(.bottom, 2)
 
@@ -35,15 +58,141 @@ struct HourlyLineCard: View {
         }
     }
 
-    // MARK: - 标题行
+    // MARK: - 14 日堆叠柱状图 (自用量卡迁入)
 
-    private var titleRow: some View {
-        HStack {
-            Text("逐小时")
+    /// 卡片标题 + 柱状图 + 日期轴 + agent 图例.
+    private var dailySection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Agent 用量")
                 .font(.system(size: 12.5, weight: .semibold))
+            dailyChart
+                // 与标题和高柱标注之间留足间距, 避免遮挡.
+                .padding(.top, 8)
+            dailyDateAxis
+                .padding(.top, 3)
+            if !dailyLegend.isEmpty {
+                dailyLegendRow
+                    .padding(.top, 4)
+            }
+        }
+    }
+
+    /// 区块小标题: 10pt 半粗 + 字距, 与用量卡 sectionTitle 样式一致.
+    private func sectionTitle(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 10, weight: .semibold))
+            .tracking(0.4)
+            .foregroundStyle(Color.primary.opacity(0.55))
+    }
+
+    private var maxDayTotal: Int {
+        max(dailyDays.map(\.total).max() ?? 0, 1)
+    }
+
+    private var dailyChart: some View {
+        Chart {
+            ForEach(dailyDays, id: \.date) { day in
+                if day.segments.isEmpty {
+                    // 无量日保留零值占位, 让总量标注和列位不塌掉.
+                    BarMark(
+                        x: .value("日期", day.date),
+                        y: .value("Tokens", 0)
+                    )
+                    .foregroundStyle(.clear)
+                    .annotation(position: .top) {
+                        dayTotalLabel(day)
+                    }
+                } else {
+                    ForEach(day.segments, id: \.agentID) { segment in
+                        BarMark(
+                            x: .value("日期", day.date),
+                            y: .value("Tokens", grownColumns.contains(day.date) ? segment.value : 0)
+                        )
+                        .foregroundStyle(Color(hex: segment.color.hex))
+                        .cornerRadius(1.5)
+                        .annotation(position: .top) {
+                            // 只在每列最顶端分段上标注当日总量.
+                            if segment.agentID == day.segments.last?.agentID {
+                                dayTotalLabel(day)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // 固定 Y 域, 生长动画期间已出现的列不会因新列出现而重新缩放.
+        .chartYScale(domain: 0...maxDayTotal)
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .frame(height: 68)
+        .task {
+            await growColumns()
+        }
+    }
+
+    private func dayTotalLabel(_ day: UsageChartDay) -> some View {
+        Text(day.totalText)
+            .font(.system(size: 7.5))
+            .monospacedDigit()
+            .foregroundStyle(.secondary)
+    }
+
+    /// 逐列延迟 0.03 秒把列值从 0 推到真实值, 形成自下而上的生长动画;
+    /// Reduce Motion 时直接全部就位.
+    private func growColumns() async {
+        if reduceMotion {
+            grownColumns = Set(dailyDays.map(\.date))
+            return
+        }
+        for day in dailyDays {
+            try? await Task.sleep(for: .milliseconds(30))
+            guard !Task.isCancelled else {
+                return
+            }
+            withAnimation(.easeOut(duration: 0.5)) {
+                _ = grownColumns.insert(day.date)
+            }
+        }
+    }
+
+    /// 日期轴: 左 14 天前, 中 7 天前, 右今天.
+    private var dailyDateAxis: some View {
+        HStack {
+            Text("14 天前")
+            Spacer()
+            Text("7 天前")
+            Spacer()
+            Text("今天")
+        }
+        .font(.system(size: 9))
+        .foregroundStyle(Color.primary.opacity(0.55))
+    }
+
+    /// agent 图例: 色块 + 名称, 描述柱状图分段颜色.
+    private var dailyLegendRow: some View {
+        HStack(spacing: 10) {
+            ForEach(dailyLegend, id: \.agentID) { item in
+                HStack(spacing: 4) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Color(hex: item.color.hex))
+                        .frame(width: 7, height: 7)
+                    Text(item.name)
+                }
+            }
+        }
+        .font(.system(size: 9.5))
+        .foregroundStyle(Color.primary.opacity(0.75))
+    }
+
+    // MARK: - 逐小时小标题
+
+    /// 区块小标题样式的「逐小时」行, 右侧保留时段范围说明.
+    private var titleRow: some View {
+        HStack(alignment: .firstTextBaseline) {
+            sectionTitle("逐小时")
             Spacer()
             Text("0 – 23 时")
-                .font(.system(size: 10.5))
+                .font(.system(size: 10))
                 .foregroundStyle(.secondary)
         }
     }
@@ -357,9 +506,32 @@ private extension HourlyLineViewModel {
 // 命令行 swift build 无法解析 #Preview 宏插件 (PreviewsMacros),
 // 这里用 PreviewProvider, Xcode 画布同样可直接预览.
 struct HourlyLineCard_Previews: PreviewProvider {
+    /// 14 日柱状图 fixture: 两个 agent 分段, 数值有起伏.
+    private static var dailyPreviewDays: [UsageChartDay] {
+        let kimi = [12, 18, 9, 22, 30, 26, 15, 33, 28, 20, 36, 24, 31, 27]
+        let codex = [4, 6, 3, 8, 10, 7, 5, 11, 9, 6, 12, 8, 10, 9]
+        return (0..<14).map { index in
+            let k = kimi[index] * 1000
+            let c = codex[index] * 1000
+            return UsageChartDay(
+                date: String(format: "2026-07-%02d", index + 17),
+                total: k + c,
+                segments: [
+                    UsageChartSegment(agentID: "kimi-code-cli", color: .blue, value: k),
+                    UsageChartSegment(agentID: "codex", color: .purple, value: c),
+                ]
+            )
+        }
+    }
+
     static var previews: some View {
         HourlyLineCard(
             viewModel: .hourlyLinePreviewFixture,
+            dailyDays: dailyPreviewDays,
+            dailyLegend: [
+                UsageLegendItem(agentID: "kimi-code-cli", name: "Kimi Code", color: .blue),
+                UsageLegendItem(agentID: "codex", name: "Codex", color: .purple),
+            ],
             initiallyExpandedAgentIDs: ["kimi-code-cli"]
         )
         .padding(12)
