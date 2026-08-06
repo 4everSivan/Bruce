@@ -169,7 +169,10 @@ package final class RefreshScheduler {
     // MARK: - Lifecycle
 
     package func start() {
-        guard !started else { return }
+        // started 表示已初始化过一次; stopped 表示当前处于停止态.
+        // 取消退出后再次 start 必须恢复 stopped 标志, 否则所有刷新
+        // (含手动) 会被 triggerRefresh 的 guard !stopped 永久拒绝.
+        if started && !stopped { return }
         started = true
         stopped = false
 
@@ -265,6 +268,11 @@ package final class RefreshScheduler {
 
     package func refresh(_ module: CollectorModule) {
         guard let state = states[module], state.enabled else { return }
+        // 自愈: 若调度器处于停止态 (退出流程被触发但应用未退出,
+        // 或取消退出后未恢复), 手动刷新先恢复调度再触发.
+        if stopped {
+            start()
+        }
         triggerRefresh(for: module, intent: .manual())
     }
 

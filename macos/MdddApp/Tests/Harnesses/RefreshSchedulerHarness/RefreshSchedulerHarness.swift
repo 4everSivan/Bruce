@@ -32,6 +32,8 @@ struct RefreshSchedulerHarness {
         try await partialResultPublishesArtifact(repository: repository)
         print("Refresh scheduler: stop")
         try await stopCancelsRunningTasks(repository: repository)
+        print("Refresh scheduler: manual refresh after stop recovers")
+        try await manualRefreshAfterStopRecoversScheduler(repository: repository)
         print("Refresh scheduler: interval update")
         try await updateRefreshIntervalReschedulesIdleModule(repository: repository)
         print("Refresh scheduler: credential persist failure demotes partial")

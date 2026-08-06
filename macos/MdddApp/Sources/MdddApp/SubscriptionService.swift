@@ -143,9 +143,20 @@ final class SubscriptionService {
     }
 
     /// 发布全部非 Codex provider 的多账号摘要到 AppModel.
+    /// 同时校正存量账号: 凭证存在但状态为 needsReauthorization 的账号
+    /// 标记为 connected (修复历史版本 upsert 未置 connected 的问题).
     private func publishAllProviderAccountSummaries() {
         for provider in SubscriptionProviderID.allCases where provider != .codex {
             let store = ProviderAccountStore(provider: provider, credentialStore: credentialStore)
+            // 校正存量状态
+            if let index = try? store.loadIndex() {
+                for entry in index.accounts where entry.authorizationState == .needsReauthorization {
+                    if let record = try? store.loadRecord(for: entry.accountID),
+                       !record.credentialJSON.isEmpty {
+                        try? store.updateAuthorizationState(.connected, for: entry.accountID)
+                    }
+                }
+            }
             let summaries = (try? store.summaries()) ?? []
             model.setProviderAccountSummaries(summaries, for: provider)
         }
@@ -192,6 +203,21 @@ final class SubscriptionService {
     /// Codex 完整 record; Claude/Grok 应用 Keychain 优先否则本机探测;
     /// 其余 provider 全部 credentialAccounts 非空.
     private func credentialConfigured(_ id: SubscriptionProviderID) -> Bool {
+        // 多账号路径: 非 Codex provider 的 configured 由 ProviderAccountStore
+        // 至少一个 connected 账号判定; 旧单条键仅作迁移期回退.
+        if id != .codex {
+            let store = ProviderAccountStore(provider: id, credentialStore: credentialStore)
+            if let index = try? store.loadIndex(), !index.accounts.isEmpty {
+                return (try? store.hasConnectedAccount()) ?? false
+            }
+            // index 为空: 回退旧键判定 (迁移尚未执行).
+            return legacyCredentialConfigured(id)
+        }
+        return legacyCredentialConfigured(id)
+    }
+
+    /// 旧单条 Keychain 键判定 (迁移前兼容).
+    private func legacyCredentialConfigured(_ id: SubscriptionProviderID) -> Bool {
         let descriptor = ProviderRegistry.descriptor(for: id)
         var accountValues: [String: String] = [:]
         for account in descriptor.credentialAccounts {
@@ -249,6 +275,35 @@ final class SubscriptionService {
         return true
     }
 
+    // MARK: - 多账号凭证写入 (统一路径)
+
+    /// 把单个账号的凭证写入 ProviderAccountStore (upsert) 并标记 connected.
+    /// 所有非 Codex provider 的保存/导入都走这里, 确保账号列表可见且状态正确.
+    /// 返回 accountID; 写入失败返回 nil (调用方报错).
+    @discardableResult
+    private func saveProviderAccountCredential(
+        for provider: SubscriptionProviderID,
+        accountID: String,
+        displayName: String,
+        credentialJSON: String
+    ) -> Bool {
+        let store = ProviderAccountStore(provider: provider, credentialStore: credentialStore)
+        do {
+            try store.upsertAccount(
+                accountID: accountID,
+                displayName: displayName,
+                credentialJSON: credentialJSON
+            )
+            // 写入成功后标记 connected, 否则账号列表会一直显示"需要重新登录"
+            // (upsert 新增默认 needsReauthorization, 更新保留原状态).
+            try store.updateAuthorizationState(.connected, for: accountID)
+            return true
+        } catch {
+            model.setSettingsError("\(provider.displayName) 凭证写入 Keychain 失败")
+            return false
+        }
+    }
+
     /// 验证完成后统一收尾: 写状态迁移, 失败原因进入设置错误提示.
     private func finishVerification(
     _ id: SubscriptionProviderID,
@@ -264,8 +319,7 @@ final class SubscriptionService {
             case .failed(let reason):
             model.setSettingsError("\(id.displayName) 验证失败: \(reason)")
             case .needsRelogin:
-            model.setSettingsError("\(id.displayName) 需要重新登录")
-            case .none:
+            model.setSettingsError("\(id.displayName) 需要重新登录")            case .none:
             break
         }
     }
@@ -295,12 +349,15 @@ final class SubscriptionService {
                 return
             }
 
-            // 2. 写 Keychain; 失败恢复旧配置
-            do {
-                try credentialStore.saveCredential(
-                key, forAccount: SubscriptionCredentialAccount.deepseekAPIKey
-                )
-            } catch {
+            // 2. 写多账号凭证; 失败恢复旧配置
+            let accountID = ProviderAccountIDGenerator.deepseekAccountID(apiKey: key)
+            let saved = saveProviderAccountCredential(
+                for: .deepseek,
+                accountID: accountID,
+                displayName: "DeepSeek · \(accountID)",
+                credentialJSON: key
+            )
+            if !saved {
                 restoreDeepSeekConfig(oldEntry)
                 model.setSettingsError("DeepSeek 凭证写入 Keychain 失败")
                 return
@@ -349,26 +406,28 @@ final class SubscriptionService {
 
     /// 火山引擎手动录入: 仅结构校验, 完整额度试查由 Collector 运行时承担.
     func saveAndVerifyVolcengine(accessKey: String, secretKey: String) {
+        let ak = accessKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sk = secretKey.trimmingCharacters(in: .whitespacesAndNewlines)
         let status = ProviderConnectionVerifier.verifyVolcengineCredentials(
-        accessKey: accessKey, secretKey: secretKey
+            accessKey: ak, secretKey: sk
         )
         guard status == .ok else {
             finishVerification(.volcengine, status: status)
             return
         }
-        do {
-            try credentialStore.saveCredential(
-            accessKey.trimmingCharacters(in: .whitespacesAndNewlines),
-            forAccount: SubscriptionCredentialAccount.volcengineAccessKey
-            )
-            try credentialStore.saveCredential(
-            secretKey.trimmingCharacters(in: .whitespacesAndNewlines),
-            forAccount: SubscriptionCredentialAccount.volcengineSecretKey
-            )
-        } catch {
-            model.setSettingsError("火山引擎凭证写入 Keychain 失败")
-            return
-        }
+        // 多账号路径: AK/SK 合成 JSON 写入 ProviderAccountStore.
+        let accountID = ProviderAccountIDGenerator.volcengineAccountID(accessKey: ak)
+        let dict: [String: String] = ["accessKey": ak, "secretKey": sk]
+        let data = (try? JSONSerialization.data(
+            withJSONObject: dict, options: [.sortedKeys]
+        )) ?? Data()
+        let credentialJSON = String(data: data, encoding: .utf8) ?? "{}"
+        guard saveProviderAccountCredential(
+            for: .volcengine,
+            accountID: accountID,
+            displayName: "火山引擎 · \(accountID)",
+            credentialJSON: credentialJSON
+        ) else { return }
         model.setSubscriptionCredentialConfigured(true, for: .volcengine)
         finishVerification(.volcengine, status: status)
     }
@@ -420,14 +479,20 @@ final class SubscriptionService {
     private func saveKimiTokensJSON(_ json: String) {
         let status = ProviderConnectionVerifier.verifyKimiWebTokensJSON(json)
         if status == .ok || status == .needsRelogin {
-            do {
-                try credentialStore.saveCredential(
-                json, forAccount: SubscriptionCredentialAccount.kimiWebTokens
-                )
-            } catch {
-                model.setSettingsError("Kimi 凭证写入 Keychain 失败")
+            // 多账号路径: 写入 ProviderAccountStore (upsert), 账号列表立即可见.
+            guard let dict = jsonObject(from: json),
+                  let access = dict["access_token"] as? String, !access.isEmpty else {
+                model.setSettingsError("Kimi 凭证缺少 access_token")
                 return
             }
+            let accountID = ProviderAccountIDGenerator.kimiAccountID(accessToken: access)
+            let displayName = "Kimi · " + String(accountID.prefix(8))
+            guard saveProviderAccountCredential(
+                for: .kimi,
+                accountID: accountID,
+                displayName: displayName,
+                credentialJSON: json
+            ) else { return }
             model.setSubscriptionCredentialConfigured(true, for: .kimi)
         }
         finishVerification(.kimi, status: status)
@@ -466,14 +531,16 @@ final class SubscriptionService {
             model.setSettingsError("Claude 凭证无效, 请重新粘贴")
             return
             case .valid:
-            do {
-                try credentialStore.saveCredential(
-                json, forAccount: SubscriptionCredentialAccount.claudeOAuth
-                )
-            } catch {
-                model.setSettingsError("Claude 凭证写入 Keychain 失败")
-                return
-            }
+            // 多账号路径: 写入 ProviderAccountStore (upsert).
+            let access = Self.claudeAccessToken(from: json) ?? json
+            let accountID = ProviderAccountIDGenerator.claudeAccountID(accessToken: access)
+            let displayName = "Claude · " + String(accountID.prefix(8))
+            guard saveProviderAccountCredential(
+                for: .claude,
+                accountID: accountID,
+                displayName: displayName,
+                credentialJSON: json
+            ) else { return }
             model.setSubscriptionCredentialConfigured(true, for: .claude)
             finishVerification(.claude, status: .ok)
             case .expired:
@@ -515,14 +582,16 @@ final class SubscriptionService {
             model.setSettingsError("Grok 凭证无效, 请重新粘贴")
             return
             case .valid:
-            do {
-                try credentialStore.saveCredential(
-                json, forAccount: SubscriptionCredentialAccount.grokOAuth
-                )
-            } catch {
-                model.setSettingsError("Grok 凭证写入 Keychain 失败")
-                return
-            }
+            // 多账号路径: 写入 ProviderAccountStore (upsert).
+            let key = Self.grokKey(from: json) ?? json
+            let accountID = ProviderAccountIDGenerator.grokAccountID(key: key)
+            let displayName = "Grok · " + String(accountID.prefix(8))
+            guard saveProviderAccountCredential(
+                for: .grok,
+                accountID: accountID,
+                displayName: displayName,
+                credentialJSON: json
+            ) else { return }
             model.setSubscriptionCredentialConfigured(true, for: .grok)
             finishVerification(.grok, status: .ok)
             case .expired:
@@ -738,14 +807,16 @@ final class SubscriptionService {
             finishVerification(.antigravity, status: status)
             return
         }
-        do {
-            try credentialStore.saveCredential(
-            json, forAccount: SubscriptionCredentialAccount.antigravityOAuth
-            )
-        } catch {
-            model.setSettingsError("Antigravity 凭证写入 Keychain 失败")
-            return
-        }
+        // 多账号路径: 写入 ProviderAccountStore (upsert).
+        let refresh = Self.antigravityRefreshToken(from: json) ?? json
+        let accountID = ProviderAccountIDGenerator.antigravityAccountID(refreshToken: refresh)
+        let displayName = "Antigravity · " + String(accountID.prefix(8))
+        guard saveProviderAccountCredential(
+            for: .antigravity,
+            accountID: accountID,
+            displayName: displayName,
+            credentialJSON: json
+        ) else { return }
         model.setSubscriptionCredentialConfigured(true, for: .antigravity)
         finishVerification(.antigravity, status: status)
     }
@@ -942,6 +1013,60 @@ final class SubscriptionService {
             model.setSettingsError("\(usage)读取失败: \(error.localizedDescription)")
             return nil
         }
+    }
+
+    /// 解析 JSON 字符串为对象; 非对象或解析失败返回 nil.
+    private func jsonObject(from json: String) -> [String: Any]? {
+        guard let data = json.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let dict = object as? [String: Any] else {
+            return nil
+        }
+        return dict
+    }
+
+    /// Claude 凭证 JSON -> accessToken (用于生成 accountID).
+    private static func claudeAccessToken(from json: String) -> String? {
+        guard let data = json.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let dict = object as? [String: Any] else {
+            return nil
+        }
+        let entry = (dict["claudeAiOauth"] as? [String: Any])
+            ?? (dict["claude.ai_oauth"] as? [String: Any])
+            ?? dict
+        let token = (entry["accessToken"] as? String ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return token.isEmpty ? nil : token
+    }
+
+    /// Grok 凭证 JSON -> key (用于生成 accountID).
+    private static func grokKey(from json: String) -> String? {
+        guard let data = json.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let dict = object as? [String: Any] else {
+            return nil
+        }
+        for (_, value) in dict {
+            guard let entry = value as? [String: Any],
+                  let key = entry["key"] as? String,
+                  !key.isEmpty else { continue }
+            return key
+        }
+        return nil
+    }
+
+    /// Antigravity 令牌 JSON -> refresh_token (用于生成 accountID).
+    private static func antigravityRefreshToken(from json: String) -> String? {
+        guard let data = json.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let dict = object as? [String: Any],
+              let token = dict["token"] as? [String: Any],
+              let refresh = token["refresh_token"] as? String,
+              !refresh.isEmpty else {
+            return nil
+        }
+        return refresh
     }
 
     // MARK: - 订阅额度本机文件检测 (供设置页条件渲染; 转发 LocalCredentialProbe)

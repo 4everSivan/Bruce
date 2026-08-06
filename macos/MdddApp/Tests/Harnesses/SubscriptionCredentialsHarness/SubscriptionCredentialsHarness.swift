@@ -66,7 +66,9 @@ struct SubscriptionCredentialsHarness {
         try coordinatorRotationMultiAccountUnknownAccountFallsBack()
         try providerAccountSummariesExposeNonSensitiveInfo()
         try providerAccountStoreRemoveLastAccountKeepsEmptyIndex()
-        print("Subscription credentials tests passed: 21")
+        try providerAccountStoreUpsertUpdatesExisting()
+        try providerAccountStoreWriteThenConnected()
+        print("Subscription credentials tests passed: 23")
     }
 
     /// 构造 OnboardingRunInputProvider: 配置 claude 启用 + Keychain 持有 claude:oauth.
@@ -728,5 +730,69 @@ struct SubscriptionCredentialsHarness {
         try credentialsExpect(count == 0, "账号数应为 0")
         let record = try store.loadRecord(for: "claude-001")
         try credentialsExpect(record == nil, "record 应已删除")
+    }
+
+    /// upsert: 已存在账号更新凭证 (更换场景), 不存在则新增.
+    private static func providerAccountStoreUpsertUpdatesExisting() throws {
+        let credStore = InMemoryCredentialStore()
+        let store = ProviderAccountStore(provider: .deepseek, credentialStore: credStore)
+
+        // 新增
+        try store.upsertAccount(
+            accountID: "sk-abc123",
+            displayName: "DeepSeek · sk-abc123",
+            credentialJSON: "sk-old-key"
+        )
+        let countAfterAdd = try store.accountCount()
+        try credentialsExpect(countAfterAdd == 1, "upsert 新增后应有 1 个账号")
+        let record1 = try store.loadRecord(for: "sk-abc123")
+        try credentialsExpect(record1?.credentialJSON == "sk-old-key", "新增凭证不匹配")
+
+        // 更新 (更换 API key)
+        try store.upsertAccount(
+            accountID: "sk-abc123",
+            displayName: "DeepSeek · sk-abc123",
+            credentialJSON: "sk-new-key"
+        )
+        let countAfterUpdate = try store.accountCount()
+        try credentialsExpect(countAfterUpdate == 1, "upsert 更新不应新增账号")
+        let record2 = try store.loadRecord(for: "sk-abc123")
+        try credentialsExpect(record2?.credentialJSON == "sk-new-key", "更新凭证不匹配")
+
+        // 更新后 index 状态保留 (connected 不被重置)
+        try store.updateAuthorizationState(.connected, for: "sk-abc123")
+        try store.upsertAccount(
+            accountID: "sk-abc123",
+            displayName: "DeepSeek · sk-abc123",
+            credentialJSON: "sk-newer-key"
+        )
+        let record3 = try store.loadRecord(for: "sk-abc123")
+        try credentialsExpect(record3?.credentialJSON == "sk-newer-key", "二次更新凭证不匹配")
+        try credentialsExpect(
+            record3?.authorizationState == .connected,
+            "更新凭证不应重置 connected 状态"
+        )
+    }
+
+    /// 模拟 saveProviderAccountCredential 流程: upsert 后显式标记 connected.
+    /// 回归: 只 upsert 不置 connected 会让账号列表一直显示"需要重新登录".
+    private static func providerAccountStoreWriteThenConnected() throws {
+        let credStore = InMemoryCredentialStore()
+        let store = ProviderAccountStore(provider: .kimi, credentialStore: credStore)
+
+        // 模拟导入流程: upsert 新增 + 标记 connected
+        try store.upsertAccount(
+            accountID: "kimi-001",
+            displayName: "Kimi · kimi-001",
+            credentialJSON: "{\"access_token\":\"at\",\"refresh_token\":\"rt\"}"
+        )
+        try store.updateAuthorizationState(.connected, for: "kimi-001")
+
+        let summaries = try store.summaries()
+        try credentialsExpect(summaries.count == 1, "应有 1 个账号")
+        try credentialsExpect(
+            summaries[0].authorizationState == .connected,
+            "导入后账号应为 connected, 而不是 needsReauthorization"
+        )
     }
 }

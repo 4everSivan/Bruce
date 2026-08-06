@@ -47,4 +47,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         return .terminateLater
     }
+
+    /// 用户取消退出 (系统对话框取消 / 再次触发退出前被驳回): 恢复调度,
+    /// 使后续手动/自动刷新继续可用. 与 beginTermination 对称.
+    func applicationDidCancelTerminate(_ sender: NSApplication) {
+        lifecycle?.cancelTermination()
+    }
 }

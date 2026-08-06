@@ -388,6 +388,70 @@ class BridgeCodexAccessOnlyContractTests(unittest.TestCase):
         self.assertNotIn("fixture-short-lived-token", json.dumps(response))
         self.assertNotIn("codexQuotaAccounts", json.dumps(response["artifact"]))
 
+    def test_multi_account_quota_credentials_accepted(self):
+        """回归: 多账号注入键 (*QuotaAccounts) 必须被 Bridge 白名单接受,
+        否则校验拒绝导致刷新失败."""
+        captured = {}
+
+        def collector(ctx):
+            captured.update(ctx)
+            return {"artifact": load_fixture("agent-usage")}
+
+        response = execute_request(
+            bridge_request(
+                "agent-usage",
+                credentials={
+                    "kimiQuotaAccounts": {
+                        "acct-a": {
+                            "display_name": "Kimi · a",
+                            "tokens": {"access_token": "ka"},
+                        }
+                    },
+                    "deepseekQuotaAccounts": {
+                        "acct-b": {
+                            "display_name": "DeepSeek · b",
+                            "api_key": "sk-b",
+                        }
+                    },
+                    "volcengineQuotaAccounts": {
+                        "acct-c": {
+                            "display_name": "火山引擎 · c",
+                            "access_key": "AK-c",
+                            "secret_key": "SK-c",
+                        }
+                    },
+                    "claudeQuotaAccounts": {
+                        "acct-d": {
+                            "display_name": "Claude · d",
+                            "oauth": {"claudeAiOauth": {"accessToken": "cd"}},
+                        }
+                    },
+                    "grokQuotaAccounts": {
+                        "acct-e": {
+                            "display_name": "Grok · e",
+                            "oauth": {"key": "ge"},
+                        }
+                    },
+                    "antigravityQuotaAccounts": {
+                        "acct-f": {
+                            "display_name": "Antigravity · f",
+                            "oauth": {"token": {"refresh_token": "arf"}},
+                        }
+                    },
+                },
+            ),
+            collector_overrides={"agent-usage": collector},
+        )
+        self.assertEqual(response["status"], "success")
+        # 凭证按 snake_case 键传给 collector (在 ctx.credentials 内)
+        injected = captured.get("credentials", {})
+        self.assertIn("kimi_quota_accounts", injected)
+        self.assertIn("deepseek_quota_accounts", injected)
+        self.assertIn("volcengine_quota_accounts", injected)
+        self.assertIn("claude_quota_accounts", injected)
+        self.assertIn("grok_quota_accounts", injected)
+        self.assertIn("antigravity_quota_accounts", injected)
+
     def test_context_rejects_non_boolean_codex_quota_retry_only(self):
         response = execute_request(
             bridge_request(

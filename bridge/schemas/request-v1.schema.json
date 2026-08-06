@@ -165,6 +165,30 @@
     }
   },
   "$defs": {
+    "quotaAccounts": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 64,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "display_name"
+        ],
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        }
+      },
+      "propertyNames": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256
+      }
+    },
     "oauthTokens": {
       "type": "object",
       "additionalProperties": false,
@@ -209,6 +233,24 @@
       "properties": {
         "kimiWebTokens": {
           "$ref": "#/$defs/oauthTokens"
+        },
+        "kimiQuotaAccounts": {
+          "$ref": "#/$defs/quotaAccounts"
+        },
+        "deepseekQuotaAccounts": {
+          "$ref": "#/$defs/quotaAccounts"
+        },
+        "volcengineQuotaAccounts": {
+          "$ref": "#/$defs/quotaAccounts"
+        },
+        "antigravityQuotaAccounts": {
+          "$ref": "#/$defs/quotaAccounts"
+        },
+        "claudeQuotaAccounts": {
+          "$ref": "#/$defs/quotaAccounts"
+        },
+        "grokQuotaAccounts": {
+          "$ref": "#/$defs/quotaAccounts"
         },
         "codexQuotaAccounts": {
           "type": "object",

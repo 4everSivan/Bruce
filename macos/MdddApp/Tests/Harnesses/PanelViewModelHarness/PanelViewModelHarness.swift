@@ -212,7 +212,8 @@ struct PanelViewModelHarness {
         try providerOrderUnknownIDsGoLast()
         try providerOrderNormalizesKimiCodingID()
         try presentationPolicyTableDrivenRules()
-        print("PanelViewModel tests passed: 36")
+        try singleAccountSectionNameOmitsAccountSuffix()
+        print("PanelViewModel tests passed: 37")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -1349,6 +1350,46 @@ struct PanelViewModelHarness {
             let got = SubscriptionPresentationPolicy.codexGroupStatus(from: statuses)
             try expect(got == expected, "groupStatus(\(statuses)) => \(got)")
         }
+    }
+
+    // 单账号 section 名称只显示 provider 名, 不带账号后缀 (无需区分).
+    // 多账号分组名由 groupDisplayName 提供.
+    private static func singleAccountSectionNameOmitsAccountSuffix() throws {
+        let deepseek = makeService(
+            id: "deepseek_sk-12345",
+            name: "DeepSeek · sk-12345",
+            kind: "balance",
+            balance: 38.21,
+            currency: "CNY"
+        )
+        let vm = try subscriptionSections(services: [deepseek])
+        try expect(vm.count == 1, "单账号应只有 1 段: \(vm.count)")
+        try expect(
+            vm[0].name == "DeepSeek",
+            "单账号不应显示账号名: \(vm[0].name)"
+        )
+        try expect(
+            !vm[0].name.contains("sk-12345"),
+            "单账号名称不得含账号 ID: \(vm[0].name)"
+        )
+
+        // 多账号: 分组名仍为 provider 名, 账号名在 accounts 子卡内.
+        let second = makeService(
+            id: "deepseek_sk-67890",
+            name: "DeepSeek · sk-67890",
+            kind: "balance",
+            balance: 10.0,
+            currency: "CNY"
+        )
+        let multi = try subscriptionSections(services: [deepseek, second])
+        try expect(multi.count == 1, "多账号应合并为 1 段: \(multi.count)")
+        try expect(multi[0].name == "DeepSeek", "多账号分组名应为 DeepSeek: \(multi[0].name)")
+        try expect(multi[0].isMultiAccount, "多账号应标记 isMultiAccount")
+        try expect(multi[0].accounts.count == 2, "多账号应有 2 个子卡: \(multi[0].accounts.count)")
+        try expect(
+            multi[0].accounts.map(\.name) == ["sk-12345", "sk-67890"],
+            "子卡名应剥离 DeepSeek 前缀: \(multi[0].accounts.map(\.name))"
+        )
     }
 
 }

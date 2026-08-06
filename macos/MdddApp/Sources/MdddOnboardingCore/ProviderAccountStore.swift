@@ -305,6 +305,47 @@ public final class ProviderAccountStore: @unchecked Sendable {
         try saveIndex(index)
     }
 
+    /// 新增或更新账号凭证 (upsert).
+    /// - 账号不存在: 新增 record + index 条目.
+    /// - 账号已存在: 更新 credentialJSON / displayName, 不改变授权状态.
+    /// 用于"更换凭证"场景 (重新粘贴 / 重新导入).
+    public func upsertAccount(
+        accountID: String,
+        displayName: String,
+        credentialJSON: String,
+        now: Date = Date()
+    ) throws {
+        var index = try loadIndex()
+        if let idx = index.accounts.firstIndex(where: { $0.accountID == accountID }) {
+            // 已存在: 更新 record 与 index 元数据, 保留授权状态.
+            if var record = try loadRecord(for: accountID) {
+                record.credentialJSON = credentialJSON
+                record.displayName = displayName
+                record.updatedAt = now
+                try saveRecord(record)
+            } else {
+                let record = ProviderAccountRecord(
+                    accountID: accountID,
+                    displayName: displayName,
+                    credentialJSON: credentialJSON,
+                    authorizationState: index.accounts[idx].authorizationState,
+                    updatedAt: now
+                )
+                try saveRecord(record)
+            }
+            index.accounts[idx].displayName = displayName
+            try saveIndex(index)
+        } else {
+            // 不存在: 走 addAccount (新增).
+            _ = try addAccount(
+                accountID: accountID,
+                displayName: displayName,
+                credentialJSON: credentialJSON,
+                now: now
+            )
+        }
+    }
+
     /// 更新账号状态.
     public func updateAuthorizationState(
         _ state: ProviderAccountAuthorizationState,

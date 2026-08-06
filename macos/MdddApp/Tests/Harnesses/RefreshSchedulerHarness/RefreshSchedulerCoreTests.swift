@@ -732,6 +732,37 @@ extension RefreshSchedulerHarness {
         )
     }
 
+    // 回归: 调度器 stop 后 (退出流程被触发但应用未退出), 手动刷新
+    // 必须自愈恢复调度, 否则刷新按钮点击无效.
+    static func manualRefreshAfterStopRecoversScheduler(
+        repository: URL
+    ) async throws {
+        let executor = MockCollectorExecutor()
+        executor.blocksUntilReleased = false
+        let clock = ManualClock()
+        let timers = FakeTimerScheduler()
+        let (scheduler, _, root) = try makeScheduler(
+            repository: repository, executor: executor, clock: clock, timers: timers
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        scheduler.start()
+        scheduler.enableModule(.agentUsage)
+
+        // 模拟退出流程: stop 后调度器进入停止态
+        scheduler.stop()
+        try refreshExpect(scheduler.isStopped, "scheduler should be stopped after stop()")
+
+        // 手动刷新应自愈: 恢复 started 状态并触发一次刷新
+        scheduler.refresh(.agentUsage)
+        try refreshExpect(!scheduler.isStopped, "manual refresh should recover from stopped")
+        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 1)
+        try refreshExpect(
+            scheduler.moduleState(for: .agentUsage)?.phase == .idle,
+            "module should return to idle after recovered refresh"
+        )
+    }
+
     // 配置变更后新间隔立即生效: 缩短时按重启计时立即补刷,
     // 延长时按新间隔重排 idle 模块计时器.
     static func updateRefreshIntervalReschedulesIdleModule(

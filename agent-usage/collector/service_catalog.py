@@ -165,7 +165,7 @@ def _resolve_app(run_ctx: RunContext, *, kimi_coding) -> List[_Resolved]:
                     display_name=display,
                     app="kimi",
                     is_current=False,
-                    query=lambda t=tokens: kimi_coding(t),
+                    query=lambda t=tokens: kimi_coding(tokens=t),
                 )
             )
     elif run_ctx.credential("kimi_web_tokens") is not None:

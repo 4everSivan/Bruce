@@ -1281,6 +1281,38 @@ class AgentCollectorAppServicesTests(unittest.TestCase):
             [w["label"] for w in volc["windows"]], ["5小时窗口", "每周窗口"]
         )
 
+    def test_app_mode_multi_account_kimi_consumes_injected_tokens(self):
+        """回归: kimi_quota_accounts 注入时, 每个账号的 tokens 必须被
+        service_kimi_coding 直接消费 (修复前 tokens 落到 env 参数,
+        函数读不到导致返回 None -> 未取到额度数据)."""
+        with tempfile.TemporaryDirectory() as temp_home:
+            self._configure_app(
+                temp_home,
+                {
+                    "kimi_quota_accounts": {
+                        "acct-a": {
+                            "display_name": "Kimi · acct-a",
+                            "tokens": {
+                                "access_token": "fixture-access-a",
+                                "refresh_token": "fixture-refresh-a",
+                            },
+                        }
+                    }
+                },
+                {
+                    "post_json": self._kimi_post_json,
+                    "get_json": self._quota_get_json,
+                },
+            )
+            services = self.module.collect_services()
+
+        self.assertEqual([svc["id"] for svc in services], ["kimi_coding_acct-a"])
+        self.assertEqual(services[0]["status"], "ok")
+        self.assertEqual(services[0]["name"], "Kimi · acct-a")
+        self.assertEqual(services[0]["kind"], "windows")
+        self.assertEqual(len(services[0]["windows"]), 2)
+        self.assertEqual(services[0]["plan"], "Moderato")
+
     def test_app_mode_partial_injection_yields_only_matching_services(self):
         with tempfile.TemporaryDirectory() as temp_home:
             self._configure_app(

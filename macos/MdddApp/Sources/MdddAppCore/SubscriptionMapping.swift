@@ -122,6 +122,7 @@ extension PanelViewModelMapper {
 
             if services.count == 1 {
                 // 单账号: 直接作为 section, 保持现有展示.
+                // section 名称只用 provider 分组名 (不显示账号名, 无需区分);
                 // accounts 携带单条记录 (供测试和 UI 取 lastSuccessText 等),
                 // 但 isMultiAccount 为 false, 不触发折叠.
                 let svc = services[0]
@@ -143,7 +144,7 @@ extension PanelViewModelMapper {
 
                 sections.append(SubscriptionProviderSection(
                     id: svc.service.id,
-                    name: group.displayName,
+                    name: SubscriptionPresentationPolicy.groupDisplayName(providerID: providerID),
                     plan: svc.service.plan,
                     status: svc.service.status,
                     note: svc.note,

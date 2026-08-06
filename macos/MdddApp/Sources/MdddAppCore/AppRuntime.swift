@@ -4,6 +4,7 @@ import Foundation
 package protocol ApplicationRuntimeControlling: AnyObject {
     var hasRunningTasks: Bool { get }
     func startSchedulerIfNeeded()
+    func resumeScheduling()
     func stopScheduling()
     func cancelRunningTasks()
     func forceTerminateRunningTasks()
@@ -32,6 +33,13 @@ package final class AppRuntime: ObservableObject, ApplicationRuntimeControlling 
         guard !schedulerStarted else { return }
         schedulerStarted = true
         schedulerStartCount += 1
+        scheduler?.start()
+    }
+
+    /// 取消退出后恢复调度: 重置 acceptsNewTasks 并重启 Scheduler.
+    /// 与 stopScheduling 对称; 仅在已停止后调用才生效.
+    package func resumeScheduling() {
+        acceptsNewTasks = true
         scheduler?.start()
     }
 

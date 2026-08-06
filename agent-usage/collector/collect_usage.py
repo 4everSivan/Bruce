@@ -387,23 +387,32 @@ def _kimi_web_refresh(tokens):
     return None
 
 
-def service_kimi_coding(env):
+def service_kimi_coding(env=None, tokens=None):
     """Kimi For Coding 额度：统一走网页端 GetSubscriptionStats 一处取数，
     单次返回 5h 频控 / 7 天额度 / 月度共享池 / 赠送额度 / 加油包 全部窗口。
-    登录态为本机浏览器的 kimi.com 令牌（access 到期自动 refresh）。"""
-    injected_tokens = _runtime_credential("kimi_web_tokens")
-    if injected_tokens is not None:
-        tokens = dict(injected_tokens)
+    登录态为本机浏览器的 kimi.com 令牌（access 到期自动 refresh）。
+
+    tokens 参数用于多账号注入 (service_catalog 按账号传入);
+    env 参数保留旧调用兼容 (CLI 场景, 内部仍读 runtime credential).
+    """
+    if tokens is not None:
+        pass  # 多账号注入: 直接使用传入 tokens
     else:
-        if _APP_MODE:
-            return None
-        if not os.path.exists(KIMI_WEB_TOKENS):
-            return None
-        try:
-            with open(KIMI_WEB_TOKENS) as f:
-                tokens = json.load(f)
-        except Exception:
-            return None
+        injected_tokens = _runtime_credential("kimi_web_tokens")
+        if injected_tokens is not None:
+            tokens = dict(injected_tokens)
+        else:
+            if _APP_MODE:
+                return None
+            if not os.path.exists(KIMI_WEB_TOKENS):
+                return None
+            try:
+                with open(KIMI_WEB_TOKENS) as f:
+                    tokens = json.load(f)
+            except Exception:
+                return None
+    if not tokens:
+        return None
 
     d = None
     for _ in range(2):

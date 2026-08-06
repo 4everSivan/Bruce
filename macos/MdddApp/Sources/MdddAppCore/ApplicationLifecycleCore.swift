@@ -42,4 +42,12 @@ package final class ApplicationLifecycleCoordinator {
             completion()
         }
     }
+
+    /// 用户取消退出: 恢复调度, 使后续手动/自动刷新继续可用.
+    /// 与 beginTermination 对称; 未开始退出时无操作.
+    package func cancelTermination() {
+        guard terminationStarted else { return }
+        terminationStarted = false
+        runtime.resumeScheduling()
+    }
 }

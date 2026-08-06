@@ -49,6 +49,12 @@ private final class Runtime: ApplicationRuntimeControlling {
         forceCount += 1
         hasRunningTasks = false
     }
+
+    func resumeScheduling() {
+        resumeCount += 1
+    }
+
+    private(set) var resumeCount = 0
 }
 
 @main
@@ -57,10 +63,11 @@ struct NativeLifecycleHarness {
     static func main() throws {
         try exitForcesRemainingTasksAfterGracePeriod()
         try exitCompletesImmediatelyWithoutRunningTasks()
+        try cancelTerminationRestoresScheduling()
         try metricSelectionNormalizes()
         try menuBarSummaryUsesValidQuotaWindows()
         try metricFormatterUsesCompactValues()
-        print("Native lifecycle tests passed: 5")
+        print("Native lifecycle tests passed: 6")
     }
 
     private static func exitForcesRemainingTasksAfterGracePeriod() throws {
@@ -103,6 +110,31 @@ struct NativeLifecycleHarness {
             runtime.schedulerStartCount == 1,
             "scheduler started more than once"
         )
+    }
+
+    /// 用户取消退出后恢复调度: cancelTermination 调用 resumeScheduling,
+    /// 后续刷新继续可用 (回归: 曾永久 stopped 导致刷新按钮失效).
+    private static func cancelTerminationRestoresScheduling() throws {
+        let runtime = Runtime()
+        runtime.hasRunningTasks = true
+        var graceAction: (@MainActor () -> Void)?
+        let coordinator = ApplicationLifecycleCoordinator(
+            runtime: runtime,
+            scheduleGracePeriod: { action in graceAction = action }
+        )
+
+        coordinator.beginTermination { }
+        try expect(runtime.stopCount == 1, "cancel 前应 stop scheduling")
+        try expect(runtime.resumeCount == 0, "cancel 前不应 resume")
+
+        // 用户取消退出
+        coordinator.cancelTermination()
+        try expect(runtime.resumeCount == 1, "取消退出应恢复调度")
+        try expect(runtime.stopCount == 1, "取消退出不应重复 stop")
+
+        // 再次取消无操作 (幂等)
+        coordinator.cancelTermination()
+        try expect(runtime.resumeCount == 1, "重复取消应幂等")
     }
 
     private static func metricSelectionNormalizes() throws {
