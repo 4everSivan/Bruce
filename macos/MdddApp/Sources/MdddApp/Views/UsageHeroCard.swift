@@ -34,6 +34,20 @@ struct UsageHeroCard: View {
                 .padding(.top, 3)
             legendRow
                 .padding(.top, 4)
+            if !viewModel.monthly.isEmpty {
+                monthlySection
+                    .padding(.top, 10)
+            }
+            if !viewModel.heatmap.isEmpty {
+                sectionTitle("热力图 · 近半年")
+                    .padding(.top, 12)
+                heatmapView
+                    .padding(.top, 4)
+                heatmapDateAxis
+                    .padding(.top, 5)
+                heatmapLegend
+                    .padding(.top, 5)
+            }
         }
         .background {
             CodeStreamBackground(tint: Self.tierTint(viewModel.usageTier))
@@ -181,6 +195,182 @@ struct UsageHeroCard: View {
                 _ = grownColumns.insert(day.date)
             }
         }
+    }
+
+    // MARK: 按月统计
+
+    /// 标题行 (右侧并入半年汇总) + 3 列月度 chip 网格 (当月高亮);
+    /// 原型 usage-monthly-v2 变体 2.
+    private var monthlySection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                sectionTitle("按月 · 近 6 个月")
+                Spacer()
+                if let halfYear = viewModel.halfYear {
+                    HStack(alignment: .firstTextBaseline, spacing: 0) {
+                        Text("近半年 ")
+                        Text(halfYear.totalText)
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(Self.ink.opacity(0.85))
+                        Text(" · 月均 \(halfYear.averageText)")
+                    }
+                    .font(.system(size: 10))
+                    .monospacedDigit()
+                    .foregroundStyle(Self.subdued)
+                }
+            }
+            LazyVGrid(
+                columns: Array(
+                    repeating: GridItem(.flexible(), spacing: 6),
+                    count: 3
+                ),
+                spacing: 6
+            ) {
+                ForEach(Array(viewModel.monthly.enumerated()), id: \.offset) { _, month in
+                    monthlyChip(month)
+                }
+            }
+        }
+    }
+
+    /// 区块小标题: 10pt 半粗 + 字距, 与原型 .sec 样式一致.
+    private func sectionTitle(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 10, weight: .semibold))
+            .tracking(0.4)
+            .foregroundStyle(Self.faint)
+    }
+
+    private func monthlyChip(_ month: UsageMonthlyTotal) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(month.label)
+                .font(.system(size: 8.5, weight: month.isCurrent ? .semibold : .regular))
+                .tracking(0.5)
+                .foregroundStyle(month.isCurrent ? Self.accent : Self.faint)
+            Text(month.totalText)
+                .font(.system(size: 13, weight: .semibold))
+                .monospacedDigit()
+                .foregroundStyle(Self.ink.opacity(0.85))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(
+            Color.adaptive(
+                light: Color.white.opacity(month.isCurrent ? 0.6 : 0.4),
+                dark: Color.white.opacity(month.isCurrent ? 0.14 : 0.08)
+            ),
+            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(
+                    Color.adaptive(
+                        light: Color.white.opacity(0.55),
+                        dark: Color.white.opacity(0.1)
+                    ),
+                    lineWidth: 1
+                )
+        )
+        .accessibilityElement(children: .combine)
+    }
+
+    // MARK: 用量热力图
+
+    /// 周列 × 周日行 (周一起) 网格: 列等宽撑满卡片, 格子正方形随列宽缩放;
+    /// level 0 淡槽, 1-4 沿用 UsageTier 绿/橙/红/紫深色阶, 窗口外与未来格透明.
+    private var heatmapView: some View {
+        HStack(alignment: .top, spacing: 3) {
+            ForEach(Array(viewModel.heatmap.enumerated()), id: \.offset) { _, week in
+                VStack(spacing: 3) {
+                    ForEach(0..<7, id: \.self) { row in
+                        heatmapCell(week.cells[row])
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("用量热力图")
+    }
+
+    private func heatmapCell(_ cell: UsageHeatmapCell?) -> some View {
+        RoundedRectangle(cornerRadius: 2, style: .continuous)
+            .fill(heatmapCellColor(cell))
+            .aspectRatio(1, contentMode: .fit)
+            .frame(maxWidth: .infinity)
+    }
+
+    /// 起止日期轴: 左窗口首日, 右今天, 与网格左右缘对齐.
+    private var heatmapDateAxis: some View {
+        HStack {
+            Text(heatmapBoundaryText(first: true))
+            Spacer()
+            Text(heatmapBoundaryText(first: false))
+        }
+        .font(.system(size: 9))
+        .foregroundStyle(Self.faint)
+    }
+
+    /// "yyyy-MM-dd" -> "yy/MM/dd"; 取窗口首个/末个有效格.
+    private func heatmapBoundaryText(first: Bool) -> String {
+        let cells = viewModel.heatmap.flatMap(\.cells).compactMap { $0 }
+        guard let cell = first ? cells.first : cells.last else {
+            return ""
+        }
+        let parts = cell.date.split(separator: "-")
+        guard parts.count == 3 else {
+            return cell.date
+        }
+        return "\(parts[0].suffix(2))/\(parts[1])/\(parts[2])"
+    }
+
+    /// 程度图例 (GitHub 风格): 「少」 + level 0-4 格子 + 「多」, 右对齐.
+    private var heatmapLegend: some View {
+        HStack(spacing: 3) {
+            Spacer()
+            Text("少")
+            heatmapLevelSwatch(0)
+            ForEach(1...4, id: \.self) { level in
+                heatmapLevelSwatch(level)
+            }
+            Text("多")
+        }
+        .font(.system(size: 9))
+        .foregroundStyle(Self.faint)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("热力图程度图例: 颜色从少到多")
+    }
+
+    private func heatmapLevelSwatch(_ level: Int) -> some View {
+        RoundedRectangle(cornerRadius: 2, style: .continuous)
+            .fill(heatmapLevelColor(level))
+            .frame(width: 9, height: 9)
+    }
+
+    private func heatmapCellColor(_ cell: UsageHeatmapCell?) -> Color {
+        guard let cell else {
+            return .clear
+        }
+        return heatmapLevelColor(cell.level)
+    }
+
+    private func heatmapLevelColor(_ level: Int) -> Color {
+        guard level > 0 else {
+            return Color.primary.opacity(0.07)
+        }
+        let tier: UsageTier
+        switch level {
+        case 1:
+            tier = .green
+        case 2:
+            tier = .orange
+        case 3:
+            tier = .red
+        default:
+            tier = .purple
+        }
+        return Self.tierColors(for: tier).0
     }
 
     // MARK: 日期轴

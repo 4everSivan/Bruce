@@ -187,6 +187,8 @@ struct PanelViewModelHarness {
         try malformedWindowIsDroppedWithDiagnostic()
         try usageHeroAggregatesTotalsAndFormatting()
         try usageTierFollowsTotalThresholds()
+        try usageHeatmapBuildsWeekGrid()
+        try usageMonthlyAggregatesCalendarMonths()
         try liveStateFollowsFreshnessThreshold()
         try chartBuilds14DaysWithStableSegments()
         try legendOnlyIncludesActiveAgents()
@@ -214,7 +216,7 @@ struct PanelViewModelHarness {
         try providerOrderNormalizesKimiCodingID()
         try presentationPolicyTableDrivenRules()
         try singleAccountSectionNameOmitsAccountSuffix()
-        print("PanelViewModel tests passed: 38")
+        print("PanelViewModel tests passed: 40")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -493,6 +495,147 @@ struct PanelViewModelHarness {
         try expect(tier(for: 249_999_999) == .red, "250M-1 应为 red")
         try expect(tier(for: 250_000_000) == .purple, "250M 应为 purple")
         try expect(tier(for: 900_000_000) == .purple, "900M 应为 purple")
+    }
+
+    // 热力图: 全量 daily 按周列 × 周日行 (周一起), level 相对峰值分档,
+    // 窗口外与未来格为 nil, 柱状图仍固定 14 天.
+    // 固定时钟 2026-07-30 (周四), 窗口 2026-07-17 (周五) 至 07-30 -> 3 周列.
+    private static func usageHeatmapBuildsWeekGrid() throws {
+        var totals = Array(repeating: 0, count: 14)
+        totals[13] = 1000 // 07-30 今天, 峰值 -> level 4
+        totals[6] = 500 // 07-23, 50% -> level 3
+        totals[0] = 250 // 07-17, 25% -> level 2
+        totals[1] = 100 // 07-18, 10% -> level 1
+        let agent = makeAgent(
+            id: "kimi-code-cli", name: "Kimi Code CLI", dailyTotals: totals
+        )
+        let artifact = makeAgentUsageArtifact(agents: [agent], services: [])
+        let vm = makeMapper().make(
+            agentUsage: artifact,
+            moduleStatuses: readyStatuses
+        )
+        let heatmap = vm.usage?.heatmap ?? []
+        try expect(heatmap.count == 3, "14 天窗口应覆盖 3 周列: \(heatmap.count)")
+        // 首周: 07-17 是周五, 周一到周四为 nil 占位.
+        let firstWeek = heatmap[0].cells
+        try expect(firstWeek.count == 7, "周列必须 7 格")
+        try expect(
+            firstWeek[0] == nil && firstWeek[3] == nil,
+            "首周窗口前应为 nil 占位"
+        )
+        try expect(
+            firstWeek[4]?.date == "2026-07-17",
+            "首周周五应为窗口首日: \(firstWeek[4]?.date ?? "nil")"
+        )
+        try expect(
+            firstWeek[4]?.level == 2,
+            "25% 峰值应为 level 2: \(firstWeek[4]?.level ?? -1)"
+        )
+        try expect(
+            firstWeek[5]?.level == 1,
+            "10% 峰值应为 level 1: \(firstWeek[5]?.level ?? -1)"
+        )
+        // 第二周: 07-23 周四 50% -> level 3; 07-20 周一无量 -> level 0.
+        let midWeek = heatmap[1].cells
+        try expect(
+            midWeek[3]?.level == 3,
+            "50% 峰值应为 level 3: \(midWeek[3]?.level ?? -1)"
+        )
+        try expect(
+            midWeek[0]?.level == 0,
+            "无量日应为 level 0: \(midWeek[0]?.level ?? -1)"
+        )
+        // 末周: 今天 07-30 周四为峰值 level 4, 周五起为 nil (未来).
+        let lastWeek = heatmap[2].cells
+        try expect(
+            lastWeek[3]?.date == "2026-07-30",
+            "末周周四应为今天: \(lastWeek[3]?.date ?? "nil")"
+        )
+        try expect(
+            lastWeek[3]?.level == 4,
+            "峰值日应为 level 4: \(lastWeek[3]?.level ?? -1)"
+        )
+        try expect(
+            lastWeek[4] == nil && lastWeek[5] == nil && lastWeek[6] == nil,
+            "未来格应为 nil"
+        )
+        // 柱状图窗口不受热力图影响, 仍为 14 天.
+        try expect(
+            vm.usage?.days.count == 14,
+            "柱状图应仍为 14 天: \(vm.usage?.days.count ?? -1)"
+        )
+    }
+
+    // 按月聚合: 日历月分组, 保留最近 6 个月, 末位为当月;
+    // 半年总量含全部被裁月份, 月均按实际覆盖月数平均.
+    private static func usageMonthlyAggregatesCalendarMonths() throws {
+        func day(_ date: String, _ total: Int) -> AgentDailyUsage {
+            AgentDailyUsage(date: date, input: total, output: 0, total: total)
+        }
+        let agent = AgentUsageItem(
+            id: "kimi-code-cli",
+            name: "Kimi Code",
+            status: "ok",
+            note: nil,
+            today: AgentTokenBucket(
+                input: 0, output: 0, cacheRead: 0, cacheCreation: 0, total: 0
+            ),
+            daily: [
+                day("2026-01-15", 100), // 1月: 超出 6 个月上限, 应被裁
+                day("2026-02-10", 2_000_000),
+                day("2026-03-05", 1_500_000),
+                day("2026-04-20", 1_000_000),
+                day("2026-05-01", 500_000),
+                day("2026-06-30", 2_500_000),
+                day("2026-07-30", 3_000_000),
+            ],
+            hours: Array(repeating: 0, count: 24),
+            todayCostUsd: nil,
+            models: nil,
+            projects: nil
+        )
+        let artifact = makeAgentUsageArtifact(agents: [agent], services: [])
+        let vm = makeMapper().make(
+            agentUsage: artifact,
+            moduleStatuses: readyStatuses
+        )
+        let monthly = vm.usage?.monthly ?? []
+        try expect(monthly.count == 6, "应保留最近 6 个月: \(monthly.count)")
+        try expect(
+            monthly.first?.label == "2月",
+            "首月应为 2月 (1月被裁): \(monthly.first?.label ?? "")"
+        )
+        try expect(
+            monthly.first?.isCurrent == false,
+            "首月不应为当月"
+        )
+        try expect(monthly.last?.label == "7月", "末月应为 7月")
+        try expect(monthly.last?.isCurrent == true, "末月应为当月")
+        try expect(
+            monthly.last?.totalText == "3M",
+            "7月总量: \(monthly.last?.totalText ?? "")"
+        )
+        // 半年总量 = 全部 daily 之和 (含被裁的 1月 100): 10,500,100 -> "10.5M".
+        try expect(
+            vm.usage?.halfYear?.totalText == "10.5M",
+            "半年总量: \(vm.usage?.halfYear?.totalText ?? "")"
+        )
+        // 月均 = 10,500,100 / 6 = 1,750,016 -> "1.8M".
+        try expect(
+            vm.usage?.halfYear?.averageText == "1.8M",
+            "月均: \(vm.usage?.halfYear?.averageText ?? "")"
+        )
+
+        // 无数据: monthly 为空, halfYear 为 nil.
+        let empty = makeMapper().make(
+            agentUsage: makeAgentUsageArtifact(agents: [], services: []),
+            moduleStatuses: readyStatuses
+        )
+        try expect(
+            empty.usage?.monthly.isEmpty == true,
+            "无数据 monthly 应为空"
+        )
+        try expect(empty.usage?.halfYear == nil, "无数据 halfYear 应为 nil")
     }
 
     // LIVE 由 generatedAt 新鲜度决定, 超过阈值或解析失败均为 false.

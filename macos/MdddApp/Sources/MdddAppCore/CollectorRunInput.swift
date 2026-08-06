@@ -260,7 +260,9 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
             .string(CollectorCapability.localPricing.rawValue),
         ]
         var credentials: [String: JSONValue] = [:]
-        var context: [String: JSONValue] = [:]
+        // 182 天聚合窗口: 柱状图仍取末 14 天 (映射层 suffix), 全量 daily
+        // 供用量热力图渲染; Bridge 协议上限 366.
+        var context: [String: JSONValue] = ["days": .integer(182)]
 
         let config = configStore?.load()
         // 统一授权未确认时永远不授予 externalQuotas;

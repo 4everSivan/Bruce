@@ -80,6 +80,7 @@ extension PanelViewModelMapper {
             ? String(format: "%.0f%%", Double(totals.cacheRead) / Double(cacheBase) * 100)
             : "—"
 
+        let monthly = makeUsageMonthly(artifact)
         return UsageHeroViewModel(
             totalTokens: totals.total,
             costText: artifact.totalCostUsd.map(PanelFormat.costText),
@@ -91,8 +92,121 @@ extension PanelViewModelMapper {
             ],
             days: days,
             legend: legend,
-            isLive: isLive
+            isLive: isLive,
+            heatmap: makeUsageHeatmap(artifact),
+            monthly: monthly.months,
+            halfYear: monthly.summary
         )
+    }
+
+    // MARK: 按月统计
+
+    /// 按日历月 (yyyy-MM) 聚合全量 daily, 保留最近 6 个月, 末位为当月;
+    /// 半年总量为窗口全部 daily 之和, 月均按实际覆盖月数平均.
+    func makeUsageMonthly(
+        _ artifact: AgentUsageArtifact
+    ) -> (months: [UsageMonthlyTotal], summary: UsageHalfYearSummary?) {
+        var totalsByMonth: [String: Int] = [:]
+        var grandTotal = 0
+        for agent in artifact.agents {
+            for day in agent.daily {
+                let key = String(day.date.prefix(7)) // "yyyy-MM"
+                guard key.count == 7 else { continue }
+                totalsByMonth[key, default: 0] += day.total
+                grandTotal += day.total
+            }
+        }
+        let keys = Array(totalsByMonth.keys.sorted().suffix(6))
+        guard let currentKey = keys.last else {
+            return ([], nil)
+        }
+        let months = keys.map { key in
+            UsageMonthlyTotal(
+                label: Self.monthLabel(key),
+                totalText: PanelFormat.tokenCount(totalsByMonth[key] ?? 0),
+                isCurrent: key == currentKey
+            )
+        }
+        let summary = UsageHalfYearSummary(
+            totalText: PanelFormat.tokenCount(grandTotal),
+            averageText: PanelFormat.tokenCount(grandTotal / keys.count)
+        )
+        return (months, summary)
+    }
+
+    /// "2026-07" -> "7月" (去掉年份与前导零, 跨年月份自然区分).
+    private static func monthLabel(_ key: String) -> String {
+        let month = key.suffix(2)
+        let trimmed = month.hasPrefix("0") ? month.suffix(1) : month
+        return "\(trimmed)月"
+    }
+
+    // MARK: 用量热力图
+
+    /// 全量 daily 窗口 (不 suffix 14) 按周列 × 周日行 (周一起) 组织;
+    /// level 按窗口峰值 1/25%/50%/75% 分 0-4 档, 窗口外与未来格为 nil.
+    /// 日期解析与网格使用 mapper 注入的 calendar 时区, 保证测试可替换.
+    func makeUsageHeatmap(_ artifact: AgentUsageArtifact) -> [UsageHeatmapWeek] {
+        var totalsByDate: [String: Int] = [:]
+        for agent in artifact.agents {
+            for day in agent.daily {
+                totalsByDate[day.date, default: 0] += day.total
+            }
+        }
+        let dates = totalsByDate.keys.sorted()
+        var gridCalendar = calendar
+        gridCalendar.firstWeekday = 2 // 周一
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = gridCalendar.timeZone
+        guard let first = dates.first, let last = dates.last,
+              let firstDate = formatter.date(from: first),
+              let lastDate = formatter.date(from: last) else {
+            return []
+        }
+        let maxTotal = totalsByDate.values.max() ?? 0
+        // 首日所在周的周一作为网格起点.
+        guard let gridStart = gridCalendar.dateInterval(
+            of: .weekOfYear, for: firstDate
+        )?.start else {
+            return []
+        }
+        var weeks: [UsageHeatmapWeek] = []
+        var weekStart = gridStart
+        while weekStart <= lastDate {
+            var cells: [UsageHeatmapCell?] = []
+            for offset in 0..<7 {
+                guard let date = gridCalendar.date(
+                    byAdding: .day, value: offset, to: weekStart
+                ), date >= firstDate, date <= lastDate else {
+                    cells.append(nil)
+                    continue
+                }
+                let key = formatter.string(from: date)
+                let total = totalsByDate[key] ?? 0
+                cells.append(UsageHeatmapCell(
+                    date: key,
+                    total: total,
+                    level: Self.heatmapLevel(total: total, maxTotal: maxTotal)
+                ))
+            }
+            weeks.append(UsageHeatmapWeek(cells: cells))
+            guard let next = gridCalendar.date(byAdding: .day, value: 7, to: weekStart) else {
+                break
+            }
+            weekStart = next
+        }
+        return weeks
+    }
+
+    private static func heatmapLevel(total: Int, maxTotal: Int) -> Int {
+        guard total > 0, maxTotal > 0 else { return 0 }
+        let ratio = Double(total) / Double(maxTotal)
+        if ratio >= 0.75 { return 4 }
+        if ratio >= 0.50 { return 3 }
+        if ratio >= 0.25 { return 2 }
+        return 1
     }
 
     // MARK: 逐小时卡

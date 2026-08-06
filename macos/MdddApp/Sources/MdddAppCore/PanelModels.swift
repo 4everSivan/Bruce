@@ -302,6 +302,60 @@ package enum UsageTier: String, Equatable, Sendable {
     }
 }
 
+// MARK: - 用量热力图
+
+/// 热力图格子: date + 当日总量 + 相对峰值档位.
+package struct UsageHeatmapCell: Equatable, Sendable {
+    package let date: String
+    package let total: Int
+    /// 0 = 无量; 1-4 对应 UsageTier green/orange/red/purple
+    /// (按相对窗口峰值 >=1/25%/50%/75% 分档).
+    package let level: Int
+
+    package init(date: String, total: Int, level: Int) {
+        self.date = date
+        self.total = total
+        self.level = level
+    }
+}
+
+/// 热力图周列: 固定 7 格 (周一到周日), nil 为窗口外/未来占位.
+package struct UsageHeatmapWeek: Equatable, Sendable {
+    package let cells: [UsageHeatmapCell?]
+
+    package init(cells: [UsageHeatmapCell?]) {
+        precondition(cells.count == 7, "热力图周列必须 7 格")
+        self.cells = cells
+    }
+}
+
+// MARK: - 按月统计
+
+/// 月度聚合 chip: 月份标签 + 总量文案 + 当月标记.
+package struct UsageMonthlyTotal: Equatable, Sendable {
+    /// 月份标签 (如 "7月", 不携带年份).
+    package let label: String
+    package let totalText: String
+    package let isCurrent: Bool
+
+    package init(label: String, totalText: String, isCurrent: Bool) {
+        self.label = label
+        self.totalText = totalText
+        self.isCurrent = isCurrent
+    }
+}
+
+/// 半年汇总: 窗口总量 + 月均 (按实际覆盖月数平均).
+package struct UsageHalfYearSummary: Equatable, Sendable {
+    package let totalText: String
+    package let averageText: String
+
+    package init(totalText: String, averageText: String) {
+        self.totalText = totalText
+        self.averageText = averageText
+    }
+}
+
 package struct UsageHeroViewModel: Equatable, Sendable {
     package let totalTokens: Int
     package let totalTokensText: String
@@ -314,6 +368,12 @@ package struct UsageHeroViewModel: Equatable, Sendable {
     package let legend: [UsageLegendItem]
     /// LIVE 呼吸灯: artifact 生成时间在阈值内视为实时.
     package let isLive: Bool
+    /// 用量热力图 (全量 daily 窗口, 按周列 × 周日行); 窗口内无数据为空数组.
+    package let heatmap: [UsageHeatmapWeek]
+    /// 按月聚合 (最近 6 个日历月, 升序, 末位为当月); 窗口内无数据为空数组.
+    package let monthly: [UsageMonthlyTotal]
+    /// 半年汇总 (窗口总量 + 月均); 窗口内无数据为 nil.
+    package let halfYear: UsageHalfYearSummary?
     /// 总量档位 (由 totalTokens 推导), 驱动 hero 渐变与背景 tint.
     package var usageTier: UsageTier {
         UsageTier.forTotal(totalTokens)
@@ -325,7 +385,10 @@ package struct UsageHeroViewModel: Equatable, Sendable {
         breakdown: [UsageBreakdownItem],
         days: [UsageChartDay],
         legend: [UsageLegendItem],
-        isLive: Bool
+        isLive: Bool,
+        heatmap: [UsageHeatmapWeek] = [],
+        monthly: [UsageMonthlyTotal] = [],
+        halfYear: UsageHalfYearSummary? = nil
     ) {
         self.totalTokens = totalTokens
         self.totalTokensText = PanelFormat.tokenCount(totalTokens)
@@ -334,6 +397,9 @@ package struct UsageHeroViewModel: Equatable, Sendable {
         self.days = days
         self.legend = legend
         self.isLive = isLive
+        self.heatmap = heatmap
+        self.monthly = monthly
+        self.halfYear = halfYear
     }
 }
 

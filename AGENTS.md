@@ -88,7 +88,7 @@
 | `python3 -m pytest tests/` | Python 单元与契约测试 (bridge, collector, widget 安全); 154 项 |
 | `swift build --package-path macos/MdddApp` | macOS App 与 MdddOnboardingCore 构建验证 |
 | `swift run --package-path macos/MdddApp MdddOnboardingCoreHarness` | Onboarding Core 边界测试 (进程, SQLite, Keychain, Gate, 订阅凭证, 设备码登录, 令牌轮换合并, Codex v2 迁移, DeepSeek 追踪 ID 与保存事务, 统一过期判定器, Claude/Grok 导入器); 161 项 |
-| `swift run --package-path macos/MdddApp PanelViewModelHarness` | 面板 view model 映射边界测试 (措辞, 分组, 条件渲染, 用量档位, Codex 账号上次成功时间, DeepSeek 月度映射); 38 项 |
+| `swift run --package-path macos/MdddApp PanelViewModelHarness` | 面板 view model 映射边界测试 (措辞, 分组, 条件渲染, 用量档位与热力图, 按月聚合, Codex 账号上次成功时间, DeepSeek 月度映射); 40 项 |
 | `swift run --package-path macos/MdddApp DeepSeekUsageLedgerHarness` | DeepSeek 月度账本边界测试 (领域差分, 时区跨日, 持久化权限, 损坏恢复, 敏感字段); 17 项 |
 | `zsh scripts/build-test-app.sh` | 生成 `dist/mddd.app` 本地构建 App (Release 构建 + 打包 + 签名校验) |
 | GitHub Actions `.github/workflows/ci.yml` | push/PR 触发: verify-local.sh + Python 3.9 兼容 + 测试包构建; tag `v*` 触发草稿 Release |
@@ -131,6 +131,7 @@ Daimon 单文件 Widgets   macOS 菜单栏原生液态玻璃看板
 - Antigravity 额度查询的 OAuth client 凭证 (`AGY_CLIENT_ID` / `AGY_CLIENT_SECRET`) 由运行环境注入, 不硬编码入库; 缺省为空时刷新链路安全降级, 不得伪造非空凭证.
 - Claude / Grok 订阅额度 (`quota_official.py`) 实时只读本机 CLI 登录态, 不刷新, 不回写, 不做一次性导入: Claude 按「Keychain `Claude Code-credentials` (无 account) 优先, `~/.claude/.credentials.json` 兜底」读取, 调用 `api.anthropic.com/api/oauth/usage`; Grok 读取 `~/.grok/auth.json` (OIDC scope 优先, legacy `/sign-in` 兜底), 调用 `grok.com` gRPC-web 账单接口, protobuf 启发式解析失败必须抛可诊断错误, 不得伪造用量. App 模式由 `provider_meta.claude/grok.enabled` 标记驱动 (无凭证注入), CLI 模式自动探测本机凭证; Swift 侧以本机检测结果作为 configured 语义 (fail-closed).
 - App 订阅凭证存 Keychain (`com.mddd.dashboard.credentials`), 在设置「订阅额度」分区配置或从本机/CC Switch 一次性只读导入; 令牌轮换经 `credentialUpdates` 只写回 Keychain, 不回写 CC Switch.
+- App 模式 agent-usage 请求携带 `days=182` 聚合窗口 (Bridge 上限 366): 柱状图取末 14 天, 全量 daily 供用量热力图; CLI 直跑默认 14 天.
 - 外部 API 和 CC Switch 数据库 schema 未在仓库内锁定, 解析失败必须保留可诊断证据.
 <!-- source: scan/security, confidence: HIGH -->
 <!-- source: infer, confidence: MEDIUM -->
