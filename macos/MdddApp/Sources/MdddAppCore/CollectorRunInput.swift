@@ -119,7 +119,12 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
         for id in SubscriptionProviderID.allCases where id != .codex {
             stores[id] = ProviderAccountStore(provider: id, credentialStore: credentialStore)
         }
-        migrateLegacyCredentialsIfNeeded()
+        // 复用已创建的 store 实例迁移旧凭证, 不额外创建 store.
+        for (_, store) in stores {
+            _ = try? store.migrateLegacyAccountsIfNeeded(
+                legacyKeys: ProviderAccountKeys.legacyKeys(for: store.provider)
+            )
+        }
         return stores
     }()
 
@@ -138,19 +143,6 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
     /// 装配 Codex access token 注入器 (App 启动时调用一次).
     package func attachCodexTokenInjector(_ injector: any CodexAccessTokenInjecting) {
         codexTokenInjector = injector
-    }
-
-    /// 检测旧单条 Keychain 凭证, 迁移为 ProviderAccountStore 的 account-index + record.
-    /// 迁移只读取不删除旧键; 成功后下次访问时清理.
-    /// 实现位于 MdddOnboardingCore.ProviderAccountStore.migrateLegacyAccountsIfNeeded,
-    /// 与 SubscriptionService 共享, 避免在两处维护凭证格式逻辑.
-    private func migrateLegacyCredentialsIfNeeded() {
-        for provider in SubscriptionProviderID.allCases where provider != .codex {
-            let store = ProviderAccountStore(provider: provider, credentialStore: credentialStore)
-            _ = try? store.migrateLegacyAccountsIfNeeded(
-                legacyKeys: ProviderAccountKeys.legacyKeys(for: provider)
-            )
-        }
     }
 
     /// 已决议的 Codex 账号 id (非敏感, 仅 Swift 内使用).
@@ -306,7 +298,6 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
         providers: [String: SubscriptionProviderConfiguration]
     ) async -> [String: JSONValue] {
         var credentials: [String: JSONValue] = [:]
-        var providerEnv: [String: JSONValue] = [:]
         var providerMeta: [String: JSONValue] = [:]
 
         func isEnabled(_ id: SubscriptionProviderID) -> Bool {
@@ -438,9 +429,6 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
             }
         }
 
-        if !providerEnv.isEmpty {
-            credentials["providerEnv"] = .object(providerEnv)
-        }
         if !providerMeta.isEmpty {
             credentials["providerMeta"] = .object(providerMeta)
         }

@@ -202,7 +202,7 @@ public struct ProviderAccountSummary: Codable, Equatable, Sendable {
 /// Codex 不使用本类 (已有独立的 CodexCredentialStore).
 /// 其余 6 个 provider 共用本类, 凭证格式由调用方按 provider 约定组装.
 public final class ProviderAccountStore: @unchecked Sendable {
-    private let provider: SubscriptionProviderID
+    public let provider: SubscriptionProviderID
     private let credentialStore: CredentialStore
 
     public init(
@@ -379,7 +379,12 @@ public final class ProviderAccountStore: @unchecked Sendable {
 
     /// 全部账号的非敏感摘要 (供设置页渲染).
     public func summaries() throws -> [ProviderAccountSummary] {
-        try loadIndex().accounts.map { entry in
+        try summaries(from: loadIndex())
+    }
+
+    /// 从已加载的 index 构造摘要, 避免重复读 Keychain.
+    public func summaries(from index: ProviderAccountIndex) -> [ProviderAccountSummary] {
+        index.accounts.map { entry in
             ProviderAccountSummary(
                 accountID: entry.accountID,
                 displayName: entry.displayName,

@@ -84,7 +84,17 @@ package struct MenuBarSummaryBuilder {
         agentArtifact: JSONValue?,
         moduleStatuses: [DashboardModule: ModuleStatus]
     ) -> MenuBarSummary {
-        let decoded = decodedAgentUsage(agentArtifact)
+        build(
+            from: decodedAgentUsage(agentArtifact),
+            moduleStatuses: moduleStatuses
+        )
+    }
+
+    /// 从已解码 artifact 构建摘要, 避免重复解码.
+    package func build(
+        from decoded: AgentUsageArtifact?,
+        moduleStatuses: [DashboardModule: ModuleStatus]
+    ) -> MenuBarSummary {
         let remainingPercentages = decoded.map(validRemainingPercentages) ?? []
         let minimum = remainingPercentages.min()
         let average = remainingPercentages.isEmpty

@@ -146,11 +146,10 @@ def _resolve_app(run_ctx: RunContext, *, kimi_coding) -> List[_Resolved]:
 
     支持多账号注入: 每个 provider 的凭证以 `<provider>QuotaAccounts` 字典传入,
     键为 accountID, 值含 display_name 和凭证体. 单账号也走同一路径.
-    向后兼容: 旧格式 (kimi_web_tokens / provider_env / provider_meta / claudeOAuth 等)
-    仍可识别, 用作迁移前的回退.
+    Claude/Grok 无凭证时仍经 providerMeta enabled 标记驱动本机探测.
+    Antigravity 由 collect_usage.service_antigravity 统一处理, 不在此解析.
     """
     resolved: List[_Resolved] = []
-    provider_env = run_ctx.credential("provider_env") or {}
     provider_meta = run_ctx.credential("provider_meta") or {}
 
     # --- Kimi (多账号) ---
@@ -168,17 +167,6 @@ def _resolve_app(run_ctx: RunContext, *, kimi_coding) -> List[_Resolved]:
                     query=lambda t=tokens: kimi_coding(tokens=t),
                 )
             )
-    elif run_ctx.credential("kimi_web_tokens") is not None:
-        # 旧格式回退
-        resolved.append(
-            _Resolved(
-                service_id="kimi_coding",
-                display_name="Kimi",
-                app="kimi",
-                is_current=False,
-                query=lambda: kimi_coding({}),
-            )
-        )
 
     # --- DeepSeek (多账号) ---
     ds_accounts = run_ctx.credential("deepseek_quota_accounts")
@@ -198,20 +186,6 @@ def _resolve_app(run_ctx: RunContext, *, kimi_coding) -> List[_Resolved]:
                     ),
                 )
             )
-    else:
-        deepseek_env = provider_env.get("deepseek") or {}
-        if deepseek_env.get("ANTHROPIC_AUTH_TOKEN"):
-            env = dict(deepseek_env)
-            timeout = run_ctx.http_timeout
-            resolved.append(
-                _Resolved(
-                    service_id="deepseek",
-                    display_name="DeepSeek",
-                    app="deepseek",
-                    is_current=False,
-                    query=lambda e=env, t=timeout: quota_services.service_deepseek(e, t),
-                )
-            )
 
     # --- 火山引擎 (多账号) ---
     volc_accounts = run_ctx.credential("volcengine_quota_accounts")
@@ -227,24 +201,6 @@ def _resolve_app(run_ctx: RunContext, *, kimi_coding) -> List[_Resolved]:
                 _Resolved(
                     service_id="volcengine_" + account_id,
                     display_name=display,
-                    app="volcengine",
-                    is_current=False,
-                    query=lambda m=meta, n=now, t=timeout: quota_services.service_volcengine(
-                        {}, m, n, t
-                    ),
-                )
-            )
-    else:
-        volc_meta = provider_meta.get("volcengine") or {}
-        volc_script = volc_meta.get("usage_script") or {}
-        if volc_script.get("accessKeyId") and volc_script.get("secretAccessKey"):
-            meta = dict(volc_meta)
-            now = run_ctx.now
-            timeout = run_ctx.http_timeout
-            resolved.append(
-                _Resolved(
-                    service_id="volcengine",
-                    display_name="火山引擎（Coding Plan）",
                     app="volcengine",
                     is_current=False,
                     query=lambda m=meta, n=now, t=timeout: quota_services.service_volcengine(
@@ -305,25 +261,9 @@ def _resolve_app(run_ctx: RunContext, *, kimi_coding) -> List[_Resolved]:
             )
         )
 
-    # --- Antigravity (多账号) ---
-    agy_accounts = run_ctx.credential("antigravity_quota_accounts")
-    if isinstance(agy_accounts, dict) and agy_accounts:
-        for account_id, payload in agy_accounts.items():
-            display = (payload or {}).get("display_name") or "Antigravity · " + account_id[:8]
-            oauth = (payload or {}).get("oauth")
-            resolved.append(
-                _Resolved(
-                    service_id="antigravity_" + account_id,
-                    display_name=display,
-                    app="antigravity",
-                    is_current=False,
-                    query=lambda o=oauth: _agy_query_with_inject(run_ctx, o),
-                )
-            )
-    elif run_ctx.credential("antigravity_oauth") is not None:
-        # 旧格式回退: antigravity 由 collect_usage.service_antigravity 处理,
-        # 不在此解析; 留空让 collect_usage 自行读取.
-        pass
+    # Antigravity 由 collect_usage.service_antigravity 统一处理
+    # (该函数读取 antigravity_quota_accounts 并完成 OAuth 刷新 + 额度查询),
+    # 不在此创建 _Resolved 条目, 避免重复空条目.
 
     return resolved
 
@@ -348,16 +288,6 @@ def _grok_query_with_inject(run_ctx, injected_oauth):
     if result is None:
         raise RuntimeError("Grok 凭证无效或已过期")
     return result
-
-
-def _agy_query_with_inject(run_ctx, injected_oauth):
-    """Antigravity 多账号查询: 使用注入的 oauth 凭证.
-
-    Antigravity 的 service 函数在 collect_usage 中, 这里通过 run_ctx 间接调用.
-    """
-    # Antigravity 仍由 collect_usage.service_antigravity 处理,
-    # 多账号注入在后续阶段实现. 目前返回 None 让 finalize 标记 empty.
-    return None
 
 
 def _resolve_official_cli(run_ctx: RunContext) -> List[_Resolved]:

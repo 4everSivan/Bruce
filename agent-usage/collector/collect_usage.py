@@ -765,6 +765,12 @@ def service_antigravity():
     agy 不在本地记录 token 用量，只提供额度与活动计数。
     """
     injected_auth = _runtime_credential("antigravity_oauth")
+    # App 模式多账号: 从 antigravity_quota_accounts 读取第一个账号的 oauth.
+    if injected_auth is None:
+        agy_accounts = _runtime_credential("antigravity_quota_accounts")
+        if isinstance(agy_accounts, dict) and agy_accounts:
+            first = list(agy_accounts.values())[0]
+            injected_auth = (first or {}).get("oauth")
     source = None
     if injected_auth is not None:
         data = json.loads(json.dumps(injected_auth))

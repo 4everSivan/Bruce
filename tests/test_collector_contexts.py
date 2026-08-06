@@ -1129,9 +1129,14 @@ class AgentCollectorCapabilityTests(unittest.TestCase):
                     "now": "2026-07-28T12:00:00+08:00",
                     "timezone": "Asia/Shanghai",
                     "credentials": {
-                        "kimi_web_tokens": {
-                            "access_token": "fixture-access",
-                            "refresh_token": "fixture-refresh",
+                        "kimi_quota_accounts": {
+                            "test-account": {
+                                "display_name": "Kimi · test",
+                                "tokens": {
+                                    "access_token": "fixture-access",
+                                    "refresh_token": "fixture-refresh",
+                                },
+                            }
                         }
                     },
                     "http": {"post_json": post_json},
@@ -1141,7 +1146,7 @@ class AgentCollectorCapabilityTests(unittest.TestCase):
         kimi = next(
             service
             for service in artifact["services"]
-            if service["id"] == "kimi_coding"
+            if service["id"] == "kimi_coding_test-account"
         )
         self.assertEqual(kimi["status"], "ok")
         self.assertTrue(kimi["windows"])
@@ -1204,19 +1209,26 @@ class AgentCollectorAppServicesTests(unittest.TestCase):
 
     def _full_credentials(self):
         return {
-            "kimi_web_tokens": {
-                "access_token": "fixture-access",
-                "refresh_token": "fixture-refresh",
+            "kimi_quota_accounts": {
+                "fixture-acct": {
+                    "display_name": "Kimi · fixture",
+                    "tokens": {
+                        "access_token": "fixture-access",
+                        "refresh_token": "fixture-refresh",
+                    },
+                }
             },
-            "provider_env": {
-                "deepseek": {"ANTHROPIC_AUTH_TOKEN": "fixture-deepseek-key"}
+            "deepseek_quota_accounts": {
+                "fixture-acct": {
+                    "display_name": "DeepSeek · fixture",
+                    "api_key": "fixture-deepseek-key",
+                }
             },
-            "provider_meta": {
-                "volcengine": {
-                    "usage_script": {
-                        "accessKeyId": "fixture-ak",
-                        "secretAccessKey": "fixture-sk",
-                    }
+            "volcengine_quota_accounts": {
+                "fixture-acct": {
+                    "display_name": "火山引擎 · fixture",
+                    "access_key": "fixture-ak",
+                    "secret_key": "fixture-sk",
                 }
             },
         }
@@ -1256,24 +1268,24 @@ class AgentCollectorAppServicesTests(unittest.TestCase):
 
         self.assertEqual(
             [svc["id"] for svc in services],
-            ["kimi_coding", "deepseek", "volcengine"],
+            ["kimi_coding_fixture-acct", "deepseek_fixture-acct", "volcengine_fixture-acct"],
         )
         for svc in services:
             self._assert_service_shape(svc)
             self.assertEqual(svc["status"], "ok")
 
         kimi, deepseek, volc = services
-        self.assertEqual(kimi["name"], "Kimi")
+        self.assertEqual(kimi["name"], "Kimi · fixture")
         self.assertEqual(kimi["kind"], "windows")
         self.assertEqual(kimi["plan"], "Moderato")
         self.assertEqual(len(kimi["windows"]), 2)
 
-        self.assertEqual(deepseek["name"], "DeepSeek")
+        self.assertEqual(deepseek["name"], "DeepSeek · fixture")
         self.assertEqual(deepseek["kind"], "balance")
         self.assertAlmostEqual(deepseek["balance"], 12.34)
         self.assertEqual(deepseek["currency"], "CNY")
 
-        self.assertEqual(volc["name"], "火山引擎（Coding Plan）")
+        self.assertEqual(volc["name"], "火山引擎 · fixture")
         self.assertEqual(volc["kind"], "windows")
         # 订阅生命周期 Status (active/running) 不作为套餐展示
         self.assertIsNone(volc["plan"])
@@ -1318,9 +1330,10 @@ class AgentCollectorAppServicesTests(unittest.TestCase):
             self._configure_app(
                 temp_home,
                 {
-                    "provider_env": {
-                        "deepseek": {
-                            "ANTHROPIC_AUTH_TOKEN": "fixture-deepseek-key"
+                    "deepseek_quota_accounts": {
+                        "fixture-acct": {
+                            "display_name": "DeepSeek · fixture",
+                            "api_key": "fixture-deepseek-key",
                         }
                     }
                 },
@@ -1328,7 +1341,7 @@ class AgentCollectorAppServicesTests(unittest.TestCase):
             )
             services = self.module.collect_services()
 
-        self.assertEqual([svc["id"] for svc in services], ["deepseek"])
+        self.assertEqual([svc["id"] for svc in services], ["deepseek_fixture-acct"])
         self._assert_service_shape(services[0])
         self.assertEqual(services[0]["status"], "ok")
 
@@ -1365,17 +1378,17 @@ class AgentCollectorAppServicesTests(unittest.TestCase):
             self._configure_app(
                 temp_home,
                 {
-                    "provider_env": {
-                        "deepseek": {
-                            "ANTHROPIC_AUTH_TOKEN": "fixture-deepseek-key"
+                    "deepseek_quota_accounts": {
+                        "fixture-acct": {
+                            "display_name": "DeepSeek · fixture",
+                            "api_key": "fixture-deepseek-key",
                         }
                     },
-                    "provider_meta": {
-                        "volcengine": {
-                            "usage_script": {
-                                "accessKeyId": "fixture-ak",
-                                "secretAccessKey": "fixture-sk",
-                            }
+                    "volcengine_quota_accounts": {
+                        "fixture-acct": {
+                            "display_name": "火山引擎 · fixture",
+                            "access_key": "fixture-ak",
+                            "secret_key": "fixture-sk",
                         }
                     },
                 },
@@ -1384,7 +1397,8 @@ class AgentCollectorAppServicesTests(unittest.TestCase):
             services = self.module.collect_services()
 
         self.assertEqual(
-            [svc["id"] for svc in services], ["deepseek", "volcengine"]
+            [svc["id"] for svc in services],
+            ["deepseek_fixture-acct", "volcengine_fixture-acct"],
         )
         for svc in services:
             self._assert_service_shape(svc)

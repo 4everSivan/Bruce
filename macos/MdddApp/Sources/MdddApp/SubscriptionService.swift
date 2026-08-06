@@ -46,8 +46,18 @@ final class SubscriptionService {
     private let homeURL: URL
     private let localProbe: LocalCredentialProbe
     private let ccSwitchImporter = CCSwitchVolcengineImporter()
+    /// ProviderAccountStore 实例缓存, 避免 11 处重复创建和 Keychain 读取.
+    private var accountStoreCache: [SubscriptionProviderID: ProviderAccountStore] = [:]
     /// 状态变更时通知 Coordinator 转发 objectWillChange (Settings 观察 Coordinator).
     private var onStateChange: () -> Void = {}
+
+    /// 按 provider 获取缓存的 ProviderAccountStore, 不存在时创建并缓存.
+    private func accountStore(for id: SubscriptionProviderID) -> ProviderAccountStore {
+        if let cached = accountStoreCache[id] { return cached }
+        let store = ProviderAccountStore(provider: id, credentialStore: credentialStore)
+        accountStoreCache[id] = store
+        return store
+    }
 
     init(
         model: AppModel,
@@ -80,7 +90,7 @@ final class SubscriptionService {
     /// 与 CollectorRunInput 共享, 避免在两处维护凭证格式逻辑.
     private func migrateLegacyCredentials() {
         for provider in SubscriptionProviderID.allCases where provider != .codex {
-            let store = ProviderAccountStore(provider: provider, credentialStore: credentialStore)
+            let store = accountStore(for: provider)
             let migrated = (try? store.migrateLegacyAccountsIfNeeded(
                 legacyKeys: ProviderAccountKeys.legacyKeys(for: provider)
             )) ?? false
@@ -116,6 +126,9 @@ final class SubscriptionService {
         from: config, configured: providers
         )
         model.setSubscriptionProviderOrder(subscriptionProviderOrder)
+        // 先发布全部非 Codex summaries (每个 provider 一次 loadIndex),
+        // 再从已发布 summaries 推导 credentialConfigured, 避免逐个实时读 Keychain.
+        publishAllProviderAccountSummaries()
         for id in SubscriptionProviderID.allCases {
             model.setSubscriptionCredentialConfigured(
             credentialConfigured(id), for: id
@@ -147,18 +160,29 @@ final class SubscriptionService {
     /// 标记为 connected (修复历史版本 upsert 未置 connected 的问题).
     private func publishAllProviderAccountSummaries() {
         for provider in SubscriptionProviderID.allCases where provider != .codex {
-            let store = ProviderAccountStore(provider: provider, credentialStore: credentialStore)
-            // 校正存量状态
-            if let index = try? store.loadIndex() {
-                for entry in index.accounts where entry.authorizationState == .needsReauthorization {
-                    if let record = try? store.loadRecord(for: entry.accountID),
+            let store = accountStore(for: provider)
+            guard let index = try? store.loadIndex() else {
+                model.setProviderAccountSummaries([], for: provider)
+                continue
+            }
+            // 校正存量状态: 凭证存在但状态为 needsReauthorization 的账号标记为 connected
+            // (修复历史版本 upsert 未置 connected 的问题). 校正后直接从内存 index 构造
+            // summaries, 不二次读 Keychain.
+            var correctedSummaries = store.summaries(from: index)
+            for i in correctedSummaries.indices {
+                if correctedSummaries[i].authorizationState == .needsReauthorization {
+                    if let record = try? store.loadRecord(for: correctedSummaries[i].accountID),
                        !record.credentialJSON.isEmpty {
-                        try? store.updateAuthorizationState(.connected, for: entry.accountID)
+                        try? store.updateAuthorizationState(.connected, for: correctedSummaries[i].accountID)
+                        correctedSummaries[i] = ProviderAccountSummary(
+                            accountID: correctedSummaries[i].accountID,
+                            displayName: correctedSummaries[i].displayName,
+                            authorizationState: .connected
+                        )
                     }
                 }
             }
-            let summaries = (try? store.summaries()) ?? []
-            model.setProviderAccountSummaries(summaries, for: provider)
+            model.setProviderAccountSummaries(correctedSummaries, for: provider)
         }
     }
 
@@ -203,15 +227,18 @@ final class SubscriptionService {
     /// Codex 完整 record; Claude/Grok 应用 Keychain 优先否则本机探测;
     /// 其余 provider 全部 credentialAccounts 非空.
     private func credentialConfigured(_ id: SubscriptionProviderID) -> Bool {
-        // 多账号路径: 非 Codex provider 的 configured 由 ProviderAccountStore
-        // 至少一个 connected 账号判定; 旧单条键仅作迁移期回退.
-        if id != .codex {
-            let store = ProviderAccountStore(provider: id, credentialStore: credentialStore)
-            if let index = try? store.loadIndex(), !index.accounts.isEmpty {
-                return (try? store.hasConnectedAccount()) ?? false
-            }
-            // index 为空: 回退旧键判定 (迁移尚未执行).
+        if id == .codex {
             return legacyCredentialConfigured(id)
+        }
+        // 优先用已发布的 summaries 判断 (publishAllProviderAccountSummaries 已发布);
+        // 有 connected 账号即 true, 避免逐个实时读 Keychain.
+        if let summaries = model.providerAccountSummaries[id], !summaries.isEmpty {
+            return summaries.contains { $0.authorizationState == .connected }
+        }
+        // summaries 为空: 回退到 Keychain 检查 (迁移前或尚未发布).
+        let store = accountStore(for: id)
+        if let index = try? store.loadIndex(), !index.accounts.isEmpty {
+            return (try? store.hasConnectedAccount()) ?? false
         }
         return legacyCredentialConfigured(id)
     }
@@ -287,7 +314,7 @@ final class SubscriptionService {
         displayName: String,
         credentialJSON: String
     ) -> Bool {
-        let store = ProviderAccountStore(provider: provider, credentialStore: credentialStore)
+        let store = accountStore(for: provider)
         do {
             try store.upsertAccount(
                 accountID: accountID,
@@ -878,14 +905,14 @@ final class SubscriptionService {
     /// 当前 provider 的账号摘要列表 (非 Codex). Codex 走 codexAccountStatuses.
     func accountSummaries(for id: SubscriptionProviderID) -> [ProviderAccountSummary] {
         guard id != .codex else { return [] }
-        let store = ProviderAccountStore(provider: id, credentialStore: credentialStore)
+        let store = accountStore(for: id)
         return (try? store.summaries()) ?? []
     }
 
     /// 移除单个账号: 删除 per-account record + index 条目.
     /// 移除后若 provider 无任何账号, 保留 provider 配置条目 (用户可再添加).
     func removeAccount(accountID: String, from id: SubscriptionProviderID) {
-        let store = ProviderAccountStore(provider: id, credentialStore: credentialStore)
+        let store = accountStore(for: id)
         do {
             try store.removeAccount(accountID: accountID)
             publishAllProviderAccountSummaries()
@@ -906,7 +933,7 @@ final class SubscriptionService {
         from id: SubscriptionProviderID,
         state: ProviderAccountAuthorizationState
     ) {
-        let store = ProviderAccountStore(provider: id, credentialStore: credentialStore)
+        let store = accountStore(for: id)
         do {
             try store.updateAuthorizationState(state, for: accountID)
             publishAllProviderAccountSummaries()

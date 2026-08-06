@@ -21,10 +21,7 @@ struct MenuBarLabelView: View {
     @ObservedObject var model: AppModel
 
     private var summary: MenuBarSummary {
-        MenuBarSummaryBuilder().build(
-            agentArtifact: model.moduleArtifacts[.agentUsage],
-            moduleStatuses: model.moduleStatuses
-        )
+        model.makeMenuBarSummary()
     }
 
     /// 任一模块处于刷新中: 品牌图标替换为旋转刷新指示.

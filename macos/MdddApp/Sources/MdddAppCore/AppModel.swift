@@ -193,6 +193,11 @@ package final class AppModel: ObservableObject {
     /// makePanelViewModel 之间重复执行 ArtifactValidator decode.
     private var cachedDecodedArtifact: AgentUsageArtifact?
     private var cachedArtifactRef: JSONValue?
+    /// 面板映射缓存: 按版本号失效, 避免 SwiftUI body 多次求值时重复映射.
+    private var cachedPanelViewModel: PanelViewModel?
+    private var cachedMenuBarSummary: MenuBarSummary?
+    private var panelCacheVersion = 0
+    private var lastPanelCacheVersion = -1
 
     package init(
         menuBarMetricRawValues: [String]? = nil,
@@ -219,10 +224,12 @@ package final class AppModel: ObservableObject {
 
     package func setStatus(_ status: ModuleStatus, for module: DashboardModule) {
         moduleStatuses[module] = status
+        invalidatePanelCache()
     }
 
     package func setArtifact(_ artifact: JSONValue?, for module: DashboardModule) {
         moduleArtifacts[module] = artifact
+        invalidatePanelCache()
         if module == .agentUsage {
             invalidateDecodedArtifactCache()
             updateDeepSeekMonthlyUsage(from: artifact)
@@ -233,6 +240,7 @@ package final class AppModel: ObservableObject {
     /// 由 OnboardingCoordinator 在发布 subscriptionProviders 后调用.
     package func invalidateDeepSeekMonthlyUsage() {
         deepSeekMonthlyUsage = deepSeekLedger != nil ? .unavailable : nil
+        invalidatePanelCache()
     }
 
     // MARK: - 账单导出
@@ -319,6 +327,7 @@ package final class AppModel: ObservableObject {
     private func updateDeepSeekMonthlyUsage(from artifact: JSONValue?) {
         guard let ledger = deepSeekLedger else {
             deepSeekMonthlyUsage = nil
+            invalidatePanelCache()
             return
         }
         guard let decoded = decodedAgentUsageArtifact(from: artifact) else {
@@ -349,6 +358,7 @@ package final class AppModel: ObservableObject {
                 currency: currency
             )
         )
+        invalidatePanelCache()
     }
 
     /// 发布 Core 的就绪评估结果, 并把 readiness 映射为 Dashboard 状态.
@@ -479,6 +489,7 @@ package final class AppModel: ObservableObject {
 
     package func setSubscriptionProviderOrder(_ order: [SubscriptionProviderID]) {
         subscriptionProviderOrder = order
+        invalidatePanelCache()
     }
 
     /// 判断模块是否满足前置依赖, 允许执行 Collector.
@@ -493,12 +504,31 @@ package final class AppModel: ObservableObject {
     /// 卡片为 nil 即不渲染. artifact 缺失或校验失败按缺失处理,
     /// 由映射层写入对应诊断.
     package func makePanelViewModel() -> PanelViewModel {
-        PanelViewModelMapper().make(
+        if lastPanelCacheVersion == panelCacheVersion, let cached = cachedPanelViewModel {
+            return cached
+        }
+        let vm = PanelViewModelMapper().make(
             agentUsage: decodedAgentUsageArtifact(),
             moduleStatuses: moduleStatuses,
             deepSeekMonthlyUsage: deepSeekMonthlyUsage,
             providerOrder: subscriptionProviderOrder.map(\.rawValue)
         )
+        cachedPanelViewModel = vm
+        lastPanelCacheVersion = panelCacheVersion
+        return vm
+    }
+
+    /// 菜单栏标签摘要 (缓存, 复用已解码 artifact).
+    package func makeMenuBarSummary() -> MenuBarSummary {
+        if lastPanelCacheVersion == panelCacheVersion, let cached = cachedMenuBarSummary {
+            return cached
+        }
+        let summary = MenuBarSummaryBuilder().build(
+            from: decodedAgentUsageArtifact(),
+            moduleStatuses: moduleStatuses
+        )
+        cachedMenuBarSummary = summary
+        return summary
     }
 
     /// 校验并解码 agent-usage artifact; 任何失败都视为缺失.
@@ -528,6 +558,11 @@ package final class AppModel: ObservableObject {
     private func invalidateDecodedArtifactCache() {
         cachedDecodedArtifact = nil
         cachedArtifactRef = nil
+    }
+
+    /// 使面板和菜单栏标签缓存失效. 在任何影响映射输出的 @Published 属性写入时调用.
+    private func invalidatePanelCache() {
+        panelCacheVersion += 1
     }
 
     /// 返回 Core 的 ModuleReadiness 枚举, 供 ActivationGate 使用.
