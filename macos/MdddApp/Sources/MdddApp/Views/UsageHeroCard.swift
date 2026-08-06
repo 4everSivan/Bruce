@@ -35,6 +35,9 @@ struct UsageHeroCard: View {
             legendRow
                 .padding(.top, 4)
         }
+        .background {
+            CodeStreamBackground(tint: Self.tierTint(viewModel.usageTier))
+        }
     }
 
     // MARK: 标题行
@@ -59,7 +62,7 @@ struct UsageHeroCard: View {
                 .font(.system(size: 40, weight: .bold))
                 .tracking(-1.2)
                 .monospacedDigit()
-                .foregroundStyle(Self.heroGradient)
+                .foregroundStyle(Self.heroGradient(for: viewModel.usageTier))
             Text("tokens")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(Self.subdued)
@@ -222,22 +225,122 @@ struct UsageHeroCard: View {
         light: Color.black.opacity(0.07),
         dark: Color.white.opacity(0.12)
     )
-    /// mockup 渐变 135deg 从 #1c1c1e (30%) 到 #0a84ff (130%); 终点超出部分按 1.0 收敛.
-    /// 深色下起点改为白色系, 终点改为蓝色浅阶, 保证在深色玻璃上可见.
-    private static let heroGradient = LinearGradient(
-        stops: [
-            .init(
-                color: Color.adaptive(light: Color(hex: "#1c1c1e"), dark: Color(hex: "#ffffff")),
-                location: 0.3
-            ),
-            .init(
-                color: Color.adaptive(light: Color(hex: "#0a84ff"), dark: Color(hex: "#66b2ff")),
-                location: 1.0
-            ),
-        ],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-    )
+    /// hero 渐变按总量档位变化: < 50M 绿, 50M-150M 橙, 150M-250M 红,
+    /// >= 250M 紫. 结构沿用 mockup (135deg, 起点 30%, 终点收敛 1.0),
+    /// 深浅色各自适配玻璃可见性.
+    private static func heroGradient(for tier: UsageTier) -> LinearGradient {
+        let (start, end) = tierColors(for: tier)
+        return LinearGradient(
+            stops: [
+                .init(color: start, location: 0.3),
+                .init(color: end, location: 1.0),
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    /// 档位配色: 返回 (深色阶, 浅色阶); 浅色阶同时作为背景字符 tint.
+    private static func tierColors(for tier: UsageTier) -> (Color, Color) {
+        switch tier {
+        case .green:
+            return (
+                Color.adaptive(light: Color(hex: "#0f8a43"), dark: Color(hex: "#30d158")),
+                Color.adaptive(light: Color(hex: "#2fb35f"), dark: Color(hex: "#7ce79b"))
+            )
+        case .orange:
+            return (
+                Color.adaptive(light: Color(hex: "#c26a00"), dark: Color(hex: "#ffb340")),
+                Color.adaptive(light: Color(hex: "#ff9f0a"), dark: Color(hex: "#ffd60a"))
+            )
+        case .red:
+            return (
+                Color.adaptive(light: Color(hex: "#c41e1e"), dark: Color(hex: "#ff6961")),
+                Color.adaptive(light: Color(hex: "#ff453a"), dark: Color(hex: "#ff9f97"))
+            )
+        case .purple:
+            return (
+                Color.adaptive(light: Color(hex: "#7d2ae8"), dark: Color(hex: "#bf5af2")),
+                Color.adaptive(light: Color(hex: "#a94df5"), dark: Color(hex: "#d8a7ff"))
+            )
+        }
+    }
+
+    /// 背景字符 tint: 档位浅色阶, 低透明度下呼应 hero 渐变.
+    private static func tierTint(_ tier: UsageTier) -> Color {
+        tierColors(for: tier).1
+    }
+}
+
+// MARK: - 代码流背景
+
+/// 用量卡代码流背景: 复刻旧 web widget 的字符密度流场 (.:+*# 网格下流),
+/// 按总量档位取 tint, 低透明度叠加在玻璃之上, 底部 mask 渐隐避免干扰图表.
+/// 10fps 慢速下流, 每列速度略有差异; Reduce Motion 时静止.
+private struct CodeStreamBackground: View {
+    let tint: Color
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private let characters: [Character] = [".", ":", "+", "*", "#"]
+    private let spacing: CGFloat = 16
+    /// 基准流速 (pt/s), 远慢于常规动画, 保持液态玻璃的安静感.
+    private let speed: CGFloat = 9
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 0.1, paused: reduceMotion)) { context in
+            Canvas { ctx, size in
+                let drift = reduceMotion
+                    ? 0
+                    : CGFloat(context.date.timeIntervalSinceReferenceDate) * speed
+                let cycle = size.height + spacing
+                let cols = Int(size.width / spacing)
+                let rows = Int(size.height / spacing) + 2
+                guard cols > 0, rows > 0 else {
+                    return
+                }
+                for col in 0...cols {
+                    // 每列 0.6-1.2 倍速, 形成错落的流场层次.
+                    let columnFactor = 0.6 + 0.6 * Double(cellHash(col, 0) % 101) / 100.0
+                    let x = spacing / 2 + CGFloat(col) * spacing
+                    for row in 0...rows {
+                        let base = CGFloat(row) * spacing + drift * columnFactor
+                        let y = base.truncatingRemainder(dividingBy: cycle) - spacing / 2
+                        let hash = cellHash(col, row)
+                        let char = characters[Int(hash % UInt64(characters.count))]
+                        ctx.opacity = 0.05 + 0.09 * Double((hash >> 8) % 101) / 100.0
+                        ctx.draw(
+                            Text(String(char))
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundColor(tint),
+                            at: CGPoint(x: x, y: y),
+                            anchor: .center
+                        )
+                    }
+                }
+            }
+        }
+        .mask(
+            LinearGradient(
+                stops: [
+                    .init(color: .black, location: 0.45),
+                    .init(color: .clear, location: 0.95),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    /// 稳定伪随机 (按网格坐标), 保证每帧布局与字符一致, 仅位置随时间漂移.
+    private func cellHash(_ col: Int, _ row: Int) -> UInt64 {
+        var hash = UInt64(bitPattern: Int64(col)) &* 2_654_435_761
+            &+ UInt64(bitPattern: Int64(row)) &* 4_053_739
+        hash ^= hash >> 13
+        return hash
+    }
 }
 
 // MARK: - LIVE 呼吸灯

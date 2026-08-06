@@ -278,6 +278,30 @@ package struct UsageBreakdownItem: Equatable, Sendable {
     }
 }
 
+// MARK: - 用量档位
+
+/// 总量分档: 驱动用量卡 hero 渐变与背景 tint.
+/// < 50M 绿, 50M-150M 橙, 150M-250M 红, >= 250M 紫.
+package enum UsageTier: String, Equatable, Sendable {
+    case green
+    case orange
+    case red
+    case purple
+
+    package static func forTotal(_ totalTokens: Int) -> UsageTier {
+        switch totalTokens {
+        case ..<50_000_000:
+            return .green
+        case ..<150_000_000:
+            return .orange
+        case ..<250_000_000:
+            return .red
+        default:
+            return .purple
+        }
+    }
+}
+
 package struct UsageHeroViewModel: Equatable, Sendable {
     package let totalTokens: Int
     package let totalTokensText: String
@@ -290,6 +314,10 @@ package struct UsageHeroViewModel: Equatable, Sendable {
     package let legend: [UsageLegendItem]
     /// LIVE 呼吸灯: artifact 生成时间在阈值内视为实时.
     package let isLive: Bool
+    /// 总量档位 (由 totalTokens 推导), 驱动 hero 渐变与背景 tint.
+    package var usageTier: UsageTier {
+        UsageTier.forTotal(totalTokens)
+    }
 
     package init(
         totalTokens: Int,
@@ -479,6 +507,13 @@ package struct SubscriptionProviderSection: Equatable, Sendable {
     /// 是否为多账号 section (>= 2 个账号).
     package var isMultiAccount: Bool {
         accounts.count >= 2
+    }
+
+    /// 徽章取色键: 单账号 section 的 id 可能是带账号后缀的 serviceID
+    /// (如 "codex_<hash16>" / "deepseek_<accID>"), 必须归一化为 provider rawValue
+    /// 再查品牌色, 否则全部落空为默认灰.
+    package var badgeProviderID: String {
+        SubscriptionPresentationPolicy.providerID(forServiceID: id)
     }
 
     /// 单账号便捷构造 (无 accounts, 无 collapsedWindow).

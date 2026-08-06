@@ -186,6 +186,7 @@ struct PanelViewModelHarness {
         try serviceErrorKeepsNoteAndDiagnoses()
         try malformedWindowIsDroppedWithDiagnostic()
         try usageHeroAggregatesTotalsAndFormatting()
+        try usageTierFollowsTotalThresholds()
         try liveStateFollowsFreshnessThreshold()
         try chartBuilds14DaysWithStableSegments()
         try legendOnlyIncludesActiveAgents()
@@ -213,7 +214,7 @@ struct PanelViewModelHarness {
         try providerOrderNormalizesKimiCodingID()
         try presentationPolicyTableDrivenRules()
         try singleAccountSectionNameOmitsAccountSuffix()
-        print("PanelViewModel tests passed: 37")
+        print("PanelViewModel tests passed: 38")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -470,6 +471,28 @@ struct PanelViewModelHarness {
         // 命中率 = 34000 / (159000 + 34000 + 12000) ≈ 16.6% -> "17%".
         try expect(usage?.breakdown[3].valueText == "17%", "缓存命中率错误: \(usage?.breakdown[3].valueText ?? "nil")")
         try expect(usage?.isLive == true, "新鲜 artifact 应为 LIVE")
+    }
+
+    // 总量档位: <50M 绿, 50M-150M 橙, 150M-250M 红, >=250M 紫.
+    private static func usageTierFollowsTotalThresholds() throws {
+        func tier(for total: Int) -> UsageTier {
+            UsageHeroViewModel(
+                totalTokens: total,
+                costText: nil,
+                breakdown: [],
+                days: [],
+                legend: [],
+                isLive: false
+            ).usageTier
+        }
+        try expect(tier(for: 0) == .green, "0 应为 green")
+        try expect(tier(for: 49_999_999) == .green, "50M-1 应为 green")
+        try expect(tier(for: 50_000_000) == .orange, "50M 应为 orange")
+        try expect(tier(for: 149_999_999) == .orange, "150M-1 应为 orange")
+        try expect(tier(for: 150_000_000) == .red, "150M 应为 red")
+        try expect(tier(for: 249_999_999) == .red, "250M-1 应为 red")
+        try expect(tier(for: 250_000_000) == .purple, "250M 应为 purple")
+        try expect(tier(for: 900_000_000) == .purple, "900M 应为 purple")
     }
 
     // LIVE 由 generatedAt 新鲜度决定, 超过阈值或解析失败均为 false.
@@ -1371,6 +1394,12 @@ struct PanelViewModelHarness {
         try expect(
             !vm[0].name.contains("sk-12345"),
             "单账号名称不得含账号 ID: \(vm[0].name)"
+        )
+        // 徽章取色键必须归一化为 provider rawValue, 否则带后缀的
+        // serviceID 会让品牌色全部落空为默认灰 (回归断言).
+        try expect(
+            vm[0].badgeProviderID == "deepseek",
+            "单账号徽章键应归一化为 deepseek: \(vm[0].badgeProviderID)"
         )
 
         // 多账号: 分组名仍为 provider 名, 账号名在 accounts 子卡内.

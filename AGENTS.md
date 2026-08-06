@@ -88,7 +88,7 @@
 | `python3 -m pytest tests/` | Python 单元与契约测试 (bridge, collector, widget 安全); 154 项 |
 | `swift build --package-path macos/MdddApp` | macOS App 与 MdddOnboardingCore 构建验证 |
 | `swift run --package-path macos/MdddApp MdddOnboardingCoreHarness` | Onboarding Core 边界测试 (进程, SQLite, Keychain, Gate, 订阅凭证, 设备码登录, 令牌轮换合并, Codex v2 迁移, DeepSeek 追踪 ID 与保存事务, 统一过期判定器, Claude/Grok 导入器); 161 项 |
-| `swift run --package-path macos/MdddApp PanelViewModelHarness` | 面板 view model 映射边界测试 (措辞, 分组, 条件渲染, Codex 账号上次成功时间, DeepSeek 月度映射); 32 项 |
+| `swift run --package-path macos/MdddApp PanelViewModelHarness` | 面板 view model 映射边界测试 (措辞, 分组, 条件渲染, 用量档位, Codex 账号上次成功时间, DeepSeek 月度映射); 38 项 |
 | `swift run --package-path macos/MdddApp DeepSeekUsageLedgerHarness` | DeepSeek 月度账本边界测试 (领域差分, 时区跨日, 持久化权限, 损坏恢复, 敏感字段); 17 项 |
 | `zsh scripts/build-test-app.sh` | 生成 `dist/mddd.app` 本地构建 App (Release 构建 + 打包 + 签名校验) |
 | GitHub Actions `.github/workflows/ci.yml` | push/PR 触发: verify-local.sh + Python 3.9 兼容 + 测试包构建; tag `v*` 触发草稿 Release |

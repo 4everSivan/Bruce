@@ -118,7 +118,7 @@ private struct ProviderSectionView: View {
 
     private var head: some View {
         HStack(spacing: 6) {
-            ProviderLogoBadge(providerID: section.id, name: section.name)
+            ProviderLogoBadge(providerID: section.badgeProviderID, name: section.name)
                 .accessibilityHidden(true)
             if section.isMultiAccount {
                 Button {
