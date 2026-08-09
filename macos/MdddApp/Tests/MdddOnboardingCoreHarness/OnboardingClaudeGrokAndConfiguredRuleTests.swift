@@ -341,6 +341,7 @@ extension MdddOnboardingCoreHarness {
             .antigravity: .allCredentialAccountsNonEmpty,
             .claude: .claudeAppOrLocalProbe,
             .grok: .grokAppOrLocalProbe,
+            .opencodeGo: .allCredentialAccountsNonEmpty,
         ]
         for id in SubscriptionProviderID.allCases {
             let rule = ProviderRegistry.descriptor(for: id).configuredRule
@@ -349,6 +350,71 @@ extension MdddOnboardingCoreHarness {
                 "\(id.rawValue) configuredRule 应为 \(String(describing: expected[id])), 得 \(rule)"
             )
         }
+    }
+
+    // MARK: - OpenCode GO (console OAuth)
+
+    static func opencodeGoCredentialAccountsAndRegistry() throws {
+        try coreExpect(
+            SubscriptionProviderID.opencodeGo.credentialAccounts == [
+                SubscriptionCredentialAccount.opencodeGoOAuth
+            ],
+            "opencodeGo credentialAccounts 应含 opencode-go:oauth"
+        )
+        try coreExpect(
+            ProviderRegistry.descriptor(for: .opencodeGo).injectionKind == .opencodeGoQuotaAccounts,
+            "opencodeGo injectionKind 应为 opencodeGoQuotaAccounts"
+        )
+        try coreExpect(
+            SubscriptionProviderID.opencodeGo.displayName == "OpenCode GO",
+            "opencodeGo 展示名应为 OpenCode GO"
+        )
+    }
+
+    static func opencodeGoEvaluatorValidAndMalformed() throws {
+        let valid = #"{"auth":"Fe26.2**abc","workspaceId":"wrk_01"}"#
+        try coreExpect(
+            SubscriptionCredentialEvaluator.opencodeGoStatus(of: valid) == .valid,
+            "opencodeGo 双字段应 valid"
+        )
+        let missingWorkspace = #"{"auth":"Fe26.2**abc"}"#
+        try coreExpect(
+            SubscriptionCredentialEvaluator.opencodeGoStatus(of: missingWorkspace) == .malformed,
+            "opencodeGo 缺 workspaceId 应 malformed"
+        )
+        let empty = #"{}"#
+        try coreExpect(
+            SubscriptionCredentialEvaluator.opencodeGoStatus(of: empty) == .missing,
+            "opencodeGo 空对象应 missing"
+        )
+        try coreExpect(
+            SubscriptionCredentialEvaluator.opencodeGoStatus(of: "not-json") == .malformed,
+            "opencodeGo 损坏 JSON 应 malformed"
+        )
+    }
+
+    static func opencodeGoAccountIDAndLegacyKeys() throws {
+        let accountID = ProviderAccountIDGenerator.opencodeGoAccountID(
+            accessToken: "st_same"
+        )
+        try coreExpect(
+            accountID == ProviderAccountIDGenerator.opencodeGoAccountID(
+                accessToken: "st_same"
+            ),
+            "opencodeGo 同 token 应生成同 accountID"
+        )
+        try coreExpect(
+            accountID != ProviderAccountIDGenerator.opencodeGoAccountID(
+                accessToken: "st_other"
+            ),
+            "opencodeGo 不同 token 应生成不同 accountID"
+        )
+        try coreExpect(
+            ProviderAccountKeys.legacyKeys(for: .opencodeGo) == [
+                SubscriptionCredentialAccount.opencodeGoOAuth
+            ],
+            "opencodeGo legacyKeys 应含 opencode-go:oauth"
+        )
     }
 
     // subscriptionProviderOrder 字段编解码往返, 兼容旧配置缺键.

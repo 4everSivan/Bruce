@@ -451,6 +451,184 @@ def _grok_raise_for_grpc_status(status, message):
     raise RuntimeError("Grok 账单 RPC 失败 (grpc-status %d): %s" % (status, message[:60]))
 
 
+# ---------------------------------------------------------------- OpenCode GO
+
+# OpenCode GO 订阅用量来自 opencode.ai 网页控制台 (workspace 维度) 的
+# SolidStart server function. 该端点是前端私有协议 (seroval RPC), 但返回
+# 与网页面板完全一致的数据: rollingUsage (滚动/5 小时), weeklyUsage (每周),
+# monthlyUsage (每月) 的 usagePercent 与 resetInSec.
+OPCODE_WEB_URL = "https://opencode.ai"
+OPCODE_SERVER_FN_URL = OPCODE_WEB_URL + "/_server"
+# lite.subscription.get 的 server function 哈希 (前端 JS 内嵌, 随版本可能变化;
+# 解析失败必须保留可诊断证据, 不得伪造用量)
+OPCODE_LITE_SUB_GET_HASH = "c7389bd0e731f80f49593e5ee53835475f4e28594dd6bd83eb229bab753498cd"
+
+# usage 键 -> (统一措辞 label, windowMinutes)
+_OPCODE_USAGE_LABELS = {
+    "rollingUsage": ("每 5 小时", 300),
+    "weeklyUsage": ("每周", 10080),
+    "monthlyUsage": ("每月", 43200),
+}
+
+
+def _opcode_parse_seroval(body):
+    """解析 SolidStart server function 响应, 提取首个 $R[0] 对象.
+
+    响应形如: ;0x...;((self.$R=self.$R||{})["server-fn:x"]=[],($R=>
+    $R[0]={mine:!0,...})($R["server-fn:x"])) — seroval 语法:
+    布尔为 !0/!1, 数组为 $R[n]=[...] 前置引用. 只提取我们关心的
+    rollingUsage/weeklyUsage/monthlyUsage 字段, 其余忽略.
+    解析失败抛 RuntimeError (保留响应前缀作为可诊断证据).
+    """
+    try:
+        import re as _re
+        m = _re.search(r'\$R\[0\]=\{', body)
+        if not m:
+            raise ValueError("缺少 $R[0]")
+        seg = body[m.end() - 1:]
+        # 截到顶层对象闭合: 从 { 起做花括号深度扫描
+        depth = 0
+        end = 0
+        in_str = False
+        for i, ch in enumerate(seg):
+            if ch == '"':
+                in_str = not in_str
+            elif not in_str:
+                if ch == '{':
+                    depth += 1
+                elif ch == '}':
+                    depth -= 1
+                    if depth == 0:
+                        end = i + 1
+                        break
+        if end == 0:
+            raise ValueError("对象未闭合")
+        seg = seg[:end]
+        # seroval -> JSON: 裸键加引号, !0/!1 -> false/true,
+        # $R[n]=[...] 数组赋值 -> null (忽略), $R[n]={...} 对象赋值就地展开,
+        # 其余 $R[n] 引用 -> null 兜底
+        seg = seg.replace("!0", "false").replace("!1", "true")
+        seg = _re.sub(r'\$R\[\d+\]\s*=\s*\[[^\]]*\]', 'null', seg)
+        seg = _re.sub(r'\$R\[\d+\]\s*=\s*\{', '{', seg)
+        seg = _re.sub(r'\$R\[\d+\]', 'null', seg)
+        seg = _re.sub(r'(?<=\{|,)\s*([A-Za-z_]\w*)\s*:', r'"\1":', seg)
+        d = json.loads(seg)
+        if not isinstance(d, dict):
+            raise ValueError("不是对象")
+        return d
+    except RuntimeError:
+        raise
+    except Exception as e:
+        raise RuntimeError(
+            "OpenCode GO 响应解析失败: %s (响应前缀: %s)"
+            % (str(e)[:80], body[:120])
+        )
+
+
+def _opcode_lite_subscription_get(cookie, workspace_id, http_timeout, instance):
+    """调 lite.subscription.get server function, 返回 usage dict.
+
+    GET /_server?id=<hash>&args=["<workspace_id>"] (seroval 单字符串参数),
+    必须带 auth cookie 与 X-Server-Id / X-Server-Instance 头.
+    """
+    import urllib.parse as _urlparse
+    import uuid as _uuid
+    args = _urlparse.quote(json.dumps([workspace_id], ensure_ascii=False))
+    url = "%s?id=%s&args=%s" % (
+        OPCODE_SERVER_FN_URL, OPCODE_LITE_SUB_GET_HASH, args
+    )
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Cookie": "auth=" + cookie,
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 Chrome/151.0.0.0 Safari/537.36",
+            "Accept": "*/*",
+            "X-Server-Id": OPCODE_LITE_SUB_GET_HASH,
+            "X-Server-Instance": instance or ("server-fn:" + _uuid.uuid4().hex[:8]),
+        },
+        method="GET",
+    )
+    try:
+        with runtime.urlopen(req, timeout=http_timeout) as resp:
+            body = resp.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            raise RuntimeError(
+                "OpenCode GO 会话已失效 (HTTP %d), 请重新登录 opencode.ai" % e.code
+            )
+        raise RuntimeError("OpenCode GO 查询失败 (HTTP %d)" % e.code)
+    d = _opcode_parse_seroval(body)
+    if not isinstance(d, dict):
+        raise RuntimeError("OpenCode GO 响应不是对象")
+    return d
+
+
+def read_opencode_go_credential(home, now_ts, injected=None):
+    """App 注入凭证优先; 凭证为 {"auth": <Fe26 cookie>, "workspaceId": "wrk_..."}.
+
+    无凭证返回 None; 格式无效抛可诊断错误.
+    """
+    if injected is None:
+        return None
+    if not isinstance(injected, dict):
+        raise RuntimeError("OpenCode GO 凭证格式无效")
+    cookie = injected.get("auth") or ""
+    workspace_id = injected.get("workspaceId") or ""
+    if not cookie or not workspace_id:
+        raise RuntimeError("OpenCode GO 凭证缺少 auth cookie 或 workspaceId")
+    return {"auth": cookie, "workspaceId": workspace_id}
+
+
+def service_opencode_go(home, now, http_timeout, injected=None, on_refreshed=None):
+    """查询 OpenCode GO 订阅滚动用量 (opencode.ai 网页控制台, workspace 维度).
+
+    返回哪些窗口就输出哪些 (统一语义: 每 5 小时 / 每周 / 每月);
+    服务端没有的窗口 (如未订阅的月度窗口) 不输出. 无凭证返回 None.
+    """
+    cred = read_opencode_go_credential(home, now.timestamp(), injected=injected)
+    if cred is None:
+        return None
+    # 服务端偶发返回 new Response 重定向包装 (会话续期), 重试一次
+    d = None
+    last_err = None
+    for _ in range(2):
+        try:
+            d = _opcode_lite_subscription_get(
+                cred["auth"], cred["workspaceId"], http_timeout, instance=None
+            )
+            break
+        except RuntimeError as e:
+            last_err = e
+    if d is None:
+        raise last_err or RuntimeError("OpenCode GO 查询失败")
+
+    windows = []
+    for key, (label, minutes) in _OPCODE_USAGE_LABELS.items():
+        usage = d.get(key)
+        if not isinstance(usage, dict) or usage.get("status") != "ok":
+            # 未订阅的窗口 (status 非 ok / 缺失) 不输出
+            continue
+        try:
+            used = float(usage.get("usagePercent") or 0)
+        except (TypeError, ValueError):
+            used = 0.0
+        used = max(0.0, min(100.0, used))
+        window = {
+            "label": label,
+            "usedPercent": used,
+            "resetsAt": None,
+        }
+        reset_in = usage.get("resetInSec")
+        if isinstance(reset_in, (int, float)):
+            window["resetsAt"] = int(now.timestamp() + reset_in)
+        if minutes is not None:
+            window["windowMinutes"] = minutes
+        windows.append(window)
+
+    return {"kind": "windows", "plan": None, "windows": windows}
+
+
 def service_grok(home, now, http_timeout, injected=None):
     """查询 Grok 官方订阅额度. 无凭证返回 None, 查询失败抛异常."""
     now_ts = now.timestamp()

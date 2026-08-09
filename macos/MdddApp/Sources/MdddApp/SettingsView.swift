@@ -25,6 +25,8 @@ struct SettingsView: View {
     @State private var kimiEditing = false
     @State private var claudePasteText = ""
     @State private var grokPasteText = ""
+    @State private var opencodeGoPasteText = ""
+    @State private var opencodeGoEditing = false
     @State private var showsCodexCCImportConfirm = false
     // 订阅额度标签式管理: 本次会话点击添加的 provider 与展开态
     @State private var addedSubscriptionProviders: Set<SubscriptionProviderID> = []
@@ -609,6 +611,12 @@ struct SettingsView: View {
             GrokProviderSettingsSection(
                 grokPasteText: $grokPasteText,
                 onRemove: { removeSubscriptionProvider(.grok) }
+            )
+        case .opencodeGo:
+            OpenCodeGoProviderSettingsSection(
+                opencodeGoPasteText: $opencodeGoPasteText,
+                opencodeGoEditing: $opencodeGoEditing,
+                onRemove: { removeSubscriptionProvider(.opencodeGo) }
             )
         }
     }

@@ -96,7 +96,7 @@ public enum CredentialRotationMerge {
             root["token"] = token
             return Self.jsonString(from: root)
 
-        case .claude, .grok:
+        case .claude, .grok, .opencodeGo:
             // claudeAiOauth / scope 映射同构 JSON, 直接合并顶层
             var root: [String: Any] = [:]
             if let existingCredentialJSON,

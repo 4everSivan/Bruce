@@ -136,6 +136,8 @@ public enum ProviderAccountKeys {
             return [SubscriptionCredentialAccount.claudeOAuth]
         case .grok:
             return [SubscriptionCredentialAccount.grokOAuth]
+        case .opencodeGo:
+            return [SubscriptionCredentialAccount.opencodeGoOAuth]
         }
     }
 }
@@ -173,6 +175,11 @@ public enum ProviderAccountIDGenerator {
     /// Antigravity: refresh_token SHA-256 前 16 位.
     public static func antigravityAccountID(refreshToken: String) -> String {
         ProviderAccountKeys.sha256Hex(refreshToken)
+    }
+
+    /// OpenCode GO: access_token SHA-256 前 16 位 (console OAuth 身份).
+    public static func opencodeGoAccountID(accessToken: String) -> String {
+        ProviderAccountKeys.sha256Hex(accessToken)
     }
 }
 
@@ -468,6 +475,14 @@ public final class ProviderAccountStore: @unchecked Sendable {
             let key = Self.grokKeyFromJSON(token) ?? token
             accountID = ProviderAccountIDGenerator.grokAccountID(key: key)
             displayName = "Grok · \(String(accountID.prefix(8)))"
+            credentialJSON = token
+        case .opencodeGo:
+            let token = legacyValues[0]
+            let workspace = Self.jsonStringField(
+                in: token, path: ["workspaceId"]
+            ) ?? token
+            accountID = ProviderAccountIDGenerator.opencodeGoAccountID(accessToken: workspace)
+            displayName = "OpenCode GO · \(String(accountID.prefix(8)))"
             credentialJSON = token
         case .codex:
             return false // Codex 已有独立的多账号体系

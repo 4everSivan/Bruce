@@ -1417,6 +1417,8 @@ struct PanelViewModelHarness {
             ("deepseek", "deepseek"),
             ("volcengine", "volcengine"),
             ("codex", "codex"),
+            ("opencode_go_eada03635c22306a", "opencode-go"),
+            ("opencode_go_acct1", "opencode-go"),
         ]
         for (input, expected) in providerIDCases {
             let got = SubscriptionPresentationPolicy.providerID(forServiceID: input)

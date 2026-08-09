@@ -426,6 +426,23 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
                         credentials["grokQuotaAccounts"] = .object(accounts)
                     }
                 }
+
+            case .opencodeGoQuotaAccounts:
+                guard let store = accountStores[descriptor.id],
+                      let index = try? store.loadIndex(),
+                      !index.accounts.isEmpty else { continue }
+                var accounts: [String: JSONValue] = [:]
+                for entry in index.accounts {
+                    guard let record = try? store.loadRecord(for: entry.accountID),
+                          let oauth = jsonObjectValue(from: record.credentialJSON) else { continue }
+                    accounts[entry.accountID] = .object([
+                        "display_name": .string(entry.displayName),
+                        "oauth": oauth,
+                    ])
+                }
+                if !accounts.isEmpty {
+                    credentials["opencodeGoQuotaAccounts"] = .object(accounts)
+                }
             }
         }
 

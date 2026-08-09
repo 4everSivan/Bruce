@@ -629,6 +629,84 @@ final class SubscriptionService {
         refreshOfficialLocalAvailability()
     }
 
+    // MARK: - OpenCode GO 手动导入 (网页会话凭证)
+
+    /// OpenCode GO: 引导粘贴导入 ({"auth": <Fe26 cookie>, "workspaceId": "wrk_..."} JSON).
+    func importOpenCodeGoFromPaste(_ paste: String) {
+        let trimmed = paste.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let data = trimmed.data(using: .utf8),
+           let object = try? JSONSerialization.jsonObject(with: data),
+           let dict = object as? [String: Any] {
+            // 已是 JSON: 原样保存
+            _ = dict
+            saveOpenCodeGoOAuthJSON(trimmed)
+        } else {
+            model.setSettingsError("OpenCode GO 凭证无效, 请粘贴 auth cookie 与 workspaceId 的 JSON")
+        }
+    }
+
+    /// OpenCode GO: 统一保存入口 (evaluator 判定 -> Keychain -> 状态迁移).
+    private func saveOpenCodeGoOAuthJSON(_ json: String) {
+        let status = SubscriptionCredentialEvaluator.opencodeGoStatus(of: json)
+        switch status {
+            case .missing, .malformed:
+            model.setSettingsError("OpenCode GO 凭证无效, 请粘贴 auth cookie 与 workspaceId")
+            return
+            case .valid:
+            let workspace = Self.opencodeGoWorkspaceID(from: json) ?? json
+            let accountID = ProviderAccountIDGenerator.opencodeGoAccountID(
+                accessToken: workspace
+            )
+            let displayName = "OpenCode GO · " + String(accountID.prefix(8))
+            guard saveProviderAccountCredential(
+                for: .opencodeGo,
+                accountID: accountID,
+                displayName: displayName,
+                credentialJSON: json
+            ) else { return }
+            model.setSubscriptionCredentialConfigured(true, for: .opencodeGo)
+            finishVerification(.opencodeGo, status: .ok)
+            case .expired:
+            model.setSettingsError("OpenCode GO 登录已过期, 请粘贴新凭证")
+            finishVerification(.opencodeGo, status: .needsRelogin)
+        }
+    }
+
+    /// OpenCode GO: 用 Keychain 现有凭证重新触发验证状态迁移
+    /// (凭证已存在但验证状态缺失/过期时, 由设置页"重新验证"触发).
+    func reverifyOpenCodeGo() {
+        let store = accountStore(for: .opencodeGo)
+        guard let index = try? store.loadIndex(),
+              let first = index.accounts.first,
+              let record = try? store.loadRecord(for: first.accountID) else {
+            model.setSettingsError("OpenCode GO 未找到已保存凭证")
+            return
+        }
+        let status = SubscriptionCredentialEvaluator.opencodeGoStatus(
+            of: record.credentialJSON
+        )
+        switch status {
+            case .valid:
+            finishVerification(.opencodeGo, status: .ok)
+            case .missing, .malformed:
+            model.setSettingsError("OpenCode GO 凭证不完整, 请重新粘贴")
+            case .expired:
+            finishVerification(.opencodeGo, status: .needsRelogin)
+        }
+    }
+
+    /// 从 OpenCode GO 凭证 JSON 提取 workspaceId; 失败返回 nil.
+    static func opencodeGoWorkspaceID(from json: String) -> String? {
+        guard let data = json.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let dict = object as? [String: Any] else {
+            return nil
+        }
+        let workspace = (dict["workspaceId"] as? String ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return workspace.isEmpty ? nil : workspace
+    }
+
     /// Codex: 从 CLI `~/.codex/auth.json` 发现账号 (用户点击触发).
     /// 只保存账号元数据 (needsReauthorization), 不导入 token.
     func importCodexFromLocalCLI() {

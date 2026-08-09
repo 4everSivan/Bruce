@@ -160,6 +160,25 @@ public enum SubscriptionCredentialEvaluator {
         return .valid
     }
 
+    /// OpenCode GO 凭证 JSON: {"auth": <Fe26 cookie>, "workspaceId": "wrk_..."}
+    /// 两者均非空才 valid (collector 凭此调网页 server function).
+    public static func opencodeGoStatus(of json: String) -> SubscriptionCredentialStatus {
+        guard let dict = jsonObject(from: json) else {
+            return .malformed
+        }
+        let auth = (dict["auth"] as? String ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let workspace = (dict["workspaceId"] as? String ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if auth.isEmpty && workspace.isEmpty {
+            return .missing
+        }
+        if auth.isEmpty || workspace.isEmpty {
+            return .malformed
+        }
+        return .valid
+    }
+
     // MARK: - 辅助
 
     /// 解析 JSON 字符串为对象; 非对象或解析失败返回 nil.

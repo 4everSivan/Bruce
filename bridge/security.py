@@ -46,6 +46,7 @@ CREDENTIAL_FIELDS_BY_MODULE = {
         "claudeQuotaAccounts",
         "grokOAuth",
         "grokQuotaAccounts",
+        "opencodeGoQuotaAccounts",
         "codexQuotaAccounts",
         "orcaCodexAuth",
         "providerEnv",
@@ -65,6 +66,7 @@ RUNTIME_CREDENTIAL_NAMES = {
     "claudeQuotaAccounts": "claude_quota_accounts",
     "grokOAuth": "grok_oauth",
     "grokQuotaAccounts": "grok_quota_accounts",
+    "opencodeGoQuotaAccounts": "opencode_go_quota_accounts",
     "providerEnv": "provider_env",
     "providerMeta": "provider_meta",
 }

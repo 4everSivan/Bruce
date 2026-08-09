@@ -141,7 +141,7 @@ def _grok_query_or_missing(run_ctx):
     return result
 
 
-def _resolve_app(run_ctx: RunContext, *, kimi_coding) -> List[_Resolved]:
+def _resolve_app(run_ctx: RunContext, *, kimi_coding, opencode_go) -> List[_Resolved]:
     """App 模式: 注入凭证驱动; 完全不读 CC Switch 数据库.
 
     支持多账号注入: 每个 provider 的凭证以 `<provider>QuotaAccounts` 字典传入,
@@ -151,6 +151,27 @@ def _resolve_app(run_ctx: RunContext, *, kimi_coding) -> List[_Resolved]:
     """
     resolved: List[_Resolved] = []
     provider_meta = run_ctx.credential("provider_meta") or {}
+
+    # --- OpenCode GO (多账号) ---
+    go_accounts = run_ctx.credential("opencode_go_quota_accounts")
+    if isinstance(go_accounts, dict) and go_accounts:
+        home = run_ctx.home
+        now = run_ctx.now
+        timeout = run_ctx.http_timeout
+        for account_id, payload in go_accounts.items():
+            display = (payload or {}).get("display_name") or "OpenCode GO · " + account_id[:8]
+            oauth = (payload or {}).get("oauth")
+            resolved.append(
+                _Resolved(
+                    service_id="opencode_go_" + account_id,
+                    display_name=display,
+                    app="opencode-go",
+                    is_current=False,
+                    query=lambda o=oauth, h=home, n=now, t=timeout: opencode_go(
+                        h, n, t, injected=o
+                    ),
+                )
+            )
 
     # --- Kimi (多账号) ---
     kimi_accounts = run_ctx.credential("kimi_quota_accounts")
@@ -420,7 +441,7 @@ def _resolve_cli(run_ctx: RunContext, *, kimi_coding) -> List[Any]:
 # ---------------------------------------------------------------- public builder
 
 
-def build_quota_services(run_ctx: RunContext, *, kimi_coding) -> List[Dict[str, Any]]:
+def build_quota_services(run_ctx: RunContext, *, kimi_coding, opencode_go) -> List[Dict[str, Any]]:
     """统一 App/CLI 额度服务构建核.
 
     Parameters
@@ -439,7 +460,9 @@ def build_quota_services(run_ctx: RunContext, *, kimi_coding) -> List[Dict[str, 
         raise RuntimeError("build_quota_services requires RunContext")
 
     if run_ctx.app_mode:
-        items = _resolve_app(run_ctx, kimi_coding=kimi_coding)
+        items = _resolve_app(
+            run_ctx, kimi_coding=kimi_coding, opencode_go=opencode_go
+        )
     else:
         items = _resolve_cli(run_ctx, kimi_coding=kimi_coding)
 

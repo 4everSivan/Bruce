@@ -153,6 +153,9 @@ struct MdddOnboardingCoreHarness {
         try configuredRuleGrokFallsBackToLocal()
         try configuredRuleGrokExpiredAppFallsBackToLocal()
         try configuredRuleRegistryMatchesProviders()
-        print("MdddOnboardingCore tests passed: 172")
+        try opencodeGoCredentialAccountsAndRegistry()
+        try opencodeGoEvaluatorValidAndMalformed()
+        try opencodeGoAccountIDAndLegacyKeys()
+        print("MdddOnboardingCore tests passed: 175")
     }
 }

@@ -104,13 +104,13 @@
 macOS 本机会话与认证文件
   ├─ Kimi Work / Kimi Code / Claude / Codex / Orca 会话
   ├─ CC Switch SQLite 与 OAuth 账号库 (App 模式仅一次性只读导入)
-  ├─ App Keychain (订阅凭证: Kimi/DeepSeek/火山/Codex/Antigravity)
+  ├─ App Keychain (订阅凭证: Kimi/DeepSeek/火山/Codex/Antigravity/OpenCode Go)
   └─ Kimi 与 Antigravity OAuth
                   │
                   ▼
 Python Collectors ──出站请求──> Kimi, DeepSeek,
                   │             火山引擎, OpenAI, Google Cloud Code,
-                  │             Anthropic (Claude), Grok
+                  │             Anthropic (Claude), Grok, OpenCode Go console
                   ▼
            {"artifact": ...} JSON
                   │
@@ -130,6 +130,7 @@ Daimon 单文件 Widgets   macOS 菜单栏原生液态玻璃看板
 - agy (Antigravity CLI) >= 1.1.8 把 OAuth 令牌存进登录 Keychain (go-keyring, service `gemini` / account `antigravity`, 值带 `go-keyring-base64:` 前缀), 不再写 `~/.gemini/antigravity-cli/antigravity-oauth-token`; collector CLI 模式与 App 导入链路均按「文件优先, Keychain 回退」读取, Keychain 来源只读不回写.
 - Antigravity 额度查询的 OAuth client 凭证 (`AGY_CLIENT_ID` / `AGY_CLIENT_SECRET`) 由运行环境注入, 不硬编码入库; 缺省为空时刷新链路安全降级, 不得伪造非空凭证.
 - Claude / Grok 订阅额度 (`quota_official.py`) 实时只读本机 CLI 登录态, 不刷新, 不回写, 不做一次性导入: Claude 按「Keychain `Claude Code-credentials` (无 account) 优先, `~/.claude/.credentials.json` 兜底」读取, 调用 `api.anthropic.com/api/oauth/usage`; Grok 读取 `~/.grok/auth.json` (OIDC scope 优先, legacy `/sign-in` 兜底), 调用 `grok.com` gRPC-web 账单接口, protobuf 启发式解析失败必须抛可诊断错误, 不得伪造用量. App 模式由 `provider_meta.claude/grok.enabled` 标记驱动 (无凭证注入), CLI 模式自动探测本机凭证; Swift 侧以本机检测结果作为 configured 语义 (fail-closed).
+- OpenCode Go 订阅额度 (`quota_official.py` `service_opencode_go`) 查询 console.opencode.ai 服务端计量 (设备码 OAuth, client_id `opencode-cli`; `/api/orgs` → `/api/go/status`), 跨机器汇总, 不读本机 opencode 数据库; App 模式多账号由 `opencode_go_quota_accounts` 注入 (每账号 `oauth` JSON, access 过期用 refresh_token 刷新并经 `credentialUpdates` 写回), 统一窗口语义: meters 返回哪些输出哪些 (`five_hour`→每 5 小时 / `calendar_week`→每周 / `product_period`→每月), 服务端没有的窗口 (如未订阅的月度) 不输出, `limitMicroCents<=0` 的窗口跳过; CLI 模式无本机凭证, 不出条目.
 - App 订阅凭证存 Keychain (`com.mddd.dashboard.credentials`), 在设置「订阅额度」分区配置或从本机/CC Switch 一次性只读导入; 令牌轮换经 `credentialUpdates` 只写回 Keychain, 不回写 CC Switch.
 - App 模式 agent-usage 请求携带 `days=182` 聚合窗口 (Bridge 上限 366): 柱状图取末 14 天, 全量 daily 供用量热力图; CLI 直跑默认 14 天.
 - 外部 API 和 CC Switch 数据库 schema 未在仓库内锁定, 解析失败必须保留可诊断证据.

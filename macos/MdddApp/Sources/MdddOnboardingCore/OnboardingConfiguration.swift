@@ -11,6 +11,7 @@ public enum SubscriptionProviderID: String, Codable, Sendable, CaseIterable {
     case antigravity
     case claude
     case grok
+    case opencodeGo
 }
 
 // MARK: - SubscriptionVerificationStatus
@@ -371,6 +372,8 @@ public enum SubscriptionCredentialAccount {
     public static let claudeOAuth = "claude:oauth"
     /// Grok 手动导入凭证: scope 映射同构 JSON (Phase 2)
     public static let grokOAuth = "grok:oauth"
+    /// OpenCode GO 手动导入凭证: {"access_token", "refresh_token", "expiry"} JSON
+    public static let opencodeGoOAuth = "opencode-go:oauth"
 }
 
 /// Codex v2 Keychain 键别名 (供既有调用方引用; 旧键只供迁移读取).

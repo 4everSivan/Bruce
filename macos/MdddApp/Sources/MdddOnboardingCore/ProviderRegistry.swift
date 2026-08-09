@@ -19,6 +19,8 @@ public enum InjectionKind: Sendable, Equatable {
     case claudeMetaEnabledPlusOptionalOAuth
     /// `providerMeta.grok.enabled` + 可选顶层 `grokOAuth` JSON
     case grokMetaEnabledPlusOptionalOAuth
+    /// `opencodeGoQuotaAccounts` = 多账号 oauth JSON 映射 (服务端 console OAuth)
+    case opencodeGoQuotaAccounts
 }
 
 // MARK: - ConfiguredRule
@@ -195,6 +197,13 @@ public enum ProviderRegistry {
                 credentialAccounts: [SubscriptionCredentialAccount.grokOAuth],
                 injectionKind: .grokMetaEnabledPlusOptionalOAuth,
                 configuredRule: .grokAppOrLocalProbe
+            )
+        case .opencodeGo:
+            return ProviderDescriptor(
+                id: .opencodeGo,
+                credentialAccounts: [SubscriptionCredentialAccount.opencodeGoOAuth],
+                injectionKind: .opencodeGoQuotaAccounts,
+                configuredRule: .allCredentialAccountsNonEmpty
             )
         }
     }

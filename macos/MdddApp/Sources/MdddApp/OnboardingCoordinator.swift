@@ -168,6 +168,14 @@ final class OnboardingCoordinator: ObservableObject {
         subscriptions.importGrokFromPaste(paste)
     }
 
+    func importOpenCodeGoFromPaste(_ paste: String) {
+        subscriptions.importOpenCodeGoFromPaste(paste)
+    }
+
+    func reverifyOpenCodeGo() {
+        subscriptions.reverifyOpenCodeGo()
+    }
+
     func importCodexFromLocalCLI() {
         subscriptions.importCodexFromLocalCLI()
     }

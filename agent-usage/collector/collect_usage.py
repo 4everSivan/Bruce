@@ -939,6 +939,20 @@ def _finalize_quota_service(svc, query):
     return service_catalog.finalize_quota_service(svc, query)
 
 
+def _opencode_go_with_updates(home, now, http_timeout, injected=None):
+    """service_opencode_go 包装 (App 模式).
+
+    网页 session cookie 无轮换语义, 直接透传; 会话失效由服务端
+    401/403 反映, 上层按 auth 诊断处理.
+    """
+    return quota_official.service_opencode_go(
+        home,
+        now,
+        http_timeout,
+        injected=injected,
+    )
+
+
 def _collect_app_services():
     """App 模式额度条目 (薄包装; 实现见 service_catalog.build_quota_services).
 
@@ -947,6 +961,7 @@ def _collect_app_services():
     return service_catalog.build_quota_services(
         _require_run_context(),
         kimi_coding=service_kimi_coding,
+        opencode_go=_opencode_go_with_updates,
     )
 
 
@@ -961,6 +976,7 @@ def collect_services():
     return service_catalog.build_quota_services(
         _require_run_context(),
         kimi_coding=service_kimi_coding,
+        opencode_go=quota_official.service_opencode_go,
     )
 
 

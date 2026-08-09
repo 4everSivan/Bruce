@@ -48,6 +48,7 @@ extension SubscriptionProviderID {
         case .antigravity: return "Antigravity"
         case .claude: return "Claude"
         case .grok: return "Grok"
+        case .opencodeGo: return "OpenCode GO"
         }
     }
 

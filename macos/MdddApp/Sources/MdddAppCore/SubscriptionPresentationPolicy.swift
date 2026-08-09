@@ -22,6 +22,10 @@ package enum SubscriptionPresentationPolicy: Sendable {
                     return provider.rawValue
                 }
             }
+            // collector 连字符命名 (opencode_go_xxx): 返回连字符 provider id.
+            if serviceID.hasPrefix("opencode_go_") {
+                return "opencode-go"
+            }
             return serviceID
         }
     }
@@ -79,6 +83,7 @@ package enum SubscriptionPresentationPolicy: Sendable {
         case "antigravity": return "Antigravity"
         case "claude": return "Claude"
         case "grok": return "Grok"
+        case "opencode-go": return "OpenCode GO"
         default: return providerID
         }
     }

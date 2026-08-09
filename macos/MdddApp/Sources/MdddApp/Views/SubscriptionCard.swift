@@ -430,6 +430,8 @@ private struct ProviderLogoBadge: View {
             return Color(hex: "#d97757")
         case "grok":
             return Color(hex: "#111111")
+        case "opencode-go", "opencode":
+            return Color(hex: "#8a63d2")
         default:
             return Color(hex: "#8e8e93")
         }

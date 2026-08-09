@@ -68,7 +68,10 @@ struct SubscriptionCredentialsHarness {
         try providerAccountStoreRemoveLastAccountKeepsEmptyIndex()
         try providerAccountStoreUpsertUpdatesExisting()
         try providerAccountStoreWriteThenConnected()
-        print("Subscription credentials tests passed: 23")
+        try await opencodeGoInjectedWhenCredentialPresent()
+        try await opencodeGoNotInjectedWithoutCredential()
+        try coordinatorRotationOpenCodeGo()
+        print("Subscription credentials tests passed: 26")
     }
 
     /// 构造 OnboardingRunInputProvider: 配置 claude 启用 + Keychain 持有 claude:oauth.
@@ -155,6 +158,39 @@ struct SubscriptionCredentialsHarness {
         try credentialsExpect(
             oauth["https://auth.x.ai::injected"] != nil,
             "grokQuotaAccounts 应包含 scope 条目"
+        )
+    }
+
+    private static func opencodeGoInjectedWhenCredentialPresent() async throws {
+        let goJSON = #"{"auth":"Fe26.2**abc","workspaceId":"wrk_01"}"#
+        let (provider, _, _) = try makeProvider(
+            enabled: [.opencodeGo],
+            credentials: [SubscriptionCredentialAccount.opencodeGoOAuth: goJSON]
+        )
+        let (_, credentials) = try await runInput(provider)
+        guard case .object(let accounts)? = credentials["opencodeGoQuotaAccounts"] else {
+            throw CredentialsTestFailure.expectation("opencodeGoQuotaAccounts 未注入: \(credentials.keys.sorted())")
+        }
+        try credentialsExpect(accounts.count == 1, "opencodeGo 应有 1 个账号")
+        guard case .object(let payload)? = accounts.values.first,
+              case .object(let oauth)? = payload["oauth"] else {
+            throw CredentialsTestFailure.expectation("opencodeGo oauth 结构不符")
+        }
+        try credentialsExpect(
+            oauth["auth"] != nil && oauth["workspaceId"] != nil,
+            "opencodeGoQuotaAccounts 应包含 auth/workspaceId"
+        )
+    }
+
+    private static func opencodeGoNotInjectedWithoutCredential() async throws {
+        let (provider, _, _) = try makeProvider(
+            enabled: [.opencodeGo],
+            credentials: [:]
+        )
+        let (_, credentials) = try await runInput(provider)
+        try credentialsExpect(
+            credentials["opencodeGoQuotaAccounts"] == nil,
+            "无应用凭证时不应注入 opencodeGoQuotaAccounts"
         )
     }
 
@@ -653,9 +689,37 @@ struct SubscriptionCredentialsHarness {
         )
     }
 
-    /// 多账号轮换: 未知 accountId 回退旧键路径 (兼容未迁移单账号).
-    private static func coordinatorRotationMultiAccountUnknownAccountFallsBack() throws {
+    /// OpenCode GO 网页会话无轮换语义: 轮换条目应被跳过
+    /// (会话过期需用户重新登录, 不自动续期).
+    private static func coordinatorRotationOpenCodeGo() throws {
         let store = InMemoryCredentialStore()
+        let accountStore = ProviderAccountStore(provider: .opencodeGo, credentialStore: store)
+        _ = try accountStore.addAccount(
+            accountID: "go-acct",
+            displayName: "OpenCode GO · a",
+            credentialJSON: "{\"auth\":\"Fe26.2**old\",\"workspaceId\":\"wrk_01\"}"
+        )
+
+        let coordinator = CredentialUpdateCoordinator(credentialStore: store)
+        let result = coordinator.apply(credentialUpdates: [
+            oauthUpdate(
+                provider: "opencode-go",
+                accountId: "go-acct",
+                tokens: ["access_token": "st_new", "refresh_token": "rt_new"]
+            ),
+        ])
+        try credentialsExpect(result.appliedCount == 0, "opencode-go 不应接受轮换 (skipped)")
+        try credentialsExpect(result.skippedCount == 1, "opencode-go 轮换应 skipped=1")
+
+        let record = try accountStore.loadRecord(for: "go-acct")
+        try credentialsExpect(
+            record?.credentialJSON.contains("Fe26.2**old") == true,
+            "opencodeGo record 不应被轮换修改"
+        )
+    }
+
+    /// 多账号轮换: 未知 accountId 回退旧键路径 (兼容未迁移单账号).
+    private static func coordinatorRotationMultiAccountUnknownAccountFallsBack() throws {        let store = InMemoryCredentialStore()
         try store.saveCredential(
             #"{"access_token":"old-a","refresh_token":"old-r"}"#,
             forAccount: SubscriptionCredentialAccount.kimiWebTokens

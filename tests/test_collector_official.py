@@ -674,5 +674,220 @@ class CollectUsageOfficialWiringTests(unittest.TestCase):
         self.assertEqual([s["id"] for s in services], ["grok"])
 
 
+class OpenCodeGoServiceTests(unittest.TestCase):
+    """OpenCode GO (opencode.ai 网页控制台 server function) 契约.
+
+    覆盖: seroval 响应解析, 窗口语义 (每 5 小时/每周/每月),
+    无窗口不输出, 凭证格式, 会话失效诊断, 多账号装配.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.module = load_module(
+            "quota_official_opencode_test",
+            "agent-usage/collector/quota_official.py",
+        )
+        cls.now = datetime.fromtimestamp(NOW_TS, timezone.utc)
+
+    def setUp(self):
+        self.module.runtime.set_http_overrides({})
+
+    def tearDown(self):
+        self.module.runtime.set_http_overrides({})
+
+    @staticmethod
+    def _seroval(instance="server-fn:t1", **usage):
+        """构造与真实响应同构的 seroval 载荷 (含 $R[n] 对象/数组引用)."""
+        parts = []
+        idx = 1
+        for key, (status, reset_in, percent) in usage.items():
+            parts.append(
+                "%s:$R[%d]={status:%s,resetInSec:%d,usagePercent:%d}"
+                % (key, idx, '"ok"' if status == "ok" else '"unavailable"', reset_in, percent)
+            )
+            idx += 1
+        body = (
+            ';0x14e;((self.$R=self.$R||{})["%s"]=[],'
+            '($R=>$R[0]={mine:!0,useBalance:!1,region:$R[%d]=["us","eu"],%s})'
+            '($R["%s"]))' % (instance, idx, ",".join(parts), instance)
+        )
+        return body.encode()
+
+    def _urlopen(self, responses):
+        calls = []
+
+        def handler(request, *args, **kwargs):
+            calls.append(request.full_url)
+            body = responses[min(len(calls) - 1, len(responses) - 1)]
+            return _FakeResponse(body if isinstance(body, bytes) else json.dumps(body).encode())
+
+        return handler, calls
+
+    def test_full_usage_map_to_unified_labels(self):
+        body = self._seroval(
+            rollingUsage=("ok", 8031, 3),
+            weeklyUsage=("ok", 63831, 1),
+            monthlyUsage=("ok", 2629986, 0),
+        )
+        handler, calls = self._urlopen([body])
+        self.module.runtime.set_http_overrides({"urlopen": handler})
+        svc = self.module.service_opencode_go(
+            "/nonexistent", self.now, 8,
+            injected={"auth": "Fe26.2**abc", "workspaceId": "wrk_01"},
+        )
+        self.assertEqual(svc["kind"], "windows")
+        windows = svc["windows"]
+        # 统一语义: 每 5 小时 / 每周 / 每月
+        self.assertEqual(
+            [w["label"] for w in windows],
+            ["每 5 小时", "每周", "每月"],
+        )
+        self.assertEqual([w["windowMinutes"] for w in windows], [300, 10080, 43200])
+        # usagePercent 透传
+        self.assertEqual([w["usedPercent"] for w in windows], [3.0, 1.0, 0.0])
+        # resetsAt = now + resetInSec
+        self.assertEqual(windows[0]["resetsAt"], NOW_TS + 8031)
+        self.assertEqual(windows[2]["resetsAt"], NOW_TS + 2629986)
+        # 请求 URL 含 server fn 哈希与 seroval args
+        self.assertIn(OpenCodeGoServiceTests.module.OPCODE_LITE_SUB_GET_HASH, calls[0])
+        self.assertIn("wrk_01", calls[0])
+
+    def test_missing_monthly_usage_omits_monthly_window(self):
+        body = self._seroval(
+            rollingUsage=("ok", 8031, 3),
+            weeklyUsage=("ok", 63831, 1),
+        )
+        handler, _ = self._urlopen([body])
+        self.module.runtime.set_http_overrides({"urlopen": handler})
+        svc = self.module.service_opencode_go(
+            "/nonexistent", self.now, 8,
+            injected={"auth": "Fe26.2**abc", "workspaceId": "wrk_01"},
+        )
+        # 服务端没有 monthlyUsage -> 不显示每月
+        self.assertEqual(
+            [w["label"] for w in svc["windows"]],
+            ["每 5 小时", "每周"],
+        )
+
+    def test_unavailable_usage_window_skipped(self):
+        body = self._seroval(
+            rollingUsage=("ok", 8031, 3),
+            weeklyUsage=("unavailable", 0, 0),
+            monthlyUsage=("ok", 2629986, 0),
+        )
+        handler, _ = self._urlopen([body])
+        self.module.runtime.set_http_overrides({"urlopen": handler})
+        svc = self.module.service_opencode_go(
+            "/nonexistent", self.now, 8,
+            injected={"auth": "Fe26.2**abc", "workspaceId": "wrk_01"},
+        )
+        # status != ok 的窗口不输出
+        self.assertEqual(
+            [w["label"] for w in svc["windows"]],
+            ["每 5 小时", "每月"],
+        )
+
+    def test_no_credentials_returns_none(self):
+        svc = self.module.service_opencode_go("/nonexistent", self.now, 8)
+        self.assertIsNone(svc)
+
+    def test_invalid_credential_shape_raises(self):
+        with self.assertRaises(RuntimeError) as ctx:
+            self.module.service_opencode_go(
+                "/nonexistent", self.now, 8,
+                injected={"auth": "Fe26.2**abc"},
+            )
+        self.assertIn("workspaceId", str(ctx.exception))
+
+    def test_session_rejected_raises_auth_error(self):
+        class _Unauthorized(_FakeResponse):
+            def __enter__(self):
+                raise urllib.error.HTTPError(
+                    "https://opencode.ai/_server", 401, "Unauthorized", None, None
+                )
+
+        self.module.runtime.set_http_overrides(
+            {"urlopen": lambda *_a, **_k: _Unauthorized(b"")}
+        )
+        with self.assertRaises(RuntimeError) as ctx:
+            self.module.service_opencode_go(
+                "/nonexistent", self.now, 8,
+                injected={"auth": "Fe26.2**bad", "workspaceId": "wrk_01"},
+            )
+        self.assertIn("重新登录", str(ctx.exception))
+
+    def test_unparsable_seroval_raises_diagnostic(self):
+        handler, _ = self._urlopen([b"garbage-not-seroval"])
+        self.module.runtime.set_http_overrides({"urlopen": handler})
+        with self.assertRaises(RuntimeError) as ctx:
+            self.module.service_opencode_go(
+                "/nonexistent", self.now, 8,
+                injected={"auth": "Fe26.2**abc", "workspaceId": "wrk_01"},
+            )
+        self.assertIn("解析失败", str(ctx.exception))
+        self.assertIn("garbage", str(ctx.exception))
+
+    def test_app_mode_multi_account_assembly(self):
+        """App 模式多账号: opencode_go_quota_accounts 每账号一个 service 条目."""
+        collector = load_module(
+            "collect_usage_opencode_test",
+            "agent-usage/collector/collect_usage.py",
+        )
+        original = collector.quota_official.service_opencode_go
+        captured = []
+
+        def fake_opencode_go(home, now, http_timeout, injected=None):
+            captured.append(injected)
+            return {
+                "kind": "windows",
+                "plan": None,
+                "windows": [
+                    {
+                        "label": "每 5 小时",
+                        "usedPercent": 0.0,
+                        "windowMinutes": 300,
+                        "resetsAt": None,
+                    }
+                ],
+            }
+
+        collector.quota_official.service_opencode_go = fake_opencode_go
+        try:
+            with tempfile.TemporaryDirectory() as home:
+                ctx = {
+                    "home": home,
+                    "now": "2026-07-28T12:00:00+08:00",
+                    "timezone": "Asia/Shanghai",
+                    "days": 2,
+                    "app_mode": True,
+                    "credentials": {
+                        "opencode_go_quota_accounts": {
+                            "acct_a": {
+                                "display_name": "Go · 个人",
+                                "oauth": {"auth": "Fe26.2**a", "workspaceId": "wrk_a"},
+                            },
+                            "acct_b": {
+                                "display_name": "Go · 团队",
+                                "oauth": {"auth": "Fe26.2**b", "workspaceId": "wrk_b"},
+                            },
+                        }
+                    },
+                    "http": {},
+                }
+                collector._configure_runtime(ctx)
+                services = collector._collect_app_services()
+        finally:
+            collector.quota_official.service_opencode_go = original
+        ids = [s["id"] for s in services]
+        self.assertIn("opencode_go_acct_a", ids)
+        self.assertIn("opencode_go_acct_b", ids)
+        self.assertEqual([s["status"] for s in services], ["ok", "ok"])
+        # 每个账号的 cookie + workspaceId 独立传入
+        self.assertEqual(len(captured), 2)
+        self.assertEqual(captured[0]["auth"], "Fe26.2**a")
+        self.assertEqual(captured[0]["workspaceId"], "wrk_a")
+        self.assertEqual(captured[1]["workspaceId"], "wrk_b")
+
+
 if __name__ == "__main__":
     unittest.main()
