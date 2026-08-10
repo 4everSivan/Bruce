@@ -242,6 +242,11 @@ def scan_codex(agent, session_dirs):
         try:
             with open(path, encoding="utf-8", errors="replace") as fh:
                 for line in fh:
+                    # 超大行 (工具输出/消息内容, 实测 18 个大行均不含
+                    # token_count) json.loads 会分配大块内存且碎片不还给 OS,
+                    # 导致 RSS 虚高. token_count 行结构简单, 不会超 1MB.
+                    if len(line) > 1_000_000:
+                        continue
                     if '"token_count"' not in line:
                         continue
                     try:

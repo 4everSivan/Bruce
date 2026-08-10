@@ -1172,8 +1172,9 @@ def _collect(run_ctx):
             agent["note"] = "未发现 opencode 会话记录"
         return finalize(agent, pricing)
 
-    # 6 个本地扫描互不共享状态 (各自累积独立 agent, 全局窗口配置只读),
-    # 并行执行; join 后按固定顺序组装, artifact 结构不变
+    # 6 个本地扫描串行执行: GIL 下线程池对 CPU-bound JSON 解析无加速
+    # (实测线程池 3.4s ≈ 串行 2.2s, 线程反而更慢), 且多线程并发解析
+    # 使 malloc arena 峰值叠加 (实测 400MB vs 串行 190MB, 降 50%).
     builders = [
         build_kimi_work,
         build_kimi_cli,
@@ -1182,8 +1183,7 @@ def _collect(run_ctx):
         build_grok,
         build_opencode,
     ]
-    with ThreadPoolExecutor(max_workers=6) as pool:
-        agents = list(pool.map(lambda build: build(), builders))
+    agents = [build() for build in builders]
 
     if run_ctx.capability_allowed("externalQuotas"):
         # 三路服务采集互不依赖 (CC 库为 mode=ro 独立连接), 并行后按原顺序拼接
