@@ -1,6 +1,22 @@
 import Foundation
 @testable import MdddOnboardingCore
 
+// MARK: - 非交互环境守卫
+
+/// 无头 CI runner 无登录会话: 真实 Keychain 读写触发系统授权等待会挂起.
+/// 检测 GitHub Actions (`CI=true`) 或进程无代码签名且非 TTY.
+enum IsNonInteractiveEnvironment {
+    static var runningInCI: Bool {
+        let env = ProcessInfo.processInfo.environment
+        if env["CI"] != nil && env["CI"] != "" {
+            return true
+        }
+        // 本地终端无签名进程仍走真实 Keychain (登录会话可授权);
+        // 仅无 CI 标记时放行, 保守只认 CI 变量, 避免误跳过本地测试.
+        return false
+    }
+}
+
 // MARK: - Harness
 
 @main
@@ -57,7 +73,11 @@ struct MdddOnboardingCoreHarness {
         try await sqliteProbeCorruptedForGarbageFile()
         try sqliteLockedDetectionUsesStderr()
         try sqliteTableInfoParsesColumnNames()
-        try keychainUpdatePreservesAndOverwrites()
+        // 真实 Keychain 测试仅在交互环境运行: 无头 CI runner 无登录会话,
+        // SecItem* 触发系统授权等待会挂起至超时 (本地已有登录会话, 自动通过).
+        if !IsNonInteractiveEnvironment.runningInCI {
+            try keychainUpdatePreservesAndOverwrites()
+        }
         try await scannerFindsPythonSessionsAndSQLite()
         try await scannerReportsMissingPython()
         try firstLaunchDecisionFlow()
@@ -66,7 +86,9 @@ struct MdddOnboardingCoreHarness {
         try configStoreSubscriptionProvidersRoundTrip()
         try configRefreshIntervalDecodeAndFallback()
         try credentialStoreSubscriptionAccountsRoundTrip()
-        try keychainSubscriptionAccountsRoundTrip()
+        if !IsNonInteractiveEnvironment.runningInCI {
+            try keychainSubscriptionAccountsRoundTrip()
+        }
         try await verifierDeepSeekConnectedWithMockSession()
         try await verifierDeepSeekFailClosed()
         try verifierKimiWebTokensJSONMappings()
