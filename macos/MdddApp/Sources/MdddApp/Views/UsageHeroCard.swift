@@ -354,43 +354,37 @@ struct UsageHeroCard: View {
 private struct CodeStreamBackground: View {
     let tint: Color
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
     private let characters: [Character] = [".", ":", "+", "*", "#"]
     private let spacing: CGFloat = 16
-    /// 基准流速 (pt/s), 远慢于常规动画, 保持液态玻璃的安静感.
-    private let speed: CGFloat = 9
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 0.1, paused: reduceMotion)) { context in
-            Canvas { ctx, size in
-                let drift = reduceMotion
-                    ? 0
-                    : CGFloat(context.date.timeIntervalSinceReferenceDate) * speed
-                let cycle = size.height + spacing
-                let cols = Int(size.width / spacing)
-                let rows = Int(size.height / spacing) + 2
-                guard cols > 0, rows > 0 else {
-                    return
-                }
-                for col in 0...cols {
-                    // 每列 0.6-1.2 倍速, 形成错落的流场层次.
-                    let columnFactor = 0.6 + 0.6 * Double(cellHash(col, 0) % 101) / 100.0
-                    let x = spacing / 2 + CGFloat(col) * spacing
-                    for row in 0...rows {
-                        let base = CGFloat(row) * spacing + drift * columnFactor
-                        let y = base.truncatingRemainder(dividingBy: cycle) - spacing / 2
-                        let hash = cellHash(col, row)
-                        let char = characters[Int(hash % UInt64(characters.count))]
-                        ctx.opacity = 0.05 + 0.09 * Double((hash >> 8) % 101) / 100.0
-                        ctx.draw(
-                            Text(String(char))
-                                .font(.system(size: 9, design: .monospaced))
-                                .foregroundColor(tint),
-                            at: CGPoint(x: x, y: y),
-                            anchor: .center
-                        )
-                    }
+        // 静态代码流背景: TimelineView 动画在 MenuBarExtra 隐藏窗口时不暂停,
+        // 每帧重绘 Canvas (275 次采样命中 body), 实测面板关闭时主线程 CPU ~20%.
+        // 纯装饰动画移除, 改静态渲染 (布局不变, 视觉保持密度感).
+        Canvas { ctx, size in
+            let cycle = size.height + spacing
+            let cols = Int(size.width / spacing)
+            let rows = Int(size.height / spacing) + 2
+            guard cols > 0, rows > 0 else {
+                return
+            }
+            for col in 0...cols {
+                // 静态列偏移: 每列错落 0-2 格, 保留流场层次感.
+                let colOffset = CGFloat((cellHash(col, 0) % 3))
+                let x = spacing / 2 + CGFloat(col) * spacing
+                for row in 0...rows {
+                    let base = CGFloat(row) * spacing + colOffset * spacing * 0.5
+                    let y = base.truncatingRemainder(dividingBy: cycle) - spacing / 2
+                    let hash = cellHash(col, row)
+                    let char = characters[Int(hash % UInt64(characters.count))]
+                    ctx.opacity = 0.05 + 0.09 * Double((hash >> 8) % 101) / 100.0
+                    ctx.draw(
+                        Text(String(char))
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundColor(tint),
+                        at: CGPoint(x: x, y: y),
+                        anchor: .center
+                    )
                 }
             }
         }
@@ -421,9 +415,6 @@ private struct CodeStreamBackground: View {
 
 /// 绿点 + 光晕, 2.4 秒一周期的透明度呼吸; Reduce Motion 时静止常亮.
 private struct LiveIndicator: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var breathing = false
-
     var body: some View {
         HStack(spacing: 5) {
             ZStack {
@@ -434,17 +425,6 @@ private struct LiveIndicator: View {
                 Circle()
                     .fill(Self.green)
                     .frame(width: 6, height: 6)
-            }
-            .opacity(breathing ? 0.25 : 1)
-            .animation(
-                reduceMotion ? nil : .easeInOut(duration: 1.2).repeatForever(autoreverses: true),
-                value: breathing
-            )
-            .onAppear {
-                guard !reduceMotion else {
-                    return
-                }
-                breathing = true
             }
             Text("LIVE")
                 .font(.system(size: 9.5, weight: .semibold))
