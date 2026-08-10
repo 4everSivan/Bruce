@@ -307,11 +307,6 @@ def _configure_runtime(ctx):
     return run_ctx
 
 
-def _capability_allowed(name):
-    """能力门禁: 未启用 (无 capabilities 键) 时全部放行."""
-    return _RUNTIME_CAPABILITIES is None or name in _RUNTIME_CAPABILITIES
-
-
 def _runtime_credential(name, default=None):
     return _RUNTIME_CREDENTIALS.get(name, default)
 
@@ -934,32 +929,6 @@ def _require_run_context():
     return _ACTIVE_RUN_CONTEXT
 
 
-def _quota_service_entry(service_id, name, app, is_current=False):
-    """兼容包装: 委托 service_catalog.quota_service_entry."""
-    return service_catalog.quota_service_entry(
-        service_id, name, app, now, is_current=is_current
-    )
-
-
-def _finalize_quota_service(svc, query):
-    """兼容包装: 委托 service_catalog.finalize_quota_service."""
-    return service_catalog.finalize_quota_service(svc, query)
-
-
-def _opencode_go_with_updates(home, now, http_timeout, injected=None):
-    """service_opencode_go 包装 (App 模式).
-
-    网页 session cookie 无轮换语义, 直接透传; 会话失效由服务端
-    401/403 反映, 上层按 auth 诊断处理.
-    """
-    return quota_official.service_opencode_go(
-        home,
-        now,
-        http_timeout,
-        injected=injected,
-    )
-
-
 def _collect_app_services():
     """App 模式额度条目 (薄包装; 实现见 service_catalog.build_quota_services).
 
@@ -968,7 +937,7 @@ def _collect_app_services():
     return service_catalog.build_quota_services(
         _require_run_context(),
         kimi_coding=service_kimi_coding,
-        opencode_go=_opencode_go_with_updates,
+        opencode_go=quota_official.service_opencode_go,
     )
 
 
