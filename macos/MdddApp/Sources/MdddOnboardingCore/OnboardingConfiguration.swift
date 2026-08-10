@@ -455,7 +455,14 @@ public final class KeychainCredentialStore: CredentialStore, @unchecked Sendable
             // 不存在才添加; 并发下撞见重复项则回退 update
             var addQuery = baseQuery
             addQuery[kSecValueData as String] = data
-            addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
+            // 显式宽松 ACL: 空 app 列表 = 任何进程可访问, 不再弹密码框.
+            // 原因: ad-hoc 签名每次重打包身份变化, 默认 ACL 只授权创建进程,
+            // 导致每次启动/刷新都触发 Keychain 授权弹窗.
+            // 凭证为 OAuth 令牌且 ThisDeviceOnly 语义, 风险可控
+            // (与 Antigravity 的 go-keyring 行为一致).
+            if let access = KeychainCredentialStore.openAccessControl() {
+                addQuery[kSecAttrAccess as String] = access
+            }
             status = SecItemAdd(addQuery as CFDictionary, nil)
             if status == errSecDuplicateItem {
                 status = SecItemUpdate(
@@ -466,6 +473,17 @@ public final class KeychainCredentialStore: CredentialStore, @unchecked Sendable
         guard status == errSecSuccess else {
             throw KeychainError.saveFailed(status)
         }
+    }
+
+    /// 创建"任何进程可读"的 ACL (空 app 列表, 无密码提示).
+    static func openAccessControl() -> SecAccess? {
+        var access: SecAccess?
+        let status = SecAccessCreate(
+            "mddd" as CFString,
+            [] as CFArray,
+            &access
+        )
+        return status == errSecSuccess ? access : nil
     }
 
     public func loadCredential(forAccount account: String) throws -> String? {
