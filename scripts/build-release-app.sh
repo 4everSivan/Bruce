@@ -256,15 +256,9 @@ ditto -c -k --sequesterRsrc --keepParent \
     shasum -a 256 "$(basename "$MDDD_FINAL_ZIP")" > "$MDDD_SHA256"
 )
 
-cat > "$MDDD_NOTES" <<EOF
-# mddd $MDDD_VERSION 发布说明
-
-- 版本: $MDDD_VERSION (构建号 $MDDD_BUILD_NUMBER)
-- 渠道: Release (Developer ID + notarization)
-- 变更: 以 Git tag 与提交历史为准
-- 已知限制: 见仓库 docs/development/08-production-packaging-and-release.md
-- 回滚版本: 上一通过验收的正式版本
-EOF
+# 发布说明从 CHANGELOG 生成 (风格与 v0.1/v0.2 一致), 不另写重复文案.
+MDDD_OUT="$MDDD_NOTES" \
+    zsh "$MDDD_SCRIPT_DIR/release-notes.sh" "$MDDD_VERSION"
 
 echo "正式版已生成:"
 echo "  $MDDD_FINAL_APP"

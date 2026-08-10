@@ -78,6 +78,8 @@ jobs:
         run: |
           cd dist
           shasum -a 256 mddd-test.zip > SHA256SUMS
+      - name: 生成发布说明 (从 CHANGELOG)
+        run: zsh scripts/release-notes.sh "${GITHUB_REF_NAME#v}"
       - name: 创建草稿 Release 并上传 App
         env:
           GH_TOKEN: ${{ github.token }}
@@ -85,9 +87,10 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             dist/mddd-test.zip \
             dist/SHA256SUMS \
+            dist/release-notes-*.md \
             --draft \
             --title "mddd $GITHUB_REF_NAME" \
-            --generate-notes
+            --notes-file dist/release-notes-${GITHUB_REF_NAME#v}.md
 
   # 正式版发布 (08-production-packaging-and-release.md §4)
   # 仅 tag v* 触发; 签名/公证凭证从仓库 Secret 读取, PR 永不接触
