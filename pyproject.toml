@@ -1,6 +1,6 @@
 [project]
 name = "mddd"
-version = "0.3"
+version = "0.3.0"
 description = "macOS menu bar dashboard for monitoring local AI Agent token usage, costs, and subscription quotas."
 readme = "README.md"
 requires-python = ">=3.9"
