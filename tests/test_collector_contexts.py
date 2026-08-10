@@ -29,6 +29,18 @@ class AgentCollectorContextTests(unittest.TestCase):
             "collect_usage_context_test",
             "agent-usage/collector/collect_usage.py",
         )
+        # opencode agent 扫描隔离: 本套件聚焦服务/凭证/能力门禁,
+        # 不触发真实 opencode CLI (启动开销 ~1.5s/次, 拖慢全量测试).
+        from unittest import mock
+        self._opencode_mock = mock.patch.object(
+            self.module.local_usage,
+            "scan_opencode",
+            return_value=False,
+        )
+        self._opencode_mock.start()
+
+    def tearDown(self):
+        self._opencode_mock.stop()
 
     def test_empty_home_and_clock_are_injectable(self):
         with tempfile.TemporaryDirectory() as temp_home:

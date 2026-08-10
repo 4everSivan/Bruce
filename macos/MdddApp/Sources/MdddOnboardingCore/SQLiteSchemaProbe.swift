@@ -47,6 +47,18 @@ public struct SQLiteSchemaProfile: Sendable {
             ]
         ]
     )
+
+    /// opencode 会话库: agent 用量只读来源 (订阅额度不走本库).
+    public static let opencode = SQLiteSchemaProfile(
+        displayName: "OpenCode",
+        tables: [
+            "session": [
+                "model", "tokens_input", "tokens_output",
+                "tokens_cache_read", "tokens_cache_write",
+                "time_created", "directory",
+            ]
+        ]
+    )
 }
 
 // MARK: - SQLiteSchemaProbe

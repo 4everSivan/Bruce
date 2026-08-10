@@ -1210,7 +1210,7 @@ class AppCoreResidualContractTests(unittest.TestCase):
             REPO_ROOT / "agent-usage" / "collector" / "collect_usage.py"
         ).read_text(encoding="utf-8")
         label_start = source.index("def orca_account_label")
-        label_end = source.index("    # 5 个本地扫描互不共享状态")
+        label_end = source.index("    # 6 个本地扫描互不共享状态")
         label = source[label_start:label_end]
         self.assertIn("not _APP_MODE", label)
         # 磁盘回退是受保护的单点; App 模式注入 orca_codex_auth 时

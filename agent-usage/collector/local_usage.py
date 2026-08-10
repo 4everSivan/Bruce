@@ -11,6 +11,7 @@ import datetime
 import glob
 import json
 import os
+import sqlite3
 
 import runtime
 from pricing import estimate_cost
@@ -384,3 +385,64 @@ def _extract_grok_content(content):
         return " ".join(parts)
     return ""
 
+
+def scan_opencode(agent, opencode_db):
+    """扫描 opencode 会话用量 (只读 SQLite, 不写不迁移).
+
+    读 `~/.local/share/opencode/opencode.db` 的 session 表 (与 Codex/Orca
+    扫描同构, mode=ro): 每会话 tokens_* 精确计数与 model JSON 直接落桶.
+    schema 不兼容必须产生可诊断状态, 不得静默伪装成空结果.
+    返回是否发现任何会话; db 缺失返回 False (not_found).
+    """
+    if not os.path.exists(opencode_db):
+        return False
+    try:
+        with sqlite3.connect("file:%s?mode=ro" % opencode_db, uri=True) as db:
+            # found 语义: db 中存在任何会话 (即使都在窗口外, 也说明数据源可用)
+            any_session = db.execute(
+                "SELECT 1 FROM session LIMIT 1"
+            ).fetchone()
+            rows = db.execute(
+                "SELECT model, tokens_input, tokens_output, "
+                "tokens_cache_read, tokens_cache_write, time_created, directory "
+                "FROM session WHERE time_created >= ?",
+                (int(runtime.CUTOFF_TS * 1000),),
+            ).fetchall()
+    except sqlite3.Error as e:
+        # schema 不兼容: 可诊断状态, 不伪装空结果
+        agent["status"] = "error"
+        msg = str(e)
+        if "no such table" in msg or "no such column" in msg:
+            agent["note"] = "本机 opencode 数据库 schema 不兼容"
+        else:
+            agent["note"] = "本机 opencode 数据库暂不可读: " + msg[:60]
+        return False
+    if not any_session:
+        return False
+    # db 存在且含会话: 视为发现 (窗口外的会话不计入用量, 但数据源可用)
+    found = True
+    for model_json, tin, tout, tcr, tcw, ts, directory in rows:
+        if ts is None:
+            continue
+        model = "opencode"
+        if model_json:
+            try:
+                parsed = json.loads(model_json)
+                model = (parsed or {}).get("id") or model
+            except (ValueError, TypeError):
+                pass
+        # 项目名取目录末段 (与 Codex/Kimi 的项目语义一致; 会话标题是内容不是项目)
+        project = None
+        if directory:
+            project = os.path.basename(directory.rstrip(os.sep)) or None
+        record_usage(
+            agent,
+            ts / 1000.0,
+            model,
+            int(tin or 0),
+            int(tout or 0),
+            int(tcr or 0),
+            int(tcw or 0),
+            project=project,
+        )
+    return found

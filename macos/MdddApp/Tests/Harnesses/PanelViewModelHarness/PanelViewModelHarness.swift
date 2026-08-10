@@ -214,6 +214,7 @@ struct PanelViewModelHarness {
         try providerOrderOverridesDefaultSort()
         try providerOrderUnknownIDsGoLast()
         try providerOrderNormalizesKimiCodingID()
+        try providerOrderMatchesOpenCodeGoRawValue()
         try presentationPolicyTableDrivenRules()
         try singleAccountSectionNameOmitsAccountSuffix()
         print("PanelViewModel tests passed: 40")
@@ -1408,17 +1409,52 @@ struct PanelViewModelHarness {
             "deepseek 应排在后面: \(sections.map(\.id))"
         )
     }
+    /// opencode_go service ID 归一为 rawValue "opencodeGo",
+    /// 与配置 providerOrder 键一致, 用户调整顺序可正确匹配.
+    private static func providerOrderMatchesOpenCodeGoRawValue() throws {
+        let go = makeService(
+            id: "opencode_go_eada03635c22306a",
+            name: "OpenCode GO · eada0363",
+            kind: "windows",
+            windows: [makeWindow(label: "每 5 小时", usedPercent: 3, windowMinutes: 300)]
+        )
+        let kimi = makeService(
+            id: "kimi_coding",
+            name: "Kimi",
+            kind: "windows",
+            windows: [makeWindow(label: "5小时窗口", usedPercent: 68, windowMinutes: 300)]
+        )
+        let artifact = makeAgentUsageArtifact(agents: [], services: [go, kimi])
+        // 配置顺序: opencodeGo 在前 (rawValue 键)
+        let vm = makeMapper().make(
+            agentUsage: artifact,
+            moduleStatuses: readyStatuses,
+            providerOrder: ["opencodeGo", "kimi"]
+        )
+        guard let sections = vm.subscription?.sections else {
+            throw PanelTestFailure.expectation("订阅卡意外为 nil")
+        }
+        try expect(sections.count == 2, "段数量错误: \(sections.count)")
+        try expect(
+            sections[0].id == "opencode_go_eada03635c22306a",
+            "opencodeGo 应按 rawValue 顺序排前: \(sections.map(\.id))"
+        )
+        try expect(
+            sections[0].name == "OpenCode GO",
+            "分组名应为 OpenCode GO: \(sections[0].name)"
+        )
+    }
+
     // S5a: SubscriptionPresentationPolicy 纯规则表驱动锁定.
-    private static func presentationPolicyTableDrivenRules() throws {
-        // kimi_coding → kimi 排序键; 其他原样.
+    private static func presentationPolicyTableDrivenRules() throws {        // kimi_coding → kimi 排序键; 其他原样.
         let providerIDCases: [(String, String)] = [
             ("kimi_coding", "kimi"),
             ("kimi", "kimi"),
             ("deepseek", "deepseek"),
             ("volcengine", "volcengine"),
             ("codex", "codex"),
-            ("opencode_go_eada03635c22306a", "opencode-go"),
-            ("opencode_go_acct1", "opencode-go"),
+            ("opencode_go_eada03635c22306a", "opencodeGo"),
+            ("opencode_go_acct1", "opencodeGo"),
         ]
         for (input, expected) in providerIDCases {
             let got = SubscriptionPresentationPolicy.providerID(forServiceID: input)

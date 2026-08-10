@@ -103,6 +103,18 @@ class CodexMergedAgentTests(unittest.TestCase):
             "collect_usage_codex_merge_test",
             "agent-usage/collector/collect_usage.py",
         )
+        # opencode agent 扫描隔离: 本套件聚焦 Codex 合并语义,
+        # 不触发真实 opencode CLI.
+        from unittest import mock
+        self._opencode_mock = mock.patch.object(
+            self.module.local_usage,
+            "scan_opencode",
+            return_value=False,
+        )
+        self._opencode_mock.start()
+
+    def tearDown(self):
+        self._opencode_mock.stop()
 
     def _ctx(self, temp_home):
         return {
@@ -143,7 +155,7 @@ class CodexMergedAgentTests(unittest.TestCase):
     def _codex_agent(self, artifact):
         ids = [agent["id"] for agent in artifact["agents"]]
         self.assertEqual(
-            ids, ["kimi-work", "kimi-code-cli", "claude-code", "codex", "grok"]
+            ids, ["kimi-work", "kimi-code-cli", "claude-code", "codex", "grok", "opencode"]
         )
         return artifact["agents"][3]
 

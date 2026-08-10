@@ -39,7 +39,7 @@ from runtime import RunContext, day_of, hour_of, parse_iso, epoch_from_iso  # no
 import quota_services
 import quota_official
 import local_usage
-from local_usage import finalize, make_agent, new_bucket, record_usage, scan_claude, scan_codex, scan_kimi, scan_grok  # noqa: E402
+from local_usage import finalize, make_agent, new_bucket, record_usage, scan_claude, scan_codex, scan_grok, scan_kimi, scan_opencode  # noqa: E402
 import codex_compat
 import service_catalog
 
@@ -163,6 +163,13 @@ def _build_run_context(ctx):
         path_overrides,
         "kimi_web_tokens",
         os.path.join(home, ".config/kimi-dashboard/kimi-web-tokens.json"),
+    )
+    # opencode 会话数据库 (agent 用量只读来源; 订阅额度仍走网页 API,
+    # 不读本库). mode=ro 只读, 不写不迁移.
+    paths["opencode_db"] = _path_override(
+        path_overrides,
+        "opencode_db",
+        os.path.join(home, ".local/share/opencode/opencode.db"),
     )
 
     timezone_value = ctx.get("timezone")
@@ -1185,10 +1192,28 @@ def _collect(run_ctx):
             agent["note"] = "未发现会话记录"
         return finalize(agent, pricing)
 
-    # 5 个本地扫描互不共享状态 (各自累积独立 agent, 全局窗口配置只读),
+    def build_opencode():
+        agent = make_agent("opencode", "OpenCode")
+        if not sessions_allowed:
+            _mark_sessions_denied(agent)
+        elif scan_opencode(agent, paths["opencode_db"]):
+            agent["note"] = "本机 opencode 会话, 精确 token 计数"
+        else:
+            agent["status"] = "not_found"
+            agent["note"] = "未发现 opencode 会话记录"
+        return finalize(agent, pricing)
+
+    # 6 个本地扫描互不共享状态 (各自累积独立 agent, 全局窗口配置只读),
     # 并行执行; join 后按固定顺序组装, artifact 结构不变
-    builders = [build_kimi_work, build_kimi_cli, build_claude, build_codex, build_grok]
-    with ThreadPoolExecutor(max_workers=5) as pool:
+    builders = [
+        build_kimi_work,
+        build_kimi_cli,
+        build_claude,
+        build_codex,
+        build_grok,
+        build_opencode,
+    ]
+    with ThreadPoolExecutor(max_workers=6) as pool:
         agents = list(pool.map(lambda build: build(), builders))
 
     if run_ctx.capability_allowed("externalQuotas"):

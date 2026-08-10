@@ -66,6 +66,13 @@ public struct LocalDependencyScanPaths: Sendable {
                     displayName: "Codex CLI",
                     url: home.appendingPathComponent(".codex/sessions")
                 ),
+                // opencode 会话库 (db 文件, agent 用量只读来源)
+                SessionDirectory(
+                    displayName: "OpenCode",
+                    url: home.appendingPathComponent(
+                        ".local/share/opencode/opencode.db"
+                    )
+                ),
             ],
             sqliteDatabases: [
                 SQLiteDatabase(
@@ -155,13 +162,15 @@ public struct LocalDependencyScanner: Sendable {
     }
 
     /// 扫描会话目录存在性, 只读.
+    /// opencode 会话源是 db 文件而非目录, 按文件存在性判断.
     public func scanSessionDirectories() -> [DependencyProbe] {
         paths.sessionDirectories.map { candidate in
             var isDirectory: ObjCBool = false
-            let exists = FileManager.default.fileExists(
-                atPath: candidate.url.path,
-                isDirectory: &isDirectory
-            ) && isDirectory.boolValue
+            let fm = FileManager.default
+            let exists = fm.fileExists(atPath: candidate.url.path, isDirectory: &isDirectory)
+                && isDirectory.boolValue
+                // opencode 会话库是文件: 文件存在即视为可用
+                || (!isDirectory.boolValue && fm.fileExists(atPath: candidate.url.path))
             return DependencyProbe(
                 kind: .sessionDirectory,
                 status: exists ? .available : .missing,
