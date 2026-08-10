@@ -389,8 +389,10 @@ def _extract_grok_content(content):
 def scan_opencode(agent, opencode_db):
     """扫描 opencode 会话用量 (只读 SQLite, 不写不迁移).
 
-    读 `~/.local/share/opencode/opencode.db` 的 session 表 (与 Codex/Orca
-    扫描同构, mode=ro): 每会话 tokens_* 精确计数与 model JSON 直接落桶.
+    读 `~/.local/share/opencode/opencode.db` 的 message 表 (与 Codex/Orca
+    扫描同构, mode=ro): 每条 assistant 消息有独立的 time.created (毫秒)
+    与 tokens (input/output/reasoning/cache), 按消息时刻精确分桶 —
+    session 表的 time_created 只是会话创建时间, 会把全天用量误归到凌晨.
     schema 不兼容必须产生可诊断状态, 不得静默伪装成空结果.
     返回是否发现任何会话; db 缺失返回 False (not_found).
     """
@@ -398,15 +400,14 @@ def scan_opencode(agent, opencode_db):
         return False
     try:
         with sqlite3.connect("file:%s?mode=ro" % opencode_db, uri=True) as db:
-            # found 语义: db 中存在任何会话 (即使都在窗口外, 也说明数据源可用)
-            any_session = db.execute(
-                "SELECT 1 FROM session LIMIT 1"
+            # found 语义: db 中存在任何消息 (即使都在窗口外, 也说明数据源可用)
+            any_message = db.execute(
+                "SELECT 1 FROM message LIMIT 1"
             ).fetchone()
             rows = db.execute(
-                "SELECT model, tokens_input, tokens_output, "
-                "tokens_cache_read, tokens_cache_write, time_created, directory "
-                "FROM session WHERE time_created >= ?",
-                (int(runtime.CUTOFF_TS * 1000),),
+                "SELECT data FROM message "
+                "WHERE data LIKE '%tokens%' "
+                "ORDER BY json_extract(data, '$.time.created')"
             ).fetchall()
     except sqlite3.Error as e:
         # schema 不兼容: 可诊断状态, 不伪装空结果
@@ -417,32 +418,34 @@ def scan_opencode(agent, opencode_db):
         else:
             agent["note"] = "本机 opencode 数据库暂不可读: " + msg[:60]
         return False
-    if not any_session:
+    if not any_message:
         return False
-    # db 存在且含会话: 视为发现 (窗口外的会话不计入用量, 但数据源可用)
+    # db 存在且含消息: 视为发现 (窗口外的消息不计入用量, 但数据源可用)
     found = True
-    for model_json, tin, tout, tcr, tcw, ts, directory in rows:
-        if ts is None:
+    cutoff_ms = int(runtime.CUTOFF_TS * 1000)
+    for (data,) in rows:
+        try:
+            msg = json.loads(data)
+        except (ValueError, TypeError):
             continue
-        model = "opencode"
-        if model_json:
-            try:
-                parsed = json.loads(model_json)
-                model = (parsed or {}).get("id") or model
-            except (ValueError, TypeError):
-                pass
-        # 项目名取目录末段 (与 Codex/Kimi 的项目语义一致; 会话标题是内容不是项目)
-        project = None
-        if directory:
-            project = os.path.basename(directory.rstrip(os.sep)) or None
+        if msg.get("role") != "assistant":
+            continue
+        tokens = msg.get("tokens") or {}
+        if not tokens:
+            continue
+        created = (msg.get("time") or {}).get("created")
+        if not isinstance(created, (int, float)) or created < cutoff_ms:
+            continue
+        cache = tokens.get("cache") or {}
+        model = msg.get("modelID") or "opencode"
+        found = True
         record_usage(
             agent,
-            ts / 1000.0,
+            created / 1000.0,
             model,
-            int(tin or 0),
-            int(tout or 0),
-            int(tcr or 0),
-            int(tcw or 0),
-            project=project,
+            int(tokens.get("input") or 0),
+            int(tokens.get("output") or 0) + int(tokens.get("reasoning") or 0),
+            int(cache.get("read") or 0),
+            int(cache.get("write") or 0),
         )
     return found
