@@ -92,6 +92,70 @@ class AgentAggregationTests(unittest.TestCase):
         self.assertEqual(result["today"]["total"], 0)
         self.assertTrue(all(day["total"] == 0 for day in result["daily"]))
 
+    def test_claude_skeleton_usage_writes_take_complete_value(self):
+        """Claude Code (>= 2.1.228) 会把流式骨架 (usage=0) 与完整记录写入同一
+        message id. scan_claude 必须取完整值 (max per id), 不能保留首次出现的
+        usage=0, 否则 input/output 被大量丢弃.
+        """
+        agent = self.module.make_agent("claude-code", "Claude Code")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "claude-projects"
+            session = root / "fixture-project" / "session.jsonl"
+            skeleton = {
+                "type": "assistant",
+                "message": {
+                    "id": "msg-skeleton",
+                    "model": "deepseek-v4-flash",
+                    "content": [],
+                    "usage": {"input_tokens": 0, "output_tokens": 0},
+                },
+                "timestamp": "2026-07-28T02:00:00.000Z",
+            }
+            complete = {
+                "type": "assistant",
+                "message": {
+                    "id": "msg-skeleton",
+                    "model": "deepseek-v4-flash",
+                    "content": [{"type": "text", "text": "x"}],
+                    "usage": {
+                        "input_tokens": 1000,
+                        "output_tokens": 500,
+                        "cache_read_input_tokens": 200,
+                        "cache_creation_input_tokens": 0,
+                    },
+                },
+                "timestamp": "2026-07-28T02:00:01.000Z",
+            }
+            single = {
+                "type": "assistant",
+                "message": {
+                    "id": "msg-single",
+                    "model": "deepseek-v4-flash",
+                    "content": [{"type": "text", "text": "y"}],
+                    "usage": {
+                        "input_tokens": 500,
+                        "output_tokens": 300,
+                        "cache_read_input_tokens": 0,
+                        "cache_creation_input_tokens": 0,
+                    },
+                },
+                "timestamp": "2026-07-28T02:00:02.000Z",
+            }
+            session.parent.mkdir(parents=True, exist_ok=True)
+            session.write_text(
+                "\n".join(json.dumps(r) for r in [skeleton, complete, single])
+                + "\n",
+                encoding="utf-8",
+            )
+            os.utime(session, (_ts("2026-07-27T00:00:00+00:00"),) * 2)
+            self.module.scan_claude(agent, str(root))
+            result = self.module.finalize(agent, {})
+            # 骨架 (usage=0) 与完整记录同属一个 message id: 必须取完整值
+            self.assertEqual(result["today"]["input"], 1500)
+            self.assertEqual(result["today"]["output"], 800)
+            self.assertEqual(result["today"]["cacheRead"], 200)
+            self.assertEqual(result["today"]["total"], 2500)
+
 
 class CodexMergedAgentTests(unittest.TestCase):
     """Codex CLI 与 Orca 托管会话合并为单个 codex agent 的采集层测试."""
