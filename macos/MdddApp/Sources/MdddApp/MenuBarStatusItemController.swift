@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import MdddAppCore
 import SwiftUI
 
@@ -25,6 +26,10 @@ final class MenuBarStatusItemController: NSObject {
     private var installed = false
     /// 打开面板前的前台应用; toggle 关闭时归还前台. 打开时前台已是 mddd 则为 nil.
     private var previousFrontmostApp: NSRunningApplication?
+    /// 模型变化时重绘状态栏标签图像 (指标值, 刷新状态, 警示符号均驱动显示).
+    private var labelSubscription: AnyCancellable?
+    /// 菜单栏明暗自适应变化时重绘标签 (button.image 不会自动跟随外观).
+    private var appearanceObservation: NSKeyValueObservation?
 
     init(
         model: AppModel,
@@ -46,21 +51,24 @@ final class MenuBarStatusItemController: NSObject {
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = item.button {
-            let hostingView = NSHostingView(rootView: MenuBarLabelView(model: model))
-            // 状态项按钮无 title/image, 默认 sizingOptions 不提供内在尺寸,
-            // 按钮会折叠为 0 宽导致标签不可见; preferredContentSize 让 hosting
-            // view 报告 SwiftUI 内容的理想尺寸, 按钮随之取宽.
-            hostingView.sizingOptions = .preferredContentSize
-            hostingView.translatesAutoresizingMaskIntoConstraints = false
-            button.addSubview(hostingView)
-            NSLayoutConstraint.activate([
-                hostingView.topAnchor.constraint(equalTo: button.topAnchor),
-                hostingView.bottomAnchor.constraint(equalTo: button.bottomAnchor),
-                hostingView.leadingAnchor.constraint(equalTo: button.leadingAnchor),
-                hostingView.trailingAnchor.constraint(equalTo: button.trailingAnchor),
-            ])
+            // 状态项按钮无 title/image 时, 其内在尺寸只由 button.image/title
+            // 决定, 不感知子视图 (实测 hosting 子视图方案按钮折叠为 0 宽, 状态栏
+            // 不显示任何内容). 用 ImageRenderer 把 SwiftUI 标签栅格化为按钮图像,
+            // 状态栏据此确定按钮宽度, 颜色随菜单栏明暗自适应.
+            refreshLabelImage(on: button)
+            button.imagePosition = .imageOnly
             button.target = self
             button.action = #selector(statusItemClicked(_:))
+            // 模型任何 @Published 变化都重绘标签; objectWillChange 在值应用前
+            // 发出, 调度到下一轮 main-actor 取到新值再渲染.
+            labelSubscription = model.objectWillChange
+                .sink { [weak self] _ in
+                    Task { @MainActor in self?.refreshLabelImage() }
+                }
+            // 系统或「深色菜单栏」外观切换时重绘, 否则文字与菜单栏同色而不可见.
+            appearanceObservation = button.observe(\.effectiveAppearance) { [weak self] _, _ in
+                Task { @MainActor in self?.refreshLabelImage() }
+            }
         }
 
         panel.contentViewController = NSHostingController(
@@ -96,6 +104,42 @@ final class MenuBarStatusItemController: NSObject {
         statusItem = item
     }
 
+    // MARK: - 状态栏标签图像
+
+    /// 重绘状态项按钮图像 (当前按钮).
+    private func refreshLabelImage() {
+        guard let button = statusItem?.button else { return }
+        refreshLabelImage(on: button)
+    }
+
+    /// 用 ImageRenderer 栅格化 MenuBarLabelView 为按钮图像.
+    /// 明暗自适应: 按钮的 effectiveAppearance 反映状态栏 (含「深色菜单栏」独立
+    /// 设置), 据此给标签注入 colorScheme, 避免文字与菜单栏同色而不可见.
+    private func refreshLabelImage(on button: NSStatusBarButton) {
+        let isDark = button.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua])
+            == .darkAqua
+        let renderer = ImageRenderer(
+            content: MenuBarLabelView(model: model)
+                .preferredColorScheme(isDark ? .dark : .light)
+        )
+        renderer.scale = button.window?.screen?.backingScaleFactor
+            ?? NSScreen.main?.backingScaleFactor
+            ?? 2
+        button.image = renderer.nsImage
+        button.setAccessibilityLabel(menuBarAccessibilityLabel)
+    }
+
+    /// 与 MenuBarLabelView 内部一致的辅助功能描述.
+    private var menuBarAccessibilityLabel: String {
+        let formatter = MenuBarMetricFormatter()
+        let summary = model.makeMenuBarSummary()
+        let metrics = model.menuBarMetrics.map {
+            "\($0.title) \(formatter.string(for: $0, summary: summary))"
+        }
+        return (["mddd", summary.overallStatus.title] + metrics)
+            .joined(separator: ", ")
+    }
+
     /// 切换仪表盘开/关 (全局快捷键与状态项点击共用).
     func toggleDashboard() {
         guard installed, let button = statusItem?.button else { return }
@@ -109,6 +153,10 @@ final class MenuBarStatusItemController: NSObject {
     /// 退出时清理.
     func teardown() {
         NotificationCenter.default.removeObserver(self)
+        labelSubscription?.cancel()
+        labelSubscription = nil
+        appearanceObservation?.invalidate()
+        appearanceObservation = nil
         closeDashboard(restorePreviousFrontmostApp: false)
         if let statusItem {
             NSStatusBar.system.removeStatusItem(statusItem)
