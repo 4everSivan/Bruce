@@ -28,8 +28,6 @@ final class MenuBarStatusItemController: NSObject {
     private var previousFrontmostApp: NSRunningApplication?
     /// 模型变化时重绘状态栏标签图像 (指标值, 刷新状态, 警示符号均驱动显示).
     private var labelSubscription: AnyCancellable?
-    /// 菜单栏明暗自适应变化时重绘标签 (button.image 不会自动跟随外观).
-    private var appearanceObservation: NSKeyValueObservation?
 
     init(
         model: AppModel,
@@ -65,10 +63,6 @@ final class MenuBarStatusItemController: NSObject {
                 .sink { [weak self] _ in
                     Task { @MainActor in self?.refreshLabelImage() }
                 }
-            // 系统或「深色菜单栏」外观切换时重绘, 否则文字与菜单栏同色而不可见.
-            appearanceObservation = button.observe(\.effectiveAppearance) { [weak self] _, _ in
-                Task { @MainActor in self?.refreshLabelImage() }
-            }
         }
 
         panel.contentViewController = NSHostingController(
@@ -113,19 +107,21 @@ final class MenuBarStatusItemController: NSObject {
     }
 
     /// 用 ImageRenderer 栅格化 MenuBarLabelView 为按钮图像.
-    /// 明暗自适应: 按钮的 effectiveAppearance 反映状态栏 (含「深色菜单栏」独立
-    /// 设置), 据此给标签注入 colorScheme, 避免文字与菜单栏同色而不可见.
+    /// 渲染成白色单色轮廓并标记 isTemplate, 由菜单栏按自身明暗自动着色
+    /// (浅色菜单栏黑色, 深色菜单栏白色), 与原生状态项图标同一机制: 不依赖
+    /// 外观检测, 外观切换也无需重绘.
     private func refreshLabelImage(on button: NSStatusBarButton) {
-        let isDark = button.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua])
-            == .darkAqua
         let renderer = ImageRenderer(
             content: MenuBarLabelView(model: model)
-                .preferredColorScheme(isDark ? .dark : .light)
+                .foregroundStyle(.white)
         )
         renderer.scale = button.window?.screen?.backingScaleFactor
             ?? NSScreen.main?.backingScaleFactor
             ?? 2
-        button.image = renderer.nsImage
+        // 渲染失败时保留旧图, 避免按钮清空回退到不可见.
+        guard let image = renderer.nsImage else { return }
+        image.isTemplate = true
+        button.image = image
         button.setAccessibilityLabel(menuBarAccessibilityLabel)
     }
 
@@ -155,8 +151,6 @@ final class MenuBarStatusItemController: NSObject {
         NotificationCenter.default.removeObserver(self)
         labelSubscription?.cancel()
         labelSubscription = nil
-        appearanceObservation?.invalidate()
-        appearanceObservation = nil
         closeDashboard(restorePreviousFrontmostApp: false)
         if let statusItem {
             NSStatusBar.system.removeStatusItem(statusItem)
