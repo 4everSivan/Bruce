@@ -103,7 +103,13 @@ plutil -insert CFBundleInfoDictionaryVersion -string "6.0" \
     "$MDDD_INFO_PLIST"
 plutil -insert CFBundleName -string "mddd" "$MDDD_INFO_PLIST"
 plutil -insert CFBundlePackageType -string "APPL" "$MDDD_INFO_PLIST"
-plutil -insert CFBundleShortVersionString -string "0.1.0" \
+# 版本号单一事实源: 从 pyproject.toml 读取 (正则, Python 3.9 兼容).
+MDDD_VERSION=$(python3 -c 'import re; m = re.search(r"^version\s*=\s*\"([^\"]+)\"", open("pyproject.toml").read(), re.M); print(m.group(1) if m else "")')
+if [[ -z "$MDDD_VERSION" ]]; then
+    echo "无法从 pyproject.toml 读取版本号" >&2
+    exit 1
+fi
+plutil -insert CFBundleShortVersionString -string "$MDDD_VERSION" \
     "$MDDD_INFO_PLIST"
 plutil -insert CFBundleVersion -string "1" "$MDDD_INFO_PLIST"
 plutil -insert CFBundleIconFile -string "AppIcon" "$MDDD_INFO_PLIST"

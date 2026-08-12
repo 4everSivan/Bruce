@@ -217,7 +217,8 @@ struct PanelViewModelHarness {
         try providerOrderMatchesOpenCodeGoRawValue()
         try presentationPolicyTableDrivenRules()
         try singleAccountSectionNameOmitsAccountSuffix()
-        print("PanelViewModel tests passed: 40")
+        try appVersionReadsBundleAndFallsBack()
+        print("PanelViewModel tests passed: 41")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -1599,6 +1600,28 @@ struct PanelViewModelHarness {
         try expect(
             multi[0].accounts.map(\.name) == ["sk-12345", "sk-67890"],
             "子卡名应剥离 DeepSeek 前缀: \(multi[0].accounts.map(\.name))"
+        )
+    }
+
+    // MARK: - AppVersion
+
+    /// AppVersion: 纯逻辑读取版本; 缺失回落 unknown.
+    private static func appVersionReadsBundleAndFallsBack() throws {
+        try expect(
+            AppVersion.current(raw: "0.3.0") == "0.3.0",
+            "应读取注入的短版本字符串"
+        )
+        try expect(
+            AppVersion.current(raw: nil) == "unknown",
+            "缺版本应回落 unknown"
+        )
+        try expect(
+            AppVersion.current(raw: "") == "unknown",
+            "空字符串应回落 unknown"
+        )
+        try expect(
+            AppVersion.current(raw: 123) == "unknown",
+            "非字符串应回落 unknown"
         )
     }
 

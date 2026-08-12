@@ -175,7 +175,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             .environmentObject(model)
             .environmentObject(coordinator)
             .environmentObject(diagnostics)
-            .frame(minWidth: 700, minHeight: 620)
+            .frame(minWidth: 760, minHeight: 600)
         let window = NSWindow(
             contentViewController: NSHostingController(rootView: rootView)
         )
@@ -186,8 +186,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             .miniaturizable,
             .resizable,
         ]
-        window.minSize = NSSize(width: 700, height: 620)
-        window.setContentSize(NSSize(width: 900, height: 650))
+        window.minSize = NSSize(width: 760, height: 600)
+        window.setContentSize(NSSize(width: 860, height: 600))
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.center()

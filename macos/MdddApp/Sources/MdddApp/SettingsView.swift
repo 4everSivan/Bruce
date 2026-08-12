@@ -5,13 +5,15 @@ import SwiftUI
 import UniformTypeIdentifiers
 import UserNotifications
 
-/// Onboarding 设置页: 三张模块状态卡 + 统一授权区.
+/// 设置页: 左侧边栏分类导航 + 右侧单分类面板 (方案 A, 原型 settings-redesign-v1).
 /// 状态同时使用图标和文字; 扫描或验证中的卡片只禁用对应按钮, 不阻塞其他模块.
 struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var coordinator: OnboardingCoordinator
     @EnvironmentObject private var diagnostics: DiagnosticService
 
+    /// 侧边栏选中分类.
+    @State private var category = SettingsCategory.general
     @State private var diagnosticsPreview = ""
     @State private var showsDiagnosticsPreview = false
     // 订阅额度分区输入与编辑态
@@ -38,24 +40,64 @@ struct SettingsView: View {
     @State private var showsClearCacheConfirm = false
     @State private var dataActionMessage: String?
 
-    var body: some View {
-        Form {
-            if let error = model.settingsErrorMessage {
-                Section {
-                    Label(error, systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                        .accessibilityLabel("设置错误: \(error)")
-                }
-            }
+    /// 侧边栏分类: 图标色沿用原分区色条配色.
+    private enum SettingsCategory: String, CaseIterable, Identifiable {
+        case general, agentUsage, subscription, consent, maintenance
 
-            generalSection
-            agentUsageCard
-            subscriptionSection
-            consentSection
-            dataSection
-            diagnosticsSection
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .general: return "通用"
+            case .agentUsage: return "Agent 用量"
+            case .subscription: return "订阅额度"
+            case .consent: return "授权与隐私"
+            case .maintenance: return "维护"
+            }
         }
-        .formStyle(.grouped)
+
+        var systemImage: String {
+            switch self {
+            case .general: return "gearshape"
+            case .agentUsage: return "chart.bar.fill"
+            case .subscription: return "cloud.fill"
+            case .consent: return "checkmark.shield.fill"
+            case .maintenance: return "wrench.and.screwdriver.fill"
+            }
+        }
+
+        var tint: Color {
+            switch self {
+            case .general: return Color(hex: "#0a84ff")
+            case .agentUsage: return Color(hex: "#30d158")
+            case .subscription: return Color(hex: "#ff9f0a")
+            case .consent: return Color(hex: "#bf5af2")
+            case .maintenance: return Color(hex: "#8e8e93")
+            }
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            sidebar
+            Divider()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    if let error = model.settingsErrorMessage {
+                        Label(error, systemImage: "exclamationmark.triangle.fill")
+                            .font(.callout)
+                            .foregroundStyle(.orange)
+                            .accessibilityLabel("设置错误: \(error)")
+                    }
+                    paneTitle(category.title)
+                    paneContent
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 18)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
         .preferredColorScheme(coordinator.appearanceMode.colorScheme)
         .environment(\.mdddResolvedTheme, coordinator.resolvedTheme)
         .sheet(isPresented: $showsDiagnosticsPreview) {
@@ -68,116 +110,196 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - 通用
+    // MARK: - 侧边栏
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(SettingsCategory.allCases) { item in
+                Button {
+                    category = item
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: item.systemImage)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 21, height: 21)
+                            .background(
+                                item.tint,
+                                in: RoundedRectangle(cornerRadius: 5.5, style: .continuous)
+                            )
+                        Text(item.title)
+                            .font(.system(
+                                size: 12.5,
+                                weight: category == item ? .semibold : .medium
+                            ))
+                        Spacer()
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(
+                        category == item ? Color.primary.opacity(0.08) : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(category == item ? .isSelected : [])
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+        .padding(.top, 14)
+        .frame(width: 200)
+        .frame(maxHeight: .infinity)
+        .background(SidebarMaterialView())
+    }
+
+    // MARK: - 面板切换
+
+    @ViewBuilder
+    private var paneContent: some View {
+        switch category {
+        case .general: generalPane
+        case .agentUsage: agentUsagePane
+        case .subscription: subscriptionPane
+        case .consent: consentPane
+        case .maintenance: maintenancePane
+        }
+    }
+
+    /// 面板大标题.
+    private func paneTitle(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 17, weight: .bold))
+    }
+
+    /// 面板内次级分组标题 (如「菜单栏指标」).
+    private func paneCaption(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 10.5, weight: .semibold))
+            .tracking(0.4)
+            .foregroundStyle(.secondary)
+            .padding(.leading, 2)
+    }
+
+    // MARK: - 通用面板
 
     /// 通用偏好: 外观, 界面风格, 模糊风格, 自动刷新与菜单栏指标.
-    private var generalSection: some View {
+    private var generalPane: some View {
         let glassSupported = coordinator.liquidGlassSupported()
         let showBlurStyles = glassSupported
             && coordinator.resolvedTheme.interfaceStyle == .liquidGlass
 
-        return Section("通用") {
-            Picker(
-                "配色模式",
-                selection: Binding(
-                    get: { coordinator.appearanceMode },
-                    set: { coordinator.setAppearanceMode($0) }
-                )
-            ) {
-                Text("跟随系统").tag(AppearancePreference.system)
-                Text("浅色").tag(AppearancePreference.light)
-                Text("深色").tag(AppearancePreference.dark)
-            }
-            .pickerStyle(.segmented)
-            .accessibilityHint("立即作用于菜单栏面板与本设置窗口, 跟随系统时与 macOS 外观一致")
-
-            VStack(alignment: .leading, spacing: 6) {
+        return VStack(alignment: .leading, spacing: 14) {
+            SettingsCard {
                 Picker(
-                    "界面风格",
+                    "配色模式",
                     selection: Binding(
-                        get: { coordinator.interfaceStyle },
-                        set: { coordinator.setInterfaceStyle($0) }
+                        get: { coordinator.appearanceMode },
+                        set: { coordinator.setAppearanceMode($0) }
                     )
                 ) {
-                    Text("经典").tag(InterfaceStylePreference.classic)
-                    Text("液态玻璃").tag(InterfaceStylePreference.liquidGlass)
+                    Text("跟随系统").tag(AppearancePreference.system)
+                    Text("浅色").tag(AppearancePreference.light)
+                    Text("深色").tag(AppearancePreference.dark)
                 }
                 .pickerStyle(.segmented)
-                // 不支持液态玻璃时整段禁用 (强制经典), 旁注说明原因.
-                .disabled(!glassSupported)
-                .opacity(glassSupported ? 1 : 0.55)
-                .accessibilityHint(
-                    glassSupported
-                        ? "经典为材质面板; 液态玻璃使用系统玻璃效果"
-                        : "液态玻璃需要 macOS 26; 当前仅可使用经典"
-                )
-                if !glassSupported {
-                    Text("液态玻璃需要 macOS 26 或更高版本")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
+                .accessibilityHint("立即作用于菜单栏面板与本设置窗口, 跟随系统时与 macOS 外观一致")
 
-            if showBlurStyles {
-                Picker(
-                    "模糊风格",
-                    selection: Binding(
-                        get: { coordinator.glassStyle },
-                        set: { coordinator.setGlassStyle($0) }
-                    )
-                ) {
-                    Text("标准").tag(GlassStylePreference.regular)
-                    Text("通透").tag(GlassStylePreference.clear)
-                    Text("哑光").tag(GlassStylePreference.material)
-                }
-                .pickerStyle(.segmented)
-                .accessibilityHint("标准与通透为系统液态玻璃, 哑光退化为材质质感")
-            }
-
-            Picker(
-                "刷新间隔",
-                selection: Binding(
-                    get: { coordinator.refreshIntervalMinutes },
-                    set: { coordinator.setRefreshIntervalMinutes($0) }
-                )
-            ) {
-                ForEach(
-                    OnboardingConfiguration.allowedRefreshIntervalMinutes,
-                    id: \.self
-                ) { minutes in
-                    Text("\(minutes) 分钟").tag(minutes)
-                }
-            }
-            .accessibilityHint("已授权模块的自动采集周期, 变更后立即按新间隔重新计时")
-
-            HStack {
-                Label("系统通知", systemImage: "bell.badge")
-                Spacer()
-                if notificationDenied {
-                    Text("未开启")
-                        .foregroundStyle(.orange)
-                    Button("前往系统设置") {
-                        NSWorkspace.shared.open(
-                            URL(string: "x-apple.systempreferences:com.apple.preference.notifications")!
+                VStack(alignment: .leading, spacing: 6) {
+                    Picker(
+                        "界面风格",
+                        selection: Binding(
+                            get: { coordinator.interfaceStyle },
+                            set: { coordinator.setInterfaceStyle($0) }
                         )
+                    ) {
+                        Text("经典").tag(InterfaceStylePreference.classic)
+                        Text("液态玻璃").tag(InterfaceStylePreference.liquidGlass)
                     }
-                    .accessibilityHint("打开系统设置的通知面板, 为本应用开启通知权限")
-                } else {
-                    Text("已开启")
-                        .foregroundStyle(.secondary)
+                    .pickerStyle(.segmented)
+                    // 不支持液态玻璃时整段禁用 (强制经典), 旁注说明原因.
+                    .disabled(!glassSupported)
+                    .opacity(glassSupported ? 1 : 0.55)
+                    .accessibilityHint(
+                        glassSupported
+                            ? "经典为材质面板; 液态玻璃使用系统玻璃效果"
+                            : "液态玻璃需要 macOS 26; 当前仅可使用经典"
+                    )
+                    if !glassSupported {
+                        Text("液态玻璃需要 macOS 26 或更高版本")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
-            }
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel(notificationDenied ? "系统通知未开启" : "系统通知已开启")
-            .onAppear(perform: refreshNotificationStatus)
 
-            Text("选择 1 至 3 项指标, 菜单栏将按下列顺序紧凑展示; 拖拽已选指标调整顺序")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            menuBarMetricList
+                if showBlurStyles {
+                    Picker(
+                        "模糊风格",
+                        selection: Binding(
+                            get: { coordinator.glassStyle },
+                            set: { coordinator.setGlassStyle($0) }
+                        )
+                    ) {
+                        Text("标准").tag(GlassStylePreference.regular)
+                        Text("通透").tag(GlassStylePreference.clear)
+                        Text("哑光").tag(GlassStylePreference.material)
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityHint("标准与通透为系统液态玻璃, 哑光退化为材质质感")
+                }
+
+                Picker(
+                    "刷新间隔",
+                    selection: Binding(
+                        get: { coordinator.refreshIntervalMinutes },
+                        set: { coordinator.setRefreshIntervalMinutes($0) }
+                    )
+                ) {
+                    ForEach(
+                        OnboardingConfiguration.allowedRefreshIntervalMinutes,
+                        id: \.self
+                    ) { minutes in
+                        Text("\(minutes) 分钟").tag(minutes)
+                    }
+                }
+                .accessibilityHint("已授权模块的自动采集周期, 变更后立即按新间隔重新计时")
+
+                HStack {
+                    Label("系统通知", systemImage: "bell.badge")
+                    Spacer()
+                    if notificationDenied {
+                        Text("未开启")
+                            .foregroundStyle(.orange)
+                        Button("前往系统设置") {
+                            NSWorkspace.shared.open(
+                                URL(string: "x-apple.systempreferences:com.apple.preference.notifications")!
+                            )
+                        }
+                        .accessibilityHint("打开系统设置的通知面板, 为本应用开启通知权限")
+                    } else {
+                        Text("已开启")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel(notificationDenied ? "系统通知未开启" : "系统通知已开启")
+                .onAppear(perform: refreshNotificationStatus)
+
+                LabeledContent("版本", value: AppVersion.current())
+            }
+            .glassButtonStyle()
+
+            paneCaption("菜单栏指标")
+
+            SettingsCard {
+                Text("选择 1 至 3 项指标, 菜单栏将按下列顺序紧凑展示; 拖拽已选指标调整顺序")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                menuBarMetricList
+            }
+            .glassButtonStyle()
         }
-        .glassFormRowBackground()
-        .glassButtonStyle()
     }
 
     /// 查询系统通知授权状态; 仅 denied 视为未开启, notDetermined 会在首次预警时弹授权.
@@ -268,52 +390,53 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - Agent 用量卡
+    // MARK: - Agent 用量面板
 
-    private var agentUsageCard: some View {
+    private var agentUsagePane: some View {
         let result = model.moduleResults[.agentUsage]
         let pythonProbe = result?.localDependencies.first { $0.kind == .python }
         let sessionProbes = (result?.localDependencies ?? [])
             .filter { $0.kind == .sessionDirectory }
         let busy = model.busyModules.contains(.agentUsage)
 
-        return Section("Agent 用量") {
-            LabeledContent("Python") {
-                statusText(
-                    probeStatusText(pythonProbe),
-                    icon: probeStatusIcon(pythonProbe)
-                )
-            }
-            if let version = pythonProbe?.detail {
-                LabeledContent("版本", value: version)
-            }
-            sessionSourceTagsSection(sessionProbes)
-            ForEach(result?.warnings ?? [], id: \.self) { warning in
-                Label(warning, systemImage: "exclamationmark.triangle")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            if let reason = result?.blockingReason {
-                Text(reason)
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            }
-            HStack {
-                Button("选择 Python…") { choosePython() }
-                    .disabled(busy)
-                    .accessibilityHint("选择 Python 3.9 或更高版本的可执行文件")
-                Button("重新检查") { coordinator.rescan() }
-                    .disabled(busy)
-                    .accessibilityLabel("重新检查 Agent 用量依赖")
-                if busy {
-                    ProgressView()
-                        .controlSize(.small)
+        return VStack(alignment: .leading, spacing: 14) {
+            SettingsCard {
+                LabeledContent("Python") {
+                    statusText(
+                        probeStatusText(pythonProbe),
+                        icon: probeStatusIcon(pythonProbe)
+                    )
+                }
+                if let version = pythonProbe?.detail {
+                    LabeledContent("版本", value: version)
+                }
+                sessionSourceTagsSection(sessionProbes)
+                ForEach(result?.warnings ?? [], id: \.self) { warning in
+                    Label(warning, systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if let reason = result?.blockingReason {
+                    Text(reason)
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+                HStack {
+                    Button("选择 Python…") { choosePython() }
+                        .disabled(busy)
+                        .accessibilityHint("选择 Python 3.9 或更高版本的可执行文件")
+                    Button("重新检查") { coordinator.rescan() }
+                        .disabled(busy)
+                        .accessibilityLabel("重新检查 Agent 用量依赖")
+                    if busy {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
                 }
             }
+            .accessibilityElement(children: .contain)
+            .glassButtonStyle()
         }
-        .accessibilityElement(children: .contain)
-        .glassFormRowBackground()
-        .glassButtonStyle()
     }
 
     /// 有效会话源: 药丸标签展示; 本机可用绿色, 不可用灰色; 只展示不可点.
@@ -359,14 +482,15 @@ struct SettingsView: View {
             .accessibilityAddTraits(.isStaticText)
     }
 
-    // MARK: - 订阅额度
+    // MARK: - 订阅额度面板
 
     /// 订阅 provider 的标签式管理: 顶部 Picker 只列未配置的 provider,
     /// 点击添加后其管理组出现在下方列表 (默认收起为一行).
     /// 读取本机文件和真实网络验证都只由用户点击触发;
     /// 失败经 model.settingsErrorMessage 提示 (fail-closed).
-    private var subscriptionSection: some View {
-        Section("订阅额度") {
+    private var subscriptionPane: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SettingsCard {
             Text("配置并启用后, Agent 用量将在统一授权生效时查询对应云端额度; 拖拽行调整看板展示顺序")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -409,10 +533,10 @@ struct SettingsView: View {
                         return true
                     }
             }
+            }
+            .accessibilityElement(children: .contain)
+            .glassButtonStyle()
         }
-        .accessibilityElement(children: .contain)
-        .glassFormRowBackground()
-        .glassButtonStyle()
         .onAppear {
             coordinator.refreshAntigravityLocalAvailability()
             coordinator.refreshOfficialLocalAvailability()
@@ -692,10 +816,11 @@ struct SettingsView: View {
         .accessibilityHint(configured ? "启用后 Collector 将查询该 Provider 云端额度" : "请先配置凭证")
     }
 
-    // MARK: - 统一授权区
+    // MARK: - 授权与隐私面板
 
-    private var consentSection: some View {
-        Section("统一授权") {
+    private var consentPane: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SettingsCard {
             Toggle("Agent 用量", isOn: moduleBinding(.agentUsage))
 
             VStack(alignment: .leading, spacing: 6) {
@@ -734,16 +859,18 @@ struct SettingsView: View {
                 .disabled(coordinator.selectedModules.isEmpty)
                 .accessibilityHint("允许已选模块按 \(coordinator.refreshIntervalMinutes) 分钟周期采集")
             }
+            }
+            .glassButtonStyle()
         }
-        .glassFormRowBackground()
-        .glassButtonStyle()
     }
 
-    // MARK: - 数据
+    // MARK: - 维护面板 (数据 + 诊断)
 
-    /// 数据管理: 清理可再生缓存 (仅本应用快照) 与账单导出.
-    private var dataSection: some View {
-        Section("数据") {
+    /// 维护: 清理可再生缓存 (仅本应用快照), 账单导出, 诊断包预览与导出.
+    private var maintenancePane: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            paneCaption("数据")
+            SettingsCard {
             Text("缓存仅包含本应用生成的快照数据, 清理后下次刷新自动重建; 不影响配置, 凭证与账单统计")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -762,9 +889,33 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            }
+            .glassButtonStyle()
+
+            paneCaption("诊断")
+            SettingsCard {
+                Text("诊断包仅包含应用与系统版本、模块状态、依赖状态和快照校验结果, 不包含 Artifact、账号信息或凭证")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                HStack {
+                    Button("预览诊断") {
+                        do {
+                            diagnosticsPreview = try diagnostics.preview()
+                            model.setSettingsError(nil)
+                            showsDiagnosticsPreview = true
+                        } catch {
+                            model.setSettingsError("诊断预览生成失败")
+                        }
+                    }
+                    .accessibilityHint("显示导出前的脱敏 JSON 内容")
+                    Button("导出诊断包…") {
+                        exportDiagnostics()
+                    }
+                    .accessibilityHint("选择位置保存不含业务数据的 ZIP 文件")
+                }
+            }
+            .glassButtonStyle()
         }
-        .glassFormRowBackground()
-        .glassButtonStyle()
         .confirmationDialog(
             "确认清理缓存?",
             isPresented: $showsClearCacheConfirm,
@@ -824,33 +975,7 @@ struct SettingsView: View {
         return "mddd-billing-\(formatter.string(from: Date())).csv"
     }
 
-    // MARK: - 诊断
-
-    private var diagnosticsSection: some View {
-        Section("诊断") {
-            Text("诊断包仅包含应用与系统版本、模块状态、依赖状态和快照校验结果, 不包含 Artifact、账号信息或凭证")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            HStack {
-                Button("预览诊断") {
-                    do {
-                        diagnosticsPreview = try diagnostics.preview()
-                        model.setSettingsError(nil)
-                        showsDiagnosticsPreview = true
-                    } catch {
-                        model.setSettingsError("诊断预览生成失败")
-                    }
-                }
-                .accessibilityHint("显示导出前的脱敏 JSON 内容")
-                Button("导出诊断包…") {
-                    exportDiagnostics()
-                }
-                .accessibilityHint("选择位置保存不含业务数据的 ZIP 文件")
-            }
-        }
-        .glassFormRowBackground()
-        .glassButtonStyle()
-    }
+    // MARK: - 诊断预览弹层
 
     private var diagnosticsPreviewSheet: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -965,6 +1090,21 @@ struct SettingsView: View {
     }
 }
 
+// MARK: - 侧边栏材质
+
+/// 系统 .sidebar 毛玻璃材质: 与窗口底色自然融合, 替代死板纯灰.
+private struct SidebarMaterialView: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .sidebar
+        view.blendingMode = .behindWindow
+        view.state = .active
+        return view
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
+}
+
 // MARK: - 会话源标签流式布局
 
 /// 从左到右排布子视图, 超出宽度自动换行 (设置页有效会话源药丸标签).
@@ -1022,5 +1162,27 @@ private struct SessionSourceFlowLayout: Layout {
 
         let height = subviews.isEmpty ? 0 : y + rowHeight
         return (CGSize(width: totalWidth, height: height), frames)
+    }
+}
+
+// MARK: - 设置页卡片色条配色
+
+private extension Color {
+    /// 解析 "#rrggbb" 十六进制颜色; 非法输入回退为黑色.
+    init(hex: String) {
+        var text = hex
+        if text.hasPrefix("#") {
+            text.removeFirst()
+        }
+        guard text.count == 6,
+              let value = UInt64(text, radix: 16) else {
+            self = .black
+            return
+        }
+        self = Color(
+            red: Double((value >> 16) & 0xFF) / 255.0,
+            green: Double((value >> 8) & 0xFF) / 255.0,
+            blue: Double(value & 0xFF) / 255.0
+        )
     }
 }
