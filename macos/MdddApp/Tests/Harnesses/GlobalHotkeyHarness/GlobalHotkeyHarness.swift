@@ -38,6 +38,7 @@ struct GlobalHotkeyHarness {
         // 以下两项依赖 Task 2 的 OnboardingConfiguration.dashboardHotkey,
         // 本任务暂注释, Task 2 Step 2 恢复.
         try onboardingConfigFallsBackToNil()
+        try onboardingConfigExplicitNullFallsBackToNil()
         try onboardingConfigRoundTripsHotkey()
         print("GlobalHotkeyHarness: 全部通过")
     }
@@ -175,6 +176,19 @@ struct GlobalHotkeyHarness {
             OnboardingConfiguration.self, from: Data(json.utf8)
         )
         try expect(config.dashboardHotkey == nil, "缺键应回落 nil")
+        try expect(config.resolvedDashboardHotkey == nil, "解析值应回落 nil")
+    }
+
+    // 显式 dashboardHotkey:null 字段: 解码回落 nil.
+    private static func onboardingConfigExplicitNullFallsBackToNil() throws {
+        let json = """
+        {"schemaVersion":2,"selectedModules":[],"connectionStates":{},
+         "lastVerifiedAt":{},"dashboardHotkey":null}
+        """
+        let config = try JSONDecoder().decode(
+            OnboardingConfiguration.self, from: Data(json.utf8)
+        )
+        try expect(config.dashboardHotkey == nil, "显式 null 应回落 nil")
         try expect(config.resolvedDashboardHotkey == nil, "解析值应回落 nil")
     }
 

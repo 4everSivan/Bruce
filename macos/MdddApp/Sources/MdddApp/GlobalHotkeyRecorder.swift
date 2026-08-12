@@ -54,6 +54,7 @@ struct GlobalHotkeyRecorder: View {
             NSEvent.removeMonitor(keyDownMonitor)
             self.keyDownMonitor = nil
         }
+        recordingError = nil
         isRecording = false
     }
 

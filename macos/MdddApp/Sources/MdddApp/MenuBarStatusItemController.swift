@@ -1,6 +1,5 @@
 import AppKit
 import MdddAppCore
-import MdddOnboardingCore
 import SwiftUI
 
 /// 菜单栏状态项 + 仪表盘弹出面板控制器. 替换 MenuBarExtra, 提供程序化开/关.
@@ -66,7 +65,7 @@ final class MenuBarStatusItemController: NSObject {
             popover.performClose(nil)
         } else {
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            NSApp.activate(ignoringOtherApps: false)
+            NSApp.activate(ignoringOtherApps: true)
         }
     }
 

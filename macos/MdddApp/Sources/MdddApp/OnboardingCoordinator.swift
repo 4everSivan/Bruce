@@ -459,6 +459,20 @@ final class OnboardingCoordinator: ObservableObject {
     /// 用户变更全局快捷键: 先持久化再注册 (先存后生效);
     /// 保存失败不变更运行中快捷键.
     func setDashboardHotkey(_ hotkey: GlobalHotkey?) {
+        if let hotkey {
+            switch hotkey.validation {
+            case .valid: break
+            case .requiresModifier:
+                model.setSettingsError("快捷键需至少一个修饰键, 请重试")
+                return
+            case .unsupportedKey:
+                model.setSettingsError("该键不支持, 请换一个")
+                return
+            case .systemReserved:
+                model.setSettingsError("该组合被系统保留, 请换一个")
+                return
+            }
+        }
         guard let configStore else {
             model.setSettingsError("配置存储不可用, 无法保存全局快捷键")
             return
