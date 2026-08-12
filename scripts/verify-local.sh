@@ -69,4 +69,7 @@ swift run --package-path "$MDDD_SWIFT_PACKAGE" SubscriptionCredentialsHarness
 echo "运行全局快捷键 Harness"
 swift run --package-path "$MDDD_SWIFT_PACKAGE" GlobalHotkeyHarness
 
+echo "运行 AppModel 缓存 Harness"
+swift run --package-path "$MDDD_SWIFT_PACKAGE" AppModelCacheHarness
+
 echo "mddd 本地验证全部通过"

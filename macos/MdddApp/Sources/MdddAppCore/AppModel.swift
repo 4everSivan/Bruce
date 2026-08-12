@@ -197,7 +197,11 @@ package final class AppModel: ObservableObject {
     private var cachedPanelViewModel: PanelViewModel?
     private var cachedMenuBarSummary: MenuBarSummary?
     private var panelCacheVersion = 0
+    /// 面板与菜单栏摘要各自记录「上次构建时的版本号」, 不得共用同一计数器:
+    /// 面板重建会同步其计数器, 若菜单栏摘要复用该计数器, 会把尚未重建的
+    /// 陈旧摘要误判为新鲜 (artifact 就绪后仍显示 "--").
     private var lastPanelCacheVersion = -1
+    private var lastMenuBarSummaryVersion = -1
 
     package init(
         menuBarMetricRawValues: [String]? = nil,
@@ -519,8 +523,11 @@ package final class AppModel: ObservableObject {
     }
 
     /// 菜单栏标签摘要 (缓存, 复用已解码 artifact).
+    /// 使用独立的 lastMenuBarSummaryVersion, 避免面板重建同步的共享计数器
+    /// 让陈旧摘要误命中缓存.
     package func makeMenuBarSummary() -> MenuBarSummary {
-        if lastPanelCacheVersion == panelCacheVersion, let cached = cachedMenuBarSummary {
+        if lastMenuBarSummaryVersion == panelCacheVersion,
+           let cached = cachedMenuBarSummary {
             return cached
         }
         let summary = MenuBarSummaryBuilder().build(
@@ -528,6 +535,7 @@ package final class AppModel: ObservableObject {
             moduleStatuses: moduleStatuses
         )
         cachedMenuBarSummary = summary
+        lastMenuBarSummaryVersion = panelCacheVersion
         return summary
     }
 
