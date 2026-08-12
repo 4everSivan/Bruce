@@ -162,7 +162,11 @@ def scan_kimi(agent, root, project_from_path=None):
 
 def scan_claude(agent, claude_projects):
     found = False
-    seen_msg = set()
+    # 同一 message id 可能被多次写入: Claude Code (>= 2.1.228) 在流式开始时先写
+    # usage=0 的骨架, 完成后追加完整记录. 若保留首次出现会把骨架当成真实用量,
+    # input/output 被大量丢弃; 因此按 message id 累积各字段最大值, 统计结束后
+    # 一次性记录 (ts 取最后一次写入 = 完成时刻).
+    best = {}  # mid -> [inp, out, cr, cc, ts, model, proj]
     for path in iter_recent_jsonl(claude_projects):
         found = True
         proj = os.path.basename(os.path.dirname(path))
@@ -189,22 +193,37 @@ def scan_claude(agent, claude_projects):
                     ts = runtime.parse_iso(r.get("timestamp") or "")
                     if ts is None:
                         continue
-                    if mid:
-                        if mid in seen_msg:
-                            continue
-                        seen_msg.add(mid)
-                    record_usage(
-                        agent,
-                        ts,
-                        msg.get("model"),
-                        int(u.get("input_tokens") or 0),
-                        int(u.get("output_tokens") or 0),
-                        int(u.get("cache_read_input_tokens") or 0),
-                        int(u.get("cache_creation_input_tokens") or 0),
-                        project=proj,
-                    )
+                    inp = int(u.get("input_tokens") or 0)
+                    out = int(u.get("output_tokens") or 0)
+                    cr = int(u.get("cache_read_input_tokens") or 0)
+                    cc = int(u.get("cache_creation_input_tokens") or 0)
+                    if not mid:
+                        record_usage(
+                            agent,
+                            ts,
+                            msg.get("model"),
+                            inp,
+                            out,
+                            cr,
+                            cc,
+                            project=proj,
+                        )
+                        continue
+                    entry = best.get(mid)
+                    if entry is None:
+                        best[mid] = [inp, out, cr, cc, ts, msg.get("model"), proj]
+                    else:
+                        entry[0] = max(entry[0], inp)
+                        entry[1] = max(entry[1], out)
+                        entry[2] = max(entry[2], cr)
+                        entry[3] = max(entry[3], cc)
+                        entry[4] = ts
+                        entry[5] = msg.get("model")
+                        entry[6] = proj
         except OSError:
             continue
+    for inp, out, cr, cc, ts, model, proj in best.values():
+        record_usage(agent, ts, model, inp, out, cr, cc, project=proj)
     return found
 
 
