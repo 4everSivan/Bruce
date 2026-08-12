@@ -41,7 +41,7 @@ final class GlobalHotkeyMonitor {
             return
         }
 
-        var hotKeyID = EventHotKeyID(
+        let hotKeyID = EventHotKeyID(
             signature: OSType(0x4D4444),  // 'MDDD'
             id: 1
         )
