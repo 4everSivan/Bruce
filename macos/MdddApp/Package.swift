@@ -74,5 +74,10 @@ let package = Package(
             dependencies: ["MdddAppCore", "MdddOnboardingCore"],
             path: "Tests/Harnesses/SubscriptionCredentialsHarness"
         ),
+        .executableTarget(
+            name: "GlobalHotkeyHarness",
+            dependencies: ["MdddAppCore", "MdddOnboardingCore"],
+            path: "Tests/Harnesses/GlobalHotkeyHarness"
+        ),
     ]
 )
