@@ -37,8 +37,8 @@ struct GlobalHotkeyHarness {
         try symbolTableCoversExpectedKeys()
         // 以下两项依赖 Task 2 的 OnboardingConfiguration.dashboardHotkey,
         // 本任务暂注释, Task 2 Step 2 恢复.
-        // try onboardingConfigFallsBackToNil()
-        // try onboardingConfigRoundTripsHotkey()
+        try onboardingConfigFallsBackToNil()
+        try onboardingConfigRoundTripsHotkey()
         print("GlobalHotkeyHarness: 全部通过")
     }
 
@@ -166,32 +166,32 @@ struct GlobalHotkeyHarness {
 
     // 旧配置缺 dashboardHotkey 键: 解码回落 nil.
     // 注意: 依赖 Task 2 完成 OnboardingConfiguration 字段后才能通过.
-    // private static func onboardingConfigFallsBackToNil() throws {
-    //     let json = """
-    //     {"schemaVersion":2,"selectedModules":[],"connectionStates":{},
-    //      "lastVerifiedAt":{}}
-    //     """
-    //     let config = try JSONDecoder().decode(
-    //         OnboardingConfiguration.self, from: Data(json.utf8)
-    //     )
-    //     try expect(config.dashboardHotkey == nil, "缺键应回落 nil")
-    //     try expect(config.resolvedDashboardHotkey == nil, "解析值应回落 nil")
-    // }
+    private static func onboardingConfigFallsBackToNil() throws {
+        let json = """
+        {"schemaVersion":2,"selectedModules":[],"connectionStates":{},
+         "lastVerifiedAt":{}}
+        """
+        let config = try JSONDecoder().decode(
+            OnboardingConfiguration.self, from: Data(json.utf8)
+        )
+        try expect(config.dashboardHotkey == nil, "缺键应回落 nil")
+        try expect(config.resolvedDashboardHotkey == nil, "解析值应回落 nil")
+    }
 
     // 配置往返携带快捷键.
-    // private static func onboardingConfigRoundTripsHotkey() throws {
-    //     var config = OnboardingConfiguration()
-    //     config.dashboardHotkey = GlobalHotkey(
-    //         keyCode: UInt32(kVK_ANSI_D),
-    //         modifiers: [.option, .command]
-    //     )
-    //     let data = try JSONEncoder().encode(config)
-    //     let decoded = try JSONDecoder().decode(
-    //         OnboardingConfiguration.self, from: data
-    //     )
-    //     try expect(
-    //         decoded.dashboardHotkey == config.dashboardHotkey,
-    //         "配置往返应携带快捷键"
-    //     )
-    // }
+    private static func onboardingConfigRoundTripsHotkey() throws {
+        var config = OnboardingConfiguration()
+        config.dashboardHotkey = GlobalHotkey(
+            keyCode: UInt32(kVK_ANSI_D),
+            modifiers: [.option, .command]
+        )
+        let data = try JSONEncoder().encode(config)
+        let decoded = try JSONDecoder().decode(
+            OnboardingConfiguration.self, from: data
+        )
+        try expect(
+            decoded.dashboardHotkey == config.dashboardHotkey,
+            "配置往返应携带快捷键"
+        )
+    }
 }

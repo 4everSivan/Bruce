@@ -120,6 +120,8 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
     /// 订阅 provider 展示顺序 (rawValue 列表). nil 表示使用 CaseIterable 默认顺序;
     /// 用户在设置页调整顺序后写入. 仅包含已添加的 provider.
     public var subscriptionProviderOrder: [String]?
+    /// 全局快捷键 (打开/关闭仪表盘). nil (含 JSON 显式 null) 表示未设置, 不劫持任何键.
+    public var dashboardHotkey: GlobalHotkey?
 
     /// 默认自动刷新间隔 (分钟).
     public static let defaultRefreshIntervalMinutes = 30
@@ -143,6 +145,11 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
     /// 解析后的模糊风格: nil 一律回落标准.
     public var resolvedGlassStyle: GlassStylePreference {
         glassStyle ?? .regular
+    }
+
+    /// 解析后的全局快捷键: nil 一律回落未设置.
+    public var resolvedDashboardHotkey: GlobalHotkey? {
+        dashboardHotkey
     }
 
     /// 按当前进程能力解析完整主题 (界面风格 + 模糊 + 是否用玻璃 API).
@@ -174,7 +181,8 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         appearanceMode: AppearancePreference? = nil,
         interfaceStyle: InterfaceStylePreference? = nil,
         glassStyle: GlassStylePreference? = nil,
-        subscriptionProviderOrder: [String]? = nil
+        subscriptionProviderOrder: [String]? = nil,
+        dashboardHotkey: GlobalHotkey? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.pythonPath = pythonPath
@@ -189,6 +197,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         self.interfaceStyle = interfaceStyle
         self.glassStyle = glassStyle
         self.subscriptionProviderOrder = subscriptionProviderOrder
+        self.dashboardHotkey = dashboardHotkey
     }
 
     /// 自定义解码: 旧版本配置缺失的键一律回落缺省, 不因新增字段拒绝加载.
@@ -224,6 +233,10 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         // 旧配置缺该键或显式 null 一律按 nil, 不因新增字段拒绝加载
         subscriptionProviderOrder = try container.decodeIfPresent(
             [String].self, forKey: .subscriptionProviderOrder
+        )
+        // 旧配置缺该键或显式 null 一律按 nil, 不因新增字段拒绝加载
+        dashboardHotkey = try container.decodeIfPresent(
+            GlobalHotkey.self, forKey: .dashboardHotkey
         )
     }
 }
