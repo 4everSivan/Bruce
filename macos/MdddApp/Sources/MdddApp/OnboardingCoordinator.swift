@@ -22,6 +22,8 @@ final class OnboardingCoordinator: ObservableObject {
     @Published private(set) var interfaceStyle: InterfaceStylePreference
     /// 模糊风格偏好, 与配置持久化同步; 仅液态玻璃模式下驱动渲染.
     @Published private(set) var glassStyle: GlassStylePreference
+    /// 全局快捷键 (打开/关闭仪表盘), 与配置持久化同步; nil 表示未设置.
+    @Published private(set) var dashboardHotkey: GlobalHotkey?
     /// 可注入的能力探测 (测试); 默认读系统.
     var liquidGlassSupported: () -> Bool = { LiquidGlassCapability.isSupported }
 
@@ -52,6 +54,7 @@ final class OnboardingCoordinator: ObservableObject {
     private let homeURL: URL
     private var gate: CollectorActivationGate
     private let subscriptions: SubscriptionService
+    private var hotkeyMonitor: GlobalHotkeyMonitor?
 
     init(
         scheduler: RefreshScheduler,
@@ -108,6 +111,7 @@ final class OnboardingCoordinator: ObservableObject {
         // UI 绑定使用解析后的界面风格 (不支持时为 classic); 模糊风格保留磁盘/默认.
         self.interfaceStyle = theme.interfaceStyle
         self.glassStyle = theme.glassStyle
+        self.dashboardHotkey = config?.resolvedDashboardHotkey
 
         // SubscriptionService 在 self 部分初始化后创建; objectWillChange 经回调转发.
         // 使用临时无回调初始化, 随后在下方挂载 (init 内无法弱引用 self 前完成全量).
@@ -443,6 +447,32 @@ final class OnboardingCoordinator: ObservableObject {
             return
         }
         glassStyle = style
+        model.setSettingsError(nil)
+    }
+
+    /// 注入全局快捷键监视器, 并注册已持久化的快捷键 (启动时装配).
+    func setHotkeyMonitor(_ monitor: GlobalHotkeyMonitor) {
+        hotkeyMonitor = monitor
+        monitor.register(dashboardHotkey)
+    }
+
+    /// 用户变更全局快捷键: 先持久化再注册 (先存后生效);
+    /// 保存失败不变更运行中快捷键.
+    func setDashboardHotkey(_ hotkey: GlobalHotkey?) {
+        guard let configStore else {
+            model.setSettingsError("配置存储不可用, 无法保存全局快捷键")
+            return
+        }
+        var config = configStore.load() ?? OnboardingConfiguration()
+        config.dashboardHotkey = hotkey
+        do {
+            try configStore.save(config)
+        } catch {
+            model.setSettingsError("全局快捷键保存失败")
+            return
+        }
+        dashboardHotkey = hotkey
+        hotkeyMonitor?.register(hotkey)
         model.setSettingsError(nil)
     }
 
