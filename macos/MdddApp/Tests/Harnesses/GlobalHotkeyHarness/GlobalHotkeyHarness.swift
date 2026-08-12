@@ -35,8 +35,7 @@ struct GlobalHotkeyHarness {
         try displayStringFormatsFunctionAndArrowKeys()
         try carbonModifiersBuildsBitmask()
         try symbolTableCoversExpectedKeys()
-        // 以下两项依赖 Task 2 的 OnboardingConfiguration.dashboardHotkey,
-        // 本任务暂注释, Task 2 Step 2 恢复.
+        // 配置持久化用例 (依赖 Task 2 的 OnboardingConfiguration.dashboardHotkey).
         try onboardingConfigFallsBackToNil()
         try onboardingConfigExplicitNullFallsBackToNil()
         try onboardingConfigRoundTripsHotkey()
