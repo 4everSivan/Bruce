@@ -255,5 +255,67 @@ class ScanPiTests(unittest.TestCase):
         self.assertEqual(agent["_by_day"]["2026-08-09"]["total"], 5360)
 
 
+class PiCollectWiringTests(unittest.TestCase):
+    """_collect 中 pi agent 的接线: 能力门禁, 缺目录降级, paths 注入."""
+
+    def setUp(self):
+        self.module = load_module("collect_usage_pi_wiring",
+                                  "agent-usage/collector/collect_usage.py")
+
+    def _collect_agents(self, ctx):
+        run_ctx = self.module._configure_runtime(ctx)
+        return self.module._collect(run_ctx)["agents"]
+
+    def test_pi_agent_built_in_collect(self):
+        with tempfile.TemporaryDirectory() as home:
+            ctx = {
+                "home": home,
+                "now": "2026-08-09T15:00:00+08:00",
+                "timezone": "Asia/Shanghai",
+                "days": 14,
+                "capabilities": ["localSessions", "localPricing"],
+            }
+            agents = self._collect_agents(ctx)
+        pi = [a for a in agents if a["id"] == "pi"]
+        self.assertEqual(len(pi), 1)
+        self.assertEqual(pi[0]["name"], "Pi")
+        self.assertEqual(pi[0]["status"], "not_found")
+        self.assertEqual(pi[0]["note"], "未发现会话记录")
+
+    def test_pi_agent_denied_without_local_sessions_capability(self):
+        with tempfile.TemporaryDirectory() as home:
+            ctx = {
+                "home": home,
+                "now": "2026-08-09T15:00:00+08:00",
+                "timezone": "Asia/Shanghai",
+                "days": 14,
+                "capabilities": ["localPricing"],
+            }
+            agents = self._collect_agents(ctx)
+        pi = [a for a in agents if a["id"] == "pi"][0]
+        self.assertEqual(pi["status"], "unavailable")
+        self.assertIn("未授权", pi["note"])
+
+    def test_pi_agent_reads_injected_sessions(self):
+        ts = int(datetime(2026, 8, 9, 10, 0, 0, tzinfo=ZoneInfo("Asia/Shanghai")).timestamp() * 1000)
+        with tempfile.TemporaryDirectory() as home, \
+                tempfile.TemporaryDirectory() as pi_dir:
+            _write_jsonl(Path(pi_dir) / "proj-a" / "s.jsonl",
+                         [_session_record(), _assistant_msg(ts)])
+            ctx = {
+                "home": home,
+                "now": "2026-08-09T15:00:00+08:00",
+                "timezone": "Asia/Shanghai",
+                "days": 14,
+                "capabilities": ["localSessions", "localPricing"],
+                "paths": {"pi_sessions": pi_dir},
+            }
+            agents = self._collect_agents(ctx)
+        pi = [a for a in agents if a["id"] == "pi"][0]
+        self.assertEqual(pi["status"], "ok")
+        self.assertEqual(pi["note"], "本机 Pi 会话, 精确 token 计数")
+        self.assertEqual(pi["today"]["total"], 5360)
+
+
 if __name__ == "__main__":
     unittest.main()
