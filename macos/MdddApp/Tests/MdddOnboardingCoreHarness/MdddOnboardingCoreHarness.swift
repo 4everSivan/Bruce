@@ -80,6 +80,7 @@ struct MdddOnboardingCoreHarness {
         }
         try await scannerFindsPythonSessionsAndSQLite()
         try await scannerReportsMissingPython()
+        try standardPathsIncludePiSessions()
         try firstLaunchDecisionFlow()
         try configStoreLoadsV1WithSubscriptionDefaults()
         try configStoreRejectsNewerSchemaV3()

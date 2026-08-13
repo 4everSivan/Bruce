@@ -1,6 +1,6 @@
 """本机会话扫描、token 聚合与成本计算 (阶段 D: 从 collect_usage.py 拆出).
 
-读取本机 Agent 会话 JSONL (Kimi Work/Kimi Code CLI/Claude Code/Codex),
+读取本机 Agent 会话 JSONL (Kimi Work/Kimi Code CLI/Claude Code/Codex/Pi),
 聚合 token 用量, 计算成本. 日期桶边界 (TODAY/CUTOFF_TS/DAY_LIST) 和
 时区通过 runtime 模块访问, 由 _configure_runtime 每次运行重置.
 不执行网络请求.
@@ -387,6 +387,62 @@ def scan_grok(agent, root):
                             )
             except OSError:
                 continue
+    return found
+
+
+def scan_pi(agent, root):
+    """扫描 Pi 会话 JSONL (~/.pi/agent/sessions/<编码目录>/*.jsonl).
+
+    Pi 的 assistant 消息携带 usage {input, output, cacheRead, cacheWrite,
+    reasoning}; reasoning 并入 output (与 opencode 一致). 时间戳取嵌套
+    message.timestamp (毫秒), 缺失时回退顶层 ISO timestamp. 项目名取
+    session 头记录 cwd 的 basename (目录名是 /→- 的有损编码, 不反解).
+    """
+    found = False
+    for path in iter_recent_jsonl(root):
+        found = True
+        project = None
+        try:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    if '"message"' not in line and '"session"' not in line:
+                        continue
+                    try:
+                        r = json.loads(line)
+                    except Exception:
+                        continue
+                    if r.get("type") == "session":
+                        cwd = r.get("cwd")
+                        if isinstance(cwd, str) and cwd.strip():
+                            project = os.path.basename(cwd.rstrip("/")) or None
+                        continue
+                    if r.get("type") != "message":
+                        continue
+                    msg = r.get("message") or {}
+                    if msg.get("role") != "assistant":
+                        continue
+                    u = msg.get("usage") or {}
+                    if not u:
+                        continue
+                    ts = msg.get("timestamp")
+                    if isinstance(ts, (int, float)):
+                        ts = ts / 1000.0
+                    else:
+                        ts = runtime.parse_iso(r.get("timestamp") or "")
+                    if ts is None:
+                        continue
+                    record_usage(
+                        agent,
+                        ts,
+                        msg.get("model"),
+                        int(u.get("input") or 0),
+                        int(u.get("output") or 0) + int(u.get("reasoning") or 0),
+                        int(u.get("cacheRead") or 0),
+                        int(u.get("cacheWrite") or 0),
+                        project=project,
+                    )
+        except OSError:
+            continue
     return found
 
 
