@@ -105,6 +105,9 @@ struct MenuBarDashboardView: View {
     let openSettings: @MainActor () -> Void
     let terminateApplication: @MainActor () -> Void
 
+    /// 面板理想尺寸变化回调 (宿主控制器据此跟随调整承载窗口尺寸).
+    var onContentSizeChange: ((CGSize) -> Void)?
+
     /// 卡片栈实测理想高度; 0 表示尚未测量到 (首帧), 此时不加高度约束保持自适应.
     @State private var cardStackHeight: CGFloat = 0
 
@@ -149,6 +152,12 @@ struct MenuBarDashboardView: View {
         .background { panelGlassBackground }
         .preferredColorScheme(coordinator.appearanceMode.colorScheme)
         .environment(\.mdddResolvedTheme, coordinator.resolvedTheme)
+        // 垂直方向按理想高度布局 (而非采纳宿主提议尺寸), 使 onGeometryChange
+        // 上报真实理想高度; 内容高度变化时宿主据此调整面板尺寸.
+        .fixedSize(horizontal: false, vertical: true)
+        .onGeometryChange(for: CGSize.self, of: { $0.size }) { size in
+            onContentSizeChange?(size)
+        }
     }
 
     /// 卡片栈高度上限: 铺满面板窗口所在屏 visibleFrame, 只留约 10pt 小边距;

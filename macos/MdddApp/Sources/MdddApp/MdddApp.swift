@@ -14,6 +14,8 @@ struct MdddApp: App {
     private let runner: CollectorRunner
     private let bootstrap: ApplicationBootstrap
     private let settingsWindowController: SettingsWindowController
+    private let statusItemController: MenuBarStatusItemController
+    private let hotkeyMonitor: GlobalHotkeyMonitor
 
     init() {
         // 阶段 E (07 §6.1): 优先使用设置页选择的 Python 路径; 未配置时
@@ -107,47 +109,62 @@ struct MdddApp: App {
             model: model,
             codexMigration: codexStore
         )
-        settingsWindowController = SettingsWindowController(
+        let settingsController = SettingsWindowController(
             model: model,
             coordinator: coordinator,
             diagnostics: diagnostics
         )
+        self.settingsWindowController = settingsController
+        let statusController = MenuBarStatusItemController(
+            model: model,
+            coordinator: coordinator,
+            openSettings: { [settingsController] in
+                settingsController.present()
+            },
+            terminateApplication: {
+                NSApplication.shared.terminate(nil)
+            }
+        )
+        self.statusItemController = statusController
+        let monitor = GlobalHotkeyMonitor(
+            onPress: { [weak statusController] in
+                statusController?.toggleDashboard()
+            },
+            onRegistrationFailure: { [weak model] message in
+                model?.setSettingsError(message)
+            }
+        )
+        self.hotkeyMonitor = monitor
+        coordinator.setHotkeyMonitor(monitor)
+        startApplicationIfNeeded()
     }
 
     var body: some Scene {
-        MenuBarExtra {
-            MenuBarDashboardView(
-                openSettings: {
-                    settingsWindowController.present()
-                },
-                terminateApplication: {
-                    NSApplication.shared.terminate(nil)
-                }
-            )
-                .environmentObject(model)
-                .environmentObject(coordinator)
-        } label: {
-            MenuBarLabelView(model: model)
-                .onAppear {
-                    startApplicationIfNeeded()
-                }
-        }
-        .menuBarExtraStyle(.window)
+        // 状态项与弹出面板由 AppDelegate 自管理; 无可见 SwiftUI 场景.
+        // Settings 场景仅作 SwiftUI App 必需锚点, 移除其菜单项避免空窗口入口.
+        Settings { EmptyView() }
+            .commands {
+                CommandGroup(replacing: .appSettings) { }
+            }
     }
 
     private func startApplicationIfNeeded() {
         appDelegate.configure(
             runtime: runtime,
-            settingsWindowController: settingsWindowController
-        )
-        Task { @MainActor in
-            let didStart = await bootstrap.startIfNeeded()
-            if didStart, !coordinator.consentConfirmed {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    settingsWindowController.present()
+            settingsWindowController: settingsWindowController,
+            statusItemController: statusItemController,
+            hotkeyMonitor: hotkeyMonitor,
+            startApplication: {
+                Task { @MainActor in
+                    let didStart = await bootstrap.startIfNeeded()
+                    if didStart, !coordinator.consentConfirmed {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            settingsWindowController.present()
+                        }
+                    }
                 }
             }
-        }
+        )
     }
 
     private static func resolveBridgeURL() -> URL? {

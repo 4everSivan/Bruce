@@ -290,6 +290,13 @@ struct SettingsView: View {
             }
             .glassButtonStyle()
 
+            paneCaption("全局快捷键")
+
+            SettingsCard {
+                GlobalHotkeyRecorder()
+            }
+            .glassButtonStyle()
+
             paneCaption("菜单栏指标")
 
             SettingsCard {

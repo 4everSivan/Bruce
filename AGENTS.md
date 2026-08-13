@@ -84,7 +84,7 @@
 | `python3 agent-usage/collector/collect_usage.py --out data/agent-usage.json` | 实时采集 Agent 用量和额度; 可能刷新并写回 OAuth, 必须先获得明确授权 |
 | `python3 -c 'import ast,pathlib; [ast.parse(p.read_text()) for p in pathlib.Path(".").glob("*/collector/*.py")]'` | 无外部调用的 Python 语法验证 |
 | `node --check -` | 对从 Widget 提取的 JavaScript 执行语法验证 |
-| `zsh scripts/verify-local.sh` | 标准本地验证: Python 语法 + pytest + swift build + 全部 10 个 Harness |
+| `zsh scripts/verify-local.sh` | 标准本地验证: Python 语法 + pytest + swift build + 全部 12 个 Harness |
 | `python3 -m pytest tests/` | Python 单元与契约测试 (bridge, collector, widget 安全); 194 项 |
 | `swift build --package-path macos/MdddApp` | macOS App 与 MdddOnboardingCore 构建验证 |
 | `swift run --package-path macos/MdddApp MdddOnboardingCoreHarness` | Onboarding Core 边界测试 (进程, SQLite, Keychain, Gate, 订阅凭证, 设备码登录, 令牌轮换合并, Codex v2 迁移, DeepSeek 追踪 ID 与保存事务, 统一过期判定器, Claude/Grok 导入器); 175 项 |
