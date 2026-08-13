@@ -56,7 +56,6 @@ ORCA_HOME = os.path.join(HOME, "Library/Application Support/orca")
 ORCA_CODEX_SESSIONS = os.path.join(ORCA_HOME, "codex-runtime-home/home/sessions")
 ORCA_CODEX_ACCOUNTS = os.path.join(ORCA_HOME, "codex-accounts")
 GROK_HOME = os.path.join(HOME, ".grok")
-PI_SESSIONS = os.path.join(HOME, ".pi/agent/sessions")
 CC_SWITCH_DB = os.path.join(HOME, ".cc-switch/cc-switch.db")
 CODEX_OAUTH_AUTH = os.path.join(HOME, ".cc-switch/codex_oauth_auth.json")
 CODEX_AUTH = os.path.join(HOME, ".codex/auth.json")
@@ -245,7 +244,7 @@ def _apply_run_context(run_ctx):
     global HOME, DAIMON_KIMI_SESSIONS, KIMI_CLI_SESSIONS, CLAUDE_PROJECTS
     global CODEX_SESSIONS, ORCA_HOME, ORCA_CODEX_SESSIONS, ORCA_CODEX_ACCOUNTS
     global CC_SWITCH_DB, CODEX_OAUTH_AUTH, CODEX_AUTH, AGY_OAUTH_TOKEN
-    global AGY_SUMMARIES_DB, KIMI_WEB_TOKENS, PI_SESSIONS
+    global AGY_SUMMARIES_DB, KIMI_WEB_TOKENS
     global DAYS, HTTP_TIMEOUT, now, TODAY, CUTOFF_TS, DAY_LIST
     global _RUNTIME_CREDENTIALS
     global _RUNTIME_CONTEXT
@@ -273,7 +272,6 @@ def _apply_run_context(run_ctx):
     AGY_OAUTH_TOKEN = paths["antigravity_oauth_token"]
     AGY_SUMMARIES_DB = paths["antigravity_summaries_db"]
     KIMI_WEB_TOKENS = paths["kimi_web_tokens"]
-    PI_SESSIONS = paths["pi_sessions"]
 
     # Codex 出站 URL 覆盖: 仅接受进程内 runtime_overrides 注入 (本地 fake
     # server 测试用 loopback 地址), 不经 Bridge 协议序列化; 正式请求无法覆盖.
@@ -1184,7 +1182,7 @@ def _collect(run_ctx):
         agent = make_agent("pi", "Pi")
         if not sessions_allowed:
             _mark_sessions_denied(agent)
-        elif scan_pi(agent, PI_SESSIONS):
+        elif scan_pi(agent, paths["pi_sessions"]):
             agent["note"] = "本机 Pi 会话, 精确 token 计数"
         else:
             agent["status"] = "not_found"
