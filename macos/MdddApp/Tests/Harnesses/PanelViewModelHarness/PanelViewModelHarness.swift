@@ -899,6 +899,13 @@ struct PanelViewModelHarness {
                 != PanelAgentColor.resolve(agentID: "grok"),
             "Claude 与 Grok 不得共用同一色"
         )
+        try expect(PanelAgentColor.resolve(agentID: "pi") == .rose, "Pi 应为显式 rose 色")
+        for id in ["kimi-work", "kimi-code-cli", "grok", "codex", "claude-code"] {
+            try expect(
+                PanelAgentColor.resolve(agentID: id) != .rose,
+                "Pi 与 \(id) 不得共用同一色"
+            )
+        }
         try expect(
             PanelAgentColor.coral.distributionHex(at: 0) == PanelAgentColor.coral.hex,
             "占比条 0 档应为主色"

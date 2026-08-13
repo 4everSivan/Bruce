@@ -73,6 +73,11 @@ public struct LocalDependencyScanPaths: Sendable {
                         ".local/share/opencode/opencode.db"
                     )
                 ),
+                // Pi (badlogic 终端 agent) 会话目录
+                SessionDirectory(
+                    displayName: "Pi",
+                    url: home.appendingPathComponent(".pi/agent/sessions")
+                ),
             ],
             sqliteDatabases: [
                 SQLiteDatabase(

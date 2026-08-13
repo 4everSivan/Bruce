@@ -374,4 +374,15 @@ extension MdddOnboardingCoreHarness {
         try coreExpect(python?.status == .missing, "python should be missing")
     }
 
+    static func standardPathsIncludePiSessions() throws {
+        let home = URL(fileURLWithPath: "/Users/example")
+        let paths = LocalDependencyScanPaths.standard(home: home)
+        let pi = paths.sessionDirectories.first { $0.displayName == "Pi" }
+        try coreExpect(pi != nil, "standard paths 应包含 Pi 会话目录")
+        try coreExpect(
+            pi?.url.path == "/Users/example/.pi/agent/sessions",
+            "Pi 会话目录 URL 错误: \(String(describing: pi?.url))"
+        )
+    }
+
 }

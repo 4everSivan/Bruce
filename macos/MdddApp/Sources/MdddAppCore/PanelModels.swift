@@ -63,6 +63,8 @@ package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
             return .purple
         case "claude-code":
             return .coral
+        case "pi":
+            return .rose
         default:
             var hash: UInt64 = 0xcbf29ce484222325
             for byte in agentID.utf8 {
