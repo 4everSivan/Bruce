@@ -2,7 +2,7 @@
 """Aggregate local AI-agent token usage, cost estimates, and provider quotas.
 
 Agents: Kimi Work (daimon), Kimi Code CLI, Claude Code, Codex (CLI and
-Orca-hosted sessions merged into one agent); detection only for
+Orca-hosted sessions merged into one agent), Pi; detection only for
 Gemini/Antigravity, GitHub Copilot, Cursor.
 Services (quota): read CC Switch's provider database and query the providers
 it knows how to meter (Kimi For Coding, DeepSeek balance, Volcengine Coding
@@ -39,7 +39,7 @@ from runtime import RunContext, day_of, hour_of, parse_iso, epoch_from_iso  # no
 import quota_services
 import quota_official
 import local_usage
-from local_usage import finalize, make_agent, new_bucket, record_usage, scan_claude, scan_codex, scan_grok, scan_kimi, scan_opencode  # noqa: E402
+from local_usage import finalize, make_agent, new_bucket, record_usage, scan_claude, scan_codex, scan_grok, scan_kimi, scan_opencode, scan_pi  # noqa: E402
 import codex_compat
 import service_catalog
 
@@ -170,6 +170,12 @@ def _build_run_context(ctx):
         path_overrides,
         "opencode_db",
         os.path.join(home, ".local/share/opencode/opencode.db"),
+    )
+    # Pi 会话目录 (~/.pi/agent/sessions/<编码目录>/*.jsonl)
+    paths["pi_sessions"] = _path_override(
+        path_overrides,
+        "pi_sessions",
+        os.path.join(home, ".pi/agent/sessions"),
     )
 
     timezone_value = ctx.get("timezone")
@@ -1172,9 +1178,20 @@ def _collect(run_ctx):
             agent["note"] = "未发现 opencode 会话记录"
         return finalize(agent, pricing)
 
-    # 6 个本地扫描串行执行: GIL 下线程池对 CPU-bound JSON 解析无加速
-    # (实测线程池 3.4s ≈ 串行 2.2s, 线程反而更慢), 且多线程并发解析
-    # 使 malloc arena 峰值叠加 (实测 400MB vs 串行 190MB, 降 50%).
+    def build_pi():
+        agent = make_agent("pi", "Pi")
+        if not sessions_allowed:
+            _mark_sessions_denied(agent)
+        elif scan_pi(agent, paths["pi_sessions"]):
+            agent["note"] = "本机 Pi 会话, 精确 token 计数"
+        else:
+            agent["status"] = "not_found"
+            agent["note"] = "未发现会话记录"
+        return finalize(agent, pricing)
+
+    # 7 个本地扫描串行执行: GIL 下线程池对 CPU-bound JSON 解析无加速
+    # (6 扫描时实测线程池 3.4s ≈ 串行 2.2s, 线程反而更慢), 且多线程并发解析
+    # 使 malloc arena 峰值叠加 (6 扫描时实测 400MB vs 串行 190MB, 降 50%).
     builders = [
         build_kimi_work,
         build_kimi_cli,
@@ -1182,6 +1199,7 @@ def _collect(run_ctx):
         build_codex,
         build_grok,
         build_opencode,
+        build_pi,
     ]
     agents = [build() for build in builders]
 
