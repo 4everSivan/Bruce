@@ -108,6 +108,9 @@ struct MenuBarDashboardView: View {
     /// 面板理想尺寸变化回调 (宿主控制器据此跟随调整承载窗口尺寸).
     var onContentSizeChange: ((CGSize) -> Void)?
 
+    /// 仅通知 AppKit 视觉宿主更新系统材质, 不携带业务模型或统计数据.
+    var onSurfaceThemeChange: ((ResolvedTheme) -> Void)?
+
     /// 卡片栈实测理想高度; 0 表示尚未测量到 (首帧), 此时不加高度约束保持自适应.
     @State private var cardStackHeight: CGFloat = 0
 
@@ -123,7 +126,7 @@ struct MenuBarDashboardView: View {
                     // AppKit 看门狗持续压制 scroller; 滚轮滚动不受影响.
                     ScrollIndicatorSuppressor()
                         .frame(width: 0, height: 0)
-                    cardStack(panel)
+                    glassCardStack(panel)
                 }
                 .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { height in
                     // 仅变化时更新, 并忽略亚像素抖动, 避免回环引起布局振荡.
@@ -149,7 +152,6 @@ struct MenuBarDashboardView: View {
             }
         }
         .frame(width: 440)
-        .background { panelGlassBackground }
         .preferredColorScheme(coordinator.appearanceMode.colorScheme)
         .environment(\.mdddResolvedTheme, coordinator.resolvedTheme)
         // 垂直方向按理想高度布局 (而非采纳宿主提议尺寸), 使 onGeometryChange
@@ -157,6 +159,9 @@ struct MenuBarDashboardView: View {
         .fixedSize(horizontal: false, vertical: true)
         .onGeometryChange(for: CGSize.self, of: { $0.size }) { size in
             onContentSizeChange?(size)
+        }
+        .onChange(of: coordinator.resolvedTheme) { _, theme in
+            onSurfaceThemeChange?(theme)
         }
     }
 
@@ -171,28 +176,15 @@ struct MenuBarDashboardView: View {
         return max(visibleHeight - 10, 320)
     }
 
-    // MARK: 面板玻璃背景
-
-    /// 液态玻璃模式用系统 glassEffect; 经典/哑光退化为材料质感; 圆角 22 对齐 mockup.
-    @ViewBuilder
-    private var panelGlassBackground: some View {
-        let theme = coordinator.resolvedTheme
-        if theme.usesLiquidGlassEffects {
-            if #available(macOS 26, *) {
-                Color.clear.glassEffect(
-                    theme.glassStyle.liquidGlassAPI, in: .rect(cornerRadius: 22)
-                )
-            } else {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(.regularMaterial)
-            }
-        } else {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(.regularMaterial)
-        }
-    }
-
     // MARK: 卡片栈
+
+    @ViewBuilder
+    private func glassCardStack(_ panel: PanelViewModel) -> some View {
+        // The AppKit surface is the single window-level material. Keeping the
+        // existing card backgrounds independent avoids blurring dashboard text
+        // and charts through a container that spans the full scroll content.
+        cardStack(panel)
+    }
 
     @ViewBuilder
     private func cardStack(_ panel: PanelViewModel) -> some View {

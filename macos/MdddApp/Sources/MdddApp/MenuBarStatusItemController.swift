@@ -28,6 +28,8 @@ final class MenuBarStatusItemController: NSObject {
     private var previousFrontmostApp: NSRunningApplication?
     /// 模型变化时重绘状态栏标签图像 (指标值, 刷新状态, 警示符号均驱动显示).
     private var labelSubscription: AnyCancellable?
+    /// 仪表盘 AppKit 系统材质宿主; 与业务模型和刷新流程隔离.
+    private var dashboardGlassController: DashboardGlassPanelController?
 
     init(
         model: AppModel,
@@ -65,22 +67,29 @@ final class MenuBarStatusItemController: NSObject {
                 }
         }
 
-        panel.contentViewController = NSHostingController(
-            rootView: MenuBarDashboardView(
-                openSettings: { [weak self] in
-                    // 打开设置前先关面板, 避免 statusBar 层级面板浮在设置窗口之上.
-                    self?.closeDashboard(restorePreviousFrontmostApp: false)
-                    self?.openSettings()
-                },
-                terminateApplication: terminateApplication,
-                onContentSizeChange: { [weak self] size in
-                    // onGeometryChange 回调运行在主线程, 安全.
-                    MainActor.assumeIsolated { self?.resizePanel(to: size) }
-                }
-            )
-            .environmentObject(model)
-            .environmentObject(coordinator)
+        let rootView = MenuBarDashboardView(
+            openSettings: { [weak self] in
+                // 打开设置前先关面板, 避免 statusBar 层级面板浮在设置窗口之上.
+                self?.closeDashboard(restorePreviousFrontmostApp: false)
+                self?.openSettings()
+            },
+            terminateApplication: terminateApplication,
+            onContentSizeChange: { [weak self] size in
+                // onGeometryChange 回调运行在主线程, 安全.
+                MainActor.assumeIsolated { self?.resizePanel(to: size) }
+            },
+            onSurfaceThemeChange: { [weak self] theme in
+                self?.dashboardGlassController?.updateSurface(theme: theme)
+            }
         )
+        .environmentObject(model)
+        .environmentObject(coordinator)
+        let glassController = DashboardGlassPanelController(
+            rootView: rootView,
+            theme: coordinator.resolvedTheme
+        )
+        dashboardGlassController = glassController
+        panel.contentViewController = glassController
         panel.isFloatingPanel = true
         panel.level = .statusBar
         panel.hidesOnDeactivate = false
@@ -152,6 +161,8 @@ final class MenuBarStatusItemController: NSObject {
         labelSubscription?.cancel()
         labelSubscription = nil
         closeDashboard(restorePreviousFrontmostApp: false)
+        dashboardGlassController = nil
+        panel.contentViewController = nil
         if let statusItem {
             NSStatusBar.system.removeStatusItem(statusItem)
             self.statusItem = nil

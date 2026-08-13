@@ -17,25 +17,33 @@ struct PanelCardContainer<Content: View>: View {
         RoundedRectangle(cornerRadius: 16, style: .continuous)
     }
 
+    private var surfaceTokens: DashboardGlassSurfaceTokens {
+        DashboardGlassSurfaceTokens.resolve(
+            theme: theme,
+            colorScheme: colorScheme
+        )
+    }
+
     var body: some View {
         content
             .padding(.horizontal, 15)
             .padding(.vertical, 13)
             .background { cardBackground }
             .overlay {
-                shape.strokeBorder(strokeColor, lineWidth: 1)
+                shape.strokeBorder(surfaceTokens.borderColor, lineWidth: 1)
             }
             .overlay(alignment: .top) {
-                // 内阴影高光: 顶部 1pt 亮线, 对应 mockup inset 0 1px 0.
+                // 低对比度顶部材质高光. 液态玻璃由系统承担主要边缘效果,
+                // 此处只保留很弱的结构提示, 避免重复描边.
                 Rectangle()
-                    .fill(highlightColor)
+                    .fill(surfaceTokens.highlightColor)
                     .frame(height: 1)
                     .padding(.horizontal, 10)
                     .offset(y: 0.5)
             }
             .clipShape(shape)
             .shadow(
-                color: Self.shadowColor.opacity(colorScheme == .dark ? 0 : 0.07),
+                color: surfaceTokens.shadowColor.opacity(surfaceTokens.shadowOpacity),
                 radius: 5,
                 y: 1
             )
@@ -43,46 +51,19 @@ struct PanelCardContainer<Content: View>: View {
 
     @ViewBuilder
     private var cardBackground: some View {
-        if theme.usesLiquidGlassEffects {
-            if #available(macOS 26, *) {
-                Color.clear.glassEffect(theme.glassStyle.liquidGlassAPI, in: shape)
-            } else {
-                classicFill
-            }
-        } else {
-            classicFill
-        }
+        dashboardGlassBackground(
+            theme: theme,
+            shape: shape,
+            colorScheme: colorScheme,
+            fallback: .card,
+            surface: .card
+        )
     }
 
-    @ViewBuilder
-    private var classicFill: some View {
-        if colorScheme == .dark {
-            shape.fill(.regularMaterial)
-        } else {
-            shape.fill(Color.white.opacity(0.45))
-        }
-    }
-
-    private var strokeColor: Color {
-        colorScheme == .dark
-            ? Color.white.opacity(0.16)
-            : Color.white.opacity(0.6)
-    }
-
-    private var highlightColor: Color {
-        colorScheme == .dark
-            ? Color.white.opacity(0.10)
-            : Color.white.opacity(0.6)
-    }
-
-    /// mockup 投影色 rgba(31,38,56,...); 泛型类型不支持静态存储属性, 用计算属性.
-    private static var shadowColor: Color {
-        Color(red: 31 / 255, green: 38 / 255, blue: 56 / 255)
-    }
 }
 
 extension View {
-    /// 面板底栏按钮: 液态玻璃模式且 macOS 26+ 用 .glass, 否则默认.
+    /// 面板底栏按钮: 液态玻璃模式使用自适应控件面, 避免白色背景下失去对比度.
     @ViewBuilder
     func panelGlassButtonStyle() -> some View {
         modifier(PanelGlassButtonStyleModifier())
@@ -91,16 +72,59 @@ extension View {
 
 private struct PanelGlassButtonStyleModifier: ViewModifier {
     @Environment(\.mdddResolvedTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
 
     func body(content: Content) -> some View {
-        if theme.usesLiquidGlassEffects {
+        let plan = DashboardGlassSurfacePlan.resolve(theme: theme)
+        if plan.usesInteractiveGlass {
             if #available(macOS 26, *) {
-                content.buttonStyle(.glass)
+                content.buttonStyle(
+                    DashboardPanelGlassButtonStyle(colorScheme: colorScheme)
+                )
             } else {
                 content
             }
         } else {
             content
         }
+    }
+}
+
+/// 面板底栏使用稳定的低对比度控件面, 避免系统 `.glass` 在
+/// 通透背景与 SwiftUI 外观不一致时生成高亮白块. 只作用于底栏按钮,
+/// 不改变按钮 action 或尺寸链路.
+private struct DashboardPanelGlassButtonStyle: ButtonStyle {
+    let colorScheme: ColorScheme
+
+    func makeBody(configuration: Configuration) -> some View {
+        let isDark = colorScheme == .dark
+        configuration.label
+            // Anchor controls to the dashboard appearance. A clear panel can
+            // sample a white browser/document window, so a white-only control
+            // surface would become white-on-white even in dark dashboard mode.
+            .foregroundStyle(isDark ? Color.white : Color.black.opacity(0.82))
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .background(
+                isDark
+                    ? Color.black.opacity(configuration.isPressed ? 0.82 : 0.68)
+                    : Color.white.opacity(configuration.isPressed ? 0.88 : 0.78),
+                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(
+                        isDark
+                            ? Color.white.opacity(0.42)
+                            : Color.black.opacity(0.20),
+                        lineWidth: 1
+                    )
+            }
+            .shadow(
+                color: Color.black.opacity(isDark ? 0.22 : 0.10),
+                radius: 3,
+                y: 1
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
