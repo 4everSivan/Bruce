@@ -1192,8 +1192,8 @@ def _collect(run_ctx):
         return finalize(agent, pricing)
 
     # 7 个本地扫描串行执行: GIL 下线程池对 CPU-bound JSON 解析无加速
-    # (实测线程池 3.4s ≈ 串行 2.2s, 线程反而更慢), 且多线程并发解析
-    # 使 malloc arena 峰值叠加 (实测 400MB vs 串行 190MB, 降 50%).
+    # (6 扫描时实测线程池 3.4s ≈ 串行 2.2s, 线程反而更慢), 且多线程并发解析
+    # 使 malloc arena 峰值叠加 (6 扫描时实测 400MB vs 串行 190MB, 降 50%).
     builders = [
         build_kimi_work,
         build_kimi_cli,
