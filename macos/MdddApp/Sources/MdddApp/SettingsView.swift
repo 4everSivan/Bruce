@@ -418,7 +418,7 @@ struct SettingsView: View {
                     LabeledContent("版本", value: version)
                 }
                 sessionSourceTagsSection(sessionProbes)
-                ForEach(result?.warnings ?? [], id: \.self) { warning in
+                ForEach(visibleAgentUsageWarnings(result?.warnings ?? []), id: \.self) { warning in
                     Label(warning, systemImage: "exclamationmark.triangle")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -443,6 +443,15 @@ struct SettingsView: View {
             }
             .accessibilityElement(children: .contain)
             .glassButtonStyle()
+        }
+    }
+
+    /// Kimi Work 和 Antigravity 属于可选增强探测, 不在 Agent 用量配置卡片中展示
+    /// 其本机不可用/数据库状态提示; 探测结果仍保留给 readiness 和诊断流程.
+    private func visibleAgentUsageWarnings(_ warnings: [String]) -> [String] {
+        warnings.filter { warning in
+            !warning.hasPrefix("Kimi Work ")
+                && !warning.hasPrefix("Antigravity 数据库:")
         }
     }
 

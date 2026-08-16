@@ -19,6 +19,8 @@ extension AppearancePreference {
 
 struct MenuBarLabelView: View {
     @ObservedObject var model: AppModel
+    /// ImageRenderer 生成的是静态 NSImage, 由状态项控制器推进刷新角度.
+    var refreshRotation: Double = 0
 
     private var summary: MenuBarSummary {
         model.makeMenuBarSummary()
@@ -43,7 +45,7 @@ struct MenuBarLabelView: View {
         let formatter = MenuBarMetricFormatter()
         HStack(spacing: 5) {
             if isRefreshing {
-                SpinningRefreshIcon()
+                MenuBarRefreshIcon(rotation: refreshRotation)
             } else {
                 MenuBarBrandIcon()
             }
@@ -67,6 +69,17 @@ struct MenuBarLabelView: View {
         }
         return (["mddd", summary.overallStatus.title] + metrics)
             .joined(separator: ", ")
+    }
+}
+
+/// 菜单栏状态项的刷新图标. 不使用 SwiftUI 无限动画, 因为 ImageRenderer 只会
+/// 抓取单帧; 由 MenuBarStatusItemController 定时传入角度, 同时保留旁边的用量文本.
+private struct MenuBarRefreshIcon: View {
+    let rotation: Double
+
+    var body: some View {
+        Image(systemName: "arrow.clockwise")
+            .rotationEffect(.degrees(rotation))
     }
 }
 
@@ -108,8 +121,8 @@ struct MenuBarDashboardView: View {
     /// 面板理想尺寸变化回调 (宿主控制器据此跟随调整承载窗口尺寸).
     var onContentSizeChange: ((CGSize) -> Void)?
 
-    /// 仅通知 AppKit 视觉宿主更新系统材质, 不携带业务模型或统计数据.
-    var onSurfaceThemeChange: ((ResolvedTheme) -> Void)?
+    /// 仅通知 AppKit 视觉宿主更新系统材质与配色, 不携带业务模型或统计数据.
+    var onSurfaceThemeChange: ((ResolvedTheme, ColorScheme?) -> Void)?
 
     /// 卡片栈实测理想高度; 0 表示尚未测量到 (首帧), 此时不加高度约束保持自适应.
     @State private var cardStackHeight: CGFloat = 0
@@ -161,7 +174,10 @@ struct MenuBarDashboardView: View {
             onContentSizeChange?(size)
         }
         .onChange(of: coordinator.resolvedTheme) { _, theme in
-            onSurfaceThemeChange?(theme)
+            onSurfaceThemeChange?(theme, coordinator.appearanceMode.colorScheme)
+        }
+        .onChange(of: coordinator.appearanceMode) { _, _ in
+            onSurfaceThemeChange?(coordinator.resolvedTheme, coordinator.appearanceMode.colorScheme)
         }
     }
 

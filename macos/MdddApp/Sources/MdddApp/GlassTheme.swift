@@ -70,8 +70,8 @@ struct DashboardGlassSurfaceTokens {
         let plan = DashboardGlassSurfacePlan.resolve(theme: theme)
         if plan.backend == .nativeLiquidGlass {
             return Self(
-                borderColor: Color.white.opacity(colorScheme == .dark ? 0.06 : 0.16),
-                highlightColor: Color.white.opacity(colorScheme == .dark ? 0.04 : 0.12),
+                borderColor: Color.white.opacity(colorScheme == .dark ? 0.14 : 0.28),
+                highlightColor: Color.white.opacity(colorScheme == .dark ? 0.10 : 0.18),
                 shadowColor: Color(red: 31 / 255, green: 38 / 255, blue: 56 / 255),
                 shadowOpacity: colorScheme == .dark ? 0.0 : 0.02
             )
@@ -85,6 +85,21 @@ struct DashboardGlassSurfaceTokens {
                 highlightColor: Color.clear,
                 shadowColor: Color.black,
                 shadowOpacity: 0.08
+            )
+        }
+
+        // 哑光(material)档位: 边框/高光比经典略实, 让卡片在磨砂面板上可辨;
+        // 仅 material 档位命中, classic 仍走下方默认 token.
+        if plan.cardMaterial == .matte {
+            return Self(
+                borderColor: colorScheme == .dark
+                    ? Color.white.opacity(0.24)
+                    : Color.white.opacity(0.70),
+                highlightColor: colorScheme == .dark
+                    ? Color.white.opacity(0.16)
+                    : Color.white.opacity(0.70),
+                shadowColor: Color(red: 31 / 255, green: 38 / 255, blue: 56 / 255),
+                shadowOpacity: colorScheme == .dark ? 0.0 : 0.07
             )
         }
 
@@ -214,18 +229,6 @@ enum DashboardGlassSurface {
     case card
 }
 
-private extension GlassStylePreference {
-    /// B 方案的材质层级: 面板保留用户选择, 内容卡片使用更通透的一层.
-    var dashboardCardStyle: Self {
-        switch self {
-        case .regular, .clear:
-            return .clear
-        case .material:
-            return .material
-        }
-    }
-}
-
 /// 统一面板/卡片背景实现. 几何形状由调用方提供, 本函数不改变布局.
 @ViewBuilder
 func dashboardGlassBackground(
@@ -246,11 +249,9 @@ func dashboardGlassBackground(
             if surface == .card {
                 shape.fill(dashboardCardSurfaceColor())
             } else {
-                let glassStyle = surface == .card
-                    ? theme.glassStyle.dashboardCardStyle
-                    : theme.glassStyle
+                // else 分支 surface 恒为 .panel: 面板玻璃直接使用用户选择的模糊风格.
                 Color.clear.glassEffect(
-                    glassStyle.liquidGlassAPI,
+                    theme.glassStyle.liquidGlassAPI,
                     in: shape
                 )
             }
@@ -261,6 +262,9 @@ func dashboardGlassBackground(
                 fallback: fallback
             )
         }
+    } else if surface == .card && plan.cardMaterial == .matte {
+        // 哑光(material)档位卡片: 实填充与磨砂面板拉开区分; 经典档位不命中.
+        shape.fill(dashboardMatteCardSurfaceColor(colorScheme: colorScheme))
     } else {
         dashboardGlassFallback(
             shape: shape,
@@ -276,9 +280,17 @@ private func dashboardCardSurfaceColor() -> Color {
     Color(nsColor: NSColor(name: nil) { appearance in
         let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         return isDark
-            ? NSColor.black.withAlphaComponent(0.28)
-            : NSColor.white.withAlphaComponent(0.22)
+            ? NSColor.black.withAlphaComponent(0.38)
+            : NSColor.white.withAlphaComponent(0.34)
     })
+}
+
+/// 哑光(material)档位卡片填充: 深色更实的黑、浅色更实的白, 与 .windowBackground
+/// 磨砂面板拉开区分度. 磨砂面板不采样桌面亮度, 直接用 colorScheme 即可.
+private func dashboardMatteCardSurfaceColor(colorScheme: ColorScheme) -> Color {
+    colorScheme == .dark
+        ? Color.black.opacity(0.30)
+        : Color.white.opacity(0.55)
 }
 
 @ViewBuilder

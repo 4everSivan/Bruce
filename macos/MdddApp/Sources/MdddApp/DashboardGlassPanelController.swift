@@ -9,13 +9,17 @@ final class DashboardGlassPanelController: NSViewController {
     private let rootView = DashboardGlassRootView()
     private var surfaceView: NSView?
     private var surfacePlan: DashboardGlassSurfacePlan
+    /// 面板配色模式映射; nil 表示跟随系统, 由 effectiveAppearance 决定 tint 明暗.
+    private var preferredColorScheme: ColorScheme?
 
     init<Content: View>(
         rootView: Content,
-        theme: ResolvedTheme
+        theme: ResolvedTheme,
+        preferredColorScheme: ColorScheme? = nil
     ) {
         self.hostingController = NSHostingController(rootView: AnyView(rootView))
         self.surfacePlan = DashboardGlassSurfacePlan.resolve(theme: theme)
+        self.preferredColorScheme = preferredColorScheme
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -38,9 +42,11 @@ final class DashboardGlassPanelController: NSViewController {
     }
 
     /// 主题变化时只更新视觉层, 不重建面板和 SwiftUI 状态.
-    func updateSurface(theme: ResolvedTheme) {
+    func updateSurface(theme: ResolvedTheme, preferredColorScheme: ColorScheme?) {
         let nextPlan = DashboardGlassSurfacePlan.resolve(theme: theme)
-        guard nextPlan != surfacePlan else { return }
+        let appearanceChanged = preferredColorScheme != self.preferredColorScheme
+        self.preferredColorScheme = preferredColorScheme
+        guard nextPlan != surfacePlan || appearanceChanged else { return }
         surfacePlan = nextPlan
         guard isViewLoaded else { return }
         installSurface()
@@ -116,8 +122,7 @@ final class DashboardGlassPanelController: NSViewController {
 
     @available(macOS 26, *)
     private func nativeGlassTintColor() -> NSColor {
-        let appearance = view.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua])
-        if appearance == .darkAqua {
+        if isDarkAppearance {
             switch surfacePlan.panelMaterial {
             case .clear:
                 // A clear surface can sample a white browser/document window
@@ -139,6 +144,16 @@ final class DashboardGlassPanelController: NSViewController {
         case .matte, .classic:
             return NSColor.clear
         }
+    }
+
+    /// tint 明暗判定: 显式配色模式 (light/dark) 优先, 跟随系统 (nil) 时读 effectiveAppearance.
+    /// 不用 effectiveAppearance 作为唯一来源: 启动时 install 先于 applyAppearance 执行,
+    /// 首次 viewDidLoad 时 NSApp.appearance 尚未设置深色, 会误判为浅色导致深色通透首帧白闪.
+    private var isDarkAppearance: Bool {
+        if let preferredColorScheme {
+            return preferredColorScheme == .dark
+        }
+        return view.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
     }
 
     private func material(
