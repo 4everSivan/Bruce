@@ -1,3 +1,4 @@
+import MdddGlassSurfaceCore
 import MdddOnboardingCore
 import SwiftUI
 
@@ -43,7 +44,7 @@ struct PanelCardContainer<Content: View>: View {
             }
             .clipShape(shape)
             .shadow(
-                color: surfaceTokens.shadowColor.opacity(surfaceTokens.shadowOpacity),
+                color: surfaceTokens.shadowColor,
                 radius: 5,
                 y: 1
             )
@@ -79,7 +80,12 @@ private struct PanelGlassButtonStyleModifier: ViewModifier {
         if plan.usesInteractiveGlass {
             if #available(macOS 26, *) {
                 content.buttonStyle(
-                    DashboardPanelGlassButtonStyle(colorScheme: colorScheme)
+                    DashboardPanelGlassButtonStyle(
+                        tokens: DashboardGlassSurfaceTokens.resolve(
+                            theme: theme,
+                            colorScheme: colorScheme
+                        )
+                    )
                 )
             } else {
                 content
@@ -94,34 +100,27 @@ private struct PanelGlassButtonStyleModifier: ViewModifier {
 /// 通透背景与 SwiftUI 外观不一致时生成高亮白块. 只作用于底栏按钮,
 /// 不改变按钮 action 或尺寸链路.
 private struct DashboardPanelGlassButtonStyle: ButtonStyle {
-    let colorScheme: ColorScheme
+    let tokens: DashboardGlassSurfaceTokens
 
     func makeBody(configuration: Configuration) -> some View {
-        let isDark = colorScheme == .dark
         configuration.label
-            // Anchor controls to the dashboard appearance. A clear panel can
-            // sample a white browser/document window, so a white-only control
-            // surface would become white-on-white even in dark dashboard mode.
-            .foregroundStyle(isDark ? Color.white : Color.black.opacity(0.82))
+            // Anchor controls to the same resolved surface matrix as panel and
+            // cards. A clear panel must not turn controls into white blocks.
+            .foregroundStyle(tokens.controlForegroundColor)
             .padding(.horizontal, 9)
             .padding(.vertical, 6)
             .background(
-                isDark
-                    ? Color.black.opacity(configuration.isPressed ? 0.82 : 0.68)
-                    : Color.white.opacity(configuration.isPressed ? 0.88 : 0.78),
+                configuration.isPressed
+                    ? tokens.controlPressedFillColor
+                    : tokens.controlFillColor,
                 in: RoundedRectangle(cornerRadius: 10, style: .continuous)
             )
             .overlay {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(
-                        isDark
-                            ? Color.white.opacity(0.42)
-                            : Color.black.opacity(0.20),
-                        lineWidth: 1
-                    )
+                    .strokeBorder(tokens.controlBorderColor, lineWidth: 1)
             }
             .shadow(
-                color: Color.black.opacity(isDark ? 0.22 : 0.10),
+                color: tokens.controlShadowColor,
                 radius: 3,
                 y: 1
             )

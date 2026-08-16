@@ -1,4 +1,5 @@
 import AppKit
+import MdddGlassSurfaceCore
 import MdddOnboardingCore
 import SwiftUI
 
@@ -7,8 +8,10 @@ import SwiftUI
 final class DashboardGlassPanelController: NSViewController {
     private let hostingController: NSHostingController<AnyView>
     private let rootView = DashboardGlassRootView()
+    private var theme: ResolvedTheme
     private var surfaceView: NSView?
     private var surfacePlan: DashboardGlassSurfacePlan
+    private var surfaceStyle: DashboardGlassSurfaceStyle
     /// 面板配色模式映射; nil 表示跟随系统, 由 effectiveAppearance 决定 tint 明暗.
     private var preferredColorScheme: ColorScheme?
 
@@ -18,7 +21,13 @@ final class DashboardGlassPanelController: NSViewController {
         preferredColorScheme: ColorScheme? = nil
     ) {
         self.hostingController = NSHostingController(rootView: AnyView(rootView))
+        self.theme = theme
         self.surfacePlan = DashboardGlassSurfacePlan.resolve(theme: theme)
+        self.surfaceStyle = DashboardGlassSurfaceStyle.resolve(
+            theme: theme,
+            appearance: preferredColorScheme == .dark ? .dark : .light,
+            capabilities: .current
+        )
         self.preferredColorScheme = preferredColorScheme
         super.init(nibName: nil, bundle: nil)
     }
@@ -33,6 +42,9 @@ final class DashboardGlassPanelController: NSViewController {
         rootView.layer?.backgroundColor = NSColor.clear.cgColor
         rootView.layer?.cornerRadius = 22
         rootView.layer?.masksToBounds = true
+        rootView.onEffectiveAppearanceChange = { [weak self] in
+            self?.refreshSurfaceForEffectiveAppearance()
+        }
         view = rootView
     }
 
@@ -43,16 +55,42 @@ final class DashboardGlassPanelController: NSViewController {
 
     /// 主题变化时只更新视觉层, 不重建面板和 SwiftUI 状态.
     func updateSurface(theme: ResolvedTheme, preferredColorScheme: ColorScheme?) {
+        self.theme = theme
         let nextPlan = DashboardGlassSurfacePlan.resolve(theme: theme)
+        let nextStyle = DashboardGlassSurfaceStyle.resolve(
+            theme: theme,
+            appearance: dashboardAppearance(for: preferredColorScheme),
+            capabilities: .current
+        )
         let appearanceChanged = preferredColorScheme != self.preferredColorScheme
         self.preferredColorScheme = preferredColorScheme
-        guard nextPlan != surfacePlan || appearanceChanged else { return }
+        guard nextPlan != surfacePlan || nextStyle != surfaceStyle || appearanceChanged else {
+            return
+        }
         surfacePlan = nextPlan
+        surfaceStyle = nextStyle
         guard isViewLoaded else { return }
         installSurface()
     }
 
+    private func refreshSurfaceForEffectiveAppearance() {
+        guard preferredColorScheme == nil, isViewLoaded else { return }
+        let nextStyle = DashboardGlassSurfaceStyle.resolve(
+            theme: theme,
+            appearance: dashboardAppearance(for: nil),
+            capabilities: .current
+        )
+        guard nextStyle != surfaceStyle else { return }
+        surfaceStyle = nextStyle
+        installSurface()
+    }
+
     private func installSurface() {
+        surfaceStyle = DashboardGlassSurfaceStyle.resolve(
+            theme: theme,
+            appearance: dashboardAppearance(for: preferredColorScheme),
+            capabilities: .current
+        )
         surfaceView?.removeFromSuperview()
         hostingController.view.removeFromSuperview()
 
@@ -122,28 +160,7 @@ final class DashboardGlassPanelController: NSViewController {
 
     @available(macOS 26, *)
     private func nativeGlassTintColor() -> NSColor {
-        if isDarkAppearance {
-            switch surfacePlan.panelMaterial {
-            case .clear:
-                // A clear surface can sample a white browser/document window
-                // even while the app content is in dark appearance. Keep the
-                // backdrop visible, but anchor it to a readable dark range.
-                return NSColor.black.withAlphaComponent(0.42)
-            case .standard:
-                return NSColor.black.withAlphaComponent(0.30)
-            case .matte, .classic:
-                return NSColor.black.withAlphaComponent(0.16)
-            }
-        }
-
-        switch surfacePlan.panelMaterial {
-        case .clear:
-            return NSColor.windowBackgroundColor.withAlphaComponent(0.34)
-        case .standard:
-            return NSColor.windowBackgroundColor.withAlphaComponent(0.46)
-        case .matte, .classic:
-            return NSColor.clear
-        }
+        nsColor(for: surfaceStyle.panelTint)
     }
 
     /// tint 明暗判定: 显式配色模式 (light/dark) 优先, 跟随系统 (nil) 时读 effectiveAppearance.
@@ -154,6 +171,23 @@ final class DashboardGlassPanelController: NSViewController {
             return preferredColorScheme == .dark
         }
         return view.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+    }
+
+    private func dashboardAppearance(for colorScheme: ColorScheme?) -> DashboardGlassAppearance {
+        if let colorScheme {
+            return colorScheme == .dark ? .dark : .light
+        }
+        guard isViewLoaded else { return .light }
+        return isDarkAppearance ? .dark : .light
+    }
+
+    private func nsColor(for token: DashboardGlassColorToken) -> NSColor {
+        NSColor(
+            calibratedRed: CGFloat(token.red),
+            green: CGFloat(token.green),
+            blue: CGFloat(token.blue),
+            alpha: CGFloat(token.alpha)
+        )
     }
 
     private func material(
@@ -173,7 +207,14 @@ final class DashboardGlassPanelController: NSViewController {
 }
 
 private final class DashboardGlassRootView: NSView {
+    var onEffectiveAppearanceChange: (() -> Void)?
+
     override var isFlipped: Bool { true }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        onEffectiveAppearanceChange?()
+    }
 }
 
 private final class DashboardOpaqueSurfaceView: NSView {
