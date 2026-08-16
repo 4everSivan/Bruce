@@ -20,9 +20,14 @@ let package = Package(
             dependencies: ["MdddOnboardingCore"],
             path: "Sources/MdddAppCore"
         ),
+        .target(
+            name: "MdddGlassSurfaceCore",
+            dependencies: ["MdddOnboardingCore"],
+            path: "Sources/MdddGlassSurfaceCore"
+        ),
         .executableTarget(
             name: "MdddApp",
-            dependencies: ["MdddAppCore", "MdddOnboardingCore"]
+            dependencies: ["MdddAppCore", "MdddOnboardingCore", "MdddGlassSurfaceCore"]
         ),
         .executableTarget(
             name: "MdddOnboardingCoreHarness",
@@ -83,6 +88,11 @@ let package = Package(
             name: "AppModelCacheHarness",
             dependencies: ["MdddAppCore", "MdddOnboardingCore"],
             path: "Tests/Harnesses/AppModelCacheHarness"
+        ),
+        .executableTarget(
+            name: "DashboardGlassSurfaceHarness",
+            dependencies: ["MdddGlassSurfaceCore"],
+            path: "Tests/Harnesses/DashboardGlassSurfaceHarness"
         ),
     ]
 )

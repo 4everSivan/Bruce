@@ -1,4 +1,5 @@
 import AppKit
+import MdddGlassSurfaceCore
 import MdddOnboardingCore
 import SwiftUI
 
@@ -52,90 +53,9 @@ extension View {
 
 // MARK: - Dashboard surface tokens
 
-/// 仪表盘材质 token: 只描述表面装饰, 不参与内容布局或数据渲染.
-///
-/// 液态玻璃模式下由系统 `glassEffect` 提供主要材质, 这里仅保留低对比度
-/// 边缘、高光和阴影, 避免重复绘制出“塑料卡片”效果. 经典/低版本回退
-/// 保留独立的一组 token, 防止视觉改造改变旧系统路径.
-struct DashboardGlassSurfaceTokens {
-    let borderColor: Color
-    let highlightColor: Color
-    let shadowColor: Color
-    let shadowOpacity: Double
-
-    static func resolve(
-        theme: ResolvedTheme,
-        colorScheme: ColorScheme
-    ) -> Self {
-        let plan = DashboardGlassSurfacePlan.resolve(theme: theme)
-        if plan.backend == .nativeLiquidGlass {
-            return Self(
-                borderColor: Color.white.opacity(colorScheme == .dark ? 0.14 : 0.28),
-                highlightColor: Color.white.opacity(colorScheme == .dark ? 0.10 : 0.18),
-                shadowColor: Color(red: 31 / 255, green: 38 / 255, blue: 56 / 255),
-                shadowOpacity: colorScheme == .dark ? 0.0 : 0.02
-            )
-        }
-
-        if plan.reduceTransparencyFallback {
-            return Self(
-                borderColor: colorScheme == .dark
-                    ? Color.white.opacity(0.24)
-                    : Color.black.opacity(0.16),
-                highlightColor: Color.clear,
-                shadowColor: Color.black,
-                shadowOpacity: 0.08
-            )
-        }
-
-        // 哑光(material)档位: 边框/高光比经典略实, 让卡片在磨砂面板上可辨;
-        // 仅 material 档位命中, classic 仍走下方默认 token.
-        if plan.cardMaterial == .matte {
-            return Self(
-                borderColor: colorScheme == .dark
-                    ? Color.white.opacity(0.24)
-                    : Color.white.opacity(0.70),
-                highlightColor: colorScheme == .dark
-                    ? Color.white.opacity(0.16)
-                    : Color.white.opacity(0.70),
-                shadowColor: Color(red: 31 / 255, green: 38 / 255, blue: 56 / 255),
-                shadowOpacity: colorScheme == .dark ? 0.0 : 0.07
-            )
-        }
-
-        return Self(
-            borderColor: colorScheme == .dark
-                ? Color.white.opacity(0.16)
-                : Color.white.opacity(0.6),
-            highlightColor: colorScheme == .dark
-                ? Color.white.opacity(0.10)
-                : Color.white.opacity(0.6),
-            shadowColor: Color(red: 31 / 255, green: 38 / 255, blue: 56 / 255),
-            shadowOpacity: colorScheme == .dark ? 0.0 : 0.07
-        )
-    }
-}
-
-// MARK: - Dashboard native surface plan
-
-enum DashboardGlassBackend: Equatable {
-    case nativeLiquidGlass
-    case appKitMaterial
-    case swiftUIFallback
-}
-
-enum DashboardGlassMaterial: Equatable {
-    case standard
-    case clear
-    case matte
-    case classic
-}
-
-struct DashboardGlassSurfaceCapabilities: Equatable {
-    let nativeLiquidGlass: Bool
-    let reduceTransparency: Bool
-    let increaseContrast: Bool
-
+extension DashboardGlassSurfaceCapabilities {
+    /// Runtime capability probe stays at the AppKit boundary; the core matrix
+    /// receives these values as plain booleans and remains deterministic.
     static var current: Self {
         Self(
             nativeLiquidGlass: LiquidGlassCapability.isSupported,
@@ -145,77 +65,58 @@ struct DashboardGlassSurfaceCapabilities: Equatable {
     }
 }
 
-struct DashboardGlassSurfacePlan: Equatable {
-    let backend: DashboardGlassBackend
-    let panelMaterial: DashboardGlassMaterial
-    let cardMaterial: DashboardGlassMaterial
-    let usesInteractiveGlass: Bool
-    let reduceTransparencyFallback: Bool
+extension DashboardGlassSurfacePlan {
+    /// Production convenience: tests call the pure overload with injected
+    /// capabilities, while UI call sites use the current system capabilities.
+    static func resolve(theme: ResolvedTheme) -> Self {
+        resolve(theme: theme, capabilities: .current)
+    }
+}
+
+/// SwiftUI adapter for the pure surface matrix. It contains no layout or
+/// business state; all values come from the shared Panel/Card/Control plan.
+struct DashboardGlassSurfaceTokens {
+    let panelTintColor: Color
+    let cardFillColor: Color
+    let borderColor: Color
+    let highlightColor: Color
+    let shadowColor: Color
+    let controlFillColor: Color
+    let controlPressedFillColor: Color
+    let controlForegroundColor: Color
+    let controlBorderColor: Color
+    let controlShadowColor: Color
 
     static func resolve(
         theme: ResolvedTheme,
-        capabilities: DashboardGlassSurfaceCapabilities = .current
+        colorScheme: ColorScheme
     ) -> Self {
-        if capabilities.reduceTransparency || capabilities.increaseContrast {
-            return Self(
-                backend: .appKitMaterial,
-                panelMaterial: .classic,
-                cardMaterial: .classic,
-                usesInteractiveGlass: false,
-                reduceTransparencyFallback: true
-            )
-        }
+        let appearance: DashboardGlassAppearance = colorScheme == .dark ? .dark : .light
+        let style = DashboardGlassSurfaceStyle.resolve(
+            theme: theme,
+            appearance: appearance,
+            capabilities: .current
+        )
+        return Self(style: style)
+    }
 
-        // `material` is intentionally a valid liquid-glass interface choice
-        // that disables the SwiftUI Glass API.  Branch on the interface
-        // preference itself so it still reaches the AppKit matte surface
-        // instead of being collapsed into the classic fallback below.
-        guard theme.interfaceStyle == .liquidGlass else {
-            return Self(
-                backend: .appKitMaterial,
-                panelMaterial: .classic,
-                cardMaterial: .classic,
-                usesInteractiveGlass: false,
-                reduceTransparencyFallback: false
-            )
-        }
+    private init(style: DashboardGlassSurfaceStyle) {
+        panelTintColor = style.panelTint.color
+        cardFillColor = style.cardFill.color
+        borderColor = style.cardBorder.color
+        highlightColor = style.cardHighlight.color
+        shadowColor = style.cardShadow.color
+        controlFillColor = style.controlFill.color
+        controlPressedFillColor = style.controlPressedFill.color
+        controlForegroundColor = style.controlForeground.color
+        controlBorderColor = style.controlBorder.color
+        controlShadowColor = style.controlShadow.color
+    }
+}
 
-        guard capabilities.nativeLiquidGlass else {
-            return Self(
-                backend: .appKitMaterial,
-                panelMaterial: .classic,
-                cardMaterial: .classic,
-                usesInteractiveGlass: false,
-                reduceTransparencyFallback: false
-            )
-        }
-
-        switch theme.glassStyle {
-        case .regular:
-            return Self(
-                backend: .nativeLiquidGlass,
-                panelMaterial: .standard,
-                cardMaterial: .clear,
-                usesInteractiveGlass: true,
-                reduceTransparencyFallback: false
-            )
-        case .clear:
-            return Self(
-                backend: .nativeLiquidGlass,
-                panelMaterial: .clear,
-                cardMaterial: .clear,
-                usesInteractiveGlass: true,
-                reduceTransparencyFallback: false
-            )
-        case .material:
-            return Self(
-                backend: .appKitMaterial,
-                panelMaterial: .matte,
-                cardMaterial: .matte,
-                usesInteractiveGlass: false,
-                reduceTransparencyFallback: false
-            )
-        }
+private extension DashboardGlassColorToken {
+    var color: Color {
+        Color(red: red, green: green, blue: blue).opacity(alpha)
     }
 }
 
@@ -239,15 +140,19 @@ func dashboardGlassBackground(
     surface: DashboardGlassSurface = .panel
 ) -> some View {
     let plan = DashboardGlassSurfacePlan.resolve(theme: theme)
+    let tokens = DashboardGlassSurfaceTokens.resolve(
+        theme: theme,
+        colorScheme: colorScheme
+    )
     if plan.backend == .nativeLiquidGlass {
         if #available(macOS 26, *) {
             // The AppKit panel is the single native glass surface. A second
             // SwiftUI glass layer can become an opaque light sheet when the
             // backdrop and SwiftUI color scheme disagree. Native cards use a
-            // stable dynamic surface instead: it keeps the local content
-            // readable while the AppKit panel still supplies the backdrop.
+            // shared style token instead: it keeps the local content readable
+            // while the AppKit panel still supplies the backdrop.
             if surface == .card {
-                shape.fill(dashboardCardSurfaceColor())
+                shape.fill(tokens.cardFillColor)
             } else {
                 // else 分支 surface 恒为 .panel: 面板玻璃直接使用用户选择的模糊风格.
                 Color.clear.glassEffect(
@@ -264,7 +169,7 @@ func dashboardGlassBackground(
         }
     } else if surface == .card && plan.cardMaterial == .matte {
         // 哑光(material)档位卡片: 实填充与磨砂面板拉开区分; 经典档位不命中.
-        shape.fill(dashboardMatteCardSurfaceColor(colorScheme: colorScheme))
+        shape.fill(tokens.cardFillColor)
     } else {
         dashboardGlassFallback(
             shape: shape,
@@ -272,25 +177,6 @@ func dashboardGlassBackground(
             fallback: fallback
         )
     }
-}
-
-/// 卡片局部对比度层. 使用动态 NSColor 而不是 SwiftUI `ColorScheme`, 因为
-/// 通透面板可能采样到与 SwiftUI 环境不同的桌面/窗口亮度.
-private func dashboardCardSurfaceColor() -> Color {
-    Color(nsColor: NSColor(name: nil) { appearance in
-        let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        return isDark
-            ? NSColor.black.withAlphaComponent(0.38)
-            : NSColor.white.withAlphaComponent(0.34)
-    })
-}
-
-/// 哑光(material)档位卡片填充: 深色更实的黑、浅色更实的白, 与 .windowBackground
-/// 磨砂面板拉开区分度. 磨砂面板不采样桌面亮度, 直接用 colorScheme 即可.
-private func dashboardMatteCardSurfaceColor(colorScheme: ColorScheme) -> Color {
-    colorScheme == .dark
-        ? Color.black.opacity(0.30)
-        : Color.white.opacity(0.55)
 }
 
 @ViewBuilder
