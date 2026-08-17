@@ -435,6 +435,15 @@ def _validate_subscription_quota_only(context, credentials):
             "protocol",
             "subscriptionProviders 数量超过 Provider 总数",
         )
+    # 定向刷新只能授予外部额度能力, 不能借此旁路本地会话/价格采集.
+    capabilities = set(context.get("capabilities") or [])
+    illegal = capabilities & {"localSessions", "localPricing"}
+    if illegal:
+        raise ValidationError(
+            "BRIDGE_SUBSCRIPTION_NOT_QUOTA_ONLY",
+            "security",
+            "定向刷新请求不得携带本地会话/价格采集能力",
+        )
     # 凭证范围: 只允许目标 Provider 的 quota 凭证 + 跨 Provider 的 tuning 键
     allowed = {"providerEnv", "providerMeta"}
     for provider in target:
