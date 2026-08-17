@@ -215,7 +215,13 @@ struct MenuBarDashboardView: View {
             }
             if let subscription = panel.subscription {
                 PanelCardContainer {
-                    SubscriptionCard(viewModel: subscription)
+                    SubscriptionCard(
+                        viewModel: subscription,
+                        refreshControls: subscriptionRefreshControls(for: subscription),
+                        onRefreshProvider: { provider in
+                            coordinator.refreshSubscription(provider)
+                        }
+                    )
                 }
             }
             if let hourly = panel.hourly {
@@ -250,6 +256,24 @@ struct MenuBarDashboardView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 18)
         }
+    }
+
+    /// 订阅卡各 Provider 的刷新按钮呈现: 按 section ID 解析目标 Provider
+    /// (fail-closed, 未知 service 不出按钮), 呈现状态由 AppModel 按契约计算
+    /// (目标刷新中 / 全量刷新冲突 / 未配置 / 未启用 / 模块不可运行).
+    private func subscriptionRefreshControls(
+        for viewModel: SubscriptionViewModel
+    ) -> [String: SubscriptionRefreshControlPresentation] {
+        var controls: [String: SubscriptionRefreshControlPresentation] = [:]
+        for section in viewModel.sections {
+            guard let provider = SubscriptionRefreshControlPolicy.providerID(
+                forSectionID: section.id
+            ) else { continue }
+            controls[provider.rawValue] = model.subscriptionRefreshControl(
+                for: provider, displayName: section.name
+            )
+        }
+        return controls
     }
 
     // MARK: 底栏

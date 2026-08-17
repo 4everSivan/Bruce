@@ -111,6 +111,11 @@ package final class RefreshScheduler {
     /// 含 credential 写回失败时追加的 CREDENTIAL_PERSIST_FAILED (无令牌明文).
     package private(set) var lastPublishedDiagnostics: [BridgeDiagnostic] = []
 
+    /// 单个订阅 Provider 的定向刷新状态回调. 定向刷新 (`refreshSubscription`)
+    /// 触发 `.started`, 完成后按本轮结果发 `.finished`/`.failed`/`.cancelled`.
+    /// 全量刷新不触发此回调 (只走模块级 `onStatusChange`).
+    package var onSubscriptionRefreshState: ((SubscriptionProviderID, SubscriptionRefreshState) -> Void)?
+
     package convenience init(
         executor: CollectorRunner,
         store: ArtifactStore,
@@ -276,6 +281,18 @@ package final class RefreshScheduler {
         triggerRefresh(for: module, intent: .manual())
     }
 
+    /// 定向刷新单个订阅 Provider: 进入显式 scope, 与其他定时/手动刷新
+    /// 遵守同样的容量、pending 合并与取消规则; 任一全量意图优先于定向集合.
+    /// 目标 Provider 刷新状态经 `onSubscriptionRefreshState` 单独回调,
+    /// 与设置页凭证操作 busy 状态 (`busySubscriptionProviders`) 解耦.
+    package func refreshSubscription(_ provider: SubscriptionProviderID) {
+        guard let state = states[.agentUsage], state.enabled else { return }
+        if stopped {
+            start()
+        }
+        triggerRefresh(for: .agentUsage, intent: .subscription(provider))
+    }
+
     // MARK: - Sleep / wake
 
     package func handleWakeOrReactivation() {
@@ -393,6 +410,13 @@ package final class RefreshScheduler {
 
         onStatusChange?(module, .refreshing, nil)
 
+        // 定向刷新: 目标 Provider 进入 started (按钮 loading/disabled).
+        if intent.scope.isTargeted {
+            for provider in intent.scope.targetProviders {
+                onSubscriptionRefreshState?(provider, .started)
+            }
+        }
+
         runningTasks[module] = Task { [weak self] in
             await self?.executeRefresh(for: module, intent: intent)
         }
@@ -423,15 +447,42 @@ package final class RefreshScheduler {
         let result = await pipeline.run(RefreshPipelineRequest(
             module: module,
             intent: intent,
+            scope: intent.scope,
             staleAfter: configuration.staleAfter,
             now: clock.now()
         ))
+        // 定向刷新: 在模块级结果映射之外, 单独向目标 Provider 发状态回调.
+        emitSubscriptionState(for: intent.scope, result: result)
         apply(result, for: module)
         // 取消路径不触发 onRunCycleCompleted (与迁出前一致).
         if case .cancelled = result {
             return
         }
         onRunCycleCompleted?()
+    }
+
+    /// 定向刷新: 对 scope 内每个目标 Provider 发状态回调.
+    /// - `.started` 在 `startRefresh` (running 相位) 已发; 此处映射收尾状态.
+    /// - cancelled → `.cancelled`; 运行输入/Collector 失败 → `.failed`;
+    ///   completed (含 partial) → `.finished`. 全量刷新不触发.
+    private func emitSubscriptionState(
+        for scope: RefreshScope,
+        result: RefreshPipelineResult
+    ) {
+        guard scope.isTargeted else { return }
+        let providers = scope.targetProviders
+        let state: SubscriptionRefreshState
+        switch result {
+        case .cancelled:
+            state = .cancelled
+        case .runInputFailed, .collectorFailed, .publishFailed:
+            state = .failed
+        case .completed:
+            state = .finished
+        }
+        for provider in providers {
+            onSubscriptionRefreshState?(provider, state)
+        }
     }
 
     /// 将 Pipeline 结果映射到 phase / 状态回调 / timer / 额度预警 / pending 排空.
@@ -742,7 +793,8 @@ package final class RefreshScheduler {
             let includesManual = self.states[module]?.lastTriggerWasManual ?? false
             let intent = RefreshIntent(
                 reason: includesManual ? .manual : .timer,
-                includesManual: includesManual
+                includesManual: includesManual,
+                scope: .all
             )
             self.startRefresh(for: module, intent: intent)
         }

@@ -1,4 +1,5 @@
 import MdddAppCore
+import MdddOnboardingCore
 import SwiftUI
 
 // 订阅用量卡: 原生 SwiftUI 版, 视觉以 panel-layout-v8.html 的订阅用量区为准.
@@ -6,8 +7,16 @@ import SwiftUI
 // 数据全部来自 MdddAppCore 的 SubscriptionViewModel, 组件不读取任何凭证或 artifact.
 
 /// 订阅用量卡: 标题行 + 若干 provider 段, 段间 1pt 分隔线.
+/// 每个 provider 段头部行尾带独立定向刷新按钮 (设计契约), 状态与动作
+/// 全部经参数注入; 组件不读取凭证, artifact 或 AppModel.
 struct SubscriptionCard: View {
     let viewModel: SubscriptionViewModel
+    /// 各 Provider 刷新按钮呈现状态, key 为 SubscriptionProviderID rawValue;
+    /// section 无法归一为已知 Provider 或缺键时不渲染按钮 (fail-closed).
+    var refreshControls: [String: SubscriptionRefreshControlPresentation] = [:]
+    /// Provider 定向刷新动作; 目标由 section ID 经
+    /// SubscriptionRefreshControlPolicy 解析, 与按钮禁用态共用同一解析.
+    var onRefreshProvider: (SubscriptionProviderID) -> Void = { _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -31,19 +40,48 @@ struct SubscriptionCard: View {
                         ))
                         .frame(height: 1)
                 }
-                ProviderSectionView(section: section, isFirst: index == 0)
+                ProviderSectionView(
+                    section: section,
+                    isFirst: index == 0,
+                    refreshControl: refreshControl(for: section)
+                )
             }
         }
     }
+
+    /// 解析 section 的刷新按钮呈现与动作; 未知 Provider 或缺呈现状态时
+    /// 返回 nil, 该 section 不渲染刷新按钮.
+    private func refreshControl(
+        for section: SubscriptionProviderSection
+    ) -> ProviderRefreshControl? {
+        guard let provider = SubscriptionRefreshControlPolicy.providerID(
+            forSectionID: section.id
+        ), let presentation = refreshControls[provider.rawValue] else {
+            return nil
+        }
+        return ProviderRefreshControl(
+            presentation: presentation,
+            action: { onRefreshProvider(provider) }
+        )
+    }
+}
+
+/// Provider 刷新按钮的呈现 + 动作对 (section 级注入值).
+private struct ProviderRefreshControl {
+    let presentation: SubscriptionRefreshControlPresentation
+    let action: () -> Void
 }
 
 // MARK: - provider 段
 
 /// 单个 provider 段: 品牌徽章 + 名称 + plan chip + 账号数, 下方窗口行 / 账号子卡 / 余额行.
 /// 多账号 (>=2) 默认折叠, 折叠态展示最关键窗口摘要; 展开后按账号子卡展示.
+/// 头部行尾的定向刷新按钮与名称+chevron 展开按钮互为兄弟控件, 互不误触.
 private struct ProviderSectionView: View {
     let section: SubscriptionProviderSection
     let isFirst: Bool
+    /// 非 nil 时头部行尾渲染定向刷新按钮.
+    var refreshControl: ProviderRefreshControl? = nil
     @State private var expanded = false
 
     var body: some View {
@@ -152,7 +190,50 @@ private struct ProviderSectionView: View {
                     .font(.system(size: 9))
                     .foregroundStyle(.secondary)
             }
+            // 定向刷新按钮钉在头部行尾 (契约: 单/多账号位置统一);
+            // 与展开/折叠按钮是兄弟控件, 点击不改变折叠状态.
+            if let refreshControl {
+                Spacer(minLength: 8)
+                ProviderRefreshButton(
+                    presentation: refreshControl.presentation,
+                    action: refreshControl.action
+                )
+            }
         }
+    }
+}
+
+// MARK: - Provider 定向刷新按钮
+
+/// Provider 头部行尾的定向刷新按钮 (设计契约): 常态 arrow.clockwise;
+/// 目标 Provider 刷新中替换为小型进度指示并禁用; 全量刷新中 / 未配置 /
+/// 未启用 / 模块不可运行时禁用. 固定内容框, 状态切换不引发布局抖动.
+/// 呈现快照由 SubscriptionRefreshControlPolicy 计算, 本组件不含业务判断.
+private struct ProviderRefreshButton: View {
+    let presentation: SubscriptionRefreshControlPresentation
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Group {
+                if presentation.showsProgress {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 10, weight: .semibold))
+                }
+            }
+            .frame(width: 14, height: 14)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        // 进行中保留进度指示原色; 其余禁用态降透明度给出明确不可点反馈.
+        .opacity(presentation.isEnabled || presentation.showsProgress ? 1 : 0.45)
+        .disabled(!presentation.isEnabled)
+        .accessibilityLabel(presentation.accessibilityLabel)
+        .accessibilityHint(presentation.accessibilityHint)
     }
 }
 
@@ -611,8 +692,35 @@ private extension SubscriptionViewModel {
 // 命令行 swift build 无法解析 #Preview 宏插件 (PreviewsMacros),
 // 这里用 PreviewProvider, Xcode 画布同样可直接预览.
 struct SubscriptionCard_Previews: PreviewProvider {
+    /// 预览呈现矩阵: kimi/volcengine 常态可点; codex (多账号) 定向刷新中
+    /// (spinner+禁用); antigravity/deepseek 模拟全量刷新冲突禁用;
+    /// openai 非已知 SubscriptionProviderID, 不渲染按钮 (fail-closed).
+    private static var previewControls: [String: SubscriptionRefreshControlPresentation] {
+        func make(
+            _ name: String, refreshing: Bool = false, enabled: Bool = true
+        ) -> SubscriptionRefreshControlPresentation {
+            SubscriptionRefreshControlPolicy.make(
+                displayName: name,
+                isProviderRefreshing: refreshing,
+                isFullRefreshRunning: !enabled,
+                isRunnable: true
+            )
+        }
+        return [
+            "kimi": make("Kimi"),
+            "volcengine": make("火山引擎"),
+            "codex": make("ChatGPT", refreshing: true, enabled: false),
+            "antigravity": make("Antigravity", enabled: false),
+            "deepseek": make("DeepSeek", enabled: false),
+        ]
+    }
+
     static var previews: some View {
-        SubscriptionCard(viewModel: .previewFixture)
+        SubscriptionCard(
+            viewModel: .previewFixture,
+            refreshControls: previewControls,
+            onRefreshProvider: { _ in }
+        )
             .padding(.horizontal, 15)
             .padding(.vertical, 13)
             .background(Color.white.opacity(0.45), in: RoundedRectangle(cornerRadius: 16, style: .continuous))

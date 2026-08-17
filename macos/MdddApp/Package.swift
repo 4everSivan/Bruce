@@ -94,5 +94,10 @@ let package = Package(
             dependencies: ["MdddGlassSurfaceCore"],
             path: "Tests/Harnesses/DashboardGlassSurfaceHarness"
         ),
+        .executableTarget(
+            name: "SubscriptionRefreshControlHarness",
+            dependencies: ["MdddAppCore", "MdddOnboardingCore"],
+            path: "Tests/Harnesses/SubscriptionRefreshControlHarness"
+        ),
     ]
 )

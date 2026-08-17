@@ -169,6 +169,10 @@ package final class AppModel: ObservableObject {
     @Published package private(set) var grokLocalAvailable = false
     /// 正在保存, 验证或导入的订阅 provider, 供设置页禁用对应按钮.
     @Published package private(set) var busySubscriptionProviders: Set<SubscriptionProviderID> = []
+    /// 正在定向刷新额度的订阅 provider: 来源是 Scheduler 的 Provider 级状态回调
+    /// (subscriptionRefreshState), 与 busySubscriptionProviders (凭证保存/导入)
+    /// 严格分离, 互不误显 (设计契约).
+    @Published package private(set) var refreshingSubscriptionProviders: Set<SubscriptionProviderID> = []
     /// 各 provider 多账号摘要 (数量与账号名列表), 供设置页渲染账号列表.
     /// Codex 摘要复用 codexAccountSummary; 其余 provider 经 ProviderAccountStore 发布.
     @Published package private(set) var providerAccountSummaries: [SubscriptionProviderID: [ProviderAccountSummary]] = [:]
@@ -469,6 +473,34 @@ package final class AppModel: ObservableObject {
         } else {
             busySubscriptionProviders.remove(provider)
         }
+    }
+
+    /// 发布 Provider 级定向刷新状态: Scheduler 回调 (started) 进入集合,
+    /// finished/failed/cancelled 移出. 不触碰 artifact, 模块状态与凭证 busy 集合.
+    package func setSubscriptionRefreshing(
+        _ refreshing: Bool, for provider: SubscriptionProviderID
+    ) {
+        if refreshing {
+            refreshingSubscriptionProviders.insert(provider)
+        } else {
+            refreshingSubscriptionProviders.remove(provider)
+        }
+    }
+
+    /// 订阅卡 Provider header 刷新按钮呈现状态 (UI 契约唯一计算入口):
+    /// 目标刷新中 spinner+禁用; 全量刷新中全部禁用; 未配置/未启用或
+    /// 当前 module 不可运行时禁用.
+    package func subscriptionRefreshControl(
+        for provider: SubscriptionProviderID,
+        displayName: String
+    ) -> SubscriptionRefreshControlPresentation {
+        SubscriptionRefreshControlPolicy.make(
+            displayName: displayName,
+            isProviderRefreshing: refreshingSubscriptionProviders.contains(provider),
+            isFullRefreshRunning: moduleStatuses[.agentUsage]?.state == .refreshing,
+            isRunnable: canRunCollector(for: .agentUsage)
+                && subscriptionProviders[provider]?.enabled == true
+        )
     }
 
     package func setCodexAccountSummary(
