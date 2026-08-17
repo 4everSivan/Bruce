@@ -57,6 +57,20 @@ final class ApplicationBootstrap {
         scheduler.onArtifactChange = { [weak model] module, artifact in
             model?.setArtifact(artifact, for: DashboardModule(module))
         }
+        // Stage 3 / TASK-6D: 把 Scheduler 的 Provider 级定向刷新状态回调接到
+        // AppModel 的 UI seam (setSubscriptionRefreshing). 只传 Bool 刷新标记,
+        // 不把凭证、token 或 artifact 原始 JSON 带入 UI; 状态收敛由 AppModel
+        // 的 refreshingSubscriptionProviders 集合负责 (started 进入, 终态移出).
+        scheduler.onSubscriptionRefreshState = { [weak model] provider, state in
+            let refreshing: Bool
+            switch state {
+            case .started:
+                refreshing = true
+            case .finished, .failed, .cancelled:
+                refreshing = false
+            }
+            model?.setSubscriptionRefreshing(refreshing, for: provider)
+        }
         // credentialUpdates 由 RefreshScheduler 注入的 CredentialUpdateCoordinator
         // 在 RefreshExecutionPipeline 中于 publish 前应用; 写回失败降级为 partial + 诊断.
         // 后台刷新发现 5h 额度新跨越 80% 阈值时弹系统通知.
