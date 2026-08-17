@@ -43,6 +43,27 @@ from local_usage import finalize, make_agent, new_bucket, record_usage, scan_cla
 import codex_compat
 import service_catalog
 
+# 订阅额度定向刷新的 Provider 标识 (与 Swift SubscriptionProviderID.rawValue 一致).
+SUBSCRIPTION_PROVIDER_IDS = {
+    "kimi",
+    "deepseek",
+    "volcengine",
+    "codex",
+    "antigravity",
+    "claude",
+    "grok",
+    "opencodeGo",
+}
+# Provider 标识 -> collector service 的 app 字段, 用于结果收窄.
+_PROVIDER_APP = {
+    "kimi": "kimi",
+    "deepseek": "deepseek",
+    "volcengine": "volcengine",
+    "claude": "claude",
+    "grok": "grok",
+    "opencodeGo": "opencode-go",
+}
+
 HOME = os.path.expanduser("~")
 DAIMON_KIMI_SESSIONS = os.path.join(
     HOME,
@@ -1015,77 +1036,73 @@ def _collect_codex_quota_retry_only(run_ctx):
     }
 
 
-# ---------------------------------------------------------------- subscription quota-only (定向刷新)
+def _validate_subscription_providers(providers):
+    """校验 quota-only 的目标 Provider 集合: 非空、去重、已知.
 
-# SubscriptionProviderID.rawValue -> collector service `app` 值 (与 Swift
-# OnboardingRunInputProvider 注入白名单及 Bridge SUBSCRIPTION_PROVIDER_IDS 对齐).
-PROVIDER_RAW_TO_APP = {
-    "kimi": "kimi",
-    "deepseek": "deepseek",
-    "volcengine": "volcengine",
-    "codex": "codex",
-    "antigravity": "antigravity",
-    "claude": "claude",
-    "grok": "grok",
-    "opencodeGo": "opencode-go",
-}
-# 走 service_catalog.build_quota_services 的 provider (其余为独立 handler).
-_CATALOG_PROVIDERS = {"kimi", "deepseek", "volcengine", "claude", "grok", "opencodeGo"}
-_CODEX_PROVIDER = "codex"
-_ANTIGRAVITY_PROVIDER = "antigravity"
+    非法时抛 ValueError (Bridge 捕获为可诊断错误响应, 不伪造空 success).
+    """
+    if not isinstance(providers, list) or not providers:
+        raise ValueError("subscription_providers 必须为非空字符串数组")
+    target = set()
+    for provider in providers:
+        if not isinstance(provider, str) or not provider:
+            raise ValueError("subscription_providers 元素必须是非空字符串")
+        if provider in target:
+            raise ValueError(
+                "subscription_providers 包含重复 Provider: %s" % provider
+            )
+        if provider not in SUBSCRIPTION_PROVIDER_IDS:
+            raise ValueError(
+                "subscription_providers 包含未知 Provider: %s" % provider
+            )
+        target.add(provider)
+    return target
+
+
+def _filter_services_to_providers(catalog, target):
+    """把 catalog 产出的 service 收窄到目标 Provider 的 app 集合 (防御性)."""
+    apps = {_PROVIDER_APP[p] for p in target}
+    return [svc for svc in catalog if svc.get("app") in apps]
 
 
 def collect_subscription_quota_only(ctx=None):
-    """订阅额度定向刷新: 只查询目标 Provider 的实时额度 (subscription-provider-refresh).
+    """App 定向订阅额度刷新: 只查询目标 Provider 的现有 handler.
 
-    不扫描本机会话, 不加载价格, 不调用非目标 Provider 的 handler; 输出
-    artifact v1 子集 (agents=[], 仅含目标 services, totalCostUsd=null).
-    目标集合非法或凭证未装配时抛出可诊断错误, 不伪造空的 success artifact.
+    不扫描本机会话, 不加载定价, 不调用非目标 Provider. 复用 Antigravity /
+    Codex / 官方订阅 / CC 驱动 handler 的既有边界 (Codex recovery, 官方 OAuth).
+    输出仍是 artifact v1 形状: agents 为空数组, totalCostUsd 为 null,
+    services 只含目标 Provider. Provider 内多账号独立, 单账号失败不阻断其他账号.
     """
     run_ctx = _configure_runtime(ctx)
     return _collect_subscription_quota_only(run_ctx)
 
 
 def _collect_subscription_quota_only(run_ctx):
-    """RunContext 接线后的定向额度采集实现."""
-    raw_list = (run_ctx.raw or {}).get("subscription_providers")
-    if not isinstance(raw_list, list) or not raw_list:
-        raise ValueError("subscription_providers 必须是非空数组")
-    # 去重并保持顺序; 未知 Provider 直接报错 (fail-closed, 与 Bridge 一致).
-    targets: list = []
-    seen = set()
-    for raw in raw_list:
-        if not isinstance(raw, str) or raw not in PROVIDER_RAW_TO_APP:
-            raise ValueError("subscription_providers 包含未知 Provider: %r" % (raw,))
-        if raw not in seen:
-            seen.add(raw)
-            targets.append(raw)
-
-    app_targets = {PROVIDER_RAW_TO_APP[t] for t in targets}
-    catalog_targets = app_targets & {
-        PROVIDER_RAW_TO_APP[p] for p in _CATALOG_PROVIDERS
-    }
-    want_codex = _CODEX_PROVIDER in targets
-    want_agy = _ANTIGRAVITY_PROVIDER in targets
+    """RunContext 接线后的定向订阅额度实现."""
+    if not run_ctx.capability_allowed("externalQuotas"):
+        raise RuntimeError("quota-only 请求需要 externalQuotas 能力")
+    providers = run_ctx.context_get("subscription_providers")
+    target = _validate_subscription_providers(providers)
 
     services = []
-    # 目录 provider 复用既有的 build_quota_services, 仅过滤到目标集合;
-    # 不扫描其他 provider, 不污染其他 provider 的 handler/recovery/凭证逻辑.
-    if catalog_targets:
-        services.extend(
-            service_catalog.build_quota_services(
-                run_ctx,
-                kimi_coding=service_kimi_coding,
-                opencode_go=quota_official.service_opencode_go,
-                providers=catalog_targets,
-            )
-        )
-    if want_agy:
-        services.extend(service_antigravity())
-    if want_codex:
+    # Codex / Antigravity 走独立 handler, 复用既有 recovery / OAuth 边界
+    if "codex" in target:
         services.extend(service_codex_accounts())
+    if "antigravity" in target:
+        services.extend(service_antigravity())
+    others = target - {"codex", "antigravity"}
+    if others:
+        catalog = service_catalog.build_quota_services(
+            run_ctx,
+            kimi_coding=service_kimi_coding,
+            opencode_go=quota_official.service_opencode_go,
+        )
+        services.extend(_filter_services_to_providers(catalog, others))
 
-    # 定向路径不扫描本地会话/价格: agents 为空, 总成本为空.
+    if not services:
+        # 目标集合合法但没有任何 Provider 装配凭证: 返回可诊断失败,
+        # 不伪造空的 success artifact.
+        raise RuntimeError("目标 Provider 未装配凭证, 未生成任何额度条目")
     return {
         "generatedAt": run_ctx.now.isoformat(timespec="seconds"),
         "agents": [],
@@ -1327,10 +1344,10 @@ def run_app(ctx):
     """
     app_ctx = dict(ctx or {})
     app_ctx["app_mode"] = True
-    if app_ctx.get("codex_quota_retry_only"):
-        artifact = collect_codex_quota_retry_only(app_ctx)
-    elif app_ctx.get("subscription_quota_only"):
+    if app_ctx.get("subscription_quota_only"):
         artifact = collect_subscription_quota_only(app_ctx)
+    elif app_ctx.get("codex_quota_retry_only"):
+        artifact = collect_codex_quota_retry_only(app_ctx)
     else:
         artifact = collect(app_ctx)
     run_ctx = _ACTIVE_RUN_CONTEXT

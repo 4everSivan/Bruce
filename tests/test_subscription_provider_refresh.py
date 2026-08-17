@@ -230,7 +230,7 @@ class BridgeSubscriptionQuotaOnlyValidationTests(unittest.TestCase):
         )
         self.assertEqual(response["status"], "error")
         self.assertEqual(
-            response["diagnostics"][0]["code"], "BRIDGE_SUBSCRIPTION_CONTRACT"
+            response["diagnostics"][0]["code"], "BRIDGE_INVALID_REQUEST"
         )
 
     def test_providers_without_quota_only_is_rejected(self):
@@ -242,7 +242,7 @@ class BridgeSubscriptionQuotaOnlyValidationTests(unittest.TestCase):
         )
         self.assertEqual(response["status"], "error")
         self.assertEqual(
-            response["diagnostics"][0]["code"], "BRIDGE_SUBSCRIPTION_CONTRACT"
+            response["diagnostics"][0]["code"], "BRIDGE_INVALID_REQUEST"
         )
 
     def test_local_sessions_with_providers_is_rejected(self):

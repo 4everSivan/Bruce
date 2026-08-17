@@ -26,7 +26,13 @@ CONTEXT_FIELDS = {
     "subscriptionQuotaOnly",
     "subscriptionProviders",
 }
-# 订阅额度定向刷新白名单: 与 SubscriptionProviderID.rawValue 对齐.
+CAPABILITY_VALUES = {
+    "localSessions",
+    "localPricing",
+    "externalQuotas",
+}
+# 订阅额度定向刷新的 Provider 标识 (与 Swift SubscriptionProviderID.rawValue 一致).
+# quota-only 请求的 subscriptionProviders 只能取这些已知值, 未知 Provider fail-closed.
 SUBSCRIPTION_PROVIDER_IDS = {
     "kimi",
     "deepseek",
@@ -37,10 +43,29 @@ SUBSCRIPTION_PROVIDER_IDS = {
     "grok",
     "opencodeGo",
 }
-CAPABILITY_VALUES = {
-    "localSessions",
-    "localPricing",
-    "externalQuotas",
+# 每个 Provider 标识在 Bridge 请求 credentials 中允许的凭证键 (白名单).
+# quota-only 请求的凭证必须只落在目标 Provider 的键集合内, 否则 fail-closed.
+PROVIDER_ID_TO_CREDENTIAL_KEYS = {
+    "kimi": {"kimiWebTokens", "kimiQuotaAccounts"},
+    "deepseek": {"deepseekQuotaAccounts"},
+    "volcengine": {"volcengineQuotaAccounts"},
+    "codex": {"codexQuotaAccounts"},
+    "antigravity": {"antigravityOAuth", "antigravityQuotaAccounts"},
+    "claude": {"claudeOAuth", "claudeQuotaAccounts"},
+    "grok": {"grokOAuth", "grokQuotaAccounts"},
+    "opencodeGo": {"opencodeGoQuotaAccounts"},
+}
+# 每个 Provider 标识在 providerMeta / providerEnv 中对应的键 (服务 id 粒度),
+# 用于 quota-only 时把跨 Provider 的 tuning 收窄到目标 Provider.
+PROVIDER_ID_TO_PROVIDER_META_KEYS = {
+    "kimi": {"kimi_coding"},
+    "deepseek": {"deepseek"},
+    "volcengine": {"volcengine"},
+    "claude": {"claude"},
+    "grok": {"grok"},
+    "codex": set(),
+    "antigravity": set(),
+    "opencodeGo": set(),
 }
 TIMEOUT_FIELDS = {
     "localScanSeconds",
@@ -280,72 +305,6 @@ def validate_request(request):
             "protocol",
             "codexQuotaRetryOnly 必须是布尔值",
         )
-    # 订阅额度定向刷新 (subscription-provider-refresh): fail-closed 白名单.
-    # 未知字段 / 未知 Provider / 错误类型 / 空数组 / 组合不一致一律拒绝.
-    sub_quota_only = context.get("subscriptionQuotaOnly")
-    sub_providers = context.get("subscriptionProviders")
-    if "subscriptionQuotaOnly" in context and not isinstance(sub_quota_only, bool):
-        raise ValidationError(
-            "BRIDGE_INVALID_REQUEST",
-            "protocol",
-            "subscriptionQuotaOnly 必须是布尔值",
-        )
-    has_sub_providers = "subscriptionProviders" in context
-    if has_sub_providers:
-        if not isinstance(sub_providers, list):
-            raise ValidationError(
-                "BRIDGE_INVALID_REQUEST",
-                "protocol",
-                "subscriptionProviders 必须是数组",
-            )
-        if not sub_providers:
-            raise ValidationError(
-                "BRIDGE_INVALID_REQUEST",
-                "protocol",
-                "subscriptionProviders 不能为空",
-            )
-        if len(sub_providers) > len(SUBSCRIPTION_PROVIDER_IDS):
-            raise ValidationError(
-                "BRIDGE_INVALID_REQUEST",
-                "protocol",
-                "subscriptionProviders 数量超过 Provider 总数",
-            )
-        for raw in sub_providers:
-            if not isinstance(raw, str) or not raw:
-                raise ValidationError(
-                    "BRIDGE_INVALID_REQUEST",
-                    "protocol",
-                    "subscriptionProviders 元素必须是非空字符串",
-                )
-            if raw not in SUBSCRIPTION_PROVIDER_IDS:
-                raise ValidationError(
-                    "BRIDGE_UNKNOWN_SUBSCRIPTION_PROVIDER",
-                    "security",
-                    "subscriptionProviders 包含未知 Provider",
-                )
-        # 定向请求必须是 quota-only: 不得授予本地会话 / 价格采集能力.
-        if "capabilities" in context:
-            sub_caps = set(context["capabilities"])
-            illegal = sub_caps & {"localSessions", "localPricing"}
-            if illegal:
-                raise ValidationError(
-                    "BRIDGE_SUBSCRIPTION_NOT_QUOTA_ONLY",
-                    "security",
-                    "定向刷新请求不得携带本地会话/价格采集能力",
-                )
-    # 组合一致性: quota-only 必须携带目标 Provider, 携带目标必须标记 quota-only.
-    if sub_quota_only is True and not has_sub_providers:
-        raise ValidationError(
-            "BRIDGE_SUBSCRIPTION_CONTRACT",
-            "security",
-            "subscriptionQuotaOnly 必须携带 subscriptionProviders",
-        )
-    if has_sub_providers and sub_quota_only is not True:
-        raise ValidationError(
-            "BRIDGE_SUBSCRIPTION_CONTRACT",
-            "security",
-            "携带 subscriptionProviders 必须标记 subscriptionQuotaOnly",
-        )
     if "codexQuotaAccountOrder" in context:
         order = context["codexQuotaAccountOrder"]
         if not isinstance(order, list) or not all(
@@ -400,7 +359,102 @@ def validate_request(request):
             "protocol",
             "codexQuotaAccountOrder 必须携带 codexQuotaAccounts",
         )
+
+    _validate_subscription_quota_only(context, credentials)
     return request
+
+
+def _validate_subscription_quota_only(context, credentials):
+    """订阅额度定向刷新 (quota-only) 的 fail-closed 校验.
+
+    - subscriptionQuotaOnly=true 必须携带 subscriptionProviders.
+    - 携带 subscriptionProviders 时必须为 quota-only 请求 (全量请求不得携带定向字段).
+    - subscriptionProviders 必须是非空、去重、已知 Provider 的字符串数组.
+    - 凭证范围: 只允许目标 Provider 的 quota 凭证键 + providerEnv/providerMeta,
+      非目标 Provider 凭证键 fail-closed (BRIDGE_CREDENTIAL_SCOPE).
+    """
+    sqo = context.get("subscriptionQuotaOnly")
+    sqp = context.get("subscriptionProviders")
+    # 全量请求不得携带定向字段
+    if sqp is not None and sqo is not True:
+        raise ValidationError(
+            "BRIDGE_INVALID_REQUEST",
+            "protocol",
+            "subscriptionProviders 只能在 quota-only 请求中携带",
+        )
+    if sqo is True and sqp is None:
+        raise ValidationError(
+            "BRIDGE_INVALID_REQUEST",
+            "protocol",
+            "subscriptionQuotaOnly=true 必须携带 subscriptionProviders",
+        )
+    if sqo is not None and not isinstance(sqo, bool):
+        raise ValidationError(
+            "BRIDGE_INVALID_REQUEST",
+            "protocol",
+            "subscriptionQuotaOnly 必须是布尔值",
+        )
+    if sqp is None:
+        return
+    if not isinstance(sqp, list):
+        raise ValidationError(
+            "BRIDGE_INVALID_REQUEST",
+            "protocol",
+            "subscriptionProviders 必须是数组",
+        )
+    if not sqp:
+        raise ValidationError(
+            "BRIDGE_INVALID_REQUEST",
+            "protocol",
+            "subscriptionProviders 不能为空",
+        )
+    target = set()
+    for provider in sqp:
+        if not isinstance(provider, str) or not provider:
+            raise ValidationError(
+                "BRIDGE_INVALID_REQUEST",
+                "protocol",
+                "subscriptionProviders 元素必须是非空字符串",
+            )
+        if provider in target:
+            raise ValidationError(
+                "BRIDGE_INVALID_REQUEST",
+                "protocol",
+                "subscriptionProviders 包含重复 Provider: %s" % provider,
+            )
+        if provider not in SUBSCRIPTION_PROVIDER_IDS:
+            raise ValidationError(
+                "BRIDGE_UNKNOWN_SUBSCRIPTION_PROVIDER",
+                "security",
+                "subscriptionProviders 包含未知 Provider: %s" % provider,
+            )
+        target.add(provider)
+    if len(target) > len(SUBSCRIPTION_PROVIDER_IDS):
+        raise ValidationError(
+            "BRIDGE_INVALID_REQUEST",
+            "protocol",
+            "subscriptionProviders 数量超过 Provider 总数",
+        )
+    # 定向刷新只能授予外部额度能力, 不能借此旁路本地会话/价格采集.
+    capabilities = set(context.get("capabilities") or [])
+    illegal = capabilities & {"localSessions", "localPricing"}
+    if illegal:
+        raise ValidationError(
+            "BRIDGE_SUBSCRIPTION_NOT_QUOTA_ONLY",
+            "security",
+            "定向刷新请求不得携带本地会话/价格采集能力",
+        )
+    # 凭证范围: 只允许目标 Provider 的 quota 凭证 + 跨 Provider 的 tuning 键
+    allowed = {"providerEnv", "providerMeta"}
+    for provider in target:
+        allowed |= PROVIDER_ID_TO_CREDENTIAL_KEYS[provider]
+    for key in credentials:
+        if key not in allowed:
+            raise ValidationError(
+                "BRIDGE_CREDENTIAL_SCOPE",
+                "security",
+                "quota-only 请求包含非目标 Provider 凭证: %s" % key,
+            )
 
 
 def _validate_codex_quota_accounts(accounts, order=None):
@@ -505,6 +559,24 @@ def build_collector_context(request):
         RUNTIME_CREDENTIAL_NAMES[key]: copy.deepcopy(value)
         for key, value in request["credentials"].items()
     }
+    # quota-only: 把跨 Provider 的 providerMeta/providerEnv 收窄到目标 Provider,
+    # 防止非目标 Provider 的 tuning 流出受控边界 (凭据键已在 validate_request 收窄).
+    if context.get("subscription_quota_only"):
+        target = set(context.get("subscription_providers") or [])
+        if target:
+            keep = set().union(
+                *(PROVIDER_ID_TO_PROVIDER_META_KEYS[p] for p in target)
+            )
+            meta = context["credentials"].get("provider_meta")
+            if isinstance(meta, dict):
+                context["credentials"]["provider_meta"] = {
+                    k: v for k, v in meta.items() if k in keep
+                }
+            env = context["credentials"].get("provider_env")
+            if isinstance(env, dict):
+                context["credentials"]["provider_env"] = {
+                    k: v for k, v in env.items() if k in keep
+                }
     external_timeout = float(
         request["timeouts"]["externalRequestSeconds"]
     )
