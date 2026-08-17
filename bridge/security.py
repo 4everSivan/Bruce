@@ -23,6 +23,19 @@ CONTEXT_FIELDS = {
     "capabilities",
     "codexQuotaRetryOnly",
     "codexQuotaAccountOrder",
+    "subscriptionQuotaOnly",
+    "subscriptionProviders",
+}
+# 订阅额度定向刷新白名单: 与 SubscriptionProviderID.rawValue 对齐.
+SUBSCRIPTION_PROVIDER_IDS = {
+    "kimi",
+    "deepseek",
+    "volcengine",
+    "codex",
+    "antigravity",
+    "claude",
+    "grok",
+    "opencodeGo",
 }
 CAPABILITY_VALUES = {
     "localSessions",
@@ -73,6 +86,8 @@ RUNTIME_CREDENTIAL_NAMES = {
 RUNTIME_CONTEXT_NAMES = {
     "codexQuotaRetryOnly": "codex_quota_retry_only",
     "codexQuotaAccountOrder": "codex_quota_account_order",
+    "subscriptionQuotaOnly": "subscription_quota_only",
+    "subscriptionProviders": "subscription_providers",
 }
 # 短期 access token 注入的账号条目允许的字段 (白名单, 拒绝 refresh/id token)
 CODEX_QUOTA_ACCOUNT_FIELDS = {
@@ -264,6 +279,72 @@ def validate_request(request):
             "BRIDGE_INVALID_REQUEST",
             "protocol",
             "codexQuotaRetryOnly 必须是布尔值",
+        )
+    # 订阅额度定向刷新 (subscription-provider-refresh): fail-closed 白名单.
+    # 未知字段 / 未知 Provider / 错误类型 / 空数组 / 组合不一致一律拒绝.
+    sub_quota_only = context.get("subscriptionQuotaOnly")
+    sub_providers = context.get("subscriptionProviders")
+    if "subscriptionQuotaOnly" in context and not isinstance(sub_quota_only, bool):
+        raise ValidationError(
+            "BRIDGE_INVALID_REQUEST",
+            "protocol",
+            "subscriptionQuotaOnly 必须是布尔值",
+        )
+    has_sub_providers = "subscriptionProviders" in context
+    if has_sub_providers:
+        if not isinstance(sub_providers, list):
+            raise ValidationError(
+                "BRIDGE_INVALID_REQUEST",
+                "protocol",
+                "subscriptionProviders 必须是数组",
+            )
+        if not sub_providers:
+            raise ValidationError(
+                "BRIDGE_INVALID_REQUEST",
+                "protocol",
+                "subscriptionProviders 不能为空",
+            )
+        if len(sub_providers) > len(SUBSCRIPTION_PROVIDER_IDS):
+            raise ValidationError(
+                "BRIDGE_INVALID_REQUEST",
+                "protocol",
+                "subscriptionProviders 数量超过 Provider 总数",
+            )
+        for raw in sub_providers:
+            if not isinstance(raw, str) or not raw:
+                raise ValidationError(
+                    "BRIDGE_INVALID_REQUEST",
+                    "protocol",
+                    "subscriptionProviders 元素必须是非空字符串",
+                )
+            if raw not in SUBSCRIPTION_PROVIDER_IDS:
+                raise ValidationError(
+                    "BRIDGE_UNKNOWN_SUBSCRIPTION_PROVIDER",
+                    "security",
+                    "subscriptionProviders 包含未知 Provider",
+                )
+        # 定向请求必须是 quota-only: 不得授予本地会话 / 价格采集能力.
+        if "capabilities" in context:
+            sub_caps = set(context["capabilities"])
+            illegal = sub_caps & {"localSessions", "localPricing"}
+            if illegal:
+                raise ValidationError(
+                    "BRIDGE_SUBSCRIPTION_NOT_QUOTA_ONLY",
+                    "security",
+                    "定向刷新请求不得携带本地会话/价格采集能力",
+                )
+    # 组合一致性: quota-only 必须携带目标 Provider, 携带目标必须标记 quota-only.
+    if sub_quota_only is True and not has_sub_providers:
+        raise ValidationError(
+            "BRIDGE_SUBSCRIPTION_CONTRACT",
+            "security",
+            "subscriptionQuotaOnly 必须携带 subscriptionProviders",
+        )
+    if has_sub_providers and sub_quota_only is not True:
+        raise ValidationError(
+            "BRIDGE_SUBSCRIPTION_CONTRACT",
+            "security",
+            "携带 subscriptionProviders 必须标记 subscriptionQuotaOnly",
         )
     if "codexQuotaAccountOrder" in context:
         order = context["codexQuotaAccountOrder"]
