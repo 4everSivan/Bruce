@@ -300,12 +300,12 @@ final class OnboardingCoordinator: ObservableObject {
         scheduler.refresh(module)
     }
 
-    /// 定向刷新单个订阅 Provider (Stage 3 核心链路入口).
+    /// 定向刷新单个订阅 Provider (Stage 3 核心链路入口:
+    /// SubscriptionCard -> OnboardingCoordinator -> RefreshScheduler).
     /// Scheduler 按显式 scope 合并/排队; 全量刷新优先于定向集合.
     func refreshSubscription(_ provider: SubscriptionProviderID) {
         scheduler.refreshSubscription(provider)
     }
-
     /// 设置页数据管理: 清理可再生快照缓存 (不影响配置, 凭证与账本).
     func clearSnapshotCaches() throws {
         try scheduler.clearSnapshotCaches()
