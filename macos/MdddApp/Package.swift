@@ -84,5 +84,10 @@ let package = Package(
             dependencies: ["MdddAppCore", "MdddOnboardingCore"],
             path: "Tests/Harnesses/AppModelCacheHarness"
         ),
+        .executableTarget(
+            name: "SubscriptionRefreshControlHarness",
+            dependencies: ["MdddAppCore", "MdddOnboardingCore"],
+            path: "Tests/Harnesses/SubscriptionRefreshControlHarness"
+        ),
     ]
 )

@@ -300,6 +300,19 @@ final class OnboardingCoordinator: ObservableObject {
         scheduler.refresh(module)
     }
 
+    /// 用户从订阅卡触发单个 Provider 的额度刷新 (设计契约数据流入口:
+    /// SubscriptionCard -> OnboardingCoordinator -> RefreshScheduler).
+    /// 同 Provider 合并, 全量优先与容量排队由 Scheduler 承接.
+    func refreshSubscription(_ provider: SubscriptionProviderID) {
+        subscriptionRefreshExecutor?(provider)
+    }
+
+    /// Provider 定向刷新执行体 (前后端契约缝): 由 ApplicationBootstrap 在
+    /// RefreshScheduler 落地 `refreshSubscription(_:)` 定向范围后注入
+    /// (Stage 3 / TASK-6). 注入前按钮动作不产生任何运行, 面板仍按
+    /// AppModel 的 Provider 刷新状态呈现 loading/disabled.
+    var subscriptionRefreshExecutor: ((SubscriptionProviderID) -> Void)?
+
     /// 设置页数据管理: 清理可再生快照缓存 (不影响配置, 凭证与账本).
     func clearSnapshotCaches() throws {
         try scheduler.clearSnapshotCaches()
