@@ -1218,5 +1218,199 @@ class AppCoreResidualContractTests(unittest.TestCase):
         self.assertIn("and not _APP_MODE", label)
 
 
+class BridgeSubscriptionQuotaOnlyContractTests(unittest.TestCase):
+    """TASK-6C 契约: Bridge v1 支持 subscriptionQuotaOnly / subscriptionProviders
+    的显式白名单与 fail-closed 校验, 以及到 collector ctx 的 snake_case 映射与
+    凭证收窄.
+    """
+
+    def _quota_request(
+        self,
+        providers=None,
+        sqo=True,
+        context_extra=None,
+        credentials=None,
+    ):
+        ctx = {"capabilities": ["externalQuotas"]}
+        if sqo is not None:
+            ctx["subscriptionQuotaOnly"] = sqo
+        if providers is not None:
+            ctx["subscriptionProviders"] = providers
+        ctx.update(context_extra or {})
+        return bridge_request(
+            "agent-usage", context=ctx, credentials=credentials or {}
+        )
+
+    def test_valid_single_provider_passes_validation_and_maps(self):
+        captured = {}
+
+        def collector(c):
+            captured.update(c)
+            return {"artifact": load_fixture("agent-usage")}
+
+        response = execute_request(
+            self._quota_request(
+                providers=["deepseek"],
+                credentials={
+                    "deepseekQuotaAccounts": {
+                        "a": {"display_name": "d", "api_key": "k"}
+                    }
+                },
+            ),
+            collector_overrides={"agent-usage": collector},
+        )
+        self.assertEqual(response["status"], "success")
+        self.assertIs(captured["subscription_quota_only"], True)
+        self.assertEqual(captured["subscription_providers"], ["deepseek"])
+
+    def test_valid_multiple_providers_passes(self):
+        # 不带 collector override 时走真实 collector; 无真实网络环境下单个
+        # provider 查询失败只影响 partial 状态, 关键契约是: 通过校验进入采集,
+        # 且 artifact 保持 quota-only 形状 (agents=[] / totalCostUsd=null).
+        response = execute_request(
+            self._quota_request(
+                providers=["deepseek", "kimi"],
+                credentials={
+                    "deepseekQuotaAccounts": {
+                        "a": {"display_name": "d", "api_key": "k"}
+                    },
+                    "kimiQuotaAccounts": {
+                        "b": {"display_name": "k", "tokens": {"access_token": "t"}}
+                    },
+                },
+            )
+        )
+        self.assertNotEqual(response["status"], "error")
+        self.assertEqual(response["artifact"]["agents"], [])
+        self.assertEqual(response["artifact"]["totalCostUsd"], None)
+
+    def test_quota_only_true_without_providers_fails(self):
+        response = execute_request(self._quota_request(providers=None, sqo=True))
+        self.assertEqual(response["status"], "error")
+        self.assertEqual(
+            response["diagnostics"][0]["code"], "BRIDGE_INVALID_REQUEST"
+        )
+
+    def test_providers_without_quota_only_fails(self):
+        response = execute_request(self._quota_request(providers=["deepseek"], sqo=None))
+        self.assertEqual(response["status"], "error")
+        self.assertEqual(
+            response["diagnostics"][0]["code"], "BRIDGE_INVALID_REQUEST"
+        )
+
+    def test_providers_with_quota_only_false_fails(self):
+        response = execute_request(self._quota_request(providers=["deepseek"], sqo=False))
+        self.assertEqual(response["status"], "error")
+        self.assertEqual(
+            response["diagnostics"][0]["code"], "BRIDGE_INVALID_REQUEST"
+        )
+
+    def test_unknown_provider_fails(self):
+        response = execute_request(self._quota_request(providers=["notAProvider"]))
+        self.assertEqual(response["status"], "error")
+        self.assertEqual(
+            response["diagnostics"][0]["code"],
+            "BRIDGE_UNKNOWN_SUBSCRIPTION_PROVIDER",
+        )
+
+    def test_empty_providers_fails(self):
+        response = execute_request(self._quota_request(providers=[]))
+        self.assertEqual(response["status"], "error")
+
+    def test_duplicate_providers_fails(self):
+        response = execute_request(
+            self._quota_request(providers=["deepseek", "deepseek"])
+        )
+        self.assertEqual(response["status"], "error")
+
+    def test_wrong_type_providers_fails(self):
+        response = execute_request(self._quota_request(providers="deepseek"))
+        self.assertEqual(response["status"], "error")
+        response2 = execute_request(self._quota_request(providers=[1, 2]))
+        self.assertEqual(response2["status"], "error")
+
+    def test_credential_scope_rejects_other_provider(self):
+        response = execute_request(
+            self._quota_request(
+                providers=["deepseek"],
+                credentials={
+                    "deepseekQuotaAccounts": {
+                        "a": {"display_name": "d", "api_key": "k"}
+                    },
+                    "claudeQuotaAccounts": {
+                        "b": {"display_name": "c", "oauth": {"k": "v"}}
+                    },
+                },
+            )
+        )
+        self.assertEqual(response["status"], "error")
+        self.assertEqual(
+            response["diagnostics"][0]["code"], "BRIDGE_CREDENTIAL_SCOPE"
+        )
+
+    def test_provider_meta_and_env_narrowed_to_target(self):
+        captured = {}
+
+        def collector(c):
+            captured.update(c)
+            return {"artifact": load_fixture("agent-usage")}
+
+        response = execute_request(
+            self._quota_request(
+                providers=["deepseek"],
+                credentials={
+                    "deepseekQuotaAccounts": {
+                        "a": {"display_name": "d", "api_key": "k"}
+                    },
+                    "providerMeta": {
+                        "deepseek": {"x": 1},
+                        "claude": {"enabled": True},
+                    },
+                    "providerEnv": {
+                        "deepseek": {"env": "e"},
+                        "claude": {"env2": "v"},
+                    },
+                },
+            ),
+            collector_overrides={"agent-usage": collector},
+        )
+        self.assertEqual(response["status"], "success")
+        meta = captured["credentials"]["provider_meta"]
+        self.assertIn("deepseek", meta)
+        self.assertNotIn("claude", meta)
+        env = captured["credentials"]["provider_env"]
+        self.assertIn("deepseek", env)
+        self.assertNotIn("claude", env)
+
+    def test_quota_only_end_to_end_artifact_shape(self):
+        def collector(_ctx):
+            return {
+                "artifact": {
+                    "generatedAt": "2026-07-28T12:00:00+08:00",
+                    "agents": [],
+                    "services": [
+                        {"id": "deepseek_a", "app": "deepseek", "status": "ok"}
+                    ],
+                    "totalCostUsd": None,
+                }
+            }
+
+        response = execute_request(
+            self._quota_request(
+                providers=["deepseek"],
+                credentials={
+                    "deepseekQuotaAccounts": {
+                        "a": {"display_name": "d", "api_key": "k"}
+                    }
+                },
+            ),
+            collector_overrides={"agent-usage": collector},
+        )
+        self.assertEqual(response["status"], "success")
+        self.assertEqual(response["artifact"]["agents"], [])
+        self.assertEqual(response["artifact"]["totalCostUsd"], None)
+        self.assertEqual(len(response["artifact"]["services"]), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

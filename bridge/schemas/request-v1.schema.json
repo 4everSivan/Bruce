@@ -64,6 +64,58 @@
           "context"
         ]
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "context": {
+            "required": [
+              "subscriptionProviders"
+            ]
+          }
+        },
+        "required": [
+          "context"
+        ]
+      },
+      "then": {
+        "properties": {
+          "context": {
+            "required": [
+              "subscriptionQuotaOnly"
+            ]
+          }
+        },
+        "required": [
+          "context"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "context": {
+            "required": [
+              "subscriptionQuotaOnly"
+            ]
+          }
+        },
+        "required": [
+          "context"
+        ]
+      },
+      "then": {
+        "properties": {
+          "context": {
+            "required": [
+              "subscriptionProviders"
+            ]
+          }
+        },
+        "required": [
+          "context"
+        ]
+      }
     }
   ],
   "properties": {
@@ -156,6 +208,28 @@
             "maxLength": 256
           },
           "maxItems": 64,
+          "uniqueItems": true
+        },
+        "subscriptionQuotaOnly": {
+          "type": "boolean"
+        },
+        "subscriptionProviders": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": [
+              "kimi",
+              "deepseek",
+              "volcengine",
+              "codex",
+              "antigravity",
+              "claude",
+              "grok",
+              "opencodeGo"
+            ]
+          },
+          "maxItems": 8,
           "uniqueItems": true
         }
       }
