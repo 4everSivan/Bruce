@@ -11,17 +11,22 @@ import MdddOnboardingCore
 struct RefreshPipelineRequest: Sendable {
     let module: CollectorModule
     let intent: RefreshIntent
+    /// 刷新范围; 定向运行据此向运行输入提供器索取收窄输入, 并由
+    /// `ScopedQuotaSnapshotMerger` 合并回上一份完整 artifact.
+    let scope: RefreshScope
     let staleAfter: TimeInterval
     let now: Date
 
     init(
         module: CollectorModule,
         intent: RefreshIntent,
+        scope: RefreshScope = .all,
         staleAfter: TimeInterval,
         now: Date
     ) {
         self.module = module
         self.intent = intent
+        self.scope = scope
         self.staleAfter = staleAfter
         self.now = now
     }
@@ -124,9 +129,18 @@ struct RefreshExecutionPipeline {
         var credentials: [String: JSONValue] = [:]
         if let runInputProvider {
             do {
-                let input = try await runInputProvider.runInput(for: request.module)
-                context = input.context
-                credentials = input.credentials
+                if request.scope.isTargeted {
+                    let input = try await runInputProvider.scopedRunInput(
+                        for: request.module,
+                        providers: request.scope.targetProviders
+                    )
+                    context = input.context
+                    credentials = input.credentials
+                } else {
+                    let input = try await runInputProvider.runInput(for: request.module)
+                    context = input.context
+                    credentials = input.credentials
+                }
             } catch let inputError as CollectorRunInputError {
                 return .runInputFailed(inputError)
             } catch {
@@ -175,7 +189,68 @@ struct RefreshExecutionPipeline {
         // 4-5. Codex recovery (agentUsage only) + finalize
         // 无论 challenge/决议/retry 结果如何, first artifact 存在时都四源合并后一次发布.
         let output: CollectorRunOutput
-        if request.module == .agentUsage {
+        if request.scope.isTargeted {
+            // 定向刷新: 仍允许 Codex 恢复 (仅当目标含 Codex 且首轮带 challenge),
+            // 再由 ScopedQuotaSnapshotMerger 把目标结果合并回上一份完整 artifact.
+            let recovery = CodexQuotaRecovery()
+            let retryPhase = await recovery.handle(
+                firstOutput: firstOutput,
+                firstCredentials: credentials,
+                module: request.module,
+                runInputProvider: runInputProvider,
+                challengeHandler: codexTokenManager,
+                isStopped: isStopped,
+                runCollector: { [self] module, context, credentials in
+                    await self.runCollector(
+                        module: module,
+                        context: context,
+                        credentials: credentials
+                    )
+                }
+            )
+            if isStopped() {
+                return .cancelled
+            }
+            let decisions = retryPhase.tokenDecisions.isEmpty
+                ? (runInputProvider?.codexTokenDecisions ?? [])
+                : retryPhase.tokenDecisions
+            let firstArtifact = firstOutput.response.artifact ?? .object([:])
+            let merged = ScopedQuotaSnapshotMerger().merge(
+                previous: previousArtifact,
+                first: firstArtifact,
+                retry: retryPhase.retryArtifact,
+                targetProviders: request.scope.targetProviders,
+                decisions: decisions
+            )
+            var collected: [BridgeDiagnostic] = []
+            var seen = Set<String>()
+            for diagnostic in merged.diagnostics {
+                let key = "\(diagnostic.code)|\(diagnostic.stage)|\(diagnostic.message)"
+                if seen.insert(key).inserted {
+                    collected.append(BridgeDiagnostic(
+                        code: diagnostic.code,
+                        category: diagnostic.category,
+                        stage: diagnostic.stage,
+                        message: diagnostic.message,
+                        retryable: diagnostic.retryable
+                    ))
+                }
+            }
+            output = CollectorRunOutput(
+                response: BridgeResponse(
+                    schemaVersion: 1,
+                    runId: firstOutput.response.runId,
+                    generatedAt: merged.generatedAtValue
+                        ?? firstOutput.response.generatedAt,
+                    status: merged.recomputedStatus,
+                    artifact: merged.artifact,
+                    credentialUpdates: firstOutput.response.credentialUpdates,
+                    diagnostics: collected,
+                    credentialChallenges: []
+                ),
+                stderrDiagnostic: firstOutput.stderrDiagnostic
+            )
+        } else if request.module == .agentUsage {
             let recovery = CodexQuotaRecovery()
             let retryPhase = await recovery.handle(
                 firstOutput: firstOutput,

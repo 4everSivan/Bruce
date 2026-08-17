@@ -441,7 +441,7 @@ def _resolve_cli(run_ctx: RunContext, *, kimi_coding) -> List[Any]:
 # ---------------------------------------------------------------- public builder
 
 
-def build_quota_services(run_ctx: RunContext, *, kimi_coding, opencode_go) -> List[Dict[str, Any]]:
+def build_quota_services(run_ctx: RunContext, *, kimi_coding, opencode_go, providers=None) -> List[Dict[str, Any]]:
     """统一 App/CLI 额度服务构建核.
 
     Parameters
@@ -451,6 +451,9 @@ def build_quota_services(run_ctx: RunContext, *, kimi_coding, opencode_go) -> Li
     kimi_coding:
         ``collect_usage.service_kimi_coding`` 可调用对象; 仍住在 façade 以保留
         模块 global / monkeypatch 契约, 由调用方注入避免循环 import.
+    providers:
+        可选 ``app`` 值集合, 用于订阅额度定向刷新 (subscription-provider-refresh);
+        仅构建属于这些 provider 的额度服务. 为 ``None`` 时保持全量行为.
 
     Returns
     -------
@@ -465,6 +468,15 @@ def build_quota_services(run_ctx: RunContext, *, kimi_coding, opencode_go) -> Li
         )
     else:
         items = _resolve_cli(run_ctx, kimi_coding=kimi_coding)
+
+    # 订阅额度定向刷新: 只保留目标 provider 的 _Resolved 条目, 复用既有
+    # handler / recovery / credential update 逻辑, 不扫描其他 provider.
+    if providers is not None:
+        target_apps = set(providers)
+        items = [
+            item for item in items
+            if isinstance(item, dict) or item.app in target_apps
+        ]
 
     services: List[Dict[str, Any]] = []
     for item in items:

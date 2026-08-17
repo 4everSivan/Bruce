@@ -75,4 +75,7 @@ swift run --package-path "$MDDD_SWIFT_PACKAGE" AppModelCacheHarness
 echo "运行 Dashboard 玻璃材质矩阵 Harness"
 swift run --package-path "$MDDD_SWIFT_PACKAGE" DashboardGlassSurfaceHarness
 
+echo "运行订阅刷新控件 Harness"
+swift run --package-path "$MDDD_SWIFT_PACKAGE" SubscriptionRefreshControlHarness
+
 echo "mddd 本地验证全部通过"
