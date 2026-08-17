@@ -65,6 +65,15 @@ extension CodexCredentialStore: CodexMigrationExecuting {
 protocol CollectorRunInputProviding {
     func runInput(for module: CollectorModule) async throws -> CollectorRunInput
 
+    /// 定向刷新运行输入: 只注入目标 Provider 的 `*QuotaAccounts` / `providerMeta`
+    /// 与对应 Bridge 注入键, 并标记 `subscriptionQuotaOnly` / `subscriptionProviders`.
+    /// 不携带 localSessions / localPricing, 不请求 days; 目标集合非法或凭证未装配
+    /// 时抛 `missingAuthorization` (不启动 Collector, 不伪造成功).
+    func scopedRunInput(
+        for module: CollectorModule,
+        providers: Set<SubscriptionProviderID>
+    ) async throws -> CollectorRunInput
+
     /// Codex 定向重试输入 (任务 8): 一次组装全部被挑战账号的短期
     /// access token, 上下文标记 codexQuotaRetryOnly.
     /// 只包含本轮刷新成功的账号; 决议失败或未连接账号不进入重试.
@@ -76,6 +85,17 @@ protocol CollectorRunInputProviding {
     /// 本轮全部 Codex 账号 token 决议 (含成功与失败), 供四源合并器
     /// 为未出现在 collector 结果中的账号合成失败状态. 无 Codex 时为空.
     var codexTokenDecisions: [CodexTokenDecision] { get }
+}
+
+extension CollectorRunInputProviding {
+    /// 默认定向输入实现: 退回全量输入 (保持非定向测试兼容).
+    /// 生产路径由 `OnboardingRunInputProvider` 重写为只注入目标 Provider 凭证.
+    func scopedRunInput(
+        for module: CollectorModule,
+        providers: Set<SubscriptionProviderID>
+    ) async throws -> CollectorRunInput {
+        try await runInput(for: module)
+    }
 }
 
 /// App 启动前的 Codex v2 迁移入口.
@@ -167,6 +187,70 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
         case .agentUsage:
             return try await agentUsageInput()
         }
+    }
+
+    /// 定向刷新运行输入 (任务 1.3): 只装配目标 Provider 的凭证/ProviderMeta,
+    /// 标记 `subscriptionQuotaOnly` / `subscriptionProviders`; 不携带 localSessions
+    /// / localPricing / days. 目标非法或凭证未装配抛 missingAuthorization (fail-closed).
+    func scopedRunInput(
+        for module: CollectorModule,
+        providers: Set<SubscriptionProviderID>
+    ) async throws -> CollectorRunInput {
+        guard module == .agentUsage else {
+            throw CollectorRunInputError.missingDependency(
+                module: module,
+                reason: "定向刷新仅支持 agentUsage 模块"
+            )
+        }
+        // 每个定向输入都是新的决议边界.
+        codexTokenDecisions = []
+        codexQuotaAccountIDs = []
+
+        guard let config = configStore?.load(),
+              config.consentVersion != nil else {
+            throw CollectorRunInputError.missingAuthorization(
+                module: module,
+                reason: "未确认统一授权, 无法定向刷新订阅额度"
+            )
+        }
+
+        // 只把目标 Provider 的配置交给装配器: codex token 解析仅在 codex 目标时发生.
+        let targetRaw = Set(providers.map { $0.rawValue })
+        var scopedProviders: [String: SubscriptionProviderConfiguration] = [:]
+        for (key, value) in config.subscriptionProviders
+        where targetRaw.contains(key) {
+            scopedProviders[key] = value
+        }
+
+        let assembled = await assembleSubscriptionCredentials(providers: scopedProviders)
+        // fail-closed: 无目标凭证 (未启用/凭证缺失) 不启动 Collector, 不伪造成功.
+        guard !assembled.isEmpty else {
+            throw CollectorRunInputError.missingAuthorization(
+                module: module,
+                reason: "目标 Provider 未启用或凭证未装配"
+            )
+        }
+
+        var context: [String: JSONValue] = [
+            "capabilities": .array([
+                .string(CollectorCapability.externalQuotas.rawValue),
+            ]),
+            "subscriptionQuotaOnly": .boolean(true),
+            "subscriptionProviders": .array(
+                providers.sorted { $0.rawValue < $1.rawValue }
+                    .map { .string($0.rawValue) }
+            ),
+        ]
+        // codex 目标: 携带与 codexQuotaAccounts 键一致的 account order.
+        if let codex = assembled["codexQuotaAccounts"],
+           case .object(let accounts) = codex {
+            context["codexQuotaAccountOrder"] = .array(
+                codexQuotaAccountIDs
+                    .filter { accounts[$0] != nil }
+                    .map { .string($0) }
+            )
+        }
+        return CollectorRunInput(context: context, credentials: assembled)
     }
 
     /// 定向重试 (任务 8): 一次组装全部被 challenge 账号的短期 access token,
