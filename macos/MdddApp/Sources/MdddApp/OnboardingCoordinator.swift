@@ -144,6 +144,10 @@ final class OnboardingCoordinator: ObservableObject {
         subscriptions.saveAndVerifyVolcengine(accessKey: accessKey, secretKey: secretKey)
     }
 
+    func saveAndVerifyZhipu(apiKey: String, baseURL: String) {
+        subscriptions.saveAndVerifyZhipu(apiKey: apiKey, baseURL: baseURL)
+    }
+
     func importVolcengineFromCCSwitch() {
         subscriptions.importVolcengineFromCCSwitch()
     }

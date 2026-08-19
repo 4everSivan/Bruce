@@ -71,7 +71,9 @@ struct SubscriptionCredentialsHarness {
         try await opencodeGoInjectedWhenCredentialPresent()
         try await opencodeGoNotInjectedWithoutCredential()
         try coordinatorRotationOpenCodeGo()
-        print("Subscription credentials tests passed: 26")
+        try await zhipuInjectedWhenCredentialPresent()
+        try await zhipuNotInjectedWithoutCredential()
+        print("Subscription credentials tests passed: 28")
     }
 
     /// 构造 OnboardingRunInputProvider: 配置 claude 启用 + Keychain 持有 claude:oauth.
@@ -191,6 +193,50 @@ struct SubscriptionCredentialsHarness {
         try credentialsExpect(
             credentials["opencodeGoQuotaAccounts"] == nil,
             "无应用凭证时不应注入 opencodeGoQuotaAccounts"
+        )
+    }
+
+    private static func zhipuInjectedWhenCredentialPresent() async throws {
+        let (provider, _, _) = try makeProvider(
+            enabled: [.zhipu],
+            credentials: [
+                SubscriptionCredentialAccount.zhipuAPIKey: "id.secret",
+                SubscriptionCredentialAccount.zhipuBaseURL: "https://open.bigmodel.cn/api/paas/v4",
+            ]
+        )
+        let (_, credentials) = try await runInput(provider)
+        guard case .object(let accounts)? = credentials["zhipuQuotaAccounts"] else {
+            throw CredentialsTestFailure.expectation("zhipuQuotaAccounts 未注入: \(credentials.keys.sorted())")
+        }
+        try credentialsExpect(accounts.count == 1, "zhipu 应有 1 个账号")
+        guard case .object(let payload)? = accounts.values.first else {
+            throw CredentialsTestFailure.expectation("zhipu 账号 payload 结构不符")
+        }
+        try credentialsExpect(
+            payload["api_key"] != nil && payload["base_url"] != nil,
+            "zhipuQuotaAccounts 应包含 api_key/base_url"
+        )
+        if case .string(let key)? = payload["api_key"] {
+            try credentialsExpect(key == "id.secret", "api_key 应透传")
+        } else {
+            throw CredentialsTestFailure.expectation("api_key 应为字符串")
+        }
+        if case .string(let base)? = payload["base_url"] {
+            try credentialsExpect(
+                base == "https://open.bigmodel.cn/api/paas/v4",
+                "base_url 应透传"
+            )
+        } else {
+            throw CredentialsTestFailure.expectation("base_url 应为字符串")
+        }
+    }
+
+    private static func zhipuNotInjectedWithoutCredential() async throws {
+        let (provider, _, _) = try makeProvider(enabled: [.zhipu], credentials: [:])
+        let (_, credentials) = try await runInput(provider)
+        try credentialsExpect(
+            credentials["zhipuQuotaAccounts"] == nil,
+            "无凭证时不应注入 zhipuQuotaAccounts"
         )
     }
 

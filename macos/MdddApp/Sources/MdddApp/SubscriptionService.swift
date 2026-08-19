@@ -459,6 +459,35 @@ final class SubscriptionService {
         finishVerification(.volcengine, status: status)
     }
 
+    /// 智谱 Coding Plan 手动录入: 仅结构校验, 完整额度试查由 Collector 运行时承担.
+    /// 凭证以 {"api_key":..., "base_url":...} JSON 写入 ProviderAccountStore.
+    func saveAndVerifyZhipu(apiKey: String, baseURL: String) {
+        let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let base = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let status = ProviderConnectionVerifier.verifyZhipuCredentials(
+            apiKey: key, baseURL: base
+        )
+        guard status == .ok else {
+            finishVerification(.zhipu, status: status)
+            return
+        }
+        // 多账号路径: api_key + base_url 合成 JSON 写入 ProviderAccountStore.
+        let accountID = ProviderAccountIDGenerator.zhipuAccountID(apiKey: key)
+        let dict: [String: String] = ["api_key": key, "base_url": base]
+        let data = (try? JSONSerialization.data(
+            withJSONObject: dict, options: [.sortedKeys]
+        )) ?? Data()
+        let credentialJSON = String(data: data, encoding: .utf8) ?? "{}"
+        guard saveProviderAccountCredential(
+            for: .zhipu,
+            accountID: accountID,
+            displayName: "智谱 · \(accountID)",
+            credentialJSON: credentialJSON
+        ) else { return }
+        model.setSubscriptionCredentialConfigured(true, for: .zhipu)
+        finishVerification(.zhipu, status: status)
+    }
+
     /// 火山引擎从 CC Switch 导入 (用户在确认对话框同意后调用).
     /// 只读 CC 数据库, 禁止任何写入.
     func importVolcengineFromCCSwitch() {

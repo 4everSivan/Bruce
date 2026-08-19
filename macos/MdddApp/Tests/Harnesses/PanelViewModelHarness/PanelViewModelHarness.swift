@@ -1460,6 +1460,8 @@ struct PanelViewModelHarness {
             ("kimi", "kimi"),
             ("deepseek", "deepseek"),
             ("volcengine", "volcengine"),
+            ("zhipu", "zhipu"),
+            ("zhipu_abc12345", "zhipu"),
             ("codex", "codex"),
             ("opencode_go_eada03635c22306a", "opencodeGo"),
             ("opencode_go_acct1", "opencodeGo"),
@@ -1473,6 +1475,7 @@ struct PanelViewModelHarness {
         let displayCases: [(String, String, String)] = [
             ("volcengine", "火山引擎（Coding Plan）", "火山引擎"),
             ("volcengine", "火山引擎", "火山引擎"),
+            ("zhipu", "智谱", "智谱"),
             ("kimi", "Kimi Coding", "Kimi Coding"),
             ("deepseek", "DeepSeek", "DeepSeek"),
         ]

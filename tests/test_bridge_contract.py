@@ -420,6 +420,13 @@ class BridgeCodexAccessOnlyContractTests(unittest.TestCase):
                             "secret_key": "SK-c",
                         }
                     },
+                    "zhipuQuotaAccounts": {
+                        "acct-z": {
+                            "display_name": "智谱 · z",
+                            "api_key": "id.secret",
+                            "base_url": "https://open.bigmodel.cn/api/paas/v4",
+                        }
+                    },
                     "claudeQuotaAccounts": {
                         "acct-d": {
                             "display_name": "Claude · d",
@@ -448,6 +455,7 @@ class BridgeCodexAccessOnlyContractTests(unittest.TestCase):
         self.assertIn("kimi_quota_accounts", injected)
         self.assertIn("deepseek_quota_accounts", injected)
         self.assertIn("volcengine_quota_accounts", injected)
+        self.assertIn("zhipu_quota_accounts", injected)
         self.assertIn("claude_quota_accounts", injected)
         self.assertIn("grok_quota_accounts", injected)
         self.assertIn("antigravity_quota_accounts", injected)

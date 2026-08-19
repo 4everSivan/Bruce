@@ -23,6 +23,9 @@ struct SettingsView: View {
     @State private var volcengineSKText = ""
     @State private var volcengineEditing = false
     @State private var showsVolcengineCCImportConfirm = false
+    @State private var zhipuKeyText = ""
+    @State private var zhipuSiteIsCN = true
+    @State private var zhipuEditing = false
     @State private var kimiPasteText = ""
     @State private var kimiEditing = false
     @State private var claudePasteText = ""
@@ -732,6 +735,13 @@ struct SettingsView: View {
                 volcengineEditing: $volcengineEditing,
                 showsVolcengineCCImportConfirm: $showsVolcengineCCImportConfirm,
                 onRemove: { removeSubscriptionProvider(.volcengine) }
+            )
+        case .zhipu:
+            ZhipuProviderSettingsSection(
+                zhipuKeyText: $zhipuKeyText,
+                zhipuSiteIsCN: $zhipuSiteIsCN,
+                zhipuEditing: $zhipuEditing,
+                onRemove: { removeSubscriptionProvider(.zhipu) }
             )
         case .codex:
             CodexProviderSettingsSection(

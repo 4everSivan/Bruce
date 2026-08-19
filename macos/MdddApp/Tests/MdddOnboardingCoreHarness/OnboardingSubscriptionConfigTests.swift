@@ -756,6 +756,37 @@ extension MdddOnboardingCoreHarness {
         }
     }
 
+    static func verifierZhipuCredentialsMappings() throws {
+        try coreExpect(
+            ProviderConnectionVerifier.verifyZhipuCredentials(
+                apiKey: "id.secret",
+                baseURL: "https://open.bigmodel.cn/api/paas/v4"
+            ) == .ok,
+            "合理 api_key/国内站 base_url 必须 ok"
+        )
+        try coreExpect(
+            ProviderConnectionVerifier.verifyZhipuCredentials(
+                apiKey: "id.secret",
+                baseURL: "https://api.z.ai/api/paas/v4"
+            ) == .ok,
+            "国外站 base_url 必须 ok"
+        )
+        let cases: [(String, String)] = [
+            ("", "https://open.bigmodel.cn/api/paas/v4"),
+            ("id.secret", ""),
+            ("no dot key", "https://open.bigmodel.cn/api/paas/v4"),
+            ("id.secret", "https://example.com/api/paas/v4"),
+        ]
+        for (key, base) in cases {
+            guard case .failed = ProviderConnectionVerifier
+                .verifyZhipuCredentials(apiKey: key, baseURL: base) else {
+                throw CoreTestFailure.expectation(
+                    "key=\(key) base=\(base) 必须 failed"
+                )
+            }
+        }
+    }
+
     // MARK: - externalQuotas 门禁
 
     /// agent-usage 策略: 订阅 provider 已配置时追加 externalQuotas,

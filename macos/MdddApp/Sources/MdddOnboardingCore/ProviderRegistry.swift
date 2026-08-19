@@ -11,6 +11,8 @@ public enum InjectionKind: Sendable, Equatable {
     case deepseekAPIKeyEnv
     /// `providerMeta.volcengine.usage_script.{accessKeyId,secretAccessKey}`
     case volcengineUsageScriptKeys
+    /// 顶层 `zhipuQuotaAccounts` = {accountID: {api_key, base_url}} 映射
+    case zhipuAPIKeyEnv
     /// 顶层 `codexQuotaAccounts` = token manager 决议的短期 access token 映射
     case codexQuotaAccounts
     /// 顶层 `antigravityOAuth` = Keychain JSON 对象
@@ -167,6 +169,16 @@ public enum ProviderRegistry {
                     SubscriptionCredentialAccount.volcengineSecretKey,
                 ],
                 injectionKind: .volcengineUsageScriptKeys,
+                configuredRule: .allCredentialAccountsNonEmpty
+            )
+        case .zhipu:
+            return ProviderDescriptor(
+                id: .zhipu,
+                credentialAccounts: [
+                    SubscriptionCredentialAccount.zhipuAPIKey,
+                    SubscriptionCredentialAccount.zhipuBaseURL,
+                ],
+                injectionKind: .zhipuAPIKeyEnv,
                 configuredRule: .allCredentialAccountsNonEmpty
             )
         case .codex:

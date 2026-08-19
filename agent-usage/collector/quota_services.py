@@ -8,6 +8,7 @@ import base64
 import datetime
 import hashlib
 import hmac
+import urllib.error
 import urllib.parse
 
 import runtime
@@ -187,3 +188,132 @@ def service_volcengine(env, meta, now, http_timeout):
                 last_err = e
                 continue
     raise last_err or RuntimeError("volcengine query failed")
+
+
+# ---------------------------------------------------------------- 智谱 Coding Plan
+
+_ZHIPU_CN_HOST = "open.bigmodel.cn"
+_ZHIPU_EN_HOST = "api.z.ai"
+
+
+def _zhipu_quota_base(base_url):
+    """按 base_url 路由到智谱额度端点 host; 含 bigmodel.cn 走国内站, 否则国际站.
+
+    与 CC Switch (coding_plan.rs::zhipu_quota_base) 一致: 额度端点与推理端点
+    同 host, 不做跨 host 回退, 也不做鉴权启发式.
+    """
+    if "bigmodel.cn" in (base_url or "").lower():
+        return _ZHIPU_CN_HOST
+    return _ZHIPU_EN_HOST
+
+
+def _zhipu_reset_seconds(reset_ms):
+    """智谱 nextResetTime 为毫秒时间戳; 转 epoch 秒, 非正数返回 None.
+
+    兼容秒级时间戳 (值未超 1e12 视为秒), 与 quota_official._is_expired 同约定.
+    """
+    if not isinstance(reset_ms, (int, float)) or reset_ms <= 0:
+        return None
+    if reset_ms > 1_000_000_000_000:
+        return int(reset_ms / 1000)
+    return int(reset_ms)
+
+
+def _parse_zhipu_windows(limits):
+    """解析智谱 limits 数组, 只取额度窗口条目 (忽略 TIME_LIMIT 等非额度条目).
+
+    智谱接口已从 token 制度演进为 credit 制度: type 由 TOKENS_LIMIT 变为
+    CREDIT_LIMIT (实测 2026-08, level=pro); 两者窗口语义一致, 一并识别.
+
+    窗口分类与 CC Switch (coding_plan.rs::parse_zhipu_token_tiers) 一致:
+    - unit 3 -> 每 5 小时; unit 6 -> 每周 (只锚定 unit, 不绑 number).
+    - unit 缺失/未知走兜底: 无 nextResetTime 的优先归每 5 小时, 其余按 reset 升序填槽.
+    - 老套餐只回 1 条, 自然降级为仅每 5 小时; 最多取 2 条.
+    percentage 即已用百分比, 不裁剪 (下游 parseWindow 负责 clamp).
+    """
+    five_hour = None
+    weekly = None
+    unclassified = []
+
+    if isinstance(limits, list):
+        for item in limits:
+            if not isinstance(item, dict):
+                continue
+            limit_type = str(item.get("type") or "").upper()
+            if limit_type not in ("TOKENS_LIMIT", "CREDIT_LIMIT"):
+                continue
+            try:
+                percentage = float(item.get("percentage"))
+            except (TypeError, ValueError):
+                percentage = 0.0
+            reset_sec = _zhipu_reset_seconds(item.get("nextResetTime"))
+            unit = item.get("unit")
+            entry = (reset_sec, percentage)
+            if unit == 3 and five_hour is None:
+                five_hour = entry
+            elif unit == 6 and weekly is None:
+                weekly = entry
+            else:
+                unclassified.append(entry)
+
+    # 兜底: 无 reset 优先 (5 小时桶 0% 时可能没有 reset), 其余按 reset 升序.
+    unclassified.sort(key=lambda e: (e[0] is not None, e[0] if e[0] is not None else -1))
+    for entry in unclassified:
+        if five_hour is None:
+            five_hour = entry
+        elif weekly is None:
+            weekly = entry
+
+    windows = []
+    if five_hour is not None:
+        windows.append({
+            "label": "每 5 小时",
+            "usedPercent": five_hour[1],
+            "windowMinutes": 300,
+            "resetsAt": five_hour[0],
+        })
+    if weekly is not None:
+        windows.append({
+            "label": "每周",
+            "usedPercent": weekly[1],
+            "windowMinutes": 10080,
+            "resetsAt": weekly[0],
+        })
+    return windows
+
+
+def service_zhipu(env, http_timeout):
+    """查询智谱 Coding Plan 个人版额度. 无 key/base_url 返回 None, 查询失败抛异常.
+
+    凭证取 env.ANTHROPIC_BASE_URL + env.ANTHROPIC_AUTH_TOKEN (与 CC Switch 里
+    智谱挂在 Claude app 下的 Anthropic 风格 env 一致). 端点 GET
+    /api/monitor/usage/quota/limit, Authorization 头为裸 API key (不加 Bearer).
+    """
+    key = env.get("ANTHROPIC_AUTH_TOKEN") or ""
+    base_url = env.get("ANTHROPIC_BASE_URL") or ""
+    if not key or not base_url:
+        return None
+    url = "https://%s/api/monitor/usage/quota/limit" % _zhipu_quota_base(base_url)
+    headers = {
+        "Authorization": key,  # 智谱不加 Bearer 前缀
+        "Content-Type": "application/json",
+        "Accept-Language": "en-US,en",
+    }
+    try:
+        d = runtime.http_get_json(url, headers, http_timeout)
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            raise RuntimeError("智谱凭证被拒绝 (HTTP %d), 请检查 API key" % e.code)
+        raise RuntimeError("智谱额度请求失败 (HTTP %d)" % e.code)
+    if not isinstance(d, dict):
+        raise RuntimeError("智谱额度响应不是 JSON 对象")
+    if d.get("success") is False:
+        raise RuntimeError("智谱额度查询失败: %s" % (d.get("msg") or "未知错误"))
+    data = d.get("data")
+    if not isinstance(data, dict):
+        raise RuntimeError("智谱额度响应缺少 data 字段")
+    return {
+        "kind": "windows",
+        "plan": data.get("level"),
+        "windows": _parse_zhipu_windows(data.get("limits")),
+    }

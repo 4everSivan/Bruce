@@ -337,6 +337,7 @@ extension MdddOnboardingCoreHarness {
             .kimi: .allCredentialAccountsNonEmpty,
             .deepseek: .allCredentialAccountsNonEmpty,
             .volcengine: .allCredentialAccountsNonEmpty,
+            .zhipu: .allCredentialAccountsNonEmpty,
             .codex: .codexHasConfiguredRecords,
             .antigravity: .allCredentialAccountsNonEmpty,
             .claude: .claudeAppOrLocalProbe,

@@ -7,6 +7,7 @@ public enum SubscriptionProviderID: String, Codable, Sendable, CaseIterable {
     case kimi
     case deepseek
     case volcengine
+    case zhipu
     case codex
     case antigravity
     case claude
@@ -375,6 +376,10 @@ public enum SubscriptionCredentialAccount {
     public static let volcengineAccessKey = "volcengine:ak"
     /// 火山引擎 SecretKey 字符串
     public static let volcengineSecretKey = "volcengine:sk"
+    /// 智谱 API key 字符串 (id.secret 形式)
+    public static let zhipuAPIKey = "zhipu:api-key"
+    /// 智谱推理 Base URL (国内站 open.bigmodel.cn 或国外站 api.z.ai)
+    public static let zhipuBaseURL = "zhipu:base-url"
     /// CC Switch 同构 JSON {"accounts": {id: {email, refresh_token, access_token, id_token}}}
     public static let codexAccounts = "codex:accounts"
     /// Codex 当前账号 id 字符串

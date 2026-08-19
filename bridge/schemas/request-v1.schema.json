@@ -222,6 +222,7 @@
               "kimi",
               "deepseek",
               "volcengine",
+              "zhipu",
               "codex",
               "antigravity",
               "claude",
@@ -229,7 +230,7 @@
               "opencodeGo"
             ]
           },
-          "maxItems": 8,
+          "maxItems": 9,
           "uniqueItems": true
         }
       }
@@ -315,6 +316,9 @@
           "$ref": "#/$defs/quotaAccounts"
         },
         "volcengineQuotaAccounts": {
+          "$ref": "#/$defs/quotaAccounts"
+        },
+        "zhipuQuotaAccounts": {
           "$ref": "#/$defs/quotaAccounts"
         },
         "antigravityQuotaAccounts": {

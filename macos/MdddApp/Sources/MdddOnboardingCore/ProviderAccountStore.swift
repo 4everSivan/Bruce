@@ -127,6 +127,11 @@ public enum ProviderAccountKeys {
                 SubscriptionCredentialAccount.volcengineAccessKey,
                 SubscriptionCredentialAccount.volcengineSecretKey,
             ]
+        case .zhipu:
+            return [
+                SubscriptionCredentialAccount.zhipuAPIKey,
+                SubscriptionCredentialAccount.zhipuBaseURL,
+            ]
         case .codex:
             // Codex 已有独立的多账号体系, 不走通用迁移.
             return []
@@ -155,6 +160,11 @@ public enum ProviderAccountIDGenerator {
     /// 火山引擎: AccessKey 前 8 位.
     public static func volcengineAccountID(accessKey: String) -> String {
         String(accessKey.trimmingCharacters(in: .whitespacesAndNewlines).prefix(8))
+    }
+
+    /// 智谱: API key 前 8 位.
+    public static func zhipuAccountID(apiKey: String) -> String {
+        String(apiKey.trimmingCharacters(in: .whitespacesAndNewlines).prefix(8))
     }
 
     /// Kimi: access_token SHA-256 前 16 位.
@@ -450,6 +460,16 @@ public final class ProviderAccountStore: @unchecked Sendable {
             accountID = ProviderAccountIDGenerator.volcengineAccountID(accessKey: ak)
             displayName = "火山引擎 · \(accountID)"
             let dict: [String: String] = ["accessKey": ak, "secretKey": sk]
+            let data = (try? JSONSerialization.data(
+                withJSONObject: dict, options: [.sortedKeys]
+            )) ?? Data()
+            credentialJSON = String(data: data, encoding: .utf8) ?? "{}"
+        case .zhipu:
+            let apiKey = legacyValues[0]
+            let baseURL = legacyValues[1]
+            accountID = ProviderAccountIDGenerator.zhipuAccountID(apiKey: apiKey)
+            displayName = "智谱 · \(accountID)"
+            let dict: [String: String] = ["api_key": apiKey, "base_url": baseURL]
             let data = (try? JSONSerialization.data(
                 withJSONObject: dict, options: [.sortedKeys]
             )) ?? Data()

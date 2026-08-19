@@ -127,6 +127,9 @@ public enum CredentialRotationMerge {
 
         case .codex:
             return nil
+        case .zhipu:
+            // 智谱 API key 不参与 OAuth 轮换, 无令牌写回.
+            return nil
         }
     }
 
