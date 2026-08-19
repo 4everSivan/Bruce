@@ -53,7 +53,7 @@ struct SubscriptionCredentialsHarness {
         try await nonCredentialProvidersUnaffected()
         try coordinatorSaveFailureRecordsFailed()
         try coordinatorSkipsCodexWithoutSave()
-        try coordinatorAppliesKimiToInMemoryStore()
+        try coordinatorSkipsKimiRotation()
         try coordinatorSkipsBadShapeAndUnknownProvider()
         try providerAccountStoreAddRemoveAndIndex()
         try providerAccountStoreDuplicateRejected()
@@ -302,10 +302,10 @@ struct SubscriptionCredentialsHarness {
     }
 
     private static func nonCredentialProvidersUnaffected() async throws {
-        let kimiJSON = #"{"access_token":"a","refresh_token":"r"}"#
+        let kimiKey = "kimi-fixture-key"
         let (provider, _, _) = try makeProvider(
             enabled: [.kimi],
-            credentials: [SubscriptionCredentialAccount.kimiWebTokens: kimiJSON]
+            credentials: [SubscriptionCredentialAccount.kimiAPIKey: kimiKey]
         )
         let (_, credentials) = try await runInput(provider)
         guard case .object(let accounts)? = credentials["kimiQuotaAccounts"] else {
@@ -345,7 +345,7 @@ struct SubscriptionCredentialsHarness {
         )
         let result = coordinator.apply(credentialUpdates: [
             oauthUpdate(
-                provider: "kimi",
+                provider: "antigravity",
                 accountId: "acc-kimi-1",
                 tokens: [
                     "access_token": secretToken,
@@ -357,7 +357,7 @@ struct SubscriptionCredentialsHarness {
         try credentialsExpect(result.skippedCount == 0, "有效条目不应记 skipped")
         try credentialsExpect(result.failed.count == 1, "应记录 1 条 failed")
         let failure = result.failed[0]
-        try credentialsExpect(failure.provider == "kimi", "failed.provider 应为 kimi")
+        try credentialsExpect(failure.provider == "antigravity", "failed.provider 应为 antigravity")
         try credentialsExpect(
             failure.accountId == "acc-kimi-1",
             "failed.accountId 应保留"
@@ -399,13 +399,9 @@ struct SubscriptionCredentialsHarness {
         try credentialsExpect(legacy == nil, "Codex rotation 不得写旧库")
     }
 
-    /// 有效 kimi 更新写入 InMemory store, appliedCount == 1, 可加载合并后令牌.
-    private static func coordinatorAppliesKimiToInMemoryStore() throws {
+    /// kimi 不参与 OAuth 轮换, 更新必须被跳过.
+    private static func coordinatorSkipsKimiRotation() throws {
         let store = InMemoryCredentialStore()
-        try store.saveCredential(
-            #"{"access_token":"old-a","refresh_token":"old-r"}"#,
-            forAccount: SubscriptionCredentialAccount.kimiWebTokens
-        )
         let coordinator = CredentialUpdateCoordinator(credentialStore: store)
         let result = coordinator.apply(credentialUpdates: [
             oauthUpdate(
@@ -416,16 +412,9 @@ struct SubscriptionCredentialsHarness {
                 ]
             ),
         ])
-        try credentialsExpect(result.appliedCount == 1, "成功应 applied=1")
-        try credentialsExpect(result.skippedCount == 0, "成功不应 skipped")
-        try credentialsExpect(result.failed.isEmpty, "成功不应 failed")
-        let loaded = try store.loadCredential(
-            forAccount: SubscriptionCredentialAccount.kimiWebTokens
-        )
-        try credentialsExpect(
-            loaded == #"{"access_token":"new-a","refresh_token":"new-r"}"#,
-            "合并后 JSON 不符, got \(loaded ?? "nil")"
-        )
+        try credentialsExpect(result.appliedCount == 0, "kimi 轮换必须跳过")
+        try credentialsExpect(result.skippedCount == 1, "kimi 轮换应 skipped=1")
+        try credentialsExpect(result.failed.isEmpty, "kimi 轮换不是 failed")
     }
 
     /// 坏形状与未知 provider 记 skipped, 不写 store.
@@ -452,7 +441,7 @@ struct SubscriptionCredentialsHarness {
         )
         try credentialsExpect(result.failed.isEmpty, "坏条目不是 failed")
         let kimi = try store.loadCredential(
-            forAccount: SubscriptionCredentialAccount.kimiWebTokens
+            forAccount: SubscriptionCredentialAccount.kimiAPIKey
         )
         try credentialsExpect(kimi == nil, "坏条目不得写入 kimi")
     }
@@ -654,18 +643,18 @@ struct SubscriptionCredentialsHarness {
         let credStore = InMemoryCredentialStore()
 
         // 模拟旧 Kimi 凭证
-        let oldKey = SubscriptionCredentialAccount.kimiWebTokens
-        let kimiJSON = "{\"access_token\":\"tok_abc\",\"refresh_token\":\"tok_def\"}"
-        try credStore.saveCredential(kimiJSON, forAccount: oldKey)
+        let oldKey = SubscriptionCredentialAccount.kimiAPIKey
+        let kimiKey = "kimi-legacy-key"
+        try credStore.saveCredential(kimiKey, forAccount: oldKey)
 
         let store = ProviderAccountStore(provider: .kimi, credentialStore: credStore)
 
         // 迁移: 读取旧键, 添加账号
-        let accountID = ProviderAccountIDGenerator.kimiAccountID(accessToken: "tok_abc")
+        let accountID = ProviderAccountIDGenerator.kimiAccountID(apiKey: kimiKey)
         _ = try store.addAccount(
             accountID: accountID,
-            displayName: "Kimi · \(String(accountID.prefix(8)))",
-            credentialJSON: kimiJSON
+            displayName: "Kimi · \(accountID)",
+            credentialJSON: kimiKey
         )
         try store.updateAuthorizationState(.connected, for: accountID)
 
@@ -684,7 +673,7 @@ struct SubscriptionCredentialsHarness {
 
         // 新 record 仍可用
         let record = try store.loadRecord(for: accountID)
-        try credentialsExpect(record?.credentialJSON == kimiJSON, "清理后 record 应仍可用")
+        try credentialsExpect(record?.credentialJSON == kimiKey, "清理后 record 应仍可用")
         try credentialsExpect(
             record?.authorizationState == .connected,
             "清理后状态应仍为 connected"
@@ -694,22 +683,22 @@ struct SubscriptionCredentialsHarness {
     /// 多账号轮换: 按 accountId 写回 per-account record, 不影响其他账号.
     private static func coordinatorRotationMultiAccountWritesPerAccountRecord() throws {
         let store = InMemoryCredentialStore()
-        let accountStore = ProviderAccountStore(provider: .kimi, credentialStore: store)
+        let accountStore = ProviderAccountStore(provider: .claude, credentialStore: store)
         _ = try accountStore.addAccount(
             accountID: "acct-a",
-            displayName: "Kimi · a",
-            credentialJSON: "{\"access_token\":\"old-a\",\"refresh_token\":\"old-ra\"}"
+            displayName: "Claude · a",
+            credentialJSON: "{\"claudeAiOauth\":{\"accessToken\":\"old-a\"}}"
         )
         _ = try accountStore.addAccount(
             accountID: "acct-b",
-            displayName: "Kimi · b",
-            credentialJSON: "{\"access_token\":\"keep-b\",\"refresh_token\":\"keep-rb\"}"
+            displayName: "Claude · b",
+            credentialJSON: "{\"claudeAiOauth\":{\"accessToken\":\"keep-b\"}}"
         )
 
         let coordinator = CredentialUpdateCoordinator(credentialStore: store)
         let result = coordinator.apply(credentialUpdates: [
             oauthUpdate(
-                provider: "kimi",
+                provider: "claude",
                 accountId: "acct-a",
                 tokens: ["access_token": "new-a", "refresh_token": "new-ra"]
             ),
@@ -765,22 +754,23 @@ struct SubscriptionCredentialsHarness {
     }
 
     /// 多账号轮换: 未知 accountId 回退旧键路径 (兼容未迁移单账号).
-    private static func coordinatorRotationMultiAccountUnknownAccountFallsBack() throws {        let store = InMemoryCredentialStore()
+    private static func coordinatorRotationMultiAccountUnknownAccountFallsBack() throws {
+        let store = InMemoryCredentialStore()
         try store.saveCredential(
-            #"{"access_token":"old-a","refresh_token":"old-r"}"#,
-            forAccount: SubscriptionCredentialAccount.kimiWebTokens
+            #"{"token":{"access_token":"old-a","refresh_token":"old-r"}}"#,
+            forAccount: SubscriptionCredentialAccount.antigravityOAuth
         )
         let coordinator = CredentialUpdateCoordinator(credentialStore: store)
         let result = coordinator.apply(credentialUpdates: [
             oauthUpdate(
-                provider: "kimi",
+                provider: "antigravity",
                 accountId: "unknown-acct",
                 tokens: ["access_token": "new-a", "refresh_token": "new-r"]
             ),
         ])
         try credentialsExpect(result.appliedCount == 1, "未知账号回退旧键应 applied=1")
         let loaded = try store.loadCredential(
-            forAccount: SubscriptionCredentialAccount.kimiWebTokens
+            forAccount: SubscriptionCredentialAccount.antigravityOAuth
         )
         try credentialsExpect(
             loaded?.contains("new-a") == true,

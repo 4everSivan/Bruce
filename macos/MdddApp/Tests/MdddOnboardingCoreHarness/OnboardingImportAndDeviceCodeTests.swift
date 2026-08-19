@@ -43,56 +43,17 @@ extension MdddOnboardingCoreHarness {
         )
     }
 
-    static func kimiPasteParsesFullJSON() throws {
-        let result = KimiPasteParser.parse(
-            " {\"access_token\":\"a1\",\"refresh_token\":\"r1\"} "
-        )
-        guard case .success(let json) = result else {
-            throw CoreTestFailure.expectation("整段 JSON 必须解析成功, got \(result)")
-        }
+    static func verifierKimiAPIKeyMappings() throws {
         try coreExpect(
-            ProviderConnectionVerifier.verifyKimiWebTokensJSON(json) == .ok,
-            "解析结果必须通过结构校验"
+            ProviderConnectionVerifier.verifyKimiAPIKey("fixture-kimi-key") == .ok,
+            "合理 API key 必须 ok"
         )
-    }
-
-    /// 两段 token (空白或换行分隔) 与单段 token 的映射.
-    static func kimiPasteParsesTokenPairs() throws {
-        guard case .success(let pair) = KimiPasteParser.parse("a2\nr2") else {
-            throw CoreTestFailure.expectation("两段 token 必须解析成功")
+        guard case .failed(let empty) = ProviderConnectionVerifier.verifyKimiAPIKey("") else {
+            throw CoreTestFailure.expectation("空 API key 必须 failed")
         }
-        try coreExpect(
-            pair.contains("\"access_token\":\"a2\"")
-                && pair.contains("\"refresh_token\":\"r2\""),
-            "两段 token 顺序映射不符: \(pair)"
-        )
-        try coreExpect(
-            ProviderConnectionVerifier.verifyKimiWebTokensJSON(pair) == .ok,
-            "两段 token 必须 ok"
-        )
-        // 单段 token 只有 access, 结构校验必须 needsRelogin
-        guard case .success(let single) = KimiPasteParser.parse("a-only") else {
-            throw CoreTestFailure.expectation("单段 token 必须解析成功")
-        }
-        try coreExpect(
-            ProviderConnectionVerifier.verifyKimiWebTokensJSON(single) == .needsRelogin,
-            "单段 token 必须 needsRelogin"
-        )
-    }
-
-    static func kimiPasteRejectsEmptyAndBrokenJSON() throws {
-        guard case .failure(let empty) = KimiPasteParser.parse("   ") else {
-            throw CoreTestFailure.expectation("空输入必须失败")
-        }
-        guard case .missingField = empty else {
-            throw CoreTestFailure.expectation("空输入必须 missingField, got \(empty)")
-        }
-        guard case .failure(let broken) = KimiPasteParser.parse("{not json") else {
-            throw CoreTestFailure.expectation("坏 JSON 必须失败")
-        }
-        try coreExpect(broken == .invalidJSON, "坏 JSON 必须 invalidJSON, got \(broken)")
-        guard case .failure = KimiPasteParser.parse("{}") else {
-            throw CoreTestFailure.expectation("空对象必须失败")
+        try coreExpect(empty.contains("为空"), "空 key 原因不符: \(empty)")
+        guard case .failed = ProviderConnectionVerifier.verifyKimiAPIKey("has space key") else {
+            throw CoreTestFailure.expectation("含空白的 API key 必须 failed")
         }
     }
 

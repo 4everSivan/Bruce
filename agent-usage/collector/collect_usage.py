@@ -27,6 +27,7 @@ import sys
 import threading
 import urllib.parse
 import urllib.request
+import urllib.error
 from concurrent.futures import ThreadPoolExecutor
 from zoneinfo import ZoneInfo
 
@@ -382,149 +383,77 @@ def http_get_json(url, headers):
     return runtime.http_get_json(url, headers, HTTP_TIMEOUT)
 
 
-KIMI_STATS_URL = "https://www.kimi.com/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscriptionStats"
-KIMI_SUB_URL = "https://www.kimi.com/apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscription"
-KIMI_REFRESH_URL = "https://www.kimi.com/api/auth/token/refresh"
+KIMI_USAGE_URL = "https://api.kimi.com/coding/v1/usages"
 
 
-def http_post_json(url, payload, headers):
-    return runtime.http_post_json(url, payload, headers, HTTP_TIMEOUT)
+def service_kimi_coding(env=None, api_key=None):
+    """Kimi For Coding 额度: 走 Kimi For Coding API (GET api.kimi.com/coding/v1/usages).
 
+    凭证为 Kimi For Coding 的 API key (长期有效), 与 CC Switch 一致; 不是网页端登录态.
+    返回 5 小时窗口 (limits[].detail) + 周限额 (usage), 无赠送额度/每月窗口/加量包.
 
-def _kimi_web_refresh(tokens):
-    """Refresh Kimi credentials and return an App-owned update candidate."""
-    try:
-        d = http_post_json(
-            KIMI_REFRESH_URL,
-            {"refresh_token": tokens.get("refresh_token", "")},
-            {"Content-Type": "application/json"},
-        )
-        new = {
-            "access_token": d.get("access_token") or "",
-            "refresh_token": d.get("refresh_token") or tokens.get("refresh_token", ""),
-        }
-        if new["access_token"]:
-            _record_credential_update("kimi", "default", new)
-            if "kimi_web_tokens" in _RUNTIME_CREDENTIALS or _APP_MODE:
-                return new
-            with open(KIMI_WEB_TOKENS, "w") as f:
-                json.dump(new, f)
-            os.chmod(KIMI_WEB_TOKENS, 0o600)
-            return new
-    except Exception:
-        pass
-    return None
-
-
-def service_kimi_coding(env=None, tokens=None):
-    """Kimi For Coding 额度：统一走网页端 GetSubscriptionStats 一处取数，
-    单次返回 5h 频控 / 7 天额度 / 月度共享池 / 赠送额度 / 加油包 全部窗口。
-    登录态为本机浏览器的 kimi.com 令牌（access 到期自动 refresh）。
-
-    tokens 参数用于多账号注入 (service_catalog 按账号传入);
-    env 参数保留旧调用兼容 (CLI 场景, 内部仍读 runtime credential).
+    api_key 参数用于多账号注入 (service_catalog 按账号传入);
+    env 参数用于 CLI 场景 (CC Switch provider 行的 ANTHROPIC_AUTH_TOKEN).
     """
-    if tokens is not None:
-        pass  # 多账号注入: 直接使用传入 tokens
-    else:
-        injected_tokens = _runtime_credential("kimi_web_tokens")
-        if injected_tokens is not None:
-            tokens = dict(injected_tokens)
-        else:
-            if _APP_MODE:
-                return None
-            if not os.path.exists(KIMI_WEB_TOKENS):
-                return None
-            try:
-                with open(KIMI_WEB_TOKENS) as f:
-                    tokens = json.load(f)
-            except Exception:
-                return None
-    if not tokens:
+    if api_key is None:
+        api_key = (env or {}).get("ANTHROPIC_AUTH_TOKEN") or ""
+    if not api_key:
         return None
-
-    d = None
-    for _ in range(2):
-        try:
-            d = http_post_json(
-                KIMI_STATS_URL, {},
-                {"Authorization": "Bearer " + tokens.get("access_token", ""),
-                 "Content-Type": "application/json"},
-            )
-            break
-        except Exception:
-            tokens = _kimi_web_refresh(tokens) or {}
-            if not tokens:
-                return None
-    if d is None:
-        return None
+    try:
+        d = http_get_json(
+            KIMI_USAGE_URL,
+            {"Authorization": "Bearer " + api_key, "Accept": "application/json"},
+        )
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            raise RuntimeError("Kimi 凭证被拒绝 (HTTP %d), 请检查 API key" % e.code)
+        raise RuntimeError("Kimi 额度请求失败 (HTTP %d)" % e.code)
+    if not isinstance(d, dict):
+        raise RuntimeError("Kimi 额度响应不是 JSON 对象")
 
     windows = []
-    r5 = d.get("ratelimitCode5h") or {}
-    windows.append(
-        {
-            "label": "5小时窗口",
-            "usedPercent": float(r5.get("ratio") or 0) * 100,
-            "windowMinutes": 300,
-            "resetsAt": epoch_from_iso(r5.get("resetTime")),
-        }
-    )
-    r7 = d.get("ratelimitCode7d") or {}
-    windows.append(
-        {
+
+    # 5 小时窗口: limits[].detail (duration 300 分钟)
+    limits = d.get("limits") or []
+    if isinstance(limits, list):
+        for item in limits:
+            if not isinstance(item, dict):
+                continue
+            detail = item.get("detail") or {}
+            if not detail:
+                continue
+            try:
+                limit = float(detail.get("limit") or 1.0)
+                remaining = float(detail.get("remaining") or 0.0)
+            except (TypeError, ValueError):
+                continue
+            used = max(0.0, limit - remaining)
+            pct = (used / limit * 100.0) if limit > 0 else 0.0
+            windows.append({
+                "label": "5小时窗口",
+                "usedPercent": pct,
+                "windowMinutes": 300,
+                "resetsAt": epoch_from_iso(detail.get("resetTime")),
+            })
+
+    # 周限额: usage
+    usage = d.get("usage") or {}
+    if isinstance(usage, dict) and usage:
+        try:
+            limit = float(usage.get("limit") or 1.0)
+            remaining = float(usage.get("remaining") or 0.0)
+        except (TypeError, ValueError):
+            limit, remaining = 1.0, 0.0
+        used = max(0.0, limit - remaining)
+        pct = (used / limit * 100.0) if limit > 0 else 0.0
+        windows.append({
             "label": "7天窗口",
-            "usedPercent": float(r7.get("ratio") or 0) * 100,
+            "usedPercent": pct,
             "windowMinutes": 7 * 24 * 60,
-            "resetsAt": epoch_from_iso(r7.get("resetTime")),
-        }
-    )
-    sb = d.get("subscriptionBalance") or {}
-    if sb:
-        windows.append(
-            {
-                "label": "每月窗口",
-                "usedPercent": float(sb.get("amountUsedRatio") or 0) * 100,
-                "windowMinutes": None,
-                "resetsAt": epoch_from_iso(sb.get("expireTime")),
-            }
-        )
+            "resetsAt": epoch_from_iso(usage.get("resetTime")),
+        })
 
-    plan = None
-    try:
-        sub = http_post_json(
-            KIMI_SUB_URL, {},
-            {"Authorization": "Bearer " + tokens.get("access_token", ""),
-             "Content-Type": "application/json"},
-        )
-        m = re.search(r"(Andante|Moderato|Allegretto|Allegro)", json.dumps(sub))
-        plan = m.group(1) if m else None
-    except Exception:
-        pass
-
-    # 赠送额度：单独占一行的量条
-    gifts = d.get("giftBalances") or []
-    if gifts:
-        g = gifts[0]
-        windows.append(
-            {
-                "label": "赠送额度",
-                "usedPercent": float(g.get("amountUsedRatio") or 0) * 100,
-                "windowMinutes": None,
-                "resetsAt": epoch_from_iso(g.get("expireTime")),
-                "ownRow": True,
-            }
-        )
-
-    extras = []
-    wallets = d.get("boosterWallets") or []
-    if wallets:
-        status = str(wallets[0].get("status") or "")
-        if "DISABLED" in status:
-            extras.append("加量包未启用")
-        else:
-            cents = ((wallets[0].get("moneyLeft") or {}).get("priceInCents")) or "0"
-            extras.append("加量包余额 ¥%.2f" % (int(cents) / 100.0))
-    return {"kind": "windows", "plan": plan, "windows": windows, "extra": " · ".join(extras) or None}
+    return {"kind": "windows", "plan": None, "windows": windows, "extra": None}
 
 
 def record_codex_challenge(acc_id):

@@ -617,11 +617,11 @@ extension RefreshSchedulerHarness {
         repository: URL
     ) async throws {
         let artifact = try loadFixture(repository: repository, module: .agentUsage)
-        // kimi (非 codex) 才会走 Keychain 写回; 用抛错 store 触发 failed.
+        // antigravity (非 codex) 才会走 Keychain 写回; 用抛错 store 触发 failed.
         let secretToken = "rotated-secret-token-should-not-leak"
         let updates: [JSONValue] = [
             .object([
-                "provider": .string("kimi"),
+                "provider": .string("antigravity"),
                 "accountId": .string("acc-kimi-1"),
                 "kind": .string("oauthTokens"),
                 "operation": .string("replace"),
@@ -684,7 +684,7 @@ extension RefreshSchedulerHarness {
             "CREDENTIAL_PERSIST_FAILED category/stage 不符"
         )
         try refreshExpect(
-            persistDiag?.message == "kimi 凭证写回失败",
+            persistDiag?.message == "antigravity 凭证写回失败",
             "message 应为 provider 写回失败文案, got \(persistDiag?.message ?? "nil")"
         )
         try refreshExpect(

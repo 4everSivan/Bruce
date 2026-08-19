@@ -209,7 +209,7 @@ struct CollectorRunnerHarness {
         try await oldBridgeResponseWithoutChallengesDecodesAsEmpty()
         try await runInputDeniesQuotasWithoutConsent()
         try await runInputLocalCapabilitiesOnlyWithoutProviders()
-        try await runInputAssemblesKimiWebTokens()
+        try await runInputAssemblesKimiAPIKey()
         try await runInputAssemblesDeepSeekProviderEnv()
         try await runInputAssemblesVolcengineProviderMeta()
         try await runInputResolvesCodexQuotaAccounts()
@@ -255,9 +255,11 @@ struct CollectorRunnerHarness {
             try await runner.run(
                 module: .agentUsage,
                 credentials: [
-                    "kimiWebTokens": .object([
-                        "access_token": .string("fixture-secret"),
-                        "refresh_token": .string("fixture-refresh"),
+                    "kimiQuotaAccounts": .object([
+                        "acct": .object([
+                            "display_name": .string("Kimi · acct"),
+                            "api_key": .string("fixture-secret"),
+                        ])
                     ])
                 ]
             )
@@ -622,8 +624,8 @@ struct CollectorRunnerHarness {
     private static func runInputDeniesQuotasWithoutConsent() async throws {
         let credentials = InMemoryCredentialStore()
         try credentials.saveCredential(
-            "{\"access_token\":\"a\",\"refresh_token\":\"r\"}",
-            forAccount: SubscriptionCredentialAccount.kimiWebTokens
+            "kimi-fixture-key",
+            forAccount: SubscriptionCredentialAccount.kimiAPIKey
         )
         let (provider, tempDir) = try makeRunInputProvider(
             consentVersion: nil,
@@ -663,11 +665,11 @@ struct CollectorRunnerHarness {
         )
     }
 
-    private static func runInputAssemblesKimiWebTokens() async throws {
+    private static func runInputAssemblesKimiAPIKey() async throws {
         let credentials = InMemoryCredentialStore()
         try credentials.saveCredential(
-            "{\"access_token\":\"a\",\"refresh_token\":\"r\"}",
-            forAccount: SubscriptionCredentialAccount.kimiWebTokens
+            "kimi-fixture-key",
+            forAccount: SubscriptionCredentialAccount.kimiAPIKey
         )
         let (provider, tempDir) = try makeRunInputProvider(
             consentVersion: 1,
@@ -681,7 +683,7 @@ struct CollectorRunnerHarness {
             capabilityStrings(input).contains("externalQuotas"),
             "kimi 已配置时必须授予 externalQuotas"
         )
-        // 多账号注入格式: kimiQuotaAccounts 字典, 每个账号含 display_name + tokens
+        // 多账号注入格式: kimiQuotaAccounts 字典, 每个账号含 display_name + api_key
         guard case .object(let accounts)? = input.credentials["kimiQuotaAccounts"] else {
             throw RunnerTestFailure.expectation(
                 "kimiQuotaAccounts 注入缺失: \(input.credentials.keys.sorted())"
@@ -692,9 +694,8 @@ struct CollectorRunnerHarness {
         guard case .object(let payload)? = firstPayload else {
             throw RunnerTestFailure.expectation("kimi 账号 payload 结构不符")
         }
-        guard case .object(let tokens)? = payload["tokens"],
-              tokens["access_token"] == .string("a") else {
-            throw RunnerTestFailure.expectation("kimi tokens.access_token 注入缺失")
+        guard payload["api_key"] == .string("kimi-fixture-key") else {
+            throw RunnerTestFailure.expectation("kimi api_key 注入缺失")
         }
     }
 
@@ -814,8 +815,8 @@ struct CollectorRunnerHarness {
     private static func runInputAssemblesAllProvidersCombined() async throws {
         let credentials = InMemoryCredentialStore()
         try credentials.saveCredential(
-            "{\"access_token\":\"a\",\"refresh_token\":\"r\"}",
-            forAccount: SubscriptionCredentialAccount.kimiWebTokens
+            "kimi-fixture-key",
+            forAccount: SubscriptionCredentialAccount.kimiAPIKey
         )
         try credentials.saveCredential(
             "sk-fixture",
@@ -1351,11 +1352,11 @@ struct CollectorRunnerHarness {
         let credentials = InMemoryCredentialStore()
         try credentials.saveCredential(
             "not-json-at-all",
-            forAccount: SubscriptionCredentialAccount.kimiWebTokens
+            forAccount: SubscriptionCredentialAccount.antigravityOAuth
         )
         let (provider, tempDir) = try makeRunInputProvider(
             consentVersion: 1,
-            providers: enabledProvider(.kimi),
+            providers: enabledProvider(.antigravity),
             credentials: credentials
         )
         defer { try? FileManager.default.removeItem(at: tempDir) }

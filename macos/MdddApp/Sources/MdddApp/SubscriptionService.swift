@@ -511,46 +511,23 @@ final class SubscriptionService {
         }
     }
 
-    /// Kimi: 从本机 kimi-dashboard 令牌文件一键导入 (用户点击触发).
-    func importKimiFromLocalFile() {
-        let fileURL = homeURL.appendingPathComponent(
-        ".config/kimi-dashboard/kimi-web-tokens.json"
-        )
-        guard let json = readCredentialFile(fileURL, usage: "Kimi 本机令牌文件") else {
+    /// Kimi For Coding 手动录入: 仅结构校验, 完整额度试查由 Collector 运行时承担.
+    /// 凭证为 API key 字符串 (走 api.kimi.com/coding/v1/usages, 与 CC Switch 一致).
+    func saveAndVerifyKimi(apiKey: String) {
+        let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let status = ProviderConnectionVerifier.verifyKimiAPIKey(key)
+        guard status == .ok else {
+            finishVerification(.kimi, status: status)
             return
         }
-        saveKimiTokensJSON(json)
-    }
-
-    /// Kimi: 引导粘贴导入 (整段 JSON 或两段 token).
-    func importKimiFromPaste(_ paste: String) {
-        switch KimiPasteParser.parse(paste) {
-            case .failure(let error):
-            model.setSettingsError("Kimi 凭证解析失败: \(error.description)")
-            case .success(let json):
-            saveKimiTokensJSON(json)
-        }
-    }
-
-    private func saveKimiTokensJSON(_ json: String) {
-        let status = ProviderConnectionVerifier.verifyKimiWebTokensJSON(json)
-        if status == .ok || status == .needsRelogin {
-            // 多账号路径: 写入 ProviderAccountStore (upsert), 账号列表立即可见.
-            guard let dict = jsonObject(from: json),
-                  let access = dict["access_token"] as? String, !access.isEmpty else {
-                model.setSettingsError("Kimi 凭证缺少 access_token")
-                return
-            }
-            let accountID = ProviderAccountIDGenerator.kimiAccountID(accessToken: access)
-            let displayName = "Kimi · " + String(accountID.prefix(8))
-            guard saveProviderAccountCredential(
-                for: .kimi,
-                accountID: accountID,
-                displayName: displayName,
-                credentialJSON: json
-            ) else { return }
-            model.setSubscriptionCredentialConfigured(true, for: .kimi)
-        }
+        let accountID = ProviderAccountIDGenerator.kimiAccountID(apiKey: key)
+        guard saveProviderAccountCredential(
+            for: .kimi,
+            accountID: accountID,
+            displayName: "Kimi · \(accountID)",
+            credentialJSON: key
+        ) else { return }
+        model.setSubscriptionCredentialConfigured(true, for: .kimi)
         finishVerification(.kimi, status: status)
     }
 
@@ -1204,10 +1181,6 @@ final class SubscriptionService {
     }
 
     // MARK: - 订阅额度本机文件检测 (供设置页条件渲染; 转发 LocalCredentialProbe)
-
-    func kimiLocalTokensFileExists() -> Bool {
-        localProbe.kimiLocalTokensFileExists()
-    }
 
     func codexCLIAuthFileExists() -> Bool {
         localProbe.codexCLIAuthFileExists()

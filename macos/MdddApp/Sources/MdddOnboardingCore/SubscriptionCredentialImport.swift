@@ -79,60 +79,6 @@ extension SubscriptionProviderConfiguration {
     }
 }
 
-// MARK: - KimiPasteParser
-
-/// Kimi 引导粘贴解析: 接受整段 JSON 或 access_token / refresh_token
-/// 两段 token (空白或换行分隔). 输出规范的 {"access_token","refresh_token"}
-/// JSON 字符串, 供 verifyKimiWebTokensJSON 校验后写入 Keychain.
-public enum KimiPasteParser {
-    public static func parse(_ input: String) -> Result<String, SubscriptionImportError> {
-        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            return .failure(.missingField("access_token / refresh_token"))
-        }
-
-        if trimmed.hasPrefix("{") {
-            guard let data = trimmed.data(using: .utf8),
-                  let object = try? JSONSerialization.jsonObject(with: data),
-                  let dict = object as? [String: Any] else {
-                return .failure(.invalidJSON)
-            }
-            let access = (dict["access_token"] as? String ?? "")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            let refresh = (dict["refresh_token"] as? String ?? "")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !access.isEmpty || !refresh.isEmpty else {
-                return .failure(.missingField("access_token / refresh_token"))
-            }
-            return canonical(access: access, refresh: refresh)
-        }
-
-        // 纯文本: 按空白拆分, 第一段作为 access_token, 第二段作为 refresh_token
-        let tokens = trimmed.split(whereSeparator: { $0.isWhitespace }).map(String.init)
-        switch tokens.count {
-        case 1:
-            return canonical(access: tokens[0], refresh: "")
-        default:
-            return canonical(access: tokens[0], refresh: tokens[1])
-        }
-    }
-
-    private static func canonical(
-        access: String, refresh: String
-    ) -> Result<String, SubscriptionImportError> {
-        let payload: [String: String] = [
-            "access_token": access,
-            "refresh_token": refresh,
-        ]
-        guard let data = try? JSONSerialization.data(
-            withJSONObject: payload, options: [.sortedKeys]
-        ), let json = String(data: data, encoding: .utf8) else {
-            return .failure(.invalidJSON)
-        }
-        return .success(json)
-    }
-}
-
 // MARK: - CodexAuthFileParser
 
 /// `~/.codex/auth.json` 当前账号解析, 结构与 collect_usage.py:1128-1143

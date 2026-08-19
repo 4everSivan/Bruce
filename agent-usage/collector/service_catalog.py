@@ -178,14 +178,14 @@ def _resolve_app(run_ctx: RunContext, *, kimi_coding, opencode_go) -> List[_Reso
     if isinstance(kimi_accounts, dict) and kimi_accounts:
         for account_id, payload in kimi_accounts.items():
             display = (payload or {}).get("display_name") or "Kimi · " + account_id[:8]
-            tokens = (payload or {}).get("tokens") or {}
+            key = (payload or {}).get("api_key") or ""
             resolved.append(
                 _Resolved(
                     service_id="kimi_coding_" + account_id,
                     display_name=display,
                     app="kimi",
                     is_current=False,
-                    query=lambda t=tokens: kimi_coding(tokens=t),
+                    query=lambda k=key: kimi_coding(api_key=k),
                 )
             )
 

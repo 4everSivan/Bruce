@@ -119,7 +119,7 @@ public enum ProviderAccountKeys {
     public static func legacyKeys(for provider: SubscriptionProviderID) -> [String] {
         switch provider {
         case .kimi:
-            return [SubscriptionCredentialAccount.kimiWebTokens]
+            return [SubscriptionCredentialAccount.kimiAPIKey]
         case .deepseek:
             return [SubscriptionCredentialAccount.deepseekAPIKey]
         case .volcengine:
@@ -167,9 +167,9 @@ public enum ProviderAccountIDGenerator {
         String(apiKey.trimmingCharacters(in: .whitespacesAndNewlines).prefix(8))
     }
 
-    /// Kimi: access_token SHA-256 前 16 位.
-    public static func kimiAccountID(accessToken: String) -> String {
-        ProviderAccountKeys.sha256Hex(accessToken)
+    /// Kimi: API key 前 8 位.
+    public static func kimiAccountID(apiKey: String) -> String {
+        String(apiKey.trimmingCharacters(in: .whitespacesAndNewlines).prefix(8))
     }
 
     /// Claude: accessToken SHA-256 前 16 位.
@@ -442,13 +442,10 @@ public final class ProviderAccountStore: @unchecked Sendable {
         let (accountID, displayName, credentialJSON): (String, String, String)
         switch provider {
         case .kimi:
-            let token = legacyValues[0]
-            let access = Self.jsonStringField(
-                in: token, path: ["access_token"]
-            ) ?? token
-            accountID = ProviderAccountIDGenerator.kimiAccountID(accessToken: access)
-            displayName = "Kimi · \(String(accountID.prefix(8)))"
-            credentialJSON = token
+            let key = legacyValues[0]
+            accountID = ProviderAccountIDGenerator.kimiAccountID(apiKey: key)
+            displayName = "Kimi · \(accountID)"
+            credentialJSON = key
         case .deepseek:
             let key = legacyValues[0]
             accountID = ProviderAccountIDGenerator.deepseekAccountID(apiKey: key)

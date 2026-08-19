@@ -5,8 +5,8 @@ import Foundation
 /// Bridge 凭证注入形状. `assembleSubscriptionCredentials` 只按本枚举派发,
 /// 输出 JSON 键与嵌套必须与现有 harness / Bridge 白名单一致.
 public enum InjectionKind: Sendable, Equatable {
-    /// 顶层 `kimiWebTokens` = Keychain JSON 对象
-    case kimiWebTokensJSON
+    /// 顶层 `kimiQuotaAccounts` = {accountID: {api_key}} 映射
+    case kimiAPIKeyEnv
     /// `providerEnv.deepseek.ANTHROPIC_AUTH_TOKEN` = API key 字符串
     case deepseekAPIKeyEnv
     /// `providerMeta.volcengine.usage_script.{accessKeyId,secretAccessKey}`
@@ -150,8 +150,8 @@ public enum ProviderRegistry {
         case .kimi:
             return ProviderDescriptor(
                 id: .kimi,
-                credentialAccounts: [SubscriptionCredentialAccount.kimiWebTokens],
-                injectionKind: .kimiWebTokensJSON,
+                credentialAccounts: [SubscriptionCredentialAccount.kimiAPIKey],
+                injectionKind: .kimiAPIKeyEnv,
                 configuredRule: .allCredentialAccountsNonEmpty
             )
         case .deepseek:

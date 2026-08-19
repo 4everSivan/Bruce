@@ -336,21 +336,19 @@ extension MdddOnboardingCoreHarness {
         )
     }
 
-    /// Kimi: 缺 refresh_token -> malformed (可续期性).
-    static func evaluatorKimiRefreshMissing() throws {
-        let noRefresh = """
-        {"access_token": "a"}
-        """
+    /// Kimi: API key 非空且不含空白.
+    static func evaluatorKimiAPIKey() throws {
         try coreExpect(
-            SubscriptionCredentialEvaluator.kimiStatus(of: noRefresh) == .malformed,
-            "Kimi 缺 refresh_token 应 malformed"
+            SubscriptionCredentialEvaluator.kimiStatus(of: "") == .missing,
+            "Kimi 空 key 应 missing"
         )
-        let both = """
-        {"access_token": "a", "refresh_token": "r"}
-        """
         try coreExpect(
-            SubscriptionCredentialEvaluator.kimiStatus(of: both) == .valid,
-            "Kimi 双 token 应 valid"
+            SubscriptionCredentialEvaluator.kimiStatus(of: "kimi-fixture-key") == .valid,
+            "Kimi API key 应 valid"
+        )
+        try coreExpect(
+            SubscriptionCredentialEvaluator.kimiStatus(of: "has space key") == .malformed,
+            "Kimi 含空白 key 应 malformed"
         )
     }
 

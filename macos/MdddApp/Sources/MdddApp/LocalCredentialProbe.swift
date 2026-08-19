@@ -38,14 +38,6 @@ struct LocalCredentialProbe: Sendable {
 
     // MARK: - 本机文件存在性 (设置页条件渲染)
 
-    func kimiLocalTokensFileExists() -> Bool {
-        FileManager.default.fileExists(
-            atPath: homeURL
-                .appendingPathComponent(".config/kimi-dashboard/kimi-web-tokens.json")
-                .path
-        )
-    }
-
     func codexCLIAuthFileExists() -> Bool {
         FileManager.default.fileExists(
             atPath: homeURL.appendingPathComponent(".codex/auth.json").path

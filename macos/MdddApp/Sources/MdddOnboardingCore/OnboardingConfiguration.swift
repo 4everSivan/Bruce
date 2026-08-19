@@ -368,8 +368,8 @@ public enum OnboardingConfigError: Error, Equatable {
 /// 订阅 provider 的 Keychain account 键. service 统一为
 /// com.mddd.dashboard.credentials.
 public enum SubscriptionCredentialAccount {
-    /// JSON {"access_token": ..., "refresh_token": ...}
-    public static let kimiWebTokens = "kimi:web-tokens"
+    /// Kimi For Coding API key 字符串
+    public static let kimiAPIKey = "kimi:api-key"
     /// DeepSeek API key 字符串
     public static let deepseekAPIKey = "deepseek:api-key"
     /// 火山引擎 AccessKey 字符串

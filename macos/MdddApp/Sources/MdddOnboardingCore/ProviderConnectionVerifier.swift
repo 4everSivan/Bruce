@@ -119,20 +119,15 @@ public struct ProviderConnectionVerifier: Sendable, DeepSeekCredentialVerifier {
         }
     }
 
-    /// Kimi 浏览器令牌 JSON 结构校验: access_token/refresh_token 非空.
-    /// 无 refresh_token 时 access 过期后无法续期, 判定为需要重新登录.
+    /// Kimi For Coding API key 结构校验: 非空且不含空白.
     /// 真实额度查询由 collector 完成, 此处不发网络请求.
-    public static func verifyKimiWebTokensJSON(_ json: String) -> SubscriptionVerificationStatus {
-        guard let dict = jsonObject(from: json) else {
-            return .failed(reason: "凭证不是有效 JSON 对象")
+    public static func verifyKimiAPIKey(_ apiKey: String) -> SubscriptionVerificationStatus {
+        let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else {
+            return .failed(reason: "API key 为空")
         }
-        let access = (dict["access_token"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let refresh = (dict["refresh_token"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        if access.isEmpty && refresh.isEmpty {
-            return .failed(reason: "缺少 access_token 和 refresh_token")
-        }
-        if refresh.isEmpty {
-            return .needsRelogin
+        guard !key.contains(where: { $0.isWhitespace }) else {
+            return .failed(reason: "API key 格式不合理")
         }
         return .ok
     }

@@ -82,93 +82,37 @@ class AgentCollectorContextTests(unittest.TestCase):
         self.assertEqual(self.module.day_of(timestamp), "2026-07-28")
         self.assertEqual(self.module.hour_of(timestamp), 0)
 
-    def test_kimi_credentials_and_http_are_injectable(self):
-        def post_json(url, payload, headers):
+    def test_kimi_api_key_and_http_are_injectable(self):
+        def get_json(url, headers):
             self.assertIn("Authorization", headers)
-            if url == self.module.KIMI_STATS_URL:
+            if url == self.module.KIMI_USAGE_URL:
                 return {
-                    "ratelimitCode5h": {"ratio": 0.25},
-                    "ratelimitCode7d": {"ratio": 0.5},
+                    "limits": [
+                        {"detail": {"limit": "100", "remaining": "90",
+                                    "resetTime": "2026-07-28T12:00:00Z"}}
+                    ],
+                    "usage": {"limit": "100", "remaining": "50",
+                              "resetTime": "2026-08-03T12:00:00Z"},
                 }
-            if url == self.module.KIMI_SUB_URL:
-                return {"plan": "Moderato"}
             self.fail("unexpected URL: %s" % url)
 
         self.module._configure_runtime(
             {
                 "now": "2026-07-28T12:00:00+08:00",
                 "timezone": "Asia/Shanghai",
-                "credentials": {
-                    "kimi_web_tokens": {
-                        "access_token": "fixture-access",
-                        "refresh_token": "fixture-refresh",
-                    }
-                },
-                "http": {"post_json": post_json},
+                "http": {"get_json": get_json},
             }
         )
-        result = self.module.service_kimi_coding({})
-        self.assertEqual(result["kind"], "windows")
-        self.assertEqual(result["plan"], "Moderato")
-        self.assertEqual(len(result["windows"]), 2)
-
-    def test_app_mode_returns_kimi_update_without_writing_auth_file(self):
-        with tempfile.TemporaryDirectory() as temp_home:
-            token_path = (
-                Path(temp_home)
-                / ".config"
-                / "kimi-dashboard"
-                / "kimi-web-tokens.json"
-            )
-            token_path.parent.mkdir(parents=True)
-            token_path.write_text(
-                json.dumps(
-                    {
-                        "access_token": "old-access",
-                        "refresh_token": "old-refresh",
-                    }
-                ),
-                encoding="utf-8",
-            )
-            before = hashlib.sha256(token_path.read_bytes()).hexdigest()
-            self.module._configure_runtime(
-                {
-                    "home": temp_home,
-                    "app_mode": True,
-                    "http": {
-                        "post_json": lambda *_: {
-                            "access_token": "new-access",
-                            "refresh_token": "new-refresh",
-                        }
-                    },
-                }
-            )
-
-            refreshed = self.module._kimi_web_refresh(
-                {
-                    "access_token": "old-access",
-                    "refresh_token": "old-refresh",
-                }
-            )
-            after = hashlib.sha256(token_path.read_bytes()).hexdigest()
-
-        self.assertEqual(refreshed["access_token"], "new-access")
-        self.assertEqual(before, after)
-        self.assertEqual(
-            self.module._RUNTIME_CREDENTIAL_UPDATES,
-            [
-                {
-                    "provider": "kimi",
-                    "accountId": "default",
-                    "kind": "oauthTokens",
-                    "operation": "replace",
-                    "credentials": {
-                        "access_token": "new-access",
-                        "refresh_token": "new-refresh",
-                    },
-                }
-            ],
+        result = self.module.service_kimi_coding(
+            {"ANTHROPIC_AUTH_TOKEN": "fixture-key"}
         )
+        self.assertEqual(result["kind"], "windows")
+        self.assertEqual(len(result["windows"]), 2)
+        self.assertEqual(result["windows"][0]["label"], "5小时窗口")
+        self.assertEqual(result["windows"][1]["label"], "7天窗口")
+        # 已用百分比 = (limit - remaining) / limit * 100
+        self.assertAlmostEqual(result["windows"][0]["usedPercent"], 10.0)
+        self.assertAlmostEqual(result["windows"][1]["usedPercent"], 50.0)
 
     def test_app_mode_returns_codex_update_without_writing_auth_files(self):
         with tempfile.TemporaryDirectory() as temp_home:
@@ -1059,9 +1003,11 @@ class AgentCollectorCapabilityTests(unittest.TestCase):
                     "now": "2026-07-28T12:00:00+08:00",
                     "timezone": "Asia/Shanghai",
                     "credentials": {
-                        "kimi_web_tokens": {
-                            "access_token": "fixture-access",
-                            "refresh_token": "fixture-refresh",
+                        "kimi_quota_accounts": {
+                            "test-account": {
+                                "display_name": "Kimi · test",
+                                "api_key": "fixture-key",
+                            }
                         },
                         "antigravity_oauth": {
                             "token": {
@@ -1125,11 +1071,14 @@ class AgentCollectorCapabilityTests(unittest.TestCase):
         self._assert_artifact_shape(artifact)
 
     def test_without_capabilities_key_cli_behavior_is_unchanged(self):
-        def post_json(url, payload, headers):
-            if url == self.module.KIMI_STATS_URL:
-                return {"ratelimitCode5h": {"ratio": 0.25}}
-            if url == self.module.KIMI_SUB_URL:
-                return {"plan": "Moderato"}
+        def get_json(url, headers):
+            if url == self.module.KIMI_USAGE_URL:
+                return {
+                    "limits": [{"detail": {"limit": "100", "remaining": "75",
+                                           "resetTime": "2026-07-28T12:00:00Z"}}],
+                    "usage": {"limit": "100", "remaining": "50",
+                              "resetTime": "2026-08-03T12:00:00Z"},
+                }
             self.fail("unexpected URL: %s" % url)
 
         with tempfile.TemporaryDirectory() as temp_home:
@@ -1144,14 +1093,11 @@ class AgentCollectorCapabilityTests(unittest.TestCase):
                         "kimi_quota_accounts": {
                             "test-account": {
                                 "display_name": "Kimi · test",
-                                "tokens": {
-                                    "access_token": "fixture-access",
-                                    "refresh_token": "fixture-refresh",
-                                },
+                                "api_key": "fixture-key",
                             }
                         }
                     },
-                    "http": {"post_json": post_json},
+                    "http": {"get_json": get_json},
                 }
             )["artifact"]
 
@@ -1171,18 +1117,15 @@ class AgentCollectorAppServicesTests(unittest.TestCase):
             "agent-usage/collector/collect_usage.py",
         )
 
-    def _kimi_post_json(self, url, payload, headers):
-        self.assertIn("Authorization", headers)
-        if url == self.module.KIMI_STATS_URL:
-            return {
-                "ratelimitCode5h": {"ratio": 0.25},
-                "ratelimitCode7d": {"ratio": 0.5},
-            }
-        if url == self.module.KIMI_SUB_URL:
-            return {"plan": "Moderato"}
-        self.fail("unexpected POST URL: %s" % url)
-
     def _quota_get_json(self, url, headers):
+        if "api.kimi.com" in url:
+            self.assertIn("Authorization", headers)
+            return {
+                "limits": [{"detail": {"limit": "100", "remaining": "75",
+                                       "resetTime": "2026-07-28T12:00:00Z"}}],
+                "usage": {"limit": "100", "remaining": "50",
+                          "resetTime": "2026-08-03T12:00:00Z"},
+            }
         if "deepseek" in url:
             return {
                 "balance_infos": [
@@ -1224,10 +1167,7 @@ class AgentCollectorAppServicesTests(unittest.TestCase):
             "kimi_quota_accounts": {
                 "fixture-acct": {
                     "display_name": "Kimi · fixture",
-                    "tokens": {
-                        "access_token": "fixture-access",
-                        "refresh_token": "fixture-refresh",
-                    },
+                    "api_key": "fixture-kimi-key",
                 }
             },
             "deepseek_quota_accounts": {
@@ -1271,7 +1211,6 @@ class AgentCollectorAppServicesTests(unittest.TestCase):
                 temp_home,
                 self._full_credentials(),
                 {
-                    "post_json": self._kimi_post_json,
                     "get_json": self._quota_get_json,
                 },
             )
@@ -1289,7 +1228,7 @@ class AgentCollectorAppServicesTests(unittest.TestCase):
         kimi, deepseek, volc = services
         self.assertEqual(kimi["name"], "Kimi · fixture")
         self.assertEqual(kimi["kind"], "windows")
-        self.assertEqual(kimi["plan"], "Moderato")
+        self.assertIsNone(kimi["plan"])
         self.assertEqual(len(kimi["windows"]), 2)
 
         self.assertEqual(deepseek["name"], "DeepSeek · fixture")
@@ -1305,10 +1244,9 @@ class AgentCollectorAppServicesTests(unittest.TestCase):
             [w["label"] for w in volc["windows"]], ["5小时窗口", "每周窗口"]
         )
 
-    def test_app_mode_multi_account_kimi_consumes_injected_tokens(self):
-        """回归: kimi_quota_accounts 注入时, 每个账号的 tokens 必须被
-        service_kimi_coding 直接消费 (修复前 tokens 落到 env 参数,
-        函数读不到导致返回 None -> 未取到额度数据)."""
+    def test_app_mode_multi_account_kimi_consumes_injected_api_key(self):
+        """回归: kimi_quota_accounts 注入时, 每个账号的 api_key 必须被
+        service_kimi_coding 直接消费."""
         with tempfile.TemporaryDirectory() as temp_home:
             self._configure_app(
                 temp_home,
@@ -1316,15 +1254,11 @@ class AgentCollectorAppServicesTests(unittest.TestCase):
                     "kimi_quota_accounts": {
                         "acct-a": {
                             "display_name": "Kimi · acct-a",
-                            "tokens": {
-                                "access_token": "fixture-access-a",
-                                "refresh_token": "fixture-refresh-a",
-                            },
+                            "api_key": "fixture-kimi-key-a",
                         }
                     }
                 },
                 {
-                    "post_json": self._kimi_post_json,
                     "get_json": self._quota_get_json,
                 },
             )
@@ -1335,7 +1269,7 @@ class AgentCollectorAppServicesTests(unittest.TestCase):
         self.assertEqual(services[0]["name"], "Kimi · acct-a")
         self.assertEqual(services[0]["kind"], "windows")
         self.assertEqual(len(services[0]["windows"]), 2)
-        self.assertEqual(services[0]["plan"], "Moderato")
+        self.assertIsNone(services[0]["plan"])
 
     def test_app_mode_partial_injection_yields_only_matching_services(self):
         with tempfile.TemporaryDirectory() as temp_home:
@@ -1419,7 +1353,6 @@ class AgentCollectorAppServicesTests(unittest.TestCase):
             self.assertIn("fixture network down", svc["note"])
 
     def test_cli_mode_cc_db_driven_behavior_unchanged(self):
-        post_json = self._kimi_post_json
         get_json = self._quota_get_json
 
         with tempfile.TemporaryDirectory() as temp_home:
@@ -1432,7 +1365,14 @@ class AgentCollectorAppServicesTests(unittest.TestCase):
                 )
                 db.execute(
                     "INSERT INTO providers VALUES (?, ?, ?, ?, ?, ?)",
-                    ("p1", "Kimi For Coding", "claude", '{"env": {}}', "{}", 1),
+                    (
+                        "p1",
+                        "Kimi For Coding",
+                        "claude",
+                        '{"env": {"ANTHROPIC_AUTH_TOKEN": "cc-kimi-key"}}',
+                        "{}",
+                        1,
+                    ),
                 )
                 db.execute(
                     "INSERT INTO providers VALUES (?, ?, ?, ?, ?, ?)",
@@ -1466,13 +1406,8 @@ class AgentCollectorAppServicesTests(unittest.TestCase):
                     "home": temp_home,
                     "now": "2026-07-28T12:00:00+08:00",
                     "timezone": "Asia/Shanghai",
-                    "credentials": {
-                        "kimi_web_tokens": {
-                            "access_token": "fixture-access",
-                            "refresh_token": "fixture-refresh",
-                        }
-                    },
-                    "http": {"post_json": post_json, "get_json": get_json},
+                    "credentials": {},
+                    "http": {"get_json": get_json},
                 }
             )
             services = self.module.collect_services()

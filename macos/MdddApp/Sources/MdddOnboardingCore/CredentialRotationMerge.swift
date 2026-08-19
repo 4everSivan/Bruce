@@ -36,8 +36,6 @@ public enum CredentialRotationMerge {
     /// (任务 11, 旧键只供迁移读取).
     public static func keychainAccount(forProvider provider: String) -> String? {
         switch provider {
-        case "kimi":
-            return SubscriptionCredentialAccount.kimiWebTokens
         case "antigravity":
             return SubscriptionCredentialAccount.antigravityOAuth
         default:
@@ -49,7 +47,7 @@ public enum CredentialRotationMerge {
     /// 多账号 provider 均返回 true; 未知 provider 返回 false.
     public static func supportsAccountScopedRotation(forProvider provider: String) -> Bool {
         switch provider {
-        case "kimi", "deepseek", "volcengine", "antigravity", "claude", "grok":
+        case "deepseek", "volcengine", "antigravity", "claude", "grok":
             return true
         default:
             return false
@@ -72,16 +70,8 @@ public enum CredentialRotationMerge {
 
         switch providerID {
         case .kimi:
-            // 顶层平铺 access/refresh
-            var root: [String: Any] = [:]
-            if let existingCredentialJSON,
-               let data = existingCredentialJSON.data(using: .utf8),
-               let object = try? JSONSerialization.jsonObject(with: data),
-               let dict = object as? [String: Any] {
-                root = dict
-            }
-            for (key, value) in tokens { root[key] = value }
-            return Self.jsonString(from: root)
+            // Kimi For Coding API key 不参与 OAuth 轮换, 无令牌写回.
+            return nil
 
         case .antigravity:
             var root: [String: Any] = [:]
@@ -166,8 +156,6 @@ public enum CredentialRotationMerge {
         }
 
         switch update.provider {
-        case "kimi":
-            for (key, value) in tokens { root[key] = value }
         case "antigravity":
             var token = root["token"] as? [String: Any] ?? [:]
             for (key, value) in tokens { token[key] = value }

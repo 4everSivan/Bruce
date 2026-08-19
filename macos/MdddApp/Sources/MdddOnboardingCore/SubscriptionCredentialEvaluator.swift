@@ -127,20 +127,13 @@ public enum SubscriptionCredentialEvaluator {
 
     // MARK: - Kimi / Antigravity
 
-    /// Kimi 令牌 JSON: access_token 与 refresh_token 均非空 (refresh 用于续期).
-    /// 缺 refresh_token -> malformed (与 verifyKimiWebTokensJSON 的 needsRelogin 对齐).
-    public static func kimiStatus(of json: String) -> SubscriptionCredentialStatus {
-        guard let dict = jsonObject(from: json) else {
-            return .malformed
-        }
-        let access = (dict["access_token"] as? String ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let refresh = (dict["refresh_token"] as? String ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if access.isEmpty && refresh.isEmpty {
+    /// Kimi For Coding API key: 非空且不含空白.
+    public static func kimiStatus(of apiKey: String) -> SubscriptionCredentialStatus {
+        let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if key.isEmpty {
             return .missing
         }
-        if refresh.isEmpty {
+        if key.contains(where: { $0.isWhitespace }) {
             return .malformed
         }
         return .valid

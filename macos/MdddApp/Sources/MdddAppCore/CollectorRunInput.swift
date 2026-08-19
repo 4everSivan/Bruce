@@ -394,17 +394,16 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
             guard isEnabled(descriptor.id) else { continue }
 
             switch descriptor.injectionKind {
-            case .kimiWebTokensJSON:
+            case .kimiAPIKeyEnv:
                 guard let store = accountStores[descriptor.id],
                       let index = try? store.loadIndex(),
                       !index.accounts.isEmpty else { continue }
                 var accounts: [String: JSONValue] = [:]
                 for entry in index.accounts {
-                    guard let record = try? store.loadRecord(for: entry.accountID),
-                          let tokens = jsonObjectValue(from: record.credentialJSON) else { continue }
+                    guard let record = try? store.loadRecord(for: entry.accountID) else { continue }
                     accounts[entry.accountID] = .object([
                         "display_name": .string(entry.displayName),
-                        "tokens": tokens,
+                        "api_key": .string(record.credentialJSON),
                     ])
                 }
                 if !accounts.isEmpty {

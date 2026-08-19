@@ -493,7 +493,7 @@ extension MdddOnboardingCoreHarness {
     static func credentialStoreSubscriptionAccountsRoundTrip() throws {
         let store = InMemoryCredentialStore()
         let accounts = [
-            SubscriptionCredentialAccount.kimiWebTokens,
+            SubscriptionCredentialAccount.kimiAPIKey,
             SubscriptionCredentialAccount.deepseekAPIKey,
             SubscriptionCredentialAccount.volcengineAccessKey,
             SubscriptionCredentialAccount.volcengineSecretKey,
@@ -513,15 +513,15 @@ extension MdddOnboardingCoreHarness {
         }
         // update 优先语义: 覆盖写不经过删除窗口
         try store.saveCredential(
-            "{\"access_token\":\"a2\",\"refresh_token\":\"r2\"}",
-            forAccount: SubscriptionCredentialAccount.kimiWebTokens
+            "kimi-key-updated",
+            forAccount: SubscriptionCredentialAccount.kimiAPIKey
         )
         let updated = try store.loadCredential(
-            forAccount: SubscriptionCredentialAccount.kimiWebTokens
+            forAccount: SubscriptionCredentialAccount.kimiAPIKey
         )
         try coreExpect(
-            updated?.contains("\"access_token\":\"a2\"") == true,
-            "kimi:web-tokens 覆盖写失败"
+            updated == "kimi-key-updated",
+            "kimi:api-key 覆盖写失败"
         )
 
         try store.deleteCredential(
@@ -544,24 +544,24 @@ extension MdddOnboardingCoreHarness {
     static func keychainSubscriptionAccountsRoundTrip() throws {
         let store = KeychainCredentialStore(service: keychainTestService)
         let suffix = UUID().uuidString
-        let kimiAccount = SubscriptionCredentialAccount.kimiWebTokens
+        let kimiAccount = SubscriptionCredentialAccount.kimiAPIKey
         let volcAK = SubscriptionCredentialAccount.volcengineAccessKey
         defer {
             try? store.deleteCredential(forAccount: kimiAccount)
             try? store.deleteCredential(forAccount: volcAK)
         }
 
-        let tokensV1 = "{\"access_token\":\"a-\(suffix)\",\"refresh_token\":\"r-\(suffix)\"}"
-        try store.saveCredential(tokensV1, forAccount: kimiAccount)
+        let keyV1 = "kimi-key-\(suffix)"
+        try store.saveCredential(keyV1, forAccount: kimiAccount)
         let first = try store.loadCredential(forAccount: kimiAccount)
-        try coreExpect(first == tokensV1, "kimi:web-tokens 初次写入失败")
+        try coreExpect(first == keyV1, "kimi:api-key 初次写入失败")
 
-        let tokensV2 = "{\"access_token\":\"a2-\(suffix)\",\"refresh_token\":\"r2-\(suffix)\"}"
-        try store.saveCredential(tokensV2, forAccount: kimiAccount)
+        let keyV2 = "kimi-key-2-\(suffix)"
+        try store.saveCredential(keyV2, forAccount: kimiAccount)
         let updated = try store.loadCredential(forAccount: kimiAccount)
         try coreExpect(
-            updated == tokensV2,
-            "kimi:web-tokens update 覆盖失败, got \(String(describing: updated))"
+            updated == keyV2,
+            "kimi:api-key update 覆盖失败, got \(String(describing: updated))"
         )
 
         try store.saveCredential("AK\(suffix.replacingOccurrences(of: "-", with: ""))",
@@ -649,30 +649,6 @@ extension MdddOnboardingCoreHarness {
             )
         }
         try coreExpect(reason == "API key 为空", "空 key 原因不符: \(reason)")
-    }
-
-    static func verifierKimiWebTokensJSONMappings() throws {
-        let ok = ProviderConnectionVerifier.verifyKimiWebTokensJSON(
-            "{\"access_token\":\"a\",\"refresh_token\":\"r\"}"
-        )
-        try coreExpect(ok == .ok, "完整令牌必须 ok, got \(ok)")
-
-        let relogin = ProviderConnectionVerifier.verifyKimiWebTokensJSON(
-            "{\"access_token\":\"a\"}"
-        )
-        try coreExpect(
-            relogin == .needsRelogin,
-            "缺 refresh_token 必须 needsRelogin, got \(relogin)"
-        )
-
-        let invalid = ProviderConnectionVerifier.verifyKimiWebTokensJSON("not json")
-        guard case .failed = invalid else {
-            throw CoreTestFailure.expectation("非法 JSON 必须 failed, got \(invalid)")
-        }
-        let empty = ProviderConnectionVerifier.verifyKimiWebTokensJSON("{}")
-        guard case .failed = empty else {
-            throw CoreTestFailure.expectation("空对象必须 failed, got \(empty)")
-        }
     }
 
     static func verifierCodexAccountsJSONMappings() throws {

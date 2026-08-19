@@ -26,7 +26,7 @@ struct SettingsView: View {
     @State private var zhipuKeyText = ""
     @State private var zhipuSiteIsCN = true
     @State private var zhipuEditing = false
-    @State private var kimiPasteText = ""
+    @State private var kimiKeyText = ""
     @State private var kimiEditing = false
     @State private var claudePasteText = ""
     @State private var grokPasteText = ""
@@ -718,7 +718,7 @@ struct SettingsView: View {
         switch id {
         case .kimi:
             KimiProviderSettingsSection(
-                kimiPasteText: $kimiPasteText,
+                kimiKeyText: $kimiKeyText,
                 kimiEditing: $kimiEditing,
                 onRemove: { removeSubscriptionProvider(.kimi) }
             )

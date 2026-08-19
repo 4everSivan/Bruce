@@ -152,12 +152,8 @@ final class OnboardingCoordinator: ObservableObject {
         subscriptions.importVolcengineFromCCSwitch()
     }
 
-    func importKimiFromLocalFile() {
-        subscriptions.importKimiFromLocalFile()
-    }
-
-    func importKimiFromPaste(_ paste: String) {
-        subscriptions.importKimiFromPaste(paste)
+    func saveAndVerifyKimi(apiKey: String) {
+        subscriptions.saveAndVerifyKimi(apiKey: apiKey)
     }
 
     func importClaudeFromLocal() {
@@ -242,10 +238,6 @@ final class OnboardingCoordinator: ObservableObject {
         subscriptions.updateAccountAuthorizationState(
             accountID: accountID, from: id, state: state
         )
-    }
-
-    func kimiLocalTokensFileExists() -> Bool {
-        subscriptions.kimiLocalTokensFileExists()
     }
 
     func codexCLIAuthFileExists() -> Bool {

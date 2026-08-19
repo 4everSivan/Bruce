@@ -11,9 +11,8 @@ extension MdddOnboardingCoreHarness {
     /// Collector rotation 不写回旧整体库.
     static func rotationMergeMapsKnownProviders() throws {
         try coreExpect(
-            CredentialRotationMerge.keychainAccount(forProvider: "kimi")
-                == SubscriptionCredentialAccount.kimiWebTokens,
-            "kimi 映射失败"
+            CredentialRotationMerge.keychainAccount(forProvider: "kimi") == nil,
+            "kimi 不参与 OAuth 轮换, 不得映射"
         )
         try coreExpect(
             CredentialRotationMerge.keychainAccount(forProvider: "codex") == nil,
@@ -30,33 +29,17 @@ extension MdddOnboardingCoreHarness {
         )
     }
 
-    /// kimi: 顶层平铺合并, 既有 refresh 被新值覆盖, 缺省时以空结构起步.
-    static func rotationMergeKimiFlatTokens() throws {
-        let existing = #"{"access_token":"old-a","refresh_token":"old-r"}"#
+    /// kimi: API key 不参与 OAuth 轮换, mergedJSON 返回 nil.
+    static func rotationMergeKimiRejected() throws {
         let merged = CredentialRotationMerge.mergedJSON(
-            existingJSON: existing,
+            existingJSON: #"{"access_token":"old-a"}"#,
             update: CredentialRotationUpdate(
                 provider: "kimi",
                 accountId: "default",
                 tokens: ["access_token": "new-a", "refresh_token": "new-r"]
             )
         )
-        try coreExpect(
-            merged == #"{"access_token":"new-a","refresh_token":"new-r"}"#,
-            "kimi 平铺合并错误, got \(merged ?? "nil")"
-        )
-        let created = CredentialRotationMerge.mergedJSON(
-            existingJSON: nil,
-            update: CredentialRotationUpdate(
-                provider: "kimi",
-                accountId: "default",
-                tokens: ["access_token": "a", "refresh_token": "r"]
-            )
-        )
-        try coreExpect(
-            created == #"{"access_token":"a","refresh_token":"r"}"#,
-            "kimi 缺省时必须可创建, got \(created ?? "nil")"
-        )
+        try coreExpect(merged == nil, "kimi 不轮换必须返回 nil, got \(merged ?? "nil")")
     }
 
     /// codex: 只合并目标账号, 保留 email 和其他账号.
@@ -102,13 +85,13 @@ extension MdddOnboardingCoreHarness {
         let merged = CredentialRotationMerge.mergedJSON(
             existingJSON: nil,
             update: CredentialRotationUpdate(
-                provider: "kimi",
+                provider: "antigravity",
                 accountId: "default",
                 tokens: ["access_token": "a", "evil": "x"]
             )
         )
         try coreExpect(
-            merged == #"{"access_token":"a"}"#,
+            merged == #"{"token":{"access_token":"a"}}"#,
             "白名单外键必须过滤, got \(merged ?? "nil")"
         )
         try coreExpect(
@@ -125,7 +108,7 @@ extension MdddOnboardingCoreHarness {
             CredentialRotationMerge.mergedJSON(
                 existingJSON: nil,
                 update: CredentialRotationUpdate(
-                    provider: "kimi", accountId: "default",
+                    provider: "antigravity", accountId: "default",
                     tokens: ["access_token": ""]
                 )
             ) == nil,
