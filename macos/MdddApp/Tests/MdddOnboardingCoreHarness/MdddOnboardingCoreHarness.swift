@@ -96,6 +96,7 @@ struct MdddOnboardingCoreHarness {
         try verifierCodexAccountsJSONMappings()
         try verifierAntigravityOAuthJSONMappings()
         try verifierVolcengineCredentialsMappings()
+        try verifierZhipuCredentialsMappings()
         try gateAgentPolicyGrantsExternalQuotasWhenConfigured()
         try gateEvaluatorPropagatesSubscriptionFlag()
         try volcDecoderStopsWhenNotBase64()
@@ -179,6 +180,6 @@ struct MdddOnboardingCoreHarness {
         try opencodeGoCredentialAccountsAndRegistry()
         try opencodeGoEvaluatorValidAndMalformed()
         try opencodeGoAccountIDAndLegacyKeys()
-        print("MdddOnboardingCore tests passed: 175")
+        print("MdddOnboardingCore tests passed: 176")
     }
 }

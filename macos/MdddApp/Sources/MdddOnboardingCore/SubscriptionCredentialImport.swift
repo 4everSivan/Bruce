@@ -44,6 +44,7 @@ extension SubscriptionProviderID {
         case .kimi: return "Kimi"
         case .deepseek: return "DeepSeek"
         case .volcengine: return "火山引擎"
+        case .zhipu: return "智谱"
         case .codex: return "Codex"
         case .antigravity: return "Antigravity"
         case .claude: return "Claude"

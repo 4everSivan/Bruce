@@ -449,6 +449,28 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
                     credentials["volcengineQuotaAccounts"] = .object(accounts)
                 }
 
+            case .zhipuAPIKeyEnv:
+                guard let store = accountStores[descriptor.id],
+                      let index = try? store.loadIndex(),
+                      !index.accounts.isEmpty else { continue }
+                var accounts: [String: JSONValue] = [:]
+                for entry in index.accounts {
+                    guard let record = try? store.loadRecord(for: entry.accountID) else { continue }
+                    // credentialJSON 是 {"api_key":..., "base_url":...}
+                    guard let data = record.credentialJSON.data(using: .utf8),
+                          let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          let key = dict["api_key"] as? String,
+                          let baseURL = dict["base_url"] as? String else { continue }
+                    accounts[entry.accountID] = .object([
+                        "display_name": .string(entry.displayName),
+                        "api_key": .string(key),
+                        "base_url": .string(baseURL),
+                    ])
+                }
+                if !accounts.isEmpty {
+                    credentials["zhipuQuotaAccounts"] = .object(accounts)
+                }
+
             case .codexQuotaAccounts:
                 guard codexMigrationCompleted,
                       let codexAccounts = await resolveCodexQuotaAccounts() else {

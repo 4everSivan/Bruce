@@ -208,6 +208,26 @@ def _resolve_app(run_ctx: RunContext, *, kimi_coding, opencode_go) -> List[_Reso
                 )
             )
 
+    # --- 智谱 Coding Plan (多账号) ---
+    zhipu_accounts = run_ctx.credential("zhipu_quota_accounts")
+    if isinstance(zhipu_accounts, dict) and zhipu_accounts:
+        for account_id, payload in zhipu_accounts.items():
+            display = (payload or {}).get("display_name") or "智谱 · " + account_id[:8]
+            key = (payload or {}).get("api_key") or ""
+            base_url = (payload or {}).get("base_url") or ""
+            timeout = run_ctx.http_timeout
+            resolved.append(
+                _Resolved(
+                    service_id="zhipu_" + account_id,
+                    display_name=display,
+                    app="zhipu",
+                    is_current=False,
+                    query=lambda k=key, b=base_url, t=timeout: quota_services.service_zhipu(
+                        {"ANTHROPIC_BASE_URL": b, "ANTHROPIC_AUTH_TOKEN": k}, t
+                    ),
+                )
+            )
+
     # --- 火山引擎 (多账号) ---
     volc_accounts = run_ctx.credential("volcengine_quota_accounts")
     if isinstance(volc_accounts, dict) and volc_accounts:
@@ -390,6 +410,32 @@ def _resolve_cli_cc_rows(run_ctx: RunContext, *, kimi_coding) -> List[Any]:
 
     resolved: List[Any] = []
     for _pid, name, app_type, settings_config, meta_json, is_current in rows:
+        # 智谱旁路: 智谱在 CC Switch 里无固定 provider 名 (挂在 Claude app 下,
+        # 靠 ANTHROPIC_BASE_URL 指向智谱), 只能按 base_url 检测识别.
+        # 与 CC Switch coding_plan::detect_provider 同效; app 归一为 "zhipu",
+        # 与 App 模式 / 定向刷新 target_apps 语义一致.
+        if app_type in ("claude", "claude-desktop"):
+            env = (json.loads(settings_config or "{}")).get("env") or {}
+            base_url = (env.get("ANTHROPIC_BASE_URL") or "").lower()
+            if "bigmodel.cn" in base_url or "api.z.ai" in base_url:
+                def _make_zhipu_query(raw_env=env):
+                    provider_env = run_ctx.credential("provider_env") or {}
+                    merged = dict(raw_env)
+                    merged.update(provider_env.get("zhipu", {}))
+                    return quota_services.service_zhipu(
+                        merged, run_ctx.http_timeout
+                    )
+
+                resolved.append(
+                    _Resolved(
+                        service_id="zhipu",
+                        display_name="智谱",
+                        app="zhipu",
+                        is_current=bool(is_current),
+                        query=_make_zhipu_query,
+                    )
+                )
+                continue
         if name not in _CC_HANDLERS:
             continue
         service_id = _CC_HANDLERS[name]

@@ -94,6 +94,7 @@ class BridgeSubscriptionQuotaOnlyValidationTests(unittest.TestCase):
                 "kimi",
                 "deepseek",
                 "volcengine",
+                "zhipu",
                 "codex",
                 "antigravity",
                 "claude",

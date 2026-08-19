@@ -200,6 +200,31 @@ public struct ProviderConnectionVerifier: Sendable, DeepSeekCredentialVerifier {
         return .ok
     }
 
+    /// 智谱 Coding Plan 手动录入: 仅本地结构校验, 完整额度试查由 Collector 运行时承担.
+    /// API key 为 id.secret 形式; base URL 必须是智谱个人版站点.
+    public static func verifyZhipuCredentials(
+        apiKey: String,
+        baseURL: String
+    ) -> SubscriptionVerificationStatus {
+        let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let base = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else {
+            return .failed(reason: "API key 为空")
+        }
+        guard !base.isEmpty else {
+            return .failed(reason: "Base URL 为空")
+        }
+        guard !key.contains(where: { $0.isWhitespace }), key.contains(".") else {
+            return .failed(reason: "API key 格式不合理 (应为 id.secret 形式)")
+        }
+        guard let url = URL(string: base),
+              let host = url.host?.lowercased(),
+              host.contains("bigmodel.cn") || host.contains("api.z.ai") else {
+            return .failed(reason: "Base URL 必须是智谱个人版站点")
+        }
+        return .ok
+    }
+
     /// 解析凭证 JSON 字符串为对象; 非对象或解析失败返回 nil.
     private static func jsonObject(from json: String) -> [String: Any]? {
         guard let data = json.data(using: .utf8),

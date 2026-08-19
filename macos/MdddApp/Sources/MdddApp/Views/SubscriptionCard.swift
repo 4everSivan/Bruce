@@ -503,6 +503,8 @@ private struct ProviderLogoBadge: View {
             return Color(hex: "#4d6bfe")
         case "volcengine":
             return Color(hex: "#ff6a00")
+        case "zhipu":
+            return Color(hex: "#3859ff")
         case "codex", "openai":
             return Color(hex: "#10a37f")
         case "antigravity":
