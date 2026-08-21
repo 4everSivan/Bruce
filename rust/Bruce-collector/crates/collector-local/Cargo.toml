@@ -1,0 +1,13 @@
+[package]
+name = "collector-local"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+collector-domain = { path = "../collector-domain" }
+collector-runtime = { path = "../collector-runtime" }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }

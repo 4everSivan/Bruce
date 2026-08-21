@@ -38,7 +38,8 @@ enum CodexTokenManagerTests {
         try await refreshSaveDoesNotReadBackRecordForMetadata()
         try await refreshSaveReadBackFailureKeepsMetadata()
         try await missingRecordDistinctFromReadError()
-        print("CodexTokenManager tests passed: 32")
+        try await disconnectRemovesOnlyRequestedAccount()
+        print("CodexTokenManager tests passed: 33")
     }
 
     private static let fixedNow = Date(timeIntervalSince1970: 1_752_000_000)
@@ -1431,6 +1432,49 @@ enum CodexTokenManagerTests {
         let second = await manager.validAccessToken(for: "acc-1")
         guard case .failure(.storageBlocked) = second else {
             throw CodexTestFailure.expectation("读取异常应映射为 storageBlocked: \(second)")
+        }
+    }
+
+    // 单账号断开只删除目标 record, 同步移除 active 标记, 其他账号与状态快照保留.
+    private static func disconnectRemovesOnlyRequestedAccount() async throws {
+        let (store, _) = try makeStore(accounts: [
+            "acc-1": (access: "at-1", refresh: "rt-1", expiresIn: 3600),
+            "acc-2": (access: "at-2", refresh: "rt-2", expiresIn: 3600),
+        ])
+        var index = try store.loadIndex()
+        index.activeAccountID = "acc-1"
+        try store.saveIndex(index)
+
+        let fake = FakeOAuthClient { _, _ in
+            .success(CodexTokenResponse(
+                accessToken: "unused", refreshToken: "unused",
+                idToken: nil, expiresIn: 3600, receivedAt: fixedNow
+            ))
+        }
+        let manager = makeManager(
+            store: store,
+            client: fake,
+            clock: TestClock(start: fixedNow)
+        )
+        guard case .success = await manager.validAccessToken(for: "acc-1"),
+              case .success = await manager.validAccessToken(for: "acc-2") else {
+            throw CodexTestFailure.expectation("测试账号应能预热到 token manager")
+        }
+
+        try await manager.disconnect(accountID: "acc-1")
+
+        guard try store.loadRecord(for: "acc-1") == nil,
+              try store.loadRecord(for: "acc-2") != nil else {
+            throw CodexTestFailure.expectation("断开账号不得影响其他账号凭证")
+        }
+        let remainingIndex = try store.loadIndex()
+        guard remainingIndex.accounts.map(\.accountID) == ["acc-2"],
+              remainingIndex.activeAccountID == nil else {
+            throw CodexTestFailure.expectation("断开 active 账号后索引未正确收敛")
+        }
+        let state = await manager.statusSnapshot()
+        guard state.accounts.map(\.accountID) == ["acc-2"] else {
+            throw CodexTestFailure.expectation("token manager 状态快照仍包含已断开账号")
         }
     }
 }

@@ -42,6 +42,13 @@ struct SettingsView: View {
     // 数据管理: 清理确认与操作反馈
     @State private var showsClearCacheConfirm = false
     @State private var dataActionMessage: String?
+    @State private var accountRemovalRequest: AccountRemovalRequest?
+
+    private struct AccountRemovalRequest {
+        let provider: SubscriptionProviderID
+        let accountID: String
+        let displayName: String
+    }
 
     /// 侧边栏分类: 图标色沿用原分区色条配色.
     private enum SettingsCategory: String, CaseIterable, Identifiable {
@@ -584,6 +591,32 @@ struct SettingsView: View {
         } message: {
             Text("只读发现账号元数据. 不导入、不保存、不使用 CC Switch 持有的 Codex 登录令牌, 也不会回写 CC Switch")
         }
+        .confirmationDialog(
+            accountRemovalRequest.map { "移除 \($0.displayName) 账号?" } ?? "移除账号?",
+            isPresented: Binding(
+                get: { accountRemovalRequest != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        accountRemovalRequest = nil
+                    }
+                }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("移除账号", role: .destructive) {
+                guard let request = accountRemovalRequest else { return }
+                accountRemovalRequest = nil
+                coordinator.removeAccount(
+                    accountID: request.accountID,
+                    from: request.provider
+                )
+            }
+            Button("取消", role: .cancel) {
+                accountRemovalRequest = nil
+            }
+        } message: {
+            Text("只删除 Bruce 本地保存的该账号凭证, 不会修改 CC Switch、Codex CLI 或第三方服务上的账号")
+        }
     }
 
     /// 已在列表中展示的 provider: 配置中已添加 (持久化) 或本次会话刚添加.
@@ -670,8 +703,10 @@ struct SettingsView: View {
                         Spacer()
                         accountStateLabel(summary)
                         Button {
-                            coordinator.removeAccount(
-                                accountID: summary.accountID, from: id
+                            accountRemovalRequest = AccountRemovalRequest(
+                                provider: id,
+                                accountID: summary.accountID,
+                                displayName: summary.displayName
                             )
                         } label: {
                             Image(systemName: "xmark.circle")
@@ -746,7 +781,14 @@ struct SettingsView: View {
         case .codex:
             CodexProviderSettingsSection(
                 showsCodexCCImportConfirm: $showsCodexCCImportConfirm,
-                onRemove: { removeSubscriptionProvider(.codex) }
+                onRemove: { removeSubscriptionProvider(.codex) },
+                onRemoveAccount: { accountID, displayName in
+                    accountRemovalRequest = AccountRemovalRequest(
+                        provider: .codex,
+                        accountID: accountID,
+                        displayName: displayName
+                    )
+                }
             )
         case .antigravity:
             AntigravityProviderSettingsSection(

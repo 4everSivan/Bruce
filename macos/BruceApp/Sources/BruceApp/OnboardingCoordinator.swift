@@ -52,6 +52,7 @@ final class OnboardingCoordinator: ObservableObject {
     private let configStore: OnboardingConfigurationStore?
     private let scanner: LocalDependencyScanner
     private let homeURL: URL
+    private let collectorRuntime: CollectorRuntimeStatus
     private var gate: CollectorActivationGate
     private let subscriptions: SubscriptionService
     private var hotkeyMonitor: GlobalHotkeyMonitor?
@@ -68,13 +69,15 @@ final class OnboardingCoordinator: ObservableObject {
         verifier: any DeepSeekCredentialVerifier = ProviderConnectionVerifier(),
         homeURL: URL = FileManager.default.homeDirectoryForCurrentUser,
         localProbe: LocalCredentialProbe? = nil,
-        consentVersion: Int = OnboardingCoordinator.currentConsentVersion
+        consentVersion: Int = OnboardingCoordinator.currentConsentVersion,
+        collectorRuntime: CollectorRuntimeStatus = .pythonPreview
     ) {
         self.scheduler = scheduler
         self.model = model
         self.runtime = runtime
         self.configStore = configStore
         self.homeURL = homeURL
+        self.collectorRuntime = collectorRuntime
         let resolvedStore = codexStore
             ?? CodexCredentialStore(store: credentialStore)
         let resolvedTokenManager = codexTokenManager ?? CodexTokenManager(
@@ -342,7 +345,8 @@ final class OnboardingCoordinator: ObservableObject {
             pythonVersion: pythonVersion,
             sessionSources: sessionProbes,
             ccSwitchStatus: ccSwitchStatus,
-            antigravityStatus: antigravityStatus
+            antigravityStatus: antigravityStatus,
+            collectorRuntime: collectorRuntime
         ))
 
         reconcileScheduler()

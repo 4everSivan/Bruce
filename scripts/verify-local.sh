@@ -6,11 +6,21 @@ BRUCE_SCRIPT_DIR=${0:A:h}
 BRUCE_REPO_ROOT=${BRUCE_SCRIPT_DIR:h}
 BRUCE_SWIFT_PACKAGE="$BRUCE_REPO_ROOT/macos/BruceApp"
 BRUCE_BRIDGE="$BRUCE_REPO_ROOT/bridge/run_bridge.py"
+BRUCE_RUST_MANIFEST="$BRUCE_REPO_ROOT/rust/Bruce-collector/Cargo.toml"
 BRUCE_PYTHON_BIN=${BRUCE_PYTHON_BIN:-$(command -v python3)}
+BRUCE_RUST_BIN=${BRUCE_RUST_BIN:-$BRUCE_REPO_ROOT/rust/Bruce-collector/target/debug/Bruce-collector}
 
 cd "$BRUCE_REPO_ROOT"
 
+if ! command -v cargo >/dev/null 2>&1; then
+  echo "缺少 Rust/Cargo, 无法执行标准验证" >&2
+  exit 1
+fi
+source "$BRUCE_SCRIPT_DIR/runtime-manifest.zsh"
+Bruce_prepare_cargo_home
+
 echo "检查 Python 语法"
+zsh -n "$BRUCE_SCRIPT_DIR/collector-release-smoke.sh"
 "$BRUCE_PYTHON_BIN" - <<'PY'
 import ast
 from pathlib import Path
@@ -24,6 +34,11 @@ PY
 
 echo "运行 Python 契约、schema、Widget 与安全测试"
 "$BRUCE_PYTHON_BIN" -m pytest -q
+
+echo "运行 Rust workspace 测试、格式与 Clippy"
+cargo fmt --manifest-path "$BRUCE_RUST_MANIFEST" --all -- --check
+cargo test --manifest-path "$BRUCE_RUST_MANIFEST" --workspace
+cargo clippy --manifest-path "$BRUCE_RUST_MANIFEST" --workspace --all-targets -- -D warnings
 
 echo "构建 Swift 应用与全部 Harness"
 swift build --package-path "$BRUCE_SWIFT_PACKAGE"
@@ -39,8 +54,12 @@ swift run --package-path "$BRUCE_SWIFT_PACKAGE" \
   ArtifactStoreHarness "$BRUCE_REPO_ROOT"
 
 echo "运行 CollectorRunner Harness"
+BRUCE_COLLECTOR_HARNESS_ARGS=("$BRUCE_PYTHON_BIN" "$BRUCE_BRIDGE")
+if [[ -x "$BRUCE_RUST_BIN" ]]; then
+  BRUCE_COLLECTOR_HARNESS_ARGS+=("$BRUCE_RUST_BIN")
+fi
 swift run --package-path "$BRUCE_SWIFT_PACKAGE" \
-  CollectorRunnerHarness "$BRUCE_PYTHON_BIN" "$BRUCE_BRIDGE"
+  CollectorRunnerHarness "${BRUCE_COLLECTOR_HARNESS_ARGS[@]}"
 
 echo "运行 RefreshScheduler Harness"
 swift run --package-path "$BRUCE_SWIFT_PACKAGE" \

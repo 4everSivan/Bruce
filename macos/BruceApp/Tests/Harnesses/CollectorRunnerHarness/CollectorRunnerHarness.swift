@@ -225,10 +225,12 @@ struct CollectorRunnerHarness {
         try await runInputDeniesQuotasWhenCredentialMissing()
         try await runInputDeniesQuotasWhenCredentialCorrupted()
         try await runInputDeniesQuotasWhenProviderDisabled()
+        try await releaseAdapterDoesNotFallbackToPython()
         try await runsTheRealBridgeInAnIsolatedHome()
+        let rustTestRan = try await runsRustCollectorIfProvided()
         try await codexBatchResolverMaxConcurrencyIs4()
         try await codexBatchResolverOutputOrderStable()
-        print("CollectorRunner tests passed: 26")
+        print("CollectorRunner tests passed: \(rustTestRan ? 28 : 27)")
     }
 
     private static func waitForLaunches(
@@ -523,7 +525,7 @@ struct CollectorRunnerHarness {
     }
 
     private static func runsTheRealBridgeInAnIsolatedHome() async throws {
-        guard CommandLine.arguments.count == 3 else {
+        guard CommandLine.arguments.count >= 3 else {
             throw RunnerTestFailure.expectation(
                 "expected absolute python and bridge paths"
             )
@@ -564,6 +566,69 @@ struct CollectorRunnerHarness {
             output.response.artifact != nil,
             "isolated real Bridge returned no artifact"
         )
+    }
+
+    private static func runsRustCollectorIfProvided() async throws -> Bool {
+        guard CommandLine.arguments.count >= 4 else { return false }
+        let rustURL = URL(fileURLWithPath: CommandLine.arguments[3])
+        try runnerExpect(
+            FileManager.default.isExecutableFile(atPath: rustURL.path),
+            "configured Rust Collector is not executable"
+        )
+        let fakeHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "Bruce-rust-collector-" + UUID().uuidString,
+                isDirectory: true
+            )
+        try FileManager.default.createDirectory(
+            at: fakeHome,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: fakeHome) }
+        // 通过生产装配使用的 adapter 验证 Rust binary seam, 而不是只测底层 runner.
+        let runner = RustBinaryAdapter(executableURL: rustURL)
+        let output = try await runner.run(
+            module: .agentUsage,
+            context: [
+                "home": .string(fakeHome.path),
+                "now": .string("2026-07-28T12:00:00+08:00"),
+                "timezone": .string("Asia/Shanghai"),
+                "days": .integer(14),
+                "capabilities": .array([
+                    .string("localSessions"),
+                    .string("localPricing"),
+                ]),
+            ],
+            credentials: [:]
+        )
+        try runnerExpect(
+            [.success, .partial].contains(output.response.status),
+            "Rust Collector did not return a usable artifact response"
+        )
+        try runnerExpect(
+            output.response.artifact != nil,
+            "Rust Collector returned no artifact"
+        )
+        return true
+    }
+
+    private static func releaseAdapterDoesNotFallbackToPython() async throws {
+        let adapter = UnavailableCollectorAdapter()
+        do {
+            _ = try await adapter.run(
+                module: .agentUsage,
+                context: [:],
+                credentials: [:]
+            )
+            throw RunnerTestFailure.expectation(
+                "missing Release Rust binary must not fall back to Python"
+            )
+        } catch let error as CollectorRunnerError {
+            try runnerExpect(
+                error == .rustNotExecutable,
+                "missing Release Rust binary returned the wrong error"
+            )
+        }
     }
 
     // MARK: - OnboardingRunInputProvider 凭证装配矩阵
@@ -659,6 +724,19 @@ struct CollectorRunnerHarness {
             capabilityStrings(input) == ["localSessions", "localPricing"],
             "未配置 provider 时必须只有 localSessions/localPricing"
         )
+        let nowParser = ISO8601DateFormatter()
+        nowParser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard case .string(let home)? = input.context["home"],
+              home == FileManager.default.homeDirectoryForCurrentUser.path,
+              case .string(let now)? = input.context["now"],
+              nowParser.date(from: now) != nil,
+              case .string(let timezone)? = input.context["timezone"],
+              !timezone.isEmpty,
+              input.context["days"] == .integer(182) else {
+            throw RunnerTestFailure.expectation(
+                "agent-usage 输入缺少 Rust 本地扫描所需的 home/now/timezone/days"
+            )
+        }
         try runnerExpect(
             input.credentials.isEmpty,
             "未配置 provider 时凭证必须为空"

@@ -14,21 +14,6 @@ final class SystemRefreshClock: RefreshClock {
     func now() -> Date { Date() }
 }
 
-// MARK: - CollectorExecuting
-
-@MainActor
-protocol CollectorExecuting: AnyObject {
-    func run(
-        module: CollectorModule,
-        context: [String: JSONValue],
-        credentials: [String: JSONValue]
-    ) async throws -> CollectorRunOutput
-    func cancel(module: CollectorModule)
-    func cancelAll()
-}
-
-extension CollectorRunner: CollectorExecuting {}
-
 // MARK: - Scheduler configuration
 
 struct SchedulerConfiguration: Sendable {
@@ -117,7 +102,7 @@ package final class RefreshScheduler {
     package var onSubscriptionRefreshState: ((SubscriptionProviderID, SubscriptionRefreshState) -> Void)?
 
     package convenience init(
-        executor: CollectorRunner,
+        executor: CollectorExecutable,
         store: ArtifactStore,
         runInputProvider: OnboardingRunInputProvider? = nil,
         credentialUpdateCoordinator: CredentialUpdateCoordinator? = nil
@@ -138,7 +123,7 @@ package final class RefreshScheduler {
     }
 
     init(
-        executor: CollectorExecuting,
+        executor: CollectorExecutable,
         store: ArtifactStore,
         clock: RefreshClock = SystemRefreshClock(),
         timerScheduler: RunnerTimerScheduling = DispatchRunnerTimerScheduler(),

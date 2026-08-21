@@ -66,7 +66,7 @@
 | `macos/BruceApp/` | SwiftPM 包 (最低 macOS 14): `BruceApp` (SwiftUI 菜单栏应用, 经典/液态玻璃主题, `Sources/BruceApp/Views/` 卡片组件), `BruceAppCore` (AppModel, 调度, PanelViewModel 映射), `BruceOnboardingCore` (扫描, 授权, Gate, 订阅凭证, 主题解析纯逻辑), 多个 Harness 边界测试 |
 | `data/` | 本机运行产物; 可能包含个人活动和使用量数据, 不得提交 |
 | `docs/` | 项目设计, 决策和说明文档 |
-| `scripts/` | 本地验证脚本 (`verify-local.sh`) 与测试版 App 打包脚本 (`build-test-app.sh`) |
+| `scripts/` | 本地验证脚本 (`verify-local.sh`)、测试版 App 打包脚本 (`build-test-app.sh`) 与 Collector 发布 smoke (`collector-release-smoke.sh`) |
 
 ### 5.2 参考资料
 
@@ -91,6 +91,7 @@
 | `swift run --package-path macos/BruceApp PanelViewModelHarness` | 面板 view model 映射边界测试 (措辞, 分组, 条件渲染, 用量档位与热力图, 按月聚合, Codex 账号上次成功时间, DeepSeek 月度映射); 43 项 |
 | `swift run --package-path macos/BruceApp DeepSeekUsageLedgerHarness` | DeepSeek 月度账本边界测试 (领域差分, 时区跨日, 持久化权限, 损坏恢复, 敏感字段); 17 项 |
 | `zsh scripts/build-test-app.sh` | 生成 `dist/Bruce.app` 本地构建 App (Release 构建 + 打包 + 签名校验) |
+| `zsh scripts/collector-release-smoke.sh dist/Bruce.app --local-preview` | 在隔离临时目录验证 Rust Bridge/artifact、旧 cache rebuild、install/upgrade/rollback; strict 模式用于已签名 Release |
 | GitHub Actions `.github/workflows/ci.yml` | push/PR 触发: verify-local.sh + Python 3.9 兼容 + 测试包构建; tag `v*` 触发草稿 Release |
 
 执行第一个实时命令前必须应用 `constitution.md` 的 Production Operation Mode. 静态分析或普通代码审查不得把实时采集作为默认验证步骤.

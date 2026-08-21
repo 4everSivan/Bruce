@@ -11,25 +11,46 @@ struct BruceApp: App {
     @StateObject private var diagnostics: DiagnosticService
     private let runtime: AppRuntime
     private let scheduler: RefreshScheduler
-    private let runner: CollectorRunner
+    private let runner: CollectorExecutable & CollectorRuntimeControlling
     private let bootstrap: ApplicationBootstrap
     private let settingsWindowController: SettingsWindowController
     private let statusItemController: MenuBarStatusItemController
     private let hotkeyMonitor: GlobalHotkeyMonitor
 
     init() {
-        // 阶段 E (07 §6.1): 优先使用设置页选择的 Python 路径; 未配置时
-        // 回退到系统 Python. 路径可执行性由 CollectorRunner 运行时验证,
-        // 失败时抛 pythonNotExecutable, 不静默降级.
         let configStore = try? OnboardingConfigurationStore()
-        let configuredPath = configStore?.load()?.pythonPath
-        let pythonPath = (configuredPath?.isEmpty == false)
-            ? configuredPath!
-            : "/usr/bin/python3"
-        let pythonURL = URL(fileURLWithPath: pythonPath)
-        let bridgeURL = BruceApp.resolveBridgeURL()
-            ?? URL(fileURLWithPath: "bridge/run_bridge.py")
-        let runner = CollectorRunner(pythonURL: pythonURL, bridgeURL: bridgeURL)
+        let rustURL = Self.resolveRustCollectorURL()
+        let collectorRuntime: CollectorRuntimeStatus
+        if rustURL != nil {
+            collectorRuntime = .rustAvailable
+        } else {
+            #if DEBUG
+            collectorRuntime = .pythonPreview
+            #else
+            collectorRuntime = .rustUnavailable
+            #endif
+        }
+        let runner: CollectorExecutable & CollectorRuntimeControlling
+        if let rustURL {
+            runner = RustBinaryAdapter(executableURL: rustURL)
+        } else {
+            #if DEBUG
+            // Preview-only compatibility path. Release never falls back to Python.
+            let configuredPath = configStore?.load()?.pythonPath
+            let pythonPath = (configuredPath?.isEmpty == false)
+                ? configuredPath!
+                : "/usr/bin/python3"
+            let pythonURL = URL(fileURLWithPath: pythonPath)
+            let bridgeURL = BruceApp.resolveBridgeURL()
+                ?? URL(fileURLWithPath: "bridge/run_bridge.py")
+            runner = PythonPreviewAdapter(
+                pythonURL: pythonURL,
+                bridgeURL: bridgeURL
+            )
+            #else
+            runner = UnavailableCollectorAdapter()
+            #endif
+        }
         self.runner = runner
         let store = (try? ArtifactStore())
             ?? (try? ArtifactStore(
@@ -90,7 +111,8 @@ struct BruceApp: App {
             configStore: configStore,
             credentialStore: credentialStore,
             codexStore: codexStore,
-            codexTokenManager: codexTokenManager
+            codexTokenManager: codexTokenManager,
+            collectorRuntime: collectorRuntime
         )
         _coordinator = StateObject(wrappedValue: coordinator)
         let diagnostics = DiagnosticService(
@@ -167,6 +189,7 @@ struct BruceApp: App {
         )
     }
 
+    #if DEBUG
     private static func resolveBridgeURL() -> URL? {
         if let resourceURL = Bundle.main.resourceURL {
             let packagedBridge = resourceURL
@@ -192,6 +215,40 @@ struct BruceApp: App {
         if FileManager.default.fileExists(atPath: cwdCandidate.path) {
             return cwdCandidate
         }
+        return nil
+    }
+    #endif
+
+    private static func resolveRustCollectorURL() -> URL? {
+        let environment = ProcessInfo.processInfo.environment
+        if let override = environment["BRUCE_COLLECTOR_PATH"], !override.isEmpty {
+            let url = URL(fileURLWithPath: override)
+            if FileManager.default.isExecutableFile(atPath: url.path) {
+                return url
+            }
+        }
+        if let resourceURL = Bundle.main.resourceURL {
+            let packaged = resourceURL.appendingPathComponent("Bruce-collector")
+            if FileManager.default.isExecutableFile(atPath: packaged.path) {
+                return packaged
+            }
+        }
+        #if DEBUG
+        let executable = URL(fileURLWithPath: CommandLine.arguments[0])
+        var current = executable.deletingLastPathComponent()
+        for _ in 0..<10 {
+            for relativePath in [
+                "rust/Bruce-collector/target/debug/Bruce-collector",
+                "rust/Bruce-collector/target/release/Bruce-collector"
+            ] {
+                let candidate = current.appendingPathComponent(relativePath)
+                if FileManager.default.isExecutableFile(atPath: candidate.path) {
+                    return candidate
+                }
+            }
+            current = current.deletingLastPathComponent()
+        }
+        #endif
         return nil
     }
 }

@@ -12,6 +12,15 @@ public enum LocalDependencyStatus: String, Equatable, Sendable {
     case corrupted
 }
 
+// MARK: - CollectorRuntimeStatus
+
+/// Collector 执行文件的本机状态. Release 只使用 Rust; Python 仅作为 Debug/Preview 兼容路径.
+public enum CollectorRuntimeStatus: String, Equatable, Sendable {
+    case rustAvailable
+    case rustUnavailable
+    case pythonPreview
+}
+
 // MARK: - ConnectionStatus
 
 /// 外部服务连接状态.

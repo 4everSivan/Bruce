@@ -57,6 +57,7 @@ struct RefreshErrorClassifier: Sendable {
         case .invalidEnvelope: return (.schema, false)
         case .launchFailed: return (.dependency, false)
         case .pythonNotExecutable: return (.dependency, false)
+        case .rustNotExecutable: return (.dependency, false)
         case .bridgeNotReadable: return (.dependency, false)
         case .alreadyRunning: return (.collector, false)
         case .capacityExceeded: return (.collector, false)

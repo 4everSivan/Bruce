@@ -202,6 +202,42 @@ extension BruceOnboardingCoreHarness {
         try coreExpect(result.warnings.count > 0, "should have warnings")
     }
 
+    static func evaluatorAgentRustDoesNotRequirePython() throws {
+        let evaluator = ReadinessEvaluator()
+        let result = evaluator.evaluateAgentUsage(
+            pythonStatus: .missing, pythonVersion: nil,
+            sessionSources: [
+                DependencyProbe(kind: .sessionDirectory, status: .available, detail: "Codex")
+            ],
+            ccSwitchStatus: .missing,
+            antigravityStatus: .missing,
+            collectorRuntime: .rustAvailable
+        )
+        try coreExpect(result.readiness == .ready, "Rust runtime should not require Python")
+        try coreExpect(
+            result.issues.contains { $0.code == "PYTHON_UNAVAILABLE" } == false,
+            "Rust runtime should not report Python as a blocking issue"
+        )
+    }
+
+    static func evaluatorAgentRustMissingIsExplicit() throws {
+        let evaluator = ReadinessEvaluator()
+        let result = evaluator.evaluateAgentUsage(
+            pythonStatus: .available, pythonVersion: "Python 3.12.0",
+            sessionSources: [
+                DependencyProbe(kind: .sessionDirectory, status: .available, detail: "Codex")
+            ],
+            ccSwitchStatus: .missing,
+            antigravityStatus: .missing,
+            collectorRuntime: .rustUnavailable
+        )
+        try coreExpect(result.readiness == .missingDependency, "missing Rust should block readiness")
+        try coreExpect(
+            result.issues.contains { $0.code == "RUST_COLLECTOR_UNAVAILABLE" },
+            "missing Rust should expose an explicit diagnostic"
+        )
+    }
+
     static func evaluatorAgentMissingPython() throws {
         let evaluator = ReadinessEvaluator()
         let result = evaluator.evaluateAgentUsage(

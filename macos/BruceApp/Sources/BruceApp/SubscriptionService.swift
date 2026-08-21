@@ -996,6 +996,13 @@ final class SubscriptionService {
     /// 移除单个账号: 删除 per-account record + index 条目.
     /// 移除后若 provider 无任何账号, 保留 provider 配置条目 (用户可再添加).
     func removeAccount(accountID: String, from id: SubscriptionProviderID) {
+        if id == .codex {
+            model.setBusySubscription(true, for: .codex)
+            Task { @MainActor in
+                await self.removeCodexAccount(accountID: accountID)
+            }
+            return
+        }
         let store = accountStore(for: id)
         do {
             try store.removeAccount(accountID: accountID)
@@ -1009,6 +1016,46 @@ final class SubscriptionService {
                 "\(id.displayName) 账号移除失败, 请在 Keychain 中手动检查"
             )
         }
+    }
+
+    /// Codex 单账号移除: 通过 token manager 取消该账号的刷新与存储重试,
+    /// 再删除对应 v2 record/index 条目, 不影响其他账号.
+    private func removeCodexAccount(accountID: String) async {
+        defer { model.setBusySubscription(false, for: .codex) }
+        do {
+            let index = try codexStore.loadIndex()
+            guard index.entry(for: accountID) != nil else {
+                model.setSettingsError("Codex 账号不存在, 未执行移除")
+                return
+            }
+            try await codexTokenManager.disconnect(accountID: accountID)
+        } catch {
+            model.setSettingsError(
+                "Codex 账号移除失败, 请在 Keychain 中手动检查"
+            )
+            return
+        }
+        publishCodexSummaryFromIndex()
+        publishCodexCredentialConfigured()
+        await publishCodexAccountStatuses()
+        model.setSettingsError(nil)
+    }
+
+    /// 发布 token manager 的非敏感 Codex 账号状态, 与启动时保持同一映射.
+    private func publishCodexAccountStatuses() async {
+        let state = await codexTokenManager.statusSnapshot()
+        model.setCodexAccountStatuses(
+            state.accounts.map { account in
+                CodexAccountStatus(
+                    accountID: account.accountID,
+                    displayName: account.displayName,
+                    authorizationState: account.authorizationState,
+                    credentialOrigin: account.credentialOrigin,
+                    storageBlocked: account.storageBlocked,
+                    updatedAt: account.updatedAt
+                )
+            }
+        )
     }
 
     /// 更新账号授权状态 (验证失败标记 needsReauthorization, 成功后 connected).

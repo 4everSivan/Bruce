@@ -1,0 +1,11 @@
+[package]
+name = "collector-credential"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+chrono = { workspace = true }
+collector-domain = { path = "../collector-domain" }
+collector-runtime = { path = "../collector-runtime" }
+serde_json = { workspace = true }

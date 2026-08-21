@@ -9,6 +9,7 @@ struct CodexProviderSettingsSection: View {
 
     @Binding var showsCodexCCImportConfirm: Bool
     var onRemove: () -> Void
+    var onRemoveAccount: (String, String) -> Void
 
     var body: some View {
         let busy = model.busySubscriptionProviders.contains(.codex)
@@ -75,6 +76,7 @@ struct CodexProviderSettingsSection: View {
     @ViewBuilder
     private var codexAccountStatusesList: some View {
         let statuses = model.codexAccountStatuses
+        let busy = model.busySubscriptionProviders.contains(.codex)
         if !statuses.isEmpty {
             ForEach(Array(statuses.enumerated()), id: \.element.accountID) {
                 _, status in
@@ -91,6 +93,15 @@ struct CodexProviderSettingsSection: View {
                         .font(.caption)
                         .accessibilityHint("在浏览器中重新完成该账号的 Codex 官方设备码登录")
                     }
+                    Button {
+                        onRemoveAccount(status.accountID, status.displayName)
+                    } label: {
+                        Image(systemName: "xmark.circle")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(busy)
+                    .accessibilityLabel("移除账号 \(status.displayName)")
                 }
                 .padding(.vertical, 2)
             }

@@ -37,6 +37,9 @@ dist/
 *.xcuserstate
 **/xcuserdata/
 
+# Rust build output
+rust/**/target/
+
 # AI 工具本地配置 (openspec 工作流 skills/commands, 不入库)
 .agent/
 .agents/

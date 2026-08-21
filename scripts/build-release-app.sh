@@ -27,7 +27,6 @@ BRUCE_STAGING_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/Bruce-release.XXXXXX")
 BRUCE_STAGED_APP="$BRUCE_STAGING_ROOT/Bruce.app"
 BRUCE_CONTENTS="$BRUCE_STAGED_APP/Contents"
 BRUCE_RESOURCES="$BRUCE_CONTENTS/Resources"
-BRUCE_RUNTIME="$BRUCE_RESOURCES/runtime"
 
 # ---------------------------------------------------------------- 参数与配置
 
@@ -64,7 +63,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-required_commands=(swift codesign plutil ditto strip rg xcrun spctl)
+required_commands=(swift cargo codesign plutil ditto strip rg strings xcrun spctl lipo shasum)
 for required_command in "${required_commands[@]}"; do
     if ! command -v "$required_command" >/dev/null 2>&1; then
         echo "缺少构建命令: $required_command" >&2
@@ -73,6 +72,11 @@ for required_command in "${required_commands[@]}"; do
 done
 
 source "$BRUCE_SCRIPT_DIR/runtime-manifest.zsh"
+
+# 正式版默认产出 universal Rust binary. 若 CI 尚未安装两个 Rust target,
+# 在这里明确失败, 禁止把单架构产物伪装成 Release.
+BRUCE_RUST_TARGET_ARCHS="${BRUCE_RUST_TARGET_ARCHS:-arm64 x86_64}"
+BRUCE_EXPECTED_ARCHS="${BRUCE_EXPECTED_ARCHS:-$BRUCE_RUST_TARGET_ARCHS}"
 
 # ---------------------------------------------------------------- 阶段 1: 清理和验证
 
@@ -92,7 +96,8 @@ fi
 echo "运行完整验证套件 (verify-local.sh)"
 zsh "$BRUCE_REPO_ROOT/scripts/verify-local.sh"
 
-Bruce_validate_packaging_sources "$BRUCE_REPO_ROOT"
+Bruce_build_rust_collector "$BRUCE_REPO_ROOT" release
+Bruce_validate_rust_source "$BRUCE_REPO_ROOT" release
 
 # ---------------------------------------------------------------- 阶段 2: Release 构建
 
@@ -113,14 +118,13 @@ if [[ ! -x "$BRUCE_EXECUTABLE" ]]; then
     exit 1
 fi
 
-mkdir -p "$BRUCE_CONTENTS/MacOS" "$BRUCE_RESOURCES" \
-    "$BRUCE_RUNTIME/bridge" \
-    "$BRUCE_RUNTIME/agent-usage/collector"
+mkdir -p "$BRUCE_CONTENTS/MacOS" "$BRUCE_RESOURCES"
 
 ditto "$BRUCE_EXECUTABLE" "$BRUCE_CONTENTS/MacOS/BruceApp"
 chmod 755 "$BRUCE_CONTENTS/MacOS/BruceApp"
 strip -S "$BRUCE_CONTENTS/MacOS/BruceApp"
-Bruce_copy_runtime "$BRUCE_REPO_ROOT" "$BRUCE_RUNTIME"
+Bruce_copy_rust_collector "$BRUCE_REPO_ROOT" "$BRUCE_RESOURCES" release
+Bruce_validate_release_bundle "$BRUCE_STAGED_APP"
 
 ditto "$BRUCE_REPO_ROOT/macos/BruceApp/Assets/AppIcon.icns" \
     "$BRUCE_RESOURCES/AppIcon.icns"
@@ -209,6 +213,10 @@ if rg -a -q "gzky\\.com|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY" \
     echo "App Bundle 疑似包含敏感信息" >&2
     exit 1
 fi
+
+echo "运行 signed Release Collector 安装/升级/回滚与旧 cache smoke"
+BRUCE_EXPECTED_ARCHS="$BRUCE_EXPECTED_ARCHS" \
+    zsh "$BRUCE_SCRIPT_DIR/collector-release-smoke.sh" "$BRUCE_STAGED_APP"
 
 BRUCE_FINAL_APP="$BRUCE_DIST_DIR/Bruce-$BRUCE_VERSION-macos/Bruce.app"
 BRUCE_FINAL_ZIP="$BRUCE_DIST_DIR/Bruce-$BRUCE_VERSION-macos/Bruce-$BRUCE_VERSION-macos.zip"

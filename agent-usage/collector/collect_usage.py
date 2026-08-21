@@ -239,6 +239,7 @@ def _build_run_context(ctx):
         day_list=day_list,
         codex_usage_url=str(ctx["codex_usage_url"]) if ctx.get("codex_usage_url") else None,
         codex_token_url=str(ctx["codex_token_url"]) if ctx.get("codex_token_url") else None,
+        metrics=ctx.get("_metrics"),
     )
 
 
@@ -301,6 +302,8 @@ def _record_credential_update(provider, account_id, credentials, run_ctx=None):
     }
     if not values:
         return
+    if context.metrics is not None:
+        context.metrics.increment("credential_refresh_count")
     # services 采集并行后, 多个账号可能同时 append, 需要锁保护
     with _CREDENTIAL_UPDATE_LOCK:
         context.credential_updates.append(

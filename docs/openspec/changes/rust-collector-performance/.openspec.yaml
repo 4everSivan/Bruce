@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-08-21
+goal: 在保持 Bridge v1、artifact v1 和现有数据语义兼容的前提下，以 Rust Collector 替换生产 Python
+  实现，并通过增量扫描与受控并发降低刷新成本

@@ -1,0 +1,14 @@
+[package]
+name = "collector-application"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+collector-aggregate = { path = "../collector-aggregate" }
+collector-credential = { path = "../collector-credential" }
+collector-domain = { path = "../collector-domain" }
+collector-local = { path = "../collector-local" }
+collector-provider = { path = "../collector-provider" }
+collector-runtime = { path = "../collector-runtime" }
+serde_json.workspace = true

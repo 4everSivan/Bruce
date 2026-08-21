@@ -338,7 +338,16 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
         var credentials: [String: JSONValue] = [:]
         // 182 天聚合窗口: 柱状图仍取末 14 天 (映射层 suffix), 全量 daily
         // 供用量热力图渲染; Bridge 协议上限 366.
-        var context: [String: JSONValue] = ["days": .integer(182)]
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let nowFormatter = ISO8601DateFormatter()
+        nowFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        nowFormatter.timeZone = TimeZone.current
+        var context: [String: JSONValue] = [
+            "home": .string(home),
+            "now": .string(nowFormatter.string(from: Date())),
+            "timezone": .string(TimeZone.current.identifier),
+            "days": .integer(182),
+        ]
 
         let config = configStore?.load()
         // 统一授权未确认时永远不授予 externalQuotas;

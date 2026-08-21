@@ -19,7 +19,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-required_commands=(swift codesign plutil ditto strip rg)
+required_commands=(swift cargo codesign plutil ditto strip rg)
 for required_command in "${required_commands[@]}"; do
     if ! command -v "$required_command" >/dev/null 2>&1; then
         echo "缺少构建命令: $required_command" >&2
@@ -29,15 +29,18 @@ done
 
 source "$BRUCE_SCRIPT_DIR/runtime-manifest.zsh"
 Bruce_validate_packaging_sources "$BRUCE_REPO_ROOT"
+echo "编译 Rust Collector (Preview 使用同一 binary 来源)"
+Bruce_build_rust_collector "$BRUCE_REPO_ROOT" release
+Bruce_validate_rust_source "$BRUCE_REPO_ROOT" release
 
-echo "编译 Bruce Release 可执行文件"
+echo "编译 Bruce Preview 可执行文件"
 swift build \
     --package-path "$BRUCE_SWIFT_PACKAGE" \
-    --configuration release \
+    --configuration debug \
     --product BruceApp
 BRUCE_BIN_DIR=$(swift build \
     --package-path "$BRUCE_SWIFT_PACKAGE" \
-    --configuration release \
+    --configuration debug \
     --show-bin-path)
 BRUCE_EXECUTABLE="$BRUCE_BIN_DIR/BruceApp"
 
@@ -55,6 +58,7 @@ ditto "$BRUCE_EXECUTABLE" "$BRUCE_CONTENTS/MacOS/BruceApp"
 chmod 755 "$BRUCE_CONTENTS/MacOS/BruceApp"
 strip -S "$BRUCE_CONTENTS/MacOS/BruceApp"
 Bruce_copy_runtime "$BRUCE_REPO_ROOT" "$BRUCE_RUNTIME"
+Bruce_copy_rust_collector "$BRUCE_REPO_ROOT" "$BRUCE_RESOURCES" release
 
 ditto "$BRUCE_REPO_ROOT/macos/BruceApp/Assets/AppIcon.icns" \
     "$BRUCE_RESOURCES/AppIcon.icns"
@@ -96,6 +100,7 @@ if [[ ! -x "$BRUCE_CONTENTS/MacOS/BruceApp" ]]; then
 fi
 
 packaged_resources=(
+    "$BRUCE_RESOURCES/Bruce-collector"
     "$BRUCE_RUNTIME/bridge/run_bridge.py"
     "$BRUCE_RUNTIME/agent-usage/collector/collect_usage.py"
 )
@@ -129,6 +134,10 @@ rm -f "$BRUCE_OUTPUT_ZIP"
 mv "$BRUCE_STAGED_APP" "$BRUCE_OUTPUT_APP"
 ditto -c -k --sequesterRsrc --keepParent \
     "$BRUCE_OUTPUT_APP" "$BRUCE_OUTPUT_ZIP"
+
+echo "运行 Collector 安装/升级/回滚与旧 cache smoke (Preview 证据)"
+zsh "$BRUCE_SCRIPT_DIR/collector-release-smoke.sh" \
+    "$BRUCE_OUTPUT_APP" --local-preview
 
 echo "Bruce App 已生成:"
 echo "  $BRUCE_OUTPUT_APP"

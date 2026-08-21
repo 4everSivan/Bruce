@@ -21,6 +21,7 @@ if __package__:
         validate_credential_updates,
         validate_request,
     )
+    from .metrics import MetricsRecorder
 else:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from bridge.security import (  # noqa: E402
@@ -32,6 +33,7 @@ else:
         validate_credential_updates,
         validate_request,
     )
+    from bridge.metrics import MetricsRecorder  # noqa: E402
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -146,12 +148,38 @@ def execute_request(
     runtime_overrides=None,
     collector_overrides=None,
 ):
+    metrics = MetricsRecorder.from_env()
+    response = None
+    try:
+        response = _execute_request(
+            request,
+            runtime_overrides=runtime_overrides,
+            collector_overrides=collector_overrides,
+            metrics=metrics,
+        )
+        return response
+    finally:
+        metrics.record_result(response)
+        metrics.write()
+
+
+def _execute_request(
+    request,
+    runtime_overrides=None,
+    collector_overrides=None,
+    metrics=None,
+):
+    metrics = metrics or MetricsRecorder.disabled()
     run_id = _safe_run_id(request)
     try:
-        validate_request(request)
+        with metrics.phase("bridge.validate"):
+            validate_request(request)
         run_id = request["runId"]
         module_name = request["module"]
-        context = build_collector_context(request)
+        with metrics.phase("bridge.context"):
+            context = build_collector_context(request)
+        if metrics.enabled:
+            context["_metrics"] = metrics
         if runtime_overrides and module_name in runtime_overrides:
             context.update(runtime_overrides[module_name])
 
@@ -163,8 +191,10 @@ def execute_request(
                 if collector_overrides:
                     collector = collector_overrides.get(module_name)
                 if collector is None:
-                    collector = _default_collector(module_name)
-                result = collector(context)
+                    with metrics.phase("bridge.load_collector"):
+                        collector = _default_collector(module_name)
+                with metrics.phase("collector.execute"):
+                    result = collector(context)
 
         if stdout_buffer.getvalue():
             raise BridgeFault(
@@ -183,7 +213,8 @@ def execute_request(
                 "采集模块未返回有效 Artifact",
             )
 
-        artifact = dict(result["artifact"])
+        with metrics.phase("bridge.validate_result"):
+            artifact = dict(result["artifact"])
         existing_version = artifact.get("schemaVersion", 1)
         existing_module = artifact.get("module", module_name)
         if existing_version != 1 or existing_module != module_name:
@@ -203,12 +234,13 @@ def execute_request(
                 "validate",
                 "Artifact 包含不允许的敏感字段",
             )
-        updates = validate_credential_updates(
-            result.get("credentialUpdates", [])
-        )
-        challenges = validate_credential_challenges(
-            result.get("credentialChallenges", [])
-        )
+        with metrics.phase("bridge.validate_credentials"):
+            updates = validate_credential_updates(
+                result.get("credentialUpdates", [])
+            )
+            challenges = validate_credential_challenges(
+                result.get("credentialChallenges", [])
+            )
         diagnostics = _partial_diagnostics(module_name, artifact)
         if stderr_buffer.getvalue():
             diagnostics.append(

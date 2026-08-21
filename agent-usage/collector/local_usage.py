@@ -33,6 +33,26 @@ def _cutoff_ts(context):
     return context.cutoff_ts if context is not None else runtime.CUTOFF_TS
 
 
+def _metric_increment(context, name, amount=1):
+    metrics = getattr(context, "metrics", None) if context is not None else None
+    if metrics is not None:
+        metrics.increment(name, amount)
+
+
+def _iter_source_lines(path, context=None):
+    """Yield decoded source lines and count the logical bytes consumed.
+
+    The benchmark needs a portable source-I/O measure. ``resource`` and
+    macOS ``time -l`` expose block activity inconsistently, so count the
+    bytes of each JSONL file opened by the scanner instead. This is a logical
+    source-byte metric, not a claim about physical disk traffic.
+    """
+    with open(path, "rb") as fh:
+        _metric_increment(context, "disk_read_bytes", os.fstat(fh.fileno()).st_size)
+        for raw_line in fh:
+            yield raw_line.decode("utf-8", errors="replace")
+
+
 def make_agent(agent_id, name):
     return {
         "id": agent_id,
@@ -137,6 +157,7 @@ def iter_recent_jsonl(root, pattern="**/*.jsonl", context=None):
                 continue
         except OSError:
             continue
+        _metric_increment(context, "files_visited")
         yield path
 
 
@@ -145,31 +166,31 @@ def scan_kimi(agent, root, project_from_path=None, context=None):
     for path in iter_recent_jsonl(root, context=context):
         found = True
         try:
-            with open(path, encoding="utf-8", errors="replace") as fh:
-                for line in fh:
-                    if '"usage.record"' not in line:
-                        continue
-                    try:
-                        r = json.loads(line)
-                    except Exception:
-                        continue
-                    if r.get("type") != "usage.record":
-                        continue
-                    u = r.get("usage") or {}
-                    ts = r.get("time")
-                    if not isinstance(ts, (int, float)):
-                        continue
-                    record_usage(
-                        agent,
-                        ts / 1000.0,
-                        r.get("model"),
-                        int(u.get("inputOther") or 0),
-                        int(u.get("output") or 0),
-                        int(u.get("inputCacheRead") or 0),
-                        int(u.get("inputCacheCreation") or 0),
-                        project=project_from_path(path) if project_from_path else None,
-                        context=context,
-                    )
+            for line in _iter_source_lines(path, context):
+                if '"usage.record"' not in line:
+                    continue
+                try:
+                    r = json.loads(line)
+                except Exception:
+                    continue
+                if r.get("type") != "usage.record":
+                    continue
+                _metric_increment(context, "json_lines_parsed")
+                u = r.get("usage") or {}
+                ts = r.get("time")
+                if not isinstance(ts, (int, float)):
+                    continue
+                record_usage(
+                    agent,
+                    ts / 1000.0,
+                    r.get("model"),
+                    int(u.get("inputOther") or 0),
+                    int(u.get("output") or 0),
+                    int(u.get("inputCacheRead") or 0),
+                    int(u.get("inputCacheCreation") or 0),
+                    project=project_from_path(path) if project_from_path else None,
+                    context=context,
+                )
         except OSError:
             continue
     return found
@@ -192,50 +213,49 @@ def scan_claude(agent, claude_projects, context=None):
         if "/subagents/" in path:
             proj += " ·子代理"
         try:
-            with open(path, encoding="utf-8", errors="replace") as fh:
-                for line in fh:
-                    if '"usage"' not in line or '"assistant"' not in line:
-                        continue
-                    try:
-                        r = json.loads(line)
-                    except Exception:
-                        continue
-                    if r.get("type") != "assistant":
-                        continue
-                    msg = r.get("message") or {}
-                    u = msg.get("usage") or {}
-                    mid = msg.get("id")
-                    ts = runtime.parse_iso(r.get("timestamp") or "", context)
-                    if ts is None:
-                        continue
-                    inp = int(u.get("input_tokens") or 0)
-                    out = int(u.get("output_tokens") or 0)
-                    cr = int(u.get("cache_read_input_tokens") or 0)
-                    cc = int(u.get("cache_creation_input_tokens") or 0)
-                    if not mid:
-                        record_usage(
-                            agent,
-                            ts,
-                            msg.get("model"),
-                            inp,
-                            out,
-                            cr,
-                            cc,
-                            project=proj,
-                            context=context,
-                        )
-                        continue
-                    entry = best.get(mid)
-                    if entry is None:
-                        best[mid] = [inp, out, cr, cc, ts, msg.get("model"), proj]
-                    else:
-                        entry[0] = max(entry[0], inp)
-                        entry[1] = max(entry[1], out)
-                        entry[2] = max(entry[2], cr)
-                        entry[3] = max(entry[3], cc)
-                        entry[4] = ts
-                        entry[5] = msg.get("model")
-                        entry[6] = proj
+            for line in _iter_source_lines(path, context):
+                if '"usage"' not in line or '"assistant"' not in line:
+                    continue
+                try:
+                    r = json.loads(line)
+                except Exception:
+                    continue
+                if r.get("type") != "assistant":
+                    continue
+                msg = r.get("message") or {}
+                u = msg.get("usage") or {}
+                mid = msg.get("id")
+                ts = runtime.parse_iso(r.get("timestamp") or "", context)
+                if ts is None:
+                    continue
+                inp = int(u.get("input_tokens") or 0)
+                out = int(u.get("output_tokens") or 0)
+                cr = int(u.get("cache_read_input_tokens") or 0)
+                cc = int(u.get("cache_creation_input_tokens") or 0)
+                if not mid:
+                    record_usage(
+                        agent,
+                        ts,
+                        msg.get("model"),
+                        inp,
+                        out,
+                        cr,
+                        cc,
+                        project=proj,
+                        context=context,
+                    )
+                    continue
+                entry = best.get(mid)
+                if entry is None:
+                    best[mid] = [inp, out, cr, cc, ts, msg.get("model"), proj]
+                else:
+                    entry[0] = max(entry[0], inp)
+                    entry[1] = max(entry[1], out)
+                    entry[2] = max(entry[2], cr)
+                    entry[3] = max(entry[3], cc)
+                    entry[4] = ts
+                    entry[5] = msg.get("model")
+                    entry[6] = proj
         except OSError:
             continue
     for inp, out, cr, cc, ts, model, proj in best.values():
@@ -275,43 +295,42 @@ def scan_codex(agent, session_dirs, context=None):
             # quota 只需最新一份: 已捕获后更旧的文件不再整文件扫描
             break
         try:
-            with open(path, encoding="utf-8", errors="replace") as fh:
-                for line in fh:
-                    # 超大行 (工具输出/消息内容, 实测 18 个大行均不含
-                    # token_count) json.loads 会分配大块内存且碎片不还给 OS,
-                    # 导致 RSS 虚高. token_count 行结构简单, 不会超 1MB.
-                    if len(line) > 1_000_000:
-                        continue
-                    if '"token_count"' not in line:
-                        continue
-                    try:
-                        r = json.loads(line)
-                    except Exception:
-                        continue
-                    payload = r.get("payload") or {}
-                    if payload.get("type") != "token_count":
-                        continue
-                    ts = runtime.parse_iso(r.get("timestamp") or "", context)
-                    rl = payload.get("rate_limits")
-                    if rl and ts and ts > latest_quota_ts:
-                        latest_quota_ts = ts
-                        latest_quota = rl
-                    if not recent or ts is None:
-                        continue
-                    info = payload.get("info") or {}
-                    u = info.get("last_token_usage") or {}
-                    if not u:
-                        continue
-                    record_usage(
-                        agent,
-                        ts,
-                        "codex",
-                        int(u.get("input_tokens") or 0) - int(u.get("cached_input_tokens") or 0),
-                        int(u.get("output_tokens") or 0),
-                        int(u.get("cached_input_tokens") or 0),
-                        0,
-                        context=context,
-                    )
+            for line in _iter_source_lines(path, context):
+                # 超大行 (工具输出/消息内容, 实测 18 个大行均不含
+                # token_count) json.loads 会分配大块内存且碎片不还给 OS,
+                # 导致 RSS 虚高. token_count 行结构简单, 不会超 1MB.
+                if len(line) > 1_000_000:
+                    continue
+                if '"token_count"' not in line:
+                    continue
+                try:
+                    r = json.loads(line)
+                except Exception:
+                    continue
+                payload = r.get("payload") or {}
+                if payload.get("type") != "token_count":
+                    continue
+                ts = runtime.parse_iso(r.get("timestamp") or "", context)
+                rl = payload.get("rate_limits")
+                if rl and ts and ts > latest_quota_ts:
+                    latest_quota_ts = ts
+                    latest_quota = rl
+                if not recent or ts is None:
+                    continue
+                info = payload.get("info") or {}
+                u = info.get("last_token_usage") or {}
+                if not u:
+                    continue
+                record_usage(
+                    agent,
+                    ts,
+                    "codex",
+                    int(u.get("input_tokens") or 0) - int(u.get("cached_input_tokens") or 0),
+                    int(u.get("output_tokens") or 0),
+                    int(u.get("cached_input_tokens") or 0),
+                    0,
+                    context=context,
+                )
         except OSError:
             continue
     if not latest_quota:
@@ -375,35 +394,34 @@ def scan_grok(agent, root, context=None):
             except OSError:
                 continue
             try:
-                with open(path, encoding="utf-8", errors="replace") as fh:
-                    for line in fh:
-                        if '"type"' not in line:
-                            continue
-                        try:
-                            r = json.loads(line)
-                        except Exception:
-                            continue
-                        msg_type = r.get("type")
-                        if msg_type not in ("user", "assistant"):
-                            continue
-                        content = _extract_grok_content(r.get("content"))
-                        if not content:
-                            continue
-                        estimated_tokens = max(1, len(content) // 4)
-                        if msg_type == "user":
-                            record_usage(
-                                agent, mtime, "grok",
-                                estimated_tokens, 0, 0, 0,
-                                project=project,
-                                context=context,
-                            )
-                        else:
-                            record_usage(
-                                agent, mtime, "grok",
-                                0, estimated_tokens, 0, 0,
-                                project=project,
-                                context=context,
-                            )
+                for line in _iter_source_lines(path, context):
+                    if '"type"' not in line:
+                        continue
+                    try:
+                        r = json.loads(line)
+                    except Exception:
+                        continue
+                    msg_type = r.get("type")
+                    if msg_type not in ("user", "assistant"):
+                        continue
+                    content = _extract_grok_content(r.get("content"))
+                    if not content:
+                        continue
+                    estimated_tokens = max(1, len(content) // 4)
+                    if msg_type == "user":
+                        record_usage(
+                            agent, mtime, "grok",
+                            estimated_tokens, 0, 0, 0,
+                            project=project,
+                            context=context,
+                        )
+                    else:
+                        record_usage(
+                            agent, mtime, "grok",
+                            0, estimated_tokens, 0, 0,
+                            project=project,
+                            context=context,
+                        )
             except OSError:
                 continue
     return found
@@ -422,45 +440,44 @@ def scan_pi(agent, root, context=None):
         found = True
         project = None
         try:
-            with open(path, encoding="utf-8", errors="replace") as fh:
-                for line in fh:
-                    if '"message"' not in line and '"session"' not in line:
-                        continue
-                    try:
-                        r = json.loads(line)
-                    except Exception:
-                        continue
-                    if r.get("type") == "session":
-                        cwd = r.get("cwd")
-                        if isinstance(cwd, str) and cwd.strip():
-                            project = os.path.basename(cwd.rstrip("/")) or None
-                        continue
-                    if r.get("type") != "message":
-                        continue
-                    msg = r.get("message") or {}
-                    if msg.get("role") != "assistant":
-                        continue
-                    u = msg.get("usage") or {}
-                    if not u:
-                        continue
-                    ts = msg.get("timestamp")
-                    if isinstance(ts, (int, float)):
-                        ts = ts / 1000.0
-                    else:
-                        ts = runtime.parse_iso(r.get("timestamp") or "", context)
-                    if ts is None:
-                        continue
-                    record_usage(
-                        agent,
-                        ts,
-                        msg.get("model"),
-                        int(u.get("input") or 0),
-                        int(u.get("output") or 0) + int(u.get("reasoning") or 0),
-                        int(u.get("cacheRead") or 0),
-                        int(u.get("cacheWrite") or 0),
-                        project=project,
-                        context=context,
-                    )
+            for line in _iter_source_lines(path, context):
+                if '"message"' not in line and '"session"' not in line:
+                    continue
+                try:
+                    r = json.loads(line)
+                except Exception:
+                    continue
+                if r.get("type") == "session":
+                    cwd = r.get("cwd")
+                    if isinstance(cwd, str) and cwd.strip():
+                        project = os.path.basename(cwd.rstrip("/")) or None
+                    continue
+                if r.get("type") != "message":
+                    continue
+                msg = r.get("message") or {}
+                if msg.get("role") != "assistant":
+                    continue
+                u = msg.get("usage") or {}
+                if not u:
+                    continue
+                ts = msg.get("timestamp")
+                if isinstance(ts, (int, float)):
+                    ts = ts / 1000.0
+                else:
+                    ts = runtime.parse_iso(r.get("timestamp") or "", context)
+                if ts is None:
+                    continue
+                record_usage(
+                    agent,
+                    ts,
+                    msg.get("model"),
+                    int(u.get("input") or 0),
+                    int(u.get("output") or 0) + int(u.get("reasoning") or 0),
+                    int(u.get("cacheRead") or 0),
+                    int(u.get("cacheWrite") or 0),
+                    project=project,
+                    context=context,
+                )
         except OSError:
             continue
     return found

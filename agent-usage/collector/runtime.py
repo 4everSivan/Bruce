@@ -51,6 +51,7 @@ class RunContext:
     day_list: List[str] = field(default_factory=list)
     codex_usage_url: Optional[str] = None
     codex_token_url: Optional[str] = None
+    metrics: Any = None
 
     def capability_allowed(self, name: str) -> bool:
         """能力门禁: capabilities 为 None 时全部放行."""
@@ -83,12 +84,16 @@ class RunContext:
         return int(value) if value else None
 
     def urlopen(self, request, **kwargs):
+        if self.metrics is not None:
+            self.metrics.increment("http_request_count")
         opener = self.http.get("urlopen") or urllib.request.urlopen
         return opener(request, **kwargs)
 
     def http_get_json(self, url, headers, http_timeout):
         override = self.http.get("get_json")
         if override:
+            if self.metrics is not None:
+                self.metrics.increment("http_request_count")
             return override(url, headers)
         req = urllib.request.Request(url, headers=headers)
         with self.urlopen(req, timeout=http_timeout) as resp:

@@ -1,0 +1,18 @@
+[package]
+name = "collector-provider"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+chrono = { workspace = true }
+collector-domain = { path = "../collector-domain" }
+collector-runtime = { path = "../collector-runtime" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+ureq = { workspace = true }
+url = { workspace = true }
+idna = { workspace = true }
+idna_adapter = { workspace = true }
+zeroize = { workspace = true }

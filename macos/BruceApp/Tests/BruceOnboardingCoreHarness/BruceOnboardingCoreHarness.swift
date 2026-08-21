@@ -45,6 +45,8 @@ struct BruceOnboardingCoreHarness {
         try policyNilWhenNotReady()
         try evaluatorAgentReady()
         try evaluatorAgentPartial()
+        try evaluatorAgentRustDoesNotRequirePython()
+        try evaluatorAgentRustMissingIsExplicit()
         try evaluatorAgentMissingPython()
         try evaluatorAgentNoSessions()
         try evaluatorAgentCcSwitchAloneNotReady()

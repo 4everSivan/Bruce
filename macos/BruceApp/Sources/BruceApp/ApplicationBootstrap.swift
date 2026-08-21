@@ -8,7 +8,7 @@ import SwiftUI
 final class ApplicationBootstrap {
     private let runtime: AppRuntime
     private let scheduler: RefreshScheduler
-    private let runner: CollectorRunner
+    private let runner: any CollectorExecutable & CollectorRuntimeControlling
     private let coordinator: OnboardingCoordinator
     private let runInputProvider: OnboardingRunInputProvider
     /// Codex v2 迁移执行器: 启动 Scheduler 前幂等迁移旧整体账号库;
@@ -27,7 +27,7 @@ final class ApplicationBootstrap {
     init(
         runtime: AppRuntime,
         scheduler: RefreshScheduler,
-        runner: CollectorRunner,
+        runner: any CollectorExecutable & CollectorRuntimeControlling,
         coordinator: OnboardingCoordinator,
         runInputProvider: OnboardingRunInputProvider,
         codexTokenManager: CodexTokenManager,

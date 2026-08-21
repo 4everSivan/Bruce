@@ -88,7 +88,7 @@ private struct BridgeRequest: Encodable {
     let credentials: [String: JSONValue]
 }
 
-enum BridgeStatus: String, Codable, Sendable {
+package enum BridgeStatus: String, Codable, Sendable {
     case success
     case partial
     case error
@@ -104,7 +104,7 @@ package struct BridgeDiagnostic: Codable, Equatable, Sendable {
     let retryable: Bool
 }
 
-struct BridgeResponse: Codable, Equatable, Sendable {
+package struct BridgeResponse: Codable, Equatable, Sendable {
     let schemaVersion: Int
     let runId: String
     let generatedAt: String
@@ -118,7 +118,7 @@ struct BridgeResponse: Codable, Equatable, Sendable {
 extension BridgeResponse {
     /// 任务 1 冻结契约: 旧 Bridge v1 响应缺失 credentialChallenges 时按空数组解码,
     /// schemaVersion 保持 1, 向后兼容.
-    init(from decoder: Decoder) throws {
+    package init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
         runId = try container.decode(String.self, forKey: .runId)
@@ -140,7 +140,7 @@ extension BridgeResponse {
     }
 }
 
-struct SanitizedProcessDiagnostic: Equatable, Sendable {
+package struct SanitizedProcessDiagnostic: Equatable, Sendable {
     let byteCount: Int
     let lineCount: Int
 
@@ -149,14 +149,15 @@ struct SanitizedProcessDiagnostic: Equatable, Sendable {
     }
 }
 
-struct CollectorRunOutput: Equatable, Sendable {
-    let response: BridgeResponse
-    let stderrDiagnostic: SanitizedProcessDiagnostic?
+package struct CollectorRunOutput: Equatable, Sendable {
+    package let response: BridgeResponse
+    package let stderrDiagnostic: SanitizedProcessDiagnostic?
 }
 
 enum CollectorRunnerError: Error, Equatable {
     case invalidExecutablePath
     case pythonNotExecutable
+    case rustNotExecutable
     case bridgeNotReadable
     case alreadyRunning
     case capacityExceeded
@@ -349,6 +350,13 @@ struct DispatchRunnerTimerScheduler: RunnerTimerScheduling {
 
 @MainActor
 package final class CollectorRunner {
+    private enum RuntimeKind {
+        #if DEBUG
+        case pythonPreview
+        #endif
+        case rust
+    }
+
     private enum RequestedEnd {
         case none
         case cancelled
@@ -374,13 +382,18 @@ package final class CollectorRunner {
         }
     }
 
-    private let pythonURL: URL
-    private let bridgeURL: URL
+    private let executableURL: URL
+    #if DEBUG
+    private let bridgeURL: URL?
+    #endif
+    private let executableArguments: [String]
+    private let runtimeKind: RuntimeKind
     private let launcher: CollectorProcessLaunching
     private let timerScheduler: RunnerTimerScheduling
     private let timeouts: CollectorTimeouts
     private var activeRuns: [CollectorModule: ActiveRun] = [:]
 
+    #if DEBUG
     package convenience init(
         pythonURL: URL,
         bridgeURL: URL
@@ -391,19 +404,47 @@ package final class CollectorRunner {
             timeouts: .default
         )
     }
+    #endif
 
+    package convenience init(rustURL: URL) {
+        self.init(
+            rustURL: rustURL,
+            timeouts: .default
+        )
+    }
+
+    #if DEBUG
     init(
         pythonURL: URL,
         bridgeURL: URL,
         timeouts: CollectorTimeouts
     ) {
-        self.pythonURL = pythonURL
+        executableURL = pythonURL
         self.bridgeURL = bridgeURL
+        executableArguments = [bridgeURL.path]
+        runtimeKind = .pythonPreview
+        launcher = SystemCollectorProcessLauncher()
+        timerScheduler = DispatchRunnerTimerScheduler()
+        self.timeouts = timeouts
+    }
+    #endif
+
+    init(
+        rustURL: URL,
+        timeouts: CollectorTimeouts
+    ) {
+        executableURL = rustURL
+        #if DEBUG
+        bridgeURL = nil
+        #endif
+        executableArguments = []
+        runtimeKind = .rust
         launcher = SystemCollectorProcessLauncher()
         timerScheduler = DispatchRunnerTimerScheduler()
         self.timeouts = timeouts
     }
 
+    #if DEBUG
     init(
         pythonURL: URL,
         bridgeURL: URL,
@@ -411,8 +452,28 @@ package final class CollectorRunner {
         timerScheduler: RunnerTimerScheduling,
         timeouts: CollectorTimeouts = .default
     ) {
-        self.pythonURL = pythonURL
+        executableURL = pythonURL
         self.bridgeURL = bridgeURL
+        executableArguments = [bridgeURL.path]
+        runtimeKind = .pythonPreview
+        self.launcher = launcher
+        self.timerScheduler = timerScheduler
+        self.timeouts = timeouts
+    }
+    #endif
+
+    init(
+        rustURL: URL,
+        launcher: CollectorProcessLaunching,
+        timerScheduler: RunnerTimerScheduling,
+        timeouts: CollectorTimeouts = .default
+    ) {
+        executableURL = rustURL
+        #if DEBUG
+        bridgeURL = nil
+        #endif
+        executableArguments = []
+        runtimeKind = .rust
         self.launcher = launcher
         self.timerScheduler = timerScheduler
         self.timeouts = timeouts
@@ -422,7 +483,7 @@ package final class CollectorRunner {
         activeRuns.count
     }
 
-    func run(
+    package func run(
         module: CollectorModule,
         context: [String: JSONValue] = [:],
         credentials: [String: JSONValue] = [:]
@@ -489,8 +550,8 @@ package final class CollectorRunner {
             )
             let input = try JSONEncoder().encode(request)
             let handle = try launcher.launch(
-                executableURL: pythonURL,
-                arguments: [bridgeURL.path],
+                executableURL: executableURL,
+                arguments: executableArguments,
                 input: input
             ) { [weak self] result in
                 self?.complete(module: module, result: result)
@@ -515,17 +576,29 @@ package final class CollectorRunner {
     }
 
     private func validatePaths() throws {
-        guard pythonURL.isFileURL,
-              bridgeURL.isFileURL,
-              pythonURL.path.hasPrefix("/"),
-              bridgeURL.path.hasPrefix("/") else {
+        guard executableURL.isFileURL,
+              executableURL.path.hasPrefix("/") else {
             throw CollectorRunnerError.invalidExecutablePath
         }
-        guard FileManager.default.isExecutableFile(atPath: pythonURL.path) else {
-            throw CollectorRunnerError.pythonNotExecutable
-        }
-        guard FileManager.default.isReadableFile(atPath: bridgeURL.path) else {
-            throw CollectorRunnerError.bridgeNotReadable
+        switch runtimeKind {
+        #if DEBUG
+        case .pythonPreview:
+            guard let bridgeURL,
+                  bridgeURL.isFileURL,
+                  bridgeURL.path.hasPrefix("/") else {
+                throw CollectorRunnerError.invalidExecutablePath
+            }
+            guard FileManager.default.isExecutableFile(atPath: executableURL.path) else {
+                throw CollectorRunnerError.pythonNotExecutable
+            }
+            guard FileManager.default.isReadableFile(atPath: bridgeURL.path) else {
+                throw CollectorRunnerError.bridgeNotReadable
+            }
+        #endif
+        case .rust:
+            guard FileManager.default.isExecutableFile(atPath: executableURL.path) else {
+                throw CollectorRunnerError.rustNotExecutable
+            }
         }
     }
 

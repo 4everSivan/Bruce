@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "runId": "12345678-1234-4234-9234-123456789abc",
+  "generatedAt": "2026-07-28T04:00:00Z",
+  "status": "error",
+  "artifact": null,
+  "credentialUpdates": [],
+  "credentialChallenges": [],
+  "diagnostics": [
+    {
+      "code": "BRIDGE_INVALID_JSON",
+      "category": "protocol",
+      "stage": "request",
+      "message": "输入不是有效的 JSON 文档",
+      "retryable": false
+    }
+  ]
+}

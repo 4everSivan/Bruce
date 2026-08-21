@@ -16,7 +16,7 @@ package final class AppRuntime: ObservableObject, ApplicationRuntimeControlling 
     package private(set) var acceptsNewTasks = true
     private var schedulerStarted = false
     private var scheduler: RefreshScheduler?
-    private var runner: CollectorRunner?
+    private var runner: (any CollectorRuntimeControlling)?
 
     package var hasRunningTasks: Bool {
         (runner?.activeModuleCount ?? 0) > 0
@@ -24,7 +24,7 @@ package final class AppRuntime: ObservableObject, ApplicationRuntimeControlling 
 
     package init() {}
 
-    package func configure(scheduler: RefreshScheduler, runner: CollectorRunner) {
+    package func configure(scheduler: RefreshScheduler, runner: any CollectorRuntimeControlling) {
         self.scheduler = scheduler
         self.runner = runner
     }
