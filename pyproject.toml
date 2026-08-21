@@ -1,6 +1,6 @@
 [project]
 name = "Bruce"
-version = "0.3.0"
+version = "0.4"
 description = "A loyal dog is used for local agent usage statistics and monitoring, as well as for monitoring of Coding Plan subscriptions."
 readme = "README.md"
 requires-python = ">=3.9"
