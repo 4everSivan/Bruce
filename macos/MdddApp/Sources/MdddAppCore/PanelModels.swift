@@ -294,35 +294,39 @@ package struct UsageBreakdownItem: Equatable, Sendable {
 // MARK: - 用量档位
 
 /// 总量分档: 驱动用量卡 hero 渐变与背景 tint.
-/// < 50M 绿, 50M-150M 橙, 150M-250M 红, >= 250M 紫.
+/// 统一绿色阶 (源自 logo 底色 #7D9B76): 今日 <100M / <200M / <300M / <400M /
+/// >= 400M 逐级加深, 语义为 sage/moss/fern/pine/forest.
 package enum UsageTier: String, Equatable, Sendable {
-    case green
-    case orange
-    case red
-    case purple
+    case sage
+    case moss
+    case fern
+    case pine
+    case forest
 
     package static func forTotal(_ totalTokens: Int) -> UsageTier {
         switch totalTokens {
-        case ..<50_000_000:
-            return .green
-        case ..<150_000_000:
-            return .orange
-        case ..<250_000_000:
-            return .red
+        case ..<100_000_000:
+            return .sage
+        case ..<200_000_000:
+            return .moss
+        case ..<300_000_000:
+            return .fern
+        case ..<400_000_000:
+            return .pine
         default:
-            return .purple
+            return .forest
         }
     }
 }
 
 // MARK: - 用量热力图
 
-/// 热力图格子: date + 当日总量 + 相对峰值档位.
+/// 热力图格子: date + 当日总量 + 绝对用量档位.
 package struct UsageHeatmapCell: Equatable, Sendable {
     package let date: String
     package let total: Int
-    /// 0 = 无量; 1-4 对应 UsageTier green/orange/red/purple
-    /// (按相对窗口峰值 >=1/25%/50%/75% 分档).
+    /// 0 = 无量; 1-5 按当日绝对总量 100M 步进分档,
+    /// 与 UsageTier sage/moss/fern/pine/forest 一一对应.
     package let level: Int
 
     package init(date: String, total: Int, level: Int) {

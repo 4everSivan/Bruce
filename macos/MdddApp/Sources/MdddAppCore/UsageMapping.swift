@@ -144,7 +144,8 @@ extension PanelViewModelMapper {
     // MARK: 用量热力图
 
     /// 全量 daily 窗口 (不 suffix 14) 按周列 × 周日行 (周一起) 组织;
-    /// level 按窗口峰值 1/25%/50%/75% 分 0-4 档, 窗口外与未来格为 nil.
+    /// level 按当日绝对总量以 100M 步进分 0-5 档 (与 UsageTier 一致),
+    /// 窗口外与未来格为 nil.
     /// 日期解析与网格使用 mapper 注入的 calendar 时区, 保证测试可替换.
     func makeUsageHeatmap(_ artifact: AgentUsageArtifact) -> [UsageHeatmapWeek] {
         var totalsByDate: [String: Int] = [:]
@@ -165,7 +166,6 @@ extension PanelViewModelMapper {
               let lastDate = formatter.date(from: last) else {
             return []
         }
-        let maxTotal = totalsByDate.values.max() ?? 0
         // 首日所在周的周一作为网格起点.
         guard let gridStart = gridCalendar.dateInterval(
             of: .weekOfYear, for: firstDate
@@ -188,7 +188,7 @@ extension PanelViewModelMapper {
                 cells.append(UsageHeatmapCell(
                     date: key,
                     total: total,
-                    level: Self.heatmapLevel(total: total, maxTotal: maxTotal)
+                    level: Self.heatmapLevel(total: total)
                 ))
             }
             weeks.append(UsageHeatmapWeek(cells: cells))
@@ -200,13 +200,22 @@ extension PanelViewModelMapper {
         return weeks
     }
 
-    private static func heatmapLevel(total: Int, maxTotal: Int) -> Int {
-        guard total > 0, maxTotal > 0 else { return 0 }
-        let ratio = Double(total) / Double(maxTotal)
-        if ratio >= 0.75 { return 4 }
-        if ratio >= 0.50 { return 3 }
-        if ratio >= 0.25 { return 2 }
-        return 1
+    /// 绝对阈值分档: 0 无量, 1-5 对应 UsageTier sage..forest (100M 步进).
+    private static func heatmapLevel(total: Int) -> Int {
+        switch total {
+        case ..<1:
+            return 0
+        case ..<100_000_000:
+            return 1
+        case ..<200_000_000:
+            return 2
+        case ..<300_000_000:
+            return 3
+        case ..<400_000_000:
+            return 4
+        default:
+            return 5
+        }
     }
 
     // MARK: 逐小时卡

@@ -194,7 +194,7 @@ struct UsageHeroCard: View {
     // MARK: 用量热力图
 
     /// 周列 × 周日行 (周一起) 网格: 列等宽撑满卡片, 格子正方形随列宽缩放;
-    /// level 0 淡槽, 1-4 沿用 UsageTier 绿/橙/红/紫深色阶, 窗口外与未来格透明.
+    /// level 0 淡槽, 1-5 沿用 UsageTier 绿色阶 (sage..forest), 窗口外与未来格透明.
     private var heatmapView: some View {
         HStack(alignment: .top, spacing: 3) {
             ForEach(Array(viewModel.heatmap.enumerated()), id: \.offset) { _, week in
@@ -241,13 +241,13 @@ struct UsageHeroCard: View {
         return "\(parts[0].suffix(2))/\(parts[1])/\(parts[2])"
     }
 
-    /// 程度图例 (GitHub 风格): 「少」 + level 0-4 格子 + 「多」, 右对齐.
+    /// 程度图例 (GitHub 风格): 「少」 + level 0-5 格子 + 「多」, 右对齐.
     private var heatmapLegend: some View {
         HStack(spacing: 3) {
             Spacer()
             Text("少")
             heatmapLevelSwatch(0)
-            ForEach(1...4, id: \.self) { level in
+            ForEach(1...5, id: \.self) { level in
                 heatmapLevelSwatch(level)
             }
             Text("多")
@@ -278,13 +278,15 @@ struct UsageHeroCard: View {
         let tier: UsageTier
         switch level {
         case 1:
-            tier = .green
+            tier = .sage
         case 2:
-            tier = .orange
+            tier = .moss
         case 3:
-            tier = .red
+            tier = .fern
+        case 4:
+            tier = .pine
         default:
-            tier = .purple
+            tier = .forest
         }
         return Self.tierColors(for: tier).0
     }
@@ -299,9 +301,9 @@ struct UsageHeroCard: View {
         light: Color.black.opacity(0.07),
         dark: Color.white.opacity(0.12)
     )
-    /// hero 渐变按总量档位变化: < 50M 绿, 50M-150M 橙, 150M-250M 红,
-    /// >= 250M 紫. 结构沿用 mockup (135deg, 起点 30%, 终点收敛 1.0),
-    /// 深浅色各自适配玻璃可见性.
+    /// hero 渐变按今日总量档位在统一绿色阶内变化 (源自 logo 底色):
+    /// <100M sage #7D9B76, 此后每 100M 加深一档, >=400M forest #26452A.
+    /// 结构沿用 mockup (135deg, 起点 30%, 终点收敛 1.0).
     private static func heroGradient(for tier: UsageTier) -> LinearGradient {
         let (start, end) = tierColors(for: tier)
         return LinearGradient(
@@ -314,29 +316,20 @@ struct UsageHeroCard: View {
         )
     }
 
-    /// 档位配色: 返回 (深色阶, 浅色阶); 浅色阶同时作为背景字符 tint.
+    /// 档位配色: 返回 (档位基色, 同族浅色); 基色同时用于热力图格子,
+    /// 浅色作为 hero 渐变末端与背景字符 tint. 五色同色相逐级加深.
     private static func tierColors(for tier: UsageTier) -> (Color, Color) {
         switch tier {
-        case .green:
-            return (
-                Color.adaptive(light: Color(hex: "#0f8a43"), dark: Color(hex: "#30d158")),
-                Color.adaptive(light: Color(hex: "#2fb35f"), dark: Color(hex: "#7ce79b"))
-            )
-        case .orange:
-            return (
-                Color.adaptive(light: Color(hex: "#c26a00"), dark: Color(hex: "#ffb340")),
-                Color.adaptive(light: Color(hex: "#ff9f0a"), dark: Color(hex: "#ffd60a"))
-            )
-        case .red:
-            return (
-                Color.adaptive(light: Color(hex: "#c41e1e"), dark: Color(hex: "#ff6961")),
-                Color.adaptive(light: Color(hex: "#ff453a"), dark: Color(hex: "#ff9f97"))
-            )
-        case .purple:
-            return (
-                Color.adaptive(light: Color(hex: "#7d2ae8"), dark: Color(hex: "#bf5af2")),
-                Color.adaptive(light: Color(hex: "#a94df5"), dark: Color(hex: "#d8a7ff"))
-            )
+        case .sage:
+            return (Color(hex: "#7D9B76"), Color(hex: "#9DB597"))
+        case .moss:
+            return (Color(hex: "#63885E"), Color(hex: "#82A57C"))
+        case .fern:
+            return (Color(hex: "#4C7249"), Color(hex: "#6A9064"))
+        case .pine:
+            return (Color(hex: "#385B38"), Color(hex: "#557B52"))
+        case .forest:
+            return (Color(hex: "#26452A"), Color(hex: "#456B42"))
         }
     }
 

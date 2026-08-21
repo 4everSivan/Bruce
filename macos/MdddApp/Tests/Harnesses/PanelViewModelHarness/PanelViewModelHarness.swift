@@ -478,7 +478,8 @@ struct PanelViewModelHarness {
         try expect(usage?.isLive == true, "新鲜 artifact 应为 LIVE")
     }
 
-    // 总量档位: <50M 绿, 50M-150M 橙, 150M-250M 红, >=250M 紫.
+    // 总量档位: 统一绿色阶, <100M sage, 100M-200M moss, 200M-300M fern,
+    // 300M-400M pine, >=400M forest.
     private static func usageTierFollowsTotalThresholds() throws {
         func tier(for total: Int) -> UsageTier {
             UsageHeroViewModel(
@@ -490,25 +491,27 @@ struct PanelViewModelHarness {
                 isLive: false
             ).usageTier
         }
-        try expect(tier(for: 0) == .green, "0 应为 green")
-        try expect(tier(for: 49_999_999) == .green, "50M-1 应为 green")
-        try expect(tier(for: 50_000_000) == .orange, "50M 应为 orange")
-        try expect(tier(for: 149_999_999) == .orange, "150M-1 应为 orange")
-        try expect(tier(for: 150_000_000) == .red, "150M 应为 red")
-        try expect(tier(for: 249_999_999) == .red, "250M-1 应为 red")
-        try expect(tier(for: 250_000_000) == .purple, "250M 应为 purple")
-        try expect(tier(for: 900_000_000) == .purple, "900M 应为 purple")
+        try expect(tier(for: 0) == .sage, "0 应为 sage")
+        try expect(tier(for: 99_999_999) == .sage, "100M-1 应为 sage")
+        try expect(tier(for: 100_000_000) == .moss, "100M 应为 moss")
+        try expect(tier(for: 199_999_999) == .moss, "200M-1 应为 moss")
+        try expect(tier(for: 200_000_000) == .fern, "200M 应为 fern")
+        try expect(tier(for: 299_999_999) == .fern, "300M-1 应为 fern")
+        try expect(tier(for: 300_000_000) == .pine, "300M 应为 pine")
+        try expect(tier(for: 399_999_999) == .pine, "400M-1 应为 pine")
+        try expect(tier(for: 400_000_000) == .forest, "400M 应为 forest")
+        try expect(tier(for: 900_000_000) == .forest, "900M 应为 forest")
     }
 
-    // 热力图: 全量 daily 按周列 × 周日行 (周一起), level 相对峰值分档,
-    // 窗口外与未来格为 nil, 柱状图仍固定 14 天.
+    // 热力图: 全量 daily 按周列 × 周日行 (周一起), level 按当日绝对总量
+    // 100M 步进分 0-5 档, 窗口外与未来格为 nil, 柱状图仍固定 14 天.
     // 固定时钟 2026-07-30 (周四), 窗口 2026-07-17 (周五) 至 07-30 -> 3 周列.
     private static func usageHeatmapBuildsWeekGrid() throws {
         var totals = Array(repeating: 0, count: 14)
-        totals[13] = 1000 // 07-30 今天, 峰值 -> level 4
-        totals[6] = 500 // 07-23, 50% -> level 3
-        totals[0] = 250 // 07-17, 25% -> level 2
-        totals[1] = 100 // 07-18, 10% -> level 1
+        totals[13] = 450_000_000 // 07-30 今天, >=400M -> level 5
+        totals[6] = 250_000_000 // 07-23, 200M-300M -> level 3
+        totals[0] = 150_000_000 // 07-17, 100M-200M -> level 2
+        totals[1] = 50_000_000 // 07-18, <100M -> level 1
         let agent = makeAgent(
             id: "kimi-code-cli", name: "Kimi Code CLI", dailyTotals: totals
         )
@@ -532,31 +535,31 @@ struct PanelViewModelHarness {
         )
         try expect(
             firstWeek[4]?.level == 2,
-            "25% 峰值应为 level 2: \(firstWeek[4]?.level ?? -1)"
+            "150M 应为 level 2: \(firstWeek[4]?.level ?? -1)"
         )
         try expect(
             firstWeek[5]?.level == 1,
-            "10% 峰值应为 level 1: \(firstWeek[5]?.level ?? -1)"
+            "50M 应为 level 1: \(firstWeek[5]?.level ?? -1)"
         )
-        // 第二周: 07-23 周四 50% -> level 3; 07-20 周一无量 -> level 0.
+        // 第二周: 07-23 周四 250M -> level 3; 07-20 周一无量 -> level 0.
         let midWeek = heatmap[1].cells
         try expect(
             midWeek[3]?.level == 3,
-            "50% 峰值应为 level 3: \(midWeek[3]?.level ?? -1)"
+            "250M 应为 level 3: \(midWeek[3]?.level ?? -1)"
         )
         try expect(
             midWeek[0]?.level == 0,
             "无量日应为 level 0: \(midWeek[0]?.level ?? -1)"
         )
-        // 末周: 今天 07-30 周四为峰值 level 4, 周五起为 nil (未来).
+        // 末周: 今天 07-30 周四 450M -> level 5, 周五起为 nil (未来).
         let lastWeek = heatmap[2].cells
         try expect(
             lastWeek[3]?.date == "2026-07-30",
             "末周周四应为今天: \(lastWeek[3]?.date ?? "nil")"
         )
         try expect(
-            lastWeek[3]?.level == 4,
-            "峰值日应为 level 4: \(lastWeek[3]?.level ?? -1)"
+            lastWeek[3]?.level == 5,
+            "450M 应为 level 5: \(lastWeek[3]?.level ?? -1)"
         )
         try expect(
             lastWeek[4] == nil && lastWeek[5] == nil && lastWeek[6] == nil,
