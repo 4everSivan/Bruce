@@ -924,6 +924,16 @@ struct PanelViewModelHarness {
         )
         try expect(PanelAgentColor.resolve(agentID: "pi") == .rose, "Pi 应为显式 rose 色")
         try expect(PanelAgentColor.resolve(agentID: "zcode") == .mint, "ZCode 应为显式 mint 色")
+        try expect(PanelAgentColor.resolve(agentID: "opencode") == .green, "OpenCode 应为显式 green 色")
+        let knownIDs = [
+            "kimi-work", "kimi-code-cli", "grok", "codex",
+            "claude-code", "pi", "zcode", "opencode",
+        ]
+        let knownColors = knownIDs.map { PanelAgentColor.resolve(agentID: $0) }
+        try expect(
+            Set(knownColors).count == knownIDs.count,
+            "已知 agent 配色必须互不重复: \(zip(knownIDs, knownColors.map(\.rawValue)))"
+        )
         for id in ["kimi-work", "kimi-code-cli", "grok", "codex", "claude-code", "zcode"] {
             try expect(
                 PanelAgentColor.resolve(agentID: id) != .rose,

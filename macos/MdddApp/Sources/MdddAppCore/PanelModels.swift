@@ -22,6 +22,8 @@ package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
     /// ZCode — 青绿
     case mint
     case rose
+    /// OpenCode — 系统绿 (8 个已知 agent 配满 7 色后扩的第 8 色)
+    case green
 
     package var hex: String {
         switch self {
@@ -39,6 +41,8 @@ package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
             return "#40c8e0"
         case .rose:
             return "#ff6482"
+        case .green:
+            return "#30d158"
         }
     }
 
@@ -50,7 +54,8 @@ package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
     }
 
     /// 已知 agent 固定配色 (冷→暖: work → code → grok → codex → claude;
-    /// pi/zcode 固定 rose/mint); 未知 agent 用 FNV-1a 散列稳定落到调色板.
+    /// pi/zcode/opencode 固定 rose/mint/green, 8 个已知 agent 各占一色);
+    /// 未知 agent 用 FNV-1a 散列稳定落到调色板.
     package static func resolve(agentID: String) -> PanelAgentColor {
         switch agentID {
         case "kimi-work":
@@ -67,6 +72,8 @@ package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
             return .rose
         case "zcode":
             return .mint
+        case "opencode":
+            return .green
         default:
             var hash: UInt64 = 0xcbf29ce484222325
             for byte in agentID.utf8 {
@@ -95,6 +102,8 @@ package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
             return ["#40c8e0", "#66d4e6", "#8cdfed", "#b2ebf3"]
         case .rose:
             return ["#ff6482", "#ff839c", "#ffa2b6", "#ffc1d0"]
+        case .green:
+            return ["#30d158", "#5bda7f", "#8ae6a6", "#b8f1cc"]
         }
     }
 }
