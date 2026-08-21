@@ -544,32 +544,6 @@ private struct PlanChip: View {
     }
 }
 
-// MARK: - 颜色工具
-
-private extension Color {
-    /// 以 "#RRGGBB" 十六进制构造颜色, 仅供本文件内的 mockup 配色使用.
-    init(hex: String) {
-        var value = hex
-        if value.hasPrefix("#") {
-            value.removeFirst()
-        }
-        let rgba = UInt64(value, radix: 16) ?? 0
-        self.init(
-            red: Double((rgba >> 16) & 0xff) / 255,
-            green: Double((rgba >> 8) & 0xff) / 255,
-            blue: Double(rgba & 0xff) / 255
-        )
-    }
-
-    /// 深浅色自适应: 浅色外观用 light, 深色外观用 dark.
-    static func adaptive(light: Color, dark: Color) -> Color {
-        Color(nsColor: NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            return NSColor(isDark ? dark : light)
-        })
-    }
-}
-
 // MARK: - 预览 fixture
 
 private extension SubscriptionViewModel {

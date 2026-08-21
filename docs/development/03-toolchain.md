@@ -9,7 +9,7 @@
 ## 平台与标识
 
 - 最低系统版本: macOS 26 (Liquid Glass 与菜单栏面板依赖).
-- 应用形态: 菜单栏常驻应用 (LSUIElement), MenuBarExtra 弹出式面板 + 独立设置窗口.
+- 应用形态: 菜单栏常驻应用 (LSUIElement), 原生状态项 + AppKit/SwiftUI 弹出面板 + 独立设置窗口.
 - 开发 bundle identifier: `com.mddd.dashboard`.
 - 发布前必须根据最终签名团队确认 bundle identifier; 数据目录和 Keychain service 名称不得在发布后随意变化.
 
@@ -58,14 +58,14 @@ python3 -m py_compile \
 
 | Harness | 当前用例数 | 覆盖 |
 |---|---:|---|
-| `MdddOnboardingCoreHarness` | 98 | 路径、版本、扫描、readiness、授权 Gate、配置、Keychain 抽象、订阅凭证、设备码登录、令牌轮换合并 |
-| `PanelViewModelHarness` | 23 | 措辞、分组、条件渲染 |
-| `ArtifactStoreHarness` | 4 | schema、私有权限、原子发布、previous 回退和迁移 |
-| `CollectorRunnerHarness` | 16 | stdin 凭证、协议、并发、超时、取消和隔离 Bridge |
-| `RefreshSchedulerHarness` | 10 | 30 分钟定时、合并、退避、授权失败、唤醒、容量和停止 |
-| `NativeLifecycleHarness` | 6 | 调度启动、退出回收、原生到 Widget 状态映射和菜单栏指标/摘要 |
-| `DiagnosticsHarness` | 5 | 白名单报告、敏感扫描、最小 ZIP、权限和命名 |
-| `LocalIntegrationHarness` | 1 | 临时 HOME/Application Support、真实本地 Bridge、缓存重启、诊断和清理 |
+| `MdddOnboardingCoreHarness` | 以 Harness 实际输出为准 | 路径、版本、扫描、readiness、授权 Gate、配置、Keychain 抽象、订阅凭证、设备码登录、令牌轮换合并 |
+| `PanelViewModelHarness` | 以 Harness 实际输出为准 | 措辞、分组、条件渲染 |
+| `ArtifactStoreHarness` | 以 Harness 实际输出为准 | schema、私有权限、原子发布、previous 回退和迁移 |
+| `CollectorRunnerHarness` | 以 Harness 实际输出为准 | stdin 凭证、协议、并发、超时、取消和隔离 Bridge |
+| `RefreshSchedulerHarness` | 以 Harness 实际输出为准 | 30 分钟定时、合并、退避、授权失败、唤醒、容量和停止 |
+| `NativeLifecycleHarness` | 以 Harness 实际输出为准 | 调度启动、退出回收、原生到 Widget 状态映射和菜单栏指标/摘要 |
+| `DiagnosticsHarness` | 以 Harness 实际输出为准 | 白名单报告、敏感扫描、最小 ZIP、权限和命名 |
+| `LocalIntegrationHarness` | 以 Harness 实际输出为准 | 临时 HOME/Application Support、真实本地 Bridge、缓存重启、诊断和清理 |
 
 全部 Harness 可在只有 Apple Command Line Tools 的环境中构建和运行, 不依赖 executable target 链接.
 

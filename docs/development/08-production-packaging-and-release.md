@@ -12,7 +12,7 @@
 | Preview | 本地开发和内部测试 | 当前 ad-hoc 签名即可 | 可包含诊断开关, 不作为公开分发 |
 | Release | 面向用户的正式下载包 | Developer ID + Hardened Runtime + Apple notarization | 只包含生产资源和最小权限 |
 
-当前 `scripts/build-test-app.sh` 只生成 `dist/mddd-test.app` 和压缩包, 使用固定测试 bundle ID/version、ad-hoc 签名且未执行公证. 它继续作为 Preview 流程, 不得被称为正式版.
+当前 `scripts/build-test-app.sh` 只生成 `dist/mddd.app` 和 `dist/mddd.zip`, 使用固定测试 bundle ID/version、ad-hoc 签名且未执行公证. 它继续作为 Preview 流程, 不得被称为正式版.
 
 正式版采用 Developer ID 分发路径. Apple 对于 App Store 外分发的软件要求使用 Developer ID 签名, 开启 Hardened Runtime, 并通过 `notarytool` 提交公证; 公证后使用 `stapler` 将票据附加到 App. 参考 [Apple notarization documentation](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution).
 
@@ -48,9 +48,9 @@ CFBundleVersion = CI 递增构建号
 
 构建前后都要执行敏感字段扫描, 并检查 `dist/` 只包含本次构建生成的文件.
 
-## 3. 建议的正式版脚本
+## 3. 正式版脚本实现
 
-新增 `scripts/build-release-app.sh`, 与 Preview 脚本分开, 按以下阶段执行. 本文只定义流程, 不在本次文档更新中执行.
+`scripts/build-release-app.sh` 已落地, 与 Preview 脚本分开, 按以下阶段执行. 两者共用 `scripts/runtime-manifest.zsh`, 运行时文件清单和资源存在性校验只有一个来源.
 
 ### 阶段 1: 清理和验证
 
@@ -65,7 +65,7 @@ CFBundleVersion = CI 递增构建号
 1. `swift build --configuration release --package-path macos/MdddApp`.
 2. 使用 Release 产物组装 `Mddd.app`.
 3. 写入正式 bundle ID、版本号、构建号和最小 Info.plist.
-4. 复制运行时需要的 Collector、Widget 和资源, 排除测试 Harness、fixture、源码缓存和本机数据.
+4. 复制运行时需要的 Collector、Bridge schema 和资源, 排除测试 Harness、fixture、源码缓存和本机数据.
 5. 对嵌套二进制、Helper 和 App 进行签名前结构检查.
 
 ### 阶段 3: Hardened Runtime 与签名
@@ -175,7 +175,7 @@ release-notes-<version>.md
 
 ## 8. 当前阻塞与完成标准
 
-当前仓库尚未配置 Developer ID 证书、公证 API Key、正式 bundle ID 和 release entitlements. 在这些前置条件完成前, 只能生成 Preview 测试包, 不能把现有 `mddd-test.app` 称为正式版.
+当前仓库尚未配置 Developer ID 证书、公证 API Key、正式 bundle ID 和 release entitlements. 在这些前置条件完成前, 只能生成 Preview 测试包, 不能把现有 `mddd.app` 称为正式版.
 
 正式发布流程完成的判定标准:
 
@@ -183,3 +183,10 @@ release-notes-<version>.md
 - CI 保护 Job 能完成签名、公证、装订和 Gatekeeper 验证.
 - 正式版验收矩阵全部勾选, 产物带校验和和脱敏说明.
 - 回滚版本已准备并通过旧数据/凭证兼容验证.
+
+## 9. 2026-08-20 本地验收记录
+
+- `zsh scripts/verify-local.sh`: 通过, Python `246 passed`, Swift build 与脚本列出的全部 Harness 通过.
+- `zsh scripts/build-test-app.sh`: 通过, 生成 `dist/mddd.app` 和 `dist/mddd.zip`, ad-hoc 签名校验通过.
+- bundle 检查: 运行时仅包含共享清单声明的 Bridge/Collector 资源, 不包含仓库绝对路径、敏感信息或本机数据.
+- 正式版脚本未执行签名/公证: 当前工作区未配置 Developer ID、正式 bundle ID 和 notary API key, 按安全门禁应在对应阶段失败且不写入正式产物.

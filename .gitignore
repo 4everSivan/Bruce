@@ -45,8 +45,11 @@ dist/
 .kimi/
 .superpowers/
 
-# 工作流规划文档 (OpenSpec change 与 Superpowers 计划/设计, 本地维护)
+# OpenSpec 正式文档以 docs/openspec 为唯一真源, 需要版本控制.
+# Superpowers 计划和设计仍为本地工作流产物.
 docs/openspec/
+!docs/openspec/
+!docs/openspec/**
 docs/superpowers/
 
 # Git worktrees

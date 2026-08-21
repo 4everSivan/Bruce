@@ -47,16 +47,6 @@ _OFFICIAL_SPECS = (
 )
 
 
-@dataclass(frozen=True)
-class ServiceSpec:
-    """声明式额度服务描述 (目录条目, 不含运行时凭证)."""
-
-    service_id: str
-    display_name: str
-    app: str
-    source: str  # "app_inject" | "cc_switch" | "official"
-
-
 @dataclass
 class _Resolved:
     """resolve 产物: 可查询条目, 或凭证阶段预置 error."""
@@ -67,6 +57,16 @@ class _Resolved:
     is_current: bool
     query: Optional[Callable[[], Any]] = None
     pre_error_note: Optional[str] = None
+
+
+def _query_opencode_go(opencode_go, home, now, timeout, injected, run_ctx):
+    """Use the explicit context while accepting legacy test doubles."""
+    try:
+        return opencode_go(
+            home, now, timeout, injected=injected, context=run_ctx
+        )
+    except TypeError:
+        return opencode_go(home, now, timeout, injected=injected)
 
 
 # ---------------------------------------------------------------- entry / finalize (shared)
@@ -120,7 +120,7 @@ def _claude_query_or_missing(run_ctx):
     injected = run_ctx.credential("claude_oauth")
     service_claude = getattr(quota_official, "service_claude")
     result = service_claude(
-        run_ctx.home, run_ctx.now, run_ctx.http_timeout, injected=injected
+        run_ctx.home, run_ctx.now, run_ctx.http_timeout, injected=injected, context=run_ctx
     )
     if result is None:
         raise RuntimeError(
@@ -134,7 +134,7 @@ def _grok_query_or_missing(run_ctx):
     injected = run_ctx.credential("grok_oauth")
     service_grok = getattr(quota_official, "service_grok")
     result = service_grok(
-        run_ctx.home, run_ctx.now, run_ctx.http_timeout, injected=injected
+        run_ctx.home, run_ctx.now, run_ctx.http_timeout, injected=injected, context=run_ctx
     )
     if result is None:
         raise RuntimeError("未检测到 Grok 本机凭证 (~/.grok/auth.json)")
@@ -167,8 +167,8 @@ def _resolve_app(run_ctx: RunContext, *, kimi_coding, opencode_go) -> List[_Reso
                     display_name=display,
                     app="opencode-go",
                     is_current=False,
-                    query=lambda o=oauth, h=home, n=now, t=timeout: opencode_go(
-                        h, n, t, injected=o
+                    query=lambda o=oauth, h=home, n=now, t=timeout, c=run_ctx: _query_opencode_go(
+                        opencode_go, h, n, t, o, c
                     ),
                 )
             )
@@ -185,7 +185,7 @@ def _resolve_app(run_ctx: RunContext, *, kimi_coding, opencode_go) -> List[_Reso
                     display_name=display,
                     app="kimi",
                     is_current=False,
-                    query=lambda k=key: kimi_coding(api_key=k),
+                    query=lambda k=key, c=run_ctx: kimi_coding(api_key=k, context=c),
                 )
             )
 
@@ -202,8 +202,8 @@ def _resolve_app(run_ctx: RunContext, *, kimi_coding, opencode_go) -> List[_Reso
                     display_name=display,
                     app="deepseek",
                     is_current=False,
-                    query=lambda k=key, t=timeout: quota_services.service_deepseek(
-                        {"ANTHROPIC_AUTH_TOKEN": k}, t
+                    query=lambda k=key, t=timeout, c=run_ctx: quota_services.service_deepseek(
+                        {"ANTHROPIC_AUTH_TOKEN": k}, t, context=c
                     ),
                 )
             )
@@ -222,8 +222,8 @@ def _resolve_app(run_ctx: RunContext, *, kimi_coding, opencode_go) -> List[_Reso
                     display_name=display,
                     app="zhipu",
                     is_current=False,
-                    query=lambda k=key, b=base_url, t=timeout: quota_services.service_zhipu(
-                        {"ANTHROPIC_BASE_URL": b, "ANTHROPIC_AUTH_TOKEN": k}, t
+                    query=lambda k=key, b=base_url, t=timeout, c=run_ctx: quota_services.service_zhipu(
+                        {"ANTHROPIC_BASE_URL": b, "ANTHROPIC_AUTH_TOKEN": k}, t, context=c
                     ),
                 )
             )
@@ -244,8 +244,8 @@ def _resolve_app(run_ctx: RunContext, *, kimi_coding, opencode_go) -> List[_Reso
                     display_name=display,
                     app="volcengine",
                     is_current=False,
-                    query=lambda m=meta, n=now, t=timeout: quota_services.service_volcengine(
-                        {}, m, n, t
+                    query=lambda m=meta, n=now, t=timeout, c=run_ctx: quota_services.service_volcengine(
+                        {}, m, n, t, context=c
                     ),
                 )
             )
@@ -313,7 +313,7 @@ def _claude_query_with_inject(run_ctx, injected_oauth):
     """Claude 多账号查询: 使用注入的 oauth 凭证."""
     service_claude = getattr(quota_official, "service_claude")
     result = service_claude(
-        run_ctx.home, run_ctx.now, run_ctx.http_timeout, injected=injected_oauth
+        run_ctx.home, run_ctx.now, run_ctx.http_timeout, injected=injected_oauth, context=run_ctx
     )
     if result is None:
         raise RuntimeError("Claude 凭证无效或已过期")
@@ -324,7 +324,7 @@ def _grok_query_with_inject(run_ctx, injected_oauth):
     """Grok 多账号查询: 使用注入的 oauth 凭证."""
     service_grok = getattr(quota_official, "service_grok")
     result = service_grok(
-        run_ctx.home, run_ctx.now, run_ctx.http_timeout, injected=injected_oauth
+        run_ctx.home, run_ctx.now, run_ctx.http_timeout, injected=injected_oauth, context=run_ctx
     )
     if result is None:
         raise RuntimeError("Grok 凭证无效或已过期")
@@ -338,7 +338,7 @@ def _resolve_official_cli(run_ctx: RunContext) -> List[_Resolved]:
     for service_id, name, app, read_name, query_name in _OFFICIAL_SPECS:
         read_token = getattr(quota_official, read_name)
         try:
-            token = read_token(run_ctx.home, now_ts)
+            token = read_token(run_ctx.home, now_ts, context=run_ctx)
         except Exception as e:
             resolved.append(
                 _Resolved(
@@ -362,7 +362,7 @@ def _resolve_official_cli(run_ctx: RunContext) -> List[_Resolved]:
             n=now,
             t=timeout,
         ):
-            return getattr(quota_official, q_name)(h, n, t)
+            return getattr(quota_official, q_name)(h, n, t, context=run_ctx)
 
         resolved.append(
             _Resolved(
@@ -423,7 +423,7 @@ def _resolve_cli_cc_rows(run_ctx: RunContext, *, kimi_coding) -> List[Any]:
                     merged = dict(raw_env)
                     merged.update(provider_env.get("zhipu", {}))
                     return quota_services.service_zhipu(
-                        merged, run_ctx.http_timeout
+                        merged, run_ctx.http_timeout, context=run_ctx
                     )
 
                 resolved.append(
@@ -455,12 +455,14 @@ def _resolve_cli_cc_rows(run_ctx: RunContext, *, kimi_coding) -> List[Any]:
             meta.update(provider_meta.get(svc_id, {}))
             if provider_name == "火山Codingplan":
                 return quota_services.service_volcengine(
-                    env, meta, run_ctx.now, run_ctx.http_timeout
+                    env, meta, run_ctx.now, run_ctx.http_timeout, context=run_ctx
                 )
             if provider_name == "DeepSeek":
-                return quota_services.service_deepseek(env, run_ctx.http_timeout)
+                return quota_services.service_deepseek(
+                    env, run_ctx.http_timeout, context=run_ctx
+                )
             # Kimi For Coding
-            return kimi_coding(env)
+            return kimi_coding(env, context=run_ctx)
 
         resolved.append(
             _Resolved(

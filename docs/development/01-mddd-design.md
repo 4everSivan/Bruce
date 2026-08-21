@@ -78,7 +78,7 @@ Agent 用量具有独立的就绪度、刷新状态、缓存和失败恢复。�
 
 ### 4.1 主导航
 
-应用以 `MenuBarExtra` 承载菜单栏形态: 点击菜单栏图标弹出原生面板, 面板内纵向排列玻璃卡片 (用量 / 订阅用量 / 逐小时), 底部为固定操作栏 (刷新 / 设置 / 退出); 设置通过独立窗口打开。
+应用以原生状态项和 AppKit/SwiftUI 面板承载菜单栏形态: 点击菜单栏图标弹出原生面板, 面板内纵向排列玻璃卡片 (用量 / 订阅用量 / 逐小时), 底部为固定操作栏 (刷新 / 设置 / 退出); 设置通过独立窗口打开。
 
 ```text
 ┌───────────────────────────────────────────┐
@@ -420,7 +420,7 @@ Agent 用量在 `ready` 或 `partial` 时可运行。
 
 ```mermaid
 flowchart LR
-    MENU["MenuBarExtra<br/>菜单栏标签 + 面板"] --> APP["AppModel"]
+    MENU["原生状态项 + AppKit/SwiftUI<br/>菜单栏标签 + 面板"] --> APP["AppModel"]
     APP --> SCHED["RefreshScheduler"]
     SETTINGS["SettingsView"] --> CO["OnboardingCoordinator"]
     CO --> SCAN["LocalDependencyScanner"]
@@ -464,7 +464,7 @@ flowchart LR
 - 设备码登录与订阅凭证导入的纯逻辑。
 - 令牌轮换合并 (credentialUpdates 只写回 Keychain)。
 
-`MdddAppCore` 提供 AppModel、CollectorRunner、RefreshScheduler、ArtifactStore、PanelViewModel 映射、WidgetDisplayState、菜单栏指标/摘要/格式化、生命周期协调和诊断服务, 全部可被 Harness 直接链接测试。
+`MdddAppCore` 提供 AppModel、CollectorRunner、RefreshScheduler、ArtifactStore、PanelViewModel 映射、菜单栏指标/摘要/格式化、生命周期协调和诊断服务, 全部可被 Harness 直接链接测试。
 
 ### 9.3 Python 层职责
 
@@ -893,7 +893,7 @@ MdddOnboardingCore <- MdddAppCore <- MdddApp
 - Widget HTML、CSS、bootstrap 和 Bundle resource 继续归 `MdddApp` 管理。
 - App 的 `@main`、窗口 Scene、SwiftUI 页面和具体 AppDelegate 装配保留在 `MdddApp`。
 - 生命周期协议、协调器和可测试状态进入 `MdddAppCore`; 具体 NSApplication delegate 保留在 App target。
-- `WidgetDisplayState` 从 WKWebView 具体实现中分离为 Core 状态模型, `WidgetHost` 继续留在 App target。
+- WidgetHost 仅保留在 App target, 不进入 Core 的原生面板状态模型。
 - 跨 target 但仅供本包使用的 Swift API 优先使用 `package` 访问级别; 只有真正对包外公开的契约才使用 `public`。
 - 不改变 Bundle identifier、Application Support 路径、Keychain service、Bridge v1 或 Artifact v1。
 

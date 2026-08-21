@@ -3,6 +3,35 @@ import MdddGlassSurfaceCore
 import MdddOnboardingCore
 import SwiftUI
 
+// MARK: - Shared color helpers
+
+extension Color {
+    /// 解析 6 位 #RRGGBB 颜色; 非法输入稳定回退为黑色.
+    init(hex: String) {
+        var text = hex
+        if text.hasPrefix("#") {
+            text.removeFirst()
+        }
+        guard text.count == 6, let value = UInt64(text, radix: 16) else {
+            self = .black
+            return
+        }
+        self.init(
+            red: Double((value >> 16) & 0xFF) / 255.0,
+            green: Double((value >> 8) & 0xFF) / 255.0,
+            blue: Double(value & 0xFF) / 255.0
+        )
+    }
+
+    /// 按系统配色模式返回明暗两套颜色.
+    static func adaptive(light: Color, dark: Color) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return NSColor(isDark ? dark : light)
+        })
+    }
+}
+
 // MARK: - 主题环境
 
 /// 面板与设置页共享的已解析主题; 默认 classic + regular (安全回落).

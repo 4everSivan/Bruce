@@ -1,10 +1,11 @@
 # mddd 冗余代码与旧流程审计
 
-> 审计日期: 2026-08-04
+> 原始审计日期: 2026-08-04
+> 复核日期: 2026-08-20
 > 实施日期: 2026-08-04
 > 审计范围: Swift App/Core、Python Collector、Bridge、Widget 契约、测试与构建脚本
 > 审计目的: 找出可以安全清理的残留代码和旧流程, 同时明确必须保留的兼容边界
-> 实施状态: P1 符号清理已完成 (第 3 节 13 项中 12 项已执行, 1 项审计描述有误未执行); verify-local.sh 全绿
+> 实施状态: P1 符号清理已完成; 2026-08-20 复核确认协议候选项已不存在于当前代码, 文档中的原待办已关闭.
 
 ## 1. 审计结论
 
@@ -32,17 +33,17 @@
 
 | 验证项 | 当前基线 |
 |---|---|
-| Python 测试 | `python3 -m pytest tests/` 通过, 115 项 |
+| Python 测试 | `python3 -m pytest tests/` 通过, 以当前测试收集数量为准 |
 | Swift 构建 | `swift build --package-path macos/MdddApp` 通过 |
-| Onboarding Core | 143 项通过 |
-| PanelViewModel | 32 项通过 |
-| Artifact | 4 项通过 |
+| Onboarding Core | 以 Harness 实际输出为准 |
+| PanelViewModel | 以 Harness 实际输出为准 |
+| Artifact | 以 Harness 实际输出为准 |
 | CollectorRunner | 26 项通过 |
-| RefreshScheduler | 55 项通过 |
-| NativeLifecycle | 6 项通过 |
-| Diagnostics | 8 项通过 |
-| LocalIntegration | 3 项通过 |
-| DeepSeekUsageLedger | 17 项通过 |
+| RefreshScheduler | 以 Harness 实际输出为准 |
+| NativeLifecycle | 以 Harness 实际输出为准 |
+| Diagnostics | 以 Harness 实际输出为准 |
+| LocalIntegration | 以 Harness 实际输出为准 |
+| DeepSeekUsageLedger | 以 Harness 实际输出为准 |
 | 标准入口 | `zsh scripts/verify-local.sh` 通过 |
 
 构建中仍可能出现的既有警告需要单独记录, 不得把“清理未引用符号”和无关的 API 弃用一次性混改.
@@ -93,13 +94,13 @@
 
 | 项目 | 当前问题 | 处理要求 |
 |---|---|---|
-| `bridge/security.py` 的 `username` | 白名单仍接受, Collector 和 Swift 没有消费 | 确认无外部调用后从白名单、schema 和测试一起删除 |
-| `bridge/security.py` 的 `caFile -> ca_file` | 映射存在, 当前 Collector 没有读取方 | 先记录兼容窗口, 再同步删除映射和 schema 字段 |
-| request schema 的 `baseUrl` | schema 中存在, 运行时白名单不接受 | 统一 schema 与运行时契约, 禁止“文档允许但运行时拒绝” |
-| `build_collector_context` 的 `request_timeout` | 同时生成 `http_timeout` 和未消费的 `request_timeout` | 保留唯一字段, 为旧调用提供明确迁移错误 |
+| `bridge/security.py` 的 `username` | 2026-08-20 复核未发现代码、schema 或测试引用 | 保持删除状态, 不新增兼容字段 |
+| `bridge/security.py` 的 `caFile -> ca_file` | 2026-08-20 复核未发现映射或消费方 | 保持删除状态, 不新增兼容字段 |
+| request schema 的 `baseUrl` | 2026-08-20 复核未发现 schema 或运行时引用 | 保持删除状态, 不新增兼容字段 |
+| `build_collector_context` 的 `request_timeout` | 2026-08-20 复核未发现未消费字段 | 保持唯一的现行 HTTP timeout 契约 |
 | `AGY_CLIENT_ID`/`AGY_CLIENT_SECRET` | Collector 从环境读取, App 子进程环境白名单未注入 | 在正式支持 App 刷新前补安全注入源; 不硬编码、不伪造空凭证 |
-| App Python 路径 | `MdddApp.swift` 仍可能固定 `/usr/bin/python3`, 设置中的选择未必传到 Runner | 统一由 Runner 接收已验证的 Python 路径, 加路径和失败诊断测试 |
-| 历史测试/文档数字 | 旧文档与当前 115 项 Python、各 Harness 数量不一致 | 发布前统一以 `AGENTS.md` 和验证脚本输出为准 |
+| App Python 路径 | 当前由 Runner 接收已验证路径, 未发现旧固定路径消费 | 保持现行 Runner 契约, 不新增旁路读取 |
+| 历史测试/文档数字 | 部分历史记录仍保留当时的测试数字 | 当前说明统一以 `AGENTS.md` 和验证脚本输出为准, 历史记录不回写 |
 
 ## 6. 推荐施工顺序
 
@@ -159,9 +160,28 @@
 - `python3 -m pytest tests/`: 115 passed
 - `zsh scripts/verify-local.sh`: 全绿 (Python 115 + Onboarding 143 + PanelViewModel 32 + ArtifactStore 4 + CollectorRunner 26 + RefreshScheduler 55 + NativeLifecycle 5 + Diagnostics 8 + LocalIntegration 3 + DeepSeekUsageLedger 17)
 
-### 8.5 后续待办 (第 5 节协议不一致项, 需在 07 阶段 E 处理)
+### 8.5 历史待办复核结果
 
-- `bridge/security.py` 的 `username`/`caFile`/`baseUrl`/`request_timeout` 死分支: 需同步 schema + 白名单 + 测试
-- `AGY_CLIENT_ID`/`AGY_CLIENT_SECRET`: 需在 07 阶段 E 决定安全注入源
-- App Python 路径: 需在 07 阶段 E 统一 Runner 接收
-- 历史测试/文档数字: 需在 07 阶段 E 同步 `AGENTS.md`/README/03-toolchain
+- `bridge/security.py` 的 `username`/`caFile`/`baseUrl`/`request_timeout`: 已确认当前仓库无残留, 不再作为施工任务.
+- `AGY_CLIENT_ID`/`AGY_CLIENT_SECRET`: 仍按现行运行环境注入策略保留, 不在本次死代码清理中改动.
+- App Python 路径: 仍由 Runner 的已验证路径契约负责, 不在本次死代码清理中改动.
+- 历史测试/文档数字: README、CI 和工具链文档已改为动态描述或现行产物名称.
+
+### 8.6 2026-08-20 复核说明
+
+本次复核只清理文档中的过时结论, 不恢复已删除的类型、协议字段或旧宿主流程. `MenuBarStatusItemController` 是当前菜单栏入口, `MenuBarExtra` 仅作为历史实现名出现在源码注释中.
+
+## 8.7 2026-08-20 收敛施工记录
+
+本轮审查中的可执行项已完成, 并以 `zsh scripts/verify-local.sh` 作为统一验收入口:
+
+| 项目 | 处理结果 |
+|------|----------|
+| Collector 运行上下文 | 生产采集、额度 catalog、Codex/Antigravity、订阅定向刷新和本地扫描均显式传递 `RunContext`; `run_app` 正常路径不再读取最近一次运行指针 |
+| 兼容 seam | `_ACTIVE_RUN_CONTEXT`、`_RUNTIME_CREDENTIAL_UPDATES`、`_RUNTIME_CREDENTIAL_CHALLENGES` 以及 `runtime` 的日期/HTTP setter 仅保留给旧直接测试和 CLI 兼容调用, 生产业务不得新增引用 |
+| Swift 颜色工具 | `Color(hex:)` 和 `Color.adaptive` 集中到 `GlassTheme.swift`, 卡片和设置页重复 extension 已删除 |
+| App 打包清单 | `scripts/runtime-manifest.zsh` 成为 Preview/Release 唯一运行时文件清单, 两个打包脚本共享校验和复制逻辑 |
+| OpenSpec | `docs/openspec` 为正式唯一真源, 根 `openspec` 仅为兼容符号链接 |
+| 文档和产物 | README、CI、工具链、设计、审计和发布文档已同步当前状态与 `dist/mddd.app`/`dist/mddd.zip` 产物名 |
+
+验证结果: Python `246 passed`; Swift build、全部 Harness、Preview App 组装、bundle 签名校验均通过. 正式版签名、公证和 Gatekeeper 仍只受外部 Developer ID/API Key 配置约束, 不属于代码残留.

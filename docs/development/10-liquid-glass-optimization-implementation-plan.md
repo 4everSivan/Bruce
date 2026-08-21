@@ -276,7 +276,7 @@ zsh scripts/verify-local.sh
 
 - `swift build --package-path macos/MdddApp` 通过.
 - `zsh scripts/verify-local.sh` 通过.
-- Python 测试: 194 项通过.
+- Python 测试: 以当前 `pytest` 收集结果为准.
 - Onboarding Core Harness: 175 项通过.
 - PanelViewModel Harness: 41 项通过.
 - RefreshScheduler Harness: 62 项通过.

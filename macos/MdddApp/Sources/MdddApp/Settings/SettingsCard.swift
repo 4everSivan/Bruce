@@ -33,31 +33,3 @@ struct SettingsCard<Content: View>: View {    private let content: Content
             .shadow(color: Color.black.opacity(0.06), radius: 3, x: 0, y: 1)
     }
 }
-
-private extension Color {
-    /// 解析 "#rrggbb" 十六进制颜色; 非法输入回退为黑色.
-    init(hex: String) {
-        var text = hex
-        if text.hasPrefix("#") {
-            text.removeFirst()
-        }
-        guard text.count == 6,
-              let value = UInt64(text, radix: 16) else {
-            self = .black
-            return
-        }
-        self = Color(
-            red: Double((value >> 16) & 0xFF) / 255.0,
-            green: Double((value >> 8) & 0xFF) / 255.0,
-            blue: Double(value & 0xFF) / 255.0
-        )
-    }
-
-    /// 按系统配色模式返回明暗两套颜色 (动态 provider, 跟随外观切换).
-    static func adaptive(light: Color, dark: Color) -> Color {
-        Color(nsColor: NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            return NSColor(isDark ? dark : light)
-        })
-    }
-}

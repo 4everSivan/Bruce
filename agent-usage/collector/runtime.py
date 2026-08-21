@@ -1,12 +1,7 @@
-"""运行时时间工具, HTTP 工具与 RunContext (阶段 D / S4b).
+"""运行时时间和 HTTP 工具.
 
-持有 `_RUNTIME_TZ` (运行时时区) 和 `_RUNTIME_HTTP` (HTTP 注入覆盖),
-由 _configure_runtime 每次运行重置. 时间函数是纯逻辑; HTTP 工具
-通过 _RUNTIME_HTTP 支持测试注入.
-
-RunContext 承载单次 collect 的路径/时间/凭证/能力等状态; 过渡期
-`_configure_runtime` 仍同步模块 global, 新代码应优先读 RunContext,
-禁止新增 global 依赖.
+生产路径通过显式 `RunContext` 读取时间、时区和 HTTP 注入. 模块级 setter
+只为旧的直接测试调用保留, 新代码不得依赖它们.
 """
 
 import datetime
@@ -16,13 +11,13 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set
 
 
-# 运行时时区; 由 collect_usage._configure_runtime 每次运行重置.
+# 旧直接测试 seam; 生产路径不读取这些镜像.
 _RUNTIME_TZ = None
 
-# HTTP 注入覆盖 (get_json/post_json/urlopen); 测试用, 生产为空.
+# 旧直接测试 seam; 生产路径从 RunContext.http 读取.
 _RUNTIME_HTTP = {}
 
-# 日期桶状态; 由 collect_usage._configure_runtime 每次运行重置.
+# 旧直接测试 seam; 生产路径从 RunContext 日期字段读取.
 TODAY = None
 CUTOFF_TS = None
 DAY_LIST = []
@@ -32,9 +27,8 @@ DAY_LIST = []
 class RunContext:
     """单次 collector 运行的显式状态 (S4b).
 
-    credentials / credential_updates / credential_challenges 是可变容器;
-    _configure_runtime 把它们绑定到模块 global, 使尚未迁移的 service
-    路径继续写入同一 list, 输出语义不变.
+    credentials / credential_updates / credential_challenges 是单次运行的
+    可变容器. 生产采集显式传递本对象; 模块级 setter 只服务旧直接测试.
     """
 
     app_mode: bool
@@ -69,6 +63,37 @@ class RunContext:
         """读取运行时顶层 context 键 (协议映射键)."""
         return self.raw.get(name, default)
 
+    def day_of(self, ts_seconds):
+        return datetime.datetime.fromtimestamp(ts_seconds, self.timezone).strftime("%Y-%m-%d")
+
+    def hour_of(self, ts_seconds):
+        return datetime.datetime.fromtimestamp(ts_seconds, self.timezone).hour
+
+    def parse_iso(self, ts):
+        try:
+            value = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            if value.tzinfo is None:
+                value = value.replace(tzinfo=self.timezone)
+            return value.timestamp()
+        except Exception:
+            return None
+
+    def epoch_from_iso(self, ts):
+        value = self.parse_iso(ts or "")
+        return int(value) if value else None
+
+    def urlopen(self, request, **kwargs):
+        opener = self.http.get("urlopen") or urllib.request.urlopen
+        return opener(request, **kwargs)
+
+    def http_get_json(self, url, headers, http_timeout):
+        override = self.http.get("get_json")
+        if override:
+            return override(url, headers)
+        req = urllib.request.Request(url, headers=headers)
+        with self.urlopen(req, timeout=http_timeout) as resp:
+            return json.loads(resp.read().decode("utf-8", "replace"))
+
 
 def set_timezone(tz):
     """由 _configure_runtime 调用, 设置本轮运行时时区."""
@@ -90,15 +115,21 @@ def set_date_buckets(today, cutoff_ts, day_list):
     DAY_LIST = day_list
 
 
-def day_of(ts_seconds):
+def day_of(ts_seconds, context=None):
+    if context is not None:
+        return context.day_of(ts_seconds)
     return datetime.datetime.fromtimestamp(ts_seconds, _RUNTIME_TZ).strftime("%Y-%m-%d")
 
 
-def hour_of(ts_seconds):
+def hour_of(ts_seconds, context=None):
+    if context is not None:
+        return context.hour_of(ts_seconds)
     return datetime.datetime.fromtimestamp(ts_seconds, _RUNTIME_TZ).hour
 
 
-def parse_iso(ts):
+def parse_iso(ts, context=None):
+    if context is not None:
+        return context.parse_iso(ts)
     try:
         value = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
         if value.tzinfo is None:
@@ -108,33 +139,26 @@ def parse_iso(ts):
         return None
 
 
-def epoch_from_iso(ts):
-    t = parse_iso(ts or "")
+def epoch_from_iso(ts, context=None):
+    t = parse_iso(ts or "", context)
     return int(t) if t else None
 
 
-def urlopen(request, **kwargs):
-    """HTTP 打开; 测试可通过 _RUNTIME_HTTP['urlopen'] 注入."""
+def urlopen(request, *, context=None, **kwargs):
+    """HTTP 打开; 生产传入 RunContext, 旧测试可使用 setter 注入."""
+    if context is not None:
+        return context.urlopen(request, **kwargs)
     opener = _RUNTIME_HTTP.get("urlopen") or urllib.request.urlopen
     return opener(request, **kwargs)
 
 
-def http_get_json(url, headers, http_timeout):
-    """GET JSON; 测试可通过 _RUNTIME_HTTP['get_json'] 注入."""
+def http_get_json(url, headers, http_timeout, context=None):
+    """GET JSON; 生产传入 RunContext, 旧测试可使用 setter 注入."""
+    if context is not None:
+        return context.http_get_json(url, headers, http_timeout)
     override = _RUNTIME_HTTP.get("get_json")
     if override:
         return override(url, headers)
     req = urllib.request.Request(url, headers=headers)
     with urlopen(req, timeout=http_timeout) as resp:
         return json.loads(resp.read().decode("utf-8", "replace"))
-
-
-def http_post_json(url, payload, headers, http_timeout):
-    """POST JSON; 测试可通过 _RUNTIME_HTTP['post_json'] 注入."""
-    override = _RUNTIME_HTTP.get("post_json")
-    if override:
-        return override(url, payload, headers)
-    body = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
-    with urlopen(req, timeout=http_timeout) as resp:
-        return json.loads(resp.read().decode("utf-8"))

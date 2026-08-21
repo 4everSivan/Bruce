@@ -1190,25 +1190,3 @@ private struct SessionSourceFlowLayout: Layout {
         return (CGSize(width: totalWidth, height: height), frames)
     }
 }
-
-// MARK: - 设置页卡片色条配色
-
-private extension Color {
-    /// 解析 "#rrggbb" 十六进制颜色; 非法输入回退为黑色.
-    init(hex: String) {
-        var text = hex
-        if text.hasPrefix("#") {
-            text.removeFirst()
-        }
-        guard text.count == 6,
-              let value = UInt64(text, radix: 16) else {
-            self = .black
-            return
-        }
-        self = Color(
-            red: Double((value >> 16) & 0xFF) / 255.0,
-            green: Double((value >> 8) & 0xFF) / 255.0,
-            blue: Double(value & 0xFF) / 255.0
-        )
-    }
-}

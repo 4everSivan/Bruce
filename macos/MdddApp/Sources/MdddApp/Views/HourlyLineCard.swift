@@ -412,33 +412,6 @@ struct HourlyLineCard: View {
     ]
 }
 
-// MARK: - 私有 hex 颜色初始化
-
-private extension Color {
-    /// 从 "#rrggbb" 形式构造颜色, 仅本文件使用.
-    init(hex: String) {
-        var text = hex
-        if text.hasPrefix("#") {
-            text.removeFirst()
-        }
-        var value: UInt64 = 0
-        Scanner(string: text).scanHexInt64(&value)
-        self.init(
-            red: Double((value >> 16) & 0xff) / 255,
-            green: Double((value >> 8) & 0xff) / 255,
-            blue: Double(value & 0xff) / 255
-        )
-    }
-
-    /// 深浅色自适应: 浅色外观用 light, 深色外观用 dark.
-    static func adaptive(light: Color, dark: Color) -> Color {
-        Color(nsColor: NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            return NSColor(isDark ? dark : light)
-        })
-    }
-}
-
 // MARK: - Preview
 
 /// 内容丰富的预览 fixture: 两行可展开 (模型 + 项目), 两行无明细不可展开.

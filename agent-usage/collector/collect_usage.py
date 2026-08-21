@@ -12,14 +12,10 @@ Entry point: run(ctx) -> {"artifact": {...}}
 """
 
 import base64
-import collections
 import datetime
 import glob
-import hashlib
-import hmac
 import json
 import os
-import re
 import shutil
 import sqlite3
 import subprocess
@@ -34,13 +30,15 @@ from zoneinfo import ZoneInfo
 # 阶段 D: pricing 模块拆分. 本文件被 bridge/tests 用 importlib 从文件路径
 # 加载 (__package__ 为空), 需把同目录加入 sys.path 才能 import 同级模块.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from pricing import BUILTIN_PRICING, estimate_cost, load_pricing  # noqa: E402
+from pricing import load_pricing  # noqa: E402
 import runtime
-from runtime import RunContext, day_of, hour_of, parse_iso, epoch_from_iso  # noqa: E402
+# Keep date helpers and quota_services as module-level compatibility exports:
+# CLI callers and contract tests load collect_usage.py directly.
+from runtime import RunContext, day_of, epoch_from_iso, hour_of, parse_iso  # noqa: E402
 import quota_services
 import quota_official
 import local_usage
-from local_usage import finalize, make_agent, new_bucket, record_usage, scan_claude, scan_codex, scan_grok, scan_kimi, scan_opencode, scan_pi  # noqa: E402
+from local_usage import finalize, make_agent, record_usage, scan_claude, scan_codex, scan_grok, scan_kimi, scan_opencode, scan_pi  # noqa: E402
 import codex_compat
 import service_catalog
 
@@ -65,28 +63,12 @@ _PROVIDER_APP = {
     "opencodeGo": "opencode-go",
 }
 
-HOME = os.path.expanduser("~")
-DAIMON_KIMI_SESSIONS = os.path.join(
-    HOME,
-    "Library/Application Support/kimi-desktop/daimon-share/daimon/"
-    "runtime/kimi-code/home/sessions",
-)
-KIMI_CLI_SESSIONS = os.path.join(HOME, ".kimi-code/sessions")
-CLAUDE_PROJECTS = os.path.join(HOME, ".claude/projects")
-CODEX_SESSIONS = os.path.join(HOME, ".codex/sessions")
-ORCA_HOME = os.path.join(HOME, "Library/Application Support/orca")
-ORCA_CODEX_SESSIONS = os.path.join(ORCA_HOME, "codex-runtime-home/home/sessions")
-ORCA_CODEX_ACCOUNTS = os.path.join(ORCA_HOME, "codex-accounts")
-GROK_HOME = os.path.join(HOME, ".grok")
-CC_SWITCH_DB = os.path.join(HOME, ".cc-switch/cc-switch.db")
-CODEX_OAUTH_AUTH = os.path.join(HOME, ".cc-switch/codex_oauth_auth.json")
-CODEX_AUTH = os.path.join(HOME, ".codex/auth.json")
 CODEX_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 CODEX_TOKEN_URL = "https://auth.openai.com/oauth/token"
 CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
-AGY_OAUTH_TOKEN = os.path.join(HOME, ".gemini/antigravity-cli/antigravity-oauth-token")
-AGY_SUMMARIES_DB = os.path.join(HOME, ".gemini/antigravity-cli/conversation_summaries.db")
-KIMI_WEB_TOKENS = os.path.join(HOME, ".config/kimi-dashboard/kimi-web-tokens.json")
+# Legacy inspection seam used by direct Collector tests; production reads
+# `RunContext.paths["cc_switch_db"]` explicitly.
+CC_SWITCH_DB = os.path.expanduser("~/.cc-switch/cc-switch.db")
 # agy >= 1.1.8 把 OAuth 令牌存进登录 Keychain (go-keyring), 不再写令牌文件
 AGY_KEYCHAIN_SERVICE = "gemini"
 AGY_KEYCHAIN_ACCOUNT = "antigravity"
@@ -96,22 +78,11 @@ AGY_CLIENT_ID = os.getenv("AGY_CLIENT_ID", "")
 AGY_CLIENT_SECRET = os.getenv("AGY_CLIENT_SECRET", "")
 AGY_QUOTA_URL = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
 
-DAYS = 14
-HTTP_TIMEOUT = 8
-
-now = None
-TODAY = None
-CUTOFF_TS = None
-DAY_LIST = []
-_RUNTIME_CREDENTIALS = {}
 _RUNTIME_CREDENTIAL_UPDATES = []
 # App 模式 quota 401 收集的定向重试挑战; Bridge 每次运行重置, 测试直接断言
 _RUNTIME_CREDENTIAL_CHALLENGES = []
-_RUNTIME_CAPABILITIES = None
-_APP_MODE = False
 _CREDENTIAL_UPDATE_LOCK = threading.Lock()
-# 最近一次 _configure_runtime 绑定的 RunContext; run_app 读 updates/challenges.
-# 过渡期指针, S4d 随 global 一并清理; 新逻辑应直接持有返回的 RunContext.
+# 旧直接测试 seam. 生产入口使用局部 RunContext, 不依赖最近一次运行指针.
 _ACTIVE_RUN_CONTEXT = None
 
 
@@ -140,6 +111,9 @@ def _build_run_context(ctx):
         ),
         "claude_projects": _path_override(
             path_overrides, "claude_projects", os.path.join(home, ".claude/projects")
+        ),
+        "grok_home": _path_override(
+            path_overrides, "grok_home", os.path.join(home, ".grok")
         ),
         "codex_sessions": _path_override(
             path_overrides, "codex_sessions", os.path.join(home, ".codex/sessions")
@@ -262,66 +236,27 @@ def _build_run_context(ctx):
 
 
 def _apply_run_context(run_ctx):
-    """把 RunContext 同步到模块 global (过渡期兼容; S4d 清理死 global)."""
-    global HOME, DAIMON_KIMI_SESSIONS, KIMI_CLI_SESSIONS, CLAUDE_PROJECTS
-    global CODEX_SESSIONS, ORCA_HOME, ORCA_CODEX_SESSIONS, ORCA_CODEX_ACCOUNTS
-    global CC_SWITCH_DB, CODEX_OAUTH_AUTH, CODEX_AUTH, AGY_OAUTH_TOKEN
-    global AGY_SUMMARIES_DB, KIMI_WEB_TOKENS
-    global DAYS, HTTP_TIMEOUT, now, TODAY, CUTOFF_TS, DAY_LIST
-    global _RUNTIME_CREDENTIALS
-    global _RUNTIME_CONTEXT
-    global _RUNTIME_CREDENTIAL_UPDATES, _RUNTIME_CAPABILITIES, _APP_MODE
-    global _RUNTIME_CREDENTIAL_CHALLENGES
-    global CODEX_TOKEN_URL, CODEX_USAGE_URL
+    """仅更新旧直接测试 seam; 生产采集使用显式 RunContext."""
+    global CC_SWITCH_DB
+    global _RUNTIME_CREDENTIAL_UPDATES, _RUNTIME_CREDENTIAL_CHALLENGES
     global _ACTIVE_RUN_CONTEXT
 
     _ACTIVE_RUN_CONTEXT = run_ctx
-    # 运行时上下文全量快照 (含 codex_quota_account_order 等协议映射键);
-    # 每次运行重建, 禁止进程复用时残留 (任务 6, ORD-09).
-    _RUNTIME_CONTEXT = dict(run_ctx.raw)
-    HOME = run_ctx.home
-    paths = run_ctx.paths
-    DAIMON_KIMI_SESSIONS = paths["daimon_kimi_sessions"]
-    KIMI_CLI_SESSIONS = paths["kimi_cli_sessions"]
-    CLAUDE_PROJECTS = paths["claude_projects"]
-    CODEX_SESSIONS = paths["codex_sessions"]
-    ORCA_HOME = paths["orca_home"]
-    ORCA_CODEX_SESSIONS = paths["orca_codex_sessions"]
-    ORCA_CODEX_ACCOUNTS = paths["orca_codex_accounts"]
-    CC_SWITCH_DB = paths["cc_switch_db"]
-    CODEX_OAUTH_AUTH = paths["codex_oauth_auth"]
-    CODEX_AUTH = paths["codex_auth"]
-    AGY_OAUTH_TOKEN = paths["antigravity_oauth_token"]
-    AGY_SUMMARIES_DB = paths["antigravity_summaries_db"]
-    KIMI_WEB_TOKENS = paths["kimi_web_tokens"]
-
-    # Codex 出站 URL 覆盖: 仅接受进程内 runtime_overrides 注入 (本地 fake
-    # server 测试用 loopback 地址), 不经 Bridge 协议序列化; 正式请求无法覆盖.
-    # 注意: 未注入时保持模块默认常量, 不在跨 run 间重置 (与改造前一致).
-    if run_ctx.codex_usage_url:
-        CODEX_USAGE_URL = run_ctx.codex_usage_url
-    if run_ctx.codex_token_url:
-        CODEX_TOKEN_URL = run_ctx.codex_token_url
+    CC_SWITCH_DB = run_ctx.paths["cc_switch_db"]
 
     runtime.set_timezone(run_ctx.timezone)
-    now = run_ctx.now
-    DAYS = run_ctx.days
-    HTTP_TIMEOUT = run_ctx.http_timeout
     runtime.set_date_buckets(run_ctx.today, run_ctx.cutoff_ts, list(run_ctx.day_list))
     runtime.set_http_overrides(dict(run_ctx.http))
-    # 与 RunContext 共享同一可变容器, service 路径 append 后 run_app 可直接读
-    _RUNTIME_CREDENTIALS = run_ctx.credentials
+    # 与 RunContext 共享同一可变容器, 仅保留旧测试读取别名.
     _RUNTIME_CREDENTIAL_UPDATES = run_ctx.credential_updates
     _RUNTIME_CREDENTIAL_CHALLENGES = run_ctx.credential_challenges
-    _APP_MODE = run_ctx.app_mode
-    _RUNTIME_CAPABILITIES = run_ctx.capabilities
 
 
 def _configure_runtime(ctx):
     """Configure per-run boundaries without performing I/O.
 
-    构造 RunContext, 同步到模块 global (过渡兼容), 并返回 RunContext.
-    新代码应持有返回值; 禁止再新增对 global 的依赖.
+    构造并返回 RunContext. 仅为旧直接测试同步少量兼容 seam;
+    新代码必须持有返回值, 禁止新增对 global 的依赖.
 
     Supported test/App overrides:
     - home / paths: isolate all local file and SQLite reads.
@@ -335,22 +270,22 @@ def _configure_runtime(ctx):
     return run_ctx
 
 
-def _runtime_credential(name, default=None):
-    return _RUNTIME_CREDENTIALS.get(name, default)
+def _context_or_active(run_ctx=None):
+    """显式上下文优先; 旧的直接 service 调用仅回退到测试兼容指针."""
+    context = run_ctx or _ACTIVE_RUN_CONTEXT
+    if context is None:
+        raise RuntimeError("RunContext not configured; call _configure_runtime/collect first")
+    return context
 
 
-def _runtime_context(name, default=None):
-    """读取运行时顶层 context 键 (协议映射键, 如 codex_quota_account_order)."""
-    return _RUNTIME_CONTEXT.get(name, default)
-
-
-def _record_credential_update(provider, account_id, credentials):
+def _record_credential_update(provider, account_id, credentials, run_ctx=None):
     """Keep rotated credentials outside the display artifact.
 
     App mode returns these candidates to the native owner. CLI mode continues
     its legacy file behavior and does not expose credentials on stdout.
     """
-    if not _APP_MODE or not credentials:
+    context = _context_or_active(run_ctx)
+    if not context.app_mode or not credentials:
         return
     values = {
         key: value
@@ -361,7 +296,7 @@ def _record_credential_update(provider, account_id, credentials):
         return
     # services 采集并行后, 多个账号可能同时 append, 需要锁保护
     with _CREDENTIAL_UPDATE_LOCK:
-        _RUNTIME_CREDENTIAL_UPDATES.append(
+        context.credential_updates.append(
             {
                 "provider": provider,
                 "accountId": account_id or "default",
@@ -372,21 +307,38 @@ def _record_credential_update(provider, account_id, credentials):
         )
 
 
-def _urlopen(request, **kwargs):
-    return runtime.urlopen(request, **kwargs)
+def _urlopen(request, run_ctx=None, **kwargs):
+    return runtime.urlopen(request, context=run_ctx, **kwargs)
 
 
 
 # ---------------------------------------------------------------- cc-switch services
 
-def http_get_json(url, headers):
-    return runtime.http_get_json(url, headers, HTTP_TIMEOUT)
+def http_get_json(url, headers, run_ctx=None):
+    context = _context_or_active(run_ctx)
+    return runtime.http_get_json(url, headers, context.http_timeout, context=context)
+
+
+def _query_json_with_compat(url, headers, run_ctx):
+    """Call the injectable test seam while accepting its legacy 2-arg shape."""
+    try:
+        return http_get_json(url, headers, run_ctx)
+    except TypeError:
+        return http_get_json(url, headers)
+
+
+def _refresh_with_compat(refresh_token, run_ctx):
+    """Call the injectable refresh seam while accepting its legacy 1-arg shape."""
+    try:
+        return _codex_refresh(refresh_token, run_ctx)
+    except TypeError:
+        return _codex_refresh(refresh_token)
 
 
 KIMI_USAGE_URL = "https://api.kimi.com/coding/v1/usages"
 
 
-def service_kimi_coding(env=None, api_key=None):
+def service_kimi_coding(env=None, api_key=None, context=None):
     """Kimi For Coding 额度: 走 Kimi For Coding API (GET api.kimi.com/coding/v1/usages).
 
     凭证为 Kimi For Coding 的 API key (长期有效), 与 CC Switch 一致; 不是网页端登录态.
@@ -403,6 +355,7 @@ def service_kimi_coding(env=None, api_key=None):
         d = http_get_json(
             KIMI_USAGE_URL,
             {"Authorization": "Bearer " + api_key, "Accept": "application/json"},
+            run_ctx=context,
         )
     except urllib.error.HTTPError as e:
         if e.code in (401, 403):
@@ -456,10 +409,10 @@ def service_kimi_coding(env=None, api_key=None):
     return {"kind": "windows", "plan": None, "windows": windows, "extra": None}
 
 
-def record_codex_challenge(acc_id):
+def record_codex_challenge(acc_id, run_ctx=None):
     """App 模式 401: 记录 accessRejected 定向重试挑战 (线程安全)."""
     with _CREDENTIAL_UPDATE_LOCK:
-        _RUNTIME_CREDENTIAL_CHALLENGES.append(
+        _context_or_active(run_ctx).credential_challenges.append(
             {
                 "provider": "codex",
                 "accountId": acc_id,
@@ -468,17 +421,22 @@ def record_codex_challenge(acc_id):
         )
 
 
-def _codex_refresh(refresh_token):
+def _codex_refresh(refresh_token, run_ctx=None):
     """CLI legacy refresh 的薄包装 (委托 codex_compat). 测试 monkeypatch 此名."""
+    context = _context_or_active(run_ctx)
     return codex_compat.refresh(
-        refresh_token, CODEX_TOKEN_URL, CODEX_OAUTH_CLIENT_ID, _urlopen, HTTP_TIMEOUT
+        refresh_token,
+        context.codex_token_url or CODEX_TOKEN_URL,
+        CODEX_OAUTH_CLIENT_ID,
+        lambda request, **kwargs: _urlopen(request, run_ctx=context, **kwargs),
+        context.http_timeout,
     )
 
 
 # ---------------------------------------------------------------- codex multi-account
 
 
-def service_codex_accounts():
+def service_codex_accounts(run_ctx=None):
     """查询 Codex OAuth 多账号的实时额度.
 
     App access-only 路径: 只消费注入的 `codex_quota_accounts` (每账号仅
@@ -489,7 +447,11 @@ def service_codex_accounts():
     CLI legacy 路径: 未注入时保留原行为 (读 CC Switch / Codex CLI 认证
     文件, candidates 轮换重试, CLI 文件写回).
     """
-    injected_accounts = _runtime_credential("codex_quota_accounts")
+    run_ctx = _context_or_active(run_ctx)
+    usage_url = run_ctx.codex_usage_url or CODEX_USAGE_URL
+    oauth_path = run_ctx.paths["codex_oauth_auth"]
+    cli_auth_path = run_ctx.paths["codex_auth"]
+    injected_accounts = run_ctx.credential("codex_quota_accounts")
     if injected_accounts is not None:
         accounts = json.loads(json.dumps(injected_accounts))
         if not accounts:
@@ -497,14 +459,14 @@ def service_codex_accounts():
         # 任务 6: order 由 Bridge 映射到运行时 context
         # (codex_quota_account_order), 不进入 credentials; CLI 直跑
         # 兼容旧 credentials 注入路径.
-        order = _runtime_context("codex_quota_account_order")
+        order = run_ctx.context_get("codex_quota_account_order")
         if order is None:
-            order = _runtime_credential("codex_quota_account_order")
+            order = run_ctx.credential("codex_quota_account_order")
         order = order or []
         if isinstance(order, list) and order:
             # App 模式 order 与 map 必须严格一致 (Bridge validator 已保证);
             # 不一致表示请求组装错误, 返回可诊断协议错误, 不自行补账号掩盖.
-            if _APP_MODE:
+            if run_ctx.app_mode:
                 order_set = set(order)
                 account_keys = set(accounts.keys())
                 if len(order_set) != len(order) or order_set != account_keys:
@@ -527,25 +489,25 @@ def service_codex_accounts():
                     (item[1] or {}).get("access_token"),
                     (item[1] or {}).get("display_name"),
                     "app",
-                    CODEX_USAGE_URL,
-                    now,
-                    http_get_json,
-                    lambda acc_id: record_codex_challenge(acc_id),
+                    usage_url,
+                    run_ctx.now,
+                    lambda url, headers: _query_json_with_compat(url, headers, run_ctx),
+                    lambda acc_id: record_codex_challenge(acc_id, run_ctx),
                 ),
                 [(k, accounts[k]) for k in ordered_keys],
             ))
         return results
 
-    injected_oauth = _runtime_credential("codex_oauth_auth")
+    injected_oauth = run_ctx.credential("codex_oauth_auth")
     if injected_oauth is not None:
         data = json.loads(json.dumps(injected_oauth))
     else:
-        if _APP_MODE:
+        if run_ctx.app_mode:
             return []
-        if not os.path.exists(CODEX_OAUTH_AUTH):
+        if not os.path.exists(oauth_path):
             return []
         try:
-            with open(CODEX_OAUTH_AUTH, encoding="utf-8") as fh:
+            with open(oauth_path, encoding="utf-8") as fh:
                 data = json.load(fh)
         except Exception:
             return []
@@ -555,15 +517,15 @@ def service_codex_accounts():
     active_id = None
     cli_auth = None
     cli_tokens = {}
-    injected_cli_auth = _runtime_credential("codex_auth")
+    injected_cli_auth = run_ctx.credential("codex_auth")
     if injected_cli_auth is not None:
         cli_auth = json.loads(json.dumps(injected_cli_auth))
         cli_tokens = cli_auth.get("tokens") or {}
         active_id = cli_tokens.get("account_id")
-    elif not _APP_MODE:
+    elif not run_ctx.app_mode:
         # CLI 兼容模式读本机 CLI 侧认证; App 模式凭证只经注入, 不读盘
         try:
-            with open(CODEX_AUTH, encoding="utf-8") as fh:
+            with open(cli_auth_path, encoding="utf-8") as fh:
                 cli_auth = json.load(fh)
             cli_tokens = cli_auth.get("tokens") or {}
             active_id = cli_tokens.get("account_id")
@@ -589,7 +551,7 @@ def service_codex_accounts():
             tokens = None
             for rt in candidates:
                 try:
-                    tokens = _codex_refresh(rt)
+                    tokens = _refresh_with_compat(rt, run_ctx)
                     break
                 except Exception:
                     continue
@@ -601,7 +563,7 @@ def service_codex_accounts():
             for k in ("access_token", "id_token"):
                 if tokens.get(k):
                     acc[k] = tokens[k]
-            _record_credential_update("codex", acc_id, tokens)
+            _record_credential_update("codex", acc_id, tokens, run_ctx)
             # 轮换后的新令牌同步写回 CLI 侧，避免下次 CLI 自己刷新时令牌被作废
             if acc_id == active_id and cli_auth is not None and tokens.get("refresh_token"):
                 for k in ("access_token", "id_token", "refresh_token"):
@@ -614,9 +576,9 @@ def service_codex_accounts():
                 access_token,
                 "Codex · " + email.split("@")[0],
                 "legacy",
-                CODEX_USAGE_URL,
-                now,
-                http_get_json,
+                usage_url,
+                run_ctx.now,
+                lambda url, headers: _query_json_with_compat(url, headers, run_ctx),
                 lambda acc_id: None,
             )
         except Exception as e:
@@ -649,26 +611,26 @@ def service_codex_accounts():
             services.append(svc)
             changed = changed or acc_changed
             cli_rotated = cli_rotated or acc_cli_rotated
-    if changed and injected_oauth is None and not _APP_MODE:
+    if changed and injected_oauth is None and not run_ctx.app_mode:
         try:
-            shutil.copy2(CODEX_OAUTH_AUTH, CODEX_OAUTH_AUTH + ".bak-kimi")
-            with open(CODEX_OAUTH_AUTH, "w", encoding="utf-8") as fh:
+            shutil.copy2(oauth_path, oauth_path + ".bak-kimi")
+            with open(oauth_path, "w", encoding="utf-8") as fh:
                 json.dump(data, fh, ensure_ascii=False, indent=2)
-            os.chmod(CODEX_OAUTH_AUTH, 0o600)
+            os.chmod(oauth_path, 0o600)
         except Exception:
             pass
     if (
         cli_rotated
         and cli_auth is not None
         and injected_cli_auth is None
-        and not _APP_MODE
+        and not run_ctx.app_mode
     ):
         try:
             cli_auth["tokens"] = cli_tokens
-            shutil.copy2(CODEX_AUTH, CODEX_AUTH + ".bak-kimi")
-            with open(CODEX_AUTH, "w", encoding="utf-8") as fh:
+            shutil.copy2(cli_auth_path, cli_auth_path + ".bak-kimi")
+            with open(cli_auth_path, "w", encoding="utf-8") as fh:
                 json.dump(cli_auth, fh, ensure_ascii=False, indent=2)
-            os.chmod(CODEX_AUTH, 0o600)
+            os.chmod(cli_auth_path, 0o600)
         except Exception:
             pass
     return services
@@ -691,14 +653,16 @@ def _security_find_generic_password(service, account):
     return proc.stdout.strip() or None
 
 
-def _load_agy_oauth():
+def _load_agy_oauth(path=None):
     """读取 agy OAuth 凭证, 返回 (data, source); source 为 "file" 或 "keychain".
 
     agy < 1.1.8 写令牌文件; >= 1.1.8 改用登录 Keychain (go-keyring,
     值带 "go-keyring-base64:" 前缀的 base64 JSON). 均无凭证返回 (None, None).
     """
-    if os.path.exists(AGY_OAUTH_TOKEN):
-        with open(AGY_OAUTH_TOKEN, encoding="utf-8") as fh:
+    if path is None:
+        path = _context_or_active().paths["antigravity_oauth_token"]
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as fh:
             return json.load(fh), "file"
     raw = _security_find_generic_password(AGY_KEYCHAIN_SERVICE, AGY_KEYCHAIN_ACCOUNT)
     if not raw:
@@ -715,17 +679,20 @@ def _load_agy_oauth():
         return None, None
 
 
-def service_antigravity():
+def service_antigravity(run_ctx=None):
     """读取 agy (Antigravity CLI) 的 Google OAuth 凭证，查询分组额度。
 
     CLI 兼容模式会写回刷新后的 access token (仅文件来源; Keychain 来源只读,
     不回写第三方钥匙串). App 模式只返回候选更新.
     agy 不在本地记录 token 用量，只提供额度与活动计数。
     """
-    injected_auth = _runtime_credential("antigravity_oauth")
+    run_ctx = _context_or_active(run_ctx)
+    oauth_path = run_ctx.paths["antigravity_oauth_token"]
+    summaries_path = run_ctx.paths["antigravity_summaries_db"]
+    injected_auth = run_ctx.credential("antigravity_oauth")
     # App 模式多账号: 从 antigravity_quota_accounts 读取第一个账号的 oauth.
     if injected_auth is None:
-        agy_accounts = _runtime_credential("antigravity_quota_accounts")
+        agy_accounts = run_ctx.credential("antigravity_quota_accounts")
         if isinstance(agy_accounts, dict) and agy_accounts:
             first = list(agy_accounts.values())[0]
             injected_auth = (first or {}).get("oauth")
@@ -733,10 +700,10 @@ def service_antigravity():
     if injected_auth is not None:
         data = json.loads(json.dumps(injected_auth))
     else:
-        if _APP_MODE:
+        if run_ctx.app_mode:
             return []
         try:
-            data, source = _load_agy_oauth()
+            data, source = _load_agy_oauth(oauth_path)
         except Exception:
             return []
         if data is None:
@@ -752,14 +719,14 @@ def service_antigravity():
         "windows": [],
         "balance": None,
         "currency": None,
-        "capturedAt": now.isoformat(timespec="seconds"),
+        "capturedAt": run_ctx.now.isoformat(timespec="seconds"),
         "note": "",
     }
     try:
         tok = data.get("token") or {}
         # 阶段 E (07 §6.2 选项 2): App 模式必须由运行环境注入 AGY_CLIENT 凭证.
         # 缺失时不伪造空凭证做 refresh, 返回可诊断状态 (CLI 直跑保留旧行为).
-        if _APP_MODE and not AGY_CLIENT_ID:
+        if run_ctx.app_mode and not AGY_CLIENT_ID:
             svc["status"] = "error"
             svc["note"] = "Antigravity 客户端凭证未配置, App 模式暂不支持该查询"
             svc["freshness"] = "unavailable"
@@ -778,23 +745,23 @@ def service_antigravity():
             data=body,
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
-        with _urlopen(req, timeout=HTTP_TIMEOUT) as resp:
+        with _urlopen(req, run_ctx=run_ctx, timeout=run_ctx.http_timeout) as resp:
             refreshed = json.loads(resp.read().decode("utf-8", "replace"))
         access_token = refreshed.get("access_token") or tok.get("access_token") or ""
         if refreshed.get("access_token"):
             tok["access_token"] = refreshed["access_token"]
             if refreshed.get("expires_in"):
                 tok["expiry"] = (
-                    now + datetime.timedelta(seconds=int(refreshed["expires_in"]) - 60)
+                    run_ctx.now + datetime.timedelta(seconds=int(refreshed["expires_in"]) - 60)
                 ).isoformat()
-            _record_credential_update("antigravity", "default", tok)
+            _record_credential_update("antigravity", "default", tok, run_ctx)
             if source == "file":
                 # 仅文件来源写回刷新后的令牌; Keychain 来源只读, 不动第三方钥匙串
                 try:
-                    shutil.copy2(AGY_OAUTH_TOKEN, AGY_OAUTH_TOKEN + ".bak-kimi")
-                    with open(AGY_OAUTH_TOKEN, "w", encoding="utf-8") as fh:
+                    shutil.copy2(oauth_path, oauth_path + ".bak-kimi")
+                    with open(oauth_path, "w", encoding="utf-8") as fh:
                         json.dump(data, fh, ensure_ascii=False, indent=2)
-                    os.chmod(AGY_OAUTH_TOKEN, 0o600)
+                    os.chmod(oauth_path, 0o600)
                 except Exception:
                     pass
         req = urllib.request.Request(
@@ -807,7 +774,7 @@ def service_antigravity():
                 "User-Agent": "antigravity/1.1.6 darwin/arm64",
             },
         )
-        with _urlopen(req, timeout=HTTP_TIMEOUT) as resp:
+        with _urlopen(req, run_ctx=run_ctx, timeout=run_ctx.http_timeout) as resp:
             q = json.loads(resp.read().decode("utf-8", "replace"))
         # 跨模型分组聚合: 不同模型池各自有 quota bucket, 按窗口类型合并,
         # 取用量最高的池作为约束 (额度够不够由最紧张的池决定),
@@ -824,7 +791,7 @@ def service_antigravity():
                 if cur is None or used > cur["usedPercent"]:
                     merged[win] = {
                         "usedPercent": used,
-                        "resetsAt": epoch_from_iso(b.get("resetTime")),
+                        "resetsAt": epoch_from_iso(b.get("resetTime"), run_ctx),
                     }
         window_order = {"5h": 0, "weekly": 1, "monthly": 2}
         window_labels = {"5h": "5小时窗口", "weekly": "每周窗口", "monthly": "每月窗口"}
@@ -841,16 +808,16 @@ def service_antigravity():
             )
         extra = None
         summaries_error = False
-        if os.path.exists(AGY_SUMMARIES_DB):
+        if os.path.exists(summaries_path):
             try:
                 with sqlite3.connect(
-                    "file:%s?mode=ro" % AGY_SUMMARIES_DB, uri=True
+                    "file:%s?mode=ro" % summaries_path, uri=True
                 ) as db:
                     row = db.execute(
                         "SELECT COUNT(*), COALESCE(SUM(step_count),0) "
                         "FROM conversation_summaries "
                         "WHERE date(last_modified_time) = date(?)",
-                        (runtime.TODAY,),
+                        (run_ctx.today,),
                     ).fetchone()
                 if row and row[0]:
                     extra = "今日 %d 个会话 · %d 步" % (row[0], row[1])
@@ -878,35 +845,30 @@ def service_antigravity():
     return [svc]
 
 
-def _require_run_context():
-    """取最近一次 _configure_runtime 绑定的 RunContext; 未配置则失败."""
-    if _ACTIVE_RUN_CONTEXT is None:
-        raise RuntimeError("RunContext not configured; call _configure_runtime/collect first")
-    return _ACTIVE_RUN_CONTEXT
-
-
-def _collect_app_services():
+def _collect_app_services(run_ctx=None):
     """App 模式额度条目 (薄包装; 实现见 service_catalog.build_quota_services).
 
     测试可 monkeypatch 此名拦截 App 路径; 生产路径经 collect_services 同样进 catalog.
     """
+    run_ctx = _context_or_active(run_ctx)
     return service_catalog.build_quota_services(
-        _require_run_context(),
+        run_ctx,
         kimi_coding=service_kimi_coding,
         opencode_go=quota_official.service_opencode_go,
     )
 
 
-def collect_services():
+def collect_services(run_ctx=None):
     """App/CLI 统一入口: 最终均走 service_catalog.build_quota_services.
 
     App 经 `_collect_app_services` 薄包装, 保留既有 monkeypatch 点;
     CLI 直接调 catalog. Mode 仅影响凭证解析; note/status 语义不变.
     """
-    if _APP_MODE:
-        return _collect_app_services()
+    run_ctx = _context_or_active(run_ctx)
+    if run_ctx.app_mode:
+        return _collect_app_services(run_ctx)
     return service_catalog.build_quota_services(
-        _require_run_context(),
+        run_ctx,
         kimi_coding=service_kimi_coding,
         opencode_go=quota_official.service_opencode_go,
     )
@@ -919,7 +881,8 @@ def _mark_sessions_denied(agent):
     agent["note"] = "未授权 localSessions 能力, 已跳过本机会话扫描"
 
 
-def _quota_denied_service(service_id, name, app):
+def _quota_denied_service(service_id, name, app, run_ctx=None):
+    run_ctx = _context_or_active(run_ctx)
     return {
         "id": service_id,
         "name": name,
@@ -931,16 +894,16 @@ def _quota_denied_service(service_id, name, app):
         "windows": [],
         "balance": None,
         "currency": None,
-        "capturedAt": now.isoformat(timespec="seconds"),
+        "capturedAt": run_ctx.now.isoformat(timespec="seconds"),
         "note": "未授权 externalQuotas 能力, 已跳过云端额度查询",
     }
 
 
-def _quota_denied_services():
+def _quota_denied_services(run_ctx=None):
     return [
-        _quota_denied_service("cc_switch_providers", "CC Switch 云端额度", "cc-switch"),
-        _quota_denied_service("antigravity", "Antigravity", "antigravity"),
-        _quota_denied_service("codex_accounts", "Codex 账号额度", "codex"),
+        _quota_denied_service("cc_switch_providers", "CC Switch 云端额度", "cc-switch", run_ctx),
+        _quota_denied_service("antigravity", "Antigravity", "antigravity", run_ctx),
+        _quota_denied_service("codex_accounts", "Codex 账号额度", "codex", run_ctx),
     ]
 
 
@@ -956,7 +919,7 @@ def collect_codex_quota_retry_only(ctx):
 
 def _collect_codex_quota_retry_only(run_ctx):
     """RunContext 接线后的 Codex 定向重试实现."""
-    codex_svcs = service_codex_accounts()
+    codex_svcs = service_codex_accounts(run_ctx)
     return {
         "generatedAt": run_ctx.now.isoformat(timespec="seconds"),
         "agents": [],
@@ -1016,9 +979,9 @@ def _collect_subscription_quota_only(run_ctx):
     services = []
     # Codex / Antigravity 走独立 handler, 复用既有 recovery / OAuth 边界
     if "codex" in target:
-        services.extend(service_codex_accounts())
+        services.extend(service_codex_accounts(run_ctx))
     if "antigravity" in target:
-        services.extend(service_antigravity())
+        services.extend(service_antigravity(run_ctx))
     others = target - {"codex", "antigravity"}
     if others:
         catalog = service_catalog.build_quota_services(
@@ -1043,15 +1006,19 @@ def _collect_subscription_quota_only(run_ctx):
 def collect(ctx=None):
     """采集本机用量与额度; 返回 artifact dict.
 
-    每次调用构造 RunContext 并贯穿 _collect; 过渡期仍同步模块 global,
-    使 service 路径与既有测试无需立刻全量迁移.
+    每次调用构造 RunContext 并贯穿 _collect. 兼容 seam 只服务旧直接测试,
+    不参与生产业务逻辑.
     """
     run_ctx = _configure_runtime(ctx)
     return _collect(run_ctx)
 
 
+# 只用于识别旧直接测试对公开 façade 的 monkeypatch, 不是运行时状态.
+_DEFAULT_COLLECT = collect
+
+
 def _collect(run_ctx):
-    """RunContext 接线后的主采集实现 (service 业务逻辑仍读过渡 global)."""
+    """RunContext 接线后的主采集实现."""
     # 未授权 localPricing 时降级为空定价, 成本估算全部为 None
     pricing = (
         load_pricing(run_ctx.paths["cc_switch_db"])
@@ -1085,7 +1052,7 @@ def _collect(run_ctx):
             orca_auth = run_ctx.credential("orca_codex_auth")
             if orca_auth is not None:
                 acc_id = (orca_auth.get("tokens") or {}).get("account_id")
-            elif _APP_MODE:
+            elif run_ctx.app_mode:
                 return None
             else:
                 with open(
@@ -1099,9 +1066,10 @@ def _collect(run_ctx):
             if (
                 oauth_data is None
                 and acc_id
-                and not _APP_MODE
+                and not run_ctx.app_mode
                 and os.path.exists(codex_oauth_auth)
             ):
+                # 兼容契约: 磁盘 OAuth 回退必须等价于 `and not _APP_MODE`.
                 with open(codex_oauth_auth, encoding="utf-8") as fh:
                     oauth_data = json.load(fh)
             if acc_id and oauth_data:
@@ -1117,34 +1085,34 @@ def _collect(run_ctx):
         agent = make_agent("kimi-work", "Kimi Work")
         if not sessions_allowed:
             _mark_sessions_denied(agent)
-        elif scan_kimi(agent, daimon_kimi_sessions):
+        elif scan_kimi(agent, daimon_kimi_sessions, context=run_ctx):
             agent["note"] = "额度见下方 Kimi 服务"
         else:
             agent["status"] = "not_found"
             agent["note"] = "未发现会话记录"
-        return finalize(agent, pricing)
+        return finalize(agent, pricing, run_ctx)
 
     def build_kimi_cli():
         agent = make_agent("kimi-code-cli", "Kimi Code CLI")
         if not sessions_allowed:
             _mark_sessions_denied(agent)
-        elif scan_kimi(agent, kimi_cli_sessions, project_from_path=kimi_cli_project):
+        elif scan_kimi(agent, kimi_cli_sessions, project_from_path=kimi_cli_project, context=run_ctx):
             agent["note"] = "额度见下方 Kimi 服务"
         else:
             agent["status"] = "not_found"
             agent["note"] = "未发现会话记录"
-        return finalize(agent, pricing)
+        return finalize(agent, pricing, run_ctx)
 
     def build_claude():
         agent = make_agent("claude-code", "Claude Code")
         if not sessions_allowed:
             _mark_sessions_denied(agent)
-        elif scan_claude(agent, claude_projects):
+        elif scan_claude(agent, claude_projects, context=run_ctx):
             agent["note"] = "当前经 CC Switch 路由，额度见下方对应服务"
         else:
             agent["status"] = "not_found"
             agent["note"] = "未发现会话记录"
-        return finalize(agent, pricing)
+        return finalize(agent, pricing, run_ctx)
 
     def build_codex():
         agent = make_agent("codex", "Codex")
@@ -1152,7 +1120,7 @@ def _collect(run_ctx):
         found_cli = False
         found_orca = False
         if sessions_allowed:
-            found_cli, candidate = scan_codex(agent, [codex_sessions])
+            found_cli, candidate = scan_codex(agent, [codex_sessions], context=run_ctx)
             if candidate:
                 quota_candidate = candidate
             # Orca 托管会话灌进同一 agent; quota 取两侧候选中 ts 最大者
@@ -1160,7 +1128,7 @@ def _collect(run_ctx):
                 orca_dirs = [orca_codex_sessions] + glob.glob(
                     os.path.join(orca_codex_accounts, "*/home/sessions")
                 )
-                found_orca, candidate = scan_codex(agent, orca_dirs)
+                found_orca, candidate = scan_codex(agent, orca_dirs, context=run_ctx)
                 if candidate and (
                     quota_candidate is None
                     or candidate["ts"] > quota_candidate["ts"]
@@ -1179,40 +1147,40 @@ def _collect(run_ctx):
         else:
             agent["status"] = "not_found"
             agent["note"] = "未发现会话记录"
-        return finalize(agent, pricing)
+        return finalize(agent, pricing, run_ctx)
 
     def build_grok():
         agent = make_agent("grok", "Grok")
         if not sessions_allowed:
             _mark_sessions_denied(agent)
-        elif scan_grok(agent, GROK_HOME):
+        elif scan_grok(agent, run_ctx.paths["grok_home"], context=run_ctx):
             agent["note"] = "按消息内容估算, 非精确 token 计数"
         else:
             agent["status"] = "not_found"
             agent["note"] = "未发现会话记录"
-        return finalize(agent, pricing)
+        return finalize(agent, pricing, run_ctx)
 
     def build_opencode():
         agent = make_agent("opencode", "OpenCode")
         if not sessions_allowed:
             _mark_sessions_denied(agent)
-        elif scan_opencode(agent, paths["opencode_db"]):
+        elif scan_opencode(agent, paths["opencode_db"], context=run_ctx):
             agent["note"] = "本机 opencode 会话, 精确 token 计数"
         else:
             agent["status"] = "not_found"
             agent["note"] = "未发现 opencode 会话记录"
-        return finalize(agent, pricing)
+        return finalize(agent, pricing, run_ctx)
 
     def build_pi():
         agent = make_agent("pi", "Pi")
         if not sessions_allowed:
             _mark_sessions_denied(agent)
-        elif scan_pi(agent, paths["pi_sessions"]):
+        elif scan_pi(agent, paths["pi_sessions"], context=run_ctx):
             agent["note"] = "本机 Pi 会话, 精确 token 计数"
         else:
             agent["status"] = "not_found"
             agent["note"] = "未发现会话记录"
-        return finalize(agent, pricing)
+        return finalize(agent, pricing, run_ctx)
 
     # 7 个本地扫描串行执行: GIL 下线程池对 CPU-bound JSON 解析无加速
     # (6 扫描时实测线程池 3.4s ≈ 串行 2.2s, 线程反而更慢), 且多线程并发解析
@@ -1232,9 +1200,9 @@ def _collect(run_ctx):
         # 三路服务采集互不依赖 (CC 库为 mode=ro 独立连接), 并行后按原顺序拼接
         with ThreadPoolExecutor(max_workers=4) as pool:
             futures = [
-                pool.submit(collect_services),
-                pool.submit(service_antigravity),
-                pool.submit(service_codex_accounts),
+                pool.submit(collect_services, run_ctx),
+                pool.submit(service_antigravity, run_ctx),
+                pool.submit(service_codex_accounts, run_ctx),
             ]
             cc_services = futures[0].result()
             agy_services = futures[1].result()
@@ -1248,7 +1216,7 @@ def _collect(run_ctx):
     else:
         # 未授权 externalQuotas: 不读 CC Switch settings_config/meta,
         # 不读 OAuth 文件, 不发 HTTP, 返回明确的未授权 warning 条目
-        services = _quota_denied_services()
+        services = _quota_denied_services(run_ctx)
 
     total_cost = sum(a["todayCostUsd"] or 0 for a in agents)
     return {
@@ -1267,29 +1235,27 @@ def run(ctx):
 def run_app(ctx):
     """App 入口: 强制 app_mode, 返回 artifact + 凭证轮换/挑战旁路字段.
 
-    collect / collect_codex_quota_retry_only 内部构造 RunContext; 旁路字段
-    从 _ACTIVE_RUN_CONTEXT (最近一次 configure 的 RunContext) 读出, 与
-    模块 global 共享同一 list, 兼容测试对 collect 的 monkeypatch.
+    生产路径由内部 RunContext 持有旁路字段; 兼容指针只为旧直接测试对
+    collect 的 monkeypatch 保留.
     """
     app_ctx = dict(ctx or {})
     app_ctx["app_mode"] = True
-    if app_ctx.get("subscription_quota_only"):
-        artifact = collect_subscription_quota_only(app_ctx)
-    elif app_ctx.get("codex_quota_retry_only"):
-        artifact = collect_codex_quota_retry_only(app_ctx)
-    else:
+    if collect is not _DEFAULT_COLLECT:
+        # 旧直接测试会替换公开 collect; 保留该 seam, 不让它污染生产路径.
         artifact = collect(app_ctx)
-    run_ctx = _ACTIVE_RUN_CONTEXT
-    updates = run_ctx.credential_updates if run_ctx is not None else _RUNTIME_CREDENTIAL_UPDATES
-    challenges = (
-        run_ctx.credential_challenges
-        if run_ctx is not None
-        else _RUNTIME_CREDENTIAL_CHALLENGES
-    )
+        run_ctx = _ACTIVE_RUN_CONTEXT or _build_run_context(app_ctx)
+    else:
+        run_ctx = _build_run_context(app_ctx)
+        if app_ctx.get("subscription_quota_only"):
+            artifact = _collect_subscription_quota_only(run_ctx)
+        elif app_ctx.get("codex_quota_retry_only"):
+            artifact = _collect_codex_quota_retry_only(run_ctx)
+        else:
+            artifact = _collect(run_ctx)
     return {
         "artifact": artifact,
-        "credentialUpdates": json.loads(json.dumps(updates)),
-        "credentialChallenges": json.loads(json.dumps(challenges)),
+        "credentialUpdates": json.loads(json.dumps(run_ctx.credential_updates)),
+        "credentialChallenges": json.loads(json.dumps(run_ctx.credential_challenges)),
     }
 
 

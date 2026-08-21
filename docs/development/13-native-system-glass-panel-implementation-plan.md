@@ -416,7 +416,7 @@ NSVisualEffectView
 验证记录:
 
 - `swift build --package-path macos/MdddApp`: pass.
-- `zsh scripts/verify-local.sh`: pass (Python 194 项, Swift 全部 Harness).
+- `zsh scripts/verify-local.sh`: pass (Python 测试数量以当前 pytest 收集结果为准, Swift 全部 Harness).
 - `zsh scripts/build-test-app.sh`: pass, App Bundle 签名校验通过.
 - macOS 26 原生面板截图: pass; 440pt 宽度、卡片顺序、内容和固定底栏保持不变, 文字与图表保持清晰.
 - `NSGlassEffectView` 内容容器实验: rejected; 将完整 SwiftUI 内容作为 `contentView` 或套入全量 `GlassEffectContainer` 会导致重影, 已回退为 sibling surface 结构.

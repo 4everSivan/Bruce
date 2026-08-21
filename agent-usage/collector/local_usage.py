@@ -1,9 +1,8 @@
 """本机会话扫描、token 聚合与成本计算 (阶段 D: 从 collect_usage.py 拆出).
 
 读取本机 Agent 会话 JSONL (Kimi Work/Kimi Code CLI/Claude Code/Codex/Pi),
-聚合 token 用量, 计算成本. 日期桶边界 (TODAY/CUTOFF_TS/DAY_LIST) 和
-时区通过 runtime 模块访问, 由 _configure_runtime 每次运行重置.
-不执行网络请求.
+聚合 token 用量, 计算成本. 生产路径从显式 RunContext 读取日期桶和时区;
+无 context 的参数仅为旧直接测试保留. 不执行网络请求.
 """
 
 import collections
@@ -19,6 +18,18 @@ from pricing import estimate_cost
 
 def new_bucket():
     return {"input": 0, "output": 0, "cacheRead": 0, "cacheCreation": 0, "total": 0}
+
+
+def _day_list(context):
+    return context.day_list if context is not None else runtime.DAY_LIST
+
+
+def _today(context):
+    return context.today if context is not None else runtime.TODAY
+
+
+def _cutoff_ts(context):
+    return context.cutoff_ts if context is not None else runtime.CUTOFF_TS
 
 
 def make_agent(agent_id, name):
@@ -42,9 +53,11 @@ def make_agent(agent_id, name):
     }
 
 
-def record_usage(agent, ts_seconds, model, inp, out, cache_read, cache_creation, project=None):
-    day = runtime.day_of(ts_seconds)
-    if day < runtime.DAY_LIST[0] or day > runtime.TODAY:
+def record_usage(agent, ts_seconds, model, inp, out, cache_read, cache_creation, project=None, context=None):
+    day = runtime.day_of(ts_seconds, context)
+    day_list = _day_list(context)
+    today = _today(context)
+    if day < day_list[0] or day > today:
         return
     total = inp + out + cache_read + cache_creation
     b = agent["_by_day"][day]
@@ -53,19 +66,19 @@ def record_usage(agent, ts_seconds, model, inp, out, cache_read, cache_creation,
     b["cacheRead"] += cache_read
     b["cacheCreation"] += cache_creation
     b["total"] += total
-    if day == runtime.TODAY:
+    if day == today:
         mb = agent["_models_today"][model or "unknown"]
         mb["input"] += inp
         mb["output"] += out
         mb["cacheRead"] += cache_read
         mb["cacheCreation"] += cache_creation
         mb["total"] += total
-        agent["_hours"][runtime.hour_of(ts_seconds)] += total
+        agent["_hours"][runtime.hour_of(ts_seconds, context)] += total
         if project:
             agent["_projects_today"][project] += total
 
 
-def finalize(agent, pricing):
+def finalize(agent, pricing, context=None):
     empty = new_bucket()
 
     def day_entry(d):
@@ -77,8 +90,8 @@ def finalize(agent, pricing):
             "total": b["total"],
         }
 
-    agent["daily"] = [day_entry(d) for d in runtime.DAY_LIST]
-    agent["today"] = agent["_by_day"].get(runtime.TODAY, new_bucket())
+    agent["daily"] = [day_entry(d) for d in _day_list(context)]
+    agent["today"] = agent["_by_day"].get(_today(context), new_bucket())
 
     today_models = []
     total_cost = 0.0
@@ -114,21 +127,21 @@ def finalize(agent, pricing):
 
 # ---------------------------------------------------------------- scanners
 
-def iter_recent_jsonl(root, pattern="**/*.jsonl"):
+def iter_recent_jsonl(root, pattern="**/*.jsonl", context=None):
     if not os.path.isdir(root):
         return
     for path in glob.glob(os.path.join(root, pattern), recursive=True):
         try:
-            if os.path.getmtime(path) < runtime.CUTOFF_TS:
+            if os.path.getmtime(path) < _cutoff_ts(context):
                 continue
         except OSError:
             continue
         yield path
 
 
-def scan_kimi(agent, root, project_from_path=None):
+def scan_kimi(agent, root, project_from_path=None, context=None):
     found = False
-    for path in iter_recent_jsonl(root):
+    for path in iter_recent_jsonl(root, context=context):
         found = True
         try:
             with open(path, encoding="utf-8", errors="replace") as fh:
@@ -154,20 +167,21 @@ def scan_kimi(agent, root, project_from_path=None):
                         int(u.get("inputCacheRead") or 0),
                         int(u.get("inputCacheCreation") or 0),
                         project=project_from_path(path) if project_from_path else None,
+                        context=context,
                     )
         except OSError:
             continue
     return found
 
 
-def scan_claude(agent, claude_projects):
+def scan_claude(agent, claude_projects, context=None):
     found = False
     # 同一 message id 可能被多次写入: Claude Code (>= 2.1.228) 在流式开始时先写
     # usage=0 的骨架, 完成后追加完整记录. 若保留首次出现会把骨架当成真实用量,
     # input/output 被大量丢弃; 因此按 message id 累积各字段最大值, 统计结束后
     # 一次性记录 (ts 取最后一次写入 = 完成时刻).
     best = {}  # mid -> [inp, out, cr, cc, ts, model, proj]
-    for path in iter_recent_jsonl(claude_projects):
+    for path in iter_recent_jsonl(claude_projects, context=context):
         found = True
         proj = os.path.basename(os.path.dirname(path))
         if "-project-" in proj:
@@ -190,7 +204,7 @@ def scan_claude(agent, claude_projects):
                     msg = r.get("message") or {}
                     u = msg.get("usage") or {}
                     mid = msg.get("id")
-                    ts = runtime.parse_iso(r.get("timestamp") or "")
+                    ts = runtime.parse_iso(r.get("timestamp") or "", context)
                     if ts is None:
                         continue
                     inp = int(u.get("input_tokens") or 0)
@@ -207,6 +221,7 @@ def scan_claude(agent, claude_projects):
                             cr,
                             cc,
                             project=proj,
+                            context=context,
                         )
                         continue
                     entry = best.get(mid)
@@ -223,11 +238,11 @@ def scan_claude(agent, claude_projects):
         except OSError:
             continue
     for inp, out, cr, cc, ts, model, proj in best.values():
-        record_usage(agent, ts, model, inp, out, cr, cc, project=proj)
+        record_usage(agent, ts, model, inp, out, cr, cc, project=proj, context=context)
     return found
 
 
-def scan_codex(agent, session_dirs):
+def scan_codex(agent, session_dirs, context=None):
     """扫描 Codex rollout 会话, 返回 (found, quota_candidate).
 
     quota_candidate 为 {"ts": float, "quota": dict} 或 None; agent["quota"]
@@ -252,7 +267,7 @@ def scan_codex(agent, session_dirs):
             continue
     timed.sort(reverse=True)
     for mtime, path in timed:
-        recent = mtime >= runtime.CUTOFF_TS
+        recent = mtime >= _cutoff_ts(context)
         if recent:
             found = True
         elif latest_quota is not None:
@@ -275,7 +290,7 @@ def scan_codex(agent, session_dirs):
                     payload = r.get("payload") or {}
                     if payload.get("type") != "token_count":
                         continue
-                    ts = runtime.parse_iso(r.get("timestamp") or "")
+                    ts = runtime.parse_iso(r.get("timestamp") or "", context)
                     rl = payload.get("rate_limits")
                     if rl and ts and ts > latest_quota_ts:
                         latest_quota_ts = ts
@@ -294,6 +309,7 @@ def scan_codex(agent, session_dirs):
                         int(u.get("output_tokens") or 0),
                         int(u.get("cached_input_tokens") or 0),
                         0,
+                        context=context,
                     )
         except OSError:
             continue
@@ -315,13 +331,13 @@ def scan_codex(agent, session_dirs):
         "plan": latest_quota.get("plan_type"),
         "windows": windows,
         "capturedAt": datetime.datetime.fromtimestamp(
-            latest_quota_ts, runtime._RUNTIME_TZ
+            latest_quota_ts, context.timezone if context is not None else runtime._RUNTIME_TZ
         ).isoformat(timespec="seconds"),
     }
     return found, {"ts": latest_quota_ts, "quota": quota}
 
 
-def scan_grok(agent, root):
+def scan_grok(agent, root, context=None):
     """扫描 Grok Build 会话目录.
 
     Grok 的 chat_history.jsonl 只存储对话内容, 不含 token 计数
@@ -342,7 +358,7 @@ def scan_grok(agent, root):
         sub_root = os.path.join(root, sub)
         if not os.path.isdir(sub_root):
             continue
-        for path in iter_recent_jsonl(sub_root):
+        for path in iter_recent_jsonl(sub_root, context=context):
             found = True
             project = None
             # 路径形如 .../sessions/<encoded_project>/<session_id>/chat_history.jsonl
@@ -378,19 +394,21 @@ def scan_grok(agent, root):
                                 agent, mtime, "grok",
                                 estimated_tokens, 0, 0, 0,
                                 project=project,
+                                context=context,
                             )
                         else:
                             record_usage(
                                 agent, mtime, "grok",
                                 0, estimated_tokens, 0, 0,
                                 project=project,
+                                context=context,
                             )
             except OSError:
                 continue
     return found
 
 
-def scan_pi(agent, root):
+def scan_pi(agent, root, context=None):
     """扫描 Pi 会话 JSONL (~/.pi/agent/sessions/<编码目录>/*.jsonl).
 
     Pi 的 assistant 消息携带 usage {input, output, cacheRead, cacheWrite,
@@ -399,7 +417,7 @@ def scan_pi(agent, root):
     session 头记录 cwd 的 basename (目录名是 /→- 的有损编码, 不反解).
     """
     found = False
-    for path in iter_recent_jsonl(root):
+    for path in iter_recent_jsonl(root, context=context):
         found = True
         project = None
         try:
@@ -428,7 +446,7 @@ def scan_pi(agent, root):
                     if isinstance(ts, (int, float)):
                         ts = ts / 1000.0
                     else:
-                        ts = runtime.parse_iso(r.get("timestamp") or "")
+                        ts = runtime.parse_iso(r.get("timestamp") or "", context)
                     if ts is None:
                         continue
                     record_usage(
@@ -440,6 +458,7 @@ def scan_pi(agent, root):
                         int(u.get("cacheRead") or 0),
                         int(u.get("cacheWrite") or 0),
                         project=project,
+                        context=context,
                     )
         except OSError:
             continue
@@ -466,7 +485,7 @@ def _extract_grok_content(content):
     return ""
 
 
-def scan_opencode(agent, opencode_db):
+def scan_opencode(agent, opencode_db, context=None):
     """扫描 opencode 会话用量 (只读 SQLite, 不写不迁移).
 
     读 `~/.local/share/opencode/opencode.db` 的 message 表 (与 Codex/Orca
@@ -502,7 +521,7 @@ def scan_opencode(agent, opencode_db):
         return False
     # db 存在且含消息: 视为发现 (窗口外的消息不计入用量, 但数据源可用)
     found = True
-    cutoff_ms = int(runtime.CUTOFF_TS * 1000)
+    cutoff_ms = int(_cutoff_ts(context) * 1000)
     for (data,) in rows:
         try:
             msg = json.loads(data)
@@ -527,5 +546,6 @@ def scan_opencode(agent, opencode_db):
             int(tokens.get("output") or 0) + int(tokens.get("reasoning") or 0),
             int(cache.get("read") or 0),
             int(cache.get("write") or 0),
+            context=context,
         )
     return found

@@ -437,33 +437,6 @@ private struct LiveIndicator: View {
     private static let textGreen = Color.adaptive(light: Color(hex: "#0a7d3b"), dark: Color(hex: "#30d158"))
 }
 
-// MARK: - 十六进制颜色
-
-private extension Color {
-    /// 解析 "#rrggbb" 十六进制颜色; 非法输入回退为黑色.
-    init(hex: String) {
-        var text = hex
-        if text.hasPrefix("#") {
-            text.removeFirst()
-        }
-        var value: UInt64 = 0
-        Scanner(string: text).scanHexInt64(&value)
-        self.init(
-            red: Double((value >> 16) & 0xff) / 255,
-            green: Double((value >> 8) & 0xff) / 255,
-            blue: Double(value & 0xff) / 255
-        )
-    }
-
-    /// 深浅色自适应: 浅色外观用 light, 深色外观用 dark.
-    static func adaptive(light: Color, dark: Color) -> Color {
-        Color(nsColor: NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            return NSColor(isDark ? dark : light)
-        })
-    }
-}
-
 // MARK: - Preview
 
 // 命令行工具链 (无 Xcode) 缺少 PreviewsMacros 插件, 用 canImport 守住,

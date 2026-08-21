@@ -18,7 +18,7 @@
 
 应用还提供:
 
-- 菜单栏常驻形态 (LSUIElement)、MenuBarExtra 弹出式面板、可配置的菜单栏指标 (1 至 3 项) 和自动刷新指示。
+- 菜单栏常驻形态 (LSUIElement)、原生状态项 + AppKit/SwiftUI 弹出面板、可配置的菜单栏指标 (1 至 3 项) 和自动刷新指示。
 - 原生 SwiftUI 卡片看板: 用量卡 (hero 总量、四格细分、14 日堆叠趋势)、订阅用量卡 (多 Provider 窗口量条、Codex 账号子卡、DeepSeek 月度消费与余额) 和逐小时卡 (24 点折线、模型/项目明细展开)，按数据可用性条件渲染，面板高度随内容自适应，无滚动条。
 - 主题: 经典 / 液态玻璃两档; 液态玻璃仅 macOS 26+ 可选, 其下可调标准/通透/哑光模糊风格; 更低系统强制经典材质。
 - 设置窗口分区: 通用 (配色模式、界面风格、模糊风格、刷新间隔、菜单栏指标拖拽排序)、Agent 用量依赖卡、订阅额度 (Provider 标签式管理，拖拽排序，凭证只进 Keychain)、统一授权和诊断。
@@ -72,7 +72,7 @@ swift run --package-path macos/MdddApp MdddApp
 zsh scripts/build-test-app.sh
 ```
 
-生成 `dist/mddd-test.app` 和 `dist/mddd-test.zip`（测试用，不入库）。
+生成 `dist/mddd.app` 和 `dist/mddd.zip`（测试用，不入库）。
 
 ## 应用架构
 
@@ -87,7 +87,7 @@ macOS 菜单栏应用 (LSUIElement, 最低 14)
   │              └─ Agent Usage Collector
   └─ ArtifactStore
        └─ AppModel + PanelViewModelMapper
-            └─ MenuBarExtra 原生看板 (经典 / 液态玻璃)
+            └─ 原生状态项 + AppKit/SwiftUI 看板 (经典 / 液态玻璃)
                  (用量 / 订阅用量 / 逐小时玻璃卡)
 ```
 
@@ -119,7 +119,7 @@ Collector 仍保留独立 CLI 入口，用于开发、测试和故障排查，�
 ```text
 mddd/
 ├── macos/MdddApp/          # macOS 菜单栏应用 (最低 14)、Scheduler、缓存和原生看板
-│   ├── Sources/MdddApp/       # 应用入口、MenuBarExtra、设置窗口和 Views/ 卡片组件
+│   ├── Sources/MdddApp/       # 应用入口、原生状态项、设置窗口和 Views/ 卡片组件
 │   ├── Sources/MdddAppCore/
 │   ├── Sources/MdddOnboardingCore/
 │   ├── Assets/                # AppIcon.icns 应用图标
@@ -167,7 +167,7 @@ mddd/
 ./scripts/verify-local.sh
 ```
 
-该脚本检查 Python 语法，运行全部 Python/Bridge/schema/Widget 测试，构建 Swift 包，并依次执行 Onboarding (162 项)、面板映射 (35 项)、DeepSeek 月度账本 (17 项)、缓存、Runner、调度、生命周期、诊断、订阅凭证和隔离集成 Harness。隔离集成只在随机临时 HOME 中运行 Agent Collector，关闭外部额度能力，不访问真实账号、Keychain 或第三方数据库。
+该脚本检查 Python 语法，运行全部 Python/Bridge/schema/Widget 测试，构建 Swift 包，并依次执行全部 Swift Harness。隔离集成只在随机临时 HOME 中运行 Agent Collector，关闭外部额度能力，不访问真实账号、Keychain 或第三方数据库。
 
 Python 语法和测试:
 

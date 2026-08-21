@@ -379,13 +379,13 @@ S3a–d 各自可逆; OnboardingConfiguration 字段不变.
 
 数据类承载 home, paths, now, timezone, http, days, timeout, app_mode, credentials, capabilities, credential_updates, credential_challenges.
 
-`run` / `run_app` 构造 context 传入 collect. 过渡期可薄包装; **禁止新代码新增 global 依赖**.
+`run` / `run_app` 构造 context 传入 collect. 当前生产路径已显式传递 `RunContext`; 仅保留旧直接测试所需的兼容 seam, **禁止新代码新增 global 依赖**.
 
 ### 7.3 统一 `build_quota_services(ctx)`
 
-声明式 `ServiceSpec` (service_id, display_name, app, source, query).  
-`resolve_credentials(ctx, spec)` 是唯一 mode 分叉点.  
-finalize 统一 empty/error note 截断.
+当前实现使用内部 `_Resolved` 条目 (service_id, display_name, app, query) 和统一
+`finalize_quota_service`, 没有为单一实现引入额外的 `ServiceSpec` 抽象.
+`_resolve_app` / `_resolve_cli` 是唯一 mode 分叉点, 查询与 finalize 逻辑共用.
 
 Claude/Grok: 同一 query 实现; 无凭证策略以**现有契约测试锁定的现状**为准, 不借机改产品文案.
 
@@ -403,8 +403,8 @@ Codex/Antigravity: App 不走 `codex_compat` 磁盘写回; AGY 缺 client 可诊
 
 1. S4a 过期 fixture + 双端契约 (先锁再动)
 2. S4b RunContext 接线
-3. S4c 统一 build_quota_services, 删重复 `_collect_app_services` 实现
-4. S4d 清理 façade 大段与死 global
+3. S4c 统一 build_quota_services, 保留 `_collect_app_services` 作为兼容薄 façade
+4. S4d 清理 façade 大段与死 global, 旧直接测试 seam 单独记录在审计文档
 
 ### 7.6 验收
 

@@ -72,6 +72,8 @@ for required_command in "${required_commands[@]}"; do
     fi
 done
 
+source "$MDDD_SCRIPT_DIR/runtime-manifest.zsh"
+
 # ---------------------------------------------------------------- 阶段 1: 清理和验证
 
 echo "[1/5] 验证工作树与 tag"
@@ -90,26 +92,7 @@ fi
 echo "运行完整验证套件 (verify-local.sh)"
 zsh "$MDDD_REPO_ROOT/scripts/verify-local.sh"
 
-required_sources=(
-    "$MDDD_REPO_ROOT/bridge/__init__.py"
-    "$MDDD_REPO_ROOT/bridge/run_bridge.py"
-    "$MDDD_REPO_ROOT/bridge/security.py"
-    "$MDDD_REPO_ROOT/bridge/schemas"
-    "$MDDD_REPO_ROOT/agent-usage/collector/collect_usage.py"
-    "$MDDD_REPO_ROOT/agent-usage/collector/pricing.py"
-    "$MDDD_REPO_ROOT/agent-usage/collector/runtime.py"
-    "$MDDD_REPO_ROOT/agent-usage/collector/quota_services.py"
-    "$MDDD_REPO_ROOT/agent-usage/collector/local_usage.py"
-    "$MDDD_REPO_ROOT/agent-usage/collector/codex_compat.py"
-    "$MDDD_REPO_ROOT/agent-usage/collector/quota_official.py"
-    "$MDDD_REPO_ROOT/agent-usage/collector/service_catalog.py"
-)
-for required_source in "${required_sources[@]}"; do
-    if [[ ! -e "$required_source" ]]; then
-        echo "缺少打包资源: $required_source" >&2
-        exit 1
-    fi
-done
+mddd_validate_packaging_sources "$MDDD_REPO_ROOT"
 
 # ---------------------------------------------------------------- 阶段 2: Release 构建
 
@@ -137,20 +120,7 @@ mkdir -p "$MDDD_CONTENTS/MacOS" "$MDDD_RESOURCES" \
 ditto "$MDDD_EXECUTABLE" "$MDDD_CONTENTS/MacOS/MdddApp"
 chmod 755 "$MDDD_CONTENTS/MacOS/MdddApp"
 strip -S "$MDDD_CONTENTS/MacOS/MdddApp"
-ditto "$MDDD_REPO_ROOT/bridge/__init__.py" \
-    "$MDDD_RUNTIME/bridge/__init__.py"
-ditto "$MDDD_REPO_ROOT/bridge/run_bridge.py" \
-    "$MDDD_RUNTIME/bridge/run_bridge.py"
-ditto "$MDDD_REPO_ROOT/bridge/security.py" \
-    "$MDDD_RUNTIME/bridge/security.py"
-ditto "$MDDD_REPO_ROOT/bridge/schemas" \
-    "$MDDD_RUNTIME/bridge/schemas"
-ditto "$MDDD_REPO_ROOT/agent-usage/collector/collect_usage.py" \
-    "$MDDD_RUNTIME/agent-usage/collector/collect_usage.py"
-for module in pricing runtime quota_services local_usage codex_compat quota_official service_catalog; do
-    ditto "$MDDD_REPO_ROOT/agent-usage/collector/$module.py" \
-        "$MDDD_RUNTIME/agent-usage/collector/$module.py"
-done
+mddd_copy_runtime "$MDDD_REPO_ROOT" "$MDDD_RUNTIME"
 
 ditto "$MDDD_REPO_ROOT/macos/MdddApp/Assets/AppIcon.icns" \
     "$MDDD_RESOURCES/AppIcon.icns"

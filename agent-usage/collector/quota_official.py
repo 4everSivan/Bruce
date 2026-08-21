@@ -5,7 +5,6 @@ src-tauri/src/services/subscription.rs 与 subscription_grok.rs.
 凭证实时只读, 不刷新, 不回写第三方存储; 查询失败抛异常由调用方折叠.
 """
 
-import datetime
 import json
 import os
 import struct
@@ -49,7 +48,7 @@ def _security_find(service):
     return proc.stdout.strip() or None
 
 
-def _is_expired(expires_at, now_ts):
+def _is_expired(expires_at, now_ts, context=None):
     """兼容 Unix 秒/毫秒时间戳与 ISO 字符串; 无法解析时不视为过期."""
     if expires_at is None:
         return False
@@ -57,12 +56,12 @@ def _is_expired(expires_at, now_ts):
         ts = expires_at / 1000 if expires_at > 1_000_000_000_000 else expires_at
         return ts < now_ts
     if isinstance(expires_at, str):
-        parsed = runtime.parse_iso(expires_at)
+        parsed = runtime.parse_iso(expires_at, context)
         return parsed is not None and parsed < now_ts
     return False
 
 
-def _parse_claude_credentials(content, now_ts):
+def _parse_claude_credentials(content, now_ts, context=None):
     """解析 Claude OAuth 凭证 JSON (Keychain 与文件共用), 返回 access token.
     无 OAuth 条目或空 token 返回 None; 过期抛 RuntimeError (可诊断)."""
     try:
@@ -75,23 +74,23 @@ def _parse_claude_credentials(content, now_ts):
     token = entry.get("accessToken") or ""
     if not token:
         return None
-    if _is_expired(entry.get("expiresAt"), now_ts):
+    if _is_expired(entry.get("expiresAt"), now_ts, context):
         raise RuntimeError("Claude OAuth token 已过期, 请重新登录 Claude CLI")
     return token
 
 
-def read_claude_token(home, now_ts, keychain_reader=None, injected=None):
+def read_claude_token(home, now_ts, keychain_reader=None, injected=None, context=None):
     """App 模式注入凭证优先, 其次 Keychain, 最后 ~/.claude/.credentials.json 兜底.
 
     injected 为 Swift 注入的 claude_oauth JSON (claudeAiOauth 同构);
     解析失败 (过期/无效) 抛错, 不静默回退本机 (避免注入与本地分叉).
     """
     if injected:
-        return _parse_claude_credentials(injected, now_ts)
+        return _parse_claude_credentials(injected, now_ts, context)
     reader = keychain_reader or _security_find
     raw = reader(CLAUDE_KEYCHAIN_SERVICE)
     if raw:
-        token = _parse_claude_credentials(raw, now_ts)
+        token = _parse_claude_credentials(raw, now_ts, context)
         if token:
             return token
     cred_path = os.path.join(home, ".claude", ".credentials.json")
@@ -99,7 +98,7 @@ def read_claude_token(home, now_ts, keychain_reader=None, injected=None):
         return None
     try:
         with open(cred_path, encoding="utf-8") as fh:
-            return _parse_claude_credentials(fh.read(), now_ts)
+            return _parse_claude_credentials(fh.read(), now_ts, context)
     except OSError:
         return None
 
@@ -121,7 +120,7 @@ def _select_grok_entry(root):
     return oidc or legacy
 
 
-def read_grok_token(home, now_ts, injected=None):
+def read_grok_token(home, now_ts, injected=None, context=None):
     """App 模式注入凭证优先, 否则读取 ~/.grok/auth.json 首选条目.
 
     injected 为 Swift 注入的 grok_oauth JSON (scope 映射同构);
@@ -138,7 +137,7 @@ def read_grok_token(home, now_ts, injected=None):
         if isinstance(parsed, dict):
             entry = _select_grok_entry(parsed)
             if entry is not None:
-                if _is_expired(entry.get("expires_at"), now_ts):
+                if _is_expired(entry.get("expires_at"), now_ts, context):
                     raise RuntimeError("Grok OAuth token 已过期, 请重新 grok login")
                 return entry["key"]
     auth_path = os.path.join(home, ".grok", "auth.json")
@@ -154,17 +153,19 @@ def read_grok_token(home, now_ts, injected=None):
     entry = _select_grok_entry(parsed)
     if entry is None:
         return None
-    if _is_expired(entry.get("expires_at"), now_ts):
+    if _is_expired(entry.get("expires_at"), now_ts, context):
         raise RuntimeError("Grok OAuth token 已过期, 请重新 grok login")
     return entry["key"]
 
 
 # ---------------------------------------------------------------- Claude 查询
 
-def service_claude(home, now, http_timeout, keychain_reader=None, injected=None):
+def service_claude(home, now, http_timeout, keychain_reader=None, injected=None, context=None):
     """查询 Claude 官方订阅额度. 无凭证返回 None, 查询失败抛异常."""
     now_ts = now.timestamp()
-    token = read_claude_token(home, now_ts, keychain_reader, injected=injected)
+    token = read_claude_token(
+        home, now_ts, keychain_reader, injected=injected, context=context
+    )
     if not token:
         return None
     d = runtime.http_get_json(
@@ -175,6 +176,7 @@ def service_claude(home, now, http_timeout, keychain_reader=None, injected=None)
             "Accept": "application/json",
         },
         http_timeout,
+        context=context,
     )
     if not isinstance(d, dict):
         raise RuntimeError("Claude 用量响应不是 JSON 对象")
@@ -191,7 +193,7 @@ def service_claude(home, now, http_timeout, keychain_reader=None, injected=None)
                 "label": label,
                 "usedPercent": max(0.0, min(100.0, float(util))),
                 "windowMinutes": minutes,
-                "resetsAt": runtime.epoch_from_iso(value.get("resets_at")),
+                "resetsAt": runtime.epoch_from_iso(value.get("resets_at"), context),
             }
         )
     extra = d.get("extra_usage")
@@ -525,7 +527,7 @@ def _opcode_parse_seroval(body):
         )
 
 
-def _opcode_lite_subscription_get(cookie, workspace_id, http_timeout, instance):
+def _opcode_lite_subscription_get(cookie, workspace_id, http_timeout, instance, context=None):
     """调 lite.subscription.get server function, 返回 usage dict.
 
     GET /_server?id=<hash>&args=["<workspace_id>"] (seroval 单字符串参数),
@@ -550,7 +552,7 @@ def _opcode_lite_subscription_get(cookie, workspace_id, http_timeout, instance):
         method="GET",
     )
     try:
-        with runtime.urlopen(req, timeout=http_timeout) as resp:
+        with runtime.urlopen(req, context=context, timeout=http_timeout) as resp:
             body = resp.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
         if e.code in (401, 403):
@@ -580,7 +582,7 @@ def read_opencode_go_credential(home, now_ts, injected=None):
     return {"auth": cookie, "workspaceId": workspace_id}
 
 
-def service_opencode_go(home, now, http_timeout, injected=None, on_refreshed=None):
+def service_opencode_go(home, now, http_timeout, injected=None, on_refreshed=None, context=None):
     """查询 OpenCode GO 订阅滚动用量 (opencode.ai 网页控制台, workspace 维度).
 
     返回哪些窗口就输出哪些 (统一语义: 每 5 小时 / 每周 / 每月);
@@ -595,7 +597,7 @@ def service_opencode_go(home, now, http_timeout, injected=None, on_refreshed=Non
     for _ in range(2):
         try:
             d = _opcode_lite_subscription_get(
-                cred["auth"], cred["workspaceId"], http_timeout, instance=None
+                cred["auth"], cred["workspaceId"], http_timeout, instance=None, context=context
             )
             break
         except RuntimeError as e:
@@ -629,10 +631,10 @@ def service_opencode_go(home, now, http_timeout, injected=None, on_refreshed=Non
     return {"kind": "windows", "plan": None, "windows": windows}
 
 
-def service_grok(home, now, http_timeout, injected=None):
+def service_grok(home, now, http_timeout, injected=None, context=None):
     """查询 Grok 官方订阅额度. 无凭证返回 None, 查询失败抛异常."""
     now_ts = now.timestamp()
-    token = read_grok_token(home, now_ts, injected=injected)
+    token = read_grok_token(home, now_ts, injected=injected, context=context)
     if not token:
         return None
     # 空 gRPC-web 帧: 1 字节 flags + 4 字节大端长度 0
@@ -652,7 +654,7 @@ def service_grok(home, now, http_timeout, injected=None):
         method="POST",
     )
     try:
-        with runtime.urlopen(req, timeout=http_timeout) as resp:
+        with runtime.urlopen(req, context=context, timeout=http_timeout) as resp:
             body = resp.read()
             header_status = resp.headers.get("grpc-status") if resp.headers else None
             header_message = resp.headers.get("grpc-message") if resp.headers else ""

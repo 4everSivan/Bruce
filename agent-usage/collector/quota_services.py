@@ -14,7 +14,7 @@ import urllib.parse
 import runtime
 
 
-def service_deepseek(env, http_timeout):
+def service_deepseek(env, http_timeout, context=None):
     """查询 DeepSeek 余额. 无 key 返回 None."""
     key = env.get("ANTHROPIC_AUTH_TOKEN") or ""
     if not key:
@@ -23,6 +23,7 @@ def service_deepseek(env, http_timeout):
         "https://api.deepseek.com/user/balance",
         {"Authorization": "Bearer " + key, "Accept": "application/json"},
         http_timeout,
+        context=context,
     )
     infos = d.get("balance_infos") or []
     if not infos:
@@ -82,7 +83,7 @@ def _volc_sign(method, host, query, payload, ak, sk, now, region="cn-beijing", s
     return headers
 
 
-def _volc_parse(result):
+def _volc_parse(result, context=None):
     windows = []
     label_map = {"session": "5小时窗口", "weekly": "每周窗口", "monthly": "每月窗口"}
     quota_usage = result.get("QuotaUsage") if isinstance(result, dict) else None
@@ -140,7 +141,7 @@ def _volc_parse(result):
                 "label": label,
                 "usedPercent": max(0.0, min(100.0, pct)),
                 "windowMinutes": None,
-                "resetsAt": runtime.epoch_from_iso(reset) if isinstance(reset, str) else reset,
+                "resetsAt": runtime.epoch_from_iso(reset, context) if isinstance(reset, str) else reset,
             }
         )
 
@@ -165,7 +166,7 @@ def _volc_parse(result):
     return {"kind": "windows", "plan": plan, "windows": windows}
 
 
-def service_volcengine(env, meta, now, http_timeout):
+def service_volcengine(env, meta, now, http_timeout, context=None):
     """查询火山引擎 Coding Plan 额度. 无凭证返回 None, 查询失败抛异常."""
     us = meta.get("usage_script") or {}
     ak = us.get("accessKeyId") or meta.get("accessKeyId") or ""
@@ -181,9 +182,9 @@ def service_volcengine(env, meta, now, http_timeout):
                 headers = _volc_sign("GET", host, query, "", ak, sk, now)
                 headers.pop("host", None)
                 url = "https://%s/?%s" % (host, urllib.parse.urlencode(query))
-                d = runtime.http_get_json(url, headers, http_timeout)
+                d = runtime.http_get_json(url, headers, http_timeout, context=context)
                 result = d.get("Result") or d.get("result") or d
-                return _volc_parse(result)
+                return _volc_parse(result, context)
             except Exception as e:  # try next candidate/action
                 last_err = e
                 continue
@@ -282,7 +283,7 @@ def _parse_zhipu_windows(limits):
     return windows
 
 
-def service_zhipu(env, http_timeout):
+def service_zhipu(env, http_timeout, context=None):
     """查询智谱 Coding Plan 个人版额度. 无 key/base_url 返回 None, 查询失败抛异常.
 
     凭证取 env.ANTHROPIC_BASE_URL + env.ANTHROPIC_AUTH_TOKEN (与 CC Switch 里
@@ -300,7 +301,7 @@ def service_zhipu(env, http_timeout):
         "Accept-Language": "en-US,en",
     }
     try:
-        d = runtime.http_get_json(url, headers, http_timeout)
+        d = runtime.http_get_json(url, headers, http_timeout, context=context)
     except urllib.error.HTTPError as e:
         if e.code in (401, 403):
             raise RuntimeError("智谱凭证被拒绝 (HTTP %d), 请检查 API key" % e.code)
