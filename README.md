@@ -14,7 +14,7 @@
 
 | 模块 | 能力 | 数据边界 |
 |---|---|---|
-| Agent 用量 | 汇总 Kimi Work、Kimi Code、Claude Code、Codex、Grok、Orca 和 Pi 会话的 token、成本、趋势及可用额度状态 | 以本机会话和用户授权的 Provider 为来源 |
+| Agent 用量 | 汇总 Kimi Work、Kimi Code、Claude Code、Codex、Grok、Orca、Pi 和 ZCode 会话的 token、成本、趋势及可用额度状态 | 以本机会话和用户授权的 Provider 为来源 |
 
 应用还提供:
 

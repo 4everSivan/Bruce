@@ -43,6 +43,7 @@ dist/
 .claude/
 .codex/
 .kimi/
+.mimosa/
 .superpowers/
 
 # OpenSpec 正式文档以 docs/openspec 为唯一真源, 需要版本控制.

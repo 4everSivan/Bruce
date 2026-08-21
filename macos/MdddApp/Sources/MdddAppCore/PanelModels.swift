@@ -19,7 +19,7 @@ package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
     case purple
     /// Claude Code — 暖珊瑚 (原 orange 易与散列碰撞重合)
     case coral
-    /// 未知 agent 散列兜底
+    /// ZCode — 青绿
     case mint
     case rose
 
@@ -49,8 +49,8 @@ package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
         return shades[min(max(index, 0), shades.count - 1)]
     }
 
-    /// 已知 agent 固定配色 (冷→暖: work → code → grok → codex → claude);
-    /// 未知 agent 用 FNV-1a 散列稳定落到调色板.
+    /// 已知 agent 固定配色 (冷→暖: work → code → grok → codex → claude;
+    /// pi/zcode 固定 rose/mint); 未知 agent 用 FNV-1a 散列稳定落到调色板.
     package static func resolve(agentID: String) -> PanelAgentColor {
         switch agentID {
         case "kimi-work":
@@ -65,6 +65,8 @@ package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
             return .coral
         case "pi":
             return .rose
+        case "zcode":
+            return .mint
         default:
             var hash: UInt64 = 0xcbf29ce484222325
             for byte in agentID.utf8 {

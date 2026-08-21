@@ -1,7 +1,8 @@
 """本机会话扫描、token 聚合与成本计算 (阶段 D: 从 collect_usage.py 拆出).
 
-读取本机 Agent 会话 JSONL (Kimi Work/Kimi Code CLI/Claude Code/Codex/Pi),
-聚合 token 用量, 计算成本. 生产路径从显式 RunContext 读取日期桶和时区;
+读取本机 Agent 会话 (JSONL 与只读 SQLite: Kimi Work/Kimi Code CLI/
+Claude Code/Codex/Pi/OpenCode/ZCode), 聚合 token 用量, 计算成本.
+生产路径从显式 RunContext 读取日期桶和时区;
 无 context 的参数仅为旧直接测试保留. 不执行网络请求.
 """
 
@@ -546,6 +547,75 @@ def scan_opencode(agent, opencode_db, context=None):
             int(tokens.get("output") or 0) + int(tokens.get("reasoning") or 0),
             int(cache.get("read") or 0),
             int(cache.get("write") or 0),
+            context=context,
+        )
+    return found
+
+
+def scan_zcode(agent, zcode_db, context=None):
+    """扫描 ZCode CLI 会话用量 (只读 SQLite, 不写不迁移).
+
+    读 `~/.zcode/cli/db/db.sqlite` 的 model_usage 表 (每次模型请求一行,
+    started_at 为毫秒 epoch; 与 opencode 扫描同构, mode=ro). 字段语义
+    (经 raw_usage_json 现场核实): input_tokens 已包含 cache 读/写分量,
+    totalTokens = inputTokens + outputTokens, 因此计入时从 input 扣减
+    cache 部分, 避免与 cacheRead/cacheCreation 重复; reasoning 并入
+    output (与 opencode/Pi 一致). 项目名取 session.directory 的 basename,
+    subagent 会话 (task_type=subagent_child) 追加「·子代理」标记.
+    schema 不兼容必须产生可诊断状态, 不得静默伪装成空结果.
+    返回是否发现任何用量行; db 缺失返回 False (not_found).
+    """
+    if not os.path.exists(zcode_db):
+        return False
+    try:
+        with sqlite3.connect("file:%s?mode=ro" % zcode_db, uri=True) as db:
+            # found 语义: db 中存在任何用量行 (即使都在窗口外, 也说明数据源可用)
+            any_usage = db.execute("SELECT 1 FROM model_usage LIMIT 1").fetchone()
+            cutoff_ms = int(_cutoff_ts(context) * 1000)
+            rows = db.execute(
+                "SELECT m.started_at, m.model_id, m.input_tokens, m.output_tokens,"
+                " m.reasoning_tokens, m.cache_creation_input_tokens,"
+                " m.cache_read_input_tokens, s.directory, s.task_type"
+                " FROM model_usage m LEFT JOIN session s ON s.id = m.session_id"
+                " WHERE m.started_at >= ? ORDER BY m.started_at",
+                (cutoff_ms,),
+            ).fetchall()
+    except sqlite3.Error as e:
+        # schema 不兼容: 可诊断状态, 不伪装空结果
+        agent["status"] = "error"
+        msg = str(e)
+        if "no such table" in msg or "no such column" in msg:
+            agent["note"] = "本机 zcode 数据库 schema 不兼容"
+        else:
+            agent["note"] = "本机 zcode 数据库暂不可读: " + msg[:60]
+        return False
+    if not any_usage:
+        return False
+    found = True
+    for (started_at, model_id, inp, out, reason, cc, cr, directory, task_type) in rows:
+        inp = int(inp or 0)
+        out = int(out or 0)
+        reason = int(reason or 0)
+        cache_read = int(cr or 0)
+        cache_creation = int(cc or 0)
+        if not (inp or out or reason or cache_read or cache_creation):
+            continue
+        project = None
+        if isinstance(directory, str) and directory.strip():
+            project = os.path.basename(directory.rstrip("/")) or None
+            if task_type == "subagent_child" and project:
+                project += " ·子代理"
+        record_usage(
+            agent,
+            int(started_at) / 1000.0,
+            (model_id or "unknown").lower(),
+            # input_tokens 已含 cache 分量: 扣减后与 cacheRead/cacheCreation
+            # 分开计桶, 避免总量重复累计
+            max(0, inp - cache_read - cache_creation),
+            out + reason,
+            cache_read,
+            cache_creation,
+            project=project,
             context=context,
         )
     return found

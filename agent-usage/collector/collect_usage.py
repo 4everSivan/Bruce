@@ -2,7 +2,7 @@
 """Aggregate local AI-agent token usage, cost estimates, and provider quotas.
 
 Agents: Kimi Work (daimon), Kimi Code CLI, Claude Code, Codex (CLI and
-Orca-hosted sessions merged into one agent), Pi; detection only for
+Orca-hosted sessions merged into one agent), Pi, ZCode; detection only for
 Gemini/Antigravity, GitHub Copilot, Cursor.
 Services (quota): read CC Switch's provider database and query the providers
 it knows how to meter (Kimi For Coding, DeepSeek balance, Volcengine Coding
@@ -38,7 +38,7 @@ from runtime import RunContext, day_of, epoch_from_iso, hour_of, parse_iso  # no
 import quota_services
 import quota_official
 import local_usage
-from local_usage import finalize, make_agent, record_usage, scan_claude, scan_codex, scan_grok, scan_kimi, scan_opencode, scan_pi  # noqa: E402
+from local_usage import finalize, make_agent, record_usage, scan_claude, scan_codex, scan_grok, scan_kimi, scan_opencode, scan_pi, scan_zcode  # noqa: E402
 import codex_compat
 import service_catalog
 
@@ -172,6 +172,13 @@ def _build_run_context(ctx):
         path_overrides,
         "pi_sessions",
         os.path.join(home, ".pi/agent/sessions"),
+    )
+    # ZCode CLI 会话数据库 (~/.zcode/cli/db/db.sqlite), model_usage 表为
+    # 每次模型请求的计量行. mode=ro 只读, 不写不迁移.
+    paths["zcode_db"] = _path_override(
+        path_overrides,
+        "zcode_db",
+        os.path.join(home, ".zcode/cli/db/db.sqlite"),
     )
 
     timezone_value = ctx.get("timezone")
@@ -1182,7 +1189,18 @@ def _collect(run_ctx):
             agent["note"] = "未发现会话记录"
         return finalize(agent, pricing, run_ctx)
 
-    # 7 个本地扫描串行执行: GIL 下线程池对 CPU-bound JSON 解析无加速
+    def build_zcode():
+        agent = make_agent("zcode", "ZCode")
+        if not sessions_allowed:
+            _mark_sessions_denied(agent)
+        elif scan_zcode(agent, paths["zcode_db"], context=run_ctx):
+            agent["note"] = "本机 ZCode 会话, 精确 token 计数"
+        else:
+            agent["status"] = "not_found"
+            agent["note"] = "未发现 ZCode 会话记录"
+        return finalize(agent, pricing, run_ctx)
+
+    # 8 个本地扫描串行执行: GIL 下线程池对 CPU-bound JSON 解析无加速
     # (6 扫描时实测线程池 3.4s ≈ 串行 2.2s, 线程反而更慢), 且多线程并发解析
     # 使 malloc arena 峰值叠加 (6 扫描时实测 400MB vs 串行 190MB, 降 50%).
     builders = [
@@ -1193,6 +1211,7 @@ def _collect(run_ctx):
         build_grok,
         build_opencode,
         build_pi,
+        build_zcode,
     ]
     agents = [build() for build in builders]
 

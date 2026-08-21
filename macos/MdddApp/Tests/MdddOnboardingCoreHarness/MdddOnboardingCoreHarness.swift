@@ -81,6 +81,7 @@ struct MdddOnboardingCoreHarness {
         try await scannerFindsPythonSessionsAndSQLite()
         try await scannerReportsMissingPython()
         try standardPathsIncludePiSessions()
+        try standardPathsIncludeZcodeDatabase()
         try firstLaunchDecisionFlow()
         try configStoreLoadsV1WithSubscriptionDefaults()
         try configStoreRejectsNewerSchemaV3()
@@ -177,6 +178,6 @@ struct MdddOnboardingCoreHarness {
         try opencodeGoCredentialAccountsAndRegistry()
         try opencodeGoEvaluatorValidAndMalformed()
         try opencodeGoAccountIDAndLegacyKeys()
-        print("MdddOnboardingCore tests passed: 176")
+        print("MdddOnboardingCore tests passed: 177")
     }
 }

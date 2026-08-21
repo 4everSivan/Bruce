@@ -193,6 +193,7 @@ struct PanelViewModelHarness {
         try chartBuilds14DaysWithStableSegments()
         try legendOnlyIncludesActiveAgents()
         try hourlyRowsFilterAndShape()
+        try hourlyRowsHideAgentsWithoutUsage()
         try hourlyRowsSortByTodayTotalDesc()
         try hourlyDetailAggregatesTopAndOther()
         try resetTextVariants()
@@ -218,7 +219,7 @@ struct PanelViewModelHarness {
         try presentationPolicyTableDrivenRules()
         try singleAccountSectionNameOmitsAccountSuffix()
         try appVersionReadsBundleAndFallsBack()
-        print("PanelViewModel tests passed: 41")
+        print("PanelViewModel tests passed: 43")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -756,6 +757,28 @@ struct PanelViewModelHarness {
         )
     }
 
+    // 逐小时卡: 柱状图下方只显示今日有量的 agent; ok 但今日无量 (含窗口内有历史量) 也不显示.
+    private static func hourlyRowsHideAgentsWithoutUsage() throws {
+        let idle = makeAgent(id: "grok", name: "Grok") // ok 但今日与 14 日均无量
+        let earlier = makeAgent(
+            id: "codex",
+            name: "Codex",
+            dailyTotals: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 800, 0] // 窗口内有量, 今日为 0
+        )
+        let active = makeAgent(
+            id: "zcode",
+            name: "ZCode",
+            today: makeBucket(input: 900, output: 100)
+        )
+        let artifact = makeAgentUsageArtifact(agents: [idle, earlier, active], services: [])
+        let rows = makeMapper().make(
+            agentUsage: artifact,
+            moduleStatuses: readyStatuses
+        ).hourly?.rows ?? []
+        let ids = rows.map(\.agentID)
+        try expect(ids == ["zcode"], "柱状图下方只应显示今日有量的 agent: \(ids)")
+    }
+
     // 逐小时卡: 行按今日用量从高到低排序.
     private static func hourlyRowsSortByTodayTotalDesc() throws {
         let low = makeAgent(
@@ -900,7 +923,8 @@ struct PanelViewModelHarness {
             "Claude 与 Grok 不得共用同一色"
         )
         try expect(PanelAgentColor.resolve(agentID: "pi") == .rose, "Pi 应为显式 rose 色")
-        for id in ["kimi-work", "kimi-code-cli", "grok", "codex", "claude-code"] {
+        try expect(PanelAgentColor.resolve(agentID: "zcode") == .mint, "ZCode 应为显式 mint 色")
+        for id in ["kimi-work", "kimi-code-cli", "grok", "codex", "claude-code", "zcode"] {
             try expect(
                 PanelAgentColor.resolve(agentID: id) != .rose,
                 "Pi 与 \(id) 不得共用同一色"

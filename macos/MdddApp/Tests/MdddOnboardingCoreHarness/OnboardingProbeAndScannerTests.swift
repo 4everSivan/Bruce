@@ -385,4 +385,15 @@ extension MdddOnboardingCoreHarness {
         )
     }
 
+    static func standardPathsIncludeZcodeDatabase() throws {
+        let home = URL(fileURLWithPath: "/Users/example")
+        let paths = LocalDependencyScanPaths.standard(home: home)
+        let zcode = paths.sessionDirectories.first { $0.displayName == "ZCode" }
+        try coreExpect(zcode != nil, "standard paths 应包含 ZCode 会话库")
+        try coreExpect(
+            zcode?.url.path == "/Users/example/.zcode/cli/db/db.sqlite",
+            "ZCode 会话库 URL 错误: \(String(describing: zcode?.url))"
+        )
+    }
+
 }

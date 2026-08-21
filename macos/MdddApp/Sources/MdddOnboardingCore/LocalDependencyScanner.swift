@@ -78,6 +78,11 @@ public struct LocalDependencyScanPaths: Sendable {
                     displayName: "Pi",
                     url: home.appendingPathComponent(".pi/agent/sessions")
                 ),
+                // ZCode CLI 会话库 (db 文件, agent 用量只读来源, 与 opencode 同构)
+                SessionDirectory(
+                    displayName: "ZCode",
+                    url: home.appendingPathComponent(".zcode/cli/db/db.sqlite")
+                ),
             ],
             sqliteDatabases: [
                 SQLiteDatabase(

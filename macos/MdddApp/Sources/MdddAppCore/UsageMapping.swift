@@ -215,9 +215,10 @@ extension PanelViewModelMapper {
         _ artifact: AgentUsageArtifact,
         diagnostics: inout [PanelDiagnostic]
     ) -> HourlyLineViewModel {
-        // 只展示 ok 或今日有量的 agent; not_found 等由用量卡诊断覆盖.
+        // 柱状图下方只显示今日有量的 agent; 其余 (含 ok 但今日闲置,
+        // 或仅窗口内有历史量) 不显示, not_found 等状态由用量卡诊断覆盖.
         let rows = artifact.agents
-            .filter { $0.status == "ok" || $0.today.total > 0 }
+            .filter { $0.today.total > 0 }
             .map { agent -> HourlyAgentRow in
                 let models = Self.topDistribution(
                     entries: (agent.models ?? [:]).sorted { lhs, rhs in

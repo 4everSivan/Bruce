@@ -219,7 +219,7 @@ class CodexMergedAgentTests(unittest.TestCase):
     def _codex_agent(self, artifact):
         ids = [agent["id"] for agent in artifact["agents"]]
         self.assertEqual(
-            ids, ["kimi-work", "kimi-code-cli", "claude-code", "codex", "grok", "opencode", "pi"]
+            ids, ["kimi-work", "kimi-code-cli", "claude-code", "codex", "grok", "opencode", "pi", "zcode"]
         )
         return artifact["agents"][3]
 
