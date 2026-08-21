@@ -6,14 +6,14 @@
 
 **Architecture:** Horizontal phases S1→S5. Scheduler becomes a timer/capacity façade; business orchestration moves to `RefreshExecutionPipeline` and `CredentialUpdateCoordinator`. Provider extension uses a registry. Python App/CLI share one service builder behind `RunContext`. Panel mapping and harnesses split by responsibility.
 
-**Tech Stack:** Swift 6.2 / macOS 26 (`macos/MdddApp`), Python 3 collector + bridge, executable Harnesses (not XCTest), `zsh scripts/verify-local.sh`.
+**Tech Stack:** Swift 6.2 / macOS 26 (`macos/BruceApp`), Python 3 collector + bridge, executable Harnesses (not XCTest), `zsh scripts/verify-local.sh`.
 
 **Spec:** `docs/development/09-architecture-remediation-design.md`  
 **Local skill mirror (gitignored):** `docs/superpowers/specs/2026-08-05-architecture-remediation-design.md`
 
 ## Global Constraints
 
-- **UI layout freeze:** Do not change SwiftUI hierarchy, padding, spacing, frame, font hierarchy, card sections, settings control order, or liquid glass look. `Sources/MdddApp/Views/**` default zero intentional diff.
+- **UI layout freeze:** Do not change SwiftUI hierarchy, padding, spacing, frame, font hierarchy, card sections, settings control order, or liquid glass look. `Sources/BruceApp/Views/**` default zero intentional diff.
 - **Behavior freeze:** artifact fields, Bridge schema, Codex one forced-refresh + one retry-only per cycle, CLI legacy auth kept.
 - **Only allowed user-visible semantic change:** Keychain credential write failure → diagnostic (`CREDENTIAL_PERSIST_FAILED`) and possible module status `partial` via existing channels — no new Alert, no new Settings section.
 - **No secrets** in diagnostics, logs, or artifact.
@@ -26,19 +26,19 @@
 
 | Path | Role |
 |------|------|
-| `macos/MdddApp/Sources/MdddAppCore/RefreshTypes.swift` | `RefreshTriggerReason`, `RefreshIntent`, merge helpers |
-| `macos/MdddApp/Sources/MdddAppCore/CredentialUpdateCoordinator.swift` | Apply rotation updates; return `CredentialUpdateApplyResult` |
-| `macos/MdddApp/Sources/MdddAppCore/RefreshExecutionPipeline.swift` | One refresh lifecycle |
-| `macos/MdddApp/Sources/MdddAppCore/RefreshScheduler.swift` | Timer, capacity, intent queue, apply pipeline result |
-| `macos/MdddApp/Sources/MdddOnboardingCore/ProviderRegistry.swift` | Descriptors, injection/configured rules |
-| `macos/MdddApp/Sources/MdddApp/SubscriptionService.swift` | Subscription CRUD workflows (thin Coordinator façade OK) |
-| `macos/MdddApp/Sources/MdddApp/LocalCredentialProbe.swift` | Local file/Keychain probes |
-| `macos/MdddApp/Sources/MdddApp/Settings/*ProviderSettingsSection.swift` | Settings sections (layout-identical move) |
+| `macos/BruceApp/Sources/BruceAppCore/RefreshTypes.swift` | `RefreshTriggerReason`, `RefreshIntent`, merge helpers |
+| `macos/BruceApp/Sources/BruceAppCore/CredentialUpdateCoordinator.swift` | Apply rotation updates; return `CredentialUpdateApplyResult` |
+| `macos/BruceApp/Sources/BruceAppCore/RefreshExecutionPipeline.swift` | One refresh lifecycle |
+| `macos/BruceApp/Sources/BruceAppCore/RefreshScheduler.swift` | Timer, capacity, intent queue, apply pipeline result |
+| `macos/BruceApp/Sources/BruceOnboardingCore/ProviderRegistry.swift` | Descriptors, injection/configured rules |
+| `macos/BruceApp/Sources/BruceApp/SubscriptionService.swift` | Subscription CRUD workflows (thin Coordinator façade OK) |
+| `macos/BruceApp/Sources/BruceApp/LocalCredentialProbe.swift` | Local file/Keychain probes |
+| `macos/BruceApp/Sources/BruceApp/Settings/*ProviderSettingsSection.swift` | Settings sections (layout-identical move) |
 | `agent-usage/collector/runtime_context.py` or expand `runtime.py` | `RunContext` |
 | `agent-usage/collector/service_catalog.py` | Unified `build_quota_services` |
 | `tests/fixtures/credential-expiry/*` | Shared expiry fixtures |
-| `macos/MdddApp/Sources/MdddAppCore/SubscriptionPresentationPolicy.swift` | Panel subscription display rules |
-| Panel split files under `MdddAppCore/` | Models / usage / subscription mapping |
+| `macos/BruceApp/Sources/BruceAppCore/SubscriptionPresentationPolicy.swift` | Panel subscription display rules |
+| Panel split files under `BruceAppCore/` | Models / usage / subscription mapping |
 
 ---
 
@@ -47,9 +47,9 @@
 ### Task 1: RefreshIntent types + state field
 
 **Files:**
-- Create: `macos/MdddApp/Sources/MdddAppCore/RefreshTypes.swift`
-- Modify: `macos/MdddApp/Sources/MdddAppCore/RefreshScheduler.swift` (`ModuleScheduleState`)
-- Test: `macos/MdddApp/Tests/Harnesses/RefreshSchedulerHarness/RefreshSchedulerHarness.swift`
+- Create: `macos/BruceApp/Sources/BruceAppCore/RefreshTypes.swift`
+- Modify: `macos/BruceApp/Sources/BruceAppCore/RefreshScheduler.swift` (`ModuleScheduleState`)
+- Test: `macos/BruceApp/Tests/Harnesses/RefreshSchedulerHarness/RefreshSchedulerHarness.swift`
 
 **Interfaces:**
 - Produces:
@@ -95,7 +95,7 @@ Wire into harness `main` / suite list.
 - [ ] **Step 2: Run harness — expect compile fail (types missing)**
 
 ```bash
-swift run --package-path macos/MdddApp RefreshSchedulerHarness "$PWD"
+swift run --package-path macos/BruceApp RefreshSchedulerHarness "$PWD"
 ```
 
 Expected: compile error `RefreshIntent` / `RefreshIntentMerge` not found.
@@ -163,7 +163,7 @@ Temporarily fix compile: replace every `pendingRerun = true` with setting an int
 - [ ] **Step 4: Run merge tests + existing scheduler harness**
 
 ```bash
-swift run --package-path macos/MdddApp RefreshSchedulerHarness "$PWD"
+swift run --package-path macos/BruceApp RefreshSchedulerHarness "$PWD"
 ```
 
 Expected: all pass (including new merge tests).
@@ -171,9 +171,9 @@ Expected: all pass (including new merge tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add macos/MdddApp/Sources/MdddAppCore/RefreshTypes.swift \
-  macos/MdddApp/Sources/MdddAppCore/RefreshScheduler.swift \
-  macos/MdddApp/Tests/Harnesses/RefreshSchedulerHarness/RefreshSchedulerHarness.swift
+git add macos/BruceApp/Sources/BruceAppCore/RefreshTypes.swift \
+  macos/BruceApp/Sources/BruceAppCore/RefreshScheduler.swift \
+  macos/BruceApp/Tests/Harnesses/RefreshSchedulerHarness/RefreshSchedulerHarness.swift
 git commit -m "refactor(scheduler): introduce RefreshIntent and replace pendingRerun bool"
 ```
 
@@ -182,7 +182,7 @@ git commit -m "refactor(scheduler): introduce RefreshIntent and replace pendingR
 ### Task 2: Intent-aware queue + lastTriggerWasManual
 
 **Files:**
-- Modify: `macos/MdddApp/Sources/MdddAppCore/RefreshScheduler.swift` (`triggerRefresh`, `startRefresh`, `handleResult`, `startQueuedModulesIfCapacityAvailable`)
+- Modify: `macos/BruceApp/Sources/BruceAppCore/RefreshScheduler.swift` (`triggerRefresh`, `startRefresh`, `handleResult`, `startQueuedModulesIfCapacityAvailable`)
 - Test: `RefreshSchedulerHarness`
 
 **Interfaces:**
@@ -251,7 +251,7 @@ Capacity drain: pick idle modules with `pendingIntent != nil`, take intent, clea
 - [ ] **Step 4: Run**
 
 ```bash
-swift run --package-path macos/MdddApp RefreshSchedulerHarness "$PWD"
+swift run --package-path macos/BruceApp RefreshSchedulerHarness "$PWD"
 ```
 
 Expected: PASS.
@@ -267,8 +267,8 @@ git commit -m "fix(scheduler): queue RefreshIntent with manual-preserving merge"
 ### Task 3: CredentialUpdateCoordinator (pure apply + result)
 
 **Files:**
-- Create: `macos/MdddApp/Sources/MdddAppCore/CredentialUpdateCoordinator.swift`
-- Modify: `macos/MdddApp/Sources/MdddAppCore/CollectorRunInput.swift` (delegate or remove body of `apply`)
+- Create: `macos/BruceApp/Sources/BruceAppCore/CredentialUpdateCoordinator.swift`
+- Modify: `macos/BruceApp/Sources/BruceAppCore/CollectorRunInput.swift` (delegate or remove body of `apply`)
 - Test: prefer new cases in `SubscriptionCredentialsHarness` or `RefreshSchedulerHarness`; may add pure tests next to Onboarding rotation tests if coordinator is testable without Keychain
 
 **Interfaces:**
@@ -339,9 +339,9 @@ Or delete apply from provider and only use coordinator from scheduler (Task 4). 
 - [ ] **Step 4: Run harnesses**
 
 ```bash
-swift run --package-path macos/MdddApp SubscriptionCredentialsHarness
-swift run --package-path macos/MdddApp RefreshSchedulerHarness "$PWD"
-swift build --package-path macos/MdddApp
+swift run --package-path macos/BruceApp SubscriptionCredentialsHarness
+swift run --package-path macos/BruceApp RefreshSchedulerHarness "$PWD"
+swift build --package-path macos/BruceApp
 ```
 
 - [ ] **Step 5: Commit**
@@ -355,8 +355,8 @@ git commit -m "feat(credentials): add CredentialUpdateCoordinator with apply res
 ### Task 4: Wire coordinator into Scheduler handleResult (observable partial)
 
 **Files:**
-- Modify: `macos/MdddApp/Sources/MdddAppCore/RefreshScheduler.swift`
-- Modify: `macos/MdddApp/Sources/MdddApp/ApplicationBootstrap.swift`
+- Modify: `macos/BruceApp/Sources/BruceAppCore/RefreshScheduler.swift`
+- Modify: `macos/BruceApp/Sources/BruceApp/ApplicationBootstrap.swift`
 - Test: `RefreshSchedulerHarness`
 
 **Interfaces:**
@@ -419,8 +419,8 @@ Preserve order: apply credential updates **before** `store.publish` (existing co
 - [ ] **Step 4: Run**
 
 ```bash
-swift run --package-path macos/MdddApp RefreshSchedulerHarness "$PWD"
-swift run --package-path macos/MdddApp LocalIntegrationHarness "$PWD" "$(command -v python3)" "$PWD/bridge/run_bridge.py"
+swift run --package-path macos/BruceApp RefreshSchedulerHarness "$PWD"
+swift run --package-path macos/BruceApp LocalIntegrationHarness "$PWD" "$(command -v python3)" "$PWD/bridge/run_bridge.py"
 ```
 
 - [ ] **Step 5: S1 gate + commit**
@@ -439,7 +439,7 @@ git commit -m "feat(scheduler): surface credential persist failures as partial d
 ### Task 5: Define pipeline types and skeleton
 
 **Files:**
-- Create: `macos/MdddApp/Sources/MdddAppCore/RefreshExecutionPipeline.swift`
+- Create: `macos/BruceApp/Sources/BruceAppCore/RefreshExecutionPipeline.swift`
 - Test: new cases in `RefreshSchedulerHarness` or new file `Tests/Harnesses/RefreshSchedulerHarness/PipelineTests.swift` (same target)
 
 **Interfaces:**
@@ -490,7 +490,7 @@ Adjust type names to match codebase (`CollectorRunOutput`, bridge response field
 - [ ] **Step 3: Build green**
 
 ```bash
-swift build --package-path macos/MdddApp
+swift build --package-path macos/BruceApp
 ```
 
 - [ ] **Step 4: Commit**
@@ -538,7 +538,7 @@ onRunCycleCompleted?()
 - [ ] **Step 4: Run**
 
 ```bash
-swift run --package-path macos/MdddApp RefreshSchedulerHarness "$PWD"
+swift run --package-path macos/BruceApp RefreshSchedulerHarness "$PWD"
 ```
 
 Expected: same pass count as before move (± new tests).
@@ -559,8 +559,8 @@ git commit -m "refactor(scheduler): run refreshes through RefreshExecutionPipeli
 ### Task 7: ProviderRegistry + unified assembleCredentials
 
 **Files:**
-- Create: `macos/MdddApp/Sources/MdddOnboardingCore/ProviderRegistry.swift`
-- Modify: `macos/MdddApp/Sources/MdddAppCore/CollectorRunInput.swift` (`assembleSubscriptionCredentials`)
+- Create: `macos/BruceApp/Sources/BruceOnboardingCore/ProviderRegistry.swift`
+- Modify: `macos/BruceApp/Sources/BruceAppCore/CollectorRunInput.swift` (`assembleSubscriptionCredentials`)
 - Test: `SubscriptionCredentialsHarness`, existing injection cases
 
 **Interfaces:**
@@ -589,8 +589,8 @@ Golden rule: output credentials JSON **byte-for-byte same keys/nesting** as curr
 - [ ] **Step 3: Run**
 
 ```bash
-swift run --package-path macos/MdddApp SubscriptionCredentialsHarness
-swift run --package-path macos/MdddApp CollectorRunnerHarness "$(command -v python3)" "$PWD/bridge/run_bridge.py"
+swift run --package-path macos/BruceApp SubscriptionCredentialsHarness
+swift run --package-path macos/BruceApp CollectorRunnerHarness "$(command -v python3)" "$PWD/bridge/run_bridge.py"
 ```
 
 - [ ] **Step 4: Commit**
@@ -605,7 +605,7 @@ git commit -m "refactor(onboarding): introduce ProviderRegistry for credential i
 
 **Files:**
 - Modify: `OnboardingCoordinator.swift` (`credentialConfigured`)
-- Create: `macos/MdddApp/Sources/MdddApp/LocalCredentialProbe.swift`
+- Create: `macos/BruceApp/Sources/BruceApp/LocalCredentialProbe.swift`
 - Move probe helpers from Coordinator into probe
 
 - [ ] **Step 1: Tests for claude/grok app-vs-local configured priority (existing harness cases must keep passing)**
@@ -625,7 +625,7 @@ git commit -m "refactor(onboarding): centralize configured rules and local crede
 ### Task 9: SubscriptionService + Coordinator façade
 
 **Files:**
-- Create: `macos/MdddApp/Sources/MdddApp/SubscriptionService.swift`
+- Create: `macos/BruceApp/Sources/BruceApp/SubscriptionService.swift`
 - Modify: `OnboardingCoordinator.swift` — methods become one-line forwards
 - **Do not change** Settings call sites yet
 
@@ -634,8 +634,8 @@ git commit -m "refactor(onboarding): centralize configured rules and local crede
 - [ ] **Step 2: Build + run OnboardingCoreHarness / app compile**
 
 ```bash
-swift build --package-path macos/MdddApp
-swift run --package-path macos/MdddApp MdddOnboardingCoreHarness
+swift build --package-path macos/BruceApp
+swift run --package-path macos/BruceApp BruceOnboardingCoreHarness
 ```
 
 - [ ] **Step 3: Commit**
@@ -649,7 +649,7 @@ git commit -m "refactor(app): extract SubscriptionService behind OnboardingCoord
 ### Task 10: Settings file split (layout-identical)
 
 **Files:**
-- Create: e.g. `macos/MdddApp/Sources/MdddApp/Settings/DeepSeekProviderSettingsSection.swift` (and one per provider)
+- Create: e.g. `macos/BruceApp/Sources/BruceApp/Settings/DeepSeekProviderSettingsSection.swift` (and one per provider)
 - Modify: `SettingsView.swift` — `subscriptionProviderManagement` switch calls extracted views
 - **Gate:** diff must not change padding/spacing/frame/font values or control order
 
@@ -702,7 +702,7 @@ Match exact helper names in `quota_official.py` (`_is_expired`, etc.).
 
 ```bash
 python3 -m pytest tests/test_credential_expiry_contract.py -q
-swift run --package-path macos/MdddApp MdddOnboardingCoreHarness
+swift run --package-path macos/BruceApp BruceOnboardingCoreHarness
 ```
 
 - [ ] **Step 3: Commit**
@@ -782,14 +782,14 @@ git commit -m "refactor(collector): unify App/CLI quota service building"
 **Files:**
 - Create: `SubscriptionPresentationPolicy.swift`, `PanelModels.swift`, `UsageMapping.swift`, `SubscriptionMapping.swift` (names flexible)
 - Modify: shrink `PanelViewModel.swift` to re-export or thin mapper entry
-- **Do not modify** `Sources/MdddApp/Views/**` bodies
+- **Do not modify** `Sources/BruceApp/Views/**` bodies
 
 - [ ] **Step 1: Move pure rules into policy with table-driven tests in PanelViewModelHarness**
 
 - [ ] **Step 2: Split files; harness pass count unchanged**
 
 ```bash
-swift run --package-path macos/MdddApp PanelViewModelHarness
+swift run --package-path macos/BruceApp PanelViewModelHarness
 ```
 
 - [ ] **Step 3: Commit**
@@ -803,7 +803,7 @@ git commit -m "refactor(panel): extract presentation policy and split view model
 ### Task 15: Harness file splits (no assertion changes)
 
 **Files:**
-- Split sources under `Tests/Harnesses/RefreshSchedulerHarness/` and `Tests/MdddOnboardingCoreHarness/`
+- Split sources under `Tests/Harnesses/RefreshSchedulerHarness/` and `Tests/BruceOnboardingCoreHarness/`
 - Update `Package.swift` only if new targets; prefer multi-file same target
 
 - [ ] **Step 1: Extract one suite file; main still calls all suites**
@@ -821,7 +821,7 @@ git commit -m "test: split oversized harness sources by scenario"
 ### Task 16: CodexTokenManager façade over Resolver + Reducer
 
 **Files:**
-- Create: `CodexTokenResolver.swift`, `CredentialStateReducer.swift` under `MdddOnboardingCore`
+- Create: `CodexTokenResolver.swift`, `CredentialStateReducer.swift` under `BruceOnboardingCore`
 - Modify: `CodexTokenManager.swift` to delegate
 - Test: `CodexTokenManagerTests.swift` + reducer table tests
 
@@ -832,7 +832,7 @@ git commit -m "test: split oversized harness sources by scenario"
 - [ ] **Step 3:**
 
 ```bash
-swift run --package-path macos/MdddApp MdddOnboardingCoreHarness
+swift run --package-path macos/BruceApp BruceOnboardingCoreHarness
 zsh scripts/verify-local.sh
 ```
 
@@ -850,8 +850,8 @@ git commit -m "refactor(codex): split token manager into resolver and state redu
 
 ```bash
 # Layout gate (human): no unintended diff under
-git diff main -- macos/MdddApp/Sources/MdddApp/Views/
-git diff main -- macos/MdddApp/Sources/MdddApp/SettingsView.swift
+git diff main -- macos/BruceApp/Sources/BruceApp/Views/
+git diff main -- macos/BruceApp/Sources/BruceApp/SettingsView.swift
 # (Settings splits may move lines; reject padding/spacing/frame value changes)
 
 zsh scripts/verify-local.sh

@@ -1,4 +1,4 @@
-# mddd 架构收尾与流程修复设计
+# Bruce 架构收尾与流程修复设计
 
 > 日期: 2026-08-05  
 > 状态: 已评审确认 (brainstorm §1–§6)  
@@ -74,7 +74,7 @@
 ### 2.4 UI 布局冻结的工程落法
 
 1. Settings 拆分: 只允许文件剪切与同构子 View; 禁止改 `padding` / `spacing` / `frame` / 控件顺序
-2. Panel: 默认只动 `MdddAppCore` 映射层; `Sources/MdddApp/Views/**` 默认零 diff
+2. Panel: 默认只动 `BruceAppCore` 映射层; `Sources/BruceApp/Views/**` 默认零 diff
 3. 每阶段 PR 对 Views / Settings 布局相关 diff 人工门禁: 布局修饰符数值变更 = 阻断
 4. 回归: `zsh scripts/verify-local.sh`; 不以截图基线变更合理化布局改动
 
@@ -177,7 +177,7 @@ merge(existing?, incoming) -> RefreshIntent:
 
 ### 4.3 CredentialUpdateCoordinator
 
-从 `apply` / bootstrap 回调抽出 (`MdddAppCore`):
+从 `apply` / bootstrap 回调抽出 (`BruceAppCore`):
 
 ```text
 struct CredentialUpdateApplyResult: Equatable {
@@ -305,7 +305,7 @@ Provider 注册表; Python; TokenManager 三分; 改默认刷新间隔/capacity.
 4. 订阅 CRUD → `SubscriptionService` (Coordinator 可留 thin façade)
 5. 行为冻结 + UI 布局冻结
 
-### 6.2 ProviderDescriptor (MdddOnboardingCore)
+### 6.2 ProviderDescriptor (BruceOnboardingCore)
 
 ```text
 ProviderDescriptor:

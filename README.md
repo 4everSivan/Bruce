@@ -1,14 +1,14 @@
 <div align="center">
-  <img src="docs/app-icon.png" width="120" height="120" alt="mddd" />
-  <h1>mddd</h1>
-  <p>本地优先的 macOS 菜单栏研发活动看板</p>
+  <img src="docs/app-icon.png" width="120" height="120" alt="Bruce" />
+  <h1>Bruce</h1>
+  <p>A loyal dog is used for local agent usage statistics and monitoring, as well as for monitoring of Coding Plan subscriptions.</p>
 </div>
 
-`mddd` 将本机 AI Agent 的 token 用量、成本估算和额度状态集中到一个原生 macOS 菜单栏应用中。应用负责依赖扫描、登录授权、凭证管理、定时刷新、缓存和故障恢复；Python Collector 负责采集；菜单栏弹出面板以原生 SwiftUI 看板渲染 (macOS 26+ 可选液态玻璃, 更低系统使用经典材质风格)。仓库根 `*/widget/` 单文件 Widget 保留，仅服务 Daimon/Kimi Work Blueprint 场景。
+`Bruce` 将本机 AI Agent 的 token 用量、成本估算和额度状态集中到一个原生 macOS 菜单栏应用中。应用负责依赖扫描、登录授权、凭证管理、定时刷新、缓存和故障恢复；Python Collector 负责采集；菜单栏弹出面板以原生 SwiftUI 看板渲染 (macOS 26+ 可选液态玻璃, 更低系统使用经典材质风格)。仓库根 `*/widget/` 单文件 Widget 保留，仅服务 Daimon/Kimi Work Blueprint 场景。
 
 > **v0.1 Release**
 >
-> 支持从源码构建运行或生成可下载的 `.app` 发布包（位于 `dist/mddd.app`），最低支持 macOS 14；液态玻璃主题需 macOS 26。
+> 支持从源码构建运行或生成可下载的 `.app` 发布包（位于 `dist/Bruce.app`），最低支持 macOS 14；液态玻璃主题需 macOS 26。
 
 ## 核心能力
 
@@ -30,7 +30,7 @@
 
 ## 界面预览
 
-原生菜单栏面板截图待补充。运行 App (`dist/mddd.app`，由 `scripts/build-test-app.sh` 生成) 后，对菜单栏面板和设置窗口截图，替换到本节的占位即可:
+原生菜单栏面板截图待补充。运行 App (`dist/Bruce.app`，由 `scripts/build-test-app.sh` 生成) 后，对菜单栏面板和设置窗口截图，替换到本节的占位即可:
 
 | 场景 | 截图 |
 |---|---|
@@ -53,8 +53,8 @@
 ### 构建并运行
 
 ```bash
-swift build --package-path macos/MdddApp
-swift run --package-path macos/MdddApp MdddApp
+swift build --package-path macos/BruceApp
+swift run --package-path macos/BruceApp BruceApp
 ```
 
 首次运行后:
@@ -72,7 +72,7 @@ swift run --package-path macos/MdddApp MdddApp
 zsh scripts/build-test-app.sh
 ```
 
-生成 `dist/mddd.app` 和 `dist/mddd.zip`（测试用，不入库）。
+生成 `dist/Bruce.app` 和 `dist/Bruce.zip`（测试用，不入库）。
 
 ## 应用架构
 
@@ -91,7 +91,7 @@ macOS 菜单栏应用 (LSUIElement, 最低 14)
                  (用量 / 订阅用量 / 逐小时玻璃卡)
 ```
 
-可测试业务逻辑位于 `MdddAppCore` library target (AppModel、调度、PanelViewModel 映射)；`MdddApp` executable target 只保留应用入口、SwiftUI 界面装配和 `Sources/MdddApp/Views/` 原生看板卡片组件。所有 Swift Harness 直接依赖 Core target。
+可测试业务逻辑位于 `BruceAppCore` library target (AppModel、调度、PanelViewModel 映射)；`BruceApp` executable target 只保留应用入口、SwiftUI 界面装配和 `Sources/BruceApp/Views/` 原生看板卡片组件。所有 Swift Harness 直接依赖 Core target。
 
 运行链路:
 
@@ -117,11 +117,11 @@ Collector 仍保留独立 CLI 入口，用于开发、测试和故障排查，�
 ## 项目结构
 
 ```text
-mddd/
-├── macos/MdddApp/          # macOS 菜单栏应用 (最低 14)、Scheduler、缓存和原生看板
-│   ├── Sources/MdddApp/       # 应用入口、原生状态项、设置窗口和 Views/ 卡片组件
-│   ├── Sources/MdddAppCore/
-│   ├── Sources/MdddOnboardingCore/
+Bruce/
+├── macos/BruceApp/          # macOS 菜单栏应用 (最低 14)、Scheduler、缓存和原生看板
+│   ├── Sources/BruceApp/       # 应用入口、原生状态项、设置窗口和 Views/ 卡片组件
+│   ├── Sources/BruceAppCore/
+│   ├── Sources/BruceOnboardingCore/
 │   ├── Assets/                # AppIcon.icns 应用图标
 │   └── Tests/                 # 独立 Harness target
 ├── bridge/                 # Swift 与 Python 之间的版本化 JSON 协议和安全校验
@@ -133,8 +133,8 @@ mddd/
 
 关键入口:
 
-- macOS App: `macos/MdddApp/Sources/MdddApp/MdddApp.swift`
-- 面板卡片组件: `macos/MdddApp/Sources/MdddApp/Views/`
+- macOS App: `macos/BruceApp/Sources/BruceApp/BruceApp.swift`
+- 面板卡片组件: `macos/BruceApp/Sources/BruceApp/Views/`
 - Python Bridge: `bridge/run_bridge.py`
 - Collector: `agent-usage/collector/collect_usage.py`
 - Widget 源文件 (Daimon 场景): `agent-usage/widget/index.html`
@@ -144,14 +144,14 @@ mddd/
 
 应用自有数据位于:
 
-- `~/Library/Application Support/mddd/config/onboarding-v1.json`: 非敏感配置和授权版本。
-- `~/Library/Application Support/mddd/snapshots/`: 当前和 previous Artifact 快照。
-- `~/Library/Application Support/mddd/metadata/modules.json`: 最近成功、尝试时间和错误分类。
-- macOS Keychain service `com.mddd.dashboard.credentials`: 应用持有的订阅额度凭证。
+- `~/Library/Application Support/Bruce/config/onboarding-v1.json`: 非敏感配置和授权版本。
+- `~/Library/Application Support/Bruce/snapshots/`: 当前和 previous Artifact 快照。
+- `~/Library/Application Support/Bruce/metadata/modules.json`: 最近成功、尝试时间和错误分类。
+- macOS Keychain service `com.bruce.dashboard.credentials`: 应用持有的订阅额度凭证。
 
-清理前先退出应用。在设置页使用“撤销全部授权”停止全部调度；需要完全重置时，再通过 Finder 删除 `~/Library/Application Support/mddd/`，并在“钥匙串访问”中删除上述 service 的项目。删除快照和 Keychain 项不可由应用自动恢复，操作前应确认不再需要最后成功数据和现有授权。
+清理前先退出应用。在设置页使用“撤销全部授权”停止全部调度；需要完全重置时，再通过 Finder 删除 `~/Library/Application Support/Bruce/`，并在“钥匙串访问”中删除上述 service 的项目。删除快照和 Keychain 项不可由应用自动恢复，操作前应确认不再需要最后成功数据和现有授权。
 
-出现回归时可先撤销受影响模块并继续使用其他模块；回退到兼容 Bridge v1 / Artifact v1 的旧构建不会改写第三方数据库。若新快照损坏，应用优先回退 previous；不要通过修改 CC Switch 或 Antigravity 数据库来修复 mddd。
+出现回归时可先撤销受影响模块并继续使用其他模块；回退到兼容 Bridge v1 / Artifact v1 的旧构建不会改写第三方数据库。若新快照损坏，应用优先回退 previous；不要通过修改 CC Switch 或 Antigravity 数据库来修复 Bruce。
 
 ## 故障排查
 
@@ -182,21 +182,22 @@ python3 -m pytest -q
 Swift 构建和单个 Core Harness:
 
 ```bash
-swift build --package-path macos/MdddApp
-swift run --package-path macos/MdddApp MdddOnboardingCoreHarness
-swift run --package-path macos/MdddApp PanelViewModelHarness
-swift run --package-path macos/MdddApp RefreshSchedulerHarness "$PWD"
+swift build --package-path macos/BruceApp
+swift run --package-path macos/BruceApp BruceOnboardingCoreHarness
+swift run --package-path macos/BruceApp PanelViewModelHarness
+swift run --package-path macos/BruceApp RefreshSchedulerHarness "$PWD"
 ```
 
 Widget JavaScript 语法和安全隔离由 Python 测试继续覆盖 (面向 Daimon 场景)。真实 Collector、OAuth、签名和 `.app` 发布验证不属于默认测试流程，需要单独授权和对应环境。
 
 更多资料:
 
-- [mddd 设计文档](docs/development/01-mddd-design.md)
+- [Bruce 设计文档](docs/development/01-bruce-design.md)
 - [CI/CD 设计](docs/development/02-ci-cd.md)
 - [工具链基线](docs/development/03-toolchain.md)
 - [Provider 授权矩阵](docs/development/04-provider-auth-matrix.md)
 - [发布人工验收清单](docs/development/05-release-acceptance.md)
+- [1.0 Rust Collector 构建目标](docs/development/14-rust-collector-v1-build-target.md)
 
 ## 当前限制
 

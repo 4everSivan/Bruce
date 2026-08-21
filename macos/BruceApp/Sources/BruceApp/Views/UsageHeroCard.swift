@@ -1,0 +1,520 @@
+import Foundation
+import BruceAppCore
+import SwiftUI
+
+/// 用量卡: 标题 + LIVE 呼吸灯, hero 总量, 输入/输出/缓存四格细分,
+/// 按月 chip 网格与半年热力图; 14 日柱状图与 agent 图例已移至逐小时卡顶部.
+/// 视觉以 panel-layout-v8.html 为准; 外层玻璃卡片容器由面板装配层统一提供,
+/// 本组件只排内容.
+struct UsageHeroCard: View {
+    let viewModel: UsageHeroViewModel
+
+    init(viewModel: UsageHeroViewModel) {
+        self.viewModel = viewModel
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            titleRow
+            heroRow
+                .padding(.top, 8)
+            dividerLine
+                .padding(.top, 12)
+            breakdownRow
+                .padding(.top, 10)
+            if !viewModel.monthly.isEmpty {
+                monthlySection
+                    .padding(.top, 12)
+            }
+            if !viewModel.heatmap.isEmpty {
+                sectionTitle("热力图 · 近半年")
+                    .padding(.top, 12)
+                heatmapView
+                    .padding(.top, 4)
+                heatmapDateAxis
+                    .padding(.top, 5)
+                heatmapLegend
+                    .padding(.top, 5)
+            }
+        }
+        .background {
+            CodeStreamBackground(tint: Self.tierTint(viewModel.usageTier))
+        }
+    }
+
+    // MARK: 标题行
+
+    private var titleRow: some View {
+        HStack {
+            Text("Token 用量")
+                .font(.system(size: 12.5, weight: .semibold))
+                .foregroundStyle(Self.ink)
+            Spacer()
+            if viewModel.isLive {
+                LiveIndicator()
+            }
+        }
+    }
+
+    // MARK: Hero 行
+
+    private var heroRow: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(viewModel.totalTokensText)
+                .font(.system(size: 40, weight: .bold))
+                .tracking(-1.2)
+                .monospacedDigit()
+                .foregroundStyle(Self.heroGradient(for: viewModel.usageTier))
+            Text("tokens")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Self.subdued)
+            Spacer()
+            if let costText = viewModel.costText {
+                Text(costText)
+                    .font(.system(size: 15, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(Self.accent)
+            }
+        }
+    }
+
+    // MARK: 分隔线
+
+    private var dividerLine: some View {
+        Rectangle()
+            .fill(Self.hairline)
+            .frame(height: 1)
+    }
+
+    // MARK: 四格细分
+
+    private var breakdownRow: some View {
+        HStack(alignment: .top, spacing: 0) {
+            ForEach(Array(viewModel.breakdown.enumerated()), id: \.offset) { index, item in
+                if index > 0 {
+                    Rectangle()
+                        .fill(Self.hairline)
+                        .frame(width: 1)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.label)
+                        .font(.system(size: 8.5))
+                        .tracking(0.85)
+                        .foregroundStyle(Self.faint)
+                    Text(item.valueText)
+                        .font(.system(size: 13.5, weight: .semibold))
+                        .monospacedDigit()
+                        .foregroundStyle(Self.ink.opacity(0.85))
+                }
+                .padding(.leading, index == 0 ? 0 : 13)
+                .padding(.trailing, index == viewModel.breakdown.count - 1 ? 0 : 13)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    // MARK: 按月统计
+
+    /// 标题行 (右侧并入半年汇总) + 3 列月度 chip 网格 (当月高亮);
+    /// 原型 usage-monthly-v2 变体 2.
+    private var monthlySection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                sectionTitle("按月 · 近 6 个月")
+                Spacer()
+                if let halfYear = viewModel.halfYear {
+                    HStack(alignment: .firstTextBaseline, spacing: 0) {
+                        Text("近半年 ")
+                        Text(halfYear.totalText)
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(Self.ink.opacity(0.85))
+                        Text(" · 月均 \(halfYear.averageText)")
+                    }
+                    .font(.system(size: 10))
+                    .monospacedDigit()
+                    .foregroundStyle(Self.subdued)
+                }
+            }
+            LazyVGrid(
+                columns: Array(
+                    repeating: GridItem(.flexible(), spacing: 6),
+                    count: 3
+                ),
+                spacing: 6
+            ) {
+                ForEach(Array(viewModel.monthly.enumerated()), id: \.offset) { _, month in
+                    monthlyChip(month)
+                }
+            }
+        }
+    }
+
+    /// 区块小标题: 10pt 半粗 + 字距, 与原型 .sec 样式一致.
+    private func sectionTitle(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 10, weight: .semibold))
+            .tracking(0.4)
+            .foregroundStyle(Self.faint)
+    }
+
+    private func monthlyChip(_ month: UsageMonthlyTotal) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(month.label)
+                .font(.system(size: 8.5, weight: month.isCurrent ? .semibold : .regular))
+                .tracking(0.5)
+                .foregroundStyle(month.isCurrent ? Self.accent : Self.faint)
+            Text(month.totalText)
+                .font(.system(size: 13, weight: .semibold))
+                .monospacedDigit()
+                .foregroundStyle(Self.ink.opacity(0.85))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(
+            Color.adaptive(
+                light: Color.white.opacity(month.isCurrent ? 0.6 : 0.4),
+                dark: Color.white.opacity(month.isCurrent ? 0.14 : 0.08)
+            ),
+            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(
+                    Color.adaptive(
+                        light: Color.white.opacity(0.55),
+                        dark: Color.white.opacity(0.1)
+                    ),
+                    lineWidth: 1
+                )
+        )
+        .accessibilityElement(children: .combine)
+    }
+
+    // MARK: 用量热力图
+
+    /// 周列 × 周日行 (周一起) 网格: 列等宽撑满卡片, 格子正方形随列宽缩放;
+    /// level 0 淡槽, 1-5 沿用 UsageTier 绿色阶 (sage..forest), 窗口外与未来格透明.
+    private var heatmapView: some View {
+        HStack(alignment: .top, spacing: 3) {
+            ForEach(Array(viewModel.heatmap.enumerated()), id: \.offset) { _, week in
+                VStack(spacing: 3) {
+                    ForEach(0..<7, id: \.self) { row in
+                        heatmapCell(week.cells[row])
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("用量热力图")
+    }
+
+    private func heatmapCell(_ cell: UsageHeatmapCell?) -> some View {
+        RoundedRectangle(cornerRadius: 2, style: .continuous)
+            .fill(heatmapCellColor(cell))
+            .aspectRatio(1, contentMode: .fit)
+            .frame(maxWidth: .infinity)
+    }
+
+    /// 起止日期轴: 左窗口首日, 右今天, 与网格左右缘对齐.
+    private var heatmapDateAxis: some View {
+        HStack {
+            Text(heatmapBoundaryText(first: true))
+            Spacer()
+            Text(heatmapBoundaryText(first: false))
+        }
+        .font(.system(size: 9))
+        .foregroundStyle(Self.faint)
+    }
+
+    /// "yyyy-MM-dd" -> "yy/MM/dd"; 取窗口首个/末个有效格.
+    private func heatmapBoundaryText(first: Bool) -> String {
+        let cells = viewModel.heatmap.flatMap(\.cells).compactMap { $0 }
+        guard let cell = first ? cells.first : cells.last else {
+            return ""
+        }
+        let parts = cell.date.split(separator: "-")
+        guard parts.count == 3 else {
+            return cell.date
+        }
+        return "\(parts[0].suffix(2))/\(parts[1])/\(parts[2])"
+    }
+
+    /// 程度图例 (GitHub 风格): 「少」 + level 0-5 格子 + 「多」, 右对齐.
+    private var heatmapLegend: some View {
+        HStack(spacing: 3) {
+            Spacer()
+            Text("少")
+            heatmapLevelSwatch(0)
+            ForEach(1...5, id: \.self) { level in
+                heatmapLevelSwatch(level)
+            }
+            Text("多")
+        }
+        .font(.system(size: 9))
+        .foregroundStyle(Self.faint)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("热力图程度图例: 颜色从少到多")
+    }
+
+    private func heatmapLevelSwatch(_ level: Int) -> some View {
+        RoundedRectangle(cornerRadius: 2, style: .continuous)
+            .fill(heatmapLevelColor(level))
+            .frame(width: 9, height: 9)
+    }
+
+    private func heatmapCellColor(_ cell: UsageHeatmapCell?) -> Color {
+        guard let cell else {
+            return .clear
+        }
+        return heatmapLevelColor(cell.level)
+    }
+
+    private func heatmapLevelColor(_ level: Int) -> Color {
+        guard level > 0 else {
+            return Color.primary.opacity(0.07)
+        }
+        let tier: UsageTier
+        switch level {
+        case 1:
+            tier = .sage
+        case 2:
+            tier = .moss
+        case 3:
+            tier = .fern
+        case 4:
+            tier = .pine
+        default:
+            tier = .forest
+        }
+        return Self.tierColors(for: tier).0
+    }
+
+    // MARK: 颜色常量 (浅色值换算自 mockup CSS, 深色值见 adaptive 调用)
+
+    private static let accent = Color(hex: "#0a84ff")
+    private static let ink = Color.primary
+    private static let subdued = Color.primary.opacity(0.5)
+    private static let faint = Color.primary.opacity(0.55)
+    private static let hairline = Color.adaptive(
+        light: Color.black.opacity(0.07),
+        dark: Color.white.opacity(0.12)
+    )
+    /// hero 渐变按今日总量档位在统一绿色阶内变化 (源自 logo 底色):
+    /// <100M sage #7D9B76, 此后每 100M 加深一档, >=400M forest #26452A.
+    /// 结构沿用 mockup (135deg, 起点 30%, 终点收敛 1.0).
+    private static func heroGradient(for tier: UsageTier) -> LinearGradient {
+        let (start, end) = tierColors(for: tier)
+        return LinearGradient(
+            stops: [
+                .init(color: start, location: 0.3),
+                .init(color: end, location: 1.0),
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    /// 档位配色: 返回 (档位基色, 同族浅色); 基色同时用于热力图格子,
+    /// 浅色作为 hero 渐变末端与背景字符 tint. 五色同色相逐级加深.
+    private static func tierColors(for tier: UsageTier) -> (Color, Color) {
+        switch tier {
+        case .sage:
+            return (Color(hex: "#7D9B76"), Color(hex: "#9DB597"))
+        case .moss:
+            return (Color(hex: "#63885E"), Color(hex: "#82A57C"))
+        case .fern:
+            return (Color(hex: "#4C7249"), Color(hex: "#6A9064"))
+        case .pine:
+            return (Color(hex: "#385B38"), Color(hex: "#557B52"))
+        case .forest:
+            return (Color(hex: "#26452A"), Color(hex: "#456B42"))
+        }
+    }
+
+    /// 背景字符 tint: 档位浅色阶, 低透明度下呼应 hero 渐变.
+    private static func tierTint(_ tier: UsageTier) -> Color {
+        tierColors(for: tier).1
+    }
+}
+
+// MARK: - 代码流背景
+
+/// 用量卡代码流背景: 复刻旧 web widget 的字符密度流场 (.:+*# 网格下流),
+/// 按总量档位取 tint, 低透明度叠加在玻璃之上, 底部 mask 渐隐避免干扰图表.
+/// 10fps 慢速下流, 每列速度略有差异; Reduce Motion 时静止.
+private struct CodeStreamBackground: View {
+    let tint: Color
+
+    private let characters: [Character] = [".", ":", "+", "*", "#"]
+    private let spacing: CGFloat = 16
+
+    var body: some View {
+        // 静态代码流背景: TimelineView 动画在 MenuBarExtra 隐藏窗口时不暂停,
+        // 每帧重绘 Canvas (275 次采样命中 body), 实测面板关闭时主线程 CPU ~20%.
+        // 纯装饰动画移除, 改静态渲染 (布局不变, 视觉保持密度感).
+        Canvas { ctx, size in
+            let cycle = size.height + spacing
+            let cols = Int(size.width / spacing)
+            let rows = Int(size.height / spacing) + 2
+            guard cols > 0, rows > 0 else {
+                return
+            }
+            for col in 0...cols {
+                // 静态列偏移: 每列错落 0-2 格, 保留流场层次感.
+                let colOffset = CGFloat((cellHash(col, 0) % 3))
+                let x = spacing / 2 + CGFloat(col) * spacing
+                for row in 0...rows {
+                    let base = CGFloat(row) * spacing + colOffset * spacing * 0.5
+                    let y = base.truncatingRemainder(dividingBy: cycle) - spacing / 2
+                    let hash = cellHash(col, row)
+                    let char = characters[Int(hash % UInt64(characters.count))]
+                    ctx.opacity = 0.05 + 0.09 * Double((hash >> 8) % 101) / 100.0
+                    ctx.draw(
+                        Text(String(char))
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundColor(tint),
+                        at: CGPoint(x: x, y: y),
+                        anchor: .center
+                    )
+                }
+            }
+        }
+        .mask(
+            LinearGradient(
+                stops: [
+                    .init(color: .black, location: 0.45),
+                    .init(color: .clear, location: 0.95),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    /// 稳定伪随机 (按网格坐标), 保证每帧布局与字符一致, 仅位置随时间漂移.
+    private func cellHash(_ col: Int, _ row: Int) -> UInt64 {
+        var hash = UInt64(bitPattern: Int64(col)) &* 2_654_435_761
+            &+ UInt64(bitPattern: Int64(row)) &* 4_053_739
+        hash ^= hash >> 13
+        return hash
+    }
+}
+
+// MARK: - LIVE 呼吸灯
+
+/// 绿点 + 光晕, 2.4 秒一周期的透明度呼吸; Reduce Motion 时静止常亮.
+private struct LiveIndicator: View {
+    var body: some View {
+        HStack(spacing: 5) {
+            ZStack {
+                // 光晕: mockup 为 3px 扩散环 (18% 透明度).
+                Circle()
+                    .fill(Self.green.opacity(0.18))
+                    .frame(width: 12, height: 12)
+                Circle()
+                    .fill(Self.green)
+                    .frame(width: 6, height: 6)
+            }
+            Text("LIVE")
+                .font(.system(size: 9.5, weight: .semibold))
+                .foregroundStyle(Self.textGreen)
+        }
+    }
+
+    private static let green = Color(hex: "#30d158")
+    /// 深绿文字在深色玻璃上对比度不足, 深色下退回亮绿.
+    private static let textGreen = Color.adaptive(light: Color(hex: "#0a7d3b"), dark: Color(hex: "#30d158"))
+}
+
+// MARK: - Preview
+
+// 命令行工具链 (无 Xcode) 缺少 PreviewsMacros 插件, 用 canImport 守住,
+// 保证 swift build 在两种工具链下都能通过; Xcode 下预览照常生效.
+#if DEBUG && canImport(PreviewsMacros)
+/// 预览 fixture: 以 artifact JSON 经 PanelViewModelMapper 生成真实 view model,
+/// 覆盖 4 个 agent, 2-4 段堆叠, 成本文案, LIVE 态和完整四格细分.
+/// (UsageHeroViewModel 暂无 package 级构造器, 不能直接 memberwise 构造.)
+private enum UsageHeroPreviewFixture {
+    static func makeViewModel() -> UsageHeroViewModel {
+        let artifact = try! JSONDecoder().decode(
+            AgentUsageArtifact.self,
+            from: Data(artifactJSON.utf8)
+        )
+        let panel = PanelViewModelMapper().make(
+            agentUsage: artifact,
+            moduleStatuses: [:]
+        )
+        guard let usage = panel.usage else {
+            preconditionFailure("fixture artifact 应映射出用量卡 view model")
+        }
+        return usage
+    }
+
+    /// 14 日总量形态对齐 mockup (首尾低, 中间起伏, 今天最高).
+    private static let kimiCodeTotals = [6000, 10000, 8000, 16000, 13000, 9000, 19000, 15000, 22000, 18000, 11000, 25000, 20000, 30000]
+    private static let kimiWorkTotals = [3000, 5000, 5000, 9000, 7000, 6000, 12000, 8000, 13000, 10000, 8000, 16000, 11000, 19000]
+    private static let claudeTotals = [0, 3000, 0, 4000, 4000, 0, 5000, 4000, 6000, 5000, 0, 7000, 5000, 9000]
+    private static let codexTotals = [0, 0, 0, 2000, 0, 0, 2000, 0, 3000, 0, 0, 4000, 0, 6000]
+
+    private static var artifactJSON: String {
+        let dayFormatter = DateFormatter()
+        dayFormatter.dateFormat = "yyyy-MM-dd"
+        dayFormatter.locale = Locale(identifier: "en_US_POSIX")
+        let calendar = Calendar.current
+        let today = Date()
+
+        func dailyJSON(_ totals: [Int]) -> String {
+            totals.enumerated().compactMap { index, total in
+                guard total > 0,
+                      let date = calendar.date(byAdding: .day, value: index - 13, to: today)
+                else {
+                    return nil
+                }
+                let dateText = dayFormatter.string(from: date)
+                return #"{"date":"\#(dateText)","input":\#(total * 3 / 4),"output":\#(total / 4),"total":\#(total)}"#
+            }
+            .joined(separator: ",")
+        }
+
+        func agentJSON(
+            id: String,
+            name: String,
+            totals: [Int],
+            today: (input: Int, output: Int, cacheRead: Int, cacheCreation: Int, total: Int)
+        ) -> String {
+            """
+            {"id":"\(id)","name":"\(name)","status":"ok",\
+            "today":{"input":\(today.input),"output":\(today.output),\
+            "cacheRead":\(today.cacheRead),"cacheCreation":\(today.cacheCreation),"total":\(today.total)},\
+            "daily":[\(dailyJSON(totals))],"hours":\(Array(repeating: 0, count: 24))}
+            """
+        }
+
+        let generatedAt = ISO8601DateFormatter().string(from: today)
+        return """
+        {"schemaVersion":1,"module":"agent-usage","generatedAt":"\(generatedAt)",\
+        "agents":[
+        \(agentJSON(id: "kimi-code-cli", name: "Kimi Code CLI", totals: kimiCodeTotals,
+                    today: (98000, 14000, 20000, 7000, 98000))),
+        \(agentJSON(id: "kimi-work", name: "Kimi Work", totals: kimiWorkTotals,
+                    today: (34000, 6000, 8000, 3000, 52000))),
+        \(agentJSON(id: "claude-code", name: "Claude Code", totals: claudeTotals,
+                    today: (18000, 3000, 4000, 1200, 21000))),
+        \(agentJSON(id: "codex", name: "Codex", totals: codexTotals,
+                    today: (9000, 2000, 2000, 800, 13000)))
+        ],"services":[],"totalCostUsd":0.375}
+        """
+    }
+}
+
+#Preview("用量卡 · 完整数据") {
+    UsageHeroCard(viewModel: UsageHeroPreviewFixture.makeViewModel())
+        .padding(15)
+        .frame(width: 400)
+        .background(Color(hex: "#e9e4ef"))
+}
+#endif

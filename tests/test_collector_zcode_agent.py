@@ -60,7 +60,7 @@ def _usage(started_ms, session_id="sess_a", model="GLM-5.3", inp=10000, out=200,
 def _make_zcode_db(path, usages, sessions=None):
     """构造 zcode db fixture (session + model_usage 最小 schema)."""
     if sessions is None:
-        sessions = [("sess_a", "/Users/x/mddd", "interactive")]
+        sessions = [("sess_a", "/Users/x/Bruce", "interactive")]
     db = sqlite3.connect(path)
     db.execute(
         "CREATE TABLE session (id TEXT PRIMARY KEY, directory TEXT, task_type TEXT)"
@@ -153,7 +153,7 @@ class ScanZcodeTests(unittest.TestCase):
             found = self.module.scan_zcode(agent, db)
         self.assertTrue(found)
         self.assertEqual(agent["_models_today"]["glm-5.3"]["total"], 10250)
-        self.assertEqual(agent["_projects_today"]["mddd"], 10250)
+        self.assertEqual(agent["_projects_today"]["Bruce"], 10250)
 
     def test_subagent_session_labeled(self):
         agent = self.module.make_agent("zcode", "ZCode")
@@ -164,13 +164,13 @@ class ScanZcodeTests(unittest.TestCase):
                 db,
                 [_usage(ts, session_id="sess_sub")],
                 sessions=[
-                    ("sess_a", "/Users/x/mddd", "interactive"),
-                    ("sess_sub", "/Users/x/mddd", "subagent_child"),
+                    ("sess_a", "/Users/x/Bruce", "interactive"),
+                    ("sess_sub", "/Users/x/Bruce", "subagent_child"),
                 ],
             )
             found = self.module.scan_zcode(agent, db)
         self.assertTrue(found)
-        self.assertEqual(agent["_projects_today"]["mddd ·子代理"], 10250)
+        self.assertEqual(agent["_projects_today"]["Bruce ·子代理"], 10250)
 
     def test_zero_token_rows_skipped(self):
         agent = self.module.make_agent("zcode", "ZCode")

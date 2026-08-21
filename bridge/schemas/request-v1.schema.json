@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://mddd.local/schemas/bridge/request-v1.schema.json",
-  "title": "mddd Bridge v1 request",
+  "$id": "https://bruce.local/schemas/bridge/request-v1.schema.json",
+  "title": "Bruce Bridge v1 request",
   "type": "object",
   "additionalProperties": false,
   "required": [

@@ -3,7 +3,7 @@
 Locks `quota_official._is_expired` / Claude / Grok credential semantics against
 `tests/fixtures/credential-expiry/*.json`. Swift
 `SubscriptionCredentialEvaluator` consumes the same files in
-MdddOnboardingCoreHarness. Changing either side requires updating fixtures or
+BruceOnboardingCoreHarness. Changing either side requires updating fixtures or
 both tests in the same PR.
 """
 
@@ -134,7 +134,7 @@ class TestCredentialExpiryContract:
         fixture = json.loads(path.read_text(encoding="utf-8"))
         try:
             self.module.read_grok_token(
-                home="/tmp/mddd-no-home",
+                home="/tmp/Bruce-no-home",
                 now_ts=fixture["now_ts"],
                 injected=fixture["credential"],
             )

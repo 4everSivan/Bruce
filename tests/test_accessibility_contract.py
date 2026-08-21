@@ -41,17 +41,17 @@ def test_native_primary_actions_have_keyboard_and_accessibility_contracts():
     menu_bar = (
         REPO_ROOT
         / "macos"
-        / "MdddApp"
+        / "BruceApp"
         / "Sources"
-        / "MdddApp"
+        / "BruceApp"
         / "MenuBarViews.swift"
     ).read_text()
     settings = (
         REPO_ROOT
         / "macos"
-        / "MdddApp"
+        / "BruceApp"
         / "Sources"
-        / "MdddApp"
+        / "BruceApp"
         / "SettingsView.swift"
     ).read_text()
     assert '.keyboardShortcut("r", modifiers: .command)' in menu_bar

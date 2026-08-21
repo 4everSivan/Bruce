@@ -9,7 +9,7 @@
 - `ArtifactStore.publish()` 原子替换整个 `agent-usage` artifact. 现有 `CodexQuotaSnapshotMerger` 只覆盖 Codex 的四源合并, 不能直接承接非 Codex 的局部 artifact.
 - `SubscriptionMapping` 已按 Provider 分组并支持多账号, `SubscriptionCard` 已有 Provider header 和 per-account 状态展示, 可在现有边界上增加动作.
 
-现有 `docs/development/01-mddd-design.md` 的标题末尾和正文末尾没有同时出现“已确认/冻结”, 因此本次按独立变更请求处理, 不把它宣称为已冻结的新验收基线.
+现有 `docs/development/01-bruce-design.md` 的标题末尾和正文末尾没有同时出现“已确认/冻结”, 因此本次按独立变更请求处理, 不把它宣称为已冻结的新验收基线.
 
 ## Options and Decision
 

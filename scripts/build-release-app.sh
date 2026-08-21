@@ -1,6 +1,6 @@
 #!/bin/zsh
 
-# mddd 正式版打包脚本 (08-production-packaging-and-release.md §3)
+# Bruce 正式版打包脚本 (08-production-packaging-and-release.md §3)
 #
 # 与 Preview 脚本 (build-test-app.sh) 分离: 正式版使用 Developer ID 签名 +
 # Hardened Runtime + notarization, 版本来源为 Git tag, 产物带 SHA256 校验和.
@@ -18,16 +18,16 @@
 
 set -euo pipefail
 
-MDDD_SCRIPT_DIR=${0:A:h}
-MDDD_REPO_ROOT=${MDDD_SCRIPT_DIR:h}
-MDDD_SWIFT_PACKAGE="$MDDD_REPO_ROOT/macos/MdddApp"
-MDDD_DIST_DIR="$MDDD_REPO_ROOT/dist"
-MDDD_ENTITLEMENTS="$MDDD_REPO_ROOT/scripts/entitlements-release.plist"
-MDDD_STAGING_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/mddd-release.XXXXXX")
-MDDD_STAGED_APP="$MDDD_STAGING_ROOT/Mddd.app"
-MDDD_CONTENTS="$MDDD_STAGED_APP/Contents"
-MDDD_RESOURCES="$MDDD_CONTENTS/Resources"
-MDDD_RUNTIME="$MDDD_RESOURCES/runtime"
+BRUCE_SCRIPT_DIR=${0:A:h}
+BRUCE_REPO_ROOT=${BRUCE_SCRIPT_DIR:h}
+BRUCE_SWIFT_PACKAGE="$BRUCE_REPO_ROOT/macos/BruceApp"
+BRUCE_DIST_DIR="$BRUCE_REPO_ROOT/dist"
+BRUCE_ENTITLEMENTS="$BRUCE_REPO_ROOT/scripts/entitlements-release.plist"
+BRUCE_STAGING_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/Bruce-release.XXXXXX")
+BRUCE_STAGED_APP="$BRUCE_STAGING_ROOT/Bruce.app"
+BRUCE_CONTENTS="$BRUCE_STAGED_APP/Contents"
+BRUCE_RESOURCES="$BRUCE_CONTENTS/Resources"
+BRUCE_RUNTIME="$BRUCE_RESOURCES/runtime"
 
 # ---------------------------------------------------------------- 参数与配置
 
@@ -36,31 +36,31 @@ if [[ $# -lt 1 ]]; then
     echo "  tag 形如 v1.2.3, 必须与 git 当前 HEAD 匹配" >&2
     exit 1
 fi
-MDDD_TAG="$1"
+BRUCE_TAG="$1"
 
-if [[ ! "$MDDD_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "tag 格式无效: $MDDD_TAG (需要 v<major>.<minor>.<patch>)" >&2
+if [[ ! "$BRUCE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "tag 格式无效: $BRUCE_TAG (需要 v<major>.<minor>.<patch>)" >&2
     exit 1
 fi
-MDDD_VERSION="${MDDD_TAG#v}"
-MDDD_BUILD_NUMBER="${CI_BUILD_NUMBER:-1}"
+BRUCE_VERSION="${BRUCE_TAG#v}"
+BRUCE_BUILD_NUMBER="${CI_BUILD_NUMBER:-1}"
 
 # 正式 bundle ID 与版本来源必须显式配置, 禁止沿用测试脚本的固定值
-MDDD_BUNDLE_ID="${MDDD_RELEASE_BUNDLE_ID:-}"
-if [[ -z "$MDDD_BUNDLE_ID" ]]; then
-    echo "缺少正式 bundle ID: 设置环境变量 MDDD_RELEASE_BUNDLE_ID" >&2
+BRUCE_BUNDLE_ID="${BRUCE_RELEASE_BUNDLE_ID:-}"
+if [[ -z "$BRUCE_BUNDLE_ID" ]]; then
+    echo "缺少正式 bundle ID: 设置环境变量 BRUCE_RELEASE_BUNDLE_ID" >&2
     exit 1
 fi
 
-MDDD_DEVELOPER_ID="${MDDD_DEVELOPER_ID:-}"
-MDDD_NOTARY_KEY_ID="${MDDD_NOTARY_KEY_ID:-}"
-MDDD_NOTARY_ISSUER_ID="${MDDD_NOTARY_ISSUER_ID:-}"
-MDDD_NOTARY_KEY_PATH="${MDDD_NOTARY_KEY_PATH:-}"
+BRUCE_DEVELOPER_ID="${BRUCE_DEVELOPER_ID:-}"
+BRUCE_NOTARY_KEY_ID="${BRUCE_NOTARY_KEY_ID:-}"
+BRUCE_NOTARY_ISSUER_ID="${BRUCE_NOTARY_ISSUER_ID:-}"
+BRUCE_NOTARY_KEY_PATH="${BRUCE_NOTARY_KEY_PATH:-}"
 # 公证密钥路径为外部输入, 允许来自仓库外的受保护变量
-MDDD_NOTARY_KEY_RESOLVED="${MDDD_NOTARY_KEY_PATH}"
+BRUCE_NOTARY_KEY_RESOLVED="${BRUCE_NOTARY_KEY_PATH}"
 
 cleanup() {
-    rm -rf "$MDDD_STAGING_ROOT"
+    rm -rf "$BRUCE_STAGING_ROOT"
 }
 trap cleanup EXIT
 
@@ -72,166 +72,166 @@ for required_command in "${required_commands[@]}"; do
     fi
 done
 
-source "$MDDD_SCRIPT_DIR/runtime-manifest.zsh"
+source "$BRUCE_SCRIPT_DIR/runtime-manifest.zsh"
 
 # ---------------------------------------------------------------- 阶段 1: 清理和验证
 
 echo "[1/5] 验证工作树与 tag"
 
-if [[ -n "$(git -C "$MDDD_REPO_ROOT" status --porcelain)" ]]; then
+if [[ -n "$(git -C "$BRUCE_REPO_ROOT" status --porcelain)" ]]; then
     echo "工作树不干净, 正式版构建要求干净工作树" >&2
     exit 1
 fi
 
-MDDD_CURRENT_TAG=$(git -C "$MDDD_REPO_ROOT" describe --exact-match --tags HEAD 2>/dev/null || true)
-if [[ "$MDDD_CURRENT_TAG" != "$MDDD_TAG" ]]; then
-    echo "HEAD 不匹配 tag $MDDD_TAG (当前: ${MDDD_CURRENT_TAG:-无})" >&2
+BRUCE_CURRENT_TAG=$(git -C "$BRUCE_REPO_ROOT" describe --exact-match --tags HEAD 2>/dev/null || true)
+if [[ "$BRUCE_CURRENT_TAG" != "$BRUCE_TAG" ]]; then
+    echo "HEAD 不匹配 tag $BRUCE_TAG (当前: ${BRUCE_CURRENT_TAG:-无})" >&2
     exit 1
 fi
 
 echo "运行完整验证套件 (verify-local.sh)"
-zsh "$MDDD_REPO_ROOT/scripts/verify-local.sh"
+zsh "$BRUCE_REPO_ROOT/scripts/verify-local.sh"
 
-mddd_validate_packaging_sources "$MDDD_REPO_ROOT"
+Bruce_validate_packaging_sources "$BRUCE_REPO_ROOT"
 
 # ---------------------------------------------------------------- 阶段 2: Release 构建
 
 echo "[2/5] Release 构建与 App 组装"
 
 swift build \
-    --package-path "$MDDD_SWIFT_PACKAGE" \
+    --package-path "$BRUCE_SWIFT_PACKAGE" \
     --configuration release \
-    --product MdddApp
-MDDD_BIN_DIR=$(swift build \
-    --package-path "$MDDD_SWIFT_PACKAGE" \
+    --product BruceApp
+BRUCE_BIN_DIR=$(swift build \
+    --package-path "$BRUCE_SWIFT_PACKAGE" \
     --configuration release \
     --show-bin-path)
-MDDD_EXECUTABLE="$MDDD_BIN_DIR/MdddApp"
+BRUCE_EXECUTABLE="$BRUCE_BIN_DIR/BruceApp"
 
-if [[ ! -x "$MDDD_EXECUTABLE" ]]; then
-    echo "Release 可执行文件不存在: $MDDD_EXECUTABLE" >&2
+if [[ ! -x "$BRUCE_EXECUTABLE" ]]; then
+    echo "Release 可执行文件不存在: $BRUCE_EXECUTABLE" >&2
     exit 1
 fi
 
-mkdir -p "$MDDD_CONTENTS/MacOS" "$MDDD_RESOURCES" \
-    "$MDDD_RUNTIME/bridge" \
-    "$MDDD_RUNTIME/agent-usage/collector"
+mkdir -p "$BRUCE_CONTENTS/MacOS" "$BRUCE_RESOURCES" \
+    "$BRUCE_RUNTIME/bridge" \
+    "$BRUCE_RUNTIME/agent-usage/collector"
 
-ditto "$MDDD_EXECUTABLE" "$MDDD_CONTENTS/MacOS/MdddApp"
-chmod 755 "$MDDD_CONTENTS/MacOS/MdddApp"
-strip -S "$MDDD_CONTENTS/MacOS/MdddApp"
-mddd_copy_runtime "$MDDD_REPO_ROOT" "$MDDD_RUNTIME"
+ditto "$BRUCE_EXECUTABLE" "$BRUCE_CONTENTS/MacOS/BruceApp"
+chmod 755 "$BRUCE_CONTENTS/MacOS/BruceApp"
+strip -S "$BRUCE_CONTENTS/MacOS/BruceApp"
+Bruce_copy_runtime "$BRUCE_REPO_ROOT" "$BRUCE_RUNTIME"
 
-ditto "$MDDD_REPO_ROOT/macos/MdddApp/Assets/AppIcon.icns" \
-    "$MDDD_RESOURCES/AppIcon.icns"
+ditto "$BRUCE_REPO_ROOT/macos/BruceApp/Assets/AppIcon.icns" \
+    "$BRUCE_RESOURCES/AppIcon.icns"
 
-MDDD_INFO_PLIST="$MDDD_CONTENTS/Info.plist"
-plutil -create xml1 "$MDDD_INFO_PLIST"
-plutil -insert CFBundleDevelopmentRegion -string "zh_CN" "$MDDD_INFO_PLIST"
-plutil -insert CFBundleDisplayName -string "mddd" "$MDDD_INFO_PLIST"
-plutil -insert CFBundleExecutable -string "MdddApp" "$MDDD_INFO_PLIST"
-plutil -insert CFBundleIdentifier -string "$MDDD_BUNDLE_ID" "$MDDD_INFO_PLIST"
-plutil -insert CFBundleInfoDictionaryVersion -string "6.0" "$MDDD_INFO_PLIST"
-plutil -insert CFBundleName -string "mddd" "$MDDD_INFO_PLIST"
-plutil -insert CFBundlePackageType -string "APPL" "$MDDD_INFO_PLIST"
-plutil -insert CFBundleShortVersionString -string "$MDDD_VERSION" "$MDDD_INFO_PLIST"
-plutil -insert CFBundleVersion -string "$MDDD_BUILD_NUMBER" "$MDDD_INFO_PLIST"
-plutil -insert CFBundleIconFile -string "AppIcon" "$MDDD_INFO_PLIST"
-plutil -insert LSMinimumSystemVersion -string "14.0" "$MDDD_INFO_PLIST"
-plutil -insert LSUIElement -bool YES "$MDDD_INFO_PLIST"
-plutil -insert NSHighResolutionCapable -bool YES "$MDDD_INFO_PLIST"
-plutil -insert NSPrincipalClass -string "NSApplication" "$MDDD_INFO_PLIST"
-plutil -lint "$MDDD_INFO_PLIST"
+BRUCE_INFO_PLIST="$BRUCE_CONTENTS/Info.plist"
+plutil -create xml1 "$BRUCE_INFO_PLIST"
+plutil -insert CFBundleDevelopmentRegion -string "zh_CN" "$BRUCE_INFO_PLIST"
+plutil -insert CFBundleDisplayName -string "Bruce" "$BRUCE_INFO_PLIST"
+plutil -insert CFBundleExecutable -string "BruceApp" "$BRUCE_INFO_PLIST"
+plutil -insert CFBundleIdentifier -string "$BRUCE_BUNDLE_ID" "$BRUCE_INFO_PLIST"
+plutil -insert CFBundleInfoDictionaryVersion -string "6.0" "$BRUCE_INFO_PLIST"
+plutil -insert CFBundleName -string "Bruce" "$BRUCE_INFO_PLIST"
+plutil -insert CFBundlePackageType -string "APPL" "$BRUCE_INFO_PLIST"
+plutil -insert CFBundleShortVersionString -string "$BRUCE_VERSION" "$BRUCE_INFO_PLIST"
+plutil -insert CFBundleVersion -string "$BRUCE_BUILD_NUMBER" "$BRUCE_INFO_PLIST"
+plutil -insert CFBundleIconFile -string "AppIcon" "$BRUCE_INFO_PLIST"
+plutil -insert LSMinimumSystemVersion -string "14.0" "$BRUCE_INFO_PLIST"
+plutil -insert LSUIElement -bool YES "$BRUCE_INFO_PLIST"
+plutil -insert NSHighResolutionCapable -bool YES "$BRUCE_INFO_PLIST"
+plutil -insert NSPrincipalClass -string "NSApplication" "$BRUCE_INFO_PLIST"
+plutil -lint "$BRUCE_INFO_PLIST"
 
 # ---------------------------------------------------------------- 阶段 3: 签名
 
 echo "[3/5] Hardened Runtime 签名"
 
-if [[ -z "$MDDD_DEVELOPER_ID" ]]; then
-    echo "缺少 Developer ID: 设置环境变量 MDDD_DEVELOPER_ID" >&2
+if [[ -z "$BRUCE_DEVELOPER_ID" ]]; then
+    echo "缺少 Developer ID: 设置环境变量 BRUCE_DEVELOPER_ID" >&2
     echo "未签名包不会写入 dist, 请配置证书后重试" >&2
     exit 1
 fi
-if [[ ! -f "$MDDD_ENTITLEMENTS" ]]; then
-    echo "缺少 entitlement 文件: $MDDD_ENTITLEMENTS" >&2
+if [[ ! -f "$BRUCE_ENTITLEMENTS" ]]; then
+    echo "缺少 entitlement 文件: $BRUCE_ENTITLEMENTS" >&2
     exit 1
 fi
 
 codesign --force --options runtime \
-    --entitlements "$MDDD_ENTITLEMENTS" \
-    --sign "$MDDD_DEVELOPER_ID" \
-    "$MDDD_STAGED_APP"
-codesign --verify --deep --strict --verbose=2 "$MDDD_STAGED_APP"
-codesign -dvv "$MDDD_STAGED_APP" 2>&1 | grep -E "Signature|TeamIdentifier" \
+    --entitlements "$BRUCE_ENTITLEMENTS" \
+    --sign "$BRUCE_DEVELOPER_ID" \
+    "$BRUCE_STAGED_APP"
+codesign --verify --deep --strict --verbose=2 "$BRUCE_STAGED_APP"
+codesign -dvv "$BRUCE_STAGED_APP" 2>&1 | grep -E "Signature|TeamIdentifier" \
     || echo "(codesign -dvv 输出格式随工具链变化)"
 
 # ---------------------------------------------------------------- 阶段 4: 公证
 
 echo "[4/5] notarization 与 stapler"
 
-if [[ -z "$MDDD_NOTARY_KEY_ID" || -z "$MDDD_NOTARY_ISSUER_ID" \
-    || -z "$MDDD_NOTARY_KEY_RESOLVED" ]]; then
-    echo "缺少公证 API Key 配置 (MDDD_NOTARY_KEY_ID/MDDD_NOTARY_ISSUER_ID/" >&2
-    echo "MDDD_NOTARY_KEY_PATH), 未公证包不会发布" >&2
+if [[ -z "$BRUCE_NOTARY_KEY_ID" || -z "$BRUCE_NOTARY_ISSUER_ID" \
+    || -z "$BRUCE_NOTARY_KEY_RESOLVED" ]]; then
+    echo "缺少公证 API Key 配置 (BRUCE_NOTARY_KEY_ID/BRUCE_NOTARY_ISSUER_ID/" >&2
+    echo "BRUCE_NOTARY_KEY_PATH), 未公证包不会发布" >&2
     exit 1
 fi
 
-MDDD_ZIP="$MDDD_STAGING_ROOT/Mddd.zip"
-ditto -c -k --sequesterRsrc --keepParent "$MDDD_STAGED_APP" "$MDDD_ZIP"
+BRUCE_ZIP="$BRUCE_STAGING_ROOT/Bruce.zip"
+ditto -c -k --sequesterRsrc --keepParent "$BRUCE_STAGED_APP" "$BRUCE_ZIP"
 
-MDDD_NOTARY_LOG="$MDDD_STAGING_ROOT/notary-request.log"
-if ! xcrun notarytool submit "$MDDD_ZIP" \
-    --key "$MDDD_NOTARY_KEY_RESOLVED" \
-    --key-id "$MDDD_NOTARY_KEY_ID" \
-    --issuer "$MDDD_NOTARY_ISSUER_ID" \
+BRUCE_NOTARY_LOG="$BRUCE_STAGING_ROOT/notary-request.log"
+if ! xcrun notarytool submit "$BRUCE_ZIP" \
+    --key "$BRUCE_NOTARY_KEY_RESOLVED" \
+    --key-id "$BRUCE_NOTARY_KEY_ID" \
+    --issuer "$BRUCE_NOTARY_ISSUER_ID" \
     --wait \
-    --output-format json > "$MDDD_NOTARY_LOG" 2>&1; then
-    echo "公证失败, 详见: $MDDD_NOTARY_LOG" >&2
+    --output-format json > "$BRUCE_NOTARY_LOG" 2>&1; then
+    echo "公证失败, 详见: $BRUCE_NOTARY_LOG" >&2
     echo "不发布任何包" >&2
     exit 1
 fi
-xcrun stapler staple "$MDDD_STAGED_APP"
-xcrun stapler validate "$MDDD_STAGED_APP"
+xcrun stapler staple "$BRUCE_STAGED_APP"
+xcrun stapler validate "$BRUCE_STAGED_APP"
 
 # ---------------------------------------------------------------- 阶段 5: 验收与产物
 
 echo "[5/5] Gatekeeper 验收与产物生成"
 
-spctl --assess --type execute --verbose=4 "$MDDD_STAGED_APP"
+spctl --assess --type execute --verbose=4 "$BRUCE_STAGED_APP"
 
-if rg -a -F -q "$MDDD_REPO_ROOT" "$MDDD_STAGED_APP"; then
+if rg -a -F -q "$BRUCE_REPO_ROOT" "$BRUCE_STAGED_APP"; then
     echo "App Bundle 包含源码仓库绝对路径" >&2
-    rg -a -F -l "$MDDD_REPO_ROOT" "$MDDD_STAGED_APP" >&2
+    rg -a -F -l "$BRUCE_REPO_ROOT" "$BRUCE_STAGED_APP" >&2
     exit 1
 fi
 if rg -a -q "gzky\\.com|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY" \
-    "$MDDD_STAGED_APP"; then
+    "$BRUCE_STAGED_APP"; then
     echo "App Bundle 疑似包含敏感信息" >&2
     exit 1
 fi
 
-MDDD_FINAL_APP="$MDDD_DIST_DIR/mddd-$MDDD_VERSION-macos/Mddd.app"
-MDDD_FINAL_ZIP="$MDDD_DIST_DIR/mddd-$MDDD_VERSION-macos/mddd-$MDDD_VERSION-macos.zip"
-MDDD_SHA256="$MDDD_DIST_DIR/mddd-$MDDD_VERSION-macos/SHA256SUMS"
-MDDD_NOTES="$MDDD_DIST_DIR/mddd-$MDDD_VERSION-macos/release-notes-$MDDD_VERSION.md"
+BRUCE_FINAL_APP="$BRUCE_DIST_DIR/Bruce-$BRUCE_VERSION-macos/Bruce.app"
+BRUCE_FINAL_ZIP="$BRUCE_DIST_DIR/Bruce-$BRUCE_VERSION-macos/Bruce-$BRUCE_VERSION-macos.zip"
+BRUCE_SHA256="$BRUCE_DIST_DIR/Bruce-$BRUCE_VERSION-macos/SHA256SUMS"
+BRUCE_NOTES="$BRUCE_DIST_DIR/Bruce-$BRUCE_VERSION-macos/release-notes-$BRUCE_VERSION.md"
 
-mkdir -p "$(dirname "$MDDD_FINAL_APP")"
-rm -rf "$(dirname "$MDDD_FINAL_APP")"
-mkdir -p "$(dirname "$MDDD_FINAL_APP")"
-ditto "$MDDD_STAGED_APP" "$MDDD_FINAL_APP"
+mkdir -p "$(dirname "$BRUCE_FINAL_APP")"
+rm -rf "$(dirname "$BRUCE_FINAL_APP")"
+mkdir -p "$(dirname "$BRUCE_FINAL_APP")"
+ditto "$BRUCE_STAGED_APP" "$BRUCE_FINAL_APP"
 ditto -c -k --sequesterRsrc --keepParent \
-    "$MDDD_FINAL_APP" "$MDDD_FINAL_ZIP"
+    "$BRUCE_FINAL_APP" "$BRUCE_FINAL_ZIP"
 (
-    cd "$(dirname "$MDDD_FINAL_ZIP")"
-    shasum -a 256 "$(basename "$MDDD_FINAL_ZIP")" > "$MDDD_SHA256"
+    cd "$(dirname "$BRUCE_FINAL_ZIP")"
+    shasum -a 256 "$(basename "$BRUCE_FINAL_ZIP")" > "$BRUCE_SHA256"
 )
 
 # 发布说明从 CHANGELOG 生成 (风格与 v0.1/v0.2 一致), 不另写重复文案.
-MDDD_OUT="$MDDD_NOTES" \
-    zsh "$MDDD_SCRIPT_DIR/release-notes.sh" "$MDDD_VERSION"
+BRUCE_OUT="$BRUCE_NOTES" \
+    zsh "$BRUCE_SCRIPT_DIR/release-notes.sh" "$BRUCE_VERSION"
 
 echo "正式版已生成:"
-echo "  $MDDD_FINAL_APP"
-echo "  $MDDD_FINAL_ZIP"
-echo "  $MDDD_SHA256"
-echo "  $MDDD_NOTES"
+echo "  $BRUCE_FINAL_APP"
+echo "  $BRUCE_FINAL_ZIP"
+echo "  $BRUCE_SHA256"
+echo "  $BRUCE_NOTES"

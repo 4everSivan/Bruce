@@ -2,7 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- mddd 正式版最小 entitlement (08-production-packaging-and-release.md §3 阶段 3).
+    <!-- Bruce 正式版最小 entitlement (08-production-packaging-and-release.md §3 阶段 3).
          只声明当前功能需要的权限; 新增能力时必须同步更新此处并复审.
          网络出站 (额度查询) + Keychain 读取/写入 (订阅凭证) -->
     <key>com.apple.security.network.client</key>

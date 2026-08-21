@@ -8,8 +8,8 @@ __pycache__/
 # Local collector output and diagnostics
 data/
 diagnostics/
-*.mddd-diagnostics.zip
-.mddd-runtime/
+*.Bruce-diagnostics.zip
+.Bruce-runtime/
 
 # Credentials and private local overrides
 .env

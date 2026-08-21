@@ -42,16 +42,16 @@
 ## 6. 全量验证与打包
 
 - [x] 6.1 `python3 -m pytest tests/` (162 项 + 新增 1 项 = 163 项)
-- [x] 6.2 `swift build --package-path macos/MdddApp`
-- [x] 6.3 `swift run --package-path macos/MdddApp MdddOnboardingCoreHarness` (172 项)
-- [x] 6.4 `swift run --package-path macos/MdddApp PanelViewModelHarness` (40 项)
-- [x] 6.5 `swift run --package-path macos/MdddApp SubscriptionCredentialsHarness` (23 项 + 新增 2 项 = 25 项)
-- [x] 6.6 `swift run --package-path macos/MdddApp CollectorRunnerHarness` (26 项)
-- [x] 6.7 `swift run --package-path macos/MdddApp RefreshSchedulerHarness` (62 项)
-- [x] 6.8 `swift run --package-path macos/MdddApp DeepSeekUsageLedgerHarness` (17 项)
-- [x] 6.9 `swift run --package-path macos/MdddApp LocalIntegrationHarness` (3 项 + 新增 2 项 = 5 项)
-- [x] 6.10 `swift run --package-path macos/MdddApp NativeLifecycleHarness` (6 项)
-- [x] 6.11 `swift run --package-path macos/MdddApp ArtifactStoreHarness` (5 项)
-- [x] 6.12 `swift run --package-path macos/MdddApp DiagnosticsHarness` (8 项)
+- [x] 6.2 `swift build --package-path macos/BruceApp`
+- [x] 6.3 `swift run --package-path macos/BruceApp BruceOnboardingCoreHarness` (172 项)
+- [x] 6.4 `swift run --package-path macos/BruceApp PanelViewModelHarness` (40 项)
+- [x] 6.5 `swift run --package-path macos/BruceApp SubscriptionCredentialsHarness` (23 项 + 新增 2 项 = 25 项)
+- [x] 6.6 `swift run --package-path macos/BruceApp CollectorRunnerHarness` (26 项)
+- [x] 6.7 `swift run --package-path macos/BruceApp RefreshSchedulerHarness` (62 项)
+- [x] 6.8 `swift run --package-path macos/BruceApp DeepSeekUsageLedgerHarness` (17 项)
+- [x] 6.9 `swift run --package-path macos/BruceApp LocalIntegrationHarness` (3 项 + 新增 2 项 = 5 项)
+- [x] 6.10 `swift run --package-path macos/BruceApp NativeLifecycleHarness` (6 项)
+- [x] 6.11 `swift run --package-path macos/BruceApp ArtifactStoreHarness` (5 项)
+- [x] 6.12 `swift run --package-path macos/BruceApp DiagnosticsHarness` (8 项)
 - [x] 6.13 `zsh scripts/verify-local.sh` 全量通过
 - [x] 6.14 `zsh scripts/build-test-app.sh` 打包成功

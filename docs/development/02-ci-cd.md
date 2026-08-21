@@ -1,4 +1,4 @@
-# mddd CI/CD 设计
+# Bruce CI/CD 设计
 
 | 项目 | 定义 |
 |---|---|
@@ -7,7 +7,7 @@
 
 ## 1. 目标与当前阶段
 
-mddd 的 CI/CD 目标是: 每次代码变更都经过与本地完全一致的验证套件, 并能一键产出可测试的 `.app` 包; 发布流程只做「打草稿」, 不做自动发布。
+Bruce 的 CI/CD 目标是: 每次代码变更都经过与本地完全一致的验证套件, 并能一键产出可测试的 `.app` 包; 发布流程只做「打草稿」, 不做自动发布。
 
 当前阶段 (Development Preview):
 
@@ -39,8 +39,8 @@ mddd 的 CI/CD 目标是: 每次代码变更都经过与本地完全一致的验
 |---|---|---|---|
 | `verify` | macos-26 | 打印工具链版本, 运行 `scripts/verify-local.sh` (Python 语法 + pytest + swift build + 脚本列出的全部 Harness) | 阻塞合并与发布 |
 | `python-min-version` | macos-26 | Python 3.9 下 py_compile + pytest | 阻塞合并与发布 |
-| `build-release-app` | macos-26 | 运行 `scripts/build-test-app.sh`, 上传 `dist/` 为 Actions artifact (`mddd-app`) | 阻塞合并与发布 |
-| `release` | macos-26 | 仅 tag 触发, 依赖前三个 job; 重建测试包并创建**草稿** GitHub Release, 附 `mddd.zip` | 不阻塞 PR |
+| `build-release-app` | macos-26 | 运行 `scripts/build-test-app.sh`, 上传 `dist/` 为 Actions artifact (`Bruce-app`) | 阻塞合并与发布 |
+| `release` | macos-26 | 仅 tag 触发, 依赖前三个 job; 重建测试包并创建**草稿** GitHub Release, 附 `Bruce.zip` | 不阻塞 PR |
 
 各 job 均设置 timeout, 防止运行器卡死。
 

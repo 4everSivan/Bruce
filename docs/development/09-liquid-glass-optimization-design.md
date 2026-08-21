@@ -235,10 +235,10 @@ dashboardGlassCard()
 验证命令:
 
 ```text
-swift build --package-path macos/MdddApp
+swift build --package-path macos/BruceApp
 zsh scripts/verify-local.sh
-swift run --package-path macos/MdddApp PanelViewModelHarness
-swift run --package-path macos/MdddApp RefreshSchedulerHarness
+swift run --package-path macos/BruceApp PanelViewModelHarness
+swift run --package-path macos/BruceApp RefreshSchedulerHarness
 ```
 
 视觉改造提交必须满足:

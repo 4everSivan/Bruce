@@ -1154,8 +1154,8 @@ class AppCoreResidualContractTests(unittest.TestCase):
     契约或可旋转凭证字段; App 层不得读取第三方 Codex 凭证文件 (除
     用户点击触发的元数据发现)."""
 
-    APP_CORE = REPO_ROOT / "macos" / "MdddApp" / "Sources" / "MdddAppCore"
-    APP_LAYER = REPO_ROOT / "macos" / "MdddApp" / "Sources" / "MdddApp"
+    APP_CORE = REPO_ROOT / "macos" / "BruceApp" / "Sources" / "BruceAppCore"
+    APP_LAYER = REPO_ROOT / "macos" / "BruceApp" / "Sources" / "BruceApp"
 
     def test_app_core_has_no_legacy_codex_auth_contracts(self):
         """CollectorRunner/RefreshScheduler/Merger 不得出现旧 Codex auth

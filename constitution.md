@@ -1,5 +1,5 @@
 <!-- source: template/base -->
-# mddd 项目治理宪法
+# Bruce 项目治理宪法
 
 Version: 1.0, Ratified: 2026-07-28
 Scope: Python 3, 原生 HTML/CSS/JavaScript, macOS, DaimonWidget, 本地 JSON artifact, SQLite 只读数据源, OAuth/PAT 凭证和外部服务 API

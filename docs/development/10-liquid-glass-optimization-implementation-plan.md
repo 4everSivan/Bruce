@@ -25,7 +25,7 @@ NSPanel 透明承载层
 
 - `agent-usage/collector/**`
 - `bridge/**`
-- `MdddAppCore` 中的 Collector、artifact、PanelViewModel、订阅和统计模型.
+- `BruceAppCore` 中的 Collector、artifact、PanelViewModel、订阅和统计模型.
 - 订阅额度采集、刷新、合并、账号状态和凭证处理.
 - Agent 会话扫描、token 聚合、成本计算和统计窗口.
 - `RefreshScheduler`、`CollectorRunner`、`SubscriptionService` 的业务逻辑.
@@ -38,12 +38,12 @@ NSPanel 透明承载层
 
 | 文件 | 允许内容 |
 |---|---|
-| `macos/MdddApp/Sources/MdddApp/GlassTheme.swift` | 视觉 token、主题 modifier、材质映射 |
-| `macos/MdddApp/Sources/MdddApp/MenuBarViews.swift` | 外层面板背景的视觉实现, 不改卡片装配和几何逻辑 |
-| `macos/MdddApp/Sources/MdddApp/Views/PanelCardContainer.swift` | 卡片背景、边框、高光和阴影 |
-| `macos/MdddApp/Sources/MdddApp/Views/UsageHeroCard.swift` | 仅允许调整内部装饰色和透明度, 默认不改 |
-| `macos/MdddApp/Sources/MdddApp/Views/SubscriptionCard.swift` | 仅允许调整内部装饰色和透明度, 默认不改 |
-| `macos/MdddApp/Sources/MdddApp/Views/HourlyLineCard.swift` | 仅允许调整内部装饰色和透明度, 默认不改 |
+| `macos/BruceApp/Sources/BruceApp/GlassTheme.swift` | 视觉 token、主题 modifier、材质映射 |
+| `macos/BruceApp/Sources/BruceApp/MenuBarViews.swift` | 外层面板背景的视觉实现, 不改卡片装配和几何逻辑 |
+| `macos/BruceApp/Sources/BruceApp/Views/PanelCardContainer.swift` | 卡片背景、边框、高光和阴影 |
+| `macos/BruceApp/Sources/BruceApp/Views/UsageHeroCard.swift` | 仅允许调整内部装饰色和透明度, 默认不改 |
+| `macos/BruceApp/Sources/BruceApp/Views/SubscriptionCard.swift` | 仅允许调整内部装饰色和透明度, 默认不改 |
+| `macos/BruceApp/Sources/BruceApp/Views/HourlyLineCard.swift` | 仅允许调整内部装饰色和透明度, 默认不改 |
 
 首轮不得修改 `SettingsView`、`SettingsCard` 和设置页布局. 设置页统一视觉另立计划.
 
@@ -160,7 +160,7 @@ NSPanel 透明承载层
 git diff --name-only
 ```
 
-若出现 Collector、Bridge、MdddAppCore、订阅或统计相关文件, 立即停止.
+若出现 Collector、Bridge、BruceAppCore、订阅或统计相关文件, 立即停止.
 
 ## 6. 验证计划
 
@@ -174,16 +174,16 @@ git diff --name-only
 ### 6.2 构建和 Harness
 
 ```bash
-swift build --package-path macos/MdddApp
-swift run --package-path macos/MdddApp MdddOnboardingCoreHarness
-swift run --package-path macos/MdddApp PanelViewModelHarness
-swift run --package-path macos/MdddApp RefreshSchedulerHarness
+swift build --package-path macos/BruceApp
+swift run --package-path macos/BruceApp BruceOnboardingCoreHarness
+swift run --package-path macos/BruceApp PanelViewModelHarness
+swift run --package-path macos/BruceApp RefreshSchedulerHarness
 zsh scripts/verify-local.sh
 ```
 
 其中:
 
-- `MdddOnboardingCoreHarness` 验证主题配置兼容和回退.
+- `BruceOnboardingCoreHarness` 验证主题配置兼容和回退.
 - `PanelViewModelHarness` 验证内容映射不变.
 - `RefreshSchedulerHarness` 验证刷新和统计流程没有被触碰.
 - `verify-local.sh` 作为最终构建基线.
@@ -274,7 +274,7 @@ zsh scripts/verify-local.sh
 
 验证结果:
 
-- `swift build --package-path macos/MdddApp` 通过.
+- `swift build --package-path macos/BruceApp` 通过.
 - `zsh scripts/verify-local.sh` 通过.
 - Python 测试: 以当前 `pytest` 收集结果为准.
 - Onboarding Core Harness: 175 项通过.

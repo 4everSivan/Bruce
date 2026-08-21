@@ -98,7 +98,7 @@ def _error_response(run_id, fault):
 def _load_collector(module_name):
     path = COLLECTOR_PATHS[module_name]
     spec = importlib.util.spec_from_file_location(
-        "mddd_bridge_%s" % module_name.replace("-", "_"),
+        "Bruce_bridge_%s" % module_name.replace("-", "_"),
         path,
     )
     if spec is None or spec.loader is None:

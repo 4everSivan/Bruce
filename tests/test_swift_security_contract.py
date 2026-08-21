@@ -3,10 +3,10 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 APP_CORE = (
-    REPO_ROOT / "macos" / "MdddApp" / "Sources" / "MdddAppCore"
+    REPO_ROOT / "macos" / "BruceApp" / "Sources" / "BruceAppCore"
 )
 ONBOARDING_CORE = (
-    REPO_ROOT / "macos" / "MdddApp" / "Sources" / "MdddOnboardingCore"
+    REPO_ROOT / "macos" / "BruceApp" / "Sources" / "BruceOnboardingCore"
 )
 
 
@@ -45,12 +45,12 @@ def test_diagnostics_archive_is_reexpanded_and_allowlisted_before_publish():
     source = (APP_CORE / "Diagnostics.swift").read_text()
     assert "try archiver.expand(" in source
     assert "try validateExpandedArchive(at: verificationURL)" in source
-    assert '"mddd-diagnostics/README.txt"' in source
-    assert '"mddd-diagnostics/report.json"' in source
+    assert '"Bruce-diagnostics/README.txt"' in source
+    assert '"Bruce-diagnostics/report.json"' in source
     assert "isSymbolicLink" in source
 
 
-APP_LAYER = REPO_ROOT / "macos" / "MdddApp" / "Sources" / "MdddApp"
+APP_LAYER = REPO_ROOT / "macos" / "BruceApp" / "Sources" / "BruceApp"
 SETTINGS_DIR = APP_LAYER / "Settings"
 CODEX_SETTINGS = SETTINGS_DIR / "CodexProviderSettingsSection.swift"
 
@@ -77,7 +77,7 @@ def test_settings_codex_actions_use_discovery_not_import():
 
 def test_settings_codex_status_distinguishes_authorization_states():
     """任务 10 契约: 设置页可区分 connected / needsReauthorization / revoked,
-    needsReauthorization 提供「在 mddd 中重新授权」操作."""
+    needsReauthorization 提供「在 Bruce 中重新授权」操作."""
     settings = _settings_layer_source()
     assert "case .connected:" in settings
     assert "case .needsReauthorization:" in settings
@@ -136,7 +136,7 @@ def test_coordinator_uses_hasConfiguredCredentials_for_codex():
     "已配置"与发现导入收尾都走 hasConfiguredCredentials, 不再以索引 connected
     代判或无条件标 true."""
     service = (
-        REPO_ROOT / "macos" / "MdddApp" / "Sources" / "MdddApp"
+        REPO_ROOT / "macos" / "BruceApp" / "Sources" / "BruceApp"
         / "SubscriptionService.swift"
     ).read_text()
     assert "hasConfiguredCredentials()" in service

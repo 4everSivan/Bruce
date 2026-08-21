@@ -35,13 +35,13 @@ URL 追加 `&deterministic=1` 时, harness 在注入 widget 前冻结时钟 (`Da
 ```bash
 for m in agent-usage; do
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless --disable-gpu \
-    --hide-scrollbars --window-size=782,356 --screenshot=/tmp/mddd-$m.png \
+    --hide-scrollbars --window-size=782,356 --screenshot=/tmp/Bruce-$m.png \
     "http://127.0.0.1:8765/tests/visual/widget_harness.html?module=$m&deterministic=1"
 done
 python3 -c "
 from PIL import Image
 for m in ['agent-usage']:
-    Image.open(f'/tmp/mddd-{m}.png').convert('RGB').save(f'tests/visual/baselines/{m}-valid.jpg','JPEG',quality=90)
+    Image.open(f'/tmp/Bruce-{m}.png').convert('RGB').save(f'tests/visual/baselines/{m}-valid.jpg','JPEG',quality=90)
 "
 ```
 

@@ -10,19 +10,19 @@
 
 - 最低系统版本: macOS 26 (Liquid Glass 与菜单栏面板依赖).
 - 应用形态: 菜单栏常驻应用 (LSUIElement), 原生状态项 + AppKit/SwiftUI 弹出面板 + 独立设置窗口.
-- 开发 bundle identifier: `com.mddd.dashboard`.
+- 开发 bundle identifier: `com.bruce.dashboard`.
 - 发布前必须根据最终签名团队确认 bundle identifier; 数据目录和 Keychain service 名称不得在发布后随意变化.
 
 ## Swift 工具链
 
-- 工程格式: Swift Package Manager executable, 后续可由 Xcode 直接打开 `macos/MdddApp/Package.swift`.
+- 工程格式: Swift Package Manager executable, 后续可由 Xcode 直接打开 `macos/BruceApp/Package.swift`.
 - Swift tools version: 6.0.
 - 当前已验证编译器: Apple Swift 6.2.1.
 - 当前机器只有 Apple Command Line Tools, 未安装或未选择完整 Xcode, 因此暂不能执行 `xcodebuild archive`、签名和 `.app` 发布验证.
 - 无完整 Xcode 时使用:
 
 ```bash
-swift build --package-path macos/MdddApp
+swift build --package-path macos/BruceApp
 ```
 
 ## Python 工具链
@@ -49,16 +49,16 @@ python3 -m py_compile \
 
 ### Core targets
 
-- `MdddOnboardingCore` 是不含 SwiftUI/AppKit 的纯 library target, 可以被测试 harness 通过 `@testable import` 正常链接和运行.
-- `MdddAppCore` 承载 AppModel, CollectorRunner, RefreshScheduler, ArtifactStore, Widget 状态, 生命周期协调和诊断服务.
-- `MdddApp` executable target 只保留 `@main`, SwiftUI/AppKit 界面, AppDelegate 装配和 Widget 资源.
+- `BruceOnboardingCore` 是不含 SwiftUI/AppKit 的纯 library target, 可以被测试 harness 通过 `@testable import` 正常链接和运行.
+- `BruceAppCore` 承载 AppModel, CollectorRunner, RefreshScheduler, ArtifactStore, Widget 状态, 生命周期协调和诊断服务.
+- `BruceApp` executable target 只保留 `@main`, SwiftUI/AppKit 界面, AppDelegate 装配和 Widget 资源.
 - 包内跨 target API 使用 Swift `package` 访问级别, 不扩大为对包外公开的接口.
 
 ### 已接入 SwiftPM 的 Harness
 
 | Harness | 当前用例数 | 覆盖 |
 |---|---:|---|
-| `MdddOnboardingCoreHarness` | 以 Harness 实际输出为准 | 路径、版本、扫描、readiness、授权 Gate、配置、Keychain 抽象、订阅凭证、设备码登录、令牌轮换合并 |
+| `BruceOnboardingCoreHarness` | 以 Harness 实际输出为准 | 路径、版本、扫描、readiness、授权 Gate、配置、Keychain 抽象、订阅凭证、设备码登录、令牌轮换合并 |
 | `PanelViewModelHarness` | 以 Harness 实际输出为准 | 措辞、分组、条件渲染 |
 | `ArtifactStoreHarness` | 以 Harness 实际输出为准 | schema、私有权限、原子发布、previous 回退和迁移 |
 | `CollectorRunnerHarness` | 以 Harness 实际输出为准 | stdin 凭证、协议、并发、超时、取消和隔离 Bridge |

@@ -33,25 +33,25 @@
   };
 
   function ensureStateElement() {
-    var existing = document.querySelector("[data-mddd-host-state]");
+    var existing = document.querySelector("[data-Bruce-host-state]");
     if (existing) return existing;
     if (!document.body) return null;
     var style = document.createElement("style");
     style.textContent =
-      ".mddd-host-state{position:fixed;z-index:2147483647;right:12px;bottom:10px;" +
+      ".Bruce-host-state{position:fixed;z-index:2147483647;right:12px;bottom:10px;" +
       "max-width:calc(100% - 24px);padding:5px 9px;border-radius:999px;" +
       "border:1px solid var(--kimi-color-border,#d8d3c5);" +
       "background:color-mix(in srgb,var(--kimi-color-card,#f7f5ee) 92%,transparent);" +
       "box-shadow:0 4px 14px rgba(31,29,26,.10);backdrop-filter:blur(8px);" +
       "font:10px/1.3 system-ui,sans-serif;color:var(--kimi-color-text-secondary,#4d483d)}" +
-      ".mddd-host-state[hidden]{display:none}" +
+      ".Bruce-host-state[hidden]{display:none}" +
       "@media(prefers-reduced-motion:reduce){*,*::before,*::after{" +
       "animation-duration:.01ms!important;animation-iteration-count:1!important;" +
       "transition-duration:.01ms!important;scroll-behavior:auto!important}}";
     document.head.appendChild(style);
     var element = document.createElement("div");
-    element.className = "mddd-host-state";
-    element.setAttribute("data-mddd-host-state", "");
+    element.className = "Bruce-host-state";
+    element.setAttribute("data-Bruce-host-state", "");
     element.setAttribute("role", "status");
     element.setAttribute("aria-live", "polite");
     document.body.appendChild(element);

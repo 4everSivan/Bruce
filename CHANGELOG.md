@@ -39,7 +39,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- **macOS 原生菜单栏应用 (mddd)**: 原生 SwiftUI 液态玻璃看板，支持 Agent 用量、成本、额度监控与趋势折线图展示。
+- **macOS 原生菜单栏应用 (Bruce)**: 原生 SwiftUI 液态玻璃看板，支持 Agent 用量、成本、额度监控与趋势折线图展示。
 - **订阅凭证校验与管理**: 支持 Kimi Web Tokens、火山引擎 API Key、DeepSeek API Key、Codex OAuth 以及 Antigravity OAuth 凭证导入、自动生成与 Keychain 安全存储。
 - **DeepSeek 月度账本**: 支持 DeepSeek 月度 Token 消费追踪、每日差分增量算法与跨日持久化账本。
 - **Claude & Grok 官方额度采集**: 自动探测 CLI Keychain 与登录会话，支持 Claude Code 与 Grok 官方订阅额度只读采集。
@@ -50,5 +50,5 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
-- 打包脚本产物重命名为 `dist/mddd.app` 与 `dist/mddd.zip`（去除了 `test` 后缀）。
+- 打包脚本产物重命名为 `dist/Bruce.app` 与 `dist/Bruce.zip`（去除了 `test` 后缀）。
 - 应用 Icon 正式采用原生 AppIcon 资源与规范文档。

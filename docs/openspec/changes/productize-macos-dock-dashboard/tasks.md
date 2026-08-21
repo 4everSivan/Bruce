@@ -28,7 +28,7 @@
 
 ## 4. macOS 应用骨架与生命周期
 
-- [x] 4.1 创建 SwiftUI `MdddApp`、AppKit application delegate bridge 和单一主窗口场景
+- [x] 4.1 创建 SwiftUI `BruceApp`、AppKit application delegate bridge 和单一主窗口场景
 - [x] 4.2 实现 Dock 图标点击重新打开窗口, 并验证关闭窗口不会创建第二个调度器
 - [x] 4.3 实现 Agent、GitHub、GitLab 和设置的侧边栏导航及模块状态模型
 - [x] 4.4 实现应用退出协调, 包括停止新调度、取消运行任务和超时后终止子进程
@@ -48,7 +48,7 @@
 
 - [x] 6.1 为 Agent、GitHub 和 GitLab 定义版本化 Artifact schema 及 Swift 解码模型
 - [x] 6.2 实现字段类型、日期、模块标识和敏感字段的发布前校验
-- [x] 6.3 实现 `~/Library/Application Support/mddd/` 当前用户专属目录和文件权限
+- [x] 6.3 实现 `~/Library/Application Support/Bruce/` 当前用户专属目录和文件权限
 - [x] 6.4 实现临时写入、同步、重新读取校验和原子替换的模块快照流程
 - [x] 6.5 实现 `lastSuccessAt`、`lastAttemptAt`、`isStale`、错误类别和 schema 版本元数据
 - [x] 6.6 实现旧 schema 可回滚迁移和未知新 schema 的安全拒绝路径
@@ -71,14 +71,14 @@
 - [x] 8.3 实现私有 GitLab base URL、VPN或网络可达性和授权方式检查
 - [x] 8.4 为每个模块呈现可用、缺依赖、待授权、授权过期、网络不可达和不支持状态
 - [x] 8.5 为缺失依赖提供安装、登录或配置入口, 且在条件未满足时阻止启动 Collector
-- [x] 8.6 为扫描超时、路径不存在、数据库锁定和 schema 不兼容增加不含敏感内容的测试 (MdddOnboardingCoreHarness: 74 tests passed, `swift run` 可执行)
+- [x] 8.6 为扫描超时、路径不存在、数据库锁定和 schema 不兼容增加不含敏感内容的测试 (BruceOnboardingCoreHarness: 74 tests passed, `swift run` 可执行)
 
 ## 9. 授权、Keychain 与自动续期
 
 - [x] 9.1 实现统一授权摘要, 列出扫描位置、外部服务、30 分钟刷新、令牌续期和撤销方式 (SettingsView 统一授权区: 模块 Toggle + 摘要 + 确认/撤销按钮 -> OnboardingCoordinator.confirmConsent)
 - [ ] 9.2 为支持 OAuth 的 provider 实现官方 `ASWebAuthenticationSession` 或设备授权适配器
 - [x] 9.3 为不支持应用 OAuth 的 provider 实现官方 CLI 登录引导或安全 PAT/API key 输入 (GitHub: gh auth login --web 官方流程; GitLab: PAT SecureField 不回显 + 保存并验证, PAT 只入 Keychain)
-- [x] 9.4 实现按服务和账号范围保存、读取、更新及删除 Keychain 项 (CredentialStore 协议 + KeychainCredentialStore + InMemoryCredentialStore, MdddOnboardingCoreHarness 74 tests 覆盖)
+- [x] 9.4 实现按服务和账号范围保存、读取、更新及删除 Keychain 项 (CredentialStore 协议 + KeychainCredentialStore + InMemoryCredentialStore, BruceOnboardingCoreHarness 74 tests 覆盖)
 - [x] 9.5 实现从 Keychain 到 CollectorRunner 的单次最小凭证传递, 确保命令行和日志不包含凭证 (OnboardingRunInputProvider 按模块生成最小 context/credentials, 仅经 Bridge stdin JSON 传递; 输入缺失不启动进程)
 - [x] 9.6 实现 `credentialUpdates` 验证和 Keychain 原子更新, 并拒绝 Python 直接写回第三方认证文件 (Bridge validate_credential_updates + KeychainCredentialStore SecItemUpdate 优先原子写 + Agent 能力门禁拒绝未授权 OAuth 读写, 2.7 已移除 App 模式写回)
 - [ ] 9.7 实现访问令牌安全续期窗口、临时故障有限重试和永久认证错误暂停
@@ -92,7 +92,7 @@
 - [x] 10.3 实现 Mac 睡眠恢复和应用重新激活后的过期检查及最多一次补偿刷新
 - [x] 10.4 实现临时错误的有限指数退避、抖动和服务 rate-limit 时间尊重
 - [x] 10.5 实现认证错误进入 `authRequired`, 不进行无限重试, 并保留最后成功快照
-- [x] 10.6 为定时器、睡眠跨多个周期、并发手动点击、失败退避和模块禁用增加确定性时钟测试 (`RefreshSchedulerHarness` 已接入 `MdddAppCore`, 9 tests passed, 含容量释放后排队启动)
+- [x] 10.6 为定时器、睡眠跨多个周期、并发手动点击、失败退避和模块禁用增加确定性时钟测试 (`RefreshSchedulerHarness` 已接入 `BruceAppCore`, 9 tests passed, 含容量释放后排队启动)
 
 ## 11. 用户状态、可访问性与诊断
 

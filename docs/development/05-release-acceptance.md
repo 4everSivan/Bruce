@@ -13,7 +13,7 @@
 - 安装并选择完整 Xcode, 确认发布 Team、bundle identifier 和版本号。
 - 使用隔离的验收账号或用户明确指定的个人账号。
 - 明确本轮允许访问的 Agent Provider。
-- 验收前记录 `~/Library/Application Support/mddd/` 和 Keychain service `com.mddd.dashboard.credentials` 的初始状态。
+- 验收前记录 `~/Library/Application Support/Bruce/` 和 Keychain service `com.bruce.dashboard.credentials` 的初始状态。
 - 不在录屏、截图、终端历史或缺陷文档中记录 PAT、OAuth code、Cookie、邮箱、仓库私有名称或完整用户路径。
 
 ## 构建、签名和安装
@@ -65,7 +65,7 @@
 
 - [ ] 在设置页撤销全部授权并分别断开应用持有凭证的模块。
 - [ ] 退出应用后删除验收用 Application Support 数据。
-- [ ] 在“钥匙串访问”中确认验收用 `com.mddd.dashboard.credentials` 项已删除。
+- [ ] 在“钥匙串访问”中确认验收用 `com.bruce.dashboard.credentials` 项已删除。
 - [ ] 在仓库平台和 Provider 官方页面撤销验收期间创建的远端授权。
 - [ ] 回滚到上一兼容 Bridge v1 / Artifact v1 构建后, previous 快照仍可读。
 

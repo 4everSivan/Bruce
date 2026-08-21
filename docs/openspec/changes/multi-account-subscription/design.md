@@ -44,7 +44,7 @@
 将 Codex 的 account-index + per-account record 模式泛化为所有 provider 共用:
 
 ```
-Keychain service: com.mddd.dashboard.credentials
+Keychain service: com.bruce.dashboard.credentials
   ├─ <provider>:account-index     → JSON {accounts: [{accountID, displayName, credentialKeyHash, ...}]}
   ├─ <provider>:account:<hash>    → JSON {凭证体, updatedAt, ...}
   └─ (旧) <provider>:<单条键>      → 迁移读取, 成功后删除

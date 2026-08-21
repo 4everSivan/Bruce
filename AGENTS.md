@@ -1,5 +1,5 @@
 <!-- source: template/base -->
-# mddd 项目事实
+# Bruce 项目事实
 
 本文件是 `constitution.md` 的项目实施层, 是所有 AI 工具的共享基线. 维护项目事实, 路径, 脚本, 数据模型, 服务拓扑和已确认环境能力策略.
 
@@ -13,7 +13,7 @@
 
 ## 1. 项目目标
 
-`mddd` 用于制作一个运行在 macOS 菜单栏场景中的研发活动看板. 核心能力是分析本机 AI Agent 的 token 用量, 成本和额度. 项目采用本机 Collector 采集数据, 输出 JSON artifact; macOS App 以原生 SwiftUI 看板渲染 (最低 macOS 14; 液态玻璃主题需 macOS 26), 仓库根 `*/widget/` 单文件 Widget 继续服务 Daimon/Kimi Work Blueprint 场景.
+`Bruce` 用于制作一个运行在 macOS 菜单栏场景中的研发活动看板. 核心能力是分析本机 AI Agent 的 token 用量, 成本和额度. 项目采用本机 Collector 采集数据, 输出 JSON artifact; macOS App 以原生 SwiftUI 看板渲染 (最低 macOS 14; 液态玻璃主题需 macOS 26), 仓库根 `*/widget/` 单文件 Widget 继续服务 Daimon/Kimi Work Blueprint 场景.
 
 项目是本地优先工具, 但会读取真实会话记录和认证信息, 并调用外部服务. 任何实现都必须优先保护凭证, 个人活动数据和其他应用维护的本机数据库.
 <!-- source: user-input -->
@@ -63,7 +63,7 @@
 |------|------|
 | `agent-usage/collector/` | 扫描本机 Agent 会话, 聚合 token, 估算成本并查询服务额度 |
 | `agent-usage/widget/` | 渲染 Agent token, 成本, 额度和趋势的单文件 Widget |
-| `macos/MdddApp/` | SwiftPM 包 (最低 macOS 14): `MdddApp` (SwiftUI 菜单栏应用, 经典/液态玻璃主题, `Sources/MdddApp/Views/` 卡片组件), `MdddAppCore` (AppModel, 调度, PanelViewModel 映射), `MdddOnboardingCore` (扫描, 授权, Gate, 订阅凭证, 主题解析纯逻辑), 多个 Harness 边界测试 |
+| `macos/BruceApp/` | SwiftPM 包 (最低 macOS 14): `BruceApp` (SwiftUI 菜单栏应用, 经典/液态玻璃主题, `Sources/BruceApp/Views/` 卡片组件), `BruceAppCore` (AppModel, 调度, PanelViewModel 映射), `BruceOnboardingCore` (扫描, 授权, Gate, 订阅凭证, 主题解析纯逻辑), 多个 Harness 边界测试 |
 | `data/` | 本机运行产物; 可能包含个人活动和使用量数据, 不得提交 |
 | `docs/` | 项目设计, 决策和说明文档 |
 | `scripts/` | 本地验证脚本 (`verify-local.sh`) 与测试版 App 打包脚本 (`build-test-app.sh`) |
@@ -72,7 +72,7 @@
 
 - `README.md`: 项目目标, 模块说明, 本机数据源和运行命令.
 - `constitution.md`: 安全红线, 证据要求和工作模式.
-- `docs/development/01-mddd-design.md`: 产品需求, UI 规范, 数据契约和验收标准.
+- `docs/development/01-bruce-design.md`: 产品需求, UI 规范, 数据契约和验收标准.
 <!-- source: scan/code-structure, confidence: HIGH -->
 
 ---
@@ -86,11 +86,11 @@
 | `node --check -` | 对从 Widget 提取的 JavaScript 执行语法验证 |
 | `zsh scripts/verify-local.sh` | 标准本地验证: Python 语法 + pytest + swift build + 全部 12 个 Harness |
 | `python3 -m pytest tests/` | Python 单元与契约测试 (bridge, collector, widget 安全); 数量以当前 pytest 收集结果为准 |
-| `swift build --package-path macos/MdddApp` | macOS App 与 MdddOnboardingCore 构建验证 |
-| `swift run --package-path macos/MdddApp MdddOnboardingCoreHarness` | Onboarding Core 边界测试 (进程, SQLite, Keychain, Gate, 订阅凭证, 设备码登录, 令牌轮换合并, Codex v2 迁移, DeepSeek 追踪 ID 与保存事务, 统一过期判定器, Claude/Grok 导入器); 数量以 Harness 输出为准 |
-| `swift run --package-path macos/MdddApp PanelViewModelHarness` | 面板 view model 映射边界测试 (措辞, 分组, 条件渲染, 用量档位与热力图, 按月聚合, Codex 账号上次成功时间, DeepSeek 月度映射); 43 项 |
-| `swift run --package-path macos/MdddApp DeepSeekUsageLedgerHarness` | DeepSeek 月度账本边界测试 (领域差分, 时区跨日, 持久化权限, 损坏恢复, 敏感字段); 17 项 |
-| `zsh scripts/build-test-app.sh` | 生成 `dist/mddd.app` 本地构建 App (Release 构建 + 打包 + 签名校验) |
+| `swift build --package-path macos/BruceApp` | macOS App 与 BruceOnboardingCore 构建验证 |
+| `swift run --package-path macos/BruceApp BruceOnboardingCoreHarness` | Onboarding Core 边界测试 (进程, SQLite, Keychain, Gate, 订阅凭证, 设备码登录, 令牌轮换合并, Codex v2 迁移, DeepSeek 追踪 ID 与保存事务, 统一过期判定器, Claude/Grok 导入器); 数量以 Harness 输出为准 |
+| `swift run --package-path macos/BruceApp PanelViewModelHarness` | 面板 view model 映射边界测试 (措辞, 分组, 条件渲染, 用量档位与热力图, 按月聚合, Codex 账号上次成功时间, DeepSeek 月度映射); 43 项 |
+| `swift run --package-path macos/BruceApp DeepSeekUsageLedgerHarness` | DeepSeek 月度账本边界测试 (领域差分, 时区跨日, 持久化权限, 损坏恢复, 敏感字段); 17 项 |
+| `zsh scripts/build-test-app.sh` | 生成 `dist/Bruce.app` 本地构建 App (Release 构建 + 打包 + 签名校验) |
 | GitHub Actions `.github/workflows/ci.yml` | push/PR 触发: verify-local.sh + Python 3.9 兼容 + 测试包构建; tag `v*` 触发草稿 Release |
 
 执行第一个实时命令前必须应用 `constitution.md` 的 Production Operation Mode. 静态分析或普通代码审查不得把实时采集作为默认验证步骤.
@@ -131,7 +131,7 @@ Daimon 单文件 Widgets   macOS 菜单栏原生液态玻璃看板
 - Antigravity 额度查询的 OAuth client 凭证 (`AGY_CLIENT_ID` / `AGY_CLIENT_SECRET`) 由运行环境注入, 不硬编码入库; 缺省为空时刷新链路安全降级, 不得伪造非空凭证.
 - Claude / Grok 订阅额度 (`quota_official.py`) 实时只读本机 CLI 登录态, 不刷新, 不回写, 不做一次性导入: Claude 按「Keychain `Claude Code-credentials` (无 account) 优先, `~/.claude/.credentials.json` 兜底」读取, 调用 `api.anthropic.com/api/oauth/usage`; Grok 读取 `~/.grok/auth.json` (OIDC scope 优先, legacy `/sign-in` 兜底), 调用 `grok.com` gRPC-web 账单接口, protobuf 启发式解析失败必须抛可诊断错误, 不得伪造用量. App 模式由 `provider_meta.claude/grok.enabled` 标记驱动 (无凭证注入), CLI 模式自动探测本机凭证; Swift 侧以本机检测结果作为 configured 语义 (fail-closed).
 - OpenCode Go 订阅额度 (`quota_official.py` `service_opencode_go`) 查询 console.opencode.ai 服务端计量 (设备码 OAuth, client_id `opencode-cli`; `/api/orgs` → `/api/go/status`), 跨机器汇总, 不读本机 opencode 数据库; App 模式多账号由 `opencode_go_quota_accounts` 注入 (每账号 `oauth` JSON, access 过期用 refresh_token 刷新并经 `credentialUpdates` 写回), 统一窗口语义: meters 返回哪些输出哪些 (`five_hour`→每 5 小时 / `calendar_week`→每周 / `product_period`→每月), 服务端没有的窗口 (如未订阅的月度) 不输出, `limitMicroCents<=0` 的窗口跳过; CLI 模式无本机凭证, 不出条目.
-- App 订阅凭证存 Keychain (`com.mddd.dashboard.credentials`), 在设置「订阅额度」分区配置或从本机/CC Switch 一次性只读导入; 令牌轮换经 `credentialUpdates` 只写回 Keychain, 不回写 CC Switch.
+- App 订阅凭证存 Keychain (`com.bruce.dashboard.credentials`), 在设置「订阅额度」分区配置或从本机/CC Switch 一次性只读导入; 令牌轮换经 `credentialUpdates` 只写回 Keychain, 不回写 CC Switch.
 - App 模式 agent-usage 请求携带 `days=182` 聚合窗口 (Bridge 上限 366): 柱状图取末 14 天, 全量 daily 供用量热力图; CLI 直跑默认 14 天.
 - 外部 API 和 CC Switch 数据库 schema 未在仓库内锁定, 解析失败必须保留可诊断证据.
 <!-- source: scan/security, confidence: HIGH -->

@@ -1,4 +1,4 @@
-# mddd 正式版打包与发布流程
+# Bruce 正式版打包与发布流程
 
 > 版本: 1.0  
 > 日期: 2026-08-04  
@@ -12,7 +12,7 @@
 | Preview | 本地开发和内部测试 | 当前 ad-hoc 签名即可 | 可包含诊断开关, 不作为公开分发 |
 | Release | 面向用户的正式下载包 | Developer ID + Hardened Runtime + Apple notarization | 只包含生产资源和最小权限 |
 
-当前 `scripts/build-test-app.sh` 只生成 `dist/mddd.app` 和 `dist/mddd.zip`, 使用固定测试 bundle ID/version、ad-hoc 签名且未执行公证. 它继续作为 Preview 流程, 不得被称为正式版.
+当前 `scripts/build-test-app.sh` 只生成 `dist/Bruce.app` 和 `dist/Bruce.zip`, 使用固定测试 bundle ID/version、ad-hoc 签名且未执行公证. 它继续作为 Preview 流程, 不得被称为正式版.
 
 正式版采用 Developer ID 分发路径. Apple 对于 App Store 外分发的软件要求使用 Developer ID 签名, 开启 Hardened Runtime, 并通过 `notarytool` 提交公证; 公证后使用 `stapler` 将票据附加到 App. 参考 [Apple notarization documentation](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution).
 
@@ -62,8 +62,8 @@ CFBundleVersion = CI 递增构建号
 
 ### 阶段 2: Release 构建
 
-1. `swift build --configuration release --package-path macos/MdddApp`.
-2. 使用 Release 产物组装 `Mddd.app`.
+1. `swift build --configuration release --package-path macos/BruceApp`.
+2. 使用 Release 产物组装 `Bruce.app`.
 3. 写入正式 bundle ID、版本号、构建号和最小 Info.plist.
 4. 复制运行时需要的 Collector、Bridge schema 和资源, 排除测试 Harness、fixture、源码缓存和本机数据.
 5. 对嵌套二进制、Helper 和 App 进行签名前结构检查.
@@ -80,12 +80,12 @@ CFBundleVersion = CI 递增构建号
 1. 将签名后的 App 打成稳定命名的 zip.
 2. 使用 `xcrun notarytool submit ... --wait` 提交公证.
 3. 公证失败时保存 request ID、脱敏日志和失败原因, 不发布任何包.
-4. 公证成功后执行 `xcrun stapler staple Mddd.app`.
-5. 执行 `xcrun stapler validate Mddd.app`.
+4. 公证成功后执行 `xcrun stapler staple Bruce.app`.
+5. 执行 `xcrun stapler validate Bruce.app`.
 
 ### 阶段 5: Gatekeeper 验证与产物生成
 
-1. 执行 `spctl --assess --type execute --verbose=4 Mddd.app`.
+1. 执行 `spctl --assess --type execute --verbose=4 Bruce.app`.
 2. 在干净用户环境中首次启动, 检查菜单栏、设置页、授权、刷新和退出.
 3. 重新压缩装订后的 App.
 4. 生成 `SHA256SUMS`.
@@ -146,7 +146,7 @@ CI 规则:
 每个正式版本至少包含:
 
 ```text
-mddd-<version>-macos.zip
+Bruce-<version>-macos.zip
 SHA256SUMS
 release-notes-<version>.md
 ```
@@ -175,7 +175,7 @@ release-notes-<version>.md
 
 ## 8. 当前阻塞与完成标准
 
-当前仓库尚未配置 Developer ID 证书、公证 API Key、正式 bundle ID 和 release entitlements. 在这些前置条件完成前, 只能生成 Preview 测试包, 不能把现有 `mddd.app` 称为正式版.
+当前仓库尚未配置 Developer ID 证书、公证 API Key、正式 bundle ID 和 release entitlements. 在这些前置条件完成前, 只能生成 Preview 测试包, 不能把现有 `Bruce.app` 称为正式版.
 
 正式发布流程完成的判定标准:
 
@@ -187,6 +187,6 @@ release-notes-<version>.md
 ## 9. 2026-08-20 本地验收记录
 
 - `zsh scripts/verify-local.sh`: 通过, Python `246 passed`, Swift build 与脚本列出的全部 Harness 通过.
-- `zsh scripts/build-test-app.sh`: 通过, 生成 `dist/mddd.app` 和 `dist/mddd.zip`, ad-hoc 签名校验通过.
+- `zsh scripts/build-test-app.sh`: 通过, 生成 `dist/Bruce.app` 和 `dist/Bruce.zip`, ad-hoc 签名校验通过.
 - bundle 检查: 运行时仅包含共享清单声明的 Bridge/Collector 资源, 不包含仓库绝对路径、敏感信息或本机数据.
 - 正式版脚本未执行签名/公证: 当前工作区未配置 Developer ID、正式 bundle ID 和 notary API key, 按安全门禁应在对应阶段失败且不写入正式产物.

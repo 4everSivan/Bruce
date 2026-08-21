@@ -1,4 +1,4 @@
-# mddd 冗余代码与旧流程审计
+# Bruce 冗余代码与旧流程审计
 
 > 原始审计日期: 2026-08-04
 > 复核日期: 2026-08-20
@@ -34,7 +34,7 @@
 | 验证项 | 当前基线 |
 |---|---|
 | Python 测试 | `python3 -m pytest tests/` 通过, 以当前测试收集数量为准 |
-| Swift 构建 | `swift build --package-path macos/MdddApp` 通过 |
+| Swift 构建 | `swift build --package-path macos/BruceApp` 通过 |
 | Onboarding Core | 以 Harness 实际输出为准 |
 | PanelViewModel | 以 Harness 实际输出为准 |
 | Artifact | 以 Harness 实际输出为准 |
@@ -134,17 +134,17 @@
 | `glassStatusPill`/`GlassStatusPillModifier` | `GlassTheme.swift` | 删除 modifier 及私有类型 (无视图使用) | swift build 通过 |
 | `connectionStatusText`/`connectionStatusIcon` | `SettingsView.swift` | 删除两个无调用方计算属性 | swift build 通过 |
 | `persistConnectionState`/`persistModuleSelection`/`revokeModule` | `OnboardingCoordinator.swift` | 删除三个无调用方方法 (状态保存/撤销由新协调入口完成) | swift build 通过 |
-| `CodexDeviceFlow.scope` | `DeviceAuthLogin.swift` | 删除未读取的 `scope` 常量 (OAuth 请求体未使用) | MdddOnboardingCoreHarness 143 passed |
-| `CodexCredentialStore.updateAuthorizationState` | `CodexCredentialStore.swift` | 删除无调用方方法 | MdddOnboardingCoreHarness 143 passed |
+| `CodexDeviceFlow.scope` | `DeviceAuthLogin.swift` | 删除未读取的 `scope` 常量 (OAuth 请求体未使用) | BruceOnboardingCoreHarness 143 passed |
+| `CodexCredentialStore.updateAuthorizationState` | `CodexCredentialStore.swift` | 删除无调用方方法 | BruceOnboardingCoreHarness 143 passed |
 | `collect_usage.py` 的 `cost_of` | `collect_usage.py` | 删除死函数 (计算已内联) | Python 115 passed |
 | `CollectorRunInput.refreshFailed` 同值分支 | `CollectorRunInput.swift` | 合并双分支为单一返回; 同时将 `.success(accessToken:expiresAt:)` 带标签匹配改为无标签 | swift build 通过 |
-| `attachCodexTokenInjector` 重复调用 | `MdddApp.swift` | 删除 line 49 重复 attach (初始化已注入) | swift build 通过 |
+| `attachCodexTokenInjector` 重复调用 | `BruceApp.swift` | 删除 line 49 重复 attach (初始化已注入) | swift build 通过 |
 
 ### 8.2 未执行 (1 项, 审计描述有误)
 
 | 候选项 | 原因 |
 |--------|------|
-| `SubscriptionCredentialAccount` Codex v2 别名 | 审计称"未引用", 实际 `codexAccounts`/`codexActiveAccount` 有大量测试引用 (CollectorRunnerHarness, MdddOnboardingCoreHarness); 且与 `CodexCredentialModels.legacyAccounts`/`legacyActiveAccount` 是不同用途的常量组, 不应删除 |
+| `SubscriptionCredentialAccount` Codex v2 别名 | 审计称"未引用", 实际 `codexAccounts`/`codexActiveAccount` 有大量测试引用 (CollectorRunnerHarness, BruceOnboardingCoreHarness); 且与 `CodexCredentialModels.legacyAccounts`/`legacyActiveAccount` 是不同用途的常量组, 不应删除 |
 
 ### 8.3 不在 P1 范围 (07 约束保留)
 
@@ -156,7 +156,7 @@
 
 ### 8.4 回归验证结果
 
-- `swift build --package-path macos/MdddApp`: 通过 (仅 1 个既有 ActorIsolatedCall warning, 非本次引入)
+- `swift build --package-path macos/BruceApp`: 通过 (仅 1 个既有 ActorIsolatedCall warning, 非本次引入)
 - `python3 -m pytest tests/`: 115 passed
 - `zsh scripts/verify-local.sh`: 全绿 (Python 115 + Onboarding 143 + PanelViewModel 32 + ArtifactStore 4 + CollectorRunner 26 + RefreshScheduler 55 + NativeLifecycle 5 + Diagnostics 8 + LocalIntegration 3 + DeepSeekUsageLedger 17)
 
@@ -182,6 +182,6 @@
 | Swift 颜色工具 | `Color(hex:)` 和 `Color.adaptive` 集中到 `GlassTheme.swift`, 卡片和设置页重复 extension 已删除 |
 | App 打包清单 | `scripts/runtime-manifest.zsh` 成为 Preview/Release 唯一运行时文件清单, 两个打包脚本共享校验和复制逻辑 |
 | OpenSpec | `docs/openspec` 为正式唯一真源, 根 `openspec` 仅为兼容符号链接 |
-| 文档和产物 | README、CI、工具链、设计、审计和发布文档已同步当前状态与 `dist/mddd.app`/`dist/mddd.zip` 产物名 |
+| 文档和产物 | README、CI、工具链、设计、审计和发布文档已同步当前状态与 `dist/Bruce.app`/`dist/Bruce.zip` 产物名 |
 
 验证结果: Python `246 passed`; Swift build、全部 Harness、Preview App 组装、bundle 签名校验均通过. 正式版签名、公证和 Gatekeeper 仍只受外部 Developer ID/API Key 配置约束, 不属于代码残留.

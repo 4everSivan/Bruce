@@ -649,7 +649,7 @@ def service_grok(home, now, http_timeout, injected=None, context=None):
             "Content-Type": "application/grpc-web+proto",
             "x-grpc-web": "1",
             "x-user-agent": "connect-es/2.1.1",
-            "User-Agent": "mddd-collector",
+            "User-Agent": "Bruce-collector",
         },
         method="POST",
     )

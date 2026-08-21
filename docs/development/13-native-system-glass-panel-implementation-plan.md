@@ -46,7 +46,7 @@ git status --short
 git diff --name-only
 ```
 
-若发现 Collector、Bridge、`MdddAppCore`、订阅或统计文件已有未说明改动, 先记录并停止, 不覆盖用户现有修改.
+若发现 Collector、Bridge、`BruceAppCore`、订阅或统计文件已有未说明改动, 先记录并停止, 不覆盖用户现有修改.
 
 ## 3. 文件边界
 
@@ -54,13 +54,13 @@ git diff --name-only
 
 | 文件 | 施工内容 |
 |---|---|
-| `macos/MdddApp/Sources/MdddApp/DashboardGlassPanelController.swift` | AppKit 宿主、Native surface、主题更新和尺寸透传 |
-| `macos/MdddApp/Sources/MdddApp/GlassTheme.swift` | surface plan、视觉 token、SwiftUI modifier 和回退映射 |
-| `macos/MdddApp/Sources/MdddApp/MenuBarStatusItemController.swift` | 将 hosting view 接入新宿主, 保留窗口行为 |
-| `macos/MdddApp/Sources/MdddApp/MenuBarViews.swift` | 根背景透明、macOS 26 卡片容器接入, 保留全部几何逻辑 |
-| `macos/MdddApp/Sources/MdddApp/Views/PanelCardContainer.swift` | 卡片背景、边框、高光和阴影接入 token |
-| `macos/MdddApp/Package.swift` | 仅在确需新增视觉 Harness 时增加测试目标 |
-| `macos/MdddApp/Tests/Harnesses/DashboardGlassSurfaceHarness/**` | 仅测试纯视觉 plan 映射, 不读取本机数据 |
+| `macos/BruceApp/Sources/BruceApp/DashboardGlassPanelController.swift` | AppKit 宿主、Native surface、主题更新和尺寸透传 |
+| `macos/BruceApp/Sources/BruceApp/GlassTheme.swift` | surface plan、视觉 token、SwiftUI modifier 和回退映射 |
+| `macos/BruceApp/Sources/BruceApp/MenuBarStatusItemController.swift` | 将 hosting view 接入新宿主, 保留窗口行为 |
+| `macos/BruceApp/Sources/BruceApp/MenuBarViews.swift` | 根背景透明、macOS 26 卡片容器接入, 保留全部几何逻辑 |
+| `macos/BruceApp/Sources/BruceApp/Views/PanelCardContainer.swift` | 卡片背景、边框、高光和阴影接入 token |
+| `macos/BruceApp/Package.swift` | 仅在确需新增视觉 Harness 时增加测试目标 |
+| `macos/BruceApp/Tests/Harnesses/DashboardGlassSurfaceHarness/**` | 仅测试纯视觉 plan 映射, 不读取本机数据 |
 | `docs/development/12-native-system-glass-panel-design.md` | 设计文档, 不在施工中改动 |
 | `docs/development/13-native-system-glass-panel-implementation-plan.md` | 本施工计划 |
 
@@ -69,8 +69,8 @@ git diff --name-only
 ```text
 agent-usage/collector/**
 bridge/**
-macos/MdddApp/Sources/MdddAppCore/**
-macos/MdddApp/Sources/MdddOnboardingCore/**
+macos/BruceApp/Sources/BruceAppCore/**
+macos/BruceApp/Sources/BruceOnboardingCore/**
 ```
 
 禁止修改订阅额度、Agent 用量、Codex 刷新、DeepSeek 账本、CollectorRunner、RefreshScheduler、ArtifactStore、PanelViewModel、Keychain、OAuth 和网络请求逻辑. 若编译问题要求触碰以上目录, 停止施工并重新确认范围.
@@ -90,8 +90,8 @@ macos/MdddApp/Sources/MdddOnboardingCore/**
 
 ```bash
 rg -n "frame\(width: 440\)|cardStackHeight|footerHeight|maxCardStackHeight|resizePanel|onContentSizeChange" \
-  macos/MdddApp/Sources/MdddApp/MenuBarViews.swift \
-  macos/MdddApp/Sources/MdddApp/MenuBarStatusItemController.swift
+  macos/BruceApp/Sources/BruceApp/MenuBarViews.swift \
+  macos/BruceApp/Sources/BruceApp/MenuBarStatusItemController.swift
 ```
 
 不保存或提交真实账号、artifact、Keychain 内容或实时采集结果作为视觉 fixture.
@@ -306,25 +306,25 @@ Harness 不读取本机数据、不访问网络、不写 Keychain、不启动 Ap
 
 ```bash
 git diff --check
-swift build --package-path macos/MdddApp
+swift build --package-path macos/BruceApp
 ```
 
 确认:
 
 - 所有 macOS 26 类型和调用位于 `#available(macOS 26, *)`.
 - classic/material 路径不存在 Liquid Glass 调用.
-- `git diff --name-only` 没有 Collector、Bridge、MdddAppCore、订阅和统计文件.
+- `git diff --name-only` 没有 Collector、Bridge、BruceAppCore、订阅和统计文件.
 - 没有新增配置字段、网络调用、文件写入或 Keychain 访问.
 
 ### 10.3 现有回归
 
 ```bash
 zsh scripts/verify-local.sh
-swift run --package-path macos/MdddApp PanelViewModelHarness
-swift run --package-path macos/MdddApp RefreshSchedulerHarness
-swift run --package-path macos/MdddApp CollectorRunnerHarness
-swift run --package-path macos/MdddApp ArtifactStoreHarness
-swift run --package-path macos/MdddApp SubscriptionCredentialsHarness
+swift run --package-path macos/BruceApp PanelViewModelHarness
+swift run --package-path macos/BruceApp RefreshSchedulerHarness
+swift run --package-path macos/BruceApp CollectorRunnerHarness
+swift run --package-path macos/BruceApp ArtifactStoreHarness
+swift run --package-path macos/BruceApp SubscriptionCredentialsHarness
 ```
 
 视觉施工不得以实时 Collector 采集作为前置条件, 也不得把真实 artifact 写入仓库.
@@ -385,7 +385,7 @@ NSVisualEffectView
 - ...
 
 未修改保护范围:
-- Collector / Bridge / MdddAppCore / 订阅 / Agent 统计 / 刷新流程
+- Collector / Bridge / BruceAppCore / 订阅 / Agent 统计 / 刷新流程
 
 验证:
 - swift build: pass/fail
@@ -403,19 +403,19 @@ NSVisualEffectView
 
 修改文件:
 
-- `macos/MdddApp/Sources/MdddApp/DashboardGlassPanelController.swift`
-- `macos/MdddApp/Sources/MdddApp/GlassTheme.swift`
-- `macos/MdddApp/Sources/MdddApp/MenuBarStatusItemController.swift`
-- `macos/MdddApp/Sources/MdddApp/MenuBarViews.swift`
-- `macos/MdddApp/Sources/MdddApp/Views/PanelCardContainer.swift`
+- `macos/BruceApp/Sources/BruceApp/DashboardGlassPanelController.swift`
+- `macos/BruceApp/Sources/BruceApp/GlassTheme.swift`
+- `macos/BruceApp/Sources/BruceApp/MenuBarStatusItemController.swift`
+- `macos/BruceApp/Sources/BruceApp/MenuBarViews.swift`
+- `macos/BruceApp/Sources/BruceApp/Views/PanelCardContainer.swift`
 
 未修改保护范围:
 
-- Collector、Bridge、MdddAppCore、订阅额度、Agent 统计、额度刷新、凭证和网络请求流程.
+- Collector、Bridge、BruceAppCore、订阅额度、Agent 统计、额度刷新、凭证和网络请求流程.
 
 验证记录:
 
-- `swift build --package-path macos/MdddApp`: pass.
+- `swift build --package-path macos/BruceApp`: pass.
 - `zsh scripts/verify-local.sh`: pass (Python 测试数量以当前 pytest 收集结果为准, Swift 全部 Harness).
 - `zsh scripts/build-test-app.sh`: pass, App Bundle 签名校验通过.
 - macOS 26 原生面板截图: pass; 440pt 宽度、卡片顺序、内容和固定底栏保持不变, 文字与图表保持清晰.

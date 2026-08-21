@@ -38,7 +38,7 @@ macOS 26 使用 AppKit 原生 Liquid Glass, macOS 14-25 使用 `NSVisualEffectVi
 - `agent-usage/collector/**`、Bridge、artifact schema.
 - 订阅额度采集、解析、刷新、合并、账号状态和凭证处理.
 - Agent 会话扫描、token 聚合、成本计算和统计窗口.
-- `MdddAppCore` 中的 Collector、Scheduler、PanelViewModel、订阅和统计模型.
+- `BruceAppCore` 中的 Collector、Scheduler、PanelViewModel、订阅和统计模型.
 - 卡片顺序、卡片内容、文案、统计字段、条件渲染和可访问性语义.
 - 菜单栏状态项指标、全局快捷键、刷新按钮行为和点击外部关闭行为.
 - 设置页布局和设置项配置格式.
@@ -66,7 +66,7 @@ macOS 26 使用 AppKit 原生 Liquid Glass, macOS 14-25 使用 `NSVisualEffectVi
 
 ### 4.1 组件层级
 
-新增 `DashboardGlassPanelController`, 建议放在 `macos/MdddApp/Sources/MdddApp/` 下. 它作为 `NSPanel.contentViewController`, 内部持有原生材质视图和 SwiftUI hosting view:
+新增 `DashboardGlassPanelController`, 建议放在 `macos/BruceApp/Sources/BruceApp/` 下. 它作为 `NSPanel.contentViewController`, 内部持有原生材质视图和 SwiftUI hosting view:
 
 ```text
 DashboardGlassPanelController.view
@@ -290,7 +290,7 @@ NativeSurfaceView 更新材质
 7. 仅在实机截图显示内部实体块破坏材质时, 调整统计卡片内部装饰透明度; 默认不改三个内容卡片文件.
 8. 完成自动化、实机视觉矩阵和正式版打包前回归.
 
-若视觉改动需要触碰 Collector、Bridge、MdddAppCore 或统计模型, 必须停止并重新确认范围.
+若视觉改动需要触碰 Collector、Bridge、BruceAppCore 或统计模型, 必须停止并重新确认范围.
 
 ## 10.1 实施记录
 
@@ -327,7 +327,7 @@ NativeSurfaceView 更新材质
 ### 11.3 现有业务回归
 
 ```bash
-swift build --package-path macos/MdddApp
+swift build --package-path macos/BruceApp
 zsh scripts/verify-local.sh
 zsh scripts/build-test-app.sh
 ```

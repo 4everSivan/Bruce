@@ -2,20 +2,20 @@
 
 set -euo pipefail
 
-MDDD_SCRIPT_DIR=${0:A:h}
-MDDD_REPO_ROOT=${MDDD_SCRIPT_DIR:h}
-MDDD_SWIFT_PACKAGE="$MDDD_REPO_ROOT/macos/MdddApp"
-MDDD_DIST_DIR="$MDDD_REPO_ROOT/dist"
-MDDD_OUTPUT_APP="$MDDD_DIST_DIR/mddd.app"
-MDDD_OUTPUT_ZIP="$MDDD_DIST_DIR/mddd.zip"
-MDDD_STAGING_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/mddd-build.XXXXXX")
-MDDD_STAGED_APP="$MDDD_STAGING_ROOT/mddd.app"
-MDDD_CONTENTS="$MDDD_STAGED_APP/Contents"
-MDDD_RESOURCES="$MDDD_CONTENTS/Resources"
-MDDD_RUNTIME="$MDDD_RESOURCES/runtime"
+BRUCE_SCRIPT_DIR=${0:A:h}
+BRUCE_REPO_ROOT=${BRUCE_SCRIPT_DIR:h}
+BRUCE_SWIFT_PACKAGE="$BRUCE_REPO_ROOT/macos/BruceApp"
+BRUCE_DIST_DIR="$BRUCE_REPO_ROOT/dist"
+BRUCE_OUTPUT_APP="$BRUCE_DIST_DIR/Bruce.app"
+BRUCE_OUTPUT_ZIP="$BRUCE_DIST_DIR/Bruce.zip"
+BRUCE_STAGING_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/Bruce-build.XXXXXX")
+BRUCE_STAGED_APP="$BRUCE_STAGING_ROOT/Bruce.app"
+BRUCE_CONTENTS="$BRUCE_STAGED_APP/Contents"
+BRUCE_RESOURCES="$BRUCE_CONTENTS/Resources"
+BRUCE_RUNTIME="$BRUCE_RESOURCES/runtime"
 
 cleanup() {
-    rm -rf "$MDDD_STAGING_ROOT"
+    rm -rf "$BRUCE_STAGING_ROOT"
 }
 trap cleanup EXIT
 
@@ -27,77 +27,77 @@ for required_command in "${required_commands[@]}"; do
     fi
 done
 
-source "$MDDD_SCRIPT_DIR/runtime-manifest.zsh"
-mddd_validate_packaging_sources "$MDDD_REPO_ROOT"
+source "$BRUCE_SCRIPT_DIR/runtime-manifest.zsh"
+Bruce_validate_packaging_sources "$BRUCE_REPO_ROOT"
 
-echo "编译 mddd Release 可执行文件"
+echo "编译 Bruce Release 可执行文件"
 swift build \
-    --package-path "$MDDD_SWIFT_PACKAGE" \
+    --package-path "$BRUCE_SWIFT_PACKAGE" \
     --configuration release \
-    --product MdddApp
-MDDD_BIN_DIR=$(swift build \
-    --package-path "$MDDD_SWIFT_PACKAGE" \
+    --product BruceApp
+BRUCE_BIN_DIR=$(swift build \
+    --package-path "$BRUCE_SWIFT_PACKAGE" \
     --configuration release \
     --show-bin-path)
-MDDD_EXECUTABLE="$MDDD_BIN_DIR/MdddApp"
+BRUCE_EXECUTABLE="$BRUCE_BIN_DIR/BruceApp"
 
-if [[ ! -x "$MDDD_EXECUTABLE" ]]; then
-    echo "Release 可执行文件不存在: $MDDD_EXECUTABLE" >&2
+if [[ ! -x "$BRUCE_EXECUTABLE" ]]; then
+    echo "Release 可执行文件不存在: $BRUCE_EXECUTABLE" >&2
     exit 1
 fi
 
-echo "组装 mddd.app"
-mkdir -p "$MDDD_CONTENTS/MacOS" "$MDDD_RESOURCES" \
-    "$MDDD_RUNTIME/bridge" \
-    "$MDDD_RUNTIME/agent-usage/collector"
+echo "组装 Bruce.app"
+mkdir -p "$BRUCE_CONTENTS/MacOS" "$BRUCE_RESOURCES" \
+    "$BRUCE_RUNTIME/bridge" \
+    "$BRUCE_RUNTIME/agent-usage/collector"
 
-ditto "$MDDD_EXECUTABLE" "$MDDD_CONTENTS/MacOS/MdddApp"
-chmod 755 "$MDDD_CONTENTS/MacOS/MdddApp"
-strip -S "$MDDD_CONTENTS/MacOS/MdddApp"
-mddd_copy_runtime "$MDDD_REPO_ROOT" "$MDDD_RUNTIME"
+ditto "$BRUCE_EXECUTABLE" "$BRUCE_CONTENTS/MacOS/BruceApp"
+chmod 755 "$BRUCE_CONTENTS/MacOS/BruceApp"
+strip -S "$BRUCE_CONTENTS/MacOS/BruceApp"
+Bruce_copy_runtime "$BRUCE_REPO_ROOT" "$BRUCE_RUNTIME"
 
-ditto "$MDDD_REPO_ROOT/macos/MdddApp/Assets/AppIcon.icns" \
-    "$MDDD_RESOURCES/AppIcon.icns"
+ditto "$BRUCE_REPO_ROOT/macos/BruceApp/Assets/AppIcon.icns" \
+    "$BRUCE_RESOURCES/AppIcon.icns"
 
-MDDD_INFO_PLIST="$MDDD_CONTENTS/Info.plist"
-plutil -create xml1 "$MDDD_INFO_PLIST"
-plutil -insert CFBundleDevelopmentRegion -string "zh_CN" "$MDDD_INFO_PLIST"
-plutil -insert CFBundleDisplayName -string "mddd" "$MDDD_INFO_PLIST"
-plutil -insert CFBundleExecutable -string "MdddApp" "$MDDD_INFO_PLIST"
-plutil -insert CFBundleIdentifier -string "io.mddd.dashboard" \
-    "$MDDD_INFO_PLIST"
+BRUCE_INFO_PLIST="$BRUCE_CONTENTS/Info.plist"
+plutil -create xml1 "$BRUCE_INFO_PLIST"
+plutil -insert CFBundleDevelopmentRegion -string "zh_CN" "$BRUCE_INFO_PLIST"
+plutil -insert CFBundleDisplayName -string "Bruce" "$BRUCE_INFO_PLIST"
+plutil -insert CFBundleExecutable -string "BruceApp" "$BRUCE_INFO_PLIST"
+plutil -insert CFBundleIdentifier -string "io.bruce.dashboard" \
+    "$BRUCE_INFO_PLIST"
 plutil -insert CFBundleInfoDictionaryVersion -string "6.0" \
-    "$MDDD_INFO_PLIST"
-plutil -insert CFBundleName -string "mddd" "$MDDD_INFO_PLIST"
-plutil -insert CFBundlePackageType -string "APPL" "$MDDD_INFO_PLIST"
+    "$BRUCE_INFO_PLIST"
+plutil -insert CFBundleName -string "Bruce" "$BRUCE_INFO_PLIST"
+plutil -insert CFBundlePackageType -string "APPL" "$BRUCE_INFO_PLIST"
 # 版本号单一事实源: 从 pyproject.toml 读取 (正则, Python 3.9 兼容).
-MDDD_VERSION=$(python3 -c 'import re; m = re.search(r"^version\s*=\s*\"([^\"]+)\"", open("pyproject.toml").read(), re.M); print(m.group(1) if m else "")')
-if [[ -z "$MDDD_VERSION" ]]; then
+BRUCE_VERSION=$(python3 -c 'import re; m = re.search(r"^version\s*=\s*\"([^\"]+)\"", open("pyproject.toml").read(), re.M); print(m.group(1) if m else "")')
+if [[ -z "$BRUCE_VERSION" ]]; then
     echo "无法从 pyproject.toml 读取版本号" >&2
     exit 1
 fi
-plutil -insert CFBundleShortVersionString -string "$MDDD_VERSION" \
-    "$MDDD_INFO_PLIST"
-plutil -insert CFBundleVersion -string "1" "$MDDD_INFO_PLIST"
-plutil -insert CFBundleIconFile -string "AppIcon" "$MDDD_INFO_PLIST"
-plutil -insert LSMinimumSystemVersion -string "14.0" "$MDDD_INFO_PLIST"
-plutil -insert LSUIElement -bool YES "$MDDD_INFO_PLIST"
-plutil -insert NSHighResolutionCapable -bool YES "$MDDD_INFO_PLIST"
-plutil -insert NSPrincipalClass -string "NSApplication" "$MDDD_INFO_PLIST"
+plutil -insert CFBundleShortVersionString -string "$BRUCE_VERSION" \
+    "$BRUCE_INFO_PLIST"
+plutil -insert CFBundleVersion -string "1" "$BRUCE_INFO_PLIST"
+plutil -insert CFBundleIconFile -string "AppIcon" "$BRUCE_INFO_PLIST"
+plutil -insert LSMinimumSystemVersion -string "14.0" "$BRUCE_INFO_PLIST"
+plutil -insert LSUIElement -bool YES "$BRUCE_INFO_PLIST"
+plutil -insert NSHighResolutionCapable -bool YES "$BRUCE_INFO_PLIST"
+plutil -insert NSPrincipalClass -string "NSApplication" "$BRUCE_INFO_PLIST"
 
 echo "签名并校验 App Bundle"
-plutil -lint "$MDDD_INFO_PLIST"
-codesign --force --deep --sign - --timestamp=none "$MDDD_STAGED_APP"
-codesign --verify --deep --strict "$MDDD_STAGED_APP"
+plutil -lint "$BRUCE_INFO_PLIST"
+codesign --force --deep --sign - --timestamp=none "$BRUCE_STAGED_APP"
+codesign --verify --deep --strict "$BRUCE_STAGED_APP"
 
-if [[ ! -x "$MDDD_CONTENTS/MacOS/MdddApp" ]]; then
+if [[ ! -x "$BRUCE_CONTENTS/MacOS/BruceApp" ]]; then
     echo "App 主可执行文件不可执行" >&2
     exit 1
 fi
 
 packaged_resources=(
-    "$MDDD_RUNTIME/bridge/run_bridge.py"
-    "$MDDD_RUNTIME/agent-usage/collector/collect_usage.py"
+    "$BRUCE_RUNTIME/bridge/run_bridge.py"
+    "$BRUCE_RUNTIME/agent-usage/collector/collect_usage.py"
 )
 for packaged_resource in "${packaged_resources[@]}"; do
     if [[ ! -f "$packaged_resource" ]]; then
@@ -106,30 +106,30 @@ for packaged_resource in "${packaged_resources[@]}"; do
     fi
 done
 
-if rg -a -F -q "$MDDD_REPO_ROOT" "$MDDD_STAGED_APP"; then
+if rg -a -F -q "$BRUCE_REPO_ROOT" "$BRUCE_STAGED_APP"; then
     echo "App Bundle 包含源码仓库绝对路径" >&2
-    rg -a -F -l "$MDDD_REPO_ROOT" "$MDDD_STAGED_APP" >&2
+    rg -a -F -l "$BRUCE_REPO_ROOT" "$BRUCE_STAGED_APP" >&2
     exit 1
 fi
 if rg -a -q "gzky\\.com|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY" \
-    "$MDDD_STAGED_APP"; then
+    "$BRUCE_STAGED_APP"; then
     echo "App Bundle 疑似包含敏感信息" >&2
     exit 1
 fi
 
 echo "写入 dist 打包产物"
-mkdir -p "$MDDD_DIST_DIR"
-if [[ "$MDDD_OUTPUT_APP" != "$MDDD_REPO_ROOT/dist/mddd.app" ]] \
-    || [[ "$MDDD_OUTPUT_ZIP" != "$MDDD_REPO_ROOT/dist/mddd.zip" ]]; then
+mkdir -p "$BRUCE_DIST_DIR"
+if [[ "$BRUCE_OUTPUT_APP" != "$BRUCE_REPO_ROOT/dist/Bruce.app" ]] \
+    || [[ "$BRUCE_OUTPUT_ZIP" != "$BRUCE_REPO_ROOT/dist/Bruce.zip" ]]; then
     echo "拒绝替换非预期输出路径" >&2
     exit 1
 fi
-rm -rf "$MDDD_OUTPUT_APP"
-rm -f "$MDDD_OUTPUT_ZIP"
-mv "$MDDD_STAGED_APP" "$MDDD_OUTPUT_APP"
+rm -rf "$BRUCE_OUTPUT_APP"
+rm -f "$BRUCE_OUTPUT_ZIP"
+mv "$BRUCE_STAGED_APP" "$BRUCE_OUTPUT_APP"
 ditto -c -k --sequesterRsrc --keepParent \
-    "$MDDD_OUTPUT_APP" "$MDDD_OUTPUT_ZIP"
+    "$BRUCE_OUTPUT_APP" "$BRUCE_OUTPUT_ZIP"
 
-echo "mddd App 已生成:"
-echo "  $MDDD_OUTPUT_APP"
-echo "  $MDDD_OUTPUT_ZIP"
+echo "Bruce App 已生成:"
+echo "  $BRUCE_OUTPUT_APP"
+echo "  $BRUCE_OUTPUT_ZIP"

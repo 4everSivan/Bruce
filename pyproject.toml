@@ -1,6 +1,6 @@
 [project]
-name = "mddd"
+name = "Bruce"
 version = "0.3.0"
-description = "macOS menu bar dashboard for monitoring local AI Agent token usage, costs, and subscription quotas."
+description = "A loyal dog is used for local agent usage statistics and monitoring, as well as for monitoring of Coding Plan subscriptions."
 readme = "README.md"
 requires-python = ">=3.9"

@@ -167,7 +167,7 @@ disabled
 数据目录:
 
 ```text
-~/Library/Application Support/mddd/
+~/Library/Application Support/Bruce/
   snapshots/
     agent-usage.json
     github.json

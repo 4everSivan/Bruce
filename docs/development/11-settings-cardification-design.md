@@ -2,7 +2,7 @@
 
 - 日期: 2026-08-11
 - 范围: macOS 设置窗口 (`SettingsView`) 视觉层 + 版本来源统一
-- 影响面: `macos/MdddApp/Sources/MdddApp/SettingsView.swift`, 打包脚本, 新增 1 个容器组件 + 版本读取
+- 影响面: `macos/BruceApp/Sources/BruceApp/SettingsView.swift`, 打包脚本, 新增 1 个容器组件 + 版本读取
 
 ## 背景
 
@@ -26,7 +26,7 @@
 
 ### 1. 卡片化 (统一样式, 不跟随主题)
 
-**新增容器组件 `SettingsCard`** (置于 `macos/MdddApp/Sources/MdddApp/Settings/` 下, 与其他设置分区组件同目录):
+**新增容器组件 `SettingsCard`** (置于 `macos/BruceApp/Sources/BruceApp/Settings/` 下, 与其他设置分区组件同目录):
 
 ```swift
 /// 设置分区卡片容器: 圆角 12 + 细边框 + 浅阴影, 统一不随主题.
@@ -89,19 +89,19 @@ enum AppVersion {
 `scripts/build-test-app.sh` 当前写死 `0.1.0`:
 
 ```bash
-plutil -insert CFBundleShortVersionString -string "0.1.0" "$MDDD_INFO_PLIST"
+plutil -insert CFBundleShortVersionString -string "0.1.0" "$BRUCE_INFO_PLIST"
 ```
 
 改为从 `pyproject.toml` 读取:
 
 ```bash
-MDDD_VERSION=$(python3 -c 'import re; print(re.search(r"^version\s*=\s*\"([^\"]+)\"", open("pyproject.toml").read(), re.M).group(1))')
-plutil -insert CFBundleShortVersionString -string "$MDDD_VERSION" "$MDDD_INFO_PLIST"
+BRUCE_VERSION=$(python3 -c 'import re; print(re.search(r"^version\s*=\s*\"([^\"]+)\"", open("pyproject.toml").read(), re.M).group(1))')
+plutil -insert CFBundleShortVersionString -string "$BRUCE_VERSION" "$BRUCE_INFO_PLIST"
 ```
 
 - 用正则读取 `version` 字段, 兼容 Python 3.9 (项目最低要求), 不引入 `tomli` 依赖。
 - 读取失败 (正则不匹配) → 脚本报错退出, 不产出版本错误的包。
-- `build-release-app.sh` 已有 `MDDD_VERSION` 变量 (来自 tag), 不重复读取, 保持现状。
+- `build-release-app.sh` 已有 `BRUCE_VERSION` 变量 (来自 tag), 不重复读取, 保持现状。
 
 ### 4. 错误处理与降级
 

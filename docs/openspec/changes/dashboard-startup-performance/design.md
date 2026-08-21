@@ -2,7 +2,7 @@
 
 仪表盘启动和展示流程涉及四个主要链路:
 
-1. **App 启动** (`MdddApp.init` -> `ApplicationBootstrap.startIfNeeded`): 创建 `OnboardingRunInputProvider` -> 创建 `OnboardingCoordinator` (内含 `SubscriptionService`) -> 启动 `RefreshScheduler` -> 扫描就绪度.
+1. **App 启动** (`BruceApp.init` -> `ApplicationBootstrap.startIfNeeded`): 创建 `OnboardingRunInputProvider` -> 创建 `OnboardingCoordinator` (内含 `SubscriptionService`) -> 启动 `RefreshScheduler` -> 扫描就绪度.
 2. **凭证状态发布** (`SubscriptionService.init` -> `publishSubscriptionState`): 迁移旧凭证 -> 遍历 7 个 provider 判断 `credentialConfigured` -> 发布 summaries.
 3. **刷新采集** (`RefreshScheduler` -> `RefreshExecutionPipeline` -> `OnboardingRunInputProvider.runInput`): lazy 触发 `accountStores` (含迁移) -> `assembleSubscriptionCredentials` -> Bridge -> Python collector.
 4. **面板渲染** (`MenuBarDashboardView.body` -> `model.makePanelViewModel`): 新建 `PanelViewModelMapper` -> 解码 artifact -> 全量映射. 菜单栏标签独立解码同一 artifact.

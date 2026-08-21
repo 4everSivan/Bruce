@@ -30,7 +30,7 @@
 
 ### Requirement: 原子本机快照
 
-系统必须 (MUST) 将应用快照存储在 `~/Library/Application Support/mddd/` 下的应用专用目录, 先写入临时文件并完成同步与校验后原子替换目标文件. 系统必须始终保留最近一次成功快照.
+系统必须 (MUST) 将应用快照存储在 `~/Library/Application Support/Bruce/` 下的应用专用目录, 先写入临时文件并完成同步与校验后原子替换目标文件. 系统必须始终保留最近一次成功快照.
 
 #### Scenario: 成功写入快照
 
