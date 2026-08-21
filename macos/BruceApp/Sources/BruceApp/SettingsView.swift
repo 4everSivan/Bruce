@@ -411,21 +411,20 @@ struct SettingsView: View {
 
     private var agentUsagePane: some View {
         let result = model.moduleResults[.agentUsage]
-        let pythonProbe = result?.localDependencies.first { $0.kind == .python }
         let sessionProbes = (result?.localDependencies ?? [])
             .filter { $0.kind == .sessionDirectory }
         let busy = model.busyModules.contains(.agentUsage)
+        let rustAvailable = coordinator.collectorRuntimeStatus == .rustAvailable
 
         return VStack(alignment: .leading, spacing: 14) {
             SettingsCard {
-                LabeledContent("Python") {
+                LabeledContent("Rust Collector") {
                     statusText(
-                        probeStatusText(pythonProbe),
-                        icon: probeStatusIcon(pythonProbe)
+                        rustAvailable ? "可用" : "不可用",
+                        icon: rustAvailable
+                            ? "checkmark.circle.fill"
+                            : "exclamationmark.triangle.fill"
                     )
-                }
-                if let version = pythonProbe?.detail {
-                    LabeledContent("版本", value: version)
                 }
                 sessionSourceTagsSection(sessionProbes)
                 ForEach(visibleAgentUsageWarnings(result?.warnings ?? []), id: \.self) { warning in
@@ -439,9 +438,6 @@ struct SettingsView: View {
                         .foregroundStyle(.orange)
                 }
                 HStack {
-                    Button("选择 Python…") { choosePython() }
-                        .disabled(busy)
-                        .accessibilityHint("选择 Python 3.9 或更高版本的可执行文件")
                     Button("重新检查") { coordinator.rescan() }
                         .disabled(busy)
                         .accessibilityLabel("重新检查 Agent 用量依赖")
@@ -1102,17 +1098,6 @@ struct SettingsView: View {
 
     // MARK: - Helpers
 
-    private func choosePython() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = false
-        panel.message = "选择 Python 3.9 或更高版本的可执行文件"
-        if panel.runModal() == .OK, let url = panel.url {
-            coordinator.choosePython(path: url.path)
-        }
-    }
-
     private func moduleBinding(_ module: CollectorModule) -> Binding<Bool> {
         Binding(
             get: { coordinator.selectedModules.contains(module) },
@@ -1136,26 +1121,6 @@ struct SettingsView: View {
         Label(text, systemImage: icon)
     }
 
-    private func probeStatusText(_ probe: DependencyProbe?) -> String {
-        guard let probe else { return "未扫描" }
-        switch probe.status {
-        case .available: return "可用"
-        case .missing: return "未安装"
-        case .incompatible: return "版本不兼容"
-        case .locked: return "被锁定"
-        case .timedOut: return "检查超时"
-        case .corrupted: return "已损坏"
-        }
-    }
-
-    private func probeStatusIcon(_ probe: DependencyProbe?) -> String {
-        guard let probe else { return "circle.dashed" }
-        switch probe.status {
-        case .available: return "checkmark.circle.fill"
-        case .missing, .incompatible: return "exclamationmark.triangle.fill"
-        case .locked, .timedOut, .corrupted: return "xmark.circle"
-        }
-    }
 }
 
 // MARK: - 侧边栏材质

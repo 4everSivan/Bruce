@@ -18,9 +18,8 @@ Bruce 的 CI/CD 目标是: 每次代码变更都经过与本地完全一致的�
 ## 2. 运行器与工具链
 
 - 运行器: `macos-26` (macOS 26, 与项目最低系统版本一致; 仓库公开后也可选用 arm64 变体).
-- 工具链: 运行器自带 Xcode 工具链, `swift --version` 与本地 Apple Swift 6.2.1 同族; Python 默认 3.9+.
-- Python 最低版本验证: 单独 job 用 `actions/setup-python` 固定 3.9 运行, 保证 Collector 的 3.9 兼容声明不被破坏.
-- 运行环境准备: macos-26 镜像默认 `python3` 为 3.14 且不含 pytest, `setup-python` 后 `python3` 别名仍指向系统解释器, 因此 Python 相关 job 统一用 `python` 命令并显式安装 pytest; 镜像不含 `rg`, 测试包构建 job 先用 `brew install ripgrep` 准备 `build-test-app.sh` 的前置依赖.
+- 工具链: 运行器自带 Xcode 工具链与 Rust/Cargo, `swift --version`、`rustc --version` 和本地工具链同族.
+- 运行环境准备: 镜像不含 `rg`, 测试包构建 job 先用 `brew install ripgrep` 准备 `build-test-app.sh` 的前置依赖.
 - 与本地一致性: CI 的核心 job 直接调用仓库内 `scripts/verify-local.sh` 和 `scripts/build-test-app.sh`, 不复制脚本逻辑, 保证 CI 与本地验证同源.
 
 ## 3. 工作流与触发策略
@@ -37,8 +36,7 @@ Bruce 的 CI/CD 目标是: 每次代码变更都经过与本地完全一致的�
 
 | Job | 运行器 | 内容 | 失败影响 |
 |---|---|---|---|
-| `verify` | macos-26 | 打印工具链版本, 运行 `scripts/verify-local.sh` (Python 语法 + pytest + swift build + 脚本列出的全部 Harness) | 阻塞合并与发布 |
-| `python-min-version` | macos-26 | Python 3.9 下 py_compile + pytest | 阻塞合并与发布 |
+| `verify` | macos-26 | 打印 Rust/Swift 工具链版本, 运行 `scripts/verify-local.sh` (Rust fmt/test/Clippy + fixture scan + swift build + 全部 Harness) | 阻塞合并与发布 |
 | `build-release-app` | macos-26 | 运行 `scripts/build-test-app.sh`, 上传 `dist/` 为 Actions artifact (`Bruce-app`) | 阻塞合并与发布 |
 | `release` | macos-26 | 仅 tag 触发, 依赖前三个 job; 重建测试包并创建**草稿** GitHub Release, 附 `Bruce.zip` | 不阻塞 PR |
 
@@ -65,7 +63,7 @@ Bruce 的 CI/CD 目标是: 每次代码变更都经过与本地完全一致的�
 
 - 新增 Harness 或测试时, 只需更新 `scripts/verify-local.sh` 和对应文档计数, workflow 无需改动。
 - 修改构建打包逻辑时改 `scripts/build-test-app.sh`, CI 自动跟随。
-- Actions 版本升级 (checkout / setup-python / upload-artifact) 应跟随官方 major 版本, 升级后跑一次 `main` push 验证。
+- Actions 版本升级 (checkout / upload-artifact) 应跟随官方 major 版本, 升级后跑一次 `main` push 验证。
 
 ## 8. 未来扩展
 

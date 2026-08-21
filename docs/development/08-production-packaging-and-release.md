@@ -3,7 +3,7 @@
 > 版本: 1.0  
 > 日期: 2026-08-04  
 > 适用范围: macOS 菜单栏 App 的预览版和正式版构建、签名、公证、验收与回滚  
-> 实施状态: 流程规范已落地为脚本与 CI. `scripts/build-release-app.sh` 已实现 (08 §3 五阶段, 版本来源 Git tag, Developer ID + Hardened Runtime + notarization, 产物含 SHA256SUMS/release-notes); `scripts/entitlements-release.plist` 最小 entitlement; `.github/workflows/ci.yml` 增加 protected `release-sign` job (仅 tag v* 触发, 凭证从 Secret 读取, PR 永不接触). `scripts/build-test-app.sh` 修复阶段 D 拆分后 collector 子模块未打包的回归 (6 个 .py 模块全部复制). 前置条件 (Developer ID 证书/公证 API Key/正式 bundle ID) 仍未配置, 未配置时脚本在对应阶段清晰失败, 不生成半成品.
+> 实施状态: 流程规范已落地为脚本与 CI. `scripts/build-release-app.sh` 已实现 (08 §3 五阶段, 版本来源 Git tag, Developer ID + Hardened Runtime + notarization, 产物含 SHA256SUMS/release-notes); `scripts/entitlements-release.plist` 最小 entitlement; `.github/workflows/ci.yml` 增加 protected `release-sign` job (仅 tag v* 触发, 凭证从 Secret 读取, PR 永不接触). `scripts/build-test-app.sh` 当前只打包 Rust Collector 和 Swift App. 前置条件 (Developer ID 证书/公证 API Key/正式 bundle ID) 仍未配置, 未配置时脚本在对应阶段清晰失败, 不生成半成品.
 
 ## 1. 发布渠道定义
 
@@ -57,7 +57,7 @@ CFBundleVersion = CI 递增构建号
 1. 检查工作树干净, 或仅允许 CI 生成目录.
 2. 从 tag 解析版本号和构建号.
 3. 执行 `zsh scripts/verify-local.sh`.
-4. 执行 Python/Swift/Widget 的静态敏感信息扫描.
+4. 执行 Rust/Swift/Widget fixture 的静态敏感信息扫描.
 5. 创建唯一临时 staging 目录, 不复用旧 `dist/` 内容.
 
 ### 阶段 2: Release 构建
@@ -65,7 +65,7 @@ CFBundleVersion = CI 递增构建号
 1. `swift build --configuration release --package-path macos/BruceApp`.
 2. 使用 Release 产物组装 `Bruce.app`.
 3. 写入正式 bundle ID、版本号、构建号和最小 Info.plist.
-4. 复制运行时需要的 Collector、Bridge schema 和资源, 排除测试 Harness、fixture、源码缓存和本机数据.
+4. 复制运行时需要的 Rust Collector、Bridge schema 和资源, 排除测试 Harness、fixture、源码缓存和本机数据.
 5. 对嵌套二进制、Helper 和 App 进行签名前结构检查.
 
 ### 阶段 3: Hardened Runtime 与签名
@@ -186,7 +186,7 @@ release-notes-<version>.md
 
 ## 9. 2026-08-20 本地验收记录
 
-- `zsh scripts/verify-local.sh`: 通过, Python `246 passed`, Swift build 与脚本列出的全部 Harness 通过.
+- `zsh scripts/verify-local.sh`: Rust workspace、fixture scan、Swift build 与脚本列出的全部 Harness 通过.
 - `zsh scripts/build-test-app.sh`: 通过, 生成 `dist/Bruce.app` 和 `dist/Bruce.zip`, ad-hoc 签名校验通过.
 - bundle 检查: 运行时仅包含共享清单声明的 Bridge/Collector 资源, 不包含仓库绝对路径、敏感信息或本机数据.
 - 正式版脚本未执行签名/公证: 当前工作区未配置 Developer ID、正式 bundle ID 和 notary API key, 按安全门禁应在对应阶段失败且不写入正式产物.

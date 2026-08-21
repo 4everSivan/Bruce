@@ -70,7 +70,7 @@ final class OnboardingCoordinator: ObservableObject {
         homeURL: URL = FileManager.default.homeDirectoryForCurrentUser,
         localProbe: LocalCredentialProbe? = nil,
         consentVersion: Int = OnboardingCoordinator.currentConsentVersion,
-        collectorRuntime: CollectorRuntimeStatus = .pythonPreview
+        collectorRuntime: CollectorRuntimeStatus = .rustUnavailable
     ) {
         self.scheduler = scheduler
         self.model = model
@@ -135,6 +135,10 @@ final class OnboardingCoordinator: ObservableObject {
         service.bindStateChange { [weak self] in
             self?.objectWillChange.send()
         }
+    }
+
+    var collectorRuntimeStatus: CollectorRuntimeStatus {
+        collectorRuntime
     }
 
     // MARK: - 订阅额度 (SubscriptionService façade)
@@ -324,12 +328,9 @@ final class OnboardingCoordinator: ObservableObject {
         }
 
         // 本机只读扫描, 不产生外部请求
-        let activeScanner = makeScanner(config: config)
+        let activeScanner = scanner
         let probes = await activeScanner.scan()
 
-        let pythonProbe = probes.first { $0.kind == .python }
-        let pythonStatus = pythonProbe?.status ?? .missing
-        let pythonVersion = pythonProbe?.detail
         let sessionProbes = probes.filter { $0.kind == .sessionDirectory }
         let ccSwitchStatus = sqliteResult(
             from: probes, displayName: SQLiteSchemaProfile.ccSwitch.displayName
@@ -341,8 +342,6 @@ final class OnboardingCoordinator: ObservableObject {
         let evaluator = ReadinessEvaluator()
 
         model.setModuleResult(evaluator.evaluateAgentUsage(
-            pythonStatus: pythonStatus,
-            pythonVersion: pythonVersion,
             sessionSources: sessionProbes,
             ccSwitchStatus: ccSwitchStatus,
             antigravityStatus: antigravityStatus,
@@ -350,16 +349,6 @@ final class OnboardingCoordinator: ObservableObject {
         ))
 
         reconcileScheduler()
-    }
-
-    /// 用户选择的 Python 路径属于非敏感配置, 需要反映到扫描路径.
-    private func makeScanner(
-        config: OnboardingConfiguration?
-    ) -> LocalDependencyScanner {
-        guard let pythonPath = config?.pythonPath else { return scanner }
-        var paths = LocalDependencyScanPaths.standard(home: homeURL)
-        paths.userPreferredPythonPath = pythonPath
-        return LocalDependencyScanner(paths: paths)
     }
 
     /// 扫描得到的 SQLite 状态与 evaluator 的入参类型互转 (rawValue 一致).
@@ -548,29 +537,6 @@ final class OnboardingCoordinator: ObservableObject {
     }
 
     // MARK: - 用户操作
-
-    /// 用户选择 Python 可执行文件: 验证可执行性, 保存后重扫.
-    func choosePython(path: String) {
-        guard FileManager.default.isExecutableFile(atPath: path) else {
-            model.setSettingsError("所选文件不是可执行的 Python")
-            return
-        }
-        guard let configStore else {
-            model.setSettingsError("配置存储不可用, 无法保存 Python 路径")
-            return
-        }
-        var config = configStore.load() ?? OnboardingConfiguration()
-        config.pythonPath = path
-        do {
-            try configStore.save(config)
-        } catch {
-            model.setSettingsError("Python 路径保存失败")
-            return
-        }
-        model.setSettingsError(nil)
-        rescan()
-    }
-
 
     /// 保存有序菜单栏指标. 先持久化再发布, 避免 UI 与磁盘配置分叉.
     func setMenuBarMetrics(_ metrics: [MenuBarMetric]) {

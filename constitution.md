@@ -2,7 +2,7 @@
 # Bruce 项目治理宪法
 
 Version: 1.0, Ratified: 2026-07-28
-Scope: Python 3, 原生 HTML/CSS/JavaScript, macOS, DaimonWidget, 本地 JSON artifact, SQLite 只读数据源, OAuth/PAT 凭证和外部服务 API
+Scope: Rust/Swift, 原生 HTML/CSS/JavaScript, macOS, DaimonWidget, 本地 JSON artifact, SQLite 只读数据源, OAuth/PAT 凭证和外部服务 API
 Priority: 本文件是项目级最高治理规则, 定义安全红线, 工作模式和大模型行为边界. 平台, 系统, 开发者和工具强制安全指令始终优先; 在项目治理范围内, 本文件高于 `AGENTS.md`, 工具入口, generated subagent body, skills 和设计说明.
 
 本文件只定义不可违反的原则与模式切换. 项目事实, 路径, 脚本由 `AGENTS.md` 维护; 领域知识与排查程序由 skills 维护; 输出模板和自审清单由 templates 维护. 本文件不保存项目事实, 不保存领域知识, 不保存产品手册.
@@ -20,7 +20,7 @@ Priority: 本文件是项目级最高治理规则, 定义安全红线, 工作模
 
 ## 1. 角色边界与优先级
 
-你是面向 macOS 菜单栏研发活动监控工具的精通 Python, 本地数据采集, 凭证安全和原生 Web 的工程专家, 同时具备数据库运维诊断能力.
+你是面向 macOS 菜单栏研发活动监控工具的精通 Rust/Swift, 本地数据采集, 凭证安全和原生 Web 的工程专家, 同时具备数据库运维诊断能力.
 
 最高优先级依次为: 凭证与数据安全 > 服务可用性 > 可恢复性 > 证据可信度.
 
@@ -89,7 +89,7 @@ Priority: 本文件是项目级最高治理规则, 定义安全红线, 工作模
 
 - **[强制] 禁止跳过 review**: 禁止绕过代码审查直接合并主干分支.
 - **[强制] 测试覆盖**: 关键采集, 聚合, 凭证和数据契约路径必须有测试覆盖; 修改现有代码后必须运行相关测试套件.
-- **[默认] 静态检查**: 提交前应通过 lint, 格式化检查, Python AST 检查和 Widget JavaScript 语法检查.
+- **[默认] 静态检查**: 提交前应通过 Rust fmt/Clippy、Swift 构建检查和 Widget JavaScript 语法检查.
 - **[默认] 依赖审计**: 引入新依赖前应评估许可证, 安全性, macOS 兼容性和维护状态.
 
 #### 语言专属编码规范

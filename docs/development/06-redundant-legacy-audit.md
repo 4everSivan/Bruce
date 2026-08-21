@@ -7,6 +7,8 @@
 > 审计目的: 找出可以安全清理的残留代码和旧流程, 同时明确必须保留的兼容边界
 > 实施状态: P1 符号清理已完成; 2026-08-20 复核确认协议候选项已不存在于当前代码, 文档中的原待办已关闭.
 
+> 历史审计说明: 本文是 Rust Collector cutover 前的快照. 文中的 Python Collector、旧 Bridge 和对应测试命令仅用于保留当时的审计证据, 不属于当前源码或运行路径. 当前架构以 `AGENTS.md`、`docs/development/14-rust-collector-v1-build-target.md` 和 `docs/openspec/changes/rust-collector-performance/` 为准.
+
 ## 1. 审计结论
 
 当前项目的主链路已经收敛为:

@@ -3,7 +3,7 @@ import Foundation
 // MARK: - SubscriptionCredentialStatus
 
 /// 订阅凭证健康状态 (统一过期检测入口, Phase 1).
-/// 与 Python collector 的过期语义保持一致: 无过期字段或无法解析
+/// 与 Rust provider credential contract 的过期语义保持一致: 无过期字段或无法解析
 /// 一律视为未过期 (由查询失败自然暴露), 防止两层判定分叉.
 public enum SubscriptionCredentialStatus: Equatable, Sendable {
     /// 凭证缺失或不可用.
@@ -21,13 +21,13 @@ public enum SubscriptionCredentialStatus: Equatable, Sendable {
 /// 统一的订阅凭证健康判定器 (Phase 1).
 ///
 /// 纯静态函数, 无 I/O, 无外部依赖; 输入凭证 JSON 字符串 + 可注入时钟.
-/// 判定规则与 `agent-usage/collector/quota_official.py` 的
-/// `_is_expired` / `_select_grok_entry` / `_parse_claude_credentials`
-/// 逐条镜像, 从机制上消除 Swift 显示层与 Python 查询层的语义分叉.
+/// 判定规则与 Rust provider credential evaluator 的
+/// expiry / Grok entry / Claude credential 规则逐条对齐,
+/// 从机制上消除 Swift 显示层与 Collector 查询层的语义分叉.
 public enum SubscriptionCredentialEvaluator {
     // MARK: - 过期判定
 
-    /// 与 Python `_is_expired` 同语义的过期判定:
+    /// 与 Rust Collector expiry 规则同语义的过期判定:
     /// - nil 或无法解析 -> 未过期 (false)
     /// - 数字: > 1e12 视为毫秒, 否则视为秒
     /// - 字符串: ISO 8601, 解析失败 -> 未过期
@@ -50,7 +50,7 @@ public enum SubscriptionCredentialEvaluator {
         return false
     }
 
-    /// 解析 ISO 8601 时间戳; 失败返回 nil (与 Python fromisoformat 语义对齐).
+    /// 解析 ISO 8601 时间戳; 失败返回 nil.
     private static func parseISO(_ string: String) -> Double? {
         let normalized = string.replacingOccurrences(of: "Z", with: "+00:00")
         let formatter = ISO8601DateFormatter()
@@ -62,7 +62,7 @@ public enum SubscriptionCredentialEvaluator {
         if let date = formatter.date(from: string) {
             return date.timeIntervalSince1970
         }
-        // 兼容无时区的本地时间 (Python fromisoformat 会按本地时区解释)
+        // 兼容无时区的本地时间.
         let noZoneFormatter = DateFormatter()
         noZoneFormatter.locale = Locale(identifier: "en_US_POSIX")
         noZoneFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
@@ -76,7 +76,7 @@ public enum SubscriptionCredentialEvaluator {
 
     /// Grok auth.json 健康判定: OIDC scope (`https://auth.x.ai::` 前缀) 优先,
     /// legacy `/sign-in` scope 兜底, key 非空; 再查 expires_at.
-    /// 与 Python `_select_grok_entry` + `_is_expired` 同语义.
+    /// 与 Rust Collector 的 Grok entry / expiry 规则同语义.
     public static func grokStatus(of json: String, now: Date) -> SubscriptionCredentialStatus {
         guard let dict = jsonObject(from: json) else {
             return .malformed
@@ -104,7 +104,7 @@ public enum SubscriptionCredentialEvaluator {
     // MARK: - Claude
 
     /// Claude 凭证 JSON 健康判定: `claudeAiOauth` / `claude.ai_oauth` 节点,
-    /// accessToken 非空, 再查 expiresAt. 与 Python `_parse_claude_credentials` 同语义.
+    /// accessToken 非空, 再查 expiresAt. 与 Rust Collector 规则同语义.
     public static func claudeStatus(of json: String, now: Date) -> SubscriptionCredentialStatus {
         guard let dict = jsonObject(from: json) else {
             return .malformed

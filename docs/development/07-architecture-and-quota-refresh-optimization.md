@@ -3,7 +3,7 @@
 > 版本: 1.0  
 > 日期: 2026-08-04  
 > 目标: 在保留现有 UI、artifact 契约和 CLI 兼容能力的前提下, 降低刷新链路复杂度, 让 Codex 额度刷新可预测、可测试、可诊断
-> 实施进度: 阶段 A-E 全部完成 (2026-08-04). 阶段 A: CodexTokenError.refreshFailed 字符串 reason 收敛为 CodexRefreshFailureReason 枚举; 阶段 B: handleCodexChallenges 提取到 CodexQuotaRecovery.swift; 阶段 C: ArtifactFinalizer/RefreshBackoffPolicy/RefreshErrorClassifier 提取, RefreshScheduler 从 1164 行减到 789 行; 阶段 D: pricing/runtime/quota_services/local_usage/codex_compat 五模块提取, collect_usage.py 从 2059 行减到 1232 行; 阶段 E: 07 §6.1 Python 路径注入, 06 §5 协议死分支清理, 07 §6.2 AGY_CLIENT 采用选项 2 (App 模式无凭证时返回可诊断状态, 不伪造空凭证 refresh); verify-local.sh 全绿 (Python 116 passed)
+> 实施进度: Swift 调度与凭证边界已完成, Rust Collector 已接管采集运行时 (2026-08-22). 本文早期的脚本 Collector 分层记录保留为迁移背景; 当前实现和验证入口以 `docs/development/14-rust-collector-v1-build-target.md`、`rust/Bruce-collector/` 与 `scripts/verify-local.sh` 为准.
 
 ## 1. 优化目标与边界
 
@@ -28,10 +28,10 @@
 |---|---|---|
 | `RefreshScheduler.swift` | 同时负责 timer、并发容量、Collector 执行、Codex challenge/retry、四源 merger、诊断、凭证更新、通知 | 状态变量相互影响, 很难判断一次刷新是否已结束 |
 | `CodexTokenManager.swift` | 同时负责缓存、OAuth refresh、Keychain 持久化、重试和重新授权状态 | 错误类型被字符串比较, 测试需要构造过多前置状态 |
-| `collect_usage.py` | runtime 初始化、扫描、定价、全部 Provider quota、CLI/App 分支、兼容回写集中在一个文件 | 新增 Provider 或刷新策略会触碰无关逻辑 |
+| Rust Collector workspace | local、aggregate、provider、credential、bridge 分层 | 新增 Provider 仍需遵守窄接口和协议白名单 |
 | `collect_services` 与 `_collect_app_services` | 两套入口重复维护服务状态和错误语义 | CLI/App 结果容易出现措辞或状态差异 |
 | `pendingRerun` 等状态 | 触发原因、排队状态和重复刷新意图混在一个布尔量中 | timer、手动刷新和恢复重试可能互相覆盖 |
-| App 运行环境 | Python 路径和 Antigravity 客户端凭证没有统一注入契约 | 本机配置与实际 Runner 行为可能不一致 |
+| App 运行环境 | Rust binary 路径和 Antigravity 客户端凭证没有统一注入契约 | 本机配置与实际 Runner 行为可能不一致 |
 
 ## 3. 目标架构
 
@@ -82,21 +82,21 @@ CodexTokenResolver
 - `CodexTokenResolver`: 负责缓存命中、过期判断和账号级并发去重.
 - `CredentialStateReducer`: 将成功、需要重新授权、撤销、存储阻断归一为枚举, 禁止字符串比较.
 
-### 3.3 Python Collector 分层
+### 3.3 Rust Collector 分层
 
-保留现有 `run(ctx)`、`run_app(ctx)` 作为稳定 façade, 内部按职责拆分:
+Rust workspace 以窄接口保持稳定边界:
 
 ```text
-collector/
-  runtime.py          # 路径、时间、网络和 context 适配
-  local_usage.py      # 会话扫描、token 聚合、成本计算
-  pricing.py          # 内置价目与外部补充价目
-  quota_services.py   # Kimi/DeepSeek/火山/Antigravity 等服务查询
-  codex_compat.py     # CLI legacy 认证读取、刷新和写回
-  collect_usage.py    # façade: 组装上下文并返回 artifact
+rust/Bruce-collector/crates/
+  collector-runtime/    # 运行上下文、时间和网络边界
+  collector-local/      # 会话扫描、SQLite 只读和增量缓存
+  collector-aggregate/  # token、成本、日期、模型和项目聚合
+  collector-provider/   # Provider quota、OAuth 和状态适配
+  collector-credential/ # 凭证解析、过期和更新白名单
+  collector-bridge/     # Bridge v1 校验、脱敏和 stdout envelope
 ```
 
-App 模式只通过注入凭证进入 `quota_services.py`; `codex_compat.py` 的磁盘认证和写回必须由 `not app_mode` 守卫包围.
+App 模式只通过 stdin 注入最小凭证; Rust Collector 不写回第三方认证文件, Keychain 更新只经 Swift 验证后的 `credentialUpdates` 完成.
 
 ## 4. 统一额度刷新流程
 
@@ -143,14 +143,14 @@ App 模式只通过注入凭证进入 `quota_services.py`; `codex_compat.py` 的
 
 ## 6. 必须先修复的运行时契约
 
-### 6.1 Python 解释器路径
+### 6.1 Rust Collector 路径
 
-设置页选择的 Python 路径必须传入 `CollectorRunner`. Runner 启动前需要:
+设置页和构建产物只允许使用显式 Rust binary 路径. Runner 启动前需要:
 
 - 解析并标准化路径.
-- 验证文件可执行且版本满足项目要求.
-- 将最终路径写入诊断, 但不写入 artifact.
-- 启动失败时显示“解释器不可用”, 不回退到未声明的系统 Python.
+- 验证文件可执行且为 Bruce Collector.
+- 将运行时状态写入诊断, 但不写入 artifact.
+- 启动失败时显示“Rust Collector 不可用”, 不回退到未声明的运行时.
 
 ### 6.2 Antigravity OAuth 客户端凭证
 
@@ -188,12 +188,12 @@ Collector 需要 `AGY_CLIENT_ID`/`AGY_CLIENT_SECRET` 时, App 必须从明确的
 ### 阶段 D: Collector 分层
 
 - 先移动纯函数和数据模型, 再移动 Provider handler.
-- `codex_compat.py` 单独保留 CLI 旧流程.
+- Rust provider/credential adapter 单独保留 CLI 旧流程.
 - App/CLI 的服务状态统一使用一个 finalize helper.
 
 ### 阶段 E: 运行时契约与清理
 
-- 接通 Python 路径选择.
+- 接通 Rust binary 路径解析.
 - 决定并实现 Antigravity 客户端凭证来源.
 - 执行 `06-redundant-legacy-audit.md` 的 P1 清理.
 - 同步 Bridge schema、白名单和测试.
@@ -208,7 +208,7 @@ Collector 需要 `AGY_CLIENT_ID`/`AGY_CLIENT_SECRET` 时, App 必须从明确的
 - previous/first/retry/decision 四源合并与旧 service ID.
 - 凭证轮换只写 Keychain, 不写 artifact 或日志.
 - App/CLI context 字段白名单和 schema 一致性.
-- Python 路径选择、不可执行路径和启动失败.
+- Rust binary 不可执行、缺失和启动失败.
 - 缺少 DeepSeek 追踪标识时的迁移/诊断.
 
 ### 8.2 必须保持的行为

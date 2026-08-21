@@ -1,79 +1,9 @@
 import Foundation
 @testable import BruceOnboardingCore
 
-// MARK: - Python / Path / Gate / Policy / Evaluator / Config / Credential / Schema
+// MARK: - Gate / Policy / Evaluator / Config / Credential / Schema
 
 extension BruceOnboardingCoreHarness {
-    // MARK: - Python version parsing
-
-    static func pythonVersionParses_3_9() throws {
-        let v = PythonVersionParser.parse("Python 3.9.6")
-        try coreExpect(v?.major == 3, "major mismatch")
-        try coreExpect(v?.minor == 9, "minor mismatch")
-        try coreExpect(PythonVersionParser.isCompatible(v), "3.9 should be compatible")
-    }
-
-    static func pythonVersionParses_3_12() throws {
-        let v = PythonVersionParser.parse("Python 3.12.5")
-        try coreExpect(v?.major == 3, "major mismatch")
-        try coreExpect(v?.minor == 12, "minor mismatch")
-        try coreExpect(PythonVersionParser.isCompatible(v), "3.12 should be compatible")
-    }
-
-    static func pythonVersionParsesWithWhitespace() throws {
-        let v = PythonVersionParser.parse("  Python 3.9.13  \n")
-        try coreExpect(v?.major == 3, "major mismatch")
-        try coreExpect(v?.minor == 9, "minor mismatch")
-        try coreExpect(PythonVersionParser.isCompatible(v), "3.9 should be compatible")
-    }
-
-    static func pythonVersionParsesMissingPatch() throws {
-        let v = PythonVersionParser.parse("Python 3.9")
-        try coreExpect(v?.major == 3, "major mismatch")
-        try coreExpect(v?.minor == 9, "minor mismatch")
-        try coreExpect(PythonVersionParser.isCompatible(v), "3.9 should be compatible")
-    }
-
-    static func pythonVersionRejects_2_7() throws {
-        let v = PythonVersionParser.parse("Python 2.7.18")
-        try coreExpect(v?.major == 2, "major mismatch")
-        try coreExpect(!PythonVersionParser.isCompatible(v), "2.7 should be incompatible")
-    }
-
-    static func pythonVersionRejects_3_8() throws {
-        let v = PythonVersionParser.parse("Python 3.8.10")
-        try coreExpect(v?.major == 3, "major mismatch")
-        try coreExpect(v?.minor == 8, "minor mismatch")
-        try coreExpect(!PythonVersionParser.isCompatible(v), "3.8 should be incompatible")
-    }
-
-    static func pythonVersionRejectsGarbage() throws {
-        try coreExpect(PythonVersionParser.parse("garbage") == nil, "garbage should be nil")
-        try coreExpect(PythonVersionParser.parse("") == nil, "empty should be nil")
-        try coreExpect(PythonVersionParser.parse(nil) == nil, "nil should be nil")
-        try coreExpect(!PythonVersionParser.isCompatible(nil), "nil should be incompatible")
-    }
-
-    // MARK: - Path resolution
-
-    static func pythonPathResolvesUserPreferred() throws {
-        let fm = TestFileManager(executables: ["/custom/python3"])
-        let path = PythonPathResolver.resolve(userPreferred: "/custom/python3", fileManager: fm)
-        try coreExpect(path == "/custom/python3", "user preferred not resolved")
-    }
-
-    static func pythonPathFallsBackToCandidates() throws {
-        let fm = TestFileManager(executables: ["/usr/local/bin/python3"])
-        let path = PythonPathResolver.resolve(fileManager: fm)
-        try coreExpect(path == "/usr/local/bin/python3", "candidate not resolved")
-    }
-
-    static func pythonPathReturnsNilWhenNoneFound() throws {
-        let fm = TestFileManager(executables: [])
-        let path = PythonPathResolver.resolve(fileManager: fm)
-        try coreExpect(path == nil, "should be nil when no python found")
-    }
-
     // MARK: - ActivationGate
 
     static func gateDeniesAllBeforeConsent() throws {
@@ -180,9 +110,9 @@ extension BruceOnboardingCoreHarness {
             DependencyProbe(kind: .sessionDirectory, status: .available, detail: "Claude Code"),
         ]
         let result = evaluator.evaluateAgentUsage(
-            pythonStatus: .available, pythonVersion: "Python 3.9.6",
             sessionSources: sessions,
-            ccSwitchStatus: .available, antigravityStatus: .available
+            ccSwitchStatus: .available, antigravityStatus: .available,
+            collectorRuntime: .rustAvailable
         )
         try coreExpect(result.readiness == .ready, "agent should be ready")
     }
@@ -194,18 +124,17 @@ extension BruceOnboardingCoreHarness {
             DependencyProbe(kind: .sessionDirectory, status: .missing, detail: "Claude Code"),
         ]
         let result = evaluator.evaluateAgentUsage(
-            pythonStatus: .available, pythonVersion: "Python 3.9.6",
             sessionSources: sessions,
-            ccSwitchStatus: .missing, antigravityStatus: .missing
+            ccSwitchStatus: .missing, antigravityStatus: .missing,
+            collectorRuntime: .rustAvailable
         )
         try coreExpect(result.readiness == .partial, "agent should be partial")
         try coreExpect(result.warnings.count > 0, "should have warnings")
     }
 
-    static func evaluatorAgentRustDoesNotRequirePython() throws {
+    static func evaluatorAgentRustDoesNotRequireOtherRuntime() throws {
         let evaluator = ReadinessEvaluator()
         let result = evaluator.evaluateAgentUsage(
-            pythonStatus: .missing, pythonVersion: nil,
             sessionSources: [
                 DependencyProbe(kind: .sessionDirectory, status: .available, detail: "Codex")
             ],
@@ -213,17 +142,12 @@ extension BruceOnboardingCoreHarness {
             antigravityStatus: .missing,
             collectorRuntime: .rustAvailable
         )
-        try coreExpect(result.readiness == .ready, "Rust runtime should not require Python")
-        try coreExpect(
-            result.issues.contains { $0.code == "PYTHON_UNAVAILABLE" } == false,
-            "Rust runtime should not report Python as a blocking issue"
-        )
+        try coreExpect(result.readiness == .ready, "Rust runtime should be sufficient")
     }
 
     static func evaluatorAgentRustMissingIsExplicit() throws {
         let evaluator = ReadinessEvaluator()
         let result = evaluator.evaluateAgentUsage(
-            pythonStatus: .available, pythonVersion: "Python 3.12.0",
             sessionSources: [
                 DependencyProbe(kind: .sessionDirectory, status: .available, detail: "Codex")
             ],
@@ -238,15 +162,18 @@ extension BruceOnboardingCoreHarness {
         )
     }
 
-    static func evaluatorAgentMissingPython() throws {
+    static func evaluatorAgentMissingRust() throws {
         let evaluator = ReadinessEvaluator()
         let result = evaluator.evaluateAgentUsage(
-            pythonStatus: .missing, pythonVersion: nil,
             sessionSources: [],
-            ccSwitchStatus: .missing, antigravityStatus: .missing
+            ccSwitchStatus: .missing, antigravityStatus: .missing,
+            collectorRuntime: .rustUnavailable
         )
         try coreExpect(result.readiness == .missingDependency, "should be missingDependency")
-        try coreExpect(result.blockingReason != nil, "should have blocking reason")
+        try coreExpect(
+            result.issues.contains { $0.code == "RUST_COLLECTOR_UNAVAILABLE" },
+            "missing Rust should expose an explicit diagnostic"
+        )
     }
 
     static func evaluatorAgentNoSessions() throws {
@@ -255,9 +182,9 @@ extension BruceOnboardingCoreHarness {
             DependencyProbe(kind: .sessionDirectory, status: .missing, detail: "Kimi Code"),
         ]
         let result = evaluator.evaluateAgentUsage(
-            pythonStatus: .available, pythonVersion: "Python 3.9.6",
             sessionSources: sessions,
-            ccSwitchStatus: .missing, antigravityStatus: .missing
+            ccSwitchStatus: .missing, antigravityStatus: .missing,
+            collectorRuntime: .rustAvailable
         )
         try coreExpect(result.readiness == .missingDependency, "should be missingDependency without sessions")
     }
@@ -265,9 +192,9 @@ extension BruceOnboardingCoreHarness {
     static func evaluatorAgentCcSwitchAloneNotReady() throws {
         let evaluator = ReadinessEvaluator()
         let result = evaluator.evaluateAgentUsage(
-            pythonStatus: .available, pythonVersion: "Python 3.9.6",
             sessionSources: [],
-            ccSwitchStatus: .available, antigravityStatus: .missing
+            ccSwitchStatus: .available, antigravityStatus: .missing,
+            collectorRuntime: .rustAvailable
         )
         try coreExpect(result.readiness == .missingDependency, "CC Switch alone should not make ready")
     }
@@ -281,7 +208,6 @@ extension BruceOnboardingCoreHarness {
         let store = try OnboardingConfigurationStore(configDirectory: tempDir)
 
         var config = OnboardingConfiguration()
-        config.pythonPath = "/usr/bin/python3"
         config.selectedModules = ["agent-usage"]
         config.consentVersion = 1
         config.menuBarMetrics = [
@@ -293,7 +219,6 @@ extension BruceOnboardingCoreHarness {
         let loaded = store.load()
 
         try coreExpect(loaded != nil, "loaded config should not be nil")
-        try coreExpect(loaded?.pythonPath == "/usr/bin/python3", "pythonPath mismatch")
         try coreExpect(loaded?.selectedModules == ["agent-usage"], "selectedModules mismatch")
         try coreExpect(loaded?.consentVersion == 1, "consentVersion mismatch")
         try coreExpect(

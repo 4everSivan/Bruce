@@ -1,12 +1,12 @@
 ## ADDED Requirements
 
-### Requirement: Python and Rust differential fixtures are strict
+### Requirement: Canonical collector fixtures are strict
 
-The migration SHALL maintain redacted golden fixtures for Bridge requests/responses, artifacts, diagnostics, local source records, SQLite responses, Provider responses, credential updates, and challenges. The differential harness SHALL compare canonical JSON, stable arrays, status categories, diagnostics, updates, and challenges, normalizing only explicitly approved runtime fields.
+The collector SHALL maintain redacted golden fixtures for Bridge requests/responses, artifacts, diagnostics, local source records, SQLite responses, Provider responses, credential updates, and challenges. The fixture harness SHALL compare canonical JSON, stable arrays, status categories, diagnostics, updates, and challenges, normalizing only explicitly approved runtime fields.
 
 #### Scenario: Runtime fields are the only normalized difference
 
-- **WHEN** Python and Rust results are compared
+- **WHEN** a Rust result is compared with an approved golden fixture
 - **THEN** `runId`/generation timestamps and approved machine-specific paths may be normalized, but data values, arrays, status, diagnostics, updates, and challenges are compared strictly
 
 #### Scenario: Parity mismatch is actionable
@@ -30,11 +30,11 @@ The benchmark SHALL cover small/medium/large local histories, 1/10/64 account-sc
 
 ### Requirement: Release artifacts pass security and runtime gates
 
-Release validation SHALL verify the signed universal Rust binary, runtime manifest, package contents, absence of Python fallback/source/secrets/data fixtures, stdout protocol purity, and App runtime discovery. Preview fallback SHALL be excluded from the Release manifest.
+Release validation SHALL verify the signed universal Rust binary, runtime manifest, package contents, absence of script source/secrets/data fixtures, stdout protocol purity, and App runtime discovery.
 
 #### Scenario: Package scan rejects forbidden content
 
-- **WHEN** a Release package contains Python runtime/source, bridge source, token/cookie/private key, raw session, database, fixture, or unapproved debug artifact
+- **WHEN** a Release package contains script runtime/source, bridge source, token/cookie/private key, raw session, database, fixture, or unapproved debug artifact
 - **THEN** packaging validation fails before signing/release
 
 #### Scenario: Signed runtime is discoverable

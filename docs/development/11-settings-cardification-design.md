@@ -13,7 +13,7 @@
 1. 设置页 6 个分区呈现为独立卡片: 圆角 12px + 细边框 + 浅阴影, 分区标题带色条与加粗。
 2. 卡片样式**不跟随主题** (classic / 液态玻璃共用同一套外观)。
 3. 「通用」分区底部显示版本号 `0.3.0` (仅版本, 不含构建号)。
-4. 版本号单一事实源: 打包脚本从 `pyproject.toml` 读取, 不再硬编码。
+4. 版本号单一事实源: 打包脚本从仓库根 `VERSION` 读取, 不再硬编码。
 5. 不动业务逻辑、数据流、PanelViewModel 映射与 Collector。
 
 ## 现状
@@ -92,21 +92,21 @@ enum AppVersion {
 plutil -insert CFBundleShortVersionString -string "0.1.0" "$BRUCE_INFO_PLIST"
 ```
 
-改为从 `pyproject.toml` 读取:
+改为从仓库根 `VERSION` 读取:
 
 ```bash
-BRUCE_VERSION=$(python3 -c 'import re; print(re.search(r"^version\s*=\s*\"([^\"]+)\"", open("pyproject.toml").read(), re.M).group(1))')
+BRUCE_VERSION=$(tr -d '[:space:]' < "$BRUCE_REPO_ROOT/VERSION")
 plutil -insert CFBundleShortVersionString -string "$BRUCE_VERSION" "$BRUCE_INFO_PLIST"
 ```
 
-- 用正则读取 `version` 字段, 兼容 Python 3.9 (项目最低要求), 不引入 `tomli` 依赖。
+- 只读取纯文本版本号, 不引入脚本运行时依赖。
 - 读取失败 (正则不匹配) → 脚本报错退出, 不产出版本错误的包。
 - `build-release-app.sh` 已有 `BRUCE_VERSION` 变量 (来自 tag), 不重复读取, 保持现状。
 
 ### 4. 错误处理与降级
 
 - `AppVersion.current` 读不到版本 → 显示 `"unknown"` (不崩溃, 不阻断设置页)。
-- 打包脚本正则读 `pyproject.toml` 失败 → 脚本报错退出 (不产出版本错误的包), 与现有 `set -euo pipefail` 一致。
+- 打包脚本读取 `VERSION` 失败 → 脚本报错退出 (不产出版本错误的包), 与现有 `set -euo pipefail` 一致。
 
 ## 测试
 

@@ -203,12 +203,12 @@ extension BruceOnboardingCoreHarness {
     }
     // MARK: - Codex account identity (任务 1)
 
-    /// service ID 必须与 Python `_codex_service_id` 生成完全相同值.
+    /// service ID 必须与 Rust Collector 的稳定 ID 规则一致.
     /// 固定向量: accountID = "acc-1" -> SHA256 前 16 位 hex.
-    static func codexAccountIdentityServiceIDMatchesPython() throws {
-        // Python: hashlib.sha256(b"acc-1").hexdigest()[:16] = "cf9df9b99fc0a24b"
+    static func codexAccountIdentityServiceIDMatchesRustContract() throws {
+        // SHA256("acc-1") 的前 16 位 hex = "cf9df9b99fc0a24b".
         let id = CodexAccountIdentity.serviceID(for: "acc-1")
-        try coreExpect(id == "codex_cf9df9b99fc0a24b", "service ID 不匹配 Python: \(id)")
+        try coreExpect(id == "codex_cf9df9b99fc0a24b", "service ID 不匹配 Rust contract: \(id)")
     }
 
     /// legacy ID 保留旧格式供合并器惰性迁移.
@@ -251,7 +251,7 @@ extension BruceOnboardingCoreHarness {
         try coreExpect(status2 == .valid, "OIDC 有效时 legacy 过期不影响, got \(status2)")
     }
 
-    /// 毫秒时间戳 (Python _is_expired 的 >1e12 分支).
+    /// 毫秒时间戳 (>1e12 分支).
     static func evaluatorGrokMillisTimestamp() throws {
         let now = Date(timeIntervalSince1970: 1_786_000_000)
         let json = """
@@ -301,7 +301,7 @@ extension BruceOnboardingCoreHarness {
         """
         try coreExpect(
             SubscriptionCredentialEvaluator.grokStatus(of: noExpiry, now: now) == .valid,
-            "无 expires_at 应视为未过期 (与 Python 同语义)"
+            "无 expires_at 应视为未过期"
         )
     }
 
@@ -370,8 +370,8 @@ extension BruceOnboardingCoreHarness {
         )
     }
 
-    /// isExpired 与 Python _is_expired 语义逐条对齐: nil/不可解析 -> false.
-    static func evaluatorIsExpiredSemanticsMatchPython() throws {
+    /// isExpired 与 Rust Collector expiry 语义逐条对齐: nil/不可解析 -> false.
+    static func evaluatorIsExpiredSemanticsMatchRustContract() throws {
         let now = Date(timeIntervalSince1970: 1_786_000_000)
         try coreExpect(
             !SubscriptionCredentialEvaluator.isExpired(nil, now: now),
@@ -391,8 +391,8 @@ extension BruceOnboardingCoreHarness {
         )
     }
 
-    /// Task 11: 与 Python 共用 `tests/fixtures/credential-expiry/*.json`,
-    /// 锁定 isExpired + claudeStatus/grokStatus 与 pytest 同矩阵.
+    /// 共享 `tests/fixtures/credential-expiry/*.json`, 锁定
+    /// isExpired + claudeStatus/grokStatus 的跨实现矩阵.
     static func evaluatorSharedExpiryFixtures() throws {
         let dir = try credentialExpiryFixturesDirectory()
         let required: Set<String> = [

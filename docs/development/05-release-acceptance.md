@@ -23,7 +23,7 @@
 - [ ] 验证签名链、notarization 和 Gatekeeper。
 - [ ] 从干净目录安装 `.app`, 首次启动菜单栏出现品牌图标, 无多余进程。
 - [ ] 点击菜单栏标签弹出面板, 关闭设置窗口后再次打开不创建第二个 Scheduler。
-- [ ] 退出时运行中的 Collector 在宽限期内取消, 无残留 Python 子进程。
+- [ ] 退出时运行中的 Rust Collector 在宽限期内取消, 无残留 Collector 子进程。
 
 ## 真实登录与撤销
 

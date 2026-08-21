@@ -5,6 +5,8 @@
 > 日期: 2026-08-13
 > 状态: 已实施并完成自动化验证
 
+> 历史施工记录说明: 本文记录视觉改造时的运行链路保护边界. 文中的旧 Collector/Bridge/Python 名称只用于描述当时的冻结对象, 当前项目已完成 Rust Collector cutover, 现行验证以 `scripts/verify-local.sh` 为准.
+
 ## 1. 施工目标
 
 仅优化 macOS 原生仪表盘的视觉材质, 保持当前布局、内容、交互和统计流程完全不变.
@@ -276,7 +278,7 @@ zsh scripts/verify-local.sh
 
 - `swift build --package-path macos/BruceApp` 通过.
 - `zsh scripts/verify-local.sh` 通过.
-- Python 测试: 以当前 `pytest` 收集结果为准.
+- Rust workspace 测试: 以当前 `cargo test --workspace` 结果为准.
 - Onboarding Core Harness: 175 项通过.
 - PanelViewModel Harness: 41 项通过.
 - RefreshScheduler Harness: 62 项通过.

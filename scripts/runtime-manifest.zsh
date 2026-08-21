@@ -4,21 +4,6 @@
 BRUCE_RUST_PACKAGE_DIR="rust/Bruce-collector"
 BRUCE_RUST_BINARY_NAME="Bruce-collector"
 
-BRUCE_PREVIEW_RUNTIME_FILES=(
-    bridge/__init__.py
-    bridge/run_bridge.py
-    bridge/security.py
-    bridge/schemas
-    agent-usage/collector/collect_usage.py
-    agent-usage/collector/pricing.py
-    agent-usage/collector/runtime.py
-    agent-usage/collector/quota_services.py
-    agent-usage/collector/local_usage.py
-    agent-usage/collector/codex_compat.py
-    agent-usage/collector/quota_official.py
-    agent-usage/collector/service_catalog.py
-)
-
 BRUCE_BUNDLE_FILES=(
     macos/BruceApp/Assets/AppIcon.icns
 )
@@ -26,22 +11,11 @@ BRUCE_BUNDLE_FILES=(
 Bruce_validate_packaging_sources() {
     local repo_root="$1"
     local relative_path
-    for relative_path in "${BRUCE_BUNDLE_FILES[@]}" "${BRUCE_PREVIEW_RUNTIME_FILES[@]}"; do
+    for relative_path in "${BRUCE_BUNDLE_FILES[@]}"; do
         if [[ ! -e "$repo_root/$relative_path" ]]; then
             echo "缺少打包资源: $repo_root/$relative_path" >&2
             return 1
         fi
-    done
-}
-
-Bruce_copy_runtime() {
-    local repo_root="$1"
-    local runtime_root="$2"
-    local relative_path
-
-    mkdir -p "$runtime_root/bridge" "$runtime_root/agent-usage/collector"
-    for relative_path in "${BRUCE_PREVIEW_RUNTIME_FILES[@]}"; do
-        ditto "$repo_root/$relative_path" "$runtime_root/$relative_path"
     done
 }
 
@@ -180,14 +154,6 @@ Bruce_validate_release_bundle() {
         echo "Release Bundle 缺少可执行 Rust Collector: $rust_binary" >&2
         return 1
     fi
-    if [[ -d "$resources_root/runtime" ]]; then
-        echo "Release Bundle 不得包含 Python runtime fallback" >&2
-        return 1
-    fi
-    if rg --files "$app_root" -g '*.py' -g 'run_bridge.py' | rg -q '.'; then
-        echo "Release Bundle 包含 Python source/fallback" >&2
-        return 1
-    fi
     if rg --files "$app_root" \
         | rg -q '(^|/)(data|fixtures?)(/|$)'; then
         echo "Release Bundle 不得包含运行数据或测试 fixture" >&2
@@ -196,11 +162,6 @@ Bruce_validate_release_bundle() {
     if rg --files "$app_root" \
         | rg -q '(^|/)(sessions?|debug|target|\.build)(/|$)|\.(sqlite3?|db|jsonl?)$'; then
         echo "Release Bundle 不得包含会话、数据库或 Debug 产物" >&2
-        return 1
-    fi
-    if strings "$app_executable" \
-        | rg -q 'PythonPreviewAdapter|PythonPreview|run_bridge\.py|pythonURL|bridgeURL'; then
-        echo "Release Bundle 的 BruceApp 可执行文件包含 Python fallback 标记" >&2
         return 1
     fi
     # Optimized Rust may place adjacent static header labels in one strings

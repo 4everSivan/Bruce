@@ -89,8 +89,7 @@ struct DiagnosticsHarness {
             rootURL: root.appendingPathComponent("Application Support/Bruce")
         )
         let runner = CollectorRunner(
-            pythonURL: URL(fileURLWithPath: "/usr/bin/python3"),
-            bridgeURL: root.appendingPathComponent("run_bridge.py")
+            rustURL: URL(fileURLWithPath: "/usr/bin/true")
         )
         let scheduler = RefreshScheduler(executor: runner, store: store)
         let model = AppModel()
@@ -106,9 +105,9 @@ struct DiagnosticsHarness {
             readiness: .partial,
             localDependencies: [
                 DependencyProbe(
-                    kind: .python,
+                    kind: .sessionDirectory,
                     status: .available,
-                    detail: "/Users/alice/bin/python3"
+                    detail: "fixture sessions"
                 ),
             ],
             connection: .connected,

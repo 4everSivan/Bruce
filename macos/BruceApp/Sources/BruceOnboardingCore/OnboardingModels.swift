@@ -14,11 +14,10 @@ public enum LocalDependencyStatus: String, Equatable, Sendable {
 
 // MARK: - CollectorRuntimeStatus
 
-/// Collector 执行文件的本机状态. Release 只使用 Rust; Python 仅作为 Debug/Preview 兼容路径.
+/// Rust Collector 执行文件的本机状态.
 public enum CollectorRuntimeStatus: String, Equatable, Sendable {
     case rustAvailable
     case rustUnavailable
-    case pythonPreview
 }
 
 // MARK: - ConnectionStatus
@@ -52,8 +51,6 @@ public enum ModuleReadiness: String, Equatable, Sendable {
 
 /// 结构化设置动作, 替代纯指导字符串.
 public enum SetupAction: String, Equatable, Sendable {
-    case choosePython
-    case installPython
     case retryLocalScan
     case retryConnection
     case reviewAuthorization
@@ -133,7 +130,6 @@ public struct ModuleReadinessResult: Equatable, Sendable {
 /// 单项依赖或数据源的只读扫描结果.
 public struct DependencyProbe: Equatable, Sendable {
     public enum Kind: String, Sendable {
-        case python
         case sessionDirectory
         case sqliteDatabase
     }

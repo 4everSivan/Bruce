@@ -6,7 +6,7 @@ import Foundation
 extension BruceOnboardingCoreHarness {
     // MARK: - 订阅凭证导入纯逻辑 (全部临时目录 fixture, 禁真实主目录)
 
-    /// 与 collect_usage.py _volc_decode_secret 对齐: 非 base64 立即停止,
+    /// 与 Rust Collector 的火山引擎 secret 解码规则对齐: 非 base64 立即停止,
     /// 只保留原始候选. "notbase64!" 去掉非字母表字符后长度 % 4 == 1, 必然解码失败.
     static func volcDecoderStopsWhenNotBase64() throws {
         let candidates = VolcengineSecretDecoder.decodeCandidates("notbase64!")
@@ -57,7 +57,7 @@ extension BruceOnboardingCoreHarness {
         }
     }
 
-    /// 结构与 collect_usage.py:1128-1143 的消费方式对齐.
+    /// 结构与 Rust Collector 的消费方式对齐.
     static func codexAuthFileParsesValidAccount() throws {
         let json = """
             {"tokens": {"account_id": "acc-1", "refresh_token": "rt",
@@ -137,7 +137,7 @@ extension BruceOnboardingCoreHarness {
         )
     }
 
-    /// 摘要: 邮箱取 @ 前缀, 无 email 回落 id 前 8 位 (collect_usage.py:1148).
+    /// 摘要: 邮箱取 @ 前缀, 无 email 回落 id 前 8 位.
     static func codexLibrarySummaryCountAndPrefixes() throws {
         let json = """
             {"accounts": {

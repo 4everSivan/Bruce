@@ -132,7 +132,7 @@ fn parse_json_text(text: &str) -> Option<Value> {
     serde_json::from_str(text).ok()
 }
 
-/// Match Python's expiry compatibility: seconds, milliseconds, RFC3339 and
+/// Match the shared expiry compatibility contract: seconds, milliseconds, RFC3339 and
 /// timezone-less ISO values are accepted; unknown values are not considered expired.
 pub fn is_expired(value: Option<&Value>, now_epoch: i64) -> bool {
     let Some(value) = value else {

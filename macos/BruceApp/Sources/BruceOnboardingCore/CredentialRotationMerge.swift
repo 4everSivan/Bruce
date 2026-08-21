@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - CredentialRotationUpdate
 
-/// Collector credentialUpdates 条目 (对照 collect_usage.py _record_credential_update).
+/// Collector credentialUpdates 条目 (对照 Rust Bridge credential update contract).
 /// 只构造自 kind=oauthTokens 且 operation=replace 的条目;
 /// tokens 已按 collector 白名单过滤为字符串键值.
 public struct CredentialRotationUpdate: Equatable, Sendable {
@@ -20,13 +20,13 @@ public struct CredentialRotationUpdate: Equatable, Sendable {
 // MARK: - CredentialRotationMerge
 
 /// Collector 轮换令牌写回 Keychain 的纯合并逻辑.
-/// 结构对齐 collect_usage.py 的消费方式:
+    /// 结构对齐 Rust Collector 的消费方式:
 /// kimi 顶层平铺 access/refresh; antigravity 合并 token 子对象.
 /// 输出 JSON 使用 sortedKeys 保证稳定.
 /// Codex 不在此写回: 令牌链由 CodexTokenManager 独占持有并持久化,
 /// 不消费 Collector 的 rotation 条目 (任务 6 起).
 public enum CredentialRotationMerge {
-    /// 允许写回的令牌键, 与 collect_usage.py 的白名单一致.
+    /// 允许写回的令牌键, 与 Rust Bridge 的白名单一致.
     private static let allowedKeys: Set<String> = [
         "access_token", "refresh_token", "id_token", "expiry",
     ]

@@ -6,11 +6,11 @@
 | 文档路径 | `docs/development/01-bruce-design.md` |
 | 适用平台 | macOS 26 及以上 |
 | 产品形态 | 原生 macOS 菜单栏应用 (LSUIElement) |
-| 技术基线 | Swift 6, SwiftUI, AppKit, WebKit, Python 3.9+ |
+| 技术基线 | Swift 6, SwiftUI, AppKit, WebKit, Rust Cargo |
 
 ## 1. 文档目的
 
-本文档定义 `Bruce` 的完整产品需求、交互体验、UI 规范、系统架构、数据契约、安全边界和验收标准。设计以仓库内的 macOS 应用、Onboarding Core、Python Collector、Bridge、Artifact Store、Widget 和测试代码为依据。
+本文档定义 `Bruce` 的完整产品需求、交互体验、UI 规范、系统架构、数据契约、安全边界和验收标准。设计以仓库内的 macOS 应用、Onboarding Core、Rust Collector、Bridge、Artifact Store、Widget 和测试代码为依据。
 
 ## 2. 产品定义
 
@@ -121,7 +121,7 @@ Agent 用量具有独立的就绪度、刷新状态、缓存和失败恢复。�
 ### 5.1 首次启动
 
 1. 应用启动 Scheduler 并尝试载入最后成功快照。
-2. Onboarding 执行本机只读扫描, 检查 Python、Agent 会话目录和可选 SQLite schema。
+2. Onboarding 执行本机只读扫描, 检查 Rust Collector、Agent 会话目录和可选 SQLite schema。
 3. 设置页展示依赖扫描结果、阻塞原因和模块选择开关。
 4. 用户选择需要启用的模块。
 5. 用户在「订阅额度」分区按需配置或导入订阅凭证。
@@ -323,10 +323,10 @@ Widget 场景 (Daimon) 的视觉基线见 `tests/visual/baselines/agent-usage-va
 
 #### Agent 用量
 
-- Python 可用性和版本。
+- Rust Collector 可用性和版本。
 - 有效会话源数量。
 - 数据源 warning 和阻塞原因。
-- 「选择 Python…」和「重新检查」操作。
+- 「重新检查」操作。
 - 扫描期间只禁用本模块按钮, 不阻塞其他模块。
 
 #### 订阅额度
@@ -381,12 +381,12 @@ Widget 场景 (Daimon) 的视觉基线见 `tests/visual/baselines/agent-usage-va
 
 扫描项包括:
 
-- Python 绝对路径与 `--version`, 最低版本 3.9。
+- Rust Collector 绝对路径与可执行状态。
 - Kimi Work、Kimi Code CLI、Claude Code 和 Codex CLI 会话目录。
 - CC Switch SQLite schema。
 - Antigravity SQLite schema。
 
-Python 路径按“用户选择路径 -> 固定候选路径”解析, 不依赖 GUI 进程的 shell `PATH`。Antigravity OAuth 令牌优先读本机文件, 回退读登录 Keychain (go-keyring, service `gemini` / account `antigravity`, 值带 `go-keyring-base64:` 前缀), Keychain 来源只读不回写。
+Rust Collector 路径按 Bundle Resources、开发环境显式路径和构建产物解析, 不依赖 GUI 进程的 shell `PATH`。Antigravity OAuth 令牌优先读本机文件, 回退读登录 Keychain (go-keyring, service `gemini` / account `antigravity`, 值带 `go-keyring-base64:` 前缀), Keychain 来源只读不回写。
 
 扫描状态统一为:
 
@@ -401,7 +401,7 @@ Python 路径按“用户选择路径 -> 固定候选路径”解析, 不依赖 
 
 | 模块 | 运行必要条件 | 可降级条件 | 阻塞条件 |
 |---|---|---|---|
-| Agent 用量 | Python 3.9+; 至少一个主要会话源可读 | 部分会话源不可用时允许 partial; Orca 作为补充来源; 可选 SQLite 异常只 warning | Python 不可用; 所有主要会话源不可用 |
+| Agent 用量 | Rust Collector 可执行; 至少一个主要会话源可读 | 部分会话源不可用时允许 partial; Orca 作为补充来源; 可选 SQLite 异常只 warning | Rust Collector 不可用; 所有主要会话源不可用 |
 
 ### 8.3 Activation Gate
 
@@ -427,8 +427,8 @@ flowchart LR
     CO --> GATE["CollectorActivationGate"]
     GATE --> SCHED["RefreshScheduler"]
     SCHED --> RUNNER["CollectorRunner"]
-    RUNNER -->|stdin: BridgeRequest v1| BRIDGE["Python Bridge"]
-    BRIDGE --> AGENT["Agent Collector"]
+    RUNNER -->|stdin: BridgeRequest v1| BRIDGE["Rust Bridge"]
+    BRIDGE --> AGENT["Rust Agent Collector"]
     AGENT -->|Artifact v1| BRIDGE
     BRIDGE -->|stdout: BridgeResponse v1| RUNNER
     RUNNER --> STORE["ArtifactStore"]
@@ -456,7 +456,7 @@ flowchart LR
 `BruceOnboardingCore` 保持 UI 无关和可测试, 提供:
 
 - 模块身份与数据模型。
-- Python 和 SQLite 探测。
+- Rust Collector 和 SQLite 探测。
 - ReadinessEvaluator。
 - CollectorActivationGate。
 - OnboardingConfigurationStore。
@@ -466,7 +466,7 @@ flowchart LR
 
 `BruceAppCore` 提供 AppModel、CollectorRunner、RefreshScheduler、ArtifactStore、PanelViewModel 映射、菜单栏指标/摘要/格式化、生命周期协调和诊断服务, 全部可被 Harness 直接链接测试。
 
-### 9.3 Python 层职责
+### 9.3 Rust Collector 层职责
 
 - Collector 只负责采集和聚合。
 - Bridge 是 Swift 与 Collector 之间的唯一协议边界。
@@ -528,8 +528,8 @@ Bridge 必须:
 
 ### 10.3 进程控制
 
-- Python 和 Bridge 路径必须是绝对本机文件路径。
-- Python 必须可执行, Bridge 必须可读。
+- Rust Collector 路径必须是绝对本机文件路径。
+- Rust Collector 必须可执行。
 - 同一模块最多一个进程。
 - 全局最多两个 Collector 进程。
 - stdout 和 stderr 必须并发排空, 防止管道阻塞。
@@ -623,7 +623,7 @@ Widget 使用 `onDataChange` 和 `onStatusChange` 接收更新。Artifact 为空
 
 Onboarding 配置 schema v1 包含:
 
-- Python 路径。
+- Rust Collector 路径不写入配置, 由运行环境解析。
 - 已选模块集合。
 - 已确认 consent version。
 - 非敏感连接状态。
@@ -695,13 +695,12 @@ CLI 原始输出、HTTP header、HTTP body、PAT、OAuth token 和完整本机�
 
 - 最低支持 macOS 26 (Liquid Glass 与菜单栏面板依赖)。
 - SwiftPM 使用 Swift 6 工具链。
-- Collector 支持 Python 3.9 及以上。
-- Collector 只依赖 Python 标准库。
+- Collector 使用 Rust Cargo workspace 构建, 运行时不依赖脚本解释器。
 - Liquid Glass 仅在 macOS 26 及以上启用。
 
 ### 15.2 性能
 
-- UI 主线程不得执行文件扫描、SQLite 查询、网络请求或 Python 聚合。
+- UI 主线程不得执行文件扫描、SQLite 查询、网络请求或 Rust 聚合。
 - 本机进程探测默认 8 秒超时, 输出收集上限 16 KiB。
 - stderr 分类摘要上限 1 KiB。
 - Collector 并发必须有明确上限。
@@ -730,7 +729,7 @@ CLI 原始输出、HTTP header、HTTP body、PAT、OAuth token 和完整本机�
 
 1. 菜单栏常驻 (LSUIElement), 点击标签弹出面板, 卡片按数据可用性条件渲染。
 2. 未确认授权时所有 Collector 均保持禁用。
-3. Agent 模块在 Python 3.9+ 且至少一个主要会话源可读时可运行。
+3. Agent 模块在 Rust Collector 可执行且至少一个主要会话源可读时可运行。
 4. 自动刷新默认每 30 分钟执行, 睡眠恢复后只补采过期模块。
 5. 任一模块失败时其他模块继续刷新。
 6. 有最后成功快照时, 刷新失败不清空面板。
@@ -778,7 +777,7 @@ Widget 场景 (Daimon) 视觉基线使用脱敏 `valid.json` fixture, 确定性�
 | RefreshScheduler Harness | 定时、pending rerun、退避、认证暂停、禁用、唤醒补采、partial、容量和停止 |
 | ArtifactStore Harness | schema、权限、原子写、损坏回退、迁移和未知版本 |
 | Native Lifecycle Harness | 调度启动、退出回收、Widget 状态映射和菜单栏指标/摘要 |
-| Python 测试 | Bridge 契约、Collector context、聚合、CLI 和敏感数据隔离 |
+| Rust 测试 | Bridge 契约、Collector context、聚合、额度和敏感数据隔离 |
 | Widget 测试 | CSP、无网络、无原生通道、动态转义、状态覆盖、JS 语法和 Bundle 一致性 |
 | 视觉基线 | Widget 的固定尺寸确定性截图 |
 
@@ -787,7 +786,8 @@ Widget 场景 (Daimon) 视觉基线使用脱敏 `valid.json` fixture, 确定性�
 ```bash
 swift build --package-path macos/BruceApp
 swift run --package-path macos/BruceApp BruceOnboardingCoreHarness
-python3 -m pytest -q
+cargo test --manifest-path rust/Bruce-collector/Cargo.toml --workspace
+zsh scripts/check-collector-fixtures.sh
 ```
 
 真实账号、外部 API 和第三方本机数据库不属于默认自动测试输入, 必须在用户明确授权的个人环境中单独验收。
@@ -824,8 +824,8 @@ python3 -m pytest -q
 | 菜单栏指标 | `macos/BruceApp/Sources/BruceAppCore/MenuBarMetrics.swift` |
 | 诊断服务 | `macos/BruceApp/Sources/BruceAppCore/Diagnostics.swift` |
 | WidgetHost (Daimon 场景) | `macos/BruceApp/Sources/BruceApp/WidgetHost.swift` |
-| Bridge | `bridge/run_bridge.py`, `bridge/security.py` |
-| Agent 用量 | `agent-usage/collector/collect_usage.py` |
+| Bridge | `rust/Bruce-collector/crates/collector-bridge/`, `bridge/schemas/` |
+| Agent 用量 | `rust/Bruce-collector/crates/collector-local/`, `collector-aggregate/`, `collector-provider/` |
 | Widget | `agent-usage/widget/` |
 | 契约 schema | `bridge/schemas/` |
 | 测试与视觉基线 | `tests/`, `macos/BruceApp/Tests/` |
@@ -1009,7 +1009,7 @@ LocalIntegrationHarness 使用:
 - 随机临时 HOME。
 - 随机临时 Application Support。
 - 仅存在于 stdin 的随机 fixture credential。
-- 真实 Python Bridge 和 Agent Collector 代码。
+- 真实 Rust Bridge 和 Agent Collector 代码。
 - `localSessions` / `localPricing` 能力, 明确关闭 `externalQuotas`。
 - 无真实会话、Keychain 或第三方数据库的空 HOME。
 
@@ -1030,8 +1030,8 @@ LocalIntegrationHarness 使用:
 
 新增 `scripts/verify-local.sh`, 依次运行:
 
-1. Python Collector 和 Bridge AST 语法解析。
-2. `python3 -m pytest -q`。
+1. Rust fmt、Clippy 和 workspace 测试。
+2. `zsh scripts/check-collector-fixtures.sh`。
 3. Bridge request/response 和 Agent Artifact schema/fixture 校验。
 4. Widget 源文件与 Bundle 副本一致性检查。
 5. 所有 Widget 内联 JavaScript 和 bootstrap 的 `node --check`。

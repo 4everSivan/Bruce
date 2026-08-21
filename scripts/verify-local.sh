@@ -5,9 +5,7 @@ set -euo pipefail
 BRUCE_SCRIPT_DIR=${0:A:h}
 BRUCE_REPO_ROOT=${BRUCE_SCRIPT_DIR:h}
 BRUCE_SWIFT_PACKAGE="$BRUCE_REPO_ROOT/macos/BruceApp"
-BRUCE_BRIDGE="$BRUCE_REPO_ROOT/bridge/run_bridge.py"
 BRUCE_RUST_MANIFEST="$BRUCE_REPO_ROOT/rust/Bruce-collector/Cargo.toml"
-BRUCE_PYTHON_BIN=${BRUCE_PYTHON_BIN:-$(command -v python3)}
 BRUCE_RUST_BIN=${BRUCE_RUST_BIN:-$BRUCE_REPO_ROOT/rust/Bruce-collector/target/debug/Bruce-collector}
 
 cd "$BRUCE_REPO_ROOT"
@@ -19,26 +17,28 @@ fi
 source "$BRUCE_SCRIPT_DIR/runtime-manifest.zsh"
 Bruce_prepare_cargo_home
 
-echo "检查 Python 语法"
+BRUCE_LEGACY_SOURCE=$(find . \
+  -path './.git' -prune -o \
+  -path './.build' -prune -o \
+  -path './dist' -prune -o \
+  -path '*/target' -prune -o \
+  \( -name '*.py' -o -name '*.pyc' -o -name 'pyproject.toml' \) -print -quit)
+if [[ -n "$BRUCE_LEGACY_SOURCE" ]]; then
+  echo "检测到已移除的 Python 资产: $BRUCE_LEGACY_SOURCE" >&2
+  exit 1
+fi
+
 zsh -n "$BRUCE_SCRIPT_DIR/collector-release-smoke.sh"
-"$BRUCE_PYTHON_BIN" - <<'PY'
-import ast
-from pathlib import Path
-
-paths = sorted(Path(".").glob("*/collector/*.py"))
-paths.extend(sorted(Path("bridge").glob("*.py")))
-for path in paths:
-    ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-print("Python syntax passed:", len(paths))
-PY
-
-echo "运行 Python 契约、schema、Widget 与安全测试"
-"$BRUCE_PYTHON_BIN" -m pytest -q
-
+zsh "$BRUCE_SCRIPT_DIR/check-collector-fixtures.sh"
 echo "运行 Rust workspace 测试、格式与 Clippy"
 cargo fmt --manifest-path "$BRUCE_RUST_MANIFEST" --all -- --check
 cargo test --manifest-path "$BRUCE_RUST_MANIFEST" --workspace
 cargo clippy --manifest-path "$BRUCE_RUST_MANIFEST" --workspace --all-targets -- -D warnings
+
+if [[ ! -x "$BRUCE_RUST_BIN" ]]; then
+  echo "Rust Collector 构建产物不存在: $BRUCE_RUST_BIN" >&2
+  exit 1
+fi
 
 echo "构建 Swift 应用与全部 Harness"
 swift build --package-path "$BRUCE_SWIFT_PACKAGE"
@@ -54,12 +54,8 @@ swift run --package-path "$BRUCE_SWIFT_PACKAGE" \
   ArtifactStoreHarness "$BRUCE_REPO_ROOT"
 
 echo "运行 CollectorRunner Harness"
-BRUCE_COLLECTOR_HARNESS_ARGS=("$BRUCE_PYTHON_BIN" "$BRUCE_BRIDGE")
-if [[ -x "$BRUCE_RUST_BIN" ]]; then
-  BRUCE_COLLECTOR_HARNESS_ARGS+=("$BRUCE_RUST_BIN")
-fi
 swift run --package-path "$BRUCE_SWIFT_PACKAGE" \
-  CollectorRunnerHarness "${BRUCE_COLLECTOR_HARNESS_ARGS[@]}"
+  CollectorRunnerHarness "$BRUCE_RUST_BIN"
 
 echo "运行 RefreshScheduler Harness"
 swift run --package-path "$BRUCE_SWIFT_PACKAGE" \
@@ -75,8 +71,7 @@ echo "运行隔离的本地集成 Harness"
 swift run --package-path "$BRUCE_SWIFT_PACKAGE" \
   LocalIntegrationHarness \
   "$BRUCE_REPO_ROOT" \
-  "$BRUCE_PYTHON_BIN" \
-  "$BRUCE_BRIDGE"
+  "$BRUCE_RUST_BIN"
 
 echo "运行 DeepSeek 月度账本 Harness"
 swift run --package-path "$BRUCE_SWIFT_PACKAGE" \

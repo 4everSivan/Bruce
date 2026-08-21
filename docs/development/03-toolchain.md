@@ -25,18 +25,17 @@
 swift build --package-path macos/BruceApp
 ```
 
-## Python 工具链
+## Rust 工具链
 
-- 最低支持版本: Python 3.9.
-- 当前已验证解释器: Python 3.9.13.
-- Collector 仅使用标准库; 当前使用的最晚基础 API 是 Python 3.7 已提供的 `datetime.fromisoformat`.
-- 首次启动扫描必须拒绝 Python 2 和 Python 3.8 及更低版本, 并显示安装或重新选择解释器的建议.
+- Collector 使用 Rust Cargo workspace 构建.
+- Rust 二进制入口: `rust/Bruce-collector/bin/Bruce-collector/src/main.rs`.
+- App 只发现并启动随包提供的 Rust Collector, 不扫描或依赖用户本机解释器.
 
 静态验证:
 
 ```bash
-python3 -m py_compile \
-  agent-usage/collector/collect_usage.py
+cargo fmt --manifest-path rust/Bruce-collector/Cargo.toml --all -- --check
+cargo clippy --manifest-path rust/Bruce-collector/Cargo.toml --workspace --all-targets -- -D warnings
 ```
 
 ## 构建边界
@@ -75,4 +74,4 @@ python3 -m py_compile \
 ./scripts/verify-local.sh
 ```
 
-脚本默认不访问真实账号或 Keychain. `LocalIntegrationHarness` 会在随机临时 HOME 中调用真实 Agent Bridge/Collector 代码, 但只授权本地会话和本地计价能力, 不启用外部额度采集.
+脚本默认不访问真实账号或 Keychain. `LocalIntegrationHarness` 会在随机临时 HOME 中调用 Rust Agent Collector, 但只授权本地会话和本地计价能力, 不启用外部额度采集.

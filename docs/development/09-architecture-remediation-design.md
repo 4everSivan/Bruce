@@ -5,6 +5,8 @@
 > 范围: 全量架构收尾 (审查 P0–P2 + `docs/development/07-architecture-and-quota-refresh-optimization.md` 未完成项)  
 > 交付: 一份总设计 + 分阶段实施计划 (另文 writing-plans)
 
+> 历史设计说明: 本文形成于 Rust Collector cutover 前, Python/Bridge 仅代表当时的迁移对象. 当前运行时已固定为 Rust, 现行架构与验证以 `docs/openspec/changes/rust-collector-performance/` 为准.
+
 ---
 
 ## 1. 背景与问题

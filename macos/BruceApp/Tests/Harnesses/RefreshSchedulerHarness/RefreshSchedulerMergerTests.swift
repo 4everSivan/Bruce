@@ -7,7 +7,7 @@ import BruceOnboardingCore
 extension RefreshSchedulerHarness {
 // MARK: - 任务 7: 四源快照合并器
 
-/// 任务 7 固定测试向量 (与 collect_usage.py _codex_service_id 对齐).
+/// 任务 7 固定测试向量 (与 Rust Collector 的 Codex service ID 对齐).
 
 /// 构造单账号 Codex service (任务 7 契约字段).
 static func mergerCodexService(

@@ -9,28 +9,20 @@ public struct ReadinessEvaluator: Sendable {
 
     /// 评估 Agent 用量模块.
     /// Release 必要条件: Rust Collector 可执行且至少一个会话源可读.
-    /// Python 3.9+ 只在 Debug/Preview 运行时作为兼容条件.
     /// CC Switch 和 Antigravity 是可选增强, 单独存在不能让模块 ready.
     public func evaluateAgentUsage(
-        pythonStatus: LocalDependencyStatus,
-        pythonVersion: String?,
         sessionSources: [DependencyProbe],
         ccSwitchStatus: SQLiteSchemaProbeResult,
         antigravityStatus: SQLiteSchemaProbeResult,
-        collectorRuntime: CollectorRuntimeStatus = .pythonPreview
+        collectorRuntime: CollectorRuntimeStatus = .rustUnavailable
     ) -> ModuleReadinessResult {
-        var probes: [DependencyProbe] = []
-        probes.append(DependencyProbe(
-            kind: .python, status: pythonStatus, detail: pythonVersion
-        ))
-        probes.append(contentsOf: sessionSources)
+        var probes = sessionSources
 
         var issues: [ScanIssue] = []
         var warnings: [String] = []
         var actions: [SetupAction] = []
 
-        // Release/正式运行时不再把 Python 当成硬依赖. Rust 缺失必须显式阻塞,
-        // 避免打包错误被误报为“没有会话源”或静默回退到 Python.
+        // Rust 缺失必须显式阻塞, 避免打包错误被误报为“没有会话源”.
         if collectorRuntime == .rustUnavailable {
             issues.append(ScanIssue(
                 code: "RUST_COLLECTOR_UNAVAILABLE",
@@ -46,28 +38,6 @@ public struct ReadinessEvaluator: Sendable {
                 localDependencies: probes,
                 connection: .notRequired,
                 blockingReason: "Rust Collector 不存在或不可执行",
-                issues: issues,
-                actions: actions
-            )
-        }
-
-        // Python 不合格仅在 Debug/Preview 兼容路径阻塞.
-        if collectorRuntime == .pythonPreview && pythonStatus != .available {
-            issues.append(ScanIssue(
-                code: "PYTHON_UNAVAILABLE",
-                stage: "scan",
-                category: .dependency,
-                retryable: false,
-                suggestedAction: pythonStatus == .missing ? .installPython : .choosePython
-            ))
-            actions.append(.choosePython)
-            if pythonStatus == .missing { actions.append(.installPython) }
-            return ModuleReadinessResult(
-                module: .agentUsage,
-                readiness: .missingDependency,
-                localDependencies: probes,
-                connection: .notRequired,
-                blockingReason: "需要 Python 3.9 或更高版本",
                 issues: issues,
                 actions: actions
             )

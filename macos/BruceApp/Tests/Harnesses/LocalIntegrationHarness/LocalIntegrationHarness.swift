@@ -66,27 +66,24 @@ private struct IsolatedRunInputProvider: CollectorRunInputProviding {
 @MainActor
 struct LocalIntegrationHarness {
     static func main() async throws {
-        guard CommandLine.arguments.count == 4 else {
+        guard CommandLine.arguments.count == 3 else {
             throw IntegrationTestFailure.expectation(
-                "expected repository root, Python path and Bridge path"
+                "expected repository root and Rust Collector path"
             )
         }
         let repository = URL(
             fileURLWithPath: CommandLine.arguments[1],
             isDirectory: true
         )
-        let python = URL(fileURLWithPath: CommandLine.arguments[2])
-        let bridge = URL(fileURLWithPath: CommandLine.arguments[3])
+        let rust = URL(fileURLWithPath: CommandLine.arguments[2])
         try integrationExpect(
             repository.isFileURL
-                && python.path.hasPrefix("/")
-                && bridge.path.hasPrefix("/"),
+                && rust.path.hasPrefix("/"),
             "integration paths must be absolute"
         )
         try await startupRefreshCacheDiagnosticsAndCleanup(
             repository: repository,
-            python: python,
-            bridge: bridge
+            rust: rust
         )
         try await codexMigrationLifecycleClosedLoop()
         try deepSeekArtifactToLedgerPipeline()
@@ -327,8 +324,7 @@ struct LocalIntegrationHarness {
 
     private static func startupRefreshCacheDiagnosticsAndCleanup(
         repository: URL,
-        python: URL,
-        bridge: URL
+        rust: URL
     ) async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(
@@ -347,8 +343,7 @@ struct LocalIntegrationHarness {
         let secret = "fixture-secret-\(UUID().uuidString)"
         let store = try ArtifactStore(rootURL: applicationSupport)
         let runner = CollectorRunner(
-            pythonURL: python,
-            bridgeURL: bridge
+            rustURL: rust
         )
         let scheduler = RefreshScheduler(
             executor: runner,

@@ -81,8 +81,8 @@ extension SubscriptionProviderConfiguration {
 
 // MARK: - CodexAuthFileParser
 
-/// `~/.codex/auth.json` 当前账号解析, 结构与 collect_usage.py:1128-1143
-/// 的消费方式对齐: tokens.account_id + refresh/access/id token.
+/// `~/.codex/auth.json` 当前账号解析, 结构与 Rust Collector 的
+/// 消费方式对齐: tokens.account_id + refresh/access/id token.
 public struct CodexCLIAuthAccount: Equatable, Sendable {
     public let accountID: String
     public let email: String?
@@ -140,7 +140,7 @@ public enum CodexAuthFileParser {
         guard !access.isEmpty else {
             return .failure(.missingField("tokens.access_token"))
         }
-        // email 优先取 tokens 内, 兼容顶层 (collect_usage 消费时允许缺省)
+        // email 优先取 tokens 内, 兼容顶层 (Collector 消费时允许缺省)
         let email = (tokens["email"] as? String ?? dict["email"] as? String ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let idToken = (tokens["id_token"] as? String ?? "")
@@ -191,7 +191,7 @@ public enum CodexAccountsLibrary {
     }
 
     /// 账号库的展示摘要: 账号数与邮箱前缀列表.
-    /// 无 email 时回落 id 前 8 位, 与 collect_usage.py:1148 一致.
+    /// 无 email 时回落 id 前 8 位, 与 Rust Collector 展示摘要一致.
     public static func summary(of json: String) -> (count: Int, emailPrefixes: [String]) {
         guard let data = json.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data),
@@ -242,8 +242,8 @@ public enum CodexAccountsLibrary {
 
 // MARK: - VolcengineSecretDecoder
 
-/// 火山引擎 SK 解码, 与 collect_usage.py:929-939 `_volc_decode_secret`
-/// 一致: 从原始值出发做最多 2 次 base64 解码尝试, 收集全部候选.
+/// 火山引擎 SK 解码: 从原始值出发做最多 2 次 base64 解码尝试,
+/// 收集全部候选.
 public enum VolcengineSecretDecoder {
     /// 返回 [raw, dec1?, dec2?], 解码失败 (非 base64 或非 UTF-8) 即停止.
     public static func decodeCandidates(_ raw: String) -> [String] {
@@ -264,7 +264,7 @@ public enum VolcengineSecretDecoder {
 
     /// 取最深的成功解码候选. CC Switch 存储的 SK 经过 base64 编码,
     /// 导入 Keychain 时保存解码后的真实 SK; collector 运行时仍会对
-    /// 注入值重做一次候选尝试 (collect_usage.py:982), 语义兼容.
+    /// 注入值重做一次候选尝试, 与 Rust Collector 语义兼容.
     public static func fullyDecoded(_ raw: String) -> String {
         decodeCandidates(raw).last ?? raw
     }
@@ -276,7 +276,7 @@ public enum VolcengineSecretDecoder {
 /// 始终以 SQLite URI mode=ro 打开, 只执行 SELECT, 绝不写入.
 /// 读取 providers 表 name='火山Codingplan' 行的
 /// meta.usage_script.accessKeyId / secretAccessKey (回落 meta 顶层,
-/// 与 collect_usage.py:975-977 一致).
+/// 与 Rust Collector provider schema 一致).
 public struct CCSwitchVolcengineImporter: Sendable {
     public static let providerName = "火山Codingplan"
 

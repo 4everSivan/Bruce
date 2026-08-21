@@ -16,38 +16,41 @@ BRUCE_OUT="${BRUCE_OUT:-$BRUCE_REPO_ROOT/dist/release-notes-$BRUCE_VERSION.md}"
 
 mkdir -p "$(dirname "$BRUCE_OUT")"
 
-python3 - "$BRUCE_CHANGELOG" "$BRUCE_VERSION" "$BRUCE_OUT" <<'PYEOF'
-import re
-import sys
+BRUCE_BODY=$(mktemp "${TMPDIR:-/tmp}/Bruce-release-notes.XXXXXX")
+trap 'rm -f "$BRUCE_BODY"' EXIT
+if ! awk -v version="$BRUCE_VERSION" '
+    BEGIN {
+        target = "## [" version "] - "
+        in_block = 0
+        found = 0
+    }
+    /^## \[/ {
+        if (in_block) exit
+        if (index($0, target) == 1) {
+            in_block = 1
+            found = 1
+            next
+        }
+    }
+    in_block {
+        if ($0 ~ /^---[[:space:]]*$/) next
+        if ($0 == "### Added") print "### 新功能 (Added)"
+        else if ($0 == "### Changed") print "### 调整与优化 (Changed)"
+        else if ($0 == "### Fixed") print "### 修复 (Fixed)"
+        else if ($0 == "### Removed") print "### 移除 (Removed)"
+        else print
+    }
+    END {
+        if (!found) exit 1
+    }
+' "$BRUCE_CHANGELOG" > "$BRUCE_BODY"; then
+    echo "CHANGELOG 中未找到版本块 [$BRUCE_VERSION]" >&2
+    exit 1
+fi
 
-path, version, out_path = sys.argv[1], sys.argv[2], sys.argv[3]
-text = open(path, encoding="utf-8").read()
-pattern = re.compile(
-    r"^## \[%s\] - \d{4}-\d{2}-\d{2}\n(.*?)(?=\n## \[|\Z)"
-    % re.escape(version),
-    re.S | re.M,
-)
-m = pattern.search(text)
-if not m:
-    raise SystemExit("CHANGELOG 中未找到版本块 [%s]" % version)
-block = m.group(1)
-
-section_map = {
-    "### Added": "### 新功能 (Added)",
-    "### Changed": "### 调整与优化 (Changed)",
-    "### Fixed": "### 修复 (Fixed)",
-    "### Removed": "### 移除 (Removed)",
-}
-body = [
-    section_map.get(line.strip(), line)
-    for line in block.strip("\n").split("\n")
-]
-# 去掉块尾部的 `---` 分隔符 (CHANGELOG 版本块间的分隔, 不属于正文)
-while body and body[-1].strip() in ("---", ""):
-    body.pop()
-
-with open(out_path, "w", encoding="utf-8") as f:
-    f.write("## Bruce %s 发布说明\n\n" % version)
-    f.write("\n".join(body).strip() + "\n")
-print("生成:", out_path)
-PYEOF
+{
+    printf '## Bruce %s 发布说明\n\n' "$BRUCE_VERSION"
+    sed -e 's/[[:space:]]*$//' "$BRUCE_BODY"
+    printf '\n'
+} > "$BRUCE_OUT"
+echo "生成: $BRUCE_OUT"

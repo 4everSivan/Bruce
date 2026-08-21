@@ -156,9 +156,7 @@ package struct CollectorRunOutput: Equatable, Sendable {
 
 enum CollectorRunnerError: Error, Equatable {
     case invalidExecutablePath
-    case pythonNotExecutable
     case rustNotExecutable
-    case bridgeNotReadable
     case alreadyRunning
     case capacityExceeded
     case launchFailed
@@ -350,13 +348,6 @@ struct DispatchRunnerTimerScheduler: RunnerTimerScheduling {
 
 @MainActor
 package final class CollectorRunner {
-    private enum RuntimeKind {
-        #if DEBUG
-        case pythonPreview
-        #endif
-        case rust
-    }
-
     private enum RequestedEnd {
         case none
         case cancelled
@@ -383,28 +374,11 @@ package final class CollectorRunner {
     }
 
     private let executableURL: URL
-    #if DEBUG
-    private let bridgeURL: URL?
-    #endif
     private let executableArguments: [String]
-    private let runtimeKind: RuntimeKind
     private let launcher: CollectorProcessLaunching
     private let timerScheduler: RunnerTimerScheduling
     private let timeouts: CollectorTimeouts
     private var activeRuns: [CollectorModule: ActiveRun] = [:]
-
-    #if DEBUG
-    package convenience init(
-        pythonURL: URL,
-        bridgeURL: URL
-    ) {
-        self.init(
-            pythonURL: pythonURL,
-            bridgeURL: bridgeURL,
-            timeouts: .default
-        )
-    }
-    #endif
 
     package convenience init(rustURL: URL) {
         self.init(
@@ -413,54 +387,16 @@ package final class CollectorRunner {
         )
     }
 
-    #if DEBUG
-    init(
-        pythonURL: URL,
-        bridgeURL: URL,
-        timeouts: CollectorTimeouts
-    ) {
-        executableURL = pythonURL
-        self.bridgeURL = bridgeURL
-        executableArguments = [bridgeURL.path]
-        runtimeKind = .pythonPreview
-        launcher = SystemCollectorProcessLauncher()
-        timerScheduler = DispatchRunnerTimerScheduler()
-        self.timeouts = timeouts
-    }
-    #endif
-
     init(
         rustURL: URL,
         timeouts: CollectorTimeouts
     ) {
         executableURL = rustURL
-        #if DEBUG
-        bridgeURL = nil
-        #endif
         executableArguments = []
-        runtimeKind = .rust
         launcher = SystemCollectorProcessLauncher()
         timerScheduler = DispatchRunnerTimerScheduler()
         self.timeouts = timeouts
     }
-
-    #if DEBUG
-    init(
-        pythonURL: URL,
-        bridgeURL: URL,
-        launcher: CollectorProcessLaunching,
-        timerScheduler: RunnerTimerScheduling,
-        timeouts: CollectorTimeouts = .default
-    ) {
-        executableURL = pythonURL
-        self.bridgeURL = bridgeURL
-        executableArguments = [bridgeURL.path]
-        runtimeKind = .pythonPreview
-        self.launcher = launcher
-        self.timerScheduler = timerScheduler
-        self.timeouts = timeouts
-    }
-    #endif
 
     init(
         rustURL: URL,
@@ -469,11 +405,7 @@ package final class CollectorRunner {
         timeouts: CollectorTimeouts = .default
     ) {
         executableURL = rustURL
-        #if DEBUG
-        bridgeURL = nil
-        #endif
         executableArguments = []
-        runtimeKind = .rust
         self.launcher = launcher
         self.timerScheduler = timerScheduler
         self.timeouts = timeouts
@@ -580,25 +512,8 @@ package final class CollectorRunner {
               executableURL.path.hasPrefix("/") else {
             throw CollectorRunnerError.invalidExecutablePath
         }
-        switch runtimeKind {
-        #if DEBUG
-        case .pythonPreview:
-            guard let bridgeURL,
-                  bridgeURL.isFileURL,
-                  bridgeURL.path.hasPrefix("/") else {
-                throw CollectorRunnerError.invalidExecutablePath
-            }
-            guard FileManager.default.isExecutableFile(atPath: executableURL.path) else {
-                throw CollectorRunnerError.pythonNotExecutable
-            }
-            guard FileManager.default.isReadableFile(atPath: bridgeURL.path) else {
-                throw CollectorRunnerError.bridgeNotReadable
-            }
-        #endif
-        case .rust:
-            guard FileManager.default.isExecutableFile(atPath: executableURL.path) else {
-                throw CollectorRunnerError.rustNotExecutable
-            }
+        guard FileManager.default.isExecutableFile(atPath: executableURL.path) else {
+            throw CollectorRunnerError.rustNotExecutable
         }
     }
 

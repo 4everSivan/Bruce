@@ -16,33 +16,13 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: 安装 pytest
-        run: python -m pip install pytest
       - name: 显示工具链版本
         run: |
           swift --version
-          python --version
+          rustc --version
+          cargo --version
       - name: 运行标准本地验证 (verify-local.sh)
         run: zsh scripts/verify-local.sh
-
-  python-min-version:
-    name: Python 3.9 最低版本兼容
-    runs-on: macos-26
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.9"
-      - name: 安装 pytest
-        run: python -m pip install pytest
-      - name: Python 语法检查
-        run: python -m py_compile agent-usage/collector/collect_usage.py bridge/*.py
-      - name: 运行 Python 测试套件
-        run: python -m pytest -q
 
   build-release-app:
     name: 构建测试版 App
@@ -63,7 +43,7 @@ jobs:
   release:
     name: 发布草稿 Release
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [verify, python-min-version, build-release-app]
+    needs: [verify, build-release-app]
     runs-on: macos-26
     timeout-minutes: 30
     permissions:
@@ -97,7 +77,7 @@ jobs:
   release-sign:
     name: 正式版签名与公证 (Release)
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [verify, python-min-version]
+    needs: [verify]
     runs-on: macos-26
     timeout-minutes: 45
     permissions:

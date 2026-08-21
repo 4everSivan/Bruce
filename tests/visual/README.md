@@ -6,8 +6,10 @@
 
 本地查看:
 
+使用任意本地静态文件服务器从项目根提供文件, 例如:
+
 ```bash
-python3 -m http.server 8765 --bind 127.0.0.1
+ruby -run -e httpd . -p 8765 -b 127.0.0.1
 ```
 
 然后打开:
@@ -30,7 +32,7 @@ http://127.0.0.1:8765/tests/visual/widget_harness.html?module=agent-usage
 
 URL 追加 `&deterministic=1` 时, harness 在注入 widget 前冻结时钟 (`Date` 固定为 2026-07-28T12:00:00Z), 模拟 `prefers-reduced-motion: reduce` 并禁用所有 CSS 动画/过渡. 这使 agent-usage 的 countUp 数字直出终值, pixel 背景 canvas 静止, 渲染结果可逐像素复现 (同机两次截图差异为 0). 不加该参数时行为不变, 人工预览不受影响.
 
-重新生成基线 (从项目根启动上述 http.server 后执行, 依赖 Chrome headless 和 Pillow):
+重新生成基线 (从项目根启动上述静态服务器后执行, 依赖 Chrome headless 和 macOS `sips`):
 
 ```bash
 for m in agent-usage; do
@@ -38,11 +40,8 @@ for m in agent-usage; do
     --hide-scrollbars --window-size=782,356 --screenshot=/tmp/Bruce-$m.png \
     "http://127.0.0.1:8765/tests/visual/widget_harness.html?module=$m&deterministic=1"
 done
-python3 -c "
-from PIL import Image
-for m in ['agent-usage']:
-    Image.open(f'/tmp/Bruce-{m}.png').convert('RGB').save(f'tests/visual/baselines/{m}-valid.jpg','JPEG',quality=90)
-"
+sips -s format jpeg /tmp/Bruce-agent-usage.png \
+  --out tests/visual/baselines/agent-usage-valid.jpg >/dev/null
 ```
 
 PNG 截图与 JPG 基线对比存在压缩噪声 (实测差异像素 <3%, RMSE <6); 判定「视觉一致」的参考阈值为差异像素 <5% 且 RMSE <10, 超过则按实质差异处理.

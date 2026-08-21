@@ -1,8 +1,7 @@
 import Foundation
 import BruceOnboardingCore
 
-/// Runtime seam for the Collector process. Release uses the Rust executable;
-/// Python is intentionally exposed only through the Preview adapter.
+/// Runtime seam for the Rust Collector process.
 @MainActor
 package protocol CollectorExecutable: AnyObject {
     func run(
@@ -62,45 +61,6 @@ package final class RustBinaryAdapter: CollectorExecutable, CollectorRuntimeCont
         runner.forceTerminateAll()
     }
 }
-
-#if DEBUG
-@MainActor
-package final class PythonPreviewAdapter: CollectorExecutable, CollectorRuntimeControlling {
-    private let runner: CollectorRunner
-
-    package var activeModuleCount: Int {
-        runner.activeModuleCount
-    }
-
-    package init(pythonURL: URL, bridgeURL: URL) {
-        runner = CollectorRunner(pythonURL: pythonURL, bridgeURL: bridgeURL)
-    }
-
-    package func run(
-        module: CollectorModule,
-        context: [String: JSONValue],
-        credentials: [String: JSONValue]
-    ) async throws -> CollectorRunOutput {
-        try await runner.run(
-            module: module,
-            context: context,
-            credentials: credentials
-        )
-    }
-
-    package func cancel(module: CollectorModule) {
-        runner.cancel(module: module)
-    }
-
-    package func cancelAll() {
-        runner.cancelAll()
-    }
-
-    package func forceTerminateAll() {
-        runner.forceTerminateAll()
-    }
-}
-#endif
 
 @MainActor
 package final class UnavailableCollectorAdapter: CollectorExecutable, CollectorRuntimeControlling {

@@ -152,7 +152,7 @@ where
 }
 
 /// Scan only recent `.jsonl` files beneath `root`. A missing root is a valid
-/// empty source, matching the Python adapter's not-found behavior.
+/// empty source, matching the legacy-compatible not-found behavior.
 pub fn scan_tree<F>(root: &Path, cutoff_ts: f64, mut callback: F) -> io::Result<ScanStats>
 where
     F: FnMut(LocalUsageRecord),

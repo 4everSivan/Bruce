@@ -1,7 +1,7 @@
 import Foundation
 
 /// 应用版本号: 只读 Bundle 短版本字符串 (CFBundleShortVersionString).
-/// 与诊断导出同源, 打包脚本从 pyproject.toml 写入同一值.
+/// 与诊断导出同源, 打包脚本从仓库根 VERSION 写入同一值.
 public enum AppVersion {
     /// 读取当前 Bundle 版本; 缺失或非字符串回落 "unknown" (不阻断 UI).
     public static func current(bundle: Bundle = .main) -> String {

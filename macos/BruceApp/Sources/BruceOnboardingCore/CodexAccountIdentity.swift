@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 
-/// Codex 账号身份契约: 跨 Swift/Python 统一 service ID 生成.
+/// Codex 账号身份契约: Swift 与 Rust 共享稳定 service ID 生成.
 /// currentID = "codex_" + SHA256(accountID).hexPrefix(16)
 /// legacyID  = "codex_" + accountID[:8]  (惰性迁移用)
 public enum CodexAccountIdentity {

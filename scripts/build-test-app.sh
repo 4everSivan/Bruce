@@ -12,7 +12,6 @@ BRUCE_STAGING_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/Bruce-build.XXXXXX")
 BRUCE_STAGED_APP="$BRUCE_STAGING_ROOT/Bruce.app"
 BRUCE_CONTENTS="$BRUCE_STAGED_APP/Contents"
 BRUCE_RESOURCES="$BRUCE_CONTENTS/Resources"
-BRUCE_RUNTIME="$BRUCE_RESOURCES/runtime"
 
 cleanup() {
     rm -rf "$BRUCE_STAGING_ROOT"
@@ -50,14 +49,11 @@ if [[ ! -x "$BRUCE_EXECUTABLE" ]]; then
 fi
 
 echo "组装 Bruce.app"
-mkdir -p "$BRUCE_CONTENTS/MacOS" "$BRUCE_RESOURCES" \
-    "$BRUCE_RUNTIME/bridge" \
-    "$BRUCE_RUNTIME/agent-usage/collector"
+mkdir -p "$BRUCE_CONTENTS/MacOS" "$BRUCE_RESOURCES"
 
 ditto "$BRUCE_EXECUTABLE" "$BRUCE_CONTENTS/MacOS/BruceApp"
 chmod 755 "$BRUCE_CONTENTS/MacOS/BruceApp"
 strip -S "$BRUCE_CONTENTS/MacOS/BruceApp"
-Bruce_copy_runtime "$BRUCE_REPO_ROOT" "$BRUCE_RUNTIME"
 Bruce_copy_rust_collector "$BRUCE_REPO_ROOT" "$BRUCE_RESOURCES" release
 
 ditto "$BRUCE_REPO_ROOT/macos/BruceApp/Assets/AppIcon.icns" \
@@ -74,10 +70,10 @@ plutil -insert CFBundleInfoDictionaryVersion -string "6.0" \
     "$BRUCE_INFO_PLIST"
 plutil -insert CFBundleName -string "Bruce" "$BRUCE_INFO_PLIST"
 plutil -insert CFBundlePackageType -string "APPL" "$BRUCE_INFO_PLIST"
-# 版本号单一事实源: 从 pyproject.toml 读取 (正则, Python 3.9 兼容).
-BRUCE_VERSION=$(python3 -c 'import re; m = re.search(r"^version\s*=\s*\"([^\"]+)\"", open("pyproject.toml").read(), re.M); print(m.group(1) if m else "")')
+# 版本号单一事实源: 从仓库根 VERSION 读取.
+BRUCE_VERSION=$(tr -d '[:space:]' < "$BRUCE_REPO_ROOT/VERSION")
 if [[ -z "$BRUCE_VERSION" ]]; then
-    echo "无法从 pyproject.toml 读取版本号" >&2
+    echo "无法从 VERSION 读取版本号" >&2
     exit 1
 fi
 plutil -insert CFBundleShortVersionString -string "$BRUCE_VERSION" \
@@ -99,11 +95,7 @@ if [[ ! -x "$BRUCE_CONTENTS/MacOS/BruceApp" ]]; then
     exit 1
 fi
 
-packaged_resources=(
-    "$BRUCE_RESOURCES/Bruce-collector"
-    "$BRUCE_RUNTIME/bridge/run_bridge.py"
-    "$BRUCE_RUNTIME/agent-usage/collector/collect_usage.py"
-)
+packaged_resources=("$BRUCE_RESOURCES/Bruce-collector")
 for packaged_resource in "${packaged_resources[@]}"; do
     if [[ ! -f "$packaged_resource" ]]; then
         echo "App Bundle 缺少资源: $packaged_resource" >&2
@@ -121,6 +113,7 @@ if rg -a -q "gzky\\.com|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY" \
     echo "App Bundle 疑似包含敏感信息" >&2
     exit 1
 fi
+Bruce_validate_release_bundle "$BRUCE_STAGED_APP"
 
 echo "写入 dist 打包产物"
 mkdir -p "$BRUCE_DIST_DIR"

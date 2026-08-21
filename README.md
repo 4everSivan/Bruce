@@ -5,7 +5,7 @@
   <p>一条帮你看住每个 token 的本地小狗 🐶</p>
 </div>
 
-Bruce 把本机 AI Agent 的 token 用量、成本估算和订阅额度集中到一个原生 macOS 菜单栏应用中。原生层负责依赖扫描、登录授权、凭证管理、定时刷新、缓存与故障恢复; Python Collector 负责采集; 弹出面板以原生 SwiftUI 渲染 (macOS 26+ 可选液态玻璃主题, 更低系统自动使用经典材质风格)。项目本地优先运行, 无自有服务端。
+Bruce 把本机 AI Agent 的 token 用量、成本估算和订阅额度集中到一个原生 macOS 菜单栏应用中。原生层负责依赖扫描、登录授权、凭证管理、定时刷新、缓存与故障恢复; Rust Collector 负责采集; 弹出面板以原生 SwiftUI 渲染 (macOS 26+ 可选液态玻璃主题, 更低系统自动使用经典材质风格)。项目本地优先运行, 无自有服务端。
 
 > 当前版本 v0.3.0。最低支持 macOS 14, 液态玻璃主题需 macOS 26。测试版由 `scripts/build-test-app.sh` 本地打包; 正式版 (Developer ID 签名 + 公证) 由 `scripts/build-release-app.sh` 按 Git tag 构建, 推送 `v*` tag 后 CI 自动产出草稿 Release。
 
@@ -49,7 +49,7 @@ Widget 场景的视觉基线见 `tests/visual/baselines/agent-usage-valid.jpg`, 
 
 - macOS 14 或更高 (`LSMinimumSystemVersion` 14.0); 液态玻璃主题需 macOS 26 或更高。
 - Swift 6 工具链, 当前验证版本 Apple Swift 6.2.1; 只有 Command Line Tools 即可完成 SwiftPM 构建。
-- Python 3.9 或更高; Collector 仅依赖 Python 标准库。
+- Rust toolchain (rustc/cargo); Collector 编译为 macOS 原生 Rust 二进制。
 - Agent 用量模块需要至少一个受支持的本机会话数据源。
 
 签名、归档和公证需要完整 Xcode 与 Developer ID 证书。
@@ -63,7 +63,7 @@ swift run --package-path macos/BruceApp BruceApp
 
 首次运行流程:
 
-1. 在设置页扫描 Python、本机会话和可选 SQLite 数据源。
+1. 在设置页检查 Rust Collector、本机会话和可选 SQLite 数据源。
 2. 选择需要启用的 Agent 用量模块。
 3. 在「订阅额度」分区按需配置或导入订阅凭证; 未配置任何 Provider 时订阅卡片不渲染。
 4. 阅读统一授权摘要并确认后, 应用才会启动对应 Collector 和自动刷新。
@@ -89,8 +89,8 @@ macOS 菜单栏应用 (LSUIElement, 最低 14)
   │    └─ 订阅额度凭证 (Keychain, 可一次性只读导入)
   ├─ RefreshScheduler
   │    └─ CollectorRunner
-  │         └─ Python Bridge (stdin/stdout JSON)
-  │              └─ Agent Usage Collector
+  │         └─ Rust Bridge/Collector (stdin/stdout JSON)
+  │              └─ Agent Usage modules
   └─ ArtifactStore
        └─ AppModel + PanelViewModelMapper
             └─ 原生状态项 + AppKit/SwiftUI 看板 (经典 / 液态玻璃)
@@ -102,8 +102,8 @@ macOS 菜单栏应用 (LSUIElement, 最低 14)
 运行链路:
 
 1. 原生层根据 Onboarding 结果和用户授权决定允许启动的模块。
-2. Scheduler 为每个模块创建受控运行任务, 并通过 Bridge 的 stdin 传入最小 context 和 credentials。
-3. Collector 返回 `{"artifact": ...}`; Bridge 验证 schema、错误语义和凭证更新。
+2. Scheduler 为每个模块创建受控运行任务, 并通过 Rust Bridge 的 stdin 传入最小 context 和 credentials。
+3. Rust Collector 返回 `{"artifact": ...}`; Bridge 验证 schema、错误语义和凭证更新。
 4. ArtifactStore 原子保存最后成功快照。
 5. 同一 Artifact 两路消费: App 内由 AppModel + PanelViewModelMapper 映射为面板 view model, 交给原生 SwiftUI 卡片渲染; Daimon 场景映射为 `DaimonWidget.data.main`, 由仓库根单文件 Widget 渲染。
 
@@ -114,8 +114,8 @@ Collector 保留独立 CLI 入口, 用于开发、测试和故障排查, 但不�
 - 本地优先, 无项目自有服务端, 不默认同步活动数据。
 - 订阅额度凭证 (Kimi、DeepSeek、火山引擎、Codex、Antigravity、OpenCode Go) 保存在 macOS Keychain。
 - 凭证通过 Bridge stdin 的单次请求传递, 不进入命令行参数、Artifact 或日志。
-- App 模式下 Python 不直接写 Keychain, 也不写回第三方认证文件; 订阅令牌轮换经 `credentialUpdates` 只写回 Keychain, 不回写 CC Switch 或 CLI 认证文件。
-- 菜单栏面板为纯 SwiftUI 渲染, 不接触凭证。仓库根 `*/widget/` 单文件 Widget 仅由 Daimon host 以受 CSP 限制的 WebView 加载, 其安全契约由 Python 测试继续覆盖。
+- Rust Collector 不直接写 Keychain, 也不写回第三方认证文件; 订阅令牌轮换经 `credentialUpdates` 只写回 Keychain, 不回写 CC Switch 或 CLI 认证文件。
+- 菜单栏面板为纯 SwiftUI 渲染, 不接触凭证。仓库根 `*/widget/` 单文件 Widget 仅由 Daimon host 以受 CSP 限制的 WebView 加载, 其 JSON fixture 和 JavaScript 语法可独立验证。
 - 配置和快照写入用户级 Application Support; 真实凭证、账号活动和 `data/*.json` 不得进入仓库。
 - 诊断包采用白名单字段, 生成后解压复核文件清单并再次扫描敏感形态。
 - 菜单栏指标仅显示通用状态和聚合数字, 不显示账号或 token 明细。
@@ -130,9 +130,10 @@ Bruce/
 │   ├── Sources/BruceOnboardingCore/  # 扫描、授权、Gate、订阅凭证、主题解析纯逻辑
 │   ├── Assets/                # AppIcon.icns 应用图标
 │   └── Tests/                 # 独立 Harness target
-├── bridge/                 # Swift 与 Python 之间的版本化 JSON 协议和安全校验
-├── agent-usage/            # Agent 用量 Collector 与 Daimon Widget
-├── tests/                  # Python 契约、Collector、Widget 安全和视觉基线测试
+├── bridge/                 # Bridge v1 JSON schema
+├── rust/Bruce-collector/   # Rust Agent 用量 Collector workspace
+├── agent-usage/            # Daimon Widget
+├── tests/                  # JSON fixture 与 Widget 视觉基线
 ├── scripts/                # 本地验证、测试版/正式版打包与发布说明脚本
 └── docs/                   # 设计、工具链和授权说明文档
 ```
@@ -141,8 +142,7 @@ Bruce/
 
 - macOS App: `macos/BruceApp/Sources/BruceApp/BruceApp.swift`
 - 面板卡片组件: `macos/BruceApp/Sources/BruceApp/Views/`
-- Python Bridge: `bridge/run_bridge.py`
-- Collector: `agent-usage/collector/collect_usage.py`
+- Rust Bridge/Collector: `rust/Bruce-collector/bin/Bruce-collector/src/main.rs`
 - Widget 源文件 (Daimon 场景): `agent-usage/widget/index.html`
 - Artifact schemas: `bridge/schemas/`
 
@@ -161,7 +161,7 @@ Bruce/
 
 ## 故障排查
 
-- 设置页「重新检查」用于复核 Python、会话位置和只读 SQLite 状态。
+- 设置页「重新检查」用于复核 Rust Collector、本机会话位置和只读 SQLite 状态。
 - 有旧快照时, 刷新失败不会清空主视图; 状态文案会区分过期、离线、授权失效和部分成功。
 - 导出支持信息前先使用设置页「预览诊断」, 确认其中只有状态和校验元数据。
 
@@ -173,20 +173,21 @@ Bruce/
 ./scripts/verify-local.sh
 ```
 
-该脚本检查 Python 语法, 运行全部 Python/Bridge/schema/Widget 测试, 构建 Swift 包, 并依次执行全部 Swift Harness。隔离集成只在随机临时 HOME 中运行 Agent Collector, 关闭外部额度能力, 不访问真实账号、Keychain 或第三方数据库。
+该脚本运行 Rust workspace 测试、格式检查、Clippy、fixture 脱敏扫描、Swift 构建和全部 Swift Harness。隔离集成只在随机临时 HOME 中运行 Rust Collector, 关闭外部额度能力, 不访问真实账号、Keychain 或第三方数据库。
 
 按需运行子集:
 
 ```bash
-python3 -m pytest -q                                        # Python 测试
+cargo test --manifest-path rust/Bruce-collector/Cargo.toml --workspace
+zsh scripts/check-collector-fixtures.sh
 swift run --package-path macos/BruceApp BruceOnboardingCoreHarness
 swift run --package-path macos/BruceApp PanelViewModelHarness
 swift run --package-path macos/BruceApp RefreshSchedulerHarness "$PWD"
 ```
 
-CI (`.github/workflows/ci.yml`) 在 push/PR 时执行 verify-local.sh、Python 3.9 最低版本兼容检查和测试版 App 构建; tag `v*` 触发正式构建与草稿 Release。
+CI (`.github/workflows/ci.yml`) 在 push/PR 时执行 Rust/Swift verify-local.sh 和测试版 App 构建; tag `v*` 触发正式构建与草稿 Release。
 
-Widget JavaScript 语法和安全隔离由 Python 测试继续覆盖 (面向 Daimon 场景)。真实 Collector、OAuth、签名和 `.app` 发布验证不属于默认测试流程, 需要单独授权和对应环境。
+Widget JavaScript 语法和安全隔离继续面向 Daimon 场景维护。真实 Collector、OAuth、签名和 `.app` 发布验证不属于默认测试流程, 需要单独授权和对应环境。
 
 ## 当前限制
 

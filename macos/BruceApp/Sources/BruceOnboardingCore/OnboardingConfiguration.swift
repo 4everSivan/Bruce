@@ -100,7 +100,6 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
     public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
-    public var pythonPath: String?
     public var selectedModules: Set<String>
     public var consentVersion: Int?
     public var connectionStates: [String: String]
@@ -171,7 +170,6 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
 
     public init(
         schemaVersion: Int = OnboardingConfiguration.currentSchemaVersion,
-        pythonPath: String? = nil,
         selectedModules: Set<String> = [],
         consentVersion: Int? = nil,
         connectionStates: [String: String] = [:],
@@ -186,7 +184,6 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         dashboardHotkey: GlobalHotkey? = nil
     ) {
         self.schemaVersion = schemaVersion
-        self.pythonPath = pythonPath
         self.selectedModules = selectedModules
         self.consentVersion = consentVersion
         self.connectionStates = connectionStates
@@ -205,7 +202,6 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
-        pythonPath = try container.decodeIfPresent(String.self, forKey: .pythonPath)
         selectedModules = try container.decodeIfPresent(Set<String>.self, forKey: .selectedModules) ?? []
         consentVersion = try container.decodeIfPresent(Int.self, forKey: .consentVersion)
         connectionStates = try container.decodeIfPresent([String: String].self, forKey: .connectionStates) ?? [:]

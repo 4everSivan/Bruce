@@ -58,6 +58,5 @@ The collector SHALL record wall time, CPU time, peak RSS, disk reads, files visi
 
 #### Scenario: Benchmark records comparable metrics
 
-- **WHEN** the same fixture is executed repeatedly in Python and Rust
+- **WHEN** the same fixture is executed repeatedly by the Rust Collector
 - **THEN** both implementations report comparable phase and resource metrics keyed by fixture/build/input hash
-

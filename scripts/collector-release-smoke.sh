@@ -36,7 +36,7 @@ if [[ ! -d "$BRUCE_APP_PATH/Contents" ]]; then
     exit 1
 fi
 
-for required_command in codesign ditto find grep lipo python3 rg shasum strings; do
+for required_command in codesign ditto find grep lipo plutil rg shasum; do
     if ! command -v "$required_command" >/dev/null 2>&1; then
         echo "缺少 smoke 命令: $required_command" >&2
         exit 1
@@ -81,7 +81,7 @@ if [[ "$BRUCE_ALLOW_PREVIEW" == 0 ]]; then
     spctl --assess --type execute --verbose=4 "$BRUCE_APP_PATH"
 else
     codesign --verify --deep --strict "$BRUCE_APP_PATH"
-    echo "LOCAL PREVIEW: 跳过 Release-only Python/source、Developer ID、公证和 Gatekeeper 门禁"
+    echo "LOCAL PREVIEW: 跳过签名、公证和 Gatekeeper 门禁"
 fi
 
 BRUCE_SMOKE_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/Bruce-release-smoke.XXXXXX")
@@ -95,33 +95,22 @@ printf '%s\n' '{"type":"usage.record","time":1785211200000,"model":"smoke-model"
 make_request() {
     local home_path="$1"
     local request_path="$2"
-    python3 - "$home_path" "$request_path" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-home = sys.argv[1]
-output = Path(sys.argv[2])
-request = {
-    "schemaVersion": 1,
-    "runId": "12345678-1234-4234-9234-123456789abc",
-    "module": "agent-usage",
-    "timeouts": {
-        "localScanSeconds": 30,
-        "externalRequestSeconds": 10,
-        "moduleSeconds": 90,
-    },
-    "context": {
-        "home": home,
-        "now": "2026-07-28T12:00:00+08:00",
-        "timezone": "Asia/Shanghai",
-        "days": 14,
-        "capabilities": ["localSessions"],
-    },
-    "credentials": {},
+    cat > "$request_path" <<'JSON'
+{"schemaVersion":1,"runId":"12345678-1234-4234-9234-123456789abc","module":"agent-usage","timeouts":{"localScanSeconds":30,"externalRequestSeconds":10,"moduleSeconds":90},"context":{"home":"","now":"2026-07-28T12:00:00+08:00","timezone":"Asia/Shanghai","days":14,"capabilities":["localSessions"]},"credentials":{}}
+JSON
+    plutil -replace context.home -string "$home_path" "$request_path"
 }
-output.write_text(json.dumps(request, separators=(",", ":")) + "\n", encoding="utf-8")
-PY
+
+json_raw() {
+    local key_path="$1"
+    local json_path="$2"
+    plutil -extract "$key_path" raw -o - "$json_path" 2>/dev/null
+}
+
+json_raw_or_zero() {
+    local key_path="$1"
+    local json_path="$2"
+    json_raw "$key_path" "$json_path" || print 0
 }
 
 run_runtime_smoke() {
@@ -148,50 +137,49 @@ run_runtime_smoke() {
         sed -n '1,20p' "$stderr_path" >&2
         return 1
     }
-    python3 - "$response" "$metrics" "$label" "$expected_rebuilds" "$expected_parsed" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-response = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-metrics = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
-label = sys.argv[3]
-expected_rebuilds = int(sys.argv[4])
-expected_parsed = int(sys.argv[5])
-if response.get("schemaVersion") != 1:
-    raise SystemExit(f"[{label}] response schema 不正确")
-if response.get("runId") != "12345678-1234-4234-9234-123456789abc":
-    raise SystemExit(f"[{label}] runId 不一致")
-if response.get("artifact") is None:
-    raise SystemExit(f"[{label}] artifact 缺失")
-if metrics.get("disk_read_scope") != "logical_source_bytes":
-    raise SystemExit(
-        f"[{label}] disk_read_scope={metrics.get('disk_read_scope')!r} "
-        "不是 logical_source_bytes"
-    )
-if metrics.get("json_lines_parsed", 0) < expected_parsed:
-    raise SystemExit(
-        f"[{label}] json_lines_parsed={metrics.get('json_lines_parsed')} "
-        f"< expected {expected_parsed}"
-    )
-if expected_parsed and metrics.get("disk_read_bytes", 0) <= 0:
-    raise SystemExit(
-        f"[{label}] disk_read_bytes={metrics.get('disk_read_bytes')} "
-        "未记录源 JSONL 读取"
-    )
-if metrics.get("cache_rebuilds", 0) < expected_rebuilds:
-    raise SystemExit(
-        f"[{label}] cache_rebuilds={metrics.get('cache_rebuilds')} "
-        f"< expected {expected_rebuilds}"
-    )
-print(
-    f"{label}: schema/runId/artifact/stdout/cache OK "
-    f"(parsed={metrics.get('json_lines_parsed')}, "
-    f"disk={metrics.get('disk_read_bytes')}, "
-    f"rebuilds={metrics.get('cache_rebuilds')}, "
-    f"invalidations={metrics.get('cache_invalidations')})"
-)
-PY
+    local schema_version
+    local response_run_id
+    local disk_scope
+    local parsed_lines
+    local disk_read_bytes
+    local cache_rebuilds
+    local cache_invalidations
+    schema_version=$(json_raw schemaVersion "$response")
+    response_run_id=$(json_raw runId "$response")
+    if [[ "$schema_version" != 1 ]]; then
+        echo "[$label] response schema 不正确" >&2
+        return 1
+    fi
+    if [[ "$response_run_id" != "12345678-1234-4234-9234-123456789abc" ]]; then
+        echo "[$label] runId 不一致" >&2
+        return 1
+    fi
+    if ! plutil -extract artifact json -o /dev/null "$response" >/dev/null 2>&1; then
+        echo "[$label] artifact 缺失" >&2
+        return 1
+    fi
+    disk_scope=$(json_raw disk_read_scope "$metrics")
+    parsed_lines=$(json_raw_or_zero json_lines_parsed "$metrics")
+    disk_read_bytes=$(json_raw_or_zero disk_read_bytes "$metrics")
+    cache_rebuilds=$(json_raw_or_zero cache_rebuilds "$metrics")
+    cache_invalidations=$(json_raw_or_zero cache_invalidations "$metrics")
+    if [[ "$disk_scope" != "logical_source_bytes" ]]; then
+        echo "[$label] disk_read_scope=$disk_scope 不是 logical_source_bytes" >&2
+        return 1
+    fi
+    if (( parsed_lines < expected_parsed )); then
+        echo "[$label] json_lines_parsed=$parsed_lines < expected $expected_parsed" >&2
+        return 1
+    fi
+    if (( expected_parsed > 0 && disk_read_bytes <= 0 )); then
+        echo "[$label] disk_read_bytes=$disk_read_bytes 未记录源 JSONL 读取" >&2
+        return 1
+    fi
+    if (( cache_rebuilds < expected_rebuilds )); then
+        echo "[$label] cache_rebuilds=$cache_rebuilds < expected $expected_rebuilds" >&2
+        return 1
+    fi
+    echo "$label: schema/runId/artifact/stdout/cache OK (parsed=$parsed_lines, disk=$disk_read_bytes, rebuilds=$cache_rebuilds, invalidations=$cache_invalidations)"
 }
 
 echo "校验 Rust runtime: $BRUCE_RUST_RUNTIME"
@@ -205,18 +193,9 @@ if [[ -z "$BRUCE_CACHE_FILE" ]]; then
     exit 1
 fi
 
-python3 - "$BRUCE_CACHE_FILE" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-path = Path(sys.argv[1])
-value = json.loads(path.read_text(encoding="utf-8"))
 # Simulate a supported old entry whose parser version predates the current
 # compact contribution format. The collector must rebuild, not publish empty.
-value["parserVersion"] = 1
-path.write_text(json.dumps(value, separators=(",", ":")) + "\n", encoding="utf-8")
-PY
+plutil -replace parserVersion -integer 1 "$BRUCE_CACHE_FILE"
 run_runtime_smoke "$BRUCE_APP_PATH" old-cache-rebuild 1
 
 BRUCE_INSTALL_ROOT="$BRUCE_SMOKE_ROOT/Applications"

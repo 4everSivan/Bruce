@@ -11,6 +11,8 @@
 **Spec:** `docs/development/09-architecture-remediation-design.md`  
 **Local skill mirror (gitignored):** `docs/superpowers/specs/2026-08-05-architecture-remediation-design.md`
 
+> 历史实施计划说明: 本文记录 Rust Collector cutover 前的架构收尾过程. 文中的 Python、旧 Bridge 路径和对应命令是历史基线, 不应作为当前项目的执行入口. 当前验证以 `scripts/verify-local.sh`、Rust workspace 和 `docs/openspec/changes/rust-collector-performance/` 为准.
+
 ## Global Constraints
 
 - **UI layout freeze:** Do not change SwiftUI hierarchy, padding, spacing, frame, font hierarchy, card sections, settings control order, or liquid glass look. `Sources/BruceApp/Views/**` default zero intentional diff.

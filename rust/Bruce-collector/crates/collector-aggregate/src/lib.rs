@@ -335,7 +335,7 @@ mod tests {
     }
 
     #[test]
-    fn window_boundaries_and_cache_input_match_python_contract() {
+    fn window_boundaries_and_cache_input_match_shared_contract() {
         let mut aggregate = UsageAccumulator::new(window());
         assert!(aggregate.record(UsageSample {
             timestamp_millis: 1_785_211_200_000,

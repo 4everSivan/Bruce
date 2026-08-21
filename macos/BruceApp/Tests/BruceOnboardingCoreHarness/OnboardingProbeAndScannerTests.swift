@@ -312,23 +312,17 @@ extension BruceOnboardingCoreHarness {
         return url.path
     }
 
-    static func scannerFindsPythonSessionsAndSQLite() async throws {
+    static func scannerFindsSessionsAndSQLite() async throws {
         let tempDir = makeTempDir("scanner-ok")
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
-        let fakePython = try makeExecutableScript(
-            in: tempDir, name: "python3",
-            body: "echo 'Python 3.11.4'"
-        )
         let sessionDir = tempDir.appendingPathComponent("sessions")
         try FileManager.default.createDirectory(at: sessionDir, withIntermediateDirectories: true)
         let dbURL = tempDir.appendingPathComponent("cc-switch.db")
         try createSQLiteFixture(at: dbURL, sql: ccSwitchFixtureSQL)
 
         let paths = LocalDependencyScanPaths(
-            userPreferredPythonPath: fakePython,
-            pythonCandidates: ["/nonexistent/python3"],
             sessionDirectories: [
                 .init(displayName: "Kimi Code CLI", url: sessionDir),
                 .init(displayName: "Claude Code",
@@ -341,12 +335,6 @@ extension BruceOnboardingCoreHarness {
         let scanner = LocalDependencyScanner(paths: paths)
         let probes = await scanner.scan()
 
-        let python = probes.first { $0.kind == .python }
-        try coreExpect(python?.status == .available, "python should be available")
-        try coreExpect(
-            python?.detail?.contains("3.11.4") == true,
-            "python detail mismatch: \(String(describing: python?.detail))"
-        )
         let sessions = probes.filter { $0.kind == .sessionDirectory }
         try coreExpect(sessions.count == 2, "should have 2 session probes")
         try coreExpect(
@@ -360,18 +348,6 @@ extension BruceOnboardingCoreHarness {
         let sqlite = probes.first { $0.kind == .sqliteDatabase }
         try coreExpect(sqlite?.status == .available, "sqlite should be available")
         try coreExpect(sqlite?.detail == "CC Switch", "sqlite detail should be display name")
-    }
-
-    static func scannerReportsMissingPython() async throws {
-        let paths = LocalDependencyScanPaths(
-            pythonCandidates: ["/nonexistent/python3-a", "/nonexistent/python3-b"],
-            sessionDirectories: [],
-            sqliteDatabases: []
-        )
-        let scanner = LocalDependencyScanner(paths: paths)
-        let probes = await scanner.scan()
-        let python = probes.first { $0.kind == .python }
-        try coreExpect(python?.status == .missing, "python should be missing")
     }
 
     static func standardPathsIncludePiSessions() throws {

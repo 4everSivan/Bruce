@@ -2,7 +2,9 @@
 
 对应设计: [next-architecture-design.md](./next-architecture-design.md)
 
-状态: 设计已确认, Slice 0/A/B/C 已完成, 多源 Agent 空数据与 Codex 额度链路修复已完成, 最终门禁待执行.
+状态: Rust cutover 已完成, Slice 0/A/B/C 已完成, 多源 Agent 空数据与 Codex 额度链路修复已完成, 最终发布环境门禁待执行.
+
+> 历史记录说明: 本文保留迁移过程中的旧方案、基线命令和差分证据, 其中出现的 Python、pytest、旧 Bridge 脚本路径均只用于描述迁移前状态, 不再是当前项目的可执行入口. 当前验证以 `scripts/verify-local.sh`、`scripts/check-collector-fixtures.sh`、Rust workspace 测试、Swift Harness 和 `scripts/build-test-app.sh` 为准.
 
 ## 1. 执行约束
 
@@ -12,7 +14,7 @@
 - 不修改第三方 CC Switch/Antigravity 数据库; SQLite 始终使用 read-only 连接.
 - Rust 不直接写 Swift App Keychain, 只输出经过验证的 `credentialUpdates`/`credentialChallenges`.
 - 不把 raw session、OAuth response、access token 或 refresh token 写入仓库、fixture、cache 或日志.
-- 每个 slice 完成后运行差分、Rust workspace、Python、Swift Harness 和安全扫描, 再进入下一个 slice.
+- 每个 slice 完成后运行 Rust workspace、Swift Harness 和安全扫描, 再进入下一个 slice.
 - 现有 `tasks.md` 的 7.1、7.3、7.5 仍是 Release cutover 的外部环境门禁, 不因本计划完成而自动标记通过.
 
 ## 2. 目标依赖图

@@ -18,9 +18,9 @@ Bruce 的 Rust 重构采用三项 deepening 一体化推进:
 - `artifact v1` 字段、单位、四舍五入、空值/空数组区别、稳定排序和状态类别.
 - Swift `CollectorExecutable`、`CollectorRunner`、`RefreshExecutionPipeline` 以及上一份 artifact 的保留语义.
 - App 模式凭证注入、`credentialUpdates`/`credentialChallenges` 校验和 Swift Keychain 写回归属.
-- Release 只有 Rust 采集实现; Python 仅作为 Debug/Preview adapter.
+- Debug、Preview 和 Release 都只有 Rust 采集实现; runtime 缺失时 fail-closed.
 
-本设计不把 Python/Rust 并行双跑作为 Release 架构, Python/Rust 差分只用于 fixture 和迁移验证.
+本设计不引入双生产实现; 差分只用于已冻结 fixture 与回归验证.
 
 ## 2. 当前状态与问题
 
@@ -231,7 +231,7 @@ local 与 quota 的并行不改变输出顺序. 所有稳定数组在 applicatio
 完成条件:
 
 - binary 只通过 Bridge -> application 进入采集.
-- Python/Rust canonical artifact、status、diagnostics 完全一致.
+- Rust canonical artifact、status、diagnostics 与冻结契约完全一致.
 - local-only differential、cancel、timeout、runId 和 previous artifact Swift harness 通过.
 
 ### Slice B: Provider / credential / runtime
@@ -268,7 +268,7 @@ local 与 quota 的并行不改变输出顺序. 所有稳定数组在 applicatio
 
 ## 7. 性能与资源门禁
 
-以当前隔离 HOME、无网络、无真实凭证的 Python 基线和 Rust 结果为基准, 继续区分:
+以当前隔离 HOME、无网络、无真实凭证的冻结基线和 Rust 结果为基准, 继续区分:
 
 - cold/warm process wall time.
 - P50/P95 wall time.
@@ -292,7 +292,7 @@ local 与 quota 的并行不改变输出顺序. 所有稳定数组在 applicatio
 
 ### Contract tests
 
-- Python/Rust canonical artifact、status、diagnostic、stable arrays 严格差分.
+- Rust canonical artifact、status、diagnostic、stable arrays 与 golden fixture 严格比较.
 - credential updates/challenges 只允许显式运行时字段归一化.
 - Bridge stdout 单 envelope、stderr 分离、大小限制、runId、cancel 和 timeout.
 
@@ -309,10 +309,10 @@ local 与 quota 的并行不改变输出顺序. 所有稳定数组在 applicatio
 
 - application fake adapter 集成测试, 不触碰真实凭证.
 - 多账号 HTTP fixture account-scale benchmark.
-- `python3 scripts/check-collector-fixtures.py` secret scan.
-- `python3 scripts/differential-collector.py --request tests/fixtures/bridge/agent-usage/request-valid.json --rust rust/Bruce-collector/target/debug/Bruce-collector` parity.
+- `zsh scripts/check-collector-fixtures.sh` secret scan.
+- `cargo test --manifest-path rust/Bruce-collector/Cargo.toml --workspace` canonical contract.
 - `CI=true zsh scripts/verify-local.sh` 全套本地验证.
-- Release bundle 拒绝 Python fallback、source、data、fixture、secret 和错误架构.
+- Release bundle 拒绝 legacy runtime/source、data、fixture、secret 和错误架构.
 - universal Rust binary、Developer ID、notarization、staple、spctl、安装升级、旧 cache 重建和 rollback.
 
 ## 9. 回滚与安全边界
@@ -321,8 +321,8 @@ local 与 quota 的并行不改变输出顺序. 所有稳定数组在 applicatio
 - cache schema 变化只能新增 version; 发现不兼容时删除派生 cache 并 cold rebuild.
 - Rust 不写第三方 SQLite, CC Switch 和 Antigravity 数据库继续使用 read-only URI.
 - Rust 不直接写 Swift App Keychain, credential update 只能经 Swift coordinator 写回.
-- Release 不通过运行时 flag 恢复 Python fallback; 生产回滚使用上一版已签名 Bruce App.
-- Preview 可以选择 Python adapter 做对照, 但不得把 Preview fallback 打入 Release binary.
+- Release 不通过运行时 flag 恢复旧 runtime; 生产回滚使用上一版已签名 Bruce App.
+- Preview 与 Release 使用同一 Rust binary 来源.
 - 所有 benchmark、fixture、诊断和日志使用脱敏数据, 不把真实 token、session 或 OAuth response 写入仓库.
 
 ## 10. 非目标
@@ -332,17 +332,17 @@ local 与 quota 的并行不改变输出顺序. 所有稳定数组在 applicatio
 - 不改变 artifact 字段、单位、排序、状态或用户可见语义.
 - 不把原始 session、OAuth response 或 token 持久化进 Bruce cache.
 - 不在第一阶段引入 Swift/Rust FFI.
-- 不把 Python 作为 Release 运行时依赖.
+- 不把脚本解释器作为 Release 运行时依赖.
 
 ## 11. 最终验收标准
 
-只有同时满足以下条件, 才能把 Python Collector 标记为“已由 Rust 生产替代”:
+只有同时满足以下条件, 才能把 Rust Collector 标记为“完成本地 cutover”:
 
 1. Slice A/B/C 的 differential parity、错误语义和 credential output 全部通过.
 2. local warm/append/rewrite/delete/cache rebuild 的 correctness 和性能门禁全部通过.
 3. 多账号 quota 的 account-scale fixture 证明并发、single-flight、retry 和资源预算有效.
-4. Rust/Swift/Python fixture/security/standard verification 全部通过.
-5. Release 包只含签名、可执行、目标架构正确的 Rust Collector, 不含 Python fallback 或敏感数据.
+4. Rust/Swift fixture/security/standard verification 全部通过.
+5. Release 包只含签名、可执行、目标架构正确的 Rust Collector, 不含 legacy runtime 或敏感数据.
 6. 安装、升级、旧 cache 重建和回滚演练完成.
 7. Developer ID、notarization、staple、spctl 证据齐全.
 

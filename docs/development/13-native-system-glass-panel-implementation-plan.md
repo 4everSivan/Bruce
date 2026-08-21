@@ -6,6 +6,8 @@
 > 状态: 已实施并完成验证
 > 施工规则: 只改视觉承载, 不改布局、统计和刷新流程
 
+> 历史施工记录: 本文记录 2026-08-13 的视觉施工基线. 文中关于 Collector、Bridge 和旧运行时的描述不代表当前运行架构; 当前项目已完成 Rust Collector cutover, 现行验证以 `docs/development/14-rust-collector-v1-build-target.md` 和 `scripts/verify-local.sh` 为准.
+
 ## 1. 施工目标
 
 将当前“SwiftUI 每张卡片独立玻璃”改为“AppKit 窗口级系统材质 + SwiftUI 内容层”:
@@ -416,7 +418,7 @@ NSVisualEffectView
 验证记录:
 
 - `swift build --package-path macos/BruceApp`: pass.
-- `zsh scripts/verify-local.sh`: pass (Python 测试数量以当前 pytest 收集结果为准, Swift 全部 Harness).
+- `zsh scripts/verify-local.sh`: pass (Rust workspace、Swift build 和全部 Harness).
 - `zsh scripts/build-test-app.sh`: pass, App Bundle 签名校验通过.
 - macOS 26 原生面板截图: pass; 440pt 宽度、卡片顺序、内容和固定底栏保持不变, 文字与图表保持清晰.
 - `NSGlassEffectView` 内容容器实验: rejected; 将完整 SwiftUI 内容作为 `contentView` 或套入全量 `GlassEffectContainer` 会导致重影, 已回退为 sibling surface 结构.

@@ -2,14 +2,14 @@
 
 > 版本目标: `1.0.0`
 > 文档日期: 2026-08-21
-> 状态: 目标已确认, 本文只定义构建目标与验收口径, 不代表 Rust 迁移已经实施
-> 适用范围: `agent-usage/collector/`、`bridge/`、macOS `CollectorRunner`、测试、CI 与正式打包
+> 状态: Rust Collector 已完成源码、App 运行时、测试和 Preview 打包切换; 7.3 的签名/公证/universal 正式门禁仍单独保留
+> 适用范围: `rust/Bruce-collector/`、`bridge/schemas/`、macOS `CollectorRunner`、测试、CI 与正式打包
 
 ## 1. 目标声明
 
-Bruce `1.0.0` 正式版的采集运行时以 Rust 原生 Collector 为唯一生产实现. App 继续通过进程输入输出运行采集器, 但正式 `.app` 不再依赖 Python 解释器、Python 源码或用户本机 Python 路径.
+Bruce `1.0.0` 正式版的采集运行时以 Rust 原生 Collector 为唯一生产实现. App 继续通过进程输入输出运行采集器, 不依赖用户本机解释器或脚本运行时.
 
-本目标的核心不是改变仪表盘布局、统计口径或 Provider 功能, 而是把采集链路的实现从 Python 迁移为一个可签名、可审计、可复现构建的 macOS 原生 Rust 二进制.
+本目标的核心不是改变仪表盘布局、统计口径或 Provider 功能, 而是把采集链路固定为一个可签名、可审计、可复现构建的 macOS 原生 Rust 二进制.
 
 `1.0.0` 必须同时满足以下三个不变性:
 
@@ -19,19 +19,17 @@ Bruce `1.0.0` 正式版的采集运行时以 Rust 原生 Collector 为唯一生�
 
 ## 2. 当前基线与迁移范围
 
-当前生产采集链路为:
+当前采集链路为:
 
 ```text
 Swift CollectorRunner
-        ↓
-Python bridge/run_bridge.py
-        ↓
-collect_usage.py + RunContext
-        ├─ local_usage.py: JSONL / SQLite 扫描
-        ├─ service_catalog.py: Provider 目录与统一状态
-        ├─ quota_services.py: Kimi / DeepSeek / 火山 / Zhipu
-        ├─ quota_official.py: Claude / Grok / OpenCode Go
-        └─ Codex / Antigravity / OAuth / Keychain 兼容逻辑
+        ↓ JSON stdin
+Rust Bruce-collector
+        ├─ collector-local: JSONL / SQLite 扫描
+        ├─ collector-aggregate: token / cost / day / model 聚合
+        ├─ collector-provider: Kimi / DeepSeek / 火山 / Zhipu / Claude / Grok / OpenCode Go
+        ├─ collector-credential: Codex / Antigravity / OAuth / Keychain 兼容逻辑
+        └─ collector-bridge: Bridge v1 校验、脱敏和 stdout envelope
         ↓
 artifact JSON → Swift PanelViewModel → 仪表盘
 ```
@@ -40,10 +38,10 @@ artifact JSON → Swift PanelViewModel → 仪表盘
 
 | 区域 | 代码量 | 迁移含义 |
 |---|---:|---|
-| `agent-usage/collector/*.py` | 4,048 行 | 本地扫描、聚合、额度和运行时上下文 |
-| `bridge/run_bridge.py` + `bridge/security.py` | 1,077 行 | Bridge v1、输入校验、脱敏和凭证更新 |
+| `rust/Bruce-collector/` | Cargo workspace | 本地扫描、聚合、额度、凭证和 Bridge v1 |
+| `bridge/schemas/` | JSON schemas | Bridge v1 request/response/artifact 契约 |
 | `CollectorRunner.swift` | 636 行 | 子进程、stdin/stdout、超时、取消和诊断 |
-| Python 测试 | 约 246 项 | 现有行为、fixture 和安全契约 |
+| Rust/Swift Harness | 以实际输出为准 | 行为、fixture、进程和安全契约 |
 
 因此, 这是一次中大型工程迁移, 不是逐文件翻译. 最大工作量在行为兼容和测试重建, 而不是 Rust 语法本身.
 
@@ -91,7 +89,7 @@ rust/Bruce-collector/
 
 ### 4.1 契约冻结
 
-先把当前 Python 的 request、artifact、diagnostics、status、service 顺序、失败 note、`credentialUpdates` 和 `credentialChallenges` 固化为 golden fixtures.
+把 request、artifact、diagnostics、status、service 顺序、失败 note、`credentialUpdates` 和 `credentialChallenges` 固化为 golden fixtures.
 
 验收重点:
 
@@ -110,11 +108,11 @@ rust/Bruce-collector/
 - artifact 序列化和版本校验.
 - 时间、时区、日期窗口和用量热力图数据.
 
-这一步完成后, Rust 可以对 fixture 运行并与 Python 输出逐项比较, 但不替换生产 App.
+这一步已完成, Rust 对 fixture 运行并由 Rust/Swift Harness 验证契约.
 
-### 4.3 Provider adapter 迁移
+### 4.3 Provider adapter
 
-按风险从低到高迁移:
+按风险从低到高组织:
 
 1. 只读额度查询.
 2. HTTP 签名和窗口解析.
@@ -124,11 +122,11 @@ rust/Bruce-collector/
 
 每个 Provider 必须保留自己的 adapter 和 fixture, 不允许把认证分支重新堆回一个 God module.
 
-### 4.4 App 与打包切换
+### 4.4 App 与打包边界
 
-- `CollectorRunner` 增加 Rust binary 路径解析, 保留现有超时、取消、stdout 清洗和 runId 语义.
-- Preview 构建允许 Rust/Python 双实现和显式 fallback.
-- Release 构建只复制签名后的 Rust universal binary, 不复制 Python runtime、collector 源码或 `bridge/`.
+- `CollectorRunner` 使用 Rust binary 路径解析, 保留现有超时、取消、stdout 清洗和 runId 语义.
+- Preview 与 Release 构建都只复制 Rust Collector; Rust 缺失时 fail-closed, 不提供脚本 fallback.
+- Release 构建只复制签名后的 Rust universal binary, 不复制 Collector 源码或 `bridge/` schema 以外的开发文件.
 - `scripts/runtime-manifest.zsh`、Preview/Release 脚本和 CI 都使用同一份 Rust 产物清单.
 
 ## 5. 1.0 正式版验收标准
@@ -153,9 +151,9 @@ rust/Bruce-collector/
 ### 5.3 工程与测试
 
 - [ ] Rust 单元测试覆盖 domain、时间、聚合、reader 和每个 provider adapter.
-- [ ] Python golden fixture 与 Rust 输出逐字段比较, 差异必须有版本化说明.
+- [ ] Rust golden fixture 与 Swift 映射逐字段比较, 差异必须有版本化说明.
 - [ ] Swift Harness 覆盖进程参数、stdin 凭证、stdout/stderr 清洗、超时、取消、重复运行和诊断.
-- [ ] `python3 -m pytest tests/`、Rust workspace tests、`zsh scripts/verify-local.sh` 全部通过.
+- [ ] Rust workspace tests、fixture scan、Swift Harness 和 `zsh scripts/verify-local.sh` 全部通过.
 - [ ] 完成冷启动、14/182 天扫描、峰值内存、额度尾延迟和 App 包体基准, 记录到发布归档.
 
 ### 5.4 正式打包与回滚
@@ -164,8 +162,8 @@ rust/Bruce-collector/
 - [ ] Release App 使用正式 bundle ID、Developer ID、Hardened Runtime 和 Apple notarization.
 - [ ] `codesign --verify`、`spctl --assess`、`stapler validate` 通过.
 - [ ] 首次安装、升级、降级、Keychain 读取、本地缓存读取和卸载行为通过人工验收.
-- [ ] 1.0 发布包中不存在 Python 源码、测试 fixture、`data/*.json`、OAuth 数据或私钥.
-- [ ] 发布失败时可回退到上一正式版本; Preview fallback 不作为公开生产路径.
+- [ ] 1.0 发布包中不存在脚本 Collector 源码、测试 fixture、`data/*.json`、OAuth 数据或私钥.
+- [ ] 发布失败时可回退到上一正式版本; 不通过运行时 flag 恢复旧 Collector.
 
 ## 6. 版本与兼容策略
 
@@ -180,16 +178,9 @@ Rust binary: Bruce-collector 1.0.x
 
 Rust 内部版本可以独立迭代, 但不得在 `1.0.x` 中无理由改变 artifact 字段或状态语义. 需要破坏性变化时, 新增 schema/version 并保留旧读取路径.
 
-### 6.2 过渡发布
+### 6.2 发布策略
 
-迁移期间允许 Preview 同时携带 Python 和 Rust 实现, 并支持:
-
-- 显式选择实现.
-- 同一请求双跑但只展示主实现结果.
-- artifact parity 差异写入脱敏诊断.
-- Rust 失败自动回退 Python, 不覆盖成功的旧快照.
-
-正式 `1.0.0` 退出过渡期后, 生产包删除 Python fallback. 若发现严重回归, 通过发布 `1.0.1` 修复, 不在用户机器上动态下载或替换采集器.
+当前 Preview 已与 Release 共用 Rust Collector 来源. 若发现严重回归, 通过发布修复版本或回退到上一版 Bruce App, 不在用户机器上动态下载、替换或恢复旧脚本采集器.
 
 ## 7. 不纳入 1.0 的内容
 
@@ -198,7 +189,7 @@ Rust 内部版本可以独立迭代, 但不得在 `1.0.x` 中无理由改变 art
 - 不把 Swift UI 改成 Rust UI.
 - 不引入服务端数据库或远程同步.
 - 不为了迁移而改变额度刷新周期、授权方式和用户可见措辞.
-- 不在第一阶段重写安全层和所有 OAuth; 这些属于 parity 通过后的独立迁移阶段.
+- Provider 安全边界和 OAuth 逻辑继续通过 Rust adapter 与 Swift Keychain 层维护.
 
 ## 8. 完成判定
 
@@ -206,7 +197,7 @@ Rust 内部版本可以独立迭代, 但不得在 `1.0.x` 中无理由改变 art
 
 1. Rust Collector 已成为 Release 唯一生产实现.
 2. Bridge v1 与 artifact v1 通过完整 parity fixture.
-3. 所有现有 Swift/Python/Rust 测试和正式打包检查通过.
+3. 所有 Rust/Swift 测试和 Preview/Release 打包检查通过.
 4. 认证、凭证写回和失败回退完成授权人工验收.
 5. 签名、公证、安装升级、回滚和敏感信息扫描全部有可追溯记录.
 6. 仪表盘布局、内容和统计流程保持不变.

@@ -171,25 +171,22 @@ private final class FakeTimerScheduler: RunnerTimerScheduling {
 
 private struct RunnerFixture {
     let root: URL
-    let python: URL
-    let bridge: URL
+    let rust: URL
 
     init() throws {
         root = FileManager.default.temporaryDirectory.appendingPathComponent(
             "Bruce-runner-\(UUID().uuidString)",
             isDirectory: true
         )
-        python = root.appendingPathComponent("python3")
-        bridge = root.appendingPathComponent("run_bridge.py")
+        rust = root.appendingPathComponent("Bruce-collector")
         try FileManager.default.createDirectory(
             at: root,
             withIntermediateDirectories: true
         )
-        try Data("#!/bin/sh\n".utf8).write(to: python)
-        try Data("# bridge fixture\n".utf8).write(to: bridge)
+        try Data("#!/bin/sh\n".utf8).write(to: rust)
         try FileManager.default.setAttributes(
             [.posixPermissions: 0o700],
-            ofItemAtPath: python.path
+            ofItemAtPath: rust.path
         )
     }
 
@@ -225,12 +222,11 @@ struct CollectorRunnerHarness {
         try await runInputDeniesQuotasWhenCredentialMissing()
         try await runInputDeniesQuotasWhenCredentialCorrupted()
         try await runInputDeniesQuotasWhenProviderDisabled()
-        try await releaseAdapterDoesNotFallbackToPython()
-        try await runsTheRealBridgeInAnIsolatedHome()
-        let rustTestRan = try await runsRustCollectorIfProvided()
+        try await unavailableRustAdapterFailsClosed()
+        try await runsRustCollector()
         try await codexBatchResolverMaxConcurrencyIs4()
         try await codexBatchResolverOutputOrderStable()
-        print("CollectorRunner tests passed: \(rustTestRan ? 28 : 27)")
+        print("CollectorRunner tests passed: 28")
     }
 
     private static func waitForLaunches(
@@ -248,8 +244,7 @@ struct CollectorRunnerHarness {
         let launcher = FakeProcessLauncher()
         let timers = FakeTimerScheduler()
         let runner = CollectorRunner(
-            pythonURL: fixture.python,
-            bridgeURL: fixture.bridge,
+            rustURL: fixture.rust,
             launcher: launcher,
             timerScheduler: timers
         )
@@ -272,11 +267,11 @@ struct CollectorRunnerHarness {
         let request = try launcher.requestObject(0)
         let timeouts = request["timeouts"] as? [String: Any]
         try runnerExpect(
-            launch.executableURL == fixture.python,
-            "runner did not use the configured absolute Python path"
+            launch.executableURL == fixture.rust,
+            "runner did not use the configured absolute Rust path"
         )
         try runnerExpect(
-            launch.arguments == [fixture.bridge.path],
+            launch.arguments.isEmpty,
             "runner added credentials or unexpected arguments"
         )
         try runnerExpect(
@@ -323,8 +318,7 @@ struct CollectorRunnerHarness {
         defer { fixture.remove() }
         let launcher = FakeProcessLauncher()
         let runner = CollectorRunner(
-            pythonURL: fixture.python,
-            bridgeURL: fixture.bridge,
+            rustURL: fixture.rust,
             launcher: launcher,
             timerScheduler: FakeTimerScheduler()
         )
@@ -362,8 +356,7 @@ struct CollectorRunnerHarness {
         defer { fixture.remove() }
         let launcher = FakeProcessLauncher()
         let runner = CollectorRunner(
-            pythonURL: fixture.python,
-            bridgeURL: fixture.bridge,
+            rustURL: fixture.rust,
             launcher: launcher,
             timerScheduler: FakeTimerScheduler()
         )
@@ -397,8 +390,7 @@ struct CollectorRunnerHarness {
         let timeoutLauncher = FakeProcessLauncher()
         let timeoutTimers = FakeTimerScheduler()
         let timeoutRunner = CollectorRunner(
-            pythonURL: fixture.python,
-            bridgeURL: fixture.bridge,
+            rustURL: fixture.rust,
             launcher: timeoutLauncher,
             timerScheduler: timeoutTimers,
             timeouts: CollectorTimeouts(
@@ -431,8 +423,7 @@ struct CollectorRunnerHarness {
 
         let cancelLauncher = FakeProcessLauncher()
         let cancelRunner = CollectorRunner(
-            pythonURL: fixture.python,
-            bridgeURL: fixture.bridge,
+            rustURL: fixture.rust,
             launcher: cancelLauncher,
             timerScheduler: FakeTimerScheduler()
         )
@@ -450,8 +441,7 @@ struct CollectorRunnerHarness {
 
         let crashLauncher = FakeProcessLauncher()
         let crashRunner = CollectorRunner(
-            pythonURL: fixture.python,
-            bridgeURL: fixture.bridge,
+            rustURL: fixture.rust,
             launcher: crashLauncher,
             timerScheduler: FakeTimerScheduler()
         )
@@ -482,8 +472,7 @@ struct CollectorRunnerHarness {
 
         let mismatchLauncher = FakeProcessLauncher()
         let mismatchRunner = CollectorRunner(
-            pythonURL: fixture.python,
-            bridgeURL: fixture.bridge,
+            rustURL: fixture.rust,
             launcher: mismatchLauncher,
             timerScheduler: FakeTimerScheduler()
         )
@@ -503,8 +492,7 @@ struct CollectorRunnerHarness {
 
         let pollutedLauncher = FakeProcessLauncher()
         let pollutedRunner = CollectorRunner(
-            pythonURL: fixture.python,
-            bridgeURL: fixture.bridge,
+            rustURL: fixture.rust,
             launcher: pollutedLauncher,
             timerScheduler: FakeTimerScheduler()
         )
@@ -524,53 +512,13 @@ struct CollectorRunnerHarness {
         }
     }
 
-    private static func runsTheRealBridgeInAnIsolatedHome() async throws {
-        guard CommandLine.arguments.count >= 3 else {
+    private static func runsRustCollector() async throws {
+        guard CommandLine.arguments.count >= 2 else {
             throw RunnerTestFailure.expectation(
-                "expected absolute python and bridge paths"
+                "expected an absolute Rust Collector path"
             )
         }
-        let pythonURL = URL(fileURLWithPath: CommandLine.arguments[1])
-        let bridgeURL = URL(fileURLWithPath: CommandLine.arguments[2])
-        let fakeHome = FileManager.default.temporaryDirectory
-            .appendingPathComponent(
-                "Bruce-real-bridge-\(UUID().uuidString)",
-                isDirectory: true
-            )
-        try FileManager.default.createDirectory(
-            at: fakeHome,
-            withIntermediateDirectories: true
-        )
-        defer { try? FileManager.default.removeItem(at: fakeHome) }
-        let runner = CollectorRunner(
-            pythonURL: pythonURL,
-            bridgeURL: bridgeURL
-        )
-        let output = try await runner.run(
-            module: .agentUsage,
-            context: [
-                "home": .string(fakeHome.path),
-                "now": .string("2026-07-28T12:00:00+08:00"),
-                "timezone": .string("Asia/Shanghai"),
-                "capabilities": .array([
-                    .string("localSessions"),
-                    .string("localPricing"),
-                ]),
-            ]
-        )
-        try runnerExpect(
-            [.success, .partial].contains(output.response.status),
-            "isolated real Bridge did not return usable data"
-        )
-        try runnerExpect(
-            output.response.artifact != nil,
-            "isolated real Bridge returned no artifact"
-        )
-    }
-
-    private static func runsRustCollectorIfProvided() async throws -> Bool {
-        guard CommandLine.arguments.count >= 4 else { return false }
-        let rustURL = URL(fileURLWithPath: CommandLine.arguments[3])
+        let rustURL = URL(fileURLWithPath: CommandLine.arguments[1])
         try runnerExpect(
             FileManager.default.isExecutableFile(atPath: rustURL.path),
             "configured Rust Collector is not executable"
@@ -609,10 +557,9 @@ struct CollectorRunnerHarness {
             output.response.artifact != nil,
             "Rust Collector returned no artifact"
         )
-        return true
     }
 
-    private static func releaseAdapterDoesNotFallbackToPython() async throws {
+    private static func unavailableRustAdapterFailsClosed() async throws {
         let adapter = UnavailableCollectorAdapter()
         do {
             _ = try await adapter.run(
@@ -621,7 +568,7 @@ struct CollectorRunnerHarness {
                 credentials: [:]
             )
             throw RunnerTestFailure.expectation(
-                "missing Release Rust binary must not fall back to Python"
+                "missing Rust binary must fail closed"
             )
         } catch let error as CollectorRunnerError {
             try runnerExpect(

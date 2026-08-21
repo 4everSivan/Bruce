@@ -109,7 +109,7 @@ impl Display for CatalogError {
 
 impl std::error::Error for CatalogError {}
 
-/// Resolve injected account descriptors into Python-compatible stable service
+/// Resolve injected account descriptors into stable service
 /// order. Account IDs are sorted within each provider and duplicate IDs are
 /// rejected instead of producing duplicate service rows.
 pub fn resolve_service_catalog(
@@ -703,7 +703,7 @@ fn window(
     })
 }
 
-/// Return the stable Codex service ID shared by Python, Swift and Rust.
+/// Return the stable Codex service ID shared by Swift and Rust.
 pub fn codex_service_id(account_id: &str) -> String {
     let digest = Sha256::digest(account_id.as_bytes());
     format!("codex_{:x}", digest)[..22].to_owned()
@@ -733,7 +733,7 @@ fn codex_value_text(value: Option<&Value>) -> String {
 }
 
 /// Parse the Codex `wham/usage` response without retaining the access token.
-/// The shape intentionally follows the legacy Python adapter because Swift's
+/// The shape intentionally follows the legacy wire contract because Swift's
 /// panel and Codex snapshot merger already consume these fields.
 pub fn parse_codex_usage(payload: &Value) -> Result<Option<Value>, ProviderError> {
     let object = payload.as_object().ok_or_else(invalid_payload)?;
@@ -1414,7 +1414,7 @@ fn grok_window(resets_at: Option<i64>, now_epoch: i64) -> (&'static str, Option<
     }
 }
 
-/// Parse Grok's gRPC-web/protobuf billing response using the same bounded heuristic as Python.
+/// Parse Grok's gRPC-web/protobuf billing response using the shared bounded heuristic.
 pub fn parse_grok_usage(body: &[u8], now_epoch: i64) -> Result<Option<Value>, ProviderError> {
     let frames = grpc_data_frames(body).filter(|frames| !frames.is_empty());
     let payloads: Vec<&[u8]> = match frames {

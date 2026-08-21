@@ -172,8 +172,8 @@ public struct ProviderConnectionVerifier: Sendable, DeepSeekCredentialVerifier {
     }
 
     /// 火山引擎 AK/SK 本地格式校验: 非空, 去首尾空白后不含空白字符.
-    /// 完整的 HMAC 签名试查由 collector 运行时完成
-    /// (签名实现已自包含于 collect_usage.py), 本阶段不做网络验证.
+    /// 完整的 HMAC 签名试查由 Rust Collector 运行时完成,
+    /// 本阶段不做网络验证.
     public static func verifyVolcengineCredentials(
         accessKey: String,
         secretKey: String

@@ -69,7 +69,7 @@ struct LocalCredentialProbe: Sendable {
     // MARK: - Claude / Grok 本机登录态 (实时只读, 不导入不回写)
 
     /// 解析 ~/.grok/auth.json: OIDC/legacy 条目 key 非空且未过期视为可用
-    /// (与 Python read_grok_token / SubscriptionCredentialEvaluator 同语义).
+    /// (与 Rust provider credential contract / SubscriptionCredentialEvaluator 同语义).
     /// 损坏/缺失/过期返回 false.
     func grokLocalAuthAvailable(now: Date = Date()) -> Bool {
         let url = homeURL.appendingPathComponent(".grok/auth.json")

@@ -112,7 +112,7 @@ package protocol CodexMigrationExecuting: AnyObject {
 /// 基于 Onboarding 配置和 Keychain 的运行输入提供器.
 /// Agent: 授予 localSessions/localPricing; 统一授权已确认且至少一个订阅
 /// provider enabled 且 Keychain 凭证完整时追加 externalQuotas, 并把凭证
-/// 装配进 Bridge 注入键 (对照 bridge/security.py 白名单).
+/// 装配进 Rust Bridge 注入键 (对照 Rust Bridge allowlist).
 /// Codex: 只注入 token manager 决议出的短期 access token
 /// (`codexQuotaAccounts` 结构: 账号键 + display_name + access_token);
 /// refresh token 与 id token 不离开 Swift/Keychain.
@@ -362,7 +362,7 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
                 )
                 credentials = assembled
                 // codexQuotaAccountOrder: 按 v2 index 排序的账号 ID 列表,
-                // Python 按此调度并恢复输出顺序; 集合必须与 codexQuotaAccounts
+                // Rust Collector 按此调度并恢复输出顺序; 集合必须与 codexQuotaAccounts
                 // 键完全一致, 顺序即 Swift 决议的 index 顺序 (任务 6).
                 if let codexAccounts = credentials["codexQuotaAccounts"],
                    case .object(let accountsObject) = codexAccounts {
@@ -568,7 +568,7 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
 
     /// 从 v2 索引取全部账号, 交给批量决议器最多 4 并行决议.
     /// 注入结构: {accountID: {"display_name": ..., "access_token": ...}},
-    /// 与 bridge/security.py 白名单 (codex_quota_accounts) 对齐.
+    /// 与 Rust Bridge allowlist (codex_quota_accounts) 对齐.
     /// 只有 .available 账号写入 Bridge credentials; 全部失败时清空旧值,
     /// 但决议结果仍保留供 Scheduler/合并器生成失败状态.
     private func resolveCodexQuotaAccounts() async -> JSONValue? {

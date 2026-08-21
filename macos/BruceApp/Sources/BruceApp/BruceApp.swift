@@ -24,32 +24,13 @@ struct BruceApp: App {
         if rustURL != nil {
             collectorRuntime = .rustAvailable
         } else {
-            #if DEBUG
-            collectorRuntime = .pythonPreview
-            #else
             collectorRuntime = .rustUnavailable
-            #endif
         }
         let runner: CollectorExecutable & CollectorRuntimeControlling
         if let rustURL {
             runner = RustBinaryAdapter(executableURL: rustURL)
         } else {
-            #if DEBUG
-            // Preview-only compatibility path. Release never falls back to Python.
-            let configuredPath = configStore?.load()?.pythonPath
-            let pythonPath = (configuredPath?.isEmpty == false)
-                ? configuredPath!
-                : "/usr/bin/python3"
-            let pythonURL = URL(fileURLWithPath: pythonPath)
-            let bridgeURL = BruceApp.resolveBridgeURL()
-                ?? URL(fileURLWithPath: "bridge/run_bridge.py")
-            runner = PythonPreviewAdapter(
-                pythonURL: pythonURL,
-                bridgeURL: bridgeURL
-            )
-            #else
             runner = UnavailableCollectorAdapter()
-            #endif
         }
         self.runner = runner
         let store = (try? ArtifactStore())
@@ -188,36 +169,6 @@ struct BruceApp: App {
             }
         )
     }
-
-    #if DEBUG
-    private static func resolveBridgeURL() -> URL? {
-        if let resourceURL = Bundle.main.resourceURL {
-            let packagedBridge = resourceURL
-                .appendingPathComponent("runtime")
-                .appendingPathComponent("bridge")
-                .appendingPathComponent("run_bridge.py")
-            if FileManager.default.fileExists(atPath: packagedBridge.path) {
-                return packagedBridge
-            }
-        }
-
-        let executable = CommandLine.arguments[0]
-        var current = URL(fileURLWithPath: executable)
-            .deletingLastPathComponent()
-        for _ in 0..<10 {
-            let candidate = current.appendingPathComponent("bridge/run_bridge.py")
-            if FileManager.default.fileExists(atPath: candidate.path) {
-                return candidate
-            }
-            current = current.deletingLastPathComponent()
-        }
-        let cwdCandidate = URL(fileURLWithPath: "bridge/run_bridge.py")
-        if FileManager.default.fileExists(atPath: cwdCandidate.path) {
-            return cwdCandidate
-        }
-        return nil
-    }
-    #endif
 
     private static func resolveRustCollectorURL() -> URL? {
         let environment = ProcessInfo.processInfo.environment
