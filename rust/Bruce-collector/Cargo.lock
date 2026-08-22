@@ -179,7 +179,6 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "collector-domain",
- "collector-runtime",
  "serde_json",
 ]
 
@@ -212,14 +211,10 @@ dependencies = [
  "chrono",
  "collector-domain",
  "collector-runtime",
- "idna",
- "idna_adapter",
  "serde",
  "serde_json",
  "sha2",
  "ureq",
- "url",
- "zeroize",
 ]
 
 [[package]]

@@ -198,7 +198,6 @@ fn execute_one_uncached(context: &RunContext<'_>, plan: &AccountPlan) -> Service
         }
     };
     let request = ProviderRequest {
-        service: plan.service.clone(),
         account_id: plan.account_id.clone(),
         captured_at: context.captured_at.clone(),
         timeout: context.external_timeout,

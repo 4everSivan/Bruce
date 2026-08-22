@@ -104,9 +104,7 @@ pub fn collect_agent_usage_with_dependencies(
     let scan_stats = local.scan_stats;
     let window = context.window.clone();
     let sessions_allowed = context.capability_allowed("localSessions");
-    let mut kimi_cli = local
-        .accumulator
-        .finalize("kimi-code-cli", "Kimi Code CLI", None);
+    let mut kimi_cli = local.accumulator.finalize("kimi-code-cli", "Kimi Code CLI");
     if !sessions_allowed {
         kimi_cli.status = "unavailable".to_owned();
         kimi_cli.note = "未授权 localSessions 能力, 已跳过本机会话扫描".to_owned();
@@ -538,7 +536,7 @@ fn placeholder_agent(
     status: &str,
     note: &str,
 ) -> AgentUsage {
-    let mut agent = UsageAccumulator::new(window.clone()).finalize(id, name, None);
+    let mut agent = UsageAccumulator::new(window.clone()).finalize(id, name);
     agent.status = status.to_owned();
     agent.note = note.to_owned();
     agent
@@ -555,7 +553,7 @@ fn finalize_local_agent(
 ) -> AgentUsage {
     let mut accumulator = UsageAccumulator::new(window.clone());
     let _ = accumulator.merge_delta(&source.contribution);
-    let mut agent = accumulator.finalize(id, name, None);
+    let mut agent = accumulator.finalize(id, name);
     if let Some(diagnostic) = &source.diagnostic {
         agent.status = "error".to_owned();
         agent.note = diagnostic.clone();

@@ -27,7 +27,3 @@ rusqlite = { version = "=0.32.1", features = ["bundled"] }
 uuid = { version = "=1.11.0", features = ["v4"] }
 libc = "=0.2.189"
 ureq = { version = "=2.12.1", default-features = true }
-url = "=2.5.4"
-idna = "=1.0.3"
-idna_adapter = "=1.1.0"
-zeroize = "=1.8.1"

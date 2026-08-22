@@ -4,7 +4,7 @@
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 use collector_domain::Diagnostic;
-use collector_runtime::{CancellationToken, RuntimeError, RuntimeLimits};
+use collector_runtime::{CancellationToken, RuntimeError};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -13,7 +13,6 @@ use std::fmt::{self, Display, Formatter, Write as _};
 use std::io::Read;
 use std::time::Duration;
 
-pub const PROVIDER_ROLE: &str = "quota-adapter";
 pub const MAX_PROVIDER_ACCOUNT_ID_BYTES: usize = 256;
 pub const MAX_PROVIDER_DISPLAY_NAME_BYTES: usize = 256;
 
@@ -114,13 +113,9 @@ impl std::error::Error for CatalogError {}
 /// rejected instead of producing duplicate service rows.
 pub fn resolve_service_catalog(
     input: &CatalogInput,
-    target_apps: Option<&BTreeSet<String>>,
 ) -> Result<Vec<ServiceDescriptor>, CatalogError> {
     let mut services = Vec::new();
     for spec in CATALOG_SPECS {
-        if !target_apps.is_none_or(|targets| targets.contains(spec.app)) {
-            continue;
-        }
         let mut accounts = input
             .accounts
             .get(spec.provider)
@@ -179,7 +174,6 @@ fn validate_account(account: &AccountDescriptor) -> Result<(), CatalogError> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProviderRequest {
-    pub service: ServiceDescriptor,
     /// Original provider account ID. Codex uses this value for the
     /// `chatgpt-account-id` request header because its service ID is hashed.
     pub account_id: Option<String>,
@@ -337,19 +331,6 @@ impl Display for ProviderError {
 
 impl std::error::Error for ProviderError {}
 
-pub fn runtime_limits_request(
-    request: &ProviderRequest,
-    limits: RuntimeLimits,
-) -> Result<ProviderRequest, ProviderError> {
-    let limits = limits.validate().map_err(ProviderError::from_runtime)?;
-    Ok(ProviderRequest {
-        max_response_body_bytes: request
-            .max_response_body_bytes
-            .min(limits.response_body_bytes),
-        ..request.clone()
-    })
-}
-
 pub fn bounded_http_body(
     response: HttpResponse,
     max_bytes: usize,
@@ -387,18 +368,6 @@ pub fn bounded_http_body(
         ));
     }
     Ok(response.body)
-}
-
-pub fn parse_json_body(response: HttpResponse, max_bytes: usize) -> Result<Value, ProviderError> {
-    let body = bounded_http_body(response, max_bytes)?;
-    serde_json::from_slice(&body).map_err(|_| {
-        ProviderError::new(
-            "PROVIDER_INVALID_JSON",
-            "parse",
-            "Provider 响应不是有效 JSON",
-            false,
-        )
-    })
 }
 
 pub fn service_template(service: &ServiceDescriptor, captured_at: &str) -> Value {
@@ -2077,17 +2046,6 @@ impl QuotaProvider for CodexProvider {
     }
 }
 
-pub const SUPPORTED_PROVIDER_APPS: &[&str] = &[
-    "opencode-go",
-    "kimi",
-    "deepseek",
-    "zhipu",
-    "volcengine",
-    "claude",
-    "grok",
-    "codex",
-];
-
 /// Return the read-only quota adapter for a stable provider app ID.
 pub fn provider_for_app(app: &str) -> Option<Box<dyn QuotaProvider>> {
     match app {
@@ -2107,12 +2065,11 @@ pub fn provider_for_app(app: &str) -> Option<Box<dyn QuotaProvider>> {
 mod tests {
     use super::{
         bounded_http_body, codex_service_id, parse_claude_usage, parse_codex_usage,
-        parse_deepseek_balance, parse_grok_usage, parse_json_body, parse_kimi_usage,
-        parse_opencode_go_body, parse_volcengine_usage, parse_zhipu_usage, resolve_service_catalog,
-        service_template, AccountDescriptor, CancellationToken, CatalogInput, CodexProvider,
-        DeepSeekProvider, HttpClient, HttpRequest, HttpResponse, KimiProvider, OpenCodeGoProvider,
-        ProviderError, ProviderRequest, QuotaProvider, ServiceDescriptor, UreqHttpClient,
-        VolcEngineProvider,
+        parse_deepseek_balance, parse_grok_usage, parse_kimi_usage, parse_opencode_go_body,
+        parse_volcengine_usage, parse_zhipu_usage, resolve_service_catalog, service_template,
+        AccountDescriptor, CancellationToken, CatalogInput, CodexProvider, DeepSeekProvider,
+        HttpClient, HttpRequest, HttpResponse, KimiProvider, OpenCodeGoProvider, ProviderError,
+        ProviderRequest, QuotaProvider, UreqHttpClient, VolcEngineProvider,
     };
     use collector_runtime::RuntimeLimits;
     use serde_json::{json, Value};
@@ -2162,14 +2119,8 @@ mod tests {
         }
     }
 
-    fn provider_request(app: &str, credential: Value) -> ProviderRequest {
+    fn provider_request(_app: &str, credential: Value) -> ProviderRequest {
         ProviderRequest {
-            service: ServiceDescriptor {
-                id: format!("{app}_fixture"),
-                name: app.to_owned(),
-                app: app.to_owned(),
-                is_current: false,
-            },
             account_id: None,
             captured_at: "2026-08-21T00:00:00Z".to_owned(),
             timeout: Duration::from_secs(8),
@@ -2202,17 +2153,10 @@ mod tests {
             ],
         );
         input.enabled_official.insert("claude".to_owned());
-        let services = resolve_service_catalog(&input, None).unwrap();
+        let services = resolve_service_catalog(&input).unwrap();
         assert_eq!(services[0].id, "kimi_coding_a-account");
         assert_eq!(services[1].id, "kimi_coding_z-account");
         assert_eq!(services[2].id, "claude");
-        let target = BTreeSet::from(["kimi".to_owned()]);
-        assert_eq!(
-            resolve_service_catalog(&input, Some(&target))
-                .unwrap()
-                .len(),
-            2
-        );
         let mut duplicate = input;
         duplicate
             .accounts
@@ -2222,7 +2166,7 @@ mod tests {
                 account_id: "a-account".to_owned(),
                 display_name: None,
             });
-        assert!(resolve_service_catalog(&duplicate, None).is_err());
+        assert!(resolve_service_catalog(&duplicate).is_err());
     }
 
     #[test]
@@ -2246,12 +2190,15 @@ mod tests {
             128,
         )
         .is_err());
-        let parsed = parse_json_body(
-            HttpResponse {
-                status: 200,
-                body: br#"{"windows":[]}"#.to_vec(),
-            },
-            128,
+        let parsed: Value = serde_json::from_slice(
+            &bounded_http_body(
+                HttpResponse {
+                    status: 200,
+                    body: br#"{"windows":[]}"#.to_vec(),
+                },
+                128,
+            )
+            .unwrap(),
         )
         .unwrap();
         assert!(parsed.is_object());
@@ -2271,13 +2218,22 @@ mod tests {
             accounts: BTreeMap::new(),
             enabled_official: BTreeSet::new(),
         };
-        assert!(resolve_service_catalog(&input, None).unwrap().is_empty());
+        assert!(resolve_service_catalog(&input).unwrap().is_empty());
     }
 
     #[test]
     fn provider_registry_resolves_only_supported_stable_app_ids() {
-        for app in super::SUPPORTED_PROVIDER_APPS {
-            assert_eq!(super::provider_for_app(app).unwrap().app(), *app);
+        for app in [
+            "opencode-go",
+            "kimi",
+            "deepseek",
+            "zhipu",
+            "volcengine",
+            "claude",
+            "grok",
+            "codex",
+        ] {
+            assert_eq!(super::provider_for_app(app).unwrap().app(), app);
         }
         assert_eq!(super::provider_for_app("codex").unwrap().app(), "codex");
         let _ = UreqHttpClient::default();

@@ -292,10 +292,6 @@ pub struct UsageContribution {
     pub hours: Vec<u64>,
 }
 
-/// Compatibility name for existing aggregate callers while the cache moves
-/// to the domain-owned contribution contract.
-pub type AggregateDelta = UsageContribution;
-
 /// A bounded source-level replacement. It allows local adapters to describe
 /// append, rewrite, and delete without exposing raw records to aggregation.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -554,10 +550,6 @@ pub fn response_status(has_artifact: bool, diagnostic_count: usize) -> ResponseS
     }
 }
 
-pub fn retain_previous_artifact(current: Option<Value>, previous: Option<Value>) -> Option<Value> {
-    current.or(previous)
-}
-
 impl Diagnostic {
     pub fn new(
         code: impl Into<String>,
@@ -598,8 +590,8 @@ impl BridgeResponse {
 #[cfg(test)]
 mod tests {
     use super::{
-        response_status, retain_previous_artifact, AgentUsageArtifact, CollectionWindow,
-        ResponseStatus, SourceDeltaChange, TokenBucket, UsageContributionBuilder, UsageSample,
+        response_status, AgentUsageArtifact, CollectionWindow, ResponseStatus, SourceDeltaChange,
+        TokenBucket, UsageContributionBuilder, UsageSample,
     };
     use serde_json::{json, Map, Value};
 
@@ -624,11 +616,11 @@ mod tests {
         assert_eq!(response_status(true, 1), ResponseStatus::Partial);
         let previous = json!({"agents": ["previous"]});
         assert_eq!(
-            retain_previous_artifact(None, Some(previous.clone())),
+            None::<Value>.or(Some(previous.clone())),
             Some(previous.clone())
         );
         assert_eq!(
-            retain_previous_artifact(Some(json!({"agents": ["current"]})), Some(previous)),
+            Some(json!({"agents": ["current"]})).or(Some(previous)),
             Some(json!({"agents": ["current"]}))
         );
     }

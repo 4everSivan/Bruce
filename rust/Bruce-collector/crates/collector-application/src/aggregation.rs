@@ -150,7 +150,7 @@ mod tests {
             producer_queue.close();
             let result = consumer.join().unwrap();
             assert!(result.diagnostics.is_empty());
-            serde_json::to_value(result.accumulator.finalize("kimi", "Kimi", None)).unwrap()
+            serde_json::to_value(result.accumulator.finalize("kimi", "Kimi")).unwrap()
         })
     }
 

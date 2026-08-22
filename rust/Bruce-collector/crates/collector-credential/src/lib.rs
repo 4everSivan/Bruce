@@ -4,7 +4,6 @@
 
 use chrono::{DateTime, NaiveDateTime};
 use collector_domain::Diagnostic;
-use collector_runtime::{AccountSingleFlight, CancellationToken, SingleFlightError};
 use serde_json::Value;
 use std::collections::BTreeSet;
 use std::fmt::{self, Display, Formatter};
@@ -22,7 +21,6 @@ pub const ANTIGRAVITY_KEYCHAIN_SERVICE: &str = "gemini";
 pub const ANTIGRAVITY_KEYCHAIN_ACCOUNT: &str = "antigravity";
 pub const ANTIGRAVITY_KEYCHAIN_PREFIX: &str = "go-keyring-base64:";
 pub const DEFAULT_CREDENTIAL_FILE_BYTES: usize = 4 * 1024 * 1024;
-pub const CODEX_RETRY_MAX_ATTEMPTS: u8 = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CredentialReadError {
@@ -391,37 +389,6 @@ pub fn read_antigravity_oauth(
     Ok(decoded)
 }
 
-pub struct AccountRefreshCoordinator<K, V, E> {
-    inner: AccountSingleFlight<K, V, E>,
-}
-
-impl<K, V, E> Default for AccountRefreshCoordinator<K, V, E> {
-    fn default() -> Self {
-        Self {
-            inner: AccountSingleFlight::default(),
-        }
-    }
-}
-
-impl<K, V, E> AccountRefreshCoordinator<K, V, E>
-where
-    K: Eq + std::hash::Hash + Clone,
-    V: Send + Sync + 'static,
-    E: Clone + Send + Sync + 'static,
-{
-    pub fn run<F>(
-        &self,
-        account_id: K,
-        cancellation: &CancellationToken,
-        refresh: F,
-    ) -> Result<std::sync::Arc<V>, SingleFlightError<E>>
-    where
-        F: FnOnce() -> Result<V, E>,
-    {
-        self.inner.run(account_id, cancellation, refresh)
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CredentialValidationError {
     pub diagnostic: Diagnostic,
@@ -628,18 +595,12 @@ mod tests {
     use super::{
         is_expired, plan_codex_retry_only, read_antigravity_oauth, read_claude_token,
         read_codex_auth_file, read_grok_token, read_json_file, read_kimi_web_tokens_file,
-        validate_credential_challenges, validate_credential_updates, AccountRefreshCoordinator,
-        CredentialReadError, CredentialSource, ANTIGRAVITY_KEYCHAIN_ACCOUNT,
-        ANTIGRAVITY_KEYCHAIN_SERVICE, CODEX_RETRY_MAX_ATTEMPTS,
+        validate_credential_challenges, validate_credential_updates, CredentialReadError,
+        CredentialSource, ANTIGRAVITY_KEYCHAIN_ACCOUNT, ANTIGRAVITY_KEYCHAIN_SERVICE,
     };
-    use collector_runtime::CancellationToken;
     use serde_json::json;
     use std::collections::BTreeMap;
     use std::path::{Path, PathBuf};
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::{Arc, Barrier};
-    use std::thread;
-    use std::time::Duration;
 
     #[derive(Default)]
     struct FixtureSource {
@@ -844,36 +805,6 @@ mod tests {
     }
 
     #[test]
-    fn account_refresh_coordinator_runs_once_for_same_account() {
-        let coordinator: Arc<AccountRefreshCoordinator<String, u32, String>> =
-            Arc::new(AccountRefreshCoordinator::default());
-        let calls = Arc::new(AtomicUsize::new(0));
-        let barrier = Arc::new(Barrier::new(2));
-        let mut handles = Vec::new();
-        for _ in 0..2 {
-            let coordinator = Arc::clone(&coordinator);
-            let calls = Arc::clone(&calls);
-            let barrier = Arc::clone(&barrier);
-            handles.push(thread::spawn(move || {
-                barrier.wait();
-                coordinator
-                    .run("account-a".to_owned(), &CancellationToken::new(), || {
-                        calls.fetch_add(1, Ordering::SeqCst);
-                        thread::sleep(Duration::from_millis(10));
-                        Ok(42)
-                    })
-                    .unwrap()
-            }));
-        }
-        let values = handles
-            .into_iter()
-            .map(|handle| *handle.join().unwrap())
-            .collect::<Vec<_>>();
-        assert_eq!(values, vec![42, 42]);
-        assert_eq!(calls.load(Ordering::SeqCst), 1);
-    }
-
-    #[test]
     fn codex_retry_plan_is_ordered_deduplicated_and_one_shot() {
         let order = vec![
             "account-c".to_owned(),
@@ -889,7 +820,6 @@ mod tests {
             plan_codex_retry_only(&order, &challenges).unwrap(),
             Some(vec!["account-a".to_owned(), "account-b".to_owned()])
         );
-        assert_eq!(CODEX_RETRY_MAX_ATTEMPTS, 1);
         assert_eq!(
             plan_codex_retry_only(
                 &order,

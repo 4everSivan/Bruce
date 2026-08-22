@@ -3,7 +3,6 @@
 //! Local file and SQLite adapters.
 
 mod sources;
-mod sqlite;
 
 use collector_domain::{
     CollectionWindow, ModelDelta, ProjectDelta, SourceDeltaChange, TokenBucket, UsageContribution,
@@ -37,11 +36,6 @@ pub use sources::{
     scan_claude, scan_codex, scan_grok, scan_kimi_tree, scan_opencode, scan_pi, scan_zcode,
     SourceScan,
 };
-pub use sqlite::{
-    check_sqlite_schema, read_bounded_sqlite_rows, SqliteBoundedQuery, SqliteLimits,
-    SqliteReadError, SqliteReadStats, SqliteSchema,
-};
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalUsageRecord {
     pub timestamp_millis: i64,
@@ -72,16 +66,6 @@ pub struct ScanStats {
     pub ignored_lines: u64,
     pub truncated_lines: u64,
     pub bytes_read: u64,
-}
-
-/// Result of a local source scan. The local crate exposes only domain-level
-/// contributions and source changes; aggregate implementation details stay in
-/// `collector-aggregate`.
-#[derive(Debug, Clone)]
-pub struct LocalScanResult {
-    pub stats: ScanStats,
-    pub contribution: UsageContribution,
-    pub changes: Vec<SourceDeltaChange>,
 }
 
 impl ScanStats {
@@ -151,20 +135,6 @@ where
     scan_reader(BufReader::new(file), callback)
 }
 
-/// Scan only recent `.jsonl` files beneath `root`. A missing root is a valid
-/// empty source, matching the legacy-compatible not-found behavior.
-pub fn scan_tree<F>(root: &Path, cutoff_ts: f64, mut callback: F) -> io::Result<ScanStats>
-where
-    F: FnMut(LocalUsageRecord),
-{
-    let mut stats = ScanStats::default();
-    if !root.is_dir() {
-        return Ok(stats);
-    }
-    visit_tree(root, cutoff_ts, &mut callback, &mut stats)?;
-    Ok(stats)
-}
-
 #[derive(Debug, Clone)]
 pub struct CacheConfig {
     pub cache_root: PathBuf,
@@ -174,32 +144,6 @@ pub struct CacheConfig {
 
 pub fn default_cache_root(home: &Path) -> PathBuf {
     home.join("Library/Application Support/Bruce/collector-cache-v1")
-}
-
-/// Scan a source tree while reusing only versioned derived aggregate deltas.
-/// Cache files never contain raw JSONL, paths, credentials, or provider data.
-pub fn scan_tree_cached(root: &Path, config: &CacheConfig) -> io::Result<LocalScanResult> {
-    let mut changes = Vec::new();
-    let stats = scan_tree_cached_with_sink(root, config, |change| {
-        changes.push(change);
-        Ok(())
-    })?;
-    let mut builder = UsageContributionBuilder::new(config.window.clone());
-    for change in &changes {
-        if let Some(added) = &change.added {
-            if !builder.merge_contribution(added) {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "source contribution has invalid hour buckets",
-                ));
-            }
-        }
-    }
-    Ok(LocalScanResult {
-        stats,
-        contribution: builder.contribution(),
-        changes,
-    })
 }
 
 /// Scan a source tree and emit one bounded domain-level change at a time.
@@ -908,64 +852,6 @@ fn ends_with_newline(path: &Path, size: u64) -> io::Result<bool> {
     Ok(byte[0] == b'\n')
 }
 
-fn visit_tree<F>(
-    root: &Path,
-    cutoff_ts: f64,
-    callback: &mut F,
-    stats: &mut ScanStats,
-) -> io::Result<()>
-where
-    F: FnMut(LocalUsageRecord),
-{
-    let entries = match fs::read_dir(root) {
-        Ok(entries) => entries,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
-        Err(error) if error.kind() == io::ErrorKind::PermissionDenied => {
-            stats.io_errors = stats.io_errors.saturating_add(1);
-            return Ok(());
-        }
-        Err(error) => return Err(error),
-    };
-    for entry in entries {
-        let Ok(entry) = entry else {
-            stats.io_errors = stats.io_errors.saturating_add(1);
-            continue;
-        };
-        let path = entry.path();
-        let Ok(metadata) = entry.metadata() else {
-            stats.io_errors = stats.io_errors.saturating_add(1);
-            continue;
-        };
-        if metadata.is_dir() {
-            visit_tree(&path, cutoff_ts, callback, stats)?;
-            continue;
-        }
-        if metadata.is_file() && path.extension().and_then(|value| value.to_str()) == Some("jsonl")
-        {
-            stats.files_visited = stats.files_visited.saturating_add(1);
-            let modified = metadata
-                .modified()
-                .ok()
-                .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
-                .map(|value| value.as_secs_f64());
-            if modified.is_some_and(|value| value < cutoff_ts) {
-                stats.files_skipped = stats.files_skipped.saturating_add(1);
-                continue;
-            }
-            match scan_path(&path, &mut *callback) {
-                Ok(file_stats) => {
-                    stats.files_scanned = stats.files_scanned.saturating_add(1);
-                    stats.merge(file_stats);
-                }
-                Err(_) => {
-                    stats.io_errors = stats.io_errors.saturating_add(1);
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
 /// Parse Kimi `usage.record` lines and invoke the callback as each record is
 /// decoded. Unknown JSON fields are intentionally ignored for forward
 /// compatibility; malformed or over-sized records are counted and skipped.
@@ -1081,17 +967,35 @@ fn trim_line_end(value: &[u8]) -> &[u8] {
 #[cfg(test)]
 mod tests {
     use super::{
-        default_cache_root, scan_reader, scan_tree_cached, CacheConfig, LocalUsageRecord,
+        default_cache_root, scan_reader, scan_tree_cached_with_sink, CacheConfig, LocalUsageRecord,
         MAX_JSONL_RECORD_BYTES,
     };
-    use collector_domain::CollectionWindow;
+    use collector_domain::{CollectionWindow, UsageContribution, UsageContributionBuilder};
     use serde_json::json;
     use std::fs::{self, OpenOptions};
     use std::io::{Cursor, Write};
 
-    fn today_total(result: &super::LocalScanResult, window: &CollectionWindow) -> u64 {
-        result
-            .contribution
+    fn scan_cached(
+        root: &std::path::Path,
+        config: &CacheConfig,
+    ) -> std::io::Result<(super::ScanStats, UsageContribution)> {
+        let mut builder = UsageContributionBuilder::new(config.window.clone());
+        let stats = scan_tree_cached_with_sink(root, config, |change| {
+            if let Some(added) = change.added.as_ref() {
+                if !builder.merge_contribution(added) {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "source contribution has invalid hour buckets",
+                    ));
+                }
+            }
+            Ok(())
+        })?;
+        Ok((stats, builder.contribution()))
+    }
+
+    fn today_total(contribution: &UsageContribution, window: &CollectionWindow) -> u64 {
+        contribution
             .by_day
             .get(&window.today)
             .map(|bucket| bucket.total)
@@ -1165,14 +1069,14 @@ mod tests {
             pricing_version: 1,
         };
 
-        let cold = scan_tree_cached(&sessions, &config).unwrap();
-        assert_eq!(cold.stats.cache_rebuilds, 1);
-        assert_eq!(today_total(&cold, &window), 12);
+        let (cold_stats, cold_contribution) = scan_cached(&sessions, &config).unwrap();
+        assert_eq!(cold_stats.cache_rebuilds, 1);
+        assert_eq!(today_total(&cold_contribution, &window), 12);
 
-        let warm = scan_tree_cached(&sessions, &config).unwrap();
-        assert_eq!(warm.stats.cache_hits, 1);
-        assert_eq!(warm.stats.lines_seen, 0);
-        assert_eq!(today_total(&warm, &window), 12);
+        let (warm_stats, warm_contribution) = scan_cached(&sessions, &config).unwrap();
+        assert_eq!(warm_stats.cache_hits, 1);
+        assert_eq!(warm_stats.lines_seen, 0);
+        assert_eq!(today_total(&warm_contribution, &window), 12);
 
         let second = json!({
             "type": "usage.record",
@@ -1182,10 +1086,10 @@ mod tests {
         });
         let mut append = OpenOptions::new().append(true).open(&path).unwrap();
         writeln!(append, "{}", second).unwrap();
-        let appended = scan_tree_cached(&sessions, &config).unwrap();
-        assert_eq!(appended.stats.cache_appends, 1);
-        assert_eq!(appended.stats.lines_seen, 1);
-        assert_eq!(today_total(&appended, &window), 16);
+        let (appended_stats, appended_contribution) = scan_cached(&sessions, &config).unwrap();
+        assert_eq!(appended_stats.cache_appends, 1);
+        assert_eq!(appended_stats.lines_seen, 1);
+        assert_eq!(today_total(&appended_contribution, &window), 16);
 
         let replacement = json!({
             "type": "usage.record",
@@ -1194,9 +1098,9 @@ mod tests {
             "usage": {"inputOther": 1, "output": 1}
         });
         fs::write(&path, format!("{}\n", replacement)).unwrap();
-        let rebuilt = scan_tree_cached(&sessions, &config).unwrap();
-        assert_eq!(rebuilt.stats.cache_rebuilds, 1);
-        assert_eq!(today_total(&rebuilt, &window), 2);
+        let (rebuilt_stats, rebuilt_contribution) = scan_cached(&sessions, &config).unwrap();
+        assert_eq!(rebuilt_stats.cache_rebuilds, 1);
+        assert_eq!(today_total(&rebuilt_contribution, &window), 2);
 
         let cache_file = fs::read_dir(&config.cache_root)
             .unwrap()
@@ -1211,15 +1115,15 @@ mod tests {
             })
             .unwrap();
         fs::write(&cache_file, b"not-json\n").unwrap();
-        let corrupt = scan_tree_cached(&sessions, &config).unwrap();
-        assert_eq!(corrupt.stats.cache_corruptions, 1);
-        assert_eq!(corrupt.stats.cache_rebuilds, 1);
+        let (corrupt_stats, _) = scan_cached(&sessions, &config).unwrap();
+        assert_eq!(corrupt_stats.cache_corruptions, 1);
+        assert_eq!(corrupt_stats.cache_rebuilds, 1);
         let cache_text = fs::read_to_string(&cache_file).unwrap();
         assert!(!cache_text.contains("inputOther"));
         fs::remove_file(&path).unwrap();
-        let deleted = scan_tree_cached(&sessions, &config).unwrap();
-        assert_eq!(deleted.stats.cache_deletions, 1);
-        assert_eq!(today_total(&deleted, &config.window), 0);
+        let (deleted_stats, deleted_contribution) = scan_cached(&sessions, &config).unwrap();
+        assert_eq!(deleted_stats.cache_deletions, 1);
+        assert_eq!(today_total(&deleted_contribution, &config.window), 0);
         assert!(!cache_file.exists());
         let _ = fs::remove_dir_all(root);
     }

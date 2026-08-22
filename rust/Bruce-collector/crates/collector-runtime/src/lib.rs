@@ -14,12 +14,9 @@ const WAIT_SLICE: Duration = Duration::from_millis(10);
 pub struct RuntimeLimits {
     pub local_workers: usize,
     pub network_workers: usize,
-    pub sqlite_readers: usize,
     pub account_tasks: usize,
     pub response_body_bytes: usize,
     pub aggregate_queue_capacity: usize,
-    pub sqlite_batch_rows: usize,
-    pub sqlite_max_rows: usize,
 }
 
 impl Default for RuntimeLimits {
@@ -27,12 +24,9 @@ impl Default for RuntimeLimits {
         Self {
             local_workers: 2,
             network_workers: 4,
-            sqlite_readers: 2,
             account_tasks: 4,
             response_body_bytes: 4 * 1024 * 1024,
             aggregate_queue_capacity: 1_024,
-            sqlite_batch_rows: 256,
-            sqlite_max_rows: 10_000,
         }
     }
 }
@@ -43,18 +37,12 @@ impl RuntimeLimits {
             || self.local_workers > 16
             || self.network_workers == 0
             || self.network_workers > 16
-            || self.sqlite_readers == 0
-            || self.sqlite_readers > 8
             || self.account_tasks == 0
             || self.account_tasks > 16
             || self.response_body_bytes == 0
             || self.response_body_bytes > 16 * 1024 * 1024
             || self.aggregate_queue_capacity == 0
             || self.aggregate_queue_capacity > 100_000
-            || self.sqlite_batch_rows == 0
-            || self.sqlite_batch_rows > 1_024
-            || self.sqlite_max_rows == 0
-            || self.sqlite_max_rows > 100_000
         {
             return Err(RuntimeError::InvalidLimits);
         }
@@ -66,7 +54,6 @@ impl RuntimeLimits {
         Ok(RuntimeBudgets {
             local: PermitPool::new(limits.local_workers),
             network: PermitPool::new(limits.network_workers),
-            sqlite: PermitPool::new(limits.sqlite_readers),
             account: PermitPool::new(limits.account_tasks),
         })
     }
@@ -136,7 +123,6 @@ impl CancellationToken {
 pub struct RuntimeBudgets {
     local: PermitPool,
     network: PermitPool,
-    sqlite: PermitPool,
     account: PermitPool,
 }
 
@@ -147,10 +133,6 @@ impl RuntimeBudgets {
 
     pub fn acquire_network(&self, token: &CancellationToken) -> Result<Permit, RuntimeError> {
         self.network.acquire(token)
-    }
-
-    pub fn acquire_sqlite(&self, token: &CancellationToken) -> Result<Permit, RuntimeError> {
-        self.sqlite.acquire(token)
     }
 
     pub fn acquire_account(&self, token: &CancellationToken) -> Result<Permit, RuntimeError> {

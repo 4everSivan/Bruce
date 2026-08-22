@@ -94,7 +94,7 @@ pub(crate) fn build_account_plan(request: &BridgeRequest) -> Result<Vec<AccountP
             .collect::<Vec<_>>();
         catalog.accounts.insert((*app).to_owned(), descriptors);
     }
-    let services = resolve_service_catalog(&catalog, None).map_err(|error| {
+    let services = resolve_service_catalog(&catalog).map_err(|error| {
         Diagnostic::new(
             "PROVIDER_INVALID_CATALOG",
             "provider",

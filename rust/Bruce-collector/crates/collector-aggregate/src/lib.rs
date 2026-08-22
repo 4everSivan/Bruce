@@ -7,66 +7,9 @@ use collector_domain::{
 };
 use std::collections::{BTreeMap, HashMap};
 
-pub use collector_domain::{
-    AggregateDelta, ModelDelta, ProjectDelta, UsageContribution, UsageSample,
-};
+pub use collector_domain::{ModelDelta, ProjectDelta, UsageContribution, UsageSample};
 
 pub const AGGREGATION_ROLE: &str = "artifact-aggregation";
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Pricing {
-    pub input_per_million: f64,
-    pub output_per_million: f64,
-    pub cache_read_per_million: f64,
-    pub cache_creation_per_million: f64,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct PricingTable {
-    entries: Vec<(String, Pricing)>,
-}
-
-impl PricingTable {
-    pub fn new(entries: impl IntoIterator<Item = (String, Pricing)>) -> Self {
-        Self {
-            entries: entries
-                .into_iter()
-                .map(|(model, pricing)| (model.to_ascii_lowercase(), pricing))
-                .collect(),
-        }
-    }
-
-    pub fn estimate_cost(&self, model: &str, bucket: &TokenBucket) -> Option<f64> {
-        if model.is_empty() || self.entries.is_empty() {
-            return None;
-        }
-        let normalized = model.to_ascii_lowercase();
-        let key = normalized
-            .split('[')
-            .next()
-            .unwrap_or_default()
-            .rsplit('/')
-            .next()
-            .unwrap_or_default()
-            .trim();
-        let pricing = self
-            .entries
-            .iter()
-            .find(|(id, _)| id == &normalized || id == key)
-            .map(|(_, pricing)| *pricing)
-            .or_else(|| {
-                self.entries
-                    .iter()
-                    .find(|(id, _)| !key.is_empty() && (key.contains(id) || id.contains(key)))
-                    .map(|(_, pricing)| *pricing)
-            })?;
-        let total = bucket.input as f64 * pricing.input_per_million
-            + bucket.output as f64 * pricing.output_per_million
-            + bucket.cache_read as f64 * pricing.cache_read_per_million
-            + bucket.cache_creation as f64 * pricing.cache_creation_per_million;
-        Some(total / 1_000_000.0)
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct UsageAccumulator {
@@ -147,40 +90,7 @@ impl UsageAccumulator {
         true
     }
 
-    pub fn delta(&self) -> AggregateDelta {
-        AggregateDelta {
-            by_day: self.by_day.clone(),
-            models_today: self
-                .model_order
-                .iter()
-                .filter_map(|model| {
-                    self.models_today
-                        .get(model)
-                        .cloned()
-                        .map(|bucket| ModelDelta {
-                            model: model.clone(),
-                            bucket,
-                        })
-                })
-                .collect(),
-            projects_today: self
-                .project_order
-                .iter()
-                .filter_map(|name| {
-                    self.projects_today
-                        .get(name)
-                        .copied()
-                        .map(|total| ProjectDelta {
-                            name: name.clone(),
-                            total,
-                        })
-                })
-                .collect(),
-            hours: self.hours.to_vec(),
-        }
-    }
-
-    pub fn merge_delta(&mut self, delta: &AggregateDelta) -> bool {
+    pub fn merge_delta(&mut self, delta: &UsageContribution) -> bool {
         if delta.hours.len() != self.hours.len() {
             return false;
         }
@@ -209,12 +119,7 @@ impl UsageAccumulator {
         true
     }
 
-    pub fn finalize(
-        self,
-        agent_id: &str,
-        agent_name: &str,
-        pricing: Option<&PricingTable>,
-    ) -> AgentUsage {
+    pub fn finalize(self, agent_id: &str, agent_name: &str) -> AgentUsage {
         let empty = TokenBucket::default();
         let daily = self
             .window
@@ -256,21 +161,14 @@ impl UsageAccumulator {
                 .then_with(|| left.0.cmp(&right.0))
         });
 
-        let mut total_cost = 0.0;
-        let mut cost_known = false;
         let mut today_models = Vec::with_capacity(ordered_models.len());
         for (_, model, bucket) in &ordered_models {
-            let cost = pricing.and_then(|table| table.estimate_cost(model, bucket));
-            if let Some(cost) = cost {
-                total_cost += cost;
-                cost_known = true;
-            }
             today_models.push(ModelUsage {
                 model: model.clone(),
                 total: bucket.total,
                 input: bucket.display_input(),
                 output: bucket.output,
-                cost_usd: cost.map(round_four),
+                cost_usd: None,
             });
         }
         today_models.truncate(5);
@@ -309,19 +207,15 @@ impl UsageAccumulator {
             today_models,
             projects,
             hours: self.hours.to_vec(),
-            today_cost_usd: cost_known.then(|| round_four(total_cost)),
+            today_cost_usd: None,
         }
     }
 }
 
-fn round_four(value: f64) -> f64 {
-    (value * 10_000.0).round() / 10_000.0
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{Pricing, PricingTable, UsageAccumulator, UsageSample};
-    use collector_domain::{CollectionWindow, TokenBucket};
+    use super::{UsageAccumulator, UsageSample};
+    use collector_domain::CollectionWindow;
     use serde_json::json;
 
     fn window() -> CollectionWindow {
@@ -346,7 +240,7 @@ mod tests {
             cache_creation: 1,
             project: Some("Bruce"),
         }));
-        let agent = aggregate.finalize("fixture", "Fixture", None);
+        let agent = aggregate.finalize("fixture", "Fixture");
         assert_eq!(agent.today.input, 10);
         assert_eq!(agent.today.cache_read, 2);
         assert_eq!(agent.today.total, 16);
@@ -354,29 +248,10 @@ mod tests {
         assert_eq!(agent.projects[0].name, "Bruce");
         assert_eq!(agent.hours.iter().sum::<u64>(), 16);
         assert_eq!(agent.daily.len(), 3);
-    }
-
-    #[test]
-    fn cost_matching_uses_normalized_model_and_rounds_outputs() {
-        let pricing = PricingTable::new([(
-            "gpt-5".to_owned(),
-            Pricing {
-                input_per_million: 1.25,
-                output_per_million: 10.0,
-                cache_read_per_million: 0.125,
-                cache_creation_per_million: 0.0,
-            },
-        )]);
-        let bucket = TokenBucket {
-            input: 1000,
-            output: 2000,
-            cache_read: 100,
-            cache_creation: 0,
-            total: 3100,
-        };
-        assert_eq!(
-            pricing.estimate_cost("openai/gpt-5[high]", &bucket),
-            Some(0.021_262_5)
-        );
+        assert!(agent.today_models[0].cost_usd.is_none());
+        assert!(agent.today_cost_usd.is_none());
+        let encoded = serde_json::to_value(&agent).unwrap();
+        assert!(encoded["todayCostUsd"].is_null());
+        assert!(encoded["todayModels"][0]["costUsd"].is_null());
     }
 }
