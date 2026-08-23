@@ -49,11 +49,10 @@ rust/**/target/
 .mimosa/
 .superpowers/
 
-# OpenSpec 正式文档以 docs/openspec 为唯一真源, 需要版本控制.
+# OpenSpec 本地工作流文档, 保留在本机供 CLI 使用, 不入库.
 # Superpowers 计划和设计仍为本地工作流产物.
 docs/openspec/
-!docs/openspec/
-!docs/openspec/**
+/openspec
 docs/superpowers/
 
 # Git worktrees
