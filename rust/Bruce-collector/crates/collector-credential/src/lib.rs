@@ -10,7 +10,6 @@ use std::fmt::{self, Display, Formatter};
 use std::path::Path;
 use std::process::Command;
 
-pub const CREDENTIAL_ROLE: &str = "credential-adapter";
 pub const CREDENTIAL_CHALLENGE_ACCOUNT_ID_MAX: usize = 256;
 pub const UPDATE_ACCOUNT_ID_MAX: usize = 256;
 
@@ -301,36 +300,6 @@ pub fn read_grok_token(
     grok_token_from_document(&document, now_epoch)
 }
 
-/// Read a bounded JSON file for CLI adapters such as Codex and Antigravity.
-pub fn read_json_file(
-    source: &dyn CredentialSource,
-    path: &Path,
-) -> Result<Option<Value>, CredentialReadError> {
-    Ok(source
-        .read_file(path)?
-        .and_then(|bytes| parse_json_bytes(&bytes)))
-}
-
-pub fn read_codex_auth_file(
-    source: &dyn CredentialSource,
-    home: &Path,
-) -> Result<Option<Value>, CredentialReadError> {
-    read_json_file(source, &home.join(".codex").join("auth.json"))
-}
-
-pub fn read_kimi_web_tokens_file(
-    source: &dyn CredentialSource,
-    home: &Path,
-) -> Result<Option<Value>, CredentialReadError> {
-    read_json_file(
-        source,
-        &home
-            .join(".config")
-            .join("kimi-dashboard")
-            .join("kimi-web-tokens.json"),
-    )
-}
-
 fn decode_base64_text(value: &str) -> Option<Vec<u8>> {
     let mut output = Vec::new();
     let mut accumulator = 0u32;
@@ -372,7 +341,10 @@ pub fn read_antigravity_oauth(
         .join(".gemini")
         .join("antigravity-cli")
         .join("antigravity-oauth-token");
-    if let Some(value) = read_json_file(source, &file_path)? {
+    let file_value = source
+        .read_file(&file_path)?
+        .and_then(|bytes| parse_json_bytes(&bytes));
+    if let Some(value) = file_value {
         return Ok(Some(value));
     }
     let Some(raw) =
@@ -547,27 +519,6 @@ pub fn validate_credential_challenges(
     Ok(validated)
 }
 
-/// Build the one-shot Codex retry-only account list in the original account
-/// order. Unknown challenge accounts are ignored and duplicate challenges do
-/// not create another retry phase.
-pub fn plan_codex_retry_only(
-    account_order: &[String],
-    challenges: &Value,
-) -> Result<Option<Vec<String>>, CredentialValidationError> {
-    let challenges = validate_credential_challenges(challenges)?;
-    let challenged = challenges
-        .iter()
-        .filter_map(|challenge| challenge.get("accountId").and_then(Value::as_str))
-        .collect::<BTreeSet<_>>();
-    let mut seen = BTreeSet::new();
-    let retry_accounts = account_order
-        .iter()
-        .filter(|account_id| challenged.contains(account_id.as_str()) && seen.insert(*account_id))
-        .cloned()
-        .collect::<Vec<_>>();
-    Ok((!retry_accounts.is_empty()).then_some(retry_accounts))
-}
-
 fn require_exact_fields(
     object: &serde_json::Map<String, Value>,
     required: &[&str],
@@ -593,8 +544,7 @@ fn error(code: &str, message: &str) -> CredentialValidationError {
 #[cfg(test)]
 mod tests {
     use super::{
-        is_expired, plan_codex_retry_only, read_antigravity_oauth, read_claude_token,
-        read_codex_auth_file, read_grok_token, read_json_file, read_kimi_web_tokens_file,
+        is_expired, read_antigravity_oauth, read_claude_token, read_grok_token,
         validate_credential_challenges, validate_credential_updates, CredentialReadError,
         CredentialSource, ANTIGRAVITY_KEYCHAIN_ACCOUNT, ANTIGRAVITY_KEYCHAIN_SERVICE,
     };
@@ -764,21 +714,6 @@ mod tests {
     }
 
     #[test]
-    fn json_file_reader_is_read_only_and_ignores_malformed_content() {
-        let path = PathBuf::from("/fixture/codex-auth.json");
-        let mut source = FixtureSource::default();
-        source
-            .files
-            .insert(path.clone(), br#"{"tokens":[]}"#.to_vec());
-        assert_eq!(
-            read_json_file(&source, &path).unwrap(),
-            Some(json!({"tokens": []}))
-        );
-        source.files.insert(path.clone(), b"not-json".to_vec());
-        assert_eq!(read_json_file(&source, &path).unwrap(), None);
-    }
-
-    #[test]
     fn cli_paths_and_antigravity_keychain_fallback_are_explicit() {
         let home = PathBuf::from("/fixture-home");
         let mut source = FixtureSource::default();
@@ -786,13 +721,6 @@ mod tests {
             home.join(".codex/auth.json"),
             br#"{"tokens":{"access_token":"codex-fixture"}}"#.to_vec(),
         );
-        source.files.insert(
-            home.join(".config/kimi-dashboard/kimi-web-tokens.json"),
-            br#"{"access_token":"kimi-fixture"}"#.to_vec(),
-        );
-        assert!(read_codex_auth_file(&source, &home).unwrap().is_some());
-        assert!(read_kimi_web_tokens_file(&source, &home).unwrap().is_some());
-
         source.account_keychain.insert(
             (
                 ANTIGRAVITY_KEYCHAIN_SERVICE.to_owned(),
@@ -802,31 +730,5 @@ mod tests {
         );
         let oauth = read_antigravity_oauth(&source, &home).unwrap().unwrap();
         assert_eq!(oauth["token"]["access_token"], "agy-token");
-    }
-
-    #[test]
-    fn codex_retry_plan_is_ordered_deduplicated_and_one_shot() {
-        let order = vec![
-            "account-c".to_owned(),
-            "account-a".to_owned(),
-            "account-b".to_owned(),
-        ];
-        let challenges = json!([
-            {"provider":"codex","accountId":"account-b","reason":"accessRejected"},
-            {"provider":"codex","accountId":"account-a","reason":"accessRejected"},
-            {"provider":"codex","accountId":"account-b","reason":"accessRejected"}
-        ]);
-        assert_eq!(
-            plan_codex_retry_only(&order, &challenges).unwrap(),
-            Some(vec!["account-a".to_owned(), "account-b".to_owned()])
-        );
-        assert_eq!(
-            plan_codex_retry_only(
-                &order,
-                &json!([{"provider":"codex","accountId":"unknown","reason":"accessRejected"}])
-            )
-            .unwrap(),
-            None
-        );
     }
 }

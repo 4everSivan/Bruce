@@ -65,7 +65,7 @@ CFBundleVersion = CI 递增构建号
 1. `swift build --configuration release --package-path macos/BruceApp`.
 2. 使用 Release 产物组装 `Bruce.app`.
 3. 写入正式 bundle ID、版本号、构建号和最小 Info.plist.
-4. 复制运行时需要的 Rust Collector、Bridge schema 和资源, 排除测试 Harness、fixture、源码缓存和本机数据.
+4. 复制运行时需要的 Rust Collector 和资源, 排除测试 Harness、fixture、源码缓存和本机数据; `bridge/schemas/` 是参考契约文档, 不打包进 App (运行时校验由 collector-bridge 的 schema 版本检查实现).
 5. 对嵌套二进制、Helper 和 App 进行签名前结构检查.
 
 ### 阶段 3: Hardened Runtime 与签名

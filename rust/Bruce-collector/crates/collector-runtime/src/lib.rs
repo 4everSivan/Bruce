@@ -177,7 +177,6 @@ impl PermitPool {
                 state.available -= 1;
                 return Ok(Permit {
                     inner: Arc::clone(&self.inner),
-                    released: false,
                 });
             }
             let (next_state, _) = self
@@ -188,42 +187,15 @@ impl PermitPool {
             state = next_state;
         }
     }
-
-    pub fn capacity(&self) -> usize {
-        self.inner
-            .state
-            .lock()
-            .expect("permit pool mutex poisoned")
-            .capacity
-    }
-
-    pub fn available(&self) -> usize {
-        self.inner
-            .state
-            .lock()
-            .expect("permit pool mutex poisoned")
-            .available
-    }
 }
 
 pub struct Permit {
     inner: Arc<PermitPoolInner>,
-    released: bool,
-}
-
-impl Permit {
-    pub fn release(mut self) {
-        self.released = true;
-        release_permit(&self.inner);
-    }
 }
 
 impl Drop for Permit {
     fn drop(&mut self) {
-        if !self.released {
-            release_permit(&self.inner);
-            self.released = true;
-        }
+        release_permit(&self.inner);
     }
 }
 
@@ -305,25 +277,6 @@ impl<T> BoundedQueue<T> {
         state.closed = true;
         self.not_empty.notify_all();
         self.not_full.notify_all();
-    }
-
-    pub fn len(&self) -> usize {
-        self.state
-            .lock()
-            .expect("bounded queue mutex poisoned")
-            .items
-            .len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    pub fn capacity(&self) -> usize {
-        self.state
-            .lock()
-            .expect("bounded queue mutex poisoned")
-            .capacity
     }
 }
 

@@ -66,7 +66,7 @@ final class OnboardingCoordinator: ObservableObject {
         codexStore: CodexCredentialStore? = nil,
         codexTokenManager: CodexTokenManager? = nil,
         scanner: LocalDependencyScanner? = nil,
-        verifier: any DeepSeekCredentialVerifier = ProviderConnectionVerifier(),
+        verifier: ProviderConnectionVerifier = ProviderConnectionVerifier(),
         homeURL: URL = FileManager.default.homeDirectoryForCurrentUser,
         localProbe: LocalCredentialProbe? = nil,
         consentVersion: Int = OnboardingCoordinator.currentConsentVersion,

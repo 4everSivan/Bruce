@@ -421,10 +421,7 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
             let zcode = source_path(context, "zcode_db", home.join(".zcode/cli/db/db.sqlite"));
 
             let source_results = [
-                (
-                    "kimi-work",
-                    scan_kimi_tree(&kimi_work, &context.window, false),
-                ),
+                ("kimi-work", scan_kimi_tree(&kimi_work, &context.window)),
                 ("claude-code", scan_claude(&claude, &context.window)),
                 ("codex", scan_codex(&codex_roots, &context.window)),
                 (

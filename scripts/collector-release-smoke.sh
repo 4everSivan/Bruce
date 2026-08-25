@@ -36,7 +36,7 @@ if [[ ! -d "$BRUCE_APP_PATH/Contents" ]]; then
     exit 1
 fi
 
-for required_command in codesign ditto find grep lipo plutil rg shasum; do
+for required_command in codesign ditto find grep lipo plutil rg; do
     if ! command -v "$required_command" >/dev/null 2>&1; then
         echo "缺少 smoke 命令: $required_command" >&2
         exit 1

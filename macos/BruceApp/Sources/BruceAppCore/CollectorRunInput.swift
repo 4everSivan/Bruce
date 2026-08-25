@@ -449,8 +449,8 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
                           let sk = dict["secretKey"] as? String else { continue }
                     accounts[entry.accountID] = .object([
                         "display_name": .string(entry.displayName),
-                        "access_key": .string(ak),
-                        "secret_key": .string(sk),
+                        "accessKeyId": .string(ak),
+                        "secretAccessKey": .string(sk),
                     ])
                 }
                 if !accounts.isEmpty {

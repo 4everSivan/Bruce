@@ -2,11 +2,13 @@
 
 | 项目 | 定义 |
 |---|---|
-| 文档版本 | 1.1 |
+| 文档版本 | 1.2 |
 | 文档路径 | `docs/development/01-bruce-design.md` |
-| 适用平台 | macOS 26 及以上 |
+| 适用平台 | macOS 14 及以上 (液态玻璃主题需 macOS 26) |
 | 产品形态 | 原生 macOS 菜单栏应用 (LSUIElement) |
-| 技术基线 | Swift 6, SwiftUI, AppKit, WebKit, Rust Cargo |
+| 技术基线 | Swift 6, SwiftUI, AppKit, Rust Cargo |
+
+> **历史说明**: 本文档成稿于 Python Collector 与 Widget-in-App 时代。纯 Rust 迁移 (b7a68b3) 后, 部分章节描述的架构已被拆除; 相关小节节首已标注「历史」。当前事实以 `AGENTS.md`, `docs/development/03-toolchain.md` 和仓库内代码为准。
 
 ## 1. 文档目的
 
@@ -449,7 +451,7 @@ flowchart LR
 - `ArtifactStore`: Artifact 校验、私有原子存储、回退和迁移。
 - `MenuBarViews`: 菜单栏标签与面板装配, 卡片栈高度自适应和滚动抑制。
 - `Views/`: 原生玻璃卡片组件 (UsageHeroCard / SubscriptionCard / HourlyLineCard / PanelCardContainer)。
-- `WidgetHost`: 仅 Daimon 场景使用, 负责 Widget 资源加载、导航隔离、Artifact 注入、状态和主题同步。
+- (历史) `WidgetHost`: 已随原生面板迁移拆除, 当前仓库不存在该组件; Daimon 场景由外部 host 加载 Widget。
 
 ### 9.2 Core 层职责
 
@@ -582,7 +584,7 @@ Artifact 在 Bridge、ArtifactStore 和 WidgetHost 三个边界重复验证。
 
 ## 12. WidgetHost 契约 (Daimon 场景)
 
-原生菜单栏面板为纯 SwiftUI 渲染, 不接触 WidgetHost。WidgetHost 仅服务 Daimon/Kimi Work Blueprint 场景, 由 Daimon host 以受 CSP 限制的 WebView 加载单文件 Widget。
+> **历史**: 本节描述的原生 WidgetHost 已随原生面板迁移拆除: 当前仓库无 `WidgetHost.swift`, App 不再内嵌 WKWebView 加载 Widget, 原生菜单栏面板为纯 SwiftUI 渲染。以下内容仅作为 Daimon/Kimi Work Blueprint 场景的历史契约参考保留, 该场景由外部 Daimon host 以受 CSP 限制的 WebView 加载仓库根单文件 Widget。
 
 ### 12.1 数据注入
 
@@ -615,7 +617,7 @@ Widget 使用 `onDataChange` 和 `onStatusChange` 接收更新。Artifact 为空
 
 ### 12.3 资源一致性
 
-仓库根目录下的 Widget 源文件是受评审视觉源。App Bundle 中的副本必须与源文件逐字节一致, 共享 bootstrap 和主题 CSS 由原生资源目录统一提供。
+> **历史**: 「App Bundle 内 Widget 副本与源文件逐字节一致」的一致性检查已随 WidgetHost 拆除而移除; 当前打包脚本不向 App Bundle 复制任何 Widget 文件, 仓库根 `agent-usage/widget/index.html` 仅服务外部 Daimon host 场景。
 
 ## 13. 配置、凭证与本地数据
 
@@ -693,8 +695,8 @@ CLI 原始输出、HTTP header、HTTP body、PAT、OAuth token 和完整本机�
 
 ### 15.1 兼容性
 
-- 最低支持 macOS 26 (Liquid Glass 与菜单栏面板依赖)。
-- SwiftPM 使用 Swift 6 工具链。
+- 最低支持 macOS 14 (`Package.swift` platforms `.macOS(.v14)`, 与 `LSMinimumSystemVersion 14.0` 一致)。
+- SwiftPM 使用 Swift 6 工具链 (swift-tools-version: 6.2)。
 - Collector 使用 Rust Cargo workspace 构建, 运行时不依赖脚本解释器。
 - Liquid Glass 仅在 macOS 26 及以上启用。
 
@@ -704,7 +706,7 @@ CLI 原始输出、HTTP header、HTTP body、PAT、OAuth token 和完整本机�
 - 本机进程探测默认 8 秒超时, 输出收集上限 16 KiB。
 - stderr 分类摘要上限 1 KiB。
 - Collector 并发必须有明确上限。
-- Widget 数据更新应复用已加载页面, 不因每次刷新重新创建 WKWebView。
+- (历史) Widget 数据更新应复用已加载页面, 不因每次刷新重新创建 WKWebView — 该约束随原生 WidgetHost 拆除失效, Daimon 场景由外部 host 决定。
 
 ### 15.3 可靠性
 
@@ -778,7 +780,7 @@ Widget 场景 (Daimon) 视觉基线使用脱敏 `valid.json` fixture, 确定性�
 | ArtifactStore Harness | schema、权限、原子写、损坏回退、迁移和未知版本 |
 | Native Lifecycle Harness | 调度启动、退出回收、Widget 状态映射和菜单栏指标/摘要 |
 | Rust 测试 | Bridge 契约、Collector context、聚合、额度和敏感数据隔离 |
-| Widget 测试 | CSP、无网络、无原生通道、动态转义、状态覆盖、JS 语法和 Bundle 一致性 |
+| Widget 测试 | (历史) CSP、无网络、无原生通道、动态转义、状态覆盖、JS 语法和 Bundle 一致性 — 随原生 WidgetHost 拆除, 当前仅保留 JSON fixture 脱敏扫描 |
 | 视觉基线 | Widget 的固定尺寸确定性截图 |
 
 标准验证命令:
@@ -823,11 +825,11 @@ zsh scripts/check-collector-fixtures.sh
 | 面板映射 | `macos/BruceApp/Sources/BruceAppCore/PanelViewModel.swift` |
 | 菜单栏指标 | `macos/BruceApp/Sources/BruceAppCore/MenuBarMetrics.swift` |
 | 诊断服务 | `macos/BruceApp/Sources/BruceAppCore/Diagnostics.swift` |
-| WidgetHost (Daimon 场景) | `macos/BruceApp/Sources/BruceApp/WidgetHost.swift` |
+| WidgetHost (Daimon 场景) | (历史, 已拆除) 原 `macos/BruceApp/Sources/BruceApp/WidgetHost.swift` |
 | Bridge | `rust/Bruce-collector/crates/collector-bridge/`, `bridge/schemas/` |
 | Agent 用量 | `rust/Bruce-collector/crates/collector-local/`, `collector-aggregate/`, `collector-provider/` |
 | Widget | `agent-usage/widget/` |
-| 契约 schema | `bridge/schemas/` |
+| 契约 schema | `bridge/schemas/` (参考契约文档; 运行时校验由 collector-bridge 的 schema 版本检查实现) |
 | 测试与视觉基线 | `tests/`, `macos/BruceApp/Tests/` |
 
 ## 19. 本地可验证收尾设计
@@ -890,10 +892,10 @@ BruceOnboardingCore <- BruceAppCore <- BruceApp
 - `BruceAppCore` 可以依赖 Foundation、AppKit 和 `BruceOnboardingCore`, 但不得依赖 `BruceApp` executable target。
 - `BruceApp` 同时依赖 `BruceOnboardingCore` 和 `BruceAppCore`。
 - Harness 只依赖对应 Core target, 不再链接 executable target。
-- Widget HTML、CSS、bootstrap 和 Bundle resource 继续归 `BruceApp` 管理。
+- (历史) Widget HTML、CSS、bootstrap 和 Bundle resource 不再由 `BruceApp` 管理; 当前打包不复制 Widget 文件, Widget 仅服务外部 Daimon host 场景。
 - App 的 `@main`、窗口 Scene、SwiftUI 页面和具体 AppDelegate 装配保留在 `BruceApp`。
 - 生命周期协议、协调器和可测试状态进入 `BruceAppCore`; 具体 NSApplication delegate 保留在 App target。
-- WidgetHost 仅保留在 App target, 不进入 Core 的原生面板状态模型。
+- (历史) WidgetHost 仅保留在 App target — 该组件已拆除, 原生面板状态模型不含任何 WebView。
 - 跨 target 但仅供本包使用的 Swift API 优先使用 `package` 访问级别; 只有真正对包外公开的契约才使用 `public`。
 - 不改变 Bundle identifier、Application Support 路径、Keychain service、Bridge v1 或 Artifact v1。
 
@@ -1028,21 +1030,15 @@ LocalIntegrationHarness 使用:
 
 #### 19.6.2 统一验证脚本
 
-新增 `scripts/verify-local.sh`, 依次运行:
+`scripts/verify-local.sh` 依次运行:
 
-1. Rust fmt、Clippy 和 workspace 测试。
-2. `zsh scripts/check-collector-fixtures.sh`。
-3. Bridge request/response 和 Agent Artifact schema/fixture 校验。
-4. Widget 源文件与 Bundle 副本一致性检查。
-5. 所有 Widget 内联 JavaScript 和 bootstrap 的 `node --check`。
-6. `swift build --package-path macos/BruceApp`。
-7. BruceOnboardingCoreHarness。
-8. ArtifactStoreHarness。
-9. CollectorRunnerHarness。
-10. RefreshSchedulerHarness。
-11. NativeLifecycleHarness。
-12. LocalIntegrationHarness。
-13. 诊断包敏感信息扫描和临时目录清理检查。
+1. 已移除 Python 资产的守护检查 (发现 `.py`/`pyproject.toml` 即失败)。
+2. `zsh scripts/collector-release-smoke.sh` 的 zsh 语法检查与 `zsh scripts/check-collector-fixtures.sh` (JSON fixture 语法与脱敏扫描)。
+3. Rust fmt、Clippy 和 workspace 测试。
+4. `swift build --package-path macos/BruceApp`。
+5. 全部 14 个 Swift Harness (OnboardingCore、ArtifactStore、CollectorRunner、RefreshScheduler、NativeLifecycle、Diagnostics、LocalIntegration、DeepSeekUsageLedger、SubscriptionCredentials、GlobalHotkey、PanelViewModel、AppModelCache、DashboardGlassSurface、SubscriptionRefreshControl)。
+
+> **历史**: 早前版本的脚本曾包含「Bridge request/response 和 Agent Artifact schema/fixture 校验」「Widget 源文件与 Bundle 副本一致性检查」和「Widget 内联 JavaScript 的 `node --check`」三步; 它们分别随纯 Rust 迁移 (运行时校验由 collector-bridge 的 schema 版本检查实现, `bridge/schemas/` 仅作参考契约文档) 和原生 WidgetHost 拆除而移除。
 
 脚本默认离线, 不读取真实 HOME、Keychain、Agent 会话或第三方数据库。隔离集成会在空的临时 HOME 中运行真实 Agent Collector 代码, 但不启用外部额度采集。任一步失败立即以非零状态退出。输出只包含步骤、测试数量和脱敏错误摘要。
 

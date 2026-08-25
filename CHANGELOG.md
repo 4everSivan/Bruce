@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5] - 2026-08-25
+
+### Added
+
+- **Rust Collector 完整迁移**: 完成从 Python Collector 到 Rust workspace 的运行时切换, 统一 Bridge artifact、额度 Provider 和本地会话采集边界。
+- **Rust 运行时验证与发布门禁**: 增加 Collector fixture、进程边界、资源指标、安装/升级/回滚与缓存重建验证, 并接入 macOS App 打包和 GitHub Release 草稿流程。
+
+### Changed
+
+- **刷新与资源占用优化**: 本地采集、缓存和 Bridge 运行时采用有界读取、增量处理与资源指标, 降低刷新期间的 CPU、IO 和内存峰值。
+- **订阅额度兼容性增强**: Provider 解析和 App 注入契约统一, 支持多账号额度查询、定向刷新与可诊断失败状态。
+- **仓库与工程文档清理**: 清理过期迁移说明、OpenSpec/本地工作流残留和未打包参考契约, 同步更新治理、CI、工具链和正式发布文档。
+
+### Fixed
+
+- **智谱 GLM Coding Plan 额度不显示**: 兼容新版 `CREDIT_LIMIT` 与 `data` 数组响应, 在缺少百分比字段时从当前用量和剩余额度推导窗口进度。
+- **火山引擎额度查询凭证键名错配**: 修正 App 注入字段与 Rust Provider 契约不一致导致的查询失败。
+- **Codex 用量重复统计**: 去重重复 rollout 文件和重复会话副本, 避免 token 用量被重复累计。
+- **Provider 错误诊断不准确**: 保留 HTTP 状态并区分非 JSON 响应、业务拒绝和 HTTP 错误, 避免把不同故障都显示成同一错误。
+
+### Removed
+
+- **旧 Python Collector 与桥接实现**: 移除遗留 Python 采集器、旧 Bridge 运行时和对应契约测试, 项目运行时完全由 Rust Collector 提供。
+- **冗余死代码与本地产物**: 清理无调用方的 Rust/Swift/Widget 路径、过期图标和本地工作流产物, 不再进入仓库或 App 包。
+
+---
+
 ## [0.4] - 2026-08-21
 
 ### Added

@@ -181,8 +181,6 @@ package struct MenuBarSummaryBuilder {
             return 4
         case .partial:
             return 5
-        case .offline:
-            return 6
         case .authRequired:
             return 7
         case .failed:

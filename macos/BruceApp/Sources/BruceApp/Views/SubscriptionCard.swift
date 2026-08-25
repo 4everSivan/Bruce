@@ -666,7 +666,9 @@ private extension SubscriptionViewModel {
 // MARK: - 预览
 
 // 命令行 swift build 无法解析 #Preview 宏插件 (PreviewsMacros),
-// 这里用 PreviewProvider, Xcode 画布同样可直接预览.
+// 这里用 PreviewProvider, Xcode 画布同样可直接预览;
+// canImport 守住无 Xcode 工具链, 与 UsageHeroCard 的处理一致.
+#if DEBUG && canImport(PreviewsMacros)
 struct SubscriptionCard_Previews: PreviewProvider {
     /// 预览呈现矩阵: kimi/volcengine 常态可点; codex (多账号) 定向刷新中
     /// (spinner+禁用); antigravity/deepseek 模拟全量刷新冲突禁用;
@@ -712,3 +714,4 @@ struct SubscriptionCard_Previews: PreviewProvider {
             .previewDisplayName("订阅用量卡")
     }
 }
+#endif

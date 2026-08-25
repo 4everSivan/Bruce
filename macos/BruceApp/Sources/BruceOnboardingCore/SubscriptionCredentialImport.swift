@@ -79,9 +79,9 @@ extension SubscriptionProviderConfiguration {
     }
 }
 
-// MARK: - CodexAuthFileParser
+// MARK: - CodexCLIAuthAccount
 
-/// `~/.codex/auth.json` 当前账号解析, 结构与 Rust Collector 的
+/// Codex 当前账号数据 (设备码登录产出), 字段与 Rust Collector 的
 /// 消费方式对齐: tokens.account_id + refresh/access/id token.
 public struct CodexCLIAuthAccount: Equatable, Sendable {
     public let accountID: String
@@ -110,133 +110,6 @@ public struct CodexCLIAuthAccount: Equatable, Sendable {
         self.idToken = idToken
         self.expiresIn = expiresIn
         self.receivedAt = receivedAt
-    }
-}
-
-public enum CodexAuthFileParser {
-    public static func parse(
-        _ json: String
-    ) -> Result<CodexCLIAuthAccount, SubscriptionImportError> {
-        guard let data = json.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data),
-              let dict = object as? [String: Any] else {
-            return .failure(.invalidJSON)
-        }
-        guard let tokens = dict["tokens"] as? [String: Any] else {
-            return .failure(.missingField("tokens"))
-        }
-        let accountID = (tokens["account_id"] as? String ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !accountID.isEmpty else {
-            return .failure(.missingField("tokens.account_id"))
-        }
-        let refresh = (tokens["refresh_token"] as? String ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !refresh.isEmpty else {
-            return .failure(.missingField("tokens.refresh_token"))
-        }
-        let access = (tokens["access_token"] as? String ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !access.isEmpty else {
-            return .failure(.missingField("tokens.access_token"))
-        }
-        // email 优先取 tokens 内, 兼容顶层 (Collector 消费时允许缺省)
-        let email = (tokens["email"] as? String ?? dict["email"] as? String ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let idToken = (tokens["id_token"] as? String ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return .success(CodexCLIAuthAccount(
-            accountID: accountID,
-            email: email.isEmpty ? nil : email,
-            refreshToken: refresh,
-            accessToken: access,
-            idToken: idToken.isEmpty ? nil : idToken
-        ))
-    }
-}
-
-// MARK: - CodexAccountsLibrary
-
-/// Codex 账号库 (CC Switch 同构 {"accounts": {id: {...}}}) 的合并,
-/// 摘要与 active 选择纯逻辑.
-public enum CodexAccountsLibrary {
-    /// 把 CLI 当前账号合并进既有账号库 JSON, 返回新的账号库 JSON.
-    /// existingJSON 为 nil 或空时创建新库; 同 id 覆盖, 其他账号保留.
-    public static func merging(
-        existingJSON: String?,
-        account: CodexCLIAuthAccount
-    ) -> Result<String, SubscriptionImportError> {
-        var accounts: [String: Any] = [:]
-        if let existingJSON,
-           let data = existingJSON.data(using: .utf8),
-           let object = try? JSONSerialization.jsonObject(with: data),
-           let dict = object as? [String: Any],
-           let existing = dict["accounts"] as? [String: Any] {
-            accounts = existing
-        }
-        var entry: [String: Any] = [
-            "refresh_token": account.refreshToken,
-            "access_token": account.accessToken,
-        ]
-        if let email = account.email { entry["email"] = email }
-        if let idToken = account.idToken { entry["id_token"] = idToken }
-        accounts[account.accountID] = entry
-
-        guard let data = try? JSONSerialization.data(
-            withJSONObject: ["accounts": accounts], options: [.sortedKeys]
-        ), let json = String(data: data, encoding: .utf8) else {
-            return .failure(.invalidJSON)
-        }
-        return .success(json)
-    }
-
-    /// 账号库的展示摘要: 账号数与邮箱前缀列表.
-    /// 无 email 时回落 id 前 8 位, 与 Rust Collector 展示摘要一致.
-    public static func summary(of json: String) -> (count: Int, emailPrefixes: [String]) {
-        guard let data = json.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data),
-              let dict = object as? [String: Any],
-              let accounts = dict["accounts"] as? [String: Any] else {
-            return (0, [])
-        }
-        var prefixes: [String] = []
-        for (accountID, entry) in accounts.sorted(by: { $0.key < $1.key }) {
-            let email = (entry as? [String: Any])?["email"] as? String ?? ""
-            if !email.isEmpty {
-                prefixes.append(email.split(separator: "@").first.map(String.init) ?? email)
-            } else {
-                prefixes.append(String(accountID.prefix(8)))
-            }
-        }
-        return (accounts.count, prefixes)
-    }
-
-    /// 账号库中的全部账号 id (排序后, 保证确定性).
-    public static func accountIDs(of json: String) -> [String] {
-        guard let data = json.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data),
-              let dict = object as? [String: Any],
-              let accounts = dict["accounts"] as? [String: Any] else {
-            return []
-        }
-        return accounts.keys.sorted()
-    }
-
-    /// 选择 active 账号: 优先 CLI 当前账号 (通常最新), 其次保留既有 active,
-    /// 最后回落排序后的第一个账号; 库为空返回 nil.
-    public static func chooseActiveAccount(
-        cliAccountID: String?,
-        existingActive: String?,
-        accountIDs: [String]
-    ) -> String? {
-        guard !accountIDs.isEmpty else { return nil }
-        if let cliAccountID, accountIDs.contains(cliAccountID) {
-            return cliAccountID
-        }
-        if let existingActive, accountIDs.contains(existingActive) {
-            return existingActive
-        }
-        return accountIDs.sorted().first
     }
 }
 

@@ -7,7 +7,7 @@
 
 Bruce 把本机 AI Agent 的 token 用量、成本估算和订阅额度集中到一个原生 macOS 菜单栏应用中。原生层负责依赖扫描、登录授权、凭证管理、定时刷新、缓存与故障恢复; Rust Collector 负责采集; 弹出面板以原生 SwiftUI 渲染 (macOS 26+ 可选液态玻璃主题, 更低系统自动使用经典材质风格)。项目本地优先运行, 无自有服务端。
 
-> 当前版本 v0.3.0。最低支持 macOS 14, 液态玻璃主题需 macOS 26。测试版由 `scripts/build-test-app.sh` 本地打包; 正式版 (Developer ID 签名 + 公证) 由 `scripts/build-release-app.sh` 按 Git tag 构建, 推送 `v*` tag 后 CI 自动产出草稿 Release。
+> 当前版本 v0.5。最低支持 macOS 14, 液态玻璃主题需 macOS 26。测试版由 `scripts/build-test-app.sh` 本地打包; 正式版 (Developer ID 签名 + 公证) 由 `scripts/build-release-app.sh` 按 Git tag 构建, 推送 `v*` tag 后 CI 自动产出草稿 Release。
 
 ## 核心特性
 
@@ -28,7 +28,7 @@ Bruce 把本机 AI Agent 的 token 用量、成本估算和订阅额度集中到
 | 类别 | 覆盖 |
 |---|---|
 | 本机会话扫描 | Kimi Work / Kimi Code、Claude Code、Codex、Grok、OpenCode、Orca、Pi、ZCode |
-| 订阅额度 | Kimi、DeepSeek、火山引擎、Codex OAuth、Antigravity、Claude、Grok、OpenCode Go |
+| 订阅额度 | Kimi、DeepSeek、火山引擎、Codex OAuth、Antigravity、Claude、Grok、OpenCode Go、智谱 GLM |
 
 > 仓库根 `*/widget/` 单文件 Widget 继续保留, 仅服务 Daimon / Kimi Work Blueprint 场景, 不属于 App 的组成部分。
 
@@ -41,7 +41,7 @@ Bruce 把本机 AI Agent 的 token 用量、成本估算和订阅额度集中到
 | 菜单栏面板 (用量 / 订阅用量 / 逐小时卡片) | _待补充_ |
 | 设置窗口 (通用 / 订阅额度 / 统一授权 / 诊断) | _待补充_ |
 
-Widget 场景的视觉基线见 `tests/visual/baselines/agent-usage-valid.jpg`, 由 `tests/visual/` 的确定性测试维护。
+Widget 场景的视觉基线见 `tests/visual/baselines/agent-usage-valid.jpg` (Daimon 场景历史视觉参考)。
 
 ## 快速开始
 
@@ -112,7 +112,7 @@ Collector 保留独立 CLI 入口, 用于开发、测试和故障排查, 但不�
 ## 安全与隐私
 
 - 本地优先, 无项目自有服务端, 不默认同步活动数据。
-- 订阅额度凭证 (Kimi、DeepSeek、火山引擎、Codex、Antigravity、OpenCode Go) 保存在 macOS Keychain。
+- 订阅额度凭证 (Kimi、DeepSeek、火山引擎、Codex、Antigravity、Claude、Grok、OpenCode Go、智谱 GLM) 保存在 macOS Keychain。
 - 凭证通过 Bridge stdin 的单次请求传递, 不进入命令行参数、Artifact 或日志。
 - Rust Collector 不直接写 Keychain, 也不写回第三方认证文件; 订阅令牌轮换经 `credentialUpdates` 只写回 Keychain, 不回写 CC Switch 或 CLI 认证文件。
 - 菜单栏面板为纯 SwiftUI 渲染, 不接触凭证。仓库根 `*/widget/` 单文件 Widget 仅由 Daimon host 以受 CSP 限制的 WebView 加载, 其 JSON fixture 和 JavaScript 语法可独立验证。
@@ -130,7 +130,7 @@ Bruce/
 │   ├── Sources/BruceOnboardingCore/  # 扫描、授权、Gate、订阅凭证、主题解析纯逻辑
 │   ├── Assets/                # AppIcon.icns 应用图标
 │   └── Tests/                 # 独立 Harness target
-├── bridge/                 # Bridge v1 JSON schema
+├── bridge/                 # Bridge v1 参考契约 schema (文档, 不打包)
 ├── rust/Bruce-collector/   # Rust Agent 用量 Collector workspace
 ├── agent-usage/            # Daimon Widget
 ├── tests/                  # JSON fixture 与 Widget 视觉基线
@@ -144,7 +144,7 @@ Bruce/
 - 面板卡片组件: `macos/BruceApp/Sources/BruceApp/Views/`
 - Rust Bridge/Collector: `rust/Bruce-collector/bin/Bruce-collector/src/main.rs`
 - Widget 源文件 (Daimon 场景): `agent-usage/widget/index.html`
-- Artifact schemas: `bridge/schemas/`
+- Artifact 参考契约: `bridge/schemas/` (作为文档维护, 运行时校验由 Rust collector-bridge 的 schema 版本检查实现)
 
 ## 数据位置、清理与回滚
 
@@ -187,7 +187,7 @@ swift run --package-path macos/BruceApp RefreshSchedulerHarness "$PWD"
 
 CI (`.github/workflows/ci.yml`) 在 push/PR 时执行 Rust/Swift verify-local.sh 和测试版 App 构建; tag `v*` 触发正式构建与草稿 Release。
 
-Widget JavaScript 语法和安全隔离继续面向 Daimon 场景维护。真实 Collector、OAuth、签名和 `.app` 发布验证不属于默认测试流程, 需要单独授权和对应环境。
+Widget (Daimon 场景) 的 JSON fixture 继续由 `scripts/check-collector-fixtures.sh` 做语法与脱敏校验; 真实 Collector、OAuth、签名和 `.app` 发布验证不属于默认测试流程, 需要单独授权和对应环境。
 
 ## 当前限制
 

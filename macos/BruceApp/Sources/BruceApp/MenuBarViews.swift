@@ -34,7 +34,7 @@ struct MenuBarLabelView: View {
     /// 需要用户干预的状态才在菜单栏追加警示符号, 常态保持干净.
     private var showsAttention: Bool {
         switch summary.overallStatus {
-        case .authRequired, .failed, .offline:
+        case .authRequired, .failed:
             return true
         default:
             return false

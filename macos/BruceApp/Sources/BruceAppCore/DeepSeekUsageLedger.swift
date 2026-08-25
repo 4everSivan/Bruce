@@ -91,49 +91,6 @@ package struct DeepSeekUsageObservation: Codable, Equatable, Sendable {
     }
 }
 
-// MARK: - UsageLedgerFileSystem
-
-/// 账本文件系统边界, 便于测试注入隔离文件系统.
-package protocol UsageLedgerFileSystem: Sendable {
-    func fileExists(atPath path: String) -> Bool
-    func createDirectory(
-        at url: URL,
-        withIntermediateDirectories createIntermediates: Bool,
-        attributes: [FileAttributeKey: Any]?
-    ) throws
-    func setAttributes(_ attributes: [FileAttributeKey: Any], ofItemAtPath path: String) throws
-    func createFile(
-        atPath path: String,
-        contents: Data?,
-        attributes: [FileAttributeKey: Any]?
-    ) -> Bool
-    func contents(atPath path: String) -> Data?
-    func replaceItemAt(
-        _ originalItemURL: URL,
-        withItemAt newItemURL: URL,
-        backupItemName: String?,
-        options: FileManager.ItemReplacementOptions
-    ) throws -> URL?
-    func moveItem(at srcURL: URL, to dstURL: URL) throws
-    func removeItem(at URL: URL) throws
-}
-
-extension FileManager: UsageLedgerFileSystem {}
-
-extension UsageLedgerFileSystem {
-    /// 原子替换的便捷封装, 隐藏 backupItemName/options 默认值.
-    func atomicReplace(
-        _ original: URL, with new: URL
-    ) throws -> URL? {
-        try replaceItemAt(
-            original,
-            withItemAt: new,
-            backupItemName: nil,
-            options: .usingNewMetadataOnly
-        )
-    }
-}
-
 // MARK: - DeepSeekUsageLedger
 
 /// DeepSeek 私有月度账本.
@@ -151,7 +108,6 @@ package final class DeepSeekUsageLedger {
     private static let schemaVersion = 1
 
     private let rootURL: URL
-    private let fileManager: any UsageLedgerFileSystem
     private let calendar: Calendar
     private let now: () -> Date
 
@@ -163,13 +119,11 @@ package final class DeepSeekUsageLedger {
 
     package init(
         rootURL: URL,
-        fileManager: any UsageLedgerFileSystem = FileManager.default,
         calendar: Calendar,
         now: @escaping () -> Date = Date.init
     ) {
         self.rootURL = rootURL
             .appendingPathComponent("usage-ledger", isDirectory: true)
-        self.fileManager = fileManager
         self.calendar = calendar
         self.now = now
     }
@@ -366,6 +320,7 @@ package final class DeepSeekUsageLedger {
     }
 
     private func prepareDirectory() throws {
+        let fileManager = FileManager.default
         if !fileManager.fileExists(atPath: rootURL.path) {
             try fileManager.createDirectory(
                 at: rootURL,
@@ -387,6 +342,7 @@ package final class DeepSeekUsageLedger {
         let tempURL = rootURL.appendingPathComponent(
             ".deepseek-monthly.\(UUID().uuidString).tmp"
         )
+        let fileManager = FileManager.default
         do {
             guard fileManager.createFile(
                 atPath: tempURL.path,
@@ -416,7 +372,12 @@ package final class DeepSeekUsageLedger {
                 return false
             }
             if fileManager.fileExists(atPath: targetURL.path) {
-                _ = try fileManager.atomicReplace(targetURL, with: tempURL)
+                _ = try fileManager.replaceItemAt(
+                    targetURL,
+                    withItemAt: tempURL,
+                    backupItemName: nil,
+                    options: .usingNewMetadataOnly
+                )
             } else {
                 try fileManager.moveItem(at: tempURL, to: targetURL)
             }
@@ -434,6 +395,7 @@ package final class DeepSeekUsageLedger {
     private func loadFromDisk() -> LedgerState? {
         let targetURL = rootURL
             .appendingPathComponent("deepseek-monthly.json")
+        let fileManager = FileManager.default
         guard fileManager.fileExists(atPath: targetURL.path) else {
             return nil
         }

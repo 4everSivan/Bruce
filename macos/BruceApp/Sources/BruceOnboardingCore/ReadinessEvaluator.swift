@@ -20,7 +20,6 @@ public struct ReadinessEvaluator: Sendable {
 
         var issues: [ScanIssue] = []
         var warnings: [String] = []
-        var actions: [SetupAction] = []
 
         // Rust 缺失必须显式阻塞, 避免打包错误被误报为“没有会话源”.
         if collectorRuntime == .rustUnavailable {
@@ -31,15 +30,13 @@ public struct ReadinessEvaluator: Sendable {
                 retryable: false,
                 suggestedAction: .retryLocalScan
             ))
-            actions.append(.retryLocalScan)
             return ModuleReadinessResult(
                 module: .agentUsage,
                 readiness: .missingDependency,
                 localDependencies: probes,
                 connection: .notRequired,
                 blockingReason: "Rust Collector 不存在或不可执行",
-                issues: issues,
-                actions: actions
+                issues: issues
             )
         }
 
@@ -58,7 +55,6 @@ public struct ReadinessEvaluator: Sendable {
                 retryable: false,
                 suggestedAction: .retryLocalScan
             ))
-            actions.append(.retryLocalScan)
             return ModuleReadinessResult(
                 module: .agentUsage,
                 readiness: .missingDependency,
@@ -66,8 +62,7 @@ public struct ReadinessEvaluator: Sendable {
                 connection: .notRequired,
                 blockingReason: "没有可用的本机会话源",
                 warnings: warnings,
-                issues: issues,
-                actions: actions
+                issues: issues
             )
         }
 
@@ -91,7 +86,6 @@ public struct ReadinessEvaluator: Sendable {
             for probe in sessionProbes where probe.status != .available {
                 warnings.append("\(probe.detail ?? "会话源") 暂不可用")
             }
-            actions.append(.retryLocalScan)
         }
 
         // SQLite 状态作为 warning, 不阻塞
@@ -109,8 +103,7 @@ public struct ReadinessEvaluator: Sendable {
             localDependencies: probes,
             connection: .notRequired,
             warnings: warnings,
-            issues: issues,
-            actions: actions
+            issues: issues
         )
     }
 

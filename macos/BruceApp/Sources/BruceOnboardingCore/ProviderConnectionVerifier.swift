@@ -35,22 +35,11 @@ private final class SameHostRedirectGuard: NSObject, URLSessionTaskDelegate {
     }
 }
 
-// MARK: - DeepSeekCredentialVerifier
-
-/// DeepSeek 凭证验证抽象, 便于在 OnboardingCoordinator 注入 mock (保存事务测试).
-/// 生产实现为 ProviderConnectionVerifier; 测试可注入固定返回值的 fake.
-public protocol DeepSeekCredentialVerifier: Sendable {
-    func verifyDeepSeek(
-        apiKey: String,
-        session: (any URLSessionProtocol)?
-    ) async -> SubscriptionVerificationStatus
-}
-
 // MARK: - ProviderConnectionVerifier
 
 /// 外部连接验证. 与本机扫描分离, 只能由用户主动操作或既有授权触发.
 /// 原始 CLI 输出, 响应正文和 header 不进入日志或诊断.
-public struct ProviderConnectionVerifier: Sendable, DeepSeekCredentialVerifier {
+public struct ProviderConnectionVerifier: Sendable {
     private let statusProbe: AsyncProcessProbe
     private let requestTimeout: TimeInterval
 
@@ -128,31 +117,6 @@ public struct ProviderConnectionVerifier: Sendable, DeepSeekCredentialVerifier {
         }
         guard !key.contains(where: { $0.isWhitespace }) else {
             return .failed(reason: "API key 格式不合理")
-        }
-        return .ok
-    }
-
-    /// Codex 账号库 JSON 结构校验 (CC Switch 同构):
-    /// accounts 非空, 每账号 refresh_token 与 access_token 非空
-    /// (collector 刷新与展示只消费这两个字段; email/id_token 允许缺省).
-    public static func verifyCodexAccountsJSON(_ json: String) -> SubscriptionVerificationStatus {
-        guard let dict = jsonObject(from: json),
-              let accounts = dict["accounts"] as? [String: Any],
-              !accounts.isEmpty else {
-            return .failed(reason: "缺少 accounts 账号表")
-        }
-        for (accountID, entry) in accounts {
-            guard let account = entry as? [String: Any] else {
-                return .failed(reason: "账号 \(accountID) 结构无效")
-            }
-            let refresh = (account["refresh_token"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            let access = (account["access_token"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            if refresh.isEmpty {
-                return .failed(reason: "账号 \(accountID) 缺少 refresh_token")
-            }
-            if access.isEmpty {
-                return .failed(reason: "账号 \(accountID) 缺少 access_token")
-            }
         }
         return .ok
     }

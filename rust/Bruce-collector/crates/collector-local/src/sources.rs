@@ -12,9 +12,11 @@ use collector_domain::{
 };
 use rusqlite::{Connection, OpenFlags};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
+use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::fs::{self, File};
-use std::io::{self, BufReader};
+use std::io::{self, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
@@ -121,19 +123,6 @@ fn record(
     });
 }
 
-fn project_from_kimi_path(path: &Path) -> Option<String> {
-    path.components().find_map(|component| {
-        let value = component.as_os_str().to_str()?;
-        if !value.starts_with("wd_") {
-            return None;
-        }
-        let name = value.strip_prefix("wd_")?;
-        let (name, _) = name.rsplit_once('_').unwrap_or((name, ""));
-        let name = name.replace('-', "/");
-        (!name.is_empty()).then_some(name)
-    })
-}
-
 fn project_from_parent(path: &Path) -> Option<String> {
     path.parent()
         .and_then(Path::file_name)
@@ -214,45 +203,205 @@ where
             stats.files_skipped = stats.files_skipped.saturating_add(1);
             continue;
         }
-        stats.files_scanned = stats.files_scanned.saturating_add(1);
-        let file = match File::open(&path) {
-            Ok(file) => file,
-            Err(_) => {
-                stats.io_errors = stats.io_errors.saturating_add(1);
-                continue;
-            }
-        };
-        let mut reader = BufReader::new(file);
-        loop {
-            let Some(line) = read_bounded_line(&mut reader, super::MAX_JSONL_RECORD_BYTES)? else {
-                break;
-            };
-            stats.lines_seen = stats.lines_seen.saturating_add(1);
-            stats.bytes_read = stats.bytes_read.saturating_add(line.bytes as u64);
-            if line.truncated {
-                stats.truncated_lines = stats.truncated_lines.saturating_add(1);
-                continue;
-            }
-            let line = trim_line_end(&line.bytes_data);
-            if line.is_empty() {
-                continue;
-            }
-            callback(&path, modified, line, stats);
-        }
+        scan_jsonl_file(&path, modified, callback, stats)?;
     }
     Ok(())
+}
+
+fn scan_jsonl_file<F>(
+    path: &Path,
+    modified: f64,
+    callback: &mut F,
+    stats: &mut ScanStats,
+) -> io::Result<()>
+where
+    F: FnMut(&Path, f64, &[u8], &mut ScanStats),
+{
+    stats.files_scanned = stats.files_scanned.saturating_add(1);
+    let file = match File::open(path) {
+        Ok(file) => file,
+        Err(_) => {
+            stats.io_errors = stats.io_errors.saturating_add(1);
+            return Ok(());
+        }
+    };
+    let mut reader = BufReader::new(file);
+    loop {
+        let Some(line) = read_bounded_line(&mut reader, super::MAX_JSONL_RECORD_BYTES)? else {
+            break;
+        };
+        stats.lines_seen = stats.lines_seen.saturating_add(1);
+        stats.bytes_read = stats.bytes_read.saturating_add(line.bytes as u64);
+        if line.truncated {
+            stats.truncated_lines = stats.truncated_lines.saturating_add(1);
+            continue;
+        }
+        let line = trim_line_end(&line.bytes_data);
+        if line.is_empty() {
+            continue;
+        }
+        callback(path, modified, line, stats);
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone)]
+struct CodexFileCandidate {
+    path: PathBuf,
+    modified: f64,
+    size: u64,
+    digest: Option<String>,
+}
+
+fn collect_codex_files(
+    root: &Path,
+    cutoff_ts: f64,
+    groups: &mut BTreeMap<String, Vec<CodexFileCandidate>>,
+    stats: &mut ScanStats,
+) -> io::Result<()> {
+    let entries = match fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::PermissionDenied => {
+            stats.io_errors = stats.io_errors.saturating_add(1);
+            return Ok(());
+        }
+        Err(error) => return Err(error),
+    };
+    for entry in entries {
+        let Ok(entry) = entry else {
+            stats.io_errors = stats.io_errors.saturating_add(1);
+            continue;
+        };
+        let path = entry.path();
+        let Ok(metadata) = entry.metadata() else {
+            stats.io_errors = stats.io_errors.saturating_add(1);
+            continue;
+        };
+        if metadata.is_dir() {
+            collect_codex_files(&path, cutoff_ts, groups, stats)?;
+            continue;
+        }
+        if !metadata.is_file() || path.extension().and_then(|value| value.to_str()) != Some("jsonl")
+        {
+            continue;
+        }
+        stats.files_visited = stats.files_visited.saturating_add(1);
+        let modified = metadata
+            .modified()
+            .ok()
+            .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
+            .map(|value| value.as_secs_f64())
+            .unwrap_or(0.0);
+        if modified < cutoff_ts {
+            stats.files_skipped = stats.files_skipped.saturating_add(1);
+            continue;
+        }
+
+        let canonical = fs::canonicalize(&path).unwrap_or(path);
+        let file_name = canonical
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default();
+        let (group_key, digest) =
+            if file_name.starts_with("rollout-") && file_name.ends_with(".jsonl") {
+                (format!("rollout:{file_name}"), None)
+            } else {
+                match digest_file(&canonical) {
+                    Ok(digest) => (format!("content:{digest}"), Some(digest)),
+                    Err(_) => {
+                        stats.io_errors = stats.io_errors.saturating_add(1);
+                        (format!("path:{}", canonical.display()), None)
+                    }
+                }
+            };
+        groups
+            .entry(group_key)
+            .or_default()
+            .push(CodexFileCandidate {
+                path: canonical,
+                modified,
+                size: metadata.len(),
+                digest,
+            });
+    }
+    Ok(())
+}
+
+fn resolve_codex_files(
+    groups: BTreeMap<String, Vec<CodexFileCandidate>>,
+    stats: &mut ScanStats,
+) -> Vec<CodexFileCandidate> {
+    let mut selected = Vec::new();
+    for (_, mut group) in groups {
+        group.sort_by(candidate_preference);
+        let winner = group.remove(0);
+        if !group.is_empty() {
+            stats.duplicate_session_groups = stats.duplicate_session_groups.saturating_add(1);
+            stats.duplicate_files_skipped = stats
+                .duplicate_files_skipped
+                .saturating_add(group.len() as u64);
+
+            let winner_digest = candidate_digest(&winner);
+            let mut conflict = winner_digest.is_err();
+            let winner_digest = winner_digest.ok();
+            for candidate in &group {
+                let digest = candidate_digest(candidate);
+                match (&winner_digest, digest) {
+                    (Some(winner), Ok(candidate)) if winner == &candidate => {}
+                    _ => conflict = true,
+                }
+            }
+            if conflict {
+                stats.conflict_session_groups = stats.conflict_session_groups.saturating_add(1);
+            }
+        }
+        selected.push(winner);
+    }
+    selected.sort_by(|left, right| left.path.cmp(&right.path));
+    selected
+}
+
+fn candidate_preference(left: &CodexFileCandidate, right: &CodexFileCandidate) -> Ordering {
+    right
+        .size
+        .cmp(&left.size)
+        .then_with(|| {
+            right
+                .modified
+                .partial_cmp(&left.modified)
+                .unwrap_or(Ordering::Equal)
+        })
+        .then_with(|| left.path.cmp(&right.path))
+}
+
+fn candidate_digest(candidate: &CodexFileCandidate) -> io::Result<String> {
+    match &candidate.digest {
+        Some(digest) => Ok(digest.clone()),
+        None => digest_file(&candidate.path),
+    }
+}
+
+fn digest_file(path: &Path) -> io::Result<String> {
+    let mut file = File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 /// Scan a Kimi Work or Kimi Code JSONL tree without the Kimi-specific cache.
 /// Kimi Code's primary path continues to use the cache-backed scanner in the
 /// parent module; this function is used for Kimi Work and source parity tests.
-pub fn scan_kimi_tree(
-    root: &Path,
-    window: &CollectionWindow,
-    project_from_path: bool,
-) -> SourceScan {
+pub fn scan_kimi_tree(root: &Path, window: &CollectionWindow) -> SourceScan {
     let mut builder = UsageContributionBuilder::new(window.clone());
-    let stats = scan_jsonl_tree(root, window.cutoff_ts, |path, _, line, stats| {
+    let stats = scan_jsonl_tree(root, window.cutoff_ts, |_, _, line, stats| {
         let Some(value) = parse_json_line(line, stats) else {
             return;
         };
@@ -273,10 +422,7 @@ pub fn scan_kimi_tree(
             number_u64(usage.and_then(|value| value.get("output"))),
             number_u64(usage.and_then(|value| value.get("inputCacheRead"))),
             number_u64(usage.and_then(|value| value.get("inputCacheCreation"))),
-            project_from_path
-                .then(|| project_from_kimi_path(path))
-                .flatten()
-                .as_deref(),
+            None,
         );
         stats.usage_records = stats.usage_records.saturating_add(1);
     })
@@ -375,52 +521,73 @@ pub fn scan_claude(root: &Path, window: &CollectionWindow) -> SourceScan {
 pub fn scan_codex(roots: &[PathBuf], window: &CollectionWindow) -> SourceScan {
     let mut builder = UsageContributionBuilder::new(window.clone());
     let mut stats = ScanStats::default();
+    let mut groups = BTreeMap::<String, Vec<CodexFileCandidate>>::new();
     for root in roots {
-        let current = scan_jsonl_tree(root, window.cutoff_ts, |_, _, line, stats| {
-            let Some(value) = parse_json_line(line, stats) else {
-                return;
-            };
-            if value
-                .get("payload")
-                .and_then(|value| value.get("type"))
-                .and_then(Value::as_str)
-                != Some("token_count")
-            {
-                return;
-            }
-            let Some(timestamp) = value
-                .get("timestamp")
-                .and_then(Value::as_str)
-                .and_then(|value| window.epoch_from_iso(value))
-                .map(|value| value.saturating_mul(1000))
-            else {
-                return;
-            };
-            let payload = value.get("payload").unwrap_or(&Value::Null);
-            let info = payload.get("info").unwrap_or(&Value::Null);
-            let usage = info.get("last_token_usage").unwrap_or(&Value::Null);
-            let input_total = number_u64(usage.get("input_tokens"));
-            let cache_read = number_u64(usage.get("cached_input_tokens"));
-            let output = number_u64(usage.get("output_tokens"));
-            if input_total == 0 && cache_read == 0 && output == 0 {
-                return;
-            }
-            record(
-                &mut builder,
-                timestamp,
-                Some("codex"),
-                input_total.saturating_sub(cache_read),
-                output,
-                cache_read,
-                0,
-                None,
-            );
-            stats.usage_records = stats.usage_records.saturating_add(1);
-        })
-        .unwrap_or_else(|_| ScanStats::default());
-        stats.merge(current);
+        if collect_codex_files(root, window.cutoff_ts, &mut groups, &mut stats).is_err() {
+            stats.io_errors = stats.io_errors.saturating_add(1);
+        }
     }
-    finish(window, builder, stats.clone(), stats.files_scanned > 0)
+    let selected = resolve_codex_files(groups, &mut stats);
+    for candidate in selected {
+        if scan_jsonl_file(
+            &candidate.path,
+            candidate.modified,
+            &mut |_, _, line, stats| {
+                let Some(value) = parse_json_line(line, stats) else {
+                    return;
+                };
+                if value
+                    .get("payload")
+                    .and_then(|value| value.get("type"))
+                    .and_then(Value::as_str)
+                    != Some("token_count")
+                {
+                    return;
+                }
+                let Some(timestamp) = value
+                    .get("timestamp")
+                    .and_then(Value::as_str)
+                    .and_then(|value| window.epoch_from_iso(value))
+                    .map(|value| value.saturating_mul(1000))
+                else {
+                    return;
+                };
+                let payload = value.get("payload").unwrap_or(&Value::Null);
+                let info = payload.get("info").unwrap_or(&Value::Null);
+                let usage = info.get("last_token_usage").unwrap_or(&Value::Null);
+                let input_total = number_u64(usage.get("input_tokens"));
+                let cache_read = number_u64(usage.get("cached_input_tokens"));
+                let output = number_u64(usage.get("output_tokens"));
+                if input_total == 0 && cache_read == 0 && output == 0 {
+                    return;
+                }
+                record(
+                    &mut builder,
+                    timestamp,
+                    Some("codex"),
+                    input_total.saturating_sub(cache_read),
+                    output,
+                    cache_read,
+                    0,
+                    None,
+                );
+                stats.usage_records = stats.usage_records.saturating_add(1);
+            },
+            &mut stats,
+        )
+        .is_err()
+        {
+            stats.io_errors = stats.io_errors.saturating_add(1);
+        }
+    }
+    let mut result = finish(window, builder, stats.clone(), stats.files_scanned > 0);
+    if stats.conflict_session_groups > 0 {
+        result.diagnostic = Some(format!(
+            "Codex 会话副本内容冲突, 已保守选择单份文件 (冲突组: {})",
+            stats.conflict_session_groups
+        ));
+    }
+    result
 }
 
 fn grok_content(value: Option<&Value>) -> String {
@@ -701,4 +868,155 @@ pub fn scan_zcode(path: &Path, window: &CollectionWindow) -> SourceScan {
         stats.usage_records = stats.usage_records.saturating_add(1);
     }
     finish(window, builder, stats, true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::scan_codex;
+    use collector_domain::CollectionWindow;
+    use serde_json::{json, Map, Value};
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn window() -> CollectionWindow {
+        let context: Map<String, Value> = serde_json::from_value(json!({
+            "now": "2026-07-28T12:00:00+08:00",
+            "timezone": "Asia/Shanghai",
+            "days": 3
+        }))
+        .unwrap();
+        CollectionWindow::from_context(&context).unwrap()
+    }
+
+    fn temp_root(label: &str) -> PathBuf {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "bruce-codex-dedup-{label}-{}-{suffix}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    fn write_token_file(
+        root: &Path,
+        name: &str,
+        last_input: u64,
+        last_output: u64,
+        total_input: u64,
+        padding: &str,
+    ) {
+        let path = root.join("2026").join("07").join("28").join(name);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let line = json!({
+            "timestamp": "2026-07-28T04:00:00Z",
+            "payload": {
+                "type": "token_count",
+                "info": {
+                    "last_token_usage": {
+                        "input_tokens": last_input,
+                        "cached_input_tokens": 0,
+                        "output_tokens": last_output
+                    },
+                    "total_token_usage": {
+                        "input_tokens": total_input,
+                        "output_tokens": total_input
+                    }
+                }
+            },
+            "padding": padding
+        });
+        let mut bytes = serde_json::to_vec(&line).unwrap();
+        bytes.push(b'\n');
+        fs::write(path, bytes).unwrap();
+    }
+
+    fn today_total(result: &super::SourceScan) -> u64 {
+        result
+            .contribution
+            .by_day
+            .get("2026-07-28")
+            .map(|bucket| bucket.total)
+            .unwrap_or(0)
+    }
+
+    #[test]
+    fn duplicate_rollout_copies_are_counted_once() {
+        let first = temp_root("duplicate-first");
+        let second = temp_root("duplicate-second");
+        write_token_file(&first, "rollout-duplicate.jsonl", 10, 2, 100, "same");
+        write_token_file(&second, "rollout-duplicate.jsonl", 10, 2, 100, "same");
+
+        let result = scan_codex(&[first.clone(), second.clone()], &window());
+
+        assert_eq!(today_total(&result), 12);
+        assert_eq!(result.stats.files_scanned, 1);
+        assert_eq!(result.stats.usage_records, 1);
+        assert_eq!(result.stats.duplicate_files_skipped, 1);
+        assert_eq!(result.stats.duplicate_session_groups, 1);
+        assert_eq!(result.stats.conflict_session_groups, 0);
+        assert!(result.diagnostic.is_none());
+        fs::remove_dir_all(first).unwrap();
+        fs::remove_dir_all(second).unwrap();
+    }
+
+    #[test]
+    fn distinct_rollout_sessions_are_both_counted() {
+        let first = temp_root("distinct-first");
+        let second = temp_root("distinct-second");
+        write_token_file(&first, "rollout-first.jsonl", 10, 2, 100, "first");
+        write_token_file(&second, "rollout-second.jsonl", 20, 3, 200, "second");
+
+        let result = scan_codex(&[first.clone(), second.clone()], &window());
+
+        assert_eq!(today_total(&result), 35);
+        assert_eq!(result.stats.files_scanned, 2);
+        assert_eq!(result.stats.usage_records, 2);
+        assert_eq!(result.stats.duplicate_files_skipped, 0);
+        assert_eq!(result.stats.duplicate_session_groups, 0);
+        fs::remove_dir_all(first).unwrap();
+        fs::remove_dir_all(second).unwrap();
+    }
+
+    #[test]
+    fn conflicting_rollout_copies_are_not_added_twice() {
+        let first = temp_root("conflict-first");
+        let second = temp_root("conflict-second");
+        write_token_file(&first, "rollout-conflict.jsonl", 10, 2, 100, "short");
+        write_token_file(
+            &second,
+            "rollout-conflict.jsonl",
+            20,
+            3,
+            200,
+            "longer-content-that-wins",
+        );
+
+        let result = scan_codex(&[first.clone(), second.clone()], &window());
+
+        assert_eq!(today_total(&result), 23);
+        assert_eq!(result.stats.files_scanned, 1);
+        assert_eq!(result.stats.duplicate_files_skipped, 1);
+        assert_eq!(result.stats.duplicate_session_groups, 1);
+        assert_eq!(result.stats.conflict_session_groups, 1);
+        assert!(result.diagnostic.is_some());
+        fs::remove_dir_all(first).unwrap();
+        fs::remove_dir_all(second).unwrap();
+    }
+
+    #[test]
+    fn codex_uses_last_token_usage_not_cumulative_total() {
+        let root = temp_root("last-usage");
+        write_token_file(&root, "rollout-last.jsonl", 4, 2, 400, "single");
+
+        let result = scan_codex(std::slice::from_ref(&root), &window());
+
+        assert_eq!(today_total(&result), 6);
+        assert_eq!(result.stats.usage_records, 1);
+        fs::remove_dir_all(root).unwrap();
+    }
 }

@@ -347,7 +347,7 @@ pub fn bounded_http_body(
         return Err(ProviderError::new(
             "PROVIDER_RATE_LIMIT",
             "response",
-            "Provider 请求触发限流",
+            format!("Provider 请求触发限流 (HTTP {})", response.status),
             true,
         ));
     }
@@ -355,7 +355,7 @@ pub fn bounded_http_body(
         return Err(ProviderError::new(
             "PROVIDER_SERVER_ERROR",
             "response",
-            "Provider 服务暂时不可用",
+            format!("Provider 服务暂时不可用 (HTTP {})", response.status),
             true,
         ));
     }
@@ -363,7 +363,7 @@ pub fn bounded_http_body(
         return Err(ProviderError::new(
             "PROVIDER_HTTP_STATUS",
             "response",
-            "Provider 返回非成功 HTTP 状态",
+            format!("Provider 返回非成功 HTTP 状态 (HTTP {})", response.status),
             response.status >= 500,
         ));
     }
@@ -584,7 +584,7 @@ fn send_json(
     body: Option<Vec<u8>>,
     auth_error: Option<&str>,
 ) -> Result<Value, ProviderError> {
-    let response_body = send_body(
+    let response = send_response(
         request,
         http,
         cancellation,
@@ -594,11 +594,13 @@ fn send_json(
         body,
         auth_error,
     )?;
+    let status = response.status;
+    let response_body = bounded_http_body(response, request.max_response_body_bytes)?;
     serde_json::from_slice(&response_body).map_err(|_| {
         ProviderError::new(
             "PROVIDER_INVALID_JSON",
             "parse",
-            "Provider 响应不是有效 JSON",
+            format!("Provider 响应不是有效 JSON (HTTP {status})"),
             false,
         )
     })
@@ -615,6 +617,30 @@ fn send_body(
     body: Option<Vec<u8>>,
     auth_error: Option<&str>,
 ) -> Result<Vec<u8>, ProviderError> {
+    let response = send_response(
+        request,
+        http,
+        cancellation,
+        method,
+        url,
+        headers,
+        body,
+        auth_error,
+    )?;
+    bounded_http_body(response, request.max_response_body_bytes)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn send_response(
+    request: &ProviderRequest,
+    http: &dyn HttpClient,
+    cancellation: &CancellationToken,
+    method: &str,
+    url: String,
+    headers: BTreeMap<String, String>,
+    body: Option<Vec<u8>>,
+    auth_error: Option<&str>,
+) -> Result<HttpResponse, ProviderError> {
     cancellation.check().map_err(ProviderError::from_runtime)?;
     let response = http.send(
         HttpRequest {
@@ -632,7 +658,7 @@ fn send_body(
             return Err(ProviderError::new(
                 "PROVIDER_AUTH_REJECTED",
                 "response",
-                message,
+                format!("{message} (HTTP {})", response.status),
                 false,
             ));
         }
@@ -642,12 +668,12 @@ fn send_body(
             return Err(ProviderError::new(
                 "PROVIDER_PERMISSION_DENIED",
                 "response",
-                message,
+                format!("{message} (HTTP {})", response.status),
                 false,
             ));
         }
     }
-    bounded_http_body(response, request.max_response_body_bytes)
+    Ok(response)
 }
 
 fn service_result(kind: &str, plan: Option<Value>, windows: Vec<Value>) -> Value {
@@ -844,6 +870,49 @@ fn zhipu_reset(value: Option<&Value>) -> Option<i64> {
     })
 }
 
+fn zhipu_percentage(object: &serde_json::Map<String, Value>) -> f64 {
+    let limit = object_value(object, &["usage", "limit", "total"]);
+    let used = object_value(
+        object,
+        &["currentValue", "current_value", "used", "usedValue"],
+    );
+    let remaining = object_value(object, &["remaining", "remain"]);
+    let explicit = object_value(
+        object,
+        &[
+            "percentage",
+            "usedPercent",
+            "used_percent",
+            "usedPercentage",
+        ],
+    )
+    .and_then(|value| number(Some(value)));
+    let derived = || {
+        parse_window_percentage(limit, used, remaining).or_else(|| {
+            let used = number(used)?;
+            let remaining = number(remaining)?;
+            let total = used + remaining;
+            (total > 0.0).then_some((used / total) * 100.0)
+        })
+    };
+    let remaining_percent = object_value(
+        object,
+        &[
+            "remainingPercentage",
+            "remaining_percent",
+            "remainingPercent",
+        ],
+    )
+    .and_then(|value| number(Some(value)))
+    .map(|value| 100.0 - value);
+
+    explicit
+        .or_else(derived)
+        .or(remaining_percent)
+        .map(clamp_percent)
+        .unwrap_or(0.0)
+}
+
 fn zhipu_windows(limits: Option<&Value>) -> Vec<Value> {
     let mut five_hour: Option<(Option<i64>, f64)> = None;
     let mut weekly: Option<(Option<i64>, f64)> = None;
@@ -853,19 +922,30 @@ fn zhipu_windows(limits: Option<&Value>) -> Vec<Value> {
             let Some(object) = item.as_object() else {
                 continue;
             };
-            let kind = object
-                .get("type")
+            let kind = object_value(object, &["type"])
                 .and_then(Value::as_str)
                 .unwrap_or("")
                 .to_ascii_uppercase();
             if kind != "TOKENS_LIMIT" && kind != "CREDIT_LIMIT" {
                 continue;
             }
-            let percentage = number(object.get("percentage")).unwrap_or(0.0);
-            let entry = (zhipu_reset(object.get("nextResetTime")), percentage);
-            match object.get("unit").and_then(Value::as_i64) {
-                Some(3) if five_hour.is_none() => five_hour = Some(entry),
-                Some(6) if weekly.is_none() => weekly = Some(entry),
+            let percentage = zhipu_percentage(object);
+            let entry = (
+                zhipu_reset(object_value(
+                    object,
+                    &["nextResetTime", "resetTime", "reset_time"],
+                )),
+                percentage,
+            );
+            let unit = object_value(object, &["unit"])
+                .and_then(|value| number(Some(value)))
+                .map(|value| value as i64);
+            let number = object_value(object, &["number"])
+                .and_then(|value| number(Some(value)))
+                .map(|value| value as i64);
+            match (unit, number) {
+                (Some(3), _) | (_, Some(5)) if five_hour.is_none() => five_hour = Some(entry),
+                (Some(6), _) | (_, Some(1)) if weekly.is_none() => weekly = Some(entry),
                 _ => unclassified.push(entry),
             }
         }
@@ -899,15 +979,28 @@ pub fn parse_zhipu_usage(payload: &Value) -> Result<Option<Value>, ProviderError
             false,
         ));
     }
-    let data = object
-        .get("data")
-        .and_then(Value::as_object)
-        .ok_or_else(invalid_payload)?;
-    let plan = data.get("level").cloned().unwrap_or(Value::Null);
+    let data = object.get("data").ok_or_else(invalid_payload)?;
+    let (plan, limits) = match data {
+        Value::Object(data) => (
+            object_value(data, &["level", "plan"])
+                .cloned()
+                .unwrap_or(Value::Null),
+            object_value(data, &["limits"]),
+        ),
+        // Newer Coding Plan responses return `data` as the limits array
+        // directly: {"code":200,"data":[...]}.
+        Value::Array(_) => (
+            object_value(object, &["level", "plan"])
+                .cloned()
+                .unwrap_or(Value::Null),
+            Some(data),
+        ),
+        _ => return Err(invalid_payload()),
+    };
     Ok(Some(service_result(
         "windows",
         Some(plan),
-        zhipu_windows(data.get("limits")),
+        zhipu_windows(limits),
     )))
 }
 
@@ -2069,7 +2162,7 @@ mod tests {
         parse_volcengine_usage, parse_zhipu_usage, resolve_service_catalog, service_template,
         AccountDescriptor, CancellationToken, CatalogInput, CodexProvider, DeepSeekProvider,
         HttpClient, HttpRequest, HttpResponse, KimiProvider, OpenCodeGoProvider, ProviderError,
-        ProviderRequest, QuotaProvider, UreqHttpClient, VolcEngineProvider,
+        ProviderRequest, QuotaProvider, UreqHttpClient, VolcEngineProvider, ZhipuProvider,
     };
     use collector_runtime::RuntimeLimits;
     use serde_json::{json, Value};
@@ -2190,6 +2283,36 @@ mod tests {
             128,
         )
         .is_err());
+        let rate_limit = bounded_http_body(
+            HttpResponse {
+                status: 429,
+                body: br#"{"error":"rate limited"}"#.to_vec(),
+            },
+            128,
+        )
+        .unwrap_err();
+        assert_eq!(rate_limit.diagnostic.code, "PROVIDER_RATE_LIMIT");
+        assert!(rate_limit.diagnostic.message.contains("HTTP 429"));
+        let server_error = bounded_http_body(
+            HttpResponse {
+                status: 502,
+                body: b"<html>bad gateway</html>".to_vec(),
+            },
+            128,
+        )
+        .unwrap_err();
+        assert_eq!(server_error.diagnostic.code, "PROVIDER_SERVER_ERROR");
+        assert!(server_error.diagnostic.message.contains("HTTP 502"));
+        let client_error = bounded_http_body(
+            HttpResponse {
+                status: 404,
+                body: b"not found".to_vec(),
+            },
+            128,
+        )
+        .unwrap_err();
+        assert_eq!(client_error.diagnostic.code, "PROVIDER_HTTP_STATUS");
+        assert!(client_error.diagnostic.message.contains("HTTP 404"));
         let parsed: Value = serde_json::from_slice(
             &bounded_http_body(
                 HttpResponse {
@@ -2308,7 +2431,125 @@ mod tests {
             .query(&request, &http, &CancellationToken::new())
             .unwrap_err();
         assert_eq!(error.diagnostic.code, "PROVIDER_AUTH_REJECTED");
+        assert!(error.diagnostic.message.contains("HTTP 401"));
         assert!(!error.diagnostic.message.contains(secret));
+    }
+
+    #[test]
+    fn zhipu_query_parses_quota_and_uses_monitor_endpoint() {
+        let secret = "fixture-zhipu-secret";
+        let http = FixtureHttp::new(vec![response(
+            r#"{"success":true,"data":{"level":"pro","limits":[{"type":"TOKENS_LIMIT","unit":3,"percentage":18.0,"nextResetTime":1800000000000}]}}"#,
+        )]);
+        let result = ZhipuProvider
+            .query(
+                &provider_request(
+                    "zhipu",
+                    json!({
+                        "api_key": secret,
+                        "base_url": "https://open.bigmodel.cn/api/paas/v4"
+                    }),
+                ),
+                &http,
+                &CancellationToken::new(),
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(result["plan"], "pro");
+        assert_eq!(result["windows"][0]["usedPercent"], 18.0);
+        let sent = &http.requests()[0];
+        assert_eq!(
+            sent.url,
+            "https://open.bigmodel.cn/api/monitor/usage/quota/limit"
+        );
+        assert_eq!(sent.headers["Authorization"], secret);
+        assert!(!sent.url.contains(secret));
+    }
+
+    #[test]
+    fn zhipu_non_json_response_keeps_status_without_response_body() {
+        let secret = "fixture-zhipu-secret";
+        let http = FixtureHttp::new(vec![Ok(HttpResponse {
+            status: 200,
+            body: b"<html>gateway response</html>".to_vec(),
+        })]);
+        let error = ZhipuProvider
+            .query(
+                &provider_request(
+                    "zhipu",
+                    json!({
+                        "api_key": secret,
+                        "base_url": "https://open.bigmodel.cn/api/paas/v4"
+                    }),
+                ),
+                &http,
+                &CancellationToken::new(),
+            )
+            .unwrap_err();
+        assert_eq!(error.diagnostic.code, "PROVIDER_INVALID_JSON");
+        assert_eq!(
+            error.diagnostic.message,
+            "Provider 响应不是有效 JSON (HTTP 200)"
+        );
+        assert!(!error.diagnostic.message.contains(secret));
+        assert!(!error.diagnostic.message.contains("gateway response"));
+    }
+
+    #[test]
+    fn zhipu_http_failures_are_not_reported_as_invalid_json() {
+        let credential = json!({
+            "api_key": "fixture-zhipu-secret",
+            "base_url": "https://api.z.ai/api/paas/v4"
+        });
+        let rate_limit = FixtureHttp::new(vec![Ok(HttpResponse {
+            status: 429,
+            body: br#"{"message":"too many requests"}"#.to_vec(),
+        })]);
+        let error = ZhipuProvider
+            .query(
+                &provider_request("zhipu", credential.clone()),
+                &rate_limit,
+                &CancellationToken::new(),
+            )
+            .unwrap_err();
+        assert_eq!(error.diagnostic.code, "PROVIDER_RATE_LIMIT");
+        assert!(error.diagnostic.message.contains("HTTP 429"));
+
+        let server_error = FixtureHttp::new(vec![Ok(HttpResponse {
+            status: 502,
+            body: b"<html>bad gateway</html>".to_vec(),
+        })]);
+        let error = ZhipuProvider
+            .query(
+                &provider_request("zhipu", credential),
+                &server_error,
+                &CancellationToken::new(),
+            )
+            .unwrap_err();
+        assert_eq!(error.diagnostic.code, "PROVIDER_SERVER_ERROR");
+        assert!(error.diagnostic.message.contains("HTTP 502"));
+    }
+
+    #[test]
+    fn zhipu_business_error_json_is_not_misclassified_as_invalid_json() {
+        let http = FixtureHttp::new(vec![response(
+            r#"{"success":false,"code":1000,"msg":"Authentication Failed"}"#,
+        )]);
+        let error = ZhipuProvider
+            .query(
+                &provider_request(
+                    "zhipu",
+                    json!({
+                        "api_key": "fixture-zhipu-secret",
+                        "base_url": "https://api.z.ai/api/paas/v4"
+                    }),
+                ),
+                &http,
+                &CancellationToken::new(),
+            )
+            .unwrap_err();
+        assert_eq!(error.diagnostic.code, "PROVIDER_REMOTE_REJECTED");
+        assert!(!error.diagnostic.message.contains("Authentication Failed"));
     }
 
     #[test]
@@ -2373,6 +2614,43 @@ mod tests {
             .unwrap()
             .iter()
             .any(|window| window["ownRow"] == true));
+    }
+
+    #[test]
+    fn zhipu_current_credit_limit_array_response_is_rendered() {
+        let zhipu = parse_zhipu_usage(&json!({
+            "code": 200,
+            "message": "success",
+            "data": [
+                {
+                    "type": "CREDIT_LIMIT",
+                    "unit": 3,
+                    "number": 5,
+                    "currentValue": 5,
+                    "remaining": 0,
+                    "nextResetTime": 1_800_000_000_000i64
+                },
+                {
+                    "type": "CREDIT_LIMIT",
+                    "unit": 6,
+                    "number": 1,
+                    "currentValue": 2,
+                    "remaining": 8,
+                    "nextResetTime": 1_800_100_000_000i64
+                }
+            ]
+        }))
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(zhipu["plan"], Value::Null);
+        assert_eq!(zhipu["windows"].as_array().unwrap().len(), 2);
+        assert_eq!(zhipu["windows"][0]["label"], "每 5 小时");
+        assert_eq!(zhipu["windows"][0]["usedPercent"], 100.0);
+        assert_eq!(zhipu["windows"][0]["resetsAt"], 1_800_000_000);
+        assert_eq!(zhipu["windows"][1]["label"], "每周");
+        assert_eq!(zhipu["windows"][1]["usedPercent"], 20.0);
+        assert_eq!(zhipu["windows"][1]["resetsAt"], 1_800_100_000);
     }
 
     #[test]

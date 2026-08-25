@@ -1,20 +1,14 @@
 # macOS
 .DS_Store
 
-# Python runtime
-__pycache__/
-*.py[cod]
-
 # Local collector output and diagnostics
 data/
 diagnostics/
 *.Bruce-diagnostics.zip
-.Bruce-runtime/
 
 # Credentials and private local overrides
 .env
 .env.*
-!.env.example
 *.token
 *.pat
 *.secrets.json

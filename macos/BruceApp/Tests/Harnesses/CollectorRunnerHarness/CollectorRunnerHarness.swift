@@ -788,9 +788,9 @@ struct CollectorRunnerHarness {
         try runnerExpect(accounts.count == 1, "volcengine 应有 1 个账号")
         let firstPayload = accounts.values.first
         guard case .object(let payload)? = firstPayload,
-              case .string(let ak)? = payload["access_key"],
-              case .string(let sk)? = payload["secret_key"] else {
-            throw RunnerTestFailure.expectation("volcengine access_key/secret_key 注入缺失")
+              case .string(let ak)? = payload["accessKeyId"],
+              case .string(let sk)? = payload["secretAccessKey"] else {
+            throw RunnerTestFailure.expectation("volcengine accessKeyId/secretAccessKey 注入缺失")
         }
         try runnerExpect(ak == "AK-fixture", "volcengine AK 值不符: \(ak)")
         try runnerExpect(sk == "SK-fixture", "volcengine SK 值不符: \(sk)")

@@ -73,34 +73,6 @@ extension BruceOnboardingCoreHarness {
         }
     }
 
-    static func gateDeniesNetworkUnreachable() throws {
-        let gate = CollectorActivationGate(consentVersion: 1, confirmedConsentVersion: 1)
-        for module in CollectorModule.allCases {
-            let allowed = gate.canActivate(
-                module: module, readiness: .networkUnreachable,
-                isModuleSelected: true, appIsAcceptingNewTasks: true
-            )
-            try coreExpect(!allowed, "\(module) unreachable should be denied")
-        }
-    }
-
-    // MARK: - ExecutionPolicy
-
-    static func agentPolicyOnlyLocalCapabilities() throws {
-        let gate = CollectorActivationGate(consentVersion: 1, confirmedConsentVersion: 1)
-        let policy = gate.executionPolicy(for: .agentUsage, readiness: .ready)
-        try coreExpect(policy != nil, "policy should not be nil")
-        try coreExpect(policy?.capabilities.contains(.localSessions) == true, "should have localSessions")
-        try coreExpect(policy?.capabilities.contains(.localPricing) == true, "should have localPricing")
-        try coreExpect(policy?.capabilities.contains(.externalQuotas) == false, "should NOT have externalQuotas")
-    }
-
-    static func policyNilWhenNotReady() throws {
-        let gate = CollectorActivationGate(consentVersion: 1, confirmedConsentVersion: 1)
-        let policy = gate.executionPolicy(for: .agentUsage, readiness: .pendingAuthorization)
-        try coreExpect(policy == nil, "policy should be nil when not ready")
-    }
-
     // MARK: - ReadinessEvaluator
 
     static func evaluatorAgentReady() throws {
@@ -315,38 +287,6 @@ extension BruceOnboardingCoreHarness {
         let intactB = try store.loadCredential(forAccount: "account-b")
         try coreExpect(deletedA == nil, "account A should be nil")
         try coreExpect(intactB == "value-b", "account B should be intact")
-    }
-
-    // MARK: - Gate evaluator
-
-    static func gateEvaluatorDeniesAllBeforeConsent() throws {
-        let gate = CollectorActivationGate(consentVersion: 1, confirmedConsentVersion: nil)
-        let evaluator = ActivationGateEvaluator(gate: gate)
-        let decisions = evaluator.evaluate(
-            readinessByModule: [
-                .agentUsage: .ready
-            ],
-            selectedModules: Set(CollectorModule.allCases),
-            appIsAcceptingNewTasks: true
-        )
-        for decision in decisions {
-            try coreExpect(!decision.allowed, "\(decision.module) should be denied before consent")
-        }
-    }
-
-    static func gateEvaluatorEnablesOnlyReadyAndSelected() throws {
-        let gate = CollectorActivationGate(consentVersion: 1, confirmedConsentVersion: 1)
-        let evaluator = ActivationGateEvaluator(gate: gate)
-        let decisions = evaluator.evaluate(
-            readinessByModule: [
-                .agentUsage: .ready
-            ],
-            selectedModules: [.agentUsage],
-            appIsAcceptingNewTasks: true
-        )
-        let agentDecision = decisions.first { $0.module == .agentUsage }
-
-        try coreExpect(agentDecision?.allowed == true, "agent should be allowed")
     }
 
     // MARK: - Schema profiles

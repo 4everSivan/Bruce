@@ -16,7 +16,6 @@
   :root {
     --daimon-widget-host-safe-inline-end: 190px;
     --daimon-widget-host-safe-block-start: 44px;
-    --fs-title: 11px;
     --fs-name: 13px;
     --fs-value: 13px;
     --fs-label: 11px;
@@ -125,7 +124,7 @@
   @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
   @media (prefers-reduced-motion: reduce) {
     .live::before { animation: none; }
-    .m-fill, .h-bar { transition: none; }
+    .m-fill { transition: none; }
   }
   .stamp {
     margin-left: auto; font-size: var(--fs-meta);
@@ -253,7 +252,6 @@
   .meter .m-fill.warn { background: var(--c-warning); }
   .meter .m-fill.danger { background: var(--c-danger); }
   .meter .m-sub { font-size: 9px; color: var(--kimi-color-text-quaternary); margin-top: 3px; font-variant-numeric: tabular-nums; }
-  .meter.na .m-label { color: var(--kimi-color-text-quaternary); }
   .row-extra {
     padding: 3px 0 0 17px;
     font-size: var(--fs-meta); color: var(--kimi-color-text-quaternary);
@@ -269,14 +267,6 @@
   .strips { display: flex; gap: 16px; }
   .strip { flex: 1 1 0; min-width: 0; }
   .strip .s-label { font-size: 9px; color: var(--kimi-color-text-quaternary); margin-bottom: 4px; }
-  .s-bars { display: flex; align-items: flex-end; gap: 2px; height: 24px; }
-  .s-bars.tight { gap: 1px; height: 18px; }
-  .s-bars .bar {
-    flex: 1 1 0; min-width: 2px; border-radius: 1.5px 1.5px 0 0;
-    background: var(--kimi-color-text-quaternary); opacity: .45;
-    transition: height .5s cubic-bezier(.22,.8,.32,1);
-  }
-  .s-bars .bar.today, .s-bars .bar.now { background: var(--c-accent); opacity: 1; }
   .chips { display: flex; gap: 6px; flex-wrap: wrap; }
   .chip {
     font-size: var(--fs-meta); font-family: var(--font-serif);
@@ -418,23 +408,12 @@
     let state = (Number(seed) || 1) >>> 0;
     return function next() { state = (state * 1664525 + 1013904223) >>> 0; return state / 4294967296; };
   }
-  function densityAt(mode, x, y, config) {
-    if (mode === 'directional') {
-      const angle = (Number(config.flowAngleDeg) || 0) * Math.PI / 180;
-      const dx = x - 0.5, dy = y - 0.5;
-      const along = dx * Math.cos(angle) + dy * Math.sin(angle);
-      const across = -dx * Math.sin(angle) + dy * Math.cos(angle);
-      const lane = 1 - Math.abs(across) * 4.4;
-      return clamp(lane * 0.72 + (along + 0.7) * 0.2, 0, 1);
-    }
-    return clamp(0.12 + x * 0.88, 0, 1);
-  }
   function mount(container, options) {
     if (!container || typeof container.appendChild !== 'function') throw new TypeError('mount needs a container');
     const config = Object.assign({
-      mode: 'density', mark: 'ascii', seed: 7, spacing: 14, opacity: 0.42,
+      seed: 7, spacing: 14, opacity: 0.42,
       pointer: true, pointerTarget: null, pointerRadius: 96, pointerStrength: 14,
-      pointerMode: 'repel', flowAngleDeg: 0, driftSpeed: 0, variance: 0.34,
+      flowAngleDeg: 0, driftSpeed: 0, variance: 0.34,
       tier: 'regular', characters: '.:+*#',
     }, options || {});
     const pointerTarget = config.pointerTarget && typeof config.pointerTarget.addEventListener === 'function' ? config.pointerTarget : container;
@@ -447,7 +426,7 @@
     container.appendChild(canvas);
     const media = typeof global.matchMedia === 'function' ? global.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
     const reduced = compact || media.matches;
-    let marks = [], pointer = null, frame = 0, visible = true, destroyed = false;
+    let marks = [], pointer = null, frame = 0, destroyed = false;
     function dimensions() { const r = container.getBoundingClientRect(); return { width: Math.max(1, r.width), height: Math.max(1, r.height) }; }
     function rebuild() {
       const size = dimensions();
@@ -460,7 +439,12 @@
       const next = [];
       for (let y = gap / 2; y < size.height; y += gap) {
         for (let x = gap / 2; x < size.width; x += gap) {
-          const density = densityAt(config.mode, x / size.width, y / size.height, config);
+          const angle = (Number(config.flowAngleDeg) || 0) * Math.PI / 180;
+          const dx = x / size.width - 0.5, dy = y / size.height - 0.5;
+          const along = dx * Math.cos(angle) + dy * Math.sin(angle);
+          const across = -dx * Math.sin(angle) + dy * Math.cos(angle);
+          const lane = 1 - Math.abs(across) * 4.4;
+          const density = clamp(lane * 0.72 + (along + 0.7) * 0.2, 0, 1);
           if (random() > density * (compact ? 0.46 : 0.84)) continue;
           next.push({ x: x + (random() - 0.5) * gap * variance, y: y + (random() - 0.5) * gap * variance, density, jitter: random() });
         }
@@ -474,7 +458,7 @@
       context.fillText(chars[Math.min(chars.length - 1, Math.floor(mark.density * chars.length))], x, y);
     }
     function draw(timestamp) {
-      if (destroyed || !visible) return;
+      if (destroyed) return;
       const size = dimensions();
       context.clearRect(0, 0, size.width, size.height);
       context.fillStyle = config.color || global.getComputedStyle(container).color;
@@ -497,7 +481,7 @@
       }
       context.globalAlpha = 1;
     }
-    function animate(t) { frame = 0; draw(t); if (!destroyed && visible && !reduced && Number(config.driftSpeed)) frame = global.requestAnimationFrame(animate); }
+    function animate(t) { frame = 0; draw(t); if (!destroyed && !reduced && Number(config.driftSpeed)) frame = global.requestAnimationFrame(animate); }
     function requestDraw() { if (!frame) frame = global.requestAnimationFrame(animate); }
     function onPointer(e) {
       if (!config.pointer || reduced) return;
@@ -514,7 +498,7 @@
     rebuild();
     if (Number(config.driftSpeed) && !reduced) requestDraw();
     return {
-      render: draw, resize: rebuild,
+      render: draw,
       destroy: function () {
         destroyed = true;
         if (frame) global.cancelAnimationFrame(frame);
@@ -551,18 +535,18 @@
     if (n === null || n === undefined || isNaN(n)) return "";
     return "$" + (n >= 100 ? n.toFixed(0) : n >= 1 ? n.toFixed(2) : n.toFixed(3));
   }
-  function fmtTime(iso) {
-    if (!iso) return "";
-    var d = new Date(iso);
-    if (isNaN(d)) return "";
+  function fmtDate(d) {
     var p = function (x) { return String(x).padStart(2, "0"); };
     return p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
   }
+  function fmtTime(iso) {
+    if (!iso) return "";
+    var d = new Date(iso);
+    return isNaN(d) ? "" : fmtDate(d);
+  }
   function fmtReset(epochSec) {
     if (!epochSec) return "";
-    var d = new Date(Number(epochSec) * 1000);
-    var p = function (x) { return String(x).padStart(2, "0"); };
-    return p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+    return fmtDate(new Date(Number(epochSec) * 1000));
   }
   function pctClass(p) { return p >= 85 ? "danger" : p >= 60 ? "warn" : ""; }
 
@@ -615,7 +599,7 @@
     var lvl = total > 0 ? Math.min(1, Math.max(0, (Math.log10(total) - 3) / 6)) : 0;
     try {
       field = window.KimiPixelField.mount(bg, {
-        mode: "directional", mark: "ascii", characters: "·:+*#",
+        characters: "·:+*#",
         flowAngleDeg: 0,
         spacing: 17 - lvl * 7,
         driftSpeed: lvl * 16,
@@ -782,12 +766,7 @@
           esc(dates[i]) + " · " + esc(s.name) + " · " + fmt(v) + '"></div>';
       }).join("");
       var val = t > 0 ? '<span class="cv">' + fmt(t) + "</span>" : "";
-      var top = "", topV = -1;
-      series.forEach(function (s) {
-        var v = s.daily ? (s.daily[i].total || 0) : s.values[i];
-        if (v > topV) { topV = v; top = s.name; }
-      });
-      return '<div class="combo-col' + (i === n - 1 ? " today" : "") + '" data-top="' + esc(top) + '" style="height:' + h + '%" title="' +
+      return '<div class="combo-col' + (i === n - 1 ? " today" : "") + '" style="height:' + h + '%" title="' +
         esc(dates[i]) + " · 合计 " + fmt(t) + '">' + val + segs + "</div>";
     }).join("");
     xAxis.innerHTML = dates.map(function (dt, i) {
@@ -797,7 +776,7 @@
     }).join("");
     legend.innerHTML = series.map(function (s) {
       var pct = grand > 0 ? Math.round((s.sum / grand) * 100) : 0;
-      return '<span class="lg ' + s.cls + '" data-lg="' + esc(s.name) + '"><i class="seg ' + s.cls + '"></i>' + esc(s.name) + " <b>" + fmt(s.sum) + "</b> · " + pct + "%</span>";
+      return '<span class="lg ' + s.cls + '"><i class="seg ' + s.cls + '"></i>' + esc(s.name) + " <b>" + fmt(s.sum) + "</b> · " + pct + "%</span>";
     }).join("");
     wrap.hidden = false;
   }
@@ -847,7 +826,7 @@
     var dim = a.status !== "ok";
     var right;
     if (dim) {
-      right = '<span class="value">' + (a.status === "unsupported" ? "未接入" : "未安装") + "<small>" + esc(a.note || "") + "</small></span>";
+      right = '<span class="value">未安装<small>' + esc(a.note || "") + "</small></span>";
     } else {
       var cost = a.todayCostUsd != null ? " · " + fmtUsd(a.todayCostUsd) : "";
       right = '<span class="value">' + fmt(a.today.total) + "<small>今日" + cost + "</small></span>";

@@ -43,7 +43,6 @@ public enum ModuleReadiness: String, Equatable, Sendable {
     case missingDependency
     case pendingAuthorization
     case authorizationExpired
-    case networkUnreachable
     case unsupported
 }
 
@@ -52,8 +51,6 @@ public enum ModuleReadiness: String, Equatable, Sendable {
 /// 结构化设置动作, 替代纯指导字符串.
 public enum SetupAction: String, Equatable, Sendable {
     case retryLocalScan
-    case retryConnection
-    case reviewAuthorization
 }
 
 // MARK: - ScanIssue
@@ -102,7 +99,6 @@ public struct ModuleReadinessResult: Equatable, Sendable {
     public let blockingReason: String?
     public let warnings: [String]
     public let issues: [ScanIssue]
-    public let actions: [SetupAction]
 
     public init(
         module: CollectorModule,
@@ -111,8 +107,7 @@ public struct ModuleReadinessResult: Equatable, Sendable {
         connection: ConnectionStatus,
         blockingReason: String? = nil,
         warnings: [String] = [],
-        issues: [ScanIssue] = [],
-        actions: [SetupAction] = []
+        issues: [ScanIssue] = []
     ) {
         self.module = module
         self.readiness = readiness
@@ -121,7 +116,6 @@ public struct ModuleReadinessResult: Equatable, Sendable {
         self.blockingReason = blockingReason
         self.warnings = warnings
         self.issues = issues
-        self.actions = actions
     }
 }
 
@@ -153,15 +147,4 @@ public enum CollectorCapability: String, Codable, Sendable {
     case localSessions
     case localPricing
     case externalQuotas
-}
-
-/// 每次运行授予 Collector 的执行策略.
-public struct CollectorExecutionPolicy: Equatable, Sendable {
-    public let module: CollectorModule
-    public let capabilities: Set<CollectorCapability>
-
-    public init(module: CollectorModule, capabilities: Set<CollectorCapability>) {
-        self.module = module
-        self.capabilities = capabilities
-    }
 }

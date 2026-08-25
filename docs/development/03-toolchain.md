@@ -4,11 +4,11 @@
 |---|---|
 | 文档版本 | 1.0 |
 | 文档路径 | `docs/development/03-toolchain.md` |
-| 适用平台 | macOS 26 及以上 (Liquid Glass 与菜单栏面板依赖) |
+| 适用平台 | macOS 14 及以上 (液态玻璃主题需 macOS 26) |
 
 ## 平台与标识
 
-- 最低系统版本: macOS 26 (Liquid Glass 与菜单栏面板依赖).
+- 最低系统版本: macOS 14 (`Package.swift` platforms `.macOS(.v14)`, 与 `LSMinimumSystemVersion 14.0` 一致); 液态玻璃主题仅 macOS 26 及以上启用.
 - 应用形态: 菜单栏常驻应用 (LSUIElement), 原生状态项 + AppKit/SwiftUI 弹出面板 + 独立设置窗口.
 - 开发 bundle identifier: `com.bruce.dashboard`.
 - 发布前必须根据最终签名团队确认 bundle identifier; 数据目录和 Keychain service 名称不得在发布后随意变化.
@@ -16,9 +16,9 @@
 ## Swift 工具链
 
 - 工程格式: Swift Package Manager executable, 后续可由 Xcode 直接打开 `macos/BruceApp/Package.swift`.
-- Swift tools version: 6.0.
+- Swift tools version: 6.2 (`// swift-tools-version: 6.2`).
 - 当前已验证编译器: Apple Swift 6.2.1.
-- 当前机器只有 Apple Command Line Tools, 未安装或未选择完整 Xcode, 因此暂不能执行 `xcodebuild archive`、签名和 `.app` 发布验证.
+- 本机开发环境只有 Apple Command Line Tools, 无法在本机执行 `xcodebuild archive`; 签名与 `.app` 发布验证由 `scripts/build-release-app.sh` 在具备完整 Xcode 与证书的环境 (如 CI `release-sign` job) 完成.
 - 无完整 Xcode 时使用:
 
 ```bash
@@ -55,18 +55,26 @@ cargo clippy --manifest-path rust/Bruce-collector/Cargo.toml --workspace --all-t
 
 ### 已接入 SwiftPM 的 Harness
 
-| Harness | 当前用例数 | 覆盖 |
-|---|---:|---|
-| `BruceOnboardingCoreHarness` | 以 Harness 实际输出为准 | 路径、版本、扫描、readiness、授权 Gate、配置、Keychain 抽象、订阅凭证、设备码登录、令牌轮换合并 |
-| `PanelViewModelHarness` | 以 Harness 实际输出为准 | 措辞、分组、条件渲染 |
-| `ArtifactStoreHarness` | 以 Harness 实际输出为准 | schema、私有权限、原子发布、previous 回退和迁移 |
-| `CollectorRunnerHarness` | 以 Harness 实际输出为准 | stdin 凭证、协议、并发、超时、取消和隔离 Bridge |
-| `RefreshSchedulerHarness` | 以 Harness 实际输出为准 | 30 分钟定时、合并、退避、授权失败、唤醒、容量和停止 |
-| `NativeLifecycleHarness` | 以 Harness 实际输出为准 | 调度启动、退出回收、原生到 Widget 状态映射和菜单栏指标/摘要 |
-| `DiagnosticsHarness` | 以 Harness 实际输出为准 | 白名单报告、敏感扫描、最小 ZIP、权限和命名 |
-| `LocalIntegrationHarness` | 以 Harness 实际输出为准 | 临时 HOME/Application Support、真实本地 Bridge、缓存重启、诊断和清理 |
+Package.swift 共声明 14 个 Harness executable target (3 个 library target: `BruceOnboardingCore`, `BruceAppCore`, `BruceGlassSurfaceCore`; 1 个 App executable target: `BruceApp`):
 
-全部 Harness 可在只有 Apple Command Line Tools 的环境中构建和运行, 不依赖 executable target 链接.
+| Harness | 覆盖 |
+|---|---|
+| `BruceOnboardingCoreHarness` | 路径、版本、扫描、readiness、授权 Gate、配置、Keychain 抽象、订阅凭证、设备码登录、令牌轮换合并 |
+| `ArtifactStoreHarness` | schema、私有权限、原子发布、previous 回退和迁移 |
+| `CollectorRunnerHarness` | stdin 凭证、协议、并发、超时、取消和隔离 Bridge |
+| `RefreshSchedulerHarness` | 30 分钟定时、合并、退避、授权失败、唤醒、容量和停止 |
+| `NativeLifecycleHarness` | 调度启动、退出回收、原生到 Widget 状态映射和菜单栏指标/摘要 |
+| `DiagnosticsHarness` | 白名单报告、敏感扫描、最小 ZIP、权限和命名 |
+| `LocalIntegrationHarness` | 临时 HOME/Application Support、真实本地 Bridge、缓存重启、诊断和清理 |
+| `PanelViewModelHarness` | 措辞、分组、条件渲染、用量档位与热力图、按月聚合映射 |
+| `DeepSeekUsageLedgerHarness` | DeepSeek 月度账本领域差分、时区跨日、持久化与损坏恢复 |
+| `SubscriptionCredentialsHarness` | 订阅凭证注入与 Keychain 边界 |
+| `GlobalHotkeyHarness` | 全局快捷键录制与冲突处理 |
+| `AppModelCacheHarness` | AppModel 缓存失效与菜单栏摘要缓存分离 |
+| `DashboardGlassSurfaceHarness` | 面板玻璃表面矩阵与液态玻璃对比度 |
+| `SubscriptionRefreshControlHarness` | Provider 定向刷新控件与刷新状态联动 |
+
+各 Harness 的当前用例数以 Harness 实际输出为准。全部 Harness 可在只有 Apple Command Line Tools 的环境中构建和运行, 不依赖 executable target 链接。
 
 ## 统一验证
 

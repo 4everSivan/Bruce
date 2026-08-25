@@ -42,7 +42,7 @@ final class SubscriptionService {
     private let credentialStore: CredentialStore
     private let codexStore: CodexCredentialStore
     private let codexTokenManager: CodexTokenManager
-    private let verifier: any DeepSeekCredentialVerifier
+    private let verifier: ProviderConnectionVerifier
     private let homeURL: URL
     private let localProbe: LocalCredentialProbe
     private let ccSwitchImporter = CCSwitchVolcengineImporter()
@@ -65,7 +65,7 @@ final class SubscriptionService {
         credentialStore: CredentialStore,
         codexStore: CodexCredentialStore,
         codexTokenManager: CodexTokenManager,
-        verifier: any DeepSeekCredentialVerifier,
+        verifier: ProviderConnectionVerifier,
         homeURL: URL,
         localProbe: LocalCredentialProbe
     ) {
@@ -1171,16 +1171,6 @@ final class SubscriptionService {
             model.setSettingsError("\(usage)读取失败: \(error.localizedDescription)")
             return nil
         }
-    }
-
-    /// 解析 JSON 字符串为对象; 非对象或解析失败返回 nil.
-    private func jsonObject(from json: String) -> [String: Any]? {
-        guard let data = json.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data),
-              let dict = object as? [String: Any] else {
-            return nil
-        }
-        return dict
     }
 
     /// Claude 凭证 JSON -> accessToken (用于生成 accountID).

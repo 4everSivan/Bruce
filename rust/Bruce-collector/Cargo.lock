@@ -144,7 +144,6 @@ name = "collector-aggregate"
 version = "0.1.0"
 dependencies = [
  "collector-domain",
- "serde",
  "serde_json",
 ]
 
@@ -197,7 +196,6 @@ name = "collector-local"
 version = "0.1.0"
 dependencies = [
  "collector-domain",
- "collector-runtime",
  "rusqlite",
  "serde",
  "serde_json",

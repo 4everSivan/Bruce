@@ -63,7 +63,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-required_commands=(swift cargo codesign plutil ditto strip rg strings xcrun spctl lipo shasum)
+required_commands=(swift cargo codesign plutil ditto strip rg xcrun spctl lipo shasum)
 for required_command in "${required_commands[@]}"; do
     if ! command -v "$required_command" >/dev/null 2>&1; then
         echo "缺少构建命令: $required_command" >&2

@@ -66,7 +66,7 @@ package struct CredentialUpdateCoordinator: Sendable {
             guard update.provider != "codex",
                   let providerID = SubscriptionProviderID(
                       rawValue: update.provider
-                  ) ?? Self.legacyProviderID(for: update.provider) else {
+                  ) else {
                 result.skippedCount += 1
                 continue
             }
@@ -180,16 +180,5 @@ package struct CredentialUpdateCoordinator: Sendable {
         guard raw.count > maxFailureReasonLength else { return raw }
         let end = raw.index(raw.startIndex, offsetBy: maxFailureReasonLength)
         return String(raw[..<end])
-    }
-
-    /// collector 侧 provider 标识 -> SubscriptionProviderID 映射.
-    /// 目前无需要映射的连字符命名 provider; 保留扩展点.
-    private static func legacyProviderID(
-        for provider: String
-    ) -> SubscriptionProviderID? {
-        switch provider {
-        default:
-            return nil
-        }
     }
 }

@@ -477,7 +477,9 @@ private extension HourlyLineViewModel {
 }
 
 // 命令行 swift build 无法解析 #Preview 宏插件 (PreviewsMacros),
-// 这里用 PreviewProvider, Xcode 画布同样可直接预览.
+// 这里用 PreviewProvider, Xcode 画布同样可直接预览;
+// canImport 守住无 Xcode 工具链, 与 UsageHeroCard 的处理一致.
+#if DEBUG && canImport(PreviewsMacros)
 struct HourlyLineCard_Previews: PreviewProvider {
     /// 14 日柱状图 fixture: 两个 agent 分段, 数值有起伏.
     private static var dailyPreviewDays: [UsageChartDay] {
@@ -512,3 +514,4 @@ struct HourlyLineCard_Previews: PreviewProvider {
         .background(Color(white: 0.93))
     }
 }
+#endif

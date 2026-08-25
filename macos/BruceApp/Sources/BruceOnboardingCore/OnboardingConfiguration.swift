@@ -102,8 +102,6 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
     public let schemaVersion: Int
     public var selectedModules: Set<String>
     public var consentVersion: Int?
-    public var connectionStates: [String: String]
-    public var lastVerifiedAt: [String: String]
     /// 菜单栏指标 rawValue 有序列表. nil 使用应用默认值.
     public var menuBarMetrics: [String]?
     /// 订阅 provider 配置, 键为 SubscriptionProviderID rawValue.
@@ -163,17 +161,13 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         )
     }
 
-    /// 解析后的界面风格 (依赖当前系统能力).
-    public var resolvedInterfaceStyle: InterfaceStylePreference {
-        resolvedTheme().interfaceStyle
-    }
+    /// 解析后的界面风格 (依赖当前系统能力) 由 resolvedTheme 提供;
+    /// 无独立计算属性, 避免绕过能力回落逻辑.
 
     public init(
         schemaVersion: Int = OnboardingConfiguration.currentSchemaVersion,
         selectedModules: Set<String> = [],
         consentVersion: Int? = nil,
-        connectionStates: [String: String] = [:],
-        lastVerifiedAt: [String: String] = [:],
         menuBarMetrics: [String]? = nil,
         subscriptionProviders: [String: SubscriptionProviderConfiguration] = [:],
         refreshIntervalMinutes: Int? = nil,
@@ -186,8 +180,6 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         self.schemaVersion = schemaVersion
         self.selectedModules = selectedModules
         self.consentVersion = consentVersion
-        self.connectionStates = connectionStates
-        self.lastVerifiedAt = lastVerifiedAt
         self.menuBarMetrics = menuBarMetrics
         self.subscriptionProviders = subscriptionProviders
         self.refreshIntervalMinutes = refreshIntervalMinutes
@@ -204,8 +196,6 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
         selectedModules = try container.decodeIfPresent(Set<String>.self, forKey: .selectedModules) ?? []
         consentVersion = try container.decodeIfPresent(Int.self, forKey: .consentVersion)
-        connectionStates = try container.decodeIfPresent([String: String].self, forKey: .connectionStates) ?? [:]
-        lastVerifiedAt = try container.decodeIfPresent([String: String].self, forKey: .lastVerifiedAt) ?? [:]
         menuBarMetrics = try container.decodeIfPresent([String].self, forKey: .menuBarMetrics)
         subscriptionProviders = try container.decodeIfPresent(
             [String: SubscriptionProviderConfiguration].self,
@@ -356,7 +346,6 @@ public final class OnboardingConfigurationStore: @unchecked Sendable {
 
 public enum OnboardingConfigError: Error, Equatable {
     case storageFailure
-    case unknownSchema
 }
 
 // MARK: - SubscriptionCredentialAccount

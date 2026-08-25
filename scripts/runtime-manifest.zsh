@@ -72,18 +72,11 @@ Bruce_build_rust_collector() {
                     return 1
                     ;;
             esac
-            if [[ "$configuration" == "release" ]]; then
-                RUSTFLAGS="$rustflags" cargo build \
-                    --manifest-path "$repo_root/$BRUCE_RUST_PACKAGE_DIR/Cargo.toml" \
-                    --target "$target_triple" \
-                    --release \
-                    --bin "$BRUCE_RUST_BINARY_NAME"
-            else
-                RUSTFLAGS="$rustflags" cargo build \
-                    --manifest-path "$repo_root/$BRUCE_RUST_PACKAGE_DIR/Cargo.toml" \
-                    --target "$target_triple" \
-                    --bin "$BRUCE_RUST_BINARY_NAME"
-            fi
+            RUSTFLAGS="$rustflags" cargo build \
+                --manifest-path "$repo_root/$BRUCE_RUST_PACKAGE_DIR/Cargo.toml" \
+                --target "$target_triple" \
+                --release \
+                --bin "$BRUCE_RUST_BINARY_NAME"
             input_path="$repo_root/$BRUCE_RUST_PACKAGE_DIR/target/$target_triple/$configuration/$BRUCE_RUST_BINARY_NAME"
             if [[ ! -x "$input_path" ]]; then
                 echo "缺少 Rust 目标架构产物: $input_path" >&2
@@ -97,16 +90,10 @@ Bruce_build_rust_collector() {
         return 0
     fi
 
-    if [[ "$configuration" == "release" ]]; then
-        RUSTFLAGS="$rustflags" cargo build \
-            --manifest-path "$repo_root/$BRUCE_RUST_PACKAGE_DIR/Cargo.toml" \
-            --release \
-            --bin "$BRUCE_RUST_BINARY_NAME"
-    else
-        RUSTFLAGS="$rustflags" cargo build \
-            --manifest-path "$repo_root/$BRUCE_RUST_PACKAGE_DIR/Cargo.toml" \
-            --bin "$BRUCE_RUST_BINARY_NAME"
-    fi
+    RUSTFLAGS="$rustflags" cargo build \
+        --manifest-path "$repo_root/$BRUCE_RUST_PACKAGE_DIR/Cargo.toml" \
+        --release \
+        --bin "$BRUCE_RUST_BINARY_NAME"
 }
 
 Bruce_rust_binary_path() {

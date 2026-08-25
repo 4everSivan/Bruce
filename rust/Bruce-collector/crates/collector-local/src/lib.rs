@@ -21,7 +21,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
-pub const ADAPTER_ROLE: &str = "local-read-only";
 pub const KIMI_USAGE_RECORD_TYPE: &str = "usage.record";
 pub const MAX_JSONL_RECORD_BYTES: usize = 1024 * 1024;
 pub const CACHE_SCHEMA_VERSION: u32 = 1;
@@ -51,6 +50,9 @@ pub struct ScanStats {
     pub files_visited: u64,
     pub files_scanned: u64,
     pub files_skipped: u64,
+    pub duplicate_files_skipped: u64,
+    pub duplicate_session_groups: u64,
+    pub conflict_session_groups: u64,
     pub io_errors: u64,
     pub cache_hits: u64,
     pub cache_appends: u64,
@@ -73,6 +75,15 @@ impl ScanStats {
         self.files_visited = self.files_visited.saturating_add(other.files_visited);
         self.files_scanned = self.files_scanned.saturating_add(other.files_scanned);
         self.files_skipped = self.files_skipped.saturating_add(other.files_skipped);
+        self.duplicate_files_skipped = self
+            .duplicate_files_skipped
+            .saturating_add(other.duplicate_files_skipped);
+        self.duplicate_session_groups = self
+            .duplicate_session_groups
+            .saturating_add(other.duplicate_session_groups);
+        self.conflict_session_groups = self
+            .conflict_session_groups
+            .saturating_add(other.conflict_session_groups);
         self.io_errors = self.io_errors.saturating_add(other.io_errors);
         self.cache_hits = self.cache_hits.saturating_add(other.cache_hits);
         self.cache_appends = self.cache_appends.saturating_add(other.cache_appends);

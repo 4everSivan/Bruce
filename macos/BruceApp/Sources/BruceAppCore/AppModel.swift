@@ -41,7 +41,6 @@ package enum ModuleRunState: String, Codable, Sendable {
     case partial
     case stale
     case authRequired
-    case offline
     case failed
 
     package var title: String {
@@ -60,8 +59,6 @@ package enum ModuleRunState: String, Codable, Sendable {
             return "数据已过期"
         case .authRequired:
             return "需要授权"
-        case .offline:
-            return "网络不可用"
         case .failed:
             return "刷新失败"
         }
@@ -75,8 +72,6 @@ package enum ModuleRunState: String, Codable, Sendable {
             return "arrow.clockwise"
         case .partial, .stale, .authRequired:
             return "exclamationmark.triangle"
-        case .offline:
-            return "wifi.slash"
         case .failed:
             return "xmark.circle"
         case .notConfigured:
@@ -399,11 +394,6 @@ package final class AppModel: ObservableObject {
                 ),
                 for: dashboardModule
             )
-        case .networkUnreachable:
-            setStatus(
-                ModuleStatus(state: .offline, detail: result.blockingReason),
-                for: dashboardModule
-            )
         case .unsupported:
             setStatus(
                 ModuleStatus(
@@ -624,8 +614,6 @@ package final class AppModel: ObservableObject {
             return .missingDependency
         case .authRequired:
             return .authorizationExpired
-        case .offline:
-            return .networkUnreachable
         case .stale:
             // 有缓存但过期, 仍可能是 ready (依赖满足, 只是数据旧)
             return .ready

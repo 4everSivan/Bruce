@@ -46,28 +46,20 @@ extension BruceOnboardingCoreHarness {
         defer { try? FileManager.default.removeItem(at: tempDir) }
         let store = try OnboardingConfigurationStore(configDirectory: tempDir)
 
-        let readiness: [CollectorModule: ModuleReadiness] = [
-            .agentUsage: .ready,
-        ]
-
         // 阶段 1: 无授权记录, 所有模块 denied
         let initialGate = CollectorActivationGate(
             consentVersion: 1,
             confirmedConsentVersion: store.load()?.consentVersion
         )
-        let initialDecisions = ActivationGateEvaluator(gate: initialGate).evaluate(
-            readinessByModule: readiness,
-            selectedModules: Set(CollectorModule.allCases),
-            appIsAcceptingNewTasks: true
-        )
-        try coreExpect(
-            initialDecisions.allSatisfy { !$0.allowed },
-            "无授权时所有模块必须 denied"
-        )
-        try coreExpect(
-            initialDecisions.allSatisfy { $0.policy == nil },
-            "无授权时不得生成执行策略"
-        )
+        for module in CollectorModule.allCases {
+            try coreExpect(
+                !initialGate.canActivate(
+                    module: module, readiness: .ready,
+                    isModuleSelected: true, appIsAcceptingNewTasks: true
+                ),
+                "无授权时所有模块必须 denied"
+            )
+        }
 
         // 阶段 2: 写入授权 (选中 agentUsage), 选中且 ready 的 agentUsage allowed
         var config = store.load() ?? OnboardingConfiguration()
@@ -79,27 +71,18 @@ extension BruceOnboardingCoreHarness {
             consentVersion: 1,
             confirmedConsentVersion: store.load()?.consentVersion
         )
-        let confirmedDecisions = ActivationGateEvaluator(
-            gate: confirmedGate
-        ).evaluate(
-            readinessByModule: [
-                .agentUsage: .ready,
-            ],
-            selectedModules: Set(
-                (store.load()?.selectedModules ?? []).compactMap {
-                    CollectorModule(rawValue: $0)
-                }
+        let selectedModules = Set(
+            (store.load()?.selectedModules ?? []).compactMap {
+                CollectorModule(rawValue: $0)
+            }
+        )
+        try coreExpect(
+            confirmedGate.canActivate(
+                module: .agentUsage, readiness: .ready,
+                isModuleSelected: selectedModules.contains(.agentUsage),
+                appIsAcceptingNewTasks: true
             ),
-            appIsAcceptingNewTasks: true
-        )
-        let agentDecision = confirmedDecisions.first { $0.module == .agentUsage }
-        try coreExpect(
-            agentDecision?.allowed == true,
             "选中且 ready 的 agent-usage 必须 allowed"
-        )
-        try coreExpect(
-            agentDecision?.policy?.capabilities == [.localSessions, .localPricing],
-            "agent 策略只含 localSessions/localPricing"
         )
 
         // 阶段 3: 授权版本升级后, 已确认版本不再匹配, 全部 denied
@@ -107,15 +90,15 @@ extension BruceOnboardingCoreHarness {
             consentVersion: 2,
             confirmedConsentVersion: store.load()?.consentVersion
         )
-        let upgradedDecisions = ActivationGateEvaluator(gate: upgradedGate).evaluate(
-            readinessByModule: readiness,
-            selectedModules: Set(CollectorModule.allCases),
-            appIsAcceptingNewTasks: true
-        )
-        try coreExpect(
-            upgradedDecisions.allSatisfy { !$0.allowed },
-            "授权版本变化后所有模块必须 denied"
-        )
+        for module in CollectorModule.allCases {
+            try coreExpect(
+                !upgradedGate.canActivate(
+                    module: module, readiness: .ready,
+                    isModuleSelected: true, appIsAcceptingNewTasks: true
+                ),
+                "授权版本变化后所有模块必须 denied"
+            )
+        }
     }
 
     // MARK: - 订阅额度配置 (schema v2)
@@ -651,37 +634,6 @@ extension BruceOnboardingCoreHarness {
         try coreExpect(reason == "API key 为空", "空 key 原因不符: \(reason)")
     }
 
-    static func verifierCodexAccountsJSONMappings() throws {
-        let valid = """
-            {"accounts": {"acc-1": {"email": "u@example.com",
-             "refresh_token": "rt", "access_token": "at", "id_token": "it"}}}
-            """
-        try coreExpect(
-            ProviderConnectionVerifier.verifyCodexAccountsJSON(valid) == .ok,
-            "完整账号库必须 ok"
-        )
-        let noAccounts = ProviderConnectionVerifier.verifyCodexAccountsJSON(
-            "{\"accounts\": {}}"
-        )
-        guard case .failed = noAccounts else {
-            throw CoreTestFailure.expectation("空 accounts 必须 failed")
-        }
-        let noRefresh = ProviderConnectionVerifier.verifyCodexAccountsJSON(
-            "{\"accounts\": {\"acc-1\": {\"access_token\": \"at\"}}}"
-        )
-        guard case .failed(let reason) = noRefresh else {
-            throw CoreTestFailure.expectation("缺 refresh_token 必须 failed")
-        }
-        try coreExpect(
-            reason.contains("refresh_token"),
-            "failed 原因必须指出缺失字段, got \(reason)"
-        )
-        let invalid = ProviderConnectionVerifier.verifyCodexAccountsJSON("[]")
-        guard case .failed = invalid else {
-            throw CoreTestFailure.expectation("非对象 JSON 必须 failed")
-        }
-    }
-
     static func verifierAntigravityOAuthJSONMappings() throws {
         let valid = """
             {"token": {"access_token": "at", "refresh_token": "rt",
@@ -762,65 +714,4 @@ extension BruceOnboardingCoreHarness {
             }
         }
     }
-
-    // MARK: - externalQuotas 门禁
-
-    /// agent-usage 策略: 订阅 provider 已配置时追加 externalQuotas,
-    /// 默认 (未配置) 不授予.
-    static func gateAgentPolicyGrantsExternalQuotasWhenConfigured() throws {
-        let gate = CollectorActivationGate(consentVersion: 1, confirmedConsentVersion: 1)
-
-        let withoutProvider = gate.executionPolicy(for: .agentUsage, readiness: .ready)
-        try coreExpect(
-            withoutProvider?.capabilities.contains(.externalQuotas) == false,
-            "未配置订阅 provider 时不得授予 externalQuotas"
-        )
-        let withProvider = gate.executionPolicy(
-            for: .agentUsage,
-            readiness: .ready,
-            hasConfiguredSubscriptionProvider: true
-        )
-        try coreExpect(
-            withProvider?.capabilities.contains(.externalQuotas) == true,
-            "订阅 provider 已配置时必须授予 externalQuotas"
-        )
-        try coreExpect(
-            withProvider?.capabilities.contains(.localSessions) == true
-                && withProvider?.capabilities.contains(.localPricing) == true,
-            "基础能力必须保留"
-        )
-    }
-
-    /// evaluator 把订阅配置标记透传到策略; 未授权时仍不生成策略.
-    static func gateEvaluatorPropagatesSubscriptionFlag() throws {
-        let gate = CollectorActivationGate(consentVersion: 1, confirmedConsentVersion: 1)
-        let evaluator = ActivationGateEvaluator(gate: gate)
-        let decisions = evaluator.evaluate(
-            readinessByModule: [.agentUsage: .ready],
-            selectedModules: [.agentUsage],
-            appIsAcceptingNewTasks: true,
-            hasConfiguredSubscriptionProvider: true
-        )
-        let agent = decisions.first { $0.module == .agentUsage }
-        try coreExpect(
-            agent?.policy?.capabilities.contains(.externalQuotas) == true,
-            "evaluator 必须透传订阅配置标记"
-        )
-
-        let deniedGate = CollectorActivationGate(
-            consentVersion: 2, confirmedConsentVersion: 1
-        )
-        let deniedDecisions = ActivationGateEvaluator(gate: deniedGate).evaluate(
-            readinessByModule: [.agentUsage: .ready],
-            selectedModules: [.agentUsage],
-            appIsAcceptingNewTasks: true,
-            hasConfiguredSubscriptionProvider: true
-        )
-        let deniedAgent = deniedDecisions.first { $0.module == .agentUsage }
-        try coreExpect(
-            deniedAgent?.allowed == false && deniedAgent?.policy == nil,
-            "授权不匹配时即使已配置订阅 provider 也必须 deny"
-        )
-    }
-
 }

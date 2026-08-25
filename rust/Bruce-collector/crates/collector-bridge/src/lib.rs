@@ -42,7 +42,6 @@ const ALLOWED_CONTEXT_FIELDS: &[&str] = &[
 const ALLOWED_CAPABILITIES: &[&str] = &["localSessions", "localPricing", "externalQuotas"];
 
 const ALLOWED_CREDENTIAL_FIELDS: &[&str] = &[
-    "kimiWebTokens",
     "kimiQuotaAccounts",
     "deepseekQuotaAccounts",
     "volcengineQuotaAccounts",
@@ -55,7 +54,6 @@ const ALLOWED_CREDENTIAL_FIELDS: &[&str] = &[
     "grokQuotaAccounts",
     "opencodeGoQuotaAccounts",
     "codexQuotaAccounts",
-    "orcaCodexAuth",
     "providerEnv",
     "providerMeta",
 ];

@@ -125,33 +125,7 @@ public enum SubscriptionCredentialEvaluator {
         return .valid
     }
 
-    // MARK: - Kimi / Antigravity
-
-    /// Kimi For Coding API key: 非空且不含空白.
-    public static func kimiStatus(of apiKey: String) -> SubscriptionCredentialStatus {
-        let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        if key.isEmpty {
-            return .missing
-        }
-        if key.contains(where: { $0.isWhitespace }) {
-            return .malformed
-        }
-        return .valid
-    }
-
-    /// Antigravity 令牌 JSON: token.refresh_token 非空 (collector 刷新恢复).
-    public static func antigravityStatus(of json: String) -> SubscriptionCredentialStatus {
-        guard let dict = jsonObject(from: json),
-              let token = dict["token"] as? [String: Any] else {
-            return .malformed
-        }
-        let refresh = (token["refresh_token"] as? String ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !refresh.isEmpty else {
-            return .missing
-        }
-        return .valid
-    }
+    // MARK: - OpenCode GO
 
     /// OpenCode GO 凭证 JSON: {"auth": <Fe26 cookie>, "workspaceId": "wrk_..."}
     /// 两者均非空才 valid (collector 凭此调网页 server function).

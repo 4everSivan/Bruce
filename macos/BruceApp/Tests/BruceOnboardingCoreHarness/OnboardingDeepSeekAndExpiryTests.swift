@@ -336,40 +336,6 @@ extension BruceOnboardingCoreHarness {
         )
     }
 
-    /// Kimi: API key 非空且不含空白.
-    static func evaluatorKimiAPIKey() throws {
-        try coreExpect(
-            SubscriptionCredentialEvaluator.kimiStatus(of: "") == .missing,
-            "Kimi 空 key 应 missing"
-        )
-        try coreExpect(
-            SubscriptionCredentialEvaluator.kimiStatus(of: "kimi-fixture-key") == .valid,
-            "Kimi API key 应 valid"
-        )
-        try coreExpect(
-            SubscriptionCredentialEvaluator.kimiStatus(of: "has space key") == .malformed,
-            "Kimi 含空白 key 应 malformed"
-        )
-    }
-
-    /// Antigravity: 缺 refresh_token -> missing.
-    static func evaluatorAntigravityRefreshMissing() throws {
-        let noRefresh = """
-        {"token": {"access_token": "a"}}
-        """
-        try coreExpect(
-            SubscriptionCredentialEvaluator.antigravityStatus(of: noRefresh) == .missing,
-            "Antigravity 缺 refresh_token 应 missing"
-        )
-        let ok = """
-        {"token": {"refresh_token": "r"}}
-        """
-        try coreExpect(
-            SubscriptionCredentialEvaluator.antigravityStatus(of: ok) == .valid,
-            "Antigravity 有 refresh_token 应 valid"
-        )
-    }
-
     /// isExpired 与 Rust Collector expiry 语义逐条对齐: nil/不可解析 -> false.
     static func evaluatorIsExpiredSemanticsMatchRustContract() throws {
         let now = Date(timeIntervalSince1970: 1_786_000_000)

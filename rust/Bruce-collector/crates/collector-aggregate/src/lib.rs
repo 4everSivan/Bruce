@@ -9,8 +9,6 @@ use std::collections::{BTreeMap, HashMap};
 
 pub use collector_domain::{ModelDelta, ProjectDelta, UsageContribution, UsageSample};
 
-pub const AGGREGATION_ROLE: &str = "artifact-aggregation";
-
 #[derive(Debug, Clone)]
 pub struct UsageAccumulator {
     window: CollectionWindow,
@@ -33,61 +31,6 @@ impl UsageAccumulator {
             project_order: Vec::new(),
             hours: [0; 24],
         }
-    }
-
-    pub fn record(&mut self, sample: UsageSample<'_>) -> bool {
-        let Some(day) = self.window.day_of_millis(sample.timestamp_millis) else {
-            return false;
-        };
-        if !self.window.contains_day(&day) {
-            return false;
-        }
-        self.by_day.entry(day.clone()).or_default().add(
-            sample.input,
-            sample.output,
-            sample.cache_read,
-            sample.cache_creation,
-        );
-        if day != self.window.today {
-            return true;
-        }
-
-        let model = sample
-            .model
-            .filter(|value| !value.is_empty())
-            .unwrap_or("unknown");
-        if !self.models_today.contains_key(model) {
-            self.model_order.push(model.to_owned());
-        }
-        self.models_today.entry(model.to_owned()).or_default().add(
-            sample.input,
-            sample.output,
-            sample.cache_read,
-            sample.cache_creation,
-        );
-        if let Some(hour) = self.window.hour_of_millis(sample.timestamp_millis) {
-            self.hours[hour] = self.hours[hour].saturating_add(
-                sample
-                    .input
-                    .saturating_add(sample.output)
-                    .saturating_add(sample.cache_read)
-                    .saturating_add(sample.cache_creation),
-            );
-        }
-        if let Some(project) = sample.project.filter(|value| !value.is_empty()) {
-            if !self.projects_today.contains_key(project) {
-                self.project_order.push(project.to_owned());
-            }
-            let entry = self.projects_today.entry(project.to_owned()).or_default();
-            *entry = entry.saturating_add(
-                sample
-                    .input
-                    .saturating_add(sample.output)
-                    .saturating_add(sample.cache_read)
-                    .saturating_add(sample.cache_creation),
-            );
-        }
-        true
     }
 
     pub fn merge_delta(&mut self, delta: &UsageContribution) -> bool {
@@ -215,7 +158,7 @@ impl UsageAccumulator {
 #[cfg(test)]
 mod tests {
     use super::{UsageAccumulator, UsageSample};
-    use collector_domain::CollectionWindow;
+    use collector_domain::{CollectionWindow, UsageContributionBuilder};
     use serde_json::json;
 
     fn window() -> CollectionWindow {
@@ -230,8 +173,8 @@ mod tests {
 
     #[test]
     fn window_boundaries_and_cache_input_match_shared_contract() {
-        let mut aggregate = UsageAccumulator::new(window());
-        assert!(aggregate.record(UsageSample {
+        let mut builder = UsageContributionBuilder::new(window());
+        assert!(builder.record(UsageSample {
             timestamp_millis: 1_785_211_200_000,
             model: Some("provider/model[fast]"),
             input: 10,
@@ -240,6 +183,9 @@ mod tests {
             cache_creation: 1,
             project: Some("Bruce"),
         }));
+        let contribution = builder.contribution();
+        let mut aggregate = UsageAccumulator::new(window());
+        assert!(aggregate.merge_delta(&contribution));
         let agent = aggregate.finalize("fixture", "Fixture");
         assert_eq!(agent.today.input, 10);
         assert_eq!(agent.today.cache_read, 2);

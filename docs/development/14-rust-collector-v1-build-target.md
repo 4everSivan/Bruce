@@ -39,7 +39,7 @@ artifact JSON → Swift PanelViewModel → 仪表盘
 | 区域 | 代码量 | 迁移含义 |
 |---|---:|---|
 | `rust/Bruce-collector/` | Cargo workspace | 本地扫描、聚合、额度、凭证和 Bridge v1 |
-| `bridge/schemas/` | JSON schemas | Bridge v1 request/response/artifact 契约 |
+| `bridge/schemas/` | JSON schemas | Bridge v1 request/response/artifact 参考契约文档 (不打包进 App, 运行时校验由 collector-bridge 的 schema 版本检查实现) |
 | `CollectorRunner.swift` | 636 行 | 子进程、stdin/stdout、超时、取消和诊断 |
 | Rust/Swift Harness | 以实际输出为准 | 行为、fixture、进程和安全契约 |
 

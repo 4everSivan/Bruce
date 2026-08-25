@@ -264,24 +264,6 @@
         "maxLength": 256
       }
     },
-    "oauthTokens": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "access_token": {
-          "type": "string"
-        },
-        "refresh_token": {
-          "type": "string"
-        },
-        "id_token": {
-          "type": "string"
-        },
-        "expiry": {
-          "type": "string"
-        }
-      }
-    },
     "codexQuotaAccount": {
       "type": "object",
       "additionalProperties": false,
@@ -306,9 +288,6 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "kimiWebTokens": {
-          "$ref": "#/$defs/oauthTokens"
-        },
         "kimiQuotaAccounts": {
           "$ref": "#/$defs/quotaAccounts"
         },
@@ -342,9 +321,6 @@
             "minLength": 1,
             "maxLength": 256
           }
-        },
-        "orcaCodexAuth": {
-          "type": "object"
         },
         "antigravityOAuth": {
           "type": "object"
