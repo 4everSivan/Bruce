@@ -34,12 +34,16 @@ Bruce 把本机 AI Agent 的 token 用量、成本估算和订阅额度集中到
 
 ## 界面预览
 
-原生面板截图待补充。运行 App (`dist/Bruce.app`, 由 `scripts/build-test-app.sh` 生成) 后, 对菜单栏面板和设置窗口截图, 替换下表占位即可:
+菜单栏面板以原生 SwiftUI 渲染, 以下为液态玻璃主题下的实际运行效果 (macOS 26)。
 
-| 场景 | 截图 |
+| 说明 | 截图 |
 |---|---|
-| 菜单栏面板 (用量 / 订阅用量 / 逐小时卡片) | _待补充_ |
-| 设置窗口 (通用 / 订阅额度 / 统一授权 / 诊断) | _待补充_ |
+| **仪表盘全貌**: 面板自上而下由 Token 用量卡、订阅用量卡和底部操作栏 (刷新 / 设置 / 退出) 组成, 高度随内容自适应, 无滚动条。 | <img src="docs/screenshots/dashboard-overview.png" width="280" /> |
+| **Token 用量卡**: Hero 区展示累计 token 总量与估算成本; 四格细分输入、输出、缓存读取、缓存命中率; 月度聚合与 26 周热力图呈现使用节奏。 | <img src="docs/screenshots/token-usage.png" width="280" /> |
+| **Agent 用量卡**: 14 日堆叠柱状图按 Agent 分色; 逐小时折线展开各 Agent 的 0-23 时分布, 点击可查看模型与项目明细。 | <img src="docs/screenshots/agent-usage.png" width="280" /> |
+| **订阅用量卡**: 多 Provider 窗口量条 (ChatGPT、Kimi、智谱、OpenCode GO、DeepSeek 等), 按原生计费窗口展示用量百分比与重置倒计时; DeepSeek 展示账户余额。 | <img src="docs/screenshots/subscription-usage.png" width="280" /> |
+
+> 设置窗口 (通用 / 订阅额度 / 统一授权 / 诊断) 截图待补充。运行 App 后对设置窗口截图, 追加到本节即可。
 
 Widget 场景的视觉基线见 `tests/visual/baselines/agent-usage-valid.jpg` (Daimon 场景历史视觉参考)。
 
