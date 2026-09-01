@@ -101,7 +101,7 @@
 
 ```text
 macOS 本机会话与认证文件
-  ├─ Kimi Work / Kimi Code / Claude / Codex / Orca / Pi / ZCode 会话
+  ├─ Kimi Work / Kimi Code / Claude / Codex / Orca / Pi / ZCode / CodeBuddy 会话
   ├─ CC Switch SQLite 与 OAuth 账号库 (App 模式仅一次性只读导入)
   ├─ App Keychain (订阅凭证: Kimi/DeepSeek/火山/Codex/Antigravity/OpenCode Go)
   └─ Kimi 与 Antigravity OAuth

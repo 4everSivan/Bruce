@@ -24,6 +24,8 @@ package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
     case rose
     /// OpenCode — 系统绿 (8 个已知 agent 配满 7 色后扩的第 8 色)
     case green
+    /// CodeBuddy — 系统橙 (第 9 个已知 agent; 与 coral 暖珊瑚拉开明度)
+    case orange
 
     package var hex: String {
         switch self {
@@ -43,6 +45,8 @@ package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
             return "#ff6482"
         case .green:
             return "#30d158"
+        case .orange:
+            return "#ff9f0a"
         }
     }
 
@@ -74,6 +78,8 @@ package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
             return .mint
         case "opencode":
             return .green
+        case "codebuddy":
+            return .orange
         default:
             var hash: UInt64 = 0xcbf29ce484222325
             for byte in agentID.utf8 {
@@ -104,6 +110,8 @@ package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
             return ["#ff6482", "#ff839c", "#ffa2b6", "#ffc1d0"]
         case .green:
             return ["#30d158", "#5bda7f", "#8ae6a6", "#b8f1cc"]
+        case .orange:
+            return ["#ff9f0a", "#ffb340", "#ffcc7a", "#ffe5b3"]
         }
     }
 
@@ -126,6 +134,8 @@ package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
             index = 3
         case "opencode":
             index = 4
+        case "codebuddy":
+            index = 2
         case "kimi-work":
             // 与 kimi-code-cli 高频同现, 从 0 档移到 4 档避免撞色;
             // 与 opencode 共档是可接受取舍 (同现概率低), 分段上色场景必须可读.

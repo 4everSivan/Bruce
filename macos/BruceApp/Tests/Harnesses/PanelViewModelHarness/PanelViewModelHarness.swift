@@ -934,9 +934,10 @@ struct PanelViewModelHarness {
         try expect(PanelAgentColor.resolve(agentID: "pi") == .rose, "Pi 应为显式 rose 色")
         try expect(PanelAgentColor.resolve(agentID: "zcode") == .mint, "ZCode 应为显式 mint 色")
         try expect(PanelAgentColor.resolve(agentID: "opencode") == .green, "OpenCode 应为显式 green 色")
+        try expect(PanelAgentColor.resolve(agentID: "codebuddy") == .orange, "CodeBuddy 应为显式 orange 色")
         let knownIDs = [
             "kimi-work", "kimi-code-cli", "grok", "codex",
-            "claude-code", "pi", "zcode", "opencode",
+            "claude-code", "pi", "zcode", "opencode", "codebuddy",
         ]
         let knownColors = knownIDs.map { PanelAgentColor.resolve(agentID: $0) }
         try expect(

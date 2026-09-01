@@ -23,8 +23,8 @@ use collector_domain::{
     AGENT_USAGE_MODULE, AGENT_USAGE_SCHEMA_VERSION,
 };
 use collector_local::{
-    default_cache_root, scan_claude, scan_codex, scan_grok, scan_kimi_tree, scan_opencode, scan_pi,
-    scan_tree_cached_with_sink, scan_zcode, CacheConfig, ScanStats,
+    default_cache_root, scan_claude, scan_codebuddy, scan_codex, scan_grok, scan_kimi_tree,
+    scan_opencode, scan_pi, scan_tree_cached_with_sink, scan_zcode, CacheConfig, ScanStats,
 };
 use collector_provider::{HttpClient, ProviderError, UreqHttpClient};
 use collector_runtime::{BoundedQueue, RuntimeError, RuntimeLimits};
@@ -174,6 +174,12 @@ pub fn collect_agent_usage_with_dependencies(
             "ZCode",
             "本机 ZCode 会话, 精确 token 计数",
             "未发现 ZCode 会话记录",
+        ),
+        (
+            "codebuddy",
+            "CodeBuddy",
+            "本机 CodeBuddy 会话, 精确 token 计数",
+            "未发现 CodeBuddy 会话记录",
         ),
     ];
     let mut agents = Vec::with_capacity(agent_specs.len());
@@ -419,11 +425,17 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
                 home.join(".local/share/opencode/opencode.db"),
             );
             let zcode = source_path(context, "zcode_db", home.join(".zcode/cli/db/db.sqlite"));
+            let codebuddy = source_path(
+                context,
+                "codebuddy_projects",
+                home.join(".codebuddy/projects"),
+            );
 
             let source_results = [
                 ("kimi-work", scan_kimi_tree(&kimi_work, &context.window)),
                 ("claude-code", scan_claude(&claude, &context.window)),
                 ("codex", scan_codex(&codex_roots, &context.window)),
+                ("codebuddy", scan_codebuddy(&codebuddy, &context.window)),
                 (
                     "grok",
                     scan_grok(

@@ -516,6 +516,87 @@ pub fn scan_claude(root: &Path, window: &CollectionWindow) -> SourceScan {
     finish(window, builder, stats.clone(), stats.files_scanned > 0)
 }
 
+/// Scan CodeBuddy CLI conversation trees (`~/.codebuddy/projects`).
+///
+/// Layout mirrors Claude Code: `<path-encoded-project>/<session>.jsonl`, one
+/// record per line. Usage rides on records with top-level
+/// `type == "message" && role == "assistant"`: `message.usage` carries
+/// normalized `{input_tokens (incl. cache_read), output_tokens,
+/// cache_read_input_tokens}` — the builder wants pure input, so cache_read
+/// is subtracted before folding. The model name lives in
+/// `providerData.model`, `timestamp` is epoch millis, and
+/// `providerData.messageId` dedupes repeated writes (same coalescing
+/// strategy as Claude).
+pub fn scan_codebuddy(root: &Path, window: &CollectionWindow) -> SourceScan {
+    let mut best = BTreeMap::<String, ClaudeUsage>::new();
+    let mut direct = Vec::<ClaudeUsage>::new();
+    let stats = scan_jsonl_tree(root, window.cutoff_ts, |path, _, line, stats| {
+        let Some(value) = parse_json_line(line, stats) else {
+            return;
+        };
+        if value.get("type").and_then(Value::as_str) != Some("message")
+            || value.get("role").and_then(Value::as_str) != Some("assistant")
+        {
+            return;
+        }
+        let Some(timestamp) = value.get("timestamp").and_then(Value::as_i64) else {
+            return;
+        };
+        let message = value.get("message").unwrap_or(&Value::Null);
+        let usage = message.get("usage");
+        let Some(usage) = usage.filter(|usage| usage.is_object()) else {
+            return;
+        };
+        let cache_read = number_u64(usage.get("cache_read_input_tokens"));
+        let usage = ClaudeUsage {
+            // input_tokens 含 cache_read, 折叠口径需要纯输入.
+            input: number_u64(usage.get("input_tokens")).saturating_sub(cache_read),
+            output: number_u64(usage.get("output_tokens")),
+            cache_read,
+            cache_creation: 0,
+            timestamp_millis: timestamp,
+            model: value
+                .get("providerData")
+                .and_then(|provider| provider.get("model"))
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+            project: project_from_parent(path),
+        };
+        let id = value
+            .get("providerData")
+            .and_then(|provider| provider.get("messageId"))
+            .and_then(Value::as_str);
+        if let Some(id) = id {
+            let entry = best.entry(id.to_owned()).or_default();
+            entry.input = entry.input.max(usage.input);
+            entry.output = entry.output.max(usage.output);
+            entry.cache_read = entry.cache_read.max(usage.cache_read);
+            entry.cache_creation = entry.cache_creation.max(usage.cache_creation);
+            entry.timestamp_millis = usage.timestamp_millis;
+            entry.model = usage.model;
+            entry.project = usage.project;
+        } else {
+            direct.push(usage);
+        }
+        stats.usage_records = stats.usage_records.saturating_add(1);
+    })
+    .unwrap_or_else(|_| ScanStats::default());
+    let mut builder = UsageContributionBuilder::new(window.clone());
+    for usage in best.into_values().chain(direct) {
+        record(
+            &mut builder,
+            usage.timestamp_millis,
+            usage.model.as_deref(),
+            usage.input,
+            usage.output,
+            usage.cache_read,
+            usage.cache_creation,
+            usage.project.as_deref(),
+        );
+    }
+    finish(window, builder, stats.clone(), stats.files_scanned > 0)
+}
+
 /// Scan Codex CLI and Orca rollout JSONL files.  The quota snapshot remains a
 /// provider concern; this function only builds the local token contribution.
 pub fn scan_codex(roots: &[PathBuf], window: &CollectionWindow) -> SourceScan {
@@ -1054,6 +1135,65 @@ mod tests {
                 .unwrap_or(0),
             10_000 * 7,
             "最新 10_000 行应完整计入 7/28"
+        );
+        fs::remove_dir_all(&root).ok();
+    }
+
+    /// CodeBuddy 会话树扫描: assistant 行 usage (input 含 cache_read 需扣减)、
+    /// providerData.model 模型名、messageId 去重取各字段最大值, 非消息行忽略.
+    #[test]
+    fn codebuddy_scans_assistant_usage_with_message_id_dedup() {
+        let root = temp_root("codebuddy");
+        let session_dir = root.join("Users-sivan-demo-project");
+        fs::create_dir_all(&session_dir).unwrap();
+        let base = 1_785_211_200_000_i64; // 2026-07-28 12:00+08 (窗口今天)
+        let line = |role: &str, input: u64, output: u64, cache_read: u64, id: Option<&str>| {
+            json!({
+                "type": "message",
+                "role": role,
+                "timestamp": base,
+                "message": { "usage": {
+                    "input_tokens": input,
+                    "output_tokens": output,
+                    "cache_read_input_tokens": cache_read,
+                    "total_tokens": input + output,
+                }},
+                "providerData": {
+                    "model": "hy3",
+                    "messageId": id,
+                },
+            })
+            .to_string()
+        };
+        let content = [
+            // 无 usage 的 assistant 行 (流式部分写入) 应忽略.
+            json!({"type": "message", "role": "assistant", "timestamp": base}).to_string(),
+            // m1 首次: input 1000(含 cache 200) → 纯输入 800, 总量 1100.
+            line("assistant", 1000, 100, 200, Some("m1")),
+            // m1 重写: input 1500 → 去重后各字段取最大, 总量 1600 (不叠加).
+            line("assistant", 1500, 100, 200, Some("m1")),
+            // 无 messageId 的直接行: 总量 50.
+            line("assistant", 50, 0, 0, None),
+            // 非 assistant 行忽略.
+            line("user", 999, 0, 0, Some("m2")),
+        ]
+        .join("\n");
+        fs::write(session_dir.join("session-a.jsonl"), content).unwrap();
+
+        let scan = super::scan_codebuddy(&root, &window());
+        assert!(scan.diagnostic.is_none(), "扫描不应报错");
+        assert!(scan.found, "应识别到会话文件");
+        let today = &scan.contribution.by_day["2026-07-28"];
+        assert_eq!(today.total, 1600 + 50, "去重后的 m1 加直接行");
+        assert_eq!(today.input, 1300 + 50, "纯输入口径 (已扣 cache_read)");
+        assert_eq!(today.cache_read, 200, "cache_read 单列");
+        assert_eq!(
+            scan.contribution.models_today[0].model, "hy3",
+            "模型名取自 providerData.model"
+        );
+        assert_eq!(
+            scan.contribution.projects_today[0].name, "Users-sivan-demo-project",
+            "项目名取自会话目录"
         );
         fs::remove_dir_all(&root).ok();
     }

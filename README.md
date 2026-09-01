@@ -3,6 +3,17 @@
   <h1>Bruce</h1>
   <p><strong>macOS 菜单栏里的 AI Agent 用量与订阅额度看板</strong></p>
   <p>一条帮你看住每个 token 的本地小狗 🐶</p>
+  <p>
+    <a href="https://github.com/4everSivan/Bruce/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/4everSivan/Bruce/ci.yml?branch=main&amp;style=flat-square&amp;label=CI%2FCD" alt="CI/CD" /></a>
+    <a href="https://github.com/4everSivan/Bruce/releases"><img src="https://img.shields.io/badge/version-v0.5-0A7EA4?style=flat-square" alt="Version v0.5" /></a>
+    <a href="#环境要求"><img src="https://img.shields.io/badge/macOS-14%2B-000000?style=flat-square&amp;logo=apple&amp;logoColor=white" alt="macOS 14+" /></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-4CBB17?style=flat-square" alt="MIT License" /></a>
+  </p>
+  <p>
+    <a href="macos/BruceApp/Package.swift"><img src="https://img.shields.io/badge/Swift-6.2-F05138?style=flat-square&amp;logo=swift&amp;logoColor=white" alt="Swift 6.2" /></a>
+    <a href="rust/Bruce-collector/Cargo.toml"><img src="https://img.shields.io/badge/Rust-2021-000000?style=flat-square&amp;logo=rust&amp;logoColor=white" alt="Rust 2021" /></a>
+    <a href="https://linux.do/"><img src="https://img.shields.io/badge/LINUX-DO-FFB003?style=flat-square" alt="LINUX DO" /></a>
+  </p>
 </div>
 
 Bruce 把本机 AI Agent 的 token 用量、成本估算和订阅额度集中到一个原生 macOS 菜单栏应用中。原生层负责依赖扫描、登录授权、凭证管理、定时刷新、缓存与故障恢复; Rust Collector 负责采集; 弹出面板以原生 SwiftUI 渲染 (macOS 26+ 可选液态玻璃主题, 更低系统自动使用经典材质风格)。项目本地优先运行, 无自有服务端。
@@ -27,7 +38,7 @@ Bruce 把本机 AI Agent 的 token 用量、成本估算和订阅额度集中到
 
 | 类别 | 覆盖 |
 |---|---|
-| 本机会话扫描 | Kimi Work / Kimi Code、Claude Code、Codex、Grok、OpenCode、Orca、Pi、ZCode |
+| 本机会话扫描 | Kimi Work / Kimi Code、Claude Code、Codex、Grok、OpenCode、Orca、Pi、ZCode、CodeBuddy |
 | 订阅额度 | Kimi、DeepSeek、火山引擎、Codex OAuth、Antigravity、Claude、Grok、OpenCode Go、智谱 GLM |
 
 > 仓库根 `*/widget/` 单文件 Widget 继续保留, 仅服务 Daimon / Kimi Work Blueprint 场景, 不属于 App 的组成部分。
@@ -209,6 +220,10 @@ Widget (Daimon 场景) 的 JSON fixture 继续由 `scripts/check-collector-fixtu
 - [发布人工验收清单](docs/development/05-release-acceptance.md)
 - [正式打包与发布](docs/development/08-production-packaging-and-release.md)
 - [1.0 Rust Collector 构建目标](docs/development/14-rust-collector-v1-build-target.md)
+
+## 社区与致谢
+
+感谢 [LINUX DO](https://linux.do/) 社区为开发者交流和开源分享提供平台。
 
 ## License
 
