@@ -809,7 +809,7 @@ pub fn scan_zcode(path: &Path, window: &CollectionWindow) -> SourceScan {
         "SELECT m.started_at, m.model_id, m.input_tokens, m.output_tokens, \
          m.reasoning_tokens, m.cache_creation_input_tokens, m.cache_read_input_tokens, \
          s.directory, s.task_type FROM model_usage m LEFT JOIN session s ON s.id = m.session_id \
-         WHERE m.started_at >= ?1 ORDER BY m.started_at LIMIT ?2",
+         WHERE m.started_at >= ?1 ORDER BY m.started_at DESC LIMIT ?2",
     ) {
         Ok(statement) => statement,
         Err(error) => {
@@ -819,6 +819,8 @@ pub fn scan_zcode(path: &Path, window: &CollectionWindow) -> SourceScan {
     let mut builder = UsageContributionBuilder::new(window.clone());
     let mut stats = ScanStats::default();
     let cutoff_ms = (window.cutoff_ts * 1000.0) as i64;
+    // 行数超上限时按 started_at DESC 截断, 保留最新记录 (旧记录滑出窗口后自愈);
+    // 折叠前反转回时间升序, 保持模型出现顺序等聚合语义与全量扫描一致.
     let rows = match statement.query_map([cutoff_ms, MAX_SOURCE_ROWS], |row| {
         Ok((
             row.get::<_, i64>(0)?,
@@ -835,22 +837,24 @@ pub fn scan_zcode(path: &Path, window: &CollectionWindow) -> SourceScan {
         Ok(rows) => rows,
         Err(error) => return sqlite_error(window, &format!("本机 zcode 数据库查询失败: {error}")),
     };
+    let mut collected = Vec::new();
     for row in rows {
         stats.sqlite_rows_read = stats.sqlite_rows_read.saturating_add(1);
-        let Ok((
-            started_at,
-            model,
-            input,
-            output,
-            reasoning,
-            cache_creation,
-            cache_read,
-            directory,
-            task_type,
-        )) = row
-        else {
-            continue;
-        };
+        let Ok(row) = row else { continue };
+        collected.push(row);
+    }
+    for (
+        started_at,
+        model,
+        input,
+        output,
+        reasoning,
+        cache_creation,
+        cache_read,
+        directory,
+        task_type,
+    ) in collected.into_iter().rev()
+    {
         let input = u64::try_from(input.unwrap_or(0)).unwrap_or(0);
         let output = u64::try_from(output.unwrap_or(0)).unwrap_or(0);
         let reasoning = u64::try_from(reasoning.unwrap_or(0)).unwrap_or(0);
@@ -907,6 +911,75 @@ mod tests {
         ));
         fs::create_dir_all(&root).unwrap();
         root
+    }
+
+    /// 行数超上限时必须保留最新记录: 10_010 行中最早的 10 行被截掉,
+    /// 最新 10_000 行全部进入聚合 (7/26 归零, 7/28 完整).
+    #[test]
+    fn zcode_row_cap_keeps_newest_rows() {
+        use rusqlite::Connection;
+        let root = temp_root("zcode-cap");
+        let db_path = root.join("db.sqlite");
+        let connection = Connection::open(&db_path).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE session (id text primary key, directory text, task_type text);
+                 CREATE TABLE model_usage (
+                    started_at integer not null, model_id text,
+                    input_tokens integer, output_tokens integer, reasoning_tokens integer,
+                    cache_creation_input_tokens integer, cache_read_input_tokens integer,
+                    session_id text
+                 );",
+            )
+            .unwrap();
+        // 窗口: 2026-07-26 00:00+08 = base - 216_000_000ms; base = 7/28 12:00+08.
+        let base = 1_785_211_200_000_i64;
+        let old_ts = base - 215_700_000; // 7/26 00:05+08
+        let new_ts = base - 3_600_000; // 7/28 11:00+08
+        connection.execute("BEGIN", []).unwrap();
+        for i in 0..10 {
+            connection
+                .execute(
+                    "INSERT INTO model_usage (started_at, model_id, input_tokens, output_tokens) \
+                     VALUES (?1, 'glm', 1000, 0)",
+                    [old_ts + i],
+                )
+                .unwrap();
+        }
+        for i in 0..10_000 {
+            connection
+                .execute(
+                    "INSERT INTO model_usage (started_at, model_id, input_tokens, output_tokens) \
+                     VALUES (?1, 'glm', 10, 0)",
+                    [new_ts + i],
+                )
+                .unwrap();
+        }
+        connection.execute("COMMIT", []).unwrap();
+        drop(connection);
+
+        let scan = super::scan_zcode(&db_path, &window());
+        assert!(scan.diagnostic.is_none(), "扫描不应报错");
+        assert!(scan.found, "应识别到数据");
+        assert_eq!(scan.stats.sqlite_rows_read, 10_000, "应恰好读到上限行数");
+        let by_day = &scan.contribution.by_day;
+        assert_eq!(
+            by_day
+                .get("2026-07-26")
+                .map(|bucket| bucket.total)
+                .unwrap_or(0),
+            0,
+            "被截断的最早 10 行不得计入 7/26"
+        );
+        assert_eq!(
+            by_day
+                .get("2026-07-28")
+                .map(|bucket| bucket.total)
+                .unwrap_or(0),
+            10_000 * 10,
+            "最新 10_000 行应完整计入 7/28"
+        );
+        fs::remove_dir_all(&root).ok();
     }
 
     fn write_token_file(
