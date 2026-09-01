@@ -735,20 +735,30 @@ pub fn scan_opencode(path: &Path, window: &CollectionWindow) -> SourceScan {
     if !any_message {
         return SourceScan::empty(window);
     }
-    let mut statement =
-        match connection.prepare("SELECT data FROM message WHERE data LIKE '%tokens%' LIMIT ?1") {
-            Ok(statement) => statement,
-            Err(_) => return sqlite_error(window, "本机 opencode 数据库 schema 不兼容"),
-        };
+    // 行数超上限时按 rowid DESC 截断, 保留最新插入的消息 (rowid 随追加单调递增);
+    // WITHOUT ROWID 表不支持该排序时回退旧行为 (无序全量前 N 行), 不把兼容性变成报错.
+    let mut statement = match connection
+        .prepare("SELECT data FROM message WHERE data LIKE '%tokens%' ORDER BY rowid DESC LIMIT ?1")
+        .or_else(|_| {
+            connection.prepare("SELECT data FROM message WHERE data LIKE '%tokens%' LIMIT ?1")
+        }) {
+        Ok(statement) => statement,
+        Err(_) => return sqlite_error(window, "本机 opencode 数据库 schema 不兼容"),
+    };
     let mut builder = UsageContributionBuilder::new(window.clone());
     let mut stats = ScanStats::default();
     let rows = match statement.query_map([MAX_SOURCE_ROWS], |row| row.get::<_, String>(0)) {
         Ok(rows) => rows,
         Err(_) => return sqlite_error(window, "本机 opencode 数据库查询失败"),
     };
+    let mut collected = Vec::new();
     for row in rows {
         stats.sqlite_rows_read = stats.sqlite_rows_read.saturating_add(1);
         let Ok(data) = row else { continue };
+        collected.push(data);
+    }
+    // 回放顺序反转为时间升序, 保持聚合语义与全量扫描一致.
+    for data in collected.into_iter().rev() {
         let Ok(value) = serde_json::from_str::<Value>(&data) else {
             stats.malformed_lines = stats.malformed_lines.saturating_add(1);
             continue;
@@ -977,6 +987,72 @@ mod tests {
                 .map(|bucket| bucket.total)
                 .unwrap_or(0),
             10_000 * 10,
+            "最新 10_000 行应完整计入 7/28"
+        );
+        fs::remove_dir_all(&root).ok();
+    }
+
+    /// 行数超上限时按 rowid DESC 保留最新消息: 最早的 10 行被截掉,
+    /// 最新 10_000 行完整进入聚合.
+    #[test]
+    fn opencode_row_cap_keeps_newest_messages() {
+        use rusqlite::Connection;
+        let root = temp_root("opencode-cap");
+        let db_path = root.join("opencode.db");
+        let connection = Connection::open(&db_path).unwrap();
+        connection
+            .execute("CREATE TABLE message (data text not null)", [])
+            .unwrap();
+        let base = 1_785_211_200_000_i64; // 7/28 12:00+08
+        let old_ts = base - 215_700_000; // 7/26 00:05+08
+        let new_ts = base - 3_600_000; // 7/28 11:00+08
+        let message = |created: i64, input: u64| {
+            json!({
+                "role": "assistant",
+                "time": { "created": created },
+                "tokens": { "input": input, "output": 0 },
+                "modelID": "qwen3-coder",
+            })
+            .to_string()
+        };
+        connection.execute("BEGIN", []).unwrap();
+        for i in 0..10 {
+            connection
+                .execute(
+                    "INSERT INTO message (data) VALUES (?1)",
+                    [&message(old_ts + i, 1000)],
+                )
+                .unwrap();
+        }
+        for i in 0..10_000 {
+            connection
+                .execute(
+                    "INSERT INTO message (data) VALUES (?1)",
+                    [&message(new_ts + i, 7)],
+                )
+                .unwrap();
+        }
+        connection.execute("COMMIT", []).unwrap();
+        drop(connection);
+
+        let scan = super::scan_opencode(&db_path, &window());
+        assert!(scan.diagnostic.is_none(), "扫描不应报错");
+        assert_eq!(scan.stats.sqlite_rows_read, 10_000, "应恰好读到上限行数");
+        let by_day = &scan.contribution.by_day;
+        assert_eq!(
+            by_day
+                .get("2026-07-26")
+                .map(|bucket| bucket.total)
+                .unwrap_or(0),
+            0,
+            "被截断的最早 10 行不得计入 7/26"
+        );
+        assert_eq!(
+            by_day
+                .get("2026-07-28")
+                .map(|bucket| bucket.total)
+                .unwrap_or(0),
+            10_000 * 7,
             "最新 10_000 行应完整计入 7/28"
         );
         fs::remove_dir_all(&root).ok();
