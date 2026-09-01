@@ -425,11 +425,13 @@ struct UsageHeroCard: View {
                 .monospacedDigit()
                 .foregroundStyle(Self.faint)
                 .frame(width: 30, alignment: .trailing)
+            // 数值列按 "10000M" 量级预留宽度并单行显示, 过千数值 (如 5626.4M) 不再折行.
             Text(row.totalText)
                 .font(.system(size: 11, weight: .semibold))
                 .monospacedDigit()
                 .foregroundStyle(Self.ink.opacity(0.9))
-                .frame(width: 46, alignment: .trailing)
+                .lineLimit(1)
+                .frame(width: 62, alignment: .trailing)
         }
         .padding(.vertical, 5)
     }
