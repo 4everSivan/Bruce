@@ -16,7 +16,7 @@ use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::fs::{self, File};
-use std::io::{self, BufReader, Read};
+use std::io::{self, BufReader, Read, Seek};
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
@@ -251,6 +251,22 @@ struct CodexFileCandidate {
     modified: f64,
     size: u64,
     digest: Option<String>,
+    device: u64,
+    inode: u64,
+}
+
+/// 文件物理身份 (dev, inode); 非 unix 平台回落 (0, 0) 表示不可用.
+fn file_identity(metadata: &fs::Metadata) -> (u64, u64) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        (metadata.dev(), metadata.ino())
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = metadata;
+        (0, 0)
+    }
 }
 
 fn collect_codex_files(
@@ -307,14 +323,15 @@ fn collect_codex_files(
             if file_name.starts_with("rollout-") && file_name.ends_with(".jsonl") {
                 (format!("rollout:{file_name}"), None)
             } else {
-                match digest_file(&canonical) {
-                    Ok(digest) => (format!("content:{digest}"), Some(digest)),
+                match fingerprint_file(&canonical, metadata.len()) {
+                    Ok(fingerprint) => (format!("content:{fingerprint}"), Some(fingerprint)),
                     Err(_) => {
                         stats.io_errors = stats.io_errors.saturating_add(1);
                         (format!("path:{}", canonical.display()), None)
                     }
                 }
             };
+        let (device, inode) = file_identity(&metadata);
         groups
             .entry(group_key)
             .or_default()
@@ -323,6 +340,8 @@ fn collect_codex_files(
                 modified,
                 size: metadata.len(),
                 digest,
+                device,
+                inode,
             });
     }
     Ok(())
@@ -346,6 +365,18 @@ fn resolve_codex_files(
             let mut conflict = winner_digest.is_err();
             let winner_digest = winner_digest.ok();
             for candidate in &group {
+                // 硬链接副本 (同 dev+inode) 是同一物理文件, 零 IO 判等;
+                // Orca 的 codex-accounts 与 runtime-home 即此形态, 免去 GB 级重读.
+                if winner.inode != 0
+                    && candidate.inode == winner.inode
+                    && candidate.device == winner.device
+                {
+                    continue;
+                }
+                if candidate.size != winner.size {
+                    conflict = true;
+                    continue;
+                }
                 let digest = candidate_digest(candidate);
                 match (&winner_digest, digest) {
                     (Some(winner), Ok(candidate)) if winner == &candidate => {}
@@ -378,20 +409,29 @@ fn candidate_preference(left: &CodexFileCandidate, right: &CodexFileCandidate) -
 fn candidate_digest(candidate: &CodexFileCandidate) -> io::Result<String> {
     match &candidate.digest {
         Some(digest) => Ok(digest.clone()),
-        None => digest_file(&candidate.path),
+        None => fingerprint_file(&candidate.path, candidate.size),
     }
 }
 
-fn digest_file(path: &Path) -> io::Result<String> {
+/// 头尾指纹: 首 64KB + 末 64KB + size 的 SHA-256.
+/// 代替全文件哈希做副本判等 — GB 级 rollout 每轮刷新全量重读会让采集
+/// 卡在分钟级; 指纹只读固定量字节. 同头同尾同长但中段不同的极端构造
+/// 会被误判为相同副本 (可接受: 仍只计一次用量, 不会重复计数).
+fn fingerprint_file(path: &Path, size: u64) -> io::Result<String> {
+    const CHUNK: u64 = 64 * 1024;
     let mut file = File::open(path)?;
     let mut hasher = Sha256::new();
-    let mut buffer = [0u8; 64 * 1024];
-    loop {
-        let read = file.read(&mut buffer)?;
-        if read == 0 {
-            break;
-        }
-        hasher.update(&buffer[..read]);
+    hasher.update(size.to_le_bytes());
+    let mut buffer = vec![0u8; CHUNK as usize];
+    // 头部块 (整文件不足一块时即全部内容).
+    let head_len = file.by_ref().take(CHUNK).read(&mut buffer)?;
+    hasher.update(&buffer[..head_len]);
+    // 中段存在时直接 seek 到末块前读取, 不重读中段.
+    if size > CHUNK {
+        file.seek(io::SeekFrom::Start(size - CHUNK))?;
+        let mut tail = Vec::with_capacity(CHUNK as usize);
+        file.by_ref().take(CHUNK).read_to_end(&mut tail)?;
+        hasher.update(&tail);
     }
     Ok(format!("{:x}", hasher.finalize()))
 }
@@ -1300,6 +1340,38 @@ mod tests {
         assert_eq!(result.stats.duplicate_session_groups, 1);
         assert_eq!(result.stats.conflict_session_groups, 1);
         assert!(result.diagnostic.is_some());
+        fs::remove_dir_all(first).unwrap();
+        fs::remove_dir_all(second).unwrap();
+    }
+
+    /// 硬链接副本 (Orca 双根形态) 与大文件 (>64KB, 走头尾指纹 seek 路径)
+    /// 均判为相同副本只计一次, 不再全文件哈希.
+    #[test]
+    fn codex_hardlink_and_large_copies_dedup_without_full_hash() {
+        let first = temp_root("hardlink-first");
+        let second = temp_root("hardlink-second");
+        // 大 padding 使文件 >128KB, 覆盖指纹的头块 + seek 尾块路径.
+        let big = "x".repeat(200_000);
+        write_token_file(&first, "rollout-hard.jsonl", 10, 2, 100, &big);
+        let source = first
+            .join("2026")
+            .join("07")
+            .join("28")
+            .join("rollout-hard.jsonl");
+        let link_dir = second.join("2026").join("07").join("28");
+        fs::create_dir_all(&link_dir).unwrap();
+        fs::hard_link(&source, link_dir.join("rollout-hard.jsonl")).unwrap();
+
+        let result = scan_codex(&[first.clone(), second.clone()], &window());
+
+        assert_eq!(result.stats.files_scanned, 1, "硬链接副本只计一次");
+        assert_eq!(result.stats.duplicate_files_skipped, 1);
+        assert_eq!(result.stats.duplicate_session_groups, 1);
+        assert_eq!(
+            result.stats.conflict_session_groups, 0,
+            "同 inode 不得判冲突"
+        );
+        assert!(result.diagnostic.is_none());
         fs::remove_dir_all(first).unwrap();
         fs::remove_dir_all(second).unwrap();
     }
