@@ -104,17 +104,53 @@
     --hairline: rgba(255,255,255,.16);
     --track: rgba(255,255,255,.12);
     --hero-grad: none;
-    --accent: #ff2e3d;
-    --live: #ff2e3d;
-    --heat-empty: rgba(255,255,255,.08);
+    /* Nothing accent: 深色 = hero 呼吸灯绿 (nothingHeroAccent #4A9E5C) */
+    --n-accent: #4A9E5C;
+    --n-accent-text: #fff;
+    --accent: var(--n-accent);
+    --live: var(--n-accent);
+    --heat-empty: #1a1a1a;
     --chip-bg-cur: rgba(255,255,255,.14);
     --chip-bg: transparent;
     --chip-stroke: rgba(255,255,255,.28);
-    --chip-stroke-sel: rgba(255,255,255,.85);
-    --chip-radius: 3px;
+    --chip-stroke-sel: var(--n-accent);
+    --chip-label-cur: var(--n-accent);
     --seg-bg: transparent;
-    --seg-active-bg: #fff;
-    --seg-active-text: #000;
+    --seg-active-bg: var(--n-accent);
+    --seg-active-text: #fff;
+    --seg-radius: 3px;
+    --bar-radius: 0;
+    --dot-radius: 1px;
+    --name-transform: uppercase;
+    --name-spacing: .1em;
+  }
+  /* Nothing 白: 浅色模式 accent = warning 橘 (#D4A843) */
+  .card[data-theme="nothing-light"] {
+    --card-bg: #fff;
+    --card-border: #e8e8e8;
+    --card-shadow: none;
+    --card-radius: 6px;
+    --font: "SF Mono", ui-monospace, Menlo, monospace;
+    --text: #1a1a1a;
+    --text-strong: #000;
+    --text-sub: #666;
+    --text-faint: #999;
+    --hairline: #e8e8e8;
+    --track: #f0f0f0;
+    --hero-grad: none;
+    --n-accent: #D4A843;
+    --n-accent-text: #fff;
+    --accent: var(--n-accent);
+    --live: var(--n-accent);
+    --heat-empty: #f0f0f0;
+    --chip-bg-cur: #f0f0f0;
+    --chip-bg: transparent;
+    --chip-stroke: #e8e8e8;
+    --chip-stroke-sel: var(--n-accent);
+    --chip-label-cur: var(--n-accent);
+    --seg-bg: transparent;
+    --seg-active-bg: var(--n-accent);
+    --seg-active-text: #fff;
     --seg-radius: 3px;
     --bar-radius: 0;
     --dot-radius: 1px;
@@ -135,15 +171,18 @@
     -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
   }
   /* Nothing: 原版样式 = display 字体 + 红色方点作小数点 + 呼吸微光 */
-  .card[data-theme="nothing"] .hero-num {
-    background: none; -webkit-text-fill-color: #fff; letter-spacing: -1px;
-    text-shadow: 0 0 14px rgba(255,46,61,.45);
+  /* Nothing: 原版样式 = display 字体 + accent 方点作小数点 + 呼吸微光 (深绿/浅橘) */
+  .card[data-theme="nothing"] .hero-num,
+  .card[data-theme="nothing-light"] .hero-num {
+    background: none; -webkit-text-fill-color: var(--text-strong); letter-spacing: -1px;
+    text-shadow: 0 0 14px color-mix(in srgb, var(--n-accent) 55%, transparent);
     animation: nBreath 1.3s ease-in-out infinite alternate;
     display: inline-flex; align-items: center; gap: 5px;
   }
-  .card[data-theme="nothing"] .hero-num .dot-sep {
-    width: 5px; height: 5px; background: #ff2e3d; border-radius: 1px;
-    box-shadow: 0 0 10px rgba(255,46,61,.8);
+  .card[data-theme="nothing"] .hero-num .dot-sep,
+  .card[data-theme="nothing-light"] .hero-num .dot-sep {
+    width: 5px; height: 5px; background: var(--n-accent); border-radius: 1px;
+    box-shadow: 0 0 10px var(--n-accent);
   }
   @keyframes nBreath { from { opacity: 1; } to { opacity: .86; } }
   @media (prefers-reduced-motion: reduce) {
@@ -244,8 +283,14 @@
       <div class="card" data-theme="glass-light" data-mount></div>
     </div>
     <div class="variant">
-      <div class="variant-label"><span class="tag">主题 3</span><h2>Nothing · 黑</h2></div>
+      <div class="variant-label"><span class="tag">主题 3</span><h2>Nothing · 黑 (深色 accent 绿)</h2></div>
       <div class="card" data-theme="nothing" data-mount></div>
+      <p class="variant-desc">呼吸灯绿 (#4A9E5C) 贯穿: 热力图填充格、月卡选中、模型档位激活态; hero 方点与微光同色。</p>
+    </div>
+    <div class="variant">
+      <div class="variant-label"><span class="tag">主题 4</span><h2>Nothing · 白 (浅色 accent 橘)</h2></div>
+      <div class="card" data-theme="nothing-light" data-mount></div>
+      <p class="variant-desc">浅色 Nothing: warning 橘 (#D4A843) 为 accent, 结构与黑版逐节点一致。</p>
     </div>
   </div>
 
@@ -366,8 +411,9 @@ function heroHTML(theme) {
 }
 function renderHeat(root) {
   // 对齐 makeUsageHeatmap: 网格起点 = 首日所在周的周一; level 按 100M 绝对阈值 0-5 档;
-  // 窗口外/未来格透明; Nothing 下白阶透明度分档 + 错相位呼吸 (col*0.12 + row*0.05 相位).
-  const nothing = root.dataset.theme === "nothing";
+  // 窗口外/未来格透明; Nothing 下填充格 = 主题 accent (深绿/浅橘) 透明度分档 + 错相位呼吸.
+  const nothing = (root.dataset.theme || "").startsWith("nothing");
+  const accent = getComputedStyle(root).getPropertyValue("--n-accent").trim() || "#4A9E5C";
   const heatLevel = v => v <= 0 ? 0 : v < 100 ? 1 : v < 200 ? 2 : v < 300 ? 3 : v < 400 ? 4 : 5;
   const HEAT_COLORS = ["", "var(--heat-1)", "var(--heat-2)", "var(--heat-3)", "var(--heat-4)", "var(--heat-5)"];
   const firstD = DAYS[0].date, lastD = DAYS[DAYS.length - 1].date;
@@ -390,11 +436,11 @@ function renderHeat(root) {
       const lv = heatLevel(day.tot);
       let style;
       if (nothing) {
-        if (lv === 0) style = "background:rgba(255,255,255,.08)";
+        if (lv === 0) style = "background:var(--heat-empty)";
         else {
           const op = [0, 0.2, 0.4, 0.6, 0.8, 1][lv];
           const phase = ((ci * 0.12 + r * 0.05) % 3.2).toFixed(2);
-          style = `background:#fff;--op:${op};animation:nHeat 1.6s ease-in-out ${phase}s infinite alternate`;
+          style = `background:${accent};--op:${op};animation:nHeat 1.6s ease-in-out ${phase}s infinite alternate`;
         }
       } else {
         style = lv === 0 ? "" : `background:${HEAT_COLORS[lv]}`;
@@ -409,9 +455,12 @@ function renderHeat(root) {
   root.querySelector(".heat-axis").innerHTML =
     `<span>${axisText(firstValid)}</span><span>${axisText(lastValid)}</span>`;
   const swatch = lv => {
-    const base = nothing
-      ? (lv === 0 ? "rgba(255,255,255,.08)" : `rgba(255,255,255,${[0, 0.2, 0.4, 0.6, 0.8, 1][lv]})`)
-      : (lv === 0 ? "" : HEAT_COLORS[lv]);
+    if (nothing) {
+      const base = lv === 0 ? "var(--heat-empty)" : accent;
+      const op = lv === 0 ? 1 : [0, 0.2, 0.4, 0.6, 0.8, 1][lv];
+      return `<i style="background:${base};opacity:${op}"></i>`;
+    }
+    const base = lv === 0 ? "" : HEAT_COLORS[lv];
     return `<i ${base ? `style="background:${base}"` : ""}></i>`;
   };
   root.querySelector(".heat-legend").innerHTML = `少 ` + [0, 1, 2, 3, 4, 5].map(swatch).join("") + ` 多`;

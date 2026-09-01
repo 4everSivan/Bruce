@@ -85,13 +85,30 @@ struct SubscriptionCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("订阅用量")
-                    .font(.system(size: 12.5, weight: .semibold))
+                // Nothing 标题与 Token 用量卡 / Agent 用量卡同款:
+                // Space Mono 10 + 字距 + 大写 + secondary; 其余主题保持原样.
+                if theme.interfaceStyle == .nothing {
+                    Text("订阅用量")
+                        .font(NothingFont.mono(12))
+                        .tracking(0.9)
+                        .textCase(.uppercase)
+                        .foregroundStyle(NothingTokens.secondary(colorScheme))
+                } else {
+                    Text("订阅用量")
+                        .font(.system(size: 12.5, weight: .semibold))
+                }
                 Spacer()
                 if let updatedText = viewModel.updatedText {
-                    Text(updatedText)
-                        .font(.system(size: 10.5))
-                        .foregroundStyle(.secondary)
+                    // Nothing 下与卡片其余 mono 标注一致: mono 9 + disabled.
+                    if theme.interfaceStyle == .nothing {
+                        Text(updatedText)
+                            .font(NothingFont.mono(9))
+                            .foregroundStyle(NothingTokens.disabled(colorScheme))
+                    } else {
+                        Text(updatedText)
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
 
@@ -656,8 +673,9 @@ private struct ProviderAccountCard: View {
 
 /// 品牌色首字母徽章: 按 provider id 解析品牌色, 取名称首字符;
 /// 15pt 圆角方块, 白色粗体字母, 深浅色通用.
-/// Nothing 主题 (定稿 .badge): 圆角 3pt, 填充改 display 色 + 反色字母
-/// (dark 白底黑字, light 黑底白字), 不使用品牌色.
+/// Nothing 主题 (S3 柔彩定稿): 圆角 3pt, 品牌色低透明度底 (dark 16% / light 12%)
+/// + 品牌色字母, 保留品牌辨识度且彩色面积最小; grok 品牌色 #111111 在深色底不可读,
+/// 退回 secondary 灰.
 private struct ProviderLogoBadge: View {
     let providerID: String
     let name: String
@@ -682,16 +700,22 @@ private struct ProviderLogoBadge: View {
     }
 
     private var letterColor: Color {
-        isNothing ? invertedDisplayLetter : .white
+        isNothing ? nothingBrandColor : .white
     }
 
     private var backgroundColor: Color {
-        isNothing ? NothingTokens.display(colorScheme) : Self.brandColor(for: providerID)
+        isNothing
+            ? nothingBrandColor.opacity(colorScheme == .dark ? 0.16 : 0.12)
+            : Self.brandColor(for: providerID)
     }
 
-    /// Nothing 反色字母: dark 白底黑字, light 黑底白字.
-    private var invertedDisplayLetter: Color {
-        colorScheme == .dark ? Color(hex: "#000000") : Color(hex: "#FFFFFF")
+    /// Nothing 分支品牌色: grok 的 #111111 在深色表面不可读, 退回 secondary 灰.
+    private var nothingBrandColor: Color {
+        let brand = Self.brandColor(for: providerID)
+        if providerID == "grok" {
+            return colorScheme == .dark ? Color(hex: "#999999") : brand
+        }
+        return brand
     }
 
     private static func brandColor(for providerID: String) -> Color {

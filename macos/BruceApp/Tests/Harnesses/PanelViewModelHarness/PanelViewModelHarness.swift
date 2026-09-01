@@ -200,6 +200,7 @@ struct PanelViewModelHarness {
         try hourlyDetailAggregatesTopAndOther()
         try modelUsageBuildsTiersMonthsAndColors()
         try modelUsageHiddenWithoutMonthData()
+        try nothingRampStableAndDistinctForTopAgents()
         try resetTextVariants()
         try negativeResetEpochYieldsEmptyResetText()
         try tokenAndBalanceFormatting()
@@ -223,7 +224,7 @@ struct PanelViewModelHarness {
         try presentationPolicyTableDrivenRules()
         try singleAccountSectionNameOmitsAccountSuffix()
         try appVersionReadsBundleAndFallsBack()
-        print("PanelViewModel tests passed: 45")
+        print("PanelViewModel tests passed: 46")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -1762,6 +1763,32 @@ struct PanelViewModelHarness {
         try expect(
             !(vm.usage?.monthly.isEmpty ?? true),
             "按月区块不应受模型数据缺失影响"
+        )
+    }
+
+    /// Nothing 绿阶系列色: 5 个高频 agent 占满 5 档且稳定, 深浅模式色板互为反转, 未知 agent 也能落档.
+    private static func nothingRampStableAndDistinctForTopAgents() throws {
+        let top = ["kimi-code-cli", "claude-code", "codex", "zcode", "opencode"]
+        let colors = top.map { PanelAgentColor.nothingRampHex(agentID: $0, darkMode: true) }
+        try expect(
+            Set(colors).count == 5,
+            "5 个高频 agent 应占满 5 档绿阶: \(colors)"
+        )
+        try expect(
+            colors == top.map { PanelAgentColor.nothingRampHex(agentID: $0, darkMode: true) },
+            "同一 agent 绿阶色应稳定不变"
+        )
+        try expect(
+            Set(colors).isSubset(of: ["#8CCB98", "#5FAF6E", "#4A9E5C", "#35854A", "#2A6B3C"]),
+            "深色绿阶色值必须落在定稿 5 档内"
+        )
+        try expect(
+            PanelAgentColor.nothingRampHex(agentID: "kimi-code-cli", darkMode: false) == "#2A6B3C",
+            "浅色模式应取反转色板"
+        )
+        try expect(
+            !PanelAgentColor.nothingRampHex(agentID: "unknown-agent", darkMode: true).isEmpty,
+            "未知 agent 也应稳定落档"
         )
     }
 

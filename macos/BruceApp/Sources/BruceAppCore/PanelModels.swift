@@ -106,6 +106,44 @@ package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
             return ["#30d158", "#5bda7f", "#8ae6a6", "#b8f1cc"]
         }
     }
+
+    /// Nothing 主题系列色: 呼吸灯绿 (#4A9E5C) 基色的 5 档绿阶.
+    /// 深色模式亮→暗 (高频 agent 更亮, 黑底可读), 浅色模式反转保证白底可读;
+    /// 已知 agent 固定档位 (5 个高频 agent 各占一档, 其余按约定复用), 未知 agent 沿用 FNV-1a 散列稳定落档.
+    package static func nothingRampHex(agentID: String, darkMode: Bool) -> String {
+        let ramp = darkMode
+            ? ["#8CCB98", "#5FAF6E", "#4A9E5C", "#35854A", "#2A6B3C"]
+            : ["#2A6B3C", "#35854A", "#4A9E5C", "#5FAF6E", "#8CCB98"]
+        let index: Int
+        switch agentID {
+        case "kimi-code-cli":
+            index = 0
+        case "claude-code":
+            index = 1
+        case "codex":
+            index = 2
+        case "zcode":
+            index = 3
+        case "opencode":
+            index = 4
+        case "kimi-work":
+            // 与 kimi-code-cli 高频同现, 从 0 档移到 4 档避免撞色;
+            // 与 opencode 共档是可接受取舍 (同现概率低), 分段上色场景必须可读.
+            index = 4
+        case "grok":
+            index = 2
+        case "pi":
+            index = 4
+        default:
+            var hash: UInt64 = 0xcbf29ce484222325
+            for byte in agentID.utf8 {
+                hash ^= UInt64(byte)
+                hash &*= 0x100000001b3
+            }
+            index = Int(hash % UInt64(ramp.count))
+        }
+        return ramp[index]
+    }
 }
 
 // MARK: - 展示格式化

@@ -16,6 +16,8 @@ struct HourlyLineCard: View {
 
     /// 已展开明细的 agent id 集合.
     @State private var expandedAgentIDs: Set<String>
+    /// Nothing 点阵柱状图当前悬停的日期列 (触碰列顶才显示当日总量).
+    @State private var hoveredDayDate: String?
     /// 已完成生长的列 (按日期); 逐列延迟插入驱动柱状图自下而上生长.
     @State private var grownColumns: Set<String> = []
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -80,8 +82,9 @@ struct HourlyLineCard: View {
         VStack(alignment: .leading, spacing: 0) {
             cardTitle
             dailyChart
-                // 与标题和高柱标注之间留足间距, 避免遮挡.
-                .padding(.top, 8)
+                // 与标题和高柱标注之间留足间距, 避免遮挡;
+                // Nothing 列顶悬停标注向上 overlay 11pt, 需要更大上方留白.
+                .padding(.top, isNothing ? 20 : 8)
             dailyDateAxis
                 .padding(.top, 3)
             if !dailyLegend.isEmpty {
@@ -97,7 +100,7 @@ struct HourlyLineCard: View {
     private var cardTitle: some View {
         if isNothing {
             Text("Agent 用量")
-                .font(NothingFont.mono(10))
+                .font(NothingFont.mono(12))
                 .tracking(0.9)
                 .foregroundStyle(nothingTokens.secondary)
         } else {
@@ -176,49 +179,101 @@ struct HourlyLineCard: View {
     // MARK: Nothing 点阵柱状图
 
     /// Nothing 点阵柱状图: 每天 3 列 x 8 行 = 24 格 6pt 方格 (圆角 0),
-    /// 格间 2pt / 列间 6pt, 自下而上按当日总量比例填充
-    /// (格子数 = round(v/maxV*24), 至少 1); 填充格 display 纯色, 空格 surface-raised.
-    /// 今天列不用红色 (红色被订阅阈值占用), 改该列下缘 2pt 基线标记 (display 色).
+    /// 格间 2pt; 列均分整行宽, 不再用固定列间距 (固定间距要么留右缘空白,
+    /// 要么总宽超出卡片内容宽撑爆面板导致左右裁切);
+    /// 自下而上按当日总量比例填充 (格子数 = round(v/maxV*24), 至少 1);
+    /// 填充格按 agent 绿阶分段堆叠, 段色 = PanelAgentColor.nothingRampHex,
+    /// 与下方图例色块一一对应 (F3 定稿).
+    /// 列均分整行宽 (每列 flexible slot 居中 22pt 点阵), 左右缘与卡片内容对齐,
+    /// 不留右缘空白.
     private var nothingDailyChart: some View {
-        HStack(alignment: .bottom, spacing: 6) {
-            ForEach(Array(dailyDays.enumerated()), id: \.element.date) { index, day in
-                nothingDayColumn(day, isToday: index == dailyDays.count - 1)
+        HStack(alignment: .bottom, spacing: 0) {
+            ForEach(Array(dailyDays.enumerated()), id: \.element.date) { _, day in
+                nothingDayColumn(day)
+                    .frame(maxWidth: .infinity)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity)
     }
 
-    /// 单日点阵列: 8 行网格 (高 8*6 + 7*2 = 62pt), 今天列下缘 2pt 基线.
-    private func nothingDayColumn(_ day: UsageChartDay, isToday: Bool) -> some View {
+    /// 单日点阵列: 8 行分段网格 (高 8*6 + 7*2 = 62pt).
+    /// 总量标注以 overlay 挂在网格上方 (不参与布局): fixedSize 文本若作为
+    /// VStack 子视图会把每列撑到标注宽度, 进而撑宽整个面板导致裁切;
+    /// overlay + offset 只影响绘制. 常态隐藏, 悬停该列才显示 (T2 触碰定稿).
+    private func nothingDayColumn(_ day: UsageChartDay) -> some View {
         VStack(spacing: 2) {
-            nothingDotGrid(filled: nothingFilledCells(day.total))
-            if isToday {
-                Rectangle()
-                    .fill(nothingTokens.display)
-                    .frame(height: 2)
+            nothingDotGrid(day)
+                .overlay(alignment: .top) {
+                    Text(day.totalText)
+                        .font(NothingFont.mono(7))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .fixedSize()
+                        .foregroundStyle(nothingTokens.secondary)
+                        .opacity(hoveredDayDate == day.date ? 1 : 0)
+                        .offset(y: -11)
+                }
+        }
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            if hovering {
+                hoveredDayDate = day.date
+            } else if hoveredDayDate == day.date {
+                hoveredDayDate = nil
             }
         }
     }
 
     /// 3 列 x 8 行点阵网格, 自下而上填充: 网格序号 (自上而下) 落在
-    /// `24 - filled` 之后的格子为填充格.
-    private func nothingDotGrid(filled: Int) -> some View {
-        VStack(spacing: 2) {
+    /// `24 - filled` 之后的格子为填充格, 格色来自 nothingCellSlots 的分段落槽.
+    private func nothingDotGrid(_ day: UsageChartDay) -> some View {
+        let filled = nothingFilledCells(day.total)
+        let cells = nothingCellSlots(day: day, filled: filled)
+        return VStack(spacing: 2) {
             ForEach(0..<8, id: \.self) { row in
                 HStack(spacing: 2) {
                     ForEach(0..<3, id: \.self) { column in
                         let cellIndex = row * 3 + column
                         Rectangle()
-                            .fill(
-                                cellIndex >= 24 - filled
-                                    ? nothingTokens.display
-                                    : nothingTokens.raised
-                            )
+                            .fill(cells[cellIndex] ?? nothingTokens.raised)
                             .frame(width: 6, height: 6)
                     }
                 }
             }
         }
+    }
+
+    /// 24 格 (自上而下编号) 的分段落槽: 前 `24 - filled` 格为空 (nil),
+    /// 之后按 segments 顺序自下而上堆叠, 每个非零段保底 1 格, 末段吃掉取整余量;
+    /// 段色 = nothingRampHex 绿阶档, 与图例色块同源.
+    /// 无分段数据或格子数少于段数时, 退回 accent 单色填充 (零量日 1 格, 沿用定稿行为).
+    private func nothingCellSlots(day: UsageChartDay, filled: Int) -> [Color?] {
+        let segments = day.segments.filter { $0.value > 0 }
+        guard !segments.isEmpty, filled >= segments.count else {
+            return [Color?](repeating: nil, count: 24 - filled)
+                + [Color?](repeating: nothingTokens.accent, count: filled)
+        }
+        let dark = colorScheme == .dark
+        var slots = [Color?](repeating: nil, count: 24)
+        var index = 24 - filled
+        for (offset, segment) in segments.enumerated() {
+            let count: Int
+            if offset == segments.count - 1 {
+                // 末段吃掉剩余格, 保证总填充数恰为 filled.
+                count = max(0, 24 - index)
+            } else {
+                count = max(1, Int((Double(segment.value) / Double(day.total) * Double(filled)).rounded()))
+            }
+            let color = Color(hex: PanelAgentColor.nothingRampHex(
+                agentID: segment.agentID,
+                darkMode: dark
+            ))
+            for _ in 0..<count where index < 24 {
+                slots[index] = color
+                index += 1
+            }
+        }
+        return slots
     }
 
     /// 填充格数: round(v/maxV*24), 至少 1 (零量日也保留 1 格, 与定稿一致).
@@ -273,7 +328,13 @@ struct HourlyLineCard: View {
             ForEach(Array(dailyLegend.enumerated()), id: \.element.agentID) { index, item in
                 HStack(spacing: 4) {
                     if isNothing {
-                        NothingPatternView(pattern: .at(index), color: nothingTokens.display)
+                        // 图例色块 = 分段点阵的绿阶档色, 与柱状图分段一一对应 (F3 定稿);
+                        // 不再用图案 swatch (旧版单色柱与 per-agent 图例对不上).
+                        Rectangle()
+                            .fill(Color(hex: PanelAgentColor.nothingRampHex(
+                                agentID: item.agentID,
+                                darkMode: colorScheme == .dark
+                            )))
                             .frame(width: 8, height: 8)
                     } else {
                         RoundedRectangle(cornerRadius: 2)
@@ -352,11 +413,16 @@ struct HourlyLineCard: View {
         .contentShape(Rectangle())
     }
 
-    /// 行首: Nothing 用图案 swatch (7pt) 区分 agent, 其余主题保持品牌色块.
+    /// 行首: Nothing 用绿阶色点 (7pt) 区分 agent, 与柱状图分段/图例同源;
+    /// 其余主题保持品牌色块.
     private func headRow(_ row: HourlyAgentRow, expanded: Bool, index: Int) -> some View {
         HStack(spacing: 7) {
             if isNothing {
-                NothingPatternView(pattern: .at(index), color: nothingTokens.display)
+                Rectangle()
+                    .fill(Color(hex: PanelAgentColor.nothingRampHex(
+                        agentID: row.agentID,
+                        darkMode: colorScheme == .dark
+                    )))
                     .frame(width: 7, height: 7)
             } else {
                 RoundedRectangle(cornerRadius: 2)
@@ -399,7 +465,7 @@ struct HourlyLineCard: View {
     }
 
     /// 24 点折线 (0-23 时): agent 色 1.5pt 线 + 淡渐变面积;
-    /// Nothing 用 display 单色 + 按行序透明度档 (1.0/0.66/0.45/0.80) 区分,
+    /// Nothing 用 nothingRampHex 绿阶色描线, 与行首色点/柱状图分段同一身份,
     /// 无面积渐变 (定稿 sparkline 仅描线).
     private func hourlyChart(_ row: HourlyAgentRow, index: Int) -> some View {
         let color = agentColor(row)
@@ -410,7 +476,10 @@ struct HourlyLineCard: View {
                     x: .value("时", point.offset),
                     y: .value("量", point.element)
                 )
-                .foregroundStyle(nothingTokens.display.opacity(NothingPattern.at(index).lineOpacity))
+                .foregroundStyle(Color(hex: PanelAgentColor.nothingRampHex(
+                    agentID: row.agentID,
+                    darkMode: colorScheme == .dark
+                )))
                 .lineStyle(StrokeStyle(lineWidth: 1.5))
             } else {
                 LineMark(
@@ -610,6 +679,8 @@ private struct NothingTokens {
     let raised: Color
     /// 1px 分隔线 border.
     let border: Color
+    /// 呼吸灯 accent (深绿 #4A9E5C / 浅橘 #D4A843), 与 Token 用量卡 nothingHeroAccent 同源.
+    let accent: Color
 
     init(colorScheme: ColorScheme) {
         switch colorScheme {
@@ -620,6 +691,7 @@ private struct NothingTokens {
             disabled = Color(hex: "#666666")
             raised = Color(hex: "#1A1A1A")
             border = Color(hex: "#222222")
+            accent = Color(hex: "#4A9E5C")
         default:
             display = Color(hex: "#000000")
             primary = Color(hex: "#1A1A1A")
@@ -627,6 +699,7 @@ private struct NothingTokens {
             disabled = Color(hex: "#999999")
             raised = Color(hex: "#F0F0F0")
             border = Color(hex: "#E8E8E8")
+            accent = Color(hex: "#D4A843")
         }
     }
 }

@@ -13,6 +13,7 @@ struct UsageHeroCard: View {
     let viewModel: UsageHeroViewModel
 
     @Environment(\.BruceResolvedTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var heroBreathing = false
     /// 模型用量: 展开态与周期选择 (窗口档位 或 点击按月卡指定自然月).
@@ -75,7 +76,7 @@ struct UsageHeroCard: View {
     private var titleRow: some View {
         HStack {
             Text("Token 用量")
-                .font(isNothing ? NothingFont.mono(10) : .system(size: 12.5, weight: .semibold))
+                .font(isNothing ? NothingFont.mono(12) : .system(size: 12.5, weight: .semibold))
                 .tracking(isNothing ? 0.9 : 0)
                 .textCase(isNothing ? Text.Case.uppercase : nil)
                 .foregroundStyle(isNothing ? Self.nothingSecondary : Self.ink)
@@ -254,8 +255,8 @@ struct UsageHeroCard: View {
                     : .system(size: 8.5, weight: month.isCurrent || isSelected ? .semibold : .regular))
                 .tracking(isNothing ? 0.81 : 0.5)
                 .foregroundStyle(isNothing
-                    ? (month.isCurrent || isSelected ? Self.nothingDisplay : Self.nothingSecondary)
-                    : (month.isCurrent || isSelected ? Self.accent : Self.faint))
+                    ? ((month.isCurrent || isSelected) ? Self.nothingHeroAccent : Self.nothingSecondary)
+                    : ((month.isCurrent || isSelected) ? Self.accent : Self.faint))
             Text(month.totalText)
                 .font(isNothing ? NothingFont.mono(13) : .system(size: 13, weight: .semibold))
                 .monospacedDigit()
@@ -276,7 +277,8 @@ struct UsageHeroCard: View {
         .overlay(
             RoundedRectangle(cornerRadius: isNothing ? 3 : 10, style: .continuous)
                 .strokeBorder(
-                    isSelected ? Self.accent.opacity(0.85) :
+                    isSelected && !isNothing ? Self.accent.opacity(0.85) :
+                    isSelected ? Self.nothingHeroAccent :
                     (isNothing
                         ? (month.isCurrent ? Self.nothingBorderVisible : Self.nothingBorder)
                         : Color.adaptive(
@@ -374,12 +376,14 @@ struct UsageHeroCard: View {
                         .background(
                             RoundedRectangle(cornerRadius: isNothing ? 2 : 6, style: .continuous)
                                 .fill(isActiveTier(index)
-                                      ? (isNothing ? Self.nothingDisplay : Color.primary.opacity(0.12))
+                                      ? (isNothing ? Self.nothingHeroAccent : Color.primary.opacity(0.12))
                                       : Color.clear)
                         )
                         .foregroundStyle(
                             isActiveTier(index)
-                                ? (isNothing ? Color.black : Self.ink)
+                                ? (isNothing
+                                   ? (colorScheme == .dark ? Color.white : Color.black)
+                                   : Self.ink)
                                 : Self.subdued
                         )
                 }
@@ -548,8 +552,9 @@ struct UsageHeroCard: View {
             guard let cell else { return .clear }
             if isNothing {
                 guard cell.level > 0 else { return UsageHeroCard.nothingSurfaceRaised }
+                // 填充格与 hero 呼吸灯同 accent (深绿 #4A9E5C / 浅橘 #D4A843), 透明度分档.
                 let op = [0.2, 0.4, 0.6, 0.8, 1.0][min(cell.level, 5) - 1]
-                return UsageHeroCard.nothingDisplay.opacity(op)
+                return UsageHeroCard.nothingHeroAccent.opacity(op)
             }
             guard cell.level > 0 else { return Color.primary.opacity(0.07) }
             let tier: UsageTier
@@ -570,7 +575,8 @@ struct UsageHeroCard: View {
                 return Self.nothingSurfaceRaised
             }
             let opacities: [Double] = [0.2, 0.4, 0.6, 0.8, 1.0]
-            return Self.nothingDisplay.opacity(opacities[min(level, 5) - 1])
+            // 图例与填充格同 accent (深绿/浅橘), 与 hero 呼吸灯一致.
+            return Self.nothingHeroAccent.opacity(opacities[min(level, 5) - 1])
         }
         guard level > 0 else {
             return Color.primary.opacity(0.07)
