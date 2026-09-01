@@ -173,7 +173,15 @@ func dashboardGlassBackground(
         theme: theme,
         colorScheme: colorScheme
     )
-    if plan.backend == .nativeLiquidGlass {
+    if plan.backend == .flatMonochrome {
+        // Nothing: 纯色不透明填充, 零玻璃零材质零阴影; 短路在所有玻璃分支之前,
+        // 不触碰既有 classic / liquidGlass 路径.
+        if surface == .card {
+            shape.fill(tokens.cardFillColor)
+        } else {
+            shape.fill(tokens.panelTintColor)
+        }
+    } else if plan.backend == .nativeLiquidGlass {
         if #available(macOS 26, *) {
             // The AppKit panel is the single native glass surface. A second
             // SwiftUI glass layer can become an opaque light sheet when the

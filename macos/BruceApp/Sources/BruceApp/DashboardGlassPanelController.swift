@@ -40,12 +40,17 @@ final class DashboardGlassPanelController: NSViewController {
     override func loadView() {
         rootView.wantsLayer = true
         rootView.layer?.backgroundColor = NSColor.clear.cgColor
-        rootView.layer?.cornerRadius = 22
+        rootView.layer?.cornerRadius = panelCornerRadius
         rootView.layer?.masksToBounds = true
         rootView.onEffectiveAppearanceChange = { [weak self] in
             self?.refreshSurfaceForEffectiveAppearance()
         }
         view = rootView
+    }
+
+    /// 面板圆角: Nothing 主题 10 (定稿 token), 其余主题维持 22.
+    private var panelCornerRadius: CGFloat {
+        theme.interfaceStyle == .nothing ? 10 : 22
     }
 
     override func viewDidLoad() {
@@ -91,6 +96,10 @@ final class DashboardGlassPanelController: NSViewController {
             appearance: dashboardAppearance(for: preferredColorScheme),
             capabilities: .current
         )
+        // 主题切换后圆角跟随 (nothing=10, 其余=22); updateSurface 的
+        // 相等性短路对 nothing↔其他主题恒不命中 (plan 的 backend/material
+        // 必不相同), 此处重设即可覆盖所有到达路径.
+        rootView.layer?.cornerRadius = panelCornerRadius
         surfaceView?.removeFromSuperview()
         hostingController.view.removeFromSuperview()
 
@@ -127,11 +136,17 @@ final class DashboardGlassPanelController: NSViewController {
         }
 
         switch surfacePlan.backend {
+        case .flatMonochrome:
+            // Nothing: 纯色不透明平面, 吃主题 panelTint (而非系统 windowBackgroundColor),
+            // 零模糊零阴影; 复用 OpaqueSurfaceView 的绘制路径但喂入主题色.
+            return DashboardOpaqueSurfaceView(
+                backgroundColor: nsColor(for: surfaceStyle.panelTint)
+            )
         case .nativeLiquidGlass:
             if #available(macOS 26, *) {
                 let glass = NSGlassEffectView()
                 glass.style = surfacePlan.panelMaterial == .clear ? .clear : .regular
-                glass.cornerRadius = 22
+                glass.cornerRadius = panelCornerRadius
                 // Keep the native backdrop visible while anchoring its
                 // luminance to the content appearance. A clear surface can
                 // otherwise sample a white document window and turn the dark
@@ -190,6 +205,14 @@ final class DashboardGlassPanelController: NSViewController {
         )
     }
 
+    /// Nothing 主题下面板窗口应使用的背景色; 其余主题返回 nil,
+    /// 表示维持 install() 设定的透明窗口行为 (hasShadow=true / .clear).
+    /// 供 MenuBarStatusItemController 在主题切换后刷新面板级属性.
+    var panelWindowTintColor: NSColor? {
+        guard theme.interfaceStyle == .nothing else { return nil }
+        return nsColor(for: surfaceStyle.panelTint)
+    }
+
     private func material(
         for material: DashboardGlassMaterial
     ) -> NSVisualEffectView.Material {
@@ -201,6 +224,10 @@ final class DashboardGlassPanelController: NSViewController {
         case .matte:
             return .windowBackground
         case .classic:
+            return .contentBackground
+        case .nothing:
+            // Nothing plan 走 .flatMonochrome 纯色路径, 不会进入 NSVisualEffectView;
+            // 此分支仅为穷尽 switch, 兜底 contentBackground.
             return .contentBackground
         }
     }
@@ -218,10 +245,24 @@ private final class DashboardGlassRootView: NSView {
 }
 
 private final class DashboardOpaqueSurfaceView: NSView {
+    private let backgroundColor: NSColor
+
+    /// 默认系统 windowBackgroundColor (无障碍降级路径保持原行为);
+    /// Nothing 主题传入主题 panelTint.
+    init(backgroundColor: NSColor = .windowBackgroundColor) {
+        self.backgroundColor = backgroundColor
+        super.init(frame: .zero)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("DashboardOpaqueSurfaceView does not support NSCoder initialization")
+    }
+
     override var isOpaque: Bool { true }
 
     override func draw(_ dirtyRect: NSRect) {
-        NSColor.windowBackgroundColor.setFill()
+        backgroundColor.setFill()
         dirtyRect.fill()
     }
 }

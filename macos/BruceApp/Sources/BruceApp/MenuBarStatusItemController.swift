@@ -87,6 +87,9 @@ final class MenuBarStatusItemController: NSObject {
             },
             onSurfaceThemeChange: { [weak self] theme, colorScheme in
                 self?.dashboardGlassController?.updateSurface(theme: theme, preferredColorScheme: colorScheme)
+                // 面板级属性 (hasShadow/backgroundColor) 不在 updateSurface
+                // 职责范围内, 由本控制器在主题变化后一并刷新.
+                self?.refreshPanelWindowAttributes()
             }
         )
         .environmentObject(model)
@@ -105,6 +108,8 @@ final class MenuBarStatusItemController: NSObject {
         panel.isOpaque = false
         panel.hasShadow = true
         panel.isReleasedWhenClosed = false
+        // 启动即是 Nothing 主题时, 覆盖为无阴影 + 主题纯色窗口背景.
+        refreshPanelWindowAttributes()
         // 点击其他应用时关闭面板 (模拟 transient popover 的点外关闭).
         NotificationCenter.default.addObserver(
             self,
@@ -244,6 +249,20 @@ final class MenuBarStatusItemController: NSObject {
 
     // MARK: - 面板开关
 
+    /// 按当前主题刷新面板窗口级属性. install() 只设一次的 hasShadow /
+    /// backgroundColor 在主题切换后不会自动跟随: Nothing 要求零阴影,
+    /// 其余主题恢复透明窗口 + 阴影. isOpaque 恒为 false (面板圆角依赖
+    /// 窗口四角透明, 内容不透明度由 surface 视图自身保证).
+    private func refreshPanelWindowAttributes() {
+        if let tint = dashboardGlassController?.panelWindowTintColor {
+            panel.hasShadow = false
+            panel.backgroundColor = tint
+        } else {
+            panel.hasShadow = true
+            panel.backgroundColor = .clear
+        }
+    }
+
     private func openDashboard(relativeTo button: NSStatusBarButton) {
         // 先记录打开前的前台应用 (打开路径会把 Bruce 激活, 前台切到 Bruce).
         let frontmost = NSWorkspace.shared.frontmostApplication
@@ -266,6 +285,9 @@ final class MenuBarStatusItemController: NSObject {
             origin.x = min(max(origin.x, visible.minX + 8), visible.maxX - panel.frame.width - 8)
         }
         panel.setFrameOrigin(origin)
+        // 面板关闭期间主题可能已切换且 SwiftUI onChange 尚未触发 (视图未加载),
+        // 打开前兜底刷新一次面板级属性.
+        refreshPanelWindowAttributes()
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
     }

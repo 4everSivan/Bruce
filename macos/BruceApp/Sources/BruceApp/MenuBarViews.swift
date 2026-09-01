@@ -118,6 +118,11 @@ struct MenuBarDashboardView: View {
     let openSettings: @MainActor () -> Void
     let terminateApplication: @MainActor () -> Void
 
+    /// Nothing 主题判定: 仅影响 token (字体/颜色/圆角/间距), 不改布局结构.
+    private var isNothingTheme: Bool {
+        coordinator.resolvedTheme.interfaceStyle == .nothing
+    }
+
     /// 面板理想尺寸变化回调 (宿主控制器据此跟随调整承载窗口尺寸).
     var onContentSizeChange: ((CGSize) -> Void)?
 
@@ -158,6 +163,13 @@ struct MenuBarDashboardView: View {
             VStack(spacing: 0) {
                 footerHairline
                 actionFooter
+            }
+            .background {
+                // Nothing: 底栏按定稿为整段纯色 (dark 纯黑 / light #F5F5F5),
+                // 与发线 (#222222/#E8E8E8) 构成分层; 其余主题不加背景.
+                if isNothingTheme {
+                    Rectangle().fill(nothingFooterBackgroundColor)
+                }
             }
             .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { height in
                 guard height > 0, abs(height - footerHeight) > 0.5 else { return }
@@ -207,7 +219,7 @@ struct MenuBarDashboardView: View {
         let hasCards = panel.usage != nil
             || panel.subscription != nil
             || panel.hourly != nil
-        VStack(spacing: 10) {
+        VStack(spacing: isNothingTheme ? 8 : 10) {
             if let usage = panel.usage {
                 PanelCardContainer {
                     UsageHeroCard(viewModel: usage)
@@ -250,8 +262,11 @@ struct MenuBarDashboardView: View {
                     .font(.system(size: 28))
                     .foregroundStyle(.secondary)
                 Text("未配置模块, 前往设置")
-                    .font(.headline)
+                    .font(isNothingTheme
+                        ? NothingFont.ui(13, weight: .semibold)
+                        : .headline)
                 Button("打开设置", action: openSettings)
+                    .font(isNothingTheme ? NothingFont.ui(13) : nil)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 18)
@@ -279,14 +294,29 @@ struct MenuBarDashboardView: View {
     // MARK: 底栏
 
     /// mockup 底栏顶部分隔: 白 0.5 发线, 深色下弱化为常规分隔色.
+    /// Nothing: 按定稿为 1px 边框色 (#222222 dark / #E8E8E8 light).
     private var footerHairline: some View {
         Rectangle()
-            .fill(
-                colorScheme == .dark
-                    ? Color.primary.opacity(0.15)
-                    : Color.white.opacity(0.5)
-            )
+            .fill(footerHairlineColor)
             .frame(height: 1)
+    }
+
+    private var footerHairlineColor: Color {
+        if isNothingTheme {
+            return colorScheme == .dark
+                ? Color(hex: "#222222")
+                : Color(hex: "#E8E8E8")
+        }
+        return colorScheme == .dark
+            ? Color.primary.opacity(0.15)
+            : Color.white.opacity(0.5)
+    }
+
+    /// Nothing 底栏背景色: dark 纯黑 / light #F5F5F5 (定稿 token).
+    private var nothingFooterBackgroundColor: Color {
+        colorScheme == .dark
+            ? Color(hex: "#000000")
+            : Color(hex: "#F5F5F5")
     }
 
     private var actionFooter: some View {

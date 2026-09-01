@@ -2,6 +2,62 @@ import BruceAppCore
 import BruceOnboardingCore
 import SwiftUI
 
+// MARK: - Nothing 主题视图级 token
+
+/// Nothing 主题本文件级颜色 token: 数值唯一来源为定稿原型
+/// docs/design/dashboard-nothing-prototype.html (勿自创数值).
+/// 仅在 `theme.interfaceStyle == .nothing` 分支消费;
+/// classic / liquidGlass 代码路径绝不可触碰.
+private enum NothingTokens {
+    /// 文字 display: dark #FFFFFF / light #000000.
+    static func display(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color(hex: "#FFFFFF") : Color(hex: "#000000")
+    }
+
+    /// 文字 secondary: dark #999999 / light #666666.
+    static func secondary(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color(hex: "#999999") : Color(hex: "#666666")
+    }
+
+    /// 文字 disabled: dark #666666 / light #999999.
+    static func disabled(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color(hex: "#666666") : Color(hex: "#999999")
+    }
+
+    /// 常规边框: dark #222222 / light #E8E8E8.
+    static func border(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color(hex: "#222222") : Color(hex: "#E8E8E8")
+    }
+
+    /// 加强边框: dark #333333 / light #CCCCCC.
+    static func borderVisible(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color(hex: "#333333") : Color(hex: "#CCCCCC")
+    }
+
+    /// 分段量条空段填充: dark #222222 / light #E0E0E0 (任务定稿口径).
+    static func emptySegment(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color(hex: "#222222") : Color(hex: "#E0E0E0")
+    }
+
+    /// 阈值三色 (两模式一致): <50 success / 50-79 warning / >=80 accent.
+    static let success = Color(hex: "#4A9E5C")
+    static let warning = Color(hex: "#D4A843")
+    static let accent = Color(hex: "#D71921")
+}
+
+/// 阈值档位 → Nothing 阈值色的唯一映射点 (本文件内量条填充与百分比数字共用,
+/// 不允许各处手写档位色).
+private func nothingThresholdColor(for level: MeterLevel) -> Color {
+    switch level {
+    case .normal:
+        NothingTokens.success
+    case .warning:
+        NothingTokens.warning
+    case .critical:
+        NothingTokens.accent
+    }
+}
+
 // 订阅用量卡: 原生 SwiftUI 版, 视觉以 panel-layout-v8.html 的订阅用量区为准.
 // 只排内容, 卡片容器 (液态玻璃背景, 圆角, 阴影) 由 wave 3 统一装配.
 // 数据全部来自 BruceAppCore 的 SubscriptionViewModel, 组件不读取任何凭证或 artifact.
@@ -17,6 +73,9 @@ struct SubscriptionCard: View {
     /// Provider 定向刷新动作; 目标由 section ID 经
     /// SubscriptionRefreshControlPolicy 解析, 与按钮禁用态共用同一解析.
     var onRefreshProvider: (SubscriptionProviderID) -> Void = { _ in }
+
+    @Environment(\.BruceResolvedTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -45,6 +104,12 @@ struct SubscriptionCard: View {
                     isFirst: index == 0,
                     refreshControl: refreshControl(for: section)
                 )
+            }
+
+            // Nothing 主题专属: 卡底部三档阈值图例 (定稿 .thresh),
+            // 其余主题不渲染, 不影响 classic / liquidGlass.
+            if theme.interfaceStyle == .nothing {
+                NothingThresholdLegend(colorScheme: colorScheme)
             }
         }
     }
@@ -322,33 +387,62 @@ private struct DeepSeekMonthlyUsageSection: View {
 private struct WindowRowView: View {
     let row: SubscriptionWindowRow
 
+    @Environment(\.BruceResolvedTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var isNothing: Bool { theme.interfaceStyle == .nothing }
+
     var body: some View {
         HStack(spacing: 8) {
             Text(row.label)
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
+                .font(isNothing ? NothingFont.mono(10) : .system(size: 10))
+                .foregroundStyle(labelStyle)
                 .frame(width: 62, alignment: .leading)
             // usedPercent 是已用比例, 量条从 0 向 100 填充已用量 (消耗式);
             // 百分比文字 percentText 同样是已用值 (如 "68%"), 与量条语义一致.
+            let meterLevel = MeterLevel(usedPercent: row.usedPercent)
             MeterBar(
                 usedFraction: row.usedPercent / 100,
-                level: MeterLevel(usedPercent: row.usedPercent)
+                level: meterLevel
             )
-            Text(row.percentText)
-                .font(.system(size: 10, weight: .semibold))
-                .monospacedDigit()
-                .frame(width: 46, alignment: .trailing)
+            // Nothing 下百分比按档位取阈值色 (定稿 .meter-head .v),
+            // classic / liquidGlass 保持默认前景色不变.
+            if isNothing {
+                Text(row.percentText)
+                    .font(NothingFont.mono(12, weight: .bold))
+                    .monospacedDigit()
+                    .foregroundStyle(nothingThresholdColor(for: meterLevel))
+                    .frame(width: 46, alignment: .trailing)
+            } else {
+                Text(row.percentText)
+                    .font(.system(size: 10, weight: .semibold))
+                    .monospacedDigit()
+                    .frame(width: 46, alignment: .trailing)
+            }
             Text(row.resetText)
-                .font(.system(size: 9))
-                .foregroundStyle(.secondary)
+                .font(isNothing ? NothingFont.mono(9) : .system(size: 9))
+                .foregroundStyle(resetStyle)
                 .frame(width: 48, alignment: .trailing)
         }
         .padding(.vertical, 2.5)
         .accessibilityElement(children: .combine)
     }
+
+    private var labelStyle: AnyShapeStyle {
+        isNothing
+            ? AnyShapeStyle(NothingTokens.secondary(colorScheme))
+            : AnyShapeStyle(.secondary)
+    }
+
+    private var resetStyle: AnyShapeStyle {
+        isNothing
+            ? AnyShapeStyle(NothingTokens.disabled(colorScheme))
+            : AnyShapeStyle(.secondary)
+    }
 }
 
-/// 量条告警级别 (消耗式, 阈值唯一来源): 已用 >= 85% 橙, >= 95% 红.
+/// 量条告警级别 (消耗式, 阈值唯一来源, 全站统一口径不分主题):
+/// 已用 <50% 绿 (normal), 50-79% 橙 (warning), >=80% 红 (critical).
 private enum MeterLevel {
     case normal
     case warning
@@ -356,26 +450,53 @@ private enum MeterLevel {
 
     init(usedPercent: Double) {
         switch usedPercent {
-        case 95...:
-            self = .critical
-        case 85...:
+        case ..<50:
+            self = .normal
+        case 50..<80:
             self = .warning
         default:
-            self = .normal
+            self = .critical
         }
     }
 }
 
-/// 量条: 高 5pt 圆角, 消耗式填充 (已用量从 0 向 100 增长);
-/// 正常绿渐变, >= 85% 橙渐变, >= 95% 红渐变. 出现动画尊重 Reduce Motion.
+/// 量条: 消耗式填充 (已用量从 0 向 100 增长).
+/// classic / liquidGlass: 高 5pt 圆角渐变条, <50 绿渐变, 50-79% 橙渐变, >=80% 红渐变
+/// (档位颜色映射不变, 仅阈值口径随 MeterLevel 全局统一).
+/// Nothing: 24 段方角分段条, 段间 2pt, 高 10pt, 零渐变.
+/// 出现动画尊重 Reduce Motion.
 private struct MeterBar: View {
     let usedFraction: Double
     let level: MeterLevel
 
+    @Environment(\.BruceResolvedTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var appeared = false
 
     var body: some View {
+        Group {
+            if theme.interfaceStyle == .nothing {
+                NothingSegmentedMeter(
+                    usedFraction: Double(fillWidth),
+                    level: level,
+                    colorScheme: colorScheme
+                )
+                .frame(height: 10)
+            } else {
+                legacyBody
+                    .frame(height: 5)
+            }
+        }
+        .onAppear {
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.45)) {
+                appeared = true
+            }
+        }
+    }
+
+    /// classic / liquidGlass 原渲染路径, 视觉 token 与改动前逐字节一致.
+    private var legacyBody: some View {
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 3, style: .continuous)
@@ -386,12 +507,6 @@ private struct MeterBar: View {
                 RoundedRectangle(cornerRadius: 3, style: .continuous)
                     .fill(fillGradient)
                     .frame(width: proxy.size.width * fillWidth)
-            }
-        }
-        .frame(height: 5)
-        .onAppear {
-            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.45)) {
-                appeared = true
             }
         }
     }
@@ -414,6 +529,44 @@ private struct MeterBar: View {
             colors = [Color(hex: "#ff453a"), Color(hex: "#ff6961")]
         }
         return LinearGradient(colors: colors, startPoint: .leading, endPoint: .trailing)
+    }
+}
+
+/// Nothing 分段量条 (定稿 .segbar): 24 段全方角, 段间 2pt;
+/// 空段 #222222(dark)/#E0E0E0(light); 填充段按档位取阈值色
+/// (<50 success / 50-79 warning / >=80 accent, 定稿 good/warn/crit 口径).
+private struct NothingSegmentedMeter: View {
+    /// 0...1, 已含出现动画状态 (未出现时为 0).
+    let usedFraction: Double
+    let level: MeterLevel
+    let colorScheme: ColorScheme
+
+    private static let segmentCount = 24
+    private static let segmentSpacing: CGFloat = 2
+
+    var body: some View {
+        GeometryReader { proxy in
+            let segmentWidth = max(
+                (proxy.size.width - CGFloat(Self.segmentCount - 1) * Self.segmentSpacing)
+                    / CGFloat(Self.segmentCount),
+                0
+            )
+            HStack(spacing: Self.segmentSpacing) {
+                ForEach(0..<Self.segmentCount, id: \.self) { index in
+                    Rectangle()
+                        .fill(
+                            index < filledCount
+                                ? nothingThresholdColor(for: level)
+                                : NothingTokens.emptySegment(colorScheme)
+                        )
+                        .frame(width: segmentWidth)
+                }
+            }
+        }
+    }
+
+    private var filledCount: Int {
+        Int((usedFraction * Double(Self.segmentCount)).rounded())
     }
 }
 
@@ -480,19 +633,42 @@ private struct ProviderAccountCard: View {
 
 /// 品牌色首字母徽章: 按 provider id 解析品牌色, 取名称首字符;
 /// 15pt 圆角方块, 白色粗体字母, 深浅色通用.
+/// Nothing 主题 (定稿 .badge): 圆角 3pt, 填充改 display 色 + 反色字母
+/// (dark 白底黑字, light 黑底白字), 不使用品牌色.
 private struct ProviderLogoBadge: View {
     let providerID: String
     let name: String
 
+    @Environment(\.BruceResolvedTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var isNothing: Bool { theme.interfaceStyle == .nothing }
+
     var body: some View {
         Text(String(name.prefix(1)).uppercased())
             .font(.system(size: 9, weight: .bold))
-            .foregroundStyle(.white)
+            .foregroundStyle(letterColor)
             .frame(width: 15, height: 15)
             .background(
-                Self.brandColor(for: providerID),
-                in: RoundedRectangle(cornerRadius: 4.5, style: .continuous)
+                backgroundColor,
+                in: RoundedRectangle(
+                    cornerRadius: isNothing ? 3 : 4.5,
+                    style: .continuous
+                )
             )
+    }
+
+    private var letterColor: Color {
+        isNothing ? invertedDisplayLetter : .white
+    }
+
+    private var backgroundColor: Color {
+        isNothing ? NothingTokens.display(colorScheme) : Self.brandColor(for: providerID)
+    }
+
+    /// Nothing 反色字母: dark 白底黑字, light 黑底白字.
+    private var invertedDisplayLetter: Color {
+        colorScheme == .dark ? Color(hex: "#000000") : Color(hex: "#FFFFFF")
     }
 
     private static func brandColor(for providerID: String) -> Color {
@@ -524,23 +700,77 @@ private struct ProviderLogoBadge: View {
 // MARK: - plan chip
 
 /// 套餐胶囊: 9pt, 白底描边, 与 mockup .plan 一致; 深色下退化为低透明白底.
+/// Nothing 主题 (定稿 .plan): 圆角 3pt (Capsule→3), 透明底 + 1px 加强边框,
+/// Space Mono, secondary 文字.
 private struct PlanChip: View {
     let text: String
 
+    @Environment(\.BruceResolvedTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var isNothing: Bool { theme.interfaceStyle == .nothing }
+
     var body: some View {
-        Text(text)
-            .font(.system(size: 9))
-            .foregroundStyle(Color.primary.opacity(0.7))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 1)
-            .background(Color.adaptive(
-                light: Color.white.opacity(0.55),
-                dark: Color.white.opacity(0.12)
-            ), in: Capsule())
-            .overlay(Capsule().strokeBorder(Color.adaptive(
-                light: Color.white.opacity(0.6),
-                dark: Color.white.opacity(0.2)
-            ), lineWidth: 1))
+        if isNothing {
+            Text(text)
+                .font(NothingFont.mono(9))
+                .foregroundStyle(NothingTokens.secondary(colorScheme))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 1)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .strokeBorder(NothingTokens.borderVisible(colorScheme), lineWidth: 1)
+                )
+        } else {
+            Text(text)
+                .font(.system(size: 9))
+                .foregroundStyle(Color.primary.opacity(0.7))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 1)
+                .background(Color.adaptive(
+                    light: Color.white.opacity(0.55),
+                    dark: Color.white.opacity(0.12)
+                ), in: Capsule())
+                .overlay(Capsule().strokeBorder(Color.adaptive(
+                    light: Color.white.opacity(0.6),
+                    dark: Color.white.opacity(0.2)
+                ), lineWidth: 1))
+        }
+    }
+}
+
+// MARK: - Nothing 阈值图例
+
+/// Nothing 主题卡底部三档阈值图例 (定稿 .thresh): 1pt 边框分隔线上方留 11pt,
+/// 下方留 10pt; 每项 8pt 方角色块 + mono 9pt disabled 文字, 项间距 12pt,
+/// 色块与文字间距 5pt. 仅 theme.interfaceStyle == .nothing 时渲染.
+private struct NothingThresholdLegend: View {
+    let colorScheme: ColorScheme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Rectangle()
+                .fill(NothingTokens.border(colorScheme))
+                .frame(height: 1)
+                .padding(.top, 11)
+            HStack(spacing: 12) {
+                legendItem(color: NothingTokens.success, text: "<50")
+                legendItem(color: NothingTokens.warning, text: "50–79")
+                legendItem(color: NothingTokens.accent, text: "≥80")
+            }
+            .padding(.top, 10)
+        }
+    }
+
+    private func legendItem(color: Color, text: String) -> some View {
+        HStack(spacing: 5) {
+            Rectangle()
+                .fill(color)
+                .frame(width: 8, height: 8)
+            Text(text)
+                .font(NothingFont.mono(9))
+                .foregroundStyle(NothingTokens.disabled(colorScheme))
+        }
     }
 }
 

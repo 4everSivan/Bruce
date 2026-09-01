@@ -226,15 +226,15 @@ struct SettingsView: View {
                     ) {
                         Text("经典").tag(InterfaceStylePreference.classic)
                         Text("液态玻璃").tag(InterfaceStylePreference.liquidGlass)
+                        Text("Nothing").tag(InterfaceStylePreference.nothing)
                     }
                     .pickerStyle(.segmented)
-                    // 不支持液态玻璃时整段禁用 (强制经典), 旁注说明原因.
-                    .disabled(!glassSupported)
-                    .opacity(glassSupported ? 1 : 0.55)
+                    // glassSupported 只约束液态玻璃 (由 coordinator fail-closed 拒绝并回弹),
+                    // 经典与 Nothing 不依赖玻璃 API, 任何系统版本均可选, 故不整段禁用.
                     .accessibilityHint(
                         glassSupported
-                            ? "经典为材质面板; 液态玻璃使用系统玻璃效果"
-                            : "液态玻璃需要 macOS 26; 当前仅可使用经典"
+                            ? "经典为材质面板; 液态玻璃使用系统玻璃效果; Nothing 为纯色平面风格, 无模糊无玻璃"
+                            : "液态玻璃需要 macOS 26; 当前可使用经典或 Nothing"
                     )
                     if !glassSupported {
                         Text("液态玻璃需要 macOS 26 或更高版本")

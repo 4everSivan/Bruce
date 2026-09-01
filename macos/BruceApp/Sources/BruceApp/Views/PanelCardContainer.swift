@@ -4,7 +4,8 @@ import SwiftUI
 
 // 面板装配层共享的卡片容器与底栏按钮样式.
 
-/// 面板卡片容器: 液态玻璃模式下 glassEffect (圆角 16); 经典/哑光退化为材质或半透明填充.
+/// 面板卡片容器: 液态玻璃模式下 glassEffect (圆角 16); 经典/哑光退化为材质或半透明填充;
+/// Nothing 主题按定稿为纯色卡片 (圆角 5) + 1px 边框, 无高光无阴影.
 struct PanelCardContainer<Content: View>: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.BruceResolvedTheme) private var theme
@@ -14,8 +15,15 @@ struct PanelCardContainer<Content: View>: View {
         self.content = content()
     }
 
+    private var isNothingSurface: Bool {
+        theme.interfaceStyle == .nothing
+    }
+
     private var shape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: 16, style: .continuous)
+        RoundedRectangle(
+            cornerRadius: isNothingSurface ? 5 : 16,
+            style: .continuous
+        )
     }
 
     private var surfaceTokens: DashboardGlassSurfaceTokens {
@@ -36,16 +44,19 @@ struct PanelCardContainer<Content: View>: View {
             .overlay(alignment: .top) {
                 // 低对比度顶部材质高光. 液态玻璃由系统承担主要边缘效果,
                 // 此处只保留很弱的结构提示, 避免重复描边.
-                Rectangle()
-                    .fill(surfaceTokens.highlightColor)
-                    .frame(height: 1)
-                    .padding(.horizontal, 10)
-                    .offset(y: 0.5)
+                // Nothing: 1px 边框已承担分层, 高光矩形不渲染.
+                if !isNothingSurface {
+                    Rectangle()
+                        .fill(surfaceTokens.highlightColor)
+                        .frame(height: 1)
+                        .padding(.horizontal, 10)
+                        .offset(y: 0.5)
+                }
             }
             .clipShape(shape)
             .shadow(
                 color: surfaceTokens.shadowColor,
-                radius: 5,
+                radius: isNothingSurface ? 0 : 5,
                 y: 1
             )
     }
@@ -90,9 +101,45 @@ private struct PanelGlassButtonStyleModifier: ViewModifier {
             } else {
                 content
             }
+        } else if theme.interfaceStyle == .nothing {
+            content.buttonStyle(
+                NothingPanelButtonStyle(
+                    tokens: DashboardGlassSurfaceTokens.resolve(
+                        theme: theme,
+                        colorScheme: colorScheme
+                    )
+                )
+            )
         } else {
             content
         }
+    }
+}
+
+/// Nothing 主题底栏按钮: 定稿为 Space Mono 11pt 大写 + 0.06em 字距,
+/// 1px 描边 (#333333/#CCCCCC), 小圆角 5, 纯色填充无阴影. 仅 nothing 分支挂载.
+private struct NothingPanelButtonStyle: ButtonStyle {
+    let tokens: DashboardGlassSurfaceTokens
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(NothingFont.mono(11))
+            .tracking(0.66)
+            .textCase(.uppercase)
+            .foregroundStyle(tokens.controlForegroundColor)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .background(
+                configuration.isPressed
+                    ? tokens.controlPressedFillColor
+                    : tokens.controlFillColor,
+                in: RoundedRectangle(cornerRadius: 5, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .strokeBorder(tokens.controlBorderColor, lineWidth: 1)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
     }
 }
 

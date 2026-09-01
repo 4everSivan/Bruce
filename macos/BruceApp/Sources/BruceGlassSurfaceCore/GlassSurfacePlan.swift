@@ -6,6 +6,8 @@ public enum DashboardGlassBackend: String, Equatable, Sendable {
     case nativeLiquidGlass
     case appKitMaterial
     case swiftUIFallback
+    /// Nothing 主题: 纯色不透明平面渲染, 无模糊 无阴影 无渐变.
+    case flatMonochrome
 }
 
 public enum DashboardGlassMaterial: String, Equatable, Sendable {
@@ -13,6 +15,8 @@ public enum DashboardGlassMaterial: String, Equatable, Sendable {
     case clear
     case matte
     case classic
+    /// Nothing 主题材质: 纯色不透明填充 + 1px 边框分层.
+    case nothing
 }
 
 public struct DashboardGlassSurfaceCapabilities: Equatable, Sendable {
@@ -61,6 +65,19 @@ public struct DashboardGlassSurfacePlan: Equatable, Sendable {
         theme: ResolvedTheme,
         capabilities: DashboardGlassSurfaceCapabilities
     ) -> Self {
+        // Nothing: 纯色不透明填充天然满足 reduceTransparency / increaseContrast,
+        // 无需无障碍降级, 直接返回自身 plan (置于无障碍降级之前).
+        if theme.interfaceStyle == .nothing {
+            return Self(
+                backend: .flatMonochrome,
+                panelMaterial: .nothing,
+                cardMaterial: .nothing,
+                controlMaterial: .nothing,
+                usesInteractiveGlass: false,
+                reduceTransparencyFallback: false
+            )
+        }
+
         if capabilities.reduceTransparency || capabilities.increaseContrast {
             return fallback(reduceTransparency: true)
         }
@@ -215,6 +232,8 @@ public struct DashboardGlassSurfaceStyle: Equatable, Sendable {
             return matte(for: appearance)
         case .classic:
             return classic(for: appearance)
+        case .nothing:
+            return nothing(for: appearance)
         }
     }
 
@@ -338,6 +357,39 @@ public struct DashboardGlassSurfaceStyle: Equatable, Sendable {
                 controlForeground: .black(0.82),
                 controlBorder: .black(0.16),
                 controlShadow: .black(0.08)
+            )
+        }
+    }
+
+    /// Nothing 单色点阵仪器面板风: 纯色不透明填充 + 1px 边框分层.
+    /// 零模糊 零阴影 零渐变: highlight/shadow token 一律清零 (alpha 0).
+    private static func nothing(for appearance: DashboardGlassAppearance) -> Self {
+        switch appearance {
+        case .dark:
+            return Self(
+                panelTint: .black(1),
+                cardFill: .rgb(17 / 255, 17 / 255, 17 / 255, alpha: 1),
+                cardBorder: .rgb(34 / 255, 34 / 255, 34 / 255, alpha: 1),
+                cardHighlight: .clear,
+                cardShadow: .clear,
+                controlFill: .rgb(26 / 255, 26 / 255, 26 / 255, alpha: 1),
+                controlPressedFill: .rgb(34 / 255, 34 / 255, 34 / 255, alpha: 1),
+                controlForeground: .rgb(232 / 255, 232 / 255, 232 / 255, alpha: 1),
+                controlBorder: .rgb(51 / 255, 51 / 255, 51 / 255, alpha: 1),
+                controlShadow: .clear
+            )
+        case .light:
+            return Self(
+                panelTint: .rgb(245 / 255, 245 / 255, 245 / 255, alpha: 1),
+                cardFill: .white(1),
+                cardBorder: .rgb(232 / 255, 232 / 255, 232 / 255, alpha: 1),
+                cardHighlight: .clear,
+                cardShadow: .clear,
+                controlFill: .rgb(240 / 255, 240 / 255, 240 / 255, alpha: 1),
+                controlPressedFill: .rgb(232 / 255, 232 / 255, 232 / 255, alpha: 1),
+                controlForeground: .rgb(26 / 255, 26 / 255, 26 / 255, alpha: 1),
+                controlBorder: .rgb(204 / 255, 204 / 255, 204 / 255, alpha: 1),
+                controlShadow: .clear
             )
         }
     }

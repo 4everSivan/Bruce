@@ -1,16 +1,25 @@
 import Foundation
 import BruceAppCore
+import BruceOnboardingCore
 import SwiftUI
 
 /// 用量卡: 标题 + LIVE 呼吸灯, hero 总量, 输入/输出/缓存四格细分,
 /// 按月 chip 网格与半年热力图; 14 日柱状图与 agent 图例已移至逐小时卡顶部.
 /// 视觉以 panel-layout-v8.html 为准; 外层玻璃卡片容器由面板装配层统一提供,
 /// 本组件只排内容.
+/// Nothing 主题 (dashboard-nothing-prototype.html 定稿): 单色点阵仪器面板,
+/// 所有视觉差异包在 theme.interfaceStyle == .nothing 分支内, 其余主题走原路径.
 struct UsageHeroCard: View {
     let viewModel: UsageHeroViewModel
 
+    @Environment(\.BruceResolvedTheme) private var theme
+
     init(viewModel: UsageHeroViewModel) {
         self.viewModel = viewModel
+    }
+
+    private var isNothing: Bool {
+        theme.interfaceStyle == .nothing
     }
 
     var body: some View {
@@ -38,7 +47,12 @@ struct UsageHeroCard: View {
             }
         }
         .background {
-            CodeStreamBackground(tint: Self.tierTint(viewModel.usageTier))
+            if isNothing {
+                // Nothing: 16pt 点阵网格替代代码流字符背景, 底部渐隐.
+                NothingDotGridBackground(color: Self.nothingSecondary)
+            } else {
+                CodeStreamBackground(tint: Self.tierTint(viewModel.usageTier))
+            }
         }
     }
 
@@ -47,11 +61,13 @@ struct UsageHeroCard: View {
     private var titleRow: some View {
         HStack {
             Text("Token 用量")
-                .font(.system(size: 12.5, weight: .semibold))
-                .foregroundStyle(Self.ink)
+                .font(isNothing ? NothingFont.mono(10) : .system(size: 12.5, weight: .semibold))
+                .tracking(isNothing ? 0.9 : 0)
+                .textCase(isNothing ? Text.Case.uppercase : nil)
+                .foregroundStyle(isNothing ? Self.nothingSecondary : Self.ink)
             Spacer()
             if viewModel.isLive {
-                LiveIndicator()
+                LiveIndicator(nothingStyle: isNothing)
             }
         }
     }
@@ -60,21 +76,49 @@ struct UsageHeroCard: View {
 
     private var heroRow: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
+            heroNumber
+            Text("tokens")
+                .font(isNothing ? NothingFont.mono(11) : .system(size: 13, weight: .medium))
+                .tracking(isNothing ? 1.1 : 0)
+                .textCase(isNothing ? Text.Case.uppercase : nil)
+                .foregroundStyle(isNothing ? Self.nothingSecondary : Self.subdued)
+            Spacer()
+            if let costText = viewModel.costText {
+                Text(costText)
+                    .font(isNothing ? NothingFont.mono(17) : .system(size: 15, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(isNothing ? Self.nothingPrimary : Self.accent)
+            }
+        }
+    }
+
+    /// Hero 总量数字: Nothing 下拆分整数/小数部分, 小数点用 4x4 实心方块
+    /// 压基线呈现 (左右各 4pt), Doto display 纯色; 其余主题保持原文本渲染.
+    @ViewBuilder
+    private var heroNumber: some View {
+        if isNothing {
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                if let dotIndex = viewModel.totalTokensText.firstIndex(of: ".") {
+                    Text(String(viewModel.totalTokensText[..<dotIndex]))
+                    Rectangle()
+                        .fill(Self.nothingDisplay)
+                        .frame(width: 4, height: 4)
+                        .padding(.horizontal, 4)
+                    Text(String(viewModel.totalTokensText[viewModel.totalTokensText.index(after: dotIndex)...]))
+                } else {
+                    Text(viewModel.totalTokensText)
+                }
+            }
+            .font(NothingFont.display(52, weight: .bold))
+            .tracking(-1.04)
+            .monospacedDigit()
+            .foregroundStyle(Self.nothingDisplay)
+        } else {
             Text(viewModel.totalTokensText)
                 .font(.system(size: 40, weight: .bold))
                 .tracking(-1.2)
                 .monospacedDigit()
                 .foregroundStyle(Self.heroGradient(for: viewModel.usageTier))
-            Text("tokens")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Self.subdued)
-            Spacer()
-            if let costText = viewModel.costText {
-                Text(costText)
-                    .font(.system(size: 15, weight: .semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(Self.accent)
-            }
         }
     }
 
@@ -82,7 +126,7 @@ struct UsageHeroCard: View {
 
     private var dividerLine: some View {
         Rectangle()
-            .fill(Self.hairline)
+            .fill(isNothing ? Self.nothingBorder : Self.hairline)
             .frame(height: 1)
     }
 
@@ -93,18 +137,19 @@ struct UsageHeroCard: View {
             ForEach(Array(viewModel.breakdown.enumerated()), id: \.offset) { index, item in
                 if index > 0 {
                     Rectangle()
-                        .fill(Self.hairline)
+                        .fill(isNothing ? Self.nothingBorder : Self.hairline)
                         .frame(width: 1)
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.label)
-                        .font(.system(size: 8.5))
-                        .tracking(0.85)
-                        .foregroundStyle(Self.faint)
+                        .font(isNothing ? NothingFont.mono(10) : .system(size: 8.5))
+                        .tracking(isNothing ? 0.9 : 0.85)
+                        .textCase(isNothing ? Text.Case.uppercase : nil)
+                        .foregroundStyle(isNothing ? Self.nothingSecondary : Self.faint)
                     Text(item.valueText)
-                        .font(.system(size: 13.5, weight: .semibold))
+                        .font(isNothing ? NothingFont.mono(13, weight: .bold) : .system(size: 13.5, weight: .semibold))
                         .monospacedDigit()
-                        .foregroundStyle(Self.ink.opacity(0.85))
+                        .foregroundStyle(isNothing ? Self.nothingPrimary : Self.ink.opacity(0.85))
                 }
                 .padding(.leading, index == 0 ? 0 : 13)
                 .padding(.trailing, index == viewModel.breakdown.count - 1 ? 0 : 13)
@@ -126,13 +171,14 @@ struct UsageHeroCard: View {
                     HStack(alignment: .firstTextBaseline, spacing: 0) {
                         Text("近半年 ")
                         Text(halfYear.totalText)
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(Self.ink.opacity(0.85))
+                            .font(isNothing ? NothingFont.mono(9) : .system(size: 10, weight: .bold))
+                            .foregroundStyle(isNothing ? Self.nothingDisabled : Self.ink.opacity(0.85))
                         Text(" · 月均 \(halfYear.averageText)")
                     }
-                    .font(.system(size: 10))
+                    .font(isNothing ? NothingFont.mono(9) : .system(size: 10))
+                    .tracking(isNothing ? 0.54 : 0)
                     .monospacedDigit()
-                    .foregroundStyle(Self.subdued)
+                    .foregroundStyle(isNothing ? Self.nothingDisabled : Self.subdued)
                 }
             }
             LazyVGrid(
@@ -149,42 +195,54 @@ struct UsageHeroCard: View {
         }
     }
 
-    /// 区块小标题: 10pt 半粗 + 字距, 与原型 .sec 样式一致.
+    /// 区块小标题: 10pt 半粗 + 字距, 与原型 .sec 样式一致;
+    /// Nothing 下为 Space Mono 10px ALL CAPS (.label).
     private func sectionTitle(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 10, weight: .semibold))
-            .tracking(0.4)
-            .foregroundStyle(Self.faint)
+            .font(isNothing ? NothingFont.mono(10) : .system(size: 10, weight: .semibold))
+            .tracking(isNothing ? 0.9 : 0.4)
+            .textCase(isNothing ? Text.Case.uppercase : nil)
+            .foregroundStyle(isNothing ? Self.nothingSecondary : Self.faint)
     }
 
+    /// 月度 chip: Nothing 下按定稿为 3pt 圆角 + 1px 边框, 当月 surface-raised 底
+    /// 与 border-visible 描边, 无当月透明底; 其余主题保持原白透明底样式.
     private func monthlyChip(_ month: UsageMonthlyTotal) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(month.label)
-                .font(.system(size: 8.5, weight: month.isCurrent ? .semibold : .regular))
-                .tracking(0.5)
-                .foregroundStyle(month.isCurrent ? Self.accent : Self.faint)
+                .font(isNothing
+                    ? NothingFont.mono(9)
+                    : .system(size: 8.5, weight: month.isCurrent ? .semibold : .regular))
+                .tracking(isNothing ? 0.81 : 0.5)
+                .foregroundStyle(isNothing
+                    ? (month.isCurrent ? Self.nothingDisplay : Self.nothingSecondary)
+                    : (month.isCurrent ? Self.accent : Self.faint))
             Text(month.totalText)
-                .font(.system(size: 13, weight: .semibold))
+                .font(isNothing ? NothingFont.mono(13) : .system(size: 13, weight: .semibold))
                 .monospacedDigit()
-                .foregroundStyle(Self.ink.opacity(0.85))
+                .foregroundStyle(isNothing ? Self.nothingPrimary : Self.ink.opacity(0.85))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 9)
         .padding(.vertical, 6)
         .background(
-            Color.adaptive(
-                light: Color.white.opacity(month.isCurrent ? 0.6 : 0.4),
-                dark: Color.white.opacity(month.isCurrent ? 0.14 : 0.08)
-            ),
-            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            isNothing
+                ? (month.isCurrent ? Self.nothingSurfaceRaised : Color.clear)
+                : Color.adaptive(
+                    light: Color.white.opacity(month.isCurrent ? 0.6 : 0.4),
+                    dark: Color.white.opacity(month.isCurrent ? 0.14 : 0.08)
+                ),
+            in: RoundedRectangle(cornerRadius: isNothing ? 3 : 10, style: .continuous)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: isNothing ? 3 : 10, style: .continuous)
                 .strokeBorder(
-                    Color.adaptive(
-                        light: Color.white.opacity(0.55),
-                        dark: Color.white.opacity(0.1)
-                    ),
+                    isNothing
+                        ? (month.isCurrent ? Self.nothingBorderVisible : Self.nothingBorder)
+                        : Color.adaptive(
+                            light: Color.white.opacity(0.55),
+                            dark: Color.white.opacity(0.1)
+                        ),
                     lineWidth: 1
                 )
         )
@@ -195,6 +253,7 @@ struct UsageHeroCard: View {
 
     /// 周列 × 周日行 (周一起) 网格: 列等宽撑满卡片, 格子正方形随列宽缩放;
     /// level 0 淡槽, 1-5 沿用 UsageTier 绿色阶 (sage..forest), 窗口外与未来格透明.
+    /// Nothing 下全方角, level 0 用 surface-raised, 1-5 为 display 白阶 5 档透明度.
     private var heatmapView: some View {
         HStack(alignment: .top, spacing: 3) {
             ForEach(Array(viewModel.heatmap.enumerated()), id: \.offset) { _, week in
@@ -211,7 +270,7 @@ struct UsageHeroCard: View {
     }
 
     private func heatmapCell(_ cell: UsageHeatmapCell?) -> some View {
-        RoundedRectangle(cornerRadius: 2, style: .continuous)
+        RoundedRectangle(cornerRadius: isNothing ? 0 : 2, style: .continuous)
             .fill(heatmapCellColor(cell))
             .aspectRatio(1, contentMode: .fit)
             .frame(maxWidth: .infinity)
@@ -224,8 +283,8 @@ struct UsageHeroCard: View {
             Spacer()
             Text(heatmapBoundaryText(first: false))
         }
-        .font(.system(size: 9))
-        .foregroundStyle(Self.faint)
+        .font(isNothing ? NothingFont.mono(9) : .system(size: 9))
+        .foregroundStyle(isNothing ? Self.nothingDisabled : Self.faint)
     }
 
     /// "yyyy-MM-dd" -> "yy/MM/dd"; 取窗口首个/末个有效格.
@@ -252,14 +311,14 @@ struct UsageHeroCard: View {
             }
             Text("多")
         }
-        .font(.system(size: 9))
-        .foregroundStyle(Self.faint)
+        .font(isNothing ? NothingFont.mono(9) : .system(size: 9))
+        .foregroundStyle(isNothing ? Self.nothingDisabled : Self.faint)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("热力图程度图例: 颜色从少到多")
     }
 
     private func heatmapLevelSwatch(_ level: Int) -> some View {
-        RoundedRectangle(cornerRadius: 2, style: .continuous)
+        RoundedRectangle(cornerRadius: isNothing ? 0 : 2, style: .continuous)
             .fill(heatmapLevelColor(level))
             .frame(width: 9, height: 9)
     }
@@ -272,6 +331,13 @@ struct UsageHeroCard: View {
     }
 
     private func heatmapLevelColor(_ level: Int) -> Color {
+        if isNothing {
+            guard level > 0 else {
+                return Self.nothingSurfaceRaised
+            }
+            let opacities: [Double] = [0.2, 0.4, 0.6, 0.8, 1.0]
+            return Self.nothingDisplay.opacity(opacities[min(level, 5) - 1])
+        }
         guard level > 0 else {
             return Color.primary.opacity(0.07)
         }
@@ -301,6 +367,38 @@ struct UsageHeroCard: View {
         light: Color.black.opacity(0.07),
         dark: Color.white.opacity(0.12)
     )
+
+    // MARK: Nothing 颜色 token (dashboard-nothing-prototype.html 定稿, 两模式一致)
+
+    private static let nothingDisplay = Color.adaptive(
+        light: Color(hex: "#000000"),
+        dark: Color(hex: "#FFFFFF")
+    )
+    private static let nothingPrimary = Color.adaptive(
+        light: Color(hex: "#1A1A1A"),
+        dark: Color(hex: "#E8E8E8")
+    )
+    private static let nothingSecondary = Color.adaptive(
+        light: Color(hex: "#666666"),
+        dark: Color(hex: "#999999")
+    )
+    private static let nothingDisabled = Color.adaptive(
+        light: Color(hex: "#999999"),
+        dark: Color(hex: "#666666")
+    )
+    private static let nothingBorder = Color.adaptive(
+        light: Color(hex: "#E8E8E8"),
+        dark: Color(hex: "#222222")
+    )
+    private static let nothingBorderVisible = Color.adaptive(
+        light: Color(hex: "#CCCCCC"),
+        dark: Color(hex: "#333333")
+    )
+    private static let nothingSurfaceRaised = Color.adaptive(
+        light: Color(hex: "#F0F0F0"),
+        dark: Color(hex: "#1A1A1A")
+    )
+
     /// hero 渐变按今日总量档位在统一绿色阶内变化 (源自 logo 底色):
     /// <100M sage #7D9B76, 此后每 100M 加深一档, >=400M forest #26452A.
     /// 结构沿用 mockup (135deg, 起点 30%, 终点收敛 1.0).
@@ -336,6 +434,46 @@ struct UsageHeroCard: View {
     /// 背景字符 tint: 档位浅色阶, 低透明度下呼应 hero 渐变.
     private static func tierTint(_ tier: UsageTier) -> Color {
         tierColors(for: tier).1
+    }
+}
+
+// MARK: - Nothing 点阵背景
+
+/// Nothing 用量卡点阵背景: 16pt 网格 2pt 圆点, text-secondary 色,
+/// 整体透明度 0.13, 底部渐隐 mask 避免干扰图表; 零动画零模糊.
+private struct NothingDotGridBackground: View {
+    let color: Color
+
+    var body: some View {
+        Canvas { ctx, size in
+            let spacing: CGFloat = 16
+            let cols = Int(size.width / spacing) + 1
+            let rows = Int(size.height / spacing) + 1
+            guard cols > 0, rows > 0 else {
+                return
+            }
+            for col in 0..<cols {
+                for row in 0..<rows {
+                    let x = spacing / 2 + CGFloat(col) * spacing
+                    let y = spacing / 2 + CGFloat(row) * spacing
+                    let dot = CGRect(x: x - 1, y: y - 1, width: 2, height: 2)
+                    ctx.fill(Path(ellipseIn: dot), with: .color(color))
+                }
+            }
+        }
+        .opacity(0.13)
+        .mask(
+            LinearGradient(
+                stops: [
+                    .init(color: .black, location: 0.42),
+                    .init(color: .clear, location: 0.88),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 
@@ -407,27 +545,42 @@ private struct CodeStreamBackground: View {
 // MARK: - LIVE 呼吸灯
 
 /// 绿点 + 光晕, 2.4 秒一周期的透明度呼吸; Reduce Motion 时静止常亮.
+/// Nothing 主题: 5pt 实心方点 (success 色), 去光晕, 文本 Space Mono.
 private struct LiveIndicator: View {
+    let nothingStyle: Bool
+
     var body: some View {
         HStack(spacing: 5) {
             ZStack {
-                // 光晕: mockup 为 3px 扩散环 (18% 透明度).
-                Circle()
-                    .fill(Self.green.opacity(0.18))
-                    .frame(width: 12, height: 12)
-                Circle()
-                    .fill(Self.green)
-                    .frame(width: 6, height: 6)
+                if nothingStyle {
+                    Rectangle()
+                        .fill(Self.nothingSuccess)
+                        .frame(width: 5, height: 5)
+                } else {
+                    // 光晕: mockup 为 3px 扩散环 (18% 透明度).
+                    Circle()
+                        .fill(Self.green.opacity(0.18))
+                        .frame(width: 12, height: 12)
+                    Circle()
+                        .fill(Self.green)
+                        .frame(width: 6, height: 6)
+                }
             }
             Text("LIVE")
-                .font(.system(size: 9.5, weight: .semibold))
-                .foregroundStyle(Self.textGreen)
+                .font(nothingStyle ? NothingFont.mono(9) : .system(size: 9.5, weight: .semibold))
+                .tracking(nothingStyle ? 1.08 : 0)
+                .foregroundStyle(nothingStyle ? Self.nothingText : Self.textGreen)
         }
     }
 
     private static let green = Color(hex: "#30d158")
     /// 深绿文字在深色玻璃上对比度不足, 深色下退回亮绿.
     private static let textGreen = Color.adaptive(light: Color(hex: "#0a7d3b"), dark: Color(hex: "#30d158"))
+    private static let nothingSuccess = Color(hex: "#4A9E5C")
+    private static let nothingText = Color.adaptive(
+        light: Color(hex: "#666666"),
+        dark: Color(hex: "#999999")
+    )
 }
 
 // MARK: - Preview

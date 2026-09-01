@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bruce Dashboard — Nothing Redesign v3</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Doto:wght@400..900&family=Space+Grotesk:wght@300..700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+<style>
+/* ============================================================
+   TOKENS
+   ============================================================ */
+:root{
+  --black:#000000;
+  --surface:#111111;
+  --surface-raised:#1A1A1A;
+  --border:#222222;
+  --border-visible:#333333;
+  --text-disabled:#666666;
+  --text-secondary:#999999;
+  --text-primary:#E8E8E8;
+  --text-display:#FFFFFF;
+  --accent:#D71921;
+  --warning:#D4A843;
+  --success:#4A9E5C;
+  --interactive:#5B9BF6;
+  --backdrop:#262626;
+  --backdrop-dot:#3A3A3A;
+
+  /* 圆角: 全局再收一档, 统一到技术感尺度 */
+  --r-panel:10px;
+  --r-card:5px;
+  --r-chip:3px;
+  --r-cell:0px;
+  --r-btn:5px;
+
+  --f-display:"Doto","Space Mono",monospace;
+  --f-ui:"Space Grotesk","DM Sans",system-ui,sans-serif;
+  --f-mono:"Space Mono","SF Mono",monospace;
+
+  --ease:cubic-bezier(.25,.1,.25,1);
+}
+html[data-theme="light"]{
+  --black:#F5F5F5;
+  --surface:#FFFFFF;
+  --surface-raised:#F0F0F0;
+  --border:#E8E8E8;
+  --border-visible:#CCCCCC;
+  --text-disabled:#999999;
+  --text-secondary:#666666;
+  --text-primary:#1A1A1A;
+  --text-display:#000000;
+  --interactive:#007AFF;
+  --backdrop:#DEDEDE;
+  --backdrop-dot:#C8C8C8;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--backdrop);
+  background-image:radial-gradient(circle,var(--backdrop-dot) 1px,transparent 1px);
+  background-size:16px 16px;
+  font-family:var(--f-ui);
+  color:var(--text-primary);
+  min-height:100vh;
+  padding:48px 24px 96px;
+  display:flex;flex-direction:column;align-items:center;gap:32px;
+  transition:background-color .25s var(--ease);
+}
+
+/* ---------- 页面控制条 ---------- */
+.chrome{
+  width:440px;display:flex;align-items:center;gap:8px;
+  font-family:var(--f-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+}
+.chrome .title{color:var(--text-display);font-size:12px}
+.chrome .spacer{flex:1}
+.ctl{
+  background:transparent;border:1px solid var(--border-visible);color:var(--text-secondary);
+  border-radius:3px;padding:6px 10px;font-family:var(--f-mono);font-size:11px;
+  letter-spacing:.08em;text-transform:uppercase;cursor:pointer;
+  transition:color .15s var(--ease),border-color .15s var(--ease);
+}
+.ctl:hover{color:var(--text-display);border-color:var(--text-secondary)}
+.ctl[data-on="true"]{background:var(--text-display);color:var(--black);border-color:var(--text-display)}
+.seg{display:flex;border:1px solid var(--border-visible);border-radius:3px;overflow:hidden}
+.seg button{
+  background:transparent;border:none;color:var(--text-secondary);
+  padding:6px 12px;font-family:var(--f-mono);font-size:11px;letter-spacing:.08em;
+  text-transform:uppercase;cursor:pointer;transition:.2s var(--ease);
+}
+.seg button[aria-pressed="true"]{background:var(--text-display);color:var(--black)}
+
+/* ============================================================
+   PANEL
+   ============================================================ */
+.panel{
+  width:440px;background:var(--black);
+  border:1px solid var(--border-visible);border-radius:var(--r-panel);
+  overflow:hidden;box-shadow:none;
+}
+.cards{display:flex;flex-direction:column;gap:8px;padding:12px 12px 4px}
+
+.card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--r-card);
+  padding:13px 15px;
+  position:relative;overflow:hidden;
+}
+.card > *{position:relative}
+
+/* 点阵点缀: 主网格 14px + 右上密网点阵块, 仅 Token 用量卡 */
+.card.dotted::before,
+.card.dotted::after{content:"";position:absolute;pointer-events:none}
+.card.dotted::before{
+  inset:0;
+  background-image:radial-gradient(circle,var(--text-secondary) 1px,transparent 1px);
+  background-size:14px 14px;
+  opacity:.13;
+  -webkit-mask-image:linear-gradient(to bottom,#000 0%,#000 42%,transparent 88%);
+  mask-image:linear-gradient(to bottom,#000 0%,#000 42%,transparent 88%);
+}
+.card.dotted::after{
+  top:-18px;right:-18px;width:190px;height:104px;
+  background-image:radial-gradient(circle,var(--text-display) 1px,transparent 1px);
+  background-size:7px 7px;
+  opacity:.10;
+  -webkit-mask-image:radial-gradient(ellipse at 70% 20%,#000 0%,transparent 72%);
+  mask-image:radial-gradient(ellipse at 70% 20%,#000 0%,transparent 72%);
+}
+
+/* ---------- 排版基元 ---------- */
+.label{
+  font-family:var(--f-mono);font-size:10px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--text-secondary);
+}
+.meta{font-family:var(--f-mono);font-size:9px;letter-spacing:.06em;color:var(--text-disabled);
+  font-variant-numeric:tabular-nums}
+.num-b{font-family:var(--f-mono);font-size:13px;font-weight:700;color:var(--text-primary);
+  font-variant-numeric:tabular-nums}
+
+.card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.divider{height:1px;background:var(--border);margin:12px -15px}
+
+/* LIVE: 方点, 与点阵同源 */
+.live{display:flex;align-items:center;gap:5px;font-family:var(--f-mono);font-size:9px;
+  letter-spacing:.12em;color:var(--text-secondary)}
+.live i{width:5px;height:5px;border-radius:0;background:var(--success);display:block}
+
+/* ---------- CARD 1 : HERO ---------- */
+.hero{display:flex;align-items:baseline;gap:8px}
+.hero-num{
+  font-family:var(--f-display);font-weight:700;font-size:52px;line-height:1;
+  letter-spacing:-.02em;color:var(--text-display);font-variant-numeric:tabular-nums;
+  display:flex;align-items:baseline;
+}
+.hero-num .pt{
+  display:block;width:4px;height:4px;border-radius:0;
+  background:var(--text-display);
+  align-self:flex-end;margin:0 4px 9px;
+}
+.hero-unit{font-family:var(--f-mono);font-size:11px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--text-secondary)}
+/* 成本回到 Space Mono */
+.hero-cost{
+  margin-left:auto;
+  font-family:var(--f-mono);font-size:17px;color:var(--text-primary);
+  font-variant-numeric:tabular-nums;
+}
+
+.quad{display:flex}
+.quad > div{flex:1;display:flex;flex-direction:column;gap:3px;padding:0 11px}
+.quad > div:first-child{padding-left:0}
+.quad > div:last-child{padding-right:0}
+.quad > div + div{border-left:1px solid var(--border)}
+
+.section-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:9px}
+
+.months{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.chip{border:1px solid var(--border);border-radius:var(--r-chip);padding:6px 9px;
+  display:flex;flex-direction:column;gap:2px}
+.chip[data-current="true"]{border-color:var(--border-visible);background:var(--surface-raised)}
+.chip .m{font-family:var(--f-mono);font-size:9px;letter-spacing:.09em;color:var(--text-secondary)}
+.chip[data-current="true"] .m{color:var(--text-display)}
+.chip .v{font-family:var(--f-mono);font-size:13px;color:var(--text-primary);
+  font-variant-numeric:tabular-nums}
+
+.heat{display:grid;grid-auto-flow:column;grid-template-rows:repeat(7,1fr);
+  gap:3px;justify-content:start}
+.heat i{width:11px;height:11px;border-radius:var(--r-cell);
+  background:var(--surface-raised);display:block}
+.heat i[data-l="1"]{background:var(--text-display);opacity:.20}
+.heat i[data-l="2"]{background:var(--text-display);opacity:.40}
+.heat i[data-l="3"]{background:var(--text-display);opacity:.60}
+.heat i[data-l="4"]{background:var(--text-display);opacity:.80}
+.heat i[data-l="5"]{background:var(--text-display);opacity:1}
+.heat-foot{display:flex;align-items:center;gap:8px;margin-top:8px}
+.heat-foot .ax{font-family:var(--f-mono);font-size:9px;color:var(--text-disabled);
+  font-variant-numeric:tabular-nums}
+.heat-foot .spacer{flex:1}
+.heat-legend{display:flex;align-items:center;gap:4px}
+.heat-legend span{font-family:var(--f-mono);font-size:9px;color:var(--text-disabled)}
+.heat-legend i{width:9px;height:9px;border-radius:var(--r-cell);
+  background:var(--text-display);display:block}
+
+/* ---------- CARD 2 : 订阅用量 ---------- */
+.prov + .prov{border-top:1px solid var(--border);margin-top:11px;padding-top:11px}
+.prov-head{display:flex;align-items:center;gap:7px}
+.badge{width:15px;height:15px;border-radius:3px;background:var(--text-display);
+  color:var(--black);font-family:var(--f-mono);font-size:9px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;flex:none}
+.prov-name{font-family:var(--f-ui);font-size:12px;font-weight:500;color:var(--text-primary)}
+.plan{border:1px solid var(--border-visible);border-radius:var(--r-chip);padding:1px 7px;
+  font-family:var(--f-mono);font-size:9px;color:var(--text-secondary)}
+.acct{font-family:var(--f-mono);font-size:10px;color:var(--text-disabled)}
+.prov-head .spacer{flex:1}
+.refresh{width:14px;height:14px;flex:none;color:var(--text-secondary);cursor:pointer;
+  transition:color .15s var(--ease)}
+.refresh:hover{color:var(--text-display)}
+.refresh svg{width:14px;height:14px;display:block}
+
+.meter{margin-top:9px}
+.meter-head{display:flex;align-items:baseline;gap:6px;margin-bottom:5px}
+.meter-head .l{font-family:var(--f-mono);font-size:10px;color:var(--text-secondary);
+  letter-spacing:.04em}
+.meter-head .v{margin-left:auto;font-family:var(--f-mono);font-size:12px;font-weight:700;
+  font-variant-numeric:tabular-nums}
+.meter-head .r{font-family:var(--f-mono);font-size:9px;color:var(--text-disabled);
+  width:48px;text-align:right;font-variant-numeric:tabular-nums}
+.segbar{display:flex;gap:2px;height:10px}
+.segbar b{flex:1;background:var(--border);border-radius:0}
+.segbar b.on{background:var(--text-display)}
+.segbar[data-level="good"] b.on{background:var(--success)}
+.segbar[data-level="warn"]  b.on{background:var(--warning)}
+.segbar[data-level="crit"]  b.on{background:var(--accent)}
+.meter[data-level="good"] .meter-head .v{color:var(--success)}
+.meter[data-level="warn"] .meter-head .v{color:var(--warning)}
+.meter[data-level="crit"] .meter-head .v{color:var(--accent)}
+
+.note{margin-top:7px;font-family:var(--f-mono);font-size:9px;line-height:1.5}
+.note[data-tone="warn"]{color:var(--warning)}
+.note[data-tone="stale"]{color:var(--text-disabled)}
+
+/* 阈值图例: 三档统一口径 */
+.thresh{display:flex;gap:12px;margin-top:11px;padding-top:10px;
+  border-top:1px solid var(--border)}
+.thresh .tri{display:flex;align-items:center;gap:5px;
+  font-family:var(--f-mono);font-size:9px;color:var(--text-disabled);
+  font-variant-numeric:tabular-nums}
+.thresh .tri i{width:8px;height:8px;border-radius:0;display:block;flex:none}
+.thresh .tg{background:var(--success)}
+.thresh .ta{background:var(--warning)}
+.thresh .tr{background:var(--accent)}
+
+.bal{display:flex;align-items:baseline;margin-top:10px;padding-top:10px;
+  border-top:1px solid var(--border)}
+.bal .l{font-family:var(--f-ui);font-size:11px;color:var(--text-secondary)}
+.bal .v{margin-left:auto;font-family:var(--f-mono);font-size:15px;font-weight:700;
+  color:var(--text-display);font-variant-numeric:tabular-nums}
+
+/* ---------- CARD 3 : Agent 用量 ---------- */
+.dotbars{display:flex;align-items:flex-end;gap:6px;margin-top:4px}
+.dotbars .day{display:grid;grid-template-columns:repeat(3,6px);grid-auto-rows:6px;gap:2px;
+  align-content:end}
+.dotbars .day i{width:6px;height:6px;border-radius:var(--r-cell);
+  background:var(--surface-raised);display:block}
+.dotbars .day i.on{background:var(--text-display)}
+/* 今天: 不再占用红色的阈值语义, 改用底部基线标记 */
+.dotbars .day[data-today="true"]{position:relative;padding-bottom:4px}
+.dotbars .day[data-today="true"]::after{
+  content:"";position:absolute;left:0;right:0;bottom:0;height:2px;
+  background:var(--text-display);
+}
+
+.axis{display:flex;justify-content:space-between;margin-top:7px}
+.axis span{font-family:var(--f-mono);font-size:9px;color:var(--text-disabled);
+  font-variant-numeric:tabular-nums}
+
+.compose{margin-top:12px}
+.compose-bar{display:flex;gap:2px;height:12px;margin-top:5px}
+.compose-bar b{flex:none;border-radius:0}
+.compose-key{display:flex;flex-wrap:wrap;gap:10px;margin-top:7px}
+.compose-key .k{display:flex;align-items:center;gap:5px}
+.compose-key .k .sw{width:8px;height:8px;flex:none;border-radius:0}
+.compose-key .k .nm{font-family:var(--f-mono);font-size:9px;color:var(--text-secondary)}
+.compose-key .k .pc{font-family:var(--f-mono);font-size:9.5px;font-weight:700;
+  color:var(--text-primary);font-variant-numeric:tabular-nums}
+.compose-key .k .tk{font-family:var(--f-mono);font-size:9.5px;color:var(--text-disabled)}
+
+.p1{background:var(--text-display)}
+.p2{background-image:repeating-linear-gradient(45deg,
+  var(--text-display) 0 2px,transparent 2px 4px)}
+.p3{background-image:repeating-linear-gradient(0deg,
+  var(--text-display) 0 2px,transparent 2px 4px)}
+.p4{background-image:radial-gradient(circle,var(--text-display) 1.6px,transparent 1.6px);
+  background-size:4px 4px}
+
+.arow{padding:9px 0}
+.arow + .arow{border-top:1px solid var(--border)}
+.arow-head{display:flex;align-items:center;gap:7px}
+.arow-head .sw{width:8px;height:8px;flex:none;border-radius:0}
+.arow-head .nm{font-family:var(--f-ui);font-size:12px;font-weight:500;color:var(--text-primary)}
+.arow-head .tot{margin-left:auto;font-family:var(--f-mono);font-size:12px;font-weight:700;
+  color:var(--text-primary);font-variant-numeric:tabular-nums}
+.arow-head .chev{width:9px;height:9px;color:var(--text-disabled);flex:none}
+.spark{margin-top:7px;display:block;width:100%;height:26px}
+
+.dist{margin-top:9px;padding-left:14px}
+.dist-head{display:flex;align-items:baseline;margin-bottom:5px}
+.dist-head .t{font-family:var(--f-mono);font-size:9px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--text-secondary)}
+.dbar{display:flex;gap:2px;height:6px}
+.dbar b{border-radius:0}
+.dkey{display:flex;flex-wrap:wrap;gap:9px;margin-top:5px}
+.dkey .k{display:flex;align-items:center;gap:5px}
+.dkey .k .sw{width:6px;height:6px;flex:none;border-radius:0}
+.dkey .k .nm{font-family:var(--f-mono);font-size:9px;color:var(--text-secondary)}
+.dkey .k .pc{font-family:var(--f-mono);font-size:9.5px;font-weight:700;color:var(--text-primary)}
+.dkey .k .tk{font-family:var(--f-mono);font-size:9.5px;color:var(--text-disabled)}
+
+/* ---------- FOOTER : 三个按钮圆角统一 ---------- */
+.footer{display:flex;align-items:center;gap:8px;padding:9px 12px;
+  border-top:1px solid var(--border);background:var(--black)}
+.fbtn{
+  background:transparent;border:1px solid var(--border-visible);
+  border-radius:var(--r-btn);
+  color:var(--text-secondary);font-family:var(--f-mono);font-size:11px;
+  letter-spacing:.06em;text-transform:uppercase;padding:7px 16px;cursor:pointer;
+  min-height:30px;display:flex;align-items:center;gap:6px;
+  transition:color .15s var(--ease),border-color .15s var(--ease);
+}
+.fbtn:hover{color:var(--text-display);border-color:var(--text-secondary)}
+.fbtn svg{width:11px;height:11px;flex:none}
+.footer .spacer{flex:1}
+.footer .stamp{font-family:var(--f-mono);font-size:9px;letter-spacing:.06em;
+  color:var(--text-disabled);text-transform:uppercase;font-variant-numeric:tabular-nums}
+
+/* ---------- 标注层 ---------- */
+[data-annot]{position:relative}
+body.annot [data-annot]::after{
+  content:attr(data-annot);
+  position:absolute;top:-16px;left:0;z-index:9;
+  font-family:var(--f-mono);font-size:8px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--accent);border:1px solid var(--accent);border-radius:2px;
+  padding:1px 4px;white-space:nowrap;pointer-events:none;
+}
+body.annot [data-annot="PRIMARY"]{outline:1px dashed var(--accent);outline-offset:4px}
+
+/* ---------- 说明 ---------- */
+.notes{width:440px;font-family:var(--f-ui);font-size:13px;line-height:1.7;
+  color:var(--text-primary)}
+.notes h3{font-family:var(--f-mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--text-secondary);margin:24px 0 10px;font-weight:400}
+.notes h3:first-child{margin-top:0}
+.notes ul{list-style:none}
+.notes li{padding:6px 0 6px 18px;position:relative;border-bottom:1px solid var(--border)}
+.notes li::before{content:"·";position:absolute;left:4px;color:var(--text-disabled)}
+.notes code{font-family:var(--f-mono);font-size:11px;color:var(--text-display);
+  background:var(--surface-raised);padding:1px 5px;border-radius:3px}
+.notes .kv{display:flex;gap:10px;align-items:baseline}
+.notes .kv b{font-family:var(--f-mono);font-size:11px;color:var(--text-secondary);
+  min-width:104px;flex:none;font-weight:400}
+.swatch{display:inline-block;width:22px;height:10px;vertical-align:-1px;border-radius:0}
+</style>
+</head>
+<body>
+
+<div class="chrome">
+  <span class="title">Bruce · Nothing v3</span>
+  <span class="spacer"></span>
+  <div class="seg" role="group" aria-label="模式">
+    <button id="btnDark" aria-pressed="true">Dark</button>
+    <button id="btnLight" aria-pressed="false">Light</button>
+  </div>
+  <button class="ctl" id="btnAnnot" data-on="false">标注</button>
+</div>
+
+<div class="panel">
+  <div class="cards">
+
+    <!-- ========== CARD 1 : TOKEN 用量 ========== -->
+    <section class="card dotted">
+      <div class="card-head">
+        <span class="label">Token 用量</span>
+        <span class="live"><i></i>Live</span>
+      </div>
+
+      <div class="hero" data-annot="PRIMARY">
+        <span class="hero-num"><span>1</span><i class="pt"></i><span>24</span><span>M</span></span>
+        <span class="hero-unit">Tokens</span>
+        <span class="hero-cost">$0.375</span>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="quad" data-annot="SECONDARY">
+        <div><span class="label">输入</span><span class="num-b">842.1K</span></div>
+        <div><span class="label">输出</span><span class="num-b">318.7K</span></div>
+        <div><span class="label">缓存读</span><span class="num-b">61.2K</span></div>
+        <div><span class="label">缓存写</span><span class="num-b">24.8K</span></div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="section-head">
+        <span class="label">按月 · 近 6 个月</span>
+        <span class="meta">近半年 1.24M · 月均 206K</span>
+      </div>
+      <div class="months" data-annot="TERTIARY">
+        <div class="chip"><span class="m">03</span><span class="v">98.2K</span></div>
+        <div class="chip"><span class="m">04</span><span class="v">112K</span></div>
+        <div class="chip"><span class="m">05</span><span class="v">187K</span></div>
+        <div class="chip"><span class="m">06</span><span class="v">231K</span></div>
+        <div class="chip"><span class="m">07</span><span class="v">402K</span></div>
+        <div class="chip" data-current="true"><span class="m">08</span><span class="v">310K</span></div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="section-head"><span class="label">热力图 · 近半年</span></div>
+      <div class="heat" id="heat"></div>
+      <div class="heat-foot">
+        <span class="ax">26/03/03</span>
+        <span class="spacer"></span>
+        <span class="heat-legend">
+          <span>少</span>
+          <i style="opacity:.2"></i><i style="opacity:.4"></i><i style="opacity:.6"></i>
+          <i style="opacity:.8"></i><i style="opacity:1"></i><i style="opacity:1"></i>
+          <span>多</span>
+        </span>
+        <span class="spacer"></span>
+        <span class="ax">26/09/01</span>
+      </div>
+    </section>
+
+    <!-- ========== CARD 2 : 订阅用量 ========== -->
+    <section class="card">
+      <div class="card-head">
+        <span class="label">订阅用量</span>
+        <span class="meta">更新于 14:32</span>
+      </div>
+
+      <div class="prov">
+        <div class="prov-head">
+          <span class="badge">K</span>
+          <span class="prov-name">Kimi Code</span>
+          <span class="plan">旗舰版</span>
+          <span class="acct">2 个账号</span>
+          <span class="spacer"></span>
+          <span class="refresh" title="刷新"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></span>
+        </div>
+        <div class="meter" data-pct="12" data-annot="SECONDARY">
+          <div class="meter-head"><span class="l">每周</span><span class="v">12%</span><span class="r">4 天后</span></div>
+          <div class="segbar" data-pct="12" data-filled="3"></div>
+        </div>
+        <div class="note" data-tone="stale">这是上次成功的数据 · 14:20</div>
+      </div>
+
+      <div class="prov">
+        <div class="prov-head">
+          <span class="badge">C</span>
+          <span class="prov-name">Codex</span>
+          <span class="plan">Plus</span>
+          <span class="spacer"></span>
+          <span class="refresh" title="刷新"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></span>
+        </div>
+        <div class="meter" data-pct="68">
+          <div class="meter-head"><span class="l">每 5 小时</span><span class="v">68%</span><span class="r">15:00</span></div>
+          <div class="segbar" data-pct="68" data-filled="16"></div>
+        </div>
+        <div class="meter" data-pct="96" data-annot="SECONDARY">
+          <div class="meter-head"><span class="l">每周</span><span class="v">96%</span><span class="r">2 天后</span></div>
+          <div class="segbar" data-pct="96" data-filled="23"></div>
+        </div>
+      </div>
+
+      <div class="prov">
+        <div class="prov-head">
+          <span class="badge">A</span>
+          <span class="prov-name">Claude</span>
+          <span class="plan">Pro</span>
+          <span class="spacer"></span>
+          <span class="refresh" title="刷新"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></span>
+        </div>
+        <div class="meter" data-pct="88">
+          <div class="meter-head"><span class="l">每 5 小时</span><span class="v">88%</span><span class="r">18:40</span></div>
+          <div class="segbar" data-pct="88" data-filled="21"></div>
+        </div>
+        <div class="note" data-tone="warn">授权已过期, 请重新登录</div>
+      </div>
+
+      <div class="prov">
+        <div class="prov-head">
+          <span class="badge">D</span>
+          <span class="prov-name">DeepSeek</span>
+          <span class="spacer"></span>
+          <span class="refresh" title="刷新"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></span>
+        </div>
+        <div class="bal">
+          <span class="l">本月消费</span>
+          <span class="v">¥38.21</span>
+        </div>
+        <div class="note" data-tone="stale">覆盖 09/01 – 09/01</div>
+      </div>
+
+      <div class="thresh">
+        <span class="tri"><i class="tg"></i>&lt;50</span>
+        <span class="tri"><i class="ta"></i>50–79</span>
+        <span class="tri"><i class="tr"></i>≥80</span>
+      </div>
+    </section>
+
+    <!-- ========== CARD 3 : Agent 用量 ========== -->
+    <section class="card">
+      <div class="card-head">
+        <span class="label">Agent 用量</span>
+        <span class="meta">近 14 天</span>
+      </div>
+
+      <div class="dotbars" id="dotbars" data-annot="SECONDARY"></div>
+      <div class="axis"><span>14 天前</span><span>7 天前</span><span>今天</span></div>
+
+      <div class="compose">
+        <div class="section-head" style="margin-bottom:0">
+          <span class="label">14 日构成</span>
+          <span class="meta">合计 932K</span>
+        </div>
+        <div class="compose-bar" id="composeBar"></div>
+        <div class="compose-key" id="composeKey"></div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="section-head">
+        <span class="label">逐小时</span>
+        <span class="meta">0 – 23 时</span>
+      </div>
+
+      <div id="arows"></div>
+    </section>
+
+  </div>
+
+  <div class="footer">
+    <button class="fbtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+      刷新
+    </button>
+    <span class="spacer"></span>
+    <span class="stamp">14:32 · 2 模块</span>
+    <button class="fbtn">设置</button>
+    <button class="fbtn">退出</button>
+  </div>
+</div>
+
+<div class="notes">
+  <h3>本轮改动</h3>
+  <ul>
+    <li><div class="kv"><b>成本改回</b><span><code>$0.375</code> 回到 Space Mono 17px，<code>¥38.21</code> 同步改回 Space Mono 15px 粗体。点阵字体只保留给 Hero 主数字一处。</span></div></li>
+    <li><div class="kv"><b>点阵背景</b><span>Token 用量卡加两层点阵：主网格 14px / 1px 点 / 13% 透明度，底部渐隐；右上再叠一块 7px 密网点阵，10% 透明度，椭圆遮罩收边。</span></div></li>
+    <li><div class="kv"><b>订阅阈值</b><span>&lt;50% 绿 · 50–79% 橙 · ≥80% 红。分段量条与百分比数字同步上色。</span></div></li>
+    <li><div class="kv"><b>圆角再收</b><span>面板 <code>12→10</code>，卡片 <code>8→5</code>，chip <code>6→3</code>，格子 <code>1→0</code>（全方角），徽章 3，底栏按钮 <code>999→5</code>。三个底栏按钮现在同一个圆角。</span></div></li>
+    <li><div class="kv"><b>整体</b><span>LIVE 圆点改方点；卡片间距 <code>10→8</code>；标签字距 <code>.08→.09em</code>；当前月份 chip 加 <code>--surface-raised</code> 底色；构成量条与模型占比条段间隙 <code>1→2px</code>；刷新按钮加 hover。</span></div></li>
+  </ul>
+
+  <h3>本轮改动</h3>
+  <ul>
+    <li><div class="kv"><b>阈值统一</b><span>全站只有一个判定函数 <code>levelOf(pct)</code>：<code>&lt;50 绿 · 50–79 橙 · ≥80 红</code>。所有量条与百分比数字都从 <code>data-pct</code> 推导，不再各自写死档位。</span></div></li>
+    <li><div class="kv"><b>小数点收小</b><span><code>7px → 4px</code> 实心方块，圆角改 0（纯方角像素），左右间隙 3→4px，下沉到基线。视觉宽度从 13px 收到 12px，但点本身小了 43%。</span></div></li>
+    <li><div class="kv"><b>红色不再串味</b><span>点阵柱「今天」原本用红色高亮 —— 红色现在已被阈值占用，串用会稀释告警语义。改为白色 + 底部 2px 基线标记。</span></div></li>
+    <li><div class="kv"><b>阈值图例</b><span>订阅用量卡底部加一行三档图例 <code>● &lt;50 &nbsp; ● 50–79 &nbsp; ● ≥80</code>，9px mono，让配色口径自解释。</span></div></li>
+  </ul>
+
+  <h3>阈值落地后的实际效果</h3>
+  <ul>
+    <li>Kimi 每周 <span style="color:var(--success)">12% 绿</span> · Codex 每 5 小时 <span style="color:var(--warning)">68% 橙</span> · Claude 每 5 小时 <span style="color:var(--accent)">88% 红</span> · Codex 每周 <span style="color:var(--accent)">96% 红</span>。</li>
+    <li>一屏两处红色是按你的阈值如实呈现的结果。真实数据里订阅额度常年偏高，红色会经常出现 —— 如果觉得疲劳，把红线抬到 90% 是最省事的改法，阈值函数改一行即可。</li>
+    <li>授权过期提示仍用琥珀文字，不参与阈值 —— 它是状态，不是用量。</li>
+  </ul>
+
+  <h3>待你确认</h3>
+  <ul>
+    <li>小数点 4px 是否到位？再小就是 3px，接近隐没。</li>
+    <li>阈值图例要不要放在面板里？440px 下它占了一整行。</li>
+    <li>点阵柱「今天」的白色基线标记够不够明显？</li>
+    <li>卡片圆角 5px、底栏按钮 5px 是否定稿？</li>
+  </ul>
+</div>
+
+<script>
+(function(){
+  /* ---------- 阈值 : 全站唯一口径 ----------
+     <50 绿 / 50–79 橙 / >=80 红。所有用量档位都走这里, 不各自判定。 */
+  function levelOf(pct){ return pct < 50 ? 'good' : pct < 80 ? 'warn' : 'crit'; }
+  document.querySelectorAll('[data-pct]').forEach(function(el){
+    el.dataset.level = levelOf(+el.dataset.pct);
+  });
+
+  /* ---------- 分段量条 ---------- */
+  document.querySelectorAll('.segbar').forEach(function(bar){
+    var total = 24, filled = +bar.dataset.filled;
+    for (var i = 0; i < total; i++) {
+      var b = document.createElement('b');
+      if (i < filled) b.className = 'on';
+      bar.appendChild(b);
+    }
+  });
+
+  /* ---------- 热力图 ---------- */
+  var heat = document.getElementById('heat');
+  var seed = 7;
+  function rnd(){ seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; }
+  for (var w = 0; w < 26; w++) {
+    for (var d = 0; d < 7; d++) {
+      var r = rnd();
+      var level = w < 4 ? (r > .8 ? 1 : 0)
+                : r > .82 ? 5 : r > .62 ? 4 : r > .42 ? 3 : r > .22 ? 2 : r > .08 ? 1 : 0;
+      var c = document.createElement('i');
+      c.dataset.l = level;
+      heat.appendChild(c);
+    }
+  }
+
+  /* ---------- 点阵柱状图 ---------- */
+  var COLS = 3, ROWS = 8, CELLS = COLS * ROWS;
+  var DAY = [22,26,18,30,34,28,38,32,36,42,46,52,58,68];
+  var MAXV = Math.max.apply(null, DAY);
+  var dotbars = document.getElementById('dotbars');
+  DAY.forEach(function(v, di){
+    var day = document.createElement('div');
+    day.className = 'day';
+    if (di === DAY.length - 1) day.dataset.today = 'true';
+    var filled = Math.max(1, Math.round(v / MAXV * CELLS));
+    for (var i = 0; i < CELLS; i++) {
+      var c = document.createElement('i');
+      if (i >= CELLS - filled) c.className = 'on';
+      day.appendChild(c);
+    }
+    dotbars.appendChild(day);
+  });
+
+  /* ---------- 14 日构成 ---------- */
+  var AGENTS = [
+    {n:'Kimi',     cls:'p1', pc:42, tk:'391K'},
+    {n:'Claude',   cls:'p2', pc:31, tk:'289K'},
+    {n:'Codex',    cls:'p3', pc:16, tk:'149K'},
+    {n:'DeepSeek', cls:'p4', pc:11, tk:'103K'}
+  ];
+  var cBar = document.getElementById('composeBar');
+  var cKey = document.getElementById('composeKey');
+  AGENTS.forEach(function(a){
+    var b = document.createElement('b');
+    b.className = a.cls;
+    b.style.flex = a.pc;
+    cBar.appendChild(b);
+    var k = document.createElement('span');
+    k.className = 'k';
+    k.innerHTML = '<i class="sw ' + a.cls + '"></i>'
+      + '<span class="nm">' + a.n + '</span>'
+      + '<span class="pc">' + a.pc + '%</span>'
+      + '<span class="tk"> · ' + a.tk + '</span>';
+    cKey.appendChild(k);
+  });
+
+  /* ---------- 逐小时折线 ---------- */
+  var ROWS2 = [
+    {n:'Kimi',     cls:'p1', tot:'402K', op:1,   pts:[2,1,0,0,1,3,8,14,22,31,38,42,40,44,48,52,46,38,30,24,18,12,7,4],
+     models:[['Kimi K2',72,'70.5K'],['Kimi K1.5',21,'20.6K'],['其他',7,'6.9K']],
+     projects:[['Bruce',58,'56.9K'],['Daimon',31,'30.4K'],['其他',11,'10.8K']]},
+    {n:'Claude',   cls:'p2', tot:'231K', op:.66, pts:[8,6,4,3,2,4,10,18,26,34,36,30,26,32,38,40,36,28,22,18,14,10,8,6],
+     models:[['Opus 4.5',64,'36.1K'],['Sonnet 4.5',36,'20.3K']],
+     projects:[['Bruce',81,'45.7K'],['其他',19,'10.7K']]},
+    {n:'Codex',    cls:'p3', tot:'187K', op:.45, pts:[14,12,10,8,6,5,9,16,24,30,34,32,28,24,20,22,26,24,20,16,14,12,12,13],
+     models:[['GPT-5.2',100,'46.2K']],
+     projects:[['Bruce',70,'32.3K'],['Daimon',30,'13.9K']]},
+    {n:'DeepSeek', cls:'p4', tot:'112K', op:.80, pts:[4,3,2,2,2,3,6,10,14,18,20,22,20,18,16,18,20,18,16,14,12,10,8,6],
+     models:[['V3.2',100,'28.0K']],
+     projects:[['Bruce',100,'28.0K']]}
+  ];
+  var OP = {p1:1, p2:.66, p3:.45, p4:.80};
+
+  function sparkline(pts, cls, w){
+    var max = Math.max.apply(null, pts) || 1;
+    var h = 26, pad = 2;
+    var step = (w - pad * 2) / (pts.length - 1);
+    var d = pts.map(function(p, i){
+      var x = pad + i * step;
+      var y = h - pad - (p / max) * (h - pad * 2);
+      return x.toFixed(1) + ',' + y.toFixed(1);
+    }).join(' ');
+    return '<svg class="spark" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none">'
+      + '<polyline points="' + d + '" fill="none" stroke="var(--text-display)" stroke-width="1.5" '
+      + 'stroke-opacity="' + OP[cls] + '" stroke-linejoin="round" stroke-linecap="round" '
+      + 'vector-effect="non-scaling-stroke"/></svg>';
+  }
+
+  function distBar(items){
+    var segs = items.map(function(it, i){
+      return '<b class="' + ['p1','p2','p3','p4'][i % 4] + '" style="flex:' + it[1] + '"></b>';
+    }).join('');
+    var keys = items.map(function(it, i){
+      var cls = ['p1','p2','p3','p4'][i % 4];
+      return '<span class="k"><i class="sw ' + cls + '"></i>'
+        + '<span class="nm">' + it[0] + '</span>'
+        + '<span class="pc">' + it[1] + '%</span>'
+        + '<span class="tk"> · ' + it[2] + '</span></span>';
+    }).join('');
+    return '<div class="dist"><div class="dist-head"><span class="t">模型占比</span></div>'
+      + '<div class="dbar">' + segs + '</div><div class="dkey">' + keys + '</div></div>';
+  }
+
+  var wrap = document.getElementById('arows');
+  ROWS2.forEach(function(r){
+    var el = document.createElement('div');
+    el.className = 'arow';
+    el.innerHTML =
+      '<div class="arow-head">'
+        + '<i class="sw ' + r.cls + '"></i>'
+        + '<span class="nm">' + r.n + '</span>'
+        + '<span class="tot">' + r.tot + '</span>'
+        + '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>'
+      + '</div>'
+      + sparkline(r.pts, r.cls, 386)
+      + distBar(r.models);
+    wrap.appendChild(el);
+  });
+
+  /* ---------- 模式切换 ---------- */
+  var bD = document.getElementById('btnDark'), bL = document.getElementById('btnLight');
+  function setMode(m){
+    document.documentElement.dataset.theme = m;
+    bD.setAttribute('aria-pressed', m === 'dark');
+    bL.setAttribute('aria-pressed', m === 'light');
+  }
+  bD.addEventListener('click', function(){ setMode('dark'); });
+  bL.addEventListener('click', function(){ setMode('light'); });
+
+  /* ---------- 标注 ---------- */
+  var bA = document.getElementById('btnAnnot');
+  bA.addEventListener('click', function(){
+    bA.dataset.on = document.body.classList.toggle('annot');
+  });
+})();
+</script>
+</body>
+</html>

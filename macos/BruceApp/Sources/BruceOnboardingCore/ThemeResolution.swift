@@ -2,10 +2,12 @@ import Foundation
 
 // MARK: - InterfaceStylePreference
 
-/// 界面风格: 经典 (全版本) 与 液态玻璃 (需 macOS 26+).
+/// 界面风格: 经典 (全版本), 液态玻璃 (需 macOS 26+)
+/// 与 Nothing 单色点阵仪器面板风 (不依赖玻璃 API, macOS 14+ 全版本可用).
 public enum InterfaceStylePreference: String, Codable, Equatable, Sendable, CaseIterable {
     case classic
     case liquidGlass
+    case nothing
 }
 
 // MARK: - LiquidGlassCapability
@@ -56,13 +58,20 @@ public enum ThemeResolution: Sendable {
     ) -> ResolvedTheme {
         let blur = glassStyle ?? .regular
         let interface: InterfaceStylePreference
-        if !isSupported {
+        switch interfaceStyle {
+        case .classic:
             interface = .classic
-        } else if let interfaceStyle {
-            interface = interfaceStyle
-        } else {
-            // 26+ 且无 interfaceStyle: 旧配置默认液态玻璃 (保持现网体验)
-            interface = .liquidGlass
+        case .liquidGlass:
+            // 不支持玻璃 API (macOS 26-) 时降级 classic.
+            interface = isSupported ? .liquidGlass : .classic
+        case .nothing:
+            // Nothing 不依赖玻璃 API, macOS 14+ 全版本可用,
+            // 不随 isSupported 降级, 原样透传.
+            interface = .nothing
+        case nil:
+            // 26+ 且无 interfaceStyle: 旧配置默认液态玻璃 (保持现网体验);
+            // 26- 降级 classic.
+            interface = isSupported ? .liquidGlass : .classic
         }
         let usesEffects = isSupported && interface == .liquidGlass && blur.usesGlassMaterial
         return ResolvedTheme(

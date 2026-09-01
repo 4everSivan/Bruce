@@ -6,6 +6,7 @@ BRUCE_RUST_BINARY_NAME="Bruce-collector"
 
 BRUCE_BUNDLE_FILES=(
     macos/BruceApp/Assets/AppIcon.icns
+    macos/BruceApp/Assets/Fonts
 )
 
 Bruce_validate_packaging_sources() {

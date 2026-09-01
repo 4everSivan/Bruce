@@ -58,6 +58,10 @@ Bruce_copy_rust_collector "$BRUCE_REPO_ROOT" "$BRUCE_RESOURCES" release
 
 ditto "$BRUCE_REPO_ROOT/macos/BruceApp/Assets/AppIcon.icns" \
     "$BRUCE_RESOURCES/AppIcon.icns"
+# Nothing 主题字体 (Doto / Space Grotesk / Space Mono), 运行时
+# 由 NothingFont.FontRegistry 以 .process scope 注册.
+ditto "$BRUCE_REPO_ROOT/macos/BruceApp/Assets/Fonts" \
+    "$BRUCE_RESOURCES/Fonts"
 
 BRUCE_INFO_PLIST="$BRUCE_CONTENTS/Info.plist"
 plutil -create xml1 "$BRUCE_INFO_PLIST"

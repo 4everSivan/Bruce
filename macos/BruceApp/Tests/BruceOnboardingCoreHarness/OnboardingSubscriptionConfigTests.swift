@@ -470,6 +470,169 @@ extension BruceOnboardingCoreHarness {
         )
     }
 
+    /// nothing 主题: 解码与相邻字段保全, 旧版本降级模拟, store 往返
+    /// 与 ThemeResolution 能力矩阵 (3 x isSupported 共 6 组).
+    static func configNothingStyleDecodeAndResolution() throws {
+        // 合法值: "nothing" 经 decodeIfPresent 原样生效, 相邻字段不丢失
+        let valid = try JSONDecoder().decode(
+            OnboardingConfiguration.self,
+            from: Data(
+                #"{"schemaVersion": 2, "interfaceStyle": "nothing", "appearanceMode": "dark", "refreshIntervalMinutes": 15, "glassStyle": "clear"}"#
+                    .utf8
+            )
+        )
+        try coreExpect(
+            valid.interfaceStyle == .nothing,
+            "interfaceStyle nothing 解码"
+        )
+        try coreExpect(
+            valid.appearanceMode == .dark,
+            "interfaceStyle 解码不得丢失相邻 appearanceMode"
+        )
+        try coreExpect(
+            valid.refreshIntervalMinutes == 15,
+            "interfaceStyle 解码不得丢失相邻 refreshIntervalMinutes"
+        )
+        try coreExpect(
+            valid.glassStyle == .clear,
+            "interfaceStyle 解码不得丢失相邻 glassStyle"
+        )
+        try coreExpect(
+            valid.resolvedTheme(isLiquidGlassSupported: true).interfaceStyle
+                == .nothing,
+            "nothing 在支持系统上透传"
+        )
+        try coreExpect(
+            valid.resolvedTheme(isLiquidGlassSupported: false).interfaceStyle
+                == .nothing,
+            "nothing 在低版本系统上仍透传"
+        )
+
+        // 旧版本降级模拟: 旧枚举 (无 nothing case) 读到 "nothing" 时
+        // decodeIfPresent 抛 typeMismatch 被 try? 吞掉回落 nil.
+        enum LegacyInterfaceStyle: String, Codable {
+            case classic
+            case liquidGlass
+        }
+        let legacyDecoded = try? JSONDecoder().decode(
+            LegacyInterfaceStyle.self,
+            from: Data(#""nothing""#.utf8)
+        )
+        try coreExpect(
+            legacyDecoded == nil,
+            "旧版本枚举读到 nothing 必须回落 nil"
+        )
+        let legacyFallback = ThemeResolution.resolve(
+            interfaceStyle: nil,
+            glassStyle: .clear,
+            isSupported: true
+        )
+        // 旧 app 读不到 nothing 时 interfaceStyle 回落 nil, 沿用旧 app 自身的
+        // 现网默认 (26+ -> liquidGlass, 14-25 -> classic), 不得引入回归.
+        try coreExpect(
+            legacyFallback.interfaceStyle == .liquidGlass,
+            "旧版本回落 nil 后必须沿用现网默认 (26+ -> liquidGlass)"
+        )
+        try coreExpect(
+            legacyFallback.usesLiquidGlassEffects,
+            "旧版本回落 (26+ 默认 liquidGlass) 走玻璃 API"
+        )
+
+        // 同一条 try? decodeIfPresent 路径: 非法字符串回落 nil 且不炸整份 config
+        let invalid = try JSONDecoder().decode(
+            OnboardingConfiguration.self,
+            from: Data(
+                #"{"schemaVersion": 2, "interfaceStyle": "neon", "appearanceMode": "dark"}"#
+                    .utf8
+            )
+        )
+        try coreExpect(
+            invalid.interfaceStyle == nil,
+            "非法 interfaceStyle 必须按 nil 处理"
+        )
+        try coreExpect(
+            invalid.appearanceMode == .dark,
+            "interfaceStyle 非法值不得丢失相邻字段"
+        )
+
+        // ThemeResolution.resolve 矩阵: (.classic/.liquidGlass/.nothing)
+        // x (isSupported true/false) 共 6 组
+        for isSupported in [true, false] {
+            let classic = ThemeResolution.resolve(
+                interfaceStyle: .classic,
+                glassStyle: .regular,
+                isSupported: isSupported
+            )
+            try coreExpect(
+                classic.interfaceStyle == .classic,
+                "classic 必须原样透传"
+            )
+            try coreExpect(
+                !classic.usesLiquidGlassEffects,
+                "classic 不得使用玻璃 API"
+            )
+
+            let liquid = ThemeResolution.resolve(
+                interfaceStyle: .liquidGlass,
+                glassStyle: .regular,
+                isSupported: isSupported
+            )
+            if isSupported {
+                try coreExpect(
+                    liquid.interfaceStyle == .liquidGlass,
+                    "支持系统时 liquidGlass 透传"
+                )
+                try coreExpect(
+                    liquid.usesLiquidGlassEffects,
+                    "支持 + regular 必须走玻璃 API"
+                )
+            } else {
+                try coreExpect(
+                    liquid.interfaceStyle == .classic,
+                    "不支持系统时 liquidGlass 降级 classic"
+                )
+                try coreExpect(
+                    !liquid.usesLiquidGlassEffects,
+                    "降级 classic 后不得使用玻璃 API"
+                )
+            }
+
+            let nothing = ThemeResolution.resolve(
+                interfaceStyle: .nothing,
+                glassStyle: .regular,
+                isSupported: isSupported
+            )
+            try coreExpect(
+                nothing.interfaceStyle == .nothing,
+                "nothing 不随玻璃能力降级, 必须原样透传"
+            )
+            try coreExpect(
+                !nothing.usesLiquidGlassEffects,
+                "nothing 不得使用玻璃 API"
+            )
+        }
+
+        // store 原子读写往返
+        let tempDir = makeTempDir("config-nothing")
+        try FileManager.default.createDirectory(
+            at: tempDir, withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let store = try OnboardingConfigurationStore(configDirectory: tempDir)
+        var config = OnboardingConfiguration()
+        config.interfaceStyle = .nothing
+        config.glassStyle = .material
+        try store.save(config)
+        try coreExpect(
+            store.load()?.interfaceStyle == .nothing,
+            "interfaceStyle nothing 往返必须一致"
+        )
+        try coreExpect(
+            store.load()?.glassStyle == .material,
+            "nothing 往返不得影响 glassStyle"
+        )
+    }
+
     // MARK: - 订阅凭证 account 键 (内存实现)
 
     /// 七个订阅 provider account 键的增删改查与隔离.

@@ -123,6 +123,7 @@ struct BruceOnboardingCoreHarness {
         try await disconnectRemovesRecordButKeepsOthers()
         try configAppearanceModeDecodeAndFallback()
         try configGlassStyleDecodeAndFallback()
+        try configNothingStyleDecodeAndResolution()
         try codexAccountIdentityServiceIDMatchesRustContract()
         try codexAccountIdentityLegacyID()
         try evaluatorGrokExpiredReturnsExpired()
@@ -154,6 +155,6 @@ struct BruceOnboardingCoreHarness {
         try opencodeGoCredentialAccountsAndRegistry()
         try opencodeGoEvaluatorValidAndMalformed()
         try opencodeGoAccountIDAndLegacyKeys()
-        print("BruceOnboardingCore tests passed: 162")
+        print("BruceOnboardingCore tests passed: 163")
     }
 }

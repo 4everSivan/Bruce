@@ -18,6 +18,8 @@ struct BruceApp: App {
     private let hotkeyMonitor: GlobalHotkeyMonitor
 
     init() {
+        // Nothing 主题字体: UI 构建前注册 (失败静默回退 .system, 幂等).
+        NothingFont.activate()
         let configStore = try? OnboardingConfigurationStore()
         let rustURL = Self.resolveRustCollectorURL()
         let collectorRuntime: CollectorRuntimeStatus
