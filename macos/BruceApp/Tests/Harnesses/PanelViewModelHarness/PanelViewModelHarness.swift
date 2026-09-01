@@ -70,6 +70,7 @@ private func makeAgent(
     hours: [Int] = Array(repeating: 0, count: 24),
     todayCostUsd: Double? = nil,
     models: [String: Int]? = nil,
+    modelMonths: [String: [String: Int]]? = nil,
     projects: [AgentProjectUsage]? = nil
 ) -> AgentUsageItem {
     let totals = dailyTotals ?? Array(repeating: 0, count: 14)
@@ -86,6 +87,7 @@ private func makeAgent(
         hours: hours,
         todayCostUsd: todayCostUsd,
         models: models,
+        modelMonths: modelMonths,
         projects: projects
     )
 }
@@ -196,6 +198,8 @@ struct PanelViewModelHarness {
         try hourlyRowsHideAgentsWithoutUsage()
         try hourlyRowsSortByTodayTotalDesc()
         try hourlyDetailAggregatesTopAndOther()
+        try modelUsageBuildsTiersMonthsAndColors()
+        try modelUsageHiddenWithoutMonthData()
         try resetTextVariants()
         try negativeResetEpochYieldsEmptyResetText()
         try tokenAndBalanceFormatting()
@@ -219,7 +223,7 @@ struct PanelViewModelHarness {
         try presentationPolicyTableDrivenRules()
         try singleAccountSectionNameOmitsAccountSuffix()
         try appVersionReadsBundleAndFallsBack()
-        print("PanelViewModel tests passed: 43")
+        print("PanelViewModel tests passed: 45")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -598,6 +602,7 @@ struct PanelViewModelHarness {
             hours: Array(repeating: 0, count: 24),
             todayCostUsd: nil,
             models: nil,
+            modelMonths: nil,
             projects: nil
         )
         let artifact = makeAgentUsageArtifact(agents: [agent], services: [])
@@ -1669,6 +1674,94 @@ struct PanelViewModelHarness {
         try expect(
             AppVersion.current(raw: 123) == "unknown",
             "非字符串应回落 unknown"
+        )
+    }
+
+    // MARK: - 模型用量
+
+    /// 模型用量: 三档窗口求和、月卡数据、降序排序与颜色跨周期稳定.
+    private static func modelUsageBuildsTiersMonthsAndColors() throws {
+        let agentA = makeAgent(
+            id: "zcode",
+            name: "ZCode",
+            modelMonths: [
+                "2026-08": ["GLM-5.3": 300, "Kimi K3": 100],
+                "2026-07": ["GLM-5.3": 200, "Kimi K3": 250],
+                "2026-06": ["GLM-5.3": 50, "Kimi K3": 400],
+            ]
+        )
+        let agentB = makeAgent(
+            id: "claude-code",
+            name: "Claude Code",
+            modelMonths: [
+                "2026-08": ["Claude Sonnet": 150],
+                "2026-07": ["Claude Sonnet": 120],
+            ]
+        )
+        let artifact = makeAgentUsageArtifact(agents: [agentA, agentB], services: [])
+        let vm = makeMapper().make(agentUsage: artifact, moduleStatuses: readyStatuses)
+        let models = vm.usage?.models
+        try expect(models != nil, "modelMonths 存在时模型区块不应为 nil")
+
+        let tiers = models?.tiers ?? []
+        try expect(
+            tiers.map(\.label) == ["本月", "3 月", "6 月"],
+            "三档窗口标签顺序错误: \(tiers.map(\.label))"
+        )
+        // 本月 = 2026-08 跨 agent 求和, 降序.
+        try expect(
+            tiers[0].rows.map(\.name) == ["GLM-5.3", "Claude Sonnet", "Kimi K3"],
+            "本月排序应按用量降序: \(tiers[0].rows.map(\.name))"
+        )
+        try expect(
+            tiers[0].rows[0].totalText == PanelFormat.tokenCount(300),
+            "本月 GLM 应跨 agent 求和: \(tiers[0].rows[0].totalText)"
+        )
+        try expect(
+            tiers[0].rows[0].pctText == "55%",
+            "本月 GLM 份额应约 55%: \(tiers[0].rows[0].pctText)"
+        )
+        // 3 月 = 6+7+8 月求和.
+        let kimi3m = tiers[1].rows.first(where: { $0.name == "Kimi K3" })
+        try expect(
+            kimi3m?.totalText == PanelFormat.tokenCount(750),
+            "3 月窗口应覆盖 6-8 月: \(kimi3m?.totalText ?? "nil")"
+        )
+        try expect(tiers[2].rows.count == 3, "6 月窗口模型数应一致")
+
+        // 日历月降序 + 同一模型颜色跨周期稳定.
+        try expect(
+            models?.months.map(\.id) == ["2026-08", "2026-07", "2026-06"],
+            "日历月应最新在前: \(models?.months.map(\.id) ?? [])"
+        )
+        let glmTierColor = tiers[0].rows[0].colorHex
+        let glmJuneColor = models?.months.last?.rows.first(where: { $0.name == "GLM-5.3" })?.colorHex
+        try expect(
+            glmJuneColor == glmTierColor,
+            "同一模型颜色应跨周期稳定: \(String(describing: glmJuneColor)) vs \(glmTierColor)"
+        )
+        // 进度条份额 = 周期内占比.
+        let share = tiers[0].rows[0].share
+        try expect(
+            abs(share - 300.0 / 550.0) < 0.001,
+            "进度条份额应为周期内占比: \(share)"
+        )
+    }
+
+    /// 旧版 artifact (无 modelMonths): 模型区块为 nil, 按月/热力图不受影响.
+    private static func modelUsageHiddenWithoutMonthData() throws {
+        let agent = makeAgent(
+            id: "kimi-code-cli",
+            name: "Kimi Code CLI",
+            dailyTotals: [100, 200],
+            models: ["k3": 300]
+        )
+        let artifact = makeAgentUsageArtifact(agents: [agent], services: [])
+        let vm = makeMapper().make(agentUsage: artifact, moduleStatuses: readyStatuses)
+        try expect(vm.usage?.models == nil, "无 modelMonths 时模型区块应为 nil")
+        try expect(
+            !(vm.usage?.monthly.isEmpty ?? true),
+            "按月区块不应受模型数据缺失影响"
         )
     }
 

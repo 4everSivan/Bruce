@@ -15,6 +15,14 @@ struct UsageHeroCard: View {
     @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var heroBreathing = false
+    /// 模型用量: 展开态与周期选择 (窗口档位 或 点击按月卡指定自然月).
+    @State private var modelsExpanded = false
+    @State private var modelSelection: ModelUsageSelection = .tier(0)
+
+    enum ModelUsageSelection: Equatable {
+        case tier(Int)
+        case month(String)
+    }
 
     init(viewModel: UsageHeroViewModel) {
         self.viewModel = viewModel
@@ -35,6 +43,10 @@ struct UsageHeroCard: View {
                 .padding(.top, 10)
             if !viewModel.monthly.isEmpty {
                 monthlySection
+                    .padding(.top, 12)
+            }
+            if let models = viewModel.models {
+                modelUsageSection(models)
                     .padding(.top, 12)
             }
             if !viewModel.heatmap.isEmpty {
@@ -216,18 +228,34 @@ struct UsageHeroCard: View {
             .foregroundStyle(isNothing ? Self.nothingSecondary : Self.faint)
     }
 
-    /// 月度 chip: Nothing 下按定稿为 3pt 圆角 + 1px 边框, 当月 surface-raised 底
-    /// 与 border-visible 描边, 无当月透明底; 其余主题保持原白透明底样式.
+    /// 月度 chip: 点击联动下方模型用量区块; Nothing 下按定稿为 3pt 圆角 + 1px 边框,
+    /// 当月 surface-raised 底与 border-visible 描边, 无当月透明底; 其余主题保持原白透明底样式.
+    /// 选中卡 (非当月) 以 accent 描边与标签色标记.
+    @ViewBuilder
     private func monthlyChip(_ month: UsageMonthlyTotal) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
+        if viewModel.models != nil && !month.key.isEmpty {
+            Button {
+                modelSelection = .month(month.key)
+            } label: {
+                chipContent(month)
+            }
+            .buttonStyle(.plain)
+        } else {
+            chipContent(month)
+        }
+    }
+
+    private func chipContent(_ month: UsageMonthlyTotal) -> some View {
+        let isSelected = modelSelection == .month(month.key) && !month.key.isEmpty
+        return VStack(alignment: .leading, spacing: 1) {
             Text(month.label)
                 .font(isNothing
                     ? NothingFont.mono(9)
-                    : .system(size: 8.5, weight: month.isCurrent ? .semibold : .regular))
+                    : .system(size: 8.5, weight: month.isCurrent || isSelected ? .semibold : .regular))
                 .tracking(isNothing ? 0.81 : 0.5)
                 .foregroundStyle(isNothing
-                    ? (month.isCurrent ? Self.nothingDisplay : Self.nothingSecondary)
-                    : (month.isCurrent ? Self.accent : Self.faint))
+                    ? (month.isCurrent || isSelected ? Self.nothingDisplay : Self.nothingSecondary)
+                    : (month.isCurrent || isSelected ? Self.accent : Self.faint))
             Text(month.totalText)
                 .font(isNothing ? NothingFont.mono(13) : .system(size: 13, weight: .semibold))
                 .monospacedDigit()
@@ -248,16 +276,162 @@ struct UsageHeroCard: View {
         .overlay(
             RoundedRectangle(cornerRadius: isNothing ? 3 : 10, style: .continuous)
                 .strokeBorder(
-                    isNothing
+                    isSelected ? Self.accent.opacity(0.85) :
+                    (isNothing
                         ? (month.isCurrent ? Self.nothingBorderVisible : Self.nothingBorder)
                         : Color.adaptive(
                             light: Color.white.opacity(0.55),
                             dark: Color.white.opacity(0.1)
-                        ),
+                        )),
                     lineWidth: 1
                 )
         )
         .accessibilityElement(children: .combine)
+        .accessibilityHint(viewModel.models != nil ? "点击查看该月模型用量" : "")
+    }
+
+    // MARK: 模型用量 (按月下方; 三档窗口 + 月卡联动, 默认本月、前 3 + 展开)
+
+    private var modelRows: [UsageModelRow] {
+        guard let models = viewModel.models else { return [] }
+        switch modelSelection {
+        case .tier(let index):
+            guard models.tiers.indices.contains(index) else { return [] }
+            let limit = modelsExpanded ? models.tiers[index].rows.count : min(3, models.tiers[index].rows.count)
+            return Array(models.tiers[index].rows.prefix(limit))
+        case .month(let key):
+            guard let period = models.months.first(where: { $0.id == key }) else { return [] }
+            let limit = modelsExpanded ? period.rows.count : min(3, period.rows.count)
+            return Array(period.rows.prefix(limit))
+        }
+    }
+
+    private var modelPeriodSuffix: String {
+        guard let models = viewModel.models, case .month(let key) = modelSelection,
+              let period = models.months.first(where: { $0.id == key }) else {
+            return ""
+        }
+        return " · " + period.label
+    }
+
+    private func modelUsageSection(_ models: UsageModelUsageSection) -> some View {
+        let rows = modelRows
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                HStack(spacing: 5) {
+                    sectionTitle("模型用量" + modelPeriodSuffix)
+                    expandButton
+                }
+                Spacer()
+                tierSegment(models)
+            }
+            .padding(.bottom, 2)
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                modelRow(row)
+            }
+            if rows.isEmpty {
+                Text("暂无模型数据")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Self.faint)
+                    .padding(.vertical, 6)
+            }
+        }
+    }
+
+    private var expandButton: some View {
+        Button {
+            modelsExpanded.toggle()
+        } label: {
+            Image(systemName: "chevron.down")
+                .font(.system(size: 8, weight: .semibold))
+                .rotationEffect(.degrees(modelsExpanded ? 180 : 0))
+                .frame(width: 17, height: 17)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Self.subdued)
+        .accessibilityLabel(modelsExpanded ? "收起全部模型" : "展开全部模型")
+        .accessibilityAddTraits(modelsExpanded ? .isSelected : [])
+    }
+
+    private func isActiveTier(_ index: Int) -> Bool {
+        guard case .tier(let selected) = modelSelection else { return false }
+        return selected == index
+    }
+
+    private func tierSegment(_ models: UsageModelUsageSection) -> some View {
+        HStack(spacing: 2) {
+            ForEach(Array(models.tiers.enumerated()), id: \.offset) { index, period in
+                Button {
+                    modelSelection = .tier(index)
+                } label: {
+                    Text(period.label)
+                        .font(isNothing ? NothingFont.mono(8.5) : .system(size: 9, weight: .semibold))
+                        .tracking(isNothing ? 0.5 : 0)
+                        .textCase(isNothing ? .uppercase : nil)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(
+                            RoundedRectangle(cornerRadius: isNothing ? 2 : 6, style: .continuous)
+                                .fill(isActiveTier(index)
+                                      ? (isNothing ? Self.nothingDisplay : Color.primary.opacity(0.12))
+                                      : Color.clear)
+                        )
+                        .foregroundStyle(
+                            isActiveTier(index)
+                                ? (isNothing ? Color.black : Self.ink)
+                                : Self.subdued
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(2)
+        .background(
+            RoundedRectangle(cornerRadius: isNothing ? 3 : 8, style: .continuous)
+                .fill(isNothing ? Color.clear : Color.primary.opacity(0.06))
+        )
+        .overlay {
+            if isNothing {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .strokeBorder(Self.nothingBorder, lineWidth: 1)
+            }
+        }
+    }
+
+    private func modelRow(_ row: UsageModelRow) -> some View {
+        HStack(spacing: 7) {
+            RoundedRectangle(cornerRadius: isNothing ? 1 : 2)
+                .fill(Color(hex: row.colorHex))
+                .frame(width: 7, height: 7)
+            Text(row.name)
+                .font(isNothing ? NothingFont.mono(10) : .system(size: 10.5, weight: .medium))
+                .tracking(isNothing ? 0.5 : 0)
+                .textCase(isNothing ? .uppercase : nil)
+                .foregroundStyle(Self.ink.opacity(0.9))
+                .lineLimit(1)
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: isNothing ? 0 : 2)
+                        .fill(Self.hairline)
+                    RoundedRectangle(cornerRadius: isNothing ? 0 : 2)
+                        .fill(Color(hex: row.colorHex))
+                        .frame(width: max(0, proxy.size.width * row.share))
+                }
+            }
+            .frame(height: 4)
+            Text(row.pctText)
+                .font(.system(size: 8.5))
+                .monospacedDigit()
+                .foregroundStyle(Self.faint)
+                .frame(width: 30, alignment: .trailing)
+            Text(row.totalText)
+                .font(.system(size: 11, weight: .semibold))
+                .monospacedDigit()
+                .foregroundStyle(Self.ink.opacity(0.9))
+                .frame(width: 46, alignment: .trailing)
+        }
+        .padding(.vertical, 5)
     }
 
     // MARK: 用量热力图

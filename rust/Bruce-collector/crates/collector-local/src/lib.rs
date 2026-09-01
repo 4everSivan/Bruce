@@ -25,7 +25,8 @@ pub const KIMI_USAGE_RECORD_TYPE: &str = "usage.record";
 pub const MAX_JSONL_RECORD_BYTES: usize = 1024 * 1024;
 pub const CACHE_SCHEMA_VERSION: u32 = 1;
 pub const PARSER_VERSION: u32 = 2;
-pub const AGGREGATION_VERSION: u32 = 1;
+/// v2: 缓存条目新增自然月 × 模型聚合 (modelMonths); 旧条目按版本不匹配全量重建一次.
+pub const AGGREGATION_VERSION: u32 = 2;
 const FINGERPRINT_SEGMENT_BYTES: u64 = 64 * 1024;
 // Cache files are small but numerous; one bounded writer avoids APFS metadata
 // contention while still overlapping serialization with the source scan.
@@ -351,9 +352,14 @@ struct CacheEntry {
 /// Compact cache-only representation. Cache entries are internal and
 /// rebuildable, so arrays are preferable to repeating JSON field names for
 /// every daily bucket while the domain contribution remains ergonomic.
+/// 自然月 × 模型的压缩缓存表示 (月 key → 模型 → 五元 token 桶).
+type CompactMonthModels = Vec<(String, Vec<(String, [u64; 5])>)>;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 struct CompactContribution {
     days: Vec<(u16, [u64; 5])>,
+    #[serde(default)]
+    month_models: CompactMonthModels,
     models_today: Vec<(String, [u64; 5])>,
     projects_today: Vec<(String, u64)>,
     hours: Vec<u64>,
@@ -373,8 +379,22 @@ impl CompactContribution {
                     .map(|index| (index, bucket_array(bucket)))
             })
             .collect::<Option<Vec<_>>>()?;
+        let month_models = value
+            .models_by_month
+            .iter()
+            .map(|(month, models)| {
+                (
+                    month.clone(),
+                    models
+                        .iter()
+                        .map(|(model, bucket)| (model.clone(), bucket_array(bucket)))
+                        .collect(),
+                )
+            })
+            .collect();
         Some(Self {
             days,
+            month_models,
             models_today: value
                 .models_today
                 .iter()
@@ -402,6 +422,19 @@ impl CompactContribution {
             })
             .collect::<Option<BTreeMap<_, _>>>()?;
         Some(UsageContribution {
+            models_by_month: self
+                .month_models
+                .iter()
+                .map(|(month, models)| {
+                    (
+                        month.clone(),
+                        models
+                            .iter()
+                            .map(|(model, values)| (model.clone(), bucket_from_array(*values)))
+                            .collect::<BTreeMap<_, _>>(),
+                    )
+                })
+                .collect(),
             models_today: self
                 .models_today
                 .iter()

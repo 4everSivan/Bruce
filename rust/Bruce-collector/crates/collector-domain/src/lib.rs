@@ -287,6 +287,9 @@ pub struct ProjectDelta {
 #[serde(rename_all = "camelCase")]
 pub struct UsageContribution {
     pub by_day: BTreeMap<String, TokenBucket>,
+    /// Natural-month × model token buckets; powers the usage card's model
+    /// breakdown tiers (本月 / 3 月 / 6 月) without per-day model payload.
+    pub models_by_month: BTreeMap<String, BTreeMap<String, TokenBucket>>,
     pub models_today: Vec<ModelDelta>,
     pub projects_today: Vec<ProjectDelta>,
     pub hours: Vec<u64>,
@@ -322,6 +325,7 @@ impl SourceDeltaChange {
 pub struct UsageContributionBuilder {
     window: CollectionWindow,
     by_day: HashMap<usize, TokenBucket>,
+    models_by_month: BTreeMap<String, BTreeMap<String, TokenBucket>>,
     models_today: HashMap<String, TokenBucket>,
     model_order: Vec<String>,
     projects_today: HashMap<String, u64>,
@@ -334,6 +338,7 @@ impl UsageContributionBuilder {
         Self {
             window,
             by_day: HashMap::new(),
+            models_by_month: BTreeMap::new(),
             models_today: HashMap::new(),
             model_order: Vec::new(),
             projects_today: HashMap::new(),
@@ -360,14 +365,28 @@ impl UsageContributionBuilder {
             sample.cache_read,
             sample.cache_creation,
         );
-        if day_index + 1 != self.window.day_list.len() {
-            return true;
-        }
-
         let model = sample
             .model
             .filter(|value| !value.is_empty())
             .unwrap_or("unknown");
+        // 自然月 × 模型聚合覆盖全部样本 (不只今日), 供用量卡模型分档统计.
+        if let Some(date) = self.window.day_list.get(day_index) {
+            let month = &date[..7];
+            self.models_by_month
+                .entry(month.to_owned())
+                .or_default()
+                .entry(model.to_owned())
+                .or_default()
+                .add(
+                    sample.input,
+                    sample.output,
+                    sample.cache_read,
+                    sample.cache_creation,
+                );
+        }
+        if day_index + 1 != self.window.day_list.len() {
+            return true;
+        }
         if !self.models_today.contains_key(model) {
             self.model_order.push(model.to_owned());
         }
@@ -422,6 +441,12 @@ impl UsageContributionBuilder {
         for ((_, bucket), day_index) in contribution.by_day.iter().zip(day_indexes) {
             self.by_day.entry(day_index).or_default().merge(bucket);
         }
+        for (month, models) in &contribution.models_by_month {
+            let month_entry = self.models_by_month.entry(month.clone()).or_default();
+            for (model, bucket) in models {
+                month_entry.entry(model.clone()).or_default().merge(bucket);
+            }
+        }
         for model in &contribution.models_today {
             if !self.models_today.contains_key(&model.model) {
                 self.model_order.push(model.model.clone());
@@ -457,6 +482,7 @@ impl UsageContributionBuilder {
                         .map(|day| (day, bucket.clone()))
                 })
                 .collect::<BTreeMap<_, _>>(),
+            models_by_month: self.models_by_month.clone(),
             models_today: self
                 .model_order
                 .iter()
@@ -523,6 +549,7 @@ pub struct AgentUsage {
     pub today: TokenBucket,
     pub daily: Vec<DailyUsage>,
     pub models: std::collections::BTreeMap<String, u64>,
+    pub model_months: BTreeMap<String, BTreeMap<String, u64>>,
     pub today_models: Vec<ModelUsage>,
     pub projects: Vec<ProjectUsage>,
     pub hours: Vec<u64>,
@@ -711,6 +738,7 @@ mod tests {
     fn source_change_serializes_identity_without_raw_payload_fields() {
         let contribution = super::UsageContribution {
             by_day: Default::default(),
+            models_by_month: Default::default(),
             models_today: Vec::new(),
             projects_today: Vec::new(),
             hours: vec![0; 24],

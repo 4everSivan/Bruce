@@ -561,10 +561,17 @@ pub fn scan_codex(roots: &[PathBuf], window: &CollectionWindow) -> SourceScan {
                 if input_total == 0 && cache_read == 0 && output == 0 {
                     return;
                 }
+                // token_count 事件通常不带模型名; 逐层尽力提取, 提取不到再回退 "codex",
+                // 避免所有 Codex 用量在模型统计里塌缩成单个占位条目.
+                let model = info
+                    .get("model")
+                    .and_then(Value::as_str)
+                    .or_else(|| payload.get("model").and_then(Value::as_str))
+                    .or_else(|| value.get("model").and_then(Value::as_str));
                 record(
                     &mut builder,
                     timestamp,
-                    Some("codex"),
+                    model.or(Some("codex")),
                     input_total.saturating_sub(cache_read),
                     output,
                     cache_read,

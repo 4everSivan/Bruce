@@ -1,0 +1,33 @@
+{
+  "type": "design",
+  "designSystems": [],
+  "primaryDesignSystem": null,
+  "assets": {
+    "模型用量统计可视化方案": {
+      "versions": [
+        {
+          "path": "index.html",
+          "createdAt": "2026-09-01T06:22:04.252Z",
+          "status": "needs-review"
+        },
+        {
+          "path": "v1-chart-variants.html",
+          "createdAt": "2026-09-01T06:39:40.390Z",
+          "status": "needs-review"
+        },
+        {
+          "path": "v2-model-list.html",
+          "createdAt": "2026-09-01T06:49:23.661Z",
+          "status": "needs-review"
+        },
+        {
+          "path": "v3-hifi-tier-seg.html",
+          "createdAt": "2026-09-01T07:03:05.331Z",
+          "status": "needs-review"
+        }
+      ]
+    }
+  },
+  "createdAt": "2026-09-01T06:22:04.262Z",
+  "updatedAt": "2026-09-01T07:03:05.444Z"
+}

@@ -164,6 +164,17 @@
             "null"
           ],
           "minimum": 0
+        },
+        "modelMonths": {
+          "type": "object",
+          "description": "自然月 × 模型 token 总量, 供用量卡模型分档统计 (本月/3 月/6 月)",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
         }
       }
     },

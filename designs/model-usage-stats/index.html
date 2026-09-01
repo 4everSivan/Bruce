@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bruce · Token 用量卡 — 模型用量 (按月联动)</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    min-height: 100vh;
+    background:
+      radial-gradient(1000px 480px at 20% -10%, rgba(64,84,140,.45), transparent 60%),
+      radial-gradient(900px 600px at 85% 110%, rgba(40,110,90,.32), transparent 55%),
+      linear-gradient(165deg, #171a22 0%, #1b1e28 50%, #181c1a 100%);
+    font-family: -apple-system, "SF Pro Text", "PingFang SC", "Noto Sans SC", sans-serif;
+    color: rgba(255,255,255,.92);
+    padding: 26px 22px 44px;
+  }
+  .topbar { max-width: 1240px; margin: 0 auto 6px; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .topbar h1 { font-size: 16px; font-weight: 700; letter-spacing: -.2px; }
+  .topbar .note { font-size: 11px; color: rgba(255,255,255,.55); }
+  .principle { max-width: 1240px; margin: 0 auto 18px; font-size: 11px; line-height: 1.7; color: rgba(255,255,255,.5); }
+  .principle b { color: rgba(255,255,255,.85); font-weight: 600; }
+
+  .stage { max-width: 1240px; margin: 0 auto; display: flex; gap: 22px; justify-content: center; align-items: flex-start; flex-wrap: wrap; }
+  .variant { width: 392px; }
+  .variant-label { display: flex; align-items: baseline; gap: 8px; margin: 0 2px 6px; }
+  .variant-label .tag { font-size: 10.5px; font-weight: 700; padding: 2px 9px; border-radius: 99px; background: #0a84ff; color: #fff; }
+  .variant-label h2 { font-size: 13px; font-weight: 650; }
+  .variant-desc { font-size: 10.5px; line-height: 1.6; color: rgba(255,255,255,.5); margin: -2px 2px 10px; }
+
+  /* ============ Token 用量卡: 同一 DOM × 主题 token ============ */
+  .card {
+    --card-bg: rgba(30,33,44,.55);
+    --card-border: rgba(255,255,255,.10);
+    --card-shadow: 0 2px 12px rgba(10,14,24,.4), inset 0 1px 0 rgba(255,255,255,.07);
+    --card-radius: 16px;
+    --font: -apple-system, "SF Pro Text", "PingFang SC", "Noto Sans SC", sans-serif;
+    --text: rgba(255,255,255,.92);
+    --text-strong: #f5f5f7;
+    --text-sub: rgba(255,255,255,.58);
+    --text-faint: rgba(255,255,255,.42);
+    --hairline: rgba(255,255,255,.10);
+    --track: rgba(255,255,255,.10);
+    --hero-grad: linear-gradient(135deg, #f5f5f7 30%, #0a84ff 130%);
+    --accent: #0a84ff;
+    --live: #30d158;
+    --heat-empty: rgba(255,255,255,.07);
+    --heat-1: #7d9b76; --heat-2: #63885e; --heat-3: #4c7249; --heat-4: #385b38; --heat-5: #26452a;
+    /* 按月 chip (原版样式): 白透明底 + 白描边, 当月蓝标签 */
+    --chip-bg-cur: rgba(255,255,255,.14);
+    --chip-bg: rgba(255,255,255,.08);
+    --chip-stroke: rgba(255,255,255,.1);
+    --chip-stroke-sel: rgba(10,132,255,.8);
+    --chip-radius: 10px;
+    --chip-label-cur: var(--accent);
+    --seg-bg: rgba(255,255,255,.08);
+    --seg-active-bg: rgba(255,255,255,.18);
+    --seg-active-text: var(--text);
+    --seg-radius: 6px;
+    --bar-radius: 2px;
+    --dot-radius: 2px;
+    --name-transform: none;
+    --name-spacing: -.05px;
+
+    width: 392px;
+    background: var(--card-bg);
+    backdrop-filter: blur(22px) saturate(1.6);
+    -webkit-backdrop-filter: blur(22px) saturate(1.6);
+    border: 1px solid var(--card-border);
+    border-radius: var(--card-radius);
+    padding: 14px 15px 12px;
+    box-shadow: var(--card-shadow);
+    font-family: var(--font);
+    color: var(--text);
+  }
+  .card[data-theme="glass-light"] {
+    --card-bg: rgba(240,242,248,.72);
+    --card-border: rgba(255,255,255,.75);
+    --card-shadow: 0 2px 12px rgba(31,38,56,.12), inset 0 1px 0 rgba(255,255,255,.65);
+    --text: #1c1c1e;
+    --text-strong: #1c1c1e;
+    --text-sub: rgba(60,60,67,.72);
+    --text-faint: rgba(60,60,67,.5);
+    --hairline: rgba(0,0,0,.07);
+    --track: rgba(0,0,0,.08);
+    --hero-grad: linear-gradient(135deg, #1c1c1e 30%, #0a84ff 130%);
+    --heat-empty: rgba(0,0,0,.06);
+    --chip-bg-cur: rgba(255,255,255,.6);
+    --chip-bg: rgba(255,255,255,.4);
+    --chip-stroke: rgba(255,255,255,.55);
+    --chip-stroke-sel: rgba(10,132,255,.8);
+  }
+  .card[data-theme="nothing"] {
+    --card-bg: #000;
+    --card-border: rgba(255,255,255,.3);
+    --card-shadow: none;
+    --card-radius: 6px;
+    --font: "SF Mono", ui-monospace, Menlo, monospace;
+    --text: #fff;
+    --text-strong: #fff;
+    --text-sub: rgba(255,255,255,.55);
+    --text-faint: rgba(255,255,255,.38);
+    --hairline: rgba(255,255,255,.16);
+    --track: rgba(255,255,255,.12);
+    --hero-grad: none;
+    --accent: #ff2e3d;
+    --live: #ff2e3d;
+    --heat-empty: rgba(255,255,255,.08);
+    --chip-bg-cur: rgba(255,255,255,.14);
+    --chip-bg: transparent;
+    --chip-stroke: rgba(255,255,255,.28);
+    --chip-stroke-sel: rgba(255,255,255,.85);
+    --chip-radius: 3px;
+    --seg-bg: transparent;
+    --seg-active-bg: #fff;
+    --seg-active-text: #000;
+    --seg-radius: 3px;
+    --bar-radius: 0;
+    --dot-radius: 1px;
+    --name-transform: uppercase;
+    --name-spacing: .1em;
+  }
+
+  .hero { display: flex; align-items: flex-start; }
+  .eyebrow { display: flex; align-items: center; gap: 7px; font-size: 9px; font-weight: 600; letter-spacing: .14em; color: var(--accent); }
+  .eyebrow::before { content: ""; width: 14px; height: 1px; background: var(--accent); }
+  .live { font-size: 8.5px; font-weight: 700; letter-spacing: .1em; color: var(--live); display: inline-flex; align-items: center; gap: 4px; margin-left: 9px; }
+  .live::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--live); box-shadow: 0 0 0 3px color-mix(in srgb, var(--live) 18%, transparent); }
+  .hero-row { display: flex; align-items: baseline; gap: 8px; margin-top: 7px; }
+  .hero-num {
+    font-size: 38px; font-weight: 700; letter-spacing: -1.2px; line-height: 1.05;
+    font-variant-numeric: tabular-nums;
+    background: var(--hero-grad);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  /* Nothing: 原版样式 = display 字体 + 红色方点作小数点 + 呼吸微光 */
+  .card[data-theme="nothing"] .hero-num {
+    background: none; -webkit-text-fill-color: #fff; letter-spacing: -1px;
+    text-shadow: 0 0 14px rgba(255,46,61,.45);
+    animation: nBreath 1.3s ease-in-out infinite alternate;
+    display: inline-flex; align-items: center; gap: 5px;
+  }
+  .card[data-theme="nothing"] .hero-num .dot-sep {
+    width: 5px; height: 5px; background: #ff2e3d; border-radius: 1px;
+    box-shadow: 0 0 10px rgba(255,46,61,.8);
+  }
+  @keyframes nBreath { from { opacity: 1; } to { opacity: .86; } }
+  @media (prefers-reduced-motion: reduce) {
+    .card[data-theme="nothing"] .hero-num { animation: none; }
+  }
+  .hero-unit { font-size: 12px; font-weight: 500; color: var(--text-faint); }
+  .hero-cost { margin-left: auto; text-align: right; }
+  .hero-cost .l { font-size: 8px; letter-spacing: .12em; color: var(--text-faint); margin-bottom: 4px; }
+  .hero-cost .v { font-size: 15px; font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .bd-row { display: flex; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--hairline); }
+  .bd { display: flex; flex-direction: column; gap: 2px; padding: 0 12px; border-left: 1px solid var(--hairline); }
+  .bd:first-child { padding-left: 0; border-left: none; }
+  .bd-l { font-size: 8px; letter-spacing: .1em; color: var(--text-faint); }
+  .bd b { font-size: 13px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+
+  .sec { display: flex; justify-content: space-between; align-items: center; margin: 14px 0 2px; }
+  .sec .t { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .4px; color: var(--text-faint); }
+  .card[data-theme="nothing"] .sec .t { letter-spacing: .2em; }
+  .sec .halfyear { font-size: 10px; color: var(--text-sub); font-variant-numeric: tabular-nums; }
+  .sec .halfyear b { font-weight: 650; color: var(--text); }
+
+  /* 热力图 (对齐实现: 周列等宽 × 周日行周一起, 网格下起止日期轴 + 少/多图例含 level 0) */
+  .heat { display: flex; gap: 3px; margin-top: 6px; }
+  .heat .wk { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+  .heat .cell { width: 100%; aspect-ratio: 1; border-radius: 2px; background: var(--heat-empty); }
+  .card[data-theme="nothing"] .heat .cell { border-radius: 0; }
+  @keyframes nHeat { from { opacity: var(--op, 1); } to { opacity: calc(var(--op, 1) * 0.42); } }
+  .heat-axis { display: flex; justify-content: space-between; font-size: 9px; color: var(--text-faint); margin-top: 6px; font-variant-numeric: tabular-nums; }
+  .heat-legend { display: flex; align-items: center; gap: 3px; justify-content: flex-end; margin-top: 6px; font-size: 9px; color: var(--text-faint); }
+  .heat-legend i { width: 9px; height: 9px; border-radius: 2px; }
+  .card[data-theme="nothing"] .heat-legend i { border-radius: 0; }
+
+  /* 按月 (原版布局): 3 列 chip, 白透明底 + 白描边, 当月蓝标签; 可点击联动模型区块 */
+  .month-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 6px; }
+  .mchip {
+    border: 1px solid var(--chip-stroke); background: var(--chip-bg); border-radius: var(--chip-radius);
+    padding: 6px 9px; cursor: pointer; user-select: none;
+    text-align: left; font-family: inherit; color: inherit;
+  }
+  .mchip:hover { filter: brightness(1.15); }
+  .mchip .m { display: block; font-size: 8.5px; font-weight: 400; letter-spacing: .5px; color: var(--text-faint); }
+  .mchip .v { display: block; margin-top: 1px; font-size: 13px; font-weight: 600; color: var(--text); opacity: .85; font-variant-numeric: tabular-nums; }
+  .mchip.cur { background: var(--chip-bg-cur); }
+  .mchip.cur .m { color: var(--chip-label-cur); font-weight: 600; }
+  .mchip.sel { border-color: var(--chip-stroke-sel); }
+  .mchip.sel .m { color: var(--chip-label-cur); font-weight: 600; }
+
+  /* 模型用量区块 (按月下方); seg 与标题同级大小 */
+  .model-sec .tgroup { display: inline-flex; align-items: center; gap: 5px; }
+  .model-sec .exp {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 17px; height: 17px; padding: 0; border: none; border-radius: 4px;
+    background: transparent; color: var(--text-sub); cursor: pointer;
+  }
+  .model-sec .exp:hover { background: var(--seg-bg); color: var(--text); }
+  .model-sec .exp svg { transition: transform .22s ease; }
+  .model-sec .exp.open svg { transform: rotate(180deg); }
+  .model-sec .seg { display: flex; padding: 2px; border-radius: var(--seg-radius); background: var(--seg-bg); gap: 2px; }
+  .model-sec .seg button {
+    font-family: inherit; font-size: 9px; font-weight: 600; letter-spacing: .02em;
+    padding: 2px 8px; border: none; border-radius: calc(var(--seg-radius) - 2px); cursor: pointer;
+    background: transparent; color: var(--text-sub);
+  }
+  .model-sec .seg button.on { background: var(--seg-active-bg); color: var(--seg-active-text); box-shadow: 0 1px 4px rgba(0,0,0,.18); }
+  .card[data-theme="nothing"] .model-sec .seg { border: 1px solid rgba(255,255,255,.35); }
+  .card[data-theme="nothing"] .model-sec .seg button { font-size: 8.5px; letter-spacing: .1em; text-transform: uppercase; }
+  .card[data-theme="nothing"] .model-sec .seg button.on { box-shadow: none; }
+  .model-sec .t .period { color: var(--text-sub); font-weight: 500; }
+
+  .mrow { display: flex; align-items: center; gap: 7px; padding: 6px 0; border-top: 1px solid var(--hairline); font-size: 10.5px; }
+  .mlist .mrow:first-child { border-top: none; }
+  .mrow .dot { width: 7px; height: 7px; border-radius: var(--dot-radius); flex: none; }
+  .mrow .name { font-weight: 550; letter-spacing: var(--name-spacing); white-space: nowrap; text-transform: var(--name-transform); color: var(--text-strong); }
+  .mrow .bar { flex: 1; height: 4px; border-radius: var(--bar-radius); background: var(--track); overflow: hidden; }
+  .mrow .bar i { display: block; height: 100%; border-radius: var(--bar-radius); width: 0; transition: width .6s cubic-bezier(.2,.7,.3,1); }
+  .card[data-theme="nothing"] .mrow .bar i { transition: width .7s steps(22); }
+  .mrow .nums { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .mrow .nums .pct { font-size: 8.5px; color: var(--text-faint); width: 34px; text-align: right; }
+  .mrow .nums .val { font-weight: 600; font-size: 11px; color: var(--text-strong); width: 46px; text-align: right; }
+
+  .page-foot { max-width: 1240px; margin: 24px auto 0; font-size: 10.5px; line-height: 1.7; color: rgba(255,255,255,.4); }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <h1>Bruce · Token 用量卡 — 模型用量 (点击按月卡片联动)</h1>
+    <span class="note">热力图 / 按月 / 模型区块由同一份 182 天数据驱动, 末 14 天为真实日总量</span>
+  </div>
+  <p class="principle"><b>同一 DOM × 三套主题 token。</b>卡片顺序: hero → 细分行 → <b>按月统计 (可点击) → 模型用量 (本次新增)</b> → <b>用量热力图 (最下方)</b>。按月六张卡片保持原版布局, 点击即联动模型用量; 本月 / 3 月 / 6 月为窗口档位 (默认 本月), 大小与区块标题一致。排序始终按用量从高到低。</p>
+
+  <div class="stage">
+    <div class="variant">
+      <div class="variant-label"><span class="tag">主题 1</span><h2>玻璃 · 深色</h2></div>
+      <div class="card" data-theme="glass-dark" data-mount></div>
+    </div>
+    <div class="variant">
+      <div class="variant-label"><span class="tag">主题 2</span><h2>玻璃 · 浅色</h2></div>
+      <div class="card" data-theme="glass-light" data-mount></div>
+    </div>
+    <div class="variant">
+      <div class="variant-label"><span class="tag">主题 3</span><h2>Nothing · 黑</h2></div>
+      <div class="card" data-theme="nothing" data-mount></div>
+    </div>
+  </div>
+
+  <p class="page-foot">说明: 末 14 天日总量为面板真实数据, 更早 160 天为按月趋势合成的示意数据 (周末低用量); 模型行序按当前所选周期用量降序。「本月 / 3 月 / 6 月」与「点击月卡」共用下方同一份模型统计; 实现需采集端按「日 × 模型」聚合 (缓存升级一次), 并建议顺手修复 codex 模型名占位符 (sources.rs:567)。</p>
+
+<script>
+// ================= 数据: 182 天合成序列 (末 14 天为真实值) =================
+const MODELS = [
+  { key: "kimi",    name: "Kimi K3",           agent: "Kimi Code CLI", color: "#0a84ff" },
+  { key: "claudeS", name: "Claude Sonnet 4.5", agent: "Claude Code",   color: "#ff9f0a" },
+  { key: "claudeH", name: "Claude Haiku 4.5",  agent: "Claude Code",   color: "#ffcf7a" },
+  { key: "gpt",     name: "GPT-5.2 Codex",     agent: "Codex",         color: "#bf5af2" },
+  { key: "glm",     name: "GLM-5.3",           agent: "ZCode",         color: "#64d2ff" },
+  { key: "qwen",    name: "Qwen3 Coder",       agent: "OpenCode",      color: "#ff375f" },
+];
+const RAMP = {
+  kimi:    [1.5, 1.4, 1.2, 1.0, 0.85, 0.7],
+  claudeS: [0.8, 0.9, 1.0, 1.1, 1.1, 1.05],
+  claudeH: [0.4, 0.5, 0.6, 0.8, 0.95, 1.0],
+  gpt:     [0.9, 0.95, 1.0, 1.05, 1.1, 1.15],
+  glm:     [0.3, 0.45, 0.7, 1.0, 1.45, 1.8],
+  qwen:    [0.3, 0.4, 0.55, 0.75, 0.95, 1.1],
+};
+const BASE = { kimi: 130, claudeS: 90, claudeH: 35, gpt: 80, glm: 60, qwen: 12 };
+const REAL = [
+  { tot: 184.0,  kimi: 92.0,  claudeS: 32.5, claudeH: 13.5, gpt: 28.0,  glm: 12.0,  qwen: 6.0 },
+  { tot: 347.9,  kimi: 139.0, claudeS: 62.6, claudeH: 24.4, gpt: 52.0,  glm: 52.0,  qwen: 17.9 },
+  { tot: 628.1,  kimi: 220.0, claudeS: 113.0, claudeH: 44.0, gpt: 94.0, glm: 125.0, qwen: 32.1 },
+  { tot: 1038.3, kimi: 311.0, claudeS: 187.2, claudeH: 72.8, gpt: 156.0, glm: 270.0, qwen: 41.3 },
+  { tot: 240.4,  kimi: 72.0,  claudeS: 43.3, claudeH: 16.7, gpt: 36.0,  glm: 62.0,  qwen: 10.4 },
+  { tot: 276.5,  kimi: 69.0,  claudeS: 55.5, claudeH: 21.5, gpt: 47.0,  glm: 72.0,  qwen: 11.5 },
+  { tot: 733.7,  kimi: 154.0, claudeS: 142.6, claudeH: 55.4, gpt: 110.0, glm: 247.0, qwen: 24.7 },
+  { tot: 624.1,  kimi: 125.0, claudeS: 121.0, claudeH: 47.0, gpt: 94.0,  glm: 212.0, qwen: 25.1 },
+  { tot: 538.2,  kimi: 97.0,  claudeS: 104.4, claudeH: 40.6, gpt: 81.0,  glm: 194.0, qwen: 21.2 },
+  { tot: 1105.9, kimi: 166.0, claudeS: 214.6, claudeH: 83.4, gpt: 166.0, glm: 442.0, qwen: 33.9 },
+  { tot: 177.2,  kimi: 27.0,  claudeS: 34.6, claudeH: 13.4, gpt: 26.0,  glm: 71.0,  qwen: 5.2 },
+  { tot: 0 },
+  { tot: 15.8,   glm: 15.8 },
+  { tot: 652.9,  kimi: 8.0,   gpt: 114.0, glm: 527.0, qwen: 3.9 },
+];
+function mulberry32(a) {
+  return function() {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+const TODAY = new Date(2026, 7, 31);
+const N = 182;
+const DAYS = [];
+for (let i = 0; i < N; i++) DAYS.push({ date: new Date(TODAY.getTime() - (N - 1 - i) * 86400000), tot: 0, by: {} });
+const rnd = mulberry32(20260831);
+for (let i = 0; i < N - REAL.length; i++) {
+  const d = DAYS[i];
+  const weekend = ([0, 6].includes(d.date.getDay())) ? 0.12 : 1;
+  const rampIdx = Math.max(0, 5 - Math.floor((N - 1 - i) / ((N - REAL.length) / 6)));
+  let tot = 0;
+  MODELS.forEach(m => {
+    const v = BASE[m.key] * RAMP[m.key][rampIdx] * weekend * (0.72 + rnd() * 0.56);
+    d.by[m.key] = Math.round(v * 10) / 10;
+    tot += d.by[m.key];
+  });
+  d.tot = Math.round(tot * 10) / 10;
+}
+REAL.forEach((r, k) => {
+  const d = DAYS[N - REAL.length + k];
+  d.tot = r.tot;
+  MODELS.forEach(m => { d.by[m.key] = r[m.key] || 0; });
+});
+
+const fmt = v => v >= 1000 ? (v / 1000).toFixed(2) + "B" : (Math.round(v * 10) / 10).toLocaleString() + "M";
+const monthKey = d => d.date.getFullYear() + "-" + String(d.date.getMonth() + 1).padStart(2, "0");
+const CUR_KEY = TODAY.getFullYear() + "-" + String(TODAY.getMonth() + 1).padStart(2, "0");
+const TIERS = [
+  { key: "m1", label: "本月", from: new Date(2026, 7, 1) },
+  { key: "m3", label: "3 月", from: new Date(2026, 5, 1) },
+  { key: "m6", label: "6 月", from: new Date(0) },
+];
+
+function rowsFor(selector) {
+  const sum = {};
+  MODELS.forEach(m => { sum[m.key] = 0; });
+  let grand = 0;
+  DAYS.forEach(d => {
+    if (!selector(d)) return;
+    MODELS.forEach(m => { sum[m.key] += d.by[m.key] || 0; });
+    grand += d.tot;
+  });
+  return { grand, rows: MODELS.map(m => ({ ...m, v: sum[m.key] })).sort((a, b) => b.v - a.v) };
+}
+
+// 5x7 点阵 (Nothing hero 用原版样式: 红色方点作小数点, 此处仅渲染文本)
+function heroHTML(theme) {
+  const num = theme === "nothing"
+    ? `<span class="hero-num"><span>652</span><span class="dot-sep"></span><span>9M</span></span>`
+    : `<span class="hero-num">652.9M</span>`;
+  return `
+    <div class="hero">
+      <div>
+        <span class="eyebrow">TOKEN USAGE<span class="live">LIVE</span></span>
+        <div class="hero-row">${num}<span class="hero-unit">tokens · 今日</span></div>
+      </div>
+      <div class="hero-cost"><div class="l">今日成本</div><div class="v">$3.87</div></div>
+    </div>
+    <div class="bd-row">
+      <div class="bd"><span class="bd-l">输入</span><b>181.2M</b></div>
+      <div class="bd"><span class="bd-l">输出</span><b>2.1M</b></div>
+      <div class="bd"><span class="bd-l">缓存读取</span><b>464.3M</b></div>
+      <div class="bd"><span class="bd-l">命中率</span><b>71%</b></div>
+    </div>`;
+}
+function renderHeat(root) {
+  // 对齐 makeUsageHeatmap: 网格起点 = 首日所在周的周一; level 按 100M 绝对阈值 0-5 档;
+  // 窗口外/未来格透明; Nothing 下白阶透明度分档 + 错相位呼吸 (col*0.12 + row*0.05 相位).
+  const nothing = root.dataset.theme === "nothing";
+  const heatLevel = v => v <= 0 ? 0 : v < 100 ? 1 : v < 200 ? 2 : v < 300 ? 3 : v < 400 ? 4 : 5;
+  const HEAT_COLORS = ["", "var(--heat-1)", "var(--heat-2)", "var(--heat-3)", "var(--heat-4)", "var(--heat-5)"];
+  const firstD = DAYS[0].date, lastD = DAYS[DAYS.length - 1].date;
+  const gridStart = new Date(firstD);
+  gridStart.setDate(gridStart.getDate() - ((firstD.getDay() + 6) % 7)); // 回到周一
+  const pad2 = n => String(n).padStart(2, "0");
+  const axisText = d => `${String(d.getFullYear()).slice(2)}/${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}`;
+  const grid = root.querySelector(".heat");
+  grid.innerHTML = "";
+  let html = "", firstValid = null, lastValid = null, ci = 0;
+  const ws = new Date(gridStart);
+  while (ws <= lastD) {
+    html += `<div class="wk">`;
+    for (let r = 0; r < 7; r++) {
+      const dt = new Date(ws.getFullYear(), ws.getMonth(), ws.getDate() + r);
+      if (dt < firstD || dt > lastD) { html += `<span class="cell" style="background:transparent"></span>`; continue; }
+      const day = DAYS[Math.round((dt - firstD) / 86400000)];
+      if (!firstValid) firstValid = dt;
+      lastValid = dt;
+      const lv = heatLevel(day.tot);
+      let style;
+      if (nothing) {
+        if (lv === 0) style = "background:rgba(255,255,255,.08)";
+        else {
+          const op = [0, 0.2, 0.4, 0.6, 0.8, 1][lv];
+          const phase = ((ci * 0.12 + r * 0.05) % 3.2).toFixed(2);
+          style = `background:#fff;--op:${op};animation:nHeat 1.6s ease-in-out ${phase}s infinite alternate`;
+        }
+      } else {
+        style = lv === 0 ? "" : `background:${HEAT_COLORS[lv]}`;
+      }
+      html += `<span class="cell" style="${style}" title="${dt.getMonth() + 1}/${dt.getDate()} · ${fmt(day.tot)}"></span>`;
+    }
+    html += `</div>`;
+    ws.setDate(ws.getDate() + 7);
+    ci++;
+  }
+  grid.innerHTML = html;
+  root.querySelector(".heat-axis").innerHTML =
+    `<span>${axisText(firstValid)}</span><span>${axisText(lastValid)}</span>`;
+  const swatch = lv => {
+    const base = nothing
+      ? (lv === 0 ? "rgba(255,255,255,.08)" : `rgba(255,255,255,${[0, 0.2, 0.4, 0.6, 0.8, 1][lv]})`)
+      : (lv === 0 ? "" : HEAT_COLORS[lv]);
+    return `<i ${base ? `style="background:${base}"` : ""}></i>`;
+  };
+  root.querySelector(".heat-legend").innerHTML = `少 ` + [0, 1, 2, 3, 4, 5].map(swatch).join("") + ` 多`;
+}
+
+// 状态: { type: "tier", idx } 或 { type: "month", key }; 默认 本月
+function buildCard(root) {
+  const state = { type: "tier", idx: 0, expanded: false };
+  root.innerHTML = heroHTML(root.dataset.theme) + `
+    <div class="sec">
+      <span class="t">按月 · 近 6 个月</span>
+      <span class="halfyear"></span>
+    </div>
+    <div class="month-grid"></div>
+    <div class="sec model-sec">
+      <span class="tgroup">
+        <span class="t">模型用量<span class="period"></span></span>
+        <button class="exp" data-a="exp" title="展开全部模型" aria-label="展开全部模型"><svg width="8" height="8" viewBox="0 0 8 8" aria-hidden="true"><path d="M1 2.5 L4 5.5 L7 2.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </span>
+      <span class="seg">${TIERS.map((t, i) => `<button data-tier="${i}"${i === 0 ? ' class="on"' : ""}>${t.label}</button>`).join("")}</span>
+    </div>
+    <div class="mlist"></div>
+    <div class="sec"><span class="t">热力图 · 近半年</span></div>
+    <div class="heat"></div>
+    <div class="heat-axis"></div>
+    <div class="heat-legend"></div>`;
+  renderHeat(root);
+
+  // 按月 buckets (原布局 3 列 chips, 可点击)
+  const buckets = {};
+  DAYS.forEach(d => {
+    const k = monthKey(d);
+    buckets[k] = buckets[k] || { tot: 0 };
+    buckets[k].tot += d.tot;
+  });
+  const keys = Object.keys(buckets).sort().slice(-6);
+  const grand6 = keys.reduce((s, k) => s + buckets[k].tot, 0);
+  const avg = grand6 / keys.length;
+  root.querySelector(".halfyear").innerHTML = `近半年 <b>${fmt(grand6)}</b> · 月均 ${fmt(avg)}`;
+  const grid = root.querySelector(".month-grid");
+  grid.innerHTML = keys.map(k => {
+    const [y, m] = k.split("-");
+    return `<button class="mchip${k === CUR_KEY ? " cur" : ""}" data-key="${k}" data-label="${Number(m)} 月">
+      <span class="m">${Number(m)} 月${k === CUR_KEY ? " · 本月" : ""}</span>
+      <span class="v">${fmt(buckets[k].tot)}</span>
+    </button>`;
+  }).join("");
+
+  const list = root.querySelector(".mlist");
+  const periodEl = root.querySelector(".model-sec .period");
+  const segBtns = () => root.querySelectorAll(".seg button");
+  function renderRows(sel, limit) {
+    const { grand, rows } = rowsFor(sel);
+    const shown = rows.slice(0, limit);
+  list.innerHTML = shown.map(m => `
+    <div class="mrow">
+      <span class="dot" style="background:${m.color}"></span>
+      <span class="name">${m.name}</span>
+      <span class="bar"><i style="background:${m.color}" data-w="${(m.v / grand * 100).toFixed(1)}"></i></span>
+      <span class="nums"><span class="pct">${(m.v / grand * 100).toFixed(0)}%</span><span class="val">${fmt(m.v)}</span></span>
+    </div>`).join("");
+    requestAnimationFrame(() => setTimeout(() => {
+      list.querySelectorAll(".bar i").forEach((el, i) => setTimeout(() => { el.style.width = el.dataset.w + "%"; }, i * 50));
+    }, 30));
+  }
+  function apply() {
+    // 联动: seg 高亮 / chip 选中 / 周期标题 / 展开状态
+    segBtns().forEach((b, i) => b.classList.toggle("on", state.type === "tier" && state.idx === i));
+    const expBtn = root.querySelector(".exp");
+    expBtn.classList.toggle("open", state.expanded);
+    expBtn.title = state.expanded ? "收起" : "展开全部模型";
+    expBtn.setAttribute("aria-label", expBtn.title);
+    expBtn.setAttribute("aria-expanded", String(state.expanded));
+    grid.querySelectorAll(".mchip").forEach(ch => {
+      ch.classList.toggle("sel", state.type === "month" && ch.dataset.key === state.key);
+    });
+    const limit = state.expanded ? Infinity : 3;
+    if (state.type === "month") {
+      periodEl.textContent = " · " + state.label;
+      renderRows(d => monthKey(d) === state.key, limit);
+    } else {
+      periodEl.textContent = "";
+      renderRows(d => d.date >= TIERS[state.idx].from, limit);
+    }
+  }
+  grid.addEventListener("click", e => {
+    const chip = e.target.closest(".mchip");
+    if (!chip) return;
+    state.type = "month";
+    state.key = chip.dataset.key;
+    state.label = chip.dataset.label;
+    apply();
+  });
+  root.querySelector(".seg").addEventListener("click", e => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+    state.type = "tier";
+    state.idx = Number(btn.dataset.tier);
+    apply();
+  });
+  root.querySelector(".exp").addEventListener("click", () => {
+    state.expanded = !state.expanded;
+    apply();
+  });
+  apply();
+}
+try {
+  document.querySelectorAll("[data-mount]").forEach(buildCard);
+} catch (e) {
+  document.title = "BOOT-ERR: " + e.message + " @ " + (e.stack || "").split("\n")[1];
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bruce · Token 用量卡 — 模型用量统计区块</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    min-height: 100vh;
+    background:
+      radial-gradient(1000px 480px at 20% -10%, rgba(64,84,140,.45), transparent 60%),
+      radial-gradient(900px 600px at 85% 110%, rgba(40,110,90,.32), transparent 55%),
+      linear-gradient(165deg, #171a22 0%, #1b1e28 50%, #181c1a 100%);
+    font-family: -apple-system, "SF Pro Text", "PingFang SC", "Noto Sans SC", sans-serif;
+    color: rgba(255,255,255,.92);
+    padding: 28px 24px 48px;
+  }
+  .topbar { max-width: 1320px; margin: 0 auto 8px; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .topbar h1 { font-size: 17px; font-weight: 700; letter-spacing: -.2px; }
+  .topbar .note { font-size: 11.5px; color: rgba(255,255,255,.55); }
+  .principle {
+    max-width: 1320px; margin: 0 auto 20px; font-size: 11px; line-height: 1.7;
+    color: rgba(255,255,255,.5);
+  }
+  .principle b { color: rgba(255,255,255,.85); font-weight: 600; }
+
+  .stage { max-width: 1320px; margin: 0 auto; display: flex; gap: 24px; justify-content: center; align-items: flex-start; flex-wrap: wrap; }
+  .variant { width: 360px; }
+  .variant-label { display: flex; align-items: baseline; gap: 8px; margin: 0 2px 6px; }
+  .variant-label .tag { font-size: 10.5px; font-weight: 700; padding: 2px 9px; border-radius: 99px; background: #0a84ff; color: #fff; letter-spacing: .02em; }
+  .variant-label h2 { font-size: 13px; font-weight: 650; letter-spacing: -.1px; }
+  .variant-desc { font-size: 10.5px; line-height: 1.65; color: rgba(255,255,255,.5); margin: -2px 2px 10px; }
+
+  /* ============================================================
+     Token 用量卡: 同一 DOM 结构 × 三套主题 token
+     结构 (所有主题一致):
+       hero 行 (总量 + LIVE) → 细分行 (输入/输出/缓存读/命中率)
+       → 模型用量区块 (表头 + 模型行 × N: 色点/名称/归属/进度条/今日/14天)
+     ============================================================ */
+  .card {
+    /* 默认 = 玻璃 · 深色 */
+    --card-bg: rgba(255,255,255,.06);
+    --card-border: rgba(255,255,255,.10);
+    --card-shadow: 0 2px 10px rgba(10,14,24,.35), inset 0 1px 0 rgba(255,255,255,.07);
+    --card-radius: 16px;
+    --card-pad: 13px 15px;
+    --font: -apple-system, "SF Pro Text", "PingFang SC", "Noto Sans SC", sans-serif;
+    --text: rgba(255,255,255,.92);
+    --text-strong: rgba(255,255,255,.95);
+    --text-sub: rgba(255,255,255,.58);
+    --text-faint: rgba(255,255,255,.42);
+    --hairline: rgba(255,255,255,.10);
+    --track: rgba(255,255,255,.10);
+    --bar-h: 4px;
+    --bar-radius: 2px;
+    --dot-radius: 2px;
+    --live: #30d158;
+    --name-transform: none;
+    --name-spacing: -.05px;
+    --mono: tabular-nums;
+
+    width: 360px;
+    background: var(--card-bg);
+    backdrop-filter: blur(20px) saturate(1.6);
+    -webkit-backdrop-filter: blur(20px) saturate(1.6);
+    border: 1px solid var(--card-border);
+    border-radius: var(--card-radius);
+    padding: var(--card-pad);
+    box-shadow: var(--card-shadow);
+    font-family: var(--font);
+    color: var(--text);
+  }
+  .card[data-theme="glass-light"] {
+    --card-bg: rgba(255,255,255,.62);
+    --card-border: rgba(255,255,255,.7);
+    --card-shadow: 0 2px 10px rgba(31,38,56,.1), inset 0 1px 0 rgba(255,255,255,.65);
+    --text: #1c1c1e;
+    --text-strong: #1c1c1e;
+    --text-sub: rgba(60,60,67,.72);
+    --text-faint: rgba(60,60,67,.5);
+    --hairline: rgba(0,0,0,.07);
+    --track: rgba(0,0,0,.08);
+  }
+  .card[data-theme="nothing"] {
+    --card-bg: #000;
+    --card-border: rgba(255,255,255,.3);
+    --card-shadow: none;
+    --card-radius: 6px;
+    --card-pad: 14px;
+    --font: "SF Mono", ui-monospace, Menlo, monospace;
+    --text: #fff;
+    --text-strong: #fff;
+    --text-sub: rgba(255,255,255,.55);
+    --text-faint: rgba(255,255,255,.38);
+    --hairline: rgba(255,255,255,.16);
+    --track: rgba(255,255,255,.12);
+    --bar-h: 3px;
+    --bar-radius: 0;
+    --dot-radius: 1px;
+    --live: #ff2e3d;
+    --name-transform: uppercase;
+    --name-spacing: .1em;
+  }
+
+  .hero { display: flex; align-items: flex-start; }
+  .hero .eyebrow { font-size: 9px; font-weight: 600; letter-spacing: .12em; color: var(--text-faint); display: flex; align-items: center; gap: 5px; }
+  .hero .eyebrow::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--live); }
+  .hero .total { margin-top: 4px; font-size: 26px; font-weight: 700; letter-spacing: -.6px; line-height: 1.05; font-variant-numeric: tabular-nums; color: var(--text-strong); }
+  .hero .right { margin-left: auto; text-align: right; }
+  .hero .cost { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; color: #0a84ff; }
+  .card[data-theme="nothing"] .hero .cost { color: #ff2e3d; }
+  .hero .cost-l { font-size: 8px; letter-spacing: .12em; color: var(--text-faint); margin-bottom: 3px; }
+  .bd-row { display: flex; margin-top: 11px; padding-top: 9px; border-top: 1px solid var(--hairline); }
+  .bd { display: flex; flex-direction: column; gap: 2px; padding: 0 11px; border-left: 1px solid var(--hairline); }
+  .bd:first-child { padding-left: 0; border-left: none; }
+  .bd-l { font-size: 8px; letter-spacing: .1em; color: var(--text-faint); }
+  .bd b { font-size: 12px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+
+  .sec { display: flex; justify-content: space-between; align-items: baseline; margin-top: 14px; }
+  .sec .t { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .4px; color: var(--text-faint); }
+  .card[data-theme="nothing"] .sec .t { letter-spacing: .2em; }
+  .sec .cap { font-size: 8.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+
+  .mrow { display: flex; align-items: center; gap: 7px; padding: 6px 0; border-top: 1px solid var(--hairline); font-size: 10.5px; }
+  .mlist .mrow:first-child { border-top: none; }
+  .mrow .dot { width: 7px; height: 7px; border-radius: var(--dot-radius); flex: none; }
+  .mrow .name { font-weight: 550; letter-spacing: var(--name-spacing); white-space: nowrap; text-transform: var(--name-transform); color: var(--text-strong); }
+  .mrow .agent-of { font-size: 8px; letter-spacing: var(--name-spacing); color: var(--text-faint); white-space: nowrap; }
+  .mrow .bar { flex: 1; height: var(--bar-h); border-radius: var(--bar-radius); background: var(--track); overflow: hidden; }
+  .mrow .bar i { display: block; height: 100%; border-radius: var(--bar-radius); width: 0; transition: width .65s cubic-bezier(.2,.7,.3,1); }
+  .card[data-theme="nothing"] .mrow .bar i { transition: width .7s steps(22); }
+  .mrow .nums { display: flex; gap: 9px; font-variant-numeric: var(--mono); white-space: nowrap; }
+  .mrow .nums .d1 { color: var(--text-sub); font-size: 9.5px; width: 42px; text-align: right; }
+  .mrow .nums .d14 { font-weight: 600; width: 46px; text-align: right; color: var(--text-strong); }
+
+  .page-foot { max-width: 1320px; margin: 26px auto 0; font-size: 10.5px; line-height: 1.7; color: rgba(255,255,255,.4); }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <h1>Bruce · Token 用量卡 — 模型用量统计区块</h1>
+    <span class="note">日总量取自你的真实数据, 模型拆分为示意</span>
+  </div>
+  <p class="principle"><b>同一信息结构, 三套主题 token:</b> 每张卡都是「hero 总量 → 细分行 → 模型用量区块 (色点 · 名称 · 归属 · 占比进度条 · 今日 / 14 天)」, DOM 与布局完全一致; 主题只切换颜色、字体、圆角与字距。区块位于 Token 用量卡内, 不含柱状图。</p>
+
+  <div class="stage">
+    <div class="variant">
+      <div class="variant-label"><span class="tag">主题 1</span><h2>玻璃 · 深色</h2></div>
+      <div class="card" data-theme="glass-dark" data-mount></div>
+      <p class="variant-desc">当前面板默认风格; 进度条以模型色填充, 数值右对齐等宽。</p>
+    </div>
+    <div class="variant">
+      <div class="variant-label"><span class="tag">主题 2</span><h2>玻璃 · 浅色</h2></div>
+      <div class="card" data-theme="glass-light" data-mount></div>
+      <p class="variant-desc">与深色同一结构, 仅切换明暗 token; 浅色下模型色不变, 轨道换深色低透明。</p>
+    </div>
+    <div class="variant">
+      <div class="variant-label"><span class="tag">主题 3</span><h2>Nothing · 黑</h2></div>
+      <div class="card" data-theme="nothing" data-mount></div>
+      <p class="variant-desc">等宽字体 + 大写 + 直角进度条 (步进动画); LIVE 与成本用 Nothing 红, 结构与玻璃主题逐像素同构。</p>
+    </div>
+  </div>
+
+  <p class="page-foot">说明: 行序按 14 天用量降序; 进度条编码该模型占 14 天总量的份额; 「今日」列用现有 todayModels 数据即可上线, 「14 天」列需采集端把逐日聚合扩展为「日 × 模型 → token」(缓存版本升级, 首次刷新全量重建一次)。建议顺手修复 codex 模型名占位符 (sources.rs:567), 否则 Codex 全部落到 "codex" 单条。</p>
+
+<script>
+// ---------- 数据: 14 天真实日总量 (M), 按模型示意拆分 ----------
+const DAYS = [
+  { tot: 184.0,  kimi: 92.0,  claudeS: 32.5, claudeH: 13.5, gpt: 28.0,  glm: 12.0,  qwen: 6.0 },
+  { tot: 347.9,  kimi: 139.0, claudeS: 62.6, claudeH: 24.4, gpt: 52.0,  glm: 52.0,  qwen: 17.9 },
+  { tot: 628.1,  kimi: 220.0, claudeS: 113.0, claudeH: 44.0, gpt: 94.0, glm: 125.0, qwen: 32.1 },
+  { tot: 1038.3, kimi: 311.0, claudeS: 187.2, claudeH: 72.8, gpt: 156.0, glm: 270.0, qwen: 41.3 },
+  { tot: 240.4,  kimi: 72.0,  claudeS: 43.3, claudeH: 16.7, gpt: 36.0,  glm: 62.0,  qwen: 10.4 },
+  { tot: 276.5,  kimi: 69.0,  claudeS: 55.5, claudeH: 21.5, gpt: 47.0,  glm: 72.0,  qwen: 11.5 },
+  { tot: 733.7,  kimi: 154.0, claudeS: 142.6, claudeH: 55.4, gpt: 110.0, glm: 247.0, qwen: 24.7 },
+  { tot: 624.1,  kimi: 125.0, claudeS: 121.0, claudeH: 47.0, gpt: 94.0,  glm: 212.0, qwen: 25.1 },
+  { tot: 538.2,  kimi: 97.0,  claudeS: 104.4, claudeH: 40.6, gpt: 81.0,  glm: 194.0, qwen: 21.2 },
+  { tot: 1105.9, kimi: 166.0, claudeS: 214.6, claudeH: 83.4, gpt: 166.0, glm: 442.0, qwen: 33.9 },
+  { tot: 177.2,  kimi: 27.0,  claudeS: 34.6, claudeH: 13.4, gpt: 26.0,  glm: 71.0,  qwen: 5.2 },
+  { tot: 0 },
+  { tot: 15.8,   glm: 15.8 },
+  { tot: 652.9,  kimi: 8.0,   gpt: 114.0, glm: 527.0, qwen: 3.9 },
+];
+const MODELS = [
+  { key: "kimi",    name: "Kimi K3",           agent: "Kimi Code CLI", color: "#0a84ff" },
+  { key: "claudeS", name: "Claude Sonnet 4.5", agent: "Claude Code",   color: "#ff9f0a" },
+  { key: "claudeH", name: "Claude Haiku 4.5",  agent: "Claude Code",   color: "#ffcf7a" },
+  { key: "gpt",     name: "GPT-5.2 Codex",     agent: "Codex",         color: "#bf5af2" },
+  { key: "glm",     name: "GLM-5.3",           agent: "ZCode",         color: "#64d2ff" },
+  { key: "qwen",    name: "Qwen3 Coder",       agent: "OpenCode",      color: "#ff375f" },
+];
+
+const fmt = v => v >= 1000 ? (v / 1000).toFixed(2) + "B" : (Math.round(v * 10) / 10).toLocaleString() + "M";
+
+const sum14 = {}, sum1 = {};
+MODELS.forEach(m => { sum14[m.key] = 0; sum1[m.key] = 0; });
+DAYS.forEach((d, i) => MODELS.forEach(m => {
+  sum14[m.key] += d[m.key] || 0;
+  if (i === DAYS.length - 1) sum1[m.key] = d[m.key] || 0;
+}));
+const grand14 = Object.values(sum14).reduce((a, b) => a + b, 0);
+const todayTot = DAYS[DAYS.length - 1].tot;
+const RANKED = [...MODELS].map(m => ({ ...m, s14: sum14[m.key], s1: sum1[m.key] }))
+  .sort((a, b) => b.s14 - a.s14);
+
+// 5x7 点阵字模 (仅 Nothing 主题 hero 数字所需)
+const N_FONT = {
+  "0":["01110","10001","10011","10101","11001","10001","01110"],
+  "1":["00100","01100","00100","00100","00100","00100","01110"],
+  "2":["01110","10001","00001","00010","00100","01000","11111"],
+  "3":["11110","00001","00001","01110","00001","00001","11110"],
+  "4":["00010","00110","01010","10010","11111","00010","00010"],
+  "5":["11111","10000","11110","00001","00001","10001","01110"],
+  "6":["00110","01000","10000","11110","10001","10001","01110"],
+  "7":["11111","00001","00010","00100","01000","01000","01000"],
+  "8":["01110","10001","10001","01110","10001","10001","01110"],
+  "9":["01110","10001","10001","01111","00001","00010","01100"],
+  ".":["00000","00000","00000","00000","00000","01100","01100"],
+  "B":["11110","10001","10001","11110","10001","10001","11110"],
+  "M":["10001","11011","10101","10101","10001","10001","10001"],
+};
+function dotText(text, ds, color) {
+  const w = text.length * 6 * ds - ds, h = 7 * ds;
+  let svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${text}">`;
+  [...text].forEach((ch, ci) => {
+    const rows = N_FONT[ch] || [];
+    rows.forEach((row, r) => [...row].forEach((b, c) => {
+      if (b === "1") svg += `<circle cx="${ci * 6 * ds + c * ds + ds / 2}" cy="${r * ds + ds / 2}" r="${ds / 2 - 0.2}" fill="${color}"/>`;
+    }));
+  });
+  return svg + "</svg>";
+}
+
+// 同一结构模板, 渲染到每个主题容器
+function heroHTML(theme) {
+  const total = theme === "nothing"
+    ? dotText(fmt(todayTot), 4, "#fff")
+    : `<span class="total">${fmt(todayTot)}</span>`;
+  return `
+    <div class="hero">
+      <div>
+        <span class="eyebrow">TOKEN · LIVE</span>
+        <div>${total}</div>
+      </div>
+      <div class="right">
+        <div class="cost-l">今日成本</div>
+        <div class="cost">$3.87</div>
+      </div>
+    </div>
+    <div class="bd-row">
+      <div class="bd"><span class="bd-l">输入</span><b>181.2M</b></div>
+      <div class="bd"><span class="bd-l">输出</span><b>2.1M</b></div>
+      <div class="bd"><span class="bd-l">缓存读</span><b>464.3M</b></div>
+      <div class="bd"><span class="bd-l">命中率</span><b>71%</b></div>
+    </div>`;
+}
+function sectionHTML() {
+  const rows = RANKED.map(m => `
+    <div class="mrow">
+      <span class="dot" style="background:${m.color}"></span>
+      <span class="name">${m.name}</span>
+      <span class="agent-of">${m.agent}</span>
+      <span class="bar"><i style="background:${m.color}" data-w="${(m.s14 / grand14 * 100).toFixed(1)}"></i></span>
+      <span class="nums"><span class="d1">${fmt(m.s1)}</span><span class="d14">${fmt(m.s14)}</span></span>
+    </div>`).join("");
+  return `
+    <div class="sec"><span class="t">模型用量</span><span class="cap">今日 / 近 14 天</span></div>
+    <div class="mlist">${rows}</div>`;
+}
+
+document.querySelectorAll("[data-mount]").forEach(el => {
+  const theme = el.dataset.theme;
+  el.innerHTML = heroHTML(theme) + sectionHTML();
+});
+// 进度条入场动画
+requestAnimationFrame(() => setTimeout(() => {
+  document.querySelectorAll(".bar i").forEach((el, i) => {
+    setTimeout(() => { el.style.width = el.dataset.w + "%"; }, i * 60);
+  });
+}, 80));
+</script>
+</body>
+</html>

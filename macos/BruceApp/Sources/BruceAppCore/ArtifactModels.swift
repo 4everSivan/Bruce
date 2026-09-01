@@ -32,6 +32,9 @@ package struct AgentUsageItem: Codable, Equatable, Sendable {
     let todayCostUsd: Double?
     /// 今日按模型聚合的 token 总量 (模型名 -> total), collector 已按量降序截断.
     let models: [String: Int]?
+    /// 自然月 × 模型 token 总量 ("2026-08" -> 模型名 -> total), 供用量卡模型分档统计;
+    /// 旧版 artifact 无此字段 (解码为 nil, 模型区块隐藏).
+    let modelMonths: [String: [String: Int]]?
     /// 今日按项目聚合的分布 (collector 只保留 Top 3).
     let projects: [AgentProjectUsage]?
 }

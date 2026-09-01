@@ -13,6 +13,7 @@ pub use collector_domain::{ModelDelta, ProjectDelta, UsageContribution, UsageSam
 pub struct UsageAccumulator {
     window: CollectionWindow,
     by_day: BTreeMap<String, TokenBucket>,
+    models_by_month: BTreeMap<String, BTreeMap<String, TokenBucket>>,
     models_today: HashMap<String, TokenBucket>,
     model_order: Vec<String>,
     projects_today: HashMap<String, u64>,
@@ -25,6 +26,7 @@ impl UsageAccumulator {
         Self {
             window,
             by_day: BTreeMap::new(),
+            models_by_month: BTreeMap::new(),
             models_today: HashMap::new(),
             model_order: Vec::new(),
             projects_today: HashMap::new(),
@@ -39,6 +41,12 @@ impl UsageAccumulator {
         }
         for (day, bucket) in &delta.by_day {
             self.by_day.entry(day.clone()).or_default().merge(bucket);
+        }
+        for (month, models) in &delta.models_by_month {
+            let month_entry = self.models_by_month.entry(month.clone()).or_default();
+            for (model, bucket) in models {
+                month_entry.entry(model.clone()).or_default().merge(bucket);
+            }
         }
         for model in &delta.models_today {
             if !self.models_today.contains_key(&model.model) {
@@ -120,6 +128,20 @@ impl UsageAccumulator {
             .map(|model| (model.model.clone(), model.total))
             .collect();
 
+        let model_months: BTreeMap<String, BTreeMap<String, u64>> = self
+            .models_by_month
+            .iter()
+            .map(|(month, models)| {
+                (
+                    month.clone(),
+                    models
+                        .iter()
+                        .map(|(model, bucket)| (model.clone(), bucket.total))
+                        .collect(),
+                )
+            })
+            .collect();
+
         let mut projects: Vec<(usize, String, u64)> = self
             .project_order
             .iter()
@@ -147,6 +169,7 @@ impl UsageAccumulator {
             today,
             daily,
             models,
+            model_months,
             today_models,
             projects,
             hours: self.hours.to_vec(),
@@ -194,10 +217,18 @@ mod tests {
         assert_eq!(agent.projects[0].name, "Bruce");
         assert_eq!(agent.hours.iter().sum::<u64>(), 16);
         assert_eq!(agent.daily.len(), 3);
+        // 自然月 × 模型聚合: 3 天窗口全部落在 2026-07, 样本模型全量归档
+        assert_eq!(agent.model_months.len(), 1);
+        let july = &agent.model_months["2026-07"];
+        assert_eq!(july["provider/model[fast]"], 16);
         assert!(agent.today_models[0].cost_usd.is_none());
         assert!(agent.today_cost_usd.is_none());
         let encoded = serde_json::to_value(&agent).unwrap();
         assert!(encoded["todayCostUsd"].is_null());
         assert!(encoded["todayModels"][0]["costUsd"].is_null());
+        assert_eq!(
+            encoded["modelMonths"]["2026-07"]["provider/model[fast]"],
+            16
+        );
     }
 }

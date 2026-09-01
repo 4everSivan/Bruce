@@ -95,7 +95,8 @@ extension PanelViewModelMapper {
             isLive: isLive,
             heatmap: makeUsageHeatmap(artifact),
             monthly: monthly.months,
-            halfYear: monthly.summary
+            halfYear: monthly.summary,
+            models: makeUsageModels(artifact)
         )
     }
 
@@ -124,7 +125,8 @@ extension PanelViewModelMapper {
             UsageMonthlyTotal(
                 label: Self.monthLabel(key),
                 totalText: PanelFormat.tokenCount(totalsByMonth[key] ?? 0),
-                isCurrent: key == currentKey
+                isCurrent: key == currentKey,
+                key: key
             )
         }
         let summary = UsageHalfYearSummary(
@@ -139,6 +141,70 @@ extension PanelViewModelMapper {
         let month = key.suffix(2)
         let trimmed = month.hasPrefix("0") ? month.suffix(1) : month
         return "\(trimmed)月"
+    }
+
+    // MARK: 模型用量
+
+    /// 模型名 -> 颜色的稳定调色板 (跨周期一致; 按名称排序取色, 模型数量超出后循环).
+    private static let modelPalette = [
+        "#0a84ff", "#ff9f0a", "#bf5af2", "#64d2ff", "#ff375f", "#30d158", "#ffcf7a", "#8e8e93",
+    ]
+
+    /// 模型用量区块: 聚合各 agent 的自然月 × 模型数据为三档窗口 (本月/3 月/6 月)
+    /// 与可点击日历月 (最新在前); 行按所选周期用量降序, 进度条为周期内份额.
+    /// 旧版 artifact 无 modelMonths 时返回 nil (区块隐藏).
+    func makeUsageModels(_ artifact: AgentUsageArtifact) -> UsageModelUsageSection? {
+        var byMonth: [String: [String: Int]] = [:]
+        for agent in artifact.agents {
+            for (month, models) in agent.modelMonths ?? [:] {
+                for (model, total) in models {
+                    byMonth[month, default: [:]][model, default: 0] += total
+                }
+            }
+        }
+        guard !byMonth.isEmpty else { return nil }
+
+        let keys = byMonth.keys.sorted()
+        let currentKey = keys.last ?? ""
+        let allModels = Set(byMonth.values.flatMap { $0.keys }).sorted()
+        let colorByModel = Dictionary(uniqueKeysWithValues: allModels.enumerated().map {
+            ($1, Self.modelPalette[$0 % Self.modelPalette.count])
+        })
+
+        func rows(for monthKeys: [String]) -> [UsageModelRow] {
+            var totals: [String: Int] = [:]
+            for key in monthKeys {
+                for (model, total) in byMonth[key] ?? [:] {
+                    totals[model, default: 0] += total
+                }
+            }
+            let grand = totals.values.reduce(0, +)
+            guard grand > 0 else { return [] }
+            return totals
+                .sorted { $0.value > $1.value }
+                .map { model, total in
+                    let share = Double(total) / Double(grand)
+                    let pct = Int((share * 100).rounded())
+                    return UsageModelRow(
+                        name: model,
+                        totalText: PanelFormat.tokenCount(total),
+                        pctText: "\(pct)%",
+                        share: share,
+                        colorHex: colorByModel[model] ?? "#8e8e93"
+                    )
+                }
+        }
+
+        let tiers = [
+            UsageModelPeriod(id: "m1", label: "本月", rows: rows(for: [currentKey])),
+            UsageModelPeriod(id: "m3", label: "3 月", rows: rows(for: keys.suffix(3))),
+            UsageModelPeriod(id: "m6", label: "6 月", rows: rows(for: keys)),
+        ]
+        let months = keys.reversed()
+            .map { key in
+                UsageModelPeriod(id: key, label: Self.monthLabel(key), rows: rows(for: [key]))
+            }
+        return UsageModelUsageSection(tiers: tiers, months: months, currentMonthKey: currentKey)
     }
 
     // MARK: 用量热力图

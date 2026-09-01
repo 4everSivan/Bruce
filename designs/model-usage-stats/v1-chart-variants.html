@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="zh" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bruce · 模型用量统计 — 可视化方案 Demo</title>
+<style>
+  :root {
+    --desk-bg: radial-gradient(1200px 500px at 15% -10%, rgba(255,255,255,.9), transparent 60%),
+               radial-gradient(900px 600px at 90% 110%, rgba(140,170,220,.55), transparent 55%),
+               linear-gradient(160deg, #dce8f2 0%, #e9e4ef 48%, #f2ede4 100%);
+    --pop-bg: rgba(28,30,38,.52);
+    --pop-border: rgba(255,255,255,.14);
+    --pop-shadow: 0 24px 60px rgba(10,14,24,.55), inset 0 1px 0 rgba(255,255,255,.12);
+    --card-bg: rgba(255,255,255,.06);
+    --card-border: rgba(255,255,255,.10);
+    --card-shadow: 0 2px 10px rgba(10,14,24,.35), inset 0 1px 0 rgba(255,255,255,.07);
+    --text: rgba(255,255,255,.92);
+    --text-sub: rgba(255,255,255,.58);
+    --text-faint: rgba(255,255,255,.42);
+    --hairline: rgba(255,255,255,.10);
+    --chip-bg: rgba(255,255,255,.08);
+    --seg-bg: rgba(255,255,255,.08);
+    --seg-active-bg: rgba(255,255,255,.18);
+    --accent: #0a84ff;
+    --track: rgba(255,255,255,.10);
+  }
+  [data-theme="light"] {
+    --pop-bg: rgba(248,248,250,.38);
+    --pop-border: rgba(255,255,255,.65);
+    --pop-shadow: 0 24px 60px rgba(31,38,56,.28), inset 0 1px 0 rgba(255,255,255,.7);
+    --card-bg: rgba(255,255,255,.45);
+    --card-border: rgba(255,255,255,.6);
+    --card-shadow: 0 2px 10px rgba(31,38,56,.07), inset 0 1px 0 rgba(255,255,255,.6);
+    --text: #1c1c1e;
+    --text-sub: rgba(60,60,67,.72);
+    --text-faint: rgba(60,60,67,.55);
+    --hairline: rgba(0,0,0,.07);
+    --chip-bg: rgba(255,255,255,.55);
+    --seg-bg: rgba(0,0,0,.05);
+    --seg-active-bg: rgba(255,255,255,.75);
+    --track: rgba(0,0,0,.08);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    min-height: 100vh;
+    background: var(--desk-bg);
+    font-family: -apple-system, "SF Pro Text", "PingFang SC", "Noto Sans SC", sans-serif;
+    color: var(--text);
+    padding: 28px 24px 48px;
+  }
+  [data-theme="dark"] body { background:
+      radial-gradient(1000px 480px at 20% -10%, rgba(64,84,140,.5), transparent 60%),
+      radial-gradient(900px 600px at 85% 110%, rgba(40,110,90,.35), transparent 55%),
+      linear-gradient(165deg, #171a22 0%, #1b1e28 50%, #181c1a 100%); }
+
+  .topbar { max-width: 1320px; margin: 0 auto 22px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .topbar h1 { font-size: 17px; font-weight: 700; letter-spacing: -.2px; }
+  .topbar .note { font-size: 11.5px; color: var(--text-sub); }
+  .topbar .spacer { flex: 1; }
+  .theme-toggle {
+    font-size: 11px; padding: 5px 12px; border-radius: 99px; cursor: pointer; user-select: none;
+    background: var(--chip-bg); border: 1px solid var(--pop-border); color: var(--text-sub);
+  }
+
+  .stage { max-width: 1320px; margin: 0 auto; display: flex; gap: 28px; justify-content: center; align-items: flex-start; flex-wrap: wrap; }
+  .variant { width: 400px; }
+  .variant-label { display: flex; align-items: baseline; gap: 8px; margin: 0 2px 10px; }
+  .variant-label .tag { font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 99px; background: var(--accent); color: #fff; letter-spacing: .02em; }
+  .variant-label h2 { font-size: 13.5px; font-weight: 650; letter-spacing: -.1px; }
+  .variant-desc { font-size: 11px; line-height: 1.65; color: var(--text-sub); margin: -2px 2px 12px; }
+  .variant-desc b { color: var(--text); font-weight: 600; }
+
+  .pop {
+    width: 400px; border-radius: 22px; overflow: hidden;
+    background: var(--pop-bg);
+    backdrop-filter: blur(34px) saturate(1.9);
+    -webkit-backdrop-filter: blur(34px) saturate(1.9);
+    border: 1px solid var(--pop-border);
+    box-shadow: var(--pop-shadow);
+  }
+  .pop-scroll { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .g {
+    background: var(--card-bg);
+    backdrop-filter: blur(20px) saturate(1.6);
+    -webkit-backdrop-filter: blur(20px) saturate(1.6);
+    border: 1px solid var(--card-border);
+    border-radius: 16px; padding: 13px 15px;
+    box-shadow: var(--card-shadow);
+  }
+  .card-head { display: flex; align-items: center; gap: 8px; }
+  .t { font-size: 12.5px; font-weight: 600; letter-spacing: -.1px; }
+  .sec { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .4px; color: var(--text-faint); margin: 12px 0 4px; }
+  .sec:first-child { margin-top: 0; }
+
+  /* 分段控件 (方案 A 维度切换) */
+  .seg { margin-left: auto; display: flex; padding: 2px; border-radius: 8px; background: var(--seg-bg); gap: 2px; }
+  .seg button {
+    font-family: inherit; font-size: 10px; font-weight: 600; letter-spacing: .02em;
+    padding: 3px 10px; border: none; border-radius: 6px; cursor: pointer;
+    background: transparent; color: var(--text-sub);
+  }
+  .seg button.on { background: var(--seg-active-bg); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,.18); }
+
+  /* 14 日堆叠柱状图 */
+  .stack { display: flex; align-items: flex-end; gap: 3px; height: 96px; margin: 10px 0 2px; }
+  .stack .col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; gap: 1px; height: 100%; }
+  .stack .col .tot { font-size: 7.5px; text-align: center; color: var(--text-faint); font-variant-numeric: tabular-nums; margin-bottom: 2px; white-space: nowrap; }
+  .stack .col i { display: block; border-radius: 1.5px; height: 0; transition: height .55s cubic-bezier(.2,.7,.3,1); }
+  .stack .col i:last-child { border-radius: 1.5px 1.5px 2.5px 2.5px; }
+  .dateaxis { display: flex; justify-content: space-between; font-size: 9px; color: var(--text-faint); margin: 3px 1px 4px; }
+  .legend { display: flex; gap: 10px; flex-wrap: wrap; font-size: 9.5px; color: var(--text-sub); margin: 4px 0 2px; }
+  .legend b { display: inline-block; width: 7px; height: 7px; border-radius: 2px; margin-right: 4px; }
+
+  /* 方案 B: 模型排行区块 */
+  .mrow { display: flex; align-items: center; gap: 7px; padding: 5px 0; border-top: 1px solid var(--hairline); font-size: 10.5px; }
+  .mrow:first-of-type { border-top: none; }
+  .mrow .dot { width: 7px; height: 7px; border-radius: 2px; flex: none; }
+  .mrow .name { font-weight: 550; letter-spacing: -.05px; white-space: nowrap; }
+  .mrow .agent-of { font-size: 8.5px; color: var(--text-faint); white-space: nowrap; }
+  .mrow .bar { flex: 1; height: 4px; border-radius: 2px; background: var(--track); overflow: hidden; }
+  .mrow .bar i { display: block; height: 100%; border-radius: 2px; width: 0; transition: width .6s cubic-bezier(.2,.7,.3,1); }
+  .mrow .nums { display: flex; gap: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .mrow .nums .d14 { font-weight: 600; }
+  .mrow .nums .d1 { color: var(--text-sub); font-size: 9.5px; }
+  .mlist-head { display: flex; justify-content: space-between; font-size: 8.5px; letter-spacing: .08em; color: var(--text-faint); padding: 6px 0 2px; }
+  .foot-chip { margin-top: 10px; font-size: 9.5px; line-height: 1.6; color: var(--text-sub); background: var(--chip-bg); border: 1px solid var(--card-border); border-radius: 9px; padding: 7px 10px; }
+  .foot-chip b { color: var(--text); font-weight: 600; }
+
+  .page-foot { max-width: 1320px; margin: 26px auto 0; font-size: 10.5px; line-height: 1.7; color: var(--text-faint); }
+
+  /* ---------- 方案 C · Nothing 风格 (点阵 / 单色 / 红点缀) ---------- */
+  .ncard {
+    background: #000; border: 1px solid rgba(255,255,255,.3); border-radius: 10px;
+    padding: 14px 15px 12px;
+    font-family: "SF Mono", ui-monospace, Menlo, monospace;
+    color: #fff;
+  }
+  .nhead { display: flex; align-items: flex-start; gap: 10px; }
+  .ntitle { font-size: 11px; font-weight: 700; letter-spacing: .18em; color: #fff; }
+  .ntitle .reddot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #ff2e3d; margin-left: 7px; vertical-align: 1px; }
+  .nsub { font-size: 7.5px; letter-spacing: .24em; color: rgba(255,255,255,.4); margin-top: 4px; }
+  .nhero { margin-left: auto; text-align: right; }
+  .nhero .lab { font-size: 7px; letter-spacing: .26em; color: rgba(255,255,255,.4); margin-bottom: 5px; }
+  .nhero .today { margin-top: 5px; font-size: 8px; letter-spacing: .14em; color: rgba(255,255,255,.55); }
+  .nhero .today b { color: #ff2e3d; font-weight: 700; }
+  .nseg { display: flex; border: 1px solid rgba(255,255,255,.4); border-radius: 4px; overflow: hidden; }
+  .nseg button {
+    font-family: inherit; font-size: 8.5px; font-weight: 600; letter-spacing: .14em;
+    padding: 3px 9px; background: transparent; border: none; color: rgba(255,255,255,.55); cursor: pointer;
+  }
+  .nseg button + button { border-left: 1px solid rgba(255,255,255,.4); }
+  .nseg button.on { background: #fff; color: #000; }
+  .ndots { display: flex; align-items: flex-end; gap: 4px; height: 116px; margin: 16px 0 0; }
+  .ndots .col { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 2px; }
+  .ndots .d { width: 3px; height: 3px; border-radius: 50%; flex: none; }
+  .ndots .hollow { width: 3px; height: 3px; border-radius: 50%; border: 1px solid rgba(255,255,255,.3); flex: none; }
+  .ndots .tick { width: 100%; height: 1px; background: rgba(255,255,255,.18); margin-top: 6px; }
+  .ndots .col.today .tick { background: #ff2e3d; }
+  .naxis { display: flex; justify-content: space-between; font-size: 7.5px; letter-spacing: .18em; color: rgba(255,255,255,.4); margin: 7px 1px 0; }
+  .nlegend { display: flex; gap: 6px 12px; flex-wrap: wrap; margin-top: 10px; }
+  .nlegend span { font-size: 7.5px; letter-spacing: .1em; color: rgba(255,255,255,.6); display: inline-flex; align-items: center; gap: 5px; text-transform: uppercase; }
+  .nlegend i { width: 7px; height: 7px; border-radius: 1px; display: inline-block; }
+  .nrank { margin-top: 12px; border-top: 1px solid rgba(255,255,255,.2); }
+  .nrank-head { display: flex; justify-content: space-between; font-size: 7px; letter-spacing: .22em; color: rgba(255,255,255,.4); padding: 7px 0 3px; }
+  .nrow { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-top: 1px solid rgba(255,255,255,.09); }
+  .nrow:first-of-type { border-top: none; }
+  .nrow .idx { width: 10px; font-size: 8px; color: rgba(255,255,255,.35); font-variant-numeric: tabular-nums; }
+  .nrow .nm { font-size: 9px; font-weight: 600; letter-spacing: .1em; color: #fff; white-space: nowrap; text-transform: uppercase; }
+  .nrow .ag { font-size: 7px; letter-spacing: .12em; color: rgba(255,255,255,.35); white-space: nowrap; }
+  .nrow .nbar { flex: 1; height: 3px; background: rgba(255,255,255,.12); overflow: hidden; }
+  .nrow .nbar i { display: block; height: 100%; width: 0; transition: width .7s steps(22); }
+  .nrow .v14 { font-size: 9px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
+  .nrow .v1 { font-size: 8px; color: rgba(255,255,255,.45); font-variant-numeric: tabular-nums; width: 46px; text-align: right; }
+  .nnote { margin-top: 11px; font-size: 8.5px; line-height: 1.7; letter-spacing: .05em; color: rgba(255,255,255,.5); border: 1px dashed rgba(255,255,255,.3); border-radius: 4px; padding: 7px 9px; }
+  .nnote b { color: #fff; font-weight: 700; }
+
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <h1>Bruce · 模型用量统计 — 可视化方案</h1>
+    <span class="note">14 天日总量取自你的真实数据, 模型拆分为示意</span>
+    <span class="spacer"></span>
+    <span class="theme-toggle" id="themeToggle">切换浅色</span>
+  </div>
+
+  <div class="stage">
+    <!-- ====================== 方案 A ====================== -->
+    <div class="variant">
+      <div class="variant-label"><span class="tag">方案 A</span><h2>柱状图维度切换 · Agent / 模型</h2></div>
+      <p class="variant-desc">在现有 14 天堆叠柱状图上加一组<b>「Agent | 模型」分段切换</b>。切到「模型」后, 同一批柱子改为按模型堆叠着色, 图例联动替换。零新增区块, 面板不增高; 同一 agent 内的模型构成 (如 Claude 的 Sonnet / Haiku) 一眼可辨。</p>
+      <div class="pop">
+        <div class="pop-scroll">
+          <div class="g">
+            <div class="card-head">
+              <span class="t">Agent 用量</span>
+              <div class="seg" id="dimSeg">
+                <button class="on" data-dim="agent">Agent</button>
+                <button data-dim="model">模型</button>
+              </div>
+            </div>
+            <div class="stack" id="stackA"></div>
+            <div class="dateaxis"><span>14 天前</span><span>7 天前</span><span>今天</span></div>
+            <div class="legend" id="legendA"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====================== 方案 B ====================== -->
+    <div class="variant">
+      <div class="variant-label"><span class="tag">方案 B</span><h2>独立「模型用量」排行区块</h2></div>
+      <p class="variant-desc">柱状图保持按 Agent 不变, 卡片底部新增<b>「模型用量」排行</b>: 每个模型一行 (色点 + 名称 + 归属 + 占比条 + 今日 / 14 天数值), 与逐小时卡明细的占比条同款视觉。不打扰现有阅读习惯, 适合模型数量较多的场景。</p>
+      <div class="pop">
+        <div class="pop-scroll">
+          <div class="g">
+            <div class="card-head"><span class="t">Agent 用量</span></div>
+            <div class="stack" id="stackB"></div>
+            <div class="dateaxis"><span>14 天前</span><span>7 天前</span><span>今天</span></div>
+            <div class="legend" id="legendB"></div>
+
+            <div class="sec">模型用量 · 近 14 天</div>
+            <div class="mlist-head"><span>模型</span><span>今日 / 14 天</span></div>
+            <div id="modelRank"></div>
+            <div class="foot-chip"><b>落地成本:</b> 「今日」列用现有 todayModels 即可上线; 「14 天」列需采集端逐日模型聚合 (与方案 A 共用同一处改动)。</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====================== 方案 C ====================== -->
+    <div class="variant">
+      <div class="variant-label"><span class="tag">方案 C</span><h2>Nothing 风格 · 点阵单色 + 红点缀</h2></div>
+      <p class="variant-desc">整套卡片的另一种风格方向: <b>纯黑底 + 白色细线 + 点阵数字</b>, 柱状图改为点阵列 (每列由模型配色的圆点堆叠), 14 天总量用点阵大字呈现, 今天一列以红色刻度线标记。布局沿用 B 的「图表 + 排行」, 可与 A/B 的布局互换组合。</p>
+      <div class="pop">
+        <div class="pop-scroll">
+          <div class="ncard">
+            <div class="nhead">
+              <div>
+                <div class="ntitle">AGENT 用量<span class="reddot"></span></div>
+                <div class="nsub">TOKEN / 14 DAYS</div>
+              </div>
+              <div class="nseg" id="dimSegN">
+                <button data-dim="agent">AGENT</button>
+                <button class="on" data-dim="model">MODEL</button>
+              </div>
+              <div class="nhero">
+                <div class="lab">14D TOTAL</div>
+                <div id="nHero"></div>
+                <div class="today">TODAY <b>652.9M</b></div>
+              </div>
+            </div>
+            <div class="ndots" id="nStack"></div>
+            <div class="naxis"><span>D-14</span><span>D-7</span><span>NOW</span></div>
+            <div class="nlegend" id="nLegend"></div>
+            <div class="nrank">
+              <div class="nrank-head"><span>MODEL RANKING</span><span>TODAY / 14D</span></div>
+              <div id="nRank"></div>
+            </div>
+            <div class="nnote"><b>落地成本:</b> 点阵视觉纯前端实现; 「14 天按模型」数据需求与 A/B 共用同一处采集端改动。</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="page-foot">说明: 柱高按 14 天真实日总量等比绘制 (184M → 1105.9M … 今天 652.9M); 模型名与拆分比例为示意, 实际以采集结果为准。方案 A/B/C 的「14 天按模型」均需采集端把逐日聚合从「日 → token」扩展为「日 × 模型 → token」(缓存版本随之升级, 首次刷新全量重建一次); 方案 C 为风格方向, 可与 A/B 的布局互换组合。</p>
+
+<script>
+// ---------- 数据: 14 天真实日总量 (M), 按模型示意拆分 ----------
+// 日期自旧到今; 日总量来自面板截图的真实标注
+const DAYS = [
+  { tot: 184.0,  kimi: 92.0,  claudeS: 32.5, claudeH: 13.5, gpt: 28.0,  glm: 12.0,  qwen: 6.0 },
+  { tot: 347.9,  kimi: 139.0, claudeS: 62.6, claudeH: 24.4, gpt: 52.0,  glm: 52.0,  qwen: 17.9 },
+  { tot: 628.1,  kimi: 220.0, claudeS: 113.0, claudeH: 44.0, gpt: 94.0, glm: 125.0, qwen: 32.1 },
+  { tot: 1038.3, kimi: 311.0, claudeS: 187.2, claudeH: 72.8, gpt: 156.0, glm: 270.0, qwen: 41.3 },
+  { tot: 240.4,  kimi: 72.0,  claudeS: 43.3, claudeH: 16.7, gpt: 36.0,  glm: 62.0,  qwen: 10.4 },
+  { tot: 276.5,  kimi: 69.0,  claudeS: 55.5, claudeH: 21.5, gpt: 47.0,  glm: 72.0,  qwen: 11.5 },
+  { tot: 733.7,  kimi: 154.0, claudeS: 142.6, claudeH: 55.4, gpt: 110.0, glm: 247.0, qwen: 24.7 },
+  { tot: 624.1,  kimi: 125.0, claudeS: 121.0, claudeH: 47.0, gpt: 94.0,  glm: 212.0, qwen: 25.1 },
+  { tot: 538.2,  kimi: 97.0,  claudeS: 104.4, claudeH: 40.6, gpt: 81.0,  glm: 194.0, qwen: 21.2 },
+  { tot: 1105.9, kimi: 166.0, claudeS: 214.6, claudeH: 83.4, gpt: 166.0, glm: 442.0, qwen: 33.9 },
+  { tot: 177.2,  kimi: 27.0,  claudeS: 34.6, claudeH: 13.4, gpt: 26.0,  glm: 71.0,  qwen: 5.2 },
+  { tot: 0 },
+  { tot: 15.8,   glm: 15.8 },
+  { tot: 652.9,  kimi: 8.0,   gpt: 114.0, glm: 527.0, qwen: 3.9 },
+];
+
+// 模型调色: 沿用所属 agent 的色相, 同 agent 双模型用同族深浅
+const MODELS = [
+  { key: "kimi",    name: "Kimi K3",          agent: "Kimi Code CLI", color: "#0a84ff" },
+  { key: "claudeS", name: "Claude Sonnet 4.5", agent: "Claude Code",  color: "#ff9f0a" },
+  { key: "claudeH", name: "Claude Haiku 4.5",  agent: "Claude Code",  color: "#ffcf7a" },
+  { key: "gpt",     name: "GPT-5.2 Codex",     agent: "Codex",        color: "#bf5af2" },
+  { key: "glm",     name: "GLM-5.3",           agent: "ZCode",        color: "#64d2ff" },
+  { key: "qwen",    name: "Qwen3 Coder",       agent: "OpenCode",     color: "#ff375f" },
+];
+
+// Agent 维度 (现有视图): 与模型一一映射聚合
+const AGENTS = [
+  { key: "kimi",    name: "Kimi Code CLI", color: "#0a84ff", from: ["kimi"] },
+  { key: "claude",  name: "Claude Code",   color: "#ff9f0a", from: ["claudeS", "claudeH"] },
+  { key: "codex",   name: "Codex",         color: "#bf5af2", from: ["gpt"] },
+  { key: "zcode",   name: "ZCode",         color: "#64d2ff", from: ["glm"] },
+  { key: "opencode",name: "OpenCode",      color: "#ff375f", from: ["qwen"] },
+];
+
+const MAX = Math.max(...DAYS.map(d => d.tot));
+const fmt = v => v >= 1000 ? (v / 1000).toFixed(2) + "B" : (Math.round(v * 10) / 10).toLocaleString() + "M";
+
+function buildStack(el, dim) {
+  el.innerHTML = "";
+  DAYS.forEach((day, di) => {
+    const col = document.createElement("div");
+    col.className = "col";
+    const tot = document.createElement("span");
+    tot.className = "tot";
+    tot.textContent = day.tot > 0 ? fmt(day.tot) : "0";
+    col.appendChild(tot);
+    const defs = dim === "agent" ? AGENTS : MODELS;
+    defs.forEach((def, si) => {
+      const v = (dim === "agent")
+        ? def.from.reduce((s, k) => s + (day[k] || 0), 0)
+        : (day[def.key] || 0);
+      if (v <= 0) return;
+      const seg = document.createElement("i");
+      seg.style.background = def.color;
+      seg.style.height = "0%";
+      requestAnimationFrame(() => setTimeout(() => {
+        seg.style.height = (v / MAX * 100) + "%";
+      }, 40 * di + si * 30));
+      col.appendChild(seg);
+    });
+    el.appendChild(col);
+  });
+}
+
+function buildLegend(el, dim) {
+  el.innerHTML = "";
+  const defs = dim === "agent" ? AGENTS : MODELS;
+  defs.forEach(def => {
+    const s = document.createElement("span");
+    const b = document.createElement("b");
+    b.style.background = def.color;
+    s.appendChild(b);
+    s.appendChild(document.createTextNode(def.name));
+    el.appendChild(s);
+  });
+}
+
+function buildRank() {
+  const wrap = document.getElementById("modelRank");
+  const sum14 = {}, sum1 = {};
+  MODELS.forEach(m => { sum14[m.key] = 0; sum1[m.key] = 0; });
+  DAYS.forEach((d, i) => MODELS.forEach(m => {
+    sum14[m.key] += d[m.key] || 0;
+    if (i === DAYS.length - 1) sum1[m.key] = d[m.key] || 0;
+  }));
+  const grand = Object.values(sum14).reduce((a, b) => a + b, 0);
+  [...MODELS].map(m => ({ ...m, s14: sum14[m.key], s1: sum1[m.key] }))
+    .sort((a, b) => b.s14 - a.s14)
+    .forEach((m, i) => {
+      const row = document.createElement("div");
+      row.className = "mrow";
+      const dot = document.createElement("span"); dot.className = "dot"; dot.style.background = m.color;
+      const name = document.createElement("span"); name.className = "name"; name.textContent = m.name;
+      const of = document.createElement("span"); of.className = "agent-of"; of.textContent = m.agent;
+      const bar = document.createElement("span"); bar.className = "bar";
+      const fill = document.createElement("i"); fill.style.background = m.color;
+      bar.appendChild(fill);
+      const nums = document.createElement("span"); nums.className = "nums";
+      const d1 = document.createElement("span"); d1.className = "d1"; d1.textContent = fmt(m.s1);
+      const d14 = document.createElement("span"); d14.className = "d14"; d14.textContent = fmt(m.s14);
+      nums.appendChild(d1); nums.appendChild(d14);
+      row.append(dot, name, of, bar, nums);
+      wrap.appendChild(row);
+      setTimeout(() => { fill.style.width = (m.s14 / grand * 100).toFixed(1) + "%"; }, 120 + i * 70);
+    });
+}
+
+// 方案 A 交互
+let dim = "agent";
+const stackA = document.getElementById("stackA");
+const legendA = document.getElementById("legendA");
+buildStack(stackA, dim);
+buildLegend(legendA, dim);
+document.getElementById("dimSeg").addEventListener("click", e => {
+  const btn = e.target.closest("button");
+  if (!btn || btn.dataset.dim === dim) return;
+  dim = btn.dataset.dim;
+  document.querySelectorAll("#dimSeg button").forEach(b => b.classList.toggle("on", b === btn));
+  buildStack(stackA, dim);
+  buildLegend(legendA, dim);
+});
+
+// 方案 B 静态渲染
+buildStack(document.getElementById("stackB"), "agent");
+buildLegend(document.getElementById("legendB"), "agent");
+buildRank();
+
+// ---------- 方案 C · Nothing 点阵 ----------
+// 5x7 点阵字模 (仅 demo 所需字符)
+const N_FONT = {
+  "0":["01110","10001","10011","10101","11001","10001","01110"],
+  "1":["00100","01100","00100","00100","00100","00100","01110"],
+  "2":["01110","10001","00001","00010","00100","01000","11111"],
+  "3":["11110","00001","00001","01110","00001","00001","11110"],
+  "4":["00010","00110","01010","10010","11111","00010","00010"],
+  "5":["11111","10000","11110","00001","00001","10001","01110"],
+  "6":["00110","01000","10000","11110","10001","10001","01110"],
+  "7":["11111","00001","00010","00100","01000","01000","01000"],
+  "8":["01110","10001","10001","01110","10001","10001","01110"],
+  "9":["01110","10001","10001","01111","00001","00010","01100"],
+  ".":["00000","00000","00000","00000","00000","01100","01100"],
+  "B":["11110","10001","10001","11110","10001","10001","11110"],
+  "M":["10001","11011","10101","10101","10001","10001","10001"],
+  " ":["00000","00000","00000","00000","00000","00000","00000"],
+};
+function dotText(text, ds, color) {
+  const w = text.length * 6 * ds - ds, h = 7 * ds;
+  let svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${text}">`;
+  [...text].forEach((ch, ci) => {
+    const rows = N_FONT[ch] || N_FONT[" "];
+    rows.forEach((row, r) => [...row].forEach((b, c) => {
+      if (b === "1") svg += `<circle cx="${ci * 6 * ds + c * ds + ds / 2}" cy="${r * ds + ds / 2}" r="${ds / 2 - 0.2}" fill="${color}"/>`;
+    }));
+  });
+  return svg + "</svg>";
+}
+// 点阵列: 按最大余数法把每列 20 个点分配给各模型
+function nothingDots(day, rows) {
+  if (day.tot <= 0) return [];
+  const exact = MODELS.map(m => ({ key: m.key, d: (day[m.key] || 0) / day.tot * rows }));
+  const counts = exact.map(e => Math.floor(e.d));
+  let rem = rows - counts.reduce((a, b) => a + b, 0);
+  exact.map((e, i) => ({ i, r: e.d - Math.floor(e.d) }))
+    .sort((a, b) => b.r - a.r)
+    .slice(0, rem)
+    .forEach(x => counts[x.i]++);
+  return MODELS.filter((m, i) => counts[i] > 0)
+    .map((m, i) => ({ color: m.color, n: counts[MODELS.indexOf(m)] }));
+}
+function renderNothing(dimN) {
+  const total14 = DAYS.reduce((s, d) => s + d.tot, 0);
+  document.getElementById("nHero").innerHTML =
+    dotText((total14 / 1000).toFixed(2) + "B", 4, "#fff");
+  const stack = document.getElementById("nStack");
+  stack.innerHTML = "";
+  const ROWS = 19;
+  DAYS.forEach((day, di) => {
+    const col = document.createElement("div");
+    col.className = "col" + (di === DAYS.length - 1 ? " today" : "");
+    if (day.tot <= 0) {
+      col.innerHTML = `<span class="hollow"></span><span class="tick"></span>`;
+    } else {
+      nothingDots(day, ROWS).forEach(seg => {
+        for (let k = 0; k < seg.n; k++) {
+          const d = document.createElement("span");
+          d.className = "d";
+          d.style.background = seg.color;
+          col.appendChild(d);
+        }
+      });
+      col.innerHTML += `<span class="tick"></span>`;
+    }
+    stack.appendChild(col);
+  });
+  // 排行 (14 天求和降序)
+  const sum14 = {}, sum1 = {};
+  MODELS.forEach(m => { sum14[m.key] = 0; sum1[m.key] = 0; });
+  DAYS.forEach((d, i) => MODELS.forEach(m => {
+    sum14[m.key] += d[m.key] || 0;
+    if (i === DAYS.length - 1) sum1[m.key] = d[m.key] || 0;
+  }));
+  const grand = Object.values(sum14).reduce((a, b) => a + b, 0);
+  const rank = document.getElementById("nRank");
+  rank.innerHTML = "";
+  [...MODELS].map(m => ({ ...m, s14: sum14[m.key], s1: sum1[m.key] }))
+    .sort((a, b) => b.s14 - a.s14)
+    .forEach((m, i) => {
+      const row = document.createElement("div");
+      row.className = "nrow";
+      row.innerHTML =
+        `<span class="idx">${String(i + 1).padStart(2, "0")}</span>` +
+        `<span class="nm">${m.name}</span>` +
+        `<span class="ag">${m.agent}</span>` +
+        `<span class="nbar"><i style="background:${m.color}"></i></span>` +
+        `<span class="v1">${fmt(m.s1)}</span>` +
+        `<span class="v14">${fmt(m.s14)}</span>`;
+      rank.appendChild(row);
+      setTimeout(() => { row.querySelector(".nbar i").style.width = (m.s14 / grand * 100).toFixed(1) + "%"; }, 150 + i * 70);
+    });
+  // 图例 (与当前维度一致)
+  const legend = document.getElementById("nLegend");
+  legend.innerHTML = "";
+  (dimN === "agent" ? AGENTS : MODELS).forEach(def => {
+    const s = document.createElement("span");
+    s.innerHTML = `<i style="background:${def.color}"></i>` + def.name;
+    legend.appendChild(s);
+  });
+}
+let dimN = "model";
+renderNothing(dimN);
+document.getElementById("dimSegN").addEventListener("click", e => {
+  const btn = e.target.closest("button");
+  if (!btn || btn.dataset.dim === dimN) return;
+  dimN = btn.dataset.dim;
+  document.querySelectorAll("#dimSegN button").forEach(b => b.classList.toggle("on", b === btn));
+  renderNothing(dimN);
+});
+
+// 主题切换
+document.getElementById("themeToggle").addEventListener("click", () => {
+  const html = document.documentElement;
+  const dark = html.dataset.theme === "dark";
+  html.dataset.theme = dark ? "light" : "dark";
+  document.getElementById("themeToggle").textContent = dark ? "切换深色" : "切换浅色";
+});
+</script>
+</body>
+</html>

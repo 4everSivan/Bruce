@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bruce · Token 用量卡 — 模型用量 (本月 / 3 个月 / 6 个月)</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    min-height: 100vh;
+    background:
+      radial-gradient(1000px 480px at 20% -10%, rgba(64,84,140,.45), transparent 60%),
+      radial-gradient(900px 600px at 85% 110%, rgba(40,110,90,.32), transparent 55%),
+      linear-gradient(165deg, #171a22 0%, #1b1e28 50%, #181c1a 100%);
+    font-family: -apple-system, "SF Pro Text", "PingFang SC", "Noto Sans SC", sans-serif;
+    color: rgba(255,255,255,.92);
+    padding: 26px 22px 44px;
+  }
+  .topbar { max-width: 1240px; margin: 0 auto 6px; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .topbar h1 { font-size: 16px; font-weight: 700; letter-spacing: -.2px; }
+  .topbar .note { font-size: 11px; color: rgba(255,255,255,.55); }
+  .principle { max-width: 1240px; margin: 0 auto 18px; font-size: 11px; line-height: 1.7; color: rgba(255,255,255,.5); }
+  .principle b { color: rgba(255,255,255,.85); font-weight: 600; }
+
+  .stage { max-width: 1240px; margin: 0 auto; display: flex; gap: 22px; justify-content: center; align-items: flex-start; flex-wrap: wrap; }
+  .variant { width: 392px; }
+  .variant-label { display: flex; align-items: baseline; gap: 8px; margin: 0 2px 6px; }
+  .variant-label .tag { font-size: 10.5px; font-weight: 700; padding: 2px 9px; border-radius: 99px; background: #0a84ff; color: #fff; }
+  .variant-label h2 { font-size: 13px; font-weight: 650; }
+  .variant-desc { font-size: 10.5px; line-height: 1.6; color: rgba(255,255,255,.5); margin: -2px 2px 10px; }
+
+  /* ============ Token 用量卡: 同一 DOM × 主题 token ============ */
+  .card {
+    --card-bg: rgba(30,33,44,.55);
+    --card-border: rgba(255,255,255,.10);
+    --card-shadow: 0 2px 12px rgba(10,14,24,.4), inset 0 1px 0 rgba(255,255,255,.07);
+    --card-radius: 16px;
+    --font: -apple-system, "SF Pro Text", "PingFang SC", "Noto Sans SC", sans-serif;
+    --text: rgba(255,255,255,.92);
+    --text-strong: #f5f5f7;
+    --text-sub: rgba(255,255,255,.58);
+    --text-faint: rgba(255,255,255,.42);
+    --hairline: rgba(255,255,255,.10);
+    --track: rgba(255,255,255,.10);
+    --hero-grad: linear-gradient(135deg, #f5f5f7 30%, #0a84ff 130%);
+    --accent: #0a84ff;
+    --live: #30d158;
+    --heat-empty: rgba(255,255,255,.07);
+    --heat-1: #7d9b76; --heat-2: #63885e; --heat-3: #4c7249; --heat-4: #385b38; --heat-5: #26452a;
+    --chip-bg: rgba(255,255,255,.06);
+    --chip-border: rgba(255,255,255,.08);
+    --chip-hl-border: rgba(10,132,255,.7);
+    --chip-hl-bg: rgba(10,132,255,.12);
+    --seg-bg: rgba(255,255,255,.08);
+    --seg-active-bg: rgba(255,255,255,.18);
+    --seg-active-text: var(--text);
+    --seg-radius: 8px;
+    --bar-radius: 2px;
+    --dot-radius: 2px;
+    --name-transform: none;
+    --name-spacing: -.05px;
+
+    width: 392px;
+    background: var(--card-bg);
+    backdrop-filter: blur(22px) saturate(1.6);
+    -webkit-backdrop-filter: blur(22px) saturate(1.6);
+    border: 1px solid var(--card-border);
+    border-radius: var(--card-radius);
+    padding: 14px 15px 12px;
+    box-shadow: var(--card-shadow);
+    font-family: var(--font);
+    color: var(--text);
+  }
+  .card[data-theme="glass-light"] {
+    --card-bg: rgba(240,242,248,.72);
+    --card-border: rgba(255,255,255,.75);
+    --card-shadow: 0 2px 12px rgba(31,38,56,.12), inset 0 1px 0 rgba(255,255,255,.65);
+    --text: #1c1c1e;
+    --text-strong: #1c1c1e;
+    --text-sub: rgba(60,60,67,.72);
+    --text-faint: rgba(60,60,67,.5);
+    --hairline: rgba(0,0,0,.07);
+    --track: rgba(0,0,0,.08);
+    --hero-grad: linear-gradient(135deg, #1c1c1e 30%, #0a84ff 130%);
+    --heat-empty: rgba(0,0,0,.06);
+    --chip-bg: rgba(255,255,255,.6);
+    --chip-border: rgba(0,0,0,.06);
+    --seg-bg: rgba(0,0,0,.05);
+    --seg-active-bg: rgba(255,255,255,.8);
+  }
+  .card[data-theme="nothing"] {
+    --card-bg: #000;
+    --card-border: rgba(255,255,255,.3);
+    --card-shadow: none;
+    --card-radius: 6px;
+    --font: "SF Mono", ui-monospace, Menlo, monospace;
+    --text: #fff;
+    --text-strong: #fff;
+    --text-sub: rgba(255,255,255,.55);
+    --text-faint: rgba(255,255,255,.38);
+    --hairline: rgba(255,255,255,.16);
+    --track: rgba(255,255,255,.12);
+    --hero-grad: none;
+    --accent: #ff2e3d;
+    --live: #ff2e3d;
+    --heat-empty: rgba(255,255,255,.08);
+    --chip-bg: transparent;
+    --chip-border: rgba(255,255,255,.25);
+    --chip-hl-border: #ff2e3d;
+    --chip-hl-bg: rgba(255,46,61,.1);
+    --seg-bg: transparent;
+    --seg-active-bg: #fff;
+    --seg-active-text: #000;
+    --seg-radius: 4px;
+    --bar-radius: 0;
+    --dot-radius: 1px;
+    --name-transform: uppercase;
+    --name-spacing: .1em;
+  }
+
+  .hero { display: flex; align-items: flex-start; }
+  .eyebrow { display: flex; align-items: center; gap: 7px; font-size: 9px; font-weight: 600; letter-spacing: .14em; color: var(--accent); }
+  .eyebrow::before { content: ""; width: 14px; height: 1px; background: var(--accent); }
+  .live { font-size: 8.5px; font-weight: 700; letter-spacing: .1em; color: var(--live); display: inline-flex; align-items: center; gap: 4px; margin-left: 9px; }
+  .live::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--live); box-shadow: 0 0 0 3px color-mix(in srgb, var(--live) 18%, transparent); }
+  .hero-row { display: flex; align-items: baseline; gap: 8px; margin-top: 7px; }
+  .hero-num {
+    font-size: 38px; font-weight: 700; letter-spacing: -1.2px; line-height: 1.05;
+    font-variant-numeric: tabular-nums;
+    background: var(--hero-grad);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .card[data-theme="nothing"] .hero-num { background: none; -webkit-text-fill-color: #fff; letter-spacing: 0; }
+  .hero-unit { font-size: 12px; font-weight: 500; color: var(--text-faint); }
+  .hero-cost { margin-left: auto; text-align: right; }
+  .hero-cost .l { font-size: 8px; letter-spacing: .12em; color: var(--text-faint); margin-bottom: 4px; }
+  .hero-cost .v { font-size: 15px; font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .bd-row { display: flex; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--hairline); }
+  .bd { display: flex; flex-direction: column; gap: 2px; padding: 0 12px; border-left: 1px solid var(--hairline); }
+  .bd:first-child { padding-left: 0; border-left: none; }
+  .bd-l { font-size: 8px; letter-spacing: .1em; color: var(--text-faint); }
+  .bd b { font-size: 13px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+
+  .sec { display: flex; justify-content: space-between; align-items: center; margin: 14px 0 2px; }
+  .sec .t { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .4px; color: var(--text-faint); }
+  .card[data-theme="nothing"] .sec .t { letter-spacing: .2em; }
+  .seg { display: flex; padding: 2px; border-radius: var(--seg-radius); background: var(--seg-bg); gap: 2px; }
+  .seg button {
+    font-family: inherit; font-size: 9.5px; font-weight: 600; letter-spacing: .02em;
+    padding: 3px 10px; border: none; border-radius: calc(var(--seg-radius) - 2px); cursor: pointer;
+    background: transparent; color: var(--text-sub);
+  }
+  .seg button.on { background: var(--seg-active-bg); color: var(--seg-active-text); box-shadow: 0 1px 4px rgba(0,0,0,.18); }
+  .card[data-theme="nothing"] .seg { border: 1px solid rgba(255,255,255,.35); }
+  .card[data-theme="nothing"] .seg button.on { box-shadow: none; }
+
+  .mrow { display: flex; align-items: center; gap: 7px; padding: 6px 0; border-top: 1px solid var(--hairline); font-size: 10.5px; }
+  .mlist .mrow:first-child { border-top: none; }
+  .mrow .dot { width: 7px; height: 7px; border-radius: var(--dot-radius); flex: none; }
+  .mrow .name { font-weight: 550; letter-spacing: var(--name-spacing); white-space: nowrap; text-transform: var(--name-transform); color: var(--text-strong); }
+  .mrow .agent-of { font-size: 8px; color: var(--text-faint); white-space: nowrap; }
+  .mrow .bar { flex: 1; height: 4px; border-radius: var(--bar-radius); background: var(--track); overflow: hidden; }
+  .mrow .bar i { display: block; height: 100%; border-radius: var(--bar-radius); width: 0; transition: width .6s cubic-bezier(.2,.7,.3,1); }
+  .card[data-theme="nothing"] .mrow .bar i { transition: width .7s steps(22); }
+  .mrow .nums { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .mrow .nums .pct { font-size: 8.5px; color: var(--text-faint); width: 34px; text-align: right; }
+  .mrow .nums .val { font-weight: 600; font-size: 11px; color: var(--text-strong); width: 44px; text-align: right; }
+
+  .heat { display: grid; grid-template-rows: repeat(7, 11px); grid-auto-flow: column; grid-auto-columns: 11px; gap: 2px; margin-top: 6px; }
+  .heat .cell { width: 11px; height: 11px; border-radius: 2.5px; background: var(--heat-empty); }
+  .card[data-theme="nothing"] .heat .cell { border-radius: 1px; }
+  .heat-months { display: grid; grid-auto-flow: column; grid-auto-columns: 13px; gap: 2px; margin: 2px 0 1px; }
+  .heat-months span { font-size: 7.5px; color: var(--text-faint); overflow: visible; white-space: nowrap; }
+  .heat-legend { display: flex; align-items: center; gap: 4px; justify-content: flex-end; margin-top: 6px; font-size: 8px; color: var(--text-faint); }
+  .heat-legend i { width: 8px; height: 8px; border-radius: 2px; }
+
+  .month-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 6px; }
+  .mchip { border: 1px solid var(--chip-border); background: var(--chip-bg); border-radius: 10px; padding: 8px 10px; }
+  .mchip.hl { border-color: var(--chip-hl-border); background: var(--chip-hl-bg); }
+  .mchip .m { font-size: 9px; color: var(--text-sub); }
+  .mchip .v { margin-top: 3px; font-size: 13px; font-weight: 650; color: var(--text-strong); font-variant-numeric: tabular-nums; }
+  .mchip.hl .v { color: var(--accent); }
+  .halfyear { font-size: 9.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+  .halfyear b { color: var(--text); font-weight: 650; }
+
+  .page-foot { max-width: 1240px; margin: 24px auto 0; font-size: 10.5px; line-height: 1.7; color: rgba(255,255,255,.4); }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <h1>Bruce · Token 用量卡 — 模型用量 (本月 / 3 个月 / 6 个月)</h1>
+    <span class="note">热力图 / 按月 / 模型区块由同一份 182 天合成数据驱动, 末 14 天为真实日总量</span>
+  </div>
+  <p class="principle"><b>同一 DOM × 三套主题 token; 模型用量区块位于热力图上方</b>, 三档切换: 本月 (默认) / 3 个月 / 6 个月, 每次切换按所选档位用量<b>从高到低</b>重新排序, 进度条与数值联动。区块不含柱状图。</p>
+
+  <div class="stage">
+    <div class="variant">
+      <div class="variant-label"><span class="tag">主题 1</span><h2>玻璃 · 深色</h2></div>
+      <div class="card" data-theme="glass-dark" data-mount></div>
+    </div>
+    <div class="variant">
+      <div class="variant-label"><span class="tag">主题 2</span><h2>玻璃 · 浅色</h2></div>
+      <div class="card" data-theme="glass-light" data-mount></div>
+    </div>
+    <div class="variant">
+      <div class="variant-label"><span class="tag">主题 3</span><h2>Nothing · 黑</h2></div>
+      <div class="card" data-theme="nothing" data-mount></div>
+    </div>
+  </div>
+
+  <p class="page-foot">说明: 末 14 天日总量为面板真实数据 (184M → 1105.9M … 652.9M), 更早 160 天为按月趋势合成的示意数据 (周末低用量); 本月 = 8/1–8/31, 3 个月 = 6/1–8/31, 6 个月 = 完整 182 天窗口。模型区块「今日」粒度如需保留可与现有 todayModels 并列; 「本月 / 3 个月 / 6 个月」需采集端按「日 × 模型」聚合后按自然月/窗口汇总 (缓存升级一次)。建议顺手修复 codex 模型名占位符 (sources.rs:567)。</p>
+
+<script>
+// ================= 数据: 182 天合成序列 (末 14 天为真实值) =================
+const MODELS = [
+  { key: "kimi",    name: "Kimi K3",           agent: "Kimi Code CLI", color: "#0a84ff" },
+  { key: "claudeS", name: "Claude Sonnet 4.5", agent: "Claude Code",   color: "#ff9f0a" },
+  { key: "claudeH", name: "Claude Haiku 4.5",  agent: "Claude Code",   color: "#ffcf7a" },
+  { key: "gpt",     name: "GPT-5.2 Codex",     agent: "Codex",         color: "#bf5af2" },
+  { key: "glm",     name: "GLM-5.3",           agent: "ZCode",         color: "#64d2ff" },
+  { key: "qwen",    name: "Qwen3 Coder",       agent: "OpenCode",      color: "#ff375f" },
+];
+// 月度趋势系数 (index 0 = 6 个月前 ... 5 = 本月)
+const RAMP = {
+  kimi:    [1.5, 1.4, 1.2, 1.0, 0.85, 0.7],
+  claudeS: [0.8, 0.9, 1.0, 1.1, 1.1, 1.05],
+  claudeH: [0.4, 0.5, 0.6, 0.8, 0.95, 1.0],
+  gpt:     [0.9, 0.95, 1.0, 1.05, 1.1, 1.15],
+  glm:     [0.3, 0.45, 0.7, 1.0, 1.45, 1.8],
+  qwen:    [0.3, 0.4, 0.55, 0.75, 0.95, 1.1],
+};
+const BASE = { kimi: 130, claudeS: 90, claudeH: 35, gpt: 80, glm: 60, qwen: 12 };
+
+// 末 14 天真实日总量 (日 → 模型拆分)
+const REAL = [
+  { tot: 184.0,  kimi: 92.0,  claudeS: 32.5, claudeH: 13.5, gpt: 28.0,  glm: 12.0,  qwen: 6.0 },
+  { tot: 347.9,  kimi: 139.0, claudeS: 62.6, claudeH: 24.4, gpt: 52.0,  glm: 52.0,  qwen: 17.9 },
+  { tot: 628.1,  kimi: 220.0, claudeS: 113.0, claudeH: 44.0, gpt: 94.0, glm: 125.0, qwen: 32.1 },
+  { tot: 1038.3, kimi: 311.0, claudeS: 187.2, claudeH: 72.8, gpt: 156.0, glm: 270.0, qwen: 41.3 },
+  { tot: 240.4,  kimi: 72.0,  claudeS: 43.3, claudeH: 16.7, gpt: 36.0,  glm: 62.0,  qwen: 10.4 },
+  { tot: 276.5,  kimi: 69.0,  claudeS: 55.5, claudeH: 21.5, gpt: 47.0,  glm: 72.0,  qwen: 11.5 },
+  { tot: 733.7,  kimi: 154.0, claudeS: 142.6, claudeH: 55.4, gpt: 110.0, glm: 247.0, qwen: 24.7 },
+  { tot: 624.1,  kimi: 125.0, claudeS: 121.0, claudeH: 47.0, gpt: 94.0,  glm: 212.0, qwen: 25.1 },
+  { tot: 538.2,  kimi: 97.0,  claudeS: 104.4, claudeH: 40.6, gpt: 81.0,  glm: 194.0, qwen: 21.2 },
+  { tot: 1105.9, kimi: 166.0, claudeS: 214.6, claudeH: 83.4, gpt: 166.0, glm: 442.0, qwen: 33.9 },
+  { tot: 177.2,  kimi: 27.0,  claudeS: 34.6, claudeH: 13.4, gpt: 26.0,  glm: 71.0,  qwen: 5.2 },
+  { tot: 0 },
+  { tot: 15.8,   glm: 15.8 },
+  { tot: 652.9,  kimi: 8.0,   gpt: 114.0, glm: 527.0, qwen: 3.9 },
+];
+
+function mulberry32(a) {
+  return function() {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+const TODAY = new Date(2026, 7, 31); // demo 基准日 2026-08-31 (周一)
+const N = 182;
+const DAYS = [];
+for (let i = 0; i < N; i++) {
+  const date = new Date(TODAY.getTime() - (N - 1 - i) * 86400000);
+  DAYS.push({ date, tot: 0, by: {} });
+}
+// 合成前 168 天
+const rnd = mulberry32(20260831);
+for (let i = 0; i < N - REAL.length; i++) {
+  const d = DAYS[i];
+  const dow = d.date.getDay();
+  const weekend = (dow === 0 || dow === 6) ? 0.12 : 1;
+  const monthsFromNow = Math.floor((N - 1 - i) / ((N - REAL.length) / 6));
+  const rampIdx = Math.max(0, 5 - monthsFromNow);
+  let tot = 0;
+  MODELS.forEach(m => {
+    const ramp = RAMP[m.key][rampIdx];
+    const v = BASE[m.key] * ramp * weekend * (0.72 + rnd() * 0.56);
+    d.by[m.key] = Math.round(v * 10) / 10;
+    tot += d.by[m.key];
+  });
+  d.tot = Math.round(tot * 10) / 10;
+}
+// 末 14 天用真实值覆盖
+REAL.forEach((r, k) => {
+  const d = DAYS[N - REAL.length + k];
+  d.tot = r.tot;
+  MODELS.forEach(m => { d.by[m.key] = r[m.key] || 0; });
+});
+
+const fmt = v => v >= 1000 ? (v / 1000).toFixed(2) + "B" : (Math.round(v * 10) / 10).toLocaleString() + "M";
+const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+const TIERS = [
+  { key: "m1", label: "本月",  from: new Date(2026, 7, 1) },
+  { key: "m3", label: "3 个月", from: new Date(2026, 5, 1) },
+  { key: "m6", label: "6 个月", from: new Date(0) },
+];
+
+// ---------- 模型用量区块 ----------
+function tierRows(from) {
+  const sum = {};
+  MODELS.forEach(m => { sum[m.key] = 0; });
+  let grand = 0;
+  DAYS.forEach(d => {
+    if (from && d.date < from) return;
+    MODELS.forEach(m => { sum[m.key] += d.by[m.key] || 0; });
+    grand += d.tot;
+  });
+  return { grand, rows: MODELS.map(m => ({ ...m, v: sum[m.key] })).sort((a, b) => b.v - a.v) };
+}
+function renderModelSection(root, tier) {
+  const { grand, rows } = tierRows(tier.from);
+  const list = root.querySelector(".mlist");
+  list.innerHTML = rows.map(m => `
+    <div class="mrow">
+      <span class="dot" style="background:${m.color}"></span>
+      <span class="name">${m.name}</span>
+      <span class="agent-of">${m.agent}</span>
+      <span class="bar"><i style="background:${m.color}" data-w="${(m.v / grand * 100).toFixed(1)}"></i></span>
+      <span class="nums"><span class="pct">${(m.v / grand * 100).toFixed(0)}%</span><span class="val">${fmt(m.v)}</span></span>
+    </div>`).join("");
+  requestAnimationFrame(() => setTimeout(() => {
+    list.querySelectorAll(".bar i").forEach((el, i) => setTimeout(() => { el.style.width = el.dataset.w + "%"; }, i * 50));
+  }, 30));
+}
+
+// ---------- 热力图 (26 周 × 7 行, 周一起) ----------
+function heatLevel(v) { return v <= 0 ? 0 : v < 50 ? 1 : v < 150 ? 2 : v < 400 ? 3 : v < 700 ? 4 : 5; }
+const HEAT_COLORS = ["", "var(--heat-1)", "var(--heat-2)", "var(--heat-3)", "var(--heat-4)", "var(--heat-5)"];
+function renderHeat(root) {
+  const grid = root.querySelector(".heat");
+  const months = root.querySelector(".heat-months");
+  let cells = "", labels = "";
+  for (let c = 0; c < 26; c++) {
+    const first = DAYS[c * 7];
+    if (first) {
+      labels += `<span>${first.date.getMonth() + 1}月</span>`;
+    } else labels += "<span></span>";
+    for (let r = 0; r < 7; r++) {
+      const idx = c * 7 + r;
+      const d = DAYS[idx];
+      if (!d) { cells += `<span class="cell" style="visibility:hidden"></span>`; continue; }
+      const lv = heatLevel(d.tot);
+      cells += `<span class="cell" ${lv ? `style="background:${HEAT_COLORS[lv]}"` : ""} title="${d.date.getMonth() + 1}/${d.date.getDate()} · ${fmt(d.tot)}"></span>`;
+    }
+  }
+  grid.innerHTML = cells;
+  months.innerHTML = labels;
+  const legend = root.querySelector(".heat-legend");
+  legend.innerHTML = `少 ` + [1, 2, 3, 4, 5].map(l => `<i style="background:${HEAT_COLORS[l]}"></i>`).join("") + ` 多`;
+}
+
+// ---------- 按月区块 (近 6 个月) ----------
+function renderMonths(root) {
+  const buckets = {};
+  DAYS.forEach(d => {
+    const k = d.date.getFullYear() + "-" + String(d.date.getMonth() + 1).padStart(2, "0");
+    buckets[k] = (buckets[k] || 0) + d.tot;
+  });
+  const keys = Object.keys(buckets).sort().slice(-6);
+  const cur = TODAY.getFullYear() + "-" + String(TODAY.getMonth() + 1).padStart(2, "0");
+  const grid = root.querySelector(".month-grid");
+  grid.innerHTML = keys.map(k => {
+    const [y, m] = k.split("-");
+    const hl = k === cur ? " hl" : "";
+    return `<div class="mchip${hl}"><div class="m">${Number(m)} 月${k === cur ? " · 本月" : ""}</div><div class="v">${fmt(buckets[k])}</div></div>`;
+  }).join("");
+  const total = keys.reduce((s, k) => s + buckets[k], 0);
+  root.querySelector(".halfyear").innerHTML = `近半年 <b>${fmt(total)}</b>`;
+}
+
+// ---------- 组装卡片 (同一 DOM 模板) ----------
+function buildCard(root) {
+  root.innerHTML = `
+    <div class="hero">
+      <div>
+        <span class="eyebrow">TOKEN USAGE<span class="live">LIVE</span></span>
+        <div class="hero-row"><span class="hero-num">652.9M</span><span class="hero-unit">tokens · 今日</span></div>
+      </div>
+      <div class="hero-cost"><div class="l">今日成本</div><div class="v">$3.87</div></div>
+    </div>
+    <div class="bd-row">
+      <div class="bd"><span class="bd-l">输入</span><b>181.2M</b></div>
+      <div class="bd"><span class="bd-l">输出</span><b>2.1M</b></div>
+      <div class="bd"><span class="bd-l">缓存读取</span><b>464.3M</b></div>
+      <div class="bd"><span class="bd-l">命中率</span><b>71%</b></div>
+    </div>
+    <div class="sec">
+      <span class="t">模型用量</span>
+      <span class="seg">${TIERS.map((t, i) => `<button data-tier="${i}"${i === 0 ? ' class="on"' : ""}>${t.label}</button>`).join("")}</span>
+    </div>
+    <div class="mlist"></div>
+    <div class="sec"><span class="t">用量热力图 · 26 周</span></div>
+    <div class="heat-months"></div>
+    <div class="heat"></div>
+    <div class="heat-legend"></div>
+    <div class="sec">
+      <span class="t">按月 · 近 6 个月</span>
+      <span class="halfyear"></span>
+    </div>
+    <div class="month-grid"></div>`;
+  renderModelSection(root, TIERS[0]);
+  renderHeat(root);
+  renderMonths(root);
+  root.querySelector(".seg").addEventListener("click", e => {
+    const btn = e.target.closest("button");
+    if (!btn || btn.classList.contains("on")) return;
+    root.querySelectorAll(".seg button").forEach(b => b.classList.toggle("on", b === btn));
+    renderModelSection(root, TIERS[Number(btn.dataset.tier)]);
+  });
+}
+document.querySelectorAll("[data-mount]").forEach(buildCard);
+</script>
+</body>
+</html>

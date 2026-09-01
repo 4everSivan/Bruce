@@ -348,17 +348,20 @@ package struct UsageHeatmapWeek: Equatable, Sendable {
 
 // MARK: - 按月统计
 
-/// 月度聚合 chip: 月份标签 + 总量文案 + 当月标记.
+/// 月度聚合 chip: 月份标签 + 总量文案 + 当月标记; key ("yyyy-MM") 供点击联动模型用量.
 package struct UsageMonthlyTotal: Equatable, Sendable {
     /// 月份标签 (如 "7月", 不携带年份).
     package let label: String
     package let totalText: String
     package let isCurrent: Bool
+    /// 自然月 key ("yyyy-MM").
+    package let key: String
 
-    package init(label: String, totalText: String, isCurrent: Bool) {
+    package init(label: String, totalText: String, isCurrent: Bool, key: String = "") {
         self.label = label
         self.totalText = totalText
         self.isCurrent = isCurrent
+        self.key = key
     }
 }
 
@@ -370,6 +373,55 @@ package struct UsageHalfYearSummary: Equatable, Sendable {
     package init(totalText: String, averageText: String) {
         self.totalText = totalText
         self.averageText = averageText
+    }
+}
+
+// MARK: - 模型用量
+
+/// 模型用量行: 色点 + 名称 + 份额进度条 + 百分比 + 总量文案.
+package struct UsageModelRow: Equatable, Sendable {
+    package let name: String
+    package let totalText: String
+    package let pctText: String
+    /// 该模型占所选周期总量的份额 (0-1), 驱动进度条宽度.
+    package let share: Double
+    package let colorHex: String
+
+    package init(name: String, totalText: String, pctText: String, share: Double, colorHex: String) {
+        self.name = name
+        self.totalText = totalText
+        self.pctText = pctText
+        self.share = share
+        self.colorHex = colorHex
+    }
+}
+
+/// 一个统计周期内的模型排行 (已按用量降序).
+package struct UsageModelPeriod: Equatable, Sendable {
+    package let id: String
+    package let label: String
+    package let rows: [UsageModelRow]
+
+    package init(id: String, label: String, rows: [UsageModelRow]) {
+        self.id = id
+        self.label = label
+        self.rows = rows
+    }
+}
+
+/// 模型用量区块: 三档窗口 (本月/3 月/6 月) + 可点击的日历月 (与按月 chips 联动).
+package struct UsageModelUsageSection: Equatable, Sendable {
+    /// 窗口档位, 固定顺序 [本月, 3 月, 6 月].
+    package let tiers: [UsageModelPeriod]
+    /// 日历月降序 (最新在前), id 为 "yyyy-MM", 与按月 chip 的 key 对应.
+    package let months: [UsageModelPeriod]
+    /// 当前自然月 key (默认选中态的月卡).
+    package let currentMonthKey: String
+
+    package init(tiers: [UsageModelPeriod], months: [UsageModelPeriod], currentMonthKey: String) {
+        self.tiers = tiers
+        self.months = months
+        self.currentMonthKey = currentMonthKey
     }
 }
 
@@ -391,6 +443,8 @@ package struct UsageHeroViewModel: Equatable, Sendable {
     package let monthly: [UsageMonthlyTotal]
     /// 半年汇总 (窗口总量 + 月均); 窗口内无数据为 nil.
     package let halfYear: UsageHalfYearSummary?
+    /// 模型用量区块 (三档窗口 + 日历月联动); 旧版 artifact 无模型月度数据为 nil (区块隐藏).
+    package let models: UsageModelUsageSection?
     /// 总量档位 (由 totalTokens 推导), 驱动 hero 渐变与背景 tint.
     package var usageTier: UsageTier {
         UsageTier.forTotal(totalTokens)
@@ -405,7 +459,8 @@ package struct UsageHeroViewModel: Equatable, Sendable {
         isLive: Bool,
         heatmap: [UsageHeatmapWeek] = [],
         monthly: [UsageMonthlyTotal] = [],
-        halfYear: UsageHalfYearSummary? = nil
+        halfYear: UsageHalfYearSummary? = nil,
+        models: UsageModelUsageSection? = nil
     ) {
         self.totalTokens = totalTokens
         self.totalTokensText = PanelFormat.tokenCount(totalTokens)
@@ -417,6 +472,7 @@ package struct UsageHeroViewModel: Equatable, Sendable {
         self.heatmap = heatmap
         self.monthly = monthly
         self.halfYear = halfYear
+        self.models = models
     }
 }
 

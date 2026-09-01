@@ -124,8 +124,14 @@ mod tests {
         by_day.insert(window.today.clone(), bucket.clone());
         let mut hours = vec![0; 24];
         hours[0] = total;
+        let mut models_by_month = BTreeMap::new();
+        models_by_month.insert(
+            window.today[..7].to_owned(),
+            BTreeMap::from([(model.to_owned(), bucket.clone())]),
+        );
         UsageContribution {
             by_day,
+            models_by_month,
             models_today: vec![ModelDelta {
                 model: model.to_owned(),
                 bucket,
