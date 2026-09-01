@@ -34,6 +34,11 @@ private enum NothingTokens {
         scheme == .dark ? Color(hex: "#333333") : Color(hex: "#CCCCCC")
     }
 
+    /// 抬升表面 (嵌套卡片底): dark #1A1A1A / light #F0F0F0 (与 UsageHeroCard.nothingSurfaceRaised 同值).
+    static func surfaceRaised(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color(hex: "#1A1A1A") : Color(hex: "#F0F0F0")
+    }
+
     /// 分段量条空段填充: dark #222222 / light #E0E0E0 (任务定稿口径).
     static func emptySegment(_ scheme: ColorScheme) -> Color {
         scheme == .dark ? Color(hex: "#222222") : Color(hex: "#E0E0E0")
@@ -93,10 +98,14 @@ struct SubscriptionCard: View {
             ForEach(Array(viewModel.sections.enumerated()), id: \.element.id) { index, section in
                 if index > 0 {
                     Rectangle()
-                        .fill(Color.adaptive(
-                            light: Color.black.opacity(0.05),
-                            dark: Color.white.opacity(0.10)
-                        ))
+                        .fill(
+                            theme.interfaceStyle == .nothing
+                                ? NothingTokens.border(colorScheme)
+                                : Color.adaptive(
+                                    light: Color.black.opacity(0.05),
+                                    dark: Color.white.opacity(0.10)
+                                )
+                        )
                         .frame(height: 1)
                 }
                 ProviderSectionView(
@@ -576,6 +585,10 @@ private struct NothingSegmentedMeter: View {
 private struct ProviderAccountCard: View {
     let account: CodexAccountViewModel
 
+    @Environment(\.BruceResolvedTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
+    private var isNothing: Bool { theme.interfaceStyle == .nothing }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
@@ -613,18 +626,28 @@ private struct ProviderAccountCard: View {
         .padding(.horizontal, 9)
         .padding(.vertical, 6)
         .background(
-            Color.adaptive(
-                light: Color.white.opacity(0.35),
-                dark: Color.white.opacity(0.10)
-            ),
-            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            isNothing
+                ? NothingTokens.surfaceRaised(colorScheme)
+                : Color.adaptive(
+                    light: Color.white.opacity(0.35),
+                    dark: Color.white.opacity(0.10)
+                ),
+            in: RoundedRectangle(
+                cornerRadius: isNothing ? 3 : 10,
+                style: .continuous
+            )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Color.adaptive(
-                    light: Color.white.opacity(0.5),
-                    dark: Color.white.opacity(0.18)
-                ), lineWidth: 1)
+            RoundedRectangle(cornerRadius: isNothing ? 3 : 10, style: .continuous)
+                .strokeBorder(
+                    isNothing
+                        ? NothingTokens.border(colorScheme)
+                        : Color.adaptive(
+                            light: Color.white.opacity(0.5),
+                            dark: Color.white.opacity(0.18)
+                        ),
+                    lineWidth: 1
+                )
         )
     }
 }

@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bruce Dashboard — Nothing · Hero 数字改绿+呼吸 (Demo)</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Doto:wght@400..900&family=Space+Grotesk:wght@300..700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+<style>
+/* ============================================================
+   TOKENS (与 dashboard-nothing-prototype.html 定稿一致)
+   ============================================================ */
+:root{
+  --black:#000000;
+  --surface:#111111;
+  --surface-raised:#1A1A1A;
+  --border:#222222;
+  --border-visible:#333333;
+  --text-disabled:#666666;
+  --text-secondary:#999999;
+  --text-primary:#E8E8E8;
+  --text-display:#FFFFFF;
+  --accent:#D71921;
+  --warning:#D4A843;
+  --success:#4A9E5C;
+  --interactive:#5B9BF6;
+  --backdrop:#262626;
+  --backdrop-dot:#3A3A3A;
+
+  --r-panel:10px;
+  --r-card:5px;
+  --r-chip:3px;
+  --r-cell:0px;
+  --r-btn:5px;
+
+  --f-display:"Doto","Space Mono",monospace;
+  --f-ui:"Space Grotesk","DM Sans",system-ui,sans-serif;
+  --f-mono:"Space Mono","SF Mono",monospace;
+
+  --ease:cubic-bezier(.25,.1,.25,1);
+
+  /* 提议主数字色: Dark=success 绿, Light=warning 橙 (由下方主题覆盖) */
+  --hero-propose:#4A9E5C;
+  --hero-glow-soft:rgba(74,158,92,.45);
+  --hero-glow:rgba(74,158,92,1);
+}
+html[data-theme="light"]{
+  --black:#F5F5F5;
+  --surface:#FFFFFF;
+  --surface-raised:#F0F0F0;
+  --border:#E8E8E8;
+  --border-visible:#CCCCCC;
+  --text-disabled:#999999;
+  --text-secondary:#666666;
+  --text-primary:#1A1A1A;
+  --text-display:#000000;
+  --interactive:#007AFF;
+  --backdrop:#DEDEDE;
+  --backdrop-dot:#C8C8C8;
+
+  --hero-propose:#D4A843;
+  --hero-glow-soft:rgba(212,168,67,.45);
+  --hero-glow:rgba(212,168,67,1);
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--backdrop);
+  background-image:radial-gradient(circle,var(--backdrop-dot) 1px,transparent 1px);
+  background-size:16px 16px;
+  font-family:var(--f-ui);
+  color:var(--text-primary);
+  min-height:100vh;
+  padding:48px 24px 96px;
+  display:flex;flex-direction:column;align-items:center;gap:32px;
+  transition:background-color .25s var(--ease);
+}
+
+/* ---------- 页面控制条 ---------- */
+.chrome{
+  width:440px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  font-family:var(--f-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+}
+.chrome .title{color:var(--text-display);font-size:12px}
+.chrome .spacer{flex:1}
+.ctl{
+  background:transparent;border:1px solid var(--border-visible);color:var(--text-secondary);
+  border-radius:3px;padding:6px 10px;font-family:var(--f-mono);font-size:11px;
+  letter-spacing:.08em;text-transform:uppercase;cursor:pointer;
+  transition:color .15s var(--ease),border-color .15s var(--ease);
+}
+.ctl:hover{color:var(--text-display);border-color:var(--text-secondary)}
+.ctl[data-on="true"]{background:var(--success);color:#fff;border-color:var(--success)}
+.seg{display:flex;border:1px solid var(--border-visible);border-radius:3px;overflow:hidden}
+.seg button{
+  background:transparent;border:none;color:var(--text-secondary);
+  padding:6px 12px;font-family:var(--f-mono);font-size:11px;letter-spacing:.08em;
+  text-transform:uppercase;cursor:pointer;transition:.2s var(--ease);
+}
+.seg button[aria-pressed="true"]{background:var(--text-display);color:var(--black)}
+
+/* ============================================================
+   PANEL
+   ============================================================ */
+.panel{
+  width:440px;background:var(--black);
+  border:1px solid var(--border-visible);border-radius:var(--r-panel);
+  overflow:hidden;box-shadow:none;
+}
+.cards{display:flex;flex-direction:column;gap:8px;padding:12px 12px 4px}
+
+.card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--r-card);
+  padding:13px 15px;
+  position:relative;overflow:hidden;
+}
+.card > *{position:relative}
+
+/* 点阵点缀: 主网格 14px + 右上密网点阵块, 仅 Token 用量卡 */
+.card.dotted::before,
+.card.dotted::after{content:"";position:absolute;pointer-events:none}
+.card.dotted::before{
+  inset:0;
+  background-image:radial-gradient(circle,var(--text-secondary) 1px,transparent 1px);
+  background-size:14px 14px;
+  opacity:.13;
+  -webkit-mask-image:linear-gradient(to bottom,#000 0%,#000 42%,transparent 88%);
+  mask-image:linear-gradient(to bottom,#000 0%,#000 42%,transparent 88%);
+}
+.card.dotted::after{
+  top:-18px;right:-18px;width:190px;height:104px;
+  background-image:radial-gradient(circle,var(--text-display) 1px,transparent 1px);
+  background-size:7px 7px;
+  opacity:.10;
+  -webkit-mask-image:radial-gradient(ellipse at 70% 20%,#000 0%,transparent 72%);
+  mask-image:radial-gradient(ellipse at 70% 20%,#000 0%,transparent 72%);
+}
+
+/* ---------- 排版基元 ---------- */
+.label{
+  font-family:var(--f-mono);font-size:10px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--text-secondary);
+}
+.meta{font-family:var(--f-mono);font-size:9px;letter-spacing:.06em;color:var(--text-disabled);
+  font-variant-numeric:tabular-nums}
+.num-b{font-family:var(--f-mono);font-size:13px;font-weight:700;color:var(--text-primary);
+  font-variant-numeric:tabular-nums}
+
+.card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.divider{height:1px;background:var(--border);margin:12px -15px}
+
+/* LIVE: 方点, 与点阵同源 */
+.live{display:flex;align-items:center;gap:5px;font-family:var(--f-mono);font-size:9px;
+  letter-spacing:.12em;color:var(--text-secondary)}
+.live i{width:5px;height:5px;border-radius:0;background:var(--success);display:block}
+
+/* ============================================================
+   CARD 1 : HERO
+   基准态: 纯白 display 色, 静止。
+   提议态 (.proposed): 改 success 绿 + 呼吸动画。
+   ============================================================ */
+.hero{display:flex;align-items:baseline;gap:8px}
+.hero-num{
+  font-family:var(--f-display);font-weight:700;font-size:52px;line-height:1;
+  letter-spacing:-.02em;color:var(--text-display);font-variant-numeric:tabular-nums;
+  display:flex;align-items:baseline;
+  transform-origin:bottom left;
+  transition:color .25s var(--ease);
+}
+.hero-num .pt{
+  display:block;width:4px;height:4px;border-radius:0;
+  background:var(--text-display);
+  align-self:flex-end;margin:0 4px 9px;
+  transition:background .25s var(--ease);
+}
+.hero-unit{font-family:var(--f-mono);font-size:11px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--text-secondary)}
+/* 成本回到 Space Mono */
+.hero-cost{
+  margin-left:auto;
+  font-family:var(--f-mono);font-size:17px;color:var(--text-primary);
+  font-variant-numeric:tabular-nums;
+}
+
+/* ---------- 提议: 绿 + 呼吸 (更亮) ---------- */
+@keyframes nothing-hero-breathe{
+  0%,100%{ opacity:.86; transform:scale(1);     filter:drop-shadow(0 0 3px var(--hero-glow-soft)); }
+  50%    { opacity:1;   transform:scale(1.015); filter:drop-shadow(0 0 15px var(--hero-glow)); }
+}
+.hero-num.proposed{
+  color:var(--hero-propose);
+  animation:nothing-hero-breathe 2.6s var(--ease) infinite;
+}
+.hero-num.proposed .pt{ background:var(--hero-propose); box-shadow:0 0 6px var(--hero-glow); }
+
+/* 减少动态: 保留绿, 去掉动画 */
+@media (prefers-reduced-motion: reduce){
+  .hero-num.proposed{ animation:none; filter:none; }
+  .hero-num.proposed .pt{ box-shadow:none; }
+}
+
+.quad{display:flex}
+.quad > div{flex:1;display:flex;flex-direction:column;gap:3px;padding:0 11px}
+.quad > div:first-child{padding-left:0}
+.quad > div:last-child{padding-right:0}
+.quad > div + div{border-left:1px solid var(--border)}
+
+.section-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:9px}
+
+.months{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.chip{border:1px solid var(--border);border-radius:var(--r-chip);padding:6px 9px;
+  display:flex;flex-direction:column;gap:2px}
+.chip[data-current="true"]{border-color:var(--border-visible);background:var(--surface-raised)}
+.chip .m{font-family:var(--f-mono);font-size:9px;letter-spacing:.09em;color:var(--text-secondary)}
+.chip[data-current="true"] .m{color:var(--text-display)}
+.chip .v{font-family:var(--f-mono);font-size:13px;color:var(--text-primary);
+  font-variant-numeric:tabular-nums}
+
+.heat{display:grid;grid-auto-flow:column;grid-template-rows:repeat(7,1fr);
+  gap:3px;justify-content:start}
+.heat i{width:11px;height:11px;border-radius:var(--r-cell);
+  background:var(--surface-raised);display:block}
+.heat i[data-l="1"]{background:var(--text-display);opacity:.20}
+.heat i[data-l="2"]{background:var(--text-display);opacity:.40}
+.heat i[data-l="3"]{background:var(--text-display);opacity:.60}
+.heat i[data-l="4"]{background:var(--text-display);opacity:.80}
+.heat i[data-l="5"]{background:var(--text-display);opacity:1}
+.heat-foot{display:flex;align-items:center;gap:8px;margin-top:8px}
+.heat-foot .ax{font-family:var(--f-mono);font-size:9px;color:var(--text-disabled);
+  font-variant-numeric:tabular-nums}
+.heat-foot .spacer{flex:1}
+.heat-legend{display:flex;align-items:center;gap:4px}
+.heat-legend span{font-family:var(--f-mono);font-size:9px;color:var(--text-disabled)}
+.heat-legend i{width:9px;height:9px;border-radius:var(--r-cell);
+  background:var(--text-display);display:block}
+
+/* 热力图呼吸/闪烁: 仅填充格, 以层级基准透明度做呼吸, 逐格错相位形成微闪烁 */
+@keyframes nothing-heat-breathe{
+  0%,100%{ opacity:var(--o,1); }
+  50%    { opacity:calc(var(--o,1) * .42); }
+}
+.heat.proposed i.heat-breathe{
+  animation:nothing-heat-breathe 3.2s var(--ease) infinite;
+}
+@media (prefers-reduced-motion: reduce){
+  .heat.proposed i.heat-breathe{ animation:none; }
+}
+
+/* ---------- CARD 2 : 订阅用量 ---------- */
+.prov + .prov{border-top:1px solid var(--border);margin-top:11px;padding-top:11px}
+.prov-head{display:flex;align-items:center;gap:7px}
+.badge{width:15px;height:15px;border-radius:3px;background:var(--text-display);
+  color:var(--black);font-family:var(--f-mono);font-size:9px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;flex:none}
+.prov-name{font-family:var(--f-ui);font-size:12px;font-weight:500;color:var(--text-primary)}
+.plan{border:1px solid var(--border-visible);border-radius:var(--r-chip);padding:1px 7px;
+  font-family:var(--f-mono);font-size:9px;color:var(--text-secondary)}
+.acct{font-family:var(--f-mono);font-size:10px;color:var(--text-disabled)}
+.prov-head .spacer{flex:1}
+.refresh{width:14px;height:14px;flex:none;color:var(--text-secondary);cursor:pointer;
+  transition:color .15s var(--ease)}
+.refresh:hover{color:var(--text-display)}
+.refresh svg{width:14px;height:14px;display:block}
+
+.meter{margin-top:9px}
+.meter-head{display:flex;align-items:baseline;gap:6px;margin-bottom:5px}
+.meter-head .l{font-family:var(--f-mono);font-size:10px;color:var(--text-secondary);
+  letter-spacing:.04em}
+.meter-head .v{margin-left:auto;font-family:var(--f-mono);font-size:12px;font-weight:700;
+  font-variant-numeric:tabular-nums}
+.meter-head .r{font-family:var(--f-mono);font-size:9px;color:var(--text-disabled);
+  width:48px;text-align:right;font-variant-numeric:tabular-nums}
+.segbar{display:flex;gap:2px;height:10px}
+.segbar b{flex:1;background:var(--border);border-radius:0}
+.segbar b.on{background:var(--text-display)}
+.segbar[data-level="good"] b.on{background:var(--success)}
+.segbar[data-level="warn"]  b.on{background:var(--warning)}
+.segbar[data-level="crit"]  b.on{background:var(--accent)}
+.meter[data-level="good"] .meter-head .v{color:var(--success)}
+.meter[data-level="warn"] .meter-head .v{color:var(--warning)}
+.meter[data-level="crit"] .meter-head .v{color:var(--accent)}
+
+.note{margin-top:7px;font-family:var(--f-mono);font-size:9px;line-height:1.5}
+.note[data-tone="warn"]{color:var(--warning)}
+.note[data-tone="stale"]{color:var(--text-disabled)}
+
+/* 阈值图例: 三档统一口径 */
+.thresh{display:flex;gap:12px;margin-top:11px;padding-top:10px;
+  border-top:1px solid var(--border)}
+.thresh .tri{display:flex;align-items:center;gap:5px;
+  font-family:var(--f-mono);font-size:9px;color:var(--text-disabled);
+  font-variant-numeric:tabular-nums}
+.thresh .tri i{width:8px;height:8px;border-radius:0;display:block;flex:none}
+.thresh .tg{background:var(--success)}
+.thresh .ta{background:var(--warning)}
+.thresh .tr{background:var(--accent)}
+
+.bal{display:flex;align-items:baseline;margin-top:10px;padding-top:10px;
+  border-top:1px solid var(--border)}
+.bal .l{font-family:var(--f-ui);font-size:11px;color:var(--text-secondary)}
+.bal .v{margin-left:auto;font-family:var(--f-mono);font-size:15px;font-weight:700;
+  color:var(--text-display);font-variant-numeric:tabular-nums}
+
+/* ---------- CARD 3 : Agent 用量 ---------- */
+.dotbars{display:flex;align-items:flex-end;gap:6px;margin-top:4px}
+.dotbars .day{display:grid;grid-template-columns:repeat(3,6px);grid-auto-rows:6px;gap:2px;
+  align-content:end}
+.dotbars .day i{width:6px;height:6px;border-radius:var(--r-cell);
+  background:var(--surface-raised);display:block}
+.dotbars .day i.on{background:var(--text-display)}
+.dotbars .day[data-today="true"]{position:relative;padding-bottom:4px}
+.dotbars .day[data-today="true"]::after{
+  content:"";position:absolute;left:0;right:0;bottom:0;height:2px;
+  background:var(--text-display);
+}
+
+.axis{display:flex;justify-content:space-between;margin-top:7px}
+.axis span{font-family:var(--f-mono);font-size:9px;color:var(--text-disabled);
+  font-variant-numeric:tabular-nums}
+
+.compose{margin-top:12px}
+.compose-bar{display:flex;gap:2px;height:12px;margin-top:5px}
+.compose-bar b{flex:none;border-radius:0}
+.compose-key{display:flex;flex-wrap:wrap;gap:10px;margin-top:7px}
+.compose-key .k{display:flex;align-items:center;gap:5px}
+.compose-key .k .sw{width:8px;height:8px;flex:none;border-radius:0}
+.compose-key .k .nm{font-family:var(--f-mono);font-size:9px;color:var(--text-secondary)}
+.compose-key .k .pc{font-family:var(--f-mono);font-size:9.5px;font-weight:700;
+  color:var(--text-primary);font-variant-numeric:tabular-nums}
+.compose-key .k .tk{font-family:var(--f-mono);font-size:9.5px;color:var(--text-disabled)}
+
+.p1{background:var(--text-display)}
+.p2{background-image:repeating-linear-gradient(45deg,
+  var(--text-display) 0 2px,transparent 2px 4px)}
+.p3{background-image:repeating-linear-gradient(0deg,
+  var(--text-display) 0 2px,transparent 2px 4px)}
+.p4{background-image:radial-gradient(circle,var(--text-display) 1.6px,transparent 1.6px);
+  background-size:4px 4px}
+
+.arow{padding:9px 0}
+.arow + .arow{border-top:1px solid var(--border)}
+.arow-head{display:flex;align-items:center;gap:7px}
+.arow-head .sw{width:8px;height:8px;flex:none;border-radius:0}
+.arow-head .nm{font-family:var(--f-ui);font-size:12px;font-weight:500;color:var(--text-primary)}
+.arow-head .tot{margin-left:auto;font-family:var(--f-mono);font-size:12px;font-weight:700;
+  color:var(--text-primary);font-variant-numeric:tabular-nums}
+.arow-head .chev{width:9px;height:9px;color:var(--text-disabled);flex:none}
+.spark{margin-top:7px;display:block;width:100%;height:26px}
+
+.dist{margin-top:9px;padding-left:14px}
+.dist-head{display:flex;align-items:baseline;margin-bottom:5px}
+.dist-head .t{font-family:var(--f-mono);font-size:9px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--text-secondary)}
+.dbar{display:flex;gap:2px;height:6px}
+.dbar b{border-radius:0}
+.dkey{display:flex;flex-wrap:wrap;gap:9px;margin-top:5px}
+.dkey .k{display:flex;align-items:center;gap:5px}
+.dkey .k .sw{width:6px;height:6px;flex:none;border-radius:0}
+.dkey .k .nm{font-family:var(--f-mono);font-size:9px;color:var(--text-secondary)}
+.dkey .k .pc{font-family:var(--f-mono);font-size:9.5px;font-weight:700;color:var(--text-primary)}
+.dkey .k .tk{font-family:var(--f-mono);font-size:9.5px;color:var(--text-disabled)}
+
+/* ---------- FOOTER : 三个按钮圆角统一 ---------- */
+.footer{display:flex;align-items:center;gap:8px;padding:9px 12px;
+  border-top:1px solid var(--border);background:var(--black)}
+.fbtn{
+  background:transparent;border:1px solid var(--border-visible);
+  border-radius:var(--r-btn);
+  color:var(--text-secondary);font-family:var(--f-mono);font-size:11px;
+  letter-spacing:.06em;text-transform:uppercase;padding:7px 16px;cursor:pointer;
+  min-height:30px;display:flex;align-items:center;gap:6px;
+  transition:color .15s var(--ease),border-color .15s var(--ease);
+}
+.fbtn:hover{color:var(--text-display);border-color:var(--text-secondary)}
+.fbtn svg{width:11px;height:11px;flex:none}
+.footer .spacer{flex:1}
+.footer .stamp{font-family:var(--f-mono);font-size:9px;letter-spacing:.06em;
+  color:var(--text-disabled);text-transform:uppercase;font-variant-numeric:tabular-nums}
+
+/* ---------- 标注层 ---------- */
+[data-annot]{position:relative}
+body.annot [data-annot]::after{
+  content:attr(data-annot);
+  position:absolute;top:-16px;left:0;z-index:9;
+  font-family:var(--f-mono);font-size:8px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--accent);border:1px solid var(--accent);border-radius:2px;
+  padding:1px 4px;white-space:nowrap;pointer-events:none;
+}
+body.annot [data-annot="PRIMARY"]{outline:1px dashed var(--accent);outline-offset:4px}
+
+/* ---------- 说明 ---------- */
+.notes{width:440px;font-family:var(--f-ui);font-size:13px;line-height:1.7;
+  color:var(--text-primary)}
+.notes h3{font-family:var(--f-mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--text-secondary);margin:24px 0 10px;font-weight:400}
+.notes h3:first-child{margin-top:0}
+.notes ul{list-style:none}
+.notes li{padding:6px 0 6px 18px;position:relative;border-bottom:1px solid var(--border)}
+.notes li::before{content:"·";position:absolute;left:4px;color:var(--text-disabled)}
+.notes code{font-family:var(--f-mono);font-size:11px;color:var(--text-display);
+  background:var(--surface-raised);padding:1px 5px;border-radius:3px}
+.notes b.k{font-family:var(--f-mono);font-size:11px;color:var(--text-secondary);
+  min-width:104px;display:inline-block;font-weight:400}
+.swatch{display:inline-block;width:22px;height:10px;vertical-align:-1px;border-radius:0}
+</style>
+</head>
+<body>
+
+<div class="chrome">
+  <span class="title">Bruce · Nothing · Hero 改绿 (Light 橙)</span>
+  <span class="spacer"></span>
+  <div class="seg" role="group" aria-label="模式">
+    <button id="btnDark" aria-pressed="true">Dark</button>
+    <button id="btnLight" aria-pressed="false">Light</button>
+  </div>
+  <button class="ctl" id="btnProp" data-on="false">提议: 色+呼吸</button>
+</div>
+
+<div class="panel">
+  <div class="cards">
+
+    <!-- ========== CARD 1 : TOKEN 用量 ========== -->
+    <section class="card dotted">
+      <div class="card-head">
+        <span class="label">Token 用量</span>
+        <span class="live"><i></i>Live</span>
+      </div>
+
+      <div class="hero" data-annot="PRIMARY">
+        <span class="hero-num" id="heroNum"><span>1</span><i class="pt"></i><span>24</span><span>M</span></span>
+        <span class="hero-unit">Tokens</span>
+        <span class="hero-cost">$0.375</span>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="quad" data-annot="SECONDARY">
+        <div><span class="label">输入</span><span class="num-b">842.1K</span></div>
+        <div><span class="label">输出</span><span class="num-b">318.7K</span></div>
+        <div><span class="label">缓存读</span><span class="num-b">61.2K</span></div>
+        <div><span class="label">缓存写</span><span class="num-b">24.8K</span></div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="section-head">
+        <span class="label">按月 · 近 6 个月</span>
+        <span class="meta">近半年 1.24M · 月均 206K</span>
+      </div>
+      <div class="months" data-annot="TERTIARY">
+        <div class="chip"><span class="m">03</span><span class="v">98.2K</span></div>
+        <div class="chip"><span class="m">04</span><span class="v">112K</span></div>
+        <div class="chip"><span class="m">05</span><span class="v">187K</span></div>
+        <div class="chip"><span class="m">06</span><span class="v">231K</span></div>
+        <div class="chip"><span class="m">07</span><span class="v">402K</span></div>
+        <div class="chip" data-current="true"><span class="m">08</span><span class="v">310K</span></div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="section-head"><span class="label">热力图 · 近半年</span></div>
+      <div class="heat" id="heat"></div>
+      <div class="heat-foot">
+        <span class="ax">26/03/03</span>
+        <span class="spacer"></span>
+        <span class="heat-legend">
+          <span>少</span>
+          <i style="opacity:.2"></i><i style="opacity:.4"></i><i style="opacity:.6"></i>
+          <i style="opacity:.8"></i><i style="opacity:1"></i><i style="opacity:1"></i>
+          <span>多</span>
+        </span>
+        <span class="spacer"></span>
+        <span class="ax">26/09/01</span>
+      </div>
+    </section>
+
+    <!-- ========== CARD 2 : 订阅用量 ========== -->
+    <section class="card">
+      <div class="card-head">
+        <span class="label">订阅用量</span>
+        <span class="meta">更新于 14:32</span>
+      </div>
+
+      <div class="prov">
+        <div class="prov-head">
+          <span class="badge">K</span>
+          <span class="prov-name">Kimi Code</span>
+          <span class="plan">旗舰版</span>
+          <span class="acct">2 个账号</span>
+          <span class="spacer"></span>
+          <span class="refresh" title="刷新"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></span>
+        </div>
+        <div class="meter" data-pct="12" data-annot="SECONDARY">
+          <div class="meter-head"><span class="l">每周</span><span class="v">12%</span><span class="r">4 天后</span></div>
+          <div class="segbar" data-pct="12" data-filled="3"></div>
+        </div>
+        <div class="note" data-tone="stale">这是上次成功的数据 · 14:20</div>
+      </div>
+
+      <div class="prov">
+        <div class="prov-head">
+          <span class="badge">C</span>
+          <span class="prov-name">Codex</span>
+          <span class="plan">Plus</span>
+          <span class="spacer"></span>
+          <span class="refresh" title="刷新"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></span>
+        </div>
+        <div class="meter" data-pct="68">
+          <div class="meter-head"><span class="l">每 5 小时</span><span class="v">68%</span><span class="r">15:00</span></div>
+          <div class="segbar" data-pct="68" data-filled="16"></div>
+        </div>
+        <div class="meter" data-pct="96" data-annot="SECONDARY">
+          <div class="meter-head"><span class="l">每周</span><span class="v">96%</span><span class="r">2 天后</span></div>
+          <div class="segbar" data-pct="96" data-filled="23"></div>
+        </div>
+      </div>
+
+      <div class="prov">
+        <div class="prov-head">
+          <span class="badge">A</span>
+          <span class="prov-name">Claude</span>
+          <span class="plan">Pro</span>
+          <span class="spacer"></span>
+          <span class="refresh" title="刷新"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></span>
+        </div>
+        <div class="meter" data-pct="88">
+          <div class="meter-head"><span class="l">每 5 小时</span><span class="v">88%</span><span class="r">18:40</span></div>
+          <div class="segbar" data-pct="88" data-filled="21"></div>
+        </div>
+        <div class="note" data-tone="warn">授权已过期, 请重新登录</div>
+      </div>
+
+      <div class="prov">
+        <div class="prov-head">
+          <span class="badge">D</span>
+          <span class="prov-name">DeepSeek</span>
+          <span class="spacer"></span>
+          <span class="refresh" title="刷新"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></span>
+        </div>
+        <div class="bal">
+          <span class="l">本月消费</span>
+          <span class="v">¥38.21</span>
+        </div>
+        <div class="note" data-tone="stale">覆盖 09/01 – 09/01</div>
+      </div>
+
+      <div class="thresh">
+        <span class="tri"><i class="tg"></i>&lt;50</span>
+        <span class="tri"><i class="ta"></i>50–79</span>
+        <span class="tri"><i class="tr"></i>≥80</span>
+      </div>
+    </section>
+
+    <!-- ========== CARD 3 : Agent 用量 ========== -->
+    <section class="card">
+      <div class="card-head">
+        <span class="label">Agent 用量</span>
+        <span class="meta">近 14 天</span>
+      </div>
+
+      <div class="dotbars" id="dotbars" data-annot="SECONDARY"></div>
+      <div class="axis"><span>14 天前</span><span>7 天前</span><span>今天</span></div>
+
+      <div class="compose">
+        <div class="section-head" style="margin-bottom:0">
+          <span class="label">14 日构成</span>
+          <span class="meta">合计 932K</span>
+        </div>
+        <div class="compose-bar" id="composeBar"></div>
+        <div class="compose-key" id="composeKey"></div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="section-head">
+        <span class="label">逐小时</span>
+        <span class="meta">0 – 23 时</span>
+      </div>
+
+      <div id="arows"></div>
+    </section>
+
+  </div>
+
+  <div class="footer">
+    <button class="fbtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+      刷新
+    </button>
+    <span class="spacer"></span>
+    <span class="stamp">14:32 · 2 模块</span>
+    <button class="fbtn">设置</button>
+    <button class="fbtn">退出</button>
+  </div>
+</div>
+
+<div class="notes">
+  <h3>本次 Demo 的改动</h3>
+  <ul>
+    <li><div class="kv"><b>主数字色</b><span>Hero 主数字 <code>1.24M</code> (Doto 点阵) 由 display 白改为提议色: <b>Dark=success 绿 <code>#4A9E5C</code></b>, <b>Light=warning 橙 <code>#D4A843</code></span></b>。小数点方块 <code>.pt</code> 同步改色 + 同色辉光。均复用设计系统既有色值, 不引入新色。</span></div></li>
+    <li><div class="kv"><b>呼吸 (更亮)</b><span>2.6s 一个周期: 透明度 <code>.86 → 1 → .86</code> + 半程轻微放大 <code>scale(1.015)</code> + 半程绿/橙辉光峰值提到 <code>15px</code> (初版 6px), 暗底上更亮更"活"。缓动复用面板 <code>--ease</code>。尊重 <code>prefers-reduced-motion</code>: 开启减少动态时仅保留主题色、去掉动画与辉光。</span></div></li>
+    <li><div class="kv"><b>热力图闪烁</b><span>仅<b>填充格</b>参与: 以各层级基准透明度 (<code>.2 / .4 / .6 / .8 / 1</code>) 为呼吸锚点, 3.2s 周期在 <code>锚点 ↔ 锚点×.42</code> 之间明灭; 逐格错相位 (<code>animation-delay</code> 按列×0.12s+行×0.05s) 形成微闪烁而非整体齐闪, 保留点阵疏密信息。空格仍静止。同样尊重 <code>prefers-reduced-motion</code>。</span></div></li>
+    <li><div class="kv"><b>范围</b><span>Hero 主数字 + 热力图填充格参与动画; 其余数字 (<code>$0.375</code> / 四格细分 / 月度 chip / 订阅) 仍保持定稿静止态, 不抢视线。</span></div></li>
+    <li><div class="kv"><b>对照</b><span>点上方 <code>提议: 色+呼吸</code> 按钮即可在「当前白/静止」与「提议绿(暗)/橙(亮)+呼吸+热力图闪烁」之间实时切换, Dark / Light 均可用。</span></div></li>
+  </ul>
+
+  <h3>已确认 / 待确认</h3>
+  <ul>
+    <li><b>已确认</b>: Dark 主数字=绿+呼吸, Light 主数字=橙+呼吸, 热力图填充格错相位闪烁; 幅度/周期沿用本次 demo。四格细分 (输入/输出/缓存) 维持定稿静止态, 不参加动画。</li>
+    <li><b>待确认 (代码层)</b>: Nothing 主题"多帐号卡片"是否仍沿用旧液态玻璃样式? 我正在核查 Swift 实现 (<code>SubscriptionCard</code> / 面板卡片容器 / 主题分支), 确认是定稿预期还是遗漏的回归, 稍后回报。</li>
+    <li>确认后我用并行 agent 工作流落地 Swift: <code>UsageHeroCard.nothingDisplay</code> 按主题取绿/橙 + Hero 呼吸动画 + 热力图填充格绿/橙+呼吸, 并补 Harness 阈值/无障碍用例。</li>
+  </ul>
+</div>
+
+<script>
+(function(){
+  /* ---------- 阈值 : 全站唯一口径 ---------- */
+  function levelOf(pct){ return pct < 50 ? 'good' : pct < 80 ? 'warn' : 'crit'; }
+  document.querySelectorAll('[data-pct]').forEach(function(el){
+    el.dataset.level = levelOf(+el.dataset.pct);
+  });
+
+  /* ---------- 分段量条 ---------- */
+  document.querySelectorAll('.segbar').forEach(function(bar){
+    var total = 24, filled = +bar.dataset.filled;
+    for (var i = 0; i < total; i++) {
+      var b = document.createElement('b');
+      if (i < filled) b.className = 'on';
+      bar.appendChild(b);
+    }
+  });
+
+  /* ---------- 热力图 ---------- */
+  var heat = document.getElementById('heat');
+  var seed = 7;
+  function rnd(){ seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; }
+  var LVL_OPACITY = { 1:0.20, 2:0.40, 3:0.60, 4:0.80, 5:1 };
+  for (var w = 0; w < 26; w++) {
+    for (var d = 0; d < 7; d++) {
+      var r = rnd();
+      var level = w < 4 ? (r > .8 ? 1 : 0)
+                : r > .82 ? 5 : r > .62 ? 4 : r > .42 ? 3 : r > .22 ? 2 : r > .08 ? 1 : 0;
+      var c = document.createElement('i');
+      c.dataset.l = level;
+      if (level > 0) {
+        /* 仅填充格呼吸: 以层级基准透明度作为呼吸锚点 --o,
+           逐格错相位 (animation-delay) 形成微闪烁而非整体齐闪 */
+        c.style.setProperty('--o', LVL_OPACITY[level]);
+        c.style.animationDelay = ((w * 0.12 + d * 0.05) % 3.2).toFixed(2) + 's';
+        c.classList.add('heat-breathe');
+      }
+      heat.appendChild(c);
+    }
+  }
+
+  /* ---------- 点阵柱状图 ---------- */
+  var COLS = 3, ROWS = 8, CELLS = COLS * ROWS;
+  var DAY = [22,26,18,30,34,28,38,32,36,42,46,52,58,68];
+  var MAXV = Math.max.apply(null, DAY);
+  var dotbars = document.getElementById('dotbars');
+  DAY.forEach(function(v, di){
+    var day = document.createElement('div');
+    day.className = 'day';
+    if (di === DAY.length - 1) day.dataset.today = 'true';
+    var filled = Math.max(1, Math.round(v / MAXV * CELLS));
+    for (var i = 0; i < CELLS; i++) {
+      var c = document.createElement('i');
+      if (i >= CELLS - filled) c.className = 'on';
+      day.appendChild(c);
+    }
+    dotbars.appendChild(day);
+  });
+
+  /* ---------- 14 日构成 ---------- */
+  var AGENTS = [
+    {n:'Kimi',     cls:'p1', pc:42, tk:'391K'},
+    {n:'Claude',   cls:'p2', pc:31, tk:'289K'},
+    {n:'Codex',    cls:'p3', pc:16, tk:'149K'},
+    {n:'DeepSeek', cls:'p4', pc:11, tk:'103K'}
+  ];
+  var cBar = document.getElementById('composeBar');
+  var cKey = document.getElementById('composeKey');
+  AGENTS.forEach(function(a){
+    var b = document.createElement('b');
+    b.className = a.cls;
+    b.style.flex = a.pc;
+    cBar.appendChild(b);
+    var k = document.createElement('span');
+    k.className = 'k';
+    k.innerHTML = '<i class="sw ' + a.cls + '"></i>'
+      + '<span class="nm">' + a.n + '</span>'
+      + '<span class="pc">' + a.pc + '%</span>'
+      + '<span class="tk"> · ' + a.tk + '</span>';
+    cKey.appendChild(k);
+  });
+
+  /* ---------- 逐小时折线 ---------- */
+  var ROWS2 = [
+    {n:'Kimi',     cls:'p1', tot:'402K', pts:[2,1,0,0,1,3,8,14,22,31,38,42,40,44,48,52,46,38,30,24,18,12,7,4],
+     models:[['Kimi K2',72,'70.5K'],['Kimi K1.5',21,'20.6K'],['其他',7,'6.9K']],
+     projects:[['Bruce',58,'56.9K'],['Daimon',31,'30.4K'],['其他',11,'10.8K']]},
+    {n:'Claude',   cls:'p2', tot:'231K', pts:[8,6,4,3,2,4,10,18,26,34,36,30,26,32,38,40,36,28,22,18,14,10,8,6],
+     models:[['Opus 4.5',64,'36.1K'],['Sonnet 4.5',36,'20.3K']],
+     projects:[['Bruce',81,'45.7K'],['其他',19,'10.7K']]},
+    {n:'Codex',    cls:'p3', tot:'187K', pts:[14,12,10,8,6,5,9,16,24,30,34,32,28,24,20,22,26,24,20,16,14,12,12,13],
+     models:[['GPT-5.2',100,'46.2K']],
+     projects:[['Bruce',70,'32.3K'],['Daimon',30,'13.9K']]},
+    {n:'DeepSeek', cls:'p4', tot:'112K', pts:[4,3,2,2,2,3,6,10,14,18,20,22,20,18,16,18,20,18,16,14,12,10,8,6],
+     models:[['V3.2',100,'28.0K']],
+     projects:[['Bruce',100,'28.0K']]}
+  ];
+  var OP = {p1:1, p2:.66, p3:.45, p4:.80};
+
+  function sparkline(pts, cls, w){
+    var max = Math.max.apply(null, pts) || 1;
+    var h = 26, pad = 2;
+    var step = (w - pad * 2) / (pts.length - 1);
+    var d = pts.map(function(p, i){
+      var x = pad + i * step;
+      var y = h - pad - (p / max) * (h - pad * 2);
+      return x.toFixed(1) + ',' + y.toFixed(1);
+    }).join(' ');
+    return '<svg class="spark" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none">'
+      + '<polyline points="' + d + '" fill="none" stroke="var(--text-display)" stroke-width="1.5" '
+      + 'stroke-opacity="' + OP[cls] + '" stroke-linejoin="round" stroke-linecap="round" '
+      + 'vector-effect="non-scaling-stroke"/></svg>';
+  }
+
+  function distBar(items){
+    var segs = items.map(function(it, i){
+      return '<b class="' + ['p1','p2','p3','p4'][i % 4] + '" style="flex:' + it[1] + '"></b>';
+    }).join('');
+    var keys = items.map(function(it, i){
+      var cls = ['p1','p2','p3','p4'][i % 4];
+      return '<span class="k"><i class="sw ' + cls + '"></i>'
+        + '<span class="nm">' + it[0] + '</span>'
+        + '<span class="pc">' + it[1] + '%</span>'
+        + '<span class="tk"> · ' + it[2] + '</span></span>';
+    }).join('');
+    return '<div class="dist"><div class="dist-head"><span class="t">模型占比</span></div>'
+      + '<div class="dbar">' + segs + '</div><div class="dkey">' + keys + '</div></div>';
+  }
+
+  var wrap = document.getElementById('arows');
+  ROWS2.forEach(function(r){
+    var el = document.createElement('div');
+    el.className = 'arow';
+    el.innerHTML =
+      '<div class="arow-head">'
+        + '<i class="sw ' + r.cls + '"></i>'
+        + '<span class="nm">' + r.n + '</span>'
+        + '<span class="tot">' + r.tot + '</span>'
+        + '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>'
+      + '</div>'
+      + sparkline(r.pts, r.cls, 386)
+      + distBar(r.models);
+    wrap.appendChild(el);
+  });
+
+  /* ---------- 模式切换 ---------- */
+  var bD = document.getElementById('btnDark'), bL = document.getElementById('btnLight');
+  function setMode(m){
+    document.documentElement.dataset.theme = m;
+    bD.setAttribute('aria-pressed', m === 'dark');
+    bL.setAttribute('aria-pressed', m === 'light');
+  }
+  bD.addEventListener('click', function(){ setMode('dark'); });
+  bL.addEventListener('click', function(){ setMode('light'); });
+
+  /* ---------- 提议: 绿 + 呼吸 + 热力图闪烁 切换 ---------- */
+  var heroNum = document.getElementById('heroNum');
+  var heatEl = document.getElementById('heat');
+  var bP = document.getElementById('btnProp');
+  bP.addEventListener('click', function(){
+    var on = heroNum.classList.toggle('proposed');
+    heatEl.classList.toggle('proposed', on);
+    bP.dataset.on = on;
+    bP.textContent = on ? '当前: 白/静止' : '提议: 色+呼吸';
+  });
+})();
+</script>
+</body>
+</html>

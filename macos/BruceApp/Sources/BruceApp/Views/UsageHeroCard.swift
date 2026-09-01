@@ -13,6 +13,8 @@ struct UsageHeroCard: View {
     let viewModel: UsageHeroViewModel
 
     @Environment(\.BruceResolvedTheme) private var theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var heroBreathing = false
 
     init(viewModel: UsageHeroViewModel) {
         self.viewModel = viewModel
@@ -101,7 +103,7 @@ struct UsageHeroCard: View {
                 if let dotIndex = viewModel.totalTokensText.firstIndex(of: ".") {
                     Text(String(viewModel.totalTokensText[..<dotIndex]))
                     Rectangle()
-                        .fill(Self.nothingDisplay)
+                        .fill(Self.nothingHeroAccent)
                         .frame(width: 4, height: 4)
                         .padding(.horizontal, 4)
                     Text(String(viewModel.totalTokensText[viewModel.totalTokensText.index(after: dotIndex)...]))
@@ -112,7 +114,16 @@ struct UsageHeroCard: View {
             .font(NothingFont.display(52, weight: .bold))
             .tracking(-1.04)
             .monospacedDigit()
-            .foregroundStyle(Self.nothingDisplay)
+            .foregroundStyle(Self.nothingHeroAccent)
+            .opacity(reduceMotion ? 1 : (heroBreathing ? 1 : 0.86))
+            .scaleEffect(reduceMotion ? 1 : (heroBreathing ? 1.015 : 1))
+            .shadow(color: Self.nothingHeroAccent, radius: reduceMotion ? 0 : (heroBreathing ? 15 : 3))
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.easeInOut(duration: 1.3).repeatForever(autoreverses: true)) {
+                    heroBreathing = true
+                }
+            }
         } else {
             Text(viewModel.totalTokensText)
                 .font(.system(size: 40, weight: .bold))
@@ -256,10 +267,10 @@ struct UsageHeroCard: View {
     /// Nothing 下全方角, level 0 用 surface-raised, 1-5 为 display 白阶 5 档透明度.
     private var heatmapView: some View {
         HStack(alignment: .top, spacing: 3) {
-            ForEach(Array(viewModel.heatmap.enumerated()), id: \.offset) { _, week in
+            ForEach(Array(viewModel.heatmap.enumerated()), id: \.offset) { colIndex, week in
                 VStack(spacing: 3) {
                     ForEach(0..<7, id: \.self) { row in
-                        heatmapCell(week.cells[row])
+                        HeatmapCellView(cell: week.cells[row], isNothing: isNothing, col: colIndex, row: row)
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -267,13 +278,6 @@ struct UsageHeroCard: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("用量热力图")
-    }
-
-    private func heatmapCell(_ cell: UsageHeatmapCell?) -> some View {
-        RoundedRectangle(cornerRadius: isNothing ? 0 : 2, style: .continuous)
-            .fill(heatmapCellColor(cell))
-            .aspectRatio(1, contentMode: .fit)
-            .frame(maxWidth: .infinity)
     }
 
     /// 起止日期轴: 左窗口首日, 右今天, 与网格左右缘对齐.
@@ -328,6 +332,60 @@ struct UsageHeroCard: View {
             return .clear
         }
         return heatmapLevelColor(cell.level)
+    }
+
+    /// 热力图单元格: Nothing 填充格在定稿 display 白阶透明度上做错相位呼吸
+    /// (绿/橙仅用于 Hero, 热力图保持 display 白阶); 尊重 accessibilityReduceMotion.
+    private struct HeatmapCellView: View {
+        let cell: UsageHeatmapCell?
+        let isNothing: Bool
+        let col: Int
+        let row: Int
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        @State private var breathe = false
+
+        private var level: Int { cell?.level ?? 0 }
+        private var filled: Bool { level > 0 }
+
+        var body: some View {
+            let base = HeatmapCellView.baseColor(cell: cell, isNothing: isNothing)
+            let baseOpacity: Double = {
+                guard isNothing, filled else { return 1 }
+                return [0.2, 0.4, 0.6, 0.8, 1.0][min(level, 5) - 1]
+            }()
+            return RoundedRectangle(cornerRadius: isNothing ? 0 : 2, style: .continuous)
+                .fill(base)
+                .opacity(reduceMotion || !isNothing || !filled ? 1 : (breathe ? 1 : baseOpacity * 0.42))
+                .aspectRatio(1, contentMode: .fit)
+                .frame(maxWidth: .infinity)
+                .onAppear {
+                    guard isNothing, filled, !reduceMotion else { return }
+                    let phase = (Double(col) * 0.12 + Double(row) * 0.05)
+                        .truncatingRemainder(dividingBy: 3.2)
+                    withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true).delay(phase)) {
+                        breathe = true
+                    }
+                }
+        }
+
+        static func baseColor(cell: UsageHeatmapCell?, isNothing: Bool) -> Color {
+            guard let cell else { return .clear }
+            if isNothing {
+                guard cell.level > 0 else { return UsageHeroCard.nothingSurfaceRaised }
+                let op = [0.2, 0.4, 0.6, 0.8, 1.0][min(cell.level, 5) - 1]
+                return UsageHeroCard.nothingDisplay.opacity(op)
+            }
+            guard cell.level > 0 else { return Color.primary.opacity(0.07) }
+            let tier: UsageTier
+            switch cell.level {
+            case 1: tier = .sage
+            case 2: tier = .moss
+            case 3: tier = .fern
+            case 4: tier = .pine
+            default: tier = .forest
+            }
+            return UsageHeroCard.tierColors(for: tier).0
+        }
     }
 
     private func heatmapLevelColor(_ level: Int) -> Color {
@@ -397,6 +455,12 @@ struct UsageHeroCard: View {
     private static let nothingSurfaceRaised = Color.adaptive(
         light: Color(hex: "#F0F0F0"),
         dark: Color(hex: "#1A1A1A")
+    )
+
+    /// Nothing hero 强调色: Dark=success 绿, Light=warning 橙 (复用定稿阈值色值, 不新创).
+    private static let nothingHeroAccent = Color.adaptive(
+        light: Color(hex: "#D4A843"),
+        dark: Color(hex: "#4A9E5C")
     )
 
     /// hero 渐变按今日总量档位在统一绿色阶内变化 (源自 logo 底色):
