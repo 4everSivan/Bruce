@@ -230,16 +230,22 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
 
 // MARK: - OnboardingConfigurationStore
 
-/// 非敏感配置的原子读写. 文件权限 0600.
+/// 非敏感配置的原子读写. 文件权限 0600. 落到统一的 `AtomicJSONStore`.
 public final class OnboardingConfigurationStore: @unchecked Sendable {
     private let configURL: URL
     private let fileManager: FileManager
+    private let atomicStore: AtomicJSONStore
     private let queue = DispatchQueue(label: "Bruce.onboarding-config")
 
     public init(configDirectory: URL, fileManager: FileManager = .default) throws {
         self.fileManager = fileManager
         self.configURL = configDirectory
             .appendingPathComponent("onboarding-v1.json")
+        self.atomicStore = AtomicJSONStore(
+            fileManager: fileManager,
+            filePermissions: 0o600,
+            dirPermissions: 0o700
+        )
         try ensureDirectory(at: configDirectory)
     }
 
@@ -259,86 +265,54 @@ public final class OnboardingConfigurationStore: @unchecked Sendable {
     /// 读取配置. 文件不存在返回空配置. schema 版本不匹配返回 nil.
     public func load() -> OnboardingConfiguration? {
         queue.sync {
-            guard fileManager.fileExists(atPath: configURL.path) else {
-                return OnboardingConfiguration()
-            }
-            do {
-                let data = try Data(contentsOf: configURL)
-                let config = try JSONDecoder().decode(
-                    OnboardingConfiguration.self, from: data
-                )
-                // 未知新 schema -> 安全拒绝
+            let result = atomicStore.read(
+                OnboardingConfiguration.self,
+                from: configURL
+            )
+            switch result {
+            case .loaded(let config):
+                // 未知新 schema -> 安全拒绝 (不回滚, 避免降回旧结构).
                 guard config.schemaVersion <= OnboardingConfiguration.currentSchemaVersion else {
                     return nil
                 }
                 return config
-            } catch {
+            case .missing:
+                return OnboardingConfiguration()
+            case .incompatible:
+                // 高版本 schema: 保守拒绝, 不回滚 (避免降回旧结构).
                 return nil
+            case .corrupt:
+                // 损坏: 尝试从备份回滚一次; 仍损坏则视为缺失返回空配置.
+                if atomicStore.rollback(configURL) == .rolledBack,
+                   case .loaded(let rolled) = atomicStore.read(
+                       OnboardingConfiguration.self, from: configURL
+                   ) {
+                    return rolled
+                }
+                return OnboardingConfiguration()
             }
         }
     }
 
-    /// 原子写入配置: 临时文件 -> 同步 -> 重读校验 -> 原子替换.
+    /// 原子写入配置: 由 `AtomicJSONStore` 统一临时文件 -> 同步 -> 重读校验 ->
+    /// 原子替换, 并备份上一版本以支持回滚.
     public func save(_ config: OnboardingConfiguration) throws {
         try queue.sync {
-            let data = try JSONEncoder().encode(config)
-            let tempURL = configURL
-                .deletingLastPathComponent()
-                .appendingPathComponent(".onboarding-v1.\(UUID().uuidString).tmp")
-
-            do {
-                guard fileManager.createFile(
-                    atPath: tempURL.path, contents: nil,
-                    attributes: [.posixPermissions: 0o600]
-                ) else {
-                    throw OnboardingConfigError.storageFailure
-                }
-                let handle = try FileHandle(forWritingTo: tempURL)
-                try handle.write(contentsOf: data)
-                try handle.synchronize()
-                try handle.close()
-                try fileManager.setAttributes(
-                    [.posixPermissions: 0o600], ofItemAtPath: tempURL.path
-                )
-
-                // 重读校验
-                let reread = try Data(contentsOf: tempURL)
-                let verified = try JSONDecoder().decode(
-                    OnboardingConfiguration.self, from: reread
-                )
-                guard verified == config else {
-                    throw OnboardingConfigError.storageFailure
-                }
-
-                // 原子替换
-                if fileManager.fileExists(atPath: configURL.path) {
-                    _ = try fileManager.replaceItemAt(configURL, withItemAt: tempURL)
-                } else {
-                    try fileManager.moveItem(at: tempURL, to: configURL)
-                }
-                try fileManager.setAttributes(
-                    [.posixPermissions: 0o600], ofItemAtPath: configURL.path
-                )
-            } catch let error as OnboardingConfigError {
-                try? fileManager.removeItem(at: tempURL)
-                throw error
-            } catch {
-                try? fileManager.removeItem(at: tempURL)
-                throw OnboardingConfigError.storageFailure
-            }
+            try atomicStore.write(
+                config,
+                to: configURL,
+                validate: { reread in
+                    guard reread == config else {
+                        throw AtomicJSONStore.AtomicJSONStoreError.storageFailure
+                    }
+                },
+                backupPrevious: true
+            )
         }
     }
 
     private func ensureDirectory(at url: URL) throws {
-        if !fileManager.fileExists(atPath: url.path) {
-            try fileManager.createDirectory(
-                at: url, withIntermediateDirectories: true,
-                attributes: [.posixPermissions: 0o700]
-            )
-        }
-        try fileManager.setAttributes(
-            [.posixPermissions: 0o700], ofItemAtPath: url.path
-        )
+        try atomicStore.prepareDirectory(at: url)
     }
 }
 

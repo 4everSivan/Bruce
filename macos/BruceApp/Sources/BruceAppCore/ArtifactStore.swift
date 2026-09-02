@@ -73,6 +73,7 @@ package final class ArtifactStore {
     private let fileManager: FileManager
     private let validator: ArtifactValidator
     private let faultInjector: FaultInjector?
+    private let atomicStore: AtomicJSONStore
 
     package convenience init() throws {
         guard let applicationSupport = FileManager.default.urls(
@@ -115,6 +116,12 @@ package final class ArtifactStore {
         self.fileManager = fileManager
         self.validator = validator
         self.faultInjector = faultInjector
+        self.atomicStore = AtomicJSONStore(
+            fileManager: fileManager,
+            faultInjector: faultInjector.map { inject in
+                { stage in try inject(Self.stage(for: stage)) }
+            }
+        )
         try prepareDirectories()
     }
 
@@ -135,24 +142,24 @@ package final class ArtifactStore {
                from: currentData
            ),
            (try? validator.validate(currentArtifact, for: module)) != nil {
-            try atomicWrite(
+            try atomicStoreWrite(
                 currentData,
                 to: previousURL,
-                validation: nil,
-                replaceStage: .beforeReplace
+                stage: .beforeReplace
             )
         }
-        try atomicWrite(
+        try atomicStoreWrite(
             data,
             to: currentURL,
-            validation: { [validator] reread in
+            validate: { [validator] reread in
                 let value = try JSONDecoder().decode(
                     JSONValue.self,
                     from: reread
                 )
                 _ = try validator.validate(value, for: module)
             },
-            replaceStage: .beforeReplace
+            backupPrevious: true,
+            stage: .beforeReplace
         )
 
         var metadata = try readMetadata()
@@ -213,27 +220,44 @@ package final class ArtifactStore {
             )
         } catch let error as ArtifactStoreError {
             let previousURL = previousSnapshotURL(for: module)
-            guard fileManager.fileExists(atPath: previousURL.path) else {
-                throw error
+            if fileManager.fileExists(atPath: previousURL.path) {
+                do {
+                    let previous = try loadArtifact(
+                        at: previousURL,
+                        for: module,
+                        allowMigration: false
+                    )
+                    return try storedArtifact(
+                        previous.artifact,
+                        decoded: previous.decoded,
+                        module: module,
+                        source: .previous,
+                        now: now,
+                        staleAfter: staleAfter,
+                        fallbackError: .schema
+                    )
+                } catch {
+                    // previous 也损坏/不兼容: 尝试从备份回滚一次.
+                    if atomicStore.rollback(currentURL) == .rolledBack,
+                       let rolledBack = try? loadArtifact(
+                           at: currentURL,
+                           for: module,
+                           allowMigration: false
+                       ) {
+                        return try storedArtifact(
+                            rolledBack.artifact,
+                            decoded: rolledBack.decoded,
+                            module: module,
+                            source: .previous,
+                            now: now,
+                            staleAfter: staleAfter,
+                            fallbackError: .schema
+                        )
+                    }
+                    throw error
+                }
             }
-            do {
-                let previous = try loadArtifact(
-                    at: previousURL,
-                    for: module,
-                    allowMigration: false
-                )
-                return try storedArtifact(
-                    previous.artifact,
-                    decoded: previous.decoded,
-                    module: module,
-                    source: .previous,
-                    now: now,
-                    staleAfter: staleAfter,
-                    fallbackError: .schema
-                )
-            } catch {
-                throw error
-            }
+            throw error
         } catch {
             throw ArtifactStoreError.corruptedSnapshot
         }
@@ -317,81 +341,33 @@ package final class ArtifactStore {
         }
     }
 
-    private func prepareDirectories() throws {
-        do {
-            try createPrivateDirectory(rootURL)
-            try createPrivateDirectory(snapshotsURL)
-            try createPrivateDirectory(metadataURL.deletingLastPathComponent())
-        } catch {
-            throw ArtifactStoreError.storageFailure
-        }
-    }
-
-    private func createPrivateDirectory(_ url: URL) throws {
-        try fileManager.createDirectory(
-            at: url,
-            withIntermediateDirectories: true,
-            attributes: [.posixPermissions: 0o700]
-        )
-        try fileManager.setAttributes(
-            [.posixPermissions: 0o700],
-            ofItemAtPath: url.path
-        )
-    }
-
-    private func atomicWrite(
+    /// 统一桥接 `AtomicJSONStore.write`: 将底层 `AtomicJSONStoreError`
+    /// 收敛为 `ArtifactStoreError.storageFailure`, 与重构前 `atomicWrite`
+    /// 的「任意错误 -> storageFailure」语义一致 (Harness 据此断言).
+    private func atomicStoreWrite(
         _ data: Data,
         to targetURL: URL,
-        validation: ((Data) throws -> Void)?,
-        replaceStage: ArtifactStoreStage
+        validate: ((Data) throws -> Void)? = nil,
+        backupPrevious: Bool = false,
+        stage: AtomicJSONStore.WriteStage = .beforeReplace
     ) throws {
-        let temporaryURL = targetURL
-            .deletingLastPathComponent()
-            .appendingPathComponent(
-                ".\(targetURL.lastPathComponent).\(UUID().uuidString).tmp"
-            )
         do {
-            try faultInjector?(.beforeWrite)
-            guard fileManager.createFile(
-                atPath: temporaryURL.path,
-                contents: nil,
-                attributes: [.posixPermissions: 0o600]
-            ) else {
-                throw ArtifactStoreError.storageFailure
-            }
-            let handle = try FileHandle(forWritingTo: temporaryURL)
-            try handle.write(contentsOf: data)
-            try handle.synchronize()
-            try handle.close()
-            try fileManager.setAttributes(
-                [.posixPermissions: 0o600],
-                ofItemAtPath: temporaryURL.path
+            try atomicStore.write(
+                data,
+                to: targetURL,
+                validate: validate,
+                backupPrevious: backupPrevious,
+                stage: stage
             )
-            let reread = try Data(contentsOf: temporaryURL)
-            try validation?(reread)
-            try faultInjector?(replaceStage)
-            if fileManager.fileExists(atPath: targetURL.path) {
-                _ = try fileManager.replaceItemAt(
-                    targetURL,
-                    withItemAt: temporaryURL
-                )
-            } else {
-                try fileManager.moveItem(
-                    at: temporaryURL,
-                    to: targetURL
-                )
-            }
-            try fileManager.setAttributes(
-                [.posixPermissions: 0o600],
-                ofItemAtPath: targetURL.path
-            )
-        } catch let error as ArtifactStoreError {
-            try? fileManager.removeItem(at: temporaryURL)
-            throw error
-        } catch {
-            try? fileManager.removeItem(at: temporaryURL)
+        } catch is AtomicJSONStore.AtomicJSONStoreError {
             throw ArtifactStoreError.storageFailure
         }
+    }
+
+    private func prepareDirectories() throws {
+        try atomicStore.prepareDirectory(at: rootURL)
+        try atomicStore.prepareDirectory(at: snapshotsURL)
+        try atomicStore.prepareDirectory(at: metadataURL.deletingLastPathComponent())
     }
 
     private func readMetadata() throws -> ArtifactStoreMetadata {
@@ -419,16 +395,16 @@ package final class ArtifactStore {
 
     private func writeMetadata(_ metadata: ArtifactStoreMetadata) throws {
         let data = try JSONEncoder().encode(metadata)
-        try atomicWrite(
+        try atomicStoreWrite(
             data,
             to: metadataURL,
-            validation: { reread in
+            validate: { reread in
                 _ = try JSONDecoder().decode(
                     ArtifactStoreMetadata.self,
                     from: reread
                 )
             },
-            replaceStage: .beforeMetadataReplace
+            stage: .beforeMetadataReplace
         )
     }
 
@@ -523,25 +499,27 @@ package final class ArtifactStore {
             let decoded = try validator.validate(artifact, for: module)
             let backupURL = migrationBackupURL(for: module)
             if !fileManager.fileExists(atPath: backupURL.path) {
-                try atomicWrite(
+                try atomicStoreWrite(
                     originalData,
                     to: backupURL,
-                    validation: nil,
-                    replaceStage: .beforeReplace
+                    stage: .beforeReplace
                 )
             }
-            try faultInjector?(.beforeMigrationReplace)
-            try atomicWrite(
+            // 注意: 迁移写直接用 `atomicStore.write` (不经 `atomicStoreWrite` 收敛),
+            // 让 `.beforeMigrationReplace` 故障注入抛出的错误透传为
+            // `ArtifactStoreError.migrationFailed` (与重构前先 `try faultInjector?`
+            // 再写的行为一致, Harness 据此断言).
+            try atomicStore.write(
                 migratedData,
                 to: url,
-                validation: { [validator] reread in
+                validate: { [validator] reread in
                     let value = try JSONDecoder().decode(
                         JSONValue.self,
                         from: reread
                     )
                     _ = try validator.validate(value, for: module)
                 },
-                replaceStage: .beforeReplace
+                stage: .beforeMigrationReplace
             )
             return (artifact, decoded, .migrated)
         } catch let error as ArtifactStoreError {
@@ -593,5 +571,20 @@ package final class ArtifactStore {
 
     private static func timestamp(_ date: Date) -> String {
         ISO8601DateFormatter().string(from: date)
+    }
+
+    /// 将 `AtomicJSONStore` 的写阶段映射到本 store 的 `ArtifactStoreStage`,
+    /// 供故障注入钩子透传到 Harness (二者用例一一对应).
+    private static func stage(for stage: AtomicJSONStore.WriteStage) -> ArtifactStoreStage {
+        switch stage {
+        case .beforeTempWrite:
+            return .beforeWrite
+        case .beforeReplace:
+            return .beforeReplace
+        case .beforeMetadataReplace:
+            return .beforeMetadataReplace
+        case .beforeMigrationReplace:
+            return .beforeMigrationReplace
+        }
     }
 }

@@ -110,6 +110,7 @@ package final class DeepSeekUsageLedger {
     private let rootURL: URL
     private let calendar: Calendar
     private let now: () -> Date
+    private let atomicStore: AtomicJSONStore
 
     /// 当前内存中的账本状态; nil 表示尚未加载或已因故障置为不可用.
     private var state: LedgerState?
@@ -120,12 +121,22 @@ package final class DeepSeekUsageLedger {
     package init(
         rootURL: URL,
         calendar: Calendar,
-        now: @escaping () -> Date = Date.init
+        now: @escaping () -> Date = Date.init,
+        fileManager: FileManager = .default
     ) {
         self.rootURL = rootURL
             .appendingPathComponent("usage-ledger", isDirectory: true)
         self.calendar = calendar
         self.now = now
+        self.atomicStore = AtomicJSONStore(
+            fileManager: fileManager,
+            filePermissions: 0o600,
+            dirPermissions: 0o700
+        )
+    }
+
+    private var ledgerURL: URL {
+        rootURL.appendingPathComponent("deepseek-monthly.json")
     }
 
     // MARK: - 公开入口
@@ -311,106 +322,52 @@ package final class DeepSeekUsageLedger {
     private func persist() -> Bool {
         guard let state else { return false }
         do {
-            try prepareDirectory()
-            let data = try JSONEncoder().encode(state)
-            return atomicWrite(data)
-        } catch {
-            return false
-        }
-    }
-
-    private func prepareDirectory() throws {
-        let fileManager = FileManager.default
-        if !fileManager.fileExists(atPath: rootURL.path) {
-            try fileManager.createDirectory(
-                at: rootURL,
-                withIntermediateDirectories: true,
-                attributes: [.posixPermissions: 0o700]
-            )
-        }
-        try fileManager.setAttributes(
-            [.posixPermissions: 0o700],
-            ofItemAtPath: rootURL.path
-        )
-    }
-
-    /// 原子写入: 临时文件 0600 -> 同步 -> 重读解码校验 -> 原子替换.
-    /// 失败不留下可被当作有效账本的半写入内容.
-    private func atomicWrite(_ data: Data) -> Bool {
-        let targetURL = rootURL
-            .appendingPathComponent("deepseek-monthly.json")
-        let tempURL = rootURL.appendingPathComponent(
-            ".deepseek-monthly.\(UUID().uuidString).tmp"
-        )
-        let fileManager = FileManager.default
-        do {
-            guard fileManager.createFile(
-                atPath: tempURL.path,
-                contents: nil,
-                attributes: [.posixPermissions: 0o600]
-            ) else {
-                return false
-            }
-            let handle = try FileHandle(forWritingTo: tempURL)
-            try handle.write(contentsOf: data)
-            try handle.synchronize()
-            try handle.close()
-            try fileManager.setAttributes(
-                [.posixPermissions: 0o600],
-                ofItemAtPath: tempURL.path
-            )
-            // 重读解码校验
-            guard let reread = fileManager.contents(atPath: tempURL.path) else {
-                try? fileManager.removeItem(at: tempURL)
-                return false
-            }
-            let verified = try JSONDecoder().decode(
-                LedgerState.self, from: reread
-            )
-            guard verified == state else {
-                try? fileManager.removeItem(at: tempURL)
-                return false
-            }
-            if fileManager.fileExists(atPath: targetURL.path) {
-                _ = try fileManager.replaceItemAt(
-                    targetURL,
-                    withItemAt: tempURL,
-                    backupItemName: nil,
-                    options: .usingNewMetadataOnly
-                )
-            } else {
-                try fileManager.moveItem(at: tempURL, to: targetURL)
-            }
-            try fileManager.setAttributes(
-                [.posixPermissions: 0o600],
-                ofItemAtPath: targetURL.path
+            try atomicStore.prepareDirectory(at: rootURL)
+            try atomicStore.write(
+                state,
+                to: ledgerURL,
+                validate: { reread in
+                    guard reread == state else {
+                        throw AtomicJSONStore.AtomicJSONStoreError.storageFailure
+                    }
+                },
+                backupPrevious: true
             )
             return true
         } catch {
-            try? fileManager.removeItem(at: tempURL)
             return false
         }
     }
 
+    /// 原子写入: 临时文件 0600 -> 同步 -> 重读解码校验 -> 原子替换.
+    /// 失败不留下可被当作有效账本的半写入内容. 落到统一的 `AtomicJSONStore`.
     private func loadFromDisk() -> LedgerState? {
-        let targetURL = rootURL
-            .appendingPathComponent("deepseek-monthly.json")
-        let fileManager = FileManager.default
-        guard fileManager.fileExists(atPath: targetURL.path) else {
-            return nil
-        }
-        do {
-            guard let data = fileManager.contents(atPath: targetURL.path) else {
-                return nil
-            }
-            let loaded = try JSONDecoder().decode(
-                LedgerState.self, from: data
-            )
+        let result = atomicStore.read(
+            LedgerState.self,
+            from: ledgerURL
+        )
+        switch result {
+        case .loaded(let loaded):
+            // 高版本 schema -> 保守拒绝 (不回滚, 由下次观察重建).
             guard loaded.schemaVersion == Self.schemaVersion else {
                 return nil
             }
             return loaded
-        } catch {
+        case .missing:
+            return nil
+        case .incompatible:
+            // 高版本 schema: 保守拒绝, 不回滚.
+            return nil
+        case .corrupt:
+            // 损坏: 尝试从备份回滚一次, 回滚后仍不可用则保守返回 nil.
+            if atomicStore.rollback(ledgerURL) == .rolledBack {
+                if case .loaded(let rolledBack) = atomicStore.read(
+                    LedgerState.self,
+                    from: ledgerURL
+                ) {
+                    return rolledBack
+                }
+            }
             return nil
         }
     }
