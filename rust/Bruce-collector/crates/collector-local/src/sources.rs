@@ -88,6 +88,85 @@ fn number_u64(value: Option<&Value>) -> u64 {
         .unwrap_or(0)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct CodexTokenCounters {
+    input: u64,
+    cache_read: u64,
+    output: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct CodexTokenSignature {
+    total: Option<CodexTokenCounters>,
+    last: Option<CodexTokenCounters>,
+}
+
+fn codex_counter(value: &Value, names: &[&str]) -> u64 {
+    names
+        .iter()
+        .find_map(|name| value.get(*name))
+        .map(|value| number_u64(Some(value)))
+        .unwrap_or(0)
+}
+
+fn codex_token_counters(value: Option<&Value>) -> Option<CodexTokenCounters> {
+    let value = value?;
+    let object = value.as_object()?;
+    let has_supported_field = [
+        "input_tokens",
+        "cached_input_tokens",
+        "cache_read_input_tokens",
+        "output_tokens",
+        "total_tokens",
+    ]
+    .iter()
+    .any(|field| object.contains_key(*field));
+    if !has_supported_field {
+        return None;
+    }
+    Some(CodexTokenCounters {
+        input: codex_counter(value, &["input_tokens"]),
+        cache_read: codex_counter(value, &["cached_input_tokens", "cache_read_input_tokens"]),
+        output: codex_counter(value, &["output_tokens"]),
+    })
+}
+
+fn codex_token_signature(info: &Value) -> Option<CodexTokenSignature> {
+    let total = codex_token_counters(info.get("total_token_usage"));
+    let last = codex_token_counters(info.get("last_token_usage"));
+    (total.is_some() || last.is_some()).then_some(CodexTokenSignature { total, last })
+}
+
+fn codex_snapshot_source(payload: &Value) -> Option<String> {
+    payload
+        .get("rate_limits")
+        .and_then(|value| value.get("limit_id"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+}
+
+fn codex_delta(
+    previous: Option<&CodexTokenCounters>,
+    current: &CodexTokenCounters,
+) -> CodexTokenCounters {
+    let Some(previous) = previous else {
+        return *current;
+    };
+    CodexTokenCounters {
+        input: current.input.saturating_sub(previous.input),
+        cache_read: current.cache_read.saturating_sub(previous.cache_read),
+        output: current.output.saturating_sub(previous.output),
+    }
+}
+
+fn update_codex_high_water(high_water: &mut CodexTokenCounters, current: &CodexTokenCounters) {
+    high_water.input = high_water.input.max(current.input);
+    high_water.cache_read = high_water.cache_read.max(current.cache_read);
+    high_water.output = high_water.output.max(current.output);
+}
+
 fn parse_json_line(line: &[u8], stats: &mut ScanStats) -> Option<Value> {
     match serde_json::from_slice(line) {
         Ok(value) => {
@@ -650,6 +729,10 @@ pub fn scan_codex(roots: &[PathBuf], window: &CollectionWindow) -> SourceScan {
     }
     let selected = resolve_codex_files(groups, &mut stats);
     for candidate in selected {
+        let mut current_model: Option<String> = None;
+        let mut total_high_water: Option<CodexTokenCounters> = None;
+        let mut last_signature_by_source = BTreeMap::<Option<String>, CodexTokenSignature>::new();
+        let mut previous_token_signature: Option<CodexTokenSignature> = None;
         if scan_jsonl_file(
             &candidate.path,
             candidate.modified,
@@ -657,6 +740,22 @@ pub fn scan_codex(roots: &[PathBuf], window: &CollectionWindow) -> SourceScan {
                 let Some(value) = parse_json_line(line, stats) else {
                     return;
                 };
+                if value.get("type").and_then(Value::as_str) == Some("turn_context") {
+                    if let Some(model) = value
+                        .get("payload")
+                        .and_then(|payload| {
+                            payload
+                                .get("model")
+                                .or_else(|| payload.get("info").and_then(|info| info.get("model")))
+                        })
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .filter(|model| !model.is_empty())
+                    {
+                        current_model = Some(model.to_owned());
+                    }
+                    return;
+                }
                 if value
                     .get("payload")
                     .and_then(|value| value.get("type"))
@@ -675,27 +774,58 @@ pub fn scan_codex(roots: &[PathBuf], window: &CollectionWindow) -> SourceScan {
                 };
                 let payload = value.get("payload").unwrap_or(&Value::Null);
                 let info = payload.get("info").unwrap_or(&Value::Null);
-                let usage = info.get("last_token_usage").unwrap_or(&Value::Null);
-                let input_total = number_u64(usage.get("input_tokens"));
-                let cache_read = number_u64(usage.get("cached_input_tokens"));
-                let output = number_u64(usage.get("output_tokens"));
-                if input_total == 0 && cache_read == 0 && output == 0 {
-                    return;
-                }
-                // token_count 事件通常不带模型名; 逐层尽力提取, 提取不到再回退 "codex",
-                // 避免所有 Codex 用量在模型统计里塌缩成单个占位条目.
                 let model = info
                     .get("model")
                     .and_then(Value::as_str)
+                    .or_else(|| info.get("model_name").and_then(Value::as_str))
                     .or_else(|| payload.get("model").and_then(Value::as_str))
                     .or_else(|| value.get("model").and_then(Value::as_str));
+                if let Some(model) = model.map(str::trim).filter(|model| !model.is_empty()) {
+                    current_model = Some(model.to_owned());
+                }
+                let Some(signature) = codex_token_signature(info) else {
+                    return;
+                };
+
+                let snapshot_source = codex_snapshot_source(payload);
+                let duplicate_snapshot = signature.total.is_some()
+                    && (last_signature_by_source.get(&snapshot_source) == Some(&signature)
+                        || previous_token_signature.as_ref() == Some(&signature));
+                if signature.total.is_some() {
+                    last_signature_by_source.insert(snapshot_source, signature.clone());
+                }
+                previous_token_signature = Some(signature.clone());
+
+                let usage = if duplicate_snapshot {
+                    CodexTokenCounters {
+                        input: 0,
+                        cache_read: 0,
+                        output: 0,
+                    }
+                } else if let Some(last) = signature.last {
+                    last
+                } else if let Some(total) = signature.total {
+                    codex_delta(total_high_water.as_ref(), &total)
+                } else {
+                    return;
+                };
+                if let Some(total) = signature.total.as_ref() {
+                    if let Some(high_water) = total_high_water.as_mut() {
+                        update_codex_high_water(high_water, total);
+                    } else {
+                        total_high_water = Some(*total);
+                    }
+                }
+                if usage.input == 0 && usage.cache_read == 0 && usage.output == 0 {
+                    return;
+                }
                 record(
                     &mut builder,
                     timestamp,
-                    model.or(Some("codex")),
-                    input_total.saturating_sub(cache_read),
-                    output,
-                    cache_read,
+                    current_model.as_deref(),
+                    usage.input.saturating_sub(usage.cache_read),
+                    usage.output,
+                    usage.cache_read,
                     0,
                     None,
                 );
@@ -1271,6 +1401,100 @@ mod tests {
         fs::write(path, bytes).unwrap();
     }
 
+    fn write_codex_lines(root: &Path, name: &str, lines: &[Value]) {
+        let path = root.join("2026").join("07").join("28").join(name);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let content = lines
+            .iter()
+            .map(|line| serde_json::to_string(line).unwrap())
+            .collect::<Vec<_>>()
+            .join("\n");
+        fs::write(path, format!("{content}\n")).unwrap();
+    }
+
+    fn codex_turn_context(timestamp: &str, model: &str) -> Value {
+        json!({
+            "timestamp": timestamp,
+            "type": "turn_context",
+            "payload": { "model": model }
+        })
+    }
+
+    fn codex_token_count(timestamp: &str, input: u64, cache_read: u64, output: u64) -> Value {
+        json!({
+            "timestamp": timestamp,
+            "type": "event_msg",
+            "payload": {
+                "type": "token_count",
+                "info": {
+                    "last_token_usage": {
+                        "input_tokens": input,
+                        "cached_input_tokens": cache_read,
+                        "output_tokens": output
+                    }
+                }
+            }
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn codex_token_snapshot(
+        timestamp: &str,
+        total_input: u64,
+        total_cache_read: u64,
+        total_output: u64,
+        last_input: u64,
+        last_cache_read: u64,
+        last_output: u64,
+        limit_id: &str,
+    ) -> Value {
+        json!({
+            "timestamp": timestamp,
+            "type": "event_msg",
+            "payload": {
+                "type": "token_count",
+                "info": {
+                    "total_token_usage": {
+                        "input_tokens": total_input,
+                        "cached_input_tokens": total_cache_read,
+                        "output_tokens": total_output
+                    },
+                    "last_token_usage": {
+                        "input_tokens": last_input,
+                        "cached_input_tokens": last_cache_read,
+                        "output_tokens": last_output
+                    }
+                },
+                "rate_limits": { "limit_id": limit_id }
+            }
+        })
+    }
+
+    fn codex_total_snapshot(
+        timestamp: &str,
+        total_input: u64,
+        total_cache_read: u64,
+        total_output: u64,
+        limit_id: &str,
+    ) -> Value {
+        json!({
+            "timestamp": timestamp,
+            "type": "event_msg",
+            "payload": {
+                "type": "token_count",
+                "info": {
+                    "total_token_usage": {
+                        "input_tokens": total_input,
+                        "cached_input_tokens": total_cache_read,
+                        "output_tokens": total_output
+                    },
+                    "last_token_usage": {}
+                },
+                "rate_limits": { "limit_id": limit_id }
+            }
+        })
+    }
+
     fn today_total(result: &super::SourceScan) -> u64 {
         result
             .contribution
@@ -1385,6 +1609,122 @@ mod tests {
 
         assert_eq!(today_total(&result), 6);
         assert_eq!(result.stats.usage_records, 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn codex_attributes_usage_to_the_current_turn_context_model() {
+        let root = temp_root("model-attribution");
+        write_codex_lines(
+            &root,
+            "rollout-models.jsonl",
+            &[
+                codex_turn_context("2026-07-28T04:00:00Z", "gpt-5.4"),
+                codex_token_count("2026-07-28T04:00:01Z", 10, 2, 3),
+                codex_turn_context("2026-07-28T04:00:02Z", "gpt-5.3-codex"),
+                codex_token_count("2026-07-28T04:00:03Z", 20, 5, 4),
+            ],
+        );
+
+        let result = scan_codex(std::slice::from_ref(&root), &window());
+        let model_totals = result
+            .contribution
+            .models_today
+            .iter()
+            .map(|entry| (entry.model.clone(), entry.bucket.total))
+            .collect::<std::collections::BTreeMap<_, _>>();
+
+        assert_eq!(model_totals.get("gpt-5.4"), Some(&13));
+        assert_eq!(model_totals.get("gpt-5.3-codex"), Some(&24));
+        assert!(!model_totals.contains_key("codex"));
+        let month_totals = result
+            .contribution
+            .models_by_month
+            .get("2026-07")
+            .unwrap()
+            .iter()
+            .map(|(model, bucket)| (model.clone(), bucket.total))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        assert_eq!(month_totals, model_totals);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn codex_deduplicates_replayed_token_snapshots_across_limit_sources() {
+        let root = temp_root("snapshot-dedup");
+        write_codex_lines(
+            &root,
+            "rollout-snapshots.jsonl",
+            &[
+                codex_turn_context("2026-07-28T04:00:00Z", "gpt-5.4"),
+                codex_token_snapshot("2026-07-28T04:00:01Z", 100, 20, 10, 100, 20, 10, "codex"),
+                codex_token_snapshot(
+                    "2026-07-28T04:00:02Z",
+                    100,
+                    20,
+                    10,
+                    100,
+                    20,
+                    10,
+                    "codex_bengalfox",
+                ),
+            ],
+        );
+
+        let result = scan_codex(std::slice::from_ref(&root), &window());
+
+        assert_eq!(today_total(&result), 110);
+        assert_eq!(result.stats.usage_records, 1);
+        assert_eq!(result.contribution.models_today[0].bucket.total, 110);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn codex_uses_cumulative_total_when_last_usage_is_missing_across_model_switch() {
+        let root = temp_root("cumulative-model-switch");
+        write_codex_lines(
+            &root,
+            "rollout-cumulative.jsonl",
+            &[
+                codex_turn_context("2026-07-28T04:00:00Z", "model-a"),
+                codex_total_snapshot("2026-07-28T04:00:01Z", 100, 20, 10, "codex"),
+                codex_turn_context("2026-07-28T04:00:02Z", "model-b"),
+                codex_total_snapshot("2026-07-28T04:00:03Z", 150, 30, 15, "codex"),
+            ],
+        );
+
+        let result = scan_codex(std::slice::from_ref(&root), &window());
+        let model_totals = result
+            .contribution
+            .models_today
+            .iter()
+            .map(|entry| (entry.model.clone(), entry.bucket.total))
+            .collect::<std::collections::BTreeMap<_, _>>();
+
+        assert_eq!(model_totals.get("model-a"), Some(&110));
+        assert_eq!(model_totals.get("model-b"), Some(&55));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn codex_uses_unknown_model_when_no_model_context_exists() {
+        let root = temp_root("unknown-model");
+        write_codex_lines(
+            &root,
+            "rollout-unknown.jsonl",
+            &[codex_token_count("2026-07-28T04:00:00Z", 10, 2, 3)],
+        );
+
+        let result = scan_codex(std::slice::from_ref(&root), &window());
+        let model_totals = result
+            .contribution
+            .models_today
+            .iter()
+            .map(|entry| (entry.model.clone(), entry.bucket.total))
+            .collect::<std::collections::BTreeMap<_, _>>();
+
+        assert_eq!(model_totals.get("unknown"), Some(&13));
+        assert!(!model_totals.contains_key("codex"));
         fs::remove_dir_all(root).unwrap();
     }
 }
