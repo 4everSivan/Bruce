@@ -635,65 +635,391 @@ pub fn scan_claude(root: &Path, window: &CollectionWindow) -> SourceScan {
     finish(window, builder, stats.clone(), stats.files_scanned > 0)
 }
 
+#[derive(Debug, Clone, Default)]
+struct CodeBuddyUsage {
+    input: u64,
+    output: u64,
+    cache_read: u64,
+    cache_creation: u64,
+    timestamp_millis: i64,
+    model: Option<String>,
+    project: Option<String>,
+}
+
+impl CodeBuddyUsage {
+    fn total(&self) -> u64 {
+        self.input
+            .saturating_add(self.output)
+            .saturating_add(self.cache_read)
+            .saturating_add(self.cache_creation)
+    }
+}
+
+fn codebuddy_provider_data(value: &Value) -> Option<&Value> {
+    value
+        .get("providerData")
+        .or_else(|| value.get("provider_data"))
+}
+
+fn codebuddy_number(value: &Value) -> Option<u64> {
+    value
+        .as_u64()
+        .or_else(|| value.as_i64().and_then(|value| u64::try_from(value).ok()))
+        .or_else(|| {
+            value
+                .as_f64()
+                .filter(|value| value.is_finite() && *value >= 0.0)
+                .map(|value| value as u64)
+        })
+}
+
+fn codebuddy_first_number(value: &Value, names: &[&str]) -> Option<u64> {
+    names
+        .iter()
+        .find_map(|name| value.get(*name).and_then(codebuddy_number))
+}
+
+fn codebuddy_first_positive_number(value: &Value, names: &[&str]) -> Option<u64> {
+    let mut first = None;
+    for name in names {
+        let Some(number) = value.get(*name).and_then(codebuddy_number) else {
+            continue;
+        };
+        if number > 0 {
+            return Some(number);
+        }
+        first.get_or_insert(number);
+    }
+    first
+}
+
+fn codebuddy_nested_number(
+    value: &Value,
+    object_names: &[&str],
+    field_names: &[&str],
+) -> Option<u64> {
+    object_names.iter().find_map(|object_name| {
+        value
+            .get(*object_name)
+            .filter(|candidate| candidate.is_object())
+            .and_then(|candidate| codebuddy_first_number(candidate, field_names))
+    })
+}
+
+fn codebuddy_nested_positive_number(
+    value: &Value,
+    object_names: &[&str],
+    field_names: &[&str],
+) -> Option<u64> {
+    object_names.iter().find_map(|object_name| {
+        value
+            .get(*object_name)
+            .filter(|candidate| candidate.is_object())
+            .and_then(|candidate| codebuddy_first_positive_number(candidate, field_names))
+    })
+}
+
+/// Return pure input, output, cache-read and cache-write counts.
+///
+/// CodeBuddy's `message.usage` is normalized and its `input_tokens` includes
+/// cache reads. `providerData.rawUsage` follows the provider naming and may
+/// expose cache hit/miss/write counts directly. Prefer raw usage whenever it
+/// is available because it preserves the provider's split instead of making
+/// assumptions about a normalized total.
+fn codebuddy_usage_fields(value: &Value, raw: bool) -> Option<(u64, u64, u64, u64)> {
+    let cache_read = codebuddy_first_positive_number(
+        value,
+        &[
+            "cache_read_input_tokens",
+            "cacheReadInputTokens",
+            "cache_read_tokens",
+            "cacheReadTokens",
+            "prompt_cache_hit_tokens",
+            "promptCacheHitTokens",
+            "prompt_cache_hit",
+            "cached_tokens",
+            "cachedTokens",
+        ],
+    )
+    .or_else(|| {
+        codebuddy_nested_positive_number(
+            value,
+            &["prompt_tokens_details", "promptTokensDetails"],
+            &[
+                "cached_tokens",
+                "cachedTokens",
+                "cache_read_tokens",
+                "cacheReadTokens",
+            ],
+        )
+    })
+    .unwrap_or(0);
+    let cache_creation = codebuddy_first_positive_number(
+        value,
+        &[
+            "cache_creation_input_tokens",
+            "cacheCreationInputTokens",
+            "cache_creation_tokens",
+            "cacheCreationTokens",
+            "prompt_cache_write_tokens",
+            "promptCacheWriteTokens",
+            "prompt_cache_write",
+            "cache_write_tokens",
+            "cacheWriteTokens",
+            "cached_write_tokens",
+            "cachedWriteTokens",
+        ],
+    )
+    .or_else(|| {
+        codebuddy_nested_positive_number(
+            value,
+            &["prompt_tokens_details", "promptTokensDetails"],
+            &[
+                "cache_write_tokens",
+                "cacheWriteTokens",
+                "cached_write_tokens",
+                "cachedWriteTokens",
+            ],
+        )
+    })
+    .unwrap_or(0);
+    let reported_input = codebuddy_first_number(
+        value,
+        &[
+            "input_tokens",
+            "inputTokens",
+            "prompt_tokens",
+            "promptTokens",
+        ],
+    );
+    let cache_miss = codebuddy_first_number(
+        value,
+        &[
+            "prompt_cache_miss_tokens",
+            "promptCacheMissTokens",
+            "cached_miss_tokens",
+            "cachedMissTokens",
+            "cache_miss_tokens",
+            "cacheMissTokens",
+        ],
+    )
+    .or_else(|| {
+        codebuddy_nested_number(
+            value,
+            &["prompt_tokens_details", "promptTokensDetails"],
+            &[
+                "cache_miss_tokens",
+                "cacheMissTokens",
+                "cached_miss_tokens",
+                "cachedMissTokens",
+                "uncached_tokens",
+                "uncachedTokens",
+            ],
+        )
+    });
+    let output = codebuddy_first_number(
+        value,
+        &[
+            "output_tokens",
+            "outputTokens",
+            "completion_tokens",
+            "completionTokens",
+        ],
+    );
+    let reasoning = codebuddy_first_number(
+        value,
+        &[
+            "completion_thinking_tokens",
+            "completionThinkingTokens",
+            "reasoning_tokens",
+            "reasoningTokens",
+        ],
+    )
+    .or_else(|| {
+        codebuddy_nested_number(
+            value,
+            &["completion_tokens_details", "completionTokensDetails"],
+            &[
+                "reasoning_tokens",
+                "reasoningTokens",
+                "thinking_tokens",
+                "thinkingTokens",
+            ],
+        )
+    });
+
+    if reported_input.is_none()
+        && cache_miss.is_none()
+        && output.is_none()
+        && cache_read == 0
+        && cache_creation == 0
+    {
+        return None;
+    }
+
+    let input = cache_miss.unwrap_or_else(|| {
+        let reported = reported_input.unwrap_or(0);
+        if raw {
+            reported
+                .saturating_sub(cache_read)
+                .saturating_sub(cache_creation)
+        } else {
+            // message.usage.input_tokens is cache-inclusive. The normalized
+            // CodeBuddy shape does not report cache writes separately, so a
+            // cache-read subtraction preserves the established project
+            // contract for that shape.
+            reported.saturating_sub(cache_read)
+        }
+    });
+    Some((
+        input,
+        output.unwrap_or(0).saturating_add(reasoning.unwrap_or(0)),
+        cache_read,
+        cache_creation,
+    ))
+}
+
+fn codebuddy_usage(value: &Value) -> Option<(u64, u64, u64, u64)> {
+    let provider = codebuddy_provider_data(value);
+    let message = value.get("message");
+    let candidates = [
+        (
+            provider.and_then(|provider| {
+                provider
+                    .get("rawUsage")
+                    .or_else(|| provider.get("raw_usage"))
+            }),
+            true,
+        ),
+        (provider.and_then(|provider| provider.get("usage")), false),
+        (message.and_then(|message| message.get("usage")), false),
+        (value.get("usage"), false),
+    ];
+    candidates.into_iter().find_map(|(candidate, raw)| {
+        candidate
+            .filter(|candidate| candidate.is_object())
+            .and_then(|candidate| codebuddy_usage_fields(candidate, raw))
+    })
+}
+
+fn codebuddy_string(value: Option<&Value>, names: &[&str]) -> Option<String> {
+    names.iter().find_map(|name| {
+        value
+            .and_then(|value| value.get(*name))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+    })
+}
+
+fn codebuddy_model(value: &Value) -> Option<String> {
+    let provider = codebuddy_provider_data(value);
+    codebuddy_string(provider, &["model", "modelId", "model_id"])
+        .or_else(|| codebuddy_string(provider, &["requestModelId", "request_model_id"]))
+        .or_else(|| codebuddy_string(value.get("message"), &["model", "modelId", "model_id"]))
+        .or_else(|| codebuddy_string(Some(value), &["model", "modelId", "model_id"]))
+}
+
+fn codebuddy_message_id(value: &Value) -> Option<String> {
+    let provider = codebuddy_provider_data(value);
+    codebuddy_string(
+        provider,
+        &["messageId", "message_id", "traceId", "trace_id"],
+    )
+    .or_else(|| codebuddy_string(Some(value), &["messageId", "message_id"]))
+    .or_else(|| codebuddy_string(value.get("message"), &["id", "messageId", "message_id"]))
+    .or_else(|| codebuddy_string(Some(value), &["id"]))
+}
+
+fn codebuddy_scope(path: &Path, value: &Value) -> String {
+    let project = path
+        .parent()
+        .map(|parent| parent.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let session = codebuddy_string(
+        Some(value),
+        &[
+            "sessionId",
+            "session_id",
+            "conversationId",
+            "conversation_id",
+        ],
+    )
+    .or_else(|| {
+        codebuddy_string(
+            codebuddy_provider_data(value),
+            &[
+                "sessionId",
+                "session_id",
+                "conversationId",
+                "conversation_id",
+            ],
+        )
+    });
+    match session {
+        Some(session) => format!("{project}::{session}"),
+        None => path.to_string_lossy().into_owned(),
+    }
+}
+
 /// Scan CodeBuddy CLI conversation trees (`~/.codebuddy/projects`).
 ///
 /// Layout mirrors Claude Code: `<path-encoded-project>/<session>.jsonl`, one
-/// record per line. Usage rides on records with top-level
-/// `type == "message" && role == "assistant"`: `message.usage` carries
-/// normalized `{input_tokens (incl. cache_read), output_tokens,
-/// cache_read_input_tokens}` — the builder wants pure input, so cache_read
-/// is subtracted before folding. The model name lives in
-/// `providerData.model`, `timestamp` is epoch millis, and
-/// `providerData.messageId` dedupes repeated writes (same coalescing
-/// strategy as Claude).
+/// record per line. Normalized assistant messages and provider function-call
+/// records are accepted. Usage is read from `providerData.rawUsage` first,
+/// then `providerData.usage`, `message.usage`, and top-level `usage`; model
+/// names and IDs use the corresponding provider/message fallbacks. Rewrites
+/// of one message are selected as complete snapshots by total token count and
+/// deduplicated within a project/session scope. System task summaries that
+/// expose only `usage.total_tokens` are intentionally ignored because the
+/// artifact has no unattributed-token bucket and child records are the
+/// decomposable source of truth.
 pub fn scan_codebuddy(root: &Path, window: &CollectionWindow) -> SourceScan {
-    let mut best = BTreeMap::<String, ClaudeUsage>::new();
-    let mut direct = Vec::<ClaudeUsage>::new();
+    let mut best = BTreeMap::<String, CodeBuddyUsage>::new();
+    let mut direct = Vec::<CodeBuddyUsage>::new();
     let stats = scan_jsonl_tree(root, window.cutoff_ts, |path, _, line, stats| {
         let Some(value) = parse_json_line(line, stats) else {
             return;
         };
-        if value.get("type").and_then(Value::as_str) != Some("message")
-            || value.get("role").and_then(Value::as_str) != Some("assistant")
+        let record_type = value.get("type").and_then(Value::as_str);
+        if record_type != Some("message") && record_type != Some("function_call") {
+            return;
+        }
+        if record_type == Some("message")
+            && value.get("role").and_then(Value::as_str) != Some("assistant")
         {
             return;
         }
-        let Some(timestamp) = value.get("timestamp").and_then(Value::as_i64) else {
+        let Some(timestamp) = timestamp_number(value.get("timestamp")) else {
             return;
         };
-        let message = value.get("message").unwrap_or(&Value::Null);
-        let usage = message.get("usage");
-        let Some(usage) = usage.filter(|usage| usage.is_object()) else {
+        let Some((input, output, cache_read, cache_creation)) = codebuddy_usage(&value) else {
             return;
         };
-        let cache_read = number_u64(usage.get("cache_read_input_tokens"));
-        let usage = ClaudeUsage {
-            // input_tokens 含 cache_read, 折叠口径需要纯输入.
-            input: number_u64(usage.get("input_tokens")).saturating_sub(cache_read),
-            output: number_u64(usage.get("output_tokens")),
+        let usage = CodeBuddyUsage {
+            input,
+            output,
             cache_read,
-            cache_creation: 0,
+            cache_creation,
             timestamp_millis: timestamp,
-            model: value
-                .get("providerData")
-                .and_then(|provider| provider.get("model"))
-                .and_then(Value::as_str)
-                .map(str::to_owned),
+            model: codebuddy_model(&value),
             project: project_from_parent(path),
         };
-        let id = value
-            .get("providerData")
-            .and_then(|provider| provider.get("messageId"))
-            .and_then(Value::as_str);
+        let id = codebuddy_message_id(&value);
         if let Some(id) = id {
-            let entry = best.entry(id.to_owned()).or_default();
-            entry.input = entry.input.max(usage.input);
-            entry.output = entry.output.max(usage.output);
-            entry.cache_read = entry.cache_read.max(usage.cache_read);
-            entry.cache_creation = entry.cache_creation.max(usage.cache_creation);
-            entry.timestamp_millis = usage.timestamp_millis;
-            entry.model = usage.model;
-            entry.project = usage.project;
+            let key = format!("{}::{id}", codebuddy_scope(path, &value));
+            let replace = match best.get(&key) {
+                None => true,
+                Some(previous) => {
+                    usage.total() > previous.total()
+                        || (usage.total() == previous.total()
+                            && usage.timestamp_millis > previous.timestamp_millis)
+                }
+            };
+            if replace {
+                best.insert(key, usage);
+            }
         } else {
             direct.push(usage);
         }
@@ -1310,7 +1636,7 @@ mod tests {
     }
 
     /// CodeBuddy 会话树扫描: assistant 行 usage (input 含 cache_read 需扣减)、
-    /// providerData.model 模型名、messageId 去重取各字段最大值, 非消息行忽略.
+    /// providerData.model 模型名、messageId 去重选择完整快照, 非消息行忽略.
     #[test]
     fn codebuddy_scans_assistant_usage_with_message_id_dedup() {
         let root = temp_root("codebuddy");
@@ -1340,7 +1666,7 @@ mod tests {
             json!({"type": "message", "role": "assistant", "timestamp": base}).to_string(),
             // m1 首次: input 1000(含 cache 200) → 纯输入 800, 总量 1100.
             line("assistant", 1000, 100, 200, Some("m1")),
-            // m1 重写: input 1500 → 去重后各字段取最大, 总量 1600 (不叠加).
+            // m1 重写: input 1500 → 完整快照总量 1600 (不叠加).
             line("assistant", 1500, 100, 200, Some("m1")),
             // 无 messageId 的直接行: 总量 50.
             line("assistant", 50, 0, 0, None),
@@ -1365,6 +1691,129 @@ mod tests {
             scan.contribution.projects_today[0].name, "Users-sivan-demo-project",
             "项目名取自会话目录"
         );
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn codebuddy_reads_raw_usage_from_function_call() {
+        let root = temp_root("codebuddy-raw");
+        let session_dir = root.join("Users-sivan-demo-project");
+        fs::create_dir_all(&session_dir).unwrap();
+        let base = 1_785_211_200_000_i64;
+        let content = json!({
+            "type": "function_call",
+            "sessionId": "session-a",
+            "timestamp": base,
+            "providerData": {
+                "requestModelId": "glm-5.2",
+                "messageId": "raw-1",
+                "rawUsage": {
+                    "prompt_tokens": 1200,
+                    "completion_tokens": 50,
+                    "completion_thinking_tokens": 20,
+                    "prompt_cache_hit_tokens": 300,
+                    "prompt_cache_write_tokens": 100
+                }
+            }
+        })
+        .to_string();
+        fs::write(session_dir.join("session-a.jsonl"), content).unwrap();
+
+        let scan = super::scan_codebuddy(&root, &window());
+        assert!(scan.diagnostic.is_none(), "扫描不应报错");
+        let today = &scan.contribution.by_day["2026-07-28"];
+        assert_eq!(today.input, 800, "raw prompt_tokens 应扣除两类缓存");
+        assert_eq!(today.output, 70, "thinking tokens 也属于输出 token");
+        assert_eq!(today.cache_read, 300);
+        assert_eq!(today.cache_creation, 100);
+        assert_eq!(today.total, 1270);
+        assert_eq!(scan.contribution.models_today[0].model, "glm-5.2");
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn codebuddy_reads_camel_case_cache_breakdown() {
+        let root = temp_root("codebuddy-camel");
+        let session_dir = root.join("Users-sivan-demo-project");
+        fs::create_dir_all(&session_dir).unwrap();
+        let base = 1_785_211_200_000_i64;
+        let content = json!({
+            "type": "function_call",
+            "timestamp": base,
+            "providerData": {
+                "model": "glm-5.2",
+                "rawUsage": {
+                    "cachedMissTokens": 700,
+                    "cachedTokens": 200,
+                    "cachedWriteTokens": 50,
+                    "completionTokens": 30,
+                    "reasoningTokens": 10
+                }
+            }
+        })
+        .to_string();
+        fs::write(session_dir.join("session-a.jsonl"), content).unwrap();
+
+        let scan = super::scan_codebuddy(&root, &window());
+        assert!(scan.diagnostic.is_none(), "扫描不应报错");
+        let today = &scan.contribution.by_day["2026-07-28"];
+        assert_eq!(today.input, 700);
+        assert_eq!(today.output, 40);
+        assert_eq!(today.cache_read, 200);
+        assert_eq!(today.cache_creation, 50);
+        assert_eq!(today.total, 990);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn codebuddy_dedup_uses_complete_snapshot_and_session_scope() {
+        let root = temp_root("codebuddy-snapshot");
+        let project_a = root.join("project-a");
+        let project_b = root.join("project-b");
+        fs::create_dir_all(&project_a).unwrap();
+        fs::create_dir_all(&project_b).unwrap();
+        let base = 1_785_211_200_000_i64;
+        let line = |session: &str, input: u64, output: u64, id: &str| {
+            json!({
+                "type": "message",
+                "role": "assistant",
+                "sessionId": session,
+                "timestamp": base,
+                "message": { "usage": {
+                    "input_tokens": input,
+                    "output_tokens": output,
+                    "cache_read_input_tokens": 0
+                }},
+                "providerData": {
+                    "model": "hy3",
+                    "messageId": id,
+                },
+            })
+            .to_string()
+        };
+        // The first complete snapshot has the larger total. A field-wise max
+        // would incorrectly combine these two rewrites into 250 tokens.
+        let first = line("session-a", 100, 100, "same-id");
+        let rewrite = line("session-a", 150, 1, "same-id");
+        fs::write(
+            project_a.join("session-a.jsonl"),
+            [first, rewrite].join("\n"),
+        )
+        .unwrap();
+        // The same provider message id in another session must remain a
+        // separate contribution.
+        fs::write(
+            project_b.join("session-b.jsonl"),
+            line("session-b", 10, 5, "same-id"),
+        )
+        .unwrap();
+
+        let scan = super::scan_codebuddy(&root, &window());
+        assert!(scan.diagnostic.is_none(), "扫描不应报错");
+        let today = &scan.contribution.by_day["2026-07-28"];
+        assert_eq!(today.input, 110);
+        assert_eq!(today.output, 105);
+        assert_eq!(today.total, 215, "应选择完整快照并按会话隔离去重");
         fs::remove_dir_all(&root).ok();
     }
 
