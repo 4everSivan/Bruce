@@ -8,6 +8,7 @@ struct GrokProviderSettingsSection: View {
     @EnvironmentObject private var coordinator: OnboardingCoordinator
 
     @Binding var grokPasteText: String
+    @Binding var grokEditing: Bool
     var onRemove: () -> Void
 
     var body: some View {
@@ -18,7 +19,10 @@ struct GrokProviderSettingsSection: View {
             pasteText: $grokPasteText,
             onRemove: onRemove,
             importFromLocal: { coordinator.importGrokFromLocal() },
-            savePaste: { coordinator.importGrokFromPaste($0) }
+            savePaste: { coordinator.importGrokFromPaste($0) },
+            pasteHint: nil,
+            showsLocalRedetect: true,
+            isEditing: $grokEditing
         )
     }
 }

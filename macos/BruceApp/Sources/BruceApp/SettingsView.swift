@@ -17,19 +17,20 @@ struct SettingsView: View {
     @State private var diagnosticsPreview = ""
     @State private var showsDiagnosticsPreview = false
     // 订阅额度分区输入与编辑态
-    @State private var deepseekKeyText = ""
+    @State private var deepseekValues: [String: String] = [:]
     @State private var deepseekEditing = false
-    @State private var volcengineAKText = ""
-    @State private var volcengineSKText = ""
+    @State private var volcengineValues: [String: String] = [:]
     @State private var volcengineEditing = false
     @State private var showsVolcengineCCImportConfirm = false
-    @State private var zhipuKeyText = ""
+    @State private var zhipuValues: [String: String] = [:]
     @State private var zhipuSiteIsCN = true
     @State private var zhipuEditing = false
-    @State private var kimiKeyText = ""
+    @State private var kimiValues: [String: String] = [:]
     @State private var kimiEditing = false
     @State private var claudePasteText = ""
+    @State private var claudeEditing = false
     @State private var grokPasteText = ""
+    @State private var grokEditing = false
     @State private var opencodeGoPasteText = ""
     @State private var opencodeGoEditing = false
     @State private var showsCodexCCImportConfirm = false
@@ -748,32 +749,110 @@ struct SettingsView: View {
     ) -> some View {
         switch id {
         case .kimi:
-            KimiProviderSettingsSection(
-                kimiKeyText: $kimiKeyText,
-                kimiEditing: $kimiEditing,
+            APIKeyProviderSettingsSection(
+                id: .kimi,
+                fields: [
+                    APIKeyFieldDescriptor(
+                        id: "apiKey",
+                        placeholder: "API key (输入后不回显)",
+                        accessibilityLabel: "Kimi For Coding API key"
+                    )
+                ],
+                values: $kimiValues,
+                isEditing: $kimiEditing,
+                guide: ProviderCredentialGuide(
+                    summary: "在 kimi.com/code 申请 Kimi For Coding API key",
+                    linkTitle: nil,
+                    linkURL: nil
+                ),
+                footnote: nil,
+                extra: .none,
                 onRemove: { removeSubscriptionProvider(.kimi) }
-            )
+            ) { values in
+                coordinator.saveAndVerifyKimi(apiKey: values["apiKey"] ?? "")
+            }
         case .deepseek:
-            DeepSeekProviderSettingsSection(
-                deepseekKeyText: $deepseekKeyText,
-                deepseekEditing: $deepseekEditing,
+            APIKeyProviderSettingsSection(
+                id: .deepseek,
+                fields: [
+                    APIKeyFieldDescriptor(
+                        id: "apiKey",
+                        placeholder: "API key (输入后不回显)",
+                        accessibilityLabel: "DeepSeek API key"
+                    )
+                ],
+                values: $deepseekValues,
+                isEditing: $deepseekEditing,
+                guide: ProviderCredentialGuide(
+                    summary: "在 DeepSeek 平台获取 API key",
+                    linkTitle: nil,
+                    linkURL: nil
+                ),
+                footnote: nil,
+                extra: .none,
                 onRemove: { removeSubscriptionProvider(.deepseek) }
-            )
+            ) { values in
+                coordinator.saveAndVerifyDeepSeek(apiKey: values["apiKey"] ?? "")
+            }
         case .volcengine:
-            VolcengineProviderSettingsSection(
-                volcengineAKText: $volcengineAKText,
-                volcengineSKText: $volcengineSKText,
-                volcengineEditing: $volcengineEditing,
-                showsVolcengineCCImportConfirm: $showsVolcengineCCImportConfirm,
+            APIKeyProviderSettingsSection(
+                id: .volcengine,
+                fields: [
+                    APIKeyFieldDescriptor(
+                        id: "accessKey",
+                        placeholder: "Access Key (输入后不回显)",
+                        accessibilityLabel: "火山引擎 Access Key"
+                    ),
+                    APIKeyFieldDescriptor(
+                        id: "secretKey",
+                        placeholder: "Secret Key (输入后不回显)",
+                        accessibilityLabel: "火山引擎 Secret Key"
+                    )
+                ],
+                values: $volcengineValues,
+                isEditing: $volcengineEditing,
+                guide: ProviderCredentialGuide(
+                    summary: "在火山引擎控制台获取 Access Key 与 Secret Key",
+                    linkTitle: nil,
+                    linkURL: nil
+                ),
+                footnote: "此处仅做本地格式校验, 完整额度试查由 Collector 运行时承担",
+                extra: .ccSwitchImport($showsVolcengineCCImportConfirm),
                 onRemove: { removeSubscriptionProvider(.volcengine) }
-            )
+            ) { values in
+                coordinator.saveAndVerifyVolcengine(
+                    accessKey: values["accessKey"] ?? "",
+                    secretKey: values["secretKey"] ?? ""
+                )
+            }
         case .zhipu:
-            ZhipuProviderSettingsSection(
-                zhipuKeyText: $zhipuKeyText,
-                zhipuSiteIsCN: $zhipuSiteIsCN,
-                zhipuEditing: $zhipuEditing,
+            APIKeyProviderSettingsSection(
+                id: .zhipu,
+                fields: [
+                    APIKeyFieldDescriptor(
+                        id: "apiKey",
+                        placeholder: "API key (输入后不回显)",
+                        accessibilityLabel: "智谱 API key"
+                    )
+                ],
+                values: $zhipuValues,
+                isEditing: $zhipuEditing,
+                guide: ProviderCredentialGuide(
+                    summary: "在智谱 BigModel 控制台获取 API key",
+                    linkTitle: nil,
+                    linkURL: nil
+                ),
+                footnote: "此处仅做本地格式校验, 完整额度试查由 Collector 运行时承担",
+                extra: .sitePicker($zhipuSiteIsCN),
                 onRemove: { removeSubscriptionProvider(.zhipu) }
-            )
+            ) { values in
+                coordinator.saveAndVerifyZhipu(
+                    apiKey: values["apiKey"] ?? "",
+                    baseURL: zhipuSiteIsCN
+                        ? "https://open.bigmodel.cn/api/paas/v4"
+                        : "https://api.z.ai/api/paas/v4"
+                )
+            }
         case .codex:
             CodexProviderSettingsSection(
                 showsCodexCCImportConfirm: $showsCodexCCImportConfirm,
@@ -793,18 +872,27 @@ struct SettingsView: View {
         case .claude:
             ClaudeProviderSettingsSection(
                 claudePasteText: $claudePasteText,
+                claudeEditing: $claudeEditing,
                 onRemove: { removeSubscriptionProvider(.claude) }
             )
         case .grok:
             GrokProviderSettingsSection(
                 grokPasteText: $grokPasteText,
+                grokEditing: $grokEditing,
                 onRemove: { removeSubscriptionProvider(.grok) }
             )
         case .opencodeGo:
-            OpenCodeGoProviderSettingsSection(
-                opencodeGoPasteText: $opencodeGoPasteText,
-                opencodeGoEditing: $opencodeGoEditing,
-                onRemove: { removeSubscriptionProvider(.opencodeGo) }
+            OfficialLocalProviderSettingsSection(
+                id: .opencodeGo,
+                available: false,
+                missingHint: "未检测到 OpenCode GO 登录态",
+                pasteText: $opencodeGoPasteText,
+                onRemove: { removeSubscriptionProvider(.opencodeGo) },
+                importFromLocal: {},
+                savePaste: { coordinator.importOpenCodeGoFromPaste($0) },
+                pasteHint: "打开 opencode.ai → 登录 → 开发者工具 → Application → Cookies → 复制 auth 值 (Fe26.2**...) 与 workspace URL 中的 wrk_ ID, 粘贴 JSON",
+                showsLocalRedetect: false,
+                isEditing: $opencodeGoEditing
             )
         }
     }

@@ -147,8 +147,14 @@ package final class AppModel: ObservableObject {
     @Published package private(set) var moduleResults: [CollectorModule: ModuleReadinessResult] = [:]
     /// 正在扫描或验证的模块, 供设置页禁用对应按钮.
     @Published package private(set) var busyModules: Set<CollectorModule> = []
-    /// 设置页操作失败的用户可读错误, 不含凭证.
+    /// 设置页操作失败的用户可读错误, 不含凭证. 仅用于无 provider 归属的场景
+    /// (配置存储不可用, 导入通用错误等); 有 provider 归属的错误走
+    /// `subscriptionErrorMessages`, 就地渲染在设置页对应 provider 行下方.
     @Published package private(set) var settingsErrorMessage: String?
+    /// 按订阅 provider 归集的错误, 就地渲染在设置页对应行下方.
+    /// 新动作开始 (busy 置真) 即自动消解, 避免旧错误滞留误导.
+    @Published package private(set) var subscriptionErrorMessages:
+        [SubscriptionProviderID: String] = [:]
     /// 订阅 provider 非敏感配置 (来自 OnboardingConfiguration), 供设置页渲染状态.
     @Published package private(set) var subscriptionProviders: [SubscriptionProviderID: SubscriptionProviderConfiguration] = [:]
     /// 各订阅 provider 的 Keychain 凭证是否已配置.
@@ -417,6 +423,13 @@ package final class AppModel: ObservableObject {
         settingsErrorMessage = message
     }
 
+    /// 记录某个订阅 provider 的错误; 传 nil 表示消解.
+    package func setSettingsError(
+        _ message: String?, for provider: SubscriptionProviderID
+    ) {
+        subscriptionErrorMessages[provider] = message
+    }
+
     package func setSubscriptionProviders(
         _ providers: [SubscriptionProviderID: SubscriptionProviderConfiguration]
     ) {
@@ -460,6 +473,8 @@ package final class AppModel: ObservableObject {
     ) {
         if busy {
             busySubscriptionProviders.insert(provider)
+            // 新动作开始即消解上一次的就地错误, 避免旧提示滞留.
+            subscriptionErrorMessages[provider] = nil
         } else {
             busySubscriptionProviders.remove(provider)
         }

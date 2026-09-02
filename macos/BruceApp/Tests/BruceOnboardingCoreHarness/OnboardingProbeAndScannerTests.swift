@@ -372,4 +372,15 @@ extension BruceOnboardingCoreHarness {
         )
     }
 
+    static func standardPathsIncludeCodeBuddyProjects() throws {
+        let home = URL(fileURLWithPath: "/Users/example")
+        let paths = LocalDependencyScanPaths.standard(home: home)
+        let codebuddy = paths.sessionDirectories.first { $0.displayName == "CodeBuddy" }
+        try coreExpect(codebuddy != nil, "standard paths 应包含 CodeBuddy 会话目录")
+        try coreExpect(
+            codebuddy?.url.path == "/Users/example/.codebuddy/projects",
+            "CodeBuddy 会话目录 URL 错误: \(String(describing: codebuddy?.url))"
+        )
+    }
+
 }

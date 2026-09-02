@@ -47,6 +47,12 @@ struct CodexProviderSettingsSection: View {
                 .disabled(busy)
                 .accessibilityHint("只读发现 CC Switch 管理的 Codex 账号元数据, 不导入登录令牌")
             }
+            // 凭证获取引导: 设备码登录为主路径, 本机 / CC Switch 导入为只读补充.
+            ProviderCredentialGuide.view(ProviderCredentialGuide(
+                summary: "通过 OpenAI 官方设备码登录获取额度; 也可只读导入本机 CLI 或 CC Switch 已登录账号的元数据.",
+                linkTitle: "打开 Codex 设备码登录页",
+                linkURL: URL(string: "https://auth.openai.com/codex/device")
+            ))
             codexAccountStatusesList
             // 迁移结果提示 (任务 7): 阻断性错误显示可操作提示, 不泄露
             // 账号 ID/邮箱/token 或 Keychain 名称.
@@ -67,6 +73,8 @@ struct CodexProviderSettingsSection: View {
                     cancel: { coordinator.cancelCodexLogin() }
                 )
             }
+            // 就地错误: 登录 / 导入 / 写入失败均按 provider 归因, 不回显 token.
+            SubscriptionInlineErrorView(provider: .codex)
         }
     }
 

@@ -281,7 +281,7 @@ final class SubscriptionService {
     mutate: (inout SubscriptionProviderConfiguration) -> Void
     ) -> Bool {
         guard let configStore else {
-            model.setSettingsError("配置存储不可用, 无法保存订阅配置")
+            model.setSettingsError("配置存储不可用, 无法保存订阅配置", for: id)
             return false
         }
         var config = configStore.load() ?? OnboardingConfiguration()
@@ -292,7 +292,7 @@ final class SubscriptionService {
         do {
             try configStore.save(config)
         } catch {
-            model.setSettingsError("\(id.displayName) 订阅配置保存失败")
+            model.setSettingsError("\(id.displayName) 订阅配置保存失败", for: id)
             return false
         }
         publishSubscriptionProviders(from: config)
@@ -326,7 +326,9 @@ final class SubscriptionService {
             try store.updateAuthorizationState(.connected, for: accountID)
             return true
         } catch {
-            model.setSettingsError("\(provider.displayName) 凭证写入 Keychain 失败")
+            model.setSettingsError(
+                "\(provider.displayName) 凭证写入 Keychain 失败", for: provider
+            )
             return false
         }
     }
@@ -342,11 +344,12 @@ final class SubscriptionService {
         }) else { return }
         switch status {
             case .ok:
-            model.setSettingsError(nil)
+            model.setSettingsError(nil, for: id)
             case .failed(let reason):
-            model.setSettingsError("\(id.displayName) 验证失败: \(reason)")
+            model.setSettingsError("\(id.displayName) 验证失败: \(reason)", for: id)
             case .needsRelogin:
-            model.setSettingsError("\(id.displayName) 需要重新登录")            case .none:
+            model.setSettingsError("\(id.displayName) 需要重新登录", for: id)
+            case .none:
             break
         }
     }
@@ -364,7 +367,7 @@ final class SubscriptionService {
         Task { @MainActor in
             let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !key.isEmpty else {
-                model.setSettingsError("请输入 DeepSeek API key")
+                model.setSettingsError("请输入 DeepSeek API key", for: .deepseek)
                 return
             }
             model.setBusySubscription(true, for: .deepseek)
@@ -372,7 +375,7 @@ final class SubscriptionService {
 
             // 1. 预写禁用配置 + 新追踪 ID
             guard let oldEntry = prewriteDisabledDeepSeek() else {
-                model.setSettingsError("DeepSeek 订阅配置保存失败")
+                model.setSettingsError("DeepSeek 订阅配置保存失败", for: .deepseek)
                 return
             }
 
@@ -386,7 +389,7 @@ final class SubscriptionService {
             )
             if !saved {
                 restoreDeepSeekConfig(oldEntry)
-                model.setSettingsError("DeepSeek 凭证写入 Keychain 失败")
+                model.setSettingsError("DeepSeek 凭证写入 Keychain 失败", for: .deepseek)
                 return
             }
             model.setSubscriptionCredentialConfigured(true, for: .deepseek)
@@ -401,7 +404,7 @@ final class SubscriptionService {
     /// 保存失败返回 nil (fail-closed, 调用方不得继续写 Keychain).
     private func prewriteDisabledDeepSeek() -> SubscriptionProviderConfiguration?? {
         guard let configStore else {
-            model.setSettingsError("配置存储不可用, 无法保存订阅配置")
+            model.setSettingsError("配置存储不可用, 无法保存订阅配置", for: .deepseek)
             return nil
         }
         let result: DeepSeekSaveTransaction.PrewriteResult
@@ -501,7 +504,10 @@ final class SubscriptionService {
             )
             switch result {
                 case .failure(let error):
-                model.setSettingsError("从 CC Switch 导入火山引擎失败: \(error.description)")
+                model.setSettingsError(
+                    "从 CC Switch 导入火山引擎失败: \(error.description)",
+                    for: .volcengine
+                )
                 case .success(let credentials):
                 saveAndVerifyVolcengine(
                 accessKey: credentials.accessKey,
@@ -538,7 +544,9 @@ final class SubscriptionService {
         let fileURL = ClaudeCLICredentialImporter.defaultFileURL(homeURL)
         switch ClaudeCLICredentialImporter().importCredentials(fileURL: fileURL) {
             case .failure(let error):
-            model.setSettingsError("Claude 本机凭证导入失败: \(error.description)")
+            model.setSettingsError(
+                "Claude 本机凭证导入失败: \(error.description)", for: .claude
+            )
             case .success(let json):
             saveClaudeOAuthJSON(json)
         }
@@ -548,7 +556,9 @@ final class SubscriptionService {
     func importClaudeFromPaste(_ paste: String) {
         switch ClaudePasteParser.parse(paste) {
             case .failure(let error):
-            model.setSettingsError("Claude 凭证解析失败: \(error.description)")
+            model.setSettingsError(
+                "Claude 凭证解析失败: \(error.description)", for: .claude
+            )
             case .success(let json):
             saveClaudeOAuthJSON(json)
         }
@@ -561,7 +571,7 @@ final class SubscriptionService {
         )
         switch status {
             case .missing, .malformed:
-            model.setSettingsError("Claude 凭证无效, 请重新粘贴")
+            model.setSettingsError("Claude 凭证无效, 请重新粘贴", for: .claude)
             return
             case .valid:
             // 多账号路径: 写入 ProviderAccountStore (upsert).
@@ -578,7 +588,7 @@ final class SubscriptionService {
             finishVerification(.claude, status: .ok)
             case .expired:
             // 过期凭证保留粘贴入口, 提示重新登录 (不写入 Keychain)
-            model.setSettingsError("Claude 登录已过期, 请粘贴新凭证")
+            model.setSettingsError("Claude 登录已过期, 请粘贴新凭证", for: .claude)
             finishVerification(.claude, status: .needsRelogin)
         }
         refreshOfficialLocalAvailability()
@@ -589,7 +599,9 @@ final class SubscriptionService {
         let fileURL = GrokCLICredentialImporter.defaultFileURL(homeURL)
         switch GrokCLICredentialImporter().importCredentials(fileURL: fileURL) {
             case .failure(let error):
-            model.setSettingsError("Grok 本机凭证导入失败: \(error.description)")
+            model.setSettingsError(
+                "Grok 本机凭证导入失败: \(error.description)", for: .grok
+            )
             case .success(let json):
             saveGrokOAuthJSON(json)
         }
@@ -599,7 +611,9 @@ final class SubscriptionService {
     func importGrokFromPaste(_ paste: String) {
         switch GrokPasteParser.parse(paste) {
             case .failure(let error):
-            model.setSettingsError("Grok 凭证解析失败: \(error.description)")
+            model.setSettingsError(
+                "Grok 凭证解析失败: \(error.description)", for: .grok
+            )
             case .success(let json):
             saveGrokOAuthJSON(json)
         }
@@ -612,7 +626,7 @@ final class SubscriptionService {
         )
         switch status {
             case .missing, .malformed:
-            model.setSettingsError("Grok 凭证无效, 请重新粘贴")
+            model.setSettingsError("Grok 凭证无效, 请重新粘贴", for: .grok)
             return
             case .valid:
             // 多账号路径: 写入 ProviderAccountStore (upsert).
@@ -629,7 +643,7 @@ final class SubscriptionService {
             finishVerification(.grok, status: .ok)
             case .expired:
             // 过期凭证保留粘贴入口, 提示重新登录 (不写入 Keychain)
-            model.setSettingsError("Grok 登录已过期, 请粘贴新凭证")
+            model.setSettingsError("Grok 登录已过期, 请粘贴新凭证", for: .grok)
             finishVerification(.grok, status: .needsRelogin)
         }
         refreshOfficialLocalAvailability()
@@ -647,7 +661,10 @@ final class SubscriptionService {
             _ = dict
             saveOpenCodeGoOAuthJSON(trimmed)
         } else {
-            model.setSettingsError("OpenCode GO 凭证无效, 请粘贴 auth cookie 与 workspaceId 的 JSON")
+            model.setSettingsError(
+                "OpenCode GO 凭证无效, 请粘贴 auth cookie 与 workspaceId 的 JSON",
+                for: .opencodeGo
+            )
         }
     }
 
@@ -656,7 +673,10 @@ final class SubscriptionService {
         let status = SubscriptionCredentialEvaluator.opencodeGoStatus(of: json)
         switch status {
             case .missing, .malformed:
-            model.setSettingsError("OpenCode GO 凭证无效, 请粘贴 auth cookie 与 workspaceId")
+            model.setSettingsError(
+                "OpenCode GO 凭证无效, 请粘贴 auth cookie 与 workspaceId",
+                for: .opencodeGo
+            )
             return
             case .valid:
             let workspace = Self.opencodeGoWorkspaceID(from: json) ?? json
@@ -673,7 +693,7 @@ final class SubscriptionService {
             model.setSubscriptionCredentialConfigured(true, for: .opencodeGo)
             finishVerification(.opencodeGo, status: .ok)
             case .expired:
-            model.setSettingsError("OpenCode GO 登录已过期, 请粘贴新凭证")
+            model.setSettingsError("OpenCode GO 登录已过期, 请粘贴新凭证", for: .opencodeGo)
             finishVerification(.opencodeGo, status: .needsRelogin)
         }
     }
@@ -681,24 +701,120 @@ final class SubscriptionService {
     /// OpenCode GO: 用 Keychain 现有凭证重新触发验证状态迁移
     /// (凭证已存在但验证状态缺失/过期时, 由设置页"重新验证"触发).
     func reverifyOpenCodeGo() {
-        let store = accountStore(for: .opencodeGo)
-        guard let index = try? store.loadIndex(),
-              let first = index.accounts.first,
-              let record = try? store.loadRecord(for: first.accountID) else {
-            model.setSettingsError("OpenCode GO 未找到已保存凭证")
+        Task { await reverify(.opencodeGo) }
+    }
+
+    /// 用已存凭证重跑验证状态迁移 (设置页"重新验证"统一入口).
+    /// 覆盖 kimi / deepseek / 火山引擎 / 智谱 (本地格式校验) 与
+    /// claude / grok / opencodeGo (Evaluator 判定); codex / antigravity 不提供.
+    /// 多账号下取最近更新的账号记录 (见 ProviderAccountStore.index 顺序约定),
+    /// 旧账号残留问题不在本次范围 (见下方 `firstAccountRecord`).
+    func reverify(_ id: SubscriptionProviderID) async {
+        guard let record = firstAccountRecord(for: id) else {
+            model.setSettingsError(
+                "\(id.displayName) 未找到已保存凭证", for: id
+            )
             return
         }
-        let status = SubscriptionCredentialEvaluator.opencodeGoStatus(
-            of: record.credentialJSON
-        )
-        switch status {
+        model.setBusySubscription(true, for: id)
+        defer { model.setBusySubscription(false, for: id) }
+        switch id {
+        case .kimi:
+            finishVerification(
+                .kimi,
+                status: ProviderConnectionVerifier.verifyKimiAPIKey(record.credentialJSON)
+            )
+        case .deepseek:
+            finishVerification(
+                .deepseek,
+                status: await verifier.verifyDeepSeek(
+                    apiKey: record.credentialJSON, session: nil
+                )
+            )
+        case .volcengine:
+            guard case let .akSk(ak, sk) = StoredCredentialParser.parse(
+                provider: .volcengine, credentialJSON: record.credentialJSON
+            ) else {
+                model.setSettingsError(
+                    "火山引擎凭证形态不兼容, 请重新粘贴 AK/SK", for: .volcengine
+                )
+                return
+            }
+            finishVerification(
+                .volcengine,
+                status: ProviderConnectionVerifier.verifyVolcengineCredentials(
+                    accessKey: ak, secretKey: sk
+                )
+            )
+        case .zhipu:
+            guard case let .zhipu(key, base) = StoredCredentialParser.parse(
+                provider: .zhipu, credentialJSON: record.credentialJSON
+            ) else {
+                model.setSettingsError(
+                    "智谱凭证形态不兼容, 请重新粘贴 API key", for: .zhipu
+                )
+                return
+            }
+            finishVerification(
+                .zhipu,
+                status: ProviderConnectionVerifier.verifyZhipuCredentials(
+                    apiKey: key, baseURL: base
+                )
+            )
+        case .claude:
+            switch SubscriptionCredentialEvaluator.claudeStatus(
+                of: record.credentialJSON, now: Date()
+            ) {
             case .valid:
-            finishVerification(.opencodeGo, status: .ok)
+                finishVerification(.claude, status: .ok)
             case .missing, .malformed:
-            model.setSettingsError("OpenCode GO 凭证不完整, 请重新粘贴")
+                model.setSettingsError("Claude 凭证无效, 请重新粘贴", for: .claude)
             case .expired:
-            finishVerification(.opencodeGo, status: .needsRelogin)
+                finishVerification(.claude, status: .needsRelogin)
+            }
+        case .grok:
+            switch SubscriptionCredentialEvaluator.grokStatus(
+                of: record.credentialJSON, now: Date()
+            ) {
+            case .valid:
+                finishVerification(.grok, status: .ok)
+            case .missing, .malformed:
+                model.setSettingsError("Grok 凭证无效, 请重新粘贴", for: .grok)
+            case .expired:
+                finishVerification(.grok, status: .needsRelogin)
+            }
+        case .opencodeGo:
+            switch SubscriptionCredentialEvaluator.opencodeGoStatus(
+                of: record.credentialJSON
+            ) {
+            case .valid:
+                finishVerification(.opencodeGo, status: .ok)
+            case .missing, .malformed:
+                model.setSettingsError("OpenCode GO 凭证不完整, 请重新粘贴", for: .opencodeGo)
+            case .expired:
+                finishVerification(.opencodeGo, status: .needsRelogin)
+            }
+        case .codex, .antigravity:
+            // 这两条链路不提供本地重新验证 (codex 走 token manager,
+            // antigravity 无额度查询实现).
+            model.setSettingsError(
+                "\(id.displayName) 暂不支持重新验证", for: id
+            )
         }
+    }
+
+    /// 取 provider 最近更新的账号记录 (index 按更新时间升序, 末位最新).
+    /// 找不到返回 nil; 多账号选型语义详见 `reverify(_:)` 的说明.
+    private func firstAccountRecord(
+        for id: SubscriptionProviderID
+    ) -> ProviderAccountRecord? {
+        let store = accountStore(for: id)
+        guard let index = try? store.loadIndex(),
+              let last = index.accounts.last,
+              let record = try? store.loadRecord(for: last.accountID) else {
+            return nil
+        }
+        return record
     }
 
     /// 从 OpenCode GO 凭证 JSON 提取 workspaceId; 失败返回 nil.
@@ -726,7 +842,7 @@ final class SubscriptionService {
             accounts, now: Date()
             )
         } catch {
-            model.setSettingsError("Codex 认证文件解析失败, 仅发现账号元数据")
+            model.setSettingsError("Codex 认证文件解析失败, 仅发现账号元数据", for: .codex)
             return
         }
         finishCodexDiscoveryImport()
@@ -748,7 +864,7 @@ final class SubscriptionService {
             accounts, now: Date()
             )
         } catch {
-            model.setSettingsError("CC Switch Codex 账号库解析失败, 仅发现账号元数据")
+            model.setSettingsError("CC Switch Codex 账号库解析失败, 仅发现账号元数据", for: .codex)
             return
         }
         finishCodexDiscoveryImport()
@@ -788,7 +904,7 @@ final class SubscriptionService {
                 guard error != .cancelled else { return }
                 self.codexDeviceLogin = nil
                 self.model.setSettingsError(
-                "Codex 登录发起失败: \(error.description)"
+                    "Codex 登录发起失败: \(error.description)", for: .codex
                 )
                 return
                 case .success(let parsed):
@@ -844,8 +960,8 @@ final class SubscriptionService {
                 } catch {
                     self.codexDeviceLogin = nil
                     self.model.setSettingsError(
-                    "Codex 凭证写入 Keychain 失败, 登录未完成"
-                    )
+                    "Codex 凭证写入 Keychain 失败, 登录未完成", for: .codex
+                )
                     return
                 }
                 self.publishCodexCredentialConfigured()
@@ -884,7 +1000,7 @@ final class SubscriptionService {
             default:
             codexDeviceLogin?.stage = .failed(error.description)
         }
-        model.setSettingsError("Codex 登录未完成: \(error.description)")
+        model.setSettingsError("Codex 登录未完成: \(error.description)", for: .codex)
     }
 
     /// Antigravity: 从本机导入 (用户点击触发); 优先令牌文件,
@@ -903,11 +1019,12 @@ final class SubscriptionService {
             switch localProbe.readAgyKeychainCredential() {
                 case .notFound:
                 model.setSettingsError(
-                "未找到 Antigravity 登录态, 请先通过 Antigravity CLI 登录"
+                    "未找到 Antigravity 登录态, 请先通过 Antigravity CLI 登录",
+                    for: .antigravity
                 )
                 return
                 case .decodeFailed:
-                model.setSettingsError("Antigravity Keychain 令牌解码失败")
+                model.setSettingsError("Antigravity Keychain 令牌解码失败", for: .antigravity)
                 return
                 case .decoded(let text):
                 json = text
@@ -975,7 +1092,7 @@ final class SubscriptionService {
             }
         } catch {
             model.setSettingsError(
-            "\(id.displayName) 凭证删除失败, 请在 Keychain 中手动检查"
+                "\(id.displayName) 凭证删除失败, 请在 Keychain 中手动检查", for: id
             )
             return
         }
@@ -1013,7 +1130,7 @@ final class SubscriptionService {
             model.setSettingsError(nil)
         } catch {
             model.setSettingsError(
-                "\(id.displayName) 账号移除失败, 请在 Keychain 中手动检查"
+                "\(id.displayName) 账号移除失败, 请在 Keychain 中手动检查", for: id
             )
         }
     }
@@ -1025,13 +1142,13 @@ final class SubscriptionService {
         do {
             let index = try codexStore.loadIndex()
             guard index.entry(for: accountID) != nil else {
-                model.setSettingsError("Codex 账号不存在, 未执行移除")
+                model.setSettingsError("Codex 账号不存在, 未执行移除", for: .codex)
                 return
             }
             try await codexTokenManager.disconnect(accountID: accountID)
         } catch {
             model.setSettingsError(
-                "Codex 账号移除失败, 请在 Keychain 中手动检查"
+                "Codex 账号移除失败, 请在 Keychain 中手动检查", for: .codex
             )
             return
         }
@@ -1069,7 +1186,7 @@ final class SubscriptionService {
             try store.updateAuthorizationState(state, for: accountID)
             publishAllProviderAccountSummaries()
         } catch {
-            model.setSettingsError("\(id.displayName) 账号状态更新失败")
+            model.setSettingsError("\(id.displayName) 账号状态更新失败", for: id)
         }
     }
 
@@ -1106,7 +1223,7 @@ final class SubscriptionService {
             }
         } catch {
             model.setSettingsError(
-            "Codex 凭证删除失败, 请在 Keychain 中手动检查"
+            "Codex 凭证删除失败, 请在 Keychain 中手动检查", for: .codex
             )
             return
         }
@@ -1123,7 +1240,7 @@ final class SubscriptionService {
     ) {
         if enabled {
             guard credentialConfigured(id) else {
-                model.setSettingsError("请先配置 \(id.displayName) 凭证再启用")
+                model.setSettingsError("请先配置 \(id.displayName) 凭证再启用", for: id)
                 return
             }
         }

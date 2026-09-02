@@ -13,7 +13,7 @@
 
 | 数据源 | 方式 | 凭证需求 |
 |---|---|---|
-| Kimi Work / Kimi Code、Claude Code、Codex、Grok、OpenCode、Orca、Pi、ZCode | Collector 只读本机既有会话记录 | 无 (不读密码, 不写会话) |
+| Kimi Work / Kimi Code、Claude Code、Codex、Grok、OpenCode、Orca、Pi、ZCode、CodeBuddy | Collector 只读本机既有会话记录 | 无 (不读密码, 不写会话) |
 | CC Switch SQLite 与 Antigravity 会话库 | SQLite URI `mode=ro` 一次性只读导入/探测 | 无 |
 
 ## 订阅额度 Provider 矩阵

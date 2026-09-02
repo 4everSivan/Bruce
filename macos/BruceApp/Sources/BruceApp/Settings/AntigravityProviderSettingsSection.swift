@@ -18,6 +18,12 @@ struct AntigravityProviderSettingsSection: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            // 凭证获取引导: 本机 OAuth 文件优先, 其次 agy 登录 Keychain 条目.
+            ProviderCredentialGuide.view(ProviderCredentialGuide(
+                summary: "先通过 Antigravity CLI 完成登录, 再由本应用只读导入本机 OAuth 令牌; 未检测到登录态时无法导入.",
+                linkTitle: nil,
+                linkURL: nil
+            ))
             managementActionRow(
                 configured: model.subscriptionProviders[.antigravity] != nil,
                 removeHint: "从列表移除 Antigravity 订阅",
@@ -30,6 +36,8 @@ struct AntigravityProviderSettingsSection: View {
                     .accessibilityHint("读取 Antigravity CLI 的本机 OAuth 令牌 (文件或钥匙串)")
                 }
             }
+            // 就地错误: 导入 / 解码 / 校验失败均按 provider 归因, 不回显 token.
+            SubscriptionInlineErrorView(provider: .antigravity)
         }
     }
 }

@@ -8,6 +8,7 @@ struct ClaudeProviderSettingsSection: View {
     @EnvironmentObject private var coordinator: OnboardingCoordinator
 
     @Binding var claudePasteText: String
+    @Binding var claudeEditing: Bool
     var onRemove: () -> Void
 
     var body: some View {
@@ -18,7 +19,10 @@ struct ClaudeProviderSettingsSection: View {
             pasteText: $claudePasteText,
             onRemove: onRemove,
             importFromLocal: { coordinator.importClaudeFromLocal() },
-            savePaste: { coordinator.importClaudeFromPaste($0) }
+            savePaste: { coordinator.importClaudeFromPaste($0) },
+            pasteHint: nil,
+            showsLocalRedetect: true,
+            isEditing: $claudeEditing
         )
     }
 }

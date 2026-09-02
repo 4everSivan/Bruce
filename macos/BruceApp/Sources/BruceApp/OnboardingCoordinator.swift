@@ -187,6 +187,11 @@ final class OnboardingCoordinator: ObservableObject {
         subscriptions.reverifyOpenCodeGo()
     }
 
+    /// 用已存凭证重跑验证 (设置页"重新验证"统一入口).
+    func reverify(_ id: SubscriptionProviderID) {
+        Task { await subscriptions.reverify(id) }
+    }
+
     func importCodexFromLocalCLI() {
         subscriptions.importCodexFromLocalCLI()
     }

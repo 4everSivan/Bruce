@@ -877,4 +877,95 @@ extension BruceOnboardingCoreHarness {
             }
         }
     }
+
+    // MARK: - StoredCredentialParser
+
+    /// 解析 ProviderAccountStore 的 credentialJSON, 覆盖裸 key / AK-SK / 智谱
+    /// 以及 OAuth 形态返回 nil 与非法输入的各种边界.
+    static func storedCredentialParserMappings() throws {
+        // Kimi / DeepSeek: 裸 key 字符串
+        try coreExpect(
+            StoredCredentialParser.parse(
+                provider: .kimi, credentialJSON: "  sk-abc123  "
+            ) == .apiKey("sk-abc123"),
+            "Kimi 裸 key 应去空白回传 apiKey"
+        )
+        try coreExpect(
+            StoredCredentialParser.parse(provider: .deepseek, credentialJSON: "sk-xyz")
+                == .apiKey("sk-xyz"),
+            "DeepSeek 裸 key 应回传 apiKey"
+        )
+        try coreExpect(
+            StoredCredentialParser.parse(provider: .kimi, credentialJSON: "   ")
+                == nil,
+            "空 key 应返回 nil"
+        )
+
+        // 火山引擎: {"accessKey","secretKey"}
+        let volcJSON = """
+        {"accessKey":"AKIDxxxx","secretKey":"SECRETyyyy"}
+        """
+        try coreExpect(
+            StoredCredentialParser.parse(
+                provider: .volcengine, credentialJSON: volcJSON
+            ) == .akSk(accessKey: "AKIDxxxx", secretKey: "SECRETyyyy"),
+            "火山 AK/SK JSON 应回传 akSk"
+        )
+        // 多余字段容忍
+        let volcExtra = """
+        {"accessKey":"AK","secretKey":"SK","region":"cn-north-1"}
+        """
+        try coreExpect(
+            StoredCredentialParser.parse(
+                provider: .volcengine, credentialJSON: volcExtra
+            ) == .akSk(accessKey: "AK", secretKey: "SK"),
+            "火山 AK/SK 多余字段应容忍"
+        )
+        try coreExpect(
+            StoredCredentialParser.parse(
+                provider: .volcengine, credentialJSON: "{\"secretKey\":\"SK\"}"
+            ) == nil,
+            "火山缺 accessKey 应返回 nil"
+        )
+        try coreExpect(
+            StoredCredentialParser.parse(
+                provider: .volcengine, credentialJSON: "not json"
+            ) == nil,
+            "火山非法 JSON 应返回 nil"
+        )
+
+        // 智谱: {"api_key","base_url"}
+        let zhipuJSON = """
+        {"api_key":"id.secret","base_url":"https://open.bigmodel.cn/api/paas/v4"}
+        """
+        try coreExpect(
+            StoredCredentialParser.parse(
+                provider: .zhipu, credentialJSON: zhipuJSON
+            ) == .zhipu(apiKey: "id.secret", baseURL: "https://open.bigmodel.cn/api/paas/v4"),
+            "智谱 api_key/base_url 应回传 zhipu"
+        )
+        try coreExpect(
+            StoredCredentialParser.parse(
+                provider: .zhipu, credentialJSON: "{\"api_key\":\"id.secret\"}"
+            ) == nil,
+            "智谱缺 base_url 应返回 nil"
+        )
+
+        // OAuth 形态 (Claude / Grok / OpenCode GO): 重新验证走 Evaluator, 不解析
+        let oauthJSON = """
+        {"claudeAiOauth":{"accessToken":"t","refreshToken":"r"}}
+        """
+        try coreExpect(
+            StoredCredentialParser.parse(
+                provider: .claude, credentialJSON: oauthJSON
+            ) == nil,
+            "Claude OAuth JSON 应返回 nil"
+        )
+        try coreExpect(
+            StoredCredentialParser.parse(
+                provider: .opencodeGo, credentialJSON: "{\"auth\":\"x\",\"workspaceId\":\"wrk\"}"
+            ) == nil,
+            "OpenCode GO 凭证应返回 nil"
+        )
+    }
 }

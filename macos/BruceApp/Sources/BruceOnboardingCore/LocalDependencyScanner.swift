@@ -77,6 +77,11 @@ public struct LocalDependencyScanPaths: Sendable {
                     displayName: "ZCode",
                     url: home.appendingPathComponent(".zcode/cli/db/db.sqlite")
                 ),
+                // CodeBuddy CLI 会话树 (jsonl 目录, agent 用量只读来源)
+                SessionDirectory(
+                    displayName: "CodeBuddy",
+                    url: home.appendingPathComponent(".codebuddy/projects")
+                ),
             ],
             sqliteDatabases: [
                 SQLiteDatabase(
