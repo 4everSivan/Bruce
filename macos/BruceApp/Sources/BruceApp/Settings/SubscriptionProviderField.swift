@@ -7,6 +7,7 @@ import SwiftUI
 /// 单个凭证输入框的描述 (API key / AK / SK 共用同一组件).
 struct APIKeyFieldDescriptor: Identifiable {
     let id: String // 取值键, 如 "apiKey" / "accessKey" / "secretKey"
+    let label: String // 字段标题, 显示在输入框上方
     let placeholder: String
     let accessibilityLabel: String
 }

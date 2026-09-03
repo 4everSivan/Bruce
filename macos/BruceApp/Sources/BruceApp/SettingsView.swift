@@ -5,8 +5,9 @@ import SwiftUI
 import UniformTypeIdentifiers
 import UserNotifications
 
-/// 设置页: 左侧边栏分类导航 + 右侧单分类面板 (方案 A, 原型 settings-redesign-v1).
-/// 状态同时使用图标和文字; 扫描或验证中的卡片只禁用对应按钮, 不阻塞其他模块.
+/// 设置页: 左侧边栏分类导航 + 右侧单分类面板, Fluent 平面视觉
+/// (token 与组件见 Settings/FluentSettingsChrome.swift, 1:1 对齐
+/// docs/design/settings-layout-demo.html).
 struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var coordinator: OnboardingCoordinator
@@ -16,17 +17,13 @@ struct SettingsView: View {
     @State private var category = SettingsCategory.general
     @State private var diagnosticsPreview = ""
     @State private var showsDiagnosticsPreview = false
-    // 订阅额度分区输入与编辑态
+    // 订阅额度分区输入态 (编辑态由配置对话框内部管理)
     @State private var deepseekValues: [String: String] = [:]
-    @State private var deepseekEditing = false
     @State private var volcengineValues: [String: String] = [:]
-    @State private var volcengineEditing = false
     @State private var showsVolcengineCCImportConfirm = false
     @State private var zhipuValues: [String: String] = [:]
     @State private var zhipuSiteIsCN = true
-    @State private var zhipuEditing = false
     @State private var kimiValues: [String: String] = [:]
-    @State private var kimiEditing = false
     @State private var claudePasteText = ""
     @State private var claudeEditing = false
     @State private var grokPasteText = ""
@@ -34,9 +31,10 @@ struct SettingsView: View {
     @State private var opencodeGoPasteText = ""
     @State private var opencodeGoEditing = false
     @State private var showsCodexCCImportConfirm = false
-    // 订阅额度标签式管理: 本次会话点击添加的 provider 与展开态
+    // 订阅额度标签式管理: 本次会话点击添加的 provider 与 P2 配置 sheet 目标
     @State private var addedSubscriptionProviders: Set<SubscriptionProviderID> = []
-    @State private var expandedSubscriptionProviders: Set<SubscriptionProviderID> = []
+    /// 当前在配置 sheet 中打开的 provider (P2 对话框).
+    @State private var configuringProvider: SubscriptionProviderID?
     @State private var providerToAdd: SubscriptionProviderID?
     // 通知权限状态: denied 时预警通知无法投递, 提示用户前往系统设置
     @State private var notificationDenied = false
@@ -51,7 +49,7 @@ struct SettingsView: View {
         let displayName: String
     }
 
-    /// 侧边栏分类: 图标色沿用原分区色条配色.
+    /// 侧边栏分类: 线性图标 (跨平台同构, 对应 WinUI NavigationView).
     private enum SettingsCategory: String, CaseIterable, Identifiable {
         case general, agentUsage, subscription, consent, maintenance
 
@@ -70,20 +68,10 @@ struct SettingsView: View {
         var systemImage: String {
             switch self {
             case .general: return "gearshape"
-            case .agentUsage: return "chart.bar.fill"
-            case .subscription: return "cloud.fill"
-            case .consent: return "checkmark.shield.fill"
-            case .maintenance: return "wrench.and.screwdriver.fill"
-            }
-        }
-
-        var tint: Color {
-            switch self {
-            case .general: return Color(hex: "#0a84ff")
-            case .agentUsage: return Color(hex: "#30d158")
-            case .subscription: return Color(hex: "#ff9f0a")
-            case .consent: return Color(hex: "#bf5af2")
-            case .maintenance: return Color(hex: "#8e8e93")
+            case .agentUsage: return "chart.bar"
+            case .subscription: return "cloud"
+            case .consent: return "checkmark.shield"
+            case .maintenance: return "wrench.and.screwdriver"
             }
         }
     }
@@ -91,7 +79,11 @@ struct SettingsView: View {
     var body: some View {
         HStack(spacing: 0) {
             sidebar
-            Divider()
+            // demo: 侧栏与内容之间是 1px 平面分隔线, 非系统 Divider 的半透明黑
+            Rectangle()
+                .fill(SettingsDemoTokens.separator)
+                .frame(width: 1)
+                .frame(maxHeight: .infinity)
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     if let error = model.settingsErrorMessage {
@@ -100,6 +92,7 @@ struct SettingsView: View {
                             .foregroundStyle(.orange)
                             .accessibilityLabel("设置错误: \(error)")
                     }
+                    crumb("设置 / \(category.title)")
                     paneTitle(category.title)
                     paneContent
                 }
@@ -108,462 +101,27 @@ struct SettingsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(SettingsDemoTokens.window)
+            // P2 配置对话框: 挂在右侧内容 ScrollView 上, 与 body 根的
+            // showsDiagnosticsPreview sheet 错开挂载点, 避免同视图双 sheet 冲突.
+            .sheet(isPresented: Binding(
+                get: { configuringProvider != nil },
+                set: { isPresented in
+                    if !isPresented { configuringProvider = nil }
+                }
+            )) {
+                if let id = configuringProvider {
+                    providerConfigSheet(id)
+                }
+            }
         }
         .preferredColorScheme(coordinator.appearanceMode.colorScheme)
         .environment(\.BruceResolvedTheme, coordinator.resolvedTheme)
         .sheet(isPresented: $showsDiagnosticsPreview) {
             diagnosticsPreviewSheet
         }
-        .onChange(of: model.settingsErrorMessage) { _, message in
-            if let message {
-                announce(message)
-            }
-        }
-    }
-
-    // MARK: - 侧边栏
-
-    private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            ForEach(SettingsCategory.allCases) { item in
-                Button {
-                    category = item
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: item.systemImage)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 21, height: 21)
-                            .background(
-                                item.tint,
-                                in: RoundedRectangle(cornerRadius: 5.5, style: .continuous)
-                            )
-                        Text(item.title)
-                            .font(.system(
-                                size: 12.5,
-                                weight: category == item ? .semibold : .medium
-                            ))
-                        Spacer()
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(
-                        category == item ? Color.primary.opacity(0.08) : Color.clear,
-                        in: RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    )
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(category == item ? .isSelected : [])
-            }
-            Spacer()
-        }
-        .padding(.horizontal, 10)
-        .padding(.top, 14)
-        .frame(width: 200)
-        .frame(maxHeight: .infinity)
-        .background(SidebarMaterialView())
-    }
-
-    // MARK: - 面板切换
-
-    @ViewBuilder
-    private var paneContent: some View {
-        switch category {
-        case .general: generalPane
-        case .agentUsage: agentUsagePane
-        case .subscription: subscriptionPane
-        case .consent: consentPane
-        case .maintenance: maintenancePane
-        }
-    }
-
-    /// 面板大标题.
-    private func paneTitle(_ title: String) -> some View {
-        Text(title)
-            .font(.system(size: 17, weight: .bold))
-    }
-
-    /// 面板内次级分组标题 (如「菜单栏指标」).
-    private func paneCaption(_ title: String) -> some View {
-        Text(title)
-            .font(.system(size: 10.5, weight: .semibold))
-            .tracking(0.4)
-            .foregroundStyle(.secondary)
-            .padding(.leading, 2)
-    }
-
-    // MARK: - 通用面板
-
-    /// 通用偏好: 外观, 界面风格, 模糊风格, 自动刷新与菜单栏指标.
-    private var generalPane: some View {
-        let glassSupported = coordinator.liquidGlassSupported()
-        let showBlurStyles = glassSupported
-            && coordinator.resolvedTheme.interfaceStyle == .liquidGlass
-
-        return VStack(alignment: .leading, spacing: 14) {
-            SettingsCard {
-                Picker(
-                    "配色模式",
-                    selection: Binding(
-                        get: { coordinator.appearanceMode },
-                        set: { coordinator.setAppearanceMode($0) }
-                    )
-                ) {
-                    Text("跟随系统").tag(AppearancePreference.system)
-                    Text("浅色").tag(AppearancePreference.light)
-                    Text("深色").tag(AppearancePreference.dark)
-                }
-                .pickerStyle(.segmented)
-                .accessibilityHint("立即作用于菜单栏面板与本设置窗口, 跟随系统时与 macOS 外观一致")
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Picker(
-                        "界面风格",
-                        selection: Binding(
-                            get: { coordinator.interfaceStyle },
-                            set: { coordinator.setInterfaceStyle($0) }
-                        )
-                    ) {
-                        Text("经典").tag(InterfaceStylePreference.classic)
-                        Text("液态玻璃").tag(InterfaceStylePreference.liquidGlass)
-                        Text("Nothing").tag(InterfaceStylePreference.nothing)
-                    }
-                    .pickerStyle(.segmented)
-                    // glassSupported 只约束液态玻璃 (由 coordinator fail-closed 拒绝并回弹),
-                    // 经典与 Nothing 不依赖玻璃 API, 任何系统版本均可选, 故不整段禁用.
-                    .accessibilityHint(
-                        glassSupported
-                            ? "经典为材质面板; 液态玻璃使用系统玻璃效果; Nothing 为纯色平面风格, 无模糊无玻璃"
-                            : "液态玻璃需要 macOS 26; 当前可使用经典或 Nothing"
-                    )
-                    if !glassSupported {
-                        Text("液态玻璃需要 macOS 26 或更高版本")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                if showBlurStyles {
-                    Picker(
-                        "模糊风格",
-                        selection: Binding(
-                            get: { coordinator.glassStyle },
-                            set: { coordinator.setGlassStyle($0) }
-                        )
-                    ) {
-                        Text("标准").tag(GlassStylePreference.regular)
-                        Text("通透").tag(GlassStylePreference.clear)
-                        Text("哑光").tag(GlassStylePreference.material)
-                    }
-                    .pickerStyle(.segmented)
-                    .accessibilityHint("标准与通透为系统液态玻璃, 哑光退化为材质质感")
-                }
-
-                Picker(
-                    "刷新间隔",
-                    selection: Binding(
-                        get: { coordinator.refreshIntervalMinutes },
-                        set: { coordinator.setRefreshIntervalMinutes($0) }
-                    )
-                ) {
-                    ForEach(
-                        OnboardingConfiguration.allowedRefreshIntervalMinutes,
-                        id: \.self
-                    ) { minutes in
-                        Text("\(minutes) 分钟").tag(minutes)
-                    }
-                }
-                .accessibilityHint("已授权模块的自动采集周期, 变更后立即按新间隔重新计时")
-
-                HStack {
-                    Label("系统通知", systemImage: "bell.badge")
-                    Spacer()
-                    if notificationDenied {
-                        Text("未开启")
-                            .foregroundStyle(.orange)
-                        Button("前往系统设置") {
-                            NSWorkspace.shared.open(
-                                URL(string: "x-apple.systempreferences:com.apple.preference.notifications")!
-                            )
-                        }
-                        .accessibilityHint("打开系统设置的通知面板, 为本应用开启通知权限")
-                    } else {
-                        Text("已开启")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .accessibilityElement(children: .contain)
-                .accessibilityLabel(notificationDenied ? "系统通知未开启" : "系统通知已开启")
-                .onAppear(perform: refreshNotificationStatus)
-
-                LabeledContent("版本", value: AppVersion.current())
-            }
-            .glassButtonStyle()
-
-            paneCaption("全局快捷键")
-
-            SettingsCard {
-                GlobalHotkeyRecorder()
-            }
-            .glassButtonStyle()
-
-            paneCaption("菜单栏指标")
-
-            SettingsCard {
-                Text("选择 1 至 3 项指标, 菜单栏将按下列顺序紧凑展示; 拖拽已选指标调整顺序")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                menuBarMetricList
-            }
-            .glassButtonStyle()
-        }
-    }
-
-    /// 查询系统通知授权状态; 仅 denied 视为未开启, notDetermined 会在首次预警时弹授权.
-    private func refreshNotificationStatus() {
-        UNUserNotificationCenter.current().getNotificationSettings { settings in
-            let denied = settings.authorizationStatus == .denied
-            Task { @MainActor in notificationDenied = denied }
-        }
-    }
-
-    private func moveMenuBarMetric(
-        _ dragged: MenuBarMetric,
-        onto target: MenuBarMetric
-    ) {
-        var metrics = model.menuBarMetrics
-        metrics.removeAll { $0 == dragged }
-        guard let targetIndex = metrics.firstIndex(of: target) else { return }
-        metrics.insert(dragged, at: targetIndex)
-        coordinator.setMenuBarMetrics(metrics)
-    }
-
-    /// 菜单栏指标列表: 已选指标可拖拽排序, 未选指标点击添加.
-    private var menuBarMetricList: some View {
-        VStack {
-            ForEach(model.menuBarMetrics) { metric in
-                menuBarMetricRow(metric, selected: true)
-                    .draggable(metric.rawValue)
-                    .dropDestination(for: String.self) { items, _ in
-                        guard let raw = items.first,
-                              let dragged = MenuBarMetric(rawValue: raw),
-                              dragged != metric else { return false }
-                        moveMenuBarMetric(dragged, onto: metric)
-                        return true
-                    }
-            }
-            ForEach(
-                MenuBarMetric.allCases.filter { !model.menuBarMetrics.contains($0) }
-            ) { metric in
-                menuBarMetricRow(metric, selected: false)
-            }
-        }
-    }
-
-    /// 单个菜单栏指标行: 已选行有拖拽手柄和移除按钮, 未选行有添加按钮.
-    private func menuBarMetricRow(_ metric: MenuBarMetric, selected: Bool) -> some View {
-        HStack {
-            if selected {
-                Image(systemName: "line.3.horizontal")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .accessibilityHidden(true)
-            }
-            Label(metric.title, systemImage: metric.systemImage)
-                .font(.subheadline)
-                .foregroundStyle(selected ? .primary : .secondary)
-            Spacer()
-            if selected {
-                Button {
-                    var metrics = model.menuBarMetrics
-                    guard metrics.count > 1 else { return }
-                    metrics.removeAll { $0 == metric }
-                    coordinator.setMenuBarMetrics(metrics)
-                } label: {
-                    Image(systemName: "minus.circle")
-                        .foregroundStyle(.red)
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel("移除\(metric.title)")
-            } else {
-                Button {
-                    var metrics = model.menuBarMetrics
-                    guard !metrics.contains(metric),
-                          metrics.count < MenuBarMetricConfiguration.maximumCount else {
-                        return
-                    }
-                    metrics.append(metric)
-                    coordinator.setMenuBarMetrics(metrics)
-                } label: {
-                    Image(systemName: "plus.circle")
-                        .foregroundStyle(Color.accentColor)
-                }
-                .buttonStyle(.borderless)
-                .disabled(
-                    model.menuBarMetrics.count >= MenuBarMetricConfiguration.maximumCount
-                )
-                .accessibilityLabel("添加\(metric.title)")
-            }
-        }
-    }
-
-    // MARK: - Agent 用量面板
-
-    private var agentUsagePane: some View {
-        let result = model.moduleResults[.agentUsage]
-        let sessionProbes = (result?.localDependencies ?? [])
-            .filter { $0.kind == .sessionDirectory }
-        let busy = model.busyModules.contains(.agentUsage)
-        let rustAvailable = coordinator.collectorRuntimeStatus == .rustAvailable
-
-        return VStack(alignment: .leading, spacing: 14) {
-            SettingsCard {
-                LabeledContent("Rust Collector") {
-                    statusText(
-                        rustAvailable ? "可用" : "不可用",
-                        icon: rustAvailable
-                            ? "checkmark.circle.fill"
-                            : "exclamationmark.triangle.fill"
-                    )
-                }
-                sessionSourceTagsSection(sessionProbes)
-                ForEach(visibleAgentUsageWarnings(result?.warnings ?? []), id: \.self) { warning in
-                    Label(warning, systemImage: "exclamationmark.triangle")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                if let reason = result?.blockingReason {
-                    Text(reason)
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                }
-                HStack {
-                    Button("重新检查") { coordinator.rescan() }
-                        .disabled(busy)
-                        .accessibilityLabel("重新检查 Agent 用量依赖")
-                    if busy {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-                }
-            }
-            .accessibilityElement(children: .contain)
-            .glassButtonStyle()
-        }
-    }
-
-    /// Kimi Work 和 Antigravity 属于可选增强探测, 不在 Agent 用量配置卡片中展示
-    /// 其本机不可用/数据库状态提示; 探测结果仍保留给 readiness 和诊断流程.
-    private func visibleAgentUsageWarnings(_ warnings: [String]) -> [String] {
-        warnings.filter { warning in
-            !warning.hasPrefix("Kimi Work ")
-                && !warning.hasPrefix("Antigravity 数据库:")
-        }
-    }
-
-    /// 有效会话源: 药丸标签展示; 本机可用绿色, 不可用灰色; 只展示不可点.
-    private func sessionSourceTagsSection(_ probes: [DependencyProbe]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("有效会话源")
-            if probes.isEmpty {
-                Text("尚未检查, 点击下方重新检查")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                SessionSourceFlowLayout(spacing: 6) {
-                    ForEach(Array(probes.enumerated()), id: \.offset) { _, probe in
-                        sessionSourcePill(
-                            name: probe.detail ?? "会话源",
-                            available: probe.status == .available
-                        )
-                    }
-                }
-                .accessibilityElement(children: .contain)
-                .accessibilityLabel("有效会话源")
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    /// 药丸标签: 中间为 agent 名称; 绿 = 本机目录可用, 灰 = 未发现.
-    private func sessionSourcePill(name: String, available: Bool) -> some View {
-        Text(name)
-            .font(.caption.weight(.medium))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .foregroundStyle(available ? Color.white : Color.secondary)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(
-                        available
-                            ? Color.green.opacity(0.85)
-                            : Color.secondary.opacity(0.16)
-                    )
-            )
-            .accessibilityLabel("\(name), \(available ? "本机可用" : "本机未发现")")
-            .accessibilityAddTraits(.isStaticText)
-    }
-
-    // MARK: - 订阅额度面板
-
-    /// 订阅 provider 的标签式管理: 顶部 Picker 只列未配置的 provider,
-    /// 点击添加后其管理组出现在下方列表 (默认收起为一行).
-    /// 读取本机文件和真实网络验证都只由用户点击触发;
-    /// 失败经 model.settingsErrorMessage 提示 (fail-closed).
-    private var subscriptionPane: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            SettingsCard {
-            Text("配置并启用后, Agent 用量将在统一授权生效时查询对应云端额度; 拖拽行调整看板展示顺序")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            if !unconfiguredSubscriptionProviders.isEmpty {
-                HStack {
-                    Picker("添加 Provider", selection: $providerToAdd) {
-                        Text("选择 Provider")
-                            .tag(SubscriptionProviderID?.none)
-                        ForEach(unconfiguredSubscriptionProviders, id: \.self) { id in
-                            Text(id.displayName)
-                                .tag(SubscriptionProviderID?.some(id))
-                        }
-                    }
-                    .accessibilityHint("只列出尚未配置的订阅 Provider")
-                    Button("添加") {
-                        guard let id = providerToAdd else { return }
-                        // Phase 4: 持久化"已添加"状态, 跨会话保持
-                        coordinator.addSubscriptionProvider(id)
-                        addedSubscriptionProviders.insert(id)
-                        expandedSubscriptionProviders.insert(id)
-                        providerToAdd = nil
-                    }
-                    .disabled(providerToAdd == nil)
-                    .accessibilityHint("将所选 Provider 加入下方已配置列表并展开")
-                }
-            }
-            if visibleSubscriptionProviders.isEmpty {
-                Text("尚未配置任何订阅 Provider, 从上方选择并添加")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            ForEach(visibleSubscriptionProviders, id: \.self) { id in
-                subscriptionProviderRow(id)
-                    .draggable(id.rawValue)
-                    .dropDestination(for: String.self) { items, _ in
-                        guard let raw = items.first,
-                              let dragged = SubscriptionProviderID(rawValue: raw),
-                              dragged != id else { return false }
-                        moveSubscriptionProvider(dragged, onto: id)
-                        return true
-                    }
-            }
-            }
-            .accessibilityElement(children: .contain)
-            .glassButtonStyle()
-        }
-        .onAppear {
-            coordinator.refreshAntigravityLocalAvailability()
-            coordinator.refreshOfficialLocalAvailability()
-        }
+        // 订阅相关确认对话框提升到 body 级: 触发按钮在 P2 配置 sheet 内,
+        // 挂在被遮罩的面板视图下可能无法呈现.
         .confirmationDialog(
             "从 CC Switch 导入火山引擎凭证?",
             isPresented: $showsVolcengineCCImportConfirm,
@@ -614,6 +172,504 @@ struct SettingsView: View {
         } message: {
             Text("只删除 Bruce 本地保存的该账号凭证, 不会修改 CC Switch、Codex CLI 或第三方服务上的账号")
         }
+        .onChange(of: model.settingsErrorMessage) { _, message in
+            if let message {
+                announce(message)
+            }
+        }
+    }
+
+    // MARK: - 侧边栏
+
+    /// L2 Fluent 侧栏 (定稿 settings-layout-demo.html): 216pt 平面导航,
+    /// 线性图标 + 文字; 选中项浅底 + 左缘 3pt accent 指示条;
+    /// 不依赖材质模糊与彩色图标底, 为跨平台 (WinUI NavigationView) 同构设计.
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(SettingsCategory.allCases) { item in
+                Button {
+                    category = item
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: item.systemImage)
+                            .font(.system(size: 13))
+                            .frame(width: 18)
+                        Text(item.title)
+                            .font(.system(
+                                size: 12.5,
+                                weight: category == item ? .semibold : .regular
+                            ))
+                        Spacer()
+                    }
+                    .foregroundStyle(category == item ? Color.primary : Color.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(
+                        category == item ? SettingsDemoTokens.navSelected : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    )
+                    // 左缘 accent 指示条 (Fluent NavigationView 同款)
+                    .overlay(alignment: .leading) {
+                        if category == item {
+                            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                                .fill(Color.accentColor)
+                                .frame(width: 3)
+                                .padding(.vertical, 9)
+                                .padding(.leading, -6)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(category == item ? .isSelected : [])
+            }
+            Spacer()
+            Text(AppVersion.current())
+                .font(.system(size: 10.5))
+                .foregroundStyle(.tertiary)
+                .padding(.horizontal, 10)
+                .padding(.bottom, 10)
+        }
+        .padding(.horizontal, 8)
+        .padding(.top, 14)
+        .frame(width: 216)
+        .frame(maxHeight: .infinity)
+        .background(SettingsDemoTokens.nav)
+    }
+
+    // MARK: - 面板切换
+
+    @ViewBuilder
+    private var paneContent: some View {
+        switch category {
+        case .general: generalPane
+        case .agentUsage: agentUsagePane
+        case .subscription: subscriptionPane
+        case .consent: consentPane
+        case .maintenance: maintenancePane
+        }
+    }
+
+    /// demo crumb: 面板标题上方的灰色小字分类名.
+    private func crumb(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 11))
+            .foregroundStyle(SettingsDemoTokens.text3)
+    }
+
+    /// demo .pane-title: 19px semibold 大标题.
+    private func paneTitle(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 19, weight: .semibold))
+            .foregroundStyle(SettingsDemoTokens.text)
+    }
+
+    /// demo .caption: 11px semibold 灰色分组标题.
+    private func paneCaption(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 11, weight: .semibold))
+            .tracking(0.4)
+            .foregroundStyle(SettingsDemoTokens.text3)
+            .padding(.leading, 2)
+    }
+
+    // MARK: - 通用面板
+
+    /// 通用偏好: 外观, 界面风格, 模糊风格, 自动刷新与菜单栏指标.
+    private var generalPane: some View {
+        let glassSupported = coordinator.liquidGlassSupported()
+        let showBlurStyles = glassSupported
+            && coordinator.resolvedTheme.interfaceStyle == .liquidGlass
+
+        return VStack(alignment: .leading, spacing: 14) {
+            FluentCard {
+                FluentRow(
+                    "配色模式",
+                    sub: "立即作用于菜单栏面板与设置窗口"
+                ) {
+                    FluentSegmentedPicker(
+                        options: [
+                            ("跟随系统", AppearancePreference.system),
+                            ("浅色", AppearancePreference.light),
+                            ("深色", AppearancePreference.dark),
+                        ],
+                        selection: Binding(
+                            get: { coordinator.appearanceMode },
+                            set: { coordinator.setAppearanceMode($0) }
+                        )
+                    )
+                }
+                FluentRow(
+                    "界面风格",
+                    sub: glassSupported
+                        ? "经典为材质面板; 液态玻璃使用系统玻璃效果; Nothing 为纯色平面风格, 无模糊无玻璃"
+                        : "液态玻璃需要 macOS 26; 当前可使用经典或 Nothing",
+                    divided: true
+                ) {
+                    FluentSegmentedPicker(
+                        options: [
+                            ("经典", InterfaceStylePreference.classic),
+                            ("液态玻璃", InterfaceStylePreference.liquidGlass),
+                            ("Nothing", InterfaceStylePreference.nothing),
+                        ],
+                        selection: Binding(
+                            get: { coordinator.interfaceStyle },
+                            set: { coordinator.setInterfaceStyle($0) }
+                        )
+                    )
+                }
+                if showBlurStyles {
+                    FluentRow(
+                        "模糊风格",
+                        sub: "标准与通透为系统液态玻璃, 哑光退化为材质质感",
+                        divided: true
+                    ) {
+                        FluentSegmentedPicker(
+                            options: [
+                                ("标准", GlassStylePreference.regular),
+                                ("通透", GlassStylePreference.clear),
+                                ("哑光", GlassStylePreference.material),
+                            ],
+                            selection: Binding(
+                                get: { coordinator.glassStyle },
+                                set: { coordinator.setGlassStyle($0) }
+                            )
+                        )
+                    }
+                }
+                FluentRow(
+                    "刷新间隔",
+                    sub: "已授权模块的自动采集周期, 变更后立即重新计时",
+                    divided: true
+                ) {
+                    FluentSegmentedPicker(
+                        options: OnboardingConfiguration.allowedRefreshIntervalMinutes
+                            .map { ("\($0) 分钟", $0) },
+                        selection: Binding(
+                            get: { coordinator.refreshIntervalMinutes },
+                            set: { coordinator.setRefreshIntervalMinutes($0) }
+                        )
+                    )
+                }
+                FluentRow(
+                    "系统通知",
+                    sub: "预警与额度提醒",
+                    divided: true
+                ) {
+                    if notificationDenied {
+                        HStack(spacing: 8) {
+                            Text("未开启")
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(SettingsDemoTokens.warn)
+                            Button("前往系统设置") {
+                                NSWorkspace.shared.open(
+                                    URL(string: "x-apple.systempreferences:com.apple.preference.notifications")!
+                                )
+                            }
+                            .fluentButton()
+                        }
+                    } else {
+                        Text("已开启")
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(SettingsDemoTokens.ok)
+                    }
+                }
+                .onAppear(perform: refreshNotificationStatus)
+                FluentRow("版本", divided: true) {
+                    Text(AppVersion.current())
+                        .font(.system(size: 12.5, design: .monospaced))
+                        .foregroundStyle(SettingsDemoTokens.text2)
+                }
+            }
+
+            paneCaption("全局快捷键")
+
+            FluentCard {
+                GlobalHotkeyRecorder()
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+            }
+
+            paneCaption("菜单栏指标")
+
+            FluentCard {
+                Text("选择 1 至 3 项指标, 菜单栏将按下列顺序紧凑展示; 拖拽已选指标调整顺序")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(SettingsDemoTokens.text2)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                menuBarMetricList
+            }
+        }
+    }
+
+    /// 查询系统通知授权状态; 仅 denied 视为未开启, notDetermined 会在首次预警时弹授权.
+    private func refreshNotificationStatus() {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            let denied = settings.authorizationStatus == .denied
+            Task { @MainActor in notificationDenied = denied }
+        }
+    }
+
+    private func moveMenuBarMetric(
+        _ dragged: MenuBarMetric,
+        onto target: MenuBarMetric
+    ) {
+        var metrics = model.menuBarMetrics
+        metrics.removeAll { $0 == dragged }
+        guard let targetIndex = metrics.firstIndex(of: target) else { return }
+        metrics.insert(dragged, at: targetIndex)
+        coordinator.setMenuBarMetrics(metrics)
+    }
+
+    /// 菜单栏指标列表: 已选指标可拖拽排序, 未选指标点击添加.
+    private var menuBarMetricList: some View {
+        VStack(spacing: 0) {
+            ForEach(model.menuBarMetrics) { metric in
+                menuBarMetricRow(metric, selected: true, divided: true)
+                    .onDrop(
+                        of: [.text],
+                        delegate: LiveReorderDropDelegate<MenuBarMetric>(
+                            target: metric,
+                            move: moveMenuBarMetric
+                        )
+                    )
+            }
+            ForEach(
+                MenuBarMetric.allCases.filter { !model.menuBarMetrics.contains($0) }
+            ) { metric in
+                menuBarMetricRow(metric, selected: false, divided: true)
+            }
+        }
+    }
+
+    /// 单个菜单栏指标行: 已选行有拖拽手柄和移除按钮, 未选行有添加按钮.
+    private func menuBarMetricRow(
+        _ metric: MenuBarMetric,
+        selected: Bool,
+        divided: Bool
+    ) -> some View {
+        HStack(spacing: 10) {
+            if selected {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 11))
+                    .foregroundStyle(SettingsDemoTokens.text3)
+                    .accessibilityHidden(true)
+                    .draggable(metric.rawValue)
+            }
+            Text(metric.title)
+                .font(.system(size: 13))
+                .foregroundStyle(
+                    selected ? SettingsDemoTokens.text : SettingsDemoTokens.text2
+                )
+            Spacer()
+            if selected {
+                Button {
+                    var metrics = model.menuBarMetrics
+                    guard metrics.count > 1 else { return }
+                    metrics.removeAll { $0 == metric }
+                    coordinator.setMenuBarMetrics(metrics)
+                } label: {
+                    Image(systemName: "minus.circle")
+                        .foregroundStyle(SettingsDemoTokens.danger)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("移除\(metric.title)")
+            } else {
+                Button {
+                    var metrics = model.menuBarMetrics
+                    guard !metrics.contains(metric),
+                          metrics.count < MenuBarMetricConfiguration.maximumCount else {
+                        return
+                    }
+                    metrics.append(metric)
+                    coordinator.setMenuBarMetrics(metrics)
+                } label: {
+                    Image(systemName: "plus.circle")
+                        .foregroundStyle(SettingsDemoTokens.accent)
+                }
+                .buttonStyle(.borderless)
+                .disabled(
+                    model.menuBarMetrics.count >= MenuBarMetricConfiguration.maximumCount
+                )
+                .accessibilityLabel("添加\(metric.title)")
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .overlay(alignment: .top) {
+            if divided {
+                SettingsDemoTokens.separator.frame(height: 1)
+            }
+        }
+    }
+
+    // MARK: - Agent 用量面板
+
+    private var agentUsagePane: some View {
+        let result = model.moduleResults[.agentUsage]
+        let sessionProbes = (result?.localDependencies ?? [])
+            .filter { $0.kind == .sessionDirectory }
+        let busy = model.busyModules.contains(.agentUsage)
+        let rustAvailable = coordinator.collectorRuntimeStatus == .rustAvailable
+
+        return VStack(alignment: .leading, spacing: 14) {
+            paneCaption("会话来源")
+            FluentCard {
+                FluentRow(
+                    "Rust Collector",
+                    sub: "扫描本机会话并聚合 token 用量"
+                ) {
+                    HStack(spacing: 6) {
+                        FluentStatusDot(level: rustAvailable ? .ok : .warn)
+                        Text(rustAvailable ? "可用" : "不可用")
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(
+                                rustAvailable ? SettingsDemoTokens.text2 : SettingsDemoTokens.warn
+                            )
+                    }
+                }
+                if sessionProbes.isEmpty {
+                    FluentRow("尚未检查", sub: "点击下方重新检查", divided: true)
+                } else {
+                    ForEach(Array(sessionProbes.enumerated()), id: \.offset) { _, probe in
+                        FluentRow(
+                            probe.detail ?? "会话源",
+                            sub: probe.kind == .sessionDirectory ? "本机会话目录" : "本机数据库",
+                            divided: true
+                        ) {
+                            HStack(spacing: 6) {
+                                FluentStatusDot(
+                                    level: probe.status == .available ? .ok : .warn
+                                )
+                                Text(probe.status == .available ? "就绪" : "未授权")
+                                    .font(.system(size: 12.5))
+                                    .foregroundStyle(
+                                        probe.status == .available
+                                            ? SettingsDemoTokens.text2
+                                            : SettingsDemoTokens.warn
+                                    )
+                            }
+                        }
+                    }
+                }
+                ForEach(visibleAgentUsageWarnings(result?.warnings ?? []), id: \.self) { warning in
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .foregroundStyle(SettingsDemoTokens.warn)
+                        Text(warning)
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(SettingsDemoTokens.text2)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .overlay(alignment: .top) {
+                        SettingsDemoTokens.separator.frame(height: 1)
+                    }
+                }
+                if let reason = result?.blockingReason {
+                    Text(reason)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(SettingsDemoTokens.warn)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .overlay(alignment: .top) {
+                            SettingsDemoTokens.separator.frame(height: 1)
+                        }
+                }
+                HStack {
+                    Spacer()
+                    if busy {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                    Button("重新检查") { coordinator.rescan() }
+                        .fluentButton()
+                        .disabled(busy)
+                        .accessibilityLabel("重新检查 Agent 用量依赖")
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .overlay(alignment: .top) {
+                    SettingsDemoTokens.separator.frame(height: 1)
+                }
+            }
+            .accessibilityElement(children: .contain)
+        }
+    }
+
+    /// Kimi Work 和 Antigravity 属于可选增强探测, 不在 Agent 用量配置卡片中展示
+    /// 其本机不可用/数据库状态提示; 探测结果仍保留给 readiness 和诊断流程.
+    private func visibleAgentUsageWarnings(_ warnings: [String]) -> [String] {
+        warnings.filter { warning in
+            !warning.hasPrefix("Kimi Work ")
+                && !warning.hasPrefix("Antigravity 数据库:")
+        }
+    }
+
+    // MARK: - 订阅额度面板
+
+    /// 订阅 provider 的标签式管理: 顶部 Picker 只列未配置的 provider,
+    /// 点击添加后其管理组出现在下方列表 (默认收起为一行).
+    /// 读取本机文件和真实网络验证都只由用户点击触发;
+    /// 失败经 model.settingsErrorMessage 提示 (fail-closed).
+    private var subscriptionPane: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            paneCaption("云端额度凭证")
+            FluentCard {
+                ForEach(Array(visibleSubscriptionProviders.enumerated()), id: \.element) { index, id in
+                    subscriptionProviderRow(id, divided: index > 0)
+                }
+                if visibleSubscriptionProviders.isEmpty {
+                    FluentRow("尚未配置任何订阅 Provider", sub: "从下方添加服务")
+                }
+            }
+            .accessibilityElement(children: .contain)
+            FluentCard {
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("添加服务")
+                            .font(.system(size: 13))
+                            .foregroundStyle(SettingsDemoTokens.text)
+                        Text("只列出尚未配置的 Provider, 添加后打开配置窗口")
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(SettingsDemoTokens.text2)
+                    }
+                    Spacer()
+                    Picker("", selection: $providerToAdd) {
+                        Text("选择 Provider")
+                            .tag(SubscriptionProviderID?.none)
+                        ForEach(unconfiguredSubscriptionProviders, id: \.self) { id in
+                            Text(id.displayName)
+                                .tag(SubscriptionProviderID?.some(id))
+                        }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                    .accessibilityHint("只列出尚未配置的订阅 Provider")
+                    Button("添加…") {
+                        guard let id = providerToAdd else { return }
+                        // Phase 4: 持久化"已添加"状态, 跨会话保持
+                        coordinator.addSubscriptionProvider(id)
+                        addedSubscriptionProviders.insert(id)
+                        configuringProvider = id
+                        providerToAdd = nil
+                    }
+                    .fluentButton(.primary)
+                    .disabled(providerToAdd == nil)
+                    .accessibilityHint("将所选 Provider 加入上方列表并打开配置窗口")
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+            }
+            Text("配置并启用后, Agent 用量将在统一授权生效时查询对应云端额度; 拖拽行调整看板展示顺序")
+                .font(.system(size: 11.5))
+                .foregroundStyle(SettingsDemoTokens.text3)
+        }
+        .onAppear {
+            coordinator.refreshAntigravityLocalAvailability()
+            coordinator.refreshOfficialLocalAvailability()
+        }
     }
 
     /// 已在列表中展示的 provider: 配置中已添加 (持久化) 或本次会话刚添加.
@@ -639,46 +695,274 @@ struct SettingsView: View {
         }
     }
 
-    /// 单个 provider 行: 收起时为一行 (名称 + 状态 + 启用开关),
-    /// 点击名称展开现有管理 UI (凭证录入 / 导入 / 验证 / 移除).
+    /// 单个 provider 行 (P2 + D3 定稿, demo .row): 拖拽手柄 (仅此可发起拖拽,
+    /// 避免误触行内按钮) + 名称/副标题 + 状态尾件 + 配置按钮 + 启用开关;
+    /// 点击「配置」弹出独立配置窗口 (sheet); 拖动经 LiveReorderDropDelegate 实时让位.
     private func subscriptionProviderRow(
-        _ id: SubscriptionProviderID
+        _ id: SubscriptionProviderID,
+        divided: Bool
     ) -> some View {
-        let expanded = expandedSubscriptionProviders.contains(id)
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Image(systemName: "line.3.horizontal")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .accessibilityHidden(true)
-                Button {
-                    if expanded {
-                        expandedSubscriptionProviders.remove(id)
-                    } else {
-                        expandedSubscriptionProviders.insert(id)
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        Text(id.displayName)
-                            .font(.subheadline.weight(.medium))
-                        Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("\(id.displayName) \(expanded ? "收起" : "展开")")
-                Spacer()
-                subscriptionStatusLine(id)
-                subscriptionEnabledToggle(id)
+        HStack(spacing: 10) {
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 11))
+                .foregroundStyle(SettingsDemoTokens.text3)
+                .accessibilityHidden(true)
+                .draggable(id.rawValue)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(id.displayName)
+                    .font(.system(size: 13))
+                    .foregroundStyle(SettingsDemoTokens.text)
+                Text(subscriptionRowSubtitle(id))
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(SettingsDemoTokens.text2)
             }
-            if expanded {
-                providerAccountList(id)
-                subscriptionProviderManagement(id)
+            Spacer(minLength: 8)
+            subscriptionStatusTail(id)
+            Button("配置") {
+                configuringProvider = id
+            }
+            .fluentButton()
+            .accessibilityHint("打开 \(id.displayName) 的配置窗口")
+            subscriptionEnabledToggle(id)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .overlay(alignment: .top) {
+            if divided {
+                SettingsDemoTokens.separator.frame(height: 1)
             }
         }
-        .padding(.vertical, 4)
+        .onDrop(
+            of: [.text],
+            delegate: LiveReorderDropDelegate<SubscriptionProviderID>(
+                target: id,
+                move: moveSubscriptionProvider
+            )
+        )
         .accessibilityElement(children: .contain)
+    }
+
+    /// demo .r-sub: 凭证形态 + 账号数摘要.
+    private func subscriptionRowSubtitle(_ id: SubscriptionProviderID) -> String {
+        let kind: String
+        switch id {
+        case .kimi: kind = "Web 令牌"
+        case .deepseek, .volcengine, .zhipu: kind = "API Key"
+        case .codex: kind = "OAuth 设备码"
+        case .antigravity: kind = "OAuth / API Key"
+        case .claude, .grok: kind = "CLI 登录态"
+        case .opencodeGo: kind = "OAuth 设备码"
+        }
+        let count = model.providerAccountSummaries[id]?.count ?? 0
+        return count > 1 ? "\(kind) · \(count) 个账号" : kind
+    }
+
+    /// demo .r-tail: 纯文字状态, ok 绿 / warn 黄 / 其他灰.
+    private func subscriptionStatusTail(_ id: SubscriptionProviderID) -> some View {
+        let configured = model.subscriptionCredentialConfigured[id] ?? false
+        let status = model.subscriptionProviders[id]?.verificationStatus ?? .none
+        let text: String
+        let tint: Color
+        if !configured {
+            text = "未配置"
+            tint = SettingsDemoTokens.text3
+        } else {
+            switch status {
+            case .ok:
+                text = "已配置"
+                tint = SettingsDemoTokens.ok
+            case .failed:
+                text = "验证失败"
+                tint = SettingsDemoTokens.warn
+            case .needsRelogin:
+                text = "授权已过期"
+                tint = SettingsDemoTokens.warn
+            case .none:
+                text = "已配置 · 未验证"
+                tint = SettingsDemoTokens.text2
+            }
+        }
+        return Text(text)
+            .font(.system(size: 12.5))
+            .foregroundStyle(tint)
+            .accessibilityLabel("\(id.displayName) 状态: \(text)")
+    }
+
+    /// P2 配置对话框: API key 类 (Kimi/DeepSeek/火山/智谱) 走
+    /// APIKeyProviderConfigDialog (demo CFG_DIALOG 1:1, 高度自适应);
+    /// 其余 provider 走通用外壳 (横幅 + 账号列表 + 既有管理 section).
+    @ViewBuilder
+    private func providerConfigSheet(
+        _ id: SubscriptionProviderID
+    ) -> some View {
+        switch id {
+        case .kimi, .deepseek, .volcengine, .zhipu:
+            apiKeyProviderDialog(id)
+        case .codex, .antigravity, .claude, .grok, .opencodeGo:
+            genericProviderConfigSheet(id)
+        }
+    }
+
+    /// 通用配置外壳: demo 对话框骨架 + 各 provider 既有管理 section;
+    /// 这些 section 自带保存/移除操作, footer 只留关闭按钮.
+    private func genericProviderConfigSheet(
+        _ id: SubscriptionProviderID
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // dg-head
+            Text("配置 \(id.displayName)")
+                .font(.system(size: 15, weight: .semibold))
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+            // dg-body
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    ProviderStatusBanner(
+                        configured: model.subscriptionCredentialConfigured[id] ?? false,
+                        status: model.subscriptionProviders[id]?.verificationStatus ?? .none,
+                        lastVerifiedAt: model.subscriptionProviders[id]?.lastVerifiedAt
+                    )
+                    providerAccountList(id)
+                    subscriptionProviderManagement(id)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.top, 14)
+                .padding(.bottom, 4)
+            }
+            // dg-foot
+            HStack {
+                Spacer()
+                Button("完成") { configuringProvider = nil }
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+        }
+        .frame(width: 460, height: 420)
+    }
+
+    /// API key 类 provider 的 demo 版配置对话框; 保存闭包与原内联 section 一致.
+    @ViewBuilder
+    private func apiKeyProviderDialog(
+        _ id: SubscriptionProviderID
+    ) -> some View {
+        let dismiss = { configuringProvider = nil }
+        switch id {
+        case .kimi:
+            APIKeyProviderConfigDialog(
+                id: .kimi,
+                fields: [
+                    APIKeyFieldDescriptor(
+                        id: "apiKey",
+                        label: "API Key",
+                        placeholder: "sk-•••••••••••••••• (输入后不回显)",
+                        accessibilityLabel: "Kimi For Coding API key"
+                    )
+                ],
+                values: $kimiValues,
+                guide: ProviderCredentialGuide(
+                    summary: "在 kimi.com/code 申请 Kimi For Coding API key",
+                    linkTitle: nil,
+                    linkURL: nil
+                ),
+                footnote: nil,
+                extra: .none,
+                onRemove: { removeSubscriptionProvider(.kimi) },
+                onSave: { coordinator.saveAndVerifyKimi(apiKey: $0["apiKey"] ?? "") },
+                onDismiss: dismiss
+            )
+        case .deepseek:
+            APIKeyProviderConfigDialog(
+                id: .deepseek,
+                fields: [
+                    APIKeyFieldDescriptor(
+                        id: "apiKey",
+                        label: "API Key",
+                        placeholder: "sk-•••••••••••••••• (输入后不回显)",
+                        accessibilityLabel: "DeepSeek API key"
+                    )
+                ],
+                values: $deepseekValues,
+                guide: ProviderCredentialGuide(
+                    summary: "在 DeepSeek 平台获取 API key",
+                    linkTitle: nil,
+                    linkURL: nil
+                ),
+                footnote: nil,
+                extra: .none,
+                onRemove: { removeSubscriptionProvider(.deepseek) },
+                onSave: { coordinator.saveAndVerifyDeepSeek(apiKey: $0["apiKey"] ?? "") },
+                onDismiss: dismiss
+            )
+        case .volcengine:
+            APIKeyProviderConfigDialog(
+                id: .volcengine,
+                fields: [
+                    APIKeyFieldDescriptor(
+                        id: "accessKey",
+                        label: "Access Key",
+                        placeholder: "AK•••••••• (输入后不回显)",
+                        accessibilityLabel: "火山引擎 Access Key"
+                    ),
+                    APIKeyFieldDescriptor(
+                        id: "secretKey",
+                        label: "Secret Key",
+                        placeholder: "SK•••••••• (输入后不回显)",
+                        accessibilityLabel: "火山引擎 Secret Key"
+                    )
+                ],
+                values: $volcengineValues,
+                guide: ProviderCredentialGuide(
+                    summary: "在火山引擎控制台获取 Access Key 与 Secret Key",
+                    linkTitle: nil,
+                    linkURL: nil
+                ),
+                footnote: "此处仅做本地格式校验, 完整额度试查由 Collector 运行时承担",
+                extra: .ccSwitchImport($showsVolcengineCCImportConfirm),
+                onRemove: { removeSubscriptionProvider(.volcengine) },
+                onSave: {
+                    coordinator.saveAndVerifyVolcengine(
+                        accessKey: $0["accessKey"] ?? "",
+                        secretKey: $0["secretKey"] ?? ""
+                    )
+                },
+                onDismiss: dismiss
+            )
+        case .zhipu:
+            APIKeyProviderConfigDialog(
+                id: .zhipu,
+                fields: [
+                    APIKeyFieldDescriptor(
+                        id: "apiKey",
+                        label: "API Key",
+                        placeholder: "•••••••• (输入后不回显)",
+                        accessibilityLabel: "智谱 API key"
+                    )
+                ],
+                values: $zhipuValues,
+                guide: ProviderCredentialGuide(
+                    summary: "在智谱 BigModel 控制台获取 API key",
+                    linkTitle: nil,
+                    linkURL: nil
+                ),
+                footnote: "此处仅做本地格式校验, 完整额度试查由 Collector 运行时承担",
+                extra: .sitePicker($zhipuSiteIsCN),
+                onRemove: { removeSubscriptionProvider(.zhipu) },
+                onSave: {
+                    coordinator.saveAndVerifyZhipu(
+                        apiKey: $0["apiKey"] ?? "",
+                        baseURL: zhipuSiteIsCN
+                            ? "https://open.bigmodel.cn/api/paas/v4"
+                            : "https://api.z.ai/api/paas/v4"
+                    )
+                },
+                onDismiss: dismiss
+            )
+        default:
+            EmptyView()
+        }
     }
 
     /// 多账号列表: 显示该 provider 的全部账号 (名称 + 状态 + 移除按钮).
@@ -742,117 +1026,16 @@ struct SettingsView: View {
             .accessibilityLabel("\(summary.displayName) 状态: \(text)")
     }
 
-    /// 展开后的管理 UI, 委托各 provider 独立 section (layout-identical extract).
+    /// 非 API key 类 provider 的管理 section, 仅用于通用配置外壳;
+    /// API key 类 (Kimi/DeepSeek/火山/智谱) 已由 APIKeyProviderConfigDialog 接管.
     @ViewBuilder
     private func subscriptionProviderManagement(
         _ id: SubscriptionProviderID
     ) -> some View {
         switch id {
-        case .kimi:
-            APIKeyProviderSettingsSection(
-                id: .kimi,
-                fields: [
-                    APIKeyFieldDescriptor(
-                        id: "apiKey",
-                        placeholder: "API key (输入后不回显)",
-                        accessibilityLabel: "Kimi For Coding API key"
-                    )
-                ],
-                values: $kimiValues,
-                isEditing: $kimiEditing,
-                guide: ProviderCredentialGuide(
-                    summary: "在 kimi.com/code 申请 Kimi For Coding API key",
-                    linkTitle: nil,
-                    linkURL: nil
-                ),
-                footnote: nil,
-                extra: .none,
-                onRemove: { removeSubscriptionProvider(.kimi) }
-            ) { values in
-                coordinator.saveAndVerifyKimi(apiKey: values["apiKey"] ?? "")
-            }
-        case .deepseek:
-            APIKeyProviderSettingsSection(
-                id: .deepseek,
-                fields: [
-                    APIKeyFieldDescriptor(
-                        id: "apiKey",
-                        placeholder: "API key (输入后不回显)",
-                        accessibilityLabel: "DeepSeek API key"
-                    )
-                ],
-                values: $deepseekValues,
-                isEditing: $deepseekEditing,
-                guide: ProviderCredentialGuide(
-                    summary: "在 DeepSeek 平台获取 API key",
-                    linkTitle: nil,
-                    linkURL: nil
-                ),
-                footnote: nil,
-                extra: .none,
-                onRemove: { removeSubscriptionProvider(.deepseek) }
-            ) { values in
-                coordinator.saveAndVerifyDeepSeek(apiKey: values["apiKey"] ?? "")
-            }
-        case .volcengine:
-            APIKeyProviderSettingsSection(
-                id: .volcengine,
-                fields: [
-                    APIKeyFieldDescriptor(
-                        id: "accessKey",
-                        placeholder: "Access Key (输入后不回显)",
-                        accessibilityLabel: "火山引擎 Access Key"
-                    ),
-                    APIKeyFieldDescriptor(
-                        id: "secretKey",
-                        placeholder: "Secret Key (输入后不回显)",
-                        accessibilityLabel: "火山引擎 Secret Key"
-                    )
-                ],
-                values: $volcengineValues,
-                isEditing: $volcengineEditing,
-                guide: ProviderCredentialGuide(
-                    summary: "在火山引擎控制台获取 Access Key 与 Secret Key",
-                    linkTitle: nil,
-                    linkURL: nil
-                ),
-                footnote: "此处仅做本地格式校验, 完整额度试查由 Collector 运行时承担",
-                extra: .ccSwitchImport($showsVolcengineCCImportConfirm),
-                onRemove: { removeSubscriptionProvider(.volcengine) }
-            ) { values in
-                coordinator.saveAndVerifyVolcengine(
-                    accessKey: values["accessKey"] ?? "",
-                    secretKey: values["secretKey"] ?? ""
-                )
-            }
-        case .zhipu:
-            APIKeyProviderSettingsSection(
-                id: .zhipu,
-                fields: [
-                    APIKeyFieldDescriptor(
-                        id: "apiKey",
-                        placeholder: "API key (输入后不回显)",
-                        accessibilityLabel: "智谱 API key"
-                    )
-                ],
-                values: $zhipuValues,
-                isEditing: $zhipuEditing,
-                guide: ProviderCredentialGuide(
-                    summary: "在智谱 BigModel 控制台获取 API key",
-                    linkTitle: nil,
-                    linkURL: nil
-                ),
-                footnote: "此处仅做本地格式校验, 完整额度试查由 Collector 运行时承担",
-                extra: .sitePicker($zhipuSiteIsCN),
-                onRemove: { removeSubscriptionProvider(.zhipu) }
-            ) { values in
-                coordinator.saveAndVerifyZhipu(
-                    apiKey: values["apiKey"] ?? "",
-                    baseURL: zhipuSiteIsCN
-                        ? "https://open.bigmodel.cn/api/paas/v4"
-                        : "https://api.z.ai/api/paas/v4"
-                )
-            }
+        case .kimi, .deepseek, .volcengine, .zhipu:
+            // 对话框版表单已接管, 通用外壳不会走到这里.
+            EmptyView()
         case .codex:
             CodexProviderSettingsSection(
                 showsCodexCCImportConfirm: $showsCodexCCImportConfirm,
@@ -902,7 +1085,6 @@ struct SettingsView: View {
     private func removeSubscriptionProvider(_ id: SubscriptionProviderID) {
         coordinator.removeSubscriptionProvider(id)
         addedSubscriptionProviders.remove(id)
-        expandedSubscriptionProviders.remove(id)
     }
 
     /// 调整订阅 provider 在列表中的顺序; 顺序同时作用于面板用量卡展示.
@@ -972,47 +1154,79 @@ struct SettingsView: View {
 
     private var consentPane: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SettingsCard {
-            Toggle("Agent 用量", isOn: moduleBinding(.agentUsage))
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("授权后应用将:")
-                    .font(.subheadline.weight(.medium))
-                summaryLine("扫描本机 Agent 会话目录和 CC Switch / Antigravity 数据库 (只读)")
-                summaryLine("每 \(coordinator.refreshIntervalMinutes) 分钟自动刷新已授权模块")
-                let enabledProviders = coordinator
-                    .enabledConfiguredSubscriptionProviders
-                if enabledProviders.isEmpty {
-                    summaryLine("未配置启用的订阅额度 Provider, 不会访问云端额度接口")
-                } else {
-                    let names = enabledProviders.map(\.displayName)
-                        .joined(separator: " / ")
-                    summaryLine("确认授权后查询已启用订阅 Provider 的云端额度: \(names)")
-                }
-                summaryLine("可随时在此撤销授权暂停采集")
-            }
-            .padding(.vertical, 4)
-
-            if coordinator.consentConfirmed {
+            FluentCard {
                 HStack {
-                    statusText("当前授权有效", icon: "checkmark.circle.fill")
-                    Spacer()
-                    Button("撤销全部授权") {
-                        coordinator.revokeAllConsent()
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Agent 用量")
+                            .font(.system(size: 13))
+                            .foregroundStyle(SettingsDemoTokens.text)
+                        Text("允许按授权范围采集本机会话用量")
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(SettingsDemoTokens.text2)
                     }
-                    .accessibilityHint("停止所有模块的自动采集")
+                    Spacer()
+                    Toggle("", isOn: moduleBinding(.agentUsage))
+                        .labelsHidden()
                 }
-            } else {
-                Button("确认授权") {
-                    coordinator.confirmConsent(
-                        selectedModules: coordinator.selectedModules
-                    )
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("授权后应用将:")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(SettingsDemoTokens.text2)
+                    summaryLine("扫描本机 Agent 会话目录和 CC Switch / Antigravity 数据库 (只读)")
+                    summaryLine("每 \(coordinator.refreshIntervalMinutes) 分钟自动刷新已授权模块")
+                    let enabledProviders = coordinator
+                        .enabledConfiguredSubscriptionProviders
+                    if enabledProviders.isEmpty {
+                        summaryLine("未配置启用的订阅额度 Provider, 不会访问云端额度接口")
+                    } else {
+                        let names = enabledProviders.map(\.displayName)
+                            .joined(separator: " / ")
+                        summaryLine("确认授权后查询已启用订阅 Provider 的云端额度: \(names)")
+                    }
+                    summaryLine("可随时在此撤销授权暂停采集")
                 }
-                .disabled(coordinator.selectedModules.isEmpty)
-                .accessibilityHint("允许已选模块按 \(coordinator.refreshIntervalMinutes) 分钟周期采集")
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .overlay(alignment: .top) {
+                    SettingsDemoTokens.separator.frame(height: 1)
+                }
+
+                HStack {
+                    if coordinator.consentConfirmed {
+                        HStack(spacing: 6) {
+                            FluentStatusDot(level: .ok)
+                            Text("当前授权有效")
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(SettingsDemoTokens.ok)
+                        }
+                    }
+                    Spacer()
+                    if coordinator.consentConfirmed {
+                        Button("撤销全部授权") {
+                            coordinator.revokeAllConsent()
+                        }
+                        .fluentButton(.danger)
+                        .accessibilityHint("停止所有模块的自动采集")
+                    } else {
+                        Button("确认授权") {
+                            coordinator.confirmConsent(
+                                selectedModules: coordinator.selectedModules
+                            )
+                        }
+                        .fluentButton(.primary)
+                        .disabled(coordinator.selectedModules.isEmpty)
+                        .accessibilityHint("允许已选模块按 \(coordinator.refreshIntervalMinutes) 分钟周期采集")
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .overlay(alignment: .top) {
+                    SettingsDemoTokens.separator.frame(height: 1)
+                }
             }
-            }
-            .glassButtonStyle()
         }
     }
 
@@ -1022,35 +1236,37 @@ struct SettingsView: View {
     private var maintenancePane: some View {
         VStack(alignment: .leading, spacing: 14) {
             paneCaption("数据")
-            SettingsCard {
-            Text("缓存仅包含本应用生成的快照数据, 清理后下次刷新自动重建; 不影响配置, 凭证与账单统计")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            HStack {
-                Button("清理缓存") {
-                    showsClearCacheConfirm = true
+            FluentCard {
+                FluentRow("清理用量缓存", sub: "仅删除本应用快照, 不影响配置, 凭证与账单统计") {
+                    Button("清理") {
+                        showsClearCacheConfirm = true
+                    }
+                    .fluentButton(.danger)
+                    .accessibilityHint("删除本应用生成的快照缓存, 不影响配置与凭证")
                 }
-                .accessibilityHint("删除本应用生成的快照缓存, 不影响配置与凭证")
-                Button("导出账单…") {
-                    exportBilling()
+                FluentRow("导出账单", sub: "token 用量与花费统计 CSV", divided: true) {
+                    Button("导出…") {
+                        exportBilling()
+                    }
+                    .fluentButton()
+                    .accessibilityHint("选择位置保存 token 用量与花费统计 CSV")
                 }
-                .accessibilityHint("选择位置保存 token 用量与花费统计 CSV")
+                if let dataActionMessage {
+                    Text(dataActionMessage)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(SettingsDemoTokens.text2)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .overlay(alignment: .top) {
+                            SettingsDemoTokens.separator.frame(height: 1)
+                        }
+                }
             }
-            if let dataActionMessage {
-                Text(dataActionMessage)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            }
-            .glassButtonStyle()
 
             paneCaption("诊断")
-            SettingsCard {
-                Text("诊断包仅包含应用与系统版本、模块状态、依赖状态和快照校验结果, 不包含 Artifact、账号信息或凭证")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                HStack {
-                    Button("预览诊断") {
+            FluentCard {
+                FluentRow("诊断信息", sub: "最近采集错误与模块状态, 脱敏 JSON") {
+                    Button("预览") {
                         do {
                             diagnosticsPreview = try diagnostics.preview()
                             model.setSettingsError(nil)
@@ -1059,14 +1275,17 @@ struct SettingsView: View {
                             model.setSettingsError("诊断预览生成失败")
                         }
                     }
+                    .fluentButton()
                     .accessibilityHint("显示导出前的脱敏 JSON 内容")
-                    Button("导出诊断包…") {
+                }
+                FluentRow("导出诊断包", sub: "脱敏后 zip, 不含 Artifact 与凭证", divided: true) {
+                    Button("导出…") {
                         exportDiagnostics()
                     }
+                    .fluentButton()
                     .accessibilityHint("选择位置保存不含业务数据的 ZIP 文件")
                 }
             }
-            .glassButtonStyle()
         }
         .confirmationDialog(
             "确认清理缓存?",
@@ -1202,86 +1421,44 @@ struct SettingsView: View {
     private func summaryLine(_ text: String) -> some View {
         Label(text, systemImage: "checkmark.circle")
             .font(.caption)
-            .foregroundStyle(.secondary)
-    }
-
-    private func statusText(_ text: String, icon: String) -> some View {
-        Label(text, systemImage: icon)
+            .foregroundStyle(SettingsDemoTokens.text2)
     }
 
 }
 
-// MARK: - 侧边栏材质
+// MARK: - D3 实时让位拖动
 
-/// 系统 .sidebar 毛玻璃材质: 与窗口底色自然融合, 替代死板纯灰.
-private struct SidebarMaterialView: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = .sidebar
-        view.blendingMode = .behindWindow
-        view.state = .active
-        return view
+/// D3 实时让位排序 (定稿 settings-layout-demo.html): 仅手柄可发起拖拽;
+/// 悬停经过目标行时立即带着动画交换位置, 其他行实时滑动让位, 松手即落定.
+/// dragged id 经 item provider 异步解析 (同进程约一帧), 连续 hover 由
+/// `dragged != target` 去重; move 回调内部完成持久化.
+private struct LiveReorderDropDelegate<ID: RawRepresentable & Equatable & Sendable>: DropDelegate
+    where ID.RawValue == String
+{
+    let target: ID
+    let move: (ID, ID) -> Void
+
+    func validateDrop(info: DropInfo) -> Bool {
+        info.hasItemsConforming(to: [.text])
     }
 
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
-}
-
-// MARK: - 会话源标签流式布局
-
-/// 从左到右排布子视图, 超出宽度自动换行 (设置页有效会话源药丸标签).
-private struct SessionSourceFlowLayout: Layout {
-    var spacing: CGFloat = 6
-
-    func sizeThatFits(
-        proposal: ProposedViewSize,
-        subviews: Subviews,
-        cache: inout ()
-    ) -> CGSize {
-        arrange(proposal: proposal, subviews: subviews).size
-    }
-
-    func placeSubviews(
-        in bounds: CGRect,
-        proposal: ProposedViewSize,
-        subviews: Subviews,
-        cache: inout ()
-    ) {
-        let frames = arrange(proposal: proposal, subviews: subviews).frames
-        for index in subviews.indices {
-            guard index < frames.count else { continue }
-            let frame = frames[index]
-            subviews[index].place(
-                at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
-                proposal: ProposedViewSize(frame.size)
-            )
-        }
-    }
-
-    private func arrange(
-        proposal: ProposedViewSize,
-        subviews: Subviews
-    ) -> (size: CGSize, frames: [CGRect]) {
-        let maxWidth = proposal.width ?? .infinity
-        var frames: [CGRect] = []
-        var x: CGFloat = 0
-        var y: CGFloat = 0
-        var rowHeight: CGFloat = 0
-        var totalWidth: CGFloat = 0
-
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x > 0, x + size.width > maxWidth {
-                x = 0
-                y += rowHeight + spacing
-                rowHeight = 0
+    func dropEntered(info: DropInfo) {
+        guard let provider = info.itemProviders(for: [.text]).first else { return }
+        let target = self.target
+        _ = provider.loadObject(ofClass: String.self) { raw, _ in
+            guard let raw else { return }
+            Task { @MainActor in
+                guard let dragged = ID(rawValue: raw), dragged != target else { return }
+                withAnimation(.easeOut(duration: 0.15)) {
+                    move(dragged, target)
+                }
             }
-            frames.append(CGRect(origin: CGPoint(x: x, y: y), size: size))
-            rowHeight = max(rowHeight, size.height)
-            x += size.width + spacing
-            totalWidth = max(totalWidth, x - spacing)
         }
-
-        let height = subviews.isEmpty ? 0 : y + rowHeight
-        return (CGSize(width: totalWidth, height: height), frames)
     }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool { true }
 }

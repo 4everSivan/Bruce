@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bruce 设置窗口布局 Demo · 跨平台候选方案</title>
+<style>
+/* ============ 跨平台 token: 不依赖 macOS 材质/SF Symbols, 4px 网格, 双色模式 ============ */
+:root{
+  --bg:#1B1B1B; --window:#242424; --nav:#1F1F1F; --surface:#2C2C2C; --surface-hover:#333333;
+  --border:#3A3A3A; --border-strong:#4A4A4A;
+  --text:#F2F2F2; --text-2:#A8A8A8; --text-3:#6E6E6E;
+  --accent:#4C9CFF; --accent-soft:rgba(76,156,255,.14);
+  --warn:#D4A843; --ok:#4A9E5C; --danger:#E5534B;
+}
+body[data-mode="light"]{
+  --bg:#EFEFEF; --window:#FAFAFA; --nav:#F3F3F3; --surface:#FFFFFF; --surface-hover:#F0F0F0;
+  --border:#E2E2E2; --border-strong:#CFCFCF;
+  --text:#1B1B1B; --text-2:#5C5C5C; --text-3:#9A9A9A;
+  --accent:#0B5CBB; --accent-soft:rgba(11,92,187,.10);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:"Segoe UI Variable Text","Segoe UI",-apple-system,"PingFang SC",system-ui,sans-serif;
+  font-size:13px; min-height:100vh; padding:32px 20px 64px;
+  display:flex; flex-direction:column; align-items:center; gap:20px;
+  transition:background .2s;
+}
+.controls{display:flex;gap:16px;align-items:center;flex-wrap:wrap;justify-content:center;
+  font-size:12px;color:var(--text-2)}
+.seg{display:flex;gap:2px;border:1px solid var(--border);border-radius:6px;padding:2px;background:var(--window)}
+.seg button{font:inherit;color:var(--text-3);background:transparent;border:0;cursor:pointer;
+  padding:5px 12px;border-radius:4px}
+.seg button.active{background:var(--accent);color:#fff}
+.note{font-size:12px;color:var(--text-3);max-width:860px;text-align:center;line-height:1.8}
+.note b{color:var(--text-2);font-weight:600}
+
+/* ============ 窗口壳: 右侧 min/max/close 为 Windows 习惯位 ============ */
+.window{
+  width:780px;height:560px;background:var(--window);border:1px solid var(--border);
+  border-radius:8px;overflow:hidden;display:flex;flex-direction:column;
+  box-shadow:0 12px 40px rgba(0,0,0,.35);
+}
+.titlebar{height:40px;flex:none;display:flex;align-items:center;padding:0 0 0 14px;
+  border-bottom:1px solid var(--border);font-size:12px;color:var(--text-2)}
+.titlebar .caption{margin-left:auto;display:flex;align-self:stretch}
+.titlebar .caption span{width:46px;display:grid;place-items:center;color:var(--text-2);
+  font-size:11px;user-select:none}
+.titlebar .caption span:hover{background:var(--surface-hover)}
+.titlebar .caption span.close:hover{background:var(--danger);color:#fff}
+.body{flex:1;display:flex;min-height:0}
+
+/* ============ L1: 顶部标签 ============ */
+body:not([data-layout="l1"]) .l1-only{display:none!important}
+.topnav{flex:none;display:flex;gap:2px;padding:6px 12px 0;border-bottom:1px solid var(--border)}
+.topnav button{font:inherit;font-size:13px;color:var(--text-2);background:transparent;border:0;
+  cursor:pointer;padding:8px 14px;position:relative;display:flex;align-items:center;gap:6px}
+.topnav button svg{width:15px;height:15px}
+.topnav button.active{color:var(--text);font-weight:600}
+.topnav button.active::after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;
+  height:2.5px;border-radius:2px;background:var(--accent)}
+
+/* ============ L2: Fluent 侧栏 ============ */
+body:not([data-layout="l2"]) .l2-only{display:none!important}
+.sidenav{width:216px;flex:none;background:var(--nav);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;padding:8px 8px;gap:1px;overflow:auto}
+.sidenav .navitem{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:5px;
+  color:var(--text-2);cursor:pointer;position:relative;font-size:13px;background:transparent;
+  border:0;text-align:left;font-family:inherit;width:100%}
+.sidenav .navitem svg{width:16px;height:16px;flex:none}
+.sidenav .navitem:hover{background:var(--surface-hover)}
+.sidenav .navitem.active{background:var(--surface-hover);color:var(--text);font-weight:600}
+.sidenav .navitem.active::before{content:"";position:absolute;left:-8px;top:9px;bottom:9px;
+  width:3px;border-radius:2px;background:var(--accent)}
+.sidenav .navfoot{margin-top:auto;padding:8px 10px;font-size:11px;color:var(--text-3)}
+
+/* ============ L3: 磁贴总览 ============ */
+body:not([data-layout="l3"]) .l3-only{display:none!important}
+.homegrid{padding:20px;display:grid;grid-template-columns:repeat(2,1fr);gap:10px;
+  overflow:auto;align-content:start;flex:1}
+.tile{background:var(--surface);border:1px solid var(--border);border-radius:8px;
+  padding:14px 16px;cursor:pointer;display:flex;flex-direction:column;gap:8px;
+  font-family:inherit;color:var(--text);text-align:left}
+.tile:hover{border-color:var(--border-strong);background:var(--surface-hover)}
+.tile .t-head{display:flex;align-items:center;gap:10px}
+.tile .t-head svg{width:18px;height:18px}
+.tile .t-title{font-size:13.5px;font-weight:600}
+.tile .t-desc{font-size:12px;color:var(--text-2);line-height:1.5}
+.tile .t-status{font-size:11px;color:var(--text-3)}
+.tile .t-status.warn{color:var(--warn)}
+
+/* ============ 内容面板 (三套布局共用) ============ */
+.content{flex:1;overflow:auto;min-width:0;display:none}
+body[data-layout="l1"] #contentWrap,body[data-layout="l2"] #contentWrap{display:block}
+.content-inner{padding:18px 22px 28px;display:flex;flex-direction:column;gap:12px}
+.crumb{font-size:11px;color:var(--text-3)}
+.pane-title{font-size:19px;font-weight:600}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.row{display:flex;align-items:center;gap:12px;padding:10px 14px;min-height:42px}
+.row + .row{border-top:1px solid var(--border)}
+.row .r-main{flex:1;min-width:0}
+.row .r-title{font-size:13px}
+.row .r-sub{font-size:11.5px;color:var(--text-2);margin-top:1px}
+.row .r-tail{color:var(--text-2);font-size:12.5px;flex:none}
+.row .r-tail.warn{color:var(--warn)}
+.row .r-tail.ok{color:var(--ok)}
+.picker{display:flex;gap:2px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:2px}
+.picker span{padding:3px 10px;border-radius:4px;font-size:12px;color:var(--text-2);cursor:pointer;white-space:nowrap}
+.picker span.on{background:var(--surface-hover);color:var(--text);font-weight:600}
+.btn{font:inherit;font-size:12px;padding:5px 12px;border-radius:5px;border:1px solid var(--border-strong);
+  background:var(--surface);color:var(--text);cursor:pointer}
+.btn:hover{background:var(--surface-hover)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.danger{color:var(--danger)}
+.caption{font-size:11px;font-weight:600;letter-spacing:.04em;color:var(--text-3);
+  text-transform:uppercase;padding-left:2px}
+.statusdot{width:7px;height:7px;border-radius:50%;flex:none}
+.statusdot.ok{background:var(--ok)} .statusdot.warn{background:var(--warn)} .statusdot.off{background:var(--text-3)}
+.kv{font-variant-numeric:tabular-nums;font-family:"Cascadia Mono","SF Mono",Consolas,monospace}
+svg.ic{stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.footer-note{font-size:11.5px;color:var(--text-3);max-width:860px;text-align:center;line-height:1.8}
+
+/* ============ 拖动排序方案 (真实可拖) ============ */
+.drag-card{width:480px;background:var(--window);border:1px solid var(--border);
+  border-radius:8px;padding:14px}
+.drag-card .dcap{font-size:11px;color:var(--text-3);margin-bottom:10px}
+.draglist{position:relative}
+.drow{position:absolute;left:0;right:0;height:52px;background:var(--surface);
+  border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;
+  gap:10px;padding:0 12px;transition:transform .18s ease;user-select:none;touch-action:none}
+.drow .grip{color:var(--text-3);cursor:grab;flex:none;font-size:13px;letter-spacing:1px;padding:6px 2px}
+body[data-drag="d1"] .grip{visibility:hidden}
+.drow .d-main{flex:1;min-width:0}
+.drow .d-title{font-size:13px;font-weight:600}
+.drow .d-sub{font-size:11px;color:var(--text-2);margin-top:1px}
+.drow .d-tail{font-size:12px;flex:none}
+.drow .d-tail.ok{color:var(--ok)} .drow .d-tail.warn{color:var(--warn)}
+.drow.dragging{transition:none;z-index:10;cursor:grabbing}
+body[data-drag="d1"] .drow{cursor:grab}
+body[data-drag="d1"] .drow.dragging{opacity:.55;border-color:var(--accent)}
+body[data-drag="d3"] .drow.dragging{box-shadow:0 10px 28px rgba(0,0,0,.45);border-color:var(--border-strong)}
+.insertline{position:absolute;left:2px;right:2px;height:2.5px;border-radius:2px;
+  background:var(--accent);display:none;z-index:5;pointer-events:none}
+
+/* ============ 单服务配置方案 ============ */
+.field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
+.field label{font-size:12px;color:var(--text-2);font-weight:600}
+.field .f-input{font:inherit;font-size:13px;padding:7px 10px;border-radius:5px;
+  border:1px solid var(--border-strong);background:var(--bg);color:var(--text-3)}
+.field .f-hint{font-size:11px;color:var(--text-3)}
+.guide-line{font-size:11.5px;color:var(--text-3);display:flex;align-items:center;gap:5px}
+.guide-line svg{width:13px;height:13px;flex:none}
+.guide-line a{color:var(--accent);text-decoration:none}
+.statusbanner{display:flex;gap:8px;align-items:center;font-size:12px;padding:8px 12px;
+  border-radius:6px;margin-bottom:12px}
+.statusbanner.ok{background:rgba(74,158,92,.13);color:var(--ok)}
+.statusbanner.warn{background:rgba(212,168,67,.13);color:var(--warn)}
+.actionbar{display:flex;gap:8px;align-items:center;margin-top:4px}
+.actionbar .spacer{flex:1}
+.linkbtn{background:none;border:0;font:inherit;font-size:12px;color:var(--text-3);
+  cursor:pointer;padding:4px 6px}
+.linkbtn:hover{color:var(--text)}
+.linkbtn.danger:hover{color:var(--danger)}
+/* P2 对话框 */
+.cfgwindow{position:relative}
+.dialog-overlay{position:absolute;inset:0;background:rgba(0,0,0,.5);display:grid;
+  place-items:center;z-index:20}
+.dialog{width:430px;background:var(--window);border:1px solid var(--border-strong);
+  border-radius:10px;box-shadow:0 18px 50px rgba(0,0,0,.5);display:flex;flex-direction:column}
+.dialog .dg-head{padding:16px 20px 0;font-size:15px;font-weight:600}
+.dialog .dg-body{padding:14px 20px 4px}
+.dialog .dg-foot{display:flex;align-items:center;gap:8px;padding:14px 20px 16px}
+/* P3 详情页 */
+.backbtn{display:inline-flex;align-items:center;gap:5px;background:none;border:0;
+  font:inherit;font-size:12px;color:var(--text-2);cursor:pointer;padding:3px 6px;
+  border-radius:4px}
+.backbtn:hover{background:var(--surface-hover);color:var(--text)}
+</style>
+</head>
+<body data-layout="l2" data-mode="dark" data-drag="d3">
+
+<div class="controls">
+  <span>布局方案</span>
+  <div class="seg" id="layoutSeg">
+    <button data-layout="l1">L1 顶部标签</button>
+    <button data-layout="l2" class="active">L2 Fluent 侧栏</button>
+    <button data-layout="l3">L3 磁贴总览</button>
+  </div>
+  <span>外观</span>
+  <div class="seg" id="modeSeg">
+    <button data-mode="dark" class="active">深色</button>
+    <button data-mode="light">浅色</button>
+  </div>
+</div>
+
+<p class="note" id="layoutNote"></p>
+
+<div class="window">
+  <div class="titlebar">
+    <span>Bruce · 设置</span>
+    <div class="caption"><span>—</span><span>▢</span><span class="close">✕</span></div>
+  </div>
+
+  <!-- L1 顶部标签 -->
+  <div class="topnav l1-only" id="topnav"></div>
+
+  <div class="body">
+    <!-- L2 Fluent 侧栏 -->
+    <div class="sidenav l2-only">
+      <div id="sidenavItems" style="display:flex;flex-direction:column;gap:1px"></div>
+      <div class="navfoot">v0.9.2 · MIT</div>
+    </div>
+    <!-- L3 磁贴总览 -->
+    <div class="homegrid l3-only" id="homegrid"></div>
+    <!-- 共用内容面板 (L1 / L2) -->
+    <div class="content" id="contentWrap">
+      <div class="content-inner" id="content"></div>
+    </div>
+  </div>
+</div>
+
+<p class="footer-note">
+  跨平台约定: 不依赖 macOS 材质模糊与 SF Symbols (图标为内联 SVG 线性图标); 平面表面 + 1px 边框;
+  导航选中 = 2.5–3px accent 指示条 (Fluent NavigationView / 顶部标签同款语言); 控件 min-height 40px+, 8px 圆角以内;
+  窗口控制按钮在右上 (Windows 习惯). 内容分区与现版一致: 通用 / Agent 用量 / 订阅额度 / 授权与隐私 / 维护.
+</p>
+
+<div class="section-title" style="font-size:12px;font-weight:600;color:var(--text-2);margin-top:14px">② 订阅额度 · 拖动排序方案 (可直接用鼠标拖)</div>
+
+<div class="controls">
+  <div class="seg" id="dragSeg">
+    <button data-drag="d1">D1 现状 · 整行拖</button>
+    <button data-drag="d2">D2 手柄 + 插入指示线</button>
+    <button data-drag="d3" class="active">D3 手柄 + 实时让位</button>
+  </div>
+</div>
+<p class="note" id="dragNote"></p>
+
+<div class="drag-card">
+  <div class="dcap">拖拽调整看板展示顺序 · 当前方案: <b id="dragModeName">D3</b></div>
+  <div class="draglist" id="draglist"><div class="insertline" id="insertline"></div></div>
+</div>
+
+<div class="section-title" style="font-size:12px;font-weight:600;color:var(--text-2);margin-top:14px">③ 单服务配置界面 (以 Kimi 为例)</div>
+
+<div class="controls">
+  <div class="seg" id="cfgSeg">
+    <button data-cfg="p1">P1 内联展开 · 改进</button>
+    <button data-cfg="p2" class="active">P2 配置对话框</button>
+    <button data-cfg="p3">P3 详情子页</button>
+  </div>
+</div>
+<p class="note" id="cfgNote"></p>
+
+<div class="window cfgwindow" style="height:520px">
+  <div class="titlebar">
+    <span>Bruce · 设置</span>
+    <div class="caption"><span>—</span><span>▢</span><span class="close">✕</span></div>
+  </div>
+  <div class="body">
+    <div class="sidenav">
+      <div style="display:flex;flex-direction:column;gap:1px">
+        <button class="navitem" disabled><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.6M12 18.6v2.6M2.8 12h2.6M18.6 12h2.6M5.5 5.5l1.8 1.8M16.7 16.7l1.8 1.8M18.5 5.5l-1.8 1.8M7.3 16.7l-1.8 1.8"/></svg>通用</button>
+        <button class="navitem" disabled><svg class="ic" viewBox="0 0 24 24"><path d="M4 20V4"/><path d="M4 20h16"/><path d="M8 16v-5M12 16V7M16 16v-3M20 16V9"/></svg>Agent 用量</button>
+        <button class="navitem active" disabled><svg class="ic" viewBox="0 0 24 24"><path d="M7 18a4.5 4.5 0 1 1 .9-8.9A5.5 5.5 0 0 1 18.5 11 3.5 3.5 0 0 1 18 18H7z"/></svg>订阅额度</button>
+        <button class="navitem" disabled><svg class="ic" viewBox="0 0 24 24"><path d="M12 3l7 2.8v5.4c0 4.4-3 7.6-7 9.3-4-1.7-7-4.9-7-9.3V5.8L12 3z"/><path d="M9 12l2 2 4-4"/></svg>授权与隐私</button>
+        <button class="navitem" disabled><svg class="ic" viewBox="0 0 24 24"><path d="M14.5 6.5a4 4 0 0 0-5.6 4.9L4 16.3V20h3.7l4.9-4.9a4 4 0 0 0 4.9-5.6l-2.6 2.6-2.4-.6-.6-2.4 2.6-2.6z"/></svg>维护</button>
+      </div>
+      <div class="navfoot">v0.9.2 · MIT</div>
+    </div>
+    <div class="content" style="display:block" id="cfgContent"></div>
+    <div class="dialog-overlay" id="cfgOverlay" style="display:none"></div>
+  </div>
+</div>
+
+<script>
+const ICONS={
+  gear:'<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.6M12 18.6v2.6M2.8 12h2.6M18.6 12h2.6M5.5 5.5l1.8 1.8M16.7 16.7l1.8 1.8M18.5 5.5l-1.8 1.8M7.3 16.7l-1.8 1.8"/></svg>',
+  chart:'<svg class="ic" viewBox="0 0 24 24"><path d="M4 20V4"/><path d="M4 20h16"/><path d="M8 16v-5M12 16V7M16 16v-3M20 16V9"/></svg>',
+  cloud:'<svg class="ic" viewBox="0 0 24 24"><path d="M7 18a4.5 4.5 0 1 1 .9-8.9A5.5 5.5 0 0 1 18.5 11 3.5 3.5 0 0 1 18 18H7z"/></svg>',
+  shield:'<svg class="ic" viewBox="0 0 24 24"><path d="M12 3l7 2.8v5.4c0 4.4-3 7.6-7 9.3-4-1.7-7-4.9-7-9.3V5.8L12 3z"/><path d="M9 12l2 2 4-4"/></svg>',
+  wrench:'<svg class="ic" viewBox="0 0 24 24"><path d="M14.5 6.5a4 4 0 0 0-5.6 4.9L4 16.3V20h3.7l4.9-4.9a4 4 0 0 0 4.9-5.6l-2.6 2.6-2.4-.6-.6-2.4 2.6-2.6z"/></svg>',
+  globe:'<svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.3 3.8 5.2 3.8 8.5s-1.3 6.2-3.8 8.5c-2.5-2.3-3.8-5.2-3.8-8.5s1.3-6.2 3.8-8.5z"/></svg>',
+  key:'<svg class="ic" viewBox="0 0 24 24"><circle cx="8" cy="14" r="4"/><path d="M11 11l8.5-8.5M16 6l2.5 2.5M13.5 8.5L16 11"/></svg>',
+  refresh:'<svg class="ic" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 3.5V8h-4.5"/></svg>',
+  doc:'<svg class="ic" viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/></svg>'
+};
+const CATS=[
+  {id:'general', name:'通用', icon:'gear', desc:'配色模式, 界面风格, 刷新间隔, 快捷键与菜单栏指标', status:'已开启系统通知', warn:false},
+  {id:'agentUsage', name:'Agent 用量', icon:'chart', desc:'本机 Agent 会话来源与采集开关', status:'7 个来源已就绪', warn:false},
+  {id:'subscription', name:'订阅额度', icon:'cloud', desc:'Kimi, DeepSeek, 火山, Codex 等云端额度凭证', status:'1 项授权已过期', warn:true},
+  {id:'consent', name:'授权与隐私', icon:'shield', desc:'会话访问授权, 数据只读边界与隐私说明', status:'已授权 3 项', warn:false},
+  {id:'maintenance', name:'维护', icon:'wrench', desc:'诊断信息, 缓存清理与数据导出', status:'', warn:false},
+];
+const paneTitles=Object.fromEntries(CATS.map(c=>[c.id,c.name]));
+let current='general';
+
+function row(t,sub,tail,tailCls=''){return `<div class="row"><div class="r-main"><div class="r-title">${t}</div>${sub?`<div class="r-sub">${sub}</div>`:''}</div>${tail||''}</div>`;}
+function pickerRow(t,opts,on,sub){return row(t,sub,`<div class="picker">${opts.map(o=>`<span class="${o===on?'on':''}">${o}</span>`).join('')}</div>`);}
+
+const PANES={
+general:`
+  ${pickerRow('配色模式',['跟随系统','浅色','深色'],'跟随系统','立即作用于菜单栏面板与设置窗口')}
+  <div class="card">
+    ${pickerRow('界面风格',['经典','液态玻璃','Nothing'],'Nothing','Nothing 为纯色平面风格, 无模糊无玻璃, 最利于跨平台')}
+    ${pickerRow('刷新间隔',['5 分钟','10 分钟','15 分钟','30 分钟'],'10 分钟')}
+    ${row('系统通知','预警与额度提醒','<span class="r-tail ok">已开启</span>')}
+    ${row('版本','','<span class="r-tail kv">v0.9.2</span>')}
+  </div>
+  <div class="caption">全局快捷键</div>
+  <div class="card">${row('打开面板','点击录制新快捷键','<span class="r-tail kv">⌃⌥B</span>')}</div>
+  <div class="caption">菜单栏指标</div>
+  <div class="card">
+    ${row('今日 Tokens','拖拽调整顺序','<span class="r-tail">已选 · 1/3</span>')}
+    ${row('今日成本','','<span class="r-tail">已选 · 2/3</span>')}
+    ${row('订阅用量','','<span class="r-tail">未选</span>')}
+  </div>`,
+agentUsage:`
+  <div class="caption">会话来源</div>
+  <div class="card">
+    ${row('Kimi Code CLI','~/.kimi-code/sessions','<span class="statusdot ok"></span><span class="r-tail">就绪</span>')}
+    ${row('Kimi Work','daimon-share 会话库','<span class="statusdot ok"></span><span class="r-tail">就绪</span>')}
+    ${row('Claude Code','~/.claude/projects','<span class="statusdot ok"></span><span class="r-tail">就绪</span>')}
+    ${row('Codex','~/.codex/sessions','<span class="statusdot warn"></span><span class="r-tail warn">未授权</span>')}
+  </div>
+  <div class="card">${row('采集窗口','近 182 天聚合, 柱状图取末 14 天','<span class="r-tail kv">182 天</span>')}</div>`,
+subscription:`
+  <div class="caption">云端额度凭证</div>
+  <div class="card">
+    ${row('Kimi','Web 令牌 · 2 个账号','<span class="r-tail ok">已配置</span>')}
+    ${row('DeepSeek','API Key','<span class="r-tail ok">已配置</span>')}
+    ${row('火山引擎','API Key','<span class="r-tail ok">已配置</span>')}
+    ${row('ChatGPT (Codex)','OAuth 设备码','<span class="r-tail warn">授权已过期</span>')}
+    ${row('Claude / Grok','实时只读本机 CLI 登录态, 不落库','<span class="r-tail">只读</span>')}
+  </div>
+  <div class="card">
+    ${row('从本机/CC Switch 导入','一次性只读导入, 不回写','<button class="btn">导入…</button>')}
+    ${row('添加服务','','<button class="btn primary">添加…</button>')}
+  </div>`,
+consent:`
+  <div class="card">
+    ${row('Kimi Work 会话库','只读访问授权','<span class="r-tail ok">已授权</span>')}
+    ${row('CC Switch 数据库','一次性只读导入','<span class="r-tail ok">已授权</span>')}
+    ${row('Keychain 凭证','仅存应用私有命名空间','<span class="r-tail">仅写入 com.bruce.*</span>')}
+  </div>
+  <div class="card">${row('隐私说明','数据全部留在本机, 仅向你配置的服务发起出站请求','<button class="btn">查看</button>')}</div>`,
+maintenance:`
+  <div class="card">
+    ${row('诊断信息','最近采集错误与模块状态','<button class="btn">预览</button>')}
+    ${row('导出诊断包','脱敏后 zip','<button class="btn">导出…</button>')}
+  </div>
+  <div class="caption">数据</div>
+  <div class="card">
+    ${row('清理用量缓存','重建本地 artifact','<button class="btn danger">清理</button>')}
+  </div>`
+};
+
+function renderNav(){
+  document.getElementById('topnav').innerHTML=CATS.map(c=>
+    `<button class="${c.id===current?'active':''}" data-cat="${c.id}">${ICONS[c.icon]}${c.name}</button>`).join('');
+  document.getElementById('sidenavItems').innerHTML=CATS.map(c=>
+    `<button class="navitem ${c.id===current?'active':''}" data-cat="${c.id}">${ICONS[c.icon]}${c.name}</button>`).join('');
+  document.getElementById('homegrid').innerHTML=CATS.map(c=>`
+    <button class="tile" data-cat="${c.id}">
+      <div class="t-head">${ICONS[c.icon]}<span class="t-title">${c.name}</span></div>
+      <div class="t-desc">${c.desc}</div>
+      ${c.status?`<div class="t-status ${c.warn?'warn':''}">${c.status}</div>`:''}
+    </button>`).join('');
+}
+function renderContent(){
+  const layout=document.body.dataset.layout;
+  const crumb=layout==='l1'?`设置 / ${paneTitles[current]}`:paneTitles[current];
+  document.getElementById('content').innerHTML=`
+    <div class="crumb">${crumb}</div>
+    <div class="pane-title">${paneTitles[current]}</div>
+    ${PANES[current]}`;
+}
+function renderAll(){renderNav();renderContent();}
+renderAll();
+
+const notes={
+  l1:'<b>L1 顶部标签:</b> 导航全部上移到标题下, 内容区满宽; 最接近 Windows Terminal / VSCode 设置, 迁移 WinUI 时用 TabView 即可. 弱点: 分类变多后横向拥挤, 层级感弱.',
+  l2:'<b>L2 Fluent 侧栏:</b> 左侧 216px 平面导航 + accent 选中指示条, 正是 WinUI 3 NavigationView 的原生形态; macOS 上也成立 (类似系统设置). 层级的扩展性最好. 推荐.',
+  l3:'<b>L3 磁贴总览:</b> 首屏 2 列大磁贴带状态摘要 (如「1 项授权已过期」), 点进二级页; 类似 Windows 11 设置首页. 状态一览最强, 但多一次点击.'
+};
+const noteEl=document.getElementById('layoutNote');
+function renderNote(){noteEl.innerHTML=notes[document.body.dataset.layout];}
+renderNote();
+
+document.getElementById('layoutSeg').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b)return;
+  document.body.dataset.layout=b.dataset.layout;
+  document.querySelectorAll('#layoutSeg button').forEach(x=>x.classList.toggle('active',x===b));
+  renderNote(); renderAll();
+});
+document.getElementById('modeSeg').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b)return;
+  document.body.dataset.mode=b.dataset.mode;
+  document.querySelectorAll('#modeSeg button').forEach(x=>x.classList.toggle('active',x===b));
+});
+document.querySelector('.window').addEventListener('click',e=>{
+  const b=e.target.closest('[data-cat]'); if(!b)return;
+  current=b.dataset.cat;
+  if(document.body.dataset.layout==='l3'){ // 磁贴点击 → 进入 L2 详情
+    document.body.dataset.layout='l2';
+    document.querySelectorAll('#layoutSeg button').forEach(x=>x.classList.toggle('active',x.dataset.layout==='l2'));
+    renderNote();
+  }
+  renderAll();
+});
+// URL 参数: ?layout=l2&mode=light&cat=subscription
+const q=new URLSearchParams(location.search);
+if(q.get('layout')&&notes[q.get('layout')]){
+  document.body.dataset.layout=q.get('layout');
+  document.querySelectorAll('#layoutSeg button').forEach(x=>x.classList.toggle('active',x.dataset.layout===q.get('layout')));
+}
+if(q.get('mode')){
+  document.body.dataset.mode=q.get('mode');
+  document.querySelectorAll('#modeSeg button').forEach(x=>x.classList.toggle('active',x.dataset.mode===q.get('mode')));
+}
+if(q.get('cat')&&paneTitles[q.get('cat')]) current=q.get('cat');
+renderNote(); renderAll();
+
+// ============ 拖动排序引擎 (pointer events, 三方案共用) ============
+const DRAG_ITEMS=[
+  {name:'Kimi', sub:'Web 令牌 · 2 个账号', tail:'已配置', cls:'ok'},
+  {name:'DeepSeek', sub:'API Key', tail:'已配置', cls:'ok'},
+  {name:'火山引擎', sub:'API Key', tail:'已配置', cls:'ok'},
+  {name:'ChatGPT (Codex)', sub:'OAuth 设备码', tail:'授权已过期', cls:'warn'},
+  {name:'Claude / Grok', sub:'只读本机 CLI 登录态', tail:'只读', cls:''},
+];
+const ROW_H=52, ROW_GAP=8, PITCH=ROW_H+ROW_GAP;
+const listEl=document.getElementById('draglist');
+const lineEl=document.getElementById('insertline');
+let order=[0,1,2,3,4];
+let dragState=null; // {from, target, startY, pointerId, row}
+
+const dragNotes={
+  d1:'<b>D1 现状对照:</b> 整行可拖, 无手柄, 拖动中只给半透明反馈, 松手瞬间跳变 —— 没有插入位置提示, 拖错率高.',
+  d2:'<b>D2 手柄 + 插入指示线:</b> 只有 ⠿ 手柄可发起拖拽 (行内按钮不再误触), 拖动中在目标间隙画 2.5px accent 指示线, 松手后插入. 实现成本与现版 draggable/dropDestination 最接近.',
+  d3:'<b>D3 手柄 + 实时让位:</b> 在 D2 基础上, 其他行实时滑动让出空位, 拖动行带悬浮投影, 松手平滑落位 (iOS/WinUI 列表同款手感). 体验最好, SwiftUI 侧用 withAnimation + 偏移即可实现. 推荐.'
+};
+function renderDragNote(){
+  document.getElementById('dragNote').innerHTML=dragNotes[document.body.dataset.drag];
+  document.getElementById('dragModeName').textContent=document.body.dataset.drag.toUpperCase();
+}
+
+function renderList(){
+  listEl.style.height=(order.length*PITCH-ROW_GAP)+'px';
+  listEl.querySelectorAll('.drow').forEach(e=>e.remove());
+  order.forEach((itemIdx,pos)=>{
+    const it=DRAG_ITEMS[itemIdx];
+    const el=document.createElement('div');
+    el.className='drow';
+    el.dataset.pos=pos;
+    el.style.transform=`translateY(${pos*PITCH}px)`;
+    el.innerHTML=`<span class="grip">⠿</span>
+      <div class="d-main"><div class="d-title">${it.name}</div><div class="d-sub">${it.sub}</div></div>
+      <span class="d-tail ${it.cls}">${it.tail}</span>`;
+    listEl.appendChild(el);
+  });
+}
+function rowAt(pos){return listEl.querySelector(`.drow[data-pos="${pos}"]`);}
+
+function layoutOthers(from,target){
+  // D3: 其他行实时让位; D2/D1: 其他行不动
+  order.forEach((_,pos)=>{
+    if(pos===from)return;
+    const el=rowAt(pos); if(!el)return;
+    let visual=pos;
+    if(document.body.dataset.drag==='d3'){
+      if(from<target && pos>from && pos<=target) visual=pos-1;
+      if(from>target && pos<from && pos>=target) visual=pos+1;
+    }
+    el.style.transform=`translateY(${visual*PITCH}px)`;
+  });
+}
+
+listEl.addEventListener('pointerdown',e=>{
+  const row=e.target.closest('.drow'); if(!row)return;
+  const mode=document.body.dataset.drag;
+  // D2/D3 只允许手柄发起; D1 整行可拖
+  if(mode!=='d1' && !e.target.closest('.grip'))return;
+  const from=+row.dataset.pos;
+  dragState={from, target:from, startY:e.clientY, pointerId:e.pointerId, row};
+  row.classList.add('dragging');
+  row.setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+listEl.addEventListener('pointermove',e=>{
+  if(!dragState)return;
+  const {from,startY,row}=dragState;
+  const delta=e.clientY-startY;
+  row.style.transform=`translateY(${from*PITCH+delta}px)`;
+  const target=Math.max(0,Math.min(order.length-1,Math.round((from*PITCH+delta)/PITCH)));
+  dragState.target=target;
+  layoutOthers(from,target);
+  // D2: 插入指示线 (画在 target 间隙上缘)
+  if(document.body.dataset.drag==='d2'){
+    lineEl.style.display='block';
+    lineEl.style.top=(target*PITCH-ROW_GAP/2-1)+'px';
+  }
+});
+function endDrag(){
+  if(!dragState)return;
+  const {from,target,row}=dragState;
+  row.classList.remove('dragging');
+  lineEl.style.display='none';
+  dragState=null;
+  if(from!==target){
+    order.splice(target,0,order.splice(from,1)[0]);
+  }
+  renderList(); // 全部行带 transition 平滑落位
+}
+listEl.addEventListener('pointerup',endDrag);
+listEl.addEventListener('pointercancel',endDrag);
+
+document.getElementById('dragSeg').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b)return;
+  document.body.dataset.drag=b.dataset.drag;
+  document.querySelectorAll('#dragSeg button').forEach(x=>x.classList.toggle('active',x===b));
+  renderDragNote();
+});
+renderDragNote(); renderList();
+if(q.get('drag')){
+  document.body.dataset.drag=q.get('drag');
+  document.querySelectorAll('#dragSeg button').forEach(x=>x.classList.toggle('active',x.dataset.drag===q.get('drag')));
+  renderDragNote();
+}
+
+// ============ 单服务配置方案 (Kimi 示例) ============
+const KIMI_FORM=`
+  <div class="field">
+    <label>API Key</label>
+    <div class="f-input">sk-•••••••••••••••• (输入后不回显)</div>
+    <div class="f-hint">只保存到本应用的 Keychain, 不会写入其他应用的数据库</div>
+  </div>
+  <div class="guide-line">${ICONS.globe}<span>在 <a>kimi.com/code</a> 申请 Kimi For Coding API key</span></div>`;
+const KIMI_STATUS=`<div class="statusbanner ok"><span class="statusdot ok"></span>已配置 · 上次验证今天 20:31 · 额度查询正常</div>`;
+
+// 订阅列表行 (P1/P2 背景共用)
+function cfgListRow(name,sub,tail,cls='',active=false){
+  return `<div class="row" ${active?'style="background:var(--surface-hover)"':''}>
+    <div class="r-main"><div class="r-title">${name}</div><div class="r-sub">${sub}</div></div>
+    <span class="r-tail ${cls}">${tail}</span></div>`;
+}
+const CFG_LIST=`<div class="card">
+  ${cfgListRow('Kimi','Web 令牌 · 2 个账号','已配置','ok',true)}
+  ${cfgListRow('DeepSeek','API Key','已配置','ok')}
+  ${cfgListRow('火山引擎','API Key','已配置','ok')}
+  ${cfgListRow('ChatGPT (Codex)','OAuth 设备码','授权已过期','warn')}
+</div>`;
+
+const CFG={
+  // P1: 内联展开 (改进版): 状态条 + 字段 + 按钮行分极
+  p1:`<div class="crumb">设置 / 订阅额度</div>
+    <div class="pane-title">订阅额度</div>
+    <div class="caption">云端额度凭证</div>
+    <div class="card">
+      <div class="row"><div class="r-main"><div class="r-title">Kimi</div>
+        <div class="r-sub">Web 令牌 · 2 个账号</div></div><span class="r-tail ok">已配置</span></div>
+      <div style="padding:4px 14px 12px;border-top:1px solid var(--border)">
+        <div style="height:8px"></div>
+        ${KIMI_STATUS}
+        ${KIMI_FORM}
+        <div class="actionbar" style="margin-top:12px">
+          <button class="linkbtn danger">移除</button>
+          <span class="spacer"></span>
+          <button class="btn">取消</button>
+          <button class="btn primary">保存并验证</button>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      ${cfgListRow('DeepSeek','API Key','已配置','ok')}
+      ${cfgListRow('火山引擎','API Key','已配置','ok')}
+      ${cfgListRow('ChatGPT (Codex)','OAuth 设备码','授权已过期','warn')}
+    </div>`,
+  // P2: 列表保持干净, 点配置弹 ContentDialog 式对话框
+  p2:`<div class="crumb">设置 / 订阅额度</div>
+    <div class="pane-title">订阅额度</div>
+    <div class="caption">云端额度凭证</div>
+    ${CFG_LIST}
+    <div class="card">${row('添加服务','','<button class="btn primary">添加…</button>')}</div>`,
+  // P3: 详情子页 (master-detail): 返回 + 分组表单 + 底部操作栏
+  p3:`<button class="backbtn">‹ 订阅额度</button>
+    <div class="pane-title">Kimi</div>
+    ${KIMI_STATUS}
+    <div class="caption">凭证</div>
+    <div class="card" style="padding:14px 16px 4px">${KIMI_FORM}</div>
+    <div class="caption">账号</div>
+    <div class="card">
+      ${row('sivan…@gmail.com','个人版 · 上次成功 20:31','<button class="linkbtn danger">移除账号</button>')}
+      ${row('work…@corp.com','团队版','<button class="linkbtn danger">移除账号</button>')}
+    </div>
+    <div class="actionbar" style="margin-top:10px">
+      <button class="linkbtn danger">移除服务</button>
+      <span class="spacer"></span>
+      <button class="btn">重新验证</button>
+      <button class="btn primary">保存并验证</button>
+    </div>`
+};
+const CFG_DIALOG=`
+  <div class="dialog">
+    <div class="dg-head">配置 Kimi</div>
+    <div class="dg-body">
+      ${KIMI_STATUS}
+      ${KIMI_FORM}
+    </div>
+    <div class="dg-foot">
+      <button class="linkbtn danger">移除服务</button>
+      <span class="spacer" style="flex:1"></span>
+      <button class="btn">取消</button>
+      <button class="btn primary">保存并验证</button>
+    </div>
+  </div>`;
+const cfgNotes={
+  p1:'<b>P1 内联展开 (现状改进版):</b> 保持就地展开, 但补上状态条, 字段带标题, 按钮分极 —— 破坏性「移除」沉底居左, 「取消/保存并验证」居右, 主按钮 accent. 改动最小, 但多服务同时展开时页面会很长.',
+  p2:'<b>P2 配置对话框:</b> 列表始终干净, 点「配置」弹居中模态对话框 (WinUI ContentDialog 同款), 表单/按钮聚焦, 底部按钮固定分极. 跨平台语义最标准, 但多账号管理 (Codex 双账号) 在对话框里略显局促. 推荐.',
+  p3:'<b>P3 详情子页:</b> 点进服务进独立子页 (面包屑返回), 凭证/账号分区, 操作栏沉底. 空间最大, 最配得上 Kimi/Codex 多账号场景, 层级扩展性最好; 代价是多一层导航.'
+};
+function renderCfg(){
+  const p=document.body.dataset.cfg||'p2';
+  document.getElementById('cfgContent').innerHTML=
+    `<div class="content-inner">${CFG[p]}</div>`;
+  const overlay=document.getElementById('cfgOverlay');
+  overlay.style.display=p==='p2'?'grid':'none';
+  overlay.innerHTML=p==='p2'?CFG_DIALOG:'';
+  document.getElementById('cfgNote').innerHTML=cfgNotes[p];
+}
+document.getElementById('cfgSeg').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b)return;
+  document.body.dataset.cfg=b.dataset.cfg;
+  document.querySelectorAll('#cfgSeg button').forEach(x=>x.classList.toggle('active',x===b));
+  renderCfg();
+});
+document.body.dataset.cfg=document.body.dataset.cfg||'p2';
+if(q.get('cfg')){
+  document.body.dataset.cfg=q.get('cfg');
+  document.querySelectorAll('#cfgSeg button').forEach(x=>x.classList.toggle('active',x.dataset.cfg===q.get('cfg')));
+}
+renderCfg();
+</script>
+</body>
+</html>
