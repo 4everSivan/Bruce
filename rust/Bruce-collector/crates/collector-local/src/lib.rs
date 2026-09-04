@@ -181,12 +181,11 @@ where
             let cache_receiver = Arc::clone(&cache_receiver);
             std::thread::spawn(move || {
                 let mut errors = 0u64;
-                loop {
-                    let job = cache_receiver
-                        .lock()
-                        .expect("cache writer queue mutex poisoned")
-                        .recv();
-                    let Ok(job) = job else { break };
+                while let Ok(job) = cache_receiver
+                    .lock()
+                    .expect("cache writer queue mutex poisoned")
+                    .recv()
+                {
                     if write_cache(&job.path, &job.entry).is_err() {
                         errors = errors.saturating_add(1);
                     }
@@ -213,7 +212,7 @@ where
         .map(|writer| {
             writer
                 .join()
-                .map_err(|_| io::Error::new(io::ErrorKind::Other, "cache writer thread panicked"))
+                .map_err(|_| io::Error::other("cache writer thread panicked"))
         })
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()
