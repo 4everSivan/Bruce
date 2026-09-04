@@ -90,7 +90,7 @@ Python collector 时代残留:
 文档事实性漂移 (需改写):
 
 - README.md 版本声称 v0.3.0, 与 VERSION (=0.4)/CHANGELOG/tag 三方矛盾 [:10] ✅
-- docs/development/02-ci-cd.md 与现行 ci.yml 全面脱节 (artifact 名错、缺 release-sign job、secrets 声明相反) ✅
+- docs/development/02-ci-cd.md 与现行 ci.yml 的发布边界已同步: 当前仅 Preview 验证、构建和草稿 Release, 不纳入正式签名 job ✅
 - docs/development/03-toolchain.md 三处漂移: 最低系统 macOS 26 (实际 v14)、swift-tools-version 6.0 (实际 6.2)、Harness 表少列 6 个 ✅
 - docs/development/01-bruce-design.md 多章节描述已拆除架构且无历史横幅 (平台基线/WebKit/App Bundle Widget 副本/§19.6.2 幻影步骤) ✅
 - docs/development/04-provider-auth-matrix.md 停留在 CC Switch 时代, README 仍链接它作为授权矩阵 ✅

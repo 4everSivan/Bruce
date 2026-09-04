@@ -18,7 +18,7 @@
 
 Bruce 把本机 AI Agent 的 token 用量、成本估算和订阅额度集中到一个原生 macOS 菜单栏应用中。原生层负责依赖扫描、登录授权、凭证管理、定时刷新、缓存与故障恢复; Rust Collector 负责采集; 弹出面板以原生 SwiftUI 渲染 (macOS 26+ 可选液态玻璃主题, 更低系统自动使用经典材质风格)。项目本地优先运行, 无自有服务端。
 
-> 当前版本 v0.6.0。最低支持 macOS 14, 液态玻璃主题需 macOS 26。测试版由 `scripts/build-test-app.sh` 本地打包; 正式版 (Developer ID 签名 + 公证) 由 `scripts/build-release-app.sh` 按 Git tag 构建, 推送 `v*` tag 后 CI 自动产出草稿 Release。
+> 当前版本 v0.6.0。最低支持 macOS 14, 液态玻璃主题需 macOS 26。测试版由 `scripts/build-test-app.sh` 本地打包; 推送 `v*` tag 后 CI 仅自动产出未签名 Preview 草稿 Release。正式版 (Developer ID 签名 + 公证) 暂未纳入 CI/CD 规划, `scripts/build-release-app.sh` 仅作为未来手工预留。
 
 ## 核心特性
 
@@ -89,11 +89,11 @@ swift run --package-path macos/BruceApp BruceApp
 
 ```bash
 zsh scripts/build-test-app.sh    # 测试版: dist/Bruce.app + dist/Bruce.zip (不入库)
-zsh scripts/build-release-app.sh # 正式版: Developer ID 签名 + Hardened Runtime + 公证 (需 Git tag 与证书)
+zsh scripts/build-release-app.sh # 预留手工正式版: Developer ID 签名 + Hardened Runtime + 公证 (需 Git tag 与证书)
 zsh scripts/release-notes.sh     # 从 CHANGELOG 提取当前版本生成 Release 说明
 ```
 
-正式打包前置条件: Git tag `v<major>.<minor>.<patch>`、Developer ID Application 证书和 App Store Connect API Key; 未配置时脚本在对应阶段清晰失败, 不产出半成品。
+正式版手工打包前置条件: Git tag `v<major>.<minor>.<patch>`、Developer ID Application 证书和 App Store Connect API Key; 该流程当前未接入 CI/CD, 未配置时脚本在对应阶段清晰失败, 不产出半成品。
 
 ## 应用架构
 
@@ -200,16 +200,16 @@ swift run --package-path macos/BruceApp PanelViewModelHarness
 swift run --package-path macos/BruceApp RefreshSchedulerHarness "$PWD"
 ```
 
-CI (`.github/workflows/ci.yml`) 在 push/PR 时执行 Rust/Swift verify-local.sh 和测试版 App 构建; tag `v*` 触发正式构建与草稿 Release。
+CI (`.github/workflows/ci.yml`) 在 push/PR 时执行 Rust/Swift verify-local.sh 和测试版 App 构建; tag `v*` 仅触发未签名 Preview 构建与草稿 Release。正式签名、公证和 Gatekeeper 校验不属于当前 CI/CD 规划。
 
 Widget (Daimon 场景) 的 JSON fixture 继续由 `scripts/check-collector-fixtures.sh` 做语法与脱敏校验; 真实 Collector、OAuth、签名和 `.app` 发布验证不属于默认测试流程, 需要单独授权和对应环境。
 
 ## 当前限制
 
-- 正式签名与公证发布链路需要 Developer ID 证书和 App Store Connect API Key; 未配置时 CI Release 保持草稿状态。
+- 正式签名与公证发布链路暂未纳入 CI/CD 规划; 如未来启用, 仍需要 Developer ID 证书和 App Store Connect API Key。
 - 真实 Agent Provider 登录验收需要用户在个人 Mac 上明确授权。
 - 30 分钟自动刷新、系统睡眠补偿、凭证续期和撤销仍需真实环境持续验收。
-- VoiceOver、增加对比度和全键盘流程仍需在签名发布构建上完成人工验收。
+- VoiceOver、增加对比度和全键盘流程仍需在后续适用的发布构建上完成人工验收。
 
 ## 更多文档
 

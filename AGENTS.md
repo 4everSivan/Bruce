@@ -90,7 +90,7 @@
 | `swift run --package-path macos/BruceApp DeepSeekUsageLedgerHarness` | DeepSeek 月度账本边界测试 (领域差分, 时区跨日, 持久化权限, 损坏恢复, 敏感字段); 17 项 |
 | `zsh scripts/build-test-app.sh` | 生成 `dist/Bruce.app` 本地构建 App (Release 构建 + 打包 + 签名校验) |
 | `zsh scripts/collector-release-smoke.sh dist/Bruce.app --local-preview` | 在隔离临时目录验证 Rust Bridge/artifact、旧 cache rebuild、install/upgrade/rollback; strict 模式用于已签名 Release |
-| GitHub Actions `.github/workflows/ci.yml` | push/PR 触发: Rust/Swift verify-local.sh + 测试包构建; tag `v*` 触发测试包与正式版两条草稿 Release 流水线 |
+| GitHub Actions `.github/workflows/ci.yml` | push/PR 触发: Rust/Swift verify-local.sh + 测试包构建; tag `v*` 仅触发未签名 Preview 草稿 Release, 正式版签名/公证不纳入当前 CI/CD |
 
 执行第一个实时命令前必须应用 `constitution.md` 的 Production Operation Mode. 静态分析或普通代码审查不得把实时采集作为默认验证步骤.
 <!-- source: scan/config, confidence: HIGH -->

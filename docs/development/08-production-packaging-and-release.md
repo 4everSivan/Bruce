@@ -3,7 +3,7 @@
 > 版本: 1.0  
 > 日期: 2026-08-04  
 > 适用范围: macOS 菜单栏 App 的预览版和正式版构建、签名、公证、验收与回滚  
-> 实施状态: 流程规范已落地为脚本与 CI. `scripts/build-release-app.sh` 已实现 (08 §3 五阶段, 版本来源 Git tag, Developer ID + Hardened Runtime + notarization, 产物含 SHA256SUMS/release-notes); `scripts/entitlements-release.plist` 最小 entitlement; `.github/workflows/ci.yml` 增加 protected `release-sign` job (仅 tag v* 触发, 凭证从 Secret 读取, PR 永不接触). `scripts/build-test-app.sh` 当前只打包 Rust Collector 和 Swift App. 前置条件 (Developer ID 证书/公证 API Key/正式 bundle ID) 仍未配置, 未配置时脚本在对应阶段清晰失败, 不生成半成品.
+> 实施状态: 正式版流程规范与 `scripts/build-release-app.sh` 已保留为未来手工预留, 当前未接入 CI/CD, 也未纳入当前发布规划. `scripts/build-release-app.sh` 已实现 (08 §3 五阶段, 版本来源 Git tag, Developer ID + Hardened Runtime + notarization, 产物含 SHA256SUMS/release-notes); `scripts/entitlements-release.plist` 为最小 entitlement. `.github/workflows/ci.yml` 当前只负责验证、Preview 构建和未签名草稿 Release. 前置条件 (Developer ID 证书/公证 API Key/正式 bundle ID) 仍未配置, 未配置时脚本在对应阶段清晰失败, 不生成半成品.
 
 ## 1. 发布渠道定义
 
@@ -91,28 +91,25 @@ CFBundleVersion = CI 递增构建号
 4. 生成 `SHA256SUMS`.
 5. 生成脱敏 release notes, 列出版本、变更、已知限制和回滚版本.
 
-## 4. CI 正式发布 Job
+## 4. CI/CD 当前边界
 
-在 `.github/workflows/ci.yml` 增加独立的 protected release job, 不要把正式凭证放进普通 PR job:
+当前 `.github/workflows/ci.yml` 不接入正式版签名、公证或 Gatekeeper 校验, 也不注入 Developer ID 或 notary 凭证. CI 只保留验证、Preview 构建和 tag 草稿 Release:
 
 ```text
 tag v*                         # 触发
   -> verify                    # 完整离线验证
-  -> build-release             # Release 构建与敏感信息门禁
-  -> sign                      # protected runner + Developer ID
-  -> notarize                  # notarytool --wait
-  -> staple-and-verify         # stapler + spctl + clean-user smoke
-  -> checksum-and-draft        # 生成校验和并创建草稿 Release
+  -> build-preview             # 未签名 Preview 构建
+  -> checksum-and-draft        # 生成校验和并创建未签名草稿 Release
   -> manual approval           # 发布前人工确认
-  -> publish                   # 上传 App zip、校验和、说明
+  -> publish                   # 上传 Preview App zip、校验和、说明
 ```
 
 CI 规则:
 
-- Pull Request 只能运行 Preview/验证任务, 不接触签名和公证凭证.
-- 正式发布只接受保护分支和符合格式的 tag.
-- 每次 release 保存构建日志、notary request ID、校验和和版本元数据.
-- 任何签名、公证、Gatekeeper 或敏感信息门禁失败都不得上传可下载资产.
+- Pull Request 和 push 只能运行 Preview/验证任务, 不接触签名和公证凭证.
+- tag `v*` 只创建未签名 Preview 草稿 Release, 由维护者人工确认后发布.
+- 当前不保存 notary request ID、签名元数据或正式版产物.
+- 正式版签名、公证和 Gatekeeper 流程若未来重新规划, 需要单独设计和授权.
 
 ## 5. 正式版验收矩阵
 
@@ -175,12 +172,12 @@ release-notes-<version>.md
 
 ## 8. 当前阻塞与完成标准
 
-当前仓库尚未配置 Developer ID 证书、公证 API Key、正式 bundle ID 和 release entitlements. 在这些前置条件完成前, 只能生成 Preview 测试包, 不能把现有 `Bruce.app` 称为正式版.
+正式版签名、公证和 Gatekeeper 校验当前不属于 CI/CD 规划. 仓库尚未配置 Developer ID 证书、公证 API Key、正式 bundle ID 和 release entitlements, 因此当前发布只生成 Preview 测试包, 不能把现有 `Bruce.app` 称为正式版.
 
-正式发布流程完成的判定标准:
+未来若重新规划正式发布, 其完成判定标准:
 
 - `scripts/build-release-app.sh` 可在干净环境重复生成同版本结构一致的 App.
-- CI 保护 Job 能完成签名、公证、装订和 Gatekeeper 验证.
+- 若未来重新规划正式发布, 需要另行建立 CI 保护 Job, 完成签名、公证、装订和 Gatekeeper 验证.
 - 正式版验收矩阵全部勾选, 产物带校验和和脱敏说明.
 - 回滚版本已准备并通过旧数据/凭证兼容验证.
 

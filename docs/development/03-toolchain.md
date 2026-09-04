@@ -18,7 +18,7 @@
 - 工程格式: Swift Package Manager executable, 后续可由 Xcode 直接打开 `macos/BruceApp/Package.swift`.
 - Swift tools version: 6.2 (`// swift-tools-version: 6.2`).
 - 当前已验证编译器: Apple Swift 6.2.1.
-- 本机开发环境只有 Apple Command Line Tools, 无法在本机执行 `xcodebuild archive`; 签名与 `.app` 发布验证由 `scripts/build-release-app.sh` 在具备完整 Xcode 与证书的环境 (如 CI `release-sign` job) 完成.
+- 本机开发环境只有 Apple Command Line Tools, 无法在本机执行 `xcodebuild archive`; `scripts/build-release-app.sh` 仅作为未来正式版手工预留, 当前未接入 CI/CD.
 - 无完整 Xcode 时使用:
 
 ```bash

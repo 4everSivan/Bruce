@@ -14,7 +14,7 @@
 # 未配置前置条件时脚本在对应阶段清晰失败, 不会生成半成品或未签名包.
 # 用法:
 #   zsh scripts/build-release-app.sh <tag>            # 本机正式构建
-#   CI: 由 .github/workflows/ci.yml 的 protected release job 调用
+#   当前不接入 CI/CD, 仅作为未来正式版规划的手工预留脚本
 
 set -euo pipefail
 
