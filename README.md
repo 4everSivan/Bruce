@@ -5,7 +5,7 @@
   <p>一条帮你看住每个 token 的本地小狗 🐶</p>
   <p>
     <a href="https://github.com/4everSivan/Bruce/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/4everSivan/Bruce/ci.yml?branch=main&amp;style=flat-square&amp;label=CI%2FCD" alt="CI/CD" /></a>
-    <a href="https://github.com/4everSivan/Bruce/releases"><img src="https://img.shields.io/badge/version-v0.5-0A7EA4?style=flat-square" alt="Version v0.5" /></a>
+    <a href="https://github.com/4everSivan/Bruce/releases"><img src="https://img.shields.io/badge/version-v0.6.0-0A7EA4?style=flat-square" alt="Version v0.6.0" /></a>
     <a href="#环境要求"><img src="https://img.shields.io/badge/macOS-14%2B-000000?style=flat-square&amp;logo=apple&amp;logoColor=white" alt="macOS 14+" /></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-4CBB17?style=flat-square" alt="MIT License" /></a>
   </p>
@@ -18,7 +18,7 @@
 
 Bruce 把本机 AI Agent 的 token 用量、成本估算和订阅额度集中到一个原生 macOS 菜单栏应用中。原生层负责依赖扫描、登录授权、凭证管理、定时刷新、缓存与故障恢复; Rust Collector 负责采集; 弹出面板以原生 SwiftUI 渲染 (macOS 26+ 可选液态玻璃主题, 更低系统自动使用经典材质风格)。项目本地优先运行, 无自有服务端。
 
-> 当前版本 v0.5。最低支持 macOS 14, 液态玻璃主题需 macOS 26。测试版由 `scripts/build-test-app.sh` 本地打包; 正式版 (Developer ID 签名 + 公证) 由 `scripts/build-release-app.sh` 按 Git tag 构建, 推送 `v*` tag 后 CI 自动产出草稿 Release。
+> 当前版本 v0.6.0。最低支持 macOS 14, 液态玻璃主题需 macOS 26。测试版由 `scripts/build-test-app.sh` 本地打包; 正式版 (Developer ID 签名 + 公证) 由 `scripts/build-release-app.sh` 按 Git tag 构建, 推送 `v*` tag 后 CI 自动产出草稿 Release。
 
 ## 核心特性
 

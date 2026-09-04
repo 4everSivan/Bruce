@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.0] - 2026-09-04
+
+### Added
+
+- **Nothing 风格主题**: 新增定制字体、卡片外观、Hero 强调色、热力图呼吸效果和绿色阶系列色, 形成独立的 Nothing 视觉主题。
+- **模型用量多窗口明细**: Hero 卡新增模型用量分解, 支持多个时间窗口展示和对应的模型占比。
+- **CodeBuddy CLI 会话采集**: 新增 CodeBuddy CLI 会话扫描, 支持原始 usage 解析、快照去重和与其他 Agent 统一聚合。
+- **设置页配置体验**: 新增 Fluent 卡片式设置外观、模态 API Key 配置和更集中的 Provider 配置流程。
+
+### Changed
+
+- **会话用量归因**: Codex token 用量按 turn context model 归因, OpenCode 与 ZCode 在行数上限场景保留最新消息和模型记录。
+- **持久化可靠性**: 提取 `AtomicJSONStore`, 统一 JSON 配置的原子读写与恢复边界。
+- **订阅配置结构**: 收敛订阅 Provider 配置和 CodeBuddy 会话源接入, 保持凭证配置与运行时注入职责分离。
+- **界面可读性**: 调整模型用量列表和 Nothing 主题的文本、颜色与间距表现, 避免 token 数值在卡片中意外换行。
+
+### Fixed
+
+- **CodeBuddy usage 解析与去重**: 兼容 raw usage 和 camelCase cache breakdown, 按 session/message identity 去重重复快照。
+- **Codex 快照重复计数**: 使用文件头尾 fingerprint 替代完整文件 digest, 在重复 rollout 副本和大文件场景保持稳定去重。
+- **Rust CI Clippy 门禁**: 兼容新版 Clippy 对 cache writer 循环和 `io::Error` 构造的 lint 要求, 恢复 `verify-local.sh` 发布门禁。
+
+---
+
 ## [0.5] - 2026-08-25
 
 ### Added
