@@ -305,10 +305,7 @@ where
         }
     };
     let mut reader = BufReader::new(file);
-    loop {
-        let Some(line) = read_bounded_line(&mut reader, super::MAX_JSONL_RECORD_BYTES)? else {
-            break;
-        };
+    while let Some(line) = read_bounded_line(&mut reader, super::MAX_JSONL_RECORD_BYTES)? {
         stats.lines_seen = stats.lines_seen.saturating_add(1);
         stats.bytes_read = stats.bytes_read.saturating_add(line.bytes as u64);
         if line.truncated {
