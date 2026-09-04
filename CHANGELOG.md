@@ -22,7 +22,7 @@ All notable changes to this project will be documented in this file.
 
 - **CodeBuddy usage 解析与去重**: 兼容 raw usage 和 camelCase cache breakdown, 按 session/message identity 去重重复快照。
 - **Codex 快照重复计数**: 使用文件头尾 fingerprint 替代完整文件 digest, 在重复 rollout 副本和大文件场景保持稳定去重。
-- **Rust CI Clippy 门禁**: 兼容新版 Clippy 对 cache writer 循环和 `io::Error` 构造的 lint 要求, 恢复 `verify-local.sh` 发布门禁。
+- **Rust CI Clippy 门禁**: 兼容新版 Clippy 对 cache writer、JSONL source reader 循环和 `io::Error` 构造的 lint 要求, 恢复 `verify-local.sh` 发布门禁。
 
 ---
 
