@@ -716,6 +716,16 @@ fn codebuddy_nested_positive_number(
     })
 }
 
+/// `codebuddy_usage_fields` 的解析结果.
+struct CodeBuddyUsageFields {
+    input: u64,
+    output: u64,
+    cache_read: u64,
+    cache_creation: u64,
+    /// input 是否尚未做过缓存扣减 (cache_miss 缺失时 input 仍为缓存含值口径).
+    input_cache_inclusive: bool,
+}
+
 /// Return pure input, output, cache-read and cache-write counts.
 ///
 /// CodeBuddy's `message.usage` is normalized and its `input_tokens` includes
@@ -728,7 +738,7 @@ fn codebuddy_nested_positive_number(
 /// provider `completion_tokens` already includes them (verified against local
 /// rollouts where `total_tokens == prompt_tokens + completion_tokens` while
 /// `completion_thinking_tokens` > 0), so an additive fold would double count.
-fn codebuddy_usage_fields(value: &Value, raw: bool) -> Option<(u64, u64, u64, u64)> {
+fn codebuddy_usage_fields(value: &Value, raw: bool) -> Option<CodeBuddyUsageFields> {
     let cache_read = codebuddy_first_positive_number(
         value,
         &[
@@ -854,7 +864,13 @@ fn codebuddy_usage_fields(value: &Value, raw: bool) -> Option<(u64, u64, u64, u6
     });
     // completion/reasoning 明细不再叠加: completion_tokens 已含 reasoning,
     // 叠加会对 thinking 部分双计数 (见函数注释与本机数据验证).
-    Some((input, output.unwrap_or(0), cache_read, cache_creation))
+    Some(CodeBuddyUsageFields {
+        input,
+        output: output.unwrap_or(0),
+        cache_read,
+        cache_creation,
+        input_cache_inclusive: cache_miss.is_none(),
+    })
 }
 
 fn codebuddy_usage(value: &Value) -> Option<(u64, u64, u64, u64)> {
@@ -873,11 +889,37 @@ fn codebuddy_usage(value: &Value) -> Option<(u64, u64, u64, u64)> {
         (message.and_then(|message| message.get("usage")), false),
         (value.get("usage"), false),
     ];
-    candidates.into_iter().find_map(|(candidate, raw)| {
+    let mut parsed = candidates.into_iter().filter_map(|(candidate, raw)| {
         candidate
             .filter(|candidate| candidate.is_object())
             .and_then(|candidate| codebuddy_usage_fields(candidate, raw))
-    })
+    });
+    let mut primary = parsed.next()?;
+    // 首选候选缺缓存明细时 (rawUsage 常缺 prompt_tokens_details), 用后续
+    // 归一化候选补齐缓存拆分; 此时 primary 的 input 仍是缓存含值口径, 需同步
+    // 扣减, 保证 input + cache_read + cache_creation 与总量守恒.
+    if primary.cache_read == 0 && primary.cache_creation == 0 {
+        for extra in parsed {
+            if extra.cache_read == 0 && extra.cache_creation == 0 {
+                continue;
+            }
+            if primary.input_cache_inclusive {
+                primary.input = primary
+                    .input
+                    .saturating_sub(extra.cache_read)
+                    .saturating_sub(extra.cache_creation);
+            }
+            primary.cache_read = extra.cache_read;
+            primary.cache_creation = extra.cache_creation;
+            break;
+        }
+    }
+    Some((
+        primary.input,
+        primary.output,
+        primary.cache_read,
+        primary.cache_creation,
+    ))
 }
 
 fn codebuddy_string(value: Option<&Value>, names: &[&str]) -> Option<String> {
@@ -1740,6 +1782,49 @@ mod tests {
         assert_eq!(today.cache_read, 200);
         assert_eq!(today.cache_creation, 50);
         assert_eq!(today.total, 980);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn codebuddy_merges_normalized_cache_when_raw_usage_lacks_breakdown() {
+        // 本机真实形态: rawUsage 无任何缓存明细, 缓存拆分只在归一化 usage 中;
+        // 合并后 input 需同步扣减, 保持 input + output + cache_read == total.
+        let root = temp_root("codebuddy-cache-merge");
+        let session_dir = root.join("Users-sivan-Desktop");
+        fs::create_dir_all(&session_dir).unwrap();
+        let base = 1_785_211_200_000_i64;
+        let content = json!({
+            "type": "message",
+            "role": "assistant",
+            "timestamp": base,
+            "providerData": {
+                "model": "glm-5.3-flash",
+                "messageId": "raw-2",
+                "rawUsage": {
+                    "prompt_tokens": 24575,
+                    "completion_tokens": 109,
+                    "total_tokens": 24684,
+                    "completion_tokens_details": {"reasoning_tokens": 64}
+                }
+            },
+            "message": {"usage": {
+                "input_tokens": 24575,
+                "output_tokens": 109,
+                "total_tokens": 24684,
+                "cache_read_input_tokens": 384
+            }}
+        })
+        .to_string();
+        fs::write(session_dir.join("session-a.jsonl"), content).unwrap();
+
+        let scan = super::scan_codebuddy(&root, &window());
+        assert!(scan.diagnostic.is_none(), "扫描不应报错");
+        let today = &scan.contribution.by_day["2026-07-28"];
+        assert_eq!(today.input, 24191, "归一化 cache_read 应从 input 中扣减");
+        assert_eq!(today.output, 109);
+        assert_eq!(today.cache_read, 384, "rawUsage 缺明细时应回退归一化缓存");
+        assert_eq!(today.cache_creation, 0);
+        assert_eq!(today.total, 24684);
         fs::remove_dir_all(&root).ok();
     }
 
