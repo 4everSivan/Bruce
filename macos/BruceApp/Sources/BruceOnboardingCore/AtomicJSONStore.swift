@@ -221,19 +221,22 @@ package struct AtomicJSONStore {
 
     // MARK: - 备份 / 回滚
 
-    /// 将目标文件复制到 `<basename>.backup.json`; 备份已存在则跳过 (幂等).
-    /// 目标不存在时返回 false.
+    /// 将目标文件复制到 `<basename>.backup.json`.
+    ///
+    /// 已存在的旧备份会被覆盖: 备份始终是「上一次写入前」的状态 (滚动深度 1),
+    /// 而不是 write-once 的陈旧快照 — 否则回滚会还原任意久远的数据.
+    /// 目标不存在时返回 false; 复制失败返回 false (调用方自行决定是否继续).
     @discardableResult
     package func backup(_ url: URL) -> Bool {
         guard fileManager.fileExists(atPath: url.path) else {
             return false
         }
         let backupURL = self.backupURL(for: url)
-        guard !fileManager.fileExists(atPath: backupURL.path) else {
-            return true
-        }
         do {
             try prepareDirectory(at: backupURL.deletingLastPathComponent())
+            if fileManager.fileExists(atPath: backupURL.path) {
+                try fileManager.removeItem(at: backupURL)
+            }
             try fileManager.copyItem(at: url, to: backupURL)
             try fileManager.setAttributes(
                 [.posixPermissions: filePermissions],

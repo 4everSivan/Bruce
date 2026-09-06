@@ -41,6 +41,7 @@ struct BruceOnboardingCoreHarness {
         try configStoreReturnsEmptyWhenMissing()
         try configStoreReturnsNilForUnknownSchema()
         try configStoreFilePermissions()
+        try atomicStoreBackupRefreshesOnEachWrite()
         try credentialStoreRoundTrip()
         try credentialStoreDelete()
         try credentialStoreIsolatesByAccount()

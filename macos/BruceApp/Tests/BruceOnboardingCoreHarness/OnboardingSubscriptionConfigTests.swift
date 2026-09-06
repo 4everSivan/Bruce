@@ -968,4 +968,33 @@ extension BruceOnboardingCoreHarness {
             "OpenCode GO 凭证应返回 nil"
         )
     }
+
+    // MARK: - AtomicJSONStore
+
+    /// 备份滚动刷新: 每次 backupPrevious 写入都把备份刷成「本次写入前」的状态,
+    /// 回滚还原的是上一次内容, 而不是 write-once 的陈旧快照.
+    static func atomicStoreBackupRefreshesOnEachWrite() throws {
+        let tempDir = makeTempDir("atomic-backup")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let store = AtomicJSONStore()
+        let target = tempDir.appendingPathComponent("state.json")
+
+        try store.write(Data("v1".utf8), to: target)
+        try store.write(Data("v2".utf8), to: target, backupPrevious: true)
+        let firstBackup = try String(
+            contentsOf: store.backupURL(for: target), encoding: .utf8
+        )
+        try coreExpect(firstBackup == "v1", "首次备份备份的应是写入前的 v1")
+
+        try store.write(Data("v3".utf8), to: target, backupPrevious: true)
+        let refreshedBackup = try String(
+            contentsOf: store.backupURL(for: target), encoding: .utf8
+        )
+        try coreExpect(refreshedBackup == "v2", "再次写入后备份应刷新为 v2 (滚动深度 1)")
+
+        try coreExpect(store.rollback(target) == .rolledBack, "回滚应成功")
+        let rolledBack = try String(contentsOf: target, encoding: .utf8)
+        try coreExpect(rolledBack == "v2", "回滚应还原上一次写入前的 v2")
+    }
 }
