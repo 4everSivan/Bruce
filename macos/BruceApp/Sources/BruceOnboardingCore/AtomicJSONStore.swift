@@ -26,12 +26,14 @@ package struct AtomicJSONStore {
         case beforeMigrationReplace
     }
 
-    /// 读结果: 区分「文件不存在 / schema 高版本不兼容 / 解码或校验损坏」,
-    /// 让调用方选择回滚或重建, 而非笼统抛错.
+    /// 读结果: 区分「文件不存在 / schema 高版本不兼容 / 读取失败(IO/权限) /
+    /// 解码或校验损坏」, 让调用方选择回滚或重建, 而非笼统抛错.
+    /// `.unreadable` 表示文件内容未知 (可能是瞬时 IO/权限故障), 不应触发回滚.
     package enum ReadResult<T> {
         case loaded(T)
         case missing
         case incompatible(Int)
+        case unreadable
         case corrupt
     }
 
@@ -201,6 +203,8 @@ package struct AtomicJSONStore {
 
     /// 读取并解码目标文件, 返回穷尽化的 `ReadResult`.
     /// - `validate`: 解码后可选业务校验; 校验失败归为 `.corrupt`.
+    /// - Note: 文件存在但读不出字节 (权限/IO) 归为 `.unreadable`, 只有
+    ///   解码或校验失败才算 `.corrupt`, 避免瞬时 IO 故障误触发回滚.
     package func read<T: Decodable>(
         _ type: T.Type,
         from url: URL,
@@ -209,8 +213,13 @@ package struct AtomicJSONStore {
         guard fileManager.fileExists(atPath: url.path) else {
             return .missing
         }
+        let data: Data
         do {
-            let data = try Data(contentsOf: url)
+            data = try Data(contentsOf: url)
+        } catch {
+            return .unreadable
+        }
+        do {
             let decoded = try JSONDecoder().decode(type, from: data)
             try validate?(decoded)
             return .loaded(decoded)

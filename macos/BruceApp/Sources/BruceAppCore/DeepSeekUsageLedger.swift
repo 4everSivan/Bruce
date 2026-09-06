@@ -358,6 +358,9 @@ package final class DeepSeekUsageLedger {
         case .incompatible:
             // 高版本 schema: 保守拒绝, 不回滚.
             return nil
+        case .unreadable:
+            // 读取失败 (权限/IO): 文件内容未知, 保守不回滚, 交给下次观察重建.
+            return nil
         case .corrupt:
             // 损坏: 尝试从备份回滚一次, 回滚后仍不可用则保守返回 nil.
             if atomicStore.rollback(ledgerURL) == .rolledBack {
