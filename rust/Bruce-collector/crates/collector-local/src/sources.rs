@@ -1740,7 +1740,10 @@ mod tests {
         assert!(scan.diagnostic.is_none(), "扫描不应报错");
         let today = &scan.contribution.by_day["2026-07-28"];
         assert_eq!(today.input, 800, "raw prompt_tokens 应扣除两类缓存");
-        assert_eq!(today.output, 50, "completion_tokens 已含 thinking, 不再叠加");
+        assert_eq!(
+            today.output, 50,
+            "completion_tokens 已含 thinking, 不再叠加"
+        );
         assert_eq!(today.cache_read, 300);
         assert_eq!(today.cache_creation, 100);
         assert_eq!(today.total, 1250);
