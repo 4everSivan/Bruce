@@ -676,18 +676,15 @@ fn codebuddy_first_number(value: &Value, names: &[&str]) -> Option<u64> {
         .find_map(|name| value.get(*name).and_then(codebuddy_number))
 }
 
+/// 返回字段列表中首个大于 0 的值; 全部缺失或为 0 时返回 None.
+///
+/// 不返回 `Some(0)` 兜底: 那会阻断调用方 `.or_else` 的嵌套回退
+/// (扁平字段存在但为 0 时, 嵌套对象里的正值缓存明细会被丢弃).
 fn codebuddy_first_positive_number(value: &Value, names: &[&str]) -> Option<u64> {
-    let mut first = None;
-    for name in names {
-        let Some(number) = value.get(*name).and_then(codebuddy_number) else {
-            continue;
-        };
-        if number > 0 {
-            return Some(number);
-        }
-        first.get_or_insert(number);
-    }
-    first
+    names
+        .iter()
+        .filter_map(|name| value.get(*name).and_then(codebuddy_number))
+        .find(|number| *number > 0)
 }
 
 fn codebuddy_nested_number(
@@ -1825,6 +1822,42 @@ mod tests {
         assert_eq!(today.cache_read, 384, "rawUsage 缺明细时应回退归一化缓存");
         assert_eq!(today.cache_creation, 0);
         assert_eq!(today.total, 24684);
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn codebuddy_nested_cache_detail_survives_flat_zero_field() {
+        // 扁平 cached_tokens 为 0 不应阻断嵌套 prompt_tokens_details 的正值回退:
+        // 旧行为返回 Some(0) 中断 or_else 链, 缓存明细被丢弃、input 全额计入.
+        let root = temp_root("codebuddy-zero-trap");
+        let session_dir = root.join("Users-sivan-demo-project");
+        fs::create_dir_all(&session_dir).unwrap();
+        let base = 1_785_211_200_000_i64;
+        let content = json!({
+            "type": "function_call",
+            "timestamp": base,
+            "providerData": {
+                "model": "glm-5.2",
+                "messageId": "raw-3",
+                "rawUsage": {
+                    "prompt_tokens": 1000,
+                    "completion_tokens": 20,
+                    "cached_tokens": 0,
+                    "prompt_tokens_details": {"cached_tokens": 300}
+                }
+            }
+        })
+        .to_string();
+        fs::write(session_dir.join("session-a.jsonl"), content).unwrap();
+
+        let scan = super::scan_codebuddy(&root, &window());
+        assert!(scan.diagnostic.is_none(), "扫描不应报错");
+        let today = &scan.contribution.by_day["2026-07-28"];
+        assert_eq!(today.input, 700);
+        assert_eq!(today.output, 20);
+        assert_eq!(today.cache_read, 300, "嵌套正值缓存应命中, 不被扁平 0 阻断");
+        assert_eq!(today.cache_creation, 0);
+        assert_eq!(today.total, 1020);
         fs::remove_dir_all(&root).ok();
     }
 
