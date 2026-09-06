@@ -723,6 +723,11 @@ fn codebuddy_nested_positive_number(
 /// expose cache hit/miss/write counts directly. Prefer raw usage whenever it
 /// is available because it preserves the provider's split instead of making
 /// assumptions about a normalized total.
+///
+/// Reasoning/thinking tokens are NOT added on top of completion output:
+/// provider `completion_tokens` already includes them (verified against local
+/// rollouts where `total_tokens == prompt_tokens + completion_tokens` while
+/// `completion_thinking_tokens` > 0), so an additive fold would double count.
 fn codebuddy_usage_fields(value: &Value, raw: bool) -> Option<(u64, u64, u64, u64)> {
     let cache_read = codebuddy_first_positive_number(
         value,
@@ -823,27 +828,6 @@ fn codebuddy_usage_fields(value: &Value, raw: bool) -> Option<(u64, u64, u64, u6
             "completionTokens",
         ],
     );
-    let reasoning = codebuddy_first_number(
-        value,
-        &[
-            "completion_thinking_tokens",
-            "completionThinkingTokens",
-            "reasoning_tokens",
-            "reasoningTokens",
-        ],
-    )
-    .or_else(|| {
-        codebuddy_nested_number(
-            value,
-            &["completion_tokens_details", "completionTokensDetails"],
-            &[
-                "reasoning_tokens",
-                "reasoningTokens",
-                "thinking_tokens",
-                "thinkingTokens",
-            ],
-        )
-    });
 
     if reported_input.is_none()
         && cache_miss.is_none()
@@ -868,12 +852,9 @@ fn codebuddy_usage_fields(value: &Value, raw: bool) -> Option<(u64, u64, u64, u6
             reported.saturating_sub(cache_read)
         }
     });
-    Some((
-        input,
-        output.unwrap_or(0).saturating_add(reasoning.unwrap_or(0)),
-        cache_read,
-        cache_creation,
-    ))
+    // completion/reasoning 明细不再叠加: completion_tokens 已含 reasoning,
+    // 叠加会对 thinking 部分双计数 (见函数注释与本机数据验证).
+    Some((input, output.unwrap_or(0), cache_read, cache_creation))
 }
 
 fn codebuddy_usage(value: &Value) -> Option<(u64, u64, u64, u64)> {
@@ -1720,10 +1701,10 @@ mod tests {
         assert!(scan.diagnostic.is_none(), "扫描不应报错");
         let today = &scan.contribution.by_day["2026-07-28"];
         assert_eq!(today.input, 800, "raw prompt_tokens 应扣除两类缓存");
-        assert_eq!(today.output, 70, "thinking tokens 也属于输出 token");
+        assert_eq!(today.output, 50, "completion_tokens 已含 thinking, 不再叠加");
         assert_eq!(today.cache_read, 300);
         assert_eq!(today.cache_creation, 100);
-        assert_eq!(today.total, 1270);
+        assert_eq!(today.total, 1250);
         assert_eq!(scan.contribution.models_today[0].model, "glm-5.2");
         fs::remove_dir_all(&root).ok();
     }
@@ -1755,10 +1736,10 @@ mod tests {
         assert!(scan.diagnostic.is_none(), "扫描不应报错");
         let today = &scan.contribution.by_day["2026-07-28"];
         assert_eq!(today.input, 700);
-        assert_eq!(today.output, 40);
+        assert_eq!(today.output, 30, "completionTokens 已含 reasoningTokens");
         assert_eq!(today.cache_read, 200);
         assert_eq!(today.cache_creation, 50);
-        assert_eq!(today.total, 990);
+        assert_eq!(today.total, 980);
         fs::remove_dir_all(&root).ok();
     }
 
