@@ -285,11 +285,13 @@ public final class OnboardingConfigurationStore: @unchecked Sendable {
                 // 读取失败 (权限/IO): 文件内容未知, 保守不回滚, 视为缺失.
                 return OnboardingConfiguration()
             case .corrupt:
-                // 损坏: 尝试从备份回滚一次; 仍损坏则视为缺失返回空配置.
+                // 损坏: 尝试从备份回滚一次; 回滚结果与直读同样执行 schema 校验,
+                // 高版本备份保守拒绝 (App 降级场景), 仍不可用则视为缺失.
                 if atomicStore.rollback(configURL) == .rolledBack,
                    case .loaded(let rolled) = atomicStore.read(
                        OnboardingConfiguration.self, from: configURL
-                   ) {
+                   ),
+                   rolled.schemaVersion <= OnboardingConfiguration.currentSchemaVersion {
                     return rolled
                 }
                 return OnboardingConfiguration()

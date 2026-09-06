@@ -362,14 +362,14 @@ package final class DeepSeekUsageLedger {
             // 读取失败 (权限/IO): 文件内容未知, 保守不回滚, 交给下次观察重建.
             return nil
         case .corrupt:
-            // 损坏: 尝试从备份回滚一次, 回滚后仍不可用则保守返回 nil.
-            if atomicStore.rollback(ledgerURL) == .rolledBack {
-                if case .loaded(let rolledBack) = atomicStore.read(
-                    LedgerState.self,
-                    from: ledgerURL
-                ) {
-                    return rolledBack
-                }
+            // 损坏: 尝试从备份回滚一次; 回滚结果与直读同样校验 schemaVersion,
+            // 高版本备份保守拒绝 (App 降级场景), 仍不可用则返回 nil.
+            if atomicStore.rollback(ledgerURL) == .rolledBack,
+               case .loaded(let rolledBack) = atomicStore.read(
+                   LedgerState.self,
+                   from: ledgerURL
+               ) {
+                return rolledBack.schemaVersion == Self.schemaVersion ? rolledBack : nil
             }
             return nil
         }
