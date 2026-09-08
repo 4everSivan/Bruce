@@ -222,7 +222,10 @@ struct MenuBarDashboardView: View {
         VStack(spacing: isNothingTheme ? 8 : 10) {
             if let usage = panel.usage {
                 PanelCardContainer {
-                    UsageHeroCard(viewModel: usage)
+                    UsageHeroCard(
+                        viewModel: usage,
+                        panelVisible: model.dashboardPanelVisible
+                    )
                 }
             }
             if let subscription = panel.subscription {
@@ -335,7 +338,9 @@ struct MenuBarDashboardView: View {
                 Label {
                     Text("刷新")
                 } icon: {
-                    if refreshing {
+                    // 面板隐藏期间不渲染旋转图标: repeatForever 动画在
+                    // orderOut 的窗口里仍逐帧驱动 (见 panelVisible 注释).
+                    if refreshing, model.dashboardPanelVisible {
                         SpinningRefreshIcon()
                     } else {
                         Image(systemName: "arrow.clockwise")

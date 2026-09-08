@@ -430,6 +430,15 @@ package final class AppModel: ObservableObject {
         subscriptionErrorMessages[provider] = message
     }
 
+    /// 仪表盘面板窗口当前是否可见. 面板 orderOut 不销毁 SwiftUI 视图树,
+    /// 纯装饰动画必须按此门控, 否则隐藏期间仍逐帧 layout + CA 提交.
+    @Published package private(set) var dashboardPanelVisible = false
+
+    package func setDashboardPanelVisible(_ visible: Bool) {
+        guard dashboardPanelVisible != visible else { return }
+        dashboardPanelVisible = visible
+    }
+
     package func setSubscriptionProviders(
         _ providers: [SubscriptionProviderID: SubscriptionProviderConfiguration]
     ) {

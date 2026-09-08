@@ -290,6 +290,7 @@ final class MenuBarStatusItemController: NSObject {
         refreshPanelWindowAttributes()
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
+        model.setDashboardPanelVisible(true)
     }
 
     /// 关闭面板; toggle 关闭时把前台归还给打开前的应用,
@@ -297,6 +298,7 @@ final class MenuBarStatusItemController: NSObject {
     private func closeDashboard(restorePreviousFrontmostApp: Bool) {
         if panel.isVisible {
             panel.orderOut(nil)
+            model.setDashboardPanelVisible(false)
         }
         let previous = previousFrontmostApp
         previousFrontmostApp = nil

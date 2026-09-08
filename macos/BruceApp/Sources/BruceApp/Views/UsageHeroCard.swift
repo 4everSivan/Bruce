@@ -11,6 +11,9 @@ import SwiftUI
 /// 所有视觉差异包在 theme.interfaceStyle == .nothing 分支内, 其余主题走原路径.
 struct UsageHeroCard: View {
     let viewModel: UsageHeroViewModel
+    /// 面板窗口当前是否可见: orderOut 不销毁视图树, 装饰呼吸动画必须按此
+    /// 门控, 否则隐藏期间仍逐帧 layout + CA commit (实测主进程 ~40% CPU).
+    var panelVisible: Bool = true
 
     @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
@@ -25,8 +28,9 @@ struct UsageHeroCard: View {
         case month(String)
     }
 
-    init(viewModel: UsageHeroViewModel) {
+    init(viewModel: UsageHeroViewModel, panelVisible: Bool = true) {
         self.viewModel = viewModel
+        self.panelVisible = panelVisible
     }
 
     private var isNothing: Bool {
@@ -132,9 +136,19 @@ struct UsageHeroCard: View {
             .scaleEffect(reduceMotion ? 1 : (heroBreathing ? 1.015 : 1))
             .shadow(color: Self.nothingHeroAccent, radius: reduceMotion ? 0 : (heroBreathing ? 15 : 3))
             .onAppear {
-                guard !reduceMotion else { return }
-                withAnimation(.easeInOut(duration: 1.3).repeatForever(autoreverses: true)) {
-                    heroBreathing = true
+                guard !reduceMotion, panelVisible else { return }
+                startHeroBreathing()
+            }
+            .onChange(of: panelVisible) { _, visible in
+                // 隐藏面板用无动画事务复位, 终止 repeatForever 的逐帧驱动;
+                // 重新可见时再起 (onAppear 对常驻视图树只触发一次).
+                if visible {
+                    guard !reduceMotion else { return }
+                    startHeroBreathing()
+                } else {
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) { heroBreathing = false }
                 }
             }
         } else {
@@ -143,6 +157,13 @@ struct UsageHeroCard: View {
                 .tracking(-1.2)
                 .monospacedDigit()
                 .foregroundStyle(Self.heroGradient(for: viewModel.usageTier))
+        }
+    }
+
+    /// Hero 数字呼吸 (仅面板可见期间运行, 见 panelVisible 注释).
+    private func startHeroBreathing() {
+        withAnimation(.easeInOut(duration: 1.3).repeatForever(autoreverses: true)) {
+            heroBreathing = true
         }
     }
 
@@ -450,7 +471,7 @@ struct UsageHeroCard: View {
             ForEach(Array(viewModel.heatmap.enumerated()), id: \.offset) { colIndex, week in
                 VStack(spacing: 3) {
                     ForEach(0..<7, id: \.self) { row in
-                        HeatmapCellView(cell: week.cells[row], isNothing: isNothing, col: colIndex, row: row)
+                        HeatmapCellView(cell: week.cells[row], isNothing: isNothing, col: colIndex, row: row, panelVisible: panelVisible)
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -521,6 +542,7 @@ struct UsageHeroCard: View {
         let isNothing: Bool
         let col: Int
         let row: Int
+        var panelVisible: Bool
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
         @State private var breathe = false
 
@@ -539,13 +561,29 @@ struct UsageHeroCard: View {
                 .aspectRatio(1, contentMode: .fit)
                 .frame(maxWidth: .infinity)
                 .onAppear {
-                    guard isNothing, filled, !reduceMotion else { return }
-                    let phase = (Double(col) * 0.12 + Double(row) * 0.05)
-                        .truncatingRemainder(dividingBy: 3.2)
-                    withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true).delay(phase)) {
-                        breathe = true
+                    guard isNothing, filled, !reduceMotion, panelVisible else { return }
+                    startBreathing()
+                }
+                .onChange(of: panelVisible) { _, visible in
+                    // 面板隐藏时停掉全部错相位呼吸 (每格一个 repeatForever 动画,
+                    // 隐藏期间仍逐帧驱动); 重新可见时按原相位重启.
+                    if visible {
+                        guard isNothing, filled, !reduceMotion else { return }
+                        startBreathing()
+                    } else {
+                        var transaction = Transaction()
+                        transaction.disablesAnimations = true
+                        withTransaction(transaction) { breathe = false }
                     }
                 }
+        }
+
+        private func startBreathing() {
+            let phase = (Double(col) * 0.12 + Double(row) * 0.05)
+                .truncatingRemainder(dividingBy: 3.2)
+            withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true).delay(phase)) {
+                breathe = true
+            }
         }
 
         static func baseColor(cell: UsageHeatmapCell?, isNothing: Bool) -> Color {
