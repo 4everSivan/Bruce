@@ -33,8 +33,8 @@ const FINGERPRINT_SEGMENT_BYTES: u64 = 64 * 1024;
 const CACHE_WRITERS: usize = 1;
 
 pub use sources::{
-    scan_claude, scan_codebuddy, scan_codex, scan_grok, scan_kimi_tree, scan_opencode, scan_pi,
-    scan_zcode, SourceScan,
+    scan_claude, scan_codebuddy, scan_codex, scan_codex_cached, scan_grok, scan_kimi_tree,
+    scan_opencode, scan_pi, scan_zcode, SourceScan,
 };
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalUsageRecord {

@@ -11,14 +11,15 @@ use collector_domain::{
     CollectionWindow, UsageContribution, UsageContributionBuilder, UsageSample,
 };
 use rusqlite::{Connection, OpenFlags};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::fs::{self, File};
-use std::io::{self, BufReader, Read, Seek};
+use std::io::{self, BufReader, Read, Seek, Write};
 use std::path::{Path, PathBuf};
-use std::time::UNIX_EPOCH;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const MAX_SOURCE_ROWS: i64 = 10_000;
 
@@ -500,13 +501,15 @@ fn fingerprint_file(path: &Path, size: u64) -> io::Result<String> {
     hasher.update(size.to_le_bytes());
     let mut buffer = vec![0u8; CHUNK as usize];
     // 头部块 (整文件不足一块时即全部内容).
-    let head_len = file.by_ref().take(CHUNK).read(&mut buffer)?;
+    let head_len = io::Read::by_ref(&mut file).take(CHUNK).read(&mut buffer)?;
     hasher.update(&buffer[..head_len]);
     // 中段存在时直接 seek 到末块前读取, 不重读中段.
     if size > CHUNK {
         file.seek(io::SeekFrom::Start(size - CHUNK))?;
         let mut tail = Vec::with_capacity(CHUNK as usize);
-        file.by_ref().take(CHUNK).read_to_end(&mut tail)?;
+        io::Read::by_ref(&mut file)
+            .take(CHUNK)
+            .read_to_end(&mut tail)?;
         hasher.update(&tail);
     }
     Ok(format!("{:x}", hasher.finalize()))
@@ -1062,7 +1065,6 @@ pub fn scan_codebuddy(root: &Path, window: &CollectionWindow) -> SourceScan {
 /// Scan Codex CLI and Orca rollout JSONL files.  The quota snapshot remains a
 /// provider concern; this function only builds the local token contribution.
 pub fn scan_codex(roots: &[PathBuf], window: &CollectionWindow) -> SourceScan {
-    let mut builder = UsageContributionBuilder::new(window.clone());
     let mut stats = ScanStats::default();
     let mut groups = BTreeMap::<String, Vec<CodexFileCandidate>>::new();
     for root in roots {
@@ -1071,6 +1073,123 @@ pub fn scan_codex(roots: &[PathBuf], window: &CollectionWindow) -> SourceScan {
         }
     }
     let selected = resolve_codex_files(groups, &mut stats);
+    let mut builder = UsageContributionBuilder::new(window.clone());
+    scan_selected_codex(selected, window, &mut builder, &mut stats);
+    let mut result = finish(window, builder, stats.clone(), stats.files_scanned > 0);
+    if stats.conflict_session_groups > 0 {
+        result.diagnostic = Some(format!(
+            "Codex 会话副本内容冲突, 已保守选择单份文件 (冲突组: {})",
+            stats.conflict_session_groups
+        ));
+    }
+    result
+}
+
+// ---- Codex 整树聚合缓存 ----
+//
+// Codex rollout 文件是 append-only: 同一 (path, size, mtime, dev, inode) 身份
+// 意味着同一内容, 同一内容的树聚合必然一致. 因此把整个 Codex 源树的聚合
+// 快照 + 文件集身份签名落盘; 下次刷新身份签名与窗口未变时直接复用聚合,
+// 跳过 ~GB 级 rollout 全量重读. 文件变、增、删都会改变签名 → 触发重扫.
+// 高压实际: 本机 ~/.codex 单树约 440MB, 每 30 分钟一次的全量重读是 CPU/IO 大头.
+
+const CODEX_TREE_CACHE_SCHEMA: u32 = 1;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+struct CodexTreeCache {
+    schema_version: u32,
+    window_days: u32,
+    timezone: String,
+    today: String,
+    tree_signature: String,
+    aggregate: UsageContribution,
+}
+
+impl CodexTreeCache {
+    /// 缓存仅在与当前聚合窗口完全一致时有效 (Kimi 缓存同语义).
+    fn window_matches(&self, window: &CollectionWindow) -> bool {
+        self.schema_version == CODEX_TREE_CACHE_SCHEMA
+            && self.window_days == window.days
+            && self.timezone == window.timezone_name
+            && self.today == window.today
+    }
+}
+
+/// 计算整棵树所有窗口内 rollout 候选的文件身份签名. 任何文件的增/删/
+/// 改 (path, size, mtime, dev, inode) 都会改变签名, 从而强制重扫.
+fn codex_tree_signature(groups: &BTreeMap<String, Vec<CodexFileCandidate>>) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(CODEX_TREE_CACHE_SCHEMA.to_le_bytes());
+    // BTreeMap 迭代有序; 每个 group 内按可比较身份再排一次 (f64 mtime 用位表示),
+    // 保证签名稳定.
+    let mut entries = Vec::new();
+    for (group_key, candidates) in groups {
+        for candidate in candidates {
+            entries.push((
+                group_key.clone(),
+                candidate.path.clone(),
+                candidate.size,
+                candidate.modified.to_bits(),
+                candidate.device,
+                candidate.inode,
+            ));
+        }
+    }
+    entries.sort();
+    for (group_key, path, size, modified_bits, device, inode) in entries {
+        hasher.update(group_key.as_bytes());
+        hasher.update(path.to_string_lossy().as_bytes());
+        hasher.update(size.to_le_bytes());
+        hasher.update(modified_bits.to_le_bytes());
+        hasher.update(device.to_le_bytes());
+        hasher.update(inode.to_le_bytes());
+    }
+    format!("{:x}", hasher.finalize())
+}
+
+fn codex_tree_cache_path(cache_root: &Path) -> PathBuf {
+    cache_root.join("codex-tree-v1.json")
+}
+
+fn load_codex_tree_cache(path: &Path) -> Option<CodexTreeCache> {
+    let data = fs::read(path).ok()?;
+    serde_json::from_slice(&data).ok()
+}
+
+fn write_codex_tree_cache(path: &Path, entry: &CodexTreeCache) {
+    let parent = match path.parent() {
+        Some(parent) => parent,
+        None => return,
+    };
+    let _ = fs::create_dir_all(parent);
+    let temporary = parent.join(format!(
+        ".codex-tree-v1.tmp-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let written = (|| -> io::Result<()> {
+        let mut file = File::create(&temporary)?;
+        serde_json::to_writer(&mut file, entry)?;
+        file.write_all(b"\n")?;
+        drop(file);
+        fs::rename(&temporary, path)
+    })();
+    if written.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+}
+
+/// 单个 Codex 会话文件的聚合解析 (token_count 增量 + 重复快照去重),
+/// 与 `scan_codex` 逐文件逻辑完全一致, 抽出来供缓存未命中时的全量兜底复用.
+fn scan_selected_codex(
+    selected: Vec<CodexFileCandidate>,
+    window: &CollectionWindow,
+    builder: &mut UsageContributionBuilder,
+    stats: &mut ScanStats,
+) {
     for candidate in selected {
         let mut current_model: Option<String> = None;
         let mut total_high_water: Option<CodexTokenCounters> = None;
@@ -1129,7 +1248,6 @@ pub fn scan_codex(roots: &[PathBuf], window: &CollectionWindow) -> SourceScan {
                 let Some(signature) = codex_token_signature(info) else {
                     return;
                 };
-
                 let snapshot_source = codex_snapshot_source(payload);
                 let duplicate_snapshot = signature.total.is_some()
                     && (last_signature_by_source.get(&snapshot_source) == Some(&signature)
@@ -1138,7 +1256,6 @@ pub fn scan_codex(roots: &[PathBuf], window: &CollectionWindow) -> SourceScan {
                     last_signature_by_source.insert(snapshot_source, signature.clone());
                 }
                 previous_token_signature = Some(signature.clone());
-
                 let usage = if duplicate_snapshot {
                     CodexTokenCounters {
                         input: 0,
@@ -1163,7 +1280,7 @@ pub fn scan_codex(roots: &[PathBuf], window: &CollectionWindow) -> SourceScan {
                     return;
                 }
                 record(
-                    &mut builder,
+                    builder,
                     timestamp,
                     current_model.as_deref(),
                     usage.input.saturating_sub(usage.cache_read),
@@ -1174,13 +1291,71 @@ pub fn scan_codex(roots: &[PathBuf], window: &CollectionWindow) -> SourceScan {
                 );
                 stats.usage_records = stats.usage_records.saturating_add(1);
             },
-            &mut stats,
+            stats,
         )
         .is_err()
         {
             stats.io_errors = stats.io_errors.saturating_add(1);
         }
     }
+}
+
+/// 带持久整树聚合缓存的 Codex 扫描. 命中缓存 (文件集身份签名 + 窗口一致) 时
+/// 直接复用整树聚合, 跳过 ~GB 级 rollout 全量重读; 否则全量扫描并落盘.
+/// 派生与可重建, 破坏或窗口变化静默整树重扫, 不弱化为「空结果」.
+/// 注意: 命中缓存时 `collect_codex_files` 仍会为个别非 rollout jsonl 读取
+/// 指纹 (head+tail, 不进 bytes_read 统计, 见 `fingerprint_file`); 大头 rollout
+/// 体量不重读.
+pub fn scan_codex_cached(
+    roots: &[PathBuf],
+    window: &CollectionWindow,
+    cache_root: &Path,
+) -> SourceScan {
+    let mut stats = ScanStats::default();
+    let mut groups = BTreeMap::<String, Vec<CodexFileCandidate>>::new();
+    for root in roots {
+        if collect_codex_files(root, window.cutoff_ts, &mut groups, &mut stats).is_err() {
+            stats.io_errors = stats.io_errors.saturating_add(1);
+        }
+    }
+
+    let signature = codex_tree_signature(&groups);
+    let cache_path = codex_tree_cache_path(cache_root);
+    if let Some(cached) = load_codex_tree_cache(&cache_path) {
+        if cached.window_matches(window) && cached.tree_signature == signature {
+            // 缓存命中前已执行 `collect_codex_files` 的目录遍历与元数据 syscall
+            // (非 rollout jsonl 的指纹读取不计入 bytes_read). 聚合直接复用,
+            // 不重读大头 rollout 文件体.
+            stats.cache_hits = stats.cache_hits.saturating_add(1);
+            let mut builder = UsageContributionBuilder::new(window.clone());
+            let _ = builder.merge_contribution(&cached.aggregate);
+            let mut result = finish(window, builder, stats.clone(), stats.files_scanned > 0);
+            if stats.conflict_session_groups > 0 {
+                result.diagnostic = Some(format!(
+                    "Codex 会话副本内容冲突, 已保守选择单份文件 (冲突组: {})",
+                    stats.conflict_session_groups
+                ));
+            }
+            return result;
+        }
+    }
+
+    // 未命中: 全量扫描再落盘.
+    let selected = resolve_codex_files(groups, &mut stats);
+    let mut builder = UsageContributionBuilder::new(window.clone());
+    scan_selected_codex(selected, window, &mut builder, &mut stats);
+    let aggregate = builder.contribution();
+    write_codex_tree_cache(
+        &cache_path,
+        &CodexTreeCache {
+            schema_version: CODEX_TREE_CACHE_SCHEMA,
+            window_days: window.days,
+            timezone: window.timezone_name.clone(),
+            today: window.today.clone(),
+            tree_signature: signature,
+            aggregate: aggregate.clone(),
+        },
+    );
     let mut result = finish(window, builder, stats.clone(), stats.files_scanned > 0);
     if stats.conflict_session_groups > 0 {
         result.diagnostic = Some(format!(
@@ -1487,7 +1662,7 @@ pub fn scan_zcode(path: &Path, window: &CollectionWindow) -> SourceScan {
 
 #[cfg(test)]
 mod tests {
-    use super::scan_codex;
+    use super::{scan_codex, scan_codex_cached};
     use collector_domain::CollectionWindow;
     use serde_json::{json, Map, Value};
     use std::fs;
@@ -2274,5 +2449,72 @@ mod tests {
         assert_eq!(model_totals.get("unknown"), Some(&13));
         assert!(!model_totals.contains_key("codex"));
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn codex_cached_scan_skips_unchanged_files_and_increments_on_append() {
+        let root = temp_root("cached");
+        let cache_dir = temp_root("cached-cache");
+        let w = window();
+        write_codex_lines(
+            &root,
+            "rollout-cached.jsonl",
+            &[codex_token_count("2026-07-28T04:00:00Z", 10, 2, 3)],
+        );
+        // 非 rollout jsonl 走 content+指纹分组: 命中缓存时仍会读指纹
+        // (不进 bytes_read), 验证该路径聚合正确且不被误判为重复.
+        write_codex_lines(
+            &root,
+            "session-cached.jsonl",
+            &[codex_token_count("2026-07-28T04:30:00Z", 4, 1, 1)],
+        );
+
+        // 冷: 无缓存, 全量读取.
+        let cold = scan_codex_cached(std::slice::from_ref(&root), &w, &cache_dir);
+        let cold_total = cold
+            .contribution
+            .by_day
+            .get(&w.today)
+            .map(|b| b.total)
+            .unwrap_or(0);
+        // input(10) − cache_read(2) = 8, + output(3) + cache_read(2) = 13.
+        // 会话文件: (4−1) + 1 + 1 = 5.
+        assert_eq!(cold_total, 18);
+        assert_eq!(cold.stats.cache_hits, 0);
+        assert!(cold.stats.bytes_read > 0, "冷扫描必须实际读字节");
+
+        // 热: 未变化文件命中缓存, 聚合不变.
+        let warm = scan_codex_cached(std::slice::from_ref(&root), &w, &cache_dir);
+        assert_eq!(
+            warm.contribution
+                .by_day
+                .get(&w.today)
+                .map(|b| b.total)
+                .unwrap_or(0),
+            18
+        );
+        assert_eq!(warm.stats.cache_hits, 1, "未变化应命中缓存");
+        assert_eq!(warm.stats.bytes_read, 0, "命中缓存时 bytes_read 保持 0");
+
+        // 追加新文件: 文件集身份变化, 重新扫描并合并新增量.
+        write_codex_lines(
+            &root,
+            "rollout-cached-2.jsonl",
+            &[codex_token_count("2026-07-28T05:00:00Z", 5, 1, 2)],
+        );
+        let appended = scan_codex_cached(std::slice::from_ref(&root), &w, &cache_dir);
+        assert_eq!(
+            appended
+                .contribution
+                .by_day
+                .get(&w.today)
+                .map(|b| b.total)
+                .unwrap_or(0),
+            25,
+            "追加后聚合 = 13 + 5(会话) + (5−1)+2+1 = 25"
+        );
+        assert_eq!(appended.stats.cache_hits, 0, "文件集变化不得命中缓存");
+        fs::remove_dir_all(root).unwrap();
+        fs::remove_dir_all(cache_dir).unwrap();
     }
 }

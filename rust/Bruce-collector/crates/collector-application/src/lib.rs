@@ -23,7 +23,7 @@ use collector_domain::{
     AGENT_USAGE_MODULE, AGENT_USAGE_SCHEMA_VERSION,
 };
 use collector_local::{
-    default_cache_root, scan_claude, scan_codebuddy, scan_codex, scan_grok, scan_kimi_tree,
+    default_cache_root, scan_claude, scan_codebuddy, scan_codex_cached, scan_grok, scan_kimi_tree,
     scan_opencode, scan_pi, scan_tree_cached_with_sink, scan_zcode, CacheConfig, ScanStats,
 };
 use collector_provider::{HttpClient, ProviderError, UreqHttpClient};
@@ -434,7 +434,10 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
             let source_results = [
                 ("kimi-work", scan_kimi_tree(&kimi_work, &context.window)),
                 ("claude-code", scan_claude(&claude, &context.window)),
-                ("codex", scan_codex(&codex_roots, &context.window)),
+                (
+                    "codex",
+                    scan_codex_cached(&codex_roots, &context.window, &default_cache_root(&home)),
+                ),
                 ("codebuddy", scan_codebuddy(&codebuddy, &context.window)),
                 (
                     "grok",
