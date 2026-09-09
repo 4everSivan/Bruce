@@ -796,6 +796,102 @@ mod tests {
     }
 
     #[test]
+    fn codex_warm_cache_preserves_found_status() {
+        let home = std::env::temp_dir().join(format!(
+            "bruce-codex-warm-cache-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&home);
+        let codex_root = home.join("codex");
+        let rollout = codex_root.join("2026/07/28/rollout-warm.jsonl");
+        std::fs::create_dir_all(rollout.parent().unwrap()).unwrap();
+        std::fs::write(
+            &rollout,
+            br#"{"timestamp":"2026-07-28T04:00:00Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"cached_input_tokens":2,"output_tokens":3}}}}
+"#,
+        )
+        .unwrap();
+
+        let empty = home.join("empty");
+        let empty_paths = [
+            ("kimi_cli_sessions", empty.join("kimi-cli")),
+            ("daimon_kimi_sessions", empty.join("kimi-work")),
+            ("claude_projects", empty.join("claude")),
+            ("orca_codex_sessions", empty.join("orca-sessions")),
+            ("orca_home", empty.join("orca-home")),
+            ("grok_home", empty.join("grok")),
+            ("pi_sessions", empty.join("pi")),
+            ("opencode_db", empty.join("opencode.db")),
+            ("zcode_db", empty.join("zcode.db")),
+            ("codebuddy_projects", empty.join("codebuddy")),
+        ];
+        let paths = empty_paths
+            .into_iter()
+            .map(|(key, path)| {
+                (
+                    key.to_owned(),
+                    serde_json::Value::String(path.to_string_lossy().into_owned()),
+                )
+            })
+            .chain(std::iter::once((
+                "codex_sessions".to_owned(),
+                serde_json::Value::String(codex_root.to_string_lossy().into_owned()),
+            )))
+            .collect();
+        let mut request = request(&["localSessions"]);
+        request.context.insert(
+            "home".to_owned(),
+            serde_json::Value::String(home.to_string_lossy().into_owned()),
+        );
+        request.context.insert(
+            "now".to_owned(),
+            serde_json::Value::String("2026-07-28T12:00:00+08:00".to_owned()),
+        );
+        request
+            .context
+            .insert("timezone".to_owned(), json!("Asia/Shanghai"));
+        request.context.insert("days".to_owned(), json!(3));
+        request
+            .context
+            .insert("paths".to_owned(), serde_json::Value::Object(paths));
+
+        let first = collect_agent_usage_with_dependencies(
+            &request,
+            &FixtureHttp {
+                calls: AtomicUsize::new(0),
+                body: Vec::new(),
+            },
+            &EmptyCredentialSource,
+        )
+        .unwrap();
+        let second = collect_agent_usage_with_dependencies(
+            &request,
+            &FixtureHttp {
+                calls: AtomicUsize::new(0),
+                body: Vec::new(),
+            },
+            &EmptyCredentialSource,
+        )
+        .unwrap();
+
+        let first_codex = first.artifact["agents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|agent| agent["id"] == "codex")
+            .unwrap();
+        let second_codex = second.artifact["agents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|agent| agent["id"] == "codex")
+            .unwrap();
+        assert_ne!(first_codex["status"], "not_found");
+        assert_ne!(second_codex["status"], "not_found");
+        let _ = std::fs::remove_dir_all(home);
+    }
+
+    #[test]
     fn application_executes_injected_quota_account_through_registry() {
         let request: BridgeRequest = serde_json::from_value(json!({
             "schemaVersion": 1,

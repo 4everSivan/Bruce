@@ -1320,6 +1320,7 @@ pub fn scan_codex_cached(
     }
 
     let signature = codex_tree_signature(&groups);
+    let has_selected_codex_files = groups.values().any(|candidates| !candidates.is_empty());
     let cache_path = codex_tree_cache_path(cache_root);
     if let Some(cached) = load_codex_tree_cache(&cache_path) {
         if cached.window_matches(window) && cached.tree_signature == signature {
@@ -1329,7 +1330,7 @@ pub fn scan_codex_cached(
             stats.cache_hits = stats.cache_hits.saturating_add(1);
             let mut builder = UsageContributionBuilder::new(window.clone());
             let _ = builder.merge_contribution(&cached.aggregate);
-            let mut result = finish(window, builder, stats.clone(), stats.files_scanned > 0);
+            let mut result = finish(window, builder, stats.clone(), has_selected_codex_files);
             if stats.conflict_session_groups > 0 {
                 result.diagnostic = Some(format!(
                     "Codex 会话副本内容冲突, 已保守选择单份文件 (冲突组: {})",
@@ -2495,6 +2496,10 @@ mod tests {
         );
         assert_eq!(warm.stats.cache_hits, 1, "未变化应命中缓存");
         assert_eq!(warm.stats.bytes_read, 0, "命中缓存时 bytes_read 保持 0");
+        assert!(
+            warm.found,
+            "unchanged cached Codex files still count as found"
+        );
 
         // 追加新文件: 文件集身份变化, 重新扫描并合并新增量.
         write_codex_lines(
