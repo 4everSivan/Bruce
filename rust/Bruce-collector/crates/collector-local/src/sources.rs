@@ -509,8 +509,9 @@ fn collect_codex_files(
                 (format!("rollout:{file_name}"), None)
             } else {
                 cancellation.check()?;
-                match fingerprint_file(&canonical, metadata.len()) {
+                match fingerprint_file(&canonical, metadata.len(), cancellation) {
                     Ok(fingerprint) => (format!("content:{fingerprint}"), Some(fingerprint)),
+                    Err(SourceScanError::Runtime(error)) => return Err(error.into()),
                     Err(_) => {
                         stats.io_errors = stats.io_errors.saturating_add(1);
                         (format!("path:{}", canonical.display()), None)
@@ -535,11 +536,13 @@ fn collect_codex_files(
 
 fn resolve_codex_files(
     groups: BTreeMap<String, Vec<CodexFileCandidate>>,
+    cancellation: &CancellationToken,
     stats: &mut ScanStats,
-) -> Vec<CodexFileCandidate> {
+) -> Result<Vec<CodexFileCandidate>, SourceScanError> {
     let mut selected = Vec::new();
     for (_, mut group) in groups {
-        group.sort_by(candidate_preference);
+        cancellation.check()?;
+        sort_codex_candidates(&mut group, cancellation)?;
         let winner = group.remove(0);
         if !group.is_empty() {
             stats.duplicate_session_groups = stats.duplicate_session_groups.saturating_add(1);
@@ -547,10 +550,11 @@ fn resolve_codex_files(
                 .duplicate_files_skipped
                 .saturating_add(group.len() as u64);
 
-            let winner_digest = candidate_digest(&winner);
+            let winner_digest = candidate_digest(&winner, cancellation);
             let mut conflict = winner_digest.is_err();
             let winner_digest = winner_digest.ok();
             for candidate in &group {
+                cancellation.check()?;
                 // 硬链接副本 (同 dev+inode) 是同一物理文件, 零 IO 判等;
                 // Orca 的 codex-accounts 与 runtime-home 即此形态, 免去 GB 级重读.
                 if winner.inode != 0
@@ -563,7 +567,7 @@ fn resolve_codex_files(
                     conflict = true;
                     continue;
                 }
-                let digest = candidate_digest(candidate);
+                let digest = candidate_digest(candidate, cancellation);
                 match (&winner_digest, digest) {
                     (Some(winner), Ok(candidate)) if winner == &candidate => {}
                     _ => conflict = true,
@@ -575,8 +579,42 @@ fn resolve_codex_files(
         }
         selected.push(winner);
     }
-    selected.sort_by(|left, right| left.path.cmp(&right.path));
-    selected
+    sort_codex_candidates_by_path(&mut selected, cancellation)?;
+    Ok(selected)
+}
+
+fn sort_codex_candidates(
+    candidates: &mut [CodexFileCandidate],
+    cancellation: &CancellationToken,
+) -> Result<(), SourceScanError> {
+    let cancellation_error = std::cell::Cell::new(None);
+    candidates.sort_by(|left, right| match cancellation.check() {
+        Ok(()) => candidate_preference(left, right),
+        Err(error) => {
+            cancellation_error.set(Some(error));
+            Ordering::Equal
+        }
+    });
+    cancellation_error
+        .get()
+        .map_or(Ok(()), |error| Err(error.into()))
+}
+
+fn sort_codex_candidates_by_path(
+    candidates: &mut [CodexFileCandidate],
+    cancellation: &CancellationToken,
+) -> Result<(), SourceScanError> {
+    let cancellation_error = std::cell::Cell::new(None);
+    candidates.sort_by(|left, right| match cancellation.check() {
+        Ok(()) => left.path.cmp(&right.path),
+        Err(error) => {
+            cancellation_error.set(Some(error));
+            Ordering::Equal
+        }
+    });
+    cancellation_error
+        .get()
+        .map_or(Ok(()), |error| Err(error.into()))
 }
 
 fn candidate_preference(left: &CodexFileCandidate, right: &CodexFileCandidate) -> Ordering {
@@ -592,10 +630,14 @@ fn candidate_preference(left: &CodexFileCandidate, right: &CodexFileCandidate) -
         .then_with(|| left.path.cmp(&right.path))
 }
 
-fn candidate_digest(candidate: &CodexFileCandidate) -> io::Result<String> {
+fn candidate_digest(
+    candidate: &CodexFileCandidate,
+    cancellation: &CancellationToken,
+) -> Result<String, SourceScanError> {
+    cancellation.check()?;
     match &candidate.digest {
         Some(digest) => Ok(digest.clone()),
-        None => fingerprint_file(&candidate.path, candidate.size),
+        None => fingerprint_file(&candidate.path, candidate.size, cancellation),
     }
 }
 
@@ -603,8 +645,13 @@ fn candidate_digest(candidate: &CodexFileCandidate) -> io::Result<String> {
 /// 代替全文件哈希做副本判等 — GB 级 rollout 每轮刷新全量重读会让采集
 /// 卡在分钟级; 指纹只读固定量字节. 同头同尾同长但中段不同的极端构造
 /// 会被误判为相同副本 (可接受: 仍只计一次用量, 不会重复计数).
-fn fingerprint_file(path: &Path, size: u64) -> io::Result<String> {
+fn fingerprint_file(
+    path: &Path,
+    size: u64,
+    cancellation: &CancellationToken,
+) -> Result<String, SourceScanError> {
     const CHUNK: u64 = 64 * 1024;
+    cancellation.check()?;
     let mut file = File::open(path)?;
     let mut hasher = Sha256::new();
     hasher.update(size.to_le_bytes());
@@ -614,6 +661,7 @@ fn fingerprint_file(path: &Path, size: u64) -> io::Result<String> {
     hasher.update(&buffer[..head_len]);
     // 中段存在时直接 seek 到末块前读取, 不重读中段.
     if size > CHUNK {
+        cancellation.check()?;
         file.seek(io::SeekFrom::Start(size - CHUNK))?;
         let mut tail = Vec::with_capacity(CHUNK as usize);
         io::Read::by_ref(&mut file)
@@ -621,6 +669,7 @@ fn fingerprint_file(path: &Path, size: u64) -> io::Result<String> {
             .read_to_end(&mut tail)?;
         hasher.update(&tail);
     }
+    cancellation.check()?;
     Ok(format!("{:x}", hasher.finalize()))
 }
 
@@ -1249,7 +1298,7 @@ pub fn scan_codex_with_cancellation(
             }
         }
     }
-    let selected = resolve_codex_files(groups, &mut stats);
+    let selected = resolve_codex_files(groups, cancellation, &mut stats)?;
     let mut builder = UsageContributionBuilder::new(window.clone());
     scan_selected_codex(selected, window, cancellation, &mut builder, &mut stats)?;
     let mut result = finish(window, builder, stats.clone(), stats.files_scanned > 0);
@@ -1294,14 +1343,49 @@ impl CodexTreeCache {
 
 /// 计算整棵树所有窗口内 rollout 候选的文件身份签名. 任何文件的增/删/
 /// 改 (path, size, mtime, dev, inode) 都会改变签名, 从而强制重扫.
-fn codex_tree_signature(groups: &BTreeMap<String, Vec<CodexFileCandidate>>) -> String {
+fn codex_tree_signature(
+    groups: &BTreeMap<String, Vec<CodexFileCandidate>>,
+    cancellation: &CancellationToken,
+) -> Result<String, SourceScanError> {
+    codex_tree_signature_impl(
+        groups,
+        cancellation,
+        #[cfg(test)]
+        None,
+    )
+}
+
+#[cfg(test)]
+fn codex_tree_signature_with_probe<P>(
+    groups: &BTreeMap<String, Vec<CodexFileCandidate>>,
+    cancellation: &CancellationToken,
+    mut probe: P,
+) -> Result<String, SourceScanError>
+where
+    P: FnMut(),
+{
+    codex_tree_signature_impl(groups, cancellation, Some(&mut probe))
+}
+
+fn codex_tree_signature_impl(
+    groups: &BTreeMap<String, Vec<CodexFileCandidate>>,
+    cancellation: &CancellationToken,
+    #[cfg(test)] mut probe: Option<&mut dyn FnMut()>,
+) -> Result<String, SourceScanError> {
     let mut hasher = Sha256::new();
     hasher.update(CODEX_TREE_CACHE_SCHEMA.to_le_bytes());
     // BTreeMap 迭代有序; 每个 group 内按可比较身份再排一次 (f64 mtime 用位表示),
     // 保证签名稳定.
     let mut entries = Vec::new();
     for (group_key, candidates) in groups {
+        cancellation.check()?;
         for candidate in candidates {
+            cancellation.check()?;
+            #[cfg(test)]
+            if let Some(probe) = probe.as_deref_mut() {
+                probe();
+            }
+            cancellation.check()?;
             entries.push((
                 group_key.clone(),
                 candidate.path.clone(),
@@ -1312,8 +1396,19 @@ fn codex_tree_signature(groups: &BTreeMap<String, Vec<CodexFileCandidate>>) -> S
             ));
         }
     }
-    entries.sort();
+    let cancellation_error = std::cell::Cell::new(None);
+    entries.sort_by(|left, right| match cancellation.check() {
+        Ok(()) => left.cmp(right),
+        Err(error) => {
+            cancellation_error.set(Some(error));
+            Ordering::Equal
+        }
+    });
+    if let Some(error) = cancellation_error.get() {
+        return Err(error.into());
+    }
     for (group_key, path, size, modified_bits, device, inode) in entries {
+        cancellation.check()?;
         hasher.update(group_key.as_bytes());
         hasher.update(path.to_string_lossy().as_bytes());
         hasher.update(size.to_le_bytes());
@@ -1321,7 +1416,7 @@ fn codex_tree_signature(groups: &BTreeMap<String, Vec<CodexFileCandidate>>) -> S
         hasher.update(device.to_le_bytes());
         hasher.update(inode.to_le_bytes());
     }
-    format!("{:x}", hasher.finalize())
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 fn codex_tree_cache_path(cache_root: &Path) -> PathBuf {
@@ -1333,10 +1428,15 @@ fn load_codex_tree_cache(path: &Path) -> Option<CodexTreeCache> {
     serde_json::from_slice(&data).ok()
 }
 
-fn write_codex_tree_cache(path: &Path, entry: &CodexTreeCache) {
+fn write_codex_tree_cache(
+    path: &Path,
+    entry: &CodexTreeCache,
+    cancellation: &CancellationToken,
+) -> Result<(), SourceScanError> {
+    cancellation.check()?;
     let parent = match path.parent() {
         Some(parent) => parent,
-        None => return,
+        None => return Ok(()),
     };
     let _ = fs::create_dir_all(parent);
     let temporary = parent.join(format!(
@@ -1348,15 +1448,32 @@ fn write_codex_tree_cache(path: &Path, entry: &CodexTreeCache) {
             .as_nanos()
     ));
     let written = (|| -> io::Result<()> {
+        cancellation.check().map_err(|error| {
+            io::Error::new(
+                io::ErrorKind::Interrupted,
+                format!("cache write stopped: {error:?}"),
+            )
+        })?;
         let mut file = File::create(&temporary)?;
         serde_json::to_writer(&mut file, entry)?;
         file.write_all(b"\n")?;
         drop(file);
+        cancellation.check().map_err(|error| {
+            io::Error::new(
+                io::ErrorKind::Interrupted,
+                format!("cache write stopped: {error:?}"),
+            )
+        })?;
         fs::rename(&temporary, path)
     })();
     if written.is_err() {
         let _ = fs::remove_file(&temporary);
     }
+    cancellation.check()?;
+    if written.is_err() {
+        return Ok(());
+    }
+    Ok(())
 }
 
 /// 单个 Codex 会话文件的聚合解析 (token_count 增量 + 重复快照去重),
@@ -1525,7 +1642,7 @@ pub fn scan_codex_cached_with_cancellation(
     }
 
     cancellation.check()?;
-    let signature = codex_tree_signature(&groups);
+    let signature = codex_tree_signature(&groups, cancellation)?;
     let has_selected_codex_files = groups.values().any(|candidates| !candidates.is_empty());
     let cache_path = codex_tree_cache_path(cache_root);
     if let Some(cached) = load_codex_tree_cache(&cache_path) {
@@ -1548,7 +1665,7 @@ pub fn scan_codex_cached_with_cancellation(
     }
 
     // 未命中: 全量扫描再落盘.
-    let selected = resolve_codex_files(groups, &mut stats);
+    let selected = resolve_codex_files(groups, cancellation, &mut stats)?;
     let mut builder = UsageContributionBuilder::new(window.clone());
     scan_selected_codex(selected, window, cancellation, &mut builder, &mut stats)?;
     let aggregate = builder.contribution();
@@ -1563,7 +1680,9 @@ pub fn scan_codex_cached_with_cancellation(
             tree_signature: signature,
             aggregate: aggregate.clone(),
         },
-    );
+        cancellation,
+    )?;
+    cancellation.check()?;
     let mut result = finish(window, builder, stats.clone(), stats.files_scanned > 0);
     if stats.conflict_session_groups > 0 {
         result.diagnostic = Some(format!(
@@ -1639,8 +1758,14 @@ pub fn scan_grok_with_cancellation(
                 );
                 stats.usage_records = stats.usage_records.saturating_add(1);
             },
-        )?;
-        stats.merge(current);
+        );
+        match current {
+            Ok(current) => stats.merge(current),
+            Err(SourceScanError::Runtime(error)) => return Err(error.into()),
+            Err(SourceScanError::Io(_)) => {
+                stats.io_errors = stats.io_errors.saturating_add(1);
+            }
+        }
     }
     Ok(finish(
         window,
@@ -1946,10 +2071,14 @@ pub fn scan_zcode_with_cancellation(
 
 #[cfg(test)]
 mod tests {
-    use super::{scan_codex, scan_codex_cached, scan_kimi_tree_with_cancellation};
+    use super::{
+        scan_codex, scan_codex_cached, scan_grok, scan_kimi_tree_with_cancellation,
+        CodexFileCandidate,
+    };
     use collector_domain::CollectionWindow;
     use collector_runtime::{CancellationToken, RuntimeError};
     use serde_json::{json, Map, Value};
+    use std::collections::BTreeMap;
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -2034,6 +2163,74 @@ mod tests {
             result,
             Err(super::SourceScanError::Runtime(RuntimeError::Cancelled))
         ));
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn codex_signature_cancellation_stops_before_all_candidates_are_hashed() {
+        let groups = (0..4_096)
+            .map(|index| {
+                (
+                    format!("rollout:{index}"),
+                    vec![CodexFileCandidate {
+                        path: PathBuf::from(format!("/fixture/{index}.jsonl")),
+                        modified: index as f64,
+                        size: index,
+                        digest: None,
+                        device: 0,
+                        inode: 0,
+                    }],
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let cancellation = CancellationToken::new();
+        let mut probes = 0;
+
+        let result = super::codex_tree_signature_with_probe(&groups, &cancellation, || {
+            probes += 1;
+            cancellation.cancel();
+        });
+
+        assert_eq!(probes, 1);
+        assert!(matches!(
+            result,
+            Err(super::SourceScanError::Runtime(RuntimeError::Cancelled))
+        ));
+    }
+
+    #[test]
+    fn grok_later_root_io_error_preserves_earlier_root_contribution() {
+        let root = temp_root("grok-per-root-io");
+        let valid = root.join("valid/project/session");
+        fs::create_dir_all(&valid).unwrap();
+        fs::write(
+            valid.join("conversation.jsonl"),
+            "{\"type\":\"assistant\",\"content\":\"abcdefgh\"}\n",
+        )
+        .unwrap();
+        let unreadable = root.join("not-a-directory");
+        fs::write(&unreadable, "fixture").unwrap();
+
+        let grok_window = CollectionWindow::from_context(
+            &serde_json::from_value(json!({
+                "now": "2026-09-09T12:00:00+08:00",
+                "timezone": "Asia/Shanghai",
+                "days": 14
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let scan = scan_grok(&[valid, unreadable], &grok_window);
+
+        assert!(scan.found, "earlier readable root must remain published");
+        assert_eq!(scan.stats.io_errors, 1, "later root error must be counted");
+        assert_eq!(
+            scan.contribution
+                .by_day
+                .get(&grok_window.today)
+                .map(|bucket| bucket.total),
+            Some(2)
+        );
         fs::remove_dir_all(root).ok();
     }
 

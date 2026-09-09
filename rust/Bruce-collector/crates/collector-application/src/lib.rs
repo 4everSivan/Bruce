@@ -26,8 +26,8 @@ use collector_local::{
     default_cache_root, scan_claude_with_cancellation, scan_codebuddy_with_cancellation,
     scan_codex_cached_with_cancellation, scan_grok_with_cancellation,
     scan_kimi_tree_with_cancellation, scan_opencode_with_cancellation, scan_pi_with_cancellation,
-    scan_tree_cached_with_sink, scan_zcode_with_cancellation, CacheConfig, ScanStats, SourceScan,
-    SourceScanError,
+    scan_tree_cached_with_sink_with_cancellation, scan_zcode_with_cancellation, CacheConfig,
+    CachedScanError, ScanStats, SourceScan, SourceScanError,
 };
 use collector_provider::{HttpClient, ProviderError, UreqHttpClient};
 use collector_runtime::{BoundedQueue, RuntimeError, RuntimeLimits};
@@ -85,6 +85,21 @@ pub fn collect_agent_usage_with_dependencies(
     http: &dyn HttpClient,
     credentials: &dyn CredentialSource,
 ) -> Result<CollectionOutput, Diagnostic> {
+    collect_agent_usage_with_dependencies_inner(
+        request,
+        http,
+        credentials,
+        #[cfg(test)]
+        None,
+    )
+}
+
+fn collect_agent_usage_with_dependencies_inner(
+    request: &BridgeRequest,
+    http: &dyn HttpClient,
+    credentials: &dyn CredentialSource,
+    #[cfg(test)] final_probe: Option<&mut dyn FnMut(&collector_runtime::CancellationToken)>,
+) -> Result<CollectionOutput, Diagnostic> {
     let window = CollectionWindow::from_context(&request.context).map_err(window_diagnostic)?;
     let context = RunContext::new(request, window, http, credentials, RuntimeLimits::default())?;
     if request
@@ -105,6 +120,10 @@ pub fn collect_agent_usage_with_dependencies(
         (local, quota)
     });
     let local = local_result?;
+    context
+        .cancellation
+        .check()
+        .map_err(local_source_runtime_diagnostic)?;
     let mut diagnostics = local.diagnostics;
     let scan_stats = local.scan_stats;
     let source_metrics = local.source_metrics;
@@ -258,6 +277,14 @@ pub fn collect_agent_usage_with_dependencies(
             true,
         ));
     }
+    #[cfg(test)]
+    if let Some(probe) = final_probe {
+        probe(&context.cancellation);
+    }
+    context
+        .cancellation
+        .check()
+        .map_err(local_source_runtime_diagnostic)?;
     let total_cost = agents
         .iter()
         .filter_map(|agent| agent.today_cost_usd)
@@ -279,6 +306,10 @@ pub fn collect_agent_usage_with_dependencies(
             false,
         )
     })?;
+    context
+        .cancellation
+        .check()
+        .map_err(local_source_runtime_diagnostic)?;
     Ok(CollectionOutput {
         artifact,
         diagnostics,
@@ -349,14 +380,19 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
                 let consumer = scope.spawn(move || {
                     consume_source_changes(consumer_queue, consumer_window, consumer_cancellation)
                 });
-                let scan_result = scan_tree_cached_with_sink(root, &config, |change| {
-                    queue.push(change, &context.cancellation).map_err(|error| {
-                        std::io::Error::new(
-                            std::io::ErrorKind::Interrupted,
-                            format!("bounded local change stream stopped: {error:?}"),
-                        )
-                    })
-                });
+                let scan_result = scan_tree_cached_with_sink_with_cancellation(
+                    root,
+                    &config,
+                    &context.cancellation,
+                    |change| {
+                        queue.push(change, &context.cancellation).map_err(|error| {
+                            std::io::Error::new(
+                                std::io::ErrorKind::Interrupted,
+                                format!("bounded local change stream stopped: {error:?}"),
+                            )
+                        })
+                    },
+                );
                 queue.close();
                 let aggregation = consumer.join().expect("local aggregation worker panicked");
                 (scan_result, aggregation)
@@ -364,7 +400,7 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
             source_metrics.push(SourcePerformanceMetric {
                 source_id: "kimi-code-cli".to_owned(),
                 elapsed_ms: scan_started.elapsed().as_millis() as u64,
-                stats: scan_result.as_ref().cloned().unwrap_or_default(),
+                stats: scan_result.as_ref().ok().cloned().unwrap_or_default(),
             });
             accumulator = aggregation.accumulator;
             diagnostics.extend(aggregation.diagnostics);
@@ -382,10 +418,10 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
                         ));
                     }
                 }
-                Err(_) if context.cancellation.is_cancelled() => {
-                    return Err(local_source_runtime_diagnostic(RuntimeError::Cancelled));
+                Err(CachedScanError::Runtime(error)) => {
+                    return Err(local_source_runtime_diagnostic(error));
                 }
-                Err(_) => diagnostics.push(Diagnostic::new(
+                Err(CachedScanError::Io(_)) => diagnostics.push(Diagnostic::new(
                     "LOCAL_SOURCE_ERROR",
                     "local",
                     "scan",
@@ -560,11 +596,28 @@ where
         .check()
         .map_err(local_source_runtime_diagnostic)?;
     let (source, metric) = timed_source_scan(source_id, scan);
+    context
+        .cancellation
+        .check()
+        .map_err(local_source_runtime_diagnostic)?;
     match source {
         Ok(source) => Ok((source, metric)),
         Err(SourceScanError::Runtime(error)) => Err(local_source_runtime_diagnostic(error)),
         Err(SourceScanError::Io(_)) => Ok((SourceScan::empty(&context.window), metric)),
     }
+}
+
+#[cfg(test)]
+fn collect_agent_usage_with_final_probe<F>(
+    request: &BridgeRequest,
+    http: &dyn HttpClient,
+    credentials: &dyn CredentialSource,
+    mut probe: F,
+) -> Result<CollectionOutput, Diagnostic>
+where
+    F: FnMut(&collector_runtime::CancellationToken),
+{
+    collect_agent_usage_with_dependencies_inner(request, http, credentials, Some(&mut probe))
 }
 
 fn collect_quota_usage(context: &RunContext<'_>) -> QuotaExecution {
@@ -602,6 +655,7 @@ fn collect_codex_quota_retry_only(
             true,
         ));
     }
+    context.cancellation.check().map_err(runtime_diagnostic)?;
     Ok(CollectionOutput {
         artifact: json!({
             "schemaVersion": AGENT_USAGE_SCHEMA_VERSION,
@@ -843,6 +897,25 @@ mod tests {
             "a cancelled local run must fail before publishing a partial artifact"
         );
         let _ = std::fs::remove_dir_all(home);
+    }
+
+    #[test]
+    fn cancellation_after_last_source_is_fenced_before_artifact_publication() {
+        let result = super::collect_agent_usage_with_final_probe(
+            &request(&[]),
+            &FixtureHttp {
+                calls: AtomicUsize::new(0),
+                body: Vec::new(),
+            },
+            &EmptyCredentialSource,
+            |cancellation| cancellation.cancel(),
+        );
+
+        assert_eq!(
+            result.unwrap_err().code,
+            "LOCAL_SOURCE_CANCELLED",
+            "final cancellation must prevent a new artifact from being returned"
+        );
     }
 
     #[test]
