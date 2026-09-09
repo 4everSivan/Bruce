@@ -2,6 +2,7 @@
 
 //! Local file and SQLite adapters.
 
+mod jsonl_cache;
 mod sources;
 mod sqlite_cache;
 
@@ -35,12 +36,13 @@ const FINGERPRINT_SEGMENT_BYTES: u64 = 64 * 1024;
 const CACHE_WRITERS: usize = 1;
 
 pub use sources::{
-    scan_claude, scan_claude_with_cancellation, scan_codebuddy, scan_codebuddy_with_cancellation,
-    scan_codex, scan_codex_cached, scan_codex_cached_with_cancellation,
-    scan_codex_with_cancellation, scan_grok, scan_grok_with_cancellation, scan_kimi_tree,
+    scan_claude, scan_claude_cached, scan_claude_with_cancellation, scan_codebuddy,
+    scan_codebuddy_cached, scan_codebuddy_with_cancellation, scan_codex, scan_codex_cached,
+    scan_codex_cached_with_cancellation, scan_codex_with_cancellation, scan_grok, scan_grok_cached,
+    scan_grok_with_cancellation, scan_kimi_tree, scan_kimi_tree_cached,
     scan_kimi_tree_with_cancellation, scan_opencode, scan_opencode_cached,
-    scan_opencode_with_cancellation, scan_pi, scan_pi_with_cancellation, scan_zcode,
-    scan_zcode_cached, scan_zcode_with_cancellation, SourceScan, SourceScanError,
+    scan_opencode_with_cancellation, scan_pi, scan_pi_cached, scan_pi_with_cancellation,
+    scan_zcode, scan_zcode_cached, scan_zcode_with_cancellation, SourceScan, SourceScanError,
 };
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalUsageRecord {

@@ -6,10 +6,14 @@
 //! contributions and bounded diagnostics; raw lines and database payloads do
 //! not cross this module boundary.
 
+use super::jsonl_cache::{
+    scan_cached_jsonl_tree, scan_jsonl_file_from_offset, CachedFilePayload, CachedUsageObservation,
+    JsonlCacheAdapter, JsonlCacheConfig,
+};
 use super::sqlite_cache::{
     scan_sqlite_cached, SqliteCacheConfig, SqliteCursor, SqliteIncrementalAdapter, SqliteReadResult,
 };
-use super::{read_bounded_line, trim_line_end, ScanStats};
+use super::{read_bounded_line, trim_line_end, CompactContribution, ScanStats};
 use collector_domain::{
     CollectionWindow, UsageContribution, UsageContributionBuilder, UsageSample,
 };
@@ -792,7 +796,9 @@ pub fn scan_claude_with_cancellation(
             };
             let id = message.get("id").and_then(Value::as_str);
             if let Some(id) = id {
-                let entry = best.entry(id.to_owned()).or_default();
+                let entry = best
+                    .entry(digest_source_key("claude-message", id))
+                    .or_default();
                 entry.input = entry.input.max(usage.input);
                 entry.output = entry.output.max(usage.output);
                 entry.cache_read = entry.cache_read.max(usage.cache_read);
@@ -1233,7 +1239,10 @@ pub fn scan_codebuddy_with_cancellation(
             };
             let id = codebuddy_message_id(&value);
             if let Some(id) = id {
-                let key = format!("{}::{id}", codebuddy_scope(path, &value));
+                let key = digest_source_key(
+                    "codebuddy-message",
+                    &format!("{}::{id}", codebuddy_scope(path, &value)),
+                );
                 let replace = match best.get(&key) {
                     None => true,
                     Some(previous) => {
@@ -1843,6 +1852,774 @@ pub fn scan_pi_with_cancellation(
         stats.clone(),
         stats.files_scanned > 0,
     ))
+}
+
+const JSONL_CACHE_PARSER_VERSION: u32 = 1;
+const JSONL_CACHE_AGGREGATION_VERSION: u32 = 1;
+
+fn jsonl_cache_config(
+    cache_root: &Path,
+    source_id: &str,
+    window: &CollectionWindow,
+) -> JsonlCacheConfig {
+    JsonlCacheConfig {
+        cache_root: cache_root.to_owned(),
+        source_id: source_id.to_owned(),
+        parser_version: JSONL_CACHE_PARSER_VERSION,
+        aggregation_version: JSONL_CACHE_AGGREGATION_VERSION,
+        window: window.clone(),
+    }
+}
+
+fn invalid_cached_payload() -> SourceScanError {
+    SourceScanError::Io(io::Error::new(
+        io::ErrorKind::InvalidData,
+        "jsonl cache contribution is incompatible with the collection window",
+    ))
+}
+
+fn compact_payload(
+    observations: Vec<CachedUsageObservation>,
+    contribution: UsageContribution,
+    window: &CollectionWindow,
+) -> CachedFilePayload {
+    let compact = CompactContribution::from_domain(&contribution, window)
+        .expect("usage contribution built for the same window must be compactable");
+    CachedFilePayload {
+        contribution: compact,
+        observations,
+    }
+}
+
+fn payload_from_observations(
+    observations: Vec<CachedUsageObservation>,
+    window: &CollectionWindow,
+) -> CachedFilePayload {
+    let mut builder = UsageContributionBuilder::new(window.clone());
+    for observation in &observations {
+        record(
+            &mut builder,
+            observation.timestamp_millis,
+            observation.model.as_deref(),
+            observation.input,
+            observation.output,
+            observation.cache_read,
+            observation.cache_creation,
+            observation.project.as_deref(),
+        );
+    }
+    compact_payload(observations, builder.contribution(), window)
+}
+
+fn merge_additive_payloads(
+    previous: &CachedFilePayload,
+    appended: &CachedFilePayload,
+    window: &CollectionWindow,
+) -> CachedFilePayload {
+    let (Some(previous), Some(appended)) = (
+        previous.contribution.to_domain(window),
+        appended.contribution.to_domain(window),
+    ) else {
+        return appended.clone();
+    };
+    let mut builder = UsageContributionBuilder::new(window.clone());
+    if !builder.merge_contribution(&previous) || !builder.merge_contribution(&appended) {
+        return compact_payload(Vec::new(), appended, window);
+    }
+    compact_payload(Vec::new(), builder.contribution(), window)
+}
+
+fn aggregate_additive_payloads(
+    payloads: &[CachedFilePayload],
+    window: &CollectionWindow,
+) -> Result<(UsageContribution, bool, Option<String>), SourceScanError> {
+    let mut builder = UsageContributionBuilder::new(window.clone());
+    for payload in payloads {
+        let Some(contribution) = payload.contribution.to_domain(window) else {
+            return Err(invalid_cached_payload());
+        };
+        if !builder.merge_contribution(&contribution) {
+            return Err(invalid_cached_payload());
+        }
+    }
+    Ok((builder.contribution(), !payloads.is_empty(), None))
+}
+
+fn parse_cached_file<F>(
+    path: &Path,
+    modified: f64,
+    start_offset: u64,
+    window: &CollectionWindow,
+    cancellation: &CancellationToken,
+    stats: &mut ScanStats,
+    mut parse: F,
+) -> Result<CachedFilePayload, SourceScanError>
+where
+    F: FnMut(&Path, f64, Value, &mut ScanStats) -> Option<CachedUsageObservation>,
+{
+    let mut observations = Vec::new();
+    scan_jsonl_file_from_offset(
+        path,
+        start_offset,
+        cancellation,
+        stats,
+        |path, line, stats| {
+            let Some(value) = parse_json_line(line, stats) else {
+                return;
+            };
+            if let Some(observation) = parse(path, modified, value, stats) {
+                observations.push(observation);
+            }
+        },
+    )?;
+    Ok(payload_from_observations(observations, window))
+}
+
+struct KimiWorkJsonlAdapter;
+
+impl JsonlCacheAdapter for KimiWorkJsonlAdapter {
+    fn source_id(&self) -> &'static str {
+        "kimi-work"
+    }
+
+    fn parse_file(
+        &self,
+        path: &Path,
+        modified: f64,
+        start_offset: u64,
+        window: &CollectionWindow,
+        cancellation: &CancellationToken,
+        stats: &mut ScanStats,
+    ) -> Result<CachedFilePayload, SourceScanError> {
+        parse_cached_file(
+            path,
+            modified,
+            start_offset,
+            window,
+            cancellation,
+            stats,
+            |_, _, value, stats| {
+                if value.get("type").and_then(Value::as_str) != Some("usage.record") {
+                    stats.ignored_lines = stats.ignored_lines.saturating_add(1);
+                    return None;
+                }
+                let Some(timestamp) = timestamp_number(value.get("time")) else {
+                    stats.malformed_lines = stats.malformed_lines.saturating_add(1);
+                    return None;
+                };
+                let usage = value.get("usage");
+                stats.usage_records = stats.usage_records.saturating_add(1);
+                Some(CachedUsageObservation {
+                    dedupe_key: None,
+                    timestamp_millis: timestamp,
+                    model: value
+                        .get("model")
+                        .and_then(Value::as_str)
+                        .map(str::to_owned),
+                    input: number_u64(usage.and_then(|value| value.get("inputOther"))),
+                    output: number_u64(usage.and_then(|value| value.get("output"))),
+                    cache_read: number_u64(usage.and_then(|value| value.get("inputCacheRead"))),
+                    cache_creation: number_u64(
+                        usage.and_then(|value| value.get("inputCacheCreation")),
+                    ),
+                    project: None,
+                })
+            },
+        )
+    }
+
+    fn merge_append(
+        &self,
+        previous: &CachedFilePayload,
+        appended: &CachedFilePayload,
+        _modified: f64,
+        window: &CollectionWindow,
+    ) -> CachedFilePayload {
+        merge_additive_payloads(previous, appended, window)
+    }
+
+    fn aggregate(
+        &self,
+        payloads: &[CachedFilePayload],
+        window: &CollectionWindow,
+    ) -> Result<(UsageContribution, bool, Option<String>), SourceScanError> {
+        aggregate_additive_payloads(payloads, window)
+    }
+}
+
+pub fn scan_kimi_tree_cached(
+    root: &Path,
+    window: &CollectionWindow,
+    cache_root: &Path,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
+    scan_cached_jsonl_tree(
+        root,
+        &jsonl_cache_config(cache_root, "kimi-work", window),
+        &KimiWorkJsonlAdapter,
+        cancellation,
+    )
+}
+
+struct ClaudeJsonlAdapter;
+
+fn digest_source_key(source_id: &str, value: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"bruce-jsonl-dedupe-v1\0");
+    hasher.update(source_id.as_bytes());
+    hasher.update([0]);
+    hasher.update(value.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
+fn claude_observation(
+    path: &Path,
+    window: &CollectionWindow,
+    value: &Value,
+) -> Option<CachedUsageObservation> {
+    if value.get("type").and_then(Value::as_str) != Some("assistant") {
+        return None;
+    }
+    let timestamp = value
+        .get("timestamp")
+        .and_then(Value::as_str)
+        .and_then(|value| window.epoch_from_iso(value))
+        .map(|value| value.saturating_mul(1000))?;
+    let message = value.get("message").unwrap_or(&Value::Null);
+    let usage = message.get("usage").unwrap_or(&Value::Null);
+    let project = project_from_parent(path).map(|mut project| {
+        if path
+            .components()
+            .any(|part| part.as_os_str() == "subagents")
+        {
+            project.push_str(" ·子代理");
+        }
+        project
+    });
+    Some(CachedUsageObservation {
+        dedupe_key: message
+            .get("id")
+            .and_then(Value::as_str)
+            .map(|id| digest_source_key("claude-message", id)),
+        timestamp_millis: timestamp,
+        model: message
+            .get("model")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        input: number_u64(usage.get("input_tokens")),
+        output: number_u64(usage.get("output_tokens")),
+        cache_read: number_u64(usage.get("cache_read_input_tokens")),
+        cache_creation: number_u64(usage.get("cache_creation_input_tokens")),
+        project,
+    })
+}
+
+fn claude_usage_from_observation(observation: &CachedUsageObservation) -> ClaudeUsage {
+    ClaudeUsage {
+        input: observation.input,
+        output: observation.output,
+        cache_read: observation.cache_read,
+        cache_creation: observation.cache_creation,
+        timestamp_millis: observation.timestamp_millis,
+        model: observation.model.clone(),
+        project: observation.project.clone(),
+    }
+}
+
+fn aggregate_claude_payloads(
+    payloads: &[CachedFilePayload],
+    window: &CollectionWindow,
+) -> Result<(UsageContribution, bool, Option<String>), SourceScanError> {
+    let mut best = BTreeMap::<String, ClaudeUsage>::new();
+    let mut direct = Vec::<ClaudeUsage>::new();
+    for payload in payloads {
+        if payload.contribution.to_domain(window).is_none() {
+            return Err(invalid_cached_payload());
+        }
+        for observation in &payload.observations {
+            let usage = claude_usage_from_observation(observation);
+            if let Some(key) = observation.dedupe_key.as_ref() {
+                let entry = best.entry(key.clone()).or_default();
+                entry.input = entry.input.max(usage.input);
+                entry.output = entry.output.max(usage.output);
+                entry.cache_read = entry.cache_read.max(usage.cache_read);
+                entry.cache_creation = entry.cache_creation.max(usage.cache_creation);
+                entry.timestamp_millis = usage.timestamp_millis;
+                entry.model = usage.model;
+                entry.project = usage.project;
+            } else {
+                direct.push(usage);
+            }
+        }
+    }
+    let mut builder = UsageContributionBuilder::new(window.clone());
+    for usage in best.into_values().chain(direct) {
+        record(
+            &mut builder,
+            usage.timestamp_millis,
+            usage.model.as_deref(),
+            usage.input,
+            usage.output,
+            usage.cache_read,
+            usage.cache_creation,
+            usage.project.as_deref(),
+        );
+    }
+    Ok((builder.contribution(), !payloads.is_empty(), None))
+}
+
+impl JsonlCacheAdapter for ClaudeJsonlAdapter {
+    fn source_id(&self) -> &'static str {
+        "claude-code"
+    }
+
+    fn parse_file(
+        &self,
+        path: &Path,
+        modified: f64,
+        start_offset: u64,
+        window: &CollectionWindow,
+        cancellation: &CancellationToken,
+        stats: &mut ScanStats,
+    ) -> Result<CachedFilePayload, SourceScanError> {
+        parse_cached_file(
+            path,
+            modified,
+            start_offset,
+            window,
+            cancellation,
+            stats,
+            |path, _, value, stats| {
+                let observation = claude_observation(path, window, &value);
+                if observation.is_some() {
+                    stats.usage_records = stats.usage_records.saturating_add(1);
+                }
+                observation
+            },
+        )
+    }
+
+    fn merge_append(
+        &self,
+        previous: &CachedFilePayload,
+        appended: &CachedFilePayload,
+        _modified: f64,
+        window: &CollectionWindow,
+    ) -> CachedFilePayload {
+        let mut observations = previous.observations.clone();
+        observations.extend(appended.observations.iter().cloned());
+        payload_from_observations(observations, window)
+    }
+
+    fn aggregate(
+        &self,
+        payloads: &[CachedFilePayload],
+        window: &CollectionWindow,
+    ) -> Result<(UsageContribution, bool, Option<String>), SourceScanError> {
+        aggregate_claude_payloads(payloads, window)
+    }
+}
+
+pub fn scan_claude_cached(
+    root: &Path,
+    window: &CollectionWindow,
+    cache_root: &Path,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
+    scan_cached_jsonl_tree(
+        root,
+        &jsonl_cache_config(cache_root, "claude-code", window),
+        &ClaudeJsonlAdapter,
+        cancellation,
+    )
+}
+
+struct CodeBuddyJsonlAdapter;
+
+fn codebuddy_observation(
+    path: &Path,
+    value: &Value,
+    stats: &mut ScanStats,
+) -> Option<CachedUsageObservation> {
+    let record_type = value.get("type").and_then(Value::as_str);
+    if record_type != Some("message") && record_type != Some("function_call") {
+        return None;
+    }
+    if record_type == Some("message")
+        && value.get("role").and_then(Value::as_str) != Some("assistant")
+    {
+        return None;
+    }
+    let timestamp = timestamp_number(value.get("timestamp"))?;
+    let (input, output, cache_read, cache_creation) = codebuddy_usage(value)?;
+    stats.usage_records = stats.usage_records.saturating_add(1);
+    let raw_key =
+        codebuddy_message_id(value).map(|id| format!("{}::{id}", codebuddy_scope(path, value),));
+    Some(CachedUsageObservation {
+        dedupe_key: raw_key
+            .as_deref()
+            .map(|key| digest_source_key("codebuddy-message", key)),
+        timestamp_millis: timestamp,
+        model: codebuddy_model(value),
+        input,
+        output,
+        cache_read,
+        cache_creation,
+        project: project_from_parent(path),
+    })
+}
+
+fn codebuddy_usage_from_observation(observation: &CachedUsageObservation) -> CodeBuddyUsage {
+    CodeBuddyUsage {
+        input: observation.input,
+        output: observation.output,
+        cache_read: observation.cache_read,
+        cache_creation: observation.cache_creation,
+        timestamp_millis: observation.timestamp_millis,
+        model: observation.model.clone(),
+        project: observation.project.clone(),
+    }
+}
+
+fn aggregate_codebuddy_payloads(
+    payloads: &[CachedFilePayload],
+    window: &CollectionWindow,
+) -> Result<(UsageContribution, bool, Option<String>), SourceScanError> {
+    let mut best = BTreeMap::<String, CodeBuddyUsage>::new();
+    let mut direct = Vec::<CodeBuddyUsage>::new();
+    for payload in payloads {
+        if payload.contribution.to_domain(window).is_none() {
+            return Err(invalid_cached_payload());
+        }
+        for observation in &payload.observations {
+            let usage = codebuddy_usage_from_observation(observation);
+            if let Some(key) = observation.dedupe_key.as_ref() {
+                let replace = match best.get(key) {
+                    None => true,
+                    Some(previous) => {
+                        usage.total() > previous.total()
+                            || (usage.total() == previous.total()
+                                && usage.timestamp_millis > previous.timestamp_millis)
+                    }
+                };
+                if replace {
+                    best.insert(key.clone(), usage);
+                }
+            } else {
+                direct.push(usage);
+            }
+        }
+    }
+    let mut builder = UsageContributionBuilder::new(window.clone());
+    for usage in best.into_values().chain(direct) {
+        record(
+            &mut builder,
+            usage.timestamp_millis,
+            usage.model.as_deref(),
+            usage.input,
+            usage.output,
+            usage.cache_read,
+            usage.cache_creation,
+            usage.project.as_deref(),
+        );
+    }
+    Ok((builder.contribution(), !payloads.is_empty(), None))
+}
+
+impl JsonlCacheAdapter for CodeBuddyJsonlAdapter {
+    fn source_id(&self) -> &'static str {
+        "codebuddy"
+    }
+
+    fn parse_file(
+        &self,
+        path: &Path,
+        modified: f64,
+        start_offset: u64,
+        window: &CollectionWindow,
+        cancellation: &CancellationToken,
+        stats: &mut ScanStats,
+    ) -> Result<CachedFilePayload, SourceScanError> {
+        parse_cached_file(
+            path,
+            modified,
+            start_offset,
+            window,
+            cancellation,
+            stats,
+            |path, _, value, stats| codebuddy_observation(path, &value, stats),
+        )
+    }
+
+    fn merge_append(
+        &self,
+        previous: &CachedFilePayload,
+        appended: &CachedFilePayload,
+        _modified: f64,
+        window: &CollectionWindow,
+    ) -> CachedFilePayload {
+        let mut observations = previous.observations.clone();
+        observations.extend(appended.observations.iter().cloned());
+        payload_from_observations(observations, window)
+    }
+
+    fn aggregate(
+        &self,
+        payloads: &[CachedFilePayload],
+        window: &CollectionWindow,
+    ) -> Result<(UsageContribution, bool, Option<String>), SourceScanError> {
+        aggregate_codebuddy_payloads(payloads, window)
+    }
+}
+
+pub fn scan_codebuddy_cached(
+    root: &Path,
+    window: &CollectionWindow,
+    cache_root: &Path,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
+    scan_cached_jsonl_tree(
+        root,
+        &jsonl_cache_config(cache_root, "codebuddy", window),
+        &CodeBuddyJsonlAdapter,
+        cancellation,
+    )
+}
+
+struct GrokJsonlAdapter;
+
+fn grok_observation(path: &Path, modified: f64, value: &Value) -> Option<CachedUsageObservation> {
+    let kind = value.get("type").and_then(Value::as_str);
+    if kind != Some("user") && kind != Some("assistant") {
+        return None;
+    }
+    let content = grok_content(value.get("content"));
+    if content.is_empty() {
+        return None;
+    }
+    let tokens = (content.chars().count() as u64 / 4).max(1);
+    let project = path
+        .parent()
+        .and_then(Path::parent)
+        .and_then(Path::file_name)
+        .and_then(|value| value.to_str())
+        .map(str::to_owned);
+    Some(CachedUsageObservation {
+        dedupe_key: None,
+        timestamp_millis: (modified * 1000.0) as i64,
+        model: Some("grok".to_owned()),
+        input: if kind == Some("user") { tokens } else { 0 },
+        output: if kind == Some("assistant") { tokens } else { 0 },
+        cache_read: 0,
+        cache_creation: 0,
+        project,
+    })
+}
+
+impl JsonlCacheAdapter for GrokJsonlAdapter {
+    fn source_id(&self) -> &'static str {
+        "grok"
+    }
+
+    fn parse_file(
+        &self,
+        path: &Path,
+        modified: f64,
+        start_offset: u64,
+        window: &CollectionWindow,
+        cancellation: &CancellationToken,
+        stats: &mut ScanStats,
+    ) -> Result<CachedFilePayload, SourceScanError> {
+        parse_cached_file(
+            path,
+            modified,
+            start_offset,
+            window,
+            cancellation,
+            stats,
+            |path, modified, value, stats| {
+                let observation = grok_observation(path, modified, &value);
+                if observation.is_some() {
+                    stats.usage_records = stats.usage_records.saturating_add(1);
+                }
+                observation
+            },
+        )
+    }
+
+    fn merge_append(
+        &self,
+        previous: &CachedFilePayload,
+        appended: &CachedFilePayload,
+        modified: f64,
+        window: &CollectionWindow,
+    ) -> CachedFilePayload {
+        let current_timestamp = (modified * 1000.0) as i64;
+        let mut observations = previous.observations.clone();
+        for observation in &mut observations {
+            observation.timestamp_millis = current_timestamp;
+        }
+        observations.extend(appended.observations.iter().cloned());
+        payload_from_observations(observations, window)
+    }
+
+    fn aggregate(
+        &self,
+        payloads: &[CachedFilePayload],
+        window: &CollectionWindow,
+    ) -> Result<(UsageContribution, bool, Option<String>), SourceScanError> {
+        aggregate_additive_payloads(payloads, window)
+    }
+}
+
+pub fn scan_grok_cached(
+    roots: &[PathBuf],
+    window: &CollectionWindow,
+    cache_root: &Path,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
+    let mut builder = UsageContributionBuilder::new(window.clone());
+    let mut stats = ScanStats::default();
+    let mut found = false;
+    let mut diagnostic = None;
+    for root in roots {
+        let current = scan_cached_jsonl_tree(
+            root,
+            &jsonl_cache_config(cache_root, "grok", window),
+            &GrokJsonlAdapter,
+            cancellation,
+        );
+        match current {
+            Ok(current) => {
+                found |= current.found;
+                stats.merge(current.stats);
+                if diagnostic.is_none() {
+                    diagnostic = current.diagnostic;
+                }
+                if !builder.merge_contribution(&current.contribution) {
+                    return Err(invalid_cached_payload());
+                }
+            }
+            Err(SourceScanError::Runtime(error)) => return Err(error.into()),
+            Err(SourceScanError::Io(_)) => {
+                stats.io_errors = stats.io_errors.saturating_add(1);
+            }
+        }
+    }
+    Ok(SourceScan {
+        found,
+        contribution: builder.contribution(),
+        stats,
+        diagnostic,
+    })
+}
+
+struct PiJsonlAdapter;
+
+fn pi_observation(
+    path: &Path,
+    window: &CollectionWindow,
+    value: &Value,
+) -> Option<CachedUsageObservation> {
+    let kind = value.get("type").and_then(Value::as_str);
+    if kind == Some("session") || kind != Some("message") {
+        return None;
+    }
+    let message = value.get("message").unwrap_or(&Value::Null);
+    if message.get("role").and_then(Value::as_str) != Some("assistant") {
+        return None;
+    }
+    let usage = message.get("usage").unwrap_or(&Value::Null);
+    if usage.is_null() {
+        return None;
+    }
+    let timestamp = timestamp_number(message.get("timestamp")).or_else(|| {
+        value
+            .get("timestamp")
+            .and_then(Value::as_str)
+            .and_then(|value| window.epoch_from_iso(value).map(|value| value * 1000))
+    })?;
+    Some(CachedUsageObservation {
+        dedupe_key: None,
+        timestamp_millis: if timestamp < 10_000_000_000 {
+            timestamp * 1000
+        } else {
+            timestamp
+        },
+        model: message
+            .get("model")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        input: number_u64(usage.get("input")),
+        output: number_u64(usage.get("output")).saturating_add(number_u64(usage.get("reasoning"))),
+        cache_read: number_u64(usage.get("cacheRead")),
+        cache_creation: number_u64(usage.get("cacheWrite")),
+        project: project_from_parent(path),
+    })
+}
+
+impl JsonlCacheAdapter for PiJsonlAdapter {
+    fn source_id(&self) -> &'static str {
+        "pi"
+    }
+
+    fn parse_file(
+        &self,
+        path: &Path,
+        modified: f64,
+        start_offset: u64,
+        window: &CollectionWindow,
+        cancellation: &CancellationToken,
+        stats: &mut ScanStats,
+    ) -> Result<CachedFilePayload, SourceScanError> {
+        parse_cached_file(
+            path,
+            modified,
+            start_offset,
+            window,
+            cancellation,
+            stats,
+            |path, _, value, stats| {
+                let observation = pi_observation(path, window, &value);
+                if observation.is_some() {
+                    stats.usage_records = stats.usage_records.saturating_add(1);
+                }
+                observation
+            },
+        )
+    }
+
+    fn merge_append(
+        &self,
+        previous: &CachedFilePayload,
+        appended: &CachedFilePayload,
+        _modified: f64,
+        window: &CollectionWindow,
+    ) -> CachedFilePayload {
+        merge_additive_payloads(previous, appended, window)
+    }
+
+    fn aggregate(
+        &self,
+        payloads: &[CachedFilePayload],
+        window: &CollectionWindow,
+    ) -> Result<(UsageContribution, bool, Option<String>), SourceScanError> {
+        aggregate_additive_payloads(payloads, window)
+    }
+}
+
+pub fn scan_pi_cached(
+    root: &Path,
+    window: &CollectionWindow,
+    cache_root: &Path,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
+    scan_cached_jsonl_tree(
+        root,
+        &jsonl_cache_config(cache_root, "pi", window),
+        &PiJsonlAdapter,
+        cancellation,
+    )
 }
 
 fn sqlite_error(window: &CollectionWindow, message: &str) -> SourceScan {
@@ -2695,8 +3472,9 @@ pub fn scan_zcode_with_cancellation(
 #[cfg(test)]
 mod tests {
     use super::{
-        scan_codex, scan_codex_cached, scan_grok, scan_kimi_tree_with_cancellation, scan_opencode,
-        scan_opencode_cached, scan_zcode, scan_zcode_cached, CodexFileCandidate,
+        scan_claude, scan_codebuddy, scan_codex, scan_codex_cached, scan_grok, scan_kimi_tree,
+        scan_kimi_tree_with_cancellation, scan_opencode, scan_opencode_cached, scan_pi, scan_zcode,
+        scan_zcode_cached, CodexFileCandidate,
     };
     use collector_domain::CollectionWindow;
     use collector_runtime::{CancellationToken, RuntimeError};
@@ -2854,6 +3632,400 @@ mod tests {
                 .map(|bucket| bucket.total),
             Some(2)
         );
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn cached_additive_jsonl_sources_match_cold_and_warm_results() {
+        let root = temp_root("jsonl-additive-cache");
+        let cache_root = root.join("cache");
+        let base = 1_785_211_200_000_i64;
+
+        let kimi_root = root.join("kimi");
+        fs::create_dir_all(&kimi_root).unwrap();
+        fs::write(
+            kimi_root.join("session.jsonl"),
+            [
+                json!({
+                    "type": "usage.record",
+                    "time": base,
+                    "model": "kimi-k2",
+                    "usage": {"inputOther": 10, "output": 2}
+                })
+                .to_string(),
+                json!({"type": "assistant", "text": "ignored"}).to_string(),
+                json!({
+                    "type": "usage.record",
+                    "time": base + 3_600_000,
+                    "model": "kimi-k2",
+                    "usage": {"inputOther": 3, "inputCacheRead": 4, "output": 1}
+                })
+                .to_string(),
+            ]
+            .join("\n"),
+        )
+        .unwrap();
+        let expected_kimi = scan_kimi_tree(&kimi_root, &window());
+        let cold_kimi = super::scan_kimi_tree_cached(
+            &kimi_root,
+            &window(),
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        let warm_kimi = super::scan_kimi_tree_cached(
+            &kimi_root,
+            &window(),
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        assert_eq!(cold_kimi.contribution, expected_kimi.contribution);
+        assert_eq!(warm_kimi.contribution, expected_kimi.contribution);
+        assert!(warm_kimi.stats.cache_hits > 0);
+        assert_eq!(warm_kimi.stats.json_lines_parsed, 0);
+
+        let pi_root = root.join("pi");
+        fs::create_dir_all(&pi_root).unwrap();
+        fs::write(
+            pi_root.join("session.jsonl"),
+            [
+                json!({
+                    "type": "message",
+                    "message": {
+                        "role": "assistant",
+                        "timestamp": base,
+                        "model": "pi-model",
+                        "usage": {"input": 7, "output": 5, "reasoning": 2, "cacheRead": 1}
+                    }
+                })
+                .to_string(),
+                json!({"type": "session", "id": "ignored"}).to_string(),
+            ]
+            .join("\n"),
+        )
+        .unwrap();
+        let expected_pi = scan_pi(&pi_root, &window());
+        let cold_pi =
+            super::scan_pi_cached(&pi_root, &window(), &cache_root, &CancellationToken::new())
+                .unwrap();
+        let warm_pi =
+            super::scan_pi_cached(&pi_root, &window(), &cache_root, &CancellationToken::new())
+                .unwrap();
+        assert_eq!(cold_pi.contribution, expected_pi.contribution);
+        assert_eq!(warm_pi.contribution, expected_pi.contribution);
+        assert!(warm_pi.stats.cache_hits > 0);
+        assert_eq!(warm_pi.stats.json_lines_parsed, 0);
+
+        let grok_root = root.join("grok/project/session");
+        fs::create_dir_all(&grok_root).unwrap();
+        fs::write(
+            grok_root.join("conversation.jsonl"),
+            [
+                json!({"type": "user", "content": "abcdefgh"}).to_string(),
+                json!({"type": "assistant", "content": [{"text": "abcdefghijkl"}]}).to_string(),
+                json!({"type": "system", "content": "ignored"}).to_string(),
+            ]
+            .join("\n")
+                + "\n",
+        )
+        .unwrap();
+        let grok_window = CollectionWindow::from_context(
+            &serde_json::from_value(json!({
+                "now": "2026-09-09T12:00:00+08:00",
+                "timezone": "Asia/Shanghai",
+                "days": 14
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let expected_grok = super::scan_grok(&[grok_root.clone()], &grok_window);
+        let cold_grok = super::scan_grok_cached(
+            &[grok_root.clone()],
+            &grok_window,
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        let warm_grok = super::scan_grok_cached(
+            &[grok_root.clone()],
+            &grok_window,
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        assert_eq!(cold_grok.contribution, expected_grok.contribution);
+        assert_eq!(warm_grok.contribution, expected_grok.contribution);
+        assert!(warm_grok.stats.cache_hits > 0);
+        assert_eq!(warm_grok.stats.json_lines_parsed, 0);
+        let mut grok_file = fs::OpenOptions::new()
+            .append(true)
+            .open(grok_root.join("conversation.jsonl"))
+            .unwrap();
+        std::io::Write::write_all(
+            &mut grok_file,
+            json!({"type": "assistant", "content": "abcdefghijklmnop"})
+                .to_string()
+                .as_bytes(),
+        )
+        .unwrap();
+        drop(grok_file);
+        let appended_grok = super::scan_grok_cached(
+            &[root.join("grok/project/session")],
+            &grok_window,
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        let expected_appended_grok =
+            super::scan_grok(&[root.join("grok/project/session")], &grok_window);
+        assert_eq!(
+            appended_grok.contribution,
+            expected_appended_grok.contribution
+        );
+        assert!(appended_grok.stats.cache_appends > 0);
+
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn cached_claude_and_codebuddy_preserve_cross_file_deduplication() {
+        let root = temp_root("jsonl-dedupe-cache");
+        let cache_root = root.join("cache");
+        let base = "2026-07-28T04:00:00Z";
+
+        let claude_root = root.join("claude");
+        let claude_a = claude_root.join("project-a");
+        let claude_b = claude_root.join("project-b");
+        fs::create_dir_all(&claude_a).unwrap();
+        fs::create_dir_all(&claude_b).unwrap();
+        let claude_line = |id: &str, input: u64, output: u64| {
+            json!({
+                "type": "assistant",
+                "timestamp": base,
+                "message": {
+                    "id": id,
+                    "model": "claude-sonnet",
+                    "usage": {
+                        "input_tokens": input,
+                        "output_tokens": output,
+                        "cache_read_input_tokens": 4
+                    }
+                }
+            })
+            .to_string()
+        };
+        fs::write(
+            claude_a.join("one.jsonl"),
+            [
+                claude_line("message-1", 10, 2),
+                claude_line("direct-a", 3, 1),
+            ]
+            .join("\n")
+                + "\n",
+        )
+        .unwrap();
+        fs::write(claude_b.join("two.jsonl"), claude_line("message-1", 20, 5)).unwrap();
+        let expected_claude = scan_claude(&claude_root, &window());
+        let cold_claude = super::scan_claude_cached(
+            &claude_root,
+            &window(),
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        let warm_claude = super::scan_claude_cached(
+            &claude_root,
+            &window(),
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        assert_eq!(cold_claude.contribution, expected_claude.contribution);
+        assert_eq!(warm_claude.contribution, expected_claude.contribution);
+        assert!(warm_claude.stats.cache_hits >= 2);
+        assert_eq!(warm_claude.stats.json_lines_parsed, 0);
+        let mut claude_file = fs::OpenOptions::new()
+            .append(true)
+            .open(claude_a.join("one.jsonl"))
+            .unwrap();
+        std::io::Write::write_all(&mut claude_file, claude_line("message-1", 30, 6).as_bytes())
+            .unwrap();
+        drop(claude_file);
+        let appended_claude = super::scan_claude_cached(
+            &claude_root,
+            &window(),
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        let expected_appended_claude = scan_claude(&claude_root, &window());
+        assert_eq!(
+            appended_claude.contribution,
+            expected_appended_claude.contribution
+        );
+        assert!(appended_claude.stats.cache_appends > 0);
+
+        let codebuddy_root = root.join("codebuddy");
+        let codebuddy_project_a = codebuddy_root.join("project-a");
+        let codebuddy_project_b = codebuddy_root.join("project-b");
+        fs::create_dir_all(&codebuddy_project_a).unwrap();
+        fs::create_dir_all(&codebuddy_project_b).unwrap();
+        let codebuddy_line = |session: &str, id: &str, input: u64, output: u64| {
+            json!({
+                "type": "message",
+                "role": "assistant",
+                "sessionId": session,
+                "timestamp": 1_785_211_200_000_i64,
+                "message": {"usage": {
+                    "input_tokens": input,
+                    "output_tokens": output,
+                    "cache_read_input_tokens": 0
+                }},
+                "providerData": {"model": "codebuddy-model", "messageId": id}
+            })
+            .to_string()
+        };
+        fs::write(
+            codebuddy_project_a.join("first.jsonl"),
+            codebuddy_line("same-session", "same-message", 10, 2),
+        )
+        .unwrap();
+        fs::write(
+            codebuddy_project_a.join("second.jsonl"),
+            codebuddy_line("same-session", "same-message", 20, 5),
+        )
+        .unwrap();
+        fs::write(
+            codebuddy_project_b.join("third.jsonl"),
+            codebuddy_line("same-session", "same-message", 7, 1),
+        )
+        .unwrap();
+        let expected_codebuddy = scan_codebuddy(&codebuddy_root, &window());
+        let cold_codebuddy = super::scan_codebuddy_cached(
+            &codebuddy_root,
+            &window(),
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        let warm_codebuddy = super::scan_codebuddy_cached(
+            &codebuddy_root,
+            &window(),
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        assert_eq!(cold_codebuddy.contribution, expected_codebuddy.contribution);
+        assert_eq!(warm_codebuddy.contribution, expected_codebuddy.contribution);
+        assert!(warm_codebuddy.stats.cache_hits >= 3);
+        assert_eq!(warm_codebuddy.stats.json_lines_parsed, 0);
+
+        let mut cache_text = String::new();
+        for entry in fs::read_dir(&cache_root).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_file() {
+                cache_text.push_str(&fs::read_to_string(path).unwrap());
+            }
+        }
+        assert!(
+            !cache_text.contains("message-1") && !cache_text.contains("same-message"),
+            "cache must store only hashed deduplication keys"
+        );
+        assert!(!cache_text.contains("refresh_token"));
+        assert!(!cache_text.contains("/Users/"));
+
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn cached_jsonl_handles_append_rewrite_delete_and_corruption() {
+        let root = temp_root("jsonl-state-transitions");
+        let source_root = root.join("kimi");
+        let cache_root = root.join("cache");
+        fs::create_dir_all(&source_root).unwrap();
+        let path = source_root.join("session.jsonl");
+        let base = 1_785_211_200_000_i64;
+        let line = |input: u64| {
+            json!({
+                "type": "usage.record",
+                "time": base,
+                "model": "kimi-k2",
+                "usage": {"inputOther": input, "output": 1}
+            })
+            .to_string()
+        };
+        fs::write(&path, format!("{}\n", line(3))).unwrap();
+
+        let cold = super::scan_kimi_tree_cached(
+            &source_root,
+            &window(),
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        assert_eq!(cold.stats.cache_rebuilds, 1);
+
+        let mut file = fs::OpenOptions::new().append(true).open(&path).unwrap();
+        std::io::Write::write_all(&mut file, format!("{}\n", line(4)).as_bytes()).unwrap();
+        drop(file);
+        let appended = super::scan_kimi_tree_cached(
+            &source_root,
+            &window(),
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        let expected_appended = scan_kimi_tree(&source_root, &window());
+        assert_eq!(appended.contribution, expected_appended.contribution);
+        assert_eq!(appended.stats.cache_appends, 1);
+        assert_eq!(appended.stats.lines_seen, 1);
+
+        fs::write(&path, line(9)).unwrap();
+        let rewritten = super::scan_kimi_tree_cached(
+            &source_root,
+            &window(),
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        let expected_rewritten = scan_kimi_tree(&source_root, &window());
+        assert_eq!(rewritten.contribution, expected_rewritten.contribution);
+        assert!(rewritten.stats.cache_invalidations > 0);
+        assert_eq!(rewritten.stats.cache_rebuilds, 1);
+
+        let entry_path = fs::read_dir(&cache_root)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .find(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with("jsonl-"))
+            })
+            .expect("source cache entry should exist");
+        fs::write(&entry_path, b"not-json").unwrap();
+        let repaired = super::scan_kimi_tree_cached(
+            &source_root,
+            &window(),
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        assert_eq!(repaired.contribution, expected_rewritten.contribution);
+        assert_eq!(repaired.stats.cache_corruptions, 1);
+        assert_eq!(repaired.stats.cache_rebuilds, 1);
+
+        fs::remove_file(&path).unwrap();
+        let deleted = super::scan_kimi_tree_cached(
+            &source_root,
+            &window(),
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        assert!(!deleted.found);
+        assert!(deleted.contribution.by_day.is_empty());
+        assert_eq!(deleted.stats.cache_deletions, 1);
         fs::remove_dir_all(root).ok();
     }
 

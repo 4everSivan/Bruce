@@ -23,11 +23,10 @@ use collector_domain::{
     AGENT_USAGE_MODULE, AGENT_USAGE_SCHEMA_VERSION,
 };
 use collector_local::{
-    default_cache_root, scan_claude_with_cancellation, scan_codebuddy_with_cancellation,
-    scan_codex_cached_with_cancellation, scan_grok_with_cancellation,
-    scan_kimi_tree_with_cancellation, scan_opencode_cached, scan_pi_with_cancellation,
-    scan_tree_cached_with_sink_with_cancellation, scan_zcode_cached, CacheConfig, CachedScanError,
-    ScanStats, SourceScan, SourceScanError,
+    default_cache_root, scan_claude_cached, scan_codebuddy_cached,
+    scan_codex_cached_with_cancellation, scan_grok_cached, scan_kimi_tree_cached,
+    scan_opencode_cached, scan_pi_cached, scan_tree_cached_with_sink_with_cancellation,
+    scan_zcode_cached, CacheConfig, CachedScanError, ScanStats, SourceScan, SourceScanError,
 };
 use collector_provider::{HttpClient, ProviderError, UreqHttpClient};
 use collector_runtime::{BoundedQueue, RuntimeError, RuntimeLimits};
@@ -477,40 +476,44 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
                 "codebuddy_projects",
                 home.join(".codebuddy/projects"),
             );
+            let cache_root = default_cache_root(&home);
 
             let source_results = [
                 collect_secondary_source(context, "kimi-work", || {
-                    scan_kimi_tree_with_cancellation(
+                    scan_kimi_tree_cached(
                         &kimi_work,
                         &context.window,
+                        &cache_root,
                         &context.cancellation,
                     )
                 })?,
                 collect_secondary_source(context, "claude-code", || {
-                    scan_claude_with_cancellation(&claude, &context.window, &context.cancellation)
+                    scan_claude_cached(&claude, &context.window, &cache_root, &context.cancellation)
                 })?,
                 collect_secondary_source(context, "codex", || {
                     scan_codex_cached_with_cancellation(
                         &codex_roots,
                         &context.window,
-                        &default_cache_root(&home),
+                        &cache_root,
                         &context.cancellation,
                     )
                 })?,
                 collect_secondary_source(context, "codebuddy", || {
-                    scan_codebuddy_with_cancellation(
+                    scan_codebuddy_cached(
                         &codebuddy,
                         &context.window,
+                        &cache_root,
                         &context.cancellation,
                     )
                 })?,
                 collect_secondary_source(context, "grok", || {
-                    scan_grok_with_cancellation(
+                    scan_grok_cached(
                         &[
                             grok_root.join("sessions"),
                             grok_root.join("archived_sessions"),
                         ],
                         &context.window,
+                        &cache_root,
                         &context.cancellation,
                     )
                 })?,
@@ -518,20 +521,15 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
                     scan_opencode_cached(
                         &opencode,
                         &context.window,
-                        &default_cache_root(&home),
+                        &cache_root,
                         &context.cancellation,
                     )
                 })?,
                 collect_secondary_source(context, "pi", || {
-                    scan_pi_with_cancellation(&pi, &context.window, &context.cancellation)
+                    scan_pi_cached(&pi, &context.window, &cache_root, &context.cancellation)
                 })?,
                 collect_secondary_source(context, "zcode", || {
-                    scan_zcode_cached(
-                        &zcode,
-                        &context.window,
-                        &default_cache_root(&home),
-                        &context.cancellation,
-                    )
+                    scan_zcode_cached(&zcode, &context.window, &cache_root, &context.cancellation)
                 })?,
             ];
             for (source, source_metric) in source_results {
@@ -965,6 +963,143 @@ mod tests {
             ]
         );
         assert!(output.artifact.get("sources").is_none());
+        let _ = std::fs::remove_dir_all(home);
+    }
+
+    #[test]
+    fn warm_jsonl_sources_keep_agent_results_and_skip_body_parsing() {
+        let home = std::env::temp_dir().join(format!(
+            "bruce-warm-jsonl-sources-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&home);
+        let kimi_work = home.join("kimi-work");
+        let claude = home.join("claude/project");
+        let codebuddy = home.join("codebuddy/project");
+        let grok = home.join("grok/sessions/project/session");
+        let pi = home.join("pi");
+        for path in [&kimi_work, &claude, &codebuddy, &grok, &pi] {
+            std::fs::create_dir_all(path).unwrap();
+        }
+        std::fs::write(
+            kimi_work.join("session.jsonl"),
+            json!({
+                "type": "usage.record",
+                "time": 1_788_912_000_000_i64,
+                "model": "kimi-k2",
+                "usage": {"inputOther": 10, "output": 2}
+            })
+            .to_string(),
+        )
+        .unwrap();
+        std::fs::write(
+            claude.join("session.jsonl"),
+            json!({
+                "type": "assistant",
+                "timestamp": "2026-09-09T04:00:00Z",
+                "message": {
+                    "id": "warm-claude-message",
+                    "model": "claude-sonnet",
+                    "usage": {"input_tokens": 11, "output_tokens": 3}
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+        std::fs::write(
+            codebuddy.join("session.jsonl"),
+            json!({
+                "type": "message",
+                "role": "assistant",
+                "timestamp": 1_789_128_000_000_i64,
+                "message": {"usage": {"input_tokens": 12, "output_tokens": 4}},
+                "providerData": {"model": "codebuddy-model", "messageId": "warm-codebuddy-message"}
+            })
+            .to_string(),
+        )
+        .unwrap();
+        std::fs::write(
+            grok.join("conversation.jsonl"),
+            json!({"type": "assistant", "content": "abcdefgh"}).to_string(),
+        )
+        .unwrap();
+        std::fs::write(
+            pi.join("session.jsonl"),
+            json!({
+                "type": "message",
+                "message": {
+                    "role": "assistant",
+                    "timestamp": 1_789_128_000_000_i64,
+                    "model": "pi-model",
+                    "usage": {"input": 13, "output": 5}
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let mut request = request(&["localSessions"]);
+        request.context.insert(
+            "home".to_owned(),
+            serde_json::Value::String(home.to_string_lossy().into_owned()),
+        );
+        request
+            .context
+            .insert("now".to_owned(), json!("2026-09-09T12:00:00+08:00"));
+        request
+            .context
+            .insert("timezone".to_owned(), json!("Asia/Shanghai"));
+        request.context.insert("days".to_owned(), json!(14));
+        request.context.insert(
+            "paths".to_owned(),
+            json!({
+                "kimi_cli_sessions": home.join("kimi-cli").to_string_lossy(),
+                "daimon_kimi_sessions": kimi_work,
+                "claude_projects": home.join("claude"),
+                "codex_sessions": home.join("codex"),
+                "orca_home": home.join("orca"),
+                "grok_home": home.join("grok"),
+                "pi_sessions": pi,
+                "opencode_db": home.join("opencode.db"),
+                "zcode_db": home.join("zcode.db"),
+                "codebuddy_projects": home.join("codebuddy")
+            }),
+        );
+
+        let first = collect_agent_usage_with_dependencies(
+            &request,
+            &FixtureHttp {
+                calls: AtomicUsize::new(0),
+                body: Vec::new(),
+            },
+            &EmptyCredentialSource,
+        )
+        .unwrap();
+        let second = collect_agent_usage_with_dependencies(
+            &request,
+            &FixtureHttp {
+                calls: AtomicUsize::new(0),
+                body: Vec::new(),
+            },
+            &EmptyCredentialSource,
+        )
+        .unwrap();
+
+        assert_eq!(first.artifact["agents"], second.artifact["agents"]);
+        assert!(second.scan_stats.cache_hits > 0);
+        assert_eq!(second.scan_stats.json_lines_parsed, 0);
+        for source_id in ["kimi-work", "claude-code", "codebuddy", "grok", "pi"] {
+            let metric = second
+                .source_metrics
+                .iter()
+                .find(|metric| metric.source_id == source_id)
+                .expect("source metric should be present");
+            assert!(metric.stats.cache_hits > 0, "{source_id} should be warm");
+            assert_eq!(
+                metric.stats.json_lines_parsed, 0,
+                "{source_id} should not parse JSONL"
+            );
+        }
         let _ = std::fs::remove_dir_all(home);
     }
 
