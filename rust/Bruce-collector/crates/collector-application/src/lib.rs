@@ -35,9 +35,10 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Instant;
 
 pub use collector_local::ScanStats as CollectionScanStats;
-pub use context::CollectionMetrics;
+pub use context::{CollectionMetrics, SourcePerformanceMetric};
 
 /// Validate credential outputs before the Bridge serializes the response.
 /// The Bridge depends on this application boundary rather than on the
@@ -61,6 +62,7 @@ pub struct CollectionOutput {
     pub generated_at: String,
     pub scan_stats: ScanStats,
     pub metrics: CollectionMetrics,
+    pub source_metrics: Vec<SourcePerformanceMetric>,
     pub credential_updates: Vec<Value>,
     pub credential_challenges: Vec<Value>,
 }
@@ -102,6 +104,7 @@ pub fn collect_agent_usage_with_dependencies(
     let local = local_result?;
     let mut diagnostics = local.diagnostics;
     let scan_stats = local.scan_stats;
+    let source_metrics = local.source_metrics;
     let window = context.window.clone();
     let sessions_allowed = context.capability_allowed("localSessions");
     let mut kimi_cli = local.accumulator.finalize("kimi-code-cli", "Kimi Code CLI");
@@ -279,6 +282,7 @@ pub fn collect_agent_usage_with_dependencies(
         generated_at: window.generated_at(),
         scan_stats,
         metrics: context.metrics.snapshot(),
+        source_metrics,
         credential_updates,
         credential_challenges,
     })
@@ -289,6 +293,7 @@ struct LocalCollection {
     agents: BTreeMap<String, LocalAgentResult>,
     diagnostics: Vec<Diagnostic>,
     scan_stats: ScanStats,
+    source_metrics: Vec<SourcePerformanceMetric>,
     found: bool,
 }
 
@@ -303,6 +308,7 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
     let mut agents = BTreeMap::new();
     let mut diagnostics = Vec::new();
     let mut scan_stats = ScanStats::default();
+    let mut source_metrics = Vec::new();
     let sessions_allowed = context.capability_allowed("localSessions");
     let root = session_root(&context.request.context);
     let mut found = false;
@@ -332,6 +338,7 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
                     .map_err(runtime_diagnostic)?,
             );
             let cancellation = context.cancellation.clone();
+            let scan_started = Instant::now();
             let (scan_result, aggregation) = std::thread::scope(|scope| {
                 let consumer_queue = Arc::clone(&queue);
                 let consumer_window = context.window.clone();
@@ -350,6 +357,11 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
                 queue.close();
                 let aggregation = consumer.join().expect("local aggregation worker panicked");
                 (scan_result, aggregation)
+            });
+            source_metrics.push(SourcePerformanceMetric {
+                source_id: "kimi-code-cli".to_owned(),
+                elapsed_ms: scan_started.elapsed().as_millis() as u64,
+                stats: scan_result.as_ref().cloned().unwrap_or_default(),
             });
             accumulator = aggregation.accumulator;
             diagnostics.extend(aggregation.diagnostics);
@@ -432,40 +444,40 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
             );
 
             let source_results = [
-                ("kimi-work", scan_kimi_tree(&kimi_work, &context.window)),
-                ("claude-code", scan_claude(&claude, &context.window)),
-                (
-                    "codex",
-                    scan_codex_cached(&codex_roots, &context.window, &default_cache_root(&home)),
-                ),
-                ("codebuddy", scan_codebuddy(&codebuddy, &context.window)),
-                (
-                    "grok",
+                timed_source_scan("kimi-work", || scan_kimi_tree(&kimi_work, &context.window)),
+                timed_source_scan("claude-code", || scan_claude(&claude, &context.window)),
+                timed_source_scan("codex", || {
+                    scan_codex_cached(&codex_roots, &context.window, &default_cache_root(&home))
+                }),
+                timed_source_scan("codebuddy", || scan_codebuddy(&codebuddy, &context.window)),
+                timed_source_scan("grok", || {
                     scan_grok(
                         &[
                             grok_root.join("sessions"),
                             grok_root.join("archived_sessions"),
                         ],
                         &context.window,
-                    ),
-                ),
-                ("opencode", scan_opencode(&opencode, &context.window)),
-                ("pi", scan_pi(&pi, &context.window)),
-                ("zcode", scan_zcode(&zcode, &context.window)),
+                    )
+                }),
+                timed_source_scan("opencode", || scan_opencode(&opencode, &context.window)),
+                timed_source_scan("pi", || scan_pi(&pi, &context.window)),
+                timed_source_scan("zcode", || scan_zcode(&zcode, &context.window)),
             ];
-            for (id, source) in source_results {
+            for (source, source_metric) in source_results {
+                let id = source_metric.source_id.clone();
+                source_metrics.push(source_metric);
                 scan_stats.merge(source.stats.clone());
                 if let Some(message) = source.diagnostic.clone() {
                     diagnostics.push(Diagnostic::new(
                         "LOCAL_SOURCE_SCHEMA_INCOMPATIBLE",
                         "local",
-                        id,
+                        &id,
                         message,
                         true,
                     ));
                 }
                 agents.insert(
-                    id.to_owned(),
+                    id,
                     LocalAgentResult {
                         found: source.found,
                         contribution: source.contribution,
@@ -480,8 +492,27 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
         agents,
         diagnostics,
         scan_stats,
+        source_metrics,
         found,
     })
+}
+
+/// Execute one local source scan and retain only its aggregate diagnostics.
+pub fn timed_source_scan<F>(
+    source_id: &'static str,
+    scan: F,
+) -> (collector_local::SourceScan, SourcePerformanceMetric)
+where
+    F: FnOnce() -> collector_local::SourceScan,
+{
+    let started = Instant::now();
+    let source = scan();
+    let metric = SourcePerformanceMetric {
+        source_id: source_id.to_owned(),
+        elapsed_ms: started.elapsed().as_millis() as u64,
+        stats: source.stats.clone(),
+    };
+    (source, metric)
 }
 
 fn collect_quota_usage(context: &RunContext<'_>) -> QuotaExecution {
@@ -532,6 +563,7 @@ fn collect_codex_quota_retry_only(
         generated_at: context.window.generated_at(),
         scan_stats: ScanStats::default(),
         metrics: context.metrics.snapshot(),
+        source_metrics: Vec::new(),
         credential_updates: quota.credential_updates,
         credential_challenges: quota.credential_challenges,
     })
@@ -717,6 +749,50 @@ mod tests {
         let artifact = output.artifact.as_object().unwrap();
         assert_eq!(artifact["agents"][1]["status"], "unavailable");
         assert_eq!(artifact["services"][0]["status"], "partial");
+    }
+
+    #[test]
+    fn source_metrics_follow_the_stable_local_source_order() {
+        let home =
+            std::env::temp_dir().join(format!("bruce-source-metrics-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(home.join(".kimi-code/sessions")).unwrap();
+        let mut request = request(&["localSessions"]);
+        request.context.insert(
+            "home".to_owned(),
+            serde_json::Value::String(home.to_string_lossy().into_owned()),
+        );
+
+        let output = collect_agent_usage_with_dependencies(
+            &request,
+            &FixtureHttp {
+                calls: AtomicUsize::new(0),
+                body: Vec::new(),
+            },
+            &EmptyCredentialSource,
+        )
+        .unwrap();
+
+        assert_eq!(
+            output
+                .source_metrics
+                .iter()
+                .map(|metric| metric.source_id.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "kimi-code-cli",
+                "kimi-work",
+                "claude-code",
+                "codex",
+                "codebuddy",
+                "grok",
+                "opencode",
+                "pi",
+                "zcode",
+            ]
+        );
+        assert!(output.artifact.get("sources").is_none());
+        let _ = std::fs::remove_dir_all(home);
     }
 
     #[test]
