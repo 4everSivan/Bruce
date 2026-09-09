@@ -26,11 +26,13 @@ final class MenuBarStatusItemController: NSObject {
     private var installed = false
     /// 打开面板前的前台应用; toggle 关闭时归还前台. 打开时前台已是 Bruce 则为 nil.
     private var previousFrontmostApp: NSRunningApplication?
-    /// 模型变化时重绘状态栏标签图像 (指标值, 刷新状态, 警示符号均驱动显示).
+    /// 模型变化时更新状态栏摘要和刷新 glyph.
     private var labelSubscription: AnyCancellable?
-    /// 状态栏图片由 ImageRenderer 生成静态帧, 用主线程定时器推进刷新角度.
-    private var refreshAnimationTimer: Timer?
-    private var refreshAnimationRotation = 0.0
+    /// 刷新图标独立于状态栏摘要图像, 避免每个动画 tick 重新运行 ImageRenderer.
+    private let refreshGlyphController = MenuBarRefreshGlyphController()
+    /// 高频 objectWillChange 只允许一个待处理的摘要渲染任务.
+    private let renderCoalescer = MenuBarRenderCoalescer()
+    private var lastRenderSnapshot: MenuBarRenderSnapshot?
     /// 仪表盘 AppKit 系统材质宿主; 与业务模型和刷新流程隔离.
     private var dashboardGlassController: DashboardGlassPanelController?
 
@@ -60,16 +62,14 @@ final class MenuBarStatusItemController: NSObject {
             // 不显示任何内容). 用 ImageRenderer 把 SwiftUI 标签栅格化为按钮图像,
             // 状态栏据此确定按钮宽度, 颜色随菜单栏明暗自适应.
             refreshLabelImage(on: button)
+            refreshGlyphController.attach(to: button)
             button.target = self
             button.action = #selector(statusItemClicked(_:))
-            // 模型任何 @Published 变化都重绘标签; objectWillChange 在值应用前
-            // 发出, 调度到下一轮 main-actor 取到新值再渲染.
+            // objectWillChange 在值应用前发出; 把摘要重绘合并到下一轮
+            // main-actor, 由最新模型状态决定是否真的运行 ImageRenderer.
             labelSubscription = model.objectWillChange
                 .sink { [weak self] _ in
-                    Task { @MainActor in
-                        self?.synchronizeRefreshAnimation()
-                        self?.refreshLabelImage()
-                    }
+                    self?.scheduleModelUpdate()
                 }
             synchronizeRefreshAnimation()
         }
@@ -122,22 +122,42 @@ final class MenuBarStatusItemController: NSObject {
 
     // MARK: - 状态栏标签图像
 
-    /// 重绘状态项按钮图像 (当前按钮).
-    private func refreshLabelImage() {
+    /// 合并模型变更, 让一次刷新周期最多触发一次摘要 ImageRenderer.
+    private func scheduleModelUpdate() {
+        guard renderCoalescer.request() else { return }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            renderCoalescer.consume()
+            synchronizeRefreshAnimation()
+            refreshLabelImageIfNeeded()
+        }
+    }
+
+    private func refreshLabelImageIfNeeded() {
         guard let button = statusItem?.button else { return }
-        refreshLabelImage(on: button)
+        let current = makeRenderSnapshot()
+        if MenuBarRenderPolicy.summaryNeedsRender(
+            previous: lastRenderSnapshot,
+            current: current
+        ) {
+            refreshLabelImage(on: button, snapshot: current)
+        } else {
+            // 摘要图像未变时仍更新辅助功能描述, 保持状态变化可读.
+            button.setAccessibilityLabel(menuBarAccessibilityLabel)
+            lastRenderSnapshot = current
+        }
     }
 
     /// 用 ImageRenderer 栅格化 MenuBarLabelView 为按钮图像.
     /// 渲染成白色单色轮廓并标记 isTemplate, 由菜单栏按自身明暗自动着色
     /// (浅色菜单栏黑色, 深色菜单栏白色), 与原生状态项图标同一机制: 不依赖
     /// 外观检测, 外观切换也无需重绘.
-    private func refreshLabelImage(on button: NSStatusBarButton) {
+    private func refreshLabelImage(
+        on button: NSStatusBarButton,
+        snapshot: MenuBarRenderSnapshot? = nil
+    ) {
         let renderer = ImageRenderer(
-            content: MenuBarLabelView(
-                model: model,
-                refreshRotation: refreshAnimationRotation
-            )
+            content: MenuBarLabelView(model: model)
                 .foregroundStyle(.white)
         )
         renderer.scale = button.window?.screen?.backingScaleFactor
@@ -166,6 +186,7 @@ final class MenuBarStatusItemController: NSObject {
             button.title = "B"
             button.imagePosition = .noImage
         }
+        lastRenderSnapshot = snapshot ?? makeRenderSnapshot()
         button.setAccessibilityLabel(menuBarAccessibilityLabel)
     }
 
@@ -173,37 +194,25 @@ final class MenuBarStatusItemController: NSObject {
         model.moduleStatuses.values.contains { $0.state == .refreshing }
     }
 
-    /// 刷新开始/结束时同步状态栏动画. 用显式角度而非 SwiftUI 无限动画,
-    /// 这样 ImageRenderer 不会只抓到一个静态首帧或丢失旁边的用量文本.
+    /// 刷新开始/结束时只切换独立的 AppKit glyph, 不重绘摘要图像.
     private func synchronizeRefreshAnimation() {
-        if isRefreshing {
-            guard refreshAnimationTimer == nil else { return }
-            refreshAnimationRotation = 0
-            let timer = Timer(
-                timeInterval: 1.0 / 12.0,
-                target: self,
-                selector: #selector(advanceRefreshAnimation),
-                userInfo: nil,
-                repeats: true
-            )
-            RunLoop.main.add(timer, forMode: .common)
-            refreshAnimationTimer = timer
-        } else {
-            refreshAnimationTimer?.invalidate()
-            refreshAnimationTimer = nil
-            refreshAnimationRotation = 0
-        }
+        refreshGlyphController.setVisible(isRefreshing)
     }
 
-    @objc private func advanceRefreshAnimation() {
-        guard isRefreshing else {
-            synchronizeRefreshAnimation()
-            refreshLabelImage()
-            return
+    private func makeRenderSnapshot() -> MenuBarRenderSnapshot {
+        let summary = model.makeMenuBarSummary()
+        let formatter = MenuBarMetricFormatter()
+        var parts = model.menuBarMetrics.map {
+            "\($0.rawValue)=\(formatter.string(for: $0, summary: summary))"
         }
-        refreshAnimationRotation = (refreshAnimationRotation + 30)
-            .truncatingRemainder(dividingBy: 360)
-        refreshLabelImage()
+        if summary.overallStatus == .authRequired || summary.overallStatus == .failed {
+            parts.append("attention=\(summary.overallStatus.symbolName)")
+        }
+        return MenuBarRenderSnapshot(
+            summaryKey: parts.joined(separator: "|")
+                + "|metrics=\(model.menuBarMetrics.map(\.rawValue).joined(separator: ","))",
+            isRefreshing: isRefreshing
+        )
     }
 
     /// 与 MenuBarLabelView 内部一致的辅助功能描述.
@@ -232,8 +241,7 @@ final class MenuBarStatusItemController: NSObject {
         NotificationCenter.default.removeObserver(self)
         labelSubscription?.cancel()
         labelSubscription = nil
-        refreshAnimationTimer?.invalidate()
-        refreshAnimationTimer = nil
+        refreshGlyphController.detach()
         closeDashboard(restorePreviousFrontmostApp: false)
         dashboardGlassController = nil
         panel.contentViewController = nil

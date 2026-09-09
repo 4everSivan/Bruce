@@ -19,16 +19,9 @@ extension AppearancePreference {
 
 struct MenuBarLabelView: View {
     @ObservedObject var model: AppModel
-    /// ImageRenderer 生成的是静态 NSImage, 由状态项控制器推进刷新角度.
-    var refreshRotation: Double = 0
 
     private var summary: MenuBarSummary {
         model.makeMenuBarSummary()
-    }
-
-    /// 任一模块处于刷新中: 品牌图标替换为旋转刷新指示.
-    private var isRefreshing: Bool {
-        model.moduleStatuses.values.contains { $0.state == .refreshing }
     }
 
     /// 需要用户干预的状态才在菜单栏追加警示符号, 常态保持干净.
@@ -44,11 +37,7 @@ struct MenuBarLabelView: View {
     var body: some View {
         let formatter = MenuBarMetricFormatter()
         HStack(spacing: 5) {
-            if isRefreshing {
-                MenuBarRefreshIcon(rotation: refreshRotation)
-            } else {
-                MenuBarBrandIcon()
-            }
+            MenuBarBrandIcon()
             ForEach(model.menuBarMetrics) { metric in
                 Text(formatter.string(for: metric, summary: summary))
                     .monospacedDigit()
@@ -69,17 +58,6 @@ struct MenuBarLabelView: View {
         }
         return (["Bruce", summary.overallStatus.title] + metrics)
             .joined(separator: ", ")
-    }
-}
-
-/// 菜单栏状态项的刷新图标. 不使用 SwiftUI 无限动画, 因为 ImageRenderer 只会
-/// 抓取单帧; 由 MenuBarStatusItemController 定时传入角度, 同时保留旁边的用量文本.
-private struct MenuBarRefreshIcon: View {
-    let rotation: Double
-
-    var body: some View {
-        Image(systemName: "arrow.clockwise")
-            .rotationEffect(.degrees(rotation))
     }
 }
 
