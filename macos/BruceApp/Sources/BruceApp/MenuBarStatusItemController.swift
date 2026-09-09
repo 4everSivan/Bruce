@@ -11,7 +11,7 @@ import SwiftUI
 ///   行为与 `.transient` popover 的点外关闭一致.
 /// - toggle 关闭时把前台归还给打开前的应用, 避免焦点留在 Bruce.
 @MainActor
-final class MenuBarStatusItemController: NSObject {
+final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
     private let model: AppModel
     private let coordinator: OnboardingCoordinator
     private let openSettings: @MainActor () -> Void
@@ -108,6 +108,7 @@ final class MenuBarStatusItemController: NSObject {
         panel.isOpaque = false
         panel.hasShadow = true
         panel.isReleasedWhenClosed = false
+        panel.delegate = self
         // 启动即是 Nothing 主题时, 覆盖为无阴影 + 主题纯色窗口背景.
         refreshPanelWindowAttributes()
         // 点击其他应用时关闭面板 (模拟 transient popover 的点外关闭).
@@ -235,6 +236,7 @@ final class MenuBarStatusItemController: NSObject {
         refreshAnimationTimer?.invalidate()
         refreshAnimationTimer = nil
         closeDashboard(restorePreviousFrontmostApp: false)
+        panel.delegate = nil
         dashboardGlassController = nil
         panel.contentViewController = nil
         if let statusItem {
@@ -296,9 +298,12 @@ final class MenuBarStatusItemController: NSObject {
     /// 关闭面板; toggle 关闭时把前台归还给打开前的应用,
     /// 因点击其他应用而关闭 (resignActive) 时不归还 (对方已是前台).
     private func closeDashboard(restorePreviousFrontmostApp: Bool) {
-        if panel.isVisible {
+        let transition = DashboardPanelVisibilityTransition.close(
+            panelIsVisible: panel.isVisible
+        )
+        model.setDashboardPanelVisible(transition.visible)
+        if transition.shouldOrderOut {
             panel.orderOut(nil)
-            model.setDashboardPanelVisible(false)
         }
         let previous = previousFrontmostApp
         previousFrontmostApp = nil
@@ -321,6 +326,24 @@ final class MenuBarStatusItemController: NSObject {
     @objc private func applicationDidResignActive(_ note: Notification) {
         // 用户点击了其他应用 → 关闭面板, 不强制归还前台.
         closeDashboard(restorePreviousFrontmostApp: false)
+    }
+
+    func windowDidChangeOcclusionState(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === panel else {
+            return
+        }
+        let visible = DashboardPanelVisibilityTransition.isActuallyVisible(
+            panelIsVisible: panel.isVisible,
+            occlusionStateIsVisible: panel.occlusionState.contains(.visible)
+        )
+        model.setDashboardPanelVisible(visible)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === panel else {
+            return
+        }
+        model.setDashboardPanelVisible(false)
     }
 }
 

@@ -64,10 +64,88 @@ struct NativeLifecycleHarness {
         try exitForcesRemainingTasksAfterGracePeriod()
         try exitCompletesImmediatelyWithoutRunningTasks()
         try cancelTerminationRestoresScheduling()
+        try closeTransitionPublishesHiddenWhenWindowAlreadyHidden()
+        try occludedPanelIsNotPublishedAsVisible()
+        try hiddenPanelDisablesAllDecorativeAnimations()
         try metricSelectionNormalizes()
         try menuBarSummaryUsesValidQuotaWindows()
         try metricFormatterUsesCompactValues()
-        print("Native lifecycle tests passed: 6")
+        print("Native lifecycle tests passed: 9")
+    }
+
+    private static func closeTransitionPublishesHiddenWhenWindowAlreadyHidden() throws {
+        let alreadyHidden = DashboardPanelVisibilityTransition.close(panelIsVisible: false)
+        try expect(
+            alreadyHidden.visible == false,
+            "closing an already-hidden panel must publish hidden state"
+        )
+        try expect(
+            alreadyHidden.shouldOrderOut == false,
+            "closing an already-hidden panel must not order it out again"
+        )
+
+        let visible = DashboardPanelVisibilityTransition.close(panelIsVisible: true)
+        try expect(
+            visible.visible == false,
+            "closing a visible panel must publish hidden state"
+        )
+        try expect(
+            visible.shouldOrderOut,
+            "closing a visible panel must order it out"
+        )
+    }
+
+    private static func occludedPanelIsNotPublishedAsVisible() throws {
+        try expect(
+            !DashboardPanelVisibilityTransition.isActuallyVisible(
+                panelIsVisible: true,
+                occlusionStateIsVisible: false
+            ),
+            "an occluded panel must publish hidden state"
+        )
+        try expect(
+            DashboardPanelVisibilityTransition.isActuallyVisible(
+                panelIsVisible: true,
+                occlusionStateIsVisible: true
+            ),
+            "an onscreen panel must publish visible state"
+        )
+        try expect(
+            !DashboardPanelVisibilityTransition.isActuallyVisible(
+                panelIsVisible: false,
+                occlusionStateIsVisible: true
+            ),
+            "an ordered-out panel must publish hidden state"
+        )
+    }
+
+    private static func hiddenPanelDisablesAllDecorativeAnimations() throws {
+        try expect(
+            !DashboardPanelAnimationPolicy.allowsHero(panelVisible: false, reduceMotion: false),
+            "a hidden panel must not mount hero animation"
+        )
+        try expect(
+            !DashboardPanelAnimationPolicy.allowsHeatmap(
+                panelVisible: false,
+                isNothing: true,
+                filled: true,
+                reduceMotion: false
+            ),
+            "a hidden panel must not mount heatmap animation"
+        )
+        try expect(
+            DashboardPanelAnimationPolicy.allowsHero(panelVisible: true, reduceMotion: false),
+            "a visible panel may mount hero animation"
+        )
+        try expect(
+            DashboardPanelAnimationPolicy.allowsHeatmap(
+                panelVisible: true,
+                isNothing: true,
+                filled: true,
+                reduceMotion: false
+            ),
+            "a visible Nothing panel may mount filled-cell animation"
+        )
     }
 
     private static func exitForcesRemainingTasksAfterGracePeriod() throws {
