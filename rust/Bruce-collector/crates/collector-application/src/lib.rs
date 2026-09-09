@@ -25,9 +25,9 @@ use collector_domain::{
 use collector_local::{
     default_cache_root, scan_claude_with_cancellation, scan_codebuddy_with_cancellation,
     scan_codex_cached_with_cancellation, scan_grok_with_cancellation,
-    scan_kimi_tree_with_cancellation, scan_opencode_with_cancellation, scan_pi_with_cancellation,
-    scan_tree_cached_with_sink_with_cancellation, scan_zcode_with_cancellation, CacheConfig,
-    CachedScanError, ScanStats, SourceScan, SourceScanError,
+    scan_kimi_tree_with_cancellation, scan_opencode_cached, scan_pi_with_cancellation,
+    scan_tree_cached_with_sink_with_cancellation, scan_zcode_cached, CacheConfig, CachedScanError,
+    ScanStats, SourceScan, SourceScanError,
 };
 use collector_provider::{HttpClient, ProviderError, UreqHttpClient};
 use collector_runtime::{BoundedQueue, RuntimeError, RuntimeLimits};
@@ -515,9 +515,10 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
                     )
                 })?,
                 collect_secondary_source(context, "opencode", || {
-                    scan_opencode_with_cancellation(
+                    scan_opencode_cached(
                         &opencode,
                         &context.window,
+                        &default_cache_root(&home),
                         &context.cancellation,
                     )
                 })?,
@@ -525,7 +526,12 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
                     scan_pi_with_cancellation(&pi, &context.window, &context.cancellation)
                 })?,
                 collect_secondary_source(context, "zcode", || {
-                    scan_zcode_with_cancellation(&zcode, &context.window, &context.cancellation)
+                    scan_zcode_cached(
+                        &zcode,
+                        &context.window,
+                        &default_cache_root(&home),
+                        &context.cancellation,
+                    )
                 })?,
             ];
             for (source, source_metric) in source_results {

@@ -3,6 +3,7 @@
 //! Local file and SQLite adapters.
 
 mod sources;
+mod sqlite_cache;
 
 use collector_domain::{
     CollectionWindow, ModelDelta, ProjectDelta, SourceDeltaChange, TokenBucket, UsageContribution,
@@ -37,9 +38,9 @@ pub use sources::{
     scan_claude, scan_claude_with_cancellation, scan_codebuddy, scan_codebuddy_with_cancellation,
     scan_codex, scan_codex_cached, scan_codex_cached_with_cancellation,
     scan_codex_with_cancellation, scan_grok, scan_grok_with_cancellation, scan_kimi_tree,
-    scan_kimi_tree_with_cancellation, scan_opencode, scan_opencode_with_cancellation, scan_pi,
-    scan_pi_with_cancellation, scan_zcode, scan_zcode_with_cancellation, SourceScan,
-    SourceScanError,
+    scan_kimi_tree_with_cancellation, scan_opencode, scan_opencode_cached,
+    scan_opencode_with_cancellation, scan_pi, scan_pi_with_cancellation, scan_zcode,
+    scan_zcode_cached, scan_zcode_with_cancellation, SourceScan, SourceScanError,
 };
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalUsageRecord {
@@ -434,7 +435,7 @@ struct CacheEntry {
 type CompactMonthModels = Vec<(String, Vec<(String, [u64; 5])>)>;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-struct CompactContribution {
+pub(crate) struct CompactContribution {
     days: Vec<(u16, [u64; 5])>,
     #[serde(default)]
     month_models: CompactMonthModels,
@@ -444,7 +445,10 @@ struct CompactContribution {
 }
 
 impl CompactContribution {
-    fn from_domain(value: &UsageContribution, window: &CollectionWindow) -> Option<Self> {
+    pub(crate) fn from_domain(
+        value: &UsageContribution,
+        window: &CollectionWindow,
+    ) -> Option<Self> {
         let days = value
             .by_day
             .iter()
@@ -487,7 +491,7 @@ impl CompactContribution {
         })
     }
 
-    fn to_domain(&self, window: &CollectionWindow) -> Option<UsageContribution> {
+    pub(crate) fn to_domain(&self, window: &CollectionWindow) -> Option<UsageContribution> {
         let by_day = self
             .days
             .iter()
