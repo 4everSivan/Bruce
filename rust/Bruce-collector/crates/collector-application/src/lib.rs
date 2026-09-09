@@ -23,8 +23,11 @@ use collector_domain::{
     AGENT_USAGE_MODULE, AGENT_USAGE_SCHEMA_VERSION,
 };
 use collector_local::{
-    default_cache_root, scan_claude, scan_codebuddy, scan_codex_cached, scan_grok, scan_kimi_tree,
-    scan_opencode, scan_pi, scan_tree_cached_with_sink, scan_zcode, CacheConfig, ScanStats,
+    default_cache_root, scan_claude_with_cancellation, scan_codebuddy_with_cancellation,
+    scan_codex_cached_with_cancellation, scan_grok_with_cancellation,
+    scan_kimi_tree_with_cancellation, scan_opencode_with_cancellation, scan_pi_with_cancellation,
+    scan_tree_cached_with_sink, scan_zcode_with_cancellation, CacheConfig, ScanStats, SourceScan,
+    SourceScanError,
 };
 use collector_provider::{HttpClient, ProviderError, UreqHttpClient};
 use collector_runtime::{BoundedQueue, RuntimeError, RuntimeLimits};
@@ -327,7 +330,7 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
             let _permit = context
                 .budgets
                 .acquire_local(&context.cancellation)
-                .map_err(runtime_diagnostic)?;
+                .map_err(local_source_runtime_diagnostic)?;
             let config = CacheConfig {
                 cache_root: default_cache_root(Path::new(home)),
                 window: context.window.clone(),
@@ -379,13 +382,9 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
                         ));
                     }
                 }
-                Err(_) if context.cancellation.is_cancelled() => diagnostics.push(Diagnostic::new(
-                    "LOCAL_SOURCE_CANCELLED",
-                    "local",
-                    "cancel",
-                    "本机会话扫描因取消或超时提前停止, 已保留已聚合结果",
-                    true,
-                )),
+                Err(_) if context.cancellation.is_cancelled() => {
+                    return Err(local_source_runtime_diagnostic(RuntimeError::Cancelled));
+                }
                 Err(_) => diagnostics.push(Diagnostic::new(
                     "LOCAL_SOURCE_ERROR",
                     "local",
@@ -444,24 +443,54 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
             );
 
             let source_results = [
-                timed_source_scan("kimi-work", || scan_kimi_tree(&kimi_work, &context.window)),
-                timed_source_scan("claude-code", || scan_claude(&claude, &context.window)),
-                timed_source_scan("codex", || {
-                    scan_codex_cached(&codex_roots, &context.window, &default_cache_root(&home))
-                }),
-                timed_source_scan("codebuddy", || scan_codebuddy(&codebuddy, &context.window)),
-                timed_source_scan("grok", || {
-                    scan_grok(
+                collect_secondary_source(context, "kimi-work", || {
+                    scan_kimi_tree_with_cancellation(
+                        &kimi_work,
+                        &context.window,
+                        &context.cancellation,
+                    )
+                })?,
+                collect_secondary_source(context, "claude-code", || {
+                    scan_claude_with_cancellation(&claude, &context.window, &context.cancellation)
+                })?,
+                collect_secondary_source(context, "codex", || {
+                    scan_codex_cached_with_cancellation(
+                        &codex_roots,
+                        &context.window,
+                        &default_cache_root(&home),
+                        &context.cancellation,
+                    )
+                })?,
+                collect_secondary_source(context, "codebuddy", || {
+                    scan_codebuddy_with_cancellation(
+                        &codebuddy,
+                        &context.window,
+                        &context.cancellation,
+                    )
+                })?,
+                collect_secondary_source(context, "grok", || {
+                    scan_grok_with_cancellation(
                         &[
                             grok_root.join("sessions"),
                             grok_root.join("archived_sessions"),
                         ],
                         &context.window,
+                        &context.cancellation,
                     )
-                }),
-                timed_source_scan("opencode", || scan_opencode(&opencode, &context.window)),
-                timed_source_scan("pi", || scan_pi(&pi, &context.window)),
-                timed_source_scan("zcode", || scan_zcode(&zcode, &context.window)),
+                })?,
+                collect_secondary_source(context, "opencode", || {
+                    scan_opencode_with_cancellation(
+                        &opencode,
+                        &context.window,
+                        &context.cancellation,
+                    )
+                })?,
+                collect_secondary_source(context, "pi", || {
+                    scan_pi_with_cancellation(&pi, &context.window, &context.cancellation)
+                })?,
+                collect_secondary_source(context, "zcode", || {
+                    scan_zcode_with_cancellation(&zcode, &context.window, &context.cancellation)
+                })?,
             ];
             for (source, source_metric) in source_results {
                 let id = source_metric.source_id.clone();
@@ -501,18 +530,41 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
 pub fn timed_source_scan<F>(
     source_id: &'static str,
     scan: F,
-) -> (collector_local::SourceScan, SourcePerformanceMetric)
+) -> (Result<SourceScan, SourceScanError>, SourcePerformanceMetric)
 where
-    F: FnOnce() -> collector_local::SourceScan,
+    F: FnOnce() -> Result<SourceScan, SourceScanError>,
 {
     let started = Instant::now();
     let source = scan();
     let metric = SourcePerformanceMetric {
         source_id: source_id.to_owned(),
         elapsed_ms: started.elapsed().as_millis() as u64,
-        stats: source.stats.clone(),
+        stats: source
+            .as_ref()
+            .map(|source| source.stats.clone())
+            .unwrap_or_default(),
     };
     (source, metric)
+}
+
+fn collect_secondary_source<F>(
+    context: &RunContext<'_>,
+    source_id: &'static str,
+    scan: F,
+) -> Result<(SourceScan, SourcePerformanceMetric), Diagnostic>
+where
+    F: FnOnce() -> Result<SourceScan, SourceScanError>,
+{
+    context
+        .cancellation
+        .check()
+        .map_err(local_source_runtime_diagnostic)?;
+    let (source, metric) = timed_source_scan(source_id, scan);
+    match source {
+        Ok(source) => Ok((source, metric)),
+        Err(SourceScanError::Runtime(error)) => Err(local_source_runtime_diagnostic(error)),
+        Err(SourceScanError::Io(_)) => Ok((SourceScan::empty(&context.window), metric)),
+    }
 }
 
 fn collect_quota_usage(context: &RunContext<'_>) -> QuotaExecution {
@@ -571,6 +623,16 @@ fn collect_codex_quota_retry_only(
 
 fn runtime_diagnostic(error: RuntimeError) -> Diagnostic {
     ProviderError::from_runtime(error).diagnostic
+}
+
+fn local_source_runtime_diagnostic(_error: RuntimeError) -> Diagnostic {
+    Diagnostic::new(
+        "LOCAL_SOURCE_CANCELLED",
+        "local",
+        "cancel",
+        "本机会话扫描因取消或超时提前停止, 未发布部分采集结果",
+        true,
+    )
 }
 
 fn placeholder_agent(
@@ -749,6 +811,38 @@ mod tests {
         let artifact = output.artifact.as_object().unwrap();
         assert_eq!(artifact["agents"][1]["status"], "unavailable");
         assert_eq!(artifact["services"][0]["status"], "partial");
+    }
+
+    #[test]
+    fn cancelled_local_run_returns_existing_diagnostic_without_artifact() {
+        let home = std::env::temp_dir().join(format!(
+            "bruce-cancelled-local-run-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(home.join(".kimi-code/sessions")).unwrap();
+        let mut request = request(&["localSessions"]);
+        request.context.insert(
+            "home".to_owned(),
+            serde_json::Value::String(home.to_string_lossy().into_owned()),
+        );
+        request.timeouts.module_seconds = 0.0;
+
+        let result = collect_agent_usage_with_dependencies(
+            &request,
+            &FixtureHttp {
+                calls: AtomicUsize::new(0),
+                body: Vec::new(),
+            },
+            &EmptyCredentialSource,
+        );
+
+        assert_eq!(
+            result.unwrap_err().code,
+            "LOCAL_SOURCE_CANCELLED",
+            "a cancelled local run must fail before publishing a partial artifact"
+        );
+        let _ = std::fs::remove_dir_all(home);
     }
 
     #[test]

@@ -10,6 +10,7 @@ use super::{read_bounded_line, trim_line_end, ScanStats};
 use collector_domain::{
     CollectionWindow, UsageContribution, UsageContributionBuilder, UsageSample,
 };
+use collector_runtime::{CancellationToken, RuntimeError};
 use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -31,8 +32,26 @@ pub struct SourceScan {
     pub diagnostic: Option<String>,
 }
 
+#[derive(Debug)]
+pub enum SourceScanError {
+    Io(io::Error),
+    Runtime(RuntimeError),
+}
+
+impl From<io::Error> for SourceScanError {
+    fn from(error: io::Error) -> Self {
+        Self::Io(error)
+    }
+}
+
+impl From<RuntimeError> for SourceScanError {
+    fn from(error: RuntimeError) -> Self {
+        Self::Runtime(error)
+    }
+}
+
 impl SourceScan {
-    fn empty(window: &CollectionWindow) -> Self {
+    pub fn empty(window: &CollectionWindow) -> Self {
         Self {
             found: false,
             contribution: UsageContributionBuilder::new(window.clone()).contribution(),
@@ -227,24 +246,81 @@ fn project_from_zcode(value: Option<String>, task_type: Option<String>) -> Optio
     project
 }
 
-fn scan_jsonl_tree<F>(root: &Path, cutoff_ts: f64, mut callback: F) -> io::Result<ScanStats>
+fn scan_jsonl_tree<F>(
+    root: &Path,
+    cutoff_ts: f64,
+    cancellation: &CancellationToken,
+    mut callback: F,
+) -> Result<ScanStats, SourceScanError>
+where
+    F: FnMut(&Path, f64, &[u8], &mut ScanStats),
+{
+    scan_jsonl_tree_impl(
+        root,
+        cutoff_ts,
+        cancellation,
+        &mut callback,
+        #[cfg(test)]
+        None,
+    )
+}
+
+#[cfg(test)]
+fn scan_jsonl_tree_with_line_probe<F, P>(
+    root: &Path,
+    cutoff_ts: f64,
+    cancellation: &CancellationToken,
+    mut callback: F,
+    mut line_probe: P,
+) -> Result<ScanStats, SourceScanError>
+where
+    F: FnMut(&Path, f64, &[u8], &mut ScanStats),
+    P: FnMut(),
+{
+    scan_jsonl_tree_impl(
+        root,
+        cutoff_ts,
+        cancellation,
+        &mut callback,
+        Some(&mut line_probe),
+    )
+}
+
+fn scan_jsonl_tree_impl<F>(
+    root: &Path,
+    cutoff_ts: f64,
+    cancellation: &CancellationToken,
+    callback: &mut F,
+    #[cfg(test)] mut line_probe: Option<&mut dyn FnMut()>,
+) -> Result<ScanStats, SourceScanError>
 where
     F: FnMut(&Path, f64, &[u8], &mut ScanStats),
 {
     let mut stats = ScanStats::default();
-    walk_jsonl_tree(root, cutoff_ts, &mut callback, &mut stats)?;
+    walk_jsonl_tree(
+        root,
+        cutoff_ts,
+        cancellation,
+        callback,
+        &mut stats,
+        #[cfg(test)]
+        &mut line_probe,
+    )?;
     Ok(stats)
 }
 
 fn walk_jsonl_tree<F>(
     root: &Path,
     cutoff_ts: f64,
+    cancellation: &CancellationToken,
     callback: &mut F,
     stats: &mut ScanStats,
-) -> io::Result<()>
+    #[cfg(test)] line_probe: &mut Option<&mut dyn FnMut()>,
+) -> Result<(), SourceScanError>
 where
     F: FnMut(&Path, f64, &[u8], &mut ScanStats),
 {
+    cancellation.check()?;
     let entries = match fs::read_dir(root) {
         Ok(entries) => entries,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
@@ -252,9 +328,10 @@ where
             stats.io_errors = stats.io_errors.saturating_add(1);
             return Ok(());
         }
-        Err(error) => return Err(error),
+        Err(error) => return Err(error.into()),
     };
     for entry in entries {
+        cancellation.check()?;
         let Ok(entry) = entry else {
             stats.io_errors = stats.io_errors.saturating_add(1);
             continue;
@@ -265,7 +342,15 @@ where
             continue;
         };
         if metadata.is_dir() {
-            walk_jsonl_tree(&path, cutoff_ts, callback, stats)?;
+            walk_jsonl_tree(
+                &path,
+                cutoff_ts,
+                cancellation,
+                callback,
+                stats,
+                #[cfg(test)]
+                line_probe,
+            )?;
             continue;
         }
         if !metadata.is_file() || path.extension().and_then(|value| value.to_str()) != Some("jsonl")
@@ -283,7 +368,15 @@ where
             stats.files_skipped = stats.files_skipped.saturating_add(1);
             continue;
         }
-        scan_jsonl_file(&path, modified, callback, stats)?;
+        scan_jsonl_file(
+            &path,
+            modified,
+            cancellation,
+            callback,
+            stats,
+            #[cfg(test)]
+            line_probe,
+        )?;
     }
     Ok(())
 }
@@ -291,12 +384,15 @@ where
 fn scan_jsonl_file<F>(
     path: &Path,
     modified: f64,
+    cancellation: &CancellationToken,
     callback: &mut F,
     stats: &mut ScanStats,
-) -> io::Result<()>
+    #[cfg(test)] line_probe: &mut Option<&mut dyn FnMut()>,
+) -> Result<(), SourceScanError>
 where
     F: FnMut(&Path, f64, &[u8], &mut ScanStats),
 {
+    cancellation.check()?;
     stats.files_scanned = stats.files_scanned.saturating_add(1);
     let file = match File::open(path) {
         Ok(file) => file,
@@ -306,7 +402,11 @@ where
         }
     };
     let mut reader = BufReader::new(file);
-    while let Some(line) = read_bounded_line(&mut reader, super::MAX_JSONL_RECORD_BYTES)? {
+    loop {
+        cancellation.check()?;
+        let Some(line) = read_bounded_line(&mut reader, super::MAX_JSONL_RECORD_BYTES)? else {
+            break;
+        };
         stats.lines_seen = stats.lines_seen.saturating_add(1);
         stats.bytes_read = stats.bytes_read.saturating_add(line.bytes as u64);
         if line.truncated {
@@ -318,6 +418,10 @@ where
             continue;
         }
         callback(path, modified, line, stats);
+        #[cfg(test)]
+        if let Some(probe) = line_probe.as_deref_mut() {
+            probe();
+        }
     }
     Ok(())
 }
@@ -349,9 +453,11 @@ fn file_identity(metadata: &fs::Metadata) -> (u64, u64) {
 fn collect_codex_files(
     root: &Path,
     cutoff_ts: f64,
+    cancellation: &CancellationToken,
     groups: &mut BTreeMap<String, Vec<CodexFileCandidate>>,
     stats: &mut ScanStats,
-) -> io::Result<()> {
+) -> Result<(), SourceScanError> {
+    cancellation.check()?;
     let entries = match fs::read_dir(root) {
         Ok(entries) => entries,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
@@ -359,9 +465,10 @@ fn collect_codex_files(
             stats.io_errors = stats.io_errors.saturating_add(1);
             return Ok(());
         }
-        Err(error) => return Err(error),
+        Err(error) => return Err(error.into()),
     };
     for entry in entries {
+        cancellation.check()?;
         let Ok(entry) = entry else {
             stats.io_errors = stats.io_errors.saturating_add(1);
             continue;
@@ -372,7 +479,7 @@ fn collect_codex_files(
             continue;
         };
         if metadata.is_dir() {
-            collect_codex_files(&path, cutoff_ts, groups, stats)?;
+            collect_codex_files(&path, cutoff_ts, cancellation, groups, stats)?;
             continue;
         }
         if !metadata.is_file() || path.extension().and_then(|value| value.to_str()) != Some("jsonl")
@@ -391,6 +498,7 @@ fn collect_codex_files(
             continue;
         }
 
+        cancellation.check()?;
         let canonical = fs::canonicalize(&path).unwrap_or(path);
         let file_name = canonical
             .file_name()
@@ -400,6 +508,7 @@ fn collect_codex_files(
             if file_name.starts_with("rollout-") && file_name.ends_with(".jsonl") {
                 (format!("rollout:{file_name}"), None)
             } else {
+                cancellation.check()?;
                 match fingerprint_file(&canonical, metadata.len()) {
                     Ok(fingerprint) => (format!("content:{fingerprint}"), Some(fingerprint)),
                     Err(_) => {
@@ -519,8 +628,17 @@ fn fingerprint_file(path: &Path, size: u64) -> io::Result<String> {
 /// Kimi Code's primary path continues to use the cache-backed scanner in the
 /// parent module; this function is used for Kimi Work and source parity tests.
 pub fn scan_kimi_tree(root: &Path, window: &CollectionWindow) -> SourceScan {
+    scan_kimi_tree_with_cancellation(root, window, &CancellationToken::new())
+        .unwrap_or_else(|_| SourceScan::empty(window))
+}
+
+pub fn scan_kimi_tree_with_cancellation(
+    root: &Path,
+    window: &CollectionWindow,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
     let mut builder = UsageContributionBuilder::new(window.clone());
-    let stats = scan_jsonl_tree(root, window.cutoff_ts, |_, _, line, stats| {
+    let stats = scan_jsonl_tree(root, window.cutoff_ts, cancellation, |_, _, line, stats| {
         let Some(value) = parse_json_line(line, stats) else {
             return;
         };
@@ -544,9 +662,13 @@ pub fn scan_kimi_tree(root: &Path, window: &CollectionWindow) -> SourceScan {
             None,
         );
         stats.usage_records = stats.usage_records.saturating_add(1);
-    })
-    .unwrap_or_else(|_| ScanStats::default());
-    finish(window, builder, stats.clone(), stats.files_scanned > 0)
+    })?;
+    Ok(finish(
+        window,
+        builder,
+        stats.clone(),
+        stats.files_scanned > 0,
+    ))
 }
 
 #[derive(Debug, Clone, Default)]
@@ -563,62 +685,75 @@ struct ClaudeUsage {
 /// Scan Claude Code assistant messages, coalescing repeated writes of one
 /// message id so an in-progress skeleton is not counted as real usage.
 pub fn scan_claude(root: &Path, window: &CollectionWindow) -> SourceScan {
+    scan_claude_with_cancellation(root, window, &CancellationToken::new())
+        .unwrap_or_else(|_| SourceScan::empty(window))
+}
+
+pub fn scan_claude_with_cancellation(
+    root: &Path,
+    window: &CollectionWindow,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
     let mut best = BTreeMap::<String, ClaudeUsage>::new();
     let mut direct = Vec::<ClaudeUsage>::new();
-    let stats = scan_jsonl_tree(root, window.cutoff_ts, |path, _, line, stats| {
-        let Some(value) = parse_json_line(line, stats) else {
-            return;
-        };
-        if value.get("type").and_then(Value::as_str) != Some("assistant") {
-            return;
-        }
-        let Some(timestamp) = value
-            .get("timestamp")
-            .and_then(Value::as_str)
-            .and_then(|value| window.epoch_from_iso(value))
-            .map(|value| value.saturating_mul(1000))
-        else {
-            return;
-        };
-        let message = value.get("message").unwrap_or(&Value::Null);
-        let usage = message.get("usage").unwrap_or(&Value::Null);
-        let project = project_from_parent(path).map(|mut project| {
-            if path
-                .components()
-                .any(|part| part.as_os_str() == "subagents")
-            {
-                project.push_str(" ·子代理");
+    let stats = scan_jsonl_tree(
+        root,
+        window.cutoff_ts,
+        cancellation,
+        |path, _, line, stats| {
+            let Some(value) = parse_json_line(line, stats) else {
+                return;
+            };
+            if value.get("type").and_then(Value::as_str) != Some("assistant") {
+                return;
             }
-            project
-        });
-        let usage = ClaudeUsage {
-            input: number_u64(usage.get("input_tokens")),
-            output: number_u64(usage.get("output_tokens")),
-            cache_read: number_u64(usage.get("cache_read_input_tokens")),
-            cache_creation: number_u64(usage.get("cache_creation_input_tokens")),
-            timestamp_millis: timestamp,
-            model: message
-                .get("model")
+            let Some(timestamp) = value
+                .get("timestamp")
                 .and_then(Value::as_str)
-                .map(str::to_owned),
-            project,
-        };
-        let id = message.get("id").and_then(Value::as_str);
-        if let Some(id) = id {
-            let entry = best.entry(id.to_owned()).or_default();
-            entry.input = entry.input.max(usage.input);
-            entry.output = entry.output.max(usage.output);
-            entry.cache_read = entry.cache_read.max(usage.cache_read);
-            entry.cache_creation = entry.cache_creation.max(usage.cache_creation);
-            entry.timestamp_millis = usage.timestamp_millis;
-            entry.model = usage.model;
-            entry.project = usage.project;
-        } else {
-            direct.push(usage);
-        }
-        stats.usage_records = stats.usage_records.saturating_add(1);
-    })
-    .unwrap_or_else(|_| ScanStats::default());
+                .and_then(|value| window.epoch_from_iso(value))
+                .map(|value| value.saturating_mul(1000))
+            else {
+                return;
+            };
+            let message = value.get("message").unwrap_or(&Value::Null);
+            let usage = message.get("usage").unwrap_or(&Value::Null);
+            let project = project_from_parent(path).map(|mut project| {
+                if path
+                    .components()
+                    .any(|part| part.as_os_str() == "subagents")
+                {
+                    project.push_str(" ·子代理");
+                }
+                project
+            });
+            let usage = ClaudeUsage {
+                input: number_u64(usage.get("input_tokens")),
+                output: number_u64(usage.get("output_tokens")),
+                cache_read: number_u64(usage.get("cache_read_input_tokens")),
+                cache_creation: number_u64(usage.get("cache_creation_input_tokens")),
+                timestamp_millis: timestamp,
+                model: message
+                    .get("model")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
+                project,
+            };
+            let id = message.get("id").and_then(Value::as_str);
+            if let Some(id) = id {
+                let entry = best.entry(id.to_owned()).or_default();
+                entry.input = entry.input.max(usage.input);
+                entry.output = entry.output.max(usage.output);
+                entry.cache_read = entry.cache_read.max(usage.cache_read);
+                entry.cache_creation = entry.cache_creation.max(usage.cache_creation);
+                entry.timestamp_millis = usage.timestamp_millis;
+                entry.model = usage.model;
+                entry.project = usage.project;
+            } else {
+                direct.push(usage);
+            }
+            stats.usage_records = stats.usage_records.saturating_add(1);
+        },
+    )?;
     let mut builder = UsageContributionBuilder::new(window.clone());
     for usage in best.into_values().chain(direct) {
         record(
@@ -632,7 +767,12 @@ pub fn scan_claude(root: &Path, window: &CollectionWindow) -> SourceScan {
             usage.project.as_deref(),
         );
     }
-    finish(window, builder, stats.clone(), stats.files_scanned > 0)
+    Ok(finish(
+        window,
+        builder,
+        stats.clone(),
+        stats.files_scanned > 0,
+    ))
 }
 
 #[derive(Debug, Clone, Default)]
@@ -996,56 +1136,69 @@ fn codebuddy_scope(path: &Path, value: &Value) -> String {
 /// artifact has no unattributed-token bucket and child records are the
 /// decomposable source of truth.
 pub fn scan_codebuddy(root: &Path, window: &CollectionWindow) -> SourceScan {
+    scan_codebuddy_with_cancellation(root, window, &CancellationToken::new())
+        .unwrap_or_else(|_| SourceScan::empty(window))
+}
+
+pub fn scan_codebuddy_with_cancellation(
+    root: &Path,
+    window: &CollectionWindow,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
     let mut best = BTreeMap::<String, CodeBuddyUsage>::new();
     let mut direct = Vec::<CodeBuddyUsage>::new();
-    let stats = scan_jsonl_tree(root, window.cutoff_ts, |path, _, line, stats| {
-        let Some(value) = parse_json_line(line, stats) else {
-            return;
-        };
-        let record_type = value.get("type").and_then(Value::as_str);
-        if record_type != Some("message") && record_type != Some("function_call") {
-            return;
-        }
-        if record_type == Some("message")
-            && value.get("role").and_then(Value::as_str) != Some("assistant")
-        {
-            return;
-        }
-        let Some(timestamp) = timestamp_number(value.get("timestamp")) else {
-            return;
-        };
-        let Some((input, output, cache_read, cache_creation)) = codebuddy_usage(&value) else {
-            return;
-        };
-        let usage = CodeBuddyUsage {
-            input,
-            output,
-            cache_read,
-            cache_creation,
-            timestamp_millis: timestamp,
-            model: codebuddy_model(&value),
-            project: project_from_parent(path),
-        };
-        let id = codebuddy_message_id(&value);
-        if let Some(id) = id {
-            let key = format!("{}::{id}", codebuddy_scope(path, &value));
-            let replace = match best.get(&key) {
-                None => true,
-                Some(previous) => {
-                    usage.total() > previous.total()
-                        || (usage.total() == previous.total()
-                            && usage.timestamp_millis > previous.timestamp_millis)
-                }
+    let stats = scan_jsonl_tree(
+        root,
+        window.cutoff_ts,
+        cancellation,
+        |path, _, line, stats| {
+            let Some(value) = parse_json_line(line, stats) else {
+                return;
             };
-            if replace {
-                best.insert(key, usage);
+            let record_type = value.get("type").and_then(Value::as_str);
+            if record_type != Some("message") && record_type != Some("function_call") {
+                return;
             }
-        } else {
-            direct.push(usage);
-        }
-        stats.usage_records = stats.usage_records.saturating_add(1);
-    })
-    .unwrap_or_else(|_| ScanStats::default());
+            if record_type == Some("message")
+                && value.get("role").and_then(Value::as_str) != Some("assistant")
+            {
+                return;
+            }
+            let Some(timestamp) = timestamp_number(value.get("timestamp")) else {
+                return;
+            };
+            let Some((input, output, cache_read, cache_creation)) = codebuddy_usage(&value) else {
+                return;
+            };
+            let usage = CodeBuddyUsage {
+                input,
+                output,
+                cache_read,
+                cache_creation,
+                timestamp_millis: timestamp,
+                model: codebuddy_model(&value),
+                project: project_from_parent(path),
+            };
+            let id = codebuddy_message_id(&value);
+            if let Some(id) = id {
+                let key = format!("{}::{id}", codebuddy_scope(path, &value));
+                let replace = match best.get(&key) {
+                    None => true,
+                    Some(previous) => {
+                        usage.total() > previous.total()
+                            || (usage.total() == previous.total()
+                                && usage.timestamp_millis > previous.timestamp_millis)
+                    }
+                };
+                if replace {
+                    best.insert(key, usage);
+                }
+            } else {
+                direct.push(usage);
+            }
+            stats.usage_records = stats.usage_records.saturating_add(1);
+        },
+    )?;
     let mut builder = UsageContributionBuilder::new(window.clone());
     for usage in best.into_values().chain(direct) {
         record(
@@ -1059,22 +1212,46 @@ pub fn scan_codebuddy(root: &Path, window: &CollectionWindow) -> SourceScan {
             usage.project.as_deref(),
         );
     }
-    finish(window, builder, stats.clone(), stats.files_scanned > 0)
+    Ok(finish(
+        window,
+        builder,
+        stats.clone(),
+        stats.files_scanned > 0,
+    ))
 }
 
 /// Scan Codex CLI and Orca rollout JSONL files.  The quota snapshot remains a
 /// provider concern; this function only builds the local token contribution.
 pub fn scan_codex(roots: &[PathBuf], window: &CollectionWindow) -> SourceScan {
+    scan_codex_with_cancellation(roots, window, &CancellationToken::new())
+        .unwrap_or_else(|_| SourceScan::empty(window))
+}
+
+pub fn scan_codex_with_cancellation(
+    roots: &[PathBuf],
+    window: &CollectionWindow,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
     let mut stats = ScanStats::default();
     let mut groups = BTreeMap::<String, Vec<CodexFileCandidate>>::new();
     for root in roots {
-        if collect_codex_files(root, window.cutoff_ts, &mut groups, &mut stats).is_err() {
-            stats.io_errors = stats.io_errors.saturating_add(1);
+        match collect_codex_files(
+            root,
+            window.cutoff_ts,
+            cancellation,
+            &mut groups,
+            &mut stats,
+        ) {
+            Ok(()) => {}
+            Err(SourceScanError::Runtime(error)) => return Err(error.into()),
+            Err(SourceScanError::Io(_)) => {
+                stats.io_errors = stats.io_errors.saturating_add(1);
+            }
         }
     }
     let selected = resolve_codex_files(groups, &mut stats);
     let mut builder = UsageContributionBuilder::new(window.clone());
-    scan_selected_codex(selected, window, &mut builder, &mut stats);
+    scan_selected_codex(selected, window, cancellation, &mut builder, &mut stats)?;
     let mut result = finish(window, builder, stats.clone(), stats.files_scanned > 0);
     if stats.conflict_session_groups > 0 {
         result.diagnostic = Some(format!(
@@ -1082,7 +1259,7 @@ pub fn scan_codex(roots: &[PathBuf], window: &CollectionWindow) -> SourceScan {
             stats.conflict_session_groups
         ));
     }
-    result
+    Ok(result)
 }
 
 // ---- Codex 整树聚合缓存 ----
@@ -1187,17 +1364,20 @@ fn write_codex_tree_cache(path: &Path, entry: &CodexTreeCache) {
 fn scan_selected_codex(
     selected: Vec<CodexFileCandidate>,
     window: &CollectionWindow,
+    cancellation: &CancellationToken,
     builder: &mut UsageContributionBuilder,
     stats: &mut ScanStats,
-) {
+) -> Result<(), SourceScanError> {
     for candidate in selected {
+        cancellation.check()?;
         let mut current_model: Option<String> = None;
         let mut total_high_water: Option<CodexTokenCounters> = None;
         let mut last_signature_by_source = BTreeMap::<Option<String>, CodexTokenSignature>::new();
         let mut previous_token_signature: Option<CodexTokenSignature> = None;
-        if scan_jsonl_file(
+        match scan_jsonl_file(
             &candidate.path,
             candidate.modified,
+            cancellation,
             &mut |_, _, line, stats| {
                 let Some(value) = parse_json_line(line, stats) else {
                     return;
@@ -1292,12 +1472,17 @@ fn scan_selected_codex(
                 stats.usage_records = stats.usage_records.saturating_add(1);
             },
             stats,
-        )
-        .is_err()
-        {
-            stats.io_errors = stats.io_errors.saturating_add(1);
+            #[cfg(test)]
+            &mut None,
+        ) {
+            Ok(()) => {}
+            Err(SourceScanError::Runtime(error)) => return Err(error.into()),
+            Err(SourceScanError::Io(_)) => {
+                stats.io_errors = stats.io_errors.saturating_add(1);
+            }
         }
     }
+    Ok(())
 }
 
 /// 带持久整树聚合缓存的 Codex 扫描. 命中缓存 (文件集身份签名 + 窗口一致) 时
@@ -1311,14 +1496,35 @@ pub fn scan_codex_cached(
     window: &CollectionWindow,
     cache_root: &Path,
 ) -> SourceScan {
+    scan_codex_cached_with_cancellation(roots, window, cache_root, &CancellationToken::new())
+        .unwrap_or_else(|_| SourceScan::empty(window))
+}
+
+pub fn scan_codex_cached_with_cancellation(
+    roots: &[PathBuf],
+    window: &CollectionWindow,
+    cache_root: &Path,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
     let mut stats = ScanStats::default();
     let mut groups = BTreeMap::<String, Vec<CodexFileCandidate>>::new();
     for root in roots {
-        if collect_codex_files(root, window.cutoff_ts, &mut groups, &mut stats).is_err() {
-            stats.io_errors = stats.io_errors.saturating_add(1);
+        match collect_codex_files(
+            root,
+            window.cutoff_ts,
+            cancellation,
+            &mut groups,
+            &mut stats,
+        ) {
+            Ok(()) => {}
+            Err(SourceScanError::Runtime(error)) => return Err(error.into()),
+            Err(SourceScanError::Io(_)) => {
+                stats.io_errors = stats.io_errors.saturating_add(1);
+            }
         }
     }
 
+    cancellation.check()?;
     let signature = codex_tree_signature(&groups);
     let has_selected_codex_files = groups.values().any(|candidates| !candidates.is_empty());
     let cache_path = codex_tree_cache_path(cache_root);
@@ -1337,15 +1543,16 @@ pub fn scan_codex_cached(
                     stats.conflict_session_groups
                 ));
             }
-            return result;
+            return Ok(result);
         }
     }
 
     // 未命中: 全量扫描再落盘.
     let selected = resolve_codex_files(groups, &mut stats);
     let mut builder = UsageContributionBuilder::new(window.clone());
-    scan_selected_codex(selected, window, &mut builder, &mut stats);
+    scan_selected_codex(selected, window, cancellation, &mut builder, &mut stats)?;
     let aggregate = builder.contribution();
+    cancellation.check()?;
     write_codex_tree_cache(
         &cache_path,
         &CodexTreeCache {
@@ -1364,7 +1571,7 @@ pub fn scan_codex_cached(
             stats.conflict_session_groups
         ));
     }
-    result
+    Ok(result)
 }
 
 fn grok_content(value: Option<&Value>) -> String {
@@ -1386,92 +1593,128 @@ fn grok_content(value: Option<&Value>) -> String {
 }
 
 pub fn scan_grok(roots: &[PathBuf], window: &CollectionWindow) -> SourceScan {
+    scan_grok_with_cancellation(roots, window, &CancellationToken::new())
+        .unwrap_or_else(|_| SourceScan::empty(window))
+}
+
+pub fn scan_grok_with_cancellation(
+    roots: &[PathBuf],
+    window: &CollectionWindow,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
     let mut builder = UsageContributionBuilder::new(window.clone());
     let mut stats = ScanStats::default();
     for root in roots {
-        let current = scan_jsonl_tree(root, window.cutoff_ts, |path, modified, line, stats| {
+        let current = scan_jsonl_tree(
+            root,
+            window.cutoff_ts,
+            cancellation,
+            |path, modified, line, stats| {
+                let Some(value) = parse_json_line(line, stats) else {
+                    return;
+                };
+                let kind = value.get("type").and_then(Value::as_str);
+                if kind != Some("user") && kind != Some("assistant") {
+                    return;
+                }
+                let content = grok_content(value.get("content"));
+                if content.is_empty() {
+                    return;
+                }
+                let tokens = (content.chars().count() as u64 / 4).max(1);
+                let project = path
+                    .parent()
+                    .and_then(Path::parent)
+                    .and_then(Path::file_name)
+                    .and_then(|value| value.to_str());
+                record(
+                    &mut builder,
+                    (modified * 1000.0) as i64,
+                    Some("grok"),
+                    if kind == Some("user") { tokens } else { 0 },
+                    if kind == Some("assistant") { tokens } else { 0 },
+                    0,
+                    0,
+                    project,
+                );
+                stats.usage_records = stats.usage_records.saturating_add(1);
+            },
+        )?;
+        stats.merge(current);
+    }
+    Ok(finish(
+        window,
+        builder,
+        stats.clone(),
+        stats.files_scanned > 0,
+    ))
+}
+
+pub fn scan_pi(root: &Path, window: &CollectionWindow) -> SourceScan {
+    scan_pi_with_cancellation(root, window, &CancellationToken::new())
+        .unwrap_or_else(|_| SourceScan::empty(window))
+}
+
+pub fn scan_pi_with_cancellation(
+    root: &Path,
+    window: &CollectionWindow,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
+    let mut builder = UsageContributionBuilder::new(window.clone());
+    let stats = scan_jsonl_tree(
+        root,
+        window.cutoff_ts,
+        cancellation,
+        |path, _, line, stats| {
             let Some(value) = parse_json_line(line, stats) else {
                 return;
             };
             let kind = value.get("type").and_then(Value::as_str);
-            if kind != Some("user") && kind != Some("assistant") {
+            if kind == Some("session") {
                 return;
             }
-            let content = grok_content(value.get("content"));
-            if content.is_empty() {
+            if kind != Some("message") {
                 return;
             }
-            let tokens = (content.chars().count() as u64 / 4).max(1);
-            let project = path
-                .parent()
-                .and_then(Path::parent)
-                .and_then(Path::file_name)
-                .and_then(|value| value.to_str());
+            let message = value.get("message").unwrap_or(&Value::Null);
+            if message.get("role").and_then(Value::as_str) != Some("assistant") {
+                return;
+            }
+            let usage = message.get("usage").unwrap_or(&Value::Null);
+            if usage.is_null() {
+                return;
+            }
+            let timestamp = timestamp_number(message.get("timestamp")).or_else(|| {
+                value
+                    .get("timestamp")
+                    .and_then(Value::as_str)
+                    .and_then(|value| window.epoch_from_iso(value).map(|value| value * 1000))
+            });
+            let Some(timestamp) = timestamp else { return };
+            let project = project_from_parent(path);
             record(
                 &mut builder,
-                (modified * 1000.0) as i64,
-                Some("grok"),
-                if kind == Some("user") { tokens } else { 0 },
-                if kind == Some("assistant") { tokens } else { 0 },
-                0,
-                0,
-                project,
+                if timestamp < 10_000_000_000 {
+                    timestamp * 1000
+                } else {
+                    timestamp
+                },
+                message.get("model").and_then(Value::as_str),
+                number_u64(usage.get("input")),
+                number_u64(usage.get("output")).saturating_add(number_u64(usage.get("reasoning"))),
+                number_u64(usage.get("cacheRead")),
+                number_u64(usage.get("cacheWrite")),
+                project.as_deref(),
             );
             stats.usage_records = stats.usage_records.saturating_add(1);
-        })
-        .unwrap_or_else(|_| ScanStats::default());
-        stats.merge(current);
-    }
-    finish(window, builder, stats.clone(), stats.files_scanned > 0)
-}
-
-pub fn scan_pi(root: &Path, window: &CollectionWindow) -> SourceScan {
-    let mut builder = UsageContributionBuilder::new(window.clone());
-    let stats = scan_jsonl_tree(root, window.cutoff_ts, |path, _, line, stats| {
-        let Some(value) = parse_json_line(line, stats) else {
-            return;
-        };
-        let kind = value.get("type").and_then(Value::as_str);
-        if kind == Some("session") {
-            return;
-        }
-        if kind != Some("message") {
-            return;
-        }
-        let message = value.get("message").unwrap_or(&Value::Null);
-        if message.get("role").and_then(Value::as_str) != Some("assistant") {
-            return;
-        }
-        let usage = message.get("usage").unwrap_or(&Value::Null);
-        if usage.is_null() {
-            return;
-        }
-        let timestamp = timestamp_number(message.get("timestamp")).or_else(|| {
-            value
-                .get("timestamp")
-                .and_then(Value::as_str)
-                .and_then(|value| window.epoch_from_iso(value).map(|value| value * 1000))
-        });
-        let Some(timestamp) = timestamp else { return };
-        let project = project_from_parent(path);
-        record(
-            &mut builder,
-            if timestamp < 10_000_000_000 {
-                timestamp * 1000
-            } else {
-                timestamp
-            },
-            message.get("model").and_then(Value::as_str),
-            number_u64(usage.get("input")),
-            number_u64(usage.get("output")).saturating_add(number_u64(usage.get("reasoning"))),
-            number_u64(usage.get("cacheRead")),
-            number_u64(usage.get("cacheWrite")),
-            project.as_deref(),
-        );
-        stats.usage_records = stats.usage_records.saturating_add(1);
-    })
-    .unwrap_or_else(|_| ScanStats::default());
-    finish(window, builder, stats.clone(), stats.files_scanned > 0)
+        },
+    )?;
+    Ok(finish(
+        window,
+        builder,
+        stats.clone(),
+        stats.files_scanned > 0,
+    ))
 }
 
 fn sqlite_error(window: &CollectionWindow, message: &str) -> SourceScan {
@@ -1488,22 +1731,32 @@ fn open_read_only(path: &Path) -> rusqlite::Result<Connection> {
 }
 
 pub fn scan_opencode(path: &Path, window: &CollectionWindow) -> SourceScan {
+    scan_opencode_with_cancellation(path, window, &CancellationToken::new())
+        .unwrap_or_else(|_| SourceScan::empty(window))
+}
+
+pub fn scan_opencode_with_cancellation(
+    path: &Path,
+    window: &CollectionWindow,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
+    cancellation.check()?;
     if !path.is_file() {
-        return SourceScan::empty(window);
+        return Ok(SourceScan::empty(window));
     }
     let connection = match open_read_only(path) {
         Ok(connection) => connection,
-        Err(_) => return sqlite_error(window, "本机 opencode 数据库暂不可读"),
+        Err(_) => return Ok(sqlite_error(window, "本机 opencode 数据库暂不可读")),
     };
     let any_message = match connection.query_row("SELECT 1 FROM message LIMIT 1", [], |row| {
         row.get::<_, i64>(0)
     }) {
         Ok(_) => true,
         Err(rusqlite::Error::QueryReturnedNoRows) => false,
-        Err(_) => return sqlite_error(window, "本机 opencode 数据库 schema 不兼容"),
+        Err(_) => return Ok(sqlite_error(window, "本机 opencode 数据库 schema 不兼容")),
     };
     if !any_message {
-        return SourceScan::empty(window);
+        return Ok(SourceScan::empty(window));
     }
     // 行数超上限时按 rowid DESC 截断, 保留最新插入的消息 (rowid 随追加单调递增);
     // WITHOUT ROWID 表不支持该排序时回退旧行为 (无序全量前 N 行), 不把兼容性变成报错.
@@ -1513,22 +1766,24 @@ pub fn scan_opencode(path: &Path, window: &CollectionWindow) -> SourceScan {
             connection.prepare("SELECT data FROM message WHERE data LIKE '%tokens%' LIMIT ?1")
         }) {
         Ok(statement) => statement,
-        Err(_) => return sqlite_error(window, "本机 opencode 数据库 schema 不兼容"),
+        Err(_) => return Ok(sqlite_error(window, "本机 opencode 数据库 schema 不兼容")),
     };
     let mut builder = UsageContributionBuilder::new(window.clone());
     let mut stats = ScanStats::default();
     let rows = match statement.query_map([MAX_SOURCE_ROWS], |row| row.get::<_, String>(0)) {
         Ok(rows) => rows,
-        Err(_) => return sqlite_error(window, "本机 opencode 数据库查询失败"),
+        Err(_) => return Ok(sqlite_error(window, "本机 opencode 数据库查询失败")),
     };
     let mut collected = Vec::new();
     for row in rows {
+        cancellation.check()?;
         stats.sqlite_rows_read = stats.sqlite_rows_read.saturating_add(1);
         let Ok(data) = row else { continue };
         collected.push(data);
     }
     // 回放顺序反转为时间升序, 保持聚合语义与全量扫描一致.
     for data in collected.into_iter().rev() {
+        cancellation.check()?;
         let Ok(value) = serde_json::from_str::<Value>(&data) else {
             stats.malformed_lines = stats.malformed_lines.saturating_add(1);
             continue;
@@ -1562,16 +1817,31 @@ pub fn scan_opencode(path: &Path, window: &CollectionWindow) -> SourceScan {
         );
         stats.usage_records = stats.usage_records.saturating_add(1);
     }
-    finish(window, builder, stats, true)
+    Ok(finish(window, builder, stats, true))
 }
 
 pub fn scan_zcode(path: &Path, window: &CollectionWindow) -> SourceScan {
+    scan_zcode_with_cancellation(path, window, &CancellationToken::new())
+        .unwrap_or_else(|_| SourceScan::empty(window))
+}
+
+pub fn scan_zcode_with_cancellation(
+    path: &Path,
+    window: &CollectionWindow,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
+    cancellation.check()?;
     if !path.is_file() {
-        return SourceScan::empty(window);
+        return Ok(SourceScan::empty(window));
     }
     let connection = match open_read_only(path) {
         Ok(connection) => connection,
-        Err(error) => return sqlite_error(window, &format!("本机 zcode 数据库暂不可读: {error}")),
+        Err(error) => {
+            return Ok(sqlite_error(
+                window,
+                &format!("本机 zcode 数据库暂不可读: {error}"),
+            ))
+        }
     };
     let any_usage = match connection.query_row("SELECT 1 FROM model_usage LIMIT 1", [], |row| {
         row.get::<_, i64>(0)
@@ -1579,11 +1849,14 @@ pub fn scan_zcode(path: &Path, window: &CollectionWindow) -> SourceScan {
         Ok(_) => true,
         Err(rusqlite::Error::QueryReturnedNoRows) => false,
         Err(error) => {
-            return sqlite_error(window, &format!("本机 zcode 数据库 schema 不兼容: {error}"))
+            return Ok(sqlite_error(
+                window,
+                &format!("本机 zcode 数据库 schema 不兼容: {error}"),
+            ))
         }
     };
     if !any_usage {
-        return SourceScan::empty(window);
+        return Ok(SourceScan::empty(window));
     }
     let mut statement = match connection.prepare(
         "SELECT m.started_at, m.model_id, m.input_tokens, m.output_tokens, \
@@ -1593,7 +1866,10 @@ pub fn scan_zcode(path: &Path, window: &CollectionWindow) -> SourceScan {
     ) {
         Ok(statement) => statement,
         Err(error) => {
-            return sqlite_error(window, &format!("本机 zcode 数据库 schema 不兼容: {error}"))
+            return Ok(sqlite_error(
+                window,
+                &format!("本机 zcode 数据库 schema 不兼容: {error}"),
+            ))
         }
     };
     let mut builder = UsageContributionBuilder::new(window.clone());
@@ -1615,10 +1891,16 @@ pub fn scan_zcode(path: &Path, window: &CollectionWindow) -> SourceScan {
         ))
     }) {
         Ok(rows) => rows,
-        Err(error) => return sqlite_error(window, &format!("本机 zcode 数据库查询失败: {error}")),
+        Err(error) => {
+            return Ok(sqlite_error(
+                window,
+                &format!("本机 zcode 数据库查询失败: {error}"),
+            ))
+        }
     };
     let mut collected = Vec::new();
     for row in rows {
+        cancellation.check()?;
         stats.sqlite_rows_read = stats.sqlite_rows_read.saturating_add(1);
         let Ok(row) = row else { continue };
         collected.push(row);
@@ -1635,6 +1917,7 @@ pub fn scan_zcode(path: &Path, window: &CollectionWindow) -> SourceScan {
         task_type,
     ) in collected.into_iter().rev()
     {
+        cancellation.check()?;
         let input = u64::try_from(input.unwrap_or(0)).unwrap_or(0);
         let output = u64::try_from(output.unwrap_or(0)).unwrap_or(0);
         let reasoning = u64::try_from(reasoning.unwrap_or(0)).unwrap_or(0);
@@ -1658,13 +1941,14 @@ pub fn scan_zcode(path: &Path, window: &CollectionWindow) -> SourceScan {
         );
         stats.usage_records = stats.usage_records.saturating_add(1);
     }
-    finish(window, builder, stats, true)
+    Ok(finish(window, builder, stats, true))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{scan_codex, scan_codex_cached};
+    use super::{scan_codex, scan_codex_cached, scan_kimi_tree_with_cancellation};
     use collector_domain::CollectionWindow;
+    use collector_runtime::{CancellationToken, RuntimeError};
     use serde_json::{json, Map, Value};
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -1691,6 +1975,66 @@ mod tests {
         ));
         fs::create_dir_all(&root).unwrap();
         root
+    }
+
+    #[test]
+    fn cancellation_returns_typed_runtime_error_before_first_directory() {
+        let root = temp_root("cancel-before-directory");
+        let sessions = root.join("nested");
+        fs::create_dir_all(&sessions).unwrap();
+        fs::write(
+            sessions.join("session.jsonl"),
+            "{\"type\":\"usage.record\",\"time\":1785211200000,\"usage\":{\"inputOther\":1}}\n"
+                .repeat(4_096),
+        )
+        .unwrap();
+        let cancellation = CancellationToken::new();
+        cancellation.cancel();
+
+        let result = scan_kimi_tree_with_cancellation(&root, &window(), &cancellation);
+
+        assert!(matches!(
+            result,
+            Err(super::SourceScanError::Runtime(RuntimeError::Cancelled))
+        ));
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn cancellation_discards_mid_file_partial_result() {
+        let root = temp_root("cancel-mid-file");
+        let session = root.join("session.jsonl");
+        fs::write(
+            &session,
+            "{\"type\":\"usage.record\",\"time\":1785211200000,\"usage\":{\"inputOther\":1}}\n"
+                .repeat(4_096),
+        )
+        .unwrap();
+        let cancellation = CancellationToken::new();
+        let mut probes = 0;
+
+        let result = super::scan_jsonl_tree_with_line_probe(
+            &root,
+            window().cutoff_ts,
+            &cancellation,
+            |_, _, line, stats| {
+                let _ = super::parse_json_line(line, stats);
+            },
+            || {
+                probes += 1;
+                cancellation.cancel();
+            },
+        );
+
+        assert_eq!(
+            probes, 1,
+            "cancellation probe should run after the first parsed line"
+        );
+        assert!(matches!(
+            result,
+            Err(super::SourceScanError::Runtime(RuntimeError::Cancelled))
+        ));
+        fs::remove_dir_all(root).ok();
     }
 
     /// 行数超上限时必须保留最新记录: 10_010 行中最早的 10 行被截掉,
