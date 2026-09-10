@@ -645,7 +645,6 @@ extension BruceOnboardingCoreHarness {
             SubscriptionCredentialAccount.volcengineSecretKey,
             SubscriptionCredentialAccount.codexAccounts,
             SubscriptionCredentialAccount.codexActiveAccount,
-            SubscriptionCredentialAccount.antigravityOAuth,
         ]
         for (index, account) in accounts.enumerated() {
             try store.saveCredential("value-\(index)", forAccount: account)
@@ -795,32 +794,6 @@ extension BruceOnboardingCoreHarness {
             )
         }
         try coreExpect(reason == "API key 为空", "空 key 原因不符: \(reason)")
-    }
-
-    static func verifierAntigravityOAuthJSONMappings() throws {
-        let valid = """
-            {"token": {"access_token": "at", "refresh_token": "rt",
-             "expiry": "2026-07-30T12:00:00Z"}}
-            """
-        try coreExpect(
-            ProviderConnectionVerifier.verifyAntigravityOAuthJSON(valid) == .ok,
-            "完整令牌文件必须 ok"
-        )
-        // access_token 可由 collector 刷新恢复, 仅 refresh_token 必备
-        let refreshOnly = ProviderConnectionVerifier.verifyAntigravityOAuthJSON(
-            "{\"token\": {\"refresh_token\": \"rt\"}}"
-        )
-        try coreExpect(refreshOnly == .ok, "仅 refresh_token 必须 ok")
-        let noToken = ProviderConnectionVerifier.verifyAntigravityOAuthJSON("{}")
-        guard case .failed = noToken else {
-            throw CoreTestFailure.expectation("缺 token 节点必须 failed")
-        }
-        let noRefresh = ProviderConnectionVerifier.verifyAntigravityOAuthJSON(
-            "{\"token\": {\"access_token\": \"at\"}}"
-        )
-        guard case .failed = noRefresh else {
-            throw CoreTestFailure.expectation("缺 refresh_token 必须 failed")
-        }
     }
 
     static func verifierVolcengineCredentialsMappings() throws {

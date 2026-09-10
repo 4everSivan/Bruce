@@ -231,7 +231,6 @@ pub fn collect_agent_usage_with_dependencies(
                         "cc-switch",
                         &window,
                     ),
-                    denied_service("antigravity", "Antigravity", "antigravity", &window),
                     denied_service("codex_accounts", "Codex 账号额度", "codex", &window),
                 ],
                 Vec::new(),

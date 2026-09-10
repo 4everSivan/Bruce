@@ -107,6 +107,12 @@ final class SubscriptionService {
         onStateChange = handler
     }
 
+    /// 主动配置 Bruce 自有 Keychain 项目的访问 ACL.
+    /// 不返回或保存任何密码, 只返回本次处理的项目数.
+    func configureKeychainAccess() throws -> Int {
+        try credentialStore.configureKeychainAccess()
+    }
+
     private func noteStateChange() {
         onStateChange()
     }
@@ -706,7 +712,7 @@ final class SubscriptionService {
 
     /// 用已存凭证重跑验证状态迁移 (设置页"重新验证"统一入口).
     /// 覆盖 kimi / deepseek / 火山引擎 / 智谱 (本地格式校验) 与
-    /// claude / grok / opencodeGo (Evaluator 判定); codex / antigravity 不提供.
+    /// claude / grok / opencodeGo (Evaluator 判定); codex 不提供.
     /// 多账号下取最近更新的账号记录 (见 ProviderAccountStore.index 顺序约定),
     /// 旧账号残留问题不在本次范围 (见下方 `firstAccountRecord`).
     func reverify(_ id: SubscriptionProviderID) async {
@@ -794,9 +800,8 @@ final class SubscriptionService {
             case .expired:
                 finishVerification(.opencodeGo, status: .needsRelogin)
             }
-        case .codex, .antigravity:
-            // 这两条链路不提供本地重新验证 (codex 走 token manager,
-            // antigravity 无额度查询实现).
+        case .codex:
+            // Codex 走 token manager, 不提供本地重新验证.
             model.setSettingsError(
                 "\(id.displayName) 暂不支持重新验证", for: id
             )
@@ -1001,52 +1006,6 @@ final class SubscriptionService {
             codexDeviceLogin?.stage = .failed(error.description)
         }
         model.setSettingsError("Codex 登录未完成: \(error.description)", for: .codex)
-    }
-
-    /// Antigravity: 从本机导入 (用户点击触发); 优先令牌文件,
-    /// 其次 agy >= 1.1.8 的登录 Keychain 条目.
-    func importAntigravityFromLocalFile() {
-        let fileURL = homeURL.appendingPathComponent(
-        ".gemini/antigravity-cli/antigravity-oauth-token"
-        )
-        let json: String
-        if localProbe.antigravityTokenFileExists() {
-            guard let text = readCredentialFile(fileURL, usage: "Antigravity 令牌文件") else {
-                return
-            }
-            json = text
-        } else {
-            switch localProbe.readAgyKeychainCredential() {
-                case .notFound:
-                model.setSettingsError(
-                    "未找到 Antigravity 登录态, 请先通过 Antigravity CLI 登录",
-                    for: .antigravity
-                )
-                return
-                case .decodeFailed:
-                model.setSettingsError("Antigravity Keychain 令牌解码失败", for: .antigravity)
-                return
-                case .decoded(let text):
-                json = text
-            }
-        }
-        let status = ProviderConnectionVerifier.verifyAntigravityOAuthJSON(json)
-        guard status == .ok else {
-            finishVerification(.antigravity, status: status)
-            return
-        }
-        // 多账号路径: 写入 ProviderAccountStore (upsert).
-        let refresh = Self.antigravityRefreshToken(from: json) ?? json
-        let accountID = ProviderAccountIDGenerator.antigravityAccountID(refreshToken: refresh)
-        let displayName = "Antigravity · " + String(accountID.prefix(8))
-        guard saveProviderAccountCredential(
-            for: .antigravity,
-            accountID: accountID,
-            displayName: displayName,
-            credentialJSON: json
-        ) else { return }
-        model.setSubscriptionCredentialConfigured(true, for: .antigravity)
-        finishVerification(.antigravity, status: status)
     }
 
     /// 手动添加 provider (Phase 4): 持久化空配置条目, 使"已添加"跨会话保持.
@@ -1321,19 +1280,6 @@ final class SubscriptionService {
         return nil
     }
 
-    /// Antigravity 令牌 JSON -> refresh_token (用于生成 accountID).
-    private static func antigravityRefreshToken(from json: String) -> String? {
-        guard let data = json.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data),
-              let dict = object as? [String: Any],
-              let token = dict["token"] as? [String: Any],
-              let refresh = token["refresh_token"] as? String,
-              !refresh.isEmpty else {
-            return nil
-        }
-        return refresh
-    }
-
     // MARK: - 订阅额度本机文件检测 (供设置页条件渲染; 转发 LocalCredentialProbe)
 
     func codexCLIAuthFileExists() -> Bool {
@@ -1348,28 +1294,12 @@ final class SubscriptionService {
         localProbe.ccSwitchDatabaseExists()
     }
 
-    /// 刷新 Antigravity 本机登录态可用性, 结果写入 model 供设置页渲染.
-    /// 文件检查同步; Keychain 探测放后台队列 — 子进程 waitUntilExit 会泵 runloop,
-    /// 在视图 body 内直接执行会与 AttributeGraph 事务重入导致崩溃.
-    func refreshAntigravityLocalAvailability() {
-        if localProbe.antigravityTokenFileExists() {
-            model.setAntigravityLocalAvailable(true)
-            return
-        }
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let exists = self?.localProbe.agyKeychainItemExists() ?? false
-            DispatchQueue.main.async {
-                self?.model.setAntigravityLocalAvailable(exists)
-            }
-        }
-    }
-
     // MARK: - Claude / Grok 本机登录态检测 (实时只读, 不导入不回写)
 
     /// 刷新 Claude / Grok 本机登录态可用性, 结果写入 model 供设置页渲染,
     /// 并经 `credentialConfigured` 重算 configured (应用 Keychain 优先于本机).
     /// Grok auth.json 解析同步; Claude Keychain 探测放后台队列
-    /// (子进程 waitUntilExit 会泵 runloop, 同 Antigravity 的重入崩溃规避).
+    /// (子进程 waitUntilExit 会泵 runloop, 因此放到后台队列避免视图事务重入).
     func refreshOfficialLocalAvailability() {
         let grokAvailable = localProbe.grokLocalAuthAvailable()
         model.setGrokLocalAvailable(grokAvailable)

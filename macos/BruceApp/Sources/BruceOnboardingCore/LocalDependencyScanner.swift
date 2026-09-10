@@ -88,12 +88,6 @@ public struct LocalDependencyScanPaths: Sendable {
                     profile: .ccSwitch,
                     url: home.appendingPathComponent(".cc-switch/cc-switch.db")
                 ),
-                SQLiteDatabase(
-                    profile: .antigravity,
-                    url: home.appendingPathComponent(
-                        ".gemini/antigravity-cli/conversation_summaries.db"
-                    )
-                ),
             ]
         )
     }

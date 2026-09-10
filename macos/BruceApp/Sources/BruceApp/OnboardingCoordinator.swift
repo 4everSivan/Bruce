@@ -24,6 +24,9 @@ final class OnboardingCoordinator: ObservableObject {
     @Published private(set) var glassStyle: GlassStylePreference
     /// 全局快捷键 (打开/关闭仪表盘), 与配置持久化同步; nil 表示未设置.
     @Published private(set) var dashboardHotkey: GlobalHotkey?
+    /// Bruce 自有 Keychain 项目是否已完成访问配置.
+    /// 只保存非敏感状态, 不保存系统密码或凭证内容.
+    @Published private(set) var keychainAccessConfigured: Bool
     /// 可注入的能力探测 (测试); 默认读系统.
     var liquidGlassSupported: () -> Bool = { LiquidGlassCapability.isSupported }
 
@@ -115,6 +118,7 @@ final class OnboardingCoordinator: ObservableObject {
         self.interfaceStyle = theme.interfaceStyle
         self.glassStyle = theme.glassStyle
         self.dashboardHotkey = config?.resolvedDashboardHotkey
+        self.keychainAccessConfigured = config?.keychainAccessConfigured ?? false
 
         // SubscriptionService 在 self 部分初始化后创建; objectWillChange 经回调转发.
         // 使用临时无回调初始化, 随后在下方挂载 (init 内无法弱引用 self 前完成全量).
@@ -212,10 +216,6 @@ final class OnboardingCoordinator: ObservableObject {
         subscriptions.reopenCodexLoginPage()
     }
 
-    func importAntigravityFromLocalFile() {
-        subscriptions.importAntigravityFromLocalFile()
-    }
-
     func addSubscriptionProvider(_ id: SubscriptionProviderID) {
         subscriptions.addSubscriptionProvider(id)
     }
@@ -262,10 +262,6 @@ final class OnboardingCoordinator: ObservableObject {
 
     func ccSwitchDatabaseExists() -> Bool {
         subscriptions.ccSwitchDatabaseExists()
-    }
-
-    func refreshAntigravityLocalAvailability() {
-        subscriptions.refreshAntigravityLocalAvailability()
     }
 
     func refreshOfficialLocalAvailability() {
@@ -340,16 +336,11 @@ final class OnboardingCoordinator: ObservableObject {
         let ccSwitchStatus = sqliteResult(
             from: probes, displayName: SQLiteSchemaProfile.ccSwitch.displayName
         )
-        let antigravityStatus = sqliteResult(
-            from: probes, displayName: SQLiteSchemaProfile.antigravity.displayName
-        )
-
         let evaluator = ReadinessEvaluator()
 
         model.setModuleResult(evaluator.evaluateAgentUsage(
             sessionSources: sessionProbes,
             ccSwitchStatus: ccSwitchStatus,
-            antigravityStatus: antigravityStatus,
             collectorRuntime: collectorRuntime
         ))
 
@@ -389,6 +380,25 @@ final class OnboardingCoordinator: ObservableObject {
         refreshIntervalMinutes = normalized
         scheduler.updateRefreshInterval(TimeInterval(normalized * 60))
         model.setSettingsError(nil)
+    }
+
+    /// 首次启动或设置页手动触发的 Keychain 访问配置.
+    /// 只有 ACL 更新成功且配置文件写入成功后才发布已配置状态.
+    func configureKeychainAccess() {
+        guard let configStore else {
+            model.setSettingsError("配置存储不可用, 无法保存钥匙串访问状态")
+            return
+        }
+        do {
+            _ = try subscriptions.configureKeychainAccess()
+            var config = configStore.load() ?? OnboardingConfiguration()
+            config.keychainAccessConfigured = true
+            try configStore.save(config)
+            keychainAccessConfigured = true
+            model.setSettingsError(nil)
+        } catch {
+            model.setSettingsError("钥匙串访问配置失败, 未保存权限状态")
+        }
     }
 
     /// 用户变更外观偏好: 先持久化再发布 (先存后生效);

@@ -39,14 +39,6 @@ public struct SQLiteSchemaProfile: Sendable {
         ]
     )
 
-    public static let antigravity = SQLiteSchemaProfile(
-        displayName: "Antigravity",
-        tables: [
-            "conversation_summaries": [
-                "step_count", "last_modified_time"
-            ]
-        ]
-    )
 }
 
 // MARK: - SQLiteSchemaProbe

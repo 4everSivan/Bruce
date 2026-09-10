@@ -8,6 +8,8 @@
 > 实施状态: P1 符号清理已完成; 2026-08-20 复核确认协议候选项已不存在于当前代码, 文档中的原待办已关闭.
 
 > 历史审计说明: 本文是 Rust Collector cutover 前的快照. 文中的 Python Collector、旧 Bridge 和对应测试命令仅用于保留当时的审计证据, 不属于当前源码或运行路径. 当前架构以 `AGENTS.md`、`docs/development/14-rust-collector-v1-build-target.md` 和 `docs/openspec/changes/rust-collector-performance/` 为准.
+>
+> 2026-09-09 追记: Antigravity 已确认没有 Rust 额度消费者, 相关文件读取、注入、配置和测试已按两端同步方案移除. 本文下方涉及 Antigravity 或 `AGY_CLIENT_*` 的条目仅保留为历史审计证据, 不再是实施要求.
 
 ## 1. 审计结论
 
@@ -84,9 +86,8 @@
 | 流程 | 必须保留的原因 | 后续处理 |
 |---|---|---|
 | CLI Codex legacy 路径 | 命令行 `run()` 仍支持本机 CLI/第三方认证文件, 并承担旧用户迁移 | 与 App 刷新管线解耦, 但保留单独的 `codex_compat.py` |
-| Antigravity 文件优先、Keychain 回退 | 不同版本客户端的认证存储位置不同 | 维持只读回退, 禁止无授权写回 |
 | Codex 旧 service ID 与 v2 迁移读取 | 旧 artifact 和旧 Keychain 仍可能存在 | 保留读取兼容, 新写入统一新格式 |
-| `credentialUpdates` 协议和 Swift 消费方 | Kimi/Antigravity 令牌轮换需要回写 App Keychain | 保留协议, 后续将消费逻辑集中到凭证协调器 |
+| `credentialUpdates` 协议和 Swift 消费方 | Kimi 令牌轮换需要回写 App Keychain | 保留协议, 由凭证协调器统一消费 |
 | `agent-usage/widget/index.html` 的宿主 helper 与 `tests/visual/host-bootstrap.js` | 视觉契约测试会主动加载这些 helper | 保留, 只清理确实未加载的分支 |
 | `orcaCodexAuth` 注入字段 | Bridge 与 Collector 仍有兼容分支, 尚未完成替代方案决策 | 暂不删除, 在架构优化阶段决定删除或补齐真实注入方 |
 
@@ -100,7 +101,6 @@
 | `bridge/security.py` 的 `caFile -> ca_file` | 2026-08-20 复核未发现映射或消费方 | 保持删除状态, 不新增兼容字段 |
 | request schema 的 `baseUrl` | 2026-08-20 复核未发现 schema 或运行时引用 | 保持删除状态, 不新增兼容字段 |
 | `build_collector_context` 的 `request_timeout` | 2026-08-20 复核未发现未消费字段 | 保持唯一的现行 HTTP timeout 契约 |
-| `AGY_CLIENT_ID`/`AGY_CLIENT_SECRET` | Collector 从环境读取, App 子进程环境白名单未注入 | 在正式支持 App 刷新前补安全注入源; 不硬编码、不伪造空凭证 |
 | App Python 路径 | 当前由 Runner 接收已验证路径, 未发现旧固定路径消费 | 保持现行 Runner 契约, 不新增旁路读取 |
 | 历史测试/文档数字 | 部分历史记录仍保留当时的测试数字 | 当前说明统一以 `AGENTS.md` 和验证脚本输出为准, 历史记录不回写 |
 
@@ -165,7 +165,6 @@
 ### 8.5 历史待办复核结果
 
 - `bridge/security.py` 的 `username`/`caFile`/`baseUrl`/`request_timeout`: 已确认当前仓库无残留, 不再作为施工任务.
-- `AGY_CLIENT_ID`/`AGY_CLIENT_SECRET`: 仍按现行运行环境注入策略保留, 不在本次死代码清理中改动.
 - App Python 路径: 仍由 Runner 的已验证路径契约负责, 不在本次死代码清理中改动.
 - 历史测试/文档数字: README、CI 和工具链文档已改为动态描述或现行产物名称.
 
@@ -179,7 +178,7 @@
 
 | 项目 | 处理结果 |
 |------|----------|
-| Collector 运行上下文 | 生产采集、额度 catalog、Codex/Antigravity、订阅定向刷新和本地扫描均显式传递 `RunContext`; `run_app` 正常路径不再读取最近一次运行指针 |
+| Collector 运行上下文 | 生产采集、额度 catalog、Codex、订阅定向刷新和本地扫描均显式传递 `RunContext`; `run_app` 正常路径不再读取最近一次运行指针 |
 | 兼容 seam | `_ACTIVE_RUN_CONTEXT`、`_RUNTIME_CREDENTIAL_UPDATES`、`_RUNTIME_CREDENTIAL_CHALLENGES` 以及 `runtime` 的日期/HTTP setter 仅保留给旧直接测试和 CLI 兼容调用, 生产业务不得新增引用 |
 | Swift 颜色工具 | `Color(hex:)` 和 `Color.adaptive` 集中到 `GlassTheme.swift`, 卡片和设置页重复 extension 已删除 |
 | App 打包清单 | `scripts/runtime-manifest.zsh` 成为 Preview/Release 唯一运行时文件清单, 两个打包脚本共享校验和复制逻辑 |

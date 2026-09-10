@@ -486,23 +486,6 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
                 }
                 credentials["codexQuotaAccounts"] = codexAccounts
 
-            case .antigravityOAuthJSON:
-                guard let store = accountStores[descriptor.id],
-                      let index = try? store.loadIndex(),
-                      !index.accounts.isEmpty else { continue }
-                var accounts: [String: JSONValue] = [:]
-                for entry in index.accounts {
-                    guard let record = try? store.loadRecord(for: entry.accountID),
-                          let oauth = jsonObjectValue(from: record.credentialJSON) else { continue }
-                    accounts[entry.accountID] = .object([
-                        "display_name": .string(entry.displayName),
-                        "oauth": oauth,
-                    ])
-                }
-                if !accounts.isEmpty {
-                    credentials["antigravityQuotaAccounts"] = .object(accounts)
-                }
-
             case .claudeMetaEnabledPlusOptionalOAuth:
                 providerMeta["claude"] = .object(["enabled": .boolean(true)])
                 if let store = accountStores[descriptor.id],

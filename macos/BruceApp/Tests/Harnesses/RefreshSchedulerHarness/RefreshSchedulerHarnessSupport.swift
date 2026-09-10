@@ -752,7 +752,15 @@ func makeSchedulerWithError(
 
 /// saveCredential 恒抛错, 用于验证 Scheduler 写回失败 → partial 路径.
 final class ThrowingCredentialStoreForScheduler: CredentialStore, @unchecked Sendable {
-    func loadCredential(forAccount account: String) throws -> String? { nil }
+    private let backing: CredentialStore
+
+    init(backing: CredentialStore) {
+        self.backing = backing
+    }
+
+    func loadCredential(forAccount account: String) throws -> String? {
+        try backing.loadCredential(forAccount: account)
+    }
 
     func saveCredential(_ value: String, forAccount account: String) throws {
         throw NSError(domain: "test", code: 1, userInfo: [
@@ -760,7 +768,9 @@ final class ThrowingCredentialStoreForScheduler: CredentialStore, @unchecked Sen
         ])
     }
 
-    func deleteCredential(forAccount account: String) throws {}
+    func deleteCredential(forAccount account: String) throws {
+        try backing.deleteCredential(forAccount: account)
+    }
 }
 
 /// 成功响应携带 credentialUpdates 的执行器, 用于验证 Scheduler 写回路径.

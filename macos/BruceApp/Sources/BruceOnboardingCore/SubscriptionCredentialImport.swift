@@ -46,7 +46,6 @@ extension SubscriptionProviderID {
         case .volcengine: return "火山引擎"
         case .zhipu: return "智谱"
         case .codex: return "Codex"
-        case .antigravity: return "Antigravity"
         case .claude: return "Claude"
         case .grok: return "Grok"
         case .opencodeGo: return "OpenCode GO"

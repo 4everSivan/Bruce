@@ -1,26 +1,14 @@
 import Foundation
 import BruceOnboardingCore
 
-// MARK: - AgyKeychainReadResult
-
-/// Antigravity 登录 Keychain 读取结果 (区分缺失与解码失败, 供设置错误文案).
-enum AgyKeychainReadResult: Equatable {
-    case notFound
-    case decoded(String)
-    case decodeFailed
-}
-
 // MARK: - LocalCredentialProbe
 
 /// 本机文件与系统 Keychain 探测 (App 层 I/O 边界).
 ///
 /// 无 AppModel 副作用; Coordinator 负责刷新 model / configured 状态.
 /// Claude / Grok Keychain 探测使用 `security find-generic-password` 且不带 `-w`,
-/// 不读密码数据, 不触发授权弹窗; Antigravity 导入路径带 `-w` 会触发弹窗.
+/// 不读密码数据, 不触发授权弹窗.
 struct LocalCredentialProbe: Sendable {
-    /// agy >= 1.1.8 登录 Keychain (go-keyring) service / account.
-    static let agyKeychainService = "gemini"
-    static let agyKeychainAccount = "antigravity"
     /// Claude CLI 凭证 Keychain service 名 (Claude Code-credentials, 无 account).
     static let claudeKeychainService = "Claude Code-credentials"
 
@@ -54,15 +42,6 @@ struct LocalCredentialProbe: Sendable {
     func ccSwitchDatabaseExists() -> Bool {
         FileManager.default.fileExists(
             atPath: homeURL.appendingPathComponent(".cc-switch/cc-switch.db").path
-        )
-    }
-
-    func antigravityTokenFileExists() -> Bool {
-        FileManager.default.fileExists(
-            atPath: homeURL
-                .appendingPathComponent(
-                    ".gemini/antigravity-cli/antigravity-oauth-token"
-                ).path
         )
     }
 
@@ -101,40 +80,6 @@ struct LocalCredentialProbe: Sendable {
             "find-generic-password",
             "-s", Self.claudeKeychainService,
         ]) != nil
-    }
-
-    /// 探测登录 Keychain 是否存在 agy 令牌条目
-    /// (不读密码数据, 不触发授权弹窗).
-    func agyKeychainItemExists() -> Bool {
-        securityRunner([
-            "find-generic-password",
-            "-s", Self.agyKeychainService,
-            "-a", Self.agyKeychainAccount,
-        ]) != nil
-    }
-
-    /// 读取并解码 agy Keychain 令牌 ("go-keyring-base64:" 前缀 + base64 JSON).
-    /// 读取密码数据会触发系统钥匙串授权弹窗, 仅在用户点击导入时调用.
-    func readAgyKeychainCredential() -> AgyKeychainReadResult {
-        guard var raw = securityRunner([
-            "find-generic-password",
-            "-s", Self.agyKeychainService,
-            "-a", Self.agyKeychainAccount,
-            "-w",
-        ]) else {
-            return .notFound
-        }
-        let prefix = "go-keyring-base64:"
-        guard raw.hasPrefix(prefix) else {
-            return .decoded(raw)
-        }
-        raw = String(raw.dropFirst(prefix.count))
-        guard let data = Data(base64Encoded: raw),
-              let text = String(data: data, encoding: .utf8),
-              !text.isEmpty else {
-            return .decodeFailed
-        }
-        return .decoded(text)
     }
 
     // MARK: - security 子进程

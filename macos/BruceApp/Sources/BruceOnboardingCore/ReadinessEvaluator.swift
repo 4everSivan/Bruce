@@ -9,11 +9,10 @@ public struct ReadinessEvaluator: Sendable {
 
     /// 评估 Agent 用量模块.
     /// Release 必要条件: Rust Collector 可执行且至少一个会话源可读.
-    /// CC Switch 和 Antigravity 是可选增强, 单独存在不能让模块 ready.
+    /// CC Switch 是可选增强, 单独存在不能让模块 ready.
     public func evaluateAgentUsage(
         sessionSources: [DependencyProbe],
         ccSwitchStatus: SQLiteSchemaProbeResult,
-        antigravityStatus: SQLiteSchemaProbeResult,
         collectorRuntime: CollectorRuntimeStatus = .rustUnavailable
     ) -> ModuleReadinessResult {
         var probes = sessionSources
@@ -72,13 +71,7 @@ public struct ReadinessEvaluator: Sendable {
             status: mapSQLiteStatus(ccSwitchStatus),
             detail: SQLiteSchemaProfile.ccSwitch.displayName
         )
-        let agyProbe = DependencyProbe(
-            kind: .sqliteDatabase,
-            status: mapSQLiteStatus(antigravityStatus),
-            detail: SQLiteSchemaProfile.antigravity.displayName
-        )
         probes.append(ccSwitchProbe)
-        probes.append(agyProbe)
 
         // 有部分会话源不可用 -> partial
         let hasUnavailableSessions = sessionProbes.contains { $0.status != .available }
@@ -92,10 +85,6 @@ public struct ReadinessEvaluator: Sendable {
         if ccSwitchStatus != .available && ccSwitchStatus != .missing {
             warnings.append("CC Switch 数据库: \(ccSwitchStatus.rawValue)")
         }
-        if antigravityStatus != .available && antigravityStatus != .missing {
-            warnings.append("Antigravity 数据库: \(antigravityStatus.rawValue)")
-        }
-
         let readiness: ModuleReadiness = hasUnavailableSessions ? .partial : .ready
         return ModuleReadinessResult(
             module: .agentUsage,

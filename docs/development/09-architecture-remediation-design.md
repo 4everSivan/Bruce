@@ -318,7 +318,6 @@ InjectionKind:
   deepseekAPIKeyEnv
   volcengineUsageScriptKeys
   codexQuotaAccounts
-  antigravityOAuthJSON
   claudeMetaEnabledPlusOptionalOAuth
   grokMetaEnabledPlusOptionalOAuth
 
@@ -391,7 +390,7 @@ S3a–d 各自可逆; OnboardingConfiguration 字段不变.
 
 Claude/Grok: 同一 query 实现; 无凭证策略以**现有契约测试锁定的现状**为准, 不借机改产品文案.
 
-Codex/Antigravity: App 不走 `codex_compat` 磁盘写回; AGY 缺 client 可诊断降级保持.
+Codex: App 不走 `codex_compat` 磁盘写回.
 
 ### 7.4 过期 fixture
 

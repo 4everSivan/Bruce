@@ -142,7 +142,7 @@ Priority: 本文件是项目级最高治理规则, 定义安全红线, 工作模
 - **[强制] 默认只读诊断**: 诊断优先使用 SQLite URI `mode=ro`; 写操作需用户显式授权.
 
 <!-- source: user-input -->
-- **[红线] 外部 SQLite 数据源只读**: `.cc-switch/cc-switch.db` 和 Antigravity 会话数据库属于其他应用的数据源, 本项目不得修改其表结构或数据.
+- **[红线] 外部 SQLite 数据源只读**: `.cc-switch/cc-switch.db` 属于其他应用的数据源, 本项目不得修改其表结构或数据.
 - **[强制] schema 漂移必须显式暴露**: 外部数据库表或字段变化时, 必须返回可诊断错误或明确降级状态, 不得静默表现为"无服务"或"无数据".
 <!-- /source: user-input -->
 <!-- /source: template/dim-database -->

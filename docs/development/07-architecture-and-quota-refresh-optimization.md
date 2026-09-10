@@ -31,7 +31,7 @@
 | Rust Collector workspace | local、aggregate、provider、credential、bridge 分层 | 新增 Provider 仍需遵守窄接口和协议白名单 |
 | `collect_services` 与 `_collect_app_services` | 两套入口重复维护服务状态和错误语义 | CLI/App 结果容易出现措辞或状态差异 |
 | `pendingRerun` 等状态 | 触发原因、排队状态和重复刷新意图混在一个布尔量中 | timer、手动刷新和恢复重试可能互相覆盖 |
-| App 运行环境 | Rust binary 路径和 Antigravity 客户端凭证没有统一注入契约 | 本机配置与实际 Runner 行为可能不一致 |
+| App 运行环境 | Rust binary 路径需要统一注入契约 | 本机配置与实际 Runner 行为可能不一致 |
 
 ## 3. 目标架构
 
@@ -152,16 +152,7 @@ App 模式只通过 stdin 注入最小凭证; Rust Collector 不写回第三方�
 - 将运行时状态写入诊断, 但不写入 artifact.
 - 启动失败时显示“Rust Collector 不可用”, 不回退到未声明的运行时.
 
-### 6.2 Antigravity OAuth 客户端凭证
-
-Collector 需要 `AGY_CLIENT_ID`/`AGY_CLIENT_SECRET` 时, App 必须从明确的安全来源注入. 施工时只能选择以下一种并写入授权矩阵:
-
-1. 从 App Keychain 读取并通过一次性子进程环境注入.
-2. 明确声明 App 模式不支持该查询, 以可诊断状态结束.
-
-禁止硬编码、写入 artifact、写入普通日志或从未知环境变量静默读取.
-
-### 6.3 DeepSeek 月度数据初始化
+### 6.2 DeepSeek 月度数据初始化
 
 旧配置缺少 `usageTrackingID` 时, Collector 应执行一次可诊断的配置迁移或返回明确的“缺少追踪标识”状态. 迁移必须原子写入、可回滚, 且不覆盖用户已有凭证.
 
@@ -194,7 +185,7 @@ Collector 需要 `AGY_CLIENT_ID`/`AGY_CLIENT_SECRET` 时, App 必须从明确的
 ### 阶段 E: 运行时契约与清理
 
 - 接通 Rust binary 路径解析.
-- 决定并实现 Antigravity 客户端凭证来源.
+- 继续收敛 Rust binary 路径与 App Runner 的统一契约.
 - 执行 `06-redundant-legacy-audit.md` 的 P1 清理.
 - 同步 Bridge schema、白名单和测试.
 

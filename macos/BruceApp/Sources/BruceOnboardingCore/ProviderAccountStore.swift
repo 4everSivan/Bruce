@@ -61,7 +61,7 @@ public struct ProviderAccountIndex: Codable, Equatable, Sendable {
 /// 格式与旧单条 Keychain 条目一致 (Kimi: {"access_token","refresh_token"},
 /// DeepSeek: 纯 API key 字符串, 火山: 两条字符串分别保存, 等).
 /// 简单凭证 (DeepSeek API key, 火山 AK/SK) 直接用 credentialJSON 存原始值;
-/// 复杂凭证 (Kimi/Claude/Grok/Antigravity OAuth JSON) 存 JSON 字符串.
+/// 复杂凭证 (Kimi/Claude/Grok OAuth JSON) 存 JSON 字符串.
 public struct ProviderAccountRecord: Codable, Equatable, Sendable {
     public static let schemaVersion = 1
 
@@ -135,8 +135,6 @@ public enum ProviderAccountKeys {
         case .codex:
             // Codex 已有独立的多账号体系, 不走通用迁移.
             return []
-        case .antigravity:
-            return [SubscriptionCredentialAccount.antigravityOAuth]
         case .claude:
             return [SubscriptionCredentialAccount.claudeOAuth]
         case .grok:
@@ -180,11 +178,6 @@ public enum ProviderAccountIDGenerator {
     /// Grok: key SHA-256 前 16 位.
     public static func grokAccountID(key: String) -> String {
         ProviderAccountKeys.sha256Hex(key)
-    }
-
-    /// Antigravity: refresh_token SHA-256 前 16 位.
-    public static func antigravityAccountID(refreshToken: String) -> String {
-        ProviderAccountKeys.sha256Hex(refreshToken)
     }
 
     /// OpenCode GO: access_token SHA-256 前 16 位 (console OAuth 身份).
@@ -471,14 +464,6 @@ public final class ProviderAccountStore: @unchecked Sendable {
                 withJSONObject: dict, options: [.sortedKeys]
             )) ?? Data()
             credentialJSON = String(data: data, encoding: .utf8) ?? "{}"
-        case .antigravity:
-            let token = legacyValues[0]
-            let refresh = Self.jsonStringField(
-                in: token, path: ["token", "refresh_token"]
-            ) ?? token
-            accountID = ProviderAccountIDGenerator.antigravityAccountID(refreshToken: refresh)
-            displayName = "Antigravity · \(String(accountID.prefix(8)))"
-            credentialJSON = token
         case .claude:
             let token = legacyValues[0]
             let access = Self.jsonStringField(

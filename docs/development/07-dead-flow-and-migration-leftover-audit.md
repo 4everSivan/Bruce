@@ -6,11 +6,13 @@
 
 本审计在 commit 99eb750 (rust-collector-dead-code-cleanup) 之后执行, 所有行号基于当前 HEAD.
 
+> 2026-09-09 追记: 本文提出的 Antigravity dead flow 已按"两端同删"完成收敛. 下方相关文字保留历史证据, 文件行号和"待决策"表述不再代表当前实现.
+
 **红线保护, 未列入发现** (扫描约束明确排除):
 
 - metrics 字段集 (`cpu_user_ms`/`peak_rss_bytes`/`retry_count` 等) — 受既有规格 `incremental-collector-refresh` SHALL 条款保护
 - Bridge capability 白名单 (`localSessions`/`localPricing`/`externalQuotas`) 与 Swift 授予端 — 跨进程契约
-- Claude/Grok/agy 双路径兜底 — AGENTS.md 第 7 节明示的有意兼容, 均验证可达
+- Claude/Grok 双路径兜底 — AGENTS.md 第 7 节明示的有意兼容, 均验证可达
 - `tests/fixtures/bridge/*.json` 与 `bin/*-fixture.rs` — canonical parity 工具
 - Codex v1→v2 迁移机器 (~400 行) — 每次启动幂等执行, cleanupPending 重试语义要求常驻, 21 处 Harness 覆盖
 - CC Switch 导入链路整体 — SettingsView 经 confirmationDialog 可达, 按钮有存在性门控, 属活路径
@@ -21,7 +23,7 @@
 ## A. 跨端死流程 — 需要产品决策 (补实现或两端同删, 不可单端动手)
 
 1. **[疑似现网 bug] volcengine 注入凭证键名错配** — Swift 发 `access_key`/`secret_key`, Rust 要求 `accessKeyId`/`secretAccessKey`; App 注入的火山额度查询必然失败. 这是正确性问题而非死代码, 建议单独修复. [macos/BruceApp/Sources/BruceAppCore/CollectorRunInput.swift:452]
-2. **Antigravity 额度查询链路整体死亡** — Rust 保留全套凭证读取 (`read_antigravity_oauth`, credential/lib.rs:334-391, ~70 行) + Bridge 白名单 + Swift 注入管道 (`antigravityQuotaAccounts`, CollectorRunInput.swift:489, ~70 行), 但 Rust 全仓无任何消费者; AGENTS.md 宣称的能力在纯 Rust collector 中不存在. Python 版曾有调用方, Rust 迁移时服务被删但读取端残留. 处置: 补齐 Provider 或两端同删. [rust/...collector-credential/src/lib.rs:334]
+2. **[已处理] Antigravity 额度查询链路整体死亡** — Rust、Bridge、Swift 和测试中的残留已在 2026-09-09 两端同步移除, 不再补齐该 Provider.
 3. **credentialUpdates 写回链路生产者死亡** — Rust 全仓无任何代码填充 `credential_updates`; Swift 整条 apply 管道生产中不可达 (~100 行). [rust/...collector-application/src/execution.rs:18]
 4. **成本链恒 null 空转** — `localPricing` 能力已授予但 Rust 无任何定价实现; `todayCostUsd`/`totalCostUsd`/`costUsd` 三层消费代码惯性空转 (~35 行). 注意白名单条目本身是契约, 动的是定价实现缺失这个事实. [rust/...collector-aggregate/src/lib.rs:171]
 5. **artifact `agents[].quota` 恒为 null** — 全仓唯一构造点硬编码 `quota: None` (aggregate/lib.rs:203); widget renderQuota 的 agents 分支永不可达; Swift 不解码该字段. 可删字段+widget 分支 (~10 行), 两端同步. [rust/...collector-domain/src/lib.rs:522] ✅对抗复核确认
@@ -29,7 +31,7 @@
 7. **`context.paths` 会话路径覆盖机制无发送方** — 含 kimi_cli_sessions 等 10 个子键, 所有层均无人发送 (~30 行). [rust/...collector-application/src/lib.rs:596] ✅确认
 8. **`subscriptionQuotaOnly`/`subscriptionProviders` 发而不读** — Swift 定向刷新发送, Rust 仅白名单放行从不读取 (~12 行). 删除需两端同步. [macos/...CollectorRunInput.swift:238] ✅确认
 9. **widget `a.status==='unsupported'`(未接入) 分支** — 任何版本的 collector 都从未产出过该状态 (~2 行). [agent-usage/widget/index.html:850] ✅确认
-10. **Bridge 凭证白名单孤儿键 (部分成立)** — `kimiWebTokens`/`orcaCodexAuth`/`antigravityOAuth` 三键全仓除白名单/schema 外零引用; `claudeOAuth`/`grokOAuth` 有读取方但全仓无发送者. ⚠️原报告把 `providerEnv` 也列入孤儿是误判: LocalIntegrationHarness 真实发送并依赖白名单放行. [rust/...collector-bridge/src/lib.rs:44]
+10. **Bridge 凭证白名单孤儿键 (部分成立)** — `kimiWebTokens`/`orcaCodexAuth` 两键为历史候选; `claudeOAuth`/`grokOAuth` 有读取方但全仓无发送者. ⚠️原报告把 `providerEnv` 也列入孤儿是误判: LocalIntegrationHarness 真实发送并依赖白名单放行. [rust/...collector-bridge/src/lib.rs:44]
 
 ## B. Rust 零调用方代码 — 编译器可验证, 直接删 (~190 行)
 
@@ -48,7 +50,7 @@
 1. `CodexAccountsLibrary` 整个枚举 (~84 行) — CC Switch 同构旧账号库的四个纯函数, 被 v2 取代. [Sources/BruceOnboardingCore/SubscriptionCredentialImport.swift:158] ✅
 2. `CodexAuthFileParser` 枚举 (~44 行) — 旧 auth.json token 解析, 被 metadata-only 发现取代. [同文件:116] ✅
 3. `verifyCodexAccountsJSON` (~24 行) — 校验旧整体账号库格式. [ProviderConnectionVerifier.swift:138] ✅
-4. `SubscriptionCredentialEvaluator.kimiStatus`/`antigravityStatus` (~27 行) — 与 Verifier 平行的死副本. [SubscriptionCredentialEvaluator.swift:131] ✅
+4. `SubscriptionCredentialEvaluator.kimiStatus` (~27 行) — 与 Verifier 平行的死副本. [SubscriptionCredentialEvaluator.swift:131] ✅
 5. `OnboardingConfiguration` 顶层 `connectionStates`/`lastVerifiedAt` (~14 行) — 自诞生起无 writer/reader. [OnboardingConfiguration.swift:105] ✅
 
 单实现且零测试注入的抽象缝隙 (上一轮发现的同类):
@@ -115,5 +117,5 @@ Python collector 时代残留:
 
 1. **立即修复** (正确性): volcengine 键名错配 (A-1).
 2. **机械删除** (B+C+D, 约 550-650 行): 编译器+测试可验证, 可并入现有 `rust-collector-dead-code-cleanup` 思路扩展为第二轮, 或按 Rust/Swift/Widget 三个小变更分拆.
-3. **产品决策** (A 组): Antigravity 补实现或两端同删; credentialUpdates 链路复活或退役; 成本链接通或收缩; quota/isCurrent 决定实现与否. 每项需要两端同步 + 契约测试.
+3. **产品决策** (A 组): Antigravity 已选择两端同删; 其余 credentialUpdates、成本链和 quota/isCurrent 仍按各自契约处理. 每项需要两端同步 + 契约测试.
 4. **文档刷新** (E 组): 一次 docs PR 集中处理漂移与 Python 残留.

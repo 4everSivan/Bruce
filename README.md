@@ -39,7 +39,7 @@ Bruce 把本机 AI Agent 的 token 用量、成本估算和订阅额度集中到
 | 类别 | 覆盖 |
 |---|---|
 | 本机会话扫描 | Kimi Work / Kimi Code、Claude Code、Codex、Grok、OpenCode、Orca、Pi、ZCode、CodeBuddy |
-| 订阅额度 | Kimi、DeepSeek、火山引擎、Codex OAuth、Antigravity、Claude、Grok、OpenCode Go、智谱 GLM |
+| 订阅额度 | Kimi、DeepSeek、火山引擎、Codex OAuth、Claude、Grok、OpenCode Go、智谱 GLM |
 
 > 仓库根 `*/widget/` 单文件 Widget 继续保留, 仅服务 Daimon / Kimi Work Blueprint 场景, 不属于 App 的组成部分。
 
@@ -127,7 +127,7 @@ Collector 保留独立 CLI 入口, 用于开发、测试和故障排查, 但不�
 ## 安全与隐私
 
 - 本地优先, 无项目自有服务端, 不默认同步活动数据。
-- 订阅额度凭证 (Kimi、DeepSeek、火山引擎、Codex、Antigravity、Claude、Grok、OpenCode Go、智谱 GLM) 保存在 macOS Keychain。
+- 订阅额度凭证 (Kimi、DeepSeek、火山引擎、Codex、Claude、Grok、OpenCode Go、智谱 GLM) 保存在 macOS Keychain。
 - 凭证通过 Bridge stdin 的单次请求传递, 不进入命令行参数、Artifact 或日志。
 - Rust Collector 不直接写 Keychain, 也不写回第三方认证文件; 订阅令牌轮换经 `credentialUpdates` 只写回 Keychain, 不回写 CC Switch 或 CLI 认证文件。
 - 菜单栏面板为纯 SwiftUI 渲染, 不接触凭证。仓库根 `*/widget/` 单文件 Widget 仅由 Daimon host 以受 CSP 限制的 WebView 加载, 其 JSON fixture 和 JavaScript 语法可独立验证。
@@ -172,7 +172,7 @@ Bruce/
 
 清理前先退出应用。在设置页使用「撤销全部授权」停止全部调度; 需要完全重置时, 再通过 Finder 删除 `~/Library/Application Support/Bruce/`, 并在「钥匙串访问」中删除上述 service 的项目。删除快照和 Keychain 项不可由应用自动恢复, 操作前应确认不再需要最后成功数据和现有授权。
 
-出现回归时可先撤销受影响模块并继续使用其他模块; 回退到兼容 Bridge v1 / Artifact v1 的旧构建不会改写第三方数据库。若新快照损坏, 应用优先回退 previous; 不要通过修改 CC Switch 或 Antigravity 数据库来修复 Bruce。
+出现回归时可先撤销受影响模块并继续使用其他模块; 回退到兼容 Bridge v1 / Artifact v1 的旧构建不会改写第三方数据库。若新快照损坏, 应用优先回退 previous; 不要通过修改 CC Switch 数据库来修复 Bruce。
 
 ## 故障排查
 

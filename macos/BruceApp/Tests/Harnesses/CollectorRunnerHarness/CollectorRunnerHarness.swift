@@ -217,7 +217,6 @@ struct CollectorRunnerHarness {
         try await runInputCodexInjectsOnlyShortLivedAccessToken()
         try await runInputCodexGatedUntilMigrationCompleted()
         try runInputRejectsCodexRotationUpdates()
-        try await runInputAssemblesAntigravityOAuth()
         try await runInputAssemblesAllProvidersCombined()
         try await runInputDeniesQuotasWhenCredentialMissing()
         try await runInputDeniesQuotasWhenCredentialCorrupted()
@@ -796,47 +795,7 @@ struct CollectorRunnerHarness {
         try runnerExpect(sk == "SK-fixture", "volcengine SK 值不符: \(sk)")
     }
 
-    /// Antigravity OAuth 注入: 结构对齐 collector 对 antigravity_oauth 的消费.
-    /// App 模式不注入 codexAuth 或 codexOAuthAccounts; Codex 凭证只经
-    /// codexQuotaAccounts (短期 access token) 注入.
-    private static func runInputAssemblesAntigravityOAuth() async throws {
-        let credentials = InMemoryCredentialStore()
-        try credentials.saveCredential(
-            "{\"token\":{\"access_token\":\"at\",\"refresh_token\":\"rt\"}}",
-            forAccount: SubscriptionCredentialAccount.antigravityOAuth
-        )
-        let (provider, tempDir) = try makeRunInputProvider(
-            consentVersion: 1,
-            providers: enabledProvider(.antigravity),
-            credentials: credentials
-        )
-        defer { try? FileManager.default.removeItem(at: tempDir) }
-
-        let input = try await provider.runInput(for: .agentUsage)
-        try runnerExpect(
-            capabilityStrings(input).contains("externalQuotas"),
-            "antigravity 已配置时必须授予 externalQuotas"
-        )
-        // 多账号注入格式: antigravityQuotaAccounts 字典
-        guard case .object(let accounts)? = input.credentials["antigravityQuotaAccounts"] else {
-            throw RunnerTestFailure.expectation(
-                "antigravityQuotaAccounts 注入缺失: \(input.credentials.keys.sorted())"
-            )
-        }
-        try runnerExpect(accounts.count == 1, "antigravity 应有 1 个账号")
-        let firstPayload = accounts.values.first
-        guard case .object(let payload)? = firstPayload,
-              case .object(let oauth)? = payload["oauth"],
-              case .object(let token)? = oauth["token"] else {
-            throw RunnerTestFailure.expectation("antigravity oauth.token 注入结构不符")
-        }
-        try runnerExpect(
-            token["refresh_token"] == .string("rt"),
-            "antigravity refresh_token 注入缺失"
-        )
-    }
-
-    /// 五 provider 全部配置: 注入键齐全且互不干扰.
+    /// 全部 provider 配置: 注入键齐全且互不干扰.
     private static func runInputAssemblesAllProvidersCombined() async throws {
         let credentials = InMemoryCredentialStore()
         try credentials.saveCredential(
@@ -854,10 +813,6 @@ struct CollectorRunnerHarness {
         try credentials.saveCredential(
             "SK-fixture",
             forAccount: SubscriptionCredentialAccount.volcengineSecretKey
-        )
-        try credentials.saveCredential(
-            "{\"token\":{\"refresh_token\":\"rt\"}}",
-            forAccount: SubscriptionCredentialAccount.antigravityOAuth
         )
         let (codexStore, _) = try makeCodexStore(accounts: [
             "acc-1": "user@example.com",
@@ -887,7 +842,7 @@ struct CollectorRunnerHarness {
         // Claude/Grok 无凭证时只有 providerMeta enabled 标记, 无 *QuotaAccounts
         let expectedKeys: Set<String> = [
             "kimiQuotaAccounts", "deepseekQuotaAccounts",
-            "volcengineQuotaAccounts", "antigravityQuotaAccounts",
+            "volcengineQuotaAccounts",
             "codexQuotaAccounts", "providerMeta",
         ]
         for key in expectedKeys {
@@ -1377,11 +1332,11 @@ struct CollectorRunnerHarness {
         let credentials = InMemoryCredentialStore()
         try credentials.saveCredential(
             "not-json-at-all",
-            forAccount: SubscriptionCredentialAccount.antigravityOAuth
+            forAccount: SubscriptionCredentialAccount.opencodeGoOAuth
         )
         let (provider, tempDir) = try makeRunInputProvider(
             consentVersion: 1,
-            providers: enabledProvider(.antigravity),
+            providers: enabledProvider(.opencodeGo),
             credentials: credentials
         )
         defer { try? FileManager.default.removeItem(at: tempDir) }

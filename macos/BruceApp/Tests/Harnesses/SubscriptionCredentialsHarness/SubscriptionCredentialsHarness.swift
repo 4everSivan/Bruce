@@ -22,25 +22,12 @@ private func credentialsExpect(
     }
 }
 
-/// saveCredential 恒抛错的 fake store, 用于验证 Coordinator 失败路径.
-private final class ThrowingCredentialStore: CredentialStore, @unchecked Sendable {
-    func loadCredential(forAccount account: String) throws -> String? { nil }
-
-    func saveCredential(_ value: String, forAccount account: String) throws {
-        throw NSError(domain: "test", code: 1, userInfo: [
-            NSLocalizedDescriptionKey: "keychain denied",
-        ])
-    }
-
-    func deleteCredential(forAccount account: String) throws {}
-}
-
 /// 订阅凭证注入链路测试 (Phase 5) + CredentialUpdateCoordinator (Task 3):
 /// OnboardingRunInputProvider 对 claude/grok 的凭证注入语义.
 /// - 应用持有 claude:oauth/grok:oauth 时注入 claudeOAuth/grokOAuth
 /// - 无应用凭证时仅注入 providerMeta enabled 标记 (collector 回退本机)
 /// - 禁用 provider 时两者皆无
-/// - Coordinator: save 失败记 failed; codex 跳过; 成功写回可加载
+/// - Coordinator: codex / 未知账号跳过; 成功写回可加载
 @main
 @MainActor
 struct SubscriptionCredentialsHarness {
@@ -51,7 +38,6 @@ struct SubscriptionCredentialsHarness {
         try await grokFallbackToMetaWhenNoCredential()
         try await noInjectionWhenProviderDisabled()
         try await nonCredentialProvidersUnaffected()
-        try coordinatorSaveFailureRecordsFailed()
         try coordinatorSkipsCodexWithoutSave()
         try coordinatorSkipsKimiRotation()
         try coordinatorSkipsBadShapeAndUnknownProvider()
@@ -63,7 +49,7 @@ struct SubscriptionCredentialsHarness {
         try providerAccountStoreMigrationSkipsWithExistingIndex()
         try providerAccountStoreCleanupAfterMigration()
         try coordinatorRotationMultiAccountWritesPerAccountRecord()
-        try coordinatorRotationMultiAccountUnknownAccountFallsBack()
+        try coordinatorRotationMultiAccountUnknownAccountSkips()
         try providerAccountSummariesExposeNonSensitiveInfo()
         try providerAccountStoreRemoveLastAccountKeepsEmptyIndex()
         try providerAccountStoreUpsertUpdatesExisting()
@@ -335,41 +321,6 @@ struct SubscriptionCredentialsHarness {
                 Dictionary(uniqueKeysWithValues: tokens.map { ($0.key, .string($0.value)) })
             ),
         ])
-    }
-
-    /// saveCredential 抛错 → failed 计数, applied 为 0; reason 不含 token 明文.
-    private static func coordinatorSaveFailureRecordsFailed() throws {
-        let secretToken = "rotated-secret-token-value-xyz"
-        let coordinator = CredentialUpdateCoordinator(
-            credentialStore: ThrowingCredentialStore()
-        )
-        let result = coordinator.apply(credentialUpdates: [
-            oauthUpdate(
-                provider: "antigravity",
-                accountId: "acc-kimi-1",
-                tokens: [
-                    "access_token": secretToken,
-                    "refresh_token": "rt-\(secretToken)",
-                ]
-            ),
-        ])
-        try credentialsExpect(result.appliedCount == 0, "抛错时 applied 应为 0")
-        try credentialsExpect(result.skippedCount == 0, "有效条目不应记 skipped")
-        try credentialsExpect(result.failed.count == 1, "应记录 1 条 failed")
-        let failure = result.failed[0]
-        try credentialsExpect(failure.provider == "antigravity", "failed.provider 应为 antigravity")
-        try credentialsExpect(
-            failure.accountId == "acc-kimi-1",
-            "failed.accountId 应保留"
-        )
-        try credentialsExpect(
-            failure.reason == "keychain denied",
-            "reason 应为错误描述, got \(failure.reason)"
-        )
-        try credentialsExpect(
-            !failure.reason.contains(secretToken),
-            "failure.reason 不得包含 token 明文"
-        )
     }
 
     /// codex rotation 明确跳过, 不写 Keychain.
@@ -753,29 +704,26 @@ struct SubscriptionCredentialsHarness {
         )
     }
 
-    /// 多账号轮换: 未知 accountId 回退旧键路径 (兼容未迁移单账号).
-    private static func coordinatorRotationMultiAccountUnknownAccountFallsBack() throws {
+    /// 多账号轮换: 未知 accountId 不再回退旧单条 Keychain 键.
+    private static func coordinatorRotationMultiAccountUnknownAccountSkips() throws {
         let store = InMemoryCredentialStore()
-        try store.saveCredential(
-            #"{"token":{"access_token":"old-a","refresh_token":"old-r"}}"#,
-            forAccount: SubscriptionCredentialAccount.antigravityOAuth
+        let accountStore = ProviderAccountStore(provider: .claude, credentialStore: store)
+        _ = try accountStore.addAccount(
+            accountID: "known-acct",
+            displayName: "Claude · known",
+            credentialJSON: #"{"claudeAiOauth":{"accessToken":"old-a"}}"#
         )
         let coordinator = CredentialUpdateCoordinator(credentialStore: store)
         let result = coordinator.apply(credentialUpdates: [
             oauthUpdate(
-                provider: "antigravity",
+                provider: "claude",
                 accountId: "unknown-acct",
                 tokens: ["access_token": "new-a", "refresh_token": "new-r"]
             ),
         ])
-        try credentialsExpect(result.appliedCount == 1, "未知账号回退旧键应 applied=1")
-        let loaded = try store.loadCredential(
-            forAccount: SubscriptionCredentialAccount.antigravityOAuth
-        )
-        try credentialsExpect(
-            loaded?.contains("new-a") == true,
-            "旧键应写入轮换后的 token"
-        )
+        try credentialsExpect(result.appliedCount == 0, "未知账号不得 applied")
+        try credentialsExpect(result.skippedCount == 1, "未知账号应 skipped=1")
+        try credentialsExpect(result.failed.isEmpty, "未知账号不是 failed")
     }
 
     /// 账号摘要只暴露非敏感信息 (displayName + 状态), 不含凭证.

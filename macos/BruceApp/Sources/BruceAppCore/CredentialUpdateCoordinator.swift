@@ -53,8 +53,7 @@ package struct CredentialUpdateCoordinator: Sendable {
     /// - Skip: 坏形状, codex, 未知 provider, merge 返回 nil
     /// - Fail: `saveCredential` 抛错 → reason 为截断后的 localizedDescription
     /// - Success: appliedCount +1
-    /// 多账号 provider: 按 accountId 写回 per-account record (ProviderAccountStore);
-    /// 单账号/旧格式: 写回旧 Keychain 键 (向后兼容).
+    /// 多账号 provider: 按 accountId 写回 per-account record (ProviderAccountStore).
     package func apply(credentialUpdates: [JSONValue]) -> CredentialUpdateApplyResult {
         var result = CredentialUpdateApplyResult()
         for value in credentialUpdates {
@@ -62,7 +61,7 @@ package struct CredentialUpdateCoordinator: Sendable {
                 result.skippedCount += 1
                 continue
             }
-            // codex 明确跳过 (keychainAccount 也会返回 nil; 先判 provider 语义更清晰)
+            // Codex 不消费 Collector rotation 条目.
             guard update.provider != "codex",
                   let providerID = SubscriptionProviderID(
                       rawValue: update.provider
@@ -75,7 +74,7 @@ package struct CredentialUpdateCoordinator: Sendable {
                 forProvider: update.provider
             ) {
                 // 多账号路径: 写回 per-account record.
-                // 仅当 index 中存在该账号时使用; 否则回退旧键 (兼容未迁移的单账号).
+                // 仅当 index 中存在该账号时使用; 未迁移的旧账号不再写回.
                 let store = ProviderAccountStore(
                     provider: providerID,
                     credentialStore: credentialStore
@@ -114,34 +113,9 @@ package struct CredentialUpdateCoordinator: Sendable {
                     }
                     continue
                 }
-                // index 无该账号: 回退旧键路径 (见下方)
+                // index 无该账号: 不写回旧单条 Keychain 键.
             }
-
-            // 旧格式回退: 写回旧 Keychain 键
-            guard let account = CredentialRotationMerge.keychainAccount(
-                forProvider: update.provider
-            ) else {
-                result.skippedCount += 1
-                continue
-            }
-            let existing = try? credentialStore.loadCredential(forAccount: account)
-            guard let merged = CredentialRotationMerge.mergedJSON(
-                existingJSON: existing ?? nil,
-                update: update
-            ) else {
-                result.skippedCount += 1
-                continue
-            }
-            do {
-                try credentialStore.saveCredential(merged, forAccount: account)
-                result.appliedCount += 1
-            } catch {
-                result.failed.append(CredentialUpdateFailure(
-                    provider: update.provider,
-                    accountId: update.accountId,
-                    reason: Self.sanitizedFailureReason(from: error)
-                ))
-            }
+            result.skippedCount += 1
         }
         return result
     }

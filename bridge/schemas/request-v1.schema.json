@@ -224,13 +224,12 @@
               "volcengine",
               "zhipu",
               "codex",
-              "antigravity",
               "claude",
               "grok",
               "opencodeGo"
             ]
           },
-          "maxItems": 9,
+          "maxItems": 8,
           "uniqueItems": true
         }
       }
@@ -300,9 +299,6 @@
         "zhipuQuotaAccounts": {
           "$ref": "#/$defs/quotaAccounts"
         },
-        "antigravityQuotaAccounts": {
-          "$ref": "#/$defs/quotaAccounts"
-        },
         "claudeQuotaAccounts": {
           "$ref": "#/$defs/quotaAccounts"
         },
@@ -321,9 +317,6 @@
             "minLength": 1,
             "maxLength": 256
           }
-        },
-        "antigravityOAuth": {
-          "type": "object"
         },
         "providerEnv": {
           "type": "object"

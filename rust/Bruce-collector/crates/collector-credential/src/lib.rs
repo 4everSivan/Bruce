@@ -16,9 +16,6 @@ pub const UPDATE_ACCOUNT_ID_MAX: usize = 256;
 const UPDATE_CREDENTIAL_FIELDS: &[&str] = &["access_token", "expiry", "id_token", "refresh_token"];
 
 pub const CLAUDE_KEYCHAIN_SERVICE: &str = "Claude Code-credentials";
-pub const ANTIGRAVITY_KEYCHAIN_SERVICE: &str = "gemini";
-pub const ANTIGRAVITY_KEYCHAIN_ACCOUNT: &str = "antigravity";
-pub const ANTIGRAVITY_KEYCHAIN_PREFIX: &str = "go-keyring-base64:";
 pub const DEFAULT_CREDENTIAL_FILE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,14 +37,6 @@ pub trait CredentialSource: Send + Sync {
     fn read_file(&self, path: &Path) -> Result<Option<Vec<u8>>, CredentialReadError>;
 
     fn read_keychain(&self, service: &str) -> Result<Option<String>, CredentialReadError>;
-
-    fn read_keychain_account(
-        &self,
-        service: &str,
-        _account: &str,
-    ) -> Result<Option<String>, CredentialReadError> {
-        self.read_keychain(service)
-    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -85,24 +74,6 @@ impl CredentialSource for SystemCredentialSource {
     fn read_keychain(&self, service: &str) -> Result<Option<String>, CredentialReadError> {
         let output = Command::new("/usr/bin/security")
             .args(["find-generic-password", "-s", service, "-w"])
-            .output();
-        let Ok(output) = output else {
-            return Ok(None);
-        };
-        if !output.status.success() {
-            return Ok(None);
-        }
-        let value = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-        Ok((!value.is_empty()).then_some(value))
-    }
-
-    fn read_keychain_account(
-        &self,
-        service: &str,
-        account: &str,
-    ) -> Result<Option<String>, CredentialReadError> {
-        let output = Command::new("/usr/bin/security")
-            .args(["find-generic-password", "-s", service, "-a", account, "-w"])
             .output();
         let Ok(output) = output else {
             return Ok(None);
@@ -300,67 +271,6 @@ pub fn read_grok_token(
     grok_token_from_document(&document, now_epoch)
 }
 
-fn decode_base64_text(value: &str) -> Option<Vec<u8>> {
-    let mut output = Vec::new();
-    let mut accumulator = 0u32;
-    let mut bits = 0u8;
-    for byte in value.bytes().filter(|byte| !byte.is_ascii_whitespace()) {
-        if byte == b'=' {
-            break;
-        }
-        let digit = match byte {
-            b'A'..=b'Z' => byte - b'A',
-            b'a'..=b'z' => byte - b'a' + 26,
-            b'0'..=b'9' => byte - b'0' + 52,
-            b'+' => 62,
-            b'/' => 63,
-            _ => return None,
-        };
-        accumulator = (accumulator << 6) | u32::from(digit);
-        bits += 6;
-        while bits >= 8 {
-            bits -= 8;
-            output.push((accumulator >> bits) as u8);
-            if bits > 0 {
-                accumulator &= (1 << bits) - 1;
-            } else {
-                accumulator = 0;
-            }
-        }
-    }
-    Some(output)
-}
-
-/// Read Antigravity OAuth file first and its go-keyring Keychain value second.
-/// The Keychain source is read-only and the base64 wrapper is removed in memory.
-pub fn read_antigravity_oauth(
-    source: &dyn CredentialSource,
-    home: &Path,
-) -> Result<Option<Value>, CredentialReadError> {
-    let file_path = home
-        .join(".gemini")
-        .join("antigravity-cli")
-        .join("antigravity-oauth-token");
-    let file_value = source
-        .read_file(&file_path)?
-        .and_then(|bytes| parse_json_bytes(&bytes));
-    if let Some(value) = file_value {
-        return Ok(Some(value));
-    }
-    let Some(raw) =
-        source.read_keychain_account(ANTIGRAVITY_KEYCHAIN_SERVICE, ANTIGRAVITY_KEYCHAIN_ACCOUNT)?
-    else {
-        return Ok(None);
-    };
-    let encoded = raw
-        .strip_prefix(ANTIGRAVITY_KEYCHAIN_PREFIX)
-        .unwrap_or(raw.as_str());
-    let decoded = decode_base64_text(encoded)
-        .and_then(|bytes| String::from_utf8(bytes).ok())
-        .and_then(|text| parse_json_text(&text));
-    Ok(decoded)
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CredentialValidationError {
     pub diagnostic: Diagnostic,
@@ -407,7 +317,7 @@ pub fn validate_credential_updates(
                     "credentialUpdate provider 不受支持",
                 )
             })?;
-        if !matches!(provider, "kimi" | "antigravity") {
+        if provider != "kimi" {
             return Err(error(
                 "BRIDGE_INVALID_CREDENTIAL_UPDATE",
                 "credentialUpdate provider 不受支持",
@@ -544,9 +454,8 @@ fn error(code: &str, message: &str) -> CredentialValidationError {
 #[cfg(test)]
 mod tests {
     use super::{
-        is_expired, read_antigravity_oauth, read_claude_token, read_grok_token,
-        validate_credential_challenges, validate_credential_updates, CredentialReadError,
-        CredentialSource, ANTIGRAVITY_KEYCHAIN_ACCOUNT, ANTIGRAVITY_KEYCHAIN_SERVICE,
+        is_expired, read_claude_token, read_grok_token, validate_credential_challenges,
+        validate_credential_updates, CredentialReadError, CredentialSource,
     };
     use serde_json::json;
     use std::collections::BTreeMap;
@@ -556,7 +465,6 @@ mod tests {
     struct FixtureSource {
         files: BTreeMap<PathBuf, Vec<u8>>,
         keychain: BTreeMap<String, String>,
-        account_keychain: BTreeMap<(String, String), String>,
     }
 
     impl CredentialSource for FixtureSource {
@@ -566,17 +474,6 @@ mod tests {
 
         fn read_keychain(&self, service: &str) -> Result<Option<String>, CredentialReadError> {
             Ok(self.keychain.get(service).cloned())
-        }
-
-        fn read_keychain_account(
-            &self,
-            service: &str,
-            account: &str,
-        ) -> Result<Option<String>, CredentialReadError> {
-            Ok(self
-                .account_keychain
-                .get(&(service.to_owned(), account.to_owned()))
-                .cloned())
         }
     }
 
@@ -711,24 +608,5 @@ mod tests {
                 .as_deref(),
             Some("oidc-token")
         );
-    }
-
-    #[test]
-    fn cli_paths_and_antigravity_keychain_fallback_are_explicit() {
-        let home = PathBuf::from("/fixture-home");
-        let mut source = FixtureSource::default();
-        source.files.insert(
-            home.join(".codex/auth.json"),
-            br#"{"tokens":{"access_token":"codex-fixture"}}"#.to_vec(),
-        );
-        source.account_keychain.insert(
-            (
-                ANTIGRAVITY_KEYCHAIN_SERVICE.to_owned(),
-                ANTIGRAVITY_KEYCHAIN_ACCOUNT.to_owned(),
-            ),
-            "go-keyring-base64:eyJ0b2tlbiI6eyJhY2Nlc3NfdG9rZW4iOiJhZ3ktdG9rZW4ifX0=".to_owned(),
-        );
-        let oauth = read_antigravity_oauth(&source, &home).unwrap().unwrap();
-        assert_eq!(oauth["token"]["access_token"], "agy-token");
     }
 }

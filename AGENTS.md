@@ -103,8 +103,8 @@
 macOS 本机会话与认证文件
   ├─ Kimi Work / Kimi Code / Claude / Codex / Orca / Pi / ZCode / CodeBuddy 会话
   ├─ CC Switch SQLite 与 OAuth 账号库 (App 模式仅一次性只读导入)
-  ├─ App Keychain (订阅凭证: Kimi/DeepSeek/火山/Codex/Antigravity/OpenCode Go)
-  └─ Kimi 与 Antigravity OAuth
+  ├─ App Keychain (订阅凭证: Kimi/DeepSeek/火山/Codex/OpenCode Go)
+  └─ Kimi OAuth
                   │
                   ▼
 Rust Collector ──出站请求──> Kimi, DeepSeek,
@@ -125,9 +125,7 @@ Daimon 单文件 Widgets   macOS 菜单栏原生液态玻璃看板
 - `run(ctx)` 返回 `{"artifact": ...}`; Daimon host 将 artifact 映射为 Widget 的 `data.main`.
 - `data/*.json` 是可选本机落盘产物, 不是源代码或测试 fixture.
 - `agent-usage` 实时采集可能轮换本机 OAuth; 该副作用必须被显式识别和授权.
-- `agent-usage` 云端额度条目在 CLI 模式由 CC Switch providers 行驱动; App 模式改由注入凭证 (`kimi_web_tokens` / `provider_env.deepseek` / `provider_meta.volcengine` / `codex_oauth_auth` + `codex_auth` / `antigravity_oauth`) 驱动合成, 不再要求 CC Switch 数据库存在; App 模式不读 `~/.codex/auth.json`, Codex 活跃账号由 `codex_auth` 注入承载.
-- agy (Antigravity CLI) >= 1.1.8 把 OAuth 令牌存进登录 Keychain (go-keyring, service `gemini` / account `antigravity`, 值带 `go-keyring-base64:` 前缀), 不再写 `~/.gemini/antigravity-cli/antigravity-oauth-token`; collector CLI 模式与 App 导入链路均按「文件优先, Keychain 回退」读取, Keychain 来源只读不回写.
-- Antigravity 额度查询的 OAuth client 凭证 (`AGY_CLIENT_ID` / `AGY_CLIENT_SECRET`) 由运行环境注入, 不硬编码入库; 缺省为空时刷新链路安全降级, 不得伪造非空凭证.
+- `agent-usage` 云端额度条目在 CLI 模式由 CC Switch providers 行驱动; App 模式改由注入凭证 (`kimi_web_tokens` / `provider_env.deepseek` / `provider_meta.volcengine` / `codex_oauth_auth` + `codex_auth`) 驱动合成, 不再要求 CC Switch 数据库存在; App 模式不读 `~/.codex/auth.json`, Codex 活跃账号由 `codex_auth` 注入承载.
 - Claude / Grok 订阅额度由 Rust provider adapter 实时只读本机 CLI 登录态, 不刷新, 不回写, 不做一次性导入: Claude 按「Keychain `Claude Code-credentials` (无 account) 优先, `~/.claude/.credentials.json` 兜底」读取, 调用 `api.anthropic.com/api/oauth/usage`; Grok 读取 `~/.grok/auth.json` (OIDC scope 优先, legacy `/sign-in` 兜底), 调用 `grok.com` gRPC-web 账单接口, protobuf 启发式解析失败必须抛可诊断错误, 不得伪造用量.
 - OpenCode Go 订阅额度由 Rust provider adapter 查询 console.opencode.ai 服务端计量 (设备码 OAuth, client_id `opencode-cli`; `/api/orgs` → `/api/go/status`), 跨机器汇总, 不读本机 opencode 数据库; App 模式多账号由 `opencodeGoQuotaAccounts` 注入, access 过期用 refresh token 刷新并经 `credentialUpdates` 写回, 统一窗口语义: meters 返回哪些输出哪些 (`five_hour`→每 5 小时 / `calendar_week`→每周 / `product_period`→每月), 服务端没有的窗口不输出, `limitMicroCents<=0` 的窗口跳过.
 - App 订阅凭证存 Keychain (`com.bruce.dashboard.credentials`), 在设置「订阅额度」分区配置或从本机/CC Switch 一次性只读导入; 令牌轮换经 `credentialUpdates` 只写回 Keychain, 不回写 CC Switch.
@@ -165,12 +163,12 @@ Daimon 单文件 Widgets   macOS 菜单栏原生液态玻璃看板
 
 - 驱动/ORM: Rust `rusqlite` 只读适配器.
 - 迁移工具: 无.
-- 数据库类型: SQLite; 读取 CC Switch provider/pricing 和 Antigravity conversation summaries.
+- 数据库类型: SQLite; 读取 CC Switch provider/pricing.
 
 数据库操作原则:
 
 - 连接外部应用数据库时使用 SQLite URI `mode=ro`.
-- 本项目不得为 CC Switch 或 Antigravity 数据库执行迁移, DDL 或数据修复.
+- 本项目不得为 CC Switch 数据库执行迁移, DDL 或数据修复.
 - schema 不兼容必须产生可诊断状态, 不得静默伪装成空结果.
 - 若未来新增项目自有数据库, 必须先补充 schema, 迁移, 备份和回滚约束.
 <!-- source: template/dim-database -->

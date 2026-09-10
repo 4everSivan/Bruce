@@ -15,8 +15,6 @@ public enum InjectionKind: Sendable, Equatable {
     case zhipuAPIKeyEnv
     /// 顶层 `codexQuotaAccounts` = token manager 决议的短期 access token 映射
     case codexQuotaAccounts
-    /// 顶层 `antigravityOAuth` = Keychain JSON 对象
-    case antigravityOAuthJSON
     /// `providerMeta.claude.enabled` + 可选顶层 `claudeOAuth` JSON
     case claudeMetaEnabledPlusOptionalOAuth
     /// `providerMeta.grok.enabled` + 可选顶层 `grokOAuth` JSON
@@ -188,13 +186,6 @@ public enum ProviderRegistry {
                 credentialAccounts: [],
                 injectionKind: .codexQuotaAccounts,
                 configuredRule: .codexHasConfiguredRecords
-            )
-        case .antigravity:
-            return ProviderDescriptor(
-                id: .antigravity,
-                credentialAccounts: [SubscriptionCredentialAccount.antigravityOAuth],
-                injectionKind: .antigravityOAuthJSON,
-                configuredRule: .allCredentialAccountsNonEmpty
             )
         case .claude:
             return ProviderDescriptor(

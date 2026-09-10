@@ -9,7 +9,6 @@ public enum SubscriptionProviderID: String, Codable, Sendable, CaseIterable {
     case volcengine
     case zhipu
     case codex
-    case antigravity
     case claude
     case grok
     case opencodeGo
@@ -120,6 +119,9 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
     public var subscriptionProviderOrder: [String]?
     /// 全局快捷键 (打开/关闭仪表盘). nil (含 JSON 显式 null) 表示未设置, 不劫持任何键.
     public var dashboardHotkey: GlobalHotkey?
+    /// 是否已完成 Bruce 自有 Keychain 项目的访问配置.
+    /// 只保存状态, 不保存系统密码或任何凭证内容.
+    public var keychainAccessConfigured: Bool
 
     /// 默认自动刷新间隔 (分钟).
     public static let defaultRefreshIntervalMinutes = 30
@@ -175,7 +177,8 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         interfaceStyle: InterfaceStylePreference? = nil,
         glassStyle: GlassStylePreference? = nil,
         subscriptionProviderOrder: [String]? = nil,
-        dashboardHotkey: GlobalHotkey? = nil
+        dashboardHotkey: GlobalHotkey? = nil,
+        keychainAccessConfigured: Bool = false
     ) {
         self.schemaVersion = schemaVersion
         self.selectedModules = selectedModules
@@ -188,6 +191,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         self.glassStyle = glassStyle
         self.subscriptionProviderOrder = subscriptionProviderOrder
         self.dashboardHotkey = dashboardHotkey
+        self.keychainAccessConfigured = keychainAccessConfigured
     }
 
     /// 自定义解码: 旧版本配置缺失的键一律回落缺省, 不因新增字段拒绝加载.
@@ -225,6 +229,10 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         dashboardHotkey = try container.decodeIfPresent(
             GlobalHotkey.self, forKey: .dashboardHotkey
         )
+        // 旧配置缺该键或显式 null 一律按未配置处理.
+        keychainAccessConfigured = try container.decodeIfPresent(
+            Bool.self, forKey: .keychainAccessConfigured
+        ) ?? false
     }
 }
 
@@ -348,8 +356,6 @@ public enum SubscriptionCredentialAccount {
     public static let codexAccounts = "codex:accounts"
     /// Codex 当前账号 id 字符串
     public static let codexActiveAccount = "codex:active-account"
-    /// Antigravity 令牌文件同构 JSON
-    public static let antigravityOAuth = "antigravity:oauth"
     /// Claude 手动导入凭证: claudeAiOauth 同构 JSON (Phase 2)
     public static let claudeOAuth = "claude:oauth"
     /// Grok 手动导入凭证: scope 映射同构 JSON (Phase 2)
@@ -374,6 +380,15 @@ public protocol CredentialStore: Sendable {
     func saveCredential(_ value: String, forAccount account: String) throws
     func loadCredential(forAccount account: String) throws -> String?
     func deleteCredential(forAccount account: String) throws
+    /// 配置该 store 管理的 Keychain 项目访问 ACL, 返回处理的项目数.
+    /// 非 macOS Keychain fake 默认无副作用, 便于纯逻辑测试.
+    func configureKeychainAccess() throws -> Int
+}
+
+public extension CredentialStore {
+    func configureKeychainAccess() throws -> Int {
+        0
+    }
 }
 
 // MARK: - InMemoryCredentialStore
@@ -437,11 +452,9 @@ public final class KeychainCredentialStore: CredentialStore, @unchecked Sendable
             // 不存在才添加; 并发下撞见重复项则回退 update
             var addQuery = baseQuery
             addQuery[kSecValueData as String] = data
-            // 显式宽松 ACL: 空 app 列表 = 任何进程可访问, 不再弹密码框.
-            // 原因: ad-hoc 签名每次重打包身份变化, 默认 ACL 只授权创建进程,
-            // 导致每次启动/刷新都触发 Keychain 授权弹窗.
-            // 凭证为 OAuth 令牌且 ThisDeviceOnly 语义, 风险可控
-            // (与 Antigravity 的 go-keyring 行为一致).
+            // 显式 ACL: 由当前 Bruce App 进程访问, 避免每次启动/刷新重复授权.
+            // 不把凭证开放给任意进程; Collector 只消费 stdin 注入值, 不直接读该 service.
+            // 凭证为 OAuth 令牌且 ThisDeviceOnly 语义, 风险可控.
             if let access = KeychainCredentialStore.openAccessControl() {
                 addQuery[kSecAttrAccess as String] = access
             }
@@ -457,12 +470,66 @@ public final class KeychainCredentialStore: CredentialStore, @unchecked Sendable
         }
     }
 
-    /// 创建"任何进程可读"的 ACL (空 app 列表, 无密码提示).
+    /// 把 Bruce service 下已有 generic password 项目的 ACL 统一切换为当前 Bruce App 可访问.
+    /// 该操作只修改访问控制, 不把密码或凭证写入配置文件.
+    /// 用户可在设置页或首次启动引导中主动触发, 系统若需要会在此时集中请求登录密码.
+    public func configureKeychainAccess() throws -> Int {
+        guard let access = Self.openAccessControl() else {
+            throw KeychainAccessError.accessControlCreationFailed
+        }
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecMatchLimit as String: kSecMatchLimitAll,
+            kSecReturnAttributes as String: true,
+        ]
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecItemNotFound {
+            return 0
+        }
+        guard status == errSecSuccess else {
+            throw KeychainAccessError.listFailed(status)
+        }
+
+        let items: [[String: Any]]
+        if let array = result as? [[String: Any]] {
+            items = array
+        } else if let item = result as? [String: Any] {
+            items = [item]
+        } else {
+            return 0
+        }
+
+        guard !items.isEmpty else {
+            return 0
+        }
+
+        // 以 service 为边界一次更新全部项目, 尽量把系统授权收敛为一次.
+        let updateQuery: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+        ]
+        let updateStatus = SecItemUpdate(
+            updateQuery as CFDictionary,
+            [kSecAttrAccess as String: access] as CFDictionary
+        )
+        if updateStatus == errSecSuccess {
+            return items.count
+        }
+        if updateStatus == errSecItemNotFound {
+            return 0
+        }
+        throw KeychainAccessError.updateFailed(updateStatus)
+    }
+
+    /// 创建当前 Bruce App 可访问的 ACL.
     static func openAccessControl() -> SecAccess? {
         var access: SecAccess?
         let status = SecAccessCreate(
             "Bruce" as CFString,
-            [] as CFArray,
+            nil,
             &access
         )
         return status == errSecSuccess ? access : nil
@@ -512,4 +579,10 @@ public enum KeychainError: Error, Equatable {
     case saveFailed(OSStatus)
     case loadFailed(OSStatus)
     case deleteFailed(OSStatus)
+}
+
+public enum KeychainAccessError: Error, Equatable {
+    case accessControlCreationFailed
+    case listFailed(OSStatus)
+    case updateFailed(OSStatus)
 }
