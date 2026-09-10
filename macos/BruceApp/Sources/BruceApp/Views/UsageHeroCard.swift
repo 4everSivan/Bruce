@@ -14,6 +14,9 @@ struct UsageHeroCard: View {
     /// 面板窗口当前是否可见: orderOut 不销毁视图树, 装饰呼吸动画必须按此
     /// 门控, 否则隐藏期间仍逐帧 layout + CA commit (实测主进程 ~40% CPU).
     var panelVisible: Bool = true
+    /// 卡片收起态 (定稿方案 C 变体 2): 收起时只渲染标题行 + 迷你摘要.
+    var isCollapsed: Bool = false
+    var onToggleCollapse: () -> Void = {}
 
     @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
@@ -28,9 +31,16 @@ struct UsageHeroCard: View {
         case month(String)
     }
 
-    init(viewModel: UsageHeroViewModel, panelVisible: Bool = true) {
+    init(
+        viewModel: UsageHeroViewModel,
+        panelVisible: Bool = true,
+        isCollapsed: Bool = false,
+        onToggleCollapse: @escaping () -> Void = {}
+    ) {
         self.viewModel = viewModel
         self.panelVisible = panelVisible
+        self.isCollapsed = isCollapsed
+        self.onToggleCollapse = onToggleCollapse
     }
 
     private var isNothing: Bool {
@@ -39,7 +49,34 @@ struct UsageHeroCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            titleRow
+            CollapsibleCardHeader(
+                title: "Token 用量",
+                isCollapsed: isCollapsed,
+                onToggle: onToggleCollapse
+            ) {
+                if viewModel.isLive {
+                    LiveIndicator(nothingStyle: isNothing)
+                }
+            } mini: {
+                collapsedMini
+            }
+            if !isCollapsed {
+                expandedContent
+            }
+        }
+        .background {
+            if isNothing {
+                // Nothing: 16pt 点阵网格替代代码流字符背景, 底部渐隐.
+                NothingDotGridBackground(color: Self.nothingSecondary)
+            } else {
+                CodeStreamBackground(tint: Self.tierTint(viewModel.usageTier))
+            }
+        }
+    }
+
+    /// 展开态内容 (不含标题行; 标题行由 CollapsibleCardHeader 承担, 全周期唯一不跳动).
+    private var expandedContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
             heroRow
                 .padding(.top, 8)
             dividerLine
@@ -65,30 +102,56 @@ struct UsageHeroCard: View {
                     .padding(.top, 5)
             }
         }
-        .background {
-            if isNothing {
-                // Nothing: 16pt 点阵网格替代代码流字符背景, 底部渐隐.
-                NothingDotGridBackground(color: Self.nothingSecondary)
-            } else {
-                CodeStreamBackground(tint: Self.tierTint(viewModel.usageTier))
+    }
+
+    // MARK: 收起态迷你摘要
+
+    /// 收起态: 小号总量数字 (沿用 hero 绿阶渐变 / Nothing Doto 点阵纯色)
+    /// + 近 7 天迷你热力图 (绿阶与展开态热力图同源), flex 铺满.
+    private var collapsedMini: some View {
+        HStack(spacing: 15) {
+            Text(viewModel.totalTokensText)
+                .font(isNothing
+                    ? NothingFont.display(17, weight: .bold)
+                    : .system(size: 17, weight: .bold))
+                .tracking(isNothing ? 0 : -0.5)
+                .monospacedDigit()
+                .foregroundStyle(isNothing
+                    ? AnyShapeStyle(Self.nothingHeroAccent)
+                    : AnyShapeStyle(Self.heroGradient(for: viewModel.usageTier)))
+                .fixedSize()
+            HStack(spacing: 3) {
+                ForEach(
+                    Array(viewModel.collapsedWeekLevels.enumerated()),
+                    id: \.offset
+                ) { _, level in
+                    RoundedRectangle(cornerRadius: isNothing ? 0 : 2, style: .continuous)
+                        .fill(miniHeatColor(level))
+                        .frame(height: 10)
+                        .frame(maxWidth: .infinity)
+                }
             }
         }
     }
 
-    // MARK: 标题行
-
-    private var titleRow: some View {
-        HStack {
-            Text("Token 用量")
-                .font(isNothing ? NothingFont.mono(12) : .system(size: 12.5, weight: .semibold))
-                .tracking(isNothing ? 0.9 : 0)
-                .textCase(isNothing ? Text.Case.uppercase : nil)
-                .foregroundStyle(isNothing ? Self.nothingSecondary : Self.ink)
-            Spacer()
-            if viewModel.isLive {
-                LiveIndicator(nothingStyle: isNothing)
-            }
+    /// 迷你热力格配色: 与 HeatmapCellView.baseColor 同一语义
+    /// (level 0 淡槽, 1-5 绿阶; Nothing 为 accent 透明度阶).
+    private func miniHeatColor(_ level: Int) -> Color {
+        if isNothing {
+            guard level > 0 else { return Self.nothingSurfaceRaised }
+            let op = [0.2, 0.4, 0.6, 0.8, 1.0][min(level, 5) - 1]
+            return Self.nothingHeroAccent.opacity(op)
         }
+        guard level > 0 else { return Color.primary.opacity(0.07) }
+        let tier: UsageTier
+        switch level {
+        case 1: tier = .sage
+        case 2: tier = .moss
+        case 3: tier = .fern
+        case 4: tier = .pine
+        default: tier = .forest
+        }
+        return Self.tierColors(for: tier).0
     }
 
     // MARK: Hero 行

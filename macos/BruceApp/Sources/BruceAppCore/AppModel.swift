@@ -205,10 +205,23 @@ package final class AppModel: ObservableObject {
     private var lastPanelCacheVersion = -1
     private var lastMenuBarSummaryVersion = -1
 
+    /// 仪表盘三张卡各自的收起状态 (持久化到 UserDefaults, 重启恢复).
+    /// 纯 UI 状态, 不影响面板映射, 因此变更时不失效 panel 缓存.
+    @Published package private(set) var collapsedCards: Set<DashboardCardID>
+    /// 收起状态持久化存储 (测试注入隔离 suite).
+    private let collapsedDefaults: UserDefaults
+    private static let collapsedCardsDefaultsKey = "dashboard.collapsedCards"
+
     package init(
         menuBarMetricRawValues: [String]? = nil,
-        deepSeekLedger: DeepSeekUsageLedger? = nil
+        deepSeekLedger: DeepSeekUsageLedger? = nil,
+        collapsedDefaults: UserDefaults = .standard
     ) {
+        self.collapsedDefaults = collapsedDefaults
+        let stored = collapsedDefaults.stringArray(
+            forKey: Self.collapsedCardsDefaultsKey
+        ) ?? []
+        collapsedCards = Set(stored.compactMap(DashboardCardID.init(rawValue:)))
         self.deepSeekLedger = deepSeekLedger
         menuBarMetrics = MenuBarMetricConfiguration(
             rawValues: menuBarMetricRawValues
@@ -434,6 +447,25 @@ package final class AppModel: ObservableObject {
     package func setDashboardPanelVisible(_ visible: Bool) {
         guard dashboardPanelVisible != visible else { return }
         dashboardPanelVisible = visible
+    }
+
+    // MARK: - 卡片收起状态
+
+    package func isCardCollapsed(_ card: DashboardCardID) -> Bool {
+        collapsedCards.contains(card)
+    }
+
+    /// 切换卡片收起态并立即写回 UserDefaults; 未知 rawValue 在读取时已丢弃.
+    package func toggleCardCollapsed(_ card: DashboardCardID) {
+        if collapsedCards.contains(card) {
+            collapsedCards.remove(card)
+        } else {
+            collapsedCards.insert(card)
+        }
+        collapsedDefaults.set(
+            collapsedCards.map(\.rawValue).sorted(),
+            forKey: Self.collapsedCardsDefaultsKey
+        )
     }
 
     package func setSubscriptionProviders(

@@ -72,6 +72,9 @@ private func nothingThresholdColor(for level: MeterLevel) -> Color {
 /// 全部经参数注入; 组件不读取凭证, artifact 或 AppModel.
 struct SubscriptionCard: View {
     let viewModel: SubscriptionViewModel
+    /// 卡片收起态 (定稿方案 C 变体 2): 收起时只渲染标题行 + 迷你摘要.
+    var isCollapsed: Bool = false
+    var onToggleCollapse: () -> Void = {}
     /// 各 Provider 刷新按钮呈现状态, key 为 SubscriptionProviderID rawValue;
     /// section 无法归一为已知 Provider 或缺键时不渲染按钮 (fail-closed).
     var refreshControls: [String: SubscriptionRefreshControlPresentation] = [:]
@@ -84,20 +87,11 @@ struct SubscriptionCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                // Nothing 标题与 Token 用量卡 / Agent 用量卡同款:
-                // Space Mono 10 + 字距 + 大写 + secondary; 其余主题保持原样.
-                if theme.interfaceStyle == .nothing {
-                    Text("订阅用量")
-                        .font(NothingFont.mono(12))
-                        .tracking(0.9)
-                        .textCase(.uppercase)
-                        .foregroundStyle(NothingTokens.secondary(colorScheme))
-                } else {
-                    Text("订阅用量")
-                        .font(.system(size: 12.5, weight: .semibold))
-                }
-                Spacer()
+            CollapsibleCardHeader(
+                title: "订阅用量",
+                isCollapsed: isCollapsed,
+                onToggle: onToggleCollapse
+            ) {
                 if let updatedText = viewModel.updatedText {
                     // Nothing 下与卡片其余 mono 标注一致: mono 9 + disabled.
                     if theme.interfaceStyle == .nothing {
@@ -110,8 +104,19 @@ struct SubscriptionCard: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+            } mini: {
+                collapsedMini
             }
 
+            if !isCollapsed {
+                expandedContent
+            }
+        }
+    }
+
+    /// 展开态内容 (不含标题行; 标题行由 CollapsibleCardHeader 承担).
+    private var expandedContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(viewModel.sections.enumerated()), id: \.element.id) { index, section in
                 if index > 0 {
                     Rectangle()
@@ -136,6 +141,29 @@ struct SubscriptionCard: View {
             // 其余主题不渲染, 不影响 classic / liquidGlass.
             if theme.interfaceStyle == .nothing {
                 NothingThresholdLegend(colorScheme: colorScheme)
+            }
+        }
+    }
+
+    // MARK: 收起态迷你摘要
+
+    /// 收起态: 各 provider 一组「品牌字母徽章 + 迷你量条」,
+    /// 量条取该 provider 最紧张窗口 (collapsedPeakWindow), 三档告警配色;
+    /// 无窗口的 provider (纯余额型) 不出迷你量条.
+    private var collapsedMini: some View {
+        let sections = viewModel.sections.filter { $0.collapsedPeakWindow != nil }
+        return HStack(spacing: 10) {
+            ForEach(sections, id: \.id) { section in
+                if let peak = section.collapsedPeakWindow {
+                    HStack(spacing: 5) {
+                        ProviderLogoBadge(
+                            providerID: section.badgeProviderID,
+                            name: section.name
+                        )
+                        MiniMeterBar(usedFraction: peak.usedPercent / 100)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
             }
         }
     }
@@ -464,6 +492,54 @@ private struct WindowRowView: View {
         isNothing
             ? AnyShapeStyle(NothingTokens.disabled(colorScheme))
             : AnyShapeStyle(.secondary)
+    }
+}
+
+/// 收起态迷你量条: 5pt 高, 填充取该 provider 最紧张窗口的已用比例.
+/// classic / liquidGlass: 与 MeterBar 同款三档渐变; Nothing: 直角 + 阈值纯色.
+private struct MiniMeterBar: View {
+    let usedFraction: Double
+
+    @Environment(\.BruceResolvedTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var isNothing: Bool { theme.interfaceStyle == .nothing }
+    private var level: MeterLevel { MeterLevel(usedPercent: usedFraction * 100) }
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: isNothing ? 0 : 3, style: .continuous)
+                    .fill(isNothing
+                        ? NothingTokens.emptySegment(colorScheme)
+                        : Color.adaptive(
+                            light: Color.black.opacity(0.07),
+                            dark: Color.white.opacity(0.12)
+                        ))
+                RoundedRectangle(cornerRadius: isNothing ? 0 : 3, style: .continuous)
+                    .fill(fillStyle)
+                    .frame(width: proxy.size.width * min(max(usedFraction, 0), 1))
+            }
+        }
+        .frame(height: 5)
+    }
+
+    private var fillStyle: AnyShapeStyle {
+        if isNothing {
+            return AnyShapeStyle(nothingThresholdColor(for: level))
+        }
+        let colors: [Color]
+        switch level {
+        case .normal:
+            colors = [Color(hex: "#30d158"), Color(hex: "#66d4a3")]
+        case .warning:
+            colors = [Color(hex: "#ff9f0a"), Color(hex: "#ffd60a")]
+        case .critical:
+            colors = [Color(hex: "#ff453a"), Color(hex: "#ff6961")]
+        }
+        return AnyShapeStyle(LinearGradient(
+            colors: colors, startPoint: .leading, endPoint: .trailing
+        ))
     }
 }
 

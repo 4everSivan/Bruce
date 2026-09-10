@@ -174,3 +174,70 @@ private struct DashboardPanelGlassButtonStyle: ButtonStyle {
             .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
+
+// MARK: - 可收起卡片标题行
+
+/// 卡片可收起标题行 (定稿: card-collapse-demo.html 方案 C 变体 2).
+/// 版式: 左标题 (定宽 92, 三卡图形区左缘齐平) + 中间内容区 + 右 chevron;
+/// 收起态内容区渲染迷你可视化 (mini), 展开态渲染卡片状态件 (status, 如 LIVE/更新时间).
+/// chevron 常态隐藏, 悬停标题行淡入 (0.15s), 展开时旋转 90°;
+/// 整行点击切换, 高度过渡 0.25s. 标题全周期唯一, 收起/展开不跳动.
+struct CollapsibleCardHeader<Status: View, Mini: View>: View {
+    let title: String
+    let isCollapsed: Bool
+    let onToggle: () -> Void
+    @ViewBuilder let status: Status
+    @ViewBuilder let mini: Mini
+
+    @Environment(\.BruceResolvedTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var hovering = false
+
+    private var isNothing: Bool {
+        theme.interfaceStyle == .nothing
+    }
+
+    /// 标题定宽: 按最长标题「订阅用量」4 字 + 余量, 保证三卡图形区左缘齐平.
+    private let titleWidth: CGFloat = 92
+
+    var body: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.25)) {
+                onToggle()
+            }
+        } label: {
+            HStack(spacing: 15) {
+                Text(title)
+                    .font(isNothing
+                        ? NothingFont.ui(11.5, weight: .semibold)
+                        : .system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(isNothing ? nothingTitleColor : Color.primary)
+                    .frame(width: titleWidth, alignment: .leading)
+                if isCollapsed {
+                    mini
+                        .frame(maxWidth: .infinity)
+                } else {
+                    Spacer(minLength: 0)
+                    status
+                }
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+                    .opacity(hovering ? 1 : 0)
+                    .animation(.easeInOut(duration: 0.15), value: hovering)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .accessibilityLabel(title)
+        .accessibilityHint(isCollapsed ? "展开卡片" : "收起卡片")
+        .accessibilityValue(isCollapsed ? "已收起" : "已展开")
+    }
+
+    /// Nothing 标题色: secondary (dark #999999 / light #666666), 与定稿 token 一致.
+    private var nothingTitleColor: Color {
+        Color.adaptive(light: Color(hex: "#666666"), dark: Color(hex: "#999999"))
+    }
+}

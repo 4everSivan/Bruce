@@ -224,7 +224,9 @@ struct MenuBarDashboardView: View {
                 PanelCardContainer {
                     UsageHeroCard(
                         viewModel: usage,
-                        panelVisible: model.dashboardPanelVisible
+                        panelVisible: model.dashboardPanelVisible,
+                        isCollapsed: model.isCardCollapsed(.usage),
+                        onToggleCollapse: { model.toggleCardCollapsed(.usage) }
                     )
                 }
             }
@@ -232,6 +234,8 @@ struct MenuBarDashboardView: View {
                 PanelCardContainer {
                     SubscriptionCard(
                         viewModel: subscription,
+                        isCollapsed: model.isCardCollapsed(.subscription),
+                        onToggleCollapse: { model.toggleCardCollapsed(.subscription) },
                         refreshControls: subscriptionRefreshControls(for: subscription),
                         onRefreshProvider: { provider in
                             coordinator.refreshSubscription(provider)
@@ -244,7 +248,9 @@ struct MenuBarDashboardView: View {
                     HourlyLineCard(
                         viewModel: hourly,
                         dailyDays: panel.usage?.days ?? [],
-                        dailyLegend: panel.usage?.legend ?? []
+                        dailyLegend: panel.usage?.legend ?? [],
+                        isCollapsed: model.isCardCollapsed(.hourly),
+                        onToggleCollapse: { model.toggleCardCollapsed(.hourly) }
                     )
                 }
             }

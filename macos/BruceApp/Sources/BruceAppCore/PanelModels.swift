@@ -365,6 +365,18 @@ package enum UsageTier: String, Equatable, Sendable {
             return .forest
         }
     }
+
+    /// 热力图档位 (1-5), 与 UsageHeatmapCell.level 分档阈值一致;
+    /// 收起态近 7 天迷你热力图复用同一档位语义.
+    package var heatmapLevel: Int {
+        switch self {
+        case .sage: 1
+        case .moss: 2
+        case .fern: 3
+        case .pine: 4
+        case .forest: 5
+        }
+    }
 }
 
 // MARK: - 用量热力图
@@ -496,6 +508,15 @@ package struct UsageHeroViewModel: Equatable, Sendable {
     /// 总量档位 (由 totalTokens 推导), 驱动 hero 渐变与背景 tint.
     package var usageTier: UsageTier {
         UsageTier.forTotal(totalTokens)
+    }
+
+    /// 收起态近 7 天迷你热力图档位: 取 14 日柱状图数据末 7 天,
+    /// 逐日按热力图同一绝对阈值分档 (0 无量, 1-5 sage..forest);
+    /// 数据不足 7 天时只返回实际天数 (UI 格子数跟随).
+    package var collapsedWeekLevels: [Int] {
+        days.suffix(7).map { day in
+            day.total < 1 ? 0 : UsageTier.forTotal(day.total).heatmapLevel
+        }
     }
 
     package init(
@@ -696,6 +717,13 @@ package struct SubscriptionProviderSection: Equatable, Sendable {
         accounts.count >= 2
     }
 
+    /// 收起态迷你量条取数: 该 provider 最紧张的窗口
+    /// (单账号取 windows, 多账号跨账号取 max usedPercent);
+    /// 纯余额型 (无窗口) 为 nil, UI 不出该 provider 的迷你量条.
+    package var collapsedPeakWindow: SubscriptionWindowRow? {
+        (windows + accounts.flatMap(\.windows)).max(by: { $0.usedPercent < $1.usedPercent })
+    }
+
     /// 徽章取色键: 单账号 section 的 id 可能是带账号后缀的 serviceID
     /// (如 "codex_<hash16>" / "deepseek_<accID>"), 必须归一化为 provider rawValue
     /// 再查品牌色, 否则全部落空为默认灰.
@@ -797,6 +825,31 @@ package struct HourlyLineViewModel: Equatable, Sendable {
     package init(rows: [HourlyAgentRow]) {
         self.rows = rows
     }
+
+    /// 收起态迷你折线: 全 agent 逐小时合计, 固定 24 点 (0-23 时);
+    /// 行数据不足 24 点的缺口按 0 计.
+    package var collapsedPoints: [Int] {
+        (0..<24).map { hour in
+            rows.reduce(0) { $0 + ($1.points.indices.contains(hour) ? $1.points[hour] : 0) }
+        }
+    }
+
+    /// 收起态峰值文案 (如 "峰值 15.6K"); 无数据峰值为 0.
+    package var collapsedPeakText: String {
+        "峰值 \(PanelFormat.tokenCount(collapsedPoints.max() ?? 0))"
+    }
+}
+
+// MARK: - 卡片收起状态
+
+/// 仪表盘可收起卡片标识; rawValue 作为 UserDefaults 持久化键值.
+package enum DashboardCardID: String, CaseIterable, Equatable, Sendable {
+    /// Token 用量卡.
+    case usage
+    /// 订阅用量卡.
+    case subscription
+    /// Agent 用量 (逐小时) 卡.
+    case hourly
 }
 
 // MARK: - 面板容器

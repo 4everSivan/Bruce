@@ -16,6 +16,9 @@ struct HourlyLineCard: View {
 
     /// 已展开明细的 agent id 集合.
     @State private var expandedAgentIDs: Set<String>
+    /// 卡片收起态 (定稿方案 C 变体 2): 收起时只渲染标题行 + 迷你折线.
+    var isCollapsed: Bool = false
+    var onToggleCollapse: () -> Void = {}
     /// Nothing 点阵柱状图当前悬停的日期列 (触碰列顶才显示当日总量).
     @State private var hoveredDayDate: String?
     /// 已完成生长的列 (按日期); 逐列延迟插入驱动柱状图自下而上生长.
@@ -33,15 +36,37 @@ struct HourlyLineCard: View {
         viewModel: HourlyLineViewModel,
         dailyDays: [UsageChartDay] = [],
         dailyLegend: [UsageLegendItem] = [],
-        initiallyExpandedAgentIDs: Set<String> = []
+        initiallyExpandedAgentIDs: Set<String> = [],
+        isCollapsed: Bool = false,
+        onToggleCollapse: @escaping () -> Void = {}
     ) {
         self.viewModel = viewModel
         self.dailyDays = dailyDays
         self.dailyLegend = dailyLegend
+        self.isCollapsed = isCollapsed
+        self.onToggleCollapse = onToggleCollapse
         _expandedAgentIDs = State(initialValue: initiallyExpandedAgentIDs)
     }
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            CollapsibleCardHeader(
+                title: "Agent 用量",
+                isCollapsed: isCollapsed,
+                onToggle: onToggleCollapse
+            ) {
+                EmptyView()
+            } mini: {
+                collapsedMini
+            }
+            if !isCollapsed {
+                expandedContent
+            }
+        }
+    }
+
+    /// 展开态内容 (标题行由 CollapsibleCardHeader 承担, 全周期唯一不跳动).
+    private var expandedContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             if !dailyDays.isEmpty {
                 dailySection
@@ -62,6 +87,53 @@ struct HourlyLineCard: View {
         }
     }
 
+    // MARK: - 收起态迷你折线
+
+    /// 收起态: 24 点全 agent 合计迷你折线 (1.5pt 描线 + 淡面积, subdued 色)
+    /// + 右侧峰值文案; Nothing 下无面积渐变, 峰值用 Space Mono.
+    private var collapsedMini: some View {
+        let points = viewModel.collapsedPoints
+        let maxPoint = max(points.max() ?? 0, 1)
+        let lineColor = isNothing
+            ? nothingTokens.secondary
+            : Color.primary.opacity(0.5)
+        return HStack(spacing: 15) {
+            Chart(Array(points.enumerated()), id: \.offset) { point in
+                LineMark(
+                    x: .value("时", point.offset),
+                    y: .value("量", point.element)
+                )
+                .foregroundStyle(lineColor)
+                .lineStyle(StrokeStyle(lineWidth: 1.5))
+                if !isNothing {
+                    AreaMark(
+                        x: .value("时", point.offset),
+                        y: .value("量", point.element)
+                    )
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [lineColor.opacity(0.18), lineColor.opacity(0.02)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                }
+            }
+            .chartYScale(domain: 0...(Double(maxPoint) * 1.1))
+            .chartXAxis(.hidden)
+            .chartYAxis(.hidden)
+            .frame(height: 12)
+            .frame(maxWidth: .infinity)
+            Text(viewModel.collapsedPeakText)
+                .font(isNothing ? NothingFont.mono(9) : .system(size: 9))
+                .monospacedDigit()
+                .foregroundStyle(isNothing
+                    ? nothingTokens.disabled
+                    : Color.primary.opacity(0.5))
+                .fixedSize()
+        }
+    }
+
     // MARK: - Nothing 主题判定
 
     /// Nothing 主题判定: 所有视觉差异必须收拢在该条件内,
@@ -77,10 +149,9 @@ struct HourlyLineCard: View {
 
     // MARK: - 14 日堆叠柱状图 (自用量卡迁入)
 
-    /// 卡片标题 + 柱状图 + 日期轴 + agent 图例.
+    /// 柱状图 + 日期轴 + agent 图例; 卡片标题已迁入 CollapsibleCardHeader.
     private var dailySection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            cardTitle
             dailyChart
                 // 与标题和高柱标注之间留足间距, 避免遮挡;
                 // Nothing 列顶悬停标注向上 overlay 11pt, 需要更大上方留白.
@@ -91,21 +162,6 @@ struct HourlyLineCard: View {
                 dailyLegendRow
                     .padding(.top, 4)
             }
-        }
-    }
-
-    /// 卡片标题: Nothing 用 .label 样式 (mono 10 + 字距 + secondary),
-    /// 其余主题保持原样.
-    @ViewBuilder
-    private var cardTitle: some View {
-        if isNothing {
-            Text("Agent 用量")
-                .font(NothingFont.mono(12))
-                .tracking(0.9)
-                .foregroundStyle(nothingTokens.secondary)
-        } else {
-            Text("Agent 用量")
-                .font(.system(size: 12.5, weight: .semibold))
         }
     }
 

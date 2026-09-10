@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Doto:ROND,wght@100,700&family=Space+Grotesk:wght@500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<title>Bruce 仪表盘 · 卡片收起样式候选</title>
+<style>
+  /* ============ 主题 token (对齐 GlassTheme / PanelCardContainer / 各卡片 Swift 源码) ============ */
+  :root {
+    --panel-width: 440px;
+    --card-radius: 16px;
+    --stack-gap: 10px;
+    --pad-x: 15px;
+    --pad-y: 13px;
+
+    --ink: rgba(255,255,255,.92);
+    --subdued: rgba(255,255,255,.50);
+    --faint: rgba(255,255,255,.55);
+    --hairline: rgba(255,255,255,.12);
+    --rowline: rgba(255,255,255,.10);
+    --accent: #0a84ff;
+
+    --panel-bg: rgba(44,44,48,.62);
+    --card-bg: rgba(255,255,255,.085);
+    --card-border: rgba(255,255,255,.16);
+    --card-highlight: rgba(255,255,255,.28);
+    --card-shadow: rgba(0,0,0,.18);
+
+    --chip-bg: rgba(255,255,255,.08);
+    --chip-bg-current: rgba(255,255,255,.14);
+    --chip-border: rgba(255,255,255,.10);
+    --chip-border-current: rgba(255,255,255,.10);
+
+    --track: rgba(255,255,255,.12);
+    --heat-empty: rgba(255,255,255,.07);
+
+    --seg-bg: rgba(255,255,255,.06);
+    --seg-active: rgba(255,255,255,.12);
+
+    --green: #30d158;
+    --page-bg: #17181c;
+    --label: rgba(255,255,255,.55);
+    --footer-line: rgba(255,255,255,.15);
+    --ctrl-bg: rgba(255,255,255,.10);
+    --ctrl-border: rgba(255,255,255,.20);
+  }
+  body.light {
+    --ink: rgba(0,0,0,.88);
+    --subdued: rgba(0,0,0,.50);
+    --faint: rgba(0,0,0,.55);
+    --hairline: rgba(0,0,0,.07);
+    --rowline: rgba(0,0,0,.05);
+    --panel-bg: rgba(238,236,242,.72);
+    --card-bg: rgba(255,255,255,.45);
+    --card-border: rgba(255,255,255,.55);
+    --card-highlight: rgba(255,255,255,.7);
+    --card-shadow: rgba(0,0,0,.06);
+    --chip-bg: rgba(255,255,255,.40);
+    --chip-bg-current: rgba(255,255,255,.60);
+    --chip-border: rgba(255,255,255,.55);
+    --chip-border-current: rgba(255,255,255,.55);
+    --track: rgba(0,0,0,.07);
+    --heat-empty: rgba(0,0,0,.07);
+    --seg-bg: rgba(0,0,0,.06);
+    --seg-active: rgba(0,0,0,.12);
+    --page-bg: #d9dce3;
+    --label: rgba(0,0,0,.5);
+    --footer-line: rgba(255,255,255,.5);
+    --ctrl-bg: rgba(255,255,255,.5);
+    --ctrl-border: rgba(255,255,255,.6);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", sans-serif;
+    background: var(--page-bg);
+    background-image:
+      radial-gradient(1200px 700px at 20% 0%, rgba(84,110,160,.28), transparent 60%),
+      radial-gradient(900px 600px at 85% 90%, rgba(120,90,160,.22), transparent 60%);
+    min-height: 100vh;
+    padding: 36px 24px 64px;
+    display: flex; flex-direction: column; align-items: center; gap: 44px;
+  }
+  body.light {
+    background-image:
+      radial-gradient(1200px 700px at 20% 0%, rgba(140,170,220,.5), transparent 60%),
+      radial-gradient(900px 600px at 85% 90%, rgba(190,160,210,.45), transparent 60%);
+  }
+  h1 { color: var(--ink); font-size: 17px; font-weight: 600; }
+  .topbar { display: flex; align-items: center; gap: 16px; }
+  .theme-toggle {
+    all: unset; cursor: pointer; font-size: 11px; color: var(--label);
+    padding: 4px 10px; border-radius: 8px; border: 1px solid var(--ctrl-border);
+    background: var(--ctrl-bg); backdrop-filter: blur(10px);
+  }
+  section { width: 100%; display: flex; flex-direction: column; align-items: center; }
+  .sec-note { max-width: 520px; margin-bottom: 14px; }
+  .sec-note h2 { color: var(--ink); font-size: 13.5px; font-weight: 600; margin-bottom: 3px; }
+  .sec-note p { color: var(--label); font-size: 11.5px; line-height: 1.6; }
+  /* 未采用方案: 弱化展示 */
+  .deprecated .panel { opacity: .38; filter: saturate(.4); pointer-events: none; }
+  .deprecated .sec-note { opacity: .6; }
+  .dep-tag {
+    font-size: 9px; font-weight: 600; color: var(--subdued);
+    border: 1px solid var(--ctrl-border); border-radius: 6px; padding: 1px 6px;
+    vertical-align: 2px; margin-left: 4px;
+  }
+
+  /* ============ 面板与卡片容器 ============ */
+  .panel {
+    width: var(--panel-width);
+    border-radius: 20px;
+    background: var(--panel-bg);
+    backdrop-filter: blur(34px) saturate(1.4);
+    -webkit-backdrop-filter: blur(34px) saturate(1.4);
+    box-shadow: 0 22px 60px rgba(0,0,0,.45);
+    overflow: hidden;
+  }
+  body.light .panel { box-shadow: 0 22px 60px rgba(60,70,100,.25); }
+  .cards { padding: 12px; display: flex; flex-direction: column; gap: var(--stack-gap); }
+  .card {
+    position: relative;
+    border-radius: var(--card-radius);
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    box-shadow: 0 1px 5px var(--card-shadow);
+    color: var(--ink);
+    overflow: hidden;
+  }
+  /* 顶部材质高光 (PanelCardContainer.highlightColor) */
+  .card::before {
+    content: ""; position: absolute; top: 1px; left: 10px; right: 10px; height: 1px;
+    background: var(--card-highlight); pointer-events: none;
+  }
+  .card-inner { padding: var(--pad-y) var(--pad-x); }
+
+  /* ============ 收起头 (三方案共用骨架) ============ */
+  .card-head {
+    all: unset; cursor: pointer; display: flex; align-items: center; gap: 7px;
+    width: 100%; box-sizing: border-box;
+    padding: var(--pad-y) var(--pad-x);
+  }
+  .card-head:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; border-radius: var(--card-radius); }
+  .head-title { font-size: 12.5px; font-weight: 600; color: var(--ink); }
+  .head-spacer { flex: 1; }
+  .chev {
+    width: 10px; height: 10px; flex: none;
+    opacity: 0;
+    transition: opacity .15s ease, transform .25s ease;
+    color: var(--subdued);
+  }
+  .card-head:hover .chev, .card-head:focus-visible .chev { opacity: 1; }
+  .card.open .chev { transform: rotate(90deg); }
+  /* 收起态显示摘要, 展开态显示状态件 (LIVE / 更新时间), 标题始终唯一 */
+  .head-status { display: none; align-items: center; }
+  .card.open .head-status { display: flex; }
+  .card.open .head-summary { display: none; }
+  .card-body {
+    overflow: hidden; height: 0;
+    transition: height .25s ease;
+  }
+  .card-body-pad { padding: 0 var(--pad-x) var(--pad-y); }
+  /* 展开态标题行内嵌于 body, 头部收起时只显示摘要 */
+
+  /* 方案 B 细条: 约 30pt */
+  .scheme-b .card-head { padding-top: 8px; padding-bottom: 8px; }
+
+  .mono { font-variant-numeric: tabular-nums; }
+
+  /* ============ 展开态: Token 用量卡 ============ */
+  .title-row { display: flex; align-items: center; }
+  .live { display: flex; align-items: center; gap: 5px; }
+  .live .dotwrap { position: relative; width: 12px; height: 12px; }
+  .live .halo { position: absolute; inset: 0; border-radius: 50%; background: rgba(48,209,88,.18); }
+  .live .dot { position: absolute; left: 3px; top: 3px; width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+  .live .txt { font-size: 9.5px; font-weight: 600; color: var(--green); }
+  body.light .live .txt { color: #0a7d3b; }
+
+  .hero-row { display: flex; align-items: baseline; gap: 8px; margin-top: 8px; }
+  .hero-num {
+    font-size: 40px; font-weight: 700; letter-spacing: -1.2px;
+    font-variant-numeric: tabular-nums;
+    background: linear-gradient(135deg, #82A57C 30%, #63885E 100%);
+    background: linear-gradient(to bottom right, #82A57C 30%, #63885E 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero-unit { font-size: 13px; font-weight: 500; color: var(--subdued); }
+  .hero-cost { margin-left: auto; font-size: 15px; font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; }
+
+  .divider { height: 1px; background: var(--hairline); margin-top: 12px; }
+
+  .breakdown { display: flex; margin-top: 10px; }
+  .bd-cell { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+  .bd-cell + .bd-cell { border-left: 1px solid var(--hairline); padding-left: 13px; }
+  .bd-cell:not(:last-child) { padding-right: 13px; }
+  .bd-label { font-size: 8.5px; letter-spacing: .85px; color: var(--faint); }
+  .bd-value { font-size: 13.5px; font-weight: 600; color: var(--ink); opacity: .85; font-variant-numeric: tabular-nums; }
+
+  .sec-title { font-size: 10px; font-weight: 600; letter-spacing: .4px; color: var(--faint); }
+  .monthly-head { display: flex; align-items: baseline; margin-top: 12px; }
+  .halfyear { margin-left: auto; font-size: 10px; color: var(--subdued); font-variant-numeric: tabular-nums; }
+  .halfyear b { font-weight: 700; color: var(--ink); opacity: .85; }
+  .chip-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 6px; }
+  .chip {
+    border-radius: 10px; padding: 6px 9px;
+    background: var(--chip-bg);
+    border: 1px solid var(--chip-border);
+    display: flex; flex-direction: column; gap: 1px; align-items: flex-start;
+  }
+  .chip .m-label { font-size: 8.5px; letter-spacing: .5px; color: var(--faint); }
+  .chip .m-value { font-size: 13px; font-weight: 600; color: var(--ink); opacity: .85; font-variant-numeric: tabular-nums; }
+  .chip.current { background: var(--chip-bg-current); border-color: var(--chip-border-current); }
+  .chip.current .m-label { color: var(--accent); font-weight: 600; }
+
+  .model-head { display: flex; align-items: center; margin-top: 12px; padding-bottom: 2px; }
+  .seg { display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--seg-bg); margin-left: auto; }
+  .seg span { font-size: 9px; font-weight: 600; padding: 2px 8px; border-radius: 6px; color: var(--subdued); }
+  .seg span.on { background: var(--seg-active); color: var(--ink); }
+  .model-row { display: flex; align-items: center; gap: 7px; padding: 5px 0; }
+  .model-dot { width: 7px; height: 7px; border-radius: 2px; flex: none; }
+  .model-name { font-size: 10.5px; font-weight: 500; color: var(--ink); opacity: .9; white-space: nowrap; }
+  .model-bar { flex: 1; height: 4px; border-radius: 2px; background: var(--hairline); overflow: hidden; }
+  .model-bar i { display: block; height: 100%; border-radius: 2px; }
+  .model-pct { width: 30px; text-align: right; font-size: 8.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .model-total { width: 62px; text-align: right; font-size: 11px; font-weight: 600; color: var(--ink); opacity: .9; font-variant-numeric: tabular-nums; }
+
+  .heatmap-title { margin-top: 12px; }
+  .heatmap { display: flex; gap: 3px; margin-top: 4px; }
+  .hm-week { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+  .hm-cell { width: 100%; aspect-ratio: 1; border-radius: 2px; background: var(--heat-empty); }
+  .hm-cell.l1 { background: #7D9B76; } .hm-cell.l2 { background: #63885E; }
+  .hm-cell.l3 { background: #4C7249; } .hm-cell.l4 { background: #385B38; }
+  .hm-cell.l5 { background: #26452A; }
+  .hm-axis { display: flex; justify-content: space-between; margin-top: 5px; font-size: 9px; color: var(--faint); }
+  .hm-legend { display: flex; align-items: center; justify-content: flex-end; gap: 3px; margin-top: 5px; font-size: 9px; color: var(--faint); }
+  .hm-legend i { width: 9px; height: 9px; border-radius: 2px; display: block; }
+
+  /* ============ 展开态: 订阅用量卡 ============ */
+  .updated { margin-left: auto; font-size: 10.5px; color: var(--subdued); }
+  .prov { padding: 8px 0; }
+  .prov:first-of-type { padding-top: 10px; }
+  .prov + .prov { border-top: 1px solid var(--rowline); }
+  .prov-head { display: flex; align-items: center; gap: 6px; padding-bottom: 3px; }
+  .badge {
+    width: 15px; height: 15px; border-radius: 4.5px; flex: none;
+    color: #fff; font-size: 9px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .prov-name { font-size: 11px; font-weight: 600; color: var(--ink); }
+  .plan {
+    font-size: 9px; color: var(--ink); opacity: .7;
+    padding: 1px 6px; border-radius: 999px;
+    background: var(--chip-bg-current); border: 1px solid var(--ctrl-border);
+  }
+  .prov-extra { font-size: 9px; color: var(--subdued); }
+  .refresh-btn { margin-left: auto; color: var(--subdued); display: flex; }
+  .refresh-btn svg { width: 10px; height: 10px; }
+
+  .win-row { display: flex; align-items: center; gap: 8px; padding: 2.5px 0; }
+  .win-label { width: 62px; font-size: 10px; color: var(--subdued); flex: none; }
+  .meter { flex: 1; height: 5px; border-radius: 3px; background: var(--track); overflow: hidden; }
+  .meter i { display: block; height: 100%; border-radius: 3px; }
+  .meter.normal i { background: linear-gradient(90deg, #30d158, #66d4a3); }
+  .meter.warning i { background: linear-gradient(90deg, #ff9f0a, #ffd60a); }
+  .meter.critical i { background: linear-gradient(90deg, #ff453a, #ff6961); }
+  .win-pct { width: 46px; text-align: right; font-size: 10px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; flex: none; }
+  .win-reset { width: 48px; text-align: right; font-size: 9px; color: var(--subdued); flex: none; }
+  .balance-row { display: flex; align-items: baseline; padding: 2px 0; }
+  .balance-label { font-size: 11px; color: var(--subdued); }
+  .balance-value { margin-left: auto; font-size: 14px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+  /* ============ 展开态: Agent 用量卡 (14 日柱状 + 逐小时折线) ============ */
+  .daily-chart { display: flex; align-items: flex-end; gap: 3px; height: 68px; margin-top: 8px; }
+  .day-col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; gap: 0; position: relative; }
+  .day-total {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    font-size: 7.5px; color: var(--subdued); font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .seg-block { width: 100%; }
+  .seg-block:first-child { border-radius: 1.5px 1.5px 0 0; }
+  .daily-axis { display: flex; justify-content: space-between; margin-top: 3px; font-size: 9px; color: var(--faint); }
+  .daily-legend { display: flex; gap: 10px; margin-top: 4px; font-size: 9.5px; color: var(--ink); opacity: .75; }
+  .daily-legend .li { display: flex; align-items: center; gap: 4px; }
+  .daily-legend i { width: 7px; height: 7px; border-radius: 2px; display: block; }
+
+  .hourly-title { display: flex; align-items: baseline; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--rowline); padding-bottom: 2px; }
+  .hourly-range { margin-left: auto; font-size: 10px; color: var(--subdued); }
+  .agent-row { padding: 7px 0; }
+  .agent-row + .agent-row { border-top: 1px solid var(--rowline); }
+  .agent-head { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; }
+  .agent-swatch { width: 7px; height: 7px; border-radius: 2px; flex: none; }
+  .agent-name { font-size: 11px; font-weight: 600; color: var(--ink); }
+  .agent-total { margin-left: auto; font-size: 11px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .spark { display: block; width: 100%; height: 26px; }
+
+  /* ============ 底栏 ============ */
+  .footer-hairline { height: 1px; background: var(--footer-line); }
+  .action-footer { display: flex; align-items: center; gap: 8px; padding: 9px 12px; }
+  .fbtn {
+    all: unset; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    padding: 6px 9px; border-radius: 10px;
+    background: var(--ctrl-bg); border: 1px solid var(--ctrl-border);
+    color: var(--ink); box-shadow: 0 1px 3px var(--card-shadow);
+  }
+  .fbtn svg { width: 12px; height: 12px; display: block; }
+
+  /* ============ 收起态方案细节 ============ */
+  /* A: 关键指标摘要 */
+  .head-metric { font-size: 11px; font-weight: 600; color: var(--ink); opacity: .9; font-variant-numeric: tabular-nums; }
+  .head-metric-sub { font-size: 9.5px; color: var(--subdued); font-variant-numeric: tabular-nums; }
+  /* C: 迷你可视化 */
+  .mini-wrap { display: flex; align-items: center; gap: 7px; padding: 0 var(--pad-x) 10px; }
+  .mini-label { font-size: 8.5px; letter-spacing: .5px; color: var(--faint); flex: none; }
+  .mini-val { font-size: 9px; color: var(--subdued); font-variant-numeric: tabular-nums; flex: none; }
+  /* 用量卡: 缩小版 hero 大数字 + 7 天迷你热力图同行 */
+  .mini-heat14 { flex: 1; display: flex; gap: 3px; }
+  .mini-heat14 i { flex: 1; height: 10px; border-radius: 2px; background: var(--heat-empty); }
+  .mini-hero-num {
+    font-size: 26px; font-weight: 700; letter-spacing: -0.8px;
+    font-variant-numeric: tabular-nums;
+    background: linear-gradient(to bottom right, #82A57C 30%, #63885E 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    flex: none;
+  }
+  .mini-heat14 i.l1 { background: #7D9B76; } .mini-heat14 i.l2 { background: #63885E; }
+  .mini-heat14 i.l3 { background: #4C7249; } .mini-heat14 i.l4 { background: #385B38; }
+  .mini-heat14 i.l5 { background: #26452A; }
+  /* 订阅卡: 分 provider 徽章 + MeterBar 横向等分 */
+  .mini-provs { gap: 10px; }
+  .mini-prov { flex: 1; display: flex; align-items: center; gap: 5px; min-width: 0; }
+  .mini-prov .meter { height: 5px; }
+  /* 逐小时卡: 迷你折线 */
+  .mini-spark { flex: 1; min-width: 0; color: var(--subdued); }
+  .mini-spark .spark { height: 16px; }
+
+  /* ============ 方案 C 定稿版式 ============ */
+  /* 变体 2 (定稿): 标题与图形同行, 行内元素间距统一 15px */
+  .cv2 .card-head { padding: 10px var(--pad-x); gap: 15px; }
+  .cv2 .head-spacer { display: none; }
+  /* 标题定宽: 三卡图形区左缘严格齐平 */
+  .cv2 .head-title { width: 92px; flex: none; }
+  .cv2 .head-inline { flex: 1; display: flex; justify-content: flex-end; min-width: 0; }
+  .cv2 .head-inline .mini-wrap { padding: 0; margin-top: 0; flex: 1; }
+  .cv2 .head-inline .mini-label { display: none; }
+  .cv2 .mini-hero-num { font-size: 17px; letter-spacing: -0.5px; }
+  .cv2 .mini-usage { align-items: center; gap: 15px; }
+  .cv2 .mini-usage .mini-heat14 { flex: 1; }
+  .cv2 .mini-heat14 i { height: 10px; }
+  .cv2 .mini-spark .spark { height: 12px; }
+  .cv2 .card.open .head-inline { display: none; }
+
+  /* ============ Nothing 主题 (定稿 token: PanelCardContainer / NothingTokens) ============ */
+  /* 字体分工对齐 NothingFont.swift:
+     展示级数字 = Doto (点阵可变, ROND 100 + wght 700);
+     UI 标题 = Space Grotesk; 小标签/数据 = Space Mono.
+     Space Mono 加载失败时回落 ui-monospace (SF Mono) / Menlo */
+  .nothing .card-head {
+    font-family: "Space Grotesk", -apple-system, "PingFang SC", sans-serif;
+  }
+  .nothing .mini-wrap,
+  .nothing .head-status,
+  .nothing .fbtn {
+    font-family: "Space Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  .nothing {
+    background: #050505;
+    backdrop-filter: none; -webkit-backdrop-filter: none;
+    box-shadow: none; border-radius: 12px;
+  }
+  .nothing .cards { gap: 8px; }
+  .nothing .card {
+    border-radius: 5px;
+    background: #0A0A0A;
+    border: 1px solid #333333;
+    box-shadow: none;
+  }
+  .nothing .card::before { display: none; }
+  .nothing .head-title {
+    font-family: "Space Grotesk", -apple-system, "PingFang SC", sans-serif;
+    font-size: 11.5px; font-weight: 600;
+    color: #999999;
+  }
+  .nothing .chev { color: #666666; }
+  .nothing .mini-hero-num {
+    background: none; -webkit-background-clip: initial; color: #4A9E5C;
+    font-family: "Doto", "Space Mono", ui-monospace, monospace;
+    font-variation-settings: "ROND" 100, "wght" 700;
+    font-weight: 700;
+  }
+  .nothing .mini-heat14 i { border-radius: 0; background: #1A1A1A; }
+  .nothing .mini-heat14 i.l1 { background: rgba(74,158,92,.2); }
+  .nothing .mini-heat14 i.l2 { background: rgba(74,158,92,.4); }
+  .nothing .mini-heat14 i.l3 { background: rgba(74,158,92,.6); }
+  .nothing .mini-heat14 i.l4 { background: rgba(74,158,92,.8); }
+  .nothing .mini-heat14 i.l5 { background: #4A9E5C; }
+  /* Nothing 徽章: 品牌色 16% 底 + 品牌色字母, 圆角 3; grok 类深色退回灰 */
+  .nothing .badge { border-radius: 3px; color: inherit; background: none; }
+  .nothing .badge[data-brand] { color: var(--brand); background: color-mix(in srgb, var(--brand) 16%, transparent) !important; }
+  .nothing .meter { border-radius: 0; background: #222222; height: 5px; }
+  .nothing .meter i { border-radius: 0; }
+  .nothing .meter.normal i { background: #4A9E5C; }
+  .nothing .meter.warning i { background: #D4A843; }
+  .nothing .meter.critical i { background: #D71921; }
+  .nothing .mini-spark { color: #999999; }
+  .nothing .mini-val { font-family: "Space Mono", ui-monospace, monospace; color: #666666; }
+  .nothing .footer-hairline { background: #222222; }
+  .nothing .action-footer { background: #000000; }
+  .nothing .fbtn {
+    font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+    border-radius: 5px; background: none; border: 1px solid #333333;
+    box-shadow: none; color: #999999;
+  }
+  .nothing .head-status .live .txt,
+  .nothing .head-status .updated {
+    font-family: "Space Mono", ui-monospace, monospace; color: #666666;
+  }
+  .nothing .live .dot { background: #4A9E5C; border-radius: 0; width: 5px; height: 5px; }
+  .nothing .live .halo { display: none; }
+  .nothing .live .dotwrap { width: 8px; height: 8px; }
+  .nothing .live .dot { left: 1.5px; top: 1.5px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>Bruce 仪表盘 · 卡片收起样式候选</h1>
+  <button class="theme-toggle" id="themeToggle">切换浅色</button>
+</div>
+
+<section>
+  <div class="sec-note">
+    <h2>参考 · 当前展开态 (1:1 还原)</h2>
+    <p>对照 UsageHeroCard / SubscriptionCard / HourlyLineCard 源码还原的展开态基准, 数据为虚构. 点击标题行可收起.</p>
+  </div>
+  <div class="panel" id="panelRef"><div class="cards"></div>
+    <div class="footer-hairline"></div>
+    <div class="action-footer"></div>
+  </div>
+</section>
+
+<section class="deprecated">
+  <div class="sec-note">
+    <h2>方案 A · 标题 + 关键指标一行摘要 <span class="dep-tag">未采用 · 保留供对比</span></h2>
+    <p>高度约 44pt (标题行原 padding). 信息量最大: 用量卡 = 今日 token + 成本, 订阅卡 = 最紧张额度窗口, 逐小时卡 = 当前峰值. 适合收起后仍需一眼掌握状态的默认方案; 代价是摘要口径需逐卡维护, 指标需等宽数字防抖动.</p>
+  </div>
+  <div class="panel scheme-a" id="panelA"><div class="cards"></div>
+    <div class="footer-hairline"></div>
+    <div class="action-footer"></div>
+  </div>
+</section>
+
+<section class="deprecated">
+  <div class="sec-note">
+    <h2>方案 B · 极简细条 (仅标题 + chevron) <span class="dep-tag">未采用 · 保留供对比</span></h2>
+    <p>高度约 30pt, 三卡收起后整面板最紧凑. 信息量为零, 纯导航; 适合「默认收起次要卡片, 只看主卡」的场景. 成本最低, 无需为每张卡定义摘要.</p>
+  </div>
+  <div class="panel scheme-b" id="panelB"><div class="cards"></div>
+    <div class="footer-hairline"></div>
+    <div class="action-footer"></div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-note">
+    <h2>方案 C · 标题 + 迷你可视化 (已选定 · 最终版式)</h2>
+    <p>标题与迷你图形同行: 标题居左, 图形铺满右侧剩余空间, chevron 悬停显示, 点击整行切换, 整卡约 46pt. 用量卡 = 渐变 hero 数字 + 近 7 天迷你热力图 (7 格均分铺满), 订阅卡 = 分 provider 徽章 + 5pt MeterBar (三档告警渐变), 逐小时卡 = 24 点合计迷你折线. 收起态不含成本估算.</p>
+  </div>
+  <div class="panel scheme-c cv2" id="panelC2"><div class="cards"></div>
+    <div class="footer-hairline"></div>
+    <div class="action-footer"></div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-note">
+    <h2>混合示例 · 用量卡展开 + 两张收起 (方案 C 最终版式)</h2>
+    <p>模拟真实使用: 主卡常开, 次要卡片收起为迷你可视化. 每张卡独立记忆状态.</p>
+  </div>
+  <div class="panel scheme-c cv2" id="panelMix"><div class="cards"></div>
+    <div class="footer-hairline"></div>
+    <div class="action-footer"></div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-note">
+    <h2>Nothing 主题 · 方案 C 变体 2 (已定稿版式)</h2>
+    <p>同一收起态版式套用 Nothing 语言 (字体分工对齐 NothingFont.swift): 展示数字 Doto 点阵粗体 (#4A9E5C 纯色), 卡片标题 Space Grotesk semibold, 小字 Space Mono; 面板纯黑, 卡片圆角 5 + 1px #333 边框, 无高光无阴影; 热力格直角绿阶, 徽章品牌色 16% 底 + 品牌色字母, MeterBar 阈值三色 (#4A9E5C / #D4A843 / #D71921), 底栏纯黑 + #222 发线 + Space Mono 大写按钮. 仅展示 dark, 聚焦收起态.</p>
+  </div>
+  <div class="panel scheme-c cv2 nothing" id="panelN"><div class="cards"></div>
+    <div class="footer-hairline"></div>
+    <div class="action-footer"></div>
+  </div>
+</section>
+
+<script>
+/* ============ 虚构数据 ============ */
+const AGENTS = [
+  { id: "kimi-code", name: "Kimi Code", color: "#0a84ff", total: "98.0K",
+    pts: [900,1400,2100,2600,3200,4100,3800,5200,6100,5800,7200,6600,5400,4900,6300,7800,7100,5900,4700,4300,3600,2800,1900,1200] },
+  { id: "kimi-work", name: "Kimi Work", color: "#30b0c7", total: "52.0K",
+    pts: [1800,2600,2400,3300,3000,3900,3600,4400,4100,4800,4500,5200,4700,4100,3800,3400,3900,3300,2900,2600,2300,2000,1700,1500] },
+  { id: "claude", name: "Claude Code", color: "#e0845c", total: "21.0K",
+    pts: [300,500,800,700,1100,1400,1200,1600,1900,1700,2100,1800,1500,1300,1000,900,700,600,500,400,350,300,250,200] },
+  { id: "codex", name: "Codex", color: "#bf5af2", total: "13.0K",
+    pts: [100,200,300,250,500,800,650,1100,1400,1200,1500,1300,1000,900,700,550,450,400,300,250,200,150,100,50] },
+];
+const DAILY = [ // 14 天, [kimi-code, kimi-work, claude, codex] (单位 K)
+  [9,3,0,0],[13,5,3,0],[8,5,0,0],[18,9,4,2],[13,7,4,0],[9,6,0,0],[21,12,5,2],
+  [19,8,4,0],[25,13,6,3],[18,10,5,0],[11,8,0,0],[29,16,7,4],[24,11,5,0],[34,19,9,6]
+];
+const MONTHS = [
+  { label: "4月", value: "812.4M" }, { label: "5月", value: "1.42B" }, { label: "6月", value: "106.8M" },
+  { label: "7月", value: "2.42B" }, { label: "8月", value: "7.99B" }, { label: "9月", value: "1.86B", current: true },
+];
+const MODELS = [
+  { name: "kimi-k2", color: "#0a84ff", pct: "72%", share: .72, total: "70.5M" },
+  { name: "claude-sonnet-4", color: "#e0845c", pct: "16%", share: .16, total: "15.7M" },
+  { name: "gpt-5", color: "#bf5af2", pct: "12%", share: .12, total: "11.8M" },
+];
+const PROVIDERS = [
+  { id: "kimi", letter: "K", brand: "#0a84ff", name: "Kimi", plan: "Pro", extra: "加量包余额 38%",
+    rows: [ { label: "每 5 小时", pct: 68, reset: "15:00" }, { label: "每周", pct: 39, reset: "3 天后" },
+            { label: "每月", pct: 52, reset: "18 天后" }, { label: "加量包", pct: 88, reset: "" } ] },
+  { id: "volc", letter: "火", brand: "#ff6a00", name: "火山引擎", plan: null, extra: null,
+    rows: [ { label: "每 5 小时", pct: 74, reset: "14:00" }, { label: "每周", pct: 46, reset: "5 天后" },
+            { label: "每月", pct: 63, reset: "21 天后" } ] },
+  { id: "codex", letter: "C", brand: "#10a37f", name: "ChatGPT", plan: null, extra: "2 个账号",
+    rows: [ { label: "每 5 小时", pct: 92, reset: "13:30" } ] },
+  { id: "deepseek", letter: "D", brand: "#4d6bfe", name: "DeepSeek", plan: null, extra: "按量付费",
+    rows: [], balance: { label: "账户余额", value: "¥ 38.21" } },
+];
+const CHEV = `<svg class="chev" viewBox="0 0 10 10" fill="none"><path d="M3.5 2 L6.5 5 L3.5 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const REFRESH = `<svg viewBox="0 0 12 12" fill="none"><path d="M10.5 6a4.5 4.5 0 1 1-1.32-3.18M10.5 1.2v2.4H8.1" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const ICO_REFRESH = `<svg viewBox="0 0 14 14" fill="none"><path d="M12.3 7a5.3 5.3 0 1 1-1.55-3.75M12.3 1.4v2.8H9.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const ICO_GEAR = `<svg viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="2" stroke="currentColor" stroke-width="1.2"/><path d="M7 1.2v1.6M7 11.2v1.6M1.2 7h1.6M11.2 7h1.6M2.9 2.9l1.1 1.1M10 10l1.1 1.1M11.1 2.9L10 4M4 10l-1.1 1.1" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>`;
+const ICO_POWER = `<svg viewBox="0 0 14 14" fill="none"><path d="M7 1.5v5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M4 3.4a5 5 0 1 0 6 0" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`;
+
+function meterClass(pct) { return pct < 50 ? "normal" : pct < 80 ? "warning" : "critical"; }
+
+/* ============ 展开态 HTML 生成 ============ */
+function sparkSVG(pts, color, id) {
+  const w = 380, h = 26, max = Math.max(...pts) * 1.1;
+  const step = w / (pts.length - 1);
+  const coords = pts.map((p, i) => [i * step, h - (p / max) * h]);
+  const line = coords.map((c, i) => (i ? "L" : "M") + c[0].toFixed(1) + " " + c[1].toFixed(1)).join(" ");
+  const area = line + ` L${w} ${h} L0 ${h} Z`;
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <defs><linearGradient id="g${id}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="${color}" stop-opacity=".18"/>
+      <stop offset="1" stop-color="${color}" stop-opacity=".02"/>
+    </linearGradient></defs>
+    <path d="${area}" fill="url(#g${id})"/>
+    <path d="${line}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+  </svg>`;
+}
+
+function heatmapHTML() {
+  // 26 周 x 7 行, 稳定伪随机档位
+  let weeks = "";
+  for (let c = 0; c < 26; c++) {
+    let cells = "";
+    for (let r = 0; r < 7; r++) {
+      const h = ((c * 2654435761 + r * 40503) >>> 13) % 100;
+      let lv = 0;
+      if (h > 88) lv = 5; else if (h > 78) lv = 4; else if (h > 66) lv = 3;
+      else if (h > 52) lv = 2; else if (h > 38) lv = 1;
+      cells += `<div class="hm-cell${lv ? " l" + lv : ""}"></div>`;
+    }
+    weeks += `<div class="hm-week">${cells}</div>`;
+  }
+  return weeks;
+}
+
+const LIVE_HTML = `<span class="live"><span class="dotwrap"><span class="halo"></span><span class="dot"></span></span><span class="txt">LIVE</span></span>`;
+
+function usageBodyHTML() {
+  return `
+  <div class="hero-row">
+    <span class="hero-num">586.6M</span>
+    <span class="hero-unit">tokens</span>
+    <span class="hero-cost">≈ ¥334.146</span>
+  </div>
+  <div class="divider"></div>
+  <div class="breakdown">
+    <div class="bd-cell"><span class="bd-label">输入</span><span class="bd-value">18.4M</span></div>
+    <div class="bd-cell"><span class="bd-label">输出</span><span class="bd-value">1.7M</span></div>
+    <div class="bd-cell"><span class="bd-label">缓存读取</span><span class="bd-value">566.5M</span></div>
+    <div class="bd-cell"><span class="bd-label">缓存命中率</span><span class="bd-value">97%</span></div>
+  </div>
+  <div class="monthly-head">
+    <span class="sec-title">按月 · 近 6 个月</span>
+    <span class="halfyear">近半年 <b>12486.4M</b> · 月均 2081.1M</span>
+  </div>
+  <div class="chip-grid">
+    ${MONTHS.map(m => `<div class="chip${m.current ? " current" : ""}"><span class="m-label">${m.label}</span><span class="m-value">${m.value}</span></div>`).join("")}
+  </div>
+  <div class="model-head">
+    <span class="sec-title">模型用量</span>
+    <span class="seg"><span class="on">今日</span><span>本周</span><span>本月</span></span>
+  </div>
+  ${MODELS.map(m => `<div class="model-row">
+    <span class="model-dot" style="background:${m.color}"></span>
+    <span class="model-name">${m.name}</span>
+    <span class="model-bar"><i style="width:${m.share * 100}%;background:${m.color}"></i></span>
+    <span class="model-pct">${m.pct}</span>
+    <span class="model-total">${m.total}</span>
+  </div>`).join("")}
+  <div class="sec-title heatmap-title">热力图 · 近半年</div>
+  <div class="heatmap">${heatmapHTML()}</div>
+  <div class="hm-axis"><span>26/03/16</span><span>26/09/10</span></div>
+  <div class="hm-legend">少<i style="background:var(--heat-empty)"></i><i style="background:#7D9B76"></i><i style="background:#63885E"></i><i style="background:#4C7249"></i><i style="background:#385B38"></i><i style="background:#26452A"></i>多</div>`;
+}
+
+function subscriptionBodyHTML() {
+  return `
+  ${PROVIDERS.map(p => `
+  <div class="prov">
+    <div class="prov-head">
+      <span class="badge" style="background:${p.brand}">${p.letter}</span>
+      <span class="prov-name">${p.name}</span>
+      ${p.plan ? `<span class="plan">${p.plan}</span>` : ""}
+      ${p.extra ? `<span class="prov-extra" style="${p.extra.includes("账号") || p.extra.includes("按量") ? "font-size:10.5px" : ""}">${p.extra}</span>` : ""}
+      <span class="refresh-btn">${REFRESH}</span>
+    </div>
+    ${p.rows.map(r => `
+    <div class="win-row">
+      <span class="win-label">${r.label}</span>
+      <span class="meter ${meterClass(r.pct)}"><i style="width:${r.pct}%"></i></span>
+      <span class="win-pct">${r.pct}%</span>
+      <span class="win-reset">${r.reset}</span>
+    </div>`).join("")}
+    ${p.balance ? `<div class="balance-row"><span class="balance-label">${p.balance.label}</span><span class="balance-value">${p.balance.value}</span></div>` : ""}
+  </div>`).join("")}`;
+}
+
+function hourlyBodyHTML() {
+  const maxDay = Math.max(...DAILY.map(d => d.reduce((a, b) => a + b, 0)));
+  const chart = DAILY.map((d, i) => {
+    const total = d.reduce((a, b) => a + b, 0);
+    const totalH = (total / maxDay) * 52; // 68 - 标注留白
+    let segs = "";
+    // 自上而下渲染: 末段 agent 在最上
+    for (let a = AGENTS.length - 1; a >= 0; a--) {
+      const v = d[a];
+      if (!v) continue;
+      segs += `<div class="seg-block" style="height:${((v / total) * totalH).toFixed(1)}px;background:${AGENTS[a].color}"></div>`;
+    }
+    return `<div class="day-col"><span class="day-total" style="bottom:${(totalH + 3).toFixed(1)}px">${total}K</span>${segs}</div>`;
+  }).join("");
+  return `
+  <div class="daily-chart">${chart}</div>
+  <div class="daily-axis"><span>14 天前</span><span>7 天前</span><span>今天</span></div>
+  <div class="daily-legend">
+    ${AGENTS.map(a => `<span class="li"><i style="background:${a.color}"></i>${a.name}</span>`).join("")}
+  </div>
+  <div class="hourly-title"><span class="sec-title">逐小时</span><span class="hourly-range">0 – 23 时</span></div>
+  ${AGENTS.map(a => `
+  <div class="agent-row">
+    <div class="agent-head">
+      <span class="agent-swatch" style="background:${a.color}"></span>
+      <span class="agent-name">${a.name}</span>
+      <span class="agent-total">${a.total}</span>
+    </div>
+    ${sparkSVG(a.pts, a.color, a.id)}
+  </div>`).join("")}`;
+}
+
+/* ============ 卡片装配 ============ */
+const CARDS = [
+  {
+    id: "usage",
+    title: "Token 用量",
+    status: LIVE_HTML,
+    body: usageBodyHTML,
+    summaryA: `<span class="head-metric">586.6M tok</span><span class="head-metric-sub"> · ≈ ¥334</span>`,
+    miniC: (() => {
+      // 缩小版 hero 大数字 (绿阶渐语言同展开态) + 近 7 天迷你热力图同行铺满
+      const totals = DAILY.map(d => d.reduce((a, b) => a + b, 0)).slice(-7);
+      const mx = Math.max(...totals);
+      const cells = totals.map(v => {
+        const r = v / mx;
+        const lv = r > .8 ? 5 : r > .62 ? 4 : r > .46 ? 3 : r > .3 ? 2 : r > .15 ? 1 : 0;
+        return `<i class="mh${lv ? " l" + lv : ""}"></i>`;
+      }).join("");
+      return `
+      <div class="mini-wrap mini-usage">
+        <span class="mini-hero-num">586.6M</span>
+        <span class="mini-heat14">${cells}</span>
+      </div>`;
+    })(),
+  },
+  {
+    id: "sub",
+    title: "订阅用量",
+    status: `<span class="updated">最后更新 21:30</span>`,
+    body: subscriptionBodyHTML,
+    summaryA: `<span class="head-metric-sub">ChatGPT 每 5 小时</span><span class="head-metric"> 92%</span>`,
+    miniC: (() => {
+      // 分 provider 迷你量条: 15pt 品牌徽章 + 5pt MeterBar (三档渐变),
+      // 每个 provider 取最紧张窗口的已用百分比; 横向等分列.
+      const cols = PROVIDERS.map(p => {
+        const pct = p.rows.length ? Math.max(...p.rows.map(r => r.pct)) : 12;
+        return `
+        <span class="mini-prov">
+          <span class="badge" style="background:${p.brand};--brand:${p.brand}" data-brand>${p.letter}</span>
+          <span class="meter ${meterClass(pct)}"><i style="width:${pct}%"></i></span>
+        </span>`;
+      }).join("");
+      return `<div class="mini-wrap mini-provs">${cols}</div>`;
+    })(),
+  },
+  {
+    id: "hourly",
+    title: "Agent 用量",
+    body: hourlyBodyHTML,
+    summaryA: `<span class="head-metric-sub">峰值 11 时</span><span class="head-metric"> 15.6K</span>`,
+    miniC: (() => {
+      // 24 小时迷你折线: 全 agent 逐小时合计, 沿用展开态 sparkline 画法
+      const hourly = AGENTS[0].pts.map((_, h) => AGENTS.reduce((s, a) => s + a.pts[h], 0));
+      return `
+      <div class="mini-wrap">
+        <span class="mini-label">逐小时</span>
+        <span class="mini-spark">${sparkSVG(hourly, "currentColor", "mini-total")}</span>
+        <span class="mini-val">峰值 15.6K</span>
+      </div>`;
+    })(),
+  },
+];
+
+function buildFooter(panel) {
+  panel.querySelector(".action-footer").innerHTML = `
+    <button class="fbtn" title="刷新">${ICO_REFRESH}</button>
+    <span style="flex:1"></span>
+    <button class="fbtn" title="设置">${ICO_GEAR}</button>
+    <button class="fbtn" title="退出">${ICO_POWER}</button>`;
+}
+
+function buildPanel(panelId, scheme, openIds = [], variant = "v1") {
+  const panel = document.getElementById(panelId);
+  const stack = panel.querySelector(".cards");
+  CARDS.forEach(card => {
+    const el = document.createElement("div");
+    el.className = "card";
+    const headRight =
+      scheme === "a" ? card.summaryA :
+      scheme === "c" ? "" : "";
+    const inlineMini = scheme === "c" && variant === "v2";
+    el.innerHTML = `
+      <button class="card-head" aria-expanded="false">
+        <span class="head-title">${card.title}</span>
+        <span class="head-spacer"></span>
+        <span class="head-status">${card.status || ""}</span>
+        <span class="head-summary">${headRight}</span>
+        ${inlineMini ? `<span class="head-inline">${card.miniC}</span>` : ""}
+        ${CHEV}
+      </button>
+      ${scheme === "c" && !inlineMini ? `<div class="mini-region">${card.miniC}</div>` : ""}
+      <div class="card-body"><div class="card-body-pad">${card.body()}</div></div>`;
+    stack.appendChild(el);
+
+    const head = el.querySelector(".card-head");
+    const body = el.querySelector(".card-body");
+    const mini = el.querySelector(".mini-region");
+
+    function setOpen(open, animate) {
+      el.classList.toggle("open", open);
+      head.setAttribute("aria-expanded", String(open));
+      if (open) {
+        body.style.height = body.scrollHeight + "px";
+        if (mini) mini.style.display = "none";
+        const onEnd = e => {
+          if (e.propertyName === "height" && el.classList.contains("open")) {
+            body.style.height = "auto";
+          }
+          body.removeEventListener("transitionend", onEnd);
+        };
+        body.addEventListener("transitionend", onEnd);
+      } else {
+        body.style.height = body.scrollHeight + "px"; // 从 auto 固定到像素值
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => { body.style.height = "0px"; });
+        });
+        if (mini) mini.style.display = "";
+      }
+    }
+    head.addEventListener("click", () => setOpen(!el.classList.contains("open"), true));
+    if (openIds.includes(card.id)) {
+      // 初始展开, 不播动画
+      el.classList.add("open");
+      head.setAttribute("aria-expanded", "true");
+      body.style.transition = "none";
+      body.style.height = "auto";
+      if (mini) mini.style.display = "none";
+      requestAnimationFrame(() => { body.style.transition = ""; });
+    }
+  });
+  buildFooter(panel);
+}
+
+buildPanel("panelRef", "a", ["usage", "sub", "hourly"]);
+buildPanel("panelA", "a");
+buildPanel("panelB", "b");
+buildPanel("panelC2", "c", [], "v2");
+buildPanel("panelMix", "c", ["usage"], "v2");
+buildPanel("panelN", "c", [], "v2");
+
+/* 主题切换 */
+if (location.hash === "#light") document.body.classList.add("light");
+const toggle = document.getElementById("themeToggle");
+if (document.body.classList.contains("light")) toggle.textContent = "切换深色";
+toggle.addEventListener("click", () => {
+  document.body.classList.toggle("light");
+  toggle.textContent = document.body.classList.contains("light") ? "切换深色" : "切换浅色";
+});
+</script>
+</body>
+</html>

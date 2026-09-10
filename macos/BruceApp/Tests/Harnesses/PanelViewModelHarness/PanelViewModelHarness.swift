@@ -177,6 +177,7 @@ private let readyStatuses: [DashboardModule: ModuleStatus] = [
 
 @main
 struct PanelViewModelHarness {
+    @MainActor
     static func main() throws {
         try windowWordingMatrixMapsMinutes()
         try windowWordingFallsBackToKnownLabels()
@@ -224,7 +225,13 @@ struct PanelViewModelHarness {
         try presentationPolicyTableDrivenRules()
         try singleAccountSectionNameOmitsAccountSuffix()
         try appVersionReadsBundleAndFallsBack()
-        print("PanelViewModel tests passed: 46")
+        try collapsedWeekLevelsTakesLast7Days()
+        try collapsedWeekLevelsHandlesShortWindowAndZeroDays()
+        try collapsedPeakWindowPicksTightestWindow()
+        try collapsedPeakWindowSpansAccountsAndSkipsBalanceOnly()
+        try hourlyCollapsedPointsSumWithPeakText()
+        try collapseStatePersistsAcrossAppModelInstances()
+        print("PanelViewModel tests passed: 52")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -1791,6 +1798,139 @@ struct PanelViewModelHarness {
             !PanelAgentColor.nothingRampHex(agentID: "unknown-agent", darkMode: true).isEmpty,
             "未知 agent 也应稳定落档"
         )
+    }
+
+    // MARK: - 卡片收起态
+
+    /// 收起态近 7 天热力档位: 14 天数据取末 7 天, 档位与热力图绝对阈值同源.
+    private static func collapsedWeekLevelsTakesLast7Days() throws {
+        let totals = [0, 50_000_000, 150_000_000, 250_000_000, 350_000_000,
+                      450_000_000, 10_000_000, 20_000_000, 120_000_000,
+                      220_000_000, 320_000_000, 420_000_000, 80_000_000, 500_000_000]
+        let artifact = makeAgentUsageArtifact(
+            agents: [makeAgent(
+                id: "kimi-code-cli", name: "Kimi Code",
+                today: makeBucket(input: 1), dailyTotals: totals
+            )],
+            services: []
+        )
+        let panel = makeMapper().make(agentUsage: artifact, moduleStatuses: readyStatuses)
+        let levels = try unwrap(panel.usage?.collapsedWeekLevels)
+        try expect(
+            levels == [20_000_000, 120_000_000, 220_000_000, 320_000_000, 420_000_000, 80_000_000, 500_000_000]
+                .map { UsageTier.forTotal($0).heatmapLevel },
+            "应取末 7 天并按绝对阈值分档"
+        )
+    }
+
+    /// 不足 7 天时只返回实际天数; 零量日档位为 0.
+    private static func collapsedWeekLevelsHandlesShortWindowAndZeroDays() throws {
+        let artifact = makeAgentUsageArtifact(
+            agents: [makeAgent(
+                id: "kimi-code-cli", name: "Kimi Code",
+                today: makeBucket(input: 1),
+                dailyTotals: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 50_000_000, 150_000_000]
+            )],
+            services: []
+        )
+        let panel = makeMapper().make(agentUsage: artifact, moduleStatuses: readyStatuses)
+        let levels = try unwrap(panel.usage?.collapsedWeekLevels)
+        try expect(levels.count == 7, "14 天窗口应恒取末 7 天")
+        try expect(levels == [0, 0, 0, 0, 0, 1, 2], "零量日落 0, 50M/150M 分档 1/2")
+    }
+
+    /// 订阅卡收起态: 单账号多窗口取 usedPercent 最大的窗口.
+    private static func collapsedPeakWindowPicksTightestWindow() throws {
+        let artifact = makeAgentUsageArtifact(
+            agents: [],
+            services: [makeService(
+                id: "kimi", name: "Kimi",
+                windows: [
+                    makeWindow(label: "每 5 小时", usedPercent: 68),
+                    makeWindow(label: "每周", usedPercent: 92),
+                    makeWindow(label: "每月", usedPercent: 39),
+                ]
+            )]
+        )
+        let panel = makeMapper().make(agentUsage: artifact, moduleStatuses: readyStatuses)
+        let peak = try unwrap(panel.subscription?.sections.first?.collapsedPeakWindow)
+        try expect(peak.label == "每周" && peak.usedPercent == 92, "应取最紧张窗口")
+    }
+
+    /// 多账号 section 跨账号取最紧张窗口; 纯余额型 (无窗口) 为 nil.
+    private static func collapsedPeakWindowSpansAccountsAndSkipsBalanceOnly() throws {
+        let artifact = makeAgentUsageArtifact(
+            agents: [],
+            services: [
+                makeService(
+                    id: "codex_abcd1234", name: "Codex · a",
+                    windows: [makeWindow(label: "每 5 小时", usedPercent: 57)]
+                ),
+                makeService(
+                    id: "codex_efgh5678", name: "Codex · b",
+                    windows: [makeWindow(label: "每周", usedPercent: 96)]
+                ),
+                makeService(id: "deepseek", name: "DeepSeek", balance: 38.21, currency: "CNY"),
+            ]
+        )
+        let panel = makeMapper().make(agentUsage: artifact, moduleStatuses: readyStatuses)
+        let sections = panel.subscription?.sections ?? []
+        let codex = sections.first { $0.isMultiAccount }
+        let deepseek = sections.first { $0.balance != nil }
+        try expect(codex?.collapsedPeakWindow?.usedPercent == 96, "多账号应跨账号取 max")
+        try expect(deepseek?.collapsedPeakWindow == nil, "纯余额型 provider 无最紧张窗口")
+    }
+
+    /// 逐小时卡收起态: 24 点全 agent 合计 + 峰值文案.
+    private static func hourlyCollapsedPointsSumWithPeakText() throws {
+        var hoursA = Array(repeating: 0, count: 24)
+        var hoursB = Array(repeating: 0, count: 24)
+        hoursA[10] = 9000
+        hoursB[10] = 6500
+        hoursB[22] = 2000
+        let artifact = makeAgentUsageArtifact(
+            agents: [
+                makeAgent(id: "kimi-code-cli", name: "Kimi Code",
+                          today: makeBucket(input: 9000), hours: hoursA),
+                makeAgent(id: "claude-code", name: "Claude Code",
+                          today: makeBucket(input: 8500), hours: hoursB),
+            ],
+            services: []
+        )
+        let panel = makeMapper().make(agentUsage: artifact, moduleStatuses: readyStatuses)
+        let hourly = try unwrap(panel.hourly)
+        try expect(hourly.collapsedPoints.count == 24, "合计序列恒为 24 点")
+        try expect(hourly.collapsedPoints[10] == 15_500, "同一小时应跨 agent 合计")
+        try expect(hourly.collapsedPoints[22] == 2000, "单 agent 小时保留")
+        try expect(hourly.collapsedPeakText == "峰值 15.5K", "峰值文案取合计最大值")
+    }
+
+    /// 收起状态持久化: 写入 UserDefaults 后新实例恢复; 未知 rawValue 读取时丢弃.
+    @MainActor
+    private static func collapseStatePersistsAcrossAppModelInstances() throws {
+        let suite = "BrucePanelCollapseTest.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = AppModel(collapsedDefaults: defaults)
+        try expect(!model.isCardCollapsed(.usage), "默认全部展开")
+        model.toggleCardCollapsed(.usage)
+        model.toggleCardCollapsed(.hourly)
+        model.toggleCardCollapsed(.usage) // 再切回展开
+        try expect(!model.isCardCollapsed(.usage) && model.isCardCollapsed(.hourly),
+                   "切换语义应正确")
+        defaults.set(["hourly", "bogus-card"], forKey: "dashboard.collapsedCards")
+        let restored = AppModel(collapsedDefaults: defaults)
+        try expect(restored.isCardCollapsed(.hourly), "重启后应恢复收起状态")
+        try expect(!restored.isCardCollapsed(.subscription), "未收起卡片不受影响")
+        try expect(restored.collapsedCards.count == 1, "未知 rawValue 读取时必须丢弃")
+    }
+
+    /// 轻量解包: 与 expect 同风格, 避免引入 XCTest.
+    private static func unwrap<T>(_ value: T?) throws -> T {
+        guard let value else {
+            throw PanelTestFailure.expectation("期望非 nil 值")
+        }
+        return value
     }
 
 }
