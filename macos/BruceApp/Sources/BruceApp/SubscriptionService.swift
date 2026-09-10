@@ -45,6 +45,9 @@ final class SubscriptionService {
     private let verifier: ProviderConnectionVerifier
     private let homeURL: URL
     private let localProbe: LocalCredentialProbe
+    /// 启动阶段是否允许读取 Bruce 自有 Keychain.
+    /// 未配置时只发布配置文件中的非敏感状态, 禁止任何凭证迁移/摘要读取.
+    private var keychainAccessConfigured: Bool
     private let ccSwitchImporter = CCSwitchVolcengineImporter()
     /// ProviderAccountStore 实例缓存, 避免 11 处重复创建和 Keychain 读取.
     private var accountStoreCache: [SubscriptionProviderID: ProviderAccountStore] = [:]
@@ -78,7 +81,10 @@ final class SubscriptionService {
         self.homeURL = homeURL
         self.localProbe = localProbe
         let config = configStore?.load()
-        migrateLegacyCredentials()
+        self.keychainAccessConfigured = config?.keychainAccessConfigured ?? false
+        if keychainAccessConfigured {
+            migrateLegacyCredentials()
+        }
         publishSubscriptionState(from: config)
     }
 
@@ -113,6 +119,17 @@ final class SubscriptionService {
         try credentialStore.configureKeychainAccess()
     }
 
+    /// 配置完成后才打开 Keychain 读取边界, 并补做一次迁移与状态发布.
+    /// 关闭时只清空内存中的凭证摘要, 不触碰 Keychain.
+    func setKeychainAccessConfigured(_ configured: Bool) {
+        guard keychainAccessConfigured != configured else { return }
+        keychainAccessConfigured = configured
+        if configured {
+            migrateLegacyCredentials()
+        }
+        publishSubscriptionState(from: configStore?.load())
+    }
+
     private func noteStateChange() {
         onStateChange()
     }
@@ -132,6 +149,10 @@ final class SubscriptionService {
         from: config, configured: providers
         )
         model.setSubscriptionProviderOrder(subscriptionProviderOrder)
+        guard keychainAccessConfigured else {
+            clearKeychainBackedState()
+            return
+        }
         // 先发布全部非 Codex summaries (每个 provider 一次 loadIndex),
         // 再从已发布 summaries 推导 credentialConfigured, 避免逐个实时读 Keychain.
         publishAllProviderAccountSummaries()
@@ -157,14 +178,33 @@ final class SubscriptionService {
         from: config, configured: providers
         )
         model.setSubscriptionProviderOrder(subscriptionProviderOrder)
+        guard keychainAccessConfigured else {
+            clearKeychainBackedState()
+            return
+        }
         publishAllProviderAccountSummaries()
         publishCodexSummaryFromIndex()
+    }
+
+    /// 未完成 Keychain 配置时的 fail-closed 内存状态.
+    private func clearKeychainBackedState() {
+        for provider in SubscriptionProviderID.allCases where provider != .codex {
+            model.setProviderAccountSummaries([], for: provider)
+        }
+        for provider in SubscriptionProviderID.allCases {
+            model.setSubscriptionCredentialConfigured(false, for: provider)
+        }
+        model.setCodexAccountSummary(nil)
     }
 
     /// 发布全部非 Codex provider 的多账号摘要到 AppModel.
     /// 同时校正存量账号: 凭证存在但状态为 needsReauthorization 的账号
     /// 标记为 connected (修复历史版本 upsert 未置 connected 的问题).
     private func publishAllProviderAccountSummaries() {
+        guard keychainAccessConfigured else {
+            clearKeychainBackedState()
+            return
+        }
         for provider in SubscriptionProviderID.allCases where provider != .codex {
             let store = accountStore(for: provider)
             guard let index = try? store.loadIndex() else {
@@ -213,6 +253,10 @@ final class SubscriptionService {
 
     /// 从 v2 账号索引发布 Codex 账号摘要 (数量与邮箱前缀, 与旧摘要格式一致).
     private func publishCodexSummaryFromIndex() {
+        guard keychainAccessConfigured else {
+            model.setCodexAccountSummary(nil)
+            return
+        }
         guard let index = try? codexStore.loadIndex() else {
             model.setCodexAccountSummary(nil)
             return
@@ -233,6 +277,7 @@ final class SubscriptionService {
     /// Codex 完整 record; Claude/Grok 应用 Keychain 优先否则本机探测;
     /// 其余 provider 全部 credentialAccounts 非空.
     private func credentialConfigured(_ id: SubscriptionProviderID) -> Bool {
+        guard keychainAccessConfigured else { return false }
         if id == .codex {
             return legacyCredentialConfigured(id)
         }
@@ -1064,7 +1109,7 @@ final class SubscriptionService {
 
     /// 当前 provider 的账号摘要列表 (非 Codex). Codex 走 codexAccountStatuses.
     func accountSummaries(for id: SubscriptionProviderID) -> [ProviderAccountSummary] {
-        guard id != .codex else { return [] }
+        guard keychainAccessConfigured, id != .codex else { return [] }
         let store = accountStore(for: id)
         return (try? store.summaries()) ?? []
     }
@@ -1312,6 +1357,11 @@ final class SubscriptionService {
             model.setSubscriptionCredentialConfigured(
             credentialConfigured(.claude), for: .claude
             )
+            return
+        }
+        guard keychainAccessConfigured else {
+            model.setClaudeLocalAvailable(false)
+            model.setSubscriptionCredentialConfigured(false, for: .claude)
             return
         }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in

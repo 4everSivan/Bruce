@@ -5,6 +5,27 @@ import BruceOnboardingCore
 // MARK: - Intent / pipeline / core lifecycle
 
 extension RefreshSchedulerHarness {
+    static func disabledSystemNotificationsSuppressDelivery() throws {
+        try refreshExpect(
+            !SystemNotificationDeliveryPolicy.shouldDeliver(
+                alertCount: 1, enabled: false
+            ),
+            "关闭系统通知时不得投递预警"
+        )
+        try refreshExpect(
+            SystemNotificationDeliveryPolicy.shouldDeliver(
+                alertCount: 1, enabled: true
+            ),
+            "开启系统通知时允许投递预警"
+        )
+        try refreshExpect(
+            !SystemNotificationDeliveryPolicy.shouldDeliver(
+                alertCount: 0, enabled: true
+            ),
+            "没有预警时不得请求通知"
+        )
+    }
+
     // MARK: - RefreshIntent merge (pure unit tests)
 
     static func intentMergeManualWinsOverTimer() throws {

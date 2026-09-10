@@ -360,14 +360,26 @@ struct SettingsView: View {
                 }
                 FluentRow(
                     "系统通知",
-                    sub: "预警与额度提醒",
+                    sub: "预警与额度提醒; 关闭后 Bruce 不会投递通知",
                     divided: true
                 ) {
-                    if notificationDenied {
-                        HStack(spacing: 8) {
-                            Text("未开启")
-                                .font(.system(size: 12.5))
-                                .foregroundStyle(SettingsDemoTokens.warn)
+                    HStack(spacing: 8) {
+                        Toggle(
+                            "",
+                            isOn: Binding(
+                                get: { coordinator.systemNotificationsEnabled },
+                                set: { coordinator.setSystemNotificationsEnabled($0) }
+                            )
+                        )
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        Text(coordinator.systemNotificationsEnabled ? "已开启" : "已关闭")
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(
+                                coordinator.systemNotificationsEnabled
+                                    ? SettingsDemoTokens.ok : SettingsDemoTokens.text3
+                            )
+                        if notificationDenied {
                             Button("前往系统设置") {
                                 NSWorkspace.shared.open(
                                     URL(string: "x-apple.systempreferences:com.apple.preference.notifications")!
@@ -375,10 +387,6 @@ struct SettingsView: View {
                             }
                             .fluentButton()
                         }
-                    } else {
-                        Text("已开启")
-                            .font(.system(size: 12.5))
-                            .foregroundStyle(SettingsDemoTokens.ok)
                     }
                 }
                 .onAppear(perform: refreshNotificationStatus)
@@ -446,8 +454,7 @@ struct SettingsView: View {
     private func presentKeychainAccessGuideIfNeeded() {
         guard !didEvaluateKeychainAccessGuide else { return }
         didEvaluateKeychainAccessGuide = true
-        guard !coordinator.consentConfirmed,
-              !coordinator.keychainAccessConfigured else {
+        guard !coordinator.keychainAccessConfigured else {
             return
         }
         DispatchQueue.main.async {

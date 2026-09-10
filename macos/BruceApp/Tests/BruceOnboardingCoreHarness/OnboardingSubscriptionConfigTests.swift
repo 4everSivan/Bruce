@@ -55,7 +55,8 @@ extension BruceOnboardingCoreHarness {
             try coreExpect(
                 !initialGate.canActivate(
                     module: module, readiness: .ready,
-                    isModuleSelected: true, appIsAcceptingNewTasks: true
+                    isModuleSelected: true, appIsAcceptingNewTasks: true,
+                    keychainAccessConfigured: true
                 ),
                 "无授权时所有模块必须 denied"
             )
@@ -80,7 +81,8 @@ extension BruceOnboardingCoreHarness {
             confirmedGate.canActivate(
                 module: .agentUsage, readiness: .ready,
                 isModuleSelected: selectedModules.contains(.agentUsage),
-                appIsAcceptingNewTasks: true
+                appIsAcceptingNewTasks: true,
+                keychainAccessConfigured: true
             ),
             "选中且 ready 的 agent-usage 必须 allowed"
         )
@@ -94,7 +96,8 @@ extension BruceOnboardingCoreHarness {
             try coreExpect(
                 !upgradedGate.canActivate(
                     module: module, readiness: .ready,
-                    isModuleSelected: true, appIsAcceptingNewTasks: true
+                    isModuleSelected: true, appIsAcceptingNewTasks: true,
+                    keychainAccessConfigured: true
                 ),
                 "授权版本变化后所有模块必须 denied"
             )
@@ -281,6 +284,39 @@ extension BruceOnboardingCoreHarness {
         try coreExpect(
             store.load()?.refreshIntervalMinutes == 60,
             "refreshIntervalMinutes 往返必须一致"
+        )
+    }
+
+    static func configSystemNotificationsDefaultsAndRoundTrips() throws {
+        let legacy = try JSONDecoder().decode(
+            OnboardingConfiguration.self,
+            from: Data(#"{"schemaVersion": 2}"#.utf8)
+        )
+        try coreExpect(
+            legacy.systemNotificationsEnabled,
+            "旧配置缺少系统通知开关时默认开启"
+        )
+
+        let disabled = try JSONDecoder().decode(
+            OnboardingConfiguration.self,
+            from: Data(
+                #"{"schemaVersion": 2, "systemNotificationsEnabled": false}"#.utf8
+            )
+        )
+        try coreExpect(
+            !disabled.systemNotificationsEnabled,
+            "系统通知关闭状态必须被解码"
+        )
+
+        var config = OnboardingConfiguration()
+        config.systemNotificationsEnabled = false
+        let encoded = try JSONEncoder().encode(config)
+        let decoded = try JSONDecoder().decode(
+            OnboardingConfiguration.self, from: encoded
+        )
+        try coreExpect(
+            !decoded.systemNotificationsEnabled,
+            "系统通知关闭状态必须可持久化往返"
         )
     }
 

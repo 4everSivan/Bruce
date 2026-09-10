@@ -309,8 +309,22 @@ struct LocalIntegrationHarness {
 
         // 6. 迁移产物不会以旧 token 形式进入任何运行输入:
         // 无 injector 时 resolveCodexQuotaAccounts 不产生注入
+        let configDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "Bruce-codex-migration-config-\(UUID().uuidString)",
+                isDirectory: true
+            )
+        let configStore = try OnboardingConfigurationStore(
+            configDirectory: configDirectory
+        )
+        defer { try? FileManager.default.removeItem(at: configDirectory) }
+        var config = OnboardingConfiguration()
+        config.consentVersion = 1
+        config.keychainAccessConfigured = true
+        try configStore.save(config)
+
         let provider = OnboardingRunInputProvider(
-            configStore: nil,
+            configStore: configStore,
             credentialStore: memory,
             codexTokenInjector: nil,
             codexStore: store

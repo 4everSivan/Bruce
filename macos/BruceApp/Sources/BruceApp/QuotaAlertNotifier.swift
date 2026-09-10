@@ -7,6 +7,8 @@ import UserNotifications
 final class QuotaAlertNotifier: NSObject, UNUserNotificationCenterDelegate {
     private let center = UNUserNotificationCenter.current()
     private var authorizationRequested = false
+    /// Bruce 应用层通知开关; 关闭时不请求授权, 也不投递已有预警.
+    var isEnabled = true
 
     override init() {
         super.init()
@@ -14,9 +16,11 @@ final class QuotaAlertNotifier: NSObject, UNUserNotificationCenterDelegate {
     }
 
     func deliver(_ alerts: [QuotaAlert]) {
-        guard !alerts.isEmpty else { return }
+        guard SystemNotificationDeliveryPolicy.shouldDeliver(
+            alertCount: alerts.count, enabled: isEnabled
+        ) else { return }
         requestAuthorizationIfNeeded { [weak self] granted in
-            guard granted, let self else { return }
+            guard let self, self.isEnabled, granted else { return }
             for alert in alerts {
                 let content = UNMutableNotificationContent()
                 content.title = "订阅额度预警"

@@ -205,6 +205,8 @@ struct CollectorRunnerHarness {
         try await rejectsMismatchedAndPollutedResponses()
         try await oldBridgeResponseWithoutChallengesDecodesAsEmpty()
         try await runInputDeniesQuotasWithoutConsent()
+        try await runInputBlockedWithoutKeychainAccess()
+        try await scopedRunInputBlockedWithoutKeychainAccess()
         try await runInputLocalCapabilitiesOnlyWithoutProviders()
         try await runInputAssemblesKimiAPIKey()
         try await runInputAssemblesDeepSeekProviderEnv()
@@ -586,7 +588,8 @@ struct CollectorRunnerHarness {
         providers: [String: SubscriptionProviderConfiguration],
         credentials: InMemoryCredentialStore,
         codexInjector: (any CodexAccessTokenInjecting)? = nil,
-        codexStore: CodexCredentialStore? = nil
+        codexStore: CodexCredentialStore? = nil,
+        keychainAccessConfigured: Bool = true
     ) throws -> (OnboardingRunInputProvider, URL) {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent(
@@ -599,7 +602,8 @@ struct CollectorRunnerHarness {
         let store = try OnboardingConfigurationStore(configDirectory: tempDir)
         let config = OnboardingConfiguration(
             consentVersion: consentVersion,
-            subscriptionProviders: providers
+            subscriptionProviders: providers,
+            keychainAccessConfigured: keychainAccessConfigured
         )
         try store.save(config)
         return (
@@ -654,6 +658,57 @@ struct CollectorRunnerHarness {
             input.credentials.isEmpty,
             "未确认统一授权时不得装配任何凭证"
         )
+    }
+
+    private static func runInputBlockedWithoutKeychainAccess() async throws {
+        let (provider, tempDir) = try makeRunInputProvider(
+            consentVersion: 1,
+            providers: [:],
+            credentials: InMemoryCredentialStore(),
+            keychainAccessConfigured: false
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        do {
+            _ = try await provider.runInput(for: .agentUsage)
+            throw RunnerTestFailure.expectation(
+                "未配置钥匙串访问时不得启动 Collector"
+            )
+        } catch let error as CollectorRunInputError {
+            guard case .missingAuthorization(_, let reason) = error,
+                  reason.contains("钥匙串") else {
+                throw RunnerTestFailure.expectation(
+                    "钥匙串未配置时应返回明确授权错误, got \(error)"
+                )
+            }
+        }
+    }
+
+    private static func scopedRunInputBlockedWithoutKeychainAccess() async throws {
+        let (provider, tempDir) = try makeRunInputProvider(
+            consentVersion: 1,
+            providers: enabledProvider(.kimi),
+            credentials: InMemoryCredentialStore(),
+            keychainAccessConfigured: false
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        do {
+            _ = try await provider.scopedRunInput(
+                for: .agentUsage,
+                providers: Set([.kimi])
+            )
+            throw RunnerTestFailure.expectation(
+                "未配置钥匙串访问时不得定向刷新额度"
+            )
+        } catch let error as CollectorRunInputError {
+            guard case .missingAuthorization(_, let reason) = error,
+                  reason.contains("钥匙串") else {
+                throw RunnerTestFailure.expectation(
+                    "钥匙串未配置时定向刷新应返回明确授权错误, got \(error)"
+                )
+            }
+        }
     }
 
     /// 已确认授权但一个 provider 都没配置: 只有基础能力, 凭证为空.

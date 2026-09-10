@@ -27,6 +27,7 @@ struct BruceOnboardingCoreHarness {
         try gateDeniesWhenConsentVersionMismatch()
         try gateAllowsAgentReady()
         try gateAllowsAgentPartial()
+        try gateDeniesWithoutKeychainAccessConfiguration()
         try gateDeniesUnselectedModule()
         try gateDeniesWhenAppNotAcceptingTasks()
         try gateDeniesPendingAuthorization()
@@ -75,6 +76,7 @@ struct BruceOnboardingCoreHarness {
         try configStoreRejectsNewerSchemaV3()
         try configStoreSubscriptionProvidersRoundTrip()
         try configRefreshIntervalDecodeAndFallback()
+        try configSystemNotificationsDefaultsAndRoundTrips()
         try credentialStoreSubscriptionAccountsRoundTrip()
         if !IsNonInteractiveEnvironment.runningInCI {
             try keychainSubscriptionAccountsRoundTrip()

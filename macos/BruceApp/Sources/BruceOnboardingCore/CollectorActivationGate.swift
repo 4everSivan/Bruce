@@ -6,7 +6,7 @@ import Foundation
 /// 只有满足全部条件才允许启用 Collector:
 ///   moduleSelected AND consentVersionIsCurrent
 ///   AND localDependenciesPermitRun AND connectionStatePermitsRun
-///   AND appIsAcceptingNewTasks
+///   AND keychainAccessConfigured AND appIsAcceptingNewTasks
 public struct CollectorActivationGate: Sendable {
     /// 当前授权版本. 版本变化后所有模块默认禁用.
     public let consentVersion: Int
@@ -24,7 +24,8 @@ public struct CollectorActivationGate: Sendable {
         module: CollectorModule,
         readiness: ModuleReadiness,
         isModuleSelected: Bool,
-        appIsAcceptingNewTasks: Bool
+        appIsAcceptingNewTasks: Bool,
+        keychainAccessConfigured: Bool
     ) -> Bool {
         // 未确认统一授权 -> deny
         guard let confirmed = confirmedConsentVersion, confirmed == consentVersion else {
@@ -32,6 +33,9 @@ public struct CollectorActivationGate: Sendable {
         }
         // 模块未被用户选择 -> deny
         guard isModuleSelected else { return false }
+        // Bruce 的后台 Collector 可能读取订阅凭证; 未完成 Keychain ACL 配置前
+        // 一律不启用, 避免首次启动或后台刷新触发系统密码提示.
+        guard keychainAccessConfigured else { return false }
         // 应用不接受新任务 -> deny
         guard appIsAcceptingNewTasks else { return false }
 

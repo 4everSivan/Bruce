@@ -77,6 +77,7 @@ struct SubscriptionCredentialsHarness {
         )
         var config = OnboardingConfiguration()
         config.consentVersion = 1
+        config.keychainAccessConfigured = true
         for id in enabled {
             var entry = SubscriptionProviderConfiguration()
             entry.enabled = true

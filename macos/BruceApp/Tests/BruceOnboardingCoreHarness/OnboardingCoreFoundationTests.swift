@@ -11,7 +11,8 @@ extension BruceOnboardingCoreHarness {
         for module in CollectorModule.allCases {
             let allowed = gate.canActivate(
                 module: module, readiness: .ready,
-                isModuleSelected: true, appIsAcceptingNewTasks: true
+                isModuleSelected: true, appIsAcceptingNewTasks: true,
+                keychainAccessConfigured: true
             )
             try coreExpect(!allowed, "\(module) should be denied before consent")
         }
@@ -21,7 +22,8 @@ extension BruceOnboardingCoreHarness {
         let gate = CollectorActivationGate(consentVersion: 2, confirmedConsentVersion: 1)
         let allowed = gate.canActivate(
             module: .agentUsage, readiness: .ready,
-            isModuleSelected: true, appIsAcceptingNewTasks: true
+            isModuleSelected: true, appIsAcceptingNewTasks: true,
+            keychainAccessConfigured: true
         )
         try coreExpect(!allowed, "version mismatch should deny")
     }
@@ -30,7 +32,8 @@ extension BruceOnboardingCoreHarness {
         let gate = CollectorActivationGate(consentVersion: 1, confirmedConsentVersion: 1)
         let allowed = gate.canActivate(
             module: .agentUsage, readiness: .ready,
-            isModuleSelected: true, appIsAcceptingNewTasks: true
+            isModuleSelected: true, appIsAcceptingNewTasks: true,
+            keychainAccessConfigured: true
         )
         try coreExpect(allowed, "agent ready should be allowed")
     }
@@ -39,16 +42,35 @@ extension BruceOnboardingCoreHarness {
         let gate = CollectorActivationGate(consentVersion: 1, confirmedConsentVersion: 1)
         let allowed = gate.canActivate(
             module: .agentUsage, readiness: .partial,
-            isModuleSelected: true, appIsAcceptingNewTasks: true
+            isModuleSelected: true, appIsAcceptingNewTasks: true,
+            keychainAccessConfigured: true
         )
         try coreExpect(allowed, "agent partial should be allowed")
+    }
+
+    static func gateDeniesWithoutKeychainAccessConfiguration() throws {
+        let gate = CollectorActivationGate(consentVersion: 1, confirmedConsentVersion: 1)
+        let blocked = gate.canActivate(
+            module: .agentUsage, readiness: .ready,
+            isModuleSelected: true, appIsAcceptingNewTasks: true,
+            keychainAccessConfigured: false
+        )
+        try coreExpect(!blocked, "未配置钥匙串访问时不得启用自动刷新")
+
+        let allowed = gate.canActivate(
+            module: .agentUsage, readiness: .ready,
+            isModuleSelected: true, appIsAcceptingNewTasks: true,
+            keychainAccessConfigured: true
+        )
+        try coreExpect(allowed, "已配置钥匙串访问后允许自动刷新")
     }
 
     static func gateDeniesUnselectedModule() throws {
         let gate = CollectorActivationGate(consentVersion: 1, confirmedConsentVersion: 1)
         let allowed = gate.canActivate(
             module: .agentUsage, readiness: .ready,
-            isModuleSelected: false, appIsAcceptingNewTasks: true
+            isModuleSelected: false, appIsAcceptingNewTasks: true,
+            keychainAccessConfigured: true
         )
         try coreExpect(!allowed, "unselected should be denied")
     }
@@ -57,7 +79,8 @@ extension BruceOnboardingCoreHarness {
         let gate = CollectorActivationGate(consentVersion: 1, confirmedConsentVersion: 1)
         let allowed = gate.canActivate(
             module: .agentUsage, readiness: .ready,
-            isModuleSelected: true, appIsAcceptingNewTasks: false
+            isModuleSelected: true, appIsAcceptingNewTasks: false,
+            keychainAccessConfigured: true
         )
         try coreExpect(!allowed, "should deny when app not accepting tasks")
     }
@@ -67,7 +90,8 @@ extension BruceOnboardingCoreHarness {
         for module in CollectorModule.allCases {
             let allowed = gate.canActivate(
                 module: module, readiness: .pendingAuthorization,
-                isModuleSelected: true, appIsAcceptingNewTasks: true
+                isModuleSelected: true, appIsAcceptingNewTasks: true,
+                keychainAccessConfigured: true
             )
             try coreExpect(!allowed, "\(module) pendingAuth should be denied")
         }

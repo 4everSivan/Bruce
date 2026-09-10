@@ -206,8 +206,19 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
         codexTokenDecisions = []
         codexQuotaAccountIDs = []
 
-        guard let config = configStore?.load(),
-              config.consentVersion != nil else {
+        guard let config = configStore?.load() else {
+            throw CollectorRunInputError.missingAuthorization(
+                module: module,
+                reason: "未配置钥匙串访问, 无法定向刷新订阅额度"
+            )
+        }
+        guard config.keychainAccessConfigured else {
+            throw CollectorRunInputError.missingAuthorization(
+                module: module,
+                reason: "未配置钥匙串访问, 无法定向刷新订阅额度"
+            )
+        }
+        guard config.consentVersion != nil else {
             throw CollectorRunInputError.missingAuthorization(
                 module: module,
                 reason: "未确认统一授权, 无法定向刷新订阅额度"
@@ -331,6 +342,13 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
         // 读取失败或账号为空时都不能沿用上一轮 decisions/order.
         codexTokenDecisions = []
         codexQuotaAccountIDs = []
+        let config = configStore?.load()
+        guard config?.keychainAccessConfigured == true else {
+            throw CollectorRunInputError.missingAuthorization(
+                module: .agentUsage,
+                reason: "未配置钥匙串访问, 无法启动 Collector"
+            )
+        }
         var capabilities: [JSONValue] = [
             .string(CollectorCapability.localSessions.rawValue),
             .string(CollectorCapability.localPricing.rawValue),
@@ -349,7 +367,6 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
             "days": .integer(182),
         ]
 
-        let config = configStore?.load()
         // 统一授权未确认时永远不授予 externalQuotas;
         // 一个 provider 都没配齐时也不授予, collector 会返回未授权占位
         if config?.consentVersion != nil {

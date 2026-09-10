@@ -27,9 +27,9 @@ Bruce 把本机 AI Agent 的 token 用量、成本估算和订阅额度集中到
 - **订阅用量卡**: 多 Provider 窗口量条、Codex 账号子卡、DeepSeek 月度消费与余额, 按数据可用性条件渲染。
 - **逐小时卡**: 24 点折线与模型/项目明细展开。
 - **主题**: 经典 / 液态玻璃两档; 液态玻璃仅 macOS 26+ 可选, 其下可调标准/通透/哑光模糊风格, 低系统强制经典材质。
-- **设置窗口**: 通用 (配色模式、界面风格、模糊风格、刷新间隔、菜单栏指标拖拽排序、全局快捷键)、Agent 用量依赖卡、订阅额度 (Provider 标签式管理与拖拽排序, 凭证只进 Keychain)、统一授权与诊断。
+- **设置窗口**: 通用 (配色模式、界面风格、模糊风格、刷新间隔、系统通知开关、钥匙串访问配置、菜单栏指标拖拽排序、全局快捷键)、Agent 用量依赖卡、订阅额度 (Provider 标签式管理与拖拽排序, 凭证只进 Keychain)、统一授权与诊断。
 - **授权门控**: 首次启动 Onboarding、本机只读依赖扫描、统一授权摘要与 Activation Gate — 未确认授权不启动任何 Collector。
-- **调度与可靠性**: 默认每 30 分钟自动刷新, 支持手动刷新、防重入、超时、退避和系统唤醒补采; 最后成功快照优先展示, 单模块失败不阻塞其他模块, 损坏快照自动回退 previous。
+- **调度与可靠性**: 完成 Bruce Keychain 访问配置后默认每 30 分钟自动刷新; 未配置时不读取凭证且不启动自动采集。支持手动刷新、防重入、超时、退避和系统唤醒补采; 最后成功快照优先展示, 单模块失败不阻塞其他模块, 损坏快照自动回退 previous。
 - **配额预警**: 临界线计算、预警去重、通知中心提示与自动恢复判定。
 - **可访问性**: 键盘导航、VoiceOver 状态语义、macOS 减少动态效果偏好。
 - **隐私**: 设置页提供脱敏诊断预览与最小 ZIP 导出, 不包含 Artifact 或账号活动数据。
@@ -79,9 +79,10 @@ swift run --package-path macos/BruceApp BruceApp
 首次运行流程:
 
 1. 在设置页检查 Rust Collector、本机会话和可选 SQLite 数据源。
-2. 选择需要启用的 Agent 用量模块。
-3. 在「订阅额度」分区按需配置或导入订阅凭证; 未配置任何 Provider 时订阅卡片不渲染。
-4. 阅读统一授权摘要并确认后, 应用才会启动对应 Collector 和自动刷新。
+2. 按首次启动引导完成 Bruce 钥匙串访问配置; 稍后配置时应用保持不读取凭证且不自动刷新。
+3. 选择需要启用的 Agent 用量模块。
+4. 在「订阅额度」分区按需配置或导入订阅凭证; 未配置任何 Provider 时订阅卡片不渲染。
+5. 阅读统一授权摘要并确认后, 应用才会启动对应 Collector 和自动刷新。
 
 真实账号访问和外部请求只应在个人 Mac 上、由用户明确授权后执行。
 
@@ -165,7 +166,7 @@ Bruce/
 
 应用自有数据位于:
 
-- `~/Library/Application Support/Bruce/config/onboarding-v1.json`: 非敏感配置和授权版本。
+- `~/Library/Application Support/Bruce/config/onboarding-v1.json`: 非敏感配置、授权版本、钥匙串访问状态和系统通知开关。
 - `~/Library/Application Support/Bruce/snapshots/`: 当前和 previous Artifact 快照。
 - `~/Library/Application Support/Bruce/metadata/modules.json`: 最近成功、尝试时间和错误分类。
 - macOS Keychain service `com.bruce.dashboard.credentials`: 应用持有的订阅额度凭证。

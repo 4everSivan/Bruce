@@ -22,6 +22,9 @@ final class ApplicationBootstrap {
     private weak var model: AppModel?
     private var started = false
     private var appearanceObserver: AnyCancellable?
+    private var keychainAccessObserver: AnyCancellable?
+    private var notificationPreferenceObserver: AnyCancellable?
+    private var keychainStartupPrepared = false
     private var lastStatusRefresh = Date.distantPast
 
     init(
@@ -87,14 +90,23 @@ final class ApplicationBootstrap {
         appearanceObserver = coordinator.$appearanceMode.sink { [weak self] mode in
             self?.applyAppearance(mode)
         }
-        // 启动 Scheduler 前先执行幂等迁移, 迁移结果控制 Codex quota gate:
-        // noLegacyData/migrated/cleanupPending 开放, corruptedJSON/failed 关闭.
-        // 失败只暂停 Codex 外部额度, 本地 Agent token 统计和其他 provider 不受影响.
-        let migrationResult = await codexMigration.executeCodexMigration()
-        runInputProvider.setCodexMigrationResult(migrationResult)
-        // 任务 7: 把迁移结果映射为脱敏展示状态 (不暴露账号 ID/邮箱/token),
-        // 供设置页渲染阻断与非阻断提示.
-        model?.setCodexMigrationStatus(.from(migrationResult))
+        // 未配置 Bruce Keychain ACL 时, 启动阶段不执行任何凭证迁移或账号状态读取.
+        // 这避免首次启动在用户主动配置之前触发 macOS 登录密码提示.
+        if coordinator.keychainAccessConfigured {
+            await prepareKeychainBackedStartup()
+        }
+        keychainAccessObserver = coordinator.$keychainAccessConfigured
+            .removeDuplicates()
+            .sink { [weak self] configured in
+                guard configured else { return }
+                self?.scheduleKeychainBackedStartup()
+            }
+        quotaAlertNotifier.isEnabled = coordinator.systemNotificationsEnabled
+        notificationPreferenceObserver = coordinator.$systemNotificationsEnabled
+            .removeDuplicates()
+            .sink { [weak self] enabled in
+                self?.quotaAlertNotifier.isEnabled = enabled
+            }
         runtime.configure(scheduler: scheduler, runner: runner)
         runtime.startSchedulerIfNeeded()
         coordinator.scanAndReconcile()
@@ -104,6 +116,8 @@ final class ApplicationBootstrap {
 
     /// 发布 token manager 的非敏感状态快照 (≤5 秒节流, 由调用方异步触发).
     private func refreshCodexAccountStatuses() {
+        guard coordinator.keychainAccessConfigured,
+              keychainStartupPrepared else { return }
         let now = Date()
         guard now.timeIntervalSince(lastStatusRefresh) >= 5 else { return }
         lastStatusRefresh = now
@@ -121,6 +135,27 @@ final class ApplicationBootstrap {
                     )
                 }
             )
+        }
+    }
+
+    /// 延迟到 Keychain ACL 配置完成后执行启动阶段的凭证迁移.
+    private func prepareKeychainBackedStartup() async {
+        guard coordinator.keychainAccessConfigured,
+              !keychainStartupPrepared else { return }
+        keychainStartupPrepared = true
+        let migrationResult = await codexMigration.executeCodexMigration()
+        runInputProvider.setCodexMigrationResult(migrationResult)
+        // 只发布脱敏迁移状态, 不暴露账号 ID/邮箱/token.
+        model?.setCodexMigrationStatus(.from(migrationResult))
+    }
+
+    /// 配置完成后补做迁移, 再开放 Scheduler 的自动刷新.
+    private func scheduleKeychainBackedStartup() {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await prepareKeychainBackedStartup()
+            coordinator.reconcileScheduler()
+            refreshCodexAccountStatuses()
         }
     }
 

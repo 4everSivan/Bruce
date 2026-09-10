@@ -122,6 +122,8 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
     /// 是否已完成 Bruce 自有 Keychain 项目的访问配置.
     /// 只保存状态, 不保存系统密码或任何凭证内容.
     public var keychainAccessConfigured: Bool
+    /// 是否允许 Bruce 投递系统通知. 这是应用层开关, 不会修改 macOS 的系统授权状态.
+    public var systemNotificationsEnabled: Bool
 
     /// 默认自动刷新间隔 (分钟).
     public static let defaultRefreshIntervalMinutes = 30
@@ -178,7 +180,8 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         glassStyle: GlassStylePreference? = nil,
         subscriptionProviderOrder: [String]? = nil,
         dashboardHotkey: GlobalHotkey? = nil,
-        keychainAccessConfigured: Bool = false
+        keychainAccessConfigured: Bool = false,
+        systemNotificationsEnabled: Bool = true
     ) {
         self.schemaVersion = schemaVersion
         self.selectedModules = selectedModules
@@ -192,6 +195,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         self.subscriptionProviderOrder = subscriptionProviderOrder
         self.dashboardHotkey = dashboardHotkey
         self.keychainAccessConfigured = keychainAccessConfigured
+        self.systemNotificationsEnabled = systemNotificationsEnabled
     }
 
     /// 自定义解码: 旧版本配置缺失的键一律回落缺省, 不因新增字段拒绝加载.
@@ -233,6 +237,10 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         keychainAccessConfigured = try container.decodeIfPresent(
             Bool.self, forKey: .keychainAccessConfigured
         ) ?? false
+        // 旧配置缺该键时保持历史行为: 系统通知功能默认开启.
+        systemNotificationsEnabled = try container.decodeIfPresent(
+            Bool.self, forKey: .systemNotificationsEnabled
+        ) ?? true
     }
 }
 
