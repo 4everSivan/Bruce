@@ -1,4 +1,6 @@
 import Foundation
+import LocalAuthentication
+import Security
 @testable import BruceOnboardingCore
 
 // MARK: - AsyncProcessProbe / SQLite / Keychain / Scanner
@@ -272,10 +274,137 @@ extension BruceOnboardingCoreHarness {
 
     static let keychainTestService = "com.bruce.dashboard.credentials.harness"
 
+    /// 自动访问必须在触碰 Security API 之前被策略拦截, 避免启动时弹出密码框.
+    static func keychainAutomaticAccessRequiresConfiguration() throws {
+        let controller = KeychainAccessController()
+        let store = KeychainCredentialStore(
+            service: keychainTestService,
+            accessController: controller
+        )
+
+        do {
+            _ = try store.loadCredential(
+                forAccount: "automatic-(UUID().uuidString)",
+                intent: .automatic
+            )
+            throw CoreTestFailure.expectation(
+                "未配置钥匙串时自动读取不得触碰 Keychain"
+            )
+        } catch KeychainError.notConfigured(.bruceStore) {
+            // expected
+        }
+    }
+
+    /// 自动 mutation 不得携带只对 SecItemCopyMatching 有效的 UISkip;
+    /// 用户主动配置则复用同一个 LAContext, 让多个 legacy item 共享一次认证.
+    static func keychainAuthenticationQueryPolicies() throws {
+        try coreExpect(
+            KeychainCredentialStore.defaultService
+                != KeychainCredentialStore.legacyService,
+            "current credentials must not reuse the legacy login-Keychain service"
+        )
+        let setupContext = LAContext()
+        let legacyListQuery = KeychainCredentialStore.legacyListQuery(
+            context: setupContext
+        )
+        try coreExpect(
+            String(describing: legacyListQuery[kSecMatchLimit as String]!)
+                == String(describing: kSecMatchLimitAll),
+            "legacy setup must enumerate all item attributes"
+        )
+        try coreExpect(
+            legacyListQuery[kSecReturnData as String] == nil,
+            "legacy item enumeration must not request all item data at once"
+        )
+        let legacyDataQuery = KeychainCredentialStore.legacyDataQuery(
+            account: "data-test",
+            context: setupContext
+        )
+        try coreExpect(
+            String(describing: legacyDataQuery[kSecMatchLimit as String]!)
+                == String(describing: kSecMatchLimitOne)
+                && legacyDataQuery[kSecReturnData as String] as? Bool == true,
+            "legacy setup must read data one account at a time"
+        )
+        let storageQuery = KeychainCredentialStore.currentQuery(
+            service: keychainTestService,
+            account: "storage-test"
+        )
+        try coreExpect(
+            storageQuery[kSecAttrService as String] as? String
+                == keychainTestService,
+            "current credentials must use the current service"
+        )
+
+        var readQuery: [String: Any] = [:]
+        KeychainCredentialStore.applyAuthenticationPolicy(
+            to: &readQuery,
+            intent: .automatic,
+            operation: .copyMatching
+        )
+        try coreExpect(
+            String(describing: readQuery[kSecUseAuthenticationUI as String]!)
+                == String(describing: kSecUseAuthenticationUISkip),
+            "automatic copy must skip items that need UI"
+        )
+
+        var mutationQuery: [String: Any] = [:]
+        KeychainCredentialStore.applyAuthenticationPolicy(
+            to: &mutationQuery,
+            intent: .automatic,
+            operation: .mutation
+        )
+        try coreExpect(
+            mutationQuery[kSecUseAuthenticationUI as String] == nil,
+            "automatic mutation must not pass copy-only UISkip"
+        )
+
+        let context = LAContext()
+        var interactiveQuery: [String: Any] = [:]
+        KeychainCredentialStore.applyAuthenticationPolicy(
+            to: &interactiveQuery,
+            intent: .userInitiated,
+            operation: .copyMatching,
+            context: context
+        )
+        try coreExpect(
+            interactiveQuery[kSecUseAuthenticationUI as String] == nil,
+            "interactive copy must not skip authentication UI"
+        )
+        try coreExpect(
+            (interactiveQuery[kSecUseAuthenticationContext as String] as? LAContext)
+                === context,
+            "interactive setup must reuse its authentication context"
+        )
+
+        interactiveQuery.removeAll(keepingCapacity: true)
+        KeychainCredentialStore.applyAuthenticationPolicy(
+            to: &interactiveQuery,
+            intent: .userInitiated,
+            operation: .mutation,
+            context: context
+        )
+        try coreExpect(
+            (interactiveQuery[kSecUseAuthenticationContext as String] as? LAContext)
+                === context,
+            "interactive setup must reuse its authentication context"
+        )
+    }
+
     /// 验证 update 优先语义: 预置旧值后 saveCredential 是就地更新而非先删后加,
     /// 任何时刻凭证不丢失; 测试结束清理测试项.
     static func keychainUpdatePreservesAndOverwrites() throws {
-        let store = KeychainCredentialStore(service: keychainTestService)
+        let accessController = KeychainAccessController(
+            policy: KeychainAccessPolicy(
+                configuration: KeychainAccessConfiguration(
+                    bruceStoreConfigured: true
+                )
+            )
+        )
+        let store = KeychainCredentialStore(
+            service: keychainTestService,
+            accessController: accessController
+        )
         let account = "harness-\(UUID().uuidString)"
         defer { try? store.deleteCredential(forAccount: account) }
 

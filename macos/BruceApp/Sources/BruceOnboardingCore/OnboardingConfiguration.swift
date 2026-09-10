@@ -1,4 +1,6 @@
 import Foundation
+import LocalAuthentication
+import Security
 
 // MARK: - SubscriptionProviderID
 
@@ -124,8 +126,12 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
     public var keychainAccess: KeychainAccessConfiguration
     /// 旧调用方兼容属性. 生产逻辑应使用 KeychainAccessPolicy.
     public var keychainAccessConfigured: Bool {
-        get { keychainAccess.bruceStoreConfigured }
-        set { keychainAccess.bruceStoreConfigured = newValue }
+        get { keychainAccess.bruceStoreReady }
+        set {
+            keychainAccess.bruceStoreConfigured = newValue
+            keychainAccess.bruceStoreStorageVersion = newValue
+                ? KeychainAccessConfiguration.currentBruceStoreStorageVersion : 0
+        }
     }
     /// 是否允许 Bruce 投递系统通知. 这是应用层开关, 不会修改 macOS 的系统授权状态.
     public var systemNotificationsEnabled: Bool
@@ -247,11 +253,14 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
                 KeychainAccessConfiguration.self, forKey: .keychainAccess
             )) ?? KeychainAccessConfiguration()
         } else {
-            // 兼容旧配置: 只有旧布尔值显式为 true 才开放 Bruce Store.
+            // 兼容旧配置: 保留旧布尔值供迁移/展示, 但缺少 setup marker 时
+            // 不开放自动 Bruce Store 访问.
             keychainAccess = KeychainAccessConfiguration(
                 bruceStoreConfigured: try container.decodeIfPresent(
                     Bool.self, forKey: .keychainAccessConfigured
-                ) ?? false
+                ) ?? false,
+                // The legacy boolean predates the explicit setup marker.
+                bruceStoreStorageVersion: 0
             )
         }
         // 旧配置缺该键时保持历史行为: 系统通知功能默认开启.
@@ -400,8 +409,8 @@ public enum OnboardingConfigError: Error, Equatable {
 
 // MARK: - SubscriptionCredentialAccount
 
-/// 订阅 provider 的 Keychain account 键. service 统一为
-/// com.bruce.dashboard.credentials.
+/// 订阅 provider 的 Keychain account 键. 当前 service 为
+/// com.bruce.dashboard.credentials.v2; 无配置时只在用户主动迁移中读取旧 service.
 public enum SubscriptionCredentialAccount {
     /// Kimi For Coding API key 字符串
     public static let kimiAPIKey = "kimi:api-key"
@@ -448,9 +457,60 @@ public protocol CredentialStore: Sendable {
     func configureKeychainAccess() throws -> Int
 }
 
+/// 支持区分自动访问和用户主动操作的凭证存储.
+/// 保留 `CredentialStore` 的旧方法, 让测试 fake 和外部调用方可以渐进迁移.
+public protocol IntentAwareCredentialStore: CredentialStore {
+    func saveCredential(
+        _ value: String,
+        forAccount account: String,
+        intent: KeychainAccessIntent
+    ) throws
+    func loadCredential(
+        forAccount account: String,
+        intent: KeychainAccessIntent
+    ) throws -> String?
+    func deleteCredential(
+        forAccount account: String,
+        intent: KeychainAccessIntent
+    ) throws
+}
+
 public extension CredentialStore {
     func configureKeychainAccess() throws -> Int {
         0
+    }
+
+    func saveCredential(
+        _ value: String,
+        forAccount account: String,
+        intent: KeychainAccessIntent
+    ) throws {
+        if let intentAware = self as? any IntentAwareCredentialStore {
+            try intentAware.saveCredential(value, forAccount: account, intent: intent)
+        } else {
+            try saveCredential(value, forAccount: account)
+        }
+    }
+
+    func loadCredential(
+        forAccount account: String,
+        intent: KeychainAccessIntent
+    ) throws -> String? {
+        if let intentAware = self as? any IntentAwareCredentialStore {
+            return try intentAware.loadCredential(forAccount: account, intent: intent)
+        }
+        return try loadCredential(forAccount: account)
+    }
+
+    func deleteCredential(
+        forAccount account: String,
+        intent: KeychainAccessIntent
+    ) throws {
+        if let intentAware = self as? any IntentAwareCredentialStore {
+            try intentAware.deleteCredential(forAccount: account, intent: intent)
+        } else {
+            try deleteCredential(forAccount: account)
+        }
     }
 }
 
@@ -484,69 +544,203 @@ public final class InMemoryCredentialStore: CredentialStore, @unchecked Sendable
 
 // MARK: - KeychainCredentialStore
 
+enum KeychainQueryOperation: Equatable {
+    case copyMatching
+    case mutation
+}
+
 /// macOS Keychain 实现.
 /// 保存为 update 优先的原子语义: 不先删后加, 添加失败不会丢失原凭证.
-public final class KeychainCredentialStore: CredentialStore, @unchecked Sendable {
-    public static let defaultService = "com.bruce.dashboard.credentials"
+public final class KeychainCredentialStore: IntentAwareCredentialStore, @unchecked Sendable {
+    public static let legacyService = "com.bruce.dashboard.credentials"
+    public static let defaultService = "com.bruce.dashboard.credentials.v2"
 
     private let service: String
+    private let accessController: KeychainAccessController
 
-    public init(service: String = KeychainCredentialStore.defaultService) {
+    public init(
+        service: String = KeychainCredentialStore.defaultService,
+        accessController: KeychainAccessController = KeychainAccessController()
+    ) {
         self.service = service
+        self.accessController = accessController
     }
 
-    public func saveCredential(_ value: String, forAccount account: String) throws {
-        let data = Data(value.utf8)
-
-        let baseQuery: [String: Any] = [
+    static func currentQuery(
+        service: String,
+        account: String
+    ) -> [String: Any] {
+        [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account
         ]
+    }
+
+    /// User-triggered setup first enumerates metadata. Requesting all item data
+    /// together with `kSecMatchLimitAll` is rejected by macOS Keychain with
+    /// `errSecParam` on legacy login-Keychain items.
+    static func legacyListQuery(context: LAContext) -> [String: Any] {
+        var query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: Self.legacyService,
+            kSecMatchLimit as String: kSecMatchLimitAll,
+            kSecReturnAttributes as String: true,
+        ]
+        Self.applyAuthenticationPolicy(
+            to: &query,
+            intent: .userInitiated,
+            operation: .copyMatching,
+            context: context
+        )
+        return query
+    }
+
+    /// Read one legacy item at a time so macOS can authenticate the protected
+    /// data while reusing the single setup LAContext.
+    static func legacyDataQuery(
+        account: String,
+        context: LAContext
+    ) -> [String: Any] {
+        var query = Self.currentQuery(
+            service: Self.legacyService,
+            account: account
+        )
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        query[kSecReturnData as String] = true
+        Self.applyAuthenticationPolicy(
+            to: &query,
+            intent: .userInitiated,
+            operation: .copyMatching,
+            context: context
+        )
+        return query
+    }
+
+    private func currentQuery(forAccount account: String) -> [String: Any] {
+        Self.currentQuery(service: service, account: account)
+    }
+
+    public func saveCredential(_ value: String, forAccount account: String) throws {
+        try saveCredential(value, forAccount: account, intent: .automatic)
+    }
+
+    public func saveCredential(
+        _ value: String,
+        forAccount account: String,
+        intent: KeychainAccessIntent
+    ) throws {
+        try requireAccess(intent)
+        let data = Data(value.utf8)
+
+        let baseQuery = currentQuery(forAccount: account)
+
+        if intent == .automatic {
+            try saveAutomatically(
+                data: data,
+                baseQuery: baseQuery
+            )
+            return
+        }
+
+        var interactiveQuery = baseQuery
+        Self.applyAuthenticationPolicy(
+            to: &interactiveQuery,
+            intent: intent,
+            operation: .mutation
+        )
         let updateAttributes: [String: Any] = [
             kSecValueData as String: data
         ]
 
         // 优先 SecItemUpdate: 已存在则就地更新, 不经过删除窗口
         var status = SecItemUpdate(
-            baseQuery as CFDictionary, updateAttributes as CFDictionary
+            interactiveQuery as CFDictionary, updateAttributes as CFDictionary
         )
         if status == errSecItemNotFound {
             // 不存在才添加; 并发下撞见重复项则回退 update
-            var addQuery = baseQuery
+            var addQuery = interactiveQuery
             addQuery[kSecValueData as String] = data
-            // 显式 ACL: 由当前 Bruce App 进程访问, 避免每次启动/刷新重复授权.
-            // 不把凭证开放给任意进程; Collector 只消费 stdin 注入值, 不直接读该 service.
-            // 凭证为 OAuth 令牌且 ThisDeviceOnly 语义, 风险可控.
-            if let access = KeychainCredentialStore.openAccessControl() {
-                addQuery[kSecAttrAccess as String] = access
-            }
+            // 新 namespace 只由当前 App 创建和读取; Collector 只消费 stdin
+            // 注入值, 不直接读取该 service.
             status = SecItemAdd(addQuery as CFDictionary, nil)
             if status == errSecDuplicateItem {
                 status = SecItemUpdate(
-                    baseQuery as CFDictionary, updateAttributes as CFDictionary
+                    interactiveQuery as CFDictionary, updateAttributes as CFDictionary
                 )
             }
         }
         guard status == errSecSuccess else {
-            throw KeychainError.saveFailed(status)
+            throw saveError(status: status, intent: intent)
         }
     }
 
-    /// 把 Bruce service 下已有 generic password 项目的 ACL 统一切换为当前 Bruce App 可访问.
-    /// 该操作只修改访问控制, 不把密码或凭证写入配置文件.
-    /// 用户可在设置页或首次启动引导中主动触发, 系统若需要会在此时集中请求登录密码.
-    public func configureKeychainAccess() throws -> Int {
-        guard let access = Self.openAccessControl() else {
-            throw KeychainAccessError.accessControlCreationFailed
-        }
+    private func saveAutomatically(
+        data: Data,
+        baseQuery: [String: Any]
+    ) throws {
+        var probeQuery = baseQuery
+        probeQuery[kSecReturnAttributes as String] = true
+        probeQuery[kSecMatchLimit as String] = kSecMatchLimitOne
+        Self.applyAuthenticationPolicy(
+            to: &probeQuery,
+            intent: .automatic,
+            operation: .copyMatching
+        )
 
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecMatchLimit as String: kSecMatchLimitAll,
-            kSecReturnAttributes as String: true,
-        ]
+        var probeResult: CFTypeRef?
+        let probeStatus = SecItemCopyMatching(
+            probeQuery as CFDictionary,
+            &probeResult
+        )
+        switch probeStatus {
+        case errSecSuccess:
+            var updateQuery = baseQuery
+            Self.applyAuthenticationPolicy(
+                to: &updateQuery,
+                intent: .automatic,
+                operation: .mutation
+            )
+            let status = SecItemUpdate(
+                updateQuery as CFDictionary,
+                [kSecValueData as String: data] as CFDictionary
+            )
+            guard status == errSecSuccess else {
+                throw saveError(status: status, intent: .automatic)
+            }
+        case errSecItemNotFound:
+            // `UISkip` also hides legacy items that need UI. Add first in this
+            // branch; duplicate means an inaccessible legacy item exists, so
+            // fail closed instead of letting SecItemUpdate open a prompt.
+            var addQuery = baseQuery
+            addQuery[kSecValueData as String] = data
+            let status = SecItemAdd(addQuery as CFDictionary, nil)
+            if status == errSecDuplicateItem {
+                accessController.markBlocked()
+                throw KeychainError.accessBlocked(
+                    .bruceStore,
+                    errSecInteractionNotAllowed
+                )
+            }
+            guard status == errSecSuccess else {
+                throw saveError(status: status, intent: .automatic)
+            }
+        default:
+            throw saveError(status: probeStatus, intent: .automatic)
+        }
+    }
+
+    /// 把旧 login Keychain 中的 Bruce 项目迁移到新的 Bruce namespace.
+    /// 只在用户主动配置时读取旧项目, 并复用同一个认证上下文; 后台永远
+    /// 不再触碰 legacy item. 旧项目不删除, 作为失败回滚副本保留.
+    public func configureKeychainAccess() throws -> Int {
+        // 一个上下文覆盖旧项目枚举和数据迁移. 旧 login Keychain 项目如果
+        // 每次读取都创建新上下文, 会把一次配置放大成按项目重复认证.
+        let authenticationContext = LAContext()
+        authenticationContext.localizedReason =
+            "Bruce 需要一次性配置钥匙串访问权限"
+
+        let query = Self.legacyListQuery(context: authenticationContext)
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         if status == errSecItemNotFound {
@@ -569,43 +763,81 @@ public final class KeychainCredentialStore: CredentialStore, @unchecked Sendable
             return 0
         }
 
-        // 以 service 为边界一次更新全部项目, 尽量把系统授权收敛为一次.
-        let updateQuery: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-        ]
-        let updateStatus = SecItemUpdate(
-            updateQuery as CFDictionary,
-            [kSecAttrAccess as String: access] as CFDictionary
-        )
-        if updateStatus == errSecSuccess {
-            return items.count
-        }
-        if updateStatus == errSecItemNotFound {
-            return 0
-        }
-        throw KeychainAccessError.updateFailed(updateStatus)
-    }
+        var migrated = 0
+        for item in items {
+            guard let account = item[kSecAttrAccount as String] as? String else {
+                continue
+            }
 
-    /// 创建当前 Bruce App 可访问的 ACL.
-    static func openAccessControl() -> SecAccess? {
-        var access: SecAccess?
-        let status = SecAccessCreate(
-            "Bruce" as CFString,
-            nil,
-            &access
-        )
-        return status == errSecSuccess ? access : nil
+            let dataQuery = Self.legacyDataQuery(
+                account: account,
+                context: authenticationContext
+            )
+            var dataResult: CFTypeRef?
+            let dataStatus = SecItemCopyMatching(
+                dataQuery as CFDictionary,
+                &dataResult
+            )
+            if dataStatus == errSecItemNotFound {
+                continue
+            }
+            guard dataStatus == errSecSuccess,
+                  let data = dataResult as? Data else {
+                throw KeychainAccessError.listFailed(dataStatus)
+            }
+
+            var addQuery = Self.currentQuery(
+                service: service,
+                account: account
+            )
+            addQuery[kSecValueData as String] = data
+
+            let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
+            if addStatus == errSecDuplicateItem {
+                var updateQuery = Self.currentQuery(
+                    service: service,
+                    account: account
+                )
+                Self.applyAuthenticationPolicy(
+                    to: &updateQuery,
+                    intent: .userInitiated,
+                    operation: .mutation,
+                    context: authenticationContext
+                )
+                let updateStatus = SecItemUpdate(
+                    updateQuery as CFDictionary,
+                    [kSecValueData as String: data] as CFDictionary
+                )
+                guard updateStatus == errSecSuccess else {
+                    throw KeychainAccessError.updateFailed(updateStatus)
+                }
+            } else if addStatus != errSecSuccess {
+                throw KeychainAccessError.updateFailed(addStatus)
+            }
+            migrated += 1
+        }
+        return migrated
     }
 
     public func loadCredential(forAccount account: String) throws -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
+        try loadCredential(forAccount: account, intent: .automatic)
+    }
+
+    public func loadCredential(
+        forAccount account: String,
+        intent: KeychainAccessIntent
+    ) throws -> String? {
+        try requireAccess(intent)
+        var query = currentQuery(forAccount: account)
+        query.merge([
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
-        ]
+        ]) { _, new in new }
+        Self.applyAuthenticationPolicy(
+            to: &query,
+            intent: intent,
+            operation: .copyMatching
+        )
 
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
@@ -614,7 +846,7 @@ public final class KeychainCredentialStore: CredentialStore, @unchecked Sendable
             return nil
         }
         guard status == errSecSuccess else {
-            throw KeychainError.loadFailed(status)
+            throw loadError(status: status, intent: intent)
         }
         guard let data = result as? Data else {
             return nil
@@ -623,22 +855,141 @@ public final class KeychainCredentialStore: CredentialStore, @unchecked Sendable
     }
 
     public func deleteCredential(forAccount account: String) throws {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account
-        ]
+        try deleteCredential(forAccount: account, intent: .automatic)
+    }
+
+    public func deleteCredential(
+        forAccount account: String,
+        intent: KeychainAccessIntent
+    ) throws {
+        try requireAccess(intent)
+        let baseQuery = currentQuery(forAccount: account)
+
+        if intent == .automatic {
+            var probeQuery = baseQuery
+            probeQuery[kSecReturnAttributes as String] = true
+            probeQuery[kSecMatchLimit as String] = kSecMatchLimitOne
+            Self.applyAuthenticationPolicy(
+                to: &probeQuery,
+                intent: .automatic,
+                operation: .copyMatching
+            )
+            var probeResult: CFTypeRef?
+            let probeStatus = SecItemCopyMatching(
+                probeQuery as CFDictionary,
+                &probeResult
+            )
+            // UISkip 会把需要 UI 的项目视为不可见. 此时不再调用
+            // mutation API, 避免自动清理重新唤起系统授权.
+            guard probeStatus == errSecSuccess else {
+                if probeStatus == errSecItemNotFound {
+                    return
+                }
+                throw deleteError(status: probeStatus, intent: intent)
+            }
+        }
+
+        var query = baseQuery
+        Self.applyAuthenticationPolicy(
+            to: &query,
+            intent: intent,
+            operation: .mutation
+        )
 
         let status = SecItemDelete(query as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
-            throw KeychainError.deleteFailed(status)
+            throw deleteError(status: status, intent: intent)
         }
+    }
+
+    private func requireAccess(_ intent: KeychainAccessIntent) throws {
+        guard accessController.allows(
+            source: .bruceStore,
+            intent: intent
+        ) else {
+            if accessController.policy.state == .blocked {
+                throw KeychainError.accessBlocked(
+                    .bruceStore,
+                    errSecInteractionNotAllowed
+                )
+            }
+            throw KeychainError.notConfigured(.bruceStore)
+        }
+    }
+
+    static func applyAuthenticationPolicy(
+        to query: inout [String: Any],
+        intent: KeychainAccessIntent,
+        operation: KeychainQueryOperation,
+        context: LAContext? = nil
+    ) {
+        switch intent {
+        case .automatic:
+            // 后台读取只允许立即返回, 绝不让 Security.framework 拉起
+            // 认证 UI. UISkip 只对 SecItemCopyMatching 有效, mutation
+            // 不得携带它.
+            let context = context ?? LAContext()
+            context.interactionNotAllowed = true
+            query[kSecUseAuthenticationContext as String] = context
+            if operation == .copyMatching {
+                query[kSecUseAuthenticationUI as String] =
+                    kSecUseAuthenticationUISkip
+            }
+        case .userInitiated:
+            if let context {
+                // Keep the system authentication UI available for an explicit
+                // user action. Automatic operations set this to true above.
+                context.interactionNotAllowed = false
+                query[kSecUseAuthenticationContext as String] = context
+            }
+        }
+    }
+
+    private static func isAccessBlockedStatus(_ status: OSStatus) -> Bool {
+        status == errSecInteractionNotAllowed
+            || status == errSecAuthFailed
+            || status == errSecUserCanceled
+    }
+
+    private func saveError(
+        status: OSStatus,
+        intent: KeychainAccessIntent
+    ) -> KeychainError {
+        if intent == .automatic && Self.isAccessBlockedStatus(status) {
+            accessController.markBlocked()
+            return .accessBlocked(.bruceStore, status)
+        }
+        return .saveFailed(status)
+    }
+
+    private func loadError(
+        status: OSStatus,
+        intent: KeychainAccessIntent
+    ) -> KeychainError {
+        if intent == .automatic && Self.isAccessBlockedStatus(status) {
+            accessController.markBlocked()
+            return .accessBlocked(.bruceStore, status)
+        }
+        return .loadFailed(status)
+    }
+
+    private func deleteError(
+        status: OSStatus,
+        intent: KeychainAccessIntent
+    ) -> KeychainError {
+        if intent == .automatic && Self.isAccessBlockedStatus(status) {
+            accessController.markBlocked()
+            return .accessBlocked(.bruceStore, status)
+        }
+        return .deleteFailed(status)
     }
 }
 
 // MARK: - KeychainError
 
 public enum KeychainError: Error, Equatable {
+    case notConfigured(KeychainAccessSource)
+    case accessBlocked(KeychainAccessSource, OSStatus)
     case saveFailed(OSStatus)
     case loadFailed(OSStatus)
     case deleteFailed(OSStatus)

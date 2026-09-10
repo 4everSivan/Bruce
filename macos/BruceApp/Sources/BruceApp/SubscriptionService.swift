@@ -21,6 +21,14 @@ struct DeviceLoginPresentation: Equatable {
     var stage: Stage
 }
 
+/// 启动阶段的 Bruce Keychain 准备结果. 不携带账号、路径或凭证内容.
+enum KeychainPreparationResult: Equatable {
+    case ready
+    case notConfigured
+    case blocked
+    case failed
+}
+
 
 /// 订阅额度 CRUD / 导入 / 验证 / 本机探测工作流.
 /// 由 OnboardingCoordinator 持有并以同签名 façade 转发, Settings 调用点零变更.
@@ -42,6 +50,7 @@ final class SubscriptionService {
     private let credentialStore: CredentialStore
     private let codexStore: CodexCredentialStore
     private let codexTokenManager: CodexTokenManager
+    private let keychainAccessController: KeychainAccessController
     private let verifier: ProviderConnectionVerifier
     private let homeURL: URL
     private let localProbe: LocalCredentialProbe
@@ -68,6 +77,7 @@ final class SubscriptionService {
         credentialStore: CredentialStore,
         codexStore: CodexCredentialStore,
         codexTokenManager: CodexTokenManager,
+        keychainAccessController: KeychainAccessController,
         verifier: ProviderConnectionVerifier,
         homeURL: URL,
         localProbe: LocalCredentialProbe
@@ -77,15 +87,14 @@ final class SubscriptionService {
         self.credentialStore = credentialStore
         self.codexStore = codexStore
         self.codexTokenManager = codexTokenManager
+        self.keychainAccessController = keychainAccessController
         self.verifier = verifier
         self.homeURL = homeURL
         self.localProbe = localProbe
         let config = configStore?.load()
         self.keychainAccessConfigured = config?.keychainAccessConfigured ?? false
-        if keychainAccessConfigured {
-            migrateLegacyCredentials()
-        }
-        publishSubscriptionState(from: config)
+        // 初始化阶段只发布配置文件中的非敏感状态, 不迁移、不读取 Keychain.
+        publishSubscriptionState(from: config, readKeychain: false)
     }
 
     // MARK: - 旧凭证迁移
@@ -94,15 +103,20 @@ final class SubscriptionService {
     /// 迁移只读取不删除旧键; 成功后清理旧键.
     /// 实现位于 BruceOnboardingCore.ProviderAccountStore.migrateLegacyAccountsIfNeeded,
     /// 与 CollectorRunInput 共享, 避免在两处维护凭证格式逻辑.
-    private func migrateLegacyCredentials() {
-        for provider in SubscriptionProviderID.allCases where provider != .codex {
+    private func migrateLegacyCredentials(
+        enabledProviders: Set<SubscriptionProviderID>
+    ) throws {
+        for provider in enabledProviders where provider != .codex {
             let store = accountStore(for: provider)
-            let migrated = (try? store.migrateLegacyAccountsIfNeeded(
+            let migrated = try store.migrateLegacyAccountsIfNeeded(
                 legacyKeys: ProviderAccountKeys.legacyKeys(for: provider)
-            )) ?? false
+            )
             if migrated {
                 for key in ProviderAccountKeys.legacyKeys(for: provider) {
-                    try? credentialStore.deleteCredential(forAccount: key)
+                    try credentialStore.deleteCredential(
+                        forAccount: key,
+                        intent: .automatic
+                    )
                 }
             }
         }
@@ -124,10 +138,71 @@ final class SubscriptionService {
     func setKeychainAccessConfigured(_ configured: Bool) {
         guard keychainAccessConfigured != configured else { return }
         keychainAccessConfigured = configured
-        if configured {
-            migrateLegacyCredentials()
+        publishSubscriptionState(
+            from: configStore?.load(),
+            readKeychain: false
+        )
+    }
+
+    /// 在 Scheduler 启动前执行一次受控的 Keychain 准备.
+    /// 只处理配置中 enabled 的 Provider; 任何自动访问错误都 fail-closed.
+    func prepareKeychainBackedStartup() -> KeychainPreparationResult {
+        guard keychainAccessConfigured else { return .notConfigured }
+        guard keychainAccessController.allows(
+            source: .bruceStore,
+            intent: .automatic
+        ) else {
+            return keychainAccessController.policy.state == .blocked
+                ? .blocked : .notConfigured
         }
-        publishSubscriptionState(from: configStore?.load())
+
+        let config = configStore?.load() ?? OnboardingConfiguration()
+        let enabledProviders: Set<SubscriptionProviderID> = Set(
+            config.subscriptionProviders.compactMap { rawID, entry in
+                guard entry.enabled else { return nil }
+                return SubscriptionProviderID(rawValue: rawID)
+            }
+        )
+
+        do {
+            try migrateLegacyCredentials(enabledProviders: enabledProviders)
+            try readProviderAccountSummaries(
+                enabledProviders: enabledProviders
+            )
+            for provider in SubscriptionProviderID.allCases {
+                if enabledProviders.contains(provider) {
+                    model.setSubscriptionCredentialConfigured(
+                        credentialConfigured(provider),
+                        for: provider
+                    )
+                } else {
+                    model.setSubscriptionCredentialConfigured(false, for: provider)
+                    if provider != .codex {
+                        model.setProviderAccountSummaries([], for: provider)
+                    }
+                }
+            }
+            if enabledProviders.contains(.codex) {
+                publishCodexSummaryFromIndex()
+            } else {
+                model.setCodexAccountSummary(nil)
+            }
+            return .ready
+        } catch let error as KeychainError {
+            switch error {
+            case .notConfigured:
+                return .notConfigured
+            case .accessBlocked:
+                keychainAccessController.markBlocked()
+                return .blocked
+            case .saveFailed, .loadFailed, .deleteFailed:
+                keychainAccessController.markBlocked()
+                return .failed
+            }
+        } catch {
+            keychainAccessController.markBlocked()
+            return .failed
+        }
     }
 
     private func noteStateChange() {
@@ -137,7 +212,10 @@ final class SubscriptionService {
     /// 从配置与 Keychain 恢复订阅 provider 展示状态 (全量刷新).
     /// Keychain 只判断凭证是否存在, 凭证值不进入 UI 状态.
     /// 仅在 init / add / remove 等需要全量重建时调用.
-    private func publishSubscriptionState(from config: OnboardingConfiguration?) {
+    private func publishSubscriptionState(
+        from config: OnboardingConfiguration?,
+        readKeychain: Bool = true
+    ) {
         var providers: [SubscriptionProviderID: SubscriptionProviderConfiguration] = [:]
         for (key, value) in config?.subscriptionProviders ?? [:] {
             if let id = SubscriptionProviderID(rawValue: key) {
@@ -149,19 +227,15 @@ final class SubscriptionService {
         from: config, configured: providers
         )
         model.setSubscriptionProviderOrder(subscriptionProviderOrder)
-        guard keychainAccessConfigured else {
+        guard keychainAccessConfigured, readKeychain else {
             clearKeychainBackedState()
             return
         }
         // 先发布全部非 Codex summaries (每个 provider 一次 loadIndex),
         // 再从已发布 summaries 推导 credentialConfigured, 避免逐个实时读 Keychain.
-        publishAllProviderAccountSummaries()
-        for id in SubscriptionProviderID.allCases {
-            model.setSubscriptionCredentialConfigured(
-            credentialConfigured(id), for: id
-            )
-        }
-        publishCodexSummaryFromIndex()
+        let enabledProviders = enabledProviderIDs(from: config)
+        publishAllProviderAccountSummaries(enabledProviders: enabledProviders)
+        publishKeychainCredentialStates(enabledProviders: enabledProviders)
     }
 
     /// 轻量刷新: 只更新 providers 字典与顺序, 单个 provider 凭证状态.
@@ -182,8 +256,9 @@ final class SubscriptionService {
             clearKeychainBackedState()
             return
         }
-        publishAllProviderAccountSummaries()
-        publishCodexSummaryFromIndex()
+        let enabledProviders = enabledProviderIDs(from: config)
+        publishAllProviderAccountSummaries(enabledProviders: enabledProviders)
+        publishKeychainCredentialStates(enabledProviders: enabledProviders)
     }
 
     /// 未完成 Keychain 配置时的 fail-closed 内存状态.
@@ -200,26 +275,81 @@ final class SubscriptionService {
     /// 发布全部非 Codex provider 的多账号摘要到 AppModel.
     /// 同时校正存量账号: 凭证存在但状态为 needsReauthorization 的账号
     /// 标记为 connected (修复历史版本 upsert 未置 connected 的问题).
-    private func publishAllProviderAccountSummaries() {
+    private func publishAllProviderAccountSummaries(
+        enabledProviders: Set<SubscriptionProviderID>
+    ) {
+        guard keychainAccessConfigured,
+              keychainAccessController.allows(
+                  source: .bruceStore,
+                  intent: .automatic
+              ) else {
+            clearKeychainBackedState()
+            return
+        }
+        do {
+            try readProviderAccountSummaries(enabledProviders: enabledProviders)
+        } catch {
+            keychainAccessController.markBlocked()
+            clearKeychainBackedState()
+        }
+    }
+
+    /// 只为启用的 Provider 计算凭证状态, 禁止对停用 Provider 做回退读取.
+    private func publishKeychainCredentialStates(
+        enabledProviders: Set<SubscriptionProviderID>
+    ) {
+        guard keychainAccessConfigured,
+              keychainAccessController.allows(
+                  source: .bruceStore,
+                  intent: .automatic
+              ) else {
+            clearKeychainBackedState()
+            return
+        }
+
+        for provider in SubscriptionProviderID.allCases {
+            if enabledProviders.contains(provider) {
+                model.setSubscriptionCredentialConfigured(
+                    credentialConfigured(provider),
+                    for: provider
+                )
+            } else {
+                model.setSubscriptionCredentialConfigured(false, for: provider)
+                if provider != .codex {
+                    model.setProviderAccountSummaries([], for: provider)
+                }
+            }
+        }
+
+        if enabledProviders.contains(.codex) {
+            publishCodexSummaryFromIndex()
+        } else {
+            model.setCodexAccountSummary(nil)
+        }
+    }
+
+    private func readProviderAccountSummaries(
+        enabledProviders: Set<SubscriptionProviderID>
+    ) throws {
         guard keychainAccessConfigured else {
             clearKeychainBackedState()
             return
         }
-        for provider in SubscriptionProviderID.allCases where provider != .codex {
+        for provider in enabledProviders where provider != .codex {
             let store = accountStore(for: provider)
-            guard let index = try? store.loadIndex() else {
-                model.setProviderAccountSummaries([], for: provider)
-                continue
-            }
+            let index = try store.loadIndex()
             // 校正存量状态: 凭证存在但状态为 needsReauthorization 的账号标记为 connected
             // (修复历史版本 upsert 未置 connected 的问题). 校正后直接从内存 index 构造
             // summaries, 不二次读 Keychain.
             var correctedSummaries = store.summaries(from: index)
             for i in correctedSummaries.indices {
                 if correctedSummaries[i].authorizationState == .needsReauthorization {
-                    if let record = try? store.loadRecord(for: correctedSummaries[i].accountID),
+                    if let record = try store.loadRecord(for: correctedSummaries[i].accountID),
                        !record.credentialJSON.isEmpty {
-                        try? store.updateAuthorizationState(.connected, for: correctedSummaries[i].accountID)
+                        try store.updateAuthorizationState(
+                            .connected,
+                            for: correctedSummaries[i].accountID
+                        )
                         correctedSummaries[i] = ProviderAccountSummary(
                             accountID: correctedSummaries[i].accountID,
                             displayName: correctedSummaries[i].displayName,
@@ -230,6 +360,17 @@ final class SubscriptionService {
             }
             model.setProviderAccountSummaries(correctedSummaries, for: provider)
         }
+    }
+
+    private func enabledProviderIDs(
+        from config: OnboardingConfiguration?
+    ) -> Set<SubscriptionProviderID> {
+        Set(
+            config?.subscriptionProviders.compactMap { rawID, entry in
+                guard entry.enabled else { return nil }
+                return SubscriptionProviderID(rawValue: rawID)
+            } ?? []
+        )
     }
 
     /// 对齐 provider 顺序与实际配置: 移除已删除的, 追加新增的 (按 allCases 序).
@@ -299,7 +440,10 @@ final class SubscriptionService {
         let descriptor = ProviderRegistry.descriptor(for: id)
         var accountValues: [String: String] = [:]
         for account in descriptor.credentialAccounts {
-            if let value = try? credentialStore.loadCredential(forAccount: account),
+            if let value = try? credentialStore.loadCredential(
+                forAccount: account,
+                intent: .automatic
+            ),
             !value.isEmpty {
                 accountValues[account] = value
             }
@@ -347,9 +491,6 @@ final class SubscriptionService {
             return false
         }
         publishSubscriptionProviders(from: config)
-        model.setSubscriptionCredentialConfigured(
-        credentialConfigured(id), for: id
-        )
         return true
     }
 
@@ -1092,7 +1233,10 @@ final class SubscriptionService {
         }
         do {
             for account in id.credentialAccounts {
-                try credentialStore.deleteCredential(forAccount: account)
+                try credentialStore.deleteCredential(
+                    forAccount: account,
+                    intent: .userInitiated
+                )
             }
         } catch {
             model.setSettingsError(
@@ -1127,7 +1271,9 @@ final class SubscriptionService {
         let store = accountStore(for: id)
         do {
             try store.removeAccount(accountID: accountID)
-            publishAllProviderAccountSummaries()
+            publishAllProviderAccountSummaries(
+                enabledProviders: enabledProviderIDs(from: configStore?.load())
+            )
             model.setSubscriptionCredentialConfigured(
                 credentialConfigured(id), for: id
             )
@@ -1188,7 +1334,9 @@ final class SubscriptionService {
         let store = accountStore(for: id)
         do {
             try store.updateAuthorizationState(state, for: accountID)
-            publishAllProviderAccountSummaries()
+            publishAllProviderAccountSummaries(
+                enabledProviders: enabledProviderIDs(from: configStore?.load())
+            )
         } catch {
             model.setSettingsError("\(id.displayName) 账号状态更新失败", for: id)
         }

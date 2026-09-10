@@ -23,6 +23,7 @@ final class ApplicationBootstrap {
     private var started = false
     private var appearanceObserver: AnyCancellable?
     private var keychainAccessObserver: AnyCancellable?
+    private var keychainStateObserver: AnyCancellable?
     private var notificationPreferenceObserver: AnyCancellable?
     private var keychainStartupPrepared = false
     private var lastStatusRefresh = Date.distantPast
@@ -101,6 +102,12 @@ final class ApplicationBootstrap {
                 guard configured else { return }
                 self?.scheduleKeychainBackedStartup()
             }
+        keychainStateObserver = coordinator.$keychainAccessState
+            .removeDuplicates()
+            .sink { [weak self] state in
+                guard state == .allowed else { return }
+                self?.scheduleKeychainBackedStartup()
+            }
         quotaAlertNotifier.isEnabled = coordinator.systemNotificationsEnabled
         notificationPreferenceObserver = coordinator.$systemNotificationsEnabled
             .removeDuplicates()
@@ -142,11 +149,23 @@ final class ApplicationBootstrap {
     private func prepareKeychainBackedStartup() async {
         guard coordinator.keychainAccessConfigured,
               !keychainStartupPrepared else { return }
-        keychainStartupPrepared = true
-        let migrationResult = await codexMigration.executeCodexMigration()
+        let enabledProviders = coordinator.enabledSubscriptionProviders()
+        let migrationResult: CodexMigrationResult
+        if enabledProviders.contains(.codex) {
+            migrationResult = await codexMigration.executeCodexMigration()
+        } else {
+            migrationResult = .noLegacyData
+        }
         runInputProvider.setCodexMigrationResult(migrationResult)
         // 只发布脱敏迁移状态, 不暴露账号 ID/邮箱/token.
         model?.setCodexMigrationStatus(.from(migrationResult))
+
+        let preparation = await coordinator.prepareKeychainBackedStartup()
+        guard preparation == .ready else {
+            keychainStartupPrepared = false
+            return
+        }
+        keychainStartupPrepared = true
     }
 
     /// 配置完成后补做迁移, 再开放 Scheduler 的自动刷新.

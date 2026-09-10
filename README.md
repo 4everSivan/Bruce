@@ -169,7 +169,7 @@ Bruce/
 - `~/Library/Application Support/Bruce/config/onboarding-v1.json`: 非敏感配置、授权版本、钥匙串访问状态和系统通知开关。
 - `~/Library/Application Support/Bruce/snapshots/`: 当前和 previous Artifact 快照。
 - `~/Library/Application Support/Bruce/metadata/modules.json`: 最近成功、尝试时间和错误分类。
-- macOS Keychain service `com.bruce.dashboard.credentials`: 应用持有的订阅额度凭证。
+- macOS Keychain service `com.bruce.dashboard.credentials.v2`: 应用持有的订阅额度凭证; `com.bruce.dashboard.credentials` 仅作为用户主动配置时的旧数据迁移来源。
 
 清理前先退出应用。在设置页使用「撤销全部授权」停止全部调度; 需要完全重置时, 再通过 Finder 删除 `~/Library/Application Support/Bruce/`, 并在「钥匙串访问」中删除上述 service 的项目。删除快照和 Keychain 项不可由应用自动恢复, 操作前应确认不再需要最后成功数据和现有授权。
 

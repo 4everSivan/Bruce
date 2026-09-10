@@ -276,12 +276,30 @@ extension BruceOnboardingCoreHarness {
             "new configuration must require explicit Keychain setup"
         )
 
-        config.keychainAccessConfigured = true
+        config.keychainAccess = KeychainAccessConfiguration(
+            bruceStoreConfigured: true,
+            externalSources: [.claudeCLI, .grokCLI]
+        )
         let data = try JSONEncoder().encode(config)
         let decoded = try JSONDecoder().decode(OnboardingConfiguration.self, from: data)
         try coreExpect(
             decoded.keychainAccessConfigured,
             "Keychain setup state must survive configuration roundtrip"
+        )
+        try coreExpect(
+            decoded.keychainAccess.externalSources == [.claudeCLI, .grokCLI],
+            "external Keychain source allowlist must survive roundtrip"
+        )
+
+        let legacyConfigured = Data(
+            "{\"schemaVersion\":2,\"keychainAccess\":{\"bruceStoreConfigured\":true}}".utf8
+        )
+        let legacyConfiguredDecoded = try JSONDecoder().decode(
+            OnboardingConfiguration.self, from: legacyConfigured
+        )
+        try coreExpect(
+            !legacyConfiguredDecoded.keychainAccessConfigured,
+            "old Keychain object without storage marker must require setup"
         )
 
         let legacy = Data("{\"schemaVersion\":2}".utf8)

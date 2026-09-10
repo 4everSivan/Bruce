@@ -25,7 +25,7 @@ private func credentialsExpect(
 /// 订阅凭证注入链路测试 (Phase 5) + CredentialUpdateCoordinator (Task 3):
 /// OnboardingRunInputProvider 对 claude/grok 的凭证注入语义.
 /// - 应用持有 claude:oauth/grok:oauth 时注入 claudeOAuth/grokOAuth
-/// - 无应用凭证时仅注入 providerMeta enabled 标记 (collector 回退本机)
+/// - 无应用凭证且外部来源未允许时仅保留 providerMeta, Collector 不回退主机凭证
 /// - 禁用 provider 时两者皆无
 /// - Coordinator: codex / 未知账号跳过; 成功写回可加载
 @main
@@ -34,6 +34,9 @@ struct SubscriptionCredentialsHarness {
     static func main() async throws {
         try await claudeInjectedWhenCredentialPresent()
         try await grokInjectedWhenCredentialPresent()
+        try await disallowedClaudeSourceDoesNotInvokeExternalReader()
+        try await allowedClaudeSourceIsInjectedIntoQuotaAccounts()
+        try await disallowedGrokSourceDoesNotInvokeExternalReader()
         try await claudeFallbackToMetaWhenNoCredential()
         try await grokFallbackToMetaWhenNoCredential()
         try await noInjectionWhenProviderDisabled()
@@ -59,13 +62,15 @@ struct SubscriptionCredentialsHarness {
         try coordinatorRotationOpenCodeGo()
         try await zhipuInjectedWhenCredentialPresent()
         try await zhipuNotInjectedWithoutCredential()
-        print("Subscription credentials tests passed: 28")
+        print("Subscription credentials tests passed: 31")
     }
 
     /// 构造 OnboardingRunInputProvider: 配置 claude 启用 + Keychain 持有 claude:oauth.
     private static func makeProvider(
         enabled: [SubscriptionProviderID],
-        credentials: [String: String]
+        credentials: [String: String],
+        externalSources: Set<KeychainExternalSource> = [],
+        externalCredentialReader: ExternalCredentialReader? = nil
     ) throws -> (OnboardingRunInputProvider, InMemoryCredentialStore, OnboardingConfigurationStore) {
         let store = InMemoryCredentialStore()
         for (account, value) in credentials {
@@ -77,16 +82,24 @@ struct SubscriptionCredentialsHarness {
         )
         var config = OnboardingConfiguration()
         config.consentVersion = 1
-        config.keychainAccessConfigured = true
+        config.keychainAccess = KeychainAccessConfiguration(
+            bruceStoreConfigured: true,
+            externalSources: externalSources
+        )
         for id in enabled {
             var entry = SubscriptionProviderConfiguration()
             entry.enabled = true
             config.subscriptionProviders[id.rawValue] = entry
         }
         try configStore.save(config)
+        let accessController = KeychainAccessController(
+            policy: KeychainAccessPolicy(configuration: config.keychainAccess)
+        )
         let provider = OnboardingRunInputProvider(
             configStore: configStore,
-            credentialStore: store
+            credentialStore: store,
+            keychainAccessController: accessController,
+            externalCredentialReader: externalCredentialReader
         )
         return (provider, store, configStore)
     }
@@ -97,6 +110,69 @@ struct SubscriptionCredentialsHarness {
     ) async throws -> ([String: JSONValue], [String: JSONValue]) {
         let input = try await provider.runInput(for: .agentUsage)
         return (input.context, input.credentials)
+    }
+
+    private static func disallowedClaudeSourceDoesNotInvokeExternalReader() async throws {
+        let reader = InMemoryExternalCredentialReader(values: [
+            .claudeCLI: #"{"claudeAiOauth":{"accessToken":"external"}}"#
+        ])
+        let (provider, _, _) = try makeProvider(
+            enabled: [.claude],
+            credentials: [:],
+            externalCredentialReader: reader
+        )
+        let (_, credentials) = try await runInput(provider)
+        try credentialsExpect(
+            reader.requestedSources().isEmpty,
+            "未允许 Claude 外部来源时不得调用读取器"
+        )
+        try credentialsExpect(
+            credentials["claudeQuotaAccounts"] == nil,
+            "未允许 Claude 外部来源时不得注入账号"
+        )
+    }
+
+    private static func allowedClaudeSourceIsInjectedIntoQuotaAccounts() async throws {
+        let reader = InMemoryExternalCredentialReader(values: [
+            .claudeCLI: #"{"claudeAiOauth":{"accessToken":"external"}}"#
+        ])
+        let (provider, _, _) = try makeProvider(
+            enabled: [.claude],
+            credentials: [:],
+            externalSources: [.claudeCLI],
+            externalCredentialReader: reader
+        )
+        let (_, credentials) = try await runInput(provider)
+        try credentialsExpect(
+            reader.requestedSources() == [.claudeCLI],
+            "允许 Claude 外部来源时应调用一次读取器"
+        )
+        guard case .object(let accounts)? = credentials["claudeQuotaAccounts"] else {
+            throw CredentialsTestFailure.expectation(
+                "允许 Claude 外部来源时未注入 quota account"
+            )
+        }
+        try credentialsExpect(accounts["claude-cli"] != nil, "Claude CLI account 缺失")
+    }
+
+    private static func disallowedGrokSourceDoesNotInvokeExternalReader() async throws {
+        let reader = InMemoryExternalCredentialReader(values: [
+            .grokCLI: #"{"https://auth.x.ai::oidc":{"key":"external"}}"#
+        ])
+        let (provider, _, _) = try makeProvider(
+            enabled: [.grok],
+            credentials: [:],
+            externalCredentialReader: reader
+        )
+        let (_, credentials) = try await runInput(provider)
+        try credentialsExpect(
+            reader.requestedSources().isEmpty,
+            "未允许 Grok 外部来源时不得调用读取器"
+        )
+        try credentialsExpect(
+            credentials["grokQuotaAccounts"] == nil,
+            "未允许 Grok 外部来源时不得注入账号"
+        )
     }
 
     private static func claudeInjectedWhenCredentialPresent() async throws {

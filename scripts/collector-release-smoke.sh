@@ -186,8 +186,11 @@ echo "校验 Rust runtime: $BRUCE_RUST_RUNTIME"
 run_runtime_smoke "$BRUCE_APP_PATH" initial 1
 
 BRUCE_CACHE_ROOT="$BRUCE_HOME/Library/Application Support/Bruce/collector-cache-v1"
-BRUCE_CACHE_FILE=$(find "$BRUCE_CACHE_ROOT" -type f -name '*.json' \
-    ! -name 'manifest-*' -print -quit)
+# Cache root also contains Codex's separate tree cache. Select the Kimi
+# JSONL cache entry explicitly; relying on directory order makes this smoke
+# test mutate the wrong cache and falsely report that rebuild did not parse.
+BRUCE_CACHE_FILE=$(rg -l --glob '*.json' --glob '!manifest-*' \
+    '"sourceKind":"usage\.record"' "$BRUCE_CACHE_ROOT" | head -n 1 || true)
 if [[ -z "$BRUCE_CACHE_FILE" ]]; then
     echo "没有生成 cache entry, 无法执行旧 cache rebuild smoke" >&2
     exit 1

@@ -44,6 +44,14 @@ private func keychainAccessPolicyLegacyBooleanMigration() throws {
         "legacy Keychain boolean must migrate to Bruce Store configuration"
     )
     try coreExpect(
+        decoded.keychainAccess.bruceStoreStorageVersion == 0,
+        "legacy Keychain boolean must not claim current storage setup"
+    )
+    try coreExpect(
+        !decoded.keychainAccessConfigured,
+        "legacy Keychain boolean must not unlock automatic access"
+    )
+    try coreExpect(
         decoded.keychainAccess.externalSources.isEmpty,
         "legacy configuration must not grant external Keychain sources"
     )

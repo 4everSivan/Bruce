@@ -6,22 +6,24 @@ import BruceOnboardingCore
 /// 本机文件与系统 Keychain 探测 (App 层 I/O 边界).
 ///
 /// 无 AppModel 副作用; Coordinator 负责刷新 model / configured 状态.
-/// Claude / Grok Keychain 探测使用 `security find-generic-password` 且不带 `-w`,
-/// 不读密码数据, 不触发授权弹窗.
+/// Claude 外部 CLI 探测通过统一外部凭证读取器执行, 受来源白名单和非交互策略控制.
 struct LocalCredentialProbe: Sendable {
-    /// Claude CLI 凭证 Keychain service 名 (Claude Code-credentials, 无 account).
-    static let claudeKeychainService = "Claude Code-credentials"
-
     let homeURL: URL
-    /// 可注入; 默认执行 /usr/bin/security.
-    private let securityRunner: @Sendable ([String]) -> String?
+    private let keychainAccessController: KeychainAccessController
+    private let externalCredentialReader: ExternalCredentialReader
 
     init(
         homeURL: URL,
-        securityRunner: (@Sendable ([String]) -> String?)? = nil
+        accessController: KeychainAccessController = KeychainAccessController(),
+        externalCredentialReader: ExternalCredentialReader? = nil
     ) {
         self.homeURL = homeURL
-        self.securityRunner = securityRunner ?? Self.defaultRunSecurity
+        self.keychainAccessController = accessController
+        self.externalCredentialReader = externalCredentialReader
+            ?? SystemExternalCredentialReader(
+                homeURL: homeURL,
+                accessController: accessController
+            )
     }
 
     // MARK: - 本机文件存在性 (设置页条件渲染)
@@ -49,8 +51,14 @@ struct LocalCredentialProbe: Sendable {
 
     /// 解析 ~/.grok/auth.json: OIDC/legacy 条目 key 非空且未过期视为可用
     /// (与 Rust provider credential contract / SubscriptionCredentialEvaluator 同语义).
-    /// 损坏/缺失/过期返回 false.
+    /// 未显式允许 Grok 来源, 或文件损坏/缺失/过期时返回 false.
     func grokLocalAuthAvailable(now: Date = Date()) -> Bool {
+        guard keychainAccessController.allows(
+            source: .external(.grokCLI),
+            intent: .automatic
+        ) else {
+            return false
+        }
         let url = homeURL.appendingPathComponent(".grok/auth.json")
         guard let data = try? Data(contentsOf: url),
               let json = String(data: data, encoding: .utf8) else {
@@ -62,7 +70,14 @@ struct LocalCredentialProbe: Sendable {
     }
 
     /// 解析 ~/.claude/.credentials.json 是否为有效未过期 Claude OAuth.
+    /// 未显式允许 Claude 来源时不触碰该文件.
     func claudeCredentialsFileValid(now: Date = Date()) -> Bool {
+        guard keychainAccessController.allows(
+            source: .external(.claudeCLI),
+            intent: .automatic
+        ) else {
+            return false
+        }
         let url = homeURL.appendingPathComponent(".claude/.credentials.json")
         guard let data = try? Data(contentsOf: url),
               let json = String(data: data, encoding: .utf8) else {
@@ -73,40 +88,17 @@ struct LocalCredentialProbe: Sendable {
         ) == .valid
     }
 
-    /// 探测登录 Keychain 是否存在 Claude CLI 凭证条目
-    /// (不读密码数据, 不触发授权弹窗).
+    /// 探测 Claude CLI 外部登录态. 未显式允许来源时不触碰外部 Keychain.
     func claudeKeychainItemExists() -> Bool {
-        securityRunner([
-            "find-generic-password",
-            "-s", Self.claudeKeychainService,
-        ]) != nil
-    }
-
-    // MARK: - security 子进程
-
-    /// 执行 /usr/bin/security, 退出码 0 返回 stdout (去首尾空白), 否则 nil.
-    private static func defaultRunSecurity(_ arguments: [String]) -> String? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
-        process.arguments = arguments
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        do {
-            try process.run()
-        } catch {
-            return nil
+        guard keychainAccessController.allows(
+            source: .external(.claudeCLI),
+            intent: .automatic
+        ) else {
+            return false
         }
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
-            return nil
-        }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        guard let text = String(data: data, encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-              !text.isEmpty else {
-            return nil
-        }
-        return text
+        return (try? externalCredentialReader.read(
+            source: .claudeCLI,
+            intent: .automatic
+        )) != nil
     }
 }

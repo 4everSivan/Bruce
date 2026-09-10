@@ -120,6 +120,8 @@ package protocol CodexMigrationExecuting: AnyObject {
 package final class OnboardingRunInputProvider: CollectorRunInputProviding {
     private let configStore: OnboardingConfigurationStore?
     private let credentialStore: CredentialStore
+    private let keychainAccessController: KeychainAccessController
+    private let externalCredentialReader: ExternalCredentialReader
     /// Codex access token 注入器; nil 表示尚未装配 (App 启动时注入).
     private weak var codexTokenInjector: (any CodexAccessTokenInjecting)?
     /// 已决议的 Codex 账号列表 (accountID + displayName), 只供 Swift 内使用,
@@ -139,23 +141,34 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
         for id in SubscriptionProviderID.allCases where id != .codex {
             stores[id] = ProviderAccountStore(provider: id, credentialStore: credentialStore)
         }
-        // 复用已创建的 store 实例迁移旧凭证, 不额外创建 store.
-        for (_, store) in stores {
-            _ = try? store.migrateLegacyAccountsIfNeeded(
-                legacyKeys: ProviderAccountKeys.legacyKeys(for: store.provider)
-            )
-        }
         return stores
     }()
+    /// 仅记录本进程已处理的 enabled Provider, 避免重复迁移旧单条键.
+    private var migratedLegacyProviders = Set<SubscriptionProviderID>()
 
     package init(
         configStore: OnboardingConfigurationStore?,
         credentialStore: CredentialStore,
         codexTokenInjector: (any CodexAccessTokenInjecting)? = nil,
-        codexStore: CodexCredentialStore? = nil
+        codexStore: CodexCredentialStore? = nil,
+        keychainAccessController: KeychainAccessController? = nil,
+        externalCredentialReader: ExternalCredentialReader? = nil
     ) {
         self.configStore = configStore
         self.credentialStore = credentialStore
+        let resolvedAccessController = keychainAccessController
+            ?? KeychainAccessController(
+                policy: KeychainAccessPolicy(
+                    configuration: configStore?.load()?.keychainAccess
+                        ?? KeychainAccessConfiguration()
+                )
+            )
+        self.keychainAccessController = resolvedAccessController
+        self.externalCredentialReader = externalCredentialReader
+            ?? SystemExternalCredentialReader(
+                homeURL: FileManager.default.homeDirectoryForCurrentUser,
+                accessController: resolvedAccessController
+            )
         self.codexTokenInjector = codexTokenInjector
         self.codexStore = codexStore
     }
@@ -202,17 +215,15 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
                 reason: "定向刷新仅支持 agentUsage 模块"
             )
         }
+        try requireAutomaticKeychainAccess(
+            for: module,
+            purpose: "无法定向刷新订阅额度"
+        )
         // 每个定向输入都是新的决议边界.
         codexTokenDecisions = []
         codexQuotaAccountIDs = []
 
         guard let config = configStore?.load() else {
-            throw CollectorRunInputError.missingAuthorization(
-                module: module,
-                reason: "未配置钥匙串访问, 无法定向刷新订阅额度"
-            )
-        }
-        guard config.keychainAccessConfigured else {
             throw CollectorRunInputError.missingAuthorization(
                 module: module,
                 reason: "未配置钥匙串访问, 无法定向刷新订阅额度"
@@ -280,6 +291,10 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
               !accountIDs.isEmpty else {
             return nil
         }
+        try requireAutomaticKeychainAccess(
+            for: module,
+            purpose: "无法重试订阅额度"
+        )
         // 按本轮决议 index 重新排序; 未出现在决议中的账号按 accountID
         // 排尾 (确定性).
         let decisionIndexByAccount: [String: Int] = {
@@ -343,12 +358,10 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
         codexTokenDecisions = []
         codexQuotaAccountIDs = []
         let config = configStore?.load()
-        guard config?.keychainAccessConfigured == true else {
-            throw CollectorRunInputError.missingAuthorization(
-                module: .agentUsage,
-                reason: "未配置钥匙串访问, 无法启动 Collector"
-            )
-        }
+        try requireAutomaticKeychainAccess(
+            for: .agentUsage,
+            purpose: "无法启动 Collector"
+        )
         var capabilities: [JSONValue] = [
             .string(CollectorCapability.localSessions.rawValue),
             .string(CollectorCapability.localPricing.rawValue),
@@ -398,6 +411,28 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
         )
     }
 
+    private func requireAutomaticKeychainAccess(
+        for module: CollectorModule,
+        purpose: String
+    ) throws {
+        guard keychainAccessController.allows(
+            source: .bruceStore,
+            intent: .automatic
+        ) else {
+            let reason: String
+            switch keychainAccessController.policy.state {
+            case .blocked:
+                reason = "钥匙串访问已被阻断, \(purpose)"
+            case .notConfigured, .allowed:
+                reason = "未配置钥匙串访问, \(purpose)"
+            }
+            throw CollectorRunInputError.missingAuthorization(
+                module: module,
+                reason: reason
+            )
+        }
+    }
+
     /// 从 Keychain 装配订阅 provider 的 Bridge 注入凭证.
     /// 只装配 enabled 且凭证完整的 provider; 凭证 JSON 损坏按缺失处理
     /// (fail-closed, 不授予 externalQuotas).
@@ -407,6 +442,7 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
     private func assembleSubscriptionCredentials(
         providers: [String: SubscriptionProviderConfiguration]
     ) async -> [String: JSONValue] {
+        migrateEnabledLegacyAccounts(providers: providers)
         var credentials: [String: JSONValue] = [:]
         var providerMeta: [String: JSONValue] = [:]
 
@@ -505,10 +541,10 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
 
             case .claudeMetaEnabledPlusOptionalOAuth:
                 providerMeta["claude"] = .object(["enabled": .boolean(true)])
+                var accounts: [String: JSONValue] = [:]
                 if let store = accountStores[descriptor.id],
                    let index = try? store.loadIndex(),
                    !index.accounts.isEmpty {
-                    var accounts: [String: JSONValue] = [:]
                     for entry in index.accounts {
                         guard let record = try? store.loadRecord(for: entry.accountID),
                               let oauth = jsonObjectValue(from: record.credentialJSON) else { continue }
@@ -517,17 +553,25 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
                             "oauth": oauth,
                         ])
                     }
-                    if !accounts.isEmpty {
-                        credentials["claudeQuotaAccounts"] = .object(accounts)
-                    }
+                }
+                if accounts.isEmpty,
+                   let external = externalOAuthAccount(
+                       source: .claudeCLI,
+                       accountID: "claude-cli",
+                       displayName: "Claude CLI"
+                   ) {
+                    accounts["claude-cli"] = external
+                }
+                if !accounts.isEmpty {
+                    credentials["claudeQuotaAccounts"] = .object(accounts)
                 }
 
             case .grokMetaEnabledPlusOptionalOAuth:
                 providerMeta["grok"] = .object(["enabled": .boolean(true)])
+                var accounts: [String: JSONValue] = [:]
                 if let store = accountStores[descriptor.id],
                    let index = try? store.loadIndex(),
                    !index.accounts.isEmpty {
-                    var accounts: [String: JSONValue] = [:]
                     for entry in index.accounts {
                         guard let record = try? store.loadRecord(for: entry.accountID),
                               let oauth = jsonObjectValue(from: record.credentialJSON) else { continue }
@@ -536,9 +580,17 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
                             "oauth": oauth,
                         ])
                     }
-                    if !accounts.isEmpty {
-                        credentials["grokQuotaAccounts"] = .object(accounts)
-                    }
+                }
+                if accounts.isEmpty,
+                   let external = externalOAuthAccount(
+                       source: .grokCLI,
+                       accountID: "grok-cli",
+                       displayName: "Grok CLI"
+                   ) {
+                    accounts["grok-cli"] = external
+                }
+                if !accounts.isEmpty {
+                    credentials["grokQuotaAccounts"] = .object(accounts)
                 }
 
             case .opencodeGoQuotaAccounts:
@@ -564,6 +616,65 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
             credentials["providerMeta"] = .object(providerMeta)
         }
         return credentials
+    }
+
+    /// 兼容尚未经过启动准备的测试/一次性输入调用, 但只迁移当前 enabled Provider.
+    /// 生产启动已由 SubscriptionService 完成同一迁移, 此处调用保持幂等.
+    private func migrateEnabledLegacyAccounts(
+        providers: [String: SubscriptionProviderConfiguration]
+    ) {
+        for descriptor in ProviderRegistry.all where descriptor.id != .codex {
+            guard providers[descriptor.id.rawValue]?.enabled == true,
+                  migratedLegacyProviders.insert(descriptor.id).inserted,
+                  let store = accountStores[descriptor.id] else {
+                continue
+            }
+            _ = try? store.migrateLegacyAccountsIfNeeded(
+                legacyKeys: ProviderAccountKeys.legacyKeys(for: descriptor.id)
+            )
+        }
+    }
+
+    /// 只有外部来源显式允许时才读取 CLI 凭证并转为现有 quota account 形状.
+    private func externalOAuthAccount(
+        source: KeychainExternalSource,
+        accountID: String,
+        displayName: String
+    ) -> JSONValue? {
+        guard keychainAccessController.allows(
+            source: .external(source),
+            intent: .automatic
+        ),
+              let raw = try? externalCredentialReader.read(
+                  source: source,
+                  intent: .automatic
+              ) else {
+            return nil
+        }
+
+        let normalized: String?
+        switch source {
+        case .claudeCLI:
+            if case .success(let value) = ClaudePasteParser.parse(raw) {
+                normalized = value
+            } else {
+                normalized = nil
+            }
+        case .grokCLI:
+            if case .success(let value) = GrokPasteParser.parse(raw) {
+                normalized = value
+            } else {
+                normalized = nil
+            }
+        }
+        guard let normalized,
+              let oauth = jsonObjectValue(from: normalized) else {
+            return nil
+        }
+        return .object([
+            "display_name": .string(displayName),
+            "oauth": oauth,
+        ])
     }
 
     /// 从 v2 索引取全部账号, 交给批量决议器最多 4 并行决议.

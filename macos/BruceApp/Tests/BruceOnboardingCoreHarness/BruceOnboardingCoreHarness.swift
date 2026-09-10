@@ -62,6 +62,8 @@ struct BruceOnboardingCoreHarness {
         try await sqliteProbeCorruptedForGarbageFile()
         try sqliteLockedDetectionUsesStderr()
         try sqliteTableInfoParsesColumnNames()
+        try keychainAutomaticAccessRequiresConfiguration()
+        try keychainAuthenticationQueryPolicies()
         // 真实 Keychain 测试仅在交互环境运行: 无头 CI runner 无登录会话,
         // SecItem* 触发系统授权等待会挂起至超时 (本地已有登录会话, 自动通过).
         if !IsNonInteractiveEnvironment.runningInCI {

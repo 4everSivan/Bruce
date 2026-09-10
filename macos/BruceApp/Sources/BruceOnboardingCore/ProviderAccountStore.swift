@@ -228,7 +228,8 @@ public final class ProviderAccountStore: @unchecked Sendable {
     /// 加载账号索引; 不存在返回空索引.
     public func loadIndex() throws -> ProviderAccountIndex {
         guard let raw = try credentialStore.loadCredential(
-            forAccount: ProviderAccountKeys.indexKey(for: provider)
+            forAccount: ProviderAccountKeys.indexKey(for: provider),
+            intent: .automatic
         ), !raw.isEmpty else {
             return ProviderAccountIndex()
         }
@@ -245,7 +246,8 @@ public final class ProviderAccountStore: @unchecked Sendable {
         guard let json = String(data: data, encoding: .utf8) else { return }
         try credentialStore.saveCredential(
             json,
-            forAccount: ProviderAccountKeys.indexKey(for: provider)
+            forAccount: ProviderAccountKeys.indexKey(for: provider),
+            intent: .automatic
         )
     }
 
@@ -254,7 +256,10 @@ public final class ProviderAccountStore: @unchecked Sendable {
     /// 加载单账号凭证记录; 不存在返回 nil.
     public func loadRecord(for accountID: String) throws -> ProviderAccountRecord? {
         let key = ProviderAccountKeys.recordKey(for: provider, accountID: accountID)
-        guard let raw = try credentialStore.loadCredential(forAccount: key),
+        guard let raw = try credentialStore.loadCredential(
+            forAccount: key,
+            intent: .automatic
+        ),
               !raw.isEmpty else {
             return nil
         }
@@ -267,13 +272,20 @@ public final class ProviderAccountStore: @unchecked Sendable {
         let data = try JSONEncoder().encode(record)
         guard let json = String(data: data, encoding: .utf8) else { return }
         let key = ProviderAccountKeys.recordKey(for: provider, accountID: record.accountID)
-        try credentialStore.saveCredential(json, forAccount: key)
+        try credentialStore.saveCredential(
+            json,
+            forAccount: key,
+            intent: .automatic
+        )
     }
 
     /// 删除单账号凭证记录.
     public func deleteRecord(for accountID: String) throws {
         let key = ProviderAccountKeys.recordKey(for: provider, accountID: accountID)
-        try credentialStore.deleteCredential(forAccount: key)
+        try credentialStore.deleteCredential(
+            forAccount: key,
+            intent: .automatic
+        )
     }
 
     // MARK: - 高层操作
@@ -424,7 +436,10 @@ public final class ProviderAccountStore: @unchecked Sendable {
         // 收集旧键值; 任一缺失则跳过该 provider
         var legacyValues: [String] = []
         for key in legacyKeys {
-            guard let value = try credentialStore.loadCredential(forAccount: key),
+            guard let value = try credentialStore.loadCredential(
+                forAccount: key,
+                intent: .automatic
+            ),
                   !value.isEmpty else {
                 return false
             }

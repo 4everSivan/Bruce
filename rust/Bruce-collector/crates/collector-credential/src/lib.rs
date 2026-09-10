@@ -8,7 +8,6 @@ use serde_json::Value;
 use std::collections::BTreeSet;
 use std::fmt::{self, Display, Formatter};
 use std::path::Path;
-use std::process::Command;
 
 pub const CREDENTIAL_CHALLENGE_ACCOUNT_ID_MAX: usize = 256;
 pub const UPDATE_ACCOUNT_ID_MAX: usize = 256;
@@ -31,8 +30,9 @@ impl Display for CredentialReadError {
 
 impl std::error::Error for CredentialReadError {}
 
-/// Read-only boundary used by CLI credential import and provider adapters.
-/// The production implementation reads files and Keychain; tests inject a fixture source.
+/// Read-only boundary used by credential parsing compatibility code and tests.
+/// The App production path injects credentials through the Bridge; it must not
+/// let Rust open the host Keychain.
 pub trait CredentialSource: Send + Sync {
     fn read_file(&self, path: &Path) -> Result<Option<Vec<u8>>, CredentialReadError>;
 
@@ -71,18 +71,11 @@ impl CredentialSource for SystemCredentialSource {
             .map_err(|_| read_error("CREDENTIAL_FILE_READ_FAILED", "凭证文件读取失败", true))
     }
 
-    fn read_keychain(&self, service: &str) -> Result<Option<String>, CredentialReadError> {
-        let output = Command::new("/usr/bin/security")
-            .args(["find-generic-password", "-s", service, "-w"])
-            .output();
-        let Ok(output) = output else {
-            return Ok(None);
-        };
-        if !output.status.success() {
-            return Ok(None);
-        }
-        let value = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-        Ok((!value.is_empty()).then_some(value))
+    fn read_keychain(&self, _service: &str) -> Result<Option<String>, CredentialReadError> {
+        // Keychain access is a Swift/App concern. Returning no value here is
+        // intentional: even a compatibility caller cannot spawn `security`
+        // and bypass the configuration-driven, non-interactive policy.
+        Ok(None)
     }
 }
 

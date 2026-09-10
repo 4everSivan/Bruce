@@ -723,7 +723,17 @@ extension BruceOnboardingCoreHarness {
     /// 真实 Keychain 验证新 account 键的 update 优先语义;
     /// 使用独立 harness service, 测试结束清理, 不触碰正式凭证.
     static func keychainSubscriptionAccountsRoundTrip() throws {
-        let store = KeychainCredentialStore(service: keychainTestService)
+        let accessController = KeychainAccessController(
+            policy: KeychainAccessPolicy(
+                configuration: KeychainAccessConfiguration(
+                    bruceStoreConfigured: true
+                )
+            )
+        )
+        let store = KeychainCredentialStore(
+            service: keychainTestService,
+            accessController: accessController
+        )
         let suffix = UUID().uuidString
         let kimiAccount = SubscriptionCredentialAccount.kimiAPIKey
         let volcAK = SubscriptionCredentialAccount.volcengineAccessKey

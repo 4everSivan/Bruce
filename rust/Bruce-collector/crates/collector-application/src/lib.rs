@@ -690,6 +690,18 @@ mod tests {
         }
     }
 
+    struct HostCredentialAccessMustNotBeUsed;
+
+    impl CredentialSource for HostCredentialAccessMustNotBeUsed {
+        fn read_file(&self, _path: &Path) -> Result<Option<Vec<u8>>, CredentialReadError> {
+            panic!("collector must not read host credential files without injection")
+        }
+
+        fn read_keychain(&self, _service: &str) -> Result<Option<String>, CredentialReadError> {
+            panic!("collector must not read host Keychain without injection")
+        }
+    }
+
     struct StatusFixtureHttp {
         calls: AtomicUsize,
         status: u16,
@@ -716,6 +728,50 @@ mod tests {
         let artifact = output.artifact.as_object().unwrap();
         assert_eq!(artifact["agents"][1]["status"], "unavailable");
         assert_eq!(artifact["services"][0]["status"], "partial");
+    }
+
+    #[test]
+    fn application_does_not_fallback_to_host_credentials_for_official_providers() {
+        let request: BridgeRequest = serde_json::from_value(json!({
+            "schemaVersion": 1,
+            "runId": "12345678-1234-4234-9234-123456789abc",
+            "module": "agent-usage",
+            "timeouts": {
+                "localScanSeconds": 30,
+                "externalRequestSeconds": 10,
+                "moduleSeconds": 90
+            },
+            "context": {
+                "now": "2026-08-21T08:00:00Z",
+                "capabilities": ["externalQuotas"]
+            },
+            "credentials": {
+                "providerMeta": {
+                    "claude": {"enabled": true},
+                    "grok": {"enabled": true}
+                }
+            }
+        }))
+        .unwrap();
+        let http = FixtureHttp {
+            calls: AtomicUsize::new(0),
+            body: br#"{}"#.to_vec(),
+        };
+        let output = collect_agent_usage_with_dependencies(
+            &request,
+            &http,
+            &HostCredentialAccessMustNotBeUsed,
+        )
+        .unwrap();
+        assert_eq!(http.calls.load(Ordering::Acquire), 0);
+        assert!(
+            output
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.code == "CREDENTIAL_MISSING")
+                .count()
+                >= 2
+        );
     }
 
     #[test]

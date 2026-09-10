@@ -41,19 +41,35 @@ public enum KeychainAccessIntent: Equatable, Sendable {
 /// 配置文件中的非敏感 Keychain 授权状态.
 /// 不保存系统密码、Token 或任何凭证内容.
 public struct KeychainAccessConfiguration: Codable, Equatable, Sendable {
+    /// v2 moves Bruce credentials out of the legacy login-keychain namespace,
+    /// so background reads never request the old item ACL UI.
+    public static let currentBruceStoreStorageVersion = 2
+
     public var bruceStoreConfigured: Bool
+    /// Explicit setup/migration marker for Bruce's own Keychain namespace.
+    /// Missing values from older configs are not trusted for automatic access.
+    public var bruceStoreStorageVersion: Int
     public var externalSources: Set<KeychainExternalSource>
 
     public init(
         bruceStoreConfigured: Bool = false,
+        bruceStoreStorageVersion: Int? = nil,
         externalSources: Set<KeychainExternalSource> = []
     ) {
         self.bruceStoreConfigured = bruceStoreConfigured
+        self.bruceStoreStorageVersion = bruceStoreStorageVersion
+            ?? (bruceStoreConfigured ? Self.currentBruceStoreStorageVersion : 0)
         self.externalSources = externalSources
+    }
+
+    public var bruceStoreReady: Bool {
+        bruceStoreConfigured
+            && bruceStoreStorageVersion >= Self.currentBruceStoreStorageVersion
     }
 
     private enum CodingKeys: String, CodingKey {
         case bruceStoreConfigured
+        case bruceStoreStorageVersion
         case externalSources
     }
 
@@ -62,10 +78,16 @@ public struct KeychainAccessConfiguration: Codable, Equatable, Sendable {
         bruceStoreConfigured = try container.decodeIfPresent(
             Bool.self, forKey: .bruceStoreConfigured
         ) ?? false
-        // 未知的外部来源只忽略, 不扩大访问范围.
-        externalSources = try container.decodeIfPresent(
-            Set<KeychainExternalSource>.self, forKey: .externalSources
+        // Older configuration files have no proof that the current ACL/storage
+        // setup was completed, so they remain blocked until explicit setup.
+        bruceStoreStorageVersion = try container.decodeIfPresent(
+            Int.self, forKey: .bruceStoreStorageVersion
+        ) ?? 0
+        // 先按字符串读取, 未知来源只忽略, 不扩大访问范围.
+        let rawSources = try container.decodeIfPresent(
+            [String].self, forKey: .externalSources
         ) ?? []
+        externalSources = Set(rawSources.compactMap(KeychainExternalSource.init(rawValue:)))
     }
 }
 
@@ -84,7 +106,7 @@ public struct KeychainAccessPolicy: Equatable, Sendable {
         if let state {
             self.state = state
         } else {
-            self.state = configuration.bruceStoreConfigured ? .allowed : .notConfigured
+            self.state = configuration.bruceStoreReady ? .allowed : .notConfigured
         }
     }
 
@@ -104,7 +126,7 @@ public struct KeychainAccessPolicy: Equatable, Sendable {
             if intent == .userInitiated {
                 return true
             }
-            return state == .allowed && configuration.bruceStoreConfigured
+            return state == .allowed && configuration.bruceStoreReady
         case .external(let externalSource):
             // 外部来源必须同时满足显式白名单和已允许状态.
             guard state == .allowed else { return false }
@@ -149,7 +171,7 @@ public final class KeychainAccessController: @unchecked Sendable {
 
     public func clearBlocked() {
         lock.lock()
-        let state: KeychainAccessState = currentPolicy.configuration.bruceStoreConfigured
+        let state: KeychainAccessState = currentPolicy.configuration.bruceStoreReady
             ? .allowed : .notConfigured
         currentPolicy = currentPolicy.withState(state)
         lock.unlock()

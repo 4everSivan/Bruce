@@ -41,6 +41,8 @@ struct SettingsView: View {
     // 首次启动时引导配置 Bruce 自有 Keychain 访问权限
     @State private var showsKeychainAccessGuide = false
     @State private var didEvaluateKeychainAccessGuide = false
+    // 外部 CLI 来源由独立 sheet 管理, 避免在通用页内堆叠两个开关.
+    @State private var showsExternalKeychainSourceManager = false
     // 数据管理: 清理确认与操作反馈
     @State private var showsClearCacheConfirm = false
     @State private var dataActionMessage: String?
@@ -396,30 +398,53 @@ struct SettingsView: View {
                     divided: true
                 ) {
                     HStack(spacing: 8) {
-                        if coordinator.keychainAccessConfigured {
+                        switch coordinator.keychainAccessState {
+                        case .allowed:
                             Text("已配置")
                                 .font(.system(size: 12.5))
                                 .foregroundStyle(SettingsDemoTokens.ok)
                             Button("重新配置") {
                                 coordinator.configureKeychainAccess()
                             }
-                            .fluentButton()
-                        } else {
+                            .fluentButton(.primary)
+                        case .notConfigured:
                             Text("未配置")
                                 .font(.system(size: 12.5))
                                 .foregroundStyle(SettingsDemoTokens.warn)
                             Button("配置") {
                                 coordinator.configureKeychainAccess()
                             }
-                            .fluentButton()
+                            .fluentButton(.primary)
+                        case .blocked:
+                            Text("访问被阻断")
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(SettingsDemoTokens.warn)
+                            Button("修复") {
+                                coordinator.configureKeychainAccess()
+                            }
+                            .fluentButton(.primary)
                         }
                     }
+                }
+                FluentRow(
+                    "外部 CLI 来源",
+                    sub: "仅允许已明确开启的 Claude / Grok 本机来源, 不保存凭证内容",
+                    divided: true
+                ) {
+                    Button("管理") {
+                        showsExternalKeychainSourceManager = true
+                    }
+                    .fluentButton()
                 }
                 FluentRow("版本", divided: true) {
                     Text(AppVersion.current())
                         .font(.system(size: 12.5, design: .monospaced))
                         .foregroundStyle(SettingsDemoTokens.text2)
                 }
+            }
+            .sheet(isPresented: $showsExternalKeychainSourceManager) {
+                ExternalKeychainSourceManagerView()
+                    .environmentObject(coordinator)
             }
 
             paneCaption("全局快捷键")
@@ -482,7 +507,7 @@ struct SettingsView: View {
                     showsKeychainAccessGuide = false
                     coordinator.configureKeychainAccess()
                 }
-                .buttonStyle(.borderedProminent)
+                .fluentButton(.primary)
                 .keyboardShortcut(.defaultAction)
             }
         }
@@ -589,6 +614,11 @@ struct SettingsView: View {
         let result = model.moduleResults[.agentUsage]
         let sessionProbes = (result?.localDependencies ?? [])
             .filter { $0.kind == .sessionDirectory }
+        let missingSessionNames = Set(
+            sessionProbes
+                .filter { $0.status == .missing }
+                .compactMap { $0.detail }
+        )
         let busy = model.busyModules.contains(.agentUsage)
         let rustAvailable = coordinator.collectorRuntimeStatus == .rustAvailable
 
@@ -618,21 +648,29 @@ struct SettingsView: View {
                             divided: true
                         ) {
                             HStack(spacing: 6) {
-                                FluentStatusDot(
-                                    level: probe.status == .available ? .ok : .warn
-                                )
-                                Text(probe.status == .available ? "就绪" : "未授权")
+                                let isAvailable = probe.status == .available
+                                let isMissing = probe.status == .missing
+                                if !isMissing {
+                                    FluentStatusDot(level: isAvailable ? .ok : .warn)
+                                }
+                                Text(isAvailable ? "就绪" : isMissing ? "未安装" : "未授权")
                                     .font(.system(size: 12.5))
                                     .foregroundStyle(
-                                        probe.status == .available
+                                        isAvailable
                                             ? SettingsDemoTokens.text2
-                                            : SettingsDemoTokens.warn
+                                            : isMissing ? SettingsDemoTokens.text3 : SettingsDemoTokens.warn
                                     )
                             }
                         }
                     }
                 }
-                ForEach(visibleAgentUsageWarnings(result?.warnings ?? []), id: \.self) { warning in
+                ForEach(
+                    visibleAgentUsageWarnings(
+                        result?.warnings ?? [],
+                        missingSessionNames: missingSessionNames
+                    ),
+                    id: \.self
+                ) { warning in
                     HStack(spacing: 6) {
                         Image(systemName: "exclamationmark.triangle")
                             .foregroundStyle(SettingsDemoTokens.warn)
@@ -678,9 +716,16 @@ struct SettingsView: View {
     }
 
     /// Kimi Work 属于可选增强探测, 不在 Agent 用量配置卡片中展示其状态提示.
-    private func visibleAgentUsageWarnings(_ warnings: [String]) -> [String] {
+    private func visibleAgentUsageWarnings(
+        _ warnings: [String],
+        missingSessionNames: Set<String>
+    ) -> [String] {
         warnings.filter { warning in
-            !warning.hasPrefix("Kimi Work ")
+            guard !warning.hasPrefix("Kimi Work ") else { return false }
+            let duplicatesMissingSource = missingSessionNames.contains { name in
+                warning == "\(name) 不可用" || warning == "\(name) 暂不可用"
+            }
+            return !duplicatesMissingSource
         }
     }
 

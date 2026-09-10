@@ -27,6 +27,10 @@ final class OnboardingCoordinator: ObservableObject {
     /// Bruce 自有 Keychain 项目是否已完成访问配置.
     /// 只保存非敏感状态, 不保存系统密码或凭证内容.
     @Published private(set) var keychainAccessConfigured: Bool
+    /// Bruce Keychain 当前运行时状态; blocked 不回写为 granted.
+    @Published private(set) var keychainAccessState: KeychainAccessState
+    /// 已显式允许的外部 CLI 来源.
+    @Published private(set) var externalKeychainSources: Set<KeychainExternalSource>
     /// Bruce 是否允许投递系统通知; 仅控制应用行为, 不撤销 macOS 系统授权.
     @Published private(set) var systemNotificationsEnabled: Bool
     /// 可注入的能力探测 (测试); 默认读系统.
@@ -58,6 +62,7 @@ final class OnboardingCoordinator: ObservableObject {
     private let scanner: LocalDependencyScanner
     private let homeURL: URL
     private let collectorRuntime: CollectorRuntimeStatus
+    private let keychainAccessController: KeychainAccessController
     private var gate: CollectorActivationGate
     private let subscriptions: SubscriptionService
     private var hotkeyMonitor: GlobalHotkeyMonitor?
@@ -67,7 +72,8 @@ final class OnboardingCoordinator: ObservableObject {
         model: AppModel,
         runtime: AppRuntime,
         configStore: OnboardingConfigurationStore? = try? OnboardingConfigurationStore(),
-        credentialStore: CredentialStore = KeychainCredentialStore(),
+        credentialStore: CredentialStore? = nil,
+        keychainAccessController: KeychainAccessController? = nil,
         codexStore: CodexCredentialStore? = nil,
         codexTokenManager: CodexTokenManager? = nil,
         scanner: LocalDependencyScanner? = nil,
@@ -83,14 +89,29 @@ final class OnboardingCoordinator: ObservableObject {
         self.configStore = configStore
         self.homeURL = homeURL
         self.collectorRuntime = collectorRuntime
+        let config = configStore?.load()
+        let resolvedKeychainAccessController = keychainAccessController
+            ?? KeychainAccessController(
+                policy: KeychainAccessPolicy(
+                    configuration: config?.keychainAccess
+                        ?? KeychainAccessConfiguration()
+                )
+            )
+        self.keychainAccessController = resolvedKeychainAccessController
+        let resolvedCredentialStore: CredentialStore = credentialStore
+            ?? KeychainCredentialStore(
+                accessController: resolvedKeychainAccessController
+            )
         let resolvedStore = codexStore
-            ?? CodexCredentialStore(store: credentialStore)
+            ?? CodexCredentialStore(store: resolvedCredentialStore)
         let resolvedTokenManager = codexTokenManager ?? CodexTokenManager(
             store: resolvedStore,
             client: CodexOAuthClient.defaultClient()
         )
-        let resolvedProbe = localProbe ?? LocalCredentialProbe(homeURL: homeURL)
-        let config = configStore?.load()
+        let resolvedProbe = localProbe ?? LocalCredentialProbe(
+            homeURL: homeURL,
+            accessController: resolvedKeychainAccessController
+        )
         self.scanner = scanner ?? LocalDependencyScanner(
             paths: .standard(home: homeURL)
         )
@@ -121,6 +142,8 @@ final class OnboardingCoordinator: ObservableObject {
         self.glassStyle = theme.glassStyle
         self.dashboardHotkey = config?.resolvedDashboardHotkey
         self.keychainAccessConfigured = config?.keychainAccessConfigured ?? false
+        self.keychainAccessState = resolvedKeychainAccessController.policy.state
+        self.externalKeychainSources = config?.keychainAccess.externalSources ?? []
         self.systemNotificationsEnabled = config?.systemNotificationsEnabled ?? true
 
         // SubscriptionService 在 self 部分初始化后创建; objectWillChange 经回调转发.
@@ -128,9 +151,10 @@ final class OnboardingCoordinator: ObservableObject {
         let service = SubscriptionService(
             model: model,
             configStore: configStore,
-            credentialStore: credentialStore,
+            credentialStore: resolvedCredentialStore,
             codexStore: resolvedStore,
             codexTokenManager: resolvedTokenManager,
+            keychainAccessController: resolvedKeychainAccessController,
             verifier: verifier,
             homeURL: homeURL,
             localProbe: resolvedProbe
@@ -397,13 +421,72 @@ final class OnboardingCoordinator: ObservableObject {
             var config = configStore.load() ?? OnboardingConfiguration()
             config.keychainAccessConfigured = true
             try configStore.save(config)
+            keychainAccessController.update(
+                policy: KeychainAccessPolicy(configuration: config.keychainAccess)
+            )
             keychainAccessConfigured = true
+            keychainAccessState = keychainAccessController.policy.state
+            externalKeychainSources = config.keychainAccess.externalSources
             subscriptions.setKeychainAccessConfigured(true)
             model.setSettingsError(nil)
             reconcileScheduler()
         } catch {
             model.setSettingsError("钥匙串访问配置失败, 未保存权限状态")
         }
+    }
+
+    /// 在启动自动刷新前准备已启用 Provider 的 Keychain 状态.
+    func prepareKeychainBackedStartup() async -> KeychainPreparationResult {
+        let result = subscriptions.prepareKeychainBackedStartup()
+        keychainAccessState = keychainAccessController.policy.state
+        return result
+    }
+
+    /// 持久化外部 CLI 来源白名单. 只改变来源配置, 不立即读取外部凭证.
+    func setExternalKeychainSource(
+        _ source: KeychainExternalSource,
+        enabled: Bool
+    ) {
+        guard let configStore else {
+            model.setSettingsError("配置存储不可用, 无法保存外部钥匙串设置")
+            return
+        }
+        var config = configStore.load() ?? OnboardingConfiguration()
+        var sources = config.keychainAccess.externalSources
+        if enabled {
+            sources.insert(source)
+        } else {
+            sources.remove(source)
+        }
+        config.keychainAccess.externalSources = sources
+        do {
+            try configStore.save(config)
+        } catch {
+            model.setSettingsError("外部钥匙串设置保存失败")
+            return
+        }
+
+        let state = keychainAccessController.policy.state
+        keychainAccessController.update(
+            policy: KeychainAccessPolicy(
+                configuration: config.keychainAccess,
+                state: state
+            )
+        )
+        externalKeychainSources = sources
+        keychainAccessState = keychainAccessController.policy.state
+        model.setSettingsError(nil)
+    }
+
+    /// 读取非敏感配置中的 enabled Provider 集合, 不触碰 Keychain.
+    func enabledSubscriptionProviders() -> Set<SubscriptionProviderID> {
+        let config = configStore?.load()
+        return Set(
+            config?.subscriptionProviders.compactMap { rawID, entry in
+                guard entry.enabled else { return nil }
+                return SubscriptionProviderID(rawValue: rawID)
+            } ?? []
+        )
     }
 
     /// 用户变更 Bruce 系统通知开关: 先持久化再发布, 保存失败不改变运行中行为.
@@ -606,7 +689,10 @@ final class OnboardingCoordinator: ObservableObject {
                 CollectorModule(rawValue: $0)
             }
         )
-        let keychainAccessConfigured = config?.keychainAccessConfigured ?? false
+        let keychainAccessConfigured = keychainAccessController.allows(
+            source: .bruceStore,
+            intent: .automatic
+        )
 
         for module in CollectorModule.allCases {
             let readiness = model.readinessValue(for: module)
