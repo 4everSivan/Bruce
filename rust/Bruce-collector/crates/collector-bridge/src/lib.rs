@@ -46,8 +46,6 @@ const ALLOWED_CREDENTIAL_FIELDS: &[&str] = &[
     "deepseekQuotaAccounts",
     "volcengineQuotaAccounts",
     "zhipuQuotaAccounts",
-    "antigravityOAuth",
-    "antigravityQuotaAccounts",
     "claudeOAuth",
     "claudeQuotaAccounts",
     "grokOAuth",

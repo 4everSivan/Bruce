@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- 移除没有 Rust 额度消费者的 Antigravity 凭证、注入、设置和 SQLite 探测链路, 同步收缩 Bridge schema 与测试。
+- 在「通用」设置的系统通知权限下方增加 Bruce 自有钥匙串访问配置, 首次启动提供一次性引导; 配置文件只记录状态, 不保存系统密码或凭证。
+- 未完成钥匙串访问配置时, 启动不读取 Bruce Keychain、不执行凭证迁移或账号状态刷新, 并禁用自动采集; 系统通知新增可持久化的应用层关闭开关。
+
 ## [0.6.0] - 2026-09-04
 
 ### Added

@@ -48,7 +48,6 @@
 ### 2.2 凭证读取 (collector-credential/src/lib.rs)
 
 - `lib.rs:86,104`: Claude CLI 凭证走 `/usr/bin/security` 子进程读 macOS Keychain → Windows 替换: Claude Code Windows 版的存储位置**待实测** (预期 `%USERPROFILE%\.claude\.credentials.json` 或 Windows Credential Manager); 实现 `CredentialSource` 的 Windows 分支 (Win32 `CredRead` 或 `keyring` crate)。
-- `lib.rs:334-378`: Antigravity go-keyring 读取 (macOS Keychain service `gemini`) → go-keyring 在 Windows 写入的是 **Windows Credential Manager 同名 service**, 读取逻辑可对称移植; `ANTIGRAVITY_KEYCHAIN_PREFIX` 解析不变。
 - Grok `~/.grok/auth.json`、Codex `~/.codex/auth.json`: 纯文件, 路径随 2.1。
 - 订阅凭证注入 (`kimi_web_tokens` / `provider_env` 等): App 模式经 Bridge stdin 注入, **平台无关, 零改动**; 仅 CLI 模式的 CC Switch SQLite 路径 (`~/Library/Application Support/cc-switch/...`) 需 Windows 定位或禁用。
 

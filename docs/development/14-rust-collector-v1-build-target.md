@@ -28,7 +28,7 @@ Rust Bruce-collector
         ├─ collector-local: JSONL / SQLite 扫描
         ├─ collector-aggregate: token / cost / day / model 聚合
         ├─ collector-provider: Kimi / DeepSeek / 火山 / Zhipu / Claude / Grok / OpenCode Go
-        ├─ collector-credential: Codex / Antigravity / OAuth / Keychain 兼容逻辑
+        ├─ collector-credential: Codex / OAuth / Keychain 兼容逻辑
         └─ collector-bridge: Bridge v1 校验、脱敏和 stdout envelope
         ↓
 artifact JSON → Swift PanelViewModel → 仪表盘

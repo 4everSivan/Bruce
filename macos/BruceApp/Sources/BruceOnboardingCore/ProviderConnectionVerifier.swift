@@ -121,20 +121,6 @@ public struct ProviderConnectionVerifier: Sendable {
         return .ok
     }
 
-    /// Antigravity 令牌文件同构 JSON 结构校验:
-    /// token.refresh_token 非空 (access_token 可由 collector 刷新恢复).
-    public static func verifyAntigravityOAuthJSON(_ json: String) -> SubscriptionVerificationStatus {
-        guard let dict = jsonObject(from: json),
-              let token = dict["token"] as? [String: Any] else {
-            return .failed(reason: "缺少 token 节点")
-        }
-        let refresh = (token["refresh_token"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !refresh.isEmpty else {
-            return .failed(reason: "缺少 refresh_token")
-        }
-        return .ok
-    }
-
     /// 火山引擎 AK/SK 本地格式校验: 非空, 去首尾空白后不含空白字符.
     /// 完整的 HMAC 签名试查由 Rust Collector 运行时完成,
     /// 本阶段不做网络验证.

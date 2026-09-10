@@ -11,7 +11,8 @@ extension BruceOnboardingCoreHarness {
         for module in CollectorModule.allCases {
             let allowed = gate.canActivate(
                 module: module, readiness: .ready,
-                isModuleSelected: true, appIsAcceptingNewTasks: true
+                isModuleSelected: true, appIsAcceptingNewTasks: true,
+                keychainAccessConfigured: true
             )
             try coreExpect(!allowed, "\(module) should be denied before consent")
         }
@@ -21,7 +22,8 @@ extension BruceOnboardingCoreHarness {
         let gate = CollectorActivationGate(consentVersion: 2, confirmedConsentVersion: 1)
         let allowed = gate.canActivate(
             module: .agentUsage, readiness: .ready,
-            isModuleSelected: true, appIsAcceptingNewTasks: true
+            isModuleSelected: true, appIsAcceptingNewTasks: true,
+            keychainAccessConfigured: true
         )
         try coreExpect(!allowed, "version mismatch should deny")
     }
@@ -30,7 +32,8 @@ extension BruceOnboardingCoreHarness {
         let gate = CollectorActivationGate(consentVersion: 1, confirmedConsentVersion: 1)
         let allowed = gate.canActivate(
             module: .agentUsage, readiness: .ready,
-            isModuleSelected: true, appIsAcceptingNewTasks: true
+            isModuleSelected: true, appIsAcceptingNewTasks: true,
+            keychainAccessConfigured: true
         )
         try coreExpect(allowed, "agent ready should be allowed")
     }
@@ -39,16 +42,35 @@ extension BruceOnboardingCoreHarness {
         let gate = CollectorActivationGate(consentVersion: 1, confirmedConsentVersion: 1)
         let allowed = gate.canActivate(
             module: .agentUsage, readiness: .partial,
-            isModuleSelected: true, appIsAcceptingNewTasks: true
+            isModuleSelected: true, appIsAcceptingNewTasks: true,
+            keychainAccessConfigured: true
         )
         try coreExpect(allowed, "agent partial should be allowed")
+    }
+
+    static func gateDeniesWithoutKeychainAccessConfiguration() throws {
+        let gate = CollectorActivationGate(consentVersion: 1, confirmedConsentVersion: 1)
+        let blocked = gate.canActivate(
+            module: .agentUsage, readiness: .ready,
+            isModuleSelected: true, appIsAcceptingNewTasks: true,
+            keychainAccessConfigured: false
+        )
+        try coreExpect(!blocked, "未配置钥匙串访问时不得启用自动刷新")
+
+        let allowed = gate.canActivate(
+            module: .agentUsage, readiness: .ready,
+            isModuleSelected: true, appIsAcceptingNewTasks: true,
+            keychainAccessConfigured: true
+        )
+        try coreExpect(allowed, "已配置钥匙串访问后允许自动刷新")
     }
 
     static func gateDeniesUnselectedModule() throws {
         let gate = CollectorActivationGate(consentVersion: 1, confirmedConsentVersion: 1)
         let allowed = gate.canActivate(
             module: .agentUsage, readiness: .ready,
-            isModuleSelected: false, appIsAcceptingNewTasks: true
+            isModuleSelected: false, appIsAcceptingNewTasks: true,
+            keychainAccessConfigured: true
         )
         try coreExpect(!allowed, "unselected should be denied")
     }
@@ -57,7 +79,8 @@ extension BruceOnboardingCoreHarness {
         let gate = CollectorActivationGate(consentVersion: 1, confirmedConsentVersion: 1)
         let allowed = gate.canActivate(
             module: .agentUsage, readiness: .ready,
-            isModuleSelected: true, appIsAcceptingNewTasks: false
+            isModuleSelected: true, appIsAcceptingNewTasks: false,
+            keychainAccessConfigured: true
         )
         try coreExpect(!allowed, "should deny when app not accepting tasks")
     }
@@ -67,7 +90,8 @@ extension BruceOnboardingCoreHarness {
         for module in CollectorModule.allCases {
             let allowed = gate.canActivate(
                 module: module, readiness: .pendingAuthorization,
-                isModuleSelected: true, appIsAcceptingNewTasks: true
+                isModuleSelected: true, appIsAcceptingNewTasks: true,
+                keychainAccessConfigured: true
             )
             try coreExpect(!allowed, "\(module) pendingAuth should be denied")
         }
@@ -83,7 +107,7 @@ extension BruceOnboardingCoreHarness {
         ]
         let result = evaluator.evaluateAgentUsage(
             sessionSources: sessions,
-            ccSwitchStatus: .available, antigravityStatus: .available,
+            ccSwitchStatus: .available,
             collectorRuntime: .rustAvailable
         )
         try coreExpect(result.readiness == .ready, "agent should be ready")
@@ -97,7 +121,7 @@ extension BruceOnboardingCoreHarness {
         ]
         let result = evaluator.evaluateAgentUsage(
             sessionSources: sessions,
-            ccSwitchStatus: .missing, antigravityStatus: .missing,
+            ccSwitchStatus: .missing,
             collectorRuntime: .rustAvailable
         )
         try coreExpect(result.readiness == .partial, "agent should be partial")
@@ -111,7 +135,6 @@ extension BruceOnboardingCoreHarness {
                 DependencyProbe(kind: .sessionDirectory, status: .available, detail: "Codex")
             ],
             ccSwitchStatus: .missing,
-            antigravityStatus: .missing,
             collectorRuntime: .rustAvailable
         )
         try coreExpect(result.readiness == .ready, "Rust runtime should be sufficient")
@@ -124,7 +147,6 @@ extension BruceOnboardingCoreHarness {
                 DependencyProbe(kind: .sessionDirectory, status: .available, detail: "Codex")
             ],
             ccSwitchStatus: .missing,
-            antigravityStatus: .missing,
             collectorRuntime: .rustUnavailable
         )
         try coreExpect(result.readiness == .missingDependency, "missing Rust should block readiness")
@@ -138,7 +160,7 @@ extension BruceOnboardingCoreHarness {
         let evaluator = ReadinessEvaluator()
         let result = evaluator.evaluateAgentUsage(
             sessionSources: [],
-            ccSwitchStatus: .missing, antigravityStatus: .missing,
+            ccSwitchStatus: .missing,
             collectorRuntime: .rustUnavailable
         )
         try coreExpect(result.readiness == .missingDependency, "should be missingDependency")
@@ -155,7 +177,7 @@ extension BruceOnboardingCoreHarness {
         ]
         let result = evaluator.evaluateAgentUsage(
             sessionSources: sessions,
-            ccSwitchStatus: .missing, antigravityStatus: .missing,
+            ccSwitchStatus: .missing,
             collectorRuntime: .rustAvailable
         )
         try coreExpect(result.readiness == .missingDependency, "should be missingDependency without sessions")
@@ -165,7 +187,7 @@ extension BruceOnboardingCoreHarness {
         let evaluator = ReadinessEvaluator()
         let result = evaluator.evaluateAgentUsage(
             sessionSources: [],
-            ccSwitchStatus: .available, antigravityStatus: .missing,
+            ccSwitchStatus: .available,
             collectorRuntime: .rustAvailable
         )
         try coreExpect(result.readiness == .missingDependency, "CC Switch alone should not make ready")
@@ -247,6 +269,50 @@ extension BruceOnboardingCoreHarness {
         try coreExpect(perms == 0o600, "config file should have 0600 permissions, got \(String(perms, radix: 8))")
     }
 
+    static func keychainAccessConfigurationRoundTrip() throws {
+        var config = OnboardingConfiguration()
+        try coreExpect(
+            !config.keychainAccessConfigured,
+            "new configuration must require explicit Keychain setup"
+        )
+
+        config.keychainAccess = KeychainAccessConfiguration(
+            bruceStoreConfigured: true,
+            externalSources: [.claudeCLI, .grokCLI]
+        )
+        let data = try JSONEncoder().encode(config)
+        let decoded = try JSONDecoder().decode(OnboardingConfiguration.self, from: data)
+        try coreExpect(
+            decoded.keychainAccessConfigured,
+            "Keychain setup state must survive configuration roundtrip"
+        )
+        try coreExpect(
+            decoded.keychainAccess.externalSources == [.claudeCLI, .grokCLI],
+            "external Keychain source allowlist must survive roundtrip"
+        )
+
+        let legacyConfigured = Data(
+            "{\"schemaVersion\":2,\"keychainAccess\":{\"bruceStoreConfigured\":true}}".utf8
+        )
+        let legacyConfiguredDecoded = try JSONDecoder().decode(
+            OnboardingConfiguration.self, from: legacyConfigured
+        )
+        try coreExpect(
+            !legacyConfiguredDecoded.keychainAccessConfigured,
+            "old Keychain object without storage marker must require setup"
+        )
+
+        let legacy = Data("{\"schemaVersion\":2}".utf8)
+        let legacyDecoded = try JSONDecoder().decode(
+            OnboardingConfiguration.self,
+            from: legacy
+        )
+        try coreExpect(
+            !legacyDecoded.keychainAccessConfigured,
+            "legacy configuration without Keychain state must default to false"
+        )
+    }
+
     // MARK: - Credential store
 
     static func credentialStoreRoundTrip() throws {
@@ -298,13 +364,6 @@ extension BruceOnboardingCoreHarness {
         try coreExpect(profile.tables["providers"]?.contains("id") == true, "id column missing")
         try coreExpect(profile.tables["providers"]?.contains("settings_config") == true, "settings_config missing")
         try coreExpect(profile.tables["model_pricing"]?.contains("model_id") == true, "model_id missing")
-    }
-
-    static func antigravityProfileHasExpectedTables() throws {
-        let profile = SQLiteSchemaProfile.antigravity
-        try coreExpect(profile.tables["conversation_summaries"] != nil, "conversation_summaries table missing")
-        try coreExpect(profile.tables["conversation_summaries"]?.contains("step_count") == true, "step_count missing")
-        try coreExpect(profile.tables["conversation_summaries"]?.contains("last_modified_time") == true, "last_modified_time missing")
     }
 
 }

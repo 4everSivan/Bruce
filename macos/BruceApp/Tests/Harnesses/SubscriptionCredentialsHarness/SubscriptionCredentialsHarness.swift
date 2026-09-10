@@ -22,36 +22,25 @@ private func credentialsExpect(
     }
 }
 
-/// saveCredential 恒抛错的 fake store, 用于验证 Coordinator 失败路径.
-private final class ThrowingCredentialStore: CredentialStore, @unchecked Sendable {
-    func loadCredential(forAccount account: String) throws -> String? { nil }
-
-    func saveCredential(_ value: String, forAccount account: String) throws {
-        throw NSError(domain: "test", code: 1, userInfo: [
-            NSLocalizedDescriptionKey: "keychain denied",
-        ])
-    }
-
-    func deleteCredential(forAccount account: String) throws {}
-}
-
 /// 订阅凭证注入链路测试 (Phase 5) + CredentialUpdateCoordinator (Task 3):
 /// OnboardingRunInputProvider 对 claude/grok 的凭证注入语义.
 /// - 应用持有 claude:oauth/grok:oauth 时注入 claudeOAuth/grokOAuth
-/// - 无应用凭证时仅注入 providerMeta enabled 标记 (collector 回退本机)
+/// - 无应用凭证且外部来源未允许时仅保留 providerMeta, Collector 不回退主机凭证
 /// - 禁用 provider 时两者皆无
-/// - Coordinator: save 失败记 failed; codex 跳过; 成功写回可加载
+/// - Coordinator: codex / 未知账号跳过; 成功写回可加载
 @main
 @MainActor
 struct SubscriptionCredentialsHarness {
     static func main() async throws {
         try await claudeInjectedWhenCredentialPresent()
         try await grokInjectedWhenCredentialPresent()
+        try await disallowedClaudeSourceDoesNotInvokeExternalReader()
+        try await allowedClaudeSourceIsInjectedIntoQuotaAccounts()
+        try await disallowedGrokSourceDoesNotInvokeExternalReader()
         try await claudeFallbackToMetaWhenNoCredential()
         try await grokFallbackToMetaWhenNoCredential()
         try await noInjectionWhenProviderDisabled()
         try await nonCredentialProvidersUnaffected()
-        try coordinatorSaveFailureRecordsFailed()
         try coordinatorSkipsCodexWithoutSave()
         try coordinatorSkipsKimiRotation()
         try coordinatorSkipsBadShapeAndUnknownProvider()
@@ -63,7 +52,7 @@ struct SubscriptionCredentialsHarness {
         try providerAccountStoreMigrationSkipsWithExistingIndex()
         try providerAccountStoreCleanupAfterMigration()
         try coordinatorRotationMultiAccountWritesPerAccountRecord()
-        try coordinatorRotationMultiAccountUnknownAccountFallsBack()
+        try coordinatorRotationMultiAccountUnknownAccountSkips()
         try providerAccountSummariesExposeNonSensitiveInfo()
         try providerAccountStoreRemoveLastAccountKeepsEmptyIndex()
         try providerAccountStoreUpsertUpdatesExisting()
@@ -73,13 +62,15 @@ struct SubscriptionCredentialsHarness {
         try coordinatorRotationOpenCodeGo()
         try await zhipuInjectedWhenCredentialPresent()
         try await zhipuNotInjectedWithoutCredential()
-        print("Subscription credentials tests passed: 28")
+        print("Subscription credentials tests passed: 31")
     }
 
     /// 构造 OnboardingRunInputProvider: 配置 claude 启用 + Keychain 持有 claude:oauth.
     private static func makeProvider(
         enabled: [SubscriptionProviderID],
-        credentials: [String: String]
+        credentials: [String: String],
+        externalSources: Set<KeychainExternalSource> = [],
+        externalCredentialReader: ExternalCredentialReader? = nil
     ) throws -> (OnboardingRunInputProvider, InMemoryCredentialStore, OnboardingConfigurationStore) {
         let store = InMemoryCredentialStore()
         for (account, value) in credentials {
@@ -91,15 +82,24 @@ struct SubscriptionCredentialsHarness {
         )
         var config = OnboardingConfiguration()
         config.consentVersion = 1
+        config.keychainAccess = KeychainAccessConfiguration(
+            bruceStoreConfigured: true,
+            externalSources: externalSources
+        )
         for id in enabled {
             var entry = SubscriptionProviderConfiguration()
             entry.enabled = true
             config.subscriptionProviders[id.rawValue] = entry
         }
         try configStore.save(config)
+        let accessController = KeychainAccessController(
+            policy: KeychainAccessPolicy(configuration: config.keychainAccess)
+        )
         let provider = OnboardingRunInputProvider(
             configStore: configStore,
-            credentialStore: store
+            credentialStore: store,
+            keychainAccessController: accessController,
+            externalCredentialReader: externalCredentialReader
         )
         return (provider, store, configStore)
     }
@@ -110,6 +110,69 @@ struct SubscriptionCredentialsHarness {
     ) async throws -> ([String: JSONValue], [String: JSONValue]) {
         let input = try await provider.runInput(for: .agentUsage)
         return (input.context, input.credentials)
+    }
+
+    private static func disallowedClaudeSourceDoesNotInvokeExternalReader() async throws {
+        let reader = InMemoryExternalCredentialReader(values: [
+            .claudeCLI: #"{"claudeAiOauth":{"accessToken":"external"}}"#
+        ])
+        let (provider, _, _) = try makeProvider(
+            enabled: [.claude],
+            credentials: [:],
+            externalCredentialReader: reader
+        )
+        let (_, credentials) = try await runInput(provider)
+        try credentialsExpect(
+            reader.requestedSources().isEmpty,
+            "未允许 Claude 外部来源时不得调用读取器"
+        )
+        try credentialsExpect(
+            credentials["claudeQuotaAccounts"] == nil,
+            "未允许 Claude 外部来源时不得注入账号"
+        )
+    }
+
+    private static func allowedClaudeSourceIsInjectedIntoQuotaAccounts() async throws {
+        let reader = InMemoryExternalCredentialReader(values: [
+            .claudeCLI: #"{"claudeAiOauth":{"accessToken":"external"}}"#
+        ])
+        let (provider, _, _) = try makeProvider(
+            enabled: [.claude],
+            credentials: [:],
+            externalSources: [.claudeCLI],
+            externalCredentialReader: reader
+        )
+        let (_, credentials) = try await runInput(provider)
+        try credentialsExpect(
+            reader.requestedSources() == [.claudeCLI],
+            "允许 Claude 外部来源时应调用一次读取器"
+        )
+        guard case .object(let accounts)? = credentials["claudeQuotaAccounts"] else {
+            throw CredentialsTestFailure.expectation(
+                "允许 Claude 外部来源时未注入 quota account"
+            )
+        }
+        try credentialsExpect(accounts["claude-cli"] != nil, "Claude CLI account 缺失")
+    }
+
+    private static func disallowedGrokSourceDoesNotInvokeExternalReader() async throws {
+        let reader = InMemoryExternalCredentialReader(values: [
+            .grokCLI: #"{"https://auth.x.ai::oidc":{"key":"external"}}"#
+        ])
+        let (provider, _, _) = try makeProvider(
+            enabled: [.grok],
+            credentials: [:],
+            externalCredentialReader: reader
+        )
+        let (_, credentials) = try await runInput(provider)
+        try credentialsExpect(
+            reader.requestedSources().isEmpty,
+            "未允许 Grok 外部来源时不得调用读取器"
+        )
+        try credentialsExpect(
+            credentials["grokQuotaAccounts"] == nil,
+            "未允许 Grok 外部来源时不得注入账号"
+        )
     }
 
     private static func claudeInjectedWhenCredentialPresent() async throws {
@@ -335,41 +398,6 @@ struct SubscriptionCredentialsHarness {
                 Dictionary(uniqueKeysWithValues: tokens.map { ($0.key, .string($0.value)) })
             ),
         ])
-    }
-
-    /// saveCredential 抛错 → failed 计数, applied 为 0; reason 不含 token 明文.
-    private static func coordinatorSaveFailureRecordsFailed() throws {
-        let secretToken = "rotated-secret-token-value-xyz"
-        let coordinator = CredentialUpdateCoordinator(
-            credentialStore: ThrowingCredentialStore()
-        )
-        let result = coordinator.apply(credentialUpdates: [
-            oauthUpdate(
-                provider: "antigravity",
-                accountId: "acc-kimi-1",
-                tokens: [
-                    "access_token": secretToken,
-                    "refresh_token": "rt-\(secretToken)",
-                ]
-            ),
-        ])
-        try credentialsExpect(result.appliedCount == 0, "抛错时 applied 应为 0")
-        try credentialsExpect(result.skippedCount == 0, "有效条目不应记 skipped")
-        try credentialsExpect(result.failed.count == 1, "应记录 1 条 failed")
-        let failure = result.failed[0]
-        try credentialsExpect(failure.provider == "antigravity", "failed.provider 应为 antigravity")
-        try credentialsExpect(
-            failure.accountId == "acc-kimi-1",
-            "failed.accountId 应保留"
-        )
-        try credentialsExpect(
-            failure.reason == "keychain denied",
-            "reason 应为错误描述, got \(failure.reason)"
-        )
-        try credentialsExpect(
-            !failure.reason.contains(secretToken),
-            "failure.reason 不得包含 token 明文"
-        )
     }
 
     /// codex rotation 明确跳过, 不写 Keychain.
@@ -753,29 +781,26 @@ struct SubscriptionCredentialsHarness {
         )
     }
 
-    /// 多账号轮换: 未知 accountId 回退旧键路径 (兼容未迁移单账号).
-    private static func coordinatorRotationMultiAccountUnknownAccountFallsBack() throws {
+    /// 多账号轮换: 未知 accountId 不再回退旧单条 Keychain 键.
+    private static func coordinatorRotationMultiAccountUnknownAccountSkips() throws {
         let store = InMemoryCredentialStore()
-        try store.saveCredential(
-            #"{"token":{"access_token":"old-a","refresh_token":"old-r"}}"#,
-            forAccount: SubscriptionCredentialAccount.antigravityOAuth
+        let accountStore = ProviderAccountStore(provider: .claude, credentialStore: store)
+        _ = try accountStore.addAccount(
+            accountID: "known-acct",
+            displayName: "Claude · known",
+            credentialJSON: #"{"claudeAiOauth":{"accessToken":"old-a"}}"#
         )
         let coordinator = CredentialUpdateCoordinator(credentialStore: store)
         let result = coordinator.apply(credentialUpdates: [
             oauthUpdate(
-                provider: "antigravity",
+                provider: "claude",
                 accountId: "unknown-acct",
                 tokens: ["access_token": "new-a", "refresh_token": "new-r"]
             ),
         ])
-        try credentialsExpect(result.appliedCount == 1, "未知账号回退旧键应 applied=1")
-        let loaded = try store.loadCredential(
-            forAccount: SubscriptionCredentialAccount.antigravityOAuth
-        )
-        try credentialsExpect(
-            loaded?.contains("new-a") == true,
-            "旧键应写入轮换后的 token"
-        )
+        try credentialsExpect(result.appliedCount == 0, "未知账号不得 applied")
+        try credentialsExpect(result.skippedCount == 1, "未知账号应 skipped=1")
+        try credentialsExpect(result.failed.isEmpty, "未知账号不是 failed")
     }
 
     /// 账号摘要只暴露非敏感信息 (displayName + 状态), 不含凭证.

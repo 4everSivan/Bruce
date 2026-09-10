@@ -730,8 +730,6 @@ private struct ProviderLogoBadge: View {
             return Color(hex: "#3859ff")
         case "codex", "openai":
             return Color(hex: "#10a37f")
-        case "antigravity":
-            return Color(hex: "#4285f4")
         case "claude":
             return Color(hex: "#d97757")
         case "grok":
@@ -897,20 +895,6 @@ private extension SubscriptionViewModel {
                 accountCountText: "2 个账号"
             ),
             SubscriptionProviderSection(
-                id: "antigravity",
-                name: "Antigravity",
-                plan: nil,
-                status: "ok",
-                note: nil,
-                extraText: nil,
-                windows: [
-                    SubscriptionWindowRow(label: "5小时窗口", usedPercent: 64, resetText: "15:00", ownRow: false),
-                    SubscriptionWindowRow(label: "每周窗口", usedPercent: 33, resetText: "3 天后", ownRow: false),
-                ],
-                balance: nil,
-                accountCountText: nil
-            ),
-            SubscriptionProviderSection(
                 id: "openai",
                 name: "OpenAI",
                 plan: nil,
@@ -948,7 +932,7 @@ private extension SubscriptionViewModel {
 #if DEBUG && canImport(PreviewsMacros)
 struct SubscriptionCard_Previews: PreviewProvider {
     /// 预览呈现矩阵: kimi/volcengine 常态可点; codex (多账号) 定向刷新中
-    /// (spinner+禁用); antigravity/deepseek 模拟全量刷新冲突禁用;
+    /// (spinner+禁用); deepseek 模拟全量刷新冲突禁用;
     /// openai 非已知 SubscriptionProviderID, 不渲染按钮 (fail-closed).
     private static var previewControls: [String: SubscriptionRefreshControlPresentation] {
         func make(
@@ -965,7 +949,6 @@ struct SubscriptionCard_Previews: PreviewProvider {
             "kimi": make("Kimi"),
             "volcengine": make("火山引擎"),
             "codex": make("ChatGPT", refreshing: true, enabled: false),
-            "antigravity": make("Antigravity", enabled: false),
             "deepseek": make("DeepSeek", enabled: false),
         ]
     }

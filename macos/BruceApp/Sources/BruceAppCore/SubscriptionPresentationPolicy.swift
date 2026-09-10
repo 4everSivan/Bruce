@@ -82,7 +82,6 @@ package enum SubscriptionPresentationPolicy: Sendable {
         case "deepseek": return "DeepSeek"
         case "volcengine": return "火山引擎"
         case "zhipu": return "智谱"
-        case "antigravity": return "Antigravity"
         case "claude": return "Claude"
         case "grok": return "Grok"
         case "opencodeGo", "opencode-go": return "OpenCode GO"

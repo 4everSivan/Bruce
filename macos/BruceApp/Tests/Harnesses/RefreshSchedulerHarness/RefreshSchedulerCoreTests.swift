@@ -5,6 +5,27 @@ import BruceOnboardingCore
 // MARK: - Intent / pipeline / core lifecycle
 
 extension RefreshSchedulerHarness {
+    static func disabledSystemNotificationsSuppressDelivery() throws {
+        try refreshExpect(
+            !SystemNotificationDeliveryPolicy.shouldDeliver(
+                alertCount: 1, enabled: false
+            ),
+            "关闭系统通知时不得投递预警"
+        )
+        try refreshExpect(
+            SystemNotificationDeliveryPolicy.shouldDeliver(
+                alertCount: 1, enabled: true
+            ),
+            "开启系统通知时允许投递预警"
+        )
+        try refreshExpect(
+            !SystemNotificationDeliveryPolicy.shouldDeliver(
+                alertCount: 0, enabled: true
+            ),
+            "没有预警时不得请求通知"
+        )
+    }
+
     // MARK: - RefreshIntent merge (pure unit tests)
 
     static func intentMergeManualWinsOverTimer() throws {
@@ -617,12 +638,21 @@ extension RefreshSchedulerHarness {
         repository: URL
     ) async throws {
         let artifact = try loadFixture(repository: repository, module: .agentUsage)
-        // antigravity (非 codex) 才会走 Keychain 写回; 用抛错 store 触发 failed.
+        // Claude 已知账号走 per-account Keychain 写回; 用抛错 store 触发 failed.
         let secretToken = "rotated-secret-token-should-not-leak"
+        let backingStore = InMemoryCredentialStore()
+        let accountStore = ProviderAccountStore(
+            provider: .claude, credentialStore: backingStore
+        )
+        _ = try accountStore.addAccount(
+            accountID: "acc-claude-1",
+            displayName: "Claude · fixture",
+            credentialJSON: #"{"claudeAiOauth":{"accessToken":"old"}}"#
+        )
         let updates: [JSONValue] = [
             .object([
-                "provider": .string("antigravity"),
-                "accountId": .string("acc-kimi-1"),
+                "provider": .string("claude"),
+                "accountId": .string("acc-claude-1"),
                 "kind": .string("oauthTokens"),
                 "operation": .string("replace"),
                 "credentials": .object([
@@ -635,7 +665,7 @@ extension RefreshSchedulerHarness {
         let clock = ManualClock()
         let timers = FakeTimerScheduler()
         let coordinator = CredentialUpdateCoordinator(
-            credentialStore: ThrowingCredentialStoreForScheduler()
+            credentialStore: ThrowingCredentialStoreForScheduler(backing: backingStore)
         )
         let (scheduler, store, root) = try makeSchedulerWithError(
             repository: repository,
@@ -684,7 +714,7 @@ extension RefreshSchedulerHarness {
             "CREDENTIAL_PERSIST_FAILED category/stage 不符"
         )
         try refreshExpect(
-            persistDiag?.message == "antigravity 凭证写回失败",
+            persistDiag?.message == "claude 凭证写回失败",
             "message 应为 provider 写回失败文案, got \(persistDiag?.message ?? "nil")"
         )
         try refreshExpect(

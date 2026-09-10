@@ -116,40 +116,13 @@ struct UsageHeroCard: View {
     @ViewBuilder
     private var heroNumber: some View {
         if isNothing {
-            HStack(alignment: .firstTextBaseline, spacing: 0) {
-                if let dotIndex = viewModel.totalTokensText.firstIndex(of: ".") {
-                    Text(String(viewModel.totalTokensText[..<dotIndex]))
-                    Rectangle()
-                        .fill(Self.nothingHeroAccent)
-                        .frame(width: 4, height: 4)
-                        .padding(.horizontal, 4)
-                    Text(String(viewModel.totalTokensText[viewModel.totalTokensText.index(after: dotIndex)...]))
-                } else {
-                    Text(viewModel.totalTokensText)
-                }
-            }
-            .font(NothingFont.display(52, weight: .bold))
-            .tracking(-1.04)
-            .monospacedDigit()
-            .foregroundStyle(Self.nothingHeroAccent)
-            .opacity(reduceMotion ? 1 : (heroBreathing ? 1 : 0.86))
-            .scaleEffect(reduceMotion ? 1 : (heroBreathing ? 1.015 : 1))
-            .shadow(color: Self.nothingHeroAccent, radius: reduceMotion ? 0 : (heroBreathing ? 15 : 3))
-            .onAppear {
-                guard !reduceMotion, panelVisible else { return }
-                startHeroBreathing()
-            }
-            .onChange(of: panelVisible) { _, visible in
-                // 隐藏面板用无动画事务复位, 终止 repeatForever 的逐帧驱动;
-                // 重新可见时再起 (onAppear 对常驻视图树只触发一次).
-                if visible {
-                    guard !reduceMotion else { return }
-                    startHeroBreathing()
-                } else {
-                    var transaction = Transaction()
-                    transaction.disablesAnimations = true
-                    withTransaction(transaction) { heroBreathing = false }
-                }
+            if DashboardPanelAnimationPolicy.allowsHero(
+                panelVisible: panelVisible,
+                reduceMotion: reduceMotion
+            ) {
+                animatedNothingHeroNumber
+            } else {
+                staticNothingHeroNumber
             }
         } else {
             Text(viewModel.totalTokensText)
@@ -160,7 +133,52 @@ struct UsageHeroCard: View {
         }
     }
 
-    /// Hero 数字呼吸 (仅面板可见期间运行, 见 panelVisible 注释).
+    @ViewBuilder
+    private var nothingHeroContent: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 0) {
+            if let dotIndex = viewModel.totalTokensText.firstIndex(of: ".") {
+                Text(String(viewModel.totalTokensText[..<dotIndex]))
+                Rectangle()
+                    .fill(Self.nothingHeroAccent)
+                    .frame(width: 4, height: 4)
+                    .padding(.horizontal, 4)
+                Text(String(viewModel.totalTokensText[viewModel.totalTokensText.index(after: dotIndex)...]))
+            } else {
+                Text(viewModel.totalTokensText)
+            }
+        }
+        .font(NothingFont.display(52, weight: .bold))
+        .tracking(-1.04)
+        .monospacedDigit()
+        .foregroundStyle(Self.nothingHeroAccent)
+    }
+
+    /// The hidden/reduced-motion branch contains no repeatForever animation.
+    private var staticNothingHeroNumber: some View {
+        nothingHeroContent
+            .opacity(reduceMotion ? 1 : 0.86)
+            .scaleEffect(1)
+            .shadow(color: Self.nothingHeroAccent, radius: reduceMotion ? 0 : 3)
+    }
+
+    private var animatedNothingHeroNumber: some View {
+        nothingHeroContent
+            .opacity(heroBreathing ? 1 : 0.86)
+            .scaleEffect(heroBreathing ? 1.015 : 1)
+            .shadow(color: Self.nothingHeroAccent, radius: heroBreathing ? 15 : 3)
+            .onAppear {
+                restartHeroBreathing()
+            }
+    }
+
+    /// Hero 数字呼吸 (仅面板可见且未启用 Reduce Motion 时挂载).
+    private func restartHeroBreathing() {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { heroBreathing = false }
+        startHeroBreathing()
+    }
+
     private func startHeroBreathing() {
         withAnimation(.easeInOut(duration: 1.3).repeatForever(autoreverses: true)) {
             heroBreathing = true
@@ -550,32 +568,52 @@ struct UsageHeroCard: View {
         private var filled: Bool { level > 0 }
 
         var body: some View {
-            let base = HeatmapCellView.baseColor(cell: cell, isNothing: isNothing)
-            let baseOpacity: Double = {
-                guard isNothing, filled else { return 1 }
-                return [0.2, 0.4, 0.6, 0.8, 1.0][min(level, 5) - 1]
-            }()
-            return RoundedRectangle(cornerRadius: isNothing ? 0 : 2, style: .continuous)
-                .fill(base)
-                .opacity(reduceMotion || !isNothing || !filled ? 1 : (breathe ? 1 : baseOpacity * 0.42))
+            if DashboardPanelAnimationPolicy.allowsHeatmap(
+                panelVisible: panelVisible,
+                isNothing: isNothing,
+                filled: filled,
+                reduceMotion: reduceMotion
+            ) {
+                animatedCell
+            } else {
+                staticCell
+            }
+        }
+
+        private var baseColor: Color {
+            HeatmapCellView.baseColor(cell: cell, isNothing: isNothing)
+        }
+
+        private var baseOpacity: Double {
+            guard isNothing, filled else { return 1 }
+            return [0.2, 0.4, 0.6, 0.8, 1.0][min(level, 5) - 1]
+        }
+
+        /// Hidden/reduced-motion cells have no animation modifier in the tree.
+        private var staticCell: some View {
+            RoundedRectangle(cornerRadius: isNothing ? 0 : 2, style: .continuous)
+                .fill(baseColor)
+                .opacity(reduceMotion || !isNothing || !filled ? 1 : baseOpacity * 0.42)
+                .aspectRatio(1, contentMode: .fit)
+                .frame(maxWidth: .infinity)
+        }
+
+        private var animatedCell: some View {
+            RoundedRectangle(cornerRadius: isNothing ? 0 : 2, style: .continuous)
+                .fill(baseColor)
+                .opacity(breathe ? 1 : baseOpacity * 0.42)
                 .aspectRatio(1, contentMode: .fit)
                 .frame(maxWidth: .infinity)
                 .onAppear {
-                    guard isNothing, filled, !reduceMotion, panelVisible else { return }
-                    startBreathing()
+                    restartBreathing()
                 }
-                .onChange(of: panelVisible) { _, visible in
-                    // 面板隐藏时停掉全部错相位呼吸 (每格一个 repeatForever 动画,
-                    // 隐藏期间仍逐帧驱动); 重新可见时按原相位重启.
-                    if visible {
-                        guard isNothing, filled, !reduceMotion else { return }
-                        startBreathing()
-                    } else {
-                        var transaction = Transaction()
-                        transaction.disablesAnimations = true
-                        withTransaction(transaction) { breathe = false }
-                    }
-                }
+        }
+
+        private func restartBreathing() {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { breathe = false }
+            startBreathing()
         }
 
         private func startBreathing() {

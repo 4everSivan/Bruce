@@ -61,7 +61,7 @@ public struct ProviderAccountIndex: Codable, Equatable, Sendable {
 /// 格式与旧单条 Keychain 条目一致 (Kimi: {"access_token","refresh_token"},
 /// DeepSeek: 纯 API key 字符串, 火山: 两条字符串分别保存, 等).
 /// 简单凭证 (DeepSeek API key, 火山 AK/SK) 直接用 credentialJSON 存原始值;
-/// 复杂凭证 (Kimi/Claude/Grok/Antigravity OAuth JSON) 存 JSON 字符串.
+/// 复杂凭证 (Kimi/Claude/Grok OAuth JSON) 存 JSON 字符串.
 public struct ProviderAccountRecord: Codable, Equatable, Sendable {
     public static let schemaVersion = 1
 
@@ -135,8 +135,6 @@ public enum ProviderAccountKeys {
         case .codex:
             // Codex 已有独立的多账号体系, 不走通用迁移.
             return []
-        case .antigravity:
-            return [SubscriptionCredentialAccount.antigravityOAuth]
         case .claude:
             return [SubscriptionCredentialAccount.claudeOAuth]
         case .grok:
@@ -180,11 +178,6 @@ public enum ProviderAccountIDGenerator {
     /// Grok: key SHA-256 前 16 位.
     public static func grokAccountID(key: String) -> String {
         ProviderAccountKeys.sha256Hex(key)
-    }
-
-    /// Antigravity: refresh_token SHA-256 前 16 位.
-    public static func antigravityAccountID(refreshToken: String) -> String {
-        ProviderAccountKeys.sha256Hex(refreshToken)
     }
 
     /// OpenCode GO: access_token SHA-256 前 16 位 (console OAuth 身份).
@@ -235,7 +228,8 @@ public final class ProviderAccountStore: @unchecked Sendable {
     /// 加载账号索引; 不存在返回空索引.
     public func loadIndex() throws -> ProviderAccountIndex {
         guard let raw = try credentialStore.loadCredential(
-            forAccount: ProviderAccountKeys.indexKey(for: provider)
+            forAccount: ProviderAccountKeys.indexKey(for: provider),
+            intent: .automatic
         ), !raw.isEmpty else {
             return ProviderAccountIndex()
         }
@@ -252,7 +246,8 @@ public final class ProviderAccountStore: @unchecked Sendable {
         guard let json = String(data: data, encoding: .utf8) else { return }
         try credentialStore.saveCredential(
             json,
-            forAccount: ProviderAccountKeys.indexKey(for: provider)
+            forAccount: ProviderAccountKeys.indexKey(for: provider),
+            intent: .automatic
         )
     }
 
@@ -261,7 +256,10 @@ public final class ProviderAccountStore: @unchecked Sendable {
     /// 加载单账号凭证记录; 不存在返回 nil.
     public func loadRecord(for accountID: String) throws -> ProviderAccountRecord? {
         let key = ProviderAccountKeys.recordKey(for: provider, accountID: accountID)
-        guard let raw = try credentialStore.loadCredential(forAccount: key),
+        guard let raw = try credentialStore.loadCredential(
+            forAccount: key,
+            intent: .automatic
+        ),
               !raw.isEmpty else {
             return nil
         }
@@ -274,13 +272,20 @@ public final class ProviderAccountStore: @unchecked Sendable {
         let data = try JSONEncoder().encode(record)
         guard let json = String(data: data, encoding: .utf8) else { return }
         let key = ProviderAccountKeys.recordKey(for: provider, accountID: record.accountID)
-        try credentialStore.saveCredential(json, forAccount: key)
+        try credentialStore.saveCredential(
+            json,
+            forAccount: key,
+            intent: .automatic
+        )
     }
 
     /// 删除单账号凭证记录.
     public func deleteRecord(for accountID: String) throws {
         let key = ProviderAccountKeys.recordKey(for: provider, accountID: accountID)
-        try credentialStore.deleteCredential(forAccount: key)
+        try credentialStore.deleteCredential(
+            forAccount: key,
+            intent: .automatic
+        )
     }
 
     // MARK: - 高层操作
@@ -431,7 +436,10 @@ public final class ProviderAccountStore: @unchecked Sendable {
         // 收集旧键值; 任一缺失则跳过该 provider
         var legacyValues: [String] = []
         for key in legacyKeys {
-            guard let value = try credentialStore.loadCredential(forAccount: key),
+            guard let value = try credentialStore.loadCredential(
+                forAccount: key,
+                intent: .automatic
+            ),
                   !value.isEmpty else {
                 return false
             }
@@ -471,14 +479,6 @@ public final class ProviderAccountStore: @unchecked Sendable {
                 withJSONObject: dict, options: [.sortedKeys]
             )) ?? Data()
             credentialJSON = String(data: data, encoding: .utf8) ?? "{}"
-        case .antigravity:
-            let token = legacyValues[0]
-            let refresh = Self.jsonStringField(
-                in: token, path: ["token", "refresh_token"]
-            ) ?? token
-            accountID = ProviderAccountIDGenerator.antigravityAccountID(refreshToken: refresh)
-            displayName = "Antigravity · \(String(accountID.prefix(8)))"
-            credentialJSON = token
         case .claude:
             let token = legacyValues[0]
             let access = Self.jsonStringField(

@@ -159,9 +159,6 @@ package final class AppModel: ObservableObject {
     @Published package private(set) var subscriptionProviders: [SubscriptionProviderID: SubscriptionProviderConfiguration] = [:]
     /// 各订阅 provider 的 Keychain 凭证是否已配置.
     @Published package private(set) var subscriptionCredentialConfigured: [SubscriptionProviderID: Bool] = [:]
-    /// 本机是否存在可导入的 Antigravity 登录态 (文件或登录 Keychain);
-    /// 由 coordinator 显式刷新, 设置页不得在 body 中直接探测.
-    @Published package private(set) var antigravityLocalAvailable = false
     /// 本机是否存在 Claude CLI 登录态 (Keychain 或 ~/.claude/.credentials.json);
     /// 由 coordinator 显式刷新, 同时作为 claude provider 的 configured 语义.
     @Published package private(set) var claudeLocalAvailable = false
@@ -463,10 +460,6 @@ package final class AppModel: ObservableObject {
         var updated = providerAccountSummaries
         updated[provider] = summaries
         providerAccountSummaries = updated
-    }
-
-    package func setAntigravityLocalAvailable(_ available: Bool) {
-        antigravityLocalAvailable = available
     }
 
     package func setClaudeLocalAvailable(_ available: Bool) {

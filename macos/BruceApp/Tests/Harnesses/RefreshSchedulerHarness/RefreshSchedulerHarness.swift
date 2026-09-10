@@ -18,6 +18,8 @@ struct RefreshSchedulerHarness {
 
         print("Refresh scheduler: timer")
         try await timerFiresTriggersRefresh(repository: repository)
+        print("Refresh scheduler: disabled system notifications")
+        try disabledSystemNotificationsSuppressDelivery()
         print("Refresh scheduler: manual rerun")
         try await manualRefreshWhileRunningMergesToRerun(repository: repository)
         print("Refresh scheduler: backoff")

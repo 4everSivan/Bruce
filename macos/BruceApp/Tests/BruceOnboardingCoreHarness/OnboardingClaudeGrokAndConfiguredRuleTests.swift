@@ -339,7 +339,6 @@ extension BruceOnboardingCoreHarness {
             .volcengine: .allCredentialAccountsNonEmpty,
             .zhipu: .allCredentialAccountsNonEmpty,
             .codex: .codexHasConfiguredRecords,
-            .antigravity: .allCredentialAccountsNonEmpty,
             .claude: .claudeAppOrLocalProbe,
             .grok: .grokAppOrLocalProbe,
             .opencodeGo: .allCredentialAccountsNonEmpty,

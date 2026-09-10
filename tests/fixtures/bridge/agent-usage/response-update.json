@@ -11,17 +11,7 @@
     "services": [],
     "totalCostUsd": null
   },
-  "credentialUpdates": [
-    {
-      "provider": "antigravity",
-      "accountId": "fixture-account",
-      "kind": "oauthTokens",
-      "operation": "replace",
-      "credentials": {
-        "expiry": "2026-07-28T13:00:00+08:00"
-      }
-    }
-  ],
+  "credentialUpdates": [],
   "credentialChallenges": [],
   "diagnostics": []
 }

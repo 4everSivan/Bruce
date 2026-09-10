@@ -38,6 +38,11 @@ struct SettingsView: View {
     @State private var providerToAdd: SubscriptionProviderID?
     // 通知权限状态: denied 时预警通知无法投递, 提示用户前往系统设置
     @State private var notificationDenied = false
+    // 首次启动时引导配置 Bruce 自有 Keychain 访问权限
+    @State private var showsKeychainAccessGuide = false
+    @State private var didEvaluateKeychainAccessGuide = false
+    // 外部 CLI 来源由独立 sheet 管理, 避免在通用页内堆叠两个开关.
+    @State private var showsExternalKeychainSourceManager = false
     // 数据管理: 清理确认与操作反馈
     @State private var showsClearCacheConfirm = false
     @State private var dataActionMessage: String?
@@ -177,6 +182,10 @@ struct SettingsView: View {
                 announce(message)
             }
         }
+        .sheet(isPresented: $showsKeychainAccessGuide) {
+            keychainAccessGuide
+        }
+        .onAppear(perform: presentKeychainAccessGuideIfNeeded)
     }
 
     // MARK: - 侧边栏
@@ -353,14 +362,26 @@ struct SettingsView: View {
                 }
                 FluentRow(
                     "系统通知",
-                    sub: "预警与额度提醒",
+                    sub: "预警与额度提醒; 关闭后 Bruce 不会投递通知",
                     divided: true
                 ) {
-                    if notificationDenied {
-                        HStack(spacing: 8) {
-                            Text("未开启")
-                                .font(.system(size: 12.5))
-                                .foregroundStyle(SettingsDemoTokens.warn)
+                    HStack(spacing: 8) {
+                        Toggle(
+                            "",
+                            isOn: Binding(
+                                get: { coordinator.systemNotificationsEnabled },
+                                set: { coordinator.setSystemNotificationsEnabled($0) }
+                            )
+                        )
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        Text(coordinator.systemNotificationsEnabled ? "已开启" : "已关闭")
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(
+                                coordinator.systemNotificationsEnabled
+                                    ? SettingsDemoTokens.ok : SettingsDemoTokens.text3
+                            )
+                        if notificationDenied {
                             Button("前往系统设置") {
                                 NSWorkspace.shared.open(
                                     URL(string: "x-apple.systempreferences:com.apple.preference.notifications")!
@@ -368,18 +389,62 @@ struct SettingsView: View {
                             }
                             .fluentButton()
                         }
-                    } else {
-                        Text("已开启")
-                            .font(.system(size: 12.5))
-                            .foregroundStyle(SettingsDemoTokens.ok)
                     }
                 }
                 .onAppear(perform: refreshNotificationStatus)
+                FluentRow(
+                    "钥匙串访问",
+                    sub: "统一管理 Bruce 保存的订阅凭证访问权限",
+                    divided: true
+                ) {
+                    HStack(spacing: 8) {
+                        switch coordinator.keychainAccessState {
+                        case .allowed:
+                            Text("已配置")
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(SettingsDemoTokens.ok)
+                            Button("重新配置") {
+                                coordinator.configureKeychainAccess()
+                            }
+                            .fluentButton(.primary)
+                        case .notConfigured:
+                            Text("未配置")
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(SettingsDemoTokens.warn)
+                            Button("配置") {
+                                coordinator.configureKeychainAccess()
+                            }
+                            .fluentButton(.primary)
+                        case .blocked:
+                            Text("访问被阻断")
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(SettingsDemoTokens.warn)
+                            Button("修复") {
+                                coordinator.configureKeychainAccess()
+                            }
+                            .fluentButton(.primary)
+                        }
+                    }
+                }
+                FluentRow(
+                    "外部 CLI 来源",
+                    sub: "仅允许已明确开启的 Claude / Grok 本机来源, 不保存凭证内容",
+                    divided: true
+                ) {
+                    Button("管理") {
+                        showsExternalKeychainSourceManager = true
+                    }
+                    .fluentButton()
+                }
                 FluentRow("版本", divided: true) {
                     Text(AppVersion.current())
                         .font(.system(size: 12.5, design: .monospaced))
                         .foregroundStyle(SettingsDemoTokens.text2)
                 }
+            }
+            .sheet(isPresented: $showsExternalKeychainSourceManager) {
+                ExternalKeychainSourceManagerView()
+                    .environmentObject(coordinator)
             }
 
             paneCaption("全局快捷键")
@@ -409,6 +474,45 @@ struct SettingsView: View {
             let denied = settings.authorizationStatus == .denied
             Task { @MainActor in notificationDenied = denied }
         }
+    }
+
+    private func presentKeychainAccessGuideIfNeeded() {
+        guard !didEvaluateKeychainAccessGuide else { return }
+        didEvaluateKeychainAccessGuide = true
+        guard !coordinator.keychainAccessConfigured else {
+            return
+        }
+        DispatchQueue.main.async {
+            showsKeychainAccessGuide = true
+        }
+    }
+
+    private var keychainAccessGuide: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Label("配置钥匙串访问", systemImage: "key.fill")
+                .font(.system(size: 16, weight: .semibold))
+            Text("Bruce 会把订阅凭证保存在 macOS 钥匙串中。首次配置时系统可能要求输入一次 macOS 登录密码, 以统一授权 Bruce 访问已有凭证。")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+            Text("Bruce 不会保存你的系统密码, 配置文件只记录访问状态。")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+            HStack {
+                Button("稍后") {
+                    showsKeychainAccessGuide = false
+                }
+                .keyboardShortcut(.cancelAction)
+                Spacer()
+                Button("现在配置") {
+                    showsKeychainAccessGuide = false
+                    coordinator.configureKeychainAccess()
+                }
+                .fluentButton(.primary)
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(width: 430)
     }
 
     private func moveMenuBarMetric(
@@ -510,6 +614,11 @@ struct SettingsView: View {
         let result = model.moduleResults[.agentUsage]
         let sessionProbes = (result?.localDependencies ?? [])
             .filter { $0.kind == .sessionDirectory }
+        let missingSessionNames = Set(
+            sessionProbes
+                .filter { $0.status == .missing }
+                .compactMap { $0.detail }
+        )
         let busy = model.busyModules.contains(.agentUsage)
         let rustAvailable = coordinator.collectorRuntimeStatus == .rustAvailable
 
@@ -539,21 +648,29 @@ struct SettingsView: View {
                             divided: true
                         ) {
                             HStack(spacing: 6) {
-                                FluentStatusDot(
-                                    level: probe.status == .available ? .ok : .warn
-                                )
-                                Text(probe.status == .available ? "就绪" : "未授权")
+                                let isAvailable = probe.status == .available
+                                let isMissing = probe.status == .missing
+                                if !isMissing {
+                                    FluentStatusDot(level: isAvailable ? .ok : .warn)
+                                }
+                                Text(isAvailable ? "就绪" : isMissing ? "未安装" : "未授权")
                                     .font(.system(size: 12.5))
                                     .foregroundStyle(
-                                        probe.status == .available
+                                        isAvailable
                                             ? SettingsDemoTokens.text2
-                                            : SettingsDemoTokens.warn
+                                            : isMissing ? SettingsDemoTokens.text3 : SettingsDemoTokens.warn
                                     )
                             }
                         }
                     }
                 }
-                ForEach(visibleAgentUsageWarnings(result?.warnings ?? []), id: \.self) { warning in
+                ForEach(
+                    visibleAgentUsageWarnings(
+                        result?.warnings ?? [],
+                        missingSessionNames: missingSessionNames
+                    ),
+                    id: \.self
+                ) { warning in
                     HStack(spacing: 6) {
                         Image(systemName: "exclamationmark.triangle")
                             .foregroundStyle(SettingsDemoTokens.warn)
@@ -598,12 +715,17 @@ struct SettingsView: View {
         }
     }
 
-    /// Kimi Work 和 Antigravity 属于可选增强探测, 不在 Agent 用量配置卡片中展示
-    /// 其本机不可用/数据库状态提示; 探测结果仍保留给 readiness 和诊断流程.
-    private func visibleAgentUsageWarnings(_ warnings: [String]) -> [String] {
+    /// Kimi Work 属于可选增强探测, 不在 Agent 用量配置卡片中展示其状态提示.
+    private func visibleAgentUsageWarnings(
+        _ warnings: [String],
+        missingSessionNames: Set<String>
+    ) -> [String] {
         warnings.filter { warning in
-            !warning.hasPrefix("Kimi Work ")
-                && !warning.hasPrefix("Antigravity 数据库:")
+            guard !warning.hasPrefix("Kimi Work ") else { return false }
+            let duplicatesMissingSource = missingSessionNames.contains { name in
+                warning == "\(name) 不可用" || warning == "\(name) 暂不可用"
+            }
+            return !duplicatesMissingSource
         }
     }
 
@@ -667,7 +789,6 @@ struct SettingsView: View {
                 .foregroundStyle(SettingsDemoTokens.text3)
         }
         .onAppear {
-            coordinator.refreshAntigravityLocalAvailability()
             coordinator.refreshOfficialLocalAvailability()
         }
     }
@@ -749,7 +870,6 @@ struct SettingsView: View {
         case .kimi: kind = "Web 令牌"
         case .deepseek, .volcengine, .zhipu: kind = "API Key"
         case .codex: kind = "OAuth 设备码"
-        case .antigravity: kind = "OAuth / API Key"
         case .claude, .grok: kind = "CLI 登录态"
         case .opencodeGo: kind = "OAuth 设备码"
         }
@@ -798,7 +918,7 @@ struct SettingsView: View {
         switch id {
         case .kimi, .deepseek, .volcengine, .zhipu:
             apiKeyProviderDialog(id)
-        case .codex, .antigravity, .claude, .grok, .opencodeGo:
+        case .codex, .claude, .grok, .opencodeGo:
             genericProviderConfigSheet(id)
         }
     }
@@ -1048,10 +1168,6 @@ struct SettingsView: View {
                     )
                 }
             )
-        case .antigravity:
-            AntigravityProviderSettingsSection(
-                onRemove: { removeSubscriptionProvider(.antigravity) }
-            )
         case .claude:
             ClaudeProviderSettingsSection(
                 claudePasteText: $claudePasteText,
@@ -1175,7 +1291,7 @@ struct SettingsView: View {
                     Text("授权后应用将:")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(SettingsDemoTokens.text2)
-                    summaryLine("扫描本机 Agent 会话目录和 CC Switch / Antigravity 数据库 (只读)")
+                    summaryLine("扫描本机 Agent 会话目录和 CC Switch 数据库 (只读)")
                     summaryLine("每 \(coordinator.refreshIntervalMinutes) 分钟自动刷新已授权模块")
                     let enabledProviders = coordinator
                         .enabledConfiguredSubscriptionProviders

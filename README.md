@@ -27,9 +27,9 @@ Bruce 把本机 AI Agent 的 token 用量、成本估算和订阅额度集中到
 - **订阅用量卡**: 多 Provider 窗口量条、Codex 账号子卡、DeepSeek 月度消费与余额, 按数据可用性条件渲染。
 - **逐小时卡**: 24 点折线与模型/项目明细展开。
 - **主题**: 经典 / 液态玻璃两档; 液态玻璃仅 macOS 26+ 可选, 其下可调标准/通透/哑光模糊风格, 低系统强制经典材质。
-- **设置窗口**: 通用 (配色模式、界面风格、模糊风格、刷新间隔、菜单栏指标拖拽排序、全局快捷键)、Agent 用量依赖卡、订阅额度 (Provider 标签式管理与拖拽排序, 凭证只进 Keychain)、统一授权与诊断。
+- **设置窗口**: 通用 (配色模式、界面风格、模糊风格、刷新间隔、系统通知开关、钥匙串访问配置、菜单栏指标拖拽排序、全局快捷键)、Agent 用量依赖卡、订阅额度 (Provider 标签式管理与拖拽排序, 凭证只进 Keychain)、统一授权与诊断。
 - **授权门控**: 首次启动 Onboarding、本机只读依赖扫描、统一授权摘要与 Activation Gate — 未确认授权不启动任何 Collector。
-- **调度与可靠性**: 默认每 30 分钟自动刷新, 支持手动刷新、防重入、超时、退避和系统唤醒补采; 最后成功快照优先展示, 单模块失败不阻塞其他模块, 损坏快照自动回退 previous。
+- **调度与可靠性**: 完成 Bruce Keychain 访问配置后默认每 30 分钟自动刷新; 未配置时不读取凭证且不启动自动采集。支持手动刷新、防重入、超时、退避和系统唤醒补采; 最后成功快照优先展示, 单模块失败不阻塞其他模块, 损坏快照自动回退 previous。
 - **配额预警**: 临界线计算、预警去重、通知中心提示与自动恢复判定。
 - **可访问性**: 键盘导航、VoiceOver 状态语义、macOS 减少动态效果偏好。
 - **隐私**: 设置页提供脱敏诊断预览与最小 ZIP 导出, 不包含 Artifact 或账号活动数据。
@@ -39,7 +39,7 @@ Bruce 把本机 AI Agent 的 token 用量、成本估算和订阅额度集中到
 | 类别 | 覆盖 |
 |---|---|
 | 本机会话扫描 | Kimi Work / Kimi Code、Claude Code、Codex、Grok、OpenCode、Orca、Pi、ZCode、CodeBuddy |
-| 订阅额度 | Kimi、DeepSeek、火山引擎、Codex OAuth、Antigravity、Claude、Grok、OpenCode Go、智谱 GLM |
+| 订阅额度 | Kimi、DeepSeek、火山引擎、Codex OAuth、Claude、Grok、OpenCode Go、智谱 GLM |
 
 > 仓库根 `*/widget/` 单文件 Widget 继续保留, 仅服务 Daimon / Kimi Work Blueprint 场景, 不属于 App 的组成部分。
 
@@ -79,9 +79,10 @@ swift run --package-path macos/BruceApp BruceApp
 首次运行流程:
 
 1. 在设置页检查 Rust Collector、本机会话和可选 SQLite 数据源。
-2. 选择需要启用的 Agent 用量模块。
-3. 在「订阅额度」分区按需配置或导入订阅凭证; 未配置任何 Provider 时订阅卡片不渲染。
-4. 阅读统一授权摘要并确认后, 应用才会启动对应 Collector 和自动刷新。
+2. 按首次启动引导完成 Bruce 钥匙串访问配置; 稍后配置时应用保持不读取凭证且不自动刷新。
+3. 选择需要启用的 Agent 用量模块。
+4. 在「订阅额度」分区按需配置或导入订阅凭证; 未配置任何 Provider 时订阅卡片不渲染。
+5. 阅读统一授权摘要并确认后, 应用才会启动对应 Collector 和自动刷新。
 
 真实账号访问和外部请求只应在个人 Mac 上、由用户明确授权后执行。
 
@@ -127,7 +128,7 @@ Collector 保留独立 CLI 入口, 用于开发、测试和故障排查, 但不�
 ## 安全与隐私
 
 - 本地优先, 无项目自有服务端, 不默认同步活动数据。
-- 订阅额度凭证 (Kimi、DeepSeek、火山引擎、Codex、Antigravity、Claude、Grok、OpenCode Go、智谱 GLM) 保存在 macOS Keychain。
+- 订阅额度凭证 (Kimi、DeepSeek、火山引擎、Codex、Claude、Grok、OpenCode Go、智谱 GLM) 保存在 macOS Keychain。
 - 凭证通过 Bridge stdin 的单次请求传递, 不进入命令行参数、Artifact 或日志。
 - Rust Collector 不直接写 Keychain, 也不写回第三方认证文件; 订阅令牌轮换经 `credentialUpdates` 只写回 Keychain, 不回写 CC Switch 或 CLI 认证文件。
 - 菜单栏面板为纯 SwiftUI 渲染, 不接触凭证。仓库根 `*/widget/` 单文件 Widget 仅由 Daimon host 以受 CSP 限制的 WebView 加载, 其 JSON fixture 和 JavaScript 语法可独立验证。
@@ -165,14 +166,14 @@ Bruce/
 
 应用自有数据位于:
 
-- `~/Library/Application Support/Bruce/config/onboarding-v1.json`: 非敏感配置和授权版本。
+- `~/Library/Application Support/Bruce/config/onboarding-v1.json`: 非敏感配置、授权版本、钥匙串访问状态和系统通知开关。
 - `~/Library/Application Support/Bruce/snapshots/`: 当前和 previous Artifact 快照。
 - `~/Library/Application Support/Bruce/metadata/modules.json`: 最近成功、尝试时间和错误分类。
-- macOS Keychain service `com.bruce.dashboard.credentials`: 应用持有的订阅额度凭证。
+- macOS Keychain service `com.bruce.dashboard.credentials.v2`: 应用持有的订阅额度凭证; `com.bruce.dashboard.credentials` 仅作为用户主动配置时的旧数据迁移来源。
 
 清理前先退出应用。在设置页使用「撤销全部授权」停止全部调度; 需要完全重置时, 再通过 Finder 删除 `~/Library/Application Support/Bruce/`, 并在「钥匙串访问」中删除上述 service 的项目。删除快照和 Keychain 项不可由应用自动恢复, 操作前应确认不再需要最后成功数据和现有授权。
 
-出现回归时可先撤销受影响模块并继续使用其他模块; 回退到兼容 Bridge v1 / Artifact v1 的旧构建不会改写第三方数据库。若新快照损坏, 应用优先回退 previous; 不要通过修改 CC Switch 或 Antigravity 数据库来修复 Bruce。
+出现回归时可先撤销受影响模块并继续使用其他模块; 回退到兼容 Bridge v1 / Artifact v1 的旧构建不会改写第三方数据库。若新快照损坏, 应用优先回退 previous; 不要通过修改 CC Switch 数据库来修复 Bruce。
 
 ## 故障排查
 

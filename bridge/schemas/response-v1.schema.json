@@ -92,10 +92,7 @@
       ],
       "properties": {
         "provider": {
-          "enum": [
-            "kimi",
-            "antigravity"
-          ]
+          "const": "kimi"
         },
         "accountId": {
           "type": "string",

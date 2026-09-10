@@ -41,7 +41,7 @@ public enum StoredCredentialParser {
                 return nil
             }
             return .zhipu(apiKey: key, baseURL: base)
-        case .claude, .grok, .opencodeGo, .codex, .antigravity:
+        case .claude, .grok, .opencodeGo, .codex:
             // OAuth / token manager 形态: 重新验证由对应 Evaluator 承担, 此处不解析.
             return nil
         }

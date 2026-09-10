@@ -45,7 +45,15 @@ struct BruceApp: App {
                 .appendingPathComponent("Bruce-fallback")
         ))
         // 配置与凭证存储在 Scheduler 输入提供器和 Coordinator 之间共享同一实例
-        let credentialStore = KeychainCredentialStore()
+        let keychainAccessController = KeychainAccessController(
+            policy: KeychainAccessPolicy(
+                configuration: configStore?.load()?.keychainAccess
+                    ?? KeychainAccessConfiguration()
+            )
+        )
+        let credentialStore = KeychainCredentialStore(
+            accessController: keychainAccessController
+        )
         // Codex v2: 单一 store / OAuth client / token manager, 供登录、
         // 运行输入提供器和 Coordinator 共享 (任务 5 装配).
         let codexStore = CodexCredentialStore(store: credentialStore)
@@ -57,7 +65,12 @@ struct BruceApp: App {
             configStore: configStore,
             credentialStore: credentialStore,
             codexTokenInjector: codexTokenManager,
-            codexStore: codexStore
+            codexStore: codexStore,
+            keychainAccessController: keychainAccessController,
+            externalCredentialReader: SystemExternalCredentialReader(
+                homeURL: FileManager.default.homeDirectoryForCurrentUser,
+                accessController: keychainAccessController
+            )
         )
         // 与 runInputProvider 共享同一 Keychain 实例, 保证轮换写回与注入一致.
         let credentialUpdateCoordinator = CredentialUpdateCoordinator(
@@ -93,6 +106,7 @@ struct BruceApp: App {
             runtime: runtime,
             configStore: configStore,
             credentialStore: credentialStore,
+            keychainAccessController: keychainAccessController,
             codexStore: codexStore,
             codexTokenManager: codexTokenManager,
             collectorRuntime: collectorRuntime
@@ -162,7 +176,9 @@ struct BruceApp: App {
             startApplication: {
                 Task { @MainActor in
                     let didStart = await bootstrap.startIfNeeded()
-                    if didStart, !coordinator.consentConfirmed {
+                    if didStart,
+                       (!coordinator.consentConfirmed
+                        || !coordinator.keychainAccessConfigured) {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                             settingsWindowController.present()
                         }

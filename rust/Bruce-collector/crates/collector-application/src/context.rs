@@ -41,9 +41,11 @@ pub(crate) struct RunContext<'a> {
     pub budgets: RuntimeBudgets,
     pub cancellation: CancellationToken,
     pub http: &'a dyn HttpClient,
+    #[allow(dead_code)]
     pub credential_source: &'a dyn CredentialSource,
     pub account_single_flight: Arc<AccountSingleFlight<String, Option<Value>, Diagnostic>>,
     pub metrics: Arc<RuntimeCounters>,
+    #[allow(dead_code)]
     pub home: PathBuf,
     pub captured_at: String,
     pub external_timeout: Duration,

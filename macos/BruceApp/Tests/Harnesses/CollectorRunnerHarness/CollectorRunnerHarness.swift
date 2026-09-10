@@ -205,6 +205,8 @@ struct CollectorRunnerHarness {
         try await rejectsMismatchedAndPollutedResponses()
         try await oldBridgeResponseWithoutChallengesDecodesAsEmpty()
         try await runInputDeniesQuotasWithoutConsent()
+        try await runInputBlockedWithoutKeychainAccess()
+        try await scopedRunInputBlockedWithoutKeychainAccess()
         try await runInputLocalCapabilitiesOnlyWithoutProviders()
         try await runInputAssemblesKimiAPIKey()
         try await runInputAssemblesDeepSeekProviderEnv()
@@ -217,7 +219,6 @@ struct CollectorRunnerHarness {
         try await runInputCodexInjectsOnlyShortLivedAccessToken()
         try await runInputCodexGatedUntilMigrationCompleted()
         try runInputRejectsCodexRotationUpdates()
-        try await runInputAssemblesAntigravityOAuth()
         try await runInputAssemblesAllProvidersCombined()
         try await runInputDeniesQuotasWhenCredentialMissing()
         try await runInputDeniesQuotasWhenCredentialCorrupted()
@@ -587,7 +588,8 @@ struct CollectorRunnerHarness {
         providers: [String: SubscriptionProviderConfiguration],
         credentials: InMemoryCredentialStore,
         codexInjector: (any CodexAccessTokenInjecting)? = nil,
-        codexStore: CodexCredentialStore? = nil
+        codexStore: CodexCredentialStore? = nil,
+        keychainAccessConfigured: Bool = true
     ) throws -> (OnboardingRunInputProvider, URL) {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent(
@@ -600,7 +602,8 @@ struct CollectorRunnerHarness {
         let store = try OnboardingConfigurationStore(configDirectory: tempDir)
         let config = OnboardingConfiguration(
             consentVersion: consentVersion,
-            subscriptionProviders: providers
+            subscriptionProviders: providers,
+            keychainAccessConfigured: keychainAccessConfigured
         )
         try store.save(config)
         return (
@@ -655,6 +658,57 @@ struct CollectorRunnerHarness {
             input.credentials.isEmpty,
             "未确认统一授权时不得装配任何凭证"
         )
+    }
+
+    private static func runInputBlockedWithoutKeychainAccess() async throws {
+        let (provider, tempDir) = try makeRunInputProvider(
+            consentVersion: 1,
+            providers: [:],
+            credentials: InMemoryCredentialStore(),
+            keychainAccessConfigured: false
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        do {
+            _ = try await provider.runInput(for: .agentUsage)
+            throw RunnerTestFailure.expectation(
+                "未配置钥匙串访问时不得启动 Collector"
+            )
+        } catch let error as CollectorRunInputError {
+            guard case .missingAuthorization(_, let reason) = error,
+                  reason.contains("钥匙串") else {
+                throw RunnerTestFailure.expectation(
+                    "钥匙串未配置时应返回明确授权错误, got \(error)"
+                )
+            }
+        }
+    }
+
+    private static func scopedRunInputBlockedWithoutKeychainAccess() async throws {
+        let (provider, tempDir) = try makeRunInputProvider(
+            consentVersion: 1,
+            providers: enabledProvider(.kimi),
+            credentials: InMemoryCredentialStore(),
+            keychainAccessConfigured: false
+        )
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        do {
+            _ = try await provider.scopedRunInput(
+                for: .agentUsage,
+                providers: Set([.kimi])
+            )
+            throw RunnerTestFailure.expectation(
+                "未配置钥匙串访问时不得定向刷新额度"
+            )
+        } catch let error as CollectorRunInputError {
+            guard case .missingAuthorization(_, let reason) = error,
+                  reason.contains("钥匙串") else {
+                throw RunnerTestFailure.expectation(
+                    "钥匙串未配置时定向刷新应返回明确授权错误, got \(error)"
+                )
+            }
+        }
     }
 
     /// 已确认授权但一个 provider 都没配置: 只有基础能力, 凭证为空.
@@ -796,47 +850,7 @@ struct CollectorRunnerHarness {
         try runnerExpect(sk == "SK-fixture", "volcengine SK 值不符: \(sk)")
     }
 
-    /// Antigravity OAuth 注入: 结构对齐 collector 对 antigravity_oauth 的消费.
-    /// App 模式不注入 codexAuth 或 codexOAuthAccounts; Codex 凭证只经
-    /// codexQuotaAccounts (短期 access token) 注入.
-    private static func runInputAssemblesAntigravityOAuth() async throws {
-        let credentials = InMemoryCredentialStore()
-        try credentials.saveCredential(
-            "{\"token\":{\"access_token\":\"at\",\"refresh_token\":\"rt\"}}",
-            forAccount: SubscriptionCredentialAccount.antigravityOAuth
-        )
-        let (provider, tempDir) = try makeRunInputProvider(
-            consentVersion: 1,
-            providers: enabledProvider(.antigravity),
-            credentials: credentials
-        )
-        defer { try? FileManager.default.removeItem(at: tempDir) }
-
-        let input = try await provider.runInput(for: .agentUsage)
-        try runnerExpect(
-            capabilityStrings(input).contains("externalQuotas"),
-            "antigravity 已配置时必须授予 externalQuotas"
-        )
-        // 多账号注入格式: antigravityQuotaAccounts 字典
-        guard case .object(let accounts)? = input.credentials["antigravityQuotaAccounts"] else {
-            throw RunnerTestFailure.expectation(
-                "antigravityQuotaAccounts 注入缺失: \(input.credentials.keys.sorted())"
-            )
-        }
-        try runnerExpect(accounts.count == 1, "antigravity 应有 1 个账号")
-        let firstPayload = accounts.values.first
-        guard case .object(let payload)? = firstPayload,
-              case .object(let oauth)? = payload["oauth"],
-              case .object(let token)? = oauth["token"] else {
-            throw RunnerTestFailure.expectation("antigravity oauth.token 注入结构不符")
-        }
-        try runnerExpect(
-            token["refresh_token"] == .string("rt"),
-            "antigravity refresh_token 注入缺失"
-        )
-    }
-
-    /// 五 provider 全部配置: 注入键齐全且互不干扰.
+    /// 全部 provider 配置: 注入键齐全且互不干扰.
     private static func runInputAssemblesAllProvidersCombined() async throws {
         let credentials = InMemoryCredentialStore()
         try credentials.saveCredential(
@@ -854,10 +868,6 @@ struct CollectorRunnerHarness {
         try credentials.saveCredential(
             "SK-fixture",
             forAccount: SubscriptionCredentialAccount.volcengineSecretKey
-        )
-        try credentials.saveCredential(
-            "{\"token\":{\"refresh_token\":\"rt\"}}",
-            forAccount: SubscriptionCredentialAccount.antigravityOAuth
         )
         let (codexStore, _) = try makeCodexStore(accounts: [
             "acc-1": "user@example.com",
@@ -887,7 +897,7 @@ struct CollectorRunnerHarness {
         // Claude/Grok 无凭证时只有 providerMeta enabled 标记, 无 *QuotaAccounts
         let expectedKeys: Set<String> = [
             "kimiQuotaAccounts", "deepseekQuotaAccounts",
-            "volcengineQuotaAccounts", "antigravityQuotaAccounts",
+            "volcengineQuotaAccounts",
             "codexQuotaAccounts", "providerMeta",
         ]
         for key in expectedKeys {
@@ -1377,11 +1387,11 @@ struct CollectorRunnerHarness {
         let credentials = InMemoryCredentialStore()
         try credentials.saveCredential(
             "not-json-at-all",
-            forAccount: SubscriptionCredentialAccount.antigravityOAuth
+            forAccount: SubscriptionCredentialAccount.opencodeGoOAuth
         )
         let (provider, tempDir) = try makeRunInputProvider(
             consentVersion: 1,
-            providers: enabledProvider(.antigravity),
+            providers: enabledProvider(.opencodeGo),
             credentials: credentials
         )
         defer { try? FileManager.default.removeItem(at: tempDir) }

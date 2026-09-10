@@ -1,6 +1,5 @@
 use crate::account::AccountPlan;
 use crate::context::RunContext;
-use collector_credential::{read_claude_token, read_grok_token};
 use collector_domain::Diagnostic;
 use collector_provider::{
     finalize_service, provider_for_app, service_template, HttpClient, HttpRequest, HttpResponse,
@@ -300,35 +299,15 @@ fn codex_failure_note(error: &ProviderError) -> &'static str {
 }
 
 fn resolve_credential(
-    context: &RunContext<'_>,
+    _context: &RunContext<'_>,
     plan: &AccountPlan,
 ) -> Result<Option<Value>, Diagnostic> {
     if plan.credential.is_some() {
         return Ok(plan.credential.clone());
     }
-    let now_epoch = context.window.now.timestamp();
     match plan.service.app.as_str() {
-        "claude" => {
-            let token =
-                read_claude_token(context.credential_source, &context.home, now_epoch, None)
-                    .map_err(|error| error.diagnostic)?;
-            token.map_or_else(
-                || Err(missing_credential("Claude", "Claude CLI")),
-                |token| {
-                    Ok(Some(json!({
-                        "claudeAiOauth": {"accessToken": token}
-                    })))
-                },
-            )
-        }
-        "grok" => {
-            let token = read_grok_token(context.credential_source, &context.home, now_epoch, None)
-                .map_err(|error| error.diagnostic)?;
-            token.map_or_else(
-                || Err(missing_credential("Grok", "Grok CLI")),
-                |token| Ok(Some(json!({"key": token}))),
-            )
-        }
+        "claude" => Err(missing_credential("Claude", "Swift 注入")),
+        "grok" => Err(missing_credential("Grok", "Swift 注入")),
         _ => Ok(None),
     }
 }

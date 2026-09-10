@@ -6,56 +6,50 @@ import Foundation
 extension BruceOnboardingCoreHarness {
     // MARK: - Credential rotation merge
 
-    /// provider -> Keychain account 映射; 未知 provider 返回 nil.
-    /// Codex 明确拒绝 (任务 11): 旧 `codex:accounts` 只供迁移读取,
-    /// Collector rotation 不写回旧整体库.
+    /// 仅支持有多账号 record 的 provider 走轮换写回.
     static func rotationMergeMapsKnownProviders() throws {
         try coreExpect(
-            CredentialRotationMerge.keychainAccount(forProvider: "kimi") == nil,
-            "kimi 不参与 OAuth 轮换, 不得映射"
+            CredentialRotationMerge.supportsAccountScopedRotation(forProvider: "claude"),
+            "claude 必须支持按账号轮换"
         )
         try coreExpect(
-            CredentialRotationMerge.keychainAccount(forProvider: "codex") == nil,
-            "codex 轮换写回必须被拒绝"
+            CredentialRotationMerge.supportsAccountScopedRotation(forProvider: "grok"),
+            "grok 必须支持按账号轮换"
         )
         try coreExpect(
-            CredentialRotationMerge.keychainAccount(forProvider: "antigravity")
-                == SubscriptionCredentialAccount.antigravityOAuth,
-            "antigravity 映射失败"
+            !CredentialRotationMerge.supportsAccountScopedRotation(forProvider: "kimi"),
+            "kimi 不参与 OAuth 轮换"
         )
         try coreExpect(
-            CredentialRotationMerge.keychainAccount(forProvider: "deepseek") == nil,
-            "无轮换的 provider 不得映射"
+            !CredentialRotationMerge.supportsAccountScopedRotation(forProvider: "unknown"),
+            "未知 provider 不得轮换"
         )
     }
 
-    /// kimi: API key 不参与 OAuth 轮换, mergedJSON 返回 nil.
+    /// kimi: API key 不参与 OAuth 轮换.
     static func rotationMergeKimiRejected() throws {
-        let merged = CredentialRotationMerge.mergedJSON(
-            existingJSON: #"{"access_token":"old-a"}"#,
+        let merged = CredentialRotationMerge.mergedAccountJSON(
+            existingCredentialJSON: #"{"access_token":"old-a"}"#,
             update: CredentialRotationUpdate(
                 provider: "kimi",
                 accountId: "default",
                 tokens: ["access_token": "new-a", "refresh_token": "new-r"]
-            )
+            ),
+            providerID: .kimi
         )
         try coreExpect(merged == nil, "kimi 不轮换必须返回 nil, got \(merged ?? "nil")")
     }
 
-    /// codex: 只合并目标账号, 保留 email 和其他账号.
-    /// codex: rotation 条目被明确拒绝, 不写回旧整体库 (任务 11).
+    /// Codex 令牌链由 CodexTokenManager 独占, rotation 条目被明确拒绝.
     static func rotationMergeCodexRejected() throws {
-        let existing = """
-        {"accounts":{"acc-1":{"email":"a@x.com","refresh_token":"r1"},\
-        "acc-2":{"email":"b@x.com","refresh_token":"r2"}}}
-        """
-        let merged = CredentialRotationMerge.mergedJSON(
-            existingJSON: existing,
+        let merged = CredentialRotationMerge.mergedAccountJSON(
+            existingCredentialJSON: nil,
             update: CredentialRotationUpdate(
                 provider: "codex",
                 accountId: "acc-1",
                 tokens: ["access_token": "na", "refresh_token": "nr"]
-            )
+            ),
+            providerID: .codex
         )
         try coreExpect(
             merged == nil,
@@ -63,54 +57,40 @@ extension BruceOnboardingCoreHarness {
         )
     }
 
-    /// antigravity: 合并 token 子对象并保留顶层其他键.
-    static func rotationMergeAntigravityTokenSubObject() throws {
-        let existing = #"{"extra":"keep","token":{"access_token":"old","refresh_token":"rr"}}"#
-        let merged = CredentialRotationMerge.mergedJSON(
-            existingJSON: existing,
-            update: CredentialRotationUpdate(
-                provider: "antigravity",
-                accountId: "default",
-                tokens: ["access_token": "new", "expiry": "2026-08-01T00:00:00"]
-            )
-        )
-        try coreExpect(
-            merged == #"{"extra":"keep","token":{"access_token":"new","expiry":"2026-08-01T00:00:00","refresh_token":"rr"}}"#,
-            "antigravity 合并错误, got \(merged ?? "nil")"
-        )
-    }
-
-    /// 白名单外键被过滤; 未知 provider 与空令牌返回 nil.
+    /// 白名单外键被过滤; 空令牌返回 nil.
     static func rotationMergeFiltersKeysAndRejectsUnknown() throws {
-        let merged = CredentialRotationMerge.mergedJSON(
-            existingJSON: nil,
+        let merged = CredentialRotationMerge.mergedAccountJSON(
+            existingCredentialJSON: #"{"keep":"yes"}"#,
             update: CredentialRotationUpdate(
-                provider: "antigravity",
+                provider: "claude",
                 accountId: "default",
                 tokens: ["access_token": "a", "evil": "x"]
-            )
+            ),
+            providerID: .claude
         )
         try coreExpect(
-            merged == #"{"token":{"access_token":"a"}}"#,
+            merged == #"{"access_token":"a","keep":"yes"}"#,
             "白名单外键必须过滤, got \(merged ?? "nil")"
         )
         try coreExpect(
-            CredentialRotationMerge.mergedJSON(
-                existingJSON: nil,
+            CredentialRotationMerge.mergedAccountJSON(
+                existingCredentialJSON: nil,
                 update: CredentialRotationUpdate(
-                    provider: "unknown", accountId: "default",
+                    provider: "claude", accountId: "default",
                     tokens: ["access_token": "a"]
-                )
-            ) == nil,
-            "未知 provider 必须返回 nil"
+                ),
+                providerID: .claude
+            ) != nil,
+            "有效令牌必须生成新 JSON"
         )
         try coreExpect(
-            CredentialRotationMerge.mergedJSON(
-                existingJSON: nil,
+            CredentialRotationMerge.mergedAccountJSON(
+                existingCredentialJSON: nil,
                 update: CredentialRotationUpdate(
-                    provider: "antigravity", accountId: "default",
+                    provider: "claude", accountId: "default",
                     tokens: ["access_token": ""]
-                )
+                ),
+                providerID: .claude
             ) == nil,
             "空令牌必须返回 nil"
         )

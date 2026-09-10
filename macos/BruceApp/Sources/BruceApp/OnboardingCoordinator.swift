@@ -24,6 +24,15 @@ final class OnboardingCoordinator: ObservableObject {
     @Published private(set) var glassStyle: GlassStylePreference
     /// 全局快捷键 (打开/关闭仪表盘), 与配置持久化同步; nil 表示未设置.
     @Published private(set) var dashboardHotkey: GlobalHotkey?
+    /// Bruce 自有 Keychain 项目是否已完成访问配置.
+    /// 只保存非敏感状态, 不保存系统密码或凭证内容.
+    @Published private(set) var keychainAccessConfigured: Bool
+    /// Bruce Keychain 当前运行时状态; blocked 不回写为 granted.
+    @Published private(set) var keychainAccessState: KeychainAccessState
+    /// 已显式允许的外部 CLI 来源.
+    @Published private(set) var externalKeychainSources: Set<KeychainExternalSource>
+    /// Bruce 是否允许投递系统通知; 仅控制应用行为, 不撤销 macOS 系统授权.
+    @Published private(set) var systemNotificationsEnabled: Bool
     /// 可注入的能力探测 (测试); 默认读系统.
     var liquidGlassSupported: () -> Bool = { LiquidGlassCapability.isSupported }
 
@@ -53,6 +62,7 @@ final class OnboardingCoordinator: ObservableObject {
     private let scanner: LocalDependencyScanner
     private let homeURL: URL
     private let collectorRuntime: CollectorRuntimeStatus
+    private let keychainAccessController: KeychainAccessController
     private var gate: CollectorActivationGate
     private let subscriptions: SubscriptionService
     private var hotkeyMonitor: GlobalHotkeyMonitor?
@@ -62,7 +72,8 @@ final class OnboardingCoordinator: ObservableObject {
         model: AppModel,
         runtime: AppRuntime,
         configStore: OnboardingConfigurationStore? = try? OnboardingConfigurationStore(),
-        credentialStore: CredentialStore = KeychainCredentialStore(),
+        credentialStore: CredentialStore? = nil,
+        keychainAccessController: KeychainAccessController? = nil,
         codexStore: CodexCredentialStore? = nil,
         codexTokenManager: CodexTokenManager? = nil,
         scanner: LocalDependencyScanner? = nil,
@@ -78,14 +89,29 @@ final class OnboardingCoordinator: ObservableObject {
         self.configStore = configStore
         self.homeURL = homeURL
         self.collectorRuntime = collectorRuntime
+        let config = configStore?.load()
+        let resolvedKeychainAccessController = keychainAccessController
+            ?? KeychainAccessController(
+                policy: KeychainAccessPolicy(
+                    configuration: config?.keychainAccess
+                        ?? KeychainAccessConfiguration()
+                )
+            )
+        self.keychainAccessController = resolvedKeychainAccessController
+        let resolvedCredentialStore: CredentialStore = credentialStore
+            ?? KeychainCredentialStore(
+                accessController: resolvedKeychainAccessController
+            )
         let resolvedStore = codexStore
-            ?? CodexCredentialStore(store: credentialStore)
+            ?? CodexCredentialStore(store: resolvedCredentialStore)
         let resolvedTokenManager = codexTokenManager ?? CodexTokenManager(
             store: resolvedStore,
             client: CodexOAuthClient.defaultClient()
         )
-        let resolvedProbe = localProbe ?? LocalCredentialProbe(homeURL: homeURL)
-        let config = configStore?.load()
+        let resolvedProbe = localProbe ?? LocalCredentialProbe(
+            homeURL: homeURL,
+            accessController: resolvedKeychainAccessController
+        )
         self.scanner = scanner ?? LocalDependencyScanner(
             paths: .standard(home: homeURL)
         )
@@ -115,15 +141,20 @@ final class OnboardingCoordinator: ObservableObject {
         self.interfaceStyle = theme.interfaceStyle
         self.glassStyle = theme.glassStyle
         self.dashboardHotkey = config?.resolvedDashboardHotkey
+        self.keychainAccessConfigured = config?.keychainAccessConfigured ?? false
+        self.keychainAccessState = resolvedKeychainAccessController.policy.state
+        self.externalKeychainSources = config?.keychainAccess.externalSources ?? []
+        self.systemNotificationsEnabled = config?.systemNotificationsEnabled ?? true
 
         // SubscriptionService 在 self 部分初始化后创建; objectWillChange 经回调转发.
         // 使用临时无回调初始化, 随后在下方挂载 (init 内无法弱引用 self 前完成全量).
         let service = SubscriptionService(
             model: model,
             configStore: configStore,
-            credentialStore: credentialStore,
+            credentialStore: resolvedCredentialStore,
             codexStore: resolvedStore,
             codexTokenManager: resolvedTokenManager,
+            keychainAccessController: resolvedKeychainAccessController,
             verifier: verifier,
             homeURL: homeURL,
             localProbe: resolvedProbe
@@ -212,10 +243,6 @@ final class OnboardingCoordinator: ObservableObject {
         subscriptions.reopenCodexLoginPage()
     }
 
-    func importAntigravityFromLocalFile() {
-        subscriptions.importAntigravityFromLocalFile()
-    }
-
     func addSubscriptionProvider(_ id: SubscriptionProviderID) {
         subscriptions.addSubscriptionProvider(id)
     }
@@ -262,10 +289,6 @@ final class OnboardingCoordinator: ObservableObject {
 
     func ccSwitchDatabaseExists() -> Bool {
         subscriptions.ccSwitchDatabaseExists()
-    }
-
-    func refreshAntigravityLocalAvailability() {
-        subscriptions.refreshAntigravityLocalAvailability()
     }
 
     func refreshOfficialLocalAvailability() {
@@ -340,16 +363,11 @@ final class OnboardingCoordinator: ObservableObject {
         let ccSwitchStatus = sqliteResult(
             from: probes, displayName: SQLiteSchemaProfile.ccSwitch.displayName
         )
-        let antigravityStatus = sqliteResult(
-            from: probes, displayName: SQLiteSchemaProfile.antigravity.displayName
-        )
-
         let evaluator = ReadinessEvaluator()
 
         model.setModuleResult(evaluator.evaluateAgentUsage(
             sessionSources: sessionProbes,
             ccSwitchStatus: ccSwitchStatus,
-            antigravityStatus: antigravityStatus,
             collectorRuntime: collectorRuntime
         ))
 
@@ -388,6 +406,104 @@ final class OnboardingCoordinator: ObservableObject {
         }
         refreshIntervalMinutes = normalized
         scheduler.updateRefreshInterval(TimeInterval(normalized * 60))
+        model.setSettingsError(nil)
+    }
+
+    /// 首次启动或设置页手动触发的 Keychain 访问配置.
+    /// 只有 ACL 更新成功且配置文件写入成功后才发布已配置状态.
+    func configureKeychainAccess() {
+        guard let configStore else {
+            model.setSettingsError("配置存储不可用, 无法保存钥匙串访问状态")
+            return
+        }
+        do {
+            _ = try subscriptions.configureKeychainAccess()
+            var config = configStore.load() ?? OnboardingConfiguration()
+            config.keychainAccessConfigured = true
+            try configStore.save(config)
+            keychainAccessController.update(
+                policy: KeychainAccessPolicy(configuration: config.keychainAccess)
+            )
+            keychainAccessConfigured = true
+            keychainAccessState = keychainAccessController.policy.state
+            externalKeychainSources = config.keychainAccess.externalSources
+            subscriptions.setKeychainAccessConfigured(true)
+            model.setSettingsError(nil)
+            reconcileScheduler()
+        } catch {
+            model.setSettingsError("钥匙串访问配置失败, 未保存权限状态")
+        }
+    }
+
+    /// 在启动自动刷新前准备已启用 Provider 的 Keychain 状态.
+    func prepareKeychainBackedStartup() async -> KeychainPreparationResult {
+        let result = subscriptions.prepareKeychainBackedStartup()
+        keychainAccessState = keychainAccessController.policy.state
+        return result
+    }
+
+    /// 持久化外部 CLI 来源白名单. 只改变来源配置, 不立即读取外部凭证.
+    func setExternalKeychainSource(
+        _ source: KeychainExternalSource,
+        enabled: Bool
+    ) {
+        guard let configStore else {
+            model.setSettingsError("配置存储不可用, 无法保存外部钥匙串设置")
+            return
+        }
+        var config = configStore.load() ?? OnboardingConfiguration()
+        var sources = config.keychainAccess.externalSources
+        if enabled {
+            sources.insert(source)
+        } else {
+            sources.remove(source)
+        }
+        config.keychainAccess.externalSources = sources
+        do {
+            try configStore.save(config)
+        } catch {
+            model.setSettingsError("外部钥匙串设置保存失败")
+            return
+        }
+
+        let state = keychainAccessController.policy.state
+        keychainAccessController.update(
+            policy: KeychainAccessPolicy(
+                configuration: config.keychainAccess,
+                state: state
+            )
+        )
+        externalKeychainSources = sources
+        keychainAccessState = keychainAccessController.policy.state
+        model.setSettingsError(nil)
+    }
+
+    /// 读取非敏感配置中的 enabled Provider 集合, 不触碰 Keychain.
+    func enabledSubscriptionProviders() -> Set<SubscriptionProviderID> {
+        let config = configStore?.load()
+        return Set(
+            config?.subscriptionProviders.compactMap { rawID, entry in
+                guard entry.enabled else { return nil }
+                return SubscriptionProviderID(rawValue: rawID)
+            } ?? []
+        )
+    }
+
+    /// 用户变更 Bruce 系统通知开关: 先持久化再发布, 保存失败不改变运行中行为.
+    func setSystemNotificationsEnabled(_ enabled: Bool) {
+        guard let configStore else {
+            model.setSettingsError("配置存储不可用, 无法保存系统通知设置")
+            return
+        }
+        var config = configStore.load() ?? OnboardingConfiguration()
+        config.systemNotificationsEnabled = enabled
+        do {
+            try configStore.save(config)
+        } catch {
+            model.setSettingsError("系统通知设置保存失败")
+            return
+        }
+        systemNotificationsEnabled = enabled
         model.setSettingsError(nil)
     }
 
@@ -573,6 +689,10 @@ final class OnboardingCoordinator: ObservableObject {
                 CollectorModule(rawValue: $0)
             }
         )
+        let keychainAccessConfigured = keychainAccessController.allows(
+            source: .bruceStore,
+            intent: .automatic
+        )
 
         for module in CollectorModule.allCases {
             let readiness = model.readinessValue(for: module)
@@ -580,7 +700,8 @@ final class OnboardingCoordinator: ObservableObject {
                 module: module,
                 readiness: readiness,
                 isModuleSelected: selected.contains(module),
-                appIsAcceptingNewTasks: runtime.acceptsNewTasks
+                appIsAcceptingNewTasks: runtime.acceptsNewTasks,
+                keychainAccessConfigured: keychainAccessConfigured
             )
             if allowed {
                 scheduler.enableModule(module)

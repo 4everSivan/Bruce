@@ -46,7 +46,7 @@
 `Bruce` 负责聚合与展示个人研发活动, 不承担以下职责:
 
 - 不作为聊天客户端、Agent 执行器或代码编辑器。
-- 不修改 Agent 会话、CC Switch 或 Antigravity 的业务数据。
+- 不修改 Agent 会话或 CC Switch 的业务数据。
 - 不在 Widget 中直接访问网络、Keychain、本机文件或原生进程。
 - 不把本地快照视为团队统计、财务结算或平台账单的权威来源。
 
@@ -122,14 +122,15 @@ Agent 用量具有独立的就绪度、刷新状态、缓存和失败恢复。�
 
 ### 5.1 首次启动
 
-1. 应用启动 Scheduler 并尝试载入最后成功快照。
+1. 应用启动 Scheduler 并尝试载入最后成功快照, 但不会在钥匙串访问配置完成前读取凭证。
 2. Onboarding 执行本机只读扫描, 检查 Rust Collector、Agent 会话目录和可选 SQLite schema。
-3. 设置页展示依赖扫描结果、阻塞原因和模块选择开关。
-4. 用户选择需要启用的模块。
-5. 用户在「订阅额度」分区按需配置或导入订阅凭证。
-6. 应用展示统一授权摘要。
-7. 用户确认当前授权版本后, Activation Gate 逐模块计算是否允许调度。
-8. 允许的模块立即执行首轮采集, 后续按默认周期自动刷新。
+3. 设置页引导用户配置 Bruce 自有 Keychain 访问权限; 未配置时自动刷新保持关闭。
+4. 设置页展示依赖扫描结果、阻塞原因和模块选择开关。
+5. 用户选择需要启用的模块。
+6. 用户在「订阅额度」分区按需配置或导入订阅凭证。
+7. 应用展示统一授权摘要。
+8. 用户确认当前授权版本后, Activation Gate 逐模块计算是否允许调度。
+9. 允许的模块立即执行首轮采集, 后续按默认周期自动刷新。
 
 本机扫描本身不产生外部请求。未确认授权时, 应用只能使用已持久化的非敏感连接状态, 不得自动复核外部连接。
 
@@ -161,7 +162,7 @@ Agent Collector 以只读方式识别和聚合以下本机会话源:
 - Codex CLI。
 - Orca 托管的 Codex 会话和分账号会话目录。
 
-CC Switch 的 `model_pricing` 用于本地成本估算。CC Switch 和 Antigravity SQLite 仅按真实查询契约探测 schema, 均使用只读模式打开, 不执行 DDL、迁移或修复。
+CC Switch 的 `model_pricing` 用于本地成本估算。CC Switch SQLite 仅按真实查询契约探测 schema, 使用只读模式打开, 不执行 DDL、迁移或修复。
 
 Onboarding 把 Kimi Work、Kimi Code CLI、Claude Code 和 Codex CLI 作为主要会话源进行就绪判断。Orca 托管的 Codex 会话由 Collector 合并进 Codex 条目统一聚合, 但不单独解除“没有可用主要会话源”的运行阻塞。
 
@@ -208,6 +209,7 @@ Agent Artifact 保留 `services` 额度展示契约, 可表达额度窗口、余
 | 参数 | 值 |
 |---|---:|
 | 自动刷新周期 | 30 分钟 |
+| Keychain 未配置时 | 禁止自动刷新与启动阶段凭证读取 |
 | 数据过期阈值 | 60 分钟 |
 | 同时运行模块上限 | 2 |
 | 单模块运行超时 | 90 秒 |
@@ -335,7 +337,7 @@ Widget 场景 (Daimon) 的视觉基线见 `tests/visual/baselines/agent-usage-va
 
 - Provider 标签式管理: 顶部 Picker 只列未配置的 Provider, 点击添加后出现在下方列表 (默认收起为一行)。
 - 每个 Provider 行: 名称 (可展开) + 状态行 (未配置 / 已配置 · 验证通过 / 验证失败 / 需要重新登录) + 「启用云端额度查询」开关 (有凭证才可开)。
-- 展开管理区按 Provider 类型提供: DeepSeek API key 输入、火山引擎 AK/SK 输入 (仅本地格式校验)、Kimi 令牌粘贴或本机导入、Codex 设备码登录 / 本机 CLI 导入 / CC Switch 账号库只读导入、Antigravity 本机登录态导入 (文件或 Keychain)。
+- 展开管理区按 Provider 类型提供: DeepSeek API key 输入、火山引擎 AK/SK 输入 (仅本地格式校验)、Kimi 令牌粘贴或本机导入、Codex 设备码登录 / 本机 CLI 导入 / CC Switch 账号库只读导入。
 - 密钥输入均使用 SecureField 不回显, 提交后清空; 凭证只进 Keychain。
 - 「移除」按钮统一居右 (destructive), 只删除本应用保存的凭证。
 
@@ -386,9 +388,8 @@ Widget 场景 (Daimon) 的视觉基线见 `tests/visual/baselines/agent-usage-va
 - Rust Collector 绝对路径与可执行状态。
 - Kimi Work、Kimi Code CLI、Claude Code 和 Codex CLI 会话目录。
 - CC Switch SQLite schema。
-- Antigravity SQLite schema。
 
-Rust Collector 路径按 Bundle Resources、开发环境显式路径和构建产物解析, 不依赖 GUI 进程的 shell `PATH`。Antigravity OAuth 令牌优先读本机文件, 回退读登录 Keychain (go-keyring, service `gemini` / account `antigravity`, 值带 `go-keyring-base64:` 前缀), Keychain 来源只读不回写。
+Rust Collector 路径按 Bundle Resources、开发环境显式路径和构建产物解析, 不依赖 GUI 进程的 shell `PATH`。
 
 扫描状态统一为:
 
@@ -636,7 +637,7 @@ Onboarding 配置 schema v1 包含:
 
 ### 13.2 凭证
 
-- 订阅额度凭证 (Kimi、DeepSeek、火山引擎、Codex、Antigravity) 使用 macOS Keychain generic password 存储。
+- 订阅额度凭证 (Kimi、DeepSeek、火山引擎、Codex) 使用 macOS Keychain generic password 存储。
 - Keychain service 固定, account 按 Provider 账号隔离。
 - 更新凭证时优先原位 update, 不采用先删后加, 避免添加失败时丢失旧凭证。
 - 凭证只在 SecureField、原生进程内存、Keychain、单次 Bridge stdin 和 Collector 进程内存中按需短暂存在。

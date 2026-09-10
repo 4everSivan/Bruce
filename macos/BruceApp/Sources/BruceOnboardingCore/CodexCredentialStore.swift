@@ -196,12 +196,17 @@ public final class CodexCredentialStore: Sendable {
     /// 读取 v2 账号索引. 缺失返回空索引.
     public func loadIndex() throws -> CodexAccountIndex {
         try decode(CodexAccountIndex.self, from: try store.loadCredential(
-            forAccount: CodexCredentialKeys.accountIndexV2
+            forAccount: CodexCredentialKeys.accountIndexV2,
+            intent: .automatic
         )) ?? CodexAccountIndex()
     }
 
     public func saveIndex(_ index: CodexAccountIndex) throws {
-        try store.saveCredential(try encode(index), forAccount: CodexCredentialKeys.accountIndexV2)
+        try store.saveCredential(
+            try encode(index),
+            forAccount: CodexCredentialKeys.accountIndexV2,
+            intent: .automatic
+        )
     }
 
     // MARK: 单账号记录
@@ -213,7 +218,8 @@ public final class CodexCredentialStore: Sendable {
         return try decode(
             CodexAccountRecord.self,
             from: try store.loadCredential(
-                forAccount: CodexCredentialKeys.accountKey(for: accountID)
+                forAccount: CodexCredentialKeys.accountKey(for: accountID),
+                intent: .automatic
             )
         )
     }
@@ -235,7 +241,8 @@ public final class CodexCredentialStore: Sendable {
         index.accounts.sort { $0.accountID < $1.accountID }
         try store.saveCredential(
             try encode(record),
-            forAccount: CodexCredentialKeys.accountKey(for: record.accountID)
+            forAccount: CodexCredentialKeys.accountKey(for: record.accountID),
+            intent: .automatic
         )
         try saveIndex(index)
     }
@@ -248,7 +255,8 @@ public final class CodexCredentialStore: Sendable {
             index.activeAccountID = nil
         }
         try store.deleteCredential(
-            forAccount: CodexCredentialKeys.accountKey(for: accountID)
+            forAccount: CodexCredentialKeys.accountKey(for: accountID),
+            intent: .automatic
         )
         try saveIndex(index)
     }
@@ -333,7 +341,8 @@ public final class CodexCredentialStore: Sendable {
         let active: String?
         do {
             active = try store.loadCredential(
-                forAccount: CodexCredentialKeys.legacyActiveAccount
+                forAccount: CodexCredentialKeys.legacyActiveAccount,
+                intent: .automatic
             )?.nilIfEmpty
         } catch {
             throw CodexCredentialStoreError.migrationFailed(
@@ -385,7 +394,8 @@ public final class CodexCredentialStore: Sendable {
         let legacyJSON: String?
         do {
             legacyJSON = try store.loadCredential(
-                forAccount: CodexCredentialKeys.legacyAccounts
+                forAccount: CodexCredentialKeys.legacyAccounts,
+                intent: .automatic
             )
         } catch {
             return .failed
@@ -395,7 +405,8 @@ public final class CodexCredentialStore: Sendable {
             let activeRaw: String?
             do {
                 activeRaw = try store.loadCredential(
-                    forAccount: CodexCredentialKeys.legacyActiveAccount
+                    forAccount: CodexCredentialKeys.legacyActiveAccount,
+                    intent: .automatic
                 )
             } catch {
                 return .failed
@@ -407,10 +418,12 @@ public final class CodexCredentialStore: Sendable {
             // 删除后必须复读确认; delete 返回成功但 key 仍存在也是失败.
             do {
                 try store.deleteCredential(
-                    forAccount: CodexCredentialKeys.legacyActiveAccount
+                    forAccount: CodexCredentialKeys.legacyActiveAccount,
+                    intent: .automatic
                 )
                 guard try store.loadCredential(
-                    forAccount: CodexCredentialKeys.legacyActiveAccount
+                    forAccount: CodexCredentialKeys.legacyActiveAccount,
+                    intent: .automatic
                 ) == nil else {
                     return .cleanupPending
                 }
@@ -470,10 +483,12 @@ public final class CodexCredentialStore: Sendable {
         //    cleanupPending (v2 已生效, 下次启动幂等重试清理).
         do {
             try store.deleteCredential(
-                forAccount: CodexCredentialKeys.legacyActiveAccount
+                forAccount: CodexCredentialKeys.legacyActiveAccount,
+                intent: .automatic
             )
             guard try store.loadCredential(
-                forAccount: CodexCredentialKeys.legacyActiveAccount
+                forAccount: CodexCredentialKeys.legacyActiveAccount,
+                intent: .automatic
             ) == nil else {
                 return .cleanupPending
             }
@@ -482,10 +497,12 @@ public final class CodexCredentialStore: Sendable {
         }
         do {
             try store.deleteCredential(
-                forAccount: CodexCredentialKeys.legacyAccounts
+                forAccount: CodexCredentialKeys.legacyAccounts,
+                intent: .automatic
             )
             guard try store.loadCredential(
-                forAccount: CodexCredentialKeys.legacyAccounts
+                forAccount: CodexCredentialKeys.legacyAccounts,
+                intent: .automatic
             ) == nil else {
                 return .cleanupPending
             }
@@ -559,7 +576,8 @@ public final class CodexCredentialStore: Sendable {
             )
             try store.saveCredential(
                 try encode(record),
-                forAccount: CodexCredentialKeys.accountKey(for: account.accountID)
+                forAccount: CodexCredentialKeys.accountKey(for: account.accountID),
+                intent: .automatic
             )
             recordsByID[account.accountID] = record
         }
@@ -648,7 +666,8 @@ public final class CodexCredentialStore: Sendable {
         try decode(
             CodexAccountRecord.self,
             from: try store.loadCredential(
-                forAccount: CodexCredentialKeys.accountKey(for: accountID)
+                forAccount: CodexCredentialKeys.accountKey(for: accountID),
+                intent: .automatic
             )
         )
     }
@@ -745,10 +764,12 @@ public final class CodexCredentialStore: Sendable {
         let accounts: String?
         do {
             active = try store.loadCredential(
-                forAccount: CodexCredentialKeys.legacyActiveAccount
+                forAccount: CodexCredentialKeys.legacyActiveAccount,
+                intent: .automatic
             )
             accounts = try store.loadCredential(
-                forAccount: CodexCredentialKeys.legacyAccounts
+                forAccount: CodexCredentialKeys.legacyAccounts,
+                intent: .automatic
             )
         } catch {
             return .cleanupPending
@@ -759,10 +780,12 @@ public final class CodexCredentialStore: Sendable {
         if active != nil {
             do {
                 try store.deleteCredential(
-                    forAccount: CodexCredentialKeys.legacyActiveAccount
+                    forAccount: CodexCredentialKeys.legacyActiveAccount,
+                    intent: .automatic
                 )
                 guard try store.loadCredential(
-                    forAccount: CodexCredentialKeys.legacyActiveAccount
+                    forAccount: CodexCredentialKeys.legacyActiveAccount,
+                    intent: .automatic
                 ) == nil else {
                     return .cleanupPending
                 }
@@ -773,10 +796,12 @@ public final class CodexCredentialStore: Sendable {
         if accounts != nil {
             do {
                 try store.deleteCredential(
-                    forAccount: CodexCredentialKeys.legacyAccounts
+                    forAccount: CodexCredentialKeys.legacyAccounts,
+                    intent: .automatic
                 )
                 guard try store.loadCredential(
-                    forAccount: CodexCredentialKeys.legacyAccounts
+                    forAccount: CodexCredentialKeys.legacyAccounts,
+                    intent: .automatic
                 ) == nil else {
                     return .cleanupPending
                 }
