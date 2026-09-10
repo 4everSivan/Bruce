@@ -77,6 +77,7 @@ struct BruceOnboardingCoreHarness {
         try configStoreSubscriptionProvidersRoundTrip()
         try configRefreshIntervalDecodeAndFallback()
         try configSystemNotificationsDefaultsAndRoundTrips()
+        try keychainAccessPolicyTests()
         try credentialStoreSubscriptionAccountsRoundTrip()
         if !IsNonInteractiveEnvironment.runningInCI {
             try keychainSubscriptionAccountsRoundTrip()

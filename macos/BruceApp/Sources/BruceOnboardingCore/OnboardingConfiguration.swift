@@ -119,9 +119,14 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
     public var subscriptionProviderOrder: [String]?
     /// 全局快捷键 (打开/关闭仪表盘). nil (含 JSON 显式 null) 表示未设置, 不劫持任何键.
     public var dashboardHotkey: GlobalHotkey?
-    /// 是否已完成 Bruce 自有 Keychain 项目的访问配置.
-    /// 只保存状态, 不保存系统密码或任何凭证内容.
-    public var keychainAccessConfigured: Bool
+    /// 统一的 Keychain 访问配置.
+    /// 只保存授权状态和外部来源白名单, 不保存系统密码或任何凭证内容.
+    public var keychainAccess: KeychainAccessConfiguration
+    /// 旧调用方兼容属性. 生产逻辑应使用 KeychainAccessPolicy.
+    public var keychainAccessConfigured: Bool {
+        get { keychainAccess.bruceStoreConfigured }
+        set { keychainAccess.bruceStoreConfigured = newValue }
+    }
     /// 是否允许 Bruce 投递系统通知. 这是应用层开关, 不会修改 macOS 的系统授权状态.
     public var systemNotificationsEnabled: Bool
 
@@ -181,6 +186,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         subscriptionProviderOrder: [String]? = nil,
         dashboardHotkey: GlobalHotkey? = nil,
         keychainAccessConfigured: Bool = false,
+        keychainAccess: KeychainAccessConfiguration? = nil,
         systemNotificationsEnabled: Bool = true
     ) {
         self.schemaVersion = schemaVersion
@@ -194,7 +200,9 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         self.glassStyle = glassStyle
         self.subscriptionProviderOrder = subscriptionProviderOrder
         self.dashboardHotkey = dashboardHotkey
-        self.keychainAccessConfigured = keychainAccessConfigured
+        self.keychainAccess = keychainAccess ?? KeychainAccessConfiguration(
+            bruceStoreConfigured: keychainAccessConfigured
+        )
         self.systemNotificationsEnabled = systemNotificationsEnabled
     }
 
@@ -233,14 +241,61 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         dashboardHotkey = try container.decodeIfPresent(
             GlobalHotkey.self, forKey: .dashboardHotkey
         )
-        // 旧配置缺该键或显式 null 一律按未配置处理.
-        keychainAccessConfigured = try container.decodeIfPresent(
-            Bool.self, forKey: .keychainAccessConfigured
-        ) ?? false
+        // 新配置存在但损坏时必须 default-deny, 不回退到旧布尔值.
+        if container.contains(.keychainAccess) {
+            keychainAccess = (try? container.decodeIfPresent(
+                KeychainAccessConfiguration.self, forKey: .keychainAccess
+            )) ?? KeychainAccessConfiguration()
+        } else {
+            // 兼容旧配置: 只有旧布尔值显式为 true 才开放 Bruce Store.
+            keychainAccess = KeychainAccessConfiguration(
+                bruceStoreConfigured: try container.decodeIfPresent(
+                    Bool.self, forKey: .keychainAccessConfigured
+                ) ?? false
+            )
+        }
         // 旧配置缺该键时保持历史行为: 系统通知功能默认开启.
         systemNotificationsEnabled = try container.decodeIfPresent(
             Bool.self, forKey: .systemNotificationsEnabled
         ) ?? true
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion
+        case selectedModules
+        case consentVersion
+        case menuBarMetrics
+        case subscriptionProviders
+        case refreshIntervalMinutes
+        case appearanceMode
+        case interfaceStyle
+        case glassStyle
+        case subscriptionProviderOrder
+        case dashboardHotkey
+        case keychainAccess
+        case keychainAccessConfigured
+        case systemNotificationsEnabled
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
+        try container.encode(selectedModules, forKey: .selectedModules)
+        try container.encodeIfPresent(consentVersion, forKey: .consentVersion)
+        try container.encodeIfPresent(menuBarMetrics, forKey: .menuBarMetrics)
+        try container.encode(subscriptionProviders, forKey: .subscriptionProviders)
+        try container.encodeIfPresent(
+            refreshIntervalMinutes, forKey: .refreshIntervalMinutes
+        )
+        try container.encodeIfPresent(appearanceMode, forKey: .appearanceMode)
+        try container.encodeIfPresent(interfaceStyle, forKey: .interfaceStyle)
+        try container.encodeIfPresent(glassStyle, forKey: .glassStyle)
+        try container.encodeIfPresent(
+            subscriptionProviderOrder, forKey: .subscriptionProviderOrder
+        )
+        try container.encodeIfPresent(dashboardHotkey, forKey: .dashboardHotkey)
+        try container.encode(keychainAccess, forKey: .keychainAccess)
+        try container.encode(systemNotificationsEnabled, forKey: .systemNotificationsEnabled)
     }
 }
 
