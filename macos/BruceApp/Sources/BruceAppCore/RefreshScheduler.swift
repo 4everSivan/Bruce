@@ -1,6 +1,7 @@
 import AppKit
 import BruceOnboardingCore
 import Foundation
+import os
 
 // MARK: - RefreshClock
 
@@ -84,6 +85,10 @@ package final class RefreshScheduler {
     private var stopped = false
     private var wakeObserver: NSObjectProtocol?
     private var reactivationObserver: NSObjectProtocol?
+    private let logger = Logger(
+        subsystem: "io.bruce.dashboard",
+        category: "refresh-scheduler"
+    )
 
     package var onStatusChange: ((CollectorModule, ModuleRunState, String?) -> Void)?
     package var onArtifactChange: ((CollectorModule, JSONValue?) -> Void)?
@@ -320,7 +325,12 @@ package final class RefreshScheduler {
                 states[module] = state
             }
         } catch {
-            // No cached snapshot — OK
+            // No cached snapshot is a normal first-run state. Keep the error
+            // observable, however: a valid snapshot that fails validation or
+            // storage must not silently look like "no today's usage".
+            logger.error(
+                "cached snapshot load failed; module=\(module.rawValue, privacy: .public), error=\(String(describing: error), privacy: .public)"
+            )
         }
     }
 

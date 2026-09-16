@@ -71,6 +71,8 @@ for required_command in "${required_commands[@]}"; do
     fi
 done
 
+source "$BRUCE_SCRIPT_DIR/swift-sdk.zsh"
+Bruce_prepare_swift_sdk
 source "$BRUCE_SCRIPT_DIR/runtime-manifest.zsh"
 
 # 正式版默认产出 universal Rust binary. 若 CI 尚未安装两个 Rust target,

@@ -66,11 +66,16 @@ struct NativeLifecycleHarness {
         try cancelTerminationRestoresScheduling()
         try closeTransitionPublishesHiddenWhenWindowAlreadyHidden()
         try occludedPanelIsNotPublishedAsVisible()
+        try statusItemToggleAlternatesOpenAndClosed()
+        try statusItemResignDoesNotBreakToggle()
         try hiddenPanelDisablesAllDecorativeAnimations()
         try metricSelectionNormalizes()
         try menuBarSummaryUsesValidQuotaWindows()
         try metricFormatterUsesCompactValues()
-        print("Native lifecycle tests passed: 9")
+        try menuBarContentUsesStableIconAndMetrics()
+        try menuBarContentUsesRefreshAndFailureIcons()
+        try dashboardPlacementFallsBackFromInvalidStatusItemCoordinates()
+        print("Native lifecycle tests passed: 14")
     }
 
     private static func closeTransitionPublishesHiddenWhenWindowAlreadyHidden() throws {
@@ -116,6 +121,58 @@ struct NativeLifecycleHarness {
                 occlusionStateIsVisible: true
             ),
             "an ordered-out panel must publish hidden state"
+        )
+    }
+
+    private static func statusItemResignDoesNotBreakToggle() throws {
+        try expect(
+            !DashboardPanelDismissalPolicy.shouldDismissOnApplicationResign(
+                panelIsVisible: false,
+                pointerIsInsideStatusItem: true,
+                statusItemActionInProgress: false
+            ),
+            "first status item click must not dismiss a hidden panel"
+        )
+        try expect(
+            !DashboardPanelDismissalPolicy.shouldDismissOnApplicationResign(
+                panelIsVisible: true,
+                pointerIsInsideStatusItem: true,
+                statusItemActionInProgress: false
+            ),
+            "second status item click must reach toggle instead of resign dismissal"
+        )
+        try expect(
+            !DashboardPanelDismissalPolicy.shouldDismissOnApplicationResign(
+                panelIsVisible: true,
+                pointerIsInsideStatusItem: false,
+                statusItemActionInProgress: true
+            ),
+            "status item action must win over resign notification"
+        )
+        try expect(
+            DashboardPanelDismissalPolicy.shouldDismissOnApplicationResign(
+                panelIsVisible: true,
+                pointerIsInsideStatusItem: false,
+                statusItemActionInProgress: false
+            ),
+            "clicking another application must dismiss the panel"
+        )
+    }
+
+    private static func statusItemToggleAlternatesOpenAndClosed() throws {
+        let closed = DashboardPanelToggleState.closed
+        let opened = closed.toggled
+        try expect(
+            opened == .open,
+            "the first status item toggle must open the dashboard"
+        )
+        try expect(
+            opened.toggled == .closed,
+            "the second status item toggle must close the dashboard"
+        )
+        try expect(
+            opened.toggled.toggled == .open,
+            "the third status item toggle must open the dashboard again"
         )
     }
 
@@ -298,6 +355,124 @@ struct NativeLifecycleHarness {
         try expect(
             formatter.string(for: .overallStatus, summary: summary) == "需要授权",
             "status formatting is invalid"
+        )
+    }
+
+    private static func menuBarContentUsesStableIconAndMetrics() throws {
+        let summary = MenuBarSummary(
+            minimumRemainingQuota: 67.6,
+            averageRemainingQuota: 50,
+            todayTokens: 124_000,
+            todayCostUsd: 1.28,
+            overallStatus: .fresh
+        )
+        let content = MenuBarStatusItemContentBuilder().build(
+            metrics: [.todayTokens, .todayCost],
+            summary: summary,
+            isRefreshing: false
+        )
+
+        try expect(
+            content.iconName == "gauge",
+            "normal menu bar content must use a native gauge icon"
+        )
+        try expect(
+            content.metricText == "124k  $1.28",
+            "menu bar content must preserve compact metric formatting"
+        )
+        try expect(
+            content.accessibilityLabel.contains("今日 Token 124k")
+                && content.accessibilityLabel.contains("今日费用 $1.28"),
+            "menu bar accessibility content must describe visible metrics"
+        )
+    }
+
+    private static func menuBarContentUsesRefreshAndFailureIcons() throws {
+        let refreshing = MenuBarSummary(
+            minimumRemainingQuota: nil,
+            averageRemainingQuota: nil,
+            todayTokens: nil,
+            todayCostUsd: nil,
+            overallStatus: .fresh
+        )
+        let refreshingContent = MenuBarStatusItemContentBuilder().build(
+            metrics: [],
+            summary: refreshing,
+            isRefreshing: true
+        )
+        try expect(
+            refreshingContent.iconName == "arrow.clockwise",
+            "refreshing menu bar content must use the refresh icon"
+        )
+
+        let authRequired = MenuBarSummary(
+            minimumRemainingQuota: nil,
+            averageRemainingQuota: nil,
+            todayTokens: nil,
+            todayCostUsd: nil,
+            overallStatus: .authRequired
+        )
+        let authContent = MenuBarStatusItemContentBuilder().build(
+            metrics: [.overallStatus],
+            summary: authRequired,
+            isRefreshing: false
+        )
+        try expect(
+            authContent.iconName == "exclamationmark.triangle",
+            "authorization-required menu bar content must use the warning icon"
+        )
+
+        let failed = MenuBarSummary(
+            minimumRemainingQuota: nil,
+            averageRemainingQuota: nil,
+            todayTokens: nil,
+            todayCostUsd: nil,
+            overallStatus: .failed
+        )
+        let failedContent = MenuBarStatusItemContentBuilder().build(
+            metrics: [.overallStatus],
+            summary: failed,
+            isRefreshing: false
+        )
+        try expect(
+            failedContent.iconName == "xmark.circle",
+            "failed menu bar content must use the failure icon"
+        )
+    }
+
+    private static func dashboardPlacementFallsBackFromInvalidStatusItemCoordinates() throws {
+        let visibleFrame = CGRect(x: 65, y: 0, width: 1855, height: 1050)
+        let screenFrame = CGRect(x: 0, y: 0, width: 1920, height: 1080)
+        let invalidMacOS27Anchor = CGRect(x: 8, y: -14, width: 22.5, height: 29)
+        let fallback = DashboardPanelPlacementResolver.resolve(
+            anchorRect: invalidMacOS27Anchor,
+            panelSize: CGSize(width: 440, height: 880),
+            visibleFrame: visibleFrame,
+            screenFrame: screenFrame
+        )
+        try expect(
+            fallback.usedFallbackAnchor,
+            "invalid status item coordinates must use a fallback anchor"
+        )
+        try expect(
+            fallback.origin == CGPoint(x: 1472, y: 162),
+            "fallback dashboard placement is not inside the visible frame"
+        )
+
+        let validAnchor = CGRect(x: 1450, y: 1050, width: 22.5, height: 29)
+        let anchored = DashboardPanelPlacementResolver.resolve(
+            anchorRect: validAnchor,
+            panelSize: CGSize(width: 440, height: 880),
+            visibleFrame: visibleFrame,
+            screenFrame: screenFrame
+        )
+        try expect(
+            !anchored.usedFallbackAnchor,
+            "valid status item coordinates must remain the panel anchor"
+        )
+        try expect(
+            anchored.origin == CGPoint(x: 1241.25, y: 162),
+            "valid dashboard placement changed unexpectedly"
         )
     }
 

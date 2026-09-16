@@ -15,6 +15,8 @@ if ! command -v cargo >/dev/null 2>&1; then
   exit 1
 fi
 source "$BRUCE_SCRIPT_DIR/runtime-manifest.zsh"
+source "$BRUCE_SCRIPT_DIR/swift-sdk.zsh"
+Bruce_prepare_swift_sdk
 Bruce_prepare_cargo_home
 
 BRUCE_LEGACY_SOURCE=$(find . \

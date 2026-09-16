@@ -91,6 +91,11 @@ final class ApplicationBootstrap {
         appearanceObserver = coordinator.$appearanceMode.sink { [weak self] mode in
             self?.applyAppearance(mode)
         }
+        // 先启动调度器读取本地快照, 再准备 Keychain. Keychain ACL 可能弹出
+        // 系统认证并暂时挂起启动协程; 不能让这个与凭证无关的缓存路径一起
+        // 阻塞, 否则状态栏只会显示图标/占位符, 今日用量要等认证结束才出现.
+        runtime.configure(scheduler: scheduler, runner: runner)
+        runtime.startSchedulerIfNeeded()
         // 未配置 Bruce Keychain ACL 时, 启动阶段不执行任何凭证迁移或账号状态读取.
         // 这避免首次启动在用户主动配置之前触发 macOS 登录密码提示.
         if coordinator.keychainAccessConfigured {
@@ -114,8 +119,6 @@ final class ApplicationBootstrap {
             .sink { [weak self] enabled in
                 self?.quotaAlertNotifier.isEnabled = enabled
             }
-        runtime.configure(scheduler: scheduler, runner: runner)
-        runtime.startSchedulerIfNeeded()
         coordinator.scanAndReconcile()
         refreshCodexAccountStatuses()
         return true
@@ -197,8 +200,6 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     private let coordinator: OnboardingCoordinator
     private let diagnostics: DiagnosticService
     private var window: NSWindow?
-    /// 配置窗口是否处于「应显示 Dock」状态 (可见或最小化).
-    private var isDockPresentationActive = false
 
     init(
         model: AppModel,
@@ -211,10 +212,10 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         super.init()
     }
 
-    /// 打开或前置设置窗口, 并显示 Dock 图标.
+    /// 打开或前置设置窗口. Bruce 始终是菜单栏应用, 设置窗口不改变
+    /// activation policy, 因而不会因为打开/关闭配置而残留 Dock 图标.
     func present() {
         let window = window ?? makeWindow()
-        setDockIconVisible(true)
         NSApplication.shared.activate(ignoringOtherApps: true)
         if window.isMiniaturized {
             window.deminiaturize(nil)
@@ -222,9 +223,9 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         window.makeKeyAndOrderFront(nil)
     }
 
-    /// Dock 图标被点击时: 若配置会话仍在, 重新前置设置窗口.
+    /// 兼容系统重新激活回调: 若设置窗口已创建, 重新前置它.
     func handleDockReopen() {
-        guard isDockPresentationActive else { return }
+        guard window != nil else { return }
         present()
     }
 
@@ -232,8 +233,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         // isReleasedWhenClosed = false: 关闭后窗口对象保留, 仅隐藏.
-        // 关闭配置窗口后恢复菜单栏-only, 去掉 Dock 图标.
-        setDockIconVisible(false)
+        // activation policy 始终由 AppDelegate 保持为 .accessory, 这里无需
+        // 在窗口生命周期中切换 .regular/.accessory.
     }
 
     // MARK: - Private
@@ -263,12 +264,4 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         return window
     }
 
-    /// LSUIElement 菜单栏 App: accessory 隐藏 Dock; regular 显示 Dock.
-    /// 仅在状态变化时切换, 避免重复 setActivationPolicy 闪烁.
-    private func setDockIconVisible(_ visible: Bool) {
-        guard isDockPresentationActive != visible else { return }
-        isDockPresentationActive = visible
-        let policy: NSApplication.ActivationPolicy = visible ? .regular : .accessory
-        _ = NSApp.setActivationPolicy(policy)
-    }
 }

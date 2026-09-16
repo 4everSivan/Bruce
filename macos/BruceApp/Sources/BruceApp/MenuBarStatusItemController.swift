@@ -1,7 +1,7 @@
 import AppKit
 import Combine
 import BruceAppCore
-import SwiftUI
+import os
 
 /// 菜单栏状态项 + 仪表盘弹出面板控制器. 替换 MenuBarExtra, 提供程序化开/关.
 ///
@@ -26,11 +26,25 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
     private var installed = false
     /// 打开面板前的前台应用; toggle 关闭时归还前台. 打开时前台已是 Bruce 则为 nil.
     private var previousFrontmostApp: NSRunningApplication?
-    /// 模型变化时重绘状态栏标签图像 (指标值, 刷新状态, 警示符号均驱动显示).
+    /// AppKit updates `NSPanel.isVisible` asynchronously around activation and
+    /// order-out. Keep the user's two-click intent in a synchronous state.
+    private var dashboardToggleState: DashboardPanelToggleState = .closed
+    /// AppKit 可能在状态项 action 前后发送 didResignActive; 在这一轮事件
+    /// 内禁止外部失焦路径抢先改变 toggle 结果.
+    private var statusItemActionInProgress = false
+    /// 模型变化时重绘状态栏图像 (指标值, 刷新状态, 警示符号均驱动显示).
     private var labelSubscription: AnyCancellable?
-    /// 状态栏图片由 ImageRenderer 生成静态帧, 用主线程定时器推进刷新角度.
-    private var refreshAnimationTimer: Timer?
-    private var refreshAnimationRotation = 0.0
+    /// 观察系统是否接受了状态项的可见性请求. 只记录布尔状态, 不记录用户数据.
+    private var statusItemVisibilityObservation: NSKeyValueObservation?
+    private let logger = Logger(
+        subsystem: "io.bruce.dashboard",
+        category: "menu-bar"
+    )
+    /// Keep the status item geometry stable while macOS rebuilds the menu-bar
+    /// accessibility tree. The image contains both icon and metric, so AppKit
+    /// never has to re-layout an image/title pair.
+    private static let statusItemLength: CGFloat = 74
+    private var lastRenderedContent: MenuBarStatusItemContent?
     /// 仪表盘 AppKit 系统材质宿主; 与业务模型和刷新流程隔离.
     private var dashboardGlassController: DashboardGlassPanelController?
 
@@ -52,27 +66,72 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         guard !installed else { return }
         installed = true
 
-        // 使用自适应宽度, 让品牌图标和用量指标完整显示.
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        if let button = item.button {
-            // 状态项按钮无 title/image 时, 其内在尺寸只由 button.image/title
-            // 决定, 不感知子视图 (实测 hosting 子视图方案按钮折叠为 0 宽, 状态栏
-            // 不显示任何内容). 用 ImageRenderer 把 SwiftUI 标签栅格化为按钮图像,
-            // 状态栏据此确定按钮宽度, 颜色随菜单栏明暗自适应.
-            refreshLabelImage(on: button)
-            button.target = self
-            button.action = #selector(statusItemClicked(_:))
-            // 模型任何 @Published 变化都重绘标签; objectWillChange 在值应用前
-            // 发出, 调度到下一轮 main-actor 取到新值再渲染.
-            labelSubscription = model.objectWillChange
-                .sink { [weak self] _ in
-                    Task { @MainActor in
-                        self?.synchronizeRefreshAnimation()
-                        self?.refreshLabelImage()
-                    }
-                }
-            synchronizeRefreshAnimation()
+        // 使用固定长度的标准按钮. 图标和指标随后绘制成一张 image, 避免
+        // NSStatusBarButton 在 image/title 两套 intrinsic size 之间反复布局.
+        let item = NSStatusBar.system.statusItem(withLength: Self.statusItemLength)
+        // 不使用 AppKit 自动生成的 autosave key. 自动 key 会随状态项的
+        // 创建顺序变化, 让系统把本次启动误认为另一个历史状态项; 在
+        // macOS 27 的菜单栏重建后, 这会表现为 `isVisible == true` 但实际
+        // 没有可点击节点. 固定 key 让可见性状态只属于 Bruce 这一项.
+        item.autosaveName = "io.bruce.dashboard.menu-bar"
+        // 先保存引用, 确保状态项在后续刷新和可见性诊断中始终可达.
+        statusItem = item
+        guard let button = item.button else {
+            logger.error("status item button unavailable")
+            NSStatusBar.system.removeStatusItem(item)
+            statusItem = nil
+            installed = false
+            return
         }
+
+        // 先把按钮内容和点击行为挂好, 再让系统把状态项置为可见.
+        configureStatusItemButton(button, forceRender: false)
+        // 模型任何 @Published 变化都重绘标签; objectWillChange 在值应用前
+        // 发出, 调度到下一轮 main-actor 取到新值再渲染.
+        labelSubscription = model.objectWillChange
+            .sink { [weak self] _ in
+                Task { @MainActor in
+                    self?.refreshLabelImage()
+                }
+            }
+
+        // 请求显示并观察系统最终状态. macOS 仍可能因用户菜单栏策略或空间
+        // 管理而暂时隐藏状态项, 但此处能区分创建失败和系统侧不可见.
+        statusItemVisibilityObservation = item.observe(
+            \NSStatusItem.isVisible,
+            options: [.initial, .new]
+        ) { [weak self] observedItem, _ in
+            let visible = observedItem.isVisible
+            Task { @MainActor [weak self] in
+                self?.logger.debug(
+                    "status item visibility changed; visible=\(visible, privacy: .public)"
+                )
+                // macOS 27 / Pelmet 重排时可能重建按钮的绘制状态, 但不改变
+                // MenuBarStatusItemContent. 内容未变时的普通刷新会被缓存短路,
+                // 因而这里必须强制恢复 image + action + AX label.
+                if visible {
+                    self?.restoreStatusItemPresentation()
+                }
+            }
+        }
+        item.isVisible = true
+        // `isVisible = true` 只改变状态项归属; 菜单栏按钮的最终窗口/AX 节点
+        // 可能在下一轮 run loop 才完成. 额外恢复一次, 覆盖这段重排窗口.
+        DispatchQueue.main.async { [weak self] in
+            self?.restoreStatusItemPresentation()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            self?.restoreStatusItemPresentation()
+        }
+
+        let hasImage = button.image != nil
+        let titleLength = button.title.utf8.count
+        let buttonWidth = button.frame.width
+        let windowVisible = button.window?.isVisible ?? false
+        logger.info("status item ready; image=\(hasImage, privacy: .public)")
+        logger.info("status item title length=\(titleLength, privacy: .public)")
+        logger.info("status item button width=\(buttonWidth, privacy: .public)")
+        logger.info("status item window visible=\(windowVisible, privacy: .public)")
 
         let rootView = MenuBarDashboardView(
             openSettings: { [weak self] in
@@ -118,7 +177,6 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
             name: NSApplication.didResignActiveNotification,
             object: nil
         )
-        statusItem = item
     }
 
     // MARK: - 状态栏标签图像
@@ -129,99 +187,133 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         refreshLabelImage(on: button)
     }
 
-    /// 用 ImageRenderer 栅格化 MenuBarLabelView 为按钮图像.
-    /// 渲染成白色单色轮廓并标记 isTemplate, 由菜单栏按自身明暗自动着色
-    /// (浅色菜单栏黑色, 深色菜单栏白色), 与原生状态项图标同一机制: 不依赖
-    /// 外观检测, 外观切换也无需重绘.
-    private func refreshLabelImage(on button: NSStatusBarButton) {
-        let renderer = ImageRenderer(
-            content: MenuBarLabelView(
-                model: model,
-                refreshRotation: refreshAnimationRotation
-            )
-                .foregroundStyle(.white)
+    private func configureStatusItemButton(
+        _ button: NSStatusBarButton,
+        forceRender: Bool
+    ) {
+        refreshLabelImage(on: button, force: forceRender)
+        button.target = self
+        button.action = #selector(statusItemClicked(_:))
+        button.setAccessibilityLabel("Bruce")
+    }
+
+    /// 状态栏宿主重排后恢复按钮内容. AppKit 可能保留同一个 NSStatusItem,
+    /// 但清掉 button.image 或 action; 不能只依赖业务内容变化来触发重绘.
+    private func restoreStatusItemPresentation() {
+        guard installed, let button = statusItem?.button else { return }
+        configureStatusItemButton(button, forceRender: true)
+    }
+
+    /// 使用一张固定尺寸的模板图像绘制图标和指标.
+    ///
+    /// 不把指标放进 `NSStatusBarButton.title`: title 和 image 分开交给
+    /// AppKit 会让按钮在占位符和真实数据之间重新测量. image-only 让状态项
+    /// 的 AX 节点和几何尺寸保持稳定, 同时保留菜单栏上的今日用量.
+    private func refreshLabelImage(
+        on button: NSStatusBarButton,
+        force: Bool = false
+    ) {
+        let summary = model.makeMenuBarSummary()
+        let content = MenuBarStatusItemContentBuilder().build(
+            metrics: model.menuBarMetrics,
+            summary: summary,
+            isRefreshing: isRefreshing
         )
-        renderer.scale = button.window?.screen?.backingScaleFactor
-            ?? NSScreen.main?.backingScaleFactor
-            ?? 2
-        // 首次渲染失败时没有旧图可保留; 使用 AppKit 图标回退, 避免
-        // variableLength 状态项因没有 image/title 而折叠为 0 宽.
-        let renderedImage = renderer.nsImage
-        if let image = renderedImage,
-           image.size.width > 0,
-           image.size.height > 0 {
-            image.isTemplate = true
-            button.image = image
-            button.title = ""
-            button.imagePosition = .imageOnly
-        } else if let fallback = NSImage(
-            systemSymbolName: "gauge",
+
+        guard force || lastRenderedContent != content else {
+            return
+        }
+        lastRenderedContent = content
+
+        button.image = makeStatusItemImage(
+            for: content,
+            width: Self.statusItemLength
+        )
+        button.title = ""
+        button.imagePosition = .imageOnly
+        button.imageScaling = .scaleProportionallyDown
+        button.alignment = .center
+        button.isEnabled = true
+        button.appearsDisabled = false
+        button.alphaValue = 1
+        // 留给 AppKit 依据菜单栏自己的 effective appearance 着色.
+        // 这里不能使用固定的 .black/.white, 也不能沿用 app 窗口的
+        // controlTextColor: 菜单栏与设置窗口可能处于不同的对比度环境.
+        button.contentTintColor = nil
+        button.toolTip = content.metricText.isEmpty
+            ? content.accessibilityLabel
+            : "\(content.accessibilityLabel) · \(content.metricText)"
+    }
+
+    /// 把图标和指标合成一张模板 image. 模板 image 由菜单栏宿主按当前
+    /// appearance 统一着色, 因此不会把设置页的 dark 外观泄漏到菜单栏.
+    private func makeStatusItemImage(
+        for content: MenuBarStatusItemContent,
+        width: CGFloat
+    ) -> NSImage {
+        let size = NSSize(width: width, height: 22)
+        let image = NSImage(size: size)
+        image.lockFocus()
+        defer { image.unlockFocus() }
+
+        if let symbol = NSImage(
+            systemSymbolName: content.iconName,
             accessibilityDescription: "Bruce"
         ) {
-            fallback.isTemplate = true
-            button.image = fallback
-            button.title = ""
-            button.imagePosition = .imageOnly
+            symbol.isTemplate = true
+            symbol.draw(
+                in: NSRect(x: 6, y: 2, width: 18, height: 18),
+                from: .zero,
+                operation: .sourceOver,
+                fraction: 1
+            )
         } else {
-            button.image = nil
-            button.title = "B"
-            button.imagePosition = .noImage
+            logger.error("status item system icon unavailable")
         }
-        button.setAccessibilityLabel(menuBarAccessibilityLabel)
+
+        guard !content.metricText.isEmpty else {
+            image.isTemplate = true
+            return image
+        }
+
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(
+                ofSize: 12,
+                weight: .regular
+            ),
+            .foregroundColor: NSColor.black,
+        ]
+        let text = NSAttributedString(
+            string: content.metricText,
+            attributes: attributes
+        )
+        let textSize = text.size()
+        let textRect = NSRect(
+            x: 29,
+            y: (size.height - textSize.height) / 2,
+            width: max(0, size.width - 33),
+            height: textSize.height
+        )
+        text.draw(in: textRect)
+        image.isTemplate = true
+        return image
     }
 
     private var isRefreshing: Bool {
         model.moduleStatuses.values.contains { $0.state == .refreshing }
     }
 
-    /// 刷新开始/结束时同步状态栏动画. 用显式角度而非 SwiftUI 无限动画,
-    /// 这样 ImageRenderer 不会只抓到一个静态首帧或丢失旁边的用量文本.
-    private func synchronizeRefreshAnimation() {
-        if isRefreshing {
-            guard refreshAnimationTimer == nil else { return }
-            refreshAnimationRotation = 0
-            let timer = Timer(
-                timeInterval: 1.0 / 12.0,
-                target: self,
-                selector: #selector(advanceRefreshAnimation),
-                userInfo: nil,
-                repeats: true
-            )
-            RunLoop.main.add(timer, forMode: .common)
-            refreshAnimationTimer = timer
-        } else {
-            refreshAnimationTimer?.invalidate()
-            refreshAnimationTimer = nil
-            refreshAnimationRotation = 0
-        }
-    }
-
-    @objc private func advanceRefreshAnimation() {
-        guard isRefreshing else {
-            synchronizeRefreshAnimation()
-            refreshLabelImage()
-            return
-        }
-        refreshAnimationRotation = (refreshAnimationRotation + 30)
-            .truncatingRemainder(dividingBy: 360)
-        refreshLabelImage()
-    }
-
-    /// 与 MenuBarLabelView 内部一致的辅助功能描述.
-    private var menuBarAccessibilityLabel: String {
-        let formatter = MenuBarMetricFormatter()
-        let summary = model.makeMenuBarSummary()
-        let metrics = model.menuBarMetrics.map {
-            "\($0.title) \(formatter.string(for: $0, summary: summary))"
-        }
-        return (["Bruce", summary.overallStatus.title] + metrics)
-            .joined(separator: ", ")
-    }
-
     /// 切换仪表盘开/关 (全局快捷键与状态项点击共用).
     func toggleDashboard() {
-        guard installed, let button = statusItem?.button else { return }
-        if panel.isVisible {
+        guard installed else {
+            logger.error("dashboard toggle ignored; status item not installed")
+            return
+        }
+        guard let button = statusItem?.button else {
+            logger.error("dashboard toggle ignored; status item button unavailable")
+            return
+        }
+        if dashboardToggleState == .open {
             closeDashboard(restorePreviousFrontmostApp: true)
         } else {
             openDashboard(relativeTo: button)
@@ -233,8 +325,8 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         NotificationCenter.default.removeObserver(self)
         labelSubscription?.cancel()
         labelSubscription = nil
-        refreshAnimationTimer?.invalidate()
-        refreshAnimationTimer = nil
+        statusItemVisibilityObservation?.invalidate()
+        statusItemVisibilityObservation = nil
         closeDashboard(restorePreviousFrontmostApp: false)
         panel.delegate = nil
         dashboardGlassController = nil
@@ -243,9 +335,14 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
             NSStatusBar.system.removeStatusItem(statusItem)
             self.statusItem = nil
         }
+        installed = false
     }
 
     @objc private func statusItemClicked(_ sender: Any?) {
+        statusItemActionInProgress = true
+        DispatchQueue.main.async { [weak self] in
+            self?.statusItemActionInProgress = false
+        }
         toggleDashboard()
     }
 
@@ -266,27 +363,26 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
     }
 
     private func openDashboard(relativeTo button: NSStatusBarButton) {
+        dashboardToggleState = .open
         // 先记录打开前的前台应用 (打开路径会把 Bruce 激活, 前台切到 Bruce).
         let frontmost = NSWorkspace.shared.frontmostApplication
         previousFrontmostApp = (frontmost?.bundleIdentifier == Bundle.main.bundleIdentifier)
             ? nil
             : frontmost
-        if let size = panel.contentViewController?.view.fittingSize,
-           size.width > 0, size.height > 0 {
-            panel.setContentSize(size)
+        let fittingSize = panel.contentViewController?.view.fittingSize ?? .zero
+        if fittingSize.width > 0, fittingSize.height > 0 {
+            panel.setContentSize(fittingSize)
         }
+        let screen = button.window?.screen ?? NSScreen.main
         let screenRect = button.window?.convertToScreen(button.convert(button.bounds, to: nil))
             ?? button.convert(button.bounds, to: nil)
-        var origin = NSPoint(
-            x: screenRect.midX - panel.frame.width / 2,
-            y: screenRect.minY - panel.frame.height - 6
+        let placement = DashboardPanelPlacementResolver.resolve(
+            anchorRect: screenRect,
+            panelSize: panel.frame.size,
+            visibleFrame: screen?.visibleFrame ?? .zero,
+            screenFrame: screen?.frame ?? .zero
         )
-        // 窄屏防越界: 面板保持完整可见 (左右各留 8pt 边距).
-        if let screen = button.window?.screen {
-            let visible = screen.visibleFrame
-            origin.x = min(max(origin.x, visible.minX + 8), visible.maxX - panel.frame.width - 8)
-        }
-        panel.setFrameOrigin(origin)
+        panel.setFrameOrigin(placement.origin)
         // 面板关闭期间主题可能已切换且 SwiftUI onChange 尚未触发 (视图未加载),
         // 打开前兜底刷新一次面板级属性.
         refreshPanelWindowAttributes()
@@ -298,6 +394,7 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
     /// 关闭面板; toggle 关闭时把前台归还给打开前的应用,
     /// 因点击其他应用而关闭 (resignActive) 时不归还 (对方已是前台).
     private func closeDashboard(restorePreviousFrontmostApp: Bool) {
+        dashboardToggleState = .closed
         let transition = DashboardPanelVisibilityTransition.close(
             panelIsVisible: panel.isVisible
         )
@@ -324,6 +421,25 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
     }
 
     @objc private func applicationDidResignActive(_ note: Notification) {
+        // 状态项点击本身也可能触发 didResignActive. 只有鼠标不在 Bruce
+        // 状态项上、且当前不是状态项 action 事件时, 才认定为点击了其他应用.
+        let pointerIsInsideStatusItem: Bool
+        if let button = statusItem?.button,
+           let window = button.window {
+            let itemRect = window.convertToScreen(
+                button.convert(button.bounds, to: nil)
+            )
+            pointerIsInsideStatusItem = itemRect.contains(NSEvent.mouseLocation)
+        } else {
+            pointerIsInsideStatusItem = false
+        }
+        guard DashboardPanelDismissalPolicy.shouldDismissOnApplicationResign(
+            panelIsVisible: panel.isVisible,
+            pointerIsInsideStatusItem: pointerIsInsideStatusItem,
+            statusItemActionInProgress: statusItemActionInProgress
+        ) else {
+            return
+        }
         // 用户点击了其他应用 → 关闭面板, 不强制归还前台.
         closeDashboard(restorePreviousFrontmostApp: false)
     }
@@ -336,6 +452,7 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
             panelIsVisible: panel.isVisible,
             occlusionStateIsVisible: panel.occlusionState.contains(.visible)
         )
+        dashboardToggleState = visible ? .open : .closed
         model.setDashboardPanelVisible(visible)
     }
 
@@ -343,6 +460,7 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         guard let window = notification.object as? NSWindow, window === panel else {
             return
         }
+        dashboardToggleState = .closed
         model.setDashboardPanelVisible(false)
     }
 }

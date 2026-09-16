@@ -12,7 +12,9 @@
 | Preview | 本地开发和内部测试 | 当前 ad-hoc 签名即可 | 可包含诊断开关, 不作为公开分发 |
 | Release | 面向用户的正式下载包 | Developer ID + Hardened Runtime + Apple notarization | 只包含生产资源和最小权限 |
 
-当前 `scripts/build-test-app.sh` 只生成 `dist/Bruce.app` 和 `dist/Bruce.zip`, 使用固定测试 bundle ID/version、ad-hoc 签名且未执行公证. 它继续作为 Preview 流程, 不得被称为正式版.
+当前 `scripts/build-test-app.sh` 默认生成 `dist/Bruce.app` 和 `dist/Bruce.zip`, 使用固定测试 bundle ID/version、ad-hoc 签名且未执行公证. 传入 `--install` 时, 脚本会在生成后将同一 Preview 包复制到 `/Applications/Bruce.app` 并注册 LaunchServices, 供 macOS 27 菜单栏管理器进行稳定识别. 它继续作为 Preview 流程, 不得被称为正式版.
+
+macOS 27 本机验收时, 如果同时启用菜单栏管理器, 应使用 `zsh scripts/build-test-app.sh --install` 后从 `/Applications/Bruce.app` 启动. `dist/Bruce.app` 仍是 CI 和压缩产物目录, 不作为该场景的运行入口.
 
 正式版采用 Developer ID 分发路径. Apple 对于 App Store 外分发的软件要求使用 Developer ID 签名, 开启 Hardened Runtime, 并通过 `notarytool` 提交公证; 公证后使用 `stapler` 将票据附加到 App. 参考 [Apple notarization documentation](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution).
 

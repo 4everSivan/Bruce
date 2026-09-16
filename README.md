@@ -89,10 +89,13 @@ swift run --package-path macos/BruceApp BruceApp
 ### 打包与发布
 
 ```bash
-zsh scripts/build-test-app.sh    # 测试版: dist/Bruce.app + dist/Bruce.zip (不入库)
+zsh scripts/build-test-app.sh --install   # 推荐: 构建并安装到 /Applications/Bruce.app
+zsh scripts/build-test-app.sh             # 仅生成 dist/Bruce.app + dist/Bruce.zip (不入库)
 zsh scripts/build-release-app.sh # 预留手工正式版: Developer ID 签名 + Hardened Runtime + 公证 (需 Git tag 与证书)
 zsh scripts/release-notes.sh     # 从 CHANGELOG 提取当前版本生成 Release 说明
 ```
+
+在 macOS 27 配合菜单栏管理器使用时, 请从 `/Applications/Bruce.app` 启动. `dist/Bruce.app` 是构建产物目录, 直接从这里启动的开发包可能没有稳定的 LaunchServices 注册, 菜单栏重排后会被系统隐藏.
 
 正式版手工打包前置条件: Git tag `v<major>.<minor>.<patch>`、Developer ID Application 证书和 App Store Connect API Key; 该流程当前未接入 CI/CD, 未配置时脚本在对应阶段清晰失败, 不产出半成品。
 

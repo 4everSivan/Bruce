@@ -18,3 +18,38 @@ package struct DashboardPanelVisibilityTransition: Equatable, Sendable {
         panelIsVisible && occlusionStateIsVisible
     }
 }
+
+/// Logical state for the status-item toggle. This is kept separate from
+/// AppKit's asynchronous `NSPanel.isVisible` property.
+package enum DashboardPanelToggleState: Equatable, Sendable {
+    case closed
+    case open
+
+    package var toggled: Self {
+        switch self {
+        case .closed:
+            .open
+        case .open:
+            .closed
+        }
+    }
+}
+
+/// Decides whether losing application active state means that the dashboard
+/// was dismissed by clicking another application.
+///
+/// Clicking Bruce's own status item can also make AppKit send
+/// `didResignActive` while dispatching the button action. That notification
+/// must not close the panel before the action gets a chance to perform the
+/// second half of the toggle.
+package enum DashboardPanelDismissalPolicy {
+    package static func shouldDismissOnApplicationResign(
+        panelIsVisible: Bool,
+        pointerIsInsideStatusItem: Bool,
+        statusItemActionInProgress: Bool
+    ) -> Bool {
+        panelIsVisible
+            && !pointerIsInsideStatusItem
+            && !statusItemActionInProgress
+    }
+}

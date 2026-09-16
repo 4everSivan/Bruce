@@ -2,6 +2,16 @@
 
 set -euo pipefail
 
+BRUCE_INSTALL_PREVIEW=false
+if [[ $# -gt 1 || ( $# -eq 1 && "$1" != "--install" ) ]]; then
+    echo "用法: zsh scripts/build-test-app.sh [--install]" >&2
+    echo "  --install 额外复制到 /Applications/Bruce.app 并注册 LaunchServices" >&2
+    exit 2
+fi
+if [[ $# -eq 1 ]]; then
+    BRUCE_INSTALL_PREVIEW=true
+fi
+
 BRUCE_SCRIPT_DIR=${0:A:h}
 BRUCE_REPO_ROOT=${BRUCE_SCRIPT_DIR:h}
 BRUCE_SWIFT_PACKAGE="$BRUCE_REPO_ROOT/macos/BruceApp"
@@ -18,7 +28,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-required_commands=(swift cargo codesign plutil ditto strip rg)
+required_commands=(swift cargo codesign plutil ditto strip rg xcrun)
 for required_command in "${required_commands[@]}"; do
     if ! command -v "$required_command" >/dev/null 2>&1; then
         echo "缺少构建命令: $required_command" >&2
@@ -26,6 +36,8 @@ for required_command in "${required_commands[@]}"; do
     fi
 done
 
+source "$BRUCE_SCRIPT_DIR/swift-sdk.zsh"
+Bruce_prepare_swift_sdk
 source "$BRUCE_SCRIPT_DIR/runtime-manifest.zsh"
 Bruce_validate_packaging_sources "$BRUCE_REPO_ROOT"
 echo "编译 Rust Collector (Preview 使用同一 binary 来源)"
@@ -35,11 +47,11 @@ Bruce_validate_rust_source "$BRUCE_REPO_ROOT" release
 echo "编译 Bruce Preview 可执行文件"
 swift build \
     --package-path "$BRUCE_SWIFT_PACKAGE" \
-    --configuration debug \
+    --configuration release \
     --product BruceApp
 BRUCE_BIN_DIR=$(swift build \
     --package-path "$BRUCE_SWIFT_PACKAGE" \
-    --configuration debug \
+    --configuration release \
     --show-bin-path)
 BRUCE_EXECUTABLE="$BRUCE_BIN_DIR/BruceApp"
 
@@ -139,3 +151,27 @@ zsh "$BRUCE_SCRIPT_DIR/collector-release-smoke.sh" \
 echo "Bruce App 已生成:"
 echo "  $BRUCE_OUTPUT_APP"
 echo "  $BRUCE_OUTPUT_ZIP"
+
+if [[ "$BRUCE_INSTALL_PREVIEW" == true ]]; then
+    BRUCE_LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+    BRUCE_STABLE_APP="/Applications/Bruce.app"
+    if [[ ! -x "$BRUCE_LSREGISTER" ]]; then
+        echo "系统缺少 LaunchServices 注册工具: $BRUCE_LSREGISTER" >&2
+        exit 1
+    fi
+    if [[ ! -d "/Applications" || ! -w "/Applications" ]]; then
+        echo "无法写入稳定 App 目录: /Applications" >&2
+        exit 1
+    fi
+    if [[ -e "$BRUCE_STABLE_APP" && ! -d "$BRUCE_STABLE_APP" ]]; then
+        echo "稳定 App 路径不是目录: $BRUCE_STABLE_APP" >&2
+        exit 1
+    fi
+    echo "安装 Preview 到稳定路径 (macOS 27 菜单栏管理需要 LaunchServices 可匹配的路径)"
+    ditto "$BRUCE_OUTPUT_APP" "$BRUCE_STABLE_APP"
+    "$BRUCE_LSREGISTER" -f "$BRUCE_STABLE_APP"
+    codesign --verify --deep --strict "$BRUCE_STABLE_APP"
+    echo "Bruce Preview 已安装:"
+    echo "  $BRUCE_STABLE_APP"
+    echo "请从该路径重新启动 Bruce; 不要直接运行 dist/Bruce.app"
+fi

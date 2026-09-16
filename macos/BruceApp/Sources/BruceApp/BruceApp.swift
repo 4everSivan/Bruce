@@ -160,8 +160,15 @@ struct BruceApp: App {
 
     var body: some Scene {
         // 状态项与弹出面板由 AppDelegate 自管理; 无可见 SwiftUI 场景.
-        // Settings 场景仅作 SwiftUI App 必需锚点, 移除其菜单项避免空窗口入口.
-        Settings { EmptyView() }
+        // Settings 场景仍作为系统设置窗口入口, 但必须挂载真实设置页;
+        // EmptyView 会在 macOS 27 上直接呈现一个可见的空白配置窗口.
+        Settings {
+            SettingsView()
+                .environmentObject(model)
+                .environmentObject(coordinator)
+                .environmentObject(diagnostics)
+                .frame(minWidth: 760, minHeight: 600)
+        }
             .commands {
                 CommandGroup(replacing: .appSettings) { }
             }

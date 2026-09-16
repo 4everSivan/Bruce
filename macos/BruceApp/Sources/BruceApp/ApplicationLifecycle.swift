@@ -38,7 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // 菜单栏优先: 默认不占 Dock; 打开配置窗口时由 SettingsWindowController 切到 .regular.
+        // 菜单栏优先: 始终保持 accessory, 配置窗口也不把 Bruce 变成 Dock/Cmd-Tab 应用.
         _ = NSApp.setActivationPolicy(.accessory)
         statusItemController?.install()
         startApplication?()
