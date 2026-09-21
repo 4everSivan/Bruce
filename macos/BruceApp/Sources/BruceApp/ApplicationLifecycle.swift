@@ -37,11 +37,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
+        false
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // 菜单栏优先: 始终保持 accessory, 配置窗口也不把 Bruce 变成 Dock/Cmd-Tab 应用.
+        // 菜单栏优先: 启动时保持 accessory; 配置窗口打开时由 SettingsWindowController 切换为 regular 显示 Dock.
         _ = NSApp.setActivationPolicy(.accessory)
+        UserDefaults.standard.removeObject(forKey: "NSWindow Frame com_apple_SwiftUI_Settings_window")
+        UserDefaults.standard.set(false, forKey: "NSQuitAlwaysKeepsWindows")
         statusItemController?.install()
         startApplication?()
+
+        // 若系统在启动时尝试恢复非托管的系统设置窗口, 异步安全清除, 防止出现双窗口
+        DispatchQueue.main.async { [weak self] in
+            for window in NSApp.windows where window !== self?.settingsWindowController?.managedWindow {
+                if window.title == "Bruce设置" || window.identifier?.rawValue.contains("Settings") == true {
+                    window.orderOut(nil)
+                    window.close()
+                }
+            }
+        }
     }
 
     /// Dock 图标点击 (配置窗口打开期间): 前置设置窗口, 不另外新建窗口.

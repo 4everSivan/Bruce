@@ -105,6 +105,23 @@ package enum SubscriptionPresentationPolicy: Sendable {
         return displayName
     }
 
+    /// 账号标记 (例如国外站/国际站标记):
+    /// 仅当该 Provider 存在多个账号 (totalAccountCount > 1) 时为国外站添加 "国际" 标记;
+    /// 如果只有一个账号则不做标记 (返回 nil).
+    package static func accountTag(
+        from displayName: String,
+        providerID: String,
+        totalAccountCount: Int
+    ) -> String? {
+        guard totalAccountCount > 1 else { return nil }
+        if providerID == "stepfun" {
+            if displayName.contains("国际") || displayName.contains("Global") {
+                return "国际"
+            }
+        }
+        return nil
+    }
+
     /// Codex 分组状态: 取账号中最差状态 (ok < partial < error).
     package static func codexGroupStatus(from statuses: [String]) -> String {
         let statusRank = ["ok": 0, "partial": 1, "error": 2]

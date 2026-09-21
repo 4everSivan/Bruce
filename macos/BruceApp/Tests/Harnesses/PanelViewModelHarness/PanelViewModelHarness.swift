@@ -1662,6 +1662,34 @@ struct PanelViewModelHarness {
             multi[0].accounts.map(\.name) == ["sk-12345", "sk-67890"],
             "子卡名应剥离 DeepSeek 前缀: \(multi[0].accounts.map(\.name))"
         )
+
+        // StepFun 国内站与国外站标记规则:
+        // 1. 仅有 1 个国际站账号时: 不做标记 (tag == nil, section.name == "StepFun")
+        let stepfunGlobalOnly = makeService(
+            id: "stepfun_a5c5847a",
+            name: "StepFun (国际) · a5c5847a",
+            kind: "rateLimit"
+        )
+        let singleStepfun = try subscriptionSections(services: [stepfunGlobalOnly])
+        try expect(singleStepfun.count == 1, "单个 StepFun 国际站账号应为 1 段")
+        try expect(singleStepfun[0].name == "StepFun", "单个账号 section 名称应为 StepFun: \(singleStepfun[0].name)")
+        try expect(!singleStepfun[0].isMultiAccount, "单个账号不应为多账号")
+        try expect(singleStepfun[0].accounts.first?.tag == nil, "单个国际站账号不应做标记")
+
+        // 2. 多个账号 (国内 + 国际): 仅国际站账号在子卡头部标记 "国际", 国内站不做标记
+        let stepfunDomestic = makeService(
+            id: "stepfun_cfc5d7b3",
+            name: "StepFun · cfc5d7b3",
+            kind: "rateLimit"
+        )
+        let multiStepfun = try subscriptionSections(services: [stepfunDomestic, stepfunGlobalOnly])
+        try expect(multiStepfun.count == 1, "多账号应合并为 1 段")
+        try expect(multiStepfun[0].isMultiAccount, "多账号应标记 isMultiAccount")
+        try expect(multiStepfun[0].accounts.count == 2, "应有 2 个子卡")
+        let domAccount = multiStepfun[0].accounts.first(where: { $0.id == "stepfun_cfc5d7b3" })
+        let globalAccount = multiStepfun[0].accounts.first(where: { $0.id == "stepfun_a5c5847a" })
+        try expect(domAccount?.tag == nil, "国内站账号不应做标记")
+        try expect(globalAccount?.tag == "国际", "国外站账号旁边应标记 '国际': \(String(describing: globalAccount?.tag))")
     }
 
     // MARK: - AppVersion

@@ -168,7 +168,12 @@ extension PanelViewModelMapper {
                         status: item.service.status,
                         note: item.note,
                         windows: item.windows,
-                        lastSuccessText: lastSuccessText(for: item.service, now: now)
+                        lastSuccessText: lastSuccessText(for: item.service, now: now),
+                        tag: SubscriptionPresentationPolicy.accountTag(
+                            from: item.service.name,
+                            providerID: providerID,
+                            totalAccountCount: services.count
+                        )
                     )
                 }
                 let groupStatus = SubscriptionPresentationPolicy.codexGroupStatus(

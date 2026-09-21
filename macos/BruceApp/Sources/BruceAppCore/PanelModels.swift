@@ -643,6 +643,8 @@ package struct CodexAccountViewModel: Equatable, Sendable {
     /// 非 ok 状态时显示的上次成功时间文案 ("上次成功 HH:mm"),
     /// 来自保留的旧 capturedAt; ok 状态为 nil.
     package let lastSuccessText: String?
+    /// 账号标记 (例如国外站/国际站标记, 仅在多账号时按需展示).
+    package let tag: String?
 
     package init(
         id: String,
@@ -651,7 +653,8 @@ package struct CodexAccountViewModel: Equatable, Sendable {
         status: String,
         note: String?,
         windows: [SubscriptionWindowRow],
-        lastSuccessText: String? = nil
+        lastSuccessText: String? = nil,
+        tag: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -660,6 +663,7 @@ package struct CodexAccountViewModel: Equatable, Sendable {
         self.note = note
         self.windows = windows
         self.lastSuccessText = lastSuccessText
+        self.tag = tag
     }
 }
 

@@ -686,9 +686,12 @@ private struct ProviderAccountCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
+            HStack(spacing: 5) {
                 Text(account.name)
                     .font(.system(size: 10.5, weight: .semibold))
+                if let tag = account.tag {
+                    AccountTagChip(text: tag)
+                }
                 Spacer()
                 if let plan = account.plan {
                     Text(plan)
@@ -858,8 +861,50 @@ private struct PlanChip: View {
                 ), in: Capsule())
                 .overlay(Capsule().strokeBorder(Color.adaptive(
                     light: Color.white.opacity(0.6),
-                    dark: Color.white.opacity(0.2)
-                ), lineWidth: 1))
+                    dark: Color.white.opacity(0.18)
+                ), lineWidth: 0.5))
+        }
+    }
+}
+
+// MARK: - account tag chip
+
+/// 账号属性标签 (例如多账号场景下的 "国际" 站点标记):
+/// Nothing 主题: 3pt 方角, 1px 加强边框, NothingFont.mono(8.5);
+/// Classic / Liquid Glass 主题: 微型圆角胶囊, 科技蓝色调, 直观醒目.
+private struct AccountTagChip: View {
+    let text: String
+
+    @Environment(\.BruceResolvedTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var isNothing: Bool { theme.interfaceStyle == .nothing }
+
+    var body: some View {
+        if isNothing {
+            Text(text)
+                .font(NothingFont.mono(8.5))
+                .foregroundStyle(NothingTokens.secondary(colorScheme))
+                .padding(.horizontal, 4)
+                .padding(.vertical, 0.5)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .strokeBorder(NothingTokens.borderVisible(colorScheme), lineWidth: 1)
+                )
+        } else {
+            Text(text)
+                .font(.system(size: 8.5, weight: .medium))
+                .foregroundStyle(Color(hex: "#0a84ff"))
+                .padding(.horizontal, 5)
+                .padding(.vertical, 1)
+                .background(
+                    Color(hex: "#0a84ff").opacity(colorScheme == .dark ? 0.22 : 0.12),
+                    in: RoundedRectangle(cornerRadius: 3.5, style: .continuous)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 3.5, style: .continuous)
+                        .strokeBorder(Color(hex: "#0a84ff").opacity(0.3), lineWidth: 0.5)
+                )
         }
     }
 }

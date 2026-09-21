@@ -202,6 +202,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     private var isDockPresentationActive = false
 
+    var managedWindow: NSWindow? { window }
+
     init(
         model: AppModel,
         coordinator: OnboardingCoordinator,
@@ -213,15 +215,15 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         super.init()
     }
 
-    /// 打开或前置设置窗口, 并在打开期间显示 Dock 图标.
+    /// 打开或前置设置窗口, 并在打开期间显示 Dock 图标与注册切换器焦点.
     func present() {
         let window = window ?? makeWindow()
         setDockIconVisible(true)
-        NSApplication.shared.activate(ignoringOtherApps: true)
         if window.isMiniaturized {
             window.deminiaturize(nil)
         }
         window.makeKeyAndOrderFront(nil)
+        NSApplication.shared.activate(ignoringOtherApps: true)
     }
 
     /// Dock 图标被点击时: 若配置会话仍在, 重新前置设置窗口.
@@ -242,11 +244,56 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     private func setDockIconVisible(_ visible: Bool) {
         guard isDockPresentationActive != visible else { return }
         isDockPresentationActive = visible
-        let policy: NSApplication.ActivationPolicy = visible ? .regular : .accessory
-        _ = NSApp.setActivationPolicy(policy)
+        if visible {
+            ensureStandardMainMenu()
+            _ = NSApp.setActivationPolicy(.regular)
+        } else {
+            _ = NSApp.setActivationPolicy(.accessory)
+        }
     }
 
-    // MARK: - Private
+    private func ensureStandardMainMenu() {
+        if NSApp.mainMenu != nil { return }
+        let mainMenu = NSMenu()
+
+        // 1. App 菜单
+        let appMenuItem = NSMenuItem()
+        mainMenu.addItem(appMenuItem)
+        let appMenu = NSMenu()
+        appMenuItem.submenu = appMenu
+        appMenu.addItem(withTitle: "关于 Bruce", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(NSMenuItem.separator())
+        appMenu.addItem(withTitle: "隐藏 Bruce", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        let hideOthersItem = appMenu.addItem(withTitle: "隐藏其他", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
+        hideOthersItem.keyEquivalentModifierMask = [.command, .option]
+        appMenu.addItem(withTitle: "显示全部", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
+        appMenu.addItem(NSMenuItem.separator())
+        appMenu.addItem(withTitle: "退出 Bruce", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+
+        // 2. 编辑菜单 (使输入框支持标准的 Cmd+C, Cmd+V, Cmd+A, Cmd+Z 等)
+        let editMenuItem = NSMenuItem()
+        mainMenu.addItem(editMenuItem)
+        let editMenu = NSMenu(title: "编辑")
+        editMenuItem.submenu = editMenu
+        editMenu.addItem(withTitle: "撤销", action: Selector(("undo:")), keyEquivalent: "z")
+        editMenu.addItem(withTitle: "重做", action: Selector(("redo:")), keyEquivalent: "Z")
+        editMenu.addItem(NSMenuItem.separator())
+        editMenu.addItem(withTitle: "剪切", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "复制", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "粘贴", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "全选", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+
+        // 3. 窗口菜单
+        let windowMenuItem = NSMenuItem()
+        mainMenu.addItem(windowMenuItem)
+        let windowMenu = NSMenu(title: "窗口")
+        windowMenuItem.submenu = windowMenu
+        windowMenu.addItem(withTitle: "最小化", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windowMenu.addItem(withTitle: "关闭窗口", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+
+        NSApp.mainMenu = mainMenu
+        NSApp.windowsMenu = windowMenu
+    }
 
     private func makeWindow() -> NSWindow {
         let rootView = SettingsView()
@@ -254,7 +301,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             .environmentObject(coordinator)
             .environmentObject(diagnostics)
             .frame(minWidth: 760, minHeight: 600)
-        let window = NSWindow(
+        let window = SettingsHostWindow(
             contentViewController: NSHostingController(rootView: rootView)
         )
         window.title = "Bruce 设置"
@@ -267,10 +314,19 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         window.minSize = NSSize(width: 760, height: 600)
         window.setContentSize(NSSize(width: 860, height: 600))
         window.isReleasedWhenClosed = false
+        window.isRestorable = false
+        window.identifier = NSUserInterfaceItemIdentifier("Bruce.SettingsWindow")
         window.delegate = self
         window.center()
         self.window = window
         return window
     }
+}
 
+/// 重写 canBecomeKey 与 canBecomeMain 为 true,
+/// 保证应用在 Regular 模式下被 macOS WindowServer 识别为前台主窗口,
+/// 彻底支持 Command + Tab 切换器切出并前置.
+private final class SettingsHostWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
 }
