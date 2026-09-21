@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bruce 仪表盘 · 全局顶部 Header 与外边框高保真设计提案 (1:1 原生还原)</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Doto:ROND,wght@100,700&family=Space+Grotesk:wght@500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+<style>
+  /* ============ 1:1 主题 Token (完全对齐 GlassTheme / PanelCardContainer / Swift 源码) ============ */
+  :root {
+    --panel-width: 440px;
+    --card-radius: 14px;
+    --stack-gap: 10px;
+    --pad-x: 15px;
+    --pad-y: 13px;
+
+    --ink: rgba(255,255,255,.92);
+    --subdued: rgba(255,255,255,.50);
+    --faint: rgba(255,255,255,.55);
+    --hairline: rgba(255,255,255,.12);
+    --rowline: rgba(255,255,255,.10);
+    --accent: #0a84ff;
+
+    --panel-bg: rgba(30,31,38,.78);
+    --panel-border: rgba(255,255,255,.14);
+    --panel-top-glow: rgba(255,255,255,.32);
+    --panel-radius: 20px;
+    --panel-shadow: 0 20px 50px rgba(0,0,0,.55), 0 4px 12px rgba(0,0,0,.35);
+
+    --card-bg: rgba(255,255,255,.075);
+    --card-border: rgba(255,255,255,.12);
+    --card-highlight: rgba(255,255,255,.24);
+    --card-shadow: rgba(0,0,0,.16);
+
+    --chip-bg: rgba(255,255,255,.08);
+    --chip-bg-current: rgba(255,255,255,.14);
+    --chip-border: rgba(255,255,255,.10);
+    --chip-border-current: rgba(255,255,255,.10);
+
+    --track: rgba(255,255,255,.12);
+    --heat-empty: rgba(255,255,255,.07);
+
+    --green: #30d158;
+    --page-bg: #0e0f14;
+    --label: rgba(255,255,255,.55);
+    --footer-line: rgba(255,255,255,.12);
+    --ctrl-bg: rgba(255,255,255,.08);
+    --ctrl-border: rgba(255,255,255,.16);
+  }
+
+  body.light {
+    --ink: rgba(0,0,0,.88);
+    --subdued: rgba(0,0,0,.50);
+    --faint: rgba(0,0,0,.55);
+    --hairline: rgba(0,0,0,.08);
+    --rowline: rgba(0,0,0,.06);
+    --panel-bg: rgba(246,247,250,.85);
+    --panel-border: rgba(0,0,0,.10);
+    --panel-top-glow: rgba(255,255,255,.85);
+    --panel-shadow: 0 16px 40px rgba(0,0,0,.12), 0 2px 8px rgba(0,0,0,.06);
+
+    --card-bg: rgba(255,255,255,.65);
+    --card-border: rgba(0,0,0,.08);
+    --card-highlight: rgba(255,255,255,.75);
+    --card-shadow: rgba(0,0,0,.05);
+
+    --chip-bg: rgba(255,255,255,.40);
+    --chip-bg-current: rgba(255,255,255,.60);
+    --chip-border: rgba(255,255,255,.55);
+    --chip-border-current: rgba(255,255,255,.55);
+    --track: rgba(0,0,0,.07);
+    --heat-empty: rgba(0,0,0,.07);
+
+    --page-bg: #dce0e8;
+    --label: rgba(0,0,0,.5);
+    --footer-line: rgba(0,0,0,.08);
+    --ctrl-bg: rgba(255,255,255,.6);
+    --ctrl-border: rgba(0,0,0,.12);
+  }
+
+  /* Windows 11 Fluent 模式变量映射 (兼容 Wins) */
+  body.win11 {
+    --panel-radius: 10px;
+    --card-radius: 8px;
+    --panel-bg: rgba(32,32,38,.92);
+    --panel-border: rgba(255,255,255,.09);
+    --panel-shadow: 0 12px 32px rgba(0,0,0,.45);
+    font-family: "Segoe UI Variable Text", "Segoe UI", -apple-system, sans-serif !important;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", sans-serif;
+    background: var(--page-bg);
+    background-image:
+      radial-gradient(1200px 700px at 20% 0%, rgba(70,90,140,.24), transparent 60%),
+      radial-gradient(900px 600px at 85% 90%, rgba(100,70,140,.18), transparent 60%);
+    min-height: 100vh;
+    padding: 40px 24px 80px;
+    display: flex; flex-direction: column; align-items: center; gap: 48px;
+    -webkit-font-smoothing: antialiased;
+  }
+  body.light {
+    background-image:
+      radial-gradient(1200px 700px at 20% 0%, rgba(140,170,220,.45), transparent 60%),
+      radial-gradient(900px 600px at 85% 90%, rgba(190,160,210,.40), transparent 60%);
+  }
+
+  .topbar {
+    display: flex; align-items: center; gap: 18px; max-width: 960px; width: 100%;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--hairline);
+    padding-bottom: 16px;
+  }
+  .topbar h1 { color: var(--ink); font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+  .topbar-controls { display: flex; gap: 10px; }
+  .theme-toggle {
+    all: unset; cursor: pointer; font-size: 11.5px; color: var(--ink);
+    padding: 5px 12px; border-radius: 8px; border: 1px solid var(--ctrl-border);
+    background: var(--ctrl-bg); backdrop-filter: blur(12px); font-weight: 500;
+  }
+  .theme-toggle:hover { background: rgba(255,255,255,.15); }
+
+  /* 方案展示区域 */
+  section { width: 100%; display: flex; flex-direction: column; align-items: center; }
+  .sec-note { max-width: 600px; width: 100%; margin-bottom: 16px; }
+  .sec-note h2 { color: var(--ink); font-size: 15px; font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+  .sec-note p { color: var(--subdued); font-size: 12.5px; line-height: 1.5; }
+  .badge-tag {
+    font-size: 9.5px; font-weight: 600; padding: 2px 7px; border-radius: 4px;
+    background: rgba(10,132,255,.18); color: #0a84ff; border: 1px solid rgba(10,132,255,.3);
+  }
+  .badge-tag.rec {
+    background: rgba(48,209,88,.2); color: #30d158; border-color: rgba(48,209,88,.35);
+  }
+
+  /* ============ 整个仪表盘面板容器 (1:1 原生还原) ============ */
+  .panel {
+    width: var(--panel-width);
+    border-radius: var(--panel-radius);
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    box-shadow: var(--panel-shadow);
+    backdrop-filter: blur(40px) saturate(180%);
+    -webkit-backdrop-filter: blur(40px) saturate(180%);
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* 顶部发光微高光 (Fluent / macOS Dual Inset Highlight) */
+  .panel::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 18px; right: 18px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--panel-top-glow), transparent);
+    pointer-events: none;
+    z-index: 20;
+  }
+
+  /* ============================================================
+     ★ 核心新设计：全局顶部 Header (Dashboard Top Header)
+     ============================================================ */
+
+  /* --- 顶部 Header 方案 1: 极客终端点阵状态栏 (HUD Terminal Style) --- */
+  .panel-top-header-hud {
+    padding: 11px 16px 9px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--hairline);
+    background: rgba(0,0,0,.08);
+  }
+  body.light .panel-top-header-hud {
+    background: rgba(0,0,0,.02);
+  }
+  .hud-brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .hud-logo-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 6px var(--green);
+    animation: pulse-dot 2.2s infinite ease-in-out;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { transform: scale(1); opacity: 0.85; }
+    50% { transform: scale(1.25); opacity: 1; }
+  }
+  .hud-title {
+    font-family: "Space Grotesk", -apple-system, sans-serif;
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    color: var(--ink);
+    text-transform: uppercase;
+  }
+  .hud-badge-mono {
+    font-family: "Space Mono", monospace;
+    font-size: 9px;
+    letter-spacing: 0.5px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: rgba(255,255,255,.08);
+    border: 1px solid var(--hairline);
+    color: var(--subdued);
+  }
+  .hud-metrics-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: "Space Mono", monospace;
+    font-size: 10px;
+    color: var(--subdued);
+  }
+  .hud-stat-highlight {
+    color: var(--green);
+    font-weight: 600;
+  }
+
+  /* --- 顶部 Header 方案 2: 现代流动效能概览栏 (Fluent Activity Header) --- */
+  .panel-top-header-fluent {
+    padding: 12px 16px 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .fluent-brand-group {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .fluent-app-name {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: -0.2px;
+  }
+  .fluent-live-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 9.5px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: rgba(48,209,88,.14);
+    border: 1px solid rgba(48,209,88,.25);
+    color: var(--green);
+  }
+  .fluent-live-dot {
+    width: 4.5px; height: 4.5px; border-radius: 50%; background: var(--green);
+  }
+  .fluent-overview-right {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+  .fluent-overview-val {
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .fluent-overview-sub {
+    color: var(--subdued);
+    font-size: 10px;
+  }
+
+  /* --- 顶部 Header 方案 3: 极简紧凑状态发线 (Minimal Hairline Status) --- */
+  .panel-top-header-minimal {
+    padding: 8px 16px 7px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--hairline);
+    font-size: 10.5px;
+  }
+  .minimal-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--subdued);
+    font-weight: 500;
+  }
+  .minimal-right-agents {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .mini-agent-avatar {
+    width: 15px; height: 15px; border-radius: 50%;
+    font-size: 8.5px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff;
+  }
+
+  /* ============================================================
+     卡片栈与三个小卡片 (100% 保持原有内容，完全不动！)
+     ============================================================ */
+  .cards {
+    padding: 10px 12px 6px;
+    display: flex; flex-direction: column; gap: var(--stack-gap);
+  }
+
+  .card {
+    border-radius: var(--card-radius);
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    box-shadow: 0 1px 4px var(--card-shadow);
+    position: relative;
+    overflow: hidden;
+  }
+  .card::before {
+    content: ""; position: absolute; top: 0; left: 10px; right: 10px; height: 1px;
+    background: var(--card-highlight); pointer-events: none;
+  }
+
+  /* 卡片标题行与收起态 (方案 C 变体 2 已定稿版式，1:1 还原) */
+  .card-head {
+    all: unset; cursor: pointer; display: flex; align-items: center; gap: 15px;
+    width: 100%; box-sizing: border-box;
+    padding: 10px var(--pad-x);
+  }
+  .head-title { width: 92px; flex: none; font-size: 12.5px; font-weight: 600; color: var(--ink); }
+  .head-inline { flex: 1; display: flex; justify-content: flex-end; min-width: 0; }
+  .chev {
+    width: 10px; height: 10px; flex: none;
+    opacity: 0; transition: opacity .15s ease, transform .25s ease;
+    color: var(--subdued);
+  }
+  .card-head:hover .chev { opacity: 1; }
+  .card.open .chev { transform: rotate(90deg); }
+  .card.open .head-inline { display: none; }
+
+  /* 收起态迷你可视化 (保持定稿) */
+  .mini-wrap { display: flex; align-items: center; gap: 15px; width: 100%; }
+  .mini-hero-num {
+    font-size: 17px; font-weight: 700; letter-spacing: -0.5px;
+    font-variant-numeric: tabular-nums;
+    background: linear-gradient(to bottom right, #82A57C 30%, #63885E 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    flex: none;
+  }
+  .mini-heat14 { flex: 1; display: flex; gap: 3px; }
+  .mini-heat14 i { flex: 1; height: 10px; border-radius: 2px; background: var(--heat-empty); }
+  .mini-heat14 i.l1 { background: #7D9B76; } .mini-heat14 i.l2 { background: #63885E; }
+  .mini-heat14 i.l3 { background: #4C7249; } .mini-heat14 i.l4 { background: #385B38; }
+  .mini-heat14 i.l5 { background: #26452A; }
+
+  .mini-provs { flex: 1; display: flex; gap: 10px; }
+  .mini-prov { flex: 1; display: flex; align-items: center; gap: 5px; min-width: 0; }
+  .badge {
+    width: 15px; height: 15px; border-radius: 4.5px; flex: none;
+    color: #fff; font-size: 9px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .meter { flex: 1; height: 5px; border-radius: 3px; background: var(--track); overflow: hidden; }
+  .meter i { display: block; height: 100%; border-radius: 3px; }
+  .meter.normal i { background: linear-gradient(90deg, #30d158, #66d4a3); }
+  .meter.warning i { background: linear-gradient(90deg, #ff9f0a, #ffd60a); }
+  .meter.critical i { background: linear-gradient(90deg, #ff453a, #ff6961); }
+
+  .mini-spark { flex: 1; display: flex; align-items: center; gap: 8px; }
+  .spark { display: block; width: 100%; height: 12px; }
+  .peak-txt { font-size: 9px; color: var(--subdued); font-variant-numeric: tabular-nums; flex: none; }
+
+  /* 展开态卡片内容 */
+  .card-body { overflow: hidden; height: 0; transition: height .25s ease; }
+  .card-body-pad { padding: 0 var(--pad-x) var(--pad-y); }
+  .card.open .card-body { height: auto; }
+
+  /* 展开态 Token 卡 */
+  .hero-row { display: flex; align-items: baseline; gap: 8px; margin-top: 6px; }
+  .hero-num {
+    font-size: 38px; font-weight: 700; letter-spacing: -1.2px;
+    background: linear-gradient(to bottom right, #82A57C 30%, #63885E 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero-unit { font-size: 13px; font-weight: 500; color: var(--subdued); }
+  .hero-cost { margin-left: auto; font-size: 15px; font-weight: 600; color: var(--accent); }
+  .divider { height: 1px; background: var(--hairline); margin-top: 10px; }
+  .breakdown { display: flex; margin-top: 8px; }
+  .bd-cell { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+  .bd-cell + .bd-cell { border-left: 1px solid var(--hairline); padding-left: 10px; }
+  .bd-label { font-size: 8.5px; color: var(--faint); letter-spacing: .5px; }
+  .bd-value { font-size: 13px; font-weight: 600; color: var(--ink); }
+
+  /* 底栏 */
+  .footer-hairline { height: 1px; background: var(--footer-line); }
+  .action-footer {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 14px; font-size: 11px; color: var(--subdued);
+  }
+  .fbtn-group { display: flex; gap: 8px; }
+  .fbtn {
+    all: unset; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    padding: 4px 8px; border-radius: 7px;
+    background: var(--ctrl-bg); border: 1px solid var(--ctrl-border);
+    color: var(--ink); font-size: 11px;
+  }
+
+  /* ============================================================
+     Nothing 主题规范 (完全还原源码 token)
+     ============================================================ */
+  .nothing {
+    background: #050505 !important;
+    border-radius: 10px !important;
+    border: 1px solid #222222 !important;
+    box-shadow: none !important;
+  }
+  .nothing::before { display: none !important; }
+  .nothing .cards { gap: 8px; }
+  .nothing .card {
+    background: #0D0D0D; border: 1px solid #282828; border-radius: 5px; box-shadow: none;
+  }
+  .nothing .card::before { display: none; }
+  .nothing .head-title {
+    font-family: "Space Grotesk", sans-serif; font-size: 11.5px; color: #999;
+  }
+  .nothing .mini-hero-num {
+    background: none; -webkit-background-clip: initial; color: #4A9E5C;
+    font-family: "Doto", monospace; font-weight: 700;
+  }
+  .nothing .mini-heat14 i { border-radius: 0; background: #1A1A1A; }
+  .nothing .mini-heat14 i.l1 { background: rgba(74,158,92,.25); }
+  .nothing .mini-heat14 i.l2 { background: rgba(74,158,92,.5); }
+  .nothing .mini-heat14 i.l3 { background: rgba(74,158,92,.75); }
+  .nothing .mini-heat14 i.l4 { background: #4A9E5C; }
+  .nothing .mini-heat14 i.l5 { background: #4A9E5C; }
+  .nothing .panel-top-header-hud {
+    background: #000; border-bottom: 1px solid #222;
+  }
+  .nothing .hud-title {
+    color: #E8E8E8; font-family: "Space Grotesk", sans-serif;
+  }
+  .nothing .hud-badge-mono {
+    background: #111; border-color: #282828; color: #888;
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <h1>Bruce 仪表盘 · 全局顶部 Header 与外边框样式提案</h1>
+    <p style="font-size:12.5px; color:var(--subdued); margin-top:3px;">
+      小卡片内原有内容 100% 保持不动。重点演示：三张小卡片全部折叠后，顶部 Header 与外边框的表现。
+    </p>
+  </div>
+  <div class="topbar-controls">
+    <button class="theme-toggle" onclick="toggleWin11()">切换 Windows 11 Fluent 模式</button>
+    <button class="theme-toggle" onclick="toggleLight()">切换 深 / 浅色</button>
+  </div>
+</div>
+
+<!-- ================= 方案 1 (推荐) ================= -->
+<section>
+  <div class="sec-note">
+    <h2>方案 1 · 极客终端点阵状态栏 (Terminal HUD Header) <span class="badge-tag rec">推荐</span></h2>
+    <p>当三个小卡片全部收起时，顶部由一条极具工程师美感的终端状态栏坐镇：左侧带动态微光呼吸点 <code>● LIVE</code> + 品牌，右侧展示 <code>3 AGENTS · 24H ACTIVE</code>。与底栏呼应，形成严谨的专业控制台秩序。</p>
+  </div>
+
+  <div class="panel">
+    <!-- 全局顶部 Header (方案 1) -->
+    <div class="panel-top-header-hud">
+      <div class="hud-brand">
+        <div class="hud-logo-dot"></div>
+        <span class="hud-title">Bruce</span>
+        <span class="hud-badge-mono">HUD.01</span>
+      </div>
+      <div class="hud-metrics-right">
+        <span>● LIVE</span>
+        <span>·</span>
+        <span class="hud-stat-highlight">3 AGENTS</span>
+      </div>
+    </div>
+
+    <!-- 卡片栈 (三个小卡片完全保持原有版式，点击可展开/折叠) -->
+    <div class="cards">
+      <!-- 1. Token 用量 -->
+      <div class="card" id="card1-1">
+        <button class="card-head" onclick="toggleCard('card1-1')">
+          <span class="head-title">Token 用量</span>
+          <div class="head-inline">
+            <div class="mini-wrap">
+              <span class="mini-hero-num">184.0K</span>
+              <div class="mini-heat14">
+                <i class="l1"></i><i class="l2"></i><i class="l1"></i><i></i><i class="l3"></i><i class="l4"></i><i class="l5"></i>
+              </div>
+            </div>
+          </div>
+          <svg class="chev" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3.5 1.5L7 5L3.5 8.5"/></svg>
+        </button>
+        <div class="card-body"><div class="card-body-pad">
+          <div class="hero-row"><span class="hero-num">184.0K</span><span class="hero-unit">Tokens</span><span class="hero-cost">¥0.73</span></div>
+          <div class="divider"></div>
+          <div class="breakdown">
+            <div class="bd-cell"><span class="bd-label">INPUT</span><span class="bd-value">42.1K</span></div>
+            <div class="bd-cell"><span class="bd-label">OUTPUT</span><span class="bd-value">12.4K</span></div>
+            <div class="bd-cell"><span class="bd-label">CACHE READ</span><span class="bd-value">129.5K</span></div>
+          </div>
+        </div></div>
+      </div>
+
+      <!-- 2. 订阅用量 -->
+      <div class="card" id="card1-2">
+        <button class="card-head" onclick="toggleCard('card1-2')">
+          <span class="head-title">订阅用量</span>
+          <div class="head-inline">
+            <div class="mini-provs">
+              <div class="mini-prov"><span class="badge" style="background:#0a84ff">K</span><div class="meter normal"><i style="width:45%"></i></div></div>
+              <div class="mini-prov"><span class="badge" style="background:#30b0c7">S</span><div class="meter warning"><i style="width:82%"></i></div></div>
+              <div class="mini-prov"><span class="badge" style="background:#bf5af2">D</span><div class="meter normal"><i style="width:20%"></i></div></div>
+            </div>
+          </div>
+          <svg class="chev" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3.5 1.5L7 5L3.5 8.5"/></svg>
+        </button>
+        <div class="card-body"><div class="card-body-pad">
+          <div style="padding: 6px 0; font-size:11px; color:var(--ink)">Moonshot (Kimi) · 5小时窗口已用 45%</div>
+        </div></div>
+      </div>
+
+      <!-- 3. Agent 用量 -->
+      <div class="card" id="card1-3">
+        <button class="card-head" onclick="toggleCard('card1-3')">
+          <span class="head-title">Agent 用量</span>
+          <div class="head-inline">
+            <div class="mini-spark">
+              <svg class="spark" viewBox="0 0 100 12" preserveAspectRatio="none">
+                <path d="M0,10 Q20,3 40,8 T80,2 T100,6" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.5"/>
+              </svg>
+              <span class="peak-txt">峰值 15.5K</span>
+            </div>
+          </div>
+          <svg class="chev" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3.5 1.5L7 5L3.5 8.5"/></svg>
+        </button>
+        <div class="card-body"><div class="card-body-pad">
+          <div style="padding: 6px 0; font-size:11px; color:var(--ink)">Claude Code CLI · 今日 98.0K</div>
+        </div></div>
+      </div>
+    </div>
+
+    <!-- 底栏 -->
+    <div class="footer-hairline"></div>
+    <div class="action-footer">
+      <span>Bruce v0.7.0 · 本机只读采集</span>
+      <div class="fbtn-group">
+        <button class="fbtn">刷新</button>
+        <button class="fbtn">设置 ⌘,</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 方案 2 ================= -->
+<section>
+  <div class="sec-note">
+    <h2>方案 2 · 流动效能概览栏 (Fluent Activity Header) <span class="badge-tag">现代苹果/Win11 流动质感</span></h2>
+    <p>顶部展示流动性更强的圆角胶囊与全局概览指标：左侧 <code>Bruce ● 实时活跃</code>，右侧将总消耗与估算支出收录在头部 <code>184K · $0.73</code>，让用户不展开卡片也能获知全局大盘。</p>
+  </div>
+
+  <div class="panel">
+    <!-- 全局顶部 Header (方案 2) -->
+    <div class="panel-top-header-fluent">
+      <div class="fluent-brand-group">
+        <span class="fluent-app-name">Bruce AI</span>
+        <span class="fluent-live-pill"><span class="fluent-live-dot"></span>实时会话</span>
+      </div>
+      <div class="fluent-overview-right">
+        <span class="fluent-overview-val">184.0K Tokens</span>
+        <span class="fluent-overview-sub">· ¥0.73</span>
+      </div>
+    </div>
+
+    <!-- 卡片栈 -->
+    <div class="cards">
+      <div class="card" id="card2-1">
+        <button class="card-head" onclick="toggleCard('card2-1')">
+          <span class="head-title">Token 用量</span>
+          <div class="head-inline">
+            <div class="mini-wrap">
+              <span class="mini-hero-num">184.0K</span>
+              <div class="mini-heat14">
+                <i class="l1"></i><i class="l2"></i><i class="l1"></i><i></i><i class="l3"></i><i class="l4"></i><i class="l5"></i>
+              </div>
+            </div>
+          </div>
+          <svg class="chev" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3.5 1.5L7 5L3.5 8.5"/></svg>
+        </button>
+        <div class="card-body"><div class="card-body-pad"><div class="hero-row"><span class="hero-num">184.0K</span></div></div></div>
+      </div>
+
+      <div class="card" id="card2-2">
+        <button class="card-head" onclick="toggleCard('card2-2')">
+          <span class="head-title">订阅用量</span>
+          <div class="head-inline">
+            <div class="mini-provs">
+              <div class="mini-prov"><span class="badge" style="background:#0a84ff">K</span><div class="meter normal"><i style="width:45%"></i></div></div>
+              <div class="mini-prov"><span class="badge" style="background:#30b0c7">S</span><div class="meter warning"><i style="width:82%"></i></div></div>
+              <div class="mini-prov"><span class="badge" style="background:#bf5af2">D</span><div class="meter normal"><i style="width:20%"></i></div></div>
+            </div>
+          </div>
+          <svg class="chev" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3.5 1.5L7 5L3.5 8.5"/></svg>
+        </button>
+        <div class="card-body"><div class="card-body-pad"><div style="padding:6px 0">订阅详情...</div></div></div>
+      </div>
+
+      <div class="card" id="card2-3">
+        <button class="card-head" onclick="toggleCard('card2-3')">
+          <span class="head-title">Agent 用量</span>
+          <div class="head-inline">
+            <div class="mini-spark">
+              <svg class="spark" viewBox="0 0 100 12" preserveAspectRatio="none">
+                <path d="M0,10 Q20,3 40,8 T80,2 T100,6" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.5"/>
+              </svg>
+              <span class="peak-txt">峰值 15.5K</span>
+            </div>
+          </div>
+          <svg class="chev" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3.5 1.5L7 5L3.5 8.5"/></svg>
+        </button>
+        <div class="card-body"><div class="card-body-pad"><div style="padding:6px 0">Agent 详情...</div></div></div>
+      </div>
+    </div>
+
+    <div class="footer-hairline"></div>
+    <div class="action-footer">
+      <span>Bruce v0.7.0 · 本机只读采集</span>
+      <div class="fbtn-group"><button class="fbtn">刷新</button><button class="fbtn">设置 ⌘,</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 方案 3 (Nothing 主题 1:1 专属) ================= -->
+<section>
+  <div class="sec-note">
+    <h2>方案 3 · Nothing 工业点阵主题 1:1 还原展示</h2>
+    <p>在 Nothing 极简工业风格下，外框遵循 10px 直角，0 阴影 + 1px #222222 硬朗机箱发线；顶部 Header 为 Space Grotesk 大写 <code>BRUCE // AGENT MONITOR</code> + 点阵状态，完美呈现硬核极客美学。</p>
+  </div>
+
+  <div class="panel nothing">
+    <!-- Nothing 顶部 Header -->
+    <div class="panel-top-header-hud">
+      <div class="hud-brand">
+        <div class="hud-logo-dot" style="background:#4A9E5C; box-shadow:0 0 5px #4A9E5C"></div>
+        <span class="hud-title">BRUCE // HUD</span>
+        <span class="hud-badge-mono">SYS.OK</span>
+      </div>
+      <div class="hud-metrics-right" style="color:#888">
+        <span>3 AGENTS RUNNING</span>
+      </div>
+    </div>
+
+    <!-- Nothing 卡片栈 -->
+    <div class="cards">
+      <div class="card" id="card3-1">
+        <button class="card-head" onclick="toggleCard('card3-1')">
+          <span class="head-title">Token 用量</span>
+          <div class="head-inline">
+            <div class="mini-wrap">
+              <span class="mini-hero-num">184.0K</span>
+              <div class="mini-heat14">
+                <i class="l1"></i><i class="l2"></i><i class="l1"></i><i></i><i class="l3"></i><i class="l4"></i><i class="l5"></i>
+              </div>
+            </div>
+          </div>
+          <svg class="chev" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3.5 1.5L7 5L3.5 8.5"/></svg>
+        </button>
+        <div class="card-body"><div class="card-body-pad"><div style="color:#888; padding:6px 0">Token 展开态...</div></div></div>
+      </div>
+
+      <div class="card" id="card3-2">
+        <button class="card-head" onclick="toggleCard('card3-2')">
+          <span class="head-title">订阅用量</span>
+          <div class="head-inline">
+            <div class="mini-provs">
+              <div class="mini-prov"><span class="badge" style="background:rgba(10,132,255,.2); color:#0a84ff">K</span><div class="meter normal"><i style="width:45%; background:#4A9E5C"></i></div></div>
+              <div class="mini-prov"><span class="badge" style="background:rgba(212,168,67,.2); color:#D4A843">S</span><div class="meter warning"><i style="width:82%; background:#D4A843"></i></div></div>
+              <div class="mini-prov"><span class="badge" style="background:rgba(191,90,242,.2); color:#bf5af2">D</span><div class="meter normal"><i style="width:20%; background:#4A9E5C"></i></div></div>
+            </div>
+          </div>
+          <svg class="chev" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3.5 1.5L7 5L3.5 8.5"/></svg>
+        </button>
+        <div class="card-body"><div class="card-body-pad"><div style="color:#888; padding:6px 0">订阅展开态...</div></div></div>
+      </div>
+
+      <div class="card" id="card3-3">
+        <button class="card-head" onclick="toggleCard('card3-3')">
+          <span class="head-title">Agent 用量</span>
+          <div class="head-inline">
+            <div class="mini-spark">
+              <svg class="spark" viewBox="0 0 100 12" preserveAspectRatio="none">
+                <path d="M0,10 Q20,3 40,8 T80,2 T100,6" fill="none" stroke="#666" stroke-width="1.5"/>
+              </svg>
+              <span class="peak-txt" style="color:#666">峰值 15.5K</span>
+            </div>
+          </div>
+          <svg class="chev" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3.5 1.5L7 5L3.5 8.5"/></svg>
+        </button>
+        <div class="card-body"><div class="card-body-pad"><div style="color:#888; padding:6px 0">Agent 展开态...</div></div></div>
+      </div>
+    </div>
+
+    <div class="footer-hairline" style="background:#222"></div>
+    <div class="action-footer" style="background:#000; color:#666">
+      <span style="font-family:'Space Mono', monospace; font-size:10px">BRUCE V0.7.0 · READONLY</span>
+      <div class="fbtn-group">
+        <button class="fbtn" style="background:#111; border-color:#282828; color:#888">刷新</button>
+        <button class="fbtn" style="background:#111; border-color:#282828; color:#888">设置</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  function toggleCard(cardId) {
+    const card = document.getElementById(cardId);
+    card.classList.toggle('open');
+  }
+
+  function toggleLight() {
+    document.body.classList.toggle('light');
+  }
+
+  function toggleWin11() {
+    document.body.classList.toggle('win11');
+  }
+</script>
+
+</body>
+</html>

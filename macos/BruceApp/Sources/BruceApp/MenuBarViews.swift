@@ -55,6 +55,9 @@ struct MenuBarDashboardView: View {
     /// 仅通知 AppKit 视觉宿主更新系统材质与配色, 不携带业务模型或统计数据.
     var onSurfaceThemeChange: ((ResolvedTheme, ColorScheme?) -> Void)?
 
+    /// 顶部 Header 实测高度 (Header + 发线); 0 表示尚未测量, 预留 32 兜底.
+    @State private var headerHeight: CGFloat = 0
+
     /// 卡片栈实测理想高度; 0 表示尚未测量到 (首帧), 此时不加高度约束保持自适应.
     @State private var cardStackHeight: CGFloat = 0
 
@@ -63,7 +66,23 @@ struct MenuBarDashboardView: View {
 
     var body: some View {
         let panel = model.makePanelViewModel()
-        VStack(spacing: 0) {
+        let panelShape = RoundedRectangle(cornerRadius: panelCornerRadius, style: .continuous)
+        return VStack(spacing: 0) {
+            // 全局顶部 Header (方案 3: HUD 终端点阵状态栏 · 全风格适配)
+            VStack(spacing: 0) {
+                dashboardTopHeader(panel)
+                headerHairline
+            }
+            .background {
+                if isNothingTheme {
+                    Rectangle().fill(nothingFooterBackgroundColor)
+                }
+            }
+            .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { height in
+                guard height > 0, abs(height - headerHeight) > 0.5 else { return }
+                headerHeight = height
+            }
+
             ScrollView {
                 VStack(spacing: 0) {
                     // macOS 26 上 scrollIndicators(.hidden) 会被系统重设, 用
@@ -80,12 +99,13 @@ struct MenuBarDashboardView: View {
             }
             // 窗口自动尺寸时 ScrollView 理想高度塌陷, maxHeight 不解决理想高度;
             // 用 onGeometryChange 实测内容高度驱动 frame: 未测量 (首帧) 不加约束,
-            // 测量后取 min(内容高, 屏上限扣除底栏), 确保底栏始终留在屏幕内.
+            // 测量后取 min(内容高, 屏上限扣除顶底栏), 确保顶底栏始终留在屏幕内.
             .frame(height: cardStackHeight > 0
-                ? min(cardStackHeight, Self.maxCardStackHeight - max(footerHeight, 49))
+                ? min(cardStackHeight, Self.maxCardStackHeight - max(footerHeight, 49) - max(headerHeight, 32))
                 : nil)
             // 隐藏滚动指示条, 滚轮/触控板滚动不受影响.
             .scrollIndicators(.hidden)
+
             VStack(spacing: 0) {
                 footerHairline
                 actionFooter
@@ -103,6 +123,27 @@ struct MenuBarDashboardView: View {
             }
         }
         .frame(width: 440)
+        .overlay {
+            panelShape.strokeBorder(panelBorderColor, lineWidth: 1)
+        }
+        .overlay(alignment: .top) {
+            // Fluent / macOS 顶部 1px 微发光发线: 提升复杂壁纸下的边缘轮廓与立体悬浮质感
+            if !isNothingTheme {
+                LinearGradient(
+                    colors: [
+                        .clear,
+                        Color.white.opacity(colorScheme == .dark ? 0.35 : 0.70),
+                        .clear
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .frame(height: 1)
+                .padding(.horizontal, 18)
+                .offset(y: 0.5)
+            }
+        }
+        .clipShape(panelShape)
         .preferredColorScheme(coordinator.appearanceMode.colorScheme)
         .environment(\.BruceResolvedTheme, coordinator.resolvedTheme)
         // 垂直方向按理想高度布局 (而非采纳宿主提议尺寸), 使 onGeometryChange
@@ -119,6 +160,26 @@ struct MenuBarDashboardView: View {
         }
     }
 
+    /// 面板外边框圆角: Nothing 主题 10 (与定稿 token 对齐), 其余主题维持 22.
+    private var panelCornerRadius: CGFloat {
+        isNothingTheme ? 10 : 22
+    }
+
+    /// 面板外边框颜色:
+    /// - Nothing 主题: 1px 硬朗发线 (#222222 dark / #E8E8E8 light), 零多余光晕.
+    /// - Classic / Liquid Glass: 半透明自适应发线 (dark 14% 白 / light 10% 黑), 兼顾 Windows Fluent 与 Mac 毛玻璃.
+    private var panelBorderColor: Color {
+        if isNothingTheme {
+            return colorScheme == .dark
+                ? Color(hex: "#222222")
+                : Color(hex: "#E8E8E8")
+        }
+        return Color.adaptive(
+            light: Color.black.opacity(0.10),
+            dark: Color.white.opacity(0.14)
+        )
+    }
+
     /// 卡片栈高度上限: 铺满面板窗口所在屏 visibleFrame, 只留约 10pt 小边距;
     /// 内容不足时高度自适应不出滚动条, 超出时滚动条自动出现.
     /// 多屏时优先取面板窗口所在屏, 窗口未挂载或取屏失败时兜底 640.
@@ -128,6 +189,123 @@ struct MenuBarDashboardView: View {
             return 640
         }
         return max(visibleHeight - 10, 320)
+    }
+
+    // MARK: - 全局顶部 Header (方案 3: HUD 终端点阵状态栏 · 全风格适配)
+
+    @ViewBuilder
+    private func dashboardTopHeader(_ panel: PanelViewModel) -> some View {
+        let activeCount = panel.hourly?.rows.filter { $0.todayTotal > 0 }.count ?? 0
+        let isLive = panel.usage?.isLive ?? false
+
+        HStack(spacing: isNothingTheme ? 8 : 10) {
+            // 左侧：呼吸指示灯 + 品牌与终端标识
+            HStack(spacing: 6) {
+                topHeaderStatusDot(isLive: isLive)
+                if isNothingTheme {
+                    Text("BRUCE // HUD")
+                        .font(NothingFont.ui(11, weight: .bold))
+                        .tracking(0.8)
+                        .foregroundStyle(Color.adaptive(
+                            light: Color(hex: "#1A1A1A"),
+                            dark: Color(hex: "#E8E8E8")
+                        ))
+                    Text("SYS.OK")
+                        .font(NothingFont.mono(8.5))
+                        .foregroundStyle(Color.adaptive(
+                            light: Color(hex: "#666666"),
+                            dark: Color(hex: "#8A8A8A")
+                        ))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                                .strokeBorder(
+                                    Color.adaptive(light: Color(hex: "#CCCCCC"), dark: Color(hex: "#303030")),
+                                    lineWidth: 1
+                                )
+                        }
+                } else {
+                    Text("Bruce // HUD")
+                        .font(.system(size: 11.5, weight: .bold, design: .monospaced))
+                        .foregroundStyle(Color.primary)
+                    Text("SYS.OK")
+                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1.5)
+                        .background {
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(Color.primary.opacity(0.06))
+                        }
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            // 右侧：全局 AI / Agent 状态指示
+            HStack(spacing: 4) {
+                if activeCount > 0 {
+                    if isNothingTheme {
+                        Text("\(activeCount) AGENTS RUNNING")
+                            .font(NothingFont.mono(9))
+                            .foregroundStyle(Color.adaptive(
+                                light: Color(hex: "#666666"),
+                                dark: Color(hex: "#8A8A8A")
+                            ))
+                    } else {
+                        Text("● \(activeCount) AGENTS ACTIVE")
+                            .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                            .foregroundStyle(Color.adaptive(
+                                light: Color(hex: "#0A7D3B"),
+                                dark: Color(hex: "#30D158")
+                            ))
+                    }
+                } else {
+                    if isNothingTheme {
+                        Text("STANDBY")
+                            .font(NothingFont.mono(9))
+                            .foregroundStyle(Color.adaptive(
+                                light: Color(hex: "#999999"),
+                                dark: Color(hex: "#666666")
+                            ))
+                    } else {
+                        Text("STANDBY")
+                            .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+    }
+
+    /// 顶部状态呼吸灯: 实时态微弱脉冲, 待机态常亮小点
+    @ViewBuilder
+    private func topHeaderStatusDot(isLive: Bool) -> some View {
+        let dotColor: Color = isNothingTheme
+            ? Color.adaptive(light: Color(hex: "#D4A843"), dark: Color(hex: "#4A9E5C"))
+            : Color.adaptive(light: Color(hex: "#0A7D3B"), dark: Color(hex: "#30D158"))
+
+        ZStack {
+            if isLive {
+                Circle()
+                    .fill(dotColor.opacity(0.25))
+                    .frame(width: 12, height: 12)
+            }
+            Circle()
+                .fill(dotColor)
+                .frame(width: 6, height: 6)
+        }
+        .frame(width: 12, height: 12)
+    }
+
+    /// 顶部分隔发线: 1px 高度, 与 footerHairline 保持严格分层对称
+    private var headerHairline: some View {
+        Rectangle()
+            .fill(footerHairlineColor)
+            .frame(height: 1)
     }
 
     // MARK: 卡片栈
@@ -147,22 +325,28 @@ struct MenuBarDashboardView: View {
             || panel.hourly != nil
         VStack(spacing: isNothingTheme ? 8 : 10) {
             ForEach(model.cardOrder) { cardID in
-                renderCard(cardID, panel: panel)
-                    .draggable(cardID.rawValue)
-                    .onDrop(
-                        of: [.text],
-                        delegate: DashboardCardDropDelegate(
-                            target: cardID,
-                            move: { model.moveCard(from: $0, to: $1) }
+                let isCollapsed = model.isCardCollapsed(cardID)
+                let card = renderCard(cardID, panel: panel)
+                if isCollapsed {
+                    card
+                        .draggable(cardID.rawValue)
+                        .onDrop(
+                            of: [.text],
+                            delegate: DashboardCardDropDelegate(
+                                target: cardID,
+                                move: { model.moveCard(from: $0, to: $1) }
+                            )
                         )
-                    )
+                } else {
+                    card
+                }
             }
             if !hasCards {
                 emptyPanelState
             }
         }
         .padding(.horizontal, isNothingTheme ? 10 : 12)
-        .padding(.top, isNothingTheme ? 10 : 12)
+        .padding(.top, isNothingTheme ? 8 : 10)
         .padding(.bottom, isNothingTheme ? 10 : 4)
     }
 

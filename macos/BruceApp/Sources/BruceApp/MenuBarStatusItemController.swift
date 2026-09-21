@@ -353,13 +353,12 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
     /// 其余主题恢复透明窗口 + 阴影. isOpaque 恒为 false (面板圆角依赖
     /// 窗口四角透明, 内容不透明度由 surface 视图自身保证).
     private func refreshPanelWindowAttributes() {
-        if let tint = dashboardGlassController?.panelWindowTintColor {
+        if dashboardGlassController?.panelWindowTintColor != nil {
             panel.hasShadow = false
-            panel.backgroundColor = tint
         } else {
             panel.hasShadow = true
-            panel.backgroundColor = .clear
         }
+        panel.backgroundColor = .clear
     }
 
     private func openDashboard(relativeTo button: NSStatusBarButton) {

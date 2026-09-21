@@ -206,55 +206,65 @@ struct CollapsibleCardHeader<Status: View, Mini: View>: View {
     }
 
     var body: some View {
-        Button {
-            withAnimation(.easeInOut(duration: 0.25)) {
-                onToggle()
-            }
-        } label: {
-            HStack(spacing: isNothing ? 8 : 15) {
-                if isNothing {
-                    NothingDragHandle()
-                }
-                Text(title)
-                    .font(isNothing
-                        ? NothingFont.ui(11.5, weight: .semibold)
-                        : .system(size: 12.5, weight: .semibold))
-                    .foregroundStyle(isNothing ? nothingTitleColor : Color.primary)
-                    .frame(width: resolvedTitleWidth, alignment: .leading)
-                if isNothing, let stamp {
-                    Text(stamp)
-                        .font(NothingFont.mono(8.5))
-                        .tracking(0.68)
-                        .foregroundStyle(nothingSecondaryColor)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .frame(width: 72, alignment: .center)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 2, style: .continuous)
-                                .strokeBorder(nothingBorderColor, lineWidth: 1)
-                        }
-                }
-                if isCollapsed {
-                    mini
-                        .frame(maxWidth: .infinity)
+        HStack(spacing: isNothing ? 8 : 10) {
+            // 专职拖拽手柄: 仅在卡片缩小/折叠状态下展示, 且物理独立于展开 Button 之外,
+            // 彻底避免拖拽手势被 Button 的点击捕获或误触发展开.
+            if isCollapsed {
+                if let cardID {
+                    DashboardDragHandle(isNothing: isNothing)
+                        .draggable(cardID.rawValue)
                 } else {
-                    Spacer(minLength: 0)
-                    status
+                    DashboardDragHandle(isNothing: isNothing)
                 }
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .rotationEffect(.degrees(isCollapsed ? 0 : 90))
-                    .opacity(hovering ? 1 : 0)
-                    .animation(.easeInOut(duration: 0.15), value: hovering)
             }
-            .contentShape(Rectangle())
+
+            Button {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    onToggle()
+                }
+            } label: {
+                HStack(spacing: isNothing ? 8 : 15) {
+                    Text(title)
+                        .font(isNothing
+                            ? NothingFont.ui(11.5, weight: .semibold)
+                            : .system(size: 12.5, weight: .semibold))
+                        .foregroundStyle(isNothing ? nothingTitleColor : Color.primary)
+                        .frame(width: resolvedTitleWidth, alignment: .leading)
+                    if isNothing, let stamp {
+                        Text(stamp)
+                            .font(NothingFont.mono(8.5))
+                            .tracking(0.68)
+                            .foregroundStyle(nothingSecondaryColor)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .frame(width: 72, alignment: .center)
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                                    .strokeBorder(nothingBorderColor, lineWidth: 1)
+                            }
+                    }
+                    if isCollapsed {
+                        mini
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        Spacer(minLength: 0)
+                        status
+                    }
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+                        .opacity(hovering ? 1 : 0)
+                        .animation(.easeInOut(duration: 0.15), value: hovering)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering = $0 }
+            .accessibilityLabel(title)
+            .accessibilityHint(isCollapsed ? "展开卡片" : "收起卡片")
+            .accessibilityValue(isCollapsed ? "已收起" : "已展开")
         }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-        .accessibilityLabel(title)
-        .accessibilityHint(isCollapsed ? "展开卡片" : "收起卡片")
-        .accessibilityValue(isCollapsed ? "已收起" : "已展开")
     }
 
     /// Nothing 标题色: secondary (dark #999999 / light #666666), 与定稿 token 一致.
@@ -271,8 +281,11 @@ struct CollapsibleCardHeader<Status: View, Mini: View>: View {
     }
 }
 
-/// Nothing 风格 6 点微型点阵拖拽手柄 (2x3 方形像素点阵, 尺寸 10x14)
-struct NothingDragHandle: View {
+/// 全风格卡片拖拽手柄: 仅在卡片缩小/折叠状态下渲染, 且物理独立于折叠展开 Button 之外.
+/// - Nothing 主题: 经典 2x3 方形点阵 (尺寸 10x14), 悬停暗灰背景.
+/// - Classic / Liquid 主题: 极简 6 点圆形点阵, 自适应次级文本色, 悬停轻质微光背景.
+struct DashboardDragHandle: View {
+    let isNothing: Bool
     @State private var hovering = false
 
     var body: some View {
@@ -287,22 +300,39 @@ struct NothingDragHandle: View {
                 dot; dot
             }
         }
-        .padding(.horizontal, 2)
-        .padding(.vertical, 3)
+        .padding(.horizontal, 3)
+        .padding(.vertical, 4)
         .background(
             hovering
-                ? Color.adaptive(light: Color(hex: "#E0E0E0"), dark: Color(hex: "#222222"))
+                ? (isNothing
+                    ? Color.adaptive(light: Color(hex: "#E0E0E0"), dark: Color(hex: "#222222"))
+                    : Color.primary.opacity(0.08))
                 : Color.clear,
             in: RoundedRectangle(cornerRadius: 2, style: .continuous)
         )
+        .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .help("拖拽调整卡片顺序")
     }
 
+    @ViewBuilder
     private var dot: some View {
-        Rectangle()
-            .fill(hovering ? Color.primary : Color.secondary.opacity(0.4))
-            .frame(width: 2, height: 2)
+        if isNothing {
+            Rectangle()
+                .fill(hovering ? Color.primary : Color.secondary.opacity(0.4))
+                .frame(width: 2, height: 2)
+        } else {
+            Circle()
+                .fill(hovering ? Color.primary : Color.secondary.opacity(0.45))
+                .frame(width: 2.2, height: 2.2)
+        }
+    }
+}
+
+/// Nothing 风格拖拽手柄向后兼容结构
+struct NothingDragHandle: View {
+    var body: some View {
+        DashboardDragHandle(isNothing: true)
     }
 }
 

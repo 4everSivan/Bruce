@@ -104,6 +104,9 @@ final class DashboardGlassPanelController: NSViewController {
         hostingController.view.removeFromSuperview()
 
         let surface = makeSurface()
+        surface.wantsLayer = true
+        surface.layer?.cornerRadius = panelCornerRadius
+        surface.layer?.masksToBounds = true
         surface.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(surface)
         NSLayoutConstraint.activate([
@@ -127,6 +130,8 @@ final class DashboardGlassPanelController: NSViewController {
         ])
 
         hostingController.view.wantsLayer = true
+        hostingController.view.layer?.cornerRadius = panelCornerRadius
+        hostingController.view.layer?.masksToBounds = true
         hostingController.view.layer?.backgroundColor = NSColor.clear.cgColor
     }
 
@@ -170,6 +175,9 @@ final class DashboardGlassPanelController: NSViewController {
         effect.material = material(for: surfacePlan.panelMaterial)
         effect.blendingMode = .behindWindow
         effect.state = .followsWindowActiveState
+        effect.wantsLayer = true
+        effect.layer?.cornerRadius = panelCornerRadius
+        effect.layer?.masksToBounds = true
         return effect
     }
 
@@ -252,6 +260,9 @@ private final class DashboardOpaqueSurfaceView: NSView {
     init(backgroundColor: NSColor = .windowBackgroundColor) {
         self.backgroundColor = backgroundColor
         super.init(frame: .zero)
+        wantsLayer = true
+        layer?.backgroundColor = backgroundColor.cgColor
+        layer?.masksToBounds = true
     }
 
     @available(*, unavailable)
@@ -259,10 +270,5 @@ private final class DashboardOpaqueSurfaceView: NSView {
         fatalError("DashboardOpaqueSurfaceView does not support NSCoder initialization")
     }
 
-    override var isOpaque: Bool { true }
-
-    override func draw(_ dirtyRect: NSRect) {
-        backgroundColor.setFill()
-        dirtyRect.fill()
-    }
+    override var isOpaque: Bool { false }
 }
