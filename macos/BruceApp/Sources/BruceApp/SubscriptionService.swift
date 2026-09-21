@@ -729,6 +729,33 @@ final class SubscriptionService {
         finishVerification(.kimi, status: status)
     }
 
+    /// StepFun (Step Plan): 录入 Oasis-Token (支持可选指定站点国内/国际).
+    func saveAndVerifyStepFun(token: String, site: StepFunSite? = nil) {
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        let status = ProviderConnectionVerifier.verifyStepFunTokenFormat(trimmed)
+        guard status == .ok else {
+            finishVerification(.stepfun, status: status)
+            return
+        }
+        let store = accountStore(for: .stepfun)
+        let accountID = ProviderAccountIDGenerator.stepfunAccountID(token: trimmed)
+        let isGlobal = (site == .global) || ProviderConnectionVerifier.isStepFunGlobalToken(trimmed)
+        let displayName = isGlobal
+            ? "StepFun (国际) · \(String(accountID.prefix(8)))"
+            : "StepFun · \(String(accountID.prefix(8)))"
+        guard saveProviderAccountCredential(
+            for: .stepfun,
+            accountID: accountID,
+            displayName: displayName,
+            credentialJSON: trimmed
+        ) else { return }
+        model.setSubscriptionCredentialConfigured(true, for: .stepfun)
+        if let summaries = try? store.summaries() {
+            model.setProviderAccountSummaries(summaries, for: .stepfun)
+        }
+        finishVerification(.stepfun, status: status)
+    }
+
     // MARK: - Claude / Grok 手动导入 (Phase 2/3)
 
     /// Claude: 从本机 CLI 凭证文件只读导入.
@@ -986,6 +1013,11 @@ final class SubscriptionService {
             case .expired:
                 finishVerification(.opencodeGo, status: .needsRelogin)
             }
+        case .stepfun:
+            finishVerification(
+                .stepfun,
+                status: ProviderConnectionVerifier.verifyStepFunTokenFormat(record.credentialJSON)
+            )
         case .codex:
             // Codex 走 token manager, 不提供本地重新验证.
             model.setSettingsError(
@@ -1238,6 +1270,9 @@ final class SubscriptionService {
                     intent: .userInitiated
                 )
             }
+            let store = accountStore(for: id)
+            try? store.removeAllAccounts()
+            model.setProviderAccountSummaries([], for: id)
         } catch {
             model.setSettingsError(
                 "\(id.displayName) 凭证删除失败, 请在 Keychain 中手动检查", for: id
@@ -1271,6 +1306,8 @@ final class SubscriptionService {
         let store = accountStore(for: id)
         do {
             try store.removeAccount(accountID: accountID)
+            let remaining = (try? store.summaries()) ?? []
+            model.setProviderAccountSummaries(remaining, for: id)
             publishAllProviderAccountSummaries(
                 enabledProviders: enabledProviderIDs(from: configStore?.load())
             )

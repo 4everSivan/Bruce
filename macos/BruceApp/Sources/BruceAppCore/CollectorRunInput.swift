@@ -609,6 +609,26 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
                 if !accounts.isEmpty {
                     credentials["opencodeGoQuotaAccounts"] = .object(accounts)
                 }
+
+            case .stepfunQuotaAccounts:
+                guard let store = accountStores[descriptor.id],
+                      let index = try? store.loadIndex(),
+                      !index.accounts.isEmpty else { continue }
+                var accounts: [String: JSONValue] = [:]
+                for entry in index.accounts {
+                    guard let record = try? store.loadRecord(for: entry.accountID),
+                          !record.credentialJSON.isEmpty else { continue }
+                    let isGlobal = entry.displayName.contains("国际") || ProviderConnectionVerifier.isStepFunGlobalToken(record.credentialJSON)
+                    accounts[entry.accountID] = .object([
+                        "display_name": .string(entry.displayName),
+                        "token": .string(record.credentialJSON),
+                        "is_global": .boolean(isGlobal),
+                        "site": .string(isGlobal ? "global" : "domestic"),
+                    ])
+                }
+                if !accounts.isEmpty {
+                    credentials["stepfunQuotaAccounts"] = .object(accounts)
+                }
             }
         }
 

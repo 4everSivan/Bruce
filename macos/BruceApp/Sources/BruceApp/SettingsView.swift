@@ -24,6 +24,9 @@ struct SettingsView: View {
     @State private var zhipuValues: [String: String] = [:]
     @State private var zhipuSiteIsCN = true
     @State private var kimiValues: [String: String] = [:]
+    @State private var stepfunValues: [String: String] = [:]
+    @State private var showsStepFunWebLogin = false
+    @State private var stepfunLoginSite: StepFunSite = .domestic
     @State private var claudePasteText = ""
     @State private var claudeEditing = false
     @State private var grokPasteText = ""
@@ -869,6 +872,7 @@ struct SettingsView: View {
         switch id {
         case .kimi: kind = "Web 令牌"
         case .deepseek, .volcengine, .zhipu: kind = "API Key"
+        case .stepfun: kind = "Step Plan Token"
         case .codex: kind = "OAuth 设备码"
         case .claude, .grok: kind = "CLI 登录态"
         case .opencodeGo: kind = "OAuth 设备码"
@@ -895,28 +899,41 @@ struct SettingsView: View {
                 text = "验证失败"
                 tint = SettingsDemoTokens.warn
             case .needsRelogin:
-                text = "授权已过期"
+                text = "需重新登录"
                 tint = SettingsDemoTokens.warn
             case .none:
-                text = "已配置 · 未验证"
-                tint = SettingsDemoTokens.text2
+                text = "已配置"
+                tint = SettingsDemoTokens.ok
             }
         }
         return Text(text)
-            .font(.system(size: 12.5))
+            .font(.system(size: 11.5))
             .foregroundStyle(tint)
-            .accessibilityLabel("\(id.displayName) 状态: \(text)")
     }
 
-    /// P2 配置对话框: API key 类 (Kimi/DeepSeek/火山/智谱) 走
-    /// APIKeyProviderConfigDialog (demo CFG_DIALOG 1:1, 高度自适应);
-    /// 其余 provider 走通用外壳 (横幅 + 账号列表 + 既有管理 section).
+    /// demo .r-tog: 启用开关 (绑定 Coordinator.setSubscriptionProviderEnabled).
+    private func subscriptionEnabledToggle(_ id: SubscriptionProviderID) -> some View {
+        let configured = model.subscriptionCredentialConfigured[id] ?? false
+        let binding = Binding<Bool>(
+            get: { model.subscriptionProviders[id]?.enabled ?? false },
+            set: { enabled in
+                coordinator.setSubscriptionProviderEnabled(id, enabled)
+            }
+        )
+        return Toggle("", isOn: binding)
+            .labelsHidden()
+            .controlSize(.small)
+            .disabled(!configured)
+            .accessibilityLabel("\(id.displayName) 启用开关")
+    }
+
+    /// demo 对话框路由器 (S3): API key 类走通用弹窗, CLI/OAuth 类走骨架外壳.
     @ViewBuilder
     private func providerConfigSheet(
         _ id: SubscriptionProviderID
     ) -> some View {
         switch id {
-        case .kimi, .deepseek, .volcengine, .zhipu:
+        case .kimi, .deepseek, .volcengine, .zhipu, .stepfun:
             apiKeyProviderDialog(id)
         case .codex, .claude, .grok, .opencodeGo:
             genericProviderConfigSheet(id)
@@ -1080,6 +1097,49 @@ struct SettingsView: View {
                 },
                 onDismiss: dismiss
             )
+        case .stepfun:
+            APIKeyProviderConfigDialog(
+                id: .stepfun,
+                fields: [
+                    APIKeyFieldDescriptor(
+                        id: "token",
+                        label: "Oasis-Token",
+                        placeholder: "•••••••• (输入后不回显)",
+                        accessibilityLabel: "StepFun Step Plan Oasis-Token"
+                    )
+                ],
+                values: $stepfunValues,
+                guide: ProviderCredentialGuide(
+                    summary: "可点击上方一键登录自动绑定(支持国内/国际站)，或控制台按 F12 复制 Cookie",
+                    linkTitle: "打开 StepFun 控制台",
+                    linkURL: URL(string: "https://platform.stepfun.com")
+                ),
+                footnote: "凭据安全保存在本机 Keychain, 支持国内站与国际站多账号混合添加",
+                extra: .stepfunWebLogin(
+                    onLoginDomestic: {
+                        stepfunLoginSite = .domestic
+                        showsStepFunWebLogin = true
+                    },
+                    onLoginGlobal: {
+                        stepfunLoginSite = .global
+                        showsStepFunWebLogin = true
+                    }
+                ),
+                onRemove: { removeSubscriptionProvider(.stepfun) },
+                onSave: {
+                    coordinator.saveAndVerifyStepFun(
+                        token: $0["token"] ?? ""
+                    )
+                },
+                onDismiss: dismiss
+            )
+            .sheet(isPresented: $showsStepFunWebLogin) {
+                StepFunWebLoginView(initialSite: stepfunLoginSite) { token, site in
+                    coordinator.saveAndVerifyStepFun(token: token, site: site)
+                    stepfunValues["token"] = token
+                    configuringProvider = nil
+                }
+            }
         default:
             EmptyView()
         }
@@ -1153,7 +1213,7 @@ struct SettingsView: View {
         _ id: SubscriptionProviderID
     ) -> some View {
         switch id {
-        case .kimi, .deepseek, .volcengine, .zhipu:
+        case .kimi, .deepseek, .volcengine, .zhipu, .stepfun:
             // 对话框版表单已接管, 通用外壳不会走到这里.
             EmptyView()
         case .codex:
@@ -1213,57 +1273,6 @@ struct SettingsView: View {
         guard let targetIndex = order.firstIndex(of: target) else { return }
         order.insert(dragged, at: targetIndex)
         coordinator.setSubscriptionProviderOrder(order)
-    }
-
-    /// 状态行: 未配置 / 已配置 · 验证通过 / 验证失败(原因) / 需要重新登录.
-    private func subscriptionStatusLine(
-        _ id: SubscriptionProviderID
-    ) -> some View {
-        let configured = model.subscriptionCredentialConfigured[id] ?? false
-        let status = model.subscriptionProviders[id]?.verificationStatus ?? .none
-        let text: String
-        let icon: String
-        if !configured {
-            text = "未配置"
-            icon = "circle.dashed"
-        } else {
-            switch status {
-            case .ok:
-                text = "已配置 · 验证通过"
-                icon = "checkmark.circle.fill"
-            case .failed(let reason):
-                text = "验证失败: \(reason)"
-                icon = "exclamationmark.triangle.fill"
-            case .needsRelogin:
-                text = "需要重新登录"
-                icon = "exclamationmark.triangle.fill"
-            case .none:
-                text = "已配置 · 未验证"
-                icon = "circle.dashed"
-            }
-        }
-        return Label(text, systemImage: icon)
-            .font(.caption)
-            .foregroundStyle(configured && status == .ok ? .secondary : .primary)
-            .accessibilityLabel("\(id.displayName) 状态: \(text)")
-    }
-
-    /// enabled 开关: 有凭证才可开, 保存失败由 coordinator 报错并回退.
-    private func subscriptionEnabledToggle(
-        _ id: SubscriptionProviderID
-    ) -> some View {
-        let configured = model.subscriptionCredentialConfigured[id] ?? false
-        return Toggle(
-            isOn: Binding(
-                get: { model.subscriptionProviders[id]?.enabled ?? false },
-                set: { coordinator.setSubscriptionProviderEnabled(id, $0) }
-            )
-        ) {
-            Text("启用云端额度查询")
-                .font(.caption)
-        }
-        .disabled(!configured)
-        .accessibilityHint(configured ? "启用后 Collector 将查询该 Provider 云端额度" : "请先配置凭证")
     }
 
     // MARK: - 授权与隐私面板

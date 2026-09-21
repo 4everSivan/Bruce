@@ -1,6 +1,7 @@
 import Charts
 import Foundation
 import BruceAppCore
+import BruceOnboardingCore
 import SwiftUI
 
 /// Agent 用量卡: 卡片标题 + 14 日按 agent 堆叠柱状图 (从用量卡迁入) + 日期轴 + 图例;
@@ -53,7 +54,9 @@ struct HourlyLineCard: View {
             CollapsibleCardHeader(
                 title: "Agent 用量",
                 isCollapsed: isCollapsed,
-                onToggle: onToggleCollapse
+                onToggle: onToggleCollapse,
+                stamp: "HIST.14D",
+                cardID: .hourly
             ) {
                 EmptyView()
             } mini: {

@@ -310,7 +310,7 @@ pub fn validate_credential_updates(
                     "credentialUpdate provider 不受支持",
                 )
             })?;
-        if provider != "kimi" {
+        if provider != "kimi" && provider != "stepfun" {
             return Err(error(
                 "BRIDGE_INVALID_CREDENTIAL_UPDATE",
                 "credentialUpdate provider 不受支持",
@@ -478,6 +478,12 @@ mod tests {
             "kind": "oauthTokens",
             "operation": "replace",
             "credentials": {"access_token": "redacted", "expiry": "2030-01-01T00:00:00Z"}
+        }, {
+            "provider": "stepfun",
+            "accountId": "account-b",
+            "kind": "oauthTokens",
+            "operation": "replace",
+            "credentials": {"access_token": "redacted"}
         }]);
         assert_eq!(
             validate_credential_updates(&update).unwrap(),

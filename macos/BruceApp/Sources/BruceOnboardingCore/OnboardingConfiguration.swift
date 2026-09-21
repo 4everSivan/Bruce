@@ -14,6 +14,7 @@ public enum SubscriptionProviderID: String, Codable, Sendable, CaseIterable {
     case claude
     case grok
     case opencodeGo
+    case stepfun
 }
 
 // MARK: - SubscriptionVerificationStatus
@@ -434,6 +435,8 @@ public enum SubscriptionCredentialAccount {
     public static let grokOAuth = "grok:oauth"
     /// OpenCode GO 手动导入凭证: {"access_token", "refresh_token", "expiry"} JSON
     public static let opencodeGoOAuth = "opencode-go:oauth"
+    /// StepFun (Step Plan) 控制台 Oasis-Token 字符串
+    public static let stepfunToken = "stepfun:token"
 }
 
 /// Codex v2 Keychain 键别名 (供既有调用方引用; 旧键只供迁移读取).

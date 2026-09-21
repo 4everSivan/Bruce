@@ -22,6 +22,7 @@ pub(crate) struct QuotaExecution {
 struct ServiceExecution {
     service: Value,
     diagnostics: Vec<Diagnostic>,
+    credential_updates: Vec<Value>,
     credential_challenges: Vec<Value>,
 }
 
@@ -80,6 +81,7 @@ pub(crate) fn execute_quota_accounts(
     for result in results.into_iter().flatten() {
         output.services.push(result.service);
         output.diagnostics.extend(result.diagnostics);
+        output.credential_updates.extend(result.credential_updates);
         output
             .credential_challenges
             .extend(result.credential_challenges);
@@ -112,6 +114,7 @@ fn execute_one(
                     &diagnostic,
                 ),
                 diagnostics: vec![diagnostic],
+                credential_updates: Vec::new(),
                 credential_challenges: Vec::new(),
             }
         }
@@ -121,6 +124,7 @@ fn execute_one(
                 &diagnostic,
             ),
             diagnostics: vec![diagnostic],
+            credential_updates: Vec::new(),
             credential_challenges: Vec::new(),
         },
     }
@@ -138,6 +142,7 @@ fn execute_one_uncached(context: &RunContext<'_>, plan: &AccountPlan) -> Service
             return ServiceExecution {
                 service: failed_service(service, &diagnostic),
                 diagnostics,
+                credential_updates: Vec::new(),
                 credential_challenges: Vec::new(),
             };
         }
@@ -155,6 +160,7 @@ fn execute_one_uncached(context: &RunContext<'_>, plan: &AccountPlan) -> Service
                 return ServiceExecution {
                     service: failed_service(service, &diagnostic),
                     diagnostics,
+                    credential_updates: Vec::new(),
                     credential_challenges: Vec::new(),
                 };
             }
@@ -163,6 +169,7 @@ fn execute_one_uncached(context: &RunContext<'_>, plan: &AccountPlan) -> Service
                 return ServiceExecution {
                     service: failed_service(service, &diagnostic),
                     diagnostics,
+                    credential_updates: Vec::new(),
                     credential_challenges: Vec::new(),
                 };
             }
@@ -181,6 +188,7 @@ fn execute_one_uncached(context: &RunContext<'_>, plan: &AccountPlan) -> Service
         return ServiceExecution {
             service: failed_service(service, &diagnostic),
             diagnostics,
+            credential_updates: Vec::new(),
             credential_challenges: Vec::new(),
         };
     };
@@ -192,6 +200,7 @@ fn execute_one_uncached(context: &RunContext<'_>, plan: &AccountPlan) -> Service
             return ServiceExecution {
                 service: failed_service(service, &diagnostic),
                 diagnostics,
+                credential_updates: Vec::new(),
                 credential_challenges: Vec::new(),
             };
         }
@@ -213,11 +222,27 @@ fn execute_one_uncached(context: &RunContext<'_>, plan: &AccountPlan) -> Service
         diagnostics.push(error.diagnostic.clone());
     }
     let credential_challenges = codex_challenge(plan, &result);
-    let service = finalize_service(service, result.clone());
+    let mut credential_updates = Vec::new();
+    let mut clean_result = result.clone();
+    if let Ok(Some(Value::Object(map))) = &mut clean_result {
+        if let Some(update_val) = map.remove("credential_update") {
+            if let Some(account_id) = plan.account_id.as_deref().filter(|s| !s.is_empty()) {
+                credential_updates.push(json!({
+                    "provider": plan.service.app,
+                    "accountId": account_id,
+                    "kind": "oauthTokens",
+                    "operation": "replace",
+                    "credentials": update_val,
+                }));
+            }
+        }
+    }
+    let service = finalize_service(service, clean_result);
     let service = finalize_codex_service(service, plan, &result);
     ServiceExecution {
         service,
         diagnostics,
+        credential_updates,
         credential_challenges,
     }
 }

@@ -20,6 +20,7 @@ const ACCOUNT_FIELDS: &[(&str, &str)] = &[
     ("volcengine", "volcengineQuotaAccounts"),
     ("claude", "claudeQuotaAccounts"),
     ("grok", "grokQuotaAccounts"),
+    ("stepfun", "stepfunQuotaAccounts"),
 ];
 
 fn account_field(app: &str) -> Option<&'static str> {
@@ -37,6 +38,7 @@ fn account_prefix(app: &str) -> Option<&'static str> {
         "volcengine" => Some("volcengine_"),
         "claude" => Some("claude_"),
         "grok" => Some("grok_"),
+        "stepfun" => Some("stepfun_"),
         _ => None,
     }
 }
@@ -105,10 +107,15 @@ pub(crate) fn build_account_plan(request: &BridgeRequest) -> Result<Vec<AccountP
     })?;
     let mut plans = services
         .into_iter()
-        .map(|service| AccountPlan {
-            credential: credential_for_service(&request.credentials, &service),
-            account_id: None,
-            service,
+        .map(|service| {
+            let account_id = account_prefix(&service.app)
+                .and_then(|prefix| service.id.strip_prefix(prefix))
+                .map(str::to_owned);
+            AccountPlan {
+                credential: credential_for_service(&request.credentials, &service),
+                account_id,
+                service,
+            }
         })
         .collect::<Vec<_>>();
     plans.extend(build_codex_account_plans(request)?);

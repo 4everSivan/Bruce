@@ -146,6 +146,30 @@ struct MenuBarDashboardView: View {
             || panel.subscription != nil
             || panel.hourly != nil
         VStack(spacing: isNothingTheme ? 8 : 10) {
+            ForEach(model.cardOrder) { cardID in
+                renderCard(cardID, panel: panel)
+                    .draggable(cardID.rawValue)
+                    .onDrop(
+                        of: [.text],
+                        delegate: DashboardCardDropDelegate(
+                            target: cardID,
+                            move: { model.moveCard(from: $0, to: $1) }
+                        )
+                    )
+            }
+            if !hasCards {
+                emptyPanelState
+            }
+        }
+        .padding(.horizontal, isNothingTheme ? 10 : 12)
+        .padding(.top, isNothingTheme ? 10 : 12)
+        .padding(.bottom, isNothingTheme ? 10 : 4)
+    }
+
+    @ViewBuilder
+    private func renderCard(_ cardID: DashboardCardID, panel: PanelViewModel) -> some View {
+        switch cardID {
+        case .usage:
             if let usage = panel.usage {
                 PanelCardContainer {
                     UsageHeroCard(
@@ -156,6 +180,7 @@ struct MenuBarDashboardView: View {
                     )
                 }
             }
+        case .subscription:
             if let subscription = panel.subscription {
                 PanelCardContainer {
                     SubscriptionCard(
@@ -169,6 +194,7 @@ struct MenuBarDashboardView: View {
                     )
                 }
             }
+        case .hourly:
             if let hourly = panel.hourly {
                 PanelCardContainer {
                     HourlyLineCard(
@@ -180,13 +206,7 @@ struct MenuBarDashboardView: View {
                     )
                 }
             }
-            if !hasCards {
-                emptyPanelState
-            }
         }
-        .padding(.horizontal, 12)
-        .padding(.top, 12)
-        .padding(.bottom, 4)
     }
 
     /// 卡片全 nil 时的兜底: 居中玻璃卡 + 设置入口.

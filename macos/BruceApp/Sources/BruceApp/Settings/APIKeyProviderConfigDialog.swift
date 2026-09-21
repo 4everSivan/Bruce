@@ -111,6 +111,40 @@ struct APIKeyProviderConfigDialog: View {
                     status: model.subscriptionProviders[id]?.verificationStatus ?? .none,
                     lastVerifiedAt: model.subscriptionProviders[id]?.lastVerifiedAt
                 )
+                let summaries = model.providerAccountSummaries[id] ?? []
+                if !summaries.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("已配置账号 (\(summaries.count))")
+                            .font(.system(size: 11.5, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                        ForEach(summaries, id: \.accountID) { summary in
+                            HStack(spacing: 8) {
+                                Image(systemName: "person.crop.circle")
+                                    .foregroundStyle(.secondary)
+                                    .font(.system(size: 12))
+                                Text(summary.displayName)
+                                    .font(.system(size: 12))
+                                    .lineLimit(1)
+                                Spacer()
+                                Button {
+                                    coordinator.removeAccount(accountID: summary.accountID, from: id)
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel("移除账号 \(summary.displayName)")
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(
+                                Color(NSColor.controlBackgroundColor),
+                                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            )
+                        }
+                    }
+                }
                 ForEach(fields) { field in
                     fieldGroup(field)
                 }
@@ -219,6 +253,48 @@ struct APIKeyProviderConfigDialog: View {
                     .disabled(busy)
                     .accessibilityHint("只读导入 CC Switch 中 \(id.displayName) 的 AK/SK")
             }
+        case .webLogin(let buttonTitle, let hint, let action):
+            HStack(spacing: 8) {
+                Button(action: action) {
+                    Label(buttonTitle, systemImage: "globe.asia.australia.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+                .disabled(busy)
+                .accessibilityHint("在内置窗口登录并自动获取凭据")
+
+                Text(hint)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 2)
+        case .stepfunWebLogin(let onLoginDomestic, let onLoginGlobal):
+            VStack(alignment: .leading, spacing: 6) {
+                Text("网页登录自动绑定")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    Button(action: onLoginDomestic) {
+                        Label("🇨🇳 登录国内站", systemImage: "network")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.regular)
+                    .disabled(busy)
+                    .accessibilityHint("打开阶跃星辰国内开放平台登录窗口")
+
+                    Button(action: onLoginGlobal) {
+                        Label("🌐 登录国际站", systemImage: "globe")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.regular)
+                    .disabled(busy)
+                    .accessibilityHint("打开 StepFun 国际站登录窗口")
+                }
+                Text("在内置窗口登录对应站点，完成后自动提取 Oasis-Token 绑定")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 2)
         }
     }
 

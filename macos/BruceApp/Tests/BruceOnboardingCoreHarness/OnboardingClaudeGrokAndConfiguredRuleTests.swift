@@ -342,6 +342,7 @@ extension BruceOnboardingCoreHarness {
             .claude: .claudeAppOrLocalProbe,
             .grok: .grokAppOrLocalProbe,
             .opencodeGo: .allCredentialAccountsNonEmpty,
+            .stepfun: .allCredentialAccountsNonEmpty,
         ]
         for id in SubscriptionProviderID.allCases {
             let rule = ProviderRegistry.descriptor(for: id).configuredRule
@@ -415,6 +416,38 @@ extension BruceOnboardingCoreHarness {
             ],
             "opencodeGo legacyKeys 应含 opencode-go:oauth"
         )
+    }
+
+    // MARK: - StepFun (Step Plan Token)
+
+    static func stepfunCredentialAccountsAndRegistry() throws {
+        try coreExpect(
+            SubscriptionProviderID.stepfun.credentialAccounts == [
+                SubscriptionCredentialAccount.stepfunToken
+            ],
+            "stepfun credentialAccounts 应含 stepfun:token"
+        )
+        try coreExpect(
+            ProviderRegistry.descriptor(for: .stepfun).injectionKind == .stepfunQuotaAccounts,
+            "stepfun injectionKind 应为 stepfunQuotaAccounts"
+        )
+        try coreExpect(
+            SubscriptionProviderID.stepfun.displayName == "StepFun",
+            "stepfun 展示名应为 StepFun"
+        )
+    }
+
+    static func stepfunEvaluatorValidAndMalformed() throws {
+        try coreExpect(
+            ProviderConnectionVerifier.verifyStepFunTokenFormat("oasis-test-token-123") == .ok,
+            "正常 token 应为 ok"
+        )
+        guard case .failed = ProviderConnectionVerifier.verifyStepFunTokenFormat("") else {
+            throw CoreTestFailure.expectation("空 token 应 failed")
+        }
+        guard case .failed = ProviderConnectionVerifier.verifyStepFunTokenFormat("token with spaces") else {
+            throw CoreTestFailure.expectation("带空格 token 应 failed")
+        }
     }
 
     // subscriptionProviderOrder 字段编解码往返, 兼容旧配置缺键.

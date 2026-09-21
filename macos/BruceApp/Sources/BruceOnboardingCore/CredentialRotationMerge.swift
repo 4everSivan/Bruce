@@ -34,7 +34,7 @@ public enum CredentialRotationMerge {
     /// 多账号 provider 均返回 true; 未知 provider 返回 false.
     public static func supportsAccountScopedRotation(forProvider provider: String) -> Bool {
         switch provider {
-        case "deepseek", "volcengine", "claude", "grok":
+        case "deepseek", "volcengine", "claude", "grok", "stepfun":
             return true
         default:
             return false
@@ -56,9 +56,14 @@ public enum CredentialRotationMerge {
         guard !tokens.isEmpty else { return nil }
 
         switch providerID {
-        case .kimi:
-            // Kimi For Coding API key 不参与 OAuth 轮换, 无令牌写回.
+        case .kimi, .zhipu:
+            // Kimi / 智谱 API key 不参与 OAuth 轮换, 无令牌写回.
             return nil
+
+        case .stepfun:
+            // StepFun Oasis-Token 轮换: 更新后的完整 Oasis-Token (纯字符串)
+            let token = tokens["access_token"] ?? tokens["refresh_token"]
+            return token
 
         case .claude, .grok, .opencodeGo:
             // claudeAiOauth / scope 映射同构 JSON, 直接合并顶层
@@ -90,9 +95,6 @@ public enum CredentialRotationMerge {
             return Self.jsonString(from: root)
 
         case .codex:
-            return nil
-        case .zhipu:
-            // 智谱 API key 不参与 OAuth 轮换, 无令牌写回.
             return nil
         }
     }

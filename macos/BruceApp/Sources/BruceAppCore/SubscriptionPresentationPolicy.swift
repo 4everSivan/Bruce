@@ -85,6 +85,7 @@ package enum SubscriptionPresentationPolicy: Sendable {
         case "claude": return "Claude"
         case "grok": return "Grok"
         case "opencodeGo", "opencode-go": return "OpenCode GO"
+        case "stepfun": return "StepFun"
         default: return providerID
         }
     }

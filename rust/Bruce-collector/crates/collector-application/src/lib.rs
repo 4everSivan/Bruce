@@ -965,4 +965,95 @@ mod tests {
         assert_eq!(output.artifact["services"][0]["status"], "partial");
         assert_eq!(output.metrics.http_request_count, 0);
     }
+
+    #[test]
+    fn application_emits_credential_update_for_stepfun_refresh() {
+        let request: BridgeRequest = serde_json::from_value(json!({
+            "schemaVersion": 1,
+            "runId": "12345678-1234-4234-9234-123456789abc",
+            "module": "agent-usage",
+            "timeouts": {
+                "localScanSeconds": 30,
+                "externalRequestSeconds": 10,
+                "moduleSeconds": 90
+            },
+            "context": {
+                "now": "2026-08-21T08:00:00Z",
+                "capabilities": ["externalQuotas"]
+            },
+            "credentials": {
+                "stepfunQuotaAccounts": {
+                    "step-1": {
+                        "display_name": "StepFun · user",
+                        "token": "header.part1.sig...header.eyJhcHBfaWQiOjEwMzAwLCJkZXZpY2VfaWQiOiJkZXYtMSJ9.sig"
+                    }
+                }
+            }
+        }))
+        .unwrap();
+
+        struct StepFunMockHttp {
+            calls: AtomicUsize,
+        }
+        impl HttpClient for StepFunMockHttp {
+            fn send(
+                &self,
+                _req: HttpRequest,
+                _cancellation: &collector_runtime::CancellationToken,
+            ) -> Result<HttpResponse, ProviderError> {
+                let call = self.calls.fetch_add(1, Ordering::SeqCst);
+                match call {
+                    0 => Ok(HttpResponse {
+                        status: 401,
+                        body: b"unauthenticated".to_vec(),
+                    }),
+                    1 => Ok(HttpResponse {
+                        status: 200,
+                        body: serde_json::to_vec(&json!({
+                            "accessToken": {"raw": "header.refreshed_access.sig"},
+                            "refreshToken": {"raw": "header.refreshed_refresh.sig"}
+                        }))
+                        .unwrap(),
+                    }),
+                    2 => Ok(HttpResponse {
+                        status: 200,
+                        body: serde_json::to_vec(&json!({
+                            "status": 1,
+                            "desc": "",
+                            "plan_credit_rate_limit": {
+                                "subscription_credit_left_rate": 0.9,
+                                "subscription_credit_reset_time": "1792485144",
+                                "credit_buckets": []
+                            }
+                        }))
+                        .unwrap(),
+                    }),
+                    _ => panic!("unexpected call count"),
+                }
+            }
+        }
+
+        let http = StepFunMockHttp {
+            calls: AtomicUsize::new(0),
+        };
+        let output =
+            collect_agent_usage_with_dependencies(&request, &http, &EmptyCredentialSource).unwrap();
+        assert_eq!(
+            output.credential_updates,
+            vec![json!({
+                "provider": "stepfun",
+                "accountId": "step-1",
+                "kind": "oauthTokens",
+                "operation": "replace",
+                "credentials": {
+                    "access_token": "header.refreshed_access.sig...header.refreshed_refresh.sig"
+                }
+            })]
+        );
+        let service = &output.artifact["services"][0];
+        assert_eq!(service["app"], "stepfun");
+        assert_eq!(service["status"], "ok");
+        assert!(service.get("credential_update").is_none());
+        assert_eq!(http.calls.load(Ordering::Acquire), 3);
+    }
 }

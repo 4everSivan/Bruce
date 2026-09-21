@@ -141,6 +141,8 @@ public enum ProviderAccountKeys {
             return [SubscriptionCredentialAccount.grokOAuth]
         case .opencodeGo:
             return [SubscriptionCredentialAccount.opencodeGoOAuth]
+        case .stepfun:
+            return [SubscriptionCredentialAccount.stepfunToken]
         }
     }
 }
@@ -183,6 +185,11 @@ public enum ProviderAccountIDGenerator {
     /// OpenCode GO: access_token SHA-256 前 16 位 (console OAuth 身份).
     public static func opencodeGoAccountID(accessToken: String) -> String {
         ProviderAccountKeys.sha256Hex(accessToken)
+    }
+
+    /// StepFun: token SHA-256 前 16 位.
+    public static func stepfunAccountID(token: String) -> String {
+        ProviderAccountKeys.sha256Hex(token)
     }
 }
 
@@ -325,6 +332,17 @@ public final class ProviderAccountStore: @unchecked Sendable {
         var index = try loadIndex()
         index.accounts.removeAll { $0.accountID == accountID }
         try saveIndex(index)
+    }
+
+    /// 移除全部账号: 删除全部 record 并清空 index.
+    public func removeAllAccounts() throws {
+        let index = try loadIndex()
+        for entry in index.accounts {
+            try? deleteRecord(for: entry.accountID)
+        }
+        var emptyIndex = index
+        emptyIndex.accounts.removeAll()
+        try saveIndex(emptyIndex)
     }
 
     /// 新增或更新账号凭证 (upsert).
@@ -500,6 +518,11 @@ public final class ProviderAccountStore: @unchecked Sendable {
             ) ?? token
             accountID = ProviderAccountIDGenerator.opencodeGoAccountID(accessToken: workspace)
             displayName = "OpenCode GO · \(String(accountID.prefix(8)))"
+            credentialJSON = token
+        case .stepfun:
+            let token = legacyValues[0]
+            accountID = ProviderAccountIDGenerator.stepfunAccountID(token: token)
+            displayName = "StepFun · \(String(accountID.prefix(8)))"
             credentialJSON = token
         case .codex:
             return false // Codex 已有独立的多账号体系

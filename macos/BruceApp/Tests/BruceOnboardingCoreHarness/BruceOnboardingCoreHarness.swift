@@ -114,6 +114,7 @@ struct BruceOnboardingCoreHarness {
         try await codexDeviceFlowPreservesExpiresIn()
         try codexExpiryPriorityExpiresInOverJWTAndFallback()
         try rotationMergeMapsKnownProviders()
+        try rotationMergeStepFunSupported()
         try rotationMergeKimiRejected()
         try rotationMergeCodexRejected()
         try rotationMergeFiltersKeysAndRejectsUnknown()
@@ -161,6 +162,8 @@ struct BruceOnboardingCoreHarness {
         try opencodeGoCredentialAccountsAndRegistry()
         try opencodeGoEvaluatorValidAndMalformed()
         try opencodeGoAccountIDAndLegacyKeys()
-        print("BruceOnboardingCore tests passed: 163")
+        try stepfunCredentialAccountsAndRegistry()
+        try stepfunEvaluatorValidAndMalformed()
+        print("BruceOnboardingCore tests passed: 165")
     }
 }

@@ -170,6 +170,48 @@ public struct ProviderConnectionVerifier: Sendable {
         return .ok
     }
 
+    /// StepFun (Step Plan): 验证 Oasis-Token 格式.
+    public static func verifyStepFunTokenFormat(_ token: String) -> SubscriptionVerificationStatus {
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return .failed(reason: "Oasis-Token 为空")
+        }
+        if trimmed.contains(where: { $0.isWhitespace }) {
+            return .failed(reason: "Oasis-Token 包含空格或换行")
+        }
+        return .ok
+    }
+
+    /// 从 StepFun Token 中提取 app_id (国内站 10300, 国际站 20700).
+    public static func extractStepFunAppID(from token: String) -> Int? {
+        let parts = token.components(separatedBy: "...")
+        guard let targetJWT = parts.last ?? parts.first else { return nil }
+        let jwtParts = targetJWT.components(separatedBy: ".")
+        guard jwtParts.count >= 2 else { return nil }
+        var payloadB64 = jwtParts[1]
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        while payloadB64.count % 4 != 0 {
+            payloadB64.append("=")
+        }
+        guard let data = Data(base64Encoded: payloadB64),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        if let appId = json["app_id"] as? Int {
+            return appId
+        }
+        if let appIdStr = json["app_id"] as? String, let appId = Int(appIdStr) {
+            return appId
+        }
+        return nil
+    }
+
+    /// 判断 StepFun Token 是否属于国际站 (app_id == 20700).
+    public static func isStepFunGlobalToken(_ token: String) -> Bool {
+        extractStepFunAppID(from: token) == 20700
+    }
+
     /// 解析凭证 JSON 字符串为对象; 非对象或解析失败返回 nil.
     private static func jsonObject(from json: String) -> [String: Any]? {
         guard let data = json.data(using: .utf8),

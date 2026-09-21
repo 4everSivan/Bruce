@@ -208,9 +208,12 @@ package final class AppModel: ObservableObject {
     /// 仪表盘三张卡各自的收起状态 (持久化到 UserDefaults, 重启恢复).
     /// 纯 UI 状态, 不影响面板映射, 因此变更时不失效 panel 缓存.
     @Published package private(set) var collapsedCards: Set<DashboardCardID>
-    /// 收起状态持久化存储 (测试注入隔离 suite).
+    /// 仪表盘卡片展示顺序 (持久化到 UserDefaults, 支持拖拽调序).
+    @Published package private(set) var cardOrder: [DashboardCardID]
+    /// 收起状态与顺序持久化存储 (测试注入隔离 suite).
     private let collapsedDefaults: UserDefaults
     private static let collapsedCardsDefaultsKey = "dashboard.collapsedCards"
+    private static let cardOrderDefaultsKey = "dashboard.cardOrder"
 
     package init(
         menuBarMetricRawValues: [String]? = nil,
@@ -222,6 +225,10 @@ package final class AppModel: ObservableObject {
             forKey: Self.collapsedCardsDefaultsKey
         ) ?? []
         collapsedCards = Set(stored.compactMap(DashboardCardID.init(rawValue:)))
+        let storedOrder = collapsedDefaults.stringArray(
+            forKey: Self.cardOrderDefaultsKey
+        )
+        cardOrder = Self.resolveCardOrder(storedOrder)
         self.deepSeekLedger = deepSeekLedger
         menuBarMetrics = MenuBarMetricConfiguration(
             rawValues: menuBarMetricRawValues
@@ -465,6 +472,35 @@ package final class AppModel: ObservableObject {
         collapsedDefaults.set(
             collapsedCards.map(\.rawValue).sorted(),
             forKey: Self.collapsedCardsDefaultsKey
+        )
+    }
+
+    /// 解析存储的卡片顺序, 兜底默认全量并自动去重与补齐.
+    package static func resolveCardOrder(_ stored: [String]?) -> [DashboardCardID] {
+        let defaults: [DashboardCardID] = [.usage, .subscription, .hourly]
+        guard let stored, !stored.isEmpty else { return defaults }
+        var result: [DashboardCardID] = []
+        for raw in stored {
+            if let card = DashboardCardID(rawValue: raw), !result.contains(card) {
+                result.append(card)
+            }
+        }
+        for card in defaults where !result.contains(card) {
+            result.append(card)
+        }
+        return result
+    }
+
+    /// 调整仪表盘卡片顺序并立即原子写回 UserDefaults.
+    package func moveCard(from source: DashboardCardID, to destination: DashboardCardID) {
+        guard let fromIndex = cardOrder.firstIndex(of: source),
+              let toIndex = cardOrder.firstIndex(of: destination),
+              fromIndex != toIndex else { return }
+        cardOrder.remove(at: fromIndex)
+        cardOrder.insert(source, at: toIndex)
+        collapsedDefaults.set(
+            cardOrder.map(\.rawValue),
+            forKey: Self.cardOrderDefaultsKey
         )
     }
 

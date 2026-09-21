@@ -90,7 +90,9 @@ struct SubscriptionCard: View {
             CollapsibleCardHeader(
                 title: "订阅用量",
                 isCollapsed: isCollapsed,
-                onToggle: onToggleCollapse
+                onToggle: onToggleCollapse,
+                stamp: "QUOTA.LIVE",
+                cardID: .subscription
             ) {
                 if let updatedText = viewModel.updatedText {
                     // Nothing 下与卡片其余 mono 标注一致: mono 9 + disabled.
@@ -812,6 +814,8 @@ private struct ProviderLogoBadge: View {
             return Color(hex: "#111111")
         case "opencodeGo", "opencode-go", "opencode":
             return Color(hex: "#8a63d2")
+        case "stepfun":
+            return Color(hex: "#0c5efc")
         default:
             return Color(hex: "#8e8e93")
         }

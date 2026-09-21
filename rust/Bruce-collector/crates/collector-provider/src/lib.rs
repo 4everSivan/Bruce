@@ -59,6 +59,12 @@ const CATALOG_SPECS: &[CatalogSpec] = &[
         display_prefix: "Grok",
         app: "grok",
     },
+    CatalogSpec {
+        provider: "stepfun",
+        prefix: "stepfun_",
+        display_prefix: "StepFun",
+        app: "stepfun",
+    },
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,7 +84,7 @@ pub struct AccountDescriptor {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CatalogInput {
     /// Keys use stable app/provider IDs: `opencode-go`, `kimi`, `deepseek`,
-    /// `zhipu`, `volcengine`, `claude`, or `grok`.
+    /// `zhipu`, `volcengine`, `claude`, `grok`, or `stepfun`.
     pub accounts: BTreeMap<String, Vec<AccountDescriptor>>,
     pub enabled_official: BTreeSet<String>,
 }
@@ -453,6 +459,14 @@ pub const GROK_BILLING_URL: &str =
 pub const OPENCODE_SERVER_URL: &str = "https://opencode.ai/_server";
 pub const OPENCODE_SERVER_ID: &str =
     "c7389bd0e731f80f49593e5ee53835475f4e28594dd6bd83eb229bab753498cd";
+pub const STEPFUN_STEP_PLAN_RATE_LIMIT_URL: &str =
+    "https://platform.stepfun.com/api/step.openapi.devcenter.Dashboard/QueryStepPlanRateLimit";
+pub const STEPFUN_REFRESH_TOKEN_URL: &str =
+    "https://platform.stepfun.com/passport/proto.api.passport.v1.PassportService/RefreshToken";
+pub const STEPFUN_GLOBAL_STEP_PLAN_RATE_LIMIT_URL: &str =
+    "https://platform.stepfun.ai/api/step.openapi.devcenter.Dashboard/QueryStepPlanRateLimit";
+pub const STEPFUN_GLOBAL_REFRESH_TOKEN_URL: &str =
+    "https://platform.stepfun.ai/passport/proto.api.passport.v1.PassportService/RefreshToken";
 
 fn invalid_payload() -> ProviderError {
     ProviderError::new(
@@ -1002,6 +1016,101 @@ pub fn parse_zhipu_usage(payload: &Value) -> Result<Option<Value>, ProviderError
         Some(plan),
         zhipu_windows(limits),
     )))
+}
+
+/// Parse the StepFun Step Plan quota/rate-limit response.
+pub fn parse_stepfun_usage(payload: &Value) -> Result<Option<Value>, ProviderError> {
+    let object = payload.as_object().ok_or_else(invalid_payload)?;
+    if let Some(code) = object.get("code").and_then(Value::as_i64) {
+        if code != 0 && code != 200 {
+            let msg = object
+                .get("message")
+                .and_then(Value::as_str)
+                .unwrap_or("StepFun 服务端拒绝");
+            return Err(ProviderError::new(
+                "PROVIDER_REMOTE_REJECTED",
+                "parse",
+                msg,
+                false,
+            ));
+        }
+    }
+
+    let mut windows = Vec::new();
+
+    // Credit-based plan rate limit
+    if let Some(credit_limit) = object
+        .get("plan_credit_rate_limit")
+        .and_then(Value::as_object)
+    {
+        if let Some(left_rate) = number(credit_limit.get("subscription_credit_left_rate")) {
+            let used_percent = clamp_percent((1.0 - left_rate) * 100.0);
+            let resets_at = credit_limit
+                .get("credit_buckets")
+                .and_then(Value::as_array)
+                .and_then(|arr| arr.first())
+                .and_then(Value::as_object)
+                .and_then(|b| {
+                    number(b.get("next_reset_at")).or_else(|| number(b.get("reset_time")))
+                })
+                .or_else(|| number(credit_limit.get("subscription_credit_reset_time")))
+                .map(|t| {
+                    if t > 1_000_000_000_000.0 {
+                        (t / 1000.0) as i64
+                    } else {
+                        t as i64
+                    }
+                });
+            windows.push(window("Credits", used_percent, None, resets_at));
+        }
+        if let Some(topup_left_rate) = number(credit_limit.get("topup_credit_left_rate")) {
+            if topup_left_rate > 0.0 && topup_left_rate < 1.0 {
+                let used_percent = clamp_percent((1.0 - topup_left_rate) * 100.0);
+                windows.push(window("加油包 Credits", used_percent, None, None));
+            }
+        }
+    }
+
+    // 5-hour window
+    if let Some(left_rate) = number(object.get("five_hour_usage_left_rate")) {
+        let resets_at = number(object.get("five_hour_usage_reset_time")).map(|t| {
+            if t > 1_000_000_000_000.0 {
+                (t / 1000.0) as i64
+            } else {
+                t as i64
+            }
+        });
+        if left_rate > 0.0 || resets_at.unwrap_or(0) > 0 {
+            let used_percent = clamp_percent((1.0 - left_rate) * 100.0);
+            windows.push(window("5小时窗口", used_percent, Some(300), resets_at));
+        }
+    }
+
+    // Weekly window
+    if let Some(left_rate) = number(object.get("weekly_usage_left_rate")) {
+        let resets_at = number(object.get("weekly_usage_reset_time")).map(|t| {
+            if t > 1_000_000_000_000.0 {
+                (t / 1000.0) as i64
+            } else {
+                t as i64
+            }
+        });
+        if left_rate > 0.0 || resets_at.unwrap_or(0) > 0 {
+            let used_percent = clamp_percent((1.0 - left_rate) * 100.0);
+            windows.push(window("每周窗口", used_percent, Some(10080), resets_at));
+        }
+    }
+
+    if windows.is_empty() {
+        return Ok(None);
+    }
+
+    let plan = object
+        .get("plan_name")
+        .or_else(|| object.get("plan"))
+        .cloned();
+
+    Ok(Some(service_result("windows", plan, windows)))
 }
 
 fn object_value<'a>(
@@ -1736,8 +1845,8 @@ fn base64_decode_text(value: &str) -> Option<String> {
             b'A'..=b'Z' => byte - b'A',
             b'a'..=b'z' => byte - b'a' + 26,
             b'0'..=b'9' => byte - b'0' + 52,
-            b'+' => 62,
-            b'/' => 63,
+            b'+' | b'-' => 62,
+            b'/' | b'_' => 63,
             _ => return None,
         };
         accumulator = (accumulator << 6) | u32::from(digit);
@@ -1755,6 +1864,254 @@ fn base64_decode_text(value: &str) -> Option<String> {
     String::from_utf8(output)
         .ok()
         .filter(|value| !value.is_empty())
+}
+
+pub(crate) fn extract_stepfun_device_id(token: &str) -> Option<String> {
+    let target_jwt = token.split("...").last().unwrap_or(token);
+    let mut parts = target_jwt.split('.');
+    let _header = parts.next()?;
+    let payload_b64 = parts.next()?;
+    let payload_str = base64_decode_text(payload_b64)?;
+    let parsed: Value = serde_json::from_str(&payload_str).ok()?;
+    parsed
+        .get("device_id")
+        .and_then(Value::as_str)
+        .map(|s| s.to_owned())
+}
+
+pub(crate) fn is_stepfun_token_expired(token: &str, now_epoch: i64) -> bool {
+    let first_jwt = token.split("...").next().unwrap_or(token);
+    let mut parts = first_jwt.split('.');
+    let _header = match parts.next() {
+        Some(h) => h,
+        None => return false,
+    };
+    let payload_b64 = match parts.next() {
+        Some(p) => p,
+        None => return false,
+    };
+    let payload_str = match base64_decode_text(payload_b64) {
+        Some(s) => s,
+        None => return false,
+    };
+    let parsed: Value = match serde_json::from_str(&payload_str) {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+    if let Some(exp) = parsed.get("exp").and_then(Value::as_i64) {
+        return exp <= now_epoch + 30;
+    }
+    false
+}
+
+pub(crate) fn extract_stepfun_app_id(token: &str) -> Option<u32> {
+    let target_jwt = token.split("...").last().unwrap_or(token);
+    let mut parts = target_jwt.split('.');
+    let _header = parts.next()?;
+    let payload_b64 = parts.next()?;
+    let payload_str = base64_decode_text(payload_b64)?;
+    let parsed: Value = serde_json::from_str(&payload_str).ok()?;
+    parsed
+        .get("app_id")
+        .and_then(Value::as_u64)
+        .map(|id| id as u32)
+}
+
+pub(crate) fn is_stepfun_global(token: &str, request: &ProviderRequest) -> bool {
+    if let Some(credential) = request.credential.as_ref() {
+        if let Some(obj) = credential.as_object() {
+            if let Some(site) = obj.get("site").and_then(Value::as_str) {
+                if site.eq_ignore_ascii_case("global") || site.contains(".ai") {
+                    return true;
+                }
+                if site.eq_ignore_ascii_case("domestic") || site.contains(".com") {
+                    return false;
+                }
+            }
+            if let Some(is_global) = obj.get("is_global").and_then(Value::as_bool) {
+                return is_global;
+            }
+            if let Some(display_name) = obj.get("display_name").and_then(Value::as_str) {
+                if display_name.contains("国际") || display_name.contains("Global") {
+                    return true;
+                }
+            }
+        }
+    }
+    if let Some(app_id) = extract_stepfun_app_id(token) {
+        return app_id == 20700;
+    }
+    if let Some(credential) = request.credential.as_ref() {
+        if let Some(obj) = credential.as_object() {
+            if let Some(orig_token) = obj.get("token").and_then(Value::as_str) {
+                if let Some(app_id) = extract_stepfun_app_id(orig_token) {
+                    return app_id == 20700;
+                }
+            }
+        } else if let Some(orig_token) = credential.as_str() {
+            if let Some(app_id) = extract_stepfun_app_id(orig_token) {
+                return app_id == 20700;
+            }
+        }
+    }
+    false
+}
+
+pub(crate) fn refresh_stepfun_token(
+    request: &ProviderRequest,
+    token: &str,
+    http: &dyn HttpClient,
+    cancellation: &CancellationToken,
+) -> Result<String, ProviderError> {
+    let device_id = extract_stepfun_device_id(token);
+    let is_global = is_stepfun_global(token, request);
+    let app_id = if is_global { "20700" } else { "10300" };
+    let origin = if is_global {
+        "https://platform.stepfun.ai"
+    } else {
+        "https://platform.stepfun.com"
+    };
+    let referer = if is_global {
+        "https://platform.stepfun.ai/"
+    } else {
+        "https://platform.stepfun.com/"
+    };
+    let refresh_url = if is_global {
+        STEPFUN_GLOBAL_REFRESH_TOKEN_URL
+    } else {
+        STEPFUN_REFRESH_TOKEN_URL
+    };
+
+    let mut headers = vec![
+        ("Cookie", format!("Oasis-Token={token}")),
+        ("Oasis-Token", token.to_owned()),
+        ("Oasis-appID", app_id.to_owned()),
+        ("Oasis-Platform", "web".to_owned()),
+        ("Oasis-Language", "zh-CN".to_owned()),
+        ("Content-Type", "application/json".to_owned()),
+        ("Accept", "application/json".to_owned()),
+        ("Origin", origin.to_owned()),
+        ("Referer", referer.to_owned()),
+        (
+            "User-Agent",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36".to_owned(),
+        ),
+    ];
+    if let Some(did) = device_id {
+        headers.push(("Oasis-Webid", did));
+    }
+
+    let payload = send_json(
+        request,
+        http,
+        cancellation,
+        "POST",
+        refresh_url.to_owned(),
+        provider_headers(&headers),
+        Some(b"{}".to_vec()),
+        Some("StepFun 凭证刷新失败, 账号可能需要重新登录"),
+    )?;
+
+    let object = payload.as_object().ok_or_else(|| {
+        ProviderError::new(
+            "PROVIDER_REMOTE_REJECTED",
+            "refresh",
+            "StepFun 刷新响应格式无效",
+            false,
+        )
+    })?;
+
+    let access_raw = object
+        .get("accessToken")
+        .and_then(Value::as_object)
+        .and_then(|t| t.get("raw"))
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| {
+            ProviderError::new(
+                "PROVIDER_REMOTE_REJECTED",
+                "refresh",
+                "StepFun 刷新响应未包含有效 access token",
+                false,
+            )
+        })?;
+
+    let refresh_raw = object
+        .get("refreshToken")
+        .and_then(Value::as_object)
+        .and_then(|t| t.get("raw"))
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty());
+
+    let new_token = match refresh_raw {
+        Some(r) => format!("{access_raw}...{r}"),
+        None => {
+            let parts: Vec<&str> = token.split("...").collect();
+            if parts.len() > 1 {
+                format!("{access_raw}...{}", parts[1])
+            } else {
+                access_raw.to_owned()
+            }
+        }
+    };
+    Ok(new_token)
+}
+
+fn query_stepfun_rate_limit(
+    request: &ProviderRequest,
+    token: &str,
+    http: &dyn HttpClient,
+    cancellation: &CancellationToken,
+) -> Result<Option<Value>, ProviderError> {
+    let device_id = extract_stepfun_device_id(token);
+    let is_global = is_stepfun_global(token, request);
+    let app_id = if is_global { "20700" } else { "10300" };
+    let origin = if is_global {
+        "https://platform.stepfun.ai"
+    } else {
+        "https://platform.stepfun.com"
+    };
+    let referer = if is_global {
+        "https://platform.stepfun.ai/"
+    } else {
+        "https://platform.stepfun.com/"
+    };
+    let rate_limit_url = if is_global {
+        STEPFUN_GLOBAL_STEP_PLAN_RATE_LIMIT_URL
+    } else {
+        STEPFUN_STEP_PLAN_RATE_LIMIT_URL
+    };
+
+    let mut headers = vec![
+        ("Cookie", format!("Oasis-Token={token}")),
+        ("Oasis-Token", token.to_owned()),
+        ("Oasis-appID", app_id.to_owned()),
+        ("Oasis-Platform", "web".to_owned()),
+        ("Oasis-Language", "zh-CN".to_owned()),
+        ("Content-Type", "application/json".to_owned()),
+        ("Accept", "application/json".to_owned()),
+        ("Origin", origin.to_owned()),
+        ("Referer", referer.to_owned()),
+        (
+            "User-Agent",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36".to_owned(),
+        ),
+    ];
+    if let Some(did) = device_id {
+        headers.push(("Oasis-Webid", did));
+    }
+
+    let payload = send_json(
+        request,
+        http,
+        cancellation,
+        "POST",
+        rate_limit_url.to_owned(),
+        provider_headers(&headers),
+        Some(b"{}".to_vec()),
+        Some("StepFun 凭证被拒绝或已过期, 请检查 Oasis-Token"),
+    )?;
+    parse_stepfun_usage(&payload)
 }
 
 fn volc_secret_candidates(raw: &str) -> Vec<String> {
@@ -2139,6 +2496,78 @@ impl QuotaProvider for CodexProvider {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct StepFunProvider;
+
+impl QuotaProvider for StepFunProvider {
+    fn app(&self) -> &str {
+        "stepfun"
+    }
+
+    fn query(
+        &self,
+        request: &ProviderRequest,
+        http: &dyn HttpClient,
+        cancellation: &CancellationToken,
+    ) -> Result<Option<Value>, ProviderError> {
+        let Some(raw_token) =
+            optional_credential_string(request, &["token", "oasis_token", "apiKey", "api_key"])?
+        else {
+            return Ok(None);
+        };
+        let token = raw_token.trim().trim_matches('"').trim();
+        let token = token.strip_prefix("Bearer ").unwrap_or(token).trim();
+        let can_refresh = token.contains("...");
+        let now_epoch = captured_epoch(&request.captured_at);
+        let mut active_token = token.to_owned();
+        let mut refreshed = false;
+
+        // 1. 若是两段式 Oasis-Token 且短期 access token 已过期 (或即将过期), 主动尝试刷新
+        if can_refresh && is_stepfun_token_expired(&active_token, now_epoch) {
+            if let Ok(new_token) = refresh_stepfun_token(request, &active_token, http, cancellation)
+            {
+                active_token = new_token;
+                refreshed = true;
+            }
+        }
+
+        // 2. 执行配额查询
+        let mut query_result = query_stepfun_rate_limit(request, &active_token, http, cancellation);
+
+        // 3. 若尚未刷新且返回鉴权失败，尝试刷新并重试一次
+        if !refreshed && can_refresh {
+            let is_auth_failure = match &query_result {
+                Err(err) => {
+                    err.diagnostic.code == "PROVIDER_AUTH_REJECTED"
+                        || err.diagnostic.code == "PROVIDER_REMOTE_REJECTED"
+                }
+                _ => false,
+            };
+            if is_auth_failure {
+                if let Ok(new_token) = refresh_stepfun_token(request, token, http, cancellation) {
+                    active_token = new_token;
+                    refreshed = true;
+                    query_result =
+                        query_stepfun_rate_limit(request, &active_token, http, cancellation);
+                }
+            }
+        }
+
+        let mut usage = query_result?;
+        if refreshed {
+            if let Some(obj) = usage.as_mut().and_then(Value::as_object_mut) {
+                obj.insert(
+                    "credential_update".to_owned(),
+                    json!({
+                        "access_token": active_token,
+                    }),
+                );
+            }
+        }
+        Ok(usage)
+    }
+}
+
 /// Return the read-only quota adapter for a stable provider app ID.
 pub fn provider_for_app(app: &str) -> Option<Box<dyn QuotaProvider>> {
     match app {
@@ -2150,6 +2579,7 @@ pub fn provider_for_app(app: &str) -> Option<Box<dyn QuotaProvider>> {
         "claude" => Some(Box::new(ClaudeProvider)),
         "grok" => Some(Box::new(GrokProvider)),
         "codex" => Some(Box::new(CodexProvider)),
+        "stepfun" => Some(Box::new(StepFunProvider)),
         _ => None,
     }
 }
@@ -2157,12 +2587,16 @@ pub fn provider_for_app(app: &str) -> Option<Box<dyn QuotaProvider>> {
 #[cfg(test)]
 mod tests {
     use super::{
-        bounded_http_body, codex_service_id, parse_claude_usage, parse_codex_usage,
+        bounded_http_body, codex_service_id, extract_stepfun_app_id, extract_stepfun_device_id,
+        is_stepfun_global, is_stepfun_token_expired, parse_claude_usage, parse_codex_usage,
         parse_deepseek_balance, parse_grok_usage, parse_kimi_usage, parse_opencode_go_body,
-        parse_volcengine_usage, parse_zhipu_usage, resolve_service_catalog, service_template,
-        AccountDescriptor, CancellationToken, CatalogInput, CodexProvider, DeepSeekProvider,
-        HttpClient, HttpRequest, HttpResponse, KimiProvider, OpenCodeGoProvider, ProviderError,
-        ProviderRequest, QuotaProvider, UreqHttpClient, VolcEngineProvider, ZhipuProvider,
+        parse_stepfun_usage, parse_volcengine_usage, parse_zhipu_usage, resolve_service_catalog,
+        service_template, AccountDescriptor, CancellationToken, CatalogInput, CodexProvider,
+        DeepSeekProvider, HttpClient, HttpRequest, HttpResponse, KimiProvider, OpenCodeGoProvider,
+        ProviderError, ProviderRequest, QuotaProvider, StepFunProvider, UreqHttpClient,
+        VolcEngineProvider, ZhipuProvider, STEPFUN_GLOBAL_REFRESH_TOKEN_URL,
+        STEPFUN_GLOBAL_STEP_PLAN_RATE_LIMIT_URL, STEPFUN_REFRESH_TOKEN_URL,
+        STEPFUN_STEP_PLAN_RATE_LIMIT_URL,
     };
     use collector_runtime::RuntimeLimits;
     use serde_json::{json, Value};
@@ -2355,11 +2789,274 @@ mod tests {
             "claude",
             "grok",
             "codex",
+            "stepfun",
         ] {
             assert_eq!(super::provider_for_app(app).unwrap().app(), app);
         }
         assert_eq!(super::provider_for_app("codex").unwrap().app(), "codex");
         let _ = UreqHttpClient::default();
+    }
+
+    #[test]
+    fn stepfun_parser_handles_credit_rate_limit_and_windows() {
+        let payload = json!({
+            "code": 0,
+            "message": "success",
+            "plan_name": "Plus",
+            "plan_credit_rate_limit": {
+                "subscription_credit_left_rate": 0.9641,
+                "topup_credit_left_rate": 0.8,
+                "credit_buckets": [
+                    {
+                        "total_credit": 1600000000_i64,
+                        "left_credit": 1542560000_i64,
+                        "reset_time": 1789900000_i64
+                    }
+                ]
+            },
+            "five_hour_usage_left_rate": 0.99,
+            "five_hour_usage_reset_time": 1789900000_i64,
+            "weekly_usage_left_rate": 0.95,
+            "weekly_usage_reset_time": 1789900000_i64
+        });
+        let result = parse_stepfun_usage(&payload).unwrap().unwrap();
+        assert_eq!(result["kind"], "windows");
+        assert_eq!(result["plan"], "Plus");
+        let windows = result["windows"].as_array().unwrap();
+        assert_eq!(windows.len(), 4);
+        assert_eq!(windows[0]["label"], "Credits");
+        assert!((windows[0]["usedPercent"].as_f64().unwrap() - 3.59).abs() < 0.01);
+        assert_eq!(windows[0]["resetsAt"], 1789900000);
+        assert_eq!(windows[1]["label"], "加油包 Credits");
+        assert!((windows[1]["usedPercent"].as_f64().unwrap() - 20.0).abs() < 0.01);
+        assert_eq!(windows[2]["label"], "5小时窗口");
+        assert_eq!(windows[3]["label"], "每周窗口");
+    }
+
+    #[test]
+    fn stepfun_parser_handles_remote_rejected_error() {
+        let payload = json!({
+            "code": 401,
+            "message": "invalid token"
+        });
+        let error = parse_stepfun_usage(&payload).unwrap_err();
+        assert_eq!(error.diagnostic.code, "PROVIDER_REMOTE_REJECTED");
+        let _ = StepFunProvider;
+    }
+
+    #[test]
+    fn stepfun_parser_handles_real_plan_family_credit_response() {
+        let payload = json!({
+            "status": 1,
+            "desc": "",
+            "five_hour_usage_left_rate": 0,
+            "five_hour_usage_reset_time": "0",
+            "weekly_usage_left_rate": 0,
+            "weekly_usage_reset_time": "0",
+            "plan_family": 2,
+            "plan_credit_rate_limit": {
+                "subscription_credit_left_rate": 0.96789026,
+                "subscription_credit_reset_time": "1792485144",
+                "topup_credit_left_rate": 0,
+                "credit_buckets": [
+                    {
+                        "type": 1,
+                        "credit_total": "1600000000",
+                        "credit_residual": "1548624323",
+                        "expire_at": "1795059029",
+                        "next_reset_at": "1792485144"
+                    }
+                ]
+            }
+        });
+        let result = parse_stepfun_usage(&payload).unwrap().unwrap();
+        assert_eq!(result["kind"], "windows");
+        let windows = result["windows"].as_array().unwrap();
+        assert_eq!(windows.len(), 1);
+        assert_eq!(windows[0]["label"], "Credits");
+        assert!((windows[0]["usedPercent"].as_f64().unwrap() - 3.21).abs() < 0.05);
+        assert_eq!(windows[0]["resetsAt"], 1792485144);
+    }
+
+    #[test]
+    fn stepfun_device_id_extractor_handles_jwt_payload() {
+        // Base64Url-encoded payload: {"app_id":10300,"device_id":"test-device-uuid-1234"}
+        let dummy_jwt = "eyJhbGciOiJIUzI1NiJ9.eyJhcHBfaWQiOjEwMzAwLCJkZXZpY2VfaWQiOiJ0ZXN0LWRldmljZS11dWlkLTEyMzQifQ.signature";
+        assert_eq!(
+            extract_stepfun_device_id(dummy_jwt).as_deref(),
+            Some("test-device-uuid-1234")
+        );
+        let multi_part = format!("header.part1.sig...{dummy_jwt}");
+        assert_eq!(
+            extract_stepfun_device_id(&multi_part).as_deref(),
+            Some("test-device-uuid-1234")
+        );
+    }
+
+    #[test]
+    fn stepfun_token_expiry_detector_handles_jwt_exp() {
+        let expired_jwt = "header.eyJleHAiOiAxNzAwMDAwMDAwfQ.sig...header.payload2.sig";
+        let fresh_jwt = "header.eyJleHAiOiAyMTAwMDAwMDAwfQ.sig...header.payload2.sig";
+        let now_epoch = 1780000000;
+        assert!(is_stepfun_token_expired(expired_jwt, now_epoch));
+        assert!(!is_stepfun_token_expired(fresh_jwt, now_epoch));
+        assert!(!is_stepfun_token_expired("not-a-jwt", now_epoch));
+    }
+
+    #[test]
+    fn stepfun_provider_refreshes_token_on_401_and_retries() {
+        let old_token =
+            "header.part1.sig...header.eyJhcHBfaWQiOjEwMzAwLCJkZXZpY2VfaWQiOiJkZXYtMSJ9.sig";
+        let refresh_resp = json!({
+            "accessToken": {"raw": "header.new_part1.sig"},
+            "refreshToken": {"raw": "header.new_part2.sig"}
+        });
+        let quota_resp = json!({
+            "status": 1,
+            "desc": "",
+            "plan_credit_rate_limit": {
+                "subscription_credit_left_rate": 0.85,
+                "subscription_credit_reset_time": "1792485144",
+                "credit_buckets": []
+            }
+        });
+        let http = FixtureHttp::new(vec![
+            // 1. Initial query returns 401
+            Ok(HttpResponse {
+                status: 401,
+                body: b"unauthenticated".to_vec(),
+            }),
+            // 2. Refresh request returns 200 with new tokens
+            Ok(HttpResponse {
+                status: 200,
+                body: serde_json::to_vec(&refresh_resp).unwrap(),
+            }),
+            // 3. Retry query returns 200 with quota
+            Ok(HttpResponse {
+                status: 200,
+                body: serde_json::to_vec(&quota_resp).unwrap(),
+            }),
+        ]);
+        let request = ProviderRequest {
+            account_id: Some("test-acc".to_owned()),
+            captured_at: "2026-09-21T00:00:00Z".to_owned(),
+            timeout: Duration::from_secs(5),
+            max_response_body_bytes: 65536,
+            credential: Some(json!({ "token": old_token })),
+        };
+        let cancel = CancellationToken::default();
+        let result = StepFunProvider
+            .query(&request, &http, &cancel)
+            .unwrap()
+            .unwrap();
+        assert_eq!(result["kind"], "windows");
+        assert_eq!(
+            result["credential_update"]["access_token"],
+            "header.new_part1.sig...header.new_part2.sig"
+        );
+        let requests = http.requests();
+        assert_eq!(requests.len(), 3);
+        assert_eq!(requests[0].url, STEPFUN_STEP_PLAN_RATE_LIMIT_URL);
+        assert_eq!(requests[1].url, STEPFUN_REFRESH_TOKEN_URL);
+        assert_eq!(requests[2].url, STEPFUN_STEP_PLAN_RATE_LIMIT_URL);
+    }
+
+    #[test]
+    fn stepfun_app_id_and_site_detector_identifies_domestic_and_global_tokens() {
+        // domestic: app_id 10300
+        let domestic_jwt =
+            "header.part1.sig...header.eyJhcHBfaWQiOjEwMzAwLCJkZXZpY2VfaWQiOiJkZXYtMSJ9.sig";
+        assert_eq!(extract_stepfun_app_id(domestic_jwt), Some(10300));
+        let req_domestic = ProviderRequest {
+            account_id: Some("test".to_owned()),
+            captured_at: "2026-09-21T00:00:00Z".to_owned(),
+            timeout: Duration::from_secs(5),
+            max_response_body_bytes: 65536,
+            credential: Some(json!({ "token": domestic_jwt })),
+        };
+        assert!(!is_stepfun_global(domestic_jwt, &req_domestic));
+
+        // global: app_id 20700
+        let global_jwt =
+            "header.part1.sig...header.eyJhcHBfaWQiOjIwNzAwLCJkZXZpY2VfaWQiOiJkZXYtMiJ9.sig";
+        assert_eq!(extract_stepfun_app_id(global_jwt), Some(20700));
+        let req_global = ProviderRequest {
+            account_id: Some("test".to_owned()),
+            captured_at: "2026-09-21T00:00:00Z".to_owned(),
+            timeout: Duration::from_secs(5),
+            max_response_body_bytes: 65536,
+            credential: Some(json!({ "token": global_jwt })),
+        };
+        assert!(is_stepfun_global(global_jwt, &req_global));
+
+        // override via credential.site = "global"
+        let req_override = ProviderRequest {
+            account_id: Some("test".to_owned()),
+            captured_at: "2026-09-21T00:00:00Z".to_owned(),
+            timeout: Duration::from_secs(5),
+            max_response_body_bytes: 65536,
+            credential: Some(json!({ "token": domestic_jwt, "site": "global" })),
+        };
+        assert!(is_stepfun_global(domestic_jwt, &req_override));
+    }
+
+    #[test]
+    fn stepfun_provider_routes_to_global_endpoints_when_global_token() {
+        let global_token =
+            "header.part1.sig...header.eyJhcHBfaWQiOjIwNzAwLCJkZXZpY2VfaWQiOiJkZXYtZ2xvYmFsIn0.sig";
+        let refresh_resp = json!({
+            "accessToken": {"raw": "header.new_global1.sig"},
+            "refreshToken": {"raw": "header.new_global2.sig"}
+        });
+        let quota_resp = json!({
+            "status": 1,
+            "desc": "",
+            "plan_credit_rate_limit": {
+                "subscription_credit_left_rate": 0.9,
+                "subscription_credit_reset_time": "1792485144",
+                "credit_buckets": []
+            }
+        });
+        let http = FixtureHttp::new(vec![
+            Ok(HttpResponse {
+                status: 401,
+                body: b"unauthenticated".to_vec(),
+            }),
+            Ok(HttpResponse {
+                status: 200,
+                body: serde_json::to_vec(&refresh_resp).unwrap(),
+            }),
+            Ok(HttpResponse {
+                status: 200,
+                body: serde_json::to_vec(&quota_resp).unwrap(),
+            }),
+        ]);
+        let request = ProviderRequest {
+            account_id: Some("test-global-acc".to_owned()),
+            captured_at: "2026-09-21T00:00:00Z".to_owned(),
+            timeout: Duration::from_secs(5),
+            max_response_body_bytes: 65536,
+            credential: Some(json!({ "token": global_token })),
+        };
+        let cancel = CancellationToken::default();
+        let result = StepFunProvider
+            .query(&request, &http, &cancel)
+            .unwrap()
+            .unwrap();
+        assert_eq!(result["kind"], "windows");
+        assert_eq!(
+            result["credential_update"]["access_token"],
+            "header.new_global1.sig...header.new_global2.sig"
+        );
+        let requests = http.requests();
+        assert_eq!(requests.len(), 3);
+        assert_eq!(requests[0].url, STEPFUN_GLOBAL_STEP_PLAN_RATE_LIMIT_URL);
+        assert_eq!(requests[0].headers["Oasis-appID"], "20700");
+        assert_eq!(requests[1].url, STEPFUN_GLOBAL_REFRESH_TOKEN_URL);
+        assert_eq!(requests[1].headers["Oasis-appID"], "20700");
+        assert_eq!(requests[1].headers["Origin"], "https://platform.stepfun.ai");
+        assert_eq!(requests[2].url, STEPFUN_GLOBAL_STEP_PLAN_RATE_LIMIT_URL);
+        assert_eq!(requests[0].headers["Oasis-Webid"], "dev-global");
     }
 
     #[test]

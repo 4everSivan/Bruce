@@ -194,6 +194,10 @@ final class OnboardingCoordinator: ObservableObject {
         subscriptions.saveAndVerifyKimi(apiKey: apiKey)
     }
 
+    func saveAndVerifyStepFun(token: String, site: StepFunSite? = nil) {
+        subscriptions.saveAndVerifyStepFun(token: token, site: site)
+    }
+
     func importClaudeFromLocal() {
         subscriptions.importClaudeFromLocal()
     }

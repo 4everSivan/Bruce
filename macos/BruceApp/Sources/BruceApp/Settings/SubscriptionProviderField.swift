@@ -42,6 +42,10 @@ enum APIKeyProviderExtra {
     case sitePicker(Binding<Bool>)
     /// 火山引擎: 从 CC Switch 导入 (拉起确认对话框).
     case ccSwitchImport(Binding<Bool>)
+    /// 网页登录自动捕获 (通用).
+    case webLogin(buttonTitle: String, hint: String, action: () -> Void)
+    /// StepFun 双站点网页登录.
+    case stepfunWebLogin(onLoginDomestic: () -> Void, onLoginGlobal: () -> Void)
 }
 
 /// 设置页 provider 行的就地错误提示 (橙色, 可诊断, 不回显凭证).

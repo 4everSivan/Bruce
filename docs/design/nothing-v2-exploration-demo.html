@@ -1,0 +1,1505 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark" data-variant="glyph">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bruce Dashboard — Nothing 风格高保真优化方案探索 (v2 Demo)</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Doto:wght@400..900&family=Space+Grotesk:wght@300..700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+<style>
+/* ============================================================
+   GLOBAL RESET & VARIABLES
+   ============================================================ */
+:root {
+  --black: #000000;
+  --surface: #101010;
+  --surface-raised: #181818;
+  --surface-tint: #1c1c1c;
+  --border: #222222;
+  --border-visible: #303030;
+  --border-subtle: #191919;
+  --text-disabled: #555555;
+  --text-secondary: #8a8a8a;
+  --text-primary: #e2e2e2;
+  --text-display: #ffffff;
+  --accent: #d71921; /* Nothing Iconic Red */
+  --accent-soft: rgba(215, 25, 33, 0.15);
+  --warning: #d4a843;
+  --success: #4a9e5c; /* Glyph Breathing Green */
+  --success-glow: rgba(74, 158, 92, 0.35);
+  --interactive: #5b9bf6;
+  --backdrop: #0d0d0d;
+  --backdrop-dot: #242424;
+
+  --f-display: "Doto", "Space Mono", monospace;
+  --f-ui: "Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif;
+  --f-mono: "Space Mono", "SF Mono", monospace;
+
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --duration: .22s;
+}
+
+html[data-theme="light"] {
+  --black: #f2f2f4;
+  --surface: #ffffff;
+  --surface-raised: #f7f7f8;
+  --surface-tint: #ededf0;
+  --border: #e3e3e7;
+  --border-visible: #cfcfd4;
+  --border-subtle: #eeeeef;
+  --text-disabled: #9e9ea6;
+  --text-secondary: #6e6e76;
+  --text-primary: #1c1c1f;
+  --text-display: #050505;
+  --backdrop: #e5e5e8;
+  --backdrop-dot: #ceced3;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--backdrop);
+  background-image: radial-gradient(circle, var(--backdrop-dot) 1px, transparent 1px);
+  background-size: 16px 16px;
+  font-family: var(--f-ui);
+  color: var(--text-primary);
+  min-height: 100vh;
+  padding: 40px 20px 80px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+  transition: background-color var(--duration) var(--ease);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ============================================================
+   TOP CONTROLLER BAR (Demo Switcher)
+   ============================================================ */
+.ctrl-bar {
+  width: 100%;
+  max-width: 980px;
+  background: var(--surface);
+  border: 1px solid var(--border-visible);
+  border-radius: 8px;
+  padding: 12px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+}
+
+.brand-tag {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--f-mono);
+  font-size: 12px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.brand-tag .red-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+}
+
+.variant-selector {
+  display: flex;
+  gap: 4px;
+  background: var(--surface-raised);
+  padding: 3px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+.variant-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-family: var(--f-mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  padding: 6px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all .15s var(--ease);
+}
+.variant-btn:hover { color: var(--text-display); }
+.variant-btn[aria-pressed="true"] {
+  background: var(--text-display);
+  color: var(--black);
+  font-weight: 700;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+}
+
+.toggles {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tgl-btn {
+  background: transparent;
+  border: 1px solid var(--border-visible);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  padding: 6px 10px;
+  font-family: var(--f-mono);
+  font-size: 10.5px;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all .15s;
+}
+.tgl-btn:hover { color: var(--text-display); border-color: var(--text-secondary); }
+.tgl-btn[data-active="true"] {
+  background: var(--text-display);
+  color: var(--black);
+  border-color: var(--text-display);
+}
+
+/* ============================================================
+   VARIANT THEME DEFINITIONS
+   ============================================================ */
+
+/* ---------- 方案 1: NOTHING OS 3.0 WIDGETS (现代部件风) ---------- */
+html[data-variant="widget"] {
+  --r-panel: 18px;
+  --r-card: 14px;
+  --r-chip: 6px;
+  --r-btn: 8px;
+  --r-dot: 2px;
+  --panel-border: 1px solid var(--border-visible);
+  --card-border: 1px solid var(--border);
+  --card-shadow: 0 2px 10px rgba(0,0,0,0.15);
+  --card-bg: var(--surface);
+}
+html[data-variant="widget"] .card {
+  backdrop-filter: blur(12px);
+}
+html[data-variant="widget"] .meter-bar-tick {
+  border-radius: 2px;
+}
+html[data-variant="widget"] .tech-stamp {
+  display: none;
+}
+html[data-variant="widget"] .circuit-wire {
+  display: none;
+}
+
+/* ---------- 方案 2: INDUSTRIAL GLYPH & SCHEMATIC (工业电路与 Glyph 刻线风) ---------- */
+html[data-variant="glyph"] {
+  --r-panel: 10px;
+  --r-card: 4px;
+  --r-chip: 2px;
+  --r-btn: 3px;
+  --r-dot: 0px;
+  --panel-border: 1px solid var(--border-visible);
+  --card-border: 1px solid var(--border);
+  --card-shadow: none;
+  --card-bg: var(--surface);
+}
+html[data-variant="glyph"] .card {
+  position: relative;
+  background-image: 
+    radial-gradient(var(--border) 1px, transparent 1px);
+  background-size: 12px 12px;
+  background-position: 0 0;
+}
+/* 移除卡片右上角生硬的红色装饰刻线，恢复纯净克制的 1px 工业精密线与点阵底纹 */
+html[data-variant="glyph"] .card::after {
+  display: none;
+}
+html[data-variant="glyph"] .tech-stamp {
+  display: inline-flex;
+}
+html[data-variant="glyph"] .circuit-wire {
+  display: block;
+}
+
+/* ---------- 方案 3: TACTILE HI-FI CONSOLE (复古硬件合成器/Braun音响风) ---------- */
+html[data-variant="hifi"] {
+  --r-panel: 0px;
+  --r-card: 0px;
+  --r-chip: 0px;
+  --r-btn: 0px;
+  --r-dot: 0px;
+  --panel-border: 2px solid var(--text-display);
+  --card-border: 1px solid var(--border-visible);
+  --card-shadow: none;
+  --card-bg: var(--surface);
+}
+html[data-variant="hifi"] .panel {
+  border-width: 2px;
+}
+html[data-variant="hifi"] .card {
+  border-left: 3px solid var(--text-secondary);
+}
+html[data-variant="hifi"] .card:hover {
+  border-left-color: var(--accent);
+}
+html[data-variant="hifi"] .tech-stamp {
+  display: inline-flex;
+  background: var(--text-display);
+  color: var(--black) !important;
+  font-weight: 700;
+}
+html[data-variant="hifi"] .circuit-wire {
+  display: none;
+}
+html[data-variant="hifi"] .f-accent-red {
+  color: var(--accent);
+}
+
+/* ============================================================
+   DASHBOARD PANEL MAIN CONTAINER (440px Native MenuBar Spec)
+   ============================================================ */
+.panel {
+  width: 440px;
+  background: var(--black);
+  border: var(--panel-border);
+  border-radius: var(--r-panel);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 48px rgba(0,0,0,0.45);
+  transition: all var(--duration) var(--ease);
+}
+
+/* Panel Header Bar */
+.panel-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.panel-sysinfo {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: .08em;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+.glyph-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: var(--r-chip);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-visible);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.glyph-pill .led {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 5px var(--success);
+  animation: pulse-led 2s infinite ease-in-out;
+}
+@keyframes pulse-led {
+  0%, 100% { opacity: .4; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+
+.cards-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 10px 10px; /* 上下左右统一 10px，确保首末卡片与顶底栏间距完全对称 */
+}
+
+/* Base Card Style */
+.card {
+  background: var(--card-bg);
+  border: var(--card-border);
+  border-radius: var(--r-card);
+  padding: 12px 14px;
+  box-shadow: var(--card-shadow);
+  transition: all var(--duration) var(--ease);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Collapsible Card Header */
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  min-height: 24px;
+}
+/* 拖动手柄: 6 点微型点阵把手 (Nothing 极简方块点阵) */
+.drag-handle {
+  width: 14px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-disabled);
+  cursor: grab;
+  flex: none;
+  transition: all .15s;
+  padding: 2px;
+  border-radius: 2px;
+}
+.drag-handle:hover {
+  color: var(--text-display);
+  background: var(--surface-raised);
+}
+.drag-handle:active {
+  cursor: grabbing;
+}
+.drag-handle svg {
+  width: 10px;
+  height: 14px;
+  fill: currentColor;
+}
+.card-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+/* 标题定宽 84px: 消除中英文字符宽度差异导致的参差错位，实现三卡绝对垂直对齐 */
+.card-title {
+  width: 84px;
+  flex: none;
+  font-family: var(--f-ui);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  color: var(--text-display);
+  text-transform: uppercase;
+}
+/* 技术标签定宽 72px 居中对齐: 确保所有卡片的技术印章起点与终点完全在同一竖线上 */
+.tech-stamp {
+  width: 72px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  font-family: var(--f-mono);
+  font-size: 8.5px;
+  letter-spacing: .08em;
+  padding: 1px 0;
+  border-radius: 2px;
+  border: 1px solid var(--border-visible);
+  color: var(--text-disabled);
+  text-transform: uppercase;
+}
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  margin-left: auto;
+}
+.chevron-icon {
+  width: 12px; height: 12px;
+  color: var(--text-secondary);
+  transition: transform .2s var(--ease);
+}
+.card[data-collapsed="true"] .chevron-icon {
+  transform: rotate(-90deg);
+}
+
+/* 拖拽交互反馈样式 */
+.card.dragging {
+  opacity: 0.35;
+  border: 1px dashed var(--accent);
+  transform: scale(0.99);
+}
+.card.drag-over {
+  border-top: 2px solid var(--text-display);
+}
+
+/* Mini Visualizations for Collapsed States */
+.mini-summary {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  margin-right: 4px;
+}
+.card[data-collapsed="true"] .mini-summary {
+  display: flex;
+}
+.card[data-collapsed="true"] .card-body {
+  display: none;
+}
+
+/* ============================================================
+   CARD 1: TOKEN HERO CARD
+   ============================================================ */
+.hero-metric-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-top: 6px;
+}
+.hero-num-group {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.hero-number {
+  font-family: var(--f-display);
+  font-size: 52px;
+  font-weight: 800;
+  line-height: 0.95;
+  color: var(--text-display);
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: baseline;
+}
+.hero-number .sq-dot {
+  display: inline-block;
+  width: 5px; height: 5px;
+  background: var(--text-display);
+  margin: 0 4px 6px;
+}
+.hero-unit {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.hero-cost {
+  font-family: var(--f-mono);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.hero-cost-label {
+  font-size: 9px;
+  color: var(--text-disabled);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  display: block;
+  text-align: right;
+}
+
+/* Quad Metric Grid */
+.quad-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--border);
+  margin-top: 12px;
+  border-radius: var(--r-chip);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.quad-cell {
+  background: var(--surface);
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.quad-label {
+  font-family: var(--f-mono);
+  font-size: 8.5px;
+  color: var(--text-secondary);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.quad-val {
+  font-family: var(--f-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-display);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Monthly Chips */
+.monthly-strip {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 10px;
+}
+.month-chip {
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  border-radius: var(--r-chip);
+  padding: 5px 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.month-chip.current {
+  border-color: var(--text-secondary);
+  background: var(--surface-tint);
+}
+.month-chip .m-name {
+  font-family: var(--f-mono);
+  font-size: 9px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+.month-chip.current .m-name {
+  color: var(--accent);
+  font-weight: 700;
+}
+.month-chip .m-val {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Half Year Heatmap */
+.heatmap-wrap {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.heatmap-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+.sec-title {
+  font-family: var(--f-mono);
+  font-size: 9.5px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.heat-grid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(7, 8px);
+  grid-auto-columns: 8px;
+  gap: 2.5px;
+  overflow-x: auto;
+}
+.heat-grid i {
+  display: block;
+  width: 8px; height: 8px;
+  border-radius: var(--r-dot);
+  background: var(--surface-raised);
+}
+.heat-grid i[data-l="1"] { background: var(--success); opacity: .25; }
+.heat-grid i[data-l="2"] { background: var(--success); opacity: .45; }
+.heat-grid i[data-l="3"] { background: var(--success); opacity: .65; }
+.heat-grid i[data-l="4"] { background: var(--success); opacity: .85; }
+.heat-grid i[data-l="5"] { background: var(--success); opacity: 1.0; box-shadow: 0 0 3px var(--success-glow); }
+
+/* ============================================================
+   CARD 2: SUBSCRIPTION / CLOUD QUOTA
+   ============================================================ */
+.provider-row {
+  padding: 9px 0;
+  border-top: 1px solid var(--border);
+  position: relative;
+}
+.provider-row:first-child {
+  border-top: none;
+  padding-top: 4px;
+}
+.provider-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.provider-badge {
+  width: 17px; height: 17px;
+  border-radius: 3px;
+  background: var(--text-display);
+  color: var(--black);
+  font-family: var(--f-mono);
+  font-size: 9.5px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.provider-name {
+  font-family: var(--f-ui);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.plan-tag {
+  font-family: var(--f-mono);
+  font-size: 8.5px;
+  border: 1px solid var(--border-visible);
+  padding: 1px 5px;
+  border-radius: 2px;
+  color: var(--text-secondary);
+}
+.provider-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ref-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  transition: color .15s;
+}
+.ref-btn:hover { color: var(--text-display); }
+.ref-btn svg { width: 12px; height: 12px; }
+
+/* Discrete Segmented Meter Bar (Nothing VU Style) */
+.meter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.meter-label {
+  font-family: var(--f-mono);
+  font-size: 9.5px;
+  color: var(--text-secondary);
+  width: 60px;
+  flex: none;
+}
+.segbar-track {
+  flex: 1;
+  display: flex;
+  gap: 2px;
+  height: 9px;
+  background: var(--surface-raised);
+  padding: 1px;
+  border-radius: 1px;
+}
+.meter-bar-tick {
+  flex: 1;
+  background: var(--border);
+  border-radius: var(--r-dot);
+  transition: background .2s;
+}
+.meter-bar-tick.on-good { background: var(--success); }
+.meter-bar-tick.on-warn { background: var(--warning); }
+.meter-bar-tick.on-crit { background: var(--accent); }
+
+.meter-pct {
+  font-family: var(--f-mono);
+  font-size: 11.5px;
+  font-weight: 700;
+  width: 44px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.meter-pct.good { color: var(--success); }
+.meter-pct.warn { color: var(--warning); }
+.meter-pct.crit { color: var(--accent); }
+
+.meter-reset {
+  font-family: var(--f-mono);
+  font-size: 8.5px;
+  color: var(--text-disabled);
+  width: 46px;
+  text-align: right;
+}
+
+/* Threshold Legend */
+.thresh-legend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 8px;
+  margin-top: 6px;
+  border-top: 1px solid var(--border);
+}
+.th-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--f-mono);
+  font-size: 8.5px;
+  color: var(--text-disabled);
+}
+.th-item .box {
+  width: 6px; height: 6px;
+  border-radius: var(--r-dot);
+}
+.th-item .bg-g { background: var(--success); }
+.th-item .bg-w { background: var(--warning); }
+.th-item .bg-r { background: var(--accent); }
+
+/* ============================================================
+   CARD 3: AGENT USAGE / 14-DAY DOTBARS
+   ============================================================ */
+.dotbar-section {
+  margin-top: 4px;
+}
+.dotbars-grid {
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+  height: 64px;
+  padding-top: 6px;
+}
+.dot-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  cursor: pointer;
+  position: relative;
+}
+.dot-col:hover .col-val-tooltip {
+  opacity: 1;
+  transform: translateY(-2px);
+}
+.col-val-tooltip {
+  position: absolute;
+  top: -14px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--f-mono);
+  font-size: 8px;
+  background: var(--text-display);
+  color: var(--black);
+  padding: 0 3px;
+  border-radius: 2px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: all .15s;
+  font-weight: 700;
+}
+.dot-row-cells {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5px;
+}
+.dot-row-cells i {
+  display: block;
+  aspect-ratio: 1;
+  background: var(--surface-raised);
+  border-radius: var(--r-dot);
+}
+.dot-row-cells i.fill {
+  background: var(--text-display);
+}
+.dot-col[data-today="true"] {
+  border-bottom: 2px solid var(--accent);
+  padding-bottom: 2px;
+}
+
+.axis-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 5px;
+  font-family: var(--f-mono);
+  font-size: 8.5px;
+  color: var(--text-disabled);
+}
+
+/* Agent Composition Bar */
+.comp-bar {
+  display: flex;
+  height: 8px;
+  border-radius: var(--r-dot);
+  overflow: hidden;
+  gap: 1.5px;
+  margin-top: 8px;
+}
+.comp-seg {
+  height: 100%;
+}
+.comp-seg.p-claude { background: var(--text-display); }
+.comp-seg.p-codex { background: var(--text-secondary); }
+.comp-seg.p-kimi { background: var(--success); }
+.comp-seg.p-deepseek { background: var(--interactive); }
+
+.comp-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 6px;
+}
+.leg-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--f-mono);
+  font-size: 8.5px;
+  color: var(--text-secondary);
+}
+.leg-item .swatch {
+  width: 6px; height: 6px;
+  border-radius: var(--r-dot);
+}
+.leg-item .bold { color: var(--text-primary); font-weight: 700; }
+
+/* ============================================================
+   BOTTOM TOOLBAR / FOOTER
+   ============================================================ */
+.panel-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+.f-btn {
+  background: transparent;
+  border: 1px solid var(--border-visible);
+  border-radius: var(--r-btn);
+  color: var(--text-secondary);
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  padding: 5px 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all .15s;
+}
+.f-btn:hover {
+  color: var(--text-display);
+  border-color: var(--text-secondary);
+}
+.f-btn svg { width: 10px; height: 10px; }
+.f-stamp {
+  font-family: var(--f-mono);
+  font-size: 8.5px;
+  letter-spacing: .08em;
+  color: var(--text-disabled);
+  text-transform: uppercase;
+}
+
+/* ============================================================
+   SCHEMATIC OVERLAYS & ACCENTS FOR GLYPH VARIANT
+   ============================================================ */
+.circuit-wire {
+  height: 1px;
+  background: repeating-linear-gradient(90deg, var(--border-visible) 0 4px, transparent 4px 8px);
+  margin: 6px 0;
+}
+
+/* ============================================================
+   COMPARISON INTRO SECTION
+   ============================================================ */
+.intro-card {
+  width: 100%;
+  max-width: 980px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px 24px;
+}
+.intro-card h2 {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  color: var(--text-display);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.intro-card p {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  margin-bottom: 14px;
+}
+.spec-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+.spec-col {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+}
+.spec-col h3 {
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--f-mono);
+  color: var(--text-primary);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.spec-col ul {
+  list-style: none;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+.spec-col li::before {
+  content: "■ ";
+  font-size: 8px;
+  color: var(--accent);
+}
+</style>
+</head>
+
+<body>
+
+<!-- 方案选择控制器 -->
+<header class="ctrl-bar">
+  <div class="brand-tag">
+    <span class="red-dot"></span>
+    <strong>Nothing Style Lab</strong>
+    <span style="color:var(--text-disabled)">// Bruce v0.7+</span>
+  </div>
+
+  <div class="variant-selector">
+    <button class="variant-btn" data-val="glyph" aria-pressed="true" onclick="setVariant('glyph')">
+      方案 A: 工业电路与 Glyph 刻线
+    </button>
+    <button class="variant-btn" data-val="widget" aria-pressed="false" onclick="setVariant('widget')">
+      方案 B: Nothing OS 3.0 极简部件
+    </button>
+    <button class="variant-btn" data-val="hifi" aria-pressed="false" onclick="setVariant('hifi')">
+      方案 C: 复古合成器 Hi-Fi 仪表
+    </button>
+  </div>
+
+  <div class="toggles">
+    <button class="tgl-btn" id="btnTheme" onclick="toggleTheme()">浅色 / 深色</button>
+    <button class="tgl-btn" id="btnCollapseAll" onclick="toggleCollapseAll()">折叠 / 展开</button>
+  </div>
+</header>
+
+<!-- 设计提案说明卡 -->
+<section class="intro-card">
+  <h2>
+    <span>BRUCE DASHBOARD // NOTHING 风格优化提案</span>
+  </h2>
+  <p>
+    当前 Bruce 的 Nothing 主题已经完成了 <code>Doto</code> 字体、52px Hero 点阵数字、单色卡片和绿阶三档阈值的基础建设。但在「视觉层次拉伸」、「品牌辨识度（Glyph/红点/硬件感）」和「折叠微态」上仍有较大提升空间。下方提供三种不同审美侧重的高保真方案供选择：
+  </p>
+
+  <div class="spec-grid">
+    <div class="spec-col">
+      <h3>方案 A · 工业电路 (Glyph)</h3>
+      <ul>
+        <li>贴近 Nothing Phone (2/2a) 标志性背壳透明走线</li>
+        <li>右上角标志性直角刻线 (Registration Marks)</li>
+        <li>穿孔点阵微网底纹 + 激光印章 <code>[REC.01]</code></li>
+        <li>保留硬核工程机甲感与极客气息</li>
+      </ul>
+    </div>
+
+    <div class="spec-col">
+      <h3>方案 B · 系统部件 (Widget)</h3>
+      <ul>
+        <li>贴近 Nothing OS 3.0 全新锁屏小部件交互规范</li>
+        <li>14px 适度大圆角，去除锐利感，触感更圆润温和</li>
+        <li>微透玻璃晶体反光 + 胶囊状平滑呼吸指示条</li>
+        <li>兼顾苹果原生 macOS 桌面与 Nothing 现代审美</li>
+      </ul>
+    </div>
+
+    <div class="spec-col">
+      <h3>方案 C · 音响合成器 (Hi-Fi)</h3>
+      <ul>
+        <li>致敬 Teenage Engineering OP-1 与 Dieter Rams</li>
+        <li>纯直角 (0px Radius)，加粗外轮廓与机械导轨感</li>
+        <li>高反差黑白段码 LED，左侧状态彩色拨杆标识</li>
+        <li>极致的工业理性、严苛的排版模数与等宽美感</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 仪表盘高保真交互 Demo 原型 (440px 原生尺寸) -->
+<main class="panel">
+
+  <!-- 顶部状态栏 -->
+  <div class="panel-topbar">
+    <div class="panel-sysinfo">
+      <span class="glyph-pill"><i class="led"></i> LIVE MON</span>
+      <span>BRUCE.DASH // v0.7.1</span>
+    </div>
+    <div class="panel-sysinfo">
+      <span class="tech-stamp">DEV.RO</span>
+      <span style="font-weight:700">macOS 27</span>
+    </div>
+  </div>
+
+  <div class="cards-scroll">
+
+    <!-- ==================== CARD 1: TOKEN HERO ==================== -->
+    <section class="card" id="cardHero" data-collapsed="false">
+      <div class="card-header" onclick="toggleCard('cardHero', event)">
+        <div class="drag-handle" title="按住拖拽调整顺序" onclick="event.stopPropagation()">
+          <svg viewBox="0 0 10 16"><rect x="1" y="2" width="2" height="2" rx="0.5"/><rect x="7" y="2" width="2" height="2" rx="0.5"/><rect x="1" y="7" width="2" height="2" rx="0.5"/><rect x="7" y="7" width="2" height="2" rx="0.5"/><rect x="1" y="12" width="2" height="2" rx="0.5"/><rect x="7" y="12" width="2" height="2" rx="0.5"/></svg>
+        </div>
+        <div class="card-title-wrap">
+          <span class="card-title">Token 用量</span>
+          <span class="tech-stamp">METRIC.01</span>
+        </div>
+        
+        <!-- 收起态迷你摘要 -->
+        <div class="mini-summary">
+          <span style="font-family:var(--f-display);font-size:16px;font-weight:800;color:var(--success)">842.5K</span>
+          <span style="font-family:var(--f-mono);font-size:9px;color:var(--text-secondary)">$12.40</span>
+          <!-- 迷你7天热力条 -->
+          <div style="display:flex;gap:2px">
+            <i style="width:6px;height:10px;background:var(--success);opacity:.3"></i>
+            <i style="width:6px;height:10px;background:var(--success);opacity:.5"></i>
+            <i style="width:6px;height:10px;background:var(--success);opacity:.2"></i>
+            <i style="width:6px;height:10px;background:var(--success);opacity:.8"></i>
+            <i style="width:6px;height:10px;background:var(--success);opacity:1"></i>
+            <i style="width:6px;height:10px;background:var(--success);opacity:.6"></i>
+            <i style="width:6px;height:10px;background:var(--success);opacity:.9"></i>
+          </div>
+        </div>
+
+        <div class="header-right">
+          <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+      </div>
+
+      <div class="card-body">
+        <div class="hero-metric-row">
+          <div class="hero-num-group">
+            <div class="hero-number">
+              842<span class="sq-dot"></span>5<span style="font-size:38px">K</span>
+            </div>
+            <span class="hero-unit">tokens</span>
+          </div>
+          <div>
+            <span class="hero-cost-label">Est. Cost</span>
+            <span class="hero-cost">$12.40</span>
+          </div>
+        </div>
+
+        <!-- 四分格 Quad Grid -->
+        <div class="quad-grid">
+          <div class="quad-cell">
+            <span class="quad-label">Today</span>
+            <span class="quad-val">124.2K</span>
+          </div>
+          <div class="quad-cell">
+            <span class="quad-label">This Wk</span>
+            <span class="quad-val">512.0K</span>
+          </div>
+          <div class="quad-cell">
+            <span class="quad-label">This Mo</span>
+            <span class="quad-val">842.5K</span>
+          </div>
+          <div class="quad-cell">
+            <span class="quad-label">Yest.</span>
+            <span class="quad-val">98.4K</span>
+          </div>
+        </div>
+
+        <!-- 3 个月历史聚合 Chip -->
+        <div class="monthly-strip">
+          <div class="month-chip">
+            <span class="m-name">07 月</span>
+            <span class="m-val">410K</span>
+          </div>
+          <div class="month-chip">
+            <span class="m-name">08 月</span>
+            <span class="m-val">980K</span>
+          </div>
+          <div class="month-chip current">
+            <span class="m-name">09 月 ●</span>
+            <span class="m-val">842K</span>
+          </div>
+        </div>
+
+        <!-- 半年热力图 -->
+        <div class="heatmap-wrap">
+          <div class="heatmap-header">
+            <span class="sec-title">半年活动矩阵 · 26 WEEKS</span>
+            <span style="font-family:var(--f-mono);font-size:8.5px;color:var(--text-disabled)">LEVEL 1-5</span>
+          </div>
+          <div class="heat-grid" id="heatGrid"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== CARD 2: SUBSCRIPTION QUOTA ==================== -->
+    <section class="card" id="cardSub" data-collapsed="false">
+      <div class="card-header" onclick="toggleCard('cardSub', event)">
+        <div class="drag-handle" title="按住拖拽调整顺序" onclick="event.stopPropagation()">
+          <svg viewBox="0 0 10 16"><rect x="1" y="2" width="2" height="2" rx="0.5"/><rect x="7" y="2" width="2" height="2" rx="0.5"/><rect x="1" y="7" width="2" height="2" rx="0.5"/><rect x="7" y="7" width="2" height="2" rx="0.5"/><rect x="1" y="12" width="2" height="2" rx="0.5"/><rect x="7" y="12" width="2" height="2" rx="0.5"/></svg>
+        </div>
+        <div class="card-title-wrap">
+          <span class="card-title">订阅用量</span>
+          <span class="tech-stamp">QUOTA.LIVE</span>
+        </div>
+
+        <!-- 收起态迷你摘要 -->
+        <div class="mini-summary">
+          <div style="display:flex;align-items:center;gap:4px">
+            <span style="font-family:var(--f-mono);font-size:9px;font-weight:700;background:var(--text-display);color:var(--black);padding:1px 3px;border-radius:2px">C</span>
+            <span style="font-family:var(--f-mono);font-size:10px;color:var(--warning);font-weight:700">68%</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:4px">
+            <span style="font-family:var(--f-mono);font-size:9px;font-weight:700;background:var(--text-display);color:var(--black);padding:1px 3px;border-radius:2px">A</span>
+            <span style="font-family:var(--f-mono);font-size:10px;color:var(--accent);font-weight:700">88%</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:4px">
+            <span style="font-family:var(--f-mono);font-size:9px;font-weight:700;background:var(--text-display);color:var(--black);padding:1px 3px;border-radius:2px">D</span>
+            <span style="font-family:var(--f-mono);font-size:10px;color:var(--success);font-weight:700">¥38</span>
+          </div>
+        </div>
+
+        <div class="header-right">
+          <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+      </div>
+
+      <div class="card-body">
+        <!-- Provider 1: Codex -->
+        <div class="provider-row">
+          <div class="provider-head">
+            <span class="provider-badge">C</span>
+            <span class="provider-name">Codex</span>
+            <span class="plan-tag">PLUS</span>
+            <div class="provider-actions">
+              <span style="font-family:var(--f-mono);font-size:8.5px;color:var(--text-disabled)">2 Accounts</span>
+              <button class="ref-btn" title="定向刷新 Codex">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+              </button>
+            </div>
+          </div>
+          <!-- 5h window -->
+          <div class="meter-row">
+            <span class="meter-label">5 小时配额</span>
+            <div class="segbar-track" id="barCodex5h" data-pct="68" data-level="warn"></div>
+            <span class="meter-pct warn">68%</span>
+            <span class="meter-reset">2h 15m</span>
+          </div>
+          <!-- weekly window -->
+          <div class="meter-row">
+            <span class="meter-label">周度配额</span>
+            <div class="segbar-track" id="barCodexWk" data-pct="92" data-level="crit"></div>
+            <span class="meter-pct crit">92%</span>
+            <span class="meter-reset">3d 18h</span>
+          </div>
+        </div>
+
+        <!-- Provider 2: Claude Code -->
+        <div class="provider-row">
+          <div class="provider-head">
+            <span class="provider-badge">A</span>
+            <span class="provider-name">Claude Code</span>
+            <span class="plan-tag">MAX 200</span>
+            <div class="provider-actions">
+              <button class="ref-btn" title="定向刷新 Claude">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="meter-row">
+            <span class="meter-label">5 小时配额</span>
+            <div class="segbar-track" id="barClaude5h" data-pct="42" data-level="good"></div>
+            <span class="meter-pct good">42%</span>
+            <span class="meter-reset">4h 10m</span>
+          </div>
+          <div class="meter-row">
+            <span class="meter-label">周度配额</span>
+            <div class="segbar-track" id="barClaudeWk" data-pct="84" data-level="crit"></div>
+            <span class="meter-pct crit">84%</span>
+            <span class="meter-reset">1d 06h</span>
+          </div>
+        </div>
+
+        <!-- Provider 3: DeepSeek (余额型) -->
+        <div class="provider-row">
+          <div class="provider-head">
+            <span class="provider-badge">D</span>
+            <span class="provider-name">DeepSeek API</span>
+            <span class="plan-tag">POST-PAID</span>
+            <div class="provider-actions">
+              <span style="font-family:var(--f-mono);font-size:11px;font-weight:700;color:var(--text-display)">本月消费 ¥38.21</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 阈值三档图例 -->
+        <div class="thresh-legend">
+          <div class="th-item"><i class="box bg-g"></i> &lt;50% 安全</div>
+          <div class="th-item"><i class="box bg-w"></i> 50–79% 关注</div>
+          <div class="th-item"><i class="box bg-r"></i> ≥80% 警告</div>
+          <span style="margin-left:auto;font-family:var(--f-mono);font-size:8px;color:var(--text-disabled)">AUTO-REFRESH: 60s</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== CARD 3: AGENT USAGE ==================== -->
+    <section class="card" id="cardAgent" data-collapsed="false">
+      <div class="card-header" onclick="toggleCard('cardAgent', event)">
+        <div class="drag-handle" title="按住拖拽调整顺序" onclick="event.stopPropagation()">
+          <svg viewBox="0 0 10 16"><rect x="1" y="2" width="2" height="2" rx="0.5"/><rect x="7" y="2" width="2" height="2" rx="0.5"/><rect x="1" y="7" width="2" height="2" rx="0.5"/><rect x="7" y="7" width="2" height="2" rx="0.5"/><rect x="1" y="12" width="2" height="2" rx="0.5"/><rect x="7" y="12" width="2" height="2" rx="0.5"/></svg>
+        </div>
+        <div class="card-title-wrap">
+          <span class="card-title">Agent 用量</span>
+          <span class="tech-stamp">HIST.14D</span>
+        </div>
+
+        <!-- 收起态迷你折线 -->
+        <div class="mini-summary">
+          <span style="font-family:var(--f-mono);font-size:9.5px;color:var(--text-secondary)">24H PEAK</span>
+          <span style="font-family:var(--f-mono);font-size:11px;font-weight:700;color:var(--text-display)">52K/h</span>
+          <!-- 迷你折线 -->
+          <svg style="width:70px;height:12px;overflow:visible">
+            <polyline points="0,10 10,8 20,11 30,5 40,2 50,7 60,3 70,8" fill="none" stroke="var(--text-secondary)" stroke-width="1.5"/>
+          </svg>
+        </div>
+
+        <div class="header-right">
+          <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+      </div>
+
+      <div class="card-body">
+        <div class="dotbar-section">
+          <!-- 14 日历史点阵柱状图 -->
+          <div class="dotbars-grid" id="dotBars"></div>
+          <div class="axis-labels">
+            <span>14 天前</span>
+            <span>7 天前</span>
+            <span style="color:var(--accent);font-weight:700">TODAY ●</span>
+          </div>
+        </div>
+
+        <div class="circuit-wire"></div>
+
+        <!-- 14 日构成 Bar -->
+        <div style="margin-top:8px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline">
+            <span class="sec-title">Agent 占比构成</span>
+            <span style="font-family:var(--f-mono);font-size:8.5px;color:var(--text-disabled)">TOTAL 932K</span>
+          </div>
+          <div class="comp-bar">
+            <div class="comp-seg p-claude" style="flex:42"></div>
+            <div class="comp-seg p-codex" style="flex:31"></div>
+            <div class="comp-seg p-kimi" style="flex:16"></div>
+            <div class="comp-seg p-deepseek" style="flex:11"></div>
+          </div>
+          <div class="comp-legend">
+            <div class="leg-item"><i class="swatch" style="background:var(--text-display)"></i> Claude <span class="bold">42%</span></div>
+            <div class="leg-item"><i class="swatch" style="background:var(--text-secondary)"></i> Codex <span class="bold">31%</span></div>
+            <div class="leg-item"><i class="swatch" style="background:var(--success)"></i> Kimi <span class="bold">16%</span></div>
+            <div class="leg-item"><i class="swatch" style="background:var(--interactive)"></i> DeepSeek <span class="bold">11%</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- 面板底栏 -->
+  <footer class="panel-footer">
+    <button class="f-btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+      立即刷新
+    </button>
+    <span class="f-stamp">SYNC: 11:24 · 3 MOD</span>
+    <button class="f-btn">设置</button>
+  </footer>
+
+</main>
+
+<script>
+/* ---------- 方案切换 ---------- */
+function setVariant(v) {
+  document.documentElement.dataset.variant = v;
+  document.querySelectorAll('.variant-btn').forEach(btn => {
+    btn.setAttribute('aria-pressed', btn.dataset.val === v);
+  });
+}
+
+/* ---------- 浅色 / 深色切换 ---------- */
+function toggleTheme() {
+  const current = document.documentElement.dataset.theme;
+  const next = current === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next;
+  document.getElementById('btnTheme').textContent = next === 'dark' ? '深色模式' : '浅色模式';
+}
+
+/* ---------- 卡片折叠切换 (排除拖拽手柄) ---------- */
+function toggleCard(id, event) {
+  if (event && event.target && event.target.closest('.drag-handle')) {
+    return;
+  }
+  const card = document.getElementById(id);
+  const isCol = card.dataset.collapsed === 'true';
+  card.dataset.collapsed = isCol ? 'false' : 'true';
+}
+
+let allCollapsed = false;
+function toggleCollapseAll() {
+  allCollapsed = !allCollapsed;
+  document.querySelectorAll('.card').forEach(c => {
+    c.dataset.collapsed = allCollapsed ? 'true' : 'false';
+  });
+}
+
+/* ---------- 拖拽排序 (Drag and Drop Reordering) ---------- */
+(function initDragAndDrop() {
+  const container = document.querySelector('.cards-scroll');
+  let draggedCard = null;
+
+  document.querySelectorAll('.card').forEach(card => {
+    const handle = card.querySelector('.drag-handle');
+    if (!handle) return;
+
+    // 仅在按下拖拽把手时使能卡片拖动
+    handle.addEventListener('mousedown', () => {
+      card.setAttribute('draggable', 'true');
+    });
+    handle.addEventListener('mouseup', () => {
+      card.setAttribute('draggable', 'false');
+    });
+
+    card.addEventListener('dragstart', (e) => {
+      draggedCard = card;
+      card.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', card.id);
+    });
+
+    card.addEventListener('dragend', () => {
+      card.classList.remove('dragging');
+      card.setAttribute('draggable', 'false');
+      document.querySelectorAll('.card').forEach(c => c.classList.remove('drag-over'));
+      draggedCard = null;
+    });
+
+    card.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (draggedCard && draggedCard !== card) {
+        card.classList.add('drag-over');
+      }
+    });
+
+    card.addEventListener('dragleave', () => {
+      card.classList.remove('drag-over');
+    });
+
+    card.addEventListener('drop', (e) => {
+      e.preventDefault();
+      card.classList.remove('drag-over');
+      if (draggedCard && draggedCard !== card) {
+        const cards = Array.from(container.querySelectorAll('.card'));
+        const draggedIdx = cards.indexOf(draggedCard);
+        const targetIdx = cards.indexOf(card);
+        if (draggedIdx < targetIdx) {
+          container.insertBefore(draggedCard, card.nextSibling);
+        } else {
+          container.insertBefore(draggedCard, card);
+        }
+      }
+    });
+  });
+})();
+
+/* ---------- 动态构建半年热力图 (26 周 x 7 天) ---------- */
+(function initHeatmap(){
+  const grid = document.getElementById('heatGrid');
+  let seed = 19;
+  function rnd(){ seed = (seed * 9301 + 49297) % 233280; return seed / 233280; }
+  for (let w = 0; w < 26; w++) {
+    for (let d = 0; d < 7; d++) {
+      const r = rnd();
+      const level = w < 4 ? (r > 0.8 ? 1 : 0)
+                  : r > 0.84 ? 5 : r > 0.65 ? 4 : r > 0.45 ? 3 : r > 0.25 ? 2 : r > 0.08 ? 1 : 0;
+      const cell = document.createElement('i');
+      cell.dataset.l = level;
+      grid.appendChild(cell);
+    }
+  }
+})();
+
+/* ---------- 动态构建 24 段分段计量条 ---------- */
+(function initSegbars(){
+  const bars = [
+    { id: 'barCodex5h', filled: 16, level: 'warn' },
+    { id: 'barCodexWk', filled: 22, level: 'crit' },
+    { id: 'barClaude5h', filled: 10, level: 'good' },
+    { id: 'barClaudeWk', filled: 20, level: 'crit' }
+  ];
+  const TOTAL = 24;
+  bars.forEach(b => {
+    const el = document.getElementById(b.id);
+    if (!el) return;
+    for (let i = 0; i < TOTAL; i++) {
+      const tick = document.createElement('div');
+      tick.className = 'meter-bar-tick' + (i < b.filled ? (' on-' + b.level) : '');
+      el.appendChild(tick);
+    }
+  });
+})();
+
+/* ---------- 动态构建 14 日点阵柱状图 ---------- */
+(function initDotbars(){
+  const container = document.getElementById('dotBars');
+  const DAYS = [28, 35, 22, 40, 48, 38, 52, 45, 50, 58, 64, 72, 80, 95];
+  const MAX = Math.max(...DAYS);
+  const ROWS = 9; // 9行，每行3点 = 最大27点
+  
+  DAYS.forEach((val, idx) => {
+    const isToday = idx === DAYS.length - 1;
+    const col = document.createElement('div');
+    col.className = 'dot-col';
+    if (isToday) col.dataset.today = 'true';
+
+    // Tooltip
+    const tip = document.createElement('span');
+    tip.className = 'col-val-tooltip';
+    tip.textContent = val + 'K';
+    col.appendChild(tip);
+
+    const filledRows = Math.max(1, Math.round((val / MAX) * ROWS));
+    
+    // 从顶部到底部渲染9行
+    for (let r = 0; r < ROWS; r++) {
+      const rowEl = document.createElement('div');
+      rowEl.className = 'dot-row-cells';
+      const isFilledRow = (ROWS - r) <= filledRows;
+      for (let c = 0; c < 3; c++) {
+        const dot = document.createElement('i');
+        if (isFilledRow) dot.className = 'fill';
+        rowEl.appendChild(dot);
+      }
+      col.appendChild(rowEl);
+    }
+    container.appendChild(col);
+  });
+})();
+</script>
+</body>
+</html>

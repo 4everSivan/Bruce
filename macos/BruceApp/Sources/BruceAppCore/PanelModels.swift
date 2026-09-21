@@ -843,7 +843,8 @@ package struct HourlyLineViewModel: Equatable, Sendable {
 // MARK: - 卡片收起状态
 
 /// 仪表盘可收起卡片标识; rawValue 作为 UserDefaults 持久化键值.
-package enum DashboardCardID: String, CaseIterable, Equatable, Sendable {
+package enum DashboardCardID: String, CaseIterable, Equatable, Sendable, Identifiable {
+    package var id: String { rawValue }
     /// Token 用量卡.
     case usage
     /// 订阅用量卡.

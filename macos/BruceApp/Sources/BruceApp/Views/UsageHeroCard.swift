@@ -52,7 +52,9 @@ struct UsageHeroCard: View {
             CollapsibleCardHeader(
                 title: "Token 用量",
                 isCollapsed: isCollapsed,
-                onToggle: onToggleCollapse
+                onToggle: onToggleCollapse,
+                stamp: "METRIC.01",
+                cardID: .usage
             ) {
                 if viewModel.isLive {
                     LiveIndicator(nothingStyle: isNothing)
@@ -374,10 +376,10 @@ struct UsageHeroCard: View {
                     light: Color.white.opacity(month.isCurrent ? 0.6 : 0.4),
                     dark: Color.white.opacity(month.isCurrent ? 0.14 : 0.08)
                 ),
-            in: RoundedRectangle(cornerRadius: isNothing ? 3 : 10, style: .continuous)
+            in: RoundedRectangle(cornerRadius: isNothing ? 2 : 10, style: .continuous)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: isNothing ? 3 : 10, style: .continuous)
+            RoundedRectangle(cornerRadius: isNothing ? 2 : 10, style: .continuous)
                 .strokeBorder(
                     isSelected && !isNothing ? Self.accent.opacity(0.85) :
                     isSelected ? Self.nothingHeroAccent :

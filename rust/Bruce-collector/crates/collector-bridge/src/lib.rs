@@ -52,6 +52,7 @@ const ALLOWED_CREDENTIAL_FIELDS: &[&str] = &[
     "grokQuotaAccounts",
     "opencodeGoQuotaAccounts",
     "codexQuotaAccounts",
+    "stepfunQuotaAccounts",
     "providerEnv",
     "providerMeta",
 ];

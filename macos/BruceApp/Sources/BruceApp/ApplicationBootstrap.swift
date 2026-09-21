@@ -200,6 +200,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     private let coordinator: OnboardingCoordinator
     private let diagnostics: DiagnosticService
     private var window: NSWindow?
+    private var isDockPresentationActive = false
 
     init(
         model: AppModel,
@@ -212,10 +213,10 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         super.init()
     }
 
-    /// 打开或前置设置窗口. Bruce 始终是菜单栏应用, 设置窗口不改变
-    /// activation policy, 因而不会因为打开/关闭配置而残留 Dock 图标.
+    /// 打开或前置设置窗口, 并在打开期间显示 Dock 图标.
     func present() {
         let window = window ?? makeWindow()
+        setDockIconVisible(true)
         NSApplication.shared.activate(ignoringOtherApps: true)
         if window.isMiniaturized {
             window.deminiaturize(nil)
@@ -223,18 +224,26 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         window.makeKeyAndOrderFront(nil)
     }
 
-    /// 兼容系统重新激活回调: 若设置窗口已创建, 重新前置它.
+    /// Dock 图标被点击时: 若配置会话仍在, 重新前置设置窗口.
     func handleDockReopen() {
-        guard window != nil else { return }
+        guard isDockPresentationActive else { return }
         present()
     }
 
     // MARK: - NSWindowDelegate
 
     func windowWillClose(_ notification: Notification) {
-        // isReleasedWhenClosed = false: 关闭后窗口对象保留, 仅隐藏.
-        // activation policy 始终由 AppDelegate 保持为 .accessory, 这里无需
-        // 在窗口生命周期中切换 .regular/.accessory.
+        // 关闭配置窗口后恢复菜单栏-only, 去掉 Dock 图标.
+        setDockIconVisible(false)
+    }
+
+    // MARK: - Private
+
+    private func setDockIconVisible(_ visible: Bool) {
+        guard isDockPresentationActive != visible else { return }
+        isDockPresentationActive = visible
+        let policy: NSApplication.ActivationPolicy = visible ? .regular : .accessory
+        _ = NSApp.setActivationPolicy(policy)
     }
 
     // MARK: - Private

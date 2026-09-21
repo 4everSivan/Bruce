@@ -1,3 +1,4 @@
+import BruceAppCore
 import BruceGlassSurfaceCore
 import BruceOnboardingCore
 import SwiftUI
@@ -21,7 +22,7 @@ struct PanelCardContainer<Content: View>: View {
 
     private var shape: RoundedRectangle {
         RoundedRectangle(
-            cornerRadius: isNothingSurface ? 5 : 16,
+            cornerRadius: isNothingSurface ? 4 : 16,
             style: .continuous
         )
     }
@@ -133,13 +134,13 @@ private struct NothingPanelButtonStyle: ButtonStyle {
                 configuration.isPressed
                     ? tokens.controlPressedFillColor
                     : tokens.controlFillColor,
-                in: RoundedRectangle(cornerRadius: 5, style: .continuous)
+                in: RoundedRectangle(cornerRadius: 3, style: .continuous)
             )
             .overlay {
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
                     .strokeBorder(tokens.controlBorderColor, lineWidth: 1)
             }
-            .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
     }
 }
 
@@ -186,6 +187,8 @@ struct CollapsibleCardHeader<Status: View, Mini: View>: View {
     let title: String
     let isCollapsed: Bool
     let onToggle: () -> Void
+    var stamp: String? = nil
+    var cardID: DashboardCardID? = nil
     @ViewBuilder let status: Status
     @ViewBuilder let mini: Mini
 
@@ -197,8 +200,10 @@ struct CollapsibleCardHeader<Status: View, Mini: View>: View {
         theme.interfaceStyle == .nothing
     }
 
-    /// 标题定宽: 按最长标题「订阅用量」4 字 + 余量, 保证三卡图形区左缘齐平.
-    private let titleWidth: CGFloat = 92
+    /// 标题定宽: 在 Nothing 主题下定宽 84 (与 Demo A 严格齐平); 经典主题维持 92.
+    private var resolvedTitleWidth: CGFloat {
+        isNothing ? 84 : 92
+    }
 
     var body: some View {
         Button {
@@ -206,13 +211,29 @@ struct CollapsibleCardHeader<Status: View, Mini: View>: View {
                 onToggle()
             }
         } label: {
-            HStack(spacing: 15) {
+            HStack(spacing: isNothing ? 8 : 15) {
+                if isNothing {
+                    NothingDragHandle()
+                }
                 Text(title)
                     .font(isNothing
                         ? NothingFont.ui(11.5, weight: .semibold)
                         : .system(size: 12.5, weight: .semibold))
                     .foregroundStyle(isNothing ? nothingTitleColor : Color.primary)
-                    .frame(width: titleWidth, alignment: .leading)
+                    .frame(width: resolvedTitleWidth, alignment: .leading)
+                if isNothing, let stamp {
+                    Text(stamp)
+                        .font(NothingFont.mono(8.5))
+                        .tracking(0.68)
+                        .foregroundStyle(nothingSecondaryColor)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .frame(width: 72, alignment: .center)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                                .strokeBorder(nothingBorderColor, lineWidth: 1)
+                        }
+                }
                 if isCollapsed {
                     mini
                         .frame(maxWidth: .infinity)
@@ -240,4 +261,77 @@ struct CollapsibleCardHeader<Status: View, Mini: View>: View {
     private var nothingTitleColor: Color {
         Color.adaptive(light: Color(hex: "#666666"), dark: Color(hex: "#999999"))
     }
+
+    private var nothingSecondaryColor: Color {
+        Color.adaptive(light: Color(hex: "#666666"), dark: Color(hex: "#8A8A8A"))
+    }
+
+    private var nothingBorderColor: Color {
+        Color.adaptive(light: Color(hex: "#CCCCCC"), dark: Color(hex: "#303030"))
+    }
+}
+
+/// Nothing 风格 6 点微型点阵拖拽手柄 (2x3 方形像素点阵, 尺寸 10x14)
+struct NothingDragHandle: View {
+    @State private var hovering = false
+
+    var body: some View {
+        VStack(spacing: 2.5) {
+            HStack(spacing: 3) {
+                dot; dot
+            }
+            HStack(spacing: 3) {
+                dot; dot
+            }
+            HStack(spacing: 3) {
+                dot; dot
+            }
+        }
+        .padding(.horizontal, 2)
+        .padding(.vertical, 3)
+        .background(
+            hovering
+                ? Color.adaptive(light: Color(hex: "#E0E0E0"), dark: Color(hex: "#222222"))
+                : Color.clear,
+            in: RoundedRectangle(cornerRadius: 2, style: .continuous)
+        )
+        .onHover { hovering = $0 }
+        .help("拖拽调整卡片顺序")
+    }
+
+    private var dot: some View {
+        Rectangle()
+            .fill(hovering ? Color.primary : Color.secondary.opacity(0.4))
+            .frame(width: 2, height: 2)
+    }
+}
+
+/// 仪表盘卡片拖拽让位代理: 悬停经过目标卡片时立即平滑交换位置并持久化.
+struct DashboardCardDropDelegate: DropDelegate {
+    let target: DashboardCardID
+    let move: (DashboardCardID, DashboardCardID) -> Void
+
+    func validateDrop(info: DropInfo) -> Bool {
+        info.hasItemsConforming(to: [.text])
+    }
+
+    func dropEntered(info: DropInfo) {
+        guard let provider = info.itemProviders(for: [.text]).first else { return }
+        let target = self.target
+        _ = provider.loadObject(ofClass: String.self) { raw, _ in
+            guard let raw else { return }
+            Task { @MainActor in
+                guard let dragged = DashboardCardID(rawValue: raw), dragged != target else { return }
+                withAnimation(.easeOut(duration: 0.15)) {
+                    move(dragged, target)
+                }
+            }
+        }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool { true }
 }

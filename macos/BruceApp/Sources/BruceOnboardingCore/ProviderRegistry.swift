@@ -21,6 +21,8 @@ public enum InjectionKind: Sendable, Equatable {
     case grokMetaEnabledPlusOptionalOAuth
     /// `opencodeGoQuotaAccounts` = 多账号 oauth JSON 映射 (服务端 console OAuth)
     case opencodeGoQuotaAccounts
+    /// 顶层 `stepfunQuotaAccounts` = {accountID: {token, display_name}} 映射
+    case stepfunQuotaAccounts
 }
 
 // MARK: - ConfiguredRule
@@ -206,6 +208,13 @@ public enum ProviderRegistry {
                 id: .opencodeGo,
                 credentialAccounts: [SubscriptionCredentialAccount.opencodeGoOAuth],
                 injectionKind: .opencodeGoQuotaAccounts,
+                configuredRule: .allCredentialAccountsNonEmpty
+            )
+        case .stepfun:
+            return ProviderDescriptor(
+                id: .stepfun,
+                credentialAccounts: [SubscriptionCredentialAccount.stepfunToken],
+                injectionKind: .stepfunQuotaAccounts,
                 configuredRule: .allCredentialAccountsNonEmpty
             )
         }

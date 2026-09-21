@@ -17,12 +17,33 @@ extension BruceOnboardingCoreHarness {
             "grok 必须支持按账号轮换"
         )
         try coreExpect(
+            CredentialRotationMerge.supportsAccountScopedRotation(forProvider: "stepfun"),
+            "stepfun 必须支持按账号轮换"
+        )
+        try coreExpect(
             !CredentialRotationMerge.supportsAccountScopedRotation(forProvider: "kimi"),
             "kimi 不参与 OAuth 轮换"
         )
         try coreExpect(
             !CredentialRotationMerge.supportsAccountScopedRotation(forProvider: "unknown"),
             "未知 provider 不得轮换"
+        )
+    }
+
+    /// stepfun: Oasis-Token 轮换写回更新后的完整 token 字符串.
+    static func rotationMergeStepFunSupported() throws {
+        let merged = CredentialRotationMerge.mergedAccountJSON(
+            existingCredentialJSON: "old-oasis-token",
+            update: CredentialRotationUpdate(
+                provider: "stepfun",
+                accountId: "acc-1",
+                tokens: ["access_token": "new-refreshed-token"]
+            ),
+            providerID: .stepfun
+        )
+        try coreExpect(
+            merged == "new-refreshed-token",
+            "stepfun 轮换写回必须返回新 token, got \(merged ?? "nil")"
         )
     }
 

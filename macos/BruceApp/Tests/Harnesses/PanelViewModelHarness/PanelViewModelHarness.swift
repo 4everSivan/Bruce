@@ -1923,6 +1923,16 @@ struct PanelViewModelHarness {
         try expect(restored.isCardCollapsed(.hourly), "重启后应恢复收起状态")
         try expect(!restored.isCardCollapsed(.subscription), "未收起卡片不受影响")
         try expect(restored.collapsedCards.count == 1, "未知 rawValue 读取时必须丢弃")
+
+        // 卡片顺序与拖拽调序持久化
+        try expect(model.cardOrder == [.usage, .subscription, .hourly], "默认卡片顺序应为 usage, subscription, hourly")
+        model.moveCard(from: .hourly, to: .usage)
+        try expect(model.cardOrder == [.hourly, .usage, .subscription], "卡片调序应成功")
+        let restoredOrderModel = AppModel(collapsedDefaults: defaults)
+        try expect(restoredOrderModel.cardOrder == [.hourly, .usage, .subscription], "重启后应恢复卡片顺序")
+        defaults.set(["subscription", "bogus-card"], forKey: "dashboard.cardOrder")
+        let fallbackModel = AppModel(collapsedDefaults: defaults)
+        try expect(fallbackModel.cardOrder == [.subscription, .usage, .hourly], "未知或缺失卡片应自动补齐并去重")
     }
 
     /// 轻量解包: 与 expect 同风格, 避免引入 XCTest.
