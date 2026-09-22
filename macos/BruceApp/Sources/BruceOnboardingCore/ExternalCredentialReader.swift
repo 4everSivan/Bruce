@@ -78,14 +78,13 @@ public struct SystemExternalCredentialReader: ExternalCredentialReader, Sendable
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
-        if intent == .automatic {
-            let context = LAContext()
-            context.interactionNotAllowed = true
-            query[kSecUseAuthenticationContext as String] = context
-            // Claude Code-credentials 属于外部 CLI 的旧版 login Keychain
-            // 项目; 自动读取必须跳过需要 UI 的项目, 不唤起 SecurityAgent.
-            query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUISkip
-        }
+        let context = LAContext()
+        context.interactionNotAllowed = true
+        query[kSecUseAuthenticationContext as String] = context
+        // Claude Code-credentials 属于外部 CLI 的旧版 login Keychain
+        // 项目; 无论自动或交互模式均强制跳过需要 UI 的项目, 绝不唤起 SecurityAgent 弹窗.
+        // Keychain 锁定时直接返回 nil 并静默降级为读取本机明文配置文件.
+        query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUISkip
 
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)

@@ -194,15 +194,20 @@ where
             })
         })
         .collect::<Vec<_>>();
+    let mut visited_dirs = BTreeSet::new();
+    if let Ok(canonical) = fs::canonicalize(root) {
+        visited_dirs.insert(canonical);
+    }
+    let mut visit_ctx = VisitContext {
+        config,
+        seen: &mut seen,
+        stats: &mut stats,
+        cache_sender: &cache_sender,
+        sink: &mut sink,
+        visited_dirs,
+    };
     let scan_result = if root.is_dir() {
-        visit_tree_cached(
-            root,
-            config,
-            &mut seen,
-            &mut stats,
-            &cache_sender,
-            &mut sink,
-        )
+        visit_tree_cached(root, 0, &mut visit_ctx)
     } else {
         Ok(())
     };
@@ -223,56 +228,74 @@ where
     Ok(stats)
 }
 
-fn visit_tree_cached<F>(
-    root: &Path,
-    config: &CacheConfig,
-    seen: &mut BTreeSet<String>,
-    stats: &mut ScanStats,
-    cache_sender: &SyncSender<CacheWriteJob>,
-    sink: &mut F,
-) -> io::Result<()>
+const MAX_DIRECTORY_SCAN_DEPTH: usize = 16;
+
+struct VisitContext<'a, F> {
+    config: &'a CacheConfig,
+    seen: &'a mut BTreeSet<String>,
+    stats: &'a mut ScanStats,
+    cache_sender: &'a SyncSender<CacheWriteJob>,
+    sink: &'a mut F,
+    visited_dirs: BTreeSet<PathBuf>,
+}
+
+fn visit_tree_cached<F>(root: &Path, depth: usize, ctx: &mut VisitContext<'_, F>) -> io::Result<()>
 where
     F: FnMut(SourceDeltaChange) -> io::Result<()>,
 {
+    if depth > MAX_DIRECTORY_SCAN_DEPTH {
+        return Ok(());
+    }
     let entries = match fs::read_dir(root) {
         Ok(entries) => entries,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
         Err(error) if error.kind() == io::ErrorKind::PermissionDenied => {
-            stats.io_errors = stats.io_errors.saturating_add(1);
+            ctx.stats.io_errors = ctx.stats.io_errors.saturating_add(1);
             return Ok(());
         }
         Err(error) => return Err(error),
     };
     for entry in entries {
         let Ok(entry) = entry else {
-            stats.io_errors = stats.io_errors.saturating_add(1);
+            ctx.stats.io_errors = ctx.stats.io_errors.saturating_add(1);
             continue;
         };
         let path = entry.path();
         let Ok(metadata) = entry.metadata() else {
-            stats.io_errors = stats.io_errors.saturating_add(1);
+            ctx.stats.io_errors = ctx.stats.io_errors.saturating_add(1);
             continue;
         };
         if metadata.is_dir() {
-            visit_tree_cached(&path, config, seen, stats, cache_sender, sink)?;
+            let canonical = fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+            if ctx.visited_dirs.insert(canonical) {
+                visit_tree_cached(&path, depth + 1, ctx)?;
+            }
             continue;
         }
         if !metadata.is_file() || path.extension().and_then(|value| value.to_str()) != Some("jsonl")
         {
             continue;
         }
-        stats.files_visited = stats.files_visited.saturating_add(1);
+        ctx.stats.files_visited = ctx.stats.files_visited.saturating_add(1);
         let modified = metadata
             .modified()
             .ok()
             .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
             .map(|value| value.as_secs_f64());
-        if modified.is_some_and(|value| value < config.window.cutoff_ts) {
-            stats.files_skipped = stats.files_skipped.saturating_add(1);
+        if modified.is_some_and(|value| value < ctx.config.window.cutoff_ts) {
+            ctx.stats.files_skipped = ctx.stats.files_skipped.saturating_add(1);
             continue;
         }
-        stats.files_scanned = stats.files_scanned.saturating_add(1);
-        process_cached_file(&path, &metadata, config, seen, stats, cache_sender, sink)?;
+        ctx.stats.files_scanned = ctx.stats.files_scanned.saturating_add(1);
+        process_cached_file(
+            &path,
+            &metadata,
+            ctx.config,
+            ctx.seen,
+            ctx.stats,
+            ctx.cache_sender,
+            ctx.sink,
+        )?;
     }
     Ok(())
 }

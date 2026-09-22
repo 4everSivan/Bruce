@@ -51,8 +51,11 @@ struct BruceApp: App {
                     ?? KeychainAccessConfiguration()
             )
         )
-        let credentialStore = KeychainCredentialStore(
-            accessController: keychainAccessController
+        let credentialStore = ProtectedFileCredentialStore(
+            accessController: keychainAccessController,
+            fallbackKeychainStore: KeychainCredentialStore(
+                accessController: keychainAccessController
+            )
         )
         // Codex v2: 单一 store / OAuth client / token manager, 供登录、
         // 运行输入提供器和 Coordinator 共享 (任务 5 装配).

@@ -101,8 +101,11 @@ final class OnboardingCoordinator: ObservableObject {
             )
         self.keychainAccessController = resolvedKeychainAccessController
         let resolvedCredentialStore: CredentialStore = credentialStore
-            ?? KeychainCredentialStore(
-                accessController: resolvedKeychainAccessController
+            ?? ProtectedFileCredentialStore(
+                accessController: resolvedKeychainAccessController,
+                fallbackKeychainStore: KeychainCredentialStore(
+                    accessController: resolvedKeychainAccessController
+                )
             )
         let resolvedStore = codexStore
             ?? CodexCredentialStore(store: resolvedCredentialStore)

@@ -84,6 +84,7 @@ struct BruceOnboardingCoreHarness {
         if !IsNonInteractiveEnvironment.runningInCI {
             try keychainSubscriptionAccountsRoundTrip()
         }
+        try protectedFileCredentialStoreRoundTripAndPermissions()
         try await verifierDeepSeekConnectedWithMockSession()
         try await verifierDeepSeekFailClosed()
         try verifierKimiAPIKeyMappings()

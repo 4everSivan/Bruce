@@ -10,6 +10,7 @@ mod account;
 mod aggregation;
 mod context;
 mod execution;
+mod paths;
 
 use account::{build_account_plan, build_codex_account_plans};
 use aggregation::consume_source_changes;
@@ -380,21 +381,26 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
             let kimi_work = source_path(
                 context,
                 "daimon_kimi_sessions",
-                home.join(
-                    "Library/Application Support/kimi-desktop/daimon-share/daimon/runtime/kimi-code/home/sessions",
-                ),
+                paths::resolve_kimi_work_sessions_path(&home),
             );
-            let claude = source_path(context, "claude_projects", home.join(".claude/projects"));
-            let codex = source_path(context, "codex_sessions", home.join(".codex/sessions"));
-            let orca_home = source_path(
+            let claude = source_path(
                 context,
-                "orca_home",
-                home.join("Library/Application Support/orca"),
+                "claude_projects",
+                paths::resolve_claude_projects_path(&home),
             );
+            let codex = source_path(
+                context,
+                "codex_sessions",
+                paths::resolve_codex_sessions_path(&home),
+            );
+            let orca_home = source_path(context, "orca_home", paths::resolve_orca_home_path(&home));
             let orca_sessions = source_path(
                 context,
                 "orca_codex_sessions",
-                orca_home.join("codex-runtime-home/home/sessions"),
+                orca_home
+                    .join("codex-runtime-home")
+                    .join("home")
+                    .join("sessions"),
             );
             let orca_accounts = source_path(
                 context,
@@ -404,24 +410,28 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
             let mut codex_roots = vec![codex, orca_sessions];
             if let Ok(entries) = fs::read_dir(&orca_accounts) {
                 for entry in entries.flatten() {
-                    let sessions = entry.path().join("home/sessions");
+                    let sessions = entry.path().join("home").join("sessions");
                     if sessions.is_dir() {
                         codex_roots.push(sessions);
                     }
                 }
             }
-            let grok_root = source_path(context, "grok_home", home.join(".grok"));
-            let pi = source_path(context, "pi_sessions", home.join(".pi/agent/sessions"));
+            let grok_root = source_path(context, "grok_home", paths::resolve_grok_home_path(&home));
+            let pi = source_path(
+                context,
+                "pi_sessions",
+                paths::resolve_pi_sessions_path(&home),
+            );
             let opencode = source_path(
                 context,
                 "opencode_db",
-                home.join(".local/share/opencode/opencode.db"),
+                paths::resolve_opencode_db_path(&home),
             );
-            let zcode = source_path(context, "zcode_db", home.join(".zcode/cli/db/db.sqlite"));
+            let zcode = source_path(context, "zcode_db", paths::resolve_zcode_db_path(&home));
             let codebuddy = source_path(
                 context,
                 "codebuddy_projects",
-                home.join(".codebuddy/projects"),
+                paths::resolve_codebuddy_projects_path(&home),
             );
 
             let source_results = [

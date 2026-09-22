@@ -1016,4 +1016,55 @@ extension BruceOnboardingCoreHarness {
         let rolledBack = try String(contentsOf: target, encoding: .utf8)
         try coreExpect(rolledBack == "v2", "回滚应还原上一次写入前的 v2")
     }
+
+    static func protectedFileCredentialStoreRoundTripAndPermissions() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Bruce-file-cred-test-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let fileURL = tempDir.appendingPathComponent("credentials.json")
+        let accessController = KeychainAccessController(
+            policy: KeychainAccessPolicy(
+                configuration: KeychainAccessConfiguration(
+                    bruceStoreConfigured: true
+                )
+            )
+        )
+        let store = ProtectedFileCredentialStore(
+            fileURL: fileURL,
+            accessController: accessController
+        )
+
+        // 1. 初次写入与读取
+        try store.saveCredential("secret-v1", forAccount: "test:account")
+        let loaded = try store.loadCredential(forAccount: "test:account")
+        try coreExpect(loaded == "secret-v1", "文件凭据初次写入读取一致")
+
+        // 2. 校验文件权限: 必须是 0600 (-rw-------)
+        let attrs = try FileManager.default.attributesOfItem(atPath: fileURL.path)
+        if let permissions = attrs[.posixPermissions] as? NSNumber {
+            try coreExpect(
+                permissions.intValue == 0o600,
+                "凭据文件 POSIX 权限必须为 0600, 实际为: \(String(permissions.intValue, radix: 8))"
+            )
+        }
+
+        // 3. 覆盖写入
+        try store.saveCredential("secret-v2", forAccount: "test:account")
+        let reloaded = try store.loadCredential(forAccount: "test:account")
+        try coreExpect(reloaded == "secret-v2", "文件凭据覆盖更新一致")
+
+        // 4. 多账号并存
+        try store.saveCredential("deepseek-key", forAccount: "deepseek:key")
+        let accountCount = try store.configureKeychainAccess()
+        try coreExpect(accountCount == 2, "应记录两个账号")
+
+        // 5. 删除
+        try store.deleteCredential(forAccount: "test:account")
+        let deletedValue = try store.loadCredential(forAccount: "test:account")
+        let remainingValue = try store.loadCredential(forAccount: "deepseek:key")
+        try coreExpect(deletedValue == nil, "删除后读取应为 nil")
+        try coreExpect(remainingValue == "deepseek-key", "其余账号未被影响")
+    }
 }

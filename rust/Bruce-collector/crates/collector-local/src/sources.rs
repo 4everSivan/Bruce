@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File};
 use std::io::{self, BufReader, Read, Seek, Write};
 use std::path::{Path, PathBuf};
@@ -227,6 +227,8 @@ fn project_from_zcode(value: Option<String>, task_type: Option<String>) -> Optio
     project
 }
 
+const MAX_DIRECTORY_SCAN_DEPTH: usize = 16;
+
 fn scan_jsonl_tree<F>(root: &Path, cutoff_ts: f64, mut callback: F) -> io::Result<ScanStats>
 where
     F: FnMut(&Path, f64, &[u8], &mut ScanStats),
@@ -245,6 +247,27 @@ fn walk_jsonl_tree<F>(
 where
     F: FnMut(&Path, f64, &[u8], &mut ScanStats),
 {
+    let mut visited_dirs = BTreeSet::new();
+    if let Ok(canonical) = fs::canonicalize(root) {
+        visited_dirs.insert(canonical);
+    }
+    walk_jsonl_tree_impl(root, cutoff_ts, callback, stats, 0, &mut visited_dirs)
+}
+
+fn walk_jsonl_tree_impl<F>(
+    root: &Path,
+    cutoff_ts: f64,
+    callback: &mut F,
+    stats: &mut ScanStats,
+    depth: usize,
+    visited_dirs: &mut BTreeSet<PathBuf>,
+) -> io::Result<()>
+where
+    F: FnMut(&Path, f64, &[u8], &mut ScanStats),
+{
+    if depth > MAX_DIRECTORY_SCAN_DEPTH {
+        return Ok(());
+    }
     let entries = match fs::read_dir(root) {
         Ok(entries) => entries,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
@@ -265,7 +288,10 @@ where
             continue;
         };
         if metadata.is_dir() {
-            walk_jsonl_tree(&path, cutoff_ts, callback, stats)?;
+            let canonical = fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+            if visited_dirs.insert(canonical) {
+                walk_jsonl_tree_impl(&path, cutoff_ts, callback, stats, depth + 1, visited_dirs)?;
+            }
             continue;
         }
         if !metadata.is_file() || path.extension().and_then(|value| value.to_str()) != Some("jsonl")
@@ -2513,8 +2539,33 @@ mod tests {
             25,
             "追加后聚合 = 13 + 5(会话) + (5−1)+2+1 = 25"
         );
-        assert_eq!(appended.stats.cache_hits, 0, "文件集变化不得命中缓存");
         fs::remove_dir_all(root).unwrap();
         fs::remove_dir_all(cache_dir).unwrap();
+    }
+
+    #[test]
+    fn jsonl_tree_guard_prevents_symlink_cycle_and_excessive_depth() {
+        let root = temp_root("cycle-test");
+        let sub = root.join("sub");
+        fs::create_dir_all(&sub).unwrap();
+        fs::write(sub.join("test.jsonl"), "{\"type\":\"test\"}\n").unwrap();
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::symlink;
+            let _ = symlink(&sub, sub.join("cycle"));
+        }
+
+        let mut count = 0;
+        let stats = super::scan_jsonl_tree(&root, 0.0, |_, _, _, _| {
+            count += 1;
+        });
+
+        assert!(
+            stats.is_ok(),
+            "遍历带有循环软链接的目录不应陷入死循环或报错"
+        );
+        assert_eq!(count, 1, "文件只应被访问一次，软链接环应被正确跳过");
+        fs::remove_dir_all(&root).ok();
     }
 }

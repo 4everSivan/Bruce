@@ -587,6 +587,173 @@ public final class InMemoryCredentialStore: CredentialStore, @unchecked Sendable
     }
 }
 
+// MARK: - ProtectedFileCredentialStore
+
+/// 本地受权限保护的文件凭据存储 (0600 POSIX 权限: -rw-------).
+/// 专为本地优先设计, 避免 macOS Keychain 因 Ad-hoc 签名哈希变动而频繁弹出密码授权框.
+/// 同时为后续 Windows (%LOCALAPPDATA%\Bruce\credentials.json) 和 Linux 跨平台提供统一的基础存储模型.
+public final class ProtectedFileCredentialStore: IntentAwareCredentialStore, @unchecked Sendable {
+    public static let defaultDirectoryName = "Bruce"
+    public static let defaultFileName = "credentials.json"
+
+    private struct Payload: Codable {
+        var version: Int = 1
+        var credentials: [String: String] = [:]
+    }
+
+    public let fileURL: URL
+    private let accessController: KeychainAccessController
+    private let fallbackKeychainStore: KeychainCredentialStore?
+    private let fileManager: FileManager
+    private let lock = NSLock()
+
+    public init(
+        fileURL: URL? = nil,
+        accessController: KeychainAccessController = KeychainAccessController(),
+        fallbackKeychainStore: KeychainCredentialStore? = nil,
+        fileManager: FileManager = .default
+    ) {
+        self.accessController = accessController
+        self.fallbackKeychainStore = fallbackKeychainStore
+        self.fileManager = fileManager
+
+        if let fileURL {
+            self.fileURL = fileURL
+        } else {
+            let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+                ?? fileManager.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support", isDirectory: true)
+            self.fileURL = appSupport
+                .appendingPathComponent(Self.defaultDirectoryName, isDirectory: true)
+                .appendingPathComponent(Self.defaultFileName, isDirectory: false)
+        }
+    }
+
+    public func saveCredential(_ value: String, forAccount account: String) throws {
+        try saveCredential(value, forAccount: account, intent: .automatic)
+    }
+
+    public func saveCredential(
+        _ value: String,
+        forAccount account: String,
+        intent: KeychainAccessIntent
+    ) throws {
+        try requireAccess(intent)
+        lock.lock()
+        defer { lock.unlock() }
+
+        var payload = loadPayloadLocked()
+        payload.credentials[account] = value
+        try writePayloadLocked(payload)
+    }
+
+    public func loadCredential(forAccount account: String) throws -> String? {
+        try loadCredential(forAccount: account, intent: .automatic)
+    }
+
+    public func loadCredential(
+        forAccount account: String,
+        intent: KeychainAccessIntent
+    ) throws -> String? {
+        try requireAccess(intent)
+        lock.lock()
+        defer { lock.unlock() }
+
+        var payload = loadPayloadLocked()
+        if let existing = payload.credentials[account] {
+            return existing
+        }
+
+        // 本地文件未命中时, 尝试从既有 Keychain fallback 读取并自动迁移至文件
+        if let fallbackKeychainStore {
+            if let result = try? fallbackKeychainStore.loadCredential(forAccount: account, intent: intent),
+               !result.isEmpty {
+                payload.credentials[account] = result
+                try? writePayloadLocked(payload)
+                return result
+            }
+        }
+        return nil
+    }
+
+    public func deleteCredential(forAccount account: String) throws {
+        try deleteCredential(forAccount: account, intent: .automatic)
+    }
+
+    public func deleteCredential(
+        forAccount account: String,
+        intent: KeychainAccessIntent
+    ) throws {
+        try requireAccess(intent)
+        lock.lock()
+        defer { lock.unlock() }
+
+        var payload = loadPayloadLocked()
+        if payload.credentials.removeValue(forKey: account) != nil {
+            try writePayloadLocked(payload)
+        }
+
+        if let fallbackKeychainStore {
+            try? fallbackKeychainStore.deleteCredential(forAccount: account, intent: intent)
+        }
+    }
+
+    public func configureKeychainAccess() throws -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        let payload = loadPayloadLocked()
+        return payload.credentials.count
+    }
+
+    // MARK: - 内部私有方法
+
+    private func requireAccess(_ intent: KeychainAccessIntent) throws {
+        guard accessController.allows(source: .bruceStore, intent: intent) else {
+            if accessController.policy.state == .blocked {
+                throw KeychainError.accessBlocked(
+                    .bruceStore,
+                    errSecInteractionNotAllowed
+                )
+            }
+            throw KeychainError.notConfigured(.bruceStore)
+        }
+    }
+
+    private func loadPayloadLocked() -> Payload {
+        guard fileManager.fileExists(atPath: fileURL.path),
+              let data = try? Data(contentsOf: fileURL),
+              let payload = try? JSONDecoder().decode(Payload.self, from: data) else {
+            return Payload()
+        }
+        return payload
+    }
+
+    private func writePayloadLocked(_ payload: Payload) throws {
+        let parentDirectory = fileURL.deletingLastPathComponent()
+        if !fileManager.fileExists(atPath: parentDirectory.path) {
+            try fileManager.createDirectory(
+                at: parentDirectory,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+        }
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(payload)
+
+        let tempURL = parentDirectory.appendingPathComponent(".\(fileURL.lastPathComponent).\(UUID().uuidString).tmp")
+        try data.write(to: tempURL, options: .atomic)
+        try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: tempURL.path)
+
+        if fileManager.fileExists(atPath: fileURL.path) {
+            _ = try fileManager.replaceItemAt(fileURL, withItemAt: tempURL)
+        } else {
+            try fileManager.moveItem(at: tempURL, to: fileURL)
+        }
+        try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+    }
+}
+
 // MARK: - KeychainCredentialStore
 
 enum KeychainQueryOperation: Equatable {

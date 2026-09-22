@@ -3,14 +3,24 @@
 set -euo pipefail
 
 BRUCE_INSTALL_PREVIEW=false
-if [[ $# -gt 1 || ( $# -eq 1 && "$1" != "--install" ) ]]; then
-    echo "用法: zsh scripts/build-test-app.sh [--install]" >&2
-    echo "  --install 额外复制到 /Applications/Bruce.app 并注册 LaunchServices" >&2
-    exit 2
-fi
-if [[ $# -eq 1 ]]; then
-    BRUCE_INSTALL_PREVIEW=true
-fi
+BRUCE_BUILD_UNIVERSAL=false
+
+for arg in "$@"; do
+    case "$arg" in
+        --install)
+            BRUCE_INSTALL_PREVIEW=true
+            ;;
+        --universal)
+            BRUCE_BUILD_UNIVERSAL=true
+            ;;
+        *)
+            echo "用法: zsh scripts/build-test-app.sh [--install] [--universal]" >&2
+            echo "  --install 额外复制到 /Applications/Bruce.app 并注册 LaunchServices" >&2
+            echo "  --universal 同时构建 arm64 与 x86_64 通用二进制 (兼容所有 Intel 与 Apple Silicon Mac)" >&2
+            exit 2
+            ;;
+    esac
+done
 
 BRUCE_SCRIPT_DIR=${0:A:h}
 BRUCE_REPO_ROOT=${BRUCE_SCRIPT_DIR:h}
@@ -28,7 +38,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-required_commands=(swift cargo codesign plutil ditto strip rg xcrun)
+required_commands=(swift cargo codesign plutil ditto strip rg xcrun lipo)
 for required_command in "${required_commands[@]}"; do
     if ! command -v "$required_command" >/dev/null 2>&1; then
         echo "缺少构建命令: $required_command" >&2
@@ -40,20 +50,59 @@ source "$BRUCE_SCRIPT_DIR/swift-sdk.zsh"
 Bruce_prepare_swift_sdk
 source "$BRUCE_SCRIPT_DIR/runtime-manifest.zsh"
 Bruce_validate_packaging_sources "$BRUCE_REPO_ROOT"
-echo "编译 Rust Collector (Preview 使用同一 binary 来源)"
+
+if [[ "$BRUCE_BUILD_UNIVERSAL" == true ]]; then
+    export BRUCE_RUST_TARGET_ARCHS="arm64 x86_64"
+    echo "编译 Rust Collector (Universal 2: arm64 + x86_64)"
+else
+    echo "编译 Rust Collector (Preview 使用同一 binary 来源)"
+fi
 Bruce_build_rust_collector "$BRUCE_REPO_ROOT" release
 Bruce_validate_rust_source "$BRUCE_REPO_ROOT" release
 
-echo "编译 Bruce Preview 可执行文件"
-swift build \
-    --package-path "$BRUCE_SWIFT_PACKAGE" \
-    --configuration release \
-    --product BruceApp
-BRUCE_BIN_DIR=$(swift build \
-    --package-path "$BRUCE_SWIFT_PACKAGE" \
-    --configuration release \
-    --show-bin-path)
-BRUCE_EXECUTABLE="$BRUCE_BIN_DIR/BruceApp"
+if [[ "$BRUCE_BUILD_UNIVERSAL" == true ]]; then
+    echo "编译 Bruce Preview 可执行文件 (arm64)"
+    swift build \
+        --package-path "$BRUCE_SWIFT_PACKAGE" \
+        --configuration release \
+        --triple arm64-apple-macosx \
+        --product BruceApp
+    BRUCE_BIN_DIR="$(swift build \
+        --package-path "$BRUCE_SWIFT_PACKAGE" \
+        --configuration release \
+        --triple arm64-apple-macosx \
+        --show-bin-path)"
+    BRUCE_BIN_ARM64="$BRUCE_STAGING_ROOT/BruceApp-arm64"
+    cp -p "$BRUCE_BIN_DIR/BruceApp" "$BRUCE_BIN_ARM64"
+
+    echo "编译 Bruce Preview 可执行文件 (x86_64)"
+    swift build \
+        --package-path "$BRUCE_SWIFT_PACKAGE" \
+        --configuration release \
+        --triple x86_64-apple-macosx \
+        --product BruceApp
+    BRUCE_BIN_DIR="$(swift build \
+        --package-path "$BRUCE_SWIFT_PACKAGE" \
+        --configuration release \
+        --triple x86_64-apple-macosx \
+        --show-bin-path)"
+    BRUCE_BIN_X86="$BRUCE_STAGING_ROOT/BruceApp-x86_64"
+    cp -p "$BRUCE_BIN_DIR/BruceApp" "$BRUCE_BIN_X86"
+
+    BRUCE_EXECUTABLE="$BRUCE_STAGING_ROOT/BruceApp-universal"
+    lipo -create "$BRUCE_BIN_ARM64" "$BRUCE_BIN_X86" -output "$BRUCE_EXECUTABLE"
+else
+    echo "编译 Bruce Preview 可执行文件"
+    swift build \
+        --package-path "$BRUCE_SWIFT_PACKAGE" \
+        --configuration release \
+        --product BruceApp
+    BRUCE_BIN_DIR=$(swift build \
+        --package-path "$BRUCE_SWIFT_PACKAGE" \
+        --configuration release \
+        --show-bin-path)
+    BRUCE_EXECUTABLE="$BRUCE_BIN_DIR/BruceApp"
+fi
 
 if [[ ! -x "$BRUCE_EXECUTABLE" ]]; then
     echo "Release 可执行文件不存在: $BRUCE_EXECUTABLE" >&2
