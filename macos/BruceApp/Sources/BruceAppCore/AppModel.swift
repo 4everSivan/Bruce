@@ -656,7 +656,7 @@ package final class AppModel: ObservableObject {
 
     /// 校验并解码 agent-usage artifact; 任何失败都视为缺失.
     /// 结果按 artifact 内容缓存, 避免同一 artifact 多次解码.
-    private func decodedAgentUsageArtifact() -> AgentUsageArtifact? {
+    package func decodedAgentUsageArtifact() -> AgentUsageArtifact? {
         let raw = moduleArtifacts[.agentUsage]
         return decodedAgentUsageArtifact(from: raw)
     }

@@ -255,7 +255,7 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         lastRenderedContent = content
 
         let isIconOnly = content.metricText.isEmpty
-        let targetLength = isIconOnly ? Self.iconOnlyLength : Self.statusItemLength
+        let targetLength = isIconOnly ? Self.iconOnlyLength : targetStatusItemLength(for: content)
         if statusItem?.length != targetLength {
             statusItem?.length = targetLength
         }
@@ -295,6 +295,23 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         refreshTimer?.invalidate()
         refreshTimer = nil
         refreshPhase = 0
+    }
+
+    /// 根据当前指标文本动态测量状态项所需总宽度,
+    /// 确保 1 至 3 项指标与配额环规完整展示, 不发生右侧截断.
+    private func targetStatusItemLength(for content: MenuBarStatusItemContent) -> CGFloat {
+        guard !content.metricText.isEmpty else {
+            return Self.iconOnlyLength
+        }
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(
+                ofSize: 12,
+                weight: .regular
+            ),
+        ]
+        let textSize = (content.metricText as NSString).size(withAttributes: attributes)
+        // 25 为左侧配额环规与留白, 右侧保留 8pt 舒适内边距; 下限 64pt
+        return max(64, ceil(25 + textSize.width + 8))
     }
 
     /// 方案 04 (超细精密数字环规) 绘制:
@@ -419,7 +436,7 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
                 let textRect = NSRect(
                     x: 25,
                     y: (size.height - textSize.height) / 2,
-                    width: max(0, size.width - 27),
+                    width: max(0, size.width - 25),
                     height: textSize.height
                 )
                 text.draw(in: textRect)

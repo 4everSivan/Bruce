@@ -3,7 +3,7 @@
 //! Token, cost, day, model, and project aggregation.
 
 use collector_domain::{
-    AgentUsage, CollectionWindow, DailyUsage, ModelUsage, ProjectUsage, TokenBucket,
+    AgentUsage, CollectionWindow, DailyUsage, ModelUsage, PricingTable, ProjectUsage, TokenBucket,
 };
 use std::collections::{BTreeMap, HashMap};
 
@@ -71,6 +71,15 @@ impl UsageAccumulator {
     }
 
     pub fn finalize(self, agent_id: &str, agent_name: &str) -> AgentUsage {
+        self.finalize_with_pricing(agent_id, agent_name, &PricingTable::default())
+    }
+
+    pub fn finalize_with_pricing(
+        self,
+        agent_id: &str,
+        agent_name: &str,
+        pricing: &PricingTable,
+    ) -> AgentUsage {
         let empty = TokenBucket::default();
         let daily = self
             .window
@@ -114,12 +123,15 @@ impl UsageAccumulator {
 
         let mut today_models = Vec::with_capacity(ordered_models.len());
         for (_, model, bucket) in &ordered_models {
+            let cost_usd = pricing
+                .resolve(model)
+                .map(|rule| pricing.calculate_cost(bucket, &rule));
             today_models.push(ModelUsage {
                 model: model.clone(),
                 total: bucket.total,
                 input: bucket.display_input(),
                 output: bucket.output,
-                cost_usd: None,
+                cost_usd,
             });
         }
         today_models.truncate(5);
@@ -127,6 +139,20 @@ impl UsageAccumulator {
             .iter()
             .map(|model| (model.model.clone(), model.total))
             .collect();
+
+        let mut total_today_cost = 0.0;
+        let mut has_cost = false;
+        for (model, bucket) in &self.models_today {
+            if let Some(rule) = pricing.resolve(model) {
+                total_today_cost += pricing.calculate_cost(bucket, &rule);
+                has_cost = true;
+            }
+        }
+        let today_cost_usd = if has_cost && total_today_cost > 0.0 {
+            Some(total_today_cost)
+        } else {
+            None
+        };
 
         let model_months: BTreeMap<String, BTreeMap<String, u64>> = self
             .models_by_month
@@ -173,7 +199,7 @@ impl UsageAccumulator {
             today_models,
             projects,
             hours: self.hours.to_vec(),
-            today_cost_usd: None,
+            today_cost_usd,
         }
     }
 }
@@ -230,5 +256,27 @@ mod tests {
             encoded["modelMonths"]["2026-07"]["provider/model[fast]"],
             16
         );
+    }
+
+    #[test]
+    fn pricing_calculates_positive_costs_for_builtin_and_overrides() {
+        let mut builder = UsageContributionBuilder::new(window());
+        assert!(builder.record(UsageSample {
+            timestamp_millis: 1_785_211_200_000,
+            model: Some("k3-agent"),
+            input: 1_000_000,
+            output: 100_000,
+            cache_read: 500_000,
+            cache_creation: 0,
+            project: Some("Bruce"),
+        }));
+        let contribution = builder.contribution();
+        let mut aggregate = UsageAccumulator::new(window());
+        assert!(aggregate.merge_delta(&contribution));
+        let agent = aggregate.finalize("fixture", "Fixture");
+        assert!(agent.today_cost_usd.is_some());
+        let cost = agent.today_cost_usd.unwrap();
+        assert!((cost - 4.65).abs() < 1e-4);
+        assert_eq!(agent.today_models[0].cost_usd, Some(cost));
     }
 }

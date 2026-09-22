@@ -33,6 +33,8 @@ final class OnboardingCoordinator: ObservableObject {
     @Published private(set) var externalKeychainSources: Set<KeychainExternalSource>
     /// Bruce 是否允许投递系统通知; 仅控制应用行为, 不撤销 macOS 系统授权.
     @Published private(set) var systemNotificationsEnabled: Bool
+    /// 模型单价人工校准覆盖 (模型名 -> 校准单价).
+    @Published private(set) var pricingOverrides: [String: ModelPricingOverride]
     /// 可注入的能力探测 (测试); 默认读系统.
     var liquidGlassSupported: () -> Bool = { LiquidGlassCapability.isSupported }
 
@@ -145,6 +147,7 @@ final class OnboardingCoordinator: ObservableObject {
         self.keychainAccessState = resolvedKeychainAccessController.policy.state
         self.externalKeychainSources = config?.keychainAccess.externalSources ?? []
         self.systemNotificationsEnabled = config?.systemNotificationsEnabled ?? true
+        self.pricingOverrides = config?.pricingOverrides ?? [:]
 
         // SubscriptionService 在 self 部分初始化后创建; objectWillChange 经回调转发.
         // 使用临时无回调初始化, 随后在下方挂载 (init 内无法弱引用 self 前完成全量).
@@ -702,6 +705,44 @@ final class OnboardingCoordinator: ObservableObject {
         }
         model.setMenuBarIconOnly(iconOnly)
         model.setSettingsError(nil)
+    }
+
+    // MARK: - 模型价格校准设置
+
+    func setPricingOverride(modelName: String, override: ModelPricingOverride) {
+        var updated = pricingOverrides
+        updated[modelName] = override
+        pricingOverrides = updated
+        persistPricingOverrides()
+    }
+
+    func removePricingOverride(modelName: String) {
+        var updated = pricingOverrides
+        updated.removeValue(forKey: modelName)
+        pricingOverrides = updated
+        persistPricingOverrides()
+    }
+
+    func resetAllPricingOverrides() {
+        pricingOverrides = [:]
+        persistPricingOverrides()
+    }
+
+    private func persistPricingOverrides() {
+        guard let configStore else {
+            model.setSettingsError("配置存储不可用, 无法保存模型价格校准")
+            return
+        }
+        var config = configStore.load() ?? OnboardingConfiguration()
+        config.pricingOverrides = pricingOverrides.isEmpty ? nil : pricingOverrides
+        do {
+            try configStore.save(config)
+            model.setSettingsError(nil)
+            // 立即触发 agent-usage 重新聚合与折算
+            scheduler.refresh(.agentUsage)
+        } catch {
+            model.setSettingsError("模型单价配置保存失败")
+        }
     }
 
     // MARK: - Scheduler 协调

@@ -19,8 +19,9 @@ use collector_credential::{
     SystemCredentialSource,
 };
 use collector_domain::{
-    AgentUsage, AgentUsageArtifact, BridgeRequest, CollectionWindow, Diagnostic, WindowError,
-    AGENT_USAGE_MODULE, AGENT_USAGE_SCHEMA_VERSION,
+    AgentUsage, AgentUsageArtifact, BridgeRequest, CollectionWindow, Diagnostic,
+    ModelPricingOverride, PricingTable, WindowError, AGENT_USAGE_MODULE,
+    AGENT_USAGE_SCHEMA_VERSION,
 };
 use collector_local::{
     default_cache_root, scan_claude, scan_codebuddy, scan_codex_cached, scan_grok, scan_kimi_tree,
@@ -31,7 +32,7 @@ use collector_runtime::{BoundedQueue, RuntimeError, RuntimeLimits};
 use context::RunContext;
 use execution::{execute_quota_accounts, QuotaExecution};
 use serde_json::{json, Value};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -104,7 +105,17 @@ pub fn collect_agent_usage_with_dependencies(
     let scan_stats = local.scan_stats;
     let window = context.window.clone();
     let sessions_allowed = context.capability_allowed("localSessions");
-    let mut kimi_cli = local.accumulator.finalize("kimi-code-cli", "Kimi Code CLI");
+    let pricing_overrides: HashMap<String, ModelPricingOverride> = request
+        .context
+        .get("pricingOverrides")
+        .or_else(|| request.context.get("pricing_overrides"))
+        .and_then(|val| serde_json::from_value(val.clone()).ok())
+        .unwrap_or_default();
+    let pricing_table = PricingTable::new(pricing_overrides);
+    let mut kimi_cli =
+        local
+            .accumulator
+            .finalize_with_pricing("kimi-code-cli", "Kimi Code CLI", &pricing_table);
     if !sessions_allowed {
         kimi_cli.status = "unavailable".to_owned();
         kimi_cli.note = "未授权 localSessions 能力, 已跳过本机会话扫描".to_owned();
@@ -157,30 +168,11 @@ pub fn collect_agent_usage_with_dependencies(
             "按消息内容估算, 非精确 token 计数",
             "未发现会话记录",
         ),
-        (
-            "opencode",
-            "OpenCode",
-            "本机 opencode 会话, 精确 token 计数",
-            "未发现 opencode 会话记录",
-        ),
-        (
-            "pi",
-            "Pi",
-            "本机 Pi 会话, 精确 token 计数",
-            "未发现会话记录",
-        ),
-        (
-            "zcode",
-            "ZCode",
-            "本机 ZCode 会话, 精确 token 计数",
-            "未发现 ZCode 会话记录",
-        ),
-        (
-            "codebuddy",
-            "CodeBuddy",
-            "本机 CodeBuddy 会话, 精确 token 计数",
-            "未发现 CodeBuddy 会话记录",
-        ),
+        ("orca", "Orca", "本机会话聚合", "未发现会话记录"),
+        ("pi", "Pi", "本机会话聚合", "未发现会话记录"),
+        ("zcode", "ZCode", "本机会话聚合", "未发现会话记录"),
+        ("codebuddy", "CodeBuddy", "本机会话聚合", "未发现会话记录"),
+        ("opencode", "OpenCode", "本机会话聚合", "未发现会话记录"),
     ];
     let mut agents = Vec::with_capacity(agent_specs.len());
     for (id, name, note, not_found_note) in agent_specs {
@@ -202,6 +194,7 @@ pub fn collect_agent_usage_with_dependencies(
                 note,
                 placeholder_status,
                 missing_note,
+                &pricing_table,
             ));
         } else {
             agents.push(placeholder_agent(
@@ -210,6 +203,7 @@ pub fn collect_agent_usage_with_dependencies(
                 name,
                 placeholder_status,
                 missing_note,
+                &pricing_table,
             ));
         }
     }
@@ -546,13 +540,15 @@ fn placeholder_agent(
     name: &str,
     status: &str,
     note: &str,
+    pricing: &PricingTable,
 ) -> AgentUsage {
-    let mut agent = UsageAccumulator::new(window.clone()).finalize(id, name);
+    let mut agent = UsageAccumulator::new(window.clone()).finalize_with_pricing(id, name, pricing);
     agent.status = status.to_owned();
     agent.note = note.to_owned();
     agent
 }
 
+#[allow(clippy::too_many_arguments)]
 fn finalize_local_agent(
     window: &CollectionWindow,
     id: &str,
@@ -561,10 +557,11 @@ fn finalize_local_agent(
     note: &str,
     placeholder_status: &str,
     placeholder_note: &str,
+    pricing: &PricingTable,
 ) -> AgentUsage {
     let mut accumulator = UsageAccumulator::new(window.clone());
     let _ = accumulator.merge_delta(&source.contribution);
-    let mut agent = accumulator.finalize(id, name);
+    let mut agent = accumulator.finalize_with_pricing(id, name, pricing);
     if let Some(diagnostic) = &source.diagnostic {
         agent.status = "error".to_owned();
         agent.note = diagnostic.clone();

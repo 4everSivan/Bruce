@@ -1,0 +1,1138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bruce 模型单价与费用校准 · 高保真设置原型</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-page: #0D1016;
+      --bg-window: #131720;
+      --bg-sidebar: #0F1219;
+      --surface-card: #181D27;
+      --surface-card-hover: #1F2533;
+      --surface-subtle: rgba(255, 255, 255, 0.03);
+      --border-main: rgba(255, 255, 255, 0.08);
+      --border-highlight: rgba(255, 255, 255, 0.16);
+      
+      --text-main: #F1F3F5;
+      --text-muted: #8E96A4;
+      --text-sub: #5B6371;
+      
+      --accent-blue: #0A84FF;
+      --accent-green: #30D158;
+      --accent-purple: #BF5AF2;
+      --accent-amber: #FF9F0A;
+      --accent-cyan: #00D2FF;
+      
+      --font-ui: "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+      --font-mono: "Fira Code", "Space Mono", monospace;
+      
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 14px;
+      --radius-pill: 999px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      background-color: var(--bg-page);
+      color: var(--text-main);
+      font-family: var(--font-ui);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 30px 20px 60px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .banner {
+      width: 100%;
+      max-width: 1020px;
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+    }
+
+    .banner-title {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .tag-badge {
+      font-size: 11px;
+      font-family: var(--font-mono);
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: var(--radius-pill);
+      background: rgba(0, 210, 255, 0.12);
+      color: var(--accent-cyan);
+      border: 1px solid rgba(0, 210, 255, 0.25);
+    }
+
+    .banner-sub {
+      color: var(--text-muted);
+      font-size: 13px;
+      margin-top: 4px;
+    }
+
+    /* 统一优雅滚动条 */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.16);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.32);
+    }
+
+    /* 主设置窗口仿真 (限制视口高度, 内部独立滚动) */
+    .settings-window {
+      width: 100%;
+      max-width: 1020px;
+      height: 680px;
+      max-height: 88vh;
+      background: var(--bg-window);
+      border: 1px solid var(--border-main);
+      border-radius: var(--radius-lg);
+      display: flex;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+      overflow: hidden;
+    }
+
+    /* 侧边导航栏 */
+    .sidebar {
+      width: 220px;
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border-main);
+      padding: 20px 12px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .nav-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .nav-item {
+      padding: 8px 12px;
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      font-size: 13px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .nav-item:hover {
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text-main);
+    }
+
+    .nav-item.active {
+      background: rgba(255, 255, 255, 0.08);
+      color: #FFF;
+      font-weight: 600;
+      position: relative;
+    }
+
+    .nav-item.active::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 6px;
+      bottom: 6px;
+      width: 3px;
+      background: var(--accent-blue);
+      border-radius: 2px;
+    }
+
+    .nav-version {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-sub);
+      padding: 0 8px;
+    }
+
+    /* 右侧主工作区 */
+    .main-pane {
+      flex: 1;
+      padding: 26px 32px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .pane-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border-main);
+    }
+
+    .pane-title h2 {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .pane-title p {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 3px;
+    }
+
+    /* 实时费用估算总览卡 */
+    .summary-card {
+      background: linear-gradient(135deg, rgba(48, 209, 88, 0.08) 0%, rgba(10, 132, 255, 0.05) 100%);
+      border: 1px solid rgba(48, 209, 88, 0.2);
+      border-radius: var(--radius-md);
+      padding: 18px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .summary-left {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .summary-label {
+      font-size: 11.5px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--accent-green);
+    }
+
+    .summary-sub {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .summary-right {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+
+    .summary-cost {
+      font-size: 28px;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      color: #FFF;
+      letter-spacing: -0.5px;
+    }
+
+    .summary-tokens {
+      font-size: 12px;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+    }
+
+    /* 过滤与搜索条 */
+    .filter-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .search-input-wrap {
+      position: relative;
+      flex: 1;
+      max-width: 320px;
+    }
+
+    .search-input {
+      width: 100%;
+      background: var(--surface-card);
+      border: 1px solid var(--border-main);
+      border-radius: var(--radius-sm);
+      padding: 7px 12px 7px 32px;
+      color: var(--text-main);
+      font-size: 12.5px;
+      outline: none;
+      transition: all 0.2s;
+    }
+
+    .search-input:focus {
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.2);
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-sub);
+      font-size: 13px;
+    }
+
+    .filter-pills {
+      display: flex;
+      gap: 6px;
+    }
+
+    .pill-btn {
+      background: var(--surface-card);
+      border: 1px solid var(--border-main);
+      color: var(--text-muted);
+      font-size: 11.5px;
+      font-weight: 500;
+      padding: 5px 11px;
+      border-radius: var(--radius-pill);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .pill-btn:hover {
+      color: var(--text-main);
+      border-color: var(--border-highlight);
+    }
+
+    .pill-btn.active {
+      background: rgba(10, 132, 255, 0.15);
+      border-color: rgba(10, 132, 255, 0.35);
+      color: var(--accent-blue);
+      font-weight: 600;
+    }
+
+    /* 表格容器 (增加固定高度与滚动条) */
+    .table-container {
+      background: var(--surface-card);
+      border: 1px solid var(--border-main);
+      border-radius: var(--radius-md);
+      overflow-y: auto;
+      max-height: 290px;
+    }
+
+    .model-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 12.5px;
+    }
+
+    .model-table th {
+      padding: 10px 14px;
+      background: #151A24;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-sub);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid var(--border-main);
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+
+    .model-table td {
+      padding: 11px 14px;
+      border-bottom: 1px solid var(--border-main);
+      vertical-align: middle;
+    }
+
+    .model-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .model-table tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .cell-model {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .model-name {
+      font-family: var(--font-mono);
+      font-weight: 600;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .token-badge {
+      font-size: 10px;
+      font-weight: 500;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(48, 209, 88, 0.12);
+      color: var(--accent-green);
+    }
+
+    .model-provider {
+      font-size: 11px;
+      color: var(--text-sub);
+    }
+
+    .source-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10.5px;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-weight: 500;
+    }
+
+    .source-builtin {
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text-muted);
+    }
+
+    .source-custom {
+      background: rgba(255, 159, 10, 0.12);
+      color: var(--accent-amber);
+      border: 1px solid rgba(255, 159, 10, 0.25);
+    }
+
+    .cell-price {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-main);
+    }
+
+    .price-unit {
+      color: var(--text-sub);
+      font-size: 10px;
+    }
+
+    .cell-cost {
+      font-family: var(--font-mono);
+      font-weight: 600;
+      font-size: 12.5px;
+      color: var(--accent-green);
+    }
+
+    .btn-edit {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-main);
+      color: var(--text-main);
+      padding: 4px 10px;
+      border-radius: 5px;
+      font-size: 11.5px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .btn-edit:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: var(--border-highlight);
+    }
+
+    .btn-reset {
+      background: transparent;
+      border: none;
+      color: var(--accent-amber);
+      font-size: 11px;
+      cursor: pointer;
+      margin-left: 6px;
+      text-decoration: underline;
+    }
+
+    /* 底部配置代码与导入说明卡 */
+    .config-code-card {
+      background: #0B0E14;
+      border: 1px solid var(--border-main);
+      border-radius: var(--radius-md);
+      padding: 16px;
+    }
+
+    .code-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .code-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .code-path {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--accent-cyan);
+    }
+
+    pre {
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      line-height: 1.5;
+      color: #9FB2C8;
+      overflow-x: auto;
+    }
+
+    /* 校准弹窗 Modal */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(8px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal-dialog {
+      width: 480px;
+      background: #171C26;
+      border: 1px solid var(--border-highlight);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .modal-header h3 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #FFF;
+    }
+
+    .modal-header p {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .form-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .price-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    .price-box {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid var(--border-main);
+      border-radius: var(--radius-sm);
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .price-box-title {
+      font-size: 11px;
+      color: var(--text-sub);
+    }
+
+    .price-input-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .currency-sign {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+
+    .price-num-input {
+      width: 100%;
+      background: transparent;
+      border: none;
+      color: #FFF;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 600;
+      outline: none;
+    }
+
+    .calc-preview-card {
+      background: rgba(0, 210, 255, 0.05);
+      border: 1px solid rgba(0, 210, 255, 0.2);
+      border-radius: var(--radius-sm);
+      padding: 10px 14px;
+      font-size: 11.5px;
+      color: var(--text-muted);
+    }
+
+    .calc-preview-card b {
+      color: var(--accent-cyan);
+      font-family: var(--font-mono);
+    }
+
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 6px;
+    }
+
+    .btn-cancel {
+      background: rgba(255, 255, 255, 0.08);
+      border: none;
+      color: var(--text-main);
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 12.5px;
+      cursor: pointer;
+    }
+
+    .btn-primary {
+      background: var(--accent-blue);
+      border: none;
+      color: #FFF;
+      padding: 6px 16px;
+      border-radius: 6px;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-primary:hover {
+      background: #0071E3;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="banner">
+    <div>
+      <div class="banner-title">
+        <span>Bruce 模型单价与费用校准</span>
+        <span class="tag-badge">Web Search 实时采价核对</span>
+      </div>
+      <div class="banner-sub">内置各大厂商公开基线定价，支持在配置文件或设置中进行单模型手工校准与覆盖</div>
+    </div>
+  </div>
+
+  <div class="settings-window">
+    <!-- 侧边导航 -->
+    <div class="sidebar">
+      <div class="nav-list">
+        <div class="nav-item">常规设置</div>
+        <div class="nav-item">Agent 用量</div>
+        <div class="nav-item">订阅额度</div>
+        <div class="nav-item active">模型计费校准</div>
+        <div class="nav-item">授权与隐私</div>
+        <div class="nav-item">维护与诊断</div>
+      </div>
+      <div class="nav-version">Bruce 0.8.1 (Preview)</div>
+    </div>
+
+    <!-- 主面板 -->
+    <div class="main-pane">
+      <div class="pane-header">
+        <div class="pane-title">
+          <h2>模型单价与费用核算 (Pricing & Cost)</h2>
+          <p>基于当前本机 9 个 Agent 真实会话 Token 吞吐量进行美元等值折算</p>
+        </div>
+      </div>
+
+      <!-- 实时费用总览 -->
+      <div class="summary-card">
+        <div class="summary-left">
+          <div class="summary-label">今日 Token 预估总折算费用</div>
+          <div class="summary-sub">包含 Kimi Work (30.95M tokens) 与 Codex (25.75M tokens) 等全部活跃 Agent</div>
+        </div>
+        <div class="summary-right">
+          <div class="summary-cost" id="totalCostDisplay">$9.63</div>
+          <div class="summary-tokens">/ 56.7M Tokens</div>
+        </div>
+      </div>
+
+      <!-- 搜索过滤 -->
+      <div class="filter-bar">
+        <div class="search-input-wrap">
+          <span class="search-icon">🔍</span>
+          <input type="text" class="search-input" id="searchModel" placeholder="搜索模型名称或厂商...">
+        </div>
+        <div class="filter-pills">
+          <button class="pill-btn active" data-filter="all">全部模型 (<span id="totalModelCount">0</span>)</button>
+          <button class="pill-btn" data-filter="active">当前有产生用量 (<span id="activeModelCount">0</span>)</button>
+          <button class="pill-btn" data-filter="custom">已手工校准 (<span id="customModelCount">0</span>)</button>
+        </div>
+      </div>
+
+      <!-- 模型单价清单 -->
+      <div class="table-container">
+        <table class="model-table">
+          <thead>
+            <tr>
+              <th>模型名称</th>
+              <th>今日用量</th>
+              <th>输入单价 (1M)</th>
+              <th>输出单价 (1M)</th>
+              <th>缓存读取 (1M)</th>
+              <th>定价来源</th>
+              <th>今日费用</th>
+              <th style="text-align: right;">操作</th>
+            </tr>
+          </thead>
+          <tbody id="modelTableBody">
+            <!-- 动态渲染 -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 配置文件直接校准指南 (config.json) -->
+      <div class="config-code-card">
+        <div class="code-header">
+          <div class="code-title">
+            <span>⚙️ 配置文件直接校准 (无需 GUI)</span>
+          </div>
+          <div class="code-path">~/Library/Application Support/Bruce/config/config.json</div>
+        </div>
+        <pre><code id="jsonConfigSnippet">{
+  "pricingOverrides": {
+    "k3-agent": { "input": 3.0, "output": 15.0, "cacheRead": 0.3 },
+    "gpt-5.6-luna": { "input": 0.20, "output": 1.20, "cacheRead": 0.02 },
+    "deepseek-v4-flash": { "input": 0.15, "output": 0.60, "cacheRead": 0.003 }
+  }
+}</code></pre>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 编辑校准 Modal -->
+  <div class="modal-overlay" id="editModal">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 id="modalModelTitle">校准模型单价</h3>
+        <p>自定义价格将优先于系统内置基线，实时重新计算今日与历史费用</p>
+      </div>
+
+      <div class="price-grid">
+        <div class="price-box">
+          <div class="price-box-title">输入 (Input)</div>
+          <div class="price-input-row">
+            <span class="currency-sign">$</span>
+            <input type="number" step="0.01" class="price-num-input" id="editInputPrice">
+          </div>
+          <div style="font-size: 10px; color: var(--text-sub);">/ 1M tokens</div>
+        </div>
+
+        <div class="price-box">
+          <div class="price-box-title">输出 (Output)</div>
+          <div class="price-input-row">
+            <span class="currency-sign">$</span>
+            <input type="number" step="0.01" class="price-num-input" id="editOutputPrice">
+          </div>
+          <div style="font-size: 10px; color: var(--text-sub);">/ 1M tokens</div>
+        </div>
+
+        <div class="price-box">
+          <div class="price-box-title">缓存读取 (Cache)</div>
+          <div class="price-input-row">
+            <span class="currency-sign">$</span>
+            <input type="number" step="0.001" class="price-num-input" id="editCachePrice">
+          </div>
+          <div style="font-size: 10px; color: var(--text-sub);">/ 1M tokens</div>
+        </div>
+      </div>
+
+      <div class="calc-preview-card" id="modalCalcPreview">
+        按今日该模型消耗测算，预计单日费用: <b>$0.00</b>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-cancel" onclick="closeModal()">取消</button>
+        <button class="btn-primary" onclick="saveCalibration()">保存校准</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 真实采自本机 Token 历史与官方最新价格检索
+    const MODEL_REGISTRY = [
+      {
+        id: "k3-agent",
+        name: "k3-agent",
+        provider: "Kimi (Moonshot)",
+        todayTokens: 30951175,
+        todayIn: 30770739,
+        todayOut: 180436,
+        builtin: { input: 3.00, output: 15.00, cacheRead: 0.30 },
+        custom: null
+      },
+      {
+        id: "gpt-5.6-luna",
+        name: "gpt-5.6-luna",
+        provider: "OpenAI / Codex",
+        todayTokens: 22497429,
+        todayIn: 22399516,
+        todayOut: 97913,
+        builtin: { input: 0.20, output: 1.20, cacheRead: 0.02 },
+        custom: null
+      },
+      {
+        id: "gpt-5.6-sol",
+        name: "gpt-5.6-sol",
+        provider: "OpenAI / Codex",
+        todayTokens: 2765134,
+        todayIn: 2753992,
+        todayOut: 11142,
+        builtin: { input: 4.00, output: 20.00, cacheRead: 0.40 },
+        custom: null
+      },
+      {
+        id: "codex-auto-review",
+        name: "codex-auto-review",
+        provider: "Codex Internal",
+        todayTokens: 487881,
+        todayIn: 486348,
+        todayOut: 1533,
+        builtin: { input: 0.20, output: 1.20, cacheRead: 0.02 },
+        custom: null
+      },
+      {
+        id: "deepseek-v4-flash",
+        name: "deepseek-v4-flash",
+        provider: "DeepSeek",
+        todayTokens: 0,
+        todayIn: 0,
+        todayOut: 0,
+        builtin: { input: 0.15, output: 0.60, cacheRead: 0.003 },
+        custom: null
+      },
+      {
+        id: "deepseek-v4-pro",
+        name: "deepseek-v4-pro",
+        provider: "DeepSeek",
+        todayTokens: 0,
+        todayIn: 0,
+        todayOut: 0,
+        builtin: { input: 0.66, output: 1.98, cacheRead: 0.022 },
+        custom: null
+      },
+      {
+        id: "glm-5.3",
+        name: "glm-5.3",
+        provider: "Zhipu AI (智谱)",
+        todayTokens: 0,
+        todayIn: 0,
+        todayOut: 0,
+        builtin: { input: 1.40, output: 4.40, cacheRead: 0.26 },
+        custom: null
+      },
+      {
+        id: "glm-5.3-flash",
+        name: "glm-5.3-flash",
+        provider: "Zhipu AI (智谱)",
+        todayTokens: 0,
+        todayIn: 0,
+        todayOut: 0,
+        builtin: { input: 0.15, output: 0.50, cacheRead: 0.03 },
+        custom: null
+      },
+      {
+        id: "step-3.7-flash",
+        name: "step-3.7-flash",
+        provider: "StepFun (阶跃星辰)",
+        todayTokens: 0,
+        todayIn: 0,
+        todayOut: 0,
+        builtin: { input: 0.20, output: 1.15, cacheRead: 0.04 },
+        custom: null
+      },
+      {
+        id: "step-5-preview",
+        name: "step-5-preview",
+        provider: "StepFun (阶跃星辰)",
+        todayTokens: 0,
+        todayIn: 0,
+        todayOut: 0,
+        builtin: { input: 1.00, output: 2.70, cacheRead: 0.05 },
+        custom: null
+      },
+      {
+        id: "hy3",
+        name: "hy3",
+        provider: "Tencent (腾讯混元)",
+        todayTokens: 0,
+        todayIn: 0,
+        todayOut: 0,
+        builtin: { input: 0.15, output: 0.58, cacheRead: 0.035 },
+        custom: null
+      },
+      {
+        id: "hy4-preview",
+        name: "hy4-preview",
+        provider: "Tencent (腾讯混元)",
+        todayTokens: 0,
+        todayIn: 0,
+        todayOut: 0,
+        builtin: { input: 0.85, output: 2.55, cacheRead: 0.042 },
+        custom: null
+      },
+      {
+        id: "claude-sonnet-5",
+        name: "claude-sonnet-5",
+        provider: "Anthropic",
+        todayTokens: 0,
+        todayIn: 0,
+        todayOut: 0,
+        builtin: { input: 2.00, output: 10.00, cacheRead: 0.20 },
+        custom: null
+      },
+      {
+        id: "claude-haiku-4-5",
+        name: "claude-haiku-4-5",
+        provider: "Anthropic",
+        todayTokens: 0,
+        todayIn: 0,
+        todayOut: 0,
+        builtin: { input: 1.00, output: 5.00, cacheRead: 0.10 },
+        custom: null
+      }
+    ];
+
+    let currentEditingId = null;
+    let activeFilter = "all";
+    let searchQuery = "";
+
+    function formatNumber(num) {
+      if (num >= 1000000) return (num / 1000000).toFixed(2) + "M";
+      if (num >= 1000) return (num / 1000).toFixed(1) + "k";
+      return num.toString();
+    }
+
+    function calculateModelCost(item) {
+      const p = item.custom || item.builtin;
+      if (!p || item.todayTokens === 0) return 0;
+      // 假设当前日志 input 中有 70% 命中缓存 (按现代 Agent 特性)
+      const cachedIn = item.todayIn * 0.7;
+      const normalIn = item.todayIn * 0.3;
+      const cost = (normalIn * p.input + cachedIn * p.cacheRead + item.todayOut * p.output) / 1000000;
+      return cost;
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById("modelTableBody");
+      tbody.innerHTML = "";
+
+      let totalCost = 0;
+      let activeCount = 0;
+      let customCount = 0;
+
+      MODEL_REGISTRY.forEach(item => {
+        if (item.todayTokens > 0) activeCount++;
+        if (item.custom) customCount++;
+
+        const cost = calculateModelCost(item);
+        totalCost += cost;
+
+        // 过滤筛选
+        if (activeFilter === "active" && item.todayTokens === 0) return;
+        if (activeFilter === "custom" && !item.custom) return;
+        if (searchQuery) {
+          const q = searchQuery.toLowerCase();
+          if (!item.name.toLowerCase().includes(q) && !item.provider.toLowerCase().includes(q)) {
+            return;
+          }
+        }
+
+        const effective = item.custom || item.builtin;
+        const isCustom = !!item.custom;
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>
+            <div class="cell-model">
+              <span class="model-name">
+                ${item.name}
+                ${item.todayTokens > 0 ? `<span class="token-badge">${formatNumber(item.todayTokens)}</span>` : ""}
+              </span>
+              <span class="model-provider">${item.provider}</span>
+            </div>
+          </td>
+          <td style="font-family: var(--font-mono); color: ${item.todayTokens > 0 ? 'var(--text-main)' : 'var(--text-sub)'};">
+            ${item.todayTokens > 0 ? formatNumber(item.todayTokens) : "--"}
+          </td>
+          <td class="cell-price">$${effective.input.toFixed(2)}</td>
+          <td class="cell-price">$${effective.output.toFixed(2)}</td>
+          <td class="cell-price">$${effective.cacheRead.toFixed(3)}</td>
+          <td>
+            <span class="source-tag ${isCustom ? 'source-custom' : 'source-builtin'}">
+              ${isCustom ? "★ 人工校准" : "内置基线"}
+            </span>
+          </td>
+          <td class="cell-cost">
+            ${cost > 0 ? `$${cost.toFixed(2)}` : "--"}
+          </td>
+          <td style="text-align: right;">
+            <button class="btn-edit" onclick="openEditModal('${item.id}')">校准</button>
+            ${isCustom ? `<button class="btn-reset" onclick="resetModel('${item.id}')">重置</button>` : ""}
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById("totalCostDisplay").textContent = "$" + totalCost.toFixed(2);
+      document.getElementById("totalModelCount").textContent = MODEL_REGISTRY.length;
+      document.getElementById("activeModelCount").textContent = activeCount;
+      document.getElementById("customModelCount").textContent = customCount;
+
+      updateJsonSnippet();
+    }
+
+    function updateJsonSnippet() {
+      const overrides = {};
+      MODEL_REGISTRY.filter(m => m.custom).forEach(m => {
+        overrides[m.id] = {
+          input: m.custom.input,
+          output: m.custom.output,
+          cacheRead: m.custom.cacheRead
+        };
+      });
+      document.getElementById("jsonConfigSnippet").textContent = JSON.stringify({ pricingOverrides: overrides }, null, 2);
+    }
+
+    function openEditModal(id) {
+      currentEditingId = id;
+      const item = MODEL_REGISTRY.find(m => m.id === id);
+      if (!item) return;
+
+      const p = item.custom || item.builtin;
+      document.getElementById("modalModelTitle").textContent = `校准模型: ${item.name} (${item.provider})`;
+      document.getElementById("editInputPrice").value = p.input;
+      document.getElementById("editOutputPrice").value = p.output;
+      document.getElementById("editCachePrice").value = p.cacheRead;
+
+      updateModalCalcPreview();
+
+      const modal = document.getElementById("editModal");
+      modal.classList.add("active");
+    }
+
+    function closeModal() {
+      document.getElementById("editModal").classList.remove("active");
+      currentEditingId = null;
+    }
+
+    function updateModalCalcPreview() {
+      if (!currentEditingId) return;
+      const item = MODEL_REGISTRY.find(m => m.id === currentEditingId);
+      if (!item) return;
+
+      const inputP = parseFloat(document.getElementById("editInputPrice").value) || 0;
+      const outputP = parseFloat(document.getElementById("editOutputPrice").value) || 0;
+      const cacheP = parseFloat(document.getElementById("editCachePrice").value) || 0;
+
+      const tempItem = {
+        ...item,
+        custom: { input: inputP, output: outputP, cacheRead: cacheP }
+      };
+      const cost = calculateModelCost(tempItem);
+      document.getElementById("modalCalcPreview").innerHTML = 
+        `今日用量 ${formatNumber(item.todayTokens)} Tokens · 重新测算预计费用: <b>$${cost.toFixed(3)}</b>`;
+    }
+
+    document.getElementById("editInputPrice").addEventListener("input", updateModalCalcPreview);
+    document.getElementById("editOutputPrice").addEventListener("input", updateModalCalcPreview);
+    document.getElementById("editCachePrice").addEventListener("input", updateModalCalcPreview);
+
+    function saveCalibration() {
+      if (!currentEditingId) return;
+      const item = MODEL_REGISTRY.find(m => m.id === currentEditingId);
+      if (!item) return;
+
+      const inputP = parseFloat(document.getElementById("editInputPrice").value) || 0;
+      const outputP = parseFloat(document.getElementById("editOutputPrice").value) || 0;
+      const cacheP = parseFloat(document.getElementById("editCachePrice").value) || 0;
+
+      item.custom = { input: inputP, output: outputP, cacheRead: cacheP };
+      closeModal();
+      renderTable();
+    }
+
+    function resetModel(id) {
+      const item = MODEL_REGISTRY.find(m => m.id === id);
+      if (item) {
+        item.custom = null;
+        renderTable();
+      }
+    }
+
+    // 事件监听
+    document.querySelectorAll(".pill-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".pill-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        activeFilter = btn.getAttribute("data-filter");
+        renderTable();
+      });
+    });
+
+    document.getElementById("searchModel").addEventListener("input", (e) => {
+      searchQuery = e.target.value;
+      renderTable();
+    });
+
+    // 默认高亮并校准一条作为展示
+    MODEL_REGISTRY[0].custom = { input: 2.80, output: 14.00, cacheRead: 0.28 };
+    renderTable();
+  </script>
+</body>
+</html>

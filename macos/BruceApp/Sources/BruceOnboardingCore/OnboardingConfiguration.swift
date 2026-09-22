@@ -80,6 +80,31 @@ public struct SubscriptionProviderConfiguration: Codable, Equatable, Sendable {
     }
 }
 
+// MARK: - ModelPricingOverride
+
+/// 模型单价人工校准项. 未设置的单价项自动继承内置基准.
+public struct ModelPricingOverride: Codable, Equatable, Sendable {
+    public var inputPricePerMillion: Double?
+    public var outputPricePerMillion: Double?
+    public var cacheReadPricePerMillion: Double?
+    public var currency: String?
+    public var note: String?
+
+    public init(
+        inputPricePerMillion: Double? = nil,
+        outputPricePerMillion: Double? = nil,
+        cacheReadPricePerMillion: Double? = nil,
+        currency: String? = nil,
+        note: String? = nil
+    ) {
+        self.inputPricePerMillion = inputPricePerMillion
+        self.outputPricePerMillion = outputPricePerMillion
+        self.cacheReadPricePerMillion = cacheReadPricePerMillion
+        self.currency = currency
+        self.note = note
+    }
+}
+
 // MARK: - OnboardingConfiguration
 
 /// 应用外观偏好. system 跟随系统; 持久化为 rawValue 字符串.
@@ -111,6 +136,8 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
     /// 订阅 provider 配置, 键为 SubscriptionProviderID rawValue.
     /// v1 配置文件无此键, 加载时按缺省 (全部未配置) 处理.
     public var subscriptionProviders: [String: SubscriptionProviderConfiguration]
+    /// 模型单价人工校准覆盖, 键为模型标识 (如 "k3-agent", "deepseek-v4-flash").
+    public var pricingOverrides: [String: ModelPricingOverride]?
     /// 自动刷新间隔 (分钟). nil (含 JSON 显式 null) 表示使用默认 30 分钟.
     public var refreshIntervalMinutes: Int?
     /// 外观偏好. nil (含 JSON 显式 null 或非法值) 表示跟随系统.
@@ -189,6 +216,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         menuBarMetrics: [String]? = nil,
         menuBarIconOnly: Bool? = nil,
         subscriptionProviders: [String: SubscriptionProviderConfiguration] = [:],
+        pricingOverrides: [String: ModelPricingOverride]? = nil,
         refreshIntervalMinutes: Int? = nil,
         appearanceMode: AppearancePreference? = nil,
         interfaceStyle: InterfaceStylePreference? = nil,
@@ -205,6 +233,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         self.menuBarMetrics = menuBarMetrics
         self.menuBarIconOnly = menuBarIconOnly
         self.subscriptionProviders = subscriptionProviders
+        self.pricingOverrides = pricingOverrides
         self.refreshIntervalMinutes = refreshIntervalMinutes
         self.appearanceMode = appearanceMode
         self.interfaceStyle = interfaceStyle
@@ -229,6 +258,10 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
             [String: SubscriptionProviderConfiguration].self,
             forKey: .subscriptionProviders
         ) ?? [:]
+        pricingOverrides = try container.decodeIfPresent(
+            [String: ModelPricingOverride].self,
+            forKey: .pricingOverrides
+        )
         // 显式 null 与缺键一样按 nil (默认 30 分钟) 处理
         refreshIntervalMinutes = try container.decodeIfPresent(
             Int.self, forKey: .refreshIntervalMinutes
@@ -282,6 +315,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         case menuBarMetrics
         case menuBarIconOnly
         case subscriptionProviders
+        case pricingOverrides
         case refreshIntervalMinutes
         case appearanceMode
         case interfaceStyle
@@ -301,6 +335,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         try container.encodeIfPresent(menuBarMetrics, forKey: .menuBarMetrics)
         try container.encodeIfPresent(menuBarIconOnly, forKey: .menuBarIconOnly)
         try container.encode(subscriptionProviders, forKey: .subscriptionProviders)
+        try container.encodeIfPresent(pricingOverrides, forKey: .pricingOverrides)
         try container.encodeIfPresent(
             refreshIntervalMinutes, forKey: .refreshIntervalMinutes
         )

@@ -380,6 +380,13 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
             "days": .integer(182),
         ]
 
+        if let pricingOverrides = config?.pricingOverrides, !pricingOverrides.isEmpty {
+            if let data = try? JSONEncoder().encode(pricingOverrides),
+               let jsonValue = try? JSONDecoder().decode(JSONValue.self, from: data) {
+                context["pricingOverrides"] = jsonValue
+            }
+        }
+
         // 统一授权未确认时永远不授予 externalQuotas;
         // 一个 provider 都没配齐时也不授予, collector 会返回未授权占位
         if config?.consentVersion != nil {

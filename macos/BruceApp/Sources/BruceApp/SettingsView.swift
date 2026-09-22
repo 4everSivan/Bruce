@@ -60,7 +60,7 @@ struct SettingsView: View {
 
     /// 侧边栏分类: 线性图标 (跨平台同构, 对应 WinUI NavigationView).
     private enum SettingsCategory: String, CaseIterable, Identifiable {
-        case general, agentUsage, subscription, consent, maintenance
+        case general, agentUsage, modelPricing, subscription, consent, maintenance
 
         var id: String { rawValue }
 
@@ -68,6 +68,7 @@ struct SettingsView: View {
             switch self {
             case .general: return "通用"
             case .agentUsage: return "Agent 用量"
+            case .modelPricing: return "模型计费"
             case .subscription: return "订阅额度"
             case .consent: return "授权与隐私"
             case .maintenance: return "维护"
@@ -78,6 +79,7 @@ struct SettingsView: View {
             switch self {
             case .general: return "gearshape"
             case .agentUsage: return "chart.bar"
+            case .modelPricing: return "dollarsign.circle"
             case .subscription: return "cloud"
             case .consent: return "checkmark.shield"
             case .maintenance: return "wrench.and.screwdriver"
@@ -257,10 +259,15 @@ struct SettingsView: View {
         switch category {
         case .general: generalPane
         case .agentUsage: agentUsagePane
+        case .modelPricing: modelPricingPane
         case .subscription: subscriptionPane
         case .consent: consentPane
         case .maintenance: maintenancePane
         }
+    }
+
+    private var modelPricingPane: some View {
+        ModelPricingSettingsView()
     }
 
     /// demo crumb: 面板标题上方的灰色小字分类名.
@@ -712,8 +719,9 @@ struct SettingsView: View {
                 .foregroundStyle(SettingsDemoTokens.text2)
 
             VStack(spacing: 8) {
-                ForEach(Array(model.menuBarMetrics.enumerated()), id: \.element) { index, metric in
-                    selectedMetricCard(metric, order: index + 1)
+                ForEach(model.menuBarMetrics) { metric in
+                    let order = (model.menuBarMetrics.firstIndex(of: metric) ?? 0) + 1
+                    selectedMetricCard(metric, order: order)
                         .onDrop(
                             of: [.text],
                             delegate: LiveReorderDropDelegate<MenuBarMetric>(
@@ -813,7 +821,9 @@ struct SettingsView: View {
                 var metrics = model.menuBarMetrics
                 guard metrics.count > 1 else { return }
                 metrics.removeAll { $0 == metric }
-                coordinator.setMenuBarMetrics(metrics)
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                    coordinator.setMenuBarMetrics(metrics)
+                }
             } label: {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 13.5))
@@ -861,7 +871,9 @@ struct SettingsView: View {
                     return
                 }
                 metrics.append(metric)
-                coordinator.setMenuBarMetrics(metrics)
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                    coordinator.setMenuBarMetrics(metrics)
+                }
             } label: {
                 Image(systemName: "plus.circle.fill")
                     .font(.system(size: 14))

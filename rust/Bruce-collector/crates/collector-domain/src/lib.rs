@@ -14,6 +14,9 @@ pub const BRIDGE_SCHEMA_VERSION: u8 = 1;
 pub const AGENT_USAGE_SCHEMA_VERSION: u8 = 1;
 pub const AGENT_USAGE_MODULE: &str = "agent-usage";
 
+pub mod pricing;
+pub use pricing::{ModelPricing, ModelPricingOverride, PricingTable};
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BridgeRequest {
