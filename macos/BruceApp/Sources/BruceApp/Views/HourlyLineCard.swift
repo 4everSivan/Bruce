@@ -523,22 +523,33 @@ struct HourlyLineCard: View {
     }
 
     /// 24 点折线 (0-23 时): agent 色 1.5pt 线 + 淡渐变面积;
-    /// Nothing 用 nothingRampHex 绿阶色描线, 与行首色点/柱状图分段同一身份,
-    /// 无面积渐变 (定稿 sparkline 仅描线).
+    /// Nothing 采用翡翠呼吸微光线 (Emerald Glow Line), 与下方项目统计及绿调同频共振.
     private func hourlyChart(_ row: HourlyAgentRow, index: Int) -> some View {
         let color = agentColor(row)
         let maxPoint = max(row.points.max() ?? 0, 1)
+        let heroGreen = Color.adaptive(light: Color(hex: "#1C8C3D"), dark: Color(hex: "#30D158"))
         return Chart(Array(row.points.enumerated()), id: \.offset) { point in
             if isNothing {
                 LineMark(
                     x: .value("时", point.offset),
                     y: .value("量", point.element)
                 )
-                .foregroundStyle(Color(hex: PanelAgentColor.nothingRampHex(
-                    agentID: row.agentID,
-                    darkMode: colorScheme == .dark
-                )))
+                .foregroundStyle(heroGreen)
                 .lineStyle(StrokeStyle(lineWidth: 1.5))
+                AreaMark(
+                    x: .value("时", point.offset),
+                    y: .value("量", point.element)
+                )
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [
+                            heroGreen.opacity(colorScheme == .dark ? 0.16 : 0.12),
+                            Color.clear
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
             } else {
                 LineMark(
                     x: .value("时", point.offset),
@@ -589,12 +600,17 @@ struct HourlyLineCard: View {
                 )
             }
             if !row.projects.isEmpty {
-                distributionGroup(
-                    title: "项目分布",
-                    bars: row.projects,
-                    colorAt: { Color(hex: Self.projectBarShades[min($0, Self.projectBarShades.count - 1)]) }
-                )
-                .padding(.top, row.models.isEmpty ? 0 : 7)
+                if isNothing {
+                    nothingProjectConsoleSection(bars: row.projects)
+                        .padding(.top, row.models.isEmpty ? 0 : 7)
+                } else {
+                    distributionGroup(
+                        title: "项目分布",
+                        bars: row.projects,
+                        colorAt: { Color(hex: Self.projectBarShades[min($0, Self.projectBarShades.count - 1)]) }
+                    )
+                    .padding(.top, row.models.isEmpty ? 0 : 7)
+                }
             }
         }
         .padding(.leading, 14)
@@ -624,19 +640,27 @@ struct HourlyLineCard: View {
     }
 
     /// 100% 堆叠占比条: 分段按份额拼接, 各段独立色阶, 份额不足 100% 时余量露出轨道色.
-    /// Nothing 下段间 2pt, 分段用同一套图案 (index 循环), 无轨道底色 (与定稿 .dbar 一致).
+    /// Nothing 下段间 2pt; 方案 P4: Top 1 主模型高亮翡翠绿, 次段采用点阵斜纹, 无轨道底色.
     private func stackedShareBar(
         _ bars: [DistributionBar],
         colorAt: @escaping (Int) -> Color
     ) -> some View {
-        GeometryReader { proxy in
+        let heroGreen = Color.adaptive(light: Color(hex: "#1C8C3D"), dark: Color(hex: "#30D158"))
+        return GeometryReader { proxy in
             if isNothing {
                 let gap: CGFloat = 2
                 let available = proxy.size.width - gap * CGFloat(max(bars.count - 1, 0))
                 HStack(spacing: gap) {
                     ForEach(Array(bars.enumerated()), id: \.offset) { index, bar in
-                        NothingPatternView(pattern: .at(index), color: nothingTokens.display)
-                            .frame(width: max(2, available * min(max(bar.share, 0), 1)), height: 6)
+                        let segWidth = max(2, available * min(max(bar.share, 0), 1))
+                        if index == 0 {
+                            RoundedRectangle(cornerRadius: 1, style: .continuous)
+                                .fill(heroGreen)
+                                .frame(width: segWidth, height: 6)
+                        } else {
+                            NothingPatternView(pattern: .diagonal, color: nothingTokens.disabled)
+                                .frame(width: segWidth, height: 6)
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -662,12 +686,19 @@ struct HourlyLineCard: View {
     }
 
     /// 图例行: 色点 + 名称 + 右侧「百分比 · 数值」, 百分比为主数值.
-    /// Nothing 色点改 6pt 图案 swatch, 文本 mono (定稿 .dkey).
+    /// Nothing 色点: P4 下主模型翡翠绿方块, 次要模型 6pt 点阵 swatch; 文本 mono.
     private func shareLegendRow(_ bar: DistributionBar, index: Int, color: Color) -> some View {
-        HStack(spacing: 5) {
+        let heroGreen = Color.adaptive(light: Color(hex: "#1C8C3D"), dark: Color(hex: "#30D158"))
+        return HStack(spacing: 5) {
             if isNothing {
-                NothingPatternView(pattern: .at(index), color: nothingTokens.display)
-                    .frame(width: 6, height: 6)
+                if index == 0 {
+                    RoundedRectangle(cornerRadius: 1, style: .continuous)
+                        .fill(heroGreen)
+                        .frame(width: 6, height: 6)
+                } else {
+                    NothingPatternView(pattern: .diagonal, color: nothingTokens.disabled)
+                        .frame(width: 6, height: 6)
+                }
             } else {
                 Circle()
                     .fill(color)
@@ -682,7 +713,7 @@ struct HourlyLineCard: View {
                     Text(Self.sharePercentText(bar.share))
                         .font(NothingFont.mono(9.5, weight: .bold))
                         .monospacedDigit()
-                        .foregroundStyle(nothingTokens.primary)
+                        .foregroundStyle(index == 0 ? heroGreen : nothingTokens.primary)
                     Text(" · \(bar.totalText)")
                         .font(NothingFont.mono(9.5))
                         .foregroundStyle(nothingTokens.disabled)
@@ -707,6 +738,136 @@ struct HourlyLineCard: View {
             return "<1%"
         }
         return String(format: "%.0f%%", share * 100)
+    }
+
+    // MARK: - Nothing 风格项目统计 (方案 A · 点阵终端导引流 + 翡翠绿阶)
+
+    /// Nothing 风格项目统计: 方案 A 点阵终端导引流 (Dot-Leader Console) + 色系 1 (Glyph 翡翠绿阶)
+    private func nothingProjectConsoleSection(bars: [DistributionBar]) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack {
+                Text("项目统计 // PRJ.CONSOLE")
+                    .font(NothingFont.mono(9))
+                    .tracking(0.8)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("\(bars.count) WORKSPACES")
+                    .font(NothingFont.mono(8.5))
+                    .foregroundStyle(nothingTokens.disabled)
+            }
+            .padding(.bottom, 2)
+
+            ForEach(Array(bars.enumerated()), id: \.offset) { index, bar in
+                nothingProjectConsoleRow(bar: bar, index: index)
+            }
+        }
+    }
+
+    private func nothingProjectConsoleRow(bar: DistributionBar, index: Int) -> some View {
+        let colors = projectTierColors(index: index)
+        let activeTicks = max(bar.share > 0 ? 1 : 0, min(6, Int(round(bar.share * 6.0))))
+
+        return HStack(alignment: .firstTextBaseline, spacing: 4) {
+            // [P1] 标签
+            Text("[P\(index + 1)]")
+                .font(NothingFont.mono(8.5, weight: .bold))
+                .foregroundStyle(colors.tag)
+
+            // 工程名称
+            Text(bar.name)
+                .font(NothingFont.mono(9.5, weight: index == 0 ? .semibold : .regular))
+                .foregroundStyle(colors.name)
+                .lineLimit(1)
+
+            // 点阵导引虚线
+            dotLeaderLine(color: colors.tag.opacity(0.35))
+
+            // Token 数值
+            Text(bar.totalText)
+                .font(NothingFont.mono(9))
+                .foregroundStyle(nothingTokens.secondary)
+
+            // 百分比 Badge
+            Text(Self.sharePercentText(bar.share))
+                .font(NothingFont.mono(9, weight: .bold))
+                .monospacedDigit()
+                .foregroundStyle(colors.tag)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 0.5)
+                .background(colors.badgeBg, in: RoundedRectangle(cornerRadius: 2, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .strokeBorder(colors.badgeStroke, lineWidth: 1)
+                )
+
+            // 6-Tick 微型液晶进度块
+            HStack(spacing: 1.5) {
+                ForEach(0..<6, id: \.self) { tickIndex in
+                    RoundedRectangle(cornerRadius: 0.5, style: .continuous)
+                        .fill(tickIndex < activeTicks ? colors.tick : nothingTokens.border)
+                        .frame(width: 2.5, height: 6)
+                }
+            }
+            .padding(.leading, 3)
+            .alignmentGuide(.firstTextBaseline) { d in d[VerticalAlignment.center] + 2 }
+        }
+        .padding(.vertical, 1.5)
+        .accessibilityElement(children: .combine)
+    }
+
+    /// 点阵虚线引线 (Dot-Leader Line)
+    private func dotLeaderLine(color: Color) -> some View {
+        GeometryReader { proxy in
+            Path { path in
+                path.move(to: CGPoint(x: 0, y: proxy.size.height / 2))
+                path.addLine(to: CGPoint(x: proxy.size.width, y: proxy.size.height / 2))
+            }
+            .stroke(
+                color,
+                style: StrokeStyle(lineWidth: 1, dash: [1.5, 3])
+            )
+        }
+        .frame(minWidth: 10, maxHeight: 6)
+        .padding(.horizontal, 2)
+    }
+
+    /// 翡翠绿阶分档色彩 (P1 亮绿, P2 翡翠绿, P3 暗薄荷绿)
+    private func projectTierColors(index: Int) -> (
+        tag: Color,
+        name: Color,
+        badgeBg: Color,
+        badgeStroke: Color,
+        tick: Color
+    ) {
+        switch index {
+        case 0:
+            let green = Color.adaptive(light: Color(hex: "#1C8C3D"), dark: Color(hex: "#30D158"))
+            return (
+                tag: green,
+                name: green,
+                badgeBg: green.opacity(0.12),
+                badgeStroke: green.opacity(0.35),
+                tick: green
+            )
+        case 1:
+            let midGreen = Color.adaptive(light: Color(hex: "#2E9E4F"), dark: Color(hex: "#4A9E5C"))
+            return (
+                tag: midGreen,
+                name: nothingTokens.primary,
+                badgeBg: midGreen.opacity(0.10),
+                badgeStroke: midGreen.opacity(0.25),
+                tick: midGreen
+            )
+        default:
+            let darkGreen = Color.adaptive(light: Color(hex: "#185E2B"), dark: Color(hex: "#2B7A42"))
+            return (
+                tag: darkGreen,
+                name: nothingTokens.secondary,
+                badgeBg: nothingTokens.raised,
+                badgeStroke: nothingTokens.border,
+                tick: darkGreen
+            )
+        }
     }
 
     // MARK: - 颜色
