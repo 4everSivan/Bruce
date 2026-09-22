@@ -9,15 +9,18 @@ package struct MenuBarStatusItemContent: Equatable, Sendable {
     package let iconName: String
     package let metricText: String
     package let accessibilityLabel: String
+    package let remainingQuotaRatio: Double?
 
     package init(
         iconName: String,
         metricText: String,
-        accessibilityLabel: String
+        accessibilityLabel: String,
+        remainingQuotaRatio: Double? = nil
     ) {
         self.iconName = iconName
         self.metricText = metricText
         self.accessibilityLabel = accessibilityLabel
+        self.remainingQuotaRatio = remainingQuotaRatio
     }
 }
 
@@ -31,9 +34,22 @@ package struct MenuBarStatusItemContentBuilder {
     package func build(
         metrics: [MenuBarMetric],
         summary: MenuBarSummary,
-        isRefreshing: Bool
+        isRefreshing: Bool,
+        iconOnly: Bool = false
     ) -> MenuBarStatusItemContent {
-        let formattedMetrics = metrics.map { metric in
+        // 环规配额取数逻辑:
+        // 1. 若配置中显式包含“最低剩余额度”, 遵从用户偏好取最低额度;
+        // 2. 其余情况 (包含未选额度、仅图标模式、或选了平均额度), 取“总订阅配额”平均值,
+        //    避免单一耗尽子窗口将整个菜单栏环规置空.
+        let quotaPercentage: Double?
+        if metrics.contains(.minimumRemainingQuota) {
+            quotaPercentage = summary.minimumRemainingQuota ?? summary.averageRemainingQuota
+        } else {
+            quotaPercentage = summary.averageRemainingQuota ?? summary.minimumRemainingQuota
+        }
+        let quotaRatio = quotaPercentage.map { max(0.0, min(100.0, $0)) / 100.0 }
+
+        let formattedMetrics = iconOnly ? [] : metrics.map { metric in
             (metric, formatter.string(for: metric, summary: summary))
         }
         let metricText = formattedMetrics
@@ -51,8 +67,10 @@ package struct MenuBarStatusItemContentBuilder {
             accessibilityLabel: accessibilityLabel(
                 for: summary,
                 metrics: accessibilityMetrics,
-                isRefreshing: isRefreshing
-            )
+                isRefreshing: isRefreshing,
+                quotaPercentage: quotaPercentage
+            ),
+            remainingQuotaRatio: quotaRatio
         )
     }
 
@@ -81,11 +99,17 @@ package struct MenuBarStatusItemContentBuilder {
     private func accessibilityLabel(
         for summary: MenuBarSummary,
         metrics: [String],
-        isRefreshing: Bool
+        isRefreshing: Bool,
+        quotaPercentage: Double?
     ) -> String {
         let statusTitle = isRefreshing
             ? ModuleRunState.refreshing.title
             : summary.overallStatus.title
-        return (["Bruce", statusTitle] + metrics).joined(separator: ", ")
+        var parts = ["Bruce", statusTitle]
+        if let quota = quotaPercentage {
+            parts.append("总配额 \(Int(quota.rounded()))%")
+        }
+        parts.append(contentsOf: metrics)
+        return parts.joined(separator: ", ")
     }
 }

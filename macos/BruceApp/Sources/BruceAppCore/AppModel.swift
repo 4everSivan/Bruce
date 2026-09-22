@@ -186,6 +186,8 @@ package final class AppModel: ObservableObject {
     /// 订阅 provider 展示顺序, 供设置页排列与面板映射排序使用.
     @Published package private(set) var subscriptionProviderOrder: [SubscriptionProviderID] = []
     @Published package private(set) var menuBarMetrics: [MenuBarMetric]
+    /// 菜单栏是否仅显示图标 (隐藏文字指标).
+    @Published package private(set) var menuBarIconOnly: Bool = false
     /// DeepSeek 月度账本. 由 BruceApp 装配注入; nil 表示账本未启用
     /// (测试或账本创建失败), 此时月度统计不可用但余额卡不受影响.
     private let deepSeekLedger: DeepSeekUsageLedger?
@@ -217,6 +219,7 @@ package final class AppModel: ObservableObject {
 
     package init(
         menuBarMetricRawValues: [String]? = nil,
+        menuBarIconOnly: Bool = false,
         deepSeekLedger: DeepSeekUsageLedger? = nil,
         collapsedDefaults: UserDefaults = .standard
     ) {
@@ -230,6 +233,7 @@ package final class AppModel: ObservableObject {
         )
         cardOrder = Self.resolveCardOrder(storedOrder)
         self.deepSeekLedger = deepSeekLedger
+        self.menuBarIconOnly = menuBarIconOnly
         menuBarMetrics = MenuBarMetricConfiguration(
             rawValues: menuBarMetricRawValues
         ).metrics
@@ -596,6 +600,10 @@ package final class AppModel: ObservableObject {
 
     package func setMenuBarMetrics(_ metrics: [MenuBarMetric]) {
         menuBarMetrics = MenuBarMetricConfiguration(metrics: metrics).metrics
+    }
+
+    package func setMenuBarIconOnly(_ iconOnly: Bool) {
+        menuBarIconOnly = iconOnly
     }
 
     package func setSubscriptionProviderOrder(_ order: [SubscriptionProviderID]) {

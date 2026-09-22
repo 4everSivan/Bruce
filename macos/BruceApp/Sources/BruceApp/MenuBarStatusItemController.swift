@@ -44,7 +44,10 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
     /// accessibility tree. The image contains both icon and metric, so AppKit
     /// never has to re-layout an image/title pair.
     private static let statusItemLength: CGFloat = 74
+    private static let iconOnlyLength: CGFloat = 28
     private var lastRenderedContent: MenuBarStatusItemContent?
+    private var refreshTimer: Timer?
+    private var refreshPhase: CGFloat = 0
     /// 仪表盘 AppKit 系统材质宿主; 与业务模型和刷新流程隔离.
     private var dashboardGlassController: DashboardGlassPanelController?
 
@@ -59,6 +62,11 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         self.openSettings = openSettings
         self.terminateApplication = terminateApplication
         super.init()
+    }
+
+    isolated deinit {
+        refreshTimer?.invalidate()
+        DistributedNotificationCenter.default().removeObserver(self)
     }
 
     /// 创建状态项与仪表盘面板. 幂等; 在 applicationDidFinishLaunching 调用.
@@ -177,6 +185,20 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
             name: NSApplication.didResignActiveNotification,
             object: nil
         )
+        // 监听系统深色/浅色外观切换, 立即触发状态项重绘
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(systemAppearanceDidChange),
+            name: NSNotification.Name("AppleInterfaceThemeChangedNotification"),
+            object: nil
+        )
+    }
+
+    @objc private func systemAppearanceDidChange() {
+        Task { @MainActor [weak self] in
+            guard let self, let button = self.statusItem?.button else { return }
+            self.refreshLabelImage(on: button, force: true)
+        }
     }
 
     // MARK: - 状态栏标签图像
@@ -217,17 +239,30 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         let content = MenuBarStatusItemContentBuilder().build(
             metrics: model.menuBarMetrics,
             summary: summary,
-            isRefreshing: isRefreshing
+            isRefreshing: isRefreshing,
+            iconOnly: model.menuBarIconOnly
         )
+
+        if isRefreshing {
+            startRefreshAnimationIfNeeded(on: button)
+        } else {
+            stopRefreshAnimation()
+        }
 
         guard force || lastRenderedContent != content else {
             return
         }
         lastRenderedContent = content
 
+        let isIconOnly = content.metricText.isEmpty
+        let targetLength = isIconOnly ? Self.iconOnlyLength : Self.statusItemLength
+        if statusItem?.length != targetLength {
+            statusItem?.length = targetLength
+        }
+
         button.image = makeStatusItemImage(
             for: content,
-            width: Self.statusItemLength
+            width: targetLength
         )
         button.title = ""
         button.imagePosition = .imageOnly
@@ -236,66 +271,164 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         button.isEnabled = true
         button.appearsDisabled = false
         button.alphaValue = 1
-        // 留给 AppKit 依据菜单栏自己的 effective appearance 着色.
-        // 这里不能使用固定的 .black/.white, 也不能沿用 app 窗口的
-        // controlTextColor: 菜单栏与设置窗口可能处于不同的对比度环境.
         button.contentTintColor = nil
         button.toolTip = content.metricText.isEmpty
             ? content.accessibilityLabel
             : "\(content.accessibilityLabel) · \(content.metricText)"
     }
 
-    /// 把图标和指标合成一张模板 image. 模板 image 由菜单栏宿主按当前
-    /// appearance 统一着色, 因此不会把设置页的 dark 外观泄漏到菜单栏.
+    private func startRefreshAnimationIfNeeded(on button: NSStatusBarButton) {
+        guard refreshTimer == nil else { return }
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.isRefreshing, let btn = self.statusItem?.button else {
+                    self?.stopRefreshAnimation()
+                    return
+                }
+                self.refreshPhase = (self.refreshPhase + 18).truncatingRemainder(dividingBy: 360)
+                self.refreshLabelImage(on: btn, force: true)
+            }
+        }
+    }
+
+    private func stopRefreshAnimation() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+        refreshPhase = 0
+    }
+
+    /// 方案 04 (超细精密数字环规) 绘制:
+    /// - 深度适配 macOS 菜单栏浅色与深色场景 (深色高透亮绿 #30D158, 浅色高对比翡翠深绿 #1C8C3D)
+    /// - 平时: 1.5pt 底环 + 绿色订阅总配额比例圆弧 + 中心基准点 (配额 <15% 时告警变红)
+    /// - 刷新中: 样式 01 (顺时针雷达扫掠自旋 · 绿色)
+    /// - 仅图标模式时自适应收缩至 28pt
     private func makeStatusItemImage(
         for content: MenuBarStatusItemContent,
         width: CGFloat
     ) -> NSImage {
         let size = NSSize(width: width, height: 22)
-        let image = NSImage(size: size)
-        image.lockFocus()
-        defer { image.unlockFocus() }
+        let isIconOnly = content.metricText.isEmpty
+        let iconCenterX: CGFloat = isIconOnly ? (size.width / 2) : 13
+        let center = NSPoint(x: iconCenterX, y: size.height / 2)
+        let radius: CGFloat = 6.2
 
-        if let symbol = NSImage(
-            systemSymbolName: content.iconName,
-            accessibilityDescription: "Bruce"
-        ) {
-            symbol.isTemplate = true
-            symbol.draw(
-                in: NSRect(x: 6, y: 2, width: 18, height: 18),
-                from: .zero,
-                operation: .sourceOver,
-                fraction: 1
-            )
-        } else {
-            logger.error("status item system icon unavailable")
+        let image = NSImage(size: size, flipped: false) { [weak self] _ in
+            guard let self else { return false }
+
+            // 1. 获取菜单栏当前宿主的真实深浅色外观 (优先当前按钮的 effectiveAppearance)
+            let isDark: Bool
+            if let button = self.statusItem?.button {
+                isDark = button.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            } else {
+                isDark = NSAppearance.currentDrawing().bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            }
+
+            // 2. 配色系统 (深色模式与浅色模式双向高保真、高对比度适配):
+            // - 深色菜单栏: 高发光度亮绿 (Apple Health Green #30D158), 底环 28% 白 + 纯白文字
+            // - 浅色菜单栏: 高对比度翡翠深绿 (#1C8C3D, WCAG 对比度 > 4.8:1), 底环 25% 黑 + 纯黑文字
+            let trackColor: NSColor
+            let greenColor: NSColor
+            let warningRedColor: NSColor
+            let labelTextColor: NSColor
+
+            if isDark {
+                trackColor = NSColor(white: 1.0, alpha: 0.28)
+                greenColor = NSColor(srgbRed: 0.19, green: 0.82, blue: 0.35, alpha: 1.0)
+                warningRedColor = NSColor(srgbRed: 1.0, green: 0.27, blue: 0.23, alpha: 1.0)
+                labelTextColor = NSColor(white: 1.0, alpha: 0.95)
+            } else {
+                trackColor = NSColor(white: 0.0, alpha: 0.25)
+                greenColor = NSColor(srgbRed: 0.11, green: 0.55, blue: 0.24, alpha: 1.0)
+                warningRedColor = NSColor(srgbRed: 0.85, green: 0.15, blue: 0.12, alpha: 1.0)
+                labelTextColor = NSColor(white: 0.0, alpha: 0.90)
+            }
+
+            // 3. 底环 (Track): 极细 1.5pt 圆环
+            let trackPath = NSBezierPath()
+            trackPath.appendArc(withCenter: center, radius: radius, startAngle: 0, endAngle: 360)
+            trackPath.lineWidth = 1.5
+            trackColor.setStroke()
+            trackPath.stroke()
+
+            if self.isRefreshing {
+                // 4. 刷新中: 样式 01 (雷达扫掠自旋 · 绿色)
+                let sweepPath = NSBezierPath()
+                let start = self.refreshPhase
+                let end = (self.refreshPhase - 100).truncatingRemainder(dividingBy: 360)
+                sweepPath.appendArc(withCenter: center, radius: radius, startAngle: start, endAngle: end, clockwise: true)
+                sweepPath.lineWidth = 1.8
+                sweepPath.lineCapStyle = .round
+                greenColor.setStroke()
+                sweepPath.stroke()
+
+                // 中心微点
+                let dotRect = NSRect(x: center.x - 1.2, y: center.y - 1.2, width: 2.4, height: 2.4)
+                let dotPath = NSBezierPath(ovalIn: dotRect)
+                greenColor.setFill()
+                dotPath.fill()
+            } else if let ratio = content.remainingQuotaRatio {
+                // 5. 就绪态: 配额比例填充 (绿色, <15% 时变红)
+                let fillRatio = max(0.0, min(1.0, ratio))
+                let isWarning = fillRatio < 0.15 || content.iconName == "exclamationmark.triangle"
+                let activeColor = isWarning ? warningRedColor : greenColor
+
+                if fillRatio > 0.005 {
+                    let progressPath = NSBezierPath()
+                    let startAngle: CGFloat = 90
+                    let endAngle = startAngle - CGFloat(fillRatio * 360)
+                    progressPath.appendArc(withCenter: center, radius: radius, startAngle: startAngle, endAngle: endAngle, clockwise: true)
+                    progressPath.lineWidth = 1.8
+                    progressPath.lineCapStyle = .round
+                    activeColor.setStroke()
+                    progressPath.stroke()
+                } else {
+                    // 额度为 0: 在 12 点钟顶端绘制醒目的警告红点
+                    let zeroDotRect = NSRect(x: center.x - 1.0, y: center.y + radius - 1.0, width: 2.0, height: 2.0)
+                    let zeroDotPath = NSBezierPath(ovalIn: zeroDotRect)
+                    activeColor.setFill()
+                    zeroDotPath.fill()
+                }
+
+                // 中心微点
+                let dotRect = NSRect(x: center.x - 1.2, y: center.y - 1.2, width: 2.4, height: 2.4)
+                let dotPath = NSBezierPath(ovalIn: dotRect)
+                activeColor.setFill()
+                dotPath.fill()
+            } else {
+                // 6. 无量条配额 (纯余额或未配置服务)
+                let dotRect = NSRect(x: center.x - 1.2, y: center.y - 1.2, width: 2.4, height: 2.4)
+                let dotPath = NSBezierPath(ovalIn: dotRect)
+                trackColor.setFill()
+                dotPath.fill()
+            }
+
+            // 7. 指标文本绘制 (非仅图标模式时)
+            if !content.metricText.isEmpty {
+                let attributes: [NSAttributedString.Key: Any] = [
+                    .font: NSFont.monospacedDigitSystemFont(
+                        ofSize: 12,
+                        weight: .regular
+                    ),
+                    .foregroundColor: labelTextColor,
+                ]
+                let text = NSAttributedString(
+                    string: content.metricText,
+                    attributes: attributes
+                )
+                let textSize = text.size()
+                let textRect = NSRect(
+                    x: 25,
+                    y: (size.height - textSize.height) / 2,
+                    width: max(0, size.width - 27),
+                    height: textSize.height
+                )
+                text.draw(in: textRect)
+            }
+
+            return true
         }
 
-        guard !content.metricText.isEmpty else {
-            image.isTemplate = true
-            return image
-        }
-
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(
-                ofSize: 12,
-                weight: .regular
-            ),
-            .foregroundColor: NSColor.black,
-        ]
-        let text = NSAttributedString(
-            string: content.metricText,
-            attributes: attributes
-        )
-        let textSize = text.size()
-        let textRect = NSRect(
-            x: 29,
-            y: (size.height - textSize.height) / 2,
-            width: max(0, size.width - 33),
-            height: textSize.height
-        )
-        text.draw(in: textRect)
-        image.isTemplate = true
+        image.isTemplate = false
         return image
     }
 

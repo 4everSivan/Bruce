@@ -106,6 +106,8 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
     public var consentVersion: Int?
     /// 菜单栏指标 rawValue 有序列表. nil 使用应用默认值.
     public var menuBarMetrics: [String]?
+    /// 菜单栏是否仅显示图标 (隐藏文字指标). nil/false 表示显示指标.
+    public var menuBarIconOnly: Bool?
     /// 订阅 provider 配置, 键为 SubscriptionProviderID rawValue.
     /// v1 配置文件无此键, 加载时按缺省 (全部未配置) 处理.
     public var subscriptionProviders: [String: SubscriptionProviderConfiguration]
@@ -185,6 +187,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         selectedModules: Set<String> = [],
         consentVersion: Int? = nil,
         menuBarMetrics: [String]? = nil,
+        menuBarIconOnly: Bool? = nil,
         subscriptionProviders: [String: SubscriptionProviderConfiguration] = [:],
         refreshIntervalMinutes: Int? = nil,
         appearanceMode: AppearancePreference? = nil,
@@ -200,6 +203,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         self.selectedModules = selectedModules
         self.consentVersion = consentVersion
         self.menuBarMetrics = menuBarMetrics
+        self.menuBarIconOnly = menuBarIconOnly
         self.subscriptionProviders = subscriptionProviders
         self.refreshIntervalMinutes = refreshIntervalMinutes
         self.appearanceMode = appearanceMode
@@ -220,6 +224,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         selectedModules = try container.decodeIfPresent(Set<String>.self, forKey: .selectedModules) ?? []
         consentVersion = try container.decodeIfPresent(Int.self, forKey: .consentVersion)
         menuBarMetrics = try container.decodeIfPresent([String].self, forKey: .menuBarMetrics)
+        menuBarIconOnly = try container.decodeIfPresent(Bool.self, forKey: .menuBarIconOnly)
         subscriptionProviders = try container.decodeIfPresent(
             [String: SubscriptionProviderConfiguration].self,
             forKey: .subscriptionProviders
@@ -275,6 +280,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         case selectedModules
         case consentVersion
         case menuBarMetrics
+        case menuBarIconOnly
         case subscriptionProviders
         case refreshIntervalMinutes
         case appearanceMode
@@ -293,6 +299,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         try container.encode(selectedModules, forKey: .selectedModules)
         try container.encodeIfPresent(consentVersion, forKey: .consentVersion)
         try container.encodeIfPresent(menuBarMetrics, forKey: .menuBarMetrics)
+        try container.encodeIfPresent(menuBarIconOnly, forKey: .menuBarIconOnly)
         try container.encode(subscriptionProviders, forKey: .subscriptionProviders)
         try container.encodeIfPresent(
             refreshIntervalMinutes, forKey: .refreshIntervalMinutes

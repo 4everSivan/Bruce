@@ -307,6 +307,7 @@ final class OnboardingCoordinator: ObservableObject {
     private func publishMenuBarMetrics(
         from config: OnboardingConfiguration?
     ) {
+        model.setMenuBarIconOnly(config?.menuBarIconOnly ?? false)
         model.setMenuBarMetrics(
             MenuBarMetricConfiguration(
                 rawValues: config?.menuBarMetrics
@@ -679,6 +680,27 @@ final class OnboardingCoordinator: ObservableObject {
             return
         }
         model.setMenuBarMetrics(normalized)
+        model.setSettingsError(nil)
+    }
+
+    var menuBarIconOnly: Bool {
+        model.menuBarIconOnly
+    }
+
+    func setMenuBarIconOnly(_ iconOnly: Bool) {
+        guard let configStore else {
+            model.setSettingsError("配置存储不可用, 无法保存菜单栏设置")
+            return
+        }
+        var config = configStore.load() ?? OnboardingConfiguration()
+        config.menuBarIconOnly = iconOnly
+        do {
+            try configStore.save(config)
+        } catch {
+            model.setSettingsError("菜单栏设置保存失败")
+            return
+        }
+        model.setMenuBarIconOnly(iconOnly)
         model.setSettingsError(nil)
     }
 

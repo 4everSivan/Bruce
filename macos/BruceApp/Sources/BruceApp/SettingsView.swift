@@ -461,12 +461,35 @@ struct SettingsView: View {
             paneCaption("菜单栏指标")
 
             FluentCard {
-                Text("选择 1 至 3 项指标, 菜单栏将按下列顺序紧凑展示; 拖拽已选指标调整顺序")
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(SettingsDemoTokens.text2)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                menuBarMetricList
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("仅显示图标")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(SettingsDemoTokens.text)
+                        Text("开启后菜单栏隐藏全部文本指标, 仅保留高精度配额环规图标")
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(SettingsDemoTokens.text2)
+                    }
+                    Spacer()
+                    Toggle("", isOn: Binding(
+                        get: { coordinator.menuBarIconOnly },
+                        set: { coordinator.setMenuBarIconOnly($0) }
+                    ))
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+
+                if !coordinator.menuBarIconOnly {
+                    SettingsDemoTokens.separator.frame(height: 1)
+                    Text("选择 1 至 3 项指标, 菜单栏将按下列顺序紧凑展示; 拖拽已选指标调整顺序")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(SettingsDemoTokens.text2)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                    menuBarMetricList
+                }
             }
         }
     }
