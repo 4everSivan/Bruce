@@ -187,7 +187,6 @@ struct CollapsibleCardHeader<Status: View, Mini: View>: View {
     let title: String
     let isCollapsed: Bool
     let onToggle: () -> Void
-    var stamp: String? = nil
     var cardID: DashboardCardID? = nil
     @ViewBuilder let status: Status
     @ViewBuilder let mini: Mini
@@ -230,19 +229,6 @@ struct CollapsibleCardHeader<Status: View, Mini: View>: View {
                             : .system(size: 12.5, weight: .semibold))
                         .foregroundStyle(isNothing ? nothingTitleColor : Color.primary)
                         .frame(width: resolvedTitleWidth, alignment: .leading)
-                    if isNothing, let stamp {
-                        Text(stamp)
-                            .font(NothingFont.mono(8.5))
-                            .tracking(0.68)
-                            .foregroundStyle(nothingSecondaryColor)
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1)
-                            .frame(width: 72, alignment: .center)
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                                    .strokeBorder(nothingBorderColor, lineWidth: 1)
-                            }
-                    }
                     if isCollapsed {
                         mini
                             .frame(maxWidth: .infinity)

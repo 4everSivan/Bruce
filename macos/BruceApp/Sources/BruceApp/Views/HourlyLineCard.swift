@@ -55,7 +55,6 @@ struct HourlyLineCard: View {
                 title: "Agent 用量",
                 isCollapsed: isCollapsed,
                 onToggle: onToggleCollapse,
-                stamp: "HIST.14D",
                 cardID: .hourly
             ) {
                 EmptyView()

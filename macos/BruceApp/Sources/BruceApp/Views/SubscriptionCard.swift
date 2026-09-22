@@ -91,7 +91,6 @@ struct SubscriptionCard: View {
                 title: "订阅用量",
                 isCollapsed: isCollapsed,
                 onToggle: onToggleCollapse,
-                stamp: "QUOTA.LIVE",
                 cardID: .subscription
             ) {
                 if let updatedText = viewModel.updatedText {

@@ -12,6 +12,7 @@ struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var coordinator: OnboardingCoordinator
     @EnvironmentObject private var diagnostics: DiagnosticService
+    @Environment(\.colorScheme) private var colorScheme
 
     /// 侧边栏选中分类.
     @State private var category = SettingsCategory.general
@@ -461,6 +462,10 @@ struct SettingsView: View {
             paneCaption("菜单栏指标")
 
             FluentCard {
+                menuBarPreviewStrip
+
+                SettingsDemoTokens.separator.frame(height: 1)
+
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("仅显示图标")
@@ -483,12 +488,7 @@ struct SettingsView: View {
 
                 if !coordinator.menuBarIconOnly {
                     SettingsDemoTokens.separator.frame(height: 1)
-                    Text("选择 1 至 3 项指标, 菜单栏将按下列顺序紧凑展示; 拖拽已选指标调整顺序")
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(SettingsDemoTokens.text2)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                    menuBarMetricList
+                    menuBarReorderableCardsSection
                 }
             }
         }
@@ -546,92 +546,340 @@ struct SettingsView: View {
         onto target: MenuBarMetric
     ) {
         var metrics = model.menuBarMetrics
-        metrics.removeAll { $0 == dragged }
-        guard let targetIndex = metrics.firstIndex(of: target) else { return }
-        metrics.insert(dragged, at: targetIndex)
+        guard let fromIndex = metrics.firstIndex(of: dragged),
+              let toIndex = metrics.firstIndex(of: target),
+              fromIndex != toIndex else {
+            return
+        }
+        metrics.remove(at: fromIndex)
+        metrics.insert(dragged, at: toIndex)
         coordinator.setMenuBarMetrics(metrics)
     }
 
-    /// 菜单栏指标列表: 已选指标可拖拽排序, 未选指标点击添加.
-    private var menuBarMetricList: some View {
-        VStack(spacing: 0) {
-            ForEach(model.menuBarMetrics) { metric in
-                menuBarMetricRow(metric, selected: true, divided: true)
-                    .onDrop(
-                        of: [.text],
-                        delegate: LiveReorderDropDelegate<MenuBarMetric>(
-                            target: metric,
-                            move: moveMenuBarMetric
-                        )
-                    )
-            }
-            ForEach(
-                MenuBarMetric.allCases.filter { !model.menuBarMetrics.contains($0) }
-            ) { metric in
-                menuBarMetricRow(metric, selected: false, divided: true)
-            }
+    private var isPreviewLight: Bool {
+        switch coordinator.appearanceMode {
+        case .light: return true
+        case .dark: return false
+        case .system: return colorScheme == .light
         }
     }
 
-    /// 单个菜单栏指标行: 已选行有拖拽手柄和移除按钮, 未选行有添加按钮.
-    private func menuBarMetricRow(
-        _ metric: MenuBarMetric,
-        selected: Bool,
-        divided: Bool
-    ) -> some View {
-        HStack(spacing: 10) {
-            if selected {
-                Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 11))
+    private var liveQuotaRatio: Double {
+        let summary = model.makeMenuBarSummary()
+        let quotaPercentage: Double?
+        if model.menuBarMetrics.contains(.minimumRemainingQuota) {
+            quotaPercentage = summary.minimumRemainingQuota ?? summary.averageRemainingQuota
+        } else {
+            quotaPercentage = summary.averageRemainingQuota ?? summary.minimumRemainingQuota
+        }
+        guard let percentage = quotaPercentage, percentage.isFinite else { return 0.68 }
+        return max(0.0, min(100.0, percentage)) / 100.0
+    }
+
+    private func metricValue(_ metric: MenuBarMetric) -> String {
+        let summary = model.makeMenuBarSummary()
+        let formatter = MenuBarMetricFormatter()
+        return formatter.string(for: metric, summary: summary)
+    }
+
+    private var menuBarPreviewText: String {
+        let summary = model.makeMenuBarSummary()
+        let formatter = MenuBarMetricFormatter()
+        return model.menuBarMetrics.map { formatter.string(for: $0, summary: summary) }
+            .joined(separator: "  ")
+    }
+
+    private var menuBarPreviewIcon: some View {
+        let ratio = liveQuotaRatio
+        let isWarning = ratio < 0.15
+        let greenColor = isPreviewLight
+            ? Color(red: 0.11, green: 0.55, blue: 0.24)
+            : Color(red: 0.19, green: 0.82, blue: 0.35)
+        let activeColor = isWarning ? Color(red: 1.0, green: 0.27, blue: 0.23) : greenColor
+        let trackColor = isPreviewLight
+            ? Color.black.opacity(0.18)
+            : Color.white.opacity(0.25)
+
+        return ZStack {
+            Circle()
+                .stroke(trackColor, lineWidth: 1.6)
+            Circle()
+                .trim(from: 0, to: CGFloat(ratio))
+                .stroke(activeColor, style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+        }
+        .frame(width: 14, height: 14)
+    }
+
+    /// 模拟 macOS 菜单栏条带预览.
+    private var menuBarPreviewStrip: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("菜单栏实时预览")
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .foregroundStyle(SettingsDemoTokens.text2)
+                Spacer()
+                Text("所见即所得 · 联动外观与排版")
+                    .font(.system(size: 10.5))
                     .foregroundStyle(SettingsDemoTokens.text3)
-                    .accessibilityHidden(true)
-                    .draggable(metric.rawValue)
             }
-            Text(metric.title)
-                .font(.system(size: 13))
-                .foregroundStyle(
-                    selected ? SettingsDemoTokens.text : SettingsDemoTokens.text2
+            .padding(.horizontal, 14)
+            .padding(.top, 12)
+
+            ZStack(alignment: .top) {
+                LinearGradient(
+                    colors: isPreviewLight
+                        ? [Color(hex: "D8E1EC"), Color(hex: "C2CFDE"), Color(hex: "B0C0D4")]
+                        : [Color(hex: "101319"), Color(hex: "17202E"), Color(hex: "0C0E14")],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
                 )
-            Spacer()
-            if selected {
-                Button {
-                    var metrics = model.menuBarMetrics
-                    guard metrics.count > 1 else { return }
-                    metrics.removeAll { $0 == metric }
-                    coordinator.setMenuBarMetrics(metrics)
-                } label: {
-                    Image(systemName: "minus.circle")
-                        .foregroundStyle(SettingsDemoTokens.danger)
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel("移除\(metric.title)")
-            } else {
-                Button {
-                    var metrics = model.menuBarMetrics
-                    guard !metrics.contains(metric),
-                          metrics.count < MenuBarMetricConfiguration.maximumCount else {
-                        return
+                .frame(height: 56)
+
+                HStack(spacing: 8) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "apple.logo")
+                            .font(.system(size: 12))
+                        Text("Finder")
+                            .font(.system(size: 11.5, weight: .semibold))
                     }
-                    metrics.append(metric)
-                    coordinator.setMenuBarMetrics(metrics)
-                } label: {
-                    Image(systemName: "plus.circle")
-                        .foregroundStyle(SettingsDemoTokens.accent)
+                    .foregroundStyle(isPreviewLight ? Color.black.opacity(0.85) : Color.white.opacity(0.9))
+
+                    Spacer()
+
+                    HStack(spacing: 6) {
+                        menuBarPreviewIcon
+                        if !coordinator.menuBarIconOnly {
+                            Text(menuBarPreviewText)
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        }
+                    }
+                    .foregroundStyle(isPreviewLight ? Color.black.opacity(0.9) : Color.white.opacity(0.95))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(isPreviewLight ? Color.black.opacity(0.06) : Color.white.opacity(0.12))
+                    )
+
+                    HStack(spacing: 8) {
+                        Image(systemName: "wifi")
+                            .font(.system(size: 10.5))
+                        Image(systemName: "switch.2")
+                            .font(.system(size: 10.5))
+                        Text(Date.now, format: .dateTime.hour().minute())
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .foregroundStyle(isPreviewLight ? Color.black.opacity(0.7) : Color.white.opacity(0.75))
                 }
-                .buttonStyle(.borderless)
-                .disabled(
-                    model.menuBarMetrics.count >= MenuBarMetricConfiguration.maximumCount
+                .padding(.horizontal, 10)
+                .frame(height: 28)
+                .background(
+                    (isPreviewLight ? Color.white.opacity(0.7) : Color(hex: "12141A").opacity(0.7))
+                        .background(.ultraThinMaterial)
                 )
-                .accessibilityLabel("添加\(metric.title)")
+                .overlay(alignment: .bottom) {
+                    Rectangle()
+                        .fill(isPreviewLight ? Color.black.opacity(0.08) : Color.white.opacity(0.08))
+                        .frame(height: 1)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(SettingsDemoTokens.separator, lineWidth: 1)
+            )
+            .padding(.horizontal, 14)
+            .padding(.bottom, 12)
+        }
+    }
+
+    /// 方案 B: 现代磁吸悬浮卡片区 (包含已选指标拖拽与待选指标池).
+    private var menuBarReorderableCardsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("已选指标")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(SettingsDemoTokens.text)
+                Spacer()
+                Text("\(model.menuBarMetrics.count) / \(MenuBarMetricConfiguration.maximumCount)")
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(SettingsDemoTokens.text3)
+            }
+
+            Text("菜单栏将按下列序号在左至右紧凑展示; 拖动点阵手柄调整顺序")
+                .font(.system(size: 11.5))
+                .foregroundStyle(SettingsDemoTokens.text2)
+
+            VStack(spacing: 8) {
+                ForEach(Array(model.menuBarMetrics.enumerated()), id: \.element) { index, metric in
+                    selectedMetricCard(metric, order: index + 1)
+                        .onDrop(
+                            of: [.text],
+                            delegate: LiveReorderDropDelegate<MenuBarMetric>(
+                                target: metric,
+                                move: moveMenuBarMetric
+                            )
+                        )
+                }
+            }
+            .animation(.spring(response: 0.25, dampingFraction: 0.8), value: model.menuBarMetrics)
+
+            let unselected = MenuBarMetric.allCases.filter { !model.menuBarMetrics.contains($0) }
+            if !unselected.isEmpty {
+                SettingsDemoTokens.separator.frame(height: 1)
+                    .padding(.vertical, 2)
+
+                HStack {
+                    Text("待选指标")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(SettingsDemoTokens.text)
+                    Spacer()
+                    if model.menuBarMetrics.count >= MenuBarMetricConfiguration.maximumCount {
+                        Text("已达到 3 项展示上限")
+                            .font(.system(size: 11))
+                            .foregroundStyle(SettingsDemoTokens.warn)
+                    }
+                }
+
+                VStack(spacing: 6) {
+                    ForEach(unselected) { metric in
+                        unselectedMetricCard(metric)
+                    }
+                }
             }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 9)
-        .overlay(alignment: .top) {
-            if divided {
-                SettingsDemoTokens.separator.frame(height: 1)
+        .padding(.vertical, 12)
+    }
+
+    /// 现代悬浮卡片: 点阵手柄 + 序号 + 图标与名称 + 实时数值 + 移除按钮.
+    private func selectedMetricCard(_ metric: MenuBarMetric, order: Int) -> some View {
+        let value = metricValue(metric)
+        let canRemove = model.menuBarMetrics.count > 1
+
+        return HStack(spacing: 10) {
+            // 6 点点阵手柄
+            VStack(spacing: 2.5) {
+                HStack(spacing: 2.5) {
+                    Circle().frame(width: 2.5, height: 2.5)
+                    Circle().frame(width: 2.5, height: 2.5)
+                }
+                HStack(spacing: 2.5) {
+                    Circle().frame(width: 2.5, height: 2.5)
+                    Circle().frame(width: 2.5, height: 2.5)
+                }
+                HStack(spacing: 2.5) {
+                    Circle().frame(width: 2.5, height: 2.5)
+                    Circle().frame(width: 2.5, height: 2.5)
+                }
             }
+            .foregroundStyle(SettingsDemoTokens.text3)
+            .frame(width: 14, height: 20)
+            .contentShape(Rectangle())
+            .draggable(metric.rawValue)
+            .help("按住拖拽以调整指标在菜单栏的展示顺序")
+
+            // 序号徽章
+            Text("#\(order)")
+                .font(.system(size: 10.5, weight: .bold, design: .monospaced))
+                .foregroundStyle(SettingsDemoTokens.text2)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .background(SettingsDemoTokens.surfaceHover, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+
+            // 图标与名称
+            Image(systemName: metric.systemImage)
+                .font(.system(size: 12.5))
+                .foregroundStyle(SettingsDemoTokens.accent)
+                .frame(width: 18)
+
+            Text(metric.title)
+                .font(.system(size: 12.5, weight: .medium))
+                .foregroundStyle(SettingsDemoTokens.text)
+
+            Spacer()
+
+            // 实时数值预览
+            Text(value)
+                .font(.system(size: 11.5, weight: .semibold, design: .monospaced))
+                .foregroundStyle(SettingsDemoTokens.ok)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(SettingsDemoTokens.ok.opacity(0.12), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+
+            // 移除按钮
+            Button {
+                var metrics = model.menuBarMetrics
+                guard metrics.count > 1 else { return }
+                metrics.removeAll { $0 == metric }
+                coordinator.setMenuBarMetrics(metrics)
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(canRemove ? SettingsDemoTokens.danger : SettingsDemoTokens.text3.opacity(0.3))
+            }
+            .buttonStyle(.plain)
+            .disabled(!canRemove)
+            .help(canRemove ? "从菜单栏移除" : "至少保留 1 项指标")
+            .accessibilityLabel("移除\(metric.title)")
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(SettingsDemoTokens.bg, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .strokeBorder(SettingsDemoTokens.separator, lineWidth: 1)
+        )
+    }
+
+    /// 待选指标卡片: 图标与名称 + 实时数值 + 添加按钮.
+    private func unselectedMetricCard(_ metric: MenuBarMetric) -> some View {
+        let value = metricValue(metric)
+        let isFull = model.menuBarMetrics.count >= MenuBarMetricConfiguration.maximumCount
+
+        return HStack(spacing: 10) {
+            Image(systemName: metric.systemImage)
+                .font(.system(size: 12.5))
+                .foregroundStyle(SettingsDemoTokens.text3)
+                .frame(width: 18)
+
+            Text(metric.title)
+                .font(.system(size: 12.5))
+                .foregroundStyle(SettingsDemoTokens.text2)
+
+            Spacer()
+
+            Text(value)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(SettingsDemoTokens.text3)
+
+            Button {
+                var metrics = model.menuBarMetrics
+                guard !metrics.contains(metric),
+                      metrics.count < MenuBarMetricConfiguration.maximumCount else {
+                    return
+                }
+                metrics.append(metric)
+                coordinator.setMenuBarMetrics(metrics)
+            } label: {
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(isFull ? SettingsDemoTokens.text3.opacity(0.3) : SettingsDemoTokens.accent)
+            }
+            .buttonStyle(.plain)
+            .disabled(isFull)
+            .help(isFull ? "已达到 3 项展示上限" : "添加至菜单栏")
+            .accessibilityLabel("添加\(metric.title)")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(SettingsDemoTokens.bg.opacity(0.45), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .strokeBorder(SettingsDemoTokens.separator.opacity(0.6), lineWidth: 1)
+        )
+        .opacity(isFull ? 0.6 : 1.0)
     }
 
     // MARK: - Agent 用量面板

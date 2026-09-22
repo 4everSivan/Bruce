@@ -53,7 +53,6 @@ struct UsageHeroCard: View {
                 title: "Token 用量",
                 isCollapsed: isCollapsed,
                 onToggle: onToggleCollapse,
-                stamp: "METRIC.01",
                 cardID: .usage
             ) {
                 if viewModel.isLive {
