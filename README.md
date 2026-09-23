@@ -5,7 +5,7 @@
   <p>一条帮你看住每个 token 的本地小狗 🐶</p>
   <p>
     <a href="https://github.com/4everSivan/Bruce/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/4everSivan/Bruce/ci.yml?branch=main&amp;style=flat-square&amp;label=CI%2FCD" alt="CI/CD" /></a>
-    <a href="https://github.com/4everSivan/Bruce/releases"><img src="https://img.shields.io/badge/version-v0.6.0-0A7EA4?style=flat-square" alt="Version v0.6.0" /></a>
+    <a href="https://github.com/4everSivan/Bruce/releases"><img src="https://img.shields.io/badge/version-v0.9.0-0A7EA4?style=flat-square" alt="Version v0.9.0" /></a>
     <a href="#环境要求"><img src="https://img.shields.io/badge/macOS-14%2B-000000?style=flat-square&amp;logo=apple&amp;logoColor=white" alt="macOS 14+" /></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-4CBB17?style=flat-square" alt="MIT License" /></a>
   </p>
@@ -18,18 +18,21 @@
 
 Bruce 把本机 AI Agent 的 token 用量、成本估算和订阅额度集中到一个原生 macOS 菜单栏应用中。原生层负责依赖扫描、登录授权、凭证管理、定时刷新、缓存与故障恢复; Rust Collector 负责采集; 弹出面板以原生 SwiftUI 渲染 (macOS 26+ 可选液态玻璃主题, 更低系统自动使用经典材质风格)。项目本地优先运行, 无自有服务端。
 
-> 当前版本 v0.6.0。最低支持 macOS 14, 液态玻璃主题需 macOS 26。测试版由 `scripts/build-test-app.sh` 本地打包; 推送 `v*` tag 后 CI 仅自动产出未签名 Preview 草稿 Release。正式版 (Developer ID 签名 + 公证) 暂未纳入 CI/CD 规划, `scripts/build-release-app.sh` 仅作为未来手工预留。
+> 当前版本 v0.9.0。最低支持 macOS 14, 液态玻璃主题需 macOS 26。支持 Universal 2 通用二进制 (Apple Silicon 与 Intel Mac 原生运行)。测试版由 `scripts/build-test-app.sh` 本地打包; 推送 `v*` tag 后 CI 仅自动产出未签名 Preview 草稿 Release。正式版 (Developer ID 签名 + 公证) 暂未纳入 CI/CD 规划, `scripts/build-release-app.sh` 仅作为未来手工预留。
 
 ## 核心特性
 
 - **看板**: 菜单栏常驻 (LSUIElement), 原生状态项 + SwiftUI 弹出面板, 面板高度随内容自适应, 无滚动条。
 - **用量卡**: hero 总量、四格细分、14 日堆叠趋势、26 周用量热力图、月度聚合分解与用量档位指示。
 - **订阅用量卡**: 多 Provider 窗口量条、Codex 账号子卡、DeepSeek 月度消费与余额, 按数据可用性条件渲染。
-- **逐小时卡**: 24 点折线与模型/项目明细展开。
+- **逐小时卡**: 24 点折线与模型/项目明细展开; 支持 Nothing 风格点阵控制台、P4 风格 6 格 LCD 迷你仪表与 Emerald Glow 极光绿微光折线图。
+- **菜单栏与状态指示**: 纯图标模式、Style 01 绿阶雷达扫描动态与 Precision Cyber Ring Gauge 环形仪表，实时感知订阅健康度并原生自适应浅色/深色桌面。
+- **计费引擎与校准**: 内置 26 款主流大模型官方基准定价，精确核算模型级与全局 Token 成本，设置中提供全模型价格表与单模型自定义价格校准。
+- **凭证安全存储**: 采用 Unix `0600` 本地权限保护文件与原子替换落盘，彻底摆脱本地构建频繁弹出系统钥匙串密码输入框的困扰，并支持旧 Keychain 凭证无感平滑迁移。
 - **主题**: 经典 / 液态玻璃两档; 液态玻璃仅 macOS 26+ 可选, 其下可调标准/通透/哑光模糊风格, 低系统强制经典材质。
-- **设置窗口**: 通用 (配色模式、界面风格、模糊风格、刷新间隔、系统通知开关、钥匙串访问配置、菜单栏指标拖拽排序、全局快捷键)、Agent 用量依赖卡、订阅额度 (Provider 标签式管理与拖拽排序, 凭证只进 Keychain)、统一授权与诊断。
+- **设置窗口**: 通用 (配色模式、界面风格、模糊风格、刷新间隔、系统通知开关、菜单栏指标拖拽排序与实时模拟预览、全局快捷键)、模型计费校准、Agent 用量依赖卡、订阅额度 (Provider 标签式管理与拖拽排序)、统一授权与诊断。
 - **授权门控**: 首次启动 Onboarding、本机只读依赖扫描、统一授权摘要与 Activation Gate — 未确认授权不启动任何 Collector。
-- **调度与可靠性**: 完成 Bruce Keychain 访问配置后默认每 30 分钟自动刷新; 未配置时不读取凭证且不启动自动采集。支持手动刷新、防重入、超时、退避和系统唤醒补采; 最后成功快照优先展示, 单模块失败不阻塞其他模块, 损坏快照自动回退 previous。
+- **调度与可靠性**: 默认每 30 分钟自动刷新。支持手动刷新、防重入、超时、退避和系统唤醒补采; 最后成功快照优先展示, 单模块失败不阻塞其他模块, 损坏快照自动回退 previous。
 - **配额预警**: 临界线计算、预警去重、通知中心提示与自动恢复判定。
 - **可访问性**: 键盘导航、VoiceOver 状态语义、macOS 减少动态效果偏好。
 - **隐私**: 设置页提供脱敏诊断预览与最小 ZIP 导出, 不包含 Artifact 或账号活动数据。
@@ -39,7 +42,7 @@ Bruce 把本机 AI Agent 的 token 用量、成本估算和订阅额度集中到
 | 类别 | 覆盖 |
 |---|---|
 | 本机会话扫描 | Kimi Work / Kimi Code、Claude Code、Codex、Grok、OpenCode、Orca、Pi、ZCode、CodeBuddy |
-| 订阅额度 | Kimi、DeepSeek、火山引擎、Codex OAuth、Claude、Grok、OpenCode Go、智谱 GLM |
+| 订阅额度 | Kimi、DeepSeek、火山引擎、Codex OAuth、Claude、Grok、OpenCode Go、智谱 GLM、阶跃星辰（StepFun） |
 
 > 仓库根 `*/widget/` 单文件 Widget 继续保留, 仅服务 Daimon / Kimi Work Blueprint 场景, 不属于 App 的组成部分。
 

@@ -6,6 +6,43 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.9.0] - 2026-09-23
+
+### Added
+
+- **模型计费与价格校准引擎**:
+  - Rust Collector 内置 26 款主流大模型官方基准定价表（覆盖 OpenAI、Anthropic、DeepSeek、火山引擎、Google、Moonshot 等），支持模型名称前缀智能匹配与模糊解析；
+  - 恢复全局与单模型/单 Agent 维度的 Token 成本（`costUsd`）精确核算；
+  - 设置窗口新增「模型计费」专区，支持全模型定价一览、关键字实时搜索、单模型一键弹窗校准与输入/输出价格自定义覆盖，配置与 `config.json` 实时双向映射联动。
+- **菜单栏纯图标模式与赛博环形精密仪表**:
+  - 新增“仅显示图标”紧凑模式开关，隐藏冗长文字指标，满足极简桌面偏好；
+  - 状态栏图标深度集成 Style 01 绿阶雷达扫描动态与 Precision Cyber Ring Gauge 环形仪表，实时呈现订阅额度健康度与剩余用量比例；
+  - 菜单栏指示器与刻度环原生适配浅色与深色桌面环境，根据 `effectiveAppearance` 动态调整高对比度色阶，杜绝辨识度不足。
+- **菜单栏指标动态自适应与实时交互配置**:
+  - 设置窗口提供高保真 macOS 菜单栏实时模拟预览条，调整指标启停与顺序时所见即所得；
+  - 引入点阵抓手卡片式拖拽排序与指标备选池交互，自由定制菜单栏指示器；
+  - 菜单栏状态项控制器支持多指标宽度动态测量排版，彻底解决右侧文本截断问题。
+- **Nothing 风格 Agent 项目看板视觉升级**:
+  - 引入 Dot-Leader Console 点阵导引线控制台，项目列表支持虚线点阵对齐与阶梯式 Glyph 翠绿标签；
+  - 进度条应用 P4 风格 6 格 LCD 迷你仪表，由实心 Hero 翠绿主段与 45° 斜向点阵纹理构成；
+  - 逐小时折线图全面升级为 Emerald Glow 极光绿微光趋势线，搭配平滑渐变衰减，大幅提升暗色背景下的辨识度与工业美感。
+- **本地权限保护文件凭据存储**:
+  - 实现 `ProtectedFileCredentialStore`，凭证统一落盘至 `~/Library/Application Support/Bruce/credentials.json`，采用严格的 Unix `0600` POSIX 权限与临时文件原子替换；
+  - 彻底摆脱本地 Ad-hoc 签名哈希改变导致频繁弹出 macOS Keychain 授权输入密码对话框的困扰；
+  - 内置无感向下兼容迁移机制，初次启动自动读取旧版 Keychain 凭证并静默迁移；
+  - 外部 CLI 探测（如 Claude Code）引入 `kSecUseAuthenticationUISkip` 强制静默，遇到未授权直接平滑降级至本地文件，0 弹窗打扰。
+- **Universal 2 通用二进制与跨平台路径基底**:
+  - `scripts/build-test-app.sh` 增加 `--universal` 选项，一键编译产出原生适配 Apple Silicon（arm64）与 Intel Mac（x86_64）的通用应用；
+  - Rust Collector 抽象跨平台统一路径解析器 `paths.rs`，原生适配 macOS、Windows（`%APPDATA%`）与 Linux（XDG）路径规范；
+  - 会话扫描器引入规范路径集合排重与 16 层深度限制，防止软链接死循环与深层目录卡死。
+
+### Changed
+
+- **看板卡片头部视觉纯化**: 移除各卡片顶部冗余的等宽印章字符，界面更具呼吸感与精致感。
+- **设置窗口尺寸优化**: 默认视口调整为 1040x680（最小 980x620），确保新增的模型计费与实时预览在不同分辨率下舒展呈现。
+
+---
+
 ## [0.8.0] - 2026-09-21
 
 ### Added
