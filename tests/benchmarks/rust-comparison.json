@@ -1,0 +1,1662 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-21T09:22:59.700236+00:00",
+  "runsPerScenario": 5,
+  "network": "disabled",
+  "credentials": "none",
+  "implementation": "comparison",
+  "implementations": {
+    "python": {
+      "scenarios": [
+        {
+          "name": "small",
+          "fixture": {
+            "file_count": 4,
+            "lines_per_file": 32,
+            "total_lines": 128
+          },
+          "samples": [
+            {
+              "schemaVersion": 1,
+              "implementation": "python",
+              "wall_time_ms": 54.328,
+              "cpu_user_ms": 33.655,
+              "cpu_system_ms": 8.329,
+              "peak_rss_bytes": 24477696,
+              "disk_read_bytes": null,
+              "disk_read_operations": 0,
+              "phases_ms": {
+                "bridge.context": 0.009,
+                "bridge.load_collector": 50.645,
+                "bridge.validate": 0.013,
+                "bridge.validate_credentials": 0.003,
+                "bridge.validate_result": 0.001,
+                "collector.execute": 2.153
+              },
+              "http_request_count": 0,
+              "credential_refresh_count": 0,
+              "files_visited": 0,
+              "files_changed": 0,
+              "json_lines_parsed": 0,
+              "sqlite_rows_read": 0,
+              "status": "partial",
+              "diagnostic_count": 1,
+              "credential_update_count": 0,
+              "credential_challenge_count": 0,
+              "parent_wall_time_ms": 119.384,
+              "parent_cpu_user_ms": 60.0,
+              "parent_cpu_system_ms": 10.0,
+              "artifact_sha256": "c26f0f5deef3e473942d09b7e31cb09cc85ef49934ea7ab228ec3ba21d79ecb6"
+            },
+            {
+              "schemaVersion": 1,
+              "implementation": "python",
+              "wall_time_ms": 204.381,
+              "cpu_user_ms": 47.137,
+              "cpu_system_ms": 20.618,
+              "peak_rss_bytes": 24756224,
+              "disk_read_bytes": null,
+              "disk_read_operations": 0,
+              "phases_ms": {
+                "bridge.context": 0.011,
+                "bridge.load_collector": 196.866,
+                "bridge.validate": 0.019,
+                "bridge.validate_credentials": 0.003,
+                "bridge.validate_result": 0.001,
+                "collector.execute": 5.674
+              },
+              "http_request_count": 0,
+              "credential_refresh_count": 0,
+              "files_visited": 0,
+              "files_changed": 0,
+              "json_lines_parsed": 0,
+              "sqlite_rows_read": 0,
+              "status": "partial",
+              "diagnostic_count": 1,
+              "credential_update_count": 0,
+              "credential_challenge_count": 0,
+              "parent_wall_time_ms": 389.5,
+              "parent_cpu_user_ms": 90.0,
+              "parent_cpu_system_ms": 40.0,
+              "artifact_sha256": "c26f0f5deef3e473942d09b7e31cb09cc85ef49934ea7ab228ec3ba21d79ecb6"
+            },
+            {
+              "schemaVersion": 1,
+              "implementation": "python",
+              "wall_time_ms": 191.765,
+              "cpu_user_ms": 46.843,
+              "cpu_system_ms": 11.889,
+              "peak_rss_bytes": 25116672,
+              "disk_read_bytes": null,
+              "disk_read_operations": 0,
+              "phases_ms": {
+                "bridge.context": 0.014,
+                "bridge.load_collector": 182.776,
+                "bridge.validate": 0.015,
+                "bridge.validate_credentials": 0.003,
+                "bridge.validate_result": 0.001,
+                "collector.execute": 5.73
+              },
+              "http_request_count": 0,
+              "credential_refresh_count": 0,
+              "files_visited": 0,
+              "files_changed": 0,
+              "json_lines_parsed": 0,
+              "sqlite_rows_read": 0,
+              "status": "partial",
+              "diagnostic_count": 1,
+              "credential_update_count": 0,
+              "credential_challenge_count": 0,
+              "parent_wall_time_ms": 347.421,
+              "parent_cpu_user_ms": 90.0,
+              "parent_cpu_system_ms": 20.0,
+              "artifact_sha256": "c26f0f5deef3e473942d09b7e31cb09cc85ef49934ea7ab228ec3ba21d79ecb6"
+            },
+            {
+              "schemaVersion": 1,
+              "implementation": "python",
+              "wall_time_ms": 42.677,
+              "cpu_user_ms": 32.711,
+              "cpu_system_ms": 6.476,
+              "peak_rss_bytes": 24346624,
+              "disk_read_bytes": null,
+              "disk_read_operations": 0,
+              "phases_ms": {
+                "bridge.context": 0.01,
+                "bridge.load_collector": 39.011,
+                "bridge.validate": 0.015,
+                "bridge.validate_credentials": 0.002,
+                "bridge.validate_result": 0.001,
+                "collector.execute": 2.292
+              },
+              "http_request_count": 0,
+              "credential_refresh_count": 0,
+              "files_visited": 0,
+              "files_changed": 0,
+              "json_lines_parsed": 0,
+              "sqlite_rows_read": 0,
+              "status": "partial",
+              "diagnostic_count": 1,
+              "credential_update_count": 0,
+              "credential_challenge_count": 0,
+              "parent_wall_time_ms": 106.985,
+              "parent_cpu_user_ms": 60.0,
+              "parent_cpu_system_ms": 10.0,
+              "artifact_sha256": "c26f0f5deef3e473942d09b7e31cb09cc85ef49934ea7ab228ec3ba21d79ecb6"
+            },
+            {
+              "schemaVersion": 1,
+              "implementation": "python",
+              "wall_time_ms": 74.113,
+              "cpu_user_ms": 38.015,
+              "cpu_system_ms": 9.424,
+              "peak_rss_bytes": 24788992,
+              "disk_read_bytes": null,
+              "disk_read_operations": 0,
+              "phases_ms": {
+                "bridge.context": 0.01,
+                "bridge.load_collector": 66.22,
+                "bridge.validate": 0.017,
+                "bridge.validate_credentials": 0.004,
+                "bridge.validate_result": 0.001,
+                "collector.execute": 2.888
+              },
+              "http_request_count": 0,
+              "credential_refresh_count": 0,
+              "files_visited": 0,
+              "files_changed": 0,
+              "json_lines_parsed": 0,
+              "sqlite_rows_read": 0,
+              "status": "partial",
+              "diagnostic_count": 1,
+              "credential_update_count": 0,
+              "credential_challenge_count": 0,
+              "parent_wall_time_ms": 130.067,
+              "parent_cpu_user_ms": 70.0,
+              "parent_cpu_system_ms": 10.0,
+              "artifact_sha256": "c26f0f5deef3e473942d09b7e31cb09cc85ef49934ea7ab228ec3ba21d79ecb6"
+            }
+          ],
+          "summary": {
+            "parent_wall_time_ms": {
+              "count": 5,
+              "min": 106.985,
+              "p50": 130.067,
+              "p95": 347.421,
+              "max": 389.5,
+              "mean": 218.671
+            },
+            "wall_time_ms": {
+              "count": 5,
+              "min": 42.677,
+              "p50": 74.113,
+              "p95": 191.765,
+              "max": 204.381,
+              "mean": 113.453
+            },
+            "cpu_user_ms": {
+              "count": 5,
+              "min": 32.711,
+              "p50": 38.015,
+              "p95": 46.843,
+              "max": 47.137,
+              "mean": 39.672
+            },
+            "cpu_system_ms": {
+              "count": 5,
+              "min": 6.476,
+              "p50": 9.424,
+              "p95": 11.889,
+              "max": 20.618,
+              "mean": 11.347
+            },
+            "parent_cpu_user_ms": {
+              "count": 5,
+              "min": 60.0,
+              "p50": 70.0,
+              "p95": 90.0,
+              "max": 90.0,
+              "mean": 74.0
+            },
+            "parent_cpu_system_ms": {
+              "count": 5,
+              "min": 10.0,
+              "p50": 10.0,
+              "p95": 20.0,
+              "max": 40.0,
+              "mean": 18.0
+            },
+            "peak_rss_bytes": {
+              "count": 5,
+              "min": 24346624,
+              "p50": 24756224,
+              "p95": 24788992,
+              "max": 25116672,
+              "mean": 24697241.6
+            },
+            "disk_read_bytes": {},
+            "disk_read_operations": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "http_request_count": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "credential_refresh_count": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "json_lines_parsed": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "cache_hits": {},
+            "cache_appends": {},
+            "cache_rebuilds": {},
+            "cache_invalidations": {},
+            "cache_deletions": {}
+          }
+        },
+        {
+          "name": "medium",
+          "fixture": {
+            "file_count": 16,
+            "lines_per_file": 128,
+            "total_lines": 2048
+          },
+          "samples": [
+            {
+              "schemaVersion": 1,
+              "implementation": "python",
+              "wall_time_ms": 99.241,
+              "cpu_user_ms": 61.848,
+              "cpu_system_ms": 12.793,
+              "peak_rss_bytes": 25444352,
+              "disk_read_bytes": null,
+              "disk_read_operations": 0,
+              "phases_ms": {
+                "bridge.context": 0.011,
+                "bridge.load_collector": 66.932,
+                "bridge.validate": 0.018,
+                "bridge.validate_credentials": 0.002,
+                "bridge.validate_result": 0.001,
+                "collector.execute": 28.932
+              },
+              "http_request_count": 0,
+              "credential_refresh_count": 0,
+              "files_visited": 0,
+              "files_changed": 0,
+              "json_lines_parsed": 0,
+              "sqlite_rows_read": 0,
+              "status": "partial",
+              "diagnostic_count": 1,
+              "credential_update_count": 0,
+              "credential_challenge_count": 0,
+              "parent_wall_time_ms": 187.716,
+              "parent_cpu_user_ms": 100.0,
+              "parent_cpu_system_ms": 20.0,
+              "artifact_sha256": "1b52a56ab8749e7983b48c299cc0dd9c8c4ada8246ef31011fd6878ccfd1bc2f"
+            },
+            {
+              "schemaVersion": 1,
+              "implementation": "python",
+              "wall_time_ms": 81.398,
+              "cpu_user_ms": 53.769,
+              "cpu_system_ms": 9.903,
+              "peak_rss_bytes": 25067520,
+              "disk_read_bytes": null,
+              "disk_read_operations": 0,
+              "phases_ms": {
+                "bridge.context": 0.01,
+                "bridge.load_collector": 61.928,
+                "bridge.validate": 0.016,
+                "bridge.validate_credentials": 0.003,
+                "bridge.validate_result": 0.001,
+                "collector.execute": 17.699
+              },
+              "http_request_count": 0,
+              "credential_refresh_count": 0,
+              "files_visited": 0,
+              "files_changed": 0,
+              "json_lines_parsed": 0,
+              "sqlite_rows_read": 0,
+              "status": "partial",
+              "diagnostic_count": 1,
+              "credential_update_count": 0,
+              "credential_challenge_count": 0,
+              "parent_wall_time_ms": 141.603,
+              "parent_cpu_user_ms": 90.0,
+              "parent_cpu_system_ms": 20.0,
+              "artifact_sha256": "1b52a56ab8749e7983b48c299cc0dd9c8c4ada8246ef31011fd6878ccfd1bc2f"
+            },
+            {
+              "schemaVersion": 1,
+              "implementation": "python",
+              "wall_time_ms": 69.18,
+              "cpu_user_ms": 49.571,
+              "cpu_system_ms": 8.584,
+              "peak_rss_bytes": 24870912,
+              "disk_read_bytes": null,
+              "disk_read_operations": 0,
+              "phases_ms": {
+                "bridge.context": 0.01,
+                "bridge.load_collector": 50.719,
+                "bridge.validate": 0.015,
+                "bridge.validate_credentials": 0.004,
+                "bridge.validate_result": 0.001,
+                "collector.execute": 16.449
+              },
+              "http_request_count": 0,
+              "credential_refresh_count": 0,
+              "files_visited": 0,
+              "files_changed": 0,
+              "json_lines_parsed": 0,
+              "sqlite_rows_read": 0,
+              "status": "partial",
+              "diagnostic_count": 1,
+              "credential_update_count": 0,
+              "credential_challenge_count": 0,
+              "parent_wall_time_ms": 130.569,
+              "parent_cpu_user_ms": 80.0,
+              "parent_cpu_system_ms": 20.0,
+              "artifact_sha256": "1b52a56ab8749e7983b48c299cc0dd9c8c4ada8246ef31011fd6878ccfd1bc2f"
+            },
+            {
+              "schemaVersion": 1,
+              "implementation": "python",
+              "wall_time_ms": 98.014,
+              "cpu_user_ms": 58.886,
+              "cpu_system_ms": 13.331,
+              "peak_rss_bytes": 25477120,
+              "disk_read_bytes": null,
+              "disk_read_operations": 0,
+              "phases_ms": {
+                "bridge.context": 0.01,
+                "bridge.load_collector": 67.617,
+                "bridge.validate": 0.017,
+                "bridge.validate_credentials": 0.002,
+                "bridge.validate_result": 0.001,
+                "collector.execute": 27.742
+              },
+              "http_request_count": 0,
+              "credential_refresh_count": 0,
+              "files_visited": 0,
+              "files_changed": 0,
+              "json_lines_parsed": 0,
+              "sqlite_rows_read": 0,
+              "status": "partial",
+              "diagnostic_count": 1,
+              "credential_update_count": 0,
+              "credential_challenge_count": 0,
+              "parent_wall_time_ms": 179.153,
+              "parent_cpu_user_ms": 100.0,
+              "parent_cpu_system_ms": 20.0,
+              "artifact_sha256": "1b52a56ab8749e7983b48c299cc0dd9c8c4ada8246ef31011fd6878ccfd1bc2f"
+            },
+            {
+              "schemaVersion": 1,
+              "implementation": "python",
+              "wall_time_ms": 108.722,
+              "cpu_user_ms": 59.089,
+              "cpu_system_ms": 14.508,
+              "peak_rss_bytes": 25624576,
+              "disk_read_bytes": null,
+              "disk_read_operations": 0,
+              "phases_ms": {
+                "bridge.context": 0.01,
+                "bridge.load_collector": 73.709,
+                "bridge.validate": 0.015,
+                "bridge.validate_credentials": 0.002,
+                "bridge.validate_result": 0.001,
+                "collector.execute": 33.529
+              },
+              "http_request_count": 0,
+              "credential_refresh_count": 0,
+              "files_visited": 0,
+              "files_changed": 0,
+              "json_lines_parsed": 0,
+              "sqlite_rows_read": 0,
+              "status": "partial",
+              "diagnostic_count": 1,
+              "credential_update_count": 0,
+              "credential_challenge_count": 0,
+              "parent_wall_time_ms": 198.634,
+              "parent_cpu_user_ms": 100.0,
+              "parent_cpu_system_ms": 20.0,
+              "artifact_sha256": "1b52a56ab8749e7983b48c299cc0dd9c8c4ada8246ef31011fd6878ccfd1bc2f"
+            }
+          ],
+          "summary": {
+            "parent_wall_time_ms": {
+              "count": 5,
+              "min": 130.569,
+              "p50": 179.153,
+              "p95": 187.716,
+              "max": 198.634,
+              "mean": 167.535
+            },
+            "wall_time_ms": {
+              "count": 5,
+              "min": 69.18,
+              "p50": 98.014,
+              "p95": 99.241,
+              "max": 108.722,
+              "mean": 91.311
+            },
+            "cpu_user_ms": {
+              "count": 5,
+              "min": 49.571,
+              "p50": 58.886,
+              "p95": 59.089,
+              "max": 61.848,
+              "mean": 56.633
+            },
+            "cpu_system_ms": {
+              "count": 5,
+              "min": 8.584,
+              "p50": 12.793,
+              "p95": 13.331,
+              "max": 14.508,
+              "mean": 11.824
+            },
+            "parent_cpu_user_ms": {
+              "count": 5,
+              "min": 80.0,
+              "p50": 100.0,
+              "p95": 100.0,
+              "max": 100.0,
+              "mean": 94.0
+            },
+            "parent_cpu_system_ms": {
+              "count": 5,
+              "min": 20.0,
+              "p50": 20.0,
+              "p95": 20.0,
+              "max": 20.0,
+              "mean": 20.0
+            },
+            "peak_rss_bytes": {
+              "count": 5,
+              "min": 24870912,
+              "p50": 25444352,
+              "p95": 25477120,
+              "max": 25624576,
+              "mean": 25296896
+            },
+            "disk_read_bytes": {},
+            "disk_read_operations": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "http_request_count": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "credential_refresh_count": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "json_lines_parsed": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "cache_hits": {},
+            "cache_appends": {},
+            "cache_rebuilds": {},
+            "cache_invalidations": {},
+            "cache_deletions": {}
+          }
+        },
+        {
+          "name": "large",
+          "fixture": {
+            "file_count": 64,
+            "lines_per_file": 256,
+            "total_lines": 16384
+          },
+          "samples": [
+            {
+              "schemaVersion": 1,
+              "implementation": "python",
+              "wall_time_ms": 254.879,
+              "cpu_user_ms": 168.823,
+              "cpu_system_ms": 18.643,
+              "peak_rss_bytes": 25329664,
+              "disk_read_bytes": null,
+              "disk_read_operations": 0,
+              "phases_ms": {
+                "bridge.context": 0.01,
+                "bridge.load_collector": 61.093,
+                "bridge.validate": 0.015,
+                "bridge.validate_credentials": 0.003,
+                "bridge.validate_result": 0.001,
+                "collector.execute": 192.251
+              },
+              "http_request_count": 0,
+              "credential_refresh_count": 0,
+              "files_visited": 0,
+              "files_changed": 0,
+              "json_lines_parsed": 0,
+              "sqlite_rows_read": 0,
+              "status": "partial",
+              "diagnostic_count": 1,
+              "credential_update_count": 0,
+              "credential_challenge_count": 0,
+              "parent_wall_time_ms": 311.076,
+              "parent_cpu_user_ms": 200.0,
+              "parent_cpu_system_ms": 30.0,
+              "artifact_sha256": "8ac8a9354010043df3f1327aca1dc86969d1e50e6082909d7f286778f6c4f118"
+            },
+            {
+              "schemaVersion": 1,
+              "implementation": "python",
+              "wall_time_ms": 183.659,
+              "cpu_user_ms": 158.667,
+              "cpu_system_ms": 13.334,
+              "peak_rss_bytes": 25247744,
+              "disk_read_bytes": null,
+              "disk_read_operations": 0,
+              "phases_ms": {
+                "bridge.context": 0.011,
+                "bridge.load_collector": 41.48,
+                "bridge.validate": 0.017,
+                "bridge.validate_credentials": 0.004,
+                "bridge.validate_result": 0.001,
+                "collector.execute": 140.632
+              },
+              "http_request_count": 0,
+              "credential_refresh_count": 0,
+              "files_visited": 0,
+              "files_changed": 0,
+              "json_lines_parsed": 0,
+              "sqlite_rows_read": 0,
+              "status": "partial",
+              "diagnostic_count": 1,
+              "credential_update_count": 0,
+              "credential_challenge_count": 0,
+              "parent_wall_time_ms": 240.97,
+              "parent_cpu_user_ms": 190.0,
+              "parent_cpu_system_ms": 20.0,
+              "artifact_sha256": "8ac8a9354010043df3f1327aca1dc86969d1e50e6082909d7f286778f6c4f118"
+            },
+            {
+              "schemaVersion": 1,
+              "implementation": "python",
+              "wall_time_ms": 213.259,
+              "cpu_user_ms": 169.273,
+              "cpu_system_ms": 13.542,
+              "peak_rss_bytes": 25133056,
+              "disk_read_bytes": null,
+              "disk_read_operations": 0,
+              "phases_ms": {
+                "bridge.context": 0.01,
+                "bridge.load_collector": 34.86,
+                "bridge.validate": 0.014,
+                "bridge.validate_credentials": 0.003,
+                "bridge.validate_result": 0.001,
+                "collector.execute": 176.824
+              },
+              "http_request_count": 0,
+              "credential_refresh_count": 0,
+              "files_visited": 0,
+              "files_changed": 0,
+              "json_lines_parsed": 0,
+              "sqlite_rows_read": 0,
+              "status": "partial",
+              "diagnostic_count": 1,
+              "credential_update_count": 0,
+              "credential_challenge_count": 0,
+              "parent_wall_time_ms": 272.702,
+              "parent_cpu_user_ms": 200.0,
+              "parent_cpu_system_ms": 20.0,
+              "artifact_sha256": "8ac8a9354010043df3f1327aca1dc86969d1e50e6082909d7f286778f6c4f118"
+            },
+            {
+              "schemaVersion": 1,
+              "implementation": "python",
+              "wall_time_ms": 239.644,
+              "cpu_user_ms": 175.596,
+              "cpu_system_ms": 17.959,
+              "peak_rss_bytes": 25182208,
+              "disk_read_bytes": null,
+              "disk_read_operations": 0,
+              "phases_ms": {
+                "bridge.context": 0.01,
+                "bridge.load_collector": 46.023,
+                "bridge.validate": 0.015,
+                "bridge.validate_credentials": 0.002,
+                "bridge.validate_result": 0.001,
+                "collector.execute": 192.035
+              },
+              "http_request_count": 0,
+              "credential_refresh_count": 0,
+              "files_visited": 0,
+              "files_changed": 0,
+              "json_lines_parsed": 0,
+              "sqlite_rows_read": 0,
+              "status": "partial",
+              "diagnostic_count": 1,
+              "credential_update_count": 0,
+              "credential_challenge_count": 0,
+              "parent_wall_time_ms": 315.352,
+              "parent_cpu_user_ms": 210.0,
+              "parent_cpu_system_ms": 20.0,
+              "artifact_sha256": "8ac8a9354010043df3f1327aca1dc86969d1e50e6082909d7f286778f6c4f118"
+            },
+            {
+              "schemaVersion": 1,
+              "implementation": "python",
+              "wall_time_ms": 397.23,
+              "cpu_user_ms": 186.448,
+              "cpu_system_ms": 26.346,
+              "peak_rss_bytes": 25264128,
+              "disk_read_bytes": null,
+              "disk_read_operations": 0,
+              "phases_ms": {
+                "bridge.context": 0.01,
+                "bridge.load_collector": 206.726,
+                "bridge.validate": 0.018,
+                "bridge.validate_credentials": 0.003,
+                "bridge.validate_result": 0.001,
+                "collector.execute": 188.913
+              },
+              "http_request_count": 0,
+              "credential_refresh_count": 0,
+              "files_visited": 0,
+              "files_changed": 0,
+              "json_lines_parsed": 0,
+              "sqlite_rows_read": 0,
+              "status": "partial",
+              "diagnostic_count": 1,
+              "credential_update_count": 0,
+              "credential_challenge_count": 0,
+              "parent_wall_time_ms": 485.494,
+              "parent_cpu_user_ms": 230.0,
+              "parent_cpu_system_ms": 40.0,
+              "artifact_sha256": "8ac8a9354010043df3f1327aca1dc86969d1e50e6082909d7f286778f6c4f118"
+            }
+          ],
+          "summary": {
+            "parent_wall_time_ms": {
+              "count": 5,
+              "min": 240.97,
+              "p50": 311.076,
+              "p95": 315.352,
+              "max": 485.494,
+              "mean": 325.119
+            },
+            "wall_time_ms": {
+              "count": 5,
+              "min": 183.659,
+              "p50": 239.644,
+              "p95": 254.879,
+              "max": 397.23,
+              "mean": 257.734
+            },
+            "cpu_user_ms": {
+              "count": 5,
+              "min": 158.667,
+              "p50": 169.273,
+              "p95": 175.596,
+              "max": 186.448,
+              "mean": 171.761
+            },
+            "cpu_system_ms": {
+              "count": 5,
+              "min": 13.334,
+              "p50": 17.959,
+              "p95": 18.643,
+              "max": 26.346,
+              "mean": 17.965
+            },
+            "parent_cpu_user_ms": {
+              "count": 5,
+              "min": 190.0,
+              "p50": 200.0,
+              "p95": 210.0,
+              "max": 230.0,
+              "mean": 206.0
+            },
+            "parent_cpu_system_ms": {
+              "count": 5,
+              "min": 20.0,
+              "p50": 20.0,
+              "p95": 30.0,
+              "max": 40.0,
+              "mean": 26.0
+            },
+            "peak_rss_bytes": {
+              "count": 5,
+              "min": 25133056,
+              "p50": 25247744,
+              "p95": 25264128,
+              "max": 25329664,
+              "mean": 25231360
+            },
+            "disk_read_bytes": {},
+            "disk_read_operations": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "http_request_count": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "credential_refresh_count": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "json_lines_parsed": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "cache_hits": {},
+            "cache_appends": {},
+            "cache_rebuilds": {},
+            "cache_invalidations": {},
+            "cache_deletions": {}
+          }
+        }
+      ]
+    },
+    "rust": {
+      "scenarios": [
+        {
+          "name": "small",
+          "fixture": {
+            "file_count": 4,
+            "lines_per_file": 32,
+            "total_lines": 128
+          },
+          "samples": [
+            {
+              "artifact_present": true,
+              "cache_appends": 0,
+              "cache_corruptions": 0,
+              "cache_deletions": 0,
+              "cache_hits": 0,
+              "cache_invalidations": 0,
+              "cache_rebuilds": 4,
+              "cpu_system_ms": null,
+              "cpu_user_ms": null,
+              "credential_refresh_count": 0,
+              "diagnostic_count": 1,
+              "disk_read_bytes": null,
+              "disk_read_operations": 0,
+              "files_changed": 4,
+              "files_visited": 4,
+              "http_request_count": 0,
+              "json_lines_parsed": 128,
+              "peak_rss_bytes": 8470528,
+              "phase_timings_ms": {
+                "collector.local": 59.507208999999996
+              },
+              "sqlite_rows_read": 0,
+              "status": "partial",
+              "wall_time_ms": 59.507208999999996,
+              "implementation": "rust",
+              "parent_wall_time_ms": 87.308,
+              "parent_cpu_user_ms": 0.0,
+              "parent_cpu_system_ms": 20.0,
+              "artifact_sha256": "c26f0f5deef3e473942d09b7e31cb09cc85ef49934ea7ab228ec3ba21d79ecb6"
+            },
+            {
+              "artifact_present": true,
+              "cache_appends": 0,
+              "cache_corruptions": 0,
+              "cache_deletions": 0,
+              "cache_hits": 4,
+              "cache_invalidations": 0,
+              "cache_rebuilds": 0,
+              "cpu_system_ms": null,
+              "cpu_user_ms": null,
+              "credential_refresh_count": 0,
+              "diagnostic_count": 1,
+              "disk_read_bytes": null,
+              "disk_read_operations": 0,
+              "files_changed": 0,
+              "files_visited": 4,
+              "http_request_count": 0,
+              "json_lines_parsed": 0,
+              "peak_rss_bytes": 8437760,
+              "phase_timings_ms": {
+                "collector.local": 8.147708
+              },
+              "sqlite_rows_read": 0,
+              "status": "partial",
+              "wall_time_ms": 8.147708,
+              "implementation": "rust",
+              "parent_wall_time_ms": 22.357,
+              "parent_cpu_user_ms": 0.0,
+              "parent_cpu_system_ms": 0.0,
+              "artifact_sha256": "c26f0f5deef3e473942d09b7e31cb09cc85ef49934ea7ab228ec3ba21d79ecb6"
+            },
+            {
+              "artifact_present": true,
+              "cache_appends": 0,
+              "cache_corruptions": 0,
+              "cache_deletions": 0,
+              "cache_hits": 4,
+              "cache_invalidations": 0,
+              "cache_rebuilds": 0,
+              "cpu_system_ms": null,
+              "cpu_user_ms": null,
+              "credential_refresh_count": 0,
+              "diagnostic_count": 1,
+              "disk_read_bytes": null,
+              "disk_read_operations": 0,
+              "files_changed": 0,
+              "files_visited": 4,
+              "http_request_count": 0,
+              "json_lines_parsed": 0,
+              "peak_rss_bytes": 8355840,
+              "phase_timings_ms": {
+                "collector.local": 8.043458
+              },
+              "sqlite_rows_read": 0,
+              "status": "partial",
+              "wall_time_ms": 8.043458,
+              "implementation": "rust",
+              "parent_wall_time_ms": 22.218,
+              "parent_cpu_user_ms": 0.0,
+              "parent_cpu_system_ms": 0.0,
+              "artifact_sha256": "c26f0f5deef3e473942d09b7e31cb09cc85ef49934ea7ab228ec3ba21d79ecb6"
+            },
+            {
+              "artifact_present": true,
+              "cache_appends": 0,
+              "cache_corruptions": 0,
+              "cache_deletions": 0,
+              "cache_hits": 4,
+              "cache_invalidations": 0,
+              "cache_rebuilds": 0,
+              "cpu_system_ms": null,
+              "cpu_user_ms": null,
+              "credential_refresh_count": 0,
+              "diagnostic_count": 1,
+              "disk_read_bytes": null,
+              "disk_read_operations": 0,
+              "files_changed": 0,
+              "files_visited": 4,
+              "http_request_count": 0,
+              "json_lines_parsed": 0,
+              "peak_rss_bytes": 8404992,
+              "phase_timings_ms": {
+                "collector.local": 7.77475
+              },
+              "sqlite_rows_read": 0,
+              "status": "partial",
+              "wall_time_ms": 7.77475,
+              "implementation": "rust",
+              "parent_wall_time_ms": 21.864,
+              "parent_cpu_user_ms": 0.0,
+              "parent_cpu_system_ms": 0.0,
+              "artifact_sha256": "c26f0f5deef3e473942d09b7e31cb09cc85ef49934ea7ab228ec3ba21d79ecb6"
+            },
+            {
+              "artifact_present": true,
+              "cache_appends": 0,
+              "cache_corruptions": 0,
+              "cache_deletions": 0,
+              "cache_hits": 4,
+              "cache_invalidations": 0,
+              "cache_rebuilds": 0,
+              "cpu_system_ms": null,
+              "cpu_user_ms": null,
+              "credential_refresh_count": 0,
+              "diagnostic_count": 1,
+              "disk_read_bytes": null,
+              "disk_read_operations": 0,
+              "files_changed": 0,
+              "files_visited": 4,
+              "http_request_count": 0,
+              "json_lines_parsed": 0,
+              "peak_rss_bytes": 8355840,
+              "phase_timings_ms": {
+                "collector.local": 7.232542
+              },
+              "sqlite_rows_read": 0,
+              "status": "partial",
+              "wall_time_ms": 7.232542,
+              "implementation": "rust",
+              "parent_wall_time_ms": 21.976,
+              "parent_cpu_user_ms": 0.0,
+              "parent_cpu_system_ms": 0.0,
+              "artifact_sha256": "c26f0f5deef3e473942d09b7e31cb09cc85ef49934ea7ab228ec3ba21d79ecb6"
+            }
+          ],
+          "summary": {
+            "parent_wall_time_ms": {
+              "count": 5,
+              "min": 21.864,
+              "p50": 22.218,
+              "p95": 22.357,
+              "max": 87.308,
+              "mean": 35.145
+            },
+            "wall_time_ms": {
+              "count": 5,
+              "min": 7.233,
+              "p50": 8.043,
+              "p95": 8.148,
+              "max": 59.507,
+              "mean": 18.141
+            },
+            "cpu_user_ms": {},
+            "cpu_system_ms": {},
+            "parent_cpu_user_ms": {
+              "count": 5,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "max": 0.0,
+              "mean": 0.0
+            },
+            "parent_cpu_system_ms": {
+              "count": 5,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "max": 20.0,
+              "mean": 4.0
+            },
+            "peak_rss_bytes": {
+              "count": 5,
+              "min": 8355840,
+              "p50": 8404992,
+              "p95": 8437760,
+              "max": 8470528,
+              "mean": 8404992
+            },
+            "disk_read_bytes": {},
+            "disk_read_operations": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "http_request_count": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "credential_refresh_count": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "json_lines_parsed": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 128,
+              "mean": 25.6
+            },
+            "cache_hits": {
+              "count": 5,
+              "min": 0,
+              "p50": 4,
+              "p95": 4,
+              "max": 4,
+              "mean": 3.2
+            },
+            "cache_appends": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "cache_rebuilds": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 4,
+              "mean": 0.8
+            },
+            "cache_invalidations": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "cache_deletions": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0,
+              "mean": 0
+            }
+          }
+        },
+        {
+          "name": "medium",
+          "fixture": {
+            "file_count": 16,
+            "lines_per_file": 128,
+            "total_lines": 2048
+          },
+          "samples": [
+            {
+              "artifact_present": true,
+              "cache_appends": 0,
+              "cache_corruptions": 0,
+              "cache_deletions": 0,
+              "cache_hits": 0,
+              "cache_invalidations": 0,
+              "cache_rebuilds": 16,
+              "cpu_system_ms": null,
+              "cpu_user_ms": null,
+              "credential_refresh_count": 0,
+              "diagnostic_count": 1,
+              "disk_read_bytes": null,
+              "disk_read_operations": 0,
+              "files_changed": 16,
+              "files_visited": 16,
+              "http_request_count": 0,
+              "json_lines_parsed": 2048,
+              "peak_rss_bytes": 8617984,
+              "phase_timings_ms": {
+                "collector.local": 174.819667
+              },
+              "sqlite_rows_read": 0,
+              "status": "partial",
+              "wall_time_ms": 174.819667,
+              "implementation": "rust",
+              "parent_wall_time_ms": 191.345,
+              "parent_cpu_user_ms": 50.0,
+              "parent_cpu_system_ms": 40.0,
+              "artifact_sha256": "1b52a56ab8749e7983b48c299cc0dd9c8c4ada8246ef31011fd6878ccfd1bc2f"
+            },
+            {
+              "artifact_present": true,
+              "cache_appends": 0,
+              "cache_corruptions": 0,
+              "cache_deletions": 0,
+              "cache_hits": 16,
+              "cache_invalidations": 0,
+              "cache_rebuilds": 0,
+              "cpu_system_ms": null,
+              "cpu_user_ms": null,
+              "credential_refresh_count": 0,
+              "diagnostic_count": 1,
+              "disk_read_bytes": null,
+              "disk_read_operations": 0,
+              "files_changed": 0,
+              "files_visited": 16,
+              "http_request_count": 0,
+              "json_lines_parsed": 0,
+              "peak_rss_bytes": 8568832,
+              "phase_timings_ms": {
+                "collector.local": 8.944708
+              },
+              "sqlite_rows_read": 0,
+              "status": "partial",
+              "wall_time_ms": 8.944708,
+              "implementation": "rust",
+              "parent_wall_time_ms": 24.925,
+              "parent_cpu_user_ms": 0.0,
+              "parent_cpu_system_ms": 0.0,
+              "artifact_sha256": "1b52a56ab8749e7983b48c299cc0dd9c8c4ada8246ef31011fd6878ccfd1bc2f"
+            },
+            {
+              "artifact_present": true,
+              "cache_appends": 0,
+              "cache_corruptions": 0,
+              "cache_deletions": 0,
+              "cache_hits": 16,
+              "cache_invalidations": 0,
+              "cache_rebuilds": 0,
+              "cpu_system_ms": null,
+              "cpu_user_ms": null,
+              "credential_refresh_count": 0,
+              "diagnostic_count": 1,
+              "disk_read_bytes": null,
+              "disk_read_operations": 0,
+              "files_changed": 0,
+              "files_visited": 16,
+              "http_request_count": 0,
+              "json_lines_parsed": 0,
+              "peak_rss_bytes": 8585216,
+              "phase_timings_ms": {
+                "collector.local": 8.838166
+              },
+              "sqlite_rows_read": 0,
+              "status": "partial",
+              "wall_time_ms": 8.838166,
+              "implementation": "rust",
+              "parent_wall_time_ms": 22.37,
+              "parent_cpu_user_ms": 0.0,
+              "parent_cpu_system_ms": 0.0,
+              "artifact_sha256": "1b52a56ab8749e7983b48c299cc0dd9c8c4ada8246ef31011fd6878ccfd1bc2f"
+            },
+            {
+              "artifact_present": true,
+              "cache_appends": 0,
+              "cache_corruptions": 0,
+              "cache_deletions": 0,
+              "cache_hits": 16,
+              "cache_invalidations": 0,
+              "cache_rebuilds": 0,
+              "cpu_system_ms": null,
+              "cpu_user_ms": null,
+              "credential_refresh_count": 0,
+              "diagnostic_count": 1,
+              "disk_read_bytes": null,
+              "disk_read_operations": 0,
+              "files_changed": 0,
+              "files_visited": 16,
+              "http_request_count": 0,
+              "json_lines_parsed": 0,
+              "peak_rss_bytes": 8568832,
+              "phase_timings_ms": {
+                "collector.local": 5.515625
+              },
+              "sqlite_rows_read": 0,
+              "status": "partial",
+              "wall_time_ms": 5.515625,
+              "implementation": "rust",
+              "parent_wall_time_ms": 31.494,
+              "parent_cpu_user_ms": 0.0,
+              "parent_cpu_system_ms": 0.0,
+              "artifact_sha256": "1b52a56ab8749e7983b48c299cc0dd9c8c4ada8246ef31011fd6878ccfd1bc2f"
+            },
+            {
+              "artifact_present": true,
+              "cache_appends": 0,
+              "cache_corruptions": 0,
+              "cache_deletions": 0,
+              "cache_hits": 16,
+              "cache_invalidations": 0,
+              "cache_rebuilds": 0,
+              "cpu_system_ms": null,
+              "cpu_user_ms": null,
+              "credential_refresh_count": 0,
+              "diagnostic_count": 1,
+              "disk_read_bytes": null,
+              "disk_read_operations": 0,
+              "files_changed": 0,
+              "files_visited": 16,
+              "http_request_count": 0,
+              "json_lines_parsed": 0,
+              "peak_rss_bytes": 8617984,
+              "phase_timings_ms": {
+                "collector.local": 6.694042
+              },
+              "sqlite_rows_read": 0,
+              "status": "partial",
+              "wall_time_ms": 6.694042,
+              "implementation": "rust",
+              "parent_wall_time_ms": 18.05,
+              "parent_cpu_user_ms": 0.0,
+              "parent_cpu_system_ms": 0.0,
+              "artifact_sha256": "1b52a56ab8749e7983b48c299cc0dd9c8c4ada8246ef31011fd6878ccfd1bc2f"
+            }
+          ],
+          "summary": {
+            "parent_wall_time_ms": {
+              "count": 5,
+              "min": 18.05,
+              "p50": 24.925,
+              "p95": 31.494,
+              "max": 191.345,
+              "mean": 57.637
+            },
+            "wall_time_ms": {
+              "count": 5,
+              "min": 5.516,
+              "p50": 8.838,
+              "p95": 8.945,
+              "max": 174.82,
+              "mean": 40.962
+            },
+            "cpu_user_ms": {},
+            "cpu_system_ms": {},
+            "parent_cpu_user_ms": {
+              "count": 5,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "max": 50.0,
+              "mean": 10.0
+            },
+            "parent_cpu_system_ms": {
+              "count": 5,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "max": 40.0,
+              "mean": 8.0
+            },
+            "peak_rss_bytes": {
+              "count": 5,
+              "min": 8568832,
+              "p50": 8585216,
+              "p95": 8617984,
+              "max": 8617984,
+              "mean": 8591769.6
+            },
+            "disk_read_bytes": {},
+            "disk_read_operations": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "http_request_count": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "credential_refresh_count": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "json_lines_parsed": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 2048,
+              "mean": 409.6
+            },
+            "cache_hits": {
+              "count": 5,
+              "min": 0,
+              "p50": 16,
+              "p95": 16,
+              "max": 16,
+              "mean": 12.8
+            },
+            "cache_appends": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "cache_rebuilds": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 16,
+              "mean": 3.2
+            },
+            "cache_invalidations": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "cache_deletions": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0,
+              "mean": 0
+            }
+          }
+        },
+        {
+          "name": "large",
+          "fixture": {
+            "file_count": 64,
+            "lines_per_file": 256,
+            "total_lines": 16384
+          },
+          "samples": [
+            {
+              "artifact_present": true,
+              "cache_appends": 0,
+              "cache_corruptions": 0,
+              "cache_deletions": 0,
+              "cache_hits": 0,
+              "cache_invalidations": 0,
+              "cache_rebuilds": 64,
+              "cpu_system_ms": null,
+              "cpu_user_ms": null,
+              "credential_refresh_count": 0,
+              "diagnostic_count": 1,
+              "disk_read_bytes": null,
+              "disk_read_operations": 0,
+              "files_changed": 64,
+              "files_visited": 64,
+              "http_request_count": 0,
+              "json_lines_parsed": 16384,
+              "peak_rss_bytes": 8568832,
+              "phase_timings_ms": {
+                "collector.local": 856.276917
+              },
+              "sqlite_rows_read": 0,
+              "status": "partial",
+              "wall_time_ms": 856.276917,
+              "implementation": "rust",
+              "parent_wall_time_ms": 868.878,
+              "parent_cpu_user_ms": 340.0,
+              "parent_cpu_system_ms": 160.0,
+              "artifact_sha256": "8ac8a9354010043df3f1327aca1dc86969d1e50e6082909d7f286778f6c4f118"
+            },
+            {
+              "artifact_present": true,
+              "cache_appends": 0,
+              "cache_corruptions": 0,
+              "cache_deletions": 0,
+              "cache_hits": 64,
+              "cache_invalidations": 0,
+              "cache_rebuilds": 0,
+              "cpu_system_ms": null,
+              "cpu_user_ms": null,
+              "credential_refresh_count": 0,
+              "diagnostic_count": 1,
+              "disk_read_bytes": null,
+              "disk_read_operations": 0,
+              "files_changed": 0,
+              "files_visited": 64,
+              "http_request_count": 0,
+              "json_lines_parsed": 0,
+              "peak_rss_bytes": 8601600,
+              "phase_timings_ms": {
+                "collector.local": 13.438666999999999
+              },
+              "sqlite_rows_read": 0,
+              "status": "partial",
+              "wall_time_ms": 13.438666999999999,
+              "implementation": "rust",
+              "parent_wall_time_ms": 26.113,
+              "parent_cpu_user_ms": 0.0,
+              "parent_cpu_system_ms": 0.0,
+              "artifact_sha256": "8ac8a9354010043df3f1327aca1dc86969d1e50e6082909d7f286778f6c4f118"
+            },
+            {
+              "artifact_present": true,
+              "cache_appends": 0,
+              "cache_corruptions": 0,
+              "cache_deletions": 0,
+              "cache_hits": 64,
+              "cache_invalidations": 0,
+              "cache_rebuilds": 0,
+              "cpu_system_ms": null,
+              "cpu_user_ms": null,
+              "credential_refresh_count": 0,
+              "diagnostic_count": 1,
+              "disk_read_bytes": null,
+              "disk_read_operations": 0,
+              "files_changed": 0,
+              "files_visited": 64,
+              "http_request_count": 0,
+              "json_lines_parsed": 0,
+              "peak_rss_bytes": 8617984,
+              "phase_timings_ms": {
+                "collector.local": 12.211958000000001
+              },
+              "sqlite_rows_read": 0,
+              "status": "partial",
+              "wall_time_ms": 12.211958000000001,
+              "implementation": "rust",
+              "parent_wall_time_ms": 23.221,
+              "parent_cpu_user_ms": 0.0,
+              "parent_cpu_system_ms": 0.0,
+              "artifact_sha256": "8ac8a9354010043df3f1327aca1dc86969d1e50e6082909d7f286778f6c4f118"
+            },
+            {
+              "artifact_present": true,
+              "cache_appends": 0,
+              "cache_corruptions": 0,
+              "cache_deletions": 0,
+              "cache_hits": 64,
+              "cache_invalidations": 0,
+              "cache_rebuilds": 0,
+              "cpu_system_ms": null,
+              "cpu_user_ms": null,
+              "credential_refresh_count": 0,
+              "diagnostic_count": 1,
+              "disk_read_bytes": null,
+              "disk_read_operations": 0,
+              "files_changed": 0,
+              "files_visited": 64,
+              "http_request_count": 0,
+              "json_lines_parsed": 0,
+              "peak_rss_bytes": 8634368,
+              "phase_timings_ms": {
+                "collector.local": 12.881291
+              },
+              "sqlite_rows_read": 0,
+              "status": "partial",
+              "wall_time_ms": 12.881291,
+              "implementation": "rust",
+              "parent_wall_time_ms": 24.184,
+              "parent_cpu_user_ms": 0.0,
+              "parent_cpu_system_ms": 0.0,
+              "artifact_sha256": "8ac8a9354010043df3f1327aca1dc86969d1e50e6082909d7f286778f6c4f118"
+            },
+            {
+              "artifact_present": true,
+              "cache_appends": 0,
+              "cache_corruptions": 0,
+              "cache_deletions": 0,
+              "cache_hits": 64,
+              "cache_invalidations": 0,
+              "cache_rebuilds": 0,
+              "cpu_system_ms": null,
+              "cpu_user_ms": null,
+              "credential_refresh_count": 0,
+              "diagnostic_count": 1,
+              "disk_read_bytes": null,
+              "disk_read_operations": 0,
+              "files_changed": 0,
+              "files_visited": 64,
+              "http_request_count": 0,
+              "json_lines_parsed": 0,
+              "peak_rss_bytes": 8617984,
+              "phase_timings_ms": {
+                "collector.local": 13.511375000000001
+              },
+              "sqlite_rows_read": 0,
+              "status": "partial",
+              "wall_time_ms": 13.511375000000001,
+              "implementation": "rust",
+              "parent_wall_time_ms": 25.335,
+              "parent_cpu_user_ms": 0.0,
+              "parent_cpu_system_ms": 0.0,
+              "artifact_sha256": "8ac8a9354010043df3f1327aca1dc86969d1e50e6082909d7f286778f6c4f118"
+            }
+          ],
+          "summary": {
+            "parent_wall_time_ms": {
+              "count": 5,
+              "min": 23.221,
+              "p50": 25.335,
+              "p95": 26.113,
+              "max": 868.878,
+              "mean": 193.546
+            },
+            "wall_time_ms": {
+              "count": 5,
+              "min": 12.212,
+              "p50": 13.439,
+              "p95": 13.511,
+              "max": 856.277,
+              "mean": 181.664
+            },
+            "cpu_user_ms": {},
+            "cpu_system_ms": {},
+            "parent_cpu_user_ms": {
+              "count": 5,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "max": 340.0,
+              "mean": 68.0
+            },
+            "parent_cpu_system_ms": {
+              "count": 5,
+              "min": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "max": 160.0,
+              "mean": 32.0
+            },
+            "peak_rss_bytes": {
+              "count": 5,
+              "min": 8568832,
+              "p50": 8617984,
+              "p95": 8617984,
+              "max": 8634368,
+              "mean": 8608153.6
+            },
+            "disk_read_bytes": {},
+            "disk_read_operations": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "http_request_count": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "credential_refresh_count": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "json_lines_parsed": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 16384,
+              "mean": 3276.8
+            },
+            "cache_hits": {
+              "count": 5,
+              "min": 0,
+              "p50": 64,
+              "p95": 64,
+              "max": 64,
+              "mean": 51.2
+            },
+            "cache_appends": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "cache_rebuilds": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 64,
+              "mean": 12.8
+            },
+            "cache_invalidations": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "cache_deletions": {
+              "count": 5,
+              "min": 0,
+              "p50": 0,
+              "p95": 0,
+              "max": 0,
+              "mean": 0
+            }
+          }
+        }
+      ]
+    }
+  }
+}

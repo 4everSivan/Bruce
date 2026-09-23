@@ -1,0 +1,88 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C001",
+  "title": "重构项目工程目录为 Monorepo apps/core 分层架构并清理碎片与缓存",
+  "type": "Refactor",
+  "status": "verified",
+  "branch": "main",
+  "is_hotfix": false,
+
+  "target": {
+    "module": "EngineeringStructure",
+    "component": "WorkspaceTopology",
+    "design_doc": "docs/devel/design/00-系统总体设计.md",
+    "design_topic": "SystemOverview"
+  },
+
+  "why": "根目录存在历史幽灵与碎片目录（agent-usage, bridge, data, designs），核心源码以平台/语言直接命名且嵌套冗余；同时 Rust target 缓存占用 4.0GB，项目结构不干净、不符合现代跨平台 Monorepo 工程规范。",
+
+  "changes": [
+    {
+      "scope": "工程目录拓扑",
+      "before": "根目录平铺 macos/, rust/, agent-usage/, bridge/, data/, designs/",
+      "after": "现代分层：apps/macos, apps/widget, core/collector, core/collector/schemas, tests/benchmarks, docs/devel/design",
+      "impact": "消除所有碎片目录，代码与应用边界清晰，便于未来 Windows/Linux 跨平台扩展"
+    },
+    {
+      "scope": "构建与自动化脚本",
+      "before": "scripts/ 脚本硬编码引用 macos/BruceApp 和 rust/Bruce-collector",
+      "after": "scripts/ 脚本更新为引用 apps/macos 和 core/collector",
+      "impact": "本地 verify-local.sh、build-test-app.sh 和 CI 工作流平滑兼容"
+    },
+    {
+      "scope": "磁盘缓存清理",
+      "before": "本地 Rust target 构建目录残留 4.0GB 调试缓存",
+      "after": "执行 cargo clean 释放 4.0GB 缓存，恢复精简状态",
+      "impact": "工程体积恢复轻巧"
+    }
+  ],
+
+  "design": {
+    "doc": "docs/devel/design/00-系统总体设计.md",
+    "topic": "SystemOverview",
+    "modified": true,
+    "rule_diff": {
+      "before": "目录约定为 rust/Bruce-collector 与 macos/BruceApp",
+      "after": "目录约定为 core/collector 与 apps/macos, apps/widget"
+    }
+  },
+
+  "verification": {
+    "result": true,
+    "run_id": "run-20260923-monorepo-verified",
+    "user_quote": "确认，然后还要清理掉rust产生的缓存，按当前项目的治理流程走 / 为什么没有成当前项目的设计文档，根据旧文档生成当前项目的设计文档",
+    "signoff": "2026-09-23 Verified with ad-flow design baseline sync",
+    "checks": [
+      {
+        "item": "目录迁移与碎片清理断言",
+        "true_if": "根目录不再存在 agent-usage, bridge, data, designs, macos, rust; 对应目标目录完整存在",
+        "false_if": "存在遗留文件或目标目录缺失",
+        "evidence": "根目录已无旧碎片目录；apps/macos, apps/widget, core/collector, core/collector/schemas, tests/benchmarks 完整就位；cargo clean 释放 4.4GB 缓存",
+        "result": true
+      },
+      {
+        "item": "全量本地验证测试",
+        "true_if": "zsh scripts/verify-local.sh 100% 通过（含 Rust 单元测试、Clippy、Swift build 及全部 9 项 Harness）",
+        "false_if": "脚本路径断链或测试失败",
+        "evidence": "zsh scripts/verify-local.sh 执行成功，退出码 0，Rust fmt/test/clippy、Swift 编译与全部 9 项 Harness 全绿通过",
+        "result": true
+      },
+      {
+        "item": "Universal 2 应用打包与安装实测",
+        "true_if": "zsh scripts/build-test-app.sh --universal --install 成功生成并在 /Applications/Bruce.app 正常运行",
+        "false_if": "打包或安装失败",
+        "evidence": "Universal 2 双架构打入 /Applications/Bruce.app 并平滑重启运行，进程 PID: 39352",
+        "result": true
+      }
+    ]
+  },
+
+  "rejections": [],
+
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  }
+}

@@ -26,6 +26,13 @@
       "description": "历史版本发版封箱归档库（只读冻结）",
       "readme": "docs/archive/README.md",
       "index": null
+    },
+    {
+      "name": "assets",
+      "path": "docs/assets",
+      "description": "文档与工程资源库（系统架构图、流程图、UI 截图与演示素材）",
+      "readme": "docs/assets/README.md",
+      "index": null
     }
   ]
 }

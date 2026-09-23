@@ -10,8 +10,8 @@
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-4CBB17?style=flat-square" alt="MIT License" /></a>
   </p>
   <p>
-    <a href="macos/BruceApp/Package.swift"><img src="https://img.shields.io/badge/Swift-6.2-F05138?style=flat-square&amp;logo=swift&amp;logoColor=white" alt="Swift 6.2" /></a>
-    <a href="rust/Bruce-collector/Cargo.toml"><img src="https://img.shields.io/badge/Rust-2021-000000?style=flat-square&amp;logo=rust&amp;logoColor=white" alt="Rust 2021" /></a>
+    <a href="apps/macos/Package.swift"><img src="https://img.shields.io/badge/Swift-6.2-F05138?style=flat-square&amp;logo=swift&amp;logoColor=white" alt="Swift 6.2" /></a>
+    <a href="core/collector/Cargo.toml"><img src="https://img.shields.io/badge/Rust-2021-000000?style=flat-square&amp;logo=rust&amp;logoColor=white" alt="Rust 2021" /></a>
     <a href="https://linux.do/"><img src="https://img.shields.io/badge/LINUX-DO-FFB003?style=flat-square" alt="LINUX DO" /></a>
   </p>
 </div>
@@ -44,7 +44,7 @@ Bruce 把本机 AI Agent 的 token 用量、成本估算和订阅额度集中到
 | 本机会话扫描 | Kimi Work / Kimi Code、Claude Code、Codex、Grok、OpenCode、Orca、Pi、ZCode、CodeBuddy |
 | 订阅额度 | Kimi、DeepSeek、火山引擎、Codex OAuth、Claude、Grok、OpenCode Go、智谱 GLM、阶跃星辰（StepFun） |
 
-> 仓库根 `*/widget/` 单文件 Widget 继续保留, 仅服务 Daimon / Kimi Work Blueprint 场景, 不属于 App 的组成部分。
+> 仓库根 `apps/widget/` 单文件 Widget 继续保留, 仅服务 Daimon / Kimi Work Blueprint 场景, 不属于 App 的组成部分。
 
 ## 界面预览
 
@@ -75,8 +75,8 @@ Widget 场景的视觉基线见 `tests/visual/baselines/agent-usage-valid.jpg` (
 ### 构建并运行
 
 ```bash
-swift build --package-path macos/BruceApp
-swift run --package-path macos/BruceApp BruceApp
+swift build --package-path apps/macos
+swift run --package-path apps/macos BruceApp
 ```
 
 首次运行流程:

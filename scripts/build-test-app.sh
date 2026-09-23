@@ -24,7 +24,7 @@ done
 
 BRUCE_SCRIPT_DIR=${0:A:h}
 BRUCE_REPO_ROOT=${BRUCE_SCRIPT_DIR:h}
-BRUCE_SWIFT_PACKAGE="$BRUCE_REPO_ROOT/macos/BruceApp"
+BRUCE_SWIFT_PACKAGE="$BRUCE_REPO_ROOT/apps/macos"
 BRUCE_DIST_DIR="$BRUCE_REPO_ROOT/dist"
 BRUCE_OUTPUT_APP="$BRUCE_DIST_DIR/Bruce.app"
 BRUCE_OUTPUT_ZIP="$BRUCE_DIST_DIR/Bruce.zip"
@@ -117,11 +117,11 @@ chmod 755 "$BRUCE_CONTENTS/MacOS/BruceApp"
 strip -S "$BRUCE_CONTENTS/MacOS/BruceApp"
 Bruce_copy_rust_collector "$BRUCE_REPO_ROOT" "$BRUCE_RESOURCES" release
 
-ditto "$BRUCE_REPO_ROOT/macos/BruceApp/Assets/AppIcon.icns" \
+ditto "$BRUCE_REPO_ROOT/apps/macos/Assets/AppIcon.icns" \
     "$BRUCE_RESOURCES/AppIcon.icns"
 # Nothing 主题字体 (Doto / Space Grotesk / Space Mono), 运行时
 # 由 NothingFont.FontRegistry 以 .process scope 注册.
-ditto "$BRUCE_REPO_ROOT/macos/BruceApp/Assets/Fonts" \
+ditto "$BRUCE_REPO_ROOT/apps/macos/Assets/Fonts" \
     "$BRUCE_RESOURCES/Fonts"
 
 BRUCE_INFO_PLIST="$BRUCE_CONTENTS/Info.plist"

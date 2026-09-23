@@ -1,6 +1,6 @@
 # AGENTS.md
 
-<!-- @ad-flow: initialized -->
+<!-- @ad-flow: initialized v1.1.0 -->
 > Bruce 研发与 AI 协作规范 —— 适用于团队开发者与 AI Agent 的统一工程底线。
 
 ---
@@ -102,16 +102,18 @@
 
 - `Bruce` 运行在 macOS 菜单栏场景中，核心能力是统一监控与分析本机各类 AI Agent 的 Token 用量、费用估算和订阅额度。
 - **架构解耦分工**：
-  - **Rust Collector** (`rust/Bruce-collector/`)：高性能本地数据采集边界，负责扫描本机 Agent 会话目录、增量缓存计算、聚合 Token/费用，并对外出站查询服务额度。输出标准 JSON artifact；
-  - **macOS App** (`macos/BruceApp/`)：原生 SwiftUI 菜单栏常驻应用，支持经典与液态玻璃主题，负责调度刷新、图表与状态指示呈现，具备 Universal 2（Apple Silicon + Intel Mac）通用兼容性；
+  - **Core Collector** (`core/collector/`)：高性能本地数据采集边界，负责扫描本机 Agent 会话目录、增量缓存计算、聚合 Token/费用，并对外出站查询服务额度。输出标准 JSON artifact；
+  - **macOS App** (`apps/macos/`)：原生 SwiftUI 菜单栏常驻应用，支持经典与液态玻璃主题，负责调度刷新、图表与状态指示呈现，具备 Universal 2（Apple Silicon + Intel Mac）通用兼容性；
+  - **Web Widget** (`apps/widget/`)：Daimon / Kimi Blueprint 桌面嵌入式单文件 Web 小组件；
   - **本地优先运行**：项目无自有云端服务端，所有数据在用户本机闭环。
 
 ### 2. 目录与关键路径约定
 
 | 目录/文件 | 核心职责 |
 |---|---|
-| `rust/Bruce-collector/` | Rust Collector workspace（含 `collector-application`, `collector-local`, `collector-domain`, `collector-provider`, `collector-aggregate` 等 crates） |
-| `macos/BruceApp/` | 原生 macOS SwiftPM 模块（`BruceApp`, `BruceAppCore`, `BruceOnboardingCore`, `BruceGlassSurfaceCore` 以及各测试 Harness） |
+| `core/collector/` | Rust Collector workspace（含 `collector-application`, `collector-local`, `collector-domain`, `collector-provider`, `collector-aggregate`, `schemas/` 等） |
+| `apps/macos/` | 原生 macOS SwiftPM 模块（`BruceApp`, `BruceAppCore`, `BruceOnboardingCore`, `BruceGlassSurfaceCore` 以及各测试 Harness） |
+| `apps/widget/` | 桌面嵌入式单文件 Web Widget 组件 |
 | `docs/` | `ad-flow` 标准文档中心（`docs/devel/` 现行设计与卡池、`docs/guide/` 部署指南、`docs/assets/` 静态图片与截图） |
 | `scripts/` | 验证与打包核心脚本（`verify-local.sh`, `build-test-app.sh`, `check-collector-fixtures.sh`, `release-notes.sh`） |
 | `dist/` | 仅作为本地 Release/Preview 打包构建产物目录，严格加入 `.gitignore` |
@@ -121,9 +123,9 @@
 | 命令 | 用途 |
 |---|---|
 | `zsh scripts/verify-local.sh` | **标准本地全量验证**：Rust fmt / test / clippy + JSON fixture 语法与敏感扫描 + Swift build + 全部 9 项 Harness 测试 |
-| `cargo test --manifest-path rust/Bruce-collector/Cargo.toml --workspace` | Rust Collector 单元与集成测试 |
+| `cargo test --manifest-path core/collector/Cargo.toml --workspace` | Rust Collector 单元与集成测试 |
 | `zsh scripts/check-collector-fixtures.sh` | 测试 fixture 语法校验与敏感凭证扫描 |
-| `swift run --package-path macos/BruceApp BruceOnboardingCoreHarness` | Onboarding Core 核心凭证、存储与门控边界测试（165 项） |
+| `swift run --package-path apps/macos BruceOnboardingCoreHarness` | Onboarding Core 核心凭证、存储与门控边界测试（165 项） |
 | `zsh scripts/build-test-app.sh --universal --install` | 构建 Universal 2 双架构 App 并安装至 `/Applications/Bruce.app` |
 
 ### 4. 数据安全与凭据管理规范

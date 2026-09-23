@@ -4,9 +4,9 @@ set -euo pipefail
 
 BRUCE_SCRIPT_DIR=${0:A:h}
 BRUCE_REPO_ROOT=${BRUCE_SCRIPT_DIR:h}
-BRUCE_SWIFT_PACKAGE="$BRUCE_REPO_ROOT/macos/BruceApp"
-BRUCE_RUST_MANIFEST="$BRUCE_REPO_ROOT/rust/Bruce-collector/Cargo.toml"
-BRUCE_RUST_BIN=${BRUCE_RUST_BIN:-$BRUCE_REPO_ROOT/rust/Bruce-collector/target/debug/Bruce-collector}
+BRUCE_SWIFT_PACKAGE="$BRUCE_REPO_ROOT/apps/macos"
+BRUCE_RUST_MANIFEST="$BRUCE_REPO_ROOT/core/collector/Cargo.toml"
+BRUCE_RUST_BIN=${BRUCE_RUST_BIN:-$BRUCE_REPO_ROOT/core/collector/target/debug/Bruce-collector}
 
 cd "$BRUCE_REPO_ROOT"
 

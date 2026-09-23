@@ -1,12 +1,12 @@
 # Shared runtime manifest for Preview and Release App bundles.
 # The caller supplies the repository root and destination Resources.
 
-BRUCE_RUST_PACKAGE_DIR="rust/Bruce-collector"
+BRUCE_RUST_PACKAGE_DIR="core/collector"
 BRUCE_RUST_BINARY_NAME="Bruce-collector"
 
 BRUCE_BUNDLE_FILES=(
-    macos/BruceApp/Assets/AppIcon.icns
-    macos/BruceApp/Assets/Fonts
+    apps/macos/Assets/AppIcon.icns
+    apps/macos/Assets/Fonts
 )
 
 Bruce_validate_packaging_sources() {

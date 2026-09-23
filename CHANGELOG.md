@@ -8,10 +8,11 @@
 ## [Unreleased] - 待发布
 
 ### Added
-- 新增功能描述，关联任务卡 `[T01](docs/devel/task/T01.json)`
+- **现行系统设计基线体系**: 依据 `ad-flow` 治理规范与标准化 8 节大纲，提炼并定稿 5 篇现行设计基线文档（`docs/devel/design/00~04`），覆盖系统宏观架构、多模型计费引擎、POSIX 0600 安全凭据存储、赛博环形菜单栏渲染及价格校准交互。
 
-### Fixed
-- 修复缺陷描述，双向回链变更卡 `[C001](docs/devel/change/C001.json)`
+### Changed
+- **工程目录 Monorepo 分层重构**: 根目录历史碎片与平台目录全面重组为 `apps/`（`apps/macos`, `apps/widget`）应用层与 `core/`（`core/collector`）核心引擎层；更新全部构建验证脚本与运行时探测；清理 4.4GB 本地 Rust 构建调试缓存。双向回链变更卡 `[C001](docs/devel/change/C001.json)`。
+- **历史文档归档与设计真理源纯化**: 将历史过程文档目录 `docs/development/` 与旧版原型目录 `docs/design/` 完整隔离迁移至 `_adflow_backup/original_docs/`，消除历史多头维护；同步修订现行微设计文档 `00~04.md` 与设计中枢索引，杜绝悬空死链。双向回链变更卡 `[C002](docs/devel/change/C002.json)`。
 
 ---
 

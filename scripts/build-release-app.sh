@@ -20,7 +20,7 @@ set -euo pipefail
 
 BRUCE_SCRIPT_DIR=${0:A:h}
 BRUCE_REPO_ROOT=${BRUCE_SCRIPT_DIR:h}
-BRUCE_SWIFT_PACKAGE="$BRUCE_REPO_ROOT/macos/BruceApp"
+BRUCE_SWIFT_PACKAGE="$BRUCE_REPO_ROOT/apps/macos"
 BRUCE_DIST_DIR="$BRUCE_REPO_ROOT/dist"
 BRUCE_ENTITLEMENTS="$BRUCE_REPO_ROOT/scripts/entitlements-release.plist"
 BRUCE_STAGING_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/Bruce-release.XXXXXX")
@@ -128,7 +128,7 @@ strip -S "$BRUCE_CONTENTS/MacOS/BruceApp"
 Bruce_copy_rust_collector "$BRUCE_REPO_ROOT" "$BRUCE_RESOURCES" release
 Bruce_validate_release_bundle "$BRUCE_STAGED_APP"
 
-ditto "$BRUCE_REPO_ROOT/macos/BruceApp/Assets/AppIcon.icns" \
+ditto "$BRUCE_REPO_ROOT/apps/macos/Assets/AppIcon.icns" \
     "$BRUCE_RESOURCES/AppIcon.icns"
 
 BRUCE_INFO_PLIST="$BRUCE_CONTENTS/Info.plist"

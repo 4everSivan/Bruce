@@ -1,27 +1,11 @@
 {
   "$schema": "https://ad-flow.org/schemas/task-index.v1.json",
-  "phase": "Phase 1 - 基础设施与核心模型",
+  "phase": "Phase 1 - 架构重构与治理对齐",
   "updated_at": "2026-09-23",
 
-  "milestones": {
-    "M1-工程骨架": ["T01"]
-  },
+  "milestones": {},
 
-  "topics": {
-    "CoreService": {
-      "design_doc": "docs/devel/design/01-系统核心设计方案.md",
-      "tasks": ["T01"]
-    }
-  },
+  "topics": {},
 
-  "tasks": {
-    "T01": {
-      "title": "工程骨架与基础模型",
-      "milestone": "M1-工程骨架",
-      "status": "pending",
-      "branch": "feat/T01-core-skeleton",
-      "depends_on": [],
-      "file": "docs/devel/task/T01.json"
-    }
-  }
+  "tasks": {}
 }

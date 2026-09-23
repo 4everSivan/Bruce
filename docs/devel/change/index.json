@@ -4,21 +4,30 @@
   "updated_at": "2026-09-23",
 
   "topics": {
-    "CoreService": {
-      "design_doc": "docs/devel/design/01-系统核心设计方案.md",
-      "changes": ["C001"]
+    "SystemOverview": {
+      "design_doc": "docs/devel/design/00-系统总体设计.md",
+      "changes": ["C001", "C002"]
     }
   },
 
   "cards": {
     "C001": {
-      "title": "初始缺陷修复示例",
-      "type": "BugFix",
-      "status": "closed",
-      "branch": "fix/C001-sample-fix",
-      "topic": "CoreService",
-      "version": "v0.1.0",
+      "title": "重构项目工程目录为 Monorepo apps/core 分层架构并清理碎片与缓存",
+      "type": "Refactor",
+      "status": "verified",
+      "branch": "main",
+      "topic": "SystemOverview",
+      "version": "0.9.0+",
       "file": "docs/devel/change/C001.json"
+    },
+    "C002": {
+      "title": "隔离归档历史冗余文档目录至 _adflow_backup 并修订现行设计基线索引",
+      "type": "Refactor",
+      "status": "verified",
+      "branch": "main",
+      "topic": "SystemOverview",
+      "version": "0.9.0+",
+      "file": "docs/devel/change/C002.json"
     }
   }
 }

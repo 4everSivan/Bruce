@@ -1,0 +1,82 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C002",
+  "title": "隔离归档历史冗余文档目录至 _adflow_backup 并修订现行设计基线索引",
+  "type": "Refactor",
+  "status": "verified",
+  "branch": "main",
+  "is_hotfix": false,
+
+  "target": {
+    "module": "DocumentationGovernance",
+    "component": "DesignBaselineArchival",
+    "design_doc": "docs/devel/design/00-系统总体设计.md",
+    "design_topic": "SystemOverview"
+  },
+
+  "why": "工程根目录下的 docs/ 中仍遗留历史文档目录 docs/development 与旧设计原型目录 docs/design，造成文档体系多头维护和认知混淆。需按 ad-flow 规范将历史资产物理隔离至 _adflow_backup/original_docs/，并更新现行设计基线与参考索引。",
+
+  "changes": [
+    {
+      "scope": "历史文档归档隔离",
+      "before": "docs/ 下残留历史目录 docs/development 与 docs/design",
+      "after": "完整移至 _adflow_backup/original_docs/，docs/ 根下仅保留 guide, devel, archive, assets 标准目录",
+      "impact": "消除非规范历史目录，文档体系 100% 契合 ad-flow 标准"
+    },
+    {
+      "scope": "现行设计基线引用更新",
+      "before": "现行微设计文档 01~04 参考资料中直链 docs/development/*.md",
+      "after": "更新为明确标注历史归档事实（_adflow_backup/original_docs/），消除断链风险",
+      "impact": "保持现行设计基线真理源的纯净与严谨"
+    }
+  ],
+
+  "design": {
+    "doc": "docs/devel/design/00-系统总体设计.md",
+    "topic": "SystemOverview",
+    "modified": true,
+    "rule_diff": {
+      "before": "历史文档散落在 docs/development 与 docs/design",
+      "after": "现行设计统一归拢在 docs/devel/design/，所有历史文档隔离至 _adflow_backup/original_docs/"
+    }
+  },
+
+  "verification": {
+    "result": true,
+    "run_id": "run-20260923-archival-verified",
+    "user_quote": "把 @[docs/development] 和 @[docs/design] 都移到 @[_adflow_backup] 中，并按治理流程更新 design",
+    "signoff": "2026-09-23 Verified & design references refreshed",
+    "checks": [
+      {
+        "item": "历史目录物理隔离断言",
+        "true_if": "docs/development 与 docs/design 在 docs/ 下彻底消除，完整存在于 _adflow_backup/original_docs/",
+        "false_if": "docs/ 下仍存在 development 或 design 目录，或备份目录丢失",
+        "evidence": "docs/development 与 docs/design 已从 docs/ 彻底移除，完整合并入 _adflow_backup/original_docs/development/ 与 design/，docs/ 根仅保留 guide, devel, archive, assets 标准目录",
+        "result": true
+      },
+      {
+        "item": "设计基线引用完整性断言",
+        "true_if": "docs/devel/design/*.md 中不再存在指向 docs/development 的裸死链，全部指向规范归档",
+        "false_if": "存在残留死链",
+        "evidence": "docs/devel/design/ 00~04 及 README.md 中对历史文档的裸死链已全部更新为归档规范说明，源码注释亦已消除悬空路径",
+        "result": true
+      },
+      {
+        "item": "工程全量本地回归验证",
+        "true_if": "zsh scripts/verify-local.sh 全部通过",
+        "false_if": "验证失败",
+        "evidence": "zsh scripts/verify-local.sh 执行成功，退出码 0，Rust fmt/test/clippy、Swift 编译与全部 9 项 Harness 100% 全绿通过",
+        "result": true
+      }
+    ]
+  },
+
+  "rejections": [],
+
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  }
+}

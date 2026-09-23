@@ -2,6 +2,7 @@
   "$schema": "https://ad-flow.org/schemas/adflow-config.v1.json",
   "project_name": "Bruce",
   "version": "1.0",
+  "adflow_version": "1.1.0",
   "doc_root": "docs/devel",
   "archive_root": "docs/archive",
   "enforcement": {
@@ -11,6 +12,7 @@
     "forbid_concrete_paths_in_cards": true
   },
   "topics": [
+    "SystemOverview",
     "TokenUsage",
     "AgentUsage",
     "SubscriptionQuota",
@@ -20,7 +22,7 @@
   ],
   "test_suites": {
     "verify_local": "zsh scripts/verify-local.sh",
-    "rust_tests": "cargo test --manifest-path rust/Bruce-collector/Cargo.toml --workspace",
-    "swift_harness": "swift run --package-path macos/BruceApp BruceOnboardingCoreHarness"
+    "rust_tests": "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+    "swift_harness": "swift run --package-path apps/macos BruceOnboardingCoreHarness"
   }
 }
