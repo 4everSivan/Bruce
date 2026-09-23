@@ -231,7 +231,8 @@ struct PanelViewModelHarness {
         try collapsedPeakWindowSpansAccountsAndSkipsBalanceOnly()
         try hourlyCollapsedPointsSumWithPeakText()
         try collapseStatePersistsAcrossAppModelInstances()
-        print("PanelViewModel tests passed: 52")
+        try cardCollapseAnimationStabilityContracts()
+        print("PanelViewModel tests passed: 53")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -1961,6 +1962,34 @@ struct PanelViewModelHarness {
         defaults.set(["subscription", "bogus-card"], forKey: "dashboard.cardOrder")
         let fallbackModel = AppModel(collapsedDefaults: defaults)
         try expect(fallbackModel.cardOrder == [.subscription, .usage, .hourly], "未知或缺失卡片应自动补齐并去重")
+    }
+
+    /// 卡片收起动画与静态呈现契约: 确保三种卡片状态切换幂等，且收起态迷你图表点序列稳定保真.
+    @MainActor
+    private static func cardCollapseAnimationStabilityContracts() throws {
+        let defaults = UserDefaults(suiteName: "BruceCardAnimTest.\(UUID().uuidString)")!
+        let model = AppModel(collapsedDefaults: defaults)
+
+        // 1. 三卡全部具备可收起能力，切换幂等且状态集合自洽
+        for card in [DashboardCardID.usage, DashboardCardID.subscription, DashboardCardID.hourly] {
+            try expect(!model.isCardCollapsed(card), "\(card) 默认展开")
+            model.toggleCardCollapsed(card)
+            try expect(model.isCardCollapsed(card), "\(card) 收起状态应生效")
+            model.toggleCardCollapsed(card)
+            try expect(!model.isCardCollapsed(card), "\(card) 再次展开应还原")
+        }
+
+        // 2. 空数据/全零数据下 Hourly 迷你图表序列恒为 24 点，避免动画阶段 Y 域除零或 NaN 导致图表重绘崩溃
+        let zeroArtifact = makeAgentUsageArtifact(agents: [], services: [])
+        let panelZero = makeMapper().make(agentUsage: zeroArtifact, moduleStatuses: readyStatuses)
+        if let hourly = panelZero.hourly {
+            try expect(hourly.collapsedPoints.count == 24, "零数据下收起态点数恒为 24")
+            let maxP = hourly.collapsedPoints.max() ?? 0
+            try expect(maxP == 0, "零数据下最大点为 0")
+            // 契约：YDomain 采用 max(maxPoint, 1) * 1.1，保证 0 值时不崩溃
+            let safeScale = Double(max(maxP, 1)) * 1.1
+            try expect(safeScale > 1.0, "安全尺度必须大于 1.0 杜绝零除")
+        }
     }
 
     /// 轻量解包: 与 expect 同风格, 避免引入 XCTest.

@@ -232,9 +232,11 @@ struct CollapsibleCardHeader<Status: View, Mini: View>: View {
                     if isCollapsed {
                         mini
                             .frame(maxWidth: .infinity)
+                            .transition(.opacity)
                     } else {
                         Spacer(minLength: 0)
                         status
+                            .transition(.opacity)
                     }
                     Image(systemName: "chevron.right")
                         .font(.system(size: 9, weight: .semibold))

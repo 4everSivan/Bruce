@@ -63,8 +63,11 @@ struct UsageHeroCard: View {
             }
             if !isCollapsed {
                 expandedContent
+                    .clipped()
+                    .transition(.opacity)
             }
         }
+        .clipped()
         .background {
             if isNothing {
                 // Nothing: 16pt 点阵网格替代代码流字符背景, 底部渐隐.

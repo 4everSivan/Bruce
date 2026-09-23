@@ -63,8 +63,11 @@ struct HourlyLineCard: View {
             }
             if !isCollapsed {
                 expandedContent
+                    .clipped()
+                    .transition(.opacity)
             }
         }
+        .clipped()
     }
 
     /// 展开态内容 (标题行由 CollapsibleCardHeader 承担, 全周期唯一不跳动).
@@ -126,6 +129,8 @@ struct HourlyLineCard: View {
             .chartYAxis(.hidden)
             .frame(height: 12)
             .frame(maxWidth: .infinity)
+            // 阻断继承父级的折叠动画事务，避免迷你折线在进入时执行线条形变或插值拉扯，保持静态保真
+            .transaction { $0.animation = nil }
             Text(viewModel.collapsedPeakText)
                 .font(isNothing ? NothingFont.mono(9) : .system(size: 9))
                 .monospacedDigit()
@@ -134,6 +139,7 @@ struct HourlyLineCard: View {
                     : Color.primary.opacity(0.5))
                 .fixedSize()
         }
+        .transition(.opacity)
     }
 
     // MARK: - Nothing 主题判定

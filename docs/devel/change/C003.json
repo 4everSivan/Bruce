@@ -1,0 +1,81 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C003",
+  "title": "统一 Agent 用量卡片收起动画与过渡行为，消除图表挤压与折线图跳动",
+  "type": "Fix",
+  "status": "verified",
+  "branch": "main",
+  "is_hotfix": false,
+
+  "target": {
+    "module": "BruceApp",
+    "component": "HourlyLineCard",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+
+  "why": "用户在控制台面板折叠操作时反馈 Agent 用量卡片的收起动画与 Token 用量卡片、订阅用量卡片不一致。排查确认：HourlyLineCard 收起时，标题栏迷你折线图因 Swift Charts 继承父级 0.25s 动画事务触发几何重插值产生形变抖动；且展开区域内的 14 日柱状图与各 Agent 逐小时图表在容器高度收缩时被垂直挤压变形，观感与另外两张卡片的平滑淡出折叠脱节。",
+
+  "changes": [
+    {
+      "scope": "HourlyLineCard 收起态迷你折线图动画隔离",
+      "before": "collapsedMini 里的 Chart 在点击收起时继承全局 withAnimation(0.25s)，折线与面积图在出现瞬间发生几何数据拉伸与变形跳动",
+      "after": "Chart 显式附加 .transaction { $0.animation = nil } 阻断内部动画事务，作为统一视觉整体平滑淡入",
+      "impact": "迷你折线图在进入时保持静止保真，消除线条扭曲"
+    },
+    {
+      "scope": "HourlyLineCard 展开区折叠裁切与转场保护",
+      "before": "expandedContent 未声明 .clipped() 与 .transition，高度收缩过程中内部 Chart 响应不断变矮的提议高度产生垂直压扁变形",
+      "after": "expandedContent 显式附加 .clipped() 与 .transition(.opacity)，高度折叠时由下至上整齐裁切并渐隐",
+      "impact": "展开区柱状图与折线图在折叠时不发生变形溢出，收起手感与 Token/订阅卡片完全对齐"
+    },
+    {
+      "scope": "CollapsibleCardHeader 状态件与迷你组件切换过渡",
+      "before": "mini 与 status 切换无显式转场，两端对齐与弹性占位切换时产生水平跳动",
+      "after": "mini 与 status 统一附加 .transition(.opacity)，两态交替平滑渐隐渐显",
+      "impact": "标题栏左右元素在收起/展开过程中位置稳定无晃动"
+    }
+  ],
+
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "卡片折叠未对 Swift Charts 阻断动画事务与展开区裁切做防御约束",
+      "after": "包含动态图表的卡片在折叠/收起时必须对内部 Mark 阻断动画事务，并在展开区应用 .clipped() 与 .transition(.opacity) 保证视觉一致性"
+    }
+  },
+
+  "verification": {
+    "result": true,
+    "run_id": "run-20260923-c003-verified",
+    "user_quote": "确认",
+    "signoff": "2026-09-23 Verified by human quote '确认'; animation aligned across all dashboard cards",
+    "checks": [
+      {
+        "item": "动画隔离与视觉过渡断言",
+        "true_if": "HourlyLineCard 在收起与展开时图表不发生垂直压扁，collapsedMini 折线图平滑淡入无抖动拉扯",
+        "false_if": "仍存在图表挤压或折线跳跃",
+        "evidence": "HourlyLineCard.expandedContent 与卡片根视图附加 .clipped() 及 .transition(.opacity)；collapsedMini 显式附加 .transaction { $0.animation = nil } 阻断父级 0.25s 动画事务；CollapsibleCardHeader 状态件平滑渐显",
+        "result": true
+      },
+      {
+        "item": "全量本地自动化回归测试",
+        "true_if": "zsh scripts/verify-local.sh 全量通过，退出码为 0",
+        "false_if": "单元测试、格式检查或 Harness 测试失败",
+        "evidence": "zsh scripts/verify-local.sh 全绿通过，包含 Rust workspace 单元测试/Clippy、JSON 语法安全扫描、Swift build 与全部 9 项 Harness（含新增第 53 项卡片折叠契约测试）",
+        "result": true
+      }
+    ]
+  },
+
+  "rejections": [],
+
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  }
+}

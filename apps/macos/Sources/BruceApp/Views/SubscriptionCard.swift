@@ -111,8 +111,11 @@ struct SubscriptionCard: View {
 
             if !isCollapsed {
                 expandedContent
+                    .clipped()
+                    .transition(.opacity)
             }
         }
+        .clipped()
     }
 
     /// 展开态内容 (不含标题行; 标题行由 CollapsibleCardHeader 承担).

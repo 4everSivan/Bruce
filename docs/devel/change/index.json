@@ -7,6 +7,10 @@
     "SystemOverview": {
       "design_doc": "docs/devel/design/00-系统总体设计.md",
       "changes": ["C001", "C002"]
+    },
+    "MenuBarIndicator": {
+      "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+      "changes": ["C003"]
     }
   },
 
@@ -28,6 +32,15 @@
       "topic": "SystemOverview",
       "version": "0.9.0+",
       "file": "docs/devel/change/C002.json"
+    },
+    "C003": {
+      "title": "统一 Agent 用量卡片收起动画与过渡行为，消除图表挤压与折线图跳动",
+      "type": "Fix",
+      "status": "verified",
+      "branch": "main",
+      "topic": "MenuBarIndicator",
+      "version": "0.9.0+",
+      "file": "docs/devel/change/C003.json"
     }
   }
 }

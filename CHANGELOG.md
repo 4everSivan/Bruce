@@ -14,6 +14,9 @@
 - **工程目录 Monorepo 分层重构**: 根目录历史碎片与平台目录全面重组为 `apps/`（`apps/macos`, `apps/widget`）应用层与 `core/`（`core/collector`）核心引擎层；更新全部构建验证脚本与运行时探测；清理 4.4GB 本地 Rust 构建调试缓存。双向回链变更卡 `[C001](docs/devel/change/C001.json)`。
 - **历史文档归档与设计真理源纯化**: 将历史过程文档目录 `docs/development/` 与旧版原型目录 `docs/design/` 完整隔离迁移至 `_adflow_backup/original_docs/`，消除历史多头维护；同步修订现行微设计文档 `00~04.md` 与设计中枢索引，杜绝悬空死链。双向回链变更卡 `[C002](docs/devel/change/C002.json)`。
 
+### Fixed
+- **Agent 用量卡片收起动画与过渡行为对齐**: 修复 Agent 用量卡片收起动画与其他卡片不一致的缺陷。为 `HourlyLineCard` 收起态迷你折线图附加动画事务阻断（`.transaction { $0.animation = nil }`），彻底杜绝 Swift Charts 在 0.25 秒收折期间发生线条形变与插值跳动；为展开区附加 `.clipped()` 视口裁切与 `.transition(.opacity)`，消除高度坍缩时内部柱状图与多行图表的垂直挤压；为卡片头部 `mini` 与 `status` 统一应用平滑淡出转场，消除水平位移。双向回链变更卡 `[C003](docs/devel/change/C003.json)`。
+
 ---
 
 ## [0.9.0] - 2026-09-23
