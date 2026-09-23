@@ -1,0 +1,31 @@
+{
+  "$schema": "adflow-docs-index-v1",
+  "project": "Bruce",
+  "created": "2026-09-23",
+  "last_change": "2026-09-23",
+  "status": "active",
+  "description": "工程顶层文档中枢路由表，定义各子系统的边界与机器访问入口",
+  "directories": [
+    {
+      "name": "guide",
+      "path": "docs/guide",
+      "description": "系统使用、本地部署与联调环境指引",
+      "readme": "docs/guide/README.md",
+      "index": "docs/guide/index.json"
+    },
+    {
+      "name": "devel",
+      "path": "docs/devel",
+      "description": "研发内场核心工作区（现行设计基线、变更核验、阶段任务与待办缓冲）",
+      "readme": "docs/devel/README.md",
+      "index": "docs/devel/index.json"
+    },
+    {
+      "name": "archive",
+      "path": "docs/archive",
+      "description": "历史版本发版封箱归档库（只读冻结）",
+      "readme": "docs/archive/README.md",
+      "index": null
+    }
+  ]
+}

@@ -1,246 +1,139 @@
-<!-- source: template/base -->
-# Bruce 项目事实
+# AGENTS.md
 
-本文件是 `constitution.md` 的项目实施层, 是所有 AI 工具的共享基线. 维护项目事实, 路径, 脚本, 数据模型, 服务拓扑和已确认环境能力策略.
-
-边界:
-
-- 红线, 证据分级和工作模式定义 -> `constitution.md`
-- 项目事实, 路径, 脚本, 数据模型, 服务拓扑和已确认环境能力策略 -> 本文件
-- 输出格式, 模板和自审清单 -> `templates/*` 或对应 skill 内置模板
+<!-- @ad-flow: initialized -->
+> Bruce 研发与 AI 协作规范 —— 适用于团队开发者与 AI Agent 的统一工程底线。
 
 ---
 
-## 1. 项目目标
+## 一、代码风格与编写规范 (Code Style & Quality)
 
-`Bruce` 用于制作一个运行在 macOS 菜单栏场景中的研发活动看板. 核心能力是分析本机 AI Agent 的 token 用量, 成本和额度. 项目采用本机 Collector 采集数据, 输出 JSON artifact; macOS App 以原生 SwiftUI 看板渲染 (最低 macOS 14; 液态玻璃主题需 macOS 26), 仓库根 `*/widget/` 单文件 Widget 继续服务 Daimon/Kimi Work Blueprint 场景.
-
-项目是本地优先工具, 但会读取真实会话记录和认证信息, 并调用外部服务. 任何实现都必须优先保护凭证, 个人活动数据和其他应用维护的本机数据库.
-<!-- source: user-input -->
-<!-- source: scan/README, confidence: HIGH -->
-
----
-
-## 2. 沟通与输出规范
-
-- **[强制]** 面向用户的说明, 文档和解释统一中文; 中文内容默认英文半角标点.
-- **[例外]** 第三方工具输出, 日志, 错误信息, 协议字段和标准 API 名称保留原始英文.
-- **[强制]** 先给结论再给依据; 优先可执行建议; 复杂问题说明设计意图, 风险点, 验证方式和回滚边界.
+1. **语言标准与类型契约**：严格遵循所用技术栈的官方推荐规范（Rust 严格通过 `clippy` 与 `rustfmt`；Swift 遵循 Swift 6 并发安全与严格类型检查）；关键业务对象与公共函数必须提供完整严密的类型定义与前置防御断言。
+2. **单一职责与模块解耦**：业务逻辑与外部 I/O（数据库、网络请求、文件系统）必须清晰分层；Collector 负责纯数据采集与度量聚合，App 负责原生渲染与调度交互，严禁在模块初始化阶段执行隐式网络请求或副作用。
+3. **命名与注释规范**：变量与函数命名精准表达业务意图；核心算法、业务规则分支、非显而易见的边界防御必须附带精确代码注释，杜绝无意义的废话注释。
+4. **依赖引入克制**：严禁未经讨论擅自引入体积庞大或维护度低下的重型外部三方库；优先利用语言标准库、轻量专用 crate 或 Swift 官方模块。
 
 ---
 
-## 3. 规则层级与单一事实源映射
+## 二、开发流程 (Development Workflow)
 
-优先级从高到低: 平台/System/Developer/工具强制安全指令 > `constitution.md` > 本文件 `AGENTS.md` > 工具入口 > generated subagent body > 设计说明 > 单次偏好.
+日常研发分为两大入口，共同遵守“文档先行 → 编码 → 补测 → 人工核验代签 → 基线回写”的闭环，不跨步、不省略：
 
-冲突裁决: 项目路径, 脚本和数据入口以本文件为准; 用户授权不能覆盖 `constitution.md` 红线.
+### 1. 功能设计入口 (新功能 / 大需求 / 阶段里程碑)
+1. **方向登记**：在 `docs/devel/todo/` 登记方向级灵感与事项；
+2. **设计基线定稿**：在 `docs/devel/design/` 撰写或修订对应微设计文档（`01~99-[功能名].md`），状态置为 `现行基线`，并标明概念主题锚标 `<!-- @topic: TopicName -->`；完成设计后从 `todo/` 移除对应项；
+3. **任务拆解**：在 `docs/devel/task/` 建立 `Txx.json` 任务卡（声明 DAG 依赖 `depends_on` 与 DoD 完成定义），并在 `task/index.json` 总账登记；
+4. **顺序开发**：按依赖拓扑顺序编码与实现；
+5. **测试与验收**：跑通测试，验收通过后在 `task/index.json` 中闭环，阶段发版时执行归档。
 
-| 概念 | 唯一归属 |
-|------|---------|
-| 红线, 证据分级, 工作模式 | `constitution.md` |
-| 项目事实, 路径, 脚本, 拓扑 | `AGENTS.md` |
-| 输出格式, 模板, 自审清单 | `templates/*` 或对应 skill 内置模板 |
-
----
-
-## 4. 事实来源优先级
-
-1. 用户提供的真实现象, 报错, 日志, 输出, 截图和业务时间线.
-2. 项目 Collector 的实际输出和可重复测试结果.
-3. 已归档的历史数据和问题记录.
-4. `README.md`, `docs/` 和项目内设计文档.
-5. 官方文档和对应版本源码.
-
-有现场数据时先读现场数据, 再用源码或文档解释机制. 源码和文档只证明机制边界, 不单独证明真实账号或当前运行结果. 版本差异必须说明适用范围.
+### 2. Bug 修复入口 (缺陷 / 功能回调 / 参数微调 / 重构)
+1. **登记并移出 (零沉淀)**：在 `docs/devel/todo/now.md` 登记；一旦在 `docs/devel/change/` 新建 `Cxxx.json` 变更卡并在 `change/index.json` 登记后，**必须立即从 todo 表格中物理删除该项**（落地即删除）；
+2. **条件契约与对比表**：卡内定义前后逻辑对比，以及 `true_if`（通过依据）与 `false_if`（失败依据）；
+3. **改代码 + 补测试**：修复问题并补充对应的回归测试；
+4. **核验与代签**：AI 运行测试采集真实证据并在会话中向人类汇报；人工口头确认后，AI 代为在卡内签署收口（记录人类原话），卡状态转为 `verified`；
+5. **基线回写与闭环**：合入主干，若涉及设计规则变动则同步反哺回写对应微设计文档正文，更新 `CHANGELOG.md`，并在 `change/index.json` 中标记 `closed`。
 
 ---
 
-## 5. 目录与路径约定
+## 三、本地部署与环境隔离 (Local Deployment & Environment)
 
-### 5.1 源码与入口
-
-| 目录 | 用途 |
-|------|------|
-| `rust/Bruce-collector/` | Rust Collector: 扫描本机 Agent 会话, 聚合 token, 估算成本并查询服务额度 |
-| `agent-usage/widget/` | 渲染 Agent token, 成本, 额度和趋势的单文件 Widget |
-| `macos/BruceApp/` | SwiftPM 包 (最低 macOS 14): `BruceApp` (SwiftUI 菜单栏应用, 经典/液态玻璃主题, `Sources/BruceApp/Views/` 卡片组件), `BruceAppCore` (AppModel, 调度, PanelViewModel 映射), `BruceOnboardingCore` (扫描, 授权, Gate, 订阅凭证, 主题解析纯逻辑), 多个 Harness 边界测试 |
-| `data/` | 本机运行产物; 可能包含个人活动和使用量数据, 不得提交 |
-| `docs/` | 项目设计, 决策和说明文档 |
-| `scripts/` | 本地验证脚本 (`verify-local.sh`)、测试版 App 打包脚本 (`build-test-app.sh`) 与 Collector 发布 smoke (`collector-release-smoke.sh`) |
-
-### 5.2 参考资料
-
-- `README.md`: 项目目标, 模块说明, 本机数据源和运行命令.
-- `constitution.md`: 安全红线, 证据要求和工作模式.
-- `docs/development/01-bruce-design.md`: 产品需求, UI 规范, 数据契约和验收标准.
-<!-- source: scan/code-structure, confidence: HIGH -->
+1. **严格依据部署文档**：本地环境准备与服务部署，**必须严格遵循 `docs/guide/` 下的部署文档**（如 `docs/guide/01-本地部署指南.md`）进行操作，严禁随意臆测启动参数。
+2. **产物全量收拢至 `local/`**：部署与测试运行产生的所有临时文件、本地数据库、缓存、日志等，**一律写入项目根目录的 `local/` 目录**（已加入 `.gitignore`），严禁向源码树扩散污染。
+3. **部署必须产出实况报告**：部署执行完毕后，**必须在 `local/` 目录下产出一份部署实况报告（`local/deploy_report.md`）**，明确记录真实分配的端口、实际数据库路径、进程管理与重启命令、健康检查端点及日志位置。
+4. **测试与重新部署的事实依据**：**后续所有的自动化测试、联调验证、日常重启与重新部署，必须参考 `local/deploy_report.md` 实际运行数据执行，严禁抛开报告重新翻阅部署指南**（防止端口冲突、配置漂移或覆盖正在运行的实例）。
+5. **重新部署与报告刷新**：若环境配置、启动参数发生变动，或执行了重新部署，必须同步更新 `local/deploy_report.md`；若部署架构基线变动，同步修订 `docs/guide/` 对应文档。
+6. **【严格红线】`local/` 仅人工清理**：**AI Agent 严禁擅自删除或重置 `local/` 目录**！所有本地数据库、部署报告与调试环境的清理权 100% 归人类开发者所有，防止运行实况与调试数据被意外销毁。
 
 ---
 
-## 6. 标准脚本与验证命令
+## 四、测试规范 (Testing Standards)
+
+1. **测试文件归拢**：所有测试用例原则上统一存放在模块的 `tests/` 目录或原生 Harness 测试目标中。
+2. **改动必伴随补测**：任何功能实现、接口微调或 Bug 修复，**必须同步补充或更新对应的自动化测试用例**，严禁裸跑无测代码。
+3. **测试独立与全绿通过**：测试必须具备独立幂等性，不依赖不可控的外部真实外网服务（外部依赖必须 Mock）；提交或合入前所有相关测试必须全绿通过。
+
+---
+
+## 五、分支与提交规范 (Git Branching & Commit Conventions)
+
+1. **多分支隔离与卡片标签**：
+   * 为适配多分支并行开发，新特性开发必须创建专属特性分支（如 `feat/<Txx-简述>`），Bug 修复与微调必须创建专属修复分支（如 `fix/<Cxxx-简述>`）；
+   * 对应任务卡（`Txx.json`）与变更卡（`Cxxx.json`）中**必须显式登记执行分支（`"branch": "..."`）**，以便人机随时对齐当前研发上下文；
+   * 严禁在未经建卡或分支未对齐的情况下向主干随意提交混合代码。
+2. **语义化提交格式**：采用 Conventional Commits 规范，格式为 `<type>(<scope>): <subject>`：
+   * `feat`: 新增业务功能
+   * `fix`: 修复缺陷
+   * `docs`: 文档、设计方案或注释变动
+   * `test`: 新增或修订测试用例
+   * `refactor`: 代码重构（不影响业务功能的结构调整）
+   * `chore`: 构建配置、依赖更新或辅助工具变动
+3. **原子性提交**：每次提交保持单一职责，严禁将不同模块的不相干改动或大范围重构混在同一个 commit 中。
+4. **关联卡号**：涉及具体 C 卡或 T 卡的改动，提交标题或说明中建议附带卡号（如 `(C001)` 或 `(T02)`），以便追溯。
+
+---
+
+## 六、发布与归档检查 (Release & Documentation Hygiene)
+
+1. **统一发版版本号**：全局严格遵循单一 SemVer 版本号（`vX.Y.Z`），Markdown 文档仅标注最后更新日期，不单独搞孤立的文档小版本号。
+2. **CHANGELOG 记账**：发版前必须在 `CHANGELOG.md` 汇总本版本的所有新增特性、修复与破坏性变动。
+3. **全景文档核对**：检查 `docs/README.md` 与各目录 README 是否有陈旧失真的描述，保持文档与现实一致。
+4. **发版归档 SOP**：发版封箱时，将本版本完成的卡片统一移入 `docs/archive/<版本号>/`，刷新 `index.json` 中的物理路径映射，并打出对应 Git Tag（如 `git tag -a v0.1.0 -m "Release v0.1.0"`）。
+
+---
+
+## 七、安全与防泄漏红线 (Security & Secrets)
+
+1. **敏感凭证绝不上库**：API Key、Secret、私钥、Token、数据库真实密码与内网敏感拓扑，**一律禁止硬编码入代码或提交 Git**；必须使用 `.env` 或配置注入，且 `.env` 必须加入 `.gitignore`。
+2. **数据安全快照隔离保护**：若项目根目录存在 `_adflow_backup/`，**AI Agent 严禁擅自删除或篡改**。该备份为人类安全底线资产，仅允许人类在终端手动核验清理。
+
+---
+
+## 八、AI 真实性与核验纪律 (Truthfulness & Evidence)
+
+1. **运行结果必呈事实**：执行自动化测试或编译构建时，AI 必须向人类客观汇报真实命令输出、失败详情与退出码（Exit Code），**严禁在有警告/报错时用“已全部通过”含糊概括**。
+2. **签署代签必有依据**：卡片内的收口代签，必须在会话中收到人类明确确认后才可执行，并将人类原话写入 `user_quote`，严禁 AI 自导自演代签。
+
+---
+
+## 项目自定义规则 (Project Custom Rules)
+
+> 本节包含 Bruce 项目特有的架构拓扑、关键路径、验证脚本与环境能力约定：
+
+### 1. 项目核心事实与架构定位
+
+- `Bruce` 运行在 macOS 菜单栏场景中，核心能力是统一监控与分析本机各类 AI Agent 的 Token 用量、费用估算和订阅额度。
+- **架构解耦分工**：
+  - **Rust Collector** (`rust/Bruce-collector/`)：高性能本地数据采集边界，负责扫描本机 Agent 会话目录、增量缓存计算、聚合 Token/费用，并对外出站查询服务额度。输出标准 JSON artifact；
+  - **macOS App** (`macos/BruceApp/`)：原生 SwiftUI 菜单栏常驻应用，支持经典与液态玻璃主题，负责调度刷新、图表与状态指示呈现，具备 Universal 2（Apple Silicon + Intel Mac）通用兼容性；
+  - **本地优先运行**：项目无自有云端服务端，所有数据在用户本机闭环。
+
+### 2. 目录与关键路径约定
+
+| 目录/文件 | 核心职责 |
+|---|---|
+| `rust/Bruce-collector/` | Rust Collector workspace（含 `collector-application`, `collector-local`, `collector-domain`, `collector-provider`, `collector-aggregate` 等 crates） |
+| `macos/BruceApp/` | 原生 macOS SwiftPM 模块（`BruceApp`, `BruceAppCore`, `BruceOnboardingCore`, `BruceGlassSurfaceCore` 以及各测试 Harness） |
+| `docs/` | `ad-flow` 标准文档中心（`docs/devel/` 现行设计与卡池、`docs/guide/` 部署指南、`docs/assets/` 静态图片与截图） |
+| `scripts/` | 验证与打包核心脚本（`verify-local.sh`, `build-test-app.sh`, `check-collector-fixtures.sh`, `release-notes.sh`） |
+| `dist/` | 仅作为本地 Release/Preview 打包构建产物目录，严格加入 `.gitignore` |
+
+### 3. 标准验证与打包命令
 
 | 命令 | 用途 |
-|------|------|
-| `cargo test --manifest-path rust/Bruce-collector/Cargo.toml --workspace` | Rust Collector 单元、集成和 doctest |
-| `zsh scripts/check-collector-fixtures.sh` | JSON fixture 语法与敏感信息扫描 |
-| `zsh scripts/verify-local.sh` | 标准本地验证: Rust fmt/test/Clippy + fixture scan + swift build + 全部 Harness |
-| `swift build --package-path macos/BruceApp` | macOS App 与 BruceOnboardingCore 构建验证 |
-| `swift run --package-path macos/BruceApp BruceOnboardingCoreHarness` | Onboarding Core 边界测试 (进程, SQLite, Keychain, Gate, 订阅凭证, 设备码登录, 令牌轮换合并, Codex v2 迁移, DeepSeek 追踪 ID 与保存事务, 统一过期判定器, Claude/Grok 导入器); 数量以 Harness 输出为准 |
-| `swift run --package-path macos/BruceApp PanelViewModelHarness` | 面板 view model 映射边界测试 (措辞, 分组, 条件渲染, 用量档位与热力图, 按月聚合, 模型用量三档窗口, Nothing 绿阶系列色, Codex 账号上次成功时间, DeepSeek 月度映射, 卡片收起态摘要与持久化); 52 项 |
-| `swift run --package-path macos/BruceApp DeepSeekUsageLedgerHarness` | DeepSeek 月度账本边界测试 (领域差分, 时区跨日, 持久化权限, 损坏恢复, 敏感字段); 17 项 |
-| `zsh scripts/build-test-app.sh` | 生成 `dist/Bruce.app` 本地构建 App (Release 构建 + 打包 + 签名校验) |
-| `zsh scripts/collector-release-smoke.sh dist/Bruce.app --local-preview` | 在隔离临时目录验证 Rust Bridge/artifact、旧 cache rebuild、install/upgrade/rollback; strict 模式用于已签名 Release |
-| GitHub Actions `.github/workflows/ci.yml` | push/PR 触发: Rust/Swift verify-local.sh + 测试包构建; tag `v*` 仅触发未签名 Preview 草稿 Release, 正式版签名/公证不纳入当前 CI/CD |
+|---|---|
+| `zsh scripts/verify-local.sh` | **标准本地全量验证**：Rust fmt / test / clippy + JSON fixture 语法与敏感扫描 + Swift build + 全部 9 项 Harness 测试 |
+| `cargo test --manifest-path rust/Bruce-collector/Cargo.toml --workspace` | Rust Collector 单元与集成测试 |
+| `zsh scripts/check-collector-fixtures.sh` | 测试 fixture 语法校验与敏感凭证扫描 |
+| `swift run --package-path macos/BruceApp BruceOnboardingCoreHarness` | Onboarding Core 核心凭证、存储与门控边界测试（165 项） |
+| `zsh scripts/build-test-app.sh --universal --install` | 构建 Universal 2 双架构 App 并安装至 `/Applications/Bruce.app` |
 
-执行第一个实时命令前必须应用 `constitution.md` 的 Production Operation Mode. 静态分析或普通代码审查不得把实时采集作为默认验证步骤.
-<!-- source: scan/config, confidence: HIGH -->
+### 4. 数据安全与凭据管理规范
 
----
+- **应用凭据存储隔离**：应用内存储的订阅凭据统一落盘至 `~/Library/Application Support/Bruce/credentials.json`，权限强制限制为 **POSIX `0600`**（仅当前操作系统用户可读写，父目录 `0700`），采用临时文件 + `replaceItemAt` 原子写入，彻底杜绝本地构建由于签名哈希变动引发的系统钥匙串密码弹窗。
+- **外部 CLI 读取静默防护**：探测 Claude CLI 等外部凭据时，必须附加 `kSecUseAuthenticationUISkip` 属性；遇需要鉴权交互时直接静默跳过并优雅回退至本地文件，严禁引发侵入式系统弹窗。
+- **外部数据库只读访问**：读取外部应用 SQLite 数据库时强制使用 `mode=ro` 只读连接，严禁向外部数据库执行 DDL、写入或修复操作。
 
-## 7. 服务与拓扑
+### 5. 已确认环境协作能力
 
-```text
-macOS 本机会话与认证文件
-  ├─ Kimi Work / Kimi Code / Claude / Codex / Orca / Pi / ZCode / CodeBuddy 会话
-  ├─ CC Switch SQLite 与 OAuth 账号库 (App 模式仅一次性只读导入)
-  ├─ App Keychain (订阅凭证: Kimi/DeepSeek/火山/Codex/OpenCode Go)
-  └─ Kimi OAuth
-                  │
-                  ▼
-Rust Collector ──出站请求──> Kimi, DeepSeek,
-                  │             火山引擎, OpenAI, Google Cloud Code,
-                  │             Anthropic (Claude), Grok, OpenCode Go console
-                  ▼
-           {"artifact": ...} JSON
-                  │
-        ┌─────────┴─────────┐
-        ▼                   ▼
-DaimonWidget.data.main   AppModel + PanelViewModelMapper
-        │                   │
-        ▼                   ▼
-Daimon 单文件 Widgets   macOS 菜单栏原生液态玻璃看板
-```
-
-- Collector 是唯一数据采集边界, Widget 不直接读取凭证.
-- `run(ctx)` 返回 `{"artifact": ...}`; Daimon host 将 artifact 映射为 Widget 的 `data.main`.
-- `data/*.json` 是可选本机落盘产物, 不是源代码或测试 fixture.
-- `agent-usage` 实时采集可能轮换本机 OAuth; 该副作用必须被显式识别和授权.
-- `agent-usage` 云端额度条目在 CLI 模式由 CC Switch providers 行驱动; App 模式改由注入凭证 (`kimi_web_tokens` / `provider_env.deepseek` / `provider_meta.volcengine` / `codex_oauth_auth` + `codex_auth`) 驱动合成, 不再要求 CC Switch 数据库存在; App 模式不读 `~/.codex/auth.json`, Codex 活跃账号由 `codex_auth` 注入承载.
-- Claude / Grok 订阅额度由 Rust provider adapter 实时只读本机 CLI 登录态, 不刷新, 不回写, 不做一次性导入: Claude 按「Keychain `Claude Code-credentials` (无 account) 优先, `~/.claude/.credentials.json` 兜底」读取, 调用 `api.anthropic.com/api/oauth/usage`; Grok 读取 `~/.grok/auth.json` (OIDC scope 优先, legacy `/sign-in` 兜底), 调用 `grok.com` gRPC-web 账单接口, protobuf 启发式解析失败必须抛可诊断错误, 不得伪造用量.
-- OpenCode Go 订阅额度由 Rust provider adapter 查询 console.opencode.ai 服务端计量 (设备码 OAuth, client_id `opencode-cli`; `/api/orgs` → `/api/go/status`), 跨机器汇总, 不读本机 opencode 数据库; App 模式多账号由 `opencodeGoQuotaAccounts` 注入, access 过期用 refresh token 刷新并经 `credentialUpdates` 写回, 统一窗口语义: meters 返回哪些输出哪些 (`five_hour`→每 5 小时 / `calendar_week`→每周 / `product_period`→每月), 服务端没有的窗口不输出, `limitMicroCents<=0` 的窗口跳过.
-- App 订阅凭证存 Keychain (`com.bruce.dashboard.credentials`), 在设置「订阅额度」分区配置或从本机/CC Switch 一次性只读导入; 令牌轮换经 `credentialUpdates` 只写回 Keychain, 不回写 CC Switch.
-- App 模式 agent-usage 请求携带 `days=182` 聚合窗口 (Bridge 上限 366): 柱状图取末 14 天, 全量 daily 供用量热力图; CLI 直跑默认 14 天.
-- 外部 API 和 CC Switch 数据库 schema 未在仓库内锁定, 解析失败必须保留可诊断证据.
-<!-- source: scan/security, confidence: HIGH -->
-<!-- source: infer, confidence: MEDIUM -->
-
----
-
-## 8. 治理维度事实
-
-### 代码结构
-
-- 语言: Rust Collector + Swift 原生 App, 原生 JavaScript/HTML/CSS 为 Widget 展示层.
-- 框架: Rust Cargo workspace, SwiftPM, Widget 使用 DaimonWidget host contract.
-- 构建系统: Cargo + SwiftPM; Widget 无构建步骤.
-- 入口文件: `rust/Bruce-collector/bin/Bruce-collector/src/main.rs`, `agent-usage/widget/index.html`.
-- 架构模式: 模块化 Collector-Artifact-Widget 管道, 业务模块相互独立 (confidence: HIGH).
-
-### 编码规范
-
-- 新增公共函数, 外部服务边界和复杂 artifact 结构应提供 Rust/Swift 类型或明确 schema.
-- 可执行 Rust/Swift 入口应隔离副作用, 不在模块初始化阶段执行网络或写入.
-- Shell 脚本必须使用 `set -euo pipefail`, 外部输入需显式校验.
-- 捕获具体异常; 关键错误不得静默退化为"无数据".
-- 文件, SQLite 连接和其他资源使用上下文管理器.
-- SQL 动态值使用参数化绑定.
-- 外部服务, 文件系统, 时间和时区必须能够在测试中替换.
-- Collector 与 Widget 共享的字段属于兼容性契约.
-<!-- source: template/code-standards/rust-swift -->
-<!-- source: scan/code-structure, confidence: HIGH -->
-
-### 数据库
-
-- 驱动/ORM: Rust `rusqlite` 只读适配器.
-- 迁移工具: 无.
-- 数据库类型: SQLite; 读取 CC Switch provider/pricing.
-
-数据库操作原则:
-
-- 连接外部应用数据库时使用 SQLite URI `mode=ro`.
-- 本项目不得为 CC Switch 数据库执行迁移, DDL 或数据修复.
-- schema 不兼容必须产生可诊断状态, 不得静默伪装成空结果.
-- 若未来新增项目自有数据库, 必须先补充 schema, 迁移, 备份和回滚约束.
-<!-- source: template/dim-database -->
-<!-- source: scan/dependencies, confidence: MEDIUM -->
-
-### 未启用维度
-
-- API: 未检测到服务端路由, 控制器, API 契约或认证入口. 当前只有出站 API 客户端, confidence: LOW, 不启用 API 治理维度.
-- Deploy: 未检测到 Docker, K8s, Terraform 或 CI/CD 配置, confidence: HIGH.
-- Maintenance: 未检测到项目级监控, 告警或结构化日志配置, confidence: HIGH.
-<!-- source: scan/api, confidence: LOW -->
-<!-- source: scan/config, confidence: HIGH -->
-
----
-
-## 9. 已确认环境能力
-
-用户于 2026-07-28 确认以下能力写入项目治理:
-
-| ID | kind | detected | confirmed | detection_basis | template_condition |
-|----|------|----------|-----------|-----------------|--------------------|
-| `semble` | `mcp` | true | true | MCP 语义搜索调用成功 | `has_mcp_semble` |
-| `headroom` | `mcp` | true | true | 当前环境提供压缩, retrieve 和统计工具 | `has_mcp_headroom` |
-| `context7` | `mcp` | true | true | 当前环境提供 library resolve 与文档查询工具 | `has_mcp_context7` |
-| `fetch` | `mcp` | true | true | 当前环境提供 URL fetch 工具 | `has_mcp_fetch` |
-| `improve-codebase-architecture` | `skill` | true | true | 当前环境注册架构改进 skill | `has_skill_architecture` |
-
-<!-- source: capability-detect, confirmed: true -->
-
-### Semble 代码搜索
-
-- **[强制] 代码探索先用 Semble**: 需要理解代码结构, 定位实现或查找调用关系时, 先使用 Semble 语义搜索, 再按返回路径读取文件.
-- **[强制] 避免重复搜索**: Semble 已返回明确文件和行号时, 不对同一语义问题重复使用 grep 或 rg.
-- **[默认] Grep/rg 边界**: 仅用于精确字符串, 全仓库字面匹配, 确认符号残留, 或 Semble 结果上下文不足时.
-- **[默认] 相关实现发现**: 已定位关键实现后, 优先使用 Semble find-related 查相似实现, 调用方或测试.
-<!-- source: capability-detect/mcp-semble, confirmed: true -->
-
-### Headroom 上下文管理
-
-- **[强制] 大内容先压缩**: 大型日志, 搜索结果, 长文件内容或大 diff 进入推理前, 优先使用 Headroom 压缩.
-- **[强制] 压缩摘要保真**: 摘要必须保留用户最新目标, 已确认约束, 已改文件, 未完成事项, 验证结果, 关键决策和阻塞点.
-- **[强制] 可追溯**: 压缩结果带 hash 时, 后续需要细节必须 retrieve 原文; 不得凭摘要补造细节.
-<!-- source: capability-detect/mcp-headroom, confirmed: true -->
-
-### Context7 文档查询
-
-- **[强制] 第三方 API 先查文档**: 涉及库, 框架, SDK, CLI, 云服务, 版本迁移和配置语法时, 优先使用 Context7.
-- **[强制] 先 resolve 再 query**: 除非用户提供 `/org/project` 形式的 library ID, 否则必须先解析 library ID.
-- **[强制] 标注版本边界**: 文档结论涉及版本差异时, 必须说明适用版本和证据来源.
-- **[默认] 不滥用**: 业务逻辑, 代码审查, 重构建议和通用编程概念不需要 Context7.
-<!-- source: capability-detect/mcp-context7, confirmed: true -->
-
-### Fetch 外部资料
-
-- **[默认] 官方来源优先**: 外部资料优先官方文档, 规范, 仓库 README 和 release notes.
-- **[强制] 外部资料不替代现场证据**: 网页只能证明机制和文档描述, 不能证明当前项目或真实账号状态.
-- **[强制] 禁止请求敏感 URL**: 不请求包含 token, 私钥, 内部凭据或敏感查询参数的 URL.
-<!-- source: capability-detect/mcp-fetch, confirmed: true -->
-
-### 架构改进 Skill
-
-- **[默认] 架构问题使用专用 skill**: 用户请求架构改进, 解耦, 降低复杂度或提升可测试性时, 使用架构改进 skill 辅助分析.
-- **[强制] 不扩大范围**: 普通 bugfix 或小修改不得自动扩大为架构改造.
-<!-- source: capability-detect/skill-architecture, confirmed: true -->
-
----
-
-## 10. 已确认工作流策略
-
-- OpenSpec 1.5.0 已初始化并作为项目工作流使用. 文档实体统一存放在 `docs/openspec/`, 仓库根 `openspec` 符号链接仅用于保持 CLI 从项目根运行时的路径兼容.
-- Superpowers suite 未检测为完整套件, 不生成强制规则.
-- `grill-me`, 制品类 skills 和 `pua` 未被确认为本项目强制能力.
-- TokenSave 未检测到.
-<!-- source: capability-detect, confirmed: true -->
-<!-- /source: template/base -->
+- **代码语义探索先用 Semble**：定位实现、查找调用关系或理解代码结构时，优先调用 `semble` MCP 语义搜索，获取精确行号与文件后再按需读取，避免在整个仓库盲目 grep。
+- **大上下文优先使用 Headroom**：大文件 diff、长日志或多文件探索进入推理前，优先使用 Headroom 进行保真压缩与结构化提取。
+- **第三方库查阅 Context7**：涉及外部 SDK、云服务或系统框架变更时，优先使用 Context7 查询官方实时文档。

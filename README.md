@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="docs/app-icon-rounded.png" width="120" height="120" alt="Bruce" />
+  <img src="docs/assets/app-icon-rounded.png" width="120" height="120" alt="Bruce" />
   <h1>Bruce</h1>
   <p><strong>macOS 菜单栏里的 AI Agent 用量与订阅额度看板</strong></p>
   <p>一条帮你看住每个 token 的本地小狗 🐶</p>
@@ -52,10 +52,10 @@ Bruce 把本机 AI Agent 的 token 用量、成本估算和订阅额度集中到
 
 | 说明 | 截图 |
 |---|---|
-| **仪表盘全貌**: 面板自上而下由 Token 用量卡、订阅用量卡和底部操作栏 (刷新 / 设置 / 退出) 组成, 高度随内容自适应, 无滚动条。 | <img src="docs/screenshots/dashboard-overview.png" width="280" /> |
-| **Token 用量卡**: Hero 区展示累计 token 总量与估算成本; 四格细分输入、输出、缓存读取、缓存命中率; 月度聚合与 26 周热力图呈现使用节奏。 | <img src="docs/screenshots/token-usage.png" width="280" /> |
-| **Agent 用量卡**: 14 日堆叠柱状图按 Agent 分色; 逐小时折线展开各 Agent 的 0-23 时分布, 点击可查看模型与项目明细。 | <img src="docs/screenshots/agent-usage.png" width="280" /> |
-| **订阅用量卡**: 多 Provider 窗口量条 (ChatGPT、Kimi、智谱、OpenCode GO、DeepSeek 等), 按原生计费窗口展示用量百分比与重置倒计时; DeepSeek 展示账户余额。 | <img src="docs/screenshots/subscription-usage.png" width="280" /> |
+| **仪表盘全貌**: 面板自上而下由 Token 用量卡、订阅用量卡和底部操作栏 (刷新 / 设置 / 退出) 组成, 高度随内容自适应, 无滚动条。 | <img src="docs/assets/screenshots/dashboard-overview.png" width="280" /> |
+| **Token 用量卡**: Hero 区展示累计 token 总量与估算成本; 四格细分输入、输出、缓存读取、缓存命中率; 月度聚合与 26 周热力图呈现使用节奏。 | <img src="docs/assets/screenshots/token-usage.png" width="280" /> |
+| **Agent 用量卡**: 14 日堆叠柱状图按 Agent 分色; 逐小时折线展开各 Agent 的 0-23 时分布, 点击可查看模型与项目明细。 | <img src="docs/assets/screenshots/agent-usage.png" width="280" /> |
+| **订阅用量卡**: 多 Provider 窗口量条 (ChatGPT、Kimi、智谱、OpenCode GO、DeepSeek 等), 按原生计费窗口展示用量百分比与重置倒计时; DeepSeek 展示账户余额。 | <img src="docs/assets/screenshots/subscription-usage.png" width="280" /> |
 
 > 设置窗口 (通用 / 订阅额度 / 统一授权 / 诊断) 截图待补充。运行 App 后对设置窗口截图, 追加到本节即可。
 

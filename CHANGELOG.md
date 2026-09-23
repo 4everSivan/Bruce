@@ -1,8 +1,17 @@
-# Changelog
+# 变更日志 (CHANGELOG)
 
-All notable changes to this project will be documented in this file.
+所有对本项目的显著变更均记录于此文件。
+格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，版本号严格遵循 [语义化版本 (SemVer)](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+---
+
+## [Unreleased] - 待发布
+
+### Added
+- 新增功能描述，关联任务卡 `[T01](docs/devel/task/T01.json)`
+
+### Fixed
+- 修复缺陷描述，双向回链变更卡 `[C001](docs/devel/change/C001.json)`
 
 ---
 
@@ -214,3 +223,4 @@ All notable changes to this project will be documented in this file.
 
 - 打包脚本产物重命名为 `dist/Bruce.app` 与 `dist/Bruce.zip`（去除了 `test` 后缀）。
 - 应用 Icon 正式采用原生 AppIcon 资源与规范文档。
+
