@@ -1,0 +1,69 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C004",
+  "title": "精简菜单栏状态指示图标：保留外环与配额比例弧，移除圆环中心微点",
+  "type": "Enhancement",
+  "status": "verified",
+  "branch": "main",
+  "is_hotfix": false,
+
+  "target": {
+    "module": "BruceApp",
+    "component": "MenuBarStatusItemController",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+
+  "why": "用户提出视觉微调诉求，希望菜单栏图标更加通透、极简。原状态项图标在底环与配额圆弧内部绘制了 2.4pt 的中心微点，在 macOS 菜单栏 22pt 高度场景下显得略微拥挤，且与设置中心里的极简圆环预览条不统一。移除中心小点可增强圆环的轻盈感与通透度。",
+
+  "changes": [
+    {
+      "scope": "MenuBarStatusItemController 绘制链路",
+      "before": "就绪态、刷新中及无量条配额态均在圆环几何中心绘制 2.4x2.4 的中心实心微点",
+      "after": "移除三态下的中心微点绘制，仅保留 1.5pt 底环与配额进度弧（及零额度顶端告警红点）",
+      "impact": "菜单栏圆环图标更加通透轻盈，与设置窗口预览条保持 100% 视觉对齐"
+    }
+  ],
+
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "菜单栏精密数字环规定义为底环 + 进度弧 + 中心基准点",
+      "after": "菜单栏精密数字环规定义为纯净极简圆环（底环 + 进度弧），中心完全通透不绘制点阵微粒"
+    }
+  },
+
+  "verification": {
+    "result": true,
+    "run_id": "run-20260923-c004-verify",
+    "user_quote": "确认",
+    "signoff": "AI代签 (用户确认: 确认)",
+    "checks": [
+      {
+        "item": "菜单栏圆环图标绘制断言",
+        "true_if": "MenuBarStatusItemController 生成的图标仅包含外侧底环与配额圆弧，圆环中心完全通透留空",
+        "false_if": "圆环内部仍存在中心微点像素",
+        "evidence": "MenuBarStatusItemController.swift 中的 dotRect 绘制代码已全量移除，生成并在 macOS 菜单栏热加载运行（PID: 83301），圆环中心呈现完全通透的极简空心风格",
+        "result": true
+      },
+      {
+        "item": "全量本地自动化回归测试",
+        "true_if": "zsh scripts/verify-local.sh 退出码为 0，全部测试通过",
+        "false_if": "回归测试失败或存在编译警告",
+        "evidence": "scripts/verify-local.sh 退出码 0，Rust clippy/test + JSON fixture + Swift build + 全部 9 项 Harness 测试 100% 通过；build-test-app.sh Universal 2 构建并成功安装至 /Applications/Bruce.app",
+        "result": true
+      }
+    ]
+  },
+
+  "rejections": [],
+
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "8bb982f",
+    "tag": ""
+  }
+}

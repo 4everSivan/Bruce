@@ -10,7 +10,7 @@
     },
     "MenuBarIndicator": {
       "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
-      "changes": ["C003"]
+      "changes": ["C003", "C004"]
     }
   },
 
@@ -41,6 +41,15 @@
       "topic": "MenuBarIndicator",
       "version": "0.9.0+",
       "file": "docs/devel/change/C003.json"
+    },
+    "C004": {
+      "title": "精简菜单栏状态指示图标：保留外环与配额比例弧，移除圆环中心微点",
+      "type": "Enhancement",
+      "status": "verified",
+      "branch": "main",
+      "topic": "MenuBarIndicator",
+      "version": "0.9.0+",
+      "file": "docs/devel/change/C004.json"
     }
   }
 }

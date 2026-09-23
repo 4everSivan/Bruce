@@ -316,7 +316,7 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
 
     /// 方案 04 (超细精密数字环规) 绘制:
     /// - 深度适配 macOS 菜单栏浅色与深色场景 (深色高透亮绿 #30D158, 浅色高对比翡翠深绿 #1C8C3D)
-    /// - 平时: 1.5pt 底环 + 绿色订阅总配额比例圆弧 + 中心基准点 (配额 <15% 时告警变红)
+    /// - 平时: 1.5pt 底环 + 绿色订阅总配额比例圆弧 (配额 <15% 时告警变红), 中心通透无微点
     /// - 刷新中: 样式 01 (顺时针雷达扫掠自旋 · 绿色)
     /// - 仅图标模式时自适应收缩至 28pt
     private func makeStatusItemImage(
@@ -368,7 +368,7 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
             trackPath.stroke()
 
             if self.isRefreshing {
-                // 4. 刷新中: 样式 01 (雷达扫掠自旋 · 绿色)
+                // 4. 刷新中: 样式 01 (雷达扫掠自旋 · 绿色, 中心通透)
                 let sweepPath = NSBezierPath()
                 let start = self.refreshPhase
                 let end = (self.refreshPhase - 100).truncatingRemainder(dividingBy: 360)
@@ -377,14 +377,8 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
                 sweepPath.lineCapStyle = .round
                 greenColor.setStroke()
                 sweepPath.stroke()
-
-                // 中心微点
-                let dotRect = NSRect(x: center.x - 1.2, y: center.y - 1.2, width: 2.4, height: 2.4)
-                let dotPath = NSBezierPath(ovalIn: dotRect)
-                greenColor.setFill()
-                dotPath.fill()
             } else if let ratio = content.remainingQuotaRatio {
-                // 5. 就绪态: 配额比例填充 (绿色, <15% 时变红)
+                // 5. 就绪态: 配额比例填充 (绿色, <15% 时变红, 中心通透)
                 let fillRatio = max(0.0, min(1.0, ratio))
                 let isWarning = fillRatio < 0.15 || content.iconName == "exclamationmark.triangle"
                 let activeColor = isWarning ? warningRedColor : greenColor
@@ -405,18 +399,8 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
                     activeColor.setFill()
                     zeroDotPath.fill()
                 }
-
-                // 中心微点
-                let dotRect = NSRect(x: center.x - 1.2, y: center.y - 1.2, width: 2.4, height: 2.4)
-                let dotPath = NSBezierPath(ovalIn: dotRect)
-                activeColor.setFill()
-                dotPath.fill()
             } else {
-                // 6. 无量条配额 (纯余额或未配置服务)
-                let dotRect = NSRect(x: center.x - 1.2, y: center.y - 1.2, width: 2.4, height: 2.4)
-                let dotPath = NSBezierPath(ovalIn: dotRect)
-                trackColor.setFill()
-                dotPath.fill()
+                // 6. 无量条配额 (纯余额或未配置服务): 仅保留底环, 中心通透
             }
 
             // 7. 指标文本绘制 (非仅图标模式时)
