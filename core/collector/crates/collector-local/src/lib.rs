@@ -154,8 +154,36 @@ pub struct CacheConfig {
     pub pricing_version: u32,
 }
 
+/// Resolve the default incremental cache root.
+///
+/// macOS/Linux keep the historical `~/Library/Application Support` layout;
+/// Windows resolves under `%LOCALAPPDATA%` (env first, `~/AppData/Local`
+/// fallback) so machine-local caches never land in the roaming profile.
 pub fn default_cache_root(home: &Path) -> PathBuf {
-    home.join("Library/Application Support/Bruce/collector-cache-v1")
+    #[cfg(windows)]
+    {
+        let local_app_data = std::env::var_os("LOCALAPPDATA");
+        return windows_cache_root(home, local_app_data.as_deref());
+    }
+    #[cfg(not(windows))]
+    {
+        home.join("Library/Application Support/Bruce/collector-cache-v1")
+    }
+}
+
+/// Windows cache root with the `LOCALAPPDATA` value injected for tests.
+#[cfg(windows)]
+fn windows_cache_root(home: &Path, local_app_data: Option<&std::ffi::OsStr>) -> PathBuf {
+    if let Some(value) = local_app_data
+        .map(PathBuf::from)
+        .filter(|value| !value.as_os_str().is_empty())
+    {
+        return value.join("Bruce").join("collector-cache-v1");
+    }
+    home.join("AppData")
+        .join("Local")
+        .join("Bruce")
+        .join("collector-cache-v1")
 }
 
 /// Scan a source tree and emit one bounded domain-level change at a time.
@@ -1033,13 +1061,54 @@ fn trim_line_end(value: &[u8]) -> &[u8] {
 #[cfg(test)]
 mod tests {
     use super::{
-        default_cache_root, scan_reader, scan_tree_cached_with_sink, CacheConfig, LocalUsageRecord,
+        scan_reader, scan_tree_cached_with_sink, CacheConfig, LocalUsageRecord,
         MAX_JSONL_RECORD_BYTES,
     };
     use collector_domain::{CollectionWindow, UsageContribution, UsageContributionBuilder};
     use serde_json::json;
     use std::fs::{self, OpenOptions};
     use std::io::{Cursor, Write};
+
+    #[cfg(not(windows))]
+    #[test]
+    fn default_cache_root_keeps_historical_layout_outside_windows() {
+        assert_eq!(
+            super::default_cache_root(std::path::Path::new("/Users/dev")),
+            std::path::PathBuf::from(
+                "/Users/dev/Library/Application Support/Bruce/collector-cache-v1",
+            )
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_cache_root_prefers_non_empty_localappdata_env() {
+        assert_eq!(
+            super::windows_cache_root(
+                std::path::Path::new("C:\\Users\\dev"),
+                Some(std::ffi::OsStr::new("C:\\Users\\dev\\AppData\\Local")),
+            ),
+            std::path::PathBuf::from("C:\\Users\\dev\\AppData\\Local\\Bruce\\collector-cache-v1")
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_cache_root_falls_back_to_home_when_env_missing_or_blank() {
+        let expected =
+            std::path::PathBuf::from("C:\\Users\\dev\\AppData\\Local\\Bruce\\collector-cache-v1");
+        assert_eq!(
+            super::windows_cache_root(std::path::Path::new("C:\\Users\\dev"), None),
+            expected
+        );
+        assert_eq!(
+            super::windows_cache_root(
+                std::path::Path::new("C:\\Users\\dev"),
+                Some(std::ffi::OsStr::new("   ")),
+            ),
+            expected
+        );
+    }
 
     fn scan_cached(
         root: &std::path::Path,
@@ -1130,7 +1199,9 @@ mod tests {
         .unwrap();
         let window = CollectionWindow::from_context(&context).unwrap();
         let config = CacheConfig {
-            cache_root: default_cache_root(&root.join("home")),
+            // 平台默认缓存根在 Windows 下会落到真实 %LOCALAPPDATA%，测试一律
+            // 使用隔离临时目录，保证用例在所有平台 hermetic。
+            cache_root: root.join("cache"),
             window: window.clone(),
             pricing_version: 1,
         };

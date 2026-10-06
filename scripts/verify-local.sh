@@ -5,7 +5,6 @@ set -euo pipefail
 BRUCE_SCRIPT_DIR=${0:A:h}
 BRUCE_REPO_ROOT=${BRUCE_SCRIPT_DIR:h}
 BRUCE_SWIFT_PACKAGE="$BRUCE_REPO_ROOT/apps/macos"
-BRUCE_RUST_MANIFEST="$BRUCE_REPO_ROOT/core/collector/Cargo.toml"
 BRUCE_RUST_BIN=${BRUCE_RUST_BIN:-$BRUCE_REPO_ROOT/core/collector/target/debug/Bruce-collector}
 
 cd "$BRUCE_REPO_ROOT"
@@ -31,11 +30,7 @@ if [[ -n "$BRUCE_LEGACY_SOURCE" ]]; then
 fi
 
 zsh -n "$BRUCE_SCRIPT_DIR/collector-release-smoke.sh"
-zsh "$BRUCE_SCRIPT_DIR/check-collector-fixtures.sh"
-echo "运行 Rust workspace 测试、格式与 Clippy"
-cargo fmt --manifest-path "$BRUCE_RUST_MANIFEST" --all -- --check
-cargo test --manifest-path "$BRUCE_RUST_MANIFEST" --workspace
-cargo clippy --manifest-path "$BRUCE_RUST_MANIFEST" --workspace --all-targets -- -D warnings
+zsh "$BRUCE_SCRIPT_DIR/verify-rust.sh"
 
 if [[ ! -x "$BRUCE_RUST_BIN" ]]; then
   echo "Rust Collector 构建产物不存在: $BRUCE_RUST_BIN" >&2

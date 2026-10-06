@@ -24,6 +24,23 @@ jobs:
       - name: 运行标准本地验证 (verify-local.sh)
         run: zsh scripts/verify-local.sh
 
+  verify-windows:
+    name: Rust 验证 (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: 显示工具链版本
+        run: |
+          rustc --version
+          cargo --version
+      - name: Rust 格式检查
+        run: cargo fmt --manifest-path core/collector/Cargo.toml --all -- --check
+      - name: Rust workspace 测试
+        run: cargo test --manifest-path core/collector/Cargo.toml --workspace
+      - name: Rust Clippy
+        run: cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings
+
   build-release-app:
     name: 构建测试版 App
     runs-on: macos-26
