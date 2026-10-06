@@ -126,10 +126,19 @@ jobs:
           $hash = (Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLower()
           "$hash  $($setup.Name)" | Out-File -FilePath "SHA256SUMS-windows.txt"
           "SHA256: $hash  $($setup.Name)"
+      # 草稿 release 不在 /releases/tags/{tag} 端点返回 (404), gh release upload <tag>
+      # 会报 release not found; 改走列表端点取 release id, 经 upload_url 直传资产。
       - name: 上传到既有草稿 Release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
           $setup = Get-ChildItem -Path "apps/win/src-tauri/target/release/bundle/nsis" -Filter "*-setup.exe" | Select-Object -First 1
-          gh release upload "$GITHUB_REF_NAME" "$($setup.FullName)" "SHA256SUMS-windows.txt" --clobber
+          if (-not $setup) { Write-Error "NSIS 安装包未找到"; exit 1 }
+          $releases = gh api "repos/$env:GITHUB_REPOSITORY/releases" | ConvertFrom-Json
+          $release = $releases | Where-Object { $_.tag_name -eq $env:GITHUB_REF_NAME } | Select-Object -First 1
+          if (-not $release) { Write-Error "草稿 Release 未找到"; exit 1 }
+          $uploadUrl = $release.upload_url -replace '\{.*$',''
+          gh api --method POST "$($uploadUrl)?name=$($setup.Name)" -H "Content-Type: application/octet-stream" --input "$($setup.FullName)"
+          gh api --method POST "$($uploadUrl)?name=SHA256SUMS-windows.txt" -H "Content-Type: application/octet-stream" --input "SHA256SUMS-windows.txt"
+
