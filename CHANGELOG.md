@@ -8,6 +8,7 @@
 ## [Unreleased] - 待发布
 
 ### Added
+- **Windows 平台适配 (apps/win, T01-T04)**: Tauri 2 托盘常驻看板, 与 mac 共享 core/collector 单引擎 (进程内直调, 双端 artifact fixture 对拍逐字段锁定); 落地本地采集、订阅凭证存储 (白名单 + 原子写 + 最小权限)、配额 Toast 预警 (5h 窗口 >80% 跨越沿去重)、全局热键、设置中心 (主题/刷新间隔/热键/位置记忆)、NSIS 安装包与 Windows 发布矩阵。设计基线 `docs/devel/design/05-Windows平台适配.md`。
 - **现行系统设计基线体系**: 依据 `ad-flow` 治理规范与标准化 8 节大纲，提炼并定稿 5 篇现行设计基线文档（`docs/devel/design/00~04`），覆盖系统宏观架构、多模型计费引擎、POSIX 0600 安全凭据存储、赛博环形菜单栏渲染及价格校准交互。
 
 ### Changed

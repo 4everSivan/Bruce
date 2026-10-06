@@ -50,7 +50,7 @@
     },
     "T03": {
       "title": "Windows 全功能对齐：订阅额度、通知、热键、设置中心与 Onboarding (P3)",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "main",
       "topic": "WindowsCompat",
       "milestone": "M1-Windows适配",
@@ -62,7 +62,7 @@
     },
     "T04": {
       "title": "Windows 打包发布线：安装包、签名与 Release 产物 (P4)",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "main",
       "topic": "WindowsCompat",
       "milestone": "M1-Windows适配",

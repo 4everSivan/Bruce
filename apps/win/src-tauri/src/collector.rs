@@ -8,11 +8,17 @@ use collector_bridge::run_bytes;
 use collector_domain::{BridgeRequest, BridgeResponse, BridgeTimeouts, BRIDGE_SCHEMA_VERSION};
 use serde_json::{Map, Value};
 
-/// 本地会话扫描 + 本地定价; 出站额度查询 (externalQuotas) 随 T03 接入。
-const LOCAL_CAPABILITIES: [&str; 2] = ["localSessions", "localPricing"];
+use crate::credentials::CredentialPayloads;
 
-/// 构造一次本地采集请求 (窗口 14 日, 本地时区)。
-pub fn build_local_request(now: chrono::DateTime<Local>) -> BridgeRequest {
+/// 本地会话扫描 + 本地定价; 出站额度 (externalQuotas) 仅在存在凭证时启用。
+const LOCAL_CAPABILITIES: [&str; 2] = ["localSessions", "localPricing"];
+const EXTERNAL_QUOTAS_CAPABILITY: &str = "externalQuotas";
+
+/// 构造一次采集请求 (窗口 14 日, 本地时区); 非空凭证启用出站额度查询。
+pub fn build_local_request(
+    now: chrono::DateTime<Local>,
+    credentials: &CredentialPayloads,
+) -> BridgeRequest {
     let timezone = iana_time_zone::get_timezone().unwrap_or_else(|_| "UTC".to_owned());
     let mut context = Map::new();
     context.insert(
@@ -21,14 +27,22 @@ pub fn build_local_request(now: chrono::DateTime<Local>) -> BridgeRequest {
     );
     context.insert("timezone".to_owned(), Value::String(timezone));
     context.insert("days".to_owned(), Value::from(14));
+    let mut capabilities: Vec<String> = LOCAL_CAPABILITIES
+        .iter()
+        .map(|item| (*item).to_owned())
+        .collect();
+    let credentials_value = if credentials.is_empty() {
+        Map::new()
+    } else {
+        capabilities.push(EXTERNAL_QUOTAS_CAPABILITY.to_owned());
+        credentials
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect::<Map<String, Value>>()
+    };
     context.insert(
         "capabilities".to_owned(),
-        Value::Array(
-            LOCAL_CAPABILITIES
-                .iter()
-                .map(|item| Value::from(*item))
-                .collect(),
-        ),
+        Value::Array(capabilities.into_iter().map(Value::String).collect()),
     );
     BridgeRequest {
         schema_version: BRIDGE_SCHEMA_VERSION,
@@ -40,13 +54,13 @@ pub fn build_local_request(now: chrono::DateTime<Local>) -> BridgeRequest {
             module_seconds: 150.0,
         },
         context,
-        credentials: Map::new(),
+        credentials: credentials_value,
     }
 }
 
 /// 进程内执行一次采集, 返回标准 BridgeResponse (artifact schema 与 mac 一致)。
-pub fn run_local_collection() -> Result<BridgeResponse, String> {
-    let request = build_local_request(Local::now());
+pub fn run_local_collection(credentials: CredentialPayloads) -> Result<BridgeResponse, String> {
+    let request = build_local_request(Local::now(), &credentials);
     let input = serde_json::to_vec(&request).map_err(|error| error.to_string())?;
     Ok(run_bytes(&input))
 }
@@ -58,26 +72,43 @@ mod tests {
 
     #[test]
     fn local_request_satisfies_bridge_contract() {
-        let request = build_local_request(Local::now());
+        let request = build_local_request(Local::now(), &CredentialPayloads::new());
         assert_eq!(request.schema_version, BRIDGE_SCHEMA_VERSION);
         assert_eq!(request.module, "agent-usage");
         assert!(uuid::Uuid::parse_str(&request.run_id).is_ok());
         assert!(request.timeouts.local_scan_seconds <= 300.0);
         assert!(request.timeouts.module_seconds <= 600.0);
-        assert!(request.credentials.is_empty(), "本地采集不携带任何凭证");
+        assert!(request.credentials.is_empty(), "无凭证时不携带任何凭证");
         let capabilities = request.context["capabilities"].as_array().unwrap();
         assert!(
             capabilities
                 .iter()
                 .all(|value| LOCAL_CAPABILITIES.contains(&value.as_str().unwrap())),
-            "capabilities 必须限定在本地能力集合内"
+            "无凭证时 capabilities 必须限定在本地能力集合内"
+        );
+    }
+
+    #[test]
+    fn credentials_enable_external_quotas_and_injection() {
+        let mut credentials = CredentialPayloads::new();
+        credentials.insert(
+            "kimiQuotaAccounts".to_owned(),
+            serde_json::json!([{ "accountID": "a1", "apiKey": "sk-test" }]),
+        );
+        let request = build_local_request(Local::now(), &credentials);
+        let capabilities = request.context["capabilities"].as_array().unwrap();
+        assert!(capabilities.iter().any(|value| value == "externalQuotas"));
+        assert_eq!(
+            request.credentials["kimiQuotaAccounts"],
+            credentials["kimiQuotaAccounts"]
         );
     }
 
     #[test]
     fn local_collection_returns_bridge_response_shape() {
-        // CI/真机无 agent 数据时也必须产出同 schema 的空采集响应。
-        let response = run_local_collection().expect("本地采集不应失败");
+        // CI/真机无 agent 数据时也必须产出同 schema 的空采集响应;
+        // 缓存落在应用自身可重建目录, 幂等无害。
+        let response = run_local_collection(CredentialPayloads::new()).expect("本地采集不应失败");
         assert!(
             response.artifact.is_some() || !response.diagnostics.is_empty(),
             "BridgeResponse 必须携带 artifact 或诊断"

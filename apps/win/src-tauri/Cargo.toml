@@ -21,6 +21,8 @@ collector-bridge = { path = "../../../core/collector/crates/collector-bridge" }
 chrono = { version = "=0.4.38", default-features = false, features = ["clock", "std"] }
 uuid = { version = "=1.11.0", features = ["v4"] }
 iana-time-zone = "0.1"
+tauri-plugin-notification = "2"
+tauri-plugin-global-shortcut = "2"
 serde = { version = "1", features = ["derive"] }
 # float_roundtrip: 双端对拍要求 17 位浮点精确解析 (与 viewmodel 一致)
 serde_json = { version = "1", features = ["float_roundtrip"] }

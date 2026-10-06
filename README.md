@@ -102,6 +102,13 @@ zsh scripts/release-notes.sh     # 从 CHANGELOG 提取当前版本生成 Releas
 
 正式版手工打包前置条件: Git tag `v<major>.<minor>.<patch>`、Developer ID Application 证书和 App Store Connect API Key; 该流程当前未接入 CI/CD, 未配置时脚本在对应阶段清晰失败, 不产出半成品。
 
+## Windows 平台 (开发中, apps/win)
+
+Windows 版基于 **Tauri 2** (Rust 后端 + WebView2) 构建, 与 mac 版共享同一 Rust Collector 引擎与 artifact 契约, 视图模型行为由双端 fixture 对拍测试逐字段锁定 (设计基线: `docs/devel/design/05-Windows平台适配.md`)。托盘常驻 + 弹出看板 + 全局热键 + 配额 Toast 通知 + 凭证引导 + 设置中心 + NSIS 安装包产线均已实现, 交互细节与安装冒烟待 Windows 真机验收。
+
+- 本地构建: `powershell -ExecutionPolicy Bypass -File scripts/build-win-app.ps1` (产物收拢 `local/dist`)
+- 数据位置: 凭证 `%APPDATA%\Bruce\credentials.json` (仅当前用户 ACL)、设置 `%APPDATA%\Bruce\config\settings.json`、采集缓存 `%LOCALAPPDATA%\Bruce\collector-cache-v1`
+
 ## 应用架构
 
 ```text
@@ -176,6 +183,7 @@ Bruce/
 - `~/Library/Application Support/Bruce/snapshots/`: 当前和 previous Artifact 快照。
 - `~/Library/Application Support/Bruce/metadata/modules.json`: 最近成功、尝试时间和错误分类。
 - macOS Keychain service `com.bruce.dashboard.credentials.v2`: 应用持有的订阅额度凭证; `com.bruce.dashboard.credentials` 仅作为用户主动配置时的旧数据迁移来源。
+- Windows: `%APPDATA%\Bruce\credentials.json` (订阅凭证, 仅当前用户 ACL) 与 `%APPDATA%\Bruce\config\settings.json` (设置); 采集缓存 `%LOCALAPPDATA%\Bruce\collector-cache-v1`。
 
 清理前先退出应用。在设置页使用「撤销全部授权」停止全部调度; 需要完全重置时, 再通过 Finder 删除 `~/Library/Application Support/Bruce/`, 并在「钥匙串访问」中删除上述 service 的项目。删除快照和 Keychain 项不可由应用自动恢复, 操作前应确认不再需要最后成功数据和现有授权。
 
@@ -213,7 +221,8 @@ Widget (Daimon 场景) 的 JSON fixture 继续由 `scripts/check-collector-fixtu
 
 ## 当前限制
 
-- 正式签名与公证发布链路暂未纳入 CI/CD 规划; 如未来启用, 仍需要 Developer ID 证书和 App Store Connect API Key。
+- 正式签名与公证发布链路暂未纳入 CI/CD 规划; 如未来启用, 仍需要 Developer ID 证书和 App Store Connect API Key。Windows 安装包签名 (signtool) 同为占位, CI 在仓库配置证书 secret 后启用。
+- Windows 版托盘交互、安装冒烟与各 Agent 真实数据布局仍需 Windows 真机验收。
 - 真实 Agent Provider 登录验收需要用户在个人 Mac 上明确授权。
 - 30 分钟自动刷新、系统睡眠补偿、凭证续期和撤销仍需真实环境持续验收。
 - VoiceOver、增加对比度和全键盘流程仍需在后续适用的发布构建上完成人工验收。

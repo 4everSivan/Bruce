@@ -3,7 +3,7 @@
   "id": "T04",
   "title": "Windows 打包发布线：安装包、签名与 Release 产物 (P4)",
   "milestone": "M1-Windows适配",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "main",
   "depends_on": [
     "T03"
@@ -20,25 +20,25 @@
       "id": "T04-1",
       "title": "打包配置与安装包",
       "capability": "tauri.conf.json（产品名 Bruce、identifier 沿用 com.bruce.dashboard 系）；NSIS 安装包内置 WebView2 Bootstrapper；产物收拢 local/dist 纪律延续",
-      "done": false
+      "done": true
     },
     {
       "id": "T04-2",
       "title": "签名流水线",
       "capability": "signtool 签名步骤（证书经 secret 注入，测试期允许 skip/不签并显式声明）",
-      "done": false
+      "done": true
     },
     {
       "id": "T04-3",
       "title": "Release workflow Windows 矩阵",
       "capability": "release job 增加 Windows 构建：上传 Bruce_x.y.z_x64-setup.exe + SHA256SUMS 至草稿 Release，与 mac 产物并列",
-      "done": false
+      "done": true
     },
     {
       "id": "T04-4",
       "title": "Windows 文档补齐",
       "capability": "README 与 docs/guide/ 补 Windows 数据位置（%APPDATA%\\Bruce、%LOCALAPPDATA%\\Bruce\\collector-cache-v1）、安装与运行说明",
-      "done": false
+      "done": true
     }
   ],
   "acceptance": {
@@ -49,7 +49,7 @@
         "item": "安装冒烟通过",
         "true_if": "干净 Windows 环境（或等效虚拟机）安装/启动/退出/卸载全流程成功，托盘常驻正常",
         "false_if": "安装失败、启动崩溃或卸载残留",
-        "evidence": "",
+        "evidence": "开发完成: tauri.conf 启用 NSIS (icon.ico/icon.png), build-win-app.ps1 本地产线 (产物收拢 local/dist), CI release-windows job (tauri-cli → NSIS → SHA256 → 草稿上传); 安装/升级冒烟为人工验收项",
         "result": null
       },
       {
@@ -63,7 +63,7 @@
         "item": "文档与实况一致",
         "true_if": "README/guide 中 Windows 路径与实际落盘一致，无陈旧描述",
         "false_if": "文档路径与实际不符",
-        "evidence": "",
+        "evidence": "README 新增 Windows 平台节 + 数据位置 (含 Windows 行); docs/guide/01 补 Windows 构建与数据位置; CHANGELOG Unreleased 记录 T01-T04",
         "result": null
       }
     ]

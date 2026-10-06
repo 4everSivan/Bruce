@@ -6,35 +6,91 @@
   <title>Bruce</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body>
+<body class="theme-fluent">
   <main id="panel">
     <header>
       <h1>Bruce</h1>
       <span id="live" class="live hidden">LIVE</span>
     </header>
 
-    <section id="hero" class="card hidden">
-      <div class="hero-total">
-        <span id="hero-total">—</span>
-        <span class="unit">tokens 今日</span>
-      </div>
-      <div id="hero-cost" class="hero-cost"></div>
-      <div id="breakdown" class="breakdown"></div>
+    <nav id="tabs">
+      <button data-view="dashboard" class="tab active">看板</button>
+      <button data-view="credentials" class="tab">凭证</button>
+      <button data-view="settings" class="tab">设置</button>
+    </nav>
+
+    <!-- 看板视图 -->
+    <section id="view-dashboard">
+      <section id="hero" class="card hidden">
+        <div class="hero-total">
+          <span id="hero-total">—</span>
+          <span class="unit">tokens 今日</span>
+        </div>
+        <div id="hero-cost" class="hero-cost"></div>
+        <div id="breakdown" class="breakdown"></div>
+      </section>
+
+      <section id="hourly" class="card hidden">
+        <h2>Agent 用量</h2>
+        <div id="hourly-rows"></div>
+      </section>
+
+      <section id="subscription" class="card">
+        <h2>订阅额度</h2>
+        <p class="placeholder" id="subscription-note">订阅卡渲染在 T03 出站链路接入后由 artifact services 驱动</p>
+      </section>
+
+      <section id="diagnostics" class="card hidden">
+        <h2>诊断</h2>
+        <ul id="diagnostic-list"></ul>
+      </section>
     </section>
 
-    <section id="hourly" class="card hidden">
-      <h2>Agent 用量</h2>
-      <div id="hourly-rows"></div>
+    <!-- 凭证视图 (Onboarding 引导) -->
+    <section id="view-credentials" class="hidden">
+      <section class="card">
+        <h2>订阅凭证引导</h2>
+        <p class="placeholder">
+          按需粘贴 provider 凭证 JSON (结构对齐采集端契约); 仅白名单字段可保存,
+          文件落盘 <code>%APPDATA%\Bruce\credentials.json</code> (仅当前用户可读)。
+          保存后立即触发一次采集。
+        </p>
+        <div id="credential-fields"></div>
+        <div class="actions">
+          <button id="credentials-save">保存凭证</button>
+          <span id="credentials-status"></span>
+        </div>
+      </section>
     </section>
 
-    <section id="subscription" class="card">
-      <h2>订阅额度</h2>
-      <p class="placeholder">Windows 订阅链路在 T03 阶段接入</p>
-    </section>
-
-    <section id="diagnostics" class="card hidden">
-      <h2>诊断</h2>
-      <ul id="diagnostic-list"></ul>
+    <!-- 设置视图 -->
+    <section id="view-settings" class="hidden">
+      <section class="card">
+        <h2>通用设置</h2>
+        <label class="row">
+          <span>刷新间隔 (分钟)</span>
+          <input id="setting-interval" type="number" min="1" max="1440" />
+        </label>
+        <label class="row">
+          <span>配额预警通知</span>
+          <input id="setting-notifications" type="checkbox" />
+        </label>
+        <label class="row">
+          <span>主题</span>
+          <select id="setting-theme">
+            <option value="fluent">Fluent</option>
+            <option value="nothing">Nothing 点阵</option>
+          </select>
+        </label>
+        <label class="row">
+          <span>全局热键</span>
+          <input id="setting-hotkey" type="text" placeholder="CommandOrControl+Shift+B" />
+        </label>
+        <div class="actions">
+          <button id="settings-save">保存设置</button>
+          <span id="settings-status"></span>
+        </div>
+      </section>
     </section>
 
     <footer>

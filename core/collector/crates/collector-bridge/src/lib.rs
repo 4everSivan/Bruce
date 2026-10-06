@@ -41,7 +41,9 @@ const ALLOWED_CONTEXT_FIELDS: &[&str] = &[
 
 const ALLOWED_CAPABILITIES: &[&str] = &["localSessions", "localPricing", "externalQuotas"];
 
-const ALLOWED_CREDENTIAL_FIELDS: &[&str] = &[
+/// 凭证字段白名单; Windows/mac 壳注入 BridgeRequest.credentials 时共用,
+/// 暴露为公共常量避免各端复制漂移。
+pub const ALLOWED_CREDENTIAL_FIELDS: &[&str] = &[
     "kimiQuotaAccounts",
     "deepseekQuotaAccounts",
     "volcengineQuotaAccounts",
