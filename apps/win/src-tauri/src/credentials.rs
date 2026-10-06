@@ -32,7 +32,7 @@ pub fn app_data_root_with(home: &Path, app_data: Option<&std::ffi::OsStr>) -> Pa
         {
             return app_data.join("Bruce");
         }
-        return home.join("AppData").join("Roaming").join("Bruce");
+        home.join("AppData").join("Roaming").join("Bruce")
     }
     #[cfg(not(windows))]
     {
