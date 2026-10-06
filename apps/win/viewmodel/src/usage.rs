@@ -303,8 +303,9 @@ pub fn make_usage_models(artifact: &AgentUsageArtifact) -> Option<UsageModelUsag
         if grand <= 0 {
             return Vec::new();
         }
-        let mut entries: Vec<(&String, i64)> = totals.iter().map(|(k, v)| (k, *v)).collect();
-        entries.sort_by(|lhs, rhs| rhs.1.cmp(&lhs.1).then_with(|| lhs.0.cmp(rhs.0)));
+        let mut entries: Vec<(String, i64)> = totals.into_iter().collect();
+        // 值降序, 并列按模型名升序; 用键排序避免 clippy sort_by 建议。
+        entries.sort_by_key(|entry| (std::cmp::Reverse(entry.1), entry.0.clone()));
         entries
             .into_iter()
             .map(|(model, total)| {
@@ -316,7 +317,7 @@ pub fn make_usage_models(artifact: &AgentUsageArtifact) -> Option<UsageModelUsag
                     pct_text: format!("{pct}%"),
                     share,
                     color_hex: color_by_model
-                        .get(model)
+                        .get(&model)
                         .cloned()
                         .unwrap_or_else(|| "#8e8e93".to_owned()),
                 }
@@ -450,13 +451,13 @@ impl PanelViewModelMapper {
             .iter()
             .filter(|agent| agent.today.total > 0)
             .map(|agent| {
-                let mut model_entries: Vec<(&String, i64)> = agent
+                let mut model_entries: Vec<(String, i64)> = agent
                     .models
                     .iter()
-                    .map(|(model, total)| (model, *total as i64))
+                    .map(|(model, total)| (model.clone(), *total as i64))
                     .collect();
-                // 按用量降序, 并列按模型名升序 (与 Swift 比较器一致)。
-                model_entries.sort_by(|lhs, rhs| rhs.1.cmp(&lhs.1).then_with(|| lhs.0.cmp(rhs.0)));
+                // 按用量降序, 并列按模型名升序 (与 Swift 比较器一致); 键排序形式。
+                model_entries.sort_by_key(|entry| (std::cmp::Reverse(entry.1), entry.0.clone()));
                 let models = top_distribution(
                     &model_entries
                         .into_iter()
@@ -487,7 +488,7 @@ impl PanelViewModelMapper {
             })
             // 按今日用量从高到低动态排序 (稳定排序: 并列保持 artifact 顺序)。
             .collect();
-        rows.sort_by(|lhs, rhs| rhs.today_total.cmp(&lhs.today_total));
+        rows.sort_by_key(|row| std::cmp::Reverse(row.today_total));
 
         let collapsed_points: Vec<i64> = (0..24)
             .map(|hour| {

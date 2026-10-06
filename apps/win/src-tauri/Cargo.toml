@@ -12,7 +12,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon", "image-png"] }
+# 锁定 2.11.6: 2.12 树经 tauri-build 2.7/cargo_toml 1.0 要求 serde >=1.0.228,
+# 与 core/collector workspace 的 serde =1.0.210 精确钉版冲突; 配套 runtime 见 Cargo.lock。
+tauri = { version = "=2.11.6", features = ["tray-icon", "image-png"] }
 bruce-win-viewmodel = { path = "../viewmodel" }
 collector-domain = { path = "../../../core/collector/crates/collector-domain" }
 chrono = { version = "=0.4.38", default-features = false, features = ["clock", "std"] }
