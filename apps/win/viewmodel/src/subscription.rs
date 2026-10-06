@@ -229,7 +229,7 @@ fn collapsed_window(accounts: &[CodexAccountViewModel]) -> Option<SubscriptionWi
 // MARK: - 窗口行解析
 
 /// 窗口措辞映射: windowMinutes 优先 (±2% 容差), 其次 collector 规范 label。
-fn window_label(raw_label: &str, window_minutes: Option<i64>) -> String {
+pub fn window_label(raw_label: &str, window_minutes: Option<i64>) -> String {
     if let Some(minutes) = window_minutes {
         let approximates = |target: i64| (minutes - target).abs() <= (target / 50).max(2);
         if approximates(300) {
@@ -251,7 +251,7 @@ fn window_label(raw_label: &str, window_minutes: Option<i64>) -> String {
 }
 
 /// 重置时间文案: 当天显示 "H:mm", 之后显示 "N 天后", 已过期显示 "已到期"。
-fn reset_text(
+pub fn reset_text(
     resets_at: Option<DateTime<chrono::FixedOffset>>,
     now: DateTime<chrono::FixedOffset>,
 ) -> String {
@@ -387,19 +387,15 @@ impl PanelViewModelMapper {
                 let clamped = used_percent.clamp(0.0, 100.0);
                 let minutes = object.get("windowMinutes").and_then(Value::as_i64);
                 // 对齐 mac parseResetDate: 正数 epoch (秒) 或 ISO 字符串;
-                // 非正 epoch (如火山未开始窗口的 -1) 视为无重置时间。
+                // 非正 epoch (如火山未开始窗口的 -1) 仅重置文案为空, 不得中断整卡。
                 let resets_at: Option<DateTime<chrono::FixedOffset>> = match object.get("resetsAt")
                 {
-                    Some(Value::Number(number)) => {
-                        let seconds = number
-                            .as_i64()
-                            .or_else(|| number.as_f64().map(|value| value as i64))
-                            .filter(|seconds| *seconds > 0)?;
-                        chrono::Utc
-                            .timestamp_opt(seconds, 0)
-                            .single()
-                            .map(|value| value.with_timezone(now.offset()))
-                    }
+                    Some(Value::Number(number)) => number
+                        .as_i64()
+                        .or_else(|| number.as_f64().map(|value| value as i64))
+                        .filter(|seconds| *seconds > 0)
+                        .and_then(|seconds| chrono::Utc.timestamp_opt(seconds, 0).single())
+                        .map(|value| value.with_timezone(now.offset())),
                     Some(Value::String(text)) => DateTime::parse_from_rfc3339(text).ok(),
                     _ => None,
                 };

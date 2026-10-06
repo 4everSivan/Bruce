@@ -2,12 +2,13 @@
 //! 托盘常驻 + 左键切换面板 + 右键菜单; 无装饰置顶面板, 失焦自动隐藏,
 //! 位置记忆; 全局热键唤出; 后台调度器周期采集 (退避 + 可见性门控 + Toast)。
 
-mod alerts;
-mod collector;
-mod credentials;
-mod paths;
-mod scheduler;
-mod settings;
+// 模块 pub 导出供 tests/ 集成测试覆盖 (GUI 入口 run() 除外)。
+pub mod alerts;
+pub mod collector;
+pub mod credentials;
+pub mod paths;
+pub mod scheduler;
+pub mod settings;
 
 use std::collections::BTreeMap;
 use std::sync::atomic::Ordering;
@@ -137,17 +138,8 @@ fn save_credentials_command(
     payloads: BTreeMap<String, Option<serde_json::Value>>,
 ) -> Result<(), String> {
     let root = paths::data_root();
-    let mut merged = credentials::load_credentials(&root);
-    for (key, value) in payloads {
-        match value {
-            Some(value) => {
-                merged.insert(key, value);
-            }
-            None => {
-                merged.remove(&key);
-            }
-        }
-    }
+    let existing = credentials::load_credentials(&root);
+    let merged = credentials::merge_credentials(&existing, &payloads)?;
     credentials::save_credentials(&root, &merged)?;
     // 凭证变化后立即刷新, 让订阅卡尽快呈现 出站额度。
     app.state::<SchedulerControl>().request_manual_refresh();

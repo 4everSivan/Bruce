@@ -19,9 +19,14 @@ use serde_json::Value;
 
 /// `%APPDATA%\Bruce` 根目录 (mac 开发环境回落到 ~/Library/Application Support)。
 pub fn app_data_root(home: &Path) -> PathBuf {
+    app_data_root_with(home, std::env::var_os("APPDATA").as_deref())
+}
+
+/// 可注入 APPDATA 的版本 (测试用; 与 collector-local windows_cache_root 同模式)。
+pub fn app_data_root_with(home: &Path, app_data: Option<&std::ffi::OsStr>) -> PathBuf {
     #[cfg(windows)]
     {
-        if let Some(app_data) = std::env::var_os("APPDATA")
+        if let Some(app_data) = app_data
             .map(PathBuf::from)
             .filter(|value| !value.as_os_str().is_empty())
         {
@@ -31,8 +36,32 @@ pub fn app_data_root(home: &Path) -> PathBuf {
     }
     #[cfg(not(windows))]
     {
+        let _ = app_data;
         home.join("Library/Application Support/Bruce")
     }
+}
+
+/// 凭证合并语义 (明文凭证不回显前端): patch 带值覆盖、显式 None 删除、
+/// 未提及保留; 白名单外键直接拒绝。
+pub fn merge_credentials(
+    existing: &CredentialPayloads,
+    patch: &BTreeMap<String, Option<Value>>,
+) -> Result<CredentialPayloads, String> {
+    let mut merged = existing.clone();
+    for (key, value) in patch {
+        if !is_allowed_field(key) {
+            return Err(format!("未知凭证字段: {key}"));
+        }
+        match value {
+            Some(value) => {
+                merged.insert(key.clone(), value.clone());
+            }
+            None => {
+                merged.remove(key);
+            }
+        }
+    }
+    Ok(merged)
 }
 
 fn credentials_path(root: &Path) -> PathBuf {

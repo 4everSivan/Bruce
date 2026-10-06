@@ -63,7 +63,7 @@ impl SchedulerControl {
 }
 
 /// 计算退避秒数 (对齐 mac RefreshBackoffPolicy: 限流固定, 其余指数 + 抖动)。
-fn compute_backoff(retry_count: u32, rate_limited: bool) -> u64 {
+pub fn compute_backoff(retry_count: u32, rate_limited: bool) -> u64 {
     if rate_limited {
         return RATE_LIMIT_BACKOFF_SECS;
     }
@@ -80,6 +80,14 @@ fn compute_backoff(retry_count: u32, rate_limited: bool) -> u64 {
         0
     };
     (capped + jitter).min(MAX_BACKOFF_SECS)
+}
+
+/// 诊断分类: 是否限流类失败 (决定固定退避)。
+pub fn classify_rate_limited(response: &collector_domain::BridgeResponse) -> bool {
+    response
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.category == "rateLimit")
 }
 
 fn deliver_alerts(app: &AppHandle, settings: &AppSettings, artifact: &Value) {
@@ -112,10 +120,7 @@ pub fn run_refresh(app: &AppHandle, settings: &AppSettings) -> RefreshOutcome {
     let credentials: CredentialPayloads = load_credentials(&root);
     match collector::run_local_collection(credentials) {
         Ok(response) => {
-            let rate_limited = response
-                .diagnostics
-                .iter()
-                .any(|diagnostic| diagnostic.category == "rateLimit");
+            let rate_limited = classify_rate_limited(&response);
             let typed = response
                 .artifact
                 .as_ref()
