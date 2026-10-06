@@ -20,7 +20,7 @@
       "id": "T02-1",
       "title": "Tauri 2 应用骨架",
       "capability": "apps/win/（src-tauri + src）接入 workspace：collector crates 以路径依赖进程内直调；托盘图标（Shell_NotifyIcon）+ 置顶无边框 WebviewWindow 面板（无任务栏项、失焦隐藏）+ 右键菜单（刷新/设置/退出）",
-      "done": false
+      "done": true
     },
     {
       "id": "T02-2",
