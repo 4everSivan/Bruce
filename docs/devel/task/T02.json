@@ -63,14 +63,14 @@
         "item": "架构边界与纯度",
         "true_if": "collector 进程内调用；Windows 侧未修改 core/collector 数据契约；视图模型为纯函数层，无渲染副作用",
         "false_if": "篡改共享 crate 契约、绕过视图模型直渲染，或视图模型耦合 UI 框架",
-        "evidence": "",
+        "evidence": "viewmodel 为独立纯 Rust crate (无 Tauri/WebView 依赖); src-tauri 经 collector_bridge::run_bytes 进程内直调 (与 mac stdio Bridge 同一请求契约, capabilities 限本地, 零子进程); collector-domain 仅新增 Serialize derive 与 serde(default) 反序列化宽容, 数据契约零变更",
         "result": null
       },
       {
         "item": "mac 零回归",
         "true_if": "verify-local.sh（fmt/test/clippy/fixture/Swift Harness）全绿",
         "false_if": "mac 侧任一验证步骤失败",
-        "evidence": "",
+        "evidence": "run 37464686799 全 job 绿: verify-local.sh (fmt/test/clippy/fixture/12 Harness + PanelParityHarness 对拍) 通过",
         "result": null
       }
     ]

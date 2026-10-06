@@ -38,7 +38,7 @@
     },
     "T02": {
       "title": "Windows Tauri 2 应用骨架、Rust 视图模型层与双端 fixture 对拍 (P2)",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "main",
       "topic": "WindowsCompat",
       "milestone": "M1-Windows适配",
