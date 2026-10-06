@@ -163,7 +163,7 @@ pub fn default_cache_root(home: &Path) -> PathBuf {
     #[cfg(windows)]
     {
         let local_app_data = std::env::var("LOCALAPPDATA").ok();
-        return windows_cache_root(home, local_app_data.as_deref());
+        windows_cache_root(home, local_app_data.as_deref())
     }
     #[cfg(not(windows))]
     {
