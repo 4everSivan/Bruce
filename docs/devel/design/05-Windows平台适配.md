@@ -78,6 +78,7 @@
 | Codex | `%USERPROFILE%\.codex\sessions` 布局 |
 | Grok / Pi / ZCode / CodeBuddy | `~/.grok`、`~/.pi/agent/sessions`、`~/.zcode/cli/db/db.sqlite`、`~/.codebuddy/projects` 在 Windows 的真实布局 |
 | OpenCode | `%LOCALAPPDATA%\opencode\opencode.db` vs `%APPDATA%` 实际落点（`paths.rs:59-96` 已覆盖双候选） |
+| 增量缓存 | Windows 目录元数据在长驻写句柄未关闭时可能报告陈旧文件大小：实测各 Agent 会话文件的写入模式（追加即关 vs 长驻句柄），确认增量追加检测在真实采集节奏下可靠（CI 已见测试级复现，见 T01） |
 | WebView2 | Windows 10 目标版本上 Evergreen Runtime 可用性 |
 
 ---

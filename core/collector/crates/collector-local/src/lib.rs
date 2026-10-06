@@ -162,7 +162,7 @@ pub struct CacheConfig {
 pub fn default_cache_root(home: &Path) -> PathBuf {
     #[cfg(windows)]
     {
-        let local_app_data = std::env::var_os("LOCALAPPDATA");
+        let local_app_data = std::env::var("LOCALAPPDATA").ok();
         return windows_cache_root(home, local_app_data.as_deref());
     }
     #[cfg(not(windows))]
@@ -172,18 +172,24 @@ pub fn default_cache_root(home: &Path) -> PathBuf {
 }
 
 /// Windows cache root with the `LOCALAPPDATA` value injected for tests.
+///
+/// Blank env values count as unset (trimmed, matching `paths.rs`
+/// `env_non_empty` semantics) so the home-relative fallback applies.
 #[cfg(windows)]
-fn windows_cache_root(home: &Path, local_app_data: Option<&std::ffi::OsStr>) -> PathBuf {
-    if let Some(value) = local_app_data
-        .map(PathBuf::from)
-        .filter(|value| !value.as_os_str().is_empty())
-    {
-        return value.join("Bruce").join("collector-cache-v1");
+fn windows_cache_root(home: &Path, local_app_data: Option<&str>) -> PathBuf {
+    let trimmed = local_app_data
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    match trimmed {
+        Some(value) => PathBuf::from(value)
+            .join("Bruce")
+            .join("collector-cache-v1"),
+        None => home
+            .join("AppData")
+            .join("Local")
+            .join("Bruce")
+            .join("collector-cache-v1"),
     }
-    home.join("AppData")
-        .join("Local")
-        .join("Bruce")
-        .join("collector-cache-v1")
 }
 
 /// Scan a source tree and emit one bounded domain-level change at a time.
@@ -1086,7 +1092,7 @@ mod tests {
         assert_eq!(
             super::windows_cache_root(
                 std::path::Path::new("C:\\Users\\dev"),
-                Some(std::ffi::OsStr::new("C:\\Users\\dev\\AppData\\Local")),
+                Some("C:\\Users\\dev\\AppData\\Local"),
             ),
             std::path::PathBuf::from("C:\\Users\\dev\\AppData\\Local\\Bruce\\collector-cache-v1")
         );
@@ -1102,10 +1108,7 @@ mod tests {
             expected
         );
         assert_eq!(
-            super::windows_cache_root(
-                std::path::Path::new("C:\\Users\\dev"),
-                Some(std::ffi::OsStr::new("   ")),
-            ),
+            super::windows_cache_root(std::path::Path::new("C:\\Users\\dev"), Some("   ")),
             expected
         );
     }
@@ -1223,6 +1226,9 @@ mod tests {
         });
         let mut append = OpenOptions::new().append(true).open(&path).unwrap();
         writeln!(append, "{}", second).unwrap();
+        // Windows 目录元数据在写句柄未关闭前可能报告陈旧文件大小, 导致增量追加
+        // 检测不到; 先关闭句柄再扫描, 与真实采集窗口间隔的观感一致。
+        drop(append);
         let (appended_stats, appended_contribution) = scan_cached(&sessions, &config).unwrap();
         assert_eq!(appended_stats.cache_appends, 1);
         assert_eq!(appended_stats.lines_seen, 1);

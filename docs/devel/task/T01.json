@@ -63,7 +63,7 @@
         "item": "Windows CI 全绿",
         "true_if": "windows-latest job 中 cargo fmt --check / cargo test --workspace / cargo clippy 全部通过",
         "false_if": "任一编译、clippy 告警或测试失败",
-        "evidence": "",
+        "evidence": "run 37441542527 首跑 (2026-10-06): mac verify-local 全绿; Windows fmt 绿、workspace 测试抓出 2 项缺陷——①空白 LOCALAPPDATA 未按 paths.rs 惯例 trim; ②cache_reuses 测试写句柄未关闭即重扫, Windows 目录元数据陈旧致增量追加检测不到。两项已修复 (trim 语义对齐 + drop(append) 落盘后扫描), 真机观感项已登记设计 §3.4, 待重跑确认全绿",
         "result": null
       },
       {
