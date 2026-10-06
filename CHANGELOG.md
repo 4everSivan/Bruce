@@ -5,7 +5,7 @@
 
 ---
 
-## [Unreleased] - 待发布
+## [0.10.0] - 2026-10-06
 
 ### Added
 - **Windows 平台适配 (apps/win, T01-T04)**: Tauri 2 托盘常驻看板, 与 mac 共享 core/collector 单引擎 (进程内直调, 双端 artifact fixture 对拍逐字段锁定); 落地本地采集、订阅凭证存储 (白名单 + 原子写 + 最小权限)、配额 Toast 预警 (5h 窗口 >80% 跨越沿去重)、全局热键、设置中心 (主题/刷新间隔/热键/位置记忆)、NSIS 安装包与 Windows 发布矩阵。设计基线 `docs/devel/design/05-Windows平台适配.md`。
