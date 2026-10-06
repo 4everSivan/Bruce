@@ -139,7 +139,7 @@ pub fn save_credentials(root: &Path, payloads: &CredentialPayloads) -> Result<()
 
 #[cfg(windows)]
 fn restrict_permissions_windows(path: &Path) {
-    use std::os::windows::process::CreationFlags;
+    use std::os::windows::process::CommandExt;
 
     // icacls: 关闭继承, 仅保留当前用户完全控制; 静默失败 (尽力而为)。
     let _ = std::process::Command::new("icacls")
