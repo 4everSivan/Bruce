@@ -1,0 +1,78 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T02",
+  "title": "Windows Tauri 2 应用骨架、Rust 视图模型层与双端 fixture 对拍 (P2)",
+  "milestone": "M1-Windows适配",
+  "status": "pending",
+  "branch": "main",
+  "depends_on": [
+    "T01"
+  ],
+  "branch_note": "2026-10-06 用户指示: Windows 适配全程不开特性分支, 直接在 main 开发",
+  "target": {
+    "module": "apps/win (新建)",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "goal": "建立 apps/win Tauri 2 应用骨架（托盘 + 置顶看板面板），以进程内 lib 方式嵌入 core/collector，在 Rust 侧实现视图模型层（对齐 BruceAppCore 职责），并用共享 artifact fixture 建立双端逐字段对拍测试，交付最小可用看板（今日总量 + Agent 用量卡 + 订阅卡）。",
+  "tasks": [
+    {
+      "id": "T02-1",
+      "title": "Tauri 2 应用骨架",
+      "capability": "apps/win/（src-tauri + src）接入 workspace：collector crates 以路径依赖进程内直调；托盘图标（Shell_NotifyIcon）+ 置顶无边框 WebviewWindow 面板（无任务栏项、失焦隐藏）+ 右键菜单（刷新/设置/退出）",
+      "done": false
+    },
+    {
+      "id": "T02-2",
+      "title": "视图模型层 Rust 实现",
+      "capability": "src-tauri/viewmodel/：usage_mapping、subscription_mapping、ledger、quota_alert_evaluator、refresh_scheduler 等模块，纯函数消费 artifact 产出看板视图模型，对齐 BruceAppCore 对应源（设计 §6.2 模块表）",
+      "done": false
+    },
+    {
+      "id": "T02-3",
+      "title": "双端 fixture 对拍测试",
+      "capability": "引用 tests/fixtures/ 共享 artifact fixture：mac Swift Harness 输出与 Windows Rust viewmodel 序列化输出逐字段比对；对拍纳入双侧 CI（mac verify-local + windows job）",
+      "done": false
+    },
+    {
+      "id": "T02-4",
+      "title": "最小看板前端",
+      "capability": "WebView 前端：今日总量 Hero 卡、Agent 用量卡（含模型用量区块）、订阅额度卡，Fluent 主题；托盘图标状态切换（就绪/刷新中/告警）与刷新手动触发",
+      "done": false
+    }
+  ],
+  "acceptance": {
+    "result": null,
+    "run_id": "",
+    "checks": [
+      {
+        "item": "双端对拍一致",
+        "true_if": "全部共享 fixture 下 mac 与 Windows 视图模型输出逐字段一致，对拍测试双侧 CI 全绿",
+        "false_if": "任一字段数值、排序或合并口径漂移",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "托盘交互可用",
+        "true_if": "托盘点击弹出面板、失焦自动隐藏、右键菜单可用、图标态随刷新/告警切换",
+        "false_if": "面板无法弹出、失焦不隐藏或图标态不更新",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "架构边界与纯度",
+        "true_if": "collector 进程内调用；Windows 侧未修改 core/collector 数据契约；视图模型为纯函数层，无渲染副作用",
+        "false_if": "篡改共享 crate 契约、绕过视图模型直渲染，或视图模型耦合 UI 框架",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "mac 零回归",
+        "true_if": "verify-local.sh（fmt/test/clippy/fixture/Swift Harness）全绿",
+        "false_if": "mac 侧任一验证步骤失败",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  }
+}

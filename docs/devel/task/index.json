@@ -1,11 +1,76 @@
 {
   "$schema": "https://ad-flow.org/schemas/task-index.v1.json",
-  "phase": "Phase 1 - 架构重构与治理对齐",
-  "updated_at": "2026-09-23",
-
-  "milestones": {},
-
-  "topics": {},
-
-  "tasks": {}
+  "phase": "Phase 2 - Windows 平台适配",
+  "updated_at": "2026-10-06",
+  "milestones": {
+    "M1-Windows适配": {
+      "title": "Windows 托盘常驻看板与采集链路全量对齐（Tauri 2 / 首版全量 / Rust 视图模型+fixture 对拍）",
+      "design_doc": "docs/devel/design/05-Windows平台适配.md",
+      "tasks": [
+        "T01",
+        "T02",
+        "T03",
+        "T04"
+      ]
+    }
+  },
+  "topics": {
+    "WindowsCompat": {
+      "design_doc": "docs/devel/design/05-Windows平台适配.md",
+      "tasks": [
+        "T01",
+        "T02",
+        "T03",
+        "T04"
+      ]
+    }
+  },
+  "tasks": {
+    "T01": {
+      "title": "Windows 采集链路打通：缓存根平台化、Windows CI 与真机路径实测 (P0+P1)",
+      "status": "in_progress",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "milestone": "M1-Windows适配",
+      "depends_on": [],
+      "file": "docs/devel/task/T01.json",
+      "branch_note": "2026-10-06 用户指示: Windows 适配全程不开特性分支, 直接在 main 开发"
+    },
+    "T02": {
+      "title": "Windows Tauri 2 应用骨架、Rust 视图模型层与双端 fixture 对拍 (P2)",
+      "status": "pending",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "milestone": "M1-Windows适配",
+      "depends_on": [
+        "T01"
+      ],
+      "file": "docs/devel/task/T02.json",
+      "branch_note": "2026-10-06 用户指示: Windows 适配全程不开特性分支, 直接在 main 开发"
+    },
+    "T03": {
+      "title": "Windows 全功能对齐：订阅额度、通知、热键、设置中心与 Onboarding (P3)",
+      "status": "pending",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "milestone": "M1-Windows适配",
+      "depends_on": [
+        "T02"
+      ],
+      "file": "docs/devel/task/T03.json",
+      "branch_note": "2026-10-06 用户指示: Windows 适配全程不开特性分支, 直接在 main 开发"
+    },
+    "T04": {
+      "title": "Windows 打包发布线：安装包、签名与 Release 产物 (P4)",
+      "status": "pending",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "milestone": "M1-Windows适配",
+      "depends_on": [
+        "T03"
+      ],
+      "file": "docs/devel/task/T04.json",
+      "branch_note": "2026-10-06 用户指示: Windows 适配全程不开特性分支, 直接在 main 开发"
+    }
+  }
 }

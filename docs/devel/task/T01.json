@@ -1,0 +1,99 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T01",
+  "title": "Windows 采集链路打通：缓存根平台化、Windows CI 与真机路径实测 (P0+P1)",
+  "milestone": "M1-Windows适配",
+  "status": "in_progress",
+  "branch": "main",
+  "depends_on": [],
+  "branch_note": "2026-10-06 用户指示: Windows 适配全程不开特性分支, 直接在 main 开发",
+
+  "target": {
+    "module": "core/collector + CI/scripts",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+
+  "goal": "在零回归 mac 的前提下打通 Windows 采集链路：消除 collector 内唯一平台硬编码（缓存根），建立 windows-latest CI 覆盖，真机实测各 Agent 数据布局与 Claude CLI 凭证位置并回填设计文档，使 Bruce-collector CLI 在 Windows 产出与 mac 同 schema 的 artifact。",
+
+  "tasks": [
+    {
+      "id": "T01-1",
+      "title": "缓存根平台化",
+      "capability": "collector-local default_cache_root（lib.rs:157-158）增加 #[cfg(windows)] 分支：优先 %LOCALAPPDATA%，回退 ~/AppData/Local，目标 %LOCALAPPDATA%\\Bruce\\collector-cache-v1；mac/Linux 行为不变；补平台分支单元测试",
+      "done": true
+    },
+    {
+      "id": "T01-2",
+      "title": "Windows CI job",
+      "capability": ".github/workflows/ci.yml 新增 windows-latest job：cargo fmt --check / cargo test --workspace / cargo clippy，与现有 3 个 mac job 并行",
+      "done": true
+    },
+    {
+      "id": "T01-3",
+      "title": "Rust 验证入口双平台化",
+      "capability": "从 verify-local.sh 抽取平台无关 Rust 验证（fmt/test/clippy + fixture 扫描）为可复用入口，Windows 侧可执行等价验证",
+      "done": true
+    },
+    {
+      "id": "T01-4",
+      "title": "真机路径实测表回填",
+      "capability": "按设计文档 §3.4 清单在 Windows 真机实测 claude/codex/grok/pi/zcode/codebuddy/opencode/kimi-work/orca 数据布局；差异项修正 paths.rs 对应 resolver（env 覆盖机制兜底）并补测试；实测结论回填 §3.4",
+      "done": false
+    },
+    {
+      "id": "T01-5",
+      "title": "Claude CLI Windows 凭证处置",
+      "capability": "实测 Windows Claude CLI 凭证位置；若 ~/.claude/.credentials.json 文件回退已覆盖则仅登记结论，否则在 collector-credential 实现 Windows CredentialSource（文件探测优先、失败静默回退，禁止交互式鉴权 UI）",
+      "done": false
+    },
+    {
+      "id": "T01-6",
+      "title": "Windows 端 CLI artifact 验收",
+      "capability": "bin/Bruce-collector 在 Windows 真机完成一次真实采集，artifact 通过 schemas/agent-usage-v1 契约校验且数值合理",
+      "done": false
+    }
+  ],
+
+  "acceptance": {
+    "result": null,
+    "run_id": "",
+    "checks": [
+      {
+        "item": "Windows CI 全绿",
+        "true_if": "windows-latest job 中 cargo fmt --check / cargo test --workspace / cargo clippy 全部通过",
+        "false_if": "任一编译、clippy 告警或测试失败",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "缓存根平台正确且 mac 零回归",
+        "true_if": "Windows 下缓存落盘 %LOCALAPPDATA%\\Bruce\\collector-cache-v1；mac 下 default_cache_root 行为与改前逐字节一致",
+        "false_if": "Windows 缓存路径错误，或 mac 侧路径/行为回归",
+        "evidence": "2026-10-06 本地 verify-rust.sh 全绿（fixture scan 15 files / fmt / workspace tests / clippy -D warnings）；collector-local 24 tests ok，含 default_cache_root_keeps_historical_layout_outside_windows 与 hermetic 修正后的 cache_reuses_unchanged_files_and_reads_only_appends；Windows 分支由 cfg(windows) 单测锁定，CI 运行后回填远端证据",
+        "result": null
+      },
+      {
+        "item": "artifact 契约一致",
+        "true_if": "Windows 真机 artifact 与 mac 同 schema（agent-usage-v1）且聚合数值合理",
+        "false_if": "schema 校验失败、采集为空或数值异常",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "路径实测回填完整",
+        "true_if": "设计文档 §3.4 待实测清单全部回填真实结论（含差异修正记录）",
+        "false_if": "存在未实测或凭推测回填的条目",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "改动必伴随补测",
+        "true_if": "T01-1/T01-4/T01-5 的平台分支均有对应单元测试且全绿",
+        "false_if": "存在无测试覆盖的平台分支",
+        "evidence": "T01-1 已补 3 项平台分支单测：1 项 mac 布局守卫 (cfg(not(windows))) + 2 项 Windows LOCALAPPDATA 优先/回退 (cfg(windows))，本地全绿；T01-4/T01-5 待实测后补",
+        "result": null
+      }
+    ]
+  }
+}

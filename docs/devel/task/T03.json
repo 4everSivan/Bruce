@@ -1,0 +1,97 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T03",
+  "title": "Windows 全功能对齐：订阅额度、通知、热键、设置中心与 Onboarding (P3)",
+  "milestone": "M1-Windows适配",
+  "status": "pending",
+  "branch": "main",
+  "depends_on": [
+    "T02"
+  ],
+  "branch_note": "2026-10-06 用户指示: Windows 适配全程不开特性分支, 直接在 main 开发",
+  "target": {
+    "module": "apps/win",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "goal": "按「首版全量」决策，将 Windows 版功能矩阵对齐 mac：订阅额度出站查询与 Windows 凭证存储、Onboarding 凭证引导、配额 Toast 通知、全局热键、设置中心与价格校准、Fluent/Nothing 双主题看板。所有外部探测失败一律静默降级。",
+  "tasks": [
+    {
+      "id": "T03-1",
+      "title": "订阅额度链路与凭证存储",
+      "capability": "collector-provider 8 Provider 出站额度查询接入；订阅凭据落盘 %APPDATA%\\Bruce\\credentials.json（Windows ACL 限定当前用户等价 0600，temp+rename 原子写）；外部 SQLite 强制 mode=ro 只读",
+      "done": false
+    },
+    {
+      "id": "T03-2",
+      "title": "Onboarding 凭证引导",
+      "capability": "Windows 侧 Onboarding 流程（对齐 BruceOnboardingCore 门控语义）：凭证录入/导入/校验与存储边界，Keychain 写入替换为 ACL 文件方案",
+      "done": false
+    },
+    {
+      "id": "T03-3",
+      "title": "配额 Toast 通知",
+      "capability": "quota_alert_evaluator 告警判定（阈值/窗口语义对齐 mac）+ Windows Toast（Tauri notification 插件）+ 通知去重策略对齐 SystemNotificationDeliveryPolicy",
+      "done": false
+    },
+    {
+      "id": "T03-4",
+      "title": "全局热键与面板完善",
+      "capability": "Tauri global-shortcut 全局热键（可录制对齐 GlobalHotkeyRecorder 交互）；面板位置记忆（对齐 DashboardPanelPlacement）与动画门控（对齐 dashboardPanelVisible 语义，隐藏即暂停）",
+      "done": false
+    },
+    {
+      "id": "T03-5",
+      "title": "设置中心与价格校准",
+      "capability": "设置中心：全模型价格表查看与自定义覆盖校准、卡片排序、主题偏好（Fluent/Nothing 双主题）、数据位置展示；settings_model 持久化",
+      "done": false
+    },
+    {
+      "id": "T03-6",
+      "title": "刷新调度对齐",
+      "capability": "refresh_scheduler 完整对齐 mac RefreshScheduler/RefreshBackoffPolicy 语义：指数退避、前台/手动触发、失败静默降级；面板隐藏时暂停高开销任务",
+      "done": false
+    }
+  ],
+  "acceptance": {
+    "result": null,
+    "run_id": "",
+    "checks": [
+      {
+        "item": "功能矩阵逐项对齐",
+        "true_if": "设计 §4.2 能力矩阵逐项可用，展示口径与 mac 一致（订阅窗口语义、三档语义配色、模型用量区块）",
+        "false_if": "任一功能缺失或与 mac 口径静默不一致",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "凭证安全红线",
+        "true_if": "credentials.json ACL 仅当前用户可读写且原子写入；外部数据库只读；凭证不硬编码不入库",
+        "false_if": "权限宽松、非原子写或引入交互式鉴权弹窗",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "外部探测静默降级",
+        "true_if": "凭证/出站/SQLite 访问失败时静默跳过并降级为本地扫描口径，无阻塞弹窗",
+        "false_if": "任一外部失败路径触发侵入式 UI",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "对拍持续一致",
+        "true_if": "订阅卡/告警判定等新增视图模型双端 fixture 对拍全绿",
+        "false_if": "新增逻辑引入双端口径漂移",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "隐藏态资源纪律",
+        "true_if": "面板隐藏时动画与轮询任务暂停（CPU 占用与 mac 同量级）",
+        "false_if": "隐藏面板后台空转",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  }
+}

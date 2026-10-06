@@ -1,6 +1,6 @@
 # 系统设计方案中心 (design/)
 
-> **created**: 2026-09-23 ｜ **last-change**: 2026-09-23 ｜ **status**: active
+> **created**: 2026-09-23 ｜ **last-change**: 2026-10-06 ｜ **status**: active
 
 ---
 
@@ -20,6 +20,7 @@
 | [02-订阅额度与凭据安全存储.md](02-订阅额度与凭据安全存储.md) | `SubscriptionQuota` | `DESIGN-SUBSCRIPTION` | 8 大 Provider 额度适配、POSIX 0600 凭据存储、原子落盘与防扰 | 现行基线 | 2026-09-23 |
 | [03-菜单栏状态与多风格原生渲染.md](03-菜单栏状态与多风格原生渲染.md) | `MenuBarIndicator` | `DESIGN-DASHBOARD` | 赛博精密环形仪表、纯图标模式、液态玻璃与 Nothing 风格点阵控制台 | 现行基线 | 2026-09-23 |
 | [04-设置中心与价格校准交互.md](04-设置中心与价格校准交互.md) | `PricingEngine` | `DESIGN-SETTINGS` | 菜单栏实时预览条、卡片排序拖拽、全模型价格表与自定义覆盖校准 | 现行基线 | 2026-09-23 |
+| [05-Windows平台适配.md](05-Windows平台适配.md) | `WindowsCompat` | `DESIGN-WINDOWS` | Windows 托盘常驻看板（Tauri 2）、collector 单引擎双平台、Rust 视图模型与双端 fixture 对拍 | 现行基线 | 2026-10-06 |
 
 ---
 
