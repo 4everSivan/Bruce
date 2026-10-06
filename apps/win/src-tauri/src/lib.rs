@@ -152,6 +152,11 @@ fn refresh_now(control: tauri::State<SchedulerControl>) {
 }
 
 #[tauri::command]
+fn quit_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
+#[tauri::command]
 fn set_panel_visible(control: tauri::State<SchedulerControl>, visible: bool) {
     control.panel_visible.store(visible, Ordering::Relaxed);
     if visible {
@@ -234,7 +239,8 @@ pub fn run() {
             get_credential_fields,
             save_credentials_command,
             refresh_now,
-            set_panel_visible
+            set_panel_visible,
+            quit_app
         ])
         .run(tauri::generate_context!())
         .expect("Bruce 托盘应用运行失败");
