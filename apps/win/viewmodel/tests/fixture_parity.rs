@@ -191,7 +191,11 @@ fn norm(value: serde_json::Value) -> serde_json::Value {
     match value {
         Value::Number(number) => serde_json::json!(number.as_f64().unwrap()),
         Value::Array(items) => Value::Array(items.into_iter().map(norm).collect()),
-        Value::Object(map) => Value::Object(map.into_iter().map(|(key, value)| (key, norm(value))).collect()),
+        Value::Object(map) => Value::Object(
+            map.into_iter()
+                .map(|(key, value)| (key, norm(value)))
+                .collect(),
+        ),
         other => other,
     }
 }
