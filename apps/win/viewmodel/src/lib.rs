@@ -9,4 +9,5 @@
 pub mod color;
 pub mod format;
 pub mod models;
+pub mod subscription;
 pub mod usage;

@@ -52,10 +52,11 @@ impl PanelViewModelMapper {
         match agent_usage {
             Some(artifact) => {
                 let usage = self.make_usage(artifact, now, &mut diagnostics);
+                let subscription = self.make_subscription(artifact, now, &mut diagnostics);
                 let hourly = self.make_hourly(artifact, &mut diagnostics);
                 PanelViewModel {
                     usage: Some(usage),
-                    subscription: None,
+                    subscription,
                     hourly: Some(hourly),
                     diagnostics,
                 }

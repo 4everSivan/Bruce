@@ -35,8 +35,88 @@ function render(panel) {
     breakdown.append(cell);
   }
 
+  renderSubscription(panel.subscription);
   renderHourly(panel.hourly);
   renderDiagnostics(panel.diagnostics);
+}
+
+function renderSubscription(subscription) {
+  const card = document.getElementById("subscription");
+  const host = document.getElementById("subscription-sections");
+  const updated = document.getElementById("subscription-updated");
+  host.innerHTML = "";
+  if (!subscription || !subscription.sections.length) {
+    card.classList.add("hidden");
+    return;
+  }
+  card.classList.remove("hidden");
+  updated.textContent = subscription.updatedText ?? "";
+
+  for (const section of subscription.sections) {
+    const block = document.createElement("div");
+    block.className = "sub-section";
+
+    const head = document.createElement("div");
+    head.className = "name-line";
+    const title = document.createElement("span");
+    title.append(
+      document.createTextNode(section.name + (section.plan ? `  \u{b7} ${section.plan}` : ""))
+    );
+    const meta = document.createElement("span");
+    meta.className = `badge badge-${section.status}`;
+    meta.textContent = section.accountCountText ?? section.status;
+    head.append(title, meta);
+    block.append(head);
+
+    if (section.note) {
+      const note = document.createElement("p");
+      note.className = "placeholder";
+      note.textContent = section.note;
+      block.append(note);
+    }
+    if (section.extraText) {
+      const extra = document.createElement("p");
+      extra.className = "placeholder";
+      extra.textContent = section.extraText;
+      block.append(extra);
+    }
+
+    const windows = section.windows.length ? section.windows : [section.collapsedWindow].filter(Boolean);
+    for (const row of windows) {
+      const line = document.createElement("div");
+      line.className = "win-row";
+      const lineHead = document.createElement("div");
+      lineHead.className = "name-line";
+      const label = document.createElement("span");
+      label.textContent = row.label;
+      const right = document.createElement("span");
+      right.textContent = row.resetText ? `${row.percentText} \u{b7} ${row.resetText}` : row.percentText;
+      lineHead.append(label, right);
+      const track = document.createElement("div");
+      track.className = "bar";
+      const fill = document.createElement("div");
+      fill.style.width = `${Math.round(row.usedPercent)}%`;
+      fill.style.background =
+        row.usedPercent > 80 ? "var(--danger)" : row.usedPercent > 60 ? "var(--warning)" : "var(--green)";
+      track.append(fill);
+      line.append(lineHead, track);
+      block.append(line);
+    }
+
+    if (section.balance) {
+      const balance = document.createElement("div");
+      balance.className = "name-line";
+      const label = document.createElement("span");
+      label.className = "label";
+      label.textContent = section.balance.label;
+      const amount = document.createElement("span");
+      amount.textContent = section.balance.amountText;
+      balance.append(label, amount);
+      block.append(balance);
+    }
+
+    host.append(block);
+  }
 }
 
 function renderHourly(hourly) {

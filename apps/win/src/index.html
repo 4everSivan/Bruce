@@ -35,9 +35,13 @@
         <div id="hourly-rows"></div>
       </section>
 
-      <section id="subscription" class="card">
-        <h2>订阅额度</h2>
-        <p class="placeholder" id="subscription-note">订阅卡渲染在 T03 出站链路接入后由 artifact services 驱动</p>
+      <section id="subscription" class="card hidden">
+        <div class="sub-head">
+          <h2>订阅额度</h2>
+          <span id="subscription-updated" class="placeholder"></span>
+        </div>
+        <div id="subscription-sections"></div>
+        <p class="placeholder" id="subscription-empty hidden"></p>
       </section>
 
       <section id="diagnostics" class="card hidden">

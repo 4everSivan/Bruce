@@ -314,12 +314,12 @@ pub struct HourlyLineViewModel {
 
 // MARK: - 面板容器
 
-/// 面板视图模型; 订阅卡由 SubscriptionMapping (T03 阶段) 补齐, 当前恒为 null。
+/// 面板视图模型。
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PanelViewModel {
     pub usage: Option<UsageHeroViewModel>,
-    pub subscription: Option<serde_json::Value>,
+    pub subscription: Option<crate::subscription::SubscriptionViewModel>,
     pub hourly: Option<HourlyLineViewModel>,
     pub diagnostics: Vec<PanelDiagnostic>,
 }

@@ -13,9 +13,7 @@ import BruceAppCore
 //   swift run PanelParityHarness <repoRoot>              # 比对模式 (CI 用)
 //   swift run PanelParityHarness <repoRoot> --update     # 刷新 golden 快照
 //
-// 约定: 订阅卡映射的双端对拍在 T03 阶段接入, 本 Harness 当前恒输出 null
-// (与 Rust 侧 PanelViewModel.subscription = None 对齐); fixture 解码时
-// 同时剥除 services 以避免无关的订阅诊断进入对拍面。
+// 约定: DeepSeek 月度账本 (deepSeekMonthlyUsage) 未接入, 恒输出 null (双端一致)。
 
 // MARK: - 轻量 JSON 构建器 (显式控制 null 与数值类型)
 
@@ -71,8 +69,7 @@ private enum ParityError: Error, CustomStringConvertible {
 
 // MARK: - Fixture 宽容解码
 
-/// 共享 fixture 可能早于 schemaVersion/module 字段, 解码前补默认值;
-/// services 与订阅对拍无关 (T03 接入), 直接剥除。
+/// 共享 fixture 可能早于 schemaVersion/module 字段, 解码前补默认值。
 /// 注意: 解码目标是 envelope 内层的 artifact 对象 (与 Rust 侧 value["artifact"] 一致)。
 private func decodeAgentUsageArtifact(fixtureURL: URL) throws -> AgentUsageArtifact {
     let raw = try Data(contentsOf: fixtureURL)
@@ -82,7 +79,6 @@ private func decodeAgentUsageArtifact(fixtureURL: URL) throws -> AgentUsageArtif
     }
     if artifact["schemaVersion"] == nil { artifact["schemaVersion"] = 1 }
     if artifact["module"] == nil { artifact["module"] = "agent-usage" }
-    artifact["services"] = [[String: Any]]()
     let patched = try JSONSerialization.data(withJSONObject: artifact)
     return try JSONDecoder().decode(AgentUsageArtifact.self, from: patched)
 }
@@ -96,7 +92,7 @@ private func colorPair(_ color: PanelAgentColor) -> (String, String) {
 private func encode(_ panel: PanelViewModel) -> J {
     .o([
         ("usage", panel.usage.map(encodeUsage) ?? .nul),
-        ("subscription", .nul), // 订阅卡对拍 T03 接入
+        ("subscription", panel.subscription.map(encodeSubscription) ?? .nul),
         ("hourly", panel.hourly.map(encodeHourly) ?? .nul),
         ("diagnostics", .a(panel.diagnostics.map(encodeDiagnostic))),
     ])
@@ -190,6 +186,56 @@ private func encodeModels(_ models: UsageModelUsageSection) -> J {
         ("tiers", .a(models.tiers.map(period))),
         ("months", .a(models.months.map(period))),
         ("currentMonthKey", .s(models.currentMonthKey)),
+    ])
+}
+
+private func encodeSubscription(_ subscription: SubscriptionViewModel) -> J {
+    .o([
+        ("sections", .a(subscription.sections.map(encodeSection))),
+        ("updatedText", subscription.updatedText.map(J.s) ?? .nul),
+    ])
+}
+
+private func encodeWindowRow(_ row: SubscriptionWindowRow) -> J {
+    .o([
+        ("label", .s(row.label)),
+        ("usedPercent", .d(row.usedPercent)),
+        ("percentText", .s(row.percentText)),
+        ("resetText", .s(row.resetText)),
+        ("ownRow", .b(row.ownRow)),
+        ("windowMinutes", row.windowMinutes.map(J.i) ?? .nul),
+    ])
+}
+
+private func encodeSection(_ section: SubscriptionProviderSection) -> J {
+    .o([
+        ("id", .s(section.id)),
+        ("name", .s(section.name)),
+        ("plan", section.plan.map(J.s) ?? .nul),
+        ("status", .s(section.status)),
+        ("note", section.note.map(J.s) ?? .nul),
+        ("extraText", section.extraText.map(J.s) ?? .nul),
+        ("windows", .a(section.windows.map(encodeWindowRow))),
+        ("accounts", .a(section.accounts.map(encodeAccount))),
+        ("collapsedWindow", section.collapsedWindow.map(encodeWindowRow) ?? .nul),
+        ("balance", section.balance.map { balance in
+            J.o([("label", .s(balance.label)), ("amountText", .s(balance.amountText))])
+        } ?? .nul),
+        ("accountCountText", section.accountCountText.map(J.s) ?? .nul),
+        ("deepSeekMonthlyUsage", .nul),
+    ])
+}
+
+private func encodeAccount(_ account: CodexAccountViewModel) -> J {
+    .o([
+        ("id", .s(account.id)),
+        ("name", .s(account.name)),
+        ("plan", account.plan.map(J.s) ?? .nul),
+        ("status", .s(account.status)),
+        ("note", account.note.map(J.s) ?? .nul),
+        ("windows", .a(account.windows.map(encodeWindowRow))),
+        ("lastSuccessText", account.lastSuccessText.map(J.s) ?? .nul),
+        ("tag", account.tag.map(J.s) ?? .nul),
     ])
 }
 

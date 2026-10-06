@@ -7,6 +7,8 @@
   --text-dim: #9a9a9a;
   --accent: #4cc2ff;
   --green: #6ccb5f;
+  --warning: #ffcc7a;
+  --danger: #ff6482;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -52,6 +54,16 @@ h2 { font-size: 12px; font-weight: 600; color: var(--text-dim); margin-bottom: 8
 .bar > div { height: 100%; }
 
 .placeholder { color: var(--text-dim); font-size: 12px; }
+
+.sub-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.sub-section { padding: 6px 0; border-top: 1px solid var(--card-border); }
+.sub-section:first-child { border-top: none; }
+.badge { font-size: 10px; color: var(--text-dim); }
+.badge-ok { color: var(--green); }
+.badge-partial { color: var(--warning); }
+.badge-error { color: var(--danger); }
+.win-row { margin-top: 4px; }
+.win-row .bar { margin-top: 3px; }
 
 #diagnostic-list { list-style: none; color: #ffb454; font-size: 11px; }
 #diagnostic-list li { padding: 2px 0; }

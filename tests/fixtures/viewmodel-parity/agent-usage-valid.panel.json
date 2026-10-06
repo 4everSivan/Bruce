@@ -146,7 +146,54 @@
       }
     ]
   },
-  "subscription" : null,
+  "subscription" : {
+    "sections" : [
+      {
+        "accountCountText" : null,
+        "accounts" : [
+          {
+            "id" : "kimi_coding",
+            "lastSuccessText" : null,
+            "name" : "Kimi",
+            "note" : "fixture",
+            "plan" : "Fixture Plan",
+            "status" : "ok",
+            "tag" : null,
+            "windows" : [
+              {
+                "label" : "5h",
+                "ownRow" : false,
+                "percentText" : "32%",
+                "resetText" : "",
+                "usedPercent" : 32,
+                "windowMinutes" : null
+              }
+            ]
+          }
+        ],
+        "balance" : null,
+        "collapsedWindow" : null,
+        "deepSeekMonthlyUsage" : null,
+        "extraText" : null,
+        "id" : "kimi_coding",
+        "name" : "Kimi",
+        "note" : "fixture",
+        "plan" : "Fixture Plan",
+        "status" : "ok",
+        "windows" : [
+          {
+            "label" : "5h",
+            "ownRow" : false,
+            "percentText" : "32%",
+            "resetText" : "",
+            "usedPercent" : 32,
+            "windowMinutes" : null
+          }
+        ]
+      }
+    ],
+    "updatedText" : "最后更新 12:00"
+  },
   "usage" : {
     "breakdown" : [
       {
