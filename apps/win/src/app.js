@@ -98,10 +98,16 @@ function renderDiagnostics(diagnostics) {
 }
 
 async function refresh() {
+  const button = document.getElementById("refresh");
+  button.disabled = true;
+  button.textContent = "采集中…";
   try {
-    render(await invoke("get_dashboard", { artifactPath: null }));
+    render(await invoke("get_dashboard"));
   } catch (error) {
     console.error("get_dashboard 失败", error);
+  } finally {
+    button.disabled = false;
+    button.textContent = "刷新";
   }
 }
 

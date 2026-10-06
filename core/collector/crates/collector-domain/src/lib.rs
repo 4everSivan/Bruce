@@ -17,7 +17,7 @@ pub const AGENT_USAGE_MODULE: &str = "agent-usage";
 pub mod pricing;
 pub use pricing::{ModelPricing, ModelPricingOverride, PricingTable};
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BridgeRequest {
     #[serde(rename = "schemaVersion")]
@@ -30,7 +30,7 @@ pub struct BridgeRequest {
     pub credentials: Map<String, Value>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BridgeTimeouts {
     #[serde(rename = "localScanSeconds")]

@@ -2,6 +2,8 @@
 //! 托盘图标常驻, 左键切换看板面板, 右键菜单提供显示/退出; 看板为无装饰
 //! 置顶窗口, 不占用任务栏。数据经 `bruce-win-viewmodel` 纯函数层产出。
 
+mod collector;
+
 use chrono::Local;
 use tauri::{
     menu::{Menu, MenuItem},
@@ -10,21 +12,26 @@ use tauri::{
 };
 
 #[tauri::command]
-fn get_dashboard(artifact_path: Option<String>) -> Result<serde_json::Value, String> {
-    let mapper = bruce_win_viewmodel::usage::PanelViewModelMapper::default();
-    let panel = match artifact_path {
-        Some(path) => {
-            let raw = std::fs::read_to_string(&path).map_err(|error| error.to_string())?;
-            let value: serde_json::Value =
-                serde_json::from_str(&raw).map_err(|error| error.to_string())?;
-            let artifact: collector_domain::AgentUsageArtifact =
-                serde_json::from_value(value["artifact"].clone())
-                    .map_err(|error| error.to_string())?;
-            mapper.make(Some(&artifact), Local::now().fixed_offset())
-        }
-        None => mapper.make(None, Local::now().fixed_offset()),
-    };
-    serde_json::to_value(&panel).map_err(|error| error.to_string())
+async fn get_dashboard() -> Result<serde_json::Value, String> {
+    // 采集为 CPU/IO 密集型, 放阻塞线程池避免卡 WebView IPC 线程。
+    tauri::async_runtime::spawn_blocking(move || -> Result<serde_json::Value, String> {
+        let response = collector::run_local_collection()?;
+        let mapper = bruce_win_viewmodel::usage::PanelViewModelMapper::default();
+        let now = Local::now().fixed_offset();
+        // BridgeResponse.artifact 为未类型化 Value, 按 agent-usage 契约收窄。
+        let artifact = response
+            .artifact
+            .as_ref()
+            .map(|value| {
+                serde_json::from_value::<collector_domain::AgentUsageArtifact>(value.clone())
+            })
+            .transpose()
+            .map_err(|error| error.to_string())?;
+        let panel = mapper.make(artifact.as_ref(), now);
+        serde_json::to_value(&panel).map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 fn toggle_dashboard(app: &tauri::AppHandle) {

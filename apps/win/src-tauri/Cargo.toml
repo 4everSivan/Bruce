@@ -17,6 +17,10 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "=2.11.6", features = ["tray-icon", "image-png"] }
 bruce-win-viewmodel = { path = "../viewmodel" }
 collector-domain = { path = "../../../core/collector/crates/collector-domain" }
+collector-bridge = { path = "../../../core/collector/crates/collector-bridge" }
 chrono = { version = "=0.4.38", default-features = false, features = ["clock", "std"] }
+uuid = { version = "=1.11.0", features = ["v4"] }
+iana-time-zone = "0.1"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# float_roundtrip: 双端对拍要求 17 位浮点精确解析 (与 viewmodel 一致)
+serde_json = { version = "1", features = ["float_roundtrip"] }

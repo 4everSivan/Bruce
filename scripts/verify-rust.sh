@@ -11,6 +11,7 @@ BRUCE_SCRIPT_DIR=${0:A:h}
 BRUCE_REPO_ROOT=${BRUCE_SCRIPT_DIR:h}
 BRUCE_RUST_MANIFEST="$BRUCE_REPO_ROOT/core/collector/Cargo.toml"
 BRUCE_WIN_VIEWMODEL_MANIFEST="$BRUCE_REPO_ROOT/apps/win/viewmodel/Cargo.toml"
+BRUCE_WIN_SHELL_MANIFEST="$BRUCE_REPO_ROOT/apps/win/src-tauri/Cargo.toml"
 
 cd "$BRUCE_REPO_ROOT"
 
@@ -32,5 +33,7 @@ verify_rust_manifest() {
 zsh "$BRUCE_SCRIPT_DIR/check-collector-fixtures.sh"
 verify_rust_manifest "$BRUCE_RUST_MANIFEST"
 verify_rust_manifest "$BRUCE_WIN_VIEWMODEL_MANIFEST"
+# Tauri 壳: 编译面大放最后; local_collection 冒烟会在 CI 临时环境落缓存, 幂等无害。
+verify_rust_manifest "$BRUCE_WIN_SHELL_MANIFEST"
 
 echo "Bruce Rust 验证全部通过"

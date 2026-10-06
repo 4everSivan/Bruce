@@ -38,7 +38,7 @@
       "id": "T02-4",
       "title": "最小看板前端",
       "capability": "WebView 前端：今日总量 Hero 卡、Agent 用量卡（含模型用量区块）、订阅额度卡，Fluent 主题；托盘图标状态切换（就绪/刷新中/告警）与刷新手动触发",
-      "done": false
+      "done": true
     }
   ],
   "acceptance": {
