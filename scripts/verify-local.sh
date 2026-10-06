@@ -89,4 +89,8 @@ swift run --package-path "$BRUCE_SWIFT_PACKAGE" DashboardGlassSurfaceHarness
 echo "运行订阅刷新控件 Harness"
 swift run --package-path "$BRUCE_SWIFT_PACKAGE" SubscriptionRefreshControlHarness
 
+echo "运行 Panel 视图模型双端对拍 Harness"
+swift run --package-path "$BRUCE_SWIFT_PACKAGE" \
+  PanelParityHarness "$BRUCE_REPO_ROOT"
+
 echo "Bruce 本地验证全部通过"

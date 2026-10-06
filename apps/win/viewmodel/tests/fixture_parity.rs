@@ -184,6 +184,40 @@ fn missing_artifact_reports_missing_artifact_diagnostic() {
     assert!(panel.subscription.is_none());
 }
 
+/// 数值归一化: JSON 整数与浮点按 f64 语义比较 (mac JSONEncoder 把 1.0 序列化为 1,
+/// serde_json 为 1.0, 数值上等价), 其余类型保持严格相等。
+fn norm(value: serde_json::Value) -> serde_json::Value {
+    use serde_json::Value;
+    match value {
+        Value::Number(number) => serde_json::json!(number.as_f64().unwrap()),
+        Value::Array(items) => Value::Array(items.into_iter().map(norm).collect()),
+        Value::Object(map) => Value::Object(map.into_iter().map(|(key, value)| (key, norm(value))).collect()),
+        other => other,
+    }
+}
+
+/// 双端对拍锁: golden 快照由 mac 侧 PanelParityHarness 生成 (swift run
+/// PanelParityHarness <repoRoot> --update)。mac 行为变更时先刷新 golden,
+/// 本测试随之锁住 Windows 侧行为必须同步对齐。
+#[test]
+fn mac_parity_golden_matches() {
+    let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../tests/fixtures/viewmodel-parity/agent-usage-valid.panel.json");
+    let golden_raw = std::fs::read_to_string(golden_path).expect("golden 快照可读");
+    let golden: serde_json::Value = serde_json::from_str(&golden_raw).expect("golden JSON 合法");
+
+    let artifact = load_valid_artifact();
+    let mapper = PanelViewModelMapper::default();
+    let panel = mapper.make(Some(&artifact), fixed_now());
+    let produced = serde_json::to_value(&panel).expect("视图模型可序列化");
+
+    assert_eq!(
+        norm(produced),
+        norm(golden),
+        "rust 视图模型输出必须与 mac golden 逐字段一致"
+    );
+}
+
 #[test]
 fn serialized_view_model_uses_camel_case_contract() {
     let artifact = load_valid_artifact();

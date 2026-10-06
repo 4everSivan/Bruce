@@ -145,8 +145,9 @@ Windows Tauri 后端 (Rust)
 ### 5.3 一致性保障机制（对拍）
 
 - mac `BruceAppCore` 与 Windows Rust `viewmodel` 消费**同一组 artifact fixture**（`tests/fixtures/` 既有资产）；
-- 对拍协议：fixture artifact 输入 → 双端视图模型 JSON 序列化输出 → 逐字段比对（含数值口径、排序、合并规则）；
-- mac 端行为变更时，必须同步跑双端对拍（在 mac CI 中执行 Rust 侧对拍测试），杜绝静默漂移。
+- 对拍协议（golden 快照模式，已落地）：mac 侧 `PanelParityHarness` 将 Swift 视图模型序列化为与 Rust serde 同构的 camelCase JSON，`--update` 刷新 golden 快照（`tests/fixtures/viewmodel-parity/`），默认模式比对；Windows 侧 `mac_parity_golden_matches` 测试消费同一快照，数值按 f64 归一后逐字段断言；
+- 双向门禁：mac 端行为变更 → `--update` 刷新 golden 并审视 Windows 侧同步；Windows 侧漂移 → Rust 测试直接红。verify-local.sh 与 verify-windows CI 双侧执行；
+- 已知实现约束：serde_json 需开启 `float_roundtrip`（mac JSONEncoder 输出 17 位浮点表示）；数值并列排序以稳定键序破并列，对拍 fixture 避免构造并列场景。
 
 ---
 

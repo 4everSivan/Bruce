@@ -1,0 +1,271 @@
+{
+  "diagnostics" : [
+    {
+      "agentId" : "claude-code",
+      "kind" : "agentIssue",
+      "note" : "fixture: 未发现会话",
+      "status" : "not_found"
+    }
+  ],
+  "hourly" : {
+    "collapsedPeakText" : "峰值 71K",
+    "collapsedPoints" : [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      12000,
+      22000,
+      59000,
+      71000,
+      20000,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "rows" : [
+      {
+        "agentId" : "kimi-code-cli",
+        "color" : "blue",
+        "colorHex" : "#0a84ff",
+        "isExpandable" : true,
+        "models" : [
+          {
+            "name" : "kimi-k2.5",
+            "share" : 1,
+            "total" : 124000,
+            "totalText" : "124K"
+          }
+        ],
+        "name" : "Kimi Code",
+        "points" : [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          12000,
+          22000,
+          41000,
+          49000,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "projects" : [
+          {
+            "name" : "fixture/project-a",
+            "share" : 0.74193548387096775,
+            "total" : 92000,
+            "totalText" : "92K"
+          },
+          {
+            "name" : "fixture/project-b",
+            "share" : 0.25806451612903225,
+            "total" : 32000,
+            "totalText" : "32K"
+          }
+        ],
+        "todayTotal" : 124000,
+        "todayTotalText" : "124K"
+      },
+      {
+        "agentId" : "codex",
+        "color" : "purple",
+        "colorHex" : "#bf5af2",
+        "isExpandable" : true,
+        "models" : [
+          {
+            "name" : "gpt-5.4",
+            "share" : 1,
+            "total" : 60000,
+            "totalText" : "60K"
+          }
+        ],
+        "name" : "Codex CLI",
+        "points" : [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          18000,
+          22000,
+          20000,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "projects" : [
+          {
+            "name" : "fixture/project-a",
+            "share" : 1,
+            "total" : 60000,
+            "totalText" : "60K"
+          }
+        ],
+        "todayTotal" : 60000,
+        "todayTotalText" : "60K"
+      }
+    ]
+  },
+  "subscription" : null,
+  "usage" : {
+    "breakdown" : [
+      {
+        "label" : "输入",
+        "value" : 125000,
+        "valueText" : "125K"
+      },
+      {
+        "label" : "输出",
+        "value" : 25000,
+        "valueText" : "25K"
+      },
+      {
+        "label" : "缓存读取",
+        "value" : 34000,
+        "valueText" : "34K"
+      },
+      {
+        "label" : "缓存命中率",
+        "value" : 0,
+        "valueText" : "21%"
+      }
+    ],
+    "collapsedWeekLevels" : [
+      1,
+      1
+    ],
+    "costText" : "≈ ¥2.702",
+    "days" : [
+      {
+        "date" : "2026-07-27",
+        "segments" : [
+          {
+            "agentId" : "kimi-code-cli",
+            "color" : "blue",
+            "colorHex" : "#0a84ff",
+            "value" : 84000
+          },
+          {
+            "agentId" : "codex",
+            "color" : "purple",
+            "colorHex" : "#bf5af2",
+            "value" : 43000
+          }
+        ],
+        "total" : 127000,
+        "totalText" : "127K"
+      },
+      {
+        "date" : "2026-07-28",
+        "segments" : [
+          {
+            "agentId" : "kimi-code-cli",
+            "color" : "blue",
+            "colorHex" : "#0a84ff",
+            "value" : 124000
+          },
+          {
+            "agentId" : "codex",
+            "color" : "purple",
+            "colorHex" : "#bf5af2",
+            "value" : 60000
+          }
+        ],
+        "total" : 184000,
+        "totalText" : "184K"
+      }
+    ],
+    "halfYear" : {
+      "averageText" : "311K",
+      "totalText" : "311K"
+    },
+    "heatmap" : [
+      {
+        "cells" : [
+          {
+            "date" : "2026-07-27",
+            "level" : 1,
+            "total" : 127000
+          },
+          {
+            "date" : "2026-07-28",
+            "level" : 1,
+            "total" : 184000
+          },
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      }
+    ],
+    "isLive" : true,
+    "legend" : [
+      {
+        "agentId" : "kimi-code-cli",
+        "color" : "blue",
+        "colorHex" : "#0a84ff",
+        "name" : "Kimi Code CLI"
+      },
+      {
+        "agentId" : "codex",
+        "color" : "purple",
+        "colorHex" : "#bf5af2",
+        "name" : "Codex CLI"
+      }
+    ],
+    "models" : null,
+    "monthly" : [
+      {
+        "isCurrent" : true,
+        "key" : "2026-07",
+        "label" : "7月",
+        "totalText" : "311K"
+      }
+    ],
+    "totalTokens" : 184000,
+    "totalTokensText" : "184K",
+    "usageTier" : "sage"
+  }
+}
