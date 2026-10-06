@@ -3,7 +3,7 @@
   "id": "T02",
   "title": "Windows Tauri 2 应用骨架、Rust 视图模型层与双端 fixture 对拍 (P2)",
   "milestone": "M1-Windows适配",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "main",
   "depends_on": [
     "T01"
@@ -26,7 +26,7 @@
       "id": "T02-2",
       "title": "视图模型层 Rust 实现",
       "capability": "src-tauri/viewmodel/：usage_mapping、subscription_mapping、ledger、quota_alert_evaluator、refresh_scheduler 等模块，纯函数消费 artifact 产出看板视图模型，对齐 BruceAppCore 对应源（设计 §6.2 模块表）",
-      "done": false
+      "done": true
     },
     {
       "id": "T02-3",

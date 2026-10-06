@@ -40,6 +40,12 @@ jobs:
         run: cargo test --manifest-path core/collector/Cargo.toml --workspace
       - name: Rust Clippy
         run: cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings
+      - name: Windows 视图模型 crate 格式检查
+        run: cargo fmt --manifest-path apps/win/viewmodel/Cargo.toml --all -- --check
+      - name: Windows 视图模型 crate 测试
+        run: cargo test --manifest-path apps/win/viewmodel/Cargo.toml
+      - name: Windows 视图模型 crate Clippy
+        run: cargo clippy --manifest-path apps/win/viewmodel/Cargo.toml --all-targets -- -D warnings
 
   build-release-app:
     name: 构建测试版 App

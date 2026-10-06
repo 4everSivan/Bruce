@@ -1,0 +1,65 @@
+/* Fluent 风格深色看板 (Windows 首版骨架; 液态玻璃为 mac 独占不移植)。 */
+:root {
+  --bg: #1c1c1c;
+  --card: #272727;
+  --card-border: rgba(255, 255, 255, 0.07);
+  --text: #f3f3f3;
+  --text-dim: #9a9a9a;
+  --accent: #4cc2ff;
+  --green: #6ccb5f;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Segoe UI Variable", "Segoe UI", "PingFang SC", sans-serif;
+  font-size: 13px;
+  user-select: none;
+}
+
+#panel { padding: 14px 14px 10px; display: flex; flex-direction: column; gap: 10px; }
+
+header { display: flex; align-items: baseline; justify-content: space-between; }
+h1 { font-size: 17px; font-weight: 600; }
+h2 { font-size: 12px; font-weight: 600; color: var(--text-dim); margin-bottom: 8px; }
+
+.live { color: var(--green); font-size: 10px; letter-spacing: 1px; }
+.hidden { display: none; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.hero-total { display: flex; align-items: baseline; gap: 6px; }
+#hero-total { font-size: 26px; font-weight: 700; color: var(--accent); }
+.unit { color: var(--text-dim); font-size: 11px; }
+.hero-cost { color: var(--text-dim); font-size: 12px; margin: 2px 0 10px; }
+
+.breakdown { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.breakdown .cell { display: flex; justify-content: space-between; font-size: 12px; }
+.breakdown .cell .label { color: var(--text-dim); }
+
+.hourly-row { padding: 6px 0; border-top: 1px solid var(--card-border); }
+.hourly-row:first-child { border-top: none; }
+.hourly-row .name-line { display: flex; justify-content: space-between; margin-bottom: 4px; }
+.hourly-row .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+.bar { height: 3px; background: rgba(255, 255, 255, 0.08); border-radius: 2px; overflow: hidden; margin-top: 3px; }
+.bar > div { height: 100%; }
+
+.placeholder { color: var(--text-dim); font-size: 12px; }
+
+#diagnostic-list { list-style: none; color: #ffb454; font-size: 11px; }
+#diagnostic-list li { padding: 2px 0; }
+
+footer { display: flex; justify-content: flex-end; }
+button {
+  background: var(--card); color: var(--text);
+  border: 1px solid var(--card-border); border-radius: 6px;
+  padding: 5px 14px; font-size: 12px; cursor: pointer;
+}
+button:hover { background: #323232; }

@@ -551,10 +551,15 @@ pub struct AgentUsage {
     pub quota: Option<Value>,
     pub today: TokenBucket,
     pub daily: Vec<DailyUsage>,
+    #[serde(default)]
     pub models: std::collections::BTreeMap<String, u64>,
+    #[serde(default)]
     pub model_months: BTreeMap<String, BTreeMap<String, u64>>,
+    #[serde(default)]
     pub today_models: Vec<ModelUsage>,
+    #[serde(default)]
     pub projects: Vec<ProjectUsage>,
+    #[serde(default)]
     pub hours: Vec<u64>,
     pub today_cost_usd: Option<f64>,
 }
@@ -562,7 +567,9 @@ pub struct AgentUsage {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentUsageArtifact {
+    #[serde(default)]
     pub schema_version: u8,
+    #[serde(default)]
     pub module: String,
     pub generated_at: String,
     pub agents: Vec<AgentUsage>,
@@ -683,6 +690,36 @@ mod tests {
             serde_json::to_value(artifact).unwrap()["totalCostUsd"],
             Value::Null
         );
+    }
+
+    #[test]
+    fn agent_usage_deserializes_legacy_artifacts_missing_optional_collections() {
+        // 旧版/精简 artifact (如 UI 对拍 fixture) 可能省略模型月度与明细集合;
+        // 反序列化必须宽容, 视图模型层按空集合处理.
+        let artifact: AgentUsageArtifact = serde_json::from_value(json!({
+            "schemaVersion": 1,
+            "module": "agent-usage",
+            "generatedAt": "2026-07-28T12:00:00+08:00",
+            "agents": [{
+                "id": "kimi-code-cli",
+                "name": "Kimi Code CLI",
+                "status": "ok",
+                "note": "fixture",
+                "quota": null,
+                "today": {"input": 1, "output": 2, "cacheRead": 0, "cacheCreation": 0, "total": 3},
+                "daily": [],
+                "todayCostUsd": null
+            }],
+            "services": [],
+            "totalCostUsd": null
+        }))
+        .unwrap();
+        let agent = &artifact.agents[0];
+        assert!(agent.models.is_empty());
+        assert!(agent.model_months.is_empty());
+        assert!(agent.today_models.is_empty());
+        assert!(agent.projects.is_empty());
+        assert!(agent.hours.is_empty());
     }
 
     #[test]

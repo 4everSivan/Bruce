@@ -175,7 +175,7 @@ Windows Tauri 后端 (Rust)
 | R4 | 真机路径实测 | 本文档 §3.4 | P0 实测后回填；如有布局差异改 `paths.rs` 对应 resolver 并补测试 |
 | R5 | Claude CLI Windows 凭证 | `collector-credential` | 视实测结论：文件回退已覆盖则仅登记；否则实现 Windows `CredentialSource`（文件探测优先，禁止交互） |
 
-### 6.2 Windows 视图模型层（`apps/win/src-tauri/viewmodel/`）
+### 6.2 Windows 视图模型层（`apps/win/viewmodel/`，独立纯 Rust crate）
 
 对齐 `BruceAppCore` 职责的 Rust 模块划分（消费 artifact，产出看板视图模型）：
 
@@ -188,7 +188,7 @@ Windows Tauri 后端 (Rust)
 | `ledger` | `DeepSeekUsageLedger.swift` / `CodexQuotaSnapshotMerger` 等 | 账本与快照合并 |
 | `settings_model` | 设置中心相关 | 价格校准、卡片排序、主题偏好的加载与持久化 |
 
-对拍测试位于 `apps/win/src-tauri/`（`cargo test`），fixture 直接引用 `tests/fixtures/` 共享资产；mac 侧在 `verify-local.sh` 中增加对拍 invocation（Swift Harness 输出与 Rust 输出比对）。
+对拍测试位于 `apps/win/viewmodel/tests/`（`cargo test`，无需 Tauri/WebView 依赖，双平台 CI 均可执行），fixture 直接引用 `tests/fixtures/` 共享资产；mac 侧在 `verify-local.sh` 中增加对拍 invocation（Swift Harness 输出与 Rust 输出比对）。
 
 ### 6.3 Windows 系统集成壳（`apps/win/src-tauri/shell/`）
 

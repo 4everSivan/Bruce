@@ -7,15 +7,12 @@
   "branch": "main",
   "depends_on": [],
   "branch_note": "2026-10-06 用户指示: Windows 适配全程不开特性分支, 直接在 main 开发",
-
   "target": {
     "module": "core/collector + CI/scripts",
     "design_doc": "docs/devel/design/05-Windows平台适配.md",
     "design_topic": "WindowsCompat"
   },
-
   "goal": "在零回归 mac 的前提下打通 Windows 采集链路：消除 collector 内唯一平台硬编码（缓存根），建立 windows-latest CI 覆盖，真机实测各 Agent 数据布局与 Claude CLI 凭证位置并回填设计文档，使 Bruce-collector CLI 在 Windows 产出与 mac 同 schema 的 artifact。",
-
   "tasks": [
     {
       "id": "T01-1",
@@ -54,7 +51,6 @@
       "done": false
     }
   ],
-
   "acceptance": {
     "result": null,
     "run_id": "",
@@ -63,7 +59,7 @@
         "item": "Windows CI 全绿",
         "true_if": "windows-latest job 中 cargo fmt --check / cargo test --workspace / cargo clippy 全部通过",
         "false_if": "任一编译、clippy 告警或测试失败",
-        "evidence": "run 37441542527 首跑 (2026-10-06): mac verify-local 全绿; Windows fmt 绿、workspace 测试抓出 2 项缺陷——①空白 LOCALAPPDATA 未按 paths.rs 惯例 trim; ②cache_reuses 测试写句柄未关闭即重扫, Windows 目录元数据陈旧致增量追加检测不到。两项已修复 (trim 语义对齐 + drop(append) 落盘后扫描), 真机观感项已登记设计 §3.4, 待重跑确认全绿",
+        "evidence": "run 37443853244 (2026-10-06) 全 job 绿: verify-windows fmt/test/clippy 通过, mac verify-local 与 App 构建通过。前序 run 37441542527/37442743288 的 3 项缺陷 (trim/句柄陈旧/needless return) 均已修复。新增 viewmodel crate 验证步骤已纳入同 job, 随下一 run 确认",
         "result": null
       },
       {

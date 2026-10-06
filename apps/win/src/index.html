@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bruce</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main id="panel">
+    <header>
+      <h1>Bruce</h1>
+      <span id="live" class="live hidden">LIVE</span>
+    </header>
+
+    <section id="hero" class="card hidden">
+      <div class="hero-total">
+        <span id="hero-total">—</span>
+        <span class="unit">tokens 今日</span>
+      </div>
+      <div id="hero-cost" class="hero-cost"></div>
+      <div id="breakdown" class="breakdown"></div>
+    </section>
+
+    <section id="hourly" class="card hidden">
+      <h2>Agent 用量</h2>
+      <div id="hourly-rows"></div>
+    </section>
+
+    <section id="subscription" class="card">
+      <h2>订阅额度</h2>
+      <p class="placeholder">Windows 订阅链路在 T03 阶段接入</p>
+    </section>
+
+    <section id="diagnostics" class="card hidden">
+      <h2>诊断</h2>
+      <ul id="diagnostic-list"></ul>
+    </section>
+
+    <footer>
+      <button id="refresh">刷新</button>
+    </footer>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
