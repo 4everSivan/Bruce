@@ -1,0 +1,96 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C005",
+  "title": "修复 Windows 前端三重脱节白屏：补齐 index.html 骨架、接入 PANEL 数据流并对齐窗口宽度",
+  "type": "Fix",
+  "status": "in_progress",
+  "branch": "main",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src + src-tauri + CI",
+    "component": "看板前端 (index.html/app.js) 与 Tauri 窗口配置",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "对抗性审查 (2026-10-07) 发现 0184900 前端 1:1 复刻只回写了 app.js/styles.css, 未同步 index.html 与窗口配置, 三处脱节叠加导致真机面板加载即白屏: ① app.js:11 直接读取 demo 模板注入的全局 PANEL (生产代码无定义), 脚本首行 ReferenceError, 全部事件监听不注册; ② app.js 引用的 #stack/#hud/#hud-dot-wrap/#hud-agents/#foot-settings/#foot-quit 六个节点在 index.html (停留在 51e1c8b 旧骨架) 中全部缺失; ③ tauri.conf.json 窗口宽 380 而 styles.css 按 mac .frame(width: 440) 写死 440px, 布局必然水平溢出。CI 仅验证 Rust 三件套, 前端零验证, 绿灯为假阳性; v0.10.0 NSIS 安装包内置即为坏前端。",
+  "changes": [
+    {
+      "scope": "apps/win/src/index.html",
+      "before": "51e1c8b 时代旧骨架: #hero/#hourly/#subscription/#diagnostics 卡片容器 + h1 头部, 与新 app.js 的 HUD/卡片栈/三视图/底栏 DOM 契约完全脱节",
+      "after": "按 styles.css 类名契约重写: #hud 呼吸灯头部 + #tabs 三视图切换 + #scroll>#stack 卡片栈滚动区 + 凭证/设置视图 + #footer 底栏 (#refresh/#foot-settings/#foot-quit)",
+      "impact": "app.js 全部 DOM 引用可达, 三视图与底栏交互恢复可用"
+    },
+    {
+      "scope": "apps/win/src/app.js",
+      "before": "顶部残留 demo 模板段 (未定义全局 PANEL + 顶层 #stack 查找 + HUD 文本写入), 生产环境加载即抛 ReferenceError; 设置视图主题下拉 #setting-theme 无读写接线",
+      "after": "删除 demo 残留段 (首屏数据统一走 init() 的 get_dashboard); 主题下拉接线 loadSettingsView/save (读写 settings.theme 并切换 body class)",
+      "impact": "脚本在 Tauri 生产壳中正常执行; 主题偏好不再静默丢失"
+    },
+    {
+      "scope": "apps/win/src-tauri/tauri.conf.json",
+      "before": "窗口 380x620, 与 styles.css 固定 440px 布局冲突 (内容水平溢出 60px)",
+      "after": "窗口 440x760 (宽度对齐 mac .frame(width: 440), 高度配合 #scroll 滚动区)",
+      "impact": "1:1 布局在窗口内完整呈现, 卡片栈超长时滚动"
+    },
+    {
+      "scope": "scripts/check-win-frontend.mjs + verify-rust.sh + .github/workflows/ci.yml",
+      "before": "CI 只跑 cargo fmt/clippy/test, 前端 HTML/JS 零验证, DOM 脱节类缺陷无处暴露",
+      "after": "新增 node 结构冒烟脚本: app.js 语法检查 + getElementById 引用 id 与 index.html 定义 id 交叉校验 + demo 残留全局 PANEL 哨兵; 纳入 verify-rust.sh (node 缺失时警告跳过) 与 verify-windows CI job",
+      "impact": "本次 P0 类缺陷 (JS 引用不存在节点/未定义全局) 在双侧 CI 直接红灯"
+    },
+    {
+      "scope": "apps/win/src/app.js usageCard",
+      "before": "模型用量区块无 models 判空, usage.models 为 null (无模型月度数据, 如 valid fixture 或新装环境) 时 models.tiers.forEach 抛 TypeError, usageCard 渲染中断, 卡片栈整栈空白 (浏览器 stub 预览复现)",
+      "after": "模型用量区块整体包进 if (models), null 时整块隐藏 (对齐 mac 行为: 无 modelMonths 不渲染该区块); 已用真实 fixture 数据在浏览器中验证三卡完整渲染",
+      "impact": "无模型月度数据场景下面板正常呈现其余卡片, 不再整栈空白"
+    },
+    {
+      "scope": "apps/win/src/styles.css Windows 增补节",
+      "before": "demo 浮层样式的 body padding:20px 残留, 440 宽窗口里面板被挤压到 400 宽, 三卡内容按窄 40px 排版破版 (浏览器真实尺寸复现: panelWidth=400)",
+      "after": "Windows 增补节显式 body padding:0 + #panel width:100%, 面板即窗口全幅 (复测 panelWidth=440); 顶/中/底三段视觉逐段审查无截断/重叠/溢出",
+      "impact": "面板宽度与 mac .frame(width:440) 设计一致, 卡片布局不再挤压"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": false,
+    "rule_diff": null
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "前端 DOM 契约一致",
+        "true_if": "app.js 引用的全部 DOM id 在 index.html 中存在, 且 node 结构冒烟脚本通过",
+        "false_if": "任一 getElementById 目标缺失或 app.js 存在未定义全局引用",
+        "evidence": "2026-10-07 与设置窗口化合并审查: ①app.js 无 PANEL 全局残留 ②DOM id 交叉引用全部可达 (check-win-frontend.mjs 冒烟通过) ③窗口 440x760 ④usageCard models 判空已补 (与窗口化交叠处由本轮修复) ⑤styles body padding 0。核实结论: 白屏三重脱节修复完整",
+        "result": null
+      },
+      {
+        "item": "窗口与布局宽度对齐",
+        "true_if": "tauri.conf.json 窗口宽度 >= styles.css #panel 固定宽度 (440)",
+        "false_if": "布局在窗口内水平溢出",
+        "evidence": "2026-10-07 与设置窗口化合并审查: ①app.js 无 PANEL 全局残留 ②DOM id 交叉引用全部可达 (check-win-frontend.mjs 冒烟通过) ③窗口 440x760 ④usageCard models 判空已补 (与窗口化交叠处由本轮修复) ⑤styles body padding 0。核实结论: 白屏三重脱节修复完整",
+        "result": null
+      },
+      {
+        "item": "CI 前端冒烟接线",
+        "true_if": "verify-rust.sh 与 verify-windows job 均执行 check-win-frontend.mjs 且本地通过",
+        "false_if": "冒烟脚本未接线或在干净检出上失败",
+        "evidence": "2026-10-07 与设置窗口化合并审查: ①app.js 无 PANEL 全局残留 ②DOM id 交叉引用全部可达 (check-win-frontend.mjs 冒烟通过) ③窗口 440x760 ④usageCard models 判空已补 (与窗口化交叠处由本轮修复) ⑤styles body padding 0。核实结论: 白屏三重脱节修复完整",
+        "result": null
+      },
+      {
+        "item": "Rust 侧零回归",
+        "true_if": "src-tauri fmt/clippy/test 全绿",
+        "false_if": "任一编译、clippy 或测试失败",
+        "evidence": "2026-10-07 与设置窗口化合并审查: ①app.js 无 PANEL 全局残留 ②DOM id 交叉引用全部可达 (check-win-frontend.mjs 冒烟通过) ③窗口 440x760 ④usageCard models 判空已补 (与窗口化交叠处由本轮修复) ⑤styles body padding 0。核实结论: 白屏三重脱节修复完整",
+        "result": null
+      }
+    ]
+  }
+}

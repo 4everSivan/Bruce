@@ -12,14 +12,26 @@
       {
         "label": "dashboard",
         "title": "Bruce",
-        "width": 380,
-        "height": 620,
+        "width": 440,
+        "height": 760,
         "visible": false,
         "decorations": false,
         "skipTaskbar": true,
         "resizable": false,
         "shadow": false,
         "alwaysOnTop": true
+      },
+      {
+        "label": "settings",
+        "title": "Bruce 设置",
+        "url": "settings.html",
+        "width": 1040,
+        "height": 680,
+        "minWidth": 980,
+        "minHeight": 620,
+        "visible": false,
+        "resizable": true,
+        "center": true
       }
     ]
   },

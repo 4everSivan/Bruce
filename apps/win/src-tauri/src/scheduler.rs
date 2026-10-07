@@ -1,9 +1,9 @@
 //! 后台刷新调度器 —— 对齐 mac `RefreshScheduler`/`RefreshBackoffPolicy` 语义:
 //! 默认 1800s 周期; 失败按分类退避 (限流固定 300s, 其余 30s×2^(n-1)+抖动,
-//! 上限 1800s, 超过 5 次回落整周期); 面板隐藏时暂停采集 (开销门控);
-//! 手动刷新立即唤醒并重置退避。告警跨越沿经去重后交 Windows Toast。
+//! 上限 1800s, 超过 5 次回落整周期); 手动刷新立即唤醒并重置退避。
+//! 采集周期不随面板可见性门控 (对齐 mac 常驻语义, 配额告警依赖后台周期采集;
+//! 隐藏态开销控制由前端渲染层自然暂停承载, C007)。
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Receiver;
 use std::sync::{mpsc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -22,8 +22,6 @@ const MAX_BACKOFF_RETRIES: u32 = 5;
 const BASE_BACKOFF_SECS: u64 = 30;
 const MAX_BACKOFF_SECS: u64 = 1800;
 const RATE_LIMIT_BACKOFF_SECS: u64 = 300;
-/// 面板隐藏时的可见性轮询间隔 (秒)。
-const HIDDEN_POLL_SECS: u64 = 60;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RefreshOutcome {
@@ -36,8 +34,6 @@ pub enum RefreshOutcome {
 
 #[derive(Default)]
 pub struct SchedulerControl {
-    /// 面板可见性门控: 隐藏时暂停采集 (对齐 mac dashboardPanelVisible 纪律)。
-    pub panel_visible: AtomicBool,
     manual_refresh: Mutex<Option<mpsc::Sender<()>>>,
     pub retry_count: Mutex<u32>,
     pub alert_state: Mutex<AlertDeliveryState>,
@@ -46,7 +42,6 @@ pub struct SchedulerControl {
 impl SchedulerControl {
     pub fn new() -> Self {
         Self {
-            panel_visible: AtomicBool::new(true),
             manual_refresh: Mutex::new(None),
             retry_count: Mutex::new(0),
             alert_state: Mutex::new(AlertDeliveryState::default()),
@@ -67,7 +62,8 @@ pub fn compute_backoff(retry_count: u32, rate_limited: bool) -> u64 {
     if rate_limited {
         return RATE_LIMIT_BACKOFF_SECS;
     }
-    let exponential = BASE_BACKOFF_SECS.saturating_mul(1u64 << (retry_count - 1).min(10));
+    // 公开 API 防御: 0 与 1 同为首个重试档 (裸 retry_count-1 在 0 输入时 u32 下溢 panic)。
+    let exponential = BASE_BACKOFF_SECS.saturating_mul(1u64 << (retry_count.max(1) - 1).min(10));
     let capped = exponential.min(MAX_BACKOFF_SECS);
     // 抖动: 0..capped/10 (避免引入 rand 依赖, 用系统纳秒)。
     let nanos = SystemTime::now()
@@ -83,11 +79,13 @@ pub fn compute_backoff(retry_count: u32, rate_limited: bool) -> u64 {
 }
 
 /// 诊断分类: 是否限流类失败 (决定固定退避)。
+/// 采集链路诊断 category 值域为 {protocol, security, provider, local, collector, runtime},
+/// 不存在 "rateLimit" 值; 真实限流信号是 provider 层 code=PROVIDER_RATE_LIMIT (HTTP 429),
+/// 兼容保留 category 匹配, 上游若未来补齐该分类即自然生效 (C006)。
 pub fn classify_rate_limited(response: &collector_domain::BridgeResponse) -> bool {
-    response
-        .diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.category == "rateLimit")
+    response.diagnostics.iter().any(|diagnostic| {
+        diagnostic.code == "PROVIDER_RATE_LIMIT" || diagnostic.category == "rateLimit"
+    })
 }
 
 fn deliver_alerts(app: &AppHandle, settings: &AppSettings, artifact: &Value) {
@@ -187,30 +185,16 @@ pub fn spawn(app: AppHandle) {
                 }
             }
 
-            // 等待下一轮: 可见面板等整周期; 隐藏时降频轮询可见性且不采集;
-            // 手动刷新随时唤醒。
-            loop {
-                let visible = app
-                    .state::<SchedulerControl>()
-                    .panel_visible
-                    .load(Ordering::Relaxed);
-                let wait = if visible {
-                    Duration::from_secs(
-                        load_settings(&data_root())
-                            .refresh_interval_secs
-                            .min(86_400),
-                    )
-                } else {
-                    Duration::from_secs(HIDDEN_POLL_SECS)
-                };
-                if wait_for_manual_or(&receiver, wait) {
-                    retries = 0;
-                    break;
-                }
-                if visible {
-                    break;
-                }
-                // 隐藏超时: 继续等待, 不采集 (开销门控)。
+            // 等待下一轮: 整周期等待, 手动刷新随时唤醒并重置退避。
+            // 采集不随面板可见性门控 (对齐 mac 常驻语义, 告警依赖后台周期采集, C007);
+            // 加载侧已将间隔钳制到 [60, 86400], 此处上限截断为纵深防御。
+            let wait = Duration::from_secs(
+                load_settings(&data_root())
+                    .refresh_interval_secs
+                    .min(86_400),
+            );
+            if wait_for_manual_or(&receiver, wait) {
+                retries = 0;
             }
         }
     });

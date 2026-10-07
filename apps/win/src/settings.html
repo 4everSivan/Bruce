@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bruce 设置</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    /* 设置窗口 (mac SettingsWindowController 1040x680 标准窗口同构) */
+    body { background: #202022; overflow-y: auto; }
+    #settings-page { max-width: 860px; margin: 0 auto; padding: 24px 28px 32px; }
+    .settings-header { margin-bottom: 16px; }
+    .settings-header h1 { font-size: 18px; font-weight: 600; }
+    .settings-header p { font-size: 12px; color: var(--secondary); margin-top: 4px; }
+    .settings-card {
+      background: var(--card-bg); border: 1px solid var(--card-border);
+      border-radius: 16px; padding: 18px 20px; margin-top: 14px;
+    }
+    .settings-card > .sec { display: block; margin-bottom: 10px; font-size: 10.5px; }
+    .settings-card p.hint { font-size: 12px; color: var(--secondary); margin-bottom: 6px; }
+    #credential-fields textarea { font-family: "Cascadia Mono", Consolas, ui-monospace, monospace; }
+    #view-credentials textarea,
+    #view-settings input, #view-settings select {
+      width: 100%; background: var(--badge-bg); border: 1px solid var(--card-border);
+      border-radius: 6px; color: var(--ink); font: 12px/1.5 inherit; padding: 5px 8px;
+      margin-top: 3px;
+    }
+    .credential-field { margin-top: 10px; }
+    .credential-field label { font-size: 11.5px; color: var(--secondary); display: block; }
+    .actions { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+    .actions button {
+      background: var(--badge-bg); border: 1px solid var(--card-border); color: var(--ink);
+      border-radius: 6px; padding: 6px 16px; font-size: 12px; cursor: pointer;
+    }
+    .actions button:hover { background: rgba(255,255,255,.12); }
+    .actions span { font-size: 11.5px; color: var(--secondary); }
+    .row { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; font-size: 12.5px; }
+    .row > input, .row > select { width: 220px; margin: 0; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div id="settings-page">
+    <div class="settings-header">
+      <h1>Bruce 设置</h1>
+      <p>Windows 版设置中心 (对齐 mac 设置窗口; 价格校准等区块随后续版本补齐)</p>
+    </div>
+
+    <div class="settings-card">
+      <span class="sec">通用</span>
+      <label class="row">
+        <span>刷新间隔 (分钟)</span>
+        <input id="setting-interval" type="number" min="1" max="1440" />
+      </label>
+      <label class="row">
+        <span>配额预警通知</span>
+        <input id="setting-notifications" type="checkbox" />
+      </label>
+      <label class="row">
+        <span>全局热键</span>
+        <input id="setting-hotkey" type="text" placeholder="CommandOrControl+Shift+B" />
+      </label>
+      <div class="actions">
+        <button id="settings-save">保存设置</button>
+        <span id="settings-status"></span>
+      </div>
+    </div>
+
+    <div class="settings-card">
+      <span class="sec">订阅凭证 (Onboarding 引导)</span>
+      <p class="hint">
+        按需粘贴 provider 凭证 JSON (结构对齐采集端契约); 仅白名单字段可保存,
+        落盘 credentials.json (仅当前用户可读)。保存后立即触发一次采集。
+      </p>
+      <div id="credential-fields"></div>
+      <div class="actions">
+        <button id="credentials-save">保存凭证</button>
+        <span id="credentials-status"></span>
+      </div>
+    </div>
+  </div>
+  <script src="settings.js"></script>
+</body>
+</html>

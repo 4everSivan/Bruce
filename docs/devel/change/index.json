@@ -1,19 +1,32 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-index.v1.json",
   "version": "1.0",
-  "updated_at": "2026-09-23",
-
+  "updated_at": "2026-10-07",
   "topics": {
     "SystemOverview": {
       "design_doc": "docs/devel/design/00-系统总体设计.md",
-      "changes": ["C001", "C002"]
+      "changes": [
+        "C001",
+        "C002"
+      ]
     },
     "MenuBarIndicator": {
       "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
-      "changes": ["C003", "C004"]
+      "changes": [
+        "C003",
+        "C004"
+      ]
+    },
+    "WindowsCompat": {
+      "design_doc": "docs/devel/design/05-Windows平台适配.md",
+      "changes": [
+        "C005",
+        "C006",
+        "C007",
+        "C008"
+      ]
     }
   },
-
   "cards": {
     "C001": {
       "title": "重构项目工程目录为 Monorepo apps/core 分层架构并清理碎片与缓存",
@@ -50,6 +63,42 @@
       "topic": "MenuBarIndicator",
       "version": "0.9.0+",
       "file": "docs/devel/change/C004.json"
+    },
+    "C005": {
+      "title": "修复 Windows 前端三重脱节白屏：补齐 index.html 骨架、接入 PANEL 数据流并对齐窗口宽度",
+      "type": "Fix",
+      "status": "in_progress",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.10.0+",
+      "file": "docs/devel/change/C005.json"
+    },
+    "C006": {
+      "title": "修复限流退避分类双端死代码：诊断限流判定改按 code 并防御退避输入下溢",
+      "type": "Fix",
+      "status": "in_progress",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.10.0+",
+      "file": "docs/devel/change/C006.json"
+    },
+    "C007": {
+      "title": "修正面板隐藏暂停采集偏离 mac 常驻语义：告警不随面板关闭停摆，并加设置加载区间钳制",
+      "type": "Fix",
+      "status": "in_progress",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.10.0+",
+      "file": "docs/devel/change/C007.json"
+    },
+    "C008": {
+      "title": "修复 Windows 壳采集窗口 14 天偏离 mac 182 天半年口径：热力图/月度统计失真并补齐 home 上下文",
+      "type": "Fix",
+      "status": "in_progress",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.10.0+",
+      "file": "docs/devel/change/C008.json"
     }
   }
 }

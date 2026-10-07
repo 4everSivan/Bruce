@@ -6,13 +6,13 @@ use std::path::PathBuf;
 use bruce_win_lib::settings::{load_settings, save_settings, validate_settings, AppSettings};
 
 fn temp_root() -> PathBuf {
+    // 测试线程并行启动时 SystemTime 同纳秒会碰撞出共享目录 (实测 flake),
+    // 以进程内原子序号保证唯一; 跨进程由 pid 区分。
+    static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let root = std::env::temp_dir().join(format!(
         "bruce-settings-coverage-{}-{}",
         std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
+        SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
     fs::create_dir_all(&root).unwrap();
     root
@@ -70,6 +70,23 @@ fn partial_json_fills_missing_fields_with_defaults() {
     assert_eq!(settings.theme, "nothing", "显式字段生效");
     assert_eq!(settings.refresh_interval_secs, 1800, "缺失字段回落默认");
     assert_eq!(settings.card_order, vec!["usage", "subscription", "hourly"]);
+}
+
+#[test]
+fn out_of_range_interval_is_clamped_on_load() {
+    // 纵深防御 (C007): validate 只拦保存入口, 手改文件的越界间隔
+    // (0 会造成零间隔 busy-loop 采集) 必须在加载侧钳制回合法区间。
+    let root = temp_root();
+    let path = root.join("config").join("settings.json");
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    for (raw, expected) in [(0u64, 60u64), (1, 60), (59, 60), (100_000, 86_400)] {
+        fs::write(&path, format!(r#"{{"refreshIntervalSecs":{raw}}}"#)).unwrap();
+        assert_eq!(
+            load_settings(&root).refresh_interval_secs,
+            expected,
+            "raw={raw}"
+        );
+    }
 }
 
 #[test]

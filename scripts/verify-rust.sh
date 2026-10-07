@@ -31,6 +31,13 @@ verify_rust_manifest() {
 }
 
 zsh "$BRUCE_SCRIPT_DIR/check-collector-fixtures.sh"
+# Windows 前端结构冒烟 (app.js 语法 + DOM id 交叉 + demo 残留哨兵);
+# CI 双侧 runner 均预装 node, 本地缺 node 时警告跳过不阻塞 Rust 验证。
+if command -v node >/dev/null 2>&1; then
+  node "$BRUCE_REPO_ROOT/scripts/check-win-frontend.mjs"
+else
+  echo "警告: 缺少 node, 跳过 Windows 前端结构冒烟" >&2
+fi
 verify_rust_manifest "$BRUCE_RUST_MANIFEST"
 verify_rust_manifest "$BRUCE_WIN_VIEWMODEL_MANIFEST"
 # Tauri 壳: 编译面大放最后; local_collection 冒烟会在 CI 临时环境落缓存, 幂等无害。

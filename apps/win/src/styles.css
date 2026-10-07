@@ -189,10 +189,12 @@ body {
 .model-row .tot { width: 62px; text-align: right; font-size: 11px; font-weight: 600; opacity: .9; font-variant-numeric: tabular-nums; flex: none; }
 .models-more { text-align: center; font-size: 10px; color: var(--faint); cursor: pointer; padding: 4px 0 2px; }
 
-/* 热力图 (heatmapView): 周列×7行, 格子 aspect 1:1, gap 3 */
+/* 热力图 (heatmapView): 周列×7行, 格子 aspect 1:1, gap 3; 列宽设上限并右对齐
+   (网格末端为本周, 与日期轴语义一致), 防止短数据 (新用户) 时唯一一列被 flex
+   拉满整行胀成巨型方块 (C008)。 */
 #heat-sec { margin-top: 12px; }
-.heatmap { display: flex; gap: 3px; margin-top: 4px; }
-.heatmap .col { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.heatmap { display: flex; justify-content: flex-end; gap: 3px; margin-top: 4px; }
+.heatmap .col { flex: 1; max-width: 14px; display: flex; flex-direction: column; gap: 3px; }
 .heatmap .cell { aspect-ratio: 1/1; border-radius: 2px; background: rgba(255,255,255,.07); } /* level0 0.07 */
 .heatmap .cell.empty { background: transparent; }
 .heatmap .cell.l1 { background: #7D9B76; } .heatmap .cell.l2 { background: #63885E; }
@@ -270,8 +272,10 @@ body {
 .foot-spacer { flex: 1; }
 
 /* ============ 应用专属: 背景与多视图 (Windows 增补, 不改 mac 同构看板) ============ */
-body { background: transparent; }
-#panel { height: 100vh; max-height: none; border: none; border-radius: 0; box-shadow: none; }
+/* demo 浮层样式的 body padding 必须清零: 面板即窗口 (440 宽), 残留 20px 会把
+   布局挤压到 400 宽导致卡片内容破版 (C005)。 */
+body { background: transparent; padding: 0; }
+#panel { height: 100vh; width: 100%; max-height: none; border: none; border-radius: 0; box-shadow: none; }
 #panel::before { z-index: 3; }
 #tabs { display: flex; gap: 6px; flex: none; padding: 0 12px 0; }
 #tabs .tab {
@@ -295,5 +299,9 @@ body { background: transparent; }
 .actions span { font-size: 11px; color: var(--secondary); }
 .row { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; font-size: 12px; }
 .row > input, .row > select { width: 180px; margin: 0; }
+/* 凭证/设置卡片标题与说明 (Windows 增补视图, mac 同构看板无此元素) */
+.card h2 { font: 600 12.5px/1.3 inherit; color: var(--ink); margin-bottom: 6px; }
+.card .placeholder { font-size: 11px; line-height: 1.6; color: var(--secondary); }
+.card .placeholder code { font-family: "SF Mono", ui-monospace, Consolas, monospace; font-size: 10px; color: var(--ink); opacity: .8; }
 .hidden { display: none !important; }
 

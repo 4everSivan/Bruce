@@ -182,6 +182,8 @@ struct RefreshSchedulerHarness {
         try mergerCodexNotTargetPreservesPreviousCodex()
         print("Refresh scheduler: merger full scope regression complete artifact")
         try await mergerFullScopeRegressionPublishesCompleteArtifact(repository: repository)
-        print("Refresh scheduler tests passed: 81")
+        print("Refresh scheduler: error classifier reads provider rate limit code")
+        try errorClassifierReadsProviderRateLimitCode()
+        print("Refresh scheduler tests passed: 82")
     }
 }

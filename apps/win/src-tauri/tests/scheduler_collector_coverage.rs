@@ -26,24 +26,58 @@ fn backoff_is_exponential_with_jitter_and_cap() {
 }
 
 #[test]
+fn backoff_treats_zero_retry_as_first_attempt() {
+    // 公开 API 防御: 0 与 1 同为首个重试档 (裸 retry_count-1 在 0 输入时 u32 下溢 panic, C006)。
+    for retry in [0u32, 1] {
+        let value = compute_backoff(retry, false);
+        assert!((30..33).contains(&value), "retry={retry} value={value}");
+    }
+}
+
+#[test]
 fn rate_limit_classification_reads_bridge_diagnostics() {
     let run_id = "00000000-0000-0000-0000-000000000000";
-    let rate_limited_response = collector_domain::BridgeResponse::error(
+    // 真实采集链路形态: provider 层 429 诊断的 category="provider"、code=PROVIDER_RATE_LIMIT
+    // (全仓无 category="rateLimit" 产生点, 旧测试自造该值属自证清白, C006 修正)。
+    let provider_rate_limited = collector_domain::BridgeResponse::error(
         run_id,
         "2026-07-28T12:00:00+08:00",
-        Diagnostic::new("QUOTA_RATE_LIMITED", "rateLimit", "external", "429", true),
+        Diagnostic::new(
+            "PROVIDER_RATE_LIMIT",
+            "provider",
+            "external",
+            "HTTP 429",
+            true,
+        ),
     );
     assert!(
-        classify_rate_limited(&rate_limited_response),
-        "rateLimit 分类为 true"
+        classify_rate_limited(&provider_rate_limited),
+        "provider 429 诊断为限流"
     );
 
     let plain = collector_domain::BridgeResponse::error(
         run_id,
         "2026-07-28T12:00:00+08:00",
-        Diagnostic::new("NETWORK_DOWN", "network", "external", "down", false),
+        Diagnostic::new(
+            "PROVIDER_SERVER_ERROR",
+            "provider",
+            "external",
+            "HTTP 502",
+            true,
+        ),
     );
-    assert!(!classify_rate_limited(&plain), "非限流分类为 false");
+    assert!(
+        !classify_rate_limited(&plain),
+        "非限流 provider 错误不判为限流"
+    );
+
+    // 兼容: 上游若未来补齐 category="rateLimit" 分类亦生效。
+    let future_category = collector_domain::BridgeResponse::error(
+        run_id,
+        "2026-07-28T12:00:00+08:00",
+        Diagnostic::new("ANY_CODE", "rateLimit", "external", "429", true),
+    );
+    assert!(classify_rate_limited(&future_category));
 }
 
 #[test]
@@ -77,7 +111,15 @@ fn request_context_is_valid_for_collection_window() {
         !request.context["timezone"].as_str().unwrap().is_empty(),
         "时区非空"
     );
-    assert_eq!(request.context["days"].as_u64(), Some(14));
+    // 采集窗口对齐 mac 事实源 (CollectorRunInput.swift:380 days=182 半年口径):
+    // 热力图与按月聚合依赖全量 daily, 14 日柱状图由视图模型层截取 (C008)。
+    assert_eq!(request.context["days"].as_u64(), Some(182));
+    assert!(
+        request.context["home"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty()),
+        "home 上下文非空 (对齐 mac 显式携带)"
+    );
     // runId 是合法 UUID (validate_request 前置条件)。
     uuid::Uuid::parse_str(&request.run_id).expect("runId 为 UUID");
 }

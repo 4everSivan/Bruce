@@ -1,6 +1,6 @@
 //! Windows 托盘常驻壳 —— 对齐 mac `MenuBarStatusItemController` 交互语义:
 //! 托盘常驻 + 左键切换面板 + 右键菜单; 无装饰置顶面板, 失焦自动隐藏,
-//! 位置记忆; 全局热键唤出; 后台调度器周期采集 (退避 + 可见性门控 + Toast)。
+//! 位置记忆; 全局热键唤出; 后台调度器周期采集 (退避 + Toast, 常驻不门控)。
 
 // 模块 pub 导出供 tests/ 集成测试覆盖 (GUI 入口 run() 除外)。
 pub mod alerts;
@@ -11,7 +11,6 @@ pub mod scheduler;
 pub mod settings;
 
 use std::collections::BTreeMap;
-use std::sync::atomic::Ordering;
 
 use chrono::Local;
 use tauri::{
@@ -32,6 +31,8 @@ fn toggle_dashboard(app: &tauri::AppHandle) {
             restore_position(&window);
             let _ = window.show();
             let _ = window.set_focus();
+            // 打开面板立即出新数据 (常驻周期之外的手动唤醒通道, C007)。
+            app.state::<SchedulerControl>().request_manual_refresh();
         }
     }
 }
@@ -156,11 +157,13 @@ fn quit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
 
+/// 打开设置窗口 (mac SettingsWindowController 单实例语义: 已存在则置前)。
 #[tauri::command]
-fn set_panel_visible(control: tauri::State<SchedulerControl>, visible: bool) {
-    control.panel_visible.store(visible, Ordering::Relaxed);
-    if visible {
-        control.request_manual_refresh();
+fn open_settings(app: tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("settings") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
     }
 }
 
@@ -173,7 +176,7 @@ pub fn run() {
         .setup(|app| {
             // 调度控制状态 (托盘菜单/命令/热键共享)。
             app.manage(SchedulerControl::new());
-            // 后台调度器 (采集 + 退避 + 可见性门控 + Toast)。
+            // 后台调度器 (常驻周期采集 + 退避 + Toast)。
             scheduler::spawn(app.handle().clone());
             // 全局热键 (设置可配)。
             let hotkey = settings::load_settings(&paths::data_root()).hotkey;
@@ -211,25 +214,13 @@ pub fn run() {
                 .build(app)?;
             Ok(())
         })
-        .on_window_event(|window, event| match event {
-            WindowEvent::Focused(false) => {
-                // 失焦自动隐藏 (对齐 mac 面板交互); 隐藏前记忆位置并门控采集。
+        .on_window_event(|window, event| {
+            // 失焦自动隐藏 (对齐 mac 面板交互); 隐藏前记忆位置。
+            // 采集不随可见性门控 (mac 常驻语义, C007)。
+            if let WindowEvent::Focused(false) = event {
                 persist_position(window);
-                window
-                    .app_handle()
-                    .state::<SchedulerControl>()
-                    .panel_visible
-                    .store(false, Ordering::Relaxed);
                 let _ = window.hide();
             }
-            WindowEvent::Focused(true) => {
-                window
-                    .app_handle()
-                    .state::<SchedulerControl>()
-                    .panel_visible
-                    .store(true, Ordering::Relaxed);
-            }
-            _ => {}
         })
         .invoke_handler(tauri::generate_handler![
             get_dashboard,
@@ -239,7 +230,7 @@ pub fn run() {
             get_credential_fields,
             save_credentials_command,
             refresh_now,
-            set_panel_visible,
+            open_settings,
             quit_app
         ])
         .run(tauri::generate_context!())

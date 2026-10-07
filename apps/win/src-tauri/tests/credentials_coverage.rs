@@ -12,13 +12,13 @@ use bruce_win_lib::credentials::{
 use serde_json::json;
 
 fn temp_root() -> PathBuf {
+    // 测试线程并行启动时 SystemTime 同纳秒会碰撞出共享目录 (实测 flake),
+    // 以进程内原子序号保证唯一; 跨进程由 pid 区分。
+    static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let root = std::env::temp_dir().join(format!(
         "bruce-cred-coverage-{}-{}",
         std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
+        SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
     fs::create_dir_all(&root).unwrap();
     root

@@ -34,6 +34,8 @@ jobs:
         run: |
           rustc --version
           cargo --version
+      - name: Windows 前端结构冒烟
+        run: node scripts/check-win-frontend.mjs
       - name: Rust 格式检查
         run: cargo fmt --manifest-path core/collector/Cargo.toml --all -- --check
       - name: Rust workspace 测试

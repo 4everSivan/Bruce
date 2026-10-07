@@ -1,0 +1,77 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C008",
+  "title": "修复 Windows 壳采集窗口 14 天偏离 mac 182 天半年口径：热力图/月度统计失真并补齐 home 上下文",
+  "type": "Fix",
+  "status": "in_progress",
+  "branch": "main",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src-tauri",
+    "component": "collector.rs build_local_request + 前端 styles.css 热力图",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "用户验收预览 (2026-10-07) 指出热力图渲染异常。排查确认两层根因: ① Windows 壳 build_local_request 把采集窗口写死 days=14, 而 mac 事实源 CollectorRunInput.swift:380 为 days=182 (半年窗口: 14 日柱状图由映射层 suffix 截取, 全量 daily 供热力图/按月聚合)。结果真机上热力图永远只有 2-3 周 (标题却写「近半年」), 按月聚合最多 2 个月, 半年汇总失真; 且测试 request_context_is_valid_for_collection_window 把 days==14 锁进断言 (自证清白, 与 C006 限流分类同款)。② 前端热力图 .col { flex:1 } 无格子尺寸上限, 数据列少时 (新用户/短数据) 唯一一列被拉满整行, 格子胀成巨型方块 (预览实测 384x384)。另 mac 请求显式携带 home 上下文字段, Windows 壳遗漏。",
+  "changes": [
+    {
+      "scope": "apps/win/src-tauri/src/collector.rs build_local_request",
+      "before": "context 仅含 now/timezone/days=14/capabilities, 无 home; days=14 导致 daily 上限 14 天",
+      "after": "days=182 (对齐 mac 半年窗口, 注释锚定 CollectorRunInput); 补 home 字段 (USERPROFILE/HOME 解析, 与 paths.rs data_root 同源语义)",
+      "impact": "热力图/按月/半年汇总恢复 mac 口径; 14 日柱状图不受影响 (映射层 suffix 截取, 已有测试锁定)"
+    },
+    {
+      "scope": "apps/win/src-tauri/tests/scheduler_collector_coverage.rs",
+      "before": "断言 days==14 (把偏离 mac 的错误值锁绿)",
+      "after": "断言 days==182 + home 非空; 注释说明对齐依据",
+      "impact": "测试锁定真实 mac 口径而非自我复制"
+    },
+    {
+      "scope": "apps/win/src/styles.css 热力图",
+      "before": ".heatmap .col { flex:1 } 无上限, 列少时格子胀成巨型方块 (384x384 实测)",
+      "after": ".col 加 max-width 上限 (格子回归固定小格), .heatmap 右对齐 (网格末端为本周, 与日期轴语义一致)",
+      "impact": "短数据/新用户场景热力图不再破版, 常规数据视觉不变"
+    },
+    {
+      "scope": "apps/win/viewmodel/examples/dump_panel.rs",
+      "before": "now 固定为 fixture 时间 2026-07-28, 无法用真实数据预览",
+      "after": "支持可选第二参数注入 RFC3339 now (缺省保持 fixture 时间), 真实采集数据可按当前时间驱动预览",
+      "impact": "验收/排障管道可用真实数据生成面板预览"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": false,
+    "rule_diff": null
+  },
+  "verification": {
+    "result": null,
+    "run_id": "local-20261007-c008",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "采集窗口对齐 mac",
+        "true_if": "build_local_request 产出 days=182 且含 home; 测试断言同步",
+        "false_if": "仍为 14 或缺 home",
+        "evidence": "build_local_request 产出 days=182 + home (USERPROFILE/HOME 解析, 非 UTF-8 省略回落); scheduler_collector_coverage 断言改为 days==182 + home 非空; src-tauri fmt/clippy/50 测试全绿",
+        "result": true
+      },
+      {
+        "item": "真实数据热力图渲染",
+        "true_if": "本机真实采集 (days=182) 数据驱动的前端预览中, 热力图呈现近半年多周网格, 格子为固定小格无巨型方块",
+        "false_if": "热力图仅 2-3 周或格子尺寸异常",
+        "evidence": "本机真实采集 (days=182, 10 agents, daily 覆盖 2026-04-09→10-07) → dump_panel (now=当前) → 前端预览: 热力图 27 周网格、格子 11x11 固定小格、84 个有量格、日期轴 26/04/09→26/10/07、按月 6 个月 (5月→10月)、hero 59.6M LIVE; 逐段视觉审查无截断/重叠/巨型方块",
+        "result": true
+      },
+      {
+        "item": "Rust 侧零回归",
+        "true_if": "src-tauri fmt/clippy/test 全绿",
+        "false_if": "任一编译、clippy 或测试失败",
+        "evidence": "cargo fmt --check / clippy -D warnings / test 50 项全绿 (src-tauri); viewmodel 43 项全绿 (dump_panel 改动无回归)",
+        "result": true
+      }
+    ]
+  }
+}

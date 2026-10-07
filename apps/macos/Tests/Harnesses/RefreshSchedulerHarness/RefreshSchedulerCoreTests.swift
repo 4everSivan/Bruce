@@ -843,4 +843,46 @@ extension RefreshSchedulerHarness {
         try refreshExpect(timers.pendingCount == 1, "expected one rescheduled timer")
     }
 
+// MARK: - Bridge diagnostic classification (C006)
+
+    static func errorClassifierReadsProviderRateLimitCode() throws {
+        let classifier = RefreshErrorClassifier()
+        func response(code: String, category: String) -> BridgeResponse {
+            BridgeResponse(
+                schemaVersion: 1,
+                runId: "00000000-0000-0000-0000-000000000000",
+                generatedAt: "2026-07-28T12:00:00Z",
+                status: .error,
+                artifact: nil,
+                credentialUpdates: [],
+                diagnostics: [BridgeDiagnostic(
+                    code: code,
+                    category: category,
+                    stage: "external",
+                    message: "fixture",
+                    retryable: true
+                )],
+                credentialChallenges: []
+            )
+        }
+        // 真实采集链路形态: provider 429 诊断 category="provider", 限流信号在 code (C006).
+        try refreshExpect(
+            classifier.classifyBridgeError(
+                response(code: "PROVIDER_RATE_LIMIT", category: "provider")
+            ) == .rateLimit,
+            "provider 429 code 应判为限流"
+        )
+        try refreshExpect(
+            classifier.classifyBridgeError(
+                response(code: "PROVIDER_SERVER_ERROR", category: "provider")
+            ) == .collector,
+            "非限流 provider 错误回退 collector"
+        )
+        try refreshExpect(
+            classifier.classifyBridgeError(
+                response(code: "ANY_CODE", category: "rateLimit")
+            ) == .rateLimit,
+            "category 直配 rateLimit 仍生效"
+        )
+    }
 }

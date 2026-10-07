@@ -5,6 +5,17 @@
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **Windows 前端三重脱节白屏 (C005)**: 0184900 前端 1:1 复刻只回写了 app.js/styles.css 而漏 index.html 与窗口配置，真机面板加载即抛 `ReferenceError` 白屏。修复：按 styles.css 契约重写 index.html (HUD/三视图/底栏)；app.js 移除 demo 模板残留 `PANEL` 数据段并接线主题选择器, 补模型用量区块 `models` 判空 (无模型月度数据时该区块隐藏而非整栈渲染崩溃, 浏览器真实数据预览已验证三卡完整渲染)；窗口 380x620 → 440x760 对齐 440px 布局, 并清除 demo 残留的 body 20px padding (此前把面板挤压到 400 宽致卡片破版)；新增 `scripts/check-win-frontend.mjs` 结构冒烟 (语法 + DOM id 交叉 + 残留哨兵) 并纳入 verify-rust.sh 与 verify-windows CI，此类缺陷此后双侧 CI 直接红灯。
+- **限流退避分类双端死代码 (C006)**: 采集链路诊断 category 值域不含 `rateLimit`，Windows `classify_rate_limited` 与 mac `RefreshErrorClassifier` 按 category 匹配永远落空，「限流固定 300s 退避」从未生效。修复：双端改按 `code == PROVIDER_RATE_LIMIT` 判定 (兼容保留 category 分支)；Windows 测试改用真实形态诊断 (旧测试自造 `rateLimit` fixture 属自证清白) 并补 `compute_backoff(0)` 下溢防御；mac RefreshSchedulerHarness 增分类器用例 (82 项)。
+- **面板隐藏暂停采集偏离 mac 常驻语义 (C007)**: mac 后台始终周期采集 (配额告警依赖)，Windows 侧隐藏即停采导致面板关闭后告警停摆，且 `panel_visible` 因关闭路径 (失焦/托盘切换/初始态) 行为不一。修复：删除可见性门控 (`panel_visible`/`set_panel_visible`/`visibilitychange` 上报)，采集恒周期 + 打开面板即时手动刷新；设置加载侧将刷新间隔钳制到 `[60, 86400]` 秒 (手改 `settings.json` 为 0 不再触发零间隔 busy-loop)；设计基线 05 与 T03 卡口径同步回写。
+- **Windows 壳采集窗口偏离 mac 半年口径 (C008)**: 壳层把采集窗口写死 `days=14`, 而 mac 事实源为 `days=182` (半年窗口供热力图与按月聚合, 14 日柱状图由映射层截取), 导致真机热力图永远只有 2-3 周、按月聚合最多 2 个月; 测试曾把 14 锁进断言。修复: 对齐 `days=182` 并补 `home` 上下文; 前端热力图列宽设上限并右对齐, 短数据 (新用户) 时不再胀成巨型方块; `dump_panel` 支持注入当前时间, 已用本机真实 182 天数据验证 27 周热力图网格完整渲染。
+- **壳层测试临时目录并行碰撞 (伴随修复)**: `temp_root()` 以 `pid-纳秒` 命名，测试线程并行启动时同纳秒碰撞共享目录导致间歇失败 (本轮实测复现)。改用进程内原子序号保证唯一。
+
+---
+
 ## [0.10.0] - 2026-10-06
 
 ### Added

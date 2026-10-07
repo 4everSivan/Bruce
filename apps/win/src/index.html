@@ -8,9 +8,14 @@
 </head>
 <body class="theme-fluent">
   <main id="panel">
-    <header>
-      <h1>Bruce</h1>
-      <span id="live" class="live hidden">LIVE</span>
+    <!-- HUD 头: 呼吸灯 + 品牌 + 系统态 (mac dashboardTopHeader) -->
+    <header id="hud">
+      <div class="hud-left">
+        <span id="hud-dot-wrap" class="hud-dot-wrap"><span class="hud-dot"></span></span>
+        <span class="hud-brand">Bruce // HUD</span>
+      </div>
+      <span class="hud-sysok">SYS.OK</span>
+      <span id="hud-agents" class="hud-right">STANDBY</span>
     </header>
 
     <nav id="tabs">
@@ -19,86 +24,68 @@
       <button data-view="settings" class="tab">设置</button>
     </nav>
 
-    <!-- 看板视图 -->
-    <section id="view-dashboard">
-      <section id="hero" class="card hidden">
-        <div class="hero-total">
-          <span id="hero-total">—</span>
-          <span class="unit">tokens 今日</span>
-        </div>
-        <div id="hero-cost" class="hero-cost"></div>
-        <div id="breakdown" class="breakdown"></div>
+    <div id="scroll">
+      <!-- 看板视图: 卡片栈由 app.js 按 viewmodel 契约渲染 -->
+      <section id="view-dashboard">
+        <div id="stack" class="card-stack"></div>
       </section>
 
-      <section id="hourly" class="card hidden">
-        <h2>Agent 用量</h2>
-        <div id="hourly-rows"></div>
+      <!-- 凭证视图 (Onboarding 引导) -->
+      <section id="view-credentials" class="hidden">
+        <section class="card">
+          <h2>订阅凭证引导</h2>
+          <p class="placeholder">
+            按需粘贴 provider 凭证 JSON (结构对齐采集端契约); 仅白名单字段可保存,
+            文件落盘 <code>%APPDATA%\Bruce\credentials.json</code> (仅当前用户可读)。
+            保存后立即触发一次采集。
+          </p>
+          <div id="credential-fields"></div>
+          <div class="actions">
+            <button id="credentials-save">保存凭证</button>
+            <span id="credentials-status"></span>
+          </div>
+        </section>
       </section>
 
-      <section id="subscription" class="card hidden">
-        <div class="sub-head">
-          <h2>订阅额度</h2>
-          <span id="subscription-updated" class="placeholder"></span>
-        </div>
-        <div id="subscription-sections"></div>
-        <p class="placeholder" id="subscription-empty hidden"></p>
+      <!-- 设置视图 -->
+      <section id="view-settings" class="hidden">
+        <section class="card">
+          <h2>通用设置</h2>
+          <label class="row">
+            <span>刷新间隔 (分钟)</span>
+            <input id="setting-interval" type="number" min="1" max="1440" />
+          </label>
+          <label class="row">
+            <span>配额预警通知</span>
+            <input id="setting-notifications" type="checkbox" />
+          </label>
+          <label class="row">
+            <span>主题</span>
+            <select id="setting-theme">
+              <option value="fluent">Fluent</option>
+              <option value="nothing">Nothing 点阵</option>
+            </select>
+          </label>
+          <label class="row">
+            <span>全局热键</span>
+            <input id="setting-hotkey" type="text" placeholder="CommandOrControl+Shift+B" />
+          </label>
+          <div class="actions">
+            <button id="settings-save">保存设置</button>
+            <span id="settings-status"></span>
+          </div>
+        </section>
       </section>
+    </div>
 
-      <section id="diagnostics" class="card hidden">
-        <h2>诊断</h2>
-        <ul id="diagnostic-list"></ul>
-      </section>
-    </section>
-
-    <!-- 凭证视图 (Onboarding 引导) -->
-    <section id="view-credentials" class="hidden">
-      <section class="card">
-        <h2>订阅凭证引导</h2>
-        <p class="placeholder">
-          按需粘贴 provider 凭证 JSON (结构对齐采集端契约); 仅白名单字段可保存,
-          文件落盘 <code>%APPDATA%\Bruce\credentials.json</code> (仅当前用户可读)。
-          保存后立即触发一次采集。
-        </p>
-        <div id="credential-fields"></div>
-        <div class="actions">
-          <button id="credentials-save">保存凭证</button>
-          <span id="credentials-status"></span>
-        </div>
-      </section>
-    </section>
-
-    <!-- 设置视图 -->
-    <section id="view-settings" class="hidden">
-      <section class="card">
-        <h2>通用设置</h2>
-        <label class="row">
-          <span>刷新间隔 (分钟)</span>
-          <input id="setting-interval" type="number" min="1" max="1440" />
-        </label>
-        <label class="row">
-          <span>配额预警通知</span>
-          <input id="setting-notifications" type="checkbox" />
-        </label>
-        <label class="row">
-          <span>主题</span>
-          <select id="setting-theme">
-            <option value="fluent">Fluent</option>
-            <option value="nothing">Nothing 点阵</option>
-          </select>
-        </label>
-        <label class="row">
-          <span>全局热键</span>
-          <input id="setting-hotkey" type="text" placeholder="CommandOrControl+Shift+B" />
-        </label>
-        <div class="actions">
-          <button id="settings-save">保存设置</button>
-          <span id="settings-status"></span>
-        </div>
-      </section>
-    </section>
-
-    <footer>
-      <button id="refresh">刷新</button>
+    <!-- 底栏动作 (mac actionFooter: 刷新/设置/退出) -->
+    <footer id="footer">
+      <div class="foot-inner">
+        <button id="refresh" class="foot-btn" title="立即刷新">⟳</button>
+        <span class="foot-spacer"></span>
+        <button id="foot-settings" class="foot-btn" title="设置">⚙</button>
+        <button id="foot-quit" class="foot-btn" title="退出 Bruce">⏻</button>
+      </div>
     </footer>
   </main>
   <script src="app.js"></script>

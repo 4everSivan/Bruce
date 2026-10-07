@@ -5,14 +5,6 @@ const el = (tag, cls, text) => {
   if (text != null) node.textContent = text;
   return node;
 };
-const stack = document.getElementById("stack");
-
-/* ---------- HUD ---------- */
-const activeCount = PANEL.hourly ? PANEL.hourly.rows.filter((r) => r.todayTotal > 0).length : 0;
-const isLive = PANEL.usage ? PANEL.usage.isLive : false;
-if (isLive) document.getElementById("hud-dot-wrap").classList.add("live");
-document.getElementById("hud-agents").textContent =
-  activeCount > 0 ? `\u25CF ${activeCount} AGENTS ACTIVE` : "STANDBY";
 
 /* ---------- Token 用量卡 ---------- */
 function usageCard(usage) {
@@ -95,68 +87,72 @@ function usageCard(usage) {
     sec.append(grid);
     card.append(sec);
 
-    // 模型用量: 三档 segment + 月卡联动, 默认本月 top3 + 展开钮
-    const msec = el("div", null); msec.id = "models-sec";
-    const mhead = el("div", "models-head");
-    const left = el("div", "sec-row");
-    const titleSpan = el("span", "sec", "模型用量");
-    left.append(titleSpan);
-    const expand = el("span", null, "\u2304");
-    expand.style.cssText = "font-size:10px;color:var(--subdued);cursor:pointer;transition:transform .15s;";
-    left.append(expand);
-    mhead.append(left);
-    const seg = el("div", "tier-seg");
-    let mode = "tier1";
-    const renderSeg = () => {
-      seg.innerHTML = "";
-      models.tiers.forEach((tier, index) => {
-        const b = el("button", null, tier.label);
-        if (mode === `tier${index}`) b.classList.add("active");
-        b.addEventListener("click", () => { mode = `tier${index}`; renderSeg(); renderModelRows(); });
-        seg.append(b);
-      });
-    };
-    renderSeg();
-    mhead.append(seg);
-    msec.append(mhead);
-    const rowsHost = el("div");
-    let expanded = false;
-    const renderModelRows = () => {
-      titleSpan.textContent = "模型用量" + (mode === "month" ? ` · ${(usage.monthly.find((m) => m.key === selectedKey) || {}).label || ""}` : "");
-      rowsHost.innerHTML = "";
-      let rows;
-      if (mode === "month") {
-        const period = models.months.find((m) => m.id === selectedKey);
-        rows = period ? period.rows.slice(0, expanded ? period.rows.length : 3) : [];
-      } else {
-        const index = Number(mode.slice(4));
-        const tier = models.tiers[index];
-        rows = tier ? tier.rows.slice(0, expanded ? tier.rows.length : 3) : [];
-      }
-      for (const row of rows) {
-        const line = el("div", "model-row");
-        const sw = el("span", "sw"); sw.style.background = row.colorHex;
-        line.append(sw, el("span", "name", row.name));
-        const track = el("div", "track");
-        const fill = el("div"); fill.style.width = `${Math.round(row.share * 100)}%`; fill.style.background = row.colorHex;
-        track.append(fill); line.append(track);
-        line.append(el("span", "pct", row.pctText));
-        line.append(el("span", "tot", row.totalText));
-        rowsHost.append(line);
-      }
-      if (!rows.length) rowsHost.append(el("div", "models-more", "暂无模型数据"));
-      const total = mode === "month"
-        ? (models.months.find((m) => m.id === selectedKey) || { rows: [] }).rows.length
-        : models.tiers[Number(mode.slice(4))].rows.length;
-      if (total > 3) {
-        const more = el("div", "models-more", expanded ? "收起" : `展开全部 ${total} 项`);
-        more.addEventListener("click", () => { expanded = !expanded; renderModelRows(); });
-        rowsHost.append(more);
-      }
-    };
-    renderModelRows();
-    msec.append(rowsHost);
-    card.append(msec);
+    // 模型用量: 三档 segment + 月卡联动, 默认本月 top3 + 展开钮;
+    // 无模型月度数据 (models 为 null) 时整块隐藏, 对齐 mac 行为。
+    if (models) {
+      // 模型用量: 三档 segment + 月卡联动, 默认本月 top3 + 展开钮
+      const msec = el("div", null); msec.id = "models-sec";
+      const mhead = el("div", "models-head");
+      const left = el("div", "sec-row");
+      const titleSpan = el("span", "sec", "模型用量");
+      left.append(titleSpan);
+      const expand = el("span", null, "\u2304");
+      expand.style.cssText = "font-size:10px;color:var(--subdued);cursor:pointer;transition:transform .15s;";
+      left.append(expand);
+      mhead.append(left);
+      const seg = el("div", "tier-seg");
+      let mode = "tier1";
+      const renderSeg = () => {
+        seg.innerHTML = "";
+        models.tiers.forEach((tier, index) => {
+          const b = el("button", null, tier.label);
+          if (mode === `tier${index}`) b.classList.add("active");
+          b.addEventListener("click", () => { mode = `tier${index}`; renderSeg(); renderModelRows(); });
+          seg.append(b);
+        });
+      };
+      renderSeg();
+      mhead.append(seg);
+      msec.append(mhead);
+      const rowsHost = el("div");
+      let expanded = false;
+      const renderModelRows = () => {
+        titleSpan.textContent = "模型用量" + (mode === "month" ? ` · ${(usage.monthly.find((m) => m.key === selectedKey) || {}).label || ""}` : "");
+        rowsHost.innerHTML = "";
+        let rows;
+        if (mode === "month") {
+          const period = models.months.find((m) => m.id === selectedKey);
+          rows = period ? period.rows.slice(0, expanded ? period.rows.length : 3) : [];
+        } else {
+          const index = Number(mode.slice(4));
+          const tier = models.tiers[index];
+          rows = tier ? tier.rows.slice(0, expanded ? tier.rows.length : 3) : [];
+        }
+        for (const row of rows) {
+          const line = el("div", "model-row");
+          const sw = el("span", "sw"); sw.style.background = row.colorHex;
+          line.append(sw, el("span", "name", row.name));
+          const track = el("div", "track");
+          const fill = el("div"); fill.style.width = `${Math.round(row.share * 100)}%`; fill.style.background = row.colorHex;
+          track.append(fill); line.append(track);
+          line.append(el("span", "pct", row.pctText));
+          line.append(el("span", "tot", row.totalText));
+          rowsHost.append(line);
+        }
+        if (!rows.length) rowsHost.append(el("div", "models-more", "暂无模型数据"));
+        const total = mode === "month"
+          ? (models.months.find((m) => m.id === selectedKey) || { rows: [] }).rows.length
+          : models.tiers[Number(mode.slice(4))].rows.length;
+        if (total > 3) {
+          const more = el("div", "models-more", expanded ? "收起" : `展开全部 ${total} 项`);
+          more.addEventListener("click", () => { expanded = !expanded; renderModelRows(); });
+          rowsHost.append(more);
+        }
+      };
+      renderModelRows();
+      msec.append(rowsHost);
+      card.append(msec);
+    }
   }
 
   // 热力图: 标题 + 网格 + 日期轴 + 图例
@@ -371,114 +367,6 @@ function render(panel) {
   if (panel.hourly) stack.append(hourlyCard(panel.hourly, panel.usage));
 }
 
-/* 视图切换 */
-function switchView(name) {
-  for (const view of ["dashboard", "credentials", "settings"]) {
-    document.getElementById(`view-${view}`).classList.toggle("hidden", view !== name);
-  }
-  for (const tab of document.querySelectorAll("#tabs .tab")) {
-    tab.classList.toggle("active", tab.dataset.view === name);
-  }
-  if (name === "credentials") loadCredentialsView();
-  if (name === "settings") loadSettingsView();
-}
-for (const tab of document.querySelectorAll("#tabs .tab")) {
-  tab.addEventListener("click", () => switchView(tab.dataset.view));
-}
-
-/* 折叠卡片头交互 (mac CollapsibleCardHeader: 点击整行收起/展开) */
-function makeCollapsible(card, miniBuilder) {
-  const head = card.querySelector(".card-head");
-  let collapsed = false;
-  const bodyNodes = [...card.childNodes].filter((n) => n !== head);
-  head.addEventListener("click", () => {
-    collapsed = !collapsed;
-    head.classList.toggle("collapsed", collapsed);
-    for (const node of bodyNodes) {
-      node.classList.toggle("hidden", collapsed);
-    }
-    // 收起态: 头部行尾插迷你摘要 (usage/subscription 各自提供)
-    let mini = head.querySelector(".card-mini");
-    if (collapsed && miniBuilder) {
-      mini = miniBuilder();
-      mini.className = "card-mini";
-      mini.style.cssText = "flex:1;display:flex;align-items:center;gap:15px;min-width:0;";
-      head.insertBefore(mini, head.querySelector(".chev"));
-    } else if (mini) {
-      mini.remove();
-    }
-  });
-}
-
-/* 凭证视图 */
-const CREDENTIAL_FIELD_LABELS = {
-  kimiQuotaAccounts: "Kimi For Coding", deepseekQuotaAccounts: "DeepSeek",
-  volcengineQuotaAccounts: "火山引擎", zhipuQuotaAccounts: "智谱",
-  claudeOAuth: "Claude OAuth", claudeQuotaAccounts: "Claude 配额",
-  grokOAuth: "Grok OAuth", grokQuotaAccounts: "Grok 配额",
-  opencodeGoQuotaAccounts: "OpenCode GO", codexQuotaAccounts: "Codex 配额",
-  stepfunQuotaAccounts: "StepFun", providerEnv: "Provider 环境", providerMeta: "Provider 元信息",
-};
-async function loadCredentialsView() {
-  const [allowlist, configured] = await Promise.all([
-    invoke("credential_allowlist"), invoke("get_credential_fields"),
-  ]);
-  const host = document.getElementById("credential-fields");
-  host.innerHTML = "";
-  for (const field of allowlist) {
-    const configuredNow = configured.includes(field);
-    const block = document.createElement("div");
-    block.className = "credential-field";
-    const label = document.createElement("label");
-    label.textContent = `${CREDENTIAL_FIELD_LABELS[field] ?? field}${configuredNow ? " (已配置, 留空保留)" : ""}`;
-    const textarea = document.createElement("textarea");
-    textarea.dataset.field = field;
-    textarea.rows = 2;
-    textarea.placeholder = field.endsWith("Accounts") ? '[{"accountID": "...", "apiKey": "..."}]' : "{...}";
-    block.append(label, textarea);
-    host.append(block);
-  }
-}
-document.getElementById("credentials-save").addEventListener("click", async () => {
-  const status = document.getElementById("credentials-status");
-  try {
-    const payloads = {};
-    for (const textarea of document.querySelectorAll("#credential-fields textarea")) {
-      const field = textarea.dataset.field;
-      const raw = textarea.value.trim();
-      if (!raw) continue;
-      payloads[field] = raw === "null" ? null : JSON.parse(raw);
-    }
-    await invoke("save_credentials_command", { payloads });
-    status.textContent = "已保存并触发刷新";
-    await loadCredentialsView();
-  } catch (error) {
-    status.textContent = `失败: ${error}`;
-  }
-});
-
-/* 设置视图 */
-async function loadSettingsView() {
-  const settings = await invoke("get_settings");
-  document.getElementById("setting-interval").value = Math.round(settings.refreshIntervalSecs / 60);
-  document.getElementById("setting-notifications").checked = settings.notificationsEnabled;
-  document.getElementById("setting-hotkey").value = settings.hotkey;
-}
-document.getElementById("settings-save").addEventListener("click", async () => {
-  const status = document.getElementById("settings-status");
-  try {
-    const settings = await invoke("get_settings");
-    settings.refreshIntervalSecs =
-      Math.max(1, Number(document.getElementById("setting-interval").value) || 30) * 60;
-    settings.notificationsEnabled = document.getElementById("setting-notifications").checked;
-    settings.hotkey = document.getElementById("setting-hotkey").value.trim();
-    await invoke("save_settings_command", { settings });
-    status.textContent = "已保存";
-  } catch (error) {
-    status.textContent = `失败: ${error}`;
-  }
-});
-
 /* 底栏动作 (mac actionFooter: 刷新/设置/退出) */
 async function refresh() {
   const button = document.getElementById("refresh");
@@ -495,16 +383,11 @@ document.getElementById("refresh").addEventListener("click", async () => {
   await refresh();
   await invoke("refresh_now");
 });
-document.getElementById("foot-settings").addEventListener("click", () =>
-  switchView(document.getElementById("view-settings").classList.contains("hidden") ? "settings" : "dashboard"));
+document.getElementById("foot-settings").addEventListener("click", () => invoke("open_settings"));
 document.getElementById("foot-quit").addEventListener("click", () => invoke("quit_app"));
 
-/* 面板可见性门控 (mac dashboardPanelVisible 同语义) */
-document.addEventListener("visibilitychange", () => {
-  invoke("set_panel_visible", { visible: !document.hidden }).catch(() => {});
-});
-
-/* 启动: 首次渲染 + 订阅调度器广播 */
+/* 启动: 首次渲染 + 订阅调度器广播
+   (采集常驻由 Rust 调度器承担, 打开面板即手动唤醒, C007) */
 (async function init() {
   await refresh();
   await listen("dashboard-updated", (event) => render(event.payload));

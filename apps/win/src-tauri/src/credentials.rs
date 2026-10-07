@@ -159,13 +159,12 @@ mod tests {
     use serde_json::json;
 
     fn temp_root() -> PathBuf {
+        // 同名纳秒在并行测试线程下会碰撞 (见 tests/ 同款修复), 原子序号保证唯一。
+        static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let root = std::env::temp_dir().join(format!(
             "bruce-win-credentials-test-{}-{}",
             std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos()
+            SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
         fs::create_dir_all(&root).unwrap();
         root

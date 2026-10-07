@@ -68,6 +68,11 @@ struct RefreshErrorClassifier: Sendable {
     /// 分类 Bridge 响应中的诊断, 返回首个匹配的分类.
     func classifyBridgeError(_ response: BridgeResponse) -> SnapshotErrorCategory {
         for diagnostic in response.diagnostics {
+            // 采集链路诊断 category 值域不含 "rateLimit": 真实限流信号是
+            // provider 层 code=PROVIDER_RATE_LIMIT (HTTP 429), 先按 code 判定 (C006).
+            if diagnostic.code == "PROVIDER_RATE_LIMIT" {
+                return .rateLimit
+            }
             switch diagnostic.category {
             case "auth": return .auth
             case "network": return .network

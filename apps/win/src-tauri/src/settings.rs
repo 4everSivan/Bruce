@@ -56,7 +56,12 @@ pub fn load_settings(root: &Path) -> AppSettings {
         return AppSettings::default();
     };
     match serde_json::from_str::<AppSettings>(&raw) {
-        Ok(settings) => settings,
+        Ok(mut settings) => {
+            // 纵深防御: validate 只拦保存入口, 手改文件可携带越界间隔
+            // (如 0 会造成零间隔 busy-loop 采集), 加载侧统一钳制 (C007)。
+            settings.refresh_interval_secs = settings.refresh_interval_secs.clamp(60, 86_400);
+            settings
+        }
         Err(error) => {
             eprintln!("settings.json 解析失败, 使用默认值: {error}");
             AppSettings::default()

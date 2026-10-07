@@ -1,0 +1,77 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C006",
+  "title": "修复限流退避分类双端死代码：诊断限流判定改按 code 并防御退避输入下溢",
+  "type": "Fix",
+  "status": "in_progress",
+  "branch": "main",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src-tauri + apps/macos BruceAppCore",
+    "component": "scheduler.rs classify_rate_limited / compute_backoff; RefreshBackoffPolicy.swift RefreshErrorClassifier",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "对抗性审查 (2026-10-07) 枚举全仓 Diagnostic::new 调用点确认: 采集链路诊断 category 值域仅 {protocol, security, provider, local, collector, runtime}, 不存在 'rateLimit' 值; 真实限流信号为 provider 诊断的 code=PROVIDER_RATE_LIMIT (HTTP 429) 或 codex service 的 failureKind 字段。Windows 侧 classify_rate_limited 按 category=='rateLimit' 匹配永远为 false, mac 侧 RefreshErrorClassifier.classifyBridgeError 同一匹配同样落空 (回退 .collector) — 双端共享同一失效路径, 设计 05/T03-6 承诺的『限流固定 300s 退避』从未生效。且 Windows 测试 scheduler_collector_coverage.rs:34 自造了真实链路不存在的 Diagnostic(code='QUOTA_RATE_LIMITED', category='rateLimit') fixture, 把死行为锁绿。另 compute_backoff(0, false) 在 u32 下溢时 debug 构建 panic (mac 等价输入为 15s 指数, 语义亦不同)。",
+  "changes": [
+    {
+      "scope": "apps/win/src-tauri/src/scheduler.rs classify_rate_limited",
+      "before": "仅按 diagnostic.category == \"rateLimit\" 判定 (该 category 值全仓无产生点, 恒 false)",
+      "after": "按 diagnostic.code == \"PROVIDER_RATE_LIMIT\" 判定, 兼容保留 category == \"rateLimit\" 分支 (上游若未来补齐该分类即自然生效)",
+      "impact": "provider HTTP 429 限流真实进入固定 300s 退避; 其余失败维持指数退避"
+    },
+    {
+      "scope": "apps/win/src-tauri/src/scheduler.rs compute_backoff",
+      "before": "retry_count=0 时 retry_count-1 u32 下溢 (debug panic)",
+      "after": "移位指数取 retry_count.max(1) 防御, 0 与 1 同为首个重试档",
+      "impact": "公开 API 对 0 输入安全, 与 mac 首档 30s 基线对齐"
+    },
+    {
+      "scope": "apps/macos BruceAppCore RefreshBackoffPolicy.swift classifyBridgeError",
+      "before": "仅按 diagnostic.category switch, 'provider' 无映射分支, 限流诊断归入默认 .collector",
+      "after": "循环内先按 diagnostic.code == \"PROVIDER_RATE_LIMIT\" 直接返回 .rateLimit, 再走原 category 映射",
+      "impact": "mac 侧限流退避同步恢复固定 300s 语义, 与 Windows 修正后口径一致"
+    },
+    {
+      "scope": "双侧测试",
+      "before": "Windows 测试自造 category='rateLimit' fixture 自证清白; mac 分类器无任何测试; 退避 0 输入无防御测试",
+      "after": "Windows 测试改用真实形态 (code=PROVIDER_RATE_LIMIT/category=provider) 断言 true, 非限流 code 断言 false, 补 category 兼容例与 compute_backoff(0) 防御例; mac RefreshSchedulerHarness 新增分类器测试 (真实形态/非限流/category 直配三例)",
+      "impact": "测试锁定真实采集链路行为, 双端口径由测试对齐"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": false,
+    "rule_diff": null
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "Windows 限流分类命中真实诊断",
+        "true_if": "code=PROVIDER_RATE_LIMIT (category=provider) 的 BridgeResponse 判定为限流; 其他 provider code 判定为非限流",
+        "false_if": "真实形态限流诊断仍走指数退避",
+        "evidence": "2026-10-07 合并审查: classify_rate_limited 按 code=PROVIDER_RATE_LIMIT 判定 (兼容保留), compute_backoff max(1) 下溢防御就位, mac classifyBridgeError 同步按 code, 测试改用真实诊断形态。修复完整",
+        "result": null
+      },
+      {
+        "item": "mac 分类器同步修正且 Harness 全绿",
+        "true_if": "RefreshSchedulerHarness 含新增分类器用例并通过 (计数 82)",
+        "false_if": "mac 侧编译失败或任一用例红",
+        "evidence": "2026-10-07 合并审查: classify_rate_limited 按 code=PROVIDER_RATE_LIMIT 判定 (兼容保留), compute_backoff max(1) 下溢防御就位, mac classifyBridgeError 同步按 code, 测试改用真实诊断形态。修复完整",
+        "result": null
+      },
+      {
+        "item": "退避输入防御",
+        "true_if": "compute_backoff(0, false) 不 panic 且落点与 retry=1 同档",
+        "false_if": "debug 构建 panic",
+        "evidence": "2026-10-07 合并审查: classify_rate_limited 按 code=PROVIDER_RATE_LIMIT 判定 (兼容保留), compute_backoff max(1) 下溢防御就位, mac classifyBridgeError 同步按 code, 测试改用真实诊断形态。修复完整",
+        "result": null
+      }
+    ]
+  }
+}

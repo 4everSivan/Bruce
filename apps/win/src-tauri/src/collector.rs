@@ -14,19 +14,29 @@ use crate::credentials::CredentialPayloads;
 const LOCAL_CAPABILITIES: [&str; 2] = ["localSessions", "localPricing"];
 const EXTERNAL_QUOTAS_CAPABILITY: &str = "externalQuotas";
 
-/// 构造一次采集请求 (窗口 14 日, 本地时区); 非空凭证启用出站额度查询。
+/// 构造一次采集请求 (窗口 182 天对齐 mac CollectorRunInput 半年口径: 14 日柱状图
+/// 由视图模型层 suffix 截取, 全量 daily 供热力图与按月聚合); 非空凭证启用出站额度。
 pub fn build_local_request(
     now: chrono::DateTime<Local>,
     credentials: &CredentialPayloads,
 ) -> BridgeRequest {
     let timezone = iana_time_zone::get_timezone().unwrap_or_else(|_| "UTC".to_owned());
     let mut context = Map::new();
+    // mac 事实源 (CollectorRunInput.swift:379) 显式携带 home, 采集端会话路径解析依赖它;
+    // 非 UTF-8 路径下省略该字段 (采集端回落默认 home 解析)。
+    let home = std::env::var_os("USERPROFILE")
+        .or_else(|| std::env::var_os("HOME"))
+        .and_then(|value| value.into_string().ok())
+        .map(Value::from);
+    if let Some(home) = home {
+        context.insert("home".to_owned(), home);
+    }
     context.insert(
         "now".to_owned(),
         Value::String(now.to_rfc3339_opts(SecondsFormat::Secs, true)),
     );
     context.insert("timezone".to_owned(), Value::String(timezone));
-    context.insert("days".to_owned(), Value::from(14));
+    context.insert("days".to_owned(), Value::from(182));
     let mut capabilities: Vec<String> = LOCAL_CAPABILITIES
         .iter()
         .map(|item| (*item).to_owned())

@@ -1,0 +1,93 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C007",
+  "title": "修正面板隐藏暂停采集偏离 mac 常驻语义：告警不随面板关闭停摆，并加设置加载区间钳制",
+  "type": "Fix",
+  "status": "in_progress",
+  "branch": "main",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src-tauri + apps/win/src",
+    "component": "scheduler.rs 调度主循环 / lib.rs 可见性门控与 IPC / settings.rs 加载钳制 / app.js visibilitychange",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "对抗性审查 (2026-10-07) 对照 mac 事实源确认: mac RefreshScheduler 无可见性门控, 后台始终按周期采集 (配额告警 Toast 依赖于此; dashboardPanelVisible 仅门控渲染动画)。Windows 侧 scheduler.rs 把『隐藏』实现为完全暂停采集 (HIDDEN_POLL_SECS 只轮询可见性不采集), 面板隐藏期间配额告警永远停摆, 用户必须开着面板才有人盯; 且实现本身不一致 — panel_visible 初始 true (从未打开面板=告警可达), 失焦隐藏置 false (告警停摆), 托盘左键 toggle 隐藏路径不置 false, 行为取决于关闭路径, 兜底依赖 WebView visibilitychange 在 WebView2 hide() 下的未验证行为。另: settings.json 加载不校验区间, 手改 refreshIntervalSecs=0 会造成零间隔 busy-loop 采集 (validate 仅拦截保存入口)。",
+  "changes": [
+    {
+      "scope": "apps/win/src-tauri/src/scheduler.rs 调度主循环",
+      "before": "面板可见等整周期、隐藏时 60s 轮询可见性且不采集 (隐藏即停采, 告警停摆)",
+      "after": "对齐 mac 常驻语义: 无论面板可见性, 统一按刷新周期采集 + 手动唤醒即时采集; 删除 HIDDEN_POLL_SECS 与 panel_visible 消费",
+      "impact": "面板隐藏期间配额告警照常评估与投递; 高开销渲染动画由 WebView 不可见自然暂停"
+    },
+    {
+      "scope": "apps/win/src-tauri/src/lib.rs",
+      "before": "panel_visible: AtomicBool 三处写入 (初始 true/Focused true/Focused false) + set_panel_visible IPC + 前端 visibilitychange 上报, 多通道语义混乱; 面板打开时的立即刷新依赖前端上报通道",
+      "after": "删除 panel_visible 字段与 set_panel_visible IPC; Focused(false) 仅保留位置记忆与隐藏; toggle_dashboard 显示分支直接 request_manual_refresh (打开面板立即出新数据)",
+      "impact": "门控语义单一化: 采集恒周期 + 打开即刷新; 消除按关闭路径而异的行为分裂"
+    },
+    {
+      "scope": "apps/win/src/app.js",
+      "before": "visibilitychange 监听上报 set_panel_visible (依赖 WebView2 未验证行为)",
+      "after": "删除该监听 (Rust 侧 show 路径已直接触发手动刷新)",
+      "impact": "前端不再参与采集门控"
+    },
+    {
+      "scope": "apps/win/src-tauri/src/settings.rs load_settings",
+      "before": "损坏/缺失回落默认值, 但存在且越界的 refreshIntervalSecs (如 0/1) 原样透传, 调度器仅截上限",
+      "after": "加载后 clamp 到 [60, 86400] (保存入口 validate 保留, 加载侧纵深防御)",
+      "impact": "手改配置文件不再可能触发零间隔 busy-loop 采集"
+    },
+    {
+      "scope": "docs/devel/design/05 + T03 卡口径回写",
+      "before": "T03-6 表述『面板隐藏时暂停高开销任务 (动画门控对齐 dashboardPanelVisible)』被实现放大为隐藏暂停采集",
+      "after": "设计 05 §6.0 规则演进登记 C007: 面板隐藏不暂停采集 (对齐 mac 通知常驻语义), 隐藏态开销控制由前端渲染自然暂停承载; T03-6 capability 与验收 check 措辞同步修正",
+      "impact": "设计基线与实现回到 mac 行为模型, 后续不再以错误口径对齐"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "面板隐藏时暂停采集 (开销门控, 对齐 dashboardPanelVisible 语义)",
+      "after": "采集不随面板可见性门控 (对齐 mac: 通知依赖后台常驻采集); 隐藏态开销控制仅作用于渲染层"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "隐藏态采集常驻",
+        "true_if": "调度主循环不再存在可见性分支, 周期采集与手动唤醒对任意面板状态生效",
+        "false_if": "任一路径下周期采集被暂停或延迟至面板可见",
+        "evidence": "2026-10-07 合并审查: 调度循环无可见性分支 (常驻采集), lib.rs panel_visible/set_panel_visible 全部移除 (含与窗口化交叠处, 本轮按 C007 决策收尾删除残留命令), app.js 无 visibilitychange 上报, load_settings clamp [60,86400] 就位, 设计 05 + T03 口径已回写。修复完整",
+        "result": null
+      },
+      {
+        "item": "门控通道单一化",
+        "true_if": "panel_visible/set_panel_visible/visibilitychange 上报全量移除, 打开面板由 Rust show 路径触发手动刷新",
+        "false_if": "残留任何可见性写入通道",
+        "evidence": "2026-10-07 合并审查: 调度循环无可见性分支 (常驻采集), lib.rs panel_visible/set_panel_visible 全部移除 (含与窗口化交叠处, 本轮按 C007 决策收尾删除残留命令), app.js 无 visibilitychange 上报, load_settings clamp [60,86400] 就位, 设计 05 + T03 口径已回写。修复完整",
+        "result": null
+      },
+      {
+        "item": "设置加载钳制",
+        "true_if": "refreshIntervalSecs=0/1/100000 的 settings.json 加载后分别钳制为 60/60/86400",
+        "false_if": "越界值透传至调度器",
+        "evidence": "2026-10-07 合并审查: 调度循环无可见性分支 (常驻采集), lib.rs panel_visible/set_panel_visible 全部移除 (含与窗口化交叠处, 本轮按 C007 决策收尾删除残留命令), app.js 无 visibilitychange 上报, load_settings clamp [60,86400] 就位, 设计 05 + T03 口径已回写。修复完整",
+        "result": null
+      },
+      {
+        "item": "Rust 侧零回归",
+        "true_if": "src-tauri fmt/clippy/test 全绿 (含新增钳制测试)",
+        "false_if": "任一编译、clippy 或测试失败",
+        "evidence": "2026-10-07 合并审查: 调度循环无可见性分支 (常驻采集), lib.rs panel_visible/set_panel_visible 全部移除 (含与窗口化交叠处, 本轮按 C007 决策收尾删除残留命令), app.js 无 visibilitychange 上报, load_settings clamp [60,86400] 就位, 设计 05 + T03 口径已回写。修复完整",
+        "result": null
+      }
+    ]
+  }
+}

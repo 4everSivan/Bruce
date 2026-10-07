@@ -49,7 +49,7 @@
     {
       "id": "T03-6",
       "title": "刷新调度对齐",
-      "capability": "refresh_scheduler 完整对齐 mac RefreshScheduler/RefreshBackoffPolicy 语义：指数退避、前台/手动触发、失败静默降级；面板隐藏时暂停高开销任务",
+      "capability": "refresh_scheduler 完整对齐 mac RefreshScheduler/RefreshBackoffPolicy 语义：指数退避、手动触发、失败静默降级；采集周期不随面板可见性门控 (C007 修正: 对齐 mac 常驻采集, 配额告警依赖后台), 隐藏态仅由渲染层自然暂停承载",
       "done": true
     }
   ],
@@ -87,8 +87,8 @@
       },
       {
         "item": "隐藏态资源纪律",
-        "true_if": "面板隐藏时动画与轮询任务暂停（CPU 占用与 mac 同量级）",
-        "false_if": "隐藏面板后台空转",
+        "true_if": "面板隐藏时渲染动画自然暂停、无高频轮询空转（CPU 占用与 mac 同量级）；周期采集保持常驻（对齐 mac 通知语义，C007）",
+        "false_if": "隐藏面板后台空转，或隐藏期间周期采集/告警评估被暂停",
         "evidence": "",
         "result": null
       }
