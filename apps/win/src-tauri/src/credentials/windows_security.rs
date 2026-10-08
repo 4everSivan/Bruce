@@ -228,14 +228,17 @@ pub(super) fn assert_current_sid_only(path: &Path) -> Result<(), String> {
         return Err("读取访问条目失败".to_owned());
     }
     // SAFETY: our own DACL only ever holds access-allowed ACEs.
-    let allowed = unsafe { &*ace.cast::<ACCESS_ALLOWED_ACE>() };
+    let allowed = unsafe { &mut *ace.cast::<ACCESS_ALLOWED_ACE>() };
     if allowed.Header.AceType != 0 {
         return Err("访问条目不是允许类型".to_owned());
     }
     let mut string_sid = ptr::null_mut();
     // SAFETY: SidStart is the inline SID of the single allowed ACE.
     if unsafe {
-        ConvertSidToStringSidW(ptr::addr_of!(allowed.SidStart).cast_mut(), &mut string_sid)
+        ConvertSidToStringSidW(
+            ptr::addr_of_mut!(allowed.SidStart).cast::<c_void>(),
+            &mut string_sid,
+        )
     } == 0
     {
         return Err("读取访问条目身份失败".to_owned());
