@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-index.v1.json",
   "version": "1.0",
-  "updated_at": "2026-10-07",
+  "updated_at": "2026-10-08",
   "topics": {
     "SystemOverview": {
       "design_doc": "docs/devel/design/00-系统总体设计.md",
@@ -23,7 +23,8 @@
         "C005",
         "C006",
         "C007",
-        "C008"
+        "C008",
+        "C009"
       ]
     }
   },
@@ -99,6 +100,15 @@
       "topic": "WindowsCompat",
       "version": "0.10.0+",
       "file": "docs/devel/change/C008.json"
+    },
+    "C009": {
+      "title": "修复 Windows 仪表盘、设置与运行生命周期偏离 mac 基线",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "codex/fix-c009-windows-parity",
+      "topic": "WindowsCompat",
+      "version": "0.10.0+",
+      "file": "docs/devel/change/C009.json"
     }
   }
 }

@@ -1,5 +1,5 @@
 //! 凭证存储覆盖 —— 白名单、原子写、合并语义、平台数据根 (无 Windows 真机,
-//! 测试即验收; Windows 专属分支以 cfg(windows) 在 windows-latest CI 执行)。
+//! 自动化证据不代替 Windows 真机验收; 专属分支以 cfg(windows) 在 CI 执行)。
 
 use std::collections::BTreeMap;
 use std::ffi::OsStr;
@@ -28,11 +28,11 @@ fn sample_payloads() -> CredentialPayloads {
     let mut payloads = CredentialPayloads::new();
     payloads.insert(
         "kimiQuotaAccounts".to_owned(),
-        json!([{ "accountID": "a1", "apiKey": "sk-kimi-test" }]),
+        json!({"a1":{"api_key":"sk-kimi-test"}}),
     );
     payloads.insert(
         "deepseekQuotaAccounts".to_owned(),
-        json!([{ "accountID": "d1", "apiKey": "sk-ds-test" }]),
+        json!({"d1":{"api_key":"sk-ds-test"}}),
     );
     payloads
 }
@@ -74,12 +74,25 @@ fn save_rejects_every_unknown_field() {
 }
 
 #[test]
+fn oversized_credential_write_is_rejected_without_losing_existing_accounts() {
+    let root = temp_root();
+    let original = sample_payloads();
+    save_credentials(&root, &original).unwrap();
+    let oversized = BTreeMap::from([(
+        "claudeOAuth".to_owned(),
+        json!({"access_token": "x".repeat(4 * 1024 * 1024)}),
+    )]);
+    assert!(save_credentials(&root, &oversized).is_err());
+    assert_eq!(load_credentials(&root), original);
+}
+
+#[test]
 fn load_silently_drops_unknown_fields() {
     let root = temp_root();
     let path = root.join("credentials.json");
     fs::write(
         &path,
-        r#"{"legacyField":{"a":1},"codexQuotaAccounts":[{"accountID":"c1"}]}"#,
+        r#"{"legacyField":{"a":1},"codexQuotaAccounts":{"c1":{"display_name":"C1","access_token":"fixture-token"}}}"#,
     )
     .unwrap();
     let loaded = load_credentials(&root);
@@ -106,7 +119,7 @@ fn merge_semantics_overwrite_delete_and_keep() {
     // 覆盖。
     patch.insert(
         "kimiQuotaAccounts".to_owned(),
-        Some(json!([{ "accountID": "a2", "apiKey": "sk-new" }])),
+        Some(json!({"a2":{"api_key":"sk-new"}})),
     );
     // 删除。
     patch.insert("deepseekQuotaAccounts".to_owned(), None);
@@ -114,14 +127,14 @@ fn merge_semantics_overwrite_delete_and_keep() {
     let merged = merge_credentials(&existing, &patch).unwrap();
     assert_eq!(
         merged["kimiQuotaAccounts"],
-        json!([{ "accountID": "a2", "apiKey": "sk-new" }])
+        json!({"a2":{"api_key":"sk-new"}})
     );
     assert!(!merged.contains_key("deepseekQuotaAccounts"));
 
     let mut patch = BTreeMap::new();
     patch.insert(
         "codexQuotaAccounts".to_owned(),
-        Some(json!([{ "accountID": "c1" }])),
+        Some(json!({"c1":{"display_name":"C1","access_token":"fixture-token"}})),
     );
     let merged = merge_credentials(&merged, &patch).unwrap();
     assert_eq!(merged.len(), 2);
@@ -156,11 +169,11 @@ fn unicode_and_large_payloads_round_trip() {
     let mut payloads = CredentialPayloads::new();
     payloads.insert(
         "stepfunQuotaAccounts".to_owned(),
-        json!([{ "accountID": "国际站账号", "note": "含中文/emoji 🎉/换行\n说明" }]),
+        json!({"国际站账号":{"display_name":"含中文/emoji 🎉/换行\n说明","token":"fixture-token","site":"global"}}),
     );
     payloads.insert(
         "providerEnv".to_owned(),
-        json!({ "batch": (0..200).map(|index| json!({"k": index})).collect::<Vec<_>>() }),
+        json!({"largeText":"测试".repeat(200)}),
     );
     save_credentials(&root, &payloads).unwrap();
     assert_eq!(load_credentials(&root), payloads);
@@ -212,6 +225,15 @@ fn unix_data_root_ignores_appdata_hint() {
     let root = app_data_root_with(&home, Some(OsStr::new("/unused")));
     assert_eq!(
         root,
-        PathBuf::from("/Users/dev/Library/Application Support/Bruce")
+        PathBuf::from("/Users/dev/Library/Application Support/Bruce-Windows-Dev")
     );
+}
+
+#[test]
+fn account_arrays_are_rejected_instead_of_silently_ignored_by_collector() {
+    let patch = BTreeMap::from([(
+        "kimiQuotaAccounts".to_owned(),
+        Some(json!([{"accountID":"a1","apiKey":"fixture"}])),
+    )]);
+    assert!(merge_credentials(&CredentialPayloads::new(), &patch).is_err());
 }

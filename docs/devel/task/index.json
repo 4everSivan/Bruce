@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/task-index.v1.json",
   "phase": "Phase 2 - Windows 平台适配",
-  "updated_at": "2026-10-06",
+  "updated_at": "2026-10-08",
   "milestones": {
     "M1-Windows适配": {
       "title": "Windows 托盘常驻看板与采集链路全量对齐（Tauri 2 / 首版全量 / Rust 视图模型+fixture 对拍）",
@@ -46,7 +46,11 @@
         "T01"
       ],
       "file": "docs/devel/task/T02.json",
-      "branch_note": "2026-10-06 用户指示: Windows 适配全程不开特性分支, 直接在 main 开发"
+      "branch_note": "2026-10-06 用户指示: Windows 适配全程不开特性分支, 直接在 main 开发",
+      "followup": {
+        "change": "C009",
+        "branch": "codex/fix-c009-windows-parity"
+      }
     },
     "T03": {
       "title": "Windows 全功能对齐：订阅额度、通知、热键、设置中心与 Onboarding (P3)",
@@ -58,7 +62,11 @@
         "T02"
       ],
       "file": "docs/devel/task/T03.json",
-      "branch_note": "2026-10-06 用户指示: Windows 适配全程不开特性分支, 直接在 main 开发"
+      "branch_note": "2026-10-06 用户指示: Windows 适配全程不开特性分支, 直接在 main 开发",
+      "followup": {
+        "change": "C009",
+        "branch": "codex/fix-c009-windows-parity"
+      }
     },
     "T04": {
       "title": "Windows 打包发布线：安装包、签名与 Release 产物 (P4)",

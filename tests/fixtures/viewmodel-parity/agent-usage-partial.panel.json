@@ -1,0 +1,212 @@
+{
+  "diagnostics" : [
+    {
+      "agentId" : "kimi-code-cli",
+      "kind" : "agentIssue",
+      "note" : "fixture: 会话不可用",
+      "status" : "not_found"
+    },
+    {
+      "kind" : "serviceIssue",
+      "note" : "fixture: 临时不可用",
+      "serviceId" : "deepseek",
+      "status" : "error"
+    }
+  ],
+  "hourly" : {
+    "collapsedPeakText" : "峰值 20K",
+    "collapsedPoints" : [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      20000,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "rows" : [
+      {
+        "agentId" : "codex",
+        "color" : "purple",
+        "colorHex" : "#bf5af2",
+        "isExpandable" : true,
+        "models" : [
+          {
+            "name" : "gpt-5.4",
+            "share" : 1,
+            "total" : 20000,
+            "totalText" : "20K"
+          }
+        ],
+        "name" : "Codex CLI",
+        "points" : [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          20000,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "projects" : [
+
+        ],
+        "todayTotal" : 20000,
+        "todayTotalText" : "20K"
+      }
+    ]
+  },
+  "subscription" : {
+    "sections" : [
+      {
+        "accountCountText" : null,
+        "accounts" : [
+          {
+            "id" : "deepseek",
+            "lastSuccessText" : null,
+            "name" : "DeepSeek",
+            "note" : "fixture: 临时不可用",
+            "plan" : null,
+            "status" : "error",
+            "tag" : null,
+            "windows" : [
+
+            ]
+          }
+        ],
+        "balance" : null,
+        "collapsedWindow" : null,
+        "deepSeekMonthlyUsage" : null,
+        "extraText" : null,
+        "id" : "deepseek",
+        "name" : "DeepSeek",
+        "note" : "fixture: 临时不可用",
+        "plan" : null,
+        "status" : "error",
+        "windows" : [
+
+        ]
+      }
+    ],
+    "updatedText" : "最后更新 12:00"
+  },
+  "usage" : {
+    "breakdown" : [
+      {
+        "label" : "输入",
+        "value" : 12000,
+        "valueText" : "12K"
+      },
+      {
+        "label" : "输出",
+        "value" : 3000,
+        "valueText" : "3K"
+      },
+      {
+        "label" : "缓存读取",
+        "value" : 5000,
+        "valueText" : "5K"
+      },
+      {
+        "label" : "缓存命中率",
+        "value" : 0,
+        "valueText" : "29%"
+      }
+    ],
+    "collapsedWeekLevels" : [
+      1
+    ],
+    "costText" : "≈ ¥0.54",
+    "days" : [
+      {
+        "date" : "2026-07-28",
+        "segments" : [
+          {
+            "agentId" : "codex",
+            "color" : "purple",
+            "colorHex" : "#bf5af2",
+            "value" : 20000
+          }
+        ],
+        "total" : 20000,
+        "totalText" : "20K"
+      }
+    ],
+    "halfYear" : {
+      "averageText" : "20K",
+      "totalText" : "20K"
+    },
+    "heatmap" : [
+      {
+        "cells" : [
+          null,
+          {
+            "date" : "2026-07-28",
+            "level" : 1,
+            "total" : 20000
+          },
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      }
+    ],
+    "isLive" : true,
+    "legend" : [
+      {
+        "agentId" : "codex",
+        "color" : "purple",
+        "colorHex" : "#bf5af2",
+        "name" : "Codex CLI"
+      }
+    ],
+    "models" : null,
+    "monthly" : [
+      {
+        "isCurrent" : true,
+        "key" : "2026-07",
+        "label" : "7月",
+        "totalText" : "20K"
+      }
+    ],
+    "totalTokens" : 20000,
+    "totalTokensText" : "20K",
+    "usageTier" : "sage"
+  }
+}

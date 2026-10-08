@@ -1,59 +1,44 @@
-//! 后台刷新调度器 —— 对齐 mac `RefreshScheduler`/`RefreshBackoffPolicy` 语义:
-//! 默认 1800s 周期; 失败按分类退避 (限流固定 300s, 其余 30s×2^(n-1)+抖动,
-//! 上限 1800s, 超过 5 次回落整周期); 手动刷新立即唤醒并重置退避。
-//! 采集周期不随面板可见性门控 (对齐 mac 常驻语义, 配额告警依赖后台周期采集;
-//! 隐藏态开销控制由前端渲染层自然暂停承载, C007)。
+//! One collector channel, bounded manual wakeups and a single interruptible retry wait.
 
-use std::sync::mpsc::Receiver;
 use std::sync::{mpsc, Mutex};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use serde_json::Value;
-use tauri::{AppHandle, Emitter, Manager};
-use tauri_plugin_notification::NotificationExt;
+use crate::alerts::AlertDeliveryState;
+pub use crate::runtime_core::RefreshOutcome;
+use crate::runtime_core::SnapshotState;
 
-use crate::alerts::{over_threshold_entries, AlertDeliveryState, QuotaAlert};
-use crate::collector;
-use crate::credentials::{load_credentials, CredentialPayloads};
-use crate::paths::data_root;
-use crate::settings::{load_settings, AppSettings};
-
-const MAX_BACKOFF_RETRIES: u32 = 5;
 const BASE_BACKOFF_SECS: u64 = 30;
 const MAX_BACKOFF_SECS: u64 = 1800;
 const RATE_LIMIT_BACKOFF_SECS: u64 = 300;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RefreshOutcome {
-    Success,
-    /// 采集失败; rate_limited 标记限流类失败 (走固定退避)。
-    Failed {
-        rate_limited: bool,
-    },
-}
-
 #[derive(Default)]
 pub struct SchedulerControl {
-    manual_refresh: Mutex<Option<mpsc::Sender<()>>>,
+    manual_refresh: Mutex<Option<mpsc::SyncSender<()>>>,
     pub retry_count: Mutex<u32>,
     pub alert_state: Mutex<AlertDeliveryState>,
+    pub snapshot: Mutex<SnapshotState>,
 }
 
 impl SchedulerControl {
     pub fn new() -> Self {
-        Self {
-            manual_refresh: Mutex::new(None),
-            retry_count: Mutex::new(0),
-            alert_state: Mutex::new(AlertDeliveryState::default()),
-        }
+        Self::default()
     }
 
     pub fn request_manual_refresh(&self) {
         if let Ok(guard) = self.manual_refresh.lock() {
             if let Some(sender) = guard.as_ref() {
-                let _ = sender.send(());
+                // A burst during collection schedules one follow-up, without blocking IPC.
+                let _ = sender.try_send(());
             }
         }
+    }
+
+    pub fn connect_manual_refresh(&self) -> mpsc::Receiver<()> {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        if let Ok(mut guard) = self.manual_refresh.lock() {
+            *guard = Some(sender);
+        }
+        receiver
     }
 }
 
@@ -88,133 +73,223 @@ pub fn classify_rate_limited(response: &collector_domain::BridgeResponse) -> boo
     })
 }
 
-fn deliver_alerts(app: &AppHandle, settings: &AppSettings, artifact: &Value) {
-    if !settings.notifications_enabled {
-        return;
-    }
-    let alerts = over_threshold_entries(artifact);
-    let to_notify: Vec<QuotaAlert> = app
-        .state::<SchedulerControl>()
-        .alert_state
-        .lock()
-        .map(|mut state| state.filter_new_alerts(&alerts))
-        .unwrap_or_default();
-    for alert in to_notify {
-        let _ = app
-            .notification()
-            .builder()
-            .title("Bruce 配额预警")
-            .body(format!(
-                "{} {} 窗口已用 {:.0}%",
-                alert.service_name, alert.window_label, alert.used_percent
-            ))
-            .show();
-    }
-}
+#[cfg(feature = "desktop")]
+mod desktop {
+    use super::*;
+    use crate::alerts::{over_threshold_entries, QuotaAlert};
+    use crate::runtime_core::next_delay;
+    use crate::settings::{load_settings, AppSettings};
+    use crate::{collector, credentials, ledger, paths};
+    use serde_json::Value;
+    use std::time::Duration;
+    use tauri::{AppHandle, Emitter, Manager};
+    use tauri_plugin_notification::NotificationExt;
 
-/// 执行一轮采集: artifact → 视图模型 → 广播 `dashboard-updated` → 告警评估。
-pub fn run_refresh(app: &AppHandle, settings: &AppSettings) -> RefreshOutcome {
-    let root = data_root();
-    let credentials: CredentialPayloads = load_credentials(&root);
-    match collector::run_local_collection(credentials) {
-        Ok(response) => {
-            let rate_limited = classify_rate_limited(&response);
-            let typed = response
-                .artifact
-                .as_ref()
-                .map(|value| {
-                    serde_json::from_value::<collector_domain::AgentUsageArtifact>(value.clone())
-                })
-                .transpose()
-                .ok()
-                .flatten();
-            if let Some(artifact) = response.artifact.as_ref() {
-                deliver_alerts(app, settings, artifact);
-            }
-            if let Some(typed) = typed.as_ref() {
-                let mapper = bruce_win_viewmodel::usage::PanelViewModelMapper::default();
-                let now = chrono::Local::now().fixed_offset();
-                let panel = mapper.make(Some(typed), now);
-                if let Ok(panel_json) = serde_json::to_value(&panel) {
-                    let _ = app.emit("dashboard-updated", panel_json);
-                }
-            }
-            if response.status == collector_domain::ResponseStatus::Error {
-                RefreshOutcome::Failed { rate_limited }
-            } else {
-                RefreshOutcome::Success
+    fn deliver_alerts(app: &AppHandle, settings: &AppSettings, artifact: &Value, manual: bool) {
+        let alerts = over_threshold_entries(artifact);
+        // Observe crossings on manual refresh but deliver only automatic notifications.
+        let to_notify: Vec<QuotaAlert> = app
+            .state::<SchedulerControl>()
+            .alert_state
+            .lock()
+            .map(|mut state| {
+                state.alerts_for_refresh(&alerts, manual, settings.notifications_enabled)
+            })
+            .unwrap_or_default();
+        for alert in to_notify {
+            let _ = app
+                .notification()
+                .builder()
+                .title("Bruce 配额预警")
+                .body(format!(
+                    "{} {} 窗口已用 {:.0}%",
+                    alert.service_name, alert.window_label, alert.used_percent
+                ))
+                .show();
+        }
+    }
+
+    pub fn cached_panel(app: &AppHandle) -> Result<Value, String> {
+        let root = paths::data_root();
+        let settings = load_settings(&root);
+        let control = app.state::<SchedulerControl>();
+        let mut state = control
+            .snapshot
+            .lock()
+            .map_err(|_| "SNAPSHOT_LOCK_FAILED")?;
+        state.prune_credentials(&credentials::load_credentials(&root));
+        let mut panel = state.panel_json(
+            chrono::Local::now().fixed_offset(),
+            settings.usage_enabled,
+            &settings.enabled_providers,
+            &settings.provider_order,
+        );
+        if let Some(artifact) = state.artifact() {
+            if ledger::decorate_cached_panel(&root, artifact, &mut panel).is_err() {
+                panel["runtime"]["error"] = serde_json::json!("LEDGER_WRITE_FAILED");
             }
         }
-        Err(_) => RefreshOutcome::Failed {
-            rate_limited: false,
-        },
+        Ok(panel)
     }
-}
 
-/// 等待手动刷新信号或超时; true 表示手动唤醒。
-fn wait_for_manual_or(receiver: &Receiver<()>, timeout: Duration) -> bool {
-    receiver.recv_timeout(timeout).is_ok()
-}
-
-/// 后台调度主循环 (独立 std 线程; mpsc 手动唤醒桥接, 无需 tokio 计时)。
-pub fn spawn(app: AppHandle) {
-    let (sender, receiver) = mpsc::channel::<()>();
-    if let Ok(mut guard) = app.state::<SchedulerControl>().manual_refresh.lock() {
-        *guard = Some(sender);
-    }
-    std::thread::spawn(move || {
-        let app = app;
-        let mut retries: u32 = 0;
-        loop {
-            // 先采集后等待: 启动即出首屏数据; 可见面板周期到自动刷新。
-            let settings: AppSettings = load_settings(&data_root());
-            match run_refresh(&app, &settings) {
-                RefreshOutcome::Success => retries = 0,
-                RefreshOutcome::Failed { rate_limited } => {
-                    retries = retries.saturating_add(1);
-                    if let Ok(mut guard) = app.state::<SchedulerControl>().retry_count.lock() {
-                        *guard = retries;
-                    }
-                    if retries <= MAX_BACKOFF_RETRIES {
-                        let backoff = compute_backoff(retries, rate_limited);
-                        if wait_for_manual_or(&receiver, Duration::from_secs(backoff)) {
-                            retries = 0;
+    pub fn publish(app: &AppHandle) {
+        if let Ok(panel) = cached_panel(app) {
+            let phase = panel
+                .pointer("/runtime/phase")
+                .and_then(Value::as_str)
+                .unwrap_or("failed");
+            if let Some(tray) = app.tray_by_id("bruce") {
+                let tooltip = match phase {
+                    "refreshing" => "Bruce · 正在刷新",
+                    "fresh" => "Bruce · 数据已更新",
+                    "idle" => "Bruce · 等待采集",
+                    _ => "Bruce · 数据过期或采集异常",
+                };
+                let _ = tray.set_tooltip(Some(tooltip));
+                // Reuse the application icon, but visibly tint its indicator per runtime phase.
+                if let Some(source) = app.default_window_icon() {
+                    let mut pixels = source.rgba().to_vec();
+                    let width = source.width() as usize;
+                    let height = source.height() as usize;
+                    let color = match phase {
+                        "refreshing" => [60, 150, 255, 255],
+                        "fresh" | "idle" => [50, 200, 100, 255],
+                        _ => [255, 175, 30, 255],
+                    };
+                    let radius = (width.min(height) / 5).max(1);
+                    for y in height.saturating_sub(radius * 2)..height {
+                        for x in width.saturating_sub(radius * 2)..width {
+                            let at = (y * width + x) * 4;
+                            if at + 4 <= pixels.len() {
+                                pixels[at..at + 4].copy_from_slice(&color);
+                            }
                         }
                     }
-                    // 超过最大重试: 回落整周期, 由下方等待兜底。
+                    let _ = tray.set_icon(Some(tauri::image::Image::new_owned(
+                        pixels,
+                        source.width(),
+                        source.height(),
+                    )));
                 }
             }
-
-            // 等待下一轮: 整周期等待, 手动刷新随时唤醒并重置退避。
-            // 采集不随面板可见性门控 (对齐 mac 常驻语义, 告警依赖后台周期采集, C007);
-            // 加载侧已将间隔钳制到 [60, 86400], 此处上限截断为纵深防御。
-            let wait = Duration::from_secs(
-                load_settings(&data_root())
-                    .refresh_interval_secs
-                    .min(86_400),
-            );
-            if wait_for_manual_or(&receiver, wait) {
-                retries = 0;
-            }
-        }
-    });
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn backoff_matches_mac_policy() {
-        // 限流固定 300s。
-        assert_eq!(compute_backoff(1, true), 300);
-        // 指数: 30, 60, 120... 上限 1800; 抖动 < 上限/10 故只断言区间。
-        for (retry, expected_min) in [(1, 30), (2, 60), (3, 120), (7, 1800)] {
-            let value = compute_backoff(retry, false);
-            assert!(
-                value >= expected_min && value <= 1800,
-                "retry={retry} value={value}"
-            );
+            let _ = app.emit("dashboard-updated", panel);
         }
     }
+
+    pub fn run_refresh(app: &AppHandle, settings: &AppSettings) -> RefreshOutcome {
+        run_refresh_with_kind(app, settings, false)
+    }
+
+    fn run_refresh_with_kind(
+        app: &AppHandle,
+        settings: &AppSettings,
+        manual: bool,
+    ) -> RefreshOutcome {
+        let root = paths::data_root();
+        if let Ok(mut state) = app.state::<SchedulerControl>().snapshot.lock() {
+            state.begin_refresh();
+        }
+        publish(app);
+        let payloads = credentials::load_credentials(&root);
+        let mut first = true;
+        let result = credentials::collect_with_recovery(&root, payloads, |payloads| {
+            if first {
+                first = false;
+                collector::run_configured_collection(payloads, settings)
+            } else {
+                collector::run_codex_retry(payloads, settings)
+            }
+        });
+        let control = app.state::<SchedulerControl>();
+        let outcome = match result {
+            Ok(response) => {
+                let rate_limited = classify_rate_limited(&response);
+                let applied = control
+                    .snapshot
+                    .lock()
+                    .map(|mut state| {
+                        let result = state.apply_response(&response);
+                        if result.is_ok() {
+                            if let Some(artifact) = state.artifact() {
+                                let mut panel = serde_json::json!({});
+                                if ledger::decorate_panel(&root, artifact, &mut panel).is_err() {
+                                    state.error = Some("LEDGER_WRITE_FAILED".into());
+                                }
+                            }
+                        }
+                        if state.save(&root).is_err() {
+                            state.fail("SNAPSHOT_WRITE_FAILED");
+                        }
+                        result
+                    })
+                    .unwrap_or_else(|_| Err("SNAPSHOT_LOCK_FAILED".into()));
+                if applied.is_ok() {
+                    if let Ok(state) = control.snapshot.lock() {
+                        if let Some(artifact) = state.artifact() {
+                            deliver_alerts(app, settings, artifact, manual);
+                        }
+                    }
+                    RefreshOutcome::Success
+                } else {
+                    RefreshOutcome::Failed { rate_limited }
+                }
+            }
+            Err(_) => {
+                if let Ok(mut state) = control.snapshot.lock() {
+                    state.fail("COLLECTION_FAILED");
+                    let _ = state.save(&root);
+                }
+                RefreshOutcome::Failed {
+                    rate_limited: false,
+                }
+            }
+        };
+        publish(app);
+        outcome
+    }
+
+    pub fn spawn(app: AppHandle) {
+        let receiver = app.state::<SchedulerControl>().connect_manual_refresh();
+        std::thread::spawn(move || {
+            let mut retries = 0u32;
+            let mut manual = false;
+            let mut manual_reason = false;
+            loop {
+                // Collapse requests already queued before this run into its manual reason.
+                manual |= receiver.try_iter().next().is_some();
+                if manual {
+                    retries = 0;
+                }
+                manual_reason =
+                    crate::runtime_core::manual_alert_reason(manual, retries, manual_reason);
+                let settings = load_settings(&paths::data_root());
+                let outcome = run_refresh_with_kind(&app, &settings, manual_reason);
+                retries = match outcome {
+                    RefreshOutcome::Success => 0,
+                    RefreshOutcome::Failed { .. } => retries.saturating_add(1),
+                };
+                if let Ok(mut count) = app.state::<SchedulerControl>().retry_count.lock() {
+                    *count = retries;
+                }
+                let interval = load_settings(&paths::data_root())
+                    .refresh_interval_secs
+                    .clamp(60, 86_400);
+                let limited = matches!(outcome, RefreshOutcome::Failed { rate_limited: true });
+                let wait = next_delay(
+                    outcome,
+                    retries,
+                    interval,
+                    compute_backoff(retries, limited),
+                );
+                // Manual input replaces this one wait and begins the next run immediately.
+                manual = receiver.recv_timeout(Duration::from_secs(wait)).is_ok();
+                if retries > 5 {
+                    retries = 0;
+                }
+            }
+        });
+    }
 }
+
+#[cfg(feature = "desktop")]
+pub use desktop::{cached_panel, publish, run_refresh, spawn};

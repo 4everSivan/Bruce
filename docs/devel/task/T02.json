@@ -43,36 +43,42 @@
   ],
   "acceptance": {
     "result": null,
-    "run_id": "",
+    "run_id": "20261008-c009",
     "checks": [
       {
         "item": "双端对拍一致",
         "true_if": "全部共享 fixture 下 mac 与 Windows 视图模型输出逐字段一致，对拍测试双侧 CI 全绿",
         "false_if": "任一字段数值、排序或合并口径漂移",
-        "evidence": "",
+        "evidence": "C009 将对拍扩展为 valid/partial/empty 三个共享 artifact。mac PanelParityHarness 与 Rust fixture_parity 均执行，详见 local/c009/report.md；本分支尚未推送，双侧 CI 未执行。",
         "result": null
       },
       {
         "item": "托盘交互可用",
         "true_if": "托盘点击弹出面板、失焦自动隐藏、右键菜单可用、图标态随刷新/告警切换",
         "false_if": "面板无法弹出、失焦不隐藏或图标态不更新",
-        "evidence": "",
+        "evidence": "C009 仅对 dashboard 应用失焦隐藏/位置持久化；settings 关闭隐藏可重开。窗口策略测试及 mac 主机 Tauri all-targets 编译见 local/c009/report.md；Windows 原生托盘/焦点/图标验收未知。",
         "result": null
       },
       {
         "item": "架构边界与纯度",
-        "true_if": "collector 进程内调用；Windows 侧未修改 core/collector 数据契约；视图模型为纯函数层，无渲染副作用",
-        "false_if": "篡改共享 crate 契约、绕过视图模型直渲染，或视图模型耦合 UI 框架",
-        "evidence": "viewmodel 为独立纯 Rust crate (无 Tauri/WebView 依赖); src-tauri 经 collector_bridge::run_bytes 进程内直调 (与 mac stdio Bridge 同一请求契约, capabilities 限本地, 零子进程); collector-domain 仅新增 Serialize derive 与 serde(default) 反序列化宽容, 数据契约零变更",
+        "true_if": "collector 进程内调用；共享 artifact schema 不变，通用请求扩展有共享回归；视图模型为纯函数层，无渲染副作用",
+        "false_if": "引入 Windows 专有采集/出站契约、破坏共享 artifact，或视图模型耦合 UI 框架",
+        "evidence": "独立纯 Rust viewmodel；壳经 collector_bridge::run_bytes 进程内调用。C009 保持 artifact schema 不变，跨平台共享 Bridge 增补既有 pricingOverrides 的白名单与输入校验，并从 collector-domain 导出同源价格表；不是 Windows 专有出站契约。",
         "result": null
       },
       {
         "item": "mac 零回归",
         "true_if": "verify-local.sh（fmt/test/clippy/fixture/Swift Harness）全绿",
         "false_if": "mac 侧任一验证步骤失败",
-        "evidence": "run 37464686799 全 job 绿: verify-local.sh (fmt/test/clippy/fixture/12 Harness + PanelParityHarness 对拍) 通过",
+        "evidence": "2026-10-06 run 37464686799 为历史版本证据，不能覆盖 C009。当前共享 Rust/Swift 构建与 Harness 结果见 local/c009/report.md；执行了等价隔离命令，未直接运行 verify-local.sh。",
         "result": null
       }
     ]
+  },
+  "followup": {
+    "change": "C009",
+    "branch": "codex/fix-c009-windows-parity",
+    "evidence": "local/c009/report.md",
+    "note": "本次修复分支独立登记；原 branch/branch_note 保留 2026-10-06 实施历史。Win 真机与人工验收未完成。"
   }
 }

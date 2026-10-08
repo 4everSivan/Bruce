@@ -1,0 +1,159 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C009",
+  "title": "修复 Windows 仪表盘、设置与运行生命周期偏离 mac 基线",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "codex/fix-c009-windows-parity",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win",
+    "component": "dashboard/settings/runtime/credentials",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "2026-10-08 对抗性审计发现 F1–F10：已有局部测试通过但实际前端空白、配置入口无响应，调度、凭据和快照生命周期未落实现行首版全量基线。证据：local/audit-win-parity-20261008/report.md。承接 BG-003、BG-004、BG-005、BG-008、BG-009、BG-010、EN-002、EN-003；不含 BG-002、BG-006。",
+  "changes": [
+    {
+      "scope": "F1/F2/F9 前端交互",
+      "before": "卡片引用未定义函数，页签无绑定，月度模型回调越作用域",
+      "after": "生产 HTML/JS 在控制 DOM/IPC 中的 行为测试覆盖初始渲染、页签、保存、月份切换与一次刷新",
+      "impact": "Windows 壳与既有 T02/T03 范围；mac 生产逻辑不变"
+    },
+    {
+      "scope": "F3 窗口与热键",
+      "before": "全窗口失焦隐藏并覆盖面板坐标；热键错误仍返回成功",
+      "after": "只隐藏 dashboard；settings 关闭隐藏可重开；热键注册失败保留旧配置并返回错误",
+      "impact": "Windows 壳与既有 T02/T03 范围；mac 生产逻辑不变"
+    },
+    {
+      "scope": "F4/F5 调度",
+      "before": "退避后再等待正常周期、IPC 直接采集、手动请求无限排队",
+      "after": "单通道采集；缓存只读 IPC；有界合并手动请求；退避与正常周期择一",
+      "impact": "Windows 壳与既有 T02/T03 范围；mac 生产逻辑不变"
+    },
+    {
+      "scope": "F6 凭据存储",
+      "before": "ACL 尽力而为；空白 APPDATA；开发路径与 mac 共用",
+      "after": "实际 SID 的目录和文件 ACL 收权失败拒绝写入；隔离开发根目录并统一 trim",
+      "impact": "Windows 壳与既有 T02/T03 范围；mac 生产逻辑不变"
+    },
+    {
+      "scope": "F7 凭据生命周期",
+      "before": "返回的 credentialUpdates / challenges 被丢弃",
+      "after": "处理轮换与 Codex 授权失败恢复；失败留诊断；禁止回显或记录凭据",
+      "impact": "Windows 壳与既有 T02/T03 范围；mac 生产逻辑不变"
+    },
+    {
+      "scope": "F8 快照与诊断",
+      "before": "无持久快照、解码错误吞没、静态 SYS.OK",
+      "after": "保留上一有效快照及过期订阅；显式刷新状态和诊断；坏 artifact 不覆盖旧快照；Codex 缓存过滤复用共享哈希 ID，余额失败也保留旧值",
+      "impact": "Windows 壳与既有 T02/T03 范围；mac 生产逻辑不变"
+    },
+    {
+      "scope": "F10 配置闭环",
+      "before": "主题、排序、定价、Provider 启用/同意与账号详情脱节",
+      "after": "既有首版设计内补齐可用配置与采集请求门控、订阅账号展示、诊断与数据位置；DeepSeek 十进制账本记录余额差，首次/换凭据/换币种/月切换仅建基线",
+      "impact": "Windows 壳与既有 T02/T03 范围；mac 生产逻辑不变"
+    },
+    {
+      "scope": "EN003 对拍覆盖",
+      "before": "仅 valid 单一 golden",
+      "after": "增加 partial/empty 对拍与失败/重试等行为回归",
+      "impact": "Windows 壳与既有 T02/T03 范围；mac 生产逻辑不变"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "首版全量规则已定义，但未明确缓存读写单通道、凭据恢复与失败闭锁实现边界",
+      "after": "配置、状态与凭据生命周期按 C009 契约闭环；运行验收与静态/模拟证据分开"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "20261008-c009",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "F1/F2/F9 前端交互",
+        "true_if": "生产 HTML/JS 在控制 DOM/IPC 中覆盖初始渲染、页签、保存、月份切换与一次刷新，测试退出码 0；不替代原生 WebView2 验收",
+        "false_if": "卡片引用未定义函数，页签无绑定，月度模型回调越作用域，或相关测试失败/未执行",
+        "evidence": "local/c009/final-frontend.log；12 项生产 HTML/JS 行为回归，含维护状态对象、智谱默认地址与 DeepSeek 趋势；Exit 0。控制 DOM/IPC，不是原生浏览器。",
+        "result": true
+      },
+      {
+        "item": "F3 窗口与热键",
+        "true_if": "只隐藏 dashboard；settings 关闭隐藏可重开；热键注册失败保留旧配置并返回错误，相关测试退出码 0",
+        "false_if": "全窗口失焦隐藏并覆盖面板坐标；热键错误仍返回成功，或相关测试失败/未执行",
+        "evidence": "local/c009/final-shell-tests.log、final-desktop-check.log、final-desktop-tests.log：窗口标签策略与热键注册/持久化失败回退通过。Windows 原生焦点/关闭重开/热键冲突未执行。",
+        "result": null
+      },
+      {
+        "item": "F4/F5 调度",
+        "true_if": "单通道采集；缓存只读 IPC；有界合并手动请求；退避与正常周期择一，相关测试退出码 0",
+        "false_if": "退避后再等待正常周期、IPC 直接采集、手动请求无限排队，或相关测试失败/未执行",
+        "evidence": "local/c009/final-shell-tests.log、final-frontend.log：有界请求、退避择一、手动中断、手动来源跨重试、一次 refresh intent；源代码仅调度器调用采集，get_dashboard 读取缓存。Exit 0。",
+        "result": true
+      },
+      {
+        "item": "F6 凭据存储",
+        "true_if": "实际 SID 的目录和文件 ACL 收权失败拒绝写入；隔离开发根目录并统一 trim，相关测试退出码 0",
+        "false_if": "ACL 尽力而为；空白 APPDATA；开发路径与 mac 共用，或相关测试失败/未执行",
+        "evidence": "local/c009/final-shell-tests.log：权限失败在明文之前、原文件保留、隔离路径与最大文件大小回归通过；local/c009/win32-api-check.log：Win32 API 签名辅助检查 Exit 0（有未调用函数警告）。cfg(windows) 的实际 SID ACL 用例尚未执行。",
+        "result": null
+      },
+      {
+        "item": "F7 凭据生命周期",
+        "true_if": "处理轮换与 Codex 授权失败恢复；失败留诊断；禁止回显或记录凭据，相关测试退出码 0",
+        "false_if": "返回的 credentialUpdates / challenges 被丢弃，或相关测试失败/未执行",
+        "evidence": "local/c009/final-shell-tests.log：StepFun 回写、Codex 至多一次恢复/重试、invalid_grant、并发人工替换优先、拒绝跨账号身份、秘密不入诊断；collect/config 测试保证 refresh/id token 不进入共享 Bridge。Exit 0，传输为 mock。 自愈成功按最终 artifact 清理过期 provider 错误并重算状态；其他失败及本地用量保留。",
+        "result": true
+      },
+      {
+        "item": "F8 快照与诊断",
+        "true_if": "保留上一有效快照及过期订阅；显式刷新状态和诊断；坏 artifact 不覆盖旧快照，相关测试退出码 0",
+        "false_if": "无持久快照、解码错误吞没、静态 SYS.OK，或相关测试失败/未执行",
+        "evidence": "local/c009/final-shell-tests.log、final-frontend.log：坏 artifact/失败保留、stale 窗口和余额、快照恢复、删除账号不复活、Codex 哈希 ID 过滤、诊断安全呈现。Exit 0。",
+        "result": true
+      },
+      {
+        "item": "F10 配置闭环",
+        "true_if": "既有首版设计内补齐可用配置与采集请求门控、订阅账号展示、诊断与数据位置，相关测试退出码 0",
+        "false_if": "主题、排序、定价、Provider 启用/同意与账号详情脱节，或相关测试失败/未执行",
+        "evidence": "local/c009/final-frontend.log、final-shell-tests.log、final-core-tests.log：配置持久化、同意/Provider/用量门控、共享定价覆盖、排序/账号与数据位置、账本缓存读取无写入及精确小数累计。Exit 0。",
+        "result": true
+      },
+      {
+        "item": "EN003 对拍覆盖",
+        "true_if": "增加 partial/empty 对拍与失败/重试等行为回归，相关测试退出码 0",
+        "false_if": "仅 valid 单一 golden，或相关测试失败/未执行",
+        "evidence": "local/c009/final-PanelParityHarness.log、final-viewmodel-tests.log：valid/partial/empty 三个完整 Panel golden 双侧逐字段一致；运行本地 mac/Rust，当前分支 CI 未执行。Exit 0。",
+        "result": true
+      },
+      {
+        "item": "Windows 真机验收",
+        "true_if": "Win10/11 WebView2、窗口焦点/关闭重开、系统热键、Toast、SID ACL、真实会话与凭据路径逐项验收",
+        "false_if": "仅 mac 编译或模拟测试，或任一真机行为未知/失败",
+        "evidence": "本机为 macOS；Win10/11 原生 WebView2、Toast、系统热键、实际 SID ACL 与真实 Agent/凭据路径仍 UNKNOWN。",
+        "result": null
+      }
+    ],
+    "report": "local/c009/report.md",
+    "limitations": [
+      "生产 JS 使用控制 DOM/IPC；无 Windows 真机和当前分支 CI 证据。",
+      "mac Onboarding 默认运行 KeychainError.saveFailed(-50)，进程信号 5；CI=true 守卫运行 Exit 0，但跳过两个真实 Keychain 用例，不能声称完整 mac 零回归。",
+      "Swift 构建 Exit 0，存在缓存/SDK 链接路径/既有源码警告；Cargo 提示用户配置 source.crates-io.index 未使用。"
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  }
+}

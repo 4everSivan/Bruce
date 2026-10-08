@@ -4,25 +4,43 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
+[[bin]]
+name = "bruce-win"
+path = "src/main.rs"
+required-features = ["desktop"]
+
+[features]
+default = ["desktop"]
+desktop = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-notification", "dep:tauri-plugin-global-shortcut"]
+
 [lib]
 name = "bruce_win_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "2", features = [], optional = true }
 
 [dependencies]
 # 锁定 2.11.6: 2.12 树经 tauri-build 2.7/cargo_toml 1.0 要求 serde >=1.0.228,
 # 与 core/collector workspace 的 serde =1.0.210 精确钉版冲突; 配套 runtime 见 Cargo.lock。
-tauri = { version = "=2.11.6", features = ["tray-icon", "image-png"] }
+tauri = { version = "=2.11.6", features = ["tray-icon", "image-png"], optional = true }
 bruce-win-viewmodel = { path = "../viewmodel" }
 collector-domain = { path = "../../../core/collector/crates/collector-domain" }
 collector-bridge = { path = "../../../core/collector/crates/collector-bridge" }
+collector-credential = { path = "../../../core/collector/crates/collector-credential" }
+collector-provider = { path = "../../../core/collector/crates/collector-provider" }
+collector-local = { path = "../../../core/collector/crates/collector-local" }
+base64 = "=0.22.1"
 chrono = { version = "=0.4.38", default-features = false, features = ["clock", "std"] }
 uuid = { version = "=1.11.0", features = ["v4"] }
 iana-time-zone = "0.1"
-tauri-plugin-notification = "2"
-tauri-plugin-global-shortcut = "2"
+tauri-plugin-notification = { version = "2", optional = true }
+tauri-plugin-global-shortcut = { version = "2", optional = true }
 serde = { version = "1", features = ["derive"] }
 # float_roundtrip: 双端对拍要求 17 位浮点精确解析 (与 viewmodel 一致)
 serde_json = { version = "1", features = ["float_roundtrip"] }
+
+ureq = { version = "=2.12.1", default-features = false, features = ["tls", "json"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Security", "Win32_Security_Authorization", "Win32_System_Threading", "Win32_Storage_FileSystem", "Win32_Foundation", "Win32_System_Memory"] }

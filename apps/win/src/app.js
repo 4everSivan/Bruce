@@ -5,6 +5,32 @@ const el = (tag, cls, text) => {
   if (text != null) node.textContent = text;
   return node;
 };
+const svgEl = (tag, attrs) => {
+  const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
+  return node;
+};
+
+function makeCollapsible(card, summary) {
+  const head = card.querySelector(".card-head");
+  head.setAttribute("role", "button");
+  head.setAttribute("tabindex", "0");
+  head.setAttribute("aria-expanded", "true");
+  if (summary) {
+    const mini = el("div", "collapsed-summary");
+    mini.append(summary());
+    card.append(mini);
+  }
+  const toggle = () => {
+    const collapsed = card.classList.toggle("collapsed");
+    head.classList.toggle("collapsed", collapsed);
+    head.setAttribute("aria-expanded", String(!collapsed));
+  };
+  head.addEventListener("click", toggle);
+  head.addEventListener("keydown", event => {
+    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); toggle(); }
+  });
+}
 
 /* ---------- Token 用量卡 ---------- */
 function usageCard(usage) {
@@ -69,16 +95,26 @@ function usageCard(usage) {
     const grid = el("div", "monthly-grid");
     const models = usage.models;
     let selectedKey = models ? models.currentMonthKey : "";
+    let mode = "tier0";
+    let renderModelRows = () => {};
+    let renderSeg = () => {};
     const renderGrid = () => {
       grid.innerHTML = "";
       for (const month of usage.monthly) {
         const chip = el("div", "chip");
+        chip.dataset.month = month.key;
         if (month.isCurrent) chip.classList.add("current");
-        if (models && month.key === selectedKey) chip.classList.add("selected");
+        if (models && mode === "month" && month.key === selectedKey) chip.classList.add("selected");
         chip.append(el("div", "m", month.label));
         chip.append(el("div", "t", month.totalText));
         if (models && month.key) {
-          chip.addEventListener("click", () => { selectedKey = month.key; renderGrid(); renderModelRows(); });
+          chip.setAttribute("role", "button");
+          chip.setAttribute("tabindex", "0");
+          const selectMonth = () => { selectedKey = month.key; mode = "month"; renderGrid(); renderSeg(); renderModelRows(); };
+          chip.addEventListener("click", selectMonth);
+          chip.addEventListener("keydown", event => {
+            if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectMonth(); }
+          });
         }
         grid.append(chip);
       }
@@ -101,13 +137,12 @@ function usageCard(usage) {
       left.append(expand);
       mhead.append(left);
       const seg = el("div", "tier-seg");
-      let mode = "tier1";
-      const renderSeg = () => {
+      renderSeg = () => {
         seg.innerHTML = "";
         models.tiers.forEach((tier, index) => {
           const b = el("button", null, tier.label);
           if (mode === `tier${index}`) b.classList.add("active");
-          b.addEventListener("click", () => { mode = `tier${index}`; renderSeg(); renderModelRows(); });
+          b.addEventListener("click", () => { mode = `tier${index}`; renderGrid(); renderSeg(); renderModelRows(); });
           seg.append(b);
         });
       };
@@ -116,7 +151,7 @@ function usageCard(usage) {
       msec.append(mhead);
       const rowsHost = el("div");
       let expanded = false;
-      const renderModelRows = () => {
+      renderModelRows = () => {
         titleSpan.textContent = "模型用量" + (mode === "month" ? ` · ${(usage.monthly.find((m) => m.key === selectedKey) || {}).label || ""}` : "");
         rowsHost.innerHTML = "";
         let rows;
@@ -142,7 +177,7 @@ function usageCard(usage) {
         if (!rows.length) rowsHost.append(el("div", "models-more", "暂无模型数据"));
         const total = mode === "month"
           ? (models.months.find((m) => m.id === selectedKey) || { rows: [] }).rows.length
-          : models.tiers[Number(mode.slice(4))].rows.length;
+          : (models.tiers[Number(mode.slice(4))]?.rows || []).length;
         if (total > 3) {
           const more = el("div", "models-more", expanded ? "收起" : `展开全部 ${total} 项`);
           more.addEventListener("click", () => { expanded = !expanded; renderModelRows(); });
@@ -205,11 +240,12 @@ function badge(providerID, name) {
   return b;
 }
 function meterLevel(percent) { return percent < 50 ? "normal" : percent < 80 ? "warning" : "critical"; }
+function clampedPercent(value) { return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0; }
 function windowRow(row) {
   const line = el("div", "win-row");
   line.append(el("span", "wl", row.label));
   const meter = el("div", `meter ${meterLevel(row.usedPercent)}`);
-  const fill = el("div"); fill.style.width = `${Math.round(row.usedPercent)}%`;
+  const fill = el("div"); fill.style.width = `${Math.round(clampedPercent(row.usedPercent))}%`;
   meter.append(fill); line.append(meter);
   line.append(el("span", "wp", row.percentText));
   line.append(el("span", "wr", row.resetText));
@@ -225,7 +261,7 @@ function subscriptionCard(sub) {
   makeCollapsible(card, () => {
     const mini = document.createElement("span");
     for (const section of sub.sections) {
-      const peak = section.collapsedWindow || section.windows[0];
+      const peak = section.collapsedWindow || section.windows?.[0];
       if (!peak) continue;
       const group = document.createElement("span");
       group.style.cssText = "display:flex;align-items:center;gap:5px;flex:1;min-width:0;";
@@ -249,7 +285,7 @@ function subscriptionCard(sub) {
     if (section.plan) h.append(el("span", "plan-chip", section.plan));
     if (section.accountCountText) h.append(el("span", "acct-count", section.accountCountText));
     block.append(h);
-    const windows = section.windows.length ? section.windows : [section.collapsedWindow].filter(Boolean);
+    const windows = section.windows?.length ? section.windows : [section.collapsedWindow].filter(Boolean);
     for (const row of windows) block.append(windowRow(row));
     if (section.balance) {
       const line = el("div", "balance-row");
@@ -257,8 +293,42 @@ function subscriptionCard(sub) {
       line.append(el("span", "bv", section.balance.amountText));
       block.append(line);
     }
-    if ((section.status === "error" || section.status === "empty") && section.note) {
-      block.append(el("div", "note-line", section.note));
+    for (const text of [section.note, section.staleText, section.extraText]) {
+      if (text) block.append(el("div", "note-line", text));
+    }
+    const monthlyBlock = (monthly) => {
+      const box = el("div", "monthly-ledger");
+      box.append(el("div", "note-line", monthly.state === "trend" ? `本月推算消费 ${monthly.estimatedConsumptionText}` : monthly.state === "baseline" ? "正在建立本月趋势" : "月度统计暂不可用"));
+      for (const text of [monthly.currentBalanceText && `当前余额 ${monthly.currentBalanceText}`, monthly.coverageText, monthly.creditNote]) {
+        if (text) box.append(el("div", "note-line", text));
+      }
+      const points = monthly.trendPoints || [];
+      if (points.length >= 2) {
+        const graph = svgEl("svg", { viewBox: "0 0 300 64", role: "img", "aria-label": "本月累计推算消费趋势", class: "ledger-trend" });
+        const values = points.map(p => Number(p.cumulativeConsumption) || 0);
+        const peak = Math.max(...values, 0.01);
+        graph.append(svgEl("polyline", { points: values.map((v, i) => `${i * 300 / (values.length - 1)},${60 - v * 56 / peak}`).join(" "), fill: "none", stroke: "currentColor", "stroke-width": "2" }));
+        box.append(graph);
+      }
+      return box;
+    };
+    for (const account of section.accounts || []) {
+      const accountBlock = el("details", "account-detail");
+      accountBlock.open = true;
+      const title = el("summary", null, account.name || account.id);
+      if (account.plan) title.append(el("span", "plan-chip", account.plan));
+      if (account.tag) title.append(el("span", "plan-chip", account.tag));
+      accountBlock.append(title);
+      for (const row of account.windows || []) accountBlock.append(windowRow(row));
+      for (const text of [account.note, account.lastSuccessText, account.staleText]) {
+        if (text) accountBlock.append(el("div", "note-line", text));
+      }
+      if (account.status && account.status !== "ok") accountBlock.append(el("div", "note-line", statusLabel(account.status)));
+      if (account.deepSeekMonthlyUsage && !section.deepSeekMonthlyUsage) accountBlock.append(monthlyBlock(account.deepSeekMonthlyUsage));
+      block.append(accountBlock);
+    }
+    if (section.deepSeekMonthlyUsage) {
+      block.append(monthlyBlock(section.deepSeekMonthlyUsage));
     }
     card.append(block);
   }
@@ -272,6 +342,7 @@ function hourlyCard(hourly, usage) {
   head.append(el("span", "card-title", "Agent 用量"));
   head.append(el("span", "chev", "\u276F"));
   card.append(head);
+  makeCollapsible(card, () => el("span", null, hourly.collapsedPeakText || "逐小时用量"));
 
   if (usage && usage.days.length) {
     const chart = el("div", "daily-chart");
@@ -347,48 +418,93 @@ function hourlyCard(hourly, usage) {
   return card;
 }
 
-/* ---------- 应用层: Tauri IPC + 视图切换 + 凭证/设置 + 事件驱动刷新 ---------- */
+/* ---------- 应用层: 缓存读取与单一刷新意图 ---------- */
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
+let currentPanel = null;
+let currentSettings = { cardOrder: ["usage", "subscription", "hourly"], providerOrder: [], usageEnabled: true };
 
-function render(panel) {
-  // HUD
-  const activeCount = panel.hourly ? panel.hourly.rows.filter((r) => r.todayTotal > 0).length : 0;
-  const isLive = panel.usage ? panel.usage.isLive : false;
-  document.getElementById("hud-dot-wrap").classList.toggle("live", isLive);
-  document.getElementById("hud-agents").textContent =
-    activeCount > 0 ? `\u25CF ${activeCount} AGENTS ACTIVE` : "STANDBY";
-
-  // 卡片栈 (mac cardOrder: usage -> subscription -> hourly)
-  const stack = document.getElementById("stack");
-  stack.innerHTML = "";
-  if (panel.usage) stack.append(usageCard(panel.usage));
-  if (panel.subscription) stack.append(subscriptionCard(panel.subscription));
-  if (panel.hourly) stack.append(hourlyCard(panel.hourly, panel.usage));
+function statusLabel(status) {
+  return { ok: "正常", fresh: "正常", refreshing: "刷新中", loading: "刷新中", partial: "部分失败", failed: "刷新失败", error: "失败", stale: "数据过期", unavailable: "不可用", idle: "等待刷新", empty: "暂无数据", authRequired: "需要授权" }[status] || status;
 }
-
-/* 底栏动作 (mac actionFooter: 刷新/设置/退出) */
-async function refresh() {
-  const button = document.getElementById("refresh");
-  button.disabled = true;
-  try {
-    render(await invoke("get_dashboard"));
-  } catch (error) {
-    console.error("get_dashboard 失败", error);
-  } finally {
-    button.disabled = false;
+function renderStatus(panel) {
+  const runtime = panel.runtime || {};
+  const diagnostics = panel.diagnostics || [];
+  const phase = runtime.phase || (diagnostics.length ? "partial" : panel.usage || panel.subscription ? "fresh" : "empty");
+  document.getElementById("runtime-status").textContent = statusLabel(phase);
+  const details = [runtime.error];
+  if (runtime.lastSuccessAt) details.push(`上次成功 ${runtime.lastSuccessAt}`);
+  if (!panel.usage && !panel.subscription && !panel.hourly) details.push("暂无采集数据，可刷新或检查设置。");
+  document.getElementById("dashboard-status").textContent = details.filter(Boolean).join(" · ");
+  const host = document.getElementById("dashboard-diagnostics");
+  host.replaceChildren();
+  for (const diagnostic of diagnostics) {
+    const identity = diagnostic.serviceId || diagnostic.agentId || diagnostic.module || "";
+    const message = diagnostic.note || diagnostic.reason || ({ missingArtifact: "暂无数据", emptyUsageAgents: "尚未发现 Agent 用量" }[diagnostic.kind]) || statusLabel(diagnostic.status || diagnostic.kind);
+    host.append(el("div", "note-line", `${identity ? `${identity}: ` : ""}${message}`));
+  }
+  document.getElementById("refresh").disabled = phase === "refreshing" || phase === "loading";
+}
+function render(panel) {
+  if (!panel || typeof panel !== "object") throw new Error("看板数据不可用");
+  currentPanel = panel;
+  const activeCount = panel.hourly?.rows.filter(r => r.todayTotal > 0).length || 0;
+  document.getElementById("hud-dot-wrap").classList.toggle("live", Boolean(panel.usage?.isLive));
+  document.getElementById("hud-agents").textContent = activeCount > 0 ? `● ${activeCount} AGENTS ACTIVE` : "STANDBY";
+  renderStatus(panel);
+  const stack = document.getElementById("stack");
+  stack.replaceChildren();
+  const providerOrder = currentSettings.providerOrder || [];
+  const subscription = panel.subscription ? { ...panel.subscription, sections: [...panel.subscription.sections].sort((a, b) => {
+    const rank = id => providerOrder.includes(id) ? providerOrder.indexOf(id) : providerOrder.length;
+    return rank(a.id) - rank(b.id);
+  }) } : null;
+  const factories = {
+    usage: () => currentSettings.usageEnabled !== false && panel.usage ? usageCard(panel.usage) : null,
+    subscription: () => subscription ? subscriptionCard(subscription) : null,
+    hourly: () => currentSettings.usageEnabled !== false && panel.hourly ? hourlyCard(panel.hourly, panel.usage) : null,
+  };
+  const order = [...new Set([...(currentSettings.cardOrder || []), "usage", "subscription", "hourly"])];
+  for (const key of order) {
+    const card = factories[key]?.();
+    if (card) { card.dataset.card = key; stack.append(card); }
   }
 }
+function showError(error) {
+  document.getElementById("runtime-status").textContent = "失败";
+  document.getElementById("dashboard-status").textContent = String(error);
+}
+for (const tab of document.querySelectorAll("[data-view]")) {
+  tab.addEventListener("click", () => {
+    for (const button of document.querySelectorAll("[data-view]")) button.classList.toggle("active", button === tab);
+    for (const view of ["dashboard", "credentials", "settings"]) document.getElementById(`view-${view}`).classList.toggle("hidden", view !== tab.dataset.view);
+  });
+}
 document.getElementById("refresh").addEventListener("click", async () => {
-  await refresh();
-  await invoke("refresh_now");
+  const button = document.getElementById("refresh");
+  button.disabled = true;
+  try { await invoke("refresh_now"); }
+  catch (error) { showError(error); }
+  finally { button.disabled = false; }
 });
-document.getElementById("foot-settings").addEventListener("click", () => invoke("open_settings"));
-document.getElementById("foot-quit").addEventListener("click", () => invoke("quit_app"));
-
-/* 启动: 首次渲染 + 订阅调度器广播
-   (采集常驻由 Rust 调度器承担, 打开面板即手动唤醒, C007) */
+document.getElementById("foot-settings").addEventListener("click", async () => {
+  try { await invoke("open_settings"); } catch (error) { showError(error); }
+});
+document.getElementById("foot-quit").addEventListener("click", async () => {
+  try { await invoke("quit_app"); } catch (error) { showError(error); }
+});
+function applySettings(settings) {
+  currentSettings = settings;
+  window.BruceSettings?.applyTheme(settings.theme);
+  if (currentPanel) render(currentPanel);
+}
+window.addEventListener("settings-saved", event => applySettings(event.detail));
 (async function init() {
-  await refresh();
-  await listen("dashboard-updated", (event) => render(event.payload));
+  try {
+    await listen("dashboard-updated", event => { try { render(event.payload); } catch (error) { showError(error); } });
+    await listen("settings-updated", event => applySettings(event.payload));
+    await window.BruceSettings?.ready;
+    applySettings(await invoke("get_settings"));
+    render(await invoke("get_dashboard"));
+  } catch (error) { showError(error); }
 })();

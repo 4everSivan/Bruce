@@ -37,6 +37,7 @@ const ALLOWED_CONTEXT_FIELDS: &[&str] = &[
     "codexQuotaAccountOrder",
     "subscriptionQuotaOnly",
     "subscriptionProviders",
+    "pricingOverrides",
 ];
 
 const ALLOWED_CAPABILITIES: &[&str] = &["localSessions", "localPricing", "externalQuotas"];
@@ -218,6 +219,50 @@ fn validate_request(request: &BridgeRequest) -> Result<(), Diagnostic> {
                 "BRIDGE_INVALID_REQUEST",
                 "context 包含不支持的字段",
             ));
+        }
+    }
+    if let Some(raw) = request.context.get("pricingOverrides") {
+        let invalid = || protocol_error("BRIDGE_INVALID_REQUEST", "价格覆盖配置无效");
+        let entries = raw.as_object().ok_or_else(invalid)?;
+        if entries.len() > 512 {
+            return Err(invalid());
+        }
+        for (name, price) in entries {
+            if name.trim().is_empty() || name.len() > 256 {
+                return Err(invalid());
+            }
+            let fields = price.as_object().ok_or_else(invalid)?;
+            for (key, value) in fields {
+                if ![
+                    "inputPricePerMillion",
+                    "outputPricePerMillion",
+                    "cacheReadPricePerMillion",
+                    "currency",
+                    "note",
+                ]
+                .contains(&key.as_str())
+                {
+                    return Err(invalid());
+                }
+                if value.is_null() {
+                    continue;
+                }
+                let valid = match key.as_str() {
+                    "inputPricePerMillion"
+                    | "outputPricePerMillion"
+                    | "cacheReadPricePerMillion" => {
+                        value.as_f64().is_some_and(|n| n.is_finite() && n >= 0.0)
+                    }
+                    "currency" => value
+                        .as_str()
+                        .is_some_and(|s| ["USD", "CNY", "EUR", "GBP"].contains(&s)),
+                    "note" => value.as_str().is_some_and(|s| s.len() <= 1024),
+                    _ => false,
+                };
+                if !valid {
+                    return Err(invalid());
+                }
+            }
         }
     }
     if let Some(days) = request.context.get("days") {
@@ -446,6 +491,29 @@ mod tests {
         assert_eq!(response.run_id, "12345678-1234-4234-9234-123456789abc");
         assert_eq!(response.status, ResponseStatus::Partial);
         assert!(response.artifact.is_some());
+    }
+
+    #[test]
+    fn configured_pricing_reaches_collection_and_invalid_rates_fail_closed() {
+        let mut value: Value = serde_json::from_str(&request()).unwrap();
+        value["context"]["capabilities"] = json!([]);
+        value["context"]["pricingOverrides"] = json!({"k3": {"inputPricePerMillion": 0.5}});
+        let response = run_bytes(&serde_json::to_vec(&value).unwrap());
+        assert!(
+            response.artifact.is_some(),
+            "valid UI price overrides must cross Bridge validation: {:?}",
+            response.diagnostics
+        );
+        for bad in [
+            json!({"k3":{"inputPricePerMillion":-1}}),
+            json!({"k3":{"access_token":"fixture"}}),
+            json!([]),
+        ] {
+            value["context"]["pricingOverrides"] = bad;
+            let response = run_bytes(&serde_json::to_vec(&value).unwrap());
+            assert!(response.artifact.is_none());
+            assert_eq!(response.diagnostics[0].code, "BRIDGE_INVALID_REQUEST");
+        }
     }
 
     #[test]

@@ -19,7 +19,7 @@
     {
       "id": "T03-1",
       "title": "订阅额度链路与凭证存储",
-      "capability": "collector-provider 8 Provider 出站额度查询接入；订阅凭据落盘 %APPDATA%\\Bruce\\credentials.json（Windows ACL 限定当前用户等价 0600，temp+rename 原子写）；外部 SQLite 强制 mode=ro 只读",
+      "capability": "collector-provider 既有 Provider 出站额度查询接入；订阅凭据落盘 %APPDATA%\\Bruce\\credentials.json（Windows ACL 限定当前用户等价 0600，temp+rename 原子写）；外部 SQLite 强制 mode=ro 只读",
       "done": true
     },
     {
@@ -37,7 +37,7 @@
     {
       "id": "T03-4",
       "title": "全局热键与面板完善",
-      "capability": "Tauri global-shortcut 全局热键（可录制对齐 GlobalHotkeyRecorder 交互）；面板位置记忆（对齐 DashboardPanelPlacement）与动画门控（对齐 dashboardPanelVisible 语义，隐藏即暂停）",
+      "capability": "Tauri global-shortcut 全局热键录制/保存及失败回退；仅 dashboard 失焦隐藏并记忆位置，settings 关闭隐藏后可重开；周期采集常驻，隐藏态仅暂停渲染动画（C007/C009）",
       "done": true
     },
     {
@@ -55,43 +55,49 @@
   ],
   "acceptance": {
     "result": null,
-    "run_id": "",
+    "run_id": "20261008-c009",
     "checks": [
       {
         "item": "功能矩阵逐项对齐",
         "true_if": "设计 §4.2 能力矩阵逐项可用，展示口径与 mac 一致（订阅窗口语义、三档语义配色、模型用量区块）",
         "false_if": "任一功能缺失或与 mac 口径静默不一致",
-        "evidence": "本地扫描/订阅卡 (分组/窗口量条/余额/告警阈值联动配色)/凭证引导/Toast 预警/全局热键/设置中心/刷新调度 全部开发完成并有单测; 已知契约细节: 共享 fixture 窗口键为旧拼写 resetAt (契约键 resetsAt), 双端一致忽略 → 空重置文案; UI 交互细节验收归人工",
+        "evidence": "C009 补齐 HTML/JS 入口、主题/排序/价格/同意/Provider 门控、账号管理/导入、stale/extra 与 DeepSeek 账本；生产 JS 在控制 DOM 中回归，Rust 配置/合并/调度均有测试。仅证明这些本地边界；Windows 系统集成与真实 Provider 端到端仍待验收，详见 local/c009/report.md。",
         "result": null
       },
       {
         "item": "凭证安全红线",
         "true_if": "credentials.json ACL 仅当前用户可读写且原子写入；外部数据库只读；凭证不硬编码不入库",
         "false_if": "权限宽松、非原子写或引入交互式鉴权弹窗",
-        "evidence": "credentials.json 白名单校验 (未知键写入拒绝/读取丢弃) + temp+rename 原子写 + unix 0600 / Windows icacls 收权; 单测 3 项 (credentials.rs) 覆盖缺失/损坏/白名单场景; 外部 SQLite mode=ro 契约由 collector 层既有实现保证",
+        "evidence": "C009 以 Win32 实际进程 SID 的受保护 DACL 代替 icacls 尽力收权，目录/空临时文件收权成功后才写明文，再原子替换；注入的权限失败回归通过。Windows 专属 SID ACL 测试已补但本机未执行；本机 Win32 API 签名检查不证明实际 ACL。外部 SQLite mode=ro 沿用共享 Collector。",
         "result": null
       },
       {
         "item": "外部探测静默降级",
         "true_if": "凭证/出站/SQLite 访问失败时静默跳过并降级为本地扫描口径，无阻塞弹窗",
         "false_if": "任一外部失败路径触发侵入式 UI",
-        "evidence": "凭证损坏视为未配置 (不阻塞本地采集); 出站失败静默 (无交互式弹窗); 面板隐藏暂停采集",
+        "evidence": "凭据/出站失败保留可诊断降级；配置无同意或禁用 Provider 不注入对应凭据。处理 StepFun 轮换、Codex 一次恢复与一次 retry-only；无侵入式鉴权 UI。后台采集不受面板可见性门控，旧文案“隐藏暂停采集”已撤销。真实外部应用路径仍未知。",
         "result": null
       },
       {
         "item": "对拍持续一致",
         "true_if": "订阅卡/告警判定等新增视图模型双端 fixture 对拍全绿",
         "false_if": "新增逻辑引入双端口径漂移",
-        "evidence": "usage/hourly 对拍维持全绿; 订阅卡视图模型 (SubscriptionMapping 对齐) 为唯一遗留开发项 — 出站链路已通 (凭证注入 → externalQuotas → artifact.services), 展示层待专项实现后接入 ParityHarness",
+        "evidence": "SubscriptionMapping 已存在并纳入 valid/partial/empty 完整 Panel 对拍；C009 另测旧窗口/余额的 stale 合并、账号删除过滤、Codex 哈希 ID、告警跨越与 DeepSeek 十进制账本。先前“订阅视图模型唯一遗留”证据已失效。CI 与真机验收未执行。",
         "result": null
       },
       {
         "item": "隐藏态资源纪律",
         "true_if": "面板隐藏时渲染动画自然暂停、无高频轮询空转（CPU 占用与 mac 同量级）；周期采集保持常驻（对齐 mac 通知语义，C007）",
         "false_if": "隐藏面板后台空转，或隐藏期间周期采集/告警评估被暂停",
-        "evidence": "",
+        "evidence": "有界刷新请求、一次退避等待、缓存只读 IPC 和常驻采集已有逻辑回归；无 Windows 真机 CPU/IO 与隐藏 WebView 动画实测，不据此签署资源验收。",
         "result": null
       }
     ]
+  },
+  "followup": {
+    "change": "C009",
+    "branch": "codex/fix-c009-windows-parity",
+    "evidence": "local/c009/report.md",
+    "note": "本次修复分支独立登记；原 branch/branch_note 保留 2026-10-06 实施历史。Win 真机与人工验收未完成。"
   }
 }

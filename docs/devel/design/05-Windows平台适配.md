@@ -2,7 +2,7 @@
 
 <!-- @topic: WindowsCompat -->
 > **文档ID**: DESIGN-WINDOWS ｜ **状态**: 现行基线
-> **最后更新**: 2026-10-07 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `WindowsCompat`
+> **最后更新**: 2026-10-08 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `WindowsCompat`
 > 📌 **变更总账**: 参见 [变更总账 (WindowsCompat)](../change/index.json#WindowsCompat)
 
 ---
@@ -122,10 +122,10 @@ apps/
 ├── widget/         # Daimon 小组件（不迁移）
 └── win/           # 新增 Tauri 2 应用
     ├── src-tauri/  # Rust 后端
-    │   ├── collector-*（workspace 依赖，进程内直调）
-    │   ├── viewmodel/（视图模型层，§6.2）
-    │   └── shell/（托盘/热键/通知/自启/凭证集成）
-    └── src/        # TS + HTML/CSS 看板前端
+    │   └── src/    # collector/scheduler/runtime_core/settings/credentials/ledger
+    ├── viewmodel/  # 独立纯 Rust 视图模型层（§6.2）
+    ├── tests/      # 生产 HTML/JS + 控制 DOM/IPC 的行为回归
+    └── src/        # JS + HTML/CSS 看板前端
 core/collector/     # 共享采集引擎（唯一真理源）
 ```
 
@@ -147,6 +147,7 @@ Windows Tauri 后端 (Rust)
 - mac `BruceAppCore` 与 Windows Rust `viewmodel` 消费**同一组 artifact fixture**（`tests/fixtures/` 既有资产）；
 - 对拍协议（golden 快照模式，已落地）：mac 侧 `PanelParityHarness` 将 Swift 视图模型序列化为与 Rust serde 同构的 camelCase JSON，`--update` 刷新 golden 快照（`tests/fixtures/viewmodel-parity/`），默认模式比对；Windows 侧 `mac_parity_golden_matches` 测试消费同一快照，数值按 f64 归一后逐字段断言；
 - 双向门禁：mac 端行为变更 → `--update` 刷新 golden 并审视 Windows 侧同步；Windows 侧漂移 → Rust 测试直接红。verify-local.sh 与 verify-windows CI 双侧执行；
+- C009 对拍覆盖 valid、partial、empty 三个共享 artifact；这些固定输入仅证明映射结果一致，不证明 Windows 原生运行或全部凭据恢复场景。
 - 已知实现约束：serde_json 需开启 `float_roundtrip`（mac JSONEncoder 输出 17 位浮点表示）；数值并列排序以稳定键序破并列，对拍 fixture 避免构造并列场景。
 
 ---
@@ -160,6 +161,7 @@ Windows Tauri 后端 (Rust)
 | 变更编号 | 类型 | 简介 | 规则演进 |
 |---|---|---|---|
 | C007 | 缺陷修复 | 面板隐藏暂停采集偏离 mac 常驻语义，告警随面板关闭停摆 | 采集周期不随面板可见性门控（对齐 mac 通知常驻采集）；隐藏态开销控制仅作用于渲染层；设置加载侧钳制刷新间隔区间 |
+| C009 | 缺陷修复 | 仪表盘、设置与运行生命周期对齐 | 缓存只读 IPC、单通道合并刷新、显式状态与旧快照、凭据安全与轮换恢复、配置门控及真实前端行为回归 |
 | 暂无增量变更 | - | 初始基线定稿 | Windows 适配初始设计（Tauri 2 / 首版全量 / Rust 视图模型+对拍） |
 
 #### 现行设计规则
@@ -167,6 +169,11 @@ Windows Tauri 后端 (Rust)
 2. **核心算法与处理流程**：调度/合并/告警判定为纯函数，与 mac `BruceAppCore` 逐模块对齐；
 3. **边界与约束**：所有外部探测（凭证/路径/出站额度）失败一律静默降级，禁止交互式 UI 阻塞；
 4. **调度纪律**（C007）：采集周期不随面板可见性门控（对齐 mac `RefreshScheduler` 常驻语义，配额告警依赖后台周期采集）；面板打开即时手动刷新，隐藏态开销控制由前端渲染层自然暂停承载；刷新间隔在设置加载侧钳制到 `[60, 86400]` 秒。
+
+5. **刷新与发布**（C009）：`get_dashboard` 只读最近快照；所有采集经单一调度器执行。手动请求合并，失败后等待退避而不叠加正常周期；手动刷新不弹额度预警。失败和坏 artifact 保留上一有效快照，过期服务必须明确 stale，不得伪装成功。
+6. **凭据生命周期**（C009）：落盘前保证目录/临时文件仅当前 SID 可访问，收权失败拒绝写入；轮换结果先安全持久化再发布，Codex accessRejected 仅允许一次刷新令牌恢复和一次重试，失败保留诊断；开发版使用隔离目录，不覆盖 mac 凭据。
+7. **配置闭环**（C009）：主题、卡片顺序、价格覆盖、Provider 启用/排序与出站同意必须消费到渲染/采集；账户与 stale/extra 信息必须可见。热键保存失败不能宣称成功；设置窗口失焦不隐藏、关闭后可重开。
+8. **证据边界**（C009）：真实 JS 渲染/事件回归、Rust 纯逻辑测试和 mac fixture 对拍不能替代 Win10/11 WebView2、系统热键、Toast 与 SID ACL 的真机验收。C009 与 T02/T03 在人工确认前保持 in_progress。
 
 ### 6.1 Rust 端改动清单（收敛后）
 
@@ -180,24 +187,24 @@ Windows Tauri 后端 (Rust)
 
 ### 6.2 Windows 视图模型层（`apps/win/viewmodel/`，独立纯 Rust crate）
 
-对齐 `BruceAppCore` 职责的 Rust 模块划分（消费 artifact，产出看板视图模型）：
+对齐 `BruceAppCore` 的职责与实际落点如下。纯映射保留在 `viewmodel`；文件持久化、调度与系统集成位于 `src-tauri`，不混入纯视图模型：
 
 | Rust 模块 | 对齐 mac 源 | 职责 |
 |---|---|---|
-| `usage_mapping` | `UsageMapping.swift` / `PanelViewModelMapper` | artifact → 今日总量/Agent 明细/逐小时/热力图/模型用量视图模型 |
-| `subscription_mapping` | `SubscriptionMapping.swift` / `SubscriptionPresentationPolicy` | Provider 额度快照 → 订阅卡展示模型（窗口语义、进度、告警态） |
-| `quota_alert_evaluator` | `QuotaAlertEvaluator.swift` / `SystemNotificationDeliveryPolicy` | 配额告警判定与通知去重 |
-| `refresh_scheduler` | `RefreshScheduler.swift` / `RefreshBackoffPolicy` / `RefreshExecutionPipeline` | 刷新调度、指数退避、唤醒/前台触发 |
-| `ledger` | `DeepSeekUsageLedger.swift` / `CodexQuotaSnapshotMerger` 等 | 账本与快照合并 |
-| `settings_model` | 设置中心相关 | 价格校准、卡片排序、主题偏好的加载与持久化 |
+| `viewmodel/src/usage.rs` | `UsageMapping.swift` / `PanelViewModelMapper` | artifact → 今日总量/Agent 明细/逐小时/热力图/模型用量视图模型 |
+| `viewmodel/src/subscription.rs` | `SubscriptionMapping.swift` / `SubscriptionPresentationPolicy` | Provider 额度快照 → 订阅卡展示模型（窗口语义、进度、告警态） |
+| `src-tauri/src/alerts.rs` | `QuotaAlertEvaluator.swift` / `SystemNotificationDeliveryPolicy` | 配额告警判定与通知去重 |
+| `src-tauri/src/scheduler.rs`、`runtime_core.rs` | `RefreshScheduler.swift` / `RefreshBackoffPolicy` / `RefreshExecutionPipeline` | 刷新调度、指数退避与可独立测试的策略 |
+| `src-tauri/src/ledger.rs`、`runtime_core.rs` | `DeepSeekUsageLedger.swift` / `CodexQuotaSnapshotMerger` 等 | 十进制账本、快照持久化与 stale 合并 |
+| `src-tauri/src/settings.rs`、`src/settings.js` | 设置中心相关 | 价格校准、卡片排序、主题偏好的加载与持久化 |
 
 对拍测试位于 `apps/win/viewmodel/tests/`（`cargo test`，无需 Tauri/WebView 依赖，双平台 CI 均可执行），fixture 直接引用 `tests/fixtures/` 共享资产；mac 侧在 `verify-local.sh` 中增加对拍 invocation（Swift Harness 输出与 Rust 输出比对）。
 
-### 6.3 Windows 系统集成壳（`apps/win/src-tauri/shell/`）
+### 6.3 Windows 系统集成壳（`apps/win/src-tauri/src/`）
 
 - **托盘**：Tauri tray icon + 左键弹面板/右键菜单（刷新/设置/退出），图标态（就绪/刷新中/告警）与 mac 圆环语义对齐；
 - **面板**：置顶、无任务栏项、失焦隐藏的 WebviewWindow；位置记忆对齐 mac `DashboardPanelPlacement`；
-- **热键/通知/自启**：Tauri 官方插件（global-shortcut / notification / autostart）；
+- **热键/通知**：Tauri 官方插件（global-shortcut / notification）；自启仍为可选后续项；
 - **凭证壳**：`credentials.json` 的 ACL 写入器与 Onboarding 引导流程（Tauri 深链/本地页）。
 
 ### 6.4 打包与发布线

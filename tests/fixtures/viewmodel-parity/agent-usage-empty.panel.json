@@ -1,0 +1,86 @@
+{
+  "diagnostics" : [
+    {
+      "kind" : "emptyUsageAgents"
+    }
+  ],
+  "hourly" : {
+    "collapsedPeakText" : "峰值 0",
+    "collapsedPoints" : [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "rows" : [
+
+    ]
+  },
+  "subscription" : null,
+  "usage" : {
+    "breakdown" : [
+      {
+        "label" : "输入",
+        "value" : 0,
+        "valueText" : "0"
+      },
+      {
+        "label" : "输出",
+        "value" : 0,
+        "valueText" : "0"
+      },
+      {
+        "label" : "缓存读取",
+        "value" : 0,
+        "valueText" : "0"
+      },
+      {
+        "label" : "缓存命中率",
+        "value" : 0,
+        "valueText" : "—"
+      }
+    ],
+    "collapsedWeekLevels" : [
+
+    ],
+    "costText" : null,
+    "days" : [
+
+    ],
+    "halfYear" : null,
+    "heatmap" : [
+
+    ],
+    "isLive" : true,
+    "legend" : [
+
+    ],
+    "models" : null,
+    "monthly" : [
+
+    ],
+    "totalTokens" : 0,
+    "totalTokensText" : "0",
+    "usageTier" : "sage"
+  }
+}

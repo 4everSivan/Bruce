@@ -10,6 +10,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
+import { spawnSync } from "node:child_process";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const appSource = readFileSync(join(repoRoot, "apps/win/src/app.js"), "utf8");
@@ -21,11 +22,13 @@ const fail = (message) => {
   failed = true;
 };
 
-try {
-  new vm.Script(appSource, { filename: "app.js" });
-  console.log("ok: app.js 语法合法");
-} catch (error) {
-  fail(`app.js 语法错误: ${error.message}`);
+for (const file of ["app.js", "settings.js"]) {
+  try {
+    new vm.Script(readFileSync(join(repoRoot, "apps/win/src", file), "utf8"), { filename: file });
+    console.log(`ok: ${file} 语法合法`);
+  } catch (error) {
+    fail(`${file} 语法错误: ${error.message}`);
+  }
 }
 
 const referenced = new Set();
@@ -57,3 +60,10 @@ if (failed) {
   process.exit(1);
 }
 console.log("Windows 前端结构冒烟通过");
+const behavior = spawnSync(process.execPath, ["--test", "apps/win/tests/frontend.test.mjs"], {
+  cwd: repoRoot, stdio: "inherit",
+});
+if (behavior.error || behavior.status !== 0) {
+  console.error("Windows 前端交互回归失败", behavior.error?.message || `Exit Code ${behavior.status}`);
+  process.exit(behavior.status || 1);
+}

@@ -1,48 +1,148 @@
-//! 订阅凭证本地存储 —— 对齐 mac 凭据安全基线 (设计 02: 原子落盘/最小权限)。
-//!
-//! Windows 落盘 `%APPDATA%\Bruce\credentials.json` (等价 mac 0600 语义);
-//! 键集合受 bridge `ALLOWED_CREDENTIAL_FIELDS` 白名单约束, 未知键拒绝写入,
-//! 读取时静默丢弃, 防止契约外数据进入采集链路。
+//! App-owned credential storage. Secrets never cross the metadata IPC boundary.
+//! Windows uses a protected DACL for the process token SID before secret writes.
 
-use std::collections::BTreeMap;
-use std::fs;
-use std::io::Write;
-use std::path::{Path, PathBuf};
+mod lifecycle;
+#[cfg(windows)]
+mod windows_security;
+pub use lifecycle::{collect_with_recovery, collect_with_recovery_using, CodexRefreshError};
 
 use collector_bridge::ALLOWED_CREDENTIAL_FIELDS;
+use serde_json::{json, Value};
+use std::{
+    collections::BTreeMap,
+    fs,
+    io::Write,
+    path::{Path, PathBuf},
+    sync::Mutex,
+};
 
-/// 订阅 provider 凭证载荷: 字段名 → provider 专属 JSON 载荷
-/// (如 "kimiQuotaAccounts" → 账号数组; 结构由采集端契约定义)。
 pub type CredentialPayloads = BTreeMap<String, Value>;
+static STORE_LOCK: Mutex<()> = Mutex::new(());
+const MAX_CREDENTIAL_BYTES: u64 = 4 * 1024 * 1024;
 
-use serde_json::Value;
-
-/// `%APPDATA%\Bruce` 根目录 (mac 开发环境回落到 ~/Library/Application Support)。
 pub fn app_data_root(home: &Path) -> PathBuf {
     app_data_root_with(home, std::env::var_os("APPDATA").as_deref())
 }
-
-/// 可注入 APPDATA 的版本 (测试用; 与 collector-local windows_cache_root 同模式)。
 pub fn app_data_root_with(home: &Path, app_data: Option<&std::ffi::OsStr>) -> PathBuf {
     #[cfg(windows)]
     {
-        if let Some(app_data) = app_data
-            .map(PathBuf::from)
-            .filter(|value| !value.as_os_str().is_empty())
-        {
-            return app_data.join("Bruce");
+        if let Some(value) = app_data.filter(|value| !value.to_string_lossy().trim().is_empty()) {
+            return value
+                .to_str()
+                .map(|s| PathBuf::from(s.trim()))
+                .unwrap_or_else(|| PathBuf::from(value))
+                .join("Bruce");
         }
         home.join("AppData").join("Roaming").join("Bruce")
     }
     #[cfg(not(windows))]
     {
         let _ = app_data;
-        home.join("Library/Application Support/Bruce")
+        home.join("Library/Application Support/Bruce-Windows-Dev")
     }
 }
-
-/// 凭证合并语义 (明文凭证不回显前端): patch 带值覆盖、显式 None 删除、
-/// 未提及保留; 白名单外键直接拒绝。
+fn credentials_path(root: &Path) -> PathBuf {
+    root.join("credentials.json")
+}
+fn is_allowed_field(key: &str) -> bool {
+    ALLOWED_CREDENTIAL_FIELDS.contains(&key)
+}
+fn valid_id(id: &str) -> bool {
+    !id.trim().is_empty() && id.len() <= 256 && !id.chars().any(char::is_control)
+}
+fn nonempty_string(value: Option<&Value>) -> bool {
+    value
+        .and_then(Value::as_str)
+        .is_some_and(|s| !s.trim().is_empty() && s.len() <= 32_768)
+}
+/// Validate the collector account-map contract, including required provider keys.
+/// Error messages never interpolate credential values or arbitrary input keys.
+pub fn validate_credential_payload(field: &str, payload: &Value) -> Result<(), String> {
+    if !is_allowed_field(field) {
+        return Err("未知凭证字段".to_owned());
+    }
+    let object = payload.as_object().ok_or("凭证必须是 JSON 对象")?;
+    if object.len() > 64 {
+        return Err("凭证账号数量超过上限".to_owned());
+    }
+    if field == "providerEnv" {
+        return if object.values().all(Value::is_string) {
+            Ok(())
+        } else {
+            Err("Provider 环境值必须为字符串".to_owned())
+        };
+    }
+    if matches!(field, "providerMeta" | "claudeOAuth" | "grokOAuth") {
+        return Ok(());
+    }
+    for (id, account) in object {
+        if !valid_id(id) {
+            return Err("凭证账号 ID 无效".to_owned());
+        }
+        let account = account.as_object().ok_or("凭证账号必须是 JSON 对象")?;
+        let (allowed, required): (&[&str], &[&str]) = match field {
+            "kimiQuotaAccounts" | "deepseekQuotaAccounts" => {
+                (&["display_name", "api_key"], &["api_key"])
+            }
+            "zhipuQuotaAccounts" => (
+                &["display_name", "api_key", "base_url"],
+                &["api_key", "base_url"],
+            ),
+            "volcengineQuotaAccounts" => (
+                &["display_name", "accessKeyId", "secretAccessKey"],
+                &["accessKeyId", "secretAccessKey"],
+            ),
+            "stepfunQuotaAccounts" => (&["display_name", "token", "site", "is_global"], &["token"]),
+            "codexQuotaAccounts" => (
+                &[
+                    "display_name",
+                    "access_token",
+                    "refresh_token",
+                    "id_token",
+                    "expiry",
+                    "authorization_state",
+                ],
+                &["display_name", "access_token"],
+            ),
+            "claudeQuotaAccounts" | "grokQuotaAccounts" | "opencodeGoQuotaAccounts" => {
+                (&["display_name", "oauth"], &[])
+            }
+            _ => return Err("凭证字段不受支持".to_owned()),
+        };
+        if account.keys().any(|key| !allowed.contains(&key.as_str()))
+            || required
+                .iter()
+                .any(|key| !nonempty_string(account.get(*key)))
+            || account.get("display_name").is_some_and(|value| {
+                !nonempty_string(Some(value)) || value.as_str().is_some_and(|s| s.len() > 256)
+            })
+        {
+            return Err("凭证账号字段无效或缺少必填值".to_owned());
+        }
+        if matches!(
+            field,
+            "claudeQuotaAccounts" | "grokQuotaAccounts" | "opencodeGoQuotaAccounts"
+        ) && !account.get("oauth").is_some_and(Value::is_object)
+        {
+            return Err("OAuth 凭证必须是 JSON 对象".to_owned());
+        }
+        for key in ["refresh_token", "id_token", "expiry", "authorization_state"] {
+            if account.get(key).is_some_and(|value| !value.is_string()) {
+                return Err("令牌字段必须为字符串".to_owned());
+            }
+        }
+        if account
+            .get("site")
+            .is_some_and(|value| !matches!(value.as_str(), Some("domestic" | "global")))
+            || account
+                .get("is_global")
+                .is_some_and(|value| !value.is_boolean())
+        {
+            return Err("StepFun 站点字段无效".to_owned());
+        }
+    }
+    Ok(())
+}
 pub fn merge_credentials(
     existing: &CredentialPayloads,
     patch: &BTreeMap<String, Option<Value>>,
@@ -50,10 +150,11 @@ pub fn merge_credentials(
     let mut merged = existing.clone();
     for (key, value) in patch {
         if !is_allowed_field(key) {
-            return Err(format!("未知凭证字段: {key}"));
+            return Err("未知凭证字段".to_owned());
         }
         match value {
             Some(value) => {
+                validate_credential_payload(key, value)?;
                 merged.insert(key.clone(), value.clone());
             }
             None => {
@@ -63,152 +164,275 @@ pub fn merge_credentials(
     }
     Ok(merged)
 }
-
-fn credentials_path(root: &Path) -> PathBuf {
-    root.join("credentials.json")
-}
-
-fn is_allowed_field(key: &str) -> bool {
-    ALLOWED_CREDENTIAL_FIELDS.contains(&key)
-}
-
-/// 从磁盘加载凭证; 文件缺失返回空表, 白名单外键静默丢弃, 损坏文件视为缺失
-/// (与 mac AtomicJSONStore 的 corrupt 处理口径一致, 绝不因凭证问题阻塞本地采集)。
 pub fn load_credentials(root: &Path) -> CredentialPayloads {
     let path = credentials_path(root);
-    let Ok(raw) = fs::read_to_string(&path) else {
+    if reject_link(&path).is_err() {
+        return CredentialPayloads::new();
+    }
+    if !fs::metadata(&path).is_ok_and(|m| m.is_file() && m.len() <= MAX_CREDENTIAL_BYTES) {
+        return CredentialPayloads::new();
+    }
+    let Ok(raw) = fs::read(&path) else {
         return CredentialPayloads::new();
     };
-    let Ok(Value::Object(map)) = serde_json::from_str::<Value>(&raw) else {
-        eprintln!("credentials.json 无法解析, 视为未配置: {}", path.display());
+    let Ok(Value::Object(map)) = serde_json::from_slice::<Value>(&raw) else {
         return CredentialPayloads::new();
     };
     map.into_iter()
-        .filter(|(key, _)| is_allowed_field(key))
+        .filter(|(key, value)| validate_credential_payload(key, value).is_ok())
         .collect()
 }
-
-/// 原子写入: 临时文件 (create_new) → rename 替换, 崩溃安全;
-/// 写入前全量校验白名单, 任一未知键即拒绝 (防手改文件引入契约外字段)。
 pub fn save_credentials(root: &Path, payloads: &CredentialPayloads) -> Result<(), String> {
-    for key in payloads.keys() {
-        if !is_allowed_field(key) {
-            return Err(format!("未知凭证字段: {key}"));
+    let _guard = STORE_LOCK.lock().map_err(|_| "凭证存储事务不可用")?;
+    save_unlocked(root, payloads)
+}
+/// UI mutation and token write-back read the latest file inside the same lock.
+pub fn save_credentials_patch(
+    root: &Path,
+    patch: &BTreeMap<String, Option<Value>>,
+) -> Result<(), String> {
+    let _guard = STORE_LOCK.lock().map_err(|_| "凭证存储事务不可用")?;
+    let merged = merge_credentials(&load_credentials(root), patch)?;
+    save_unlocked(root, &merged)
+}
+pub fn save_credential_account(
+    root: &Path,
+    field: &str,
+    account_id: &str,
+    payload: &Value,
+) -> Result<(), String> {
+    if !field.ends_with("QuotaAccounts") || !is_allowed_field(field) || !valid_id(account_id) {
+        return Err("凭证账号目标无效".to_owned());
+    }
+    let mut payload = payload
+        .as_object()
+        .cloned()
+        .ok_or("凭证账号必须是 JSON 对象")?;
+    payload
+        .entry("display_name")
+        .or_insert_with(|| json!(account_id));
+    validate_credential_payload(field, &json!({account_id: payload}))?;
+    let _guard = STORE_LOCK.lock().map_err(|_| "凭证存储事务不可用")?;
+    let mut latest = load_credentials(root);
+    latest
+        .entry(field.to_owned())
+        .or_insert_with(|| json!({}))
+        .as_object_mut()
+        .ok_or("凭证账号映射损坏")?
+        .insert(account_id.to_owned(), json!(payload));
+    save_unlocked(root, &latest)
+}
+pub fn remove_credential_account(root: &Path, field: &str, account_id: &str) -> Result<(), String> {
+    if !field.ends_with("QuotaAccounts") || !is_allowed_field(field) || !valid_id(account_id) {
+        return Err("凭证账号目标无效".to_owned());
+    }
+    let _guard = STORE_LOCK.lock().map_err(|_| "凭证存储事务不可用")?;
+    let mut latest = load_credentials(root);
+    if let Some(accounts) = latest.get_mut(field).and_then(Value::as_object_mut) {
+        accounts.remove(account_id);
+        if accounts.is_empty() {
+            latest.remove(field);
         }
     }
-    let path = credentials_path(root);
-    let parent = path
-        .parent()
-        .ok_or_else(|| "凭证路径缺少父目录".to_owned())?;
-    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-
-    let body = serde_json::to_vec_pretty(payloads).map_err(|error| error.to_string())?;
-    let temporary = parent.join(format!(
-        ".credentials-{}-{}.tmp",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
+    save_unlocked(root, &latest)
+}
+/// Only these explicit metadata fields are allowed over IPC.
+pub fn credential_accounts(root: &Path) -> Vec<Value> {
+    let mut result = Vec::new();
+    for (field, payload) in load_credentials(root) {
+        if !field.ends_with("QuotaAccounts") {
+            continue;
+        }
+        if let Some(accounts) = payload.as_object() {
+            for (id, value) in accounts {
+                result.push(json!({"field":field,"accountId":id,"displayName":value.get("display_name").and_then(Value::as_str).unwrap_or(id),"authorizationState":value.get("authorization_state").and_then(Value::as_str)}));
+            }
+        }
+    }
+    result
+}
+/// Explicit pasted CLI auth.json import; never opens or changes external files.
+pub fn import_codex_auth(root: &Path, document: &Value) -> Result<(), String> {
+    let tokens = document
+        .get("tokens")
+        .and_then(Value::as_object)
+        .ok_or("Codex auth.json 缺少 tokens 对象")?;
+    let id = tokens
+        .get("account_id")
+        .and_then(Value::as_str)
+        .filter(|id| valid_id(id))
+        .ok_or("Codex auth.json 缺少有效账号 ID")?;
+    let mut account = serde_json::Map::new();
+    account.insert("display_name".to_owned(), json!(id));
+    for key in ["access_token", "refresh_token", "id_token"] {
+        if let Some(value) = tokens.get(key).filter(|value| nonempty_string(Some(value))) {
+            account.insert(key.to_owned(), value.clone());
+        }
+    }
+    save_credential_account(root, "codexQuotaAccounts", id, &Value::Object(account))
+}
+fn save_unlocked(root: &Path, payloads: &CredentialPayloads) -> Result<(), String> {
+    for (field, payload) in payloads {
+        validate_credential_payload(field, payload)?;
+    }
+    let body = serde_json::to_vec_pretty(payloads).map_err(|_| "凭证编码失败")?;
+    if body.len() as u64 > MAX_CREDENTIAL_BYTES {
+        return Err("凭证文件超过大小上限".to_owned());
+    }
+    if load_credentials(root).get("deepseekQuotaAccounts") != payloads.get("deepseekQuotaAccounts")
     {
-        let mut file = fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temporary)
-            .map_err(|error| error.to_string())?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            file.set_permissions(fs::Permissions::from_mode(0o600))
-                .map_err(|error| error.to_string())?;
-        }
-        file.write_all(&body).map_err(|error| error.to_string())?;
-        file.sync_all().map_err(|error| error.to_string())?;
+        atomic_private_write(
+            &root.join("deepseek-tracking-id"),
+            uuid::Uuid::new_v4().to_string().as_bytes(),
+        )?;
     }
-    // Windows: rename 前对临时文件收紧 ACL (仅当前用户), 失败不阻塞写入
-    // (权限加固为尽力而为; 文件内容本身仍受白名单与原子替换保护)。
+    write_with_permissions(root, &body, restrict_permissions)
+}
+fn reject_link(path: &Path) -> Result<(), String> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => {
+            #[cfg(windows)]
+            {
+                use std::os::windows::fs::MetadataExt;
+                if metadata.file_attributes() & 0x400 != 0 {
+                    return Err("凭证路径不得为链接或重解析点".to_owned());
+                }
+            }
+            if metadata.file_type().is_symlink() {
+                return Err("凭证路径不得为链接".to_owned());
+            }
+            Ok(())
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(_) => Err("无法检查凭证路径".to_owned()),
+    }
+}
+fn restrict_permissions(path: &Path, directory: bool) -> Result<(), String> {
     #[cfg(windows)]
-    restrict_permissions_windows(&temporary);
-    fs::rename(&temporary, &path).map_err(|error| {
-        let _ = fs::remove_file(&temporary);
-        error.to_string()
-    })?;
-    Ok(())
+    {
+        windows_security::restrict(path, directory)
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(
+            path,
+            fs::Permissions::from_mode(if directory { 0o700 } else { 0o600 }),
+        )
+        .map_err(|_| "无法设置凭证专属权限".to_owned())
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = (path, directory);
+        Err("不支持此平台的凭证权限保证".to_owned())
+    }
+}
+/// A failed parent or file ACL prevents publication. File ACL is installed while
+/// the new file is still empty; the old credential file remains untouched.
+fn write_with_permissions(
+    root: &Path,
+    body: &[u8],
+    mut secure: impl FnMut(&Path, bool) -> Result<(), String>,
+) -> Result<(), String> {
+    write_path_with_permissions(&credentials_path(root), body, &mut secure)
 }
 
-#[cfg(windows)]
-fn restrict_permissions_windows(path: &Path) {
-    use std::os::windows::process::CommandExt;
+/// Reused by nonsecret snapshots/ledger to retain ACL and atomic-replace semantics on Windows.
+pub(crate) fn atomic_private_write(path: &Path, body: &[u8]) -> Result<(), String> {
+    write_path_with_permissions(path, body, restrict_permissions)
+}
 
-    // icacls: 关闭继承, 仅保留当前用户完全控制; 静默失败 (尽力而为)。
-    let _ = std::process::Command::new("icacls")
-        .arg(path)
-        .args(["/inheritance:r"])
-        .args([
-            "/grant:r",
-            &format!("{}:F", std::env::var("USERNAME").unwrap_or_default()),
-        ])
-        .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
-        .status();
+pub(crate) fn deepseek_tracking_id(root: &Path) -> Result<String, String> {
+    let _guard = STORE_LOCK.lock().map_err(|_| "凭证存储事务不可用")?;
+    let path = root.join("deepseek-tracking-id");
+    reject_link(&path)?;
+    if let Ok(id) = fs::read_to_string(&path) {
+        if uuid::Uuid::parse_str(id.trim()).is_ok() {
+            return Ok(id.trim().to_owned());
+        }
+    }
+    let id = uuid::Uuid::new_v4().to_string();
+    atomic_private_write(&path, id.as_bytes())?;
+    Ok(id)
+}
+
+fn write_path_with_permissions(
+    path: &Path,
+    body: &[u8],
+    mut secure: impl FnMut(&Path, bool) -> Result<(), String>,
+) -> Result<(), String> {
+    let root = path.parent().ok_or("存储路径无效")?;
+    reject_link(root)?;
+    reject_link(path)?;
+    fs::create_dir_all(root).map_err(|_| "无法创建凭证目录")?;
+    secure(root, true)?;
+    let temporary = root.join(format!(".credentials-{}.tmp", uuid::Uuid::new_v4()));
+    let result = (|| {
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options
+            .open(&temporary)
+            .map_err(|_| "无法创建凭证临时文件")?;
+        secure(&temporary, false)?;
+        file.write_all(body).map_err(|_| "凭证写入失败")?;
+        file.sync_all().map_err(|_| "凭证同步失败")?;
+        drop(file);
+        #[cfg(windows)]
+        windows_security::replace(&temporary, path)?;
+        #[cfg(not(windows))]
+        fs::rename(&temporary, path).map_err(|_| "凭证原子替换失败")?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
-
     fn temp_root() -> PathBuf {
-        // 同名纳秒在并行测试线程下会碰撞 (见 tests/ 同款修复), 原子序号保证唯一。
-        static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let root = std::env::temp_dir().join(format!(
-            "bruce-win-credentials-test-{}-{}",
-            std::process::id(),
-            SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-        ));
-        fs::create_dir_all(&root).unwrap();
-        root
+        std::env::temp_dir().join(format!("bruce-credentials-{}", uuid::Uuid::new_v4()))
     }
-
     #[test]
-    fn missing_file_loads_empty_and_save_round_trips() {
+    fn parent_permission_failure_does_not_create_a_secret_file() {
         let root = temp_root();
-        assert!(load_credentials(&root).is_empty());
-
-        let mut payloads = CredentialPayloads::new();
-        payloads.insert(
-            "kimiQuotaAccounts".to_owned(),
-            json!([{ "accountID": "a1", "apiKey": "sk-test" }]),
-        );
-        save_credentials(&root, &payloads).unwrap();
-        let loaded = load_credentials(&root);
-        assert_eq!(loaded.len(), 1);
-        assert_eq!(loaded["kimiQuotaAccounts"], payloads["kimiQuotaAccounts"]);
+        assert!(write_with_permissions(&root, b"fixture-secret", |_, _| Err(
+            "acl denied".to_owned()
+        ))
+        .is_err());
+        assert!(fs::read_dir(root).unwrap().next().is_none());
     }
-
     #[test]
-    fn unknown_field_is_rejected_on_save_and_dropped_on_load() {
+    fn file_permission_failure_is_before_plaintext_and_preserves_original() {
         let root = temp_root();
-        let mut payloads = CredentialPayloads::new();
-        payloads.insert("notAProvider".to_owned(), json!({"x": 1}));
-        assert!(save_credentials(&root, &payloads).is_err());
-
-        // 白名单外键读取时被静默丢弃。
-        let path = credentials_path(&root);
-        fs::write(
-            &path,
-            r#"{"notAProvider":{"x":1},"deepseekQuotaAccounts":[]}"#,
-        )
-        .unwrap();
-        let loaded = load_credentials(&root);
-        assert_eq!(loaded.len(), 1);
-        assert!(loaded.contains_key("deepseekQuotaAccounts"));
+        save_credentials(&root, &CredentialPayloads::new()).unwrap();
+        let original = fs::read(credentials_path(&root)).unwrap();
+        let result = write_with_permissions(&root, b"fixture-secret", |path, directory| {
+            if directory {
+                Ok(())
+            } else {
+                assert!(fs::read(path).unwrap().is_empty());
+                Err("acl denied".to_owned())
+            }
+        });
+        assert!(result.is_err());
+        assert_eq!(fs::read(credentials_path(&root)).unwrap(), original);
+        assert_eq!(fs::read_dir(root).unwrap().count(), 1);
     }
-
+    #[cfg(windows)]
     #[test]
-    fn corrupt_file_is_treated_as_missing() {
+    fn windows_parent_and_replaced_file_have_current_sid_only() {
         let root = temp_root();
-        fs::write(credentials_path(&root), "{not json").unwrap();
-        assert!(load_credentials(&root).is_empty());
+        save_credentials(&root, &CredentialPayloads::new()).unwrap();
+        save_credentials(&root, &CredentialPayloads::new()).unwrap();
+        windows_security::assert_current_sid_only(&root).unwrap();
+        windows_security::assert_current_sid_only(&credentials_path(&root)).unwrap();
     }
 }

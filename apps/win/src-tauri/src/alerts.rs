@@ -93,6 +93,20 @@ pub struct AlertDeliveryState {
 }
 
 impl AlertDeliveryState {
+    /// Manual refresh updates crossing state without sending a notification.
+    pub fn alerts_for_refresh(
+        &mut self,
+        alerts: &[QuotaAlert],
+        manual: bool,
+        enabled: bool,
+    ) -> Vec<QuotaAlert> {
+        let fresh = self.filter_new_alerts(alerts);
+        if manual || !enabled {
+            Vec::new()
+        } else {
+            fresh
+        }
+    }
     /// 输入本轮超阈值条目, 返回需要真正发出通知的条目。
     pub fn filter_new_alerts(&mut self, alerts: &[QuotaAlert]) -> Vec<QuotaAlert> {
         let current: std::collections::BTreeSet<String> =

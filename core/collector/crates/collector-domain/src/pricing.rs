@@ -51,6 +51,13 @@ impl Default for PricingTable {
 }
 
 impl PricingTable {
+    /// Sorted built-in catalog for application settings; rates share the collector source of truth.
+    pub fn builtin_catalog(&self) -> std::collections::BTreeMap<String, ModelPricing> {
+        self.builtin
+            .iter()
+            .map(|(name, price)| (name.clone(), price.clone()))
+            .collect()
+    }
     pub fn new(overrides: HashMap<String, ModelPricingOverride>) -> Self {
         let mut builtin = HashMap::new();
 

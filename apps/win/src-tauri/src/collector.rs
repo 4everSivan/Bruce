@@ -9,6 +9,7 @@ use collector_domain::{BridgeRequest, BridgeResponse, BridgeTimeouts, BRIDGE_SCH
 use serde_json::{Map, Value};
 
 use crate::credentials::CredentialPayloads;
+use crate::settings::AppSettings;
 
 /// 本地会话扫描 + 本地定价; 出站额度 (externalQuotas) 仅在存在凭证时启用。
 const LOCAL_CAPABILITIES: [&str; 2] = ["localSessions", "localPricing"];
@@ -70,9 +71,136 @@ pub fn build_local_request(
 
 /// 进程内执行一次采集, 返回标准 BridgeResponse (artifact schema 与 mac 一致)。
 pub fn run_local_collection(credentials: CredentialPayloads) -> Result<BridgeResponse, String> {
-    let request = build_local_request(Local::now(), &credentials);
+    run_configured_collection(credentials, &AppSettings::default())
+}
+
+/// 应用入口统一消费配置；凭据存在并不等于用户已授权联网。
+pub fn build_configured_request(
+    now: chrono::DateTime<Local>,
+    credentials: &CredentialPayloads,
+    settings: &AppSettings,
+) -> BridgeRequest {
+    let mut filtered = CredentialPayloads::new();
+    if settings.consent_version == 1 {
+        for provider in &settings.enabled_providers {
+            let field = match provider.as_str() {
+                "kimi" => "kimiQuotaAccounts",
+                "deepseek" => "deepseekQuotaAccounts",
+                "volcengine" => "volcengineQuotaAccounts",
+                "zhipu" => "zhipuQuotaAccounts",
+                "claude" => "claudeQuotaAccounts",
+                "grok" => "grokQuotaAccounts",
+                "opencodeGo" => "opencodeGoQuotaAccounts",
+                "codex" => "codexQuotaAccounts",
+                "stepfun" => "stepfunQuotaAccounts",
+                _ => continue,
+            };
+            if let Some(value) = credentials
+                .get(field)
+                .filter(|v| v.as_object().is_some_and(|o| !o.is_empty()))
+            {
+                let value = if provider == "codex" {
+                    // Refresh/id tokens are app-private and rejected by the shared Bridge boundary.
+                    Value::Object(
+                        value
+                            .as_object()
+                            .unwrap()
+                            .iter()
+                            .filter(|(_, raw)| raw["authorization_state"] != "reauthRequired")
+                            .map(|(id, raw)| {
+                                let account = ["access_token", "display_name"]
+                                    .iter()
+                                    .filter_map(|key| {
+                                        raw.get(*key).map(|v| ((*key).to_owned(), v.clone()))
+                                    })
+                                    .collect();
+                                (id.clone(), Value::Object(account))
+                            })
+                            .collect(),
+                    )
+                } else {
+                    value.clone()
+                };
+                if value.as_object().is_some_and(|o| !o.is_empty()) {
+                    filtered.insert(field.to_owned(), value);
+                }
+            }
+            if ["claude", "grok"].contains(&provider.as_str()) {
+                let field = if provider == "claude" {
+                    "claudeOAuth"
+                } else {
+                    "grokOAuth"
+                };
+                if let Some(value) = credentials.get(field) {
+                    filtered.insert(field.into(), value.clone());
+                }
+                // Official account discovery is explicitly enabled only for a configured provider.
+                let configured = filtered.contains_key(field)
+                    || filtered.contains_key(&format!("{provider}QuotaAccounts"));
+                if configured {
+                    filtered
+                        .entry("providerMeta".into())
+                        .or_insert_with(|| serde_json::json!({}))[provider] =
+                        serde_json::json!({"enabled":true});
+                }
+            }
+        }
+    }
+    let mut request = build_local_request(now, &filtered);
+    if !settings.usage_enabled {
+        request.context["capabilities"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|v| v != "localSessions");
+    }
+    if let Some(accounts) = filtered
+        .get("codexQuotaAccounts")
+        .and_then(Value::as_object)
+    {
+        request.context.insert(
+            "codexQuotaAccountOrder".into(),
+            Value::Array(accounts.keys().map(|s| Value::String(s.clone())).collect()),
+        );
+    }
+    if !settings.pricing_overrides.is_empty() {
+        request.context.insert(
+            "pricingOverrides".into(),
+            serde_json::to_value(&settings.pricing_overrides).unwrap_or_default(),
+        );
+    }
+    request
+}
+
+pub fn run_configured_collection(
+    credentials: CredentialPayloads,
+    settings: &AppSettings,
+) -> Result<BridgeResponse, String> {
+    let request = build_configured_request(Local::now(), &credentials, settings);
     let input = serde_json::to_vec(&request).map_err(|error| error.to_string())?;
     Ok(run_bytes(&input))
+}
+
+/// OAuth challenge recovery queries only Codex quotas; local sessions and other providers are not repeated.
+pub fn run_codex_retry(
+    credentials: CredentialPayloads,
+    settings: &AppSettings,
+) -> Result<BridgeResponse, String> {
+    let mut settings = settings.clone();
+    settings.enabled_providers = vec!["codex".into()];
+    settings.usage_enabled = false;
+    let mut request = build_configured_request(Local::now(), &credentials, &settings);
+    request
+        .context
+        .insert("codexQuotaRetryOnly".into(), Value::Bool(true));
+    request
+        .context
+        .insert("capabilities".into(), serde_json::json!(["externalQuotas"]));
+    if request.credentials.is_empty() {
+        return Err("CODEX_RETRY_UNAUTHORIZED".into());
+    }
+    Ok(run_bytes(
+        &serde_json::to_vec(&request).map_err(|_| "CODEX_RETRY_INVALID")?,
+    ))
 }
 
 #[cfg(test)]
@@ -116,9 +244,13 @@ mod tests {
 
     #[test]
     fn local_collection_returns_bridge_response_shape() {
-        // CI/真机无 agent 数据时也必须产出同 schema 的空采集响应;
-        // 缓存落在应用自身可重建目录, 幂等无害。
-        let response = run_local_collection(CredentialPayloads::new()).expect("本地采集不应失败");
+        // 禁用本机会话能力，单测绝不扫描真实用户目录或落真实缓存。
+        let settings = AppSettings {
+            usage_enabled: false,
+            ..Default::default()
+        };
+        let response = run_configured_collection(CredentialPayloads::new(), &settings)
+            .expect("本地采集不应失败");
         assert!(
             response.artifact.is_some() || !response.diagnostics.is_empty(),
             "BridgeResponse 必须携带 artifact 或诊断"

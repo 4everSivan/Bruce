@@ -371,10 +371,14 @@ dependencies = [
 name = "bruce-win"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "bruce-win-viewmodel",
  "chrono",
  "collector-bridge",
+ "collector-credential",
  "collector-domain",
+ "collector-local",
+ "collector-provider",
  "iana-time-zone",
  "serde",
  "serde_json",
@@ -382,7 +386,9 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-global-shortcut",
  "tauri-plugin-notification",
+ "ureq",
  "uuid",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4408,6 +4414,8 @@ dependencies = [
  "once_cell",
  "rustls",
  "rustls-pki-types",
+ "serde",
+ "serde_json",
  "url",
  "webpki-roots 0.26.11",
 ]

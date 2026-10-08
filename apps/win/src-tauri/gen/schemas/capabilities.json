@@ -1,1 +1,1 @@
-{}
+{"local-panels":{"identifier":"local-panels","description":"Local dashboard and settings receive safe runtime events","local":true,"windows":["dashboard","settings"],"permissions":["core:event:allow-listen","core:event:allow-unlisten"]}}

@@ -205,21 +205,25 @@ fn norm(value: serde_json::Value) -> serde_json::Value {
 /// 本测试随之锁住 Windows 侧行为必须同步对齐。
 #[test]
 fn mac_parity_golden_matches() {
-    let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../tests/fixtures/viewmodel-parity/agent-usage-valid.panel.json");
-    let golden_raw = std::fs::read_to_string(golden_path).expect("golden 快照可读");
-    let golden: serde_json::Value = serde_json::from_str(&golden_raw).expect("golden JSON 合法");
-
-    let artifact = load_valid_artifact();
-    let mapper = PanelViewModelMapper::default();
-    let panel = mapper.make(Some(&artifact), fixed_now());
-    let produced = serde_json::to_value(&panel).expect("视图模型可序列化");
-
-    assert_eq!(
-        norm(produced),
-        norm(golden),
-        "rust 视图模型输出必须与 mac golden 逐字段一致"
-    );
+    for name in ["valid", "partial", "empty"] {
+        let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!(
+            "../../../tests/fixtures/viewmodel-parity/agent-usage-{name}.panel.json"
+        ));
+        let golden_raw = std::fs::read_to_string(&golden_path).expect("mac golden 快照可读");
+        let golden: serde_json::Value =
+            serde_json::from_str(&golden_raw).expect("golden JSON 合法");
+        let raw = std::fs::read_to_string(fixture_path(&format!("{name}.json"))).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        let artifact: AgentUsageArtifact =
+            serde_json::from_value(value["artifact"].clone()).unwrap();
+        let panel = PanelViewModelMapper::default().make(Some(&artifact), fixed_now());
+        let produced = serde_json::to_value(&panel).unwrap();
+        assert_eq!(
+            norm(produced),
+            norm(golden),
+            "{name}: rust 输出必须与 mac golden 逐字段一致"
+        );
+    }
 }
 
 #[test]

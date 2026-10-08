@@ -368,63 +368,65 @@ struct PanelParityHarness {
         }
         let updateMode = arguments.contains("--update")
         let root = URL(fileURLWithPath: repoRoot, isDirectory: true)
-        let fixtureURL = root.appendingPathComponent("tests/fixtures/artifacts/agent-usage/valid.json")
-        let goldenURL = root.appendingPathComponent("tests/fixtures/viewmodel-parity/agent-usage-valid.panel.json")
+        for name in ["valid", "partial", "empty"] {
+            let fixtureURL = root.appendingPathComponent("tests/fixtures/artifacts/agent-usage/\(name).json")
+            let goldenURL = root.appendingPathComponent("tests/fixtures/viewmodel-parity/agent-usage-\(name).panel.json")
 
-        do {
-            let artifact = try decodeAgentUsageArtifact(fixtureURL: fixtureURL)
+            do {
+                let artifact = try decodeAgentUsageArtifact(fixtureURL: fixtureURL)
 
-            // 固定 now (2026-07-28T12:30:00+08:00) 与日历 (Asia/Shanghai, 周一起),
-            // 与 Rust 侧 fixture_parity 测试完全一致。
-            let fixedNow = try ISO8601DateFormatter().date(from: "2026-07-28T12:30:00+08:00")
-                .unwrapOrThrow()
-            var calendar = Calendar(identifier: .gregorian)
-            calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
-            calendar.firstWeekday = 2
+                // 固定 now (2026-07-28T12:30:00+08:00) 与日历 (Asia/Shanghai, 周一起),
+                // 与 Rust 侧 fixture_parity 测试完全一致。
+                let fixedNow = try ISO8601DateFormatter().date(from: "2026-07-28T12:30:00+08:00")
+                    .unwrapOrThrow()
+                var calendar = Calendar(identifier: .gregorian)
+                calendar.timeZone = TimeZone(identifier: "Asia/Shanghai")!
+                calendar.firstWeekday = 2
 
-            let mapper = PanelViewModelMapper(
-                liveThreshold: 45 * 60,
-                now: { fixedNow },
-                calendar: calendar
-            )
-            let panel = mapper.make(
-                agentUsage: artifact,
-                moduleStatuses: [:],
-                deepSeekMonthlyUsage: nil,
-                providerOrder: []
-            )
-
-            let produced = try J.data(encode(panel))
-
-            if updateMode {
-                try FileManager.default.createDirectory(
-                    at: goldenURL.deletingLastPathComponent(),
-                    withIntermediateDirectories: true
+                let mapper = PanelViewModelMapper(
+                    liveThreshold: 45 * 60,
+                    now: { fixedNow },
+                    calendar: calendar
                 )
-                try produced.write(to: goldenURL)
-                print("golden 快照已刷新: \(goldenURL.path)")
-                return
-            }
+                let panel = mapper.make(
+                    agentUsage: artifact,
+                    moduleStatuses: [:],
+                    deepSeekMonthlyUsage: nil,
+                    providerOrder: []
+                )
 
-            guard FileManager.default.fileExists(atPath: goldenURL.path) else {
-                print("golden 快照不存在: \(goldenURL.path) (先运行 --update 生成)")
+                let produced = try J.data(encode(panel))
+
+                if updateMode {
+                    try FileManager.default.createDirectory(
+                        at: goldenURL.deletingLastPathComponent(),
+                        withIntermediateDirectories: true
+                    )
+                    try produced.write(to: goldenURL)
+                    print("golden 快照已刷新: \(goldenURL.path)")
+                    continue
+                }
+
+                guard FileManager.default.fileExists(atPath: goldenURL.path) else {
+                    print("golden 快照不存在: \(goldenURL.path) (先运行 --update 生成)")
+                    exit(1)
+                }
+                let goldenObject = try JSONSerialization.jsonObject(with: Data(contentsOf: goldenURL))
+                let producedObject = try JSONSerialization.jsonObject(with: produced)
+                var errors: [String] = []
+                compare(producedObject, goldenObject, path: "$", errors: &errors)
+                if errors.isEmpty {
+                    print("Panel 视图模型双端对拍通过 (\(name): mac 产出 ≡ golden 快照)")
+                } else {
+                    print("双端对拍失败, \(errors.count) 处差异:")
+                    errors.prefix(20).forEach { print("  - \($0)") }
+                    print("若为 mac 端预期行为变更, 运行 --update 刷新 golden 并同步审视 Windows 侧实现")
+                    exit(1)
+                }
+            } catch {
+                print("PanelParityHarness 执行失败: \(error)")
                 exit(1)
             }
-            let goldenObject = try JSONSerialization.jsonObject(with: Data(contentsOf: goldenURL))
-            let producedObject = try JSONSerialization.jsonObject(with: produced)
-            var errors: [String] = []
-            compare(producedObject, goldenObject, path: "$", errors: &errors)
-            if errors.isEmpty {
-                print("Panel 视图模型双端对拍通过 (mac 产出 ≡ golden 快照)")
-            } else {
-                print("双端对拍失败, \(errors.count) 处差异:")
-                errors.prefix(20).forEach { print("  - \($0)") }
-                print("若为 mac 端预期行为变更, 运行 --update 刷新 golden 并同步审视 Windows 侧实现")
-                exit(1)
-            }
-        } catch {
-            print("PanelParityHarness 执行失败: \(error)")
-            exit(1)
         }
     }
 }

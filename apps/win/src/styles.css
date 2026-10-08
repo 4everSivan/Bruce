@@ -305,3 +305,60 @@ body { background: transparent; padding: 0; }
 .card .placeholder code { font-family: "SF Mono", ui-monospace, Consolas, monospace; font-size: 10px; color: var(--ink); opacity: .8; }
 .hidden { display: none !important; }
 
+
+/* C009: shared configuration pages and keyboard-accessible card state. */
+.card.collapsed > :not(.card-head):not(.collapsed-summary) { display: none; }
+.collapsed-summary { display: none; margin-top: 8px; }
+.collapsed-summary > span { display: flex; align-items: center; gap: 5px; }
+.card.collapsed > .collapsed-summary { display: block; }
+.card-head:focus-visible, .chip:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.dashboard-status { padding: 6px 14px 0; color: var(--secondary); font-size: 11px; overflow-wrap: anywhere; }
+.dashboard-status:empty { display: none; }
+.account-detail { padding: 7px 0 2px; }
+.account-detail summary { cursor: pointer; font-size: 11px; }
+.account-detail .plan-chip { margin-left: 6px; }
+.configuration-content { padding: 10px 12px; }
+.settings-window { background: #202022; display: block; overflow-y: auto; }
+#settings-page { max-width: 920px; margin: 0 auto; padding: 24px 28px 32px; }
+.settings-header h1 { font-size: 20px; margin-bottom: 6px; }
+.settings-header p, .hint { font-size: 12px; color: var(--secondary); line-height: 1.6; margin: 6px 0; }
+.settings-card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 14px; padding: 16px; margin-bottom: 12px; }
+.settings-card h2 { font-size: 14px; margin-bottom: 10px; }
+.settings-card h3 { font-size: 12px; margin-top: 12px; }
+.settings-card input, .settings-card select, .settings-card textarea {
+  background: var(--badge-bg); color: var(--ink); border: 1px solid var(--card-border);
+  border-radius: 6px; padding: 6px 8px; font: inherit; min-width: 0;
+}
+.settings-card select option { background: #202022; color: #eee; }
+.settings-card input[type="checkbox"] { width: auto; accent-color: var(--accent); }
+.settings-card textarea { display: block; width: 100%; margin-top: 8px; font-family: "Cascadia Mono", Consolas, monospace; font-size: 11px; }
+.settings-card input[type="file"] { max-width: 100%; }
+.settings-card .row { gap: 10px; align-items: center; flex-wrap: wrap; }
+.settings-card .row > input, .settings-card .row > select { flex: 0 1 220px; }
+.settings-card button, #settings-content > .actions button {
+  background: var(--badge-bg); border: 1px solid var(--card-border); color: var(--ink);
+  padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 11px;
+}
+button:disabled { opacity: .5; cursor: progress; }
+.settings-card summary { cursor: pointer; font-size: 12px; }
+.order-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 12px; }
+.order-row > span, .order-row > label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.order-row > label { display: flex; align-items: center; gap: 8px; }
+.actions { flex-wrap: wrap; }
+#runtime-info { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; line-height: 1.7; }
+#model-prices { overflow-x: auto; max-height: 280px; margin-top: 8px; }
+#model-prices table { border-collapse: collapse; width: 100%; font-size: 10px; }
+#model-prices td, #model-prices th { padding: 5px; border-bottom: 1px solid var(--hairline); text-align: left; }
+#connection-status { white-space: pre-line; font-size: 11px; color: var(--secondary); margin-top: 8px; }
+.theme-nothing {
+  --accent: #e44b47; --card-bg: #151515; --card-border: #3c3c3c; --panel-border: #555;
+  --ink: #f4f4f0; --secondary: #b3b3ae; --subdued: #999; --badge-bg: #242424;
+  font-family: "Cascadia Mono", Consolas, "Segoe UI", monospace;
+}
+.theme-nothing #panel, .theme-nothing.settings-window { background: #0e0e0e; }
+.theme-nothing .card, .theme-nothing .settings-card { border-radius: 4px; box-shadow: none; }
+.theme-nothing .hud-brand { letter-spacing: 1.5px; }
+.theme-nothing .hero-num { color: #f2f2ee; background: radial-gradient(currentColor 1.2px, transparent 1.8px); background-size: 4px 4px; background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.theme-nothing .card::before, .theme-nothing #panel::before { display: none; }
+.theme-nothing .chip, .theme-nothing button { border-radius: 2px; }
+@media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; transition: none !important; } }

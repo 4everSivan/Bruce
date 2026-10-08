@@ -8,6 +8,7 @@
 ## [Unreleased]
 
 ### Fixed
+- **Windows 仪表盘、配置与生命周期对齐 (C009)**: 修复卡片空白、页签和月度模型切换；接通主题、卡片/Provider 排序、模型价格覆盖、用量开关及出站同意；补齐账号管理/导入、诊断和 DeepSeek 月度账本。刷新统一走有界调度，读面板不触发采集；失败保留旧快照并标记过期。凭据改用实际 SID 的受保护 ACL，收权失败拒绝写入，补充令牌轮换与 Codex 有界恢复。增加生产 HTML/JS 行为回归及 valid/partial/empty 双端对拍。Windows 真机窗口、热键、Toast、ACL 和真实路径仍待人工验收，卡片保持 `in_progress`。
 - **Windows 前端三重脱节白屏 (C005)**: 0184900 前端 1:1 复刻只回写了 app.js/styles.css 而漏 index.html 与窗口配置，真机面板加载即抛 `ReferenceError` 白屏。修复：按 styles.css 契约重写 index.html (HUD/三视图/底栏)；app.js 移除 demo 模板残留 `PANEL` 数据段并接线主题选择器, 补模型用量区块 `models` 判空 (无模型月度数据时该区块隐藏而非整栈渲染崩溃, 浏览器真实数据预览已验证三卡完整渲染)；窗口 380x620 → 440x760 对齐 440px 布局, 并清除 demo 残留的 body 20px padding (此前把面板挤压到 400 宽致卡片破版)；新增 `scripts/check-win-frontend.mjs` 结构冒烟 (语法 + DOM id 交叉 + 残留哨兵) 并纳入 verify-rust.sh 与 verify-windows CI，此类缺陷此后双侧 CI 直接红灯。
 - **限流退避分类双端死代码 (C006)**: 采集链路诊断 category 值域不含 `rateLimit`，Windows `classify_rate_limited` 与 mac `RefreshErrorClassifier` 按 category 匹配永远落空，「限流固定 300s 退避」从未生效。修复：双端改按 `code == PROVIDER_RATE_LIMIT` 判定 (兼容保留 category 分支)；Windows 测试改用真实形态诊断 (旧测试自造 `rateLimit` fixture 属自证清白) 并补 `compute_backoff(0)` 下溢防御；mac RefreshSchedulerHarness 增分类器用例 (82 项)。
 - **面板隐藏暂停采集偏离 mac 常驻语义 (C007)**: mac 后台始终周期采集 (配额告警依赖)，Windows 侧隐藏即停采导致面板关闭后告警停摆，且 `panel_visible` 因关闭路径 (失焦/托盘切换/初始态) 行为不一。修复：删除可见性门控 (`panel_visible`/`set_panel_visible`/`visibilitychange` 上报)，采集恒周期 + 打开面板即时手动刷新；设置加载侧将刷新间隔钳制到 `[60, 86400]` 秒 (手改 `settings.json` 为 0 不再触发零间隔 busy-loop)；设计基线 05 与 T03 卡口径同步回写。
@@ -240,4 +241,3 @@
 
 - 打包脚本产物重命名为 `dist/Bruce.app` 与 `dist/Bruce.zip`（去除了 `test` 后缀）。
 - 应用 Icon 正式采用原生 AppIcon 资源与规范文档。
-

@@ -183,7 +183,7 @@ Bruce/
 - `~/Library/Application Support/Bruce/snapshots/`: 当前和 previous Artifact 快照。
 - `~/Library/Application Support/Bruce/metadata/modules.json`: 最近成功、尝试时间和错误分类。
 - macOS Keychain service `com.bruce.dashboard.credentials.v2`: 应用持有的订阅额度凭证; `com.bruce.dashboard.credentials` 仅作为用户主动配置时的旧数据迁移来源。
-- Windows: `%APPDATA%\Bruce\credentials.json` (订阅凭证, 仅当前用户 ACL) 与 `%APPDATA%\Bruce\config\settings.json` (设置); 采集缓存 `%LOCALAPPDATA%\Bruce\collector-cache-v1`。
+- Windows: `%APPDATA%\Bruce\credentials.json` (订阅凭证, 受保护的当前用户 SID ACL)、`config\settings.json` (设置)、`snapshot.json` (非敏感快照) 与 `usage-ledger\` (DeepSeek 月度记录); 采集缓存 `%LOCALAPPDATA%\Bruce\collector-cache-v1`。首次使用需在设置中明确允许订阅查询；保存凭证不会自动授予联网同意。macOS 上调试 Windows 壳的数据目录为 `~/Library/Application Support/Bruce-Windows-Dev`，与原生 App 隔离。窗口、热键、Toast 与 ACL 的 Windows 真机验收见 [C009](docs/devel/change/C009.json)。
 
 清理前先退出应用。在设置页使用「撤销全部授权」停止全部调度; 需要完全重置时, 再通过 Finder 删除 `~/Library/Application Support/Bruce/`, 并在「钥匙串访问」中删除上述 service 的项目。删除快照和 Keychain 项不可由应用自动恢复, 操作前应确认不再需要最后成功数据和现有授权。
 

@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "local-panels",
+  "description": "Local dashboard and settings receive safe runtime events",
+  "windows": ["dashboard", "settings"],
+  "local": true,
+  "permissions": ["core:event:allow-listen", "core:event:allow-unlisten"]
+}

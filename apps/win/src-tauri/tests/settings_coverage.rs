@@ -25,7 +25,7 @@ fn defaults_match_mac_scheduler_configuration() {
     assert!(settings.notifications_enabled);
     assert_eq!(settings.theme, "fluent");
     assert_eq!(settings.card_order, vec!["usage", "subscription", "hourly"]);
-    assert!(!settings.hotkey.is_empty(), "默认注册一个唤出热键");
+    assert!(settings.hotkey.is_empty(), "对齐 mac 默认不注册热键");
     assert_eq!(settings.panel_x, None);
     assert_eq!(settings.panel_y, None);
 }
@@ -46,9 +46,49 @@ fn round_trip_preserves_all_fields_including_panel_position() {
         hotkey: "Ctrl+Alt+P".to_owned(),
         panel_x: Some(1920),
         panel_y: Some(-40),
+        ..AppSettings::default()
     };
     save_settings(&root, &settings).unwrap();
     assert_eq!(load_settings(&root), settings, "含负坐标位置往返");
+}
+
+#[test]
+fn config_round_trip_keeps_consent_provider_and_pricing_contract() {
+    let root = temp_root();
+    let settings: AppSettings = serde_json::from_value(serde_json::json!({
+        "consentVersion": 1,
+        "usageEnabled": false,
+        "enabledProviders": ["kimi"],
+        "providerOrder": ["kimi"],
+        "pricingOverrides": {"k3": {"inputPricePerMillion": 0.25}}
+    }))
+    .unwrap();
+    save_settings(&root, &settings).unwrap();
+    let stored = serde_json::to_value(load_settings(&root)).unwrap();
+    assert_eq!(stored["consentVersion"], 1);
+    assert_eq!(stored["usageEnabled"], false);
+    assert_eq!(stored["enabledProviders"], serde_json::json!(["kimi"]));
+    assert_eq!(
+        stored["pricingOverrides"]["k3"]["inputPricePerMillion"],
+        0.25
+    );
+}
+
+#[test]
+fn unsafe_pricing_and_unknown_providers_are_rejected() {
+    for raw in [
+        serde_json::json!({"enabledProviders":["unknown"]}),
+        serde_json::json!({"providerOrder":["kimi","kimi"]}),
+        serde_json::json!({"pricingOverrides":{"k3":{"inputPricePerMillion":-1}}}),
+        serde_json::json!({"pricingOverrides":{"k3":{"inputPricePerMillion":"secret"}}}),
+        serde_json::json!({"consentVersion":99}),
+    ] {
+        let settings: AppSettings = serde_json::from_value(raw.clone()).unwrap();
+        assert!(
+            validate_settings(&settings).is_err(),
+            "invalid settings accepted: {raw}"
+        );
+    }
 }
 
 #[test]
