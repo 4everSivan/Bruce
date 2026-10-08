@@ -216,7 +216,10 @@ pub(super) fn assert_current_sid_only(path: &Path) -> Result<(), String> {
     };
     let sid = current_sid()?;
     if actual.matches('(').count() != 1 || !actual.contains(&format!(";;;{sid})")) {
-        return Err("ACL 含有当前用户以外的访问条目".to_owned());
+        // 诊断现场: CI 环境与本地 SDDL 形态可能不同 (如 ACE flags 序), 输出实况定位。
+        return Err(format!(
+            "ACL 含有当前用户以外的访问条目: sddl={actual} 期望 sid={sid}"
+        ));
     }
     Ok(())
 }
