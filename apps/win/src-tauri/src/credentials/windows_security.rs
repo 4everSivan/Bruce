@@ -4,14 +4,12 @@ use std::{ffi::c_void, os::windows::ffi::OsStrExt, path::Path, ptr};
 use windows_sys::Win32::{
     Foundation::{CloseHandle, LocalFree, ERROR_SUCCESS, HANDLE},
     Security::{
-        AclSizeInformation,
         Authorization::{
             ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW,
-            GetNamedSecurityInfoW, SetNamedSecurityInfoW, SE_FILE_OBJECT,
+            SetNamedSecurityInfoW, SE_FILE_OBJECT,
         },
-        GetAce, GetAclInformation, GetSecurityDescriptorControl, GetSecurityDescriptorDacl,
-        GetTokenInformation, ACCESS_ALLOWED_ACE, ACL, DACL_SECURITY_INFORMATION,
-        PROTECTED_DACL_SECURITY_INFORMATION, SE_DACL_PROTECTED, TOKEN_QUERY, TOKEN_USER,
+        GetSecurityDescriptorDacl, GetTokenInformation, TokenUser, DACL_SECURITY_INFORMATION,
+        PROTECTED_DACL_SECURITY_INFORMATION, TOKEN_QUERY, TOKEN_USER,
     },
     Storage::FileSystem::{MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH},
     System::Threading::{GetCurrentProcess, OpenProcessToken},
@@ -161,6 +159,13 @@ pub(super) fn replace(source: &Path, target: &Path) -> Result<(), String> {
 
 #[cfg(test)]
 pub(super) fn assert_current_sid_only(path: &Path) -> Result<(), String> {
+    use windows_sys::Win32::Security::{
+        AclSizeInformation,
+        Authorization::{ConvertSidToStringSidW, GetNamedSecurityInfoW, SE_FILE_OBJECT},
+        GetAce, GetAclInformation, GetSecurityDescriptorControl, ACCESS_ALLOWED_ACE,
+        ACL_SIZE_INFORMATION, SE_DACL_PROTECTED,
+    };
+
     let name = wide_path(path)?;
     let mut descriptor = ptr::null_mut();
     // SAFETY: valid path/output pointer. Descriptor is released by LocalBuffer.
@@ -188,22 +193,27 @@ pub(super) fn assert_current_sid_only(path: &Path) -> Result<(), String> {
         return Err("ACL 继承未关闭".to_owned());
     }
     let (mut present, mut defaulted, mut acl) = (0, 0, ptr::null_mut());
-    // SAFETY: valid descriptor; ACL belongs to the descriptor lifetime.
+    // SAFETY: valid descriptor; the ACL pointer belongs to the descriptor lifetime.
     if unsafe { GetSecurityDescriptorDacl(descriptor, &mut present, &mut acl, &mut defaulted) } == 0
         || present == 0
         || acl.is_null()
     {
         return Err("ACL 缺少访问控制表".to_owned());
     }
-    let acl: &ACL = unsafe { &*acl };
-    let mut size = AclSizeInformation::default();
-    // SAFETY: ACL pointer is valid and the output struct has the documented size.
+    // SAFETY: GetNamedSecurityInfoW returned a valid PACL for this descriptor.
+    let acl = unsafe { &*acl };
+    let mut size = ACL_SIZE_INFORMATION {
+        AceCount: 0,
+        AclBytesInUse: 0,
+        AclBytesFree: 0,
+    };
+    // SAFETY: acl is a valid ACL; output struct has the documented size.
     if unsafe {
         GetAclInformation(
             acl,
             &mut size as *mut _ as *mut c_void,
-            std::mem::size_of::<AclSizeInformation>() as u32,
-            2, // AclRevisionInformation
+            std::mem::size_of::<ACL_SIZE_INFORMATION>() as u32,
+            AclSizeInformation,
         )
     } == 0
     {
@@ -239,8 +249,8 @@ pub(super) fn assert_current_sid_only(path: &Path) -> Result<(), String> {
         String::from_utf16_lossy(std::slice::from_raw_parts(string_sid, len))
     };
     let sid = current_sid()?;
-    // 注: 不比对 SDDL 字符串形态 — 内置 Administrator(SID 尾号 500)等已知账户
-    // 会被 Windows 规范化为 SDDL 别名 (LA/BA), 字符串比对在 CI 上必然误报;
+    // 注: 不比对 SDDL 字符串 — 已知账户 (如内置 Administrator RID-500, CI runner 用户)
+    // 会被序列化为 SDDL 别名 (LA/BA), 字符串比对在 windows-latest 上必然误报;
     // ACE 级 SID 相等才是唯一在案身份判定。
     if actual_sid != sid {
         return Err(format!(
