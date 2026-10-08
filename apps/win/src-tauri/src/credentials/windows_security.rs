@@ -234,8 +234,9 @@ pub(super) fn assert_current_sid_only(path: &Path) -> Result<(), String> {
     }
     let mut string_sid = ptr::null_mut();
     // SAFETY: SidStart is the inline SID of the single allowed ACE.
-    if unsafe { ConvertSidToStringSidW(ptr::addr_of!(allowed.SidStart).cast(), &mut string_sid) }
-        == 0
+    if unsafe {
+        ConvertSidToStringSidW(ptr::addr_of!(allowed.SidStart).cast_mut(), &mut string_sid)
+    } == 0
     {
         return Err("读取访问条目身份失败".to_owned());
     }
