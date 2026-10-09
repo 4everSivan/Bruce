@@ -7,6 +7,9 @@
 
 ## [Unreleased]
 
+### Changed
+- **GPT Credits 改为剩余余额展示 (C010)**: Codex 的 Credits 从订阅卡头部小字升级为窗口行下方的「Credits 余额 N.NN」余额行 (非货币纯数字); 余额归零或耗尽后采集侧不再产出, 下一次刷新自动消失; 不限量计划维持「Credits 不限量」文案; 双端 golden 对拍锁定渲染契约。
+
 ### Fixed
 - **Windows 仪表盘、配置与生命周期对齐 (C009)**: 修复卡片空白、页签和月度模型切换；接通主题、卡片/Provider 排序、模型价格覆盖、用量开关及出站同意；补齐账号管理/导入、诊断和 DeepSeek 月度账本。刷新统一走有界调度，读面板不触发采集；失败保留旧快照并标记过期。凭据改用实际 SID 的受保护 ACL，收权失败拒绝写入，补充令牌轮换与 Codex 有界恢复。增加生产 HTML/JS 行为回归及 valid/partial/empty 双端对拍。Windows 真机窗口、热键、Toast、ACL 和真实路径仍待人工验收，卡片保持 `in_progress`。
 - **Windows 前端三重脱节白屏 (C005)**: 0184900 前端 1:1 复刻只回写了 app.js/styles.css 而漏 index.html 与窗口配置，真机面板加载即抛 `ReferenceError` 白屏。修复：按 styles.css 契约重写 index.html (HUD/三视图/底栏)；app.js 移除 demo 模板残留 `PANEL` 数据段并接线主题选择器, 补模型用量区块 `models` 判空 (无模型月度数据时该区块隐藏而非整栈渲染崩溃, 浏览器真实数据预览已验证三卡完整渲染)；窗口 380x620 → 440x760 对齐 440px 布局, 并清除 demo 残留的 body 20px padding (此前把面板挤压到 400 宽致卡片破版)；新增 `scripts/check-win-frontend.mjs` 结构冒烟 (语法 + DOM id 交叉 + 残留哨兵) 并纳入 verify-rust.sh 与 verify-windows CI，此类缺陷此后双侧 CI 直接红灯。
