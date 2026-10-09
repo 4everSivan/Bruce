@@ -731,16 +731,6 @@ fn codex_window_seconds(value: Option<&Value>) -> Option<i64> {
     number(value).map(|value| value as i64)
 }
 
-fn codex_value_text(value: Option<&Value>) -> String {
-    match value {
-        Some(Value::String(value)) => value.clone(),
-        Some(Value::Number(value)) => value.to_string(),
-        Some(Value::Bool(value)) => value.to_string(),
-        Some(Value::Null) | None => "None".to_owned(),
-        Some(value) => value.to_string(),
-    }
-}
-
 /// Parse the Codex `wham/usage` response without retaining the access token.
 /// The shape intentionally follows the legacy wire contract because Swift's
 /// panel and Codex snapshot merger already consume these fields.
@@ -774,18 +764,16 @@ pub fn parse_codex_usage(payload: &Value) -> Result<Option<Value>, ProviderError
         .cloned();
     let mut result = service_result("windows", plan, windows);
     if let Some(credits) = object.get("credits").and_then(Value::as_object) {
-        let extra = if credits.get("unlimited").and_then(Value::as_bool) == Some(true) {
-            Some("Credits 不限量".to_owned())
+        if credits.get("unlimited").and_then(Value::as_bool) == Some(true) {
+            result["extra"] = Value::String("Credits 不限量".to_owned());
         } else if credits.get("has_credits").and_then(Value::as_bool) == Some(true) {
-            Some(format!(
-                "Credits 余额 {}",
-                codex_value_text(credits.get("balance"))
-            ))
-        } else {
-            None
-        };
-        if let Some(extra) = extra {
-            result["extra"] = Value::String(extra);
+            // Credits 剩余余额走结构化 balance 字段 (双端渲染于窗口行下方);
+            // 归零或耗尽时不产出, 下一次刷新条目自动消失。
+            // currency=credits 为展示层判别键 (非货币), 勿按汇率符号渲染。
+            if let Some(balance) = number(credits.get("balance")).filter(|value| *value > 0.0) {
+                result["balance"] = json!(balance);
+                result["currency"] = Value::String("credits".to_owned());
+            }
         }
     }
     result["freshness"] = Value::String("fresh".to_owned());
@@ -3057,6 +3045,53 @@ mod tests {
         assert_eq!(requests[1].headers["Origin"], "https://platform.stepfun.ai");
         assert_eq!(requests[2].url, STEPFUN_GLOBAL_STEP_PLAN_RATE_LIMIT_URL);
         assert_eq!(requests[0].headers["Oasis-Webid"], "dev-global");
+    }
+
+    #[test]
+    fn codex_credits_map_to_structured_balance_and_vanish_at_zero() {
+        // 有余额: 结构化 balance + credits 判别键, 不再有余额 extra 文本。
+        let parsed = parse_codex_usage(&json!({
+            "plan_type": "plus",
+            "rate_limit": {},
+            "credits": {"has_credits": true, "balance": 2998.116571}
+        }))
+        .unwrap()
+        .unwrap();
+        assert_eq!(parsed["balance"], 2998.116571);
+        assert_eq!(parsed["currency"], "credits");
+        assert!(parsed.get("extra").is_none());
+
+        // 归零: 不产出 balance (下一次刷新条目自动消失)。
+        let parsed = parse_codex_usage(&json!({
+            "plan_type": "plus",
+            "rate_limit": {},
+            "credits": {"has_credits": true, "balance": 0.0}
+        }))
+        .unwrap()
+        .unwrap();
+        assert!(parsed.get("balance").is_none());
+        assert!(parsed.get("extra").is_none());
+
+        // 耗尽 (has_credits=false): 同样不产出。
+        let parsed = parse_codex_usage(&json!({
+            "plan_type": "plus",
+            "rate_limit": {},
+            "credits": {"has_credits": false, "balance": 12.0}
+        }))
+        .unwrap()
+        .unwrap();
+        assert!(parsed.get("balance").is_none());
+
+        // 不限量: 维持 extra 文本, 无 balance。
+        let parsed = parse_codex_usage(&json!({
+            "plan_type": "plus",
+            "rate_limit": {},
+            "credits": {"unlimited": true}
+        }))
+        .unwrap()
+        .unwrap();
+        assert_eq!(parsed["extra"], "Credits 不限量");
+        assert!(parsed.get("balance").is_none());
     }
 
     #[test]

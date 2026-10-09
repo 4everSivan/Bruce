@@ -16,10 +16,22 @@
           "total": 124000
         },
         "daily": [
-          {"date": "2026-07-27", "input": 72000, "output": 12000, "total": 84000},
-          {"date": "2026-07-28", "input": 108000, "output": 16000, "total": 124000}
+          {
+            "date": "2026-07-27",
+            "input": 72000,
+            "output": 12000,
+            "total": 84000
+          },
+          {
+            "date": "2026-07-28",
+            "input": 108000,
+            "output": 16000,
+            "total": 124000
+          }
         ],
-        "models": {"kimi-k2.5": 124000},
+        "models": {
+          "kimi-k2.5": 124000
+        },
         "todayModels": [
           {
             "model": "kimi-k2.5",
@@ -30,10 +42,41 @@
           }
         ],
         "projects": [
-          {"name": "fixture/project-a", "total": 92000},
-          {"name": "fixture/project-b", "total": 32000}
+          {
+            "name": "fixture/project-a",
+            "total": 92000
+          },
+          {
+            "name": "fixture/project-b",
+            "total": 32000
+          }
         ],
-        "hours": [0, 0, 0, 0, 0, 0, 0, 0, 12000, 22000, 41000, 49000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "hours": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          12000,
+          22000,
+          41000,
+          49000,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
         "todayCostUsd": 0.1128
       },
       {
@@ -50,10 +93,22 @@
           "total": 60000
         },
         "daily": [
-          {"date": "2026-07-27", "input": 36000, "output": 7000, "total": 43000},
-          {"date": "2026-07-28", "input": 51000, "output": 9000, "total": 60000}
+          {
+            "date": "2026-07-27",
+            "input": 36000,
+            "output": 7000,
+            "total": 43000
+          },
+          {
+            "date": "2026-07-28",
+            "input": 51000,
+            "output": 9000,
+            "total": 60000
+          }
         ],
-        "models": {"gpt-5.4": 60000},
+        "models": {
+          "gpt-5.4": 60000
+        },
         "todayModels": [
           {
             "model": "gpt-5.4",
@@ -63,8 +118,38 @@
             "costUsd": 0.2625
           }
         ],
-        "projects": [{"name": "fixture/project-a", "total": 60000}],
-        "hours": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 18000, 22000, 20000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "projects": [
+          {
+            "name": "fixture/project-a",
+            "total": 60000
+          }
+        ],
+        "hours": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          18000,
+          22000,
+          20000,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
         "todayCostUsd": 0.2625
       },
       {
@@ -84,7 +169,32 @@
         "models": {},
         "todayModels": [],
         "projects": [],
-        "hours": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        "hours": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
         "todayCostUsd": null
       }
     ],
@@ -98,10 +208,41 @@
         "kind": "windows",
         "plan": "Fixture Plan",
         "windows": [
-          {"label": "5h", "usedPercent": 32, "resetAt": "2026-07-28T15:00:00+08:00"}
+          {
+            "label": "5h",
+            "usedPercent": 32,
+            "resetAt": "2026-07-28T15:00:00+08:00"
+          }
         ],
         "balance": null,
         "currency": null,
+        "capturedAt": "2026-07-28T12:00:00+08:00",
+        "note": "fixture"
+      },
+      {
+        "id": "codex_4eversivan",
+        "name": "Codex · 4eversivan",
+        "app": "codex",
+        "isCurrent": true,
+        "status": "ok",
+        "kind": "windows",
+        "plan": "plus",
+        "windows": [
+          {
+            "label": "5小时窗口",
+            "windowMinutes": 300,
+            "usedPercent": 7,
+            "resetsAt": 1791543327
+          },
+          {
+            "label": "每周窗口",
+            "windowMinutes": 10080,
+            "usedPercent": 70,
+            "resetsAt": 1791967897
+          }
+        ],
+        "balance": 2998.116571,
+        "currency": "credits",
         "capturedAt": "2026-07-28T12:00:00+08:00",
         "note": "fixture"
       }

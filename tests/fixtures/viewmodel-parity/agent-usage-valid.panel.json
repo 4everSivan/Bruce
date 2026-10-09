@@ -190,6 +190,68 @@
             "windowMinutes" : null
           }
         ]
+      },
+      {
+        "accountCountText" : null,
+        "accounts" : [
+          {
+            "id" : "codex_4eversivan",
+            "lastSuccessText" : null,
+            "name" : "4eversivan",
+            "note" : "fixture",
+            "plan" : "plus",
+            "status" : "ok",
+            "tag" : null,
+            "windows" : [
+              {
+                "label" : "每 5 小时",
+                "ownRow" : false,
+                "percentText" : "7%",
+                "resetText" : "73 天后",
+                "usedPercent" : 7,
+                "windowMinutes" : 300
+              },
+              {
+                "label" : "每周",
+                "ownRow" : false,
+                "percentText" : "70%",
+                "resetText" : "78 天后",
+                "usedPercent" : 70,
+                "windowMinutes" : 10080
+              }
+            ]
+          }
+        ],
+        "balance" : {
+          "amountText" : "2998.12",
+          "label" : "Credits 余额"
+        },
+        "collapsedWindow" : null,
+        "deepSeekMonthlyUsage" : null,
+        "extraText" : null,
+        "id" : "codex_4eversivan",
+        "name" : "ChatGPT",
+        "note" : "fixture",
+        "plan" : "plus",
+        "status" : "ok",
+        "windows" : [
+          {
+            "label" : "每 5 小时",
+            "ownRow" : false,
+            "percentText" : "7%",
+            "resetText" : "73 天后",
+            "usedPercent" : 7,
+            "windowMinutes" : 300
+          },
+          {
+            "label" : "每周",
+            "ownRow" : false,
+            "percentText" : "70%",
+            "resetText" : "78 天后",
+            "usedPercent" : 70,
+            "windowMinutes" : 10080
+          }
+        ]
       }
     ],
     "updatedText" : "最后更新 12:00"

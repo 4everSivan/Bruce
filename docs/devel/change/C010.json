@@ -1,0 +1,76 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C010",
+  "title": "GPT Credits 改为剩余余额展示并在归零后的下一次刷新自动消失",
+  "type": "Enhancement",
+  "status": "in_progress",
+  "branch": "main",
+  "is_hotfix": false,
+  "target": {
+    "module": "collector-provider + 双端订阅视图模型",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+  "why": "用户需求 (2026-10-09): GPT(Codex) 的 Credits 此前仅为 section 头部 extra 小字文本 (\"Credits 余额 2998.11\"), 无视觉权重且位置不贴窗口。要求: 以剩余余额形式展示在窗口行下方; 余额归零后在下一次刷新自动消失。经确认不做进度条 (OpenAI 接口无总量, 不引入计划额度基准表)。",
+  "changes": [
+    {
+      "scope": "core/collector/crates/collector-provider/src/lib.rs parse_codex_usage",
+      "before": "has_credits=true 时输出 extra 文本 \"Credits 余额 {balance}\" (string 形式, 归零仍显示 \"余额 0\")",
+      "after": "has_credits=true 且 balance>0 时输出结构化 service.balance (数值) + currency=\"credits\" (判别键, 非货币); balance<=0 或 has_credits=false 不产出 → 下一次刷新条目自动消失; unlimited 保持 extra \"Credits 不限量\"; 不再输出余额 extra 文本",
+      "impact": "credits 获得余额型结构化渲染路径 (窗口行下方), 归零即消失语义由采集侧保证"
+    },
+    {
+      "scope": "mac BruceAppCore/SubscriptionMapping.swift + PanelModels.swift BalanceRow",
+      "before": "BalanceRow 仅 \"账户余额\" 一种构造 (balanceText 货币格式)",
+      "after": "currency==\"credits\" 时构造 Credits 行: label \"Credits 余额\", amountText 两位小数纯数字 (非货币符号)",
+      "impact": "mac 订阅卡 Codex section 窗口行下方渲染 \"Credits 余额 2998.12\""
+    },
+    {
+      "scope": "apps/win/viewmodel/src/subscription.rs BalanceRow",
+      "before": "balance 行 label 固定 \"账户余额\", amountText 走 balance_text (缺省 ¥ 前缀)",
+      "after": "currency==\"credits\" 同样特判 label/两位小数纯数字; 与 mac 逐字段对拍一致",
+      "impact": "Windows 订阅卡同构展示"
+    },
+    {
+      "scope": "tests/fixtures/artifacts/agent-usage/valid.json + viewmodel-parity golden",
+      "before": "fixture 无 codex credits 样本",
+      "after": "fixture 增加带 credits balance 的 codex service, 双端 golden 同步刷新锁定渲染契约",
+      "impact": "credits 行纳入双端对拍门禁"
+    }
+  ],
+  "design": {
+    "before_behavior": "credits 仅 extra 文本贴 section 头; 归零后仍显示 \"Credits 余额 0\"",
+    "after_behavior": "credits 走 service.balance 结构化字段, 双端渲染于窗口行下方; 归零/耗尽后采集侧不产出, 下一次刷新自然消失",
+    "true_if": "有余额: 双端 Codex section 窗口行下方出现 \"Credits 余额 N.NN\"; 归零: 采集结果无 balance, 刷新后行消失; unlimited: 仍显示 \"Credits 不限量\"; 其他 provider 余额行不受影响",
+    "false_if": "credits 仍为头部小字或归零后残留; 或 DeepSeek 等既有余额行渲染回归"
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "采集侧归零消失语义",
+        "true_if": "parse_codex_usage: has_credits+balance>0 → balance 数值+currency=credits 且无余额 extra; balance=0 → 无 balance 无 extra; unlimited → extra 不限量",
+        "false_if": "任一形态产出残留或字段缺失",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "双端 credits 余额行一致",
+        "true_if": "mac 与 rust 视图模型对 credits balance 均渲染 label=Credits 余额、两位小数 amountText; golden 对拍逐字段一致",
+        "false_if": "任一端 label/格式漂移或对拍红",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "既有余额路径零回归",
+        "true_if": "DeepSeek 等货币余额行渲染与改动前一致; 全量测试绿",
+        "false_if": "货币余额行出现 credits 特判污染",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  }
+}

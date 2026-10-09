@@ -584,6 +584,13 @@ package struct BalanceRow: Equatable, Sendable {
         self.label = "账户余额"
         self.amountText = PanelFormat.balanceText(amount, currency: currency)
     }
+
+    /// Credits 剩余余额行 (Codex; currency=="credits" 判别): 非货币, 纯数字两位小数,
+    /// 渲染于窗口行下方; 采集侧归零后不产出, 下一次刷新自然消失。
+    package init(creditsBalance amount: Double) {
+        self.label = "Credits 余额"
+        self.amountText = String(format: "%.2f", amount)
+    }
 }
 
 // MARK: - DeepSeek 月度用量

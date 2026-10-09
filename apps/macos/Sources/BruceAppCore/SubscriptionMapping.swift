@@ -152,7 +152,15 @@ extension PanelViewModelMapper {
                     windows: svc.windows,
                     accounts: [accountVM],
                     collapsedWindow: nil,
-                    balance: svc.service.balance.map { BalanceRow(amount: $0, currency: svc.service.currency) },
+                    balance: svc.service.balance.map { amount in
+                        // currency=="credits" 为 Codex Credits 判别键 (非货币):
+                        // 剩余余额纯数字展示; 其他 provider 维持货币余额行。
+                        if svc.service.currency == "credits" {
+                            BalanceRow(creditsBalance: amount)
+                        } else {
+                            BalanceRow(amount: amount, currency: svc.service.currency)
+                        }
+                    },
                     accountCountText: nil,
                     deepSeekMonthlyUsage: monthlyUsage
                 ))

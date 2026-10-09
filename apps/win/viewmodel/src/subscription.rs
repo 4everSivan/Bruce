@@ -470,9 +470,21 @@ impl PanelViewModelMapper {
                     windows: svc.windows.clone(),
                     accounts: vec![account],
                     collapsed_window: None,
-                    balance: svc.balance.map(|amount| BalanceRow {
-                        label: "账户余额".to_owned(),
-                        amount_text: balance_text(amount, svc.currency.as_deref()),
+                    // currency=="credits" 为 Codex Credits 判别键 (非货币):
+                    // 剩余余额纯数字两位小数, 与 mac BalanceRow(creditsBalance:) 对拍一致;
+                    // 其他 provider 维持货币余额行。
+                    balance: svc.balance.map(|amount| {
+                        if svc.currency.as_deref() == Some("credits") {
+                            BalanceRow {
+                                label: "Credits 余额".to_owned(),
+                                amount_text: format!("{amount:.2}"),
+                            }
+                        } else {
+                            BalanceRow {
+                                label: "账户余额".to_owned(),
+                                amount_text: balance_text(amount, svc.currency.as_deref()),
+                            }
+                        }
                     }),
                     account_count_text: None,
                     deep_seek_monthly_usage: None,
@@ -639,6 +651,50 @@ mod tests {
             subscription.updated_text.as_deref(),
             Some("\u{6700}\u{540e}\u{66f4}\u{65b0} 12:00")
         );
+    }
+
+    #[test]
+    fn codex_credits_balance_renders_as_credit_row_and_zero_vanishes() {
+        // currency=credits: 剩余余额行 (非货币符号, 两位小数), 渲染于窗口行之后。
+        let artifact = artifact_from(json!([{
+            "id": "codex_4eversivan", "name": "Codex \u{b7} 4eversivan", "app": "codex",
+            "status": "ok", "kind": "windows", "plan": "plus",
+            "windows": [{"label": "5h", "windowMinutes": 300, "usedPercent": 7.0}],
+            "balance": 2998.116571, "currency": "credits"
+        }]));
+        let mut diagnostics = Vec::new();
+        let subscription = PanelViewModelMapper::default()
+            .make_subscription(&artifact, now(), &mut diagnostics)
+            .unwrap();
+        let section = &subscription.sections[0];
+        assert_eq!(section.name, "ChatGPT");
+        let balance = section.balance.as_ref().expect("credits 余额行存在");
+        assert_eq!(balance.label, "Credits \u{4f59}\u{989d}");
+        assert_eq!(balance.amount_text, "2998.12");
+
+        // 归零 (采集侧已不产出 balance): 行消失, 窗口与 section 不受影响。
+        let artifact = artifact_from(json!([{
+            "id": "codex_4eversivan", "name": "Codex \u{b7} 4eversivan", "app": "codex",
+            "status": "ok", "kind": "windows", "plan": "plus",
+            "windows": [{"label": "5h", "windowMinutes": 300, "usedPercent": 7.0}],
+            "balance": null, "currency": null
+        }]));
+        let subscription = PanelViewModelMapper::default()
+            .make_subscription(&artifact, now(), &mut diagnostics)
+            .unwrap();
+        assert!(subscription.sections[0].balance.is_none());
+
+        // 货币余额 (DeepSeek 先例) 不受 credits 特判污染。
+        let artifact = artifact_from(json!([{
+            "id": "deepseek", "name": "DeepSeek", "status": "ok", "kind": "balance",
+            "windows": [], "balance": 38.21, "currency": "CNY"
+        }]));
+        let subscription = PanelViewModelMapper::default()
+            .make_subscription(&artifact, now(), &mut diagnostics)
+            .unwrap();
+        let balance = subscription.sections[0].balance.as_ref().unwrap();
+        assert_eq!(balance.label, "\u{8d26}\u{6237}\u{4f59}\u{989d}");
+        assert_eq!(balance.amount_text, "\u{a5} 38.21");
     }
 
     #[test]
