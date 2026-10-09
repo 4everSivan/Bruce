@@ -138,7 +138,10 @@ jobs:
           $setup = Get-ChildItem -Path "apps/win/src-tauri/target/release/bundle/nsis" -Filter "*-setup.exe" | Select-Object -First 1
           if (-not $setup) { Write-Error "NSIS 安装包未找到"; exit 1 }
           $releases = gh api "repos/$env:GITHUB_REPOSITORY/releases" | ConvertFrom-Json
-          $release = $releases | Where-Object { $_.tag_name -eq $env:GITHUB_REF_NAME } | Select-Object -First 1
+          # 必须取 created_at 最新的同 tag 草稿: 失败 run 可能残留旧草稿,
+          # 列表顺序不确定, First-1 可能命中残留把资产传丢。
+          $release = $releases | Where-Object { $_.tag_name -eq $env:GITHUB_REF_NAME } | Sort-Object created_at -Descending | Select-Object -First 1
+          Write-Host "上传目标 release id=$($release.id) created=$($release.created_at)"
           if (-not $release) { Write-Error "草稿 Release 未找到"; exit 1 }
           $uploadUrl = $release.upload_url -replace '\{.*$',''
           gh api --method POST "$($uploadUrl)?name=$($setup.Name)" -H "Content-Type: application/octet-stream" --input "$($setup.FullName)"
