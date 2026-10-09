@@ -26,6 +26,12 @@
         "C008",
         "C009"
       ]
+    },
+    "SubscriptionQuota": {
+      "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+      "changes": [
+        "C010"
+      ]
     }
   },
   "cards": {
@@ -109,6 +115,15 @@
       "topic": "WindowsCompat",
       "version": "0.10.0+",
       "file": "docs/devel/change/C009.json"
+    },
+    "C010": {
+      "title": "GPT Credits 改为剩余余额展示并在归零后的下一次刷新自动消失",
+      "type": "Enhancement",
+      "status": "in_progress",
+      "branch": "main",
+      "topic": "SubscriptionQuota",
+      "version": "0.11.0+",
+      "file": "docs/devel/change/C010.json"
     }
   }
 }

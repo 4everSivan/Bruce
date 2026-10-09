@@ -54,21 +54,21 @@
         "item": "采集侧归零消失语义",
         "true_if": "parse_codex_usage: has_credits+balance>0 → balance 数值+currency=credits 且无余额 extra; balance=0 → 无 balance 无 extra; unlimited → extra 不限量",
         "false_if": "任一形态产出残留或字段缺失",
-        "evidence": "",
+        "evidence": "collector-provider codex_credits_map_to_structured_balance_and_vanish_at_zero: 四态 (有余额/归零/耗尽/unlimited) 断言全绿; codex_value_text 死代码随契约移除",
         "result": null
       },
       {
         "item": "双端 credits 余额行一致",
         "true_if": "mac 与 rust 视图模型对 credits balance 均渲染 label=Credits 余额、两位小数 amountText; golden 对拍逐字段一致",
         "false_if": "任一端 label/格式漂移或对拍红",
-        "evidence": "",
+        "evidence": "valid fixture 增 codex_4eversivan (balance 2998.116571/currency credits) → 双端 golden 刷新; mac 产出 Credits 余额 2998.12, rust mac_parity_golden_matches 逐字段一致; viewmodel 单测含 credits 行/归零消失/货币行零污染三断言",
         "result": null
       },
       {
         "item": "既有余额路径零回归",
         "true_if": "DeepSeek 等货币余额行渲染与改动前一致; 全量测试绿",
         "false_if": "货币余额行出现 credits 特判污染",
-        "evidence": "",
+        "evidence": "DeepSeek CNY 余额行断言不变 (¥ 38.21); 全量 35 suite + 前端冒烟 + mac valid/partial/empty 三对拍全绿 (2026-10-09 本地)",
         "result": null
       }
     ]
