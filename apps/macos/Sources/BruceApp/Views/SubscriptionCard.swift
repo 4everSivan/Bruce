@@ -197,7 +197,7 @@ private struct ProviderRefreshControl {
 
 // MARK: - provider 段
 
-/// 单个 provider 段: 品牌徽章 + 名称 + plan chip + 账号数, 下方窗口行 / 账号子卡 / 余额行.
+/// 单个 provider 段: 品牌徽章 + 名称 + plan chip + 余额胶囊 + 账号数, 下方窗口行 / 账号子卡.
 /// 多账号 (>=2) 默认折叠, 折叠态展示最关键窗口摘要; 展开后按账号子卡展示.
 /// 头部行尾的定向刷新按钮与名称+chevron 展开按钮互为兄弟控件, 互不误触.
 private struct ProviderSectionView: View {
@@ -216,19 +216,6 @@ private struct ProviderSectionView: View {
                 multiAccountContent
             } else {
                 singleAccountContent
-            }
-
-            if let balance = section.balance {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(balance.label)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text(balance.amountText)
-                        .font(.system(size: 14, weight: .bold))
-                        .monospacedDigit()
-                }
-                .padding(.vertical, 2)
             }
 
             // DeepSeek 月度统计: 仅当映射层提供了 ViewModel 时渲染
@@ -302,6 +289,14 @@ private struct ProviderSectionView: View {
             }
             if let plan = section.plan {
                 PlanChip(text: plan)
+            }
+            // 余额 (Credits / 货币) 以头部元数据胶囊呈现 (C011), 不再占用正文行。
+            if let balance = section.balance {
+                BalanceChip(
+                    amountText: balance.amountText,
+                    accessibilityText: balance.label,
+                    color: ProviderLogoBadge.brandColor(for: section.badgeProviderID)
+                )
             }
             if let accountCountText = section.accountCountText {
                 Text(accountCountText)
@@ -801,7 +796,8 @@ private struct ProviderLogoBadge: View {
         return brand
     }
 
-    private static func brandColor(for providerID: String) -> Color {
+    // fileprivate: 同文件的 BalanceChip 圆点复用同一品牌色板。
+    fileprivate static func brandColor(for providerID: String) -> Color {
         switch providerID {
         case "kimi":
             return Color(hex: "#0a84ff")
@@ -866,6 +862,61 @@ private struct PlanChip: View {
                     dark: Color.white.opacity(0.18)
                 ), lineWidth: 0.5))
         }
+    }
+}
+
+// MARK: - balance chip
+
+/// 余额元数据胶囊 (C011): 品牌色圆点 + 金额, 与 plan chip 同词汇排布在 section 头部;
+/// Credits (Codex, 千分位纯数字) 与货币余额共用, 取代原先窗口行下方的裸文本余额行。
+/// Nothing 主题 (与 .plan 同款定稿): 圆角 3, 透明底 + 1px 加强边框, Space Mono, secondary 文字。
+private struct BalanceChip: View {
+    let amountText: String
+    let accessibilityText: String
+    let color: Color
+
+    @Environment(\.BruceResolvedTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var isNothing: Bool { theme.interfaceStyle == .nothing }
+
+    var body: some View {
+        Group {
+            if isNothing {
+                HStack(spacing: 4) {
+                    Circle().fill(color).frame(width: 4, height: 4)
+                    Text(amountText)
+                        .font(NothingFont.mono(9))
+                        .foregroundStyle(NothingTokens.secondary(colorScheme))
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 1)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .strokeBorder(NothingTokens.borderVisible(colorScheme), lineWidth: 1)
+                )
+            } else {
+                HStack(spacing: 4) {
+                    Circle().fill(color).frame(width: 4, height: 4)
+                    Text(amountText)
+                        .font(.system(size: 9.5, weight: .semibold))
+                        .monospacedDigit()
+                        .foregroundStyle(Color.primary.opacity(0.85))
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 1)
+                .background(Color.adaptive(
+                    light: Color.white.opacity(0.55),
+                    dark: Color.white.opacity(0.12)
+                ), in: Capsule())
+                .overlay(Capsule().strokeBorder(Color.adaptive(
+                    light: Color.white.opacity(0.6),
+                    dark: Color.white.opacity(0.18)
+                ), lineWidth: 0.5))
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText)
     }
 }
 

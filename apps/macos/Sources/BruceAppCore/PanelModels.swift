@@ -202,6 +202,23 @@ package enum PanelFormat {
         balanceText(NSDecimalNumber(decimal: amount).doubleValue, currency: currency)
     }
 
+    /// Credits 剩余余额文案: 千分位 + 两位小数纯数字 (如 "2,998.12"), 非货币不加符号;
+    /// 分隔符固定为半角逗号, 不随 locale 漂移, 保证与 Windows 端 golden 对拍逐字符一致。
+    package static func creditsText(_ amount: Double) -> String {
+        let formatted = String(format: "%.2f", amount)
+        let parts = formatted.components(separatedBy: ".")
+        let fraction = parts.count > 1 ? "." + parts[1] : ""
+        var digits = parts[0]
+        let isNegative = digits.hasPrefix("-")
+        if isNegative { digits.removeFirst() }
+        var grouped = ""
+        while digits.count > 3 {
+            grouped = "," + digits.suffix(3) + grouped
+            digits.removeLast(3)
+        }
+        return (isNegative ? "-" : "") + digits + grouped + fraction
+    }
+
     /// 窗口措辞映射: windowMinutes 优先, 其次 collector 规范 label, 其余原样.
     package static func windowLabel(rawLabel: String, windowMinutes: Int?) -> String {
         if let minutes = windowMinutes {
@@ -585,11 +602,11 @@ package struct BalanceRow: Equatable, Sendable {
         self.amountText = PanelFormat.balanceText(amount, currency: currency)
     }
 
-    /// Credits 剩余余额行 (Codex; currency=="credits" 判别): 非货币, 纯数字两位小数,
-    /// 渲染于窗口行下方; 采集侧归零后不产出, 下一次刷新自然消失。
+    /// Credits 剩余余额 (Codex; currency=="credits" 判别): 非货币, 千分位 + 两位小数,
+    /// 以 section 头部元数据胶囊呈现 (C011); 采集侧归零后不产出, 下一次刷新自然消失。
     package init(creditsBalance amount: Double) {
-        self.label = "Credits 余额"
-        self.amountText = String(format: "%.2f", amount)
+        self.label = "Credits"
+        self.amountText = PanelFormat.creditsText(amount)
     }
 }
 

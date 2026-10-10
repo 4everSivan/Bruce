@@ -223,8 +223,8 @@
           }
         ],
         "balance" : {
-          "amountText" : "2998.12",
-          "label" : "Credits 余额"
+          "amountText" : "2,998.12",
+          "label" : "Credits"
         },
         "collapsedWindow" : null,
         "deepSeekMonthlyUsage" : null,

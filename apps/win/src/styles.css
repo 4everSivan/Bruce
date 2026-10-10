@@ -229,9 +229,14 @@ body {
 .meter.critical > div { background: linear-gradient(90deg, #ff453a, #ff6961); }
 .win-row .wp { width: 46px; flex: none; text-align: right; font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .win-row .wr { width: 48px; flex: none; text-align: right; font-size: 9px; color: var(--secondary); }
-.balance-row { display: flex; align-items: baseline; padding: 2px 0; }
-.balance-row .bl { font-size: 11px; color: var(--secondary); }
-.balance-row .bv { margin-left: auto; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* 余额元数据胶囊 (C011): 品牌色圆点 + 金额, 与 plan-chip 同词汇排布在 sub-head */
+.bal-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 9.5px; padding: 1.5px 6px; border-radius: 3px;
+  background: var(--badge-bg); color: var(--secondary);
+}
+.bal-chip .dot { width: 4px; height: 4px; border-radius: 50%; flex: none; }
+.bal-chip b { font-weight: 600; color: var(--ink); opacity: .88; font-variant-numeric: tabular-nums; }
 .note-line { font-size: 10px; color: #ff9f0a; padding-top: 2px; }
 
 /* ============ Agent 用量卡 (HourlyLineCard) ============ */

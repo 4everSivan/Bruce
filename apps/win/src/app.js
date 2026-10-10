@@ -233,9 +233,12 @@ function usageCard(usage) {
 
 /* ---------- 订阅用量卡 ---------- */
 const PROVIDER_COLORS = { kimi: "#0a84ff", deepseek: "#4A9E5C", volcengine: "#ff9f0a", zhipu: "#bf5af2", codex: "#10a37f", claude: "#ff7a59", grok: "#6c63ff", opencodeGo: "#30d158", stepfun: "#64d2ff" };
+// 单账号 section id 带 service 后缀 (如 "codex_4eversivan"), 归一出 provider 键
+// 供徽章与余额胶囊取品牌色; 多账号 section id 本身就是 provider 键, 原样返回。
+function providerKey(id) { return String(id || "").split("_")[0]; }
 function badge(providerID, name) {
   const b = el("span", "pbadge");
-  b.style.background = PROVIDER_COLORS[providerID] || "#8e8e93";
+  b.style.background = PROVIDER_COLORS[providerKey(providerID)] || "#8e8e93";
   b.textContent = (name || "?").trim().charAt(0).toUpperCase();
   return b;
 }
@@ -283,16 +286,19 @@ function subscriptionCard(sub) {
     h.append(badge(section.id, section.name));
     h.append(el("span", "sub-name", section.name));
     if (section.plan) h.append(el("span", "plan-chip", section.plan));
+    // 余额 (Credits / 货币) 以头部元数据胶囊呈现 (C011), 不再占用正文行。
+    if (section.balance) {
+      const chip = el("span", "bal-chip");
+      const dot = el("span", "dot");
+      dot.style.background = PROVIDER_COLORS[providerKey(section.id)] || "#8e8e93";
+      chip.append(dot, el("b", null, section.balance.amountText));
+      chip.title = section.balance.label;
+      h.append(chip);
+    }
     if (section.accountCountText) h.append(el("span", "acct-count", section.accountCountText));
     block.append(h);
     const windows = section.windows?.length ? section.windows : [section.collapsedWindow].filter(Boolean);
     for (const row of windows) block.append(windowRow(row));
-    if (section.balance) {
-      const line = el("div", "balance-row");
-      line.append(el("span", "bl", section.balance.label));
-      line.append(el("span", "bv", section.balance.amountText));
-      block.append(line);
-    }
     for (const text of [section.note, section.staleText, section.extraText]) {
       if (text) block.append(el("div", "note-line", text));
     }

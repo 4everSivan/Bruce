@@ -11,7 +11,7 @@ use collector_domain::AgentUsageArtifact;
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::format::balance_text;
+use crate::format::{balance_text, credits_text};
 use crate::models::PanelDiagnostic;
 use crate::usage::PanelViewModelMapper;
 
@@ -471,13 +471,14 @@ impl PanelViewModelMapper {
                     accounts: vec![account],
                     collapsed_window: None,
                     // currency=="credits" 为 Codex Credits 判别键 (非货币):
-                    // 剩余余额纯数字两位小数, 与 mac BalanceRow(creditsBalance:) 对拍一致;
-                    // 其他 provider 维持货币余额行。
+                    // label "Credits" + 千分位两位小数, 与 mac BalanceRow(creditsBalance:)
+                    // 对拍一致; 货币余额保持 balance_text。两者均以 section 头部
+                    // 元数据胶囊渲染 (C011)。
                     balance: svc.balance.map(|amount| {
                         if svc.currency.as_deref() == Some("credits") {
                             BalanceRow {
-                                label: "Credits 余额".to_owned(),
-                                amount_text: format!("{amount:.2}"),
+                                label: "Credits".to_owned(),
+                                amount_text: credits_text(amount),
                             }
                         } else {
                             BalanceRow {
@@ -655,7 +656,8 @@ mod tests {
 
     #[test]
     fn codex_credits_balance_renders_as_credit_row_and_zero_vanishes() {
-        // currency=credits: 剩余余额行 (非货币符号, 两位小数), 渲染于窗口行之后。
+        // currency=credits: 剩余余额 (非货币符号, 千分位两位小数), 以 section 头部
+        // 元数据胶囊渲染 (C011), 不再占用窗口行下方的正文行。
         let artifact = artifact_from(json!([{
             "id": "codex_4eversivan", "name": "Codex \u{b7} 4eversivan", "app": "codex",
             "status": "ok", "kind": "windows", "plan": "plus",
@@ -668,9 +670,9 @@ mod tests {
             .unwrap();
         let section = &subscription.sections[0];
         assert_eq!(section.name, "ChatGPT");
-        let balance = section.balance.as_ref().expect("credits 余额行存在");
-        assert_eq!(balance.label, "Credits \u{4f59}\u{989d}");
-        assert_eq!(balance.amount_text, "2998.12");
+        let balance = section.balance.as_ref().expect("credits 余额存在");
+        assert_eq!(balance.label, "Credits");
+        assert_eq!(balance.amount_text, "2,998.12");
 
         // 归零 (采集侧已不产出 balance): 行消失, 窗口与 section 不受影响。
         let artifact = artifact_from(json!([{

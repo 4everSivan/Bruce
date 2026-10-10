@@ -47,6 +47,30 @@ pub fn balance_text(amount: f64, currency: Option<&str>) -> String {
     }
 }
 
+/// Credits 剩余余额文案: 千分位 + 两位小数纯数字 (如 "2,998.12"), 非货币不加符号;
+/// 分隔符固定半角逗号, 与 mac `PanelFormat.creditsText` 逐字符对齐 (golden 对拍契约)。
+pub fn credits_text(amount: f64) -> String {
+    let formatted = format!("{amount:.2}");
+    let (mut digits, fraction) = match formatted.split_once('.') {
+        Some((int_part, frac)) => (int_part.to_owned(), format!(".{frac}")),
+        None => (formatted.clone(), String::new()),
+    };
+    let is_negative = digits.starts_with('-');
+    if is_negative {
+        digits.remove(0);
+    }
+    let mut grouped = String::new();
+    while digits.len() > 3 {
+        let split_at = digits.len() - 3;
+        grouped = format!(",{}{}", &digits[split_at..], grouped);
+        digits.truncate(split_at);
+    }
+    format!(
+        "{}{digits}{grouped}{fraction}",
+        if is_negative { "-" } else { "" }
+    )
+}
+
 fn trim_decimal(text: &str) -> String {
     text.strip_suffix(".0").unwrap_or(text).to_owned()
 }
@@ -78,5 +102,14 @@ mod tests {
         assert_eq!(balance_text(38.21, Some("rmb")), "¥ 38.21");
         assert_eq!(balance_text(1.5, Some("USD")), "$ 1.50");
         assert_eq!(balance_text(1.5, Some("JPY")), "JPY 1.50");
+    }
+
+    #[test]
+    fn credits_text_groups_thousands_like_mac() {
+        assert_eq!(credits_text(2998.116571), "2,998.12");
+        assert_eq!(credits_text(0.0), "0.00");
+        assert_eq!(credits_text(999.995), "1,000.00");
+        assert_eq!(credits_text(1_000_000.0), "1,000,000.00");
+        assert_eq!(credits_text(-1234.5), "-1,234.50");
     }
 }

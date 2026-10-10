@@ -154,7 +154,8 @@ extension PanelViewModelMapper {
                     collapsedWindow: nil,
                     balance: svc.service.balance.map { amount in
                         // currency=="credits" 为 Codex Credits 判别键 (非货币):
-                        // 剩余余额纯数字展示; 其他 provider 维持货币余额行。
+                        // label "Credits" + 千分位两位小数; 货币余额保持 balanceText;
+                        // 两者均以 section 头部元数据胶囊渲染 (C011)。
                         if svc.service.currency == "credits" {
                             BalanceRow(creditsBalance: amount)
                         } else {
