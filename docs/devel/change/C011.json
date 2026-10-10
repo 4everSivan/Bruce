@@ -1,0 +1,82 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C011",
+  "title": "Credits 与余额行升格为订阅段头部元数据胶囊并去掉「余额」措辞",
+  "type": "Enhancement",
+  "status": "verified",
+  "branch": "fix/C011-codex-credits-head-chip",
+  "is_hotfix": false,
+  "target": {
+    "module": "双端订阅视图模型 + 订阅卡渲染 (mac BruceApp/AppCore + apps/win)",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+  "why": "用户反馈 (2026-10-09): C010 落地的 Credits 行 (\"Credits 余额 2998.12\") 为窗口行下方裸文本行, 标签 11px 灰字 + 14px 粗体数字与上方量条行不同构、数字突兀, 且名称中的「余额」冗余。经四方案交互 demo (local/credits-row-options.html: 静默同格行/药丸徽章/内嵌余额块/头部元数据胶囊) 比对, 用户选定方案 D: 头部元数据胶囊 (品牌色圆点 + 千分位数字, 不占正文行); 「账户余额」货币行默认同步同构, 保持整卡一致。",
+  "changes": [
+    {
+      "scope": "mac BruceAppCore/PanelModels.swift BalanceRow + PanelFormat",
+      "before": "credits 行 label \"Credits 余额\", amountText 两位小数无千分位 (\"2998.12\")",
+      "after": "label \"Credits\" (去掉「余额」); 新增 PanelFormat.creditsText: 千分位 + 两位小数, 分隔符固定半角逗号不随 locale 漂移 (\"2,998.12\"), 保证与 Windows golden 逐字符对拍",
+      "impact": "mac 订阅卡 Codex section 头部渲染「品牌色圆点 + Credits 金额」胶囊, 正文不再有裸文本余额行"
+    },
+    {
+      "scope": "mac BruceApp/Views/SubscriptionCard.swift",
+      "before": "section.balance 在窗口行下方渲染裸文本行 (左灰标签 + 右 14px 粗体数字)",
+      "after": "删除正文余额行; 头部 plan chip 之后新增 BalanceChip (品牌色 4pt 圆点 + 9.5pt semibold 金额), classic/liquidGlass 走 Capsule 白底描边、Nothing 主题走圆角 3 透明底 + 1px 加强边框 + Space Mono (与 PlanChip 同款双路径); accessibilityLabel 携带原 label; ProviderLogoBadge.brandColor 放宽为 fileprivate 供圆点复用",
+      "impact": "Credits 与货币余额统一为头部元数据胶囊; 多账号折叠态也始终可见"
+    },
+    {
+      "scope": "apps/win/viewmodel/src/subscription.rs + format.rs",
+      "before": "credits 行 label \"Credits 余额\", amountText 两位小数无千分位",
+      "after": "label \"Credits\"; 新增 credits_text (千分位 + 两位小数, 与 mac creditsText 逐字符对齐) 并补单测; viewmodel credits 断言同步更新",
+      "impact": "Windows 订阅卡同构展示; 双端 golden 对拍契约刷新"
+    },
+    {
+      "scope": "apps/win/src/app.js + styles.css",
+      "before": "section.balance 在窗口行下方渲染 .balance-row 裸文本行; badge 按 section.id 直查 PROVIDER_COLORS, 单账号 id 带后缀 (如 codex_4eversivan) 时落空退灰",
+      "after": "删除 .balance-row; sub-head 的 plan-chip 后新增 .bal-chip (品牌色圆点 + 金额, title 携带 label); 新增 providerKey() 归一 section.id 取 provider 键, 徽章与余额胶囊共用 (顺带修正 Codex/Kimi 徽章退灰)",
+      "impact": "Windows 头部胶囊与徽章取色和 mac 对齐"
+    },
+    {
+      "scope": "tests/fixtures/viewmodel-parity/agent-usage-*.panel.json",
+      "before": "golden 锁定 label \"Credits 余额\" / amountText \"2998.12\"",
+      "after": "PanelParityHarness --update 刷新为 label \"Credits\" / amountText \"2,998.12\"",
+      "impact": "双端对拍门禁锁定新渲染契约"
+    }
+  ],
+  "design": {
+    "before_behavior": "credits/货币余额为窗口行下方裸文本行; 标签含「余额」措辞, 数字无千分位",
+    "after_behavior": "credits/货币余额以 section 头部「品牌色圆点 + 金额」元数据胶囊呈现 (plan chip 旁), 不占正文行; credits label 为 \"Credits\", 金额千分位两位小数; 归零消失语义 (采集侧不产出) 不变",
+    "true_if": "有余额: 双端 Codex section 头部出现绿点 + \"2,998.12\" 胶囊且正文无余额行; DeepSeek 等货币余额同为头部胶囊 (¥ 38.21); 归零: 刷新后胶囊消失; unlimited: 仍显示 \"Credits 不限量\" extra 文案",
+    "false_if": "余额仍渲染为窗口行下方裸文本行; 或 label 仍含「余额」; 或货币余额行回归"
+  },
+  "verification": {
+    "result": true,
+    "run_id": "run-20261010-c011-credits-head-chip-verified",
+    "user_quote": "确认",
+    "signoff": "2026-10-10 Verified after universal packaging install (/Applications/Bruce.app)",
+    "checks": [
+      {
+        "item": "双端 credits 胶囊数据契约一致",
+        "true_if": "mac 与 rust 视图模型对 credits balance 均产出 label=Credits、千分位两位小数 amountText; golden 对拍逐字段一致",
+        "false_if": "任一端 label/格式漂移或对拍红",
+        "evidence": "已运行 (2026-10-09): PanelParityHarness --update 刷新 golden (diff 仅 valid fixture 两行: label \"Credits 余额\"→\"Credits\", amountText \"2998.12\"→\"2,998.12\"); 对拍模式 valid/partial/empty 三过; rust mac_parity_golden_matches 过; viewmodel 6 套件 45 测试全绿 (含新增 credits_text 千分位单测与更新后的 credits 三断言); cargo fmt/clippy 过",
+        "result": true
+      },
+      {
+        "item": "既有货币余额路径零回归",
+        "true_if": "DeepSeek CNY 余额仍为 \"账户余额\"/\"¥ 38.21\" 且渲染为头部胶囊; mac PanelViewModelHarness balanceSinksToBottom 等全绿",
+        "false_if": "货币余额行出现 credits 特判污染或排序回归",
+        "evidence": "已运行 (2026-10-09): mac PanelViewModelHarness 53 项全绿 (balanceSinksToBottom 货币断言原样通过); rust 货币行断言 \"账户余额\"/\"¥ 38.21\" 原样通过",
+        "result": true
+      },
+      {
+        "item": "前端结构冒烟与 mac App 编译",
+        "true_if": "check-win-frontend.mjs 结构/语法/残留哨兵检查通过 (balance-row 已物理移除); BruceApp target 编译通过",
+        "false_if": "app.js/styles.css 结构校验红或 Swift 编译失败",
+        "evidence": "已运行 (2026-10-09): node scripts/check-win-frontend.mjs 退出码 0; BruceAppCore 编译过且三文件 swiftc -parse 全过。后续补充: zsh scripts/build-test-app.sh --universal --install 全程退出码 0 (swift-sdk.zsh 自动回退 MacOSX26.5 SDK), BruceApp arm64+x86_64 release 编译通过 → BalanceChip 视图代码完整类型检查已收口; dist/Bruce.app (双架构 lipo 验证) 与 /Applications/Bruce.app 二进制 SHA-256 一致, codesign valid; 构建日志 local/c011/build-mac-universal.log",
+        "result": true
+      }
+    ]
+  }
+}

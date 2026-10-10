@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-index.v1.json",
   "version": "1.0",
-  "updated_at": "2026-10-08",
+  "updated_at": "2026-10-10",
   "topics": {
     "SystemOverview": {
       "design_doc": "docs/devel/design/00-系统总体设计.md",
@@ -30,7 +30,8 @@
     "SubscriptionQuota": {
       "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
       "changes": [
-        "C010"
+        "C010",
+        "C011"
       ]
     }
   },
@@ -119,11 +120,20 @@
     "C010": {
       "title": "GPT Credits 改为剩余余额展示并在归零后的下一次刷新自动消失",
       "type": "Enhancement",
-      "status": "in_progress",
+      "status": "verified",
       "branch": "main",
       "topic": "SubscriptionQuota",
       "version": "0.11.0+",
       "file": "docs/devel/change/C010.json"
+    },
+    "C011": {
+      "title": "Credits 与余额行升格为订阅段头部元数据胶囊并去掉「余额」措辞",
+      "type": "Enhancement",
+      "status": "verified",
+      "branch": "fix/C011-codex-credits-head-chip",
+      "topic": "SubscriptionQuota",
+      "version": "0.11.0+",
+      "file": "docs/devel/change/C011.json"
     }
   }
 }
