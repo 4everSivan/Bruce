@@ -18,22 +18,13 @@
       <span id="hud-agents" class="hud-right">STANDBY</span>
     </header>
 
-    <nav id="tabs">
-      <button data-view="dashboard" class="tab active">看板</button>
-      <button data-view="credentials" class="tab">凭证</button>
-      <button data-view="settings" class="tab">设置</button>
-    </nav>
-
     <div id="scroll">
-      <!-- 看板视图: 卡片栈由 app.js 按 viewmodel 契约渲染 -->
+      <!-- 看板视图: 卡片栈由 app.js 按 viewmodel 契约渲染 (1:1 对齐 mac MenuBarDashboardView) -->
       <section id="view-dashboard">
         <div id="dashboard-status" class="dashboard-status" role="status"></div>
         <div id="dashboard-diagnostics" class="dashboard-status"></div>
         <div id="stack" class="card-stack"></div>
       </section>
-
-      <section id="view-credentials" class="hidden"><div id="credentials-content" class="configuration-content"></div></section>
-      <section id="view-settings" class="hidden"><div id="settings-content" class="configuration-content"></div></section>
     </div>
 
     <!-- 底栏动作 (mac actionFooter: 刷新/设置/退出) -->
@@ -46,7 +37,6 @@
       </div>
     </footer>
   </main>
-  <script src="settings.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

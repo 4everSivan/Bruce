@@ -13,19 +13,36 @@ test("valid collector view model renders cards and keyboard-accessible collapse"
   assert.equal(head.getAttribute("aria-expanded"), "true");
 });
 
-test("all visible tabs switch views and inline settings persist", async () => {
+test("dashboard has no tabs and footer button invokes open_settings", async () => {
   const app = await boot();
-  await app.document.querySelector('[data-view="settings"]').click();
-  assert.equal(app.node("view-settings").classList.contains("hidden"), false);
-  assert.equal(app.node("view-dashboard").classList.contains("hidden"), true);
+  assert.equal(app.document.querySelector("#tabs"), null);
+  assert.equal(app.document.querySelector("[data-view]"), null);
+  assert.equal(app.document.querySelector("#settings-content"), null);
+  assert.equal(app.document.querySelector("#credentials-content"), null);
+  const start = app.calls.length;
+  await app.node("foot-settings").click();
+  assert.deepEqual(app.calls.slice(start).map(x => x.command), ["open_settings"]);
+});
+
+test("settings window navigation switches categories and persists configuration", async () => {
+  const app = await boot({ html: "settings.html" });
+  assert.equal(app.node("pane-general").classList.contains("hidden"), false);
+  assert.equal(app.node("crumb").textContent, "设置 / 通用");
+  await app.document.querySelector('[data-category="agentUsage"]').click();
+  assert.equal(app.node("pane-agentUsage").classList.contains("hidden"), false);
+  assert.equal(app.node("pane-general").classList.contains("hidden"), true);
+  assert.equal(app.node("crumb").textContent, "设置 / Agent 用量");
+  await app.document.querySelector('[data-category="modelPricing"]').click();
+  assert.equal(app.node("pane-modelPricing").classList.contains("hidden"), false);
+  await app.document.querySelector('[data-category="general"]').click();
   app.node("setting-theme").value = "nothing";
   app.node("setting-hotkey").value = "Control+Shift+J";
   await app.node("settings-save").click();
   assert.equal(app.state.settings.theme, "nothing");
   assert.equal(app.state.settings.hotkey, "Control+Shift+J");
   assert.equal(app.document.body.classList.contains("theme-nothing"), true);
-  await app.document.querySelector('[data-view="credentials"]').click();
-  assert.equal(app.node("view-credentials").classList.contains("hidden"), false);
+  await app.document.querySelector('[data-category="subscription"]').click();
+  assert.equal(app.node("pane-subscription").classList.contains("hidden"), false);
 });
 
 test("manual refresh submits one refresh intent without another collection/read", async () => {

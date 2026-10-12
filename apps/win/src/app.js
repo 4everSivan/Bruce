@@ -477,16 +477,21 @@ function render(panel) {
     const card = factories[key]?.();
     if (card) { card.dataset.card = key; stack.append(card); }
   }
+  if (!stack.children.length) {
+    const empty = el("div", "card empty-panel-card");
+    const inner = el("div", "empty-panel-inner");
+    inner.append(el("div", "empty-title", "未配置模块，前往设置"));
+    const btn = el("button", "btn empty-btn", "打开设置");
+    btn.type = "button";
+    btn.addEventListener("click", () => invoke("open_settings"));
+    inner.append(btn);
+    empty.append(inner);
+    stack.append(empty);
+  }
 }
 function showError(error) {
   document.getElementById("runtime-status").textContent = "失败";
   document.getElementById("dashboard-status").textContent = String(error);
-}
-for (const tab of document.querySelectorAll("[data-view]")) {
-  tab.addEventListener("click", () => {
-    for (const button of document.querySelectorAll("[data-view]")) button.classList.toggle("active", button === tab);
-    for (const view of ["dashboard", "credentials", "settings"]) document.getElementById(`view-${view}`).classList.toggle("hidden", view !== tab.dataset.view);
-  });
 }
 document.getElementById("refresh").addEventListener("click", async () => {
   const button = document.getElementById("refresh");
@@ -501,9 +506,13 @@ document.getElementById("foot-settings").addEventListener("click", async () => {
 document.getElementById("foot-quit").addEventListener("click", async () => {
   try { await invoke("quit_app"); } catch (error) { showError(error); }
 });
+function applyTheme(theme) {
+  document.body.classList.toggle("theme-nothing", theme === "nothing");
+  document.body.classList.toggle("theme-fluent", theme !== "nothing");
+}
 function applySettings(settings) {
   currentSettings = settings;
-  window.BruceSettings?.applyTheme(settings.theme);
+  applyTheme(settings.theme);
   if (currentPanel) renderWhenVisible(currentPanel);
 }
 window.addEventListener("settings-saved", event => applySettings(event.detail));
@@ -526,7 +535,6 @@ document.addEventListener("visibilitychange", () => {
   try {
     await listen("dashboard-updated", event => { try { renderWhenVisible(event.payload); } catch (error) { showError(error); } });
     await listen("settings-updated", event => applySettings(event.payload));
-    await window.BruceSettings?.ready;
     applySettings(await invoke("get_settings"));
     render(await invoke("get_dashboard"));
   } catch (error) { showError(error); }
