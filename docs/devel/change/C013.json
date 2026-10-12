@@ -1,0 +1,83 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C013",
+  "title": "修复 Windows 真机反馈: 应用图标缺失与常驻卡顿优化",
+  "type": "Fix",
+  "status": "in_progress",
+  "branch": "fix/C013-win-icon-perf",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win (壳层 + 前端 + 图标资源)",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "用户 Windows 真机反馈 (2026-10-12, v0.11.0): (1) 安装后无应用图标; (2) 运行很卡需优化。排查: icons/icon.ico (998B) 与 icon.png (104B) 均为占位空图, 是 exe/任务栏/托盘/安装器无图标的根因; 卡顿的三个结构性诱因: 启动即预建两个常驻 WebView (dashboard + settings)、常驻周期采集线程全优先级运行 (装机后全量历史首扫与前台抢占)、面板隐藏时每拍刷新仍全量 DOM 重建。",
+  "changes": [
+    {
+      "scope": "apps/win/src-tauri/icons/",
+      "before": "icon.ico 998B / icon.png 104B 占位空图, 安装后 exe/任务栏/托盘/窗口/安装器均无图标",
+      "after": "由 mac AppIcon.icns (iconutil 提取 1024 源图) 经 Pillow 生成真图标: icon.ico 七层 (16/24/32/48/64/128/256, 117KB) + icon.png 512 RGBA (280KB)",
+      "impact": "安装器、开始菜单、任务栏、窗口、托盘均显示 Bruce 品牌 logo"
+    },
+    {
+      "scope": "apps/win/src-tauri/tauri.conf.json + src/lib.rs open_settings",
+      "before": "启动按配置预建 settings WebView (常驻第二个 WebView2 进程树), dashboard+settings 双 webview 常驻",
+      "after": "配置只保留 dashboard; open_settings 首次调用时按需构建 settings 窗口 (1040x680 / min 980x620 / center / resizable), 已存在则置前; window_action 按 label 判定, 关闭隐藏可重开语义不变",
+      "impact": "启动常驻 WebView 数量减半, 降低常驻内存与合成开销"
+    },
+    {
+      "scope": "apps/win/src-tauri/src/scheduler.rs spawn",
+      "before": "采集/退避线程默认优先级, 周期扫描 (尤其装机后全量历史首扫) 与前台 UI/系统抢占调度",
+      "after": "线程入口 SetThreadPriority(BELOW_NORMAL) (windows-sys 既有依赖, Win32_System_Threading feature 已启用, 零新增)",
+      "impact": "扫描让出前台调度: 数据面稍慢但整机不卡"
+    },
+    {
+      "scope": "apps/win/src/app.js 渲染门控",
+      "before": "dashboard-updated / settings-updated 每拍无条件全量 DOM 重建 (面板隐藏时同样渲染)",
+      "after": "document.hidden 时不渲染, 脏标记挂起 pendingPanel, visibilitychange 恢复可见时补渲一次; hidden 在旧环境/测试桩缺省时视为可见 (行为与门控前一致); 首屏仍直接渲染",
+      "impact": "隐藏期零重建成本; 对齐 mac 端面板可见性门控的前科教训 (c3c209a)"
+    }
+  ],
+  "design": {
+    "before_behavior": "安装无图标; 启动双 WebView 常驻; 采集线程与前台同优先级; 隐藏面板每拍重渲染",
+    "after_behavior": "全场景显示品牌图标; 启动单 WebView (设置懒创建); 采集 BELOW_NORMAL 让出前台; 隐藏期渲染挂起, 可见即补渲",
+    "true_if": "Windows 真机安装 0.11.1 后: 开始菜单/任务栏/托盘/窗口均显示 Bruce 图标; 常驻与扫描期整机流畅度明显改善; 设置窗口首次打开正常且关闭后可重开; 面板数据打开即最新",
+    "false_if": "任一场景仍无图标; 或设置窗口无法打开/关闭后不可重开; 或面板打开显示陈旧数据不补渲"
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "壳层编译与测试",
+        "true_if": "src-tauri crate 全部测试套件绿 (懒创建窗口/优先级改动不破坏既有行为)",
+        "false_if": "编译失败或任一测试红",
+        "evidence": "已运行 (2026-10-12): CARGO_HOME=local/c009/cargo-home cargo test --manifest-path apps/win/src-tauri/Cargo.toml, 8 套件 78 项全绿 (22+8+2+14+13+8+11), 退出码 0; #[cfg(windows)] 优先级块由 CI verify-windows 覆盖",
+        "result": null
+      },
+      {
+        "item": "前端行为回归",
+        "true_if": "check-win-frontend.mjs 结构检查 + frontend.test.mjs 行为回归全绿 (渲染门控在测试桩下缺省可见, 行为不变)",
+        "false_if": "结构校验或行为回归红",
+        "evidence": "已运行 (2026-10-12): node scripts/check-win-frontend.mjs 退出码 0, 12 pass / 0 fail",
+        "result": null
+      },
+      {
+        "item": "图标资源非占位",
+        "true_if": "icon.ico 含 16-256 七层 (≈117KB), icon.png 为 512 RGBA (≈280KB)",
+        "false_if": "任一文件仍是 KB 级以下占位",
+        "evidence": "已核验 (2026-10-12): icon.ico 117,694B / icon.png 280,373B, 源图 AppIcon.icns 1024 RGBA 提取",
+        "result": null
+      },
+      {
+        "item": "Windows 真机复测",
+        "true_if": "用户安装 0.11.1 后图标全场景显示且流畅度改善",
+        "false_if": "任一真机问题残留",
+        "evidence": "待用户真机复测 (v0.11.1 发布后)",
+        "result": null
+      }
+    ]
+  }
+}

@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-index.v1.json",
   "version": "1.0",
-  "updated_at": "2026-10-10",
+  "updated_at": "2026-10-12",
   "topics": {
     "SystemOverview": {
       "design_doc": "docs/devel/design/00-系统总体设计.md",
@@ -25,7 +25,8 @@
         "C007",
         "C008",
         "C009",
-        "C012"
+        "C012",
+        "C013"
       ]
     },
     "SubscriptionQuota": {
@@ -144,6 +145,15 @@
       "topic": "WindowsCompat",
       "version": "0.11.0+",
       "file": "docs/devel/change/C012.json"
+    },
+    "C013": {
+      "title": "修复 Windows 真机反馈: 应用图标缺失与常驻卡顿优化",
+      "type": "Fix",
+      "status": "in_progress",
+      "branch": "fix/C013-win-icon-perf",
+      "topic": "WindowsCompat",
+      "version": "0.11.1+",
+      "file": "docs/devel/change/C013.json"
     }
   }
 }
