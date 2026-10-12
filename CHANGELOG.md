@@ -5,6 +5,11 @@
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **Windows 品牌色板与 mac 事实源统一 (C012)**: 订阅徽章与余额胶囊圆点的 Provider 品牌色此前双端各自维护, 9 家中 7 家漂移 (如 DeepSeek `#4A9E5C`→`#4d6bfe`、Grok `#6c63ff`→`#111111`、Claude `#ff7a59`→`#d97757`), 违背 styles.css「配色 token 按 mac 源码数值」契约; 现以 mac `ProviderLogoBadge.brandColor` 为唯一事实源逐家对齐。同时回写设计基线 05: 浅色外观显式豁免 (Windows 恒深色, mac dark 侧 1:1 复刻)、订阅卡 Provider 数修正为 9 (含 StepFun)、Nothing 主题保真边界注明。
+
 ## [0.11.0] - 2026-10-10
 
 ### Changed

@@ -24,7 +24,8 @@
         "C006",
         "C007",
         "C008",
-        "C009"
+        "C009",
+        "C012"
       ]
     },
     "SubscriptionQuota": {
@@ -134,6 +135,15 @@
       "topic": "SubscriptionQuota",
       "version": "0.11.0+",
       "file": "docs/devel/change/C011.json"
+    },
+    "C012": {
+      "title": "收敛双端差异: Windows 品牌色板统一 mac 事实源并显式豁免浅色外观",
+      "type": "Fix",
+      "status": "verified",
+      "branch": "fix/C012-win-brand-color-baseline",
+      "topic": "WindowsCompat",
+      "version": "0.11.0+",
+      "file": "docs/devel/change/C012.json"
     }
   }
 }

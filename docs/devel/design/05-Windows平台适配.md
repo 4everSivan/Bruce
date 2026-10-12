@@ -34,10 +34,11 @@
 
 ### 2.2 非目标 (Non-Goals)
 1. **液态玻璃不移植**：`NSGlassEffectView` / macOS 26 门控（`GlassTheme.swift` 等）为 mac 独占，Windows 恒走 Fluent/经典风格分支；
-2. **Daimon Widget 不迁移**（`apps/widget/`）：Windows 无 Daimon 宿主；
-3. **Linux 不承诺**：路径表天然大部分覆盖 Linux，但不做适配、不做验收；
-4. **mac 侧不做架构重构**：Swift Core 保持 mac 事实源地位，Windows 适配严禁反向污染 mac 代码路径；
-5. **不充当代理/网关**：延续 00 总体设计红线，仅旁路只读分析。
+2. **浅色外观不移植（恒深色）**：Windows 看板与设置恒为深色观感，等价于 mac `Color.adaptive` 的 dark 侧 1:1 复刻（styles.css token 即按 dark 侧数值标注），mac 随系统深浅自适应的能力不镜像（C012 回写显式豁免）。真浅色主题如需立项，走功能设计入口另立 T 卡；
+3. **Daimon Widget 不迁移**（`apps/widget/`）：Windows 无 Daimon 宿主；
+4. **Linux 不承诺**：路径表天然大部分覆盖 Linux，但不做适配、不做验收；
+5. **mac 侧不做架构重构**：Swift Core 保持 mac 事实源地位，Windows 适配严禁反向污染 mac 代码路径；
+6. **不充当代理/网关**：延续 00 总体设计红线，仅旁路只读分析。
 
 ---
 
@@ -101,7 +102,7 @@
 
 ### 4.2 看板功能区（首版全量）
 
-对齐 mac `MenuBarViews`/`Views/` 能力矩阵，WebView 前端实现：今日总量 Hero 卡、Agent 用量卡（模型用量区块、月卡联动、三档语义配色）、逐小时折线、热力图、订阅额度卡（8 Provider）、Nothing 风格控制台主题（Windows 侧以 CSS/点阵等价实现）。菜单栏圆环指示器由托盘图标渲染等价承载（刷新中/告警态图标切换）。
+对齐 mac `MenuBarViews`/`Views/` 能力矩阵，WebView 前端实现：今日总量 Hero 卡、Agent 用量卡（模型用量区块、月卡联动、三档语义配色）、逐小时折线、热力图、订阅额度卡（9 Provider，含 StepFun）、Nothing 风格控制台主题（Windows 侧以 CSS/点阵等价实现，保真边界为简化 CSS 覆写而非完整 Nothing token 体系）。菜单栏圆环指示器由托盘图标渲染等价承载（刷新中/告警态图标切换）。Provider 品牌色板（徽章与余额胶囊圆点）以 mac `ProviderLogoBadge.brandColor` 为唯一事实源，双端逐家对齐（C012）。
 
 ### 4.3 凭证与安全红线
 
