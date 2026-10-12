@@ -232,7 +232,9 @@ function usageCard(usage) {
 }
 
 /* ---------- 订阅用量卡 ---------- */
-const PROVIDER_COLORS = { kimi: "#0a84ff", deepseek: "#4A9E5C", volcengine: "#ff9f0a", zhipu: "#bf5af2", codex: "#10a37f", claude: "#ff7a59", grok: "#6c63ff", opencodeGo: "#30d158", stepfun: "#64d2ff" };
+// 品牌色板以 mac ProviderLogoBadge.brandColor 为唯一事实源 (styles.css 契约:
+// 配色 token 按 mac 源码数值), 双端逐家对齐; grok #111111 沿用 mac 深色徽章形态。
+const PROVIDER_COLORS = { kimi: "#0a84ff", deepseek: "#4d6bfe", volcengine: "#ff6a00", zhipu: "#3859ff", codex: "#10a37f", claude: "#d97757", grok: "#111111", opencodeGo: "#8a63d2", stepfun: "#0c5efc" };
 // 单账号 section id 带 service 后缀 (如 "codex_4eversivan"), 归一出 provider 键
 // 供徽章与余额胶囊取品牌色; 多账号 section id 本身就是 provider 键, 原样返回。
 function providerKey(id) { return String(id || "").split("_")[0]; }
