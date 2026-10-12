@@ -20,18 +20,6 @@
         "resizable": false,
         "shadow": false,
         "alwaysOnTop": true
-      },
-      {
-        "label": "settings",
-        "title": "Bruce 设置",
-        "url": "settings.html",
-        "width": 1040,
-        "height": 680,
-        "minWidth": 980,
-        "minHeight": 620,
-        "visible": false,
-        "resizable": true,
-        "center": true
       }
     ]
   },

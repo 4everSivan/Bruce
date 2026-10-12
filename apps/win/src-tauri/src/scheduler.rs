@@ -251,6 +251,16 @@ mod desktop {
     pub fn spawn(app: AppHandle) {
         let receiver = app.state::<SchedulerControl>().connect_manual_refresh();
         std::thread::spawn(move || {
+            // C013: 采集/退避线程降到 BELOW_NORMAL —— 常驻周期扫描 (尤其装机后的
+            // 全量历史首扫) 是纯后台数据面, 不与前台 UI/系统抢占调度; 手动刷新同样
+            // 让出优先级, 慢一点但机器不卡。windows-sys 已有依赖, 零新增。
+            #[cfg(windows)]
+            unsafe {
+                windows_sys::Win32::System::Threading::SetThreadPriority(
+                    windows_sys::Win32::System::Threading::GetCurrentThread(),
+                    windows_sys::Win32::System::Threading::THREAD_PRIORITY_BELOW_NORMAL,
+                );
+            }
             let mut retries = 0u32;
             let mut manual = false;
             let mut manual_reason = false;

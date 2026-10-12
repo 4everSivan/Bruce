@@ -208,11 +208,28 @@ mod desktop {
     }
 
     /// 打开设置窗口 (mac SettingsWindowController 单实例语义: 已存在则置前)。
+    /// C013: 设置窗口懒创建 —— 启动不再预建第二个常驻 WebView (省一份 WebView2
+    /// 进程树的常驻内存/CPU), 首次打开时按需构建, 之后与预建行为一致 (关闭隐藏可重开)。
     #[tauri::command]
     fn open_settings(app: tauri::AppHandle) {
         if let Some(window) = app.get_webview_window("settings") {
             let _ = window.show();
             let _ = window.unminimize();
+            let _ = window.set_focus();
+            return;
+        }
+        let built = tauri::WebviewWindowBuilder::new(
+            &app,
+            "settings",
+            tauri::WebviewUrl::App("settings.html".into()),
+        )
+        .title("Bruce 设置")
+        .inner_size(1040.0, 680.0)
+        .min_inner_size(980.0, 620.0)
+        .resizable(true)
+        .center()
+        .build();
+        if let Ok(window) = built {
             let _ = window.set_focus();
         }
     }

@@ -504,12 +504,27 @@ document.getElementById("foot-quit").addEventListener("click", async () => {
 function applySettings(settings) {
   currentSettings = settings;
   window.BruceSettings?.applyTheme(settings.theme);
-  if (currentPanel) render(currentPanel);
+  if (currentPanel) renderWhenVisible(currentPanel);
 }
 window.addEventListener("settings-saved", event => applySettings(event.detail));
+// C013: 面板隐藏时跳过全量 DOM 重建 (常驻周期刷新每拍都在重渲染不可见节点);
+// 脏标记挂起, 下次可见时补渲一次。document.hidden 在旧环境/测试桩缺省时
+// 视为可见, 行为与门控前一致。
+let pendingPanel = null;
+function renderWhenVisible(panel) {
+  if (document.hidden === true) { pendingPanel = panel; return; }
+  render(panel);
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden !== true && pendingPanel !== null) {
+    const panel = pendingPanel;
+    pendingPanel = null;
+    render(panel);
+  }
+});
 (async function init() {
   try {
-    await listen("dashboard-updated", event => { try { render(event.payload); } catch (error) { showError(error); } });
+    await listen("dashboard-updated", event => { try { renderWhenVisible(event.payload); } catch (error) { showError(error); } });
     await listen("settings-updated", event => applySettings(event.payload));
     await window.BruceSettings?.ready;
     applySettings(await invoke("get_settings"));
