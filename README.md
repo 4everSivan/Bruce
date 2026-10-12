@@ -7,6 +7,7 @@
     <a href="https://github.com/4everSivan/Bruce/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/4everSivan/Bruce/ci.yml?branch=main&amp;style=flat-square&amp;label=CI%2FCD" alt="CI/CD" /></a>
     <a href="https://github.com/4everSivan/Bruce/releases"><img src="https://img.shields.io/badge/version-v0.11.1-0A7EA4?style=flat-square" alt="Version v0.11.1" /></a>
     <a href="#环境要求"><img src="https://img.shields.io/badge/macOS-14%2B-000000?style=flat-square&amp;logo=apple&amp;logoColor=white" alt="macOS 14+" /></a>
+    <a href="#windows-平台-开发中-appswin"><img src="https://img.shields.io/badge/Windows-10%2B-0078D4?style=flat-square&amp;logo=windows&amp;logoColor=white" alt="Windows 10+" /></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-4CBB17?style=flat-square" alt="MIT License" /></a>
   </p>
   <p>
