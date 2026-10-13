@@ -32,6 +32,9 @@ test("settings window navigation switches categories and persists configuration"
   assert.equal(app.node("pane-agentUsage").classList.contains("hidden"), false);
   assert.equal(app.node("pane-general").classList.contains("hidden"), true);
   assert.equal(app.node("crumb").textContent, "设置 / Agent 用量");
+  assert.ok(app.node("pane-agentUsage").textContent.includes("Rust Collector"));
+  assert.ok(app.node("pane-agentUsage").textContent.includes("Claude Code"));
+  assert.ok(app.node("pane-agentUsage").textContent.includes("未发现会话记录"));
   await app.document.querySelector('[data-category="modelPricing"]').click();
   assert.equal(app.node("pane-modelPricing").classList.contains("hidden"), false);
   await app.document.querySelector('[data-category="general"]').click();
@@ -159,4 +162,11 @@ test("DeepSeek monthly ledger shows baseline, consumption, credits and trend poi
   assert.match(app.node("stack").textContent, /26\/10\/01/);
   assert.match(app.node("stack").textContent, /入账未计入消费/);
   assert.ok(app.node("stack").querySelector(".ledger-trend"));
+});
+
+test("dashboard dismisses via Escape key calling hide_dashboard", async () => {
+  const app = await boot();
+  const start = app.calls.length;
+  await app.window.dispatch("keydown", { key: "Escape" });
+  assert.deepEqual(app.calls.slice(start).map(x => x.command), ["hide_dashboard"]);
 });

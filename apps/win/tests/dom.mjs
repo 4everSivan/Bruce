@@ -158,6 +158,6 @@ export async function boot({ html = "index.html", panel = fixture, settings = de
     vm.runInContext(readFileSync(resolve("apps/win/src", file), "utf8"), context, { filename: file });
   }
   await settle(); await settle();
-  return { document, calls, errors, state, context, events, node: id => document.getElementById(id),
+  return { document, window, calls, errors, state, context, events, node: id => document.getElementById(id),
     emit: async (name, payload) => { await Promise.all((events.get(name) || []).map(callback => callback({ payload }))); await settle(); } };
 }

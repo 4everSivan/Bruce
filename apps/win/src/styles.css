@@ -750,6 +750,72 @@ button, input, select, textarea {
   flex: none;
 }
 
+/* 会话探针行 (对齐 mac SettingsView agentUsagePane) */
+.probe-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+}
+.probe-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.probe-name {
+  color: var(--text);
+  font-weight: 500;
+}
+.probe-sub {
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+.status-tag {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.status-tag.ok {
+  background: rgba(74, 158, 92, .18);
+  color: #5ec273;
+}
+.status-tag.neutral {
+  background: rgba(255, 255, 255, .08);
+  color: var(--text-2);
+}
+.status-tag.warn {
+  background: rgba(212, 168, 67, .18);
+  color: var(--warn);
+}
+.hint-box {
+  background: rgba(0, 0, 0, .25);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--text-2);
+  line-height: 1.6;
+  margin: 10px 14px 14px;
+}
+.hint-box .hint-title {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.hint-box .hint-list {
+  padding-left: 18px;
+  margin: 0;
+}
+.hint-box .hint-list li {
+  margin-bottom: 2px;
+}
+
 .extra-details, details {
   padding: 8px 14px;
   font-size: 12px;

@@ -35,7 +35,7 @@ mod desktop {
             if window.is_visible().unwrap_or(false) {
                 let _ = window.hide();
             } else {
-                restore_position(&window);
+                restore_or_default_position(&window);
                 let _ = window.show();
                 let _ = window.set_focus();
                 // 打开面板立即出新数据 (常驻周期之外的手动唤醒通道, C007)。
@@ -44,23 +44,41 @@ mod desktop {
         }
     }
 
-    /// 位置记忆: 显示前恢复上次面板位置。
-    fn restore_position(window: &tauri::WebviewWindow) {
+    /// 位置记忆: 显示前恢复上次面板位置；未记忆时默认贴靠主屏任务栏右下角上方 (对齐 mac 托盘弹窗)。
+    fn restore_or_default_position(window: &tauri::WebviewWindow) {
         let stored = settings::load_settings(&paths::data_root());
         if let (Some(x), Some(y)) = (stored.panel_x, stored.panel_y) {
             let _ = window.set_position(PhysicalPosition::new(x, y));
+            return;
+        }
+        if let Ok(Some(monitor)) = window.primary_monitor() {
+            let scale = monitor.scale_factor();
+            let mon_pos = monitor.position();
+            let mon_size = monitor.size();
+            let win_w = (440.0 * scale) as i32;
+            let win_h = (760.0 * scale) as i32;
+            let target_x = mon_pos.x + mon_size.width as i32 - win_w - (12.0 * scale) as i32;
+            let target_y = mon_pos.y + mon_size.height as i32 - win_h - (60.0 * scale) as i32;
+            let _ = window.set_position(PhysicalPosition::new(
+                target_x.max(mon_pos.x),
+                target_y.max(mon_pos.y),
+            ));
+        }
+    }
+
+    fn persist_outer_position(x: i32, y: i32) {
+        let root = paths::data_root();
+        let mut stored = settings::load_settings(&root);
+        if stored.panel_x != Some(x) || stored.panel_y != Some(y) {
+            stored.panel_x = Some(x);
+            stored.panel_y = Some(y);
+            let _ = settings::save_settings(&root, &stored);
         }
     }
 
     fn persist_position(window: &tauri::Window) {
         if let Ok(PhysicalPosition { x, y }) = window.outer_position() {
-            let root = paths::data_root();
-            let mut stored = settings::load_settings(&root);
-            if stored.panel_x != Some(x) || stored.panel_y != Some(y) {
-                stored.panel_x = Some(x);
-                stored.panel_y = Some(y);
-                let _ = settings::save_settings(&root, &stored);
-            }
+            persist_outer_position(x, y);
         }
     }
 
@@ -94,9 +112,14 @@ mod desktop {
     fn get_runtime_info(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
         let root = paths::data_root();
         let panel = scheduler::cached_panel(&app)?;
-        Ok(
-            serde_json::json!({"dataRoot":root,"cacheRoot":paths::collector_cache_root(),"snapshotPath":root.join("snapshot.json"),"status":panel["runtime"]}),
-        )
+        Ok(serde_json::json!({
+            "dataRoot": root,
+            "cacheRoot": paths::collector_cache_root(),
+            "snapshotPath": root.join("snapshot.json"),
+            "status": panel["runtime"],
+            "diagnostics": panel["diagnostics"],
+            "usage": panel["usage"]
+        }))
     }
 
     #[tauri::command]
@@ -203,13 +226,23 @@ mod desktop {
     }
 
     #[tauri::command]
+    fn hide_dashboard(app: tauri::AppHandle) {
+        if let Some(window) = app.get_webview_window("dashboard") {
+            if let Ok(PhysicalPosition { x, y }) = window.outer_position() {
+                persist_outer_position(x, y);
+            }
+            let _ = window.hide();
+        }
+    }
+
+    #[tauri::command]
     fn quit_app(app: tauri::AppHandle) {
         app.exit(0);
     }
 
     /// 打开设置窗口 (mac SettingsWindowController 单实例语义: 已存在则置前)。
-    /// C013: 设置窗口懒创建 —— 启动不再预建第二个常驻 WebView (省一份 WebView2
-    /// 进程树的常驻内存/CPU), 首次打开时按需构建, 之后与预建行为一致 (关闭隐藏可重开)。
+    /// 静态配置于 tauri.conf.json，随应用在主线程完成 WebView2 初始化并隐藏预备。
+    /// 若窗口因异常缺失，在主线程兜底创建并显式呈现。
     #[tauri::command]
     fn open_settings(app: tauri::AppHandle) {
         if let Some(window) = app.get_webview_window("settings") {
@@ -218,29 +251,37 @@ mod desktop {
             let _ = window.set_focus();
             return;
         }
-        let built = tauri::WebviewWindowBuilder::new(
-            &app,
-            "settings",
-            tauri::WebviewUrl::App("settings.html".into()),
-        )
-        .title("Bruce 设置")
-        .inner_size(1040.0, 680.0)
-        .min_inner_size(980.0, 620.0)
-        .resizable(true)
-        .center()
-        .build();
-        if let Ok(window) = built {
-            let _ = window.set_focus();
-        }
+        let app_clone = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            if let Ok(window) = tauri::WebviewWindowBuilder::new(
+                &app_clone,
+                "settings",
+                tauri::WebviewUrl::App("settings.html".into()),
+            )
+            .title("Bruce 设置")
+            .inner_size(1040.0, 680.0)
+            .min_inner_size(980.0, 620.0)
+            .resizable(true)
+            .center()
+            .build()
+            {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        });
     }
 
     // MARK: - 入口
 
     pub fn run() {
+        let last_unfocus = std::sync::Arc::new(std::sync::Mutex::new(None::<std::time::Instant>));
+        let last_unfocus_tray = last_unfocus.clone();
+        let last_unfocus_window = last_unfocus.clone();
+
         tauri::Builder::default()
             .plugin(tauri_plugin_notification::init())
             .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-            .setup(|app| {
+            .setup(move |app| {
                 // 调度控制状态 (托盘菜单/命令/热键共享)。
                 let control = SchedulerControl::new();
                 if let Ok(mut state) = control.snapshot.lock() {
@@ -276,13 +317,21 @@ mod desktop {
                         "quit" => app.exit(0),
                         _ => {}
                     })
-                    .on_tray_icon_event(|tray, event| {
+                    .on_tray_icon_event(move |tray, event| {
                         if let TrayIconEvent::Click {
                             button: MouseButton::Left,
                             button_state: MouseButtonState::Up,
                             ..
                         } = event
                         {
+                            // 防抖: 若刚刚因失去焦点隐藏（即用户点击托盘图标旨在收起面板），不再反向重新唤出
+                            if let Ok(mut lock) = last_unfocus_tray.lock() {
+                                if let Some(instant) = lock.take() {
+                                    if instant.elapsed() < std::time::Duration::from_millis(300) {
+                                        return;
+                                    }
+                                }
+                            }
                             toggle_dashboard(tray.app_handle());
                         }
                     })
@@ -290,11 +339,16 @@ mod desktop {
                 scheduler::spawn(app.handle().clone());
                 Ok(())
             })
-            .on_window_event(|window, event| {
+            .on_window_event(move |window, event| {
                 let lost_focus = matches!(event, WindowEvent::Focused(false));
                 let close = matches!(event, WindowEvent::CloseRequested { .. });
                 match window_action(window.label(), lost_focus, close) {
                     WindowAction::HideDashboardAndPersist => {
+                        if lost_focus {
+                            if let Ok(mut lock) = last_unfocus_window.lock() {
+                                *lock = Some(std::time::Instant::now());
+                            }
+                        }
                         if let WindowEvent::CloseRequested { api, .. } = event {
                             api.prevent_close();
                         }
@@ -325,6 +379,7 @@ mod desktop {
                 save_credentials_command,
                 refresh_now,
                 open_settings,
+                hide_dashboard,
                 quit_app
             ])
             .run(tauri::generate_context!())

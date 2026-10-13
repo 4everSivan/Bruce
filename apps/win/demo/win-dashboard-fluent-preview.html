@@ -1,0 +1,726 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bruce Windows 仪表盘高保真预览 (1:1 对齐 macOS)</title>
+  <style>
+    :root {
+      --ink: rgba(255, 255, 255, .92);
+      --subdued: rgba(255, 255, 255, .50);
+      --faint: rgba(255, 255, 255, .55);
+      --secondary: rgba(255, 255, 255, .62);
+      --hairline: rgba(255, 255, 255, .12);
+      --divider: rgba(255, 255, 255, .10);
+      --footer-hairline: rgba(255, 255, 255, .15);
+      --panel-border: rgba(255, 255, 255, .14);
+      --card-bg: rgba(255, 255, 255, .055);
+      --card-border: rgba(255, 255, 255, .10);
+      --accent: #0a84ff;
+      --accent-soft: rgba(10, 132, 255, .14);
+      --badge-bg: rgba(255, 255, 255, .06);
+      --meter-track: rgba(255, 255, 255, .12);
+      --green: #30D158;
+      --orange: #FF9F0A;
+      --red: #FF453A;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #1e1e24 radial-gradient(circle at 80% 20%, #2a2a38 0%, #16161d 100%);
+      font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+      color: var(--ink);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 30px 20px;
+      user-select: none;
+    }
+
+    /* 顶部预览控制栏 */
+    .preview-toolbar {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 20px;
+      background: rgba(0, 0, 0, .4);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, .12);
+      padding: 8px 16px;
+      border-radius: 30px;
+      font-size: 12px;
+      color: var(--secondary);
+    }
+    .preview-toolbar select, .preview-toolbar button {
+      background: rgba(255, 255, 255, .1);
+      border: 1px solid rgba(255, 255, 255, .16);
+      color: var(--ink);
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      outline: none;
+    }
+    .preview-toolbar select:hover, .preview-toolbar button:hover {
+      background: rgba(255, 255, 255, .18);
+    }
+
+    /* Windows 托盘弹出看板容器 (固定 440px 宽，与 macOS frame(width: 440) 1:1 对齐) */
+    .dashboard-window {
+      width: 440px;
+      height: 740px;
+      background: rgba(26, 26, 30, 0.94);
+      backdrop-filter: blur(40px) saturate(180%);
+      border-radius: 12px;
+      border: 1px solid var(--panel-border);
+      box-shadow: 0 24px 64px rgba(0, 0, 0, .6), 0 0 0 1px rgba(255, 255, 255, .05);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* 顶部 1px 细微发光线 (Fluent 材质特征) */
+    .dashboard-window::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 16px; right: 16px; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+      z-index: 10;
+    }
+
+    /* HUD 顶栏 (1:1 对齐 macOS dashboardTopHeader) */
+    .hud-header {
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--hairline);
+      background: rgba(255, 255, 255, 0.02);
+      flex: none;
+    }
+    .hud-left {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .hud-dot-wrap {
+      width: 12px; height: 12px;
+      display: flex; align-items: center; justify-content: center;
+      position: relative;
+    }
+    .hud-dot-wrap.live::before {
+      content: "";
+      position: absolute;
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      background: var(--green);
+      opacity: 0.3;
+      animation: pulse 2s infinite ease-out;
+    }
+    .hud-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+    }
+    @keyframes pulse {
+      0% { transform: scale(0.8); opacity: 0.5; }
+      70% { transform: scale(1.6); opacity: 0; }
+      100% { transform: scale(1.6); opacity: 0; }
+    }
+    .hud-brand {
+      font-size: 11.5px;
+      font-weight: 700;
+      font-family: "Cascadia Mono", Consolas, monospace;
+      color: var(--ink);
+      letter-spacing: .3px;
+    }
+    .hud-sysok {
+      font-size: 9px;
+      font-weight: 600;
+      font-family: "Cascadia Mono", Consolas, monospace;
+      color: var(--secondary);
+      background: rgba(255, 255, 255, 0.08);
+      padding: 2px 5px;
+      border-radius: 4px;
+    }
+    .hud-right {
+      font-size: 9.5px;
+      font-weight: 600;
+      font-family: "Cascadia Mono", Consolas, monospace;
+      color: var(--green);
+      letter-spacing: .2px;
+    }
+    .hud-right.standby {
+      color: var(--subdued);
+    }
+
+    /* 滚动主体区域 */
+    .dashboard-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    /* 细悬浮滚动条 */
+    .dashboard-scroll::-webkit-scrollbar { width: 5px; }
+    .dashboard-scroll::-webkit-scrollbar-track { background: transparent; }
+    .dashboard-scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.18); border-radius: 4px; }
+    .dashboard-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.35); }
+
+    /* 卡片通用样式 (PanelCardContainer) */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      margin-bottom: 10px;
+    }
+    .card.collapsed .card-head { margin-bottom: 0; }
+    .card.collapsed .card-body { display: none; }
+    .card-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--ink);
+    }
+    .card-chevron {
+      color: var(--subdued);
+      font-size: 12px;
+      transition: transform 0.2s;
+    }
+    .card.collapsed .card-chevron {
+      transform: rotate(-90deg);
+    }
+
+    /* 1. Token 用量卡 (UsageHeroCard) */
+    .hero-number-row {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      margin: 4px 0 10px;
+    }
+    .hero-num {
+      font-size: 32px;
+      font-weight: 700;
+      color: #82A57C;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.5px;
+    }
+    .hero-unit {
+      font-size: 13px;
+      color: var(--subdued);
+    }
+    .hero-cost {
+      margin-left: auto;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--ink);
+      font-variant-numeric: tabular-nums;
+    }
+    .breakdown-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      background: rgba(0, 0, 0, 0.25);
+      padding: 8px 10px;
+      border-radius: 7px;
+      margin-bottom: 12px;
+    }
+    .breakdown-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .breakdown-label {
+      font-size: 10.5px;
+      color: var(--subdued);
+    }
+    .breakdown-val {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--ink);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Agent 明细行 */
+    .agent-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+    .agent-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+    }
+    .agent-name {
+      width: 100px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--ink);
+    }
+    .agent-bar-track {
+      flex: 1;
+      height: 6px;
+      background: var(--meter-track);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .agent-bar-fill {
+      height: 100%;
+      border-radius: 3px;
+    }
+    .agent-tokens {
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--secondary);
+      font-variant-numeric: tabular-nums;
+      width: 44px;
+      text-align: right;
+    }
+    .agent-pct {
+      font-size: 11px;
+      color: var(--subdued);
+      width: 38px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* 27 周热力图 */
+    .section-caption {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--subdued);
+      margin: 10px 0 6px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .heatmap-grid {
+      display: flex;
+      gap: 2px;
+      background: rgba(0, 0, 0, 0.15);
+      padding: 6px;
+      border-radius: 6px;
+      overflow-x: auto;
+    }
+    .heatmap-col {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .heatmap-cell {
+      width: 10px; height: 10px;
+      border-radius: 2px;
+      background: rgba(255, 255, 255, 0.06);
+    }
+    .heatmap-cell.lvl-1 { background: #26452A; }
+    .heatmap-cell.lvl-2 { background: #385B38; }
+    .heatmap-cell.lvl-3 { background: #63885E; }
+    .heatmap-cell.lvl-4 { background: #82A57C; }
+
+    /* 2. 订阅额度卡 (SubscriptionCard) */
+    .sub-section {
+      border-bottom: 1px solid var(--divider);
+      padding-bottom: 10px;
+      margin-bottom: 10px;
+    }
+    .sub-section:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+      margin-bottom: 0;
+    }
+    .sub-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .sub-provider-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+    }
+    .sub-provider-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--ink);
+    }
+    .sub-pill {
+      font-size: 10.5px;
+      font-weight: 600;
+      padding: 1.5px 7px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--secondary);
+      margin-left: auto;
+      font-variant-numeric: tabular-nums;
+    }
+    .quota-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 11.5px;
+    }
+    .quota-meta {
+      display: flex;
+      justify-content: space-between;
+      color: var(--secondary);
+    }
+    .quota-track {
+      height: 6px;
+      background: var(--meter-track);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .quota-fill {
+      height: 100%;
+      border-radius: 3px;
+    }
+
+    /* 3. 逐小时活跃卡 (HourlyLineCard) */
+    .hourly-svg {
+      width: 100%;
+      height: 68px;
+      display: block;
+      margin-top: 6px;
+    }
+
+    /* 底栏 (actionFooter) */
+    .footer {
+      padding: 9px 12px;
+      border-top: 1px solid var(--footer-hairline);
+      background: rgba(255, 255, 255, 0.02);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: none;
+    }
+    .foot-btn {
+      width: 32px; height: 32px;
+      border-radius: 6px;
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--secondary);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .foot-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.1);
+      color: var(--ink);
+    }
+    .foot-spacer { flex: 1; }
+    .foot-status-txt {
+      font-size: 11px;
+      color: var(--subdued);
+    }
+
+    /* 样式对照说明卡片 */
+    .note-panel {
+      margin-top: 16px;
+      max-width: 440px;
+      font-size: 12px;
+      color: #9E9E9E;
+      line-height: 1.6;
+      background: rgba(0, 0, 0, 0.3);
+      padding: 12px 16px;
+      border-radius: 8px;
+      border: 1px dashed rgba(255, 255, 255, 0.15);
+    }
+    .note-panel b { color: #fff; }
+    .note-panel code { background: rgba(255, 255, 255, 0.1); padding: 1px 4px; border-radius: 3px; font-family: monospace; color: #64B5F6; }
+  </style>
+</head>
+<body>
+
+  <!-- 预览控制栏 -->
+  <div class="preview-toolbar">
+    <span><b>预览控制</b>:</span>
+    <label>主题:
+      <select id="theme-select" onchange="switchTheme(this.value)">
+        <option value="fluent">Windows Fluent (默认)</option>
+        <option value="nothing">Nothing 点阵风格</option>
+      </select>
+    </label>
+    <label>状态:
+      <select id="state-select" onchange="switchState(this.value)">
+        <option value="live">● 2 Agents Active (实时采集)</option>
+        <option value="standby">STANDBY (待机)</option>
+        <option value="empty">空状态 (未配置引导)</option>
+      </select>
+    </label>
+    <button onclick="toggleCard('card-usage')">折叠用量卡</button>
+  </div>
+
+  <!-- 看板实体 (440px) -->
+  <div class="dashboard-window" id="dashboard">
+    <!-- HUD 顶栏 -->
+    <header class="hud-header">
+      <div class="hud-left">
+        <span class="hud-dot-wrap live" id="live-dot"><span class="hud-dot"></span></span>
+        <span class="hud-brand">Bruce // HUD</span>
+        <span class="hud-sysok">SYS.OK</span>
+      </div>
+      <span class="hud-right" id="hud-right">● 2 AGENTS ACTIVE</span>
+    </header>
+
+    <!-- 滚动区域 -->
+    <div class="dashboard-scroll" id="scroll-stack">
+      
+      <!-- 1. Token 用量卡 (UsageHeroCard) -->
+      <section class="card" id="card-usage">
+        <div class="card-head" onclick="toggleCard('card-usage')">
+          <span class="card-title">Token 用量</span>
+          <span class="card-chevron">▼</span>
+        </div>
+        <div class="card-body">
+          <div class="hero-number-row">
+            <span class="hero-num">248.5K</span>
+            <span class="hero-unit">tokens</span>
+            <span class="hero-cost">$0.48</span>
+          </div>
+
+          <!-- 四格细分指标 -->
+          <div class="breakdown-grid">
+            <div class="breakdown-cell"><span class="breakdown-label">今日</span><span class="breakdown-val">248.5K</span></div>
+            <div class="breakdown-cell"><span class="breakdown-label">昨日</span><span class="breakdown-val">190.2K</span></div>
+            <div class="breakdown-cell"><span class="breakdown-label">近7天</span><span class="breakdown-val">1.2M</span></div>
+            <div class="breakdown-cell"><span class="breakdown-label">近30天</span><span class="breakdown-val">5.4M</span></div>
+          </div>
+
+          <!-- 活跃 Agent 进度条 -->
+          <div class="agent-row">
+            <span class="agent-dot" style="background:#ff7a59"></span>
+            <span class="agent-name">Claude Code</span>
+            <div class="agent-bar-track"><div class="agent-bar-fill" style="width:58%;background:#ff7a59"></div></div>
+            <span class="agent-tokens">144.1K</span>
+            <span class="agent-pct">58%</span>
+          </div>
+          <div class="agent-row">
+            <span class="agent-dot" style="background:#10a37f"></span>
+            <span class="agent-name">ChatGPT / Codex</span>
+            <div class="agent-bar-track"><div class="agent-bar-fill" style="width:34%;background:#10a37f"></div></div>
+            <span class="agent-tokens">84.5K</span>
+            <span class="agent-pct">34%</span>
+          </div>
+          <div class="agent-row">
+            <span class="agent-dot" style="background:#00c853"></span>
+            <span class="agent-name">Kimi Code</span>
+            <div class="agent-bar-track"><div class="agent-bar-fill" style="width:8%;background:#00c853"></div></div>
+            <span class="agent-tokens">19.9K</span>
+            <span class="agent-pct">8%</span>
+          </div>
+
+          <!-- 27 周热力图网格 -->
+          <div class="section-caption">
+            <span>热力图 · 近半年</span>
+            <span>27 周</span>
+          </div>
+          <div class="heatmap-grid" id="heatmap"></div>
+        </div>
+      </section>
+
+      <!-- 2. 订阅额度卡 (SubscriptionCard) -->
+      <section class="card" id="card-sub">
+        <div class="card-head" onclick="toggleCard('card-sub')">
+          <span class="card-title">订阅额度</span>
+          <span class="card-chevron">▼</span>
+        </div>
+        <div class="card-body">
+          <!-- Codex -->
+          <div class="sub-section">
+            <div class="sub-head">
+              <span class="sub-provider-dot" style="background:#10a37f"></span>
+              <span class="sub-provider-title">ChatGPT / Codex</span>
+              <span class="sub-pill">Credits 2,998.12</span>
+            </div>
+            <div class="quota-row">
+              <div class="quota-meta">
+                <span>5 小时窗口 · 已用 42%</span>
+                <span>重置于 14:30</span>
+              </div>
+              <div class="quota-track">
+                <div class="quota-fill" style="width:42%;background:#30D158"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Claude -->
+          <div class="sub-section">
+            <div class="sub-head">
+              <span class="sub-provider-dot" style="background:#ff7a59"></span>
+              <span class="sub-provider-title">Claude</span>
+              <span class="sub-pill">Pro</span>
+            </div>
+            <div class="quota-row">
+              <div class="quota-meta">
+                <span>5 小时窗口 · 已用 78%</span>
+                <span>重置于 16:15</span>
+              </div>
+              <div class="quota-track">
+                <div class="quota-fill" style="width:78%;background:#FF9F0A"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- DeepSeek -->
+          <div class="sub-section">
+            <div class="sub-head">
+              <span class="sub-provider-dot" style="background:#4d6bfe"></span>
+              <span class="sub-provider-title">DeepSeek</span>
+              <span class="sub-pill">余额 ¥152.00</span>
+            </div>
+            <div class="quota-row">
+              <div class="quota-meta">
+                <span>本月推算消费 ¥48.20</span>
+                <span>充足</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. 逐小时活跃卡 (HourlyLineCard) -->
+      <section class="card" id="card-hourly">
+        <div class="card-head" onclick="toggleCard('card-hourly')">
+          <span class="card-title">逐小时活跃</span>
+          <span class="card-chevron">▼</span>
+        </div>
+        <div class="card-body">
+          <div class="section-caption">
+            <span>今日 24 小时活跃分布</span>
+            <span>峰值 71K tokens/h</span>
+          </div>
+          <!-- 平滑折线图 SVG -->
+          <svg class="hourly-svg" viewBox="0 0 380 60">
+            <defs>
+              <linearGradient id="curveGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#30D158" stop-opacity="0.35"/>
+                <stop offset="100%" stop-color="#30D158" stop-opacity="0.0"/>
+              </linearGradient>
+            </defs>
+            <path d="M 0 55 Q 50 55 80 50 T 140 20 T 200 4 T 260 25 T 320 50 T 380 55 L 380 60 L 0 60 Z" fill="url(#curveGrad)"/>
+            <path d="M 0 55 Q 50 55 80 50 T 140 20 T 200 4 T 260 25 T 320 50 T 380 55" fill="none" stroke="#30D158" stroke-width="2"/>
+            <circle cx="200" cy="4" r="3" fill="#30D158"/>
+          </svg>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- 底栏 (actionFooter) -->
+    <footer class="footer">
+      <button class="foot-btn" title="立即刷新" id="refresh-btn" onclick="spinRefresh()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+          <path d="M3 3v5h5"/>
+          <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+          <path d="M16 21h5v-5"/>
+        </svg>
+      </button>
+      <span class="foot-status-txt" id="foot-status">上次更新 15:08</span>
+      <span class="foot-spacer"></span>
+      <button class="foot-btn" title="设置" onclick="alert('触发 open_settings 命令，打开独立设置窗口')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>
+        </svg>
+      </button>
+      <button class="foot-btn" title="退出 Bruce" onclick="alert('触发 quit_app 命令退出进程')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/>
+          <line x1="12" y1="2" x2="12" y2="12"/>
+        </svg>
+      </button>
+    </footer>
+  </div>
+
+  <!-- 对照说明 -->
+  <div class="note-panel">
+    <p><b>✨ 1:1 对齐 macOS 视觉验证点</b>：</p>
+    <p>1. <b>零诊断文本侵入</b>：仪表盘顶部没有任何 <code>未发现会话记录</code>、<code>尚未发现 Agent 用量</code> 杂乱信息，保持绝对纯净；</p>
+    <p>2. <b>HUD 状态栏</b>：呼吸指示灯 + <code>Bruce // HUD</code> + <code>SYS.OK</code> 状态胶囊 + 右侧 <code>2 AGENTS ACTIVE</code>；</p>
+    <p>3. <b>三大核心卡片</b>：用量 Hero 卡、额度胶囊进度卡、24h 平滑折线图，支持独立折叠展开；</p>
+    <p>4. <b>底栏原生图标</b>：使用精细矢量 SVG 替换粗糙 Unicode 字符，支持旋转刷新、设置直达与退出。</p>
+  </div>
+
+  <script>
+    // 生成 27 周热力图格子
+    const heat = document.getElementById("heatmap");
+    const levels = [0, 0, 1, 0, 2, 0, 3, 4, 1, 0, 2, 3, 1, 0, 0, 4, 3, 2, 1, 0, 0, 1, 2, 3, 4, 2, 1];
+    for (let w = 0; w < 27; w++) {
+      const col = document.createElement("div");
+      col.className = "heatmap-col";
+      for (let d = 0; d < 7; d++) {
+        const cell = document.createElement("div");
+        const lvl = (d === 2 || d === 4 || d === 5) ? (levels[w % levels.length] || 0) : (levels[(w + d) % levels.length] % 3);
+        cell.className = "heatmap-cell" + (lvl > 0 ? ` lvl-${lvl}` : "");
+        col.appendChild(cell);
+      }
+      heat.appendChild(col);
+    }
+
+    function toggleCard(id) {
+      document.getElementById(id).classList.toggle("collapsed");
+    }
+
+    function spinRefresh() {
+      const btn = document.getElementById("refresh-btn");
+      btn.style.transform = "rotate(360deg)";
+      btn.style.transition = "transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)";
+      document.getElementById("foot-status").textContent = "正在刷新…";
+      setTimeout(() => {
+        btn.style.transform = "none";
+        btn.style.transition = "none";
+        document.getElementById("foot-status").textContent = "刚刚更新";
+      }, 700);
+    }
+
+    function switchTheme(val) {
+      const win = document.getElementById("dashboard");
+      if (val === "nothing") {
+        win.style.background = "#0e0e0e";
+        win.style.fontFamily = '"Cascadia Mono", Consolas, monospace';
+      } else {
+        win.style.background = "rgba(26, 26, 30, 0.94)";
+        win.style.fontFamily = '"Segoe UI Variable Text", "Segoe UI", sans-serif';
+      }
+    }
+
+    function switchState(val) {
+      const hudRight = document.getElementById("hud-right");
+      const liveDot = document.getElementById("live-dot");
+      const scroll = document.getElementById("scroll-stack");
+      if (val === "live") {
+        hudRight.textContent = "● 2 AGENTS ACTIVE";
+        hudRight.className = "hud-right";
+        liveDot.className = "hud-dot-wrap live";
+        scroll.innerHTML = document.querySelector("#card-usage") ? scroll.innerHTML : location.reload();
+      } else if (val === "standby") {
+        hudRight.textContent = "STANDBY";
+        hudRight.className = "hud-right standby";
+        liveDot.className = "hud-dot-wrap";
+      } else if (val === "empty") {
+        scroll.innerHTML = `
+          <div class="card" style="text-align:center;padding:36px 20px;">
+            <div style="font-size:32px;color:rgba(255,255,255,0.3);margin-bottom:12px;">▦</div>
+            <div style="font-size:14px;font-weight:600;margin-bottom:16px;">未配置模块，前往设置</div>
+            <button style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:#fff;padding:8px 18px;border-radius:6px;cursor:pointer;" onclick="alert('打开设置')">打开设置</button>
+          </div>
+        `;
+      }
+    }
+  </script>
+</body>
+</html>

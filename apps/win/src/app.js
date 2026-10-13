@@ -427,8 +427,9 @@ function hourlyCard(hourly, usage) {
 }
 
 /* ---------- 应用层: 缓存读取与单一刷新意图 ---------- */
-const { invoke } = window.__TAURI__.core;
-const { listen } = window.__TAURI__.event;
+const tauriCore = window.__TAURI__?.core || window.__TAURI_INTERNALS__;
+const invoke = tauriCore?.invoke || (window.__TAURI__ && window.__TAURI__.invoke) || (async () => null);
+const listen = window.__TAURI__?.event?.listen || (async () => () => {});
 let currentPanel = null;
 let currentSettings = { cardOrder: ["usage", "subscription", "hourly"], providerOrder: [], usageEnabled: true };
 
@@ -438,18 +439,22 @@ function statusLabel(status) {
 function renderStatus(panel) {
   const runtime = panel.runtime || {};
   const diagnostics = panel.diagnostics || [];
-  const phase = runtime.phase || (diagnostics.length ? "partial" : panel.usage || panel.subscription ? "fresh" : "empty");
+  const phase = runtime.phase || (panel.usage || panel.subscription ? "fresh" : "empty");
   document.getElementById("runtime-status").textContent = statusLabel(phase);
   const details = [runtime.error];
   if (runtime.lastSuccessAt) details.push(`上次成功 ${runtime.lastSuccessAt}`);
   if (!panel.usage && !panel.subscription && !panel.hourly) details.push("暂无采集数据，可刷新或检查设置。");
   document.getElementById("dashboard-status").textContent = details.filter(Boolean).join(" · ");
   const host = document.getElementById("dashboard-diagnostics");
-  host.replaceChildren();
-  for (const diagnostic of diagnostics) {
-    const identity = diagnostic.serviceId || diagnostic.agentId || diagnostic.module || "";
-    const message = diagnostic.note || diagnostic.reason || ({ missingArtifact: "暂无数据", emptyUsageAgents: "尚未发现 Agent 用量" }[diagnostic.kind]) || statusLabel(diagnostic.status || diagnostic.kind);
-    host.append(el("div", "note-line", `${identity ? `${identity}: ` : ""}${message}`));
+  if (host) {
+    host.replaceChildren();
+    // 过滤会话探测项：未发现会话记录与空 Agent 提示归入设置中心，仪表盘仅保留关键服务故障
+    const serviceIssues = diagnostics.filter(d => d.kind === "serviceIssue" && (d.status === "error" || d.note?.includes("重新授权")));
+    for (const diagnostic of serviceIssues) {
+      const identity = diagnostic.serviceId || diagnostic.module || "";
+      const message = diagnostic.note || diagnostic.reason || statusLabel(diagnostic.status || diagnostic.kind);
+      host.append(el("div", "note-line", `${identity ? `${identity}: ` : ""}${message}`));
+    }
   }
   document.getElementById("refresh").disabled = phase === "refreshing" || phase === "loading";
 }
@@ -529,6 +534,11 @@ document.addEventListener("visibilitychange", () => {
     const panel = pendingPanel;
     pendingPanel = null;
     render(panel);
+  }
+});
+window.addEventListener("keydown", event => {
+  if (event.key === "Escape") {
+    invoke("hide_dashboard").catch(() => {});
   }
 });
 (async function init() {

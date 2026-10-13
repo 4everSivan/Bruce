@@ -1,7 +1,9 @@
 // Settings controller for Bruce independent settings window.
 // Aligns 1:1 with mac SettingsView (WinUI NavigationView Fluent sidebar layout).
 (() => {
-  const { invoke } = window.__TAURI__.core;
+  const tauriCore = window.__TAURI__?.core || window.__TAURI_INTERNALS__;
+  const invoke = tauriCore?.invoke || (window.__TAURI__ && window.__TAURI__.invoke) || (async () => null);
+  const listen = window.__TAURI__?.event?.listen || (async () => () => {});
   const providers = [
     ["kimi", "Kimi For Coding", "kimiQuotaAccounts"],
     ["deepseek", "DeepSeek", "deepseekQuotaAccounts"],
@@ -30,6 +32,19 @@
   };
   const byId = id => document.getElementById(id);
   let settings = {}, allowlist = [], providerOrder = [], cardOrder = [];
+  let currentRuntimeInfo = null;
+  const SESSION_PROBES = [
+    { id: "claude-code", name: "Claude Code", sub: "本机会话目录 (~/.claude/projects)" },
+    { id: "codex", name: "ChatGPT / Codex", sub: "本机会话目录 (~/.codex/sessions)" },
+    { id: "kimi-code-cli", name: "Kimi Code", sub: "本机会话目录 (~/.kimi/history)" },
+    { id: "opencode", name: "OpenCode", sub: "本机会话目录 (%APPDATA%\\OpenCode)" },
+    { id: "grok", name: "Grok", sub: "本机会话目录 (~/.grok)" },
+    { id: "volcengine", name: "火山引擎 / 豆包", sub: "本机会话目录" },
+    { id: "orca", name: "Orca", sub: "本机会话目录" },
+    { id: "pi", name: "Pi", sub: "本机会话目录" },
+    { id: "zcode", name: "ZCode", sub: "本机会话目录" },
+    { id: "codebuddy", name: "CodeBuddy", sub: "本机会话目录" },
+  ];
 
   const applyTheme = theme => {
     document.body.classList.toggle("theme-nothing", theme === "nothing");
@@ -184,9 +199,85 @@
 
   function buildAgentUsage(host) {
     host.replaceChildren();
-    const c1 = card(host, "Agent 会话采集");
-    row(c1, "读取本机 Agent 会话用量", input("setting-usage", "checkbox"), "开启后在本机读取会话记录，计算 Token 用量与费用。");
-    c1.append(node("p", "Bruce 采用只读方式扫描本地支持的 Agent 目录（如 Claude Code, Codex, Grok, OpenCode 等），所有数据均在用户本机闭环计算。", { class: "hint" }));
+
+    // 1. 会话来源 (对齐 mac SettingsView agentUsagePane)
+    const cSources = card(host, "会话来源");
+    row(cSources, "Rust Collector", node("span", "可用", { class: "status-tag ok" }), "扫描本机会话并聚合 token 用量");
+
+    const probeList = node("div", null, { id: "session-probes" });
+    cSources.append(probeList);
+
+    const act = actions(cSources);
+    button(act, "session-rescan", "重新检查", async () => {
+      try {
+        message(byId("settings-status"), "正在重新扫描本机会话…");
+        await invoke("refresh_now");
+        await loadRuntimeInfo();
+        message(byId("settings-status"), "会话扫描已刷新");
+      } catch (error) {
+        message(byId("settings-status"), `扫描失败: ${error.message || error}`);
+      }
+    });
+
+    // 2. Agent 会话采集授权 (对齐 mac)
+    const cUsage = card(host, "Agent 会话采集");
+    row(cUsage, "读取本机 Agent 会话用量", input("setting-usage", "checkbox"), "开启后在本机读取会话记录，计算 Token 用量与费用。");
+    const summary = node("div", null, { class: "hint-box" });
+    summary.append(node("p", "授权后应用将：", { class: "hint-title" }));
+    const ul = node("ul", null, { class: "hint-list" });
+    ul.append(node("li", "只读扫描本机 Agent 会话目录（如 Claude Code, Codex, Kimi, OpenCode 等）与 CC Switch 数据库；"));
+    ul.append(node("li", "在用户本机闭环计算 Token 总量与估算费用，无自有云端服务端；"));
+    ul.append(node("li", "严格执行只读模式（mode=ro），绝不修改、删除或上传任何外部会话日志。"));
+    summary.append(ul);
+    cUsage.append(summary);
+
+    renderSessionProbes();
+  }
+
+  function renderSessionProbes() {
+    const host = byId("session-probes");
+    if (!host) return;
+    host.replaceChildren();
+
+    const diagnostics = currentRuntimeInfo?.diagnostics || [];
+    const usage = currentRuntimeInfo?.usage;
+    const activeAgents = new Set((usage?.breakdown || []).map(b => b.agentId || b.label));
+
+    for (const probe of SESSION_PROBES) {
+      const line = node("div", null, { class: "probe-row" });
+      const meta = node("div", null, { class: "probe-meta" });
+      meta.append(node("span", probe.name, { class: "probe-name" }));
+      meta.append(node("span", probe.sub, { class: "probe-sub" }));
+      line.append(meta);
+
+      const diag = diagnostics.find(d => d.agentId === probe.id || d.module === probe.id);
+      const hasUsage = activeAgents.has(probe.id) || activeAgents.has(probe.name);
+
+      let statusText = "就绪";
+      let statusCls = "status-tag ok";
+
+      if (diag) {
+        if (diag.note && diag.note.includes("未发现会话")) {
+          statusText = "未发现会话记录";
+          statusCls = "status-tag neutral";
+        } else if (diag.status === "not_found" || diag.status === "missing") {
+          statusText = "未安装";
+          statusCls = "status-tag neutral";
+        } else if (diag.status === "unauthorized") {
+          statusText = "未授权";
+          statusCls = "status-tag warn";
+        } else if (diag.note) {
+          statusText = diag.note;
+          statusCls = "status-tag neutral";
+        }
+      } else if (!hasUsage) {
+        statusText = "未发现会话记录";
+        statusCls = "status-tag neutral";
+      }
+
+      line.append(node("span", statusText, { class: statusCls }));
+      host.append(line);
+    }
   }
 
   function buildModelPricing(host) {
@@ -326,16 +417,21 @@
   async function loadRuntimeInfo() {
     try {
       const info = await invoke("get_runtime_info");
+      currentRuntimeInfo = info;
       const status = info.status && typeof info.status === "object" ? info.status : { phase: info.status || info.phase };
-      byId("runtime-info").textContent = [
-        `数据目录：${info.dataRoot || "未知"}`,
-        `缓存目录：${info.cacheRoot || "未知"}`,
-        `快照文件：${info.snapshotPath || "未知"}`,
-        `状态：${status.phase || "未知"}`,
-        `最近成功：${status.lastSuccessAt || "尚无"}`,
-        `错误：${status.error || "无"}`,
-        `诊断：${(status.diagnosticCodes || []).join("、") || "无"}`,
-      ].join("\n");
+      const box = byId("runtime-info");
+      if (box) {
+        box.textContent = [
+          `数据目录：${info.dataRoot || "未知"}`,
+          `缓存目录：${info.cacheRoot || "未知"}`,
+          `快照文件：${info.snapshotPath || "未知"}`,
+          `状态：${status.phase || "未知"}`,
+          `最近成功：${status.lastSuccessAt || "尚无"}`,
+          `错误：${status.error || "无"}`,
+          `诊断：${(status.diagnosticCodes || []).join("、") || "无"}`,
+        ].join("\n");
+      }
+      renderSessionProbes();
     } catch { message(byId("runtime-info"), "无法读取运行状态"); }
   }
 
@@ -582,10 +678,10 @@
 
     try {
       await Promise.all([loadSettings(), loadCredentials(), loadPrices(), loadRuntimeInfo()]);
-      await window.__TAURI__.event.listen("settings-updated", async () => {
+      await listen("settings-updated", async () => {
         try { await loadSettings(); } catch { message(byId("settings-status"), "设置读取失败"); }
       });
-      await window.__TAURI__.event.listen("dashboard-updated", event => showConnectionResult(event.payload));
+      await listen("dashboard-updated", event => showConnectionResult(event.payload));
     } catch {
       message(byId("settings-status"), "部分配置读取失败，请重新打开设置");
     }

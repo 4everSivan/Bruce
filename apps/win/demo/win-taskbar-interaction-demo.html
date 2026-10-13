@@ -1,0 +1,1345 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bruce Windows 任务栏与托盘交互实景模拟 Demo (1:1 对齐 Windows 11/10 托盘交互)</title>
+  <style>
+    :root {
+      --taskbar-bg: rgba(28, 28, 34, 0.82);
+      --taskbar-border: rgba(255, 255, 255, 0.08);
+      --tray-hover: rgba(255, 255, 255, 0.09);
+      --tray-active: rgba(255, 255, 255, 0.14);
+      --accent: #0078D4;
+      --accent-hover: #1084D9;
+      --ink: rgba(255, 255, 255, 0.94);
+      --secondary: rgba(255, 255, 255, 0.65);
+      --faint: rgba(255, 255, 255, 0.40);
+      --hairline: rgba(255, 255, 255, 0.10);
+      --green: #30D158;
+      --orange: #FF9F0A;
+      --red: #FF453A;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+      user-select: none;
+      color: var(--ink);
+    }
+
+    /* Windows 11 经典深色壁纸模拟 */
+    .desktop {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      background: radial-gradient(circle at 75% 35%, #2a2c42 0%, #171822 45%, #0e0f16 100%);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      overflow: hidden;
+    }
+
+    /* 装饰：Windows 11 艺术光带效果 */
+    .desktop::before {
+      content: "";
+      position: absolute;
+      width: 650px;
+      height: 650px;
+      right: 15%;
+      top: 10%;
+      background: radial-gradient(circle, rgba(65, 88, 208, 0.22) 0%, rgba(200, 80, 192, 0.16) 40%, rgba(255, 204, 112, 0) 70%);
+      filter: blur(80px);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* 桌面图标区域 */
+    .desktop-icons {
+      position: absolute;
+      top: 24px;
+      left: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      z-index: 2;
+    }
+    .desk-icon {
+      width: 72px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 4px;
+      border-radius: 6px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .desk-icon:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.14);
+    }
+    .desk-icon svg { width: 36px; height: 36px; }
+    .desk-icon span {
+      font-size: 11.5px;
+      text-align: center;
+      color: #fff;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+      letter-spacing: 0.1px;
+    }
+
+    /* 顶部场景引导与交互控制浮窗 (Simulation HUD) */
+    .sim-guide-panel {
+      position: absolute;
+      top: 20px;
+      right: 24px;
+      width: 360px;
+      background: rgba(24, 24, 28, 0.88);
+      backdrop-filter: blur(30px);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .sim-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--hairline);
+      padding-bottom: 8px;
+    }
+    .sim-title {
+      font-size: 13.5px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .sim-badge {
+      font-size: 10px;
+      padding: 2px 6px;
+      background: var(--accent);
+      border-radius: 4px;
+      color: #fff;
+      font-weight: 600;
+    }
+    .sim-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .sim-btn {
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: var(--ink);
+      font-size: 11.5px;
+      padding: 7px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      justify-content: center;
+      transition: all 0.12s;
+    }
+    .sim-btn:hover {
+      background: rgba(255, 255, 255, 0.14);
+      border-color: rgba(255, 255, 255, 0.22);
+    }
+    .sim-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .sim-log-box {
+      background: rgba(0, 0, 0, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 6px;
+      padding: 8px 10px;
+      height: 115px;
+      overflow-y: auto;
+      font-family: "Cascadia Mono", Consolas, monospace;
+      font-size: 11px;
+      color: #a0c4ff;
+      line-height: 1.5;
+    }
+    .sim-log-box .log-entry { margin-bottom: 3px; word-break: break-all; }
+    .sim-log-box .log-entry.warn { color: #ffd166; }
+    .sim-log-box .log-entry.ok { color: #06d6a0; }
+    .sim-log-box .log-entry.info { color: #8ecae6; }
+
+    /* ======================================================== */
+    /* Windows 11 原生任务栏 (Taskbar) */
+    /* ======================================================== */
+    .taskbar {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 48px;
+      background: var(--taskbar-bg);
+      backdrop-filter: blur(40px) saturate(180%);
+      border-top: 1px solid var(--taskbar-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 10px;
+      z-index: 500;
+    }
+
+    /* 任务栏中间图标组 (Windows 11 居中模式) */
+    .taskbar-center {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      height: 100%;
+    }
+    .taskbar.left-align .taskbar-center {
+      left: 10px;
+      transform: none;
+    }
+
+    .taskbar-icon {
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      cursor: pointer;
+      position: relative;
+      transition: background 0.12s;
+    }
+    .taskbar-icon:hover {
+      background: var(--tray-hover);
+    }
+    .taskbar-icon:active {
+      background: var(--tray-active);
+    }
+    .taskbar-icon.running::after {
+      content: "";
+      position: absolute;
+      bottom: 2px;
+      width: 6px;
+      height: 3px;
+      background: rgba(255, 255, 255, 0.6);
+      border-radius: 2px;
+    }
+    .taskbar-icon.active::after {
+      width: 16px;
+      background: var(--accent);
+    }
+
+    /* 任务栏右侧：Windows 托盘系统通知区 (System Tray) */
+    .taskbar-tray {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      height: 100%;
+      gap: 2px;
+    }
+
+    .tray-btn {
+      height: 36px;
+      padding: 0 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background 0.12s;
+      position: relative;
+    }
+    .tray-btn:hover {
+      background: var(--tray-hover);
+    }
+    .tray-btn:active, .tray-btn.pressed {
+      background: var(--tray-active);
+    }
+
+    /* Bruce 托盘图标核心 */
+    .bruce-tray-icon {
+      padding: 0 9px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      position: relative;
+      outline: none;
+    }
+    .bruce-tray-icon.open {
+      background: rgba(255, 255, 255, 0.16);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+    }
+    .bruce-tray-icon.open::after {
+      content: "";
+      position: absolute;
+      top: 1px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 14px;
+      height: 2px;
+      background: var(--accent);
+      border-radius: 1px;
+    }
+    .bruce-logo-img {
+      width: 18px;
+      height: 18px;
+      filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
+    }
+    .bruce-tray-dot {
+      width: 5px;
+      height: 5px;
+      background: var(--green);
+      border-radius: 50%;
+      box-shadow: 0 0 6px var(--green);
+    }
+
+    /* 托盘原生 Tooltip */
+    .tray-tooltip {
+      position: absolute;
+      bottom: 54px;
+      right: 120px;
+      background: #2a2a30;
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      font-size: 11.5px;
+      padding: 6px 10px;
+      border-radius: 5px;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+      pointer-events: none;
+      opacity: 0;
+      transform: translateY(4px);
+      transition: opacity 0.15s, transform 0.15s;
+      white-space: nowrap;
+      z-index: 1100;
+    }
+    .tray-tooltip.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* 托盘时间与状态 */
+    .tray-clock {
+      padding: 0 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      justify-content: center;
+      font-size: 11px;
+      line-height: 1.25;
+      color: var(--secondary);
+    }
+    .tray-clock .time { color: var(--ink); font-weight: 500; }
+    .tray-show-desk {
+      width: 6px;
+      height: 100%;
+      margin-left: 4px;
+      border-left: 1px solid rgba(255, 255, 255, 0.08);
+      cursor: pointer;
+    }
+    .tray-show-desk:hover {
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    /* ======================================================== */
+    /* 右键托盘上下文菜单 (Win32 Context Menu 仿真) */
+    /* ======================================================== */
+    .tray-context-menu {
+      position: absolute;
+      bottom: 54px;
+      right: 110px;
+      width: 170px;
+      background: rgba(36, 36, 42, 0.95);
+      backdrop-filter: blur(30px);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 8px;
+      padding: 5px;
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06);
+      display: none;
+      flex-direction: column;
+      gap: 2px;
+      z-index: 999;
+      animation: menuPop 0.12s ease-out;
+    }
+    @keyframes menuPop {
+      from { opacity: 0; transform: scale(0.96) translateY(6px); }
+      to { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    .menu-item {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 7px 10px;
+      border-radius: 5px;
+      font-size: 12px;
+      color: var(--ink);
+      cursor: pointer;
+      transition: background 0.08s;
+    }
+    .menu-item:hover {
+      background: rgba(255, 255, 255, 0.12);
+    }
+    .menu-item.danger:hover {
+      background: rgba(255, 69, 58, 0.25);
+      color: #ff6b6b;
+    }
+    .menu-divider {
+      height: 1px;
+      background: rgba(255, 255, 255, 0.1);
+      margin: 3px 6px;
+    }
+
+    /* ======================================================== */
+    /* Windows 托盘弹出看板窗口 (440 × 760 对齐 macOS 菜单栏弹窗) */
+    /* ======================================================== */
+    .sim-dashboard-container {
+      position: absolute;
+      bottom: 58px; /* 贴靠任务栏上方 10px */
+      right: 12px;  /* 贴靠主屏右下角边距 12px (与 lib.rs target_x 契约 1:1) */
+      width: 440px;
+      height: 700px;
+      background: rgba(26, 26, 32, 0.94);
+      backdrop-filter: blur(40px) saturate(180%);
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      box-shadow: 0 28px 72px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.06);
+      display: none;
+      flex-direction: column;
+      overflow: hidden;
+      z-index: 600;
+      transform-origin: bottom right;
+      animation: dashSlideIn 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes dashSlideIn {
+      from { opacity: 0; transform: translateY(14px) scale(0.97); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .sim-dashboard-container.hiding {
+      animation: dashSlideOut 0.12s ease-in forwards;
+    }
+    @keyframes dashSlideOut {
+      from { opacity: 1; transform: translateY(0) scale(1); }
+      to { opacity: 0; transform: translateY(14px) scale(0.97); }
+    }
+
+    /* 顶部 1px 细微反光线 */
+    .sim-dashboard-container::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 16px; right: 16px; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+      z-index: 10;
+    }
+
+    /* 贴靠锚线指示箭头 (示意与托盘图标的物理挂靠关系) */
+    .dock-indicator {
+      position: absolute;
+      bottom: -6px;
+      right: 95px;
+      width: 12px;
+      height: 12px;
+      background: rgba(26, 26, 32, 0.94);
+      border-right: 1px solid rgba(255, 255, 255, 0.15);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+      transform: rotate(45deg);
+      z-index: 601;
+      display: none;
+    }
+
+    /* 看板 HUD 顶栏 */
+    .hud-bar {
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--hairline);
+      background: rgba(255, 255, 255, 0.02);
+      flex: none;
+    }
+    .hud-left {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .hud-pulse {
+      width: 12px; height: 12px;
+      display: flex; align-items: center; justify-content: center;
+      position: relative;
+    }
+    .hud-pulse::before {
+      content: "";
+      position: absolute;
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      background: var(--green);
+      opacity: 0.35;
+      animation: pulse 2s infinite ease-out;
+    }
+    @keyframes pulse {
+      0% { transform: scale(0.8); opacity: 0.5; }
+      70% { transform: scale(1.6); opacity: 0; }
+      100% { transform: scale(1.6); opacity: 0; }
+    }
+    .hud-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+    .hud-brand {
+      font-size: 12px;
+      font-weight: 700;
+      font-family: "Cascadia Mono", Consolas, monospace;
+      color: var(--ink);
+    }
+    .hud-status-badge {
+      font-size: 9px;
+      font-weight: 600;
+      color: var(--secondary);
+      background: rgba(255, 255, 255, 0.08);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .hud-agents {
+      font-size: 9.5px;
+      font-weight: 600;
+      color: var(--green);
+      font-family: "Cascadia Mono", monospace;
+    }
+
+    /* 看板滚动区域 */
+    .dash-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .dash-scroll::-webkit-scrollbar { width: 5px; }
+    .dash-scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 4px; }
+
+    /* 卡片容器 */
+    .card {
+      background: rgba(255, 255, 255, 0.055);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      padding: 12px 14px;
+    }
+    .card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .card-title { font-size: 13px; font-weight: 600; }
+    .card-chevron { font-size: 11px; color: var(--faint); }
+
+    /* 1. Hero 渐变数字卡片 */
+    .hero-row {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      margin: 4px 0 8px;
+    }
+    .hero-num {
+      font-size: 32px;
+      font-weight: 700;
+      color: #82A57C;
+      font-variant-numeric: tabular-nums;
+    }
+    .hero-cost { margin-left: auto; font-size: 14.5px; font-weight: 600; }
+    .breakdown-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      background: rgba(0, 0, 0, 0.25);
+      padding: 7px 8px;
+      border-radius: 6px;
+    }
+    .breakdown-cell { display: flex; flex-direction: column; gap: 2px; }
+    .b-label { font-size: 10px; color: var(--secondary); }
+    .b-val { font-size: 12px; font-weight: 600; color: #fff; }
+
+    /* 2. 额度卡片 */
+    .quota-item {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--hairline);
+    }
+    .quota-item:last-child { border-bottom: none; padding-bottom: 0; }
+    .quota-header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .provider-tag {
+      font-size: 11.5px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .pill {
+      font-size: 10px;
+      padding: 2px 7px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--secondary);
+    }
+    .meter-bar {
+      height: 5px;
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .meter-fill {
+      height: 100%;
+      background: var(--green);
+      border-radius: 3px;
+    }
+
+    /* 看板底栏 (Footer) */
+    .dash-footer {
+      padding: 9px 14px;
+      border-top: 1px solid var(--hairline);
+      background: rgba(255, 255, 255, 0.02);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex: none;
+    }
+    .foot-info {
+      font-size: 11px;
+      color: var(--secondary);
+    }
+    .foot-btn-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .icon-btn {
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 5px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      cursor: pointer;
+      color: var(--ink);
+      transition: all 0.12s;
+    }
+    .icon-btn:hover {
+      background: rgba(255, 255, 255, 0.15);
+      border-color: rgba(255, 255, 255, 0.25);
+    }
+
+    /* ======================================================== */
+    /* 独立设置窗口 (1040 × 680) 模拟浮层 */
+    /* ======================================================== */
+    .sim-settings-window {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 880px;
+      height: 560px;
+      background: #1e1e24;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 10px;
+      box-shadow: 0 32px 80px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.08);
+      display: none;
+      flex-direction: column;
+      z-index: 800;
+      overflow: hidden;
+      animation: winOpen 0.15s cubic-bezier(0.1, 0.9, 0.2, 1);
+    }
+    @keyframes winOpen {
+      from { opacity: 0; transform: translate(-50%, -48%) scale(0.96); }
+      to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    }
+    .win-titlebar {
+      height: 38px;
+      background: #18181d;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 14px;
+      flex: none;
+    }
+    .win-title {
+      font-size: 12.5px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .win-controls {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+    .win-ctrl-btn {
+      width: 32px;
+      height: 26px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      color: var(--secondary);
+    }
+    .win-ctrl-btn:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+    .win-ctrl-btn.close:hover { background: #e81123; color: #fff; }
+
+    .win-body {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+    .win-nav {
+      width: 190px;
+      background: #18181d;
+      border-right: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 12px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .win-nav-item {
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12.5px;
+      color: var(--secondary);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.1s;
+    }
+    .win-nav-item:hover { background: rgba(255, 255, 255, 0.06); color: #fff; }
+    .win-nav-item.active { background: rgba(255, 255, 255, 0.1); color: #fff; font-weight: 600; }
+    .win-content {
+      flex: 1;
+      padding: 20px 24px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .win-card {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      padding: 14px 16px;
+    }
+    .probe-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .probe-row:last-child { border-bottom: none; }
+    .probe-meta { display: flex; flex-direction: column; gap: 2px; }
+    .probe-name { font-size: 13px; font-weight: 500; }
+    .probe-sub { font-size: 11px; color: var(--secondary); }
+    .tag { font-size: 11px; padding: 2px 8px; border-radius: 10px; }
+    .tag.ok { background: rgba(48, 209, 88, 0.18); color: #4ade80; }
+    .tag.neutral { background: rgba(255, 255, 255, 0.08); color: var(--secondary); }
+
+  </style>
+</head>
+<body>
+
+  <div class="desktop" id="desktop-surface" onclick="onDesktopClick(event)">
+
+    <!-- 桌面图标 (模拟工作区) -->
+    <div class="desktop-icons">
+      <div class="desk-icon" ondblclick="logSim('双击此电脑')">
+        <svg viewBox="0 0 48 48" fill="none"><rect x="6" y="8" width="36" height="26" rx="3" fill="#2b5b84"/><path d="M18 38h12v4H18z" fill="#6c7a89"/><path d="M12 42h24v2H12z" fill="#95a5a6"/><rect x="10" y="12" width="28" height="18" rx="1" fill="#68b0d8"/></svg>
+        <span>此电脑</span>
+      </div>
+      <div class="desk-icon" ondblclick="logSim('双击回收站')">
+        <svg viewBox="0 0 48 48" fill="none"><path d="M14 12h20l-2 28H16L14 12Z" fill="#7f8c8d"/><path d="M11 10h26v4H11z" fill="#95a5a6"/><path d="M20 6h8v4h-8z" fill="#bdc3c7"/></svg>
+        <span>回收站</span>
+      </div>
+      <div class="desk-icon" ondblclick="toggleDashboard(true)">
+        <svg viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="20" fill="#0078D4"/><path d="M15 28c3 4 15 4 18 0M17 18h2M29 18h2" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>
+        <span>Bruce.exe</span>
+      </div>
+    </div>
+
+    <!-- 顶部模拟控制与实时事件追踪面板 (Interactive Control HUD) -->
+    <div class="sim-guide-panel" onclick="event.stopPropagation()">
+      <div class="sim-head">
+        <span class="sim-title">
+          <span>🐕 任务栏交互验证中心</span>
+          <span class="sim-badge">Win32 & Tauri</span>
+        </span>
+      </div>
+
+      <div style="font-size: 11.5px; color: var(--secondary); line-height: 1.4;">
+        真实模拟 Windows 11 任务栏、系统托盘、全局快捷键与失焦隐藏全流程。
+      </div>
+
+      <div class="sim-actions">
+        <button class="sim-btn" onclick="simulateLeftClickTray()">
+          <span>左键单击托盘</span>
+        </button>
+        <button class="sim-btn" onclick="simulateRightClickTray()">
+          <span>右键单击托盘</span>
+        </button>
+        <button class="sim-btn" onclick="simulateClickOutside()">
+          <span>失焦点击外部</span>
+        </button>
+        <button class="sim-btn" onclick="simulateEscape()">
+          <span>按 Esc 键</span>
+        </button>
+        <button class="sim-btn" onclick="simulateGlobalHotkey()">
+          <span>按 Ctrl+Shift+B</span>
+        </button>
+        <button class="sim-btn" onclick="toggleTaskbarAlign()">
+          <span>居中 / 靠左切换</span>
+        </button>
+      </div>
+
+      <div>
+        <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:4px; color:var(--secondary);">
+          <span>真实调度日志</span>
+          <span style="cursor:pointer; color:#8ecae6" onclick="clearLog()">清空</span>
+        </div>
+        <div class="sim-log-box" id="sim-log">
+          <div class="log-entry info">[Init] Bruce 托盘常驻壳已就绪 (Tauri v2)</div>
+          <div class="log-entry info">[Tray] 托盘图标已注册在系统通知区域</div>
+          <div class="log-entry info">[Hotkey] 全局快捷键注册: Ctrl+Shift+B</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================================================== -->
+    <!-- 托盘呼出的 440px Fluent 仪表盘 (挂靠在任务栏上方) -->
+    <!-- ==================================================== -->
+    <div class="sim-dashboard-container" id="dashboard-window" onclick="event.stopPropagation()">
+      <!-- HUD 顶栏 -->
+      <div class="hud-bar">
+        <div class="hud-left">
+          <div class="hud-pulse"><div class="hud-dot"></div></div>
+          <span class="hud-brand">BRUCE</span>
+          <span class="hud-status-badge">SYS.OK</span>
+        </div>
+        <span class="hud-agents">● 3 AGENTS ACTIVE</span>
+      </div>
+
+      <!-- 主体滚动卡片栈 (纯净无“未发现会话记录”噪音) -->
+      <div class="dash-scroll">
+        <!-- 1. Token 用量卡 -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">Token 用量</span>
+            <span class="card-chevron">❯</span>
+          </div>
+          <div class="hero-row">
+            <span class="hero-num">1.24M</span>
+            <span style="font-size:13px; color:var(--secondary)">tokens</span>
+            <span class="hero-cost">¥14.28</span>
+          </div>
+          <div class="breakdown-row">
+            <div class="breakdown-cell"><span class="b-label">Prompt</span><span class="b-val">320K</span></div>
+            <div class="breakdown-cell"><span class="b-label">Completion</span><span class="b-val">180K</span></div>
+            <div class="breakdown-cell"><span class="b-label">Cache R</span><span class="b-val">710K</span></div>
+            <div class="breakdown-cell"><span class="b-label">Cache W</span><span class="b-val">30K</span></div>
+          </div>
+        </div>
+
+        <!-- 2. 订阅额度卡 -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">订阅额度</span>
+            <span class="card-chevron">❯</span>
+          </div>
+          <!-- OpenAI / Codex -->
+          <div class="quota-item">
+            <div class="quota-header-row">
+              <span class="provider-tag">
+                <span style="width:7px; height:7px; border-radius:50%; background:#10a37f"></span>
+                ChatGPT (Codex)
+              </span>
+              <span class="pill">剩余 84% · 3h 重置</span>
+            </div>
+            <div class="meter-bar"><div class="meter-fill" style="width:84%"></div></div>
+          </div>
+          <!-- Claude -->
+          <div class="quota-item">
+            <div class="quota-header-row">
+              <span class="provider-tag">
+                <span style="width:7px; height:7px; border-radius:50%; background:#d97757"></span>
+                Claude Code
+              </span>
+              <span class="pill">剩余 62% · 5h 窗口</span>
+            </div>
+            <div class="meter-bar"><div class="meter-fill" style="width:62%"></div></div>
+          </div>
+          <!-- Kimi -->
+          <div class="quota-item">
+            <div class="quota-header-row">
+              <span class="provider-tag">
+                <span style="width:7px; height:7px; border-radius:50%; background:#0078D4"></span>
+                Kimi Code
+              </span>
+              <span class="pill">额度充裕</span>
+            </div>
+            <div class="meter-bar"><div class="meter-fill" style="width:95%"></div></div>
+          </div>
+        </div>
+
+        <!-- 3. 活动趋势卡 -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">用量趋势 · 近 24 小时</span>
+            <span class="card-chevron">❯</span>
+          </div>
+          <div style="height:60px; display:flex; align-items:flex-end; gap:3px; padding-top:10px;">
+            <div style="flex:1; height:15%; background:#82A57C; border-radius:2px"></div>
+            <div style="flex:1; height:35%; background:#82A57C; border-radius:2px"></div>
+            <div style="flex:1; height:20%; background:#82A57C; border-radius:2px"></div>
+            <div style="flex:1; height:60%; background:#82A57C; border-radius:2px"></div>
+            <div style="flex:1; height:85%; background:#82A57C; border-radius:2px"></div>
+            <div style="flex:1; height:100%; background:#82A57C; border-radius:2px"></div>
+            <div style="flex:1; height:45%; background:#82A57C; border-radius:2px"></div>
+            <div style="flex:1; height:70%; background:#82A57C; border-radius:2px"></div>
+            <div style="flex:1; height:30%; background:#82A57C; border-radius:2px"></div>
+            <div style="flex:1; height:10%; background:#82A57C; border-radius:2px"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 看板底栏 -->
+      <div class="dash-footer">
+        <span class="foot-info">上次更新 刚刚 · 常驻调度中</span>
+        <div class="foot-btn-group">
+          <button class="icon-btn" title="立即刷新" onclick="triggerRefresh(event)">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+          </button>
+          <button class="icon-btn" title="打开独立设置窗口" onclick="openSettingsWindow(event)">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 贴靠指示角标 -->
+    <div class="dock-indicator" id="dock-arrow"></div>
+
+    <!-- ==================================================== -->
+    <!-- 托盘右键上下文菜单 (Win32 Context Menu 仿真) -->
+    <!-- ==================================================== -->
+    <div class="tray-context-menu" id="tray-menu" onclick="event.stopPropagation()">
+      <div class="menu-item" onclick="toggleDashboard(true); hideTrayMenu();">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span>显示看板</span>
+      </div>
+      <div class="menu-item" onclick="triggerRefresh(); hideTrayMenu();">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+        <span>立即刷新</span>
+      </div>
+      <div class="menu-item" onclick="openSettingsWindow(); hideTrayMenu();">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+        <span>设置</span>
+      </div>
+      <div class="menu-divider"></div>
+      <div class="menu-item danger" onclick="simulateQuitApp(); hideTrayMenu();">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"/></svg>
+        <span>退出 Bruce</span>
+      </div>
+    </div>
+
+    <!-- 托盘图标浮动 Tooltip -->
+    <div class="tray-tooltip" id="tray-tooltip">Bruce - 3 Agents Active (SYS.OK)</div>
+
+    <!-- ==================================================== -->
+    <!-- 独立设置窗口 (1040 × 680 WinUI 结构) 仿真浮层 -->
+    <!-- ==================================================== -->
+    <div class="sim-settings-window" id="settings-window" onclick="event.stopPropagation()">
+      <div class="win-titlebar">
+        <div class="win-title">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+          <span>Bruce 设置</span>
+        </div>
+        <div class="win-controls">
+          <div class="win-ctrl-btn">─</div>
+          <div class="win-ctrl-btn">□</div>
+          <div class="win-ctrl-btn close" onclick="closeSettingsWindow()">✕</div>
+        </div>
+      </div>
+      <div class="win-body">
+        <div class="win-nav">
+          <div class="win-nav-item"><span>通用</span></div>
+          <div class="win-nav-item active"><span>Agent 用量</span></div>
+          <div class="win-nav-item"><span>模型计费</span></div>
+          <div class="win-nav-item"><span>订阅额度</span></div>
+          <div class="win-nav-item"><span>授权与隐私</span></div>
+          <div class="win-nav-item"><span>维护</span></div>
+        </div>
+        <div class="win-content">
+          <div>
+            <div style="font-size:11.5px; color:var(--secondary)">设置 / Agent 用量</div>
+            <h2 style="font-size:20px; font-weight:700; margin-top:2px;">Agent 用量</h2>
+          </div>
+
+          <!-- 正确定位的“未发现会话记录”卡片 -->
+          <div class="win-card">
+            <div style="font-size:14px; font-weight:600; margin-bottom:12px;">会话来源 (探针探测状态)</div>
+            
+            <div class="probe-row">
+              <div class="probe-meta">
+                <span class="probe-name">Rust Collector</span>
+                <span class="probe-sub">本机会话扫描引擎</span>
+              </div>
+              <span class="tag ok">● 可用</span>
+            </div>
+
+            <div class="probe-row">
+              <div class="probe-meta">
+                <span class="probe-name">Claude Code</span>
+                <span class="probe-sub">~/.claude/projects</span>
+              </div>
+              <span class="tag ok">● 就绪</span>
+            </div>
+
+            <div class="probe-row">
+              <div class="probe-meta">
+                <span class="probe-name">ChatGPT / Codex</span>
+                <span class="probe-sub">~/.codex/sessions</span>
+              </div>
+              <span class="tag ok">● 就绪</span>
+            </div>
+
+            <div class="probe-row">
+              <div class="probe-meta">
+                <span class="probe-name">Kimi Code</span>
+                <span class="probe-sub">~/.kimi/history</span>
+              </div>
+              <!-- 这里是用户要求的正确展示位置 -->
+              <span class="tag neutral">未发现会话记录</span>
+            </div>
+
+            <div class="probe-row">
+              <div class="probe-meta">
+                <span class="probe-name">OpenCode</span>
+                <span class="probe-sub">%APPDATA%\OpenCode</span>
+              </div>
+              <span class="tag neutral">未发现会话记录</span>
+            </div>
+
+            <div style="margin-top:14px; display:flex; justify-content:flex-end;">
+              <button class="sim-btn" onclick="logSim('[Settings] 触发会话扫描重新检查...')">重新检查</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================================================== -->
+    <!-- Windows 11 底部真实任务栏主体 -->
+    <!-- ==================================================== -->
+    <div class="taskbar" id="taskbar-root">
+      
+      <!-- 中部图标 (Windows 11 居中 / Win 10 靠左) -->
+      <div class="taskbar-center" id="taskbar-center-icons">
+        <!-- 开始按钮 -->
+        <div class="taskbar-icon" title="开始" onclick="logSim('[Win32] 点击 Windows 开始菜单')">
+          <svg width="20" height="20" viewBox="0 0 24 24"><path fill="#0078D4" d="M3 3h8v8H3zm10 0h8v8h-8zM3 13h8v8H3zm10 0h8v8h-8z"/></svg>
+        </div>
+        <!-- 搜索 -->
+        <div class="taskbar-icon" title="搜索" onclick="logSim('[Win32] 点击搜索')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        </div>
+        <!-- 文件管理器 -->
+        <div class="taskbar-icon running" title="文件资源管理器" onclick="logSim('[Win32] 切换文件资源管理器')">
+          <svg width="22" height="22" viewBox="0 0 24 24"><path fill="#FFA000" d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/><path fill="#FFCA28" d="M20 8H4v10c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V8z"/></svg>
+        </div>
+        <!-- Edge -->
+        <div class="taskbar-icon" title="Microsoft Edge" onclick="logSim('[Win32] 打开 Edge')">
+          <svg width="20" height="20" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#0078D4"/><path d="M12 2a10 10 0 0 0-4 18c4 2 8-2 8-6 0-3-2-5-5-5-2 0-3 1-3 2" fill="#fff" opacity=".8"/></svg>
+        </div>
+        <!-- VS Code -->
+        <div class="taskbar-icon running active" title="Visual Studio Code" onclick="logSim('[Win32] 切换 VS Code')">
+          <svg width="20" height="20" viewBox="0 0 24 24"><path fill="#007ACC" d="M17.5 2 7.7 11.2l-4.5-3.5L1 9.4 5.3 13 1 16.6l2.2 1.7 4.5-3.5L17.5 24 23 21.3V4.7L17.5 2z"/></svg>
+        </div>
+      </div>
+
+      <!-- 右侧系统托盘区域 (Notification Area) -->
+      <div class="taskbar-tray">
+        <div class="tray-btn" title="显示隐藏的图标" onclick="logSim('[Tray] 展开托盘折叠区 (^) ')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m18 15-6-6-6 6"/></svg>
+        </div>
+
+        <!-- 🌟 BRUCE 系统托盘图标 🐶 🌟 -->
+        <div class="tray-btn bruce-tray-icon" 
+             id="bruce-tray-icon"
+             onclick="onTrayLeftClick(event)"
+             oncontextmenu="onTrayRightClick(event)"
+             onmouseenter="onTrayMouseEnter()"
+             onmouseleave="onTrayMouseLeave()"
+             tabindex="0">
+          <!-- Bruce 小狗图标 SVG -->
+          <svg class="bruce-logo-img" viewBox="0 0 32 32" fill="none">
+            <circle cx="16" cy="16" r="15" fill="#0078D4"/>
+            <!-- 狗耳朵与脸庞 -->
+            <path d="M10 10c-2 4-1 9 1 11M22 10c2 4 1 9-1 11" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/>
+            <ellipse cx="16" cy="18" rx="7" ry="5.5" fill="#fff"/>
+            <ellipse cx="16" cy="17" rx="2.5" ry="1.8" fill="#1C1C22"/>
+            <circle cx="13" cy="14" r="1.5" fill="#fff"/>
+            <circle cx="19" cy="14" r="1.5" fill="#fff"/>
+          </svg>
+          <div class="bruce-tray-dot"></div>
+        </div>
+
+        <!-- 网络与声音组合胶囊 -->
+        <div class="tray-btn" style="gap:6px;" title="Internet & Sound" onclick="logSim('[Win32] 打开快速设置面板')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0M1.42 9a16 16 0 0 1 21.16 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/></svg>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5 6 9H2v6h4l5 4V5ZM15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+        </div>
+
+        <!-- 时间日期 -->
+        <div class="tray-clock" title="2026年10月13日 星期二" onclick="logSim('[Win32] 打开日历与通知中心')">
+          <span class="time" id="clock-time">15:48</span>
+          <span class="date" id="clock-date">2026/10/13</span>
+        </div>
+
+        <!-- 显示桌面竖线 -->
+        <div class="tray-show-desk" title="显示桌面" onclick="simulateClickOutside()"></div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <script>
+    // 状态机与防抖动时间戳
+    let isDashboardOpen = false;
+    let isSettingsOpen = false;
+    let lastUnfocusTimestamp = 0; // 模拟 Rust 300ms 失去焦点防抖锁
+    const DEBOUNCE_MS = 300;
+
+    const logBox = document.getElementById("sim-log");
+    const dashWindow = document.getElementById("dashboard-window");
+    const dockArrow = document.getElementById("dock-arrow");
+    const trayMenu = document.getElementById("tray-menu");
+    const trayIcon = document.getElementById("bruce-tray-icon");
+    const trayTooltip = document.getElementById("tray-tooltip");
+    const settingsWindow = document.getElementById("settings-window");
+    const taskbarRoot = document.getElementById("taskbar-root");
+
+    function logSim(msg, type = "info") {
+      const line = document.createElement("div");
+      line.className = `log-entry ${type}`;
+      const now = new Date();
+      const timeStr = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}.${String(now.getMilliseconds()).padStart(3,'0')}`;
+      line.textContent = `[${timeStr}] ${msg}`;
+      logBox.appendChild(line);
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    function clearLog() {
+      logBox.innerHTML = "";
+    }
+
+    // 1. 托盘左键点击事件 (对齐 lib.rs TrayIconEvent::Click Left)
+    function onTrayLeftClick(event) {
+      if (event) event.stopPropagation();
+      hideTrayMenu();
+
+      const now = Date.now();
+      const elapsed = now - lastUnfocusTimestamp;
+
+      // 关键防抖逻辑检验 (对齐 lib.rs 300ms last_unfocus 互斥)
+      if (lastUnfocusTimestamp > 0 && elapsed < DEBOUNCE_MS) {
+        logSim(`[Debounce] 失去焦点锁生效: 距离上次失焦仅 ${elapsed}ms (< 300ms)，已成功拦截托盘反弹重开！`, "warn");
+        lastUnfocusTimestamp = 0;
+        return;
+      }
+
+      logSim("[TrayEvent] 捕获 MouseButton::Left (托盘左键单击)");
+      toggleDashboard();
+    }
+
+    // 2. 托盘右键点击事件 (对齐 lib.rs 右键唤出 Menu)
+    function onTrayRightClick(event) {
+      if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      logSim("[TrayEvent] 捕获 MouseButton::Right (托盘右键单击) -> 呈现 Win32 原生菜单");
+      hideTooltip();
+      showTrayMenu();
+    }
+
+    // 3. 切换看板显隐
+    function toggleDashboard(forceOpen = null) {
+      const targetState = forceOpen !== null ? forceOpen : !isDashboardOpen;
+
+      if (targetState) {
+        // 打开看板
+        isDashboardOpen = true;
+        dashWindow.classList.remove("hiding");
+        dashWindow.style.display = "flex";
+        dockArrow.style.display = "block";
+        trayIcon.classList.add("open");
+        logSim("[Dashboard] 打开面板: 读取主屏坐标 (1468, 260) 贴靠任务栏上方, set_focus() 激活");
+        logSim("[Scheduler] 触发 request_manual_refresh() 手动唤醒通道, 数据即刻刷新", "ok");
+      } else {
+        // 收起看板
+        closeDashboard("用户主动操作收起");
+      }
+    }
+
+    function closeDashboard(reason) {
+      if (!isDashboardOpen) return;
+      isDashboardOpen = false;
+      dashWindow.classList.add("hiding");
+      setTimeout(() => {
+        if (!isDashboardOpen) {
+          dashWindow.style.display = "none";
+          dockArrow.style.display = "none";
+        }
+      }, 120);
+      trayIcon.classList.remove("open");
+      logSim(`[Dashboard] 收起面板: persist_position() 保存最后坐标 (${reason})`);
+    }
+
+    // 4. 模拟失焦 (对齐 WindowEvent::Focused(false))
+    function onDesktopClick(event) {
+      hideTrayMenu();
+      if (isDashboardOpen) {
+        lastUnfocusTimestamp = Date.now();
+        logSim("[Win32] 监听到 WindowEvent::Focused(false) (失去焦点，点击桌面外部)", "warn");
+        closeDashboard("失焦隐藏");
+      }
+    }
+
+    // 5. 模拟 Esc 键 (对齐 app.js keydown Escape -> hide_dashboard)
+    document.addEventListener("keydown", event => {
+      if (event.key === "Escape") {
+        if (isDashboardOpen) {
+          logSim("[Keydown] 捕获 Escape 键 -> 调用 invoke('hide_dashboard')");
+          closeDashboard("Escape 键收起");
+        }
+        if (isSettingsOpen) {
+          closeSettingsWindow();
+        }
+        hideTrayMenu();
+      } else if (event.ctrlKey && event.shiftKey && (event.key === "B" || event.key === "b")) {
+        event.preventDefault();
+        logSim("[Hotkey] 监听到全局注册热键 Ctrl+Shift+B -> toggle_dashboard()");
+        toggleDashboard();
+      }
+    });
+
+    // 托盘右键菜单展示与隐藏
+    function showTrayMenu() {
+      trayMenu.style.display = "flex";
+    }
+    function hideTrayMenu() {
+      trayMenu.style.display = "none";
+    }
+
+    // Tooltip 控制
+    function onTrayMouseEnter() {
+      if (!isDashboardOpen && trayMenu.style.display !== "flex") {
+        trayTooltip.classList.add("visible");
+      }
+    }
+    function onTrayMouseLeave() {
+      hideTooltip();
+    }
+    function hideTooltip() {
+      trayTooltip.classList.remove("visible");
+    }
+
+    // 设置窗口控制 (独立窗口生命周期)
+    function openSettingsWindow(event) {
+      if (event) event.stopPropagation();
+      hideTrayMenu();
+      isSettingsOpen = true;
+      settingsWindow.style.display = "flex";
+      logSim("[Tauri] invoke('open_settings') -> 唤出独立设置窗口 (1040x680 STA 预建实例)", "ok");
+    }
+    function closeSettingsWindow() {
+      isSettingsOpen = false;
+      settingsWindow.style.display = "none";
+      logSim("[Tauri] 拦截 CloseRequested 保持常驻预加载 -> window.hide()");
+    }
+
+    // 手动刷新动画
+    function triggerRefresh(event) {
+      if (event) event.stopPropagation();
+      logSim("[Scheduler] invoke('refresh_now') 立即向 Rust 调度器发送强制刷新请求", "ok");
+      const btn = document.querySelector(".icon-btn");
+      if (btn) {
+        btn.style.transform = "rotate(360deg)";
+        btn.style.transition = "transform 0.5s ease";
+        setTimeout(() => { btn.style.transform = "none"; btn.style.transition = "none"; }, 500);
+      }
+    }
+
+    // 模拟退出
+    function simulateQuitApp() {
+      logSim("[App] invoke('quit_app') -> app.exit(0) 安全退出");
+      dashWindow.style.display = "none";
+      settingsWindow.style.display = "none";
+      trayIcon.style.opacity = "0.3";
+      setTimeout(() => {
+        alert("Bruce 托盘应用已安全退出。在演示中点击'左键单击托盘'可重新启动。");
+        trayIcon.style.opacity = "1";
+      }, 100);
+    }
+
+    // 场景按钮调度器
+    function simulateLeftClickTray() {
+      onTrayLeftClick();
+    }
+    function simulateRightClickTray() {
+      onTrayRightClick();
+    }
+    function simulateClickOutside() {
+      onDesktopClick();
+    }
+    function simulateEscape() {
+      const evt = new KeyboardEvent("keydown", { key: "Escape" });
+      document.dispatchEvent(evt);
+    }
+    function simulateGlobalHotkey() {
+      const evt = new KeyboardEvent("keydown", { key: "B", ctrlKey: true, shiftKey: true });
+      document.dispatchEvent(evt);
+    }
+    function toggleTaskbarAlign() {
+      const isLeft = taskbarRoot.classList.toggle("left-align");
+      logSim(`[Setting] 任务栏对齐模式切换为: ${isLeft ? 'Windows 10 靠左' : 'Windows 11 居中'}`);
+    }
+
+    // 实时更新时钟
+    function updateClock() {
+      const d = new Date();
+      document.getElementById("clock-time").textContent = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      document.getElementById("clock-date").textContent = `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+  </script>
+</body>
+</html>

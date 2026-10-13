@@ -5,6 +5,14 @@
 
 ---
 
+## [0.11.3] - 2026-10-13
+
+### Fixed
+- **Windows 设置窗口打开全白屏与生命周期修复 (C015)**: 修复 v0.11.2 中打开独立设置窗口呈现无内容全白屏的严重缺陷。原因系 C013 曾尝试「懒创建」从 `tauri.conf.json` 移除了 `settings` 窗口，在 Tauri v2 命令工作线程中动态构建 Webview 破坏了 Win32 STA 线程要求导致 WebView2 初始化死锁/失败且缺少 `show()`。现全面恢复设置窗口静态预建配置（`visible: false`），启动时由主线程完成 WebView2 预备，点击设置即开即显；补充主线程兜底创建与显式呈现逻辑；为 `settings.js` 和 `app.js` 强化 Tauri 全局 IPC 对象防御性判空，彻底消除脚本未捕获异常隐患。
+- **Windows 仪表盘去噪与会话探针 1:1 对齐 macOS**: 剥离仪表盘上混杂的“未发现会话记录”与空 Agent 探测噪音，主面板恢复纯净极简 HUD（仅保留严重服务级重授权异常）；将 10 大 Agent（Claude Code, Codex, Kimi, OpenCode, Grok, 火山引擎, Orca, Pi, ZCode, CodeBuddy）与 Rust Collector 的探针就绪/未发现记录/未安装状态完整对齐收拢至「设置 -> Agent 用量 -> 会话来源」，并配备「重新检查」即时扫描能力。
+- **Windows 任务栏托盘交互体验对齐 macOS 菜单栏**: 增加 300ms 失去焦点去抖动防护，彻底消除在面板激活时点击托盘收起窗口因 Win32 焦点丢失与 Tauri Click 事件竞争产生的“反弹重开”恶性 Bug；未记忆位置时默认自动贴靠当前主显示器右下角任务栏上方；新增 `Escape` 快捷键与 `hide_dashboard` 命令，按下 `Esc` 键即刻平滑收起看板。
+- **交付 Windows 仪表盘与设置中心高保真 Fluent 预览 Demo**: 交付 440px Fluent 仪表盘（`apps/win/demo/win-dashboard-fluent-preview.html`）与 1040×680 WinUI 导航设置中心（`apps/win/demo/win-settings-fluent-preview.html`），支持暗黑/浅色、状态与折叠交互。
+
 ## [0.11.2] - 2026-10-13
 
 ### Fixed
