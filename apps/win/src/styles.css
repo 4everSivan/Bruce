@@ -41,10 +41,19 @@ html, body { height: 100%; width: 100%; }
 body {
   background: transparent;
   padding: 0;
-  font-family: "Segoe UI Variable Text", "Segoe UI", "PingFang SC", -apple-system, sans-serif;
+  font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", -apple-system, sans-serif;
   font-size: 13px;
   color: var(--ink);
   user-select: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+button, input, select, textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
 }
 
 /* ==========================================================================
@@ -93,21 +102,25 @@ body {
 @keyframes breathe { from { opacity: .72; } to { opacity: 1; } }
 
 .hud-brand {
-  font: 700 11.5px/1 "SF Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font: 700 11.5px/1 "Cascadia Mono", "Cascadia Code", Consolas, "SF Mono", ui-monospace, monospace;
   color: var(--ink);
+  letter-spacing: .3px;
+  white-space: nowrap;
 }
 
 .hud-sysok {
-  font: 600 9px/1 "SF Mono", ui-monospace, Consolas, monospace;
+  font: 600 9px/1 "Cascadia Mono", "Cascadia Code", Consolas, "SF Mono", ui-monospace, monospace;
   color: var(--secondary);
   background: var(--badge-bg);
   padding: 1.5px 5px;
   border-radius: 4px;
+  white-space: nowrap;
 }
 
 .hud-right {
-  font: 500 9.5px/1 "SF Mono", ui-monospace, Consolas, monospace;
+  font: 500 9.5px/1 "Cascadia Mono", "Cascadia Code", Consolas, "SF Mono", ui-monospace, monospace;
   color: #30d158;
+  white-space: nowrap;
 }
 
 /* 卡片滚动区 (ScrollView + cardStack) */
@@ -196,26 +209,32 @@ body {
 .hero-num {
   font-size: 40px; font-weight: 700; letter-spacing: -1.2px;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
   background: linear-gradient(135deg, #63885E 30%, #82A57C 100%);
   -webkit-background-clip: text; background-clip: text; color: transparent;
 }
-.hero-unit { font-size: 13px; font-weight: 500; color: var(--subdued); }
+.hero-unit { font-size: 13px; font-weight: 500; color: var(--subdued); white-space: nowrap; }
 .hero-cost {
   margin-left: auto; font-size: 15px; font-weight: 600;
   font-variant-numeric: tabular-nums; color: var(--accent);
+  white-space: nowrap;
 }
 .divider { height: 1px; background: var(--hairline); margin-top: 12px; }
 
 /* 四格细分 */
 .breakdown { display: flex; margin-top: 10px; }
-.breakdown .cell { padding-right: 13px; }
+.breakdown .cell { flex: 1; min-width: 0; padding-right: 13px; }
 .breakdown .cell + .cell { border-left: 1px solid var(--hairline); padding-left: 13px; padding-right: 13px; }
 .breakdown .cell:last-child { padding-right: 0; }
 .breakdown .label {
   font-size: 8.5px; letter-spacing: .85px; color: var(--faint);
   text-transform: uppercase; margin-bottom: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.breakdown .value { font-size: 13.5px; font-weight: 600; font-variant-numeric: tabular-nums; opacity: .85; }
+.breakdown .value {
+  font-size: 13.5px; font-weight: 600; font-variant-numeric: tabular-nums; opacity: .85;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 
 /* 按月与模型用量 */
 .sec { font-size: 10px; font-weight: 600; letter-spacing: .4px; color: var(--faint); }
@@ -279,31 +298,33 @@ body {
   display: flex; align-items: center; justify-content: center;
   font: 700 9px/1 inherit; color: #fff;
 }
-.sub-name { font-size: 11px; font-weight: 600; }
+.sub-name { font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .plan-chip {
   font-size: 9px; padding: 1px 5px; border-radius: 3px;
   background: var(--badge-bg); color: var(--secondary);
+  white-space: nowrap; flex: none;
 }
-.acct-count, .updated { font-size: 10.5px; color: var(--secondary); }
+.acct-count, .updated { font-size: 10.5px; color: var(--secondary); white-space: nowrap; }
 .win-row { display: flex; align-items: center; gap: 8px; padding: 2.5px 0; }
-.win-row .wl { width: 62px; flex: none; font-size: 10px; color: var(--secondary); }
+.win-row .wl { width: 62px; flex: none; font-size: 10px; color: var(--secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .meter { flex: 1; height: 5px; border-radius: 3px; background: var(--meter-track); overflow: hidden; }
 .meter > div { height: 100%; border-radius: 3px; }
 .meter.normal > div { background: linear-gradient(90deg, #30d158, #66d4a3); }
 .meter.warning > div { background: linear-gradient(90deg, #ff9f0a, #ffd60a); }
 .meter.critical > div { background: linear-gradient(90deg, #ff453a, #ff6961); }
-.win-row .wp { width: 46px; flex: none; text-align: right; font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.win-row .wr { width: 48px; flex: none; text-align: right; font-size: 9px; color: var(--secondary); }
+.win-row .wp { width: 46px; flex: none; text-align: right; font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.win-row .wr { width: 48px; flex: none; text-align: right; font-size: 9px; color: var(--secondary); white-space: nowrap; }
 .bal-chip {
   display: inline-flex; align-items: center; gap: 4px;
   font-size: 9.5px; padding: 1.5px 6px; border-radius: 3px;
   background: var(--badge-bg); color: var(--secondary);
+  white-space: nowrap;
 }
 .bal-chip .dot { width: 4px; height: 4px; border-radius: 50%; flex: none; }
 .bal-chip b { font-weight: 600; color: var(--ink); opacity: .88; font-variant-numeric: tabular-nums; }
 .note-line { font-size: 10px; color: #ff9f0a; padding-top: 2px; }
 .account-detail { padding: 7px 0 2px; }
-.account-detail summary { cursor: pointer; font-size: 11px; }
+.account-detail summary { cursor: pointer; font-size: 11px; white-space: nowrap; }
 .account-detail .plan-chip { margin-left: 6px; }
 
 /* Agent 用量卡 */
@@ -319,8 +340,8 @@ body {
 .agent-row + .agent-row { border-top: 1px solid var(--hairline); }
 .agent-row .line1 { display: flex; align-items: baseline; gap: 6px; }
 .agent-row .dot { width: 7px; height: 7px; border-radius: 2px; flex: none; align-self: center; }
-.agent-row .an { font-size: 11px; font-weight: 600; }
-.agent-row .at { margin-left: auto; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; opacity: .85; }
+.agent-row .an { font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agent-row .at { margin-left: auto; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; opacity: .85; white-space: nowrap; flex: none; }
 .spark { height: 26px; margin-top: 5px; display: flex; align-items: flex-end; gap: 1px; }
 .spark .b { flex: 1; background: currentColor; border-radius: 1px; min-height: 1px; }
 .dist-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 9.5px; color: var(--secondary); }
@@ -525,6 +546,9 @@ body {
   min-height: 44px;
   border-top: 1px solid var(--border);
 }
+.fluent-row > :not(.row-meta) {
+  flex-shrink: 0;
+}
 .fluent-card > .fluent-row:first-of-type {
   border-top: none;
 }
@@ -538,11 +562,13 @@ body {
 }
 .row-title {
   font-size: 13px;
+  font-weight: 500;
   color: var(--text);
 }
 .row-sub {
   font-size: 11.5px;
   color: var(--text-2);
+  line-height: 1.4;
 }
 
 /* 控件样式 */
@@ -656,21 +682,40 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   padding: 6px 10px;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 6px;
   font-size: 12.5px;
 }
+.order-row > span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
 .order-btns {
   display: flex;
   gap: 6px;
+  flex: none;
 }
 .provider-check-label {
   display: flex;
   align-items: center;
   gap: 10px;
   cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+.provider-check-label span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 账号列表 */
@@ -684,6 +729,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   padding: 8px 12px;
   background: var(--bg);
   border: 1px solid var(--border);
@@ -692,10 +738,16 @@ body {
 .account-label {
   font-size: 12.5px;
   color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
 }
 .account-actions {
   display: flex;
   gap: 6px;
+  flex: none;
 }
 
 .extra-details, details {
@@ -749,6 +801,45 @@ details summary {
 .status-msg {
   font-size: 12px;
   color: var(--text-2);
+}
+
+/* Windows 自定义细滚动条 · 消除系统 17px 灰色粗滚动条挤压内容 */
+.content-scroll,
+.sidenav,
+.price-table-wrap,
+.runtime-info-box {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.content-scroll::-webkit-scrollbar,
+.sidenav::-webkit-scrollbar,
+.price-table-wrap::-webkit-scrollbar,
+.runtime-info-box::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.content-scroll::-webkit-scrollbar-thumb,
+.sidenav::-webkit-scrollbar-thumb,
+.price-table-wrap::-webkit-scrollbar-thumb,
+.runtime-info-box::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 3px;
+}
+
+.content-scroll::-webkit-scrollbar-thumb:hover,
+.sidenav::-webkit-scrollbar-thumb:hover,
+.price-table-wrap::-webkit-scrollbar-thumb:hover,
+.runtime-info-box::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.32);
+}
+
+.content-scroll::-webkit-scrollbar-track,
+.sidenav::-webkit-scrollbar-track,
+.price-table-wrap::-webkit-scrollbar-track,
+.runtime-info-box::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 /* 底部操作固定栏 */
