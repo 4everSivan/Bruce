@@ -159,7 +159,7 @@
     "C014": {
       "title": "修复 Windows 仪表盘遗留内嵌 Tab 并彻底对齐 macOS 仪表盘与 Fluent 侧栏设置窗口",
       "type": "Fix",
-      "status": "in_progress",
+      "status": "verified",
       "branch": "fix/C014-win-dashboard-settings-parity",
       "topic": "WindowsCompat",
       "version": "0.11.1+",
