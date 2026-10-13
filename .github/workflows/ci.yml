@@ -146,4 +146,7 @@ jobs:
           $uploadUrl = $release.upload_url -replace '\{.*$',''
           gh api --method POST "$($uploadUrl)?name=$($setup.Name)" -H "Content-Type: application/octet-stream" --input "$($setup.FullName)"
           gh api --method POST "$($uploadUrl)?name=SHA256SUMS-windows.txt" -H "Content-Type: application/octet-stream" --input "SHA256SUMS-windows.txt"
+          # 全量多端产物 (macOS + Windows) 上传完毕，正式将草稿发布为公开 Release
+          Write-Host "多端产物上传完毕，发布 Release $($release.id)"
+          gh api --method PATCH "repos/$env:GITHUB_REPOSITORY/releases/$($release.id)" -F draft=false -F make_latest=true
 
