@@ -1,0 +1,76 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C015",
+  "title": "修复 Windows 设置窗口打开白屏缺陷并恢复静态预建生命周期",
+  "type": "Fix",
+  "status": "verified",
+  "branch": "fix/C015-win-settings-blank-screen",
+  "is_hotfix": true,
+  "target": {
+    "module": "apps/win (Tauri 配置 + 窗口生命周期 + 前端健壮性)",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "在 C013 中曾尝试'设置窗口懒创建'优化，从 tauri.conf.json 的 windows 配置中移除了 settings 窗口，并在 open_settings 命令中改为 WebviewWindowBuilder 动态构建。在 Windows 真实环境下，Tauri 命令运行于 Tokio/IPC 工作线程，直接同步调用 WebviewWindowBuilder::build() 破坏了 Win32 STA (Single-Threaded Apartment) 线程要求，导致 WebView2 初始化死锁/失败，表现为打开后呈现无任何内容的空白矩形窗口；此外，构建后未调用 window.show()，且 settings.js 顶层直接解构 window.__TAURI__.core 缺乏空值防御，存在脚本崩溃隐患。",
+  "changes": [
+    {
+      "scope": "apps/win/src-tauri/tauri.conf.json",
+      "before": "windows 列表仅包含 dashboard 单一窗口，缺少 settings 配置",
+      "after": "在 windows 列表恢复配置 settings 窗口，设为 visible: false，宽度 1040 高度 680，由 Tauri 在启动时主线程完成 WebView2 初始化与预备",
+      "impact": "消除了 Windows 动态创建 WebView2 的线程死锁，设置窗口预加载完毕，点击即开即显"
+    },
+    {
+      "scope": "apps/win/src-tauri/src/lib.rs",
+      "before": "open_settings 在找不到窗口时于当前 IPC 工作线程直接调用 WebviewWindowBuilder::build() 且未调用 window.show()",
+      "after": "恢复 open_settings 优先获取预建窗口并 show/unminimize/set_focus；兜底逻辑使用 app.run_on_main_thread 调度并在构建成功后显式调用 window.show()",
+      "impact": "彻底杜绝 Win32 线程调度与可见性漏洞"
+    },
+    {
+      "scope": "apps/win/src/settings.js + apps/win/src/app.js",
+      "before": "顶层直接解构 window.__TAURI__.core；仪表盘渲染未发现会话记录诊断噪音；设置中心缺少会话来源探针列表",
+      "after": "引入防御性可选链；仪表盘彻底剥离'未发现会话记录'等探针级提示；设置中心 1:1 对齐 macOS 新增'会话来源'探针列表与重新检查按钮；仪表盘支持 Esc 键快捷收起",
+      "impact": "看板恢复纯净极简 HUD，探针状态归入配置中心，交互与快捷键 1:1 对齐 macOS"
+    },
+    {
+      "scope": "apps/win/src-tauri/src/lib.rs",
+      "before": "托盘点击在已激活时收起会因 Focused(false) 失去焦点导致反弹重开；未记忆位置时未贴靠任务栏；缺少 hide_dashboard IPC",
+      "after": "增加 300ms 失去焦点锁抑制托盘反弹；未记忆位置时默认贴靠主显示器右下角任务栏上方；新增 hide_dashboard IPC 命令",
+      "impact": "Windows 托盘点击呼出/收起与定位行为完全等同于 macOS 菜单栏体验"
+    }
+  ],
+  "design": {
+    "before_behavior": "点击设置后弹出一个全空白的无内容窗口，WebView2 未渲染 settings.html；仪表盘混杂'未发现会话记录'等探针文字；托盘点击收起偶发闪烁反弹",
+    "after_behavior": "点击设置立即呈现完整 Fluent 导航中心；仪表盘纯净展示 Token、额度与热力图并贴靠任务栏；'未发现会话记录'移入设置中心；托盘点击/快捷键/Esc 键呼出与收起流畅准确",
+    "true_if": "tauri.conf.json 包含 settings 窗口静态定义；仪表盘去除会话探针诊断噪音；设置中心展示会话探针；托盘防抖与 Esc 键生效；前端与后端单元测试全部全绿通过",
+    "false_if": "设置仍白屏；或仪表盘仍展示未发现会话；或托盘收起反弹；或测试失败"
+  },
+  "verification": {
+    "result": true,
+    "run_id": "20261013-c015",
+    "user_quote": "确认",
+    "signoff": "2026-10-13 由人类在会话中核验任务栏交互 Demo 与双端对齐设计后确认通过，AI 代签收口",
+    "checks": [
+      {
+        "item": "前端静态结构与冒烟测试",
+        "true_if": "check-win-frontend.mjs 校验全部通过，退出码 0",
+        "false_if": "脚本报错或退出码非 0",
+        "evidence": "已实测: node scripts/check-win-frontend.mjs 语法合法, DOM id 交叉 9 引用全可达, 无 demo 全局, 退出码 0",
+        "result": true
+      },
+      {
+        "item": "前端行为与双窗口测试",
+        "true_if": "frontend.test.mjs 14 项测试全部通过",
+        "false_if": "任一测试失败",
+        "evidence": "已实测: 14 项前端交互测试全部 pass (0 fail), 涵盖仪表盘无 tabs 纯净卡片、底栏 open_settings 调用、Esc 键 hide_dashboard 调用、设置窗口 6 分类切换、会话来源探针渲染与凭证管理, 退出码 0",
+        "result": true
+      },
+      {
+        "item": "Windows Rust 单元与集成测试",
+        "true_if": "src-tauri 78 项测试全部通过，退出码 0",
+        "false_if": "任一测试失败",
+        "evidence": "已实测: CARGO_HOME=local/c009/cargo-home cargo test --offline --manifest-path apps/win/src-tauri/Cargo.toml 全部 78 项单元与集成测试 pass (0 fail, 0 ignored), 退出码 0",
+        "result": true
+      }
+    ]
+  }
+}

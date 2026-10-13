@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bruce Windows 设置中心高保真预览 (1:1 对齐 macOS)</title>
+  <style>
+    :root {
+      --bg: #1B1B1B;
+      --window: #242424;
+      --nav: #1F1F1F;
+      --surface: #2C2C2C;
+      --surface-hover: #333333;
+      --border: #3A3A3A;
+      --border-strong: #4A4A4A;
+      --text: #F2F2F2;
+      --text-2: #A8A8A8;
+      --text-3: #6E6E6E;
+      --ok: #4A9E5C;
+      --warn: #D4A843;
+      --danger: #E5534B;
+      --accent: #0A84FF;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #18181e radial-gradient(circle at 50% 10%, #252532 0%, #121217 100%);
+      font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 30px 20px;
+      user-select: none;
+    }
+
+    /* 独立设置窗口容器 (1040 × 680) */
+    .settings-window {
+      width: 1040px;
+      height: 680px;
+      background: var(--bg);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      box-shadow: 0 32px 80px rgba(0, 0, 0, .75), 0 0 0 1px rgba(255, 255, 255, .06);
+      display: flex;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* 1. 左侧 Fluent 导航侧栏 (WinUI NavigationView · 220px) */
+    .nav-sidebar {
+      width: 220px;
+      background: var(--nav);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 16px 10px;
+      flex: none;
+    }
+    .nav-brand-row {
+      padding: 6px 12px 18px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .nav-brand-txt {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: .2px;
+    }
+    .nav-list {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      flex: 1;
+    }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 9px 12px;
+      border-radius: 6px;
+      color: var(--text-2);
+      font-size: 13px;
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      text-align: left;
+      font-family: inherit;
+      transition: all 0.12s;
+    }
+    .nav-item:hover {
+      background: var(--surface);
+      color: var(--text);
+    }
+    .nav-item.active {
+      background: var(--surface-hover);
+      color: var(--text);
+      font-weight: 600;
+      position: relative;
+    }
+    .nav-item.active::before {
+      content: "";
+      position: absolute;
+      left: 3px; top: 8px; bottom: 8px;
+      width: 3.5px;
+      background: var(--accent);
+      border-radius: 2px;
+    }
+    .nav-icon {
+      width: 17px; height: 17px; flex: none;
+    }
+    .nav-footer-hint {
+      padding: 10px 12px 0;
+      font-size: 11px;
+      color: var(--text-3);
+      border-top: 1px solid var(--border);
+    }
+
+    /* 2. 右侧内容面板主区域 */
+    .content-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+      overflow: hidden;
+    }
+    .content-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px 32px;
+    }
+    .content-scroll::-webkit-scrollbar { width: 6px; }
+    .content-scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .15); border-radius: 3px; }
+
+    .pane-header {
+      margin-bottom: 20px;
+    }
+    .crumb {
+      font-size: 11.5px;
+      color: var(--text-3);
+      margin-bottom: 4px;
+    }
+    .pane-title {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    /* Fluent Card 容器 */
+    .fluent-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 18px;
+    }
+    .card-caption {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* 探针条目行 (对齐 macOS agentUsagePane 里的 sessionProbes) */
+    .probe-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .probe-row:last-child {
+      border-bottom: none;
+      padding-bottom: 4px;
+    }
+    .probe-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .probe-name {
+      color: var(--text);
+      font-weight: 500;
+    }
+    .probe-sub {
+      font-size: 11.5px;
+      color: var(--text-2);
+    }
+    .probe-status-tag {
+      font-size: 11.5px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .probe-status-tag.ok {
+      background: rgba(74, 158, 92, .18);
+      color: #5ec273;
+    }
+    .probe-status-tag.neutral {
+      background: rgba(255, 255, 255, .08);
+      color: var(--text-2);
+    }
+    .probe-status-tag.warn {
+      background: rgba(212, 168, 67, .18);
+      color: var(--warn);
+    }
+    .status-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+    }
+    .status-dot.ok { background: #5ec273; }
+    .status-dot.neutral { background: var(--text-3); }
+    .status-dot.warn { background: var(--warn); }
+
+    /* 开关与说明区 */
+    .setting-toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 0;
+    }
+    .toggle-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .toggle-title {
+      font-size: 13.5px;
+      font-weight: 500;
+      color: var(--text);
+    }
+    .toggle-desc {
+      font-size: 11.5px;
+      color: var(--text-2);
+    }
+    .switch-ui {
+      width: 40px; height: 20px;
+      background: var(--accent);
+      border-radius: 10px;
+      position: relative;
+      cursor: pointer;
+    }
+    .switch-knob {
+      width: 14px; height: 14px;
+      background: #fff;
+      border-radius: 50%;
+      position: absolute;
+      top: 3px; right: 4px;
+    }
+
+    .hint-box {
+      background: rgba(0, 0, 0, .25);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px 14px;
+      font-size: 12px;
+      color: var(--text-2);
+      line-height: 1.6;
+      margin-top: 12px;
+    }
+    .hint-box ul {
+      padding-left: 18px;
+      margin-top: 6px;
+    }
+
+    .actions-foot {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 10px 0 0;
+      border-top: 1px solid var(--border);
+      margin-top: 12px;
+    }
+    .btn {
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 12.5px;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid var(--border-strong);
+      background: var(--surface-hover);
+      color: var(--text);
+      outline: none;
+      transition: all 0.12s;
+    }
+    .btn:hover {
+      background: rgba(255, 255, 255, .15);
+    }
+    .btn.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .btn.primary:hover {
+      background: #0070df;
+    }
+
+    /* 底栏 */
+    .pane-footer {
+      padding: 14px 32px;
+      border-top: 1px solid var(--border);
+      background: var(--nav);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex: none;
+    }
+    .status-msg {
+      font-size: 12px;
+      color: var(--text-2);
+    }
+
+    /* 对照说明 */
+    .note-panel {
+      margin-top: 16px;
+      max-width: 1040px;
+      font-size: 12px;
+      color: #9E9E9E;
+      line-height: 1.6;
+      background: rgba(0, 0, 0, 0.35);
+      padding: 12px 18px;
+      border-radius: 8px;
+      border: 1px dashed rgba(255, 255, 255, 0.15);
+    }
+    .note-panel b { color: #fff; }
+    .note-panel code { background: rgba(255, 255, 255, 0.1); padding: 1px 4px; border-radius: 3px; font-family: monospace; color: #64B5F6; }
+  </style>
+</head>
+<body>
+
+  <!-- 设置窗口主体 (1040 × 680) -->
+  <div class="settings-window">
+    <!-- 侧栏 -->
+    <nav class="nav-sidebar">
+      <div class="nav-brand-row">
+        <span class="nav-brand-txt">Bruce 设置</span>
+      </div>
+      <div class="nav-list">
+        <button class="nav-item" onclick="switchCategory('general', this)">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+          <span>通用</span>
+        </button>
+        <button class="nav-item active" onclick="switchCategory('agentUsage', this)">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>
+          <span>Agent 用量</span>
+        </button>
+        <button class="nav-item" onclick="switchCategory('modelPricing', this)">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg>
+          <span>模型计费</span>
+        </button>
+        <button class="nav-item" onclick="switchCategory('subscription', this)">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
+          <span>订阅额度</span>
+        </button>
+        <button class="nav-item" onclick="switchCategory('consent', this)">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg>
+          <span>授权与隐私</span>
+        </button>
+        <button class="nav-item" onclick="switchCategory('maintenance', this)">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76Z"/></svg>
+          <span>维护</span>
+        </button>
+      </div>
+      <div class="nav-footer-hint">Bruce · 本地优先监控</div>
+    </nav>
+
+    <!-- 右侧内容区域 -->
+    <main class="content-area">
+      <div class="content-scroll">
+        <header class="pane-header">
+          <div class="crumb" id="pane-crumb">设置 / Agent 用量</div>
+          <h1 class="pane-title" id="pane-h1">Agent 用量</h1>
+        </header>
+
+        <!-- 卡片 1: 会话来源 (对齐 macOS agentUsagePane 探针与状态) -->
+        <section class="fluent-card">
+          <h2 class="card-caption">
+            <span>会话来源</span>
+            <span style="font-size:12px;font-weight:normal;color:var(--text-3)">本地目录探测与聚合就绪态</span>
+          </h2>
+
+          <!-- Rust Collector 核心 -->
+          <div class="probe-row">
+            <div class="probe-meta">
+              <span class="probe-name">Rust Collector</span>
+              <span class="probe-sub">扫描本机会话并聚合 token 用量</span>
+            </div>
+            <span class="probe-status-tag ok"><span class="status-dot ok"></span>可用</span>
+          </div>
+
+          <!-- 各 Agent 状态列表 (明确展示未发现会话记录的位置) -->
+          <div class="probe-row">
+            <div class="probe-meta">
+              <span class="probe-name">Claude Code</span>
+              <span class="probe-sub">本机会话目录 (~/.claude/projects)</span>
+            </div>
+            <span class="probe-status-tag ok"><span class="status-dot ok"></span>就绪 · 发现会话</span>
+          </div>
+
+          <div class="probe-row">
+            <div class="probe-meta">
+              <span class="probe-name">ChatGPT / Codex</span>
+              <span class="probe-sub">本机会话目录 (~/.codex/sessions)</span>
+            </div>
+            <span class="probe-status-tag ok"><span class="status-dot ok"></span>就绪 · 发现会话</span>
+          </div>
+
+          <div class="probe-row">
+            <div class="probe-meta">
+              <span class="probe-name">Kimi Code</span>
+              <span class="probe-sub">本机会话目录 (~/.kimi/history)</span>
+            </div>
+            <!-- 用户反馈的提示在此处正确定位 -->
+            <span class="probe-status-tag neutral"><span class="status-dot neutral"></span>未发现会话记录</span>
+          </div>
+
+          <div class="probe-row">
+            <div class="probe-meta">
+              <span class="probe-name">OpenCode</span>
+              <span class="probe-sub">本机会话目录 (%APPDATA%\OpenCode)</span>
+            </div>
+            <span class="probe-status-tag neutral"><span class="status-dot neutral"></span>未发现会话记录</span>
+          </div>
+
+          <div class="probe-row">
+            <div class="probe-meta">
+              <span class="probe-name">Grok</span>
+              <span class="probe-sub">本机会话目录 (~/.grok)</span>
+            </div>
+            <span class="probe-status-tag neutral"><span class="status-dot neutral"></span>未安装</span>
+          </div>
+
+          <!-- 底栏操作 -->
+          <div class="actions-foot">
+            <button class="btn" onclick="alert('触发重新扫描本机 Agent 目录')">重新检查</button>
+          </div>
+        </section>
+
+        <!-- 卡片 2: Agent 会话采集授权 -->
+        <section class="fluent-card">
+          <h2 class="card-caption">Agent 会话采集</h2>
+          <div class="setting-toggle-row">
+            <div class="toggle-meta">
+              <span class="toggle-title">读取本机 Agent 会话用量</span>
+              <span class="toggle-desc">开启后在本机读取会话记录，计算 Token 用量与费用。</span>
+            </div>
+            <div class="switch-ui"><div class="switch-knob"></div></div>
+          </div>
+
+          <div class="hint-box">
+            <b>授权后应用将：</b>
+            <ul>
+              <li>只读扫描本机 Agent 会话目录（如 Claude Code, Codex, Grok, OpenCode 等）与 CC Switch 数据库；</li>
+              <li>在用户本机闭环计算 Token 总量与估算费用，绝无自有云端服务端；</li>
+              <li>严格执行只读模式（<code>mode=ro</code>），绝不修改、删除或上传任何外部会话日志。</li>
+            </ul>
+          </div>
+        </section>
+
+      </div>
+
+      <!-- 保存底栏 -->
+      <footer class="pane-footer">
+        <button class="btn primary" onclick="alert('设置已保存并同步至配置文件')">保存设置</button>
+        <span class="status-msg" id="save-status">全部配置正常</span>
+      </footer>
+    </main>
+  </div>
+
+  <!-- 对照说明 -->
+  <div class="note-panel">
+    <p><b>✨ 1:1 对齐 macOS 设置中心验证点</b>：</p>
+    <p>1. <b>「未发现会话记录」归位</b>：彻底从仪表盘剥离，收拢至 <code>设置 / Agent 用量 / 会话来源</code> 探针清单中（与 <code>就绪</code>、<code>未安装</code> 并列归类）；</p>
+    <p>2. <b>WinUI NavigationView Fluent 侧边栏</b>：左侧 6 大分类导航 (通用、Agent 用量、模型计费、订阅额度、授权与隐私、维护) + 1px 分隔线 + 右侧面包屑与卡片组；</p>
+    <p>3. <b>操作闭环</b>：会话探针支持「重新检查」即时重扫，底栏提供统一保存与状态反馈。</p>
+  </div>
+
+  <script>
+    function switchCategory(key, btn) {
+      document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const titles = {
+        general: ["设置 / 通用", "通用"],
+        agentUsage: ["设置 / Agent 用量", "Agent 用量"],
+        modelPricing: ["设置 / 模型计费", "模型计费"],
+        subscription: ["设置 / 订阅额度", "订阅额度"],
+        consent: ["设置 / 授权与隐私", "授权与隐私"],
+        maintenance: ["设置 / 维护", "维护"]
+      };
+      document.getElementById('pane-crumb').textContent = titles[key][0];
+      document.getElementById('pane-h1').textContent = titles[key][1];
+    }
+  </script>
+</body>
+</html>

@@ -27,7 +27,8 @@
         "C009",
         "C012",
         "C013",
-        "C014"
+        "C014",
+        "C015"
       ]
     },
     "SubscriptionQuota": {
@@ -164,6 +165,15 @@
       "topic": "WindowsCompat",
       "version": "0.11.2",
       "file": "docs/devel/change/C014.json"
+    },
+    "C015": {
+      "title": "修复 Windows 设置窗口打开白屏缺陷并恢复静态预建生命周期",
+      "type": "Fix",
+      "status": "verified",
+      "branch": "fix/C015-win-settings-blank-screen",
+      "topic": "WindowsCompat",
+      "version": "0.11.3",
+      "file": "docs/devel/change/C015.json"
     }
   }
 }
