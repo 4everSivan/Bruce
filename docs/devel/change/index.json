@@ -162,7 +162,7 @@
       "status": "verified",
       "branch": "fix/C014-win-dashboard-settings-parity",
       "topic": "WindowsCompat",
-      "version": "0.11.1+",
+      "version": "0.11.2",
       "file": "docs/devel/change/C014.json"
     }
   }

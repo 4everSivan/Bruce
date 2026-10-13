@@ -5,10 +5,15 @@
 
 ---
 
-## [0.11.1] - 2026-10-12
+## [0.11.2] - 2026-10-13
 
 ### Fixed
 - **Windows 仪表盘去 Tab 纯净化与 Fluent 侧栏设置窗口对齐 (C014)**: 修复早期原型遗留的内嵌 Tab 与内嵌表单容器破坏 440px 窄面板布局的缺陷; 物理移除 `<nav id="tabs">` 与内嵌容器, 仪表盘 1:1 对齐 macOS `MenuBarDashboardView` (纯净卡片栈 + 顶底栏); 独立设置窗口彻底重构为 Fluent L2 侧栏架构 (WinUI `NavigationView` 6 大分类导航: 通用、Agent 用量、模型计费、订阅额度、授权与隐私、维护), 彻底解耦主面板与配置中心。
+- **Windows 字体栈与抗锯齿排版防折行加固**: 引入 Windows 11/10 专用字体栈 (`Segoe UI Variable Text` / `Segoe UI` / `Microsoft YaHei UI` / `Cascadia Mono`)、表单控件全局字体继承、`-webkit-font-smoothing` 平滑抗锯齿；全面加固 `white-space: nowrap` 与 `overflow: hidden; text-overflow: ellipsis;`，彻底消除单词折行（`Claud\ne`、`DeepSe\nek`）；为右侧操作按钮设置 `flex-shrink: 0`；注入 Fluent 6px 悬浮细滚动条，消除 Windows 17px 原生粗滚动条宽度挤压；全量启用 Tabular Nums 防止数据刷新数值跳动。
+
+## [0.11.1] - 2026-10-12
+
+### Fixed
 - **Windows 应用图标缺失与常驻卡顿 (C013)**: 真机反馈修复——`icons/icon.ico|png` 此前是占位空图 (998B/104B), 现由 mac `AppIcon.icns` 生成真图标 (ico 七层 16-256 + png 512), 安装器/开始菜单/任务栏/窗口/托盘全场景显示 Bruce logo; 性能优化: 设置窗口改为首次打开时懒创建 (启动常驻 WebView 减半)、采集线程降 BELOW_NORMAL 优先级 (周期扫描与装机全量首扫不再抢占前台)、面板隐藏时跳过全量重渲染 (脏标记 + 可见补渲)。
 - **Windows 品牌色板与 mac 事实源统一 (C012)**: 订阅徽章与余额胶囊圆点的 Provider 品牌色此前双端各自维护, 9 家中 7 家漂移 (如 DeepSeek `#4A9E5C`→`#4d6bfe`、Grok `#6c63ff`→`#111111`、Claude `#ff7a59`→`#d97757`), 违背 styles.css「配色 token 按 mac 源码数值」契约; 现以 mac `ProviderLogoBadge.brandColor` 为唯一事实源逐家对齐。同时回写设计基线 05: 浅色外观显式豁免 (Windows 恒深色, mac dark 侧 1:1 复刻)、订阅卡 Provider 数修正为 9 (含 StepFun)、Nothing 主题保真边界注明。
 
