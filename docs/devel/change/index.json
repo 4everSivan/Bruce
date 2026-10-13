@@ -169,8 +169,8 @@
     "C015": {
       "title": "修复 Windows 设置窗口打开白屏缺陷并恢复静态预建生命周期",
       "type": "Fix",
-      "status": "verified",
-      "branch": "fix/C015-win-settings-blank-screen",
+      "status": "closed",
+      "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.11.3",
       "file": "docs/devel/change/C015.json"
