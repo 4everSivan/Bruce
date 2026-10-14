@@ -79,7 +79,7 @@ mod desktop {
     use crate::alerts::{over_threshold_entries, QuotaAlert};
     use crate::runtime_core::next_delay;
     use crate::settings::{load_settings, AppSettings};
-    use crate::{collector, credentials, ledger, paths};
+    use crate::{collector, credentials, paths};
     use serde_json::Value;
     use std::time::Duration;
     use tauri::{AppHandle, Emitter, Manager};
@@ -118,17 +118,12 @@ mod desktop {
             .lock()
             .map_err(|_| "SNAPSHOT_LOCK_FAILED")?;
         state.prune_credentials(&credentials::load_credentials(&root));
-        let mut panel = state.panel_json(
+        let panel = state.panel_json(
             chrono::Local::now().fixed_offset(),
             settings.usage_enabled,
             &settings.enabled_providers,
             &settings.provider_order,
         );
-        if let Some(artifact) = state.artifact() {
-            if ledger::decorate_cached_panel(&root, artifact, &mut panel).is_err() {
-                panel["runtime"]["error"] = serde_json::json!("LEDGER_WRITE_FAILED");
-            }
-        }
         Ok(panel)
     }
 
@@ -209,14 +204,6 @@ mod desktop {
                     .lock()
                     .map(|mut state| {
                         let result = state.apply_response(&response);
-                        if result.is_ok() {
-                            if let Some(artifact) = state.artifact() {
-                                let mut panel = serde_json::json!({});
-                                if ledger::decorate_panel(&root, artifact, &mut panel).is_err() {
-                                    state.error = Some("LEDGER_WRITE_FAILED".into());
-                                }
-                            }
-                        }
                         if state.save(&root).is_err() {
                             state.fail("SNAPSHOT_WRITE_FAILED");
                         }

@@ -337,23 +337,9 @@ fn write_with_permissions(
     write_path_with_permissions(&credentials_path(root), body, &mut secure)
 }
 
-/// Reused by nonsecret snapshots/ledger to retain ACL and atomic-replace semantics on Windows.
+/// Reused by nonsecret snapshots to retain ACL and atomic-replace semantics on Windows.
 pub(crate) fn atomic_private_write(path: &Path, body: &[u8]) -> Result<(), String> {
     write_path_with_permissions(path, body, restrict_permissions)
-}
-
-pub(crate) fn deepseek_tracking_id(root: &Path) -> Result<String, String> {
-    let _guard = STORE_LOCK.lock().map_err(|_| "凭证存储事务不可用")?;
-    let path = root.join("deepseek-tracking-id");
-    reject_link(&path)?;
-    if let Ok(id) = fs::read_to_string(&path) {
-        if uuid::Uuid::parse_str(id.trim()).is_ok() {
-            return Ok(id.trim().to_owned());
-        }
-    }
-    let id = uuid::Uuid::new_v4().to_string();
-    atomic_private_write(&path, id.as_bytes())?;
-    Ok(id)
 }
 
 fn write_path_with_permissions(

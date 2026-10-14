@@ -69,8 +69,6 @@ pub struct SubscriptionProviderSection {
     pub collapsed_window: Option<SubscriptionWindowRow>,
     pub balance: Option<BalanceRow>,
     pub account_count_text: Option<String>,
-    /// DeepSeek 月度统计 (T03 账本未接入前恒为 null, 与 mac nil 行为一致)。
-    pub deep_seek_monthly_usage: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -288,7 +286,7 @@ fn last_success_text(
 
 impl PanelViewModelMapper {
     /// artifact.services -> 订阅卡视图模型 (对齐 mac makeSubscription;
-    /// deepSeekMonthlyUsage 账本未接入恒 None, providerOrder 空 → 余额型沉底)。
+    /// C020 起双端均无 deepSeekMonthlyUsage 字段, providerOrder 空 → 余额型沉底)。
     pub fn make_subscription(
         &self,
         artifact: &AgentUsageArtifact,
@@ -488,7 +486,6 @@ impl PanelViewModelMapper {
                         }
                     }),
                     account_count_text: None,
-                    deep_seek_monthly_usage: None,
                 });
             } else {
                 // 多账号: 分组成 section + accounts + collapsedWindow。
@@ -528,7 +525,6 @@ impl PanelViewModelMapper {
                     collapsed_window: collapsed,
                     balance: None,
                     account_count_text: Some(format!("{} 个账号", services.len())),
-                    deep_seek_monthly_usage: None,
                 });
             }
         }

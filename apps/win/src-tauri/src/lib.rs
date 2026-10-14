@@ -10,7 +10,6 @@ pub mod paths;
 pub mod scheduler;
 pub mod settings;
 
-pub mod ledger;
 pub mod runtime_core;
 
 #[cfg(feature = "desktop")]

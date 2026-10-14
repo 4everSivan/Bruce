@@ -304,22 +304,6 @@ function subscriptionCard(sub) {
     for (const text of [section.note, section.staleText, section.extraText]) {
       if (text) block.append(el("div", "note-line", text));
     }
-    const monthlyBlock = (monthly) => {
-      const box = el("div", "monthly-ledger");
-      box.append(el("div", "note-line", monthly.state === "trend" ? `本月推算消费 ${monthly.estimatedConsumptionText}` : monthly.state === "baseline" ? "正在建立本月趋势" : "月度统计暂不可用"));
-      for (const text of [monthly.currentBalanceText && `当前余额 ${monthly.currentBalanceText}`, monthly.coverageText, monthly.creditNote]) {
-        if (text) box.append(el("div", "note-line", text));
-      }
-      const points = monthly.trendPoints || [];
-      if (points.length >= 2) {
-        const graph = svgEl("svg", { viewBox: "0 0 300 64", role: "img", "aria-label": "本月累计推算消费趋势", class: "ledger-trend" });
-        const values = points.map(p => Number(p.cumulativeConsumption) || 0);
-        const peak = Math.max(...values, 0.01);
-        graph.append(svgEl("polyline", { points: values.map((v, i) => `${i * 300 / (values.length - 1)},${60 - v * 56 / peak}`).join(" "), fill: "none", stroke: "currentColor", "stroke-width": "2" }));
-        box.append(graph);
-      }
-      return box;
-    };
     for (const account of section.accounts || []) {
       const accountBlock = el("details", "account-detail");
       accountBlock.open = true;
@@ -332,11 +316,7 @@ function subscriptionCard(sub) {
         if (text) accountBlock.append(el("div", "note-line", text));
       }
       if (account.status && account.status !== "ok") accountBlock.append(el("div", "note-line", statusLabel(account.status)));
-      if (account.deepSeekMonthlyUsage && !section.deepSeekMonthlyUsage) accountBlock.append(monthlyBlock(account.deepSeekMonthlyUsage));
       block.append(accountBlock);
-    }
-    if (section.deepSeekMonthlyUsage) {
-      block.append(monthlyBlock(section.deepSeekMonthlyUsage));
     }
     card.append(block);
   }

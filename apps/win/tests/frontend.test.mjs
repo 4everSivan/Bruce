@@ -155,16 +155,6 @@ test("Zhipu optional API address supplies the collector's required default", asy
   assert.equal(call.args.payload.base_url, "https://open.bigmodel.cn/api/paas/v4");
 });
 
-test("DeepSeek monthly ledger shows baseline, consumption, credits and trend points", async () => {
-  const monthly = { state: "trend", estimatedConsumptionText: "¥ 0.20", currentBalanceText: "¥ 110.10", coverageText: "自 26/10/01 起累计推算", creditNote: "入账未计入消费", trendPoints: [{ observedAt: "2026-10-01T00:00:00Z", cumulativeConsumption: 0 }, { observedAt: "2026-10-02T00:00:00Z", cumulativeConsumption: 0.2 }] };
-  const panel = { ...fixture, subscription: { sections: [{ id: "deepseek", name: "DeepSeek", windows: [], accounts: [], deepSeekMonthlyUsage: monthly }] } };
-  const app = await boot({ panel });
-  assert.match(app.node("stack").textContent, /¥ 0.20/);
-  assert.match(app.node("stack").textContent, /26\/10\/01/);
-  assert.match(app.node("stack").textContent, /入账未计入消费/);
-  assert.ok(app.node("stack").querySelector(".ledger-trend"));
-});
-
 test("dashboard dismisses via Escape key calling hide_dashboard", async () => {
   const app = await boot();
   const start = app.calls.length;
