@@ -3,6 +3,19 @@
 所有对本项目的显著变更均记录于此文件。
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，版本号严格遵循 [语义化版本 (SemVer)](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+## [0.11.5] - 2026-10-14
+
+### Added
+- **统一余额型订阅仪表盘展示规范为双槽对称流并暂时屏蔽 Jev (C018)**:
+  - **仪表盘双槽对称流 (方案 B)**: 为 DeepSeek 等按量计费/余额型订阅重构正文布局，标头移出拥挤的 `BalanceChip`，正文平铺为 50/50 规整双槽（左槽为大号等宽粗体「可用余额」，右槽为「本月消费」及覆盖区间说明，若无账本则显示「订阅状态」）；Classic/LiquidGlass 适配微透明平滑圆角磨砂槽，Nothing 主题适配 3pt 方角、透明底加强边框与 Space Mono 字体。
+  - **界面暂时屏蔽 Jev**: 因 TypeSafe 官方未开放免费查询剩余额度的公开 API，在 `SettingsView` 与 `SubscriptionPresentationPolicy` 中暂时隐藏 Jev 显示与配置入口，避免无官方查额接口对用户造成误导；底层 Collector 解析、凭据存储及全部 168 项安全测试 100% 完整保留。
+- **TypeSafe Jev 订阅额度监控与多模型计费全链路适配 (T05 & C017)**:
+  - **Core Collector**: 内置 TypeSafe Jev 模型定价（`jev-1.13.0`, `jev-1.13`, `jev-latest`, `jev-preview`），基准单价输入 $0.042/1M tokens ($42/1B)，输出免费；实现 `JevProvider` 出站探测 `GET https://api.typesafe.ai/v1/models`，自动解析活跃模型列表与速率限额（100k tok/s, 80 req/s），标准化映射 401 凭证失效与 429 限流退避。
+  - **凭据白名单与安全传输**: 扩充 `ALLOWED_CREDENTIAL_FIELDS` 白名单与 `request-v1.schema.json`，支持 `jevQuotaAccounts` 安全注入与 POSIX 0600 凭据权限隔离。
+  - **macOS 原生设置中心与看板卡片**: `BruceOnboardingCore` 与 `BruceApp` 接入 Jev API Key 单一凭据配置弹窗（`console.typesafe.ai` 快捷引导）、即时连通性校验（`reverify`）、品牌色 `#e551ba` 与 System One 决策模型专属配额卡片渲染；补全全量 Harness 测试（168 项用例）。
+
 ## [0.11.4] - 2026-10-14
 
 ### Fixed
