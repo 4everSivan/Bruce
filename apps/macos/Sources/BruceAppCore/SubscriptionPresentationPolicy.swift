@@ -54,6 +54,11 @@ package enum SubscriptionPresentationPolicy: Sendable {
         kind == nil && !hasWindows && !hasBalance && status == "partial"
     }
 
+    /// 暂时屏蔽的 Provider 列表（Jev 因官方未开放查额 API 暂作界面隐藏，底层保留）.
+    package static func isProviderTemporarilyDisabled(_ providerID: String) -> Bool {
+        providerID == "jev"
+    }
+
     /// app=="codex" 的 service 进入 Codex 多账号分组.
     package static func isCodex(app: String?) -> Bool {
         app == "codex"
@@ -86,6 +91,7 @@ package enum SubscriptionPresentationPolicy: Sendable {
         case "grok": return "Grok"
         case "opencodeGo", "opencode-go": return "OpenCode GO"
         case "stepfun": return "StepFun"
+        case "jev": return "Jev"
         default: return providerID
         }
     }

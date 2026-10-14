@@ -756,6 +756,47 @@ final class SubscriptionService {
         finishVerification(.stepfun, status: status)
     }
 
+    /// TypeSafe Jev: 录入 API Key 与可选账户余额.
+    func saveAndVerifyJev(apiKey: String, balance: Double? = nil) {
+        let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let status = ProviderConnectionVerifier.verifyJevAPIKey(key)
+        guard status == .ok else {
+            finishVerification(.jev, status: status)
+            return
+        }
+        let store = accountStore(for: .jev)
+        let accountID = ProviderAccountIDGenerator.jevAccountID(apiKey: key)
+        let displayName = "Jev · \(String(accountID.prefix(8)))"
+
+        let credentialJSON: String
+        if let balance, balance >= 0 {
+            let dict: [String: Any] = [
+                "apiKey": key,
+                "balance": balance,
+            ]
+            if let data = try? JSONSerialization.data(withJSONObject: dict),
+               let str = String(data: data, encoding: .utf8) {
+                credentialJSON = str
+            } else {
+                credentialJSON = key
+            }
+        } else {
+            credentialJSON = key
+        }
+
+        guard saveProviderAccountCredential(
+            for: .jev,
+            accountID: accountID,
+            displayName: displayName,
+            credentialJSON: credentialJSON
+        ) else { return }
+        model.setSubscriptionCredentialConfigured(true, for: .jev)
+        if let summaries = try? store.summaries() {
+            model.setProviderAccountSummaries(summaries, for: .jev)
+        }
+        finishVerification(.jev, status: status)
+    }
+
     // MARK: - Claude / Grok 手动导入 (Phase 2/3)
 
     /// Claude: 从本机 CLI 凭证文件只读导入.
@@ -1017,6 +1058,18 @@ final class SubscriptionService {
             finishVerification(
                 .stepfun,
                 status: ProviderConnectionVerifier.verifyStepFunTokenFormat(record.credentialJSON)
+            )
+        case .jev:
+            let key: String
+            if let parsed = StoredCredentialParser.parse(provider: .jev, credentialJSON: record.credentialJSON),
+               case .apiKey(let k) = parsed {
+                key = k
+            } else {
+                key = record.credentialJSON
+            }
+            finishVerification(
+                .jev,
+                status: ProviderConnectionVerifier.verifyJevAPIKey(key)
             )
         case .codex:
             // Codex 走 token manager, 不提供本地重新验证.

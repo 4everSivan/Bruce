@@ -81,7 +81,7 @@ pub fn validate_credential_payload(field: &str, payload: &Value) -> Result<(), S
         }
         let account = account.as_object().ok_or("凭证账号必须是 JSON 对象")?;
         let (allowed, required): (&[&str], &[&str]) = match field {
-            "kimiQuotaAccounts" | "deepseekQuotaAccounts" => {
+            "kimiQuotaAccounts" | "deepseekQuotaAccounts" | "jevQuotaAccounts" => {
                 (&["display_name", "api_key"], &["api_key"])
             }
             "zhipuQuotaAccounts" => (

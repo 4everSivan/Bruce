@@ -1,0 +1,82 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C017",
+  "title": "精简 Jev 仪表盘卡片：移除伪造速率进度条与模型列表，支持设置中配置余额并对齐 DeepSeek 纯净规范",
+  "type": "Fix",
+  "status": "closed",
+  "branch": "main",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector + apps/macos (Jev 订阅卡纯净化与余额配置)",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+  "why": "Jev 在主看板中展示了具有误导性的 '速率限额 (100k tok/s) 0%' 进度条以及冗余的 '2 款模型 · 80 req/s' 文字，违背了 Bruce 订阅卡极简与统一的设计原则（所有其他 Provider 均不展示模型列表和计费公式）；同时 TypeSafe 官方 API 缺乏公开查询余额接口，导致用户无法在看板看到实际充值余额。需全面精简看板正文、移除模型和伪限额，并支持在设置中配置当前充值余额以统一呈现原生余额胶囊。",
+  "changes": [
+    {
+      "scope": "core/collector/crates/collector-provider/src/lib.rs",
+      "before": "parse_jev_models 输出 kind='windows'，windows 包含硬编码 0.0% 的 '速率限额 (100k tok/s)'，extra 携带模型数量与 80 req/s",
+      "after": "parse_jev_models 输出 kind='balance'，windows 设为空数组 []，extra 设为 None；支持读取账户凭据中的 balance 字段透传为数值与 USD 货币",
+      "impact": "彻底消除看板中令人困惑的 0% 进度条与多余模型信息，底层契约对齐 DeepSeek 余额型 Provider"
+    },
+    {
+      "scope": "apps/macos/Sources/BruceApp/Settings/SubscriptionProviderField.swift",
+      "before": "APIKeyFieldDescriptor 仅有必填语义，缺少可选字段标记",
+      "after": "APIKeyFieldDescriptor 增加 isOptional: Bool = false 属性",
+      "impact": "允许配置对话框包含选填字段（如可选余额）而不阻断提交校验"
+    },
+    {
+      "scope": "apps/macos/Sources/BruceApp/Settings/APIKeyProviderConfigDialog.swift",
+      "before": "allFilled 强制所有字段非空",
+      "after": "allFilled 对 isOptional == true 的字段豁免非空校验",
+      "impact": "用户可只填 API Key 保存，也可选填余额一同保存"
+    },
+    {
+      "scope": "apps/macos/Sources/BruceApp/SettingsView.swift & SubscriptionService.swift",
+      "before": "Jev 配置弹窗仅有一个 API Key 输入框，saveAndVerifyJev 仅接收 apiKey",
+      "after": "Jev 配置弹窗增设可选的 '账户余额 (USD，选填)' 输入框；saveAndVerifyJev 接收并持久化 apiKey 与可选 balance",
+      "impact": "用户可在设置中心录入在 console.typesafe.ai 充值的当前余额"
+    },
+    {
+      "scope": "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+      "before": "jevQuotaAccounts 仅组装 api_key",
+      "after": "jevQuotaAccounts 同步组装从凭证中解析出的 balance 字段",
+      "impact": "Rust Collector 运行并输出已配置的真实余额"
+    }
+  ],
+  "design": {
+    "before_behavior": "主看板 Jev 卡片显示 '2 款模型 · 80 req/s'，下方有一条 0% 消耗的 '速率限额 (100k tok/s)' 进度条，且无余额显示",
+    "after_behavior": "主看板 Jev 卡片极简对齐 DeepSeek：无任何进度条、无模型与计费说明；若在设置中配置了余额则在头部展示品牌色 '[● 余额 $XX.XX]' 胶囊，若未配置则仅展示 '[Jev] Jev [System One]'",
+    "true_if": "Collector parse_jev_models 测试返回 kind='balance'、windows 为空且 extra 为 None；Swift Harness 验证通过；verify-local.sh 全绿",
+    "false_if": "仍出现速率限额进度条或模型文本，或余额无法正确呈现或构建失败"
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "verify-local-task-1389-build-task-1395",
+    "user_quote": "发布新版本",
+    "signoff": "2026-10-14 用户确认发布新版本，闭环归档",
+    "checks": [
+      {
+        "item": "Jev 数据解析纯净化测试",
+        "true_if": "parse_jev_models 返回 kind 为 balance，windows 为空，extra 为 None",
+        "false_if": "windows 非空或存在模型描述 extra",
+        "evidence": "cargo test --offline -p collector-provider 全量通过 30 项测试，jev_models_fixture_parses 验证 kind='balance'，windows.is_empty()==true，extra.is_null()==true",
+        "result": true
+      },
+      {
+        "item": "设置中心 Jev 余额配置与持久化",
+        "true_if": "配置弹窗支持选填余额，保存后安全写入 0600 credentials.json 并注入 Collector",
+        "false_if": "保存失败或校验拦截",
+        "evidence": "BruceOnboardingCoreHarness 168 项全绿（jevStoredCredentialParserJsonAndRaw 通过验证纯 key 与含 balance json 两种格式解析），CollectorRunInput 成功注入 balance 字段",
+        "result": true
+      },
+      {
+        "item": "本地全量自动化验证全绿",
+        "true_if": "zsh scripts/verify-local.sh 退出码 0，所有单元测试与 Harness 100% 通过",
+        "false_if": "存在编译报错或测试失败",
+        "evidence": "zsh scripts/verify-local.sh 运行退出码 0，Rust fmt/clippy/test 及全部 14 项 Swift Harness 测试全绿通过；build-test-app.sh --universal --install 产出 /Applications/Bruce.app 且 smoke 测试通过",
+        "result": true
+      }
+    ]
+  }
+}

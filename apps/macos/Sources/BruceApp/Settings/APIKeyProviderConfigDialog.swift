@@ -92,9 +92,12 @@ struct APIKeyProviderConfigDialog: View {
         model.busySubscriptionProviders.contains(id)
     }
     private var allFilled: Bool {
-        fields.allSatisfy { !((values[$0.id] ?? "").trimmingCharacters(
-            in: .whitespacesAndNewlines
-        ).isEmpty) }
+        fields.allSatisfy { field in
+            if field.isOptional { return true }
+            return !((values[field.id] ?? "").trimmingCharacters(
+                in: .whitespacesAndNewlines
+            ).isEmpty)
+        }
     }
 
     var body: some View {

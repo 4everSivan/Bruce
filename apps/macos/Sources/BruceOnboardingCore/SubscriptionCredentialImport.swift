@@ -50,6 +50,7 @@ extension SubscriptionProviderID {
         case .grok: return "Grok"
         case .opencodeGo: return "OpenCode GO"
         case .stepfun: return "StepFun"
+        case .jev: return "Jev"
         }
     }
 

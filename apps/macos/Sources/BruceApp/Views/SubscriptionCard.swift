@@ -207,6 +207,11 @@ private struct ProviderSectionView: View {
     var refreshControl: ProviderRefreshControl? = nil
     @State private var expanded = false
 
+    /// 是否为纯余额型 Provider (无周期窗口, 且具备余额数据; 如 DeepSeek)
+    private var isBalanceBased: Bool {
+        section.windows.isEmpty && !section.isMultiAccount && section.balance != nil
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             head
@@ -218,9 +223,9 @@ private struct ProviderSectionView: View {
                 singleAccountContent
             }
 
-            // DeepSeek 月度统计: 仅当映射层提供了 ViewModel 时渲染
-            // (映射层保证只有 DeepSeek section 携带它), 不硬编码 provider id.
-            if let monthlyUsage = section.deepSeekMonthlyUsage {
+            // DeepSeek 月度统计: 仅当非双槽模式且提供了 ViewModel 时单独渲染;
+            // 方案 B 双槽模式下，本月消费已集成在右槽中.
+            if !isBalanceBased, let monthlyUsage = section.deepSeekMonthlyUsage {
                 DeepSeekMonthlyUsageSection(viewModel: monthlyUsage)
             }
 
@@ -257,8 +262,12 @@ private struct ProviderSectionView: View {
 
     @ViewBuilder
     private var singleAccountContent: some View {
-        ForEach(Array(section.windows.enumerated()), id: \.offset) { _, row in
-            WindowRowView(row: row)
+        if isBalanceBased {
+            BalanceDualSlotView(section: section)
+        } else {
+            ForEach(Array(section.windows.enumerated()), id: \.offset) { _, row in
+                WindowRowView(row: row)
+            }
         }
     }
 
@@ -290,8 +299,9 @@ private struct ProviderSectionView: View {
             if let plan = section.plan {
                 PlanChip(text: plan)
             }
-            // 余额 (Credits / 货币) 以头部元数据胶囊呈现 (C011), 不再占用正文行。
-            if let balance = section.balance {
+            // 余额 (Credits / 货币) 仅在非双槽模式时作为头部元数据胶囊呈现；
+            // 纯余额型 Provider (无 windows) 在正文以双槽结构完整呈现，避免头部重复拥挤。
+            if !isBalanceBased, let balance = section.balance {
                 BalanceChip(
                     amountText: balance.amountText,
                     accessibilityText: balance.label,
@@ -352,6 +362,140 @@ private struct ProviderRefreshButton: View {
         .disabled(!presentation.isEnabled)
         .accessibilityLabel(presentation.accessibilityLabel)
         .accessibilityHint(presentation.accessibilityHint)
+    }
+}
+
+// MARK: - 余额型订阅双槽对称视图 (方案 B / C018)
+
+/// 余额型订阅双槽对称视图 (方案 B / C018):
+/// 左槽: 可用余额 (标题 + 加粗等宽主数值)
+/// 右槽: 消费或服务状态 (存在 monthlyUsage 时为本月消费，否则为套餐/服务状态)
+/// 底部: 微型覆盖说明 (如 coverageText)
+private struct BalanceDualSlotView: View {
+    let section: SubscriptionProviderSection
+
+    @Environment(\.BruceResolvedTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var isNothing: Bool { theme.interfaceStyle == .nothing }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 8) {
+                leftSlot
+                rightSlot
+            }
+            if let coverage = section.deepSeekMonthlyUsage?.coverageText, !coverage.isEmpty {
+                Text(coverage)
+                    .font(isNothing ? NothingFont.mono(8.5) : .system(size: 9))
+                    .foregroundStyle(isNothing ? NothingTokens.disabled(colorScheme) : Color.secondary.opacity(0.8))
+                    .padding(.top, 2)
+                    .padding(.leading, 2)
+            }
+        }
+        .padding(.top, 4)
+        .padding(.bottom, 2)
+    }
+
+    // MARK: - 左槽: 可用余额
+
+    private var leftSlot: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("可用余额")
+                .font(isNothing ? NothingFont.mono(9) : .system(size: 10))
+                .foregroundStyle(isNothing ? NothingTokens.disabled(colorScheme) : .secondary)
+
+            let balanceText = section.balance?.amountText ?? "--"
+            Text(balanceText)
+                .font(isNothing ? NothingFont.mono(13, weight: .bold) : .system(size: 14, weight: .bold))
+                .monospacedDigit()
+                .foregroundStyle(isNothing ? NothingTokens.display(colorScheme) : Color.primary.opacity(0.9))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 7)
+        .background(
+            isNothing
+                ? NothingTokens.surfaceRaised(colorScheme)
+                : Color.adaptive(
+                    light: Color.black.opacity(0.035),
+                    dark: Color.white.opacity(0.06)
+                ),
+            in: RoundedRectangle(cornerRadius: isNothing ? 3 : 8, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: isNothing ? 3 : 8, style: .continuous)
+                .strokeBorder(
+                    isNothing
+                        ? NothingTokens.border(colorScheme)
+                        : Color.adaptive(
+                            light: Color.black.opacity(0.05),
+                            dark: Color.white.opacity(0.10)
+                        ),
+                    lineWidth: isNothing ? 1 : 0.5
+                )
+        )
+    }
+
+    // MARK: - 右槽: 本月消费 或 状态
+
+    private var rightSlot: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            if let monthly = section.deepSeekMonthlyUsage {
+                Text("本月消费")
+                    .font(isNothing ? NothingFont.mono(9) : .system(size: 10))
+                    .foregroundStyle(isNothing ? NothingTokens.disabled(colorScheme) : .secondary)
+
+                let consumption = monthly.estimatedConsumptionText.isEmpty ? "--" : monthly.estimatedConsumptionText
+                Text(consumption)
+                    .font(isNothing ? NothingFont.mono(13, weight: .semibold) : .system(size: 14, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(isNothing ? NothingTokens.display(colorScheme) : Color.primary.opacity(0.85))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            } else {
+                Text("订阅状态")
+                    .font(isNothing ? NothingFont.mono(9) : .system(size: 10))
+                    .foregroundStyle(isNothing ? NothingTokens.disabled(colorScheme) : .secondary)
+
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(NothingTokens.success)
+                        .frame(width: 5, height: 5)
+                    let statusText = section.plan ?? (section.status == "ok" ? "正常" : section.status)
+                    Text(statusText)
+                        .font(isNothing ? NothingFont.mono(11, weight: .medium) : .system(size: 12, weight: .medium))
+                        .foregroundStyle(isNothing ? NothingTokens.secondary(colorScheme) : Color.primary.opacity(0.8))
+                        .lineLimit(1)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 7)
+        .background(
+            isNothing
+                ? NothingTokens.surfaceRaised(colorScheme)
+                : Color.adaptive(
+                    light: Color.black.opacity(0.035),
+                    dark: Color.white.opacity(0.06)
+                ),
+            in: RoundedRectangle(cornerRadius: isNothing ? 3 : 8, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: isNothing ? 3 : 8, style: .continuous)
+                .strokeBorder(
+                    isNothing
+                        ? NothingTokens.border(colorScheme)
+                        : Color.adaptive(
+                            light: Color.black.opacity(0.05),
+                            dark: Color.white.opacity(0.10)
+                        ),
+                    lineWidth: isNothing ? 1 : 0.5
+                )
+        )
     }
 }
 
@@ -817,6 +961,8 @@ private struct ProviderLogoBadge: View {
             return Color(hex: "#8a63d2")
         case "stepfun":
             return Color(hex: "#0c5efc")
+        case "jev":
+            return Color(hex: "#e551ba")
         default:
             return Color(hex: "#8e8e93")
         }

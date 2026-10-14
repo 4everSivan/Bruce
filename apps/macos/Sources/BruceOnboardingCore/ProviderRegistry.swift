@@ -23,6 +23,8 @@ public enum InjectionKind: Sendable, Equatable {
     case opencodeGoQuotaAccounts
     /// 顶层 `stepfunQuotaAccounts` = {accountID: {token, display_name}} 映射
     case stepfunQuotaAccounts
+    /// 顶层 `jevQuotaAccounts` = {accountID: {api_key, display_name}} 映射
+    case jevAPIKeyEnv
 }
 
 // MARK: - ConfiguredRule
@@ -215,6 +217,13 @@ public enum ProviderRegistry {
                 id: .stepfun,
                 credentialAccounts: [SubscriptionCredentialAccount.stepfunToken],
                 injectionKind: .stepfunQuotaAccounts,
+                configuredRule: .allCredentialAccountsNonEmpty
+            )
+        case .jev:
+            return ProviderDescriptor(
+                id: .jev,
+                credentialAccounts: [SubscriptionCredentialAccount.jevAPIKey],
+                injectionKind: .jevAPIKeyEnv,
                 configuredRule: .allCredentialAccountsNonEmpty
             )
         }

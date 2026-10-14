@@ -10,6 +10,21 @@ struct APIKeyFieldDescriptor: Identifiable {
     let label: String // 字段标题, 显示在输入框上方
     let placeholder: String
     let accessibilityLabel: String
+    let isOptional: Bool
+
+    init(
+        id: String,
+        label: String,
+        placeholder: String,
+        accessibilityLabel: String,
+        isOptional: Bool = false
+    ) {
+        self.id = id
+        self.label = label
+        self.placeholder = placeholder
+        self.accessibilityLabel = accessibilityLabel
+        self.isOptional = isOptional
+    }
 }
 
 /// 凭证获取引导: 文案 + 可选外链. linkURL 为 nil 时只显示文案.

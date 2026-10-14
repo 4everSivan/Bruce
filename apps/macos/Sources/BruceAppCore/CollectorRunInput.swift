@@ -636,6 +636,37 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
                 if !accounts.isEmpty {
                     credentials["stepfunQuotaAccounts"] = .object(accounts)
                 }
+
+            case .jevAPIKeyEnv:
+                guard let store = accountStores[descriptor.id],
+                      let index = try? store.loadIndex(),
+                      !index.accounts.isEmpty else { continue }
+                var accounts: [String: JSONValue] = [:]
+                for entry in index.accounts {
+                    guard let record = try? store.loadRecord(for: entry.accountID) else { continue }
+                    var apiKey = record.credentialJSON
+                    var balanceValue: JSONValue? = nil
+                    if let data = record.credentialJSON.data(using: .utf8),
+                       let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                        if let key = (dict["apiKey"] as? String) ?? (dict["api_key"] as? String) {
+                            apiKey = key
+                        }
+                        if let b = (dict["balance"] as? Double) ?? (dict["balance"] as? NSNumber)?.doubleValue {
+                            balanceValue = .double(b)
+                        }
+                    }
+                    var accObj: [String: JSONValue] = [
+                        "display_name": .string(entry.displayName),
+                        "api_key": .string(apiKey),
+                    ]
+                    if let balanceValue {
+                        accObj["balance"] = balanceValue
+                    }
+                    accounts[entry.accountID] = .object(accObj)
+                }
+                if !accounts.isEmpty {
+                    credentials["jevQuotaAccounts"] = .object(accounts)
+                }
             }
         }
 

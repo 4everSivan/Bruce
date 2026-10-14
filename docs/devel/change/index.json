@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-index.v1.json",
   "version": "1.0",
-  "updated_at": "2026-10-12",
+  "updated_at": "2026-10-14",
   "topics": {
     "SystemOverview": {
       "design_doc": "docs/devel/design/00-系统总体设计.md",
@@ -36,7 +36,9 @@
       "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
       "changes": [
         "C010",
-        "C011"
+        "C011",
+        "C017",
+        "C018"
       ]
     }
   },
@@ -184,6 +186,24 @@
       "topic": "WindowsCompat",
       "version": "0.11.4",
       "file": "docs/devel/change/C016.json"
+    },
+    "C017": {
+      "title": "精简 Jev 仪表盘卡片：移除伪造速率进度条与模型列表，支持设置中配置余额并对齐 DeepSeek 纯净规范",
+      "type": "Fix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "SubscriptionQuota",
+      "version": "0.11.5",
+      "file": "docs/devel/change/C017.json"
+    },
+    "C018": {
+      "title": "统一余额型订阅仪表盘展示规范为双槽对称流 (方案 B) 并暂时屏蔽 Jev",
+      "type": "Feature",
+      "status": "closed",
+      "branch": "main",
+      "topic": "SubscriptionQuota",
+      "version": "0.11.5",
+      "file": "docs/devel/change/C018.json"
     }
   }
 }

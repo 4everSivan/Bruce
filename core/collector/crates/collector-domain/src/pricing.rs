@@ -173,6 +173,13 @@ impl PricingTable {
         add("grok-3", 3.00, 15.00, Some(0.75), "Grok 3");
         add("grok-3-mini", 0.30, 1.50, Some(0.075), "Grok 3 Mini");
 
+        // TypeSafe Jev
+        add("jev-1.13.0", 0.042, 0.0, None, "Jev 1.13.0");
+        add("jev-1.13", 0.042, 0.0, None, "Jev 1.13");
+        add("jev-latest", 0.042, 0.0, None, "Jev Latest");
+        add("jev-preview", 0.042, 0.0, None, "Jev Preview");
+        add("jev", 0.042, 0.0, None, "Jev");
+
         Self { builtin, overrides }
     }
 
@@ -327,5 +334,24 @@ mod tests {
             .resolve("openai/gpt-5.6-luna")
             .expect("should resolve prefix");
         assert_eq!(rule.input_price_per_million, 0.20);
+    }
+
+    #[test]
+    fn jev_pricing_resolves_and_calculates_cost() {
+        let table = PricingTable::default();
+        let rule = table
+            .resolve("jev-latest")
+            .expect("jev-latest should exist");
+        assert_eq!(rule.input_price_per_million, 0.042);
+        assert_eq!(rule.output_price_per_million, 0.0);
+        assert_eq!(rule.cache_read_price_per_million, None);
+
+        let mut bucket = TokenBucket::default();
+        bucket.add(1_000_000, 500_000, 0, 0);
+        let cost = table.calculate_cost(&bucket, &rule);
+        // input: 1M * 0.042 = 0.042
+        // output: 0.5M * 0.0 = 0.0
+        // total: 0.042
+        assert!((cost - 0.042).abs() < 1e-6);
     }
 }

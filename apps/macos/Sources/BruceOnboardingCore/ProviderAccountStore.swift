@@ -143,6 +143,8 @@ public enum ProviderAccountKeys {
             return [SubscriptionCredentialAccount.opencodeGoOAuth]
         case .stepfun:
             return [SubscriptionCredentialAccount.stepfunToken]
+        case .jev:
+            return [SubscriptionCredentialAccount.jevAPIKey]
         }
     }
 }
@@ -190,6 +192,11 @@ public enum ProviderAccountIDGenerator {
     /// StepFun: token SHA-256 前 16 位.
     public static func stepfunAccountID(token: String) -> String {
         ProviderAccountKeys.sha256Hex(token)
+    }
+
+    /// TypeSafe Jev: API key SHA-256 前 16 位.
+    public static func jevAccountID(apiKey: String) -> String {
+        ProviderAccountKeys.sha256Hex(apiKey)
     }
 }
 
@@ -524,6 +531,11 @@ public final class ProviderAccountStore: @unchecked Sendable {
             accountID = ProviderAccountIDGenerator.stepfunAccountID(token: token)
             displayName = "StepFun · \(String(accountID.prefix(8)))"
             credentialJSON = token
+        case .jev:
+            let key = legacyValues[0]
+            accountID = ProviderAccountIDGenerator.jevAccountID(apiKey: key)
+            displayName = "Jev · \(String(accountID.prefix(8)))"
+            credentialJSON = key
         case .codex:
             return false // Codex 已有独立的多账号体系
         }

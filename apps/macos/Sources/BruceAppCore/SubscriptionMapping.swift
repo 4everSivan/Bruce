@@ -103,6 +103,9 @@ extension PanelViewModelMapper {
             }
 
             let providerID = SubscriptionPresentationPolicy.providerID(forServiceID: service.id)
+            if SubscriptionPresentationPolicy.isProviderTemporarilyDisabled(providerID) {
+                continue
+            }
             let displayName = SubscriptionPresentationPolicy.displayName(
                 serviceID: service.id, serviceName: service.name
             )

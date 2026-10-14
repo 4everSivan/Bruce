@@ -22,6 +22,7 @@ BRUCE_LEGACY_SOURCE=$(find . \
   -path './.git' -prune -o \
   -path './.build' -prune -o \
   -path './dist' -prune -o \
+  -path './local' -prune -o \
   -path '*/target' -prune -o \
   \( -name '*.py' -o -name '*.pyc' -o -name 'pyproject.toml' \) -print -quit)
 if [[ -n "$BRUCE_LEGACY_SOURCE" ]]; then

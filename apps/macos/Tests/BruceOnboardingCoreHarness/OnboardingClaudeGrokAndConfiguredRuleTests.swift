@@ -343,6 +343,7 @@ extension BruceOnboardingCoreHarness {
             .grok: .grokAppOrLocalProbe,
             .opencodeGo: .allCredentialAccountsNonEmpty,
             .stepfun: .allCredentialAccountsNonEmpty,
+            .jev: .allCredentialAccountsNonEmpty,
         ]
         for id in SubscriptionProviderID.allCases {
             let rule = ProviderRegistry.descriptor(for: id).configuredRule
@@ -448,6 +449,67 @@ extension BruceOnboardingCoreHarness {
         guard case .failed = ProviderConnectionVerifier.verifyStepFunTokenFormat("token with spaces") else {
             throw CoreTestFailure.expectation("带空格 token 应 failed")
         }
+    }
+
+    // MARK: - TypeSafe Jev (API Key)
+
+    static func jevCredentialAccountsAndRegistry() throws {
+        try coreExpect(
+            SubscriptionProviderID.jev.credentialAccounts == [
+                SubscriptionCredentialAccount.jevAPIKey
+            ],
+            "jev credentialAccounts 应含 jev:api-key"
+        )
+        try coreExpect(
+            ProviderRegistry.descriptor(for: .jev).injectionKind == .jevAPIKeyEnv,
+            "jev injectionKind 应为 jevAPIKeyEnv"
+        )
+        try coreExpect(
+            SubscriptionProviderID.jev.displayName == "Jev",
+            "jev 展示名应为 Jev"
+        )
+        let accountID = ProviderAccountIDGenerator.jevAccountID(apiKey: "jev-key-123")
+        try coreExpect(
+            !accountID.isEmpty,
+            "jev accountID 不得为空"
+        )
+        try coreExpect(
+            accountID == ProviderAccountIDGenerator.jevAccountID(apiKey: "jev-key-123"),
+            "jev 同 key 应生成相同 accountID"
+        )
+        try coreExpect(
+            ProviderAccountKeys.legacyKeys(for: .jev) == [
+                SubscriptionCredentialAccount.jevAPIKey
+            ],
+            "jev legacyKeys 应含 jev:api-key"
+        )
+    }
+
+    static func jevEvaluatorValidAndMalformed() throws {
+        try coreExpect(
+            ProviderConnectionVerifier.verifyJevAPIKey("jev-test-api-key-xyz") == .ok,
+            "正常 Jev API key 应为 ok"
+        )
+        guard case .failed = ProviderConnectionVerifier.verifyJevAPIKey("") else {
+            throw CoreTestFailure.expectation("空 Jev API key 应 failed")
+        }
+        guard case .failed = ProviderConnectionVerifier.verifyJevAPIKey("   ") else {
+            throw CoreTestFailure.expectation("空白字符 Jev API key 应 failed")
+        }
+        guard case .failed = ProviderConnectionVerifier.verifyJevAPIKey("key with whitespace") else {
+            throw CoreTestFailure.expectation("带空格 Jev API key 应 failed")
+        }
+    }
+
+    static func jevStoredCredentialParserJsonAndRaw() throws {
+        // 纯字符串 key
+        let raw = StoredCredentialParser.parse(provider: .jev, credentialJSON: "apikey_123456")
+        try coreExpect(raw == .apiKey("apikey_123456"), "纯字符串 Jev 凭证解析失败")
+
+        // JSON 带 apiKey 和 balance
+        let jsonStr = #"{"apiKey": "apikey_abcdef", "balance": 12.5}"#
+        let fromJSON = StoredCredentialParser.parse(provider: .jev, credentialJSON: jsonStr)
+        try coreExpect(fromJSON == .apiKey("apikey_abcdef"), "JSON 格式 Jev 凭证解析失败")
     }
 
     // subscriptionProviderOrder 字段编解码往返, 兼容旧配置缺键.

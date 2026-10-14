@@ -165,6 +165,9 @@ struct BruceOnboardingCoreHarness {
         try opencodeGoAccountIDAndLegacyKeys()
         try stepfunCredentialAccountsAndRegistry()
         try stepfunEvaluatorValidAndMalformed()
-        print("BruceOnboardingCore tests passed: 165")
+        try jevCredentialAccountsAndRegistry()
+        try jevEvaluatorValidAndMalformed()
+        try jevStoredCredentialParserJsonAndRaw()
+        print("BruceOnboardingCore tests passed: 168")
     }
 }

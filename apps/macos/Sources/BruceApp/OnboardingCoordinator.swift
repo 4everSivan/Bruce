@@ -204,6 +204,10 @@ final class OnboardingCoordinator: ObservableObject {
         subscriptions.saveAndVerifyStepFun(token: token, site: site)
     }
 
+    func saveAndVerifyJev(apiKey: String, balance: Double? = nil) {
+        subscriptions.saveAndVerifyJev(apiKey: apiKey, balance: balance)
+    }
+
     func importClaudeFromLocal() {
         subscriptions.importClaudeFromLocal()
     }

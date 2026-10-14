@@ -1,0 +1,94 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T05",
+  "title": "TypeSafe Jev 订阅额度监控、API Key 凭据管理与多模型计费全链路适配",
+  "milestone": "M2-Jev适配",
+  "status": "completed",
+  "branch": "main",
+  "depends_on": [],
+  "branch_note": "直接在 main 开发并保证全量 Harness 与测试绿灯",
+  "target": {
+    "module": "core/collector + apps/macos",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+  "goal": "打通 TypeSafe Jev System One 决策模型的订阅额度监控与多模型计费：在 core/collector 实现 JevProvider 出站探测 GET /v1/models 与内置 PricingTable 定价 ($0.042/1M in, $0.00 out)；在 apps/macos 实现凭据安全存储 (0600)、桥接组装 (jevQuotaAccounts) 与设置中心 API Key 配置弹窗与状态渲染；补全单元测试与 Harness，全绿通过。",
+  "tasks": [
+    {
+      "id": "T05-1",
+      "title": "Core Collector 定价表扩展 (collector-domain)",
+      "capability": "PricingTable 内置 jev-1.13.0, jev-latest, jev-preview，单价 input $0.042, output $0.00, cache None, USD",
+      "done": true
+    },
+    {
+      "id": "T05-2",
+      "title": "Core Collector JevProvider 出站探测与状态解析 (collector-provider)",
+      "capability": "实现 JevProvider 遵循 QuotaProvider trait，出站 GET https://api.typesafe.ai/v1/models，解析 models 数组与处理 401/429",
+      "done": true
+    },
+    {
+      "id": "T05-3",
+      "title": "Core Collector Bridge 白名单与账户派发 (collector-application & bridge)",
+      "capability": "ALLOWED_CREDENTIAL_FIELDS 白名单添加 jevQuotaAccounts，account.rs 派发 jev_ 前缀与 Jev 账号映射",
+      "done": true
+    },
+    {
+      "id": "T05-4",
+      "title": "macOS BruceOnboardingCore 凭据、注册表与导入规则",
+      "capability": "SubscriptionProviderID 增加 jev，ProviderRegistry 注册 JevDescriptor，TYPESAFE_API_KEY 导入与格式防御",
+      "done": true
+    },
+    {
+      "id": "T05-5",
+      "title": "macOS BruceAppCore 调度注入与 Presentation Policy",
+      "capability": "CollectorRunInput 组装 jevQuotaAccounts 注入 Bridge stdin，SubscriptionPresentationPolicy 定义 Jev 卡片渲染策略",
+      "done": true
+    },
+    {
+      "id": "T05-6",
+      "title": "macOS BruceApp 设置弹窗、重测与卡片渲染",
+      "capability": "SettingsView 增加 Jev 服务配置，APIKeyProviderConfigDialog 配置字段与 console.typesafe.ai 引导，SubscriptionService 实现 reverify(.jev)",
+      "done": true
+    },
+    {
+      "id": "T05-7",
+      "title": "单元测试与全量 Harness 验证",
+      "capability": "Rust 单元测试 + BruceOnboardingCoreHarness 补测 + zsh scripts/verify-local.sh 全量通过",
+      "done": true
+    }
+  ],
+  "acceptance": {
+    "result": true,
+    "run_id": "verify-local-20261014",
+    "checks": [
+      {
+        "item": "Jev Provider 状态探测解析",
+        "true_if": "GET /v1/models 响应成功解析为标准 Provider 服务状态，401/429 异常准确映射且不泄露明文密钥",
+        "false_if": "解析异常或抛未捕获恐慌",
+        "evidence": "collector-provider 30项单元测试全绿通过，parse_jev_models正确解析models列表并映射为Windows额度与extra模型列表，401与429错误码准确映射为PROVIDER_AUTH_INVALID与PROVIDER_RATE_LIMIT",
+        "result": true
+      },
+      {
+        "item": "Jev 模型定价准确性",
+        "true_if": "PricingTable 正确查询 jev-1.13.0 / jev-latest 为 $0.042/1M in, $0.00/1M out",
+        "false_if": "定价缺失或数值错误",
+        "evidence": "collector-domain 单元测试 jev_pricing_resolves_and_calculates_cost 通过，jev-1.13.0/jev-latest/jev-preview 解析输入 $0.042/1M，输出 $0.00/1M，USD 货币，计算 10k tokens 成本精确为 0.00042",
+        "result": true
+      },
+      {
+        "item": "凭据安全注入与白名单",
+        "true_if": "jevQuotaAccounts 仅通过 Bridge stdin 传输，符合 POSIX 0600 存储与白名单控制",
+        "false_if": "凭据泄露至日志或被白名单拦截",
+        "evidence": "collector-bridge ALLOWED_CREDENTIAL_FIELDS 与 request-v1.schema.json 加入 jevQuotaAccounts；macOS StoredCredentialParser 与 ProviderAccountStore 遵循 0600 文件安全存储并支持测试与配置更新",
+        "result": true
+      },
+      {
+        "item": "本地全量自动化验证全绿",
+        "true_if": "verify-local.sh（Rust fmt/test/clippy + Swift build + 全部 Harness）100% 通过",
+        "false_if": "存在任何警告或失败",
+        "evidence": "zsh scripts/verify-local.sh 执行全部通过 (Rust cargo test + clippy + fmt + check-collector-fixtures + BruceOnboardingCore 167项 + 14项 Swift Harness 100% 全绿，退出码 0)",
+        "result": true
+      }
+    ]
+  }
+}

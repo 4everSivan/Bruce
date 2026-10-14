@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/task-index.v1.json",
   "phase": "Phase 2 - Windows 平台适配",
-  "updated_at": "2026-10-08",
+  "updated_at": "2026-10-14",
   "milestones": {
     "M1-Windows适配": {
       "title": "Windows 托盘常驻看板与采集链路全量对齐（Tauri 2 / 首版全量 / Rust 视图模型+fixture 对拍）",
@@ -11,6 +11,13 @@
         "T02",
         "T03",
         "T04"
+      ]
+    },
+    "M2-Jev适配": {
+      "title": "TypeSafe Jev 订阅额度监控、API Key 凭据管理与多模型计费全链路适配",
+      "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+      "tasks": [
+        "T05"
       ]
     }
   },
@@ -22,6 +29,12 @@
         "T02",
         "T03",
         "T04"
+      ]
+    },
+    "SubscriptionQuota": {
+      "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+      "tasks": [
+        "T05"
       ]
     }
   },
@@ -79,6 +92,16 @@
       ],
       "file": "docs/devel/task/T04.json",
       "branch_note": "2026-10-06 用户指示: Windows 适配全程不开特性分支, 直接在 main 开发"
+    },
+    "T05": {
+      "title": "TypeSafe Jev 订阅额度监控、API Key 凭据管理与多模型计费全链路适配",
+      "status": "completed",
+      "branch": "main",
+      "topic": "SubscriptionQuota",
+      "milestone": "M2-Jev适配",
+      "depends_on": [],
+      "file": "docs/devel/task/T05.json",
+      "branch_note": "直接在 main 开发并保证全量 Harness 与测试绿灯"
     }
   }
 }

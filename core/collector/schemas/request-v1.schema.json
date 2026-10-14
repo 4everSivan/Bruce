@@ -318,6 +318,12 @@
             "maxLength": 256
           }
         },
+        "stepfunQuotaAccounts": {
+          "$ref": "#/$defs/quotaAccounts"
+        },
+        "jevQuotaAccounts": {
+          "$ref": "#/$defs/quotaAccounts"
+        },
         "providerEnv": {
           "type": "object"
         },

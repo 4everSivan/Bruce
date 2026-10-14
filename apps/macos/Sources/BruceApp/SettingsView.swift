@@ -28,6 +28,7 @@ struct SettingsView: View {
     @State private var stepfunValues: [String: String] = [:]
     @State private var showsStepFunWebLogin = false
     @State private var stepfunLoginSite: StepFunSite = .domestic
+    @State private var jevValues: [String: String] = [:]
     @State private var claudePasteText = ""
     @State private var claudeEditing = false
     @State private var grokPasteText = ""
@@ -1079,17 +1080,23 @@ struct SettingsView: View {
         }
     }
 
+    /// 当前在设置中心向用户展示并允许配置的 Provider 集合（Jev 因官方未开放查额 API 暂作界面屏蔽，底层完整保留）.
+    private var availableSubscriptionProviders: [SubscriptionProviderID] {
+        SubscriptionProviderID.allCases.filter { $0 != .jev }
+    }
+
     /// 已在列表中展示的 provider: 配置中已添加 (持久化) 或本次会话刚添加.
     /// Phase 4: 未手动添加不显示 (与"全部手动添加"决策一致).
     private var visibleSubscriptionProviders: [SubscriptionProviderID] {
-        let order = model.subscriptionProviderOrder
+        let order = model.subscriptionProviderOrder.filter { $0 != .jev }
         let inOrder = Set(order)
         let isVisible = { (id: SubscriptionProviderID) -> Bool in
-            (self.model.subscriptionProviders[id] != nil)
+            guard id != .jev else { return false }
+            return (self.model.subscriptionProviders[id] != nil)
                 || self.addedSubscriptionProviders.contains(id)
         }
         let ordered = order.filter(isVisible)
-        let unordered = SubscriptionProviderID.allCases.filter {
+        let unordered = availableSubscriptionProviders.filter {
             !inOrder.contains($0) && isVisible($0)
         }
         return ordered + unordered
@@ -1097,7 +1104,7 @@ struct SettingsView: View {
 
     /// 尚未进入列表的 provider, 供添加 Picker 选择.
     private var unconfiguredSubscriptionProviders: [SubscriptionProviderID] {
-        SubscriptionProviderID.allCases.filter {
+        availableSubscriptionProviders.filter {
             !visibleSubscriptionProviders.contains($0)
         }
     }
@@ -1154,7 +1161,7 @@ struct SettingsView: View {
         let kind: String
         switch id {
         case .kimi: kind = "Web 令牌"
-        case .deepseek, .volcengine, .zhipu: kind = "API Key"
+        case .deepseek, .volcengine, .zhipu, .jev: kind = "API Key"
         case .stepfun: kind = "Step Plan Token"
         case .codex: kind = "OAuth 设备码"
         case .claude, .grok: kind = "CLI 登录态"
@@ -1216,7 +1223,7 @@ struct SettingsView: View {
         _ id: SubscriptionProviderID
     ) -> some View {
         switch id {
-        case .kimi, .deepseek, .volcengine, .zhipu, .stepfun:
+        case .kimi, .deepseek, .volcengine, .zhipu, .stepfun, .jev:
             apiKeyProviderDialog(id)
         case .codex, .claude, .grok, .opencodeGo:
             genericProviderConfigSheet(id)
@@ -1423,6 +1430,44 @@ struct SettingsView: View {
                     configuringProvider = nil
                 }
             }
+        case .jev:
+            APIKeyProviderConfigDialog(
+                id: .jev,
+                fields: [
+                    APIKeyFieldDescriptor(
+                        id: "apiKey",
+                        label: "API Key",
+                        placeholder: "•••••••• (输入后不回显)",
+                        accessibilityLabel: "TypeSafe Jev API Key"
+                    ),
+                    APIKeyFieldDescriptor(
+                        id: "balance",
+                        label: "账户余额 (USD，选填)",
+                        placeholder: "输入在控制台充值的当前余额 (如 10.00)",
+                        accessibilityLabel: "TypeSafe Jev 账户余额",
+                        isOptional: true
+                    ),
+                ],
+                values: $jevValues,
+                guide: ProviderCredentialGuide(
+                    summary: "在 TypeSafe 控制台获取 Jev API Key 与充值余额",
+                    linkTitle: "打开 TypeSafe 控制台",
+                    linkURL: URL(string: "https://console.typesafe.ai/keys")
+                ),
+                footnote: "由于 TypeSafe 暂未开放余额查询接口, 填写充值余额可在看板统一展示余额胶囊",
+                extra: .none,
+                onRemove: { removeSubscriptionProvider(.jev) },
+                onSave: {
+                    let key = $0["apiKey"] ?? ""
+                    let balanceStr = ($0["balance"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                    let balance = Double(balanceStr)
+                    coordinator.saveAndVerifyJev(
+                        apiKey: key,
+                        balance: balance
+                    )
+                },
+                onDismiss: dismiss
+            )
         default:
             EmptyView()
         }
@@ -1496,7 +1541,7 @@ struct SettingsView: View {
         _ id: SubscriptionProviderID
     ) -> some View {
         switch id {
-        case .kimi, .deepseek, .volcengine, .zhipu, .stepfun:
+        case .kimi, .deepseek, .volcengine, .zhipu, .stepfun, .jev:
             // 对话框版表单已接管, 通用外壳不会走到这里.
             EmptyView()
         case .codex:

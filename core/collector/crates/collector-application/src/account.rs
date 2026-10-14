@@ -21,6 +21,7 @@ const ACCOUNT_FIELDS: &[(&str, &str)] = &[
     ("claude", "claudeQuotaAccounts"),
     ("grok", "grokQuotaAccounts"),
     ("stepfun", "stepfunQuotaAccounts"),
+    ("jev", "jevQuotaAccounts"),
 ];
 
 fn account_field(app: &str) -> Option<&'static str> {
@@ -39,6 +40,7 @@ fn account_prefix(app: &str) -> Option<&'static str> {
         "claude" => Some("claude_"),
         "grok" => Some("grok_"),
         "stepfun" => Some("stepfun_"),
+        "jev" => Some("jev_"),
         _ => None,
     }
 }

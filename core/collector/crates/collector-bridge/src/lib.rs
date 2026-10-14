@@ -56,6 +56,7 @@ pub const ALLOWED_CREDENTIAL_FIELDS: &[&str] = &[
     "opencodeGoQuotaAccounts",
     "codexQuotaAccounts",
     "stepfunQuotaAccounts",
+    "jevQuotaAccounts",
     "providerEnv",
     "providerMeta",
 ];

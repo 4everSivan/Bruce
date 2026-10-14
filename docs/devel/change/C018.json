@@ -1,0 +1,70 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C018",
+  "title": "统一余额型订阅仪表盘展示规范为双槽对称流 (方案 B) 并暂时屏蔽 Jev",
+  "type": "Feature",
+  "status": "closed",
+  "branch": "main",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos (SubscriptionCard, SettingsView, PresentationPolicy)",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+  "why": "用户确认选定方案 B（双槽对称流），将 DeepSeek 等余额型订阅从原先挤在标头的微型胶囊重构为标准规整的左右双槽（左槽可用余额，右槽本月消费/套餐状态）；因 TypeSafe 官方未开放免费查询剩余额度的公开 API，暂时在 UI 与设置中屏蔽 Jev，同时完整保留已完成的 Collector 与 Onboarding 契约代码供后续接入。",
+  "changes": [
+    {
+      "scope": "apps/macos/Sources/BruceApp/Views/SubscriptionCard.swift",
+      "before": "DeepSeek 等余额型订阅将余额挤在标头 BalanceChip，下方仅以全宽单行渲染 DeepSeekMonthlyUsageSection，若无月度数据则正文空白",
+      "after": "引入 BalanceDualSlotView 双槽对称结构：标头仅保留 Logo、名称与定向刷新按钮；正文平铺左槽「可用余额」大数与右槽「本月消费/套餐状态」，双主题适配",
+      "impact": "彻底统一按量付费与余额型订阅的视觉规范，资产感更强，左右对称秩序感更佳"
+    },
+    {
+      "scope": "apps/macos/Sources/BruceApp/SettingsView.swift",
+      "before": "Settings 订阅服务列表全量展示 SubscriptionProviderID.allCases 包含 Jev",
+      "after": "暂时过滤屏蔽 Jev 入口，保留底层完整实现与数据存储支持",
+      "impact": "用户界面暂不呈现未开放查询 API 的 Jev 服务，避免给用户造成未完成或无法自动查额度的困扰"
+    },
+    {
+      "scope": "apps/macos/Sources/BruceAppCore/SubscriptionPresentationPolicy.swift",
+      "before": "Jev 作为正常 serviceID 处理",
+      "after": "增加暂时屏蔽 Jev 的展示层过滤，确保仪表盘订阅用量区暂不渲染 Jev",
+      "impact": "仪表盘界面暂时隐藏 Jev"
+    }
+  ],
+  "design": {
+    "before_behavior": "余额型卡片在标头展示微小胶囊，正文只有不规则的单行消费或空白",
+    "after_behavior": "余额型卡片标头极简纯净，正文规整展示双槽（左：可用余额，右：本月消费/状态），Jev 在界面暂时屏蔽",
+    "true_if": "DeepSeek 渲染为左右双槽结构；Nothing 与 LiquidGlass 双主题正常适配；Jev 在设置与主面板被隐藏；verify-local.sh 全绿通过",
+    "false_if": "双槽布局破损、主题样式失效或 Jev 仍出现在主界面或测试失败"
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "verify-local-task-1575",
+    "user_quote": "发布新版本",
+    "signoff": "2026-10-14 用户确认发布新版本，闭环归档",
+    "checks": [
+      {
+        "item": "双槽对称流布局与主题适配",
+        "true_if": "余额型 Provider 正文以双槽渲染，左槽余额加粗突出，右槽消费/状态清晰，双主题适配",
+        "false_if": "仍回退到标头小胶囊或正文错位",
+        "evidence": "SubscriptionCard.swift 新增 BalanceDualSlotView，isBalanceBased 时标头移除 BalanceChip，正文渲染 50/50 左右对称槽（左槽可用余额大数，右槽本月消费或状态），Nothing 与 LiquidGlass 双主题材质完整适配",
+        "result": true
+      },
+      {
+        "item": "Jev 界面屏蔽且保留底层代码",
+        "true_if": "设置中心与主面板不展示 Jev，且现有 Rust/Swift Jev 单元测试保持 100% 通过",
+        "false_if": "Jev 仍在设置/主面板显示或底层代码被破坏",
+        "evidence": "SettingsView 中 availableSubscriptionProviders 过滤掉 .jev，SubscriptionPresentationPolicy.isProviderTemporarilyDisabled 过滤掉 jev；PanelViewModelHarness 新增 4 项断言全绿通过；BruceOnboardingCoreHarness 168 项全绿（Jev 底层代码 100% 保留）",
+        "result": true
+      },
+      {
+        "item": "本地全量自动化验证",
+        "true_if": "zsh scripts/verify-local.sh 退出码 0",
+        "false_if": "编译报错或 Harness 失败",
+        "evidence": "zsh scripts/verify-local.sh 运行退出码 0，Rust fmt/clippy/test 及全部 14 项 Swift Harness 100% 全绿通过",
+        "result": true
+      }
+    ]
+  }
+}

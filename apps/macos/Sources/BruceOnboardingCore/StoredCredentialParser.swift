@@ -25,6 +25,13 @@ public enum StoredCredentialParser {
         switch provider {
         case .kimi, .deepseek, .stepfun:
             return trimmed.isEmpty ? nil : .apiKey(trimmed)
+        case .jev:
+            if let dict = jsonObject(from: trimmed),
+               let key = (dict["apiKey"] as? String) ?? (dict["api_key"] as? String) {
+                let trimmedKey = key.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmedKey.isEmpty ? nil : .apiKey(trimmedKey)
+            }
+            return trimmed.isEmpty ? nil : .apiKey(trimmed)
         case .volcengine:
             guard let dict = jsonObject(from: trimmed),
                   let ak = dict["accessKey"] as? String,

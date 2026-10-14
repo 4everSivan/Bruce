@@ -65,6 +65,12 @@ const CATALOG_SPECS: &[CatalogSpec] = &[
         display_prefix: "StepFun",
         app: "stepfun",
     },
+    CatalogSpec {
+        provider: "jev",
+        prefix: "jev_",
+        display_prefix: "Jev",
+        app: "jev",
+    },
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -84,7 +90,7 @@ pub struct AccountDescriptor {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CatalogInput {
     /// Keys use stable app/provider IDs: `opencode-go`, `kimi`, `deepseek`,
-    /// `zhipu`, `volcengine`, `claude`, `grok`, or `stepfun`.
+    /// `zhipu`, `volcengine`, `claude`, `grok`, `stepfun`, or `jev`.
     pub accounts: BTreeMap<String, Vec<AccountDescriptor>>,
     pub enabled_official: BTreeSet<String>,
 }
@@ -467,6 +473,7 @@ pub const STEPFUN_GLOBAL_STEP_PLAN_RATE_LIMIT_URL: &str =
     "https://platform.stepfun.ai/api/step.openapi.devcenter.Dashboard/QueryStepPlanRateLimit";
 pub const STEPFUN_GLOBAL_REFRESH_TOKEN_URL: &str =
     "https://platform.stepfun.ai/passport/proto.api.passport.v1.PassportService/RefreshToken";
+pub const JEV_MODELS_URL: &str = "https://api.typesafe.ai/v1/models";
 
 fn invalid_payload() -> ProviderError {
     ProviderError::new(
@@ -1191,6 +1198,25 @@ pub fn parse_volcengine_usage(payload: &Value) -> Result<Option<Value>, Provider
         .find_map(|key| object.get(*key).and_then(Value::as_str))
         .map(|value| Value::String(value.to_owned()));
     Ok(Some(service_result("windows", plan, windows)))
+}
+
+/// Parse the TypeSafe models response for Jev.
+/// Jev 为纯余额/按量计费决策模型，不生成伪造的速率限额进度条，也不在看板输出冗余模型与计费描述。
+pub fn parse_jev_models(payload: &Value) -> Result<Option<Value>, ProviderError> {
+    let object = payload.as_object().ok_or_else(invalid_payload)?;
+    let _models = object
+        .get("models")
+        .and_then(Value::as_array)
+        .ok_or_else(invalid_payload)?;
+
+    let windows: Vec<Value> = Vec::new();
+
+    Ok(Some(json!({
+        "kind": "balance",
+        "plan": "System One",
+        "windows": windows,
+        "extra": Value::Null,
+    })))
 }
 
 const CLAUDE_TIERS: &[(&str, &str, Option<u64>)] = &[
@@ -2556,6 +2582,65 @@ impl QuotaProvider for StepFunProvider {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct JevProvider;
+
+impl QuotaProvider for JevProvider {
+    fn app(&self) -> &str {
+        "jev"
+    }
+
+    fn query(
+        &self,
+        request: &ProviderRequest,
+        http: &dyn HttpClient,
+        cancellation: &CancellationToken,
+    ) -> Result<Option<Value>, ProviderError> {
+        let Some(raw_key) = optional_credential_string(request, &["api_key", "apiKey", "token"])?
+        else {
+            return Ok(None);
+        };
+        let api_key = raw_key.trim().trim_matches('"').trim();
+        let api_key = api_key.strip_prefix("Bearer ").unwrap_or(api_key).trim();
+        if api_key.is_empty() {
+            return Ok(None);
+        }
+        let base_url = request
+            .credential
+            .as_ref()
+            .and_then(|cred| credential_string(cred, &["base_url", "baseUrl"]))
+            .unwrap_or(JEV_MODELS_URL);
+        let url = if base_url == JEV_MODELS_URL || base_url.ends_with("/v1/models") {
+            base_url.to_owned()
+        } else {
+            format!("{}/v1/models", base_url.trim_end_matches('/'))
+        };
+        let payload = send_json(
+            request,
+            http,
+            cancellation,
+            "GET",
+            url,
+            provider_headers(&[
+                ("Authorization", format!("Bearer {api_key}")),
+                ("Accept", "application/json".to_owned()),
+            ]),
+            None,
+            Some("Jev 凭证被拒绝, 请检查 API key"),
+        )?;
+        let mut result = parse_jev_models(&payload)?;
+        if let Some(res) = result.as_mut().and_then(Value::as_object_mut) {
+            if let Some(cred) = request.credential.as_ref() {
+                if let Some(balance) = cred.get("balance").and_then(Value::as_f64) {
+                    res.insert("balance".to_owned(), json!(balance));
+                    res.insert("currency".to_owned(), json!("USD"));
+                }
+            }
+        }
+        Ok(result)
+    }
+}
+
 /// Return the read-only quota adapter for a stable provider app ID.
 pub fn provider_for_app(app: &str) -> Option<Box<dyn QuotaProvider>> {
     match app {
@@ -2568,6 +2653,7 @@ pub fn provider_for_app(app: &str) -> Option<Box<dyn QuotaProvider>> {
         "grok" => Some(Box::new(GrokProvider)),
         "codex" => Some(Box::new(CodexProvider)),
         "stepfun" => Some(Box::new(StepFunProvider)),
+        "jev" => Some(Box::new(JevProvider)),
         _ => None,
     }
 }
@@ -2577,14 +2663,14 @@ mod tests {
     use super::{
         bounded_http_body, codex_service_id, extract_stepfun_app_id, extract_stepfun_device_id,
         is_stepfun_global, is_stepfun_token_expired, parse_claude_usage, parse_codex_usage,
-        parse_deepseek_balance, parse_grok_usage, parse_kimi_usage, parse_opencode_go_body,
-        parse_stepfun_usage, parse_volcengine_usage, parse_zhipu_usage, resolve_service_catalog,
-        service_template, AccountDescriptor, CancellationToken, CatalogInput, CodexProvider,
-        DeepSeekProvider, HttpClient, HttpRequest, HttpResponse, KimiProvider, OpenCodeGoProvider,
-        ProviderError, ProviderRequest, QuotaProvider, StepFunProvider, UreqHttpClient,
-        VolcEngineProvider, ZhipuProvider, STEPFUN_GLOBAL_REFRESH_TOKEN_URL,
-        STEPFUN_GLOBAL_STEP_PLAN_RATE_LIMIT_URL, STEPFUN_REFRESH_TOKEN_URL,
-        STEPFUN_STEP_PLAN_RATE_LIMIT_URL,
+        parse_deepseek_balance, parse_grok_usage, parse_jev_models, parse_kimi_usage,
+        parse_opencode_go_body, parse_stepfun_usage, parse_volcengine_usage, parse_zhipu_usage,
+        resolve_service_catalog, service_template, AccountDescriptor, CancellationToken,
+        CatalogInput, CodexProvider, DeepSeekProvider, HttpClient, HttpRequest, HttpResponse,
+        JevProvider, KimiProvider, OpenCodeGoProvider, ProviderError, ProviderRequest,
+        QuotaProvider, StepFunProvider, UreqHttpClient, VolcEngineProvider, ZhipuProvider,
+        JEV_MODELS_URL, STEPFUN_GLOBAL_REFRESH_TOKEN_URL, STEPFUN_GLOBAL_STEP_PLAN_RATE_LIMIT_URL,
+        STEPFUN_REFRESH_TOKEN_URL, STEPFUN_STEP_PLAN_RATE_LIMIT_URL,
     };
     use collector_runtime::RuntimeLimits;
     use serde_json::{json, Value};
@@ -3498,5 +3584,109 @@ mod tests {
         let request = &http.requests()[0];
         assert!(request.headers.contains_key("Authorization"));
         assert!(!request.headers["Authorization"].contains("fixture-sk"));
+    }
+
+    #[test]
+    fn jev_parser_handles_valid_models_response() {
+        let payload = json!({
+            "models": [
+                {
+                    "name": "jev-latest",
+                    "description": "The most recent stable release.",
+                    "release_date": "2025-01-01"
+                },
+                {
+                    "name": "jev-preview",
+                    "description": "The most recent preview release.",
+                    "release_date": "2025-01-01"
+                }
+            ]
+        });
+        let result = parse_jev_models(&payload).unwrap().unwrap();
+        assert_eq!(result["kind"], "balance");
+        assert_eq!(result["plan"], "System One");
+        assert!(result["extra"].is_null());
+        assert_eq!(result["windows"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn jev_parser_handles_empty_models_response() {
+        let payload = json!({ "models": [] });
+        let result = parse_jev_models(&payload).unwrap().unwrap();
+        assert_eq!(result["kind"], "balance");
+        assert!(result["extra"].is_null());
+        assert_eq!(result["windows"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn jev_parser_rejects_invalid_payload() {
+        let payload = json!({ "error": "not models" });
+        assert!(parse_jev_models(&payload).is_err());
+    }
+
+    #[test]
+    fn jev_provider_query_success_and_auth_failure() {
+        let secret = "sk-typesafe-test-key";
+        let http = FixtureHttp::new(vec![response(
+            r#"{"models":[{"name":"jev-latest","description":"test","release_date":"2025-01-01"}]}"#,
+        )]);
+        let result = JevProvider
+            .query(
+                &provider_request("jev", json!({"api_key": secret})),
+                &http,
+                &CancellationToken::new(),
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(result["plan"], "System One");
+        let request = &http.requests()[0];
+        assert_eq!(request.method, "GET");
+        assert_eq!(request.url, JEV_MODELS_URL);
+        assert_eq!(request.headers["Authorization"], format!("Bearer {secret}"));
+
+        // 401 鉴权拒绝
+        let bad_http = FixtureHttp::new(vec![Ok(HttpResponse {
+            status: 401,
+            body: Vec::new(),
+        })]);
+        let err = JevProvider
+            .query(
+                &provider_request("jev", json!({"api_key": secret})),
+                &bad_http,
+                &CancellationToken::new(),
+            )
+            .unwrap_err();
+        assert_eq!(err.diagnostic.code, "PROVIDER_AUTH_REJECTED");
+        assert!(!err.diagnostic.message.contains(secret));
+
+        // 429 限流
+        let rate_limited_http = FixtureHttp::new(vec![Ok(HttpResponse {
+            status: 429,
+            body: Vec::new(),
+        })]);
+        let err = JevProvider
+            .query(
+                &provider_request("jev", json!({"api_key": secret})),
+                &rate_limited_http,
+                &CancellationToken::new(),
+            )
+            .unwrap_err();
+        assert_eq!(err.diagnostic.code, "PROVIDER_RATE_LIMIT");
+
+        // 余额注入测试
+        let balance_http = FixtureHttp::new(vec![response(
+            r#"{"models":[{"name":"jev-latest","description":"test","release_date":"2025-01-01"}]}"#,
+        )]);
+        let result = JevProvider
+            .query(
+                &provider_request("jev", json!({"api_key": secret, "balance": 18.5})),
+                &balance_http,
+                &CancellationToken::new(),
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(result["kind"], "balance");
+        assert_eq!(result["balance"], 18.5);
+        assert_eq!(result["currency"], "USD");
     }
 }

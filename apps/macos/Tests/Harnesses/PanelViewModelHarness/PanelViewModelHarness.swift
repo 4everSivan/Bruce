@@ -1617,6 +1617,38 @@ struct PanelViewModelHarness {
             let got = SubscriptionPresentationPolicy.codexGroupStatus(from: statuses)
             try expect(got == expected, "groupStatus(\(statuses)) => \(got)")
         }
+
+        // Jev 暂时屏蔽规则 (C018)
+        try expect(
+            SubscriptionPresentationPolicy.isProviderTemporarilyDisabled("jev"),
+            "jev 应被暂时屏蔽"
+        )
+        try expect(
+            !SubscriptionPresentationPolicy.isProviderTemporarilyDisabled("deepseek"),
+            "deepseek 不应被屏蔽"
+        )
+        try expect(
+            !SubscriptionPresentationPolicy.isProviderTemporarilyDisabled("kimi"),
+            "kimi 不应被屏蔽"
+        )
+
+        let jevService = makeService(
+            id: "jev",
+            name: "Jev",
+            status: "ok",
+            kind: "balance",
+            windows: [],
+            balance: 10.0,
+            currency: "USD"
+        )
+        let jevVM = makeMapper().make(
+            agentUsage: makeAgentUsageArtifact(agents: [], services: [jevService]),
+            moduleStatuses: readyStatuses
+        )
+        try expect(
+            jevVM.subscription?.sections.isEmpty ?? true,
+            "屏蔽状态下的 jev service 不应生成 subscription section"
+        )
     }
 
     // 单账号 section 名称只显示 provider 名, 不带账号后缀 (无需区分).

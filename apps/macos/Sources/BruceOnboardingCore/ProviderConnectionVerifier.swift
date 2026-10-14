@@ -212,6 +212,19 @@ public struct ProviderConnectionVerifier: Sendable {
         extractStepFunAppID(from: token) == 20700
     }
 
+    /// TypeSafe Jev API key 结构校验: 非空且不含空白.
+    /// 真实额度查询与模型列表由 collector 完成, 此处不发网络请求.
+    public static func verifyJevAPIKey(_ apiKey: String) -> SubscriptionVerificationStatus {
+        let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else {
+            return .failed(reason: "API key 为空")
+        }
+        guard !key.contains(where: { $0.isWhitespace }) else {
+            return .failed(reason: "API key 格式不合理")
+        }
+        return .ok
+    }
+
     /// 解析凭证 JSON 字符串为对象; 非对象或解析失败返回 nil.
     private static func jsonObject(from json: String) -> [String: Any]? {
         guard let data = json.data(using: .utf8),
