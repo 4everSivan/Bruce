@@ -1,0 +1,85 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C020",
+  "title": "订阅用量仪表盘批量调整：Cline 去「已取消」注记、移除 DeepSeek 月度统计、新增订阅即时生效并仅展示验证通过项",
+  "type": "Enhancement",
+  "status": "closed",
+  "branch": "fix/C020-subscription-dashboard-batch",
+  "is_hotfix": false,
+  "branch_note": "四项同源需求 (用户一条指令) 合为一张批量卡; T06/C019 工作树尚未提交, 三分支工作树叠放, 提交时按 change 条目拆分原子提交",
+  "target": {
+    "module": "core/collector (collector-provider) + apps/macos (BruceOnboardingCore / BruceAppCore / BruceApp)",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+  "why": "用户对订阅用量区域提出四项调整: (1) Cline 卡片不应显示「已取消，服务至 …」字样——订阅生命周期注记属噪音; (2) DeepSeek 月度统计 (预估消费/覆盖区间/趋势/入账注记) 整体移除, 含其账本与保存事务, 卡片回归纯余额展示; (3) 设置中心添加/保存订阅后必须等待下一次定时刷新才会在仪表盘出现, 交互滞后; (4) 新增订阅若未通过验证则不得在仪表盘展示 (含已添加未配置的半添加态)。前三项为展示与交互口径调整, 第四项为展示门禁 (与 C019 的『半添加态』同源治理)。",
+  "changes": [
+    {
+      "scope": "core/collector/crates/collector-provider (ClineProvider) + design/02 规则 5",
+      "before": "Cline plan.canceledAt 非空时经 extra 注入「已取消，服务至 YYYY-MM-DD」并展示在订阅卡",
+      "after": "移除该生命周期注记: Rust 不再产出 extra 字段与 cline_lifecycle_note; 三窗口 (5h/7d/30d) 数据与 plan 名保持不变; 测试断言与设计规则同步删除该条",
+      "impact": "Cline 卡片只保留计划名与三窗口进度, 不暴露取消状态"
+    },
+    {
+      "scope": "apps/macos: BruceAppCore (DeepSeekUsageLedger/AppModel/PanelModels/PanelViewModel/SubscriptionMapping/SubscriptionPresentationPolicy) + BruceApp (SubscriptionCard/SubscriptionService/BruceApp) + BruceOnboardingCore (DeepSeekSaveTransaction/OnboardingConfiguration/AtomicJSONStore) + Tests + apps/win (viewmodel/src/subscription.rs + src-tauri ledger/装饰器 + src/app.js + 前端测试) + golden 快照",
+      "before": "DeepSeek 卡带月度统计区块 (预估消费/当前余额/覆盖说明/趋势点/入账注记) 与 baseline/unavailable 三态; 后端有 DeepSeekUsageLedger 账本、DeepSeekSaveTransaction 保存事务、配置项 usageTrackingID; 独立 DeepSeekUsageLedgerHarness (17 项); Windows 侧另有独立实现 (viewmodel deepSeekMonthlyUsage 字段 + src-tauri ledger.rs 装饰器 + 前端 monthly-ledger 区块与用例)",
+      "after": "双端整体移除月度统计能力与展示: 删除账本与保存事务 (DeepSeek 保存回归普通 API Key 写入路径), 移除月度 VM/映射/策略/卡片区块 (右槽按规则 4 收敛为状态槽), 账本 Harness 目标删除并从 verify-local.sh 摘除; Windows 侧删除 ledger.rs 与 scheduler 装饰调用、viewmodel 字段、前端 monthlyBlock 与用例, golden 快照以 --update 重生成后双端对拍一致",
+      "impact": "DeepSeek 卡片信息面收敛且双端口径统一; 保存路径简化; Harness 计数 OnboardingCore 171→165 / 集成 3→2 / 前端 15→14; 旧配置遗留 usageTrackingID 由 JSONDecoder 忽略, 无需迁移",
+      "evidence": "viewmodel fixture_parity 的 mac_parity_golden_matches 曾红 (rust 输出仍带 deepSeekMonthlyUsage), Windows 对齐后复绿"
+    },
+    {
+      "scope": "apps/macos: BruceApp (SubscriptionService) + OnboardingCoordinator",
+      "before": "添加订阅或保存凭证并验证通过后, 仪表盘要等下一次定时刷新 (或手动刷新) 才出现该 Provider",
+      "after": "验证通过 (status ok) 后立即触发该 Provider 的定向刷新 (scheduler.refreshSubscription), 添加/配置完成即在仪表盘近实时出现; 验证失败不触发",
+      "impact": "配置到展示的链路即时化, 消除手动刷新依赖"
+    },
+    {
+      "scope": "apps/macos: BruceAppCore (SubscriptionMapping/SubscriptionPresentationPolicy) + BruceApp (AppModel 面板 VM 组装)",
+      "before": "仪表盘按 artifact services 渲染订阅段, 未通过验证的 Provider (含已添加未配置的半添加态) 存在被渲染的可能",
+      "after": "展示门禁绑定设置页验证状态: 仅渲染验证状态为 ok 的 Provider; 未验证 (none/failed/needsRelogin) 或已添加未配置一律不展示; 门禁以纯函数 (策略层) 收纳并补 Harness 断言",
+      "impact": "仪表盘只呈现可信订阅, 与 C019 半添加态治理衔接"
+    }
+  ],
+  "design": {
+    "before_behavior": "Cline 卡展示取消注记; DeepSeek 卡含月度统计区块与双槽「本月消费」右槽; 订阅变更需等定时刷新; 未验证 Provider 可能出现在仪表盘",
+    "after_behavior": "Cline 卡无生命周期注记; DeepSeek 卡纯余额双槽 (右槽状态); 验证通过后即时刷新并展示; 未验证/未配置一律不展示",
+    "true_if": "Cline 卡不再出现「已取消」字样且三窗口正常; DeepSeek 月度统计在源码与 UI 中完全消失且卡片余额正常; 添加并验证通过的订阅在仪表盘即时出现 (无需手动刷新); 未验证/未配置的订阅在仪表盘不出现; verify-local.sh 退出码 0 且账本 Harness 已从脚本与 Package 摘除",
+    "false_if": "残留任一旧字样或旧区块; 即时刷新未生效或误触发; 未验证订阅仍显示; 验证脚本红或存在悬空引用"
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "verify-local-20261014-c020",
+    "user_quote": "确认，然后提交",
+    "signoff": "2026-10-14 用户会话内确认四项调整落地, AI 代为签署收口并闭环归档",
+    "checks": [
+      {
+        "item": "Cline 注记移除与 DeepSeek 月度统计移除",
+        "true_if": "源码内 cline_lifecycle_note 与 DeepSeekUsageLedger/月度映射/卡片区块全部移除且无悬空引用; 相关 Harness 同步删除/调整后全绿",
+        "false_if": "存在残留符号、悬空引用或 Harness 未同步",
+        "evidence": "Cline: collector-provider 35 项全绿, cline_lifecycle_note/cline_date_text/extra 注入已删, 两个 Cline 测试改断 extra 键不出现; DeepSeek 月度: macOS 删除 DeepSeekUsageLedger.swift(396行)/DeepSeekSaveTransaction.swift(67行)/DeepSeekUsageLedgerHarness 目标(579行 17项, 已从 Package.swift 与 verify-local.sh 摘除), 移除 AppModel 账本接线与 deepSeekMonthlyUsage、PanelModels 月度 VM、SubscriptionMapping 月度映射、shouldAttachDeepSeekMonthly、卡片月度区块与双槽「本月消费」分支、usageTrackingID 字段(旧配置多余键由 JSONDecoder 忽略); Windows 侧删除 src-tauri/src/ledger.rs(413行)+scheduler 两处装饰调用+credentials 死代码+viewmodel deep_seek_monthly_usage 字段+前端 monthlyBlock 与用例; 全仓残留检索 0 命中; Harness 计数 OnboardingCore 171→165 / LocalIntegration 3→2 / Windows 前端 15→14; golden 快照经 PanelParityHarness --update 重生成 (3 个 fixture) 后 mac/win 双端逐字段对拍一致",
+        "result": true
+      },
+      {
+        "item": "订阅变更即时生效",
+        "true_if": "保存并验证通过后立即发起该 Provider 定向刷新 (源码级可核验)；验证失败路径不触发",
+        "false_if": "仍依赖定时刷新或验证失败也触发刷新",
+        "evidence": "SubscriptionService 新增 onProviderVerified 回调并在 finishVerification(.ok) 分支触发 (failed/needsRelogin/none 不触发, 源码级核验); OnboardingCoordinator init 末段绑定 { refreshSubscription(id) } → RefreshScheduler 定向刷新; 该链路经 verify-local 全量 + RefreshScheduler 82 项 Harness 覆盖",
+        "result": true
+      },
+      {
+        "item": "未验证订阅不展示",
+        "true_if": "仪表盘映射层按验证状态门禁 (纯函数断言覆盖 none/failed/needsRelogin/ok 四态), 未验证与未配置订阅不进入订阅段",
+        "false_if": "未验证订阅仍渲染或门禁缺少断言",
+        "evidence": "纯函数 SubscriptionPresentationPolicy.isVerifiedForDashboard (仅 ok 为真) 由 PanelViewModelHarness 新增四态断言覆盖 (ok→展示 / none→不展示 / failed→不展示 / needsRelogin→不展示) 全绿; AppModel.gatedAgentUsageArtifact 在面板 VM 组装前按验证集合过滤 services (providerID(forServiceID:) 归一, 与映射分组口径一致), agents 用量卡不受影响; setSubscriptionProviders 补 invalidatePanelCache 使验证状态变化即时反映到下一次渲染",
+        "result": true
+      },
+      {
+        "item": "全量自动化验证",
+        "true_if": "zsh scripts/verify-local.sh 退出码 0 (Rust + Swift + 全部 Harness, 含面板对拍)",
+        "false_if": "存在失败、警告或脚本悬空失败",
+        "evidence": "zsh scripts/verify-local.sh 退出码 0, 末行 'Bruce 本地验证全部通过'; 覆盖 Bruce Rust (fmt/clippy/test + fixture scan files=18 secretFindings=[]) + Windows viewmodel (fixture_parity 的 mac_parity_golden_matches 曾因 Windows 未同步而红, 对齐后复绿) + Windows 前端 14 项 + Swift 全量 Harness (OnboardingCore 165 / PanelViewModel 53 / LocalIntegration 2 / 面板三态对拍) ; 完整日志 local/c020-verify.log",
+        "result": true
+      }
+    ]
+  }
+}

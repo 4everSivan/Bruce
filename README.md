@@ -43,7 +43,7 @@ Bruce 把本机 AI Agent 的 token 用量、成本估算和订阅额度集中到
 | 类别 | 覆盖 |
 |---|---|
 | 本机会话扫描 | Kimi Work / Kimi Code、Claude Code、Codex、Grok、OpenCode、Orca、Pi、ZCode、CodeBuddy |
-| 订阅额度 | Kimi、DeepSeek、火山引擎、Codex OAuth、Claude、Grok、OpenCode Go、智谱 GLM、阶跃星辰（StepFun） |
+| 订阅额度 | Kimi、DeepSeek、火山引擎、Codex OAuth、Claude、Grok、OpenCode Go、智谱 GLM、阶跃星辰（StepFun）、Cline / ClinePass（5h / 7d / 30d 三窗口） |
 
 > 仓库根 `apps/widget/` 单文件 Widget 继续保留, 仅服务 Daimon / Kimi Work Blueprint 场景, 不属于 App 的组成部分。
 
@@ -142,7 +142,7 @@ Collector 保留独立 CLI 入口, 用于开发、测试和故障排查, 但不�
 ## 安全与隐私
 
 - 本地优先, 无项目自有服务端, 不默认同步活动数据。
-- 订阅额度凭证 (Kimi、DeepSeek、火山引擎、Codex、Claude、Grok、OpenCode Go、智谱 GLM) 保存在 macOS Keychain。
+- 订阅额度凭证 (Kimi、DeepSeek、火山引擎、Codex、Claude、Grok、OpenCode Go、智谱 GLM、StepFun、Cline / ClinePass) 保存在 macOS Keychain。
 - 凭证通过 Bridge stdin 的单次请求传递, 不进入命令行参数、Artifact 或日志。
 - Rust Collector 不直接写 Keychain, 也不写回第三方认证文件; 订阅令牌轮换经 `credentialUpdates` 只写回 Keychain, 不回写 CC Switch 或 CLI 认证文件。
 - 菜单栏面板为纯 SwiftUI 渲染, 不接触凭证。仓库根 `*/widget/` 单文件 Widget 仅由 Daimon host 以受 CSP 限制的 WebView 加载, 其 JSON fixture 和 JavaScript 语法可独立验证。

@@ -17,7 +17,7 @@
 |---|---|
 | UI 技术路线 | **Tauri 2**（Rust 后端 + WebView2 前端），collector 以 Rust lib 进程内嵌入，不经 stdio Bridge |
 | 首版功能范围 | **首版全量**：本地会话扫描 + 订阅额度出站查询 + 配额通知 + 全局热键 + 设置中心 + Onboarding 凭证引导一次对齐 |
-| Core 逻辑归属 | **Windows 侧 Rust 实现 + 双端 fixture 对拍**：`BruceAppCore` 的视图模型/调度/账本逻辑在 Windows 侧以 Rust 重实现，与 mac Swift 端用同一组 artifact fixture 逐字段对拍 |
+| Core 逻辑归属 | **Windows 侧 Rust 实现 + 双端 fixture 对拍**：`BruceAppCore` 的视图模型/调度逻辑在 Windows 侧以 Rust 重实现，与 mac Swift 端用同一组 artifact fixture 逐字段对拍 |
 
 关键背景（2026-10-06 实测，基线 v0.9.0 / `0a7f2e2`）：当前代码库已完成大量跨平台铺垫，Rust 采集端的 Windows 化剩余改动**已收敛至 1 处硬编码路径**；主要工作量在 Windows UI 壳与视图模型层的全新实现（对齐 mac 侧约 31k 行 Swift 的能力矩阵）。
 
@@ -61,7 +61,7 @@
 | 模块 | 规模（2026-10-06 实测） | Windows 处置 |
 |---|---|---|
 | `BruceApp`（UI + 系统集成） | 30 文件 / 13,175 行；AppKit/Carbon/UserNotifications 集成面 13 文件（托盘 `MenuBarStatusItemController`、玻璃面板 `DashboardGlassPanelController`、热键 `GlobalHotkeyMonitor`/`Recorder`、通知 `QuotaAlertNotifier` 等） | 整体重写为 Tauri 前端 + Rust 系统集成 |
-| `BruceAppCore`（视图模型/调度/账本） | 34 文件 / 9,493 行；仅 `RefreshScheduler.swift:1` 一处 AppKit 导入（NSWorkspace 唤醒监听），其余纯 Foundation | **Rust 重实现 + fixture 对拍**（本设计 §6.2） |
+| `BruceAppCore`（视图模型/调度） | 34 文件 / 9,493 行；仅 `RefreshScheduler.swift:1` 一处 AppKit 导入（NSWorkspace 唤醒监听），其余纯 Foundation | **Rust 重实现 + fixture 对拍**（本设计 §6.2） |
 | `BruceOnboardingCore`（凭证引导/门控） | 30 文件 / 8,248 行（含 Keychain 写入 `OnboardingConfiguration`） | Rust/前端重实现，凭证落盘改 Windows 等价方案（§4.3） |
 | `BruceGlassSurfaceCore` | 1 文件 / 396 行 | 不移植（液态玻璃非目标） |
 
@@ -203,7 +203,7 @@ Windows Tauri 后端 (Rust)
 | `viewmodel/src/subscription.rs` | `SubscriptionMapping.swift` / `SubscriptionPresentationPolicy` | Provider 额度快照 → 订阅卡展示模型（窗口语义、进度、告警态） |
 | `src-tauri/src/alerts.rs` | `QuotaAlertEvaluator.swift` / `SystemNotificationDeliveryPolicy` | 配额告警判定与通知去重 |
 | `src-tauri/src/scheduler.rs`、`runtime_core.rs` | `RefreshScheduler.swift` / `RefreshBackoffPolicy` / `RefreshExecutionPipeline` | 刷新调度、指数退避与可独立测试的策略 |
-| `src-tauri/src/ledger.rs`、`runtime_core.rs` | `DeepSeekUsageLedger.swift` / `CodexQuotaSnapshotMerger` 等 | 十进制账本、快照持久化与 stale 合并 |
+| `src-tauri/src/runtime_core.rs` | `CodexQuotaSnapshotMerger` 等 | 快照持久化与 stale 合并（DeepSeek 月度账本已于 C020 双端移除） |
 | `src-tauri/src/settings.rs`、`src/settings.js` | 设置中心相关 | 价格校准、卡片排序、主题偏好的加载与持久化 |
 
 对拍测试位于 `apps/win/viewmodel/tests/`（`cargo test`，无需 Tauri/WebView 依赖，双平台 CI 均可执行），fixture 直接引用 `tests/fixtures/` 共享资产；mac 侧在 `verify-local.sh` 中增加对拍 invocation（Swift Harness 输出与 Rust 输出比对）。
@@ -259,6 +259,6 @@ Windows Tauri 后端 (Rust)
 - `core/collector/crates/collector-application/src/paths.rs`：跨平台路径解析（Windows 候选分支实测锚点）
 - `core/collector/crates/collector-local/src/lib.rs:157`：`default_cache_root`（唯一待平台化硬编码）
 - `core/collector/crates/collector-credential/src/lib.rs:74`：`read_keychain` 平台无关契约
-- `apps/macos/Sources/BruceAppCore/`：视图模型/调度/账本的 mac 事实源（Rust 对齐基准）
+- `apps/macos/Sources/BruceAppCore/`：视图模型/调度的 mac 事实源（Rust 对齐基准）
 - `docs/devel/design/00-系统总体设计.md`：Monorepo 分层与 `apps/` + `core/` 拓扑依据
 - [变更总账 (WindowsCompat)](../change/index.json#WindowsCompat)

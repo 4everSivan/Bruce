@@ -1,0 +1,102 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T06",
+  "title": "Cline / ClinePass 订阅额度监控全链路适配（三窗口台账 + 账户计划 API + 参考计价）",
+  "milestone": "M3-ClinePass适配",
+  "status": "completed",
+  "branch": "feat/T06-clinepass",
+  "depends_on": [],
+  "target": {
+    "module": "core/collector + apps/macos",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+  "goal": "打通 Cline / ClinePass 订阅额度监控与参考计价: 在 core/collector 实现 ClineProvider 出站探测 (GET /users/me、/users/me/plan、/users/{id}/usages 游标分页、/users/{id}/balance), 从 plan.entitlements.cline_pass.inferenceCapThreshold 动态读取 5h/7d/30d 限额分母, 以逐单台账 costUsd (1e-8 USD) 本地滚动聚合三窗口分子并可推算滑出倒计时; 在 collector-domain 增补 9 档 cline-pass 官方参考定价; 在 apps/macos 实现 cline:api-key 凭据安全存储 (POSIX 0600)、桥接组装 (clineQuotaAccounts)、设置中心配置弹窗与三窗口订阅卡渲染; 补全单元测试与 Harness, 全绿通过。设计规则见 design/02 第 6.1 节规则 5 (三窗口订阅计量与展示规范) 与 design/01 定价表 Cline Pass 区块。",
+  "tasks": [
+    {
+      "id": "T06-1",
+      "title": "Core Collector 定价表 ClinePass 参考价增补 (collector-domain)",
+      "capability": "PricingTable 内置 kimi-k3/deepseek-v4.1-flash/mimo-v2.5/mimo-v2.5-pro/minimax-m3/muse-spark-1.3-contributor/qwen3.8-max/qwen3.7-max/qwen3.7-plus 共 9 档官方参考价; glm-5.3 与 glm-5.3-flash 复用既有建卡不覆盖; 补防劫持回归测试 (deepseek-v4-flash 与 glm-5.3-flash 解析不变)",
+      "done": true
+    },
+    {
+      "id": "T06-2",
+      "title": "Core Collector ClineProvider 出站探测与三窗口聚合 (collector-provider)",
+      "capability": "实现 ClineProvider 遵循 QuotaProvider trait: GET api.cline.bot/api/v1/users/me、/users/me/plan、/users/{id}/usages(nextToken 分页)、/users/{id}/balance; 解析 entitlements.cline_pass.inferenceCapThreshold 三窗口分母 (1e-8 USD, 严禁硬编码) 与逐单台账分子; 产出 5h/7d/30d 窗口百分比与滑出倒计时; 401/403→needsReauthorization, 429→rateLimited",
+      "done": true
+    },
+    {
+      "id": "T06-3",
+      "title": "Core Collector Bridge 白名单与账户派发 (collector-application & bridge)",
+      "capability": "ALLOWED_CREDENTIAL_FIELDS 与 request-v1.schema.json 增补 clineQuotaAccounts; account.rs 派发 Cline 账号映射; 凭据仅经 stdin 传输",
+      "done": true
+    },
+    {
+      "id": "T06-4",
+      "title": "macOS BruceOnboardingCore 凭据、注册表与导入规则",
+      "capability": "SubscriptionProviderID 增加 cline; ProviderRegistry 注册 ClineDescriptor (cline:api-key); StoredCredentialParser/ProviderAccountStore/SubscriptionCredentialImport/ProviderConnectionVerifier/CredentialRotationMerge 对齐; API Key 格式防御",
+      "done": true
+    },
+    {
+      "id": "T06-5",
+      "title": "macOS BruceAppCore 调度注入与 Presentation Policy (三窗口)",
+      "capability": "CollectorRunInput 组装 clineQuotaAccounts 注入 Bridge stdin; SubscriptionPresentationPolicy 定义 Cline 三窗口卡渲染策略 (5h/7d/30d 三层 + plan 状态徽标 + canceledAt 到期态); SubscriptionMapping/ScopedQuotaSnapshotMerger 对齐",
+      "done": true
+    },
+    {
+      "id": "T06-6",
+      "title": "macOS BruceApp 设置弹窗、重测与卡片渲染",
+      "capability": "SettingsView 增加 Cline 服务配置与 API Key 输入 (app.cline.bot 引导); SubscriptionService 实现 reverify(.cline); SubscriptionCard/仪表盘渲染三窗口流",
+      "done": true
+    },
+    {
+      "id": "T06-7",
+      "title": "单元测试与全量 Harness 验证",
+      "capability": "Rust 单元测试 (provider 解析/三窗口聚合/定价) + BruceOnboardingCoreHarness 补测 + zsh scripts/verify-local.sh 全量通过",
+      "done": false
+    }
+  ],
+  "acceptance": {
+    "result": true,
+    "run_id": "verify-local-20261014-t06",
+    "user_quote": "确认通过，然后我发现了一个订阅用量配置的问题…",
+    "signoff": "2026-10-14 用户会话内确认\"确认通过\", AI 代为签署收口",
+    "checks": [
+      {
+        "item": "Cline Provider 状态探测与限额解析",
+        "true_if": "plan 响应正确解析出 entitlements.cline_pass.inferenceCapThreshold 三窗口分母 (1e-8 USD 换算) 且代码内无硬编码阈值; usages 按 nextToken 分页拉取; 401/403 与 429 准确映射为 needsReauthorization 与 rateLimited",
+        "false_if": "任一窗口分母缺失/写死常量, 分页遗漏或错误码映射异常",
+        "evidence": "collector-provider 35 项单测全绿: cline_live_plan_payload_shape_is_supported (锁定 2026-10-14 实测 /users/me/plan 报文原样形态), cline_provider_returns_empty_without_pass_entitlements (enabled=false 时不拉台账, 请求数=2), cline_provider_maps_auth_and_rate_limit_without_leaking_key (401→PROVIDER_AUTH_REJECTED / 429→PROVIDER_RATE_LIMIT, 诊断不含明文 key), 阈值换 5e8 后百分比随之变化 (无硬编码); usages 分页游标 percent_encode ('+'/'=' → %2B/%3D) 已断言",
+        "result": true
+      },
+      {
+        "item": "三窗口滚动聚合正确性",
+        "true_if": "5h/7d/30d 窗口按 createdAt 滚动区间对 costUsd 求和并正确换算美元; 滑出倒计时取窗口内最早一单 + 窗口长度; 空台账不展示倒计时",
+        "false_if": "窗口边界/换算错误或倒计时计算失真",
+        "evidence": "cline_provider_aggregates_three_rolling_windows: 合成台账 5h=$3.50/10=35%, 7d=$6.00/25=24%, 30d=$16.00/50=32%, windowMinutes=300/10080/43200, resetsAt=最早一单(10:30)+5h; cline_window_boundaries_and_lifecycle_note: 恰在窗口起点计入、起点前 1 秒剔除, canceledAt 非空时 extra='已取消，服务至 2026-11-14'",
+        "result": true
+      },
+      {
+        "item": "凭据安全注入与白名单",
+        "true_if": "clineQuotaAccounts 仅通过 Bridge stdin 传输, 符合 POSIX 0600 存储与 ALLOWED_CREDENTIAL_FIELDS 白名单控制, 响应与日志无明文密钥",
+        "false_if": "凭据泄露至日志/工件或被白名单误拦截",
+        "evidence": "collector-bridge 新增 cline_quota_accounts_pass_credential_scope_validation 通过 (无 BRIDGE_CREDENTIAL_SCOPE); ALLOWED_CREDENTIAL_FIELDS 与 request-v1.schema.json 双端登记; SubscriptionCredentialsHarness 33 项全绿含 clineInjectedWhenCredentialPresent / clineNotInjectedWithoutCredential (display_name/api_key 透传, 无凭证不注入); BruceOnboardingCoreHarness 171 项含 clineCredentialAccountsAndRegistry (cline:api-key 键、注入形状、展示名、accountID 稳定性、legacyKeys)",
+        "result": true
+      },
+      {
+        "item": "定价表增补与防劫持",
+        "true_if": "9 档 cline-pass 模型经 normalize 后精确命中新增条目; deepseek-v4-flash 与 glm-5.3-flash 等既有条目解析结果保持不变",
+        "false_if": "新条目劫持既有模型或 cline-pass/* 采集串无法解析",
+        "evidence": "collector-domain 12 项全绿: cline_pass_pricing_resolves_and_calculates_cost (cline-pass/deepseek-v4.1-flash 解析 $0.30/$1.20/$0.006, 1M in + 0.1M out + 0.5M cache = $0.423; 其余 8 档逐一断言), cline_pass_entries_do_not_shadow_existing_models (deepseek-v4-flash 仍 0.15/0.003, glm-5.3-flash 缓存价仍 0.015)",
+        "result": true
+      },
+      {
+        "item": "本地全量自动化验证全绿",
+        "true_if": "verify-local.sh（Rust fmt/test/clippy + fixture 校验与敏感扫描 + Swift build + 全部 Harness）100% 通过",
+        "false_if": "存在任何警告或失败",
+        "evidence": "zsh scripts/verify-local.sh 退出码 0, 末行 'Bruce 本地验证全部通过'; Rust fmt 清理后 check 无差异, clippy 全绿 (曾拦截 bridge 测试 needless_borrow 并已修复), Collector fixture scan passed: files=18 secretFindings=[]; Swift 侧: OnboardingCore 171 / Subscription credentials 33 / PanelViewModel 53 / Refresh 82 / CollectorRunner 28 / DeepSeekUsageLedger 17 / 其余 Harness 全绿; 完整日志 local/t06-verify.log",
+        "result": true
+      }
+    ]
+  }
+}

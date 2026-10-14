@@ -38,7 +38,9 @@
         "C010",
         "C011",
         "C017",
-        "C018"
+        "C018",
+        "C019",
+        "C020"
       ]
     }
   },
@@ -204,6 +206,24 @@
       "topic": "SubscriptionQuota",
       "version": "0.11.5",
       "file": "docs/devel/change/C018.json"
+    },
+    "C019": {
+      "title": "修复添加未配置的订阅 Provider 无法移除的死锁态：移除入口门禁改按「已添加」语义",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "fix/C019-subscription-remove-unconfigured",
+      "topic": "SubscriptionQuota",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C019.json"
+    },
+    "C020": {
+      "title": "订阅用量仪表盘批量调整：Cline 去「已取消」注记、移除 DeepSeek 月度统计、新增订阅即时生效并仅展示验证通过项",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "fix/C020-subscription-dashboard-batch",
+      "topic": "SubscriptionQuota",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C020.json"
     }
   }
 }

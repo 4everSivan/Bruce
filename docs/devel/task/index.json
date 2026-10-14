@@ -19,6 +19,13 @@
       "tasks": [
         "T05"
       ]
+    },
+    "M3-ClinePass适配": {
+      "title": "Cline / ClinePass 订阅额度监控全链路适配（三窗口台账 + 账户计划 API + 参考计价）",
+      "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+      "tasks": [
+        "T06"
+      ]
     }
   },
   "topics": {
@@ -34,7 +41,8 @@
     "SubscriptionQuota": {
       "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
       "tasks": [
-        "T05"
+        "T05",
+        "T06"
       ]
     }
   },
@@ -102,6 +110,16 @@
       "depends_on": [],
       "file": "docs/devel/task/T05.json",
       "branch_note": "直接在 main 开发并保证全量 Harness 与测试绿灯"
+    },
+    "T06": {
+      "title": "Cline / ClinePass 订阅额度监控全链路适配（三窗口台账 + 账户计划 API + 参考计价）",
+      "status": "completed",
+      "branch": "feat/T06-clinepass",
+      "topic": "SubscriptionQuota",
+      "milestone": "M3-ClinePass适配",
+      "depends_on": [],
+      "file": "docs/devel/task/T06.json",
+      "branch_note": "2026-10-14 用户确认方案后按 AGENTS.md 第五节建专属特性分支"
     }
   }
 }

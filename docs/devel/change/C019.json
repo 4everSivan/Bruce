@@ -1,0 +1,71 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C019",
+  "title": "修复添加未配置的订阅 Provider 无法移除的死锁态：移除入口门禁改按「已添加」语义",
+  "type": "BugFix",
+  "status": "closed",
+  "branch": "fix/C019-subscription-remove-unconfigured",
+  "is_hotfix": false,
+  "branch_note": "T06 (feat/T06-clinepass) 尚未提交, 其工作树变更随本分支一同携带; 建议先提交 T06 再提交 C019 以保持原子性",
+  "target": {
+    "module": "apps/macos (SettingsView / APIKeyProviderConfigDialog / SubscriptionPresentationPolicy)",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+  "why": "现象: 在设置中心「添加服务」把 Provider 加入列表后, 若未保存凭证就关闭配置窗, 该行常驻列表却没有任何移除入口, 且启用开关因未配置被禁用 —— 既不能启用也不能移除, 形成死锁态, 只能手工改配置文件才能退出。根因: 「移除服务」按钮被 `if configured` 门禁包裹 (APIKeyProviderConfigDialog.swift:171), 而 configured 取的是 `model.subscriptionCredentialConfigured[id]` (凭证是否已保存), 不是「是否已添加进列表」(`model.subscriptionProviders[id] != nil`)。对照同产品 OAuth/section 路径 (OfficialLocalProviderSettingsSection.swift:65,92) 以「已添加」判定, 同场景可移除 —— 两条路径判定口径不一致, 属判定字段选错而非设计意图。影响 API-Key 弹窗路径全部 6 家 (kimi/deepseek/volcengine/zhipu/stepfun/cline)。属既有缺陷 (门禁引入于 b2b580e), T06 新增 Cline 后该路径更易被踩到。后端无需改动: removeSubscriptionProvider 先删凭证再清配置, Keychain 删除对不存在项返回 errSecItemNotFound 且被显式视为成功 (OnboardingConfiguration.swift:1118)。",
+  "changes": [
+    {
+      "scope": "apps/macos/Sources/BruceAppCore/SubscriptionPresentationPolicy.swift",
+      "before": "无统一的移除入口门禁规则, 各 UI 自行判断: API-Key 弹窗按「凭证已保存」判定, OAuth/section 路径按「已添加」判定, 口径不一致",
+      "after": "新增 showsProviderRemoval(isAdded:isConfigured:) 作为双路径单一事实源: 只要该 Provider 已进入列表 (配置条目存在) 即可移除; 凭证存在但列表无条目时亦允许 (防御性清理); 两者皆无才隐藏",
+      "impact": "同场景两路径口径统一; 半添加状态获得合法退出通道"
+    },
+    {
+      "scope": "apps/macos/Sources/BruceApp/Settings/APIKeyProviderConfigDialog.swift",
+      "before": "「移除服务」仅 `if configured` (凭证已保存) 时渲染 → 添加未保存凭证时无移除入口; 「重新验证」与「移除服务」共用同一 `configured` 门禁",
+      "after": "「移除服务」门禁改用 SubscriptionPresentationPolicy.showsProviderRemoval(isAdded: model.subscriptionProviders[id] != nil, isConfigured: configured); 「重新验证」保持仅在 configured 时渲染 (其语义依赖已存凭证, 原门禁正确)",
+      "impact": "半添加状态可一键退出; 已配置路径的 UI 与行为完全不变"
+    },
+    {
+      "scope": "apps/macos/Tests/Harnesses/PanelViewModelHarness",
+      "before": "无移除入口门禁断言, 该死锁态无回归护栏",
+      "after": "新增三态表驱动断言: 已添加未配置 → 可移除 (本缺陷); 已添加已配置 → 可移除; 未添加未配置 → 不可移除; 未添加而已配置 → 可移除 (防御性清理)",
+      "impact": "锁定门禁语义, 防止再次退化回「凭证才能移除」"
+    }
+  ],
+  "design": {
+    "before_behavior": "订阅 Provider 的移除入口在 API-Key 配置窗中仅当凭证已保存时渲染; 添加后未配置的行无任何移除入口, 且启用开关禁用 → 死锁",
+    "after_behavior": "移除入口以「已添加」为前提 (showsProviderRemoval 纯函数), 添加未配置的 Provider 可随时移除并回到「未添加」状态; 重新验证仍只在有凭证时提供",
+    "true_if": "「添加服务」加入的 Provider 在未保存凭证时, 配置窗仍显示「移除服务」; 点击后该行从列表消失、配置条目清空且无报错; 已保存凭证路径的「移除服务 + 重新验证」行为不变; PanelViewModelHarness 门禁断言全绿; verify-local.sh 退出码 0",
+    "false_if": "半添加状态仍无移除入口, 或移除时报错/残留配置条目, 或已配置路径出现回归 (移除/重测入口丢失或失效)"
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "verify-local-20261014-c019",
+    "user_quote": "确认，然后处理 Cline/DeepSeek 明文 key 轮换 的问题",
+    "signoff": "2026-10-14 用户会话内确认修复, AI 代为签署收口并闭环归档",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "PanelViewModelHarness 新增门禁断言全绿; zsh scripts/verify-local.sh 退出码 0 且无新增警告",
+        "false_if": "存在任一断言失败、编译告警或 Harness 红",
+        "evidence": "PanelViewModelHarness 53 项全绿, 新增 4 态门禁断言 (已添加未配置→可移除 / 已添加已配置→可移除 / 未添加已配置→可移除 (防御性清理) / 未添加未配置→不可移除); zsh scripts/verify-local.sh 退出码 0, 末行 'Bruce 本地验证全部通过' —— Rust fmt/clippy/test + Collector fixture 扫描 + Swift build + 全部 Harness (含 PanelParity 三态对拍) 全绿无新增警告; 完整日志 local/c019-verify.log",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "移除入口渲染点由统一门禁纯函数驱动 (源码级核验: 弹窗移除按钮引用 showsProviderRemoval, 且 isAdded 取 model.subscriptionProviders[id]); 半添加场景的判定值为 true",
+        "false_if": "渲染点仍引用旧 configured 单一判定, 或门禁函数与渲染点不一致",
+        "evidence": "源码级核验: APIKeyProviderConfigDialog.swift:173-176 移除按钮门禁改为 SubscriptionPresentationPolicy.showsProviderRemoval(isAdded: model.subscriptionProviders[id] != nil, isConfigured: configured); 该文件仅剩一处 `if configured` (行 185) 且只包裹「重新验证」; 门禁纯函数对 (added=true, configured=false) 返回 true 并由 Harness 断言锁定 → 半添加行获得合法移除入口",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "已配置 Provider 的移除与重新验证入口不受影响; OAuth/section 路径未改动; 其余 Provider 行渲染与启用开关行为不变",
+        "false_if": "破坏已配置路径、section 路径或其他行内交互",
+        "evidence": "已配置路径: 移除按钮仍显示 (added=true), 「重新验证」仍在 (configured=true) 且 disabled(busy) 语义未变; OAuth/section 路径 (OfficialLocalProviderSettingsSection 等) 未改动; 启用开关与 provider 行渲染未触碰; 其余 Harness 全绿 (OnboardingCore 171 / Subscription credentials 33 / PanelViewModel 53 / Refresh 82)",
+        "result": true
+      }
+    ]
+  }
+}
