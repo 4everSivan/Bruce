@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { boot, defaults, fixture } from "./dom.mjs";
 
 test("valid collector view model renders cards and keyboard-accessible collapse", async () => {
@@ -170,3 +171,13 @@ test("dashboard dismisses via Escape key calling hide_dashboard", async () => {
   await app.window.dispatch("keydown", { key: "Escape" });
   assert.deepEqual(app.calls.slice(start).map(x => x.command), ["hide_dashboard"]);
 });
+
+test("styles.css guarantees adaptive height and pinned footer without flex truncation", () => {
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  assert.match(css, /#panel\s*\{[^}]*height:\s*100%;/);
+  assert.match(css, /#panel\s*\{[^}]*max-height:\s*100%;/);
+  assert.match(css, /#scroll\s*\{[^}]*min-height:\s*0;/);
+  assert.match(css, /#scroll\s*\{[^}]*flex:\s*1 1 0;/);
+  assert.match(css, /#footer\s*\{[^}]*flex:\s*0 0 auto;/);
+});
+

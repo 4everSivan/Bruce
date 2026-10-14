@@ -95,10 +95,12 @@
     /* 顶部场景引导与交互控制浮窗 (Simulation HUD) */
     .sim-guide-panel {
       position: absolute;
-      top: 20px;
-      right: 24px;
-      width: 360px;
-      background: rgba(24, 24, 28, 0.88);
+      top: 18px;
+      right: 20px;
+      width: 380px;
+      max-height: 90vh;
+      overflow-y: auto;
+      background: rgba(24, 24, 28, 0.92);
       backdrop-filter: blur(30px);
       border: 1px solid rgba(255, 255, 255, 0.14);
       border-radius: 12px;
@@ -131,6 +133,67 @@
       border-radius: 4px;
       color: #fff;
       font-weight: 600;
+    }
+    .sim-section-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 2px;
+    }
+    .sim-chip-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .sim-chip {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: var(--ink);
+      font-size: 11px;
+      padding: 5px 9px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+    .sim-chip:hover {
+      background: rgba(255, 255, 255, 0.16);
+      border-color: rgba(255, 255, 255, 0.24);
+    }
+    .sim-chip.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+      font-weight: 600;
+    }
+    .sim-telemetry {
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      padding: 9px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 11px;
+    }
+    .sim-telemetry .spec-row {
+      display: flex;
+      justify-content: space-between;
+      color: var(--secondary);
+    }
+    .sim-telemetry .spec-val {
+      color: #fff;
+      font-family: "Cascadia Mono", monospace;
+      font-size: 11px;
+    }
+    .sim-telemetry .spec-status {
+      margin-top: 4px;
+      font-size: 10.5px;
+      color: #30D158;
+      display: flex;
+      align-items: center;
+      gap: 5px;
     }
     .sim-actions {
       display: grid;
@@ -422,6 +485,15 @@
       transform-origin: bottom right;
       animation: dashSlideIn 0.16s cubic-bezier(0.16, 1, 0.3, 1);
     }
+    .sim-dashboard-container.top-anchored {
+      bottom: auto;
+      transform-origin: top right;
+      animation: dashSlideInTop 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes dashSlideInTop {
+      from { opacity: 0; transform: translateY(-14px) scale(0.97); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
     @keyframes dashSlideIn {
       from { opacity: 0; transform: translateY(14px) scale(0.97); }
       to { opacity: 1; transform: translateY(0) scale(1); }
@@ -456,6 +528,14 @@
       transform: rotate(45deg);
       z-index: 601;
       display: none;
+    }
+    .sim-dashboard-container.top-anchored .dock-indicator {
+      bottom: auto;
+      top: -6px;
+      border-right: none;
+      border-bottom: none;
+      border-left: 1px solid rgba(255, 255, 255, 0.15);
+      border-top: 1px solid rgba(255, 255, 255, 0.15);
     }
 
     /* 看板 HUD 顶栏 */
@@ -514,17 +594,21 @@
       font-family: "Cascadia Mono", monospace;
     }
 
-    /* 看板滚动区域 */
+    /* 看板滚动区域 (自适应收缩与细滚动条) */
     .dash-scroll {
-      flex: 1;
+      flex: 1 1 0;
+      min-height: 0;
       overflow-y: auto;
+      overflow-x: hidden;
       padding: 10px 12px;
       display: flex;
       flex-direction: column;
       gap: 10px;
     }
-    .dash-scroll::-webkit-scrollbar { width: 5px; }
-    .dash-scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 4px; }
+    .dash-scroll::-webkit-scrollbar { width: 4px; }
+    .dash-scroll::-webkit-scrollbar-track { background: transparent; }
+    .dash-scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.22); border-radius: 2px; }
+    .dash-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.38); }
 
     /* 卡片容器 */
     .card {
@@ -608,7 +692,7 @@
       border-radius: 3px;
     }
 
-    /* 看板底栏 (Footer) */
+    /* 看板底栏 (Footer · 锁死在可视区底端) */
     .dash-footer {
       padding: 9px 14px;
       border-top: 1px solid var(--hairline);
@@ -616,7 +700,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      flex: none;
+      flex: 0 0 auto;
     }
     .foot-info {
       font-size: 11px;
@@ -793,28 +877,66 @@
       </div>
 
       <div style="font-size: 11.5px; color: var(--secondary); line-height: 1.4;">
-        真实模拟 Windows 11 任务栏、系统托盘、全局快捷键与失焦隐藏全流程。
+        真实模拟 Windows 11/10 任务栏、系统托盘、全局快捷键、<b>多分辨率/DPI 动态高度自适应</b>全流程。
       </div>
 
-      <div class="sim-actions">
-        <button class="sim-btn" onclick="simulateLeftClickTray()">
-          <span>左键单击托盘</span>
-        </button>
-        <button class="sim-btn" onclick="simulateRightClickTray()">
-          <span>右键单击托盘</span>
-        </button>
-        <button class="sim-btn" onclick="simulateClickOutside()">
-          <span>失焦点击外部</span>
-        </button>
-        <button class="sim-btn" onclick="simulateEscape()">
-          <span>按 Esc 键</span>
-        </button>
-        <button class="sim-btn" onclick="simulateGlobalHotkey()">
-          <span>按 Ctrl+Shift+B</span>
-        </button>
-        <button class="sim-btn" onclick="toggleTaskbarAlign()">
-          <span>居中 / 靠左切换</span>
-        </button>
+      <!-- 分辨率与 DPI 缩放模拟器 -->
+      <div>
+        <div class="sim-section-label">🖥️ 屏幕分辨率与 DPI 缩放模拟</div>
+        <div class="sim-chip-group" id="res-chips">
+          <button class="sim-chip active" data-res="1080p_100" onclick="setResolutionProfile('1080p_100')">1080p 100%</button>
+          <button class="sim-chip" data-res="1080p_150" onclick="setResolutionProfile('1080p_150')">1080p 150% (笔电)</button>
+          <button class="sim-chip" data-res="768p_100" onclick="setResolutionProfile('768p_100')">1366×768 (低分)</button>
+          <button class="sim-chip" data-res="2k_125" onclick="setResolutionProfile('2k_125')">2K 125%</button>
+          <button class="sim-chip" data-res="4k_200" onclick="setResolutionProfile('4k_200')">4K 200%</button>
+        </div>
+      </div>
+
+      <!-- 任务栏位置 -->
+      <div>
+        <div class="sim-section-label">📌 任务栏停靠位置</div>
+        <div class="sim-chip-group">
+          <button class="sim-chip active" id="btn-tb-bottom" onclick="setTaskbarPlacement('bottom')">底部任务栏 (标准)</button>
+          <button class="sim-chip" id="btn-tb-top" onclick="setTaskbarPlacement('top')">顶部任务栏</button>
+        </div>
+      </div>
+
+      <!-- 实时几何与自适应状态 -->
+      <div class="sim-telemetry" id="sim-telemetry">
+        <div class="spec-row"><span>物理分辨率:</span><span class="spec-val" id="tel-res">1920 × 1080</span></div>
+        <div class="spec-row"><span>可用工作区 (work_area):</span><span class="spec-val" id="tel-work">1920 × 1040 (40px 任务栏)</span></div>
+        <div class="spec-row"><span>DPI 缩放比率:</span><span class="spec-val" id="tel-scale">1.0 (100%)</span></div>
+        <div class="spec-row"><span>面板逻辑尺寸:</span><span class="spec-val" id="tel-size">440 × 760 px</span></div>
+        <div class="spec-row"><span>面板物理尺寸:</span><span class="spec-val" id="tel-physical">440 × 760 px</span></div>
+        <div class="spec-row"><span>挂靠对齐锚点:</span><span class="spec-val" id="tel-pos">底部任务栏上方 10px / 托盘中心对齐</span></div>
+        <div class="spec-status" id="tel-status">
+          <span>✓</span>
+          <span>全高渲染 (760px) · 距离任务栏 10px · 完美对齐不溢出</span>
+        </div>
+      </div>
+
+      <div>
+        <div class="sim-section-label">🎮 交互调度与事件触发</div>
+        <div class="sim-actions">
+          <button class="sim-btn" onclick="simulateLeftClickTray()">
+            <span>左键单击托盘</span>
+          </button>
+          <button class="sim-btn" onclick="simulateRightClickTray()">
+            <span>右键单击托盘</span>
+          </button>
+          <button class="sim-btn" onclick="simulateClickOutside()">
+            <span>失焦点击外部</span>
+          </button>
+          <button class="sim-btn" onclick="simulateEscape()">
+            <span>按 Esc 键</span>
+          </button>
+          <button class="sim-btn" onclick="simulateGlobalHotkey()">
+            <span>按 Ctrl+Shift+B</span>
+          </button>
+          <button class="sim-btn" onclick="toggleTaskbarAlign()">
+            <span>居中 / 靠左切换</span>
+          </button>
+        </div>
       </div>
 
       <div>
@@ -1136,6 +1258,17 @@
     let lastUnfocusTimestamp = 0; // 模拟 Rust 300ms 失去焦点防抖锁
     const DEBOUNCE_MS = 300;
 
+    const RESOLUTION_PROFILES = {
+      "1080p_100": { name: "1080p 100%", width: 1920, height: 1080, workHeight: 1040, scale: 1.0, desc: "桌面标准 1080p" },
+      "1080p_150": { name: "1080p 150%", width: 1920, height: 1080, workHeight: 1032, scale: 1.5, desc: "15.6寸高分屏笔记本" },
+      "768p_100":  { name: "1366×768",   width: 1366, height: 768,  workHeight: 728,  scale: 1.0, desc: "低分便携轻薄本" },
+      "2k_125":    { name: "2K 125%",    width: 2560, height: 1440, workHeight: 1390, scale: 1.25, desc: "27寸 2K 屏" },
+      "4k_200":    { name: "4K 200%",    width: 3840, height: 2160, workHeight: 2080, scale: 2.0, desc: "4K 视网膜高分屏" },
+    };
+
+    let currentProfileKey = "1080p_100";
+    let taskbarPlacement = "bottom"; // "bottom" | "top"
+
     const logBox = document.getElementById("sim-log");
     const dashWindow = document.getElementById("dashboard-window");
     const dockArrow = document.getElementById("dock-arrow");
@@ -1144,6 +1277,92 @@
     const trayTooltip = document.getElementById("tray-tooltip");
     const settingsWindow = document.getElementById("settings-window");
     const taskbarRoot = document.getElementById("taskbar-root");
+
+    function computeGeometry(profileKey, placement) {
+      const p = RESOLUTION_PROFILES[profileKey];
+      const scale = p.scale;
+      const baseLogicalW = 440;
+      const baseLogicalH = 760;
+      const availLogicalH = p.workHeight / scale;
+      const maxLogicalH = Math.max(availLogicalH - 20, 320);
+      const targetLogicalH = Math.min(baseLogicalH, maxLogicalH);
+      const winW = Math.round(baseLogicalW * scale);
+      const winH = Math.round(targetLogicalH * scale);
+
+      return {
+        profile: p,
+        logicalWidth: baseLogicalW,
+        logicalHeight: Math.round(targetLogicalH),
+        physicalWidth: winW,
+        physicalHeight: winH,
+        availLogicalH: Math.round(availLogicalH),
+        isReduced: targetLogicalH < baseLogicalH,
+        placement,
+      };
+    }
+
+    function applyGeometry() {
+      const geom = computeGeometry(currentProfileKey, taskbarPlacement);
+      const p = geom.profile;
+
+      const telRes = document.getElementById("tel-res");
+      const telWork = document.getElementById("tel-work");
+      const telScale = document.getElementById("tel-scale");
+      const telSize = document.getElementById("tel-size");
+      const telPhysical = document.getElementById("tel-physical");
+      const telPos = document.getElementById("tel-pos");
+      const telStatus = document.getElementById("tel-status");
+
+      if (telRes) telRes.textContent = `${p.width} × ${p.height}`;
+      if (telWork) telWork.textContent = `${p.width} × ${p.workHeight} (${p.height - p.workHeight}px 任务栏)`;
+      if (telScale) telScale.textContent = `${p.scale} (${Math.round(p.scale * 100)}%)`;
+      if (telSize) telSize.textContent = `${geom.logicalWidth} × ${geom.logicalHeight} px`;
+      if (telPhysical) telPhysical.textContent = `${geom.physicalWidth} × ${geom.physicalHeight} px`;
+
+      if (telStatus) {
+        if (geom.isReduced) {
+          telStatus.innerHTML = `<span style="color:#FF9F0A">⚡</span> <span>高度已自适应缩容 (${geom.logicalHeight}px < 760px) · 内部平滑滚动 · 底栏 100% 锁死在可视区</span>`;
+        } else {
+          telStatus.innerHTML = `<span style="color:#30D158">✓</span> <span>全高渲染 (${geom.logicalHeight}px) · 距离任务栏 10px · 完美对齐不溢出</span>`;
+        }
+      }
+
+      dashWindow.style.width = "440px";
+      dashWindow.style.height = `${geom.logicalHeight}px`;
+
+      if (taskbarPlacement === "top") {
+        taskbarRoot.classList.add("top-placed");
+        dashWindow.classList.add("top-anchored");
+        dashWindow.style.top = "58px";
+        dashWindow.style.bottom = "auto";
+        if (telPos) telPos.textContent = "顶部任务栏下方 10px / 托盘中心对齐";
+      } else {
+        taskbarRoot.classList.remove("top-placed");
+        dashWindow.classList.remove("top-anchored");
+        dashWindow.style.bottom = "58px";
+        dashWindow.style.top = "auto";
+        if (telPos) telPos.textContent = "底部任务栏上方 10px / 托盘中心对齐";
+      }
+
+      logSim(`[Geometry] 自适应切换: ${p.name} -> 可用高: ${geom.availLogicalH}px, 目标高: ${geom.logicalHeight}px (物理 ${geom.physicalHeight}px)`);
+    }
+
+    function setResolutionProfile(key) {
+      currentProfileKey = key;
+      document.querySelectorAll("#res-chips .sim-chip").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.res === key);
+      });
+      applyGeometry();
+    }
+
+    function setTaskbarPlacement(placement) {
+      taskbarPlacement = placement;
+      const bBottom = document.getElementById("btn-tb-bottom");
+      const bTop = document.getElementById("btn-tb-top");
+      if (bBottom) bBottom.classList.toggle("active", placement === "bottom");
+      if (bTop) bTop.classList.toggle("active", placement === "top");
+      applyGeometry();
+    }
 
     function logSim(msg, type = "info") {
       const line = document.createElement("div");
@@ -1200,7 +1419,8 @@
         dashWindow.style.display = "flex";
         dockArrow.style.display = "block";
         trayIcon.classList.add("open");
-        logSim("[Dashboard] 打开面板: 读取主屏坐标 (1468, 260) 贴靠任务栏上方, set_focus() 激活");
+        applyGeometry();
+        logSim("[Dashboard] 打开面板: compute_dashboard_geometry 动态挂靠, set_focus() 激活", "ok");
         logSim("[Scheduler] 触发 request_manual_refresh() 手动唤醒通道, 数据即刻刷新", "ok");
       } else {
         // 收起看板

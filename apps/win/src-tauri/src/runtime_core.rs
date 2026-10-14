@@ -419,3 +419,117 @@ where
     }
     Ok(())
 }
+
+/// 屏幕物理边界与工作区几何信息 (解耦 Tauri GUI 依赖，便于纯单测)。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MonitorBounds {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+    pub work_x: i32,
+    pub work_y: i32,
+    pub work_width: u32,
+    pub work_height: u32,
+    pub scale_factor: f64,
+}
+
+/// 托盘图标在屏幕中的物理坐标与尺寸。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TrayIconBounds {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// 最终计算出的面板物理尺寸与位置。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DashboardGeometry {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// 纯函数：根据显示器物理工作区、DPI 缩放与托盘图标 Rect，计算自适应看板物理尺寸与贴靠坐标。
+///
+/// 核心保障：
+/// 1. 杜绝溢出：在 1080p 150%、1366x768 等小屏/高缩放下自动降低高度，保证底栏齿轮/退出按钮完整可见；
+/// 2. 贴靠精准：优先贴靠托盘图标（底任务栏上方 10px / 顶任务栏下方 10px），并居中或安全右贴齐；
+/// 3. 无托盘坐标兜底：热键或无托盘 Rect 时贴靠工作区右下角安全边距，不越界。
+pub fn compute_dashboard_geometry(
+    monitor: &MonitorBounds,
+    tray: Option<&TrayIconBounds>,
+) -> DashboardGeometry {
+    let scale = if monitor.scale_factor > 0.0 {
+        monitor.scale_factor
+    } else {
+        1.0
+    };
+
+    // 1. 宽度：基准逻辑宽度 440px
+    let base_logical_w = 440.0_f64;
+    let max_logical_w = (monitor.work_width as f64 / scale - 16.0).max(240.0);
+    let target_logical_w = base_logical_w.min(max_logical_w);
+    let win_w = ((target_logical_w * scale).round() as u32).min(monitor.work_width);
+
+    // 2. 高度：基准逻辑高度 760px；小屏自适应
+    let base_logical_h = 760.0_f64;
+    let avail_logical_h = monitor.work_height as f64 / scale;
+    // 上下各预留 10px 边距 (共 20px)，最小保障 320px
+    let max_logical_h = (avail_logical_h - 20.0).max(320.0);
+    let target_logical_h = base_logical_h.min(max_logical_h);
+    let win_h = ((target_logical_h * scale).round() as u32).min(monitor.work_height);
+
+    let margin_x = ((12.0 * scale).round() as i32).max(4);
+    let margin_y = ((10.0 * scale).round() as i32).max(4);
+
+    // 3. 垂直定位 (Y)：判断任务栏处于屏幕上方还是下方
+    let is_top_taskbar = if let Some(t) = tray {
+        t.y + (t.height as i32 / 2) < monitor.y + (monitor.height as i32 / 2)
+    } else {
+        monitor.work_y > monitor.y + margin_y
+    };
+
+    let target_y = if is_top_taskbar {
+        if let Some(t) = tray {
+            t.y + t.height as i32 + margin_y
+        } else {
+            monitor.work_y + margin_y
+        }
+    } else if let Some(t) = tray {
+        t.y - win_h as i32 - margin_y
+    } else {
+        monitor.work_y + monitor.work_height as i32 - win_h as i32 - margin_y
+    };
+
+    let min_y = monitor.work_y;
+    let max_y = (monitor.work_y + monitor.work_height as i32 - win_h as i32).max(min_y);
+    let clamped_y = target_y.clamp(min_y, max_y);
+
+    // 4. 水平定位 (X)
+    let min_x = monitor.work_x + margin_x;
+    let max_x =
+        (monitor.work_x + monitor.work_width as i32 - win_w as i32 - margin_x).max(monitor.work_x);
+
+    let target_x = if let Some(t) = tray {
+        let tray_center_x = t.x + (t.width as i32 / 2);
+        tray_center_x - (win_w as i32 / 2)
+    } else {
+        max_x
+    };
+
+    let clamped_x = if min_x <= max_x {
+        target_x.clamp(min_x, max_x)
+    } else {
+        monitor.work_x
+    };
+
+    DashboardGeometry {
+        x: clamped_x,
+        y: clamped_y,
+        width: win_w,
+        height: win_h,
+    }
+}
