@@ -172,6 +172,11 @@ final class OnboardingCoordinator: ObservableObject {
         service.bindStateChange { [weak self] in
             self?.objectWillChange.send()
         }
+
+        // C020: 验证通过后立即定向刷新该 Provider, 使新配置订阅即时上仪表盘.
+        service.onProviderVerified = { [weak self] id in
+            self?.refreshSubscription(id)
+        }
     }
 
     var collectorRuntimeStatus: CollectorRuntimeStatus {
@@ -206,6 +211,10 @@ final class OnboardingCoordinator: ObservableObject {
 
     func saveAndVerifyJev(apiKey: String, balance: Double? = nil) {
         subscriptions.saveAndVerifyJev(apiKey: apiKey, balance: balance)
+    }
+
+    func saveAndVerifyCline(apiKey: String) {
+        subscriptions.saveAndVerifyCline(apiKey: apiKey)
     }
 
     func importClaudeFromLocal() {

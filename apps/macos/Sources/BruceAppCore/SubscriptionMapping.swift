@@ -3,59 +3,11 @@ import Foundation
 // MARK: - Subscription mapping
 
 extension PanelViewModelMapper {
-    /// 领域月度状态 -> 展示 view model.
-    /// nil -> nil (映射层未启用账本, 订阅卡不显示月度统计).
-    /// unavailable -> 显示"月度统计暂不可用" (不暴露内部错误细节).
-    /// baseline -> 只有覆盖说明与"正在建立本月趋势", 不可绘制趋势.
-    /// trend -> 推算消费, 余额, 覆盖说明, 趋势点和入账注记.
-    func deepSeekMonthlyUsageViewModel(
-        _ usage: DeepSeekMonthlyUsage?
-    ) -> DeepSeekMonthlyUsageViewModel? {
-        switch usage {
-        case .trend(let trend):
-            return DeepSeekMonthlyUsageViewModel(
-                state: .trend,
-                estimatedConsumptionText: PanelFormat.decimalBalanceText(
-                    trend.estimatedConsumption, currency: trend.currency
-                ),
-                currentBalanceText: PanelFormat.decimalBalanceText(
-                    trend.currentBalance, currency: trend.currency
-                ),
-                coverageText: trend.coverageText,
-                trendPoints: trend.trendPoints,
-                creditNote: trend.recentCreditNote
-            )
-        case .baseline(let baseline):
-            return DeepSeekMonthlyUsageViewModel(
-                state: .baseline,
-                estimatedConsumptionText: "",
-                currentBalanceText: PanelFormat.decimalBalanceText(
-                    baseline.currentBalance, currency: baseline.currency
-                ),
-                coverageText: baseline.coverageStartText,
-                trendPoints: [],
-                creditNote: nil
-            )
-        case .unavailable:
-            return DeepSeekMonthlyUsageViewModel(
-                state: .unavailable,
-                estimatedConsumptionText: "",
-                currentBalanceText: "",
-                coverageText: "月度统计暂不可用",
-                trendPoints: [],
-                creditNote: nil
-            )
-        case nil:
-            return nil
-        }
-    }
-
     // MARK: 订阅卡
 
     func makeSubscription(
         _ artifact: AgentUsageArtifact,
         now: Date,
-        deepSeekMonthlyUsage: DeepSeekMonthlyUsage?,
         providerOrder: [String],
         diagnostics: inout [PanelDiagnostic]
     ) -> SubscriptionViewModel? {
@@ -129,9 +81,6 @@ extension PanelViewModelMapper {
                 // accounts 携带单条记录 (供测试和 UI 取 lastSuccessText 等),
                 // 但 isMultiAccount 为 false, 不触发折叠.
                 let svc = services[0]
-                let monthlyUsage = SubscriptionPresentationPolicy.shouldAttachDeepSeekMonthly(
-                    serviceID: providerID
-                ) ? deepSeekMonthlyUsageViewModel(deepSeekMonthlyUsage) : nil
 
                 let accountVM = CodexAccountViewModel(
                     id: svc.service.id,
@@ -165,8 +114,7 @@ extension PanelViewModelMapper {
                             BalanceRow(amount: amount, currency: svc.service.currency)
                         }
                     },
-                    accountCountText: nil,
-                    deepSeekMonthlyUsage: monthlyUsage
+                    accountCountText: nil
                 ))
             } else {
                 // 多账号: 分组成 section + accounts + collapsedWindow.
@@ -194,9 +142,6 @@ extension PanelViewModelMapper {
                 let collapsed = SubscriptionPresentationPolicy.collapsedWindow(
                     from: accountVMs
                 )
-                let monthlyUsage = SubscriptionPresentationPolicy.shouldAttachDeepSeekMonthly(
-                    serviceID: providerID
-                ) ? deepSeekMonthlyUsageViewModel(deepSeekMonthlyUsage) : nil
 
                 sections.append(SubscriptionProviderSection(
                     id: providerID,
@@ -209,8 +154,7 @@ extension PanelViewModelMapper {
                     accounts: accountVMs,
                     collapsedWindow: collapsed,
                     balance: nil,
-                    accountCountText: "\(accountVMs.count) 个账号",
-                    deepSeekMonthlyUsage: monthlyUsage
+                    accountCountText: "\(accountVMs.count) 个账号"
                 ))
             }
         }

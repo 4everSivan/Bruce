@@ -13,7 +13,7 @@ import BruceAppCore
 //   swift run PanelParityHarness <repoRoot>              # 比对模式 (CI 用)
 //   swift run PanelParityHarness <repoRoot> --update     # 刷新 golden 快照
 //
-// 约定: DeepSeek 月度账本 (deepSeekMonthlyUsage) 未接入, 恒输出 null (双端一致)。
+// 约定: DeepSeek 月度统计 (C020 已移除), 面板 JSON 不再输出 deepSeekMonthlyUsage 字段。
 
 // MARK: - 轻量 JSON 构建器 (显式控制 null 与数值类型)
 
@@ -222,7 +222,6 @@ private func encodeSection(_ section: SubscriptionProviderSection) -> J {
             J.o([("label", .s(balance.label)), ("amountText", .s(balance.amountText))])
         } ?? .nul),
         ("accountCountText", section.accountCountText.map(J.s) ?? .nul),
-        ("deepSeekMonthlyUsage", .nul),
     ])
 }
 
@@ -391,7 +390,6 @@ struct PanelParityHarness {
                 let panel = mapper.make(
                     agentUsage: artifact,
                     moduleStatuses: [:],
-                    deepSeekMonthlyUsage: nil,
                     providerOrder: []
                 )
 

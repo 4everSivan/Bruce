@@ -25,6 +25,8 @@ public enum InjectionKind: Sendable, Equatable {
     case stepfunQuotaAccounts
     /// 顶层 `jevQuotaAccounts` = {accountID: {api_key, display_name}} 映射
     case jevAPIKeyEnv
+    /// 顶层 `clineQuotaAccounts` = {accountID: {api_key, display_name}} 映射
+    case clineQuotaAccounts
 }
 
 // MARK: - ConfiguredRule
@@ -224,6 +226,13 @@ public enum ProviderRegistry {
                 id: .jev,
                 credentialAccounts: [SubscriptionCredentialAccount.jevAPIKey],
                 injectionKind: .jevAPIKeyEnv,
+                configuredRule: .allCredentialAccountsNonEmpty
+            )
+        case .cline:
+            return ProviderDescriptor(
+                id: .cline,
+                credentialAccounts: [SubscriptionCredentialAccount.clineAPIKey],
+                injectionKind: .clineQuotaAccounts,
                 configuredRule: .allCredentialAccountsNonEmpty
             )
         }

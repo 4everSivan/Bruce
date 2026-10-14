@@ -223,12 +223,6 @@ private struct ProviderSectionView: View {
                 singleAccountContent
             }
 
-            // DeepSeek 月度统计: 仅当非双槽模式且提供了 ViewModel 时单独渲染;
-            // 方案 B 双槽模式下，本月消费已集成在右槽中.
-            if !isBalanceBased, let monthlyUsage = section.deepSeekMonthlyUsage {
-                DeepSeekMonthlyUsageSection(viewModel: monthlyUsage)
-            }
-
             // error/empty 段保留 collector 说明, 不静默吞掉.
             if section.status == "error" || section.status == "empty", let note = section.note {
                 Text(note)
@@ -385,14 +379,7 @@ private struct BalanceDualSlotView: View {
                 leftSlot
                 rightSlot
             }
-            if let coverage = section.deepSeekMonthlyUsage?.coverageText, !coverage.isEmpty {
-                Text(coverage)
-                    .font(isNothing ? NothingFont.mono(8.5) : .system(size: 9))
-                    .foregroundStyle(isNothing ? NothingTokens.disabled(colorScheme) : Color.secondary.opacity(0.8))
-                    .padding(.top, 2)
-                    .padding(.leading, 2)
-            }
-        }
+    }
         .padding(.top, 4)
         .padding(.bottom, 2)
     }
@@ -439,37 +426,23 @@ private struct BalanceDualSlotView: View {
         )
     }
 
-    // MARK: - 右槽: 本月消费 或 状态
+    // MARK: - 右槽: 订阅状态 (C020 起移除月度统计, 恒走状态分支)
 
     private var rightSlot: some View {
         VStack(alignment: .leading, spacing: 3) {
-            if let monthly = section.deepSeekMonthlyUsage {
-                Text("本月消费")
-                    .font(isNothing ? NothingFont.mono(9) : .system(size: 10))
-                    .foregroundStyle(isNothing ? NothingTokens.disabled(colorScheme) : .secondary)
+            Text("订阅状态")
+                .font(isNothing ? NothingFont.mono(9) : .system(size: 10))
+                .foregroundStyle(isNothing ? NothingTokens.disabled(colorScheme) : .secondary)
 
-                let consumption = monthly.estimatedConsumptionText.isEmpty ? "--" : monthly.estimatedConsumptionText
-                Text(consumption)
-                    .font(isNothing ? NothingFont.mono(13, weight: .semibold) : .system(size: 14, weight: .semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(isNothing ? NothingTokens.display(colorScheme) : Color.primary.opacity(0.85))
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(NothingTokens.success)
+                    .frame(width: 5, height: 5)
+                let statusText = section.plan ?? (section.status == "ok" ? "正常" : section.status)
+                Text(statusText)
+                    .font(isNothing ? NothingFont.mono(11, weight: .medium) : .system(size: 12, weight: .medium))
+                    .foregroundStyle(isNothing ? NothingTokens.secondary(colorScheme) : Color.primary.opacity(0.8))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-            } else {
-                Text("订阅状态")
-                    .font(isNothing ? NothingFont.mono(9) : .system(size: 10))
-                    .foregroundStyle(isNothing ? NothingTokens.disabled(colorScheme) : .secondary)
-
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(NothingTokens.success)
-                        .frame(width: 5, height: 5)
-                    let statusText = section.plan ?? (section.status == "ok" ? "正常" : section.status)
-                    Text(statusText)
-                        .font(isNothing ? NothingFont.mono(11, weight: .medium) : .system(size: 12, weight: .medium))
-                        .foregroundStyle(isNothing ? NothingTokens.secondary(colorScheme) : Color.primary.opacity(0.8))
-                        .lineLimit(1)
-                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -496,84 +469,6 @@ private struct BalanceDualSlotView: View {
                     lineWidth: isNothing ? 1 : 0.5
                 )
         )
-    }
-}
-
-// MARK: - DeepSeek 月度统计
-
-/// DeepSeek 月度统计区块: 只保留「本月消费」一行 + 底部记账起始时间.
-/// 只消费映射层提供的 DeepSeekMonthlyUsageViewModel, 不读取任何凭证或 artifact.
-private struct DeepSeekMonthlyUsageSection: View {
-    let viewModel: DeepSeekMonthlyUsageViewModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            switch viewModel.state {
-            case .trend:
-                trendContent
-            case .baseline:
-                baselineContent
-            case .unavailable:
-                unavailableContent
-            }
-        }
-        .padding(.top, 2)
-        .padding(.bottom, 2)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityLabel)
-    }
-
-    // MARK: 状态内容
-
-    private var trendContent: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("本月消费")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(viewModel.estimatedConsumptionText)
-                    .font(.system(size: 14, weight: .bold))
-                    .monospacedDigit()
-            }
-            if !viewModel.coverageText.isEmpty {
-                Text(viewModel.coverageText)
-                    .font(.system(size: 9))
-                    .foregroundStyle(.tertiary)
-            }
-        }
-    }
-
-    private var baselineContent: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if !viewModel.coverageText.isEmpty {
-                Text(viewModel.coverageText)
-                    .font(.system(size: 9))
-                    .foregroundStyle(.tertiary)
-            }
-        }
-    }
-
-    private var unavailableContent: some View {
-        HStack(spacing: 4) {
-            Text("月度统计暂不可用")
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
-            Spacer()
-        }
-    }
-
-    /// 合并后的辅助功能标签: 正常趋势 / 仅有基线 / 不可用三种状态明确措辞,
-    /// 不暴露内部错误细节.
-    private var accessibilityLabel: String {
-        switch viewModel.state {
-        case .trend:
-            return "DeepSeek 本月消费 \(viewModel.estimatedConsumptionText)"
-        case .baseline:
-            return "DeepSeek 月度统计正在建立, \(viewModel.coverageText)"
-        case .unavailable:
-            return "DeepSeek 月度统计暂不可用"
-        }
     }
 }
 

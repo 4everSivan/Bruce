@@ -344,6 +344,7 @@ extension BruceOnboardingCoreHarness {
             .opencodeGo: .allCredentialAccountsNonEmpty,
             .stepfun: .allCredentialAccountsNonEmpty,
             .jev: .allCredentialAccountsNonEmpty,
+            .cline: .allCredentialAccountsNonEmpty,
         ]
         for id in SubscriptionProviderID.allCases {
             let rule = ProviderRegistry.descriptor(for: id).configuredRule
@@ -510,6 +511,76 @@ extension BruceOnboardingCoreHarness {
         let jsonStr = #"{"apiKey": "apikey_abcdef", "balance": 12.5}"#
         let fromJSON = StoredCredentialParser.parse(provider: .jev, credentialJSON: jsonStr)
         try coreExpect(fromJSON == .apiKey("apikey_abcdef"), "JSON 格式 Jev 凭证解析失败")
+    }
+
+    // MARK: - Cline / ClinePass (API Key)
+
+    static func clineCredentialAccountsAndRegistry() throws {
+        try coreExpect(
+            SubscriptionProviderID.cline.credentialAccounts == [
+                SubscriptionCredentialAccount.clineAPIKey
+            ],
+            "cline credentialAccounts 应含 cline:api-key"
+        )
+        try coreExpect(
+            ProviderRegistry.descriptor(for: .cline).injectionKind == .clineQuotaAccounts,
+            "cline injectionKind 应为 clineQuotaAccounts"
+        )
+        try coreExpect(
+            ProviderRegistry.descriptor(for: .cline).configuredRule
+                == .allCredentialAccountsNonEmpty,
+            "cline configuredRule 应为 allCredentialAccountsNonEmpty"
+        )
+        try coreExpect(
+            SubscriptionProviderID.cline.displayName == "Cline",
+            "cline 展示名应为 Cline"
+        )
+        let accountID = ProviderAccountIDGenerator.clineAccountID(apiKey: "sk_cline_fixture_0001")
+        try coreExpect(!accountID.isEmpty, "cline accountID 不得为空")
+        try coreExpect(
+            accountID == ProviderAccountIDGenerator.clineAccountID(apiKey: "sk_cline_fixture_0001"),
+            "cline 同 key 应生成相同 accountID"
+        )
+        try coreExpect(
+            accountID != ProviderAccountIDGenerator.clineAccountID(apiKey: "sk_cline_fixture_0002"),
+            "cline 不同 key 应生成不同 accountID"
+        )
+        try coreExpect(
+            ProviderAccountKeys.legacyKeys(for: .cline) == [
+                SubscriptionCredentialAccount.clineAPIKey
+            ],
+            "cline legacyKeys 应含 cline:api-key"
+        )
+    }
+
+    static func clineEvaluatorValidAndMalformed() throws {
+        try coreExpect(
+            ProviderConnectionVerifier.verifyClineAPIKey(
+                String(repeating: "a", count: 64)
+            ) == .ok,
+            "正常长度 Cline API key 应为 ok"
+        )
+        guard case .failed = ProviderConnectionVerifier.verifyClineAPIKey("") else {
+            throw CoreTestFailure.expectation("空 Cline API key 应 failed")
+        }
+        guard case .failed = ProviderConnectionVerifier.verifyClineAPIKey("   ") else {
+            throw CoreTestFailure.expectation("空白 Cline API key 应 failed")
+        }
+        guard case .failed = ProviderConnectionVerifier.verifyClineAPIKey("key with whitespace") else {
+            throw CoreTestFailure.expectation("带空格 Cline API key 应 failed")
+        }
+        guard case .failed = ProviderConnectionVerifier.verifyClineAPIKey("short") else {
+            throw CoreTestFailure.expectation("过短 Cline API key 应 failed")
+        }
+    }
+
+    static func clineStoredCredentialParserRawKey() throws {
+        let raw = StoredCredentialParser.parse(
+            provider: .cline, credentialJSON: "sk_cline_fixture_0001"
+        )
+        try coreExpect(raw == .apiKey("sk_cline_fixture_0001"), "纯字符串 Cline 凭证解析失败")
+        let blank = StoredCredentialParser.parse(provider: .cline, credentialJSON: "   ")
+        try coreExpect(blank == nil, "空白 Cline 凭证应解析为 nil")
     }
 
     // subscriptionProviderOrder 字段编解码往返, 兼容旧配置缺键.

@@ -98,12 +98,6 @@ struct BruceOnboardingCoreHarness {
         try await ccSwitchVolcImportMissingProviderRow()
         try await ccSwitchVolcImportMissingFile()
         try subscriptionConfigApplyingVerificationTransitions()
-        try subscriptionUsageTrackingIDDecodeAndFallback()
-        try applyingVerificationPreservesUsageTrackingID()
-        try deepSeekSaveTransactionPrewriteDisabled()
-        try deepSeekSaveTransactionRestoreOldEntry()
-        try deepSeekSaveTransactionRestoreRemovesWhenAbsent()
-        try deepSeekSaveTransactionIsolatesEachSave()
         try await probeStandardInputPipesToProcess()
         try codexPKCEVerifierFormat()
         try codexDeviceStartRequestAndParse()
@@ -168,6 +162,9 @@ struct BruceOnboardingCoreHarness {
         try jevCredentialAccountsAndRegistry()
         try jevEvaluatorValidAndMalformed()
         try jevStoredCredentialParserJsonAndRaw()
-        print("BruceOnboardingCore tests passed: 168")
+        try clineCredentialAccountsAndRegistry()
+        try clineEvaluatorValidAndMalformed()
+        try clineStoredCredentialParserRawKey()
+        print("BruceOnboardingCore tests passed: 165")
     }
 }

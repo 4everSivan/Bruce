@@ -216,8 +216,6 @@ struct PanelViewModelHarness {
         try codexFreshnessStaleShowsLastSuccess()
         try codexFreshnessUnavailableHidesLastSuccess()
         try codexDisplayNameStripsPrefixOnly()
-        try deepSeekMonthlyUsageOnlyOnDeepSeekSection()
-        try deepSeekMonthlyUsageMapsStates()
         try providerOrderOverridesDefaultSort()
         try providerOrderUnknownIDsGoLast()
         try providerOrderNormalizesKimiCodingID()
@@ -984,156 +982,6 @@ struct PanelViewModelHarness {
 
     // MARK: - 辅助
 
-    /// DeepSeek 月度状态仅映射到 DeepSeek section; 其他 Provider (含余额型) 不受影响.
-    private static func deepSeekMonthlyUsageOnlyOnDeepSeekSection() throws {
-        let deepseek = makeService(
-            id: "deepseek",
-            name: "DeepSeek",
-            status: "ok",
-            kind: "balance",
-            balance: 80,
-            currency: "CNY"
-        )
-        let kimi = makeService(
-            id: "kimi",
-            name: "Kimi",
-            kind: "windows",
-            windows: [makeWindow(label: "5小时窗口", usedPercent: 68, windowMinutes: 300)]
-        )
-        let artifact = makeAgentUsageArtifact(
-            agents: [], services: [deepseek, kimi]
-        )
-        let trendUsage = DeepSeekMonthlyUsage.trend(TrendSummary(
-            estimatedConsumption: 20,
-            currentBalance: 80,
-            currency: "CNY",
-            coverageText: "自 2026-08-03T04:00:00+08:00 起累计推算",
-            trendPoints: [
-                TrendPoint(observedAt: "2026-08-03T04:00:00+08:00", cumulativeConsumption: 0),
-                TrendPoint(observedAt: "2026-08-03T12:00:00+08:00", cumulativeConsumption: 20),
-            ],
-            recentCreditNote: nil
-        ))
-        let vm = makeMapper().make(
-            agentUsage: artifact,
-            moduleStatuses: readyStatuses,
-            deepSeekMonthlyUsage: trendUsage
-        )
-        let deepSeekSection = vm.subscription?.sections.first {
-            $0.id == "deepseek"
-        }
-        try expect(
-            deepSeekSection?.deepSeekMonthlyUsage != nil,
-            "DeepSeek section 必须携带月度 view model"
-        )
-        for section in vm.subscription?.sections ?? [] where section.id != "deepseek" {
-            try expect(
-                section.deepSeekMonthlyUsage == nil,
-                "非 DeepSeek section 不得携带月度 view model, got \(section.id)"
-            )
-        }
-        // DeepSeek section 本身同时保留余额行
-        try expect(
-            deepSeekSection?.balance != nil,
-            "DeepSeek section 必须保留余额行"
-        )
-    }
-
-    /// 月度状态的三种映射: trend 携带推算消费与趋势点, baseline 不可绘制,
-    /// unavailable 显示不可用文案, nil 不渲染.
-    private static func deepSeekMonthlyUsageMapsStates() throws {
-        let deepseek = makeService(
-            id: "deepseek",
-            name: "DeepSeek",
-            status: "ok",
-            kind: "balance",
-            balance: 80,
-            currency: "CNY"
-        )
-        let artifact = makeAgentUsageArtifact(agents: [], services: [deepseek])
-
-        // trend: 推算消费文本 + 可绘制
-        let trend = makeMapper().make(
-            agentUsage: artifact,
-            moduleStatuses: readyStatuses,
-            deepSeekMonthlyUsage: .trend(TrendSummary(
-                estimatedConsumption: 20,
-                currentBalance: 80,
-                currency: "CNY",
-                coverageText: "自 2026-08-03T04:00:00+08:00 起累计推算",
-                trendPoints: [
-                    TrendPoint(observedAt: "2026-08-03T04:00:00+08:00", cumulativeConsumption: 0),
-                    TrendPoint(observedAt: "2026-08-03T12:00:00+08:00", cumulativeConsumption: 20),
-                ],
-                recentCreditNote: nil
-            ))
-        )
-        let trendVM = trend.subscription?.sections.first {
-            $0.id == "deepseek"
-        }?.deepSeekMonthlyUsage
-        try expect(
-            trendVM?.state == .trend && trendVM?.canDrawTrend == true,
-            "trend 状态必须可绘制"
-        )
-        try expect(
-            trendVM?.estimatedConsumptionText == "¥ 20.00",
-            "推算消费格式化错误: \(trendVM?.estimatedConsumptionText ?? "nil")"
-        )
-        try expect(trendVM?.trendPoints.count == 2, "trend 必须携带 2 个趋势点")
-
-        // baseline: 不可绘制, 无趋势点
-        let baseline = makeMapper().make(
-            agentUsage: artifact,
-            moduleStatuses: readyStatuses,
-            deepSeekMonthlyUsage: .baseline(BaselineSummary(
-                currentBalance: 100,
-                currency: "CNY",
-                coverageStartText: "自 2026-08-03T04:00:00+08:00 起首次记录"
-            ))
-        )
-        let baselineVM = baseline.subscription?.sections.first {
-            $0.id == "deepseek"
-        }?.deepSeekMonthlyUsage
-        try expect(
-            baselineVM?.state == .baseline && baselineVM?.canDrawTrend == false,
-            "baseline 状态不得可绘制"
-        )
-        try expect(
-            baselineVM?.coverageText.contains("首次记录") == true,
-            "baseline 覆盖文案错误: \(baselineVM?.coverageText ?? "nil")"
-        )
-
-        // unavailable: 显示不可用文案, 不暴露内部细节
-        let unavailable = makeMapper().make(
-            agentUsage: artifact,
-            moduleStatuses: readyStatuses,
-            deepSeekMonthlyUsage: .unavailable
-        )
-        let unavailableVM = unavailable.subscription?.sections.first {
-            $0.id == "deepseek"
-        }?.deepSeekMonthlyUsage
-        try expect(
-            unavailableVM?.state == .unavailable,
-            "unavailable 状态必须映射"
-        )
-        try expect(
-            unavailableVM?.coverageText == "月度统计暂不可用",
-            "unavailable 文案错误: \(unavailableVM?.coverageText ?? "nil")"
-        )
-
-        // nil: 不渲染月度区块
-        let noUsage = makeMapper().make(
-            agentUsage: artifact,
-            moduleStatuses: readyStatuses,
-            deepSeekMonthlyUsage: nil
-        )
-        try expect(
-            noUsage.subscription?.sections.first {
-                $0.id == "deepseek"
-            }?.deepSeekMonthlyUsage == nil,
-            "nil 月度状态不得渲染"
-        )
-    }
 
     private static func subscriptionSections(
         services: [AgentServiceItem]
@@ -1582,16 +1430,6 @@ struct PanelViewModelHarness {
         try expect(!SubscriptionPresentationPolicy.isCodex(app: "claude"), "app=claude 不应为 codex")
         try expect(!SubscriptionPresentationPolicy.isCodex(app: nil), "app=nil 不应为 codex")
 
-        // deepseek 月度挂载.
-        try expect(
-            SubscriptionPresentationPolicy.shouldAttachDeepSeekMonthly(serviceID: "deepseek"),
-            "deepseek 应挂载月度"
-        )
-        try expect(
-            !SubscriptionPresentationPolicy.shouldAttachDeepSeekMonthly(serviceID: "kimi"),
-            "kimi 不应挂载月度"
-        )
-
         // Codex 账号短名: 只剥开头前缀.
         let nameCases: [(String, String)] = [
             ("Codex · work", "work"),
@@ -1631,6 +1469,40 @@ struct PanelViewModelHarness {
             !SubscriptionPresentationPolicy.isProviderTemporarilyDisabled("kimi"),
             "kimi 不应被屏蔽"
         )
+
+        // 移除入口门禁 (C019): 半添加状态 (已添加未配置) 必须可移除,
+        // 否则「启用开关随未配置禁用 + 无移除入口」形成死锁态.
+        let removalCases: [(isAdded: Bool, isConfigured: Bool, expected: Bool, label: String)] = [
+            (true, false, true, "已添加未配置 → 必须可移除 (C019 缺陷场景)"),
+            (true, true, true, "已添加已配置 → 可移除"),
+            (false, true, true, "未添加而已配置 → 可移除 (防御性清理)"),
+            (false, false, false, "未添加未配置 → 不可移除"),
+        ]
+        for removalCase in removalCases {
+            let got = SubscriptionPresentationPolicy.showsProviderRemoval(
+                isAdded: removalCase.isAdded,
+                isConfigured: removalCase.isConfigured
+            )
+            try expect(
+                got == removalCase.expected,
+                "showsProviderRemoval(added:\(removalCase.isAdded), configured:\(removalCase.isConfigured)) => \(got), 期望 \(removalCase.expected) [\(removalCase.label)]"
+            )
+        }
+
+        // 仪表盘展示门禁 (C020): 仅验证状态 ok 进入订阅段, 其余三态一律不展示.
+        let verificationCases: [(SubscriptionVerificationStatus, Bool, String)] = [
+            (.ok, true, "已通过验证 → 展示"),
+            (.none, false, "未验证 → 不展示"),
+            (.failed(reason: "fixture"), false, "验证失败 → 不展示"),
+            (.needsRelogin, false, "需重新登录 → 不展示"),
+        ]
+        for (status, expected, label) in verificationCases {
+            let got = SubscriptionPresentationPolicy.isVerifiedForDashboard(status)
+            try expect(
+                got == expected,
+                "isVerifiedForDashboard(\(status)) => \(got), 期望 \(expected) [\(label)]"
+            )
+        }
 
         let jevService = makeService(
             id: "jev",

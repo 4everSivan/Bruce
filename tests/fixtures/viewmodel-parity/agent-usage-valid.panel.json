@@ -173,7 +173,6 @@
         ],
         "balance" : null,
         "collapsedWindow" : null,
-        "deepSeekMonthlyUsage" : null,
         "extraText" : null,
         "id" : "kimi_coding",
         "name" : "Kimi",
@@ -227,7 +226,6 @@
           "label" : "Credits"
         },
         "collapsedWindow" : null,
-        "deepSeekMonthlyUsage" : null,
         "extraText" : null,
         "id" : "codex_4eversivan",
         "name" : "ChatGPT",

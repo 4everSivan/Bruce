@@ -75,11 +75,6 @@ let package = Package(
             path: "Tests/Harnesses/PanelParityHarness"
         ),
         .executableTarget(
-            name: "DeepSeekUsageLedgerHarness",
-            dependencies: ["BruceAppCore", "BruceOnboardingCore"],
-            path: "Tests/Harnesses/DeepSeekUsageLedgerHarness"
-        ),
-        .executableTarget(
             name: "SubscriptionCredentialsHarness",
             dependencies: ["BruceAppCore", "BruceOnboardingCore"],
             path: "Tests/Harnesses/SubscriptionCredentialsHarness"

@@ -667,6 +667,29 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
                 if !accounts.isEmpty {
                     credentials["jevQuotaAccounts"] = .object(accounts)
                 }
+
+            case .clineQuotaAccounts:
+                guard let store = accountStores[descriptor.id],
+                      let index = try? store.loadIndex(),
+                      !index.accounts.isEmpty else { continue }
+                var accounts: [String: JSONValue] = [:]
+                for entry in index.accounts {
+                    guard let record = try? store.loadRecord(for: entry.accountID),
+                          !record.credentialJSON.isEmpty else { continue }
+                    var apiKey = record.credentialJSON
+                    if let data = record.credentialJSON.data(using: .utf8),
+                       let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let key = (dict["apiKey"] as? String) ?? (dict["api_key"] as? String) {
+                        apiKey = key
+                    }
+                    accounts[entry.accountID] = .object([
+                        "display_name": .string(entry.displayName),
+                        "api_key": .string(apiKey),
+                    ])
+                }
+                if !accounts.isEmpty {
+                    credentials["clineQuotaAccounts"] = .object(accounts)
+                }
             }
         }
 

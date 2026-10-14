@@ -4,8 +4,8 @@ import Foundation
 
 /// 统一的项目自有 JSON 持久化基建: 原子写 + 目录/文件权限 + 重读校验 + 备份/回滚.
 ///
-/// 抽取自原先三处重复实现 (ArtifactStore / DeepSeekUsageLedger /
-/// OnboardingConfigurationStore), 消除「原子写 + 0600/0700 + schemaVersion」的复制。
+/// 抽取自原先前端多处重复实现 (ArtifactStore / OnboardingConfigurationStore 等),
+/// 消除「原子写 + 0600/0700 + schemaVersion」的复制。
 /// 本类型只依赖 Foundation, 不耦合任何业务模型, 因此放在 BruceOnboardingCore
 /// 以便 BruceAppCore 与 BruceOnboardingCore 两模块共用 (BruceAppCore 已依赖本模块)。
 ///

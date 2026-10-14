@@ -71,10 +71,6 @@ swift run --package-path "$BRUCE_SWIFT_PACKAGE" \
   "$BRUCE_REPO_ROOT" \
   "$BRUCE_RUST_BIN"
 
-echo "运行 DeepSeek 月度账本 Harness"
-swift run --package-path "$BRUCE_SWIFT_PACKAGE" \
-  DeepSeekUsageLedgerHarness
-
 echo "运行订阅凭证注入 Harness"
 swift run --package-path "$BRUCE_SWIFT_PACKAGE" SubscriptionCredentialsHarness
 

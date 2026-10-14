@@ -29,6 +29,7 @@ struct SettingsView: View {
     @State private var showsStepFunWebLogin = false
     @State private var stepfunLoginSite: StepFunSite = .domestic
     @State private var jevValues: [String: String] = [:]
+    @State private var clineValues: [String: String] = [:]
     @State private var claudePasteText = ""
     @State private var claudeEditing = false
     @State private var grokPasteText = ""
@@ -1161,7 +1162,7 @@ struct SettingsView: View {
         let kind: String
         switch id {
         case .kimi: kind = "Web 令牌"
-        case .deepseek, .volcengine, .zhipu, .jev: kind = "API Key"
+        case .deepseek, .volcengine, .zhipu, .jev, .cline: kind = "API Key"
         case .stepfun: kind = "Step Plan Token"
         case .codex: kind = "OAuth 设备码"
         case .claude, .grok: kind = "CLI 登录态"
@@ -1223,7 +1224,7 @@ struct SettingsView: View {
         _ id: SubscriptionProviderID
     ) -> some View {
         switch id {
-        case .kimi, .deepseek, .volcengine, .zhipu, .stepfun, .jev:
+        case .kimi, .deepseek, .volcengine, .zhipu, .stepfun, .jev, .cline:
             apiKeyProviderDialog(id)
         case .codex, .claude, .grok, .opencodeGo:
             genericProviderConfigSheet(id)
@@ -1468,6 +1469,31 @@ struct SettingsView: View {
                 },
                 onDismiss: dismiss
             )
+        case .cline:
+            APIKeyProviderConfigDialog(
+                id: .cline,
+                fields: [
+                    APIKeyFieldDescriptor(
+                        id: "apiKey",
+                        label: "API Key",
+                        placeholder: "•••••••• (输入后不回显)",
+                        accessibilityLabel: "Cline API Key"
+                    ),
+                ],
+                values: $clineValues,
+                guide: ProviderCredentialGuide(
+                    summary: "在 Cline 控制台 Settings > API Keys 创建 API Key",
+                    linkTitle: "打开 Cline 控制台",
+                    linkURL: URL(string: "https://app.cline.bot")
+                ),
+                footnote: "ClinePass 三窗口额度 (5h / 7d / 30d) 由采集端读取账户计划与逐单台账自动计算",
+                extra: .none,
+                onRemove: { removeSubscriptionProvider(.cline) },
+                onSave: {
+                    coordinator.saveAndVerifyCline(apiKey: $0["apiKey"] ?? "")
+                },
+                onDismiss: dismiss
+            )
         default:
             EmptyView()
         }
@@ -1541,7 +1567,7 @@ struct SettingsView: View {
         _ id: SubscriptionProviderID
     ) -> some View {
         switch id {
-        case .kimi, .deepseek, .volcengine, .zhipu, .stepfun, .jev:
+        case .kimi, .deepseek, .volcengine, .zhipu, .stepfun, .jev, .cline:
             // 对话框版表单已接管, 通用外壳不会走到这里.
             EmptyView()
         case .codex:

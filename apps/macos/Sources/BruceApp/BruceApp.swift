@@ -89,17 +89,8 @@ struct BruceApp: App {
         scheduler.codexTokenManager = codexTokenManager
         self.scheduler = scheduler
 
-        // DeepSeek 月度账本: 基于 ArtifactStore 根目录隔离存储.
-        // 生产使用公历 + 设备当前时区 (不受用户历法偏好影响).
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone.current
-        let ledger = DeepSeekUsageLedger(
-            rootURL: resolvedStore.rootURL,
-            calendar: calendar
-        )
-
         // 单一 AppModel: UI 和 Coordinator 共享同一实例
-        let model = AppModel(deepSeekLedger: ledger)
+        let model = AppModel()
         let runtime = AppRuntime()
         self.runtime = runtime
         _model = StateObject(wrappedValue: model)

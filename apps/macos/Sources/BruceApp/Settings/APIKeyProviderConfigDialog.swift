@@ -168,14 +168,21 @@ struct APIKeyProviderConfigDialog: View {
             .padding(.bottom, 4)
             // dg-foot
             HStack(spacing: 8) {
-                if configured {
+                // 移除入口门禁: 只要已添加进列表即可移除 (C019, 半添加状态必须有退出通道);
+                // 「重新验证」仍要求已存凭证, 语义不变.
+                if SubscriptionPresentationPolicy.showsProviderRemoval(
+                    isAdded: model.subscriptionProviders[id] != nil,
+                    isConfigured: configured
+                ) {
                     Button("移除服务", role: .destructive) {
                         onRemove()
                         onDismiss()
                     }
                     .buttonStyle(.borderless)
                     .foregroundStyle(.secondary)
-                    .accessibilityHint("移除 \(id.displayName) 的全部凭证与配置")
+                    .accessibilityHint("移除 \(id.displayName) 的列表条目与全部凭证")
+                }
+                if configured {
                     Button("重新验证") { coordinator.reverify(id) }
                         .buttonStyle(.borderless)
                         .disabled(busy)

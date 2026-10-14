@@ -54,6 +54,26 @@ package enum SubscriptionPresentationPolicy: Sendable {
         kind == nil && !hasWindows && !hasBalance && status == "partial"
     }
 
+    /// 订阅 Provider「移除服务」入口门禁 (C019).
+    /// 只要已添加进列表 (配置条目存在) 即可移除——凭证存在与否不作为移除前提,
+    /// 否则「添加后未保存凭证」的半添加行会既不能启用 (开关随未配置禁用)
+    /// 也不能移除, 形成死锁态; 凭证存在而列表无条目时同样允许 (防御性清理).
+    package static func showsProviderRemoval(
+        isAdded: Bool,
+        isConfigured: Bool
+    ) -> Bool {
+        isAdded || isConfigured
+    }
+
+    /// 仪表盘订阅段展示门禁 (C020): 仅验证状态 ok 的 Provider 才进入订阅段.
+    /// 未验证 (none) / 验证失败 (failed) / 需重新登录 (needsRelogin) 一律不展示,
+    /// 与设置页「已配置」状态联动, 避免未验证订阅出现在仪表盘.
+    package static func isVerifiedForDashboard(
+        _ status: SubscriptionVerificationStatus
+    ) -> Bool {
+        status == .ok
+    }
+
     /// 暂时屏蔽的 Provider 列表（Jev 因官方未开放查额 API 暂作界面隐藏，底层保留）.
     package static func isProviderTemporarilyDisabled(_ providerID: String) -> Bool {
         providerID == "jev"
@@ -62,11 +82,6 @@ package enum SubscriptionPresentationPolicy: Sendable {
     /// app=="codex" 的 service 进入 Codex 多账号分组.
     package static func isCodex(app: String?) -> Bool {
         app == "codex"
-    }
-
-    /// 月度统计仅映射到 DeepSeek section.
-    package static func shouldAttachDeepSeekMonthly(serviceID: String) -> Bool {
-        serviceID == "deepseek"
     }
 
     /// 从 "Codex · <短名>" 中只删除开头固定前缀, 不用 replacingOccurrences
@@ -92,6 +107,7 @@ package enum SubscriptionPresentationPolicy: Sendable {
         case "opencodeGo", "opencode-go": return "OpenCode GO"
         case "stepfun": return "StepFun"
         case "jev": return "Jev"
+        case "cline": return "Cline"
         default: return providerID
         }
     }

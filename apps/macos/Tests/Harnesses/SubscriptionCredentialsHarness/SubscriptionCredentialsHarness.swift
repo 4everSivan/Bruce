@@ -62,7 +62,9 @@ struct SubscriptionCredentialsHarness {
         try coordinatorRotationOpenCodeGo()
         try await zhipuInjectedWhenCredentialPresent()
         try await zhipuNotInjectedWithoutCredential()
-        print("Subscription credentials tests passed: 31")
+        try await clineInjectedWhenCredentialPresent()
+        try await clineNotInjectedWithoutCredential()
+        print("Subscription credentials tests passed: 33")
     }
 
     /// 构造 OnboardingRunInputProvider: 配置 claude 启用 + Keychain 持有 claude:oauth.
@@ -300,6 +302,43 @@ struct SubscriptionCredentialsHarness {
         try credentialsExpect(
             credentials["zhipuQuotaAccounts"] == nil,
             "无凭证时不应注入 zhipuQuotaAccounts"
+        )
+    }
+
+    /// Cline / ClinePass: 录入 API Key 后注入 clineQuotaAccounts (多账号形状).
+    private static func clineInjectedWhenCredentialPresent() async throws {
+        let clineKey = "cline-fixture-api-key-0001"
+        let (provider, _, _) = try makeProvider(
+            enabled: [.cline],
+            credentials: [SubscriptionCredentialAccount.clineAPIKey: clineKey]
+        )
+        let (_, credentials) = try await runInput(provider)
+        guard case .object(let accounts)? = credentials["clineQuotaAccounts"] else {
+            throw CredentialsTestFailure.expectation(
+                "clineQuotaAccounts 未注入: \(credentials.keys.sorted())"
+            )
+        }
+        try credentialsExpect(accounts.count == 1, "cline 应有 1 个账号")
+        guard case .object(let payload)? = accounts.values.first else {
+            throw CredentialsTestFailure.expectation("cline 账号 payload 结构不符")
+        }
+        try credentialsExpect(
+            payload["display_name"] != nil,
+            "clineQuotaAccounts 应包含 display_name"
+        )
+        if case .string(let key)? = payload["api_key"] {
+            try credentialsExpect(key == clineKey, "cline api_key 应透传")
+        } else {
+            throw CredentialsTestFailure.expectation("cline api_key 应为字符串")
+        }
+    }
+
+    private static func clineNotInjectedWithoutCredential() async throws {
+        let (provider, _, _) = try makeProvider(enabled: [.cline], credentials: [:])
+        let (_, credentials) = try await runInput(provider)
+        try credentialsExpect(
+            credentials["clineQuotaAccounts"] == nil,
+            "无凭证时不应注入 clineQuotaAccounts"
         )
     }
 

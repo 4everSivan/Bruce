@@ -143,6 +143,19 @@ package struct AgentUsageArtifact: Codable, Equatable, Sendable {
     package let agents: [AgentUsageItem]
     package let services: [AgentServiceItem]
     package let totalCostUsd: Double?
+
+    /// 复制并替换 services, 其余字段原样保留.
+    /// C020: 仪表盘展示门禁在 AppModel 侧按验证状态过滤服务后重建 artifact.
+    package func replacingServices(_ services: [AgentServiceItem]) -> AgentUsageArtifact {
+        AgentUsageArtifact(
+            schemaVersion: schemaVersion,
+            module: module,
+            generatedAt: generatedAt,
+            agents: agents,
+            services: services,
+            totalCostUsd: totalCostUsd
+        )
+    }
 }
 
 package enum DecodedArtifact: Equatable, Sendable {

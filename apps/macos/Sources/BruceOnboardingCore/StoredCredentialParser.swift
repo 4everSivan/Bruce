@@ -23,7 +23,7 @@ public enum StoredCredentialParser {
     ) -> Parsed? {
         let trimmed = credentialJSON.trimmingCharacters(in: .whitespacesAndNewlines)
         switch provider {
-        case .kimi, .deepseek, .stepfun:
+        case .kimi, .deepseek, .stepfun, .cline:
             return trimmed.isEmpty ? nil : .apiKey(trimmed)
         case .jev:
             if let dict = jsonObject(from: trimmed),

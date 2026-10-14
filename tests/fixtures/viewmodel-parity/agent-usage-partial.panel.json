@@ -110,7 +110,6 @@
         ],
         "balance" : null,
         "collapsedWindow" : null,
-        "deepSeekMonthlyUsage" : null,
         "extraText" : null,
         "id" : "deepseek",
         "name" : "DeepSeek",

@@ -25,7 +25,6 @@ package struct PanelViewModelMapper: Sendable {
     package func make(
         agentUsage: AgentUsageArtifact?,
         moduleStatuses: [DashboardModule: ModuleStatus],
-        deepSeekMonthlyUsage: DeepSeekMonthlyUsage? = nil,
         providerOrder: [String] = []
     ) -> PanelViewModel {
         var diagnostics: [PanelDiagnostic] = []
@@ -39,7 +38,6 @@ package struct PanelViewModelMapper: Sendable {
             subscription = makeSubscription(
                 agentUsage,
                 now: currentNow,
-                deepSeekMonthlyUsage: deepSeekMonthlyUsage,
                 providerOrder: providerOrder,
                 diagnostics: &diagnostics
             )

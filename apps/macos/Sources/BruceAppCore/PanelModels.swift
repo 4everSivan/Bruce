@@ -610,52 +610,6 @@ package struct BalanceRow: Equatable, Sendable {
     }
 }
 
-// MARK: - DeepSeek 月度用量
-
-/// DeepSeek 月度统计的展示 view model, 仅由 DeepSeek 的 SubscriptionProviderSection
-/// 携带. 其他 provider 恒为 nil.
-package struct DeepSeekMonthlyUsageViewModel: Equatable, Sendable {
-    /// 展示状态: 正常趋势 / 仅有基线 / 月度统计不可用.
-    package enum State: Equatable, Sendable {
-        case trend
-        case baseline
-        case unavailable
-    }
-
-    package let state: State
-    /// 本月推算消费 (已格式化, 非官方账单).
-    package let estimatedConsumptionText: String
-    /// 当前余额 (已格式化).
-    package let currentBalanceText: String
-    /// 覆盖说明, 如 "自 2026-08-03 起".
-    package let coverageText: String
-    /// 累计趋势点 (已格式化金额), 供图表绘制.
-    package let trendPoints: [TrendPoint]
-    /// 入账注记; nil 表示无非消费入账.
-    package let creditNote: String?
-
-    package init(
-        state: State,
-        estimatedConsumptionText: String,
-        currentBalanceText: String,
-        coverageText: String,
-        trendPoints: [TrendPoint],
-        creditNote: String?
-    ) {
-        self.state = state
-        self.estimatedConsumptionText = estimatedConsumptionText
-        self.currentBalanceText = currentBalanceText
-        self.coverageText = coverageText
-        self.trendPoints = trendPoints
-        self.creditNote = creditNote
-    }
-
-    /// 是否存在至少两条可显示观察 (可绘制趋势图).
-    package var canDrawTrend: Bool {
-        state == .trend
-    }
-}
-
 package struct CodexAccountViewModel: Equatable, Sendable {
     package let id: String
     /// 去掉 "Codex · " 前缀的账号名.
@@ -709,8 +663,6 @@ package struct SubscriptionProviderSection: Equatable, Sendable {
     /// 余额型条目 (DeepSeek), 排序沉底, 左右排版.
     package let balance: BalanceRow?
     package let accountCountText: String?
-    /// DeepSeek 月度统计展示 view model (仅 DeepSeek 提供, 其他 provider 为 nil).
-    package let deepSeekMonthlyUsage: DeepSeekMonthlyUsageViewModel?
 
     package init(
         id: String,
@@ -723,8 +675,7 @@ package struct SubscriptionProviderSection: Equatable, Sendable {
         accounts: [CodexAccountViewModel],
         collapsedWindow: SubscriptionWindowRow?,
         balance: BalanceRow?,
-        accountCountText: String?,
-        deepSeekMonthlyUsage: DeepSeekMonthlyUsageViewModel? = nil
+        accountCountText: String?
     ) {
         self.id = id
         self.name = name
@@ -737,7 +688,6 @@ package struct SubscriptionProviderSection: Equatable, Sendable {
         self.collapsedWindow = collapsedWindow
         self.balance = balance
         self.accountCountText = accountCountText
-        self.deepSeekMonthlyUsage = deepSeekMonthlyUsage
     }
 
     /// 是否为多账号 section (>= 2 个账号).
@@ -769,15 +719,13 @@ package struct SubscriptionProviderSection: Equatable, Sendable {
         extraText: String?,
         windows: [SubscriptionWindowRow],
         balance: BalanceRow?,
-        accountCountText: String?,
-        deepSeekMonthlyUsage: DeepSeekMonthlyUsageViewModel? = nil
+        accountCountText: String?
     ) {
         self.init(
             id: id, name: name, plan: plan, status: status,
             note: note, extraText: extraText, windows: windows,
             accounts: [], collapsedWindow: nil,
-            balance: balance, accountCountText: accountCountText,
-            deepSeekMonthlyUsage: deepSeekMonthlyUsage
+            balance: balance, accountCountText: accountCountText
         )
     }
 }

@@ -188,13 +188,8 @@ package final class AppModel: ObservableObject {
     @Published package private(set) var menuBarMetrics: [MenuBarMetric]
     /// 菜单栏是否仅显示图标 (隐藏文字指标).
     @Published package private(set) var menuBarIconOnly: Bool = false
-    /// DeepSeek 月度账本. 由 BruceApp 装配注入; nil 表示账本未启用
-    /// (测试或账本创建失败), 此时月度统计不可用但余额卡不受影响.
-    private let deepSeekLedger: DeepSeekUsageLedger?
-    /// DeepSeek 月度派生状态 (唯一 UI 状态源). 账本不可用时为 nil.
-    @Published package private(set) var deepSeekMonthlyUsage: DeepSeekMonthlyUsage?
-    /// 解码缓存: 避免同一 artifact 在 updateDeepSeekMonthlyUsage 和
-    /// makePanelViewModel 之间重复执行 ArtifactValidator decode.
+    /// 解码缓存: 避免同一 artifact 在面板与菜单栏摘要多次构建间重复执行
+    /// ArtifactValidator decode.
     private var cachedDecodedArtifact: AgentUsageArtifact?
     private var cachedArtifactRef: JSONValue?
     /// 面板映射缓存: 按版本号失效, 避免 SwiftUI body 多次求值时重复映射.
@@ -220,7 +215,6 @@ package final class AppModel: ObservableObject {
     package init(
         menuBarMetricRawValues: [String]? = nil,
         menuBarIconOnly: Bool = false,
-        deepSeekLedger: DeepSeekUsageLedger? = nil,
         collapsedDefaults: UserDefaults = .standard
     ) {
         self.collapsedDefaults = collapsedDefaults
@@ -232,7 +226,6 @@ package final class AppModel: ObservableObject {
             forKey: Self.cardOrderDefaultsKey
         )
         cardOrder = Self.resolveCardOrder(storedOrder)
-        self.deepSeekLedger = deepSeekLedger
         self.menuBarIconOnly = menuBarIconOnly
         menuBarMetrics = MenuBarMetricConfiguration(
             rawValues: menuBarMetricRawValues
@@ -243,9 +236,6 @@ package final class AppModel: ObservableObject {
             }
         )
         moduleStatuses[.settings] = ModuleStatus(state: .ready, detail: nil)
-        if deepSeekLedger != nil {
-            deepSeekMonthlyUsage = .unavailable
-        }
     }
 
     package func status(for module: DashboardModule) -> ModuleStatus {
@@ -262,15 +252,7 @@ package final class AppModel: ObservableObject {
         invalidatePanelCache()
         if module == .agentUsage {
             invalidateDecodedArtifactCache()
-            updateDeepSeekMonthlyUsage(from: artifact)
         }
-    }
-
-    /// 追踪 ID 变化时立即失效当前派生月度状态 (等下一次有效余额观察重建基线).
-    /// 由 OnboardingCoordinator 在发布 subscriptionProviders 后调用.
-    package func invalidateDeepSeekMonthlyUsage() {
-        deepSeekMonthlyUsage = deepSeekLedger != nil ? .unavailable : nil
-        invalidatePanelCache()
     }
 
     // MARK: - 账单导出
@@ -319,19 +301,6 @@ package final class AppModel: ObservableObject {
         if !hasCost {
             lines.append("无定价数据")
         }
-        switch deepSeekMonthlyUsage {
-        case .trend(let trend):
-            lines.append("")
-            lines.append("# DeepSeek 月度")
-            lines.append("本月消费 \(trend.currency),\(Self.decimalText(trend.estimatedConsumption))")
-            lines.append("当前余额 \(trend.currency),\(Self.decimalText(trend.currentBalance))")
-        case .baseline(let baseline):
-            lines.append("")
-            lines.append("# DeepSeek 月度")
-            lines.append("当前余额 \(baseline.currency),\(Self.decimalText(baseline.currentBalance))")
-        case .unavailable, .none:
-            break
-        }
         return lines.joined(separator: "\n") + "\n"
     }
 
@@ -345,50 +314,6 @@ package final class AppModel: ObservableObject {
 
     private static func moneyText(_ value: Double) -> String {
         String(format: "%.4f", value)
-    }
-
-    private static func decimalText(_ value: Decimal) -> String {
-        NSDecimalNumber(decimal: value).stringValue
-    }
-
-    /// 重新解码 Artifact, 只把有效 DeepSeek 余额观察交给账本,
-    /// 派生月度状态作为唯一 UI 状态源保存. 无效/空/失败/未授权
-    /// 的 DeepSeek Artifact 不读写账本.
-    private func updateDeepSeekMonthlyUsage(from artifact: JSONValue?) {
-        guard let ledger = deepSeekLedger else {
-            deepSeekMonthlyUsage = nil
-            invalidatePanelCache()
-            return
-        }
-        guard let decoded = decodedAgentUsageArtifact(from: artifact) else {
-            // 无效/空 Artifact: 不读写账本, 保留当前状态.
-            return
-        }
-        guard let service = decoded.services.first(where: {
-            $0.id == "deepseek"
-        }) else {
-            return
-        }
-        // 仅接受已校验 Artifact 中 id==deepseek, status==ok, kind==balance,
-        // 余额为非负有限值的观察.
-        guard service.status == "ok",
-              service.kind == "balance",
-              let balance = service.balance,
-              balance.isFinite,
-              balance >= 0,
-              let currency = service.currency else {
-            return
-        }
-        let trackingID = subscriptionProviders[.deepseek]?.usageTrackingID
-        ledger.setTrackingID(trackingID)
-        deepSeekMonthlyUsage = ledger.record(
-            DeepSeekUsageObservation(
-                observedAt: decoded.generatedAt,
-                balance: Decimal(balance),
-                currency: currency
-            )
-        )
-        invalidatePanelCache()
     }
 
     /// 发布 Core 的就绪评估结果, 并把 readiness 映射为 Dashboard 状态.
@@ -511,13 +436,9 @@ package final class AppModel: ObservableObject {
     package func setSubscriptionProviders(
         _ providers: [SubscriptionProviderID: SubscriptionProviderConfiguration]
     ) {
-        let oldTrackingID = subscriptionProviders[.deepseek]?.usageTrackingID
         subscriptionProviders = providers
-        // 追踪 ID 变化 (保存/更换 API key) 时立即失效派生月度状态,
-        // 等下一次有效余额观察重建基线, 避免新旧账户混算.
-        if providers[.deepseek]?.usageTrackingID != oldTrackingID {
-            invalidateDeepSeekMonthlyUsage()
-        }
+        // C020: 验证状态变化影响仪表盘展示门禁, 必须失效面板缓存.
+        invalidatePanelCache()
     }
 
     package func setSubscriptionCredentialConfigured(
@@ -627,14 +548,38 @@ package final class AppModel: ObservableObject {
             return cached
         }
         let vm = PanelViewModelMapper().make(
-            agentUsage: decodedAgentUsageArtifact(),
+            agentUsage: gatedAgentUsageArtifact(),
             moduleStatuses: moduleStatuses,
-            deepSeekMonthlyUsage: deepSeekMonthlyUsage,
             providerOrder: subscriptionProviderOrder.map(\.rawValue)
         )
         cachedPanelViewModel = vm
         lastPanelCacheVersion = panelCacheVersion
         return vm
+    }
+
+    /// 仪表盘展示门禁 (C020): 仅验证状态为 ok 的 Provider 的服务进入订阅段.
+    /// 未验证/验证失败/需重新登录的 Provider 服务一律过滤, 避免未验证订阅
+    /// 出现在仪表盘; agents (token 用量卡) 不受影响.
+    private var verifiedProviderIDs: Set<String> {
+        Set(subscriptionProviders.compactMap { id, configuration in
+            SubscriptionPresentationPolicy.isVerifiedForDashboard(
+                configuration.verificationStatus
+            ) ? id.rawValue : nil
+        })
+    }
+
+    /// 按验证状态过滤 services 后的 artifact; 无 artifact 返回 nil.
+    /// services 未发生变化时直接返回原对象 (保持引用与相等性).
+    private func gatedAgentUsageArtifact() -> AgentUsageArtifact? {
+        guard let artifact = decodedAgentUsageArtifact() else { return nil }
+        let verified = verifiedProviderIDs
+        let services = artifact.services.filter { service in
+            verified.contains(SubscriptionPresentationPolicy.providerID(forServiceID: service.id))
+        }
+        if services.count == artifact.services.count {
+            return artifact
+        }
+        return artifact.replacingServices(services)
     }
 
     /// 菜单栏标签摘要 (缓存, 复用已解码 artifact).
@@ -662,7 +607,7 @@ package final class AppModel: ObservableObject {
     }
 
     /// 从指定 raw JSONValue 解码 agent-usage artifact, 带内容缓存.
-    /// updateDeepSeekMonthlyUsage 和 makePanelViewModel 共享同一解码结果.
+    /// 面板 VM 与菜单栏摘要共享同一解码结果.
     private func decodedAgentUsageArtifact(from raw: JSONValue?) -> AgentUsageArtifact? {
         guard let raw else { return nil }
         if cachedArtifactRef == raw, let cached = cachedDecodedArtifact {

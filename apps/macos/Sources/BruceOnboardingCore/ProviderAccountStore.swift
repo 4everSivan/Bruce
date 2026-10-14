@@ -145,6 +145,8 @@ public enum ProviderAccountKeys {
             return [SubscriptionCredentialAccount.stepfunToken]
         case .jev:
             return [SubscriptionCredentialAccount.jevAPIKey]
+        case .cline:
+            return [SubscriptionCredentialAccount.clineAPIKey]
         }
     }
 }
@@ -196,6 +198,11 @@ public enum ProviderAccountIDGenerator {
 
     /// TypeSafe Jev: API key SHA-256 前 16 位.
     public static func jevAccountID(apiKey: String) -> String {
+        ProviderAccountKeys.sha256Hex(apiKey)
+    }
+
+    /// Cline / ClinePass: API key SHA-256 前 16 位.
+    public static func clineAccountID(apiKey: String) -> String {
         ProviderAccountKeys.sha256Hex(apiKey)
     }
 }
@@ -535,6 +542,11 @@ public final class ProviderAccountStore: @unchecked Sendable {
             let key = legacyValues[0]
             accountID = ProviderAccountIDGenerator.jevAccountID(apiKey: key)
             displayName = "Jev · \(String(accountID.prefix(8)))"
+            credentialJSON = key
+        case .cline:
+            let key = legacyValues[0]
+            accountID = ProviderAccountIDGenerator.clineAccountID(apiKey: key)
+            displayName = "Cline · \(String(accountID.prefix(8)))"
             credentialJSON = key
         case .codex:
             return false // Codex 已有独立的多账号体系

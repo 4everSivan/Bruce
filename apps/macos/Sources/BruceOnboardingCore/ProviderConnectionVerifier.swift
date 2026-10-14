@@ -225,6 +225,23 @@ public struct ProviderConnectionVerifier: Sendable {
         return .ok
     }
 
+    /// Cline / ClinePass API key 结构校验: 非空, 不含空白且长度合理.
+    /// 观察到官方 key 形如 `sk_<64 位 hex>`, 此处仅做宽松防御不强制前缀.
+    /// 真实额度查询 (plan / usages 三窗口) 由 collector 完成, 此处不发网络请求.
+    public static func verifyClineAPIKey(_ apiKey: String) -> SubscriptionVerificationStatus {
+        let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else {
+            return .failed(reason: "API key 为空")
+        }
+        guard !key.contains(where: { $0.isWhitespace }) else {
+            return .failed(reason: "API key 格式不合理")
+        }
+        guard key.count >= 16 else {
+            return .failed(reason: "API key 长度过短")
+        }
+        return .ok
+    }
+
     /// 解析凭证 JSON 字符串为对象; 非对象或解析失败返回 nil.
     private static func jsonObject(from json: String) -> [String: Any]? {
         guard let data = json.data(using: .utf8),
