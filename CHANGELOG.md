@@ -3,7 +3,13 @@
 所有对本项目的显著变更均记录于此文件。
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，版本号严格遵循 [语义化版本 (SemVer)](https://semver.org/lang/zh-CN/)。
 
----
+## [0.11.4] - 2026-10-14
+
+### Fixed
+- **Windows 任务栏托盘弹出位置偏离与静态坐标死锁修复 (C016)**: 修复点击托盘图标位置错位、钻入任务栏后方或多屏切换后失效的缺陷。彻底废弃历史失焦时写入 `settings.json` 并永久死锁面板坐标的旧逻辑；改为基于 Win32 操作系统底层真实的 `monitor.work_area()` 工作区（自动扣除任务栏占用）与 Tauri 2 托盘点击物理 `rect`，动态计算贴靠位置（底部任务栏上方 10px / 顶部任务栏下方 10px），并居中对齐托盘图标与安全边缘钳制；支持 Windows 10/11 任意任务栏停靠位置与多显示器负坐标环境。
+- **多分辨率与高 DPI 缩放仪表盘高度自适应 (C016)**: 修复 `tauri.conf.json` 写死高度 760 导致在 1080p 150% 缩放笔记本（可用逻辑高度仅 688px）及 1366×768 屏幕下窗口超出屏幕下界、底栏设置与退出按钮不可见的严重 Bug。实现纯函数 `compute_dashboard_geometry` 动态根据工作区可用高度自适应降高（留出上下各 10px 安全边距），开启 `resizable: true` 支持程序级尺寸适配。
+- **消除前端 CSS Flex 截断与细滚动条优化 (C016)**: 修复 `styles.css` 中 `#scroll` 缺少 `min-height: 0` 导致的 Flex 规范下子项拒绝收缩并挤出底栏的缺陷；为 `#scroll` 注入 `flex: 1 1 0; min-height: 0;` 并配备 4px 细致半透明滚动条；为 `#footer` 显式设置 `flex: 0 0 auto;`，底栏齿轮设置与退出按钮永久绝对锁定在可视区底端。
+- **交付 Windows 任务栏高保真交互与多分辨率模拟 Demo**: 更新 `apps/win/demo/win-taskbar-interaction-demo.html`，新增 1080p 100%、1080p 150%、1366×768、2K 125%、4K 200% 分辨率切换与顶部/底部任务栏切换，并实时渲染几何 Telemetry 状态参数与挂靠对齐效果。
 
 ## [0.11.3] - 2026-10-13
 

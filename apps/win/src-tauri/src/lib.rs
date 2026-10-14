@@ -18,51 +18,96 @@ mod desktop {
     use std::collections::BTreeMap;
 
     use super::{credentials, paths, scheduler, settings};
-    use crate::runtime_core::{replace_hotkey, window_action, WindowAction};
+    use crate::runtime_core::{
+        compute_dashboard_geometry, replace_hotkey, window_action, MonitorBounds, TrayIconBounds,
+        WindowAction,
+    };
     use std::sync::Mutex;
     use tauri::{
         menu::{Menu, MenuItem},
         tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-        Emitter, Manager, PhysicalPosition, WindowEvent,
+        Emitter, Manager, PhysicalPosition, PhysicalSize, WindowEvent,
     };
     use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
     use crate::scheduler::SchedulerControl;
     use crate::settings::AppSettings;
 
+    #[derive(Clone, Default)]
+    struct TrayBoundsState(std::sync::Arc<std::sync::Mutex<Option<TrayIconBounds>>>);
+
+    fn rect_to_bounds(rect: &tauri::Rect, scale: f64) -> TrayIconBounds {
+        let pos = rect.position.to_physical::<i32>(scale);
+        let sz = rect.size.to_physical::<u32>(scale);
+        TrayIconBounds {
+            x: pos.x,
+            y: pos.y,
+            width: sz.width,
+            height: sz.height,
+        }
+    }
+
+    /// 依据目标显示器物理工作区 (work_area) 与托盘位置动态计算自适应尺寸并贴靠定位。
+    fn apply_dashboard_geometry(
+        window: &tauri::WebviewWindow,
+        tray_bounds: Option<&TrayIconBounds>,
+    ) {
+        let monitor = if let (Some(tray), Ok(monitors)) = (tray_bounds, window.available_monitors())
+        {
+            monitors.into_iter().find(|m| {
+                let pos = m.position();
+                let sz = m.size();
+                tray.x >= pos.x
+                    && tray.x < pos.x + sz.width as i32
+                    && tray.y >= pos.y
+                    && tray.y < pos.y + sz.height as i32
+            })
+        } else {
+            None
+        };
+
+        let target_monitor = monitor
+            .or_else(|| window.current_monitor().ok().flatten())
+            .or_else(|| window.primary_monitor().ok().flatten());
+
+        if let Some(m) = target_monitor {
+            let scale = m.scale_factor();
+            let pos = m.position();
+            let size = m.size();
+            let work = m.work_area();
+
+            let monitor_bounds = MonitorBounds {
+                x: pos.x,
+                y: pos.y,
+                width: size.width,
+                height: size.height,
+                work_x: work.position.x,
+                work_y: work.position.y,
+                work_width: work.size.width,
+                work_height: work.size.height,
+                scale_factor: scale,
+            };
+
+            let geom = compute_dashboard_geometry(&monitor_bounds, tray_bounds);
+            let _ = window.set_size(PhysicalSize::new(geom.width, geom.height));
+            let _ = window.set_position(PhysicalPosition::new(geom.x, geom.y));
+        }
+    }
+
     fn toggle_dashboard(app: &tauri::AppHandle) {
         if let Some(window) = app.get_webview_window("dashboard") {
             if window.is_visible().unwrap_or(false) {
                 let _ = window.hide();
             } else {
-                restore_or_default_position(&window);
+                let tray_bounds = app
+                    .try_state::<TrayBoundsState>()
+                    .and_then(|s| s.0.lock().ok().and_then(|guard| *guard));
+                apply_dashboard_geometry(&window, tray_bounds.as_ref());
                 let _ = window.show();
                 let _ = window.set_focus();
                 // 打开面板立即出新数据 (常驻周期之外的手动唤醒通道, C007)。
                 app.state::<SchedulerControl>().request_manual_refresh();
             }
-        }
-    }
-
-    /// 位置记忆: 显示前恢复上次面板位置；未记忆时默认贴靠主屏任务栏右下角上方 (对齐 mac 托盘弹窗)。
-    fn restore_or_default_position(window: &tauri::WebviewWindow) {
-        let stored = settings::load_settings(&paths::data_root());
-        if let (Some(x), Some(y)) = (stored.panel_x, stored.panel_y) {
-            let _ = window.set_position(PhysicalPosition::new(x, y));
-            return;
-        }
-        if let Ok(Some(monitor)) = window.primary_monitor() {
-            let scale = monitor.scale_factor();
-            let mon_pos = monitor.position();
-            let mon_size = monitor.size();
-            let win_w = (440.0 * scale) as i32;
-            let win_h = (760.0 * scale) as i32;
-            let target_x = mon_pos.x + mon_size.width as i32 - win_w - (12.0 * scale) as i32;
-            let target_y = mon_pos.y + mon_size.height as i32 - win_h - (60.0 * scale) as i32;
-            let _ = window.set_position(PhysicalPosition::new(
-                target_x.max(mon_pos.x),
-                target_y.max(mon_pos.y),
-            ));
         }
     }
 
@@ -289,6 +334,7 @@ mod desktop {
                 }
                 app.manage(control);
                 app.manage(RegisteredHotkey::default());
+                app.manage(TrayBoundsState::default());
                 // 后台调度器 (常驻周期采集 + 退避 + Toast)。
                 // 全局热键 (设置可配)。
                 let hotkey = settings::load_settings(&paths::data_root()).hotkey;
@@ -321,6 +367,7 @@ mod desktop {
                         if let TrayIconEvent::Click {
                             button: MouseButton::Left,
                             button_state: MouseButtonState::Up,
+                            rect,
                             ..
                         } = event
                         {
@@ -332,7 +379,19 @@ mod desktop {
                                     }
                                 }
                             }
-                            toggle_dashboard(tray.app_handle());
+                            let app = tray.app_handle();
+                            let scale = app
+                                .get_webview_window("dashboard")
+                                .and_then(|w| w.primary_monitor().ok().flatten())
+                                .map(|m| m.scale_factor())
+                                .unwrap_or(1.0);
+                            let bounds = rect_to_bounds(&rect, scale);
+                            if let Some(state) = app.try_state::<TrayBoundsState>() {
+                                if let Ok(mut lock) = state.0.lock() {
+                                    *lock = Some(bounds);
+                                }
+                            }
+                            toggle_dashboard(app);
                         }
                     })
                     .build(app)?;

@@ -309,3 +309,208 @@ fn manual_origin_survives_backoff_without_leaking_into_next_normal_cycle() {
     assert!(!manual_alert_reason(false, 6, true));
     assert!(!manual_alert_reason(false, 1, false));
 }
+
+#[test]
+fn dashboard_geometry_standard_1080p_100_percent() {
+    use bruce_win_lib::runtime_core::{compute_dashboard_geometry, MonitorBounds, TrayIconBounds};
+    let monitor = MonitorBounds {
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1080,
+        work_x: 0,
+        work_y: 0,
+        work_width: 1920,
+        work_height: 1040, // 底部 40px 任务栏
+        scale_factor: 1.0,
+    };
+    let tray = TrayIconBounds {
+        x: 1800,
+        y: 1040,
+        width: 40,
+        height: 40,
+    };
+    let geom = compute_dashboard_geometry(&monitor, Some(&tray));
+    assert_eq!(geom.width, 440);
+    assert_eq!(geom.height, 760);
+    // 底部贴靠：1040 - 760 - 10 = 270
+    assert_eq!(geom.y, 270);
+    assert!(geom.y + geom.height as i32 <= monitor.work_height as i32);
+    // 水平对齐：托盘中心 1820 - 220 = 1600，被右边界安全 clamp (1920 - 440 - 12 = 1468)
+    assert_eq!(geom.x, 1468);
+    assert!(geom.x + geom.width as i32 <= monitor.work_width as i32);
+}
+
+#[test]
+fn dashboard_geometry_1080p_150_percent_high_dpi_laptop_never_overflows() {
+    use bruce_win_lib::runtime_core::{compute_dashboard_geometry, MonitorBounds, TrayIconBounds};
+    // 典型 15.6 寸 1080p 笔记本 150% 缩放
+    let monitor = MonitorBounds {
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1080,
+        work_x: 0,
+        work_y: 0,
+        work_width: 1920,
+        work_height: 1032, // 48px 物理任务栏
+        scale_factor: 1.5,
+    };
+    let tray = TrayIconBounds {
+        x: 1840,
+        y: 1032,
+        width: 48,
+        height: 48,
+    };
+    let geom = compute_dashboard_geometry(&monitor, Some(&tray));
+    // 逻辑可用高度 1032 / 1.5 = 688，最大逻辑高度 688 - 20 = 668
+    // 物理高度 668 * 1.5 = 1002 <= 1032
+    assert_eq!(geom.width, 660); // 440 * 1.5
+    assert_eq!(geom.height, 1002);
+    // y = 1032 - 1002 - 15 = 15
+    assert_eq!(geom.y, 15);
+    // 绝不溢出屏幕物理工作区底边界！
+    assert!(geom.y >= monitor.work_y);
+    assert!(geom.y + geom.height as i32 <= monitor.work_height as i32);
+}
+
+#[test]
+fn dashboard_geometry_compact_laptop_768p_adapts_height() {
+    use bruce_win_lib::runtime_core::{compute_dashboard_geometry, MonitorBounds, TrayIconBounds};
+    let monitor = MonitorBounds {
+        x: 0,
+        y: 0,
+        width: 1366,
+        height: 768,
+        work_x: 0,
+        work_y: 0,
+        work_width: 1366,
+        work_height: 728, // 40px 任务栏
+        scale_factor: 1.0,
+    };
+    let tray = TrayIconBounds {
+        x: 1300,
+        y: 728,
+        width: 40,
+        height: 40,
+    };
+    let geom = compute_dashboard_geometry(&monitor, Some(&tray));
+    // 自动从 760 缩小至 728 - 20 = 708
+    assert_eq!(geom.height, 708);
+    assert_eq!(geom.width, 440);
+    assert_eq!(geom.y, 10);
+    assert!(geom.y + geom.height as i32 <= 728);
+}
+
+#[test]
+fn dashboard_geometry_2k_and_4k_scaling() {
+    use bruce_win_lib::runtime_core::{compute_dashboard_geometry, MonitorBounds};
+    // 2K 125%
+    let monitor_2k = MonitorBounds {
+        x: 0,
+        y: 0,
+        width: 2560,
+        height: 1440,
+        work_x: 0,
+        work_y: 0,
+        work_width: 2560,
+        work_height: 1390,
+        scale_factor: 1.25,
+    };
+    let geom_2k = compute_dashboard_geometry(&monitor_2k, None);
+    assert_eq!(geom_2k.width, 550); // 440 * 1.25
+    assert_eq!(geom_2k.height, 950); // 760 * 1.25
+    assert!(geom_2k.y + geom_2k.height as i32 <= 1390);
+
+    // 4K 200%
+    let monitor_4k = MonitorBounds {
+        x: 0,
+        y: 0,
+        width: 3840,
+        height: 2160,
+        work_x: 0,
+        work_y: 0,
+        work_width: 3840,
+        work_height: 2080,
+        scale_factor: 2.0,
+    };
+    let geom_4k = compute_dashboard_geometry(&monitor_4k, None);
+    assert_eq!(geom_4k.width, 880); // 440 * 2.0
+    assert_eq!(geom_4k.height, 1520); // 760 * 2.0
+    assert!(geom_4k.y + geom_4k.height as i32 <= 2080);
+}
+
+#[test]
+fn dashboard_geometry_top_taskbar() {
+    use bruce_win_lib::runtime_core::{compute_dashboard_geometry, MonitorBounds, TrayIconBounds};
+    let monitor = MonitorBounds {
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1080,
+        work_x: 0,
+        work_y: 40, // 顶部 40px 任务栏
+        work_width: 1920,
+        work_height: 1040,
+        scale_factor: 1.0,
+    };
+    let tray = TrayIconBounds {
+        x: 1800,
+        y: 0,
+        width: 40,
+        height: 40,
+    };
+    let geom = compute_dashboard_geometry(&monitor, Some(&tray));
+    assert_eq!(geom.y, 50); // 40 + 10 = 50 贴在顶部任务栏下方
+    assert!(geom.y >= monitor.work_y);
+    assert!(geom.y + geom.height as i32 <= 1080);
+}
+
+#[test]
+fn dashboard_geometry_hotkey_fallback_without_tray() {
+    use bruce_win_lib::runtime_core::{compute_dashboard_geometry, MonitorBounds};
+    let monitor = MonitorBounds {
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1080,
+        work_x: 0,
+        work_y: 0,
+        work_width: 1920,
+        work_height: 1040,
+        scale_factor: 1.0,
+    };
+    let geom = compute_dashboard_geometry(&monitor, None);
+    assert_eq!(geom.width, 440);
+    assert_eq!(geom.height, 760);
+    assert_eq!(geom.x, 1920 - 440 - 12);
+    assert_eq!(geom.y, 1040 - 760 - 10);
+}
+
+#[test]
+fn dashboard_geometry_multi_monitor_negative_coordinates() {
+    use bruce_win_lib::runtime_core::{compute_dashboard_geometry, MonitorBounds, TrayIconBounds};
+    // 副屏位于主屏左侧
+    let monitor = MonitorBounds {
+        x: -1920,
+        y: 0,
+        width: 1920,
+        height: 1080,
+        work_x: -1920,
+        work_y: 0,
+        work_width: 1920,
+        work_height: 1040,
+        scale_factor: 1.0,
+    };
+    let tray = TrayIconBounds {
+        x: -100,
+        y: 1040,
+        width: 40,
+        height: 40,
+    };
+    let geom = compute_dashboard_geometry(&monitor, Some(&tray));
+    assert!(geom.x >= -1920);
+    assert!(geom.x + geom.width as i32 <= 0);
+    assert!(geom.y >= 0);
+    assert!(geom.y + geom.height as i32 <= 1040);
+}

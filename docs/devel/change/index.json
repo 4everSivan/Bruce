@@ -28,7 +28,8 @@
         "C012",
         "C013",
         "C014",
-        "C015"
+        "C015",
+        "C016"
       ]
     },
     "SubscriptionQuota": {
@@ -174,6 +175,15 @@
       "topic": "WindowsCompat",
       "version": "0.11.3",
       "file": "docs/devel/change/C015.json"
+    },
+    "C016": {
+      "title": "修复 Windows 任务栏托盘弹出位置偏离与多分辨率/DPI 下仪表盘高度溢出截断缺陷",
+      "type": "Fix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.11.4",
+      "file": "docs/devel/change/C016.json"
     }
   }
 }

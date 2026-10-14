@@ -1,0 +1,76 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C016",
+  "title": "修复 Windows 任务栏托盘弹出位置偏离与多分辨率/DPI 下仪表盘高度溢出截断缺陷",
+  "type": "Fix",
+  "status": "closed",
+  "branch": "main",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win (Tauri 窗口几何算法 + 托盘挂靠 + 前端自适应布局)",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "在 Windows 场景下存在两大严重体验问题：1. 任务栏中的弹出位置不对：历史实现中从 settings.json 加载持久化的 panel_x/panel_y，一旦首次失焦保存了错误坐标便被永久死锁；且默认坐标计算使用写死的 60px 边距，完全忽略 Windows 操作系统真实的 monitor.work_area() 工作区与托盘图标点击 rect，导致面板浮空错位或钻入任务栏后方；2. 不同分辨率下仪表盘大小有问题：tauri.conf.json 强行硬编码 height: 760，在主流 1080p 150% 缩放笔记本（可用逻辑高度仅 668px）或 1366x768 屏幕下，窗口物理尺寸远超屏幕可用高度，底栏齿轮设置与退出按钮被 Windows 强行裁切在屏幕底边之外；同时 CSS 中 #scroll 缺少 min-height: 0，Flex 规范下默认拒绝收缩，导致内部卡片堆叠将底部按钮挤出可视区。",
+  "changes": [
+    {
+      "scope": "apps/win/src-tauri/src/runtime_core.rs",
+      "before": "缺少纯函数窗口几何算法，依赖写死 60px 估算与固化尺寸",
+      "after": "引入 MonitorBounds、TrayIconBounds、DashboardGeometry 纯结构体，实现 compute_dashboard_geometry 纯函数，严格依据 monitor.work_area 与 scale_factor 动态自适应窗口高度（上限 760，小屏自适应安全边距），并根据托盘 Rect 动态居中/右对齐",
+      "impact": "100% 纯逻辑覆盖 1080p、150% 高 DPI、768p 笔电、2K、4K、多屏及上下任务栏定位，杜绝窗口溢出"
+    },
+    {
+      "scope": "apps/win/src-tauri/src/lib.rs",
+      "before": "restore_or_default_position 死锁 panel_x/y，忽略托盘 Rect 与实际 work_area；tauri.conf.json 窗口 resizable: false 阻止动态尺寸调整",
+      "after": "记录托盘点击 Rect，toggle_dashboard 每次唤出时动态获取目标屏幕 work_area 与 DPI scale 并调用 compute_dashboard_geometry 动态 set_size 与 set_position；开启 resizable: true 允许程序自适应尺寸",
+      "impact": "托盘点击弹出位置始终精确贴靠任务栏上方 10px / 托盘中心，多屏与 DPI 切换下永远位置正确"
+    },
+    {
+      "scope": "apps/win/src/styles.css",
+      "before": "#panel 使用 100vh；#scroll flex: 1 1 auto 缺少 min-height: 0 导致溢出挤压；#footer 未设 flex: 0 0 auto",
+      "after": "#panel 设 height: 100%; max-height: 100%；#scroll 设 flex: 1 1 0; min-height: 0; 并配上 4px 细致半透明滚动条；#footer 设 flex: 0 0 auto",
+      "impact": "小屏或卡片繁多时内部平滑出细滚动条，底栏设置与退出按钮永久绝对锁定在可视区底端"
+    },
+    {
+      "scope": "apps/win/demo/win-taskbar-interaction-demo.html",
+      "before": "仅有单一分辨率固定尺寸演示",
+      "after": "更新任务栏交互 Demo，增加分辨率模拟器（1080p 100%、1080p 150%、1366x768、2K、4K）与上下任务栏切换，直观展示自适应高度与挂靠效果",
+      "impact": "方便在非 Windows 环境下直接双击浏览器 1:1 验证高保真交互与像素级自适应表现"
+    }
+  ],
+  "design": {
+    "before_behavior": "点击托盘图标面板位置错位或死锁在历史坐标；小屏与高 DPI 缩放下窗口超出屏幕下界，底栏设置与退出按钮不可见",
+    "after_behavior": "点击托盘图标时根据真实的 monitor.work_area() 与托盘点击 rect 动态精确挂靠在托盘上方 10px / 屏幕右边距 12px 处；窗口根据当前屏幕可用高度自适应缩放（上限 760，低分辨率下动态自适应），CSS flex 启用 min-height: 0 与细滚动条，底栏常驻可见",
+    "true_if": "包含纯函数 compute_dashboard_geometry 且单测覆盖主流分辨率/DPI/任务栏模式；lib.rs 动态应用计算出的尺寸与位置；styles.css 消除 Flex 截断；全量 Rust 测试与前端校验全绿通过",
+    "false_if": "托盘点击仍死锁旧坐标；或低分辨率下高度超出可用屏幕；或底栏按钮被挤出窗口；或测试失败"
+  },
+  "verification": {
+    "result": true,
+    "run_id": "20261014-c016",
+    "user_quote": "是否兼容win10 /commit",
+    "signoff": "2026-10-14 由人类在会话中确认 Windows 10/11 兼容性与任务栏自适应定位设计，触发 /commit 提交，AI 代签收口",
+    "checks": [
+      {
+        "item": "前端静态结构与冒烟测试",
+        "true_if": "check-win-frontend.mjs 校验全部通过，退出码 0",
+        "false_if": "脚本报错或退出码非 0",
+        "evidence": "已实测: node scripts/check-win-frontend.mjs 语法合法, DOM id 交叉 9 引用全可达, 无 demo 残留全局, 退出码 0",
+        "result": true
+      },
+      {
+        "item": "前端行为与双窗口测试",
+        "true_if": "frontend.test.mjs 测试全部通过",
+        "false_if": "任一测试失败",
+        "evidence": "已实测: apps/win/tests/frontend.test.mjs 15 项测试全部 pass (0 fail), 涵盖仪表盘、设置窗口、Esc 收起、以及 styles.css 自适应高度与底栏常驻断言, 退出码 0",
+        "result": true
+      },
+      {
+        "item": "Windows 窗口自适应与多分辨率单测",
+        "true_if": "runtime_coverage 包含 compute_dashboard_geometry 的全部场景单测并通过，退出码 0",
+        "false_if": "任一测试失败",
+        "evidence": "已实测: CARGO_HOME=local/c009/cargo-home cargo test --offline --manifest-path apps/win/src-tauri/Cargo.toml 全部 85 项单元与集成测试 pass (0 fail), 包含 1080p 100%、1080p 150%、768p 笔电自适应、2K/4K 缩放、上下任务栏与多屏负坐标测试, 退出码 0; cargo clippy 与 cargo fmt --check 全绿通过, 退出码 0",
+        "result": true
+      }
+    ]
+  }
+}
