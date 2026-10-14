@@ -57,6 +57,7 @@ pub const ALLOWED_CREDENTIAL_FIELDS: &[&str] = &[
     "codexQuotaAccounts",
     "stepfunQuotaAccounts",
     "jevQuotaAccounts",
+    "clineQuotaAccounts",
     "providerEnv",
     "providerMeta",
 ];
@@ -536,6 +537,26 @@ mod tests {
         value["credentials"]["access_token"] = Value::String("fixture".to_owned());
         let response = run_bytes(serde_json::to_vec(&value).unwrap().as_slice());
         assert_eq!(response.diagnostics[0].code, "BRIDGE_CREDENTIAL_SCOPE");
+    }
+
+    #[test]
+    fn cline_quota_accounts_pass_credential_scope_validation() {
+        let mut value: Value = serde_json::from_str(&request()).unwrap();
+        value["credentials"]["clineQuotaAccounts"] = json!({
+            "acc-cline-fixture": {
+                "display_name": "Cline · fixture",
+                "api_key": "cline-fixture-key"
+            }
+        });
+        let response = run_bytes(serde_json::to_vec(&value).unwrap().as_slice());
+        assert!(
+            response
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code != "BRIDGE_CREDENTIAL_SCOPE"),
+            "clineQuotaAccounts 应通过凭据白名单: {:?}",
+            response.diagnostics
+        );
     }
 
     #[test]

@@ -71,6 +71,12 @@ const CATALOG_SPECS: &[CatalogSpec] = &[
         display_prefix: "Jev",
         app: "jev",
     },
+    CatalogSpec {
+        provider: "cline",
+        prefix: "cline_",
+        display_prefix: "Cline",
+        app: "cline",
+    },
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -90,7 +96,7 @@ pub struct AccountDescriptor {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CatalogInput {
     /// Keys use stable app/provider IDs: `opencode-go`, `kimi`, `deepseek`,
-    /// `zhipu`, `volcengine`, `claude`, `grok`, `stepfun`, or `jev`.
+    /// `zhipu`, `volcengine`, `claude`, `grok`, `stepfun`, `jev`, or `cline`.
     pub accounts: BTreeMap<String, Vec<AccountDescriptor>>,
     pub enabled_official: BTreeSet<String>,
 }
@@ -452,6 +458,27 @@ pub fn finalize_service(mut service: Value, result: Result<Option<Value>, Provid
         }
     }
     service
+}
+
+pub const CLINE_API_BASE: &str = "https://api.cline.bot/api/v1";
+/// ClinePass 三窗口定义: (展示标签, 窗口秒数, 限额字段).
+/// 采用官方 API 的滚动语义 (`last5Hours`/`last7days`/`last30days`),
+/// 标签经 Swift `PanelFormat.windowLabel` 依 windowMinutes 归一, 此处仅作回退.
+const CLINE_WINDOW_SPECS: &[(&str, i64, ClineThresholdField)] = &[
+    ("每 5 小时", 5 * 60 * 60, ClineThresholdField::Last5Hours),
+    ("每周", 7 * 24 * 60 * 60, ClineThresholdField::Last7Days),
+    ("每月", 30 * 24 * 60 * 60, ClineThresholdField::Last30Days),
+];
+/// 台账 `costUsd` 与 entitlements 阈值同为 1e-8 USD 整数单位.
+const CLINE_COST_UNIT_TO_USD: f64 = 1e-8;
+const CLINE_USAGE_PAGE_LIMIT: usize = 100;
+const CLINE_USAGE_MAX_PAGES: usize = 5;
+
+#[derive(Debug, Clone, Copy)]
+enum ClineThresholdField {
+    Last5Hours,
+    Last7Days,
+    Last30Days,
 }
 
 pub const KIMI_USAGE_URL: &str = "https://api.kimi.com/coding/v1/usages";
@@ -1235,6 +1262,141 @@ fn claude_tier(key: &str) -> (&str, Option<u64>) {
 }
 
 /// Parse Claude OAuth usage, omitting windows that are not active.
+/// Cline / ClinePass 三窗口 (5h/7d/30d) 台账聚合.
+///
+/// 分母取自 `plan.entitlements.cline_pass.inferenceCapThreshold` (严禁硬编码阈值,
+/// 账户级计划如 `[Internal]` 与公开计划可能不同), 分子为逐单台账 `costUsd`
+/// 按滚动窗口求和; 两者同为 1e-8 USD 整数单位.
+/// `entitlements` 缺失或 `enabled=false` (非 ClinePass 账户) 时返回 `Ok(None)` 空态.
+pub fn parse_cline_windows(
+    plan_payload: &Value,
+    items: &[Value],
+    now_epoch: i64,
+) -> Result<Option<Value>, ProviderError> {
+    let Some(thresholds) = cline_thresholds(plan_payload) else {
+        return Ok(None);
+    };
+    let entries = cline_ledger_entries(items);
+    let mut windows = Vec::with_capacity(CLINE_WINDOW_SPECS.len());
+    for (label, seconds, field) in CLINE_WINDOW_SPECS {
+        let limit_units = thresholds.field(*field);
+        if limit_units <= 0.0 {
+            continue;
+        }
+        let start = now_epoch - *seconds;
+        let mut used_units = 0.0_f64;
+        let mut earliest: Option<i64> = None;
+        for entry in &entries {
+            if entry.epoch < start {
+                continue;
+            }
+            used_units += entry.cost_units;
+            earliest = Some(match earliest {
+                Some(current) => current.min(entry.epoch),
+                None => entry.epoch,
+            });
+        }
+        let used_usd = used_units * CLINE_COST_UNIT_TO_USD;
+        let limit_usd = limit_units * CLINE_COST_UNIT_TO_USD;
+        let percent = clamp_percent((used_usd / limit_usd) * 100.0);
+        // 滚动窗口的滑出时刻 = 窗口内最早一单 + 窗口长度; 空台账不展示倒计时.
+        let resets_at = earliest.map(|epoch| epoch + seconds);
+        windows.push(window(
+            label,
+            percent,
+            Some(u64::try_from(*seconds / 60).unwrap_or(0)),
+            resets_at,
+        ));
+    }
+    // C020: 不再注入订阅生命周期注记 (extra), 卡片仅展示计划名与三窗口.
+    Ok(Some(service_result(
+        "windows",
+        cline_plan_name(plan_payload).map(Value::String),
+        windows,
+    )))
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ClineThresholds {
+    last5_hours: f64,
+    last7_days: f64,
+    last30_days: f64,
+}
+
+impl ClineThresholds {
+    fn field(&self, field: ClineThresholdField) -> f64 {
+        match field {
+            ClineThresholdField::Last5Hours => self.last5_hours,
+            ClineThresholdField::Last7Days => self.last7_days,
+            ClineThresholdField::Last30Days => self.last30_days,
+        }
+    }
+}
+
+struct ClineLedgerEntry {
+    epoch: i64,
+    cost_units: f64,
+}
+
+/// 定位 `/users/me/plan` 返回体的订阅外层对象 (`data`):
+/// 真实报文为 `{"data":{"planHistoryId","plan":{...},"cancelAt","canceledAt"},"success":true}`,
+/// 订阅生命周期字段 (`canceledAt`/`cancelAt`/`currentPeriodStart`) 位于本层;
+/// 直接传 data 对象时原样返回.
+fn cline_plan_outer(payload: &Value) -> &Value {
+    payload.get("data").unwrap_or(payload)
+}
+
+/// 定位内层 `ClineSubscriptionPlan` (`displayName` / `entitlements` 所在层).
+fn cline_plan_inner(payload: &Value) -> &Value {
+    let outer = cline_plan_outer(payload);
+    outer.get("plan").unwrap_or(outer)
+}
+
+fn cline_thresholds(payload: &Value) -> Option<ClineThresholds> {
+    let entitlements = cline_plan_inner(payload)
+        .get("entitlements")?
+        .get("cline_pass")?;
+    if entitlements.get("enabled").and_then(Value::as_bool) == Some(false) {
+        return None;
+    }
+    let caps = entitlements.get("inferenceCapThreshold")?;
+    let last5_hours = number(caps.get("last5HoursUsageCostUSDPerUser"))?;
+    let last7_days = number(caps.get("last7daysUsageCostUSDPerUser"))?;
+    let last30_days = number(caps.get("last30daysUsageCostUSDPerUser"))?;
+    if last5_hours <= 0.0 || last7_days <= 0.0 || last30_days <= 0.0 {
+        return None;
+    }
+    Some(ClineThresholds {
+        last5_hours,
+        last7_days,
+        last30_days,
+    })
+}
+
+fn cline_plan_name(payload: &Value) -> Option<String> {
+    let inner = cline_plan_inner(payload);
+    ["displayName", "name"].iter().find_map(|key| {
+        inner
+            .get(*key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+    })
+}
+
+fn cline_ledger_entries(items: &[Value]) -> Vec<ClineLedgerEntry> {
+    items
+        .iter()
+        .filter_map(|item| {
+            let object = item.as_object()?;
+            let epoch = reset_epoch(object.get("createdAt"))?;
+            let cost_units = number(object.get("costUsd"))?;
+            Some(ClineLedgerEntry { epoch, cost_units })
+        })
+        .collect()
+}
+
 pub fn parse_claude_usage(payload: &Value) -> Result<Option<Value>, ProviderError> {
     let object = payload.as_object().ok_or_else(invalid_payload)?;
     let mut windows = Vec::new();
@@ -2641,6 +2803,131 @@ impl QuotaProvider for JevProvider {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ClineProvider;
+
+impl QuotaProvider for ClineProvider {
+    fn app(&self) -> &str {
+        "cline"
+    }
+
+    fn query(
+        &self,
+        request: &ProviderRequest,
+        http: &dyn HttpClient,
+        cancellation: &CancellationToken,
+    ) -> Result<Option<Value>, ProviderError> {
+        let Some(raw_key) = optional_credential_string(request, &["api_key", "apiKey", "token"])?
+        else {
+            return Ok(None);
+        };
+        let api_key = raw_key.trim().trim_matches('"').trim();
+        let api_key = api_key.strip_prefix("Bearer ").unwrap_or(api_key).trim();
+        if api_key.is_empty() {
+            return Ok(None);
+        }
+        let auth_header = format!("Bearer {api_key}");
+        let headers = || {
+            provider_headers(&[
+                ("Authorization", auth_header.clone()),
+                ("Accept", "application/json".to_owned()),
+            ])
+        };
+        let auth_error = "Cline 凭证被拒绝, 请检查 API key";
+
+        let me_payload = send_json(
+            request,
+            http,
+            cancellation,
+            "GET",
+            format!("{CLINE_API_BASE}/users/me"),
+            headers(),
+            None,
+            Some(auth_error),
+        )?;
+        let user_id = me_payload
+            .get("data")
+            .and_then(|data| data.get("id"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                ProviderError::new(
+                    "PROVIDER_INVALID_JSON",
+                    "parse",
+                    "Cline 用户信息缺少 id",
+                    false,
+                )
+            })?;
+        // 防御: user id 直接拼入 URL 路径, 拒绝路径不安全字符避免注入.
+        if !user_id
+            .chars()
+            .all(|value| value.is_ascii_alphanumeric() || matches!(value, '-' | '_' | '.'))
+        {
+            return Err(ProviderError::new(
+                "PROVIDER_INVALID_JSON",
+                "parse",
+                "Cline 用户 ID 含非法字符",
+                false,
+            ));
+        }
+
+        let plan_payload = send_json(
+            request,
+            http,
+            cancellation,
+            "GET",
+            format!("{CLINE_API_BASE}/users/me/plan"),
+            headers(),
+            None,
+            Some(auth_error),
+        )?;
+        if cline_thresholds(&plan_payload).is_none() {
+            // 非 ClinePass 订阅账户 (无 entitlements 三窗口): 不发起台账拉取, 直接空态.
+            return Ok(None);
+        }
+
+        let mut items: Vec<Value> = Vec::new();
+        let mut cursor: Option<String> = None;
+        for _ in 0..CLINE_USAGE_MAX_PAGES {
+            let url = match cursor.as_deref() {
+                Some(cursor) => format!(
+                    "{CLINE_API_BASE}/users/{user_id}/usages?limit={CLINE_USAGE_PAGE_LIMIT}&cursor={}",
+                    percent_encode(cursor)
+                ),
+                None => format!(
+                    "{CLINE_API_BASE}/users/{user_id}/usages?limit={CLINE_USAGE_PAGE_LIMIT}"
+                ),
+            };
+            let page = send_json(
+                request,
+                http,
+                cancellation,
+                "GET",
+                url,
+                headers(),
+                None,
+                Some(auth_error),
+            )?;
+            let data = page.get("data").cloned().unwrap_or(Value::Null);
+            if let Some(array) = data.get("items").and_then(Value::as_array) {
+                items.extend(array.iter().cloned());
+            }
+            cursor = data
+                .get("nextToken")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned);
+            if cursor.is_none() {
+                break;
+            }
+        }
+
+        parse_cline_windows(&plan_payload, &items, captured_epoch(&request.captured_at))
+    }
+}
+
 /// Return the read-only quota adapter for a stable provider app ID.
 pub fn provider_for_app(app: &str) -> Option<Box<dyn QuotaProvider>> {
     match app {
@@ -2654,6 +2941,7 @@ pub fn provider_for_app(app: &str) -> Option<Box<dyn QuotaProvider>> {
         "codex" => Some(Box::new(CodexProvider)),
         "stepfun" => Some(Box::new(StepFunProvider)),
         "jev" => Some(Box::new(JevProvider)),
+        "cline" => Some(Box::new(ClineProvider)),
         _ => None,
     }
 }
@@ -2662,14 +2950,15 @@ pub fn provider_for_app(app: &str) -> Option<Box<dyn QuotaProvider>> {
 mod tests {
     use super::{
         bounded_http_body, codex_service_id, extract_stepfun_app_id, extract_stepfun_device_id,
-        is_stepfun_global, is_stepfun_token_expired, parse_claude_usage, parse_codex_usage,
-        parse_deepseek_balance, parse_grok_usage, parse_jev_models, parse_kimi_usage,
-        parse_opencode_go_body, parse_stepfun_usage, parse_volcengine_usage, parse_zhipu_usage,
-        resolve_service_catalog, service_template, AccountDescriptor, CancellationToken,
-        CatalogInput, CodexProvider, DeepSeekProvider, HttpClient, HttpRequest, HttpResponse,
-        JevProvider, KimiProvider, OpenCodeGoProvider, ProviderError, ProviderRequest,
-        QuotaProvider, StepFunProvider, UreqHttpClient, VolcEngineProvider, ZhipuProvider,
-        JEV_MODELS_URL, STEPFUN_GLOBAL_REFRESH_TOKEN_URL, STEPFUN_GLOBAL_STEP_PLAN_RATE_LIMIT_URL,
+        is_stepfun_global, is_stepfun_token_expired, parse_claude_usage, parse_cline_windows,
+        parse_codex_usage, parse_deepseek_balance, parse_grok_usage, parse_jev_models,
+        parse_kimi_usage, parse_opencode_go_body, parse_stepfun_usage, parse_volcengine_usage,
+        parse_zhipu_usage, reset_epoch, resolve_service_catalog, service_template,
+        AccountDescriptor, CancellationToken, CatalogInput, ClineProvider, CodexProvider,
+        DeepSeekProvider, HttpClient, HttpRequest, HttpResponse, JevProvider, KimiProvider,
+        OpenCodeGoProvider, ProviderError, ProviderRequest, QuotaProvider, StepFunProvider,
+        UreqHttpClient, VolcEngineProvider, ZhipuProvider, JEV_MODELS_URL,
+        STEPFUN_GLOBAL_REFRESH_TOKEN_URL, STEPFUN_GLOBAL_STEP_PLAN_RATE_LIMIT_URL,
         STEPFUN_REFRESH_TOKEN_URL, STEPFUN_STEP_PLAN_RATE_LIMIT_URL,
     };
     use collector_runtime::RuntimeLimits;
@@ -3688,5 +3977,289 @@ mod tests {
         assert_eq!(result["kind"], "balance");
         assert_eq!(result["balance"], 18.5);
         assert_eq!(result["currency"], "USD");
+    }
+
+    fn cline_plan_payload(thresholds: (u64, u64, u64), canceled_at: Option<&str>) -> Value {
+        json!({
+            "data": {
+                "planHistoryId": "iph-fixture",
+                "userId": "usr-fixture",
+                "plan": {
+                    "id": "pln-fixture",
+                    "name": "Cline Pass (Monthly)[Internal]",
+                    "displayName": "Cline Pass (Monthly)",
+                    "type": "individual",
+                    "interval": "Monthly",
+                    "pricePerSeatCents": 999,
+                    "entitlements": {
+                        "cline_pass": {
+                            "enabled": true,
+                            "inferenceCapThreshold": {
+                                "last5HoursUsageCostUSDPerUser": thresholds.0,
+                                "last7daysUsageCostUSDPerUser": thresholds.1,
+                                "last30daysUsageCostUSDPerUser": thresholds.2,
+                            }
+                        }
+                    }
+                },
+                "subscriptionId": "sub-fixture",
+                "currentPeriodStart": "2026-10-14T11:52:39Z",
+                "currentPeriodEnd": "2026-11-14T11:52:39Z",
+                "cancelAt": "2026-11-14T11:52:39Z",
+                "canceledAt": canceled_at,
+            },
+            "success": true,
+        })
+    }
+
+    fn cline_request(secret: &str) -> ProviderRequest {
+        ProviderRequest {
+            account_id: None,
+            captured_at: "2026-10-14T12:00:00Z".to_owned(),
+            timeout: Duration::from_secs(8),
+            max_response_body_bytes: RuntimeLimits::default().response_body_bytes,
+            credential: Some(json!({ "api_key": secret })),
+        }
+    }
+
+    #[test]
+    fn cline_provider_aggregates_three_rolling_windows() {
+        let secret = "sk-cline-fixture-key";
+        // 台账: 5h 内三单 ($1.00 + $2.00 + $0.50), 24h 内一单 ($2.50), 30 天内一单 ($10.00)
+        let page_one = json!({
+            "data": {
+                "items": [
+                    {"createdAt": "2026-10-14T11:59:00Z", "costUsd": 100_000_000_i64},
+                    {"createdAt": "2026-10-14T11:00:00Z", "costUsd": 200_000_000_i64},
+                    {"createdAt": "2026-10-14T10:30:00Z", "costUsd": 50_000_000_i64},
+                    {"createdAt": "2026-10-13T00:00:00Z", "costUsd": 250_000_000_i64}
+                ],
+                "nextToken": "cursor+with=padding"
+            },
+            "success": true,
+        });
+        let page_two = json!({
+            "data": {
+                "items": [
+                    {"createdAt": "2026-09-20T00:00:00Z", "costUsd": 1_000_000_000_i64}
+                ],
+                "nextToken": null
+            },
+            "success": true,
+        });
+        let http = FixtureHttp::new(vec![
+            response(
+                r#"{"data":{"id":"usr-fixture","email":"fixture@example.com"},"success":true}"#,
+            ),
+            response(
+                &cline_plan_payload((1_000_000_000, 2_500_000_000, 5_000_000_000), None)
+                    .to_string(),
+            ),
+            response(&page_one.to_string()),
+            response(&page_two.to_string()),
+        ]);
+        let result = ClineProvider
+            .query(&cline_request(secret), &http, &CancellationToken::new())
+            .unwrap()
+            .unwrap();
+        assert_eq!(result["kind"], "windows");
+        assert_eq!(result["plan"], "Cline Pass (Monthly)");
+        assert!(result["extra"].is_null());
+        let windows = result["windows"].as_array().expect("windows array");
+        assert_eq!(windows.len(), 3);
+        // 5h 窗口: $3.50 / $10.00 = 35%
+        assert_eq!(windows[0]["label"], "每 5 小时");
+        assert_eq!(windows[0]["windowMinutes"], json!(300));
+        assert!((windows[0]["usedPercent"].as_f64().unwrap() - 35.0).abs() < 1e-6);
+        // 7d 窗口: $6.00 / $25.00 = 24%
+        assert_eq!(windows[1]["windowMinutes"], json!(10080));
+        assert!((windows[1]["usedPercent"].as_f64().unwrap() - 24.0).abs() < 1e-6);
+        // 30d 窗口: $16.00 / $50.00 = 32%
+        assert_eq!(windows[2]["windowMinutes"], json!(43200));
+        assert!((windows[2]["usedPercent"].as_f64().unwrap() - 32.0).abs() < 1e-6);
+        // 滑出时刻 = 窗口内最早一单 + 窗口长度 (5h: 10:30 + 5h)
+        let expected_reset = reset_epoch(Some(&json!("2026-10-14T10:30:00Z"))).unwrap() + 18_000;
+        assert_eq!(windows[0]["resetsAt"], json!(expected_reset));
+        // 请求序列与鉴权头
+        let requests = http.requests();
+        assert_eq!(requests.len(), 4);
+        assert_eq!(requests[0].url, "https://api.cline.bot/api/v1/users/me");
+        assert_eq!(
+            requests[1].url,
+            "https://api.cline.bot/api/v1/users/me/plan"
+        );
+        assert_eq!(
+            requests[2].url,
+            "https://api.cline.bot/api/v1/users/usr-fixture/usages?limit=100"
+        );
+        // 游标必须百分号编码 ('+' 与 '=' 不得原样进入查询串)
+        assert_eq!(
+            requests[3].url,
+            "https://api.cline.bot/api/v1/users/usr-fixture/usages?limit=100&cursor=cursor%2Bwith%3Dpadding"
+        );
+        for request in requests {
+            assert_eq!(request.headers["Authorization"], format!("Bearer {secret}"));
+        }
+    }
+
+    #[test]
+    fn cline_provider_maps_auth_and_rate_limit_without_leaking_key() {
+        let secret = "sk-cline-fixture-key";
+        let unauthorized = FixtureHttp::new(vec![Ok(HttpResponse {
+            status: 401,
+            body: Vec::new(),
+        })]);
+        let err = ClineProvider
+            .query(
+                &cline_request(secret),
+                &unauthorized,
+                &CancellationToken::new(),
+            )
+            .unwrap_err();
+        assert_eq!(err.diagnostic.code, "PROVIDER_AUTH_REJECTED");
+        assert!(!err.diagnostic.message.contains(secret));
+
+        let rate_limited = FixtureHttp::new(vec![Ok(HttpResponse {
+            status: 429,
+            body: Vec::new(),
+        })]);
+        let err = ClineProvider
+            .query(
+                &cline_request(secret),
+                &rate_limited,
+                &CancellationToken::new(),
+            )
+            .unwrap_err();
+        assert_eq!(err.diagnostic.code, "PROVIDER_RATE_LIMIT");
+    }
+
+    #[test]
+    fn cline_provider_returns_empty_without_pass_entitlements() {
+        let mut plan = cline_plan_payload((1_000_000_000, 2_500_000_000, 5_000_000_000), None);
+        plan["data"]["plan"]["entitlements"]["cline_pass"]["enabled"] = json!(false);
+        let http = FixtureHttp::new(vec![
+            response(r#"{"data":{"id":"usr-fixture"},"success":true}"#),
+            response(&plan.to_string()),
+        ]);
+        let result = ClineProvider
+            .query(
+                &cline_request("sk-cline-fixture-key"),
+                &http,
+                &CancellationToken::new(),
+            )
+            .unwrap();
+        assert!(result.is_none());
+        // 无三窗口额度时不得继续拉取台账
+        assert_eq!(http.requests().len(), 2);
+    }
+
+    #[test]
+    fn cline_window_boundaries_and_data_layer_navigation() {
+        // 报文含 canceledAt/cancelAt (data 层), 但 C020 起不再产出任何生命周期注记.
+        let plan = cline_plan_payload(
+            (1_000_000_000, 2_500_000_000, 5_000_000_000),
+            Some("2026-10-14T12:02:20Z"),
+        );
+        let now = reset_epoch(Some(&json!("2026-10-14T12:00:00Z"))).unwrap();
+        let five_hours_ago = now - 5 * 60 * 60;
+        let items = vec![
+            // 恰在窗口起点: 计入
+            json!({"createdAt": five_hours_ago, "costUsd": 1_000_000_000_i64}),
+            // 起点前 1 秒: 剔除
+            json!({"createdAt": five_hours_ago - 1, "costUsd": 1_000_000_000_i64}),
+        ];
+        let result = parse_cline_windows(&plan, &items, now).unwrap().unwrap();
+        let windows = result["windows"].as_array().expect("windows array");
+        assert_eq!(windows.len(), 3);
+        // 5h 窗口: $10.00 / $10.00 = 100% (起点前 1 秒的一单被剔除)
+        assert!((windows[0]["usedPercent"].as_f64().unwrap() - 100.0).abs() < 1e-6);
+        assert!(
+            result.get("extra").is_none(),
+            "C020: 不得再注入生命周期注记"
+        );
+
+        // entitlements 缺失 (典型非 Pass 账户) → 空态
+        let missing = json!({
+            "data": {
+                "planHistoryId": "iph-fixture",
+                "plan": {"displayName": "Cline Free"}
+            },
+            "success": true
+        });
+        assert!(parse_cline_windows(&missing, &items, now)
+            .unwrap()
+            .is_none());
+
+        // 阈值随 plan 动态变化: 同一台账换更小限额后百分比随之变化 (无硬编码)
+        let tighter = cline_plan_payload((500_000_000, 2_500_000_000, 5_000_000_000), None);
+        let result = parse_cline_windows(&tighter, &items, now).unwrap().unwrap();
+        // 5h 窗口: $10.00 / $5.00 → 上限收敛在 100%
+        assert!((result["windows"][0]["usedPercent"].as_f64().unwrap() - 100.0).abs() < 1e-6);
+    }
+
+    /// 线上真实报文形态锁定 (2026-10-14 实测 `/users/me/plan` 响应, 标识已替换为 fixture):
+    /// 生命周期字段 (`canceledAt`) 位于 `data` 层, `displayName`/`entitlements` 位于 `data.plan` 层.
+    #[test]
+    fn cline_live_plan_payload_shape_is_supported() {
+        let live_shaped: Value = serde_json::from_str(
+            r#"{
+              "data": {
+                "planHistoryId": "iph-fixture",
+                "userId": "usr-fixture",
+                "plan": {
+                  "id": "pln-fixture",
+                  "name": "Cline Pass (Monthly)[Internal]",
+                  "displayName": "Cline Pass (Monthly)",
+                  "description": "Cline Pass brings agentic coding...",
+                  "type": "individual",
+                  "interval": "Monthly",
+                  "pricePerSeatCents": 999,
+                  "priceId": "price-fixture",
+                  "maxSeats": 1000000,
+                  "features": {
+                    "fee_dollars": 0.61,
+                    "free_seats": 0,
+                    "included": ["Low cost subscription pricing"]
+                  },
+                  "entitlements": {
+                    "cline_pass": {
+                      "enabled": true,
+                      "inferenceCapThreshold": {
+                        "last5HoursUsageCostUSDPerUser": 1000000000,
+                        "last7daysUsageCostUSDPerUser": 2500000000,
+                        "last30daysUsageCostUSDPerUser": 5000000000
+                      }
+                    }
+                  },
+                  "isActive": true,
+                  "createdAt": "2026-05-26T09:34:05.877169Z",
+                  "updatedAt": "2026-09-21T10:11:10.680596Z"
+                },
+                "subscriptionId": "sub-fixture",
+                "currentPeriodStart": "2026-10-14T11:52:39Z",
+                "currentPeriodEnd": "2026-11-14T11:52:39Z",
+                "cancelAt": "2026-11-14T11:52:39Z",
+                "canceledAt": "2026-10-14T12:02:20Z"
+              },
+              "success": true
+            }"#,
+        )
+        .expect("live-shaped payload parses");
+        let now = reset_epoch(Some(&json!("2026-10-14T12:00:00Z"))).unwrap();
+        // 实测台账样本 (1e-8 USD 单位): $1.00 + $0.50 两单
+        let items = vec![
+            json!({"createdAt": "2026-10-14T11:59:00Z", "costUsd": 100_000_000_i64}),
+            json!({"createdAt": "2026-10-14T11:30:00Z", "costUsd": 50_000_000_i64}),
+        ];
+        let result = parse_cline_windows(&live_shaped, &items, now)
+            .unwrap()
+            .unwrap();
+        assert_eq!(result["plan"], "Cline Pass (Monthly)");
+        let windows = result["windows"].as_array().expect("windows array");
+        assert_eq!(windows.len(), 3);
+        // $1.50 / $10.00 = 15%
+        assert!((windows[0]["usedPercent"].as_f64().unwrap() - 15.0).abs() < 1e-6);
+        // C020: 线上报文含 canceledAt 也不得产出任何注记 (extra 键不出现)
+        assert!(result.get("extra").is_none());
     }
 }

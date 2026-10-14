@@ -180,6 +180,66 @@ impl PricingTable {
         add("jev-preview", 0.042, 0.0, None, "Jev Preview");
         add("jev", 0.042, 0.0, None, "Jev");
 
+        // Cline Pass (官方文档订阅参考价; 峰谷/超长上下文档位暂按标准档单值建卡)
+        // 注: glm-5.3 / glm-5.3-flash 已由 Zhipu 区块建卡 (输入输出价一致), 此处不重复覆盖.
+        add("kimi-k3", 3.00, 15.00, Some(0.30), "Kimi K3 (ClinePass)");
+        add(
+            "deepseek-v4.1-flash",
+            0.30,
+            1.20,
+            Some(0.006),
+            "DeepSeek V4.1 Flash (ClinePass)",
+        );
+        add(
+            "mimo-v2.5",
+            0.14,
+            0.28,
+            Some(0.0028),
+            "MiMo V2.5 (ClinePass)",
+        );
+        add(
+            "mimo-v2.5-pro",
+            1.74,
+            3.48,
+            Some(0.0145),
+            "MiMo V2.5 Pro (ClinePass)",
+        );
+        add(
+            "minimax-m3",
+            0.30,
+            1.20,
+            Some(0.06),
+            "MiniMax M3 (ClinePass)",
+        );
+        add(
+            "muse-spark-1.3-contributor",
+            0.10,
+            0.20,
+            Some(0.002),
+            "Muse Spark 1.3 Contributor (ClinePass)",
+        );
+        add(
+            "qwen3.8-max",
+            2.00,
+            6.00,
+            Some(0.25),
+            "Qwen3.8 Max (ClinePass)",
+        );
+        add(
+            "qwen3.7-max",
+            2.50,
+            7.50,
+            Some(0.50),
+            "Qwen3.7 Max (ClinePass)",
+        );
+        add(
+            "qwen3.7-plus",
+            0.40,
+            1.60,
+            Some(0.04),
+            "Qwen3.7 Plus (ClinePass)",
+        );
+
         Self { builtin, overrides }
     }
 
@@ -353,5 +413,61 @@ mod tests {
         // output: 0.5M * 0.0 = 0.0
         // total: 0.042
         assert!((cost - 0.042).abs() < 1e-6);
+    }
+
+    #[test]
+    fn cline_pass_pricing_resolves_and_calculates_cost() {
+        let table = PricingTable::default();
+        // 真实采集串: ZCode 将 cline-pass/* 原样写入 model_id, 依赖 normalize 剥离前缀后精确命中
+        let rule = table
+            .resolve("cline-pass/deepseek-v4.1-flash")
+            .expect("cline-pass/deepseek-v4.1-flash should resolve");
+        assert_eq!(rule.input_price_per_million, 0.30);
+        assert_eq!(rule.output_price_per_million, 1.20);
+        assert_eq!(rule.cache_read_price_per_million, Some(0.006));
+
+        let mut bucket = TokenBucket::default();
+        bucket.add(1_000_000, 100_000, 500_000, 0);
+        let cost = table.calculate_cost(&bucket, &rule);
+        // input: 1M * 0.30 = 0.30
+        // output: 0.1M * 1.20 = 0.12
+        // cache: 0.5M * 0.006 = 0.003
+        // total: 0.423
+        assert!((cost - 0.423).abs() < 1e-6);
+
+        // 其余新增档位逐一可解析 (含多段 slug 与带点号 slug)
+        for (model, input, output) in [
+            ("cline-pass/kimi-k3", 3.00, 15.00),
+            ("cline-pass/mimo-v2.5", 0.14, 0.28),
+            ("cline-pass/mimo-v2.5-pro", 1.74, 3.48),
+            ("cline-pass/minimax-m3", 0.30, 1.20),
+            ("cline-pass/muse-spark-1.3-contributor", 0.10, 0.20),
+            ("cline-pass/qwen3.8-max", 2.00, 6.00),
+            ("cline-pass/qwen3.7-max", 2.50, 7.50),
+            ("cline-pass/qwen3.7-plus", 0.40, 1.60),
+            ("cline-pass/glm-5.3", 1.40, 4.40),
+        ] {
+            let rule = table
+                .resolve(model)
+                .unwrap_or_else(|| panic!("{model} should resolve"));
+            assert_eq!(rule.input_price_per_million, input, "{model} input");
+            assert_eq!(rule.output_price_per_million, output, "{model} output");
+        }
+    }
+
+    #[test]
+    fn cline_pass_entries_do_not_shadow_existing_models() {
+        let table = PricingTable::default();
+        // deepseek-v4.1-flash (ClinePass) 与既有 deepseek-v4-flash 双向前缀均不等, 不得互相劫持
+        let legacy = table
+            .resolve("deepseek-v4-flash")
+            .expect("deepseek-v4-flash should exist");
+        assert_eq!(legacy.input_price_per_million, 0.15);
+        assert_eq!(legacy.cache_read_price_per_million, Some(0.003));
+        // glm-5.3-flash 保持 Zhipu 既有条目 (cache 0.015), 未被 ClinePass 区块覆盖
+        let glm = table
+            .resolve("glm-5.3-flash")
+            .expect("glm-5.3-flash should exist");
+        assert_eq!(glm.cache_read_price_per_million, Some(0.015));
     }
 }
