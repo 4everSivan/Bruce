@@ -1,0 +1,123 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C030",
+  "title": "Windows 仪表盘 P2 对标：Agent 用量卡行级展开与分组明细形态、24 点折线、柱顶总量、收起态迷你折线、LIVE 标签、卡片背景纹样与折叠态拖拽排序",
+  "type": "Enhancement",
+  "status": "in_progress",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送; 全部为 Windows 渲染层改动, 不动视图模型契约",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src (app.js + styles.css)",
+    "component": "Agent 用量卡 / Token 用量卡 / 面板卡片壳",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "2026-10-15 双端对标审计的 P2 批次（用户以「确认收口，继续处理剩余的问题」授权继续）：这批是**形态与交互差异**而非读数错误，但每一项在面板上都长期可见。mac 的 Agent 用量卡是「按行展开 + 分组标题 + 100% 堆叠条 + `pct% · 总量` 图例 + 24 点折线 + 柱顶总量数字 + 收起态迷你折线」，Windows 当前是「明细常显 + 无分组标题 + 每行独立进度条 + 只给总量 + 24 根点柱 + 无柱顶数字 + 收起只给文案」；另有 LIVE 文字标签缺失、卡片背景纹样缺失、面板卡片只能在设置页用上下移排序（mac 可在面板上拖拽折叠态卡片）。这批差异全部落在 `app.js` / `styles.css`，不触碰 `tests/fixtures/viewmodel-parity` 契约。",
+  "precheck": {
+    "description": "确认现状: Agent 卡的明细为常显 (无 chevron/无分组标题/无百分比), 24 点走势为点柱, 收起态只有文案; 面板无拖拽排序入口",
+    "command": "grep -n '模型占比\\|项目分布\\|spark\\|draggable\\|LIVE' apps/win/src/app.js",
+    "expected": "修复前: 无「模型占比」「项目分布」分组标题, 无 draggable, 无 LIVE 文本; spark 为 div 点柱",
+    "is_completed": true,
+    "evidence": "2026-10-15 实测 (真实内核渲染 + DOM harness): Agent 卡每行下方直接铺 3-4 条 dist-row (无分组标题、无百分比、无展开控件、无 chevron), 24 点走势为 24 个 div.b 点柱 (.spark .b), 收起态仅 el('span', null, collapsedPeakText), 面板卡片无 draggable 属性, Token 卡 LIVE 只有圆点无文字。"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护已在 main 实施"
+    ],
+    "after": [
+      "node --test apps/win/tests/frontend.test.mjs",
+      "node scripts/check-win-frontend.mjs",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "apps/win/src/app.js (Agent 卡: 行级展开与分组明细)",
+      "before": "每个 agent 行的模型/项目分布常显无控件; 明细为每项一条独立进度条 + 总量文字, 无分组标题、无百分比",
+      "after": "行默认收起, 仅当 `row.isExpandable` 时渲染 chevron 并把整行做成可点按钮 (含 aria-expanded, 展开态存渲染层 Set 跨刷新保持); 展开后渲染 `模型占比` / `项目分布` 两个分组 (同显时第二组 padding-top 7), 每组 = 一条 6pt 100% 堆叠条 + 图例行; 图例行格式严格对齐 mac `name + Spacer + pct% · totalText`",
+      "impact": "信息密度与 mac 一致: 默认只看今日用量与走势, 需要时下钻; 百分比与「其他」聚合行同时补齐"
+    },
+    {
+      "scope": "apps/win/src/app.js (百分比格式)",
+      "before": "无百分比文案 (仅进度条宽度)",
+      "after": "新增 `sharePercentText(share)`: `share > 0 && share < 0.005 → \"<1%\"`, 否则 `%.0f%%` (printf 四舍五入), 与 mac `sharePercentText` 逐字一致; 堆叠条段宽用 `max(2, available * clamp(share,0,1))`",
+      "impact": "小份额不再显示为 0%; 与 mac 文案口径一致"
+    },
+    {
+      "scope": "apps/win/src/app.js + styles.css (24 点走势: 点柱 → 折线 + 面积)",
+      "before": "24 个 div 点柱 (.spark .b), 高度按峰值归一, 非零透明度 .75 / 零值 .18",
+      "after": "改为 SVG 24 点折线 (1.5pt) + 渐变面积 (0.18 → 0.02), 每行独立归一 (`max(points,1) * 1.1` 上界), 与 mac 形态一致; 颜色经 `currentColor` 传递并由 CSS 决定 (`.agent-row .spark { color: var(--spark-color) }`, Nothing 主题覆写为 heroGreen #4A9E5C), **不写内联描边色** (C029 教训: 内联样式会压过主题覆写)",
+      "impact": "走势形态与 mac 一致; 行色仍为 agent 品牌色 (Fluent)"
+    },
+    {
+      "scope": "apps/win/src/app.js + styles.css (14 日柱顶总量)",
+      "before": "柱顶无数字, 仅 hover title",
+      "after": "每根柱顶部恒显 `day.totalText` (7.5pt, secondary, 居中), 图表高度 64px → 68px 与 mac 对齐; 列结构改为 `日总量 + 柱体` 两段",
+      "impact": "不 hover 也能读到每日总量; 与 mac 非 Nothing 分支一致"
+    },
+    {
+      "scope": "apps/win/src/app.js (收起态迷你折线)",
+      "before": "收起态只有 `峰值 71K` 文案",
+      "after": "收起态渲染 12px 高迷你折线 (collapsedPoints 24 点, 上界 max*1.1) + 峰值文案, 与 mac collapsedMini 结构一致",
+      "impact": "折叠卡片也能看出当日走势形态"
+    },
+    {
+      "scope": "apps/win/src/app.js + styles.css (LIVE 标签)",
+      "before": "标题行只有呼吸圆点 (无文字)",
+      "after": "圆点 + `LIVE` 文字组成 live-badge; 折叠态整块隐藏 (对齐 mac 折叠时 status 槽被 mini 摘要取代)",
+      "impact": "与 mac LiveIndicator 文案一致"
+    },
+    {
+      "scope": "apps/win/src/app.js + styles.css (卡片背景纹样)",
+      "before": "卡片无背景纹样; mac 非 Nothing 有字符流 (`.:+*#` 16pt 网格, 逐字 0.05~0.14, tier 浅色 tint), Nothing 有点阵网格 (16pt, 底部渐隐)",
+      "after": "Token 用量卡加背景纹样: 非 Nothing 用确定性伪随机字符流 SVG data URI (按 tier 浅色 tint 缓存, 经 `--code-stream` 变量挂在卡片 background-image, 不占 DOM 节点), Nothing 用 `radial-gradient` 16px 点阵 + 底部渐隐遮罩",
+      "impact": "卡片质感与 mac 一致; 纹样只是背景层, 不影响内容与命中区域"
+    },
+    {
+      "scope": "apps/win/src/app.js + styles.css (折叠态拖拽排序)",
+      "before": "面板无拖拽入口, 排序只能在设置页用上移/下移",
+      "after": "折叠态卡片显示拖拽手柄 (对齐 mac 仅折叠态提供手柄), HTML5 DnD 落在目标卡上即重排并 `save_settings_command` 写回 `cardOrder`; 设置页顺序列表随 settings-updated 自动同步",
+      "impact": "面板内可直接调整卡片顺序, 与 mac 交互模型一致; 设置页按钮入口保留 (可访问性更好)"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "§4.2 渲染层对标清单覆盖订阅卡分支、note/extraText 门控、收起态取数与 hero 档位色, 未约定 Agent 卡的明细交互与图形形态、LIVE 文案、卡片背景纹样与卡片排序入口",
+      "after": "§4.2 渲染层对标清单追加四行: Agent 卡明细 (mac 行级展开 + `模型占比`/`项目分布` 分组 + 100% 堆叠条 + `pct% · totalText` 图例; 默认收起, 展开态不持久化)、走势形态 (24 点折线 + 渐变面积, 颜色经 currentColor 由 CSS 决定)、柱顶/收起态数字 (14 日每列恒显总量、收起态 12px 迷你折线)、卡片排序 (折叠态卡可拖拽, 落位写回 cardOrder; 设置页按钮入口保留为可访问性补充)"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "verify-local-20261015-c030 + render-harness-20261015",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "Agent 卡明细交互与形态 (DOM + 真实内核)",
+        "true_if": "行默认收起且可展开 (aria-expanded 与明细可见性一致); 展开后出现 `模型占比`/`项目分布` 分组标题、100% 堆叠条与 `pct% · totalText` 图例; 24 点走势为 SVG 折线 (非点柱); 14 日每列有总量数字; 收起态有迷你折线",
+        "false_if": "任一形态缺失, 或展开/收起状态与可见性不一致",
+        "evidence": "2026-10-15 真实 Chromium 内核自检 (apps/win/tests/render-harness/dashboard-harness.html, 视口 440×760) + DOM 用例双证据: 行默认收起 (`.line1[aria-expanded=false]`, 无 `.legend-row`), 点击后 aria-expanded=true 且渲染 `模型占比`/`项目分布` 两个 `.detail-title`; 图例行文本实测为 `kimi-k2.5 50% · 62K` / `其他 10% · 11.9K` / `trace <1% · 496` / `fixture/project-a 74% · 92K` (名称 + pct% · 总量, 极小非零份额 <1% 特例生效); 每组一条 100% 堆叠条 (模型组 5 段 / 项目组 2 段, 段宽按 share); 24 点走势为 SVG (`.spark svg polyline`, stroke=currentColor, stroke-width=1.5, viewBox 0 0 240 26), 已无 `.spark .b` 点柱; 14 日柱顶 `.day-total` 恒显 (fixture 两日为 127K/184K); 收起态 `.mini-spark svg polyline` + `.mini-peak` = `峰值 71K`; LIVE 文案 `.live-text` = `LIVE`; 折叠态 `.live-badge` display:none; 卡片头 `.drag-handle` 展开态 display:none / 折叠态 display:inline-flex (实测折叠后可见手柄 3 个)。全部视图 docScrollWidth == 440 (无横向溢出), 图例行无溢出。",
+        "result": true
+      },
+      {
+        "item": "主题与样式约束 (Nothing 覆写仍生效)",
+        "true_if": "走势/纹样颜色经 CSS 变量或 currentColor 传递, 无内联 background/stroke; Nothing 主题下走势为 heroGreen、纹样为点阵",
+        "false_if": "出现内联颜色压过主题覆写, 或 Nothing 主题形态缺失",
+        "evidence": "主题与样式约束: `.spark` 色经 `--spark-color` 由 CSS 消费, SVG 只用 currentColor (无内联描边色); 实测 Nothing 主题 `.spark` 计算色 = rgb(74,158,92) = #4A9E5C (heroGreen 覆写生效), Token 卡背景 = radial-gradient(rgba(255,255,255,.10) 1.2px, transparent 1.8px) / 16px 16px (点阵), Fluent 主题背景 = 字符流 SVG data URI (code-stream, 按档位浅色 tint, 纹样为背景层不占 DOM); `.theme-nothing .share-bar` 与 `.legend-row .sw` 退化为方角。新增 CSS 契约断言 (styles.css 含 .day-total/.share-bar/.legend-row/.mini-spark/.live-text/.drag-handle/.card.usage-card 且含折叠态手柄与 Nothing 覆写规则)。",
+        "result": true
+      },
+      {
+        "item": "拖拽排序与全量门禁",
+        "true_if": "拖拽折叠态卡片后 cardOrder 按新序写回 (save_settings_command 被调用且顺序正确); zsh scripts/verify-local.sh 退出码 0; 真实内核渲染自检两主题无破图/无溢出",
+        "false_if": "排序未写回或写回顺序错误, 门禁失败, 或自检发现破图/溢出",
+        "evidence": "拖拽排序: DOM 用例实测 dragstart 折叠态卡 + drop 到第三张卡后, `save_settings_command` 收到 `cardOrder = [subscription, hourly, usage]` 且栈序同步刷新; `zsh scripts/verify-local.sh` 退出码 0, 末行 'Bruce 本地验证全部通过' (日志 local/c030-verify.log) —— Rust 三 manifest 全绿 (collector 132 / viewmodel 46 / src-tauri 82), fmt --check 与 clippy -D warnings 零告警, Windows 前端结构冒烟通过 + 交互回归 25/25, Swift 全部 Harness 与 Panel 视图模型双端对拍 3/3 通过。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": []
+}

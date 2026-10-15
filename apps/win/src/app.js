@@ -37,6 +37,173 @@ function heatLevelColor(level) {
   return tier ? TIER_COLORS[tier][0] : "rgba(255,255,255,.07)";
 }
 
+/* ---------- 份额文案与色阶 (对齐 mac sharePercentText / distributionGroup) ---------- */
+// mac 用 String(format: "%.0f%%") = C 库舍入 (ties-to-even); 用 Math.round 会在
+// 恰好 .5 的份额上差 1 个百分点 (如 0.125 → mac "12", JS "13"), 故显式实现。
+function roundHalfEven(value) {
+  const floor = Math.floor(value);
+  const diff = value - floor;
+  if (diff > 0.5) return floor + 1;
+  if (diff < 0.5) return floor;
+  return floor % 2 === 0 ? floor : floor + 1;
+}
+// 份额文案: 极小非零份额显示 "<1%" (mac sharePercentText 同特例).
+function sharePercentText(share) {
+  if (share > 0 && share < 0.005) return "<1%";
+  return `${roundHalfEven(share * 100)}%`;
+}
+// 同色系色阶派生: mac 对模型行使用逐 agent 硬编码的四档色阶, Windows 以 HSL
+// 提亮近似 (保持色相/饱和度, 逐档 +7/15/23 个百分点), 产出不透明色以避免与卡底混合。
+function hexToRgb(hex) {
+  const value = String(hex || "").replace("#", "");
+  const full = value.length === 3 ? value.split("").map((c) => c + c).join("") : value.padEnd(6, "0").slice(0, 6);
+  return [0, 2, 4].map((index) => parseInt(full.slice(index, index + 2), 16) / 255);
+}
+function rgbToHsl(rgb) {
+  const [r, g, b] = rgb;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const lightness = (max + min) / 2;
+  const delta = max - min;
+  if (delta === 0) return [0, 0, lightness];
+  const saturation = lightness > 0.5 ? delta / (2 - max - min) : delta / (max + min);
+  const hue = max === r ? ((g - b) / delta + (g < b ? 6 : 0)) : max === g ? (b - r) / delta + 2 : (r - g) / delta + 4;
+  return [hue / 6, saturation, lightness];
+}
+function hslToHex(hue, saturation, lightness) {
+  const channel = (offset) => {
+    const t = ((offset + hue) % 1 + 1) % 1;
+    const q = lightness < 0.5 ? lightness * (1 + saturation) : lightness + saturation - lightness * saturation;
+    const p = 2 * lightness - q;
+    const value = t < 1 / 6 ? p + (q - p) * 6 * t : t < 1 / 2 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p;
+    return Math.round(Math.max(0, Math.min(1, value)) * 255).toString(16).padStart(2, "0");
+  };
+  return `#${channel(1 / 3)}${channel(0)}${channel(-1 / 3)}`;
+}
+const MODEL_SHADE_LIFTS = [0, 0.07, 0.15, 0.23];
+// 项目分布色阶为 mac 冻结四色 (projectBarShades), 第 4 条起复用末档。
+const PROJECT_SHADES = ["#30b0c7", "#55c2d4", "#7ad4e1", "#9fe5ed"];
+function modelShade(hex, index) {
+  const [hue, saturation, lightness] = rgbToHsl(hexToRgb(hex));
+  return hslToHex(hue, saturation, Math.min(0.92, lightness + MODEL_SHADE_LIFTS[Math.min(index, MODEL_SHADE_LIFTS.length - 1)]));
+}
+function projectShade(index) {
+  return PROJECT_SHADES[Math.min(index, PROJECT_SHADES.length - 1)];
+}
+
+/* ---------- SVG 迷你走势 (mac: 折线 1.5pt + 渐变面积) ---------- */
+let sparkSeq = 0;
+// 颜色经 currentColor 传递, 由 CSS 决定 (Nothing 主题覆写为 heroGreen);
+// 严禁内联描边色 —— 会压过主题覆写 (C029 教训)。
+function lineSpark(points, height) {
+  const width = 240;
+  const peak = Math.max(...points, 1) * 1.1;
+  const step = points.length > 1 ? width / (points.length - 1) : width;
+  const coords = points.map((value, index) => `${(index * step).toFixed(2)},${(height - (value / peak) * height).toFixed(2)}`);
+  const svg = svgEl("svg", {
+    viewBox: `0 0 ${width} ${height}`,
+    preserveAspectRatio: "none",
+    class: "sparkline",
+    "aria-hidden": "true",
+  });
+  const gradientId = `spark-fill-${sparkSeq += 1}`;
+  const gradient = svgEl("linearGradient", { id: gradientId, x1: "0", y1: "0", x2: "0", y2: "1" });
+  gradient.append(svgEl("stop", { offset: "0", "stop-color": "currentColor", "stop-opacity": "0.18" }));
+  gradient.append(svgEl("stop", { offset: "1", "stop-color": "currentColor", "stop-opacity": "0.02" }));
+  const defs = svgEl("defs", {});
+  defs.append(gradient);
+  svg.append(defs);
+  svg.append(svgEl("polygon", {
+    points: `${coords.join(" ")} ${width},${height} 0,${height}`,
+    fill: `url(#${gradientId})`,
+  }));
+  svg.append(svgEl("polyline", {
+    points: coords.join(" "),
+    fill: "none",
+    stroke: "currentColor",
+    "stroke-width": "1.5",
+    "vector-effect": "non-scaling-stroke",
+    "stroke-linejoin": "round",
+    "stroke-linecap": "round",
+  }));
+  return svg;
+}
+
+/* ---------- 卡片背景字符流纹样 (mac CodeStreamBackground 的静态等价) ---------- */
+// 确定性伪随机字符网格渲染成单个 SVG data URI, 由 CSS 变量挂到卡片 background-image;
+// 不进 DOM 节点 (mac 侧是逐字 Text 网格, Windows 用背景层等价且零布局成本)。
+const CODE_STREAM_CHARS = ".:+*#";
+const codeStreamCache = new Map();
+function codeStreamImage(tint) {
+  if (codeStreamCache.has(tint)) return codeStreamCache.get(tint);
+  const cols = 26;
+  const rows = 20;
+  const cell = 16;
+  let seed = 0x2f6e2b1;
+  const random = () => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return seed / 0x7fffffff;
+  };
+  let glyphs = "";
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      const glyph = CODE_STREAM_CHARS[Math.floor(random() * CODE_STREAM_CHARS.length)];
+      const opacity = (0.05 + random() * 0.09).toFixed(3);
+      glyphs += `<text x="${col * cell}" y="${row * cell + 10}" font-size="9" font-family="monospace" fill="${tint}" fill-opacity="${opacity}">${glyph}</text>`;
+    }
+  }
+  const uri = `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${cols * cell}" height="${rows * cell}">${glyphs}</svg>`)}")`;
+  codeStreamCache.set(tint, uri);
+  return uri;
+}
+
+/* ---------- 折叠态卡片拖拽排序 (mac: 仅折叠态提供拖拽手柄) ---------- */
+let draggingCard = null;
+async function reorderCards(from, to) {
+  if (from === to) return;
+  const order = [...new Set([...(currentSettings.cardOrder || []), "usage", "subscription", "hourly"])];
+  const fromIndex = order.indexOf(from);
+  const toIndex = order.indexOf(to);
+  if (fromIndex < 0 || toIndex < 0) return;
+  order.splice(toIndex, 0, order.splice(fromIndex, 1)[0]);
+  currentSettings = { ...currentSettings, cardOrder: order };
+  if (currentPanel) render(currentPanel);
+  try { await invoke("save_settings_command", { settings: currentSettings }); }
+  catch (error) { showError(error); }
+}
+function attachDragHandle(card, key) {
+  const handle = el("span", "drag-handle", "\u22EE\u22EE");
+  handle.setAttribute("title", "拖拽调整卡片顺序");
+  handle.setAttribute("draggable", "true");
+  handle.setAttribute("aria-hidden", "true");
+  handle.addEventListener("dragstart", (event) => {
+    draggingCard = key;
+    card.classList.add("dragging");
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", key);
+    }
+  });
+  handle.addEventListener("dragend", () => {
+    draggingCard = null;
+    card.classList.remove("dragging");
+    document.querySelectorAll(".card.drop-target").forEach((node) => node.classList.remove("drop-target"));
+  });
+  card.addEventListener("dragover", (event) => {
+    if (draggingCard && draggingCard !== key) {
+      event.preventDefault();
+      card.classList.add("drop-target");
+    }
+  });
+  card.addEventListener("dragleave", () => card.classList.remove("drop-target"));
+  card.addEventListener("drop", (event) => {
+    event.preventDefault();
+    card.classList.remove("drop-target");
+    if (draggingCard && draggingCard !== key) reorderCards(draggingCard, key);
+  });
+  card.querySelector(".card-head")?.append(handle);
+}
+
 function makeCollapsible(card, summary) {
   const head = card.querySelector(".card-head");
   head.setAttribute("role", "button");
@@ -60,14 +227,17 @@ function makeCollapsible(card, summary) {
 
 /* ---------- Token 用量卡 ---------- */
 function usageCard(usage) {
-  const card = el("div", "card");
+  const card = el("div", "card usage-card");
   // 档位色注入卡片容器, .hero-num 与 .mini-num 经 CSS 变量继承取色
   applyTierVars(card, usage.usageTier);
+  // 背景字符流纹样: tint 取档位浅色 (mac CodeStreamBackground tint = tierColors.1)
+  const tint = (TIER_COLORS[usage.usageTier] || TIER_COLORS.sage)[1];
+  card.style.setProperty("--code-stream", codeStreamImage(tint));
   const head = el("div", "card-head");
   head.append(el("span", "card-title", "Token 用量"));
   if (usage.isLive) {
-    const live = el("span", "hud-dot-wrap live");
-    live.append(el("span", "hud-dot"));
+    const live = el("span", "hud-dot-wrap live live-badge");
+    live.append(el("span", "hud-dot"), el("span", "live-text", "LIVE"));
     head.append(live);
   }
   head.append(el("span", "chev", "\u276F"));
@@ -459,88 +629,153 @@ function subscriptionCard(sub) {
   return card;
 }
 
-/* ---------- Agent 用量卡 (展开: 14 日日柱 + 逐小时行) ---------- */
+/* ---------- Agent 用量卡 (展开: 14 日日柱 + 逐小时行 + 行级明细下钻) ---------- */
+// 行级展开状态: mac 用 @State(默认收起, 不持久化), 前端同语义跨刷新保持。
+const expandedAgents = new Set();
+
+// 100% 堆叠条 (mac stackedShareBar): 段宽按 share, 段不足 100% 时露出轨道底。
+function stackedShareBar(bars, shadeAt) {
+  const track = el("div", "share-bar");
+  for (const [index, bar] of bars.entries()) {
+    const seg = el("div", "share-seg");
+    seg.style.width = `${Math.max(2, Math.min(100, bar.share * 100))}%`;
+    seg.style.background = shadeAt(index);
+    track.append(seg);
+  }
+  return track;
+}
+
+// 明细分组 (mac distributionGroup): 标题 + 堆叠条 + `名称 …… pct% · 总量` 图例。
+function detailGroup(title, bars, shadeAt) {
+  const group = el("div", "detail-group");
+  group.append(el("div", "detail-title", title));
+  group.append(stackedShareBar(bars, shadeAt));
+  const legend = el("div", "share-legend");
+  for (const [index, bar] of bars.entries()) {
+    const line = el("div", "legend-row");
+    const sw = el("span", "sw");
+    sw.style.background = shadeAt(index);
+    line.append(sw, el("span", "name", bar.name), el("span", "flex-spacer"));
+    const value = el("span", "value");
+    value.append(el("span", "pct", sharePercentText(bar.share)));
+    value.append(el("span", "sep", ` · ${bar.totalText}`));
+    line.append(value);
+    line.setAttribute("aria-label", `${bar.name} ${sharePercentText(bar.share)} · ${bar.totalText}`);
+    legend.append(line);
+  }
+  group.append(legend);
+  return group;
+}
+
+function agentRow(row, rerender) {
+  const block = el("div", "agent-row");
+  const expanded = expandedAgents.has(row.agentId);
+  const line1 = el("div", "line1");
+  const dot = el("span", "dot");
+  dot.style.background = row.colorHex;
+  line1.append(dot, el("span", "an", row.name));
+  if (row.isExpandable) line1.append(el("span", "row-chev", expanded ? "\u2303" : "\u2304"));
+  line1.append(el("span", "at", row.todayTotalText));
+  block.append(line1);
+
+  // 24 点走势: mac 为折线 1.5pt + 渐变面积 (颜色经 currentColor 由 CSS 决定)
+  const spark = el("div", "spark");
+  spark.style.setProperty("--spark-color", row.colorHex);
+  spark.append(lineSpark(row.points.length ? row.points : new Array(24).fill(0), 26));
+  block.append(spark);
+
+  if (row.isExpandable) {
+    const detail = el("div", "detail");
+    if (row.models.length) detail.append(detailGroup("模型占比", row.models, (index) => modelShade(row.colorHex, index)));
+    if (row.projects.length) detail.append(detailGroup("项目分布", row.projects, projectShade));
+    if (expanded) block.append(detail);
+    // mac: 仅 headRow 是按钮 (图表与明细为兄弟节点), 故点击/键盘只挂行首行。
+    line1.classList.add("expandable");
+    line1.setAttribute("role", "button");
+    line1.setAttribute("tabindex", "0");
+    line1.setAttribute("aria-expanded", String(expanded));
+    const toggle = () => {
+      if (expandedAgents.has(row.agentId)) expandedAgents.delete(row.agentId);
+      else expandedAgents.add(row.agentId);
+      rerender();
+    };
+    line1.addEventListener("click", toggle);
+    line1.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        toggle();
+      }
+    });
+  }
+  return block;
+}
+
 function hourlyCard(hourly, usage) {
   const card = el("div", "card");
   const head = el("div", "card-head");
   head.append(el("span", "card-title", "Agent 用量"));
   head.append(el("span", "chev", "\u276F"));
   card.append(head);
-  makeCollapsible(card, () => el("span", null, hourly.collapsedPeakText || "逐小时用量"));
+  // 收起态: 12px 迷你折线 + 峰值文案 (mac collapsedMini 同结构)
+  makeCollapsible(card, () => {
+    const mini = document.createElement("span");
+    mini.className = "hourly-mini";
+    const points = hourly.collapsedPoints?.length ? hourly.collapsedPoints : new Array(24).fill(0);
+    const chart = el("span", "mini-spark");
+    chart.append(lineSpark(points, 12));
+    mini.append(chart, el("span", "mini-peak", hourly.collapsedPeakText || "逐小时用量"));
+    return mini;
+  });
 
-  if (usage && usage.days.length) {
-    const chart = el("div", "daily-chart");
-    const maxTotal = Math.max(...usage.days.map((d) => d.total), 1);
-    for (const day of usage.days) {
-      const col = el("div", "day");
-      col.title = `${day.date}  ${day.totalText}`;
-      for (const seg of day.segments) {
-        const bar = el("div", "seg");
-        bar.style.height = `${(seg.value / maxTotal) * 100}%`;
-        bar.style.background = seg.colorHex;
-        col.append(bar);
+  const body = el("div", "hourly-body");
+  // 行级展开只重建本卡正文, 不触发整栈重渲染 (保留其他卡片的局部状态)。
+  const renderRows = () => {
+    body.replaceChildren();
+    if (usage && usage.days.length) {
+      const chart = el("div", "daily-chart");
+      const maxTotal = Math.max(...usage.days.map((day) => day.total), 1);
+      for (const day of usage.days) {
+        const col = el("div", "day");
+        col.title = `${day.date}  ${day.totalText}`;
+        col.append(el("div", "day-total", day.totalText));
+        const bars = el("div", "day-bars");
+        for (const seg of day.segments) {
+          const bar = el("div", "seg");
+          bar.style.height = `${(seg.value / maxTotal) * 100}%`;
+          bar.style.background = seg.colorHex;
+          bars.append(bar);
+        }
+        col.append(bars);
+        chart.append(col);
       }
-      chart.append(col);
-    }
-    card.append(chart);
-    const axis = el("div", "daily-axis");
-    axis.append(el("span", null, "14 天前"), el("span", null, "7 天前"), el("span", null, "今天"));
-    card.append(axis);
-    if (usage.legend.length) {
-      const legend = el("div", "daily-legend");
-      for (const item of usage.legend) {
-        const span = el("span");
-        const sw = el("span", "sw"); sw.style.background = item.colorHex;
-        span.append(sw, document.createTextNode(item.name));
-        legend.append(span);
+      body.append(chart);
+      const axis = el("div", "daily-axis");
+      axis.append(el("span", null, "14 天前"), el("span", null, "7 天前"), el("span", null, "今天"));
+      body.append(axis);
+      if (usage.legend.length) {
+        const legend = el("div", "daily-legend");
+        for (const item of usage.legend) {
+          const span = el("span");
+          const sw = el("span", "sw");
+          sw.style.background = item.colorHex;
+          span.append(sw, document.createTextNode(item.name));
+          legend.append(span);
+        }
+        body.append(legend);
       }
-      card.append(legend);
+      body.append(el("div", "divider"));
     }
-    card.append(el("div", "divider"));
-  }
 
-  const titleRow = el("div", "hourly-title-row");
-  titleRow.style.marginTop = "8px";
-  titleRow.append(el("span", "sec", "逐小时"));
-  titleRow.append(el("span", "range", "0 – 23 时"));
-  card.append(titleRow);
+    const titleRow = el("div", "hourly-title-row");
+    titleRow.style.marginTop = "8px";
+    titleRow.append(el("span", "sec", "逐小时"));
+    titleRow.append(el("span", "range", "0 – 23 时"));
+    body.append(titleRow);
 
-  for (const row of hourly.rows) {
-    const block = el("div", "agent-row");
-    const line1 = el("div", "line1");
-    const dot = el("span", "dot"); dot.style.background = row.colorHex;
-    line1.append(dot, el("span", "an", row.name), el("span", "at", row.todayTotalText));
-    block.append(line1);
-    // 24 点迷你柱 (Classic 用点柱表达折线走势, 与收起态 mini 同数据源)
-    const points = row.points.length ? row.points : new Array(24).fill(0);
-    const peak = Math.max(...points, 1);
-    const spark = el("div", "spark");
-    spark.style.color = row.colorHex;
-    for (const value of points.slice(0, 24)) {
-      const bar = el("div", "b");
-      bar.style.height = `${Math.max((value / peak) * 100, value > 0 ? 6 : 1)}%`;
-      bar.style.opacity = value > 0 ? ".75" : ".18";
-      spark.append(bar);
-    }
-    block.append(spark);
-    for (const bars of [row.models, row.projects]) {
-      // 全部 bars 渲染: 视图模型已按 mac 口径给出 Top3 + 「其他」聚合行 (最多 4 条),
-      // 前端不得再截断; 透明度梯度加 0.25 下限保证第 4 条可见。
-      for (const [index, bar] of bars.entries()) {
-        const line = el("div", "dist-row");
-        line.append(el("span", "dn", bar.name));
-        const track = el("div", "track");
-        const fill = el("div");
-        fill.style.width = `${Math.round(bar.share * 100)}%`;
-        fill.style.background = row.colorHex;
-        fill.style.opacity = String(Math.max(1 - index * 0.25, 0.25));
-        track.append(fill); line.append(track);
-        line.append(el("span", "dv", bar.totalText));
-        block.append(line);
-      }
-    }
-    card.append(block);
-  }
+    for (const row of hourly.rows) body.append(agentRow(row, renderRows));
+  };
+  renderRows();
+  card.append(body);
   return card;
 }
 
@@ -598,7 +833,11 @@ function render(panel) {
   const order = [...new Set([...(currentSettings.cardOrder || []), "usage", "subscription", "hourly"])];
   for (const key of order) {
     const card = factories[key]?.();
-    if (card) { card.dataset.card = key; stack.append(card); }
+    if (card) {
+      card.dataset.card = key;
+      attachDragHandle(card, key);
+      stack.append(card);
+    }
   }
   if (!stack.children.length) {
     const empty = el("div", "card empty-panel-card");

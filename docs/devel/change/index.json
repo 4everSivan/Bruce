@@ -32,7 +32,8 @@
         "C016",
         "C027",
         "C028",
-        "C029"
+        "C029",
+        "C030"
       ]
     },
     "SubscriptionQuota": {
@@ -319,6 +320,15 @@
       "topic": "WindowsCompat",
       "version": "0.12.0+",
       "file": "docs/devel/change/C029.json"
+    },
+    "C030": {
+      "title": "Windows 仪表盘 P2 对标：Agent 用量卡行级展开与分组明细形态、24 点折线、柱顶总量、收起态迷你折线、LIVE 标签、卡片背景纹样与折叠态拖拽排序",
+      "type": "Enhancement",
+      "status": "in_progress",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C030.json"
     }
   }
 }

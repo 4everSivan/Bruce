@@ -185,19 +185,85 @@ test("styles.css consumes tier variables and keeps Nothing overrides on new comp
   }
 });
 
-test("distribution lists keep the 其他 aggregate row instead of truncating to three", async () => {
+test("agent rows keep distribution details collapsed until expanded, then show mac groups", async () => {
   const panel = structuredClone(fixture);
   panel.hourly.rows[0].models = [
     { name: "m1", share: 0.5, total: 62000, totalText: "62K" },
     { name: "m2", share: 0.3, total: 37200, totalText: "37.2K" },
     { name: "m3", share: 0.1, total: 12400, totalText: "12.4K" },
     { name: "其他", share: 0.1, total: 12400, totalText: "12.4K" },
+    { name: "trace", share: 0.004, total: 496, totalText: "496" },
   ];
   const app = await boot({ panel });
-  const firstAgent = app.node("stack").querySelectorAll(".agent-row")[0];
-  // 模型 4 行 (Top3 + 其他) + fixture 项目 2 行
-  assert.equal(firstAgent.querySelectorAll(".dist-row").length, 6);
-  assert.match(firstAgent.textContent, /其他/);
+  const firstRow = () => app.node("stack").querySelectorAll(".agent-row")[0];
+  // 默认收起 (mac @State 同语义): 明细不渲染, chevron 与 aria 状态一致
+  assert.equal(firstRow().querySelectorAll(".legend-row").length, 0);
+  assert.equal(firstRow().querySelector(".line1").getAttribute("aria-expanded"), "false");
+  assert.equal(firstRow().querySelector(".row-chev").textContent, "\u2304");
+  await firstRow().querySelector(".line1").click();
+  const row = firstRow();
+  assert.equal(row.querySelector(".line1").getAttribute("aria-expanded"), "true");
+  assert.deepEqual([...row.querySelectorAll(".detail-title")].map((n) => n.textContent), ["模型占比", "项目分布"]);
+  // 模型 5 条 (含「其他」与极小份额) + 项目 2 条, 全部渲染 (前端不得截断)
+  assert.equal(row.querySelectorAll(".legend-row").length, 7);
+  assert.match(row.textContent, /其他/);
+  const rows = [...row.querySelectorAll(".legend-row")];
+  // 图例格式: 名称 …… pct% · 总量
+  assert.equal(rows[0].querySelector(".pct").textContent, "50%");
+  assert.equal(rows[0].querySelector(".sep").textContent, " · 62K");
+  assert.equal(rows[4].querySelector(".pct").textContent, "<1%", "极小非零份额特例");
+  // 100% 堆叠条: 每组一条, 段宽按 share
+  assert.equal(row.querySelectorAll(".share-bar").length, 2);
+  assert.equal(row.querySelectorAll(".share-bar")[0].querySelectorAll(".share-seg").length, 5);
+  // 键盘可展开
+  await firstRow().querySelector(".line1").dispatch("keydown", { key: "Enter" });
+  assert.equal(firstRow().querySelectorAll(".legend-row").length, 0, "可再次收起");
+});
+
+test("hourly chart, sparklines and live badge follow mac shapes", async () => {
+  const app = await boot();
+  const stack = () => app.node("stack");
+  // 24 点走势为 SVG 折线 (非点柱)
+  assert.equal(stack().querySelectorAll(".spark .b").length, 0);
+  assert.equal(stack().querySelectorAll(".spark svg polyline").length, 2);
+  // 14 日柱顶恒显每日总量
+  const totals = [...stack().querySelectorAll(".day-total")].map((n) => n.textContent);
+  assert.deepEqual(totals, ["127K", "184K"]);
+  // LIVE 文案 (mac LiveIndicator)
+  assert.equal(stack().querySelector(".live-text").textContent, "LIVE");
+  // 收起态迷你折线 + 峰值文案
+  const hourlyCard = stack().querySelector('[data-card="hourly"]');
+  await hourlyCard.querySelector(".card-head").click();
+  const collapsed = app.node("stack").querySelector('[data-card="hourly"]');
+  assert.ok(collapsed.querySelector(".mini-spark svg polyline"), "收起态迷你折线");
+  assert.equal(collapsed.querySelector(".mini-peak").textContent, "峰值 71K");
+});
+
+test("collapsed cards drag-reorder and persist cardOrder", async () => {
+  const app = await boot();
+  const stack = app.node("stack");
+  const cards = () => [...app.node("stack").children].map((c) => c.dataset.card);
+  assert.deepEqual(cards(), ["usage", "subscription", "hourly"]);
+  const handle = app.node("stack").children[0].querySelector(".drag-handle");
+  assert.ok(handle, "卡片头存在拖拽手柄");
+  await handle.dispatch("dragstart");
+  await app.node("stack").children[2].dispatch("drop");
+  const saved = app.calls.filter((call) => call.command === "save_settings_command").pop();
+  // 注意: harness 在 vm 上下文里跑 app.js, 数组需展开为宿主数组再比较
+  assert.deepEqual([...saved.args.settings.cardOrder], ["subscription", "hourly", "usage"]);
+  assert.deepEqual(cards(), ["subscription", "hourly", "usage"]);
+  void stack;
+});
+
+test("styles.css defines the P2 shapes and keeps theme overrides for them", () => {
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  for (const rule of [".daily-chart .day-total", ".share-bar", ".legend-row", ".mini-spark", ".live-text", ".drag-handle", ".card.usage-card"]) {
+    assert.ok(css.includes(rule), `styles.css 缺少 ${rule}`);
+  }
+  // 拖拽手柄仅折叠态可见; Nothing 走势色为 heroGreen; 趋势/纹样不得用内联色
+  assert.match(css, /\.card\.collapsed > \.card-head \.drag-handle\s*\{\s*display:\s*inline-flex/);
+  assert.match(css, /\.theme-nothing \.spark\s*\{\s*color:\s*#4A9E5C/);
+  assert.match(css, /\.theme-nothing \.card\.usage-card\s*\{[^}]*radial-gradient/);
 });
 
 test("settings expose Cline with mac-aligned display names", async () => {

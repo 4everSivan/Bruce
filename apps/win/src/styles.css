@@ -394,8 +394,14 @@ button, input, select, textarea {
 .slot-dot { width: 5px; height: 5px; border-radius: 50%; background: #4A9E5C; flex: none; }
 
 /* Agent 用量卡 */
-.daily-chart { display: flex; align-items: flex-end; gap: 4px; height: 64px; margin-top: 8px; }
-.daily-chart .day { flex: 1; display: flex; flex-direction: column-reverse; height: 100%; border-radius: 2px; overflow: hidden; }
+.daily-chart { display: flex; align-items: flex-end; gap: 4px; height: 68px; margin-top: 8px; }
+.daily-chart .day { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+/* 柱顶恒显每日总量 (mac annotation(.top), 7.5pt secondary) */
+.daily-chart .day-total {
+  font-size: 7.5px; color: var(--secondary); text-align: center; line-height: 1.2;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.daily-chart .day-bars { flex: 1; min-height: 0; display: flex; flex-direction: column-reverse; border-radius: 2px; overflow: hidden; }
 .daily-chart .seg { width: 100%; }
 .daily-axis { display: flex; justify-content: space-between; font-size: 9px; color: var(--secondary); margin-top: 3px; }
 .daily-legend { display: flex; gap: 10px; font-size: 9.5px; color: rgba(255,255,255,.75); margin-top: 4px; flex-wrap: wrap; }
@@ -405,16 +411,57 @@ button, input, select, textarea {
 .agent-row { padding: 8px 0; }
 .agent-row + .agent-row { border-top: 1px solid var(--hairline); }
 .agent-row .line1 { display: flex; align-items: baseline; gap: 6px; }
+.agent-row .line1.expandable { cursor: pointer; }
 .agent-row .dot { width: 7px; height: 7px; border-radius: 2px; flex: none; align-self: center; }
 .agent-row .an { font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agent-row .row-chev { font-size: 8px; color: var(--secondary); align-self: center; flex: none; }
 .agent-row .at { margin-left: auto; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; opacity: .85; white-space: nowrap; flex: none; }
-.spark { height: 26px; margin-top: 5px; display: flex; align-items: flex-end; gap: 1px; }
-.spark .b { flex: 1; background: currentColor; border-radius: 1px; min-height: 1px; }
-.dist-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 9.5px; color: var(--secondary); }
-.dist-row .dn { width: 100px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; }
-.dist-row .track { flex: 1; height: 3px; border-radius: 1.5px; background: var(--hairline); overflow: hidden; }
-.dist-row .track > div { height: 100%; border-radius: 1.5px; }
-.dist-row .dv { width: 40px; text-align: right; font-variant-numeric: tabular-nums; flex: none; }
+/* 24 点走势: SVG 折线 + 渐变面积 (颜色经 currentColor, Nothing 覆写为 heroGreen) */
+.spark { height: 26px; margin-top: 5px; color: var(--spark-color, #8e8e93); }
+.spark svg { display: block; width: 100%; height: 100%; }
+/* 行级明细 (mac distributionGroup): 缩进 14pt, 分组标题 + 100% 堆叠条 + 图例 */
+.detail { padding-left: 14px; padding-top: 3px; }
+.detail-group + .detail-group { padding-top: 7px; }
+.detail-title {
+  font-size: 9px; font-weight: 600; letter-spacing: .3px; color: var(--secondary);
+  padding-bottom: 2px;
+}
+.share-bar { display: flex; height: 6px; border-radius: 3px; background: var(--hairline); overflow: hidden; margin-bottom: 3px; }
+.share-bar .share-seg { height: 100%; flex: none; }
+.share-legend { display: flex; flex-direction: column; gap: 2px; }
+.legend-row { display: flex; align-items: center; gap: 5px; font-size: 9.5px; color: rgba(255,255,255,.85); }
+.legend-row .sw { width: 5px; height: 5px; border-radius: 50%; flex: none; }
+.legend-row .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.legend-row .flex-spacer { flex: 1; min-width: 8px; }
+.legend-row .value { flex: none; display: flex; font-variant-numeric: tabular-nums; }
+.legend-row .pct { font-weight: 600; }
+.legend-row .sep { color: var(--secondary); }
+/* 收起态迷你折线 (mac collapsedMini: 12pt 走势 + 峰值文案, 间距 15) */
+.collapsed-summary > span.hourly-mini { gap: 15px; }
+.mini-spark { flex: 1; min-width: 0; height: 12px; color: var(--subdued); }
+.mini-spark svg { display: block; width: 100%; height: 100%; }
+.mini-peak { font-size: 9px; color: var(--subdued); font-variant-numeric: tabular-nums; flex: none; }
+/* LIVE 标签 (mac LiveIndicator: 光环 + 圆点 + LIVE 文案) */
+.hud-dot-wrap.live-badge { width: auto; min-width: 12px; gap: 5px; }
+.live-text { font-size: 9.5px; font-weight: 600; color: #30d158; letter-spacing: .2px; }
+.theme-nothing .live-text { color: var(--subdued); font-family: inherit; }
+/* Token 卡背景字符流纹样 (mac CodeStreamBackground 的静态等价; Nothing 走点阵) */
+.card.usage-card {
+  background-image: var(--code-stream, none);
+  background-repeat: repeat;
+}
+.theme-nothing .card.usage-card {
+  background-image: radial-gradient(rgba(255,255,255,.10) 1.2px, transparent 1.8px);
+  background-size: 16px 16px;
+}
+/* 折叠态卡片拖拽手柄 (mac: 仅折叠态渲染拖拽手柄) */
+.card-head .drag-handle {
+  display: none; flex: none; font-size: 11px; line-height: 1; color: var(--secondary);
+  letter-spacing: -2px; cursor: grab; padding: 0 2px;
+}
+.card.collapsed > .card-head .drag-handle { display: inline-flex; }
+.card.dragging { opacity: .45; }
+.card.drop-target { outline: 1px dashed var(--accent); outline-offset: 2px; }
 
 /* 底栏 (footerHairline + actionFooter) */
 #footer { border-top: 1px solid var(--footer-hairline); flex: 0 0 auto; }
@@ -1048,6 +1095,14 @@ details summary {
   border: 1px solid #333333;
   font-family: inherit;
 }
+/* Nothing: 24 点走势改用 heroGreen (mac nothing 分支), 折线/面积同色 */
+.theme-nothing .spark { color: #4A9E5C; }
+.theme-nothing .detail-title,
+.theme-nothing .legend-row .sep,
+.theme-nothing .mini-spark,
+.theme-nothing .mini-peak { color: var(--subdued); }
+.theme-nothing .share-bar { border-radius: 0; }
+.theme-nothing .legend-row .sw { border-radius: 0; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before { animation: none !important; transition: none !important; }
