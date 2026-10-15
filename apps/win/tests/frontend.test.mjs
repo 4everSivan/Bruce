@@ -255,6 +255,42 @@ test("collapsed cards drag-reorder and persist cardOrder", async () => {
   void stack;
 });
 
+test("Nothing theme renders segmented meters and dot-matrix day columns", async () => {
+  const app = await boot({ panel: structuredClone(fixture) });
+  // Fluent: 连续量条 + 百分比宽度, 无分段
+  assert.equal(app.node("stack").querySelectorAll(".meter.segmented").length, 0);
+  assert.equal(app.node("stack").querySelectorAll(".day-dots").length, 0);
+  // 切到 Nothing (真实 settings-updated 链路) 后重建卡片
+  app.state.settings.theme = "nothing";
+  await app.emit("settings-updated", app.state.settings);
+  const stack = app.node("stack");
+  // 量条: 每条 24 段 (codex 5h 7% → round(0.07×24)=2 段填充; 7d 70% → 17 段)
+  const segmented = [...stack.querySelectorAll(".meter.segmented")];
+  assert.equal(segmented.length, 3, "订阅卡三行窗口各一条");
+  assert.equal(segmented[0].children.length, 24);
+  const filled = (meter) => meter.children.filter((cell) => cell.style.background).length;
+  assert.equal(filled(segmented[0]), 8, "kimi 32% → round(0.32×24) = 8 段");
+  assert.equal(filled(segmented[1]), 2, "codex 5h 7% → 2 段");
+  assert.equal(filled(segmented[2]), 17, "codex 7d 70% → 17 段");
+  // 日柱: 点阵 24 格, 填充数按当日占比 (fixture 两日 127K/184K)
+  const grids = [...stack.querySelectorAll(".day-dots")];
+  assert.equal(grids.length, 2);
+  assert.equal(grids[0].children.length, 24);
+  const filledDots = (grid) => grid.children.filter((cell) => cell.style.background).length;
+  assert.equal(filledDots(grids[0]), 17, "127K/184K → round(0.69×24)=17");
+  assert.equal(filledDots(grids[1]), 24, "峰值日铺满");
+  // 末段吃掉剩余格: 合计恰为 filled
+  assert.equal(filledDots(grids[0]) + 0, 17);
+});
+
+test("styles.css defines the Nothing segmented meter and dot grid", () => {
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  assert.match(css, /\.meter\.segmented\s*\{[^}]*gap:\s*2px/);
+  assert.match(css, /\.meter\.segmented > i\s*\{\s*flex:\s*1;\s*background:\s*#222222/);
+  assert.match(css, /\.day-dots\s*\{[^}]*grid-template-columns:\s*repeat\(3, 6px\)/);
+  assert.match(css, /\.theme-nothing \.daily-chart \.day-total\s*\{\s*opacity:\s*0/);
+});
+
 test("styles.css defines the P2 shapes and keeps theme overrides for them", () => {
   const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
   for (const rule of [".daily-chart .day-total", ".share-bar", ".legend-row", ".mini-spark", ".live-text", ".drag-handle", ".card.usage-card"]) {

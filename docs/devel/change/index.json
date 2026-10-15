@@ -36,7 +36,8 @@
         "C030",
         "C031",
         "C032",
-        "C033"
+        "C033",
+        "C034"
       ]
     },
     "SubscriptionQuota": {
@@ -359,6 +360,15 @@
       "topic": "WindowsCompat",
       "version": "0.12.0+",
       "file": "docs/devel/change/C033.json"
+    },
+    "C034": {
+      "title": "Nothing 主题形态补齐：订阅量条改 24 段方角、14 日柱改 3×8 点阵（agent 绿阶分段落槽）、日总量改 hover 显示",
+      "type": "Enhancement",
+      "status": "in_progress",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C034.json"
     }
   }
 }

@@ -91,6 +91,28 @@ function projectShade(index) {
   return PROJECT_SHADES[Math.min(index, PROJECT_SHADES.length - 1)];
 }
 
+/* ---------- Nothing 主题绿阶 (镜像 mac PanelAgentColor.nothingRampHex 深色侧) ---------- */
+// 呼吸灯绿 #4A9E5C 基色的 5 档绿阶, 亮→暗; 已知高频 agent 固定档位, 未知 agent 用
+// FNV-1a 散列稳定落档 (与 mac 同法)。Windows 恒深色, 故只保留 dark 侧色序。
+const NOTHING_RAMP = ["#8CCB98", "#5FAF6E", "#4A9E5C", "#35854A", "#2A6B3C"];
+const NOTHING_AGENT_TIER = {
+  "kimi-code-cli": 0, "claude-code": 1, "codex": 2, "zcode": 3, "opencode": 4,
+  "codebuddy": 2, "kimi-work": 4, grok: 2, pi: 4,
+};
+function nothingRampHex(agentID) {
+  const known = NOTHING_AGENT_TIER[agentID];
+  if (known !== undefined) return NOTHING_RAMP[known];
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < agentID.length; index += 1) {
+    hash ^= agentID.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return NOTHING_RAMP[hash % NOTHING_RAMP.length];
+}
+function isNothingTheme() {
+  return document.body.classList.contains("theme-nothing");
+}
+
 /* ---------- SVG 迷你走势 (mac: 折线 1.5pt + 渐变面积) ---------- */
 let sparkSeq = 0;
 // 颜色经 currentColor 传递, 由 CSS 决定 (Nothing 主题覆写为 heroGreen);
@@ -478,12 +500,32 @@ function glyphSvg(glyph) {
 }
 function meterLevel(percent) { return percent < 50 ? "normal" : percent < 80 ? "warning" : "critical"; }
 function clampedPercent(value) { return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0; }
+// mac Nothing 量条: 24 段方角, 段间 2pt, 高 10; 填充段数 = round(clamp(fraction,0,1) * 24),
+// 纯色取阈值档色 (normal #4A9E5C / warning #D4A843 / critical #D71921)。
+const NOTHING_METER_SEGMENTS = 24;
+const NOTHING_THRESHOLD_COLORS = { normal: "#4A9E5C", warning: "#D4A843", critical: "#D71921" };
+function nothingMeter(level, usedPercent) {
+  const meter = el("div", `meter segmented ${level}`);
+  const filled = Math.round((clampedPercent(usedPercent) / 100) * NOTHING_METER_SEGMENTS);
+  for (let index = 0; index < NOTHING_METER_SEGMENTS; index += 1) {
+    const segment = el("i");
+    if (index < filled) segment.style.background = NOTHING_THRESHOLD_COLORS[level] || NOTHING_THRESHOLD_COLORS.normal;
+    meter.append(segment);
+  }
+  return meter;
+}
 function windowRow(row) {
   const line = el("div", "win-row");
   line.append(el("span", "wl", row.label));
-  const meter = el("div", `meter ${meterLevel(row.usedPercent)}`);
-  const fill = el("div"); fill.style.width = `${Math.round(clampedPercent(row.usedPercent))}%`;
-  meter.append(fill); line.append(meter);
+  const level = meterLevel(row.usedPercent);
+  const meter = isNothingTheme()
+    ? nothingMeter(level, row.usedPercent)
+    : el("div", `meter ${level}`);
+  if (!isNothingTheme()) {
+    const fill = el("div"); fill.style.width = `${Math.round(clampedPercent(row.usedPercent))}%`;
+    meter.append(fill);
+  }
+  line.append(meter);
   line.append(el("span", "wp", row.percentText));
   line.append(el("span", "wr", row.resetText));
   return line;
@@ -551,13 +593,15 @@ function subscriptionCard(sub) {
       const group = document.createElement("span");
       group.style.cssText = "display:flex;align-items:center;gap:5px;flex:1;min-width:0;";
       group.append(badge(section.id, section.name));
+      const level = meterLevel(peak.usedPercent);
       const meterEl = document.createElement("span");
-      meterEl.className = `meter ${meterLevel(peak.usedPercent)}`;
+      meterEl.className = `meter ${level}`;
       meterEl.style.cssText = "flex:1;height:5px;";
       const fill = document.createElement("span");
       fill.style.width = `${Math.round(clampedPercent(peak.usedPercent))}%`;
       meterEl.append(fill);
       group.append(meterEl);
+      void level;
       mini.append(group);
     }
     return mini;
@@ -734,18 +778,59 @@ function hourlyCard(hourly, usage) {
     if (usage && usage.days.length) {
       const chart = el("div", "daily-chart");
       const maxTotal = Math.max(...usage.days.map((day) => day.total), 1);
+      const nothing = isNothingTheme();
       for (const day of usage.days) {
         const col = el("div", "day");
         col.title = `${day.date}  ${day.totalText}`;
         col.append(el("div", "day-total", day.totalText));
-        const bars = el("div", "day-bars");
-        for (const seg of day.segments) {
-          const bar = el("div", "seg");
-          bar.style.height = `${(seg.value / maxTotal) * 100}%`;
-          bar.style.background = seg.colorHex;
-          bars.append(bar);
+        if (nothing) {
+          // mac Nothing 日柱: 3 列 × 8 行 = 24 格点阵 (6×6, 间隔 2), 自下而上填充;
+          // 填充格数 = max(1, round(total/maxDayTotal * 24)); 段落槽非末段至少 1 格、
+          // 末段吃掉剩余格; 退化 (无段或 filled < 段数) 时统一用 accent 单色。
+          const filled = Math.max(1, Math.round((day.total / maxTotal) * 24));
+          const segments = day.segments;
+          const degenerate = !segments.length || filled < segments.length;
+          const counts = [];
+          let assigned = 0;
+          segments.forEach((segment, index) => {
+            if (index === segments.length - 1) {
+              counts.push(Math.max(0, filled - assigned));
+              return;
+            }
+            const share = Math.round((segment.value / Math.max(day.total, 1)) * filled);
+            const count = Math.min(Math.max(1, share), Math.max(0, filled - assigned));
+            counts.push(count);
+            assigned += count;
+          });
+          const colors = segments.map((segment) => nothingRampHex(segment.agentId));
+          const grid = el("div", "day-dots");
+          for (let cell = 0; cell < 24; cell += 1) {
+            const dot = el("i");
+            if (cell >= 24 - filled) {
+              const position = 23 - cell;   // 0 = 最下一格
+              let color = NOTHING_RAMP[2];
+              if (!degenerate) {
+                let cumulative = 0;
+                for (let index = 0; index < counts.length; index += 1) {
+                  cumulative += counts[index];
+                  if (position < cumulative) { color = colors[index]; break; }
+                }
+              }
+              dot.style.background = color;
+            }
+            grid.append(dot);
+          }
+          col.append(grid);
+        } else {
+          const bars = el("div", "day-bars");
+          for (const seg of day.segments) {
+            const bar = el("div", "seg");
+            bar.style.height = `${(seg.value / maxTotal) * 100}%`;
+            bar.style.background = seg.colorHex;
+            bars.append(bar);
+          }
+          col.append(bars);
         }
-        col.append(bars);
         chart.append(col);
       }
       body.append(chart);

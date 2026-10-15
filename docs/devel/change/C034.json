@@ -1,0 +1,86 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C034",
+  "title": "Nothing 主题形态补齐：订阅量条改 24 段方角、14 日柱改 3×8 点阵（agent 绿阶分段落槽）、日总量改 hover 显示",
+  "type": "Enhancement",
+  "status": "in_progress",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送; 仅动 Windows 渲染层 (app.js + styles.css), 不触碰契约与后端",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src (app.js + styles.css)",
+    "component": "Nothing 主题下的订阅量条 / 逐小时卡 14 日柱",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "P3 残余差异的最后一项（用户以「继续修」授权）。设计基线 05 §2.2 声明 Windows 的 Nothing 主题是「简化 CSS 覆写而非完整 Nothing token 体系」，因此本卡只补齐 mac **已有明确形态定义**的两处（不自行发明视觉），把「简化」的幅度收窄：**(1) 订阅量条** —— mac Nothing 走 24 段方角量条（段间 2pt、高 10、填充段数 = round(clamp(fraction,0,1)×24)、纯色取阈值档色），Windows 此前仍是 5px 连续圆角条，与 mac 差异明显（每张订阅卡每一行都可见）；**(2) 14 日柱** —— mac Nothing 走 3 列×8 行 = 24 格点阵（6×6 格、2pt 间隔、自下而上填充、填充数 = max(1, round(total/maxDayTotal×24))、段落槽「非末段至少 1 格 + 末段吃剩余」、退化时统一 accent 单色、日总量改 hover 显示），Windows 此前仍是连续堆叠柱。同时把 agent 绿阶（mac `PanelAgentColor.nothingRampHex` 深色侧 5 档 + 已知 agent 固定档位）镜像进 Windows，未知 agent 用 FNV-1a 落档（Windows 恒深色，只需 dark 侧色序）。**明确不做**：Nothing 的斜纹堆叠条 / PRJ.CONSOLE 项目统计面板 / Doto·Space Mono 字体 —— 前两者属未在 mac 文档中固定形态的自定义设计（需产品决策），字体受授权限制无法随包分发（mac 侧也是运行时加载，失败回落系统字体）。",
+  "precheck": {
+    "description": "确认现状: Nothing 主题下量条仍为连续圆角条、日柱仍为堆叠柱、无绿阶表",
+    "command": "grep -n 'segmented\\|day-dots\\|nothingRampHex\\|NOTHING_RAMP' apps/win/src/app.js apps/win/src/styles.css",
+    "expected": "修复前: 无任何命中 (无 Nothing 段式量条 / 点阵 / 绿阶)",
+    "is_completed": true,
+    "evidence": "2026-10-15 实测 (真实内核, Nothing 主题): 订阅行渲染为 `.meter.normal > div` 5px 连续条 (height 5), 14 日柱为 `.day-bars > .seg` 连续堆叠柱, 日总量数字恒显 (opacity 1); `grep -n 'segmented\\|day-dots' apps/win/src` 无命中。对照 mac 规格 (审计提取): PanelModels.swift:121-124 给出 5 档绿阶表与已知 agent 档位, SubscriptionCard.swift 的 Nothing 量条为 24 段 (高 10 / 段间 2), HourlyLineCard.swift 的 Nothing 日柱为 3×8 点阵 (6×6 / 段间 2 / 日总量 hover)。"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护已在 main 实施"
+    ],
+    "after": [
+      "node --test apps/win/tests/frontend.test.mjs",
+      "node scripts/check-win-frontend.mjs",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "apps/win/src/app.js (Nothing 绿阶与量条形态)",
+      "before": "订阅卡量条在两种主题下都是 `.meter > div` 连续圆角条 (5px); 无 agent 绿阶表",
+      "after": "新增 NOTHING_RAMP(5 档深色绿阶)/NOTHING_AGENT_TIER(已知 agent 固定档位)/nothingRampHex(未知 agent FNV-1a 落档) 与 isNothingTheme(); Nothing 下量条改渲染 24 段方角 (填充段数 = round(clamp(percent,0,1)×24), 纯色取阈值档色 #4A9E5C/#D4A843/#D71921), Fluent 分支保持原连续条",
+      "impact": "Nothing 订阅量条与 mac 形态一致; Fluent 主题零变化"
+    },
+    {
+      "scope": "apps/win/src/app.js (Nothing 14 日点阵)",
+      "before": "14 日柱为连续堆叠柱 (按 agent 分段高度)",
+      "after": "Nothing 下每列改 3×8 = 24 格点阵: 填充数 max(1, round(total/maxDayTotal×24)) 自下而上; 段落槽非末段至少 1 格、末段吃剩余 (合计恰为填充数); 段色取 agent 绿阶; 无段或填充数 < 段数的退化分支用 accent 单色; 日总量在 Nothing 下改 hover 显示",
+      "impact": "Nothing 日柱与 mac 点阵形态一致; 依然可读「哪一天多」与「哪个 agent 贡献」"
+    },
+    {
+      "scope": "apps/win/src/styles.css (Nothing 形态样式)",
+      "before": "无段式量条与点阵网格样式",
+      "after": "新增 `.meter.segmented`(flex + 2px 间隔 + 高 10 + 空段 #222222)、`.day-dots`(grid 3×6px 列 / 6px 行 / 2px 间隔 / 底部对齐)、`.theme-nothing .daily-chart .day-total` hover 显示",
+      "impact": "两种主题形态各自成立; 段式量条不影响 Fluent 的连续条"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "§2.2 非目标声明「Nothing 主题以简化 CSS 覆写实现, 保真边界为简化覆写而非完整 token 体系」, §4.2 未逐项列出 Nothing 形态清单",
+      "after": "§4.2 渲染层对标清单追加 Nothing 形态行: 量条 = 24 段方角(高 10/段间 2/填充段数 = round(fraction×24)/阈值档纯色), 14 日柱 = 3×8 点阵(6×6/段间 2/自下而上/末段吃剩余/退化 accent 单色/日总量 hover), 走势线 = heroGreen; 并显式记录**不做**的三项(斜纹堆叠条、PRJ.CONSOLE 面板、Doto·Space Mono 字体)与原因(前两者属未固定形态的自定义设计需产品决策, 后者受字体授权限制)"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "verify-local-20261015-c034 + render-harness-20261015",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "Nothing 形态与 mac 规格一致 (真实内核)",
+        "true_if": "Nothing 下量条为 24 段(2px 间隔/高 10/空段 #222222/填充取阈值色), 日柱为 24 格 6×6 点阵且填充数符合 round 规则与末段吃剩余, 日总量 hover 显示; Fluent 主题形态不变",
+        "false_if": "任一项与规格不符, 或 Fluent 分支被改动",
+        "evidence": "2026-10-15 真实 Chromium 内核自检 (apps/win/tests/render-harness/dashboard-harness.html, 视口 440×760, 经 __setTheme('nothing') 走真实 settings-updated 链路重建卡片) 实测: 段式量条 3 条 (`.meter.segmented`), 每条 24 段, gap 2px, 高度 10px, 空段色 rgb(26,26,26) (#222222); 首条填充 8 段 (kimi 32% → round(0.32×24))、codex 5h 7% → 2 段、7d 70% → 17 段; 点阵日柱 2 组 (.day-dots) × 24 格, 单元格 6×6px, 空色 rgb(26,26,26)、填充色 rgb(74,158,92) (heroGreen); 日总量 opacity 0 (hover 显示); docScrollWidth = 440 (无溢出)。Fluent 主题下同用例断言 `.meter.segmented` 与 `.day-dots` 均为 0 (形态未被污染), 连续条与堆叠柱保持原样。",
+        "result": true
+      },
+      {
+        "item": "全量门禁",
+        "true_if": "zsh scripts/verify-local.sh 退出码 0; 前端用例含 Nothing 形态断言; 真实内核无溢出",
+        "false_if": "任一环节失败",
+        "evidence": "zsh scripts/verify-local.sh 退出码 0, 末行 'Bruce 本地验证全部通过' (日志 local/c034-verify.log): Rust 三 manifest 全绿 (collector 132 / viewmodel 46 / src-tauri 91), fmt --check 与 clippy --all-targets -D warnings 零告警, Windows 前端结构冒烟通过且交互回归 32/32 (新增 2 项: Nothing 段式量条与点阵日柱行为断言含 8/2/17 段与 17/24 格填充数、段式与点阵的 CSS 契约断言), Swift 全部 Harness 与 Panel 视图模型双端对拍 3/3 通过。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": []
+}

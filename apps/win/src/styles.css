@@ -419,6 +419,22 @@ button, input, select, textarea {
 /* 24 点走势: SVG 折线 + 渐变面积 (颜色经 currentColor, Nothing 覆写为 heroGreen) */
 .spark { height: 26px; margin-top: 5px; color: var(--spark-color, #8e8e93); }
 .spark svg { display: block; width: 100%; height: 100%; }
+/* Nothing 日柱: 3×8 点阵 (6px 格 / 2pt 间隔 / 底部对齐) */
+.day-dots {
+  flex: 1; min-height: 0;
+  display: grid; grid-template-columns: repeat(3, 6px); grid-auto-rows: 6px;
+  gap: 2px; align-content: end; justify-content: center;
+}
+.day-dots i { background: #1A1A1A; border-radius: 0; }
+/* Nothing 日总量改为 hover 显示 (mac 点阵分支仅有 hover tooltip) */
+.theme-nothing .daily-chart .day-total { opacity: 0; transition: opacity .15s; }
+.theme-nothing .daily-chart .day:hover .day-total { opacity: 1; }
+/* Nothing 量条: 24 段方角, 段间 2pt, 高 10 (mac 24 段形态) */
+.meter.segmented {
+  display: flex; gap: 2px; height: 10px;
+  background: transparent; border-radius: 0; overflow: visible;
+}
+.meter.segmented > i { flex: 1; background: #222222; border-radius: 0; height: 100%; }
 /* 行级明细 (mac distributionGroup): 缩进 14pt, 分组标题 + 100% 堆叠条 + 图例 */
 .detail { padding-left: 14px; padding-top: 3px; }
 .detail-group + .detail-group { padding-top: 7px; }

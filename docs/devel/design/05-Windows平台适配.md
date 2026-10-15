@@ -129,6 +129,7 @@
 | Hero 数字渐变 | 按 `usageTier` 取五档色对（sage/moss/fern/pine/forest，`heroGradient` 基色 30% → 浅色 100%） | 同（不得写死单档；档位由契约字段 `usageTier` 下发）。**实现约束（C029）**：档位色必须以 CSS 自定义属性（`--hero-grad-start` / `--hero-grad-end`）下发，由 `.hero-num` / `.mini-num` 消费，**严禁用内联 style 直接写 background/前景** —— 内联 `background-image` 会压过 `.theme-nothing .hero-num` 的点阵覆写，而该类上的 `background-size: 4px 4px` 仍生效，最终渲染成 4px 平铺条纹（C027 实测回归） |
 | 模型/项目分布 | 渲染视图模型给出的全部行（Top3 + 「其他」聚合） | 同（前端不得再截断） |
 | Nothing 主题覆写 | 新增任何卡片内组件时，除 Fluent 形态外必须同时给出 `.theme-nothing` 覆写（圆角 3 / `#1A1A1A` 底 / `#222222` 描边；告警红 `--accent` 不得被正文数字沿用） | 同（C029 起：账号子卡、余额双槽、tag 胶囊、成本数字均有 Nothing 覆写与断言） |
+| Nothing 形态（C034） | 订阅量条 = 24 段方角（高 10 / 段间 2 / 填充段数 = `round(clamp(fraction,0,1)×24)` / 阈值档纯色 `#4A9E5C`·`#D4A843`·`#D71921`）；14 日柱 = 3×8 点阵（6×6 格 / 段间 2 / 自下而上 / 填充数 = `max(1, round(total/maxDayTotal×24))` / 段落槽非末段至少 1 格且末段吃剩余 / 退化时统一 accent 单色 / 日总量 hover 显示）；24 点走势线 = heroGreen；agent 配色取 5 档绿阶（已知 agent 固定档位、未知 agent FNV-1a 落档） | 同（Windows 恒深色，只实现 dark 侧色序）。**明确不做**：斜纹堆叠条、`PRJ.CONSOLE` 项目统计面板（属 mac 未固定形态的自定义设计，需产品决策）、Doto / Space Mono 字体（受授权限制无法随包分发，回落 Cascadia Mono） |
 
 **Windows 侧验证纪律（C029，因维护者无 Windows 机器）**：
 
