@@ -1,0 +1,130 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C026",
+  "title": "订阅用量卡徽章由品牌色首字母字母标升级为品牌图形 (多图标库取材 + Z.ai 官方 Z 字形, 补齐 Cline 品牌色)",
+  "type": "Enhancement",
+  "status": "closed",
+  "branch": "main",
+  "is_hotfix": false,
+  "branch_note": "单人维护: 直接在 main 实施并推送",
+  "precheck": {
+    "description": "预检: 确认仪表盘徽章仍为首字母字母标, 且品牌色表缺 Cline、无任何品牌图形数据",
+    "command": "grep -n 'ProviderLogoBadge' apps/macos/Sources/BruceApp/Views/SubscriptionCard.swift; grep -n 'cline' apps/macos/Sources/BruceApp/Views/SubscriptionCard.swift apps/win/src/app.js",
+    "expected": "存在品牌色首字母徽章渲染点, 且双端品牌色表均无 cline 分支",
+    "is_completed": true,
+    "evidence": "2026-10-15 实测: SubscriptionCard 内 3 处 ProviderLogoBadge 引用 (段头/收起态迷你摘要/BalanceChip 取色), 徽章渲染为品牌色底 + 姓名首字符; brandColor 分支 11 家无 cline (落默认灰 #8e8e93); apps/win/src/app.js PROVIDER_COLORS 同样无 cline; 仓库内不存在任何品牌图形数据 (ProviderBrandGlyph 全新)"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出 (单人维护直开 main)",
+      "# 图标源已归档: docs/assets/provider-icons/ (Simple Icons CC0 / theSVG MIT / SVG Logos CC0 / z.ai 官方 logo, 逐图标登记见 SOURCES.json)"
+    ],
+    "after": [
+      "node scripts/gen-provider-glyphs.mjs --check",
+      "node scripts/check-win-frontend.mjs",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "target": {
+    "module": "apps/macos (BruceAppCore 数据与解析 + BruceApp 徽章视图) + apps/win (app.js/styles.css 徽章渲染) + scripts (生成器与验证) + docs/assets/provider-icons",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+  "why": "用户提出订阅用量卡的各家订阅应有专属品牌图标。现状为品牌色首字母字母标, 存在三类辨识度问题: (1) 字母撞车——ChatGPT 与 Cline 同为 \"C\", 仅靠颜色区分, 而 Cline 因品牌色缺失长期显示灰色 \"C\" 与 ChatGPT 绿 \"C\" 混淆; (2) 智谱更名 Z.ai 后字母无品牌语义, 图标库中仅有「智谱」点阵 mark (与现显示名不符); (3) 字母标无法体现品牌资产, 与卡片其余部分的品牌色/图形语言割裂。因此把徽章升级为品牌图形 (品牌色瓷砖 + 白色品牌图形), 并同步修正品牌色表 (补齐 Cline, Z.ai 改官方锁版深色)。取材经多库实测: Simple Icons (CC0) / theSVG (MIT) / SVG Logos (CC0) 覆盖 10/11 家, Z.ai 取官方 logo 的 Z 字形图层, 未收录图形者 (Jev) 保持首字母兜底。",
+  "changes": [
+    {
+      "scope": "apps/macos: 品牌图形数据与渲染管线 (新增)",
+      "before": "无图形数据与解析能力; 徽章 = 品牌色底 + 姓名首字符文本 (ProviderLogoBadge)",
+      "after": "新增 ProviderBrandGlyphData (生成数据) / SVGPathBuilder (绝对 M/L/C/Z 迷你解析器, 非预期输入 fail-closed) / ProviderBrandGlyph (viewBox 等比 meet 适配到瓷砖 58% 占位) / ProviderBrandPalette (品牌色板与深色集合) / ProviderBrandBadge (共享徽章视图, 无图形回退首字母); SubscriptionCard 切换到新徽章, 旧 ProviderLogoBadge 删除",
+      "impact": "仪表盘段头与收起态迷你摘要两处徽章改为品牌图形; 面板 VM 与 golden 快照不变 (纯视图层)"
+    },
+    {
+      "scope": "品牌色板迁移与调整 (双端)",
+      "before": "品牌色表以视图内 fileprivate 函数为准 (无 cline 分支; zhipu #3859ff)",
+      "after": "迁移为 BruceAppCore.ProviderBrandPalette.hex (双端唯一事实源); zhipu 改用 Z.ai 官方锁版深色 #2D2D2D (与官方 logo 深色瓷砖一致); 补齐 cline #18181b; 新增 isDarkBrand 集合 (grok/zhipu/cline) 承载 Nothing 主题深色兜底",
+      "impact": "Z.ai 余额胶囊圆点等取色处随之变深色; Windows PROVIDER_COLORS 镜像同步 (双端一致)"
+    },
+    {
+      "scope": "apps/win: 徽章渲染对齐",
+      "before": "badge() 渲染品牌色底 + 首字母文本; 无图形数据",
+      "after": "badge() 优先用 DOM API 构建内联 SVG (PROVIDER_GLYPHS 生成块, currentColor 填充, 多子路径保留 fill-opacity); 无图形数据回退首字母; styles.css 新增 .pbadge svg 尺寸规则 (58%)",
+      "impact": "Windows 仪表盘徽章与 mac 同图同色; 使用 DOM API 而非 innerHTML, 与前端测试的极简 DOM 边界兼容"
+    },
+    {
+      "scope": "apps/macos: 设置中心与配置弹窗图标化 (方案 A)",
+      "before": "订阅额度设置行仅文本 (拖拽柄 + 名称/副标题); 配置弹窗标题为纯文本「配置 X」",
+      "after": "徽章组件尺寸参数化 (size 默认 15pt, 圆角与首字母字号等比缩放, 15pt 保持既有定稿值); 设置行在拖拽柄右侧插入 26pt 品牌图形大图标; 配置弹窗标题前置 20pt 品牌徽章",
+      "impact": "设置中心与弹窗获得与仪表盘一致的图形语言"
+    },
+    {
+      "scope": "apps/macos: 「添加服务」下拉选项图标化",
+      "before": "选择 Provider 使用 SwiftUI Picker (菜单项仅文字, 图像不被渲染)",
+      "after": "改为同一原生控件 NSPopUpButton (ProviderPopUpPicker): 外观与闭合态不变, 每个菜单项携带 16pt 品牌瓷砖 + 白色图形 (NSMenuItem.image, 显式关闭模板染色), 图形右侧留 6pt 透明留白把标题右移 (AppKit 菜单标题位置由图像列宽决定, 无独立间距开关); 闭合态由系统带出所选 provider 图标; 两步流程 (选择 → 添加…) 与选中态/无障碍语义保持不变",
+      "impact": "下拉保持原交互与原生观感, 选项获得品牌识别且图标与名称间距为系统标准 (NSMenuItemCell.titleRect 实测标题右移 6pt); 图形经 ProviderBrandGlyph.menuImage 渲染 (flipped 上下文保证与 SVG 坐标同向)"
+    },
+    {
+      "scope": "scripts + docs/assets: 源资产管理管线 (新增)",
+      "before": "无品牌图形源资产与生成器; 图标若要入库只能手改两端源码",
+      "after": "docs/assets/provider-icons/ 归档 10 个源 SVG + SOURCES.json (逐图标来源/许可证) + README (使用边界); scripts/gen-provider-glyphs.mjs 归一化为绝对 M/L/C/Z (圆弧与简写曲线在生成期展开为三次贝塞尔) 并生成 Swift 与 app.js 两处产物, 支持 --check/--dump-json; verify-local 增加产物一致性校验",
+      "impact": "图标数据单一事实源; 后续新增/替换图标只需替换源 SVG 后重跑生成器"
+    },
+    {
+      "scope": "测试: SubscriptionBrandGlyphHarness (新增 7 项)",
+      "before": "无徽章/图形相关测试",
+      "after": "覆盖图形覆盖率 (11 家除 Jev 外均有图形, 且登记来源) / 未知 provider 与非法尺寸 fail-closed / 画布适配包围盒收敛 (非退化且不越界) / 命令集纪律 (仅绝对 M/L/C/Z) / 色板完整性 (zhipu=#2D2D2D, cline=#18181b) / 深色集合 / 多子路径透明度保留",
+      "impact": "生成数据被手工改坏或源文件引入圆弧后会立即红灯"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "topic": "SubscriptionQuota",
+    "modified": true,
+    "rule_diff": {
+      "before": "规则 4 措辞为「仅保留品牌 Logo、服务名与尾部定向刷新按钮」(实现为首字母字母标, 无徽章规范); 品牌色板散落在视图 fileprivate 函数内",
+      "after": "新增规则 8 订阅 Provider 品牌徽章规范: 徽章=品牌色瓷砖+白色品牌图形 (图形占 58%), 范围覆盖仪表盘段头/收起态摘要 (15pt)、设置中心订阅行 (26pt 大图标) 与配置弹窗标题 (20pt 徽章); 数据由源 SVG 归一化生成、双端共享且禁止手改生成产物; 未收录图形/非法数据 fail-closed 回退首字母; 品牌色板 ProviderBrandPalette 为双端唯一事实源 (Z.ai #2D2D2D, Cline #18181b, 深色集合 grok/zhipu/cline); 规则 4 措辞同步明确为「品牌徽章 (规则 8)」"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "verify-local-20261015-c026",
+    "user_quote": "确认，提交所有。不要打tag",
+    "signoff": "2026-10-15 用户会话内确认 C026 (订阅徽章品牌图形化: 仪表盘 15pt / 设置行 26pt / 配置弹窗 20pt / 添加服务下拉 16pt 含 6pt 图标间距) 收口, AI 代为签署并闭环归档",
+    "checks": [
+      {
+        "item": "源数据保真 (归一化无损)",
+        "true_if": "归一化后的路径几何与原始 SVG 渲染逐像素一致; 且生成器实现可复现 (交叉实现比对一致)",
+        "false_if": "任一图标归一化后与源渲染存在可见差异, 或生成器输出不稳定",
+        "evidence": "开发期像素级比对 (rsvg-convert 256px 渲染 + 逐像素差分): 原始 SVG vs 归一化几何 10/10 差异 0.00% (最大灰阶偏差 ≤9, 仅抗锯齿噪声; codex/grok 两项首轮 4.93%/3.18% 经定位为比对脚本受源文件 em 宽高属性干扰, 剥离后归零); 跨实现交叉验证: 开发期 Python 原型与仓库 Node 生成器产出的路径数据逐字节一致 (11,958 bytes)",
+        "result": true
+      },
+      {
+        "item": "双端渲染落地",
+        "true_if": "mac 徽章以品牌图形渲染且保留首字母兜底路径; Windows 徽章输出同数据内联 SVG 且前端测试全绿",
+        "false_if": "任一端仍渲染首字母标 (已知 provider), 或前端测试/结构冒烟失败",
+        "evidence": "源码级核验: SubscriptionCard 两处徽章切换到 ProviderBrandBadge, ProviderBrandGlyph.resolvedShapes 返回 nil 时回退首字母 (Jev/未知 provider); win badge() 对 PROVIDER_GLYPHS 命中项用 document.createElementNS 构建 SVG (非 innerHTML, 兼容测试 DOM 边界), 未命中回退首字母; node scripts/check-win-frontend.mjs 通过 (app.js/settings.js 语法 + DOM id 交叉引用); apps/win 前端交互 14 项测试全绿 (含首轮暴露并修复的 innerHTML 断点)",
+        "result": true
+      },
+      {
+        "item": "新增 Harness 9 项",
+        "true_if": "SubscriptionBrandGlyphHarness 9 项全绿, 覆盖覆盖率/兜底/画布适配/命令集/色板/深色集合/透明度/菜单图标/菜单间距",
+        "false_if": "任一断言失败或存在未覆盖的 provider",
+        "evidence": "swift run SubscriptionBrandGlyphHarness -> 'SubscriptionBrandGlyph tests passed: 9' (首轮曾以错误预期值暴露 1 处断言写作错误并修正: 火山引擎 50% 辅助面实为 2 个); 菜单图标项校验尺寸/非模板/中心已绘制/圆角外透明; 菜单间距项以 NSMenuItemCell.titleRect 实测: 图形右侧留白 6pt 使标题由 x=46 右移至 x=52 (+6.0pt); 开发期以 --write-icons 导出 16/64pt PNG 人工核对: 10 家图形方向正确 (Z 正立等), 瓷砖色与品牌色板逐像素一致 (#0A84FF/#4D6BFE/#FF6A00/#2D2D2D/#10A37F/#D97757/#111111/#8A63D2/#0C5EFC/#18181B 全 OK)",
+        "result": true
+      },
+      {
+        "item": "全量自动化验证",
+        "true_if": "zsh scripts/verify-local.sh 退出码 0, 含 Rust 全量、Swift 全部 Harness、Windows 前端与 viewmodel、生成产物一致性、面板三态对拍",
+        "false_if": "任一环节失败或告警",
+        "evidence": "zsh scripts/verify-local.sh 退出码 0, 末行 'Bruce 本地验证全部通过' (四次复跑: 仪表盘 local/c026-verify.log / 设置行+弹窗 local/c026-verify-2.log / 下拉图标 local/c026-verify-3.log / 下拉间距 local/c026-verify-4.log, 均 exit 0): Bruce Rust 验证全部通过 + Collector fixture 扫描 (18 文件/无敏感命中) + Windows 前端结构冒烟通过 + OnboardingCore 165 / PanelViewModel 53 / ArtifactStore 5 / CollectorRunner 28 / RefreshScheduler 82 / NativeLifecycle 14 / Diagnostics 8 / LocalIntegration 2 / Widget perf 5 / SubscriptionCredentials 33 / GlobalHotkey / AppModelCache 2 / DashboardGlassSurface 10 / SubscriptionRefreshControl 4 / SubscriptionBrandGlyph 9 + 'provider 品牌图形产物一致 (10 个 provider)' + PanelParity 三态对拍通过 + win viewmodel 12/6",
+        "result": true
+      },
+      {
+        "item": "人工核验 (真机观感)",
+        "true_if": "安装后仪表盘订阅区各 provider 显示对应品牌图形 (Z.ai 为白 Z 深色瓷砖, Cline 有图形), 无图形 provider 显示首字母, 主题切换 (含 Nothing) 下可读; 设置中心订阅行显示 26pt 大图标且与行高协调; 配置弹窗标题带 20pt 徽章; 「添加服务」下拉每个选项前显示对应品牌图标 (闭合态亦带图标)",
+        "false_if": "任一 provider 图形错位/糊化/不可读, 或与品牌色不匹配, 或设置行图标与行高/拖拽柄错位, 或下拉选项/闭合态未显示图标",
+        "evidence": "2026-10-15 用户会话内核验通过 (下拉图标间距调整后复看确认): 仪表盘/设置行/弹窗/下拉四处图标均按预期渲染",
+        "result": true
+      }
+    ]
+  }
+}

@@ -314,6 +314,8 @@ button, input, select, textarea {
   display: flex; align-items: center; justify-content: center;
   font: 700 9px/1 inherit; color: #fff;
 }
+/* C026: 品牌图形徽章 (无图形数据的 provider 仍渲染首字母文本) */
+.pbadge svg { width: 58%; height: 58%; display: block; }
 .sub-name { font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .plan-chip {
   font-size: 9px; padding: 1px 5px; border-radius: 3px;

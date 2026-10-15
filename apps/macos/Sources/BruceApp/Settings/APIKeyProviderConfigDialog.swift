@@ -102,11 +102,15 @@ struct APIKeyProviderConfigDialog: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // dg-head
-            Text("配置 \(id.displayName)")
-                .font(.system(size: 15, weight: .semibold))
-                .padding(.horizontal, 20)
-                .padding(.top, 16)
+            // dg-head: 品牌徽章 + 标题 (C026, 与设置行/仪表盘同图形语言)
+            HStack(spacing: 8) {
+                ProviderBrandBadge(providerID: id.rawValue, name: id.displayName, size: 20)
+                    .accessibilityHidden(true)
+                Text("配置 \(id.displayName)")
+                    .font(.system(size: 15, weight: .semibold))
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
             // dg-body
             VStack(alignment: .leading, spacing: 12) {
                 ProviderStatusBanner(

@@ -160,7 +160,7 @@ struct SubscriptionCard: View {
             ForEach(sections, id: \.id) { section in
                 if let peak = section.collapsedPeakWindow {
                     HStack(spacing: 5) {
-                        ProviderLogoBadge(
+                        ProviderBrandBadge(
                             providerID: section.badgeProviderID,
                             name: section.name
                         )
@@ -270,7 +270,7 @@ private struct ProviderSectionView: View {
 
     private var head: some View {
         HStack(spacing: 6) {
-            ProviderLogoBadge(providerID: section.badgeProviderID, name: section.name)
+            ProviderBrandBadge(providerID: section.badgeProviderID, name: section.name)
                 .accessibilityHidden(true)
             if section.isMultiAccount {
                 Button {
@@ -297,7 +297,7 @@ private struct ProviderSectionView: View {
                 BalanceChip(
                     amountText: balance.amountText,
                     accessibilityText: balance.label,
-                    color: ProviderLogoBadge.brandColor(for: section.badgeProviderID)
+                    color: Color(hex: ProviderBrandPalette.hex(for: section.badgeProviderID))
                 )
             }
             if let accountCountText = section.accountCountText {
@@ -779,85 +779,6 @@ private struct ProviderAccountCard: View {
         )
     }
 }
-
-// MARK: - provider 徽章
-
-/// 品牌色首字母徽章: 按 provider id 解析品牌色, 取名称首字符;
-/// 15pt 圆角方块, 白色粗体字母, 深浅色通用.
-/// Nothing 主题 (S3 柔彩定稿): 圆角 3pt, 品牌色低透明度底 (dark 16% / light 12%)
-/// + 品牌色字母, 保留品牌辨识度且彩色面积最小; grok 品牌色 #111111 在深色底不可读,
-/// 退回 secondary 灰.
-private struct ProviderLogoBadge: View {
-    let providerID: String
-    let name: String
-
-    @Environment(\.BruceResolvedTheme) private var theme
-    @Environment(\.colorScheme) private var colorScheme
-
-    private var isNothing: Bool { theme.interfaceStyle == .nothing }
-
-    var body: some View {
-        Text(String(name.prefix(1)).uppercased())
-            .font(.system(size: 9, weight: .bold))
-            .foregroundStyle(letterColor)
-            .frame(width: 15, height: 15)
-            .background(
-                backgroundColor,
-                in: RoundedRectangle(
-                    cornerRadius: isNothing ? 3 : 4.5,
-                    style: .continuous
-                )
-            )
-    }
-
-    private var letterColor: Color {
-        isNothing ? nothingBrandColor : .white
-    }
-
-    private var backgroundColor: Color {
-        isNothing
-            ? nothingBrandColor.opacity(colorScheme == .dark ? 0.16 : 0.12)
-            : Self.brandColor(for: providerID)
-    }
-
-    /// Nothing 分支品牌色: grok 的 #111111 在深色表面不可读, 退回 secondary 灰.
-    private var nothingBrandColor: Color {
-        let brand = Self.brandColor(for: providerID)
-        if providerID == "grok" {
-            return colorScheme == .dark ? Color(hex: "#999999") : brand
-        }
-        return brand
-    }
-
-    // fileprivate: 同文件的 BalanceChip 圆点复用同一品牌色板。
-    fileprivate static func brandColor(for providerID: String) -> Color {
-        switch providerID {
-        case "kimi":
-            return Color(hex: "#0a84ff")
-        case "deepseek":
-            return Color(hex: "#4d6bfe")
-        case "volcengine":
-            return Color(hex: "#ff6a00")
-        case "zhipu":
-            return Color(hex: "#3859ff")
-        case "codex", "openai":
-            return Color(hex: "#10a37f")
-        case "claude":
-            return Color(hex: "#d97757")
-        case "grok":
-            return Color(hex: "#111111")
-        case "opencodeGo", "opencode-go", "opencode":
-            return Color(hex: "#8a63d2")
-        case "stepfun":
-            return Color(hex: "#0c5efc")
-        case "jev":
-            return Color(hex: "#e551ba")
-        default:
-            return Color(hex: "#8e8e93")
-        }
-    }
-}
-
 
 // MARK: - balance chip
 

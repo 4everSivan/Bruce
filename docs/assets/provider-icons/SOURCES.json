@@ -1,0 +1,66 @@
+{
+  "$comment": "订阅 Provider 品牌图形来源与许可证登记 (C026). 图形仅用于指示性识别 (徽章旁恒有服务名文字), 商标权归各自权利人.",
+  "fetched_at": "2026-10-15",
+  "icons": {
+    "kimi": {
+      "file": "kimi.svg",
+      "library": "Simple Icons",
+      "license": "CC0-1.0",
+      "url": "https://cdn.simpleicons.org/kimi"
+    },
+    "deepseek": {
+      "file": "deepseek.svg",
+      "library": "Simple Icons",
+      "license": "CC0-1.0",
+      "url": "https://cdn.simpleicons.org/deepseek"
+    },
+    "volcengine": {
+      "file": "volcengine.svg",
+      "library": "theSVG (Iconify set: thesvg)",
+      "license": "MIT",
+      "url": "https://api.iconify.design/thesvg/volcengine.svg"
+    },
+    "zhipu": {
+      "file": "zai-logo-official.svg",
+      "library": "Z.ai 官方站点 logo 资源 (取 st23 图层 = Z 字形)",
+      "license": "品牌官方资源, 用于指示性识别",
+      "url": "https://z-cdn.chatglm.cn/z-ai/static/logo.svg"
+    },
+    "codex": {
+      "file": "openai-icon.svg",
+      "library": "SVG Logos (Gil Barbara, Iconify set: logos)",
+      "license": "CC0-1.0",
+      "url": "https://api.iconify.design/logos/openai-icon.svg"
+    },
+    "claude": {
+      "file": "claude.svg",
+      "library": "Simple Icons",
+      "license": "CC0-1.0",
+      "url": "https://cdn.simpleicons.org/claude"
+    },
+    "grok": {
+      "file": "grok-icon.svg",
+      "library": "SVG Logos (Gil Barbara, Iconify set: logos)",
+      "license": "CC0-1.0",
+      "url": "https://api.iconify.design/logos/grok-icon.svg"
+    },
+    "opencodeGo": {
+      "file": "opencode.svg",
+      "library": "Simple Icons",
+      "license": "CC0-1.0",
+      "url": "https://cdn.simpleicons.org/opencode"
+    },
+    "stepfun": {
+      "file": "stepfun.svg",
+      "library": "theSVG (Iconify set: thesvg)",
+      "license": "MIT",
+      "url": "https://api.iconify.design/thesvg/stepfun.svg"
+    },
+    "cline": {
+      "file": "cline.svg",
+      "library": "Simple Icons",
+      "license": "CC0-1.0",
+      "url": "https://cdn.simpleicons.org/cline"
+    }
+  }
+}

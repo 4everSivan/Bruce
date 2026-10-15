@@ -1046,15 +1046,13 @@ struct SettingsView: View {
                             .foregroundStyle(SettingsDemoTokens.text2)
                     }
                     Spacer()
-                    Picker("", selection: $providerToAdd) {
-                        Text("选择 Provider")
-                            .tag(SubscriptionProviderID?.none)
-                        ForEach(unconfiguredSubscriptionProviders, id: \.self) { id in
-                            Text(id.displayName)
-                                .tag(SubscriptionProviderID?.some(id))
-                        }
-                    }
-                    .labelsHidden()
+                    // C026: 同一原生 NSPopUpButton 控件, 每个选项前带该 provider 的品牌图形。
+                    ProviderPopUpPicker(
+                        providers: unconfiguredSubscriptionProviders,
+                        placeholder: "选择 Provider",
+                        hint: "只列出尚未配置的订阅 Provider",
+                        selection: $providerToAdd
+                    )
                     .fixedSize()
                     .accessibilityHint("只列出尚未配置的订阅 Provider")
                     Button("添加…") {
@@ -1123,6 +1121,10 @@ struct SettingsView: View {
                 .foregroundStyle(SettingsDemoTokens.text3)
                 .accessibilityHidden(true)
                 .draggable(id.rawValue)
+            // 品牌图形徽章 (C026 方案 A): 26pt 品牌色瓷砖 + 白色图形, 与仪表盘同图形语言;
+            // 未收录图形的 provider (Jev) 回退首字母。
+            ProviderBrandBadge(providerID: id.rawValue, name: id.displayName, size: 26)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
                 Text(id.displayName)
                     .font(.system(size: 13))

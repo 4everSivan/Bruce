@@ -89,6 +89,12 @@ swift run --package-path "$BRUCE_SWIFT_PACKAGE" DashboardGlassSurfaceHarness
 echo "运行订阅刷新控件 Harness"
 swift run --package-path "$BRUCE_SWIFT_PACKAGE" SubscriptionRefreshControlHarness
 
+echo "运行订阅品牌图形 Harness"
+swift run --package-path "$BRUCE_SWIFT_PACKAGE" SubscriptionBrandGlyphHarness
+
+echo "校验 Provider 品牌图形产物与源文件一致"
+node "$BRUCE_REPO_ROOT/scripts/gen-provider-glyphs.mjs" --check
+
 echo "运行 Panel 视图模型双端对拍 Harness"
 swift run --package-path "$BRUCE_SWIFT_PACKAGE" \
   PanelParityHarness "$BRUCE_REPO_ROOT"

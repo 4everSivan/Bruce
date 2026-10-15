@@ -43,7 +43,8 @@
         "C020",
         "C023",
         "C024",
-        "C025"
+        "C025",
+        "C026"
       ]
     },
     "TokenUsage": {
@@ -279,6 +280,15 @@
       "topic": "SubscriptionQuota",
       "version": "0.12.0+",
       "file": "docs/devel/change/C025.json"
+    },
+    "C026": {
+      "title": "订阅用量卡徽章由品牌色首字母字母标升级为品牌图形 (多图标库取材 + Z.ai 官方 Z 字形, 补齐 Cline 品牌色)",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "main",
+      "topic": "SubscriptionQuota",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C026.json"
     }
   }
 }

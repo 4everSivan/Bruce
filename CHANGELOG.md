@@ -5,6 +5,15 @@
 
 ## [Unreleased]
 
+### Added
+- **订阅用量卡徽章升级为品牌图形 (C026)**：仪表盘订阅区各 Provider 的身份标识由「品牌色首字母字母标」升级为**品牌图形徽章**（品牌色瓷砖 + 白色品牌图形），10 家 provider（Kimi / DeepSeek / 火山引擎 / Z.ai / ChatGPT / Claude / Grok / OpenCode GO / StepFun / Cline）各取官方 mark，未收录图形的 provider（Jev）保持首字母兜底：
+  - **多图标库取材**：Simple Icons（CC0，Kimi / DeepSeek / Claude / Cline / OpenCode）、theSVG（MIT，火山引擎 / 阶跃星辰）、SVG Logos（CC0，ChatGPT / Grok）；Z.ai 因图标库仅有「智谱」点阵 mark 与现显示名不符，改取其**官方 logo 的 Z 字形**；
+  - **单一事实源数据管线**：源 SVG 归档于 `docs/assets/provider-icons/`（含逐图标来源与许可证登记），`scripts/gen-provider-glyphs.mjs` 归一化为绝对 M/L/C/Z 路径（圆弧与简写曲线在生成期展开为三次贝塞尔），同一份数据生成 macOS 与 Windows 两端产物，`verify-local` 校验产物与源文件一致；
+  - **双端实现**：macOS 新增 `ProviderBrandGlyphData` / `SVGPathBuilder` / `ProviderBrandGlyph` / `ProviderBrandPalette` 与共享徽章视图 `ProviderBrandBadge`；Windows 端徽章改为 DOM API 构建内联 SVG；新增 `SubscriptionBrandGlyphHarness` 7 项边界测试（覆盖率 / 兜底 / 画布适配 / 命令集纪律 / 色板 / 深色集合 / 透明度保留）；
+  - **品牌色板调整**：Z.ai 改用官方锁版深色 `#2D2D2D`（与其官方 logo 深色瓷砖一致，取代旧蓝 `#3859ff`），补齐此前缺失的 Cline 品牌色 `#18181b`（原先落默认灰 `#8e8e93`）；Nothing 主题深色品牌色（Grok / Z.ai / Cline）沿用 secondary 灰兜底；
+  - **设置中心同步图标化**：设置中心「订阅额度」Provider 行首加入 26pt 品牌图形大图标（拖拽柄右侧），配置弹窗标题前置 20pt 品牌徽章；徽章组件尺寸参数化（15pt 仪表盘 / 26pt 设置行 / 20pt 弹窗标题），圆角与首字母字号按比例缩放；
+  - **「添加服务」下拉选项带品牌图标**：选择 Provider 的下拉保持原有控件与两步（选择 → 添加…）流程不变——改用同一原生 `NSPopUpButton`（SwiftUI `Picker` 的菜单项不渲染图像），每个选项前为 16pt 品牌瓷砖 + 白色图形（`NSMenuItem.image`，非模板染色保留品牌色），图形右侧留 6pt 留白把标题右移（AppKit 菜单标题位置由图像列宽决定），闭合态由系统自动带出所选 provider 的图标。
+
 ## [0.11.5] - 2026-10-14
 
 ### Added

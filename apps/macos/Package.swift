@@ -99,5 +99,10 @@ let package = Package(
             dependencies: ["BruceAppCore", "BruceOnboardingCore"],
             path: "Tests/Harnesses/SubscriptionRefreshControlHarness"
         ),
+        .executableTarget(
+            name: "SubscriptionBrandGlyphHarness",
+            dependencies: ["BruceAppCore", "BruceOnboardingCore"],
+            path: "Tests/Harnesses/SubscriptionBrandGlyphHarness"
+        ),
     ]
 )
