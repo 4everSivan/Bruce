@@ -7,7 +7,6 @@
   "branch": "main",
   "is_hotfix": true,
   "branch_note": "单人维护: 直接在 main 修复并推送, 由 CI 的 Windows 作业作为真机验证闸门",
-
   "precheck": {
     "description": "确认缺陷复现: CI 的 Windows 作业在 Rust workspace 测试阶段失败, 两个 SQLite 缓存用例的替换阶段冷/暖不一致",
     "command": "gh run view <run-id> --log-failed | grep -E 'sqlite_cache|panicked|left:|right:'",
@@ -15,7 +14,6 @@
     "is_completed": true,
     "evidence": "2026-10-15 CI run 38676809368 (及 38676220302/38667890488) 失败步骤: Rust 验证 (Windows) → Rust workspace 测试, 断言 sources.rs:4139 / 4222"
   },
-
   "callback": {
     "before": [
       "# 本缺陷无需分支检出: 已在 main 定位根因并直接修复 (单人维护约定)"
@@ -27,15 +25,12 @@
       "git push origin main   # 由 CI Windows 作业做真机验证"
     ]
   },
-
   "target": {
     "module": "core/collector (collector-local)",
     "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
     "design_topic": "TokenUsage"
   },
-
   "why": "CI 失败: 2026-10-15 三次含 C021 移植内容的 main 推送, 其 Windows 作业均在 `Rust workspace 测试` 阶段红 (而纯回滚的那次绿), 失败点为两个 SQLite 缓存用例的「库文件替换」阶段: 缓存路径返回旧库用量 (18/4), 冷扫期望新库单行 (19/2)。根因: C021 移植的 `SqliteSignature` 以 (device, inode) 作文件身份, 而 `device_and_inode` 在非 Unix 平台恒返回 (0,0) (Windows 无 inode), 叠加 Windows 文件时间戳粒度约 15ms —— 库文件被整体替换后, size/mtime 仍可能「看起来只增不减」, 于是 `append_signature_is_safe` 放行, `read_since` 以 rowid 游标读取, 而新库行 rowid 小于旧游标 → 一行都读不到 → 静默返回旧库用量。真实影响: Windows 用户在其数据库被替换/重建 (如上游应用重建 opencode/zcode 库) 后会看到陈旧额度数据, 且无任何诊断。",
-
   "changes": [
     {
       "scope": "core/collector/crates/collector-local/src/sqlite_cache.rs (签名与判定)",
@@ -56,17 +51,15 @@
       "impact": "基线如实反映实现"
     }
   ],
-
   "design": {
     "before_behavior": "Windows 上被替换的 SQLite 库文件可能被判为追加, 缓存静默返回旧库用量 (无诊断)",
     "after_behavior": "替换由 change counter 回退 + Windows 创建时间身份双信号识别, 一律回退全量重建; 追加仍走 rowid 游标增量; 时间戳粒度不参与判定",
     "true_if": "Windows CI 的 `Rust workspace 测试` 全绿 (两个 SQLite 缓存用例通过); macOS 本地 collector-local 39 项与 verify-local.sh 全绿; 替换场景由计数器回退 + 创建时间身份判定为非追加",
     "false_if": "任一平台冷/暖结果仍不一致, 或替换仍被误判为追加, 或真实追加路径退化 (cache_appends 不再命中)"
   },
-
   "verification": {
     "result": null,
-    "run_id": "",
+    "run_id": "ci-38683215785",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -74,21 +67,21 @@
         "item": "Windows CI 复绿 (真机验证)",
         "true_if": "推送后 CI/CD 的 Windows 作业 `Rust workspace 测试` 通过, 且该作业后续步骤 (Clippy / Windows 视图模型与壳) 一并全绿",
         "false_if": "Windows 作业仍红或出现新的失败步骤",
-        "evidence": "",
+        "evidence": "CI run 38683215785 (commit c7cfb6f) 结论 success: Rust 验证 (Windows) 8m6s 全绿, 且修复前因失败而从未跑到的后续步骤全部通过 (Rust Clippy / Windows 视图模型 crate 格式检查+测试+Clippy / Windows 壳 格式检查+Clippy+测试); 对照: 修复前三次运行 38667890488 / 38676220302 / 38676809368 均在同一作业的 `Rust workspace 测试` 步骤红 (opencode/zcode 两个 SQLite 缓存用例替换阶段冷/暖不一致)",
         "result": null
       },
       {
         "item": "本地回归与语义锁定",
         "true_if": "collector-local 39 项全绿 (含新增 4 项签名判定单测与既有冷/暖一致性集成用例); zsh scripts/verify-local.sh 退出码 0; clippy 零告警",
         "false_if": "存在失败用例、告警或既有追加路径退化",
-        "evidence": "",
+        "evidence": "collector-local 39 项全绿 (35 既有 + 新增 4 项签名判定单测: 计数器回退=替换 / 递增=追加 / 同尺寸同时间戳写入经计数器识别 / 头偏移读取与短文件回退 0); zsh scripts/verify-local.sh 退出码 0 (日志 local/c022-verify.log, 含 Bruce Rust 全量 + fixture 扫描 + Swift 全部 Harness + Widget 性能 Harness); cargo clippy --workspace --all-targets 零告警, cargo fmt --check 无差异",
         "result": null
       },
       {
         "item": "反向影响排查",
         "true_if": "macOS 行为不变 (unix dev/ino 身份保留); JSONL 源级缓存未受影响 (其替换检测依赖内容指纹); 缓存版本升版仅触发一次重建",
         "false_if": "macOS 行为改变、JSONL 缓存受影响或出现反复重建",
-        "evidence": "",
+        "evidence": "macOS 保留 unix (dev, ino) 文件身份 (仅新增 change_counter 参与判定) → 既有冷/暖一致性集成用例 (含追加与替换两阶段) 全绿, 追加路径未退化; JSONL 源级缓存未改动 (其替换检测依赖 head/prefix-tail 内容指纹, 与本次无关); 缓存 schema 版本 1→2 仅使旧缓存按版本失配重建一次, 不产生反复重建; Windows 侧新增信号为稳定 API (MetadataExt::creation_time), 未使用 unstable 的 file_index/volume_serial_number",
         "result": null
       }
     ]
