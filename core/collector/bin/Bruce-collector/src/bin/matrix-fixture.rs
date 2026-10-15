@@ -4,7 +4,7 @@
 //! matrix. The real application orchestration is exercised with injected HTTP
 //! and credential sources; no network or host Keychain access is possible.
 
-use collector_application::{collect_agent_usage_with_dependencies, SourcePerformanceMetric};
+use collector_application::collect_agent_usage_with_dependencies;
 use collector_credential::{CredentialReadError, CredentialSource};
 use collector_domain::BridgeRequest;
 use collector_provider::{HttpClient, HttpRequest, HttpResponse, ProviderError};
@@ -131,7 +131,6 @@ fn main() -> io::Result<()> {
             "cache_corruptions": output.scan_stats.cache_corruptions,
             "cache_invalidations": output.scan_stats.cache_invalidations,
             "cache_deletions": output.scan_stats.cache_deletions,
-            "sources": source_metrics_payload(&output.source_metrics),
             "http_request_count": output.metrics.http_request_count,
             "retry_count": output.metrics.retry_count,
             "credential_refresh_count": output.metrics.credential_refresh_count,
@@ -144,74 +143,4 @@ fn main() -> io::Result<()> {
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
     handle.write_all(b"\n")?;
     handle.flush()
-}
-
-fn source_metrics_payload(source_metrics: &[SourcePerformanceMetric]) -> Value {
-    source_metrics
-        .iter()
-        .map(source_metric_payload)
-        .collect::<Vec<_>>()
-        .into()
-}
-
-fn source_metric_payload(source: &SourcePerformanceMetric) -> Value {
-    json!({
-        "id": source.source_id,
-        "elapsed_time_ms": source.elapsed_ms,
-        "files_visited": source.stats.files_visited,
-        "files_scanned": source.stats.files_scanned,
-        "files_skipped": source.stats.files_skipped,
-        "duplicate_files_skipped": source.stats.duplicate_files_skipped,
-        "duplicate_session_groups": source.stats.duplicate_session_groups,
-        "conflict_session_groups": source.stats.conflict_session_groups,
-        "io_errors": source.stats.io_errors,
-        "cache_hits": source.stats.cache_hits,
-        "cache_appends": source.stats.cache_appends,
-        "cache_rebuilds": source.stats.cache_rebuilds,
-        "cache_corruptions": source.stats.cache_corruptions,
-        "cache_invalidations": source.stats.cache_invalidations,
-        "cache_deletions": source.stats.cache_deletions,
-        "sqlite_rows_read": source.stats.sqlite_rows_read,
-        "lines_seen": source.stats.lines_seen,
-        "json_lines_parsed": source.stats.json_lines_parsed,
-        "usage_records": source.stats.usage_records,
-        "malformed_lines": source.stats.malformed_lines,
-        "ignored_lines": source.stats.ignored_lines,
-        "truncated_lines": source.stats.truncated_lines,
-        "bytes_read": source.stats.bytes_read,
-    })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::source_metrics_payload;
-    use collector_application::{CollectionScanStats, SourcePerformanceMetric};
-
-    #[test]
-    fn matrix_metrics_include_stable_source_fields_without_sensitive_values() {
-        let payload = source_metrics_payload(&[
-            SourcePerformanceMetric {
-                source_id: "kimi-work".to_owned(),
-                elapsed_ms: 17,
-                stats: CollectionScanStats {
-                    files_visited: 3,
-                    json_lines_parsed: 9,
-                    bytes_read: 512,
-                    ..CollectionScanStats::default()
-                },
-            },
-            SourcePerformanceMetric {
-                source_id: "claude-code".to_owned(),
-                elapsed_ms: 19,
-                stats: CollectionScanStats::default(),
-            },
-        ]);
-        assert_eq!(payload[0]["id"], "kimi-work");
-        assert_eq!(payload[0]["elapsed_time_ms"], 17);
-        assert_eq!(payload[0]["json_lines_parsed"], 9);
-        assert_eq!(payload[1]["id"], "claude-code");
-        let text = payload.to_string();
-        assert!(!text.contains("/Users/"));
-        assert!(!text.contains("refresh_token"));
-    }
 }

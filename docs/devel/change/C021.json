@@ -3,7 +3,7 @@
   "id": "C021",
   "title": "移植 perf/runtime-cpu-optimization 性能工作流至当前分层：源级缓存、取消栅栏、菜单栏字形拆分与 widget 动画门控",
   "type": "Refactor",
-  "status": "in_progress",
+  "status": "rejected",
   "branch": "fix/C021-port-runtime-cpu-optimization",
   "is_hotfix": false,
   "branch_note": "单人维护直开分支标签; 闭环后快进合入 main",
@@ -99,5 +99,16 @@
         "result": null
       }
     ]
-  }
+  },
+  "rejections": [
+    {
+      "date": "2026-10-15",
+      "decided_by": "user",
+      "user_quote": "这好久之前的分支了，回滚，这个分支弃用了",
+      "reason": "perf/runtime-cpu-optimization 为 2026-09-09 单日冲刺产物, 分叉于 v0.6.0 且落后主干 94 个提交、早于 2026-09-23 的 Monorepo 重构; 用户判定该分支弃用, 故回滚本次移植 (不保留源级缓存 / 取消语义 / widget 门控等改动)",
+      "revert_commit": "(见 git log: revert of 137347b)",
+      "safety_net": "分支尖端已归档为 tag archive/perf-runtime-cpu-optimization-20260909 (含 3 份原始计划文档与菜单栏字形实现, 随时可重新评估)",
+      "note": "卡内 changes/design/verification 保留为移植过程与验证的真实记录 (曾 verify-local 全绿), 供未来重新评估时复用"
+    }
+  ]
 }

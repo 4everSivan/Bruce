@@ -1,6 +1,5 @@
 use collector_credential::CredentialSource;
 use collector_domain::{BridgeRequest, CollectionWindow, Diagnostic};
-use collector_local::ScanStats;
 use collector_provider::HttpClient;
 use collector_runtime::{AccountSingleFlight, CancellationToken, RuntimeBudgets, RuntimeLimits};
 use serde_json::Value;
@@ -14,14 +13,6 @@ pub struct CollectionMetrics {
     pub http_request_count: u64,
     pub retry_count: u64,
     pub credential_refresh_count: u64,
-}
-
-/// Per-source local scan measurements for diagnostic output only.
-#[derive(Debug, Clone)]
-pub struct SourcePerformanceMetric {
-    pub source_id: String,
-    pub elapsed_ms: u64,
-    pub stats: ScanStats,
 }
 
 #[derive(Debug, Default)]

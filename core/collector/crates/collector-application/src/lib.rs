@@ -25,10 +25,8 @@ use collector_domain::{
     AGENT_USAGE_SCHEMA_VERSION,
 };
 use collector_local::{
-    default_cache_root, scan_claude_cached, scan_codebuddy_cached,
-    scan_codex_cached_with_cancellation, scan_grok_cached, scan_kimi_tree_cached,
-    scan_opencode_cached, scan_pi_cached, scan_tree_cached_with_sink_with_cancellation,
-    scan_zcode_cached, CacheConfig, CachedScanError, ScanStats, SourceScan, SourceScanError,
+    default_cache_root, scan_claude, scan_codebuddy, scan_codex_cached, scan_grok, scan_kimi_tree,
+    scan_opencode, scan_pi, scan_tree_cached_with_sink, scan_zcode, CacheConfig, ScanStats,
 };
 use collector_provider::{HttpClient, ProviderError, UreqHttpClient};
 use collector_runtime::{BoundedQueue, RuntimeError, RuntimeLimits};
@@ -39,10 +37,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Instant;
 
 pub use collector_local::ScanStats as CollectionScanStats;
-pub use context::{CollectionMetrics, SourcePerformanceMetric};
+pub use context::CollectionMetrics;
 
 /// Validate credential outputs before the Bridge serializes the response.
 /// The Bridge depends on this application boundary rather than on the
@@ -66,7 +63,6 @@ pub struct CollectionOutput {
     pub generated_at: String,
     pub scan_stats: ScanStats,
     pub metrics: CollectionMetrics,
-    pub source_metrics: Vec<SourcePerformanceMetric>,
     pub credential_updates: Vec<Value>,
     pub credential_challenges: Vec<Value>,
 }
@@ -85,21 +81,6 @@ pub fn collect_agent_usage_with_dependencies(
     request: &BridgeRequest,
     http: &dyn HttpClient,
     credentials: &dyn CredentialSource,
-) -> Result<CollectionOutput, Diagnostic> {
-    collect_agent_usage_with_dependencies_inner(
-        request,
-        http,
-        credentials,
-        #[cfg(test)]
-        None,
-    )
-}
-
-fn collect_agent_usage_with_dependencies_inner(
-    request: &BridgeRequest,
-    http: &dyn HttpClient,
-    credentials: &dyn CredentialSource,
-    #[cfg(test)] final_probe: Option<&mut dyn FnMut(&collector_runtime::CancellationToken)>,
 ) -> Result<CollectionOutput, Diagnostic> {
     let window = CollectionWindow::from_context(&request.context).map_err(window_diagnostic)?;
     let context = RunContext::new(request, window, http, credentials, RuntimeLimits::default())?;
@@ -121,13 +102,8 @@ fn collect_agent_usage_with_dependencies_inner(
         (local, quota)
     });
     let local = local_result?;
-    context
-        .cancellation
-        .check()
-        .map_err(local_source_runtime_diagnostic)?;
     let mut diagnostics = local.diagnostics;
     let scan_stats = local.scan_stats;
-    let source_metrics = local.source_metrics;
     let window = context.window.clone();
     let sessions_allowed = context.capability_allowed("localSessions");
     let pricing_overrides: HashMap<String, ModelPricingOverride> = request
@@ -270,14 +246,6 @@ fn collect_agent_usage_with_dependencies_inner(
             true,
         ));
     }
-    #[cfg(test)]
-    if let Some(probe) = final_probe {
-        probe(&context.cancellation);
-    }
-    context
-        .cancellation
-        .check()
-        .map_err(local_source_runtime_diagnostic)?;
     let total_cost = agents
         .iter()
         .filter_map(|agent| agent.today_cost_usd)
@@ -299,17 +267,12 @@ fn collect_agent_usage_with_dependencies_inner(
             false,
         )
     })?;
-    context
-        .cancellation
-        .check()
-        .map_err(local_source_runtime_diagnostic)?;
     Ok(CollectionOutput {
         artifact,
         diagnostics,
         generated_at: window.generated_at(),
         scan_stats,
         metrics: context.metrics.snapshot(),
-        source_metrics,
         credential_updates,
         credential_challenges,
     })
@@ -320,7 +283,6 @@ struct LocalCollection {
     agents: BTreeMap<String, LocalAgentResult>,
     diagnostics: Vec<Diagnostic>,
     scan_stats: ScanStats,
-    source_metrics: Vec<SourcePerformanceMetric>,
     found: bool,
 }
 
@@ -335,7 +297,6 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
     let mut agents = BTreeMap::new();
     let mut diagnostics = Vec::new();
     let mut scan_stats = ScanStats::default();
-    let mut source_metrics = Vec::new();
     let sessions_allowed = context.capability_allowed("localSessions");
     let root = session_root(&context.request.context);
     let mut found = false;
@@ -354,7 +315,7 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
             let _permit = context
                 .budgets
                 .acquire_local(&context.cancellation)
-                .map_err(local_source_runtime_diagnostic)?;
+                .map_err(runtime_diagnostic)?;
             let config = CacheConfig {
                 cache_root: default_cache_root(Path::new(home)),
                 window: context.window.clone(),
@@ -365,7 +326,6 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
                     .map_err(runtime_diagnostic)?,
             );
             let cancellation = context.cancellation.clone();
-            let scan_started = Instant::now();
             let (scan_result, aggregation) = std::thread::scope(|scope| {
                 let consumer_queue = Arc::clone(&queue);
                 let consumer_window = context.window.clone();
@@ -373,27 +333,17 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
                 let consumer = scope.spawn(move || {
                     consume_source_changes(consumer_queue, consumer_window, consumer_cancellation)
                 });
-                let scan_result = scan_tree_cached_with_sink_with_cancellation(
-                    root,
-                    &config,
-                    &context.cancellation,
-                    |change| {
-                        queue.push(change, &context.cancellation).map_err(|error| {
-                            std::io::Error::new(
-                                std::io::ErrorKind::Interrupted,
-                                format!("bounded local change stream stopped: {error:?}"),
-                            )
-                        })
-                    },
-                );
+                let scan_result = scan_tree_cached_with_sink(root, &config, |change| {
+                    queue.push(change, &context.cancellation).map_err(|error| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::Interrupted,
+                            format!("bounded local change stream stopped: {error:?}"),
+                        )
+                    })
+                });
                 queue.close();
                 let aggregation = consumer.join().expect("local aggregation worker panicked");
                 (scan_result, aggregation)
-            });
-            source_metrics.push(SourcePerformanceMetric {
-                source_id: "kimi-code-cli".to_owned(),
-                elapsed_ms: scan_started.elapsed().as_millis() as u64,
-                stats: scan_result.as_ref().ok().cloned().unwrap_or_default(),
             });
             accumulator = aggregation.accumulator;
             diagnostics.extend(aggregation.diagnostics);
@@ -411,10 +361,14 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
                         ));
                     }
                 }
-                Err(CachedScanError::Runtime(error)) => {
-                    return Err(local_source_runtime_diagnostic(error));
-                }
-                Err(CachedScanError::Io(_)) => diagnostics.push(Diagnostic::new(
+                Err(_) if context.cancellation.is_cancelled() => diagnostics.push(Diagnostic::new(
+                    "LOCAL_SOURCE_CANCELLED",
+                    "local",
+                    "cancel",
+                    "本机会话扫描因取消或超时提前停止, 已保留已聚合结果",
+                    true,
+                )),
+                Err(_) => diagnostics.push(Diagnostic::new(
                     "LOCAL_SOURCE_ERROR",
                     "local",
                     "scan",
@@ -479,77 +433,42 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
                 "codebuddy_projects",
                 paths::resolve_codebuddy_projects_path(&home),
             );
-            let cache_root = default_cache_root(&home);
 
             let source_results = [
-                collect_secondary_source(context, "kimi-work", || {
-                    scan_kimi_tree_cached(
-                        &kimi_work,
-                        &context.window,
-                        &cache_root,
-                        &context.cancellation,
-                    )
-                })?,
-                collect_secondary_source(context, "claude-code", || {
-                    scan_claude_cached(&claude, &context.window, &cache_root, &context.cancellation)
-                })?,
-                collect_secondary_source(context, "codex", || {
-                    scan_codex_cached_with_cancellation(
-                        &codex_roots,
-                        &context.window,
-                        &cache_root,
-                        &context.cancellation,
-                    )
-                })?,
-                collect_secondary_source(context, "codebuddy", || {
-                    scan_codebuddy_cached(
-                        &codebuddy,
-                        &context.window,
-                        &cache_root,
-                        &context.cancellation,
-                    )
-                })?,
-                collect_secondary_source(context, "grok", || {
-                    scan_grok_cached(
+                ("kimi-work", scan_kimi_tree(&kimi_work, &context.window)),
+                ("claude-code", scan_claude(&claude, &context.window)),
+                (
+                    "codex",
+                    scan_codex_cached(&codex_roots, &context.window, &default_cache_root(&home)),
+                ),
+                ("codebuddy", scan_codebuddy(&codebuddy, &context.window)),
+                (
+                    "grok",
+                    scan_grok(
                         &[
                             grok_root.join("sessions"),
                             grok_root.join("archived_sessions"),
                         ],
                         &context.window,
-                        &cache_root,
-                        &context.cancellation,
-                    )
-                })?,
-                collect_secondary_source(context, "opencode", || {
-                    scan_opencode_cached(
-                        &opencode,
-                        &context.window,
-                        &cache_root,
-                        &context.cancellation,
-                    )
-                })?,
-                collect_secondary_source(context, "pi", || {
-                    scan_pi_cached(&pi, &context.window, &cache_root, &context.cancellation)
-                })?,
-                collect_secondary_source(context, "zcode", || {
-                    scan_zcode_cached(&zcode, &context.window, &cache_root, &context.cancellation)
-                })?,
+                    ),
+                ),
+                ("opencode", scan_opencode(&opencode, &context.window)),
+                ("pi", scan_pi(&pi, &context.window)),
+                ("zcode", scan_zcode(&zcode, &context.window)),
             ];
-            for (source, source_metric) in source_results {
-                let id = source_metric.source_id.clone();
-                source_metrics.push(source_metric);
+            for (id, source) in source_results {
                 scan_stats.merge(source.stats.clone());
                 if let Some(message) = source.diagnostic.clone() {
                     diagnostics.push(Diagnostic::new(
                         "LOCAL_SOURCE_SCHEMA_INCOMPATIBLE",
                         "local",
-                        &id,
+                        id,
                         message,
                         true,
                     ));
                 }
                 agents.insert(
-                    id,
+                    id.to_owned(),
                     LocalAgentResult {
                         found: source.found,
                         contribution: source.contribution,
@@ -564,67 +483,8 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
         agents,
         diagnostics,
         scan_stats,
-        source_metrics,
         found,
     })
-}
-
-/// Execute one local source scan and retain only its aggregate diagnostics.
-pub fn timed_source_scan<F>(
-    source_id: &'static str,
-    scan: F,
-) -> (Result<SourceScan, SourceScanError>, SourcePerformanceMetric)
-where
-    F: FnOnce() -> Result<SourceScan, SourceScanError>,
-{
-    let started = Instant::now();
-    let source = scan();
-    let metric = SourcePerformanceMetric {
-        source_id: source_id.to_owned(),
-        elapsed_ms: started.elapsed().as_millis() as u64,
-        stats: source
-            .as_ref()
-            .map(|source| source.stats.clone())
-            .unwrap_or_default(),
-    };
-    (source, metric)
-}
-
-fn collect_secondary_source<F>(
-    context: &RunContext<'_>,
-    source_id: &'static str,
-    scan: F,
-) -> Result<(SourceScan, SourcePerformanceMetric), Diagnostic>
-where
-    F: FnOnce() -> Result<SourceScan, SourceScanError>,
-{
-    context
-        .cancellation
-        .check()
-        .map_err(local_source_runtime_diagnostic)?;
-    let (source, metric) = timed_source_scan(source_id, scan);
-    context
-        .cancellation
-        .check()
-        .map_err(local_source_runtime_diagnostic)?;
-    match source {
-        Ok(source) => Ok((source, metric)),
-        Err(SourceScanError::Runtime(error)) => Err(local_source_runtime_diagnostic(error)),
-        Err(SourceScanError::Io(_)) => Ok((SourceScan::empty(&context.window), metric)),
-    }
-}
-
-#[cfg(test)]
-fn collect_agent_usage_with_final_probe<F>(
-    request: &BridgeRequest,
-    http: &dyn HttpClient,
-    credentials: &dyn CredentialSource,
-    mut probe: F,
-) -> Result<CollectionOutput, Diagnostic>
-where
-    F: FnMut(&collector_runtime::CancellationToken),
-{
-    collect_agent_usage_with_dependencies_inner(request, http, credentials, Some(&mut probe))
 }
 
 fn collect_quota_usage(context: &RunContext<'_>) -> QuotaExecution {
@@ -662,7 +522,6 @@ fn collect_codex_quota_retry_only(
             true,
         ));
     }
-    context.cancellation.check().map_err(runtime_diagnostic)?;
     Ok(CollectionOutput {
         artifact: json!({
             "schemaVersion": AGENT_USAGE_SCHEMA_VERSION,
@@ -676,7 +535,6 @@ fn collect_codex_quota_retry_only(
         generated_at: context.window.generated_at(),
         scan_stats: ScanStats::default(),
         metrics: context.metrics.snapshot(),
-        source_metrics: Vec::new(),
         credential_updates: quota.credential_updates,
         credential_challenges: quota.credential_challenges,
     })
@@ -684,16 +542,6 @@ fn collect_codex_quota_retry_only(
 
 fn runtime_diagnostic(error: RuntimeError) -> Diagnostic {
     ProviderError::from_runtime(error).diagnostic
-}
-
-fn local_source_runtime_diagnostic(_error: RuntimeError) -> Diagnostic {
-    Diagnostic::new(
-        "LOCAL_SOURCE_CANCELLED",
-        "local",
-        "cancel",
-        "本机会话扫描因取消或超时提前停止, 未发布部分采集结果",
-        true,
-    )
 }
 
 fn placeholder_agent(
@@ -931,334 +779,6 @@ mod tests {
                 .count()
                 >= 2
         );
-    }
-
-    #[test]
-    fn cancelled_local_run_returns_existing_diagnostic_without_artifact() {
-        let home = std::env::temp_dir().join(format!(
-            "bruce-cancelled-local-run-test-{}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&home);
-        std::fs::create_dir_all(home.join(".kimi-code/sessions")).unwrap();
-        let mut request = request(&["localSessions"]);
-        request.context.insert(
-            "home".to_owned(),
-            serde_json::Value::String(home.to_string_lossy().into_owned()),
-        );
-        request.timeouts.module_seconds = 0.0;
-
-        let result = collect_agent_usage_with_dependencies(
-            &request,
-            &FixtureHttp {
-                calls: AtomicUsize::new(0),
-                body: Vec::new(),
-            },
-            &EmptyCredentialSource,
-        );
-
-        assert_eq!(
-            result.unwrap_err().code,
-            "LOCAL_SOURCE_CANCELLED",
-            "a cancelled local run must fail before publishing a partial artifact"
-        );
-        let _ = std::fs::remove_dir_all(home);
-    }
-
-    #[test]
-    fn cancellation_after_last_source_is_fenced_before_artifact_publication() {
-        let result = super::collect_agent_usage_with_final_probe(
-            &request(&[]),
-            &FixtureHttp {
-                calls: AtomicUsize::new(0),
-                body: Vec::new(),
-            },
-            &EmptyCredentialSource,
-            |cancellation| cancellation.cancel(),
-        );
-
-        assert_eq!(
-            result.unwrap_err().code,
-            "LOCAL_SOURCE_CANCELLED",
-            "final cancellation must prevent a new artifact from being returned"
-        );
-    }
-
-    #[test]
-    fn source_metrics_follow_the_stable_local_source_order() {
-        let home =
-            std::env::temp_dir().join(format!("bruce-source-metrics-test-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&home);
-        std::fs::create_dir_all(home.join(".kimi-code/sessions")).unwrap();
-        let mut request = request(&["localSessions"]);
-        request.context.insert(
-            "home".to_owned(),
-            serde_json::Value::String(home.to_string_lossy().into_owned()),
-        );
-
-        let output = collect_agent_usage_with_dependencies(
-            &request,
-            &FixtureHttp {
-                calls: AtomicUsize::new(0),
-                body: Vec::new(),
-            },
-            &EmptyCredentialSource,
-        )
-        .unwrap();
-
-        assert_eq!(
-            output
-                .source_metrics
-                .iter()
-                .map(|metric| metric.source_id.as_str())
-                .collect::<Vec<_>>(),
-            vec![
-                "kimi-code-cli",
-                "kimi-work",
-                "claude-code",
-                "codex",
-                "codebuddy",
-                "grok",
-                "opencode",
-                "pi",
-                "zcode",
-            ]
-        );
-        assert!(output.artifact.get("sources").is_none());
-        let _ = std::fs::remove_dir_all(home);
-    }
-
-    #[test]
-    fn warm_jsonl_sources_keep_agent_results_and_skip_body_parsing() {
-        let home = std::env::temp_dir().join(format!(
-            "bruce-warm-jsonl-sources-test-{}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&home);
-        let kimi_work = home.join("kimi-work");
-        let claude = home.join("claude/project");
-        let codebuddy = home.join("codebuddy/project");
-        let grok = home.join("grok/sessions/project/session");
-        let pi = home.join("pi");
-        for path in [&kimi_work, &claude, &codebuddy, &grok, &pi] {
-            std::fs::create_dir_all(path).unwrap();
-        }
-        std::fs::write(
-            kimi_work.join("session.jsonl"),
-            json!({
-                "type": "usage.record",
-                "time": 1_788_912_000_000_i64,
-                "model": "kimi-k2",
-                "usage": {"inputOther": 10, "output": 2}
-            })
-            .to_string(),
-        )
-        .unwrap();
-        std::fs::write(
-            claude.join("session.jsonl"),
-            json!({
-                "type": "assistant",
-                "timestamp": "2026-09-09T04:00:00Z",
-                "message": {
-                    "id": "warm-claude-message",
-                    "model": "claude-sonnet",
-                    "usage": {"input_tokens": 11, "output_tokens": 3}
-                }
-            })
-            .to_string(),
-        )
-        .unwrap();
-        std::fs::write(
-            codebuddy.join("session.jsonl"),
-            json!({
-                "type": "message",
-                "role": "assistant",
-                "timestamp": 1_789_128_000_000_i64,
-                "message": {"usage": {"input_tokens": 12, "output_tokens": 4}},
-                "providerData": {"model": "codebuddy-model", "messageId": "warm-codebuddy-message"}
-            })
-            .to_string(),
-        )
-        .unwrap();
-        std::fs::write(
-            grok.join("conversation.jsonl"),
-            json!({"type": "assistant", "content": "abcdefgh"}).to_string(),
-        )
-        .unwrap();
-        std::fs::write(
-            pi.join("session.jsonl"),
-            json!({
-                "type": "message",
-                "message": {
-                    "role": "assistant",
-                    "timestamp": 1_789_128_000_000_i64,
-                    "model": "pi-model",
-                    "usage": {"input": 13, "output": 5}
-                }
-            })
-            .to_string(),
-        )
-        .unwrap();
-
-        let mut request = request(&["localSessions"]);
-        request.context.insert(
-            "home".to_owned(),
-            serde_json::Value::String(home.to_string_lossy().into_owned()),
-        );
-        request
-            .context
-            .insert("now".to_owned(), json!("2026-09-09T12:00:00+08:00"));
-        request
-            .context
-            .insert("timezone".to_owned(), json!("Asia/Shanghai"));
-        request.context.insert("days".to_owned(), json!(14));
-        request.context.insert(
-            "paths".to_owned(),
-            json!({
-                "kimi_cli_sessions": home.join("kimi-cli").to_string_lossy(),
-                "daimon_kimi_sessions": kimi_work,
-                "claude_projects": home.join("claude"),
-                "codex_sessions": home.join("codex"),
-                "orca_home": home.join("orca"),
-                "grok_home": home.join("grok"),
-                "pi_sessions": pi,
-                "opencode_db": home.join("opencode.db"),
-                "zcode_db": home.join("zcode.db"),
-                "codebuddy_projects": home.join("codebuddy")
-            }),
-        );
-
-        let first = collect_agent_usage_with_dependencies(
-            &request,
-            &FixtureHttp {
-                calls: AtomicUsize::new(0),
-                body: Vec::new(),
-            },
-            &EmptyCredentialSource,
-        )
-        .unwrap();
-        let second = collect_agent_usage_with_dependencies(
-            &request,
-            &FixtureHttp {
-                calls: AtomicUsize::new(0),
-                body: Vec::new(),
-            },
-            &EmptyCredentialSource,
-        )
-        .unwrap();
-
-        assert_eq!(first.artifact["agents"], second.artifact["agents"]);
-        assert!(second.scan_stats.cache_hits > 0);
-        assert_eq!(second.scan_stats.json_lines_parsed, 0);
-        for source_id in ["kimi-work", "claude-code", "codebuddy", "grok", "pi"] {
-            let metric = second
-                .source_metrics
-                .iter()
-                .find(|metric| metric.source_id == source_id)
-                .expect("source metric should be present");
-            assert!(metric.stats.cache_hits > 0, "{source_id} should be warm");
-            assert_eq!(
-                metric.stats.json_lines_parsed, 0,
-                "{source_id} should not parse JSONL"
-            );
-        }
-        let _ = std::fs::remove_dir_all(home);
-    }
-
-    #[test]
-    fn codex_warm_cache_preserves_found_status() {
-        let home = std::env::temp_dir().join(format!(
-            "bruce-codex-warm-cache-test-{}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&home);
-        let codex_root = home.join("codex");
-        let rollout = codex_root.join("2026/07/28/rollout-warm.jsonl");
-        std::fs::create_dir_all(rollout.parent().unwrap()).unwrap();
-        std::fs::write(
-            &rollout,
-            br#"{"timestamp":"2026-07-28T04:00:00Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"cached_input_tokens":2,"output_tokens":3}}}}
-"#,
-        )
-        .unwrap();
-
-        let empty = home.join("empty");
-        let empty_paths = [
-            ("kimi_cli_sessions", empty.join("kimi-cli")),
-            ("daimon_kimi_sessions", empty.join("kimi-work")),
-            ("claude_projects", empty.join("claude")),
-            ("orca_codex_sessions", empty.join("orca-sessions")),
-            ("orca_home", empty.join("orca-home")),
-            ("grok_home", empty.join("grok")),
-            ("pi_sessions", empty.join("pi")),
-            ("opencode_db", empty.join("opencode.db")),
-            ("zcode_db", empty.join("zcode.db")),
-            ("codebuddy_projects", empty.join("codebuddy")),
-        ];
-        let paths = empty_paths
-            .into_iter()
-            .map(|(key, path)| {
-                (
-                    key.to_owned(),
-                    serde_json::Value::String(path.to_string_lossy().into_owned()),
-                )
-            })
-            .chain(std::iter::once((
-                "codex_sessions".to_owned(),
-                serde_json::Value::String(codex_root.to_string_lossy().into_owned()),
-            )))
-            .collect();
-        let mut request = request(&["localSessions"]);
-        request.context.insert(
-            "home".to_owned(),
-            serde_json::Value::String(home.to_string_lossy().into_owned()),
-        );
-        request.context.insert(
-            "now".to_owned(),
-            serde_json::Value::String("2026-07-28T12:00:00+08:00".to_owned()),
-        );
-        request
-            .context
-            .insert("timezone".to_owned(), json!("Asia/Shanghai"));
-        request.context.insert("days".to_owned(), json!(3));
-        request
-            .context
-            .insert("paths".to_owned(), serde_json::Value::Object(paths));
-
-        let first = collect_agent_usage_with_dependencies(
-            &request,
-            &FixtureHttp {
-                calls: AtomicUsize::new(0),
-                body: Vec::new(),
-            },
-            &EmptyCredentialSource,
-        )
-        .unwrap();
-        let second = collect_agent_usage_with_dependencies(
-            &request,
-            &FixtureHttp {
-                calls: AtomicUsize::new(0),
-                body: Vec::new(),
-            },
-            &EmptyCredentialSource,
-        )
-        .unwrap();
-
-        let first_codex = first.artifact["agents"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|agent| agent["id"] == "codex")
-            .unwrap();
-        let second_codex = second.artifact["agents"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|agent| agent["id"] == "codex")
-            .unwrap();
-        assert_ne!(first_codex["status"], "not_found");
-        assert_ne!(second_codex["status"], "not_found");
-        let _ = std::fs::remove_dir_all(home);
     }
 
     #[test]

@@ -2,15 +2,12 @@
 
 //! Local file and SQLite adapters.
 
-mod jsonl_cache;
 mod sources;
-mod sqlite_cache;
 
 use collector_domain::{
     CollectionWindow, ModelDelta, ProjectDelta, SourceDeltaChange, TokenBucket, UsageContribution,
     UsageContributionBuilder, UsageSample,
 };
-use collector_runtime::{CancellationToken, RuntimeError};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
@@ -36,13 +33,8 @@ const FINGERPRINT_SEGMENT_BYTES: u64 = 64 * 1024;
 const CACHE_WRITERS: usize = 1;
 
 pub use sources::{
-    scan_claude, scan_claude_cached, scan_claude_with_cancellation, scan_codebuddy,
-    scan_codebuddy_cached, scan_codebuddy_with_cancellation, scan_codex, scan_codex_cached,
-    scan_codex_cached_with_cancellation, scan_codex_with_cancellation, scan_grok, scan_grok_cached,
-    scan_grok_with_cancellation, scan_kimi_tree, scan_kimi_tree_cached,
-    scan_kimi_tree_with_cancellation, scan_opencode, scan_opencode_cached,
-    scan_opencode_with_cancellation, scan_pi, scan_pi_cached, scan_pi_with_cancellation,
-    scan_zcode, scan_zcode_cached, scan_zcode_with_cancellation, SourceScan, SourceScanError,
+    scan_claude, scan_codebuddy, scan_codex, scan_codex_cached, scan_grok, scan_kimi_tree,
+    scan_opencode, scan_pi, scan_zcode, SourceScan,
 };
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalUsageRecord {
@@ -155,54 +147,6 @@ where
     scan_reader(BufReader::new(file), callback)
 }
 
-#[derive(Debug)]
-pub enum CachedScanError {
-    Io(io::Error),
-    Runtime(RuntimeError),
-}
-
-impl From<io::Error> for CachedScanError {
-    fn from(error: io::Error) -> Self {
-        Self::Io(error)
-    }
-}
-
-impl From<RuntimeError> for CachedScanError {
-    fn from(error: RuntimeError) -> Self {
-        Self::Runtime(error)
-    }
-}
-
-fn scan_path_with_cancellation<F>(
-    path: &Path,
-    cancellation: &CancellationToken,
-    mut callback: F,
-) -> Result<ScanStats, CachedScanError>
-where
-    F: FnMut(LocalUsageRecord),
-{
-    cancellation.check()?;
-    let file = File::open(path)?;
-    let mut reader = BufReader::new(file);
-    scan_reader_with_cancellation(&mut reader, cancellation, &mut callback)
-}
-
-fn scan_path_from_offset_with_cancellation<F>(
-    path: &Path,
-    offset: u64,
-    cancellation: &CancellationToken,
-    mut callback: F,
-) -> Result<ScanStats, CachedScanError>
-where
-    F: FnMut(LocalUsageRecord),
-{
-    cancellation.check()?;
-    let mut file = File::open(path)?;
-    file.seek(SeekFrom::Start(offset))?;
-    let mut reader = BufReader::new(file);
-    scan_reader_with_cancellation(&mut reader, cancellation, &mut callback)
-}
-
 #[derive(Debug, Clone)]
 pub struct CacheConfig {
     pub cache_root: PathBuf,
@@ -257,31 +201,11 @@ fn windows_cache_root(home: &Path, local_app_data: Option<&str>) -> PathBuf {
 pub fn scan_tree_cached_with_sink<F>(
     root: &Path,
     config: &CacheConfig,
-    sink: F,
+    mut sink: F,
 ) -> io::Result<ScanStats>
 where
     F: FnMut(SourceDeltaChange) -> io::Result<()>,
 {
-    scan_tree_cached_with_sink_with_cancellation(root, config, &CancellationToken::new(), sink)
-        .map_err(|error| match error {
-            CachedScanError::Io(error) => error,
-            CachedScanError::Runtime(error) => io::Error::new(
-                io::ErrorKind::Interrupted,
-                format!("cache scan stopped: {error:?}"),
-            ),
-        })
-}
-
-pub fn scan_tree_cached_with_sink_with_cancellation<F>(
-    root: &Path,
-    config: &CacheConfig,
-    cancellation: &CancellationToken,
-    mut sink: F,
-) -> Result<ScanStats, CachedScanError>
-where
-    F: FnMut(SourceDeltaChange) -> io::Result<()>,
-{
-    cancellation.check()?;
     let mut stats = ScanStats::default();
     let mut seen = BTreeSet::new();
     let (cache_sender, cache_receiver) = std::sync::mpsc::sync_channel::<CacheWriteJob>(4);
@@ -310,7 +234,6 @@ where
     }
     let mut visit_ctx = VisitContext {
         config,
-        cancellation,
         seen: &mut seen,
         stats: &mut stats,
         cache_sender: &cache_sender,
@@ -335,9 +258,7 @@ where
         .sum::<u64>();
     stats.io_errors = stats.io_errors.saturating_add(cache_write_errors);
     scan_result?;
-    cancellation.check()?;
-    reconcile_deleted_cache(root, config, cancellation, &seen, &mut stats, &mut sink)?;
-    cancellation.check()?;
+    reconcile_deleted_cache(root, config, &seen, &mut stats, &mut sink)?;
     Ok(stats)
 }
 
@@ -345,7 +266,6 @@ const MAX_DIRECTORY_SCAN_DEPTH: usize = 16;
 
 struct VisitContext<'a, F> {
     config: &'a CacheConfig,
-    cancellation: &'a CancellationToken,
     seen: &'a mut BTreeSet<String>,
     stats: &'a mut ScanStats,
     cache_sender: &'a SyncSender<CacheWriteJob>,
@@ -353,15 +273,10 @@ struct VisitContext<'a, F> {
     visited_dirs: BTreeSet<PathBuf>,
 }
 
-fn visit_tree_cached<F>(
-    root: &Path,
-    depth: usize,
-    ctx: &mut VisitContext<'_, F>,
-) -> Result<(), CachedScanError>
+fn visit_tree_cached<F>(root: &Path, depth: usize, ctx: &mut VisitContext<'_, F>) -> io::Result<()>
 where
     F: FnMut(SourceDeltaChange) -> io::Result<()>,
 {
-    ctx.cancellation.check()?;
     if depth > MAX_DIRECTORY_SCAN_DEPTH {
         return Ok(());
     }
@@ -372,10 +287,9 @@ where
             ctx.stats.io_errors = ctx.stats.io_errors.saturating_add(1);
             return Ok(());
         }
-        Err(error) => return Err(error.into()),
+        Err(error) => return Err(error),
     };
     for entry in entries {
-        ctx.cancellation.check()?;
         let Ok(entry) = entry else {
             ctx.stats.io_errors = ctx.stats.io_errors.saturating_add(1);
             continue;
@@ -409,8 +323,8 @@ where
         ctx.stats.files_scanned = ctx.stats.files_scanned.saturating_add(1);
         process_cached_file(
             &path,
+            &metadata,
             ctx.config,
-            ctx.cancellation,
             ctx.seen,
             ctx.stats,
             ctx.cache_sender,
@@ -498,7 +412,7 @@ struct CacheEntry {
 type CompactMonthModels = Vec<(String, Vec<(String, [u64; 5])>)>;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub(crate) struct CompactContribution {
+struct CompactContribution {
     days: Vec<(u16, [u64; 5])>,
     #[serde(default)]
     month_models: CompactMonthModels,
@@ -508,10 +422,7 @@ pub(crate) struct CompactContribution {
 }
 
 impl CompactContribution {
-    pub(crate) fn from_domain(
-        value: &UsageContribution,
-        window: &CollectionWindow,
-    ) -> Option<Self> {
+    fn from_domain(value: &UsageContribution, window: &CollectionWindow) -> Option<Self> {
         let days = value
             .by_day
             .iter()
@@ -554,7 +465,7 @@ impl CompactContribution {
         })
     }
 
-    pub(crate) fn to_domain(&self, window: &CollectionWindow) -> Option<UsageContribution> {
+    fn to_domain(&self, window: &CollectionWindow) -> Option<UsageContribution> {
         let by_day = self
             .days
             .iter()
@@ -638,22 +549,20 @@ enum CacheLoad {
 
 fn process_cached_file<F>(
     path: &Path,
+    metadata: &fs::Metadata,
     config: &CacheConfig,
-    cancellation: &CancellationToken,
     seen: &mut BTreeSet<String>,
     stats: &mut ScanStats,
     cache_sender: &SyncSender<CacheWriteJob>,
     sink: &mut F,
-) -> Result<(), CachedScanError>
+) -> io::Result<()>
 where
     F: FnMut(SourceDeltaChange) -> io::Result<()>,
 {
-    cancellation.check()?;
     let source_path_digest = digest_bytes(path.to_string_lossy().as_bytes());
     seen.insert(source_path_digest.clone());
     let cache_path = config.cache_root.join(format!("{source_path_digest}.json"));
-    let current_metadata = fs::metadata(path)?;
-    let current_file = FileSignature::from_metadata(&current_metadata);
+    let current_file = FileSignature::from_metadata(metadata);
     let loaded = load_cache(&cache_path);
     if matches!(&loaded, CacheLoad::Corrupt) {
         stats.cache_corruptions = stats.cache_corruptions.saturating_add(1);
@@ -680,18 +589,13 @@ where
                     config.window.clone(),
                     &previous_delta,
                 ) {
-                    let append_stats = scan_path_from_offset_with_cancellation(
-                        path,
-                        entry.safe_offset,
-                        cancellation,
-                        |record| record_into(&mut delta_builder, record),
-                    )?;
-                    cancellation.check()?;
+                    let append_stats = scan_path_from_offset(path, entry.safe_offset, |record| {
+                        record_into(&mut delta_builder, record);
+                    })?;
                     let delta = delta_builder.contribution();
                     let current_metadata = fs::metadata(path)?;
                     let new_entry =
                         make_cache_entry(path, &current_metadata, config, delta.clone())?;
-                    cancellation.check()?;
                     if cache_sender
                         .send(CacheWriteJob {
                             path: cache_path.clone(),
@@ -732,14 +636,10 @@ where
     }
 
     let mut rebuilt = UsageContributionBuilder::new(config.window.clone());
-    let scan_stats = scan_path_with_cancellation(path, cancellation, |record| {
-        record_into(&mut rebuilt, record)
-    })?;
-    cancellation.check()?;
+    let scan_stats = scan_path(path, |record| record_into(&mut rebuilt, record))?;
     let delta = rebuilt.contribution();
     let current_metadata = fs::metadata(path)?;
     let entry = make_cache_entry(path, &current_metadata, config, delta.clone())?;
-    cancellation.check()?;
     if cache_sender
         .send(CacheWriteJob {
             path: cache_path,
@@ -774,15 +674,13 @@ where
 fn reconcile_deleted_cache<F>(
     root: &Path,
     config: &CacheConfig,
-    cancellation: &CancellationToken,
     seen: &BTreeSet<String>,
     stats: &mut ScanStats,
     sink: &mut F,
-) -> Result<(), CachedScanError>
+) -> io::Result<()>
 where
     F: FnMut(SourceDeltaChange) -> io::Result<()>,
 {
-    cancellation.check()?;
     let source_root_digest = digest_bytes(root.to_string_lossy().as_bytes());
     let manifest_path = config
         .cache_root
@@ -809,7 +707,6 @@ where
     };
     if let Some(previous) = previous {
         for digest in previous.source_path_digests.difference(seen) {
-            cancellation.check()?;
             if !is_digest(digest) {
                 continue;
             }
@@ -836,11 +733,9 @@ where
         source_root_digest,
         source_path_digests: seen.clone(),
     };
-    cancellation.check()?;
     if write_manifest(&manifest_path, &manifest).is_err() {
         stats.io_errors = stats.io_errors.saturating_add(1);
     }
-    cancellation.check()?;
     Ok(())
 }
 
@@ -1065,32 +960,8 @@ where
     R: BufRead,
     F: FnMut(LocalUsageRecord),
 {
-    scan_reader_with_cancellation(&mut reader, &CancellationToken::new(), &mut callback).map_err(
-        |error| match error {
-            CachedScanError::Io(error) => error,
-            CachedScanError::Runtime(error) => io::Error::new(
-                io::ErrorKind::Interrupted,
-                format!("cache reader stopped: {error:?}"),
-            ),
-        },
-    )
-}
-
-fn scan_reader_with_cancellation<R, F>(
-    reader: &mut R,
-    cancellation: &CancellationToken,
-    callback: &mut F,
-) -> Result<ScanStats, CachedScanError>
-where
-    R: BufRead,
-    F: FnMut(LocalUsageRecord),
-{
     let mut stats = ScanStats::default();
-    loop {
-        cancellation.check()?;
-        let Some(line) = read_bounded_line(reader, MAX_JSONL_RECORD_BYTES)? else {
-            break;
-        };
+    while let Some(line) = read_bounded_line(&mut reader, MAX_JSONL_RECORD_BYTES)? {
         stats.lines_seen += 1;
         stats.bytes_read = stats.bytes_read.saturating_add(line.bytes as u64);
         if line.truncated {
@@ -1196,12 +1067,10 @@ fn trim_line_end(value: &[u8]) -> &[u8] {
 #[cfg(test)]
 mod tests {
     use super::{
-        default_cache_root, scan_reader, scan_tree_cached_with_sink,
-        scan_tree_cached_with_sink_with_cancellation, CacheConfig, CachedScanError,
-        LocalUsageRecord, MAX_JSONL_RECORD_BYTES,
+        scan_reader, scan_tree_cached_with_sink, CacheConfig, LocalUsageRecord,
+        MAX_JSONL_RECORD_BYTES,
     };
     use collector_domain::{CollectionWindow, UsageContribution, UsageContributionBuilder};
-    use collector_runtime::{CancellationToken, RuntimeError};
     use serde_json::json;
     use std::fs::{self, OpenOptions};
     use std::io::{Cursor, Write};
@@ -1308,54 +1177,6 @@ mod tests {
         assert_eq!(stats.lines_seen, 1);
         assert_eq!(stats.truncated_lines, 1);
         assert_eq!(stats.usage_records, 0);
-    }
-
-    #[test]
-    fn cancellation_before_manifest_publication_leaves_manifest_absent() {
-        let root = std::env::temp_dir().join(format!(
-            "bruce-cache-cancellation-test-{}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&root);
-        let sessions = root.join("sessions");
-        fs::create_dir_all(&sessions).unwrap();
-        fs::write(
-            sessions.join("fixture.jsonl"),
-            "{\"type\":\"usage.record\",\"time\":1785211200000,\"usage\":{\"inputOther\":1}}\n",
-        )
-        .unwrap();
-        let context = serde_json::from_value(json!({
-            "now": "2026-07-28T12:00:00+08:00",
-            "timezone": "Asia/Shanghai",
-            "days": 14
-        }))
-        .unwrap();
-        let config = CacheConfig {
-            cache_root: default_cache_root(&root),
-            window: CollectionWindow::from_context(&context).unwrap(),
-            pricing_version: 1,
-        };
-        let cancellation = CancellationToken::new();
-
-        let result =
-            scan_tree_cached_with_sink_with_cancellation(&sessions, &config, &cancellation, |_| {
-                cancellation.cancel();
-                Ok(())
-            });
-
-        assert!(matches!(
-            result,
-            Err(CachedScanError::Runtime(RuntimeError::Cancelled))
-        ));
-        let manifest = config.cache_root.join(format!(
-            "manifest-{}.json",
-            super::digest_bytes(sessions.to_string_lossy().as_bytes())
-        ));
-        assert!(
-            !manifest.exists(),
-            "cancelled reconciliation must not replace the source manifest"
-        );
-        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
