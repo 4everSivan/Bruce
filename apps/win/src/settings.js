@@ -359,19 +359,24 @@
   let pricingFilter = "全部";
   let pricingQuery = "";
   let pricingEditing = null;
-  let currentModelPrices = {};
+  let currentModelPrices = [];
 
   function numberOr(value, fallback) {
     return Number.isFinite(value) ? value : fallback;
   }
 
-  // 有效单价 = 人工覆盖 ?? 内置基准; 今日折算与 mac 同式: 用量 × (输入+输出)/2 / 1e6
+  // 有效定价行: 行集与展示元数据来自 mac 目录镜像 (BuiltinModelPricingCatalog),
+  // 保持目录顺序 (mac 的分组顺序: Kimi → OpenAI → DeepSeek → 智谱 → StepFun → 混元 →
+  // Anthropic → xAI); 用户新增的覆盖项 (不在目录内) 追加在末尾。
+  // 今日折算与 mac 同式: 用量 × (输入+输出)/2 / 1e6
   function effectivePricingRows() {
     const overrides = settings.pricingOverrides || {};
     const usage = new Map((currentRuntimeInfo?.modelUsage || []).map((row) => [String(row.model).toLowerCase(), row.tokens || 0]));
-    const names = [...new Set([...Object.keys(currentModelPrices), ...Object.keys(overrides)])].sort((a, b) => a.localeCompare(b));
-    return names.map((key) => {
-      const base = currentModelPrices[key] || {};
+    const catalog = new Map(currentModelPrices.map((entry) => [entry.model, entry]));
+    const extra = Object.keys(overrides).filter((key) => !catalog.has(key)).sort((a, b) => a.localeCompare(b));
+    const keys = [...currentModelPrices.map((entry) => entry.model), ...extra];
+    return keys.map((key) => {
+      const base = catalog.get(key) || {};
       const over = Object.prototype.hasOwnProperty.call(overrides, key) ? overrides[key] || {} : null;
       const inputPrice = numberOr(over?.inputPricePerMillion, numberOr(base.inputPricePerMillion, 0));
       const outputPrice = numberOr(over?.outputPricePerMillion, numberOr(base.outputPricePerMillion, 0));
@@ -380,13 +385,15 @@
       const cost = tokens > 0 ? (tokens * (inputPrice + outputPrice)) / 2 / 1_000_000 : null;
       return {
         key,
+        displayName: base.displayName || key,
+        vendor: base.vendor || "",
         inputPrice,
         outputPrice,
         cachePrice,
         tokens,
         cost,
         isCustom: Boolean(over),
-        note: (over?.note || base.note || ""),
+        note: over?.note || base.note || "",
         currency: over?.currency || base.currency || "USD",
       };
     });
@@ -420,7 +427,7 @@
       if (pricingFilter === "已有用量" && row.tokens <= 0) return false;
       if (pricingFilter === "已校准" && !row.isCustom) return false;
       if (!query) return true;
-      return row.key.toLowerCase().includes(query) || row.note.toLowerCase().includes(query);
+      return [row.key, row.displayName, row.vendor].some((value) => String(value).toLowerCase().includes(query));
     });
 
     // 1. 今日费用总览
@@ -466,10 +473,12 @@
       table.append(header);
       for (const row of visible) {
         const line = node("tr");
-        const modelCell = node("td", null, { class: "col-model" });
-        modelCell.append(node("span", row.key, { class: "pricing-model", title: row.key }));
-        if (row.tokens > 0) modelCell.append(node("span", "●", { class: "pricing-dot" }));
-        if (row.note) modelCell.append(node("span", row.note, { class: "pricing-note" }));
+        const modelCell = node("td", null, { class: "col-model", title: row.key });
+        const modelLine = node("div", null, { class: "pricing-model-line" });
+        modelLine.append(node("span", row.key, { class: "pricing-model" }));
+        if (row.tokens > 0) modelLine.append(node("span", "●", { class: "pricing-dot" }));
+        modelCell.append(modelLine);
+        if (row.vendor) modelCell.append(node("span", row.vendor, { class: "pricing-vendor" }));
         line.append(modelCell);
         line.append(node("td", row.tokens > 0 ? formatTokens(row.tokens) : "—",
           { class: row.tokens > 0 ? "col-usage usage-pill" : "col-usage muted" }));
@@ -530,7 +539,7 @@
     const overlay = node("div", null, { id: "pricing-sheet", class: "sheet-overlay" });
     const sheet = node("div", null, { class: "sheet" });
     sheet.append(node("h2", "模型单价人工校准", { class: "sheet-title" }));
-    sheet.append(node("p", `${entry.key}${entry.note ? ` · ${entry.note}` : ""}`, { class: "row-sub" }));
+    sheet.append(node("p", `${entry.displayName} (${entry.key})${entry.vendor ? ` · ${entry.vendor}` : ""}`, { class: "row-sub" }));
     if (entry.isCustom) sheet.append(node("span", "当前已校准", { class: "sheet-badge" }));
 
     const form = node("div", null, { class: "form-grid" });
@@ -744,10 +753,10 @@
     button(cacheWrap, "cache-clear", "清理", () => clearCache(), "btn danger");
     row(c1, "清理用量缓存", cacheWrap, "仅删除本应用快照，不影响配置、凭证与账单统计");
     const exportWrap = node("div", null, { class: "actions-inline-flat" });
-    button(exportWrap, "export-billing", "导出…", () => runExport("export_billing", "账单"), "btn");
+    button(exportWrap, "export-billing", "导出…", () => runExport("export_billing", "账单", "csv"), "btn");
     row(c1, "导出账单", exportWrap, "token 用量与花费统计 CSV（写入导出目录并回显路径）");
     const diagWrap = node("div", null, { class: "actions-inline-flat" });
-    button(diagWrap, "export-diagnostics", "导出…", () => runExport("export_diagnostics", "诊断报告"), "btn");
+    button(diagWrap, "export-diagnostics", "导出…", () => runExport("export_diagnostics", "诊断报告", "json"), "btn");
     row(c1, "导出诊断包", diagWrap, "脱敏 JSON（不含凭证、账号与完整本机路径）");
     c1.append(node("p", "Windows 侧导出写入 %APPDATA%\\Bruce\\exports\\ 并在此回显完整路径（mac 走系统保存对话框，适配取舍见 design 05 §4.4）。", { class: "hint" }));
 
@@ -761,12 +770,30 @@
     c2.append(node("pre", null, { id: "diagnostics-report", class: "runtime-info-box hidden" }));
   }
 
-  // 导出: 后端写入 <dataRoot>/exports/ 并返回完整路径, 界面回显 (Windows 侧不弹保存对话框)。
-  async function runExport(command, label) {
+  // 导出: 先经系统保存对话框选位置 (与 mac NSSavePanel 等价), 再交给后端写入并回显路径。
+  // 对话框不可用 (插件未授权/异常) 时回落到默认导出目录; 用户取消则不写文件。
+  async function runExport(command, label, extension) {
     const status = byId("settings-status");
+    let requested = null;
+    let dialogAvailable = true;
     try {
-      const result = await invoke(command);
-      message(status, `${label}已导出：${result?.path || "导出目录"}`);
+      requested = await invoke("plugin:dialog|save", {
+        options: {
+          title: `导出${label}`,
+          defaultPath: `Bruce-${command === "export_billing" ? "billing" : "diagnostics"}.${extension}`,
+          filters: [{ name: label, extensions: [extension] }],
+        },
+      });
+    } catch {
+      dialogAvailable = false;
+    }
+    if (dialogAvailable && !requested) {
+      message(status, "已取消导出");
+      return;
+    }
+    try {
+      const result = await invoke(command, { path: requested ?? null });
+      message(status, `${label}已导出：${result?.path || "默认导出目录"}`);
     } catch (error) {
       message(status, `${label}导出失败：${error.message || error}`);
     }

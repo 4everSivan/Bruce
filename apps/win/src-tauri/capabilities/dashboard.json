@@ -4,5 +4,5 @@
   "description": "Local dashboard and settings receive safe runtime events",
   "windows": ["dashboard", "settings"],
   "local": true,
-  "permissions": ["core:event:allow-listen", "core:event:allow-unlisten"]
+  "permissions": ["core:event:allow-listen", "core:event:allow-unlisten", "dialog:allow-save"]
 }

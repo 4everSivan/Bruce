@@ -11,7 +11,7 @@ required-features = ["desktop"]
 
 [features]
 default = ["desktop"]
-desktop = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-notification", "dep:tauri-plugin-global-shortcut"]
+desktop = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-notification", "dep:tauri-plugin-global-shortcut", "dep:tauri-plugin-dialog"]
 
 [lib]
 name = "bruce_win_lib"
@@ -36,6 +36,8 @@ uuid = { version = "=1.11.0", features = ["v4"] }
 iana-time-zone = "0.1"
 tauri-plugin-notification = { version = "2", optional = true }
 tauri-plugin-global-shortcut = { version = "2", optional = true }
+# 导出文件的系统保存对话框 (与 notification/global-shortcut 同为 Tauri 官方插件)
+tauri-plugin-dialog = { version = "2", optional = true }
 serde = { version = "1", features = ["derive"] }
 # float_roundtrip: 双端对拍要求 17 位浮点精确解析 (与 viewmodel 一致)
 serde_json = { version = "1", features = ["float_roundtrip"] }

@@ -1,6 +1,6 @@
 use bruce_win_lib::runtime_core::{
     billing_csv, clear_snapshot, diagnostics_report, export_path, merge_snapshot, model_usage,
-    next_delay, write_export, RefreshOutcome,
+    next_delay, resolve_export_path, write_export, RefreshOutcome,
 };
 use serde_json::json;
 
@@ -254,6 +254,42 @@ fn export_path_creates_directory_and_stamps_utc_name() {
     assert!(path.contains("Bruce-billing-") && path.ends_with(".csv"));
     write_export(&path, b"hello").unwrap();
     assert_eq!(std::fs::read(&path).unwrap(), b"hello");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn resolve_export_path_honours_dialog_choice_and_falls_back() {
+    let root = std::env::temp_dir().join(format!("bruce-c033-path-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+
+    // 未选定 (对话框不可用): 回落默认导出目录 + 时间戳文件名
+    let fallback = resolve_export_path(&root, "Bruce-billing", "csv", None).unwrap();
+    assert!(fallback.contains("exports") && fallback.ends_with(".csv"));
+
+    // 选定路径: 原样使用, 父目录自建, 已带扩展名时不重复补
+    let chosen = root.join("picked").join("my-report.csv");
+    let resolved = resolve_export_path(
+        &root,
+        "Bruce-billing",
+        "csv",
+        Some(chosen.to_str().unwrap()),
+    )
+    .unwrap();
+    assert_eq!(resolved, chosen.to_string_lossy());
+    assert!(chosen.parent().unwrap().is_dir(), "父目录自建");
+    write_export(&resolved, b"a,b").unwrap();
+    assert!(chosen.is_file());
+
+    // 选定路径缺扩展名: 补全
+    let bare = root.join("picked").join("no-extension");
+    let resolved_bare =
+        resolve_export_path(&root, "Bruce-billing", "csv", Some(bare.to_str().unwrap())).unwrap();
+    assert!(resolved_bare.ends_with("no-extension.csv"));
+
+    // 空串视为未选定
+    let blank = resolve_export_path(&root, "Bruce-billing", "csv", Some("  ")).unwrap();
+    assert!(blank.contains("exports"));
     let _ = std::fs::remove_dir_all(&root);
 }
 

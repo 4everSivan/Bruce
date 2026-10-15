@@ -35,7 +35,8 @@
         "C029",
         "C030",
         "C031",
-        "C032"
+        "C032",
+        "C033"
       ]
     },
     "SubscriptionQuota": {
@@ -349,6 +350,15 @@
       "topic": "WindowsCompat",
       "version": "0.12.0+",
       "file": "docs/devel/change/C032.json"
+    },
+    "C033": {
+      "title": "收口 P3 残余差异：模型计费表补齐「厂商」列（镜像 mac 目录行集与元数据）并接入原生保存对话框（导出位置可选，取消/不可用有回落）",
+      "type": "Enhancement",
+      "status": "in_progress",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C033.json"
     }
   }
 }

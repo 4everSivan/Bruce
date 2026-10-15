@@ -898,7 +898,9 @@ button, input, select, textarea {
 .pricing-table .col-cache { width: 75px; }
 .pricing-table .col-cost { width: 68px; text-align: right; }
 .pricing-table .col-ops { width: 68px; text-align: right; white-space: nowrap; }
-.pricing-model { font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; color: var(--text); }
+.pricing-model-line { display: flex; align-items: center; gap: 4px; }
+.pricing-model { font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; font-weight: 500; color: var(--text); }
+.pricing-vendor { display: block; font-size: 10.5px; color: var(--text-3); }
 .pricing-dot { color: #5ec273; margin-left: 5px; font-size: 9px; vertical-align: middle; }
 .pricing-note { display: block; font-size: 10.5px; color: var(--text-3); }
 .usage-pill {

@@ -309,6 +309,7 @@ test("independent settings support consent, model prices, provider gates and mai
   assert.match(pricing.textContent, /fixture-model/, "内置价格表渲染");
   assert.match(pricing.textContent, /今日 TOKEN 预估折算总费用/);
   assert.match(pricing.textContent, /全部 \(\d+\)/);
+  assert.match(pricing.textContent, /Fixture Vendor/, "厂商列来自 mac 目录镜像");
   assert.match(pricing.textContent, /custom-model/, "已校准模型进入表格");
   assert.match(pricing.textContent, /人工校准/, "来源列标注人工校准");
   assert.match(app.node("runtime-info").textContent, /isolated-data/);
@@ -332,7 +333,29 @@ test("independent settings support consent, model prices, provider gates and mai
   assert.equal(app.state.settings.pricingOverrides["custom-model"].inputPricePerMillion, 3, "既有校准不被全局保存吞掉");
 });
 
-test("model pricing pane filters, calibrates and previews config json", async () => {
+test("exports use the native save dialog with cancel and fallback paths", async () => {
+  // 1) 对话框可用: 选定路径原样交给导出命令
+  const app = await boot({ html: "settings.html", dialogPath: "C:\\Users\\demo\\账单.csv" });
+  await app.node("export-billing").click();
+  const chosen = app.calls.filter((call) => call.command === "export_billing").pop();
+  assert.equal(chosen.args.path, "C:\\Users\\demo\\账单.csv");
+  assert.match(app.node("settings-status").textContent, /账单已导出/);
+  // 2) 用户取消: 不写文件
+  const cancelled = await boot({ html: "settings.html", dialogPath: null });
+  await cancelled.node("export-billing").click();
+  assert.equal(cancelled.calls.some((call) => call.command === "export_billing"), false, "取消时不得写入");
+  assert.match(cancelled.node("settings-status").textContent, /已取消导出/);
+  // 3) 对话框不可用 (未授权/异常): 回落到默认导出目录
+  const fallback = await boot({ html: "settings.html", reject: { "plugin:dialog|save": "DIALOG_UNAVAILABLE" } });
+  await fallback.node("export-diagnostics").click();
+  const call = fallback.calls.filter((item) => item.command === "export_diagnostics").pop();
+  assert.ok(call, "回落到无 path 导出");
+  assert.equal(call.args.path, null);
+  assert.match(fallback.node("settings-status").textContent, /诊断报告已导出/);
+});
+
+test("model pricing pane filters, calibrates and previews config json"
+, async () => {
   const app = await boot({ html: "settings.html" });
   const pane = () => app.node("pane-modelPricing-content");
   // 总览 + 搜索 + 三态筛选 + 8 列表格
@@ -341,6 +364,7 @@ test("model pricing pane filters, calibrates and previews config json", async ()
   const headers = [...pane().querySelectorAll(".pricing-table th")].map((n) => n.textContent);
   assert.deepEqual(headers, ["模型与厂商", "今日用量", "来源", "输入单价", "输出单价", "缓存命中", "今日折算", "操作"]);
   assert.deepEqual([...pane().querySelectorAll(".pricing-chip")].map((n) => n.textContent), ["全部 (1)", "已有用量 (0)", "已校准 (0)"]);
+  assert.equal(pane().querySelector(".pricing-vendor").textContent, "Fixture Vendor");
   assert.match(pane().textContent, /当前全部使用官方内置基准单价/);
   // 搜索无命中 → 空态
   const search = pane().querySelector(".pricing-search");
@@ -354,6 +378,7 @@ test("model pricing pane filters, calibrates and previews config json", async ()
   const sheet = app.node("pricing-sheet");
   assert.ok(sheet, "校准弹窗已打开");
   assert.equal(sheet.querySelector(".sheet-title").textContent, "模型单价人工校准");
+  assert.equal(sheet.querySelector(".row-sub").textContent, "Fixture Model (fixture-model) · Fixture Vendor");
   assert.deepEqual([...sheet.querySelectorAll(".row-title")].map((n) => n.textContent), ["输入单价 (Prompt / Input)", "输出单价 (Completion / Output)", "缓存读取命中 (Cache Hit / Read)", "备注说明 (可选)"]);
   assert.match(sheet.querySelector(".sheet-estimate p").textContent, /每消耗 1M 输入 \+ 200k 输出，折算费用约为 \$[\d.]+ USD/);
   assert.deepEqual([...sheet.querySelectorAll("button")].map((n) => n.textContent), ["取消", "保存校准"]);

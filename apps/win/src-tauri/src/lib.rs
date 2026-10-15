@@ -6,6 +6,7 @@
 pub mod alerts;
 pub mod collector;
 pub mod credentials;
+mod model_catalog;
 pub mod paths;
 pub mod scheduler;
 pub mod settings;
@@ -17,6 +18,7 @@ mod desktop {
     use std::collections::BTreeMap;
 
     use super::{credentials, paths, scheduler, settings};
+    use crate::model_catalog;
     use crate::runtime_core::{
         compute_dashboard_geometry, replace_hotkey, window_action, MonitorBounds, TrayIconBounds,
         WindowAction,
@@ -198,36 +200,53 @@ mod desktop {
     /// 写入 `<dataRoot>/exports/` 并返回完整路径。Windows 侧不弹系统保存对话框 (见
     /// design 05 §4.4 的适配取舍), 路径由界面回显。
     #[tauri::command]
-    fn export_billing(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    fn export_billing(
+        app: tauri::AppHandle,
+        path: Option<String>,
+    ) -> Result<serde_json::Value, String> {
         let Some(artifact) = scheduler::cached_artifact(&app) else {
             return Err("暂无可导出的用量数据, 请先刷新".to_owned());
         };
         let csv = crate::runtime_core::billing_csv(&artifact)
             .ok_or_else(|| "暂无可导出的用量数据, 请先刷新".to_owned())?;
-        let path = crate::runtime_core::export_path(&paths::data_root(), "Bruce-billing", "csv")?;
-        crate::runtime_core::write_export(&path, format!("\u{feff}{csv}").as_bytes())?;
-        Ok(serde_json::json!({ "path": path }))
+        let target = crate::runtime_core::resolve_export_path(
+            &paths::data_root(),
+            "Bruce-billing",
+            "csv",
+            path.as_deref(),
+        )?;
+        crate::runtime_core::write_export(&target, format!("\u{feff}{csv}").as_bytes())?;
+        Ok(serde_json::json!({ "path": target }))
     }
 
     /// 导出诊断报告: 脱敏单文件 JSON (mac 为 zip 包, Windows 侧不引入压缩依赖)。
     #[tauri::command]
-    fn export_diagnostics(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    fn export_diagnostics(
+        app: tauri::AppHandle,
+        path: Option<String>,
+    ) -> Result<serde_json::Value, String> {
         let panel = scheduler::cached_panel(&app)?;
         let report = crate::runtime_core::diagnostics_report(
             &app.package_info().version.to_string(),
             &panel,
         );
-        let path =
-            crate::runtime_core::export_path(&paths::data_root(), "Bruce-diagnostics", "json")?;
+        let target = crate::runtime_core::resolve_export_path(
+            &paths::data_root(),
+            "Bruce-diagnostics",
+            "json",
+            path.as_deref(),
+        )?;
         let body =
             serde_json::to_vec_pretty(&report).map_err(|_| "EXPORT_WRITE_FAILED".to_owned())?;
-        crate::runtime_core::write_export(&path, &body)?;
-        Ok(serde_json::json!({ "path": path }))
+        crate::runtime_core::write_export(&target, &body)?;
+        Ok(serde_json::json!({ "path": target }))
     }
 
+    /// 设置页「模型计费」的展示目录: 镜像 mac `BuiltinModelPricingCatalog` 的行集与元数据
+    /// (显示名 / 厂商 / 单价), 供表格与校准弹窗消费。采集侧成本口径不受影响。
     #[tauri::command]
     fn get_model_prices() -> serde_json::Value {
-        serde_json::to_value(settings::model_prices()).unwrap_or_else(|_| serde_json::json!({}))
+        model_catalog::as_json()
     }
 
     #[tauri::command]
@@ -384,6 +403,8 @@ mod desktop {
         tauri::Builder::default()
             .plugin(tauri_plugin_notification::init())
             .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+            // 导出文件的系统保存对话框 (C033): 与 mac NSSavePanel 等价
+            .plugin(tauri_plugin_dialog::init())
             .setup(move |app| {
                 // 调度控制状态 (托盘菜单/命令/热键共享)。
                 let control = SchedulerControl::new();

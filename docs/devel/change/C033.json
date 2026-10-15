@@ -1,0 +1,100 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C033",
+  "title": "收口 P3 残余差异：模型计费表补齐「厂商」列（镜像 mac 目录行集与元数据）并接入原生保存对话框（导出位置可选，取消/不可用有回落）",
+  "type": "Enhancement",
+  "status": "in_progress",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送; 新增 Tauri 官方 dialog 插件 (与既有 notification/global-shortcut 同类)",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src-tauri (新增 model_catalog 模块 + dialog 插件 + 导出命令 path 参数) / apps/win/src (settings.js 导出链路)",
+    "component": "模型计费展示目录 / 导出保存位置",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "C032 遗留两项残余差异，用户以「继续修」授权收口。**(1) 模型与厂商列**：C032 的定价表直接摊开 collector 的成本口径目录（46 条，字段只有 model/prices/note），而 mac 设置页展示的是 `BuiltinModelPricingCatalog`（28 条，含 displayName/vendor）——两套目录**行集都不同**，因此 Windows 侧既缺「厂商」第二行，又多出 18 条 mac 不显示的模型。修法不是给成本表硬塞元数据，而是**镜像 mac 的展示目录**：新增 `apps/win/src-tauri/src/model_catalog.rs`（28 条，modelName/displayName/vendor/单价/note，逐字段由 mac 目录转录生成以免手抄失真），`get_model_prices` 改返回该目录；采集侧成本口径完全不动（`collector-domain::PricingTable` 仍服务费用估算，与 mac 同构的两套目录分工）。**(2) 导出位置**：C032 为规避无法自证的胶水而写死导出目录，mac 是系统保存对话框。本次接入 Tauri 官方 `tauri-plugin-dialog`：调用形状（命令名 `plugin:dialog|save`、camelCase 的 `SaveDialogOptions{title,defaultPath,filters[{name,extensions}]}`、返回选定路径或 null）**逐项从插件源码 v2.7.0 核实**（`src/lib.rs` 的 generate_handler 与 `src/commands.rs` 的结构体定义），并设计为三级行为——选定路径原样写入（父目录自建、扩展名缺失补全）、用户取消不写文件、对话框不可用（未授权/异常）自动回落默认导出目录，使插件即使在真机上有环境差异也不会让导出功能整体失效。",
+  "precheck": {
+    "description": "确认现状: 定价表首列无厂商行且行集为 collector 口径 (46 条); 导出命令无 path 参数, 无 dialog 插件与权限",
+    "command": "grep -n 'vendor\\|dialog' apps/win/src-tauri/src/lib.rs apps/win/src-tauri/Cargo.toml | head",
+    "expected": "修复前: Cargo.toml 无 tauri-plugin-dialog; capabilities 无 dialog:allow-save; 导出命令签名为 (app) 无 path; 前端无 plugin:dialog|save 调用",
+    "is_completed": true,
+    "evidence": "2026-10-15 实测: `grep -c 'add(\"' core/collector/crates/collector-domain/src/pricing.rs` = 46 (成本口径), mac 目录 `BuiltinModelPricingCatalog` 解析出 28 条且含 vendor 字段; 定价表首列仅渲染模型名 + note (无厂商行); export_billing/export_diagnostics 签名只有 app 一个参数; Cargo.toml 与 capabilities/dashboard.json 均无 dialog 相关配置。"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护已在 main 实施"
+    ],
+    "after": [
+      "cargo fmt --manifest-path apps/win/src-tauri/Cargo.toml --all",
+      "cargo clippy --manifest-path apps/win/src-tauri/Cargo.toml --all-targets -- -D warnings",
+      "node --test apps/win/tests/frontend.test.mjs",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "apps/win/src-tauri/src/model_catalog.rs (新增展示目录) + lib.rs get_model_prices",
+      "before": "get_model_prices 返回 collector 成本口径目录 (46 条 keyed map, 无 displayName/vendor); 前端据此出表",
+      "after": "新增展示目录模块: 28 条 CatalogEntry (model_name/display_name/vendor/input/output/cache_read/note), 逐字段由 mac `BuiltinModelPricingCatalog` 脚本转录生成; get_model_prices 改返回该目录的 JSON 数组 (camelCase 契约: model/displayName/vendor/inputPricePerMillion/outputPricePerMillion/cacheReadPricePerMillion/currency/note); settings::model_prices 随之删除 (已无消费者)",
+      "impact": "定价表行集与 mac 一致 (28 条, 含 Kimi/OpenAI/DeepSeek/智谱/StepFun/混元/Anthropic/xAI 分组顺序); 采集侧费用估算口径不受影响"
+    },
+    {
+      "scope": "apps/win/src/settings.js + styles.css (定价表「模型与厂商」列)",
+      "before": "首列 = 模型名 + note (10.5px)",
+      "after": "首列 = 模型名 (12px mono, td title 保留原始模型名, 有用量时绿点) + 厂商行 (10.5px tertiary), 与 mac 同形态; 搜索匹配范围扩到 model/displayName/vendor; 校准弹窗副标题改为 `displayName (modelName) · vendor`; 覆盖项中不在目录内的模型追加在末尾",
+      "impact": "「模型与厂商」列与 mac 逐列对齐"
+    },
+    {
+      "scope": "apps/win/src-tauri (dialog 插件接入 + 导出位置可选)",
+      "before": "导出只能写 <dataRoot>/exports/; 无系统保存对话框",
+      "after": "新增 tauri-plugin-dialog (optional 依赖 + 特性 + builder 注册) 与 capability `dialog:allow-save`; export_billing/export_diagnostics 增加 `path: Option<String>`; 新增 runtime_core::resolve_export_path(root, prefix, ext, requested) —— 选定路径原样使用 (父目录自建、扩展名缺失补全), 未选定/空串回落默认导出目录",
+      "impact": "导出位置可由用户选择 (与 mac NSSavePanel 等价); 对话框不可用时功能不失效"
+    },
+    {
+      "scope": "apps/win/src/settings.js (导出三级行为)",
+      "before": "直接调用导出命令写固定目录并回显路径",
+      "after": "先 `plugin:dialog|save` (title/defaultPath/filters 三参数) 取路径: 取得路径→原样交给导出命令; 返回 null→提示『已取消导出』且不写文件; invoke 抛错 (插件未授权/异常)→回落到无 path 导出并在文案上区分『默认导出目录』",
+      "impact": "取消与降级都有明确反馈; 插件环境差异不会让导出整体失效"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "§4.4 把「模型 vendor/displayName 元数据」与「原生位置选择」登记为残余差异, 后者标注需要 dialog 插件与真机验收",
+      "after": "§4.4 更新为: 模型计费展示目录以 mac `BuiltinModelPricingCatalog` 为唯一事实源并由 Windows 侧镜像模块承载 (与 collector 成本口径目录分工明确, 两套目录同构于 mac); 导出改为系统保存对话框优先 + 取消不写 + 插件不可用回落默认目录的三级行为, 并把「dialog 插件在 Windows 真机上的实际弹窗」列入需真机验收项"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "verify-local-20261015-c033 + render-harness-20261015",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "展示目录镜像与表格列形态",
+        "true_if": "目录 28 条且与 mac 同名同序、字段非空; 定价表首列渲染模型名 + 厂商行 (vendor 来自目录), 校准弹窗副标题为 `displayName (modelName) · vendor`",
+        "false_if": "行数不符、字段缺失, 或列形态与 mac 不一致",
+        "evidence": "2026-10-15 展示目录镜像: 脚本从 mac `BuiltinModelPricingCatalog` 解析出 28 条并逐字段转录为 `apps/win/src-tauri/src/model_catalog.rs` (避免手抄失真); Rust 用例 catalog_row_count_matches_mac_catalog (== 28) / catalog_entries_are_unique_and_complete (model/display/vendor 非空、模型名唯一、单价非负) / catalog_json_uses_frontend_contract_keys (k3-agent → displayName 'Kimi K3 (Agent)'、vendor 'Moonshot Kimi'、input 3.0、cache Some(0.30)、currency USD; 无缓存单价条目仍带 cacheReadPricePerMillion 键) 全绿。真实 Chromium 内核实测 (render-harness/settings-harness.html, 视口 1040×680): 表格 3 行样例首列渲染为 k3-agent/Moonshot Kimi、gpt-5.4/OpenAI / Codex、claude-sonnet-5/Anthropic, td title 保留原始模型名, 单价列 $3.00 /1M 与 $0.300 /1M 与目录一致, 无横向溢出。DOM 用例断言 `.pricing-vendor` = 'Fixture Vendor' 与筛选计数 [全部 (1), 已有用量 (0), 已校准 (0)]。",
+        "result": true
+      },
+      {
+        "item": "导出三级行为与路径解析",
+        "true_if": "对话框可用→选定路径原样写入 (父目录自建/扩展名补全); 取消→不写文件且提示; 对话框不可用→回落默认目录; Rust resolve_export_path 三分支用例通过",
+        "false_if": "任一路径行为不符或缺失",
+        "evidence": "导出三级行为: 真实内核实测调用链为 `plugin:dialog|save` → `export_diagnostics` 带选定路径 → 状态回显『诊断报告已导出：C:\\Users\\sivan\\Desktop\\Bruce-billing.csv』(harness 记录 window.__calls 证明进程链路); DOM 用例 exports_use_the_native_save_dialog_with_cancel_and_fallback_paths 覆盖三分支 —— (1) 选定路径 C:\\Users\\demo\\账单.csv 原样传给导出命令; (2) dialogPath=null 时导出命令零调用且提示『已取消导出』; (3) 对话框 invoke 抛错时回落到无 path 导出 (args.path = null)。Rust 用例 resolve_export_path_honours_dialog_choice_and_falls_back 覆盖: 未选定→exports 目录 + 时间戳文件名; 选定→原样路径 + 父目录自建 + 落盘成功; 缺扩展名→补 .csv; 空白串→视为未选定。插件形状核实来源: tauri-plugin-dialog 2.7.0 源码 `src/lib.rs:199-202` (generate_handler 含 commands::save) 与 `src/commands.rs:72-86, 28-33, 222-226` (SaveDialogOptions{title,filters,defaultPath,canCreateDirectories} 为 camelCase; DialogFilter{name,extensions}; save 返回 Option<FilePath>)。",
+        "result": true
+      },
+      {
+        "item": "插件形状核实与全量门禁",
+        "true_if": "dialog 调用形状逐项来自插件源码 (命令名/camelCase 选项/返回类型); zsh scripts/verify-local.sh 退出码 0; 真实内核下导出调用链为 dialog → 选定路径 → 写入 → 回显",
+        "false_if": "形状靠猜测、门禁失败或调用链不符",
+        "evidence": "zsh scripts/verify-local.sh 退出码 0, 末行 'Bruce 本地验证全部通过' (日志 local/c033-verify.log): Rust 三 manifest 全绿 (collector 132 / viewmodel 46 / src-tauri 91 —— runtime_coverage 26 → 27, lib 17 → 20), fmt --check 与 clippy --all-targets -D warnings 零告警, provider 品牌图形产物 --check 通过, Windows 前端结构冒烟通过且交互回归 30/30 (新增导出对话框三分支用例), Swift 全部 Harness 与 Panel 视图模型双端对拍 3/3 通过。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": []
+}

@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, FixedOffset};
 use collector_domain::{AgentUsageArtifact, BridgeResponse, ResponseStatus};
@@ -311,6 +311,29 @@ pub fn export_path(root: &Path, prefix: &str, extension: &str) -> Result<String,
         .join(format!("{prefix}-{stamp}.{extension}"))
         .to_string_lossy()
         .into_owned())
+}
+
+/// 导出目标解析: 用户在保存对话框选定路径时用其原样路径 (父目录自建, 扩展名缺失
+/// 则补全); 未选定时回落到 `<root>/exports/` 的带时间戳文件名。
+pub fn resolve_export_path(
+    root: &Path,
+    prefix: &str,
+    extension: &str,
+    requested: Option<&str>,
+) -> Result<String, String> {
+    let Some(requested) = requested.map(str::trim).filter(|value| !value.is_empty()) else {
+        return export_path(root, prefix, extension);
+    };
+    let mut target = PathBuf::from(requested);
+    if target.extension().is_none() {
+        target.set_extension(extension);
+    }
+    if let Some(parent) = target.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        }
+    }
+    Ok(target.to_string_lossy().into_owned())
 }
 
 /// 写入导出文件 (沿用凭证模块的原子私有写: 临时文件 + 替换, 权限限定当前用户)。

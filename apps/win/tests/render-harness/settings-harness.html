@@ -27,15 +27,27 @@ const accounts = [
   { field: "codexQuotaAccounts", accountId: "4eversivan", displayName: "Codex · sivan", authorizationState: "ok" },
   { field: "clineQuotaAccounts", accountId: "work", displayName: "Cline · work", authorizationState: "reauthRequired" },
 ];
+const callLog = [];
+window.__calls = callLog;
 async function invoke(command, args) {
+  callLog.push([command, args]);
+  if (command === "export_billing" || command === "export_diagnostics") {
+    // 回显导出落点: 有对话框选定路径则用它, 否则给默认导出目录 (便于自检核对链路)
+    return { path: args?.path || "C:\\Users\\sivan\\AppData\\Roaming\\Bruce\\exports\\default.csv" };
+  }
   if (command === "get_settings") return structuredClone(settings);
   if (command === "save_settings_command") return null;
   if (command === "get_runtime_info") {
     return { version: "0.11.5", dataRoot: "C:\\Users\\sivan\\AppData\\Roaming\\Bruce", cacheRoot: "C:\\Users\\sivan\\AppData\\Local\\Bruce\\collector-cache-v1",
       snapshotPath: "…\\snapshots\\agent-usage.json", status: { phase: "fresh", lastSuccessAt: "2026-07-28T12:00:00Z", error: null, diagnosticCodes: [] } };
   }
+  if (command === "plugin:dialog|save") return "C:\\Users\\sivan\\Desktop\\Bruce-billing.csv";
   if (command === "get_model_prices") {
-    return { "kimi-k2.5": { inputPricePerMillion: 0.6, outputPricePerMillion: 2.4, currency: "USD" } };
+    return [
+      { model: "k3-agent", displayName: "Kimi K3 (Agent)", vendor: "Moonshot Kimi", inputPricePerMillion: 3, outputPricePerMillion: 15, cacheReadPricePerMillion: 0.3, currency: "USD", note: "Kimi K3 Agent" },
+      { model: "gpt-5.4", displayName: "GPT-5.4", vendor: "OpenAI / Codex", inputPricePerMillion: 0.55, outputPricePerMillion: 2.19, cacheReadPricePerMillion: 0.14, currency: "USD", note: "GPT-5.4" },
+      { model: "claude-sonnet-5", displayName: "Claude Sonnet 5", vendor: "Anthropic", inputPricePerMillion: 3, outputPricePerMillion: 15, cacheReadPricePerMillion: 0.3, currency: "USD", note: "Claude Sonnet 5" },
+    ];
   }
   if (command === "credential_allowlist") return ["kimiQuotaAccounts", "codexQuotaAccounts", "clineQuotaAccounts", "providerMeta"];
   if (command === "get_credential_fields") return ["codexQuotaAccounts", "clineQuotaAccounts"];

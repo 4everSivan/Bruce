@@ -207,11 +207,6 @@ pub fn validate_settings(settings: &AppSettings) -> Result<(), String> {
 }
 
 /// 使用 Collector 同一价格表，避免设置 UI 复制一套价格事实源。
-pub fn model_prices() -> serde_json::Value {
-    serde_json::to_value(collector_domain::PricingTable::default().builtin_catalog())
-        .unwrap_or_default()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
