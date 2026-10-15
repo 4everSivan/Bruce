@@ -1,0 +1,129 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C027",
+  "title": "收敛双端渲染层漂移：订阅卡单账号段重复渲染与 note/状态门控、多账号折叠态、余额双槽、收起态峰值窗口、hero 档位渐变、模型分布「其他」行",
+  "type": "BugFix",
+  "status": "closed",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 修复并推送 (分支标签仅作追溯)",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src (Tauri WebView 渲染层: app.js + styles.css)",
+    "component": "订阅用量卡 / Token 用量卡 / Agent 用量卡渲染器",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "2026-10-15 双端渲染层对标审计 (用户指示「检查 win 和 mac 在仪表盘和配置前端上是否存在效果差异, 要求尽量 100% 对标」) 发现: 数据层 (视图模型契约) 已由 tests/fixtures/viewmodel-parity 的逐字段对拍锁死, 但**契约之后的绘制是两套独立实现且从未对拍**, 导致 Windows 仪表盘出现 7 类确定性渲染缺陷。这些缺陷不是风格取舍, 而是与 mac 语义直接冲突: (1) 单账号 provider 的额度行被渲染两遍并多出一个账号子块 —— Rust 视图模型对单账号也下发 accounts[单条] (subscription.rs:445-490 注释「accounts 携带单条记录但不触发折叠」), 而 app.js 无条件遍历 section.accounts, mac 视图在非多账号分支根本不读该字段 (SubscriptionCard.swift:257-267); (2) section note 不看 status 就渲染 (mac 仅在 status ∈ {error, empty} 渲染), 于是 evidence 级复现: valid fixture (status=ok) 下 mac 一字不显示而 Windows 显示两遍「fixture」; (3) app.js 额外追加 mac 从不渲染的 statusLabel 中文状态行; (4) 多账号段用 <details open> 默认展开, mac 默认折叠且折叠态只显示 collapsedWindow 单行; (5) 纯余额型 provider (DeepSeek 类) 缺 mac 的「可用余额 / 订阅状态」双槽; (6) 卡片折叠后仍显示「最后更新 HH:mm」(mac 的 status 槽被 mini 摘要取代); (7) 收起态迷你量条取 section.windows[0] 而非 mac 的 collapsedPeakWindow (最紧张窗口), 单账号 section 的 collapsedWindow 恒为 null, 于是 codex (5h 7% / 7d 70%) 在两端显示 7% vs 70%、颜色档位 normal vs warning 同时不符。附带两项「模型层已算好、前端未消费」的对齐缺口: hero 数字渐变写死 moss 档而忽略已下发的 usageTier (valid fixture=sage), 模型/项目分布 bars.slice(0,3) 把 Rust 已算出的「其他」聚合行砍掉。根因是 Windows 前端缺少渲染层回归测试: apps/win/tests/frontend.test.mjs 的既有用例用合成 section (裸 provider 键 id、无 accounts), 恰好绕开了真实 fixture 结构。",
+  "precheck": {
+    "description": "复现缺陷: 用项目自带 DOM harness 加载真实 index.html + app.js + 真实 parity fixture, 断言订阅卡出现重复额度行与重复 note; 并断言折叠态仍可见 updatedText、收起态迷你条取首个窗口",
+    "command": "node --test apps/win/tests/frontend.test.mjs",
+    "expected": "修复前: 订阅卡文本包含两遍「Kimi…5h…32%」与两遍 note「fixture」; 修复后: 单账号段额度行与 note 各仅一份, 多账号段默认折叠",
+    "is_completed": true,
+    "evidence": "2026-10-15 实测 (dom.mjs boot + agent-usage-valid.panel.json): 渲染文本 = 「订阅用量最后更新 12:00❯Kimi5h32%fixtureKimi5h32%fixtureChatGPT2,998.12每 5 小时7%73 天后每周70%78 天后fixture4eversivan每 5 小时7%73 天后每周70%78 天后fixture」—— 每个单账号 provider 的窗口行与 note 各重复一次, 且 codex 段多出 mac 不存在的账号子块; 收起态迷你量条 DOM 为 .meter.normal (7%) 而 mac collapsedPeakWindow 取 70% (warning)。"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护已在 main 定位并实施 (C022/C023/C025 同约定)"
+    ],
+    "after": [
+      "node --test apps/win/tests/frontend.test.mjs",
+      "node scripts/check-win-frontend.mjs",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "apps/win/src/app.js (订阅卡: 单账号段正文)",
+      "before": "无条件渲染 section.windows 后再遍历 section.accounts 渲染 <details open> 账号子块, 单账号 provider 的额度行因此出现两份",
+      "after": "按 mac 分支: 多账号 (accounts >= 2) 才渲染账号子卡; 单账号渲染 section.windows; 纯余额型渲染「可用余额 / 订阅状态」双槽。section.accounts 在单账号分支不再被读取",
+      "impact": "订阅卡不再重复展示额度行; 与 mac SubscriptionCard 的 singleAccountContent / multiAccountContent 分支一一对应"
+    },
+    {
+      "scope": "apps/win/src/app.js (订阅卡: note / extraText 显示条件)",
+      "before": "section.note / section.staleText / section.extraText 一律在正文尾部无条件渲染为橙色 note-line; account.note 无条件渲染",
+      "after": "section.note 仅 status ∈ {error, empty} 渲染, account.note 仅 account.status == 'error' 渲染; extraText 移入头部行 (9pt secondary, 同 mac); 移除契约中不存在的 section.staleText",
+      "impact": "status=ok 的段不再向用户暴露 collector 内部 note; extraText (如「加量包余额 ¥12.00」) 由橙色告警降级为灰色元数据, 与 mac 视觉语义一致"
+    },
+    {
+      "scope": "apps/win/src/app.js (订阅卡: 账号状态行)",
+      "before": "account.status !== 'ok' 时追加一行 statusLabel(status) 中文标签 (如「失败」), mac 卡内无此映射",
+      "after": "移除该行; 账号级状态只经由 note (error 段) 与 lastSuccessText 呈现",
+      "impact": "消除 mac 端不存在的状态文案; 账号子卡信息与 mac ProviderAccountCard 逐项对齐"
+    },
+    {
+      "scope": "apps/win/src/app.js + styles.css (订阅卡: 多账号折叠态)",
+      "before": "<details open> 默认展开, 名称无展开控件, 折叠态概念不存在",
+      "after": "默认折叠; 展开态渲染账号子卡列表 (spacing 4), 折叠态渲染 collapsedWindow 单行; 名称在多账号时渲染为带 chevron 的按钮 (aria-expanded), 展开状态保存在渲染层 Set 中跨刷新保持",
+      "impact": "多账号 provider (如多 Codex 账号) 默认占据一行, 与 mac 默认折叠行为一致"
+    },
+    {
+      "scope": "apps/win/src/app.js + styles.css (订阅卡: 余额胶囊与双槽)",
+      "before": "所有带 balance 的段一律在头部渲染余额胶囊; 无「可用余额 / 订阅状态」视图",
+      "after": "纯余额型 (windows 为空 且 非多账号 且 balance 非空) 抑制头部胶囊并渲染双槽 (可用余额 = amountText ?? '--', 订阅状态 = ok→'正常' 否则原样 status, 绿点恒亮); 其余段保持头部胶囊",
+      "impact": "DeepSeek 等余额型 provider 的展示与 mac BalanceDualSlotView 一致"
+    },
+    {
+      "scope": "apps/win/src/app.js + styles.css (卡片折叠态可见性)",
+      "before": "「最后更新 HH:mm」与 LIVE 圆点位于 .card-head 内, 卡片折叠后仍然可见",
+      "after": "折叠态隐藏 .updated 与 .card-head 内的 LIVE 指示器 (chevron 保留), 对齐 mac「折叠时 status 槽被 mini 摘要取代」",
+      "impact": "折叠卡片不再留下与收起态摘要语义重复的元数据"
+    },
+    {
+      "scope": "apps/win/src/app.js (订阅卡: 收起态迷你量条取数)",
+      "before": "peak = section.collapsedWindow || section.windows[0]; 单账号 section 的 collapsedWindow 恒为 null → 退化为首个窗口",
+      "after": "peak = max(usedPercent) over section.windows ∪ section.accounts[].windows, 与 mac SubscriptionProviderSection.collapsedPeakWindow 同语义; 无窗口 (纯余额型) 返回 null 不渲染迷你条。取数放在渲染层而非视图模型, 以避免改动已被 mac golden 快照逐字段锁定的契约 (mac_parity_golden_matches)",
+      "impact": "收起态迷你条的百分比与颜色档位不再取错窗口 (codex: 7%/normal → 70%/warning)"
+    },
+    {
+      "scope": "apps/win/src/app.js (Token 用量卡: hero 渐变与模型分布)",
+      "before": "hero 数字与收起态数字使用写死的 moss 档渐变 (#63885E→#82A57C); 模型/项目分布 bars.slice(0, 3) 丢弃第 4 条",
+      "after": "按已下发的 usageTier 取五档色对 (sage/moss/fern/pine/forest, 数值同 mac tierColors), 未命中回落 sage; 分布行渲染全部 bars (Rust 侧 top3 + 「其他」), 透明度梯度加 0.25 下限保证第 4 条可见",
+      "impact": "hero 渐变随今日用量档位变化, 与 mac 一致; 「其他」聚合行不再丢失"
+    },
+    {
+      "scope": "apps/win/tests/frontend.test.mjs (回归防线)",
+      "before": "用例使用合成的裸 provider 键 section (无 accounts), 真实 fixture 结构未被覆盖, 上述缺陷全部漏网",
+      "after": "新增基于真实 fixture 的断言: 单账号段额度行与 note 不重复、status=ok 不渲染 note、无 mac 不存在的状态行、多账号默认折叠 (折叠态渲染 collapsedWindow)、余额型双槽、折叠态隐藏 updated、收起态迷你条取峰值窗口、hero 渐变随 usageTier、分布行保留「其他」",
+      "impact": "渲染层首次获得可回归的双端对标断言"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "§4.2 看板功能区仅声明「对齐 mac MenuBarViews/Views 能力矩阵」并给出卡级能力清单, 未约定订阅卡的分支语义 (单账号/多账号/纯余额型)、note 与 extraText 的显示条件、收起态迷你摘要取数口径与 hero 档位渐变, 亦未声明渲染层与视图模型层各自的对拍边界",
+      "after": "§4.2 补「渲染层对标清单」: 明确视图模型契约层由 fixture 逐字段对拍锁定, 契约之后的绘制必须按本清单逐条对齐 mac —— 订阅段三分支 (多账号 accounts>=2 折叠态渲染 collapsedWindow / 单账号渲染 windows / 纯余额型渲染余额+状态双槽)、section.note 仅 error|empty、account.note 仅 error、extraText 入头部 9pt secondary、账号无状态标签行、收起态迷你条取「最紧张窗口」(max usedPercent over windows ∪ accounts[].windows, 渲染层推导)、hero 渐变随 usageTier 五档、模型分布保留 top3+「其他」全部行"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "verify-local-20261015-c027-c028",
+    "user_quote": "推送",
+    "signoff": "2026-10-15 用户会话内先以「确认」授权按 P0 清单实施, 后以「推送」授权代签收口并提交推送 main; AI 代为签署收口并闭环归档 (单人维护约定: 直接提 main, 不打 tag)",
+    "checks": [
+      {
+        "item": "缺陷复现与回归断言 (真实 fixture)",
+        "true_if": "node --test apps/win/tests/frontend.test.mjs 全绿, 且新增断言在修复前必红 (单账号额度行/note 各出现且仅出现一次、status=ok 无 note、无状态标签行、多账号默认折叠、余额双槽、折叠态无 updated、收起态取峰值窗口、hero 渐变随 usageTier、分布保留「其他」)",
+        "false_if": "任一断言失败, 或断言在修复前也通过 (未覆盖真实缺陷)",
+        "evidence": "2026-10-15 双跑对照 (git stash 回退 apps/win/src/app.js + styles.css 至 HEAD 并保留测试文件): 修复前 `node --test apps/win/tests/frontend.test.mjs` NODE_EXIT=1, tests 20 / pass 13 / fail 7, 失败集恰为本次新增或改写的 7 条断言 (single-account sections render each window row and collector note exactly once / collapsed subscription summary uses the most-utilized window of each provider / account-level subscription state… after expanding / balance-only sections render the amount and status dual slot / hero gradient follows the tier / distribution lists keep the 其他 aggregate row / styles.css hides head metadata when collapsed); 修复后同命令 tests 21 / pass 21 / fail 0。真实 parity fixture 的订阅卡渲染文本由修复前「…Kimi5h32%fixtureKimi5h32%fixtureChatGPT2,998.12…fixture4eversivan…fixture」(窗口行与 note 各重复一次 + mac 不存在的账号子块) 收敛为「订阅用量最后更新 12:00❯Kimi5h32%ChatGPT2,998.12每 5 小时7%73 天后每周70%78 天后」(无重复、status=ok 不显示 note、无账号子块); 收起态迷你量条由 .meter.normal (首个窗口 7%) 变为 .meter.warning (最紧张窗口 70%); hero 与收起态数字渐变由写死的 #63885E→#82A57C (moss) 变为按 usageTier=sage 的 #7D9B76→#9DB597。",
+        "result": true
+      },
+      {
+        "item": "全量自动化验证",
+        "true_if": "zsh scripts/verify-local.sh 退出码 0 (Rust 全量 + Windows 前端结构冒烟与交互回归 + Swift 全部 Harness + 视图模型双端对拍 3/3)",
+        "false_if": "任一环节失败、告警或对拍不一致",
+        "evidence": "zsh scripts/verify-local.sh 退出码 0, 末行 'Bruce 本地验证全部通过' (日志 local/c027-verify.log): Rust 三 manifest 全绿 (core/collector 132 项; apps/win/viewmodel 46 项 = 内建 12 + fixture_parity 6 + format_color_coverage 7 + subscription_coverage 13 + usage_coverage 8; apps/win/src-tauri 81 项 = 内建 17 + alerts 8 + collector_configuration 2 + credentials 14 + runtime 20 + scheduler 8 + settings 12), cargo fmt --check 与 clippy --all-targets -D warnings 零告警; Collector fixture 扫描通过; Windows 前端结构冒烟通过 (app.js/settings.js 语法合法 + DOM id 交叉 9 个引用全部可达 + 无 demo 残留全局) 且交互回归 node --test tests 21 / pass 21 / fail 0; Swift 全部 Harness 通过 (BruceOnboardingCore 165 / PanelViewModel 53 / CodexTokenManager 33 / CodexCredentialStore 28 / CollectorRunner 28 / CodexOAuthClient 8 / CredentialStateReducer 8 / Diagnostics 8 / ArtifactStore 5 / Widget 性能 5 / SubscriptionRefreshControl 4 / AppModelCache 2 / GlobalHotkey / DashboardGlassSurface 10) 与 Panel 视图模型双端对拍 3/3 通过。",
+        "result": true
+      },
+      {
+        "item": "契约未漂移 (反向影响排查)",
+        "true_if": "tests/fixtures/viewmodel-parity/*.panel.json 未被修改; mac_parity_golden_matches 与 mac 侧 Harness 计数维持不变 (本卡只动 Windows 渲染层, 不改视图模型输出)",
+        "false_if": "需要改动 golden 快照或 Rust 视图模型序列化字段, 或 mac Harness 计数变化",
+        "evidence": "git status 确认 tests/fixtures/ 与 apps/macos/ 零改动 (`git diff --name-only -- tests/fixtures/` 为空, mac 侧无任何文件变动), 本卡只动 Windows 渲染层: 未新增或修改任何视图模型序列化字段, mac golden 快照无需 --update; 视图模型侧 fixture_parity::mac_parity_golden_matches 通过 (Rust 输出 ≡ mac golden, valid/partial/empty 三份) 且 PanelParityHarness 输出 'Panel 视图模型双端对拍通过 (valid/partial/empty: mac 产出 ≡ golden 快照)'; mac Harness 计数维持不变 (OnboardingCore 165 / PanelViewModel 53 / CodexTokenManager 33 / CodexCredentialStore 28 / CollectorRunner 28 / Diagnostics 8 / ArtifactStore 5 / AppModelCache 2 / SubscriptionRefreshControl 4 / DashboardGlassSurface 10)。收起态峰值窗口按此约束在渲染层推导 (max usedPercent over windows ∪ accounts[].windows), 而不新增契约字段。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": []
+}

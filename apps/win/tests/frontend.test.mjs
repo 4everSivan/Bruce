@@ -82,15 +82,126 @@ test("refresh failure retains cached cards and exposes stale/error diagnostics",
   assert.ok(app.node("stack").children.length >= 2);
 });
 
-test("account-level subscription status, additional text and all accounts are visible", async () => {
-  const panel = { ...fixture, subscription: { sections: [{ id: "codex", name: "ChatGPT", status: "partial", note: "部分账号异常",
-    extraText: "额外信息", windows: [], accounts: [{ id: "a", name: "工作账号", status: "stale", lastSuccessText: "上次成功 12:00", windows: [], note: "授权已过期" },
-      { id: "b", name: "个人账号", status: "ok", windows: [] }] }] } };
+test("single-account sections render each window row and collector note exactly once", async () => {
+  // 真实 parity fixture: kimi 单窗口 + codex 双窗口, 两者都是单账号 section 且
+  // status=ok。修复前该结构渲染两遍额度行与两遍 note (Rust 对单账号也下发
+  // accounts[单条], 而 mac 视图在非多账号分支不读该字段)。
+  const app = await boot();
+  const card = app.node("stack").querySelector('[data-card="subscription"]');
+  assert.equal(card.querySelectorAll(".win-row").length, 3, "1 + 2 行, 不得重复");
+  assert.equal(card.querySelectorAll(".account-card").length, 0, "单账号不出账号子卡");
+  assert.equal(card.querySelectorAll(".note-line").length, 0, "status=ok 不得暴露 collector note");
+  assert.doesNotMatch(card.textContent, /fixture/);
+});
+
+test("collapsed subscription summary uses the most-utilized window of each provider", async () => {
+  const app = await boot();
+  const card = app.node("stack").querySelector('[data-card="subscription"]');
+  const meters = card.querySelector(".collapsed-summary").querySelectorAll(".meter");
+  // 单账号 section 的 collapsedWindow 恒为 null: 修复前退化取首个窗口 (codex 5h 7%
+  // → normal), mac collapsedPeakWindow 取最紧张窗口 (codex 7d 70% → warning)。
+  assert.equal(meters.length, 2);
+  assert.equal(meters[0].className, "meter normal");
+  assert.equal(meters[1].className, "meter warning");
+  assert.equal(meters[1].children[0].style.width, "70%");
+});
+
+test("account-level subscription state, additional text and all accounts are visible after expanding", async () => {
+  const panel = { ...fixture, subscription: { updatedText: null, sections: [{ id: "codex", name: "ChatGPT", status: "partial", note: "部分账号异常",
+    extraText: "额外信息", windows: [], accountCountText: "2 个账号",
+    collapsedWindow: { label: "每周", usedPercent: 70, percentText: "70%", resetText: "3 天后" },
+    accounts: [{ id: "a", name: "工作账号", status: "error", note: "授权已过期", lastSuccessText: "上次成功 12:00",
+      windows: [{ label: "每周", usedPercent: 20, percentText: "20%", resetText: "" }] },
+      { id: "b", name: "个人账号", status: "ok", windows: [{ label: "每周", usedPercent: 70, percentText: "70%", resetText: "" }] }] }] } };
   const app = await boot({ panel });
-  assert.match(app.node("stack").textContent, /工作账号/);
-  assert.match(app.node("stack").textContent, /个人账号/);
-  assert.match(app.node("stack").textContent, /上次成功 12:00/);
-  assert.match(app.node("stack").textContent, /额外信息/);
+  const card = () => app.node("stack").querySelector('[data-card="subscription"]');
+  // 头部元数据恒显; 多账号默认折叠 (mac 同语义): 正文只有 collapsedWindow 一行
+  assert.match(card().textContent, /额外信息/);
+  assert.match(card().textContent, /2 个账号/);
+  assert.equal(card().querySelectorAll(".account-card").length, 0);
+  assert.equal(card().querySelectorAll(".win-row").length, 1);
+  assert.doesNotMatch(card().textContent, /工作账号/);
+  // section.note 仅 error/empty 渲染 → partial 段的 note 不出现
+  assert.doesNotMatch(card().textContent, /部分账号异常/);
+  const toggle = card().querySelector(".sub-name-toggle");
+  assert.equal(toggle.getAttribute("aria-expanded"), "false");
+  await toggle.click();
+  assert.equal(card().querySelector(".sub-name-toggle").getAttribute("aria-expanded"), "true");
+  assert.equal(card().querySelectorAll(".account-card").length, 2);
+  assert.match(card().textContent, /工作账号/);
+  assert.match(card().textContent, /个人账号/);
+  // 账号级 note 仅 account.status=="error" 渲染; lastSuccessText 恒随账号展示
+  assert.match(card().textContent, /授权已过期/);
+  assert.match(card().textContent, /上次成功 12:00/);
+  // mac 卡内不存在 status→中文的状态标签行
+  assert.doesNotMatch(card().textContent, /失败|过期未续|部分/);
+});
+
+test("balance-only sections render the amount and status dual slot without a header chip", async () => {
+  const panel = { ...fixture, subscription: { updatedText: null, sections: [{ id: "deepseek", name: "DeepSeek", status: "ok",
+    windows: [], accounts: [], balance: { label: "账户余额", amountText: "¥ 38.21" } }] } };
+  const app = await boot({ panel });
+  const card = app.node("stack").querySelector('[data-card="subscription"]');
+  assert.equal(card.querySelectorAll(".bal-chip").length, 0, "纯余额型抑制头部胶囊");
+  assert.equal(card.querySelectorAll(".bal-slots .slot").length, 2);
+  assert.match(card.textContent, /可用余额/);
+  assert.match(card.textContent, /订阅状态/);
+  assert.match(card.textContent, /¥ 38\.21/);
+  assert.match(card.textContent, /正常/);
+});
+
+test("hero gradient follows the tier reported by the view model", async () => {
+  const app = await boot();
+  const hero = app.node("stack").querySelector('[data-card="usage"] .hero-num');
+  // valid fixture usageTier=sage; 修复前写死 moss (#63885E→#82A57C)
+  assert.match(hero.style.cssText, /linear-gradient\(135deg, #7D9B76 30%, #9DB597 100%\)/);
+  const panel = structuredClone(fixture);
+  panel.usage.usageTier = "forest";
+  const other = await boot({ panel });
+  const otherHero = other.node("stack").querySelector('[data-card="usage"] .hero-num');
+  assert.match(otherHero.style.cssText, /linear-gradient\(135deg, #26452A 30%, #456B42 100%\)/);
+});
+
+test("distribution lists keep the 其他 aggregate row instead of truncating to three", async () => {
+  const panel = structuredClone(fixture);
+  panel.hourly.rows[0].models = [
+    { name: "m1", share: 0.5, total: 62000, totalText: "62K" },
+    { name: "m2", share: 0.3, total: 37200, totalText: "37.2K" },
+    { name: "m3", share: 0.1, total: 12400, totalText: "12.4K" },
+    { name: "其他", share: 0.1, total: 12400, totalText: "12.4K" },
+  ];
+  const app = await boot({ panel });
+  const firstAgent = app.node("stack").querySelectorAll(".agent-row")[0];
+  // 模型 4 行 (Top3 + 其他) + fixture 项目 2 行
+  assert.equal(firstAgent.querySelectorAll(".dist-row").length, 6);
+  assert.match(firstAgent.textContent, /其他/);
+});
+
+test("settings expose Cline with mac-aligned display names", async () => {
+  const app = await boot({ html: "settings.html" });
+  await app.document.querySelector('[data-category="subscription"]').click();
+  const pane = app.node("pane-subscription");
+  assert.match(pane.textContent, /Cline/, "C028: Cline 必须出现在启用服务与顺序");
+  assert.match(pane.textContent, /Kimi/);
+  assert.match(pane.textContent, /Z\.ai/);
+  assert.doesNotMatch(pane.textContent, /Kimi For Coding|ChatGPT \/ Codex/, "显示名对齐 mac");
+  app.node("account-provider").value = "clineQuotaAccounts";
+  app.node("account-id").value = "work";
+  app.node("account-secret").value = "fixture-cline-key";
+  await app.node("account-save").click();
+  const call = app.calls.find(x => x.command === "save_credential_account");
+  assert.equal(call.args.field, "clineQuotaAccounts");
+  assert.equal(call.args.payload.api_key, "fixture-cline-key");
+});
+
+test("styles.css hides head metadata when collapsed and defines subscription components", () => {
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  // 折叠态 status 槽被 mini 摘要取代: 「最后更新」与 LIVE 必须随折叠隐藏
+  assert.match(css, /\.card\.collapsed > \.card-head \.updated/);
+  assert.match(css, /\.card\.collapsed > \.card-head \.hud-dot-wrap/);
+  for (const rule of [".sub-extra", ".sub-name-toggle", ".account-card", ".account-head", ".last-success", ".tag-chip", ".bal-slots", ".slot-value"]) {
+    assert.ok(css.includes(rule), `styles.css 缺少 ${rule}`);
+  }
 });
 
 test("saved card order, provider order and usage visibility affect dashboard", async () => {

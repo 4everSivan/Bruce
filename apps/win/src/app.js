@@ -11,6 +11,29 @@ const svgEl = (tag, attrs) => {
   return node;
 };
 
+/* ---------- 用量档位色阶 (唯一事实源: mac PanelModels.UsageTier.tierColors) ---------- */
+// 五档绿色阶 sage/moss/fern/pine/forest: 基色用于热力图与收起态迷你条, 浅色作为
+// hero 渐变末端. mac heroGradient 为 topLeading→bottomTrailing、基色 30% → 浅色 100%;
+// 档位由视图模型下发的 usageTier 决定 (今日总量 100M 步进), 前端不得写死单档.
+const TIER_ORDER = ["sage", "moss", "fern", "pine", "forest"];
+const TIER_COLORS = {
+  sage: ["#7D9B76", "#9DB597"],
+  moss: ["#63885E", "#82A57C"],
+  fern: ["#4C7249", "#6A9064"],
+  pine: ["#385B38", "#557B52"],
+  forest: ["#26452A", "#456B42"],
+};
+function heroGradientCSS(tier) {
+  const [start, end] = TIER_COLORS[tier] || TIER_COLORS.sage;
+  return `background-image:linear-gradient(135deg, ${start} 30%, ${end} 100%);`
+    + "-webkit-background-clip:text;background-clip:text;color:transparent;";
+}
+// 热力/迷你条 level 0-5 取色: 0 为空白底, 1-5 依次取五档基色 (与 mac miniHeatColor 同表).
+function heatLevelColor(level) {
+  const tier = TIER_ORDER[level - 1];
+  return tier ? TIER_COLORS[tier][0] : "rgba(255,255,255,.07)";
+}
+
 function makeCollapsible(card, summary) {
   const head = card.querySelector(".card-head");
   head.setAttribute("role", "button");
@@ -48,21 +71,21 @@ function usageCard(usage) {
     const mini = document.createElement("span");
     const num = document.createElement("b");
     num.textContent = usage.totalTokensText;
-    num.style.cssText = "font-size:17px;font-weight:700;color:#82A57C;font-variant-numeric:tabular-nums;";
+    num.style.cssText = `font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;${heroGradientCSS(usage.usageTier)}`;
     mini.append(num);
     for (const level of usage.collapsedWeekLevels) {
       const bar = document.createElement("span");
-      bar.style.cssText = "flex:1;height:10px;border-radius:2px;" + (
-        level === 0 ? "background:rgba(255,255,255,.07);"
-        : `background:${["#7D9B76","#63885E","#4C7249","#385B38","#26452A"][level-1]};`);
+      bar.style.cssText = `flex:1;height:10px;border-radius:2px;background:${heatLevelColor(level)};`;
       mini.append(bar);
     }
     return mini;
   });
 
-  // hero 行: 40pt 渐变数字 + tokens + 右侧成本
+  // hero 行: 40pt 档位渐变数字 + tokens + 右侧成本
   const hero = el("div", "hero-row");
-  hero.append(el("span", "hero-num", usage.totalTokensText));
+  const heroNum = el("span", "hero-num", usage.totalTokensText);
+  heroNum.style.cssText = heroGradientCSS(usage.usageTier);
+  hero.append(heroNum);
   hero.append(el("span", "hero-unit", "tokens"));
   if (usage.costText) hero.append(el("span", "hero-cost", usage.costText));
   card.append(hero);
@@ -295,6 +318,54 @@ function windowRow(row) {
   line.append(el("span", "wr", row.resetText));
   return line;
 }
+// 多账号 (accounts >= 2) 与纯余额型判定, 对齐 mac SubscriptionProviderSection 的两个计算属性。
+function isMultiAccount(section) { return (section.accounts || []).length >= 2; }
+function isBalanceBased(section) {
+  return !(section.windows || []).length && !isMultiAccount(section) && Boolean(section.balance);
+}
+// 收起态迷你量条取数: 该 provider 最紧张的窗口 (单账号取 windows, 多账号跨账号取
+// max usedPercent), 与 mac collapsedPeakWindow 同语义; 纯余额型 (无窗口) 为 null,
+// 收起态不出该 provider 的迷你量条。视图模型输出已被 mac golden 逐字段锁定, 该
+// 展示态推导故留在渲染层, 不改契约字段。
+function collapsedPeakWindow(section) {
+  let peak = null;
+  for (const row of [...(section.windows || []), ...(section.accounts || []).flatMap((a) => a.windows || [])]) {
+    if (peak === null || row.usedPercent > peak.usedPercent) peak = row;
+  }
+  return peak;
+}
+// 多账号展开状态: mac 用 @State 默认折叠, 前端同语义 (跨刷新保持, 不持久化)。
+const expandedSections = new Set();
+// 纯余额型双槽 (mac BalanceDualSlotView): 可用余额 + 订阅状态。
+function balanceSlots(section) {
+  const wrap = el("div", "bal-slots");
+  const amount = el("div", "slot");
+  amount.append(el("div", "slot-title", "可用余额"));
+  amount.append(el("div", "slot-value", section.balance?.amountText || "--"));
+  const status = el("div", "slot");
+  status.append(el("div", "slot-title", "订阅状态"));
+  const statusValue = el("div", "slot-value status");
+  statusValue.append(el("span", "slot-dot"), el("span", null, section.status === "ok" ? "正常" : section.status));
+  status.append(statusValue);
+  wrap.append(amount, status);
+  return wrap;
+}
+// 账号子卡 (mac ProviderAccountCard): 名称 + tag → 窗口行 → error note → 上次成功。
+function accountCard(account) {
+  const block = el("div", "account-card");
+  const head = el("div", "account-head");
+  head.append(el("span", "account-name", account.name || account.id));
+  if (account.tag) head.append(el("span", "tag-chip", account.tag));
+  block.append(head);
+  for (const row of account.windows || []) block.append(windowRow(row));
+  if (account.status === "error" && account.note) block.append(el("div", "note-line", account.note));
+  if (account.lastSuccessText) {
+    const line = el("div", "last-success", account.lastSuccessText);
+    line.setAttribute("aria-label", "这是上次成功的数据");
+    block.append(line);
+  }
+  return block;
+}
 function subscriptionCard(sub) {
   const card = el("div", "card");
   const head = el("div", "card-head");
@@ -305,7 +376,7 @@ function subscriptionCard(sub) {
   makeCollapsible(card, () => {
     const mini = document.createElement("span");
     for (const section of sub.sections) {
-      const peak = section.collapsedWindow || section.windows?.[0];
+      const peak = collapsedPeakWindow(section);
       if (!peak) continue;
       const group = document.createElement("span");
       group.style.cssText = "display:flex;align-items:center;gap:5px;flex:1;min-width:0;";
@@ -314,49 +385,77 @@ function subscriptionCard(sub) {
       meterEl.className = `meter ${meterLevel(peak.usedPercent)}`;
       meterEl.style.cssText = "flex:1;height:5px;";
       const fill = document.createElement("span");
-      fill.style.width = `${Math.round(peak.usedPercent)}%`;
+      fill.style.width = `${Math.round(clampedPercent(peak.usedPercent))}%`;
       meterEl.append(fill);
       group.append(meterEl);
       mini.append(group);
     }
     return mini;
   });
-  for (const section of sub.sections) {
-    const block = el("div", "sub-section");
-    const h = el("div", "sub-head");
-    h.append(badge(section.id, section.name));
-    h.append(el("span", "sub-name", section.name));
-    // 余额 (Credits / 货币) 以头部元数据胶囊呈现 (C011), 不再占用正文行。
-    if (section.balance) {
-      const chip = el("span", "bal-chip");
-      const dot = el("span", "dot");
-      dot.style.background = PROVIDER_COLORS[providerKey(section.id)] || "#8e8e93";
-      chip.append(dot, el("b", null, section.balance.amountText));
-      chip.title = section.balance.label;
-      h.append(chip);
-    }
-    if (section.accountCountText) h.append(el("span", "acct-count", section.accountCountText));
-    block.append(h);
-    const windows = section.windows?.length ? section.windows : [section.collapsedWindow].filter(Boolean);
-    for (const row of windows) block.append(windowRow(row));
-    for (const text of [section.note, section.staleText, section.extraText]) {
-      if (text) block.append(el("div", "note-line", text));
-    }
-    for (const account of section.accounts || []) {
-      const accountBlock = el("details", "account-detail");
-      accountBlock.open = true;
-      const title = el("summary", null, account.name || account.id);
-      if (account.tag) title.append(el("span", "plan-chip", account.tag));
-      accountBlock.append(title);
-      for (const row of account.windows || []) accountBlock.append(windowRow(row));
-      for (const text of [account.note, account.lastSuccessText, account.staleText]) {
-        if (text) accountBlock.append(el("div", "note-line", text));
+  const body = el("div", "sub-body");
+  // 段渲染独立成函数: 多账号展开/收起只重建本卡正文, 不触发整栈重渲染
+  // (避免清掉模型用量卡片的选中档位/展开态等局部状态)。
+  const renderSections = () => {
+    body.replaceChildren();
+    for (const section of sub.sections) {
+      const multi = isMultiAccount(section);
+      const balanceBased = isBalanceBased(section);
+      const block = el("div", "sub-section");
+      const h = el("div", "sub-head");
+      h.append(badge(section.id, section.name));
+      if (multi) {
+        // mac: 多账号时名称本身就是展开开关 (名称 + chevron)
+        const expanded = expandedSections.has(section.id);
+        const toggle = el("button", "sub-name-toggle");
+        toggle.type = "button";
+        toggle.append(el("span", "sub-name", section.name), el("span", "sub-chev", expanded ? "\u2303" : "\u2304"));
+        toggle.setAttribute("aria-expanded", String(expanded));
+        toggle.setAttribute("aria-label", `${section.name} 账号列表`);
+        toggle.addEventListener("click", () => {
+          if (expandedSections.has(section.id)) expandedSections.delete(section.id);
+          else expandedSections.add(section.id);
+          renderSections();
+        });
+        h.append(toggle);
+      } else {
+        h.append(el("span", "sub-name", section.name));
       }
-      if (account.status && account.status !== "ok") accountBlock.append(el("div", "note-line", statusLabel(account.status)));
-      block.append(accountBlock);
+      // 余额 (Credits / 货币) 以头部元数据胶囊呈现 (C011); 纯余额型改走双槽, 抑制胶囊。
+      if (!balanceBased && section.balance) {
+        const chip = el("span", "bal-chip");
+        const dot = el("span", "dot");
+        dot.style.background = PROVIDER_COLORS[providerKey(section.id)] || "#8e8e93";
+        chip.append(dot, el("b", null, section.balance.amountText));
+        chip.title = section.balance.label;
+        h.append(chip);
+      }
+      if (section.accountCountText) h.append(el("span", "acct-count", section.accountCountText));
+      if (section.extraText) h.append(el("span", "sub-extra", section.extraText));
+      block.append(h);
+
+      if (multi) {
+        if (expandedSections.has(section.id)) {
+          const list = el("div", "account-list-inline");
+          for (const account of section.accounts) list.append(accountCard(account));
+          block.append(list);
+        } else if (section.collapsedWindow) {
+          block.append(windowRow(section.collapsedWindow));
+        }
+      } else if (balanceBased) {
+        block.append(balanceSlots(section));
+      } else {
+        for (const row of section.windows || []) block.append(windowRow(row));
+      }
+
+      // error/empty 段保留 collector 说明, 不静默吞掉 (与 mac 门控一致)
+      if ((section.status === "error" || section.status === "empty") && section.note) {
+        block.append(el("div", "note-line", section.note));
+      }
+      body.append(block);
     }
-    card.append(block);
-  }
+  };
+  renderSections();
+  card.append(body);
   return card;
 }
 
@@ -425,14 +524,16 @@ function hourlyCard(hourly, usage) {
     }
     block.append(spark);
     for (const bars of [row.models, row.projects]) {
-      for (const [index, bar] of bars.slice(0, 3).entries()) {
+      // 全部 bars 渲染: 视图模型已按 mac 口径给出 Top3 + 「其他」聚合行 (最多 4 条),
+      // 前端不得再截断; 透明度梯度加 0.25 下限保证第 4 条可见。
+      for (const [index, bar] of bars.entries()) {
         const line = el("div", "dist-row");
         line.append(el("span", "dn", bar.name));
         const track = el("div", "track");
         const fill = el("div");
         fill.style.width = `${Math.round(bar.share * 100)}%`;
         fill.style.background = row.colorHex;
-        fill.style.opacity = String(1 - index * 0.3);
+        fill.style.opacity = String(Math.max(1 - index * 0.25, 0.25));
         track.append(fill); line.append(track);
         line.append(el("span", "dv", bar.totalText));
         block.append(line);

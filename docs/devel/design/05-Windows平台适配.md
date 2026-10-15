@@ -2,7 +2,7 @@
 
 <!-- @topic: WindowsCompat -->
 > **文档ID**: DESIGN-WINDOWS ｜ **状态**: 现行基线
-> **最后更新**: 2026-10-08 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `WindowsCompat`
+> **最后更新**: 2026-10-15 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `WindowsCompat`
 > 📌 **变更总账**: 参见 [变更总账 (WindowsCompat)](../change/index.json#WindowsCompat)
 
 ---
@@ -102,7 +102,32 @@
 
 ### 4.2 看板功能区（首版全量）
 
-对齐 mac `MenuBarViews`/`Views/` 能力矩阵，WebView 前端实现：今日总量 Hero 卡、Agent 用量卡（模型用量区块、月卡联动、三档语义配色）、逐小时折线、热力图、订阅额度卡（9 Provider，含 StepFun）、Nothing 风格控制台主题（Windows 侧以 CSS/点阵等价实现，保真边界为简化 CSS 覆写而非完整 Nothing token 体系）。菜单栏圆环指示器由托盘图标渲染等价承载（刷新中/告警态图标切换）。Provider 品牌色板（徽章与余额胶囊圆点）以 mac `ProviderLogoBadge.brandColor` 为唯一事实源，双端逐家对齐（C012）。
+对齐 mac `MenuBarViews`/`Views/` 能力矩阵，WebView 前端实现：今日总量 Hero 卡、Agent 用量卡（模型用量区块、月卡联动、三档语义配色）、逐小时折线、热力图、订阅额度卡（10 Provider，含 StepFun 与 Cline）、Nothing 风格控制台主题（Windows 侧以 CSS/点阵等价实现，保真边界为简化 CSS 覆写而非完整 Nothing token 体系）。菜单栏圆环指示器由托盘图标渲染等价承载（刷新中/告警态图标切换）。Provider 品牌色板（徽章与余额胶囊圆点）以 mac `ProviderLogoBadge.brandColor` 为唯一事实源，双端逐家对齐（C012）。
+
+**Provider 注册表三处事实源（增删 provider 必须同步，遗漏任一处即静默缺失）**：
+
+| 事实源 | 位置 | 作用 |
+|---|---|---|
+| 设置页可见清单 | `apps/win/src-tauri/src/settings.rs` `PROVIDERS` | `enabledProviders` 默认值 + `validate_settings` 白名单；不在表内的 provider 会被 `runtime_core::panel_json` 的 `retain` 过滤掉（凭证可存但看板不显示） |
+| 视图模型归一化与展示名 | `apps/win/viewmodel/src/subscription.rs` `PROVIDER_IDS` + `group_display_name` | service ID 前缀归一（如 `cline_<account>` → `cline`）与冻结展示名表 |
+| 设置页表单清单 | `apps/win/src/settings.js` `providers` | 启用开关/顺序列表与添加账号下拉，显示名须等于 mac `SubscriptionProviderID.displayName` |
+
+屏蔽规则：mac `SubscriptionPresentationPolicy.isProviderTemporarilyDisabled` 把 `jev`（官方未开放查额 API）整组丢弃，Windows 视图模型同样实现该分支，两处均**不产出诊断**。
+
+**渲染层对标清单（C027）**：视图模型契约层由 `tests/fixtures/viewmodel-parity/*.panel.json`（mac `PanelParityHarness` 产出的 golden）逐字段对拍锁定；**契约之后的绘制为双端两套独立实现，必须按下列清单逐条对齐 mac**，且每条都应有 `apps/win/tests/frontend.test.mjs` 的真实 fixture 断言兜底（合成 section 会绕过真实结构，不可作为唯一防线）：
+
+| 规则 | mac 语义 | Windows 渲染层 |
+|---|---|---|
+| 订阅段分支 | `accounts >= 2` 走多账号（默认折叠，折叠态渲染 `collapsedWindow` 单行，展开渲染账号子卡）；其余单账号段渲染 `windows`；`windows` 空且非多账号且 `balance` 非空为纯余额型，渲染「可用余额 / 订阅状态」双槽 | 同语义（`isMultiAccount` / `isBalanceBased`）；单账号段**不得**读取 `section.accounts`（Rust 对单账号同样下发单条 accounts，误读会重复渲染额度行） |
+| `section.note` | 仅 `status ∈ {error, empty}` 渲染 | 同 |
+| `account.note` | 仅 `account.status == "error"` 渲染 | 同 |
+| `extraText` | 随头部行渲染（9pt secondary），不占正文、不用告警色 | 同 |
+| 账号状态 | 卡内无 status→中文 标签行，仅经 note 与 `lastSuccessText` 呈现 | 同 |
+| 余额胶囊 | 纯余额型抑制头部胶囊（改走双槽） | 同 |
+| 收起态迷你摘要 | `collapsedPeakWindow` = `windows ∪ accounts[].windows` 中 `usedPercent` 最大者；纯余额型（无窗口）不出迷你条 | 渲染层按同语义推导（不改契约字段，避免 golden 漂移） |
+| 折叠态可见性 | 折叠时 status 槽（`LIVE` / 最后更新时间）被 mini 摘要取代 | 同（折叠态隐藏 `.updated` 与标题行 LIVE 指示器） |
+| Hero 数字渐变 | 按 `usageTier` 取五档色对（sage/moss/fern/pine/forest，`heroGradient` 基色 30% → 浅色 100%） | 同（不得写死单档；档位由契约字段 `usageTier` 下发） |
+| 模型/项目分布 | 渲染视图模型给出的全部行（Top3 + 「其他」聚合） | 同（前端不得再截断） |
 
 ### 4.3 凭证与安全红线
 

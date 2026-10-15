@@ -216,6 +216,10 @@ button, input, select, textarea {
 .card-head .chev { opacity: 0; }
 .card-head.collapsed .chev { transform: rotate(0deg); }
 .card.collapsed > :not(.card-head):not(.collapsed-summary) { display: none; }
+/* 折叠态: status 槽被 mini 摘要取代 (mac CollapsibleCardHeader), 故隐藏「最后更新」
+   与 LIVE 指示器, 仅保留标题与 chevron */
+.card.collapsed > .card-head .updated,
+.card.collapsed > .card-head .hud-dot-wrap { display: none; }
 .collapsed-summary { display: none; margin-top: 8px; }
 .collapsed-summary > span { display: flex; align-items: center; gap: 5px; }
 .card.collapsed > .collapsed-summary { display: block; }
@@ -306,8 +310,9 @@ button, input, select, textarea {
 .heat-legend .sw { width: 9px; height: 9px; border-radius: 2px; }
 
 /* 订阅用量卡 */
-.sub-section { padding-top: 10px; }
-.sub-section + .sub-section { border-top: 1px solid var(--divider); margin-top: 8px; padding-top: 8px; }
+.sub-section { padding-top: 8px; padding-bottom: 8px; }
+.sub-section:first-child { padding-top: 10px; }
+.sub-section + .sub-section { border-top: 1px solid var(--divider); margin-top: 0; }
 .sub-head { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
 .pbadge {
   width: 15px; height: 15px; border-radius: 4.5px; flex: none;
@@ -341,9 +346,43 @@ button, input, select, textarea {
 .bal-chip .dot { width: 4px; height: 4px; border-radius: 50%; flex: none; }
 .bal-chip b { font-weight: 600; color: var(--ink); opacity: .88; font-variant-numeric: tabular-nums; }
 .note-line { font-size: 10px; color: #ff9f0a; padding-top: 2px; }
-.account-detail { padding: 7px 0 2px; }
-.account-detail summary { cursor: pointer; font-size: 11px; white-space: nowrap; }
-.account-detail .plan-chip { margin-left: 6px; }
+/* 头部附加文案 (mac extraText: 9pt secondary, 非告警色) */
+.sub-extra { font-size: 9px; color: var(--secondary); white-space: nowrap; flex: none; }
+/* 多账号名称展开开关 (mac: 名称 + chevron 的按钮) */
+.sub-name-toggle {
+  display: inline-flex; align-items: center; gap: 4px; min-width: 0;
+  padding: 0; border: none; background: none; color: inherit; cursor: pointer;
+}
+.sub-name-toggle .sub-chev { font-size: 8px; color: var(--secondary); flex: none; }
+/* 多账号账号子卡 (mac ProviderAccountCard) */
+.account-list-inline { display: flex; flex-direction: column; gap: 4px; padding: 4px 0 2px; }
+.account-card {
+  padding: 6px 9px; border-radius: 10px;
+  background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.18);
+}
+.account-head { display: flex; align-items: center; gap: 5px; padding-bottom: 2px; }
+.account-name { font-size: 10.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.account-card .win-row { padding: 2px 0; }
+.last-success { font-size: 9px; color: var(--secondary); padding-top: 2px; }
+/* 账号 tag 胶囊 (mac AccountTagChip: 蓝色系, 与套餐 chip 不同源) */
+.tag-chip {
+  flex: none; font-size: 8.5px; font-weight: 500; color: #0a84ff;
+  background: rgba(10,132,255,.22); border: .5px solid rgba(10,132,255,.3);
+  border-radius: 3.5px; padding: 1px 5px; white-space: nowrap;
+}
+/* 纯余额型双槽 (mac BalanceDualSlotView): 可用余额 / 订阅状态 */
+.bal-slots { display: flex; gap: 8px; padding: 4px 0 2px; }
+.bal-slots .slot {
+  flex: 1; min-width: 0; padding: 7px 9px; border-radius: 8px;
+  background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.10);
+}
+.slot-title { font-size: 10px; color: var(--secondary); }
+.slot-value {
+  margin-top: 3px; font-size: 14px; font-weight: 700;
+  font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.slot-value.status { display: flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 500; }
+.slot-dot { width: 5px; height: 5px; border-radius: 50%; background: #4A9E5C; flex: none; }
 
 /* Agent 用量卡 */
 .daily-chart { display: flex; align-items: flex-end; gap: 4px; height: 64px; margin-top: 8px; }

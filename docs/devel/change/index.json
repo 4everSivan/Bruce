@@ -29,7 +29,9 @@
         "C013",
         "C014",
         "C015",
-        "C016"
+        "C016",
+        "C027",
+        "C028"
       ]
     },
     "SubscriptionQuota": {
@@ -289,6 +291,24 @@
       "topic": "SubscriptionQuota",
       "version": "0.12.0+",
       "file": "docs/devel/change/C026.json"
+    },
+    "C027": {
+      "title": "收敛双端渲染层漂移：订阅卡单账号段重复渲染与 note/状态门控、多账号折叠态、余额双槽、收起态峰值窗口、hero 档位渐变、模型分布「其他」行",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C027.json"
+    },
+    "C028": {
+      "title": "补齐 Windows 侧 Cline 支持并镜像 mac 的 Jev 屏蔽：settings PROVIDERS、视图模型 provider 归一化与展示名、runtime provider_id 归一化",
+      "type": "Fix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C028.json"
     }
   }
 }
