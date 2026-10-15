@@ -11,7 +11,7 @@
     "description": "预检该性能工作是否已在当前主干实现 (若已存在则跳过移植)",
     "command": "ls core/collector/crates/collector-local/src/jsonl_cache.rs core/collector/crates/collector-local/src/sqlite_cache.rs 2>&1; git log --oneline main..perf/runtime-cpu-optimization | wc -l",
     "expected": "两个缓存文件不存在 (No such file) 且分支未合入提交数 = 10",
-    "is_completed": false,
+    "is_completed": true,
     "evidence": "2026-10-15 实测: main 无 jsonl_cache.rs/sqlite_cache.rs; perf/runtime-cpu-optimization 相对 main 有 10 个未合入提交 → 需移植"
   },
   "callback": {
@@ -73,7 +73,7 @@
   },
   "verification": {
     "result": null,
-    "run_id": "",
+    "run_id": "verify-local-20261015-c021",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -81,21 +81,21 @@
         "item": "移植完整性与路径归一",
         "true_if": "分支全部改动落在当前分层路径 (core/collector, apps/macos, apps/widget); 无 rust/Bruce-collector 或 macos/BruceApp 旧路径残留; 无冲突标记残留",
         "false_if": "存在旧路径文件、遗漏改动或 <<<<<<< 标记残留",
-        "evidence": "",
+        "evidence": "全仓无旧路径残留 (主干已无 macos/ 与 rust/ 目录, 工作区核对为空); 分支改动全部落在 core/collector、apps/widget、scripts; 冲突标记全仓扫描 0 命中 (排除 _adflow_backup); 分支的 Swift 字形/渲染策略文件与 PerformancePolicyHarness 按「已被主干新架构取代」判定移除, apps/macos/Package.swift 同步摘除其 target; 旧路径 DU 文件 (macos/BruceApp/.../MenuBarStatusItemController.swift) 已按主干新路径保留删除",
         "result": null
       },
       {
         "item": "扫描语义与缓存正确性",
         "true_if": "源级缓存的启用/失效路径有测试覆盖且与既有扫描语义一致 (同一 artifact fixture 下 token/费用聚合结果不变)",
         "false_if": "缓存导致漏采/重复计数或与既有 fixture 结果不一致",
-        "evidence": "",
+        "evidence": "collector 全量测试全绿: collector-local 35 项 (含 cached_additive_jsonl_sources_match_cold_and_warm_results 冷/暖结果一致性、symlink 循环防环、取消语义), collector-application 双向保留用例全绿; 主干防环语义完整保留 —— walk_jsonl_tree 同时保留 visited_dirs canonical 去重 + MAX_DIRECTORY_SCAN_DEPTH(16) 与分支 cancellation 检查 (process_cached_file 走 ctx.cancellation); 取消语义 LOCAL_SOURCE_CANCELLED 与发布前终态栅栏用例通过; 移植期修正分支自带用例 grok_later_root_io_error_preserves_earlier_root_contribution 的时间炸弹 (固定窗口 2026-09-09 与真实文件 mtime 冲突, 分支自身 worktree 实测同样失败) → 改为省略 now 由真实当前时间驱动",
         "result": null
       },
       {
         "item": "全量自动化验证",
         "true_if": "zsh scripts/verify-local.sh 退出码 0 (Rust fmt/clippy/test + fixture 扫描 + Swift build + 全部 Harness + Windows 前端与双端对拍)",
         "false_if": "任一环节失败或告警",
-        "evidence": "",
+        "evidence": "zsh scripts/verify-local.sh 退出码 0, 末行 'Bruce 本地验证全部通过' (日志 local/c021-verify.log); 覆盖 Bruce Rust (fmt 无差异 / clippy 零告警 / 全量 test) + Collector fixture 扫描 files=18 secretFindings=[] + Swift 全部 Harness (OnboardingCore 165 / PanelViewModel 53 / Refresh 82 / LocalIntegration 2 / 面板三态对拍) + 新增 Widget 像素动画性能 Harness 5 项 (已接入 verify-local.sh) + Windows 前端与双端对拍",
         "result": null
       }
     ]
