@@ -1,0 +1,103 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C021",
+  "title": "移植 perf/runtime-cpu-optimization 性能工作流至当前分层：源级缓存、取消栅栏、菜单栏字形拆分与 widget 动画门控",
+  "type": "Refactor",
+  "status": "in_progress",
+  "branch": "fix/C021-port-runtime-cpu-optimization",
+  "is_hotfix": false,
+  "branch_note": "单人维护直开分支标签; 闭环后快进合入 main",
+  "precheck": {
+    "description": "预检该性能工作是否已在当前主干实现 (若已存在则跳过移植)",
+    "command": "ls core/collector/crates/collector-local/src/jsonl_cache.rs core/collector/crates/collector-local/src/sqlite_cache.rs 2>&1; git log --oneline main..perf/runtime-cpu-optimization | wc -l",
+    "expected": "两个缓存文件不存在 (No such file) 且分支未合入提交数 = 10",
+    "is_completed": false,
+    "evidence": "2026-10-15 实测: main 无 jsonl_cache.rs/sqlite_cache.rs; perf/runtime-cpu-optimization 相对 main 有 10 个未合入提交 → 需移植"
+  },
+  "callback": {
+    "before": [
+      "git switch -c fix/C021-port-runtime-cpu-optimization",
+      "git merge --no-commit --no-ff perf/runtime-cpu-optimization   # 以冲突清单驱动移植"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "zsh scripts/verify-local.sh   # 全量门禁: Rust fmt/clippy/test + fixture 扫描 + Swift build + 全部 Harness + Windows 前端/对拍"
+    ]
+  },
+  "target": {
+    "module": "core/collector (collector-local/application/bridge) + apps/macos (MenuBar) + apps/widget",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "`perf/runtime-cpu-optimization` 分支（2026-09-09, 10 个提交, 约 5500 行）承载一条未被主干吸收的性能工作流：collector 源级缓存 (新增 jsonl_cache.rs/sqlite_cache.rs, 避免重复解析未变更的 JSONL/SQLite 源)、源级运行时指标与 matrix fixture、取消时停止本地扫描与发布栅栏、Codex 暖缓存状态保留、菜单栏刷新字形渲染拆分 (MenuBarRenderPolicy/MenuBarRefreshGlyphController)、widget 像素动画可见性门控与性能 Harness。该工作早于 ad-flow 治理 (提交无卡号) 且基于目录重构前基线，直接合并会产生 9 处冲突 (3 处内容冲突含 sources.rs 双方大改、2 处文件位置冲突、1 处 modify/delete)，因此按本卡逐文件移植而非裸合——扫描器行为是产品核心，冲突必须逐段人工判断。",
+  "changes": [
+    {
+      "scope": "core/collector/crates/collector-local (源级缓存)",
+      "before": "仅按文件指纹做会话级增量缓存; 每次采集仍需解析全部 JSONL/SQLite 源",
+      "after": "新增 jsonl_cache.rs / sqlite_cache.rs 源级缓存 (未变更源直接复用上次解析结果), 并在 lib.rs 接线与 Cargo.toml 补依赖",
+      "impact": "重复采集的 CPU/IO 显著下降; 扫描语义须保持与既有实现一致"
+    },
+    {
+      "scope": "core/collector (application/bridge/metrics/fixture)",
+      "before": "无源级运行时指标; 取消时本地扫描不中断; 暖缓存命中会丢失 Codex 状态",
+      "after": "补源级运行时指标与 matrix fixture; 取消时停止本地扫描并加发布栅栏; 暖缓存命中保留 Codex 状态",
+      "impact": "采集可取消性与状态正确性提升; 指标可观测性提升"
+    },
+    {
+      "scope": "apps/macos (MenuBar 渲染) —— 评估后不移植",
+      "before": "分支计划拆分 MenuBarRenderPolicy / MenuBarRefreshGlyphController 以分离刷新字形与摘要图像渲染",
+      "after": "不移植: 主干已独立演进为 MenuBarStatusItemContent(BruceAppCore 纯内容构建器) + lastRenderedContent 内容未变短路, 分支该部分已被取代; 保留分支实现会回退主干新架构",
+      "impact": "无代码变更; 分支的 PerformancePolicyHarness 与字形/策略文件一并弃用 (其渲染边界测试职责已由主干 NativeLifecycleHarness 覆盖)"
+    },
+    {
+      "scope": "apps/widget (像素动画)",
+      "before": "像素动画不随可见性门控, 隐藏时仍消耗 CPU",
+      "after": "按可见性门控像素动画, 新增 scripts/widget-performance-harness.mjs 性能 Harness",
+      "impact": "隐藏态 CPU 占用下降; 新增 scripts/widget-performance-harness.mjs (5 项) 已接入 verify-local.sh 门禁, 并修正其 fixture 路径为 apps/widget/index.html"
+    },
+    {
+      "scope": "core/collector/crates/collector-local (移植期缺陷修复)",
+      "before": "分支自带用例 grok_later_root_io_error_preserves_earlier_root_contribution 使用固定窗口 now=2026-09-09, 而记录时间取文件真实 mtime → 该用例在 2026-09-09 之后恒失败 (时间炸弹, 分支自身 worktree 实测同样红)",
+      "after": "改为省略 now 让 CollectionWindow 取真实当前时间 (与文件 mtime 一致), 用例时间无关; 另修 3 处 clippy 多余 clone 与 1 处参数超限豁免",
+      "impact": "移植后采集端 35/35 全绿, clippy 零告警"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": true,
+    "rule_diff": {
+      "before": "增量缓存仅覆盖会话文件级指纹 (64KB 分段哈希 + mtime/size)",
+      "after": "增量缓存扩展到源级 (JSONL/SQLite 源未变更则复用解析结果), 并补源级运行时指标与取消栅栏语义"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "移植完整性与路径归一",
+        "true_if": "分支全部改动落在当前分层路径 (core/collector, apps/macos, apps/widget); 无 rust/Bruce-collector 或 macos/BruceApp 旧路径残留; 无冲突标记残留",
+        "false_if": "存在旧路径文件、遗漏改动或 <<<<<<< 标记残留",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "扫描语义与缓存正确性",
+        "true_if": "源级缓存的启用/失效路径有测试覆盖且与既有扫描语义一致 (同一 artifact fixture 下 token/费用聚合结果不变)",
+        "false_if": "缓存导致漏采/重复计数或与既有 fixture 结果不一致",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "全量自动化验证",
+        "true_if": "zsh scripts/verify-local.sh 退出码 0 (Rust fmt/clippy/test + fixture 扫描 + Swift build + 全部 Harness + Windows 前端与双端对拍)",
+        "false_if": "任一环节失败或告警",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  }
+}

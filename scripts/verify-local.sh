@@ -71,6 +71,9 @@ swift run --package-path "$BRUCE_SWIFT_PACKAGE" \
   "$BRUCE_REPO_ROOT" \
   "$BRUCE_RUST_BIN"
 
+echo "运行 Widget 像素动画性能 Harness"
+node "$BRUCE_REPO_ROOT/scripts/widget-performance-harness.mjs"
+
 echo "运行订阅凭证注入 Harness"
 swift run --package-path "$BRUCE_SWIFT_PACKAGE" SubscriptionCredentialsHarness
 
