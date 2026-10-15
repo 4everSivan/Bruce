@@ -21,23 +21,34 @@
 ### 1. 功能设计入口 (新功能 / 大需求 / 阶段里程碑)
 1. **方向登记**：在 `docs/devel/todo/` 登记方向级灵感与事项；
 2. **设计基线定稿**：在 `docs/devel/design/` 撰写或修订对应微设计文档（`01~99-[功能名].md`），状态置为 `现行基线`，并标明概念主题锚标 `<!-- @topic: TopicName -->`；完成设计后从 `todo/` 移除对应项；
-3. **任务拆解**：在 `docs/devel/task/` 建立 `Txx.json` 任务卡（声明 DAG 依赖 `depends_on` 与 DoD 完成定义），并在 `task/index.json` 总账登记；
-4. **顺序开发**：按依赖拓扑顺序编码与实现；
+3. **任务拆解**：从 `docs/devel/task/template.json` 复制并在 `docs/devel/task/` 建立 `Txx.json` 任务卡（卡号按 `task/index.json` 最大编号递增，声明执行分支 `branch`、DAG 依赖 `depends_on`、`precheck` 预检与 `callback` 钩子），并在 `task/index.json` 总账登记；
+4. **预检与回调执行流**：
+   * **预检 (Precheck)**：开工前执行 `precheck.command`，检测该任务是否已在代码库中实现（若已完成则记录 `is_completed: true` 并跳过重复开发）；
+   * **前置回调 (`callback.before`)**：按序执行卡内声明的前置脚本或环境准备命令；
+   * **按拓扑编码**：按依赖拓扑顺序完成核心能力交付；
+   * **后置回调 (`callback.after`)**：按序执行代码格式化、Lint 扫描或构建检查等收尾脚本；
 5. **测试与验收**：跑通测试，验收通过后在 `task/index.json` 中闭环，阶段发版时执行归档。
 
 ### 2. Bug 修复入口 (缺陷 / 功能回调 / 参数微调 / 重构)
-1. **登记并移出 (零沉淀)**：在 `docs/devel/todo/now.md` 登记；一旦在 `docs/devel/change/` 新建 `Cxxx.json` 变更卡并在 `change/index.json` 登记后，**必须立即从 todo 表格中物理删除该项**（落地即删除）；
-2. **条件契约与对比表**：卡内定义前后逻辑对比，以及 `true_if`（通过依据）与 `false_if`（失败依据）；
-3. **改代码 + 补测试**：修复问题并补充对应的回归测试；
+1. **登记并移出 (零沉淀)**：在 `docs/devel/todo/now.md` 登记；一旦在 `docs/devel/change/` 从 `template.json` 复制新建 `Cxxx.json` 变更卡（卡号按 `change/index.json` 最大编号递增）并在 `change/index.json` 登记后，**必须立即从 todo 表格中物理删除该项**（落地即删除）；
+2. **条件契约与预检钩子**：卡内定义前后逻辑对比、`true_if / false_if` 判据，声明 `branch`、`precheck`（缺陷复现嗅探）与 `callback`（`before / after` 脚本）；
+3. **预检与执行流**：
+   * **预检 (Precheck)**：执行 `precheck.command`，确认缺陷现象或验证是否已被前序提交意外修复；
+   * **前置回调 (`callback.before`)**：执行检出分支或现场环境准备脚本；
+   * **改代码 + 补测试**：修复问题并补充对应的回归测试；
+   * **后置回调 (`callback.after`)**：执行质量门禁与格式化脚本；
 4. **核验与代签**：AI 运行测试采集真实证据并在会话中向人类汇报；人工口头确认后，AI 代为在卡内签署收口（记录人类原话），卡状态转为 `verified`；
 5. **基线回写与闭环**：合入主干，若涉及设计规则变动则同步反哺回写对应微设计文档正文，更新 `CHANGELOG.md`，并在 `change/index.json` 中标记 `closed`。
 
 ---
 
-## 三、本地部署与环境隔离 (Local Deployment & Environment)
+## 三、本地构建打包、部署与环境隔离 (Local Build, Deployment & Environment)
 
 1. **严格依据部署文档**：本地环境准备与服务部署，**必须严格遵循 `docs/guide/` 下的部署文档**（如 `docs/guide/01-本地部署指南.md`）进行操作，严禁随意臆测启动参数。
-2. **产物全量收拢至 `local/`**：部署与测试运行产生的所有临时文件、本地数据库、缓存、日志等，**一律写入项目根目录的 `local/` 目录**（已加入 `.gitignore`），严禁向源码树扩散污染。
+2. **产物全量收拢至 `local/` (Build & Runtime Output Isolation)**：
+   * **构建打包产物**：所有编译、构建、打包、分发产物（前端 bundle、可执行程序、wheel/sdist、jar/war、容器导出镜像、静态资源构建包及编译中间件 `build/` 等），**一律强制输出至项目根目录的 `local/` 目录**（如 `local/dist/`、`local/build/`、`local/bin/`）；严禁在源码树散落未受 `.gitignore` 保护的打包产物，构建工具默认输出到根目录时必须在命令传参或脚本中重定向；
+   * **运行时与测试数据**：部署与测试运行产生的所有临时文件、本地数据库（SQLite 等）、缓存、日志，**一律写入 `local/`**（如 `local/data/`、`local/logs/`），严禁向源码树扩散污染；
+   * **本项目既有约定（保留）**：`dist/` 为 Release/Preview 打包产物目录且已纳入 `.gitignore`（`scripts/build-test-app.sh` / `build-release-app.sh` 输出目标）；后续新增构建产物优先收拢至 `local/`，沿用 `dist/` 时必须确保已被 `.gitignore` 覆盖。
 3. **部署必须产出实况报告**：部署执行完毕后，**必须在 `local/` 目录下产出一份部署实况报告（`local/deploy_report.md`）**，明确记录真实分配的端口、实际数据库路径、进程管理与重启命令、健康检查端点及日志位置。
 4. **测试与重新部署的事实依据**：**后续所有的自动化测试、联调验证、日常重启与重新部署，必须参考 `local/deploy_report.md` 实际运行数据执行，严禁抛开报告重新翻阅部署指南**（防止端口冲突、配置漂移或覆盖正在运行的实例）。
 5. **重新部署与报告刷新**：若环境配置、启动参数发生变动，或执行了重新部署，必须同步更新 `local/deploy_report.md`；若部署架构基线变动，同步修订 `docs/guide/` 对应文档。
@@ -61,7 +72,7 @@
    * 严禁在未经建卡或分支未对齐的情况下向主干随意提交混合代码。
 2. **语义化提交格式**：采用 Conventional Commits 规范，格式为 `<type>(<scope>): <subject>`：
    * `feat`: 新增业务功能
-   * `fix`: 修复缺陷
+   * `fix`: 修复缺陷（如 `fix(settings): 修复添加未配置订阅无法移除 (C019)`）
    * `docs`: 文档、设计方案或注释变动
    * `test`: 新增或修订测试用例
    * `refactor`: 代码重构（不影响业务功能的结构调整）
@@ -71,12 +82,16 @@
 
 ---
 
-## 六、发布与归档检查 (Release & Documentation Hygiene)
+## 六、发布、文档与静态资源规范 (Release & Documentation Assets Hygiene)
 
 1. **统一发版版本号**：全局严格遵循单一 SemVer 版本号（`vX.Y.Z`），Markdown 文档仅标注最后更新日期，不单独搞孤立的文档小版本号。
 2. **CHANGELOG 记账**：发版前必须在 `CHANGELOG.md` 汇总本版本的所有新增特性、修复与破坏性变动。
 3. **全景文档核对**：检查 `docs/README.md` 与各目录 README 是否有陈旧失真的描述，保持文档与现实一致。
-4. **发版归档 SOP**：发版封箱时，将本版本完成的卡片统一移入 `docs/archive/<版本号>/`，刷新 `index.json` 中的物理路径映射，并打出对应 Git Tag（如 `git tag -a v0.1.0 -m "Release v0.1.0"`）。
+4. **静态与媒体资源统一收拢至 `docs/assets/`**：
+   - 所有文档引用的架构图、流程图、原型图，以及 App 界面截图、视觉素材等，**一律统一存放在 `docs/assets/` 目录下**；
+   - 文件命名遵循语义化连字符命名（如 `arch-overview.svg`、`ui-panel.png`），严禁在项目根目录、源码目录或各级文档子目录中随意散落图片文件；
+   - 图片入库前必须合理压缩，优先采用矢量图（`.svg`），单张原则上不超过 2MB。
+5. **发版归档 SOP**：发版封箱时，将本版本完成的卡片统一移入 `docs/archive/<版本号>/`，刷新 `index.json` 中的物理路径映射，并打出对应 Git Tag（如 `git tag -a v0.1.0 -m "Release v0.1.0"`）。
 
 ---
 

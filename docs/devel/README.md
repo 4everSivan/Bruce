@@ -36,15 +36,15 @@
 
 ### 3.1 头部元数据规范
 所有内场 Markdown 文档必须在一级标题正下方标注引用块元数据：
-- **`created`**（必填）：初次创建日期，格式 `2026-09-23`；
-- **`last-change`**（必填）：最近实质变更日期，格式 `2026-09-23`；
+- **`created`**（必填）：初次创建日期，格式 `YYYY-MM-DD`；
+- **`last-change`**（必填）：最近实质变更日期，格式 `YYYY-MM-DD`；
 - **`status`**（必填）：纯净状态枚举（如 `active`、`baseline`、`draft`）；
 - **`version`**（卡片必填/设计可选）：变更卡（`Cxxx.json`）与任务卡（`Txx.json`）必须包含 `version` 声明归属发布批次；设计文档不设独立小版本号。
 
 ```markdown
 # 模块名称或设计方案
 
-> **created**: 2026-09-23 ｜ **last-change**: 2026-09-23 ｜ **status**: active
+> **created**: YYYY-MM-DD ｜ **last-change**: YYYY-MM-DD ｜ **status**: active
 ```
 
 ### 3.2 研发红线纪律

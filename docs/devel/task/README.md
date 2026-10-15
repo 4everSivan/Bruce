@@ -20,13 +20,15 @@
         ↓
 [从 template.json 复制新建 Txx.json]
         ↓
-[填写 capability 交付目标、depends_on 依赖与 acceptance 判定依据]
+[填写 branch、capability 交付目标、depends_on 依赖、precheck 预检与 callback 钩子]
         ↓
 [在 index.json 注册该卡]
         ↓
 [根据 DAG 依赖拓扑，依赖全满足的任务就绪开工 (status: in_progress)]
         ↓
-[纯函数/服务实现 + 单元测试覆盖]
+[执行 precheck 嗅探已完成性 -> 执行 callback.before 前置准备]
+        ↓
+[纯函数/服务实现 + 单测覆盖 -> 执行 callback.after 收尾校验]
         ↓
 [DoD 验收全绿 (result: true) -> 状态转为 completed]
         ↓

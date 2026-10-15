@@ -22,9 +22,11 @@
         ↓
 [从 template.json 复制新建 Cxxx.json]  ★ 立即从 todo/now.md 物理删除对应行 (零沉淀)
         ↓
-[填写前后规则对照 changes 与二值化判据 true_if / false_if]
+[填写 branch 分支标签、precheck 预检命令与 callback 前后回调钩子]
         ↓
-[修改代码 + 补充回归测试用例]
+[执行 precheck 嗅探已修复性 -> 执行 callback.before 前置环境准备]
+        ↓
+[修改代码 + 补充针对性回归测试 -> 执行 callback.after 收尾质量门禁]
         ↓
 [运行测试采集 evidence 与脱敏 run_id]
         ↓
