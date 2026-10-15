@@ -7,7 +7,6 @@
   "branch": "main",
   "is_hotfix": false,
   "branch_note": "单人维护: 直接在 main 修复并推送, CI 多轮重跑作为 flake 验证闸门",
-
   "precheck": {
     "description": "确认缺陷复现条件: CI 的 macOS 作业在 verify-local 阶段偶发失败 (注入的失败配额被残留异步保存抢先消耗)",
     "command": "gh run view 38591478665 --log-failed | grep -E 'storageBlocked|Fatal error'; for i in $(seq 1 20); do swift run --package-path apps/macos BruceOnboardingCoreHarness; done",
@@ -15,7 +14,6 @@
     "is_completed": true,
     "evidence": "2026-10-14 CI run 38591478665 macOS 作业失败: `Swift/ErrorType.swift:254: Fatal error: ... acc-1 保存失败必须 storageBlocked`; 本地连跑 20 轮 OnboardingCore Harness 失败 0 轮 → 确认属 CI 环境特有的调度时序 flake (对应 todo/now.md BG-002)"
   },
-
   "callback": {
     "before": [
       "# 无分支检出: 已在 main 定位并修复 (单人维护约定)"
@@ -26,15 +24,12 @@
       "git push origin main   # 并重跑 CI 的 macOS 作业多轮验证 flake"
     ]
   },
-
   "target": {
     "module": "apps/macos/Tests/BruceOnboardingCoreHarness (CodexTokenManagerTests)",
     "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
     "design_topic": "SubscriptionQuota"
   },
-
   "why": "CI 偶发红: 2026-10-14 run 38591478665 的 macOS 作业在 `verify-local.sh` 阶段抛 `acc-1 保存失败必须 storageBlocked` (Codex 令牌管理器 Harness), 而 10-15 的数轮与本地连跑 20 轮均未复现 → 时序 flake (todo/now.md 登记的 BG-002)。根因: `FaultyStore.failSaves` 以「计数配额」注入保存失败 (`times: 1` 表示只让第一次保存失败), 而「失败即阻塞」类断言依赖「本次保存必然失败」; 一旦此前存在残留异步保存 (如 `validAccessToken` 预热留下的写回任务) 抢先消耗配额, 目标保存就会意外成功, `storageBlocked` 保持 false, 断言随时序漂移。这类 flake 会随机阻断 CI, 且因无复现路径而难以排查。",
-
   "changes": [
     {
       "scope": "apps/macos/Tests/BruceOnboardingCoreHarness (FaultyStore)",
@@ -55,7 +50,6 @@
       "impact": "不改变既有重试行为覆盖度"
     }
   ],
-
   "design": {
     "doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
     "topic": "SubscriptionQuota",
@@ -65,10 +59,9 @@
       "after": "无"
     }
   },
-
   "verification": {
     "result": null,
-    "run_id": "",
+    "run_id": "ci-38686791208(+rerun)",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -76,21 +69,21 @@
         "item": "本地确定性验证",
         "true_if": "连续 30 轮 BruceOnboardingCoreHarness 全部通过 (165 项), 无一轮出现 storageBlocked 类断言失败",
         "false_if": "任一轮失败或出现时序类断言异常",
-        "evidence": "",
+        "evidence": "连续 30 轮 `swift run --package-path apps/macos BruceOnboardingCoreHarness` 全部通过 (BruceOnboardingCore 165 项 / CodexTokenManager 33 项), 零轮出现 storageBlocked 类断言失败; 对照修复前本地 20 轮亦无复现 → 本地可证不回归, flake 归因与根除置信度依赖 CI 多轮 (见下一项)",
         "result": null
       },
       {
         "item": "CI 多轮复绿 (flake 验证)",
         "true_if": "推送后 CI 至少两轮 macOS 作业全绿 (含 verify-local 阶段), 且无 flake 复发",
         "false_if": "任一轮 macOS 作业失败",
-        "evidence": "",
+        "evidence": "推送 (commit a11628e) 触发 run 38686791208: 三作业全绿 (构建测试版 App / Rust 验证 (Windows) / 本地验证套件 (macOS 26)); 随后 `gh run rerun 38686791208` 整轮重跑再次 completed:success (第二个数据点)。说明: GitHub 拒绝单作业重跑 ('job cannot be rerun'), 故采用整轮重跑; flake 属概率事件, 两轮 CI 绿 + 机制上消除时序依赖 (确定性注入开关 + 自证断言) 构成当前可得证据",
         "result": null
       },
       {
         "item": "反向影响排查",
         "true_if": "依赖计数配额语义的用例 (重试后恢复类) 保持原样且全绿; 全量 verify-local.sh 退出码 0; Harness 计数维持 165 (未增删用例)",
         "false_if": "重试类用例语义被改变、全量门禁红或计数变化",
-        "evidence": "",
+        "evidence": "依赖计数配额语义的三处用例保持原样且全绿 (invalidGrantSaveFailureBlocksAndRetries times=2 / markReauthSaveFailureRetriesAfterRecovery times=1 / 401 刷新写回 times=1); zsh scripts/verify-local.sh 退出码 0 (日志 local/c023-verify.log, 含全部 Harness 与 Windows 前端/对拍); Harness 计数维持 165 与 CodexTokenManager 33 (未增删用例); todo/now.md 的 BG-002 行已按零沉淀纪律删除",
         "result": null
       }
     ]
