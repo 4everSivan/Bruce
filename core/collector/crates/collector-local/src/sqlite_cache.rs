@@ -17,7 +17,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const SQLITE_CACHE_SCHEMA_VERSION: u32 = 1;
+const SQLITE_CACHE_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct SqliteSignature {
@@ -27,6 +27,13 @@ pub(crate) struct SqliteSignature {
     pub(crate) modified_ns: u64,
     pub(crate) wal_size: u64,
     pub(crate) wal_modified_ns: u64,
+    /// SQLite 主库文件头的 change counter (偏移 24, 4 字节大端).
+    ///
+    /// 每次写事务递增; 被整体替换的库文件通常使其回退. 这是**不依赖文件
+    /// 时间戳粒度**的内容变更信号 —— Windows 上文件时间戳粒度约 15ms,
+    /// 同一刻度内的写入可能让 size/mtime 签名"看起来没变", 仅凭时间戳会把
+    /// 替换误判为追加并返回陈旧用量 (CI: 2026-10-15 Windows 作业红).
+    pub(crate) change_counter: u32,
 }
 
 impl SqliteSignature {
@@ -42,6 +49,7 @@ impl SqliteSignature {
             modified_ns: modified_ns(&metadata),
             wal_size: wal.as_ref().map_or(0, fs::Metadata::len),
             wal_modified_ns: wal.as_ref().map_or(0, modified_ns),
+            change_counter: read_change_counter(path),
         })
     }
 }
@@ -52,7 +60,16 @@ fn device_and_inode(metadata: &fs::Metadata) -> (u64, u64) {
     (metadata.dev(), metadata.ino())
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+fn device_and_inode(metadata: &fs::Metadata) -> (u64, u64) {
+    use std::os::windows::fs::MetadataExt;
+    // Windows 无 inode: 以创建时间充当文件身份 —— 被整体替换 (重新创建) 的库
+    // 文件会获得新的创建时间, 而追加不影响创建时间, 与 change counter 共同
+    // 识别「替换 vs 追加」, 避免替换被误判为追加而返回陈旧用量.
+    (0, metadata.creation_time())
+}
+
+#[cfg(not(any(unix, windows)))]
 fn device_and_inode(_metadata: &fs::Metadata) -> (u64, u64) {
     (0, 0)
 }
@@ -64,6 +81,23 @@ fn modified_ns(metadata: &fs::Metadata) -> u64 {
         .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
         .map(|value| value.as_nanos() as u64)
         .unwrap_or(0)
+}
+
+/// 读取 SQLite 主库文件头的 change counter (偏移 24, 大端 u32).
+/// 读取失败 (空文件/无权限/被截断) 一律返回 0, 由 size/mtime 兜底判定.
+fn read_change_counter(path: &Path) -> u32 {
+    use std::io::{Read, Seek, SeekFrom};
+    let Ok(mut file) = fs::File::open(path) else {
+        return 0;
+    };
+    if file.seek(SeekFrom::Start(24)).is_err() {
+        return 0;
+    }
+    let mut buffer = [0u8; 4];
+    if file.read_exact(&mut buffer).is_err() {
+        return 0;
+    }
+    u32::from_be_bytes(buffer)
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -361,10 +395,14 @@ fn append_signature_is_safe(previous: &SqliteSignature, current: &SqliteSignatur
         && current.wal_size >= previous.wal_size
         && current.modified_ns >= previous.modified_ns
         && current.wal_modified_ns >= previous.wal_modified_ns
+        // 计数器回退 ⇒ 库文件被整体替换 (非追加): 必须回退全量重建,
+        // 否则 read_since 会因 rowid 游标越过新库行而静默返回陈旧用量。
+        && current.change_counter >= previous.change_counter
         && (current.size > previous.size
             || current.wal_size > previous.wal_size
             || current.modified_ns > previous.modified_ns
-            || current.wal_modified_ns > previous.wal_modified_ns)
+            || current.wal_modified_ns > previous.wal_modified_ns
+            || current.change_counter != previous.change_counter)
 }
 
 fn merge_cursor(previous: &SqliteCursor, current: &SqliteCursor) -> SqliteCursor {
@@ -486,4 +524,89 @@ fn write_cache(
         let _ = fs::remove_file(&temporary);
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{append_signature_is_safe, read_change_counter, SqliteSignature};
+    use std::fs;
+    use std::io::Write;
+    use std::path::PathBuf;
+
+    fn signature(size: u64, modified_ns: u64, change_counter: u32) -> SqliteSignature {
+        // device/inode 恒取 (0, 0): 复刻 Windows 无 inode 身份的场景
+        SqliteSignature {
+            device: 0,
+            inode: 0,
+            size,
+            modified_ns,
+            wal_size: 0,
+            wal_modified_ns: 0,
+            change_counter,
+        }
+    }
+
+    fn temp_path(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "bruce-sqlite-signature-{}-{name}",
+            std::process::id()
+        ))
+    }
+
+    /// 替换 (而非追加) 的库文件必须判为非追加: 否则 read_since 的 rowid 游标
+    /// 会越过新库行, 静默返回陈旧用量 (2026-10-15 Windows CI 失败根因).
+    #[test]
+    fn replaced_database_is_not_append_safe_when_counter_regresses() {
+        let previous = signature(1_000, 100, 3);
+        // 体积更大、时间戳更新, 仅计数器回退 —— 必须判为替换
+        let replaced = signature(2_000, 200, 1);
+        assert!(
+            !append_signature_is_safe(&previous, &replaced),
+            "计数器回退必须判为非追加 (回退全量重建)"
+        );
+    }
+
+    /// 真实追加: 计数器递增 → 允许走游标增量。
+    #[test]
+    fn appended_database_with_growing_counter_is_append_safe() {
+        let previous = signature(1_000, 100, 3);
+        assert!(append_signature_is_safe(
+            &previous,
+            &signature(2_000, 200, 4)
+        ));
+    }
+
+    /// Windows 时间戳粒度粗: 同尺寸同时间戳的写入仅计数器变化, 也必须视为变更。
+    #[test]
+    fn same_stamp_write_is_detected_through_counter() {
+        let previous = signature(1_000, 100, 3);
+        assert!(
+            append_signature_is_safe(&previous, &signature(1_000, 100, 4)),
+            "计数器变化必须视为内容变更 (不依赖时间戳粒度)"
+        );
+    }
+
+    /// 计数器读取: 从 SQLite 头偏移 24 读取大端 u32; 文件过短回退 0。
+    #[test]
+    fn change_counter_reads_header_offset() {
+        let path = temp_path("counter");
+        let mut header = vec![0u8; 28];
+        header[24..28].copy_from_slice(&7u32.to_be_bytes());
+        fs::write(&path, &header).unwrap();
+        assert_eq!(read_change_counter(&path), 7);
+        fs::remove_file(&path).ok();
+
+        let short = temp_path("short");
+        let mut file = fs::File::create(&short).unwrap();
+        file.write_all(&[0u8; 8]).unwrap();
+        drop(file);
+        assert_eq!(read_change_counter(&short), 0, "过短文件必须回退 0");
+        fs::remove_file(&short).ok();
+
+        assert_eq!(
+            read_change_counter(&temp_path("missing")),
+            0,
+            "缺失文件必须回退 0"
+        );
+    }
 }

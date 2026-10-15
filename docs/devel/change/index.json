@@ -46,7 +46,8 @@
     "TokenUsage": {
       "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
       "changes": [
-        "C021"
+        "C021",
+        "C022"
       ]
     }
   },
@@ -239,6 +240,15 @@
       "topic": "TokenUsage",
       "version": "0.12.0+",
       "file": "docs/devel/change/C021.json"
+    },
+    "C022": {
+      "title": "修复 SQLite 源级缓存在 Windows 把「库文件替换」误判为「追加」导致返回陈旧用量",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "main",
+      "topic": "TokenUsage",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C022.json"
     }
   }
 }
