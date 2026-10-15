@@ -840,17 +840,27 @@ enum CodexTokenManagerTests {
         private let inner: InMemoryCredentialStore
         /// 保存失败列表: 精确匹配 account 键时抛错 (计数到次数后恢复).
         var failSaves: [(account: String, times: Int)] = []
+        /// 始终失败的保存键 (与计数无关): 用于「保存必然失败」的断言场景.
+        /// 计数配额会被残留异步保存抢先消耗而导致断言时序漂移 (BG-002/C023),
+        /// 故对「失败即阻塞」语义提供确定性开关; 需要「失败 N 次后恢复」仍用 failSaves.
+        var alwaysFailSaves: Set<String> = []
         /// 删除失败列表.
         var failDeletes: [(account: String, times: Int)] = []
         /// 读取失败列表.
         var failLoads: [(account: String, times: Int)] = []
         private var saveCounters: [String: Int] = [:]
+        /// 保存尝试计数 (含失败尝试), 供断言「失败路径确已被触发」.
+        private var saveAttempts: [String: Int] = [:]
         private var deleteCounters: [String: Int] = [:]
         private var loadCounters: [String: Int] = [:]
 
         init(inner: InMemoryCredentialStore) { self.inner = inner }
 
         func saveCredential(_ value: String, forAccount account: String) throws {
+            saveAttempts[account, default: 0] += 1
+            if alwaysFailSaves.contains(account) {
+                throw KeychainError.saveFailed(-1)
+            }
             if let failure = failSaves.first(where: { $0.account == account }) {
                 let count = saveCounters[account, default: 0] + 1
                 saveCounters[account] = count
@@ -872,6 +882,9 @@ enum CodexTokenManagerTests {
         }
         func loadAttemptCount(for account: String) -> Int {
             loadCounters[account, default: 0]
+        }
+        func saveAttemptCount(for account: String) -> Int {
+            saveAttempts[account, default: 0]
         }
         func deleteCredential(forAccount account: String) throws {
             if let failure = failDeletes.first(where: { $0.account == account }) {
@@ -916,14 +929,21 @@ enum CodexTokenManagerTests {
         guard case .success = await manager.validAccessToken(for: "acc-1") else {
             throw CodexTestFailure.expectation("预置 token 应可用")
         }
-        // 保存 needsReauthorization 记录时注入失败 (accountKey 精确匹配)
-        faulty.failSaves = [(CodexCredentialKeys.accountKey(for: "acc-1"), 1)]
+        // 保存 needsReauthorization 记录时注入失败 (accountKey 精确匹配).
+        // 用 alwaysFailSaves 而非计数配额: 残留异步保存可能抢先消耗 times 配额,
+        // 使本次保存意外成功并让断言时序漂移 (BG-002/C023).
+        let reauthKey = CodexCredentialKeys.accountKey(for: "acc-1")
+        faulty.alwaysFailSaves = [reauthKey]
 
         await manager.markNeedsReauthorization(for: "acc-1", now: fixedNow)
 
         let state = await manager.statusSnapshot()
         guard let acc = state.accounts.first(where: { $0.accountID == "acc-1" }) else {
             throw CodexTestFailure.expectation("状态快照缺少 acc-1")
+        }
+        // 自证: 失败路径必须真的被触发过 (而非因配额被抢而根本没走到保存)
+        guard faulty.saveAttemptCount(for: reauthKey) >= 1 else {
+            throw CodexTestFailure.expectation("保存必须被尝试 (失败路径未触发)")
         }
         guard acc.authorizationState == .needsReauthorization else {
             throw CodexTestFailure.expectation("保存失败后内存状态必须 needsReauthorization")
@@ -1041,13 +1061,17 @@ enum CodexTokenManagerTests {
         let manager = makeManager(
             store: wrapped, client: fake, clock: clock
         )
-        // 只让 acc-1 的 needsReauthorization 保存失败
-        faulty.failSaves = [(CodexCredentialKeys.accountKey(for: "acc-1"), 1)]
+        // 只让 acc-1 的 needsReauthorization 保存失败 (确定性开关, 见 BG-002/C023)
+        let blockedKey = CodexCredentialKeys.accountKey(for: "acc-1")
+        faulty.alwaysFailSaves = [blockedKey]
 
         await manager.markNeedsReauthorization(for: "acc-1", now: fixedNow)
 
         // acc-1 blocked; acc-2 不受影响且可用
         let state = await manager.statusSnapshot()
+        guard faulty.saveAttemptCount(for: blockedKey) >= 1 else {
+            throw CodexTestFailure.expectation("acc-1 保存必须被尝试 (失败路径未触发)")
+        }
         guard let acc1 = state.accounts.first(where: { $0.accountID == "acc-1" }),
               acc1.storageBlocked else {
             throw CodexTestFailure.expectation("acc-1 保存失败必须 storageBlocked")
@@ -1137,8 +1161,9 @@ enum CodexTokenManagerTests {
         let manager = makeManager(
             store: wrapped, client: fake, clock: clock
         )
-        // 连续三次标记; 保存一直失败 (pending 保留)
-        faulty.failSaves = [(CodexCredentialKeys.accountKey(for: "acc-1"), 100)]
+        // 连续三次标记; 保存一直失败 (pending 保留) —— 用确定性开关表达「持续失败」
+        let pendingKey = CodexCredentialKeys.accountKey(for: "acc-1")
+        faulty.alwaysFailSaves = [pendingKey]
         guard case .success = await manager.validAccessToken(for: "acc-1") else {
             throw CodexTestFailure.expectation("预置 token 应可用")
         }
@@ -1147,6 +1172,7 @@ enum CodexTokenManagerTests {
         }
         // 存储恢复: 只允许一个重试任务, 最终落盘为 needsReauthorization
         faulty.failSaves = []
+        faulty.alwaysFailSaves = []
         await waitForRetry(manager: manager, clock: clock) {
             (try? wrapped.loadRecord(for: "acc-1"))?
                 .authorizationState == .needsReauthorization

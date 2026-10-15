@@ -40,7 +40,8 @@
         "C017",
         "C018",
         "C019",
-        "C020"
+        "C020",
+        "C023"
       ]
     },
     "TokenUsage": {
@@ -244,11 +245,20 @@
     "C022": {
       "title": "修复 SQLite 源级缓存在 Windows 把「库文件替换」误判为「追加」导致返回陈旧用量",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "main",
       "topic": "TokenUsage",
       "version": "0.12.0+",
       "file": "docs/devel/change/C022.json"
+    },
+    "C023": {
+      "title": "修复 Codex 令牌管理器 Harness 的时序 flake：保存失败注入由计数配额改为确定性开关并自证失败路径",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "main",
+      "topic": "SubscriptionQuota",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C023.json"
     }
   }
 }
