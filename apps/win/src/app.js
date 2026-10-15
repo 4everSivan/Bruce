@@ -23,10 +23,13 @@ const TIER_COLORS = {
   pine: ["#385B38", "#557B52"],
   forest: ["#26452A", "#456B42"],
 };
-function heroGradientCSS(tier) {
+// 档位色只以 CSS 自定义属性下发, 由 styles.css 的 .hero-num / .mini-num 消费;
+// 严禁在此写内联背景 —— 内联 background-image 会压过 Nothing 主题的 radial
+// 点阵覆写 (C027 实测回归, 见 C029)。
+function applyTierVars(node, tier) {
   const [start, end] = TIER_COLORS[tier] || TIER_COLORS.sage;
-  return `background-image:linear-gradient(135deg, ${start} 30%, ${end} 100%);`
-    + "-webkit-background-clip:text;background-clip:text;color:transparent;";
+  node.style.setProperty("--hero-grad-start", start);
+  node.style.setProperty("--hero-grad-end", end);
 }
 // 热力/迷你条 level 0-5 取色: 0 为空白底, 1-5 依次取五档基色 (与 mac miniHeatColor 同表).
 function heatLevelColor(level) {
@@ -58,6 +61,8 @@ function makeCollapsible(card, summary) {
 /* ---------- Token 用量卡 ---------- */
 function usageCard(usage) {
   const card = el("div", "card");
+  // 档位色注入卡片容器, .hero-num 与 .mini-num 经 CSS 变量继承取色
+  applyTierVars(card, usage.usageTier);
   const head = el("div", "card-head");
   head.append(el("span", "card-title", "Token 用量"));
   if (usage.isLive) {
@@ -69,10 +74,7 @@ function usageCard(usage) {
   card.append(head);
   makeCollapsible(card, () => {
     const mini = document.createElement("span");
-    const num = document.createElement("b");
-    num.textContent = usage.totalTokensText;
-    num.style.cssText = `font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;${heroGradientCSS(usage.usageTier)}`;
-    mini.append(num);
+    mini.append(el("b", "mini-num", usage.totalTokensText));
     for (const level of usage.collapsedWeekLevels) {
       const bar = document.createElement("span");
       bar.style.cssText = `flex:1;height:10px;border-radius:2px;background:${heatLevelColor(level)};`;
@@ -83,9 +85,7 @@ function usageCard(usage) {
 
   // hero 行: 40pt 档位渐变数字 + tokens + 右侧成本
   const hero = el("div", "hero-row");
-  const heroNum = el("span", "hero-num", usage.totalTokensText);
-  heroNum.style.cssText = heroGradientCSS(usage.usageTier);
-  hero.append(heroNum);
+  hero.append(el("span", "hero-num", usage.totalTokensText));
   hero.append(el("span", "hero-unit", "tokens"));
   if (usage.costText) hero.append(el("span", "hero-cost", usage.costText));
   card.append(hero);

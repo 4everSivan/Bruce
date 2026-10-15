@@ -226,11 +226,20 @@ button, input, select, textarea {
 
 /* Token 用量卡 (UsageHeroCard) */
 .hero-row { display: flex; align-items: baseline; gap: 8px; margin-top: 8px; }
+/* 档位渐变: 起止色由 app.js 以 --hero-grad-start/--hero-grad-end 注入 (mac usageTier
+   五档), 未注入时回落 moss 档 token; 经 CSS 变量而非内联背景, 以便 Nothing 主题
+   的点阵覆写仍然生效 (C029)。 */
 .hero-num {
   font-size: 40px; font-weight: 700; letter-spacing: -1.2px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  background: linear-gradient(135deg, #63885E 30%, #82A57C 100%);
+  background: linear-gradient(135deg, var(--hero-grad-start, #63885E) 30%, var(--hero-grad-end, #82A57C) 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+/* 收起态数字与 hero 同源取色 (mac 收起态沿用 heroGradient) */
+.collapsed-summary .mini-num {
+  font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums;
+  background: linear-gradient(135deg, var(--hero-grad-start, #63885E) 30%, var(--hero-grad-end, #82A57C) 100%);
   -webkit-background-clip: text; background-clip: text; color: transparent;
 }
 .hero-unit { font-size: 13px; font-weight: 500; color: var(--subdued); white-space: nowrap; }
@@ -1010,11 +1019,35 @@ details summary {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
+/* Nothing 收起态数字走纯色 accent (等价 mac nothingHeroAccent 深色侧), 不用渐变 */
+.theme-nothing .collapsed-summary .mini-num {
+  background: none;
+  color: #4A9E5C;
+}
+/* Nothing 主题的 --accent 是告警红, 若被成本数字沿用会渲染出 mac 不存在的红字;
+   mac Nothing 下成本用 nothingPrimary (墨色), 故此处显式回落 --ink。 */
+.theme-nothing .hero-cost { color: var(--ink); }
 .theme-nothing .card::before,
 .theme-nothing #panel::before { display: none; }
 .theme-nothing .chip,
 .theme-nothing button,
 .theme-nothing .btn { border-radius: 2px; }
+/* Nothing 覆写: C027 新增的订阅组件 (账号子卡 / 余额双槽 / tag 胶囊 / 头部附加文案).
+   mac Nothing 形态为圆角 3、surfaceRaised 底 (#1A1A1A)、border (#222222)。 */
+.theme-nothing .account-card,
+.theme-nothing .bal-slots .slot {
+  border-radius: 3px;
+  background: #1A1A1A;
+  border-color: #222222;
+}
+.theme-nothing .last-success,
+.theme-nothing .sub-extra { color: var(--subdued); }
+.theme-nothing .tag-chip {
+  color: var(--text-2);
+  background: transparent;
+  border: 1px solid #333333;
+  font-family: inherit;
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before { animation: none !important; transition: none !important; }

@@ -126,8 +126,15 @@
 | 余额胶囊 | 纯余额型抑制头部胶囊（改走双槽） | 同 |
 | 收起态迷你摘要 | `collapsedPeakWindow` = `windows ∪ accounts[].windows` 中 `usedPercent` 最大者；纯余额型（无窗口）不出迷你条 | 渲染层按同语义推导（不改契约字段，避免 golden 漂移） |
 | 折叠态可见性 | 折叠时 status 槽（`LIVE` / 最后更新时间）被 mini 摘要取代 | 同（折叠态隐藏 `.updated` 与标题行 LIVE 指示器） |
-| Hero 数字渐变 | 按 `usageTier` 取五档色对（sage/moss/fern/pine/forest，`heroGradient` 基色 30% → 浅色 100%） | 同（不得写死单档；档位由契约字段 `usageTier` 下发） |
+| Hero 数字渐变 | 按 `usageTier` 取五档色对（sage/moss/fern/pine/forest，`heroGradient` 基色 30% → 浅色 100%） | 同（不得写死单档；档位由契约字段 `usageTier` 下发）。**实现约束（C029）**：档位色必须以 CSS 自定义属性（`--hero-grad-start` / `--hero-grad-end`）下发，由 `.hero-num` / `.mini-num` 消费，**严禁用内联 style 直接写 background/前景** —— 内联 `background-image` 会压过 `.theme-nothing .hero-num` 的点阵覆写，而该类上的 `background-size: 4px 4px` 仍生效，最终渲染成 4px 平铺条纹（C027 实测回归） |
 | 模型/项目分布 | 渲染视图模型给出的全部行（Top3 + 「其他」聚合） | 同（前端不得再截断） |
+| Nothing 主题覆写 | 新增任何卡片内组件时，除 Fluent 形态外必须同时给出 `.theme-nothing` 覆写（圆角 3 / `#1A1A1A` 底 / `#222222` 描边；告警红 `--accent` 不得被正文数字沿用） | 同（C029 起：账号子卡、余额双槽、tag 胶囊、成本数字均有 Nothing 覆写与断言） |
+
+**Windows 侧验证纪律（C029，因维护者无 Windows 机器）**：
+
+1. **真实内核渲染自检**：`apps/win/tests/dom.mjs` 是无 CSS 引擎的 DOM 桩，**不足以**验证渲染层。任何触及 `app.js` / `styles.css` / `*.html` 的改动，必须用 `apps/win/tests/render-harness/`（载入同字节产物 + 注入 `window.__TAURI__` mock）在真实浏览器内核里渲染核对（含两种主题、折叠态、满数据面板与设置窗口各分类），并确认无横向溢出与破图。该 harness 供人工/Agent 驱动，不作为 CI 门禁（CI 无浏览器依赖）。
+2. **Windows 专有链路要有端到端用例**：provider 可见性/排序（`enabled_providers` retain + provider 归一化 + `provider_order`）这类只在 `runtime_core::panel_json` 才暴露的链路，回归用例必须打在该层，不能只覆盖视图模型分组。
+3. **契约边界**：可在渲染层推导的展示态（如收起态峰值窗口）不进视图模型契约，避免触发 mac golden 快照重刷；确需改序列化字段时，先 `swift run --package-path apps/macos PanelParityHarness <repoRoot> --update` 刷新 golden 并同步 mac 侧。
 
 ### 4.3 凭证与安全红线
 

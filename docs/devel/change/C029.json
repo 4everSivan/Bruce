@@ -1,0 +1,111 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C029",
+  "title": "修正 C027 在 Nothing 主题引入的 hero 渐变回归，并补齐 Windows 侧无法直接验证的两处盲区（真实浏览器渲染自检 + panel_json 端到端 provider 过滤回归）",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 修复并推送; 维护者无 Windows 机器, 本卡专门收口「Windows 侧只能靠推理」的验证盲区",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src (app.js + styles.css 主题覆写) / apps/win/src-tauri (runtime_core::panel_json 回归) / apps/win/tests/render-harness (真实内核渲染自检)",
+    "component": "Token 用量卡 hero 档位渐变 / 新增订阅组件的 Nothing 主题形态 / provider 可见性端到端",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "用户反馈「我没有 win 版本，需要你好好检查」后做深度复核, 发现 C027 引入一处真实回归与两处验证盲区。**(1) 回归**: C027 把 hero 渐变从 CSS 类搬到 JS 内联样式 (`style.cssText = background-image: linear-gradient(...)`), 而 Nothing 主题的 `.theme-nothing .hero-num` 用类选择器声明了完全不同的形态 (`radial-gradient` 点阵 + `background-size: 4px 4px`)。内联 `background-image` 优先级高于类声明, 但 `background-size: 4px 4px` 仍由类生效 —— 于是 Nothing 主题下 hero 数字不再是点阵, 而是被 4px 平铺的 sage 线性渐变 (呈条纹状), 属可见破图; 收起态数字同理会丢掉主题形态。C027 的「反向影响排查」只走了 Fluent 路径, 未覆盖 Nothing 覆写, 该检查结论不完整。**(2) 盲区一**: 双端前端此前从未在真实浏览器内核里渲染过 —— `apps/win/tests/dom.mjs` 是极简 DOM 桩, 无 CSS 引擎, 布局/主题覆写/字体回退全部未被验证; 而维护者无 Windows 机器, Windows 侧只能靠推理。**(3) 盲区二**: C028 修复的核心承诺是「Cline 凭证可存且能在看板显示」(修复前被 `enabled_providers` 的 retain 静默过滤), 但回归用例只覆盖到视图模型分组与设置校验, 没走 `runtime_core::panel_json` 这条真实的可见性/排序链路。",
+  "precheck": {
+    "description": "复现回归: 以 Nothing 主题 + 非默认档位在真实浏览器内核渲染仪表盘, 读取 hero 数字的计算样式, 确认 background-image 被内联渐变覆盖且仍带 4px 平铺",
+    "command": "node --test apps/win/tests/frontend.test.mjs",
+    "expected": "修复前: `.theme-nothing .hero-num` 的计算样式为 linear-gradient + background-size 4px 4px (点阵形态丢失); 修复后: background-image 为 radial 点阵且档位色以 CSS 变量形式存在但不被 Nothing 覆写消费",
+    "is_completed": true,
+    "evidence": "2026-10-15 真实浏览器内核实测 (Chromium, 载入 apps/win/src/index.html + 真实 styles.css/app.js + parity fixture, body 加 theme-nothing): `.hero-num` 计算样式 background-image = `linear-gradient(135deg, rgb(125,155,118) 30%, rgb(157,181,151) 100%)` (sage 档内联值), background-size = `4px 4px`, 即点阵被 4px 平铺的线性渐变取代。修复后同口径复测: background-image = `radial-gradient(rgb(242,242,238) 1.2px, rgba(0,0,0,0) 1.8px)`, background-size = `4px 4px`, 档位色改经 `--hero-grad-start/--hero-grad-end` 变量传递且不被 Nothing 覆写消费。"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护已在 main 实施"
+    ],
+    "after": [
+      "node --test apps/win/tests/frontend.test.mjs",
+      "node scripts/check-win-frontend.mjs",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "apps/win/src/app.js + styles.css (hero 档位渐变改为 CSS 变量传递)",
+      "before": "JS 用 `heroNum.style.cssText = background-image: linear-gradient(...)` 直接写内联背景, 覆盖 Nothing 主题的点阵形态; 收起态数字同为内联渐变",
+      "after": "JS 只在卡片元素上注入 `--hero-grad-start` / `--hero-grad-end` 两个自定义属性 (由 `.hero-num` 与 `.collapsed-summary .mini-num` 消费), 内联背景彻底移除; Nothing 主题的 `.theme-nothing .hero-num` 点阵声明恢复生效, 收起态数字新增 `.mini-num` 规则并在 Nothing 下退化为纯色 accent (#4A9E5C, 等价 mac nothingHeroAccent)",
+      "impact": "Fluent 主题 hero 仍随 usageTier 五档取色; Nothing 主题恢复点阵/纯色形态, 不再破图"
+    },
+    {
+      "scope": "apps/win/src/styles.css (新增订阅组件的 Nothing 覆写)",
+      "before": "C027 新增的 .account-card / .bal-slots .slot / .tag-chip / .sub-extra 只定义了 Fluent 深色形态, Nothing 主题下沿用圆角 10/8 与半透明白底",
+      "after": "补 Nothing 覆写: 账号子卡与双槽圆角 3、底 #1A1A1A、描边 #222222 (等价 mac Nothing surfaceRaised/border); tag 胶囊改次要文字色 + 透明底 + #333333 描边 (等价 mac AccountTagChip Nothing 形态); sub-extra 用 subdued",
+      "impact": "Nothing 主题下新组件与既有卡片形态一致 (圆角 3 / 方角平面风), 不再混入 Fluent 圆角与半透明底"
+    },
+    {
+      "scope": "apps/win/src-tauri/tests/runtime_coverage.rs (panel_json 端到端 provider 回归)",
+      "before": "无用例覆盖 panel_json 的 provider 可见性与排序链路 (enabled_providers retain + provider_order sort), C028 的核心承诺缺端到端断言",
+      "after": "新增用例: 同一 artifact 含 cline 双账号 + jev + 未启用 provider, 断言 cline 归为单一 'Cline' section 且账号齐全、jev 不出现、未启用 provider 被过滤、provider_order 决定段序",
+      "impact": "C028 的「凭证可存即可见」在真实运行链路上被锁死, 而非只锁视图模型分组"
+    },
+    {
+      "scope": "apps/win/tests/frontend.test.mjs (主题覆写与变量契约断言)",
+      "before": "仅断言 Fluent 路径的 hero 渐变值 (直接匹配内联 linear-gradient 字符串), 主题覆写无任何断言",
+      "after": "改为断言卡片上的 `--hero-grad-start/--hero-grad-end` 变量值 + CSS 中存在 `.hero-num` 消费变量的规则与 `.theme-nothing .hero-num` 点阵规则 + 新增组件的 Nothing 覆写规则齐备; 并新增「hero 不得再写内联背景」的反向哨兵",
+      "impact": "同类回归 (内联样式压过主题覆写) 会被测试直接拦下"
+    },
+    {
+      "scope": "apps/win/src/styles.css (Nothing 主题成本数字颜色)",
+      "before": ".hero-cost 取色 var(--accent), 而 Nothing 主题把 --accent 重定义为告警红 #e44b47, 成本数字因此在 Nothing 下渲染成 mac 不存在的红字",
+      "after": "新增 `.theme-nothing .hero-cost { color: var(--ink) }` (等价 mac Nothing 下成本走 nothingPrimary 墨色)",
+      "impact": "Nothing 主题成本数字与 mac 一致; Fluent 主题仍为强调蓝 #0a84ff"
+    },
+    {
+      "scope": "apps/win/tests/render-harness (真实内核渲染自检 harness)",
+      "before": "Windows 前端只有 apps/win/tests/dom.mjs 这一层极简 DOM 桩, 无 CSS 引擎; 布局/主题覆写/字体回退从未被验证, 而维护者无 Windows 机器",
+      "after": "新增 dashboard-harness.html / settings-harness.html + README: 载入同字节的 index.html / settings.html 标记与 app.js / settings.js / styles.css, 仅注入 window.__TAURI__ mock, 暴露 __setTheme / __setPanel / __setCategory 钩子, 窗口尺寸固定 440×760 与 1040×680",
+      "impact": "后续任何 Windows 前端改动都能在真实 Chromium 内核复现渲染并截图核对; 明确标注不覆盖的边界 (字体度量差异 / 原生窗口装饰 / 系统集成面) 与「不作为 CI 门禁」"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "§4.2 渲染层对标清单第 9 条仅要求「Hero 渐变按 usageTier 五档取色, 不得写死单档」",
+      "after": "§4.2 渲染层对标清单第 9 条补充实现约束: 档位色必须以 CSS 自定义属性 (`--hero-grad-start/--hero-grad-end`) 下发, **禁止用内联 style 直接写背景/前景**, 否则会压过 Nothing 主题的点阵/纯色覆写 (C027 实测回归); 同时新增「Windows 侧验证纪律」: 双端前端改动必须在真实浏览器内核渲染自检 (dom.mjs 无 CSS 引擎), 且 Windows 专有链路 (provider 可见性/排序) 需有 runtime_core 层端到端用例, 因维护者无 Windows 机器"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "verify-local-20261015-c029 + render-harness-20261015",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "Nothing 主题回归修复 (真实浏览器内核计算样式)",
+        "true_if": "真实 Chromium 内核下 `.theme-nothing .hero-num` 计算样式为 radial 点阵且 background-size 4px 4px, 不含 linear-gradient; Fluent 主题下档位变量随 usageTier 变化且 hero 呈现对应渐变",
+        "false_if": "任一主题下 hero 出现非预期背景形态或档位色丢失",
+        "evidence": "2026-10-15 真实 Chromium 内核自检 (apps/win/tests/render-harness/dashboard-harness.html, 载入同字节 index.html + app.js + styles.css, 视口 440×760): 修复前 `.theme-nothing .hero-num` 计算样式 background-image = linear-gradient(135deg, rgb(125,155,118) 30%, rgb(157,181,151) 100%) 且 background-size = 4px 4px (点阵被 4px 平铺的线性渐变取代, 截图可见条纹); 修复后同口径 background-image = radial-gradient(rgb(242,242,238) 1.2px, rgba(0,0,0,0) 1.8px), background-size = 4px 4px, hero 元素 style 属性为 null (无内联背景), 档位色改由卡片容器 style 上的 --hero-grad-start/--hero-grad-end 承载; Fluent 主题下 hero 仍按 usageTier=sage 渲染 linear-gradient(#7D9B76 30%, #9DB597 100%)。收起态 `.theme-nothing .mini-num` 计算色 rgb(74,158,92) (=#4A9E5C) 且 background-image none; Nothing 成本数字由 rgb(228,75,71) (告警红) 修正为 rgb(244,244,240) (--ink)。新增订阅组件在 Nothing 下为圆角 3 + #1A1A1A 底 + #222222 描边 (账号子卡/双槽), tag 胶囊去蓝化。",
+        "result": true
+      },
+      {
+        "item": "panel_json 端到端 provider 可见性",
+        "true_if": "runtime_core::panel_json 用例通过: cline 双账号归为单一 'Cline' section, jev 不出现, 未启用 provider 被过滤, provider_order 决定段序",
+        "false_if": "cline 缺失/被拆段/命名回落, 或 jev 出现, 或过滤与排序失效",
+        "evidence": "新增 runtime_coverage::panel_json_provider_visibility_covers_cline_and_jev 通过 (src-tauri 82 项全绿, runtime_coverage 20 → 21): 同一 artifact 含 cline 双账号 + jev + 未启用 deepseek 时, panel_json(enabled=[kimi,cline], order=[cline]) 输出恰好 1 段 —— id=cline / name='Cline' / accountCountText='2 个账号' / accounts 2 条, 且整个 panel JSON 既不含 'jev' 也不含 'Jev'; enabled 切到 [deepseek] 时该段消失、仅剩余额型 deepseek。该用例锁住 C028 的完整可见性链路 (enabled_providers retain 过滤 + provider 归一化 + provider_order 排序), 此前只锁到视图模型分组与设置校验两层。",
+        "result": true
+      },
+      {
+        "item": "全量自动化验证与真实渲染自检",
+        "true_if": "zsh scripts/verify-local.sh 退出码 0; 且真实浏览器内核下仪表盘 (Fluent/Nothing 展开与折叠) 与设置页截图人工核对无破图、无溢出、无重复元素",
+        "false_if": "门禁失败, 或截图中存在破图/溢出/元素重复/主题形态错乱",
+        "evidence": "zsh scripts/verify-local.sh 退出码 0, 末行 'Bruce 本地验证全部通过' (日志 local/c029-verify.log): Rust 三 manifest 全绿 (collector 132 / viewmodel 46 / src-tauri 82), fmt --check 与 clippy --all-targets -D warnings 零告警, Windows 前端结构冒烟通过且交互回归 22/22 (新增 2 条: 档位变量与主题覆写契约、hero 不得写内联背景的反向哨兵), Swift 全部 Harness 与 Panel 视图模型双端对拍 3/3 通过。真实内核渲染自检覆盖 6 个视图且全部无横向溢出 (docScrollWidth == 视口宽)、无重复元素、无破图: (a) Fluent 仪表盘 (真实 parity fixture: 订阅卡无重复额度行/无 note/无账号子块, meters 与档位色正确); (b) Nothing 仪表盘 (hero 点阵恢复); (c) 三卡折叠态 (迷你摘要 + updated 与 LIVE 随折叠隐藏 + 订阅迷你条取峰值窗口 70%/warning); (d) 合成满数据面板 (26 周热力图 182 格满宽 + 14 日柱 + 多账号展开的账号子卡 + tag 胶囊 + error note + extraText + 纯余额双槽「可用余额 ¥38.21 / 订阅状态 正常」); (e) 设置窗口 6 分类 (订阅额度含 Cline 且显示名与 mac 同名、通用、Agent 用量、模型计费、维护页运行环境含 Windows 路径, 6 分类均无溢出); (f) 侧栏/面包屑/保存按钮等 chrome 与 Fluent 深色 token 一致。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": []
+}

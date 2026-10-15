@@ -31,7 +31,8 @@
         "C015",
         "C016",
         "C027",
-        "C028"
+        "C028",
+        "C029"
       ]
     },
     "SubscriptionQuota": {
@@ -309,6 +310,15 @@
       "topic": "WindowsCompat",
       "version": "0.12.0+",
       "file": "docs/devel/change/C028.json"
+    },
+    "C029": {
+      "title": "修正 C027 在 Nothing 主题引入的 hero 渐变回归，并补齐 Windows 侧无法直接验证的两处盲区（真实浏览器渲染自检 + panel_json 端到端 provider 过滤回归）",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C029.json"
     }
   }
 }

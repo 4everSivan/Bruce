@@ -150,16 +150,39 @@ test("balance-only sections render the amount and status dual slot without a hea
   assert.match(card.textContent, /正常/);
 });
 
-test("hero gradient follows the tier reported by the view model", async () => {
+test("hero tier colors travel as CSS variables and never as inline background", async () => {
   const app = await boot();
-  const hero = app.node("stack").querySelector('[data-card="usage"] .hero-num');
+  const card = app.node("stack").querySelector('[data-card="usage"]');
   // valid fixture usageTier=sage; 修复前写死 moss (#63885E→#82A57C)
-  assert.match(hero.style.cssText, /linear-gradient\(135deg, #7D9B76 30%, #9DB597 100%\)/);
+  assert.equal(card.style["--hero-grad-start"], "#7D9B76");
+  assert.equal(card.style["--hero-grad-end"], "#9DB597");
+  // 反向哨兵: hero 与收起态数字都不得写内联背景 —— 内联 background-image 会压过
+  // Nothing 主题的 radial 点阵覆写 (C027 实测回归, 见 C029)。
+  for (const node of [card.querySelector(".hero-num"), card.querySelector(".mini-num")]) {
+    assert.doesNotMatch(node.style.cssText || "", /background/);
+  }
   const panel = structuredClone(fixture);
   panel.usage.usageTier = "forest";
   const other = await boot({ panel });
-  const otherHero = other.node("stack").querySelector('[data-card="usage"] .hero-num');
-  assert.match(otherHero.style.cssText, /linear-gradient\(135deg, #26452A 30%, #456B42 100%\)/);
+  const otherCard = other.node("stack").querySelector('[data-card="usage"]');
+  assert.equal(otherCard.style["--hero-grad-start"], "#26452A");
+  assert.equal(otherCard.style["--hero-grad-end"], "#456B42");
+  // 未知档位回落 sage, 不得留空
+  const fallback = structuredClone(fixture);
+  fallback.usage.usageTier = "unknown-tier";
+  const third = await boot({ panel: fallback });
+  assert.equal(third.node("stack").querySelector('[data-card="usage"]').style["--hero-grad-start"], "#7D9B76");
+});
+
+test("styles.css consumes tier variables and keeps Nothing overrides on new components", () => {
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  assert.match(css, /\.hero-num\s*\{[^}]*--hero-grad-start/, "hero 必须消费档位变量");
+  assert.match(css, /\.collapsed-summary \.mini-num\s*\{[^}]*--hero-grad-start/, "收起态数字必须消费档位变量");
+  assert.match(css, /\.theme-nothing \.hero-num\s*\{[^}]*radial-gradient/, "Nothing 点阵覆写必须保留");
+  assert.match(css, /\.theme-nothing \.collapsed-summary \.mini-num\s*\{[^}]*background:\s*none/, "Nothing 收起态数字走纯色");
+  for (const rule of [".theme-nothing .account-card", ".theme-nothing .bal-slots .slot", ".theme-nothing .tag-chip"]) {
+    assert.ok(css.includes(rule), `styles.css 缺少 Nothing 覆写 ${rule}`);
+  }
 });
 
 test("distribution lists keep the 其他 aggregate row instead of truncating to three", async () => {

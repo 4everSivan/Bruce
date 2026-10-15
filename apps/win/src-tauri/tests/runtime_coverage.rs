@@ -99,6 +99,70 @@ fn manual_bursts_are_bounded_and_interrupt_long_retry_wait() {
 }
 
 #[test]
+fn panel_json_provider_visibility_covers_cline_and_jev() {
+    // C028 的端到端承诺: 「凭证可存 (clineQuotaAccounts 在 allowlist) 即可在看板可见」。
+    // 三条链路必须同时正确, 少任一条都会静默丢段:
+    //   enabled_providers retain 过滤 / 视图模型 provider 归一化 (cline_<acc> → cline)
+    //   / provider_order 排序。jev 则必须被视图模型整组屏蔽 (对齐 mac)。
+    let artifact = json!({
+        "schemaVersion": 1, "module": "agent-usage", "generatedAt": "2026-10-08T08:00:00Z",
+        "agents": [], "totalCostUsd": 0.0,
+        "services": [
+            {"id": "cline_work", "name": "Cline · work", "status": "ok", "kind": "windows",
+             "capturedAt": "2026-10-08T08:00:00Z",
+             "windows": [{"label": "每 5 小时", "usedPercent": 8.0}]},
+            {"id": "cline_personal", "name": "Cline · personal", "status": "ok", "kind": "windows",
+             "capturedAt": "2026-10-08T08:00:00Z",
+             "windows": [{"label": "每 5 小时", "usedPercent": 12.0}]},
+            {"id": "jev", "name": "Jev", "status": "ok", "kind": "windows",
+             "capturedAt": "2026-10-08T08:00:00Z",
+             "windows": [{"label": "5h", "usedPercent": 5.0}]},
+            {"id": "deepseek", "name": "DeepSeek", "status": "ok", "kind": "balance",
+             "capturedAt": "2026-10-08T08:00:00Z", "windows": [], "balance": 38.21, "currency": "CNY"}
+        ]
+    });
+    let mut state = SnapshotState::default();
+    state
+        .apply_response(&response(artifact, ResponseStatus::Success))
+        .unwrap();
+    let now = chrono::DateTime::parse_from_rfc3339("2026-10-08T08:30:00Z").unwrap();
+
+    // 未启用 provider 被过滤 (deepseek 不在 enabled), provider_order 决定段序。
+    let panel = state.panel_json(
+        now,
+        true,
+        &["kimi".into(), "cline".into()],
+        &["cline".into()],
+    );
+    let sections = panel["subscription"]["sections"].as_array().unwrap();
+    assert_eq!(
+        sections.len(),
+        1,
+        "只应有 cline 一段: jev 屏蔽 + deepseek 未启用过滤"
+    );
+    assert_eq!(sections[0]["id"], "cline");
+    assert_eq!(
+        sections[0]["name"], "Cline",
+        "展示名不得回落为原始 service ID"
+    );
+    assert_eq!(
+        sections[0]["accountCountText"], "2 个账号",
+        "cline 双账号归一为一段"
+    );
+    assert_eq!(sections[0]["accounts"].as_array().unwrap().len(), 2);
+    assert!(
+        !panel.to_string().contains("jev") && !panel.to_string().contains("Jev"),
+        "jev 不得出现在面板 JSON 任何字段"
+    );
+
+    // 未启用 cline 时整段消失 (与 mac 的 enabled 门控一致), 仅有余额型 deepseek。
+    let filtered = state.panel_json(now, true, &["deepseek".into()], &[]);
+    let filtered_sections = filtered["subscription"]["sections"].as_array().unwrap();
+    assert_eq!(filtered_sections.len(), 1);
+    assert_eq!(filtered_sections[0]["id"], "deepseek");
+}
+
+#[test]
 fn malformed_artifact_preserves_last_good_snapshot_and_reports_failure() {
     let mut state = SnapshotState::default();
     state

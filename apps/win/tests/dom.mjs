@@ -12,7 +12,12 @@ export class Element {
     this.listeners = new Map();
     this.attributes = {};
     this.dataset = {};
-    this.style = {};
+    // 样式桩: cssText/直接属性赋值照旧, 另支持 CSS 自定义属性下发
+    // (app.js 用 style.setProperty("--hero-grad-start", ...) 传递档位色)。
+    this.style = {
+      setProperty(name, value) { this[name] = String(value); },
+      getPropertyValue(name) { return this[name] ?? ""; },
+    };
     this.value = "";
     this.checked = false;
     this.disabled = false;

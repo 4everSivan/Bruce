@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>Bruce · Windows 前端渲染自检 (仪表盘)</title>
+<style>
+  /* 仅 harness 关注的窗口尺寸: 面板窗口在 tauri.conf.json 中固定 440×760,
+     这里用 html/body 尺寸复现 (不改动 apps/win/src 任何产物)。 */
+  html, body { width: 440px; height: 760px; overflow: hidden; }
+</style>
+</head>
+<body>
+<script type="module">
+// 渲染自检 harness: 载入**真实**的 index.html body 标记 + app.js + styles.css,
+// 唯一注入的是 window.__TAURI__ (生产环境由 WebView2 注入), 以便在普通浏览器内核里
+// 复现 Windows 侧渲染 (dom.mjs 是极简 DOM 桩, 无 CSS 引擎, 覆盖不到布局与主题覆写)。
+const [html, fixture] = await Promise.all([
+  fetch("/apps/win/src/index.html").then((r) => r.text()),
+  fetch("/tests/fixtures/viewmodel-parity/agent-usage-valid.panel.json").then((r) => r.json()),
+]);
+
+const baseSettings = {
+  refreshIntervalSecs: 1800, notificationsEnabled: true, theme: "fluent",
+  cardOrder: ["usage", "subscription", "hourly"], hotkey: "", consentVersion: 1,
+  usageEnabled: true, enabledProviders: ["kimi", "codex", "cline"], providerOrder: [],
+  pricingOverrides: {},
+};
+const state = { settings: { ...baseSettings }, panel: fixture };
+const listeners = new Map();
+
+async function invoke(command, args) {
+  if (command === "get_settings") return structuredClone(state.settings);
+  if (command === "save_settings_command") { state.settings = structuredClone(args.settings); return null; }
+  if (command === "get_dashboard") return structuredClone(state.panel);
+  if (command === "get_runtime_info") {
+    return { dataRoot: "C:\\Users\\sivan\\AppData\\Roaming\\Bruce", cacheRoot: "C:\\Users\\sivan\\AppData\\Local\\Bruce\\collector-cache-v1",
+      snapshotPath: "…\\snapshots\\agent-usage.json", status: { phase: "fresh", lastSuccessAt: "2026-07-28T12:00:00Z", error: null, diagnosticCodes: [] } };
+  }
+  if (command === "get_model_prices") return {};
+  if (command === "credential_allowlist") return ["kimiQuotaAccounts", "clineQuotaAccounts"];
+  if (command === "get_credential_fields") return [];
+  if (command === "get_credential_accounts") return [];
+  return null;
+}
+async function listen(name, callback) {
+  listeners.set(name, [...(listeners.get(name) || []), callback]);
+  return () => {};
+}
+window.__TAURI__ = { core: { invoke }, event: { listen } };
+window.__emit = async (name, payload) => {
+  await Promise.all((listeners.get(name) || []).map((cb) => cb({ payload })));
+};
+window.__setTheme = async (theme) => {
+  state.settings = { ...state.settings, theme };
+  await window.__emit("settings-updated", structuredClone(state.settings));
+};
+window.__setPanel = async (panel) => {
+  state.panel = panel;
+  await window.__emit("dashboard-updated", structuredClone(panel));
+};
+window.__fixture = fixture;
+window.__settings = baseSettings;
+
+const doc = new DOMParser().parseFromString(html, "text/html");
+const link = document.createElement("link");
+link.rel = "stylesheet";
+link.href = "/apps/win/src/styles.css";   // 真实样式表 (同字节)
+document.head.append(link);
+document.body.innerHTML = doc.body.innerHTML;   // 真实 body 标记 (内含 script 不执行)
+const script = document.createElement("script");
+script.src = "/apps/win/src/app.js";      // 真实脚本 (同字节)
+script.onload = () => { window.__ready = true; };
+document.body.append(script);
+</script>
+</body>
+</html>

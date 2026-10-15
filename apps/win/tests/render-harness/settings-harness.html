@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>Bruce · Windows 前端渲染自检 (设置窗口)</title>
+<style>
+  /* 设置窗口在 tauri.conf.json 中为 1040×680 (min 980×620), 这里复现其尺寸。 */
+  html, body { width: 1040px; height: 680px; overflow: hidden; }
+</style>
+</head>
+<body>
+<script type="module">
+// 设置窗口渲染自检 harness: 载入真实 settings.html body 标记 + settings.js + styles.css。
+const [html, fixture] = await Promise.all([
+  fetch("/apps/win/src/settings.html").then((r) => r.text()),
+  fetch("/tests/fixtures/viewmodel-parity/agent-usage-valid.panel.json").then((r) => r.json()),
+]);
+
+const settings = {
+  refreshIntervalSecs: 1800, notificationsEnabled: true, theme: "fluent",
+  cardOrder: ["usage", "subscription", "hourly"], hotkey: "Control+Shift+B", consentVersion: 1,
+  usageEnabled: true, enabledProviders: ["kimi", "codex", "claude", "deepseek", "volcengine", "zhipu", "grok", "opencodeGo", "stepfun", "cline"],
+  providerOrder: [], pricingOverrides: {},
+};
+const listeners = new Map();
+const accounts = [
+  { field: "codexQuotaAccounts", accountId: "4eversivan", displayName: "Codex · sivan", authorizationState: "ok" },
+  { field: "clineQuotaAccounts", accountId: "work", displayName: "Cline · work", authorizationState: "reauthRequired" },
+];
+async function invoke(command, args) {
+  if (command === "get_settings") return structuredClone(settings);
+  if (command === "save_settings_command") return null;
+  if (command === "get_runtime_info") {
+    return { dataRoot: "C:\\Users\\sivan\\AppData\\Roaming\\Bruce", cacheRoot: "C:\\Users\\sivan\\AppData\\Local\\Bruce\\collector-cache-v1",
+      snapshotPath: "…\\snapshots\\agent-usage.json", status: { phase: "fresh", lastSuccessAt: "2026-07-28T12:00:00Z", error: null, diagnosticCodes: [] } };
+  }
+  if (command === "get_model_prices") {
+    return { "kimi-k2.5": { inputPricePerMillion: 0.6, outputPricePerMillion: 2.4, currency: "USD" } };
+  }
+  if (command === "credential_allowlist") return ["kimiQuotaAccounts", "codexQuotaAccounts", "clineQuotaAccounts", "providerMeta"];
+  if (command === "get_credential_fields") return ["codexQuotaAccounts", "clineQuotaAccounts"];
+  if (command === "get_credential_accounts") return structuredClone(accounts);
+  if (command === "get_dashboard") return structuredClone(fixture);
+  return null;
+}
+async function listen(name, callback) { listeners.set(name, [...(listeners.get(name) || []), callback]); return () => {}; }
+window.__TAURI__ = { core: { invoke }, event: { listen } };
+window.__emit = async (name, payload) => {
+  await Promise.all((listeners.get(name) || []).map((cb) => cb({ payload })));
+};
+window.__setCategory = (key) => document.querySelector(`[data-category="${key}"]`)?.click();
+
+const doc = new DOMParser().parseFromString(html, "text/html");
+const link = document.createElement("link");
+link.rel = "stylesheet";
+link.href = "/apps/win/src/styles.css";
+document.head.append(link);
+document.body.className = doc.body.className;
+document.body.innerHTML = doc.body.innerHTML;
+const script = document.createElement("script");
+script.src = "/apps/win/src/settings.js";
+script.onload = () => { window.__ready = true; };
+document.body.append(script);
+</script>
+</body>
+</html>
