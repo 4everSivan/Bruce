@@ -42,7 +42,8 @@
         "C019",
         "C020",
         "C023",
-        "C024"
+        "C024",
+        "C025"
       ]
     },
     "TokenUsage": {
@@ -269,6 +270,15 @@
       "topic": "SubscriptionQuota",
       "version": "0.12.0+",
       "file": "docs/devel/change/C024.json"
+    },
+    "C025": {
+      "title": "修复 Cline 额度口径：5h 由滚动求和改为固定 5 小时槽，台账翻页取数收敛（7d/30d 不再截断）",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "main",
+      "topic": "SubscriptionQuota",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C025.json"
     }
   }
 }
