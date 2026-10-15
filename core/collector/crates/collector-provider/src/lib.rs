@@ -461,18 +461,56 @@ pub fn finalize_service(mut service: Value, result: Result<Option<Value>, Provid
 }
 
 pub const CLINE_API_BASE: &str = "https://api.cline.bot/api/v1";
-/// ClinePass 三窗口定义: (展示标签, 窗口秒数, 限额字段).
-/// 采用官方 API 的滚动语义 (`last5Hours`/`last7days`/`last30days`),
+/// 5 小时槽网格锚点: **Unix 纪元** (等价于 `floor(now / 5h)`).
+/// 因 24h 不是 5h 的整数倍, 槽边界在 UTC 日内逐日轮转 (5 天一个周期):
+/// 2026-10-15 当日边界为 01:00/06:00/11:00/16:00/21:00Z, 2026-10-14 则为 00:00/05:00/10:00/15:00/20:00Z.
+/// 实证对账 (2026-10-15 约 07:03Z, 控制台 5h = 4% 且 "Resets in 3h57m" → 槽终点 11:00Z):
+/// 槽 [06:00Z, now] 台账求和 = 4.27% ✓, 而近 5h 滚动求和 = 18.91% ✗ —— 故 5h 必须按槽计算.
+const CLINE_FIVE_HOUR_SLOT_ANCHOR_EPOCH: i64 = 0;
+
+/// 窗口计量模式: 服务端对 5h 与 7d/30d 采用不同口径 (实证).
+#[derive(Debug, Clone, Copy)]
+enum ClineWindowMode {
+    /// 固定槽: 槽起点按窗口长度对齐到 `anchor_epoch` 网格, 槽终点即重置时刻 (恒有值).
+    FixedSlot { anchor_epoch: i64 },
+    /// 滚动窗口: 区间随当前时刻滑动, 重置时刻 = 窗口内最早一单 + 窗口长度.
+    Rolling,
+}
+
+/// ClinePass 三窗口定义: (展示标签, 窗口秒数, 限额字段, 计量模式).
 /// 标签经 Swift `PanelFormat.windowLabel` 依 windowMinutes 归一, 此处仅作回退.
-const CLINE_WINDOW_SPECS: &[(&str, i64, ClineThresholdField)] = &[
-    ("每 5 小时", 5 * 60 * 60, ClineThresholdField::Last5Hours),
-    ("每周", 7 * 24 * 60 * 60, ClineThresholdField::Last7Days),
-    ("每月", 30 * 24 * 60 * 60, ClineThresholdField::Last30Days),
+const CLINE_WINDOW_SPECS: &[(&str, i64, ClineThresholdField, ClineWindowMode)] = &[
+    (
+        "每 5 小时",
+        5 * 60 * 60,
+        ClineThresholdField::Last5Hours,
+        ClineWindowMode::FixedSlot {
+            anchor_epoch: CLINE_FIVE_HOUR_SLOT_ANCHOR_EPOCH,
+        },
+    ),
+    (
+        "每周",
+        7 * 24 * 60 * 60,
+        ClineThresholdField::Last7Days,
+        ClineWindowMode::Rolling,
+    ),
+    (
+        "每月",
+        30 * 24 * 60 * 60,
+        ClineThresholdField::Last30Days,
+        ClineWindowMode::Rolling,
+    ),
 ];
 /// 台账 `costUsd` 与 entitlements 阈值同为 1e-8 USD 整数单位.
 const CLINE_COST_UNIT_TO_USD: f64 = 1e-8;
-const CLINE_USAGE_PAGE_LIMIT: usize = 100;
-const CLINE_USAGE_MAX_PAGES: usize = 5;
+/// 台账单页条数: 服务端硬上限为 200 (传更大的 limit 会被静默截到 200).
+const CLINE_USAGE_PAGE_LIMIT: usize = 200;
+/// 台账翻页上限: 与「30 天早停」共同约束取数成本 —— 实测单请求约 0.7s, 上限 12 页 ≈ 8s,
+/// 远低于 app 侧 moduleSeconds=90 预算; 30 天内用量超过本上限的账户, 长窗口会被截断.
+const CLINE_USAGE_MAX_PAGES: usize = 12;
+/// 最宽窗口 (30 天) 的秒数: 台账按时间倒序返回, 一旦本页出现更早的一单,
+/// 后续页对 5h/7d/30d 三个窗口均无贡献, 即可提前收口.
+const CLINE_LEDGER_HORIZON_SECONDS: i64 = 30 * 24 * 60 * 60;
 
 #[derive(Debug, Clone, Copy)]
 enum ClineThresholdField {
@@ -1278,12 +1316,20 @@ pub fn parse_cline_windows(
     };
     let entries = cline_ledger_entries(items);
     let mut windows = Vec::with_capacity(CLINE_WINDOW_SPECS.len());
-    for (label, seconds, field) in CLINE_WINDOW_SPECS {
+    for (label, seconds, field, mode) in CLINE_WINDOW_SPECS {
         let limit_units = thresholds.field(*field);
         if limit_units <= 0.0 {
             continue;
         }
-        let start = now_epoch - *seconds;
+        let (start, fixed_resets_at) = match mode {
+            // 固定槽: 起点向下对齐到锚点网格, 重置时刻恒为槽终点.
+            ClineWindowMode::FixedSlot { anchor_epoch } => {
+                let offset = (now_epoch - anchor_epoch).rem_euclid(*seconds);
+                let start = now_epoch - offset;
+                (start, Some(start + *seconds))
+            }
+            ClineWindowMode::Rolling => (now_epoch - *seconds, None),
+        };
         let mut used_units = 0.0_f64;
         let mut earliest: Option<i64> = None;
         for entry in &entries {
@@ -1299,8 +1345,9 @@ pub fn parse_cline_windows(
         let used_usd = used_units * CLINE_COST_UNIT_TO_USD;
         let limit_usd = limit_units * CLINE_COST_UNIT_TO_USD;
         let percent = clamp_percent((used_usd / limit_usd) * 100.0);
-        // 滚动窗口的滑出时刻 = 窗口内最早一单 + 窗口长度; 空台账不展示倒计时.
-        let resets_at = earliest.map(|epoch| epoch + seconds);
+        // 滚动窗口的滑出时刻 = 窗口内最早一单 + 窗口长度 (空台账不展示倒计时);
+        // 固定槽的重置时刻与台账无关, 恒为槽终点.
+        let resets_at = fixed_resets_at.or_else(|| earliest.map(|epoch| epoch + *seconds));
         windows.push(window(
             label,
             percent,
@@ -2887,6 +2934,8 @@ impl QuotaProvider for ClineProvider {
             return Ok(None);
         }
 
+        let captured = captured_epoch(&request.captured_at);
+        let horizon = captured - CLINE_LEDGER_HORIZON_SECONDS;
         let mut items: Vec<Value> = Vec::new();
         let mut cursor: Option<String> = None;
         for _ in 0..CLINE_USAGE_MAX_PAGES {
@@ -2910,7 +2959,13 @@ impl QuotaProvider for ClineProvider {
                 Some(auth_error),
             )?;
             let data = page.get("data").cloned().unwrap_or(Value::Null);
+            let mut oldest: Option<i64> = None;
             if let Some(array) = data.get("items").and_then(Value::as_array) {
+                for item in array {
+                    if let Some(epoch) = reset_epoch(item.get("createdAt")) {
+                        oldest = Some(oldest.map_or(epoch, |current| current.min(epoch)));
+                    }
+                }
                 items.extend(array.iter().cloned());
             }
             cursor = data
@@ -2919,12 +2974,12 @@ impl QuotaProvider for ClineProvider {
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
                 .map(str::to_owned);
-            if cursor.is_none() {
+            if oldest.is_some_and(|epoch| epoch < horizon) || cursor.is_none() {
                 break;
             }
         }
 
-        parse_cline_windows(&plan_payload, &items, captured_epoch(&request.captured_at))
+        parse_cline_windows(&plan_payload, &items, captured)
     }
 }
 
@@ -2957,7 +3012,7 @@ mod tests {
         AccountDescriptor, CancellationToken, CatalogInput, ClineProvider, CodexProvider,
         DeepSeekProvider, HttpClient, HttpRequest, HttpResponse, JevProvider, KimiProvider,
         OpenCodeGoProvider, ProviderError, ProviderRequest, QuotaProvider, StepFunProvider,
-        UreqHttpClient, VolcEngineProvider, ZhipuProvider, JEV_MODELS_URL,
+        UreqHttpClient, VolcEngineProvider, ZhipuProvider, CLINE_USAGE_MAX_PAGES, JEV_MODELS_URL,
         STEPFUN_GLOBAL_REFRESH_TOKEN_URL, STEPFUN_GLOBAL_STEP_PLAN_RATE_LIMIT_URL,
         STEPFUN_REFRESH_TOKEN_URL, STEPFUN_STEP_PLAN_RATE_LIMIT_URL,
     };
@@ -4023,15 +4078,15 @@ mod tests {
     }
 
     #[test]
-    fn cline_provider_aggregates_three_rolling_windows() {
+    fn cline_provider_aggregates_fixed_slot_and_rolling_windows() {
         let secret = "sk-cline-fixture-key";
-        // 台账: 5h 内三单 ($1.00 + $2.00 + $0.50), 24h 内一单 ($2.50), 30 天内一单 ($10.00)
+        // 台账: 5h 槽 [10:00Z, 15:00Z) 内两单 ($1.00 + $2.00), 槽前 $0.50, 7d 内 $2.50, 30d 内 $10.00
         let page_one = json!({
             "data": {
                 "items": [
                     {"createdAt": "2026-10-14T11:59:00Z", "costUsd": 100_000_000_i64},
                     {"createdAt": "2026-10-14T11:00:00Z", "costUsd": 200_000_000_i64},
-                    {"createdAt": "2026-10-14T10:30:00Z", "costUsd": 50_000_000_i64},
+                    {"createdAt": "2026-10-14T09:30:00Z", "costUsd": 50_000_000_i64},
                     {"createdAt": "2026-10-13T00:00:00Z", "costUsd": 250_000_000_i64}
                 ],
                 "nextToken": "cursor+with=padding"
@@ -4067,19 +4122,24 @@ mod tests {
         assert!(result["extra"].is_null());
         let windows = result["windows"].as_array().expect("windows array");
         assert_eq!(windows.len(), 3);
-        // 5h 窗口: $3.50 / $10.00 = 35%
+        // 5h 固定槽 [10:00Z, 15:00Z): $3.00 / $10.00 = 30% (09:30Z 一单在槽外; 若误按滚动则为 35%)
         assert_eq!(windows[0]["label"], "每 5 小时");
         assert_eq!(windows[0]["windowMinutes"], json!(300));
-        assert!((windows[0]["usedPercent"].as_f64().unwrap() - 35.0).abs() < 1e-6);
+        assert!((windows[0]["usedPercent"].as_f64().unwrap() - 30.0).abs() < 1e-6);
         // 7d 窗口: $6.00 / $25.00 = 24%
         assert_eq!(windows[1]["windowMinutes"], json!(10080));
         assert!((windows[1]["usedPercent"].as_f64().unwrap() - 24.0).abs() < 1e-6);
         // 30d 窗口: $16.00 / $50.00 = 32%
         assert_eq!(windows[2]["windowMinutes"], json!(43200));
         assert!((windows[2]["usedPercent"].as_f64().unwrap() - 32.0).abs() < 1e-6);
-        // 滑出时刻 = 窗口内最早一单 + 窗口长度 (5h: 10:30 + 5h)
-        let expected_reset = reset_epoch(Some(&json!("2026-10-14T10:30:00Z"))).unwrap() + 18_000;
-        assert_eq!(windows[0]["resetsAt"], json!(expected_reset));
+        // 5h 重置时刻 = 槽终点 (15:00Z), 与台账无关
+        let slot_end = reset_epoch(Some(&json!("2026-10-14T15:00:00Z"))).unwrap();
+        assert_eq!(windows[0]["resetsAt"], json!(slot_end));
+        // 7d/30d 滚动窗口的滑出时刻 = 各自窗口内最早一单 + 窗口长度
+        let week_reset = reset_epoch(Some(&json!("2026-10-13T00:00:00Z"))).unwrap() + 604_800;
+        assert_eq!(windows[1]["resetsAt"], json!(week_reset));
+        let month_reset = reset_epoch(Some(&json!("2026-09-20T00:00:00Z"))).unwrap() + 2_592_000;
+        assert_eq!(windows[2]["resetsAt"], json!(month_reset));
         // 请求序列与鉴权头
         let requests = http.requests();
         assert_eq!(requests.len(), 4);
@@ -4090,12 +4150,12 @@ mod tests {
         );
         assert_eq!(
             requests[2].url,
-            "https://api.cline.bot/api/v1/users/usr-fixture/usages?limit=100"
+            "https://api.cline.bot/api/v1/users/usr-fixture/usages?limit=200"
         );
         // 游标必须百分号编码 ('+' 与 '=' 不得原样进入查询串)
         assert_eq!(
             requests[3].url,
-            "https://api.cline.bot/api/v1/users/usr-fixture/usages?limit=100&cursor=cursor%2Bwith%3Dpadding"
+            "https://api.cline.bot/api/v1/users/usr-fixture/usages?limit=200&cursor=cursor%2Bwith%3Dpadding"
         );
         for request in requests {
             assert_eq!(request.headers["Authorization"], format!("Bearer {secret}"));
@@ -4161,17 +4221,18 @@ mod tests {
             Some("2026-10-14T12:02:20Z"),
         );
         let now = reset_epoch(Some(&json!("2026-10-14T12:00:00Z"))).unwrap();
-        let five_hours_ago = now - 5 * 60 * 60;
+        // 5h 固定槽起点: 12:00Z 落在 [10:00Z, 15:00Z) (2026-10-14 当日网格)
+        let slot_start = reset_epoch(Some(&json!("2026-10-14T10:00:00Z"))).unwrap();
         let items = vec![
-            // 恰在窗口起点: 计入
-            json!({"createdAt": five_hours_ago, "costUsd": 1_000_000_000_i64}),
-            // 起点前 1 秒: 剔除
-            json!({"createdAt": five_hours_ago - 1, "costUsd": 1_000_000_000_i64}),
+            // 恰在槽起点: 计入
+            json!({"createdAt": slot_start, "costUsd": 1_000_000_000_i64}),
+            // 槽起点前 1 秒: 剔除
+            json!({"createdAt": slot_start - 1, "costUsd": 1_000_000_000_i64}),
         ];
         let result = parse_cline_windows(&plan, &items, now).unwrap().unwrap();
         let windows = result["windows"].as_array().expect("windows array");
         assert_eq!(windows.len(), 3);
-        // 5h 窗口: $10.00 / $10.00 = 100% (起点前 1 秒的一单被剔除)
+        // 5h 固定槽: $10.00 / $10.00 = 100% (槽起点前 1 秒的一单被剔除)
         assert!((windows[0]["usedPercent"].as_f64().unwrap() - 100.0).abs() < 1e-6);
         assert!(
             result.get("extra").is_none(),
@@ -4195,6 +4256,107 @@ mod tests {
         let result = parse_cline_windows(&tighter, &items, now).unwrap().unwrap();
         // 5h 窗口: $10.00 / $5.00 → 上限收敛在 100%
         assert!((result["windows"][0]["usedPercent"].as_f64().unwrap() - 100.0).abs() < 1e-6);
+    }
+
+    /// 5h 固定槽网格锁定: 槽位按 5 小时对齐 Unix 纪元, 槽外台账不计入 —— 与网页控制台口径一致.
+    /// (2026-10-15 当日网格为 01/06/11/16/21:00 UTC, 与网页 "Resets in 3h57m" 对账吻合.)
+    #[test]
+    fn cline_five_hour_window_is_a_fixed_grid_slot() {
+        let plan = cline_plan_payload((1_000_000_000, 2_500_000_000, 5_000_000_000), None);
+        // 实测锚定样本: now = 10-15T07:30Z → 槽 [06:00Z, 11:00Z), 重置 11:00Z
+        let now = reset_epoch(Some(&json!("2026-10-15T07:30:00Z"))).unwrap();
+        let items = vec![
+            json!({"createdAt": "2026-10-15T07:00:00Z", "costUsd": 100_000_000_i64}),
+            // 槽外 (上一槽尾部): 不得计入
+            json!({"createdAt": "2026-10-15T05:59:00Z", "costUsd": 500_000_000_i64}),
+        ];
+        let result = parse_cline_windows(&plan, &items, now).unwrap().unwrap();
+        let five_hour = &result["windows"][0];
+        // $1.00 / $10.00 = 10% (若误按滚动求和则为 60%)
+        assert!((five_hour["usedPercent"].as_f64().unwrap() - 10.0).abs() < 1e-6);
+        assert_eq!(
+            five_hour["resetsAt"],
+            json!(reset_epoch(Some(&json!("2026-10-15T11:00:00Z"))).unwrap())
+        );
+
+        // 网格稳定性: 跨槽时刻 now 推进到 11:00Z 后进入下一槽, 用量归零且重置时刻 +5h
+        let next_slot = reset_epoch(Some(&json!("2026-10-15T11:00:01Z"))).unwrap();
+        let result = parse_cline_windows(&plan, &items, next_slot)
+            .unwrap()
+            .unwrap();
+        let five_hour = &result["windows"][0];
+        assert!((five_hour["usedPercent"].as_f64().unwrap() - 0.0).abs() < 1e-6);
+        assert_eq!(
+            five_hour["resetsAt"],
+            json!(reset_epoch(Some(&json!("2026-10-15T16:00:00Z"))).unwrap())
+        );
+
+        // 空台账: 固定槽仍展示倒计时 (重置时刻与台账无关)
+        let result = parse_cline_windows(&plan, &[], now).unwrap().unwrap();
+        assert_eq!(
+            result["windows"][0]["resetsAt"],
+            json!(reset_epoch(Some(&json!("2026-10-15T11:00:00Z"))).unwrap())
+        );
+    }
+
+    /// 台账翻页策略: 30 天早停 (倒序台账出现更早一单即收口) 与页数上限共同约束取数成本.
+    #[test]
+    fn cline_ledger_pagination_stops_at_horizon_and_respects_page_cap() {
+        let secret = "sk-cline-fixture-key";
+        let plan_response = response(
+            &cline_plan_payload((1_000_000_000, 2_500_000_000, 5_000_000_000), None).to_string(),
+        );
+        let me_response = response(r#"{"data":{"id":"usr-fixture"},"success":true}"#);
+
+        // 场景 1: 首屏即含 30 天前的单据 (倒序台账末尾) → 不再请求第二页.
+        let stale_page = json!({
+            "data": {
+                "items": [
+                    {"createdAt": "2026-10-14T11:00:00Z", "costUsd": 100_000_000_i64},
+                    {"createdAt": "2026-08-01T00:00:00Z", "costUsd": 100_000_000_i64}
+                ],
+                "nextToken": "cursor-1"
+            },
+            "success": true,
+        });
+        let http = FixtureHttp::new(vec![
+            me_response.clone(),
+            plan_response.clone(),
+            response(&stale_page.to_string()),
+        ]);
+        let result = ClineProvider
+            .query(&cline_request(secret), &http, &CancellationToken::new())
+            .unwrap()
+            .unwrap();
+        // 5h 固定槽 [10:00Z, 15:00Z): 11:00Z 一单计入 = 10%; 30 天前那单不计入任何窗口.
+        assert!((result["windows"][0]["usedPercent"].as_f64().unwrap() - 10.0).abs() < 1e-6);
+        assert_eq!(http.requests().len(), 3, "出现 30 天前单据后不得继续翻页");
+
+        // 场景 2: 全部单据都在 30 天内且游标不断 → 请求数收敛在页数上限 (含 me + plan).
+        let fresh_page = json!({
+            "data": {
+                "items": [{"createdAt": "2026-10-14T11:00:00Z", "costUsd": 100_000_000_i64}],
+                "nextToken": "cursor-next"
+            },
+            "success": true,
+        });
+        let mut responses = vec![me_response, plan_response];
+        for _ in 0..CLINE_USAGE_MAX_PAGES {
+            responses.push(response(&fresh_page.to_string()));
+        }
+        let http = FixtureHttp::new(responses);
+        let result = ClineProvider
+            .query(&cline_request(secret), &http, &CancellationToken::new())
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            http.requests().len(),
+            2 + CLINE_USAGE_MAX_PAGES,
+            "游标不断时必须收敛在页数上限"
+        );
+        // 每页同一单 ($1.00 × 12 页 = $12.00) / $10.00 = 120% → 收敛在上限 100%
+        let expected = (CLINE_USAGE_MAX_PAGES as f64 * 10.0).min(100.0);
+        assert!((result["windows"][0]["usedPercent"].as_f64().unwrap() - expected).abs() < 1e-6);
     }
 
     /// 线上真实报文形态锁定 (2026-10-14 实测 `/users/me/plan` 响应, 标识已替换为 fixture):
