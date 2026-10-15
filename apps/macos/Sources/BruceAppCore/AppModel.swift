@@ -568,6 +568,17 @@ package final class AppModel: ObservableObject {
         })
     }
 
+    /// 订阅套餐名 (取自最近一次采集的 artifact `service.plan`).
+    /// C024: 套餐名不再出现在仪表盘, 统一在设置中心「订阅额度」行内以标签展示,
+    /// 故由设置页按 Provider 反查最近一次采集结果.
+    package func subscriptionPlan(for provider: SubscriptionProviderID) -> String? {
+        guard let artifact = decodedAgentUsageArtifact() else { return nil }
+        return artifact.services.first { service in
+            SubscriptionPresentationPolicy.providerID(forServiceID: service.id)
+                == provider.rawValue
+        }?.plan
+    }
+
     /// 按验证状态过滤 services 后的 artifact; 无 artifact 返回 nil.
     /// services 未发生变化时直接返回原对象 (保持引用与相等性).
     private func gatedAgentUsageArtifact() -> AgentUsageArtifact? {

@@ -165,7 +165,7 @@ public struct ProviderConnectionVerifier: Sendable {
         guard let url = URL(string: base),
               let host = url.host?.lowercased(),
               host.contains("bigmodel.cn") || host.contains("api.z.ai") else {
-            return .failed(reason: "Base URL 必须是智谱个人版站点")
+            return .failed(reason: "Base URL 必须是 Z.ai 个人版站点")
         }
         return .ok
     }

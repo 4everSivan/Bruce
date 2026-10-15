@@ -1375,7 +1375,7 @@ struct PanelViewModelHarness {
         let displayCases: [(String, String, String)] = [
             ("volcengine", "火山引擎（Coding Plan）", "火山引擎"),
             ("volcengine", "火山引擎", "火山引擎"),
-            ("zhipu", "智谱", "智谱"),
+            ("zhipu", "Z.ai", "Z.ai"),
             ("kimi", "Kimi Coding", "Kimi Coding"),
             ("deepseek", "DeepSeek", "DeepSeek"),
         ]

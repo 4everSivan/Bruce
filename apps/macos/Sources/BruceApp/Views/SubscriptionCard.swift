@@ -197,7 +197,8 @@ private struct ProviderRefreshControl {
 
 // MARK: - provider 段
 
-/// 单个 provider 段: 品牌徽章 + 名称 + plan chip + 余额胶囊 + 账号数, 下方窗口行 / 账号子卡.
+/// 单个 provider 段: 品牌徽章 + 名称 + 余额胶囊 + 账号数, 下方窗口行 / 账号子卡.
+/// 套餐名 (plan) 自 C024 起不在仪表盘展示, 统一在设置中心「订阅额度」行内呈现.
 /// 多账号 (>=2) 默认折叠, 折叠态展示最关键窗口摘要; 展开后按账号子卡展示.
 /// 头部行尾的定向刷新按钮与名称+chevron 展开按钮互为兄弟控件, 互不误触.
 private struct ProviderSectionView: View {
@@ -289,9 +290,6 @@ private struct ProviderSectionView: View {
             } else {
                 Text(section.name)
                     .font(.system(size: 11, weight: .semibold))
-            }
-            if let plan = section.plan {
-                PlanChip(text: plan)
             }
             // 余额 (Credits / 货币) 仅在非双槽模式时作为头部元数据胶囊呈现；
             // 纯余额型 Provider (无 windows) 在正文以双槽结构完整呈现，避免头部重复拥挤。
@@ -438,7 +436,8 @@ private struct BalanceDualSlotView: View {
                 Circle()
                     .fill(NothingTokens.success)
                     .frame(width: 5, height: 5)
-                let statusText = section.plan ?? (section.status == "ok" ? "正常" : section.status)
+                // 套餐名不在仪表盘展示 (C024): 统一在设置中心「订阅额度」行内呈现.
+                let statusText = section.status == "ok" ? "正常" : section.status
                 Text(statusText)
                     .font(isNothing ? NothingFont.mono(11, weight: .medium) : .system(size: 12, weight: .medium))
                     .foregroundStyle(isNothing ? NothingTokens.secondary(colorScheme) : Color.primary.opacity(0.8))
@@ -729,11 +728,6 @@ private struct ProviderAccountCard: View {
                     AccountTagChip(text: tag)
                 }
                 Spacer()
-                if let plan = account.plan {
-                    Text(plan)
-                        .font(.system(size: 9))
-                        .foregroundStyle(.secondary)
-                }
             }
             .padding(.bottom, 2)
 
@@ -864,47 +858,6 @@ private struct ProviderLogoBadge: View {
     }
 }
 
-// MARK: - plan chip
-
-/// 套餐胶囊: 9pt, 白底描边, 与 mockup .plan 一致; 深色下退化为低透明白底.
-/// Nothing 主题 (定稿 .plan): 圆角 3pt (Capsule→3), 透明底 + 1px 加强边框,
-/// Space Mono, secondary 文字.
-private struct PlanChip: View {
-    let text: String
-
-    @Environment(\.BruceResolvedTheme) private var theme
-    @Environment(\.colorScheme) private var colorScheme
-
-    private var isNothing: Bool { theme.interfaceStyle == .nothing }
-
-    var body: some View {
-        if isNothing {
-            Text(text)
-                .font(NothingFont.mono(9))
-                .foregroundStyle(NothingTokens.secondary(colorScheme))
-                .padding(.horizontal, 6)
-                .padding(.vertical, 1)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .strokeBorder(NothingTokens.borderVisible(colorScheme), lineWidth: 1)
-                )
-        } else {
-            Text(text)
-                .font(.system(size: 9))
-                .foregroundStyle(Color.primary.opacity(0.7))
-                .padding(.horizontal, 6)
-                .padding(.vertical, 1)
-                .background(Color.adaptive(
-                    light: Color.white.opacity(0.55),
-                    dark: Color.white.opacity(0.12)
-                ), in: Capsule())
-                .overlay(Capsule().strokeBorder(Color.adaptive(
-                    light: Color.white.opacity(0.6),
-                    dark: Color.white.opacity(0.18)
-                ), lineWidth: 0.5))
-        }
-    }
-}
 
 // MARK: - balance chip
 

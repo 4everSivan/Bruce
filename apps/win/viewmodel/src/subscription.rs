@@ -148,7 +148,7 @@ fn group_display_name(provider_id: &str) -> String {
         "kimi" => "Kimi",
         "deepseek" => "DeepSeek",
         "volcengine" => "火山引擎",
-        "zhipu" => "智谱",
+        "zhipu" => "Z.ai",
         "claude" => "Claude",
         "grok" => "Grok",
         "opencodeGo" | "opencode-go" => "OpenCode GO",

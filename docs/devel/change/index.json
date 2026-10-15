@@ -41,7 +41,8 @@
         "C018",
         "C019",
         "C020",
-        "C023"
+        "C023",
+        "C024"
       ]
     },
     "TokenUsage": {
@@ -259,6 +260,15 @@
       "topic": "SubscriptionQuota",
       "version": "0.12.0+",
       "file": "docs/devel/change/C023.json"
+    },
+    "C024": {
+      "title": "仪表盘展示调整：智谱更名 Z.ai，套餐名标签（plus/lite/Cline Pass）由仪表盘移入设置中心订阅额度",
+      "type": "Enhancement",
+      "status": "in_progress",
+      "branch": "main",
+      "topic": "SubscriptionQuota",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C024.json"
     }
   }
 }

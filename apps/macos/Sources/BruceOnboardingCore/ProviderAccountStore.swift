@@ -505,7 +505,7 @@ public final class ProviderAccountStore: @unchecked Sendable {
             let apiKey = legacyValues[0]
             let baseURL = legacyValues[1]
             accountID = ProviderAccountIDGenerator.zhipuAccountID(apiKey: apiKey)
-            displayName = "智谱 · \(accountID)"
+            displayName = "Z.ai · \(accountID)"
             let dict: [String: String] = ["api_key": apiKey, "base_url": baseURL]
             let data = (try? JSONSerialization.data(
                 withJSONObject: dict, options: [.sortedKeys]

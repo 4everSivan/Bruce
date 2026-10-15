@@ -38,7 +38,7 @@ const CATALOG_SPECS: &[CatalogSpec] = &[
     CatalogSpec {
         provider: "zhipu",
         prefix: "zhipu_",
-        display_prefix: "智谱",
+        display_prefix: "Z.ai",
         app: "zhipu",
     },
     CatalogSpec {
@@ -1011,7 +1011,7 @@ pub fn parse_zhipu_usage(payload: &Value) -> Result<Option<Value>, ProviderError
         return Err(ProviderError::new(
             "PROVIDER_REMOTE_REJECTED",
             "parse",
-            "智谱额度查询被服务端拒绝",
+            "Z.ai 额度查询被服务端拒绝",
             false,
         ));
     }
@@ -1963,7 +1963,7 @@ impl QuotaProvider for ZhipuProvider {
                 ("Accept-Language", "en-US,en".to_owned()),
             ]),
             None,
-            Some("智谱凭证被拒绝, 请检查 API key"),
+            Some("Z.ai 凭证被拒绝, 请检查 API key"),
         )?;
         parse_zhipu_usage(&payload)
     }

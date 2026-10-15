@@ -961,13 +961,13 @@ extension BruceOnboardingCoreHarness {
             StoredCredentialParser.parse(
                 provider: .zhipu, credentialJSON: zhipuJSON
             ) == .zhipu(apiKey: "id.secret", baseURL: "https://open.bigmodel.cn/api/paas/v4"),
-            "智谱 api_key/base_url 应回传 zhipu"
+            "Z.ai api_key/base_url 应回传 zhipu"
         )
         try coreExpect(
             StoredCredentialParser.parse(
                 provider: .zhipu, credentialJSON: "{\"api_key\":\"id.secret\"}"
             ) == nil,
-            "智谱缺 base_url 应返回 nil"
+            "Z.ai 缺 base_url 应返回 nil"
         )
 
         // OAuth 形态 (Claude / Grok / OpenCode GO): 重新验证走 Evaluator, 不解析

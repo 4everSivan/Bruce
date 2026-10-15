@@ -195,7 +195,7 @@ fn placeholder_skip_and_service_issue_diagnostics() {
         // partial + 无 kind + 无窗口 + 无余额: 未授权占位, skip。
         {"id": "grok", "name": "Grok", "status": "partial", "kind": null, "windows": [], "balance": null},
         // empty 是真实诊断状态, 必须渲染 + serviceIssue。
-        {"id": "zhipu", "name": "智谱", "status": "empty", "kind": null, "windows": [], "balance": null}
+        {"id": "zhipu", "name": "Z.ai", "status": "empty", "kind": null, "windows": [], "balance": null}
     ]);
     let (subscription, diagnostics) = map(services);
     assert!(diagnostics.iter().any(|item| matches!(

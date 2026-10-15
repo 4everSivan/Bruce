@@ -287,7 +287,6 @@ function subscriptionCard(sub) {
     const h = el("div", "sub-head");
     h.append(badge(section.id, section.name));
     h.append(el("span", "sub-name", section.name));
-    if (section.plan) h.append(el("span", "plan-chip", section.plan));
     // 余额 (Credits / 货币) 以头部元数据胶囊呈现 (C011), 不再占用正文行。
     if (section.balance) {
       const chip = el("span", "bal-chip");
@@ -308,7 +307,6 @@ function subscriptionCard(sub) {
       const accountBlock = el("details", "account-detail");
       accountBlock.open = true;
       const title = el("summary", null, account.name || account.id);
-      if (account.plan) title.append(el("span", "plan-chip", account.plan));
       if (account.tag) title.append(el("span", "plan-chip", account.tag));
       accountBlock.append(title);
       for (const row of account.windows || []) accountBlock.append(windowRow(row));

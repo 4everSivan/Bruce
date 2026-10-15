@@ -43,7 +43,7 @@ Bruce 把本机 AI Agent 的 token 用量、成本估算和订阅额度集中到
 | 类别 | 覆盖 |
 |---|---|
 | 本机会话扫描 | Kimi Work / Kimi Code、Claude Code、Codex、Grok、OpenCode、Orca、Pi、ZCode、CodeBuddy |
-| 订阅额度 | Kimi、DeepSeek、火山引擎、Codex OAuth、Claude、Grok、OpenCode Go、智谱 GLM、阶跃星辰（StepFun）、Cline / ClinePass（5h / 7d / 30d 三窗口） |
+| 订阅额度 | Kimi、DeepSeek、火山引擎、Codex OAuth、Claude、Grok、OpenCode Go、Z.ai（智谱 GLM）、阶跃星辰（StepFun）、Cline / ClinePass（5h / 7d / 30d 三窗口） |
 
 > 仓库根 `apps/widget/` 单文件 Widget 继续保留, 仅服务 Daimon / Kimi Work Blueprint 场景, 不属于 App 的组成部分。
 

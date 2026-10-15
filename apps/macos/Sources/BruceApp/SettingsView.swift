@@ -1132,6 +1132,10 @@ struct SettingsView: View {
                     .foregroundStyle(SettingsDemoTokens.text2)
             }
             Spacer(minLength: 8)
+            // 套餐标签 (C024): 由仪表盘移入设置中心, 与凭证形态/状态同排展示.
+            if let plan = model.subscriptionPlan(for: id) {
+                SubscriptionPlanTag(text: plan)
+            }
             subscriptionStatusTail(id)
             Button("配置") {
                 configuringProvider = id
@@ -1366,12 +1370,12 @@ struct SettingsView: View {
                         id: "apiKey",
                         label: "API Key",
                         placeholder: "•••••••• (输入后不回显)",
-                        accessibilityLabel: "智谱 API key"
+                        accessibilityLabel: "Z.ai API key"
                     )
                 ],
                 values: $zhipuValues,
                 guide: ProviderCredentialGuide(
-                    summary: "在智谱 BigModel 控制台获取 API key",
+                    summary: "在 Z.ai（BigModel）控制台获取 API key",
                     linkTitle: nil,
                     linkURL: nil
                 ),
@@ -1535,6 +1539,29 @@ struct SettingsView: View {
             }
             .padding(.vertical, 2)
         )
+    }
+
+    /// 订阅套餐标签 (C024): 套餐名从仪表盘移入设置中心后的小型描边标签.
+    private struct SubscriptionPlanTag: View {
+        let text: String
+
+        var body: some View {
+            Text(text)
+                .font(.system(size: 10.5))
+                .foregroundStyle(SettingsDemoTokens.text2)
+                .lineLimit(1)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 1.5)
+                .background(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(SettingsDemoTokens.surface)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .strokeBorder(SettingsDemoTokens.separator, lineWidth: 0.5)
+                )
+                .accessibilityLabel("订阅套餐 \(text)")
+        }
     }
 
     /// 账号状态文案 (非敏感).

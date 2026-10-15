@@ -64,7 +64,7 @@ fn only_five_hour_windows_trigger_with_label_fallback() {
 #[test]
 fn multiple_services_keep_artifact_order() {
     let artifact = json!({"services": [
-        service("zhipu", "智谱", json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 90.0}])),
+        service("zhipu", "Z.ai", json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 90.0}])),
         service("kimi_coding", "Kimi", json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 85.0}]))
     ]});
     let alerts = over_threshold_entries(&artifact);
@@ -119,7 +119,7 @@ fn dedup_tracks_each_service_window_independently() {
     let mut state = AlertDeliveryState::default();
     let artifact = json!({"services": [
         service("kimi_coding", "Kimi", json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 90.0}])),
-        service("zhipu", "智谱", json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 95.0}]))
+        service("zhipu", "Z.ai", json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 95.0}]))
     ]});
     assert_eq!(
         state
@@ -130,7 +130,7 @@ fn dedup_tracks_each_service_window_independently() {
 
     // kimi 回落, zhipu 持续: 下一轮无通知。
     let artifact = json!({"services": [
-        service("zhipu", "智谱", json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 96.0}]))
+        service("zhipu", "Z.ai", json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 96.0}]))
     ]});
     assert!(state
         .filter_new_alerts(&over_threshold_entries(&artifact))
@@ -139,7 +139,7 @@ fn dedup_tracks_each_service_window_independently() {
     // kimi 再次超标: 仅 kimi 通知。
     let artifact = json!({"services": [
         service("kimi_coding", "Kimi", json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 88.0}])),
-        service("zhipu", "智谱", json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 97.0}]))
+        service("zhipu", "Z.ai", json!([{"label": "5h", "windowMinutes": 300, "usedPercent": 97.0}]))
     ]});
     let pending = state.filter_new_alerts(&over_threshold_entries(&artifact));
     assert_eq!(pending.len(), 1);

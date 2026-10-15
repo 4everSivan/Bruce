@@ -633,7 +633,7 @@ final class SubscriptionService {
         guard saveProviderAccountCredential(
             for: .zhipu,
             accountID: accountID,
-            displayName: "智谱 · \(accountID)",
+            displayName: "Z.ai · \(accountID)",
             credentialJSON: credentialJSON
         ) else { return }
         model.setSubscriptionCredentialConfigured(true, for: .zhipu)
@@ -993,7 +993,7 @@ final class SubscriptionService {
                 provider: .zhipu, credentialJSON: record.credentialJSON
             ) else {
                 model.setSettingsError(
-                    "智谱凭证形态不兼容, 请重新粘贴 API key", for: .zhipu
+                    "Z.ai 凭证形态不兼容, 请重新粘贴 API key", for: .zhipu
                 )
                 return
             }

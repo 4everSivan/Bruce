@@ -8,7 +8,7 @@
     ["kimi", "Kimi For Coding", "kimiQuotaAccounts"],
     ["deepseek", "DeepSeek", "deepseekQuotaAccounts"],
     ["volcengine", "火山引擎", "volcengineQuotaAccounts"],
-    ["zhipu", "智谱", "zhipuQuotaAccounts"],
+    ["zhipu", "Z.ai", "zhipuQuotaAccounts"],
     ["codex", "ChatGPT / Codex", "codexQuotaAccounts"],
     ["claude", "Claude", "claudeQuotaAccounts"],
     ["grok", "Grok", "grokQuotaAccounts"],
@@ -340,7 +340,7 @@
     row(c3, "显示名称", input("account-name", "text", { placeholder: "例如工作账号" }));
     row(c3, "密钥 / Access Token", input("account-secret", "password", { autocomplete: "new-password" }));
     row(c3, "附加密钥 / Refresh Token", input("account-secondary", "password", { autocomplete: "new-password" }), "如火山引擎 Secret Key 或 OAuth 刷新凭证");
-    row(c3, "智谱 API 地址（可选）", input("account-base-url", "text", { placeholder: "https://open.bigmodel.cn/api/paas/v4" }));
+    row(c3, "Z.ai API 地址（可选）", input("account-base-url", "text", { placeholder: "https://open.bigmodel.cn/api/paas/v4" }));
     const site = node("select", null, { id: "account-site", class: "fluent-select" });
     site.append(node("option", "国内", { value: "domestic" }), node("option", "国际", { value: "global" }));
     row(c3, "StepFun 站点", site);
@@ -644,7 +644,8 @@
     if (!host) return;
     const lines = [];
     for (const section of panel.subscription?.sections || []) {
-      lines.push(`${section.name}：${section.status === "ok" ? "连接正常" : section.note || section.status || "等待结果"}`);
+      const plan = section.plan ? ` · ${section.plan}` : "";
+      lines.push(`${section.name}：${section.status === "ok" ? "连接正常" : section.note || section.status || "等待结果"}${plan}`);
       for (const account of section.accounts || []) {
         lines.push(`${account.name}：${account.status === "ok" ? "连接正常" : account.note || account.status}`);
       }
