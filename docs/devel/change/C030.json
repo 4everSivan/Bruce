@@ -3,7 +3,7 @@
   "id": "C030",
   "title": "Windows 仪表盘 P2 对标：Agent 用量卡行级展开与分组明细形态、24 点折线、柱顶总量、收起态迷你折线、LIVE 标签、卡片背景纹样与折叠态拖拽排序",
   "type": "Enhancement",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "main",
   "branch_note": "单人维护: 直接在 main 实施并推送; 全部为 Windows 渲染层改动, 不动视图模型契约",
   "is_hotfix": false,
@@ -91,10 +91,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": "passed",
     "run_id": "verify-local-20261015-c030 + render-harness-20261015",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认，然后继续完成032",
+    "signoff": "2026-10-15 用户会话内以「确认，然后继续完成032」确认 C030（仪表盘 P2 形态对标: Agent 卡明细下钻/折线走势/柱顶总量/LIVE/背景纹样/拖拽排序）收口; AI 代为签署并闭环归档（单人维护约定: 直接提 main, 不打 tag）",
     "checks": [
       {
         "item": "Agent 卡明细交互与形态 (DOM + 真实内核)",

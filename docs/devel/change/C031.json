@@ -3,7 +3,7 @@
   "id": "C031",
   "title": "Windows 设置中心 P3 对标（一）：订阅额度行式化（品牌徽章/凭证形态/套餐标签/状态尾件/行内启用开关）、授权页 mac 语义、通用页补缺、维护页清理与脱敏诊断预览",
   "type": "Enhancement",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "main",
   "branch_note": "单人维护: 直接在 main 实施并推送; 设置窗口为独立 WebView 页面, 不涉及视图模型契约",
   "is_hotfix": false,
@@ -86,10 +86,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": "passed",
     "run_id": "verify-local-20261015-c031 + render-harness-20261015",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认，然后继续完成032",
+    "signoff": "2026-10-15 用户会话内以「确认，然后继续完成032」确认 C031（设置中心 P3 对标(一): 订阅行式化/授权语义/通用补缺/维护清理与脱敏诊断预览）收口; AI 代为签署并闭环归档（单人维护约定: 直接提 main, 不打 tag）",
     "checks": [
       {
         "item": "设置页形态与语义 (真实内核 + DOM)",
