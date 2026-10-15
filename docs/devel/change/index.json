@@ -256,7 +256,7 @@
     "C023": {
       "title": "修复 Codex 令牌管理器 Harness 的时序 flake：保存失败注入由计数配额改为确定性开关并自证失败路径",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "main",
       "topic": "SubscriptionQuota",
       "version": "0.12.0+",
@@ -265,7 +265,7 @@
     "C024": {
       "title": "仪表盘展示调整：智谱更名 Z.ai，套餐名标签（plus/lite/Cline Pass）由仪表盘移入设置中心订阅额度",
       "type": "Enhancement",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "main",
       "topic": "SubscriptionQuota",
       "version": "0.12.0+",
@@ -274,7 +274,7 @@
     "C025": {
       "title": "修复 Cline 额度口径：5h 由滚动求和改为固定 5 小时槽，台账翻页取数收敛（7d/30d 不再截断）",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "main",
       "topic": "SubscriptionQuota",
       "version": "0.12.0+",
