@@ -3,7 +3,7 @@
   "id": "C033",
   "title": "收口 P3 残余差异：模型计费表补齐「厂商」列（镜像 mac 目录行集与元数据）并接入原生保存对话框（导出位置可选，取消/不可用有回落）",
   "type": "Enhancement",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "main",
   "branch_note": "单人维护: 直接在 main 实施并推送; 新增 Tauri 官方 dialog 插件 (与既有 notification/global-shortcut 同类)",
   "is_hotfix": false,
@@ -68,10 +68,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": "passed",
     "run_id": "verify-local-20261015-c033 + render-harness-20261015",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认",
+    "signoff": "2026-10-15 用户会话内以「确认」确认 C033（模型计费补齐厂商列（镜像 mac 目录）与导出原生保存对话框）收口, 前置证据已汇报: verify-local 退出码 0 + 真实内核渲染自检 + 各自针对性用例; AI 代为签署并闭环归档（单人维护约定: 直接提 main, 不打 tag）",
     "checks": [
       {
         "item": "展示目录镜像与表格列形态",

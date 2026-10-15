@@ -346,7 +346,7 @@
     "C032": {
       "title": "Windows 设置中心 P3 对标（二）：模型计费页（今日费用总览/搜索/三态筛选/8 列表格/逐模型校准/config.json 预览）与导出能力（账单 CSV + 脱敏诊断报告）",
       "type": "Enhancement",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.12.0+",
@@ -355,7 +355,7 @@
     "C033": {
       "title": "收口 P3 残余差异：模型计费表补齐「厂商」列（镜像 mac 目录行集与元数据）并接入原生保存对话框（导出位置可选，取消/不可用有回落）",
       "type": "Enhancement",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.12.0+",
@@ -364,7 +364,7 @@
     "C034": {
       "title": "Nothing 主题形态补齐：订阅量条改 24 段方角、14 日柱改 3×8 点阵（agent 绿阶分段落槽）、日总量改 hover 显示",
       "type": "Enhancement",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.12.0+",

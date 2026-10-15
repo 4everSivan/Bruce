@@ -3,7 +3,7 @@
   "id": "C032",
   "title": "Windows 设置中心 P3 对标（二）：模型计费页（今日费用总览/搜索/三态筛选/8 列表格/逐模型校准/config.json 预览）与导出能力（账单 CSV + 脱敏诊断报告）",
   "type": "Enhancement",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "main",
   "branch_note": "单人维护: 直接在 main 实施并推送; 导出走后端写固定目录并回显路径 (不引入 tauri-plugin-dialog, 见 why)",
   "is_hotfix": false,
@@ -74,10 +74,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": "passed",
     "run_id": "verify-local-20261015-c032 + render-harness-20261015",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认",
+    "signoff": "2026-10-15 用户会话内以「确认」确认 C032（模型计费页对标与导出能力（账单 CSV / 脱敏诊断报告））收口, 前置证据已汇报: verify-local 退出码 0 + 真实内核渲染自检 + 各自针对性用例; AI 代为签署并闭环归档（单人维护约定: 直接提 main, 不打 tag）",
     "checks": [
       {
         "item": "模型计费页形态与交互 (真实内核 + DOM)",

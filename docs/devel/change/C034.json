@@ -3,7 +3,7 @@
   "id": "C034",
   "title": "Nothing 主题形态补齐：订阅量条改 24 段方角、14 日柱改 3×8 点阵（agent 绿阶分段落槽）、日总量改 hover 显示",
   "type": "Enhancement",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "main",
   "branch_note": "单人维护: 直接在 main 实施并推送; 仅动 Windows 渲染层 (app.js + styles.css), 不触碰契约与后端",
   "is_hotfix": false,
@@ -61,10 +61,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": "passed",
     "run_id": "verify-local-20261015-c034 + render-harness-20261015",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认",
+    "signoff": "2026-10-15 用户会话内以「确认」确认 C034（Nothing 主题形态补齐（24 段量条 / 3×8 点阵日柱 / 绿阶））收口, 前置证据已汇报: verify-local 退出码 0 + 真实内核渲染自检 + 各自针对性用例; AI 代为签署并闭环归档（单人维护约定: 直接提 main, 不打 tag）",
     "checks": [
       {
         "item": "Nothing 形态与 mac 规格一致 (真实内核)",
