@@ -426,13 +426,17 @@
     container.appendChild(canvas);
     const media = typeof global.matchMedia === 'function' ? global.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
     const reduced = compact || media.matches;
-    let marks = [], pointer = null, frame = 0, destroyed = false;
+    let marks = [], pointer = null, frame = 0, visibleTimer = 0, interactionTimer = 0;
+    let visible = false, interactive = false, destroyed = false;
+    let size = { width: 1, height: 1 };
+    let color = config.color || null;
     function dimensions() { const r = container.getBoundingClientRect(); return { width: Math.max(1, r.width), height: Math.max(1, r.height) }; }
     function rebuild() {
-      const size = dimensions();
+      size = dimensions();
       const ratio = Math.min(global.devicePixelRatio || 1, 2);
       canvas.width = Math.round(size.width * ratio); canvas.height = Math.round(size.height * ratio);
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      color = config.color || (typeof global.getComputedStyle === 'function' ? global.getComputedStyle(container).color : '#ffffff');
       const gap = Math.max(8, Number(config.spacing) || 14) * (compact ? 1.7 : 1);
       const variance = clamp(Number.isFinite(Number(config.variance)) ? Number(config.variance) : 0.34, 0, 0.9);
       const random = seeded(config.seed);
@@ -449,7 +453,7 @@
           next.push({ x: x + (random() - 0.5) * gap * variance, y: y + (random() - 0.5) * gap * variance, density, jitter: random() });
         }
       }
-      marks = next; draw();
+      marks = next; draw(0);
     }
     function drawMark(mark, x, y) {
       context.globalAlpha = clamp(config.opacity * (0.34 + mark.density * 0.66), 0.04, 0.78);
@@ -459,9 +463,8 @@
     }
     function draw(timestamp) {
       if (destroyed) return;
-      const size = dimensions();
       context.clearRect(0, 0, size.width, size.height);
-      context.fillStyle = config.color || global.getComputedStyle(container).color;
+      context.fillStyle = color;
       const flowAngle = (Number(config.flowAngleDeg) || 0) * Math.PI / 180;
       const drift = reduced ? 0 : ((Number(timestamp) || 0) / 1000) * (Number(config.driftSpeed) || 0);
       for (const mark of marks) {
@@ -481,28 +484,119 @@
       }
       context.globalAlpha = 1;
     }
-    function animate(t) { frame = 0; draw(t); if (!destroyed && !reduced && Number(config.driftSpeed)) frame = global.requestAnimationFrame(animate); }
-    function requestDraw() { if (!frame) frame = global.requestAnimationFrame(animate); }
+    function motionAllowed() {
+      return !destroyed && !reduced && Number(config.driftSpeed) > 0;
+    }
+    function stopMotion() {
+      if (frame && typeof global.cancelAnimationFrame === 'function') global.cancelAnimationFrame(frame);
+      if (visibleTimer && typeof global.clearTimeout === 'function') global.clearTimeout(visibleTimer);
+      if (interactionTimer && typeof global.clearTimeout === 'function') global.clearTimeout(interactionTimer);
+      frame = visibleTimer = interactionTimer = 0;
+    }
+    function scheduleVisibleTick() {
+      if (!visible || interactive || !motionAllowed() || visibleTimer || typeof global.setTimeout !== 'function') return;
+      visibleTimer = global.setTimeout(function () {
+        visibleTimer = 0;
+        if (visible && !interactive && motionAllowed()) {
+          draw(typeof global.performance?.now === 'function' ? global.performance.now() : 0);
+          scheduleVisibleTick();
+        }
+      }, 125);
+    }
+    function animateInteractive(t) {
+      frame = 0;
+      if (!destroyed) draw(t);
+    }
+    function requestInteractiveFrame() {
+      if (frame || destroyed) return;
+      if (typeof global.requestAnimationFrame === 'function') {
+        frame = global.requestAnimationFrame(animateInteractive);
+      } else {
+        draw(typeof global.performance?.now === 'function' ? global.performance.now() : 0);
+      }
+    }
+    function finishInteraction() {
+      if (interactionTimer && typeof global.clearTimeout === 'function') global.clearTimeout(interactionTimer);
+      interactionTimer = 0;
+      interactive = false;
+      pointer = null;
+      if (visible) {
+        draw(typeof global.performance?.now === 'function' ? global.performance.now() : 0);
+        scheduleVisibleTick();
+      } else {
+        draw(0);
+      }
+    }
+    function armInteractionEnd() {
+      if (interactionTimer && typeof global.clearTimeout === 'function') global.clearTimeout(interactionTimer);
+      interactionTimer = typeof global.setTimeout === 'function' ? global.setTimeout(finishInteraction, 400) : 0;
+    }
+    function setInteractive(active) {
+      if (destroyed) return;
+      if (!active) {
+        finishInteraction();
+        return;
+      }
+      interactive = true;
+      if (visibleTimer && typeof global.clearTimeout === 'function') global.clearTimeout(visibleTimer);
+      visibleTimer = 0;
+      armInteractionEnd();
+      requestInteractiveFrame();
+    }
+    function setVisible(next) {
+      if (destroyed) return;
+      visible = Boolean(next);
+      if (!visible) {
+        stopMotion();
+        interactive = false;
+        pointer = null;
+        draw(0);
+        return;
+      }
+      scheduleVisibleTick();
+    }
     function onPointer(e) {
       if (!config.pointer || reduced) return;
       const r = container.getBoundingClientRect();
       pointer = { x: e.clientX - r.left, y: e.clientY - r.top };
-      requestDraw();
+      setInteractive(true);
     }
-    function onLeave() { pointer = null; if (Number(config.driftSpeed) && !reduced) requestDraw(); else draw(); }
+    function onLeave() {
+      pointer = null;
+      if (motionAllowed()) requestInteractiveFrame(); else draw(0);
+      armInteractionEnd();
+    }
     const RO = global.ResizeObserver;
     const ro = RO ? new RO(rebuild) : null;
+    const documentObject = container.ownerDocument || global.document;
+    let documentVisible = !documentObject || typeof documentObject.visibilityState !== 'string' || documentObject.visibilityState === 'visible';
+    let intersectionVisible = typeof global.IntersectionObserver !== 'function';
+    function syncVisibility() { setVisible(documentVisible && intersectionVisible); }
+    function onVisibilityChange() {
+      documentVisible = !documentObject || typeof documentObject.visibilityState !== 'string' || documentObject.visibilityState === 'visible';
+      syncVisibility();
+    }
+    const io = typeof global.IntersectionObserver === 'function' ? new global.IntersectionObserver(function (entries) {
+      intersectionVisible = Boolean(entries[0] && entries[0].isIntersecting);
+      syncVisibility();
+    }) : null;
     ro && ro.observe(container);
+    io && io.observe(pointerTarget);
+    documentObject && typeof documentObject.addEventListener === 'function' && documentObject.addEventListener('visibilitychange', onVisibilityChange);
     pointerTarget.addEventListener('pointermove', onPointer, { passive: true });
     pointerTarget.addEventListener('pointerleave', onLeave, { passive: true });
     rebuild();
-    if (Number(config.driftSpeed) && !reduced) requestDraw();
+    syncVisibility();
     return {
       render: draw,
+      setVisible: setVisible,
+      setInteractive: setInteractive,
       destroy: function () {
         destroyed = true;
-        if (frame) global.cancelAnimationFrame(frame);
+        stopMotion();
         ro && ro.disconnect();
+        io && io.disconnect();
+        documentObject && typeof documentObject.removeEventListener === 'function' && documentObject.removeEventListener('visibilitychange', onVisibilityChange);
         pointerTarget.removeEventListener('pointermove', onPointer);
         pointerTarget.removeEventListener('pointerleave', onLeave);
         canvas.remove();

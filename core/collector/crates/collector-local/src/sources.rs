@@ -6,10 +6,18 @@
 //! contributions and bounded diagnostics; raw lines and database payloads do
 //! not cross this module boundary.
 
-use super::{read_bounded_line, trim_line_end, ScanStats};
+use super::jsonl_cache::{
+    scan_cached_jsonl_tree, scan_jsonl_file_from_offset, CachedFilePayload, CachedUsageObservation,
+    JsonlCacheAdapter, JsonlCacheConfig,
+};
+use super::sqlite_cache::{
+    scan_sqlite_cached, SqliteCacheConfig, SqliteCursor, SqliteIncrementalAdapter, SqliteReadResult,
+};
+use super::{read_bounded_line, trim_line_end, CompactContribution, ScanStats};
 use collector_domain::{
     CollectionWindow, UsageContribution, UsageContributionBuilder, UsageSample,
 };
+use collector_runtime::{CancellationToken, RuntimeError};
 use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -31,8 +39,26 @@ pub struct SourceScan {
     pub diagnostic: Option<String>,
 }
 
+#[derive(Debug)]
+pub enum SourceScanError {
+    Io(io::Error),
+    Runtime(RuntimeError),
+}
+
+impl From<io::Error> for SourceScanError {
+    fn from(error: io::Error) -> Self {
+        Self::Io(error)
+    }
+}
+
+impl From<RuntimeError> for SourceScanError {
+    fn from(error: RuntimeError) -> Self {
+        Self::Runtime(error)
+    }
+}
+
 impl SourceScan {
-    fn empty(window: &CollectionWindow) -> Self {
+    pub fn empty(window: &CollectionWindow) -> Self {
         Self {
             found: false,
             contribution: UsageContributionBuilder::new(window.clone()).contribution(),
@@ -229,42 +255,91 @@ fn project_from_zcode(value: Option<String>, task_type: Option<String>) -> Optio
 
 const MAX_DIRECTORY_SCAN_DEPTH: usize = 16;
 
-fn scan_jsonl_tree<F>(root: &Path, cutoff_ts: f64, mut callback: F) -> io::Result<ScanStats>
+fn scan_jsonl_tree<F>(
+    root: &Path,
+    cutoff_ts: f64,
+    cancellation: &CancellationToken,
+    mut callback: F,
+) -> Result<ScanStats, SourceScanError>
+where
+    F: FnMut(&Path, f64, &[u8], &mut ScanStats),
+{
+    scan_jsonl_tree_impl(
+        root,
+        cutoff_ts,
+        cancellation,
+        &mut callback,
+        #[cfg(test)]
+        None,
+    )
+}
+
+#[cfg(test)]
+fn scan_jsonl_tree_with_line_probe<F, P>(
+    root: &Path,
+    cutoff_ts: f64,
+    cancellation: &CancellationToken,
+    mut callback: F,
+    mut line_probe: P,
+) -> Result<ScanStats, SourceScanError>
+where
+    F: FnMut(&Path, f64, &[u8], &mut ScanStats),
+    P: FnMut(),
+{
+    scan_jsonl_tree_impl(
+        root,
+        cutoff_ts,
+        cancellation,
+        &mut callback,
+        Some(&mut line_probe),
+    )
+}
+
+fn scan_jsonl_tree_impl<F>(
+    root: &Path,
+    cutoff_ts: f64,
+    cancellation: &CancellationToken,
+    callback: &mut F,
+    #[cfg(test)] mut line_probe: Option<&mut dyn FnMut()>,
+) -> Result<ScanStats, SourceScanError>
 where
     F: FnMut(&Path, f64, &[u8], &mut ScanStats),
 {
     let mut stats = ScanStats::default();
-    walk_jsonl_tree(root, cutoff_ts, &mut callback, &mut stats)?;
-    Ok(stats)
-}
-
-fn walk_jsonl_tree<F>(
-    root: &Path,
-    cutoff_ts: f64,
-    callback: &mut F,
-    stats: &mut ScanStats,
-) -> io::Result<()>
-where
-    F: FnMut(&Path, f64, &[u8], &mut ScanStats),
-{
     let mut visited_dirs = BTreeSet::new();
     if let Ok(canonical) = fs::canonicalize(root) {
         visited_dirs.insert(canonical);
     }
-    walk_jsonl_tree_impl(root, cutoff_ts, callback, stats, 0, &mut visited_dirs)
+    walk_jsonl_tree(
+        root,
+        cutoff_ts,
+        cancellation,
+        callback,
+        &mut stats,
+        0,
+        &mut visited_dirs,
+        #[cfg(test)]
+        &mut line_probe,
+    )?;
+    Ok(stats)
 }
 
-fn walk_jsonl_tree_impl<F>(
+// 参数含递归状态 (depth/visited_dirs) 与测试探针, 拆分结构体收益低于可读性损失.
+#[allow(clippy::too_many_arguments)]
+fn walk_jsonl_tree<F>(
     root: &Path,
     cutoff_ts: f64,
+    cancellation: &CancellationToken,
     callback: &mut F,
     stats: &mut ScanStats,
     depth: usize,
     visited_dirs: &mut BTreeSet<PathBuf>,
-) -> io::Result<()>
+    #[cfg(test)] line_probe: &mut Option<&mut dyn FnMut()>,
+) -> Result<(), SourceScanError>
 where
     F: FnMut(&Path, f64, &[u8], &mut ScanStats),
 {
+    cancellation.check()?;
     if depth > MAX_DIRECTORY_SCAN_DEPTH {
         return Ok(());
     }
@@ -275,9 +350,10 @@ where
             stats.io_errors = stats.io_errors.saturating_add(1);
             return Ok(());
         }
-        Err(error) => return Err(error),
+        Err(error) => return Err(error.into()),
     };
     for entry in entries {
+        cancellation.check()?;
         let Ok(entry) = entry else {
             stats.io_errors = stats.io_errors.saturating_add(1);
             continue;
@@ -290,7 +366,17 @@ where
         if metadata.is_dir() {
             let canonical = fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
             if visited_dirs.insert(canonical) {
-                walk_jsonl_tree_impl(&path, cutoff_ts, callback, stats, depth + 1, visited_dirs)?;
+                walk_jsonl_tree(
+                    &path,
+                    cutoff_ts,
+                    cancellation,
+                    callback,
+                    stats,
+                    depth + 1,
+                    visited_dirs,
+                    #[cfg(test)]
+                    line_probe,
+                )?;
             }
             continue;
         }
@@ -309,7 +395,15 @@ where
             stats.files_skipped = stats.files_skipped.saturating_add(1);
             continue;
         }
-        scan_jsonl_file(&path, modified, callback, stats)?;
+        scan_jsonl_file(
+            &path,
+            modified,
+            cancellation,
+            callback,
+            stats,
+            #[cfg(test)]
+            line_probe,
+        )?;
     }
     Ok(())
 }
@@ -317,12 +411,15 @@ where
 fn scan_jsonl_file<F>(
     path: &Path,
     modified: f64,
+    cancellation: &CancellationToken,
     callback: &mut F,
     stats: &mut ScanStats,
-) -> io::Result<()>
+    #[cfg(test)] line_probe: &mut Option<&mut dyn FnMut()>,
+) -> Result<(), SourceScanError>
 where
     F: FnMut(&Path, f64, &[u8], &mut ScanStats),
 {
+    cancellation.check()?;
     stats.files_scanned = stats.files_scanned.saturating_add(1);
     let file = match File::open(path) {
         Ok(file) => file,
@@ -332,7 +429,11 @@ where
         }
     };
     let mut reader = BufReader::new(file);
-    while let Some(line) = read_bounded_line(&mut reader, super::MAX_JSONL_RECORD_BYTES)? {
+    loop {
+        cancellation.check()?;
+        let Some(line) = read_bounded_line(&mut reader, super::MAX_JSONL_RECORD_BYTES)? else {
+            break;
+        };
         stats.lines_seen = stats.lines_seen.saturating_add(1);
         stats.bytes_read = stats.bytes_read.saturating_add(line.bytes as u64);
         if line.truncated {
@@ -344,6 +445,10 @@ where
             continue;
         }
         callback(path, modified, line, stats);
+        #[cfg(test)]
+        if let Some(probe) = line_probe.as_deref_mut() {
+            probe();
+        }
     }
     Ok(())
 }
@@ -375,9 +480,11 @@ fn file_identity(metadata: &fs::Metadata) -> (u64, u64) {
 fn collect_codex_files(
     root: &Path,
     cutoff_ts: f64,
+    cancellation: &CancellationToken,
     groups: &mut BTreeMap<String, Vec<CodexFileCandidate>>,
     stats: &mut ScanStats,
-) -> io::Result<()> {
+) -> Result<(), SourceScanError> {
+    cancellation.check()?;
     let entries = match fs::read_dir(root) {
         Ok(entries) => entries,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
@@ -385,9 +492,10 @@ fn collect_codex_files(
             stats.io_errors = stats.io_errors.saturating_add(1);
             return Ok(());
         }
-        Err(error) => return Err(error),
+        Err(error) => return Err(error.into()),
     };
     for entry in entries {
+        cancellation.check()?;
         let Ok(entry) = entry else {
             stats.io_errors = stats.io_errors.saturating_add(1);
             continue;
@@ -398,7 +506,7 @@ fn collect_codex_files(
             continue;
         };
         if metadata.is_dir() {
-            collect_codex_files(&path, cutoff_ts, groups, stats)?;
+            collect_codex_files(&path, cutoff_ts, cancellation, groups, stats)?;
             continue;
         }
         if !metadata.is_file() || path.extension().and_then(|value| value.to_str()) != Some("jsonl")
@@ -417,6 +525,7 @@ fn collect_codex_files(
             continue;
         }
 
+        cancellation.check()?;
         let canonical = fs::canonicalize(&path).unwrap_or(path);
         let file_name = canonical
             .file_name()
@@ -426,8 +535,10 @@ fn collect_codex_files(
             if file_name.starts_with("rollout-") && file_name.ends_with(".jsonl") {
                 (format!("rollout:{file_name}"), None)
             } else {
-                match fingerprint_file(&canonical, metadata.len()) {
+                cancellation.check()?;
+                match fingerprint_file(&canonical, metadata.len(), cancellation) {
                     Ok(fingerprint) => (format!("content:{fingerprint}"), Some(fingerprint)),
+                    Err(SourceScanError::Runtime(error)) => return Err(error.into()),
                     Err(_) => {
                         stats.io_errors = stats.io_errors.saturating_add(1);
                         (format!("path:{}", canonical.display()), None)
@@ -452,11 +563,13 @@ fn collect_codex_files(
 
 fn resolve_codex_files(
     groups: BTreeMap<String, Vec<CodexFileCandidate>>,
+    cancellation: &CancellationToken,
     stats: &mut ScanStats,
-) -> Vec<CodexFileCandidate> {
+) -> Result<Vec<CodexFileCandidate>, SourceScanError> {
     let mut selected = Vec::new();
     for (_, mut group) in groups {
-        group.sort_by(candidate_preference);
+        cancellation.check()?;
+        sort_codex_candidates(&mut group, cancellation)?;
         let winner = group.remove(0);
         if !group.is_empty() {
             stats.duplicate_session_groups = stats.duplicate_session_groups.saturating_add(1);
@@ -464,10 +577,11 @@ fn resolve_codex_files(
                 .duplicate_files_skipped
                 .saturating_add(group.len() as u64);
 
-            let winner_digest = candidate_digest(&winner);
+            let winner_digest = candidate_digest(&winner, cancellation);
             let mut conflict = winner_digest.is_err();
             let winner_digest = winner_digest.ok();
             for candidate in &group {
+                cancellation.check()?;
                 // 硬链接副本 (同 dev+inode) 是同一物理文件, 零 IO 判等;
                 // Orca 的 codex-accounts 与 runtime-home 即此形态, 免去 GB 级重读.
                 if winner.inode != 0
@@ -480,7 +594,7 @@ fn resolve_codex_files(
                     conflict = true;
                     continue;
                 }
-                let digest = candidate_digest(candidate);
+                let digest = candidate_digest(candidate, cancellation);
                 match (&winner_digest, digest) {
                     (Some(winner), Ok(candidate)) if winner == &candidate => {}
                     _ => conflict = true,
@@ -492,8 +606,42 @@ fn resolve_codex_files(
         }
         selected.push(winner);
     }
-    selected.sort_by(|left, right| left.path.cmp(&right.path));
-    selected
+    sort_codex_candidates_by_path(&mut selected, cancellation)?;
+    Ok(selected)
+}
+
+fn sort_codex_candidates(
+    candidates: &mut [CodexFileCandidate],
+    cancellation: &CancellationToken,
+) -> Result<(), SourceScanError> {
+    let cancellation_error = std::cell::Cell::new(None);
+    candidates.sort_by(|left, right| match cancellation.check() {
+        Ok(()) => candidate_preference(left, right),
+        Err(error) => {
+            cancellation_error.set(Some(error));
+            Ordering::Equal
+        }
+    });
+    cancellation_error
+        .get()
+        .map_or(Ok(()), |error| Err(error.into()))
+}
+
+fn sort_codex_candidates_by_path(
+    candidates: &mut [CodexFileCandidate],
+    cancellation: &CancellationToken,
+) -> Result<(), SourceScanError> {
+    let cancellation_error = std::cell::Cell::new(None);
+    candidates.sort_by(|left, right| match cancellation.check() {
+        Ok(()) => left.path.cmp(&right.path),
+        Err(error) => {
+            cancellation_error.set(Some(error));
+            Ordering::Equal
+        }
+    });
+    cancellation_error
+        .get()
+        .map_or(Ok(()), |error| Err(error.into()))
 }
 
 fn candidate_preference(left: &CodexFileCandidate, right: &CodexFileCandidate) -> Ordering {
@@ -509,10 +657,14 @@ fn candidate_preference(left: &CodexFileCandidate, right: &CodexFileCandidate) -
         .then_with(|| left.path.cmp(&right.path))
 }
 
-fn candidate_digest(candidate: &CodexFileCandidate) -> io::Result<String> {
+fn candidate_digest(
+    candidate: &CodexFileCandidate,
+    cancellation: &CancellationToken,
+) -> Result<String, SourceScanError> {
+    cancellation.check()?;
     match &candidate.digest {
         Some(digest) => Ok(digest.clone()),
-        None => fingerprint_file(&candidate.path, candidate.size),
+        None => fingerprint_file(&candidate.path, candidate.size, cancellation),
     }
 }
 
@@ -520,8 +672,13 @@ fn candidate_digest(candidate: &CodexFileCandidate) -> io::Result<String> {
 /// 代替全文件哈希做副本判等 — GB 级 rollout 每轮刷新全量重读会让采集
 /// 卡在分钟级; 指纹只读固定量字节. 同头同尾同长但中段不同的极端构造
 /// 会被误判为相同副本 (可接受: 仍只计一次用量, 不会重复计数).
-fn fingerprint_file(path: &Path, size: u64) -> io::Result<String> {
+fn fingerprint_file(
+    path: &Path,
+    size: u64,
+    cancellation: &CancellationToken,
+) -> Result<String, SourceScanError> {
     const CHUNK: u64 = 64 * 1024;
+    cancellation.check()?;
     let mut file = File::open(path)?;
     let mut hasher = Sha256::new();
     hasher.update(size.to_le_bytes());
@@ -531,6 +688,7 @@ fn fingerprint_file(path: &Path, size: u64) -> io::Result<String> {
     hasher.update(&buffer[..head_len]);
     // 中段存在时直接 seek 到末块前读取, 不重读中段.
     if size > CHUNK {
+        cancellation.check()?;
         file.seek(io::SeekFrom::Start(size - CHUNK))?;
         let mut tail = Vec::with_capacity(CHUNK as usize);
         io::Read::by_ref(&mut file)
@@ -538,6 +696,7 @@ fn fingerprint_file(path: &Path, size: u64) -> io::Result<String> {
             .read_to_end(&mut tail)?;
         hasher.update(&tail);
     }
+    cancellation.check()?;
     Ok(format!("{:x}", hasher.finalize()))
 }
 
@@ -545,8 +704,17 @@ fn fingerprint_file(path: &Path, size: u64) -> io::Result<String> {
 /// Kimi Code's primary path continues to use the cache-backed scanner in the
 /// parent module; this function is used for Kimi Work and source parity tests.
 pub fn scan_kimi_tree(root: &Path, window: &CollectionWindow) -> SourceScan {
+    scan_kimi_tree_with_cancellation(root, window, &CancellationToken::new())
+        .unwrap_or_else(|_| SourceScan::empty(window))
+}
+
+pub fn scan_kimi_tree_with_cancellation(
+    root: &Path,
+    window: &CollectionWindow,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
     let mut builder = UsageContributionBuilder::new(window.clone());
-    let stats = scan_jsonl_tree(root, window.cutoff_ts, |_, _, line, stats| {
+    let stats = scan_jsonl_tree(root, window.cutoff_ts, cancellation, |_, _, line, stats| {
         let Some(value) = parse_json_line(line, stats) else {
             return;
         };
@@ -570,9 +738,13 @@ pub fn scan_kimi_tree(root: &Path, window: &CollectionWindow) -> SourceScan {
             None,
         );
         stats.usage_records = stats.usage_records.saturating_add(1);
-    })
-    .unwrap_or_else(|_| ScanStats::default());
-    finish(window, builder, stats.clone(), stats.files_scanned > 0)
+    })?;
+    Ok(finish(
+        window,
+        builder,
+        stats.clone(),
+        stats.files_scanned > 0,
+    ))
 }
 
 #[derive(Debug, Clone, Default)]
@@ -589,62 +761,77 @@ struct ClaudeUsage {
 /// Scan Claude Code assistant messages, coalescing repeated writes of one
 /// message id so an in-progress skeleton is not counted as real usage.
 pub fn scan_claude(root: &Path, window: &CollectionWindow) -> SourceScan {
+    scan_claude_with_cancellation(root, window, &CancellationToken::new())
+        .unwrap_or_else(|_| SourceScan::empty(window))
+}
+
+pub fn scan_claude_with_cancellation(
+    root: &Path,
+    window: &CollectionWindow,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
     let mut best = BTreeMap::<String, ClaudeUsage>::new();
     let mut direct = Vec::<ClaudeUsage>::new();
-    let stats = scan_jsonl_tree(root, window.cutoff_ts, |path, _, line, stats| {
-        let Some(value) = parse_json_line(line, stats) else {
-            return;
-        };
-        if value.get("type").and_then(Value::as_str) != Some("assistant") {
-            return;
-        }
-        let Some(timestamp) = value
-            .get("timestamp")
-            .and_then(Value::as_str)
-            .and_then(|value| window.epoch_from_iso(value))
-            .map(|value| value.saturating_mul(1000))
-        else {
-            return;
-        };
-        let message = value.get("message").unwrap_or(&Value::Null);
-        let usage = message.get("usage").unwrap_or(&Value::Null);
-        let project = project_from_parent(path).map(|mut project| {
-            if path
-                .components()
-                .any(|part| part.as_os_str() == "subagents")
-            {
-                project.push_str(" ·子代理");
+    let stats = scan_jsonl_tree(
+        root,
+        window.cutoff_ts,
+        cancellation,
+        |path, _, line, stats| {
+            let Some(value) = parse_json_line(line, stats) else {
+                return;
+            };
+            if value.get("type").and_then(Value::as_str) != Some("assistant") {
+                return;
             }
-            project
-        });
-        let usage = ClaudeUsage {
-            input: number_u64(usage.get("input_tokens")),
-            output: number_u64(usage.get("output_tokens")),
-            cache_read: number_u64(usage.get("cache_read_input_tokens")),
-            cache_creation: number_u64(usage.get("cache_creation_input_tokens")),
-            timestamp_millis: timestamp,
-            model: message
-                .get("model")
+            let Some(timestamp) = value
+                .get("timestamp")
                 .and_then(Value::as_str)
-                .map(str::to_owned),
-            project,
-        };
-        let id = message.get("id").and_then(Value::as_str);
-        if let Some(id) = id {
-            let entry = best.entry(id.to_owned()).or_default();
-            entry.input = entry.input.max(usage.input);
-            entry.output = entry.output.max(usage.output);
-            entry.cache_read = entry.cache_read.max(usage.cache_read);
-            entry.cache_creation = entry.cache_creation.max(usage.cache_creation);
-            entry.timestamp_millis = usage.timestamp_millis;
-            entry.model = usage.model;
-            entry.project = usage.project;
-        } else {
-            direct.push(usage);
-        }
-        stats.usage_records = stats.usage_records.saturating_add(1);
-    })
-    .unwrap_or_else(|_| ScanStats::default());
+                .and_then(|value| window.epoch_from_iso(value))
+                .map(|value| value.saturating_mul(1000))
+            else {
+                return;
+            };
+            let message = value.get("message").unwrap_or(&Value::Null);
+            let usage = message.get("usage").unwrap_or(&Value::Null);
+            let project = project_from_parent(path).map(|mut project| {
+                if path
+                    .components()
+                    .any(|part| part.as_os_str() == "subagents")
+                {
+                    project.push_str(" ·子代理");
+                }
+                project
+            });
+            let usage = ClaudeUsage {
+                input: number_u64(usage.get("input_tokens")),
+                output: number_u64(usage.get("output_tokens")),
+                cache_read: number_u64(usage.get("cache_read_input_tokens")),
+                cache_creation: number_u64(usage.get("cache_creation_input_tokens")),
+                timestamp_millis: timestamp,
+                model: message
+                    .get("model")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
+                project,
+            };
+            let id = message.get("id").and_then(Value::as_str);
+            if let Some(id) = id {
+                let entry = best
+                    .entry(digest_source_key("claude-message", id))
+                    .or_default();
+                entry.input = entry.input.max(usage.input);
+                entry.output = entry.output.max(usage.output);
+                entry.cache_read = entry.cache_read.max(usage.cache_read);
+                entry.cache_creation = entry.cache_creation.max(usage.cache_creation);
+                entry.timestamp_millis = usage.timestamp_millis;
+                entry.model = usage.model;
+                entry.project = usage.project;
+            } else {
+                direct.push(usage);
+            }
+            stats.usage_records = stats.usage_records.saturating_add(1);
+        },
+    )?;
     let mut builder = UsageContributionBuilder::new(window.clone());
     for usage in best.into_values().chain(direct) {
         record(
@@ -658,7 +845,12 @@ pub fn scan_claude(root: &Path, window: &CollectionWindow) -> SourceScan {
             usage.project.as_deref(),
         );
     }
-    finish(window, builder, stats.clone(), stats.files_scanned > 0)
+    Ok(finish(
+        window,
+        builder,
+        stats.clone(),
+        stats.files_scanned > 0,
+    ))
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1022,56 +1214,72 @@ fn codebuddy_scope(path: &Path, value: &Value) -> String {
 /// artifact has no unattributed-token bucket and child records are the
 /// decomposable source of truth.
 pub fn scan_codebuddy(root: &Path, window: &CollectionWindow) -> SourceScan {
+    scan_codebuddy_with_cancellation(root, window, &CancellationToken::new())
+        .unwrap_or_else(|_| SourceScan::empty(window))
+}
+
+pub fn scan_codebuddy_with_cancellation(
+    root: &Path,
+    window: &CollectionWindow,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
     let mut best = BTreeMap::<String, CodeBuddyUsage>::new();
     let mut direct = Vec::<CodeBuddyUsage>::new();
-    let stats = scan_jsonl_tree(root, window.cutoff_ts, |path, _, line, stats| {
-        let Some(value) = parse_json_line(line, stats) else {
-            return;
-        };
-        let record_type = value.get("type").and_then(Value::as_str);
-        if record_type != Some("message") && record_type != Some("function_call") {
-            return;
-        }
-        if record_type == Some("message")
-            && value.get("role").and_then(Value::as_str) != Some("assistant")
-        {
-            return;
-        }
-        let Some(timestamp) = timestamp_number(value.get("timestamp")) else {
-            return;
-        };
-        let Some((input, output, cache_read, cache_creation)) = codebuddy_usage(&value) else {
-            return;
-        };
-        let usage = CodeBuddyUsage {
-            input,
-            output,
-            cache_read,
-            cache_creation,
-            timestamp_millis: timestamp,
-            model: codebuddy_model(&value),
-            project: project_from_parent(path),
-        };
-        let id = codebuddy_message_id(&value);
-        if let Some(id) = id {
-            let key = format!("{}::{id}", codebuddy_scope(path, &value));
-            let replace = match best.get(&key) {
-                None => true,
-                Some(previous) => {
-                    usage.total() > previous.total()
-                        || (usage.total() == previous.total()
-                            && usage.timestamp_millis > previous.timestamp_millis)
-                }
+    let stats = scan_jsonl_tree(
+        root,
+        window.cutoff_ts,
+        cancellation,
+        |path, _, line, stats| {
+            let Some(value) = parse_json_line(line, stats) else {
+                return;
             };
-            if replace {
-                best.insert(key, usage);
+            let record_type = value.get("type").and_then(Value::as_str);
+            if record_type != Some("message") && record_type != Some("function_call") {
+                return;
             }
-        } else {
-            direct.push(usage);
-        }
-        stats.usage_records = stats.usage_records.saturating_add(1);
-    })
-    .unwrap_or_else(|_| ScanStats::default());
+            if record_type == Some("message")
+                && value.get("role").and_then(Value::as_str) != Some("assistant")
+            {
+                return;
+            }
+            let Some(timestamp) = timestamp_number(value.get("timestamp")) else {
+                return;
+            };
+            let Some((input, output, cache_read, cache_creation)) = codebuddy_usage(&value) else {
+                return;
+            };
+            let usage = CodeBuddyUsage {
+                input,
+                output,
+                cache_read,
+                cache_creation,
+                timestamp_millis: timestamp,
+                model: codebuddy_model(&value),
+                project: project_from_parent(path),
+            };
+            let id = codebuddy_message_id(&value);
+            if let Some(id) = id {
+                let key = digest_source_key(
+                    "codebuddy-message",
+                    &format!("{}::{id}", codebuddy_scope(path, &value)),
+                );
+                let replace = match best.get(&key) {
+                    None => true,
+                    Some(previous) => {
+                        usage.total() > previous.total()
+                            || (usage.total() == previous.total()
+                                && usage.timestamp_millis > previous.timestamp_millis)
+                    }
+                };
+                if replace {
+                    best.insert(key, usage);
+                }
+            } else {
+                direct.push(usage);
+            }
+            stats.usage_records = stats.usage_records.saturating_add(1);
+        },
+    )?;
     let mut builder = UsageContributionBuilder::new(window.clone());
     for usage in best.into_values().chain(direct) {
         record(
@@ -1085,22 +1293,46 @@ pub fn scan_codebuddy(root: &Path, window: &CollectionWindow) -> SourceScan {
             usage.project.as_deref(),
         );
     }
-    finish(window, builder, stats.clone(), stats.files_scanned > 0)
+    Ok(finish(
+        window,
+        builder,
+        stats.clone(),
+        stats.files_scanned > 0,
+    ))
 }
 
 /// Scan Codex CLI and Orca rollout JSONL files.  The quota snapshot remains a
 /// provider concern; this function only builds the local token contribution.
 pub fn scan_codex(roots: &[PathBuf], window: &CollectionWindow) -> SourceScan {
+    scan_codex_with_cancellation(roots, window, &CancellationToken::new())
+        .unwrap_or_else(|_| SourceScan::empty(window))
+}
+
+pub fn scan_codex_with_cancellation(
+    roots: &[PathBuf],
+    window: &CollectionWindow,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
     let mut stats = ScanStats::default();
     let mut groups = BTreeMap::<String, Vec<CodexFileCandidate>>::new();
     for root in roots {
-        if collect_codex_files(root, window.cutoff_ts, &mut groups, &mut stats).is_err() {
-            stats.io_errors = stats.io_errors.saturating_add(1);
+        match collect_codex_files(
+            root,
+            window.cutoff_ts,
+            cancellation,
+            &mut groups,
+            &mut stats,
+        ) {
+            Ok(()) => {}
+            Err(SourceScanError::Runtime(error)) => return Err(error.into()),
+            Err(SourceScanError::Io(_)) => {
+                stats.io_errors = stats.io_errors.saturating_add(1);
+            }
         }
     }
-    let selected = resolve_codex_files(groups, &mut stats);
+    let selected = resolve_codex_files(groups, cancellation, &mut stats)?;
     let mut builder = UsageContributionBuilder::new(window.clone());
-    scan_selected_codex(selected, window, &mut builder, &mut stats);
+    scan_selected_codex(selected, window, cancellation, &mut builder, &mut stats)?;
     let mut result = finish(window, builder, stats.clone(), stats.files_scanned > 0);
     if stats.conflict_session_groups > 0 {
         result.diagnostic = Some(format!(
@@ -1108,7 +1340,7 @@ pub fn scan_codex(roots: &[PathBuf], window: &CollectionWindow) -> SourceScan {
             stats.conflict_session_groups
         ));
     }
-    result
+    Ok(result)
 }
 
 // ---- Codex 整树聚合缓存 ----
@@ -1143,14 +1375,49 @@ impl CodexTreeCache {
 
 /// 计算整棵树所有窗口内 rollout 候选的文件身份签名. 任何文件的增/删/
 /// 改 (path, size, mtime, dev, inode) 都会改变签名, 从而强制重扫.
-fn codex_tree_signature(groups: &BTreeMap<String, Vec<CodexFileCandidate>>) -> String {
+fn codex_tree_signature(
+    groups: &BTreeMap<String, Vec<CodexFileCandidate>>,
+    cancellation: &CancellationToken,
+) -> Result<String, SourceScanError> {
+    codex_tree_signature_impl(
+        groups,
+        cancellation,
+        #[cfg(test)]
+        None,
+    )
+}
+
+#[cfg(test)]
+fn codex_tree_signature_with_probe<P>(
+    groups: &BTreeMap<String, Vec<CodexFileCandidate>>,
+    cancellation: &CancellationToken,
+    mut probe: P,
+) -> Result<String, SourceScanError>
+where
+    P: FnMut(),
+{
+    codex_tree_signature_impl(groups, cancellation, Some(&mut probe))
+}
+
+fn codex_tree_signature_impl(
+    groups: &BTreeMap<String, Vec<CodexFileCandidate>>,
+    cancellation: &CancellationToken,
+    #[cfg(test)] mut probe: Option<&mut dyn FnMut()>,
+) -> Result<String, SourceScanError> {
     let mut hasher = Sha256::new();
     hasher.update(CODEX_TREE_CACHE_SCHEMA.to_le_bytes());
     // BTreeMap 迭代有序; 每个 group 内按可比较身份再排一次 (f64 mtime 用位表示),
     // 保证签名稳定.
     let mut entries = Vec::new();
     for (group_key, candidates) in groups {
+        cancellation.check()?;
         for candidate in candidates {
+            cancellation.check()?;
+            #[cfg(test)]
+            if let Some(probe) = probe.as_deref_mut() {
+                probe();
+            }
+            cancellation.check()?;
             entries.push((
                 group_key.clone(),
                 candidate.path.clone(),
@@ -1161,8 +1428,19 @@ fn codex_tree_signature(groups: &BTreeMap<String, Vec<CodexFileCandidate>>) -> S
             ));
         }
     }
-    entries.sort();
+    let cancellation_error = std::cell::Cell::new(None);
+    entries.sort_by(|left, right| match cancellation.check() {
+        Ok(()) => left.cmp(right),
+        Err(error) => {
+            cancellation_error.set(Some(error));
+            Ordering::Equal
+        }
+    });
+    if let Some(error) = cancellation_error.get() {
+        return Err(error.into());
+    }
     for (group_key, path, size, modified_bits, device, inode) in entries {
+        cancellation.check()?;
         hasher.update(group_key.as_bytes());
         hasher.update(path.to_string_lossy().as_bytes());
         hasher.update(size.to_le_bytes());
@@ -1170,7 +1448,7 @@ fn codex_tree_signature(groups: &BTreeMap<String, Vec<CodexFileCandidate>>) -> S
         hasher.update(device.to_le_bytes());
         hasher.update(inode.to_le_bytes());
     }
-    format!("{:x}", hasher.finalize())
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 fn codex_tree_cache_path(cache_root: &Path) -> PathBuf {
@@ -1182,10 +1460,15 @@ fn load_codex_tree_cache(path: &Path) -> Option<CodexTreeCache> {
     serde_json::from_slice(&data).ok()
 }
 
-fn write_codex_tree_cache(path: &Path, entry: &CodexTreeCache) {
+fn write_codex_tree_cache(
+    path: &Path,
+    entry: &CodexTreeCache,
+    cancellation: &CancellationToken,
+) -> Result<(), SourceScanError> {
+    cancellation.check()?;
     let parent = match path.parent() {
         Some(parent) => parent,
-        None => return,
+        None => return Ok(()),
     };
     let _ = fs::create_dir_all(parent);
     let temporary = parent.join(format!(
@@ -1197,15 +1480,32 @@ fn write_codex_tree_cache(path: &Path, entry: &CodexTreeCache) {
             .as_nanos()
     ));
     let written = (|| -> io::Result<()> {
+        cancellation.check().map_err(|error| {
+            io::Error::new(
+                io::ErrorKind::Interrupted,
+                format!("cache write stopped: {error:?}"),
+            )
+        })?;
         let mut file = File::create(&temporary)?;
         serde_json::to_writer(&mut file, entry)?;
         file.write_all(b"\n")?;
         drop(file);
+        cancellation.check().map_err(|error| {
+            io::Error::new(
+                io::ErrorKind::Interrupted,
+                format!("cache write stopped: {error:?}"),
+            )
+        })?;
         fs::rename(&temporary, path)
     })();
     if written.is_err() {
         let _ = fs::remove_file(&temporary);
     }
+    cancellation.check()?;
+    if written.is_err() {
+        return Ok(());
+    }
+    Ok(())
 }
 
 /// 单个 Codex 会话文件的聚合解析 (token_count 增量 + 重复快照去重),
@@ -1213,17 +1513,20 @@ fn write_codex_tree_cache(path: &Path, entry: &CodexTreeCache) {
 fn scan_selected_codex(
     selected: Vec<CodexFileCandidate>,
     window: &CollectionWindow,
+    cancellation: &CancellationToken,
     builder: &mut UsageContributionBuilder,
     stats: &mut ScanStats,
-) {
+) -> Result<(), SourceScanError> {
     for candidate in selected {
+        cancellation.check()?;
         let mut current_model: Option<String> = None;
         let mut total_high_water: Option<CodexTokenCounters> = None;
         let mut last_signature_by_source = BTreeMap::<Option<String>, CodexTokenSignature>::new();
         let mut previous_token_signature: Option<CodexTokenSignature> = None;
-        if scan_jsonl_file(
+        match scan_jsonl_file(
             &candidate.path,
             candidate.modified,
+            cancellation,
             &mut |_, _, line, stats| {
                 let Some(value) = parse_json_line(line, stats) else {
                     return;
@@ -1318,12 +1621,17 @@ fn scan_selected_codex(
                 stats.usage_records = stats.usage_records.saturating_add(1);
             },
             stats,
-        )
-        .is_err()
-        {
-            stats.io_errors = stats.io_errors.saturating_add(1);
+            #[cfg(test)]
+            &mut None,
+        ) {
+            Ok(()) => {}
+            Err(SourceScanError::Runtime(error)) => return Err(error.into()),
+            Err(SourceScanError::Io(_)) => {
+                stats.io_errors = stats.io_errors.saturating_add(1);
+            }
         }
     }
+    Ok(())
 }
 
 /// 带持久整树聚合缓存的 Codex 扫描. 命中缓存 (文件集身份签名 + 窗口一致) 时
@@ -1337,15 +1645,37 @@ pub fn scan_codex_cached(
     window: &CollectionWindow,
     cache_root: &Path,
 ) -> SourceScan {
+    scan_codex_cached_with_cancellation(roots, window, cache_root, &CancellationToken::new())
+        .unwrap_or_else(|_| SourceScan::empty(window))
+}
+
+pub fn scan_codex_cached_with_cancellation(
+    roots: &[PathBuf],
+    window: &CollectionWindow,
+    cache_root: &Path,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
     let mut stats = ScanStats::default();
     let mut groups = BTreeMap::<String, Vec<CodexFileCandidate>>::new();
     for root in roots {
-        if collect_codex_files(root, window.cutoff_ts, &mut groups, &mut stats).is_err() {
-            stats.io_errors = stats.io_errors.saturating_add(1);
+        match collect_codex_files(
+            root,
+            window.cutoff_ts,
+            cancellation,
+            &mut groups,
+            &mut stats,
+        ) {
+            Ok(()) => {}
+            Err(SourceScanError::Runtime(error)) => return Err(error.into()),
+            Err(SourceScanError::Io(_)) => {
+                stats.io_errors = stats.io_errors.saturating_add(1);
+            }
         }
     }
 
-    let signature = codex_tree_signature(&groups);
+    cancellation.check()?;
+    let signature = codex_tree_signature(&groups, cancellation)?;
+    let has_selected_codex_files = groups.values().any(|candidates| !candidates.is_empty());
     let cache_path = codex_tree_cache_path(cache_root);
     if let Some(cached) = load_codex_tree_cache(&cache_path) {
         if cached.window_matches(window) && cached.tree_signature == signature {
@@ -1355,22 +1685,23 @@ pub fn scan_codex_cached(
             stats.cache_hits = stats.cache_hits.saturating_add(1);
             let mut builder = UsageContributionBuilder::new(window.clone());
             let _ = builder.merge_contribution(&cached.aggregate);
-            let mut result = finish(window, builder, stats.clone(), stats.files_scanned > 0);
+            let mut result = finish(window, builder, stats.clone(), has_selected_codex_files);
             if stats.conflict_session_groups > 0 {
                 result.diagnostic = Some(format!(
                     "Codex 会话副本内容冲突, 已保守选择单份文件 (冲突组: {})",
                     stats.conflict_session_groups
                 ));
             }
-            return result;
+            return Ok(result);
         }
     }
 
     // 未命中: 全量扫描再落盘.
-    let selected = resolve_codex_files(groups, &mut stats);
+    let selected = resolve_codex_files(groups, cancellation, &mut stats)?;
     let mut builder = UsageContributionBuilder::new(window.clone());
-    scan_selected_codex(selected, window, &mut builder, &mut stats);
+    scan_selected_codex(selected, window, cancellation, &mut builder, &mut stats)?;
     let aggregate = builder.contribution();
+    cancellation.check()?;
     write_codex_tree_cache(
         &cache_path,
         &CodexTreeCache {
@@ -1381,7 +1712,9 @@ pub fn scan_codex_cached(
             tree_signature: signature,
             aggregate: aggregate.clone(),
         },
-    );
+        cancellation,
+    )?;
+    cancellation.check()?;
     let mut result = finish(window, builder, stats.clone(), stats.files_scanned > 0);
     if stats.conflict_session_groups > 0 {
         result.diagnostic = Some(format!(
@@ -1389,7 +1722,7 @@ pub fn scan_codex_cached(
             stats.conflict_session_groups
         ));
     }
-    result
+    Ok(result)
 }
 
 fn grok_content(value: Option<&Value>) -> String {
@@ -1411,92 +1744,902 @@ fn grok_content(value: Option<&Value>) -> String {
 }
 
 pub fn scan_grok(roots: &[PathBuf], window: &CollectionWindow) -> SourceScan {
+    scan_grok_with_cancellation(roots, window, &CancellationToken::new())
+        .unwrap_or_else(|_| SourceScan::empty(window))
+}
+
+pub fn scan_grok_with_cancellation(
+    roots: &[PathBuf],
+    window: &CollectionWindow,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
     let mut builder = UsageContributionBuilder::new(window.clone());
     let mut stats = ScanStats::default();
     for root in roots {
-        let current = scan_jsonl_tree(root, window.cutoff_ts, |path, modified, line, stats| {
+        let current = scan_jsonl_tree(
+            root,
+            window.cutoff_ts,
+            cancellation,
+            |path, modified, line, stats| {
+                let Some(value) = parse_json_line(line, stats) else {
+                    return;
+                };
+                let kind = value.get("type").and_then(Value::as_str);
+                if kind != Some("user") && kind != Some("assistant") {
+                    return;
+                }
+                let content = grok_content(value.get("content"));
+                if content.is_empty() {
+                    return;
+                }
+                let tokens = (content.chars().count() as u64 / 4).max(1);
+                let project = path
+                    .parent()
+                    .and_then(Path::parent)
+                    .and_then(Path::file_name)
+                    .and_then(|value| value.to_str());
+                record(
+                    &mut builder,
+                    (modified * 1000.0) as i64,
+                    Some("grok"),
+                    if kind == Some("user") { tokens } else { 0 },
+                    if kind == Some("assistant") { tokens } else { 0 },
+                    0,
+                    0,
+                    project,
+                );
+                stats.usage_records = stats.usage_records.saturating_add(1);
+            },
+        );
+        match current {
+            Ok(current) => stats.merge(current),
+            Err(SourceScanError::Runtime(error)) => return Err(error.into()),
+            Err(SourceScanError::Io(_)) => {
+                stats.io_errors = stats.io_errors.saturating_add(1);
+            }
+        }
+    }
+    Ok(finish(
+        window,
+        builder,
+        stats.clone(),
+        stats.files_scanned > 0,
+    ))
+}
+
+pub fn scan_pi(root: &Path, window: &CollectionWindow) -> SourceScan {
+    scan_pi_with_cancellation(root, window, &CancellationToken::new())
+        .unwrap_or_else(|_| SourceScan::empty(window))
+}
+
+pub fn scan_pi_with_cancellation(
+    root: &Path,
+    window: &CollectionWindow,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
+    let mut builder = UsageContributionBuilder::new(window.clone());
+    let stats = scan_jsonl_tree(
+        root,
+        window.cutoff_ts,
+        cancellation,
+        |path, _, line, stats| {
             let Some(value) = parse_json_line(line, stats) else {
                 return;
             };
             let kind = value.get("type").and_then(Value::as_str);
-            if kind != Some("user") && kind != Some("assistant") {
+            if kind == Some("session") {
                 return;
             }
-            let content = grok_content(value.get("content"));
-            if content.is_empty() {
+            if kind != Some("message") {
                 return;
             }
-            let tokens = (content.chars().count() as u64 / 4).max(1);
-            let project = path
-                .parent()
-                .and_then(Path::parent)
-                .and_then(Path::file_name)
-                .and_then(|value| value.to_str());
+            let message = value.get("message").unwrap_or(&Value::Null);
+            if message.get("role").and_then(Value::as_str) != Some("assistant") {
+                return;
+            }
+            let usage = message.get("usage").unwrap_or(&Value::Null);
+            if usage.is_null() {
+                return;
+            }
+            let timestamp = timestamp_number(message.get("timestamp")).or_else(|| {
+                value
+                    .get("timestamp")
+                    .and_then(Value::as_str)
+                    .and_then(|value| window.epoch_from_iso(value).map(|value| value * 1000))
+            });
+            let Some(timestamp) = timestamp else { return };
+            let project = project_from_parent(path);
             record(
                 &mut builder,
-                (modified * 1000.0) as i64,
-                Some("grok"),
-                if kind == Some("user") { tokens } else { 0 },
-                if kind == Some("assistant") { tokens } else { 0 },
-                0,
-                0,
-                project,
+                if timestamp < 10_000_000_000 {
+                    timestamp * 1000
+                } else {
+                    timestamp
+                },
+                message.get("model").and_then(Value::as_str),
+                number_u64(usage.get("input")),
+                number_u64(usage.get("output")).saturating_add(number_u64(usage.get("reasoning"))),
+                number_u64(usage.get("cacheRead")),
+                number_u64(usage.get("cacheWrite")),
+                project.as_deref(),
             );
             stats.usage_records = stats.usage_records.saturating_add(1);
-        })
-        .unwrap_or_else(|_| ScanStats::default());
-        stats.merge(current);
-    }
-    finish(window, builder, stats.clone(), stats.files_scanned > 0)
+        },
+    )?;
+    Ok(finish(
+        window,
+        builder,
+        stats.clone(),
+        stats.files_scanned > 0,
+    ))
 }
 
-pub fn scan_pi(root: &Path, window: &CollectionWindow) -> SourceScan {
+const JSONL_CACHE_PARSER_VERSION: u32 = 1;
+const JSONL_CACHE_AGGREGATION_VERSION: u32 = 1;
+
+fn jsonl_cache_config(
+    cache_root: &Path,
+    source_id: &str,
+    window: &CollectionWindow,
+) -> JsonlCacheConfig {
+    JsonlCacheConfig {
+        cache_root: cache_root.to_owned(),
+        source_id: source_id.to_owned(),
+        parser_version: JSONL_CACHE_PARSER_VERSION,
+        aggregation_version: JSONL_CACHE_AGGREGATION_VERSION,
+        window: window.clone(),
+    }
+}
+
+fn invalid_cached_payload() -> SourceScanError {
+    SourceScanError::Io(io::Error::new(
+        io::ErrorKind::InvalidData,
+        "jsonl cache contribution is incompatible with the collection window",
+    ))
+}
+
+fn compact_payload(
+    observations: Vec<CachedUsageObservation>,
+    contribution: UsageContribution,
+    window: &CollectionWindow,
+) -> CachedFilePayload {
+    let compact = CompactContribution::from_domain(&contribution, window)
+        .expect("usage contribution built for the same window must be compactable");
+    CachedFilePayload {
+        contribution: compact,
+        observations,
+    }
+}
+
+fn payload_from_observations(
+    observations: Vec<CachedUsageObservation>,
+    window: &CollectionWindow,
+) -> CachedFilePayload {
     let mut builder = UsageContributionBuilder::new(window.clone());
-    let stats = scan_jsonl_tree(root, window.cutoff_ts, |path, _, line, stats| {
-        let Some(value) = parse_json_line(line, stats) else {
-            return;
-        };
-        let kind = value.get("type").and_then(Value::as_str);
-        if kind == Some("session") {
-            return;
-        }
-        if kind != Some("message") {
-            return;
-        }
-        let message = value.get("message").unwrap_or(&Value::Null);
-        if message.get("role").and_then(Value::as_str) != Some("assistant") {
-            return;
-        }
-        let usage = message.get("usage").unwrap_or(&Value::Null);
-        if usage.is_null() {
-            return;
-        }
-        let timestamp = timestamp_number(message.get("timestamp")).or_else(|| {
-            value
-                .get("timestamp")
-                .and_then(Value::as_str)
-                .and_then(|value| window.epoch_from_iso(value).map(|value| value * 1000))
-        });
-        let Some(timestamp) = timestamp else { return };
-        let project = project_from_parent(path);
+    for observation in &observations {
         record(
             &mut builder,
-            if timestamp < 10_000_000_000 {
-                timestamp * 1000
-            } else {
-                timestamp
-            },
-            message.get("model").and_then(Value::as_str),
-            number_u64(usage.get("input")),
-            number_u64(usage.get("output")).saturating_add(number_u64(usage.get("reasoning"))),
-            number_u64(usage.get("cacheRead")),
-            number_u64(usage.get("cacheWrite")),
-            project.as_deref(),
+            observation.timestamp_millis,
+            observation.model.as_deref(),
+            observation.input,
+            observation.output,
+            observation.cache_read,
+            observation.cache_creation,
+            observation.project.as_deref(),
         );
-        stats.usage_records = stats.usage_records.saturating_add(1);
+    }
+    compact_payload(observations, builder.contribution(), window)
+}
+
+fn merge_additive_payloads(
+    previous: &CachedFilePayload,
+    appended: &CachedFilePayload,
+    window: &CollectionWindow,
+) -> CachedFilePayload {
+    let (Some(previous), Some(appended)) = (
+        previous.contribution.to_domain(window),
+        appended.contribution.to_domain(window),
+    ) else {
+        return appended.clone();
+    };
+    let mut builder = UsageContributionBuilder::new(window.clone());
+    if !builder.merge_contribution(&previous) || !builder.merge_contribution(&appended) {
+        return compact_payload(Vec::new(), appended, window);
+    }
+    compact_payload(Vec::new(), builder.contribution(), window)
+}
+
+fn aggregate_additive_payloads(
+    payloads: &[CachedFilePayload],
+    window: &CollectionWindow,
+) -> Result<(UsageContribution, bool, Option<String>), SourceScanError> {
+    let mut builder = UsageContributionBuilder::new(window.clone());
+    for payload in payloads {
+        let Some(contribution) = payload.contribution.to_domain(window) else {
+            return Err(invalid_cached_payload());
+        };
+        if !builder.merge_contribution(&contribution) {
+            return Err(invalid_cached_payload());
+        }
+    }
+    Ok((builder.contribution(), !payloads.is_empty(), None))
+}
+
+fn parse_cached_file<F>(
+    path: &Path,
+    modified: f64,
+    start_offset: u64,
+    window: &CollectionWindow,
+    cancellation: &CancellationToken,
+    stats: &mut ScanStats,
+    mut parse: F,
+) -> Result<CachedFilePayload, SourceScanError>
+where
+    F: FnMut(&Path, f64, Value, &mut ScanStats) -> Option<CachedUsageObservation>,
+{
+    let mut observations = Vec::new();
+    scan_jsonl_file_from_offset(
+        path,
+        start_offset,
+        cancellation,
+        stats,
+        |path, line, stats| {
+            let Some(value) = parse_json_line(line, stats) else {
+                return;
+            };
+            if let Some(observation) = parse(path, modified, value, stats) {
+                observations.push(observation);
+            }
+        },
+    )?;
+    Ok(payload_from_observations(observations, window))
+}
+
+struct KimiWorkJsonlAdapter;
+
+impl JsonlCacheAdapter for KimiWorkJsonlAdapter {
+    fn source_id(&self) -> &'static str {
+        "kimi-work"
+    }
+
+    fn parse_file(
+        &self,
+        path: &Path,
+        modified: f64,
+        start_offset: u64,
+        window: &CollectionWindow,
+        cancellation: &CancellationToken,
+        stats: &mut ScanStats,
+    ) -> Result<CachedFilePayload, SourceScanError> {
+        parse_cached_file(
+            path,
+            modified,
+            start_offset,
+            window,
+            cancellation,
+            stats,
+            |_, _, value, stats| {
+                if value.get("type").and_then(Value::as_str) != Some("usage.record") {
+                    stats.ignored_lines = stats.ignored_lines.saturating_add(1);
+                    return None;
+                }
+                let Some(timestamp) = timestamp_number(value.get("time")) else {
+                    stats.malformed_lines = stats.malformed_lines.saturating_add(1);
+                    return None;
+                };
+                let usage = value.get("usage");
+                stats.usage_records = stats.usage_records.saturating_add(1);
+                Some(CachedUsageObservation {
+                    dedupe_key: None,
+                    timestamp_millis: timestamp,
+                    model: value
+                        .get("model")
+                        .and_then(Value::as_str)
+                        .map(str::to_owned),
+                    input: number_u64(usage.and_then(|value| value.get("inputOther"))),
+                    output: number_u64(usage.and_then(|value| value.get("output"))),
+                    cache_read: number_u64(usage.and_then(|value| value.get("inputCacheRead"))),
+                    cache_creation: number_u64(
+                        usage.and_then(|value| value.get("inputCacheCreation")),
+                    ),
+                    project: None,
+                })
+            },
+        )
+    }
+
+    fn merge_append(
+        &self,
+        previous: &CachedFilePayload,
+        appended: &CachedFilePayload,
+        _modified: f64,
+        window: &CollectionWindow,
+    ) -> CachedFilePayload {
+        merge_additive_payloads(previous, appended, window)
+    }
+
+    fn aggregate(
+        &self,
+        payloads: &[CachedFilePayload],
+        window: &CollectionWindow,
+    ) -> Result<(UsageContribution, bool, Option<String>), SourceScanError> {
+        aggregate_additive_payloads(payloads, window)
+    }
+}
+
+pub fn scan_kimi_tree_cached(
+    root: &Path,
+    window: &CollectionWindow,
+    cache_root: &Path,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
+    scan_cached_jsonl_tree(
+        root,
+        &jsonl_cache_config(cache_root, "kimi-work", window),
+        &KimiWorkJsonlAdapter,
+        cancellation,
+    )
+}
+
+struct ClaudeJsonlAdapter;
+
+fn digest_source_key(source_id: &str, value: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"bruce-jsonl-dedupe-v1\0");
+    hasher.update(source_id.as_bytes());
+    hasher.update([0]);
+    hasher.update(value.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
+fn claude_observation(
+    path: &Path,
+    window: &CollectionWindow,
+    value: &Value,
+) -> Option<CachedUsageObservation> {
+    if value.get("type").and_then(Value::as_str) != Some("assistant") {
+        return None;
+    }
+    let timestamp = value
+        .get("timestamp")
+        .and_then(Value::as_str)
+        .and_then(|value| window.epoch_from_iso(value))
+        .map(|value| value.saturating_mul(1000))?;
+    let message = value.get("message").unwrap_or(&Value::Null);
+    let usage = message.get("usage").unwrap_or(&Value::Null);
+    let project = project_from_parent(path).map(|mut project| {
+        if path
+            .components()
+            .any(|part| part.as_os_str() == "subagents")
+        {
+            project.push_str(" ·子代理");
+        }
+        project
+    });
+    Some(CachedUsageObservation {
+        dedupe_key: message
+            .get("id")
+            .and_then(Value::as_str)
+            .map(|id| digest_source_key("claude-message", id)),
+        timestamp_millis: timestamp,
+        model: message
+            .get("model")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        input: number_u64(usage.get("input_tokens")),
+        output: number_u64(usage.get("output_tokens")),
+        cache_read: number_u64(usage.get("cache_read_input_tokens")),
+        cache_creation: number_u64(usage.get("cache_creation_input_tokens")),
+        project,
     })
-    .unwrap_or_else(|_| ScanStats::default());
-    finish(window, builder, stats.clone(), stats.files_scanned > 0)
+}
+
+fn claude_usage_from_observation(observation: &CachedUsageObservation) -> ClaudeUsage {
+    ClaudeUsage {
+        input: observation.input,
+        output: observation.output,
+        cache_read: observation.cache_read,
+        cache_creation: observation.cache_creation,
+        timestamp_millis: observation.timestamp_millis,
+        model: observation.model.clone(),
+        project: observation.project.clone(),
+    }
+}
+
+fn aggregate_claude_payloads(
+    payloads: &[CachedFilePayload],
+    window: &CollectionWindow,
+) -> Result<(UsageContribution, bool, Option<String>), SourceScanError> {
+    let mut best = BTreeMap::<String, ClaudeUsage>::new();
+    let mut direct = Vec::<ClaudeUsage>::new();
+    for payload in payloads {
+        if payload.contribution.to_domain(window).is_none() {
+            return Err(invalid_cached_payload());
+        }
+        for observation in &payload.observations {
+            let usage = claude_usage_from_observation(observation);
+            if let Some(key) = observation.dedupe_key.as_ref() {
+                let entry = best.entry(key.clone()).or_default();
+                entry.input = entry.input.max(usage.input);
+                entry.output = entry.output.max(usage.output);
+                entry.cache_read = entry.cache_read.max(usage.cache_read);
+                entry.cache_creation = entry.cache_creation.max(usage.cache_creation);
+                entry.timestamp_millis = usage.timestamp_millis;
+                entry.model = usage.model;
+                entry.project = usage.project;
+            } else {
+                direct.push(usage);
+            }
+        }
+    }
+    let mut builder = UsageContributionBuilder::new(window.clone());
+    for usage in best.into_values().chain(direct) {
+        record(
+            &mut builder,
+            usage.timestamp_millis,
+            usage.model.as_deref(),
+            usage.input,
+            usage.output,
+            usage.cache_read,
+            usage.cache_creation,
+            usage.project.as_deref(),
+        );
+    }
+    Ok((builder.contribution(), !payloads.is_empty(), None))
+}
+
+impl JsonlCacheAdapter for ClaudeJsonlAdapter {
+    fn source_id(&self) -> &'static str {
+        "claude-code"
+    }
+
+    fn parse_file(
+        &self,
+        path: &Path,
+        modified: f64,
+        start_offset: u64,
+        window: &CollectionWindow,
+        cancellation: &CancellationToken,
+        stats: &mut ScanStats,
+    ) -> Result<CachedFilePayload, SourceScanError> {
+        parse_cached_file(
+            path,
+            modified,
+            start_offset,
+            window,
+            cancellation,
+            stats,
+            |path, _, value, stats| {
+                let observation = claude_observation(path, window, &value);
+                if observation.is_some() {
+                    stats.usage_records = stats.usage_records.saturating_add(1);
+                }
+                observation
+            },
+        )
+    }
+
+    fn merge_append(
+        &self,
+        previous: &CachedFilePayload,
+        appended: &CachedFilePayload,
+        _modified: f64,
+        window: &CollectionWindow,
+    ) -> CachedFilePayload {
+        let mut observations = previous.observations.clone();
+        observations.extend(appended.observations.iter().cloned());
+        payload_from_observations(observations, window)
+    }
+
+    fn aggregate(
+        &self,
+        payloads: &[CachedFilePayload],
+        window: &CollectionWindow,
+    ) -> Result<(UsageContribution, bool, Option<String>), SourceScanError> {
+        aggregate_claude_payloads(payloads, window)
+    }
+}
+
+pub fn scan_claude_cached(
+    root: &Path,
+    window: &CollectionWindow,
+    cache_root: &Path,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
+    scan_cached_jsonl_tree(
+        root,
+        &jsonl_cache_config(cache_root, "claude-code", window),
+        &ClaudeJsonlAdapter,
+        cancellation,
+    )
+}
+
+struct CodeBuddyJsonlAdapter;
+
+fn codebuddy_observation(
+    path: &Path,
+    value: &Value,
+    stats: &mut ScanStats,
+) -> Option<CachedUsageObservation> {
+    let record_type = value.get("type").and_then(Value::as_str);
+    if record_type != Some("message") && record_type != Some("function_call") {
+        return None;
+    }
+    if record_type == Some("message")
+        && value.get("role").and_then(Value::as_str) != Some("assistant")
+    {
+        return None;
+    }
+    let timestamp = timestamp_number(value.get("timestamp"))?;
+    let (input, output, cache_read, cache_creation) = codebuddy_usage(value)?;
+    stats.usage_records = stats.usage_records.saturating_add(1);
+    let raw_key =
+        codebuddy_message_id(value).map(|id| format!("{}::{id}", codebuddy_scope(path, value),));
+    Some(CachedUsageObservation {
+        dedupe_key: raw_key
+            .as_deref()
+            .map(|key| digest_source_key("codebuddy-message", key)),
+        timestamp_millis: timestamp,
+        model: codebuddy_model(value),
+        input,
+        output,
+        cache_read,
+        cache_creation,
+        project: project_from_parent(path),
+    })
+}
+
+fn codebuddy_usage_from_observation(observation: &CachedUsageObservation) -> CodeBuddyUsage {
+    CodeBuddyUsage {
+        input: observation.input,
+        output: observation.output,
+        cache_read: observation.cache_read,
+        cache_creation: observation.cache_creation,
+        timestamp_millis: observation.timestamp_millis,
+        model: observation.model.clone(),
+        project: observation.project.clone(),
+    }
+}
+
+fn aggregate_codebuddy_payloads(
+    payloads: &[CachedFilePayload],
+    window: &CollectionWindow,
+) -> Result<(UsageContribution, bool, Option<String>), SourceScanError> {
+    let mut best = BTreeMap::<String, CodeBuddyUsage>::new();
+    let mut direct = Vec::<CodeBuddyUsage>::new();
+    for payload in payloads {
+        if payload.contribution.to_domain(window).is_none() {
+            return Err(invalid_cached_payload());
+        }
+        for observation in &payload.observations {
+            let usage = codebuddy_usage_from_observation(observation);
+            if let Some(key) = observation.dedupe_key.as_ref() {
+                let replace = match best.get(key) {
+                    None => true,
+                    Some(previous) => {
+                        usage.total() > previous.total()
+                            || (usage.total() == previous.total()
+                                && usage.timestamp_millis > previous.timestamp_millis)
+                    }
+                };
+                if replace {
+                    best.insert(key.clone(), usage);
+                }
+            } else {
+                direct.push(usage);
+            }
+        }
+    }
+    let mut builder = UsageContributionBuilder::new(window.clone());
+    for usage in best.into_values().chain(direct) {
+        record(
+            &mut builder,
+            usage.timestamp_millis,
+            usage.model.as_deref(),
+            usage.input,
+            usage.output,
+            usage.cache_read,
+            usage.cache_creation,
+            usage.project.as_deref(),
+        );
+    }
+    Ok((builder.contribution(), !payloads.is_empty(), None))
+}
+
+impl JsonlCacheAdapter for CodeBuddyJsonlAdapter {
+    fn source_id(&self) -> &'static str {
+        "codebuddy"
+    }
+
+    fn parse_file(
+        &self,
+        path: &Path,
+        modified: f64,
+        start_offset: u64,
+        window: &CollectionWindow,
+        cancellation: &CancellationToken,
+        stats: &mut ScanStats,
+    ) -> Result<CachedFilePayload, SourceScanError> {
+        parse_cached_file(
+            path,
+            modified,
+            start_offset,
+            window,
+            cancellation,
+            stats,
+            |path, _, value, stats| codebuddy_observation(path, &value, stats),
+        )
+    }
+
+    fn merge_append(
+        &self,
+        previous: &CachedFilePayload,
+        appended: &CachedFilePayload,
+        _modified: f64,
+        window: &CollectionWindow,
+    ) -> CachedFilePayload {
+        let mut observations = previous.observations.clone();
+        observations.extend(appended.observations.iter().cloned());
+        payload_from_observations(observations, window)
+    }
+
+    fn aggregate(
+        &self,
+        payloads: &[CachedFilePayload],
+        window: &CollectionWindow,
+    ) -> Result<(UsageContribution, bool, Option<String>), SourceScanError> {
+        aggregate_codebuddy_payloads(payloads, window)
+    }
+}
+
+pub fn scan_codebuddy_cached(
+    root: &Path,
+    window: &CollectionWindow,
+    cache_root: &Path,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
+    scan_cached_jsonl_tree(
+        root,
+        &jsonl_cache_config(cache_root, "codebuddy", window),
+        &CodeBuddyJsonlAdapter,
+        cancellation,
+    )
+}
+
+struct GrokJsonlAdapter;
+
+fn grok_observation(path: &Path, modified: f64, value: &Value) -> Option<CachedUsageObservation> {
+    let kind = value.get("type").and_then(Value::as_str);
+    if kind != Some("user") && kind != Some("assistant") {
+        return None;
+    }
+    let content = grok_content(value.get("content"));
+    if content.is_empty() {
+        return None;
+    }
+    let tokens = (content.chars().count() as u64 / 4).max(1);
+    let project = path
+        .parent()
+        .and_then(Path::parent)
+        .and_then(Path::file_name)
+        .and_then(|value| value.to_str())
+        .map(str::to_owned);
+    Some(CachedUsageObservation {
+        dedupe_key: None,
+        timestamp_millis: (modified * 1000.0) as i64,
+        model: Some("grok".to_owned()),
+        input: if kind == Some("user") { tokens } else { 0 },
+        output: if kind == Some("assistant") { tokens } else { 0 },
+        cache_read: 0,
+        cache_creation: 0,
+        project,
+    })
+}
+
+impl JsonlCacheAdapter for GrokJsonlAdapter {
+    fn source_id(&self) -> &'static str {
+        "grok"
+    }
+
+    fn parse_file(
+        &self,
+        path: &Path,
+        modified: f64,
+        start_offset: u64,
+        window: &CollectionWindow,
+        cancellation: &CancellationToken,
+        stats: &mut ScanStats,
+    ) -> Result<CachedFilePayload, SourceScanError> {
+        parse_cached_file(
+            path,
+            modified,
+            start_offset,
+            window,
+            cancellation,
+            stats,
+            |path, modified, value, stats| {
+                let observation = grok_observation(path, modified, &value);
+                if observation.is_some() {
+                    stats.usage_records = stats.usage_records.saturating_add(1);
+                }
+                observation
+            },
+        )
+    }
+
+    fn merge_append(
+        &self,
+        previous: &CachedFilePayload,
+        appended: &CachedFilePayload,
+        modified: f64,
+        window: &CollectionWindow,
+    ) -> CachedFilePayload {
+        let current_timestamp = (modified * 1000.0) as i64;
+        let mut observations = previous.observations.clone();
+        for observation in &mut observations {
+            observation.timestamp_millis = current_timestamp;
+        }
+        observations.extend(appended.observations.iter().cloned());
+        payload_from_observations(observations, window)
+    }
+
+    fn aggregate(
+        &self,
+        payloads: &[CachedFilePayload],
+        window: &CollectionWindow,
+    ) -> Result<(UsageContribution, bool, Option<String>), SourceScanError> {
+        aggregate_additive_payloads(payloads, window)
+    }
+}
+
+pub fn scan_grok_cached(
+    roots: &[PathBuf],
+    window: &CollectionWindow,
+    cache_root: &Path,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
+    let mut builder = UsageContributionBuilder::new(window.clone());
+    let mut stats = ScanStats::default();
+    let mut found = false;
+    let mut diagnostic = None;
+    for root in roots {
+        let current = scan_cached_jsonl_tree(
+            root,
+            &jsonl_cache_config(cache_root, "grok", window),
+            &GrokJsonlAdapter,
+            cancellation,
+        );
+        match current {
+            Ok(current) => {
+                found |= current.found;
+                stats.merge(current.stats);
+                if diagnostic.is_none() {
+                    diagnostic = current.diagnostic;
+                }
+                if !builder.merge_contribution(&current.contribution) {
+                    return Err(invalid_cached_payload());
+                }
+            }
+            Err(SourceScanError::Runtime(error)) => return Err(error.into()),
+            Err(SourceScanError::Io(_)) => {
+                stats.io_errors = stats.io_errors.saturating_add(1);
+            }
+        }
+    }
+    Ok(SourceScan {
+        found,
+        contribution: builder.contribution(),
+        stats,
+        diagnostic,
+    })
+}
+
+struct PiJsonlAdapter;
+
+fn pi_observation(
+    path: &Path,
+    window: &CollectionWindow,
+    value: &Value,
+) -> Option<CachedUsageObservation> {
+    let kind = value.get("type").and_then(Value::as_str);
+    if kind == Some("session") || kind != Some("message") {
+        return None;
+    }
+    let message = value.get("message").unwrap_or(&Value::Null);
+    if message.get("role").and_then(Value::as_str) != Some("assistant") {
+        return None;
+    }
+    let usage = message.get("usage").unwrap_or(&Value::Null);
+    if usage.is_null() {
+        return None;
+    }
+    let timestamp = timestamp_number(message.get("timestamp")).or_else(|| {
+        value
+            .get("timestamp")
+            .and_then(Value::as_str)
+            .and_then(|value| window.epoch_from_iso(value).map(|value| value * 1000))
+    })?;
+    Some(CachedUsageObservation {
+        dedupe_key: None,
+        timestamp_millis: if timestamp < 10_000_000_000 {
+            timestamp * 1000
+        } else {
+            timestamp
+        },
+        model: message
+            .get("model")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        input: number_u64(usage.get("input")),
+        output: number_u64(usage.get("output")).saturating_add(number_u64(usage.get("reasoning"))),
+        cache_read: number_u64(usage.get("cacheRead")),
+        cache_creation: number_u64(usage.get("cacheWrite")),
+        project: project_from_parent(path),
+    })
+}
+
+impl JsonlCacheAdapter for PiJsonlAdapter {
+    fn source_id(&self) -> &'static str {
+        "pi"
+    }
+
+    fn parse_file(
+        &self,
+        path: &Path,
+        modified: f64,
+        start_offset: u64,
+        window: &CollectionWindow,
+        cancellation: &CancellationToken,
+        stats: &mut ScanStats,
+    ) -> Result<CachedFilePayload, SourceScanError> {
+        parse_cached_file(
+            path,
+            modified,
+            start_offset,
+            window,
+            cancellation,
+            stats,
+            |path, _, value, stats| {
+                let observation = pi_observation(path, window, &value);
+                if observation.is_some() {
+                    stats.usage_records = stats.usage_records.saturating_add(1);
+                }
+                observation
+            },
+        )
+    }
+
+    fn merge_append(
+        &self,
+        previous: &CachedFilePayload,
+        appended: &CachedFilePayload,
+        _modified: f64,
+        window: &CollectionWindow,
+    ) -> CachedFilePayload {
+        merge_additive_payloads(previous, appended, window)
+    }
+
+    fn aggregate(
+        &self,
+        payloads: &[CachedFilePayload],
+        window: &CollectionWindow,
+    ) -> Result<(UsageContribution, bool, Option<String>), SourceScanError> {
+        aggregate_additive_payloads(payloads, window)
+    }
+}
+
+pub fn scan_pi_cached(
+    root: &Path,
+    window: &CollectionWindow,
+    cache_root: &Path,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
+    scan_cached_jsonl_tree(
+        root,
+        &jsonl_cache_config(cache_root, "pi", window),
+        &PiJsonlAdapter,
+        cancellation,
+    )
 }
 
 fn sqlite_error(window: &CollectionWindow, message: &str) -> SourceScan {
@@ -1512,23 +2655,653 @@ fn open_read_only(path: &Path) -> rusqlite::Result<Connection> {
     )
 }
 
+fn sqlite_schema_error(message: impl Into<String>) -> SourceScanError {
+    SourceScanError::Io(io::Error::new(io::ErrorKind::InvalidData, message.into()))
+}
+
+fn sqlite_query_error(message: impl Into<String>) -> SourceScanError {
+    SourceScanError::Io(io::Error::other(message.into()))
+}
+
+fn sqlite_table_columns(
+    connection: &Connection,
+    table: &str,
+) -> Result<Vec<(String, String)>, SourceScanError> {
+    let pragma = format!("PRAGMA table_info({table})");
+    let mut statement = connection
+        .prepare(&pragma)
+        .map_err(|_| sqlite_schema_error("sqlite table_info query failed"))?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+        })
+        .map_err(|_| sqlite_schema_error("sqlite table_info query failed"))?;
+    let mut columns = Vec::new();
+    for row in rows {
+        columns.push(row.map_err(|_| sqlite_schema_error("sqlite table_info query failed"))?);
+    }
+    if columns.is_empty() {
+        return Err(sqlite_schema_error("sqlite table is missing"));
+    }
+    Ok(columns)
+}
+
+fn sqlite_schema_fingerprint(
+    connection: &Connection,
+    tables: &[&str],
+) -> Result<String, SourceScanError> {
+    let mut hasher = Sha256::new();
+    for table in tables {
+        let sql = connection
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                [*table],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .map_err(|_| sqlite_schema_error("sqlite schema query failed"))?
+            .ok_or_else(|| sqlite_schema_error("sqlite table is missing"))?;
+        let columns = sqlite_table_columns(connection, table)?;
+        hasher.update(table.as_bytes());
+        hasher.update(sql.as_bytes());
+        for (name, kind) in columns {
+            hasher.update(name.as_bytes());
+            hasher.update(kind.as_bytes());
+        }
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+fn merge_sqlite_contributions(
+    base: &UsageContribution,
+    delta: &UsageContribution,
+    window: &CollectionWindow,
+) -> UsageContribution {
+    let mut builder = UsageContributionBuilder::new(window.clone());
+    if !builder.merge_contribution(base) || !builder.merge_contribution(delta) {
+        return base.clone();
+    }
+    builder.contribution()
+}
+
+#[derive(Debug, Clone)]
+struct OpenCodeRow {
+    rowid: Option<i64>,
+    data: String,
+}
+
+struct OpenCodeSqliteAdapter;
+
+impl OpenCodeSqliteAdapter {
+    fn has_rows(connection: &Connection) -> Result<bool, SourceScanError> {
+        match connection.query_row("SELECT 1 FROM message LIMIT 1", [], |row| {
+            row.get::<_, i64>(0)
+        }) {
+            Ok(_) => Ok(true),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
+            Err(_) => Err(sqlite_query_error("opencode message query failed")),
+        }
+    }
+
+    fn read_rows(
+        connection: &Connection,
+        cursor: Option<&SqliteCursor>,
+        cancellation: &CancellationToken,
+        stats: &mut ScanStats,
+    ) -> Result<(Vec<OpenCodeRow>, bool), SourceScanError> {
+        cancellation.check()?;
+        let mut rows = Vec::new();
+        let mut rowid_supported = true;
+        if let Some(cursor) = cursor {
+            let Some(rowid) = cursor.rowid else {
+                return Err(sqlite_schema_error("opencode row cursor is unavailable"));
+            };
+            let mut statement = connection
+                .prepare(
+                    "SELECT rowid, data FROM message \
+                     WHERE rowid > ?1 AND data LIKE '%tokens%' \
+                     ORDER BY rowid ASC LIMIT ?2",
+                )
+                .map_err(|_| sqlite_schema_error("opencode row cursor is unavailable"))?;
+            let result = statement
+                .query_map(rusqlite::params![rowid, MAX_SOURCE_ROWS], |row| {
+                    Ok(OpenCodeRow {
+                        rowid: Some(row.get(0)?),
+                        data: row.get(1)?,
+                    })
+                })
+                .map_err(|_| sqlite_query_error("opencode incremental query failed"))?;
+            for row in result {
+                cancellation.check()?;
+                stats.sqlite_rows_read = stats.sqlite_rows_read.saturating_add(1);
+                rows.push(row.map_err(|_| sqlite_query_error("opencode row read failed"))?);
+            }
+            let capped = rows.len() as i64 >= MAX_SOURCE_ROWS;
+            return Ok((rows, capped));
+        }
+
+        let mut statement = match connection.prepare(
+            "SELECT rowid, data FROM message \
+             WHERE data LIKE '%tokens%' ORDER BY rowid DESC LIMIT ?1",
+        ) {
+            Ok(statement) => statement,
+            Err(_) => {
+                rowid_supported = false;
+                connection
+                    .prepare("SELECT data FROM message WHERE data LIKE '%tokens%' LIMIT ?1")
+                    .map_err(|_| sqlite_query_error("opencode message query failed"))?
+            }
+        };
+        if rowid_supported {
+            let result = statement
+                .query_map([MAX_SOURCE_ROWS], |row| {
+                    Ok(OpenCodeRow {
+                        rowid: Some(row.get(0)?),
+                        data: row.get(1)?,
+                    })
+                })
+                .map_err(|_| sqlite_query_error("opencode message query failed"))?;
+            for row in result {
+                cancellation.check()?;
+                stats.sqlite_rows_read = stats.sqlite_rows_read.saturating_add(1);
+                rows.push(row.map_err(|_| sqlite_query_error("opencode row read failed"))?);
+            }
+        } else {
+            let result = statement
+                .query_map([MAX_SOURCE_ROWS], |row| {
+                    Ok(OpenCodeRow {
+                        rowid: None,
+                        data: row.get(0)?,
+                    })
+                })
+                .map_err(|_| sqlite_query_error("opencode message query failed"))?;
+            for row in result {
+                cancellation.check()?;
+                stats.sqlite_rows_read = stats.sqlite_rows_read.saturating_add(1);
+                rows.push(row.map_err(|_| sqlite_query_error("opencode row read failed"))?);
+            }
+        }
+        rows.reverse();
+        let capped = rows.len() as i64 >= MAX_SOURCE_ROWS || !rowid_supported;
+        Ok((rows, capped))
+    }
+
+    fn parse_rows(
+        rows: &[OpenCodeRow],
+        window: &CollectionWindow,
+        cancellation: &CancellationToken,
+        stats: &mut ScanStats,
+    ) -> Result<(UsageContribution, SqliteCursor), SourceScanError> {
+        let mut builder = UsageContributionBuilder::new(window.clone());
+        let mut cursor = SqliteCursor::default();
+        for row in rows {
+            cancellation.check()?;
+            if let Some(rowid) = row.rowid {
+                cursor.rowid = Some(cursor.rowid.unwrap_or(rowid).max(rowid));
+            }
+            let Ok(value) = serde_json::from_str::<Value>(&row.data) else {
+                stats.malformed_lines = stats.malformed_lines.saturating_add(1);
+                continue;
+            };
+            stats.json_lines_parsed = stats.json_lines_parsed.saturating_add(1);
+            if value.get("role").and_then(Value::as_str) != Some("assistant") {
+                continue;
+            }
+            let tokens = value.get("tokens").unwrap_or(&Value::Null);
+            let Some(created) =
+                timestamp_number(value.get("time").and_then(|value| value.get("created")))
+            else {
+                continue;
+            };
+            cursor.timestamp_millis = Some(cursor.timestamp_millis.unwrap_or(created).max(created));
+            if created < (window.cutoff_ts * 1000.0) as i64 {
+                continue;
+            }
+            let cache = tokens.get("cache").unwrap_or(&Value::Null);
+            record(
+                &mut builder,
+                created,
+                value
+                    .get("modelID")
+                    .and_then(Value::as_str)
+                    .or(Some("opencode")),
+                number_u64(tokens.get("input")),
+                number_u64(tokens.get("output"))
+                    .saturating_add(number_u64(tokens.get("reasoning"))),
+                number_u64(cache.get("read")),
+                number_u64(cache.get("write")),
+                None,
+            );
+            stats.usage_records = stats.usage_records.saturating_add(1);
+        }
+        Ok((builder.contribution(), cursor))
+    }
+}
+
+impl SqliteIncrementalAdapter for OpenCodeSqliteAdapter {
+    fn source_id(&self) -> &'static str {
+        "opencode"
+    }
+
+    fn schema_fingerprint(&self, connection: &Connection) -> Result<String, SourceScanError> {
+        let columns = sqlite_table_columns(connection, "message")?;
+        if !columns.iter().any(|(name, _)| name == "data") {
+            return Err(sqlite_schema_error(
+                "opencode message.data column is missing",
+            ));
+        }
+        sqlite_schema_fingerprint(connection, &["message"])
+    }
+
+    fn read_full(
+        &self,
+        connection: &Connection,
+        window: &CollectionWindow,
+        cancellation: &CancellationToken,
+        stats: &mut ScanStats,
+    ) -> Result<SqliteReadResult, SourceScanError> {
+        let found = Self::has_rows(connection)?;
+        let (rows, capped) = Self::read_rows(connection, None, cancellation, stats)?;
+        let (contribution, cursor) = Self::parse_rows(&rows, window, cancellation, stats)?;
+        Ok(SqliteReadResult {
+            contribution,
+            cursor,
+            found,
+            rows_read: rows.len() as u64,
+            diagnostic: capped.then(|| "仅保留 opencode 最新 10000 条候选消息".to_owned()),
+            append_safe: !capped && rows.iter().all(|row| row.rowid.is_some()),
+        })
+    }
+
+    fn read_since(
+        &self,
+        connection: &Connection,
+        cursor: &SqliteCursor,
+        window: &CollectionWindow,
+        cancellation: &CancellationToken,
+        stats: &mut ScanStats,
+    ) -> Result<SqliteReadResult, SourceScanError> {
+        let (rows, capped) = Self::read_rows(connection, Some(cursor), cancellation, stats)?;
+        let (contribution, cursor) = Self::parse_rows(&rows, window, cancellation, stats)?;
+        Ok(SqliteReadResult {
+            contribution,
+            cursor,
+            found: !rows.is_empty(),
+            rows_read: rows.len() as u64,
+            diagnostic: capped.then(|| "opencode 增量候选消息超过上限, 已回退全量读取".to_owned()),
+            append_safe: !capped && rows.iter().all(|row| row.rowid.is_some()),
+        })
+    }
+
+    fn merge_delta(
+        &self,
+        base: &UsageContribution,
+        delta: &UsageContribution,
+        window: &CollectionWindow,
+    ) -> UsageContribution {
+        merge_sqlite_contributions(base, delta, window)
+    }
+}
+
+fn opencode_cache_config(cache_root: &Path, window: &CollectionWindow) -> SqliteCacheConfig {
+    SqliteCacheConfig {
+        cache_root: cache_root.to_owned(),
+        source_id: "opencode".to_owned(),
+        parser_version: 1,
+        window: window.clone(),
+    }
+}
+
+pub fn scan_opencode_cached(
+    path: &Path,
+    window: &CollectionWindow,
+    cache_root: &Path,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
+    scan_sqlite_cached(
+        path,
+        &opencode_cache_config(cache_root, window),
+        &OpenCodeSqliteAdapter,
+        cancellation,
+    )
+}
+
+#[derive(Debug, Clone)]
+struct ZCodeRow {
+    rowid: Option<i64>,
+    started_at: i64,
+    model: Option<String>,
+    input: Option<i64>,
+    output: Option<i64>,
+    reasoning: Option<i64>,
+    cache_creation: Option<i64>,
+    cache_read: Option<i64>,
+    directory: Option<String>,
+    task_type: Option<String>,
+}
+
+struct ZCodeSqliteAdapter;
+
+impl ZCodeSqliteAdapter {
+    fn has_rows(connection: &Connection) -> Result<bool, SourceScanError> {
+        match connection.query_row("SELECT 1 FROM model_usage LIMIT 1", [], |row| {
+            row.get::<_, i64>(0)
+        }) {
+            Ok(_) => Ok(true),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
+            Err(_) => Err(sqlite_query_error("zcode model_usage query failed")),
+        }
+    }
+
+    fn read_rows(
+        connection: &Connection,
+        cursor: Option<&SqliteCursor>,
+        cutoff_ms: i64,
+        cancellation: &CancellationToken,
+        stats: &mut ScanStats,
+    ) -> Result<(Vec<ZCodeRow>, bool), SourceScanError> {
+        cancellation.check()?;
+        let mut rows = Vec::new();
+        if let Some(cursor) = cursor {
+            let Some(rowid) = cursor.rowid else {
+                return Err(sqlite_schema_error("zcode row cursor is unavailable"));
+            };
+            let mut statement = connection
+                .prepare(
+                    "SELECT m.rowid, m.started_at, m.model_id, m.input_tokens, \
+                     m.output_tokens, m.reasoning_tokens, m.cache_creation_input_tokens, \
+                     m.cache_read_input_tokens, s.directory, s.task_type \
+                     FROM model_usage m LEFT JOIN session s ON s.id = m.session_id \
+                     WHERE m.rowid > ?1 AND m.started_at >= ?2 \
+                     ORDER BY m.rowid ASC LIMIT ?3",
+                )
+                .map_err(|_| sqlite_schema_error("zcode row cursor is unavailable"))?;
+            let result = statement
+                .query_map(
+                    rusqlite::params![rowid, cutoff_ms, MAX_SOURCE_ROWS],
+                    |row| {
+                        Ok(ZCodeRow {
+                            rowid: Some(row.get(0)?),
+                            started_at: row.get(1)?,
+                            model: row.get(2)?,
+                            input: row.get(3)?,
+                            output: row.get(4)?,
+                            reasoning: row.get(5)?,
+                            cache_creation: row.get(6)?,
+                            cache_read: row.get(7)?,
+                            directory: row.get(8)?,
+                            task_type: row.get(9)?,
+                        })
+                    },
+                )
+                .map_err(|_| sqlite_query_error("zcode incremental query failed"))?;
+            for row in result {
+                cancellation.check()?;
+                stats.sqlite_rows_read = stats.sqlite_rows_read.saturating_add(1);
+                rows.push(row.map_err(|_| sqlite_query_error("zcode row read failed"))?);
+            }
+            let capped = rows.len() as i64 >= MAX_SOURCE_ROWS;
+            return Ok((rows, capped));
+        }
+
+        let mut rowid_supported = true;
+        let mut statement = match connection.prepare(
+            "SELECT m.rowid, m.started_at, m.model_id, m.input_tokens, \
+             m.output_tokens, m.reasoning_tokens, m.cache_creation_input_tokens, \
+             m.cache_read_input_tokens, s.directory, s.task_type \
+             FROM model_usage m LEFT JOIN session s ON s.id = m.session_id \
+             WHERE m.started_at >= ?1 ORDER BY m.started_at DESC LIMIT ?2",
+        ) {
+            Ok(statement) => statement,
+            Err(_) => {
+                rowid_supported = false;
+                connection
+                    .prepare(
+                        "SELECT m.started_at, m.model_id, m.input_tokens, m.output_tokens, \
+                         m.reasoning_tokens, m.cache_creation_input_tokens, \
+                         m.cache_read_input_tokens, s.directory, s.task_type \
+                         FROM model_usage m LEFT JOIN session s ON s.id = m.session_id \
+                         WHERE m.started_at >= ?1 ORDER BY m.started_at DESC LIMIT ?2",
+                    )
+                    .map_err(|_| sqlite_query_error("zcode model_usage query failed"))?
+            }
+        };
+        if rowid_supported {
+            let result = statement
+                .query_map(rusqlite::params![cutoff_ms, MAX_SOURCE_ROWS], |row| {
+                    Ok(ZCodeRow {
+                        rowid: Some(row.get(0)?),
+                        started_at: row.get(1)?,
+                        model: row.get(2)?,
+                        input: row.get(3)?,
+                        output: row.get(4)?,
+                        reasoning: row.get(5)?,
+                        cache_creation: row.get(6)?,
+                        cache_read: row.get(7)?,
+                        directory: row.get(8)?,
+                        task_type: row.get(9)?,
+                    })
+                })
+                .map_err(|_| sqlite_query_error("zcode model_usage query failed"))?;
+            for row in result {
+                cancellation.check()?;
+                stats.sqlite_rows_read = stats.sqlite_rows_read.saturating_add(1);
+                rows.push(row.map_err(|_| sqlite_query_error("zcode row read failed"))?);
+            }
+        } else {
+            let result = statement
+                .query_map(rusqlite::params![cutoff_ms, MAX_SOURCE_ROWS], |row| {
+                    Ok(ZCodeRow {
+                        rowid: None,
+                        started_at: row.get(0)?,
+                        model: row.get(1)?,
+                        input: row.get(2)?,
+                        output: row.get(3)?,
+                        reasoning: row.get(4)?,
+                        cache_creation: row.get(5)?,
+                        cache_read: row.get(6)?,
+                        directory: row.get(7)?,
+                        task_type: row.get(8)?,
+                    })
+                })
+                .map_err(|_| sqlite_query_error("zcode model_usage query failed"))?;
+            for row in result {
+                cancellation.check()?;
+                stats.sqlite_rows_read = stats.sqlite_rows_read.saturating_add(1);
+                rows.push(row.map_err(|_| sqlite_query_error("zcode row read failed"))?);
+            }
+        }
+        rows.reverse();
+        let capped = rows.len() as i64 >= MAX_SOURCE_ROWS || !rowid_supported;
+        Ok((rows, capped))
+    }
+
+    fn parse_rows(
+        rows: &[ZCodeRow],
+        window: &CollectionWindow,
+        cancellation: &CancellationToken,
+        stats: &mut ScanStats,
+    ) -> Result<(UsageContribution, SqliteCursor), SourceScanError> {
+        let mut builder = UsageContributionBuilder::new(window.clone());
+        let mut cursor = SqliteCursor::default();
+        for row in rows {
+            cancellation.check()?;
+            if let Some(rowid) = row.rowid {
+                cursor.rowid = Some(cursor.rowid.unwrap_or(rowid).max(rowid));
+            }
+            cursor.timestamp_millis = Some(
+                cursor
+                    .timestamp_millis
+                    .unwrap_or(row.started_at)
+                    .max(row.started_at),
+            );
+            let input = u64::try_from(row.input.unwrap_or(0)).unwrap_or(0);
+            let output = u64::try_from(row.output.unwrap_or(0)).unwrap_or(0);
+            let reasoning = u64::try_from(row.reasoning.unwrap_or(0)).unwrap_or(0);
+            let cache_creation = u64::try_from(row.cache_creation.unwrap_or(0)).unwrap_or(0);
+            let cache_read = u64::try_from(row.cache_read.unwrap_or(0)).unwrap_or(0);
+            if input == 0 && output == 0 && reasoning == 0 && cache_creation == 0 && cache_read == 0
+            {
+                continue;
+            }
+            let project = project_from_zcode(row.directory.clone(), row.task_type.clone());
+            record(
+                &mut builder,
+                row.started_at,
+                row.model.as_deref().or(Some("unknown")),
+                input
+                    .saturating_sub(cache_read)
+                    .saturating_sub(cache_creation),
+                output.saturating_add(reasoning),
+                cache_read,
+                cache_creation,
+                project.as_deref(),
+            );
+            stats.usage_records = stats.usage_records.saturating_add(1);
+        }
+        Ok((builder.contribution(), cursor))
+    }
+}
+
+impl SqliteIncrementalAdapter for ZCodeSqliteAdapter {
+    fn source_id(&self) -> &'static str {
+        "zcode"
+    }
+
+    fn schema_fingerprint(&self, connection: &Connection) -> Result<String, SourceScanError> {
+        let usage_columns = sqlite_table_columns(connection, "model_usage")?;
+        let required_usage = [
+            "started_at",
+            "model_id",
+            "input_tokens",
+            "output_tokens",
+            "reasoning_tokens",
+            "cache_creation_input_tokens",
+            "cache_read_input_tokens",
+            "session_id",
+        ];
+        if required_usage
+            .iter()
+            .any(|name| !usage_columns.iter().any(|(column, _)| column == name))
+        {
+            return Err(sqlite_schema_error(
+                "zcode model_usage columns are incompatible",
+            ));
+        }
+        let session_columns = sqlite_table_columns(connection, "session")?;
+        if ["id", "directory", "task_type"]
+            .iter()
+            .any(|name| !session_columns.iter().any(|(column, _)| column == name))
+        {
+            return Err(sqlite_schema_error(
+                "zcode session columns are incompatible",
+            ));
+        }
+        sqlite_schema_fingerprint(connection, &["model_usage", "session"])
+    }
+
+    fn read_full(
+        &self,
+        connection: &Connection,
+        window: &CollectionWindow,
+        cancellation: &CancellationToken,
+        stats: &mut ScanStats,
+    ) -> Result<SqliteReadResult, SourceScanError> {
+        let found = Self::has_rows(connection)?;
+        let cutoff_ms = (window.cutoff_ts * 1000.0) as i64;
+        let (rows, capped) = Self::read_rows(connection, None, cutoff_ms, cancellation, stats)?;
+        let (contribution, cursor) = Self::parse_rows(&rows, window, cancellation, stats)?;
+        Ok(SqliteReadResult {
+            contribution,
+            cursor,
+            found,
+            rows_read: rows.len() as u64,
+            diagnostic: capped.then(|| "仅保留 zcode 最新 10000 条用量记录".to_owned()),
+            append_safe: !capped && rows.iter().all(|row| row.rowid.is_some()),
+        })
+    }
+
+    fn read_since(
+        &self,
+        connection: &Connection,
+        cursor: &SqliteCursor,
+        window: &CollectionWindow,
+        cancellation: &CancellationToken,
+        stats: &mut ScanStats,
+    ) -> Result<SqliteReadResult, SourceScanError> {
+        let cutoff_ms = (window.cutoff_ts * 1000.0) as i64;
+        let (rows, capped) =
+            Self::read_rows(connection, Some(cursor), cutoff_ms, cancellation, stats)?;
+        let (contribution, cursor) = Self::parse_rows(&rows, window, cancellation, stats)?;
+        Ok(SqliteReadResult {
+            contribution,
+            cursor,
+            found: !rows.is_empty(),
+            rows_read: rows.len() as u64,
+            diagnostic: capped.then(|| "zcode 增量用量记录超过上限, 已回退全量读取".to_owned()),
+            append_safe: !capped && rows.iter().all(|row| row.rowid.is_some()),
+        })
+    }
+
+    fn merge_delta(
+        &self,
+        base: &UsageContribution,
+        delta: &UsageContribution,
+        window: &CollectionWindow,
+    ) -> UsageContribution {
+        merge_sqlite_contributions(base, delta, window)
+    }
+}
+
+fn zcode_cache_config(cache_root: &Path, window: &CollectionWindow) -> SqliteCacheConfig {
+    SqliteCacheConfig {
+        cache_root: cache_root.to_owned(),
+        source_id: "zcode".to_owned(),
+        parser_version: 1,
+        window: window.clone(),
+    }
+}
+
+pub fn scan_zcode_cached(
+    path: &Path,
+    window: &CollectionWindow,
+    cache_root: &Path,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
+    scan_sqlite_cached(
+        path,
+        &zcode_cache_config(cache_root, window),
+        &ZCodeSqliteAdapter,
+        cancellation,
+    )
+}
+
 pub fn scan_opencode(path: &Path, window: &CollectionWindow) -> SourceScan {
+    scan_opencode_with_cancellation(path, window, &CancellationToken::new())
+        .unwrap_or_else(|_| SourceScan::empty(window))
+}
+
+pub fn scan_opencode_with_cancellation(
+    path: &Path,
+    window: &CollectionWindow,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
+    cancellation.check()?;
     if !path.is_file() {
-        return SourceScan::empty(window);
+        return Ok(SourceScan::empty(window));
     }
     let connection = match open_read_only(path) {
         Ok(connection) => connection,
-        Err(_) => return sqlite_error(window, "本机 opencode 数据库暂不可读"),
+        Err(_) => return Ok(sqlite_error(window, "本机 opencode 数据库暂不可读")),
     };
     let any_message = match connection.query_row("SELECT 1 FROM message LIMIT 1", [], |row| {
         row.get::<_, i64>(0)
     }) {
         Ok(_) => true,
         Err(rusqlite::Error::QueryReturnedNoRows) => false,
-        Err(_) => return sqlite_error(window, "本机 opencode 数据库 schema 不兼容"),
+        Err(_) => return Ok(sqlite_error(window, "本机 opencode 数据库 schema 不兼容")),
     };
     if !any_message {
-        return SourceScan::empty(window);
+        return Ok(SourceScan::empty(window));
     }
     // 行数超上限时按 rowid DESC 截断, 保留最新插入的消息 (rowid 随追加单调递增);
     // WITHOUT ROWID 表不支持该排序时回退旧行为 (无序全量前 N 行), 不把兼容性变成报错.
@@ -1538,22 +3311,24 @@ pub fn scan_opencode(path: &Path, window: &CollectionWindow) -> SourceScan {
             connection.prepare("SELECT data FROM message WHERE data LIKE '%tokens%' LIMIT ?1")
         }) {
         Ok(statement) => statement,
-        Err(_) => return sqlite_error(window, "本机 opencode 数据库 schema 不兼容"),
+        Err(_) => return Ok(sqlite_error(window, "本机 opencode 数据库 schema 不兼容")),
     };
     let mut builder = UsageContributionBuilder::new(window.clone());
     let mut stats = ScanStats::default();
     let rows = match statement.query_map([MAX_SOURCE_ROWS], |row| row.get::<_, String>(0)) {
         Ok(rows) => rows,
-        Err(_) => return sqlite_error(window, "本机 opencode 数据库查询失败"),
+        Err(_) => return Ok(sqlite_error(window, "本机 opencode 数据库查询失败")),
     };
     let mut collected = Vec::new();
     for row in rows {
+        cancellation.check()?;
         stats.sqlite_rows_read = stats.sqlite_rows_read.saturating_add(1);
         let Ok(data) = row else { continue };
         collected.push(data);
     }
     // 回放顺序反转为时间升序, 保持聚合语义与全量扫描一致.
     for data in collected.into_iter().rev() {
+        cancellation.check()?;
         let Ok(value) = serde_json::from_str::<Value>(&data) else {
             stats.malformed_lines = stats.malformed_lines.saturating_add(1);
             continue;
@@ -1587,16 +3362,31 @@ pub fn scan_opencode(path: &Path, window: &CollectionWindow) -> SourceScan {
         );
         stats.usage_records = stats.usage_records.saturating_add(1);
     }
-    finish(window, builder, stats, true)
+    Ok(finish(window, builder, stats, true))
 }
 
 pub fn scan_zcode(path: &Path, window: &CollectionWindow) -> SourceScan {
+    scan_zcode_with_cancellation(path, window, &CancellationToken::new())
+        .unwrap_or_else(|_| SourceScan::empty(window))
+}
+
+pub fn scan_zcode_with_cancellation(
+    path: &Path,
+    window: &CollectionWindow,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
+    cancellation.check()?;
     if !path.is_file() {
-        return SourceScan::empty(window);
+        return Ok(SourceScan::empty(window));
     }
     let connection = match open_read_only(path) {
         Ok(connection) => connection,
-        Err(error) => return sqlite_error(window, &format!("本机 zcode 数据库暂不可读: {error}")),
+        Err(error) => {
+            return Ok(sqlite_error(
+                window,
+                &format!("本机 zcode 数据库暂不可读: {error}"),
+            ))
+        }
     };
     let any_usage = match connection.query_row("SELECT 1 FROM model_usage LIMIT 1", [], |row| {
         row.get::<_, i64>(0)
@@ -1604,11 +3394,14 @@ pub fn scan_zcode(path: &Path, window: &CollectionWindow) -> SourceScan {
         Ok(_) => true,
         Err(rusqlite::Error::QueryReturnedNoRows) => false,
         Err(error) => {
-            return sqlite_error(window, &format!("本机 zcode 数据库 schema 不兼容: {error}"))
+            return Ok(sqlite_error(
+                window,
+                &format!("本机 zcode 数据库 schema 不兼容: {error}"),
+            ))
         }
     };
     if !any_usage {
-        return SourceScan::empty(window);
+        return Ok(SourceScan::empty(window));
     }
     let mut statement = match connection.prepare(
         "SELECT m.started_at, m.model_id, m.input_tokens, m.output_tokens, \
@@ -1618,7 +3411,10 @@ pub fn scan_zcode(path: &Path, window: &CollectionWindow) -> SourceScan {
     ) {
         Ok(statement) => statement,
         Err(error) => {
-            return sqlite_error(window, &format!("本机 zcode 数据库 schema 不兼容: {error}"))
+            return Ok(sqlite_error(
+                window,
+                &format!("本机 zcode 数据库 schema 不兼容: {error}"),
+            ))
         }
     };
     let mut builder = UsageContributionBuilder::new(window.clone());
@@ -1640,10 +3436,16 @@ pub fn scan_zcode(path: &Path, window: &CollectionWindow) -> SourceScan {
         ))
     }) {
         Ok(rows) => rows,
-        Err(error) => return sqlite_error(window, &format!("本机 zcode 数据库查询失败: {error}")),
+        Err(error) => {
+            return Ok(sqlite_error(
+                window,
+                &format!("本机 zcode 数据库查询失败: {error}"),
+            ))
+        }
     };
     let mut collected = Vec::new();
     for row in rows {
+        cancellation.check()?;
         stats.sqlite_rows_read = stats.sqlite_rows_read.saturating_add(1);
         let Ok(row) = row else { continue };
         collected.push(row);
@@ -1660,6 +3462,7 @@ pub fn scan_zcode(path: &Path, window: &CollectionWindow) -> SourceScan {
         task_type,
     ) in collected.into_iter().rev()
     {
+        cancellation.check()?;
         let input = u64::try_from(input.unwrap_or(0)).unwrap_or(0);
         let output = u64::try_from(output.unwrap_or(0)).unwrap_or(0);
         let reasoning = u64::try_from(reasoning.unwrap_or(0)).unwrap_or(0);
@@ -1683,14 +3486,20 @@ pub fn scan_zcode(path: &Path, window: &CollectionWindow) -> SourceScan {
         );
         stats.usage_records = stats.usage_records.saturating_add(1);
     }
-    finish(window, builder, stats, true)
+    Ok(finish(window, builder, stats, true))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{scan_codex, scan_codex_cached};
+    use super::{
+        scan_claude, scan_codebuddy, scan_codex, scan_codex_cached, scan_grok, scan_kimi_tree,
+        scan_kimi_tree_with_cancellation, scan_opencode, scan_opencode_cached, scan_pi, scan_zcode,
+        scan_zcode_cached, CodexFileCandidate,
+    };
     use collector_domain::CollectionWindow;
+    use collector_runtime::{CancellationToken, RuntimeError};
     use serde_json::{json, Map, Value};
+    use std::collections::BTreeMap;
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -1716,6 +3525,733 @@ mod tests {
         ));
         fs::create_dir_all(&root).unwrap();
         root
+    }
+
+    #[test]
+    fn cancellation_returns_typed_runtime_error_before_first_directory() {
+        let root = temp_root("cancel-before-directory");
+        let sessions = root.join("nested");
+        fs::create_dir_all(&sessions).unwrap();
+        fs::write(
+            sessions.join("session.jsonl"),
+            "{\"type\":\"usage.record\",\"time\":1785211200000,\"usage\":{\"inputOther\":1}}\n"
+                .repeat(4_096),
+        )
+        .unwrap();
+        let cancellation = CancellationToken::new();
+        cancellation.cancel();
+
+        let result = scan_kimi_tree_with_cancellation(&root, &window(), &cancellation);
+
+        assert!(matches!(
+            result,
+            Err(super::SourceScanError::Runtime(RuntimeError::Cancelled))
+        ));
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn cancellation_discards_mid_file_partial_result() {
+        let root = temp_root("cancel-mid-file");
+        let session = root.join("session.jsonl");
+        fs::write(
+            &session,
+            "{\"type\":\"usage.record\",\"time\":1785211200000,\"usage\":{\"inputOther\":1}}\n"
+                .repeat(4_096),
+        )
+        .unwrap();
+        let cancellation = CancellationToken::new();
+        let mut probes = 0;
+
+        let result = super::scan_jsonl_tree_with_line_probe(
+            &root,
+            window().cutoff_ts,
+            &cancellation,
+            |_, _, line, stats| {
+                let _ = super::parse_json_line(line, stats);
+            },
+            || {
+                probes += 1;
+                cancellation.cancel();
+            },
+        );
+
+        assert_eq!(
+            probes, 1,
+            "cancellation probe should run after the first parsed line"
+        );
+        assert!(matches!(
+            result,
+            Err(super::SourceScanError::Runtime(RuntimeError::Cancelled))
+        ));
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn codex_signature_cancellation_stops_before_all_candidates_are_hashed() {
+        let groups = (0..4_096)
+            .map(|index| {
+                (
+                    format!("rollout:{index}"),
+                    vec![CodexFileCandidate {
+                        path: PathBuf::from(format!("/fixture/{index}.jsonl")),
+                        modified: index as f64,
+                        size: index,
+                        digest: None,
+                        device: 0,
+                        inode: 0,
+                    }],
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let cancellation = CancellationToken::new();
+        let mut probes = 0;
+
+        let result = super::codex_tree_signature_with_probe(&groups, &cancellation, || {
+            probes += 1;
+            cancellation.cancel();
+        });
+
+        assert_eq!(probes, 1);
+        assert!(matches!(
+            result,
+            Err(super::SourceScanError::Runtime(RuntimeError::Cancelled))
+        ));
+    }
+
+    #[test]
+    fn grok_later_root_io_error_preserves_earlier_root_contribution() {
+        let root = temp_root("grok-per-root-io");
+        let valid = root.join("valid/project/session");
+        fs::create_dir_all(&valid).unwrap();
+        fs::write(
+            valid.join("conversation.jsonl"),
+            "{\"type\":\"assistant\",\"content\":\"abcdefgh\"}\n",
+        )
+        .unwrap();
+        let unreadable = root.join("not-a-directory");
+        fs::write(&unreadable, "fixture").unwrap();
+
+        let grok_window = CollectionWindow::from_context(
+            // 不固定 now: 该用例依赖文件 mtime (真实当前时间) 作为记录时间,
+            // 固定过去时间会让记录落到窗口之外而恒失败 (时间炸弹).
+            &serde_json::from_value(json!({
+                "timezone": "Asia/Shanghai",
+                "days": 14
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let scan = scan_grok(&[valid, unreadable], &grok_window);
+
+        assert!(scan.found, "earlier readable root must remain published");
+        assert_eq!(scan.stats.io_errors, 1, "later root error must be counted");
+        assert_eq!(
+            scan.contribution
+                .by_day
+                .get(&grok_window.today)
+                .map(|bucket| bucket.total),
+            Some(2)
+        );
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn cached_additive_jsonl_sources_match_cold_and_warm_results() {
+        let root = temp_root("jsonl-additive-cache");
+        let cache_root = root.join("cache");
+        let base = 1_785_211_200_000_i64;
+
+        let kimi_root = root.join("kimi");
+        fs::create_dir_all(&kimi_root).unwrap();
+        fs::write(
+            kimi_root.join("session.jsonl"),
+            [
+                json!({
+                    "type": "usage.record",
+                    "time": base,
+                    "model": "kimi-k2",
+                    "usage": {"inputOther": 10, "output": 2}
+                })
+                .to_string(),
+                json!({"type": "assistant", "text": "ignored"}).to_string(),
+                json!({
+                    "type": "usage.record",
+                    "time": base + 3_600_000,
+                    "model": "kimi-k2",
+                    "usage": {"inputOther": 3, "inputCacheRead": 4, "output": 1}
+                })
+                .to_string(),
+            ]
+            .join("\n"),
+        )
+        .unwrap();
+        let expected_kimi = scan_kimi_tree(&kimi_root, &window());
+        let cold_kimi = super::scan_kimi_tree_cached(
+            &kimi_root,
+            &window(),
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        let warm_kimi = super::scan_kimi_tree_cached(
+            &kimi_root,
+            &window(),
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        assert_eq!(cold_kimi.contribution, expected_kimi.contribution);
+        assert_eq!(warm_kimi.contribution, expected_kimi.contribution);
+        assert!(warm_kimi.stats.cache_hits > 0);
+        assert_eq!(warm_kimi.stats.json_lines_parsed, 0);
+
+        let pi_root = root.join("pi");
+        fs::create_dir_all(&pi_root).unwrap();
+        fs::write(
+            pi_root.join("session.jsonl"),
+            [
+                json!({
+                    "type": "message",
+                    "message": {
+                        "role": "assistant",
+                        "timestamp": base,
+                        "model": "pi-model",
+                        "usage": {"input": 7, "output": 5, "reasoning": 2, "cacheRead": 1}
+                    }
+                })
+                .to_string(),
+                json!({"type": "session", "id": "ignored"}).to_string(),
+            ]
+            .join("\n"),
+        )
+        .unwrap();
+        let expected_pi = scan_pi(&pi_root, &window());
+        let cold_pi =
+            super::scan_pi_cached(&pi_root, &window(), &cache_root, &CancellationToken::new())
+                .unwrap();
+        let warm_pi =
+            super::scan_pi_cached(&pi_root, &window(), &cache_root, &CancellationToken::new())
+                .unwrap();
+        assert_eq!(cold_pi.contribution, expected_pi.contribution);
+        assert_eq!(warm_pi.contribution, expected_pi.contribution);
+        assert!(warm_pi.stats.cache_hits > 0);
+        assert_eq!(warm_pi.stats.json_lines_parsed, 0);
+
+        let grok_root = root.join("grok/project/session");
+        fs::create_dir_all(&grok_root).unwrap();
+        fs::write(
+            grok_root.join("conversation.jsonl"),
+            [
+                json!({"type": "user", "content": "abcdefgh"}).to_string(),
+                json!({"type": "assistant", "content": [{"text": "abcdefghijkl"}]}).to_string(),
+                json!({"type": "system", "content": "ignored"}).to_string(),
+            ]
+            .join("\n")
+                + "\n",
+        )
+        .unwrap();
+        let grok_window = CollectionWindow::from_context(
+            // 不固定 now: 该用例依赖文件 mtime (真实当前时间) 作为记录时间,
+            // 固定过去时间会让记录落到窗口之外而恒失败 (时间炸弹).
+            &serde_json::from_value(json!({
+                "timezone": "Asia/Shanghai",
+                "days": 14
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let expected_grok = super::scan_grok(std::slice::from_ref(&grok_root), &grok_window);
+        let cold_grok = super::scan_grok_cached(
+            std::slice::from_ref(&grok_root),
+            &grok_window,
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        let warm_grok = super::scan_grok_cached(
+            std::slice::from_ref(&grok_root),
+            &grok_window,
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        assert_eq!(cold_grok.contribution, expected_grok.contribution);
+        assert_eq!(warm_grok.contribution, expected_grok.contribution);
+        assert!(warm_grok.stats.cache_hits > 0);
+        assert_eq!(warm_grok.stats.json_lines_parsed, 0);
+        let mut grok_file = fs::OpenOptions::new()
+            .append(true)
+            .open(grok_root.join("conversation.jsonl"))
+            .unwrap();
+        std::io::Write::write_all(
+            &mut grok_file,
+            json!({"type": "assistant", "content": "abcdefghijklmnop"})
+                .to_string()
+                .as_bytes(),
+        )
+        .unwrap();
+        drop(grok_file);
+        let appended_grok = super::scan_grok_cached(
+            &[root.join("grok/project/session")],
+            &grok_window,
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        let expected_appended_grok =
+            super::scan_grok(&[root.join("grok/project/session")], &grok_window);
+        assert_eq!(
+            appended_grok.contribution,
+            expected_appended_grok.contribution
+        );
+        assert!(appended_grok.stats.cache_appends > 0);
+
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn cached_claude_and_codebuddy_preserve_cross_file_deduplication() {
+        let root = temp_root("jsonl-dedupe-cache");
+        let cache_root = root.join("cache");
+        let base = "2026-07-28T04:00:00Z";
+
+        let claude_root = root.join("claude");
+        let claude_a = claude_root.join("project-a");
+        let claude_b = claude_root.join("project-b");
+        fs::create_dir_all(&claude_a).unwrap();
+        fs::create_dir_all(&claude_b).unwrap();
+        let claude_line = |id: &str, input: u64, output: u64| {
+            json!({
+                "type": "assistant",
+                "timestamp": base,
+                "message": {
+                    "id": id,
+                    "model": "claude-sonnet",
+                    "usage": {
+                        "input_tokens": input,
+                        "output_tokens": output,
+                        "cache_read_input_tokens": 4
+                    }
+                }
+            })
+            .to_string()
+        };
+        fs::write(
+            claude_a.join("one.jsonl"),
+            [
+                claude_line("message-1", 10, 2),
+                claude_line("direct-a", 3, 1),
+            ]
+            .join("\n")
+                + "\n",
+        )
+        .unwrap();
+        fs::write(claude_b.join("two.jsonl"), claude_line("message-1", 20, 5)).unwrap();
+        let expected_claude = scan_claude(&claude_root, &window());
+        let cold_claude = super::scan_claude_cached(
+            &claude_root,
+            &window(),
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        let warm_claude = super::scan_claude_cached(
+            &claude_root,
+            &window(),
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        assert_eq!(cold_claude.contribution, expected_claude.contribution);
+        assert_eq!(warm_claude.contribution, expected_claude.contribution);
+        assert!(warm_claude.stats.cache_hits >= 2);
+        assert_eq!(warm_claude.stats.json_lines_parsed, 0);
+        let mut claude_file = fs::OpenOptions::new()
+            .append(true)
+            .open(claude_a.join("one.jsonl"))
+            .unwrap();
+        std::io::Write::write_all(&mut claude_file, claude_line("message-1", 30, 6).as_bytes())
+            .unwrap();
+        drop(claude_file);
+        let appended_claude = super::scan_claude_cached(
+            &claude_root,
+            &window(),
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        let expected_appended_claude = scan_claude(&claude_root, &window());
+        assert_eq!(
+            appended_claude.contribution,
+            expected_appended_claude.contribution
+        );
+        assert!(appended_claude.stats.cache_appends > 0);
+
+        let codebuddy_root = root.join("codebuddy");
+        let codebuddy_project_a = codebuddy_root.join("project-a");
+        let codebuddy_project_b = codebuddy_root.join("project-b");
+        fs::create_dir_all(&codebuddy_project_a).unwrap();
+        fs::create_dir_all(&codebuddy_project_b).unwrap();
+        let codebuddy_line = |session: &str, id: &str, input: u64, output: u64| {
+            json!({
+                "type": "message",
+                "role": "assistant",
+                "sessionId": session,
+                "timestamp": 1_785_211_200_000_i64,
+                "message": {"usage": {
+                    "input_tokens": input,
+                    "output_tokens": output,
+                    "cache_read_input_tokens": 0
+                }},
+                "providerData": {"model": "codebuddy-model", "messageId": id}
+            })
+            .to_string()
+        };
+        fs::write(
+            codebuddy_project_a.join("first.jsonl"),
+            codebuddy_line("same-session", "same-message", 10, 2),
+        )
+        .unwrap();
+        fs::write(
+            codebuddy_project_a.join("second.jsonl"),
+            codebuddy_line("same-session", "same-message", 20, 5),
+        )
+        .unwrap();
+        fs::write(
+            codebuddy_project_b.join("third.jsonl"),
+            codebuddy_line("same-session", "same-message", 7, 1),
+        )
+        .unwrap();
+        let expected_codebuddy = scan_codebuddy(&codebuddy_root, &window());
+        let cold_codebuddy = super::scan_codebuddy_cached(
+            &codebuddy_root,
+            &window(),
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        let warm_codebuddy = super::scan_codebuddy_cached(
+            &codebuddy_root,
+            &window(),
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        assert_eq!(cold_codebuddy.contribution, expected_codebuddy.contribution);
+        assert_eq!(warm_codebuddy.contribution, expected_codebuddy.contribution);
+        assert!(warm_codebuddy.stats.cache_hits >= 3);
+        assert_eq!(warm_codebuddy.stats.json_lines_parsed, 0);
+
+        let mut cache_text = String::new();
+        for entry in fs::read_dir(&cache_root).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_file() {
+                cache_text.push_str(&fs::read_to_string(path).unwrap());
+            }
+        }
+        assert!(
+            !cache_text.contains("message-1") && !cache_text.contains("same-message"),
+            "cache must store only hashed deduplication keys"
+        );
+        assert!(!cache_text.contains("refresh_token"));
+        assert!(!cache_text.contains("/Users/"));
+
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn cached_jsonl_handles_append_rewrite_delete_and_corruption() {
+        let root = temp_root("jsonl-state-transitions");
+        let source_root = root.join("kimi");
+        let cache_root = root.join("cache");
+        fs::create_dir_all(&source_root).unwrap();
+        let path = source_root.join("session.jsonl");
+        let base = 1_785_211_200_000_i64;
+        let line = |input: u64| {
+            json!({
+                "type": "usage.record",
+                "time": base,
+                "model": "kimi-k2",
+                "usage": {"inputOther": input, "output": 1}
+            })
+            .to_string()
+        };
+        fs::write(&path, format!("{}\n", line(3))).unwrap();
+
+        let cold = super::scan_kimi_tree_cached(
+            &source_root,
+            &window(),
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        assert_eq!(cold.stats.cache_rebuilds, 1);
+
+        let mut file = fs::OpenOptions::new().append(true).open(&path).unwrap();
+        std::io::Write::write_all(&mut file, format!("{}\n", line(4)).as_bytes()).unwrap();
+        drop(file);
+        let appended = super::scan_kimi_tree_cached(
+            &source_root,
+            &window(),
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        let expected_appended = scan_kimi_tree(&source_root, &window());
+        assert_eq!(appended.contribution, expected_appended.contribution);
+        assert_eq!(appended.stats.cache_appends, 1);
+        assert_eq!(appended.stats.lines_seen, 1);
+
+        fs::write(&path, line(9)).unwrap();
+        let rewritten = super::scan_kimi_tree_cached(
+            &source_root,
+            &window(),
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        let expected_rewritten = scan_kimi_tree(&source_root, &window());
+        assert_eq!(rewritten.contribution, expected_rewritten.contribution);
+        assert!(rewritten.stats.cache_invalidations > 0);
+        assert_eq!(rewritten.stats.cache_rebuilds, 1);
+
+        let entry_path = fs::read_dir(&cache_root)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .find(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with("jsonl-"))
+            })
+            .expect("source cache entry should exist");
+        fs::write(&entry_path, b"not-json").unwrap();
+        let repaired = super::scan_kimi_tree_cached(
+            &source_root,
+            &window(),
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        assert_eq!(repaired.contribution, expected_rewritten.contribution);
+        assert_eq!(repaired.stats.cache_corruptions, 1);
+        assert_eq!(repaired.stats.cache_rebuilds, 1);
+
+        fs::remove_file(&path).unwrap();
+        let deleted = super::scan_kimi_tree_cached(
+            &source_root,
+            &window(),
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        assert!(!deleted.found);
+        assert!(deleted.contribution.by_day.is_empty());
+        assert_eq!(deleted.stats.cache_deletions, 1);
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn opencode_sqlite_cache_reuses_unchanged_and_reads_append() {
+        use rusqlite::Connection;
+
+        let root = temp_root("opencode-cache");
+        let db_path = root.join("opencode.db");
+        let cache_root = root.join("cache");
+        let base = 1_785_211_200_000_i64;
+        let message = |created: i64, input: u64| {
+            json!({
+                "role": "assistant",
+                "time": { "created": created },
+                "tokens": { "input": input, "output": 2 },
+                "modelID": "qwen3-coder",
+            })
+            .to_string()
+        };
+
+        let connection = Connection::open(&db_path).unwrap();
+        connection
+            .execute("CREATE TABLE message (data text not null)", [])
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO message (data) VALUES (?1)",
+                [&message(base - 3_600_000, 7)],
+            )
+            .unwrap();
+        drop(connection);
+
+        let cold =
+            scan_opencode_cached(&db_path, &window(), &cache_root, &CancellationToken::new())
+                .unwrap();
+        let warm =
+            scan_opencode_cached(&db_path, &window(), &cache_root, &CancellationToken::new())
+                .unwrap();
+        assert!(cold.found);
+        assert_eq!(
+            warm.stats.cache_hits, 1,
+            "unchanged database should hit cache"
+        );
+        assert_eq!(
+            warm.stats.sqlite_rows_read, 0,
+            "warm scan must not read rows"
+        );
+        assert_eq!(warm.contribution, cold.contribution);
+
+        let connection = Connection::open(&db_path).unwrap();
+        connection
+            .execute(
+                "INSERT INTO message (data) VALUES (?1)",
+                [&message(base - 1_800_000, 11)],
+            )
+            .unwrap();
+        drop(connection);
+
+        let appended =
+            scan_opencode_cached(&db_path, &window(), &cache_root, &CancellationToken::new())
+                .unwrap();
+        let expected = scan_opencode(&db_path, &window());
+        assert_eq!(appended.contribution, expected.contribution);
+        assert!(
+            appended.stats.cache_appends > 0,
+            "append-only database change should use cursor cache"
+        );
+        assert!(appended.stats.sqlite_rows_read <= 1);
+
+        let replacement = root.join("opencode-replacement.db");
+        let connection = Connection::open(&replacement).unwrap();
+        connection
+            .execute("CREATE TABLE message (data text not null)", [])
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO message (data) VALUES (?1)",
+                [&message(base - 900_000, 19)],
+            )
+            .unwrap();
+        drop(connection);
+        fs::rename(&replacement, &db_path).unwrap();
+
+        let rewritten =
+            scan_opencode_cached(&db_path, &window(), &cache_root, &CancellationToken::new())
+                .unwrap();
+        let expected = scan_opencode(&db_path, &window());
+        assert_eq!(rewritten.contribution, expected.contribution);
+        assert!(
+            rewritten.stats.cache_rebuilds > 0,
+            "database replacement must fall back to a full rebuild"
+        );
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn zcode_sqlite_cache_reuses_unchanged_and_reads_append() {
+        use rusqlite::Connection;
+
+        let root = temp_root("zcode-cache");
+        let db_path = root.join("zcode.db");
+        let cache_root = root.join("cache");
+        let base = 1_785_211_200_000_i64;
+        let create_schema = |path: &Path| {
+            let connection = Connection::open(path).unwrap();
+            connection
+                .execute_batch(
+                    "CREATE TABLE session (id text primary key, directory text, task_type text);
+                     CREATE TABLE model_usage (
+                        started_at integer not null, model_id text,
+                        input_tokens integer, output_tokens integer, reasoning_tokens integer,
+                        cache_creation_input_tokens integer, cache_read_input_tokens integer,
+                        session_id text
+                     );",
+                )
+                .unwrap();
+            connection
+        };
+        let insert = |connection: &Connection, timestamp: i64, input: i64| {
+            connection
+                .execute(
+                    "INSERT INTO model_usage (started_at, model_id, input_tokens, output_tokens) \
+                     VALUES (?1, 'glm', ?2, 3)",
+                    rusqlite::params![timestamp, input],
+                )
+                .unwrap();
+        };
+
+        let connection = create_schema(&db_path);
+        insert(&connection, base - 3_600_000, 7);
+        drop(connection);
+
+        let cold =
+            scan_zcode_cached(&db_path, &window(), &cache_root, &CancellationToken::new()).unwrap();
+        let warm =
+            scan_zcode_cached(&db_path, &window(), &cache_root, &CancellationToken::new()).unwrap();
+        assert!(cold.found);
+        assert_eq!(
+            warm.stats.cache_hits, 1,
+            "unchanged database should hit cache"
+        );
+        assert_eq!(
+            warm.stats.sqlite_rows_read, 0,
+            "warm scan must not read rows"
+        );
+        assert_eq!(warm.contribution, cold.contribution);
+
+        let connection = Connection::open(&db_path).unwrap();
+        insert(&connection, base - 1_800_000, 11);
+        drop(connection);
+
+        let appended =
+            scan_zcode_cached(&db_path, &window(), &cache_root, &CancellationToken::new()).unwrap();
+        let expected = scan_zcode(&db_path, &window());
+        assert_eq!(appended.contribution, expected.contribution);
+        assert!(
+            appended.stats.cache_appends > 0,
+            "append-only database change should use cursor cache"
+        );
+        assert!(appended.stats.sqlite_rows_read <= 1);
+
+        let replacement = root.join("zcode-replacement.db");
+        let connection = create_schema(&replacement);
+        insert(&connection, base - 900_000, 19);
+        drop(connection);
+        fs::rename(&replacement, &db_path).unwrap();
+
+        let rewritten =
+            scan_zcode_cached(&db_path, &window(), &cache_root, &CancellationToken::new()).unwrap();
+        let expected = scan_zcode(&db_path, &window());
+        assert_eq!(rewritten.contribution, expected.contribution);
+        assert!(
+            rewritten.stats.cache_rebuilds > 0,
+            "database replacement must fall back to a full rebuild"
+        );
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn sqlite_cache_reports_incompatible_schema_instead_of_empty_success() {
+        use rusqlite::Connection;
+
+        let root = temp_root("sqlite-schema");
+        let db_path = root.join("opencode.db");
+        let connection = Connection::open(&db_path).unwrap();
+        connection
+            .execute("CREATE TABLE message (payload text not null)", [])
+            .unwrap();
+        drop(connection);
+
+        let scan = scan_opencode_cached(
+            &db_path,
+            &window(),
+            &root.join("cache"),
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        assert!(!scan.found);
+        assert!(scan
+            .diagnostic
+            .as_deref()
+            .is_some_and(|message| message.contains("schema")));
+        fs::remove_dir_all(root).ok();
     }
 
     /// 行数超上限时必须保留最新记录: 10_010 行中最早的 10 行被截掉,
@@ -2521,6 +5057,10 @@ mod tests {
         );
         assert_eq!(warm.stats.cache_hits, 1, "未变化应命中缓存");
         assert_eq!(warm.stats.bytes_read, 0, "命中缓存时 bytes_read 保持 0");
+        assert!(
+            warm.found,
+            "unchanged cached Codex files still count as found"
+        );
 
         // 追加新文件: 文件集身份变化, 重新扫描并合并新增量.
         write_codex_lines(
@@ -2557,7 +5097,7 @@ mod tests {
         }
 
         let mut count = 0;
-        let stats = super::scan_jsonl_tree(&root, 0.0, |_, _, _, _| {
+        let stats = super::scan_jsonl_tree(&root, 0.0, &CancellationToken::new(), |_, _, _, _| {
             count += 1;
         });
 

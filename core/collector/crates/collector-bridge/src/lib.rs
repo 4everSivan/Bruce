@@ -7,7 +7,7 @@ mod metrics;
 use chrono::{SecondsFormat, Utc};
 use collector_application::{
     collect_agent_usage, validate_credential_outputs, CollectionMetrics, CollectionOutput,
-    CollectionScanStats,
+    CollectionScanStats, SourcePerformanceMetric,
 };
 use collector_domain::{
     response_status, BridgeRequest, BridgeResponse, Diagnostic, BRIDGE_SCHEMA_VERSION,
@@ -64,8 +64,8 @@ pub const ALLOWED_CREDENTIAL_FIELDS: &[&str] = &[
 
 pub fn run_bytes(input: &[u8]) -> BridgeResponse {
     let started = Instant::now();
-    let physical_disk_read_start = metrics::physical_disk_read_bytes();
-    let (response, stats, metrics) = if input.len() > MAX_REQUEST_BYTES {
+    let resource_start = metrics::process_resource_snapshot();
+    let (response, stats, metrics, source_metrics) = if input.len() > MAX_REQUEST_BYTES {
         (
             error_response(
                 new_run_id(),
@@ -77,6 +77,7 @@ pub fn run_bytes(input: &[u8]) -> BridgeResponse {
             ),
             CollectionScanStats::default(),
             CollectionMetrics::default(),
+            Vec::new(),
         )
     } else {
         let request: BridgeRequest = match serde_json::from_slice(input) {
@@ -95,7 +96,9 @@ pub fn run_bytes(input: &[u8]) -> BridgeResponse {
                     response,
                     CollectionScanStats::default(),
                     CollectionMetrics::default(),
-                    physical_disk_read_start,
+                    Vec::new(),
+                    resource_start,
+                    metrics::process_resource_snapshot(),
                 );
             }
         };
@@ -107,6 +110,7 @@ pub fn run_bytes(input: &[u8]) -> BridgeResponse {
                     generated_at,
                     scan_stats,
                     metrics,
+                    source_metrics,
                     credential_updates,
                     credential_challenges,
                 }) => {
@@ -121,7 +125,7 @@ pub fn run_bytes(input: &[u8]) -> BridgeResponse {
                         diagnostics,
                     };
                     match validate_response_credentials(response) {
-                        Ok(response) => (response, scan_stats, metrics),
+                        Ok(response) => (response, scan_stats, metrics, source_metrics),
                         Err(diagnostic) => (
                             BridgeResponse::error(
                                 request.run_id,
@@ -130,6 +134,7 @@ pub fn run_bytes(input: &[u8]) -> BridgeResponse {
                             ),
                             CollectionScanStats::default(),
                             CollectionMetrics::default(),
+                            Vec::new(),
                         ),
                     }
                 }
@@ -137,16 +142,27 @@ pub fn run_bytes(input: &[u8]) -> BridgeResponse {
                     BridgeResponse::error(request.run_id, generated_at(), diagnostic),
                     CollectionScanStats::default(),
                     CollectionMetrics::default(),
+                    Vec::new(),
                 ),
             },
             Err(diagnostic) => (
                 BridgeResponse::error(request.run_id, generated_at(), diagnostic),
                 CollectionScanStats::default(),
                 CollectionMetrics::default(),
+                Vec::new(),
             ),
         }
     };
-    finish_metrics(started, response, stats, metrics, physical_disk_read_start)
+    let resource_end = metrics::process_resource_snapshot();
+    finish_metrics(
+        started,
+        response,
+        stats,
+        metrics,
+        source_metrics,
+        resource_start,
+        resource_end,
+    )
 }
 
 fn finish_metrics(
@@ -154,14 +170,18 @@ fn finish_metrics(
     response: BridgeResponse,
     stats: CollectionScanStats,
     metrics: CollectionMetrics,
-    physical_disk_read_start: Option<u64>,
+    source_metrics: Vec<SourcePerformanceMetric>,
+    resource_start: Option<metrics::ProcessResourceSnapshot>,
+    resource_end: Option<metrics::ProcessResourceSnapshot>,
 ) -> BridgeResponse {
     metrics::write_if_enabled(
         started,
         &response,
         &stats,
         &metrics,
-        physical_disk_read_start,
+        &source_metrics,
+        resource_start,
+        resource_end,
     );
     response
 }
