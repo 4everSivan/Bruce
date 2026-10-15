@@ -232,9 +232,9 @@
       "file": "docs/devel/change/C020.json"
     },
     "C021": {
-      "title": "移植 perf/runtime-cpu-optimization 性能工作流至当前分层：源级缓存、取消栅栏、菜单栏字形拆分与 widget 动画门控",
+      "title": "移植 perf/runtime-cpu-optimization 性能工作流至当前分层：源级缓存、取消栅栏与 widget 动画门控",
       "type": "Refactor",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C021-port-runtime-cpu-optimization",
       "topic": "TokenUsage",
       "version": "0.12.0+",
