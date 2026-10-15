@@ -10,6 +10,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_REFRESH_INTERVAL_SECS: u64 = 1800;
+/// 界面可见的 Provider 清单 (对齐 mac 设置页可见范围: SubscriptionProviderID.allCases
+/// 的 11 家中 Jev 官方未开放查额 API 双端界面隐藏, 其余 10 家含 Cline 全部可配)。
 pub const PROVIDERS: &[&str] = &[
     "kimi",
     "deepseek",
@@ -20,6 +22,7 @@ pub const PROVIDERS: &[&str] = &[
     "grok",
     "opencodeGo",
     "stepfun",
+    "cline",
 ];
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

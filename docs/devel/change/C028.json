@@ -1,0 +1,108 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C028",
+  "title": "补齐 Windows 侧 Cline 支持并镜像 mac 的 Jev 屏蔽：settings PROVIDERS、视图模型 provider 归一化与展示名、runtime provider_id 归一化",
+  "type": "Fix",
+  "status": "closed",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win (src-tauri/src/settings.rs, src-tauri/src/runtime_core.rs, viewmodel/src/subscription.rs, src/settings.js)",
+    "component": "订阅 provider 注册表 / service ID 归一化 / 设置页 provider 清单",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "2026-10-15 双端对标审计发现 Windows 侧完全没有 Cline: (1) apps/win/src-tauri/src/settings.rs 的 PROVIDERS 只有 9 家 (无 cline), validate_settings 会以「服务列表包含未知或重复服务」拒绝含 cline 的 enabledProviders/providerOrder; runtime_core.rs:313-323 的 panel_json 又按 enabled_providers 过滤 service → **即使通过设置页「高级：完整凭证字段维护」写入 clineQuotaAccounts (collector-bridge 的 ALLOWED_CREDENTIAL_FIELDS 已允许), Cline 也永远不出现在 Windows 看板上**; (2) 视图模型 subscription.rs 的 PROVIDER_IDS 不含 cline, 而 collector 的 Cline service ID 前缀是 'cline_' (collector-provider/src/lib.rs:75-78), 归一化失配 → 多账号会被拆成多个 section、单账号 section 名回落为原始 ID; group_display_name 缺 cline 分支同样回落原始 ID; (3) runtime_core.rs provider_id() 缺 cline 分支, 自定义顺序键无法命中; (4) 设置页 providers 清单缺 cline 且显示名与 mac 不一致 (Kimi For Coding vs Kimi, ChatGPT / Codex vs Codex)。反向缺口: mac 的 SubscriptionPresentationPolicy.isProviderTemporarilyDisabled 把 jev 整组丢弃 (官方未开放查额 API, 界面隐藏底层保留), Windows 视图模型无此规则, 会渲染 mac 不存在的 Jev 段。Cline 是 mac 侧 v0.12.0 周期刚交付的能力 (C025 口径修正 + C026 品牌图形), 双端功能矩阵出现缺口违背设计基线 05 §2.1「首版全量功能矩阵」与 §4.2「订阅额度卡 9 Provider」的对齐承诺。",
+  "precheck": {
+    "description": "复现: 断言 cline 不在 Windows provider 注册表内, 且含 cline 的设置被校验拒绝; 断言视图模型无法把 'cline_<account>' 归一化为 provider 键 'cline'",
+    "command": "grep -n 'cline' apps/win/src-tauri/src/settings.rs apps/win/viewmodel/src/subscription.rs apps/win/src-tauri/src/runtime_core.rs apps/win/src/settings.js",
+    "expected": "修复前: 三处源码 grep cline 均无命中 (settings.rs PROVIDERS / subscription.rs PROVIDER_IDS 与 group_display_name / settings.js providers)",
+    "is_completed": true,
+    "evidence": "2026-10-15 实测: apps/win/src-tauri/src/settings.rs:13-23 PROVIDERS = 9 家无 cline; validate_settings (settings.rs:142-150) 对非 PROVIDERS 成员返回「服务列表包含未知或重复服务」; apps/win/viewmodel/src/subscription.rs:86-96 PROVIDER_IDS = [&str; 9] 无 cline, provider_id_for_service('cline_x') 落入 service_id.to_owned() 原样返回; runtime_core.rs:32-54 provider_id() 无 cline 分支; apps/win/src/settings.js:7-17 providers 清单 9 家无 cline。对照 mac: SubscriptionProviderID.allCases 11 例 (OnboardingConfiguration.swift:8-20) 含 cline, 设置页仅屏蔽 jev (SettingsView.swift:1083-1085)。"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护已在 main 实施"
+    ],
+    "after": [
+      "cargo fmt --manifest-path apps/win/viewmodel/Cargo.toml --all",
+      "cargo fmt --manifest-path apps/win/src-tauri/Cargo.toml --all",
+      "cargo clippy --manifest-path apps/win/viewmodel/Cargo.toml --all-targets -- -D warnings",
+      "cargo clippy --manifest-path apps/win/src-tauri/Cargo.toml --all-targets -- -D warnings",
+      "node --test apps/win/tests/frontend.test.mjs",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "apps/win/src-tauri/src/settings.rs (PROVIDERS)",
+      "before": "PROVIDERS 9 家 (kimi/deepseek/volcengine/zhipu/codex/claude/grok/opencodeGo/stepfun), 不含 cline; enabledProviders 默认值由该表派生; validate_settings 拒绝表外 provider",
+      "after": "PROVIDERS 增补 cline (第 10 家, 置于 stepfun 之后以保持既有键序); 默认 enabledProviders 随之为 10 家, cline 不再被校验拒绝、不再被 panel_json 的 retain 过滤掉",
+      "impact": "Cline 账号可在 Windows 看板正常出现; 旧 settings.json 反序列化兼容 (未知键忽略, 缺失 cline 时按 serde default 补默认全量)"
+    },
+    {
+      "scope": "apps/win/viewmodel/src/subscription.rs (PROVIDER_IDS 与展示名)",
+      "before": "PROVIDER_IDS = [&str; 9] 无 cline/jev; provider_id_for_service('cline_<account>') 回落原始 ID; group_display_name 无 cline/jev 分支",
+      "after": "PROVIDER_IDS 增补 cline 与 jev (与 mac SubscriptionProviderID.allCases 对齐, 顺序同为声明序); group_display_name 增补 'cline' => \"Cline\" / 'jev' => \"Jev\"; 新增 is_provider_temporarily_disabled 并在分组前整组丢弃 jev service (镜像 mac SubscriptionPresentationPolicy.isProviderTemporarilyDisabled)",
+      "impact": "多 cline 账号正确归为一个 'Cline' section 而非按 service ID 拆分; jev 段不再出现在 Windows 看板 (与 mac 一致)"
+    },
+    {
+      "scope": "apps/win/src-tauri/src/runtime_core.rs (provider_id)",
+      "before": "provider_id() 无 cline 分支, service ID 'cline_<account>' 归一化回落原始 ID, providerOrder 排序键与 enabled_providers 过滤均无法命中",
+      "after": "新增 cline 前缀分支返回 'cline'",
+      "impact": "设置页的 provider 顺序与启用开关对 Cline 生效"
+    },
+    {
+      "scope": "apps/win/src/settings.js (providers 清单与显示名)",
+      "before": "providers 9 项, 缺 cline; kimi 显示名 'Kimi For Coding'、codex 显示名 'ChatGPT / Codex'",
+      "after": "增补 ['cline', 'Cline', 'clineQuotaAccounts']; 显示名对齐 mac SubscriptionProviderID.displayName: kimi → 'Kimi'、codex → 'Codex' (仪表盘段名仍由视图模型给出 'ChatGPT')",
+      "impact": "设置页「启用服务与顺序」「添加或更新账号凭证」下拉与 mac 设置页逐家同名; Cline API Key 走既有通用分支 (payload.api_key) 无需新增字段"
+    },
+    {
+      "scope": "apps/win/viewmodel/tests + apps/win/src-tauri/tests (回归)",
+      "before": "无 cline/jev 相关断言",
+      "after": "新增: cline 多账号归组为单一 'Cline' section 且展示名为 'Cline'; jev service 被整组丢弃; settings 校验接受 cline 且拒绝未知 provider",
+      "impact": "provider 注册表与归一化规则被用例锁死"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "§4.2 称订阅额度卡 9 Provider (含 StepFun); 非目标未提及 jev 屏蔽的双端一致性",
+      "after": "§4.2 更正为 10 Provider (含 Cline, 与 mac 设置页可见清单一致: 11 家 allCases 中 jev 因官方未开放查额 API 双端界面隐藏) 并注明 provider 注册表三处事实源 (settings.rs PROVIDERS / viewmodel PROVIDER_IDS + group_display_name / settings.js providers) 必须同步增补, 漏改任一处都会导致「凭证可存但看板不显示」的静默缺口"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "verify-local-20261015-c027-c028",
+    "user_quote": "推送",
+    "signoff": "2026-10-15 用户会话内先以「确认」授权按 P0 清单实施, 后以「推送」授权代签收口并提交推送 main; AI 代为签署收口并闭环归档 (单人维护约定: 直接提 main, 不打 tag)",
+    "checks": [
+      {
+        "item": "provider 注册表三处一致且 Cline 可达",
+        "true_if": "settings.rs PROVIDERS 含 cline; viewmodel PROVIDER_IDS 含 cline/jev; settings.js providers 与 mac displayName 逐家同名; 含 cline 的设置通过 validate_settings",
+        "false_if": "任一处遗漏, 或 cline 仍被校验/过滤拒绝",
+        "evidence": "三处事实源均含 cline: apps/win/src-tauri/src/settings.rs PROVIDERS (10 家, 与 mac 设置页可见范围一致: allCases 11 家扣除界面隐藏的 jev), apps/win/viewmodel/src/subscription.rs PROVIDER_IDS (11 家含 jev/cline, 顺序同 mac SubscriptionProviderID.allCases), apps/win/src/settings.js providers (10 家, 显示名 Kimi/DeepSeek/火山引擎/Z.ai/Codex/Claude/Grok/OpenCode GO/StepFun/Cline 与 mac SubscriptionProviderID.displayName 逐家同名)。回归用例 settings_coverage::cline_is_a_known_provider_and_kept_in_enabled_list 通过 (PROVIDERS 含 cline 且不含 jev; enabledProviders=['cline'] 与 providerOrder=['cline','codex'] 通过 validate_settings; AppSettings::default().enabled_providers 含 cline); 前端回归 settings expose Cline with mac-aligned display names 通过 (订阅额度面板含 Cline, 且不再出现 'Kimi For Coding' / 'ChatGPT / Codex', 以 clineQuotaAccounts 保存账号落到 payload.api_key)。",
+        "result": true
+      },
+      {
+        "item": "归一化与 jev 屏蔽行为",
+        "true_if": "service ID 'cline_<account>' 归一化为 'cline', 多账号合并为单一 section 且名为 'Cline'; jev service 不产生 section (与 mac 同为 0 段)",
+        "false_if": "cline 仍被拆成多段或名为原始 ID; jev 段出现在视图模型输出中",
+        "evidence": "新增 subscription_coverage::cline_services_group_and_jev_is_hidden_like_mac 通过: 两个 cline service (cline_work / cline_personal) 归并为单一 section (id='cline', name='Cline', accountCountText='2 个账号', accounts 2 条, 账号名按非 codex 规则剥离 ' · ' 前缀为 'work'), 同批 jev service (带窗口) 整组丢弃且不产生 ServiceSkipped 诊断 (与 mac 该分支无诊断一致)。修复前 PROVIDER_IDS 缺 cline 导致前缀 'cline_' 失配: 每个 cline 账号会被拆成独立 section 且段名回落为原始 service ID。runtime_core::provider_id 新增 cline 前缀分支后, 设置页的启用开关与自定义顺序键对 Cline 生效。",
+        "result": true
+      },
+      {
+        "item": "全量自动化验证",
+        "true_if": "zsh scripts/verify-local.sh 退出码 0 (含 apps/win viewmodel 与 src-tauri 两 crate 的 fmt/test/clippy 与 Windows 前端回归)",
+        "false_if": "任一环节失败或告警",
+        "evidence": "zsh scripts/verify-local.sh 退出码 0 (日志 local/c027-verify.log): apps/win/viewmodel 46 项与 apps/win/src-tauri 81 项均 fmt --check / test / clippy -D warnings 全绿, Windows 前端结构冒烟与交互回归 21/21 通过, Swift 全部 Harness 与 Panel 视图模型双端对拍 3/3 通过。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": []
+}

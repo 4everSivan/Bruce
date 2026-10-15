@@ -184,6 +184,40 @@ fn opencode_go_and_unknown_providers_normalize() {
 }
 
 #[test]
+fn cline_services_group_and_jev_is_hidden_like_mac() {
+    let services = json!([
+        // Cline: collector 的 service ID 前缀是 "cline_" (design 02 口径), 必须归一化为
+        // provider 键 "cline" 并合并多账号 (C028 前 PROVIDER_IDS 缺 cline → 前缀失配,
+        // 每个账号会被拆成独立 section 且段名回落为原始 service ID)。
+        {"id": "cline_work", "name": "Cline · work", "status": "ok", "kind": "windows",
+         "windows": [{"label": "每 5 小时", "usedPercent": 8.0}]},
+        {"id": "cline_personal", "name": "Cline · personal", "status": "ok", "kind": "windows",
+         "windows": [{"label": "每 5 小时", "usedPercent": 12.0}]},
+        // Jev: 官方未开放查额 API, 双端界面隐藏 (mac isProviderTemporarilyDisabled),
+        // 即便带窗口也不出 section。
+        {"id": "jev", "name": "Jev", "status": "ok", "kind": "windows",
+         "windows": [{"label": "5h", "usedPercent": 5.0}]}
+    ]);
+    let (subscription, diagnostics) = map(services);
+    let sections = subscription.unwrap().sections;
+    assert_eq!(sections.len(), 1, "cline 两账号合并为一段, jev 整组丢弃");
+    assert_eq!(sections[0].id, "cline");
+    assert_eq!(sections[0].name, "Cline", "展示名冻结表含 cline");
+    assert_eq!(sections[0].account_count_text.as_deref(), Some("2 个账号"));
+    assert_eq!(sections[0].accounts.len(), 2);
+    assert_eq!(
+        sections[0].accounts[0].name, "work",
+        "非 codex 剥离首个 ' · ' 前缀"
+    );
+    assert!(
+        !diagnostics.iter().any(|item| matches!(
+            item, PanelDiagnostic::ServiceSkipped { service_id, .. } if service_id == "jev"
+        )),
+        "jev 屏蔽分支与 mac 一致不产生诊断"
+    );
+}
+
+#[test]
 fn empty_services_yields_none_and_missing_artifact_diagnostic_separate() {
     let (subscription, _) = map(json!([]));
     assert!(subscription.is_none(), "无可渲染 service 时订阅卡为 nil");

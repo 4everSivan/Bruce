@@ -4,16 +4,19 @@
   const tauriCore = window.__TAURI__?.core || window.__TAURI_INTERNALS__;
   const invoke = tauriCore?.invoke || (window.__TAURI__ && window.__TAURI__.invoke) || (async () => null);
   const listen = window.__TAURI__?.event?.listen || (async () => () => {});
+  // provider 清单: 显示名与顺序对齐 mac SubscriptionProviderID.displayName
+  // (11 家中 Jev 双端界面隐藏; Cline 为 C028 补齐)。
   const providers = [
-    ["kimi", "Kimi For Coding", "kimiQuotaAccounts"],
+    ["kimi", "Kimi", "kimiQuotaAccounts"],
     ["deepseek", "DeepSeek", "deepseekQuotaAccounts"],
     ["volcengine", "火山引擎", "volcengineQuotaAccounts"],
     ["zhipu", "Z.ai", "zhipuQuotaAccounts"],
-    ["codex", "ChatGPT / Codex", "codexQuotaAccounts"],
+    ["codex", "Codex", "codexQuotaAccounts"],
     ["claude", "Claude", "claudeQuotaAccounts"],
     ["grok", "Grok", "grokQuotaAccounts"],
     ["opencodeGo", "OpenCode GO", "opencodeGoQuotaAccounts"],
     ["stepfun", "StepFun", "stepfunQuotaAccounts"],
+    ["cline", "Cline", "clineQuotaAccounts"],
   ];
   const CATEGORIES = {
     general: { title: "通用", crumb: "设置 / 通用" },

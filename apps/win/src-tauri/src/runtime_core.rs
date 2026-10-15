@@ -49,6 +49,8 @@ pub fn provider_id(service: &Value) -> &str {
         "opencodeGo"
     } else if id.starts_with("step") {
         "stepfun"
+    } else if id.starts_with("cline") {
+        "cline"
     } else {
         id
     }

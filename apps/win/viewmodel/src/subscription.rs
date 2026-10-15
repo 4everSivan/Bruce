@@ -83,7 +83,7 @@ pub struct SubscriptionViewModel {
 // MARK: - Provider 展示策略 (对齐 SubscriptionPresentationPolicy)
 
 /// SubscriptionProviderID rawValues (BruceOnboardingCore); 分组前缀匹配依赖顺序。
-const PROVIDER_IDS: [&str; 9] = [
+const PROVIDER_IDS: [&str; 11] = [
     "kimi",
     "deepseek",
     "volcengine",
@@ -93,7 +93,15 @@ const PROVIDER_IDS: [&str; 9] = [
     "grok",
     "opencodeGo",
     "stepfun",
+    "jev",
+    "cline",
 ];
+
+/// 暂时屏蔽的 Provider (对齐 mac isProviderTemporarilyDisabled):
+/// Jev 官方未开放查额 API, 双端界面隐藏, 底层凭证与采集保留。
+fn is_provider_temporarily_disabled(provider_id: &str) -> bool {
+    provider_id == "jev"
+}
 
 /// 把 artifact service ID 归一化为 provider rawValue。
 /// Kimi 的 service ID 是 "kimi_coding" 而 provider rawValue 是 "kimi";
@@ -153,6 +161,8 @@ fn group_display_name(provider_id: &str) -> String {
         "grok" => "Grok",
         "opencodeGo" | "opencode-go" => "OpenCode GO",
         "stepfun" => "StepFun",
+        "jev" => "Jev",
+        "cline" => "Cline",
         other => other,
     }
     .to_owned()
@@ -414,6 +424,12 @@ impl PanelViewModelMapper {
             }
 
             let provider = provider_id_for_service(&id);
+            // 对齐 mac SubscriptionPresentationPolicy.isProviderTemporarilyDisabled:
+            // Jev 官方未开放查额 API, 界面隐藏但底层凭证保留, 在分组前整组丢弃
+            // (位置在窗口解析之后, 故窗口级诊断仍照常上报)。
+            if is_provider_temporarily_disabled(&provider) {
+                continue;
+            }
             // 对齐 mac: 仅在该 provider 首次出现时记录分组顺序。
             if !groups.contains_key(&provider) {
                 group_display

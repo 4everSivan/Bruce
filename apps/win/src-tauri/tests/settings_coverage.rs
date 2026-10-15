@@ -3,7 +3,9 @@
 use std::fs;
 use std::path::PathBuf;
 
-use bruce_win_lib::settings::{load_settings, save_settings, validate_settings, AppSettings};
+use bruce_win_lib::settings::{
+    load_settings, save_settings, validate_settings, AppSettings, PROVIDERS,
+};
 
 fn temp_root() -> PathBuf {
     // 测试线程并行启动时 SystemTime 同纳秒会碰撞出共享目录 (实测 flake),
@@ -89,6 +91,23 @@ fn unsafe_pricing_and_unknown_providers_are_rejected() {
             "invalid settings accepted: {raw}"
         );
     }
+}
+
+#[test]
+fn cline_is_a_known_provider_and_kept_in_enabled_list() {
+    // C028: cline 必须进入 PROVIDERS, 否则启用列表与自定义顺序会被校验拒绝,
+    // panel_json 的 enabled_providers 过滤还会把 Cline service 静默剔除。
+    assert!(PROVIDERS.contains(&"cline"));
+    assert!(!PROVIDERS.contains(&"jev"), "jev 界面隐藏, 不进可见清单");
+    let settings = AppSettings {
+        enabled_providers: vec!["cline".to_owned()],
+        provider_order: vec!["cline".to_owned(), "codex".to_owned()],
+        ..AppSettings::default()
+    };
+    assert!(validate_settings(&settings).is_ok());
+    assert!(AppSettings::default()
+        .enabled_providers
+        .contains(&"cline".to_owned()));
 }
 
 #[test]
