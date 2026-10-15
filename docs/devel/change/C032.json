@@ -1,0 +1,106 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C032",
+  "title": "Windows 设置中心 P3 对标（二）：模型计费页（今日费用总览/搜索/三态筛选/8 列表格/逐模型校准/config.json 预览）与导出能力（账单 CSV + 脱敏诊断报告）",
+  "type": "Enhancement",
+  "status": "in_progress",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送; 导出走后端写固定目录并回显路径 (不引入 tauri-plugin-dialog, 见 why)",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src (settings.js + styles.css) / apps/win/src-tauri (lib.rs + runtime_core.rs + scheduler.rs)",
+    "component": "模型计费面板 / 维护页导出 / 运行信息与导出 IPC",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "P3 批次（二），用户以「确认，然后继续完成032」授权完成。「模型计费」是双端差异最大的一页：mac 有今日费用总览、搜索框、三态筛选胶囊、8 列（模型与厂商/今日用量/来源/输入单价/输出单价/缓存命中/今日折算/操作）定价表、逐模型人工校准 sheet、config.json 联动预览与「全部重置为基准」；Windows 侧此前只有一张 5 列内置价格表 + 一个 JSON textarea 手改。导出能力同理：mac 有「导出账单 CSV」与「导出诊断包」，Windows 侧完全缺失。**关于导出交互的适配取舍**：mac 走系统保存对话框（NSSavePanel），Windows 侧要走等价路径需引入 `tauri-plugin-dialog` 并新增 capability —— 该插件的调用参数形状无法在本机（macOS，无 Windows 运行环境）验证，贸然引入等于交付一段无法自证的胶水代码。故本卡采用**后端写固定目录 + 界面回显完整路径**（`%APPDATA%\\Bruce\\exports\\`），列文件系统与前端全链路可测；若后续需要原生位置选择，单独立卡引入插件并做真机验收。另外「模型与厂商」列在 mac 由 `BuiltinModelPricingCatalog` 提供 displayName/vendor，而 Windows 复用的 `collector_domain::PricingTable` 只有 model/prices/note —— 补 vendor 元数据需动共享 collector 契约，故本卡以模型名 + note 呈现，列为残余差异。",
+  "precheck": {
+    "description": "确认现状: 模型计费页只有 5 列内置价格表与 JSON textarea; 维护页无导出按钮; 运行信息无 totalCostUsd/modelUsage",
+    "command": "grep -n 'model-prices-details\\|price-add\\|export_billing\\|export_diagnostics\\|totalCostUsd' apps/win/src/settings.js apps/win/src-tauri/src/lib.rs",
+    "expected": "修复前: settings.js 有 price-add/price-model 等旧表单字段, 无 export_billing/export_diagnostics; lib.rs 的 get_runtime_info 无 totalCostUsd/modelUsage",
+    "is_completed": true,
+    "evidence": "2026-10-15 实测: 旧模型计费页为 `<details><summary>查看内置官方模型价格表</summary>` + 5 列表格 + 「自定义模型价格覆盖」表单 (模型标识/输入/输出/缓存/币种 + 添加或替换 + JSON textarea + 清空); 维护页仅「清理用量缓存 / 运行环境与诊断(刷新运行状态/诊断预览)」无导出; get_runtime_info 返回体无 totalCostUsd 与 modelUsage; grep export_billing/export_diagnostics 无命中。"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护已在 main 实施"
+    ],
+    "after": [
+      "cargo fmt --manifest-path apps/win/src-tauri/Cargo.toml --all",
+      "cargo clippy --manifest-path apps/win/src-tauri/Cargo.toml --all-targets -- -D warnings",
+      "node --test apps/win/tests/frontend.test.mjs",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "apps/win/src-tauri (运行信息扩展 + 导出命令)",
+      "before": "get_runtime_info 只返回版本/目录/状态/诊断/用量; 无导出能力",
+      "after": "get_runtime_info 增补 totalCostUsd (artifact) / modelUsage (跨 agent 按模型汇总, 用量降序并列按名升序) / generatedAt; 新增 runtime_core::model_usage / billing_csv / diagnostics_report / export_path / write_export 与 IPC 命令 export_billing、export_diagnostics(写入 <dataRoot>/exports/, 沿用原子私有写)",
+      "impact": "模型计费页与导出获得数据源; 账单 CSV 列与 mac billingReportCSV 逐列一致 (含 BOM/转义/无定价占位行)"
+    },
+    {
+      "scope": "apps/win/src/settings.js + styles.css (模型计费页重做)",
+      "before": "5 列内置价格表 (details 折叠) + 自定义覆盖表单 + JSON textarea",
+      "after": "对齐 mac ModelPricingSettingsView: 今日 TOKEN 预估折算总费用卡 (总费用取 artifact totalCostUsd, 无则由逐模型折算求和) + 搜索框 (模型名/note 匹配) + 三态筛选胶囊 (全部/已有用量/已校准, 带计数) + 8 列表格 (今用量绿胶囊或 —、来源人工校准/内置基线、`$%.2f /1M`、缓存 `$%.3f`、今日折算绿字、编辑/恢复) + 空态 `未找到匹配的模型定价规则` + config.json 实时映射卡 (含全部重置为基准) + 校准 sheet (四字段 + 折算预估 `每消耗 1M 输入 + 200k 输出…` + 恢复基准/取消/保存校准)",
+      "impact": "模型计费页与 mac 结构一一对应, 且校准动作即时写回 pricingOverrides"
+    },
+    {
+      "scope": "apps/win/src/settings.js + styles.css (维护页导出)",
+      "before": "无导出入口",
+      "after": "新增「导出账单」(CSV) 与「导出诊断包」(脱敏 JSON) 两行 + 导出目录说明; 成功后回显完整路径",
+      "impact": "补齐 mac 的导出能力; 诊断导出不含凭证/账号/完整路径, 账单为 UTF-8 BOM CSV"
+    },
+    {
+      "scope": "apps/win/src/settings.js (自查发现的两处缺陷修复)",
+      "before": "(1) 校准弹窗内 `const row = pricingEditing` 遮蔽模块级 row() 行构建函数 → 弹窗构建抛错, 真实内核下弹窗打不开; (2) 弹窗输入框落在 .fluent-card 之外, 未显式着色 → 继承浅色文字叠在 UA 白底上, 文字不可见",
+      "after": "局部变量改名 entry(并加注释说明不可用 row); 弹窗输入框显式设置深色背景/前景/边框; 新增「打开弹窗 → 字段 → 预估 → 保存写回」的 DOM 用例",
+      "impact": "校准链路在真实内核可用; 同类「局部变量遮蔽构建函数」缺陷被用例覆盖"
+    },
+    {
+      "scope": "apps/win/tests (测试桩与用例加固)",
+      "before": "dom.mjs 解析器把 SVG 空元素 (path/circle/...) 当容器 → 行内图标后的节点被错误嵌套; querySelectorAll 对同一元素重复计数; render-harness 未做缓存破坏, 改完源码需手工绕缓存",
+      "after": "解析器自闭合清单补齐 SVG 空元素; querySelectorAll 按元素身份去重; 两个 render-harness 的样式/脚本 URL 加时间戳缓存破坏; 新增模型计费页(sheet/筛选/保存)用例",
+      "impact": "桩与真实内核的行为差距缩小, 避免「桩伪影当成产品缺陷」与「改了源码却跑的是旧缓存」两类误判"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "§4.4 设置中心对标把「模型计费页」与「导出类能力」列为尚未对齐项, 后者标注依赖 tauri-plugin-dialog",
+      "after": "§4.4 更新为: 模型计费页已按 mac 结构对齐(总览/搜索/三态筛选/8 列表格/校准 sheet/config 预览); 导出类改为**后端写固定目录 + 界面回显路径**的适配实现(不引入 dialog 插件, 理由是插件调用参数无法在本机自证), 并将「原生位置选择」与「模型 vendor/displayName 元数据(需动共享 collector 契约)」登记为残余差异"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "verify-local-20261015-c032 + render-harness-20261015",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "模型计费页形态与交互 (真实内核 + DOM)",
+        "true_if": "总览/搜索/三态筛选/8 列表格/空态/config 预览齐备; 校准 sheet 可打开并保存写回 pricingOverrides, 来源列与筛选计数随之更新",
+        "false_if": "任一形态缺失, 或弹窗打不开/保存未写回",
+        "evidence": "2026-10-15 真实 Chromium 内核自检 (apps/win/tests/render-harness/settings-harness.html, 视口 1040×680) + DOM 用例: 模型计费页实测含 今日 TOKEN 预估折算总费用卡 + 搜索框 (placeholder `搜索模型或厂商 (如 k3, deepseek, gpt...)`) + 三态筛选胶囊 [全部 (1), 已有用量 (0), 已校准 (0)] + 表头 ['模型与厂商','今日用量','来源','输入单价','输出单价','缓存命中','今日折算','操作'] + 行 ['kimi-k2.5','—','内置基线','$0.60 /1M','$2.40 /1M','—','—','编辑'] + config.json 预览 (无覆盖时输出 `// 当前全部使用官方内置基准单价…` + `{ \"pricingOverrides\": {} }`); 点「编辑」打开校准 sheet 实测 标题『模型单价人工校准』/ 副标题 kimi-k2.5 / 四字段 (输入单价·输出单价·缓存读取命中·备注说明) / 预估『每消耗 1M 输入 + 200k 输出，折算费用约为 $1.080 USD』/ 按钮 [取消, 保存校准], 输入框计算样式 background rgb(27,27,27) + color rgb(242,242,242) 且 value 回填 0.60; 搜索无命中时显示空态『未找到匹配的模型定价规则』; 维护页实测行 ['清理用量缓存','导出账单','导出诊断包'] 与按钮 ['清理','导出…','导出…','刷新运行状态','诊断预览'], 点导出后状态回显『账单已导出：导出路径』; 各页 scrollWidth == clientWidth (无溢出)。",
+        "result": true
+      },
+      {
+        "item": "导出内容正确且脱敏",
+        "true_if": "账单 CSV 列序与转义与 mac 一致 (含 BOM 语义与无定价占位); 诊断报告含版本/阶段/诊断码且不含路径分隔符与凭证",
+        "false_if": "列序/转义不符, 或报告泄露路径/凭证",
+        "evidence": "导出内容与脱敏: 新增 Rust 用例 billing_csv_matches_mac_columns_and_escaping 通过 (首行『# Bruce 账单导出』/ 数据时间行 / 表头『日期,Agent,输入 tokens,输出 tokens,合计 tokens』/ 含逗号 agent 名转义为 `\"Claude, Code\"` / 成本段『Agent,成本 USD,成本 CNY』/ 合计行『合计,1.5000,10.8000』/ 结尾换行 / 无定价数据输出『无定价数据』占位); diagnostics_report_is_redacted_and_carries_module_state 通过 (含 version/phase/diagnosticCodes, 且全文不含 '/' 与 '\\\\'、含『不含凭证』字样); model_usage_aggregates_and_sorts_like_mac 通过 (跨 agent 汇总, 用量降序并列按名升序); export_path_creates_directory_and_stamps_utc_name 通过 (目录自动创建、文件名含前缀与 UTC 时间戳、write_export 落盘内容一致)。自查发现并修复: (1) 校准弹窗 `const row = pricingEditing` 遮蔽模块级 row() → 真实内核下弹窗打不开 (修复前 sheetOpen=false, 修复后 sheetOpen=true 且字段齐全); (2) 弹窗输入框未着色导致浅色文字叠在 UA 白底上不可见 (实测 background rgb(27,27,27)/color rgb(242,242,242) 后正常); (3) 测试桩两处失真修正: 解析器把 SVG 空元素当容器 (真实内核 duplicateIds=[] 而桩报重复)、querySelectorAll 重复计数。",
+        "result": true
+      },
+      {
+        "item": "全量门禁与真实内核自检",
+        "true_if": "zsh scripts/verify-local.sh 退出码 0 (fmt/clippy/test/fixture/前端/对拍全绿); 真实内核下模型计费与维护页无溢出、无重复 id、弹窗与导出回显正常",
+        "false_if": "任一环节失败",
+        "evidence": "zsh scripts/verify-local.sh 退出码 0, 末行 'Bruce 本地验证全部通过' (日志 local/c032-verify.log): Rust 三 manifest 全绿 (collector 132 / viewmodel 46 / src-tauri 87 —— runtime_coverage 22 → 26), fmt --check 与 clippy --all-targets -D warnings 零告警 (含新增用例的 manual_contains 修正), provider 品牌图形产物 --check 通过, Windows 前端结构冒烟通过且交互回归 29/29 (新增模型计费页 sheet/筛选/保存与 id 唯一性/导出断言), Swift 全部 Harness 与 Panel 视图模型双端对拍 3/3 通过。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": []
+}

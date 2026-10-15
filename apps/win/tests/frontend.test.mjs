@@ -304,8 +304,13 @@ test("saved card order, provider order and usage visibility affect dashboard", a
 });
 
 test("independent settings support consent, model prices, provider gates and maintenance", async () => {
-  const app = await boot({ html: "settings.html" });
-  assert.match(app.node("model-prices").textContent, /fixture-model/);
+  const app = await boot({ html: "settings.html", settings: { ...defaults, pricingOverrides: { "custom-model": { inputPricePerMillion: 3, outputPricePerMillion: 4, currency: "USD" } } } });
+  const pricing = app.node("pane-modelPricing-content");
+  assert.match(pricing.textContent, /fixture-model/, "内置价格表渲染");
+  assert.match(pricing.textContent, /今日 TOKEN 预估折算总费用/);
+  assert.match(pricing.textContent, /全部 \(\d+\)/);
+  assert.match(pricing.textContent, /custom-model/, "已校准模型进入表格");
+  assert.match(pricing.textContent, /人工校准/, "来源列标注人工校准");
   assert.match(app.node("runtime-info").textContent, /isolated-data/);
   assert.match(app.node("runtime-info").textContent, /stale/);
   assert.match(app.node("runtime-info").textContent, /PROVIDER_RATE_LIMIT/);
@@ -320,12 +325,47 @@ test("independent settings support consent, model prices, provider gates and mai
   assert.equal(app.state.settings.consentVersion, 0);
   assert.equal(app.state.settings.usageEnabled, false);
   assert.equal(app.node("consent-state").textContent, "尚未授权");
-  // 全局保存仍覆盖其余设置项
+  // 全局保存覆盖其余设置项, 且不吞掉既有价格校准 (校准来源改为 settings.pricingOverrides)
   app.node("setting-usage").checked = false;
-  app.node("setting-pricing-overrides").value = '{"custom-model":{"inputPricePerMillion":3,"outputPricePerMillion":4}}';
   await app.node("settings-save").click();
   assert.equal(app.state.settings.usageEnabled, false);
-  assert.equal(app.state.settings.pricingOverrides["custom-model"].inputPricePerMillion, 3);
+  assert.equal(app.state.settings.pricingOverrides["custom-model"].inputPricePerMillion, 3, "既有校准不被全局保存吞掉");
+});
+
+test("model pricing pane filters, calibrates and previews config json", async () => {
+  const app = await boot({ html: "settings.html" });
+  const pane = () => app.node("pane-modelPricing-content");
+  // 总览 + 搜索 + 三态筛选 + 8 列表格
+  assert.match(pane().textContent, /今日 TOKEN 预估折算总费用/);
+  assert.match(pane().textContent, /基于当前本机全部活跃 Agent 真实 Token 吞吐量进行折算/);
+  const headers = [...pane().querySelectorAll(".pricing-table th")].map((n) => n.textContent);
+  assert.deepEqual(headers, ["模型与厂商", "今日用量", "来源", "输入单价", "输出单价", "缓存命中", "今日折算", "操作"]);
+  assert.deepEqual([...pane().querySelectorAll(".pricing-chip")].map((n) => n.textContent), ["全部 (1)", "已有用量 (0)", "已校准 (0)"]);
+  assert.match(pane().textContent, /当前全部使用官方内置基准单价/);
+  // 搜索无命中 → 空态
+  const search = pane().querySelector(".pricing-search");
+  search.value = "不存在的模型";
+  await search.dispatch("input");
+  assert.match(pane().textContent, /未找到匹配的模型定价规则/);
+  search.value = "";
+  await search.dispatch("input");
+  // 打开校准弹窗并保存 → 写入 pricingOverrides 并更新来源列
+  pane().querySelector(".pricing-table .col-ops .plain-btn").click();
+  const sheet = app.node("pricing-sheet");
+  assert.ok(sheet, "校准弹窗已打开");
+  assert.equal(sheet.querySelector(".sheet-title").textContent, "模型单价人工校准");
+  assert.deepEqual([...sheet.querySelectorAll(".row-title")].map((n) => n.textContent), ["输入单价 (Prompt / Input)", "输出单价 (Completion / Output)", "缓存读取命中 (Cache Hit / Read)", "备注说明 (可选)"]);
+  assert.match(sheet.querySelector(".sheet-estimate p").textContent, /每消耗 1M 输入 \+ 200k 输出，折算费用约为 \$[\d.]+ USD/);
+  assert.deepEqual([...sheet.querySelectorAll("button")].map((n) => n.textContent), ["取消", "保存校准"]);
+  app.node("calibration-input").value = "1.25";
+  app.node("calibration-note").value = "采购折扣";
+  await app.node("calibration-save").click();
+  const saved = app.calls.filter((call) => call.command === "save_settings_command").pop();
+  assert.equal(saved.args.settings.pricingOverrides["fixture-model"].inputPricePerMillion, 1.25);
+  assert.equal(saved.args.settings.pricingOverrides["fixture-model"].note, "采购折扣");
+  assert.equal(app.node("pricing-sheet"), null, "保存后弹窗关闭");
+  assert.match(pane().textContent, /人工校准/, "来源列更新为人工校准");
+  assert.match(pane().textContent, /已校准 \(1\)/, "筛选计数更新");
 });
 
 test("maintenance pane clears snapshot and previews redacted diagnostics", async () => {
@@ -391,13 +431,14 @@ test("credential accounts are keyed objects and save clears secret inputs", asyn
 });
 
 test("invalid credentials/price overrides do not persist and command failures are visible", async () => {
-  const app = await boot({ html: "settings.html", reject: { save_settings_command: "热键冲突" } });
-  app.node("setting-pricing-overrides").value = '{"broken":{"inputPricePerMillion":-1}}';
+  // 非法单价覆盖 (来自配置文件的越界值) 必须在保存时被拦下
+  const app = await boot({ html: "settings.html", settings: { ...defaults, pricingOverrides: { broken: { inputPricePerMillion: -1 } } } });
   await app.node("settings-save").click();
-  assert.equal(app.calls.some(x => x.command === "save_settings_command"), false);
-  app.node("setting-pricing-overrides").value = "{}";
-  await app.node("settings-save").click();
-  assert.match(app.node("settings-status").textContent, /热键冲突/);
+  assert.equal(app.calls.some(call => call.command === "save_settings_command"), false, "非法覆盖不得写回");
+  // 命令失败要在界面可见
+  const failing = await boot({ html: "settings.html", reject: { save_settings_command: "热键冲突" } });
+  await failing.node("settings-save").click();
+  assert.match(failing.node("settings-status").textContent, /热键冲突/);
 });
 
 test("Zhipu optional API address supplies the collector's required default", async () => {
@@ -423,7 +464,10 @@ test("both windows keep DOM ids unique", async () => {
   for (const html of ["index.html", "settings.html"]) {
     const app = await boot({ html });
     const seen = new Map();
+    const visited = new Set();   // 桩遍历可能重复访问同一节点, 按元素身份去重
     const walk = (element) => {
+      if (visited.has(element)) return;
+      visited.add(element);
       const id = element.attributes?.id;
       if (id) seen.set(id, (seen.get(id) || 0) + 1);
       for (const child of element.children) if (typeof child === "object") walk(child);

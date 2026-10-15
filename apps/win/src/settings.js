@@ -353,45 +353,284 @@
     }
   }
 
-  function buildModelPricing(host) {
-    host.replaceChildren();
-    const c1 = card(host, "内置模型价格基准");
-    const details = node("details", null, { id: "model-prices-details" });
-    details.append(node("summary", "查看内置官方模型价格表"));
-    details.append(node("div", null, { id: "model-prices", class: "price-table-wrap" }));
-    c1.append(details);
+  // MARK: - 模型计费 (对齐 mac ModelPricingSettingsView)
 
-    const c2 = card(host, "自定义模型价格覆盖");
-    c2.append(node("p", "价格按每百万 Token (USD/CNY) 计算；自定义覆盖将用于下一次采集的费用估算。", { class: "hint" }));
+  const PRICING_FILTERS = ["全部", "已有用量", "已校准"];
+  let pricingFilter = "全部";
+  let pricingQuery = "";
+  let pricingEditing = null;
+  let currentModelPrices = {};
+
+  function numberOr(value, fallback) {
+    return Number.isFinite(value) ? value : fallback;
+  }
+
+  // 有效单价 = 人工覆盖 ?? 内置基准; 今日折算与 mac 同式: 用量 × (输入+输出)/2 / 1e6
+  function effectivePricingRows() {
+    const overrides = settings.pricingOverrides || {};
+    const usage = new Map((currentRuntimeInfo?.modelUsage || []).map((row) => [String(row.model).toLowerCase(), row.tokens || 0]));
+    const names = [...new Set([...Object.keys(currentModelPrices), ...Object.keys(overrides)])].sort((a, b) => a.localeCompare(b));
+    return names.map((key) => {
+      const base = currentModelPrices[key] || {};
+      const over = Object.prototype.hasOwnProperty.call(overrides, key) ? overrides[key] || {} : null;
+      const inputPrice = numberOr(over?.inputPricePerMillion, numberOr(base.inputPricePerMillion, 0));
+      const outputPrice = numberOr(over?.outputPricePerMillion, numberOr(base.outputPricePerMillion, 0));
+      const cachePrice = numberOr(over?.cacheReadPricePerMillion, base.cacheReadPricePerMillion ?? null);
+      const tokens = usage.get(key.toLowerCase()) || 0;
+      const cost = tokens > 0 ? (tokens * (inputPrice + outputPrice)) / 2 / 1_000_000 : null;
+      return {
+        key,
+        inputPrice,
+        outputPrice,
+        cachePrice,
+        tokens,
+        cost,
+        isCustom: Boolean(over),
+        note: (over?.note || base.note || ""),
+        currency: over?.currency || base.currency || "USD",
+      };
+    });
+  }
+
+  function formatTokens(value) {
+    if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
+    if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
+    return String(value);
+  }
+
+  function pricingTodayTotal(rows) {
+    const artifactTotal = currentRuntimeInfo?.totalCostUsd;
+    if (Number.isFinite(artifactTotal)) return artifactTotal;
+    return rows.reduce((sum, row) => sum + (row.cost || 0), 0);
+  }
+
+  function renderPricingPane() {
+    const host = byId("pane-modelPricing-content");
+    if (!host) return;
+    const previous = byId("pricing-host");
+    const container = previous || node("div", null, { id: "pricing-host" });
+    container.replaceChildren();
+    if (!previous) host.append(container);
+
+    const rows = effectivePricingRows();
+    const withUsage = rows.filter((row) => row.tokens > 0);
+    const custom = rows.filter((row) => row.isCustom);
+    const query = pricingQuery.trim().toLowerCase();
+    const visible = rows.filter((row) => {
+      if (pricingFilter === "已有用量" && row.tokens <= 0) return false;
+      if (pricingFilter === "已校准" && !row.isCustom) return false;
+      if (!query) return true;
+      return row.key.toLowerCase().includes(query) || row.note.toLowerCase().includes(query);
+    });
+
+    // 1. 今日费用总览
+    const summary = card(container, null);
+    summary.classList.add("pricing-summary");
+    summary.append(node("h2", "今日 TOKEN 预估折算总费用", { class: "pricing-title" }));
+    summary.append(node("p", "基于当前本机全部活跃 Agent 真实 Token 吞吐量进行折算", { class: "row-sub" }));
+    const amount = node("div", null, { class: "pricing-amount" });
+    amount.append(node("span", `$${pricingTodayTotal(rows).toFixed(2)}`, { class: "pricing-money" }));
+    const tokens = (currentRuntimeInfo?.modelUsage || []).reduce((sum, row) => sum + (row.tokens || 0), 0);
+    if (tokens > 0) amount.append(node("span", `/ ${formatTokens(tokens)}`, { class: "pricing-tokens" }));
+    summary.append(amount);
+
+    // 2. 搜索 + 三态筛选
+    const filterBar = node("div", null, { class: "pricing-filter" });
+    const search = input("pricing-search", "search", { placeholder: "搜索模型或厂商 (如 k3, deepseek, gpt...)", class: "pricing-search" });
+    search.value = pricingQuery;
+    search.addEventListener("input", () => { pricingQuery = search.value; renderPricingPane(); });
+    filterBar.append(search);
+    for (const mode of PRICING_FILTERS) {
+      const count = mode === "全部" ? rows.length : mode === "已有用量" ? withUsage.length : custom.length;
+      const chip = node("button", `${mode} (${count})`, { type: "button", class: mode === pricingFilter ? "pricing-chip active" : "pricing-chip" });
+      chip.addEventListener("click", () => { pricingFilter = mode; renderPricingPane(); });
+      filterBar.append(chip);
+    }
+    container.append(filterBar);
+
+    // 3. 定价表 (8 列, 与 mac 表格同列序)
+    const tableCard = card(container, null);
+    tableCard.classList.add("pricing-table-card");
+    if (!visible.length) {
+      const empty = node("div", null, { class: "pricing-empty" });
+      empty.append(node("span", "🗂", { class: "pricing-empty-icon" }), node("span", "未找到匹配的模型定价规则"));
+      tableCard.append(empty);
+    } else {
+      const wrap = node("div", null, { class: "pricing-table-wrap" });
+      const table = node("table", null, { class: "fluent-table pricing-table" });
+      const header = node("tr");
+      for (const [text, cls] of [["模型与厂商", "col-model"], ["今日用量", "col-usage"], ["来源", "col-source"],
+        ["输入单价", "col-price"], ["输出单价", "col-price"], ["缓存命中", "col-cache"], ["今日折算", "col-cost"], ["操作", "col-ops"]]) {
+        header.append(node("th", text, { class: cls }));
+      }
+      table.append(header);
+      for (const row of visible) {
+        const line = node("tr");
+        const modelCell = node("td", null, { class: "col-model" });
+        modelCell.append(node("span", row.key, { class: "pricing-model", title: row.key }));
+        if (row.tokens > 0) modelCell.append(node("span", "●", { class: "pricing-dot" }));
+        if (row.note) modelCell.append(node("span", row.note, { class: "pricing-note" }));
+        line.append(modelCell);
+        line.append(node("td", row.tokens > 0 ? formatTokens(row.tokens) : "—",
+          { class: row.tokens > 0 ? "col-usage usage-pill" : "col-usage muted" }));
+        line.append(node("td", row.isCustom ? "人工校准" : "内置基线",
+          { class: row.isCustom ? "col-source source-custom" : "col-source source-builtin" }));
+        line.append(node("td", `$${row.inputPrice.toFixed(2)} /1M`, { class: "col-price" }));
+        line.append(node("td", `$${row.outputPrice.toFixed(2)} /1M`, { class: "col-price" }));
+        line.append(node("td", Number.isFinite(row.cachePrice) ? `$${row.cachePrice.toFixed(3)} /1M` : "—", { class: "col-cache muted" }));
+        line.append(node("td", row.cost && row.cost > 0 ? `$${row.cost.toFixed(2)}` : "—",
+          { class: row.cost && row.cost > 0 ? "col-cost pricing-cost" : "col-cost muted" }));
+        const ops = node("td", null, { class: "col-ops" });
+        button(ops, `price-edit-${row.key}`, "编辑", () => { pricingEditing = row; renderPricingPane(); openCalibrationSheet(); }, "btn plain-btn");
+        if (row.isCustom) {
+          button(ops, `price-restore-${row.key}`, "⟲", () => resetPricingOverride(row.key), "btn plain-btn");
+        }
+        line.append(ops);
+        table.append(line);
+      }
+      wrap.append(table);
+      tableCard.append(wrap);
+    }
+    container.append(tableCard);
+
+    // 4. config.json 联动预览
+    const configCard = card(container, null);
+    const configHead = node("div", null, { class: "pricing-config-head" });
+    configHead.append(node("h2", "配置文件实时映射 (config.json)", { class: "card-caption-inline" }));
+    configHead.append(node("span", "%APPDATA%\Bruce\config\settings.json", { class: "pricing-path" }));
+    if (custom.length) {
+      button(configHead, "pricing-reset-all", "全部重置为基准", showResetAllConfirm, "btn plain-btn danger-text");
+    }
+    configCard.append(configHead);
+    configCard.append(node("p", "除在当前图形界面调整外，您也可以直接在 Bruce 的配置文件中声明 pricingOverrides 节点进行批量人工校准。", { class: "hint" }));
+    const preview = node("pre", null, { id: "pricing-config-preview", class: "pricing-config" });
+    preview.textContent = custom.length
+      ? JSON.stringify({ pricingOverrides: settings.pricingOverrides || {} }, null, 2)
+      : "// 当前全部使用官方内置基准单价。添加自定义或校准项后将在此展示配置代码：\n{ \"pricingOverrides\": {} }";
+    configCard.append(preview);
+    container.append(configCard);
+    // 隐藏的 JSON 编辑区保留 (全局保存写回 pricingOverrides)
+    const overridesField = node("textarea", null, { id: "setting-pricing-overrides", class: "hidden" });
+    overridesField.value = JSON.stringify(settings.pricingOverrides || {}, null, 2);
+    container.append(overridesField);
+  }
+
+  function renderModelPrices() {
+    // 兼容旧入口: 改为重绘整页 (价格数据 + 表)
+    renderPricingPane();
+  }
+
+  // 校准弹窗 (对齐 mac ModelPricingCalibrationSheet)
+  function openCalibrationSheet() {
+    // 注意: 不能把局部变量命名为 row —— 会遮蔽模块级 row() 行构建函数 (C032 实测)
+    const entry = pricingEditing;
+    if (!entry) return;
+    const host = byId("pane-modelPricing-content");
+    byId("pricing-sheet")?.remove();
+    const overlay = node("div", null, { id: "pricing-sheet", class: "sheet-overlay" });
+    const sheet = node("div", null, { class: "sheet" });
+    sheet.append(node("h2", "模型单价人工校准", { class: "sheet-title" }));
+    sheet.append(node("p", `${entry.key}${entry.note ? ` · ${entry.note}` : ""}`, { class: "row-sub" }));
+    if (entry.isCustom) sheet.append(node("span", "当前已校准", { class: "sheet-badge" }));
+
     const form = node("div", null, { class: "form-grid" });
-    row(form, "模型标识", input("price-model", "text", { placeholder: "如 gpt-4o 或 claude-3-5-sonnet" }));
-    row(form, "输入单价", input("price-input", "number", { min: "0", step: "any", placeholder: "每百万 tokens 价格" }));
-    row(form, "输出单价", input("price-output", "number", { min: "0", step: "any", placeholder: "每百万 tokens 价格" }));
-    row(form, "缓存读取单价（可选）", input("price-cache", "number", { min: "0", step: "any", placeholder: "可选" }));
-    row(form, "币种", input("price-currency", "text", { value: "USD" }));
-    c2.append(form);
+    const inputField = entry.inputPrice.toFixed(2);
+    const outputField = entry.outputPrice.toFixed(2);
+    const cacheField = Number.isFinite(entry.cachePrice) ? entry.cachePrice.toFixed(4) : "";
+    row(form, "输入单价 (Prompt / Input)", input("calibration-input", "text", { value: inputField, placeholder: "0.00" }), "每 100 万 (1M) Tokens 费用");
+    row(form, "输出单价 (Completion / Output)", input("calibration-output", "text", { value: outputField, placeholder: "0.00" }), "每 100 万 (1M) Tokens 费用");
+    row(form, "缓存读取命中 (Cache Hit / Read)", input("calibration-cache", "text", { value: cacheField, placeholder: "0.00" }), "每 100 万 (1M) Tokens 费用 (留空按 10% 默认折算)");
+    row(form, "备注说明 (可选)", input("calibration-note", "text", { value: entry.note, placeholder: "如：采购折扣套餐 / 内部计费合约" }));
+    sheet.append(form);
 
-    const btnRow = node("div", null, { class: "actions-inline" });
-    button(btnRow, "price-add", "添加或替换价格覆盖", () => {
-      try {
-        const model = byId("price-model").value.trim();
-        if (!model || !byId("price-input").value || !byId("price-output").value) throw new Error("请填写模型名称和输入、输出价格");
-        const overrides = objectJSON(byId("setting-pricing-overrides").value || "{}", "价格覆盖");
-        const value = { inputPricePerMillion: Number(byId("price-input").value), outputPricePerMillion: Number(byId("price-output").value), currency: byId("price-currency").value.trim() || "USD" };
-        if (byId("price-cache").value) value.cacheReadPricePerMillion = Number(byId("price-cache").value);
-        overrides[model] = value;
-        validateOverrides(overrides);
-        byId("setting-pricing-overrides").value = JSON.stringify(overrides, null, 2);
-        message(byId("settings-status"), "已加入价格覆盖编辑内容，请保存设置");
-      } catch (error) { message(byId("settings-status"), error.message); }
-    }, "btn primary");
-    c2.append(btnRow);
+    const sampleCost = (1_000_000 * (entry.inputPrice + entry.outputPrice)) / 2 / 1_000_000 + (200_000 * entry.outputPrice) / 1_000_000 - (200_000 * entry.outputPrice) / 1_000_000;
+    const estimate = node("div", null, { class: "sheet-estimate" });
+    estimate.append(node("div", "实时折算公式与效果预估", { class: "sheet-estimate-title" }));
+    estimate.append(node("p", `每消耗 1M 输入 + 200k 输出，折算费用约为 $${(entry.inputPrice + 0.2 * entry.outputPrice).toFixed(3)} USD`, { class: "row-sub" }));
+    sheet.append(estimate);
+    void sampleCost;
 
-    const overrides = node("textarea", null, { id: "setting-pricing-overrides", rows: "5", spellcheck: "false", "aria-label": "自定义模型价格覆盖", class: "code-area" });
-    c2.append(overrides);
-    const resetRow = node("div", null, { class: "actions-inline" });
-    button(resetRow, "price-reset", "清空价格覆盖", () => { overrides.value = "{}"; });
-    c2.append(resetRow);
+    const act = node("div", null, { class: "sheet-actions" });
+    if (entry.isCustom) button(act, "calibration-restore", "恢复内置默认基准", () => { resetPricingOverride(entry.key); closeCalibrationSheet(); }, "btn danger");
+    button(act, "calibration-cancel", "取消", closeCalibrationSheet);
+    button(act, "calibration-save", "保存校准", saveCalibration, "btn primary");
+    sheet.append(act);
+    overlay.append(sheet);
+    overlay.addEventListener("click", (event) => { if (event.target === overlay) closeCalibrationSheet(); });
+    host.append(overlay);
+  }
+
+  function closeCalibrationSheet() {
+    byId("pricing-sheet")?.remove();
+    pricingEditing = null;
+  }
+
+  async function persistOverrides(overrides, statusText) {
+    validateOverrides(overrides);
+    const updated = { ...await invoke("get_settings"), pricingOverrides: overrides };
+    await invoke("save_settings_command", { settings: updated });
+    settings = updated;
+    window.dispatchEvent(new CustomEvent("settings-saved", { detail: updated }));
+    message(byId("settings-status"), statusText);
+    renderPricingPane();
+  }
+
+  async function saveCalibration() {
+    const entry = pricingEditing;
+    if (!entry) return;
+    try {
+      const overrides = { ...(settings.pricingOverrides || {}) };
+      const value = {};
+      const input = byId("calibration-input").value.trim();
+      const output = byId("calibration-output").value.trim();
+      const cache = byId("calibration-cache").value.trim();
+      const note = byId("calibration-note").value.trim();
+      if (input) value.inputPricePerMillion = Number(input);
+      if (output) value.outputPricePerMillion = Number(output);
+      if (cache) value.cacheReadPricePerMillion = Number(cache);
+      if (note) value.note = note;
+      value.currency = entry.currency || "USD";
+      overrides[entry.key] = value;
+      await persistOverrides(overrides, "已保存校准");
+      closeCalibrationSheet();
+    } catch (error) {
+      message(byId("settings-status"), `保存失败：${error.message || error}`);
+    }
+  }
+
+  async function resetPricingOverride(key) {
+    try {
+      const overrides = { ...(settings.pricingOverrides || {}) };
+      delete overrides[key];
+      await persistOverrides(overrides, `已恢复 ${key} 的内置基准`);
+      closeCalibrationSheet();
+    } catch (error) {
+      message(byId("settings-status"), `恢复失败：${error.message || error}`);
+    }
+  }
+
+  async function resetAllPricing() {
+    try {
+      await persistOverrides({}, "已恢复全部内置基准");
+      closeCalibrationSheet();
+    } catch (error) {
+      message(byId("settings-status"), `恢复失败：${error.message || error}`);
+    }
+  }
+
+  function showResetAllConfirm() {
+    byId("pricing-reset-confirm")?.remove();
+    const host = byId("pane-modelPricing-content");
+    const overlay = node("div", null, { id: "pricing-reset-confirm", class: "sheet-overlay" });
+    const sheet = node("div", null, { class: "sheet" });
+    sheet.append(node("h2", "确定恢复所有模型定价为内置基准？", { class: "sheet-title" }));
+    sheet.append(node("p", "此操作将清除所有人工校准与自定义模型的单价覆盖配置。", { class: "row-sub" }));
+    const act = node("div", null, { class: "sheet-actions" });
+    button(act, "reset-all-cancel", "取消", () => byId("pricing-reset-confirm")?.remove());
+    button(act, "reset-all-confirm", "恢复默认", resetAllPricing, "btn danger");
+    sheet.append(act);
+    overlay.append(sheet);
+    host.append(overlay);
   }
 
   function buildSubscription(host) {
@@ -504,7 +743,13 @@
     const cacheWrap = node("div", null, { class: "actions-inline-flat" });
     button(cacheWrap, "cache-clear", "清理", () => clearCache(), "btn danger");
     row(c1, "清理用量缓存", cacheWrap, "仅删除本应用快照，不影响配置、凭证与账单统计");
-    c1.append(node("p", "导出账单与诊断包需要系统文件保存对话框, Windows 侧尚未接入 (见 C032/后续卡)。", { class: "hint" }));
+    const exportWrap = node("div", null, { class: "actions-inline-flat" });
+    button(exportWrap, "export-billing", "导出…", () => runExport("export_billing", "账单"), "btn");
+    row(c1, "导出账单", exportWrap, "token 用量与花费统计 CSV（写入导出目录并回显路径）");
+    const diagWrap = node("div", null, { class: "actions-inline-flat" });
+    button(diagWrap, "export-diagnostics", "导出…", () => runExport("export_diagnostics", "诊断报告"), "btn");
+    row(c1, "导出诊断包", diagWrap, "脱敏 JSON（不含凭证、账号与完整本机路径）");
+    c1.append(node("p", "Windows 侧导出写入 %APPDATA%\\Bruce\\exports\\ 并在此回显完整路径（mac 走系统保存对话框，适配取舍见 design 05 §4.4）。", { class: "hint" }));
 
     const c2 = card(host, "运行环境与诊断");
     c2.append(node("pre", null, { id: "runtime-info", class: "runtime-info-box" }));
@@ -514,6 +759,17 @@
     // 预览容器 id 与按钮 id 必须不同 (C031 实测: 同名会让 getElementById 命中按钮,
     // 把 JSON 写进按钮标签并让预览框保持空)
     c2.append(node("pre", null, { id: "diagnostics-report", class: "runtime-info-box hidden" }));
+  }
+
+  // 导出: 后端写入 <dataRoot>/exports/ 并返回完整路径, 界面回显 (Windows 侧不弹保存对话框)。
+  async function runExport(command, label) {
+    const status = byId("settings-status");
+    try {
+      const result = await invoke(command);
+      message(status, `${label}已导出：${result?.path || "导出目录"}`);
+    } catch (error) {
+      message(status, `${label}导出失败：${error.message || error}`);
+    }
   }
 
   // 清理缓存: 仅删快照 (与 mac「清理用量缓存」语义一致), 随后后端会请求一次刷新。
@@ -592,23 +848,11 @@
 
   async function loadPrices() {
     try {
-      const prices = await invoke("get_model_prices");
-      const host = byId("model-prices");
-      if (!host) return;
-      host.replaceChildren();
-      const table = node("table", null, { class: "fluent-table" });
-      const header = node("tr");
-      for (const text of ["模型", "输入", "输出", "缓存读取", "币种"]) header.append(node("th", text));
-      table.append(header);
-      for (const [model, price] of Object.entries(prices).sort(([a], [b]) => a.localeCompare(b))) {
-        const line = node("tr");
-        for (const text of [model, price.inputPricePerMillion, price.outputPricePerMillion, price.cacheReadPricePerMillion ?? "—", price.currency]) {
-          line.append(node("td", String(text)));
-        }
-        table.append(line);
-      }
-      host.append(table);
-    } catch { message(byId("model-prices"), "模型价格暂不可用"); }
+      currentModelPrices = await invoke("get_model_prices") || {};
+    } catch {
+      currentModelPrices = {};
+    }
+    renderPricingPane();
   }
 
   async function loadSettings() {
@@ -645,7 +889,7 @@
     try {
       const interval = Number(byId("setting-interval")?.value || 30);
       if (!Number.isInteger(interval) || interval < 1 || interval > 1440) throw new Error("刷新间隔须为 1–1440 的整数分钟");
-      const overrides = validateOverrides(objectJSON(byId("setting-pricing-overrides")?.value || "{}", "价格覆盖"));
+      const overrides = validateOverrides(settings.pricingOverrides || {});
       const updated = {
         ...await invoke("get_settings"),
         refreshIntervalSecs: interval * 60,
@@ -857,14 +1101,12 @@
 
     const gHost = byId("pane-general-content");
     const uHost = byId("pane-agentUsage-content");
-    const pHost = byId("pane-modelPricing-content");
     const sHost = byId("pane-subscription-content");
     const cHost = byId("pane-consent-content");
     const mHost = byId("pane-maintenance-content");
 
     if (gHost) buildGeneral(gHost);
     if (uHost) buildAgentUsage(uHost);
-    if (pHost) buildModelPricing(pHost);
     if (sHost) buildSubscription(sHost);
     if (cHost) buildConsent(cHost);
     if (mHost) buildMaintenance(mHost);

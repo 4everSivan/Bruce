@@ -109,6 +109,13 @@ mod desktop {
         }
     }
 
+    /// 导出/表格用: 取当前快照 artifact 副本 (无快照返回 None)。
+    pub fn cached_artifact(app: &AppHandle) -> Option<Value> {
+        let control = app.state::<SchedulerControl>();
+        let state = control.snapshot.lock().ok()?;
+        state.artifact().cloned()
+    }
+
     pub fn cached_panel(app: &AppHandle) -> Result<Value, String> {
         let root = paths::data_root();
         let settings = load_settings(&root);
@@ -289,4 +296,4 @@ mod desktop {
 }
 
 #[cfg(feature = "desktop")]
-pub use desktop::{cached_panel, publish, run_refresh, spawn};
+pub use desktop::{cached_artifact, cached_panel, publish, run_refresh, spawn};

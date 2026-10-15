@@ -53,16 +53,16 @@ window.__setCategory = (key) => document.querySelector(`[data-category="${key}"]
 const doc = new DOMParser().parseFromString(html, "text/html");
 const link = document.createElement("link");
 link.rel = "stylesheet";
-link.href = "/apps/win/src/styles.css";
+link.href = `/apps/win/src/styles.css?v=${Date.now()}`;
 document.head.append(link);
 document.body.className = doc.body.className;
 document.body.innerHTML = doc.body.innerHTML;
 // provider-brand.js 是生成产物 (品牌图形), 生产 HTML 中先于 settings.js 加载
 const brandScript = document.createElement("script");
-brandScript.src = "/apps/win/src/provider-brand.js";
+brandScript.src = `/apps/win/src/provider-brand.js?v=${Date.now()}`;
 document.body.append(brandScript);
 const script = document.createElement("script");
-script.src = "/apps/win/src/settings.js";
+script.src = `/apps/win/src/settings.js?v=${Date.now()}`;
 script.onload = () => { window.__ready = true; };
 document.body.append(script);
 </script>

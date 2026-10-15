@@ -156,6 +156,21 @@ mod desktop {
     fn get_runtime_info(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
         let root = paths::data_root();
         let panel = scheduler::cached_panel(&app)?;
+        let artifact = scheduler::cached_artifact(&app);
+        // 「模型计费」表所需: 今日总费用 (artifact totalCostUsd) 与按模型今日用量汇总
+        let model_usage = artifact
+            .as_ref()
+            .map(crate::runtime_core::model_usage)
+            .unwrap_or_default();
+        let total_cost = artifact
+            .as_ref()
+            .and_then(|value| value.get("totalCostUsd"))
+            .and_then(serde_json::Value::as_f64);
+        let generated_at = artifact
+            .as_ref()
+            .and_then(|value| value.get("generatedAt"))
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned);
         Ok(serde_json::json!({
             "version": app.package_info().version.to_string(),
             "dataRoot": root,
@@ -163,7 +178,10 @@ mod desktop {
             "snapshotPath": root.join("snapshot.json"),
             "status": panel["runtime"],
             "diagnostics": panel["diagnostics"],
-            "usage": panel["usage"]
+            "usage": panel["usage"],
+            "totalCostUsd": total_cost,
+            "modelUsage": model_usage,
+            "generatedAt": generated_at
         }))
     }
 
@@ -174,6 +192,37 @@ mod desktop {
         crate::runtime_core::clear_snapshot(&paths::data_root())?;
         app.state::<SchedulerControl>().request_manual_refresh();
         Ok(())
+    }
+
+    /// 导出账单 CSV: 列与 mac `billingReportCSV` 一致, UTF-8 BOM 前置 (Excel 识别中文),
+    /// 写入 `<dataRoot>/exports/` 并返回完整路径。Windows 侧不弹系统保存对话框 (见
+    /// design 05 §4.4 的适配取舍), 路径由界面回显。
+    #[tauri::command]
+    fn export_billing(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+        let Some(artifact) = scheduler::cached_artifact(&app) else {
+            return Err("暂无可导出的用量数据, 请先刷新".to_owned());
+        };
+        let csv = crate::runtime_core::billing_csv(&artifact)
+            .ok_or_else(|| "暂无可导出的用量数据, 请先刷新".to_owned())?;
+        let path = crate::runtime_core::export_path(&paths::data_root(), "Bruce-billing", "csv")?;
+        crate::runtime_core::write_export(&path, format!("\u{feff}{csv}").as_bytes())?;
+        Ok(serde_json::json!({ "path": path }))
+    }
+
+    /// 导出诊断报告: 脱敏单文件 JSON (mac 为 zip 包, Windows 侧不引入压缩依赖)。
+    #[tauri::command]
+    fn export_diagnostics(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+        let panel = scheduler::cached_panel(&app)?;
+        let report = crate::runtime_core::diagnostics_report(
+            &app.package_info().version.to_string(),
+            &panel,
+        );
+        let path =
+            crate::runtime_core::export_path(&paths::data_root(), "Bruce-diagnostics", "json")?;
+        let body =
+            serde_json::to_vec_pretty(&report).map_err(|_| "EXPORT_WRITE_FAILED".to_owned())?;
+        crate::runtime_core::write_export(&path, &body)?;
+        Ok(serde_json::json!({ "path": path }))
     }
 
     #[tauri::command]
@@ -436,6 +485,8 @@ mod desktop {
                 get_dashboard,
                 get_runtime_info,
                 clear_snapshot_cache,
+                export_billing,
+                export_diagnostics,
                 get_model_prices,
                 get_credential_accounts,
                 remove_credential_account,

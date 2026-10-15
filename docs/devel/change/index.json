@@ -34,7 +34,8 @@
         "C028",
         "C029",
         "C030",
-        "C031"
+        "C031",
+        "C032"
       ]
     },
     "SubscriptionQuota": {
@@ -339,6 +340,15 @@
       "topic": "WindowsCompat",
       "version": "0.12.0+",
       "file": "docs/devel/change/C031.json"
+    },
+    "C032": {
+      "title": "Windows 设置中心 P3 对标（二）：模型计费页（今日费用总览/搜索/三态筛选/8 列表格/逐模型校准/config.json 预览）与导出能力（账单 CSV + 脱敏诊断报告）",
+      "type": "Enhancement",
+      "status": "in_progress",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C032.json"
     }
   }
 }

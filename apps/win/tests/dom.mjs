@@ -83,6 +83,7 @@ export class Element {
   querySelectorAll(selector) {
     const parts = selector.trim().split(/\s+/);
     const all = [];
+    const seen = new Set();   // 同一元素在遍历中可能被重复访问, 按元素身份去重
     const visit = node => {
       for (const child of node.children) {
         if (child.matches(parts.at(-1))) {
@@ -91,7 +92,7 @@ export class Element {
             if (parent.matches(parts[index])) index -= 1;
             parent = parent.parentElement;
           }
-          if (index < 0) all.push(child);
+          if (index < 0 && !seen.has(child)) { seen.add(child); all.push(child); }
         }
         visit(child);
       }
@@ -115,7 +116,10 @@ function parseHTML(source) {
       if (key !== tag) node.setAttribute(key, double ?? single ?? bare ?? "");
     }
     stack.at(-1).append(node);
-    if (!/^(input|link|meta|br|hr|img)$/i.test(tag)) stack.push(node);
+    // 自闭合标签必须包含 SVG 内的空元素 (path/circle/rect/...): 否则解析器会把后续
+    // 兄弟节点错误嵌套进它们内部, 造成 DOM 树错位与节点被重复访问 (C032 实测:
+    // 设置页导航图标的 <path/> 之后整棵子树被吞进 path 里, 误报重复 id)。
+    if (!/^(input|link|meta|br|hr|img|path|circle|rect|line|polyline|polygon|ellipse|stop|use)$/i.test(tag)) stack.push(node);
   }
   root.body = root.querySelector("body");
   root.createElement = tag => new Element(tag);

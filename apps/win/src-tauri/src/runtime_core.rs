@@ -165,6 +165,160 @@ pub fn clear_snapshot(root: &Path) -> Result<(), String> {
     }
 }
 
+/// 按模型汇总今日用量 (agent.models: 模型名 -> tokens)。供设置页「模型计费」表使用。
+pub fn model_usage(artifact: &Value) -> Vec<Value> {
+    let mut totals: BTreeMap<String, i64> = BTreeMap::new();
+    for agent in artifact
+        .get("agents")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        for (model, total) in agent
+            .get("models")
+            .and_then(Value::as_object)
+            .into_iter()
+            .flatten()
+        {
+            *totals.entry(model.clone()).or_default() += total.as_i64().unwrap_or(0);
+        }
+    }
+    let mut rows: Vec<(String, i64)> = totals.into_iter().collect();
+    // 用量降序, 并列按模型名升序 (与 mac 表格排序一致)
+    rows.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
+    rows.into_iter()
+        .map(|(model, tokens)| json!({"model": model, "tokens": tokens}))
+        .collect()
+}
+
+/// 账单 CSV: 列与 mac `AppModel.billingReportCSV` 逐列一致 —— 头部注释 (数据时间) +
+/// 逐 agent 逐日 token 段 + 今日成本段 (USD/CNY) + 合计; 无定价数据时输出占位行。
+pub fn billing_csv(artifact: &Value) -> Option<String> {
+    let agents = artifact.get("agents")?.as_array()?;
+    let generated_at = artifact
+        .get("generatedAt")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let mut lines: Vec<String> = vec![
+        "# Bruce 账单导出".to_owned(),
+        format!("# 数据时间,{generated_at}"),
+        String::new(),
+        "日期,Agent,输入 tokens,输出 tokens,合计 tokens".to_owned(),
+    ];
+    for agent in agents {
+        let name = agent.get("name").and_then(Value::as_str).unwrap_or("");
+        for day in agent
+            .get("daily")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            lines.push(
+                [
+                    day.get("date")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_owned(),
+                    csv_field(name),
+                    day.get("input")
+                        .and_then(Value::as_i64)
+                        .unwrap_or(0)
+                        .to_string(),
+                    day.get("output")
+                        .and_then(Value::as_i64)
+                        .unwrap_or(0)
+                        .to_string(),
+                    day.get("total")
+                        .and_then(Value::as_i64)
+                        .unwrap_or(0)
+                        .to_string(),
+                ]
+                .join(","),
+            );
+        }
+    }
+    lines.push(String::new());
+    lines.push(format!(
+        "# 今日成本 (CNY 按汇率 {} 换算)",
+        bruce_win_viewmodel::format::CNY_PER_USD
+    ));
+    lines.push("Agent,成本 USD,成本 CNY".to_owned());
+    let mut has_cost = false;
+    for agent in agents {
+        let Some(usd) = agent.get("todayCostUsd").and_then(Value::as_f64) else {
+            continue;
+        };
+        has_cost = true;
+        lines.push(
+            [
+                csv_field(agent.get("name").and_then(Value::as_str).unwrap_or("")),
+                format!("{usd:.4}"),
+                format!("{:.4}", usd * bruce_win_viewmodel::format::CNY_PER_USD),
+            ]
+            .join(","),
+        );
+    }
+    if let Some(total) = artifact.get("totalCostUsd").and_then(Value::as_f64) {
+        has_cost = true;
+        lines.push(format!(
+            "合计,{:.4},{:.4}",
+            total,
+            total * bruce_win_viewmodel::format::CNY_PER_USD
+        ));
+    }
+    if !has_cost {
+        lines.push("无定价数据".to_owned());
+    }
+    Some(lines.join("\n") + "\n")
+}
+
+/// CSV 字段转义 (与 mac `csvField` 同规则: 含逗号/引号/换行才加引号并双写引号)。
+fn csv_field(text: &str) -> String {
+    if text.contains(',') || text.contains('"') || text.contains('\n') {
+        format!("\"{}\"", text.replace('"', "\"\""))
+    } else {
+        text.to_owned()
+    }
+}
+
+/// 诊断报告 (脱敏): 对应 mac 诊断包 report.json 的字段子集 —— 版本/平台/模块状态/
+/// 诊断码/快照存在性; **不含**凭证、账号标识、完整本机路径与业务数据。Windows 侧为
+/// 单文件 JSON (mac 为 zip 包, 见 design 05 §4.4 的适配取舍)。
+pub fn diagnostics_report(version: &str, panel: &Value) -> Value {
+    let runtime = panel.get("runtime").cloned().unwrap_or_else(|| json!({}));
+    json!({
+        "application": { "version": version, "platform": std::env::consts::OS },
+        "module": {
+            "phase": runtime.get("phase").cloned().unwrap_or(Value::Null),
+            "lastSuccessAt": runtime.get("lastSuccessAt").cloned().unwrap_or(Value::Null),
+            "error": runtime.get("error").cloned().unwrap_or(Value::Null),
+        },
+        "diagnostics": runtime
+            .get("diagnosticCodes")
+            .cloned()
+            .unwrap_or_else(|| json!([])),
+        "note": "脱敏报告: 不含凭证、账号标识、完整本机路径与业务活动数据",
+    })
+}
+
+/// 导出路径: `<root>/exports/<prefix>-<yyyyMMdd-HHmmss>.<extension>` (UTC), 目录不存在
+/// 则创建; 返回完整路径供界面展示。
+pub fn export_path(root: &Path, prefix: &str, extension: &str) -> Result<String, String> {
+    let directory = root.join("exports");
+    fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+    let stamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
+    Ok(directory
+        .join(format!("{prefix}-{stamp}.{extension}"))
+        .to_string_lossy()
+        .into_owned())
+}
+
+/// 写入导出文件 (沿用凭证模块的原子私有写: 临时文件 + 替换, 权限限定当前用户)。
+pub fn write_export(path: &str, bytes: &[u8]) -> Result<(), String> {
+    crate::credentials::atomic_private_write(Path::new(path), bytes)
+        .map_err(|_| "EXPORT_WRITE_FAILED".to_owned())
+}
+
 impl SnapshotState {
     pub fn artifact(&self) -> Option<&Value> {
         self.artifact.as_ref()

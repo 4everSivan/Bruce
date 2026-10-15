@@ -1,4 +1,7 @@
-use bruce_win_lib::runtime_core::{clear_snapshot, merge_snapshot, next_delay, RefreshOutcome};
+use bruce_win_lib::runtime_core::{
+    billing_csv, clear_snapshot, diagnostics_report, export_path, merge_snapshot, model_usage,
+    next_delay, write_export, RefreshOutcome,
+};
 use serde_json::json;
 
 #[test]
@@ -179,6 +182,78 @@ fn clear_snapshot_removes_only_the_snapshot_file_and_is_idempotent() {
     );
     assert!(root.join("credentials.json").exists(), "凭证不受影响");
     clear_snapshot(&root).unwrap(); // 幂等: 再次调用不报错
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn model_usage_aggregates_and_sorts_like_mac() {
+    let artifact = json!({"agents": [
+        {"name": "A", "models": {"k3": 5000, "gpt-5.4": 9000}},
+        {"name": "B", "models": {"k3": 1000, "other": 9000}}
+    ]});
+    let rows = model_usage(&artifact);
+    assert_eq!(
+        rows,
+        vec![
+            json!({"model": "gpt-5.4", "tokens": 9000}),
+            json!({"model": "other", "tokens": 9000}),
+            json!({"model": "k3", "tokens": 6000}),
+        ],
+        "跨 agent 汇总; 用量降序, 并列按模型名升序"
+    );
+}
+
+#[test]
+fn billing_csv_matches_mac_columns_and_escaping() {
+    let artifact = json!({
+        "generatedAt": "2026-10-08T08:00:00Z",
+        "totalCostUsd": 1.5,
+        "agents": [{
+            "name": "Claude, Code",  // 含逗号 → 需转义
+            "todayCostUsd": 0.375,
+            "daily": [{"date": "2026-10-07", "input": 10, "output": 20, "total": 30}]
+        }]
+    });
+    let csv = billing_csv(&artifact).unwrap();
+    let lines: Vec<&str> = csv.lines().collect();
+    assert_eq!(lines[0], "# Bruce 账单导出");
+    assert_eq!(lines[1], "# 数据时间,2026-10-08T08:00:00Z");
+    assert_eq!(lines[3], "日期,Agent,输入 tokens,输出 tokens,合计 tokens");
+    assert_eq!(lines[4], "2026-10-07,\"Claude, Code\",10,20,30");
+    assert!(lines.contains(&"Agent,成本 USD,成本 CNY"));
+    assert!(lines.contains(&"\"Claude, Code\",0.3750,2.7000"));
+    assert!(lines.contains(&"合计,1.5000,10.8000"));
+    assert!(csv.ends_with('\n'));
+    // 无定价数据时给出占位行而非空表
+    let no_cost = json!({"generatedAt": "x", "agents": []});
+    assert!(billing_csv(&no_cost).unwrap().contains("无定价数据"));
+}
+
+#[test]
+fn diagnostics_report_is_redacted_and_carries_module_state() {
+    let panel = json!({"runtime": {"phase": "stale", "lastSuccessAt": "2026-10-08T08:00:00Z", "error": "COLLECTION_PARTIAL", "diagnosticCodes": ["PROVIDER_RATE_LIMIT"]}});
+    let report = diagnostics_report("0.11.5", &panel);
+    assert_eq!(report["application"]["version"], "0.11.5");
+    assert_eq!(report["module"]["phase"], "stale");
+    assert_eq!(report["diagnostics"][0], "PROVIDER_RATE_LIMIT");
+    let text = report.to_string();
+    assert!(
+        !text.contains('/') && !text.contains("\\"),
+        "报告不得含路径分隔符"
+    );
+    assert!(text.contains("不含凭证"));
+}
+
+#[test]
+fn export_path_creates_directory_and_stamps_utc_name() {
+    let root = std::env::temp_dir().join(format!("bruce-c032-export-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let path = export_path(&root, "Bruce-billing", "csv").unwrap();
+    assert!(root.join("exports").is_dir(), "导出目录自动创建");
+    assert!(path.contains("Bruce-billing-") && path.ends_with(".csv"));
+    write_export(&path, b"hello").unwrap();
+    assert_eq!(std::fs::read(&path).unwrap(), b"hello");
     let _ = std::fs::remove_dir_all(&root);
 }
 
