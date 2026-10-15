@@ -25,6 +25,9 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const assetsDir = join(repoRoot, "docs/assets/provider-icons");
 const swiftOut = join(repoRoot, "apps/macos/Sources/BruceAppCore/ProviderBrandGlyphData.swift");
 const winJs = join(repoRoot, "apps/win/src/app.js");
+// 设置窗口 (settings.js) 的订阅额度行需要与看板同一套品牌图形, 但两页不共享脚本;
+// 该产物由 window 挂载, 与 app.js 内联块同源生成, 由 --check 一起锁定 (C031)。
+const winBrand = join(repoRoot, "apps/win/src/provider-brand.js");
 
 const BEGIN_MARK = "// BEGIN GENERATED provider-glyphs";
 const END_MARK = "// END GENERATED provider-glyphs";
@@ -419,6 +422,24 @@ function patchAppJs(newBlock) {
   return text.slice(0, insertAt) + "\n" + newBlock + text.slice(insertAt);
 }
 
+function renderBrandJs(icons) {
+  const lines = [
+    `${BEGIN_MARK} (scripts/gen-provider-glyphs.mjs, C026 — 请勿手改)`,
+    "// 源文件与许可证: docs/assets/provider-icons/SOURCES.json",
+    "// 几何口径: 绝对 M/L/C/Z, vb=viewBox, shapes=[[d, opacity]]; 由 window 挂载,",
+    "// 须在 settings.js 之前加载 (设置窗口订阅额度行的品牌徽章, C031)。",
+    "window.BRUCE_PROVIDER_GLYPHS = {",
+  ];
+  for (const [pid, glyph] of Object.entries(icons).sort(([a], [b]) => a.localeCompare(b))) {
+    const shapes = glyph.shapes.map((s) => `["${s.d}", ${s.opacity}]`).join(", ");
+    lines.push(`  ${pid}: { vb: "${glyph.viewBox}", shapes: [${shapes}] },`);
+  }
+  lines.push("};");
+  lines.push(END_MARK);
+  lines.push("");
+  return lines.join("\n");
+}
+
 function main() {
   const args = process.argv.slice(2);
   const icons = buildIcons();
@@ -430,11 +451,13 @@ function main() {
 
   const swift = renderSwift(icons);
   const js = patchAppJs(renderJs(icons));
+  const brand = renderBrandJs(icons);
 
   if (args.includes("--check")) {
     const drift = [];
     if (readFileSync(swiftOut, "utf8") !== swift) drift.push(swiftOut);
     if (readFileSync(winJs, "utf8") !== js) drift.push(winJs);
+    if (readFileSync(winBrand, "utf8") !== brand) drift.push(winBrand);
     if (drift.length > 0) {
       console.error(
         `生成产物与源文件不一致, 请运行 scripts/gen-provider-glyphs.mjs:\n  ${drift.join("\n  ")}`
@@ -447,12 +470,13 @@ function main() {
 
   writeFileSync(swiftOut, swift);
   writeFileSync(winJs, js);
+  writeFileSync(winBrand, brand);
   const total = Object.values(icons).reduce(
     (sum, glyph) => sum + glyph.shapes.reduce((s, shape) => s + shape.d.length, 0),
     0
   );
   console.log(
-    `已生成 ${Object.keys(icons).length} 个 provider 图形 -> Swift + app.js (路径数据 ${total} bytes)`
+    `已生成 ${Object.keys(icons).length} 个 provider 图形 -> Swift + app.js + provider-brand.js (路径数据 ${total} bytes)`
   );
   return 0;
 }

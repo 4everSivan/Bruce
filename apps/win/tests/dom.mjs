@@ -148,7 +148,7 @@ export async function boot({ html = "index.html", panel = fixture, settings = de
     if (command === "get_credential_fields") return accounts.length ? ["kimiQuotaAccounts"] : [];
     if (command === "get_credential_accounts") return accounts;
     if (command === "get_model_prices") return { "fixture-model": { inputPricePerMillion: 1, outputPricePerMillion: 2, currency: "USD" } };
-    if (command === "get_runtime_info") return { dataRoot: "isolated-data", cacheRoot: "isolated-cache", snapshotPath: "isolated-snapshot", status: { phase: "stale", lastSuccessAt: "2026-10-08T08:00:00Z", error: "COLLECTION_PARTIAL", diagnosticCodes: ["PROVIDER_RATE_LIMIT"] } };
+    if (command === "get_runtime_info") return { version: "0.11.5", dataRoot: "isolated-data", cacheRoot: "isolated-cache", snapshotPath: "isolated-snapshot", status: { phase: "stale", lastSuccessAt: "2026-10-08T08:00:00Z", error: "COLLECTION_PARTIAL", diagnosticCodes: ["PROVIDER_RATE_LIMIT"] } };
     return null;
   };
   window.__TAURI__ = { core: { invoke }, event: { listen: async (name, callback) => {

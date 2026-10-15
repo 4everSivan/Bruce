@@ -33,7 +33,8 @@
         "C027",
         "C028",
         "C029",
-        "C030"
+        "C030",
+        "C031"
       ]
     },
     "SubscriptionQuota": {
@@ -329,6 +330,15 @@
       "topic": "WindowsCompat",
       "version": "0.12.0+",
       "file": "docs/devel/change/C030.json"
+    },
+    "C031": {
+      "title": "Windows 设置中心 P3 对标（一）：订阅额度行式化（品牌徽章/凭证形态/套餐标签/状态尾件/行内启用开关）、授权页 mac 语义、通用页补缺、维护页清理与脱敏诊断预览",
+      "type": "Enhancement",
+      "status": "in_progress",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C031.json"
     }
   }
 }

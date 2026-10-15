@@ -1,0 +1,118 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C031",
+  "title": "Windows 设置中心 P3 对标（一）：订阅额度行式化（品牌徽章/凭证形态/套餐标签/状态尾件/行内启用开关）、授权页 mac 语义、通用页补缺、维护页清理与脱敏诊断预览",
+  "type": "Enhancement",
+  "status": "in_progress",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送; 设置窗口为独立 WebView 页面, 不涉及视图模型契约",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src (settings.js + styles.css + settings.html) / apps/win/src-tauri (lib.rs + runtime_core.rs) / scripts/gen-provider-glyphs.mjs",
+    "component": "设置窗口六个分类面板 + 后端 IPC 命令 + 品牌图形生成产物",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "2026-10-15 双端对标审计的 P3 批次（用户以「确认收口，继续处理剩余的问题」授权继续）。设置中心是双端差异最大的一处：订阅额度页在 mac 是「品牌徽章 + 显示名 + 凭证形态副标题 + 套餐标签 + 状态尾件 + 行内启用开关 + 拖拽排序」的行式列表，Windows 只有「复选框 + 名称 + 上下移」；授权页 mac 是单一模块授权 + 确认/撤销两个即时生效按钮，Windows 是「对外查询」勾选框（语义与文案都不同）；通用页缺版本号与热键清除，且刷新间隔开放 1–1440 任意值（mac 只允许 5/15/30/60）；维护页只有只读运行环境块，缺 mac 的「清理用量缓存」与脱敏诊断预览。此外 C024 已把套餐名从看板下沉到设置页，Windows 侧当时并未落地，导致该信息双端皆无。本卡把上述可落地部分一次对齐；导出类（账单 CSV / 诊断包）依赖系统文件保存对话框（`tauri-plugin-dialog` 与 capability），属新增依赖，明确留给后续卡评估，不在本卡静默降级。",
+  "precheck": {
+    "description": "确认现状: 订阅行无徽章/副标题/套餐标签/状态尾件, 授权页为「允许向已启用的订阅服务查询额度」勾选框, 通用页无版本号与热键清除, 维护页无清理与诊断预览",
+    "command": "grep -n 'provider-check-label\\|setting-consent\\|setting-version\\|clear_snapshot_cache\\|diagnostics-preview' apps/win/src/settings.js apps/win/src-tauri/src/lib.rs",
+    "expected": "修复前: settings.js 使用 provider-check-label 复选框列表与 setting-consent 勾选框; lib.rs 无 clear_snapshot_cache; provider-brand.js 不存在",
+    "is_completed": true,
+    "evidence": "2026-10-15 实测 (真实内核渲染 + DOM harness): 订阅额度页为 9→10 行「复选框 + 显示名 + 上移/下移」(无徽章/副标题/套餐/状态), 授权页仅一行 `允许向已启用的订阅服务查询额度` 勾选框, 通用页行集为「刷新间隔（分钟）数字输入 / 配额预警通知 / 外观主题 / 全局热键」无版本行, 维护页仅 `<pre id=runtime-info>` 只读块; `grep -rn clear_snapshot apps/win/src-tauri/src` 无命中; `ls apps/win/src/provider-brand.js` 不存在。"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护已在 main 实施"
+    ],
+    "after": [
+      "node scripts/gen-provider-glyphs.mjs --check",
+      "node --test apps/win/tests/frontend.test.mjs",
+      "node scripts/check-win-frontend.mjs",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "scripts/gen-provider-glyphs.mjs + apps/win/src/provider-brand.js (品牌图形共享产物)",
+      "before": "品牌图形只写入两个目标: Swift 数据文件与 app.js 内联块; 设置窗口无法复用",
+      "after": "新增第三个生成目标 apps/win/src/provider-brand.js (window.BRUCE_PROVIDER_GLYPHS), 与另两个目标同源生成并由 --check 一起锁定; settings.html 在 settings.js 之前加载它",
+      "impact": "设置窗口订阅行能显示与看板完全一致的品牌图形; 生成产物漂移仍被 verify-local 的 --check 拦截"
+    },
+    {
+      "scope": "apps/win/src/settings.js + styles.css (订阅额度行式化)",
+      "before": "行 = 复选框 + 显示名 + 上移/下移; 启用状态与顺序混在一张「启用服务与顺序」卡里",
+      "after": "行 = 品牌徽章(26px 生成图形) + 显示名 + 凭证形态副标题(Web 令牌/API Key/OAuth 设备码/CLI 登录态/Step Plan Token, 多账号追加 N 个账号) + 套餐标签(取自 artifact service.plan) + 状态尾件(未配置/已配置/需要重新授权, 三态带色) + 行内启用开关 + 上移/下移; 卡片标题改为「订阅服务」并写明启用语义",
+      "impact": "订阅额度页与 mac SettingsView.subscriptionProviderRow 逐项对齐; C024 的套餐名下沉在 Windows 侧落地"
+    },
+    {
+      "scope": "apps/win/src/settings.js (授权与隐私页 mac 语义)",
+      "before": "单行 `允许向已启用的订阅服务查询额度` 勾选框 + 一段静态安全说明; consentVersion 由全局保存写入",
+      "after": "单一 `Agent 用量` 开关 + 四条动态说明(含刷新间隔与已启用 provider 名单) + `当前授权有效`/`尚未授权` 状态 + `确认授权`/`撤销全部授权` 两个即时生效按钮(写 consentVersion 与 usageEnabled 并广播 settings-updated); 全局保存改为沿用现值, 不再覆盖授权状态",
+      "impact": "采集与云端查询同属一次授权, 与 mac confirmConsent/revokeAllConsent 语义一致; 授权动作不再被遗忘在「保存设置」之后"
+    },
+    {
+      "scope": "apps/win/src/settings.js (通用页补缺)",
+      "before": "刷新间隔为 1–1440 数字输入; 无版本行; 热键只能录制/手改",
+      "after": "刷新间隔改为 mac 允许集合 5/15/30/60 选择器(历史遗留的非集合值追加为选项, 禁止静默改写); 新增版本行(读 get_runtime_info.version); 热键新增 `清除` 按钮",
+      "impact": "通用页行集与 mac 一致(配色模式/钥匙串/外部 CLI 来源/菜单栏指标属 mac 独占能力, 不移植)"
+    },
+    {
+      "scope": "apps/win/src-tauri (clear_snapshot_cache 命令 + runtime_core::clear_snapshot)",
+      "before": "无清理入口; 缺少按 mac「清理用量缓存」语义删除快照的能力",
+      "after": "新增 `runtime_core::clear_snapshot(root)`(仅删 snapshot.json, 缺失视为已清理即幂等)与 IPC 命令 `clear_snapshot_cache`(清理后请求一次刷新); get_runtime_info 增补 version 字段",
+      "impact": "维护页具备 mac 等价的清理能力; 清理不影响配置/凭证(用例断言)"
+    },
+    {
+      "scope": "apps/win/src/settings.js (维护页诊断预览)",
+      "before": "仅只读运行环境块(含完整本机路径)",
+      "after": "新增 `诊断预览`: 客户端拼装脱敏 JSON(版本/平台/模块阶段/最近成功/错误/诊断码 + 目录末段名), 并标明「不含凭证、账号标识、完整本机路径与业务数据」; 导出账单与诊断包因需要系统保存对话框明确不实现并在页面注明",
+      "impact": "诊断信息可人工核对且不泄露本机路径; 导出能力留待引入 dialog 插件后单独立卡"
+    },
+    {
+      "scope": "apps/win/src/settings.js (自查发现的 id 冲突缺陷修复)",
+      "before": "诊断预览按钮与预览容器同为 id=\"diagnostics-preview\", getElementById 命中按钮 → JSON 被写进按钮标签、预览框保持为空(真实内核渲染自检发现)",
+      "after": "预览容器改名 diagnostics-report 并加注释说明原因; 新增两页 DOM id 唯一性断言(逐元素遍历)防回归",
+      "impact": "预览落位正确; 同类「同名 id 写错位置」缺陷在 DOM 层即被拦截"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "§4 功能设计只有 4.1 系统集成能力映射 / 4.2 看板功能区 / 4.3 凭证与安全红线, 未覆盖设置中心的双端对标规则",
+      "after": "新增 §4.4 设置中心对标(C031): 明确六个分类同名同序与窗口尺寸, 以及订阅额度行/授权与隐私/通用/维护四个区域的逐条规则、品牌图形第三生成目标与加载顺序约束; 同时列出**尚未对齐**的两项(模型计费页、导出类能力)与后者的依赖前提(tauri-plugin-dialog + capability); 并记录 DOM id 唯一性纪律(同页重复 id 会让 getElementById 命中较早元素)"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "verify-local-20261015-c031 + render-harness-20261015",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "设置页形态与语义 (真实内核 + DOM)",
+        "true_if": "订阅行含品牌徽章(.pbadge svg 26px)/凭证形态副标题/套餐标签/状态尾件/行内开关; 授权页为单开关 + 确认/撤销即时生效 + 动态说明; 通用页含版本行与四档刷新间隔; 维护页清理与脱敏预览落位正确",
+        "false_if": "任一项缺失或落位错误(如预览内容写进按钮)",
+        "evidence": "2026-10-15 真实 Chromium 内核自检 (apps/win/tests/render-harness/settings-harness.html, 视口 1040×680) + DOM 用例双证据: 订阅额度页 10 行, 每行含 26×26 品牌徽章(实测 .provider-row .pbadge svg 命中 10 个, window.BRUCE_PROVIDER_GLYPHS 载入 10 家), 首行为「Kimi / Web 令牌 / Fixture Plan / 未配置」, 套餐标签实测为 [Fixture Plan(来自 artifact kimi_coding.plan), plus(来自 codex_4eversivan.plan)], 状态尾件实测 [未配置 ×8, 已配置(codex), 需要重新授权(cline)], 行内开关 10 个; 授权页实测 rows=[Agent 用量] + 四条动态说明(含「每 30 分钟自动刷新已授权模块」与 10 家 provider 名单) + 状态「当前授权有效」+ 按钮 [撤销全部授权, 确认授权]; 通用页实测 rows=[刷新间隔, 配额预警通知, 外观主题, 版本, 全局热键], 刷新间隔选项=[5 分钟, 15 分钟, 30 分钟, 60 分钟], 版本=0.11.5, 热键按钮=[录制热键, 清除]; 维护页实测 captions=[数据, 运行环境与诊断], 行=[清理用量缓存], 按钮=[清理, 刷新运行状态, 诊断预览]; 各页 pane.scrollWidth == clientWidth (无横向溢出)。",
+        "result": true
+      },
+      {
+        "item": "后端能力与安全边界",
+        "true_if": "clear_snapshot 仅删快照且幂等(配置/凭证不受影响); 诊断预览不含路径分隔符与凭证; 生成产物 --check 通过",
+        "false_if": "清理误删其他文件, 预览泄露路径, 或生成产物漂移",
+        "evidence": "安全与后端边界: 新增 runtime_coverage::clear_snapshot_removes_only_the_snapshot_file_and_is_idempotent 通过 —— 清理后 snapshot.json 不存在而 config/settings.json 与 credentials.json 保持存在, 二次调用不报错(幂等); 诊断预览实测报告为 {\"application\":{\"version\":\"0.11.5\",\"platform\":\"windows\"},\"module\":{...},\"diagnostics\":[...],\"snapshots\":{\"snapshotFile\":\"agent-usage.json\",\"cacheFolder\":\"collector-cache-v1\",\"dataFolder\":\"Bruce\"},\"redaction\":\"不含凭证、账号标识、完整本机路径与业务数据\"}, 正则 [\\\\/] 实测不命中(无任何路径分隔符); node scripts/gen-provider-glyphs.mjs --check 输出 'provider 品牌图形产物一致 (10 个 provider)'(三目标同源锁定)。自查发现并修复的 id 冲突: 修复前实测 #diagnostics-preview 命中 2 个元素(BUTTON 在前), JSON 被写进按钮标签且预览框为空; 修复后 duplicateIds=1, 按钮标签保持「诊断预览」, 报告落位 .runtime-info-box(753×361); 新增两页 DOM id 唯一性断言防回归。",
+        "result": true
+      },
+      {
+        "item": "全量门禁",
+        "true_if": "zsh scripts/verify-local.sh 退出码 0 (含新增断言与 Rust 用例), 真实内核渲染自检各页无溢出/无重复 id",
+        "false_if": "任一环节失败",
+        "evidence": "zsh scripts/verify-local.sh 退出码 0, 末行 'Bruce 本地验证全部通过' (日志 local/c031-verify.log): Rust 三 manifest 全绿 (collector 132 / viewmodel 46 / src-tauri 83 —— runtime_coverage 21 → 22), fmt --check 与 clippy -D warnings 零告警, provider 品牌图形产物 --check 通过, Windows 前端结构冒烟通过且交互回归 28/28 (新增 id 唯一性/订阅行式/维护清理与脱敏预览/授权即时生效 4 项断言, 并改写原「setting-consent」用例为 mac 语义), Swift 全部 Harness 与 Panel 视图模型双端对拍 3/3 通过。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": []
+}

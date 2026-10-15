@@ -31,7 +31,7 @@ async function invoke(command, args) {
   if (command === "get_settings") return structuredClone(settings);
   if (command === "save_settings_command") return null;
   if (command === "get_runtime_info") {
-    return { dataRoot: "C:\\Users\\sivan\\AppData\\Roaming\\Bruce", cacheRoot: "C:\\Users\\sivan\\AppData\\Local\\Bruce\\collector-cache-v1",
+    return { version: "0.11.5", dataRoot: "C:\\Users\\sivan\\AppData\\Roaming\\Bruce", cacheRoot: "C:\\Users\\sivan\\AppData\\Local\\Bruce\\collector-cache-v1",
       snapshotPath: "…\\snapshots\\agent-usage.json", status: { phase: "fresh", lastSuccessAt: "2026-07-28T12:00:00Z", error: null, diagnosticCodes: [] } };
   }
   if (command === "get_model_prices") {
@@ -57,6 +57,10 @@ link.href = "/apps/win/src/styles.css";
 document.head.append(link);
 document.body.className = doc.body.className;
 document.body.innerHTML = doc.body.innerHTML;
+// provider-brand.js 是生成产物 (品牌图形), 生产 HTML 中先于 settings.js 加载
+const brandScript = document.createElement("script");
+brandScript.src = "/apps/win/src/provider-brand.js";
+document.body.append(brandScript);
 const script = document.createElement("script");
 script.src = "/apps/win/src/settings.js";
 script.onload = () => { window.__ready = true; };

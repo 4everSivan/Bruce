@@ -34,8 +34,13 @@
     return value;
   };
   const byId = id => document.getElementById(id);
+  // mac 允许的自动采集周期 (OnboardingConfiguration.allowedRefreshIntervalMinutes)
+  const REFRESH_PRESETS = [5, 15, 30, 60];
   let settings = {}, allowlist = [], providerOrder = [], cardOrder = [];
+  let credentialAccounts = [];
   let currentRuntimeInfo = null;
+  // 套餐名: 由 artifact 提供 (mac C024 起套餐名只在设置页行内呈现), 经 get_dashboard 取。
+  let providerPlans = {};
   const SESSION_PROBES = [
     { id: "claude-code", name: "Claude Code", sub: "本机会话目录 (~/.claude/projects)" },
     { id: "codex", name: "ChatGPT / Codex", sub: "本机会话目录 (~/.codex/sessions)" },
@@ -82,6 +87,52 @@
     parent.append(value);
     return value;
   }
+
+  // MARK: - 订阅 provider 展示 (对齐 mac SettingsView.subscriptionProviderRow)
+
+  // 品牌色板 (与看板同源): 事实源 mac ProviderBrandPalette.hex, 双端逐家对齐 (C012/C026)。
+  const PROVIDER_COLORS = {
+    kimi: "#0a84ff", deepseek: "#4d6bfe", volcengine: "#ff6a00", zhipu: "#2D2D2D",
+    codex: "#10a37f", claude: "#d97757", grok: "#111111", opencodeGo: "#8a63d2",
+    stepfun: "#0c5efc", cline: "#18181b",
+  };
+  // 品牌图形来自 provider-brand.js 生成产物 (与 app.js 内联块同源, 由 --check 锁定)。
+  const PROVIDER_GLYPHS = window.BRUCE_PROVIDER_GLYPHS || {};
+  function providerBadge(id, name) {
+    const badge = node("span", null, { class: "pbadge", "aria-hidden": "true" });
+    badge.style.background = PROVIDER_COLORS[id] || "#8e8e93";
+    const glyph = PROVIDER_GLYPHS[id];
+    if (glyph) {
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("viewBox", glyph.vb);
+      svg.setAttribute("fill", "currentColor");
+      for (const [d, opacity] of glyph.shapes) {
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", d);
+        if (opacity !== 1) path.setAttribute("fill-opacity", String(opacity));
+        svg.append(path);
+      }
+      badge.append(svg);
+    } else {
+      badge.textContent = (name || "?").trim().charAt(0).toUpperCase();
+    }
+    return badge;
+  }
+  // 凭证形态副标题 (mac subscriptionRowSubtitle)
+  const CREDENTIAL_FORMS = {
+    kimi: "Web 令牌", codex: "OAuth 设备码", claude: "CLI 登录态", grok: "CLI 登录态",
+    opencodeGo: "OAuth 设备码", stepfun: "Step Plan Token",
+  };
+  function providerDescriptor(id) { return providers.find(value => value[0] === id) || [id, id, "", ""]; }
+  function accountsFor(id) { return credentialAccounts.filter(account => account.field === providerDescriptor(id)[2]); }
+  // 状态尾件 (mac subscriptionStatusTail): 未配置 / 已配置 / 需要重新授权
+  function providerState(id) {
+    const accounts = accountsFor(id);
+    if (!accounts.length) return { text: "未配置", cls: "off" };
+    if (accounts.some(account => account.authorizationState === "reauthRequired")) return { text: "需要重新授权", cls: "warn" };
+    return { text: "已配置", cls: "ok" };
+  }
+  function enabledProvidersOf() { return settings.enabledProviders || providers.map(value => value[0]); }
 
   function objectJSON(raw, label) {
     let value;
@@ -142,16 +193,25 @@
 
     const host = byId("setting-providers");
     if (host) {
-      const prior = new Map([...host.querySelectorAll("input")].map(value => [value.dataset.provider, value.checked]));
+      const prior = new Map([...host.querySelectorAll("input[type=checkbox]")].map(value => [value.dataset.provider, value.checked]));
       host.replaceChildren();
       providerOrder.forEach((id, index) => {
-        const descriptor = providers.find(value => value[0] === id) || [id, id];
-        const line = node("div", null, { class: "order-row" });
-        const check = input(`provider-${id}`, "checkbox", { "data-provider": id });
-        check.checked = prior.has(id) ? prior.get(id) : (settings.enabledProviders || providers.map(value => value[0])).includes(id);
-        const label = node("label", null, { class: "provider-check-label" });
-        label.append(check, node("span", descriptor[1]));
-        line.append(label);
+        const descriptor = providerDescriptor(id);
+        const state = providerState(id);
+        const line = node("div", null, { class: "provider-row" });
+        line.append(providerBadge(id, descriptor[1]));
+        const meta = node("div", null, { class: "provider-meta" });
+        meta.append(node("span", descriptor[1], { class: "provider-name" }));
+        const accounts = accountsFor(id);
+        const suffix = accounts.length > 1 ? ` · ${accounts.length} 个账号` : "";
+        meta.append(node("span", `${CREDENTIAL_FORMS[id] || "API Key"}${suffix}`, { class: "provider-sub" }));
+        line.append(meta);
+        if (providerPlans[id]) line.append(node("span", providerPlans[id], { class: "plan-chip" }));
+        line.append(node("span", state.text, { class: `auth-state ${state.cls}` }));
+        const toggle = input(`provider-${id}`, "checkbox", { "data-provider": id, class: "provider-toggle" });
+        toggle.checked = prior.has(id) ? prior.get(id) : enabledProvidersOf().includes(id);
+        toggle.setAttribute("aria-label", `${descriptor[1]} 启用开关`);
+        line.append(toggle);
         const btns = node("div", null, { class: "order-btns" });
         button(btns, `provider-up-${id}`, "上移", () => { move(providerOrder, index, -1); renderOrders(); });
         button(btns, `provider-down-${id}`, "下移", () => { move(providerOrder, index, 1); renderOrders(); });
@@ -166,11 +226,16 @@
   function buildGeneral(host) {
     host.replaceChildren();
     const c1 = card(host, "常规偏好");
-    row(c1, "刷新间隔（分钟）", input("setting-interval", "number", { min: "1", max: "1440" }), "周期采集间隔时间，范围 1–1440 分钟");
-    row(c1, "配额预警通知", input("setting-notifications", "checkbox"), "当订阅额度使用过半或告急时通过系统通知预警");
+    // 刷新间隔对齐 mac 允许集合 (5/15/30/60 分钟); 当前值不在集合内时由 loadSettings
+    // 追加为一项, 避免静默改写用户既有配置。
+    const interval = node("select", null, { id: "setting-interval", class: "fluent-select" });
+    for (const minutes of REFRESH_PRESETS) interval.append(node("option", `${minutes} 分钟`, { value: String(minutes) }));
+    row(c1, "刷新间隔", interval, "已授权模块的自动采集周期，变更后立即重新计时");
+    row(c1, "配额预警通知", input("setting-notifications", "checkbox"), "预警与额度提醒；关闭后 Bruce 不会投递通知");
     const theme = node("select", null, { id: "setting-theme", class: "fluent-select" });
     theme.append(node("option", "Fluent", { value: "fluent" }), node("option", "Nothing 点阵", { value: "nothing" }));
-    row(c1, "外观主题", theme, "选择深色经典 Fluent 风格或 Nothing 点阵风格");
+    row(c1, "外观主题", theme, "经典 Fluent 为深色材质面板；Nothing 为纯色平面风格（Windows 恒深色）");
+    row(c1, "版本", node("span", "—", { id: "setting-version", class: "row-value" }), "当前运行的 Bruce 版本");
 
     const hotkeyWrap = node("div", null, { class: "hotkey-field-wrap" });
     hotkeyWrap.append(input("setting-hotkey", "text", { placeholder: "Control+Shift+B", autocomplete: "off" }));
@@ -179,6 +244,11 @@
       field.focus?.();
       message(byId("settings-status"), "在热键输入框按下组合键；按 Esc 取消录制");
       field.dataset.recording = "true";
+    });
+    button(hotkeyWrap, "hotkey-clear", "清除", () => {
+      const field = byId("setting-hotkey");
+      if (field) { field.value = ""; field.dataset.recording = "false"; }
+      message(byId("settings-status"), "已清除热键，保存设置后生效");
     });
     row(c1, "全局热键", hotkeyWrap, "唤出或隐藏置顶看板；留空关闭全局快捷键");
 
@@ -326,9 +396,9 @@
 
   function buildSubscription(host) {
     host.replaceChildren();
-    const c1 = card(host, "启用服务与顺序");
-    c1.append(node("p", "勾选启用的订阅服务并调整看板上的呈现顺序。", { class: "hint" }));
-    c1.append(node("div", null, { id: "setting-providers", class: "order-list" }));
+    const c1 = card(host, "订阅服务");
+    c1.append(node("p", "配置并启用后, Agent 用量将在授权生效时查询对应云端额度; 上移/下移调整看板展示顺序。", { class: "hint" }));
+    c1.append(node("div", null, { id: "setting-providers", class: "provider-list" }));
 
     const c2 = card(host, "已配置账号");
     c2.append(node("p", "凭证保存在当前用户专属的本机目录。保存后仅展示账号元数据，不回显密钥。", { class: "hint" }));
@@ -403,16 +473,96 @@
   function buildConsent(host) {
     host.replaceChildren();
     const c1 = card(host, "授权与隐私");
-    row(c1, "允许向已启用的订阅服务查询额度", input("setting-consent", "checkbox"), "仅向已启用的第三方服务发送对应的已保存账号凭证。");
-    c1.append(node("p", "安全原则：所有 Token 统计、账本记账与模型估算均在本机离线计算；关闭授权后将停止一切对外订阅查询。", { class: "hint" }));
+    // mac 语义: 单一模块授权开关 + 「确认授权 / 撤销全部授权」两个动作按钮
+    // (采集与云端额度查询同属一次授权), 说明文案随刷新间隔与已启用 provider 动态变化。
+    row(c1, "Agent 用量", input("setting-usage-consent", "checkbox"), "允许按授权范围采集本机会话用量");
+    const lines = node("div", null, { class: "auth-lines" });
+    const list = node("ul", null, { class: "hint-list" });
+    list.append(
+      node("li", "扫描本机 Agent 会话目录和 CC Switch 数据库（只读）"),
+      node("li", `每 ${Math.round((settings.refreshIntervalSecs || 1800) / 60)} 分钟自动刷新已授权模块`),
+    );
+    const enabled = enabledProvidersOf().map(id => providerDescriptor(id)[1]);
+    list.append(node("li", enabled.length
+      ? `确认授权后查询已启用订阅 Provider 的云端额度：${enabled.join(" / ")}`
+      : "未配置启用的订阅额度 Provider，不会访问云端额度接口"));
+    list.append(node("li", "可随时在此撤销授权暂停采集"));
+    lines.append(node("p", "授权后应用将：", { class: "hint-title" }), list);
+    c1.append(lines);
+    const state = node("div", null, { class: "auth-state-line" });
+    state.append(node("span", settings.consentVersion === 1 ? "当前授权有效" : "尚未授权", { id: "consent-state", class: settings.consentVersion === 1 ? "auth-state ok" : "auth-state off" }));
+    c1.append(state);
+    const act = actions(c1);
+    button(act, "consent-revoke", "撤销全部授权", () => applyConsent(false), "btn danger");
+    button(act, "consent-confirm", "确认授权", () => applyConsent(true), "btn primary");
+    act.append(node("span", null, { id: "consent-status", role: "status", class: "status-msg" }));
   }
 
   function buildMaintenance(host) {
     host.replaceChildren();
-    const c1 = card(host, "运行环境与诊断");
-    c1.append(node("pre", null, { id: "runtime-info", class: "runtime-info-box" }));
-    const act = actions(c1);
+    const c1 = card(host, "数据");
+    const cacheWrap = node("div", null, { class: "actions-inline-flat" });
+    button(cacheWrap, "cache-clear", "清理", () => clearCache(), "btn danger");
+    row(c1, "清理用量缓存", cacheWrap, "仅删除本应用快照，不影响配置、凭证与账单统计");
+    c1.append(node("p", "导出账单与诊断包需要系统文件保存对话框, Windows 侧尚未接入 (见 C032/后续卡)。", { class: "hint" }));
+
+    const c2 = card(host, "运行环境与诊断");
+    c2.append(node("pre", null, { id: "runtime-info", class: "runtime-info-box" }));
+    const act = actions(c2);
     button(act, "runtime-reload", "刷新运行状态", loadRuntimeInfo);
+    button(act, "diagnostics-preview", "诊断预览", showDiagnosticsPreview);
+    // 预览容器 id 与按钮 id 必须不同 (C031 实测: 同名会让 getElementById 命中按钮,
+    // 把 JSON 写进按钮标签并让预览框保持空)
+    c2.append(node("pre", null, { id: "diagnostics-report", class: "runtime-info-box hidden" }));
+  }
+
+  // 清理缓存: 仅删快照 (与 mac「清理用量缓存」语义一致), 随后后端会请求一次刷新。
+  async function clearCache() {
+    const status = byId("settings-status");
+    try {
+      await invoke("clear_snapshot_cache");
+      message(status, "缓存已清理");
+      await loadRuntimeInfo();
+    } catch (error) {
+      message(status, `缓存清理失败：${error.message || error}`);
+    }
+  }
+
+  // 诊断预览: 与 mac 一致输出脱敏内容 (不含凭证、完整本机路径与业务数据), 供人工核对。
+  function showDiagnosticsPreview() {
+    const box = byId("diagnostics-report");
+    if (!box) return;
+    const info = currentRuntimeInfo || {};
+    const status = info.status && typeof info.status === "object" ? info.status : { phase: info.status };
+    const redact = value => String(value || "").split(/[\\/]/).filter(Boolean).slice(-1)[0] || "未知";
+    const report = {
+      application: { version: info.version || "未知", platform: "windows" },
+      module: { phase: status.phase || "未知", lastSuccessAt: status.lastSuccessAt || null, error: status.error || null },
+      diagnostics: (status.diagnosticCodes || []).slice(0, 20),
+      snapshots: { snapshotFile: redact(info.snapshotPath), cacheFolder: redact(info.cacheRoot), dataFolder: redact(info.dataRoot) },
+      redaction: "不含凭证、账号标识、完整本机路径与业务数据",
+    };
+    box.textContent = JSON.stringify(report, null, 2);
+    box.classList.remove("hidden");
+  }
+
+  // 授权动作即时生效 (对齐 mac confirmConsent/revokeAllConsent 的即时语义)
+  async function applyConsent(granted) {
+    const status = byId("consent-status");
+    try {
+      const current = { ...await invoke("get_settings") };
+      const updated = { ...current, consentVersion: granted ? 1 : 0, usageEnabled: granted ? true : false };
+      await invoke("save_settings_command", { settings: updated });
+      settings = updated;
+      const box = byId("setting-usage-consent");
+      if (box) box.checked = granted;
+      const state = byId("consent-state");
+      if (state) { state.textContent = granted ? "当前授权有效" : "尚未授权"; state.className = granted ? "auth-state ok" : "auth-state off"; }
+      window.dispatchEvent(new CustomEvent("settings-saved", { detail: updated }));
+      message(status, granted ? "已确认授权" : "已撤销全部授权");
+    } catch (error) {
+      message(status, `授权更新失败：${error.message || error}`);
+    }
   }
 
   // MARK: - 数据交互逻辑
@@ -422,6 +572,8 @@
       const info = await invoke("get_runtime_info");
       currentRuntimeInfo = info;
       const status = info.status && typeof info.status === "object" ? info.status : { phase: info.status || info.phase };
+      const version = byId("setting-version");
+      if (version) version.textContent = info.version || "—";
       const box = byId("runtime-info");
       if (box) {
         box.textContent = [
@@ -461,12 +613,25 @@
 
   async function loadSettings() {
     settings = await invoke("get_settings");
-    if (byId("setting-interval")) byId("setting-interval").value = Math.round(settings.refreshIntervalSecs / 60);
+    const intervalSelect = byId("setting-interval");
+    if (intervalSelect) {
+      const minutes = Math.round(settings.refreshIntervalSecs / 60);
+      // 当前值不在 mac 允许集合内 (历史配置) 时追加为一项, 避免静默改写为默认 30 分钟
+      if (minutes > 0 && !REFRESH_PRESETS.includes(minutes) && !intervalSelect.querySelector(`option[value="${minutes}"]`)) {
+        intervalSelect.append(node("option", `${minutes} 分钟`, { value: String(minutes) }));
+      }
+      intervalSelect.value = String(minutes);
+    }
     if (byId("setting-notifications")) byId("setting-notifications").checked = settings.notificationsEnabled;
     if (byId("setting-hotkey")) byId("setting-hotkey").value = settings.hotkey || "";
     if (byId("setting-theme")) byId("setting-theme").value = settings.theme;
-    if (byId("setting-consent")) byId("setting-consent").checked = settings.consentVersion === 1;
+    if (byId("setting-usage-consent")) byId("setting-usage-consent").checked = settings.consentVersion === 1;
     if (byId("setting-usage")) byId("setting-usage").checked = settings.usageEnabled !== false;
+    const consentState = byId("consent-state");
+    if (consentState) {
+      consentState.textContent = settings.consentVersion === 1 ? "当前授权有效" : "尚未授权";
+      consentState.className = settings.consentVersion === 1 ? "auth-state ok" : "auth-state off";
+    }
     if (byId("setting-pricing-overrides")) byId("setting-pricing-overrides").value = JSON.stringify(settings.pricingOverrides || {}, null, 2);
     cardOrder = orderedAll(settings.cardOrder || [], ["usage", "subscription", "hourly"]);
     providerOrder = orderedAll(settings.providerOrder || [], providers.map(value => value[0]));
@@ -487,7 +652,8 @@
         notificationsEnabled: byId("setting-notifications")?.checked ?? true,
         hotkey: byId("setting-hotkey")?.value.trim() || "",
         theme: byId("setting-theme")?.value || "fluent",
-        consentVersion: byId("setting-consent")?.checked ? 1 : 0,
+        // 授权版本由授权页的确认/撤销动作即时写入 (对齐 mac 即时语义), 此处沿用现值
+        consentVersion: settings.consentVersion ?? 0,
         usageEnabled: byId("setting-usage")?.checked ?? true,
         cardOrder: [...cardOrder],
         providerOrder: [...providerOrder],
@@ -571,6 +737,8 @@
       invoke("get_credential_accounts"),
     ]);
     allowlist = fields;
+    credentialAccounts = accounts || [];
+    renderOrders();
     const host = byId("credential-fields");
     if (host) {
       host.replaceChildren();
@@ -588,7 +756,7 @@
     const inventory = byId("credential-accounts");
     if (inventory) {
       inventory.replaceChildren();
-      for (const account of accounts || []) {
+      for (const account of credentialAccounts) {
         const line = node("div", null, { class: "account-row" });
         const label = providers.find(v => v[2] === account.field)?.[1] || account.field;
         line.append(node("span", `${label} · ${account.displayName || account.accountId}${account.authorizationState === "reauthRequired" ? " · 需要重新授权" : ""}`, { class: "account-label" }));
@@ -610,8 +778,29 @@
         line.append(btns);
         inventory.append(line);
       }
-      if (!accounts?.length) inventory.append(node("p", "尚未配置账号", { class: "hint" }));
+      if (!credentialAccounts.length) inventory.append(node("p", "尚未配置账号", { class: "hint" }));
     }
+  }
+
+  // 套餐名: 取自 artifact (mac C024 起只在设置页行内呈现套餐标签), 按 provider 归一化键归并。
+  function providerKeyOfSection(id) {
+    if (id === "kimi_coding") return "kimi";
+    for (const [key] of providers) {
+      if (id === key || id.startsWith(`${key}_`)) return key;
+    }
+    if (id.startsWith("opencode_go_")) return "opencodeGo";
+    return id;
+  }
+  async function loadPlans() {
+    try {
+      const panel = await invoke("get_dashboard");
+      const plans = {};
+      for (const section of panel?.subscription?.sections || []) {
+        if (section.plan) plans[providerKeyOfSection(section.id)] = section.plan;
+      }
+      providerPlans = plans;
+      renderOrders();
+    } catch { providerPlans = {}; }
   }
 
   async function saveCredentials() {
@@ -681,7 +870,7 @@
     if (mHost) buildMaintenance(mHost);
 
     try {
-      await Promise.all([loadSettings(), loadCredentials(), loadPrices(), loadRuntimeInfo()]);
+      await Promise.all([loadSettings(), loadCredentials(), loadPrices(), loadRuntimeInfo(), loadPlans()]);
       await listen("settings-updated", async () => {
         try { await loadSettings(); } catch { message(byId("settings-status"), "设置读取失败"); }
       });

@@ -310,13 +310,68 @@ test("independent settings support consent, model prices, provider gates and mai
   assert.match(app.node("runtime-info").textContent, /stale/);
   assert.match(app.node("runtime-info").textContent, /PROVIDER_RATE_LIMIT/);
   assert.doesNotMatch(app.node("runtime-info").textContent, /\[object Object\]/);
-  app.node("setting-consent").checked = true;
+  assert.equal(app.node("setting-version").textContent, "0.11.5", "通用页版本号来自 get_runtime_info");
+  // 授权页对齐 mac 语义: 确认授权 / 撤销全部授权即时生效 (无需全局保存)
+  await app.node("consent-confirm").click();
+  assert.equal(app.state.settings.consentVersion, 1);
+  assert.equal(app.state.settings.usageEnabled, true);
+  assert.equal(app.node("consent-state").textContent, "当前授权有效");
+  await app.node("consent-revoke").click();
+  assert.equal(app.state.settings.consentVersion, 0);
+  assert.equal(app.state.settings.usageEnabled, false);
+  assert.equal(app.node("consent-state").textContent, "尚未授权");
+  // 全局保存仍覆盖其余设置项
   app.node("setting-usage").checked = false;
   app.node("setting-pricing-overrides").value = '{"custom-model":{"inputPricePerMillion":3,"outputPricePerMillion":4}}';
   await app.node("settings-save").click();
-  assert.equal(app.state.settings.consentVersion, 1);
   assert.equal(app.state.settings.usageEnabled, false);
   assert.equal(app.state.settings.pricingOverrides["custom-model"].inputPricePerMillion, 3);
+});
+
+test("maintenance pane clears snapshot and previews redacted diagnostics", async () => {
+  const app = await boot({ html: "settings.html" });
+  await app.node("cache-clear").click();
+  assert.ok(app.calls.some((call) => call.command === "clear_snapshot_cache"), "清理按钮走 clear_snapshot_cache");
+  await app.node("diagnostics-preview").click();
+  const preview = app.node("diagnostics-report");
+  assert.equal(app.node("diagnostics-preview").textContent, "诊断预览", "预览按钮标签不得被结果覆盖");
+  assert.match(preview.textContent, /PROVIDER_RATE_LIMIT/);
+  assert.match(preview.textContent, /0\.11\.5/);
+  assert.match(preview.textContent, /不含凭证、账号标识、完整本机路径与业务数据/);
+  assert.doesNotMatch(preview.textContent, /[\\/]/, "脱敏: 预览不得含任何路径分隔符");
+  assert.equal(preview.classList.contains("hidden"), false, "预览展开");
+});
+
+test("subscription rows carry brand badge, credential form, plan tag, state and enable toggle", async () => {
+  const accounts = [
+    { field: "codexQuotaAccounts", accountId: "sivan", displayName: "sivan", authorizationState: "ok" },
+    { field: "codexQuotaAccounts", accountId: "alt", displayName: "alt", authorizationState: "ok" },
+    { field: "clineQuotaAccounts", accountId: "work", displayName: "work", authorizationState: "reauthRequired" },
+  ];
+  const app = await boot({ html: "settings.html", accounts });
+  const rows = [...app.node("setting-providers").querySelectorAll(".provider-row")];
+  assert.equal(rows.length, 10, "10 家 provider 行");
+  const byName = (name) => rows.find((row) => row.querySelector(".provider-name").textContent === name);
+  const kimi = byName("Kimi");
+  assert.ok(kimi.querySelector(".pbadge svg"), "品牌图形徽章");
+  assert.equal(kimi.querySelector(".provider-sub").textContent, "Web 令牌");
+  assert.equal(kimi.querySelector(".plan-chip").textContent, "Fixture Plan", "套餐标签来自 artifact");
+  assert.equal(kimi.querySelector(".auth-state").textContent, "未配置");
+  const codex = byName("Codex");
+  assert.equal(codex.querySelector(".provider-sub").textContent, "OAuth 设备码 · 2 个账号");
+  assert.equal(codex.querySelector(".auth-state").textContent, "已配置");
+  const cline = byName("Cline");
+  assert.equal(cline.querySelector(".auth-state").textContent, "需要重新授权");
+  assert.equal(cline.querySelector(".auth-state").classList.contains("warn"), true);
+  // 启用开关落在行内, 保存时按行收集
+  const toggles = [...app.node("setting-providers").querySelectorAll("input.provider-toggle")];
+  assert.equal(toggles.length, 10);
+  for (const toggle of toggles) toggle.checked = true;
+  toggles.find((node) => node.dataset.provider === "codex").checked = false;
+  await app.node("settings-save").click();
+  assert.deepEqual([...app.state.settings.enabledProviders].sort(),
+    ["claude", "cline", "deepseek", "grok", "kimi", "opencodeGo", "stepfun", "volcengine", "zhipu"],
+    "仅 codex 被取消启用");
 });
 
 test("credential accounts are keyed objects and save clears secret inputs", async () => {
@@ -360,6 +415,23 @@ test("dashboard dismisses via Escape key calling hide_dashboard", async () => {
   const start = app.calls.length;
   await app.window.dispatch("keydown", { key: "Escape" });
   assert.deepEqual(app.calls.slice(start).map(x => x.command), ["hide_dashboard"]);
+});
+
+test("both windows keep DOM ids unique", async () => {
+  // 重复 id 会让 getElementById 命中较早元素并把结果写错位置 (C031 实测:
+  // 诊断预览内容被写进同名按钮的标签)。逐页遍历断言 id 唯一。
+  for (const html of ["index.html", "settings.html"]) {
+    const app = await boot({ html });
+    const seen = new Map();
+    const walk = (element) => {
+      const id = element.attributes?.id;
+      if (id) seen.set(id, (seen.get(id) || 0) + 1);
+      for (const child of element.children) if (typeof child === "object") walk(child);
+    };
+    walk(app.document);
+    const duplicates = [...seen.entries()].filter(([, count]) => count > 1).map(([id]) => id);
+    assert.deepEqual(duplicates, [], `${html} 存在重复 id`);
+  }
 });
 
 test("styles.css guarantees adaptive height and pinned footer without flex truncation", () => {

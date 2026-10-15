@@ -155,6 +155,16 @@ impl Default for SnapshotState {
     }
 }
 
+/// 清理快照: 仅删除本应用的持久化文件 (与 mac「清理用量缓存」等价 —— 不动配置与
+/// 凭证); 文件不存在视为已清理, 幂等。下次刷新会重新采集并重建快照。
+pub fn clear_snapshot(root: &Path) -> Result<(), String> {
+    match fs::remove_file(root.join("snapshot.json")) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
 impl SnapshotState {
     pub fn artifact(&self) -> Option<&Value> {
         self.artifact.as_ref()

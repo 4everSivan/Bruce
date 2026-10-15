@@ -157,6 +157,7 @@ mod desktop {
         let root = paths::data_root();
         let panel = scheduler::cached_panel(&app)?;
         Ok(serde_json::json!({
+            "version": app.package_info().version.to_string(),
             "dataRoot": root,
             "cacheRoot": paths::collector_cache_root(),
             "snapshotPath": root.join("snapshot.json"),
@@ -164,6 +165,15 @@ mod desktop {
             "diagnostics": panel["diagnostics"],
             "usage": panel["usage"]
         }))
+    }
+
+    /// 清理用量缓存: 仅删除本应用快照 (与 mac「清理用量缓存」语义一致 —— 不动配置、
+    /// 凭证与账单统计); 随后请求一次刷新以重建快照。
+    #[tauri::command]
+    fn clear_snapshot_cache(app: tauri::AppHandle) -> Result<(), String> {
+        crate::runtime_core::clear_snapshot(&paths::data_root())?;
+        app.state::<SchedulerControl>().request_manual_refresh();
+        Ok(())
     }
 
     #[tauri::command]
@@ -425,6 +435,7 @@ mod desktop {
             .invoke_handler(tauri::generate_handler![
                 get_dashboard,
                 get_runtime_info,
+                clear_snapshot_cache,
                 get_model_prices,
                 get_credential_accounts,
                 remove_credential_account,

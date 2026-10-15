@@ -1,4 +1,4 @@
-use bruce_win_lib::runtime_core::{merge_snapshot, next_delay, RefreshOutcome};
+use bruce_win_lib::runtime_core::{clear_snapshot, merge_snapshot, next_delay, RefreshOutcome};
 use serde_json::json;
 
 #[test]
@@ -160,6 +160,26 @@ fn panel_json_provider_visibility_covers_cline_and_jev() {
     let filtered_sections = filtered["subscription"]["sections"].as_array().unwrap();
     assert_eq!(filtered_sections.len(), 1);
     assert_eq!(filtered_sections[0]["id"], "deepseek");
+}
+
+#[test]
+fn clear_snapshot_removes_only_the_snapshot_file_and_is_idempotent() {
+    // C031: 「清理用量缓存」等价 mac 语义 —— 只删本应用快照, 不动配置与凭证。
+    let root = std::env::temp_dir().join(format!("bruce-c031-clear-{}", std::process::id()));
+    std::fs::create_dir_all(root.join("config")).unwrap();
+    std::fs::write(root.join("snapshot.json"), b"{\"phase\":\"idle\"}").unwrap();
+    std::fs::write(root.join("config").join("settings.json"), b"{}").unwrap();
+    std::fs::write(root.join("credentials.json"), b"{}").unwrap();
+
+    clear_snapshot(&root).unwrap();
+    assert!(!root.join("snapshot.json").exists(), "快照已删除");
+    assert!(
+        root.join("config").join("settings.json").exists(),
+        "配置不受影响"
+    );
+    assert!(root.join("credentials.json").exists(), "凭证不受影响");
+    clear_snapshot(&root).unwrap(); // 幂等: 再次调用不报错
+    let _ = std::fs::remove_dir_all(&root);
 }
 
 #[test]
