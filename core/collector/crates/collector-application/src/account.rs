@@ -12,39 +12,20 @@ pub(crate) struct AccountPlan {
     pub credential: Option<Value>,
 }
 
-const ACCOUNT_FIELDS: &[(&str, &str)] = &[
-    ("opencode-go", "opencodeGoQuotaAccounts"),
-    ("kimi", "kimiQuotaAccounts"),
-    ("deepseek", "deepseekQuotaAccounts"),
-    ("zhipu", "zhipuQuotaAccounts"),
-    ("volcengine", "volcengineQuotaAccounts"),
-    ("claude", "claudeQuotaAccounts"),
-    ("grok", "grokQuotaAccounts"),
-    ("stepfun", "stepfunQuotaAccounts"),
-    ("jev", "jevQuotaAccounts"),
-    ("cline", "clineQuotaAccounts"),
-];
+// C049: 前缀 / 凭据字段一律从 collector-provider 的目录表派生,
+// 不再在本文件复写字符串 (原实现手工维护两份映射且无编译期约束)。
+fn catalog_entry(app: &str) -> Option<collector_provider::CatalogEntry> {
+    collector_provider::catalog_entries()
+        .into_iter()
+        .find(|entry| entry.app == app)
+}
 
 fn account_field(app: &str) -> Option<&'static str> {
-    ACCOUNT_FIELDS
-        .iter()
-        .find_map(|(candidate, field)| (*candidate == app).then_some(*field))
+    catalog_entry(app).map(|entry| entry.credential_field)
 }
 
 fn account_prefix(app: &str) -> Option<&'static str> {
-    match app {
-        "opencode-go" => Some("opencode_go_"),
-        "kimi" => Some("kimi_coding_"),
-        "deepseek" => Some("deepseek_"),
-        "zhipu" => Some("zhipu_"),
-        "volcengine" => Some("volcengine_"),
-        "claude" => Some("claude_"),
-        "grok" => Some("grok_"),
-        "stepfun" => Some("stepfun_"),
-        "jev" => Some("jev_"),
-        "cline" => Some("cline_"),
-        _ => None,
-    }
+    catalog_entry(app).map(|entry| entry.prefix)
 }
 
 fn display_name(value: &Value) -> Option<String> {
@@ -87,8 +68,9 @@ pub(crate) fn build_account_plan(request: &BridgeRequest) -> Result<Vec<AccountP
         accounts: BTreeMap::new(),
         enabled_official: enabled_official(&request.credentials),
     };
-    for (app, field) in ACCOUNT_FIELDS {
-        let Some(accounts) = provider_accounts(&request.credentials, field) else {
+    // 遍历目录表 (单一来源), 不再依赖本文件的第二份 app->字段映射。
+    for entry in collector_provider::catalog_entries() {
+        let Some(accounts) = provider_accounts(&request.credentials, entry.credential_field) else {
             continue;
         };
         let descriptors = accounts
@@ -98,7 +80,7 @@ pub(crate) fn build_account_plan(request: &BridgeRequest) -> Result<Vec<AccountP
                 display_name: display_name(payload),
             })
             .collect::<Vec<_>>();
-        catalog.accounts.insert((*app).to_owned(), descriptors);
+        catalog.accounts.insert(entry.app.to_owned(), descriptors);
     }
     let services = resolve_service_catalog(&catalog).map_err(|error| {
         Diagnostic::new(

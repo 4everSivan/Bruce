@@ -14,8 +14,18 @@
 
 ## 2. 技术债务排查 (Technical Debts)
 
+> 2026-10-16 全仓对抗性审查（`docs/devel/2026-10-16-全仓对抗性审查报告.md`）结论登记。
+> 其中「有真实失败路径」的项已当批立项修复（C042–C052），下表为**结构性债**（无即时故障路径，但持续产生修复成本）。
+
 | 债务编号 | 模块 | 债务风险说明 | 发现日期 | 建议处置方案 |
 |---|---|---|---|---|
 | TD-001 | 示例模块 | 描述架构坏味道或潜在性能隐患 | 2026-09-23 | 待后续重构建 C 卡 |
 | TD-002 | collector-domain PricingTable | DeepSeek V4 Pro 峰谷双价 (`$1.32/$3.96` vs `$0.66/$1.98`) 与 Qwen3.7 Plus >256K 分档 (`$0.40/$1.60` vs `$1.20/$4.80`) 未建模, 现按单档建卡 (T06 已按非峰值/单档口径登记于 design/01) | 2026-10-14 | 待后续按需扩展 ModelPricing 分时/分档结构并建 C 卡 |
-| TD-003 | apps/win 订阅额度看板 | Windows 侧设置/看板 Provider 清单落后于 macOS: design/05 记载 "9 Provider", 而 macOS 已含 Jev(界面隐藏) 与 Cline/ClinePass(T06) 共 11 家; 双端凭据白名单共享 (ALLOWED_CREDENTIAL_FIELDS), 但 Windows 无对应配置 UI 与卡片渲染对齐 | 2026-10-14 | 待后续按 C005-C009 Windows 对齐模式建卡补齐 (或明确 Windows 暂不纳管新增 Provider) |
+| TD-003 | apps/win 订阅额度看板 | Windows 侧设置/看板 Provider 清单落后于 macOS: design/05 记载 "9 Provider", 而 macOS 已含 Jev(界面隐藏) 与 Cline/ClinePass(T06) 共 11 家（2026-10-16 基线回写后统一为 10 家）; 双端凭据白名单共享 (ALLOWED_CREDENTIAL_FIELDS), 但 Windows 无对应配置 UI 与卡片渲染对齐 | 2026-10-14 | 待后续按 C005-C009 Windows 对齐模式建卡补齐 (或明确 Windows 暂不纳管新增 Provider) |
+| TD-004 | collector-local 缓存层 | **C047 遗留**：四套缓存适配器各自持有 `fingerprint_range` / `ends_with_newline` / `append_is_safe` 与自有签名结构（`FileSignature`/`JsonlFileSignature`/`SqliteSignature`），逐字重复仅 3 个函数但分属两套类型系统，机械合并在不变更类型契约前收益有限；余额是任何指纹/追加语义修复都需改两处（C040 已实际发生） | 2026-10-16 | 并入 C053 结构重构：抽 `cache_util` 统一签名与追加安全判定原语，再收敛写盘模板 |
+| TD-005 | collector-application 编排层 | **C048 遗留**：codex 专属语义（`freshness`/`failureKind`/`challenge`/`codexQuotaRetryOnly` 短路）与 claude/grok 凭据硬编码分支留在编排层（`execution.rs:250-337`、`lib.rs:106-113`）；新增 provider 需改 3 个 crate，抽象收益递减。改法已定（provider 层标准化输出 `ProviderOutcome`），但触及刚经 C037/C041 验证的 codex 重试与降级路径，需独立回归窗口 | 2026-10-16 | 独立开卡：先补 codex 重试/降级回归用例再重构，禁止与其它改动混批 |
+| TD-006 | 巨型文件内聚（C053 范围） | `sources.rs` 5,231 行 / `collector-provider/lib.rs` 4,155 行 / `SettingsView.swift` 1,972 行 / `SubscriptionService.swift` 1,630 行，均已违反单一职责（详见审查报告 §4.2）。纯结构重构无行为收益但显著降低 review 与缺陷定位成本 | 2026-10-16 | 独立开卡 **C053**（已建，状态 open）：按数据源/解析器/面板/服务四组机械切片，以既有全部测试全绿为验收 |
+| TD-007 | bridge 协议面 | 白名单保留 `subscriptionQuotaOnly`/`subscriptionProviders`/`localPricing` 三项：Rust 零消费者，但 Swift 仍在发送（`CollectorRunInput.swift:260-262`）且被 C038 预检脚本当作契约使用。属「被接受但静默忽略」的死协议面 | 2026-10-16 | 二选一：为其定义消费者（如按标记裁剪 artifact 字段），或从 bridge 白名单与 Swift 发送侧同步移除并在 design/01 记录 |
+| TD-008 | mac 凭据迁移逻辑 | `CodexCredentialStore.swift`（814 行，约 55% 为迁移/校验机器）与 Windows 侧 `credentials/lifecycle.rs`（555 行）各自实现「旧格式 → v2 账号库」迁移，无对拍 fixture 覆盖迁移路径 | 2026-10-16 | 补迁移路径的双端 fixture 对拍，或明确迁移只在 mac 侧发生并在 design/02 记录 |
+| TD-009 | apps/macos 菜单栏与面板口径 | 面板订阅段经「验证门禁 + mapper 过滤」，而菜单栏摘要用未门控 artifact（`AppModel.swift:599-611` → `MenuBarMetrics.swift:130-147` 仅过滤 status=error/failed），三处口径各异：菜单栏「最低剩余额度」可能来自面板已隐藏的 provider | 2026-10-16 | 统一为同一门禁输入后再计算菜单栏摘要；需先明确产品口径（菜单栏是否应跟随验证门禁） |
+| TD-010 | collector-credential 只读探测 | `read_claude_token` / `read_grok_token` / `is_expired` 生产零调用（mac 生产路径按 design/02 走 Swift 注入），仅测试消费者，长期靠无 `#[allow(dead_code)]` 的 pub 导出存活 | 2026-10-16 | 若确认无 CLI 直读计划则删除并下沉语义至测试 fixture；若保留则加文档说明其为兼容面（C051 已记录取舍） |

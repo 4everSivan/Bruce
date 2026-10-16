@@ -261,7 +261,8 @@ fn project_from_zcode(value: Option<String>, task_type: Option<String>) -> Optio
     project
 }
 
-const MAX_DIRECTORY_SCAN_DEPTH: usize = 16;
+/// 与 lib.rs 缓存 walker / jsonl_cache 树遍历共用同一深度护栏 (C045).
+const MAX_DIRECTORY_SCAN_DEPTH: usize = super::MAX_DIRECTORY_SCAN_DEPTH;
 
 fn scan_jsonl_tree<F>(
     root: &Path,
@@ -485,14 +486,27 @@ fn file_identity(metadata: &fs::Metadata) -> (u64, u64) {
     }
 }
 
+/// codex 文件收集的递归护栏 (C045): 深度上限 + 已访问目录 canonical 集合。
+/// 与 `walk_jsonl_tree` / `jsonl_cache::visit_tree` 使用同一套判定语义,
+/// 防止 symlink 环导致无限递归 (栈溢出/路径无限增长)。
+#[derive(Default)]
+struct CodexTreeGuard {
+    visited_dirs: BTreeSet<PathBuf>,
+}
+
 fn collect_codex_files(
     root: &Path,
     cutoff_ts: f64,
     cancellation: &CancellationToken,
     groups: &mut BTreeMap<String, Vec<CodexFileCandidate>>,
     stats: &mut ScanStats,
+    guard: &mut CodexTreeGuard,
+    depth: usize,
 ) -> Result<(), SourceScanError> {
     cancellation.check()?;
+    if depth > MAX_DIRECTORY_SCAN_DEPTH {
+        return Ok(());
+    }
     let entries = match fs::read_dir(root) {
         Ok(entries) => entries,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
@@ -514,7 +528,18 @@ fn collect_codex_files(
             continue;
         };
         if metadata.is_dir() {
-            collect_codex_files(&path, cutoff_ts, cancellation, groups, stats)?;
+            let canonical_dir = fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+            if guard.visited_dirs.insert(canonical_dir) {
+                collect_codex_files(
+                    &path,
+                    cutoff_ts,
+                    cancellation,
+                    groups,
+                    stats,
+                    guard,
+                    depth + 1,
+                )?;
+            }
             continue;
         }
         if !metadata.is_file() || path.extension().and_then(|value| value.to_str()) != Some("jsonl")
@@ -1324,12 +1349,15 @@ pub fn scan_codex_with_cancellation(
     let mut stats = ScanStats::default();
     let mut groups = BTreeMap::<String, Vec<CodexFileCandidate>>::new();
     for root in roots {
+        let mut guard = CodexTreeGuard::default();
         match collect_codex_files(
             root,
             window.cutoff_ts,
             cancellation,
             &mut groups,
             &mut stats,
+            &mut guard,
+            0,
         ) {
             Ok(()) => {}
             Err(SourceScanError::Runtime(error)) => return Err(error.into()),
@@ -1494,7 +1522,19 @@ fn write_codex_tree_cache(
                 format!("cache write stopped: {error:?}"),
             )
         })?;
-        let mut file = File::create(&temporary)?;
+        // C047: 与其余缓存写盘对齐 —— create_new + 显式 0600 (原实现用
+        // File::create 继承 umask, 是仓内唯一无权限约束的缓存写盘)。
+        let mut file = {
+            let mut options = std::fs::OpenOptions::new();
+            options.write(true).create_new(true);
+            let file = options.open(&temporary)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                file.set_permissions(fs::Permissions::from_mode(0o600))?;
+            }
+            file
+        };
         serde_json::to_writer(&mut file, entry)?;
         file.write_all(b"\n")?;
         drop(file);
@@ -1666,12 +1706,15 @@ pub fn scan_codex_cached_with_cancellation(
     let mut stats = ScanStats::default();
     let mut groups = BTreeMap::<String, Vec<CodexFileCandidate>>::new();
     for root in roots {
+        let mut guard = CodexTreeGuard::default();
         match collect_codex_files(
             root,
             window.cutoff_ts,
             cancellation,
             &mut groups,
             &mut stats,
+            &mut guard,
+            0,
         ) {
             Ok(()) => {}
             Err(SourceScanError::Runtime(error)) => return Err(error.into()),
@@ -1692,13 +1735,27 @@ pub fn scan_codex_cached_with_cancellation(
             // 不重读大头 rollout 文件体.
             stats.cache_hits = stats.cache_hits.saturating_add(1);
             let mut builder = UsageContributionBuilder::new(window.clone());
-            let _ = builder.merge_contribution(&cached.aggregate);
+            // C046: 树缓存解码异常不再静默 —— 计损坏并降级为「缓存未命中」
+            // 语义的提示 (走全量扫描会得到同样结果, 但异常必须可见)。
+            if !builder.merge_contribution(&cached.aggregate) {
+                stats.cache_corruptions = stats.cache_corruptions.saturating_add(1);
+            }
             let mut result = finish(window, builder, stats.clone(), has_selected_codex_files);
+            let mut notes: Vec<String> = Vec::new();
+            if stats.cache_corruptions > 0 {
+                notes.push(format!(
+                    "Codex 树缓存条目格式异常 {} 次, 已按可用部分聚合",
+                    stats.cache_corruptions
+                ));
+            }
             if stats.conflict_session_groups > 0 {
-                result.diagnostic = Some(format!(
+                notes.push(format!(
                     "Codex 会话副本内容冲突, 已保守选择单份文件 (冲突组: {})",
                     stats.conflict_session_groups
                 ));
+            }
+            if !notes.is_empty() {
+                result.diagnostic = Some(notes.join("; "));
             }
             return Ok(result);
         }
@@ -2916,7 +2973,8 @@ impl SqliteIncrementalAdapter for OpenCodeSqliteAdapter {
             cursor,
             found,
             rows_read: rows.len() as u64,
-            diagnostic: capped.then(|| "仅保留 opencode 最新 10000 条候选消息".to_owned()),
+            diagnostic: capped
+                .then(|| format!("仅保留 opencode 最新 {MAX_SOURCE_ROWS} 条候选消息")),
             append_safe: !capped && rows.iter().all(|row| row.rowid.is_some()),
             capped,
         })
@@ -3226,7 +3284,7 @@ impl SqliteIncrementalAdapter for ZCodeSqliteAdapter {
             cursor,
             found,
             rows_read: rows.len() as u64,
-            diagnostic: capped.then(|| "仅保留 zcode 最新 30000 条用量记录".to_owned()),
+            diagnostic: capped.then(|| format!("仅保留 zcode 最新 {MAX_SOURCE_ROWS} 条用量记录")),
             append_safe: !capped && rows.iter().all(|row| row.rowid.is_some()),
             capped,
         })
@@ -5226,6 +5284,117 @@ mod tests {
             "遍历带有循环软链接的目录不应陷入死循环或报错"
         );
         assert_eq!(count, 1, "文件只应被访问一次，软链接环应被正确跳过");
+        fs::remove_dir_all(&root).ok();
+    }
+
+    /// C045: jsonl_cache 适配器 (claude/codebuddy/kimi-work/grok/pi) 的树遍历
+    /// 必须与其它 walker 一样受深度上限约束, 且环结构下不重复计入文件。
+    ///
+    /// 说明: symlink 环在 macOS 上会被内核路径长度限制 (ENAMETOOLONG) 提前拦截,
+    /// 因此「环导致无限递归」并非可稳定观测的失败形态; 本用例锁定的是两个
+    /// 可证伪行为 —— (1) 超出深度上限的链不再展开 (与 walk_jsonl_tree 一致);
+    /// (2) 环结构下缓存路径与未缓存路径给出相同聚合。
+    #[test]
+    fn jsonl_cache_adapter_survives_symlink_cycle() {
+        let root = temp_root("cache-cycle");
+        let cache_root = temp_root("cache-cycle-store");
+        let sub = root.join("sub");
+        fs::create_dir_all(&sub).unwrap();
+        let line = json!({
+            "type": "assistant",
+            "timestamp": "2026-07-28T04:00:00Z",
+            "message": {
+                "id": "direct-a",
+                "model": "claude-sonnet",
+                "usage": {
+                    "input_tokens": 3,
+                    "output_tokens": 1,
+                    "cache_read_input_tokens": 4
+                }
+            }
+        })
+        .to_string();
+        fs::write(sub.join("one.jsonl"), format!("{line}\n")).unwrap();
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::symlink;
+            let _ = symlink(&sub, sub.join("cycle"));
+            let _ = symlink(&root, sub.join("cycle-root"));
+        }
+
+        // 超深链: 在深度上限之下放置文件, 断言其不被计入 (上限语义)
+        let mut deep = root.join("deep");
+        for level in 0..(super::MAX_DIRECTORY_SCAN_DEPTH + 4) {
+            deep = deep.join(format!("l{level}"));
+        }
+        fs::create_dir_all(&deep).unwrap();
+        fs::write(deep.join("unreachable.jsonl"), format!("{line}\n")).unwrap();
+
+        let scan =
+            super::scan_claude_cached(&root, &window(), &cache_root, &CancellationToken::new());
+        assert!(
+            scan.is_ok(),
+            "缓存适配器遍历带环/超深目录必须终止且不报错: {scan:?}"
+        );
+        let scan = scan.unwrap();
+        // 环被跳过后必须与未缓存路径给出一致的日聚合 (环内副本不得重复计入)
+        let unscaled = super::scan_claude(&root, &window());
+        assert_eq!(
+            scan.contribution.by_day, unscaled.contribution.by_day,
+            "缓存路径与未缓存路径在环结构下必须给出一致的日聚合"
+        );
+        let counted = scan
+            .contribution
+            .by_day
+            .values()
+            .map(|bucket| bucket.total)
+            .sum::<u64>();
+        assert_eq!(
+            counted,
+            3 + 4 + 1,
+            "仅 sub/one.jsonl 应被计入 (环内部副本不得重复计入)"
+        );
+        // 深度上限的可证伪断言: 超深链必须在触达其内容前停止展开。
+        // 撤掉深度护栏时该计数会变为 2 (深链中的文件被访问后才因时间窗被跳过),
+        // 故本断言能在红态失败 —— 这正是「护栏存在性」的可执行证明。
+        assert_eq!(
+            scan.stats.files_visited, 1,
+            "深度上限之外的文件不得被访问 (实际访问数 {}), 说明遍历未被护栏约束",
+            scan.stats.files_visited
+        );
+
+        fs::remove_dir_all(&root).ok();
+        fs::remove_dir_all(&cache_root).ok();
+    }
+
+    /// C045: codex 文件收集 (整树候选发现) 的 symlink 环防护。
+    #[test]
+    fn codex_collection_survives_symlink_cycle() {
+        let root = temp_root("codex-cycle");
+        let sub = root.join("sessions");
+        fs::create_dir_all(&sub).unwrap();
+        fs::write(
+            sub.join("rollout-2026-01-01T00-00-00.jsonl"),
+            "{\"type\":\"event\"}\n",
+        )
+        .unwrap();
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::symlink;
+            let _ = symlink(&sub, sub.join("cycle"));
+        }
+
+        let scan = super::scan_codex_with_cancellation(
+            std::slice::from_ref(&root),
+            &window(),
+            &CancellationToken::new(),
+        );
+        assert!(
+            scan.is_ok(),
+            "codex 收集遍历带环目录必须终止且不报错: {scan:?}"
+        );
         fs::remove_dir_all(&root).ok();
     }
 }

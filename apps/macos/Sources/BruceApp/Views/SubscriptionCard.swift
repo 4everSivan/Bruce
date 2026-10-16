@@ -81,6 +81,8 @@ struct SubscriptionCard: View {
     /// Provider 定向刷新动作; 目标由 section ID 经
     /// SubscriptionRefreshControlPolicy 解析, 与按钮禁用态共用同一解析.
     var onRefreshProvider: (SubscriptionProviderID) -> Void = { _ in }
+    /// 面板可见性: 隐藏时不得挂载逐帧动画载体 (C044, 见 DashboardPanelAnimationPolicy).
+    var panelVisible: Bool = true
 
     @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
@@ -137,7 +139,8 @@ struct SubscriptionCard: View {
                 ProviderSectionView(
                     section: section,
                     isFirst: index == 0,
-                    refreshControl: refreshControl(for: section)
+                    refreshControl: refreshControl(for: section),
+                    panelVisible: panelVisible
                 )
             }
 
@@ -206,6 +209,8 @@ private struct ProviderSectionView: View {
     let isFirst: Bool
     /// 非 nil 时头部行尾渲染定向刷新按钮.
     var refreshControl: ProviderRefreshControl? = nil
+    /// 面板可见性: 隐藏时刷新指示回退静态图标, 不挂 ProgressView (C044).
+    var panelVisible: Bool = true
     @State private var expanded = false
 
     /// 是否为纯余额型 Provider (无周期窗口, 且具备余额数据; 如 DeepSeek)
@@ -316,7 +321,8 @@ private struct ProviderSectionView: View {
                 Spacer(minLength: 8)
                 ProviderRefreshButton(
                     presentation: refreshControl.presentation,
-                    action: refreshControl.action
+                    action: refreshControl.action,
+                    panelVisible: panelVisible
                 )
             }
         }
@@ -329,14 +335,23 @@ private struct ProviderSectionView: View {
 /// 目标 Provider 刷新中替换为小型进度指示并禁用; 全量刷新中 / 未配置 /
 /// 未启用 / 模块不可运行时禁用. 固定内容框, 状态切换不引发布局抖动.
 /// 呈现快照由 SubscriptionRefreshControlPolicy 计算, 本组件不含业务判断.
+///
+/// C044: 面板隐藏时不挂载 `ProgressView` (系统不确定进度逐帧驱动,
+/// 定向刷新最长 90s, 隐藏面板会持续逐帧布局), 门控判定归 DashboardPanelAnimationPolicy.
 private struct ProviderRefreshButton: View {
     let presentation: SubscriptionRefreshControlPresentation
     let action: () -> Void
+    var panelVisible: Bool = true
+
+    private var showsProgress: Bool {
+        presentation.showsProgress
+            && DashboardPanelAnimationPolicy.allowsRefreshProgress(panelVisible: panelVisible)
+    }
 
     var body: some View {
         Button(action: action) {
             Group {
-                if presentation.showsProgress {
+                if showsProgress {
                     ProgressView()
                         .controlSize(.small)
                 } else {

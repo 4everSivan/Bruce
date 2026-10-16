@@ -1,0 +1,104 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C053",
+  "title": "按职责拆分巨型文件：sources.rs / collector-provider lib.rs / SettingsView.swift / SubscriptionService.swift（纯结构重构，行为不变）",
+  "type": "Refactor",
+  "status": "open",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用)",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector/crates/collector-local + collector-provider + apps/macos/Sources/BruceApp",
+    "component": "文件内聚度与单一职责",
+    "design_doc": "docs/devel/design/00-系统总体设计.md",
+    "design_topic": "SystemOverview"
+  },
+  "why": "2026-10-16 全仓对抗性审查 (RV-012) 确认四处单一职责违反: (1) collector-local/src/sources.rs 5,231 行 (生产 3,513 + 测试 1,719) 承载 11 个数据源 schema、两套缓存引擎调用协议、文件去重与递归防护策略, 已出现 3 处 #[allow(clippy::too_many_arguments)]; (2) collector-provider/src/lib.rs 4,155 行内含自写 seroval JS 子集解析器 (157 行)、手写 protobuf/gRPC-web 扫描器、HMAC-SHA256 签名实现与 11 个额度解析器; (3) apps/macos/Sources/BruceApp/SettingsView.swift 1,972 行含 31 个 @State 横跨 6 个面板, 内联 CSV/诊断导出等带文件系统副作用的命令逻辑; (4) SubscriptionService.swift 1,630 行承担状态发布 + 凭据 CRUD + 网络验证编排 + OAuth 设备码登录状态机 + 本机探测五类职责, reverify 单方法 120 行 13 分支。本卡为结构性重构不改行为; 若判定暂缓须在卡内记录理由与替代方案。",
+  "precheck": {
+    "description": "预检: 确认四处文件规模与职责簇边界",
+    "command": "wc -l core/collector/crates/collector-local/src/sources.rs core/collector/crates/collector-provider/src/lib.rs apps/macos/Sources/BruceApp/SettingsView.swift apps/macos/Sources/BruceApp/SubscriptionService.swift",
+    "expected": "四处行数分别为 5231 / 4155 / 1972 / 1630 (与审查报告一致)",
+    "is_completed": true,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护已在 main 实施"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "collector-local: 数据源适配器切分",
+      "before": "sources.rs 单文件承载 11 个数据源",
+      "after": "按数据源切为 sources/ 子模块 (保持原有可见性与测试入口)",
+      "impact": "单文件可读性与 review 成本下降; 对外 API 不变"
+    },
+    {
+      "scope": "collector-provider: 解析器与协议工具切分",
+      "before": "lib.rs 内含 seroval / protobuf / HMAC / 11 个解析器",
+      "after": "抽 seroval.rs / protobuf.rs / signing.rs / quota_parsers/ 子模块",
+      "impact": "协议工具可独立测试; 解析器逐个演进"
+    },
+    {
+      "scope": "Swift: 视图与服务切分",
+      "before": "SettingsView 31 个 @State 横跨 6 面板; SubscriptionService 五类职责",
+      "after": "SettingsView 按面板切分; SubscriptionService 抽状态发布 / 凭据工作流 / Codex 登录控制器 / 配置存储",
+      "impact": "视图 diff 面收敛; 服务可独立测试"
+    },
+    {
+      "scope": "行为等价保障",
+      "before": "无重构等价性断言",
+      "after": "既有测试全部保持全绿 (Rust 132 + Swift 9 Harness + 双端对拍), 不改变任何输出",
+      "impact": "纯结构重构可被完整验证"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/00-系统总体设计.md",
+    "topic": "SystemOverview",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/00 约定分层与模块解耦, 未约定单文件规模上限与拆分触发条件",
+      "after": "补充: 单文件超过约 1,500 行 (或承载 3 个以上独立职责) 应按职责切分; 结构重构须保持对外 API 与可观测行为不变并以既有测试全绿为验收"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "c053-deferred-20261016",
+    "user_quote": "",
+    "signoff": "纯结构重构（四个巨型文件机械切片），无即时故障路径：本轮登记为结构性债 TD-006，状态保持 open，建议独立开批实施并以既有全部测试全绿为验收。",
+    "checks": [
+      {
+        "item": "自动化测试全绿 (行为等价)",
+        "true_if": "cargo test --workspace 132 项全绿 + Swift 全部 Harness 通过 + Panel 双端对拍通过 + verify-local 退出码 0",
+        "false_if": "任一测试失败或输出发生变化",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "结构目标达成",
+        "true_if": "拆分后无单文件超过约 1,500 行; 模块依赖方向不变; 无新增 #[allow(clippy::too_many_arguments)]",
+        "false_if": "仍存在 >1,500 行的混合职责文件或引入新的跨层依赖",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [
+    {
+      "date": "2026-10-16",
+      "reason": "纯结构重构（四个巨型文件机械切片），无即时故障路径：本轮登记为结构性债 TD-006，状态保持 open，建议独立开批实施并以既有全部测试全绿为验收。",
+      "by": "AI (审查批次裁定)"
+    }
+  ],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  }
+}

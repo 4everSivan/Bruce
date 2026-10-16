@@ -5,7 +5,8 @@
 
 use super::sources::{SourceScan, SourceScanError};
 use super::{
-    read_bounded_line, trim_line_end, CompactContribution, ScanStats, MAX_JSONL_RECORD_BYTES,
+    read_bounded_line, trim_line_end, CompactContribution, ScanStats, MAX_DIRECTORY_SCAN_DEPTH,
+    MAX_JSONL_RECORD_BYTES,
 };
 use collector_domain::{CollectionWindow, UsageContribution};
 use collector_runtime::CancellationToken;
@@ -193,8 +194,9 @@ pub(crate) fn scan_cached_jsonl_tree<A: JsonlCacheAdapter>(
         stats: ScanStats::default(),
         seen: std::collections::BTreeSet::new(),
         payloads: Vec::new(),
+        visited_dirs: std::collections::BTreeSet::new(),
     };
-    visit_tree(root, &mut state)?;
+    visit_tree(root, &mut state, 0)?;
     cancellation.check()?;
     reconcile_deleted_cache(root, &mut state)?;
     cancellation.check()?;
@@ -222,13 +224,24 @@ struct TreeState<'a, A> {
     stats: ScanStats,
     seen: std::collections::BTreeSet<String>,
     payloads: Vec<CachedFilePayload>,
+    /// C045: 已访问目录 canonical 路径集合, 与 `walk_jsonl_tree` 同款环防护。
+    visited_dirs: std::collections::BTreeSet<PathBuf>,
 }
 
+/// 递归遍历会话目录树。
+///
+/// C045: 深度上限与已访问集合是硬性护栏 —— 会话目录可能包含 symlink 环
+/// (如 a -> b -> a), 无防护时递归不会终止 (栈溢出/路径无限增长)。
+/// 与 `sources.rs::walk_jsonl_tree` 使用同一套判定语义 (深度上限 + canonical 去重)。
 fn visit_tree<A: JsonlCacheAdapter>(
     root: &Path,
     state: &mut TreeState<'_, A>,
+    depth: usize,
 ) -> Result<(), SourceScanError> {
     state.cancellation.check()?;
+    if depth > MAX_DIRECTORY_SCAN_DEPTH {
+        return Ok(());
+    }
     let entries = match fs::read_dir(root) {
         Ok(entries) => entries,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
@@ -250,7 +263,10 @@ fn visit_tree<A: JsonlCacheAdapter>(
             continue;
         };
         if metadata.is_dir() {
-            visit_tree(&path, state)?;
+            let canonical = fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+            if state.visited_dirs.insert(canonical) {
+                visit_tree(&path, state, depth + 1)?;
+            }
             continue;
         }
         if !metadata.is_file() || path.extension().and_then(|value| value.to_str()) != Some("jsonl")

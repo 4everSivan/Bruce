@@ -341,7 +341,10 @@ where
     Ok(stats)
 }
 
-const MAX_DIRECTORY_SCAN_DEPTH: usize = 16;
+/// 目录递归深度上限: 全部会话目录遍历 (本文件的缓存 walker、sources.rs 的
+/// 未缓存 walker 与 codex 收集、jsonl_cache 的树遍历) 共用同一常量与
+/// 「深度上限 + canonical 已访问集合」双重护栏 (C045)。
+pub(crate) const MAX_DIRECTORY_SCAN_DEPTH: usize = 16;
 
 struct VisitContext<'a, F> {
     config: &'a CacheConfig,

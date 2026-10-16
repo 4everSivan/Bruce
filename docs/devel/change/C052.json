@@ -1,0 +1,102 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C052",
+  "title": "设计基线回写：provider 计数口径统一（8/11→10 家）、定价表 26→43 款、design/00 补 Windows 章节、schemas 契约表述改述、技术债池复活",
+  "type": "BugFix",
+  "status": "verified",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用)",
+  "is_hotfix": false,
+  "target": {
+    "module": "docs/devel/design (00/01/02/04/README) + docs/devel/todo/future.md",
+    "component": "设计基线与实现的失真修复",
+    "design_doc": "docs/devel/design/00-系统总体设计.md",
+    "design_topic": "SystemOverview"
+  },
+  "why": "2026-10-16 全仓对抗性审查 (RV-011) 量化了基线失真: (1) provider 计数四份文档不一致 —— design/00:58/97、design/README:20、design/04:29/44 写「8 大 Provider」, design/02:22 写「11 大」, 实际实现为 10 家 (opencode-go/kimi/deepseek/zhipu/volcengine/claude/grok/stepfun/jev/cline, Jev 在 UI 已屏蔽); (2) 定价表规模 5 处写「26 款」(design/00:23/59/96、design/01:25、design/04:24、design/README:19), 实测 pricing.rs 的 add(...) 去重后为 43 款, 17 款新增从未回写; (3) design/00 未提 apps/win (9,311 行 Tauri 应用, 已占 C027-C036 共 11 张卡), 仅在 goals 写「天然支持向 Windows 扩展」; (4) design/00 把 core/collector/schemas/*.schema.json 描述为「IPC 通信契约规范」, 但全仓无任何代码/测试引用 (grep 零命中), Rust 侧实际只做 BRIDGE_SCHEMA_VERSION 整数比对与 bridge 内白名单。另: 设计文档「最后更新」全部停留 2026-09-23 与 C027-C041 演进脱节; todo/future.md 技术债表仅 1 条, 本次审查发现的未修项无一在册。",
+  "precheck": {
+    "description": "预检: 量化四处失真 (provider 计数/定价规模/平台章节/契约表述)",
+    "command": "grep -rn '8 大 Provider' docs/devel/design/ | wc -l; grep -rn '26 款' docs/devel/design/ | wc -l; grep -cE '^\\s+add\\(' core/collector/crates/collector-domain/src/pricing.rs; grep -rn 'schemas/' --include='*.rs' --include='*.swift' --include='*.sh' core/ apps/ scripts/ | wc -l",
+    "expected": "8 大 Provider 命中 5 处; 26 款命中 5 处; add() 计数 43; schemas 引用计数 0",
+    "is_completed": true,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护已在 main 实施"
+    ],
+    "after": [
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "provider 计数口径",
+      "before": "8 大/11 大混用, 与实现 10 家不符",
+      "after": "统一为「10 家已纳管 Provider (Jev 于 UI 屏蔽)」并在 design/02 矩阵表列全",
+      "impact": "文档口径与实际一致"
+    },
+    {
+      "scope": "定价表规模",
+      "before": "5 处写 26 款",
+      "after": "改为与 pricing.rs 实际条目一致的 43 款 (或「基准 26 + 扩展 17」分层口径), design/01 定价章与实现逐条对账",
+      "impact": "计费能力描述不再低估"
+    },
+    {
+      "scope": "design/00 平台章节",
+      "before": "未提 apps/win",
+      "after": "总览架构图与模块矩阵补 Windows (Tauri 2) 分支, 指向 design/05",
+      "impact": "总体设计覆盖双端现实"
+    },
+    {
+      "scope": "schemas 契约表述",
+      "before": "描述为「IPC 通信契约规范」但零引用",
+      "after": "改述为「协议字段参考 (强制力在 bridge 白名单 + schemaVersion 整数比对)」, 或让 CI 消费 schema 做校验 (二选一并在卡内记录取舍)",
+      "impact": "契约强制力描述与实际一致"
+    },
+    {
+      "scope": "技术债池复活",
+      "before": "future.md 技术债表仅 1 条真实项",
+      "after": "本轮审查的未修结构性债登记为 TD-003.. (含 C053 拆分范围、provider 迁移双端重复、菜单栏口径不一致等), 供发版前联合评审",
+      "impact": "发现不被遗忘"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/00-系统总体设计.md",
+    "topic": "SystemOverview",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/00-04 基线停留 2026-09-23, provider 计数与定价规模与实现脱节, 未含 Windows 平台章节",
+      "after": "回写 provider 计数 (10 家) / 定价规模 (43 款) / Windows 平台架构 / schemas 契约表述四处, 并刷新各文档「最后更新」"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "c052-doc-writeback-20261016 + verify-local-202610161509",
+    "user_quote": "所有缺陷全部都要立项修复",
+    "signoff": "2026-10-16 用户指示修复全部审查缺陷 (原话: 「所有缺陷全部都要立项修复」), AI 按卡执行并采集实测证据后代签；证据明细见各 check。待用户复核后转入 closed。批次全量验证: zsh scripts/verify-local.sh 退出码 0, 末行「Bruce 本地验证全部通过」 (日志 local/c042-c052-verify.log, 含 Rust 全量 / fixture 敏感扫描 / Swift 全部 Harness / Panel 双端对拍 3/3)。",
+    "checks": [
+      {
+        "item": "基线失真回写",
+        "true_if": "provider 计数与定价规模与实现一致；design/00 含 Windows 模块矩阵；schemas 表述改述；技术债池复活",
+        "false_if": "仍存在与实现不符的计数或缺失章节",
+        "evidence": "grep 核验: design/ 内 '8 大 Provider' 与 '26 款' 均归零; design/01 定价与实现 43 款一致 (add() 去重 43); design/00 模块矩阵新增 WindowsCompat 行并将 schemas 措辞改为「协议字段参考(非运行时强制)」; future.md 技术债 TD-004..TD-010 新增 7 条",
+        "result": true
+      },
+      {
+        "item": "门禁不受影响",
+        "true_if": "verify-local 退出码 0",
+        "false_if": "任一门禁失败",
+        "evidence": "见 C042-C052 批次 verify-local 日志",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  }
+}

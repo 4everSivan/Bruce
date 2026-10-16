@@ -1,0 +1,98 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C046",
+  "title": "静默吞错改为故障可见：合并失败/次要源 I/O 错误/缓存解码异常/账号索引重置一律产出诊断或报错",
+  "type": "BugFix",
+  "status": "verified",
+  "branch": "main",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector/crates/collector-application + collector-local/sources + apps/macos/BruceOnboardingCore",
+    "component": "失败可见性: 采集与账号存储的静默降级路径",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "2026-10-16 全仓对抗性审查 (RV-005) 定位四处静默吞错, 后果按严重度排序: (1) application/lib.rs:729 finalize_local_agent 内 let _ = accumulator.merge_delta(&source.contribution) —— 合并失败被吞, agent.status 仍为 ok, 用量静默丢失; 同文件 aggregation.rs:48-56 对同类失败会产出 LOCAL_CONTRIBUTION_INVALID 诊断, 两处口径自相矛盾; (2) application/lib.rs:614-618 次要源 I/O 错误 (SourceScanError::Io) 直接返回空 SourceScan 且无任何诊断, jsonl_cache.rs:181-187 根非目录等场景用户完全不可见; (3) sources.rs:1695 let _ = builder.merge_contribution(&cached.aggregate) Codex 树缓存解码异常静默, 不计数不诊断; (4) apps/macos ProviderAccountStore.swift:260-261 try? decode ?? ProviderAccountIndex() 索引解码失败静默重置为空, 随后 saveIndex 覆盖导致 Keychain 遗留记录成孤儿, :288 loadRecord 同样 try? 解码为 nil 使账号无声消失, :352-356 removeAllAccounts 吞错。",
+  "precheck": {
+    "description": "预检: 确认四处静默吞错位置在生产代码存在",
+    "command": "grep -n 'let _ = accumulator.merge_delta' core/collector/crates/collector-application/src/lib.rs; grep -n 'SourceScanError::Io(_) => Ok((SourceScan::empty' core/collector/crates/collector-application/src/lib.rs; grep -n 'let _ = builder.merge_contribution' core/collector/crates/collector-local/src/sources.rs; grep -n 'try? decode' apps/macos/Sources/BruceOnboardingCore/ProviderAccountStore.swift",
+    "expected": "四处均命中; 且 aggregation.rs 存在对照的诊断化实现",
+    "is_completed": true,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护已在 main 实施"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "collector-application: 合并失败可见",
+      "before": "let _ = accumulator.merge_delta(&source.contribution) 吞掉失败, agent 仍 ok",
+      "after": "合并失败 -> 产出 LOCAL_CONTRIBUTION_INVALID 诊断并把 agent 置为 partial (与 aggregation.rs 口径统一)",
+      "impact": "用量丢失不再静默; 与同仓既有诊断语义一致"
+    },
+    {
+      "scope": "collector-application: 次要源 I/O 可见",
+      "before": "SourceScanError::Io 直接产出空 SourceScan 且无诊断",
+      "after": "产出 LOCAL_SOURCE_IO_DEGRADED 信息级诊断 (note 说明), 区分「源不存在」与「读取失败」",
+      "impact": "I/O 降级可观测, 不误报为故障"
+    },
+    {
+      "scope": "collector-local: 树缓存解码异常可见",
+      "before": "let _ = builder.merge_contribution(&cached.aggregate) 静默",
+      "after": "失败计入 cache_corruptions 并附诊断",
+      "impact": "缓存损坏可统计可诊断"
+    },
+    {
+      "scope": "mac 账号索引: 解码失败不再静默重置",
+      "before": "try? decode ?? ProviderAccountIndex() / try? 解码 nil / try? deleteRecord",
+      "after": "索引解码失败抛出并附恢复建议; loadRecord 失败区分「不存在」与「损坏」; removeAllAccounts 失败向调用方传播",
+      "impact": "账号列表不再被空索引覆盖, 删除失败不再假成功"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/01 有 fail-visible 精神但未把「降级必须伴诊断」写成强制规则; design/02 未约定账号索引损坏语义",
+      "after": "新增规则: 采集链路任何降级 (合并失败/I/O 失败/缓存损坏) 必须产出诊断或标记 partial; 账号索引解码失败必须报错而非重置为空索引"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "c046-dual-20261016 + verify-local-202610161509",
+    "user_quote": "所有缺陷全部都要立项修复",
+    "signoff": "2026-10-16 用户指示修复全部审查缺陷 (原话: 「所有缺陷全部都要立项修复」), AI 按卡执行并采集实测证据后代签；证据明细见各 check。待用户复核后转入 closed。批次全量验证: zsh scripts/verify-local.sh 退出码 0, 末行「Bruce 本地验证全部通过」 (日志 local/c042-c052-verify.log, 含 Rust 全量 / fixture 敏感扫描 / Swift 全部 Harness / Panel 双端对拍 3/3)。",
+    "checks": [
+      {
+        "item": "Rust 侧故障可见",
+        "true_if": "合并失败降级 partial 且 note 说明；次要源 I/O 产出 LOCAL_SOURCE_IO_DEGRADED；树缓存异常计数并说明",
+        "false_if": "任一处仍静默",
+        "evidence": "新增 local_agent_merge_failure_is_visible_not_silent (构造窗口外日索引 contribution，断言 status=partial 且 note 含「合并失败」)；collect_secondary_source 增第三返回项诊断；collector-application 20 项全绿",
+        "result": true
+      },
+      {
+        "item": "Swift 侧索引/记录损坏不再静默重置",
+        "true_if": "loadIndex/loadRecord 解码失败抛 ProviderAccountStoreError；removeAllAccounts 失败上抛且不覆盖损坏索引",
+        "false_if": "仍返回空索引或吞错",
+        "evidence": "新增 providerAccountStoreCorruptedIndexFailsClosed / providerAccountStoreCorruptedRecordFailsClosed；SubscriptionCredentialsHarness 33→35 项全绿；用例断言损坏索引原文未被覆盖",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用)"
+}

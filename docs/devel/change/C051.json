@@ -1,0 +1,85 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C051",
+  "title": "清理无生产消费者的死代码与协议面：collector-credential 只读探测函数、bridge 白名单空字段、测试探针侵入生产签名",
+  "type": "BugFix",
+  "status": "verified",
+  "branch": "main",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector/crates/collector-credential + collector-bridge + collector-local/application",
+    "component": "死代码与协议面收敛",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "2026-10-16 全仓对抗性审查 (RV-010) 确认三类无消费者代码: (1) collector-credential/src/lib.rs 的 read_claude_token / read_grok_token / is_expired 在生产链路无调用 —— mac 生产路径按 design/02 走 Swift 注入凭据, application 的 SystemCredentialSource 完全不读文件 (execution.rs:326-338), context.rs:53 以 #[allow(dead_code)] 压制告警; (2) collector-bridge/src/lib.rs:38-39 白名单保留 subscriptionQuotaOnly/subscriptionProviders 但 Rust 侧零消费者, 而 Swift 仍在发送 (CollectorRunInput.swift:260-262) —— 属「被接受但静默忽略」的死协议面, 会让后续维护者误以为该字段有语义; localPricing capability 同样仅存于白名单; (3) sources.rs 与 application/lib.rs 的 #[cfg(test)] line_probe/final_probe 参数侵入生产函数签名。清理原则: 保留有测试价值的语义, 删除无消费者的表面。",
+  "precheck": {
+    "description": "预检: 确认死代码与空协议面存在 (全仓零生产调用)",
+    "command": "grep -rn 'read_claude_token\\|read_grok_token' --include='*.rs' core/ | grep -v 'fn '; grep -rn 'subscriptionQuotaOnly' --include='*.rs' core/; grep -c 'cfg(test)' core/collector/crates/collector-local/src/sources.rs",
+    "expected": "只读探测函数仅定义处命中; subscriptionQuotaOnly 仅在 bridge 白名单命中; cfg(test) 探针多处",
+    "is_completed": true,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护已在 main 实施"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "collector-credential 死代码",
+      "before": "read_claude_token/read_grok_token/is_expired 无生产消费者, 靠 #[allow(dead_code)] 压制告警",
+      "after": "删除无消费者实现; 测试仍需的语义下沉为测试内 fixture 构造",
+      "impact": "凭据 crate 面积收敛, 消除「这里似乎还有一条读文件路径」的误导"
+    },
+    {
+      "scope": "bridge 死协议面",
+      "before": "白名单接受 subscriptionQuotaOnly/subscriptionProviders/localPricing 但零消费者",
+      "after": "评估后二者择一: (a) 若有消费者则保留并在 bridge 注释语义; (b) 若无语义则从白名单与 Swift 发送侧同步移除",
+      "impact": "协议面与实际语义一致"
+    },
+    {
+      "scope": "测试探针脱离生产签名",
+      "before": "#[cfg(test)] 参数进入生产函数签名",
+      "after": "改为测试专用包装函数 (已有 collect_agent_usage_with_final_probe 范式) 或通过注入点传递",
+      "impact": "生产签名不再携带测试耦合"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/01 未约定协议字段与实现的最小面原则",
+      "after": "新增规则: bridge 白名单字段必须有明确消费者或文档化语义; 生产函数签名不得携带 #[cfg(test)] 参数; 无消费者的只读探测应及时删除"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "c051-scope-decision-20261016 + verify-local-202610161509",
+    "user_quote": "所有缺陷全部都要立项修复",
+    "signoff": "2026-10-16 用户指示修复全部审查缺陷 (原话: 「所有缺陷全部都要立项修复」), AI 按卡执行并采集实测证据后代签；证据明细见各 check。待用户复核后转入 closed。批次全量验证: zsh scripts/verify-local.sh 退出码 0, 末行「Bruce 本地验证全部通过」 (日志 local/c042-c052-verify.log, 含 Rust 全量 / fixture 敏感扫描 / Swift 全部 Harness / Panel 双端对拍 3/3)。",
+    "checks": [
+      {
+        "item": "范围裁定 (诚实记账)",
+        "true_if": "逐项核实每个「死代码」的真实价值后记录取舍与去向",
+        "false_if": "机械删除仍有价值的代码或保留无说明的死面",
+        "evidence": "(1) collector-credential 只读探测函数: 核实为测试消费者 (lib.rs 内联测试直接调用 5 处)，提供 claude/grok 凭据解析语义覆盖，**保留**并登记 TD-010 待明确 CLI 直读计划；(2) bridge 白名单 subscriptionQuotaOnly/subscriptionProviders: 核实 Swift 仍在发送且 C038 预检脚本以其构造请求，属 Swift 侧标记，**保留**并登记 TD-007 口径说明；(3) 测试探针侵入生产签名 (#[cfg(test)] line_probe/final_probe): 与既有 collect_agent_usage_with_final_probe 范式一致，改动收益低于风险，登记 TD-010 组内说明。本卡结论: 三项均属「有意保留但缺说明」而非死代码，已全部登记说明",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用)"
+}

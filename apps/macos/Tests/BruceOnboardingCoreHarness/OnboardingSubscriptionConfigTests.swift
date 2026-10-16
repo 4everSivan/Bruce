@@ -1067,4 +1067,116 @@ extension BruceOnboardingCoreHarness {
         try coreExpect(deletedValue == nil, "删除后读取应为 nil")
         try coreExpect(remainingValue == "deepseek-key", "其余账号未被影响")
     }
+
+    /// C042: 损坏的凭据文件不得被静默折叠为空 payload.
+    ///
+    /// 缺陷形态 (修复前): loadPayloadLocked 用 try? 把损坏转为空 Payload,
+    /// saveCredential 随即整体覆盖写 —— 其余全部凭据被抹除且无任何报错.
+    static func protectedFileCredentialStoreCorruptionIsNotSilentlyErased() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Bruce-file-cred-corrupt-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let fileURL = tempDir.appendingPathComponent("credentials.json")
+        let accessController = KeychainAccessController(
+            policy: KeychainAccessPolicy(
+                configuration: KeychainAccessConfiguration(bruceStoreConfigured: true)
+            )
+        )
+        let store = ProtectedFileCredentialStore(
+            fileURL: fileURL,
+            accessController: accessController
+        )
+
+        // 1. 先建立两个真实账号
+        try store.saveCredential("key-a", forAccount: "a:api-key")
+        try store.saveCredential("key-b", forAccount: "b:api-key")
+
+        // 2. 制造损坏 (非 JSON 字节; 不能用截断代替 —— pretty-printed 前若干字节
+        //    如 `{"credentials":{` 恰是合法 JSON 且字段全有默认值, 会被正常解码为空载荷)
+        try "{ this is not json".write(to: fileURL, atomically: true, encoding: .utf8)
+
+        // 3. 保存新凭据必须失败 (不得静默清空)
+        var saveThrew = false
+        do {
+            try store.saveCredential("key-c", forAccount: "c:api-key")
+        } catch let error as ProtectedFileCredentialStoreError {
+            saveThrew = true
+            if case .corrupted(let backupPath) = error {
+                try coreExpect(backupPath != nil, "损坏时必须保留现场副本路径")
+            } else {
+                try coreExpect(false, "损坏场景应报 corrupted, 实际: \(error)")
+            }
+        }
+        try coreExpect(saveThrew, "损坏文件上保存必须抛错而非静默覆盖")
+
+        // 4. 现场副本必须在位且保真 (含原始损坏字节), 可人工恢复
+        let corruptBackups = try FileManager.default.contentsOfDirectory(atPath: tempDir.path)
+            .filter { $0.contains("credentials.json.corrupt-") }
+        try coreExpect(corruptBackups.count == 1, "应保留 1 份损坏现场副本, 实际: \(corruptBackups)")
+        let preservedPath = tempDir.appendingPathComponent(corruptBackups[0])
+        let preservedBytes = try String(contentsOf: preservedPath, encoding: .utf8)
+        try coreExpect(
+            preservedBytes == "{ this is not json",
+            "现场副本必须是原始损坏字节 (不得被改写): \(preservedBytes)"
+        )
+
+        // 5. 损坏文件已被移出主路径 -> 此刻 store 视为全新;
+        //    关键安全性状: 原「未损坏时的真实凭据」未被空 payload 覆盖写抹除 ——
+        //    证据是主路径上只剩备份与现场副本, 没有任何被截断/清空后的 credentials.json
+        let mainPathState = FileManager.default.fileExists(atPath: fileURL.path)
+        try coreExpect(mainPathState == false, "损坏文件应已被移出主路径, 不得残留可被覆盖写的半文件")
+
+        // 6. 从全新状态恢复可用 (自愈路径)
+        try store.saveCredential("key-d", forAccount: "d:api-key")
+        let healed = try store.loadCredential(forAccount: "d:api-key")
+        try coreExpect(healed == "key-d", "损坏现场移出后应可正常写入读取")
+    }
+
+    /// C042: 写入加固 —— 目录 0700 / 文件 0600 / 备份可解码 / 无临时文件残留.
+    static func protectedFileCredentialStoreWriteHardening() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Bruce-file-cred-hard-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let nestedDir = tempDir.appendingPathComponent("nested/deeper")
+        let fileURL = nestedDir.appendingPathComponent("credentials.json")
+        let accessController = KeychainAccessController(
+            policy: KeychainAccessPolicy(
+                configuration: KeychainAccessConfiguration(bruceStoreConfigured: true)
+            )
+        )
+        let store = ProtectedFileCredentialStore(
+            fileURL: fileURL,
+            accessController: accessController
+        )
+
+        // 目录不存在时按 0700 创建
+        try store.saveCredential("v1", forAccount: "x:key")
+        let dirAttrs = try FileManager.default.attributesOfItem(atPath: nestedDir.path)
+        if let permissions = dirAttrs[.posixPermissions] as? NSNumber {
+            try coreExpect(
+                permissions.intValue == 0o700,
+                "凭据父目录权限必须为 0700, 实际: \(String(permissions.intValue, radix: 8))"
+            )
+        }
+
+        // 覆盖写后: 文件 0600 + 备份可解码 + 读取为最新值 + 无临时文件残留
+        try store.saveCredential("v2", forAccount: "x:key")
+        let fileAttrs = try FileManager.default.attributesOfItem(atPath: fileURL.path)
+        if let permissions = fileAttrs[.posixPermissions] as? NSNumber {
+            try coreExpect(permissions.intValue == 0o600, "凭据文件权限必须为 0600")
+        }
+        let backupURL = nestedDir.appendingPathComponent("credentials.json.bak")
+        let backupData = try Data(contentsOf: backupURL)
+        _ = try JSONSerialization.jsonObject(with: backupData)
+        let live = try store.loadCredential(forAccount: "x:key")
+        try coreExpect(live == "v2", "覆盖写后读取应为最新值")
+
+        let leftovers = try FileManager.default.contentsOfDirectory(atPath: nestedDir.path)
+            .filter { $0.hasSuffix(".tmp") }
+        try coreExpect(leftovers.isEmpty, "写入完成后不应残留临时文件: \(leftovers)")
+    }
 }

@@ -203,6 +203,44 @@ struct NativeLifecycleHarness {
             ),
             "a visible Nothing panel may mount filled-cell animation"
         )
+        // C044: 三处遗留门控 —— 定向刷新进度指示 / 小时卡生长 / 抑制看门狗
+        try expect(
+            !DashboardPanelAnimationPolicy.allowsRefreshProgress(panelVisible: false),
+            "a hidden panel must not mount the provider refresh ProgressView"
+        )
+        try expect(
+            DashboardPanelAnimationPolicy.allowsRefreshProgress(panelVisible: true),
+            "a visible panel may mount the provider refresh ProgressView"
+        )
+        try expect(
+            !DashboardPanelAnimationPolicy.allowsHourlyGrowth(
+                panelVisible: false,
+                reduceMotion: false
+            ),
+            "a hidden panel must not run hourly column growth animation"
+        )
+        try expect(
+            !DashboardPanelAnimationPolicy.allowsHourlyGrowth(
+                panelVisible: true,
+                reduceMotion: true
+            ),
+            "reduce-motion must keep hourly growth off even when visible"
+        )
+        try expect(
+            DashboardPanelAnimationPolicy.allowsHourlyGrowth(
+                panelVisible: true,
+                reduceMotion: false
+            ),
+            "a visible panel may run hourly column growth animation"
+        )
+        try expect(
+            !DashboardPanelAnimationPolicy.allowsSuppressorWatchdog(panelVisible: false),
+            "a hidden panel must not keep the 0.3s scrollbar suppressor watchdog"
+        )
+        try expect(
+            DashboardPanelAnimationPolicy.allowsSuppressorWatchdog(panelVisible: true),
+            "a visible panel may run the scrollbar suppressor watchdog"
+        )
     }
 
     private static func exitForcesRemainingTasksAfterGracePeriod() throws {

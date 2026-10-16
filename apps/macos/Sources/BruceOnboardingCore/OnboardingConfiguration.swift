@@ -585,9 +585,23 @@ public final class InMemoryCredentialStore: CredentialStore, @unchecked Sendable
 
 // MARK: - ProtectedFileCredentialStore
 
+/// 文件凭据存储的错误面.
+///
+/// `corrupted` 是关键语义: 文件存在但无法读取/解码时, 读与写都必须失败并保留现场,
+/// 严禁把损坏折叠为空 payload —— 空 payload 被写回会抹除其余全部凭据 (C042).
+public enum ProtectedFileCredentialStoreError: Error, Equatable {
+    /// 文件存在但无法读取或解码. `backupPath` 为损坏现场副本 (尽力而为, 可能为 nil).
+    case corrupted(backupPath: String?)
+    /// 写入流程失败 (临时文件/属性设置/替换), 失败原因摘要.
+    case writeFailed(String)
+}
+
 /// 本地受权限保护的文件凭据存储 (0600 POSIX 权限: -rw-------).
 /// 专为本地优先设计, 避免 macOS Keychain 因 Ad-hoc 签名哈希变动而频繁弹出密码授权框.
 /// 同时为后续 Windows (%LOCALAPPDATA%\Bruce\credentials.json) 和 Linux 跨平台提供统一的基础存储模型.
+///
+/// 写盘规格与 `AtomicJSONStore` 对齐: 创建即 0600 -> 写 -> fsync -> 重读校验 -> 备份 -> 原子替换 -> 复位 0600;
+/// 任一步失败即抛错, 不做静默降级 (C042).
 public final class ProtectedFileCredentialStore: IntentAwareCredentialStore, @unchecked Sendable {
     public static let defaultDirectoryName = "Bruce"
     public static let defaultFileName = "credentials.json"
@@ -637,7 +651,7 @@ public final class ProtectedFileCredentialStore: IntentAwareCredentialStore, @un
         lock.lock()
         defer { lock.unlock() }
 
-        var payload = loadPayloadLocked()
+        var payload = try loadPayloadLocked()
         payload.credentials[account] = value
         try writePayloadLocked(payload)
     }
@@ -654,19 +668,19 @@ public final class ProtectedFileCredentialStore: IntentAwareCredentialStore, @un
         lock.lock()
         defer { lock.unlock() }
 
-        var payload = loadPayloadLocked()
+        var payload = try loadPayloadLocked()
         if let existing = payload.credentials[account] {
             return existing
         }
 
         // 本地文件未命中时, 尝试从既有 Keychain fallback 读取并自动迁移至文件
-        if let fallbackKeychainStore {
-            if let result = try? fallbackKeychainStore.loadCredential(forAccount: account, intent: intent),
-               !result.isEmpty {
-                payload.credentials[account] = result
-                try? writePayloadLocked(payload)
-                return result
-            }
+        if let fallbackKeychainStore,
+           let result = try? fallbackKeychainStore.loadCredential(forAccount: account, intent: intent),
+           !result.isEmpty {
+            payload.credentials[account] = result
+            // 迁移写盘失败不得吞错: 错误上抛以便调用方感知持久化未生效
+            try writePayloadLocked(payload)
+            return result
         }
         return nil
     }
@@ -683,7 +697,7 @@ public final class ProtectedFileCredentialStore: IntentAwareCredentialStore, @un
         lock.lock()
         defer { lock.unlock() }
 
-        var payload = loadPayloadLocked()
+        var payload = try loadPayloadLocked()
         if payload.credentials.removeValue(forKey: account) != nil {
             try writePayloadLocked(payload)
         }
@@ -696,8 +710,7 @@ public final class ProtectedFileCredentialStore: IntentAwareCredentialStore, @un
     public func configureKeychainAccess() throws -> Int {
         lock.lock()
         defer { lock.unlock() }
-        let payload = loadPayloadLocked()
-        return payload.credentials.count
+        return try loadPayloadLocked().credentials.count
     }
 
     // MARK: - 内部私有方法
@@ -714,23 +727,54 @@ public final class ProtectedFileCredentialStore: IntentAwareCredentialStore, @un
         }
     }
 
-    private func loadPayloadLocked() -> Payload {
-        guard fileManager.fileExists(atPath: fileURL.path),
-              let data = try? Data(contentsOf: fileURL),
-              let payload = try? JSONDecoder().decode(Payload.self, from: data) else {
+    private static let posixPermissionsKey = FileAttributeKey.posixPermissions
+
+    /// 读取 payload.
+    ///
+    /// 三态语义: 文件不存在 -> 空 payload (正常首次使用);
+    /// 文件存在但读/解码失败 -> 保留损坏现场副本后抛 `.corrupted`, **不得**转空.
+    private func loadPayloadLocked() throws -> Payload {
+        guard fileManager.fileExists(atPath: fileURL.path) else {
             return Payload()
+        }
+        guard let data = try? Data(contentsOf: fileURL),
+              let payload = try? JSONDecoder().decode(Payload.self, from: data) else {
+            let backup = preserveCorruptedFile()
+            throw ProtectedFileCredentialStoreError.corrupted(backupPath: backup?.path)
         }
         return payload
     }
 
+    /// 损坏现场副本 (尽力而为): 保留原始字节便于人工恢复, 不阻断错误上抛.
+    private func preserveCorruptedFile() -> URL? {
+        let stamp = ISO8601DateFormatter().string(from: Date())
+            .replacingOccurrences(of: ":", with: "-")
+        let backupURL = fileURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("\(fileURL.lastPathComponent).corrupt-\(stamp)")
+        do {
+            if fileManager.fileExists(atPath: backupURL.path) {
+                try fileManager.removeItem(at: backupURL)
+            }
+            try fileManager.moveItem(at: fileURL, to: backupURL)
+            return backupURL
+        } catch {
+            return nil
+        }
+    }
+
+    /// 原子写盘: 创建即 0600 -> 写 -> fsync -> 重读校验 -> 备份 -> 替换 -> 复位 0600.
     private func writePayloadLocked(_ payload: Payload) throws {
         let parentDirectory = fileURL.deletingLastPathComponent()
+        // 目录存在也校正权限 (原实现仅在不存在时创建, 已存在则放任漂移)
         if !fileManager.fileExists(atPath: parentDirectory.path) {
             try fileManager.createDirectory(
                 at: parentDirectory,
                 withIntermediateDirectories: true,
-                attributes: [.posixPermissions: 0o700]
+                attributes: [Self.posixPermissionsKey: 0o700]
             )
+        } else {
+            try? fileManager.setAttributes([Self.posixPermissionsKey: 0o700], ofItemAtPath: parentDirectory.path)
         }
 
         let encoder = JSONEncoder()
@@ -738,15 +782,42 @@ public final class ProtectedFileCredentialStore: IntentAwareCredentialStore, @un
         let data = try encoder.encode(payload)
 
         let tempURL = parentDirectory.appendingPathComponent(".\(fileURL.lastPathComponent).\(UUID().uuidString).tmp")
-        try data.write(to: tempURL, options: .atomic)
-        try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: tempURL.path)
-
-        if fileManager.fileExists(atPath: fileURL.path) {
-            _ = try fileManager.replaceItemAt(fileURL, withItemAt: tempURL)
-        } else {
-            try fileManager.moveItem(at: tempURL, to: fileURL)
+        do {
+            // createFile 即带 0600, 不留 umask 窗口
+            guard fileManager.createFile(
+                atPath: tempURL.path,
+                contents: nil,
+                attributes: [Self.posixPermissionsKey: 0o600]
+            ) else {
+                throw ProtectedFileCredentialStoreError.writeFailed("无法创建临时文件")
+            }
+            let handle = try FileHandle(forWritingTo: tempURL)
+            try handle.write(contentsOf: data)
+            try handle.synchronize()
+            try handle.close()
+            // 重读校验: 确认落盘内容可解码, 防止半写文件成为新的「损坏」
+            let reread = try Data(contentsOf: tempURL)
+            _ = try JSONDecoder().decode(Payload.self, from: reread)
+            // 覆盖前备份既有文件, 失败即回滚
+            if fileManager.fileExists(atPath: fileURL.path) {
+                let backupURL = parentDirectory.appendingPathComponent("\(fileURL.lastPathComponent).bak")
+                if fileManager.fileExists(atPath: backupURL.path) {
+                    try? fileManager.removeItem(at: backupURL)
+                }
+                try fileManager.copyItem(at: fileURL, to: backupURL)
+                _ = try fileManager.replaceItemAt(fileURL, withItemAt: tempURL)
+            } else {
+                try fileManager.moveItem(at: tempURL, to: fileURL)
+            }
+            // 权限设置失败必须上抛 (原实现 try? 吞掉)
+            try fileManager.setAttributes([Self.posixPermissionsKey: 0o600], ofItemAtPath: fileURL.path)
+        } catch let error as ProtectedFileCredentialStoreError {
+            try? fileManager.removeItem(at: tempURL)
+            throw error
+        } catch {
+            try? fileManager.removeItem(at: tempURL)
+            throw ProtectedFileCredentialStoreError.writeFailed(String(describing: error))
         }
-        try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
     }
 }
 

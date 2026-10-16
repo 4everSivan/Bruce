@@ -1,0 +1,92 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C043",
+  "title": "消除采集进程生产 panic 路径：缓存 window 不匹配改回退全量重建、worker join 失败降级为诊断、collector 入口加 panic 兜底输出 error envelope",
+  "type": "BugFix",
+  "status": "verified",
+  "branch": "main",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector/crates/collector-local (sqlite_cache) + collector-application (worker join) + bin/Bruce-collector (入口兜底)",
+    "component": "采集进程崩溃语义: 数据相关 panic 改为降级, 进程级 panic 兜底为可解释 envelope",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "2026-10-16 全仓对抗性审查 (RV-002) 发现三处生产 panic 可达性: (1) sqlite_cache.rs:463 增量合并路径 make_entry 内 CompactContribution::from_domain(...).expect(\"usage contribution must match its collection window\") —— from_domain 在「某天索引不在当前 window.day_list」时返回 None (collector-local/src/lib.rs:514-526), 而这正是 C040 已认定「现实中会发生」的窗口身份错位条件 (C040 已在增量前置加 cache_identity_matches 门禁, 但把同一类不匹配留成了进程级 panic); (2) application/lib.rs:119-120 与 :392 的 join().expect, worker panic 升级为主线程 panic; (3) bin/Bruce-collector/src/main.rs 无 catch_unwind, panic 时 stdout 无任何 JSON envelope, Swift 侧仅见非零退出码 (CollectorRunner.swift:571), 用户得到笼统失败且无法区分是哪个数据源坏了。三条路径的后果等级均高于其收益: 崩溃无 envelope 属最差失败模式。",
+  "precheck": {
+    "description": "预检: 确认三处 panic 路径在生产代码可达, 且无 catch_unwind 兜底",
+    "command": "grep -n 'expect(\"usage contribution' core/collector/crates/collector-local/src/sqlite_cache.rs; grep -n 'join().expect' core/collector/crates/collector-application/src/lib.rs; grep -c 'catch_unwind' core/collector/bin/Bruce-collector/src/main.rs",
+    "expected": "expect 命中 1 处; join().expect 命中 3 处; catch_unwind 计数为 0",
+    "is_completed": true,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护已在 main 实施"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "collector-local: 缓存条目构造不再 panic",
+      "before": "make_entry 内 CompactContribution::from_domain(contribution, &config.window).expect(...) —— window 不匹配即进程 panic",
+      "after": "make_entry 返回 Option/Result: from_domain 为 None 时放弃写入该缓存条目并计入 cache_corruptions (语义: 多一次全量重建, 而非崩溃)",
+      "impact": "与 C040 已确立的「身份错位一律回退全量重建」语义完全一致, 消除残留的崩溃式失败模式"
+    },
+    {
+      "scope": "collector-application: worker 失败降级",
+      "before": "local/quota/aggregation worker 的 join().expect 直接 panic",
+      "after": "join 失败 (Err) 转为结构化 Diagnostic (LOCAL_SOURCE_WORKER_PANICKED / PROVIDER_WORKER_PANICKED), 该源/额度标记 partial, 其余源结果照常返回",
+      "impact": "单 worker 故障不再拖垮整轮采集; 故障对 UI 可见且可定位"
+    },
+    {
+      "scope": "bin: 入口兜底",
+      "before": "run_bytes 内的 panic 直穿 main, stdout 无输出, 退出码非零",
+      "after": "std::panic::catch_unwind 包裹采集调用, 兜底输出 status=error 的 BridgeResponse envelope (含诊断码 BRIDGE_INTERNAL_PANIC), 退出码 0 + envelope 可解释",
+      "impact": "即使出现未预期的 panic, UI 仍能显示「采集内部错误」而非空失败"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/01 未约定「生产路径不得以 panic 表达数据不匹配」与「入口须保证 envelope 输出」",
+      "after": "新增规则: 采集链路生产路径严禁 expect/unwrap 表达数据相关不匹配; 一切 worker 失败须降级为 Diagnostic; 采集入口须 panic 兜底以保证 stdout 恒有 envelope"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "c043-collector-workspace-20261016 + verify-local-202610161509",
+    "user_quote": "所有缺陷全部都要立项修复",
+    "signoff": "2026-10-16 用户指示修复全部审查缺陷 (原话: 「所有缺陷全部都要立项修复」), AI 按卡执行并采集实测证据后代签；证据明细见各 check。待用户复核后转入 closed。批次全量验证: zsh scripts/verify-local.sh 退出码 0, 末行「Bruce 本地验证全部通过」 (日志 local/c042-c052-verify.log, 含 Rust 全量 / fixture 敏感扫描 / Swift 全部 Harness / Panel 双端对拍 3/3)。",
+    "checks": [
+      {
+        "item": "生产 panic 消除",
+        "true_if": "缓存条目不匹配回退而非崩溃；worker 失败降级为诊断；入口 catch_unwind 兜底输出 envelope",
+        "false_if": "任一 expect 仍在生产路径，或无 envelope 兜底",
+        "evidence": "sqlite_cache.rs make_entry 返回 Option (None 时跳过写缓存并计 cache_corruptions)；application join() 改为 unwrap_or_else 降级为 COLLECTOR_WORKER_PANICKED 诊断；bin 改用 run_bytes_panic_safe (catch_unwind)；grep 确认生产路径 expect 归零",
+        "result": true
+      },
+      {
+        "item": "兜底可执行验证",
+        "true_if": "新增用例断言 panic 兜底产出 status=error + BRIDGE_INTERNAL_PANIC + runId 保留 + 可序列化/反序列化",
+        "false_if": "兜底缺 runId 或不可解析",
+        "evidence": "bridge 新增 panic_safe_wrapper_preserves_envelope_semantics 与 run_id_of_falls_back_on_invalid_input；collector workspace 138 项全绿 (基线 132，+6)",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用)"
+}

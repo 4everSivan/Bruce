@@ -1,0 +1,91 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C044",
+  "title": "补齐面板隐藏态可见性门控：订阅卡刷新 spinner 透传 panelVisible、Suppressor 看门狗随面板显隐停止、HourlyLineCard 生长动画纳入策略",
+  "type": "BugFix",
+  "status": "verified",
+  "branch": "main",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos/Sources/BruceApp (Views/MenuBarViews)",
+    "component": "面板常驻视图树的动画/定时器门控 (已知坑最后残留)",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "2026-10-16 全仓对抗性审查 (RV-003) 发现 DashboardPanelAnimationPolicy 只覆盖 hero 与 heatmap 两条路径, 实测仍有三处未门控: (1) Views/SubscriptionCard.swift:332-337 的 ProviderRefreshButton 在 presentation.showsProgress 时挂 ProgressView (不确定进度动画逐帧驱动), 组件无 panelVisible 入参, MenuBarViews.swift:367-379 调用侧也未传 —— 而定向刷新最长 90s, 其间面板若 orderOut, 该 spinner 在常驻视图树里持续动画 (正是已知坑「隐藏面板动画不暂停致 40% CPU」的形态); (2) MenuBarViews.swift:534 的 SuppressorView.watchdog 是 0.3s 重复 Timer, 只在 viewDidMoveToWindow(nil) 停止, 但面板关闭走 orderOut (MenuBarStatusItemController.swift:536) 不离窗, 故首次打开面板后该 Timer 终身 0.3s 一跳; (3) Views/HourlyLineCard.swift:238-240 的 .task(id:) -> growColumns() 含 Task.sleep + withAnimation, 按日期轴变化重跑且未过策略, 每次 artifact 刷新可能触发约 0.4s 动画批。对照: 同文件 UsageHeroCard 已正确传入 model.dashboardPanelVisible。",
+  "precheck": {
+    "description": "预检: 确认三处门控缺口在生产代码中存在 (调用侧未传 panelVisible / Timer 无显隐驱动 / 动画未过策略)",
+    "command": "grep -n 'ProviderRefreshButton' apps/macos/Sources/BruceApp/Views/SubscriptionCard.swift; grep -n 'panelVisible' apps/macos/Sources/BruceApp/Views/SubscriptionCard.swift; grep -n 'watchdog = Timer' apps/macos/Sources/BruceApp/MenuBarViews.swift; grep -n 'DashboardPanelAnimationPolicy' apps/macos/Sources/BruceApp/Views/HourlyLineCard.swift",
+    "expected": "SubscriptionCard 命中 ProviderRefreshButton 但 panelVisible 零命中; watchdog Timer 命中; HourlyLineCard 对策略零命中",
+    "is_completed": true,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护已在 main 实施"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "订阅卡刷新 spinner 门控",
+      "before": "SubscriptionCard 无 panelVisible 入参, ProviderRefreshButton 的 ProgressView 在面板隐藏时仍持续动画",
+      "after": "SubscriptionCard 新增 panelVisible 入参并由 MenuBarViews 传入 model.dashboardPanelVisible; ProviderRefreshButton 仅在 panelVisible && showsProgress 时挂载 ProgressView, 隐藏态回退为静态图标",
+      "impact": "定向刷新 (最长 90s) 期间关闭面板不再产生持续动画开销"
+    },
+    {
+      "scope": "Suppressor 看门狗显隐驱动",
+      "before": "watchdog 仅在视图离窗时停止; 面板 orderOut 不离窗 -> 首次打开后 0.3s 终身运行",
+      "after": "SuppressorView 增加 active 属性 (由面板可见性驱动), 面板隐藏时 invalidate Timer, 重新可见时恢复",
+      "impact": "消除隐藏面板 0.3s/跳的持续主线程唤醒源"
+    },
+    {
+      "scope": "小时卡生长动画策略化",
+      "before": ".task(id: dailyDays.map(\\.date)) 直接调用 growColumns(), 未受可见性策略约束",
+      "after": "growColumns 之前过 DashboardPanelAnimationPolicy (新增 allowsHourlyGrowth(panelVisible:reduceMotion:)); 隐藏态直接落定终值不播动画",
+      "impact": "隐藏期间 artifact 刷新不再触发生长动画批; 可见时行为不变"
+    },
+    {
+      "scope": "回归防护",
+      "before": "NativeLifecycleHarness 未覆盖订阅卡/看门狗/小时卡",
+      "after": "NativeLifecycleHarness 增加断言: 三处隐藏态均不挂载动画载体 (spinner/定时器/动画事务)",
+      "impact": "防止门控再次退化, 把已知坑固化为可执行断言"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/03 只约定「纯装饰动画按面板可见性门控」, 实现仅覆盖 hero/heatmap 两条路径",
+      "after": "新增规则: 面板视图树内一切持续动画与周期定时器 (含 ProgressView 等系统不确定进度指示、看门狗 Timer、按数据轴重跑的 .task) 必须受 DashboardPanelAnimationPolicy 或面板显隐驱动约束, 并纳入 NativeLifecycleHarness 断言"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "c044-native-lifecycle-20261016 + verify-local-202610161509",
+    "user_quote": "所有缺陷全部都要立项修复",
+    "signoff": "2026-10-16 用户指示修复全部审查缺陷 (原话: 「所有缺陷全部都要立项修复」), AI 按卡执行并采集实测证据后代签；证据明细见各 check。待用户复核后转入 closed。批次全量验证: zsh scripts/verify-local.sh 退出码 0, 末行「Bruce 本地验证全部通过」 (日志 local/c042-c052-verify.log, 含 Rust 全量 / fixture 敏感扫描 / Swift 全部 Harness / Panel 双端对拍 3/3)。",
+    "checks": [
+      {
+        "item": "三处门控 + 策略断言",
+        "true_if": "订阅卡 spinner 透传 panelVisible；看门狗随显隐启停；小时卡生长纳入策略；NativeLifecycleHarness 断言全覆盖",
+        "false_if": "任一处仍可在隐藏态运行",
+        "evidence": "DashboardPanelAnimationPolicy 新增 allowsRefreshProgress/allowsHourlyGrowth/allowsSuppressorWatchdog；SubscriptionCard/ProviderSectionView/ProviderRefreshButton 透传 panelVisible；SuppressorView 增 panelVisible didSet 启停;NativeLifecycleHarness 新增 7 条断言 (14 项全绿)；PanelViewModelHarness 53 项与 SubscriptionRefreshControlHarness 4 项保持通过；swift build 退出码 0",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用)"
+}

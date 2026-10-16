@@ -22,60 +22,70 @@ const CATALOG_SPECS: &[CatalogSpec] = &[
         prefix: "opencode_go_",
         display_prefix: "OpenCode GO",
         app: "opencode-go",
+        credential_field: "opencodeGoQuotaAccounts",
     },
     CatalogSpec {
         provider: "kimi",
         prefix: "kimi_coding_",
         display_prefix: "Kimi",
         app: "kimi",
+        credential_field: "kimiQuotaAccounts",
     },
     CatalogSpec {
         provider: "deepseek",
         prefix: "deepseek_",
         display_prefix: "DeepSeek",
         app: "deepseek",
+        credential_field: "deepseekQuotaAccounts",
     },
     CatalogSpec {
         provider: "zhipu",
         prefix: "zhipu_",
         display_prefix: "Z.ai",
         app: "zhipu",
+        credential_field: "zhipuQuotaAccounts",
     },
     CatalogSpec {
         provider: "volcengine",
         prefix: "volcengine_",
         display_prefix: "火山引擎",
         app: "volcengine",
+        credential_field: "volcengineQuotaAccounts",
     },
     CatalogSpec {
         provider: "claude",
         prefix: "claude_",
         display_prefix: "Claude",
         app: "claude",
+        credential_field: "claudeQuotaAccounts",
     },
     CatalogSpec {
         provider: "grok",
         prefix: "grok_",
         display_prefix: "Grok",
         app: "grok",
+        credential_field: "grokQuotaAccounts",
     },
     CatalogSpec {
         provider: "stepfun",
         prefix: "stepfun_",
         display_prefix: "StepFun",
         app: "stepfun",
+        credential_field: "stepfunQuotaAccounts",
     },
     CatalogSpec {
         provider: "jev",
         prefix: "jev_",
         display_prefix: "Jev",
         app: "jev",
+        credential_field: "jevQuotaAccounts",
     },
     CatalogSpec {
         provider: "cline",
         prefix: "cline_",
         display_prefix: "Cline",
         app: "cline",
+        credential_field: "clineQuotaAccounts",
     },
 ];
 
@@ -85,6 +95,33 @@ struct CatalogSpec {
     prefix: &'static str,
     display_prefix: &'static str,
     app: &'static str,
+    /// 凭据字段名 (C049): 与 prefix/app 同源定义, 供 collector-application
+    /// 派生而不复写字符串 —— 三处手工映射表曾各自维护且无编译期约束。
+    credential_field: &'static str,
+}
+
+/// 目录表对外只读投影 (C049): 前缀 / app / 凭据字段的唯一事实源。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CatalogEntry {
+    pub provider: &'static str,
+    pub prefix: &'static str,
+    pub display_prefix: &'static str,
+    pub app: &'static str,
+    pub credential_field: &'static str,
+}
+
+/// 返回目录表全部条目 (顺序即定义顺序)。
+pub fn catalog_entries() -> Vec<CatalogEntry> {
+    CATALOG_SPECS
+        .iter()
+        .map(|spec| CatalogEntry {
+            provider: spec.provider,
+            prefix: spec.prefix,
+            display_prefix: spec.display_prefix,
+            app: spec.app,
+            credential_field: spec.credential_field,
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2825,15 +2862,15 @@ pub fn provider_for_app(app: &str) -> Option<Box<dyn QuotaProvider>> {
 #[cfg(test)]
 mod tests {
     use super::{
-        bounded_http_body, codex_service_id, extract_stepfun_app_id, extract_stepfun_device_id,
-        is_stepfun_global, is_stepfun_token_expired, parse_claude_usage, parse_cline_usage_limits,
-        parse_codex_usage, parse_deepseek_balance, parse_grok_usage, parse_jev_models,
-        parse_kimi_usage, parse_opencode_go_body, parse_stepfun_usage, parse_volcengine_usage,
-        parse_zhipu_usage, reset_epoch, resolve_service_catalog, service_template,
-        AccountDescriptor, CancellationToken, CatalogInput, ClineProvider, CodexProvider,
-        DeepSeekProvider, HttpClient, HttpRequest, HttpResponse, JevProvider, KimiProvider,
-        OpenCodeGoProvider, ProviderError, ProviderRequest, QuotaProvider, StepFunProvider,
-        UreqHttpClient, VolcEngineProvider, ZhipuProvider, JEV_MODELS_URL,
+        bounded_http_body, catalog_entries, codex_service_id, extract_stepfun_app_id,
+        extract_stepfun_device_id, is_stepfun_global, is_stepfun_token_expired, parse_claude_usage,
+        parse_cline_usage_limits, parse_codex_usage, parse_deepseek_balance, parse_grok_usage,
+        parse_jev_models, parse_kimi_usage, parse_opencode_go_body, parse_stepfun_usage,
+        parse_volcengine_usage, parse_zhipu_usage, reset_epoch, resolve_service_catalog,
+        service_template, AccountDescriptor, CancellationToken, CatalogInput, ClineProvider,
+        CodexProvider, DeepSeekProvider, HttpClient, HttpRequest, HttpResponse, JevProvider,
+        KimiProvider, OpenCodeGoProvider, ProviderError, ProviderRequest, QuotaProvider,
+        StepFunProvider, UreqHttpClient, VolcEngineProvider, ZhipuProvider, JEV_MODELS_URL,
         STEPFUN_GLOBAL_REFRESH_TOKEN_URL, STEPFUN_GLOBAL_STEP_PLAN_RATE_LIMIT_URL,
         STEPFUN_REFRESH_TOKEN_URL, STEPFUN_STEP_PLAN_RATE_LIMIT_URL,
     };
@@ -4151,5 +4188,50 @@ mod tests {
         );
         // C020: 线上报文含 canceledAt 也不得产出任何注记 (extra 键不出现)
         assert!(result.get("extra").is_none());
+    }
+
+    /// C049: 目录表是前缀/凭据字段的单一事实源。
+    /// 断言每条目的三项映射齐备且无重复 —— 任何漏填都会在测试期暴露,
+    /// 而不是等到某个 provider 静默取不到凭据。
+    #[test]
+    fn catalog_entries_are_complete_and_unique() {
+        let entries = catalog_entries();
+        assert_eq!(entries.len(), 10, "目录表应含 10 家 provider");
+
+        let mut apps = std::collections::BTreeSet::new();
+        let mut prefixes = std::collections::BTreeSet::new();
+        let mut fields = std::collections::BTreeSet::new();
+        for entry in &entries {
+            assert!(!entry.app.is_empty(), "app 不得为空: {entry:?}");
+            assert!(!entry.prefix.is_empty(), "prefix 不得为空: {entry:?}");
+            assert!(
+                !entry.credential_field.is_empty(),
+                "credential_field 不得为空: {entry:?}"
+            );
+            assert!(
+                entry.prefix.ends_with('_'),
+                "prefix 应以下划线结尾 (与账户标识拼接约定一致): {entry:?}"
+            );
+            assert!(apps.insert(entry.app), "app 重复: {}", entry.app);
+            assert!(
+                prefixes.insert(entry.prefix),
+                "prefix 重复: {}",
+                entry.prefix
+            );
+            assert!(
+                fields.insert(entry.credential_field),
+                "credential_field 重复: {}",
+                entry.credential_field
+            );
+        }
+        // 关键约定抽查: 三处曾手工重复的前缀必须逐字一致
+        let kimi = entries.iter().find(|e| e.app == "kimi").expect("kimi 条目");
+        assert_eq!(kimi.prefix, "kimi_coding_");
+        assert_eq!(kimi.credential_field, "kimiQuotaAccounts");
+        let opencode = entries
+            .iter()
+            .find(|e| e.app == "opencode-go")
+            .expect("opencode-go 条目");
+        assert_eq!(opencode.prefix, "opencode_go_");
     }
 }

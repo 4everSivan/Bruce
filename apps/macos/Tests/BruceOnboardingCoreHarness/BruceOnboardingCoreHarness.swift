@@ -85,6 +85,8 @@ struct BruceOnboardingCoreHarness {
             try keychainSubscriptionAccountsRoundTrip()
         }
         try protectedFileCredentialStoreRoundTripAndPermissions()
+        try protectedFileCredentialStoreCorruptionIsNotSilentlyErased()
+        try protectedFileCredentialStoreWriteHardening()
         try await verifierDeepSeekConnectedWithMockSession()
         try await verifierDeepSeekFailClosed()
         try verifierKimiAPIKeyMappings()

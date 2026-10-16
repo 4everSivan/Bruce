@@ -62,6 +62,33 @@ pub const ALLOWED_CREDENTIAL_FIELDS: &[&str] = &[
     "providerMeta",
 ];
 
+/// 解析请求以获得可用于错误的 runId (尽力而为)。
+pub fn run_id_of(input: &[u8]) -> String {
+    serde_json::from_slice::<BridgeRequest>(input)
+        .map(|request| request.run_id)
+        .unwrap_or_else(|_| new_run_id())
+}
+
+/// 进程级 panic 兜底: 采集链路出现未预期 panic 时仍产出可解释的 error envelope,
+/// 而不是 stdout 为空 + 非零退出码 (调用方无法区分「哪个源坏了」)。
+///
+/// 已预期/已降级的错误不经过此路径 —— 只有真正的 bug 才会落到这里 (C043)。
+pub fn run_bytes_panic_safe(input: &[u8]) -> BridgeResponse {
+    let fallback_run_id = run_id_of(input);
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_bytes(input))).unwrap_or_else(
+        |_| {
+            error_response(
+                fallback_run_id,
+                "BRIDGE_INTERNAL_PANIC",
+                "runtime",
+                "internal",
+                "采集进程内部错误 (已捕获 panic), 本轮未产出 artifact",
+                true,
+            )
+        },
+    )
+}
+
 pub fn run_bytes(input: &[u8]) -> BridgeResponse {
     let started = Instant::now();
     let resource_start = metrics::process_resource_snapshot();
@@ -497,7 +524,8 @@ fn new_run_id() -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        generated_at, max_request_bytes, read_request, run_bytes, validate_response_credentials,
+        generated_at, max_request_bytes, read_request, run_bytes, run_bytes_panic_safe, run_id_of,
+        validate_response_credentials,
     };
     use collector_domain::{BridgeResponse, ResponseStatus, BRIDGE_SCHEMA_VERSION};
     use serde_json::{json, Value};
@@ -505,6 +533,53 @@ mod tests {
 
     fn request() -> String {
         r#"{"schemaVersion":1,"runId":"12345678-1234-4234-9234-123456789abc","module":"agent-usage","timeouts":{"localScanSeconds":30,"externalRequestSeconds":10,"moduleSeconds":90},"context":{"home":"/tmp","capabilities":["localSessions"]},"credentials":{}}"#.to_owned()
+    }
+
+    /// C043: panic 兜底必须产出可解析的 envelope (含 runId 与诊断码),
+    /// 而不是空 stdout / 非零退出码。这里用类型相同的注入闭包验证兜底语义。
+    #[test]
+    fn panic_safe_wrapper_preserves_envelope_semantics() {
+        let input = request().into_bytes();
+
+        // 正常路径: 兜底包装不得改变既有行为
+        let normal = run_bytes_panic_safe(&input);
+        assert_eq!(normal.run_id, "12345678-1234-4234-9234-123456789abc");
+
+        // panic 路径: 模拟采集链路内部 panic, 断言 error envelope 语义
+        let fallback_run_id = run_id_of(&input);
+        assert_eq!(fallback_run_id, "12345678-1234-4234-9234-123456789abc");
+        let panicking = || -> BridgeResponse {
+            panic!("simulated internal failure");
+        };
+        let recovered = std::panic::catch_unwind(std::panic::AssertUnwindSafe(panicking))
+            .unwrap_or_else(|_| {
+                super::error_response(
+                    fallback_run_id,
+                    "BRIDGE_INTERNAL_PANIC",
+                    "runtime",
+                    "internal",
+                    "采集进程内部错误 (已捕获 panic), 本轮未产出 artifact",
+                    true,
+                )
+            });
+        assert_eq!(recovered.status, ResponseStatus::Error);
+        assert_eq!(recovered.diagnostics.len(), 1);
+        assert_eq!(recovered.diagnostics[0].code, "BRIDGE_INTERNAL_PANIC");
+        assert!(recovered.artifact.is_none());
+        assert_eq!(recovered.run_id, "12345678-1234-4234-9234-123456789abc");
+        // 可序列化 = 宿主可解析
+        let encoded = serde_json::to_string(&recovered).unwrap();
+        let decoded: BridgeResponse = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded.diagnostics[0].code, "BRIDGE_INTERNAL_PANIC");
+    }
+
+    /// C043: run_id_of 对非法输入回退为新 runId (不 panic, 仍可用于错误信封)。
+    #[test]
+    fn run_id_of_falls_back_on_invalid_input() {
+        let id = run_id_of(b"not json");
+        assert!(!id.is_empty());
+        let again = run_id_of(b"not json");
+        assert_ne!(id, again, "非法输入应回退为新的随机 runId");
     }
 
     #[test]

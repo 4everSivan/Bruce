@@ -296,7 +296,9 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
                         adapter.merge_delta(&base, &delta.contribution, &config.window);
                     let cursor = merge_cursor(&entry.cursor, &delta.cursor);
                     let found = entry.found || delta.found;
-                    let cache_entry = make_entry(
+                    // C043: 编码失败不再 panic —— 跳过写缓存条目并计损坏,
+                    // 本轮扫描结果照常返回, 下一轮走全量重建自愈。
+                    match make_entry(
                         config,
                         &signature,
                         &schema_fingerprint,
@@ -306,15 +308,21 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
                         delta.append_safe,
                         delta.capped,
                         &contribution,
-                    );
-                    match write_cache(&cache_path, &cache_entry, cancellation) {
-                        Ok(()) => {}
-                        Err(SourceScanError::Runtime(error)) => return Err(error.into()),
-                        Err(SourceScanError::Io(_)) => {
-                            stats.io_errors = stats.io_errors.saturating_add(1)
+                    ) {
+                        Some(cache_entry) => {
+                            match write_cache(&cache_path, &cache_entry, cancellation) {
+                                Ok(()) => {}
+                                Err(SourceScanError::Runtime(error)) => return Err(error.into()),
+                                Err(SourceScanError::Io(_)) => {
+                                    stats.io_errors = stats.io_errors.saturating_add(1)
+                                }
+                            }
+                            stats.cache_appends = stats.cache_appends.saturating_add(1);
+                        }
+                        None => {
+                            stats.cache_corruptions = stats.cache_corruptions.saturating_add(1);
                         }
                     }
-                    stats.cache_appends = stats.cache_appends.saturating_add(1);
                     cancellation.check()?;
                     return Ok(SourceScan {
                         found,
@@ -447,8 +455,13 @@ fn make_entry(
     append_safe: bool,
     capped: bool,
     contribution: &UsageContribution,
-) -> SqliteCacheEntry {
-    SqliteCacheEntry {
+) -> Option<SqliteCacheEntry> {
+    // contribution 无法编码进当前窗口 (某天不在 day_list 中) 时返回 None:
+    // 调用方应放弃写缓存条目并计入 cache_corruptions, 回退下一轮全量重建。
+    // C043: 此路径曾以 expect 表达不变量 —— 但窗口身份错位正是 C040 认定
+    // 现实中会发生的情形, 生产代码不得以 panic 表达数据相关不匹配。
+    let compact = CompactContribution::from_domain(contribution, &config.window)?;
+    Some(SqliteCacheEntry {
         schema_version: SQLITE_CACHE_SCHEMA_VERSION,
         source_id: config.source_id.clone(),
         parser_version: config.parser_version,
@@ -462,9 +475,8 @@ fn make_entry(
         append_safe,
         diagnostic,
         capped,
-        contribution: CompactContribution::from_domain(contribution, &config.window)
-            .expect("usage contribution must match its collection window"),
-    }
+        contribution: compact,
+    })
 }
 
 fn cache_path(path: &Path, config: &SqliteCacheConfig) -> PathBuf {

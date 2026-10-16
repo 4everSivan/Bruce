@@ -1,0 +1,105 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C048",
+  "title": "provider 专属逻辑下沉：codex 新鲜度/失败类别/挑战改由 provider 层标准化输出，编排层与协议层去除 app 名字分支",
+  "type": "BugFix",
+  "status": "open",
+  "branch": "main",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector/crates/collector-application (execution.rs / lib.rs / account.rs) + collector-bridge",
+    "component": "provider 抽象完整性: 编排层与协议层的 provider 特例",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "2026-10-16 全仓对抗性审查 (RV-007) 确认抽象被绕过: 设计意图是「新增 provider 只改 provider crate」, 实际需改 3 个 crate —— collector-application/execution.rs:250-268 codex_challenge() 内判 plan.service.app == \"codex\"; :270-303 finalize_codex_service() 仅对 codex 注入 freshness/failureKind; :333-337 resolve_credential() 硬编码 \"claude\"/\"grok\" 返回 CREDENTIAL_MISSING; application/lib.rs:106-113 codexQuotaRetryOnly 特例短路整个采集流程, :644-687 collect_codex_quota_retry_only 独立路径, account.rs:129-203 build_codex_account_plans 单独建计划; collector-bridge/lib.rs:333-458 validate_codex_request 在协议层校验 codex 语义 (账号数上限/token 长度/order 一致性)。这不是架构被破坏, 而是抽象没跟上业务演进 —— codex 的多账号挑战与重试语义确实特殊, 但当前以编排层 if 分支承接, 使抽象收益递减。",
+  "precheck": {
+    "description": "预检: 确认编排层与协议层的 provider 名字分支存在",
+    "command": "grep -n 'app == \"codex\"' core/collector/crates/collector-application/src/*.rs; grep -n '\"claude\" =>\\|\"grok\" =>' core/collector/crates/collector-application/src/execution.rs; grep -n 'fn validate_codex_request' core/collector/crates/collector-bridge/src/lib.rs",
+    "expected": "codex 字符串判定在 application 命中多处; 凭据解析硬编码命中; bridge 的 codex 校验函数存在",
+    "is_completed": true,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护已在 main 实施"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "provider 输出契约扩展",
+      "before": "freshness/failureKind/challenge 由编排层按 app 名补写; 其他 provider 无此字段来源",
+      "after": "新增 ProviderOutcome 包装: provider 层在返回的 service JSON 中自述 freshness/failureKind/challenges (默认 fresh/null/空), 编排层仅做透传",
+      "impact": "新增 provider 无需改编排层; 字段语义由最了解它的层决定"
+    },
+    {
+      "scope": "凭据解析去硬编码",
+      "before": "resolve_credential 硬编码 claude/grok 分支",
+      "after": "改为按 provider 声明的凭据需求 (声明式表) 判定缺失",
+      "impact": "新增 provider 不再需要改解析函数"
+    },
+    {
+      "scope": "bridge 校验下沉",
+      "before": "collector-bridge 内 validate_codex_request 校验 codex 专属语义",
+      "after": "协议层只做通用结构校验 (白名单/类型/上限); codex 专属语义校验移入 account 计划构建, 违规以诊断码返回",
+      "impact": "协议层回到职责边界内; 双端共享的 bridge 不再随 provider 演进"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/01 约定 provider 无状态且出站归 provider 层, 但未约定「provider 专属语义不得外溢到编排层与协议层」",
+      "after": "新增规则: provider 的失败语义/新鲜度/挑战等专属概念由 provider 层标准化输出; 编排层与 bridge 严禁以 provider 名字分支"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "c048-deferred-20261016",
+    "user_quote": "",
+    "signoff": "范围较大且触及刚经 C037/C041 验证的 codex 重试/降级路径，需独立回归窗口：本轮登记为结构性债 TD-005，状态保持 open，建议独立开批实施（先补 codex 回归用例再重构）。",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "全量单测全绿，退出码为 0，含针对性回归测试",
+        "false_if": "存在任何测试失败、报错或未覆盖回归用例",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "预期行为正常回执，核心功能指标符合要求",
+        "false_if": "出现报错、非预期返回值或行为失真",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "未引入副作用，关联模块运行正常",
+        "false_if": "破坏了上下游其他接口或产生连锁反应",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [
+    {
+      "date": "2026-10-16",
+      "reason": "范围较大且触及刚经 C037/C041 验证的 codex 重试/降级路径，需独立回归窗口：本轮登记为结构性债 TD-005，状态保持 open，建议独立开批实施（先补 codex 回归用例再重构）。",
+      "by": "AI (审查批次裁定)"
+    }
+  ],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用)"
+}

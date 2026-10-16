@@ -1,0 +1,92 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C045",
+  "title": "统一目录递归防护：jsonl_cache.visit_tree 与 codex 文件收集补齐深度上限与已访问集合（symlink 环防护）",
+  "type": "BugFix",
+  "status": "verified",
+  "branch": "main",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector/crates/collector-local (jsonl_cache.rs / sources.rs)",
+    "component": "会话目录扫描的递归安全护栏",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "2026-10-16 全仓对抗性审查 (RV-004) 发现同一仓库内防护不一致: sources.rs:344-353 的 walk_jsonl_tree 带有 MAX_DIRECTORY_SCAN_DEPTH=16 深度上限与 visited_dirs 集合, 并有专门测试 (sources.rs:5207-5230 防 symlink 环); 而新增的缓存路径 jsonl_cache.rs:227-277 visit_tree 与 sources.rs:488-570 collect_codex_files 递归时既无深度上限也无已访问集合。symlink 环会导致无限递归 (栈溢出) 或路径无限增长。受影响数据源: claude/codebuddy/kimi-work/grok/pi (走 jsonl_cache 适配器) 与 codex (整树收集)。属「新写缓存路径时未复用旧护栏」的典型遗漏。",
+  "precheck": {
+    "description": "预检: 确认两处递归实现均无深度/已访问防护, 且既有 walker 有防护与测试",
+    "command": "grep -n 'MAX_DIRECTORY_SCAN_DEPTH' core/collector/crates/collector-local/src/sources.rs | head -3; grep -c 'visited_dirs' core/collector/crates/collector-local/src/jsonl_cache.rs; grep -n 'fn visit_tree' -A 3 core/collector/crates/collector-local/src/jsonl_cache.rs",
+    "expected": "MAX_DIRECTORY_SCAN_DEPTH 在 sources.rs 命中; jsonl_cache.rs 的 visited_dirs 计数为 0; visit_tree 签名含 root 与 state 但无 depth/visited",
+    "is_completed": true,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护已在 main 实施"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "jsonl_cache.rs 递归防护",
+      "before": "visit_tree(root, state) 直接递归 metadata.is_dir() 分支, 无深度上限、无 visited 集合",
+      "after": "visit_tree 增加 depth 参数与 visited_dirs 集合: 超过 MAX_DIRECTORY_SCAN_DEPTH 停止展开; 目录 canonical 路径重复出现时跳过并计入 io_errors/单独统计",
+      "impact": "claude/codebuddy/kimi-work/grok/pi 数据源在 symlink 环下不再无限递归"
+    },
+    {
+      "scope": "sources.rs codex 文件收集防护",
+      "before": "collect_codex_files 递归无深度/已访问防护",
+      "after": "复用 walk_jsonl_tree 同款 depth + visited_dirs 方案",
+      "impact": "codex 整树收集在环结构下安全退出"
+    },
+    {
+      "scope": "回归测试",
+      "before": "仅 walk_jsonl_tree 有 symlink 环测试",
+      "after": "为 jsonl_cache 与 codex 收集各补一条 symlink 环用例 (构造 a -> b -> a), 断言扫描终止且不误计文件数",
+      "impact": "护栏可执行验证, 防止再次遗漏"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/01 未把「目录递归必须有深度上限与已访问集合」写成跨实现通用规则",
+      "after": "新增规则: 一切会话目录递归遍历 (未缓存 walker 与各缓存适配器) 必须具备深度上限与已访问集合双重护栏, 并有 symlink 环回归用例"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "c045-collector-local-20261016 + verify-local-202610161509",
+    "user_quote": "所有缺陷全部都要立项修复",
+    "signoff": "2026-10-16 用户指示修复全部审查缺陷 (原话: 「所有缺陷全部都要立项修复」), AI 按卡执行并采集实测证据后代签；证据明细见各 check。待用户复核后转入 closed。批次全量验证: zsh scripts/verify-local.sh 退出码 0, 末行「Bruce 本地验证全部通过」 (日志 local/c042-c052-verify.log, 含 Rust 全量 / fixture 敏感扫描 / Swift 全部 Harness / Panel 双端对拍 3/3)。",
+    "checks": [
+      {
+        "item": "双护栏生效且可证伪 (红绿)",
+        "true_if": "深链超出上限不被访问；环结构下缓存与未缓存路径聚合一 致；撤护栏后用例失败",
+        "false_if": "用例在无护栏时仍通过 (未真正验证)",
+        "evidence": "红绿实测: 临时移除 jsonl_cache depth 检查 → 用例 FAILED (assertion left:2 right:1 '深度上限之外的文件不得被访问')；恢复后 collector-local 42 项全绿。同时统一 MAX_DIRECTORY_SCAN_DEPTH 为单一 pub(crate) 常量，4 个 walker (lib.rs 缓存 walker / sources.rs 未缓存 walker 与 codex 收集 / jsonl_cache 适配器) 共用",
+        "result": true
+      },
+      {
+        "item": "诚实性说明",
+        "true_if": "记录实测事实: symlink 环在 macOS 被内核路径长度限制拦截，故断言对准深度上限与 files_visited 而非「环致崩溃」",
+        "false_if": "以未复现的崩溃宣称修复",
+        "evidence": "实测数据: 深链 20 层路径约 200 字符 (< PATH_MAX)，无护栏时 files_visited=2 (深链文件被访问后被时间窗跳过)，有护栏时 =1；用例注释已记录该事实",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用)"
+}

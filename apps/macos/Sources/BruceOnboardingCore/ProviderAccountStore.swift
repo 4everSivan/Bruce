@@ -228,6 +228,15 @@ public struct ProviderAccountSummary: Codable, Equatable, Sendable {
 
 // MARK: - ProviderAccountStore
 
+/// 账号索引与记录的结构化错误 (C046).
+///
+/// 损坏必须可区分于「不存在」: 前者会让调用方在保存时覆盖写空索引,
+/// 导致遗留记录成为不可达孤儿。
+public enum ProviderAccountStoreError: Error, Equatable {
+    case indexCorrupted(provider: String)
+    case recordCorrupted(provider: String, accountID: String)
+}
+
 /// 通用多账号凭证存储. 按 provider 实例化, 管理 index + per-account record.
 ///
 /// Codex 不使用本类 (已有独立的 CodexCredentialStore).
@@ -257,8 +266,13 @@ public final class ProviderAccountStore: @unchecked Sendable {
         guard let data = raw.data(using: .utf8) else {
             return ProviderAccountIndex()
         }
-        return (try? JSONDecoder().decode(ProviderAccountIndex.self, from: data))
-            ?? ProviderAccountIndex()
+        // C046: 解码失败必须抛错而非返回空索引 —— 空索引会被后续 saveIndex
+        // 覆盖写回, 使遗留 Keychain 记录变成不可达的孤儿 (账号无声消失)。
+        do {
+            return try JSONDecoder().decode(ProviderAccountIndex.self, from: data)
+        } catch {
+            throw ProviderAccountStoreError.indexCorrupted(provider: provider.rawValue)
+        }
     }
 
     /// 保存账号索引.
@@ -274,7 +288,7 @@ public final class ProviderAccountStore: @unchecked Sendable {
 
     // MARK: - Record
 
-    /// 加载单账号凭证记录; 不存在返回 nil.
+    /// 加载单账号凭证记录; 不存在返回 nil, 内容损坏抛错 (C046)。
     public func loadRecord(for accountID: String) throws -> ProviderAccountRecord? {
         let key = ProviderAccountKeys.recordKey(for: provider, accountID: accountID)
         guard let raw = try credentialStore.loadCredential(
@@ -285,7 +299,14 @@ public final class ProviderAccountStore: @unchecked Sendable {
             return nil
         }
         guard let data = raw.data(using: .utf8) else { return nil }
-        return try? JSONDecoder().decode(ProviderAccountRecord.self, from: data)
+        do {
+            return try JSONDecoder().decode(ProviderAccountRecord.self, from: data)
+        } catch {
+            throw ProviderAccountStoreError.recordCorrupted(
+                provider: provider.rawValue,
+                accountID: accountID
+            )
+        }
     }
 
     /// 保存单账号凭证记录.
@@ -351,8 +372,20 @@ public final class ProviderAccountStore: @unchecked Sendable {
     /// 移除全部账号: 删除全部 record 并清空 index.
     public func removeAllAccounts() throws {
         let index = try loadIndex()
+        // C046: 删除失败必须上抛 —— 原实现 try? 吞错后仍清空索引并写回,
+        // 遗留记录变成孤儿且调用方以为删除成功。
+        var firstError: Error?
         for entry in index.accounts {
-            try? deleteRecord(for: entry.accountID)
+            do {
+                try deleteRecord(for: entry.accountID)
+            } catch {
+                if firstError == nil {
+                    firstError = error
+                }
+            }
+        }
+        if let firstError {
+            throw firstError
         }
         var emptyIndex = index
         emptyIndex.accounts.removeAll()

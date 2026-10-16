@@ -24,6 +24,8 @@ struct HourlyLineCard: View {
     @State private var hoveredDayDate: String?
     /// 已完成生长的列 (按日期); 逐列延迟插入驱动柱状图自下而上生长.
     @State private var grownColumns: Set<String> = []
+    /// 面板可见性 (C044): 隐藏时生长动画直接落定终值, 不播动画.
+    var panelVisible: Bool = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.BruceResolvedTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
@@ -39,13 +41,15 @@ struct HourlyLineCard: View {
         dailyLegend: [UsageLegendItem] = [],
         initiallyExpandedAgentIDs: Set<String> = [],
         isCollapsed: Bool = false,
-        onToggleCollapse: @escaping () -> Void = {}
+        onToggleCollapse: @escaping () -> Void = {},
+        panelVisible: Bool = true
     ) {
         self.viewModel = viewModel
         self.dailyDays = dailyDays
         self.dailyLegend = dailyLegend
         self.isCollapsed = isCollapsed
         self.onToggleCollapse = onToggleCollapse
+        self.panelVisible = panelVisible
         _expandedAgentIDs = State(initialValue: initiallyExpandedAgentIDs)
     }
 
@@ -353,10 +357,13 @@ struct HourlyLineCard: View {
     }
 
     /// 逐列延迟 0.03 秒把列值从 0 推到真实值, 形成自下而上的生长动画;
-    /// Reduce Motion 时直接全部就位. 幂等: 已生长的列直接跳过 (含 sleep),
-    /// 因此日期轴变化触发重跑时只补播缺失列, 旧列不会重播动画.
+    /// Reduce Motion 或面板隐藏 (C044) 时直接全部就位. 幂等: 已生长的列直接跳过
+    /// (含 sleep), 因此日期轴变化触发重跑时只补播缺失列, 旧列不会重播动画.
     private func growColumns() async {
-        if reduceMotion {
+        if !DashboardPanelAnimationPolicy.allowsHourlyGrowth(
+            panelVisible: panelVisible,
+            reduceMotion: reduceMotion
+        ) {
             grownColumns = Set(dailyDays.map(\.date))
             return
         }

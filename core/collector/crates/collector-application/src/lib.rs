@@ -13,7 +13,7 @@ mod execution;
 mod paths;
 
 use account::{build_account_plan, build_codex_account_plans};
-use aggregation::consume_source_changes;
+use aggregation::{consume_source_changes, AggregationResult};
 use collector_aggregate::UsageAccumulator;
 use collector_credential::{
     validate_credential_challenges, validate_credential_updates, CredentialSource,
@@ -116,8 +116,17 @@ fn collect_agent_usage_with_dependencies_inner(
         let quota = context
             .capability_allowed("externalQuotas")
             .then(|| scope.spawn(|| collect_quota_usage(&context)));
-        let local = local.join().expect("local collection worker panicked");
-        let quota = quota.map(|worker| worker.join().expect("quota worker panicked"));
+        // C043: worker panic 不再 expect 崩溃 —— 降级为诊断, 其余通道照常产出,
+        // 保证 stdout 恒有可解释的 envelope (取消语义仍由 cancellation 诊断表达)。
+        let local = local
+            .join()
+            .unwrap_or_else(|_| Err(worker_panic_diagnostic("本机采集工作线程异常中止")));
+        let quota = quota.map(|worker| {
+            worker.join().unwrap_or_else(|_| QuotaExecution {
+                diagnostics: vec![worker_panic_diagnostic("额度采集工作线程异常中止")],
+                ..QuotaExecution::default()
+            })
+        });
         (local, quota)
     });
     let local = local_result?;
@@ -389,7 +398,12 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
                     },
                 );
                 queue.close();
-                let aggregation = consumer.join().expect("local aggregation worker panicked");
+                // C043: 聚合线程 panic 不再拖垮主线程 —— 以空结果 + 诊断降级,
+                // 扫描侧的 scan_result 照常返回 (用量可能不全但进程存活且可解释)。
+                let aggregation = consumer.join().unwrap_or_else(|_| AggregationResult {
+                    accumulator: UsageAccumulator::new(context.window.clone()),
+                    diagnostics: vec![worker_panic_diagnostic("本机聚合工作线程异常中止")],
+                });
                 (scan_result, aggregation)
             });
             source_metrics.push(SourcePerformanceMetric {
@@ -537,10 +551,14 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
                     scan_zcode_cached(&zcode, &context.window, &cache_root, &context.cancellation)
                 })?,
             ];
-            for (source, source_metric) in source_results {
+            for (source, source_metric, degradation) in source_results {
                 let id = source_metric.source_id.clone();
                 source_metrics.push(source_metric);
                 scan_stats.merge(source.stats.clone());
+                // C046: 源读取失败 (I/O) 以信息级诊断暴露, 不再完全静默。
+                if let Some(warning) = degradation {
+                    diagnostics.push(warning);
+                }
                 if let Some(message) = source.diagnostic.clone() {
                     // C041: 行数截断是计划内降级, 用信息级诊断码;
                     // 其余 (真实 schema/读取故障) 保留原故障码与 Partial 语义。
@@ -598,7 +616,7 @@ fn collect_secondary_source<F>(
     context: &RunContext<'_>,
     source_id: &'static str,
     scan: F,
-) -> Result<(SourceScan, SourcePerformanceMetric), Diagnostic>
+) -> Result<(SourceScan, SourcePerformanceMetric, Option<Diagnostic>), Diagnostic>
 where
     F: FnOnce() -> Result<SourceScan, SourceScanError>,
 {
@@ -612,9 +630,22 @@ where
         .check()
         .map_err(local_source_runtime_diagnostic)?;
     match source {
-        Ok(source) => Ok((source, metric)),
+        Ok(source) => Ok((source, metric, None)),
         Err(SourceScanError::Runtime(error)) => Err(local_source_runtime_diagnostic(error)),
-        Err(SourceScanError::Io(_)) => Ok((SourceScan::empty(&context.window), metric)),
+        // C046: 次要源 I/O 错误不再完全静默 —— 返回信息级诊断说明,
+        // 「源不存在」与「读取失败」从此可区分; 该源无数据即无数据,
+        // 失败语义 (envelope 不升级为故障) 保持既有兜底行为不变。
+        Err(SourceScanError::Io(error)) => {
+            let empty = SourceScan::empty(&context.window);
+            let warning = Diagnostic::new(
+                "LOCAL_SOURCE_IO_DEGRADED",
+                "local",
+                source_id,
+                format!("本机 {source_id} 会话读取失败, 已跳过该源: {error}"),
+                true,
+            );
+            Ok((empty, metric, Some(warning)))
+        }
     }
 }
 
@@ -700,6 +731,17 @@ fn local_source_runtime_diagnostic(_error: RuntimeError) -> Diagnostic {
     )
 }
 
+/// C043: 工作线程 panic 的统一诊断 (重试可自愈)。
+fn worker_panic_diagnostic(message: &str) -> Diagnostic {
+    Diagnostic::new(
+        "COLLECTOR_WORKER_PANICKED",
+        "runtime",
+        "worker",
+        message,
+        true,
+    )
+}
+
 fn placeholder_agent(
     window: &CollectionWindow,
     id: &str,
@@ -726,8 +768,14 @@ fn finalize_local_agent(
     pricing: &PricingTable,
 ) -> AgentUsage {
     let mut accumulator = UsageAccumulator::new(window.clone());
-    let _ = accumulator.merge_delta(&source.contribution);
+    // C046: 合并失败不再静默 —— 与 aggregation.rs 同一诊断码, 并把 agent 降级为
+    // partial (用量已缺失, 不能继续对外报 ok)。
+    let merged = accumulator.merge_delta(&source.contribution);
     let mut agent = accumulator.finalize_with_pricing(id, name, pricing);
+    if !merged {
+        agent.status = "partial".to_owned();
+        agent.note = format!("{note} (本机用量合并失败, 数据不完整)");
+    }
     if let Some(diagnostic) = &source.diagnostic {
         if source.capped {
             // C041: 行数截断为计划内降级, 数据有效 (保留最新), 不按故障处理。
@@ -737,7 +785,9 @@ fn finalize_local_agent(
             agent.note = diagnostic.clone();
         }
     } else if source.found {
-        agent.note = note.to_owned();
+        if merged {
+            agent.note = note.to_owned();
+        }
     } else {
         agent.status = placeholder_status.to_owned();
         agent.note = placeholder_note.to_owned();
@@ -864,6 +914,67 @@ mod tests {
         );
         assert_eq!(agent.status, "error", "非截断诊断仍按故障处理");
         assert_eq!(agent.note, "仅保留 zcode 最新 30000 条用量记录");
+    }
+
+    /// C046: 用量合并失败必须可见 —— agent 降级为 partial 且 note 说明缺失,
+    /// 不得继续对外报 ok 而静默丢数据。
+    #[test]
+    fn local_agent_merge_failure_is_visible_not_silent() {
+        use collector_domain::{CollectionWindow, PricingTable, UsageContribution};
+
+        let context: serde_json::Map<String, serde_json::Value> = serde_json::from_value(json!({
+            "now": "2026-07-28T12:00:00+08:00",
+            "timezone": "Asia/Shanghai",
+            "days": 3
+        }))
+        .unwrap();
+        let window = CollectionWindow::from_context(&context).unwrap();
+        let pricing = PricingTable::new(std::collections::HashMap::new());
+
+        // 构造不可合并的 contribution: 某天不在当前窗口 day_list 内
+        let mut invalid = UsageContribution {
+            by_day: std::collections::BTreeMap::new(),
+            models_by_month: std::collections::BTreeMap::new(),
+            models_today: Vec::new(),
+            projects_today: Vec::new(),
+            hours: Vec::new(),
+        };
+        invalid.by_day.insert(
+            "1999-01-01".to_owned(),
+            collector_domain::TokenBucket {
+                input: 1,
+                output: 1,
+                cache_read: 0,
+                cache_creation: 0,
+                total: 2,
+            },
+        );
+
+        let source = LocalAgentResult {
+            found: true,
+            contribution: invalid,
+            diagnostic: None,
+            capped: false,
+        };
+        let agent = finalize_local_agent(
+            &window,
+            "claude-code",
+            "Claude Code",
+            &source,
+            "本机会话聚合",
+            "unavailable",
+            "未发现会话记录",
+            &pricing,
+        );
+        assert_eq!(
+            agent.status, "partial",
+            "合并失败必须降级为 partial, 不得静默报 ok"
+        );
+        assert!(
+            agent.note.contains("合并失败"),
+            "note 必须说明数据不完整: {}",
+            agent.note
+        );
     }
 
     fn request(capabilities: &[&str]) -> BridgeRequest {

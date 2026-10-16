@@ -7,14 +7,18 @@
       "design_doc": "docs/devel/design/00-系统总体设计.md",
       "changes": [
         "C001",
-        "C002"
+        "C002",
+        "C052",
+        "C053",
+        "C054"
       ]
     },
     "MenuBarIndicator": {
       "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
       "changes": [
         "C003",
-        "C004"
+        "C004",
+        "C044"
       ]
     },
     "WindowsCompat": {
@@ -56,14 +60,23 @@
         "C025",
         "C026",
         "C037",
-        "C038"
+        "C038",
+        "C042"
       ]
     },
     "TokenUsage": {
       "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
       "changes": [
         "C021",
-        "C022"
+        "C022",
+        "C043",
+        "C045",
+        "C046",
+        "C047",
+        "C048",
+        "C049",
+        "C050",
+        "C051"
       ]
     }
   },
@@ -436,6 +449,123 @@
       "topic": "TokenUsage",
       "version": "0.12.0+",
       "file": "docs/devel/change/C041.json"
+    },
+    "C042": {
+      "title": "凭据文件存储加固：损坏不得静默转空（否则下次保存抹除全部凭据）、原子写盘对齐 AtomicJSONStore 规格（创建即 0600 + fsync + 重读校验 + 备份回滚）",
+      "type": "BugFix",
+      "status": "verified",
+      "branch": "main",
+      "topic": "SubscriptionQuota",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C042.json"
+    },
+    "C043": {
+      "title": "消除采集进程生产 panic 路径：缓存 window 不匹配改回退全量重建、worker join 失败降级为诊断、collector 入口加 panic 兜底输出 error envelope",
+      "type": "BugFix",
+      "status": "verified",
+      "branch": "main",
+      "topic": "TokenUsage",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C043.json"
+    },
+    "C044": {
+      "title": "补齐面板隐藏态可见性门控：订阅卡刷新 spinner 透传 panelVisible、Suppressor 看门狗随面板显隐停止、HourlyLineCard 生长动画纳入策略",
+      "type": "BugFix",
+      "status": "verified",
+      "branch": "main",
+      "topic": "MenuBarIndicator",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C044.json"
+    },
+    "C045": {
+      "title": "统一目录递归防护：jsonl_cache.visit_tree 与 codex 文件收集补齐深度上限与已访问集合（symlink 环防护）",
+      "type": "BugFix",
+      "status": "verified",
+      "branch": "main",
+      "topic": "TokenUsage",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C045.json"
+    },
+    "C046": {
+      "title": "静默吞错改为故障可见：合并失败/次要源 I/O 错误/缓存解码异常/账号索引重置一律产出诊断或报错",
+      "type": "BugFix",
+      "status": "verified",
+      "branch": "main",
+      "topic": "TokenUsage",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C046.json"
+    },
+    "C047": {
+      "title": "缓存与原子写盘去重复：抽出 collector-local 统一缓存工具模块，Codex 树缓存写盘补齐 0600",
+      "type": "BugFix",
+      "status": "verified",
+      "branch": "main",
+      "topic": "TokenUsage",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C047.json"
+    },
+    "C048": {
+      "title": "provider 专属逻辑下沉：codex 新鲜度/失败类别/挑战改由 provider 层标准化输出，编排层与协议层去除 app 名字分支",
+      "type": "BugFix",
+      "status": "open",
+      "branch": "main",
+      "topic": "TokenUsage",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C048.json"
+    },
+    "C049": {
+      "title": "provider 映射表收敛为单一来源：前缀与凭据字段由 CATALOG_SPECS 派生，消除三处手工重复",
+      "type": "BugFix",
+      "status": "verified",
+      "branch": "main",
+      "topic": "TokenUsage",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C049.json"
+    },
+    "C050": {
+      "title": "OpenCode 截断诊断文案改为引用 MAX_SOURCE_ROWS，消除「10000 条」硬编码失真",
+      "type": "BugFix",
+      "status": "verified",
+      "branch": "main",
+      "topic": "TokenUsage",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C050.json"
+    },
+    "C051": {
+      "title": "清理无生产消费者的死代码与协议面：collector-credential 只读探测函数、bridge 白名单空字段、测试探针侵入生产签名",
+      "type": "BugFix",
+      "status": "verified",
+      "branch": "main",
+      "topic": "TokenUsage",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C051.json"
+    },
+    "C052": {
+      "title": "设计基线回写：provider 计数口径统一（8/11→10 家）、定价表 26→43 款、design/00 补 Windows 章节、schemas 契约表述改述、技术债池复活",
+      "type": "BugFix",
+      "status": "verified",
+      "branch": "main",
+      "topic": "SystemOverview",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C052.json"
+    },
+    "C053": {
+      "title": "按职责拆分巨型文件：sources.rs / collector-provider lib.rs / SettingsView.swift / SubscriptionService.swift（纯结构重构，行为不变）",
+      "type": "Refactor",
+      "status": "open",
+      "branch": "main",
+      "topic": "SystemOverview",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C053.json"
+    },
+    "C054": {
+      "title": "README 精简与排版重构：仓库结构/文档链接/命令路径对齐 v0.11.5 现状，247 行瘦身并消除 21 处失效引用",
+      "type": "Refactor",
+      "status": "in_progress",
+      "branch": "main",
+      "topic": "SystemOverview",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C054.json"
     }
   }
 }

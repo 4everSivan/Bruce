@@ -87,7 +87,8 @@ struct MenuBarDashboardView: View {
                 VStack(spacing: 0) {
                     // macOS 26 上 scrollIndicators(.hidden) 会被系统重设, 用
                     // AppKit 看门狗持续压制 scroller; 滚轮滚动不受影响.
-                    ScrollIndicatorSuppressor()
+                    // 看门狗随面板可见性启停 (C044).
+                    ScrollIndicatorSuppressor(panelVisible: model.dashboardPanelVisible)
                         .frame(width: 0, height: 0)
                     glassCardStack(panel)
                 }
@@ -374,7 +375,8 @@ struct MenuBarDashboardView: View {
                         refreshControls: subscriptionRefreshControls(for: subscription),
                         onRefreshProvider: { provider in
                             coordinator.refreshSubscription(provider)
-                        }
+                        },
+                        panelVisible: model.dashboardPanelVisible
                     )
                 }
             }
@@ -386,7 +388,8 @@ struct MenuBarDashboardView: View {
                         dailyDays: panel.usage?.days ?? [],
                         dailyLegend: panel.usage?.legend ?? [],
                         isCollapsed: model.isCardCollapsed(.hourly),
-                        onToggleCollapse: { model.toggleCardCollapsed(.hourly) }
+                        onToggleCollapse: { model.toggleCardCollapsed(.hourly) },
+                        panelVisible: model.dashboardPanelVisible
                     )
                 }
             }
@@ -511,11 +514,18 @@ struct MenuBarDashboardView: View {
 /// 该视图放在 ScrollView 内容内, 附加到窗口后向上找到 NSScrollView 并持续
 /// 压制 scroller; 滚动本身经 NSClipView 完成, 滚轮/触控板不受影响.
 private struct ScrollIndicatorSuppressor: NSViewRepresentable {
+    /// 面板可见性 (C044): 隐藏时看门狗必须停止 —— orderOut 不触发视图离窗,
+    /// 否则首次打开面板后 0.3s Timer 会终身运行.
+    var panelVisible: Bool = true
+
     func makeNSView(context: Context) -> SuppressorView {
-        SuppressorView()
+        let view = SuppressorView()
+        view.panelVisible = panelVisible
+        return view
     }
 
     func updateNSView(_ nsView: SuppressorView, context: Context) {
+        nsView.panelVisible = panelVisible
         DispatchQueue.main.async { nsView.enforce() }
     }
 }
@@ -523,14 +533,29 @@ private struct ScrollIndicatorSuppressor: NSViewRepresentable {
 private final class SuppressorView: NSView {
     private var watchdog: Timer?
 
+    /// 由 `DashboardPanelAnimationPolicy.allowsSuppressorWatchdog` 派生:
+    /// 隐藏态不跑 0.3s 周期 Timer.
+    var panelVisible: Bool = true {
+        didSet {
+            guard panelVisible != oldValue else { return }
+            syncWatchdog()
+        }
+    }
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        syncWatchdog()
+    }
+
+    private func syncWatchdog() {
         watchdog?.invalidate()
         watchdog = nil
-        guard window != nil else { return }
+        guard window != nil,
+              DashboardPanelAnimationPolicy.allowsSuppressorWatchdog(panelVisible: panelVisible)
+        else { return }
         enforce()
         // SwiftUI 会在附加后的若干 runloop 及后续布局中反复重设 scroller,
-        // 用轻量看门狗持续压制; 面板关闭 (离窗) 时停止.
+        // 用轻量看门狗持续压制; 面板关闭或隐藏时停止.
         watchdog = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) {
             [weak self] _ in
             // Timer 回调非隔离; 调度回主线程再碰 NSView 层级.

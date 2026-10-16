@@ -64,7 +64,9 @@ struct SubscriptionCredentialsHarness {
         try await zhipuNotInjectedWithoutCredential()
         try await clineInjectedWhenCredentialPresent()
         try await clineNotInjectedWithoutCredential()
-        print("Subscription credentials tests passed: 33")
+        try providerAccountStoreCorruptedIndexFailsClosed()
+        try providerAccountStoreCorruptedRecordFailsClosed()
+        print("Subscription credentials tests passed: 35")
     }
 
     /// 构造 OnboardingRunInputProvider: 配置 claude 启用 + Keychain 持有 claude:oauth.
@@ -957,6 +959,77 @@ struct SubscriptionCredentialsHarness {
         try credentialsExpect(
             summaries[0].authorizationState == .connected,
             "导入后账号应为 connected, 而不是 needsReauthorization"
+        )
+    }
+
+    /// C046: 损坏的账号索引必须抛错, 不得静默返回空索引 ——
+    /// 空索引被后续 saveIndex 覆盖写回后, 遗留记录会成为不可达孤儿。
+    private static func providerAccountStoreCorruptedIndexFailsClosed() throws {
+        let credStore = InMemoryCredentialStore()
+        let store = ProviderAccountStore(provider: .deepseek, credentialStore: credStore)
+        try credStore.saveCredential(
+            "{ not a valid index",
+            forAccount: ProviderAccountKeys.indexKey(for: .deepseek)
+        )
+
+        var threwCorrupted = false
+        do {
+            _ = try store.loadIndex()
+        } catch let error as ProviderAccountStoreError {
+            if case .indexCorrupted(let provider) = error {
+                threwCorrupted = (provider == SubscriptionProviderID.deepseek.rawValue)
+            }
+        }
+        try credentialsExpect(
+            threwCorrupted,
+            "损坏索引必须抛 indexCorrupted (而非静默返回空索引)"
+        )
+
+        // 关键安全性状: removeAllAccounts 在索引损坏时不得清空/覆盖索引
+        var removeThrew = false
+        do {
+            try store.removeAllAccounts()
+        } catch {
+            removeThrew = true
+        }
+        try credentialsExpect(removeThrew, "索引损坏时清空账号必须抛错而非静默成功")
+        let raw = try credStore.loadCredential(
+            forAccount: ProviderAccountKeys.indexKey(for: .deepseek)
+        )
+        try credentialsExpect(
+            raw == "{ not a valid index",
+            "损坏索引必须原样保留, 不得被清空后的索引覆盖"
+        )
+    }
+
+    /// C046: 损坏的单账号记录必须抛错, 不得静默当作「不存在」。
+    private static func providerAccountStoreCorruptedRecordFailsClosed() throws {
+        let credStore = InMemoryCredentialStore()
+        let store = ProviderAccountStore(provider: .grok, credentialStore: credStore)
+        _ = try store.addAccount(
+            accountID: "aaaabbbbccccdddd",
+            displayName: "Grok · personal",
+            credentialJSON: "{\"grok\":\"tok\"}"
+        )
+        try credStore.saveCredential(
+            "{ broken record",
+            forAccount: ProviderAccountKeys.recordKey(
+                for: .grok,
+                accountID: "aaaabbbbccccdddd"
+            )
+        )
+
+        var threwCorrupted = false
+        do {
+            _ = try store.loadRecord(for: "aaaabbbbccccdddd")
+        } catch let error as ProviderAccountStoreError {
+            if case .recordCorrupted(_, let accountID) = error {
+                threwCorrupted = (accountID == "aaaabbbbccccdddd")
+            }
+        }
+        try credentialsExpect(
+            threwCorrupted,
+            "损坏记录必须抛 recordCorrupted (而非静默返回 nil)"
         )
     }
 }
