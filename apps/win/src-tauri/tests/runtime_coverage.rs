@@ -709,3 +709,405 @@ fn dashboard_geometry_multi_monitor_negative_coordinates() {
     assert!(geom.y >= 0);
     assert!(geom.y + geom.height as i32 <= 1040);
 }
+
+#[test]
+fn dashboard_geometry_left_taskbar_hotkey_invocation_stays_on_taskbar_side() {
+    use bruce_win_lib::runtime_core::{compute_dashboard_geometry, MonitorBounds};
+    // 左停靠任务栏 (48px) + 无托盘 rect (全局热键/托盘菜单唤出): 面板必须贴左任务栏内侧,
+    // 沿轴贴靠托盘所在的工作区底角, 不得跑到工作区右缘
+    let monitor = MonitorBounds {
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1080,
+        work_x: 48,
+        work_y: 0,
+        work_width: 1872,
+        work_height: 1080,
+        scale_factor: 1.0,
+    };
+    let geom = compute_dashboard_geometry(&monitor, None);
+    assert_eq!(geom.x, 48 + 12);
+    assert_eq!(geom.y, 1080 - 760 - 10);
+}
+
+#[test]
+fn dashboard_geometry_right_taskbar_aligns_along_edge_to_tray() {
+    use bruce_win_lib::runtime_core::{compute_dashboard_geometry, MonitorBounds, TrayIconBounds};
+    // 右停靠任务栏 (48px) + 托盘点击: 面板右缘贴任务栏内侧 12px, 沿轴 (垂直) 对齐托盘所在角落
+    let monitor = MonitorBounds {
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1080,
+        work_x: 0,
+        work_y: 0,
+        work_width: 1872,
+        work_height: 1080,
+        scale_factor: 1.0,
+    };
+    let tray = TrayIconBounds {
+        x: 1872,
+        y: 1020,
+        width: 48,
+        height: 40,
+    };
+    let geom = compute_dashboard_geometry(&monitor, Some(&tray));
+    assert_eq!(geom.x, 1872 - 12 - 440);
+    assert_eq!(geom.y, 1080 - 760 - 10);
+}
+
+#[test]
+fn dashboard_geometry_left_taskbar_with_tray_attaches_inside_taskbar() {
+    use bruce_win_lib::runtime_core::{
+        compute_dashboard_geometry, detect_taskbar_edge, MonitorBounds, TaskbarEdge, TrayIconBounds,
+    };
+    // 左停靠任务栏 (48px) + 托盘点击: 面板左缘贴任务栏内侧 12px, 沿轴对齐托盘所在角落
+    let monitor = MonitorBounds {
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1080,
+        work_x: 48,
+        work_y: 0,
+        work_width: 1872,
+        work_height: 1080,
+        scale_factor: 1.0,
+    };
+    let tray = TrayIconBounds {
+        x: 4,
+        y: 1020,
+        width: 40,
+        height: 40,
+    };
+    assert_eq!(
+        detect_taskbar_edge(&monitor, Some(&tray)),
+        TaskbarEdge::Left
+    );
+    let geom = compute_dashboard_geometry(&monitor, Some(&tray));
+    assert_eq!(geom.x, 48 + 12); // 贴任务栏内侧
+    assert_eq!(geom.y, 1080 - 760 - 10); // 沿轴落到工作区底边距
+    assert!(geom.x >= 48); // 不与任务栏条带相交
+}
+
+#[test]
+fn dashboard_geometry_right_taskbar_hotkey_invocation_stays_on_taskbar_side() {
+    use bruce_win_lib::runtime_core::{compute_dashboard_geometry, MonitorBounds};
+    // 右停靠任务栏 (48px) + 无托盘 rect: 面板必须贴右任务栏内侧, 不得跑到工作区左缘
+    let monitor = MonitorBounds {
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1080,
+        work_x: 0,
+        work_y: 0,
+        work_width: 1872,
+        work_height: 1080,
+        scale_factor: 1.0,
+    };
+    let geom = compute_dashboard_geometry(&monitor, None);
+    assert_eq!(geom.x, 1872 - 12 - 440);
+    assert_eq!(geom.y, 1080 - 760 - 10);
+}
+
+#[test]
+fn dashboard_geometry_portrait_right_taskbar_keeps_panel_inside_work_area() {
+    use bruce_win_lib::runtime_core::{compute_dashboard_geometry, MonitorBounds, TrayIconBounds};
+    // 竖屏 1080x1920 + 右侧 48px 任务栏: 宽度上限仍取 440 逻辑px, 面板完整落在工作区内
+    let monitor = MonitorBounds {
+        x: 0,
+        y: 0,
+        width: 1080,
+        height: 1920,
+        work_x: 0,
+        work_y: 0,
+        work_width: 1032,
+        work_height: 1920,
+        scale_factor: 1.0,
+    };
+    let tray = TrayIconBounds {
+        x: 1032,
+        y: 1820,
+        width: 48,
+        height: 40,
+    };
+    let geom = compute_dashboard_geometry(&monitor, Some(&tray));
+    assert_eq!(geom.width, 440);
+    assert_eq!(geom.height, 760);
+    assert_eq!(geom.x, 1032 - 12 - 440);
+    assert_eq!(geom.y, 1920 - 760 - 10);
+}
+
+#[test]
+fn detect_taskbar_edge_uses_tray_to_disambiguate_other_appbars() {
+    use bruce_win_lib::runtime_core::{
+        detect_taskbar_edge, MonitorBounds, TaskbarEdge, TrayIconBounds,
+    };
+    // 同一份工作区内缩几何 (左 40px + 底 48px), 仅凭托盘位置即可区分
+    // 「底任务栏 + 左侧第三方工具条」与「左任务栏 + 底部第三方工具条」
+    let monitor = MonitorBounds {
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1080,
+        work_x: 40,
+        work_y: 0,
+        work_width: 1880,
+        work_height: 1032,
+        scale_factor: 1.0,
+    };
+    let bottom_tray = TrayIconBounds {
+        x: 1820,
+        y: 1032,
+        width: 40,
+        height: 40,
+    };
+    assert_eq!(
+        detect_taskbar_edge(&monitor, Some(&bottom_tray)),
+        TaskbarEdge::Bottom
+    );
+    let left_tray = TrayIconBounds {
+        x: 4,
+        y: 900,
+        width: 32,
+        height: 32,
+    };
+    assert_eq!(
+        detect_taskbar_edge(&monitor, Some(&left_tray)),
+        TaskbarEdge::Left
+    );
+    // 无托盘坐标时按 Windows 默认停靠顺序兜底 (底优先)
+    assert_eq!(detect_taskbar_edge(&monitor, None), TaskbarEdge::Bottom);
+}
+
+#[test]
+fn dashboard_geometry_stale_tray_rect_from_other_monitor_is_ignored() {
+    use bruce_win_lib::runtime_core::{compute_dashboard_geometry, MonitorBounds, TrayIconBounds};
+    // 任务栏换屏/换边后沿用的陈旧托盘坐标不在本屏任务栏条带内 → 丢弃, 回落贴角兜底
+    let monitor = MonitorBounds {
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1080,
+        work_x: 0,
+        work_y: 0,
+        work_width: 1920,
+        work_height: 1040,
+        scale_factor: 1.0,
+    };
+    let stale = TrayIconBounds {
+        x: -3000,
+        y: 1050,
+        width: 40,
+        height: 40,
+    };
+    let geom = compute_dashboard_geometry(&monitor, Some(&stale));
+    assert_eq!(geom.x, 1920 - 12 - 440);
+    assert_eq!(geom.y, 1040 - 760 - 10);
+}
+
+#[test]
+fn detect_taskbar_edge_falls_back_to_tray_when_taskbar_auto_hides() {
+    use bruce_win_lib::runtime_core::{
+        compute_dashboard_geometry, detect_taskbar_edge, MonitorBounds, TaskbarEdge, TrayIconBounds,
+    };
+    // 自动隐藏任务栏: 工作区 == 显示器 (四边无内缩), 由托盘贴边方向推断
+    let monitor = MonitorBounds {
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1080,
+        work_x: 0,
+        work_y: 0,
+        work_width: 1920,
+        work_height: 1080,
+        scale_factor: 1.0,
+    };
+    let bottom_tray = TrayIconBounds {
+        x: 1820,
+        y: 1030,
+        width: 40,
+        height: 40,
+    };
+    assert_eq!(
+        detect_taskbar_edge(&monitor, Some(&bottom_tray)),
+        TaskbarEdge::Bottom
+    );
+    // 纵向任务栏的托盘贴右缘 → 判右, 面板随之贴工作区右侧
+    let right_tray = TrayIconBounds {
+        x: 1870,
+        y: 600,
+        width: 44,
+        height: 40,
+    };
+    assert_eq!(
+        detect_taskbar_edge(&monitor, Some(&right_tray)),
+        TaskbarEdge::Right
+    );
+    assert_eq!(
+        compute_dashboard_geometry(&monitor, Some(&right_tray)).x,
+        1920 - 12 - 440
+    );
+    // 既无内缩也无托盘坐标: 回落到 Windows 默认底部
+    assert_eq!(detect_taskbar_edge(&monitor, None), TaskbarEdge::Bottom);
+}
+
+#[test]
+fn dashboard_geometry_four_edges_never_escape_work_area_and_hug_taskbar() {
+    use bruce_win_lib::runtime_core::{
+        compute_dashboard_geometry, detect_taskbar_edge, MonitorBounds, TaskbarEdge, TrayIconBounds,
+    };
+    // 任务栏四方向 × 主流分辨率/DPI × 有/无托盘坐标: 面板必须完整落在工作区内、
+    // 与任务栏条带不相交, 且贴边轴间隙恰为安全边距 (贴靠契约)。
+    let edges = [
+        TaskbarEdge::Bottom,
+        TaskbarEdge::Top,
+        TaskbarEdge::Left,
+        TaskbarEdge::Right,
+    ];
+    let screens = [
+        (1920_u32, 1080_u32, 40_u32, 1.0_f64), // 1080p 100%
+        (1920, 1080, 48, 1.5),                 // 1080p 150% 笔电
+        (1366, 768, 40, 1.0),                  // 768p 笔电
+        (2560, 1440, 50, 1.25),                // 2K 125%
+        (3840, 2160, 80, 2.0),                 // 4K 200%
+        (1080, 1920, 48, 1.0),                 // 竖屏副屏
+    ];
+
+    for (width, height, bar, scale) in screens {
+        for edge in edges {
+            let (work_x, work_y, work_w, work_h) = match edge {
+                TaskbarEdge::Bottom => (0, 0, width, height - bar),
+                TaskbarEdge::Top => (0, bar as i32, width, height - bar),
+                TaskbarEdge::Left => (bar as i32, 0, width - bar, height),
+                TaskbarEdge::Right => (0, 0, width - bar, height),
+            };
+            let monitor = MonitorBounds {
+                x: 0,
+                y: 0,
+                width,
+                height,
+                work_x,
+                work_y,
+                work_width: work_w,
+                work_height: work_h,
+                scale_factor: scale,
+            };
+            // 托盘图标位于该任务栏的托盘角落 (底栏右端 / 纵栏底端)
+            let tray = match edge {
+                TaskbarEdge::Bottom => TrayIconBounds {
+                    x: work_x + work_w as i32 - bar as i32,
+                    y: height as i32 - bar as i32,
+                    width: bar,
+                    height: bar,
+                },
+                TaskbarEdge::Top => TrayIconBounds {
+                    x: work_x + work_w as i32 - bar as i32,
+                    y: 0,
+                    width: bar,
+                    height: bar,
+                },
+                TaskbarEdge::Left => TrayIconBounds {
+                    x: 0,
+                    y: work_h as i32 - bar as i32,
+                    width: bar,
+                    height: bar,
+                },
+                TaskbarEdge::Right => TrayIconBounds {
+                    x: width as i32 - bar as i32,
+                    y: work_h as i32 - bar as i32,
+                    width: bar,
+                    height: bar,
+                },
+            };
+            let ctx = format!("{edge:?} {width}x{height} 任务栏{bar}px @{scale}x");
+            assert_eq!(
+                detect_taskbar_edge(&monitor, Some(&tray)),
+                edge,
+                "{ctx}: 托盘应落在该任务栏条带内"
+            );
+
+            for candidate in [Some(tray), None] {
+                let geom = compute_dashboard_geometry(&monitor, candidate.as_ref());
+                let ctx = format!("{ctx} 托盘={}", candidate.is_some());
+
+                assert!(geom.width > 0 && geom.height > 0, "{ctx}: 尺寸无效");
+                // 完整落在工作区内 (即与任务栏条带不相交)
+                assert!(geom.x >= work_x, "{ctx}: 越左界");
+                assert!(geom.y >= work_y, "{ctx}: 越上界");
+                assert!(
+                    geom.x + geom.width as i32 <= work_x + work_w as i32,
+                    "{ctx}: 越右界"
+                );
+                assert!(
+                    geom.y + geom.height as i32 <= work_y + work_h as i32,
+                    "{ctx}: 越下界"
+                );
+                // 贴边轴间隙恰为安全边距
+                let margin_x = ((12.0 * scale).round() as i32).max(4);
+                let margin_y = ((10.0 * scale).round() as i32).max(4);
+                let (gap, expected) = match edge {
+                    TaskbarEdge::Bottom => (
+                        (work_y + work_h as i32) - (geom.y + geom.height as i32),
+                        margin_y,
+                    ),
+                    TaskbarEdge::Top => (geom.y - work_y, margin_y),
+                    TaskbarEdge::Left => (geom.x - work_x, margin_x),
+                    TaskbarEdge::Right => (
+                        (work_x + work_w as i32) - (geom.x + geom.width as i32),
+                        margin_x,
+                    ),
+                };
+                assert_eq!(gap, expected, "{ctx}: 贴边间隙不等于安全边距");
+            }
+        }
+    }
+}
+
+#[test]
+fn dashboard_geometry_parity_fixture_is_current() {
+    use bruce_win_lib::runtime_core::{
+        compute_dashboard_geometry, detect_taskbar_edge, DashboardGeometry, MonitorBounds,
+        TaskbarEdge, TrayIconBounds,
+    };
+
+    #[derive(serde::Deserialize)]
+    struct Case {
+        name: String,
+        monitor: MonitorBounds,
+        tray: Option<TrayIconBounds>,
+        edge: TaskbarEdge,
+        geometry: DashboardGeometry,
+    }
+    #[derive(serde::Deserialize)]
+    struct Fixture {
+        cases: Vec<Case>,
+    }
+
+    // 与 Demo 内联几何镜像 (Node 侧 apps/win/tests/geometry-parity.test.mjs) 共用同一份
+    // fixture: 几何改动后未重新生成 fixture 时, Rust 与 Node 双侧测试都会失败。
+    // 重新生成见 apps/win/src-tauri/examples/dump_geometry.rs 头部注释。
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../tests/fixtures/geometry-parity/cases.json");
+    let raw = std::fs::read_to_string(&path).expect("geometry-parity fixture 可读");
+    let fixture: Fixture = serde_json::from_str(&raw).expect("fixture 契约解析");
+
+    let mut seen_edges: Vec<TaskbarEdge> = Vec::new();
+    let mut tray_cases = 0;
+    for case in &fixture.cases {
+        let edge = detect_taskbar_edge(&case.monitor, case.tray.as_ref());
+        let geometry = compute_dashboard_geometry(&case.monitor, case.tray.as_ref());
+        assert_eq!(edge, case.edge, "{}: 任务栏边判定", case.name);
+        assert_eq!(geometry, case.geometry, "{}: 面板几何", case.name);
+        if !seen_edges.contains(&edge) {
+            seen_edges.push(edge);
+        }
+        if case.tray.is_some() {
+            tray_cases += 1;
+        }
+    }
+
+    assert!(fixture.cases.len() >= 40, "fixture 覆盖不足");
+    assert_eq!(seen_edges.len(), 4, "fixture 必须覆盖任务栏四个方向");
+    assert!(tray_cases > 0, "fixture 必须覆盖有托盘坐标的场景");
+}

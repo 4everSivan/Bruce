@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+### Fixed
+- **看板面板任务栏四方向自适应定位 (C035)**：修复 Windows 任务栏停靠左/右侧时面板定位错乱的缺陷。原实现的定位判据只有一个「任务栏在上还是在下」的布尔量，左右停靠方向在代码中没有任何表示：**左侧任务栏 + 全局热键（或首次用托盘右键菜单「显示看板」）唤出**时，横向兜底恒取工作区右缘，面板会跑到屏幕另一端（1920×1080、48px 左栏实测 x=1468，正确值 60，距任务栏 1420px）；纵向任务栏下的沿轴对齐也只是巧合（托盘恒落在纵向栏底部，被误判为「任务栏在下方」而套用横向上方贴靠逻辑，右栏实测 y=250，统一模型下应为 y=310）。现改为**四边统一模型**：由系统真实工作区相对显示器四边的内缩量判定任务栏所在边（`detect_taskbar_edge`），托盘 `rect` 落在候选条带内时用于消歧（第三方 appbar/dock 与真任务栏共存场景），定位统一为「贴边轴恒贴任务栏内侧（水平 12 / 垂直 10 逻辑px）+ 对齐轴沿任务栏轴向居中于托盘，无可用托盘坐标时贴托盘所在角落」，两轴均按含边距区间夹紧，面板矩形恒在工作区内且与任务栏条带不相交。同时补齐两处健壮性：托盘 `rect` 与判定出的任务栏边不一致（任务栏换边/换屏后的陈旧坐标）时丢弃并走贴角兜底；任务栏自动隐藏（工作区无内缩）时按托盘贴边方向推断停靠边。顶/底任务栏与各档分辨率/DPI 的既有行为逐字符保持不变（原 7 项几何测试期望值未变）。
+- **面板几何 Demo 与实现的可证明同构 (C035)**：任务栏交互 Demo 扩展为四方向停靠 + 模拟屏幕缩放框，面板位置/尺寸/DPI 内容缩放全部由与 `runtime_core::compute_dashboard_geometry` 逐行同构的内联几何镜像驱动；新增 `tests/fixtures/geometry-parity/cases.json`（50 例：5 档分辨率/DPI × 4 方向 × 有/无托盘 + 竖屏 + 自动隐藏 + 第三方 appbar 消歧 + 陈旧 rect + 负坐标副屏），由 Rust 与 Node 双侧读取对拍（`apps/win/tests/geometry-parity.test.mjs` 随 `scripts/check-win-frontend.mjs` 进 CI），消除维护者无 Windows 机器时「Demo 与实现漂移而核验失效」的风险。
+
 ### Added
 - **订阅用量卡徽章升级为品牌图形 (C026)**：仪表盘订阅区各 Provider 的身份标识由「品牌色首字母字母标」升级为**品牌图形徽章**（品牌色瓷砖 + 白色品牌图形），10 家 provider（Kimi / DeepSeek / 火山引擎 / Z.ai / ChatGPT / Claude / Grok / OpenCode GO / StepFun / Cline）各取官方 mark，未收录图形的 provider（Jev）保持首字母兜底：
   - **多图标库取材**：Simple Icons（CC0，Kimi / DeepSeek / Claude / Cline / OpenCode）、theSVG（MIT，火山引擎 / 阶跃星辰）、SVG Logos（CC0，ChatGPT / Grok）；Z.ai 因图标库仅有「智谱」点阵 mark 与现显示名不符，改取其**官方 logo 的 Z 字形**；

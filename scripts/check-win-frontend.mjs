@@ -60,10 +60,13 @@ if (failed) {
   process.exit(1);
 }
 console.log("Windows 前端结构冒烟通过");
-const behavior = spawnSync(process.execPath, ["--test", "apps/win/tests/frontend.test.mjs"], {
-  cwd: repoRoot, stdio: "inherit",
-});
-if (behavior.error || behavior.status !== 0) {
-  console.error("Windows 前端交互回归失败", behavior.error?.message || `Exit Code ${behavior.status}`);
-  process.exit(behavior.status || 1);
+// 交互回归 + 面板几何对拍 (demo 内联镜像 ↔ Rust runtime_core fixture, C035)
+for (const suite of ["apps/win/tests/frontend.test.mjs", "apps/win/tests/geometry-parity.test.mjs"]) {
+  const behavior = spawnSync(process.execPath, ["--test", suite], {
+    cwd: repoRoot, stdio: "inherit",
+  });
+  if (behavior.error || behavior.status !== 0) {
+    console.error(`Windows 前端测试失败: ${suite}`, behavior.error?.message || `Exit Code ${behavior.status}`);
+    process.exit(behavior.status || 1);
+  }
 }

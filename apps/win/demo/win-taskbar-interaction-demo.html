@@ -241,8 +241,7 @@
     .sim-log-box .log-entry.info { color: #8ecae6; }
 
     /* ======================================================== */
-    /* Windows 11 原生任务栏 (Taskbar) */
-    /* ======================================================== */
+    /* Windows 11 原生任务栏 (Taskbar) —— 四方向停靠, 位置/尺寸由 applyGeometry() 注入 */
     .taskbar {
       position: absolute;
       bottom: 0;
@@ -257,6 +256,49 @@
       justify-content: space-between;
       padding: 0 10px;
       z-index: 500;
+      transform-origin: top left;
+    }
+    /* 纵向停靠 (左/右): 内容改为列向, 图标列垂直居中, 托盘组落到列底 (对齐 Win10 纵栏) */
+    .taskbar.edge-left,
+    .taskbar.edge-right {
+      flex-direction: column;
+      justify-content: center;
+      padding: 10px 0;
+    }
+    .taskbar.edge-left { border-top: none; border-right: 1px solid var(--taskbar-border); }
+    .taskbar.edge-right { border-top: none; border-left: 1px solid var(--taskbar-border); }
+    .taskbar.edge-top { border-top: none; border-bottom: 1px solid var(--taskbar-border); }
+    .taskbar.edge-left .taskbar-center,
+    .taskbar.edge-right .taskbar-center {
+      position: static;
+      transform: none;
+      flex-direction: column;
+    }
+    .taskbar.edge-left .taskbar-tray,
+    .taskbar.edge-right .taskbar-tray {
+      margin-left: 0;
+      margin-top: auto;
+      flex-direction: column;
+    }
+    .taskbar.edge-left .taskbar-icon.running::after,
+    .taskbar.edge-right .taskbar-icon.running::after {
+      bottom: auto;
+      left: 2px;
+      top: 50%;
+      width: 3px;
+      height: 6px;
+      transform: translateY(-50%);
+    }
+    .taskbar.edge-left .taskbar-icon.active::after,
+    .taskbar.edge-right .taskbar-icon.active::after {
+      height: 16px;
+    }
+    .taskbar.edge-left .tray-show-desk,
+    .taskbar.edge-right .tray-show-desk {
+      width: 100%;
+      height: 6px;
+      border-left: none;
+      border-top: 1px solid rgba(255, 255, 255, 0.14);
     }
 
     /* 任务栏中间图标组 (Windows 11 居中模式) */
@@ -369,11 +411,11 @@
       box-shadow: 0 0 6px var(--green);
     }
 
-    /* 托盘原生 Tooltip */
+    /* 托盘原生 Tooltip (位置由 placePopups() 按任务栏方向注入视口坐标) */
     .tray-tooltip {
       position: absolute;
-      bottom: 54px;
-      right: 120px;
+      left: 0;
+      top: 0;
       background: #2a2a30;
       color: #fff;
       border: 1px solid rgba(255, 255, 255, 0.15);
@@ -383,14 +425,13 @@
       box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
       pointer-events: none;
       opacity: 0;
-      transform: translateY(4px);
-      transition: opacity 0.15s, transform 0.15s;
+      transition: opacity 0.15s;
       white-space: nowrap;
+      transform-origin: top left;
       z-index: 1100;
     }
     .tray-tooltip.visible {
       opacity: 1;
-      transform: translateY(0);
     }
 
     /* 托盘时间与状态 */
@@ -421,8 +462,8 @@
     /* ======================================================== */
     .tray-context-menu {
       position: absolute;
-      bottom: 54px;
-      right: 110px;
+      left: 0;
+      top: 0;
       width: 170px;
       background: rgba(36, 36, 42, 0.95);
       backdrop-filter: blur(30px);
@@ -433,12 +474,8 @@
       display: none;
       flex-direction: column;
       gap: 2px;
+      transform-origin: top left;
       z-index: 999;
-      animation: menuPop 0.12s ease-out;
-    }
-    @keyframes menuPop {
-      from { opacity: 0; transform: scale(0.96) translateY(6px); }
-      to { opacity: 1; transform: scale(1) translateY(0); }
     }
     .menu-item {
       display: flex;
@@ -469,10 +506,10 @@
     /* ======================================================== */
     .sim-dashboard-container {
       position: absolute;
-      bottom: 58px; /* 贴靠任务栏上方 10px */
-      right: 12px;  /* 贴靠主屏右下角边距 12px (与 lib.rs target_x 契约 1:1) */
+      left: 0;   /* 位置/尺寸由 applyGeometry() 按 compute_dashboard_geometry 物理几何注入 */
+      top: 0;
       width: 440px;
-      height: 700px;
+      height: 760px;
       background: rgba(26, 26, 32, 0.94);
       backdrop-filter: blur(40px) saturate(180%);
       border-radius: 12px;
@@ -482,28 +519,20 @@
       flex-direction: column;
       overflow: hidden;
       z-index: 600;
-      transform-origin: bottom right;
-      animation: dashSlideIn 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+      /* transform 承载 DPI 缩放 (440 逻辑px × dpi = 物理尺寸), 动画只用 opacity */
+      transform-origin: top left;
+      animation: dashFadeIn 0.16s ease-out;
     }
-    .sim-dashboard-container.top-anchored {
-      bottom: auto;
-      transform-origin: top right;
-      animation: dashSlideInTop 0.16s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-    @keyframes dashSlideInTop {
-      from { opacity: 0; transform: translateY(-14px) scale(0.97); }
-      to { opacity: 1; transform: translateY(0) scale(1); }
-    }
-    @keyframes dashSlideIn {
-      from { opacity: 0; transform: translateY(14px) scale(0.97); }
-      to { opacity: 1; transform: translateY(0) scale(1); }
+    @keyframes dashFadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
     }
     .sim-dashboard-container.hiding {
-      animation: dashSlideOut 0.12s ease-in forwards;
+      animation: dashFadeOut 0.12s ease-in forwards;
     }
-    @keyframes dashSlideOut {
-      from { opacity: 1; transform: translateY(0) scale(1); }
-      to { opacity: 0; transform: translateY(14px) scale(0.97); }
+    @keyframes dashFadeOut {
+      from { opacity: 1; }
+      to { opacity: 0; }
     }
 
     /* 顶部 1px 细微反光线 */
@@ -515,27 +544,39 @@
       z-index: 10;
     }
 
-    /* 贴靠锚线指示箭头 (示意与托盘图标的物理挂靠关系) */
+    /* 贴靠锚线指示箭头 (示意与托盘图标的物理挂靠关系), 位置与旋转由 applyGeometry() 注入 */
     .dock-indicator {
       position: absolute;
-      bottom: -6px;
-      right: 95px;
       width: 12px;
       height: 12px;
       background: rgba(26, 26, 32, 0.94);
       border-right: 1px solid rgba(255, 255, 255, 0.15);
       border-bottom: 1px solid rgba(255, 255, 255, 0.15);
-      transform: rotate(45deg);
+      transform-origin: top left;
       z-index: 601;
       display: none;
     }
-    .sim-dashboard-container.top-anchored .dock-indicator {
-      bottom: auto;
-      top: -6px;
-      border-right: none;
-      border-bottom: none;
-      border-left: 1px solid rgba(255, 255, 255, 0.15);
-      border-top: 1px solid rgba(255, 255, 255, 0.15);
+    .dock-indicator.edge-bottom { transform: scale(var(--screen-k, 1)) rotate(45deg); }
+    .dock-indicator.edge-top { transform: scale(var(--screen-k, 1)) rotate(225deg); }
+    .dock-indicator.edge-left { transform: scale(var(--screen-k, 1)) rotate(135deg); }
+    .dock-indicator.edge-right { transform: scale(var(--screen-k, 1)) rotate(315deg); }
+
+    /* 模拟屏幕边框 (标出被模拟的整块显示器, 便于人工核验面板是否越出工作区) */
+    .sim-screen {
+      position: absolute;
+      border: 1px dashed rgba(255, 255, 255, 0.16);
+      border-radius: 4px;
+      pointer-events: none;
+      z-index: 1;
+    }
+    .sim-screen-label {
+      position: absolute;
+      top: -19px;
+      left: 0;
+      font-size: 11px;
+      color: var(--secondary);
+      letter-spacing: 0.2px;
+      white-space: nowrap;
     }
 
     /* 看板 HUD 顶栏 */
@@ -892,12 +933,14 @@
         </div>
       </div>
 
-      <!-- 任务栏位置 -->
+      <!-- 任务栏位置 (Windows 任务栏可停靠屏幕四边) -->
       <div>
-        <div class="sim-section-label">📌 任务栏停靠位置</div>
+        <div class="sim-section-label">📌 任务栏停靠位置 (四方向)</div>
         <div class="sim-chip-group">
           <button class="sim-chip active" id="btn-tb-bottom" onclick="setTaskbarPlacement('bottom')">底部任务栏 (标准)</button>
           <button class="sim-chip" id="btn-tb-top" onclick="setTaskbarPlacement('top')">顶部任务栏</button>
+          <button class="sim-chip" id="btn-tb-left" onclick="setTaskbarPlacement('left')">左侧任务栏</button>
+          <button class="sim-chip" id="btn-tb-right" onclick="setTaskbarPlacement('right')">右侧任务栏</button>
         </div>
       </div>
 
@@ -908,6 +951,7 @@
         <div class="spec-row"><span>DPI 缩放比率:</span><span class="spec-val" id="tel-scale">1.0 (100%)</span></div>
         <div class="spec-row"><span>面板逻辑尺寸:</span><span class="spec-val" id="tel-size">440 × 760 px</span></div>
         <div class="spec-row"><span>面板物理尺寸:</span><span class="spec-val" id="tel-physical">440 × 760 px</span></div>
+        <div class="spec-row"><span>面板物理坐标:</span><span class="spec-val" id="tel-coord">x=1468, y=270</span></div>
         <div class="spec-row"><span>挂靠对齐锚点:</span><span class="spec-val" id="tel-pos">底部任务栏上方 10px / 托盘中心对齐</span></div>
         <div class="spec-status" id="tel-status">
           <span>✓</span>
@@ -952,8 +996,13 @@
       </div>
     </div>
 
+    <!-- 模拟屏幕边界 (整块显示器; 面板必须在 work_area 内, 不与之相交) -->
+    <div class="sim-screen" id="sim-screen">
+      <span class="sim-screen-label" id="sim-screen-label">模拟屏幕</span>
+    </div>
+
     <!-- ==================================================== -->
-    <!-- 托盘呼出的 440px Fluent 仪表盘 (挂靠在任务栏上方) -->
+    <!-- 托盘呼出的 440px Fluent 仪表盘 (贴靠任务栏四方向自适应) -->
     <!-- ==================================================== -->
     <div class="sim-dashboard-container" id="dashboard-window" onclick="event.stopPropagation()">
       <!-- HUD 顶栏 -->
@@ -1267,7 +1316,11 @@
     };
 
     let currentProfileKey = "1080p_100";
-    let taskbarPlacement = "bottom"; // "bottom" | "top"
+    let taskbarPlacement = "bottom"; // "bottom" | "top" | "left" | "right"
+
+    // URL 片段覆盖档位与方向 (便于核验与复现): 
+    //   .../win-taskbar-interaction-demo.html#tb=left&res=1080p_150&open=1
+    const HASH_OPTIONS = new URLSearchParams(window.location.hash.replace(/^#/, ""));
 
     const logBox = document.getElementById("sim-log");
     const dashWindow = document.getElementById("dashboard-window");
@@ -1278,73 +1331,353 @@
     const settingsWindow = document.getElementById("settings-window");
     const taskbarRoot = document.getElementById("taskbar-root");
 
-    function computeGeometry(profileKey, placement) {
-      const p = RESOLUTION_PROFILES[profileKey];
-      const scale = p.scale;
-      const baseLogicalW = 440;
-      const baseLogicalH = 760;
-      const availLogicalH = p.workHeight / scale;
-      const maxLogicalH = Math.max(availLogicalH - 20, 320);
-      const targetLogicalH = Math.min(baseLogicalH, maxLogicalH);
-      const winW = Math.round(baseLogicalW * scale);
-      const winH = Math.round(targetLogicalH * scale);
+    const simScreen = document.getElementById("sim-screen");
+    const simScreenLabel = document.getElementById("sim-screen-label");
+    const desktopIcons = document.querySelector(".desktop-icons");
 
+    // ============================================================
+    // 面板几何: 与 Rust `runtime_core::compute_dashboard_geometry` 1:1 的纯函数镜像
+    // (事实源 apps/win/src-tauri/src/runtime_core.rs;
+    //  与 Rust 逐字段对拍见 apps/win/tests/geometry-parity.test.mjs + tests/fixtures/geometry-parity)
+    // @geometry-parity:begin
+    const EDGE_PRIORITY = ["bottom", "right", "top", "left"];
+
+    // 工作区相对显示器边界的内缩量; 任务栏所在边留下正内缩
+    function workInsets(monitor) {
       return {
-        profile: p,
-        logicalWidth: baseLogicalW,
-        logicalHeight: Math.round(targetLogicalH),
-        physicalWidth: winW,
-        physicalHeight: winH,
-        availLogicalH: Math.round(availLogicalH),
-        isReduced: targetLogicalH < baseLogicalH,
-        placement,
+        left: Math.max(monitor.work_x - monitor.x, 0),
+        top: Math.max(monitor.work_y - monitor.y, 0),
+        right: Math.max((monitor.x + monitor.width) - (monitor.work_x + monitor.work_width), 0),
+        bottom: Math.max((monitor.y + monitor.height) - (monitor.work_y + monitor.work_height), 0),
+      };
+    }
+
+    // 任务栏在该边的物理矩形 (工作区之外的条带; 相邻两边条带互不重叠)
+    function barRect(monitor, edge) {
+      const monLeft = monitor.x, monTop = monitor.y;
+      const monRight = monitor.x + monitor.width, monBottom = monitor.y + monitor.height;
+      const workLeft = monitor.work_x, workTop = monitor.work_y;
+      const workRight = monitor.work_x + monitor.work_width;
+      const workBottom = monitor.work_y + monitor.work_height;
+      if (edge === "bottom") return { x: monLeft, y: workBottom, width: workRight - monLeft, height: monBottom - workBottom };
+      if (edge === "top") return { x: monLeft, y: monTop, width: workRight - monLeft, height: workTop - monTop };
+      if (edge === "left") return { x: monLeft, y: monTop, width: workLeft - monLeft, height: workBottom - monTop };
+      return { x: workRight, y: monTop, width: monRight - workRight, height: workBottom - monTop };
+    }
+
+    function rectContains(rect, x, y) {
+      return x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height;
+    }
+
+    function trayCenter(tray) {
+      return { x: tray.x + Math.floor(tray.width / 2), y: tray.y + Math.floor(tray.height / 2) };
+    }
+
+    // 四边均无内缩 (任务栏自动隐藏) 时按托盘贴边方向推断
+    function edgeNearestTray(monitor, tray) {
+      const c = trayCenter(tray);
+      const monRight = monitor.x + monitor.width;
+      const monBottom = monitor.y + monitor.height;
+      const bandX = Math.max(tray.width, Math.max(Math.floor(monitor.width / 40), 8));
+      const bandY = Math.max(tray.height, Math.max(Math.floor(monitor.height / 40), 8));
+      for (const edge of EDGE_PRIORITY) {
+        let hit = false;
+        if (edge === "bottom") hit = monBottom - c.y <= bandY;
+        else if (edge === "top") hit = c.y - monitor.y <= bandY;
+        else if (edge === "left") hit = c.x - monitor.x <= bandX;
+        else hit = monRight - c.x <= bandX;
+        if (hit) return edge;
+      }
+      return null;
+    }
+
+    function detectTaskbarEdge(monitor, tray) {
+      const insets = workInsets(monitor);
+      if (tray) {
+        const c = trayCenter(tray);
+        for (const edge of EDGE_PRIORITY) {
+          if (insets[edge] <= 0) continue;
+          const r = barRect(monitor, edge);
+          // 容差 1px: 托盘 rect 与条带边界相切时仍视为命中
+          if (rectContains({ x: r.x - 1, y: r.y - 1, width: r.width + 2, height: r.height + 2 }, c.x, c.y)) {
+            return edge;
+          }
+        }
+        if (insets.left + insets.top + insets.right + insets.bottom === 0) {
+          const inferred = edgeNearestTray(monitor, tray);
+          if (inferred) return inferred;
+        }
+      }
+      for (const edge of EDGE_PRIORITY) {
+        if (insets[edge] > 0) return edge;
+      }
+      return "bottom";
+    }
+
+    // 陈旧托盘坐标 (任务栏换边/换屏后) 与判定出的任务栏边不一致时丢弃
+    function usableTray(monitor, edge, tray) {
+      if (!tray) return null;
+      const insets = workInsets(monitor);
+      if (insets.left + insets.top + insets.right + insets.bottom === 0) return tray;
+      const c = trayCenter(tray);
+      return rectContains(barRect(monitor, edge), c.x, c.y) ? tray : null;
+    }
+
+    function computeSize(monitor, scale) {
+      const maxLogicalW = Math.max(monitor.work_width / scale - 16, 240);
+      const targetLogicalW = Math.min(440, maxLogicalW);
+      const winW = Math.min(Math.round(targetLogicalW * scale), monitor.work_width);
+      const availLogicalH = monitor.work_height / scale;
+      const maxLogicalH = Math.max(availLogicalH - 20, 320);
+      const targetLogicalH = Math.min(760, maxLogicalH);
+      const winH = Math.min(Math.round(targetLogicalH * scale), monitor.work_height);
+      return { width: winW, height: winH, targetLogicalH };
+    }
+
+    function clampAxis(target, comfortLo, comfortHi, hardLo, hardHi) {
+      if (comfortLo <= comfortHi) return Math.min(Math.max(target, comfortLo), comfortHi);
+      return Math.min(Math.max(target, hardLo), Math.max(hardHi, hardLo));
+    }
+
+    function computeGeometry(monitor, tray) {
+      const scale = monitor.scale_factor > 0 ? monitor.scale_factor : 1.0;
+      const size = computeSize(monitor, scale);
+      const winW = size.width, winH = size.height;
+      const marginX = Math.max(Math.round(12 * scale), 4);
+      const marginY = Math.max(Math.round(10 * scale), 4);
+      const workLeft = monitor.work_x, workTop = monitor.work_y;
+      const workRight = monitor.work_x + monitor.work_width;
+      const workBottom = monitor.work_y + monitor.work_height;
+
+      const edge = detectTaskbarEdge(monitor, tray);
+      const anchor = usableTray(monitor, edge, tray);
+      const ac = anchor ? trayCenter(anchor) : null;
+
+      // 贴边轴: 紧贴任务栏内侧; 对齐轴: 居中于托盘, 无托盘坐标时贴托盘所在角落
+      let targetX, targetY;
+      if (edge === "bottom") {
+        targetX = ac ? ac.x - Math.floor(winW / 2) : workRight - marginX - winW;
+        targetY = workBottom - marginY - winH;
+      } else if (edge === "top") {
+        targetX = ac ? ac.x - Math.floor(winW / 2) : workRight - marginX - winW;
+        targetY = workTop + marginY;
+      } else if (edge === "left") {
+        targetX = workLeft + marginX;
+        targetY = ac ? ac.y - Math.floor(winH / 2) : workBottom - marginY - winH;
+      } else {
+        targetX = workRight - marginX - winW;
+        targetY = ac ? ac.y - Math.floor(winH / 2) : workBottom - marginY - winH;
+      }
+
+      const x = clampAxis(targetX, workLeft + marginX, workRight - marginX - winW, workLeft, workRight - winW);
+      const y = clampAxis(targetY, workTop + marginY, workBottom - marginY - winH, workTop, workBottom - winH);
+      return { x, y, width: winW, height: winH, logicalHeight: size.targetLogicalH, edge, marginX, marginY };
+    }
+    // @geometry-parity:end
+
+    // 由「分辨率/DPI 档位 + 任务栏停靠边」构造与 Rust 侧同构的显示器工作区与托盘 rect (物理像素)
+    function buildGeometryCase(profileKey, placement) {
+      const p = RESOLUTION_PROFILES[profileKey];
+      const bar = p.height - p.workHeight; // 该档位下任务栏的物理厚度
+      const W = p.width, H = p.height;
+      let workX = 0, workY = 0, workW = W, workH = H;
+      if (placement === "bottom") workH = H - bar;
+      else if (placement === "top") { workY = bar; workH = H - bar; }
+      else if (placement === "left") { workX = bar; workW = W - bar; }
+      else workW = W - bar;
+      const monitor = {
+        x: 0, y: 0, width: W, height: H,
+        work_x: workX, work_y: workY, work_width: workW, work_height: workH,
+        scale_factor: p.scale,
+      };
+      // 托盘图标位于该任务栏的托盘角落: 水平栏右端 / 纵栏底端 (对齐 Windows 通知区)
+      let tray;
+      if (placement === "bottom") tray = { x: W - bar, y: H - bar, width: bar, height: bar };
+      else if (placement === "top") tray = { x: W - bar, y: 0, width: bar, height: bar };
+      else if (placement === "left") tray = { x: 0, y: H - bar, width: bar, height: bar };
+      else tray = { x: W - bar, y: H - bar, width: bar, height: bar };
+      return { profile: p, bar, monitor, tray };
+    }
+
+    const EDGE_CN = { bottom: "底部", top: "顶部", left: "左侧", right: "右侧" };
+    let screenScale = 1; // 模拟屏幕 -> 浏览器视口 的缩放比
+    let screenOrigin = { x: 30, y: 40 };
+
+    // 模拟屏幕以 1:1 物理像素布局, 再整体缩放进视口 (左侧留出控制面板宽度的余量)
+    function computeStage(case_) {
+      const chromeWidth = 430;
+      const availW = Math.max(window.innerWidth - chromeWidth - 40, 360);
+      const availH = Math.max(window.innerHeight - 80, 240);
+      const k = Math.min(availW / case_.monitor.width, availH / case_.monitor.height, 1);
+      return { k, x: 30, y: 40 + Math.max((availH - case_.monitor.height * k) / 2, 0) };
+    }
+
+    // 模拟屏幕物理坐标 -> 视口坐标
+    function toView(rect, k) {
+      return {
+        x: screenOrigin.x + rect.x * k,
+        y: screenOrigin.y + rect.y * k,
+        width: rect.width * k,
+        height: rect.height * k,
       };
     }
 
     function applyGeometry() {
-      const geom = computeGeometry(currentProfileKey, taskbarPlacement);
-      const p = geom.profile;
+      const case_ = buildGeometryCase(currentProfileKey, taskbarPlacement);
+      const geom = computeGeometry(case_.monitor, case_.tray);
+      const p = case_.profile;
+      const stage = computeStage(case_);
+      screenScale = stage.k;
+      screenOrigin = { x: stage.x, y: stage.y };
 
+      // 模拟屏幕边框
+      if (simScreen) {
+        const sr = toView({ x: 0, y: 0, width: case_.monitor.width, height: case_.monitor.height }, stage.k);
+        simScreen.style.left = `${sr.x}px`;
+        simScreen.style.top = `${sr.y}px`;
+        simScreen.style.width = `${sr.width}px`;
+        simScreen.style.height = `${sr.height}px`;
+      }
+      if (simScreenLabel) {
+        simScreenLabel.textContent = `模拟屏幕 ${p.width}×${p.height} @${Math.round(p.scale * 100)}% · 视口缩放 ${(stage.k * 100).toFixed(0)}% · ${EDGE_CN[geom.edge]}任务栏 ${case_.bar}px`;
+      }
+
+      // 任务栏: 按物理条带布局, 整体按视口缩放
+      taskbarRoot.classList.remove("edge-bottom", "edge-top", "edge-left", "edge-right");
+      taskbarRoot.classList.add(`edge-${geom.edge}`);
+      const bar = barStripRect(case_);
+      const barView = toView(bar, stage.k);
+      taskbarRoot.style.left = `${barView.x}px`;
+      taskbarRoot.style.top = `${barView.y}px`;
+      taskbarRoot.style.width = `${bar.width}px`;
+      taskbarRoot.style.height = `${bar.height}px`;
+      taskbarRoot.style.transform = `scale(${stage.k})`;
+      taskbarRoot.style.transformOrigin = "top left";
+
+      // 面板: 逻辑尺寸 440 × logicalHeight 布局, transform 承载 DPI × 视口 缩放
+      dashWindow.style.width = "440px";
+      dashWindow.style.height = `${geom.logicalHeight}px`;
+      const panelView = toView({ x: geom.x, y: geom.y, width: geom.width, height: geom.height }, stage.k);
+      dashWindow.style.left = `${panelView.x}px`;
+      dashWindow.style.top = `${panelView.y}px`;
+      dashWindow.style.transform = `scale(${stage.k * p.scale})`;
+      dashWindow.style.transformOrigin = "top left";
+
+      // 贴靠指示角标: 落在面板贴任务栏那一侧、与托盘中心对齐
+      if (dockArrow) {
+        dockArrow.classList.remove("edge-bottom", "edge-top", "edge-left", "edge-right");
+        dockArrow.classList.add(`edge-${geom.edge}`);
+        const t = case_.tray;
+        const ax = t.x + t.width / 2;
+        const ay = t.y + t.height / 2;
+        let arrow;
+        if (geom.edge === "bottom") arrow = { x: ax - 6, y: geom.y + geom.height - 6 };
+        else if (geom.edge === "top") arrow = { x: ax - 6, y: geom.y - 6 };
+        else if (geom.edge === "left") arrow = { x: geom.x - 6, y: ay - 6 };
+        else arrow = { x: geom.x + geom.width - 6, y: ay - 6 };
+        const av = toView({ x: arrow.x, y: arrow.y, width: 12, height: 12 }, stage.k);
+        dockArrow.style.left = `${av.x}px`;
+        dockArrow.style.top = `${av.y}px`;
+        // 旋转角在 CSS 类里, 缩放经自定义属性合成 (避免 inline transform 覆盖旋转)
+        dockArrow.style.setProperty("--screen-k", String(stage.k));
+      }
+
+      // 桌面图标随模拟屏幕同步缩放 (任务栏在左/上时为图标列让出条带)
+      if (desktopIcons) {
+        const insetX = geom.edge === "left" ? case_.bar : 0;
+        const insetY = geom.edge === "top" ? case_.bar : 0;
+        const iv = toView({ x: insetX + 24, y: insetY + 24, width: 0, height: 0 }, stage.k);
+        desktopIcons.style.left = `${iv.x}px`;
+        desktopIcons.style.top = `${iv.y}px`;
+        desktopIcons.style.transform = `scale(${stage.k})`;
+        desktopIcons.style.transformOrigin = "top left";
+      }
+
+      // 遥测面板
       const telRes = document.getElementById("tel-res");
       const telWork = document.getElementById("tel-work");
       const telScale = document.getElementById("tel-scale");
       const telSize = document.getElementById("tel-size");
       const telPhysical = document.getElementById("tel-physical");
+      const telCoord = document.getElementById("tel-coord");
       const telPos = document.getElementById("tel-pos");
       const telStatus = document.getElementById("tel-status");
-
+      const work = case_.monitor;
       if (telRes) telRes.textContent = `${p.width} × ${p.height}`;
-      if (telWork) telWork.textContent = `${p.width} × ${p.workHeight} (${p.height - p.workHeight}px 任务栏)`;
+      if (telWork) {
+        telWork.textContent = `${work.work_width} × ${work.work_height} (x=${work.work_x}, y=${work.work_y}, ${case_.bar}px ${EDGE_CN[geom.edge]}任务栏)`;
+      }
       if (telScale) telScale.textContent = `${p.scale} (${Math.round(p.scale * 100)}%)`;
-      if (telSize) telSize.textContent = `${geom.logicalWidth} × ${geom.logicalHeight} px`;
-      if (telPhysical) telPhysical.textContent = `${geom.physicalWidth} × ${geom.physicalHeight} px`;
-
+      if (telSize) telSize.textContent = `440 × ${geom.logicalHeight} px`;
+      if (telPhysical) telPhysical.textContent = `${geom.width} × ${geom.height} px`;
+      if (telCoord) telCoord.textContent = `x=${geom.x}, y=${geom.y}`;
+      if (telPos) {
+        const anchorText = {
+          bottom: `底部任务栏上方 ${geom.marginY}px / 托盘中心对齐`,
+          top: `顶部任务栏下方 ${geom.marginY}px / 托盘中心对齐`,
+          left: `左侧任务栏右侧 ${geom.marginX}px / 托盘中心对齐`,
+          right: `右侧任务栏左侧 ${geom.marginX}px / 托盘中心对齐`,
+        }[geom.edge];
+        telPos.textContent = anchorText;
+      }
       if (telStatus) {
-        if (geom.isReduced) {
-          telStatus.innerHTML = `<span style="color:#FF9F0A">⚡</span> <span>高度已自适应缩容 (${geom.logicalHeight}px < 760px) · 内部平滑滚动 · 底栏 100% 锁死在可视区</span>`;
-        } else {
-          telStatus.innerHTML = `<span style="color:#30D158">✓</span> <span>全高渲染 (${geom.logicalHeight}px) · 距离任务栏 10px · 完美对齐不溢出</span>`;
-        }
+        const reduced = geom.logicalHeight < 760;
+        telStatus.innerHTML = reduced
+          ? `<span style="color:#FF9F0A">⚡</span> <span>高度已自适应缩容 (${geom.logicalHeight}px < 760px) · 内部平滑滚动 · 底栏 100% 锁死在可视区</span>`
+          : `<span style="color:#30D158">✓</span> <span>全高渲染 (${geom.logicalHeight}px) · 贴${EDGE_CN[geom.edge]}任务栏内侧 ${geom.edge === "bottom" || geom.edge === "top" ? geom.marginY : geom.marginX}px · 不越出工作区</span>`;
       }
 
-      dashWindow.style.width = "440px";
-      dashWindow.style.height = `${geom.logicalHeight}px`;
+      logSim(`[Geometry] ${p.name} · ${EDGE_CN[geom.edge]}任务栏 -> 工作区 ${work.work_width}×${work.work_height}, 面板 ${geom.width}×${geom.height} @ (${geom.x}, ${geom.y}), 逻辑高 ${geom.logicalHeight}px`);
+    }
 
-      if (taskbarPlacement === "top") {
-        taskbarRoot.classList.add("top-placed");
-        dashWindow.classList.add("top-anchored");
-        dashWindow.style.top = "58px";
-        dashWindow.style.bottom = "auto";
-        if (telPos) telPos.textContent = "顶部任务栏下方 10px / 托盘中心对齐";
-      } else {
-        taskbarRoot.classList.remove("top-placed");
-        dashWindow.classList.remove("top-anchored");
-        dashWindow.style.bottom = "58px";
-        dashWindow.style.top = "auto";
-        if (telPos) telPos.textContent = "底部任务栏上方 10px / 托盘中心对齐";
+    // 任务栏物理条带 (模拟屏幕坐标系)
+    function barStripRect(case_) {
+      const W = case_.monitor.width, H = case_.monitor.height, bar = case_.bar;
+      const edge = detectTaskbarEdge(case_.monitor, case_.tray);
+      if (edge === "bottom") return { x: 0, y: H - bar, width: W, height: bar };
+      if (edge === "top") return { x: 0, y: 0, width: W, height: bar };
+      if (edge === "left") return { x: 0, y: 0, width: bar, height: H };
+      return { x: W - bar, y: 0, width: bar, height: H };
+    }
+
+    // 托盘右键菜单 / Tooltip: 按任务栏方向贴近托盘 rect 弹出 (物理坐标 -> 视口)
+    function placePopups() {
+      const case_ = buildGeometryCase(currentProfileKey, taskbarPlacement);
+      const edge = detectTaskbarEdge(case_.monitor, case_.tray);
+      const k = screenScale;
+      const bar = barStripRect(case_);
+      const tray = case_.tray;
+      const place = (el, physRect) => {
+        const v = toView(physRect, k);
+        el.style.left = `${v.x}px`;
+        el.style.top = `${v.y}px`;
+        el.style.transform = `scale(${k})`;
+        el.style.transformOrigin = "top left";
+      };
+
+      if (trayMenu && trayMenu.style.display === "flex") {
+        const mw = trayMenu.offsetWidth;
+        const mh = trayMenu.offsetHeight;
+        let r;
+        if (edge === "bottom") r = { x: tray.x + tray.width - mw, y: tray.y - 8 - mh };
+        else if (edge === "top") r = { x: tray.x + tray.width - mw, y: tray.y + tray.height + 8 };
+        else if (edge === "left") r = { x: bar.x + bar.width + 8, y: tray.y + tray.height - mh };
+        else r = { x: bar.x - 8 - mw, y: tray.y + tray.height - mh };
+        place(trayMenu, { ...r, width: mw, height: mh });
       }
 
-      logSim(`[Geometry] 自适应切换: ${p.name} -> 可用高: ${geom.availLogicalH}px, 目标高: ${geom.logicalHeight}px (物理 ${geom.physicalHeight}px)`);
+      if (trayTooltip && trayTooltip.classList.contains("visible")) {
+        const tw = trayTooltip.offsetWidth;
+        const th = trayTooltip.offsetHeight;
+        const cx = tray.x + tray.width / 2;
+        const cy = tray.y + tray.height / 2;
+        let r;
+        if (edge === "bottom") r = { x: cx - tw / 2, y: bar.y - 8 - th };
+        else if (edge === "top") r = { x: cx - tw / 2, y: bar.y + bar.height + 8 };
+        else if (edge === "left") r = { x: bar.x + bar.width + 8, y: cy - th / 2 };
+        else r = { x: bar.x - 8 - tw, y: cy - th / 2 };
+        place(trayTooltip, { ...r, width: tw, height: th });
+      }
     }
 
     function setResolutionProfile(key) {
@@ -1357,12 +1690,14 @@
 
     function setTaskbarPlacement(placement) {
       taskbarPlacement = placement;
-      const bBottom = document.getElementById("btn-tb-bottom");
-      const bTop = document.getElementById("btn-tb-top");
-      if (bBottom) bBottom.classList.toggle("active", placement === "bottom");
-      if (bTop) bTop.classList.toggle("active", placement === "top");
+      ["bottom", "top", "left", "right"].forEach(edge => {
+        const btn = document.getElementById(`btn-tb-${edge}`);
+        if (btn) btn.classList.toggle("active", placement === edge);
+      });
       applyGeometry();
     }
+
+    window.addEventListener("resize", () => applyGeometry());
 
     function logSim(msg, type = "info") {
       const line = document.createElement("div");
@@ -1473,6 +1808,7 @@
     // 托盘右键菜单展示与隐藏
     function showTrayMenu() {
       trayMenu.style.display = "flex";
+      placePopups();
     }
     function hideTrayMenu() {
       trayMenu.style.display = "none";
@@ -1482,6 +1818,7 @@
     function onTrayMouseEnter() {
       if (!isDashboardOpen && trayMenu.style.display !== "flex") {
         trayTooltip.classList.add("visible");
+        placePopups();
       }
     }
     function onTrayMouseLeave() {
@@ -1560,6 +1897,18 @@
     }
     setInterval(updateClock, 1000);
     updateClock();
+
+    // 初始按默认档位渲染模拟屏幕 / 任务栏 / 面板几何 (URL 片段可覆盖, 见 HASH_OPTIONS)
+    const hashRes = HASH_OPTIONS.get("res");
+    if (hashRes && RESOLUTION_PROFILES[hashRes]) currentProfileKey = hashRes;
+    const hashTb = HASH_OPTIONS.get("tb");
+    if (["bottom", "top", "left", "right"].includes(hashTb)) taskbarPlacement = hashTb;
+    setTaskbarPlacement(taskbarPlacement);
+    setResolutionProfile(currentProfileKey);
+    if (HASH_OPTIONS.get("open") === "1") {
+      toggleDashboard(true);
+    }
+    logSim("[Geometry] 面板几何镜像已装载 (runtime_core::compute_dashboard_geometry 四边统一模型)", "ok");
   </script>
 </body>
 </html>

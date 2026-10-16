@@ -81,6 +81,7 @@
 | OpenCode | `%LOCALAPPDATA%\opencode\opencode.db` vs `%APPDATA%` 实际落点（`paths.rs:59-96` 已覆盖双候选） |
 | 增量缓存 | Windows 目录元数据在长驻写句柄未关闭时可能报告陈旧文件大小：实测各 Agent 会话文件的写入模式（追加即关 vs 长驻句柄），确认增量追加检测在真实采集节奏下可靠（CI 已见测试级复现，见 T01） |
 | WebView2 | Windows 10 目标版本上 Evergreen Runtime 可用性 |
+| 任务栏四方向停靠（C035） | Win10 真机把任务栏分别停靠左/右/上/下，核验：托盘左键弹出面板均贴任务栏内侧且沿轴对齐托盘、面板完整落在工作区内不越界；热键唤出（无托盘坐标）同样贴对应侧；任务栏自动隐藏时面板位置合理。几何已由 `tests/fixtures/geometry-parity` 与 Demo 四向截图锁定，真机只需核验系统 `work_area` 与 Tauri 上报值的一致性 |
 
 ---
 
@@ -136,6 +137,7 @@
 1. **真实内核渲染自检**：`apps/win/tests/dom.mjs` 是无 CSS 引擎的 DOM 桩，**不足以**验证渲染层。任何触及 `app.js` / `styles.css` / `*.html` 的改动，必须用 `apps/win/tests/render-harness/`（载入同字节产物 + 注入 `window.__TAURI__` mock）在真实浏览器内核里渲染核对（含两种主题、折叠态、满数据面板与设置窗口各分类），并确认无横向溢出与破图。该 harness 供人工/Agent 驱动，不作为 CI 门禁（CI 无浏览器依赖）。
 2. **Windows 专有链路要有端到端用例**：provider 可见性/排序（`enabled_providers` retain + provider 归一化 + `provider_order`）这类只在 `runtime_core::panel_json` 才暴露的链路，回归用例必须打在该层，不能只覆盖视图模型分组。
 3. **契约边界**：可在渲染层推导的展示态（如收起态峰值窗口）不进视图模型契约，避免触发 mac golden 快照重刷；确需改序列化字段时，先 `swift run --package-path apps/macos PanelParityHarness <repoRoot> --update` 刷新 golden 并同步 mac 侧。
+4. **Demo 与实现必须可证明同构**（C035）：`apps/win/demo/win-taskbar-interaction-demo.html` 是人眼核验面板几何与任务栏交互的载体，其内联几何镜像（`// @geometry-parity:begin/end` 区段）与 `runtime_core::compute_dashboard_geometry` 由同一份 fixture（`tests/fixtures/geometry-parity/cases.json`）双向对拍（Rust `runtime_coverage.rs` + Node `apps/win/tests/geometry-parity.test.mjs`，后者随 `scripts/check-win-frontend.mjs` 进 CI）。**几何改动后必须重新生成 fixture**（见 `apps/win/src-tauri/examples/dump_geometry.rs` 头部命令），否则双侧测试红。
 
 ### 4.3 凭证与安全红线
 
@@ -229,8 +231,12 @@ Windows Tauri 后端 (Rust)
 8. **证据边界**（C009）：真实 JS 渲染/事件回归、Rust 纯逻辑测试和 mac fixture 对拍不能替代 Win10/11 WebView2、系统热键、Toast 与 SID ACL 的真机验收。C009 与 T02/T03 在人工确认前保持 in_progress。
 9. **界面与窗口形态对齐**（C014）：主面板（HUD 面板）恒为纯净看板，严禁在主面板内以 Tab 或折叠方式内嵌设置/凭证表单；主面板只加载 `app.js`，不挂载 `settings.js`；设置窗口恒为独立窗口（1040×680），内部采用 Fluent L2 侧边栏结构导航 6 大分类面板（通用、Agent 用量、模型计费、订阅额度、授权与隐私、维护），右侧展示面包屑与 FluentCard 卡片组，彻底解耦主面板与配置中心。
 10. **设置窗口生命周期底线**（C015）：设置窗口必须在 `tauri.conf.json` 的 `windows` 列表中显式预声明（`visible: false`），由 Tauri 在启动阶段的 STA 主线程完成 WebView2 初始化并隐藏预备。严禁在 Tauri IPC 工作线程中通过 `WebviewWindowBuilder::build()` 动态懒建（在 Win32 下会因跨线程 COM STA 调度死锁/失败而出现全白屏无内容），呼出命令优先呈现既有窗口，关闭操作拦截并置为隐藏。
-11. **诊断与探针归属边界与托盘交互**（C015）：主看板（HUD 面板）仅保留严重服务级故障（如需重新授权）；所有 Agent 探针元数据（包括'未发现会话记录'、未安装等）一律收归独立设置中心的「Agent 用量 -> 会话来源」，严禁在主看板上展示。看板贴靠主显示器右下角任务栏上方，支持 300ms 失去焦点防抖（杜绝托盘反弹）及 `Escape` 键即时收起，体验 1:1 对齐 macOS 菜单栏。
-12. **任务栏精确定位与多分辨率自适应高度**（C016）：主面板必须彻底杜绝历史坐标死锁，每次唤出时通过系统真实 `monitor.work_area()` 工作区与托盘点击 `rect` 动态挂靠在托盘上方 10px / 托盘中心，多屏与 DPI 切换下自适应对齐。窗口高度动态按可用工作区高度计算（逻辑高度上限 760px，可用空间不足时自动降高并留出安全边距），前端 `#scroll` 必须使用 `flex: 1 1 0; min-height: 0;` 配合半透明 4px 细滚动条，底栏 `#footer` 绝对锁定 `flex: 0 0 auto`，确保在 1080p 150%、1366x768 等任意笔记本分辨率下，窗口永不出界、底栏设置与退出按钮永久完整可见。
+11. **诊断与探针归属边界与托盘交互**（C015）：主看板（HUD 面板）仅保留严重服务级故障（如需重新授权）；所有 Agent 探针元数据（包括'未发现会话记录'、未安装等）一律收归独立设置中心的「Agent 用量 -> 会话来源」，严禁在主看板上展示。看板贴靠任务栏所在边的内侧（四方向自适应见规则 12），支持 300ms 失去焦点防抖（杜绝托盘反弹）及 `Escape` 键即时收起，体验 1:1 对齐 macOS 菜单栏。
+12. **任务栏四方向自适应定位与多分辨率自适应高度**（C016，四边统一模型由 C035 落地）：主面板必须彻底杜绝历史坐标死锁，每次唤出时以系统真实 `monitor.work_area()` 与托盘 `rect` 重新求解几何。定位为统一的四边模型 ——
+    - **判边**：由工作区相对显示器四边的内缩量定位任务栏所在边，托盘 `rect` 落于哪条候选条带内即判该边（第三方 appbar/dock 与真任务栏共存时唯一可靠的消歧信号）；四边均无内缩（任务栏自动隐藏）时按托盘贴边方向推断，仍无结论则按 Windows 默认停靠顺序（底 > 右 > 上 > 左）兜底；
+    - **贴边**：面板恒贴任务栏内侧（水平 12 / 垂直 10 逻辑px），完整落在工作区内，与任务栏条带永不相交；
+    - **对齐**：沿任务栏轴向居中于托盘图标；托盘坐标缺失或与判定出的任务栏边不一致（陈旧 rect）时丢弃并贴托盘所在角落兜底；
+    - 窗口高度按可用工作区高度动态自适应（逻辑高度上限 760px），前端 `#scroll` 必须使用 `flex: 1 1 0; min-height: 0;` 配合半透明 4px 细滚动条，底栏 `#footer` 绝对锁定 `flex: 0 0 auto`，确保在 1080p 150%、1366x768 等任意笔记本分辨率下，窗口永不出界、底栏设置与退出按钮永久完整可见。
 
 ### 6.1 Rust 端改动清单（收敛后）
 

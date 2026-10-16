@@ -1,0 +1,1240 @@
+{
+  "$comment": "面板几何对拍 fixture: 由 apps/win/src-tauri/examples/dump_geometry.rs 生成; demo 内联镜像与 Rust compute_dashboard_geometry 双侧校验, 几何改动后必须重新生成",
+  "cases": [
+    {
+      "edge": "bottom",
+      "geometry": {
+        "height": 760,
+        "width": 440,
+        "x": 1468,
+        "y": 270
+      },
+      "monitor": {
+        "height": 1080,
+        "scale_factor": 1.0,
+        "width": 1920,
+        "work_height": 1040,
+        "work_width": 1920,
+        "work_x": 0,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "1080p_100/bottom/tray",
+      "tray": {
+        "height": 40,
+        "width": 40,
+        "x": 1880,
+        "y": 1040
+      }
+    },
+    {
+      "edge": "bottom",
+      "geometry": {
+        "height": 760,
+        "width": 440,
+        "x": 1468,
+        "y": 270
+      },
+      "monitor": {
+        "height": 1080,
+        "scale_factor": 1.0,
+        "width": 1920,
+        "work_height": 1040,
+        "work_width": 1920,
+        "work_x": 0,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "1080p_100/bottom/no_tray",
+      "tray": null
+    },
+    {
+      "edge": "top",
+      "geometry": {
+        "height": 760,
+        "width": 440,
+        "x": 1468,
+        "y": 50
+      },
+      "monitor": {
+        "height": 1080,
+        "scale_factor": 1.0,
+        "width": 1920,
+        "work_height": 1040,
+        "work_width": 1920,
+        "work_x": 0,
+        "work_y": 40,
+        "x": 0,
+        "y": 0
+      },
+      "name": "1080p_100/top/tray",
+      "tray": {
+        "height": 40,
+        "width": 40,
+        "x": 1880,
+        "y": 0
+      }
+    },
+    {
+      "edge": "top",
+      "geometry": {
+        "height": 760,
+        "width": 440,
+        "x": 1468,
+        "y": 50
+      },
+      "monitor": {
+        "height": 1080,
+        "scale_factor": 1.0,
+        "width": 1920,
+        "work_height": 1040,
+        "work_width": 1920,
+        "work_x": 0,
+        "work_y": 40,
+        "x": 0,
+        "y": 0
+      },
+      "name": "1080p_100/top/no_tray",
+      "tray": null
+    },
+    {
+      "edge": "left",
+      "geometry": {
+        "height": 760,
+        "width": 440,
+        "x": 52,
+        "y": 310
+      },
+      "monitor": {
+        "height": 1080,
+        "scale_factor": 1.0,
+        "width": 1920,
+        "work_height": 1080,
+        "work_width": 1880,
+        "work_x": 40,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "1080p_100/left/tray",
+      "tray": {
+        "height": 40,
+        "width": 40,
+        "x": 0,
+        "y": 1040
+      }
+    },
+    {
+      "edge": "left",
+      "geometry": {
+        "height": 760,
+        "width": 440,
+        "x": 52,
+        "y": 310
+      },
+      "monitor": {
+        "height": 1080,
+        "scale_factor": 1.0,
+        "width": 1920,
+        "work_height": 1080,
+        "work_width": 1880,
+        "work_x": 40,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "1080p_100/left/no_tray",
+      "tray": null
+    },
+    {
+      "edge": "right",
+      "geometry": {
+        "height": 760,
+        "width": 440,
+        "x": 1428,
+        "y": 310
+      },
+      "monitor": {
+        "height": 1080,
+        "scale_factor": 1.0,
+        "width": 1920,
+        "work_height": 1080,
+        "work_width": 1880,
+        "work_x": 0,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "1080p_100/right/tray",
+      "tray": {
+        "height": 40,
+        "width": 40,
+        "x": 1880,
+        "y": 1040
+      }
+    },
+    {
+      "edge": "right",
+      "geometry": {
+        "height": 760,
+        "width": 440,
+        "x": 1428,
+        "y": 310
+      },
+      "monitor": {
+        "height": 1080,
+        "scale_factor": 1.0,
+        "width": 1920,
+        "work_height": 1080,
+        "work_width": 1880,
+        "work_x": 0,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "1080p_100/right/no_tray",
+      "tray": null
+    },
+    {
+      "edge": "bottom",
+      "geometry": {
+        "height": 1002,
+        "width": 660,
+        "x": 1242,
+        "y": 15
+      },
+      "monitor": {
+        "height": 1080,
+        "scale_factor": 1.5,
+        "width": 1920,
+        "work_height": 1032,
+        "work_width": 1920,
+        "work_x": 0,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "1080p_150/bottom/tray",
+      "tray": {
+        "height": 48,
+        "width": 48,
+        "x": 1872,
+        "y": 1032
+      }
+    },
+    {
+      "edge": "bottom",
+      "geometry": {
+        "height": 1002,
+        "width": 660,
+        "x": 1242,
+        "y": 15
+      },
+      "monitor": {
+        "height": 1080,
+        "scale_factor": 1.5,
+        "width": 1920,
+        "work_height": 1032,
+        "work_width": 1920,
+        "work_x": 0,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "1080p_150/bottom/no_tray",
+      "tray": null
+    },
+    {
+      "edge": "top",
+      "geometry": {
+        "height": 1002,
+        "width": 660,
+        "x": 1242,
+        "y": 63
+      },
+      "monitor": {
+        "height": 1080,
+        "scale_factor": 1.5,
+        "width": 1920,
+        "work_height": 1032,
+        "work_width": 1920,
+        "work_x": 0,
+        "work_y": 48,
+        "x": 0,
+        "y": 0
+      },
+      "name": "1080p_150/top/tray",
+      "tray": {
+        "height": 48,
+        "width": 48,
+        "x": 1872,
+        "y": 0
+      }
+    },
+    {
+      "edge": "top",
+      "geometry": {
+        "height": 1002,
+        "width": 660,
+        "x": 1242,
+        "y": 63
+      },
+      "monitor": {
+        "height": 1080,
+        "scale_factor": 1.5,
+        "width": 1920,
+        "work_height": 1032,
+        "work_width": 1920,
+        "work_x": 0,
+        "work_y": 48,
+        "x": 0,
+        "y": 0
+      },
+      "name": "1080p_150/top/no_tray",
+      "tray": null
+    },
+    {
+      "edge": "left",
+      "geometry": {
+        "height": 1050,
+        "width": 660,
+        "x": 66,
+        "y": 15
+      },
+      "monitor": {
+        "height": 1080,
+        "scale_factor": 1.5,
+        "width": 1920,
+        "work_height": 1080,
+        "work_width": 1872,
+        "work_x": 48,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "1080p_150/left/tray",
+      "tray": {
+        "height": 48,
+        "width": 48,
+        "x": 0,
+        "y": 1032
+      }
+    },
+    {
+      "edge": "left",
+      "geometry": {
+        "height": 1050,
+        "width": 660,
+        "x": 66,
+        "y": 15
+      },
+      "monitor": {
+        "height": 1080,
+        "scale_factor": 1.5,
+        "width": 1920,
+        "work_height": 1080,
+        "work_width": 1872,
+        "work_x": 48,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "1080p_150/left/no_tray",
+      "tray": null
+    },
+    {
+      "edge": "right",
+      "geometry": {
+        "height": 1050,
+        "width": 660,
+        "x": 1194,
+        "y": 15
+      },
+      "monitor": {
+        "height": 1080,
+        "scale_factor": 1.5,
+        "width": 1920,
+        "work_height": 1080,
+        "work_width": 1872,
+        "work_x": 0,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "1080p_150/right/tray",
+      "tray": {
+        "height": 48,
+        "width": 48,
+        "x": 1872,
+        "y": 1032
+      }
+    },
+    {
+      "edge": "right",
+      "geometry": {
+        "height": 1050,
+        "width": 660,
+        "x": 1194,
+        "y": 15
+      },
+      "monitor": {
+        "height": 1080,
+        "scale_factor": 1.5,
+        "width": 1920,
+        "work_height": 1080,
+        "work_width": 1872,
+        "work_x": 0,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "1080p_150/right/no_tray",
+      "tray": null
+    },
+    {
+      "edge": "bottom",
+      "geometry": {
+        "height": 708,
+        "width": 440,
+        "x": 914,
+        "y": 10
+      },
+      "monitor": {
+        "height": 768,
+        "scale_factor": 1.0,
+        "width": 1366,
+        "work_height": 728,
+        "work_width": 1366,
+        "work_x": 0,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "768p_100/bottom/tray",
+      "tray": {
+        "height": 40,
+        "width": 40,
+        "x": 1326,
+        "y": 728
+      }
+    },
+    {
+      "edge": "bottom",
+      "geometry": {
+        "height": 708,
+        "width": 440,
+        "x": 914,
+        "y": 10
+      },
+      "monitor": {
+        "height": 768,
+        "scale_factor": 1.0,
+        "width": 1366,
+        "work_height": 728,
+        "work_width": 1366,
+        "work_x": 0,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "768p_100/bottom/no_tray",
+      "tray": null
+    },
+    {
+      "edge": "top",
+      "geometry": {
+        "height": 708,
+        "width": 440,
+        "x": 914,
+        "y": 50
+      },
+      "monitor": {
+        "height": 768,
+        "scale_factor": 1.0,
+        "width": 1366,
+        "work_height": 728,
+        "work_width": 1366,
+        "work_x": 0,
+        "work_y": 40,
+        "x": 0,
+        "y": 0
+      },
+      "name": "768p_100/top/tray",
+      "tray": {
+        "height": 40,
+        "width": 40,
+        "x": 1326,
+        "y": 0
+      }
+    },
+    {
+      "edge": "top",
+      "geometry": {
+        "height": 708,
+        "width": 440,
+        "x": 914,
+        "y": 50
+      },
+      "monitor": {
+        "height": 768,
+        "scale_factor": 1.0,
+        "width": 1366,
+        "work_height": 728,
+        "work_width": 1366,
+        "work_x": 0,
+        "work_y": 40,
+        "x": 0,
+        "y": 0
+      },
+      "name": "768p_100/top/no_tray",
+      "tray": null
+    },
+    {
+      "edge": "left",
+      "geometry": {
+        "height": 748,
+        "width": 440,
+        "x": 52,
+        "y": 10
+      },
+      "monitor": {
+        "height": 768,
+        "scale_factor": 1.0,
+        "width": 1366,
+        "work_height": 768,
+        "work_width": 1326,
+        "work_x": 40,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "768p_100/left/tray",
+      "tray": {
+        "height": 40,
+        "width": 40,
+        "x": 0,
+        "y": 728
+      }
+    },
+    {
+      "edge": "left",
+      "geometry": {
+        "height": 748,
+        "width": 440,
+        "x": 52,
+        "y": 10
+      },
+      "monitor": {
+        "height": 768,
+        "scale_factor": 1.0,
+        "width": 1366,
+        "work_height": 768,
+        "work_width": 1326,
+        "work_x": 40,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "768p_100/left/no_tray",
+      "tray": null
+    },
+    {
+      "edge": "right",
+      "geometry": {
+        "height": 748,
+        "width": 440,
+        "x": 874,
+        "y": 10
+      },
+      "monitor": {
+        "height": 768,
+        "scale_factor": 1.0,
+        "width": 1366,
+        "work_height": 768,
+        "work_width": 1326,
+        "work_x": 0,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "768p_100/right/tray",
+      "tray": {
+        "height": 40,
+        "width": 40,
+        "x": 1326,
+        "y": 728
+      }
+    },
+    {
+      "edge": "right",
+      "geometry": {
+        "height": 748,
+        "width": 440,
+        "x": 874,
+        "y": 10
+      },
+      "monitor": {
+        "height": 768,
+        "scale_factor": 1.0,
+        "width": 1366,
+        "work_height": 768,
+        "work_width": 1326,
+        "work_x": 0,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "768p_100/right/no_tray",
+      "tray": null
+    },
+    {
+      "edge": "bottom",
+      "geometry": {
+        "height": 950,
+        "width": 550,
+        "x": 1995,
+        "y": 427
+      },
+      "monitor": {
+        "height": 1440,
+        "scale_factor": 1.25,
+        "width": 2560,
+        "work_height": 1390,
+        "work_width": 2560,
+        "work_x": 0,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "2k_125/bottom/tray",
+      "tray": {
+        "height": 50,
+        "width": 50,
+        "x": 2510,
+        "y": 1390
+      }
+    },
+    {
+      "edge": "bottom",
+      "geometry": {
+        "height": 950,
+        "width": 550,
+        "x": 1995,
+        "y": 427
+      },
+      "monitor": {
+        "height": 1440,
+        "scale_factor": 1.25,
+        "width": 2560,
+        "work_height": 1390,
+        "work_width": 2560,
+        "work_x": 0,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "2k_125/bottom/no_tray",
+      "tray": null
+    },
+    {
+      "edge": "top",
+      "geometry": {
+        "height": 950,
+        "width": 550,
+        "x": 1995,
+        "y": 63
+      },
+      "monitor": {
+        "height": 1440,
+        "scale_factor": 1.25,
+        "width": 2560,
+        "work_height": 1390,
+        "work_width": 2560,
+        "work_x": 0,
+        "work_y": 50,
+        "x": 0,
+        "y": 0
+      },
+      "name": "2k_125/top/tray",
+      "tray": {
+        "height": 50,
+        "width": 50,
+        "x": 2510,
+        "y": 0
+      }
+    },
+    {
+      "edge": "top",
+      "geometry": {
+        "height": 950,
+        "width": 550,
+        "x": 1995,
+        "y": 63
+      },
+      "monitor": {
+        "height": 1440,
+        "scale_factor": 1.25,
+        "width": 2560,
+        "work_height": 1390,
+        "work_width": 2560,
+        "work_x": 0,
+        "work_y": 50,
+        "x": 0,
+        "y": 0
+      },
+      "name": "2k_125/top/no_tray",
+      "tray": null
+    },
+    {
+      "edge": "left",
+      "geometry": {
+        "height": 950,
+        "width": 550,
+        "x": 65,
+        "y": 477
+      },
+      "monitor": {
+        "height": 1440,
+        "scale_factor": 1.25,
+        "width": 2560,
+        "work_height": 1440,
+        "work_width": 2510,
+        "work_x": 50,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "2k_125/left/tray",
+      "tray": {
+        "height": 50,
+        "width": 50,
+        "x": 0,
+        "y": 1390
+      }
+    },
+    {
+      "edge": "left",
+      "geometry": {
+        "height": 950,
+        "width": 550,
+        "x": 65,
+        "y": 477
+      },
+      "monitor": {
+        "height": 1440,
+        "scale_factor": 1.25,
+        "width": 2560,
+        "work_height": 1440,
+        "work_width": 2510,
+        "work_x": 50,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "2k_125/left/no_tray",
+      "tray": null
+    },
+    {
+      "edge": "right",
+      "geometry": {
+        "height": 950,
+        "width": 550,
+        "x": 1945,
+        "y": 477
+      },
+      "monitor": {
+        "height": 1440,
+        "scale_factor": 1.25,
+        "width": 2560,
+        "work_height": 1440,
+        "work_width": 2510,
+        "work_x": 0,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "2k_125/right/tray",
+      "tray": {
+        "height": 50,
+        "width": 50,
+        "x": 2510,
+        "y": 1390
+      }
+    },
+    {
+      "edge": "right",
+      "geometry": {
+        "height": 950,
+        "width": 550,
+        "x": 1945,
+        "y": 477
+      },
+      "monitor": {
+        "height": 1440,
+        "scale_factor": 1.25,
+        "width": 2560,
+        "work_height": 1440,
+        "work_width": 2510,
+        "work_x": 0,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "2k_125/right/no_tray",
+      "tray": null
+    },
+    {
+      "edge": "bottom",
+      "geometry": {
+        "height": 1520,
+        "width": 880,
+        "x": 2936,
+        "y": 540
+      },
+      "monitor": {
+        "height": 2160,
+        "scale_factor": 2.0,
+        "width": 3840,
+        "work_height": 2080,
+        "work_width": 3840,
+        "work_x": 0,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "4k_200/bottom/tray",
+      "tray": {
+        "height": 80,
+        "width": 80,
+        "x": 3760,
+        "y": 2080
+      }
+    },
+    {
+      "edge": "bottom",
+      "geometry": {
+        "height": 1520,
+        "width": 880,
+        "x": 2936,
+        "y": 540
+      },
+      "monitor": {
+        "height": 2160,
+        "scale_factor": 2.0,
+        "width": 3840,
+        "work_height": 2080,
+        "work_width": 3840,
+        "work_x": 0,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "4k_200/bottom/no_tray",
+      "tray": null
+    },
+    {
+      "edge": "top",
+      "geometry": {
+        "height": 1520,
+        "width": 880,
+        "x": 2936,
+        "y": 100
+      },
+      "monitor": {
+        "height": 2160,
+        "scale_factor": 2.0,
+        "width": 3840,
+        "work_height": 2080,
+        "work_width": 3840,
+        "work_x": 0,
+        "work_y": 80,
+        "x": 0,
+        "y": 0
+      },
+      "name": "4k_200/top/tray",
+      "tray": {
+        "height": 80,
+        "width": 80,
+        "x": 3760,
+        "y": 0
+      }
+    },
+    {
+      "edge": "top",
+      "geometry": {
+        "height": 1520,
+        "width": 880,
+        "x": 2936,
+        "y": 100
+      },
+      "monitor": {
+        "height": 2160,
+        "scale_factor": 2.0,
+        "width": 3840,
+        "work_height": 2080,
+        "work_width": 3840,
+        "work_x": 0,
+        "work_y": 80,
+        "x": 0,
+        "y": 0
+      },
+      "name": "4k_200/top/no_tray",
+      "tray": null
+    },
+    {
+      "edge": "left",
+      "geometry": {
+        "height": 1520,
+        "width": 880,
+        "x": 104,
+        "y": 620
+      },
+      "monitor": {
+        "height": 2160,
+        "scale_factor": 2.0,
+        "width": 3840,
+        "work_height": 2160,
+        "work_width": 3760,
+        "work_x": 80,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "4k_200/left/tray",
+      "tray": {
+        "height": 80,
+        "width": 80,
+        "x": 0,
+        "y": 2080
+      }
+    },
+    {
+      "edge": "left",
+      "geometry": {
+        "height": 1520,
+        "width": 880,
+        "x": 104,
+        "y": 620
+      },
+      "monitor": {
+        "height": 2160,
+        "scale_factor": 2.0,
+        "width": 3840,
+        "work_height": 2160,
+        "work_width": 3760,
+        "work_x": 80,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "4k_200/left/no_tray",
+      "tray": null
+    },
+    {
+      "edge": "right",
+      "geometry": {
+        "height": 1520,
+        "width": 880,
+        "x": 2856,
+        "y": 620
+      },
+      "monitor": {
+        "height": 2160,
+        "scale_factor": 2.0,
+        "width": 3840,
+        "work_height": 2160,
+        "work_width": 3760,
+        "work_x": 0,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "4k_200/right/tray",
+      "tray": {
+        "height": 80,
+        "width": 80,
+        "x": 3760,
+        "y": 2080
+      }
+    },
+    {
+      "edge": "right",
+      "geometry": {
+        "height": 1520,
+        "width": 880,
+        "x": 2856,
+        "y": 620
+      },
+      "monitor": {
+        "height": 2160,
+        "scale_factor": 2.0,
+        "width": 3840,
+        "work_height": 2160,
+        "work_width": 3760,
+        "work_x": 0,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "4k_200/right/no_tray",
+      "tray": null
+    },
+    {
+      "edge": "right",
+      "geometry": {
+        "height": 760,
+        "width": 440,
+        "x": 580,
+        "y": 1150
+      },
+      "monitor": {
+        "height": 1920,
+        "scale_factor": 1.0,
+        "width": 1080,
+        "work_height": 1920,
+        "work_width": 1032,
+        "work_x": 0,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "portrait/right/tray",
+      "tray": {
+        "height": 48,
+        "width": 48,
+        "x": 1032,
+        "y": 1872
+      }
+    },
+    {
+      "edge": "right",
+      "geometry": {
+        "height": 760,
+        "width": 440,
+        "x": 580,
+        "y": 1150
+      },
+      "monitor": {
+        "height": 1920,
+        "scale_factor": 1.0,
+        "width": 1080,
+        "work_height": 1920,
+        "work_width": 1032,
+        "work_x": 0,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "portrait/right/no_tray",
+      "tray": null
+    },
+    {
+      "edge": "bottom",
+      "geometry": {
+        "height": 760,
+        "width": 440,
+        "x": 1468,
+        "y": 310
+      },
+      "monitor": {
+        "height": 1080,
+        "scale_factor": 1.0,
+        "width": 1920,
+        "work_height": 1080,
+        "work_width": 1920,
+        "work_x": 0,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "auto_hide/bottom_tray",
+      "tray": {
+        "height": 40,
+        "width": 40,
+        "x": 1820,
+        "y": 1030
+      }
+    },
+    {
+      "edge": "right",
+      "geometry": {
+        "height": 760,
+        "width": 440,
+        "x": 1468,
+        "y": 240
+      },
+      "monitor": {
+        "height": 1080,
+        "scale_factor": 1.0,
+        "width": 1920,
+        "work_height": 1080,
+        "work_width": 1920,
+        "work_x": 0,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "auto_hide/right_tray",
+      "tray": {
+        "height": 40,
+        "width": 44,
+        "x": 1870,
+        "y": 600
+      }
+    },
+    {
+      "edge": "bottom",
+      "geometry": {
+        "height": 760,
+        "width": 440,
+        "x": 1468,
+        "y": 310
+      },
+      "monitor": {
+        "height": 1080,
+        "scale_factor": 1.0,
+        "width": 1920,
+        "work_height": 1080,
+        "work_width": 1920,
+        "work_x": 0,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "auto_hide/no_tray",
+      "tray": null
+    },
+    {
+      "edge": "bottom",
+      "geometry": {
+        "height": 760,
+        "width": 440,
+        "x": 1468,
+        "y": 262
+      },
+      "monitor": {
+        "height": 1080,
+        "scale_factor": 1.0,
+        "width": 1920,
+        "work_height": 1032,
+        "work_width": 1880,
+        "work_x": 40,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "dual_appbar/bottom_taskbar",
+      "tray": {
+        "height": 40,
+        "width": 40,
+        "x": 1820,
+        "y": 1032
+      }
+    },
+    {
+      "edge": "left",
+      "geometry": {
+        "height": 760,
+        "width": 440,
+        "x": 52,
+        "y": 262
+      },
+      "monitor": {
+        "height": 1080,
+        "scale_factor": 1.0,
+        "width": 1920,
+        "work_height": 1032,
+        "work_width": 1880,
+        "work_x": 40,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "dual_appbar/left_taskbar",
+      "tray": {
+        "height": 32,
+        "width": 32,
+        "x": 4,
+        "y": 900
+      }
+    },
+    {
+      "edge": "bottom",
+      "geometry": {
+        "height": 760,
+        "width": 440,
+        "x": 1468,
+        "y": 262
+      },
+      "monitor": {
+        "height": 1080,
+        "scale_factor": 1.0,
+        "width": 1920,
+        "work_height": 1032,
+        "work_width": 1880,
+        "work_x": 40,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "dual_appbar/no_tray",
+      "tray": null
+    },
+    {
+      "edge": "bottom",
+      "geometry": {
+        "height": 760,
+        "width": 440,
+        "x": 1468,
+        "y": 270
+      },
+      "monitor": {
+        "height": 1080,
+        "scale_factor": 1.0,
+        "width": 1920,
+        "work_height": 1040,
+        "work_width": 1920,
+        "work_x": 0,
+        "work_y": 0,
+        "x": 0,
+        "y": 0
+      },
+      "name": "stale_tray/other_monitor",
+      "tray": {
+        "height": 40,
+        "width": 40,
+        "x": -3000,
+        "y": 1050
+      }
+    },
+    {
+      "edge": "right",
+      "geometry": {
+        "height": 760,
+        "width": 440,
+        "x": -500,
+        "y": 310
+      },
+      "monitor": {
+        "height": 1080,
+        "scale_factor": 1.0,
+        "width": 1920,
+        "work_height": 1080,
+        "work_width": 1872,
+        "work_x": -1920,
+        "work_y": 0,
+        "x": -1920,
+        "y": 0
+      },
+      "name": "negative_origin/right_taskbar",
+      "tray": {
+        "height": 40,
+        "width": 48,
+        "x": -48,
+        "y": 1020
+      }
+    }
+  ]
+}

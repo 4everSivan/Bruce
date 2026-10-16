@@ -37,7 +37,8 @@
         "C031",
         "C032",
         "C033",
-        "C034"
+        "C034",
+        "C035"
       ]
     },
     "SubscriptionQuota": {
@@ -369,6 +370,15 @@
       "topic": "WindowsCompat",
       "version": "0.12.0+",
       "file": "docs/devel/change/C034.json"
+    },
+    "C035": {
+      "title": "看板面板几何改为「任务栏四方向统一模型」：判边/贴边/对齐三段统一，并建立 Demo 几何镜像与 Rust 实现的双向 fixture 对拍",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C035.json"
     }
   }
 }

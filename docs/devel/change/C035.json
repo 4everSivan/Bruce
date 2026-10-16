@@ -1,0 +1,100 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C035",
+  "title": "看板面板几何改为「任务栏四方向统一模型」，并建立 Demo 几何镜像与 Rust 实现的双向对拍",
+  "type": "BugFix",
+  "status": "closed",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 维护者无 Windows 机器, 需本卡新增的对拍链路替代真机核验面板几何",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src-tauri (runtime_core::compute_dashboard_geometry / detect_taskbar_edge) + apps/win/demo + apps/win/tests + scripts/check-win-frontend.mjs",
+    "component": "托盘弹出面板的贴靠定位 (任务栏停靠方向自适应)",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "用户反馈「任务栏可以四个方向调整，仪表盘需要对不同方向自动调整」。当前 `compute_dashboard_geometry` 只有 `is_top_taskbar: bool` 一个判据 —— 左/右停靠的任务栏在代码里**没有任何表示**，横向位置恒取「托盘中心 ± 半宽，夹紧到工作区」这一条策略。实测两处确定性缺陷: **(D1)** 左侧任务栏 + 无托盘 rect (全局热键、或首次用右键菜单「显示看板」) 时, 水平兜底恒取工作区右缘, 面板落在 x=1468 而任务栏在左侧 (距任务栏 1420px), 与任务栏分处屏幕两端; **(D2)** 纵向任务栏下沿轴对齐靠巧合 (托盘恒落在列底 → `is_top_taskbar` 恒为 false, 于是套用「面板底缘 = 托盘顶缘 − 10」的横向上方贴靠逻辑), 右栏实测 y=250, 统一模型下应为 y=310, 且任何一处后续改动都会让这个巧合漂移。附带 (D3) 托盘 rect 无有效性校验, 任务栏换边/换屏后右键菜单「显示看板」会复用陈旧 rect 参与选屏与对齐; (D4) 自动隐藏任务栏时工作区无内缩, 全部判据失效。与此同时, 维护者无 Windows 机器 → 面板几何只能靠单测与推理, 而人眼核验载体 (任务栏交互 Demo) 与 Rust 实现是两份独立代码, 一旦漂移则核验失效。",
+  "precheck": {
+    "description": "以「左停靠任务栏 + 无托盘 rect」与「右停靠任务栏 + 托盘点击」两个用例复现缺陷",
+    "command": "CARGO_HOME=$PWD/local/c009/cargo-home cargo test --manifest-path apps/win/src-tauri/Cargo.toml --test runtime_coverage dashboard_geometry_left_taskbar_hotkey && CARGO_HOME=$PWD/local/c009/cargo-home cargo test --manifest-path apps/win/src-tauri/Cargo.toml --test runtime_coverage dashboard_geometry_right_taskbar_aligns",
+    "expected": "修复前两条均 FAILED: 左栏热键用例 left=1468/right=60; 右栏对调用例 left=250/right=310",
+    "is_completed": true,
+    "evidence": "2026-10-15 实测 (修复前): `dashboard_geometry_left_taskbar_hotkey_invocation_stays_on_taskbar_side` FAILED —— assertion left == right failed, left: 1468, right: 60; `dashboard_geometry_right_taskbar_aligns_along_edge_to_tray` FAILED —— left: 250, right: 310。修复后同口径两条 PASS。"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护已在 main 实施"
+    ],
+    "after": [
+      "CARGO_HOME=$PWD/local/c009/cargo-home cargo fmt --manifest-path apps/win/src-tauri/Cargo.toml --all -- --check",
+      "CARGO_HOME=$PWD/local/c009/cargo-home cargo clippy --manifest-path apps/win/src-tauri/Cargo.toml --all-targets -- -D warnings",
+      "CARGO_HOME=$PWD/local/c009/cargo-home cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "node scripts/check-win-frontend.mjs"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "业务规则 (面板定位)",
+      "before": "只有 `is_top_taskbar: bool` 二分判据: 托盘 y 中心与屏幕中心比较, 决定「贴托盘上方 / 贴托盘下方」; 横向恒为「托盘中心居中, 夹紧到工作区」, 无托盘时恒取工作区右缘",
+      "after": "四边统一模型: `detect_taskbar_edge` 由工作区内缩判定任务栏所在边 (Bottom/Top/Left/Right), 托盘 rect 落在候选条带内用于消歧 (第三方 appbar/dock 共存场景); 定位改为「贴边轴: 恒贴任务栏内侧 (水平 12 / 垂直 10 逻辑px) + 对齐轴: 沿任务栏轴向居中于托盘, 无可用托盘坐标时贴托盘所在角落」, 两轴均按含边距区间夹紧, 工作区不足时退化为硬边界",
+      "impact": "左侧任务栏 + 热键唤出不再把面板抛到屏幕另一端 (1468 → 60); 纵向任务栏沿轴对齐由巧合变为定义行为 (右栏 y 250 → 310); 面板矩形恒在工作区内且与任务栏条带不相交 (alwaysOnTop 面板与置顶任务栏的 z-order 冲突因此不可能发生)"
+    },
+    {
+      "scope": "异常流 (陈旧坐标 / 自动隐藏)",
+      "before": "托盘 rect 无校验, 任务栏换边或换屏后仍参与选屏与对齐; 自动隐藏任务栏时工作区四边无内缩, 判据全部失效并回落「底部」",
+      "after": "`usable_tray` 校验托盘 rect 是否落在判定出的任务栏条带内, 不一致即丢弃并走贴角兜底; 四边无内缩时按托盘贴边方向推断任务栏边 (带宽取托盘尺寸与屏幕 2.5% 的较大者), 仍无结论则按 Windows 默认停靠顺序 (底 > 右 > 上 > 左) 兜底",
+      "impact": "多屏/换边后右键菜单呼出不再可能把面板锚到上一块显示器; 自动隐藏任务栏下左/右停靠也可被正确识别"
+    },
+    {
+      "scope": "验证资产 (Demo 与对拍)",
+      "before": "demo 只有底部/顶部两向, 几何为 CSS 硬编码 (`bottom: 58px; right: 12px`) + 一段只算尺寸的 JS; Demo 与 Rust 实现无任何一致性约束",
+      "after": "demo 扩展为四向任务栏 (底/顶/左/右) + 模拟屏幕缩放框, 面板位置/尺寸/DPI 内容缩放全部由内联几何镜像驱动 (`// @geometry-parity:begin/end` 区段, 与 Rust 逐行同构); 新增 `tests/fixtures/geometry-parity/cases.json` (50 例: 5 档分辨率/DPI × 4 方向 × 有/无托盘 + 竖屏 + 自动隐藏 + 第三方 appbar 消歧 + 陈旧 rect + 负坐标副屏) 由 `examples/dump_geometry.rs` 生成, Rust 与 Node 双侧读取同一 fixture 对拍, 后者随 `scripts/check-win-frontend.mjs` 进 CI",
+      "impact": "维护者无 Windows 机器时的几何核验链路可证明: Demo 显示的就是 Rust 真实行为; 几何改动后若未重新生成 fixture, Rust 与 Node 两侧测试都会红"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "规则 11: 「看板贴靠主显示器右下角任务栏上方」; 规则 12 (C016): 「通过 monitor.work_area() 与托盘 rect 动态挂靠在托盘上方 10px / 托盘中心」—— 均隐含任务栏水平 (顶/底) 假设",
+      "after": "规则 11 改为「贴靠任务栏所在边的内侧 (四方向自适应见规则 12)」; 规则 12 扩写为「任务栏四方向自适应定位与多分辨率自适应高度 (C016, 四边统一模型由 C035 落地)」, 明确判边/贴边/对齐三段的四边语义与陈旧 rect 丢弃规则; §4.2 Windows 侧验证纪律新增第 4 条「Demo 与实现必须可证明同构」(几何改动必须重新生成 fixture)"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "win-src-tauri-cargo-20261016 + node-check-win-frontend-20261016 + chrome-headless-20261016",
+    "user_quote": "确认",
+    "signoff": "2026-10-16 用户会话内以「确认」确认 C035（看板面板几何改为任务栏四方向统一模型 + Demo 几何对拍）收口, 前置证据已汇报: cargo test (apps/win/src-tauri) 101 项全绿退出码 0 / cargo fmt --check 退出码 0 / clippy -D warnings 零告警 / node scripts/check-win-frontend.mjs 通过 (结构冒烟 + frontend 32 项 + geometry-parity 2 项) / Chrome headless 六组四方向与高 DPI、低分屏截图核验 / fixture 重生成 diff 为空 (Demo 镜像与 Rust 实现无漂移); AI 代为签署并闭环归档 (单人维护约定: 直接提 main, 不打 tag)",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "全量单测全绿，退出码为 0，含针对性回归测试",
+        "false_if": "存在任何测试失败、报错或未覆盖回归用例",
+        "evidence": "2026-10-15 实测: (1) `cargo test --manifest-path apps/win/src-tauri/Cargo.toml` 全绿 —— runtime_coverage 37 项 (含 16 项几何/判边 + 1 项 fixture 对拍)、settings 12、collector_configuration 8、scheduler_collector 8、credentials 2、alerts 14、lib 单测 20, 共 101 项 0 fail, 退出码 0; (2) `cargo fmt --all -- --check` 退出码 0; (3) `cargo clippy --all-targets -- -D warnings` 退出码 0 (无告警); (4) `node scripts/check-win-frontend.mjs` 通过 —— 结构冒烟 4 项 ok + frontend.test.mjs 32 项 pass + geometry-parity.test.mjs 2 项 pass (demo 内联镜像与 fixture 50 例逐字段一致)",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "预期行为正常回执，核心功能指标符合要求",
+        "false_if": "出现报错、非预期返回值或行为失真",
+        "evidence": "2026-10-15 真浏览器 (Chrome headless 147) 对 demo 截图核验 6 组: 1080p 100% × 底/顶/左/右四方向 (面板分别 @(1468,270) 贴底栏上方 / @(1468,50) 贴顶栏下方 / @(52,310) 贴左栏右侧 / @(1428,310) 贴右栏左侧, 均与 work_area 边距 12/10 一致且不越界)、1080p 150% + 左栏 (面板 660×1050 物理 / 440×700 逻辑, 高度自动缩容, DPI 内容缩放正确、底栏完整可见)、1366×768 + 顶栏 (面板 440×708, y=50, 底栏完整可见)。截图存 local/c035-screenshots/。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "未引入副作用，关联模块运行正常",
+        "false_if": "破坏了上下游其他接口或产生连锁反应",
+        "evidence": "结构体签名 (MonitorBounds/TrayIconBounds/DashboardGeometry) 与 `compute_dashboard_geometry` 入参出参未变, lib.rs 调用点零改动; 现有 7 项几何测试 (1080p 100% / 150% / 768p / 2K / 4K / 顶栏 / 无托盘兜底 / 负坐标多屏) 期望值逐字符不变, 全部保持通过 → 对已验收的顶/底任务栏行为是零变更; 前端 (app.js/styles.css) 与窗口生命周期、调度、凭证链路零改动; `core/collector` 与 mac Swift 侧未触碰。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  }
+}
