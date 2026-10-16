@@ -1,0 +1,113 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C057",
+  "title": "发布产物非 Universal 2：CI 构建未带 --universal，v0.12.0 的 Bruce.zip 仅含 arm64，与项目声明的 Intel Mac 原生可用不符",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用)",
+  "is_hotfix": false,
+  "target": {
+    "module": ".github/workflows/ci.yml (build-release-app / release) + docs/devel/design/00-系统总体设计.md §3.3",
+    "component": "macOS 发布产物的架构规格（Universal 2）",
+    "design_doc": "docs/devel/design/00-系统总体设计.md",
+    "design_topic": "SystemOverview"
+  },
+  "why": "v0.12.0 发布后核验产物时发现的真实缺陷（与 C056 同批发现）。\n(1) **实测事实**：下载 v0.12.0 的 `Bruce.zip` 解包后对包内两个二进制逐一 `lipo -archs` —— `Contents/MacOS/BruceApp` = **arm64**、`Contents/Resources/Bruce-collector` = **arm64**，即整包为单架构。该 zip 的 SHA256 与 Release 上的 `SHA256SUMS` 一致（`shasum -a 256 -c` 通过），确认就是线上分发的产物本身，而非下载损坏。\n(2) **与声明不符**：项目在多处声明 macOS 侧具备 Universal 2（Apple Silicon + Intel Mac 原生）能力 —— `AGENTS.md:121`（macOS App 具备 Universal 2 通用兼容性）、`AGENTS.md:144`（`build-test-app.sh --universal --install` 为双架构构建入口）、`design/01` §3.2 NFR（「架构兼容：支持 Universal 2 二进制」）、以及 README 发布说明段。而线上产物在 Intel Mac 上**根本无法启动**。\n(3) **根因**：`scripts/build-test-app.sh` 的 `--universal` 能力自 C0 (v0.9.0) 起就存在且可用（`lipo -create` 合并 Swift 双架构 + `BRUCE_RUST_TARGET_ARCHS=\"arm64 x86_64\"` 交叉编译 Collector），但**两个 CI 构建步骤都未传该选项**（`.github/workflows/ci.yml` 原第 85/105 行均为裸 `zsh scripts/build-test-app.sh`），于是流水线默认走单架构分支。16 个历史 tag 的产物应均如此，只是从未有人核对过架构。\n(4) **为何长期不可见**：架构属性只在「构建 + 解包 + lipo」时才被观察，push 级门禁只看 Swift/Rust 编译是否通过，产物一旦是单架构仍然全绿；而项目维护者在 Apple Silicon 机器上本地用 `--universal` 构建后安装，本机感知不到差异。",
+  "precheck": {
+    "description": "预检: 实测线上产物架构，并确认 CI 构建步骤确实未传 --universal",
+    "command": "gh release download v0.12.0 --pattern Bruce.zip --dir /tmp/x --clobber && unzip -q /tmp/x/Bruce.zip -d /tmp/x/app && lipo -archs /tmp/x/app/Bruce.app/Contents/MacOS/BruceApp && lipo -archs /tmp/x/app/Bruce.app/Contents/Resources/Bruce-collector; grep -n 'build-test-app.sh' .github/workflows/ci.yml",
+    "expected": "两个二进制均为 arm64 单架构；CI 两处构建命令均为不带 --universal 的裸调用",
+    "is_completed": true,
+    "evidence": "实测符合预期: lipo 输出 `arm64` 与 `arm64`（单架构）；同时 `shasum -a 256 -c SHA256SUMS` 对 Bruce.zip 校验通过，排除下载损坏；CI 原第 85 行（build-release-app 作业）与第 105 行（release 作业）均为 `run: zsh scripts/build-test-app.sh`，无 --universal。"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护已在 main 实施",
+      "git status --short .github/workflows/ci.yml"
+    ],
+    "after": [
+      "# YAML 与作业结构自检",
+      "ruby -ryaml -e 'YAML.load_file(\".github/workflows/ci.yml\")'",
+      "# 流水线内架构断言由 CI 的「校验产物为 Universal 2」步骤承担 (push 场景即执行)",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "CI 构建命令",
+      "before": "build-release-app 与 release 两个作业均执行裸 `zsh scripts/build-test-app.sh`（单架构分支）",
+      "after": "两者均改为 `zsh scripts/build-test-app.sh --universal`，并在构建前显式 `rustup target add x86_64-apple-darwin`（该 target 是否预装随 runner 镜像而变，显式补齐使结果不依赖镜像状态）",
+      "impact": "此后 tag 发布的 macOS 产物为 Universal 2，Intel Mac 可原生运行"
+    },
+    {
+      "scope": "产物架构断言",
+      "before": "无任何架构断言；单架构产物在 CI 全绿",
+      "after": "build-release-app 作业新增「校验产物为 Universal 2」步骤：对 `Contents/MacOS/BruceApp` 与 `Contents/Resources/Bruce-collector` **分别**断言 arm64 与 x86_64 双架构，任一缺失即失败。该作业在每次 push 与 tag 均执行，故该属性不再只于发版时可见",
+      "impact": "App 本体与内置 Collector 分别构建，任一退化为单架构都会被立刻拦下"
+    },
+    {
+      "scope": "规格归属（设计基线）",
+      "before": "Universal 2 仅在 AGENTS.md 与 design/01 的 NFR 里被提及，mac 发布产物规格无设计文档归属，Windows 侧却有 design/05 §6.4 承载同类规则",
+      "after": "design/00 新增 §3.3「发布产物规格」：规定 macOS 产物必须为 Universal 2 且两个二进制分别断言、Windows 产物与版本号规则的索引、发布可见性（草稿 → 公开）的真实语义，并提炼纪律「凡只在 tag 场景被消费的产物属性必须在 push 级或流水线内附带断言」",
+      "impact": "该类缺陷有了明确的规则出处与归属 Topic（SystemOverview）"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/00-系统总体设计.md",
+    "topic": "SystemOverview",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/00 §3 只有逻辑分层架构与数据流转管线两节，无发布产物规格；Universal 2 仅作为 NFR 出现在 design/01",
+      "after": "新增 §3.3 发布产物规格：macOS 产物必须 Universal 2（两个二进制分别断言 + 显式补齐 x86_64 target）、Windows 产物索引至 design/05 §6.4、版本号权威源为根 VERSION、发布可见性为「草稿 → 补齐后自动公开」；并新增「tag-only 属性必须带断言」的纪律条"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "c057-universal2-release-artifact-20261016",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "CI 构建命令与架构断言生效",
+        "true_if": "push 触发的 build-release-app 作业以 --universal 构建且两个二进制均通过双架构断言",
+        "false_if": "作业仍构建单架构，或断言步骤缺失/失效",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "流水线配置合法",
+        "true_if": "ci.yml YAML 可解析且作业结构完整（5 个作业）",
+        "false_if": "解析失败或作业丢失",
+        "evidence": "ruby -ryaml YAML.load_file 解析通过，输出 jobs = verify, verify-windows, build-release-app, release, release-windows（5 个作业，未因本次改动增删）。",
+        "result": true
+      },
+      {
+        "item": "本地门禁不受影响",
+        "true_if": "zsh scripts/verify-local.sh 退出码 0",
+        "false_if": "任一门禁失败",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "已发布产物的既成事实已如实记录",
+        "true_if": "卡内与 CHANGELOG 明确记载 v0.12.0 线上 zip 为 arm64 单架构，且未谎称已回溯修复",
+        "false_if": "把修复描述为已作用于 v0.12.0，或对该事实保持沉默",
+        "evidence": "本卡 why 与 CHANGELOG 均明确写为「实测 arm64 单架构」；修复仅在 main 生效，v0.12.0 的既有产物未被改动。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [
+    {
+      "option": "仅修正文档，把「发布 Universal 2」改为「本地可构建 Universal 2」",
+      "reason": "该方案零风险且能让文档立即与线上产物一致，但它把一份已声明为项目能力的规格（AGENTS.md 明确列出 Universal 2 兼容性、design/01 列为 NFR）降级为可选项，等于用改文字消解需求。Intel Mac 用户仍拿不到可运行的产物。故本轮选择让实现与既有声明对齐，并在 design/00 §3.3 把规格落成规则；v0.12.0 既成产物的事实单独如实记录，不回溯声称已修复。"
+    }
+  ],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  }
+}

@@ -81,8 +81,25 @@ jobs:
       - uses: actions/checkout@v4
       - name: 安装 ripgrep (build-test-app.sh 前置依赖)
         run: brew install ripgrep
-      - name: 构建并组装测试版 App
-        run: zsh scripts/build-test-app.sh
+      # Universal 2 (C057): 发布物必须同时含 arm64 与 x86_64, 否则 Intel Mac 无法启动。
+      # x86_64-apple-darwin 是否预装随 runner 镜像而变, 故显式补齐 (幂等, 已装时立即返回)。
+      - name: 补齐 x86_64 Rust target (Universal 2 前置)
+        run: rustup target add x86_64-apple-darwin
+      - name: 构建并组装测试版 App (Universal 2)
+        run: zsh scripts/build-test-app.sh --universal
+      - name: 校验产物为 Universal 2
+        run: |
+          # 两个二进制必须各自含双架构: App 本体与内置 Rust Collector 是分别构建的,
+          # 任一退化为单架构都会让对应平台无法启动 (design/00 §3.3)。
+          fail=0
+          for bin in dist/Bruce.app/Contents/MacOS/BruceApp dist/Bruce.app/Contents/Resources/Bruce-collector; do
+            archs=$(lipo -archs "$bin")
+            echo "$bin -> $archs"
+            echo "$archs" | tr ' ' '\n' | grep -qx arm64 || { echo "缺少 arm64: $bin"; fail=1; }
+            echo "$archs" | tr ' ' '\n' | grep -qx x86_64 || { echo "缺少 x86_64: $bin"; fail=1; }
+          done
+          [ "$fail" -eq 0 ] || { echo "产物不是 Universal 2"; exit 1; }
+          echo "Universal 2 校验通过"
       - uses: actions/upload-artifact@v4
         with:
           name: Bruce-test-app
@@ -101,8 +118,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: 安装 ripgrep (build-test-app.sh 前置依赖)
         run: brew install ripgrep
-      - name: 构建测试版 App
-        run: zsh scripts/build-test-app.sh
+      - name: 补齐 x86_64 Rust target (Universal 2 前置)
+        run: rustup target add x86_64-apple-darwin
+      - name: 构建测试版 App (Universal 2)
+        run: zsh scripts/build-test-app.sh --universal
       - name: 生成 SHA256 校验和
         run: |
           cd dist

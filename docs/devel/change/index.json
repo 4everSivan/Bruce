@@ -10,7 +10,8 @@
         "C002",
         "C052",
         "C053",
-        "C054"
+        "C054",
+        "C057"
       ]
     },
     "MenuBarIndicator": {
@@ -598,6 +599,15 @@
       "topic": "WindowsCompat",
       "version": "0.12.1+",
       "file": "docs/devel/change/C056.json"
+    },
+    "C057": {
+      "title": "发布产物非 Universal 2：CI 构建未带 --universal，v0.12.0 的 Bruce.zip 仅含 arm64，与项目声明的 Intel Mac 原生可用不符",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "main",
+      "topic": "SystemOverview",
+      "version": "0.12.1+",
+      "file": "docs/devel/change/C057.json"
     }
   }
 }
