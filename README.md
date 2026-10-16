@@ -7,236 +7,195 @@
     <a href="https://github.com/4everSivan/Bruce/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/4everSivan/Bruce/ci.yml?branch=main&amp;style=flat-square&amp;label=CI%2FCD" alt="CI/CD" /></a>
     <a href="https://github.com/4everSivan/Bruce/releases"><img src="https://img.shields.io/badge/version-v0.11.5-0A7EA4?style=flat-square" alt="Version v0.11.5" /></a>
     <a href="#环境要求"><img src="https://img.shields.io/badge/macOS-14%2B-000000?style=flat-square&amp;logo=apple&amp;logoColor=white" alt="macOS 14+" /></a>
-    <a href="#windows-平台-开发中-appswin"><img src="https://img.shields.io/badge/Windows-10%2B-0078D4?style=flat-square&amp;logo=windows&amp;logoColor=white" alt="Windows 10+" /></a>
+    <a href="#windows-平台-appswin"><img src="https://img.shields.io/badge/Windows-10%2B-0078D4?style=flat-square&amp;logo=windows&amp;logoColor=white" alt="Windows 10+" /></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-4CBB17?style=flat-square" alt="MIT License" /></a>
-  </p>
-  <p>
     <a href="apps/macos/Package.swift"><img src="https://img.shields.io/badge/Swift-6.2-F05138?style=flat-square&amp;logo=swift&amp;logoColor=white" alt="Swift 6.2" /></a>
     <a href="core/collector/Cargo.toml"><img src="https://img.shields.io/badge/Rust-2021-000000?style=flat-square&amp;logo=rust&amp;logoColor=white" alt="Rust 2021" /></a>
     <a href="https://linux.do/"><img src="https://img.shields.io/badge/LINUX-DO-FFB003?style=flat-square" alt="LINUX DO" /></a>
   </p>
 </div>
 
-Bruce 把本机 AI Agent 的 token 用量、成本估算和订阅额度集中到一个原生 macOS 菜单栏应用中。原生层负责依赖扫描、登录授权、凭证管理、定时刷新、缓存与故障恢复; Rust Collector 负责采集; 弹出面板以原生 SwiftUI 渲染 (macOS 26+ 可选液态玻璃主题, 更低系统自动使用经典材质风格)。项目本地优先运行, 无自有服务端。
+Bruce 把本机 AI Agent 的 token 用量、成本估算和订阅额度集中到一个原生 macOS 菜单栏应用里。原生层负责依赖扫描、授权门控、凭证管理、定时刷新与故障恢复，Rust Collector 负责采集，弹出面板以原生 SwiftUI 渲染。**全程本地优先，没有自有服务端。**
 
-> 当前版本 v0.11.5。最低支持 macOS 14, 液态玻璃主题需 macOS 26。支持 Universal 2 通用二进制 (Apple Silicon 与 Intel Mac 原生运行)。测试版由 `scripts/build-test-app.sh` 本地打包; 推送 `v*` tag 后 CI 仅自动产出未签名 Preview 草稿 Release。正式版 (Developer ID 签名 + 公证) 暂未纳入 CI/CD 规划, `scripts/build-release-app.sh` 仅作为未来手工预留。
+> **当前版本 v0.11.5**。最低支持 macOS 14，液态玻璃主题需 macOS 26。发布 Universal 2 通用二进制，Apple Silicon 与 Intel Mac 均原生运行。测试版由 `scripts/build-test-app.sh` 本地打包；推送 `v*` tag 后 CI 产出未签名的 Preview 草稿 Release。正式版（Developer ID 签名 + 公证）尚未纳入 CI/CD，`scripts/build-release-app.sh` 仅作手工预留。
 
 ## 核心特性
 
-- **看板**: 菜单栏常驻 (LSUIElement), 原生状态项 + SwiftUI 弹出面板, 面板高度随内容自适应, 无滚动条。
-- **用量卡**: hero 总量、四格细分、14 日堆叠趋势、26 周用量热力图、月度聚合分解与用量档位指示。
-- **订阅用量卡**: 多 Provider 窗口量条、Codex 账号子卡、DeepSeek 月度消费与余额, 按数据可用性条件渲染。
-- **逐小时卡**: 24 点折线与模型/项目明细展开; 支持 Nothing 风格点阵控制台、P4 风格 6 格 LCD 迷你仪表与 Emerald Glow 极光绿微光折线图。
-- **菜单栏与状态指示**: 纯图标模式、Style 01 绿阶雷达扫描动态与 Precision Cyber Ring Gauge 环形仪表，实时感知订阅健康度并原生自适应浅色/深色桌面。
-- **计费引擎与校准**: 内置 26 款主流大模型官方基准定价，精确核算模型级与全局 Token 成本，设置中提供全模型价格表与单模型自定义价格校准。
-- **凭证安全存储**: 采用 Unix `0600` 本地权限保护文件与原子替换落盘，彻底摆脱本地构建频繁弹出系统钥匙串密码输入框的困扰，并支持旧 Keychain 凭证无感平滑迁移。
-- **主题**: 经典 / 液态玻璃两档; 液态玻璃仅 macOS 26+ 可选, 其下可调标准/通透/哑光模糊风格, 低系统强制经典材质。
-- **设置窗口**: 通用 (配色模式、界面风格、模糊风格、刷新间隔、系统通知开关、菜单栏指标拖拽排序与实时模拟预览、全局快捷键)、模型计费校准、Agent 用量依赖卡、订阅额度 (Provider 标签式管理与拖拽排序)、统一授权与诊断。
-- **授权门控**: 首次启动 Onboarding、本机只读依赖扫描、统一授权摘要与 Activation Gate — 未确认授权不启动任何 Collector。
-- **调度与可靠性**: 默认每 30 分钟自动刷新。支持手动刷新、防重入、超时、退避和系统唤醒补采; 最后成功快照优先展示, 单模块失败不阻塞其他模块, 损坏快照自动回退 previous。
-- **配额预警**: 临界线计算、预警去重、通知中心提示与自动恢复判定。
-- **可访问性**: 键盘导航、VoiceOver 状态语义、macOS 减少动态效果偏好。
-- **隐私**: 设置页提供脱敏诊断预览与最小 ZIP 导出, 不包含 Artifact 或账号活动数据。
+- **菜单栏看板**：常驻菜单栏（`LSUIElement`），原生状态项 + SwiftUI 弹出面板，高度随内容自适应、无滚动条。
+- **Token 用量卡**：hero 区累计总量与估算成本、四格细分（输入 / 输出 / 缓存读取 / 缓存命中率）、按月聚合、26 周用量热力图，以及可切换窗口档位并与月卡联动的模型用量区块。
+- **逐小时卡**：24 点折线与 Agent 堆叠柱状图，点击展开模型与项目明细；内置 Nothing 点阵控制台、P4 风格六格 LCD 迷你仪表与极光绿趋势线三套风格。
+- **订阅用量卡**：多 Provider 计费窗口量条与重置倒计时、Codex 多账号子卡；以余额计费的 Provider（如 DeepSeek）渲染为双槽对称流；Provider 身份统一为品牌图形徽章。
+- **菜单栏指示器**：纯图标模式、环形仪表与订阅配额弧线，指标可拖拽排序，设置中心提供实时模拟预览；原生自适应浅色 / 深色桌面。
+- **计费引擎**：内置 43 款主流模型基准定价，精确核算模型级与全局成本；设置内提供全量价格表与单模型自定义价格覆盖。
+- **凭证安全存储**：订阅凭证落盘 `~/Library/Application Support/Bruce/credentials.json`（POSIX `0600`、父目录 `0700`、临时文件 + 原子替换 + 写后重读校验），旧 Keychain 凭证首次启动静默迁移；探测外部 CLI 凭据时跳过鉴权弹窗。
+- **主题**：经典与液态玻璃两档；液态玻璃仅 macOS 26+ 可选，含标准 / 通透 / 哑光三档模糊，低版本系统自动回落经典材质。
+- **调度与可靠性**：默认每 30 分钟刷新（可选 5 / 15 / 30 / 60），支持手动刷新、防重入、超时、退避与系统唤醒补采；优先展示最后成功快照，单模块失败不阻塞其他模块，快照损坏自动回退 previous。
+- **门控、隐私与可访问性**：首次启动引导 + 本机只读依赖扫描 + 统一授权摘要，未确认授权不启动任何 Collector；诊断包为白名单字段的最小 ZIP，不含 Artifact 与账号活动数据；支持键盘导航、VoiceOver 状态语义与「减少动态效果」。
 
 ## 支持的数据源
 
 | 类别 | 覆盖 |
 |---|---|
-| 本机会话扫描 | Kimi Work / Kimi Code、Claude Code、Codex、Grok、OpenCode、Orca、Pi、ZCode、CodeBuddy |
-| 订阅额度 | Kimi、DeepSeek、火山引擎、Codex OAuth、Claude、Grok、OpenCode Go、Z.ai（智谱 GLM）、阶跃星辰（StepFun）、Cline / ClinePass（5h / 7d / 30d 三窗口） |
+| 本机会话扫描 | Kimi Work、Kimi Code CLI、Claude Code、Codex、Grok、OpenCode、Orca、Pi、ZCode、CodeBuddy |
+| 订阅额度 | Kimi、DeepSeek、火山引擎、Codex（OAuth 多账号）、Claude、Grok、OpenCode Go、Z.ai（智谱 GLM）、阶跃星辰 StepFun、Cline / ClinePass |
 
-> 仓库根 `apps/widget/` 单文件 Widget 继续保留, 仅服务 Daimon / Kimi Work Blueprint 场景, 不属于 App 的组成部分。
+> Cline 的 5 小时 / 7 天 / 30 天三窗口直读服务端权威端点，不在本地为窗口建模。`apps/widget/` 下的单文件 Widget 仅服务 Daimon / Kimi Work Blueprint 场景，不属于 App 组成部分。
 
 ## 界面预览
 
-菜单栏面板以原生 SwiftUI 渲染, 以下为液态玻璃主题下的实际运行效果 (macOS 26)。
+菜单栏面板以原生 SwiftUI 渲染，下图为液态玻璃主题（macOS 26）实机运行效果。截图取自 2026-08，界面细节此后持续演进，面板结构与卡片层级沿用至今。
 
 | 说明 | 截图 |
 |---|---|
-| **仪表盘全貌**: 面板自上而下由 Token 用量卡、订阅用量卡和底部操作栏 (刷新 / 设置 / 退出) 组成, 高度随内容自适应, 无滚动条。 | <img src="docs/assets/screenshots/dashboard-overview.png" width="280" /> |
-| **Token 用量卡**: Hero 区展示累计 token 总量与估算成本; 四格细分输入、输出、缓存读取、缓存命中率; 月度聚合与 26 周热力图呈现使用节奏。 | <img src="docs/assets/screenshots/token-usage.png" width="280" /> |
-| **Agent 用量卡**: 14 日堆叠柱状图按 Agent 分色; 逐小时折线展开各 Agent 的 0-23 时分布, 点击可查看模型与项目明细。 | <img src="docs/assets/screenshots/agent-usage.png" width="280" /> |
-| **订阅用量卡**: 多 Provider 窗口量条 (ChatGPT、Kimi、智谱、OpenCode GO、DeepSeek 等), 按原生计费窗口展示用量百分比与重置倒计时; DeepSeek 展示账户余额。 | <img src="docs/assets/screenshots/subscription-usage.png" width="280" /> |
-
-> 设置窗口 (通用 / 订阅额度 / 统一授权 / 诊断) 截图待补充。运行 App 后对设置窗口截图, 追加到本节即可。
-
-Widget 场景的视觉基线见 `tests/visual/baselines/agent-usage-valid.jpg` (Daimon 场景历史视觉参考)。
+| **仪表盘全貌**：面板自上而下由 Token 用量卡、订阅用量卡与底部操作栏（刷新 / 设置 / 退出）组成，高度随内容自适应，无滚动条。 | <img src="docs/assets/screenshots/dashboard-overview.png" width="280" /> |
+| **Token 用量卡**：Hero 总量与估算成本、输入 / 输出 / 缓存读取 / 命中率四格细分，按月聚合与 26 周热力图呈现使用节奏。 | <img src="docs/assets/screenshots/token-usage.png" width="280" /> |
+| **逐小时卡**：14 日堆叠柱状图按 Agent 分色，逐小时折线展开 0–23 时分布，可下钻到模型与项目。 | <img src="docs/assets/screenshots/agent-usage.png" width="280" /> |
+| **订阅用量卡**：多 Provider 窗口量条按原生计费窗口展示用量百分比与重置倒计时；余额型 Provider 展示可用余额与本月消费。 | <img src="docs/assets/screenshots/subscription-usage.png" width="280" /> |
 
 ## 快速开始
 
 ### 环境要求
 
-- macOS 14 或更高 (`LSMinimumSystemVersion` 14.0); 液态玻璃主题需 macOS 26 或更高。
-- Swift 6 工具链, 当前验证版本 Apple Swift 6.2.1; 只有 Command Line Tools 即可完成 SwiftPM 构建。
-- Rust toolchain (rustc/cargo); Collector 编译为 macOS 原生 Rust 二进制。
+- macOS 14 或更高（`LSMinimumSystemVersion` 14.0）；液态玻璃主题需 macOS 26 或更高。
+- Swift 6.2 工具链（`swift-tools-version: 6.2`）；仅装 Command Line Tools 即可完成 SwiftPM 构建。
+- Rust toolchain（rustc / cargo）；Collector 编译为 macOS 原生 Rust 二进制。
 - Agent 用量模块需要至少一个受支持的本机会话数据源。
-
-签名、归档和公证需要完整 Xcode 与 Developer ID 证书。
+- 签名、归档与公证需要完整 Xcode 与 Developer ID 证书。
 
 ### 构建并运行
 
 ```bash
 swift build --package-path apps/macos
-swift run --package-path apps/macos BruceApp
+swift run   --package-path apps/macos BruceApp
 ```
 
-首次运行流程:
+首次运行流程：
 
-1. 在设置页检查 Rust Collector、本机会话和可选 SQLite 数据源。
-2. 按首次启动引导完成 Bruce 钥匙串访问配置; 稍后配置时应用保持不读取凭证且不自动刷新。
-3. 选择需要启用的 Agent 用量模块。
-4. 在「订阅额度」分区按需配置或导入订阅凭证; 未配置任何 Provider 时订阅卡片不渲染。
-5. 阅读统一授权摘要并确认后, 应用才会启动对应 Collector 和自动刷新。
+1. 在设置页检查 Rust Collector、本机会话与可选 SQLite 数据源。
+2. 按引导完成 Bruce 凭据存储初始化；跳过时应用保持不读取凭证且不自动刷新。
+3. 勾选需要启用的 Agent 用量模块。
+4. 在「订阅额度」分区按需配置或导入订阅凭证；未配置任何 Provider 时订阅卡不渲染。
+5. 阅读并确认统一授权摘要后，应用才会启动对应 Collector 与自动刷新。
 
-真实账号访问和外部请求只应在个人 Mac 上、由用户明确授权后执行。
+真实账号访问与外部请求只应在个人 Mac 上、经用户明确授权后执行。
 
-### 打包与发布
+### 构建与发布
 
 ```bash
-zsh scripts/build-test-app.sh --install   # 推荐: 构建并安装到 /Applications/Bruce.app
-zsh scripts/build-test-app.sh             # 仅生成 dist/Bruce.app + dist/Bruce.zip (不入库)
-zsh scripts/build-release-app.sh # 预留手工正式版: Developer ID 签名 + Hardened Runtime + 公证 (需 Git tag 与证书)
-zsh scripts/release-notes.sh     # 从 CHANGELOG 提取当前版本生成 Release 说明
+zsh scripts/build-test-app.sh --universal --install  # 构建 Universal 2 并安装到 /Applications/Bruce.app
+zsh scripts/build-test-app.sh                        # 仅产出 dist/Bruce.app 与 dist/Bruce.zip（不入库）
+zsh scripts/release-notes.sh                         # 从 CHANGELOG 提取当前版本生成 Release 说明
+zsh scripts/build-release-app.sh                     # 手工正式版：Developer ID 签名 + Hardened Runtime + 公证
 ```
 
-在 macOS 27 配合菜单栏管理器使用时, 请从 `/Applications/Bruce.app` 启动. `dist/Bruce.app` 是构建产物目录, 直接从这里启动的开发包可能没有稳定的 LaunchServices 注册, 菜单栏重排后会被系统隐藏.
+在 macOS 27 配合菜单栏管理器使用时，请从 `/Applications/Bruce.app` 启动：`dist/Bruce.app` 是构建产物目录，直接启动的开发包可能没有稳定的 LaunchServices 注册，菜单栏重排后会被系统隐藏。正式版手工打包要求 Git tag `v<major>.<minor>.<patch>`、Developer ID Application 证书与 App Store Connect API Key；该流程未接入 CI/CD，前置缺失时脚本在对应阶段清晰失败，不产出半成品。
 
-正式版手工打包前置条件: Git tag `v<major>.<minor>.<patch>`、Developer ID Application 证书和 App Store Connect API Key; 该流程当前未接入 CI/CD, 未配置时脚本在对应阶段清晰失败, 不产出半成品。
+## Windows 平台 (apps/win)
 
-## Windows 平台 (开发中, apps/win)
+Windows 版基于 **Tauri 2**（Rust 后端 + WebView2）构建，与 macOS 版共享同一套 `core/collector` 引擎与 Artifact 契约，视图模型行为由双端 fixture 对拍逐字段锁定（设计基线：[05-Windows平台适配.md](docs/devel/design/05-Windows平台适配.md)）。托盘常驻、弹出看板、全局热键、配额 Toast、凭证引导、设置中心与 NSIS 安装包产线均已实现；托盘交互细节与安装冒烟仍待 Windows 真机验收。
 
-Windows 版基于 **Tauri 2** (Rust 后端 + WebView2) 构建, 与 mac 版共享同一 Rust Collector 引擎与 artifact 契约, 视图模型行为由双端 fixture 对拍测试逐字段锁定 (设计基线: `docs/devel/design/05-Windows平台适配.md`)。托盘常驻 + 弹出看板 + 全局热键 + 配额 Toast 通知 + 凭证引导 + 设置中心 + NSIS 安装包产线均已实现, 交互细节与安装冒烟待 Windows 真机验收。
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/build-win-app.ps1   # 产物收拢 local/dist
+```
 
-- 本地构建: `powershell -ExecutionPolicy Bypass -File scripts/build-win-app.ps1` (产物收拢 `local/dist`)
-- 数据位置: 凭证 `%APPDATA%\Bruce\credentials.json` (仅当前用户 ACL)、设置 `%APPDATA%\Bruce\config\settings.json`、采集缓存 `%LOCALAPPDATA%\Bruce\collector-cache-v1`
+数据位置：凭证 `%APPDATA%\Bruce\credentials.json`（仅当前用户 SID 的受保护 ACL）、设置 `%APPDATA%\Bruce\config\settings.json`、快照 `%APPDATA%\Bruce\snapshot.json`、月度账本 `%APPDATA%\Bruce\usage-ledger\`、采集缓存 `%LOCALAPPDATA%\Bruce\collector-cache-v1`。首次使用需在设置中明确允许订阅查询；保存凭证不会自动授予联网同意。在 macOS 上调试 Windows 壳时数据目录为 `~/Library/Application Support/Bruce-Windows-Dev`，与原生 App 完全隔离。
 
 ## 应用架构
 
 ```text
-macOS 菜单栏应用 (LSUIElement, 最低 14)
-  ├─ Onboarding + Settings
+macOS 菜单栏应用 (LSUIElement, 最低 macOS 14)
+  ├─ Onboarding + 设置中心
   │    ├─ 本机只读依赖扫描
-  │    └─ 订阅额度凭证 (Keychain, 可一次性只读导入)
-  ├─ RefreshScheduler
+  │    └─ 订阅凭证 (credentials.json, POSIX 0600)
+  ├─ RefreshScheduler (默认 30 分钟 / 手动 / 唤醒补采)
   │    └─ CollectorRunner
-  │         └─ Rust Bridge/Collector (stdin/stdout JSON)
-  │              └─ Agent Usage modules
-  └─ ArtifactStore
+  │         └─ Rust Collector (stdin/stdout JSON)
+  │              └─ 本机会话扫描 + 订阅额度出站查询
+  └─ ArtifactStore (最后成功快照 + previous)
        └─ AppModel + PanelViewModelMapper
             └─ 原生状态项 + AppKit/SwiftUI 看板 (经典 / 液态玻璃)
-                 (用量 / 订阅用量 / 逐小时卡片)
 ```
 
-可测试业务逻辑位于 `BruceAppCore` library target (AppModel、调度、PanelViewModel 映射); `BruceApp` executable target 只保留应用入口、SwiftUI 界面装配和 `Sources/BruceApp/Views/` 原生看板卡片组件。所有 Swift Harness 直接依赖 Core target。
-
-运行链路:
-
-1. 原生层根据 Onboarding 结果和用户授权决定允许启动的模块。
-2. Scheduler 为每个模块创建受控运行任务, 并通过 Rust Bridge 的 stdin 传入最小 context 和 credentials。
-3. Rust Collector 返回 `{"artifact": ...}`; Bridge 验证 schema、错误语义和凭证更新。
-4. ArtifactStore 原子保存最后成功快照。
-5. 同一 Artifact 两路消费: App 内由 AppModel + PanelViewModelMapper 映射为面板 view model, 交给原生 SwiftUI 卡片渲染; Daimon 场景映射为 `DaimonWidget.data.main`, 由仓库根单文件 Widget 渲染。
-
-Collector 保留独立 CLI 入口, 用于开发、测试和故障排查, 但不再是产品的主要使用方式。
-
-## 安全与隐私
-
-- 本地优先, 无项目自有服务端, 不默认同步活动数据。
-- 订阅额度凭证 (Kimi、DeepSeek、火山引擎、Codex、Claude、Grok、OpenCode Go、智谱 GLM、StepFun、Cline / ClinePass) 保存在 macOS Keychain。
-- 凭证通过 Bridge stdin 的单次请求传递, 不进入命令行参数、Artifact 或日志。
-- Rust Collector 不直接写 Keychain, 也不写回第三方认证文件; 订阅令牌轮换经 `credentialUpdates` 只写回 Keychain, 不回写 CC Switch 或 CLI 认证文件。
-- 菜单栏面板为纯 SwiftUI 渲染, 不接触凭证。仓库根 `*/widget/` 单文件 Widget 仅由 Daimon host 以受 CSP 限制的 WebView 加载, 其 JSON fixture 和 JavaScript 语法可独立验证。
-- 配置和快照写入用户级 Application Support; 真实凭证、账号活动和 `data/*.json` 不得进入仓库。
-- 诊断包采用白名单字段, 生成后解压复核文件清单并再次扫描敏感形态。
-- 菜单栏指标仅显示通用状态和聚合数字, 不显示账号或 token 明细。
-
-## 项目结构
+原生层按 Onboarding 结果与用户授权决定允许启动的模块，由 Scheduler 为每个模块创建受控任务，经 Bridge 的 stdin 传入最小 context 与凭证；Collector 返回 `{"artifact": ...}`，Bridge 校验 schema、错误语义与凭证更新后由 ArtifactStore 原子保存最后成功快照，同一份 Artifact 分别映射为面板 view model（SwiftUI 卡片）与 `DaimonWidget.data.main`（Widget 场景）。可测试业务逻辑位于 `BruceAppCore` library target，`BruceApp` executable 只保留入口、界面装配与 `Views/` 卡片组件；Collector 另保留独立 CLI 入口，用于开发与故障排查。
 
 ```text
 Bruce/
-├── macos/BruceApp/          # macOS 菜单栏应用 (最低 14)、Scheduler、缓存和原生看板
-│   ├── Sources/BruceApp/       # 应用入口、原生状态项、设置窗口和 Views/ 卡片组件
-│   ├── Sources/BruceAppCore/   # AppModel、调度、PanelViewModel 映射
-│   ├── Sources/BruceOnboardingCore/  # 扫描、授权、Gate、订阅凭证、主题解析纯逻辑
-│   ├── Assets/                # AppIcon.icns 应用图标
-│   └── Tests/                 # 独立 Harness target
-├── bridge/                 # Bridge v1 参考契约 schema (文档, 不打包)
-├── rust/Bruce-collector/   # Rust Agent 用量 Collector workspace
-├── agent-usage/            # Daimon Widget
-├── tests/                  # JSON fixture 与 Widget 视觉基线
-├── scripts/                # 本地验证、测试版/正式版打包与发布说明脚本
-└── docs/                   # 设计、工具链和授权说明文档
+├── apps/
+│   ├── macos/                   # SwiftPM 原生菜单栏应用 + 15 个 Harness
+│   │   ├── Sources/BruceApp/             # 入口、状态项、设置中心、Views/ 卡片
+│   │   ├── Sources/BruceAppCore/         # AppModel、调度、PanelViewModel 映射
+│   │   ├── Sources/BruceOnboardingCore/  # 扫描、授权、Gate、凭证、主题解析
+│   │   ├── Sources/BruceGlassSurfaceCore/# 液态玻璃材质
+│   │   ├── Assets/                       # AppIcon.icns
+│   │   └── Tests/                        # Harness targets
+│   ├── win/                     # Tauri 2 壳：Rust 后端 + WebView2 前端 + 视图模型 crate
+│   └── widget/                  # Daimon / Kimi Blueprint 单文件 Widget
+├── core/collector/              # Rust Collector workspace (8 crates + Bruce-collector 二进制 + schemas)
+├── docs/                        # ad-flow 文档中心 (guide / devel / assets / archive)
+├── scripts/                     # 验证、打包、发布与前端回归脚本
+├── tests/                       # JSON fixture、视觉基线与基准
+├── local/                       # 本地构建产物与运行数据（不入库）
+└── dist/                        # Release / Preview 打包产物（不入库）
 ```
 
-关键入口:
+关键入口：应用 `apps/macos/Sources/BruceApp/BruceApp.swift`；卡片组件 `apps/macos/Sources/BruceApp/Views/`；Collector `core/collector/bin/Bruce-collector/src/main.rs`；协议字段参考 `core/collector/schemas/`（运行时强制力在 collector-bridge 的白名单与 `BRIDGE_SCHEMA_VERSION` 比对）；Widget 源文件 `apps/widget/index.html`。
 
-- macOS App: `macos/BruceApp/Sources/BruceApp/BruceApp.swift`
-- 面板卡片组件: `macos/BruceApp/Sources/BruceApp/Views/`
-- Rust Bridge/Collector: `rust/Bruce-collector/bin/Bruce-collector/src/main.rs`
-- Widget 源文件 (Daimon 场景): `agent-usage/widget/index.html`
-- Artifact 参考契约: `bridge/schemas/` (作为文档维护, 运行时校验由 Rust collector-bridge 的 schema 版本检查实现)
+## 数据与隐私
 
-## 数据位置、清理与回滚
+应用自有数据位于（macOS，Windows 见上一节）：
 
-应用自有数据位于:
+| 路径 | 内容 |
+|---|---|
+| `~/Library/Application Support/Bruce/config/onboarding-v1.json` | 非敏感配置、授权版本与系统通知开关 |
+| `~/Library/Application Support/Bruce/credentials.json` | 订阅凭证（POSIX `0600`，父目录 `0700`） |
+| `~/Library/Application Support/Bruce/snapshots/` | 当前与 previous Artifact 快照 |
+| `~/Library/Application Support/Bruce/metadata/modules.json` | 最近成功、尝试时间与错误分类 |
+| `~/Library/Application Support/Bruce/collector-cache-v1/` | 采集增量缓存 |
 
-- `~/Library/Application Support/Bruce/config/onboarding-v1.json`: 非敏感配置、授权版本、钥匙串访问状态和系统通知开关。
-- `~/Library/Application Support/Bruce/snapshots/`: 当前和 previous Artifact 快照。
-- `~/Library/Application Support/Bruce/metadata/modules.json`: 最近成功、尝试时间和错误分类。
-- macOS Keychain service `com.bruce.dashboard.credentials.v2`: 应用持有的订阅额度凭证; `com.bruce.dashboard.credentials` 仅作为用户主动配置时的旧数据迁移来源。
-- Windows: `%APPDATA%\Bruce\credentials.json` (订阅凭证, 受保护的当前用户 SID ACL)、`config\settings.json` (设置)、`snapshot.json` (非敏感快照) 与 `usage-ledger\` (DeepSeek 月度记录); 采集缓存 `%LOCALAPPDATA%\Bruce\collector-cache-v1`。首次使用需在设置中明确允许订阅查询；保存凭证不会自动授予联网同意。macOS 上调试 Windows 壳的数据目录为 `~/Library/Application Support/Bruce-Windows-Dev`，与原生 App 隔离。窗口、热键、Toast 与 ACL 的 Windows 真机验收见 [C009](docs/devel/change/C009.json)。
+- 本地优先，无项目自有服务端，不默认同步活动数据。
+- 凭证经 Bridge stdin 的单次请求传递，不进入命令行参数、Artifact 或日志。
+- 凭证文件损坏时读路径保留现场副本并显式报错，不会静默清空；写入走临时文件 + 原子替换 + 重读校验。
+- Collector 不写 Keychain、不写第三方认证文件，令牌轮换仅经 `credentialUpdates` 写回应用自有存储。
+- 读取外部应用 SQLite 强制 `mode=ro` 只读连接，扫描目录零写入。
+- 诊断包采用白名单字段，生成后解压复核文件清单并再次扫描敏感形态；菜单栏指标仅显示聚合数字，不含账号或 token 明细。
 
-清理前先退出应用。在设置页使用「撤销全部授权」停止全部调度; 需要完全重置时, 再通过 Finder 删除 `~/Library/Application Support/Bruce/`, 并在「钥匙串访问」中删除上述 service 的项目。删除快照和 Keychain 项不可由应用自动恢复, 操作前应确认不再需要最后成功数据和现有授权。
-
-出现回归时可先撤销受影响模块并继续使用其他模块; 回退到兼容 Bridge v1 / Artifact v1 的旧构建不会改写第三方数据库。若新快照损坏, 应用优先回退 previous; 不要通过修改 CC Switch 数据库来修复 Bruce。
-
-## 故障排查
-
-- 设置页「重新检查」用于复核 Rust Collector、本机会话位置和只读 SQLite 状态。
-- 有旧快照时, 刷新失败不会清空主视图; 状态文案会区分过期、离线、授权失效和部分成功。
-- 导出支持信息前先使用设置页「预览诊断」, 确认其中只有状态和校验元数据。
+**清理**：先退出应用，在设置页「撤销全部授权」停止全部调度；需要完全重置时，再通过 Finder 删除 `~/Library/Application Support/Bruce/`。删除快照与凭证不可由应用自动恢复，操作前请确认不再需要最后成功数据与现有授权。出现回归时可先撤销受影响模块并继续使用其他模块；回退到兼容 Bridge v1 / Artifact v1 的旧构建不会改写第三方数据库。**不要通过修改 CC Switch 数据库来修复 Bruce。**
 
 ## 开发与验证
 
-默认离线验证入口:
-
 ```bash
-./scripts/verify-local.sh
+zsh scripts/verify-local.sh   # 标准全量验证（推荐入口）
+zsh scripts/verify-rust.sh    # 跨平台 Rust 入口：fixture 扫描 + fmt + test + clippy
 ```
 
-该脚本运行 Rust workspace 测试、格式检查、Clippy、fixture 脱敏扫描、Swift 构建和全部 Swift Harness。隔离集成只在随机临时 HOME 中运行 Rust Collector, 关闭外部额度能力, 不访问真实账号、Keychain 或第三方数据库。
+`verify-local.sh` 覆盖 Rust workspace 的 fmt / test / clippy、fixture 语法与敏感扫描、Windows 前端结构冒烟、Swift 构建与全部 15 个 Harness、Widget 像素动画性能 Harness，以及 Provider 品牌图形产物与源文件的一致性校验。隔离集成只在随机临时 HOME 中运行 Rust Collector，关闭外部额度能力，不访问真实账号、凭证或第三方数据库。
 
-按需运行子集:
+按需运行子集：
 
 ```bash
-cargo test --manifest-path rust/Bruce-collector/Cargo.toml --workspace
+cargo test --manifest-path core/collector/Cargo.toml --workspace
 zsh scripts/check-collector-fixtures.sh
-swift run --package-path macos/BruceApp BruceOnboardingCoreHarness
-swift run --package-path macos/BruceApp PanelViewModelHarness
-swift run --package-path macos/BruceApp RefreshSchedulerHarness "$PWD"
+swift run --package-path apps/macos BruceOnboardingCoreHarness
+swift run --package-path apps/macos PanelParityHarness "$PWD"
 ```
 
-CI (`.github/workflows/ci.yml`) 在 push/PR 时执行 Rust/Swift verify-local.sh 和测试版 App 构建; tag `v*` 仅触发未签名 Preview 构建与草稿 Release。正式签名、公证和 Gatekeeper 校验不属于当前 CI/CD 规划。
-
-Widget (Daimon 场景) 的 JSON fixture 继续由 `scripts/check-collector-fixtures.sh` 做语法与脱敏校验; 真实 Collector、OAuth、签名和 `.app` 发布验证不属于默认测试流程, 需要单独授权和对应环境。
+CI（`.github/workflows/ci.yml`）在 push / PR 时执行 macOS 侧 `verify-local.sh`、Windows 侧 Rust 与前端验证、以及测试版 App 构建；tag `v*` 额外触发未签名 Preview 的草稿 Release（附 SHA256SUMS 与从 CHANGELOG 提取的发布说明）。正式签名、公证与 Gatekeeper 校验不属于当前 CI/CD 规划；真实 Collector、OAuth 与 `.app` 发布验证需单独授权和环境，不在默认测试流程内。
 
 ## 当前限制
 
-- 正式签名与公证发布链路暂未纳入 CI/CD 规划; 如未来启用, 仍需要 Developer ID 证书和 App Store Connect API Key。Windows 安装包签名 (signtool) 同为占位, CI 在仓库配置证书 secret 后启用。
-- Windows 版托盘交互、安装冒烟与各 Agent 真实数据布局仍需 Windows 真机验收。
-- 真实 Agent Provider 登录验收需要用户在个人 Mac 上明确授权。
-- 30 分钟自动刷新、系统睡眠补偿、凭证续期和撤销仍需真实环境持续验收。
-- VoiceOver、增加对比度和全键盘流程仍需在后续适用的发布构建上完成人工验收。
+- 正式签名与公证发布链路未纳入 CI/CD，Windows 安装包签名（signtool）同为占位，需在仓库配置证书后启用。
+- Windows 版托盘交互与安装冒烟仍需 Windows 真机验收。
+- 真实 Agent Provider 登录验收需要用户在个人 Mac 上明确授权后执行。
+- 30 分钟自动刷新、睡眠补偿、凭证续期与撤销等长时行为，以及 VoiceOver、增加对比度与全键盘流程，仍需在发布构建上完成人工验收。
 
 ## 更多文档
 
-- [Bruce 设计文档](docs/development/01-bruce-design.md)
-- [CI/CD 设计](docs/development/02-ci-cd.md)
-- [工具链基线](docs/development/03-toolchain.md)
-- [Provider 授权矩阵](docs/development/04-provider-auth-matrix.md)
-- [发布人工验收清单](docs/development/05-release-acceptance.md)
-- [正式打包与发布](docs/development/08-production-packaging-and-release.md)
-- [1.0 Rust Collector 构建目标](docs/development/14-rust-collector-v1-build-target.md)
+- [文档中心](docs/README.md) — 全库结构、编写契约与机器索引
+- [系统总体设计](docs/devel/design/00-系统总体设计.md) — 现行设计基线 00~05
+- [变更总账](docs/devel/change/index.json) — 全量变更卡与 Topic 映射
+- [本地部署指南](docs/guide/01-本地部署指南.md) — 环境准备、构建与联调
+- [设计资源库](docs/assets/README.md) — 架构图、截图与视觉素材
+- [全仓对抗性审查报告（2026-10-16）](docs/devel/2026-10-16-全仓对抗性审查报告.md)
 
 ## 社区与致谢
 

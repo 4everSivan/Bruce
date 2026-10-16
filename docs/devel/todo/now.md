@@ -8,6 +8,7 @@
 
 | 登记编号 | 模块 | 现象简述 | 发现日期 | 处理去向 (建卡即删) |
 |---|---|---|---|---|
+| B-001 | design/01 设计基线 | 「缓存文件统一保存在 `~/Library/Caches/Bruce/collector-cache/`」与实现不符：`collector-local::default_cache_root` 实际解析为 `~/Library/Application Support/Bruce/collector-cache-v1`（Windows 为 `%LOCALAPPDATA%\Bruce\collector-cache-v1`），全仓无任何 `Library/Caches` 路径。C054 仅更正 README 表述，基线正文待单独建卡回写。 | 2026-10-16 | 待建卡 |
 
 ---
 

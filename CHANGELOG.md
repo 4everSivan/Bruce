@@ -5,6 +5,17 @@
 
 ## [Unreleased]
 
+### Changed
+- **README 精简与排版重构 (C054)**：仓库门面文档自 C001 Monorepo 重构（v0.10.0）后未同步实现，按预检实测存在 21 处失效路径引用（其中 8 个被引用路径在文件系统中已不存在）与整节死链。本次对齐 v0.11.5 现状并压缩排版，仅改动表述层，不涉及代码、脚本与设计基线规则：
+  - **结构树与关键入口重写**：顶层由 `macos/BruceApp`、`bridge`、`rust/Bruce-collector`、`agent-usage` 旧命名改为 `apps/`（macos / win / widget）+ `core/collector/` 双层；关键入口更正为 `apps/macos/Sources/BruceApp/BruceApp.swift`、`core/collector/bin/Bruce-collector/src/main.rs` 与 `core/collector/schemas/`。
+  - **文档索引去死链**：「更多文档」7 条指向已归档的 `docs/development/*.md`，改为现行 ad-flow 入口（文档中心、设计基线 00~05、变更总账、部署指南、资源库）。
+  - **命令路径修正**：按需验证命令由 `rust/Bruce-collector/Cargo.toml` / `--package-path macos/BruceApp` 更正为 `core/collector/Cargo.toml` / `--package-path apps/macos`，并补 `verify-rust.sh` 跨平台入口与 15 个 Swift Harness 口径。
+  - **安全模型描述对齐**：订阅凭证存储由 macOS Keychain service 更正为 `~/Library/Application Support/Bruce/credentials.json`（POSIX `0600` + 父目录 `0700` + 临时文件原子替换 + 写后重读校验，含 C042 的损坏三态读语义）。
+  - **能力清单补全**：本机会话补齐至 10 个 Agent（Kimi Work / Kimi Code CLI / Claude Code / Codex / Grok / OpenCode / Orca / Pi / ZCode / CodeBuddy），订阅额度 10 家并标注 Cline 三窗口直读服务端权威端点（C039）；补 43 款定价表规模、采集缓存 `collector-cache-v1` 与 Windows 数据位置。
+  - **排版去重**：合并重复的签名/公证叙述与架构图后冗余的 5 步运行链路列表，安全/隐私与数据位置并为一节；247 → 206 行。
+  - **核验证据**：README 内 18 条仓库相对引用经脚本解析全部可达（dead=0）；Markdown 围栏 14 处平衡、表格 0 错列、7 处脚本引用全部存在；`C054.json` 与 `change/index.json` JSON 解析通过（总账 54 卡）。
+  - **衍生发现（未在本卡修复）**：design/01 第 192 行称缓存位于 `~/Library/Caches/Bruce/collector-cache/`，与实现 `~/Library/Application Support/Bruce/collector-cache-v1` 不符，已登记 `docs/devel/todo/now.md` B-001 待单独建卡回写。
+
 ### Fixed
 - **全仓对抗性审查缺陷批次修复 (C042–C052)**：2026-10-16 对主干做了一次全仓对抗性审查（报告归档 `docs/devel/2026-10-16-全仓对抗性审查报告.md`：41 张已闭环变更卡 + 19.1k 行 Rust + 52.4k 行 Swift + 9.3k 行 Windows），按「有真实失败路径」优先的次序立项 12 张卡并完成 10 张修复（另 2 张为结构性债，已登记 `future.md` TD-005/TD-006 待独立开批）。逐卡要点：
   - **C042 凭据文件存储加固（数据丢失路径）**：`ProtectedFileCredentialStore.loadPayloadLocked` 原以 `try?` 把任何读/解码失败折叠为空 payload，而 `saveCredential` 是「读全量 → 改一个 key → 整体覆盖写」——文件一旦损坏，用户下次保存任一凭据即**永久抹除其余全部凭据**（无备份无回滚）。现读路径改为三态（不存在→空 / 损坏→保留现场副本后抛 `corrupted` / 正常→解码）；写路径对齐 `AtomicJSONStore` 规格：`createFile(0600)` → write → `synchronize` → **重读解码校验** → 备份 `.bak` → `replaceItemAt` → 复位 0600 且失败即抛；目录存在时也校正为 0700。新增两条 Harness 用例（损坏不被静默抹除 / 写入加固），`BruceOnboardingCoreHarness` 165 项全绿。

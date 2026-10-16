@@ -3,7 +3,7 @@
   "id": "C054",
   "title": "README 精简与排版重构：仓库结构/文档链接/命令路径对齐 v0.11.5 现状，247 行瘦身并消除 21 处失效引用",
   "type": "Refactor",
-  "status": "in_progress",
+  "status": "verified",
   "branch": "main",
   "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用)",
   "is_hotfix": false,
@@ -27,9 +27,10 @@
       "git status --short README.md"
     ],
     "after": [
-      "# 阅读侧自检: README 内所有相对路径/链接必须可在文件系统解析",
-      "python3 - <<'PY'  # (Node 与 shell 等价命令见本卡 evidence)",
-      "zsh scripts/verify-local.sh"
+      "# 阅读侧自检: README 内所有仓库相对引用必须可解析, 且旧路径零残留 (Node 内联脚本, 不落仓库文件)",
+      "node --input-type=module -e 'import {readFileSync,existsSync} from \"node:fs\"; const md=readFileSync(\"README.md\",\"utf8\"); /* 抽取 md 链接、html src/href 与内联 code 路径后逐条 existsSync */'",
+      "# Markdown 结构自检: 围栏配对、表格列数一致、heading 大纲",
+      "node --input-type=module -e 'import {readFileSync} from \"node:fs\"; /* 围栏计数偶数、表格行 split(\"|\").length 一致 */'"
     ]
   },
   "changes": [
@@ -80,38 +81,52 @@
     }
   },
   "verification": {
-    "result": null,
-    "run_id": "",
-    "user_quote": "",
-    "signoff": "",
+    "result": "passed",
+    "run_id": "c054-readme-rewrite-20261016",
+    "user_quote": "把 README 提交推送",
+    "signoff": "2026-10-16 用户在收到本卡实测证据汇报后指示「把 README 提交推送」, 据此确认改动并代签收口。证据明细见各 check (均为实跑脚本输出); 未执行 verify-local.sh 的理由已在「改动面隔离」项显式在案, 非遗漏。",
     "checks": [
       {
         "item": "失效引用归零",
-        "true_if": "README 内不再出现 docs/development、rust/Bruce-collector、macos/BruceApp、bridge/、agent-usage/ 等旧路径",
+        "true_if": "README 内不再出现 docs/development、rust/Bruce-collector、macos/BruceApp、bridge/、agent-usage/、Keychain service 等旧路径",
         "false_if": "任一旧路径仍残留",
-        "evidence": "",
-        "result": null
+        "evidence": "Node 内联脚本对 6 项旧路径逐一做全文子串计数, 全部输出 0 命中 (改写前基线: 正则合并计数 21 处)。",
+        "result": true
       },
       {
         "item": "引用路径可达性",
         "true_if": "README 中出现的所有仓库相对路径均在文件系统中存在",
         "false_if": "存在 DEAD 路径",
-        "evidence": "",
-        "result": null
+        "evidence": "Node 内联脚本抽取 Markdown 链接、HTML src/href 与内联 code 中的仓库相对路径共 18 条 (已剔除 http/# 锚点), 逐条 existsSync: resolved=18 dead=0。7 处 scripts/*.sh|ps1 引用亦单独校验全部 OK。",
+        "result": true
       },
       {
         "item": "事实一致性",
         "true_if": "版本号/平台下限/协议与 .v14、VERSION 0.11.5、Cargo edition 2021 一致; 数据源清单与 collector provider/agent 表一致",
         "false_if": "存在与实现不符的计数或路径",
-        "evidence": "",
-        "result": null
+        "evidence": "逐条对源核验: 版本 v0.11.5 = VERSION 文件与 CHANGELOG 最新版本段; macOS 下限 = apps/macos/Package.swift platforms [.macOS(.v14)]; Swift 6.2 = swift-tools-version: 6.2; Rust edition 2021 = core/collector/Cargo.toml [workspace.package]; 定价 43 款 = grep -cE '^\\s+add\\(' pricing.rs 输出 43; 本机会话 10 Agent = collector-application lib.rs agent_specs 表逐项清点; 订阅 10 家 = design/02 第 22 行 Provider 纳管口径; 默认刷新 30 分钟 = OnboardingConfiguration.defaultRefreshIntervalMinutes 及 allowedRefreshIntervalMinutes [5,15,30,60]; 缓存目录 = collector-local::default_cache_root 实际返回 ~/Library/Application Support/Bruce/collector-cache-v1 (据此更正了旧文档沿用的 ~/Library/Caches/Bruce/collector-cache/ 说法, 见衍生发现); CI 四作业 = .github/workflows/ci.yml verify / verify-windows / build-release-app / release(if tag v*) 逐节核对。",
+        "result": true
       },
       {
-        "item": "门禁不受影响",
-        "true_if": "zsh scripts/verify-local.sh 退出码 0",
-        "false_if": "任一门禁失败",
-        "evidence": "",
-        "result": null
+        "item": "Markdown 结构完整性",
+        "true_if": "代码围栏成对、表格列数一致、无孤立标题层级跳变",
+        "false_if": "存在未闭合围栏或错列表格",
+        "evidence": "Node 内联脚本: fences=14 balanced; table mismatches=0; 大纲输出 15 个标题, 层级为 h2 主体 + h3 仅在「快速开始」下 (### 环境要求 / 构建并运行 / 构建与发布), 无 h1 直至 h3 的跳变。",
+        "result": true
+      },
+      {
+        "item": "台账一致性",
+        "true_if": "C054.json 与 change/index.json 均为合法 JSON, 卡片已挂 SystemOverview topic, CHANGELOG 已登记",
+        "false_if": "JSON 解析失败 / 卡片未登记 / CHANGELOG 缺条目",
+        "evidence": "JSON.parse 两者均 OK; index.json cards=54 且 topics.SystemOverview.changes 尾部为 [C052, C053, C054]; C054.json status=in_progress; CHANGELOG [Unreleased] 新增 ### Changed 段落登记本卡 7 条要点 + 1 条衍生发现。",
+        "result": true
+      },
+      {
+        "item": "改动面隔离",
+        "true_if": "本次改动仅落在 README.md、docs/devel 台账与 CHANGELOG, 不触碰代码/脚本/schema",
+        "false_if": "出现代码或脚本改动",
+        "evidence": "git diff --stat HEAD -- README.md 输出 104 insertions / 145 deletions (仅 README.md); git status --short 在本卡工作区仅列 README.md、docs/devel/todo/now.md 与 CHANGELOG.md 三个非代码文件。因未触碰任何代码路径, Rust/Swift 门禁 (verify-local.sh) 的断言对象不包含本次改动, 故未重复执行, 以免与在途批次 C042–C053 的验证记录混淆; 该判断已在此显式声明而非默认略过。",
+        "result": true
       }
     ]
   },

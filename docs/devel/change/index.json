@@ -561,7 +561,7 @@
     "C054": {
       "title": "README 精简与排版重构：仓库结构/文档链接/命令路径对齐 v0.11.5 现状，247 行瘦身并消除 21 处失效引用",
       "type": "Refactor",
-      "status": "in_progress",
+      "status": "verified",
       "branch": "main",
       "topic": "SystemOverview",
       "version": "0.12.0+",
