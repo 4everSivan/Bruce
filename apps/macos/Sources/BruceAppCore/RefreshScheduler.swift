@@ -83,6 +83,10 @@ package final class RefreshScheduler {
     private var runningTasks: [CollectorModule: Task<Void, Never>] = [:]
     private var started = false
     private var stopped = false
+    /// C037: 最近一次成功发布的 artifact 中的额度窗口重置时刻 (epoch 秒) 与已消费集合.
+    /// 定时唤醒据此提前到窗口边界, 避免槽/窗口边界过后长时间展示上一窗口的数据.
+    private var windowBoundaries: [Int64] = []
+    private var consumedWindowBoundaries: Set<Int64> = []
     private var wakeObserver: NSObjectProtocol?
     private var reactivationObserver: NSObjectProtocol?
     private let logger = Logger(
@@ -343,12 +347,23 @@ package final class RefreshScheduler {
 
         timers[module]?.cancel()
 
-        let delay: TimeInterval
+        var delay: TimeInterval
         if let lastSuccess = state.lastSuccessAt {
             let elapsed = clock.now().timeIntervalSince(lastSuccess)
             delay = max(0, configuration.refreshInterval - elapsed)
         } else {
             delay = 0
+        }
+
+        // C037: 定时刷新不得跨过额度窗口边界 —— 否则槽/窗口重置后最长一个间隔内
+        // 卡片仍展示上一窗口的百分比。首次调度 (delay=0) 不参与, 策略自带防风暴防线。
+        if delay > 0 {
+            delay = SubscriptionBoundaryWakePolicy.delay(
+                intervalRemaining: delay,
+                boundaries: windowBoundaries,
+                now: clock.now(),
+                consumed: &consumedWindowBoundaries
+            )
         }
 
         timers[module] = timerScheduler.schedule(after: delay) { [weak self] in
@@ -610,6 +625,8 @@ package final class RefreshScheduler {
             state.lastErrorCategory = nil
             state.phase = .idle
             onArtifactChange?(module, artifact)
+            // C037: 记录本轮的额度窗口边界, 供下一次定时唤醒提前到边界 (见 scheduleNextRefresh)。
+            windowBoundaries = SubscriptionBoundaryWakePolicy.boundaries(in: artifact)
 
             // 额度预警: 阈值状态每次都同步 (回落后再次跨越会重新报警),
             // 但只有非 manual 且窗口新跨越 80% 才弹通知.

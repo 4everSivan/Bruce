@@ -258,6 +258,8 @@ mod desktop {
             let mut retries = 0u32;
             let mut manual = false;
             let mut manual_reason = false;
+            // C037: 边界唤醒已消费集合 —— 同一窗口重置时刻只提前唤醒一次。
+            let mut boundary_consumed = std::collections::BTreeSet::new();
             loop {
                 // Collapse requests already queued before this run into its manual reason.
                 manual |= receiver.try_iter().next().is_some();
@@ -279,12 +281,33 @@ mod desktop {
                     .refresh_interval_secs
                     .clamp(60, 86_400);
                 let limited = matches!(outcome, RefreshOutcome::Failed { rate_limited: true });
-                let wait = next_delay(
+                let mut wait = next_delay(
                     outcome,
                     retries,
                     interval,
                     compute_backoff(retries, limited),
                 );
+                // C037: 定时唤醒不得跨过未来的额度窗口重置时刻 —— 否则槽边界过后至下次
+                // 刷新之间 (最长一个间隔) 面板仍在展示上一槽的百分比与「刷新中」。
+                // 只在采集成功 (有新鲜窗口数据) 时参与调度, 失败/退避路径保持原语义。
+                if matches!(outcome, RefreshOutcome::Success) {
+                    let artifact = app
+                        .state::<SchedulerControl>()
+                        .snapshot
+                        .lock()
+                        .ok()
+                        .and_then(|state| state.artifact().cloned());
+                    if let Some(artifact) = artifact {
+                        let boundaries = crate::runtime_core::window_boundaries(&artifact);
+                        wait = crate::runtime_core::boundary_wake(
+                            wait,
+                            &boundaries,
+                            chrono::Utc::now().timestamp(),
+                            crate::runtime_core::WINDOW_BOUNDARY_SLACK_SECS,
+                            &mut boundary_consumed,
+                        );
+                    }
+                }
                 // Manual input replaces this one wait and begins the next run immediately.
                 manual = receiver.recv_timeout(Duration::from_secs(wait)).is_ok();
                 if retries > 5 {

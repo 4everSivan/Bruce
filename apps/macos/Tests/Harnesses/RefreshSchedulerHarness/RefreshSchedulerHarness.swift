@@ -184,6 +184,10 @@ struct RefreshSchedulerHarness {
         try await mergerFullScopeRegressionPublishesCompleteArtifact(repository: repository)
         print("Refresh scheduler: error classifier reads provider rate limit code")
         try errorClassifierReadsProviderRateLimitCode()
-        print("Refresh scheduler tests passed: 82")
+        print("Refresh scheduler: window boundary extraction")
+        try boundaryExtractionIgnoresNonWindowServices()
+        print("Refresh scheduler: window boundary wake policy")
+        try boundaryWakePolicyNeverCrossesFutureReset()
+        print("Refresh scheduler tests passed: 84")
     }
 }

@@ -258,7 +258,11 @@ pub fn window_label(raw_label: &str, window_minutes: Option<i64>) -> String {
     }
 }
 
-/// 重置时间文案: 当天显示 "H:mm", 之后显示 "N 天后", 已过期显示 "已到期"。
+/// 重置时间文案: 当天显示 "H:mm", 之后显示 "N 天后", 已过期显示 "刷新中"。
+///
+/// 已过期 = 窗口已重置但卡片数据仍是上一窗口 (刷新在途)。C037 起与 mac 同文案:
+/// 此前写作「已到期」, 与「窗口过期」混淆, 观感上像到点不刷新; 调度侧另有窗口边界
+/// 唤醒保证该状态通常只持续数十秒。
 pub fn reset_text(
     resets_at: Option<DateTime<chrono::FixedOffset>>,
     now: DateTime<chrono::FixedOffset>,
@@ -267,7 +271,7 @@ pub fn reset_text(
         return String::new();
     };
     if resets_at <= now {
-        return "已到期".to_owned();
+        return "刷新中".to_owned();
     }
     let resets_date = resets_at.date_naive();
     let now_date = now.date_naive();
@@ -600,7 +604,8 @@ mod tests {
             reset_text(Some(next_day), now()),
             "1 \u{5929}\u{540e}".to_owned()
         );
-        assert_eq!(reset_text(Some(past), now()), "\u{5df2}\u{5230}\u{671f}");
+        // 窗口已重置但数据待刷新 (C037 起与 mac 同文案)
+        assert_eq!(reset_text(Some(past), now()), "\u{5237}\u{65b0}\u{4e2d}");
         assert_eq!(reset_text(None, now()), "");
     }
 

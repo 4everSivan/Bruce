@@ -1,0 +1,100 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C037",
+  "title": "额度窗口边界唤醒（定时刷新不得跨过未来的窗口重置时刻）+ 过期窗口文案改为「刷新中」（mac/win 双端）",
+  "type": "BugFix",
+  "status": "closed",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本卡跨 mac Swift 与 Windows Rust 两端, 需双端各自测试面",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos/Sources/BruceAppCore (RefreshScheduler + PanelModels) / apps/win/src-tauri (scheduler + runtime_core) / apps/win/viewmodel (subscription)",
+    "component": "订阅额度窗口的刷新时机与过期窗口展示",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+  "why": "C025 已修正 Cline 5h 的窗口口径（固定槽，倒计时恒为槽终点），但残留一个时序问题: 订阅模块的定时刷新间隔为 1800s，**刷新时刻与窗口重置时刻无关** —— 槽边界过后至下一次定时刷新之间（最长约 30 分钟）面板仍展示上一槽的百分比，并把倒计时渲染为「已到期」，观感上仍像「到点不刷新」。mac `RefreshScheduler.scheduleNextRefresh` 的延迟计算只有 `refreshInterval - elapsed`（`RefreshScheduler.swift:339-347`），完全不看额度窗口边界；Windows `scheduler.rs` 的 `next_delay` 同理。展示层 `PanelModels.resetText` 对 `resetsAt <= now` 一律回「已到期」，把「窗口已重置、数据待刷新」这一中间态表达成了「过期」。两处叠加导致边界时刻的观感缺陷。注意 C025 的历史教训: 滚动窗口（Codex/Claude 5h）的倒计时会随刷新前移，任何边界唤醒策略都必须对「边界值恒在未来且不断变化」的语义免疫，否则会触发刷新风暴。",
+  "precheck": {
+    "description": "复现两处现状: 定时延迟不含窗口边界、过期窗口文案为「已到期」",
+    "command": "grep -n 'configuration.refreshInterval - elapsed' apps/macos/Sources/BruceAppCore/RefreshScheduler.swift && grep -n 'return \"已到期\"' apps/macos/Sources/BruceAppCore/PanelModels.swift apps/win/viewmodel/src/subscription.rs",
+    "expected": "延迟计算仅含间隔项（无边界项）; 两端过期分支均返回「已到期」",
+    "is_completed": true,
+    "evidence": "2026-10-16 实测: `RefreshScheduler.swift:339-347` 的 scheduleNextRefresh 只计算 `max(0, configuration.refreshInterval - elapsed)`，无任何窗口边界输入（调度器甚至不持有 artifact 的 windows 数据）；`PanelModels.swift:257` 与 `apps/win/viewmodel/src/subscription.rs:270` 均为 `return \"已到期\"`；两端既有断言把该行为锁绿（PanelViewModelHarness.swift:879、subscription_coverage.rs:74/88）。"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护已在 main 实施"
+    ],
+    "after": [
+      "zsh scripts/verify-local.sh",
+      "CARGO_HOME=$PWD/local/c009/cargo-home cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "CARGO_HOME=$PWD/local/c009/cargo-home cargo test --manifest-path apps/win/viewmodel/Cargo.toml",
+      "node scripts/check-win-frontend.mjs"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "调度策略 (双端边界唤醒)",
+      "before": "下次唤醒 = 间隔剩余时间；额度窗口边界不参与调度，边界后最长 30 分钟才刷新",
+      "after": "新增纯策略（mac `SubscriptionBoundaryWakePolicy` / win `runtime_core::boundary_wake`）: 下次唤醒 = min(间隔剩余, 最近一个**未来**窗口边界 + slack)。三道防线杜绝刷新风暴 —— ①只认严格在未来的 `resetsAt`（滚动窗口滑出时刻前移时天然不触发）；②同一「边界值」只消费一次（consumed 集合，按 epoch 秒精确去重）；③未命中边界则回落原间隔。边界取自 artifact `services[].windows[].resetsAt`（与卡片同源）",
+      "impact": "槽边界过后约 slack（20s）内即完成刷新，不再出现「到点不刷新」的 30 分钟窗口；滚动窗口语义下无额外唤醒（边界恒在 5h 后）"
+    },
+    {
+      "scope": "展示语义 (过期窗口文案)",
+      "before": "`resetsAt <= now` → 「已到期」（表达成窗口过期，与「数据待刷新」混淆）",
+      "after": "`resetsAt <= now` → 「刷新中」：窗口已重置、卡片数据来自上一窗口且刷新在途（与边界唤醒配合后该状态通常只持续数十秒）",
+      "impact": "mac/win 两端展示一致；契约字段 resetText 的取值变化不触碰 golden（现有 fixture 在固定 now 下无过期窗口）"
+    },
+    {
+      "scope": "测试面",
+      "before": "既有断言把「已到期」与「无边界调度」锁定为正确行为",
+      "after": "新增边界策略单测（未来边界生效 / 过去边界忽略 / 同边界只消费一次 / 未命中回落间隔 / 取最近边界 / 滚动窗口前移不触发）+ 双端过期文案断言更新",
+      "impact": "策略层纯函数化，mac 与 win 可各自独立验证"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "topic": "SubscriptionQuota",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/02 §5 Cline 展示规范只规定「倒计时 = 槽终点」，未规定刷新时机与过期窗口的展示语义",
+      "after": "design/02 §5 新增展示与调度约定: 过期窗口（resetsAt <= now）文案为「刷新中」；定时刷新不得跨过未来的额度窗口边界（边界 + slack 唤醒，未来边界 + 同边界单次消费 + 未命中回落间隔），滚动窗口语义下不额外唤醒。design/05 §6.0 调度纪律同步补一句边界唤醒要求（Windows 端对齐）"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "verify-local-20261016 + mac-harnesses-20261016 + win-cargo-20261016",
+    "user_quote": "确认，然后继续收尾所有问题不要再给我说还有需要做的事情",
+    "signoff": "2026-10-16 用户会话内以「确认」确认 C036 收口并指示「继续收尾所有问题」, 据此对本轮收尾批次 (C037/C038) 代签; C037 前置证据: 双端测试全绿 (mac Harness 84+53, verify-local 退出码 0 且双端对拍通过, Windows src-tauri 104 + viewmodel 12), 边界策略三道防线用例齐备, 过期文案双端一致; AI 代为签署并闭环归档 (单人维护约定: 直接提 main, 不打 tag)",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "双端全量测试全绿, 退出码 0, 含针对性回归用例",
+        "false_if": "任何测试失败或回归未覆盖",
+        "evidence": "2026-10-16 实测: (1) mac `swift run --package-path apps/macos RefreshSchedulerHarness` 84 项通过 (新增 2 项: 边界提取忽略非 windows 服务 / 边界策略三道防线); `PanelViewModelHarness` 53 项通过 (过期文案断言改为「刷新中」); (2) `zsh scripts/verify-local.sh` 退出码 0, 末行「Bruce 本地验证全部通过」, 含 PanelParityHarness 三 fixture 双端对拍通过 (resetText 语义变更未触碰 golden); (3) Windows: `cargo test --manifest-path apps/win/src-tauri/Cargo.toml` 104 项通过 (新增 3 项: window_boundaries 字段过滤与容错 / boundary_wake 六种边界情形 / 消费集合剪枝), `cargo test --manifest-path apps/win/viewmodel/Cargo.toml` 全绿 (含 in-source 文案断言与 12 项 subscription 覆盖); 两端 fmt/clippy 干净。",
+        "result": true
+      },
+      {
+        "item": "行为实测 (策略语义)",
+        "true_if": "边界唤醒与过期文案的语义按设计生效",
+        "false_if": "出现非预期返回值或行为失真",
+        "evidence": "边界策略以纯函数形式在双端各自验证: 未来边界 600s → 唤醒 620s (边界 + 20s slack); 同一边界第二次评估回落原间隔 (防风暴); 已过去的边界既不唤醒也不进入消费集合 (滚动窗口滑移免疫); 比间隔更远的边界不缩短等待; 多窗口取最近; 空集回落间隔; 消费集合随边界过期自动剪枝。Windows 端 `boundary_wake` 与 mac `SubscriptionBoundaryWakePolicy` 同构 (同一策略表)。**验证边界**: 真实槽边界跨越需等待自然时间窗口, 本会话未观测到真实边界事件; 该路径由上述纯策略用例 + 调度器接线 (仅采集成功时参与, 退避路径语义不变) 覆盖。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "未破坏退避/容量队列/手动刷新语义, 双端仍一致",
+        "false_if": "边界唤醒与其他调度路径冲突",
+        "evidence": "(1) 边界唤醒只在 `RefreshOutcome::Success` (win) / `publishedArtifact` 存在 (mac) 时参与, 失败/退避路径完全不变 (win 侧三处既有退避用例仍绿); (2) 唤醒只可能**缩短**等待, 不会跳过或重复触发刷新, 且不在首次调度 (delay=0) 时介入; (3) 无缓存/无窗口数据时取值为原间隔 (空集回落), 对未配置订阅的账户零影响; (4) mac 侧改动仅在 RefreshScheduler 内部新增两个状态字段与一处发布点赋值, 未改任何对外签名 (verify-local 全绿含全部 9 个 Harness 与双端对拍); (5) Windows 侧 `next_delay` 纯函数签名与语义未变。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  }
+}

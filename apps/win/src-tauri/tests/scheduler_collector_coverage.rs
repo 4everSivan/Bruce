@@ -182,3 +182,84 @@ fn timeout_values_stay_within_bridge_limits() {
     );
     assert!(request.timeouts.module_seconds > 0.0 && request.timeouts.module_seconds <= 600.0);
 }
+
+#[test]
+fn window_boundaries_read_reset_epochs_from_windows_services_only() {
+    use bruce_win_lib::runtime_core::window_boundaries;
+    // 只取 kind="windows" 服务的 windows[].resetsAt; 其它 kind / 缺字段 / null 一律忽略。
+    let artifact = json!({
+        "services": [
+            {"id": "cline", "kind": "windows", "windows": [
+                {"label": "5小时窗口", "resetsAt": 1791543327},
+                {"label": "每周窗口", "resetsAt": null},
+                {"label": "每月窗口"}
+            ]},
+            {"id": "deepseek", "kind": "balance", "windows": [{"resetsAt": 1}]},
+            {"id": "grok", "kind": "windows"}
+        ]
+    });
+    assert_eq!(window_boundaries(&artifact), vec![1791543327]);
+    // 无 services / 空 artifact: 空集 (回落原间隔), 不 panic。
+    assert!(window_boundaries(&json!({})).is_empty());
+    assert!(window_boundaries(&json!({"services": []})).is_empty());
+}
+
+#[test]
+fn boundary_wake_never_crosses_future_window_reset() {
+    use bruce_win_lib::runtime_core::boundary_wake;
+    let mut consumed = std::collections::BTreeSet::new();
+    let now = 1_000_000_i64;
+    // 边界还剩 600s (间隔 1800s): 唤醒提前到 600 + slack, 不做满间隔等待。
+    assert_eq!(
+        boundary_wake(1800, &[now + 600], now, 20, &mut consumed),
+        620
+    );
+    // 同一边界只消费一次: 紧接着再算 (窗口未刷新) 回落原间隔, 不产生风暴。
+    assert_eq!(
+        boundary_wake(1800, &[now + 600], now, 20, &mut consumed),
+        1800
+    );
+    // 已进入过去的边界既不唤醒也不记忆 (滚动窗口滑出时刻前移时天然免疫)。
+    let mut past: std::collections::BTreeSet<i64> = std::collections::BTreeSet::new();
+    assert_eq!(boundary_wake(1800, &[now - 5], now, 20, &mut past), 1800);
+    assert!(past.is_empty(), "过期边界不得进入消费集合");
+    // 比间隔更远的边界不缩短等待 (避免无谓提前刷新)。
+    assert_eq!(
+        boundary_wake(1800, &[now + 7200], now, 20, &mut consumed),
+        1800
+    );
+    // 多窗口取最近的一个; 无边界时回落间隔。
+    assert_eq!(
+        boundary_wake(
+            1800,
+            &[now + 3000, now + 900, now + 5000],
+            now,
+            20,
+            &mut consumed
+        ),
+        920
+    );
+    assert_eq!(boundary_wake(1800, &[], now, 20, &mut consumed), 1800);
+}
+
+#[test]
+fn boundary_wake_consumes_only_the_chosen_boundary_and_prunes_past_entries() {
+    use bruce_win_lib::runtime_core::boundary_wake;
+    let now = 2_000_000_i64;
+    let mut consumed = std::collections::BTreeSet::from([now - 10, now + 60, now + 5000]);
+    // 最近边界已被消费 → 取次近; 过去的条目被剪掉。
+    assert_eq!(
+        boundary_wake(1800, &[now + 60, now + 5000], now, 20, &mut consumed),
+        1800
+    );
+    assert_eq!(
+        consumed,
+        std::collections::BTreeSet::from([now + 60, now + 5000])
+    );
+    // 换一个更近的边界 (新的窗口) → 立即采用并消费。
+    assert_eq!(
+        boundary_wake(1800, &[now + 100], now, 20, &mut consumed),
+        120
+    );
+    assert!(consumed.contains(&(now + 100)));
+}

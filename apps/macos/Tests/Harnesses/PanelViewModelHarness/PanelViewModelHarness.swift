@@ -876,7 +876,7 @@ struct PanelViewModelHarness {
         let texts = vm[0].windows.map(\.resetText)
         try expect(texts[0] == "15:00", "当天应显示时刻: \(texts[0])")
         try expect(texts[1] == "3 天后", "跨天应显示天数: \(texts[1])")
-        try expect(texts[2] == "已到期", "过期应显示已到期: \(texts[2])")
+        try expect(texts[2] == "刷新中", "过期应显示刷新中 (窗口已重置, 刷新在途): \(texts[2])")
         try expect(texts[3] == "", "无 resetsAt 应为空串")
     }
 

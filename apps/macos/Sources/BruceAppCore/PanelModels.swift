@@ -244,7 +244,11 @@ package enum PanelFormat {
         }
     }
 
-    /// 重置时间文案: 当天显示 "HH:mm", 之后显示 "N 天后", 已过期显示 "已到期".
+    /// 重置时间文案: 当天显示 "HH:mm", 之后显示 "N 天后", 已过期显示 "刷新中".
+    ///
+    /// 已过期 = 窗口已重置但卡片数据仍属上一窗口 (刷新在途). C037 起与 Windows 端同文案:
+    /// 此前写作 "已到期", 与「窗口过期」混淆, 观感上像到点不刷新; 调度侧另有窗口边界
+    /// 唤醒 (SubscriptionBoundaryWakePolicy) 保证该状态通常只持续数十秒.
     package static func resetText(
         resetsAt: Date?,
         now: Date,
@@ -254,7 +258,7 @@ package enum PanelFormat {
             return ""
         }
         if resetsAt <= now {
-            return "已到期"
+            return "刷新中"
         }
         if calendar.isDate(resetsAt, inSameDayAs: now) {
             let hour = calendar.component(.hour, from: resetsAt)

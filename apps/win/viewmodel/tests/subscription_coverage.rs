@@ -64,14 +64,14 @@ fn reset_text_epoch_and_invalid_paths() {
         reset_text(Some(at("2026-07-28T15:00:00+08:00")), fixed_now()),
         "15:00"
     );
-    // 当日晚于 now -> 小时不补零; 当日早于 now -> 已到期。
+    // 当日晚于 now -> 小时不补零; 当日早于 now -> 刷新中 (窗口已重置, 刷新在途)。
     assert_eq!(
         reset_text(Some(at("2026-07-28T12:35:00+08:00")), fixed_now()),
         "12:35"
     );
     assert_eq!(
         reset_text(Some(at("2026-07-28T09:05:00+08:00")), fixed_now()),
-        "已到期"
+        "刷新中"
     );
     // 次日 -> "N 天后"; 当日 00:00 之后多天正确计数; 上限至少 1。
     assert_eq!(
@@ -82,10 +82,10 @@ fn reset_text_epoch_and_invalid_paths() {
         reset_text(Some(at("2026-07-30T00:00:00+08:00")), fixed_now()),
         "2 天后"
     );
-    // 已到期与无数据。
+    // 已过期(刷新中)与无数据。
     assert_eq!(
         reset_text(Some(at("2026-07-28T12:29:59+08:00")), fixed_now()),
-        "已到期"
+        "刷新中"
     );
     assert_eq!(reset_text(None, fixed_now()), "");
 }

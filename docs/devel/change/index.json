@@ -54,7 +54,8 @@
         "C023",
         "C024",
         "C025",
-        "C026"
+        "C026",
+        "C037"
       ]
     },
     "TokenUsage": {
@@ -389,6 +390,15 @@
       "topic": "WindowsCompat",
       "version": "0.12.0+",
       "file": "docs/devel/change/C036.json"
+    },
+    "C037": {
+      "title": "额度窗口边界唤醒（刷新不得跨过未来重置时刻，含防风暴三道防线）+ 过期窗口文案改「刷新中」（mac/win 双端）",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "SubscriptionQuota",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C037.json"
     }
   }
 }

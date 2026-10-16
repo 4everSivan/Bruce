@@ -24,6 +24,65 @@ pub fn next_delay(outcome: RefreshOutcome, retries: u32, interval: u64, backoff:
     }
 }
 
+/// 额度窗口边界唤醒的提前量 (秒): 边界是预测值, 留出刷新耗时。
+pub const WINDOW_BOUNDARY_SLACK_SECS: u64 = 20;
+
+/// 从 artifact 提取订阅窗口的重置时刻 (epoch 秒, 与卡片展示同源)。
+pub fn window_boundaries(artifact: &Value) -> Vec<i64> {
+    let mut boundaries = Vec::new();
+    let Some(services) = artifact.get("services").and_then(Value::as_array) else {
+        return boundaries;
+    };
+    for service in services {
+        if service.get("kind").and_then(Value::as_str) != Some("windows") {
+            continue;
+        }
+        let Some(windows) = service.get("windows").and_then(Value::as_array) else {
+            continue;
+        };
+        for window in windows {
+            if let Some(reset) = window.get("resetsAt").and_then(Value::as_i64) {
+                boundaries.push(reset);
+            }
+        }
+    }
+    boundaries
+}
+
+/// 下次唤醒秒数: 定时刷新不得跨过未来的额度窗口边界 (C037)。
+///
+/// 三道防线杜绝刷新风暴 —— 只认严格在未来的边界 (滚动窗口的滑出时刻前移时天然不触发);
+/// 同一「边界值」只消费一次 (epoch 秒精确去重); 未命中边界则回落原间隔。
+pub fn boundary_wake(
+    interval: u64,
+    boundaries: &[i64],
+    now: i64,
+    slack: u64,
+    consumed: &mut std::collections::BTreeSet<i64>,
+) -> u64 {
+    // 已进入过去的边界不再需要记忆, 顺带收敛集合规模。
+    consumed.retain(|&boundary| boundary > now);
+
+    let mut best: Option<(u64, i64)> = None;
+    for &boundary in boundaries {
+        if boundary <= now || consumed.contains(&boundary) {
+            continue;
+        }
+        let delay = (boundary + slack as i64 - now).max(0) as u64;
+        if delay < interval && best.is_none_or(|(chosen, _)| delay < chosen) {
+            best = Some((delay, boundary));
+        }
+    }
+
+    match best {
+        Some((delay, boundary)) => {
+            consumed.insert(boundary);
+            delay
+        }
+        None => interval,
+    }
+}
+
 /// Backoff retries retain the manual origin; the next normal cycle may notify again.
 pub fn manual_alert_reason(input: bool, retries: u32, previous: bool) -> bool {
     input || (retries > 0 && retries <= 5 && previous)
