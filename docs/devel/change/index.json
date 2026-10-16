@@ -55,7 +55,8 @@
         "C024",
         "C025",
         "C026",
-        "C037"
+        "C037",
+        "C038"
       ]
     },
     "TokenUsage": {
@@ -399,6 +400,15 @@
       "topic": "SubscriptionQuota",
       "version": "0.12.0+",
       "file": "docs/devel/change/C037.json"
+    },
+    "C038": {
+      "title": "Cline 逐单台账跨运行增量缓存：追新 + 分次回溯收敛到 30 天 horizon，长窗口分子不再被单轮页数上限截断",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "SubscriptionQuota",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C038.json"
     }
   }
 }

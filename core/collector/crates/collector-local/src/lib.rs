@@ -3,6 +3,7 @@
 //! Local file and SQLite adapters.
 
 mod jsonl_cache;
+mod ledger_cache;
 mod sources;
 mod sqlite_cache;
 
@@ -35,6 +36,7 @@ const FINGERPRINT_SEGMENT_BYTES: u64 = 64 * 1024;
 // contention while still overlapping serialization with the source scan.
 const CACHE_WRITERS: usize = 1;
 
+pub use ledger_cache::FileLedgerCache;
 pub use sources::{
     scan_claude, scan_claude_cached, scan_claude_with_cancellation, scan_codebuddy,
     scan_codebuddy_cached, scan_codebuddy_with_cancellation, scan_codex, scan_codex_cached,

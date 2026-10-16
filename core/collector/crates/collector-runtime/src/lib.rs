@@ -8,6 +8,29 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
+/// 跨运行数据缓存端口 (C038): 只承载「key → JSON 文本」的持久化。
+///
+/// 分层约定 (design/01): **实现归 collector-local** (磁盘 + 缓存根), 使用方
+/// (collector-provider) 保持无状态; 未注入时用 [`NoLedgerCache`] 退化为无缓存行为。
+/// 载荷保持字符串形态, 使本 crate 继续零依赖。
+pub trait LedgerCache: Send + Sync {
+    /// 读取上次持久化的 JSON 文本; 缺失或不可读时返回 None。
+    fn load(&self, key: &str) -> Option<String>;
+    /// 落盘 (实现须原子替换); 失败静默降级 —— 缓存不是正确性依赖, 下次重扫自愈。
+    fn store(&self, key: &str, payload: &str);
+}
+
+/// 无缓存实现: 每次重新计算 (fixture/测试与历史调用方默认走这条)。
+pub struct NoLedgerCache;
+
+impl LedgerCache for NoLedgerCache {
+    fn load(&self, _key: &str) -> Option<String> {
+        None
+    }
+
+    fn store(&self, _key: &str, _payload: &str) {}
+}
+
 const WAIT_SLICE: Duration = Duration::from_millis(10);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

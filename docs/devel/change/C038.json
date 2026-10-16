@@ -1,0 +1,100 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C038",
+  "title": "Cline 逐单台账跨运行增量缓存：追新 + 分次回溯收敛到 30 天 horizon，长窗口分子不再被单轮页数上限截断",
+  "type": "BugFix",
+  "status": "closed",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本卡跨 collector-runtime/provider/local/application 四个 crate, 已用本机真实账户做端到端实测",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector (collector-runtime 端口 / collector-provider Cline 台账取数 / collector-local 文件缓存实现 / collector-application 接线)",
+    "component": "Cline / ClinePass 订阅卡 7d / 30d 用量分子的取数与缓存",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+  "why": "BG-009 登记 (2026-10-15): Cline 的 7d/30d 分子只能靠 `/usages` 逐页逼近 (接口不支持时间过滤, 单页硬上限 200, 单请求约 0.7s)。C025 已把取数提升到「30 天早停 + 12 页上限 ≈ 2400 单 ≈ 8s」, 但 **30 天内超过 2400 单的账户会被静默截断** —— 本机账户 19.5 小时即 1225 单, 外推 30 天约 43k 单, 属系统性偏低而非偶发。本轮实测进一步确认: 首次运行恰好取满 12 页 = 2400 单后触顶 (`complete=false`), 且把台账补齐到 30 天 horizon 后 7d 分子由 29.61% 升至 35.44%、30d 由 14.8% 升至 17.72% —— 旧实现对真实账户的 7d/30d 低估约 16%/20% (相对值), 会直接误导用户的额度决策。候选修法 (登记原文): 增量台账缓存 (首次深翻页落盘, 之后每次仅拉最新 1~2 页按单据 id 合并, 按 30 天剪枝), 并与 design/01 的源级缓存分层约定对齐 (缓存归 collector-local, provider 保持无状态)。",
+  "precheck": {
+    "description": "在本机真实账户上复现截断: 观察单轮取数是否恰好停在 12 页 / 2400 单且 complete=false",
+    "command": "# 构造 subscriptionQuotaOnly + cline 的 BridgeRequest 喂给 core/collector/target/debug/Bruce-collector",
+    "expected": "单轮恰取 2400 单并标记台账未完成; 长窗口分子在台账补齐后上升",
+    "is_completed": true,
+    "evidence": "2026-10-16 本机真实账户实测 (accountID eeaafa1468e860d3): 首轮取数 5.3s 后缓存落盘 items=2400 (= 12 页 × 200, 恰好触单轮页数上限) complete=false cursor 有; 说明该账户 30 天内单据数 > 2400, 旧实现即在此截断。补齐台账后同一账户 7d/30d 分子分别为 35.44% / 17.72%, 而截断状态下为 29.61% / 14.8% (同一 5h 槽内多次采样, 区间可比)。"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护已在 main 实施"
+    ],
+    "after": [
+      "CARGO_HOME=$PWD/local/c009/cargo-home cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "CARGO_HOME=$PWD/local/c009/cargo-home cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "CARGO_HOME=$PWD/local/c009/cargo-home cargo fmt --manifest-path core/collector/Cargo.toml --all -- --check",
+      "CARGO_HOME=$PWD/local/c009/cargo-home cargo test --manifest-path apps/win/src-tauri/Cargo.toml"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "接口契约 (缓存端口与分层)",
+      "before": "provider 无任何跨运行状态; 台账只能单轮重算, 取数成本与覆盖范围由单轮页数上限硬约束",
+      "after": "新增 `LedgerCache` 端口 (定义于零依赖的 `collector-runtime`, 载荷为不透明 JSON 文本) + `NoLedgerCache` 兜底实现; `QuotaProvider` 增加**带默认实现**的 `query_with_cache` (默认转发 `query`), 仅 Cline 覆写 —— 其余 9 个 provider 与全部既有调用点零改动。实现 `FileLedgerCache` 归 `collector-local` (落 `<cache_root>/provider-ledger/<key>.json`, 键名消毒防路径穿越, create-new 临时文件 + rename 原子替换, unix 0600), 由 `collector-application` 在生产入口接线 (fixture 通道注入 NoLedgerCache, 保持「不做外部 I/O」的测试契约)",
+      "impact": "provider 保持无状态、不碰文件系统; design/01 的分层约定 (缓存归 collector-local) 得到落实; 缓存缺失/损坏/版本不符时按空态自愈"
+    },
+    {
+      "scope": "业务规则 (台账取数与身份)",
+      "before": "每轮从首页深翻至多 12 页; 单据不去重 (跨页重复会重复计入), 无跨轮记忆, 截断为静默边界",
+      "after": "取数分两段: **追新** (从首页起逐页吸收, 直到一页不再产出新单据 → 稳态仅 1~3 页) + **回溯** (台账未覆盖 30 天 horizon 时从上次中断游标续翻, 每轮最多 8 页分次收敛, 游标失效则放弃本轮并清空断点、下轮从顶部重新收敛); 单据身份取服务端 `id`, 缺失时回退内容指纹 (createdAt/模型/tokens/cost 全等), 同一身份只计一次; 落盘为投影 (身份 + createdAt + costUsd) 并按 30 天剪枝, 体积可控 (实测 3464 单约 276KB)",
+      "impact": "长窗口分子不再受单轮页数上限截断; 稳态成本从 12 页/约 5.3s 降到 1 页/约 1.3s; 跨页重复单据不再过度计入"
+    },
+    {
+      "scope": "测试面",
+      "before": "仅覆盖单轮分页 (30 天早停 + 页数上限)",
+      "after": "新增: 追新页合并与「追平即止」、跨轮续翻与完成后稳态 (含**回溯请求游标必须逐页推进**的 URL 断言)、边界提取 (只取 kind=windows / null 与缺字段容错)、文件缓存往返与键名消毒; 另按去重语义修正既有「同页重复单据」用例的期望值",
+      "impact": "游标复用缺陷由此暴露 (首版实现每轮复用同一游标, 真实数据实测发现, 已有回归断言锁定)"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "topic": "SubscriptionQuota",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/02 规则 5: 分子取数策略为「单轮深翻 + 30 天早停 + 12 页上限」, 明示「30 天内超过页数上限的账户会被截断, 增量台账缓存为后续可选优化」; design/01 §6.3 只规定源级缓存 (jsonl/sqlite) 的分层, 未覆盖出站台账",
+      "after": "design/02 规则 5 增量化: 明示 `LedgerCache` 端口 + 追新/回溯两段取数 + 身份去重 + 自愈语义, 并回填实测数字 (2400 单截断复现 → 3464 单收敛, 7d 29.61%→35.44%); design/01 §6.3 新增「出站台账缓存」条目 (端口归 collector-runtime、实现归 collector-local、provider 无状态); design/02 变更演进索引新增 C037/C038 两行"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "collector-workspace-20261016 + live-cline-ledger-20261016",
+    "user_quote": "确认，然后继续收尾所有问题不要再给我说还有需要做的事情",
+    "signoff": "2026-10-16 用户会话内以「确认」确认 C036 收口并指示「继续收尾所有问题」, 据此对本轮收尾批次 (C037/C038) 代签; C038 前置证据: collector workspace 20 个测试目标全绿 (provider 新增缓存行为/游标推进/文件缓存用例) + clippy/fmt 干净 + Windows 侧回归 104 项全绿; 本机真实账户端到端实测: 2400 单截断复现 → 回溯收敛 3464 单覆盖 30 天 → 7d/30d 分子由 29.61%/14.8% 修正为 35.44%/17.72%, 稳态每轮 1 页约 1.3s; AI 代为签署并闭环归档 (单人维护约定: 直接提 main, 不打 tag)",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "collector 全量测试全绿, 退出码 0, 含针对性回归用例",
+        "false_if": "任何测试失败或回归未覆盖",
+        "evidence": "2026-10-16 实测: `cargo test --manifest-path core/collector/Cargo.toml --workspace` 20 个测试目标全绿 (0 fail); collector-provider cline 组 9 项通过 (新增 2 项缓存行为用例 + 1 项文件缓存用例 + 强化后的游标推进断言); `cargo clippy --workspace --all-targets -- -D warnings` 与 `cargo fmt --all -- --check` 均干净; Windows 侧回归 `cargo test --manifest-path apps/win/src-tauri/Cargo.toml` 104 项全绿 (依赖 collector crates)。",
+        "result": true
+      },
+      {
+        "item": "行为实测 (真实账户端到端)",
+        "true_if": "截断可复现, 增量缓存消除截断, 稳态成本下降且数值不漂移",
+        "false_if": "出现报错、数值异常或重复计入",
+        "evidence": "2026-10-16 用本机真实 Cline 账户 (BridgeRequest: subscriptionQuotaOnly + cline, 凭据由脚本从应用凭据库读取且不外显) 实测: (1) 首轮 5.3s 落盘 items=2400 complete=false → **截断复现**; (2) 回溯分次收敛后 items=3464 覆盖完整 30 天、complete=true、游标清空, 7d/30d 分子由 29.61%/14.8% 修正为 35.44%/17.72%; (3) 完成后稳态每轮 1 页、1.3s, 重复运行 items 保持 3464 且窗口数值不变 (去重正确, 无重复计入); (4) 同程发现并修复「回溯每轮复用同一游标」缺陷 (真实数据暴露, 单元测试已补 URL 逐页推进断言); (5) 缓存文件 276KB (3464 单投影), 位于 `<cache_root>/provider-ledger/`。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "其余 provider 与既有取数路径零影响, 分层与测试契约不被破坏",
+        "false_if": "改动波及 providers/调用方或破坏 fixture 契约",
+        "evidence": "(1) `query_with_cache` 带默认实现, 除 Cline 外 9 个 provider 与全部既有测试调用点零改动 (provider 测试 39 项全绿); (2) fixture 通道 `collect_agent_usage_with_dependencies` 显式注入 `NoLedgerCache`, 语义与历史一致 (无外部 I/O、单轮深翻), 应用层测试与 mac `CollectorRunnerHarness` 不受影响; (3) 缓存实现只在 collector-local 落盘, provider 未引入任何文件系统调用 (clippy 全绿); (4) 端口载荷为字符串, `collector-runtime` 保持零依赖 (Cargo.toml 未变); (5) 生产入口仅在 `home` 存在时启用缓存, 缺失时回落无缓存路径。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  }
+}
