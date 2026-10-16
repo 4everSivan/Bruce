@@ -195,7 +195,6 @@ CI（`.github/workflows/ci.yml`）在 push / PR 时执行 macOS 侧 `verify-loca
 - [变更总账](docs/devel/change/index.json) — 全量变更卡与 Topic 映射
 - [本地部署指南](docs/guide/01-本地部署指南.md) — 环境准备、构建与联调
 - [设计资源库](docs/assets/README.md) — 架构图、截图与视觉素材
-- [全仓对抗性审查报告（2026-10-16）](docs/devel/2026-10-16-全仓对抗性审查报告.md)
 
 ## 社区与致谢
 
