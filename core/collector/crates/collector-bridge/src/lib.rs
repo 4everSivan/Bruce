@@ -118,7 +118,7 @@ pub fn run_bytes(input: &[u8]) -> BridgeResponse {
                         schema_version: BRIDGE_SCHEMA_VERSION,
                         run_id: request.run_id.clone(),
                         generated_at,
-                        status: response_status(true, diagnostics.len()),
+                        status: response_status(true, &diagnostics),
                         artifact: Some(artifact),
                         credential_updates,
                         credential_challenges,

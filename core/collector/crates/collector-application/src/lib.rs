@@ -22,7 +22,7 @@ use collector_credential::{
 use collector_domain::{
     AgentUsage, AgentUsageArtifact, BridgeRequest, CollectionWindow, Diagnostic,
     ModelPricingOverride, PricingTable, WindowError, AGENT_USAGE_MODULE,
-    AGENT_USAGE_SCHEMA_VERSION,
+    AGENT_USAGE_SCHEMA_VERSION, LOCAL_SOURCE_ROWS_CAPPED,
 };
 use collector_local::{
     default_cache_root, scan_claude_cached, scan_codebuddy_cached,
@@ -328,6 +328,8 @@ struct LocalAgentResult {
     found: bool,
     contribution: collector_domain::UsageContribution,
     diagnostic: Option<String>,
+    /// 行数截断 (C041): 信息级降级, agent 状态保持 ok 而非 error。
+    capped: bool,
 }
 
 fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diagnostic> {
@@ -540,13 +542,14 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
                 source_metrics.push(source_metric);
                 scan_stats.merge(source.stats.clone());
                 if let Some(message) = source.diagnostic.clone() {
-                    diagnostics.push(Diagnostic::new(
-                        "LOCAL_SOURCE_SCHEMA_INCOMPATIBLE",
-                        "local",
-                        &id,
-                        message,
-                        true,
-                    ));
+                    // C041: 行数截断是计划内降级, 用信息级诊断码;
+                    // 其余 (真实 schema/读取故障) 保留原故障码与 Partial 语义。
+                    let code = if source.capped {
+                        LOCAL_SOURCE_ROWS_CAPPED
+                    } else {
+                        "LOCAL_SOURCE_SCHEMA_INCOMPATIBLE"
+                    };
+                    diagnostics.push(Diagnostic::new(code, "local", &id, message, true));
                 }
                 agents.insert(
                     id,
@@ -554,6 +557,7 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
                         found: source.found,
                         contribution: source.contribution,
                         diagnostic: source.diagnostic,
+                        capped: source.capped,
                     },
                 );
             }
@@ -725,8 +729,13 @@ fn finalize_local_agent(
     let _ = accumulator.merge_delta(&source.contribution);
     let mut agent = accumulator.finalize_with_pricing(id, name, pricing);
     if let Some(diagnostic) = &source.diagnostic {
-        agent.status = "error".to_owned();
-        agent.note = diagnostic.clone();
+        if source.capped {
+            // C041: 行数截断为计划内降级, 数据有效 (保留最新), 不按故障处理。
+            agent.note = diagnostic.clone();
+        } else {
+            agent.status = "error".to_owned();
+            agent.note = diagnostic.clone();
+        }
     } else if source.found {
         agent.note = note.to_owned();
     } else {
@@ -790,7 +799,10 @@ fn source_path(context: &RunContext<'_>, key: &str, default: PathBuf) -> PathBuf
 
 #[cfg(test)]
 mod tests {
-    use super::{collect_agent_usage, collect_agent_usage_with_dependencies};
+    use super::{
+        collect_agent_usage, collect_agent_usage_with_dependencies, finalize_local_agent,
+        LocalAgentResult,
+    };
     use collector_credential::{CredentialReadError, CredentialSource};
     use collector_domain::BridgeRequest;
     use collector_provider::{
@@ -800,6 +812,59 @@ mod tests {
     use serde_json::json;
     use std::path::Path;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// C041: 行数截断为计划内降级 — agent 状态保持 ok 仅记 note; 真实故障仍为 error。
+    #[test]
+    fn local_agent_row_cap_keeps_status_ok_while_faults_stay_error() {
+        use collector_domain::{CollectionWindow, PricingTable};
+
+        let context: serde_json::Map<String, serde_json::Value> = serde_json::from_value(json!({
+            "now": "2026-07-28T12:00:00+08:00",
+            "timezone": "Asia/Shanghai",
+            "days": 3
+        }))
+        .unwrap();
+        let window = CollectionWindow::from_context(&context).unwrap();
+        let pricing = PricingTable::new(std::collections::HashMap::new());
+        let contribution =
+            collector_domain::UsageContributionBuilder::new(window.clone()).contribution();
+
+        let capped = LocalAgentResult {
+            found: true,
+            contribution: contribution.clone(),
+            diagnostic: Some("仅保留 zcode 最新 30000 条用量记录".to_owned()),
+            capped: true,
+        };
+        let agent = finalize_local_agent(
+            &window,
+            "zcode",
+            "ZCode",
+            &capped,
+            "本机会话聚合",
+            "unavailable",
+            "未发现会话记录",
+            &pricing,
+        );
+        assert_eq!(agent.status, "ok", "行数截断为计划内降级, 不得置为 error");
+        assert!(agent.note.contains("30000"), "降级说明应保留在 note");
+
+        let faulty = LocalAgentResult {
+            capped: false,
+            ..capped
+        };
+        let agent = finalize_local_agent(
+            &window,
+            "zcode",
+            "ZCode",
+            &faulty,
+            "本机会话聚合",
+            "unavailable",
+            "未发现会话记录",
+            &pricing,
+        );
+        assert_eq!(agent.status, "error", "非截断诊断仍按故障处理");
+        assert_eq!(agent.note, "仅保留 zcode 最新 30000 条用量记录");
+    }
 
     fn request(capabilities: &[&str]) -> BridgeRequest {
         serde_json::from_value(json!({

@@ -577,10 +577,18 @@ pub struct AgentUsageArtifact {
     pub total_cost_usd: Option<f64>,
 }
 
-pub fn response_status(has_artifact: bool, diagnostic_count: usize) -> ResponseStatus {
+/// 信息级诊断码 (C041): SQLite 源行数截断是「保留最新、丢最旧」的计划内降级,
+/// 可观测 (诊断与 agent note 保留) 但不把 envelope 打成 Partial —— 否则菜单栏
+/// 会把常态降级误报为故障 (红色警告环)。
+pub const LOCAL_SOURCE_ROWS_CAPPED: &str = "LOCAL_SOURCE_ROWS_CAPPED";
+
+pub fn response_status(has_artifact: bool, diagnostics: &[Diagnostic]) -> ResponseStatus {
     if !has_artifact {
         ResponseStatus::Error
-    } else if diagnostic_count > 0 {
+    } else if diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code != LOCAL_SOURCE_ROWS_CAPPED)
+    {
         ResponseStatus::Partial
     } else {
         ResponseStatus::Success
@@ -627,8 +635,9 @@ impl BridgeResponse {
 #[cfg(test)]
 mod tests {
     use super::{
-        response_status, AgentUsageArtifact, CollectionWindow, ResponseStatus, SourceDeltaChange,
-        TokenBucket, UsageContributionBuilder, UsageSample,
+        response_status, AgentUsageArtifact, CollectionWindow, Diagnostic, ResponseStatus,
+        SourceDeltaChange, TokenBucket, UsageContributionBuilder, UsageSample,
+        LOCAL_SOURCE_ROWS_CAPPED,
     };
     use serde_json::{json, Map, Value};
 
@@ -648,9 +657,38 @@ mod tests {
 
     #[test]
     fn status_precedence_and_previous_retention_are_explicit() {
-        assert_eq!(response_status(false, 0), ResponseStatus::Error);
-        assert_eq!(response_status(true, 0), ResponseStatus::Success);
-        assert_eq!(response_status(true, 1), ResponseStatus::Partial);
+        assert_eq!(response_status(false, &[]), ResponseStatus::Error);
+        assert_eq!(response_status(true, &[]), ResponseStatus::Success);
+        let degrading = Diagnostic::new(
+            "LOCAL_SOURCE_SCHEMA_INCOMPATIBLE",
+            "local",
+            "zcode",
+            "schema 不兼容",
+            true,
+        );
+        assert_eq!(
+            response_status(true, std::slice::from_ref(&degrading)),
+            ResponseStatus::Partial
+        );
+        // C041: 行数截断是信息级降级, 不把 envelope 打成 Partial。
+        let capped = Diagnostic::new(
+            LOCAL_SOURCE_ROWS_CAPPED,
+            "local",
+            "zcode",
+            "仅保留 zcode 最新 30000 条用量记录",
+            true,
+        );
+        assert_eq!(
+            response_status(true, std::slice::from_ref(&capped)),
+            ResponseStatus::Success,
+            "行数截断不得触发 Partial"
+        );
+        let mixed = [capped, degrading];
+        assert_eq!(
+            response_status(true, &mixed),
+            ResponseStatus::Partial,
+            "信息级与致降级诊断并存时仍为 Partial"
+        );
         let previous = json!({"agents": ["previous"]});
         assert_eq!(
             None::<Value>.or(Some(previous.clone())),

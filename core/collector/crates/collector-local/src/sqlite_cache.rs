@@ -120,6 +120,8 @@ pub(crate) struct SqliteCacheEntry {
     pub(crate) found: bool,
     pub(crate) append_safe: bool,
     pub(crate) diagnostic: Option<String>,
+    #[serde(default)]
+    pub(crate) capped: bool,
     pub(crate) contribution: CompactContribution,
 }
 
@@ -139,6 +141,8 @@ pub(crate) struct SqliteReadResult {
     pub(crate) rows_read: u64,
     pub(crate) diagnostic: Option<String>,
     pub(crate) append_safe: bool,
+    /// 行数截断 (C041): 计划内降级, 上游归为信息级诊断, 不触发 Partial。
+    pub(crate) capped: bool,
 }
 
 pub(crate) trait SqliteIncrementalAdapter {
@@ -248,6 +252,7 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
                     contribution,
                     stats,
                     diagnostic: entry.diagnostic.clone(),
+                    capped: entry.capped,
                 });
             }
             stats.cache_corruptions = stats.cache_corruptions.saturating_add(1);
@@ -299,6 +304,7 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
                         found,
                         delta.diagnostic.clone(),
                         delta.append_safe,
+                        delta.capped,
                         &contribution,
                     );
                     match write_cache(&cache_path, &cache_entry, cancellation) {
@@ -315,6 +321,7 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
                         contribution,
                         stats,
                         diagnostic: delta.diagnostic,
+                        capped: delta.capped,
                     });
                 }
                 Ok(_) | Err(SourceScanError::Io(_)) => {
@@ -360,6 +367,7 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
         found: result.found,
         append_safe: result.append_safe,
         diagnostic: result.diagnostic.clone(),
+        capped: result.capped,
         contribution: compact,
     };
     match write_cache(&cache_path, &entry, cancellation) {
@@ -374,6 +382,7 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
         contribution,
         stats,
         diagnostic: result.diagnostic,
+        capped: result.capped,
     })
 }
 
@@ -436,6 +445,7 @@ fn make_entry(
     found: bool,
     diagnostic: Option<String>,
     append_safe: bool,
+    capped: bool,
     contribution: &UsageContribution,
 ) -> SqliteCacheEntry {
     SqliteCacheEntry {
@@ -451,6 +461,7 @@ fn make_entry(
         found,
         append_safe,
         diagnostic,
+        capped,
         contribution: CompactContribution::from_domain(contribution, &config.window)
             .expect("usage contribution must match its collection window"),
     }

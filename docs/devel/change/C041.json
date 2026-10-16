@@ -1,0 +1,91 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C041",
+  "title": "修复 ZCode 万行截断被误报为故障致菜单栏红圈：SQLite 行上限 1 万→3 万、截断降级为信息级诊断（不触发 partial）",
+  "type": "BugFix",
+  "status": "closed",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用)",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector/crates/collector-local (MAX_SOURCE_ROWS 与 SourceScan.capped) + collector-application (诊断分类) + collector-domain (response_status)",
+    "component": "本机会话采集: SQLite 行数截断的严重度语义与菜单栏状态映射",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "用户反馈菜单栏状态圈变红。排查实证 (2026-10-16 13:0xZ): 配额余量最低 40% (智谱周窗) 不满足红圈阈值 (<15%), 红圈来自采集 envelope 状态 partial → 菜单栏图标切警告三角 + 红色环 (MenuBarStatusItemController.swift:383 的 isWarning 两条件之一)。partial 的根因: ZCode DB model_usage 在 182 天窗口内已有 10,986 行, 超过 `MAX_SOURCE_ROWS = 10,000` 上限, 扫描按 2026-09 修复的预期语义「保留最新、丢最旧」降级并附诊断『仅保留 zcode 最新 10000 条用量记录』; 但该计划内降级在两处被按故障处理: (1) `collect_local_usage` 把任意源诊断统一挂 `LOCAL_SOURCE_SCHEMA_INCOMPATIBLE` (名不符实——并非 schema 问题) 并计入 `response_status` 的诊断计数 → envelope=Partial; (2) `finalize_local_agent` 见诊断即置 agent.status=error。按当前用量 (~500 行/天) 上限将长期触发, 红圈不可自愈, 且半年视图静默只保留最近 1 万行 (约 3 周)。附带影响: 触发截断后缓存条目 append_safe=false, 每轮刷新全量重扫 1 万行。",
+  "precheck": {
+    "description": "预检: 复现「zcode 万行截断 → envelope partial → 菜单栏红色警告环」因果链, 并确认配额余量排除红圈另一触发条件",
+    "command": "python3 -c \"import sqlite3,os,datetime;con=sqlite3.connect('file:'+os.path.expanduser('~/.zcode/cli/db/db.sqlite')+'?mode=ro',uri=True);t0=datetime.datetime.combine(datetime.date.today(),datetime.time.min).timestamp()*1000;print('182天窗口行数:',con.execute('SELECT COUNT(*) FROM model_usage WHERE started_at>=?',(t0-181*86400_000,)).fetchone()[0])\"; python3 -c \"import json,os;a=json.load(open(os.path.expanduser('~/Library/Application Support/Bruce/snapshots/agent-usage.json')));z=[x for x in a['agents'] if x['id']=='zcode'][0];print('artifact zcode:',z['status'],z['note'])\"",
+    "expected": "窗口行数 > 10000; artifact zcode status=error 且 note 为万行截断文案; 各订阅窗口余量均 > 15% (排除配额触发)",
+    "is_completed": true,
+    "evidence": "2026-10-16 实测: 182 天窗口 10,986 行 > 10,000; app artifact zcode status=error / note='仅保留 zcode 最新 10000 条用量记录'; Bruce-collector 实跑 envelope=partial 且诊断码为 LOCAL_SOURCE_SCHEMA_INCOMPATIBLE (误标); 各窗口余量最低 40% (智谱周窗) — 因果链闭环。"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护已在 main 实施"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "collector-local: 行上限与截断标记",
+      "before": "MAX_SOURCE_ROWS = 10_000 (182 天窗口内 zcode 现有 10,986 行, 长期触发); SourceScan/SqliteReadResult 无截断标记, 计划内降级与真实故障在下游不可区分",
+      "after": "MAX_SOURCE_ROWS = 30_000 (覆盖 ZCode 自身修剪天花板 ~1.1 万行, 上限休眠; opencode 同享); SourceScan 与 SqliteReadResult 新增结构化 `capped: bool`, zcode/opencode 截断路径置真",
+      "impact": "半年视图不再静默丢最近 3 周之前的数据; 缓存截断附带的每轮全量重扫随上限休眠一并消失"
+    },
+    {
+      "scope": "collector-application: 诊断分类",
+      "before": "任意源诊断统一挂 LOCAL_SOURCE_SCHEMA_INCOMPATIBLE 并致 agent.status=error",
+      "after": "capped 源 → 独立信息级诊断码 LOCAL_SOURCE_ROWS_CAPPED, agent.status 保持 ok (note 照常展示降级说明); 非 capped (真实 schema/读取故障) 保留原码与 error 语义",
+      "impact": "计划内降级可见 (诊断与 note 仍在, 可观测性不降) 但不再误报为故障"
+    },
+    {
+      "scope": "collector-domain + bridge: 状态判定",
+      "before": "response_status(has_artifact, diagnostic_count) — 任意诊断 (含信息级) 即 Partial",
+      "after": "response_status(has_artifact, &[Diagnostic]) — LOCAL_SOURCE_ROWS_CAPPED 不参与 Partial 判定 (信息级), 其余诊断语义不变",
+      "impact": "zcode 万行截断不再把整个采集打成 partial → 菜单栏恢复绿色配额环; envelope 对真实故障仍如实 Partial"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": true,
+    "rule_diff": {
+      "before": "§6.3 只约定超限语义为「保留最新、丢最旧」(预期降级), 未约定该降级的严重度与对外呈现; 实现把降级诊断按 LOCAL_SOURCE_SCHEMA_INCOMPATIBLE 故障处理",
+      "after": "新增: 行数截断为信息级降级 (LOCAL_SOURCE_ROWS_CAPPED), 不参与 envelope Partial 判定、agent 状态保持 ok; LOCAL_SOURCE_SCHEMA_INCOMPATIBLE 仅用于真实 schema/读取故障; SQLite 行上限 30,000 (覆盖 ZCode 修剪天花板)"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "user_quote": "确认签收最后一张卡，然后清理工作区，全部提交，不要开分支",
+    "signoff": "2026-10-16 用户会话内确认 C041 收口 (原话: 「确认签收最后一张卡，然后清理工作区，全部提交，不要开分支」), AI 代为签署并闭环",
+    "checks": [
+      {
+        "item": "严重度语义单测覆盖",
+        "true_if": "response_status 对 LOCAL_SOURCE_ROWS_CAPPED 不判 Partial (含与故障诊断并存的混合场景); finalize_local_agent 对 capped 源保持 agent ok 仅记 note, 对非 capped 诊断仍置 error; 既有截断用例升级到 3 万行并断言 capped 标记",
+        "false_if": "信息级诊断仍触发 Partial, 或 capped 源被置为 error, 或截断用例未断言标记",
+        "evidence": "collector-domain: response_status 单测断言 capped=Success / degrading=Partial / mixed=Partial; collector-application: local_agent_row_cap_keeps_status_ok_while_faults_stay_error; collector-local: zcode/opencode 截断用例升级 30_010 行并断言 scan.capped=true (collector-local 40 项全绿)",
+        "result": true
+      },
+      {
+        "item": "全量自动化验证",
+        "true_if": "zsh scripts/verify-local.sh 退出码 0",
+        "false_if": "任一环节失败或告警",
+        "evidence": "verify-local 退出码 0, 末行 'Bruce 本地验证全部通过' (日志 local/c041-verify.log); clippy -D warnings 零告警 (修复 cloned_ref_to_slice_refs 与重复 allow 属性各一处), fmt 无差异; Swift 全部 Harness 与 Panel 双端对拍 3/3 通过",
+        "result": true
+      },
+      {
+        "item": "应用级确证 (红圈恢复)",
+        "true_if": "重打包安装并重启后, app artifact 的 zcode 恢复 ok 且无截断诊断, 全部订阅服务 ok → envelope Success → 菜单栏恢复绿色配额环",
+        "false_if": "zcode 仍为 error/partial, 或存在非信息级诊断",
+        "evidence": "Universal 包重打包 (local/c041-package.log, exit 0) + 强制重启后: artifact (generatedAt 2026-10-16T14:02:08+08:00) zcode status=ok / note='本机会话聚合' (万行截断诊断消失 — 11K 行 < 3 万新上限), today.total=203,471,936 持续正常累计; 全部订阅服务 status=ok → envelope Success → agentUsage 模块 fresh → 菜单栏绿色配额环 (红圈两触发条件均排除: 余量最低 40% > 15%, 模块状态 fresh)",
+        "result": true
+      }
+    ]
+  }
+}

@@ -29,7 +29,10 @@ use std::io::{self, BufReader, Read, Seek, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const MAX_SOURCE_ROWS: i64 = 10_000;
+/// SQLite 源单次扫描的行数上限 (C041: 1 万 → 3 万)。
+/// 上限语义为「保留最新、丢最旧」的计划内降级 (capped 标记 + 信息级诊断),
+/// 3 万覆盖 ZCode 自身修剪后的存量天花板 (~1.1 万行), 常态下不再触发。
+const MAX_SOURCE_ROWS: i64 = 30_000;
 
 #[derive(Debug, Clone)]
 pub struct SourceScan {
@@ -37,6 +40,9 @@ pub struct SourceScan {
     pub contribution: UsageContribution,
     pub stats: ScanStats,
     pub diagnostic: Option<String>,
+    /// 行数截断 (C041): 计划内降级标记, 上游据此把诊断归为信息级
+    /// (LOCAL_SOURCE_ROWS_CAPPED), 不把采集 envelope 打成 Partial。
+    pub capped: bool,
 }
 
 #[derive(Debug)]
@@ -64,6 +70,7 @@ impl SourceScan {
             contribution: UsageContributionBuilder::new(window.clone()).contribution(),
             stats: ScanStats::default(),
             diagnostic: None,
+            capped: false,
         }
     }
 }
@@ -79,6 +86,7 @@ fn finish(
         contribution: builder.contribution(),
         stats,
         diagnostic: None,
+        capped: false,
     }
 }
 
@@ -2531,6 +2539,7 @@ pub fn scan_grok_cached(
         contribution: builder.contribution(),
         stats,
         diagnostic,
+        capped: false,
     })
 }
 
@@ -2909,6 +2918,7 @@ impl SqliteIncrementalAdapter for OpenCodeSqliteAdapter {
             rows_read: rows.len() as u64,
             diagnostic: capped.then(|| "仅保留 opencode 最新 10000 条候选消息".to_owned()),
             append_safe: !capped && rows.iter().all(|row| row.rowid.is_some()),
+            capped,
         })
     }
 
@@ -2929,6 +2939,7 @@ impl SqliteIncrementalAdapter for OpenCodeSqliteAdapter {
             rows_read: rows.len() as u64,
             diagnostic: capped.then(|| "opencode 增量候选消息超过上限, 已回退全量读取".to_owned()),
             append_safe: !capped && rows.iter().all(|row| row.rowid.is_some()),
+            capped,
         })
     }
 
@@ -3215,8 +3226,9 @@ impl SqliteIncrementalAdapter for ZCodeSqliteAdapter {
             cursor,
             found,
             rows_read: rows.len() as u64,
-            diagnostic: capped.then(|| "仅保留 zcode 最新 10000 条用量记录".to_owned()),
+            diagnostic: capped.then(|| "仅保留 zcode 最新 30000 条用量记录".to_owned()),
             append_safe: !capped && rows.iter().all(|row| row.rowid.is_some()),
+            capped,
         })
     }
 
@@ -3239,6 +3251,7 @@ impl SqliteIncrementalAdapter for ZCodeSqliteAdapter {
             rows_read: rows.len() as u64,
             diagnostic: capped.then(|| "zcode 增量用量记录超过上限, 已回退全量读取".to_owned()),
             append_safe: !capped && rows.iter().all(|row| row.rowid.is_some()),
+            capped,
         })
     }
 
@@ -3326,6 +3339,7 @@ pub fn scan_opencode_with_cancellation(
         let Ok(data) = row else { continue };
         collected.push(data);
     }
+    let capped = collected.len() as i64 >= MAX_SOURCE_ROWS;
     // 回放顺序反转为时间升序, 保持聚合语义与全量扫描一致.
     for data in collected.into_iter().rev() {
         cancellation.check()?;
@@ -3362,7 +3376,10 @@ pub fn scan_opencode_with_cancellation(
         );
         stats.usage_records = stats.usage_records.saturating_add(1);
     }
-    Ok(finish(window, builder, stats, true))
+    // C041: 截断标记随扫描返回, 上游归为信息级降级而非故障。
+    let mut scan = finish(window, builder, stats, true);
+    scan.capped = capped;
+    Ok(scan)
 }
 
 pub fn scan_zcode(path: &Path, window: &CollectionWindow) -> SourceScan {
@@ -3450,6 +3467,7 @@ pub fn scan_zcode_with_cancellation(
         let Ok(row) = row else { continue };
         collected.push(row);
     }
+    let capped = collected.len() as i64 >= MAX_SOURCE_ROWS;
     for (
         started_at,
         model,
@@ -3486,7 +3504,10 @@ pub fn scan_zcode_with_cancellation(
         );
         stats.usage_records = stats.usage_records.saturating_add(1);
     }
-    Ok(finish(window, builder, stats, true))
+    // C041: 截断标记随扫描返回, 上游归为信息级降级而非故障。
+    let mut scan = finish(window, builder, stats, true);
+    scan.capped = capped;
+    Ok(scan)
 }
 
 #[cfg(test)]
@@ -4384,7 +4405,7 @@ mod tests {
                 )
                 .unwrap();
         }
-        for i in 0..10_000 {
+        for i in 0..30_000 {
             connection
                 .execute(
                     "INSERT INTO model_usage (started_at, model_id, input_tokens, output_tokens) \
@@ -4399,7 +4420,8 @@ mod tests {
         let scan = super::scan_zcode(&db_path, &window());
         assert!(scan.diagnostic.is_none(), "扫描不应报错");
         assert!(scan.found, "应识别到数据");
-        assert_eq!(scan.stats.sqlite_rows_read, 10_000, "应恰好读到上限行数");
+        assert_eq!(scan.stats.sqlite_rows_read, 30_000, "应恰好读到上限行数");
+        assert!(scan.capped, "C041: 触顶必须携带截断标记");
         let by_day = &scan.contribution.by_day;
         assert_eq!(
             by_day
@@ -4414,7 +4436,7 @@ mod tests {
                 .get("2026-07-28")
                 .map(|bucket| bucket.total)
                 .unwrap_or(0),
-            10_000 * 10,
+            30_000 * 10,
             "最新 10_000 行应完整计入 7/28"
         );
         fs::remove_dir_all(&root).ok();
@@ -4452,7 +4474,7 @@ mod tests {
                 )
                 .unwrap();
         }
-        for i in 0..10_000 {
+        for i in 0..30_000 {
             connection
                 .execute(
                     "INSERT INTO message (data) VALUES (?1)",
@@ -4465,7 +4487,8 @@ mod tests {
 
         let scan = super::scan_opencode(&db_path, &window());
         assert!(scan.diagnostic.is_none(), "扫描不应报错");
-        assert_eq!(scan.stats.sqlite_rows_read, 10_000, "应恰好读到上限行数");
+        assert_eq!(scan.stats.sqlite_rows_read, 30_000, "应恰好读到上限行数");
+        assert!(scan.capped, "C041: 触顶必须携带截断标记");
         let by_day = &scan.contribution.by_day;
         assert_eq!(
             by_day
@@ -4480,8 +4503,8 @@ mod tests {
                 .get("2026-07-28")
                 .map(|bucket| bucket.total)
                 .unwrap_or(0),
-            10_000 * 7,
-            "最新 10_000 行应完整计入 7/28"
+            30_000 * 7,
+            "最新 30_000 行应完整计入 7/28"
         );
         fs::remove_dir_all(&root).ok();
     }
