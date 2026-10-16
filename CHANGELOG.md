@@ -5,7 +5,11 @@
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-16
+
 ### Changed
+- **发版封箱归档首次执行 (v0.12.0)**：按 `docs/archive/README.md` 的 SOP 建立 `docs/archive/0.12.0/`，把 27 张 `closed` 变更卡（C015–C041）与 2 张 `completed` 任务卡（T05 Jev 适配、T06 ClinePass 适配）物理迁入，同步刷新 `change/index.json` 与 `task/index.json` 的 `file` 映射，并为两本总账各写入一份冻结快照。卡片内容一字未改；全仓 6 条指向卡片的 Markdown 链接（均指向仍留在 `docs/devel/` 的 C001–C004）0 断链。**说明**：该 SOP 自 2026-09-23 写下后 16 个历史 tag 均未执行，本次为首度执行，故也一并收拢了此前已发版但未归档的 C015–C018（其自身 `version` 声明为 v0.11.3/0.11.4/0.11.5，原样保留）；C001–C014 虽随 v0.9.0–v0.11.2 发布但状态仍为 `verified` 而非 `closed`，按「仅迁移 closed 卡片」留在原处。
+- **变更总账 `topics[].changes` 语义定稿 (TD-011 结清)**：把此前从未写明的口径写入 `docs/devel/change/README.md` §3.1 —— **下限（机器强制）**：数组必须包含所有以该设计文档为主设计文档的卡；**上限（人工维护）**：允许登记「非主卡归属但确实改过该文档」的卡以实现跨文档多归属。新增 `scripts/check-change-ledger.mjs` 校验该下限与路径存在性，并接入 `verify-local.sh`，使此前导致 C039/C040/C041 脱节与 `PricingEngine` topic 整体缺失的这类漂移此后由门禁兜住。
 - **README 精简与排版重构 (C054)**：仓库门面文档自 C001 Monorepo 重构（v0.10.0）后未同步实现，按预检实测存在 21 处失效路径引用（其中 8 个被引用路径在文件系统中已不存在）与整节死链。本次对齐 v0.11.5 现状并压缩排版，仅改动表述层，不涉及代码、脚本与设计基线规则：
   - **结构树与关键入口重写**：顶层由 `macos/BruceApp`、`bridge`、`rust/Bruce-collector`、`agent-usage` 旧命名改为 `apps/`（macos / win / widget）+ `core/collector/` 双层；关键入口更正为 `apps/macos/Sources/BruceApp/BruceApp.swift`、`core/collector/bin/Bruce-collector/src/main.rs` 与 `core/collector/schemas/`。
   - **文档索引去死链**：「更多文档」7 条指向已归档的 `docs/development/*.md`，改为现行 ad-flow 入口（文档中心、设计基线 00~05、变更总账、部署指南、资源库）。
