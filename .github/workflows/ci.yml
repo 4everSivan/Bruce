@@ -36,6 +36,24 @@ jobs:
           cargo --version
       - name: Windows 前端结构冒烟
         run: node scripts/check-win-frontend.mjs
+      # 发布/打包脚本只在 tag 场景真正执行; 用 AST 解析做语法门禁, 让每次 push 都能验证 (C036)
+      - name: Windows 打包/发布脚本语法门禁 (AST 解析, 不执行)
+        shell: pwsh
+        run: |
+          $failed = $false
+          foreach ($path in @("scripts/build-win-app.ps1", "scripts/upload-win-release.ps1")) {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$null, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              $failed = $true
+              $errors | ForEach-Object { Write-Error "$path : $($_.Message)" }
+            }
+          }
+          if ($failed) { exit 1 }
+          Write-Host "ok: Windows 打包/发布脚本语法合法"
+      # 把「已修复的发布缺陷不得回归」固化为结构断言 (分页+展平 / 两端钉版 / 重跑幂等 / 脚本归属与门禁)
+      - name: Windows 发布流水线契约测试
+        run: node scripts/check-release-pipeline.mjs
       - name: Rust 格式检查
         run: cargo fmt --manifest-path core/collector/Cargo.toml --all -- --check
       - name: Rust workspace 测试
@@ -113,8 +131,11 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: 安装 tauri-cli
-        run: cargo install tauri-cli --locked
+      # 钉版纪律: --locked 只钉 CLI 自身依赖树, 不钉 CLI 版本本身。不钉会在 tauri-cli 3.x
+      # 稳定后跨大版本升级并冲掉已验证的 NSIS 打包链路。2.12.2 为 v0.11.5 发布
+      # (run 38526082333) 实测通过的版本; 升版必须随下一次 tag 发布一并验证。
+      - name: 安装 tauri-cli (钉版 2.12.2)
+        run: cargo install tauri-cli --version "=2.12.2" --locked
       - name: 构建 NSIS 安装包 (内置 WebView2 Bootstrapper)
         run: cargo tauri build --bundles nsis
         working-directory: apps/win/src-tauri
@@ -128,25 +149,11 @@ jobs:
           $hash = (Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLower()
           "$hash  $($setup.Name)" | Out-File -FilePath "SHA256SUMS-windows.txt"
           "SHA256: $hash  $($setup.Name)"
-      # 草稿 release 不在 /releases/tags/{tag} 端点返回 (404), gh release upload <tag>
-      # 会报 release not found; 改走列表端点取 release id, 经 upload_url 直传资产。
+      # 上传逻辑落在 scripts/upload-win-release.ps1: 该文件由 verify-windows 作业做
+      # AST 语法门禁 (非 tag 场景也能验证), 见文件头部的纪律说明 (C036)。
       - name: 上传到既有草稿 Release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
-        run: |
-          $setup = Get-ChildItem -Path "apps/win/src-tauri/target/release/bundle/nsis" -Filter "*-setup.exe" | Select-Object -First 1
-          if (-not $setup) { Write-Error "NSIS 安装包未找到"; exit 1 }
-          $releases = gh api "repos/$env:GITHUB_REPOSITORY/releases" | ConvertFrom-Json
-          # 必须取 created_at 最新的同 tag 草稿: 失败 run 可能残留旧草稿,
-          # 列表顺序不确定, First-1 可能命中残留把资产传丢。
-          $release = $releases | Where-Object { $_.tag_name -eq $env:GITHUB_REF_NAME } | Sort-Object created_at -Descending | Select-Object -First 1
-          Write-Host "上传目标 release id=$($release.id) created=$($release.created_at)"
-          if (-not $release) { Write-Error "草稿 Release 未找到"; exit 1 }
-          $uploadUrl = $release.upload_url -replace '\{.*$',''
-          gh api --method POST "$($uploadUrl)?name=$($setup.Name)" -H "Content-Type: application/octet-stream" --input "$($setup.FullName)"
-          gh api --method POST "$($uploadUrl)?name=SHA256SUMS-windows.txt" -H "Content-Type: application/octet-stream" --input "SHA256SUMS-windows.txt"
-          # 全量多端产物 (macOS + Windows) 上传完毕，正式将草稿发布为公开 Release
-          Write-Host "多端产物上传完毕，发布 Release $($release.id)"
-          gh api --method PATCH "repos/$env:GITHUB_REPOSITORY/releases/$($release.id)" -F draft=false -F make_latest=true
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/upload-win-release.ps1
 

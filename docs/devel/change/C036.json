@@ -1,0 +1,105 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C036",
+  "title": "修复 Windows 发布作业的三处发布流水线缺陷（release 列表分页、tauri-cli 钉版、资产重跑幂等），并把发布脚本抽出为可被 CI 语法门禁验证的独立文件",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本卡改动落在 tag 触发的发布作业, 无法在本机端到端执行",
+  "is_hotfix": false,
+  "target": {
+    "module": ".github/workflows/ci.yml (release-windows / verify-windows) + scripts/upload-win-release.ps1 (新增) + scripts/build-win-app.ps1",
+    "component": "Windows 产物线: NSIS 安装包上传与发布",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "BG-006 登记 (2026-10-07) 的两处缺陷经 2026-10-16 复核全部成立, 并在复核中新增两处同源问题。**(1) 分页**: 上传步骤用 `gh api repos/…/releases` 取 release 列表, 无分页参数。该端点默认 30 条/页, 仓库 release 总数超过 30 后目标草稿不在首页 → `$release` 为空 → 「草稿 Release 未找到」直接失败。当前仓库 16 个 release (2026-10-16 实测), 属**潜伏缺陷**: 恰好在发到第 30+ 个版本时才爆, 那时抢救最贵; 已用 `per_page=2` 模拟超页场景实测复核 —— 旧脚本查找逻辑对不在首页的 tag 命中数为 0。**(2) 钉版**: `cargo install tauri-cli --locked` 的 `--locked` 只钉 CLI 自身依赖树, 不钉 CLI 版本本身。v0.11.5 tag run (38526082333) 日志实测安装的是 tauri-cli **v2.12.2**（当时的 latest）; 今日 latest stable 已是 2.12.3, 且 3.0.0-alpha 已发布 —— 3.0 稳定后该命令会跨大版本升级 CLI, 直接冲掉已验证的 NSIS 打包链路, 与项目对 tauri crate 用 `=2.11.6` 精确钉版的同代钉版纪律相悖。`scripts/build-win-app.ps1`（本地产线）存在同一行未钉版代码, 会造成本地与 CI 打包链路漂移。**(3) 重跑幂等**: 上传用 `POST <upload_url>?name=<file>`, 同名资产已存在时返回 422 `already_exists`。仅重试失败的「发布 Windows 安装包」作业（这是最自然的恢复动作）时, 目标草稿里往往已有上一轮资产 → 重试必然再次失败, 只能人工删资产; 工作流注释里「失败 run 可能残留旧草稿」的排序逻辑正说明这类残留已经发生过。**(4) 可验证性**: 上述逻辑全部内联在 `release-windows` 的 `shell: pwsh` 里, 而该作业只在 tag 触发（项目约定不打无关 tag, 内存记录「不打 git tag」）→ 任何修改都无法在 push 场景验证, 只能等下一次发版。",
+  "precheck": {
+    "description": "复核 BG-006 三处缺陷是否仍成立, 并验证其在当前仓库状态下的真实可达性",
+    "command": "gh api \"repos/4everSivan/Bruce/releases\" --jq 'length' && gh api \"repos/4everSivan/Bruce/releases?per_page=2\" --jq '[.[] | select(.tag_name == \"v0.1\")] | length' && gh run view 38526082333 --log | grep -E 'Installing tauri-cli' && grep -n 'cargo install tauri-cli' scripts/build-win-app.ps1 .github/workflows/ci.yml",
+    "expected": "旧写法首页条数受限 (无分页上限 30); 模拟超页时目标 tag 命中 0; v0.11.5 run 实测安装 tauri-cli v2.12.2 (latest 已漂移); 本地产线与 CI 均为未钉版安装",
+    "is_completed": true,
+    "evidence": "2026-10-16 实测: (1) `gh api repos/4everSivan/Bruce/releases | length` = 16 (未满 30, 潜伏); 以 `per_page=2` 模拟超页后, 旧脚本「首页内按 tag 过滤」对最旧 tag v0.1 命中数 = **0** → 原脚本会走到 Write-Error「草稿 Release 未找到」退出; (2) `gh run view 38526082333 --log` 中 `Installed package tauri-cli v2.12.2`, 而 crates.io 现 latest stable = 2.12.3 且已发布 3.0.0-alpha.x (非 yanked); (3) `scripts/build-win-app.ps1:19` 与 `.github/workflows/ci.yml` 的安装步骤均为 `cargo install tauri-cli --locked`（无版本参数）; (4) release-windows 作业内联 pwsh 无任何 push 场景门禁。"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护已在 main 实施"
+    ],
+    "after": [
+      "python3 -c \"import yaml; yaml.safe_load(open('.github/workflows/ci.yml'))\"",
+      "node scripts/check-win-frontend.mjs",
+      "# 发布脚本语法门禁由 CI verify-windows 作业的 AST 解析步骤执行 (本机无 pwsh)"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "发布取数 (分页 + 展平)",
+      "before": "`$releases = gh api \"repos/$env:GITHUB_REPOSITORY/releases\" | ConvertFrom-Json` —— 无分页, 超过 30 条 release 后目标草稿不在首页即失败",
+      "after": "`gh api --paginate --slurp \"…/releases?per_page=100\"` 取全量, 并**逐页展平**为扁平列表 (附非空断言)。展平是必需的: 实测 `--slurp` 输出为「外层数组套各页数组」(单页时也是 `[[…]]`), 直接当列表用会把 `upload_url`/`assets` 取成数组并拼出损坏的上传 URL",
+      "impact": "release 总数增长不再影响发布; 该缺陷已用真实 API 数据复现并验证修复后的展平与查找语义"
+    },
+    {
+      "scope": "工具链钉版",
+      "before": "CI 与本地均为 `cargo install tauri-cli --locked`（CLI 版本浮动到 latest, 当前 2.12.2 → 2.12.3, 3.x 稳定后将跨大版本跳变）",
+      "after": "两端统一钉 `--version \"=2.12.2\" --locked`（v0.11.5 发布实测通过的版本）, 并注释声明升版须两端同步 + 随一次 tag 发布验证",
+      "impact": "NSIS 打包链路不再随 crates.io 上游漂移; 本地产线与 CI 产物一致"
+    },
+    {
+      "scope": "重跑幂等 (异常流)",
+      "before": "直接 POST 上传; 同名资产存在时 422 already_exists, 仅重试 Windows 作业的恢复路径必然再失败",
+      "after": "上传前按 `assets[].name` 检出同名残留并 DELETE 后再上传",
+      "impact": "失败 run 的恢复动作（重试单个作业）可重复执行"
+    },
+    {
+      "scope": "验证资产 (可验证性)",
+      "before": "上传逻辑内联在 tag-only 作业的 pwsh 中, 改动无法在 push 场景验证",
+      "after": "上传逻辑抽出为 `scripts/upload-win-release.ps1`（仓库相对路径解析, 含环境变量前置断言）, 工作流改为调用该脚本; `verify-windows` 作业新增 AST 解析步骤（`[Parser]::ParseFile`, 不执行）, 对 `build-win-app.ps1` 与 `upload-win-release.ps1` 在**每次 push** 做语法门禁",
+      "impact": "发布脚本的语法与结构从此有 push 级门禁; 剩余不可验证面收敛为「PowerShell 运行时行为」与「GitHub API 端到端」两项, 已登记待下一次 tag 发布验证"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "§6.4 打包与发布线仅有 4 条概述 (tauri.conf / NSIS / CI job / 文档), 未规定 release 取数、CLI 钉版与重跑幂等纪律",
+      "after": "§6.4 新增「发布流水线纪律（C036）」4 条: release 列表必须分页且逐页展平（`--slurp` 嵌套形状说明）/ tauri-cli 必须两端钉同一精确版本 / 重跑幂等（同名资产先清理）/ 发布脚本落在 scripts/*.ps1 并受 verify-windows AST 语法门禁"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "local-structural-20261016 + real-github-api-20261016",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试 (结构契约 + 语法门禁)",
+        "true_if": "结构契约与语法门禁全绿: YAML 可解析且结构断言成立、scripts/check-release-pipeline.mjs 退出码 0、未钉版写法零残留, 且新增门禁随 push 在 CI 上执行",
+        "false_if": "任一断言失败, 或门禁未进 CI",
+        "evidence": "2026-10-16 实测: (1) PyYAML 解析 .github/workflows/ci.yml 通过, verify-windows 14 步 / release-windows 6 步, 结构断言 (上传步骤调用 scripts/upload-win-release.ps1、安装步骤钉 =2.12.2、AST 门禁步骤存在) 全部成立; (2) `node scripts/check-release-pipeline.mjs` 6 项全 ok 退出码 0 (分页取数 / 逐页展平 / 两端同版本钉版 / 重跑幂等清理 / 脚本归属 / AST 门禁覆盖两个 ps1) —— 该契约测试初版即抓出一处不精确断言 (门禁步骤用 foreach 变量而非字面量路径), 已改为按数组覆盖面校验; (3) `grep -rn 'cargo install tauri-cli'` 确认除契约测试自身正则外无未钉版残留 (仅剩 build-win-app.ps1:22 与 ci.yml:138 两处钉版写法); (4) 回归确认 `node scripts/check-win-frontend.mjs` 通过 (结构冒烟 + frontend 32 项 + 几何对拍 2 项)。CI 侧: verify-windows 新增「AST 语法门禁」与「发布流水线契约测试」两步, 随本次 push 执行。",
+        "result": true
+      },
+      {
+        "item": "行为实测 (真实 GitHub API 语义)",
+        "true_if": "在真实仓库数据上复现旧逻辑失败、验证新逻辑成立, 且钉版版本有发布 run 实测依据",
+        "false_if": "复现不出旧缺陷, 或新逻辑在真实数据上失败",
+        "evidence": "2026-10-16 在 repo 4everSivan/Bruce (16 个 release) 实测: (1) 旧写法 `gh api repos/…/releases` 只返回首页 (默认上限 30); 以 `per_page=2` 模拟超页后, 旧脚本「首页内按 tag 过滤」对最旧 tag v0.1 命中数 = 0 → 原脚本会 Write-Error「草稿 Release 未找到」退出 (缺陷复现); (2) 新写法 `gh api --paginate --slurp '…?per_page=100'` 实测输出为外层数组套各页数组 (`[[{…}]]`, 单页亦然), 逐页展平后 16/16 条、tag 查找命中 1 条, 且 upload_url 为标量字符串、assets[] 可读 (幂等清理输入成立) —— 若不展平, upload_url 会被取成数组并拼出损坏 URL, 该陷阱在实现中复现并已修正; (3) 钉版依据: v0.11.5 tag run 38526082333 日志实测 `Installed package tauri-cli v2.12.2`, 而 crates.io 现 latest stable = 2.12.3 且 3.0.0-alpha.x 已发布 (非 yanked), 说明不钉版会随上游漂移。验证边界: release-windows 与打包脚本仅 tag 触发, 端到端发布验证须待下一次发版回填 (已登记 design/05 §6.4 第 5 条与 C036 待办); 本机无 pwsh, PowerShell 运行时语义以真实 API 输出做数据形状断言 + 语句级复现, 语法面由 CI AST 门禁覆盖。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "mac 侧发布链与其他作业不受影响, 本地打包脚本行为等价",
+        "false_if": "改动作业/脚本破坏既有发布或打包路径",
+        "evidence": "(1) `release`(macOS 草稿创建) / `verify` / `build-release-app` 三个作业零改动; (2) `release-windows` 安装步骤仅加版本参数, 上传步骤由内联脚本改为调用抽出脚本 (逻辑一一对应, 另加展平与幂等清理); (3) `verify-windows` 仅新增两步 (AST 解析 + 契约测试, 均为秒级、无网络依赖); (4) `scripts/build-win-app.ps1` 仅在「cargo-tauri 缺失时安装 CLI」那一行加版本参数, 已装 CLI 的环境行为不变; (5) 本卡未触碰 apps/win 源码、core/collector 与 mac Swift, 前端 32+2 项与几何对拍复跑全绿。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  }
+}

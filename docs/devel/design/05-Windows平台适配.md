@@ -277,6 +277,14 @@ Windows Tauri 后端 (Rust)
 - CI：release 阶段增加 Windows 构建矩阵 job，产物 `Bruce_x.y.z_x64-setup.exe` + SHA256；
 - 文档：README/`docs/guide/` 补 Windows 数据位置（`%APPDATA%\Bruce`、`%LOCALAPPDATA%\Bruce\collector-cache-v1`）。
 
+**发布流水线纪律（C036）**：
+
+1. **release 列表必须分页且展平**：草稿 release 不在 `/releases/tags/{tag}` 端点返回，Windows 作业改走列表端点取 `upload_url`；该端点默认 30 条/页，release 总数超过 30 后目标草稿不在首页，查找落空会让上传直接失败。取数固定为 `gh api --paginate --slurp "…/releases?per_page=100"`，并**必须逐页展平** —— `--slurp` 的输出是「外层数组套各页数组」（单页时亦然），直接当 release 列表用会把 `upload_url` / `assets` 取成数组、拼出损坏的上传 URL。
+2. **CLI 钉版**：`cargo install tauri-cli --locked` 只钉 CLI 自身依赖树，不钉 CLI 版本本身；不钉会在 tauri-cli 3.x 稳定后跨大版本升级并冲掉已验证的 NSIS 打包链路。CI（release-windows）与 `scripts/build-win-app.ps1` 必须钉**同一精确版本**（当前 `=2.12.2`，即 v0.11.5 发布实测通过版本），升版须两端同步并随一次 tag 发布验证。
+3. **重跑幂等**：同名资产已存在时上传返回 422 `already_exists`；仅重试「发布 Windows 安装包」作业（不重跑 release 作业）时草稿里往往已有上一轮资产，上传前必须清理同名残留。
+4. **发布脚本可验证**：发布/打包逻辑落在 `scripts/*.ps1`，由 `verify-windows` 作业的 AST 解析步骤（`[Parser]::ParseFile`，不执行）在**每次 push** 做语法门禁 —— 这些脚本只在 tag 场景真正执行，语法错误若留到发版才暴露代价最高。
+5. **验证边界**：以上四条的端到端验证只在 tag 发布时发生（`release` / `release-windows` 作业与打包脚本均 tag 触发）。push 级可验证部分是结构契约测试 `scripts/check-release-pipeline.mjs`（分页+展平 / 两端钉版 / 重跑幂等 / 脚本归属与门禁，随 `verify-windows` 执行）与 AST 语法门禁；**发版后需将一次真实 run 的结论回填到对应 C 卡**（C036 待回填）。
+
 ---
 
 ## 7. 扩展设计 (Additional Technical Design)

@@ -14,9 +14,12 @@ Set-Location (Join-Path $repoRoot "apps\win\src-tauri")
 
 if (-not $SkipInstaller) {
     # tauri-cli 驱动完整打包 (NSIS 安装包, 内置 WebView2 Bootstrapper)。
+    # 钉版纪律 (C036): --locked 只钉 CLI 自身依赖树, 不钉 CLI 版本本身; 版本须与
+    # CI release-windows 作业一致 (2.12.2 = v0.11.5 发布实测通过的版本), 否则本地与
+    # CI 打包链路漂移。升版必须两端同步并随下一次 tag 发布验证。
     if (-not (Get-Command cargo-tauri -ErrorAction SilentlyContinue)) {
-        Write-Host "安装 tauri-cli (一次性, 约 3-6 分钟)..."
-        cargo install tauri-cli --locked
+        Write-Host "安装 tauri-cli 2.12.2 (一次性, 约 3-6 分钟)..."
+        cargo install tauri-cli --version "=2.12.2" --locked
     }
     cargo tauri build --bundles nsis
     $setup = Get-ChildItem -Path "target\release\bundle\nsis" -Filter "*-setup.exe" |
