@@ -95,6 +95,9 @@ swift run --package-path "$BRUCE_SWIFT_PACKAGE" SubscriptionBrandGlyphHarness
 echo "校验 Provider 品牌图形产物与源文件一致"
 node "$BRUCE_REPO_ROOT/scripts/gen-provider-glyphs.mjs" --check
 
+echo "校验变更总账一致性 (topic 归属下限与路径映射)"
+node "$BRUCE_REPO_ROOT/scripts/check-change-ledger.mjs"
+
 echo "运行 Panel 视图模型双端对拍 Harness"
 swift run --package-path "$BRUCE_SWIFT_PACKAGE" \
   PanelParityHarness "$BRUCE_REPO_ROOT"

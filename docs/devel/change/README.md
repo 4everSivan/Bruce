@@ -43,3 +43,12 @@
 
 - **标准卡片模板**：[template.json](template.json)
 - **全局变更总账**：全量卡片索引与所属 Topic 映射请查阅 [index.json](index.json)。
+
+### 3.1 `topics[].changes` 语义（TD-011 定稿，2026-10-16）
+
+`index.json` 的每个 topic 是**一篇现行设计文档的变更总账**：
+
+- **下限（机器可校验，强制）**：该数组**必须包含所有以该设计文档为 `design.doc`（即卡片 `topic` 字段所指）的卡**。此不变式由 `scripts/check-change-ledger.mjs` 在每次 `verify-local.sh` 中校验，违反即门禁失败。
+- **上限（人工维护，可选）**：允许把**非主卡归属、但确实改过该设计文档**的卡一并登记，使该文档的总账完整可读（跨文档多归属）。判定依据以 git 历史或卡内证据为准，不做机器强校验。
+- **卡片自身只有一个 `topic` 字段**：它表示主卡归属，因此「数组 ⊋ 主卡归属集合」是合法且预期的（例如 C055 主卡归属为 `TokenUsage`，同时因改写了 design/04 而登记在 `PricingEngine`）。
+- **历史缺口**：该语义此前未写明，导致 C039/C040/C041 声明了 `topic` 却未登记进数组，且 design/04 回链的 `PricingEngine` topic 在总账中根本不存在（均已于 C055 修复）。
