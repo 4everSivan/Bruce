@@ -594,20 +594,20 @@
     "C056": {
       "title": "Windows 应用版本号脱离单一事实源：tauri.conf.json 停留 0.11.5 致 v0.12.0 安装包被命名为 0.11.5，对齐并补 push 级一致性门禁",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "main",
       "topic": "WindowsCompat",
-      "version": "0.12.1+",
-      "file": "docs/devel/change/C056.json"
+      "version": "0.12.0",
+      "file": "docs/archive/0.12.0/change/C056.json"
     },
     "C057": {
       "title": "发布产物非 Universal 2：CI 构建未带 --universal，v0.12.0 的 Bruce.zip 仅含 arm64，与项目声明的 Intel Mac 原生可用不符",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "main",
       "topic": "SystemOverview",
-      "version": "0.12.1+",
-      "file": "docs/devel/change/C057.json"
+      "version": "0.12.0",
+      "file": "docs/archive/0.12.0/change/C057.json"
     }
   }
 }

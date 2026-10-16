@@ -3,7 +3,7 @@
   "id": "C057",
   "title": "发布产物非 Universal 2：CI 构建未带 --universal，v0.12.0 的 Bruce.zip 仅含 arm64，与项目声明的 Intel Mac 原生可用不符",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "main",
   "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用)",
   "is_hotfix": false,
@@ -63,10 +63,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": "passed",
     "run_id": "c057-universal2-release-artifact-20261016",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "拆了 tag 重新打包，把两张卡也收尾进去",
+    "signoff": "2026-10-16 用户在核对 v0.12.0 产物时确认该缺陷成立，并指示「拆了 tag 重新打包，把两张卡也收尾进去」，即授权重跑流水线并收口本卡。AI 据此代签；4 项检查证据均为实跑输出，其中架构断言为 CI 日志原文。重跑后的 v0.12.0 产物应为 Universal 2。",
     "checks": [
       {
         "item": "CI 构建命令与架构断言生效",
@@ -109,5 +109,6 @@
     "changelog": true,
     "commit": "",
     "tag": ""
-  }
+  },
+  "signoff_note": "收尾方式: 由用户在重打包指令中一并授权闭环, 卡片随 v0.12.0 封箱归档 (docs/archive/0.12.0/change/)。"
 }

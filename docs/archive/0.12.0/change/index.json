@@ -3,7 +3,7 @@
   "release": "0.12.0",
   "archived_at": "2026-10-16",
   "status": "frozen",
-  "note": "本次封箱为该归档 SOP 的首次执行: 除本版本周期闭环的卡外, 也收拢了此前已发版但未归档的 closed 变更卡 (C015/C016/C017/C018 分别属 v0.11.3/0.11.4/0.11.5 周期) 与 completed 任务卡; 每张卡自身声明的 version 原样保留, 未按发版版本重新归属。目录冻结只读, 卡片内容一字未改。",
+  "note": "本次封箱为该归档 SOP 的首次执行: 除本版本周期闭环的卡外, 也收拢了此前已发版但未归档的 closed 变更卡 (C015/C016/C017/C018 分别属 v0.11.3/0.11.4/0.11.5 周期) 与 completed 任务卡; 每张卡自身声明的 version 原样保留, 未按发版版本重新归属。C056/C057 为 v0.12.0 发布后核对产物时发现并当日修复、由维护者在重打包指令中一并收尾的卡, 随本次封箱归档。目录冻结只读, 卡片内容一字未改。",
   "cards": {
     "C015": {
       "title": "修复 Windows 设置窗口打开白屏缺陷并恢复静态预建生命周期",
@@ -220,6 +220,22 @@
       "topic": "TokenUsage",
       "version": "0.12.0+",
       "file": "docs/archive/0.12.0/change/C041.json"
+    },
+    "C056": {
+      "title": "Windows 应用版本号脱离单一事实源：tauri.conf.json 停留 0.11.5 致 v0.12.0 安装包被命名为 0.11.5，对齐并补 push 级一致性门禁",
+      "type": "BugFix",
+      "status": "closed",
+      "topic": "WindowsCompat",
+      "version": "0.12.0",
+      "file": "docs/archive/0.12.0/change/C056.json"
+    },
+    "C057": {
+      "title": "发布产物非 Universal 2：CI 构建未带 --universal，v0.12.0 的 Bruce.zip 仅含 arm64，与项目声明的 Intel Mac 原生可用不符",
+      "type": "BugFix",
+      "status": "closed",
+      "topic": "SystemOverview",
+      "version": "0.12.0",
+      "file": "docs/archive/0.12.0/change/C057.json"
     }
   }
 }
