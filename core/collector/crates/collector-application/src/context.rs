@@ -2,9 +2,7 @@ use collector_credential::CredentialSource;
 use collector_domain::{BridgeRequest, CollectionWindow, Diagnostic};
 use collector_local::ScanStats;
 use collector_provider::HttpClient;
-use collector_runtime::{
-    AccountSingleFlight, CancellationToken, LedgerCache, RuntimeBudgets, RuntimeLimits,
-};
+use collector_runtime::{AccountSingleFlight, CancellationToken, RuntimeBudgets, RuntimeLimits};
 use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -60,8 +58,6 @@ pub(crate) struct RunContext<'a> {
     pub home: PathBuf,
     pub captured_at: String,
     pub external_timeout: Duration,
-    /// 跨运行台账缓存端口 (C038): 实现归 collector-local, provider 只读它。
-    pub ledger_cache: &'a dyn LedgerCache,
 }
 
 impl<'a> RunContext<'a> {
@@ -71,7 +67,6 @@ impl<'a> RunContext<'a> {
         http: &'a dyn HttpClient,
         credential_source: &'a dyn CredentialSource,
         limits: RuntimeLimits,
-        ledger_cache: &'a dyn LedgerCache,
     ) -> Result<Self, Diagnostic> {
         let budgets = limits.budgets().map_err(|_| {
             Diagnostic::new(
@@ -104,7 +99,6 @@ impl<'a> RunContext<'a> {
             metrics: Arc::new(RuntimeCounters::default()),
             home,
             external_timeout: Duration::from_secs_f64(request.timeouts.external_request_seconds),
-            ledger_cache,
         })
     }
 

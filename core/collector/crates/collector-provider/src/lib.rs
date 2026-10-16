@@ -4,7 +4,7 @@
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 use collector_domain::Diagnostic;
-use collector_runtime::{CancellationToken, LedgerCache, NoLedgerCache, RuntimeError};
+use collector_runtime::{CancellationToken, RuntimeError};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -307,19 +307,6 @@ pub trait QuotaProvider: Send + Sync {
         http: &dyn HttpClient,
         cancellation: &CancellationToken,
     ) -> Result<Option<Value>, ProviderError>;
-
-    /// 带台账缓存的查询 (C038): 默认忽略缓存, 只有需要跨运行台账的 provider
-    /// (当前仅 Cline 长窗口分子) 覆写它。
-    fn query_with_cache(
-        &self,
-        request: &ProviderRequest,
-        http: &dyn HttpClient,
-        cancellation: &CancellationToken,
-        cache: &dyn LedgerCache,
-    ) -> Result<Option<Value>, ProviderError> {
-        let _ = cache;
-        self.query(request, http, cancellation)
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -474,65 +461,6 @@ pub fn finalize_service(mut service: Value, result: Result<Option<Value>, Provid
 }
 
 pub const CLINE_API_BASE: &str = "https://api.cline.bot/api/v1";
-/// 5 小时槽网格锚点: **Unix 纪元** (等价于 `floor(now / 5h)`).
-/// 因 24h 不是 5h 的整数倍, 槽边界在 UTC 日内逐日轮转 (5 天一个周期):
-/// 2026-10-15 当日边界为 01:00/06:00/11:00/16:00/21:00Z, 2026-10-14 则为 00:00/05:00/10:00/15:00/20:00Z.
-/// 实证对账 (2026-10-15 约 07:03Z, 控制台 5h = 4% 且 "Resets in 3h57m" → 槽终点 11:00Z):
-/// 槽 [06:00Z, now] 台账求和 = 4.27% ✓, 而近 5h 滚动求和 = 18.91% ✗ —— 故 5h 必须按槽计算.
-const CLINE_FIVE_HOUR_SLOT_ANCHOR_EPOCH: i64 = 0;
-
-/// 窗口计量模式: 服务端对 5h 与 7d/30d 采用不同口径 (实证).
-#[derive(Debug, Clone, Copy)]
-enum ClineWindowMode {
-    /// 固定槽: 槽起点按窗口长度对齐到 `anchor_epoch` 网格, 槽终点即重置时刻 (恒有值).
-    FixedSlot { anchor_epoch: i64 },
-    /// 滚动窗口: 区间随当前时刻滑动, 重置时刻 = 窗口内最早一单 + 窗口长度.
-    Rolling,
-}
-
-/// ClinePass 三窗口定义: (展示标签, 窗口秒数, 限额字段, 计量模式).
-/// 标签经 Swift `PanelFormat.windowLabel` 依 windowMinutes 归一, 此处仅作回退.
-const CLINE_WINDOW_SPECS: &[(&str, i64, ClineThresholdField, ClineWindowMode)] = &[
-    (
-        "每 5 小时",
-        5 * 60 * 60,
-        ClineThresholdField::Last5Hours,
-        ClineWindowMode::FixedSlot {
-            anchor_epoch: CLINE_FIVE_HOUR_SLOT_ANCHOR_EPOCH,
-        },
-    ),
-    (
-        "每周",
-        7 * 24 * 60 * 60,
-        ClineThresholdField::Last7Days,
-        ClineWindowMode::Rolling,
-    ),
-    (
-        "每月",
-        30 * 24 * 60 * 60,
-        ClineThresholdField::Last30Days,
-        ClineWindowMode::Rolling,
-    ),
-];
-/// 台账 `costUsd` 与 entitlements 阈值同为 1e-8 USD 整数单位.
-const CLINE_COST_UNIT_TO_USD: f64 = 1e-8;
-/// 台账单页条数: 服务端硬上限为 200 (传更大的 limit 会被静默截到 200).
-const CLINE_USAGE_PAGE_LIMIT: usize = 200;
-/// 台账翻页上限: 与「30 天早停」共同约束取数成本 —— 实测单请求约 0.7s, 上限 12 页 ≈ 8s,
-/// 远低于 app 侧 moduleSeconds=90 预算; 30 天内用量超过本上限的账户, 长窗口会被截断.
-const CLINE_USAGE_MAX_PAGES: usize = 12;
-/// 单轮回溯页数上限: 与追新共用同一模块预算 (moduleSeconds=90), 分次收敛而非一次拉满。
-const CLINE_LEDGER_BACKFILL_MAX_PAGES: usize = 8;
-/// 最宽窗口 (30 天) 的秒数: 台账按时间倒序返回, 一旦本页出现更早的一单,
-/// 后续页对 5h/7d/30d 三个窗口均无贡献, 即可提前收口.
-const CLINE_LEDGER_HORIZON_SECONDS: i64 = 30 * 24 * 60 * 60;
-
-#[derive(Debug, Clone, Copy)]
-enum ClineThresholdField {
-    Last5Hours,
-    Last7Days,
-    Last30Days,
-}
 
 pub const KIMI_USAGE_URL: &str = "https://api.kimi.com/coding/v1/usages";
 pub const DEEPSEEK_BALANCE_URL: &str = "https://api.deepseek.com/user/balance";
@@ -1314,61 +1242,40 @@ fn claude_tier(key: &str) -> (&str, Option<u64>) {
         .unwrap_or((key, None))
 }
 
-/// Parse Claude OAuth usage, omitting windows that are not active.
-/// Cline / ClinePass 三窗口 (5h/7d/30d) 台账聚合.
-///
-/// 分母取自 `plan.entitlements.cline_pass.inferenceCapThreshold` (严禁硬编码阈值,
-/// 账户级计划如 `[Internal]` 与公开计划可能不同), 分子为逐单台账 `costUsd`
-/// 按滚动窗口求和; 两者同为 1e-8 USD 整数单位.
-/// `entitlements` 缺失或 `enabled=false` (非 ClinePass 账户) 时返回 `Ok(None)` 空态.
-pub fn parse_cline_windows(
+/// Parse the Cline plan usage-limits response (web dashboard source).
+/// ClinePass 三窗口直读网页控制台同源权威端点 `/users/me/plan/usage-limits` (C039):
+/// `percentUsed` 与 `resetsAt` 由服务端算好返回 (与网页逐字一致), Bruce 不做任何本地窗口建模.
+/// 服务端语义备查 (仅作理解, 严禁据此复刻建模): 5h = 「上一块到期后首单开块 [t, t+5h)」的活动块;
+/// weekly/monthly = 窗口内最早一单 + 7d/30d 的滚动窗口 (纳秒级 resetsAt 实证, 2026-10-16).
+/// `limits` 缺失或形状异常返回错误 (fail-visible); 未知窗口类型跳过.
+pub fn parse_cline_usage_limits(
     plan_payload: &Value,
-    items: &[Value],
-    now_epoch: i64,
+    limits_payload: &Value,
 ) -> Result<Option<Value>, ProviderError> {
-    let Some(thresholds) = cline_thresholds(plan_payload) else {
+    if cline_pass_entitled(plan_payload) != Some(true) {
         return Ok(None);
-    };
-    let entries = cline_ledger_entries(items);
-    let mut windows = Vec::with_capacity(CLINE_WINDOW_SPECS.len());
-    for (label, seconds, field, mode) in CLINE_WINDOW_SPECS {
-        let limit_units = thresholds.field(*field);
-        if limit_units <= 0.0 {
-            continue;
-        }
-        let (start, fixed_resets_at) = match mode {
-            // 固定槽: 起点向下对齐到锚点网格, 重置时刻恒为槽终点.
-            ClineWindowMode::FixedSlot { anchor_epoch } => {
-                let offset = (now_epoch - anchor_epoch).rem_euclid(*seconds);
-                let start = now_epoch - offset;
-                (start, Some(start + *seconds))
-            }
-            ClineWindowMode::Rolling => (now_epoch - *seconds, None),
+    }
+    let limits = limits_payload
+        .get("data")
+        .and_then(|data| data.get("limits"))
+        .and_then(Value::as_array)
+        .ok_or_else(invalid_payload)?;
+    let mut windows = Vec::with_capacity(limits.len());
+    for limit in limits {
+        let kind = limit
+            .get("type")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .unwrap_or_default();
+        let (label, window_minutes) = match kind {
+            "five_hour" => ("每 5 小时", Some(300_u64)),
+            "weekly" => ("每周", Some(10080)),
+            "monthly" => ("每月", Some(43200)),
+            _ => continue,
         };
-        let mut used_units = 0.0_f64;
-        let mut earliest: Option<i64> = None;
-        for entry in &entries {
-            if entry.epoch < start {
-                continue;
-            }
-            used_units += entry.cost_units;
-            earliest = Some(match earliest {
-                Some(current) => current.min(entry.epoch),
-                None => entry.epoch,
-            });
-        }
-        let used_usd = used_units * CLINE_COST_UNIT_TO_USD;
-        let limit_usd = limit_units * CLINE_COST_UNIT_TO_USD;
-        let percent = clamp_percent((used_usd / limit_usd) * 100.0);
-        // 滚动窗口的滑出时刻 = 窗口内最早一单 + 窗口长度 (空台账不展示倒计时);
-        // 固定槽的重置时刻与台账无关, 恒为槽终点.
-        let resets_at = fixed_resets_at.or_else(|| earliest.map(|epoch| epoch + *seconds));
-        windows.push(window(
-            label,
-            percent,
-            Some(u64::try_from(*seconds / 60).unwrap_or(0)),
-            resets_at,
-        ));
+        let percent = clamp_percent(number(limit.get("percentUsed")).ok_or_else(invalid_payload)?);
+        let resets_at = reset_epoch(limit.get("resetsAt"));
+        windows.push(window(label, percent, window_minutes, resets_at));
     }
     // C020: 不再注入订阅生命周期注记 (extra), 卡片仅展示计划名与三窗口.
     Ok(Some(service_result(
@@ -1376,28 +1283,6 @@ pub fn parse_cline_windows(
         cline_plan_name(plan_payload).map(Value::String),
         windows,
     )))
-}
-
-#[derive(Debug, Clone, Copy)]
-struct ClineThresholds {
-    last5_hours: f64,
-    last7_days: f64,
-    last30_days: f64,
-}
-
-impl ClineThresholds {
-    fn field(&self, field: ClineThresholdField) -> f64 {
-        match field {
-            ClineThresholdField::Last5Hours => self.last5_hours,
-            ClineThresholdField::Last7Days => self.last7_days,
-            ClineThresholdField::Last30Days => self.last30_days,
-        }
-    }
-}
-
-struct ClineLedgerEntry {
-    epoch: i64,
-    cost_units: f64,
 }
 
 /// 定位 `/users/me/plan` 返回体的订阅外层对象 (`data`):
@@ -1414,25 +1299,26 @@ fn cline_plan_inner(payload: &Value) -> &Value {
     outer.get("plan").unwrap_or(outer)
 }
 
-fn cline_thresholds(payload: &Value) -> Option<ClineThresholds> {
+/// ClinePass 订阅门槛: `entitlements.cline_pass` 存在、未显式停用且三窗口限额均为正
+/// (真实阈值来自 `inferenceCapThreshold`, 账户级计划如 `[Internal]` 与公开计划可能不同).
+/// `Some(false)` = 非 ClinePass 账户 (空态); `None` = 报文缺订阅信息 (同按非 Pass 处理).
+fn cline_pass_entitled(payload: &Value) -> Option<bool> {
     let entitlements = cline_plan_inner(payload)
         .get("entitlements")?
         .get("cline_pass")?;
     if entitlements.get("enabled").and_then(Value::as_bool) == Some(false) {
-        return None;
+        return Some(false);
     }
     let caps = entitlements.get("inferenceCapThreshold")?;
-    let last5_hours = number(caps.get("last5HoursUsageCostUSDPerUser"))?;
-    let last7_days = number(caps.get("last7daysUsageCostUSDPerUser"))?;
-    let last30_days = number(caps.get("last30daysUsageCostUSDPerUser"))?;
-    if last5_hours <= 0.0 || last7_days <= 0.0 || last30_days <= 0.0 {
-        return None;
-    }
-    Some(ClineThresholds {
-        last5_hours,
-        last7_days,
-        last30_days,
-    })
+    let entitled = [
+        "last5HoursUsageCostUSDPerUser",
+        "last7daysUsageCostUSDPerUser",
+        "last30daysUsageCostUSDPerUser",
+    ]
+    .iter()
+    .filter_map(|key| number(caps.get(key)))
+    .all(|cap| cap > 0.0);
+    Some(entitled)
 }
 
 fn cline_plan_name(payload: &Value) -> Option<String> {
@@ -1445,281 +1331,6 @@ fn cline_plan_name(payload: &Value) -> Option<String> {
             .filter(|value| !value.is_empty())
             .map(str::to_owned)
     })
-}
-
-/// Cline 台账的持久化状态 (C038): 跨运行累积的单据台账。
-///
-/// `items` 只保留窗口计算所需字段 (`createdAt` / `costUsd`) 与身份字段 `id`
-/// —— 30 天量级账户 (约 4 万单) 序列化后约 2~3MB, 落盘位置由 `LedgerCache` 实现决定。
-#[derive(Debug, Default)]
-struct ClineLedgerState {
-    items: Vec<Value>,
-    /// 上次回溯中断处的游标 (大账户首次深翻被页数上限截断时记录, 供下次续翻)。
-    cursor: Option<String>,
-    /// 台账是否已覆盖到 horizon (或服务端末页): 覆盖后可停止回溯, 每轮只追新。
-    complete: bool,
-}
-
-impl ClineLedgerState {
-    const VERSION: i64 = 1;
-
-    fn from_cache(raw: Option<String>) -> Self {
-        // 宽容解析: 任何形状异常 (旧版本/损坏/被外力改写) 都退回空态, 下次全量重扫自愈。
-        let Some(object) = raw
-            .and_then(|text| serde_json::from_str::<Value>(&text).ok())
-            .and_then(|value| value.as_object().cloned())
-        else {
-            return Self::default();
-        };
-        if object.get("version").and_then(Value::as_i64) != Some(Self::VERSION) {
-            return Self::default();
-        }
-        Self {
-            items: object
-                .get("items")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default(),
-            cursor: object
-                .get("cursor")
-                .and_then(Value::as_str)
-                .map(str::to_owned),
-            complete: object
-                .get("complete")
-                .and_then(Value::as_bool)
-                .unwrap_or(false),
-        }
-    }
-
-    fn to_cache(&self) -> Value {
-        json!({
-            "version": Self::VERSION,
-            "cursor": self.cursor.clone().map_or(Value::Null, Value::String),
-            "complete": self.complete,
-            "items": self.items,
-        })
-    }
-
-    /// 吸收一页单据: 按身份去重、只收 horizon 内、按身份剪枝; 返回新增条数。
-    fn absorb(&mut self, page: &[Value], horizon: i64) -> usize {
-        let mut known: std::collections::HashSet<String> = self
-            .items
-            .iter()
-            .filter_map(cline_ledger_identity)
-            .collect();
-        let mut added = 0;
-        for item in page {
-            let Some(identity) = cline_ledger_identity(item) else {
-                continue;
-            };
-            if known.contains(&identity) {
-                continue;
-            }
-            let Some(epoch) = reset_epoch(item.get("createdAt")) else {
-                continue;
-            };
-            if epoch < horizon {
-                continue;
-            }
-            known.insert(identity.clone());
-            self.items
-                .push(cline_ledger_stored_item(&identity, item, epoch));
-            added += 1;
-        }
-        self.items.retain(|item| {
-            reset_epoch(item.get("createdAt")).is_some_and(|epoch| epoch >= horizon)
-        });
-        added
-    }
-}
-
-/// 单据身份: 优先服务端 `id`; 缺失时用内容指纹 (createdAt/模型/tokens/cost 全等视为同一单)。
-fn cline_ledger_identity(item: &Value) -> Option<String> {
-    let object = item.as_object()?;
-    if let Some(id) = object
-        .get("id")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        return Some(id.to_owned());
-    }
-    let fingerprint = |key: &str| {
-        object
-            .get(key)
-            .map_or_else(|| "~".to_owned(), Value::to_string)
-    };
-    Some(format!(
-        "fp:{}:{}:{}:{}:{}:{}",
-        fingerprint("createdAt"),
-        fingerprint("aiModelName"),
-        fingerprint("promptTokens"),
-        fingerprint("completionTokens"),
-        fingerprint("cachedTokens"),
-        fingerprint("costUsd"),
-    ))
-}
-
-/// 落盘投影: 只留身份与窗口计算所需字段, 保证 30 天台账体积可控。
-fn cline_ledger_stored_item(identity: &str, item: &Value, epoch: i64) -> Value {
-    json!({
-        "id": identity,
-        "createdAt": epoch,
-        "costUsd": item.get("costUsd").cloned().unwrap_or(Value::Null),
-    })
-}
-
-/// 取一页台账, 返回 (单据, 下一页游标)。
-fn cline_ledger_page(
-    request: &ProviderRequest,
-    http: &dyn HttpClient,
-    cancellation: &CancellationToken,
-    headers: &BTreeMap<String, String>,
-    auth_error: &str,
-    user_id: &str,
-    cursor: Option<&str>,
-) -> Result<(Vec<Value>, Option<String>), ProviderError> {
-    let url = match cursor {
-        Some(cursor) => format!(
-            "{CLINE_API_BASE}/users/{user_id}/usages?limit={CLINE_USAGE_PAGE_LIMIT}&cursor={}",
-            percent_encode(cursor)
-        ),
-        None => format!("{CLINE_API_BASE}/users/{user_id}/usages?limit={CLINE_USAGE_PAGE_LIMIT}"),
-    };
-    let page = send_json(
-        request,
-        http,
-        cancellation,
-        "GET",
-        url,
-        headers.clone(),
-        None,
-        Some(auth_error),
-    )?;
-    let data = page.get("data").cloned().unwrap_or(Value::Null);
-    let items = data
-        .get("items")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    let next = data
-        .get("nextToken")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_owned);
-    Ok((items, next))
-}
-
-/// 台账取数 (C038): 缓存台账 + 增量追新 + 分次回溯。
-///
-/// - **追新**: 从首页起逐页吸收, 直到一页不再产出新单据 (已追平缓存) —— 稳态下只需 1~3 页;
-/// - **回溯**: 台账尚未覆盖到 horizon (首次运行, 或大账户 30 天内单据数超过单轮页数上限)
-///   时, 从上次中断游标续翻, 每轮最多 [`CLINE_LEDGER_BACKFILL_MAX_PAGES`] 页, 分次收敛;
-/// - **游标失效**: 回溯页请求失败时放弃本次回溯并清空游标 (下次从顶部重新收敛), 不影响
-///   追新结果; 追新页失败仍然向上传播 (与历史行为一致)。
-/// - 无缓存注入 (`NoLedgerCache`) 时语义与历史实现一致: 单轮深翻受页数上限约束。
-#[allow(clippy::too_many_arguments)]
-fn cline_ledger_fetch(
-    request: &ProviderRequest,
-    http: &dyn HttpClient,
-    cancellation: &CancellationToken,
-    headers: BTreeMap<String, String>,
-    auth_error: &str,
-    user_id: &str,
-    horizon: i64,
-    cache: &dyn LedgerCache,
-    key: &str,
-) -> Result<Vec<Value>, ProviderError> {
-    let loaded = cache.load(key);
-    let mut state = ClineLedgerState::from_cache(loaded.clone());
-    let seeded = !state.items.is_empty();
-    let mut cursor: Option<String> = None;
-    for _ in 0..CLINE_USAGE_MAX_PAGES {
-        let (page, next) = cline_ledger_page(
-            request,
-            http,
-            cancellation,
-            &headers,
-            auth_error,
-            user_id,
-            cursor.as_deref(),
-        )?;
-        let added = state.absorb(&page, horizon);
-        let oldest = page
-            .iter()
-            .filter_map(|item| reset_epoch(item.get("createdAt")))
-            .min();
-        cursor = next;
-        if oldest.is_some_and(|epoch| epoch < horizon) || cursor.is_none() {
-            state.complete = true;
-            break;
-        }
-        if seeded && added == 0 {
-            break;
-        }
-    }
-
-    // 回溯是「上次深翻被截断」的续做: 只有确实载入了既有缓存才续翻, 否则本轮只记录断点
-    // (无缓存注入时因此不多发请求, 与历史行为一致)。
-    let resume = if seeded { state.cursor.clone() } else { None };
-    if state.complete {
-        state.cursor = None;
-    } else if let Some(resume) = resume {
-        let mut backfill_cursor = Some(resume);
-        for _ in 0..CLINE_LEDGER_BACKFILL_MAX_PAGES {
-            let Some(active_cursor) = backfill_cursor.clone() else {
-                state.cursor = None;
-                break;
-            };
-            let Ok((page, next)) = cline_ledger_page(
-                request,
-                http,
-                cancellation,
-                &headers,
-                auth_error,
-                user_id,
-                Some(active_cursor.as_str()),
-            ) else {
-                // 游标失效/受限: 放弃本次回溯并清空, 下次从顶部重新收敛。
-                state.cursor = None;
-                break;
-            };
-            state.absorb(&page, horizon);
-            let oldest = page
-                .iter()
-                .filter_map(|item| reset_epoch(item.get("createdAt")))
-                .min();
-            // 游标必须逐页推进: 否则每轮都在拉同一页 (实测踩到, 见回归用例)。
-            backfill_cursor = next.clone();
-            state.cursor = next;
-            if oldest.is_some_and(|epoch| epoch < horizon) || backfill_cursor.is_none() {
-                state.complete = true;
-                break;
-            }
-        }
-    } else {
-        // 首次深翻即被页数上限截断: 记下断点, 供后续轮次续翻。
-        state.cursor = cursor;
-    }
-
-    // 落盘失败静默 (store 内部容错): 下一轮最多重扫一次, 不影响本轮窗口结果。
-    if let Ok(payload) = serde_json::to_string(&state.to_cache()) {
-        cache.store(key, &payload);
-    }
-    Ok(state.items)
-}
-
-fn cline_ledger_entries(items: &[Value]) -> Vec<ClineLedgerEntry> {
-    items
-        .iter()
-        .filter_map(|item| {
-            let object = item.as_object()?;
-            let epoch = reset_epoch(object.get("createdAt"))?;
-            let cost_units = number(object.get("costUsd"))?;
-            Some(ClineLedgerEntry { epoch, cost_units })
-        })
-        .collect()
 }
 
 pub fn parse_claude_usage(payload: &Value) -> Result<Option<Value>, ProviderError> {
@@ -3136,23 +2747,14 @@ impl QuotaProvider for ClineProvider {
         "cline"
     }
 
+    /// C039: 三窗口直读网页控制台同源权威端点 `/users/me/plan/usage-limits`
+    /// (百分比与重置时刻由服务端算好返回, 与网页逐字一致), 恒定 2 次 GET;
+    /// 台账翻页与本地窗口建模已删除 (无本地状态, 网络故障恢复后下轮刷新即精确)。
     fn query(
         &self,
         request: &ProviderRequest,
         http: &dyn HttpClient,
         cancellation: &CancellationToken,
-    ) -> Result<Option<Value>, ProviderError> {
-        self.query_with_cache(request, http, cancellation, &NoLedgerCache)
-    }
-
-    /// C038: 长窗口 (7d/30d) 分子依赖逐单台账, 单次深翻受页数上限约束会被截断;
-    /// 这里按「缓存台账 + 增量追新 + 分次回溯」收敛 (详见 cline_ledger_fetch)。
-    fn query_with_cache(
-        &self,
-        request: &ProviderRequest,
-        http: &dyn HttpClient,
-        cancellation: &CancellationToken,
-        cache: &dyn LedgerCache,
     ) -> Result<Option<Value>, ProviderError> {
         let Some(raw_key) = optional_credential_string(request, &["api_key", "apiKey", "token"])?
         else {
@@ -3172,43 +2774,6 @@ impl QuotaProvider for ClineProvider {
         };
         let auth_error = "Cline 凭证被拒绝, 请检查 API key";
 
-        let me_payload = send_json(
-            request,
-            http,
-            cancellation,
-            "GET",
-            format!("{CLINE_API_BASE}/users/me"),
-            headers(),
-            None,
-            Some(auth_error),
-        )?;
-        let user_id = me_payload
-            .get("data")
-            .and_then(|data| data.get("id"))
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .ok_or_else(|| {
-                ProviderError::new(
-                    "PROVIDER_INVALID_JSON",
-                    "parse",
-                    "Cline 用户信息缺少 id",
-                    false,
-                )
-            })?;
-        // 防御: user id 直接拼入 URL 路径, 拒绝路径不安全字符避免注入.
-        if !user_id
-            .chars()
-            .all(|value| value.is_ascii_alphanumeric() || matches!(value, '-' | '_' | '.'))
-        {
-            return Err(ProviderError::new(
-                "PROVIDER_INVALID_JSON",
-                "parse",
-                "Cline 用户 ID 含非法字符",
-                false,
-            ));
-        }
-
         let plan_payload = send_json(
             request,
             http,
@@ -3219,30 +2784,23 @@ impl QuotaProvider for ClineProvider {
             None,
             Some(auth_error),
         )?;
-        if cline_thresholds(&plan_payload).is_none() {
-            // 非 ClinePass 订阅账户 (无 entitlements 三窗口): 不发起台账拉取, 直接空态.
+        if cline_pass_entitled(&plan_payload) != Some(true) {
+            // 非 ClinePass 订阅账户 (无 entitlements 三窗口): 不查询额度, 直接空态.
             return Ok(None);
         }
 
-        let captured = captured_epoch(&request.captured_at);
-        let horizon = captured - CLINE_LEDGER_HORIZON_SECONDS;
-        let ledger_key = format!(
-            "cline-ledger/{}",
-            request.account_id.as_deref().unwrap_or("default")
-        );
-        let items = cline_ledger_fetch(
+        let limits_payload = send_json(
             request,
             http,
             cancellation,
+            "GET",
+            format!("{CLINE_API_BASE}/users/me/plan/usage-limits"),
             headers(),
-            auth_error,
-            user_id,
-            horizon,
-            cache,
-            &ledger_key,
+            None,
+            Some(auth_error),
         )?;
 
-        parse_cline_windows(&plan_payload, &items, captured)
+        parse_cline_usage_limits(&plan_payload, &limits_payload)
     }
 }
 
@@ -3268,19 +2826,17 @@ pub fn provider_for_app(app: &str) -> Option<Box<dyn QuotaProvider>> {
 mod tests {
     use super::{
         bounded_http_body, codex_service_id, extract_stepfun_app_id, extract_stepfun_device_id,
-        is_stepfun_global, is_stepfun_token_expired, parse_claude_usage, parse_cline_windows,
+        is_stepfun_global, is_stepfun_token_expired, parse_claude_usage, parse_cline_usage_limits,
         parse_codex_usage, parse_deepseek_balance, parse_grok_usage, parse_jev_models,
         parse_kimi_usage, parse_opencode_go_body, parse_stepfun_usage, parse_volcengine_usage,
         parse_zhipu_usage, reset_epoch, resolve_service_catalog, service_template,
         AccountDescriptor, CancellationToken, CatalogInput, ClineProvider, CodexProvider,
         DeepSeekProvider, HttpClient, HttpRequest, HttpResponse, JevProvider, KimiProvider,
         OpenCodeGoProvider, ProviderError, ProviderRequest, QuotaProvider, StepFunProvider,
-        UreqHttpClient, VolcEngineProvider, ZhipuProvider, CLINE_LEDGER_BACKFILL_MAX_PAGES,
-        CLINE_USAGE_MAX_PAGES, JEV_MODELS_URL, STEPFUN_GLOBAL_REFRESH_TOKEN_URL,
-        STEPFUN_GLOBAL_STEP_PLAN_RATE_LIMIT_URL, STEPFUN_REFRESH_TOKEN_URL,
-        STEPFUN_STEP_PLAN_RATE_LIMIT_URL,
+        UreqHttpClient, VolcEngineProvider, ZhipuProvider, JEV_MODELS_URL,
+        STEPFUN_GLOBAL_REFRESH_TOKEN_URL, STEPFUN_GLOBAL_STEP_PLAN_RATE_LIMIT_URL,
+        STEPFUN_REFRESH_TOKEN_URL, STEPFUN_STEP_PLAN_RATE_LIMIT_URL,
     };
-    use collector_runtime::LedgerCache;
     use collector_runtime::RuntimeLimits;
     use serde_json::{json, Value};
     use sha2::Digest;
@@ -4342,41 +3898,30 @@ mod tests {
         }
     }
 
+    /// 服务端权威端点 (C039): /users/me/plan + /users/me/plan/usage-limits 恒定 2 次 GET,
+    /// 百分比与重置时刻由服务端返回、Bruce 直读映射, 不做任何本地窗口建模。
     #[test]
-    fn cline_provider_aggregates_fixed_slot_and_rolling_windows() {
+    fn cline_provider_reads_server_usage_limits() {
         let secret = "sk-cline-fixture-key";
-        // 台账: 5h 槽 [10:00Z, 15:00Z) 内两单 ($1.00 + $2.00), 槽前 $0.50, 7d 内 $2.50, 30d 内 $10.00
-        let page_one = json!({
+        let usage_limits = json!({
             "data": {
-                "items": [
-                    {"createdAt": "2026-10-14T11:59:00Z", "costUsd": 100_000_000_i64},
-                    {"createdAt": "2026-10-14T11:00:00Z", "costUsd": 200_000_000_i64},
-                    {"createdAt": "2026-10-14T09:30:00Z", "costUsd": 50_000_000_i64},
-                    {"createdAt": "2026-10-13T00:00:00Z", "costUsd": 250_000_000_i64}
-                ],
-                "nextToken": "cursor+with=padding"
-            },
-            "success": true,
-        });
-        let page_two = json!({
-            "data": {
-                "items": [
-                    {"createdAt": "2026-09-20T00:00:00Z", "costUsd": 1_000_000_000_i64}
-                ],
-                "nextToken": null
+                "limits": [
+                    {"type": "five_hour", "percentUsed": 2,
+                     "resetsAt": "2026-10-16T05:51:46.262166334Z"},
+                    {"type": "weekly", "percentUsed": 34,
+                     "resetsAt": "2026-10-21T12:00:46.265101164Z"},
+                    {"type": "monthly", "percentUsed": 17,
+                     "resetsAt": "2026-11-13T12:00:46.267955904Z"},
+                ]
             },
             "success": true,
         });
         let http = FixtureHttp::new(vec![
             response(
-                r#"{"data":{"id":"usr-fixture","email":"fixture@example.com"},"success":true}"#,
-            ),
-            response(
                 &cline_plan_payload((1_000_000_000, 2_500_000_000, 5_000_000_000), None)
                     .to_string(),
             ),
-            response(&page_one.to_string()),
-            response(&page_two.to_string()),
+            response(&usage_limits.to_string()),
         ]);
         let result = ClineProvider
             .query(&cline_request(secret), &http, &CancellationToken::new())
@@ -4387,40 +3932,37 @@ mod tests {
         assert!(result["extra"].is_null());
         let windows = result["windows"].as_array().expect("windows array");
         assert_eq!(windows.len(), 3);
-        // 5h 固定槽 [10:00Z, 15:00Z): $3.00 / $10.00 = 30% (09:30Z 一单在槽外; 若误按滚动则为 35%)
+        // 服务端整数百分比原样透传
         assert_eq!(windows[0]["label"], "每 5 小时");
         assert_eq!(windows[0]["windowMinutes"], json!(300));
-        assert!((windows[0]["usedPercent"].as_f64().unwrap() - 30.0).abs() < 1e-6);
-        // 7d 窗口: $6.00 / $25.00 = 24%
+        assert!((windows[0]["usedPercent"].as_f64().unwrap() - 2.0).abs() < 1e-6);
         assert_eq!(windows[1]["windowMinutes"], json!(10080));
-        assert!((windows[1]["usedPercent"].as_f64().unwrap() - 24.0).abs() < 1e-6);
-        // 30d 窗口: $16.00 / $50.00 = 32%
+        assert!((windows[1]["usedPercent"].as_f64().unwrap() - 34.0).abs() < 1e-6);
         assert_eq!(windows[2]["windowMinutes"], json!(43200));
-        assert!((windows[2]["usedPercent"].as_f64().unwrap() - 32.0).abs() < 1e-6);
-        // 5h 重置时刻 = 槽终点 (15:00Z), 与台账无关
-        let slot_end = reset_epoch(Some(&json!("2026-10-14T15:00:00Z"))).unwrap();
-        assert_eq!(windows[0]["resetsAt"], json!(slot_end));
-        // 7d/30d 滚动窗口的滑出时刻 = 各自窗口内最早一单 + 窗口长度
-        let week_reset = reset_epoch(Some(&json!("2026-10-13T00:00:00Z"))).unwrap() + 604_800;
-        assert_eq!(windows[1]["resetsAt"], json!(week_reset));
-        let month_reset = reset_epoch(Some(&json!("2026-09-20T00:00:00Z"))).unwrap() + 2_592_000;
-        assert_eq!(windows[2]["resetsAt"], json!(month_reset));
-        // 请求序列与鉴权头
-        let requests = http.requests();
-        assert_eq!(requests.len(), 4);
-        assert_eq!(requests[0].url, "https://api.cline.bot/api/v1/users/me");
+        assert!((windows[2]["usedPercent"].as_f64().unwrap() - 17.0).abs() < 1e-6);
+        // 纳秒级 resetsAt 截断到秒 (chrono rfc3339 原生解析任意位小数)
         assert_eq!(
-            requests[1].url,
+            windows[0]["resetsAt"],
+            json!(reset_epoch(Some(&json!("2026-10-16T05:51:46.262166334Z"))).unwrap())
+        );
+        assert_eq!(
+            windows[1]["resetsAt"],
+            json!(reset_epoch(Some(&json!("2026-10-21T12:00:46.265101164Z"))).unwrap())
+        );
+        assert_eq!(
+            windows[2]["resetsAt"],
+            json!(reset_epoch(Some(&json!("2026-11-13T12:00:46.267955904Z"))).unwrap())
+        );
+        // 请求序列与鉴权头: 恒定 2 次 GET (plan → usage-limits), 不再请求 /users/me 与台账
+        let requests = http.requests();
+        assert_eq!(requests.len(), 2);
+        assert_eq!(
+            requests[0].url,
             "https://api.cline.bot/api/v1/users/me/plan"
         );
         assert_eq!(
-            requests[2].url,
-            "https://api.cline.bot/api/v1/users/usr-fixture/usages?limit=200"
-        );
-        // 游标必须百分号编码 ('+' 与 '=' 不得原样进入查询串)
-        assert_eq!(
-            requests[3].url,
-            "https://api.cline.bot/api/v1/users/usr-fixture/usages?limit=200&cursor=cursor%2Bwith%3Dpadding"
+            requests[1].url,
+            "https://api.cline.bot/api/v1/users/me/plan/usage-limits"
         );
         for request in requests {
             assert_eq!(request.headers["Authorization"], format!("Bearer {secret}"));
@@ -4462,10 +4004,7 @@ mod tests {
     fn cline_provider_returns_empty_without_pass_entitlements() {
         let mut plan = cline_plan_payload((1_000_000_000, 2_500_000_000, 5_000_000_000), None);
         plan["data"]["plan"]["entitlements"]["cline_pass"]["enabled"] = json!(false);
-        let http = FixtureHttp::new(vec![
-            response(r#"{"data":{"id":"usr-fixture"},"success":true}"#),
-            response(&plan.to_string()),
-        ]);
+        let http = FixtureHttp::new(vec![response(&plan.to_string())]);
         let result = ClineProvider
             .query(
                 &cline_request("sk-cline-fixture-key"),
@@ -4474,31 +4013,37 @@ mod tests {
             )
             .unwrap();
         assert!(result.is_none());
-        // 无三窗口额度时不得继续拉取台账
-        assert_eq!(http.requests().len(), 2);
+        // 非 ClinePass 账户不得继续查询 usage-limits
+        assert_eq!(http.requests().len(), 1);
     }
 
     #[test]
-    fn cline_window_boundaries_and_data_layer_navigation() {
+    fn cline_usage_limits_navigation_and_defense() {
         // 报文含 canceledAt/cancelAt (data 层), 但 C020 起不再产出任何生命周期注记.
         let plan = cline_plan_payload(
             (1_000_000_000, 2_500_000_000, 5_000_000_000),
             Some("2026-10-14T12:02:20Z"),
         );
-        let now = reset_epoch(Some(&json!("2026-10-14T12:00:00Z"))).unwrap();
-        // 5h 固定槽起点: 12:00Z 落在 [10:00Z, 15:00Z) (2026-10-14 当日网格)
-        let slot_start = reset_epoch(Some(&json!("2026-10-14T10:00:00Z"))).unwrap();
-        let items = vec![
-            // 恰在槽起点: 计入
-            json!({"createdAt": slot_start, "costUsd": 1_000_000_000_i64}),
-            // 槽起点前 1 秒: 剔除
-            json!({"createdAt": slot_start - 1, "costUsd": 1_000_000_000_i64}),
-        ];
-        let result = parse_cline_windows(&plan, &items, now).unwrap().unwrap();
+        // 未知窗口类型跳过; 缺 resetsAt 仅不展示倒计时; 百分比收敛在 0..=100.
+        let limits = json!({
+            "data": {
+                "limits": [
+                    {"type": "five_hour", "percentUsed": 250, "resetsAt": "2026-10-16T05:51:46Z"},
+                    {"type": "weekly", "percentUsed": 34},
+                    {"type": "daily_experimental", "percentUsed": 9,
+                     "resetsAt": "2026-10-17T00:00:00Z"}
+                ]
+            },
+            "success": true,
+        });
+        let result = parse_cline_usage_limits(&plan, &limits).unwrap().unwrap();
         let windows = result["windows"].as_array().expect("windows array");
-        assert_eq!(windows.len(), 3);
-        // 5h 固定槽: $10.00 / $10.00 = 100% (槽起点前 1 秒的一单被剔除)
+        assert_eq!(windows.len(), 2);
+        assert_eq!(windows[0]["label"], "每 5 小时");
         assert!((windows[0]["usedPercent"].as_f64().unwrap() - 100.0).abs() < 1e-6);
+        assert!(windows[1]
+            .get("resetsAt")
+            .is_some_and(|value| value.is_null()));
         assert!(
             result.get("extra").is_none(),
             "C020: 不得再注入生命周期注记"
@@ -4512,353 +4057,23 @@ mod tests {
             },
             "success": true
         });
-        assert!(parse_cline_windows(&missing, &items, now)
+        assert!(parse_cline_usage_limits(&missing, &limits)
             .unwrap()
             .is_none());
 
-        // 阈值随 plan 动态变化: 同一台账换更小限额后百分比随之变化 (无硬编码)
-        let tighter = cline_plan_payload((500_000_000, 2_500_000_000, 5_000_000_000), None);
-        let result = parse_cline_windows(&tighter, &items, now).unwrap().unwrap();
-        // 5h 窗口: $10.00 / $5.00 → 上限收敛在 100%
-        assert!((result["windows"][0]["usedPercent"].as_f64().unwrap() - 100.0).abs() < 1e-6);
+        // limits 缺失/形状异常 → 显式报错 (fail-visible, 不得静默渲染空窗口)
+        assert!(parse_cline_usage_limits(&plan, &json!({"success": true})).is_err());
+        assert!(parse_cline_usage_limits(
+            &plan,
+            &json!({"data": {"limits": "oops"}, "success": true})
+        )
+        .is_err());
     }
 
-    /// 5h 固定槽网格锁定: 槽位按 5 小时对齐 Unix 纪元, 槽外台账不计入 —— 与网页控制台口径一致.
-    /// (2026-10-15 当日网格为 01/06/11/16/21:00 UTC, 与网页 "Resets in 3h57m" 对账吻合.)
-    #[test]
-    fn cline_five_hour_window_is_a_fixed_grid_slot() {
-        let plan = cline_plan_payload((1_000_000_000, 2_500_000_000, 5_000_000_000), None);
-        // 实测锚定样本: now = 10-15T07:30Z → 槽 [06:00Z, 11:00Z), 重置 11:00Z
-        let now = reset_epoch(Some(&json!("2026-10-15T07:30:00Z"))).unwrap();
-        let items = vec![
-            json!({"createdAt": "2026-10-15T07:00:00Z", "costUsd": 100_000_000_i64}),
-            // 槽外 (上一槽尾部): 不得计入
-            json!({"createdAt": "2026-10-15T05:59:00Z", "costUsd": 500_000_000_i64}),
-        ];
-        let result = parse_cline_windows(&plan, &items, now).unwrap().unwrap();
-        let five_hour = &result["windows"][0];
-        // $1.00 / $10.00 = 10% (若误按滚动求和则为 60%)
-        assert!((five_hour["usedPercent"].as_f64().unwrap() - 10.0).abs() < 1e-6);
-        assert_eq!(
-            five_hour["resetsAt"],
-            json!(reset_epoch(Some(&json!("2026-10-15T11:00:00Z"))).unwrap())
-        );
-
-        // 网格稳定性: 跨槽时刻 now 推进到 11:00Z 后进入下一槽, 用量归零且重置时刻 +5h
-        let next_slot = reset_epoch(Some(&json!("2026-10-15T11:00:01Z"))).unwrap();
-        let result = parse_cline_windows(&plan, &items, next_slot)
-            .unwrap()
-            .unwrap();
-        let five_hour = &result["windows"][0];
-        assert!((five_hour["usedPercent"].as_f64().unwrap() - 0.0).abs() < 1e-6);
-        assert_eq!(
-            five_hour["resetsAt"],
-            json!(reset_epoch(Some(&json!("2026-10-15T16:00:00Z"))).unwrap())
-        );
-
-        // 空台账: 固定槽仍展示倒计时 (重置时刻与台账无关)
-        let result = parse_cline_windows(&plan, &[], now).unwrap().unwrap();
-        assert_eq!(
-            result["windows"][0]["resetsAt"],
-            json!(reset_epoch(Some(&json!("2026-10-15T11:00:00Z"))).unwrap())
-        );
-    }
-
-    /// 内存台账缓存 (测试替身): 记录 key → JSON 文本。
-    struct MemoryLedgerCache {
-        entries: std::sync::Mutex<std::collections::BTreeMap<String, String>>,
-    }
-
-    impl MemoryLedgerCache {
-        fn new() -> Self {
-            Self {
-                entries: std::sync::Mutex::new(std::collections::BTreeMap::new()),
-            }
-        }
-
-        fn seeded(items: Vec<Value>, cursor: Option<&str>, complete: bool) -> Self {
-            let cache = Self::new();
-            let payload = json!({
-                "version": 1,
-                "cursor": cursor,
-                "complete": complete,
-                "items": items,
-            })
-            .to_string();
-            cache.store("cline-ledger/default", &payload);
-            cache
-        }
-
-        fn state(&self) -> Option<Value> {
-            self.load("cline-ledger/default")
-                .and_then(|text| serde_json::from_str::<Value>(&text).ok())
-        }
-    }
-
-    impl collector_runtime::LedgerCache for MemoryLedgerCache {
-        fn load(&self, key: &str) -> Option<String> {
-            self.entries.lock().ok()?.get(key).cloned()
-        }
-
-        fn store(&self, key: &str, payload: &str) {
-            if let Ok(mut entries) = self.entries.lock() {
-                entries.insert(key.to_owned(), payload.to_owned());
-            }
-        }
-    }
-
-    fn cline_page(items: Vec<Value>, next: Option<&str>) -> String {
-        json!({
-            "data": { "items": items, "nextToken": next },
-            "success": true,
-        })
-        .to_string()
-    }
-
-    #[test]
-    fn cline_ledger_cache_merges_incremental_page_and_stops_when_caught_up() {
-        // 缓存已完成 + 含 11:00Z 一单 ($1.00); 线上第 1 页 = 新单 12:00Z ($2.00) + 已知单,
-        // 第 2 页只有已知单 → 追平即止 (稳态不再深翻)。
-        let cache = MemoryLedgerCache::seeded(
-            vec![
-                json!({"id": "known-1", "createdAt": "2026-10-14T11:00:00Z", "costUsd": 100_000_000}),
-            ],
-            None,
-            true,
-        );
-        let http = FixtureHttp::new(vec![
-            response(r#"{"data":{"id":"usr-fixture"},"success":true}"#),
-            response(
-                &cline_plan_payload((1_000_000_000, 2_500_000_000, 5_000_000_000), None)
-                    .to_string(),
-            ),
-            response(&cline_page(
-                vec![
-                    json!({"id": "new-1", "createdAt": "2026-10-14T12:00:00Z", "costUsd": 200_000_000}),
-                    json!({"id": "known-1", "createdAt": "2026-10-14T11:00:00Z", "costUsd": 100_000_000}),
-                ],
-                Some("cursor-1"),
-            )),
-            response(&cline_page(
-                vec![
-                    json!({"id": "known-1", "createdAt": "2026-10-14T11:00:00Z", "costUsd": 100_000_000}),
-                ],
-                Some("cursor-2"),
-            )),
-        ]);
-
-        let result = ClineProvider
-            .query_with_cache(
-                &cline_request("sk-cline-fixture-key"),
-                &http,
-                &CancellationToken::new(),
-                &cache,
-            )
-            .unwrap()
-            .unwrap();
-
-        // 5h 固定槽 [10:00Z, 15:00Z): 缓存 $1.00 + 新单 $2.00 = $3.00 / $10.00 = 30%
-        assert!((result["windows"][0]["usedPercent"].as_f64().unwrap() - 30.0).abs() < 1e-6);
-        assert_eq!(
-            http.requests().len(),
-            4,
-            "追平缓存后不得继续深翻 (me + plan + 2 页)"
-        );
-        let state = cache.state().unwrap();
-        assert_eq!(state["complete"], Value::Bool(true));
-        assert_eq!(
-            state["items"].as_array().unwrap().len(),
-            2,
-            "新增单应并入缓存"
-        );
-    }
-
-    #[test]
-    fn cline_ledger_cache_keeps_complete_ledger_across_runs() {
-        // 首次深翻被页数上限截断 → 记录断点; 次轮从断点续翻直至覆盖 horizon; 之后每轮仅追新。
-        let cache = MemoryLedgerCache::new();
-        let secret = "sk-cline-fixture-key";
-        let me = r#"{"data":{"id":"usr-fixture"},"success":true}"#;
-        let plan =
-            cline_plan_payload((1_000_000_000, 2_500_000_000, 5_000_000_000), None).to_string();
-        let fresh = cline_page(
-            vec![json!({"id": "r-1", "createdAt": "2026-10-14T11:00:00Z", "costUsd": 100_000_000})],
-            Some("cursor-1"),
-        );
-
-        // 轮 1: 无缓存 → 满页数上限, 记断点 (complete=false)
-        let mut first = vec![response(me), response(&plan)];
-        for _ in 0..CLINE_USAGE_MAX_PAGES {
-            first.push(response(&fresh));
-        }
-        let http = FixtureHttp::new(first);
-        ClineProvider
-            .query_with_cache(
-                &cline_request(secret),
-                &http,
-                &CancellationToken::new(),
-                &cache,
-            )
-            .unwrap()
-            .unwrap();
-        assert_eq!(http.requests().len(), 2 + CLINE_USAGE_MAX_PAGES);
-        let state = cache.state().unwrap();
-        assert_eq!(state["complete"], Value::Bool(false), "截断时不得标记完成");
-        assert_eq!(state["cursor"], Value::String("cursor-1".to_owned()));
-
-        // 轮 2: 追新 1 页即追平 → 从断点回溯, 直到触到 30 天前的单据 (complete=true)
-        // 回溯页必须逐页推进游标 (每页返回不同 nextToken): 每轮拉同一页的缺陷由此暴露。
-        let backfill_page = |index: usize| {
-            cline_page(
-                vec![
-                    json!({"id": format!("bf-{index}"), "createdAt": "2026-10-14T11:00:00Z", "costUsd": 1_000_000}),
-                ],
-                Some(&format!("bf-cursor-{index}")),
-            )
-        };
-        let mut second = vec![response(me), response(&plan), response(&fresh)];
-        for index in 0..CLINE_LEDGER_BACKFILL_MAX_PAGES - 1 {
-            second.push(response(&backfill_page(index)));
-        }
-        second.push(response(&cline_page(
-            vec![
-                json!({"id": "old-1", "createdAt": "2026-08-01T00:00:00Z", "costUsd": 100_000_000}),
-            ],
-            None,
-        )));
-        let http = FixtureHttp::new(second);
-        ClineProvider
-            .query_with_cache(
-                &cline_request(secret),
-                &http,
-                &CancellationToken::new(),
-                &cache,
-            )
-            .unwrap()
-            .unwrap();
-        assert_eq!(
-            http.requests().len(),
-            2 + 1 + CLINE_LEDGER_BACKFILL_MAX_PAGES,
-            "回溯应受单轮页数上限约束"
-        );
-        // 回溯请求必须携带逐页推进的游标 (而非每轮复用同一游标)。
-        let backfill_urls: Vec<String> = http
-            .requests()
-            .iter()
-            .map(|entry| entry.url.clone())
-            .filter(|url| url.contains("cursor=bf-cursor-"))
-            .collect();
-        assert_eq!(
-            backfill_urls.len(),
-            CLINE_LEDGER_BACKFILL_MAX_PAGES - 1,
-            "回溯游标应逐页推进: {backfill_urls:?}"
-        );
-        for (index, url) in backfill_urls.iter().enumerate() {
-            assert!(
-                url.contains(&format!("cursor=bf-cursor-{index}")),
-                "第 {index} 页游标错误: {url}"
-            );
-        }
-        // 回溯新增的单据并入台账 (horizon 内不计入任何窗口之外的丢弃)。
-        let state_after_backfill = cache.state().unwrap();
-        let ids: Vec<String> = state_after_backfill["items"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter_map(|item| item["id"].as_str())
-            .filter(|id| id.starts_with("bf-"))
-            .map(str::to_owned)
-            .collect();
-        assert_eq!(
-            ids.len(),
-            CLINE_LEDGER_BACKFILL_MAX_PAGES - 1,
-            "回溯页单据应并入: {ids:?}"
-        );
-        let state = cache.state().unwrap();
-        assert_eq!(
-            state["complete"],
-            Value::Bool(true),
-            "触到 horizon 后应标记完成"
-        );
-        assert_eq!(state["cursor"], Value::Null, "完成后不再保留断点");
-
-        // 轮 3: 已完成 + 追平 → 仅 1 页, 不再回溯
-        let http = FixtureHttp::new(vec![response(me), response(&plan), response(&fresh)]);
-        ClineProvider
-            .query_with_cache(
-                &cline_request(secret),
-                &http,
-                &CancellationToken::new(),
-                &cache,
-            )
-            .unwrap()
-            .unwrap();
-        assert_eq!(http.requests().len(), 3, "稳态每轮只拉追新页");
-    }
-
-    /// 台账翻页策略: 30 天早停 (倒序台账出现更早一单即收口) 与页数上限共同约束取数成本.
-    #[test]
-    fn cline_ledger_pagination_stops_at_horizon_and_respects_page_cap() {
-        let secret = "sk-cline-fixture-key";
-        let plan_response = response(
-            &cline_plan_payload((1_000_000_000, 2_500_000_000, 5_000_000_000), None).to_string(),
-        );
-        let me_response = response(r#"{"data":{"id":"usr-fixture"},"success":true}"#);
-
-        // 场景 1: 首屏即含 30 天前的单据 (倒序台账末尾) → 不再请求第二页.
-        let stale_page = json!({
-            "data": {
-                "items": [
-                    {"createdAt": "2026-10-14T11:00:00Z", "costUsd": 100_000_000_i64},
-                    {"createdAt": "2026-08-01T00:00:00Z", "costUsd": 100_000_000_i64}
-                ],
-                "nextToken": "cursor-1"
-            },
-            "success": true,
-        });
-        let http = FixtureHttp::new(vec![
-            me_response.clone(),
-            plan_response.clone(),
-            response(&stale_page.to_string()),
-        ]);
-        let result = ClineProvider
-            .query(&cline_request(secret), &http, &CancellationToken::new())
-            .unwrap()
-            .unwrap();
-        // 5h 固定槽 [10:00Z, 15:00Z): 11:00Z 一单计入 = 10%; 30 天前那单不计入任何窗口.
-        assert!((result["windows"][0]["usedPercent"].as_f64().unwrap() - 10.0).abs() < 1e-6);
-        assert_eq!(http.requests().len(), 3, "出现 30 天前单据后不得继续翻页");
-
-        // 场景 2: 全部单据都在 30 天内且游标不断 → 请求数收敛在页数上限 (含 me + plan).
-        let fresh_page = json!({
-            "data": {
-                "items": [{"createdAt": "2026-10-14T11:00:00Z", "costUsd": 100_000_000_i64}],
-                "nextToken": "cursor-next"
-            },
-            "success": true,
-        });
-        let mut responses = vec![me_response, plan_response];
-        for _ in 0..CLINE_USAGE_MAX_PAGES {
-            responses.push(response(&fresh_page.to_string()));
-        }
-        let http = FixtureHttp::new(responses);
-        let result = ClineProvider
-            .query(&cline_request(secret), &http, &CancellationToken::new())
-            .unwrap()
-            .unwrap();
-        assert_eq!(
-            http.requests().len(),
-            2 + CLINE_USAGE_MAX_PAGES,
-            "游标不断时必须收敛在页数上限"
-        );
-        // 12 页返回的是同一单据 (同 createdAt/模型/tokens/cost) → 按内容指纹去重只计一次 (C038):
-        // $1.00 / $10.00 = 10% (历史实现的逐页累加会把同一单据重复计入, 属过度计数)。
-        let expected = 10.0;
-        assert!((result["windows"][0]["usedPercent"].as_f64().unwrap() - expected).abs() < 1e-6);
-    }
-
-    /// 线上真实报文形态锁定 (2026-10-14 实测 `/users/me/plan` 响应, 标识已替换为 fixture):
-    /// 生命周期字段 (`canceledAt`) 位于 `data` 层, `displayName`/`entitlements` 位于 `data.plan` 层.
+    /// 线上真实报文形态锁定 (2026-10-14 实测 `/users/me/plan`、2026-10-16 实测
+    /// `/users/me/plan/usage-limits` 响应, 标识已替换为 fixture):
+    /// 生命周期字段 (`canceledAt`) 位于 `data` 层, `displayName`/`entitlements` 位于
+    /// `data.plan` 层; usage-limits 为 `data.limits[]` (type/percentUsed/纳秒级 resetsAt).
     #[test]
     fn cline_live_plan_payload_shape_is_supported() {
         let live_shaped: Value = serde_json::from_str(
@@ -4905,20 +4120,35 @@ mod tests {
             }"#,
         )
         .expect("live-shaped payload parses");
-        let now = reset_epoch(Some(&json!("2026-10-14T12:00:00Z"))).unwrap();
-        // 实测台账样本 (1e-8 USD 单位): $1.00 + $0.50 两单
-        let items = vec![
-            json!({"createdAt": "2026-10-14T11:59:00Z", "costUsd": 100_000_000_i64}),
-            json!({"createdAt": "2026-10-14T11:30:00Z", "costUsd": 50_000_000_i64}),
-        ];
-        let result = parse_cline_windows(&live_shaped, &items, now)
+        let live_limits: Value = serde_json::from_str(
+            r#"{
+              "data": {
+                "limits": [
+                  {"type": "five_hour", "percentUsed": 0,
+                   "resetsAt": "2026-10-16T05:51:46.262166334Z"},
+                  {"type": "weekly", "percentUsed": 34,
+                   "resetsAt": "2026-10-21T12:00:46.265101164Z"},
+                  {"type": "monthly", "percentUsed": 17,
+                   "resetsAt": "2026-11-13T12:00:46.267955904Z"}
+                ]
+              },
+              "success": true
+            }"#,
+        )
+        .expect("live-shaped usage-limits payload parses");
+        let result = parse_cline_usage_limits(&live_shaped, &live_limits)
             .unwrap()
             .unwrap();
         assert_eq!(result["plan"], "Cline Pass (Monthly)");
         let windows = result["windows"].as_array().expect("windows array");
         assert_eq!(windows.len(), 3);
-        // $1.50 / $10.00 = 15%
-        assert!((windows[0]["usedPercent"].as_f64().unwrap() - 15.0).abs() < 1e-6);
+        // 服务端整数百分比与纳秒 resetsAt 直读 (2026-10-16 与网页控制台逐字一致)
+        assert!((windows[1]["usedPercent"].as_f64().unwrap() - 34.0).abs() < 1e-6);
+        assert!((windows[2]["usedPercent"].as_f64().unwrap() - 17.0).abs() < 1e-6);
+        assert_eq!(
+            windows[0]["resetsAt"],
+            json!(reset_epoch(Some(&json!("2026-10-16T05:51:46.262166334Z"))).unwrap())
+        );
         // C020: 线上报文含 canceledAt 也不得产出任何注记 (extra 键不出现)
         assert!(result.get("extra").is_none());
     }

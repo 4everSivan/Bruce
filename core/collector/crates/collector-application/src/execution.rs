@@ -216,10 +216,7 @@ fn execute_one_uncached(context: &RunContext<'_>, plan: &AccountPlan) -> Service
         inner: context.http,
         requests: Arc::clone(&context.metrics),
     };
-    // C038: 走带缓存的查询路径 —— 需要跨运行台账的 provider (Cline 长窗口)
-    // 借此做增量追新与分次回溯; 其余 provider 的默认实现直接转发 query。
-    let result =
-        provider.query_with_cache(&request, &http, &context.cancellation, context.ledger_cache);
+    let result = provider.query(&request, &http, &context.cancellation);
     drop(network_permit);
     if let Err(error) = &result {
         diagnostics.push(error.diagnostic.clone());

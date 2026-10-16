@@ -28,11 +28,10 @@ use collector_local::{
     default_cache_root, scan_claude_cached, scan_codebuddy_cached,
     scan_codex_cached_with_cancellation, scan_grok_cached, scan_kimi_tree_cached,
     scan_opencode_cached, scan_pi_cached, scan_tree_cached_with_sink_with_cancellation,
-    scan_zcode_cached, CacheConfig, CachedScanError, FileLedgerCache, ScanStats, SourceScan,
-    SourceScanError,
+    scan_zcode_cached, CacheConfig, CachedScanError, ScanStats, SourceScan, SourceScanError,
 };
 use collector_provider::{HttpClient, ProviderError, UreqHttpClient};
-use collector_runtime::{BoundedQueue, LedgerCache, NoLedgerCache, RuntimeError, RuntimeLimits};
+use collector_runtime::{BoundedQueue, RuntimeError, RuntimeLimits};
 use context::RunContext;
 use execution::{execute_quota_accounts, QuotaExecution};
 use serde_json::{json, Value};
@@ -73,25 +72,10 @@ pub struct CollectionOutput {
 }
 
 /// Execute one collection run with production read-only adapters.
-///
-/// C038: 生产链路注入文件台账缓存 (落 collector 缓存根), 让需要跨运行台账的
-/// provider 能增量追新; fixture 通道 (`collect_agent_usage_with_dependencies`)
-/// 保持无外部 I/O 的契约, 传 `NoLedgerCache`。
 pub fn collect_agent_usage(request: &BridgeRequest) -> Result<CollectionOutput, Diagnostic> {
     let http = UreqHttpClient::default();
     let credentials = SystemCredentialSource::default();
-    let cache_root = request
-        .context
-        .get("home")
-        .and_then(Value::as_str)
-        .map(|home| default_cache_root(Path::new(home)));
-    match cache_root {
-        Some(root) => {
-            let ledger_cache = FileLedgerCache::new(root);
-            collect_agent_usage_with_cache(request, &http, &credentials, &ledger_cache)
-        }
-        None => collect_agent_usage_with_dependencies(request, &http, &credentials),
-    }
+    collect_agent_usage_with_dependencies(request, &http, &credentials)
 }
 
 /// Execute one collection run with injected HTTP and credential adapters.
@@ -102,21 +86,10 @@ pub fn collect_agent_usage_with_dependencies(
     http: &dyn HttpClient,
     credentials: &dyn CredentialSource,
 ) -> Result<CollectionOutput, Diagnostic> {
-    collect_agent_usage_with_cache(request, http, credentials, &NoLedgerCache)
-}
-
-/// 同 `collect_agent_usage_with_dependencies`, 但由调用方提供台账缓存实现 (C038)。
-pub fn collect_agent_usage_with_cache(
-    request: &BridgeRequest,
-    http: &dyn HttpClient,
-    credentials: &dyn CredentialSource,
-    ledger_cache: &dyn LedgerCache,
-) -> Result<CollectionOutput, Diagnostic> {
     collect_agent_usage_with_dependencies_inner(
         request,
         http,
         credentials,
-        ledger_cache,
         #[cfg(test)]
         None,
     )
@@ -126,18 +99,10 @@ fn collect_agent_usage_with_dependencies_inner(
     request: &BridgeRequest,
     http: &dyn HttpClient,
     credentials: &dyn CredentialSource,
-    ledger_cache: &dyn LedgerCache,
     #[cfg(test)] final_probe: Option<&mut dyn FnMut(&collector_runtime::CancellationToken)>,
 ) -> Result<CollectionOutput, Diagnostic> {
     let window = CollectionWindow::from_context(&request.context).map_err(window_diagnostic)?;
-    let context = RunContext::new(
-        request,
-        window,
-        http,
-        credentials,
-        RuntimeLimits::default(),
-        ledger_cache,
-    )?;
+    let context = RunContext::new(request, window, http, credentials, RuntimeLimits::default())?;
     if request
         .context
         .get("codexQuotaRetryOnly")
@@ -659,13 +624,7 @@ fn collect_agent_usage_with_final_probe<F>(
 where
     F: FnMut(&collector_runtime::CancellationToken),
 {
-    collect_agent_usage_with_dependencies_inner(
-        request,
-        http,
-        credentials,
-        &NoLedgerCache,
-        Some(&mut probe),
-    )
+    collect_agent_usage_with_dependencies_inner(request, http, credentials, Some(&mut probe))
 }
 
 fn collect_quota_usage(context: &RunContext<'_>) -> QuotaExecution {
