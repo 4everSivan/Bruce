@@ -63,7 +63,7 @@
   },
   "verification": {
     "result": "passed",
-    "run_id": "collector-workspace-20261016 + live-cline-ledger-20261016",
+    "run_id": "collector-workspace-20261016 + live-cline-ledger-20261016 + ci-38838432839",
     "user_quote": "确认，然后继续收尾所有问题不要再给我说还有需要做的事情",
     "signoff": "2026-10-16 用户会话内以「确认」确认 C036 收口并指示「继续收尾所有问题」, 据此对本轮收尾批次 (C037/C038) 代签; C038 前置证据: collector workspace 20 个测试目标全绿 (provider 新增缓存行为/游标推进/文件缓存用例) + clippy/fmt 干净 + Windows 侧回归 104 项全绿; 本机真实账户端到端实测: 2400 单截断复现 → 回溯收敛 3464 单覆盖 30 天 → 7d/30d 分子由 29.61%/14.8% 修正为 35.44%/17.72%, 稳态每轮 1 页约 1.3s; AI 代为签署并闭环归档 (单人维护约定: 直接提 main, 不打 tag)",
     "checks": [
@@ -71,7 +71,7 @@
         "item": "自动化测试",
         "true_if": "collector 全量测试全绿, 退出码 0, 含针对性回归用例",
         "false_if": "任何测试失败或回归未覆盖",
-        "evidence": "2026-10-16 实测: `cargo test --manifest-path core/collector/Cargo.toml --workspace` 20 个测试目标全绿 (0 fail); collector-provider cline 组 9 项通过 (新增 2 项缓存行为用例 + 1 项文件缓存用例 + 强化后的游标推进断言); `cargo clippy --workspace --all-targets -- -D warnings` 与 `cargo fmt --all -- --check` 均干净; Windows 侧回归 `cargo test --manifest-path apps/win/src-tauri/Cargo.toml` 104 项全绿 (依赖 collector crates)。",
+        "evidence": "2026-10-16 实测: `cargo test --manifest-path core/collector/Cargo.toml --workspace` 20 个测试目标全绿 (0 fail); collector-provider cline 组 9 项通过 (新增 2 项缓存行为用例 + 1 项文件缓存用例 + 强化后的游标推进断言); `cargo clippy --workspace --all-targets -- -D warnings` 与 `cargo fmt --all -- --check` 均干净; Windows 侧回归 `cargo test --manifest-path apps/win/src-tauri/Cargo.toml` 104 项全绿 (依赖 collector crates)。 CI 回填 (2026-10-16): run 38838432839 (head 89cbeed) 三作业全绿 —— 「本地验证套件 (macOS 26)」(verify-local.sh: Rust + 全部 Swift Harness + 双端对拍) 与 「Rust 验证 (Windows)」(windows-latest: collector workspace + viewmodel + src-tauri, 含本次改动) 均为 success, 「构建测试版 App」亦 success; 「发布」类作业在非 tag run 中按设计 skipped。",
         "result": true
       },
       {
