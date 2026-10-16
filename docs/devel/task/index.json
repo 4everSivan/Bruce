@@ -108,7 +108,7 @@
       "topic": "SubscriptionQuota",
       "milestone": "M2-Jev适配",
       "depends_on": [],
-      "file": "docs/devel/task/T05.json",
+      "file": "docs/archive/0.12.0/task/T05.json",
       "branch_note": "直接在 main 开发并保证全量 Harness 与测试绿灯"
     },
     "T06": {
@@ -118,7 +118,7 @@
       "topic": "SubscriptionQuota",
       "milestone": "M3-ClinePass适配",
       "depends_on": [],
-      "file": "docs/devel/task/T06.json",
+      "file": "docs/archive/0.12.0/task/T06.json",
       "branch_note": "2026-10-14 用户确认方案后按 AGENTS.md 第五节建专属特性分支"
     }
   }

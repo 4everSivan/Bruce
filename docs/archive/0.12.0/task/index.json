@@ -1,0 +1,21 @@
+{
+  "kind": "bruce-archive-task-snapshot",
+  "release": "0.12.0",
+  "archived_at": "2026-10-16",
+  "status": "frozen",
+  "note": "本次封箱为该归档 SOP 的首次执行: 除本版本周期闭环的卡外, 也收拢了此前已发版但未归档的 closed 变更卡 (C015/C016/C017/C018 分别属 v0.11.3/0.11.4/0.11.5 周期) 与 completed 任务卡; 每张卡自身声明的 version 原样保留, 未按发版版本重新归属。目录冻结只读, 卡片内容一字未改。",
+  "tasks": {
+    "T05": {
+      "title": "TypeSafe Jev 订阅额度监控、API Key 凭据管理与多模型计费全链路适配",
+      "status": "completed",
+      "milestone": "M2-Jev适配",
+      "file": "docs/archive/0.12.0/task/T05.json"
+    },
+    "T06": {
+      "title": "Cline / ClinePass 订阅额度监控全链路适配（三窗口台账 + 账户计划 API + 参考计价）",
+      "status": "completed",
+      "milestone": "M3-ClinePass适配",
+      "file": "docs/archive/0.12.0/task/T06.json"
+    }
+  }
+}

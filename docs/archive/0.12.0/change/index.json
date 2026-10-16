@@ -1,0 +1,225 @@
+{
+  "kind": "bruce-archive-change-snapshot",
+  "release": "0.12.0",
+  "archived_at": "2026-10-16",
+  "status": "frozen",
+  "note": "本次封箱为该归档 SOP 的首次执行: 除本版本周期闭环的卡外, 也收拢了此前已发版但未归档的 closed 变更卡 (C015/C016/C017/C018 分别属 v0.11.3/0.11.4/0.11.5 周期) 与 completed 任务卡; 每张卡自身声明的 version 原样保留, 未按发版版本重新归属。目录冻结只读, 卡片内容一字未改。",
+  "cards": {
+    "C015": {
+      "title": "修复 Windows 设置窗口打开白屏缺陷并恢复静态预建生命周期",
+      "type": "Fix",
+      "status": "closed",
+      "topic": "WindowsCompat",
+      "version": "0.11.3",
+      "file": "docs/archive/0.12.0/change/C015.json"
+    },
+    "C016": {
+      "title": "修复 Windows 任务栏托盘弹出位置偏离与多分辨率/DPI 下仪表盘高度溢出截断缺陷",
+      "type": "Fix",
+      "status": "closed",
+      "topic": "WindowsCompat",
+      "version": "0.11.4",
+      "file": "docs/archive/0.12.0/change/C016.json"
+    },
+    "C017": {
+      "title": "精简 Jev 仪表盘卡片：移除伪造速率进度条与模型列表，支持设置中配置余额并对齐 DeepSeek 纯净规范",
+      "type": "Fix",
+      "status": "closed",
+      "topic": "SubscriptionQuota",
+      "version": "0.11.5",
+      "file": "docs/archive/0.12.0/change/C017.json"
+    },
+    "C018": {
+      "title": "统一余额型订阅仪表盘展示规范为双槽对称流 (方案 B) 并暂时屏蔽 Jev",
+      "type": "Feature",
+      "status": "closed",
+      "topic": "SubscriptionQuota",
+      "version": "0.11.5",
+      "file": "docs/archive/0.12.0/change/C018.json"
+    },
+    "C019": {
+      "title": "修复添加未配置的订阅 Provider 无法移除的死锁态：移除入口门禁改按「已添加」语义",
+      "type": "BugFix",
+      "status": "closed",
+      "topic": "SubscriptionQuota",
+      "version": "0.12.0+",
+      "file": "docs/archive/0.12.0/change/C019.json"
+    },
+    "C020": {
+      "title": "订阅用量仪表盘批量调整：Cline 去「已取消」注记、移除 DeepSeek 月度统计、新增订阅即时生效并仅展示验证通过项",
+      "type": "Enhancement",
+      "status": "closed",
+      "topic": "SubscriptionQuota",
+      "version": "0.12.0+",
+      "file": "docs/archive/0.12.0/change/C020.json"
+    },
+    "C021": {
+      "title": "移植 perf/runtime-cpu-optimization 性能工作流至当前分层：源级缓存、取消栅栏与 widget 动画门控",
+      "type": "Refactor",
+      "status": "closed",
+      "topic": "TokenUsage",
+      "version": "0.12.0+",
+      "file": "docs/archive/0.12.0/change/C021.json"
+    },
+    "C022": {
+      "title": "修复 SQLite 源级缓存在 Windows 把「库文件替换」误判为「追加」导致返回陈旧用量",
+      "type": "BugFix",
+      "status": "closed",
+      "topic": "TokenUsage",
+      "version": "0.12.0+",
+      "file": "docs/archive/0.12.0/change/C022.json"
+    },
+    "C023": {
+      "title": "修复 Codex 令牌管理器 Harness 的时序 flake：保存失败注入由计数配额改为确定性开关并自证失败路径",
+      "type": "BugFix",
+      "status": "closed",
+      "topic": "SubscriptionQuota",
+      "version": "0.12.0+",
+      "file": "docs/archive/0.12.0/change/C023.json"
+    },
+    "C024": {
+      "title": "仪表盘展示调整：智谱更名 Z.ai，套餐名标签（plus/lite/Cline Pass）由仪表盘移入设置中心订阅额度",
+      "type": "Enhancement",
+      "status": "closed",
+      "topic": "SubscriptionQuota",
+      "version": "0.12.0+",
+      "file": "docs/archive/0.12.0/change/C024.json"
+    },
+    "C025": {
+      "title": "修复 Cline 额度口径：5h 由滚动求和改为固定 5 小时槽，台账翻页取数收敛（7d/30d 不再截断）",
+      "type": "BugFix",
+      "status": "closed",
+      "topic": "SubscriptionQuota",
+      "version": "0.12.0+",
+      "file": "docs/archive/0.12.0/change/C025.json"
+    },
+    "C026": {
+      "title": "订阅用量卡徽章由品牌色首字母字母标升级为品牌图形 (多图标库取材 + Z.ai 官方 Z 字形, 补齐 Cline 品牌色)",
+      "type": "Enhancement",
+      "status": "closed",
+      "topic": "SubscriptionQuota",
+      "version": "0.12.0+",
+      "file": "docs/archive/0.12.0/change/C026.json"
+    },
+    "C027": {
+      "title": "收敛双端渲染层漂移：订阅卡单账号段重复渲染与 note/状态门控、多账号折叠态、余额双槽、收起态峰值窗口、hero 档位渐变、模型分布「其他」行",
+      "type": "BugFix",
+      "status": "closed",
+      "topic": "WindowsCompat",
+      "version": "0.12.0+",
+      "file": "docs/archive/0.12.0/change/C027.json"
+    },
+    "C028": {
+      "title": "补齐 Windows 侧 Cline 支持并镜像 mac 的 Jev 屏蔽：settings PROVIDERS、视图模型 provider 归一化与展示名、runtime provider_id 归一化",
+      "type": "Fix",
+      "status": "closed",
+      "topic": "WindowsCompat",
+      "version": "0.12.0+",
+      "file": "docs/archive/0.12.0/change/C028.json"
+    },
+    "C029": {
+      "title": "修正 C027 在 Nothing 主题引入的 hero 渐变回归，并补齐 Windows 侧无法直接验证的两处盲区（真实浏览器渲染自检 + panel_json 端到端 provider 过滤回归）",
+      "type": "BugFix",
+      "status": "closed",
+      "topic": "WindowsCompat",
+      "version": "0.12.0+",
+      "file": "docs/archive/0.12.0/change/C029.json"
+    },
+    "C030": {
+      "title": "Windows 仪表盘 P2 对标：Agent 用量卡行级展开与分组明细形态、24 点折线、柱顶总量、收起态迷你折线、LIVE 标签、卡片背景纹样与折叠态拖拽排序",
+      "type": "Enhancement",
+      "status": "closed",
+      "topic": "WindowsCompat",
+      "version": "0.12.0+",
+      "file": "docs/archive/0.12.0/change/C030.json"
+    },
+    "C031": {
+      "title": "Windows 设置中心 P3 对标（一）：订阅额度行式化（品牌徽章/凭证形态/套餐标签/状态尾件/行内启用开关）、授权页 mac 语义、通用页补缺、维护页清理与脱敏诊断预览",
+      "type": "Enhancement",
+      "status": "closed",
+      "topic": "WindowsCompat",
+      "version": "0.12.0+",
+      "file": "docs/archive/0.12.0/change/C031.json"
+    },
+    "C032": {
+      "title": "Windows 设置中心 P3 对标（二）：模型计费页（今日费用总览/搜索/三态筛选/8 列表格/逐模型校准/config.json 预览）与导出能力（账单 CSV + 脱敏诊断报告）",
+      "type": "Enhancement",
+      "status": "closed",
+      "topic": "WindowsCompat",
+      "version": "0.12.0+",
+      "file": "docs/archive/0.12.0/change/C032.json"
+    },
+    "C033": {
+      "title": "收口 P3 残余差异：模型计费表补齐「厂商」列（镜像 mac 目录行集与元数据）并接入原生保存对话框（导出位置可选，取消/不可用有回落）",
+      "type": "Enhancement",
+      "status": "closed",
+      "topic": "WindowsCompat",
+      "version": "0.12.0+",
+      "file": "docs/archive/0.12.0/change/C033.json"
+    },
+    "C034": {
+      "title": "Nothing 主题形态补齐：订阅量条改 24 段方角、14 日柱改 3×8 点阵（agent 绿阶分段落槽）、日总量改 hover 显示",
+      "type": "Enhancement",
+      "status": "closed",
+      "topic": "WindowsCompat",
+      "version": "0.12.0+",
+      "file": "docs/archive/0.12.0/change/C034.json"
+    },
+    "C035": {
+      "title": "看板面板几何改为「任务栏四方向统一模型」：判边/贴边/对齐三段统一，并建立 Demo 几何镜像与 Rust 实现的双向 fixture 对拍",
+      "type": "BugFix",
+      "status": "closed",
+      "topic": "WindowsCompat",
+      "version": "0.12.0+",
+      "file": "docs/archive/0.12.0/change/C035.json"
+    },
+    "C036": {
+      "title": "修复 Windows 发布作业三处缺陷（release 列表分页+展平、tauri-cli 两端钉版、资产重跑幂等），发布脚本抽出并纳入 CI AST 语法门禁",
+      "type": "BugFix",
+      "status": "closed",
+      "topic": "WindowsCompat",
+      "version": "0.12.0+",
+      "file": "docs/archive/0.12.0/change/C036.json"
+    },
+    "C037": {
+      "title": "额度窗口边界唤醒（刷新不得跨过未来重置时刻，含防风暴三道防线）+ 过期窗口文案改「刷新中」（mac/win 双端）",
+      "type": "BugFix",
+      "status": "closed",
+      "topic": "SubscriptionQuota",
+      "version": "0.12.0+",
+      "file": "docs/archive/0.12.0/change/C037.json"
+    },
+    "C038": {
+      "title": "Cline 逐单台账跨运行增量缓存：追新 + 分次回溯收敛到 30 天 horizon，长窗口分子不再被单轮页数上限截断",
+      "type": "BugFix",
+      "status": "closed",
+      "topic": "SubscriptionQuota",
+      "version": "0.12.0+",
+      "file": "docs/archive/0.12.0/change/C038.json"
+    },
+    "C039": {
+      "title": "Cline 三窗口改为直读网页同源服务端权威端点 /users/me/plan/usage-limits，删除台账翻页、窗口建模与 LedgerCache 脚手架",
+      "type": "BugFix",
+      "status": "closed",
+      "topic": "SubscriptionQuota",
+      "version": "0.12.0+",
+      "file": "docs/archive/0.12.0/change/C039.json"
+    },
+    "C040": {
+      "title": "修复 SQLite 增量缓存窗口身份错位静默清空历史 base：身份不一致或 base 解码失败一律回退全量重建",
+      "type": "BugFix",
+      "status": "closed",
+      "topic": "TokenUsage",
+      "version": "0.12.0+",
+      "file": "docs/archive/0.12.0/change/C040.json"
+    },
+    "C041": {
+      "title": "修复 ZCode 万行截断被误报为故障致菜单栏红圈：SQLite 行上限 1 万→3 万、截断降级为信息级诊断（不触发 partial）",
+      "type": "BugFix",
+      "status": "closed",
+      "topic": "TokenUsage",
+      "version": "0.12.0+",
+      "file": "docs/archive/0.12.0/change/C041.json"
+    }
+  }
+}
