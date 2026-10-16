@@ -1,0 +1,91 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C040",
+  "title": "修复 SQLite 增量缓存窗口身份错位静默清空历史 base：身份不一致或 base 解码失败一律回退全量重建",
+  "type": "BugFix",
+  "status": "closed",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用)",
+  "is_hotfix": true,
+  "target": {
+    "module": "core/collector/crates/collector-local/src/sqlite_cache.rs (scan_sqlite_cached 增量追加路径)",
+    "component": "本机会话采集: SQLite 源 (zcode 等) 增量缓存正确性",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "用户反馈 ZCode 今日 token 统计大幅偏低 (cline-pass/deepseek-v4.1-flash 今日真实 99.7M+ 完全不可见, 今日全量 134M 只显示约 1-4.5M)。对账实证: ZCode DB (model_usage, 今日 527 行) 与全量重建 (清空缓存后 read_full) 均正确 (今日 139M, 10 月 1.36B cline), 而增量缓存条目的 base 几乎为空 (10 月仅 4.5M) 且 cursor (rowid 22196) 已越过今日全部行 —— **增量游标照常前推但数据从未并入 base**。根因在 `scan_sqlite_cached` 追加路径: 缓存身份 (窗口长度/时区/今日, cache_identity_matches) 不匹配时不命中缓存但**仍允许增量追加**, 旧条目的 days 索引在新窗口 day_list 下有两种败坏形态: (a) 越界 → `to_domain` 返 None 被 `unwrap_or_else(empty_contribution)` **静默替换为空 base**, 历史清零; (b) 短条目读长窗口时索引恰在界内 → 解码\"成功\"但**数据整体平移到错误日期** (实锤: 今日桶 139M 被挪到 13 天前, 面板 today 只剩增量 12.3M 而 models_today 151M)。两形态写回后游标照常前推, 无自愈。触发现场 (2026-10-16 10:38): C039 排查的端到端探测脚本经 Bruce-collector 直跑时 context 未带 days/timezone, `from_context` 默认 **days=14/timezone=UTC**, 与 app 实际 **182 天/本机时区** 错位 —— 探测脚本是诱因, 但缺陷本身潜伏: 任何窗口/时区配置变更 (含合法的窗口长度调整) 都会触发同一路径。**C039 (Cline 额度卡) 的改动与验证不受本缺陷影响** (额度卡走网络 provider, 不经过本地 SQLite 缓存)。",
+  "precheck": {
+    "description": "预检: 复现「增量 base 被清空且游标照常前推」与「全量重建数据正确」的事实, 确认缺陷与触发链",
+    "command": "python3 -c \"import sqlite3,os,datetime;con=sqlite3.connect('file:'+os.path.expanduser('~/.zcode/cli/db/db.sqlite')+'?mode=ro',uri=True);t0=datetime.datetime.combine(datetime.date.today(),datetime.time.min).timestamp()*1000;print('DB 今日:',con.execute('SELECT COUNT(*),SUM(computed_total_tokens) FROM model_usage WHERE started_at>=?',(t0,)).fetchone())\"; python3 -c \"import json;e=json.load(open('/tmp/zcode-sqlite-cache-backup.json'));print('破坏时缓存: window_days=',e['window_days'],'models_today=',e['contribution']['models_today'],'cursor=',e['cursor'])\"",
+    "expected": "DB 今日真实约 134M+ (cline-pass 99.7M); 破坏时的缓存条目 base 仅 2.4-4.5M 且无 cline 模型, cursor 已越过今日行; 清空缓存全量重建后今日 139M/10 月 1.36B 正确",
+    "is_completed": true,
+    "evidence": "2026-10-16 11:00-11:20Z 实测: (1) DB 直查今日 = 527 行 / 134.1M (cline-pass/deepseek-v4.1-flash 261 单 99.68M + GLM-5.3-Flash 27.7M + glm-5.3 6.7M); (2) app artifact (10:56) zcode today = 0.99M 仅 GLM-5.3-Flash; (3) 备份的破坏态缓存 (cursor rowid 22196 = 今日 11:07 行, window_days=182) models_today 仅 GLM 4.49M、10 月无 cline; (4) 移除缓存强制 read_full 后立即恢复: 今日 139.0M (cline-pass 99.78M), modelMonths 2026-10 含 cline-pass 1.357B —— 全量正确、增量 base 被清空, 缺陷闭环实锤。"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护已在 main 实施"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "sqlite_cache.rs 增量追加路径 (防线一)",
+      "before": "身份不匹配 (窗口长度/时区/今日变化) 时不命中缓存, 但只要签名判追加安全就继续 read_since 并把旧条目 base 合入 —— 旧 days 索引在新窗口 day_list 下错位/越界",
+      "after": "增量追加以 cache_identity_matches 全通过为前置条件; 身份不匹配一律落到 read_full 全量重建 (索引按新窗口重编, 数据完整)",
+      "impact": "窗口/时区配置变更 (含探测脚本默认参数) 不再产生跨窗口合并; 代价是此类变更后首轮全量重建 (与 C021 源级缓存语义一致)"
+    },
+    {
+      "scope": "sqlite_cache.rs 增量追加路径 (防线二)",
+      "before": "追加时 base 取 `to_domain(&config.window).unwrap_or_else(empty_contribution)` —— 解码失败静默以空 base 合并, 历史清零且游标前推, 无自愈",
+      "after": "base 解码失败 (None) 不再落地: 跳过追加、落入全量重建; `empty_contribution` 仅保留给 delta 侧真正的空态语义",
+      "impact": "防御纵深: 即使未来出现新的解码失败形态, 后果是「多一次全量重建」而非「历史静默清零」"
+    },
+    {
+      "scope": "回归测试 (sources.rs)",
+      "before": "无跨窗口身份错位用例",
+      "after": "新增 zcode_sqlite_cache_window_mismatch_rebuilds_instead_of_empty_append: 长窗口 (30 天) 条目 + DB 增长 + 换 3 天窗口扫描 → 断言结果与同窗口冷扫逐字段一致且 cache_appends=0; 已做红绿验证 (stash 修复后该用例在旧代码上失败, 断言「窗口身份错位必须回退全量重建」)。防线二 (base 解码失败回退重建) 在防线一生效后结构上不可达, 以代码守卫 + 注释固化",
+      "impact": "缺陷形态被用例锁死"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": true,
+    "rule_diff": {
+      "before": "§6.3 增量缓存机制未约定「缓存身份跨窗口变更」的处理; scan_sqlite_cached 隐含行为是身份不匹配仍可增量追加且解码失败落空 base",
+      "after": "红线新增: 增量追加必须以缓存身份 (窗口长度/时区/今日) 全匹配为前置; base 解码失败一律回退全量重建, 严禁以空 base 合并后推进游标 (历史清零无自愈)"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "user_quote": "这个问题确认收口",
+    "signoff": "2026-10-16 用户会话内确认 CC040 收口 (原话: 「这个问题确认收口」), AI 代为签署并闭环",
+    "checks": [
+      {
+        "item": "回归用例红绿验证",
+        "true_if": "跨窗口身份错位用例在修复后通过、在旧代码上失败 (stash 验证), 双方向 (长条目×短窗口 / 短条目×长窗口) 均覆盖",
+        "false_if": "用例在旧代码上仍然通过, 或仅覆盖单方向",
+        "evidence": "zcode_sqlite_cache_window_mismatch_rebuilds_instead_of_empty_append: 修复后 2 passed (含反方向 scramble 断言); git stash 修复后单跑 = FAILED, 断言 '窗口身份错位必须回退全量重建, 不得以空 base 增量合并' —— 红绿闭环",
+        "result": true
+      },
+      {
+        "item": "全量自动化验证",
+        "true_if": "zsh scripts/verify-local.sh 退出码 0 (Rust 全量 + fixture 扫描 + Swift 全部 Harness + 面板双端对拍)",
+        "false_if": "任一环节失败或告警",
+        "evidence": "verify-local 退出码 0, 末行 'Bruce 本地验证全部通过' (日志 local/c040-verify.log): collector workspace 20 个测试目标全绿 (collector-local 41 项含新回归), clippy -D warnings 零告警, fmt 无差异; Swift 全部 Harness 通过 (OnboardingCore 165 / PanelViewModel 53 / Refresh scheduler 84 等), Panel 双端对拍 3/3",
+        "result": true
+      },
+      {
+        "item": "应用级确证 (数据恢复与一致性)",
+        "true_if": "重打包安装并重启后, 应用自身 artifact 的 zcode today 与 ΣtodayModels 逐 token 一致, 且与 ZCode DB 直查真值吻合 (cline-pass 今日模型可见)",
+        "false_if": "today 与模型行仍不一致, 或 cline-pass 模型行缺失",
+        "evidence": "Universal 包重打包安装 (local/c040-package.log, exit 0) + 强制重启后: artifact (generatedAt 2026-10-16T12:03:26+08:00) zcode today.total = 163,747,628 == ΣtodayModels = 163,747,628 ✓, 其中 cline-pass/deepseek-v4.1-flash = 99,783,779 (用户口径「今天花了 100M+」恢复可见), GLM-5.3-Flash 47,672,923, glm-5.3 16,290,926; DB 直查真值同刻 637 行 163.64M (差异为两读数间新增行与 total 口径尾差); 破坏态备份存 /tmp/zcode-sqlite-cache-scrambled-backup.json 备查",
+        "result": true
+      }
+    ]
+  }
+}

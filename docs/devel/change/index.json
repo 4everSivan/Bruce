@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-index.v1.json",
   "version": "1.0",
-  "updated_at": "2026-10-15",
+  "updated_at": "2026-10-16",
   "topics": {
     "SystemOverview": {
       "design_doc": "docs/devel/design/00-系统总体设计.md",
@@ -409,6 +409,24 @@
       "topic": "SubscriptionQuota",
       "version": "0.12.0+",
       "file": "docs/devel/change/C038.json"
+    },
+    "C039": {
+      "title": "Cline 三窗口改为直读网页同源服务端权威端点 /users/me/plan/usage-limits，删除台账翻页、窗口建模与 LedgerCache 脚手架",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "SubscriptionQuota",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C039.json"
+    },
+    "C040": {
+      "title": "修复 SQLite 增量缓存窗口身份错位静默清空历史 base：身份不一致或 base 解码失败一律回退全量重建",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "TokenUsage",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C040.json"
     }
   }
 }

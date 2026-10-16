@@ -4144,6 +4144,103 @@ mod tests {
         fs::remove_dir_all(root).ok();
     }
 
+    /// C040 回归: 跨窗口身份错位的缓存条目必须回退全量重建, 严禁以空 base 增量合并
+    /// (该路径曾把整个历史清空而游标照常前推, 今日用量只剩最后一轮 delta)。
+    #[test]
+    fn zcode_sqlite_cache_window_mismatch_rebuilds_instead_of_empty_append() {
+        use rusqlite::Connection;
+
+        let root = temp_root("zcode-cache-window-mismatch");
+        let db_path = root.join("zcode.db");
+        let cache_root = root.join("cache");
+        let base = 1_785_211_200_000_i64; // 2026-07-28T12:00+08, 与 window() 锚点一致
+        let connection = Connection::open(&db_path).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE session (id text primary key, directory text, task_type text);
+                 CREATE TABLE model_usage (
+                    started_at integer not null, model_id text,
+                    input_tokens integer, output_tokens integer, reasoning_tokens integer,
+                    cache_creation_input_tokens integer, cache_read_input_tokens integer,
+                    session_id text
+                 );",
+            )
+            .unwrap();
+        let insert = |connection: &Connection, timestamp: i64, input: i64| {
+            connection
+                .execute(
+                    "INSERT INTO model_usage (started_at, model_id, input_tokens, output_tokens) \
+                     VALUES (?1, 'glm', ?2, 3)",
+                    rusqlite::params![timestamp, input],
+                )
+                .unwrap();
+        };
+        // 一单在 3 天窗口之外 (30 天窗口之内), 一单在 3 天窗口之内。
+        insert(&connection, base - 3 * 86_400_000, 5);
+        insert(&connection, base - 1_800_000, 7);
+        drop(connection);
+
+        // 长窗口 (30 天) 先扫: 写下 window_days=30 的条目, cursor 越过全部行。
+        let long_context: Map<String, Value> = serde_json::from_value(json!({
+            "now": "2026-07-28T12:00:00+08:00",
+            "timezone": "Asia/Shanghai",
+            "days": 30
+        }))
+        .unwrap();
+        let long_window = CollectionWindow::from_context(&long_context).unwrap();
+        let seeded = scan_zcode_cached(
+            &db_path,
+            &long_window,
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        assert!(seeded.found);
+
+        // DB 增长 (签名变化) 后换 3 天窗口扫描 (身份错位):
+        // 旧行为 = to_domain 越界 → 空 base + 仅增量 → 窗口内旧行丢失;
+        // 新行为 = 身份不匹配回退全量重建, 结果与同窗口冷扫逐字段一致。
+        let connection = Connection::open(&db_path).unwrap();
+        insert(&connection, base - 900_000, 11);
+        drop(connection);
+
+        let mismatched =
+            scan_zcode_cached(&db_path, &window(), &cache_root, &CancellationToken::new()).unwrap();
+        let expected = scan_zcode(&db_path, &window());
+        assert_eq!(
+            mismatched.contribution, expected.contribution,
+            "窗口身份错位必须回退全量重建, 不得以空 base 增量合并"
+        );
+        assert_eq!(
+            mismatched.stats.cache_appends, 0,
+            "身份错位时不得走增量追加路径"
+        );
+
+        // 反方向同样回退重建: 短窗口 (3 天) 条目的天索引在长窗口 (30 天) day_list 下
+        // 恰好全部在界内, 跨窗口合并会"成功"解码但把数据平移到错误的日期 (scramble)。
+        let connection = Connection::open(&db_path).unwrap();
+        insert(&connection, base - 600_000, 13);
+        drop(connection);
+
+        let reverse = scan_zcode_cached(
+            &db_path,
+            &long_window,
+            &cache_root,
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        let expected_long = scan_zcode(&db_path, &long_window);
+        assert_eq!(
+            reverse.contribution, expected_long.contribution,
+            "反方向窗口错位同样必须回退全量重建, 不得按错误日期合并"
+        );
+        assert_eq!(
+            reverse.stats.cache_appends, 0,
+            "反方向身份错位同样不得走增量追加"
+        );
+        fs::remove_dir_all(root).ok();
+    }
+
     #[test]
     fn zcode_sqlite_cache_reuses_unchanged_and_reads_append() {
         use rusqlite::Connection;

@@ -239,9 +239,8 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
     };
 
     if let Some(entry) = cached.as_ref() {
-        if cache_identity_matches(entry, config, &schema_fingerprint)
-            && entry.signature == signature
-        {
+        let identity_matches = cache_identity_matches(entry, config, &schema_fingerprint);
+        if identity_matches && entry.signature == signature {
             if let Some(contribution) = entry.contribution.to_domain(&config.window) {
                 stats.cache_hits = stats.cache_hits.saturating_add(1);
                 return Ok(SourceScan {
@@ -255,10 +254,28 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
         }
         stats.cache_invalidations = stats.cache_invalidations.saturating_add(1);
 
-        if entry.append_safe
+        // C040 防线一: 增量追加以缓存身份全匹配为前置 (窗口长度/时区/今日)。
+        // 身份错位 (窗口长度或时区配置变更) 时, 旧条目的 days 索引在新窗口
+        // day_list 下会整体平移到错误的日期 (短条目读长窗口时恰好全部在界内,
+        // 解码"成功"但日期是错的), 或越界导致解码失败 —— 两种形态都严禁跨窗口
+        // 增量合并, 一律整体回退全量重建。
+        // C040 防线二: 同身份下 base 解码失败 (条目结构损坏) 同样回退全量重建,
+        // 严禁以空 base 落地 —— 该路径曾把历史清空而游标照常前推 (无自愈)。
+        let can_append = identity_matches
+            && entry.append_safe
             && append_signature_is_safe(&entry.signature, &signature)
-            && entry.cursor.rowid.is_some()
-        {
+            && entry.cursor.rowid.is_some();
+        'append: {
+            if !can_append {
+                break 'append;
+            }
+            let base = match entry.contribution.to_domain(&config.window) {
+                Some(base) => base,
+                None => {
+                    stats.cache_corruptions = stats.cache_corruptions.saturating_add(1);
+                    break 'append;
+                }
+            };
             cancellation.check()?;
             match adapter.read_since(
                 &connection,
@@ -270,10 +287,6 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
                 Ok(delta) if delta.diagnostic.is_none() && delta.append_safe => {
                     stats.sqlite_rows_read = stats.sqlite_rows_read.max(delta.rows_read);
                     cancellation.check()?;
-                    let base = entry
-                        .contribution
-                        .to_domain(&config.window)
-                        .unwrap_or_else(|| empty_contribution(&config.window));
                     let contribution =
                         adapter.merge_delta(&base, &delta.contribution, &config.window);
                     let cursor = merge_cursor(&entry.cursor, &delta.cursor);
@@ -362,10 +375,6 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
         stats,
         diagnostic: result.diagnostic,
     })
-}
-
-fn empty_contribution(window: &CollectionWindow) -> UsageContribution {
-    collector_domain::UsageContributionBuilder::new(window.clone()).contribution()
 }
 
 fn diagnostic_scan(window: &CollectionWindow, source_id: &str, detail: &str) -> SourceScan {
