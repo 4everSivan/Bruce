@@ -17,7 +17,7 @@
 
 Bruce 把本机 AI Agent 的 token 用量、成本估算和订阅额度集中到一个原生 macOS 菜单栏应用里。原生层负责依赖扫描、授权门控、凭证管理、定时刷新与故障恢复，Rust Collector 负责采集，弹出面板以原生 SwiftUI 渲染。**全程本地优先，没有自有服务端。**
 
-> **当前版本 v0.12.0**。最低支持 macOS 14，液态玻璃主题需 macOS 26。发布 Universal 2 通用二进制，Apple Silicon 与 Intel Mac 均原生运行。测试版由 `scripts/build-test-app.sh` 本地打包；推送 `v*` tag 后 CI 产出未签名的 Preview 草稿 Release。正式版（Developer ID 签名 + 公证）尚未纳入 CI/CD，`scripts/build-release-app.sh` 仅作手工预留。
+> **当前版本 v0.12.0**。最低支持 macOS 14，液态玻璃主题需 macOS 26。发布 Universal 2 通用二进制，Apple Silicon 与 Intel Mac 均原生运行。测试版由 `scripts/build-test-app.sh` 本地打包；推送 `v*` tag 后 CI 先建未签名的 Preview 草稿 Release（附 mac 产物与发布说明），待 Windows 安装包补齐后转为公开并标记 latest。正式版（Developer ID 签名 + 公证）尚未纳入 CI/CD，`scripts/build-release-app.sh` 仅作手工预留。
 
 ## 核心特性
 
@@ -179,7 +179,7 @@ swift run --package-path apps/macos BruceOnboardingCoreHarness
 swift run --package-path apps/macos PanelParityHarness "$PWD"
 ```
 
-CI（`.github/workflows/ci.yml`）在 push / PR 时执行 macOS 侧 `verify-local.sh`、Windows 侧 Rust 与前端验证、以及测试版 App 构建；tag `v*` 额外触发未签名 Preview 的草稿 Release（附 SHA256SUMS 与从 CHANGELOG 提取的发布说明）。正式签名、公证与 Gatekeeper 校验不属于当前 CI/CD 规划；真实 Collector、OAuth 与 `.app` 发布验证需单独授权和环境，不在默认测试流程内。
+CI（`.github/workflows/ci.yml`）在 push / PR 时执行 macOS 侧 `verify-local.sh`、Windows 侧 Rust 与前端验证、以及测试版 App 构建；tag `v*` 额外触发发布流水线：先建未签名 Preview 草稿 Release（`Bruce.zip` + SHA256SUMS + 从 CHANGELOG 提取的发布说明），随后 Windows 作业构建 NSIS 安装包并上传，两端产物齐备后自动转为公开 Release 并标记 latest。正式签名、公证与 Gatekeeper 校验不属于当前 CI/CD 规划；真实 Collector、OAuth 与 `.app` 发布验证需单独授权和环境，不在默认测试流程内。
 
 ## 当前限制
 

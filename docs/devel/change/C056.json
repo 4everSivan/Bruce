@@ -1,0 +1,114 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C056",
+  "title": "Windows 应用版本号脱离单一事实源：tauri.conf.json 停留 0.11.5 致 v0.12.0 安装包被命名为 0.11.5，对齐并补 push 级一致性门禁",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用)",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src-tauri/tauri.conf.json + scripts/check-win-frontend.mjs + docs/devel/design/05-Windows平台适配.md §6.4 + README.md",
+    "component": "Windows 应用版本号的单一事实源与发布口径",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "v0.12.0 发版实测暴露的真实缺陷（发布后核对产物时发现，非事后推测）。\n(1) **版本漂移**：仓库根 `VERSION` 是 macOS 侧的唯一版本事实源（`scripts/build-test-app.sh` 读取后注入 `CFBundleShortVersionString`），但 Windows 侧从未接入该值 —— `apps/win/src-tauri/tauri.conf.json` 的 `version` 自 v0.11.5 起一直是硬编码的 `0.11.5`，`scripts/build-win-app.ps1` 与 `upload-win-release.ps1` 均不读取 `VERSION`（grep 零命中）。而 Tauri 的 `version` 字段同时决定**安装包文件名**与 `get_runtime_info` 返回的 `app.package_info().version`（`apps/win/src-tauri/src/lib.rs:177`，即设置中心「版本」行）。后果已在真实发布中发生：v0.12.0 的草稿 Release 里 Windows 产物名为 `Bruce_0.11.5_x64-setup.exe`（实测 4811065 bytes），且该版本的应用内版本行会向用户显示 0.11.5。\n(2) **缺陷为何只在发版时暴露**：该字段的消费点全在 tag 场景（`release-windows` 作业打包 NSIS），push 级门禁只覆盖前端结构与 Rust 编译面，因此 0.11.5 的硬编码可以静默存活一整个版本周期。\n(3) **发布口径表述不实**：README 两处称「推送 `v*` tag 后 CI 产出未签名的 Preview **草稿** Release」，但 `scripts/upload-win-release.ps1` 在两端产物齐备后显式执行 `gh api --method PATCH … -F draft=false -F make_latest=true`（脚本内注释即写明「正式将草稿发布为公开 Release」）。实测 v0.12.0：08:20:42Z 建为草稿，08:43:31Z 由该作业转为公开并 `make_latest`。即最终产物是**已发布**的 Release，不是草稿。\n本卡修法取「单一事实源 + push 级一致性断言」，未采用在 CI 构建时注入版本的 `--config` 方案：后者需在 PowerShell 侧拼接 JSON 覆盖参数，而本机（macOS，无 pwsh）无法验证其运行时语义，属于「用一段无法自证的胶水代码换掉一个可被门禁覆盖的问题」。",
+  "precheck": {
+    "description": "预检: 确认 Windows 版本字段的取值来源、消费点，以及是否已有同步逻辑",
+    "command": "grep -n '\"version\"' apps/win/src-tauri/tauri.conf.json; grep -rn 'VERSION' scripts/build-win-app.ps1 scripts/upload-win-release.ps1; grep -rn 'package_info' apps/win/src-tauri/src/lib.rs; gh release view v0.12.0 --json assets",
+    "expected": "conf 版本为 0.11.5 且两个 PowerShell 脚本均不读 VERSION; lib.rs 的 get_runtime_info 取自 package_info; 发布资产名为 Bruce_0.11.5_x64-setup.exe",
+    "is_completed": true,
+    "evidence": "实测全部符合: (a) `tauri.conf.json:4` = \"version\": \"0.11.5\"; (b) `grep -rn VERSION scripts/build-win-app.ps1 scripts/upload-win-release.ps1` 零命中; (c) `lib.rs:177` = `\"version\": app.package_info().version.to_string()`; (d) `gh release view v0.12.0` 资产列表含 `Bruce_0.11.5_x64-setup.exe — 4811065 bytes` (同批 mac 产物为 Bruce.zip, 版本正确)。"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护已在 main 实施",
+      "git status --short apps/win/src-tauri/tauri.conf.json scripts/check-win-frontend.mjs"
+    ],
+    "after": [
+      "# 版本一致性门禁 (红绿双向验证)",
+      "node scripts/check-win-frontend.mjs",
+      "# Windows 前端行为回归与几何对拍随该脚本一并执行",
+      "# 全量门禁 (该断言已随 check-win-frontend.mjs 进入 verify-rust.sh 与 CI)",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "Windows 应用版本号",
+      "before": "tauri.conf.json version 硬编码 0.11.5，与仓库根 VERSION (0.12.0) 脱节；无任何同步或校验逻辑",
+      "after": "version 对齐为 0.12.0；design/05 §6.4 明确「根 VERSION 为唯一权威值，tauri.conf.json 是其镜像」，并要求两端相等",
+      "impact": "安装包命名与应用内「版本」行此后与发布版本一致"
+    },
+    {
+      "scope": "漂移的暴露时机",
+      "before": "该字段只在 tag 场景被消费，push 级门禁不覆盖，漂移可静默存活整个版本周期",
+      "after": "`scripts/check-win-frontend.mjs` 新增断言：tauri.conf.json 的 version 必须等于仓库根 VERSION，不等即红灯；该脚本随 verify-rust.sh（push 与 tag 双侧）与本地 verify-local.sh 执行",
+      "impact": "版本漂移在 push 阶段即暴露，不再等到发版后才可见"
+    },
+    {
+      "scope": "发布口径表述 (README)",
+      "before": "「推送 v* tag 后 CI 产出未签名 Preview 草稿 Release」（两处）",
+      "after": "改为如实描述两段式：release 作业先建未签名 Preview 草稿并附 mac 产物，release-windows 作业补齐 Windows 安装包后将其转为公开并标记 latest",
+      "impact": "读者对产物可见性的预期与现实一致"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "§6.4 只记 `tauri.conf.json` 的产品名与 identifier，未规定应用版本号的权威来源，也未意识到该字段决定安装包命名与应用内版本行",
+      "after": "§6.4 新增「应用版本号单一事实源」条：根 VERSION 为唯一权威值、conf 为其镜像、两端相等由 check-win-frontend.mjs 在 push 与本地门禁断言；§6.4 第 6 条提炼纪律「凡 tag 场景才消费的字段，必须在 push 级至少校验其与权威源的相等性」"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "c056-win-version-single-source-20261016",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "版本一致性门禁有效（红绿双向）",
+        "true_if": "conf 与 VERSION 不等时门禁红灯并给出可定位信息；相等时绿灯",
+        "false_if": "漂移可静默通过",
+        "evidence": "红态实测: 临时把 conf 改回 \"0.11.5\" → `node scripts/check-win-frontend.mjs` 退出码 1, 输出 `FAIL: apps/win/src-tauri/tauri.conf.json 的 version=\"0.11.5\" 与仓库根 VERSION=\"0.12.0\" 不一致 (安装包命名与应用内版本行均取自 conf, 必须同步提升)`; 绿态实测: 恢复 0.12.0 → 退出码 0, 输出 `ok: Windows 应用版本与 VERSION 一致 (0.12.0)`。文件已还原并经 grep 复核。",
+        "result": true
+      },
+      {
+        "item": "现有行为无回归",
+        "true_if": "check-win-frontend.mjs 的结构冒烟与两套测试全绿",
+        "false_if": "任一既有断言失败",
+        "evidence": "退出码 0 实测: 结构冒烟 5 项通过 (app.js/settings.js 语法、DOM id 交叉 9 个引用、无 demo 残留、版本一致) + 交互回归 tests 32 / pass 32 / fail 0 + 几何对拍 tests 2 / pass 2 / fail 0。",
+        "result": true
+      },
+      {
+        "item": "发布口径表述与实现一致",
+        "true_if": "README 关于 Release 可见性的描述与 upload-win-release.ps1 的实际行为一致",
+        "false_if": "仍称最终产物为草稿",
+        "evidence": "依据 `scripts/upload-win-release.ps1:73-74` 的 `gh api --method PATCH … -F draft=false -F make_latest=true`（注释「正式将草稿发布为公开 Release」）与 v0.12.0 实测时间线（08:20:42Z createdAt → 08:43:31Z publishedAt, isDraft 由 true 转 false）。README 两处已改写为两段式描述。",
+        "result": true
+      },
+      {
+        "item": "门禁全绿",
+        "true_if": "zsh scripts/verify-local.sh 退出码 0",
+        "false_if": "任一门禁失败",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [
+    {
+      "option": "在 CI 与本地脚本构建时用 tauri-cli `--config` 注入版本（JSON Merge Patch）",
+      "reason": "官方文档确认 `--config` 支持 JSON 文件/字符串合并（RFC 7396），可让构建无条件取自 VERSION；但该路径需在 PowerShell 侧生成并传递 JSON 覆盖参数，而本机无 Windows/pwsh 环境，运行时语义无法自证。相较之下「对齐 + push 级一致性断言」零 CLI 风险且能覆盖同一缺陷面，故本轮不引入不可验证的胶水代码；若将来需要彻底免除人工同步，可单独建卡并附带真机验证。"
+    }
+  ],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  }
+}

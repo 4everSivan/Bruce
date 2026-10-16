@@ -277,6 +277,7 @@ Windows Tauri 后端 (Rust)
 ### 6.4 打包与发布线
 
 - `tauri.conf.json`：产品名 Bruce、identifier 沿用 `com.bruce.dashboard` 系命名；
+- **应用版本号单一事实源（C056 新增）**：仓库根 `VERSION` 是唯一权威值，`apps/win/src-tauri/tauri.conf.json` 的 `version` 是它的**镜像**（Tauri 的安装包命名与 `get_runtime_info` 的 `package_info().version` 都取自该字段，故它直接决定安装包文件名与应用内「版本」行）。两端必须相等，由 `scripts/check-win-frontend.mjs` 在**每次 push 与本地 verify-local** 断言；不等即门禁红灯，禁止带漂移发版。
 - 打包：Tauri bundler → NSIS 安装包（+ 可选 MSIX）；`signtool` 签名（测试期可不签）；
 - CI：release 阶段增加 Windows 构建矩阵 job，产物 `Bruce_x.y.z_x64-setup.exe` + SHA256；
 - 文档：README/`docs/guide/` 补 Windows 数据位置（`%APPDATA%\Bruce`、`%LOCALAPPDATA%\Bruce\collector-cache-v1`）。
@@ -288,6 +289,7 @@ Windows Tauri 后端 (Rust)
 3. **重跑幂等**：同名资产已存在时上传返回 422 `already_exists`；仅重试「发布 Windows 安装包」作业（不重跑 release 作业）时草稿里往往已有上一轮资产，上传前必须清理同名残留。
 4. **发布脚本可验证**：发布/打包逻辑落在 `scripts/*.ps1`，由 `verify-windows` 作业的 AST 解析步骤（`[Parser]::ParseFile`，不执行）在**每次 push** 做语法门禁 —— 这些脚本只在 tag 场景真正执行，语法错误若留到发版才暴露代价最高。
 5. **验证边界**：以上四条的端到端验证只在 tag 发布时发生（`release` / `release-windows` 作业与打包脚本均 tag 触发）。push 级可验证部分是结构契约测试 `scripts/check-release-pipeline.mjs`（分页+展平 / 两端钉版 / 重跑幂等 / 脚本归属与门禁，随 `verify-windows` 执行）与 AST 语法门禁；**发版后需将一次真实 run 的结论回填到对应 C 卡**（C036 待回填）。
+6. **版本漂移必须在 push 级暴露（C056）**：v0.12.0 发布实测发现 `tauri.conf.json` 的 `version` 自 v0.11.5 起未再提升，而该字段只在 tag 场景被消费 —— 结果 `Bruce_0.11.5_x64-setup.exe` 被当作 v0.12.0 的产物上传、应用内版本行亦显示 0.11.5，缺陷直到发布后才可见。现把一致性断言前移到 `check-win-frontend.mjs`（随每次 push 执行），与上述「tag 才验证」项互补：**凡 tag 场景才消费的字段，必须在 push 级至少校验其与权威源的相等性。**
 
 ---
 

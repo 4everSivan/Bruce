@@ -5,6 +5,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- **Windows 应用版本号脱离单一事实源 (C056)**：v0.12.0 发版后核对产物时发现，本应名为 `Bruce_0.12.0_x64-setup.exe` 的 Windows 安装包实际命名为 **`Bruce_0.11.5_x64-setup.exe`**，且该构建的应用内「版本」行会向用户显示 0.11.5。根因：`apps/win/src-tauri/tauri.conf.json` 的 `version` 自 v0.11.5 起一直硬编码，而 Windows 侧从未接入仓库根 `VERSION` 这一权威源（`build-win-app.ps1` / `upload-win-release.ps1` 均不读取它，grep 零命中）—— 该字段同时决定 NSIS 安装包文件名与 `get_runtime_info` 返回的 `package_info().version`（即设置中心版本行）。macOS 侧不受影响（`build-test-app.sh` 读取 `VERSION` 注入 `CFBundleShortVersionString`）。修复：把 conf 版本对齐到 0.12.0，并在 `scripts/check-win-frontend.mjs` 新增 push 级一致性断言（conf 版本必须等于根 `VERSION`，不等即红灯）—— 此前该字段只在 tag 场景被消费，漂移可静默存活整个版本周期。红绿双向实测：conf 改回 0.11.5 → 退出码 1 并输出可定位诊断；恢复 → 退出码 0。**另修正 README 两处不实的发布口径**：原文称 CI「产出未签名 Preview 草稿 Release」，实际 `upload-win-release.ps1` 在两端产物齐备后执行 `draft=false` + `make_latest`（v0.12.0 实测 08:20:42Z 建草稿、08:43:31Z 转为公开），现按两段式如实描述。设计基线 `05-§6.4` 同步新增「应用版本号单一事实源」条与纪律「凡 tag 场景才消费的字段，必须在 push 级至少校验其与权威源的相等性」。
+
 ## [0.12.0] - 2026-10-16
 
 ### Changed

@@ -56,6 +56,24 @@ if (/\bPANEL\b/.test(appSource)) {
   console.log("ok: 无 demo 残留全局");
 }
 
+// 版本号单一事实源 (C056): 仓库根 VERSION 为权威值, tauri.conf.json 是它的镜像。
+// v0.12.0 发布实测: conf 硬编码停留在 0.11.5 未随 VERSION 提升, 导致安装包被命名为
+// Bruce_0.11.5_x64-setup.exe 且应用内「版本」行显示 0.11.5 —— 而该缺陷只能在 tag
+// 发布时才暴露。此处把一致性前移到每次 push, 漂移即红灯。
+{
+  const authoritative = readFileSync(join(repoRoot, "VERSION"), "utf8").trim();
+  const confPath = "apps/win/src-tauri/tauri.conf.json";
+  const conf = JSON.parse(readFileSync(join(repoRoot, confPath), "utf8"));
+  if (conf.version !== authoritative) {
+    fail(
+      `${confPath} 的 version="${conf.version}" 与仓库根 VERSION="${authoritative}" 不一致` +
+        " (安装包命名与应用内版本行均取自 conf, 必须同步提升)",
+    );
+  } else {
+    console.log(`ok: Windows 应用版本与 VERSION 一致 (${authoritative})`);
+  }
+}
+
 if (failed) {
   process.exit(1);
 }
