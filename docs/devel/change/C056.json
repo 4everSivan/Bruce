@@ -94,8 +94,8 @@
         "item": "门禁全绿",
         "true_if": "zsh scripts/verify-local.sh 退出码 0",
         "false_if": "任一门禁失败",
-        "evidence": "",
-        "result": null
+        "evidence": "本地 `zsh scripts/verify-local.sh` 退出码 0, 日志含 `ok: Windows 应用版本与 VERSION 一致 (0.12.0)` 与 `变更总账一致 (cards=56 topics=6)`, 末行 `Bruce 本地验证全部通过`。推送后 CI run 38877153140 (commit 7f41b2d) 三作业全绿: 本地验证套件 (macOS 26) / Rust 验证 (Windows, 含 check-win-frontend 新断言) / 构建测试版 App; 两个 tag-only 作业按预期 skipped。",
+        "result": true
       }
     ]
   },

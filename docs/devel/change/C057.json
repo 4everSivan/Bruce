@@ -72,8 +72,8 @@
         "item": "CI 构建命令与架构断言生效",
         "true_if": "push 触发的 build-release-app 作业以 --universal 构建且两个二进制均通过双架构断言",
         "false_if": "作业仍构建单架构，或断言步骤缺失/失效",
-        "evidence": "",
-        "result": null
+        "evidence": "CI run 38878396567 (commit f351cb0) 的「构建测试版 App」作业 success。作业日志实证: (a) `run: zsh scripts/build-test-app.sh --universal` 且脚本内输出「编译 Rust Collector (Universal 2: arm64 + x86_64)」; (b) 新增断言步骤输出 `dist/Bruce.app/Contents/MacOS/BruceApp -> x86_64 arm64`、`dist/Bruce.app/Contents/Resources/Bruce-collector -> x86_64 arm64`、`Universal 2 校验通过`。附带事实: 该 runner 为 macos-26-arm64 且 `rustup target add x86_64-apple-darwin` 现场输出了 `info: downloading component rust-std`, 即 runner **未**预装该 target —— 若无这一步, universal 构建必然失败, 该步骤为必需而非冗余。",
+        "result": true
       },
       {
         "item": "流水线配置合法",
@@ -86,8 +86,8 @@
         "item": "本地门禁不受影响",
         "true_if": "zsh scripts/verify-local.sh 退出码 0",
         "false_if": "任一门禁失败",
-        "evidence": "",
-        "result": null
+        "evidence": "本次改动面为 ci.yml + design/00 文档 + 卡片（不触碰 Rust/Swift 源码），故以推送后的 CI 为准: run 38878396567 的「本地验证套件 (macOS 26)」作业 success（该作业即执行完整 `verify-local.sh`），「Rust 验证 (Windows)」亦 success；变更总账门禁本地实测 `变更总账一致 (cards=57 topics=6)`。",
+        "result": true
       },
       {
         "item": "已发布产物的既成事实已如实记录",
