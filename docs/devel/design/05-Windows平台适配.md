@@ -46,6 +46,8 @@
 
 ### 3.1 Rust Collector 依赖面实测（基线 v0.9.0 / `0a7f2e2`）
 
+> ⏱ **时间点存档**：下表是立项时的实测快照，`文件:行号` 与「结论」列均以该提交为准。此后文件增长会导致行号漂移（例如缓存根条目现位于 `collector-local/src/lib.rs` 的 `default_cache_root`），**请勿按现行树复核本表行号**；各项的实际落地状态见本节末「后续落地」与 §6.1。
+
 | 模块 | 现状 | 结论 |
 |---|---|---|
 | 会话源路径表 | 已是独立跨平台模块 `collector-application/src/paths.rs`：opencode 含 `%LOCALAPPDATA%`/`%APPDATA%` 探测（:59-96）；kimi-work 含 3 组 Windows 候选（:107-175）；orca 含 `%APPDATA%` 分支（:178-193）；claude/codex/grok/pi/zcode/codebuddy 走 `~/.xxx` 布局（:25-52, :196-208），Windows 上天然解析为 `%USERPROFILE%\.xxx` | **已就绪**，待真机实测回填 |
@@ -55,6 +57,8 @@
 | 平台度量 | `collector-bridge/src/metrics.rs:9-32`：`physical_disk_read_bytes` 非 macOS 恒 `None` | **已就绪**，可选后续接 PDH |
 | 纯逻辑 crates | `collector-runtime`（预算/取消原语）、`collector-aggregate`、`collector-domain`、`collector-provider`（ureq/rustls 出站）均无平台分支 | **已就绪** |
 | **缓存根目录** | `collector-local/src/lib.rs:157-158`：`default_cache_root` 硬编码 `~/Library/Application Support/Bruce/collector-cache-v1` | **唯一硬编码残留**，Windows 需 `%LOCALAPPDATA%\Bruce\collector-cache-v1` |
+
+**后续落地（C055 回填）**：上表结论列已成历史 —— 缓存根平台化（R1）已实施，`default_cache_root` 现按 `#[cfg(windows)]` 返回 `%LOCALAPPDATA%\Bruce\collector-cache-v1`；Windows CI job（R2）与 `verify-rust.sh`（R3）亦已落地。仅 R4（§3.4 真机实测）仍欠账。逐项状态见 §6.1。
 
 ### 3.2 Swift 侧规模（重写面）
 
@@ -158,7 +162,7 @@
 | 维护 | `清理用量缓存`（后端 `clear_snapshot_cache`：仅删快照文件，不动配置/凭证，幂等）+ `诊断预览`（客户端拼装**脱敏** JSON：版本、模块阶段、诊断码、目录**末段名**，不含路径分隔符/凭证/账号/业务数据） |
 | 品牌图形产物 | `apps/win/src/provider-brand.js` 为生成产物第三目标（与 Swift 数据、app.js 内联块同源），由 `scripts/gen-provider-glyphs.mjs --check` 锁定；设置窗口须在 `settings.js` 之前加载它 |
 
-尚未对齐（明确留待后续卡，不做静默降级）：模型计费页（今日费用总览 / 搜索 / 三态筛选 / 8 列表格 / 逐模型校准 / config.json 预览）与导出类能力（导出账单 CSV、导出诊断包）—— 后者需要系统文件保存对话框（`tauri-plugin-dialog`）与相应 capability，属新增依赖，须单独评估后再实施。
+**后续落地（C055 回填）**：原「尚未对齐」清单已全部落地，不再留待后续卡 —— 模型计费页（今日费用总览 / 搜索 / 三态筛选 / 8 列表格 / 逐模型校准 / `settings.json` 预览，见 `pane-modelPricing-content`）与导出类能力（导出账单 CSV、导出诊断包）均已实现，导出优先调用系统文件保存对话框（`tauri-plugin-dialog` 已纳入 `desktop` feature），插件不可用时回落 `%APPDATA%\Bruce\exports\` 并回显完整路径；相应行为由 `frontend.test.mjs` 的 `model pricing pane` / `exports use the native save dialog` / `maintenance pane` 等用例守护。
 
 **DOM id 唯一性（C031 实测）**：同页重复 id 会让 `getElementById` 命中较早元素并把结果写错位置（实测：诊断预览内容被写进同名按钮标签，预览框保持空）。两页的 id 唯一性已由 `frontend.test.mjs` 逐页遍历断言守护。
 
@@ -240,13 +244,13 @@ Windows Tauri 后端 (Rust)
 
 ### 6.1 Rust 端改动清单（收敛后）
 
-| # | 改动 | 位置 | 内容 |
-|---|---|---|---|
-| R1 | 缓存根平台化 | `collector-local/src/lib.rs:157-158` | `#[cfg(windows)]` 返回 `%LOCALAPPDATA%\Bruce\collector-cache-v1`（env 优先，回退 `~/AppData/Local`），mac/Linux 行为不变；补单元测试 |
-| R2 | Windows CI job | `.github/workflows/ci.yml` | 新增 `windows-latest` job：`cargo fmt --check` / `cargo test --workspace` / `cargo clippy` |
-| R3 | 验证脚本抽取 | `scripts/` | Rust 平台无关部分抽为 `verify-rust.sh`（Windows 侧 PowerShell 等价或 PowerShell 驱动） |
-| R4 | 真机路径实测 | 本文档 §3.4 | P0 实测后回填；如有布局差异改 `paths.rs` 对应 resolver 并补测试 |
-| R5 | Claude CLI Windows 凭证 | `collector-credential` | 视实测结论：文件回退已覆盖则仅登记；否则实现 Windows `CredentialSource`（文件探测优先，禁止交互） |
+| # | 改动 | 位置 | 内容 | 实施状态 |
+|---|---|---|---|---|
+| R1 | 缓存根平台化 | `collector-local/src/lib.rs`（`default_cache_root` / `windows_cache_root`） | `#[cfg(windows)]` 返回 `%LOCALAPPDATA%\Bruce\collector-cache-v1`（env 优先，回退 `~/AppData/Local`），mac/Linux 行为不变；补单元测试 | **已实施**：`default_cache_root` 现按 `#[cfg(windows)]` 分派，`LOCALAPPDATA` 空白值按未设置处理以保留 home 相对回退；mac/Linux 分支行为不变 |
+| R2 | Windows CI job | `.github/workflows/ci.yml` | 新增 `windows-latest` job：`cargo fmt --check` / `cargo test --workspace` / `cargo clippy` | **已实施**：`verify-windows` job 在 `windows-latest` 上执行前端结构冒烟、发布脚本 AST 语法门禁与三个 manifest（`core/collector`、`apps/win/viewmodel`、`apps/win/src-tauri`）的 fmt / test / clippy |
+| R3 | 验证脚本抽取 | `scripts/` | Rust 平台无关部分抽为 `verify-rust.sh`（Windows 侧 PowerShell 等价或 PowerShell 驱动） | **已实施**：`scripts/verify-rust.sh` 已抽取并被 `verify-local.sh` 与 CI 双侧复用（Windows 侧由 CI 直接执行等价 cargo 命令，zsh 依赖不适用于 Windows） |
+| R4 | 真机路径实测 | 本文档 §3.4 | P0 实测后回填；如有布局差异改 `paths.rs` 对应 resolver 并补测试 | **未实施（真机欠账）**：§3.4 仍为待实测表 |
+| R5 | Claude CLI Windows 凭证 | `collector-credential` | 视实测结论：文件回退已覆盖则仅登记；否则实现 Windows `CredentialSource`（文件探测优先，禁止交互） | **已闭合（另一路线）**：未引入 Windows 侧 `CredentialSource`；Windows 壳以 `CredentialPayloads` 的 `claudeOAuth` 字段注入凭证，不做 CLI 文件探测与交互式读取 |
 
 ### 6.2 Windows 视图模型层（`apps/win/viewmodel/`，独立纯 Rust crate）
 
@@ -320,8 +324,10 @@ Windows Tauri 后端 (Rust)
 ## 8. 参考资料 (References)
 
 - `core/collector/crates/collector-application/src/paths.rs`：跨平台路径解析（Windows 候选分支实测锚点）
-- `core/collector/crates/collector-local/src/lib.rs:157`：`default_cache_root`（唯一待平台化硬编码）
-- `core/collector/crates/collector-credential/src/lib.rs:74`：`read_keychain` 平台无关契约
+- `core/collector/crates/collector-local/src/lib.rs` 的 `default_cache_root` / `windows_cache_root`：缓存根解析（平台化已实施，见 §6.1 R1）
+- `core/collector/crates/collector-credential/src/lib.rs` 的 `CredentialSource` trait 与其 `read_keychain` 默认实现：平台无关凭证读取契约
 - `apps/macos/Sources/BruceAppCore/`：视图模型/调度的 mac 事实源（Rust 对齐基准）
 - `docs/devel/design/00-系统总体设计.md`：Monorepo 分层与 `apps/` + `core/` 拓扑依据
 - [变更总账 (WindowsCompat)](../change/index.json#WindowsCompat)
+
+> 📌 本节引用一律采用 `文件 (符号)` 形式而非 `文件:行号`：行号会随文件增长漂移，符号不会。§3.1 的行号是其自称的时间点存档，不在此约定内。

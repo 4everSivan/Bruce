@@ -390,10 +390,17 @@ test("exports use the native save dialog with cancel and fallback paths", async 
   assert.match(fallback.node("settings-status").textContent, /诊断报告已导出/);
 });
 
-test("model pricing pane filters, calibrates and previews config json"
+test("model pricing pane filters, calibrates and previews settings json"
 , async () => {
   const app = await boot({ html: "settings.html" });
   const pane = () => app.node("pane-modelPricing-content");
+  // 说明卡的文件名与展示路径必须与真实落盘一致: 标签写 settings.json,
+  // 且路径反斜杠不得被 JS 无效转义吞掉 (曾渲染为 %APPDATABruceconfigsettings.json).
+  assert.match(pane().textContent, /配置文件实时映射 \(settings\.json\)/);
+  assert.equal(
+    pane().querySelector(".pricing-path").textContent,
+    "%APPDATA%\\Bruce\\config\\settings.json",
+  );
   // 总览 + 搜索 + 三态筛选 + 8 列表格
   assert.match(pane().textContent, /今日 TOKEN 预估折算总费用/);
   assert.match(pane().textContent, /基于当前本机全部活跃 Agent 真实 Token 吞吐量进行折算/);

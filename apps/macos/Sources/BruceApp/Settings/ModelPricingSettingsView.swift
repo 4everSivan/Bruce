@@ -5,7 +5,7 @@ import SwiftUI
 
 /// 模型单价与费用校准面板 (1:1 严格对齐 _adflow_backup/original_docs/design/pricing-calibration-settings-demo.html 原型).
 /// 包含全局费用概览、全模型定价与用量表格 (内部固定高度滚动条, 避免页面高度过大)、
-/// 交互式校准弹窗以及 config.json 联动预览.
+/// 交互式校准弹窗以及 onboarding-v1.json 联动预览.
 struct ModelPricingSettingsView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var coordinator: OnboardingCoordinator
@@ -501,7 +501,7 @@ struct ModelPricingSettingsView: View {
                     Image(systemName: "doc.text.fill")
                         .font(.system(size: 12))
                         .foregroundStyle(SettingsDemoTokens.accent)
-                    Text("配置文件实时映射 (config.json)")
+                    Text("配置文件实时映射 (onboarding-v1.json)")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(SettingsDemoTokens.text)
                     Spacer()

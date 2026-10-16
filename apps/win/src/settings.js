@@ -502,11 +502,11 @@
     }
     container.append(tableCard);
 
-    // 4. config.json 联动预览
+    // 4. settings.json 联动预览
     const configCard = card(container, null);
     const configHead = node("div", null, { class: "pricing-config-head" });
-    configHead.append(node("h2", "配置文件实时映射 (config.json)", { class: "card-caption-inline" }));
-    configHead.append(node("span", "%APPDATA%\Bruce\config\settings.json", { class: "pricing-path" }));
+    configHead.append(node("h2", "配置文件实时映射 (settings.json)", { class: "card-caption-inline" }));
+    configHead.append(node("span", "%APPDATA%\\Bruce\\config\\settings.json", { class: "pricing-path" }));
     if (custom.length) {
       button(configHead, "pricing-reset-all", "全部重置为基准", showResetAllConfirm, "btn plain-btn danger-text");
     }

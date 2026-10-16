@@ -21,6 +21,15 @@
         "C044"
       ]
     },
+    "PricingEngine": {
+      "design_doc": "docs/devel/design/04-设置中心与价格校准交互.md",
+      "changes": [
+        "C001",
+        "C002",
+        "C052",
+        "C055"
+      ]
+    },
     "WindowsCompat": {
       "design_doc": "docs/devel/design/05-Windows平台适配.md",
       "changes": [
@@ -61,6 +70,7 @@
         "C026",
         "C037",
         "C038",
+        "C039",
         "C042"
       ]
     },
@@ -69,6 +79,8 @@
       "changes": [
         "C021",
         "C022",
+        "C040",
+        "C041",
         "C043",
         "C045",
         "C046",
@@ -76,7 +88,8 @@
         "C048",
         "C049",
         "C050",
-        "C051"
+        "C051",
+        "C055"
       ]
     }
   },
@@ -566,6 +579,15 @@
       "topic": "SystemOverview",
       "version": "0.12.0+",
       "file": "docs/devel/change/C054.json"
+    },
+    "C055": {
+      "title": "设计基线与 UI 的本机数据落盘事实校正：design/01 §7.1 缓存三条断言重写、design/04 config.json ×5、design/00 快照文件名、design/05 已实施状态标注、双端用户可见标签",
+      "type": "BugFix",
+      "status": "verified",
+      "branch": "main",
+      "topic": "TokenUsage",
+      "version": "0.12.0+",
+      "file": "docs/devel/change/C055.json"
     }
   }
 }
