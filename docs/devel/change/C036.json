@@ -68,7 +68,7 @@
   },
   "verification": {
     "result": null,
-    "run_id": "local-structural-20261016 + real-github-api-20261016",
+    "run_id": "local-structural-20261016 + real-github-api-20261016 + ci-38834166583",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -76,7 +76,7 @@
         "item": "自动化测试 (结构契约 + 语法门禁)",
         "true_if": "结构契约与语法门禁全绿: YAML 可解析且结构断言成立、scripts/check-release-pipeline.mjs 退出码 0、未钉版写法零残留, 且新增门禁随 push 在 CI 上执行",
         "false_if": "任一断言失败, 或门禁未进 CI",
-        "evidence": "2026-10-16 实测: (1) PyYAML 解析 .github/workflows/ci.yml 通过, verify-windows 14 步 / release-windows 6 步, 结构断言 (上传步骤调用 scripts/upload-win-release.ps1、安装步骤钉 =2.12.2、AST 门禁步骤存在) 全部成立; (2) `node scripts/check-release-pipeline.mjs` 6 项全 ok 退出码 0 (分页取数 / 逐页展平 / 两端同版本钉版 / 重跑幂等清理 / 脚本归属 / AST 门禁覆盖两个 ps1) —— 该契约测试初版即抓出一处不精确断言 (门禁步骤用 foreach 变量而非字面量路径), 已改为按数组覆盖面校验; (3) `grep -rn 'cargo install tauri-cli'` 确认除契约测试自身正则外无未钉版残留 (仅剩 build-win-app.ps1:22 与 ci.yml:138 两处钉版写法); (4) 回归确认 `node scripts/check-win-frontend.mjs` 通过 (结构冒烟 + frontend 32 项 + 几何对拍 2 项)。CI 侧: verify-windows 新增「AST 语法门禁」与「发布流水线契约测试」两步, 随本次 push 执行。",
+        "evidence": "2026-10-16 实测: (1) PyYAML 解析 .github/workflows/ci.yml 通过, verify-windows 14 步 / release-windows 6 步, 结构断言 (上传步骤调用 scripts/upload-win-release.ps1、安装步骤钉 =2.12.2、AST 门禁步骤存在) 全部成立; (2) `node scripts/check-release-pipeline.mjs` 6 项全 ok 退出码 0 (分页取数 / 逐页展平 / 两端同版本钉版 / 重跑幂等清理 / 脚本归属 / AST 门禁覆盖两个 ps1) —— 该契约测试初版即抓出一处不精确断言 (门禁步骤用 foreach 变量而非字面量路径), 已改为按数组覆盖面校验; (3) `grep -rn 'cargo install tauri-cli'` 确认除契约测试自身正则外无未钉版残留 (仅剩 build-win-app.ps1:22 与 ci.yml:138 两处钉版写法); (4) 回归确认 `node scripts/check-win-frontend.mjs` 通过 (结构冒烟 + frontend 32 项 + 几何对拍 2 项)。CI 侧: verify-windows 新增「AST 语法门禁」与「发布流水线契约测试」两步, 随本次 push 执行。 CI 回填 (2026-10-16): run 38834166583 (head adf5ee1) 三作业全绿 —— 「Rust 验证 (Windows)」内新增两步均为 success: `Windows 打包/发布脚本语法门禁 (AST 解析, 不执行)` (证明 build-win-app.ps1 与 upload-win-release.ps1 在真实 PowerShell 上语法合法, 补上了本机无 pwsh 的空白) 与 `Windows 发布流水线契约测试`; 「本地验证套件 (macOS 26)」「构建测试版 App」亦 success。注意: 「发布 Windows 安装包」作业在非 tag run 中为 skipped, 端到端仍待发版回填。",
         "result": true
       },
       {
