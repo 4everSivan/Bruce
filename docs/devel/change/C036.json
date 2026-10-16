@@ -3,7 +3,7 @@
   "id": "C036",
   "title": "修复 Windows 发布作业的三处发布流水线缺陷（release 列表分页、tauri-cli 钉版、资产重跑幂等），并把发布脚本抽出为可被 CI 语法门禁验证的独立文件",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "main",
   "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本卡改动落在 tag 触发的发布作业, 无法在本机端到端执行",
   "is_hotfix": false,
@@ -67,10 +67,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": "passed",
     "run_id": "local-structural-20261016 + real-github-api-20261016 + ci-38834166583",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认，然后继续收尾所有问题不要再给我说还有需要做的事情",
+    "signoff": "2026-10-16 用户会话内以「确认」确认 C036（release 分页+展平 / tauri-cli 两端钉版 / 重跑幂等 / 发布脚本抽出与 CI 门禁）收口, 并指示「继续收尾所有问题」授权本轮后续卡片收口; 前置证据: 结构契约测试 6 项全绿、真实 GitHub API 语义复现 (旧逻辑命中 0 / 新逻辑展平 16 条且 upload_url 为标量)、CI run 38834166583 三作业全绿且 verify-windows 两步新门禁 (AST 语法门禁 + 契约测试) 在真实 Windows runner 上 success; AI 代为签署并闭环归档 (单人维护约定: 直接提 main, 不打 tag)",
     "checks": [
       {
         "item": "自动化测试 (结构契约 + 语法门禁)",

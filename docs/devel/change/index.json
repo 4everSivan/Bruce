@@ -384,7 +384,7 @@
     "C036": {
       "title": "修复 Windows 发布作业三处缺陷（release 列表分页+展平、tauri-cli 两端钉版、资产重跑幂等），发布脚本抽出并纳入 CI AST 语法门禁",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.12.0+",
