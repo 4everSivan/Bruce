@@ -1,0 +1,746 @@
+{
+  "review_protocol": "collector-worker-receipt-1",
+  "run_id": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+  "recorded_at_utc": "2026-10-18 13:17:55 UTC",
+  "reviewer": "collector_docs subagent",
+  "evidence_basis": "static_implementation and original_declaration; no application/build/test/network execution",
+  "source_reads": {
+    "core/collector/bin/Bruce-collector/src/main.rs": {
+      "read": "full",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "30940da0348782936e5f56568e0f34ce3bcda1e098e789f51e040f54713bec6b"
+      }
+    },
+    "core/collector/crates/collector-bridge/src/lib.rs": {
+      "read": "selected",
+      "ranges": [
+        [
+          1,
+          598
+        ],
+        [
+          624,
+          745
+        ]
+      ],
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "825479f85c82fc891e0baabdddbb591d65079713003357726a79a05cf9d7342d"
+      }
+    },
+    "core/collector/crates/collector-bridge/src/metrics.rs": {
+      "read": "full",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "80ca747850bdfb547901fb80dd6a4001d30d5a6b7ce49c7b56bafd2b3fdf280e"
+      }
+    },
+    "core/collector/crates/collector-application/src/lib.rs": {
+      "read": "selected",
+      "ranges": [
+        [
+          1,
+          851
+        ],
+        [
+          1069,
+          1163
+        ]
+      ],
+      "additional": "exhaustive literal matches for localPricing, local_scan_seconds, subscriptionQuotaOnly, subscriptionProviders and metrics counters",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "450fe36016c102bfe4c819b744f4a8a5fdceea8f958f754644c9fe75cc852c96"
+      }
+    },
+    "core/collector/crates/collector-application/src/context.rs": {
+      "read": "full",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "7928b851e142c779c4d87257c37a4076c6bbb49d3fa63cc9c22627bf2460e2c0"
+      }
+    },
+    "core/collector/crates/collector-application/src/account.rs": {
+      "read": "full",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "1743ff425277b0b42bac1d21c234284b17841b0705a25009428c7c35bf395a20"
+      }
+    },
+    "core/collector/crates/collector-application/src/execution.rs": {
+      "read": "full",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "0091109d17a14b3dde3e1a0076476490393cbe91ca4582a0952c177ce881abc2"
+      }
+    },
+    "core/collector/crates/collector-application/src/aggregation.rs": {
+      "read": "full",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "38c21c09ef0f56b60de574e83ab9a2d14cfe4cd92fe915c255cd6a63d76f1d11"
+      }
+    },
+    "core/collector/crates/collector-application/src/paths.rs": {
+      "read": "full",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "3ba42be8f6496493878e3f423c9e4ef4c7eb7cf35e2dc64b385c3b17c8c00fe2"
+      }
+    },
+    "core/collector/crates/collector-domain/src/lib.rs": {
+      "read": "selected",
+      "ranges": [
+        [
+          1,
+          215
+        ],
+        [
+          232,
+          636
+        ]
+      ],
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "1e1adf7e35d50355c615b88d2396ef0eda355836f578b3d51372631b20dea00c"
+      }
+    },
+    "core/collector/crates/collector-domain/src/pricing.rs": {
+      "read": "selected",
+      "ranges": [
+        [
+          1,
+          156
+        ],
+        [
+          245,
+          348
+        ]
+      ],
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "3c6d2dde139fdb0b07dac6d307fd3e1d475edd9c38af70ab144623aeb1f31f8d"
+      }
+    },
+    "core/collector/crates/collector-aggregate/src/lib.rs": {
+      "read": "full",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "33c3a4ee8eedd8bd68ad043f1f59ddfb7216972b86650247b18f3c3682aa2314"
+      }
+    },
+    "core/collector/crates/collector-runtime/src/lib.rs": {
+      "read": "selected",
+      "ranges": [
+        [
+          1,
+          285
+        ],
+        [
+          299,
+          388
+        ]
+      ],
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "16ccebc8aacafae86f17434ecc13e3f4587ab00a53ff8f1ceaabece1aeb83a5b"
+      }
+    },
+    "core/collector/crates/collector-local/src/lib.rs": {
+      "read": "selected",
+      "ranges": [
+        [
+          200,
+          426
+        ],
+        [
+          642,
+          937
+        ],
+        [
+          1066,
+          1140
+        ]
+      ],
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "2cb4a2dcc116fc81b37a0c77cd91b3e9e630da17b6adc915f1090957a41ba5e1"
+      }
+    },
+    "core/collector/crates/collector-local/src/jsonl_cache.rs": {
+      "read": "selected",
+      "ranges": [
+        [
+          1,
+          118
+        ],
+        [
+          295,
+          555
+        ]
+      ],
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "64b63ff66ecef2848349816fae20e3b1ffea6ad547090d1833a14fa526319138"
+      }
+    },
+    "core/collector/crates/collector-local/src/sqlite_cache.rs": {
+      "read": "selected",
+      "ranges": [
+        [
+          1,
+          448
+        ]
+      ],
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "29184bac4f840850b2e49d68b1462718a2a0410f0b8b06c14eb96810731ec8ff"
+      }
+    },
+    "core/collector/crates/collector-local/src/sources.rs": {
+      "read": "selected",
+      "ranges": [
+        [
+          466,
+          738
+        ],
+        [
+          1561,
+          1792
+        ],
+        [
+          2063,
+          3348
+        ],
+        [
+          3893,
+          3968
+        ]
+      ],
+      "additional": "exhaustive exported parser/cache/test symbol inventory",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "62fabd22314ed73fec521327053b45787aaf540c5eedb23229772b0f8fafbfa9"
+      }
+    },
+    "core/collector/crates/collector-provider/src/lib.rs": {
+      "read": "selected",
+      "ranges": [
+        [
+          1,
+          1475
+        ],
+        [
+          1636,
+          1671
+        ],
+        [
+          1804,
+          1858
+        ],
+        [
+          1890,
+          2010
+        ],
+        [
+          2080,
+          2332
+        ],
+        [
+          2401,
+          2929
+        ],
+        [
+          4146,
+          4214
+        ]
+      ],
+      "additional": "exhaustive provider/parser/test symbol inventory",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "37a40772cd493f8f545a82a6c7cbd55873564b35e08e440f65985ff0dc5c52b1"
+      }
+    },
+    "core/collector/crates/collector-credential/src/lib.rs": {
+      "read": "selected",
+      "ranges": [
+        [
+          1,
+          245
+        ],
+        [
+          280,
+          445
+        ]
+      ],
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "d842c592f9b38b34e9109c4a2cd8bb3e00d441d416f253bda6079a521cefdd70"
+      }
+    },
+    "core/collector/schemas/request-v1.schema.json": {
+      "read": "full",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "f10450731b53e625d7a1edac51880a113fd27dd2a0956c5c5c2c95afd5fcc287"
+      }
+    },
+    "core/collector/schemas/response-v1.schema.json": {
+      "read": "full",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "47f71417f41540f932738fb4fb2decc6451b1c5198de6f838dc04f13dfec33e4"
+      }
+    },
+    "core/collector/schemas/artifacts/agent-usage-v1.schema.json": {
+      "read": "full",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "ef9649d4fbfdccd24d63002228f1ee655587b1a2330c96f0e1dfd9bd980b8355"
+      }
+    },
+    "docs/devel/design/01-数据采集与多模型计费引擎.md": {
+      "read": "full",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "24e77a0aa1cd851c98ab07d95da7738fd45941dd1a78fbe516cc6d85c6eba359"
+      }
+    },
+    "docs/devel/design/02-订阅额度与凭据安全存储.md": {
+      "read": "selected",
+      "ranges": [
+        [
+          1,
+          110
+        ]
+      ],
+      "sections": [
+        "6.1 规则 5 Cline / ClinePass 三窗口",
+        "6.1 规则 11 Claude 用量响应解析",
+        "7 扩展设计"
+      ],
+      "note": "后续部分来自首轮合并工具输出可见片段，未声明全文逐行覆盖",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "8495c46b7feb08ff2f573e46e7dc08b2290f21f4811f115534abba104bb875d8"
+      }
+    },
+    "apps/win/src-tauri/src/collector.rs": {
+      "read": "full",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "b4b7af33c49afcdfa2b0c7bc3207cf0232eed28d63825e7f76972dfc1603ddbb"
+      }
+    },
+    "apps/macos/Sources/BruceAppCore/CollectorRunner.swift": {
+      "read": "selected",
+      "ranges": [
+        [
+          120,
+          211
+        ],
+        [
+          228,
+          303
+        ]
+      ],
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "ad2b3c738032988bb9445dfefd36175f215be66b6f3fcac6f47d05a4970cbc96"
+      }
+    }
+  },
+  "articles": {
+    "collector-design.md": {
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+        "apps/win/src-tauri/src/collector.rs",
+        "core/collector/bin/Bruce-collector/src/main.rs",
+        "core/collector/crates/collector-aggregate/src/lib.rs",
+        "core/collector/crates/collector-application/src/aggregation.rs",
+        "core/collector/crates/collector-application/src/context.rs",
+        "core/collector/crates/collector-application/src/execution.rs",
+        "core/collector/crates/collector-application/src/lib.rs",
+        "core/collector/crates/collector-bridge/src/lib.rs",
+        "core/collector/crates/collector-bridge/src/metrics.rs",
+        "core/collector/crates/collector-domain/src/lib.rs",
+        "core/collector/crates/collector-runtime/src/lib.rs",
+        "core/collector/schemas/artifacts/agent-usage-v1.schema.json",
+        "core/collector/schemas/request-v1.schema.json",
+        "core/collector/schemas/response-v1.schema.json",
+        "docs/devel/design/01-数据采集与多模型计费引擎.md"
+      ],
+      "key_assertions": [
+        {
+          "claim": "macOS CLI stdio 与 Windows in-process 复用同一 Bridge",
+          "symbols": [
+            "main",
+            "SystemCollectorProcessLauncher.launch",
+            "run_configured_collection",
+            "run_bytes_panic_safe"
+          ]
+        },
+        {
+          "claim": "普通路径本地与获准额度线程并行，本地次要源顺序调用",
+          "symbols": [
+            "collect_agent_usage_with_dependencies_inner",
+            "collect_local_usage"
+          ]
+        },
+        {
+          "claim": "10展示条目，9来源适配；Orca会话归Codex、orca条目占位",
+          "symbols": [
+            "agent_specs",
+            "codex_roots",
+            "source_results"
+          ]
+        },
+        {
+          "claim": "JSON Schema未运行加载，真实校验由serde+Bridge完成",
+          "symbols": [
+            "BridgeRequest",
+            "validate_request"
+          ]
+        },
+        {
+          "claim": "localScanSeconds只有范围校验；localPricing无独立门禁；subscriptionQuotaOnly/subscriptionProviders无消费",
+          "symbols": [
+            "validate_request",
+            "RunContext::new",
+            "capability_allowed"
+          ],
+          "method": "read full orchestration plus exhaustive literal references"
+        },
+        {
+          "claim": "除ROWS_CAPPED外任何diagnostic使有artifact响应Partial；本地取消不发布artifact",
+          "symbols": [
+            "response_status",
+            "local_source_runtime_diagnostic",
+            "cancellation_after_last_source_is_fenced_before_artifact_publication"
+          ]
+        },
+        {
+          "claim": "指标logical bytes不等于物理读盘、peak字段为结束footprint、两个计数尚未递增",
+          "symbols": [
+            "write_if_enabled",
+            "build_metrics_payload",
+            "apply_resource_usage",
+            "RuntimeCounters"
+          ]
+        }
+      ],
+      "lifecycle": {
+        "analysis": "passed",
+        "draft_source_check": "passed",
+        "expression_editing": "passed",
+        "fact_recheck": "passed"
+      },
+      "expression_notes": [
+        "独立加载 technical-editing 后修订比较式句式、口语及模糊主语；保留参数、公式与条件",
+        "事实修正与链接统一回到 drafting：macOS/Windows边界、SingleFlight重叠范围、StepFun Credits形态，再做表达与事实复查"
+      ],
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "cdd53919c8efb62139fc668848da24f9b923f30e2a6ae09a69cc88ad03536995"
+      },
+      "status": "candidate_awaiting_collection_checks",
+      "unresolved": []
+    },
+    "collector-local-usage.md": {
+      "source_paths": [
+        "core/collector/crates/collector-aggregate/src/lib.rs",
+        "core/collector/crates/collector-application/src/aggregation.rs",
+        "core/collector/crates/collector-application/src/lib.rs",
+        "core/collector/crates/collector-application/src/paths.rs",
+        "core/collector/crates/collector-domain/src/lib.rs",
+        "core/collector/crates/collector-domain/src/pricing.rs",
+        "core/collector/crates/collector-local/src/jsonl_cache.rs",
+        "core/collector/crates/collector-local/src/lib.rs",
+        "core/collector/crates/collector-local/src/sources.rs",
+        "core/collector/crates/collector-local/src/sqlite_cache.rs",
+        "docs/devel/design/01-数据采集与多模型计费引擎.md"
+      ],
+      "key_assertions": [
+        {
+          "claim": "CollectionWindow默认UTC/14天，时区自然日与小时共用",
+          "symbols": [
+            "CollectionWindow::from_context",
+            "day_index_of_millis",
+            "hour_of_millis"
+          ]
+        },
+        {
+          "claim": "TokenBucket raw input与display_input不同",
+          "symbols": [
+            "TokenBucket::add",
+            "TokenBucket::display_input",
+            "UsageAccumulator::finalize_with_pricing"
+          ]
+        },
+        {
+          "claim": "九类扫描规则、Codex跨根副本/快照去重、Grok字符估算与mtime归日",
+          "symbols": [
+            "scan_reader_with_cancellation",
+            "KimiWorkJsonlAdapter",
+            "aggregate_claude_payloads",
+            "scan_selected_codex",
+            "resolve_codex_files",
+            "aggregate_codebuddy_payloads",
+            "grok_observation",
+            "PiJsonlAdapter",
+            "OpenCodeSqliteAdapter",
+            "ZCodeSqliteAdapter"
+          ]
+        },
+        {
+          "claim": "四种缓存形态；安全追加与窗口失配重建；Codex损坏命中可只保留可用部分",
+          "symbols": [
+            "default_cache_root",
+            "process_cached_file",
+            "jsonl_cache::process_file",
+            "append_is_safe",
+            "scan_sqlite_cached",
+            "scan_codex_cached_with_cancellation"
+          ]
+        },
+        {
+          "claim": "SQLite只读、30000候选上限、OpenCode无rowid兼容SQL不保证最新排序",
+          "symbols": [
+            "scan_sqlite_cached",
+            "OpenCodeSqliteAdapter::read_rows",
+            "ZCodeSqliteAdapter::read_rows"
+          ]
+        },
+        {
+          "claim": "前五模型前三项目仅今日、modelMonths覆盖请求窗口；计费四项，未知无回退，无汇率转换",
+          "symbols": [
+            "UsageAccumulator::finalize_with_pricing",
+            "UsageContributionBuilder::record",
+            "PricingTable::resolve",
+            "PricingTable::calculate_cost"
+          ]
+        }
+      ],
+      "lifecycle": {
+        "analysis": "passed",
+        "draft_source_check": "passed",
+        "expression_editing": "passed",
+        "fact_recheck": "passed"
+      },
+      "expression_notes": [
+        "独立加载 technical-editing 后修订比较式句式、口语及模糊主语；保留参数、公式与条件",
+        "事实修正与链接统一回到 drafting：macOS/Windows边界、SingleFlight重叠范围、StepFun Credits形态，再做表达与事实复查"
+      ],
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "26122862b5f22d73af7b47d1db69cbf2bb806d0650469e108ff1306204204693"
+      },
+      "status": "candidate_awaiting_collection_checks",
+      "unresolved": []
+    },
+    "collector-provider-quota.md": {
+      "source_paths": [
+        "core/collector/crates/collector-application/src/account.rs",
+        "core/collector/crates/collector-application/src/context.rs",
+        "core/collector/crates/collector-application/src/execution.rs",
+        "core/collector/crates/collector-application/src/lib.rs",
+        "core/collector/crates/collector-bridge/src/lib.rs",
+        "core/collector/crates/collector-credential/src/lib.rs",
+        "core/collector/crates/collector-provider/src/lib.rs",
+        "core/collector/crates/collector-runtime/src/lib.rs",
+        "docs/devel/design/02-订阅额度与凭据安全存储.md"
+      ],
+      "key_assertions": [
+        {
+          "claim": "目录10普通服务商+Codex独立计划，普通账号排序/Codex保序摘要ID",
+          "symbols": [
+            "CATALOG_SPECS",
+            "resolve_service_catalog",
+            "build_account_plan",
+            "build_codex_account_plans",
+            "codex_service_id"
+          ]
+        },
+        {
+          "claim": "账号最多4worker、singleflight仅重叠调用合并，生产凭据注入不读host",
+          "symbols": [
+            "execute_quota_accounts",
+            "execute_one_uncached",
+            "resolve_credential",
+            "AccountSingleFlight::run"
+          ]
+        },
+        {
+          "claim": "11适配器的鉴权/端点/结果形态；Jev真实余额不由models接口查询",
+          "symbols": [
+            "provider_for_app",
+            "KimiProvider::query",
+            "DeepSeekProvider::query",
+            "ZhipuProvider::query",
+            "VolcEngineProvider::query",
+            "ClaudeProvider::query",
+            "GrokProvider::query",
+            "OpenCodeGoProvider::query",
+            "CodexProvider::query",
+            "StepFunProvider::query",
+            "JevProvider::query",
+            "ClineProvider::query"
+          ]
+        },
+        {
+          "claim": "Claude scoped窗口过滤、首条去重覆盖顶层；Cline服务端直读，不强制三个caps齐全",
+          "symbols": [
+            "parse_claude_usage",
+            "parse_cline_usage_limits",
+            "cline_pass_entitled",
+            "cline_provider_reads_server_usage_limits"
+          ]
+        },
+        {
+          "claim": "StepFun刷新经独立credentialUpdates回传；Codex仅401产生accessRejected挑战；stdout可含合法token更新",
+          "symbols": [
+            "StepFunProvider::query",
+            "is_stepfun_token_expired",
+            "validate_credential_updates",
+            "codex_challenge",
+            "validate_response_credentials"
+          ]
+        }
+      ],
+      "lifecycle": {
+        "analysis": "passed",
+        "draft_source_check": "passed",
+        "expression_editing": "passed",
+        "fact_recheck": "passed"
+      },
+      "expression_notes": [
+        "独立加载 technical-editing 后修订比较式句式、口语及模糊主语；保留参数、公式与条件",
+        "事实修正与链接统一回到 drafting：macOS/Windows边界、SingleFlight重叠范围、StepFun Credits形态，再做表达与事实复查"
+      ],
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "77b648c6058ee90ba206db05bdfcf802b15b61579391b81af08516b3335c5a5f"
+      },
+      "status": "candidate_awaiting_collection_checks",
+      "unresolved": []
+    }
+  },
+  "module_plan": [
+    {
+      "name": "本地用量采集与计费",
+      "responsibility": "只读多来源会话、统一Token语义、缓存、聚合与本地参考计费",
+      "main_article": "collector-design.md",
+      "required_topics": [
+        "collector-local-usage.md"
+      ],
+      "unfinished": []
+    },
+    {
+      "name": "订阅额度查询",
+      "responsibility": "注入账号目录、外部额度查询、窗口/余额归一与凭据挑战更新",
+      "main_article": "collector-provider-quota.md",
+      "required_topics": [],
+      "unfinished": []
+    }
+  ],
+  "figures": [
+    {
+      "id": "d_1ae57d61-4db4-468c-b17b-5258dd915895",
+      "type": "architecture",
+      "svg_candidate": "docs/assets/km/.staging/ccfe974f-59b1-40b1-9746-380c05801b4f/collector-flow.svg",
+      "semantic_candidate": "docs/official/.cards/runs/ccfe974f-59b1-40b1-9746-380c05801b4f/collector-flow-semantic.json",
+      "owner_article": "collector-design.md",
+      "required": true,
+      "trigger": "complex_interactions",
+      "reason": "普通采集中本地与额度并行，能力门禁与错误收敛影响是否发布artifact",
+      "source_paths": [
+        "core/collector/bin/Bruce-collector/src/main.rs",
+        "core/collector/crates/collector-application/src/execution.rs",
+        "core/collector/crates/collector-application/src/lib.rs",
+        "core/collector/crates/collector-bridge/src/lib.rs",
+        "core/collector/crates/collector-domain/src/lib.rs",
+        "core/collector/crates/collector-runtime/src/lib.rs"
+      ],
+      "semantic_check": "passed",
+      "structure_check": "passed",
+      "standalone_render": "not_run",
+      "markdown_render": "not_run",
+      "render_owner": "root",
+      "content_hashes": {
+        "svg": {
+          "algorithm": "sha256",
+          "value": "1e81b6614ea0b6e6fb5a9a909e823caa02d17db64a2782e647251af2245fe15e"
+        },
+        "semantic": {
+          "algorithm": "sha256",
+          "value": "250abf9c5e2462017848fd51146513fdd430c319046b742e4bf3855c436045da"
+        }
+      },
+      "remaining_work": [
+        "root standalone SVG visual inspection",
+        "root rendered Markdown visual inspection"
+      ]
+    }
+  ],
+  "declaration_conflicts": [
+    "原design01称Collector为守护进程，CLI main实际一次请求后退出；Windows为进程内调用。",
+    "原design01未知模型通用$1/$3回退与三项费用公式不对应当前resolve(None)和四项公式。",
+    "原design02 stdout仅脱敏指标不涵盖当前StepFun credentialUpdates；response schema仍只允许kimi而validator允许stepfun。",
+    "原design02 Cline完整三阈值要求与filter_map().all()不一致。",
+    "JSON Schema作为参考不能当运行时全字段强制；pricingOverrides等实际接受字段与schema未完全镜像。",
+    "localPricing/localScanSeconds/subscriptionQuotaOnly/subscriptionProviders部分字段声明与消费边界不同。",
+    "LOCAL_SOURCE_IO_DEGRADED注释声称不升级envelope，但response_status实际升级Partial。",
+    "指标peak_rss_bytes为结束footprint、phase_timings_ms.collector.local为总耗时，retry/refresh计数没有增加点。"
+  ],
+  "checks": [
+    {
+      "name": "article_presentation",
+      "result": "passed",
+      "method": "one H1, substantive body, fixed source labels and final date checked with Python and manual review"
+    },
+    {
+      "name": "source_link_resolution",
+      "result": "passed",
+      "method": "local original link targets read and checked relative to eventual docs/official location; article links target known collector candidates"
+    },
+    {
+      "name": "semantic_source_review",
+      "result": "passed",
+      "method": "original symbols checked separately from technical expression pass; no independent-review claim"
+    },
+    {
+      "name": "runtime_tests",
+      "result": "not_run",
+      "method": "documentation scope; only test source expectations read"
+    },
+    {
+      "name": "figure_rendering",
+      "result": "not_run",
+      "method": "delegated to root"
+    }
+  ],
+  "not_covered_business_or_detail": [
+    "macOS和Windows宿主完整刷新调度、凭据持久化、界面展示由其他worker覆盖；这里只读mac launcher与win collector bridge入口以界定调用边界。",
+    "Provider底层protobuf/Seroval解析器全部细节、火山签名逐步推导和全部兼容分支未逐行展开，文档只声明已读调用/关键归一契约。",
+    "所有解析器测试全集、fixtures全集、cache写盘函数全集未逐行覆盖；不宣称完整验证所有格式或平台行为。",
+    "原design02仅部分正文与可见规则被读取，未声明所有UI/存储规则全文覆盖。",
+    "内置定价完整列表的中段未逐项读取，不将43模型数量或当前外部服务价格写为已验证事实。",
+    "未运行Collector、自动化测试、构建或外部Provider接口；性能目标、运行稳定性和人类验收没有新增证据。"
+  ],
+  "suggested_terms": [
+    "Bridge",
+    "AgentUsageArtifact",
+    "CollectionWindow",
+    "TokenBucket",
+    "PricingTable",
+    "UsageContribution",
+    "SourceDeltaChange",
+    "额度窗口",
+    "credentialUpdates",
+    "credentialChallenges"
+  ],
+  "unresolved_for_root": [
+    "required collector-flow dual visual checks and final collection links/hashes/publication"
+  ]
+}

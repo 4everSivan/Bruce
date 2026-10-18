@@ -1,0 +1,127 @@
+{
+  "run_id": "7a682a9a-3ef8-45f8-b095-7ce903e71818",
+  "started_at": "2026-10-18T13:42:40.848803+00:00",
+  "changes": [
+    {
+      "path": "docs/official/glossary.md",
+      "before_sha256": "0a40b0b3fbc89456470c240bbc438108e35dfb17b2108bedc8b247f15d38cb9d",
+      "after_sha256": "e921317625d03336aa96a4345a782d47343db8591b7987b763aac4bef31118bf",
+      "change": "remove extra EOF blank line; no semantic or reference change"
+    },
+    {
+      "path": "docs/assets/km/refresh-sequence.svg",
+      "before_sha256": "a442971fbe31e2c287c69356daf4943400ca0f552c4dfd0971b00d4c3b659af0",
+      "after_sha256": "606ebc2bd54eb8431f37feb6d6b6dd3019ae71fcad9f276e8de04a9ad40b23a6",
+      "change": "remove extra EOF blank line; no semantic or reference change"
+    },
+    {
+      "path": "docs/assets/km/system-architecture.svg",
+      "before_sha256": "e38c309df81e31547bb0ed093cabd87aeb7fdc694e6bb605ecec639c06054739",
+      "after_sha256": "f4d635bfd6c4030743a1c0296fc9f48708332eaae0f6d4acfb091f40705893e5",
+      "change": "remove extra EOF blank line; no semantic or reference change"
+    }
+  ],
+  "prior_run_id": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+  "checked_at": "2026-10-18T13:43:58.455096+00:00",
+  "scope": "Knowledge-library commit preparation and representation-only cleanup",
+  "coverage_status": "complete",
+  "validation_status": "passed",
+  "published": true,
+  "created_knowledge": [],
+  "updated_representation": [
+    "docs/official/glossary.md",
+    "docs/assets/km/refresh-sequence.svg",
+    "docs/assets/km/system-architecture.svg"
+  ],
+  "reused_knowledge": "All claims, cards, semantic lists, navigation, article dates and library revision; original source hashes unchanged",
+  "exclusions": [
+    {
+      "path": ".git/",
+      "reason": "VCS internals"
+    },
+    {
+      "path": "docs/official/",
+      "reason": "generated knowledge and retained generation material"
+    },
+    {
+      "path": "docs/assets/km/",
+      "reason": "generated figures"
+    },
+    {
+      "path": "local/ and dist/",
+      "reason": "runtime and build products"
+    },
+    {
+      "path": "**/target/ and **/.build/",
+      "reason": "compiler output"
+    },
+    {
+      "path": "node_modules/ and dependency caches",
+      "reason": "third-party dependencies"
+    },
+    {
+      "path": "_adflow_backup/",
+      "reason": "protected backup assets"
+    },
+    {
+      "path": ".env* and credential/key/private database files",
+      "reason": "obvious secret-bearing input"
+    },
+    {
+      "path": ".agents/ and .codex/ and tool configuration",
+      "reason": "agent instructions/resources kept separate from project factual evidence"
+    },
+    {
+      "path": "outside-root symlinks",
+      "reason": "out of project scope"
+    }
+  ],
+  "pending": [],
+  "conflicts": [],
+  "checks": [
+    {
+      "name": "format_and_metadata_integrity",
+      "method": "Tool SHA256 comparison with confirmed baseline; only extra EOF newline bytes removed from 3 files; skill reference replaced with portable logical path; 421 original source hashes unchanged",
+      "result": "passed",
+      "required": true,
+      "scope": "official_collection",
+      "evidence": "3 formal output changes are whitespace-only; knowledge revision and article dates retained; all other managed output hashes match"
+    },
+    {
+      "name": "structure_and_links",
+      "method": "JSON/XML parsing, actual file link and explicit anchor checks",
+      "result": "passed",
+      "required": true,
+      "scope": "official_collection",
+      "evidence": "13 articles, 10 terminology cards, 5 figures; 282 links/anchors resolve; exit 0"
+    },
+    {
+      "name": "formatted_svg_and_markdown_visual",
+      "method": "rsvg-convert 2.62.3 standalone render; Marked 17.0.5 image-bearing Markdown excerpt + ReportLab 4.4.9 + pdftoppm render; actual view_image inspection",
+      "result": "passed",
+      "required": true,
+      "scope": "official_collection",
+      "figure_ids": [
+        "d_a20b6df3-7589-475f-8573-b4269438f480",
+        "d_856cccba-17f1-402f-b8d2-d03c0c7de2e6"
+      ],
+      "evidence": "2 changed SVGs rendered from current bytes at 990px, with 900px Markdown embedding excerpts; captures local/km/7a682a9a-3ef8-45f8-b095-7ce903e71818/; Chinese glyphs, arrows, spacing and clipping inspected; other 3 figures reused with identical SVG hashes"
+    },
+    {
+      "name": "application_tests",
+      "method": "documentation-only commit preparation",
+      "result": "not_run",
+      "required": false,
+      "scope": "candidate",
+      "evidence": "No Bruce software test, build, credential access or deployment executed"
+    }
+  ],
+  "retained_local_material": "30 draft/duplicate files kept untouched and excluded from Git commit",
+  "not_run": [
+    "application tests",
+    "build",
+    "device acceptance",
+    "remote push"
+  ],
+  "next_invocation": "Compare against current manifest hashes; 2 formatted SVG hashes and glossary hash now use this batch"
+}

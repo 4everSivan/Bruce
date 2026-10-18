@@ -1,0 +1,13 @@
+{
+  "checked_at": "2026-10-18T13:22:57.774394+00:00",
+  "changes": [
+    {
+      "path": "docs/devel/change/C060.json",
+      "current_sha256": "b1cbe1783b19fef17f1fdb2b0ca867dcce2775d673e63e1df5d4dd55182beee3",
+      "current_status": "in_progress",
+      "impact": "card evidence changed externally; status remains in_progress and human signoff empty; system and credentials prose retains static implementation and pending acceptance boundaries",
+      "required_document_changes": []
+    }
+  ],
+  "other_initial_source_hashes_unchanged": 420
+}

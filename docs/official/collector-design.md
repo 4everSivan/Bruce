@@ -1,0 +1,102 @@
+# 采集引擎与本地用量设计
+
+Bruce Collector 把本机会话记录转成统一的 Token 与参考费用，并查询已配置账号的服务端额度。macOS 宿主启动一次性 Rust CLI 进程，经 stdin 发送请求、从 stdout 读取响应；Windows 在宿主进程内调用同一 Bridge 入口。两端共用采集逻辑与响应契约，刷新周期和界面状态由各自宿主维护。
+
+## 职责与技术边界
+
+Collector 包含本地用量采集与计费、订阅额度查询两个业务模块。本地模块读取会话文件或 SQLite 数据库，生成各 Agent 的时间、模型、项目和小时分布；额度模块通过服务商接口生成账号级窗口或余额。本地参考费用与服务商额度分开输出，不能用本地费用推算订阅剩余额度。
+
+| 技术组件 | 责任 | 主要依赖 |
+|---|---|---|
+| `Bruce-collector` | 读取 stdin，调用 Bridge，序列化 stdout | `collector-bridge` |
+| `collector-bridge` | 校验请求、创建响应封套、捕获采集 panic、写可选度量文件 | `collector-application`、`collector-domain` |
+| `collector-application` | 建立采集窗口和资源预算，编排本地与额度任务，装配 artifact | 本地、额度、凭据、聚合、运行时组件 |
+| `collector-local` | 只读适配会话格式，维护可重建缓存 | 领域模型、运行时、SQLite |
+| `collector-aggregate` | 合并派生用量，生成展示维度并应用模型价格 | `collector-domain` |
+| `collector-provider` | 账号服务目录、HTTPS 请求、额度响应解析 | 领域模型、运行时 |
+| `collector-credential` | 凭据兼容读取接口、凭据更新与挑战的输出校验 | 领域模型 |
+| `collector-runtime` | 取消令牌、截止时间、许可池、有界队列和同账号请求合并 | 标准库 |
+| `collector-domain` | Bridge 类型、采集窗口、Token 桶、用量贡献和定价 | 时间、序列化库 |
+
+这些 crate 是技术分层，不分别代表独立业务模块。Collector 不代理模型请求，不修改第三方会话或数据库，也不提供跨机器同步。宿主负责凭据持久化；生产额度路径消费请求中注入的凭据，不在 Rust 侧打开系统钥匙串。
+
+依据：[`core/collector/bin/Bruce-collector/src/main.rs`](../../core/collector/bin/Bruce-collector/src/main.rs) 的 `main()`；[`apps/win/src-tauri/src/collector.rs`](../../apps/win/src-tauri/src/collector.rs) 的 `run_configured_collection()`；[`CollectorRunner.swift`](../../apps/macos/Sources/BruceAppCore/CollectorRunner.swift) 的 `SystemCollectorProcessLauncher.launch()`；[`collector-application/src/lib.rs`](../../core/collector/crates/collector-application/src/lib.rs) 的 `collect_agent_usage()`；[`collector-application/src/execution.rs`](../../core/collector/crates/collector-application/src/execution.rs) 的 `resolve_credential()`；[原采集引擎设计](../devel/design/01-数据采集与多模型计费引擎.md) 的目标与非目标。
+
+## Bridge 输入与输出
+
+CLI 入口不解析业务命令行参数。`read_request()` 最多读取 4 MiB 加 1 字节，用额外字节判断请求超限；`run_bytes()` 接受大小不超过 4 MiB 的请求。请求顶层包含以下必需字段。
+
+| 字段 | 契约与使用方式 |
+|---|---|
+| `schemaVersion` | 当前必须为整数 `1` |
+| `runId` | 有效 UUID，用于关联请求与响应 |
+| `module` | 当前仅接受 `agent-usage` |
+| `timeouts` | 必需的 `localScanSeconds`、`externalRequestSeconds`、`moduleSeconds`，均须为有限正数，上限分别为 300、300、600 秒 |
+| `context` | 采集窗口、能力、路径覆盖、价格覆盖、Codex 账号顺序等上下文 |
+| `credentials` | 经字段白名单批准的账号凭据映射 |
+
+`BridgeRequest` 与 `BridgeTimeouts` 使用 `deny_unknown_fields`，Bridge 另外校验 `context`、`credentials` 白名单及部分字段形状。`schemas/` 中的 JSON Schema 用于描述字段，没有在这条运行路径中加载执行；协议判断应以 Rust 类型和 `validate_request()` 为准。
+
+`context.capabilities` 省略时，各能力默认允许；显式数组只允许其中列出的能力。Bridge 接受 `localSessions`、`localPricing`、`externalQuotas` 三个名称，应用层实际使用 `localSessions` 控制本地扫描、使用 `externalQuotas` 控制额度查询；`localPricing` 当前没有单独的执行门禁。`subscriptionQuotaOnly`、`subscriptionProviders` 也位于 Bridge 白名单中，但当前应用编排没有按这两个字段筛选任务。
+
+响应封套 `BridgeResponse` 包含 `schemaVersion`、`runId`、`generatedAt`、`status`、`artifact`、`credentialUpdates`、`credentialChallenges` 和 `diagnostics`。用量工件（`AgentUsageArtifact`）放在 `artifact` 中，包含 `agents`、`services` 与 `totalCostUsd`，并保留自己的版本、模块和生成时间。凭据更新与凭据挑战属于封套，不属于可展示的用量工件。
+
+依据：[`collector-domain/src/lib.rs`](../../core/collector/crates/collector-domain/src/lib.rs) 的 `BridgeRequest`、`BridgeTimeouts`、`BridgeResponse`、`AgentUsageArtifact`；[`collector-bridge/src/lib.rs`](../../core/collector/crates/collector-bridge/src/lib.rs) 的 `read_request()`、`validate_request()`、`ALLOWED_CONTEXT_FIELDS`；[`collector-application/src/context.rs`](../../core/collector/crates/collector-application/src/context.rs) 的 `capability_allowed()`；[`request-v1.schema.json`](../../core/collector/schemas/request-v1.schema.json)。
+
+## 一次采集的处理路径
+
+下图把本地采集与额度查询画为并行工作分支，并标出能力门禁和错误收敛位置。
+
+![Collector 从 stdin 请求校验，经本地与额度并行处理，再装配 artifact 和响应；协议错误或本地取消转入错误封套](../assets/km/collector-flow.svg)
+
+图：Collector 采集与响应关系。CLI 普通采集的静态实现视图，Windows 在进程内调用同一 Bridge 与应用编排；额度分支由 `externalQuotas` 控制，本地线程内由 `localSessions` 控制扫描；框中表示同一次调用内的技术职责，不表示固定耗时。
+
+普通请求在同一作用域中启动本地线程和获准的额度线程，最后汇合。协议错误在启动前返回，本地取消阻止发布新 artifact，单个服务商失败则随诊断保留其他结果。Codex 定向重试是独立入口分支，详见下文。
+
+1. `main()` 读取 stdin，调用 `run_bytes_panic_safe()`；Bridge 解析并校验请求。
+2. `collect_agent_usage()` 建立 HTTPS 客户端和凭据适配器，再由 `CollectionWindow::from_context()` 统一确定日期、时区和窗口。
+3. 应用层在作用域线程中同时启动本地采集与额度采集。额度线程只在允许 `externalQuotas` 时创建。
+4. 本地线程先采集 Kimi Code CLI，通过有界贡献队列交给聚合线程；随后依次采集 Kimi Work、Claude Code、Codex、CodeBuddy、Grok、OpenCode、Pi、ZCode。
+5. 两条业务路径完成后，应用层将本地贡献按 Agent 定稿，应用 `PricingTable`，附加额度服务和诊断，创建 `AgentUsageArtifact`。
+6. Bridge 校验凭据输出，计算响应状态；`main()` 将响应序列化为一行 JSON，追加换行并刷新 stdout。
+
+Windows 的 `run_configured_collection()` 序列化同一请求后直接调用 `run_bytes_panic_safe()`，省去 CLI 的 stdin/stdout I/O。`context.codexQuotaRetryOnly=true` 提供独立分支：只执行注入的 Codex 账号额度计划，返回空 `agents` 与 Codex `services`，不扫描本地会话。该分支早于普通 `externalQuotas` 门禁返回，应用层不再检查该能力，授权检查应由宿主完成。普通路径固定输出十个 Agent 条目，其中 `orca` 当前没有独立扫描调用；Orca 的 Codex 运行目录和账号会话加入 Codex 的扫描根，统计归入 `codex` 条目。
+
+依据：[`collector-application/src/lib.rs`](../../core/collector/crates/collector-application/src/lib.rs) 的 `collect_agent_usage_with_dependencies_inner()`、`collect_local_usage()`、`collect_codex_quota_retry_only()`、`agent_specs`；[`collector-application/src/aggregation.rs`](../../core/collector/crates/collector-application/src/aggregation.rs) 的 `consume_source_changes()`；[`main.rs`](../../core/collector/bin/Bruce-collector/src/main.rs)。
+
+## 本地模块的输入、输出与状态
+
+本地采集要求允许 `localSessions` 且 `context.home` 为字符串；缺少 `home` 时返回协议诊断。`context.paths` 可以覆盖各来源路径，优先于默认路径。解析器把源记录转成 `UsageContribution`，包含逐日 Token 桶、自然月与模型交叉统计、今日模型、今日项目和 24 小时分布；原始会话行不进入聚合队列。
+
+`UsageAccumulator::finalize_with_pricing()` 生成 `AgentUsage`。`today` 保留输入、输出、缓存读取、缓存创建四类 Token；`daily` 补齐窗口内每一天；`todayModels` 最多保留今日前五个模型，`projects` 最多保留今日前三个项目；`modelMonths` 保留采集窗口内的自然月与模型总量。详细口径见[本地会话解析与计费](collector-local-usage.md)。
+
+源不存在时，Agent 状态为 `not_found`；能力未授权时为 `unavailable`。正常来源输出 `ok`。来源 schema 或读取诊断可把条目标记为 `error`，贡献合并失败可标记为 `partial`。SQLite 达到候选行上限属于计划内截断：保留结果并写入 note，不将 Agent 改为错误。
+
+依据：[`collector-application/src/lib.rs`](../../core/collector/crates/collector-application/src/lib.rs) 的 `collect_local_usage()`、`placeholder_agent()`、`finalize_local_agent()`；[`collector-aggregate/src/lib.rs`](../../core/collector/crates/collector-aggregate/src/lib.rs) 的 `finalize_with_pricing()`；[`collector-domain/src/lib.rs`](../../core/collector/crates/collector-domain/src/lib.rs) 的 `UsageContribution`。
+
+## 取消、故障与资源限制
+
+运行时默认本地许可数为 2、网络许可数为 4、账号任务数为 4，贡献队列容量为 1024，单次 HTTP 响应体上限为 4 MiB。这些许可限定可占用资源；普通路径的次要本地来源按固定顺序调用。
+
+`RunContext` 用 `moduleSeconds` 建立共享截止时间，扫描循环、队列和许可获取检查取消令牌，HTTP 请求使用 `externalRequestSeconds`。`localScanSeconds` 经过 Bridge 范围校验，但当前没有形成独立的本地截止时间。取消采用检查点协作停止，不保证能立即中断正在等待的系统调用或 HTTP 请求。
+
+本地取消或超时返回 `LOCAL_SOURCE_CANCELLED`，并在工件发布前再次检查令牌，阻止发布不完整的本地结果。单个额度查询失败会保留其他服务。工作线程 panic 会转为 `COLLECTOR_WORKER_PANICKED`；采集链路中未处理的 panic 由 Bridge 转为 `BRIDGE_INTERNAL_PANIC` 错误封套。stdin 读取和 stdout 写入的 I/O 错误仍由 `main()` 返回，不能据此承诺所有进程失败都必有 JSON。
+
+封套状态由是否存在 artifact 和诊断共同决定：无 artifact 为 `error`；有 artifact 且包含任何非 `LOCAL_SOURCE_ROWS_CAPPED` 诊断为 `partial`；无诊断或仅有该截断诊断为 `success`。因此 `LOCAL_SOURCE_IO_DEGRADED` 虽保留可用结果，也会令封套变为 `partial`。
+
+依据：[`collector-runtime/src/lib.rs`](../../core/collector/crates/collector-runtime/src/lib.rs) 的 `RuntimeLimits`、`CancellationToken`、`BoundedQueue`；[`collector-application/src/context.rs`](../../core/collector/crates/collector-application/src/context.rs) 的 `RunContext::new()`；[`collector-application/src/lib.rs`](../../core/collector/crates/collector-application/src/lib.rs) 的发布前取消检查；[`collector-domain/src/lib.rs`](../../core/collector/crates/collector-domain/src/lib.rs) 的 `response_status()`；[`collector-bridge/src/lib.rs`](../../core/collector/crates/collector-bridge/src/lib.rs) 的 `run_bytes_panic_safe()`。
+
+## 度量边界
+
+设置环境变量 `BRUCE_COLLECTOR_METRICS_PATH` 后，Bridge 把本次采集计数和耗时写到指定文件，使用临时文件加 rename 替换；写入失败不改变 Bridge 响应。度量包括各来源耗时、文件与行数、缓存命中、HTTP 请求数等，不写入原始会话行、凭据和来源路径。
+
+`disk_read_bytes` 表示扫描器统计的逻辑来源字节，不包含所有指纹读取；不能直接等同于物理磁盘 I/O。macOS 额外读取进程资源快照，提供 CPU 差值和物理读盘差值；`peak_rss_bytes` 字段实际填入结束快照的 `ri_phys_footprint`，不能当作实测峰值 RSS。当前 `phase_timings_ms.collector.local` 填的是整个 Bridge 调用耗时，也不是单独本地阶段耗时。`retry_count` 与 `credential_refresh_count` 有输出字段，但应用层未增加这两个计数，不能用零值断言没有重试或凭据刷新。
+
+依据：[`collector-bridge/src/metrics.rs`](../../core/collector/crates/collector-bridge/src/metrics.rs) 的 `write_if_enabled()`、`build_metrics_payload()`、`apply_resource_usage()`；[`collector-application/src/context.rs`](../../core/collector/crates/collector-application/src/context.rs) 的 `RuntimeCounters`；[`collector-application/src/execution.rs`](../../core/collector/crates/collector-application/src/execution.rs) 的 `CountingHttpClient`。
+
+## 相关文档
+
+- [本地会话解析与计费](collector-local-usage.md)：来源路径、去重、缓存与费用计算的具体口径。
+- [订阅额度查询设计](collector-provider-quota.md)：账号计划、服务商差异与凭据回传边界。
+
+最后更新：2026-10-18

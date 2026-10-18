@@ -1,0 +1,114 @@
+{
+  "run_id": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+  "checked_at": "2026-10-18T13:23:22.041651+00:00",
+  "articles": {
+    "README.md": {
+      "analysis": "passed",
+      "draft_source_check": "passed",
+      "expression_editing": "passed",
+      "fact_recheck": "passed",
+      "expression_scope": "paragraph review; widget input-missing wording simplified without changing its retained-card behavior; other supported prose kept",
+      "source_paths": [],
+      "sha256": "1cfb6a0ae71b9bcb247d9c2abd3ad21f76b3b2de53dae69e7738a05b3b0a21ca"
+    },
+    "system-design.md": {
+      "analysis": "passed",
+      "draft_source_check": "passed",
+      "expression_editing": "passed",
+      "fact_recheck": "passed",
+      "expression_scope": "paragraph review; widget input-missing wording simplified without changing its retained-card behavior; other supported prose kept",
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+        "apps/macos/Sources/BruceApp/BruceApp.swift",
+        "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+        "apps/widget/index.html",
+        "apps/win/src-tauri/src/collector.rs",
+        "apps/win/src-tauri/src/lib.rs",
+        "apps/win/src-tauri/src/main.rs",
+        "apps/win/src-tauri/src/runtime_core.rs",
+        "core/collector/crates/collector-application/src/lib.rs",
+        "core/collector/crates/collector-bridge/src/lib.rs",
+        "docs/devel/change/C060.json",
+        "docs/devel/design/00-系统总体设计.md",
+        "docs/devel/design/05-Windows平台适配.md",
+        "docs/devel/todo/now.md"
+      ],
+      "sha256": "a30b03e2671346f4e5f8b3617e8d26136d0d3a5f7ef5c3db5c63825b971551e9"
+    },
+    "widget-design.md": {
+      "analysis": "passed",
+      "draft_source_check": "passed",
+      "expression_editing": "passed",
+      "fact_recheck": "passed",
+      "expression_scope": "paragraph review; widget input-missing wording simplified without changing its retained-card behavior; other supported prose kept",
+      "source_paths": [
+        "apps/widget/index.html",
+        "scripts/runtime-manifest.zsh",
+        "scripts/widget-performance-harness.mjs"
+      ],
+      "sha256": "af9b53870258809473f307d8e8972090ea50af88640a3823efdc6f2a9da6cb0e"
+    },
+    "build-release.md": {
+      "analysis": "passed",
+      "draft_source_check": "passed",
+      "expression_editing": "passed",
+      "fact_recheck": "passed",
+      "expression_scope": "paragraph review; widget input-missing wording simplified without changing its retained-card behavior; other supported prose kept",
+      "source_paths": [
+        ".github/workflows/ci.yml",
+        ".gitignore",
+        "README.md",
+        "VERSION",
+        "apps/macos/Package.swift",
+        "docs/guide/01-本地部署指南.md",
+        "scripts/build-release-app.sh",
+        "scripts/build-test-app.sh",
+        "scripts/build-win-app.ps1",
+        "scripts/check-release-pipeline.mjs",
+        "scripts/release-notes.sh",
+        "scripts/runtime-manifest.zsh",
+        "scripts/upload-win-release.ps1",
+        "scripts/verify-local.sh",
+        "scripts/verify-rust.sh"
+      ],
+      "sha256": "e98d957b876f1f9636929a54f64a504aad24988781c18fa1a4a3e8e6ab5cbfce"
+    },
+    "glossary.md": {
+      "analysis": "passed",
+      "draft_source_check": "passed",
+      "expression_editing": "passed",
+      "fact_recheck": "passed",
+      "expression_scope": "paragraph review; widget input-missing wording simplified without changing its retained-card behavior; other supported prose kept",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+        "apps/widget/index.html",
+        "apps/win/src-tauri/src/collector.rs",
+        "apps/win/src-tauri/src/runtime_core.rs",
+        "core/collector/crates/collector-aggregate/src/lib.rs",
+        "core/collector/crates/collector-bridge/src/lib.rs",
+        "core/collector/crates/collector-domain/src/lib.rs",
+        "core/collector/crates/collector-domain/src/pricing.rs"
+      ],
+      "sha256": "0a40b0b3fbc89456470c240bbc438108e35dfb17b2108bedc8b247f15d38cb9d"
+    }
+  },
+  "invariants": [
+    "static behavior distinct from runtime and acceptance",
+    "Preview CI distinct from hand-signed/notarized entry",
+    "Widget host independent of native app",
+    "Codex recovery distinct from normal externalQuotas path"
+  ],
+  "technical_editing_reference": "km/references/technical-editing.md",
+  "not_run": [
+    "application tests",
+    "software build",
+    "provider requests",
+    "production or device acceptance"
+  ]
+}

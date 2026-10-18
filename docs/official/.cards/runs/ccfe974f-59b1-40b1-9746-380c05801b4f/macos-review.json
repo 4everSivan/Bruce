@@ -1,0 +1,689 @@
+{
+  "run_id": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+  "reviewed_at_utc": "2026-10-18T13:28:00.864321+00:00",
+  "articles": {
+    "macos-design.md": {
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+        "apps/macos/Sources/BruceApp/ApplicationLifecycle.swift",
+        "apps/macos/Sources/BruceApp/BruceApp.swift",
+        "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "apps/macos/Sources/BruceAppCore/AppModel.swift",
+        "apps/macos/Sources/BruceAppCore/AppRuntime.swift",
+        "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+        "apps/macos/Sources/BruceAppCore/DashboardPanelAnimationPolicy.swift",
+        "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift",
+        "apps/macos/Sources/BruceAppCore/PanelViewModel.swift",
+        "apps/macos/Sources/BruceAppCore/SubscriptionMapping.swift",
+        "apps/macos/Sources/BruceAppCore/UsageMapping.swift",
+        "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+        "apps/macos/Tests/Harnesses/NativeLifecycleHarness/NativeLifecycleHarness.swift",
+        "docs/devel/design/04-设置中心与价格校准交互.md"
+      ],
+      "key_claim_symbols": [
+        "BruceApp.init",
+        "ApplicationBootstrap.startIfNeeded",
+        "AppDelegate.applicationDidFinishLaunching",
+        "AppModel.setArtifact",
+        "AppModel.makePanelViewModel",
+        "AppModel.makeMenuBarSummary",
+        "ThemeResolution.resolve",
+        "SettingsWindowController.present",
+        "OnboardingCoordinator.persistPricingOverrides",
+        "ApplicationLifecycleCoordinator.beginTermination",
+        "ApplicationLifecycleCoordinator.cancelTermination"
+      ],
+      "lifecycle_checks": {
+        "analysis": {
+          "result": "passed",
+          "method": "Trace current entrypoints, callers, guards, normal path, failures and shutdown from original sources"
+        },
+        "draft_source_check": {
+          "result": "passed",
+          "method": "Match claims and cited sections to original methods; distinguish design declarations from current wiring"
+        },
+        "expression_edit": {
+          "result": "passed",
+          "method": "Separate technical-editing pass after supported draft; four paragraph edits; code literals and link targets compared byte-for-byte"
+        },
+        "fact_recheck": {
+          "result": "passed",
+          "method": "Re-read affected shared assembly, mapping and scheduler code; preserve current C060 status and design/implementation differences"
+        },
+        "link_structure": {
+          "result": "passed",
+          "method": "Resolve source links relative to final docs/official; check H1 and update dates"
+        },
+        "software_tests_builds": {
+          "result": "not_run",
+          "method": "Not authorized/needed for documentation-only task; read test definitions only"
+        },
+        "credential_runtime_probe": {
+          "result": "not_run",
+          "method": "No real credentials accessed"
+        },
+        "figure_standalone_rendering": {
+          "result": "not_run",
+          "method": "Delegated to root after candidate delivery"
+        },
+        "figure_markdown_rendering": {
+          "result": "not_run",
+          "method": "Delegated to root after candidate delivery"
+        }
+      },
+      "sha256": "ef3235749c484ac50233d4d96c9cc84cd0a0d67b443b552c85ac7bcb8552f723"
+    },
+    "credentials-design.md": {
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+        "apps/macos/Sources/BruceApp/BruceApp.swift",
+        "apps/macos/Sources/BruceApp/LocalCredentialProbe.swift",
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "apps/macos/Sources/BruceApp/Settings/ClaudeProviderSettingsSection.swift",
+        "apps/macos/Sources/BruceApp/SubscriptionService.swift",
+        "apps/macos/Sources/BruceAppCore/AppModel.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+        "apps/macos/Sources/BruceOnboardingCore/CodexTokenManager.swift",
+        "apps/macos/Sources/BruceOnboardingCore/CollectorActivationGate.swift",
+        "apps/macos/Sources/BruceOnboardingCore/ExternalCredentialReader.swift",
+        "apps/macos/Sources/BruceOnboardingCore/KeychainAccessPolicy.swift",
+        "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+        "apps/macos/Sources/BruceOnboardingCore/ProviderRegistry.swift",
+        "apps/macos/Sources/BruceOnboardingCore/SubscriptionCredentialImport.swift",
+        "apps/macos/Tests/BruceOnboardingCoreHarness/OnboardingClaudeGrokAndConfiguredRuleTests.swift",
+        "docs/devel/change/C060.json"
+      ],
+      "key_claim_symbols": [
+        "ProtectedFileCredentialStore.loadCredential",
+        "ProtectedFileCredentialStore.writePayloadLocked",
+        "OnboardingConfigurationStore.load",
+        "CollectorActivationGate.canActivate",
+        "OnboardingRunInputProvider.agentUsageInput",
+        "SystemExternalCredentialReader.readClaudeKeychain",
+        "ClaudePasteParser.parse",
+        "SubscriptionService.saveClaudeOAuthJSON",
+        "SubscriptionService.importCodexFromLocalCLI",
+        "CodexTokenManager.validAccessToken"
+      ],
+      "lifecycle_checks": {
+        "analysis": {
+          "result": "passed",
+          "method": "Trace current entrypoints, callers, guards, normal path, failures and shutdown from original sources"
+        },
+        "draft_source_check": {
+          "result": "passed",
+          "method": "Match claims and cited sections to original methods; distinguish design declarations from current wiring"
+        },
+        "expression_edit": {
+          "result": "passed",
+          "method": "Separate technical-editing pass after supported draft; four paragraph edits; code literals and link targets compared byte-for-byte"
+        },
+        "fact_recheck": {
+          "result": "passed",
+          "method": "Re-read affected shared assembly, mapping and scheduler code; preserve current C060 status and design/implementation differences"
+        },
+        "link_structure": {
+          "result": "passed",
+          "method": "Resolve source links relative to final docs/official; check H1 and update dates"
+        },
+        "software_tests_builds": {
+          "result": "not_run",
+          "method": "Not authorized/needed for documentation-only task; read test definitions only"
+        },
+        "credential_runtime_probe": {
+          "result": "not_run",
+          "method": "No real credentials accessed"
+        },
+        "figure_standalone_rendering": {
+          "result": "not_run",
+          "method": "Delegated to root after candidate delivery"
+        },
+        "figure_markdown_rendering": {
+          "result": "not_run",
+          "method": "Delegated to root after candidate delivery"
+        }
+      },
+      "sha256": "bdcbaf0dc939b4916699ecc16a45bb31f0413d6cd24baa1b06f64fb43e8c21ec"
+    },
+    "refresh-lifecycle.md": {
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+        "apps/macos/Sources/BruceApp/BruceApp.swift",
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "apps/macos/Sources/BruceApp/QuotaAlertNotifier.swift",
+        "apps/macos/Sources/BruceAppCore/AppModel.swift",
+        "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift",
+        "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+        "apps/macos/Sources/BruceAppCore/QuotaAlertEvaluator.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshBackoffPolicy.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshTypes.swift"
+      ],
+      "key_claim_symbols": [
+        "RefreshScheduler.start",
+        "RefreshScheduler.triggerRefresh",
+        "RefreshScheduler.handleBackoff",
+        "RefreshScheduler.applyCompleted",
+        "RefreshScheduler.handleCancellation",
+        "RefreshExecutionPipeline.run",
+        "RefreshExecutionPipeline.finishPublishablePath",
+        "CollectorRunner.beginRun",
+        "CollectorRunner.complete",
+        "ArtifactStore.publish",
+        "ArtifactStore.load",
+        "AppModel.makePanelViewModel",
+        "QuotaAlertEvaluator.overThresholdEntries"
+      ],
+      "lifecycle_checks": {
+        "analysis": {
+          "result": "passed",
+          "method": "Trace current entrypoints, callers, guards, normal path, failures and shutdown from original sources"
+        },
+        "draft_source_check": {
+          "result": "passed",
+          "method": "Match claims and cited sections to original methods; distinguish design declarations from current wiring"
+        },
+        "expression_edit": {
+          "result": "passed",
+          "method": "Separate technical-editing pass after supported draft; four paragraph edits; code literals and link targets compared byte-for-byte"
+        },
+        "fact_recheck": {
+          "result": "passed",
+          "method": "Re-read affected shared assembly, mapping and scheduler code; preserve current C060 status and design/implementation differences"
+        },
+        "link_structure": {
+          "result": "passed",
+          "method": "Resolve source links relative to final docs/official; check H1 and update dates"
+        },
+        "software_tests_builds": {
+          "result": "not_run",
+          "method": "Not authorized/needed for documentation-only task; read test definitions only"
+        },
+        "credential_runtime_probe": {
+          "result": "not_run",
+          "method": "No real credentials accessed"
+        },
+        "figure_standalone_rendering": {
+          "result": "not_run",
+          "method": "Delegated to root after candidate delivery"
+        },
+        "figure_markdown_rendering": {
+          "result": "not_run",
+          "method": "Delegated to root after candidate delivery"
+        }
+      },
+      "sha256": "79d8c8ce874f332f09694917ecb54fcd5d9a96befa115c7be39e1c951b77383b"
+    }
+  },
+  "sources": {
+    "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift": {
+      "algorithm": "sha256",
+      "value": "7908e4a4b22807fb242a80a18beae8c12c0e506d824acb71e72906d4135c5ec7",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading"
+    },
+    "apps/macos/Sources/BruceApp/ApplicationLifecycle.swift": {
+      "algorithm": "sha256",
+      "value": "a87f0559cba158091c6425c4698b4aee4761b8f860f6c0cc650c785d99a805a6",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading"
+    },
+    "apps/macos/Sources/BruceApp/BruceApp.swift": {
+      "algorithm": "sha256",
+      "value": "dccbc4d237f079b6d5b9af361abc0984ddd4cfa10cb50d70f4557877ee1ce657",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading"
+    },
+    "apps/macos/Sources/BruceApp/LocalCredentialProbe.swift": {
+      "algorithm": "sha256",
+      "value": "1c8fccb6b0102e79b25bdcc26557c1c18c90f0cd089560acb5696ff235a02343",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading"
+    },
+    "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift": {
+      "algorithm": "sha256",
+      "value": "726c895d502b52f7e69e6e2527bf9568b74f9b9c0c1cfad1652c28b363d4f71c",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading",
+      "inspected_line_ranges": [
+        [
+          1,
+          185
+        ]
+      ]
+    },
+    "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift": {
+      "algorithm": "sha256",
+      "value": "c5d7cf581d3618d5077db8bb6b115354ca58f525c0f6119f1bd1809227bbbceb",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading",
+      "inspected_line_ranges": [
+        [
+          637,
+          685
+        ],
+        [
+          728,
+          796
+        ],
+        [
+          438,
+          470
+        ]
+      ]
+    },
+    "apps/macos/Sources/BruceApp/QuotaAlertNotifier.swift": {
+      "algorithm": "sha256",
+      "value": "de3df56f75ec552ffcaf90b890c4f74948c10ad799a462771a76afb2ea2ea69a",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading"
+    },
+    "apps/macos/Sources/BruceApp/Settings/ClaudeProviderSettingsSection.swift": {
+      "algorithm": "sha256",
+      "value": "2349e71c56f6d57384fc85832f0b5f6b004d84446f7e5c4a8024f39a8f210db3",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading"
+    },
+    "apps/macos/Sources/BruceApp/SubscriptionService.swift": {
+      "algorithm": "sha256",
+      "value": "7ec00442df1c7efb3543827a1c98f0964b66e3196b9fe0efaef2f55e1ec251e6",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading",
+      "inspected_line_ranges": [
+        [
+          786,
+          845
+        ],
+        [
+          1100,
+          1225
+        ],
+        [
+          1588,
+          1626
+        ]
+      ]
+    },
+    "apps/macos/Sources/BruceAppCore/AppModel.swift": {
+      "algorithm": "sha256",
+      "value": "81e242ec8868e60955fedd9a79fdc247567f2a8ed6172782c6473004aa989634",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading",
+      "inspected_line_ranges": [
+        [
+          140,
+          370
+        ],
+        [
+          490,
+          673
+        ]
+      ]
+    },
+    "apps/macos/Sources/BruceAppCore/AppRuntime.swift": {
+      "algorithm": "sha256",
+      "value": "815bb9f1a88e0e0d55334ae17b4a60e81f59d5d160bc7099c1adf6c3b6096883",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading"
+    },
+    "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift": {
+      "algorithm": "sha256",
+      "value": "cf79cada0bed31cd630103bbb20b557355fa00cf01ee23536e558a8cc63dbc1d",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading"
+    },
+    "apps/macos/Sources/BruceAppCore/ArtifactFinalizer.swift": {
+      "algorithm": "sha256",
+      "value": "f360435d282171fb5d7be20eee6d3c05b8705c1478386b4937bacbb7cf1e5bee",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading"
+    },
+    "apps/macos/Sources/BruceAppCore/ArtifactStore.swift": {
+      "algorithm": "sha256",
+      "value": "bfd71a9c7002df21a625e8adc99382a1400997764248707c1813f850475a672a",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading"
+    },
+    "apps/macos/Sources/BruceAppCore/CodexQuotaRecovery.swift": {
+      "algorithm": "sha256",
+      "value": "24ad01830e23a7f0013ca2ef5cecb3056d82621d7d6c99f5577c086071a327c7",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading"
+    },
+    "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift": {
+      "algorithm": "sha256",
+      "value": "05d6547e3265120b45b9043a3496a406eced5b4547d32aa7d7e516dc5edecb28",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading",
+      "inspected_line_ranges": [
+        [
+          130,
+          320
+        ],
+        [
+          350,
+          448
+        ],
+        [
+          540,
+          605
+        ],
+        [
+          720,
+          840
+        ]
+      ]
+    },
+    "apps/macos/Sources/BruceAppCore/CollectorRunner.swift": {
+      "algorithm": "sha256",
+      "value": "ad2b3c738032988bb9445dfefd36175f215be66b6f3fcac6f47d05a4970cbc96",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading"
+    },
+    "apps/macos/Sources/BruceAppCore/CredentialUpdateCoordinator.swift": {
+      "algorithm": "sha256",
+      "value": "1f1b044b77e79e3d576d635123d81cf5128716bc4900bfb78439cf9ad016396e",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading",
+      "inspected_line_ranges": [
+        [
+          1,
+          110
+        ]
+      ]
+    },
+    "apps/macos/Sources/BruceAppCore/DashboardPanelAnimationPolicy.swift": {
+      "algorithm": "sha256",
+      "value": "f39fd7a47054116173421b60299b9f99950a23d6fa1a92f54520acb87ae722b4",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading"
+    },
+    "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift": {
+      "algorithm": "sha256",
+      "value": "9f0eea2751c546aba797da4b18475ec06455ed62ff5ea980c6b39c1edd8559ac",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading"
+    },
+    "apps/macos/Sources/BruceAppCore/PanelViewModel.swift": {
+      "algorithm": "sha256",
+      "value": "55eb9c6f41d91cd5b182adb9dee0f8f3aa4986490a3e27e27c5547ab0aaa33ee",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading"
+    },
+    "apps/macos/Sources/BruceAppCore/QuotaAlertEvaluator.swift": {
+      "algorithm": "sha256",
+      "value": "069921c3a918806d836ab3ec745cc322fe6cf1c58f2a88c29f9534e2821e92fe",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading"
+    },
+    "apps/macos/Sources/BruceAppCore/RefreshBackoffPolicy.swift": {
+      "algorithm": "sha256",
+      "value": "05a9d15223d0c4a9604a65ea17ed02c3a06ca148e2f8f60355657a5e6947827b",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading"
+    },
+    "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift": {
+      "algorithm": "sha256",
+      "value": "95a11a91b2655c675f8b9a456fc14f82ab2d486eb78cca8530d745e9c959bd33",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading"
+    },
+    "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift": {
+      "algorithm": "sha256",
+      "value": "2007fad9ba784b86801a57b700c11bf29833627e7994c591ee6b655adf87f69d",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading"
+    },
+    "apps/macos/Sources/BruceAppCore/RefreshTypes.swift": {
+      "algorithm": "sha256",
+      "value": "c179c4de9b9507192de06e0cd22e1b9cd3f2206d9b9ca8016c627b98564f673a",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading"
+    },
+    "apps/macos/Sources/BruceAppCore/ScopedQuotaSnapshotMerger.swift": {
+      "algorithm": "sha256",
+      "value": "084d8b7c988803a95e644940d14f2b39b1f1f970ae71ce329f869932b52df16e",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading",
+      "inspected_line_ranges": [
+        [
+          1,
+          190
+        ]
+      ]
+    },
+    "apps/macos/Sources/BruceAppCore/SubscriptionMapping.swift": {
+      "algorithm": "sha256",
+      "value": "9909527e806ac05b9b28a4f36e90b47741bedf659fcc3f436412062c1b8b218a",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading",
+      "inspected_line_ranges": [
+        [
+          1,
+          170
+        ]
+      ]
+    },
+    "apps/macos/Sources/BruceAppCore/UsageMapping.swift": {
+      "algorithm": "sha256",
+      "value": "8d1faa321ed8e7fdc47566508cefa3b0a70c9931ebac088f631e58fd2375e1c0",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading",
+      "inspected_line_ranges": [
+        [
+          1,
+          170
+        ]
+      ]
+    },
+    "apps/macos/Sources/BruceOnboardingCore/CodexTokenManager.swift": {
+      "algorithm": "sha256",
+      "value": "b3fdce1c8fa2e65d3498946473c5d4b6c3413f9f10fc775a12df9421ad3c4692",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading",
+      "inspected_line_ranges": [
+        [
+          190,
+          245
+        ]
+      ]
+    },
+    "apps/macos/Sources/BruceOnboardingCore/CollectorActivationGate.swift": {
+      "algorithm": "sha256",
+      "value": "85ec220c369a482c9338bfa6d6cc7bc4df83ede271af47a3faaf5d86dc4389f3",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading"
+    },
+    "apps/macos/Sources/BruceOnboardingCore/ExternalCredentialReader.swift": {
+      "algorithm": "sha256",
+      "value": "17ce0ac28ca03c7ea4619e83df90cc937c5d7b1b265853167349f0022c9c74e1",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading"
+    },
+    "apps/macos/Sources/BruceOnboardingCore/KeychainAccessPolicy.swift": {
+      "algorithm": "sha256",
+      "value": "7defc8b8a5781052dd67f879325189cc5b21a8b67826b08c42f7f594cb691e86",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading"
+    },
+    "apps/macos/Sources/BruceOnboardingCore/ModuleIdentity.swift": {
+      "algorithm": "sha256",
+      "value": "33aa7c390e386d71c63b5ca501243218abe427a62e8a4203b0134956905ab410",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading"
+    },
+    "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift": {
+      "algorithm": "sha256",
+      "value": "5f43270d9a129e297a7cf9e7fb1a173ad5d6f4559e766b82e33f8b558fcdcc58",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading",
+      "inspected_line_ranges": [
+        [
+          349,
+          490
+        ],
+        [
+          605,
+          835
+        ]
+      ]
+    },
+    "apps/macos/Sources/BruceOnboardingCore/ProviderRegistry.swift": {
+      "algorithm": "sha256",
+      "value": "ad47c82bbd2373bfa850f2cc31cddfb5817ad118ba44525052b210f475f765db",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading",
+      "inspected_line_ranges": [
+        [
+          1,
+          180
+        ]
+      ]
+    },
+    "apps/macos/Sources/BruceOnboardingCore/SubscriptionCredentialImport.swift": {
+      "algorithm": "sha256",
+      "value": "8aa32da8c290fc155bbf9013e968d789a290297423f9eebad5bab922326da1b2",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading",
+      "inspected_line_ranges": [
+        [
+          1,
+          335
+        ]
+      ]
+    },
+    "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift": {
+      "algorithm": "sha256",
+      "value": "2daa969282fa73085b834bcccbd9119e4478e32748f73c166ee467f32973c41c",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading"
+    },
+    "apps/macos/Tests/BruceOnboardingCoreHarness/KeychainAccessPolicyTests.swift": {
+      "algorithm": "sha256",
+      "value": "35803301deef316dc456d23e2f4eda8f4788bde5244b0e47ac1fbffbd003b203",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading"
+    },
+    "apps/macos/Tests/BruceOnboardingCoreHarness/OnboardingClaudeGrokAndConfiguredRuleTests.swift": {
+      "algorithm": "sha256",
+      "value": "b2b272b027f32a5fc29413723b229f1739ec66ad792b9c3dd9520575727d4168",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading",
+      "inspected_line_ranges": [
+        [
+          1,
+          100
+        ]
+      ]
+    },
+    "apps/macos/Tests/Harnesses/NativeLifecycleHarness/NativeLifecycleHarness.swift": {
+      "algorithm": "sha256",
+      "value": "1cc51ad6079ff14e6c28f3a880901c7dc61a39e7bcc4047e9ed895f7254a0995",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading",
+      "inspected_line_ranges": [
+        [
+          240,
+          316
+        ]
+      ]
+    },
+    "docs/devel/change/C060.json": {
+      "algorithm": "sha256",
+      "value": "b1cbe1783b19fef17f1fdb2b0ca867dcce2775d673e63e1df5d4dd55182beee3",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading"
+    },
+    "docs/devel/design/02-订阅额度与凭据安全存储.md": {
+      "algorithm": "sha256",
+      "value": "8495c46b7feb08ff2f573e46e7dc08b2290f21f4811f115534abba104bb875d8",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading"
+    },
+    "docs/devel/design/03-菜单栏状态与多风格原生渲染.md": {
+      "algorithm": "sha256",
+      "value": "6ebcfff64cfa8869a9522a5121927460bdfab5cf8f61c1f1011392d3b7b4f599",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading"
+    },
+    "docs/devel/design/04-设置中心与价格校准交互.md": {
+      "algorithm": "sha256",
+      "value": "1f4fcc5eabe6fa82a4e806b762aaef7af832cb682c9c2c61c61c3e7bf0fe6475",
+      "reading": "Relevant implementation sections read; hashes cover whole current file, not proof of exhaustive line reading"
+    }
+  },
+  "module_proposal": [
+    {
+      "name": "原生应用与菜单栏呈现",
+      "main_article": "macos-design.md",
+      "required_topics": [
+        "refresh-lifecycle.md"
+      ]
+    },
+    {
+      "name": "订阅配置与凭据管理",
+      "main_article": "credentials-design.md",
+      "required_topics": [
+        "refresh-lifecycle.md"
+      ]
+    }
+  ],
+  "figures": {
+    "d_04caaf2e-14be-4711-904e-1faa0b4a797b": {
+      "type": "state",
+      "view": "implementation",
+      "owner_article": "refresh-lifecycle.md",
+      "article_paths": [
+        "refresh-lifecycle.md"
+      ],
+      "svg_candidate": "docs/assets/km/.staging/ccfe974f-59b1-40b1-9746-380c05801b4f/macos-scheduler-state.svg",
+      "semantic_candidate": "docs/official/.cards/runs/ccfe974f-59b1-40b1-9746-380c05801b4f/macos-scheduler-semantic.json",
+      "svg_path": "docs/assets/km/macos-scheduler-state.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_04caaf2e-14be-4711-904e-1faa0b4a797b.json",
+      "required": true,
+      "trigger": "business_states",
+      "reason": "ModuleScheduleState.Phase controls accepted triggers, backoff, authorization recovery and cancellation",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/RefreshBackoffPolicy.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift"
+      ],
+      "content_hashes": {
+        "svg": {
+          "algorithm": "sha256",
+          "value": "64f2ce923286b76a479f6cbac108895f7f18d5a47c8d9af343f154bd1ce39594"
+        },
+        "semantic": {
+          "algorithm": "sha256",
+          "value": "e28df802c3fef35735b6c81e1811e1dfcc3d6a40339a71845a7b38314d3ff735"
+        }
+      },
+      "structure_check": "passed",
+      "meaning_check": "passed",
+      "rendering_check": "not_run",
+      "scope_refinement": "enabled is independent from phase; disableModule does not cancel an in-flight process, whose completion may still alter phase or publish. Prose explicitly covers this path; figure visibly discloses it is omitted. Scope was refined from source semantics, not node count."
+    }
+  },
+  "candidate_terms": [
+    {
+      "term": "RefreshIntent",
+      "context": "macOS 刷新调度",
+      "definition": "组合触发原因、手动属性和刷新范围的请求意图。",
+      "source": "apps/macos/Sources/BruceAppCore/RefreshTypes.swift",
+      "symbol": "RefreshIntent; RefreshIntentMerge.merge"
+    },
+    {
+      "term": "ArtifactStore",
+      "context": "macOS 工件持久化",
+      "definition": "验证、保存和恢复 Collector 工件与模块元数据的本地快照库。",
+      "source": "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
+      "symbol": "ArtifactStore.publish; ArtifactStore.load"
+    },
+    {
+      "term": "ProtectedFileCredentialStore",
+      "context": "Bruce 自有凭据存储",
+      "definition": "通过本机文件权限和临时文件替换保存账户凭据的存储实现。",
+      "source": "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+      "symbol": "ProtectedFileCredentialStore"
+    },
+    {
+      "term": "CollectorActivationGate",
+      "context": "macOS 模块启用",
+      "definition": "依据同意、选择、存储访问和就绪度决定 Collector 模块是否可被启用的默认拒绝门控。",
+      "source": "apps/macos/Sources/BruceOnboardingCore/CollectorActivationGate.swift",
+      "symbol": "CollectorActivationGate.canActivate"
+    }
+  ],
+  "findings": [
+    {
+      "topic": "Pricing design mismatch",
+      "fact": "Design 04 declares in-memory hot recalculation, current persistPricingOverrides saves then refreshes Collector",
+      "article": "macos-design.md"
+    },
+    {
+      "topic": "C060 worktree implementation",
+      "fact": "Latest card in_progress, verification result and user quote empty; per-check evidence text added externally is not this run observation",
+      "article": "credentials-design.md"
+    },
+    {
+      "topic": "Claude import validation",
+      "fact": "saveClaudeOAuthJSON uses local evaluator and sets ok; do not imply successful live network validation",
+      "article": "credentials-design.md"
+    },
+    {
+      "topic": "Independent enabled flag",
+      "fact": "disableModule permits in-flight result handling, new scheduling remains blocked by enabled=false",
+      "article": "refresh-lifecycle.md"
+    }
+  ],
+  "pending": [],
+  "uncovered_scope": [
+    "Detailed native window placement and CoreGraphics drawing geometry",
+    "Every per-Provider UI form and remote HTTP contract",
+    "CodexTokenResolver persistence retry and individual account state reducer details",
+    "Diagnostic exporter archive implementation and global hotkey native registration details"
+  ],
+  "source_coverage_note": "Core module responsibilities and main refresh lifecycle covered; uncovered_scope contains deeper implementation details not asserted by these articles. Parent owns overall collection source coverage.",
+  "original_sources_modified": []
+}

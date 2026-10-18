@@ -1,0 +1,77 @@
+{
+  "checked_at": "2026-10-18T13:32:08.606474+00:00",
+  "standalone_environment": "librsvg rsvg-convert 2.62.3; Cairo 1.18.4; Pango 1.57.1; 990px width; local CJK fallback fonts",
+  "markdown_environment": "Actual image-bearing Markdown paragraphs parsed with Marked 17.0.5, rendered offline with ReportLab 4.4.9/Arial Unicode and pdftoppm at 96dpi; 900px image width",
+  "limits": [
+    "Image-bearing article excerpts, not whole-page layout",
+    "Repository does not declare a unique Markdown viewer; GitHub, Codex native Markdown preview, browser, Word and other viewers not visually certified",
+    "Chrome screenshot timed out; IAB file protocol was blocked; no browser-based preview passed"
+  ],
+  "figures": [
+    {
+      "figure_id": "d_a20b6df3-7589-475f-8573-b4269438f480",
+      "article_paths": [
+        "system-design.md"
+      ],
+      "svg_sha256": "e38c309df81e31547bb0ed093cabd87aeb7fdc694e6bb605ecec639c06054739",
+      "semantic_sha256": "f85b4a58dc6a67bef807dfafaeca682e02860febb08273e4d31b63d4ff105c72",
+      "standalone_capture": "local/km/ccfe974f-59b1-40b1-9746-380c05801b4f/system-architecture-standalone.png",
+      "markdown_capture": "local/km/ccfe974f-59b1-40b1-9746-380c05801b4f/system-architecture-markdown.png",
+      "markdown_pdf": "local/km/ccfe974f-59b1-40b1-9746-380c05801b4f/system-architecture-markdown.pdf",
+      "visual_result": "passed",
+      "observed": "Chinese glyphs, connector clearance, arrow direction, clipping, scope captions and readability inspected at 900px article image width"
+    },
+    {
+      "figure_id": "d_856cccba-17f1-402f-b8d2-d03c0c7de2e6",
+      "article_paths": [
+        "refresh-lifecycle.md"
+      ],
+      "svg_sha256": "a442971fbe31e2c287c69356daf4943400ca0f552c4dfd0971b00d4c3b659af0",
+      "semantic_sha256": "1fd28cbbf5bc6ca22226259738dd56b3351e1e47dacdf2abbad99dc0ac3aa306",
+      "standalone_capture": "local/km/ccfe974f-59b1-40b1-9746-380c05801b4f/refresh-sequence-standalone.png",
+      "markdown_capture": "local/km/ccfe974f-59b1-40b1-9746-380c05801b4f/refresh-sequence-markdown.png",
+      "markdown_pdf": "local/km/ccfe974f-59b1-40b1-9746-380c05801b4f/refresh-sequence-markdown.pdf",
+      "visual_result": "passed",
+      "observed": "Chinese glyphs, connector clearance, arrow direction, clipping, scope captions and readability inspected at 900px article image width"
+    },
+    {
+      "figure_id": "d_1ae57d61-4db4-468c-b17b-5258dd915895",
+      "article_paths": [
+        "collector-design.md"
+      ],
+      "svg_sha256": "1e81b6614ea0b6e6fb5a9a909e823caa02d17db64a2782e647251af2245fe15e",
+      "semantic_sha256": "250abf9c5e2462017848fd51146513fdd430c319046b742e4bf3855c436045da",
+      "standalone_capture": "local/km/ccfe974f-59b1-40b1-9746-380c05801b4f/collector-flow-standalone.png",
+      "markdown_capture": "local/km/ccfe974f-59b1-40b1-9746-380c05801b4f/collector-flow-markdown.png",
+      "markdown_pdf": "local/km/ccfe974f-59b1-40b1-9746-380c05801b4f/collector-flow-markdown.pdf",
+      "visual_result": "passed",
+      "observed": "Chinese glyphs, connector clearance, arrow direction, clipping, scope captions and readability inspected at 900px article image width"
+    },
+    {
+      "figure_id": "d_084f9330-301b-4613-bcd3-1cf561127e93",
+      "article_paths": [
+        "windows-state-mapping.md"
+      ],
+      "svg_sha256": "c1374f01885a539993860d531384766a41918a86b8d732cbc9017d2eec9b052b",
+      "semantic_sha256": "f012835eda5a859a31020a8989d747270cbbf56b876d2b308c8aac1114dcd400",
+      "standalone_capture": "local/km/ccfe974f-59b1-40b1-9746-380c05801b4f/windows-snapshot-state-standalone.png",
+      "markdown_capture": "local/km/ccfe974f-59b1-40b1-9746-380c05801b4f/windows-snapshot-state-markdown.png",
+      "markdown_pdf": "local/km/ccfe974f-59b1-40b1-9746-380c05801b4f/windows-snapshot-state-markdown.pdf",
+      "visual_result": "passed",
+      "observed": "Chinese glyphs, connector clearance, arrow direction, clipping, scope captions and readability inspected at 900px article image width"
+    },
+    {
+      "figure_id": "d_04caaf2e-14be-4711-904e-1faa0b4a797b",
+      "article_paths": [
+        "refresh-lifecycle.md"
+      ],
+      "svg_sha256": "64f2ce923286b76a479f6cbac108895f7f18d5a47c8d9af343f154bd1ce39594",
+      "semantic_sha256": "e28df802c3fef35735b6c81e1811e1dfcc3d6a40339a71845a7b38314d3ff735",
+      "standalone_capture": "local/km/ccfe974f-59b1-40b1-9746-380c05801b4f/macos-scheduler-state-standalone.png",
+      "markdown_capture": "local/km/ccfe974f-59b1-40b1-9746-380c05801b4f/macos-scheduler-state-markdown.png",
+      "markdown_pdf": "local/km/ccfe974f-59b1-40b1-9746-380c05801b4f/macos-scheduler-state-markdown.pdf",
+      "visual_result": "passed",
+      "observed": "Chinese glyphs, connector clearance, arrow direction, clipping, scope captions and readability inspected at 900px article image width"
+    }
+  ]
+}

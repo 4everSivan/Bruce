@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "id": "k_964595ab-af80-4c1c-9078-0d3b11c51456",
+  "term": "RefreshScheduler",
+  "category": "project_term",
+  "context": "Bruce macOS 刷新",
+  "definition": "macOS 接收刷新触发、维护调度状态并控制执行的组件。",
+  "project_usage": "它持有计时、待处理意图和运行任务，将单次工作交给 RefreshExecutionPipeline，再把结果映射到调度状态与回调。",
+  "basis": {
+    "definition": "code_supported",
+    "project_usage": "code_supported"
+  },
+  "status": "current",
+  "articles": [
+    {
+      "path": "glossary.md",
+      "anchor": "refresh-scheduler"
+    },
+    {
+      "path": "refresh-lifecycle.md"
+    }
+  ],
+  "sources": [
+    {
+      "kind": "code",
+      "path": "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+      "symbol": "RefreshScheduler",
+      "supports": [
+        "definition",
+        "project_usage"
+      ]
+    }
+  ],
+  "tags": [
+    "Bruce",
+    "RefreshScheduler"
+  ]
+}

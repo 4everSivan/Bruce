@@ -1,0 +1,262 @@
+{
+  "review_protocol": "root-collector-independent-review-1",
+  "run_id": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+  "reviewer": "collector_docs subagent",
+  "scope": "Read-only review of Collector semantics in root system-design/glossary, five Collector terminology cards, and two root figure semantic lists. No visual/application/test execution.",
+  "outputs_reviewed": [
+    {
+      "path": "docs/official/.staging/ccfe974f-59b1-40b1-9746-380c05801b4f/system-design.md",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "a30b03e2671346f4e5f8b3617e8d26136d0d3a5f7ef5c3db5c63825b971551e9"
+      }
+    },
+    {
+      "path": "docs/official/.staging/ccfe974f-59b1-40b1-9746-380c05801b4f/glossary.md",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "0a40b0b3fbc89456470c240bbc438108e35dfb17b2108bedc8b247f15d38cb9d"
+      }
+    },
+    {
+      "path": "docs/official/.cards/runs/ccfe974f-59b1-40b1-9746-380c05801b4f/system-architecture-semantic.json",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "f85b4a58dc6a67bef807dfafaeca682e02860febb08273e4d31b63d4ff105c72"
+      }
+    },
+    {
+      "path": "docs/official/.cards/runs/ccfe974f-59b1-40b1-9746-380c05801b4f/refresh-sequence-semantic.json",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "1fd28cbbf5bc6ca22226259738dd56b3351e1e47dacdf2abbad99dc0ac3aa306"
+      }
+    },
+    {
+      "path": "docs/official/.cards/runs/ccfe974f-59b1-40b1-9746-380c05801b4f/cards/k_7fd110f8-bb21-4c74-912c-c9297513c53b.json",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "7f1ec50c2db6db96f224a71eab03e4019eb2afac42002506853497118373b081"
+      }
+    },
+    {
+      "path": "docs/official/.cards/runs/ccfe974f-59b1-40b1-9746-380c05801b4f/cards/k_939717db-c182-4a5d-bb9b-b8416cccd9f6.json",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "d3d6af93b33b07600e9bbd220e4199a102b79d535037ce30444d24bce6fb5122"
+      }
+    },
+    {
+      "path": "docs/official/.cards/runs/ccfe974f-59b1-40b1-9746-380c05801b4f/cards/k_85c33776-d921-4e7a-b1f9-0a90455f8135.json",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "cb53699a0d616a18dc1f426b07f373823c8f7856ebdfae954491f321185a198c"
+      }
+    },
+    {
+      "path": "docs/official/.cards/runs/ccfe974f-59b1-40b1-9746-380c05801b4f/cards/k_5ffd7ed6-34f6-46fb-b4db-e061bdb4a36d.json",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "8fe8f3f060e64d87fd5519a32a28284233b212fe51385105a0522f5c618c1e7d"
+      }
+    },
+    {
+      "path": "docs/official/.cards/runs/ccfe974f-59b1-40b1-9746-380c05801b4f/cards/k_4946a527-e50e-4c5e-88c3-020ab7bd06f7.json",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "092c7348fdb3e07a56d214c67b594b04d9670c42c131965292e3671d7a67d369"
+      }
+    }
+  ],
+  "card_reviews": [
+    {
+      "term": "AgentUsageArtifact",
+      "id": "k_7fd110f8-bb21-4c74-912c-c9297513c53b",
+      "definition_review": "passed",
+      "project_usage_review": "passed",
+      "locator_review": "passed",
+      "path": "docs/official/.cards/runs/ccfe974f-59b1-40b1-9746-380c05801b4f/cards/k_7fd110f8-bb21-4c74-912c-c9297513c53b.json"
+    },
+    {
+      "term": "Bridge",
+      "id": "k_939717db-c182-4a5d-bb9b-b8416cccd9f6",
+      "definition_review": "passed",
+      "project_usage_review": "passed",
+      "locator_review": "passed",
+      "path": "docs/official/.cards/runs/ccfe974f-59b1-40b1-9746-380c05801b4f/cards/k_939717db-c182-4a5d-bb9b-b8416cccd9f6.json"
+    },
+    {
+      "term": "CollectionWindow",
+      "id": "k_5ffd7ed6-34f6-46fb-b4db-e061bdb4a36d",
+      "definition_review": "passed",
+      "project_usage_review": "passed",
+      "locator_review": "passed",
+      "path": "docs/official/.cards/runs/ccfe974f-59b1-40b1-9746-380c05801b4f/cards/k_5ffd7ed6-34f6-46fb-b4db-e061bdb4a36d.json"
+    },
+    {
+      "term": "PricingTable",
+      "id": "k_85c33776-d921-4e7a-b1f9-0a90455f8135",
+      "definition_review": "passed",
+      "project_usage_review": "passed",
+      "locator_review": "passed",
+      "path": "docs/official/.cards/runs/ccfe974f-59b1-40b1-9746-380c05801b4f/cards/k_85c33776-d921-4e7a-b1f9-0a90455f8135.json"
+    },
+    {
+      "term": "TokenBucket",
+      "id": "k_4946a527-e50e-4c5e-88c3-020ab7bd06f7",
+      "definition_review": "passed",
+      "project_usage_review": "passed",
+      "locator_review": "passed",
+      "path": "docs/official/.cards/runs/ccfe974f-59b1-40b1-9746-380c05801b4f/cards/k_4946a527-e50e-4c5e-88c3-020ab7bd06f7.json"
+    }
+  ],
+  "figure_reviews": [
+    {
+      "path": "docs/official/.cards/runs/ccfe974f-59b1-40b1-9746-380c05801b4f/system-architecture-semantic.json",
+      "unique_ids": "passed",
+      "endpoints_and_evidence_refs": "passed",
+      "collector_contract_review": "passed"
+    },
+    {
+      "path": "docs/official/.cards/runs/ccfe974f-59b1-40b1-9746-380c05801b4f/refresh-sequence-semantic.json",
+      "unique_ids": "passed",
+      "endpoints_and_evidence_refs": "passed",
+      "collector_contract_review": "passed"
+    }
+  ],
+  "contracts_checked": [
+    "Bridge macOS stdio versus Windows in-process entry; serde/allowlist validators instead of runtime JSON Schema evaluation.",
+    "AgentUsageArtifact payload fields and credential updates/challenges outside the artifact.",
+    "CollectionWindow UTC/14 default with allowed 1..366 days, overridable by host.",
+    "TokenBucket four-category total versus display_input including both cache categories; finalizer maps trends and model input accordingly.",
+    "PricingTable builtin+override behavior, unknown model no complete override returns no pricing, no currency conversion.",
+    "Ordinary Collector local/external branches and artifact assembly; diagram/document explicitly excludes separate Codex retry variant.",
+    "Pipeline controlled input, previous artifact, collect, optional retry, finalize, credential apply, publish, alert candidates; input/process errors and cancellation stop the publish path."
+  ],
+  "findings": [
+    {
+      "id": "duplicate-inputs-id",
+      "severity": "blocking_structure",
+      "status": "resolved_by_root_during_review",
+      "observed": "refresh sequence initially repeated inputs as a node ID and relation ID.",
+      "resolution_verified": "relation now resolve-inputs; unique nodes/relations check passed."
+    },
+    {
+      "id": "relationship-evidence-precision",
+      "severity": "blocking_evidence",
+      "status": "resolved_by_root_during_review",
+      "observed": "architecture initially used composition-root evidence for runtime stdio and publish relations and wrapper function for branch evidence.",
+      "resolution_verified": "mac-stdio uses SystemCollectorProcessLauncher.launch; mac-publish uses finishPublishablePath; mac-input has dedicated source; collect now points collect_agent_usage_with_dependencies_inner."
+    },
+    {
+      "id": "artifact-shared-definition-support",
+      "severity": "optional_reference_strengthening",
+      "status": "reported_nonblocking",
+      "observed": "Artifact card definition says cross-display shared, while listed sources directly define only shared domain payload and response envelope. Host usage is separately established by reviewed mac launcher and Windows run_configured_collection.",
+      "recommendation": "Optionally add host consumers to card sources or use Collector输出的用量与订阅数据对象 in the definition."
+    }
+  ],
+  "blocking_findings_remaining": [],
+  "original_evidence": [
+    {
+      "path": "core/collector/crates/collector-domain/src/lib.rs",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "1e1adf7e35d50355c615b88d2396ef0eda355836f578b3d51372631b20dea00c"
+      }
+    },
+    {
+      "path": "core/collector/crates/collector-domain/src/pricing.rs",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "3c6d2dde139fdb0b07dac6d307fd3e1d475edd9c38af70ab144623aeb1f31f8d"
+      }
+    },
+    {
+      "path": "core/collector/crates/collector-aggregate/src/lib.rs",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "33c3a4ee8eedd8bd68ad043f1f59ddfb7216972b86650247b18f3c3682aa2314"
+      }
+    },
+    {
+      "path": "core/collector/crates/collector-bridge/src/lib.rs",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "825479f85c82fc891e0baabdddbb591d65079713003357726a79a05cf9d7342d"
+      }
+    },
+    {
+      "path": "core/collector/crates/collector-application/src/lib.rs",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "450fe36016c102bfe4c819b744f4a8a5fdceea8f958f754644c9fe75cc852c96"
+      }
+    },
+    {
+      "path": "apps/win/src-tauri/src/collector.rs",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "b4b7af33c49afcdfa2b0c7bc3207cf0232eed28d63825e7f76972dfc1603ddbb"
+      }
+    },
+    {
+      "path": "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "ad2b3c738032988bb9445dfefd36175f215be66b6f3fcac6f47d05a4970cbc96"
+      }
+    },
+    {
+      "path": "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "95a11a91b2655c675f8b9a456fc14f82ab2d486eb78cca8530d745e9c959bd33"
+      }
+    },
+    {
+      "path": "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "2007fad9ba784b86801a57b700c11bf29833627e7994c591ee6b655adf87f69d"
+      }
+    },
+    {
+      "path": "apps/macos/Sources/BruceApp/BruceApp.swift",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "dccbc4d237f079b6d5b9af361abc0984ddd4cfa10cb50d70f4557877ee1ce657"
+      }
+    }
+  ],
+  "new_source_reads": [
+    {
+      "path": "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+      "read": "full"
+    },
+    {
+      "path": "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+      "ranges": [
+        [
+          443,
+          479
+        ]
+      ]
+    },
+    {
+      "path": "apps/macos/Sources/BruceApp/BruceApp.swift",
+      "ranges": [
+        [
+          20,
+          100
+        ]
+      ]
+    }
+  ],
+  "prior_source_read_record": "docs/official/.cards/runs/ccfe974f-59b1-40b1-9746-380c05801b4f/collector-review.json",
+  "out_of_scope": [
+    "Non-Collector platform/UI/state descriptions remain with their assigned reviewers.",
+    "Figure SVG geometry and two rendering checks remain with root."
+  ],
+  "result": "passed_with_nonblocking_reference_suggestion"
+}

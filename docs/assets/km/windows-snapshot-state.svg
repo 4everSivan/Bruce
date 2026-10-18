@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" id="d_084f9330-301b-4613-bcd3-1cf561127e93" viewBox="0 0 1080 900" role="img" aria-labelledby="d_084f9330-301b-4613-bcd3-1cf561127e93-title d_084f9330-301b-4613-bcd3-1cf561127e93-desc">
+  <title id="d_084f9330-301b-4613-bcd3-1cf561127e93-title">Windows 快照阶段</title>
+  <desc id="d_084f9330-301b-4613-bcd3-1cf561127e93-desc">SnapshotState 的加载分支、开始刷新以及有效成功、有效部分结果、保留旧 artifact 和无 artifact 的失败分支。状态依据静态实现，idle 不表示采集线程停止。</desc>
+  <defs>
+    <style>
+      #d_084f9330-301b-4613-bcd3-1cf561127e93 { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; }
+      #d_084f9330-301b-4613-bcd3-1cf561127e93 text { fill: #243247; font-size: 18px; text-anchor: middle; }
+      #d_084f9330-301b-4613-bcd3-1cf561127e93 .node { fill: #ffffff; stroke: #768397; stroke-width: 1.5; }
+      #d_084f9330-301b-4613-bcd3-1cf561127e93 .focus { fill: #fff8f5; stroke: #a13b22; stroke-width: 2; }
+      #d_084f9330-301b-4613-bcd3-1cf561127e93 .connector { fill: none; stroke: #516176; stroke-width: 1.5; stroke-linejoin: round; }
+      #d_084f9330-301b-4613-bcd3-1cf561127e93 .state { font-family: ui-monospace, "SFMono-Regular", Consolas, "PingFang SC", monospace; font-size: 24px; }
+      #d_084f9330-301b-4613-bcd3-1cf561127e93 .detail { fill: #516176; font-size: 16px; }
+      #d_084f9330-301b-4613-bcd3-1cf561127e93 .mask { fill: #ffffff; }
+    </style>
+    <marker id="d_084f9330-301b-4613-bcd3-1cf561127e93-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M 0 0 L 8 4 L 0 8 Z" fill="#516176"/></marker>
+  </defs>
+  <rect x="0" y="0" width="1080" height="900" fill="#ffffff"/>
+  <text x="40" y="32" style="text-anchor:start;font-size:24px">Windows 快照阶段</text>
+  <g id="d_084f9330-301b-4613-bcd3-1cf561127e93-missing-idle" data-relation-id="missing-idle">
+    <path class="connector" d="M 540 106 L 540 160" marker-end="url(#d_084f9330-301b-4613-bcd3-1cf561127e93-arrow)"/>
+    <text x="596" y="138" class="detail">文件缺失</text>
+  </g>
+  <g id="d_084f9330-301b-4613-bcd3-1cf561127e93-restore-stale" data-relation-id="restore-stale">
+    <path class="connector" d="M 530 96 L 40 96 L 40 724 L 80 724" marker-end="url(#d_084f9330-301b-4613-bcd3-1cf561127e93-arrow)"/>
+    <text x="270" y="82" class="detail">有效文件且有 artifact</text>
+  </g>
+  <g id="d_084f9330-301b-4613-bcd3-1cf561127e93-load-failed" data-relation-id="load-failed">
+    <path class="connector" d="M 550 96 L 1040 96 L 1040 724 L 1000 724" marker-end="url(#d_084f9330-301b-4613-bcd3-1cf561127e93-arrow)"/>
+    <text x="812" y="58" class="detail"><tspan x="812">读取或校验失败，</tspan><tspan x="812" dy="22">或恢复无 artifact</tspan></text>
+  </g>
+  <g id="d_084f9330-301b-4613-bcd3-1cf561127e93-idle-begin" data-relation-id="idle-begin">
+    <path class="connector" d="M 540 232 L 540 460" marker-end="url(#d_084f9330-301b-4613-bcd3-1cf561127e93-arrow)"/>
+    <rect class="mask" x="494" y="318" width="92" height="30"/>
+    <text x="540" y="340" class="detail">开始刷新</text>
+  </g>
+  <g id="d_084f9330-301b-4613-bcd3-1cf561127e93-fresh-begin" data-relation-id="fresh-begin">
+    <path class="connector" d="M 300 388 L 380 388 L 380 480 L 430 480" marker-end="url(#d_084f9330-301b-4613-bcd3-1cf561127e93-arrow)"/>
+    <text x="356" y="372" class="detail">开始刷新</text>
+  </g>
+  <g id="d_084f9330-301b-4613-bcd3-1cf561127e93-partial-begin" data-relation-id="partial-begin">
+    <path class="connector" d="M 780 388 L 700 388 L 700 480 L 650 480" marker-end="url(#d_084f9330-301b-4613-bcd3-1cf561127e93-arrow)"/>
+    <text x="724" y="372" class="detail">开始刷新</text>
+  </g>
+  <g id="d_084f9330-301b-4613-bcd3-1cf561127e93-stale-begin" data-relation-id="stale-begin">
+    <path class="connector" d="M 300 700 L 380 700 L 380 536 L 430 536" marker-end="url(#d_084f9330-301b-4613-bcd3-1cf561127e93-arrow)"/>
+    <text x="356" y="682" class="detail">开始刷新</text>
+  </g>
+  <g id="d_084f9330-301b-4613-bcd3-1cf561127e93-failed-begin" data-relation-id="failed-begin">
+    <path class="connector" d="M 780 700 L 700 700 L 700 536 L 650 536" marker-end="url(#d_084f9330-301b-4613-bcd3-1cf561127e93-arrow)"/>
+    <text x="724" y="682" class="detail">开始刷新</text>
+  </g>
+  <g id="d_084f9330-301b-4613-bcd3-1cf561127e93-response-fresh" data-relation-id="response-fresh">
+    <path class="connector" d="M 430 516 L 190 516 L 190 438" marker-end="url(#d_084f9330-301b-4613-bcd3-1cf561127e93-arrow)"/>
+    <rect class="mask" x="224" y="500" width="160" height="30"/>
+    <text x="304" y="522" class="detail">有效 Success</text>
+  </g>
+  <g id="d_084f9330-301b-4613-bcd3-1cf561127e93-response-partial" data-relation-id="response-partial">
+    <path class="connector" d="M 650 516 L 890 516 L 890 438" marker-end="url(#d_084f9330-301b-4613-bcd3-1cf561127e93-arrow)"/>
+    <rect class="mask" x="696" y="500" width="160" height="30"/>
+    <text x="776" y="522" class="detail">有效 Partial</text>
+  </g>
+  <g id="d_084f9330-301b-4613-bcd3-1cf561127e93-failure-stale" data-relation-id="failure-stale">
+    <path class="connector" d="M 480 548 L 480 812 L 190 812 L 190 768" marker-end="url(#d_084f9330-301b-4613-bcd3-1cf561127e93-arrow)"/>
+    <rect class="mask" x="222" y="796" width="216" height="30"/>
+    <text x="330" y="818" class="detail">失败且有 artifact</text>
+  </g>
+  <g id="d_084f9330-301b-4613-bcd3-1cf561127e93-failure-empty" data-relation-id="failure-empty">
+    <path class="connector" d="M 600 548 L 600 812 L 890 812 L 890 768" marker-end="url(#d_084f9330-301b-4613-bcd3-1cf561127e93-arrow)"/>
+    <rect class="mask" x="642" y="796" width="216" height="30"/>
+    <text x="750" y="818" class="detail">失败且无 artifact</text>
+  </g>
+  <g id="d_084f9330-301b-4613-bcd3-1cf561127e93-load" data-node-id="load">
+    <circle cx="540" cy="96" r="10" fill="#243247"/>
+    <text x="540" y="70" class="detail">加载快照</text>
+  </g>
+  <g id="d_084f9330-301b-4613-bcd3-1cf561127e93-idle" data-node-id="idle">
+    <rect class="node" x="450" y="160" width="180" height="72" rx="8"/>
+    <text x="540" y="190" class="state">idle</text>
+    <text x="540" y="216" class="detail">尚无采集结果</text>
+  </g>
+  <g id="d_084f9330-301b-4613-bcd3-1cf561127e93-refreshing" data-node-id="refreshing">
+    <rect class="focus" x="430" y="460" width="220" height="88" rx="8"/>
+    <text x="540" y="496" class="state">refreshing</text>
+    <text x="540" y="526" class="detail">正在刷新，保留旧数据</text>
+  </g>
+  <g id="d_084f9330-301b-4613-bcd3-1cf561127e93-fresh" data-node-id="fresh">
+    <rect class="node" x="80" y="350" width="220" height="88" rx="8"/>
+    <text x="190" y="386" class="state">fresh</text>
+    <text x="190" y="416" class="detail">有效成功响应</text>
+  </g>
+  <g id="d_084f9330-301b-4613-bcd3-1cf561127e93-partial" data-node-id="partial">
+    <rect class="node" x="780" y="350" width="220" height="88" rx="8"/>
+    <text x="890" y="386" class="state">partial</text>
+    <text x="890" y="416" class="detail">有效部分响应</text>
+  </g>
+  <g id="d_084f9330-301b-4613-bcd3-1cf561127e93-stale" data-node-id="stale">
+    <rect class="node" x="80" y="680" width="220" height="88" rx="8"/>
+    <text x="190" y="716" class="state">stale</text>
+    <text x="190" y="746" class="detail">保留有效 artifact</text>
+  </g>
+  <g id="d_084f9330-301b-4613-bcd3-1cf561127e93-failed" data-node-id="failed">
+    <rect class="node" x="780" y="680" width="220" height="88" rx="8"/>
+    <text x="890" y="716" class="state">failed</text>
+    <text x="890" y="746" class="detail">无有效 artifact</text>
+  </g>
+  <text x="540" y="862" class="detail">失败事件：采集异常、Error / 缺少 / 无效 artifact，或快照写入失败。</text>
+  <text x="540" y="888" class="detail">静态实现视图；idle 属于快照阶段，不表示后台采集线程暂停。</text>
+</svg>

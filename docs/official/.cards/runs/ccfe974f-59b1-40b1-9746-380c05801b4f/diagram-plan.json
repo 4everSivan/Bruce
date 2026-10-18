@@ -1,0 +1,131 @@
+{
+  "figures": [
+    {
+      "id": "d_a20b6df3-7589-475f-8573-b4269438f480",
+      "type": "architecture",
+      "view": "implementation",
+      "svg_path": "docs/assets/km/system-architecture.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_a20b6df3-7589-475f-8573-b4269438f480.json",
+      "owner_article": "system-design.md",
+      "uses": [
+        {
+          "article": "system-design.md",
+          "required": true,
+          "reason": "区分两个桌面宿主、共享引擎和独立Widget",
+          "trigger": "module_relationships",
+          "evidence_refs": [
+            "collect",
+            "mac-entry",
+            "mac-input",
+            "mac-publish",
+            "mac-stdio",
+            "widget",
+            "win-entry",
+            "win-store"
+          ]
+        }
+      ],
+      "pending": []
+    },
+    {
+      "id": "d_856cccba-17f1-402f-b8d2-d03c0c7de2e6",
+      "type": "sequence",
+      "view": "implementation",
+      "svg_path": "docs/assets/km/refresh-sequence.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_856cccba-17f1-402f-b8d2-d03c0c7de2e6.json",
+      "owner_article": "refresh-lifecycle.md",
+      "uses": [
+        {
+          "article": "refresh-lifecycle.md",
+          "required": true,
+          "reason": "保留输入、恢复、凭据先写回与发布的顺序和失败退出",
+          "trigger": "complex_interactions",
+          "evidence_refs": [
+            "pipeline",
+            "scheduler"
+          ]
+        }
+      ],
+      "pending": []
+    },
+    {
+      "id": "d_1ae57d61-4db4-468c-b17b-5258dd915895",
+      "type": "architecture",
+      "view": "implementation",
+      "svg_path": "docs/assets/km/collector-flow.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_1ae57d61-4db4-468c-b17b-5258dd915895.json",
+      "owner_article": "collector-design.md",
+      "uses": [
+        {
+          "article": "collector-design.md",
+          "required": true,
+          "reason": "普通采集的本地和额度并发分支及错误收敛",
+          "trigger": "complex_interactions",
+          "evidence_refs": [
+            "assemble",
+            "bridge",
+            "cli",
+            "limits",
+            "local",
+            "parallel",
+            "quotas",
+            "status"
+          ]
+        }
+      ],
+      "pending": []
+    },
+    {
+      "id": "d_084f9330-301b-4613-bcd3-1cf561127e93",
+      "type": "state",
+      "view": "implementation",
+      "svg_path": "docs/assets/km/windows-snapshot-state.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_084f9330-301b-4613-bcd3-1cf561127e93.json",
+      "owner_article": "windows-state-mapping.md",
+      "uses": [
+        {
+          "article": "windows-state-mapping.md",
+          "required": true,
+          "reason": "快照的恢复、成功、部分结果与保留旧值",
+          "trigger": "business_states",
+          "evidence_refs": [
+            "apply",
+            "begin",
+            "default",
+            "fail",
+            "load",
+            "scheduler"
+          ]
+        }
+      ],
+      "pending": []
+    },
+    {
+      "id": "d_04caaf2e-14be-4711-904e-1faa0b4a797b",
+      "type": "state",
+      "view": "implementation",
+      "svg_path": "docs/assets/km/macos-scheduler-state.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_04caaf2e-14be-4711-904e-1faa0b4a797b.json",
+      "owner_article": "refresh-lifecycle.md",
+      "uses": [
+        {
+          "article": "refresh-lifecycle.md",
+          "required": true,
+          "reason": "调度相位、触发和授权阻断；enabled门控与在途收尾在正文明确",
+          "trigger": "business_states",
+          "evidence_refs": [
+            "cancel",
+            "completed",
+            "enable",
+            "failure",
+            "phases",
+            "policy",
+            "retry",
+            "trigger"
+          ]
+        }
+      ],
+      "pending": []
+    }
+  ]
+}

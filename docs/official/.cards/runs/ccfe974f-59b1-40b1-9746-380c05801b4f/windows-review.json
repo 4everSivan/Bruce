@@ -1,0 +1,509 @@
+{
+  "run_id": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+  "reviewed_at": "2026-10-18 13:14:51 UTC",
+  "owner": "windows_docs",
+  "articles": [
+    {
+      "article": "windows-design.md",
+      "candidate_path": "docs/official/.staging/ccfe974f-59b1-40b1-9746-380c05801b4f/windows-design.md",
+      "source_paths": [
+        "apps/win/src-tauri/src/alerts.rs",
+        "apps/win/src-tauri/src/collector.rs",
+        "apps/win/src-tauri/src/credentials.rs",
+        "apps/win/src-tauri/src/credentials/lifecycle.rs",
+        "apps/win/src-tauri/src/credentials/windows_security.rs",
+        "apps/win/src-tauri/src/lib.rs",
+        "apps/win/src-tauri/src/main.rs",
+        "apps/win/src-tauri/src/paths.rs",
+        "apps/win/src-tauri/src/runtime_core.rs",
+        "apps/win/src-tauri/src/scheduler.rs",
+        "apps/win/src-tauri/src/settings.rs",
+        "apps/win/src-tauri/tauri.conf.json",
+        "apps/win/src-tauri/tests/collector_configuration.rs",
+        "apps/win/src-tauri/tests/runtime_coverage.rs",
+        "apps/win/src/app.js",
+        "apps/win/src/settings.js",
+        "apps/win/tests/frontend.test.mjs",
+        "apps/win/viewmodel/src/lib.rs",
+        "apps/win/viewmodel/src/models.rs",
+        "apps/win/viewmodel/src/subscription.rs",
+        "apps/win/viewmodel/src/usage.rs",
+        "apps/win/viewmodel/tests/fixture_parity.rs",
+        "docs/archive/0.12.0/change/C020.json",
+        "docs/devel/change/C009.json",
+        "docs/devel/change/C012.json",
+        "docs/devel/design/05-Windows平台适配.md"
+      ],
+      "claims": [
+        {
+          "claim": "Tauri entrypoint, static hidden windows, tray/window behavior and IPC",
+          "symbols": [
+            "main",
+            "desktop::run",
+            "toggle_dashboard",
+            "open_settings",
+            "window_action",
+            "compute_dashboard_geometry"
+          ],
+          "sources": [
+            "apps/win/src-tauri/src/main.rs",
+            "apps/win/src-tauri/src/lib.rs",
+            "apps/win/src-tauri/tauri.conf.json",
+            "apps/win/src-tauri/src/runtime_core.rs"
+          ]
+        },
+        {
+          "claim": "One collection thread; manual bounded wakeups; reads do not invoke collection",
+          "symbols": [
+            "SchedulerControl::request_manual_refresh",
+            "connect_manual_refresh",
+            "spawn",
+            "cached_panel"
+          ],
+          "sources": [
+            "apps/win/src-tauri/src/scheduler.rs",
+            "apps/win/src-tauri/src/lib.rs"
+          ]
+        },
+        {
+          "claim": "Settings defaults, separate consent/usage conditions and current Cline mismatch",
+          "symbols": [
+            "AppSettings::default",
+            "validate_settings",
+            "build_configured_request",
+            "validate_credential_payload"
+          ],
+          "sources": [
+            "apps/win/src-tauri/src/settings.rs",
+            "apps/win/src-tauri/src/collector.rs",
+            "apps/win/src-tauri/src/credentials.rs",
+            "apps/win/src/settings.js"
+          ]
+        },
+        {
+          "claim": "Current-user private write before plaintext; metadata-only account read; bounded Codex recovery and compare-and-replace",
+          "symbols": [
+            "credential_accounts",
+            "write_path_with_permissions",
+            "restrict",
+            "replace",
+            "collect_with_recovery_using",
+            "compare_and_replace",
+            "run_codex_retry"
+          ],
+          "sources": [
+            "apps/win/src-tauri/src/credentials.rs",
+            "apps/win/src-tauri/src/credentials/windows_security.rs",
+            "apps/win/src-tauri/src/credentials/lifecycle.rs",
+            "apps/win/src-tauri/src/collector.rs"
+          ]
+        },
+        {
+          "claim": "Pure viewmodel, subscription shapes, alerts, exports and DeepSeek removed-ledger boundary",
+          "symbols": [
+            "PanelViewModelMapper::make",
+            "make_subscription",
+            "subscriptionCard",
+            "over_threshold_entries",
+            "AlertDeliveryState",
+            "billing_csv",
+            "diagnostics_report",
+            "runExport"
+          ],
+          "sources": [
+            "apps/win/viewmodel/src/usage.rs",
+            "apps/win/viewmodel/src/subscription.rs",
+            "apps/win/src/app.js",
+            "apps/win/src-tauri/src/alerts.rs",
+            "apps/win/src-tauri/src/runtime_core.rs",
+            "apps/win/src/settings.js",
+            "docs/archive/0.12.0/change/C020.json"
+          ]
+        },
+        {
+          "claim": "Fixture tests express expectations; C009 current card retains Windows native acceptance gaps; C012 historical verification not refreshed",
+          "symbols": [
+            "mac_parity_golden_matches",
+            "verification",
+            "status"
+          ],
+          "sources": [
+            "apps/win/viewmodel/tests/fixture_parity.rs",
+            "apps/win/src-tauri/tests/runtime_coverage.rs",
+            "apps/win/src-tauri/tests/collector_configuration.rs",
+            "apps/win/tests/frontend.test.mjs",
+            "docs/devel/change/C009.json",
+            "docs/devel/change/C012.json",
+            "docs/devel/design/05-Windows平台适配.md"
+          ]
+        }
+      ],
+      "lifecycle": {
+        "analysis": {
+          "result": "passed",
+          "method": "Semble first; original entrypoint, calls, state owners, contracts, branches and selected tests read locally"
+        },
+        "draft": {
+          "result": "passed",
+          "method": "Checked assertion groups against source symbols before expression editing; original declarations kept distinct from current wiring"
+        },
+        "expression": {
+          "result": "passed",
+          "method": "Separate technical-editing.md pass after draft source check; precise identifiers, conditions, values, tables and links preserved"
+        },
+        "fact_recheck": {
+          "result": "passed",
+          "method": "Rechecked credential_accounts and private-write order, boundary_wake formula and scheduler save-failure control flow against original source after expression edits"
+        }
+      },
+      "figure_ids": [],
+      "expression_changes": [
+        "Replaced indirect account-list wording with explicit IPC actor; simplified permission-failure sentence without changing fail-closed semantics"
+      ],
+      "pending": []
+    },
+    {
+      "article": "windows-state-mapping.md",
+      "candidate_path": "docs/official/.staging/ccfe974f-59b1-40b1-9746-380c05801b4f/windows-state-mapping.md",
+      "source_paths": [
+        "apps/win/src-tauri/src/alerts.rs",
+        "apps/win/src-tauri/src/lib.rs",
+        "apps/win/src-tauri/src/runtime_core.rs",
+        "apps/win/src-tauri/src/scheduler.rs",
+        "apps/win/src-tauri/tests/scheduler_collector_coverage.rs",
+        "apps/win/src/app.js",
+        "apps/win/viewmodel/src/subscription.rs",
+        "apps/win/viewmodel/src/usage.rs"
+      ],
+      "claims": [
+        {
+          "claim": "Load/default/refresh/apply/fail/save snapshot phases",
+          "symbols": [
+            "SnapshotState::default",
+            "load",
+            "begin_refresh",
+            "apply_response",
+            "fail",
+            "save"
+          ],
+          "sources": [
+            "apps/win/src-tauri/src/runtime_core.rs",
+            "apps/win/src-tauri/src/scheduler.rs"
+          ]
+        },
+        {
+          "claim": "Service stale merge only for matching IDs and qualified historical values; credential prune",
+          "symbols": [
+            "qualified",
+            "merge_snapshot",
+            "prune_credentials"
+          ],
+          "sources": [
+            "apps/win/src-tauri/src/runtime_core.rs"
+          ]
+        },
+        {
+          "claim": "Retry replaces interval; manual origin across retries; future boundary plus 20 seconds",
+          "symbols": [
+            "next_delay",
+            "manual_alert_reason",
+            "compute_backoff",
+            "classify_rate_limited",
+            "window_boundaries",
+            "boundary_wake"
+          ],
+          "sources": [
+            "apps/win/src-tauri/src/runtime_core.rs",
+            "apps/win/src-tauri/src/scheduler.rs",
+            "apps/win/src-tauri/tests/scheduler_collector_coverage.rs"
+          ]
+        },
+        {
+          "claim": "Runtime phase differs from service freshness, usage LIVE age and reset text; cache clear removes disk only",
+          "symbols": [
+            "panel_json",
+            "publish",
+            "make_usage",
+            "reset_text",
+            "renderStatus",
+            "clear_snapshot_cache",
+            "clear_snapshot"
+          ],
+          "sources": [
+            "apps/win/src-tauri/src/runtime_core.rs",
+            "apps/win/src-tauri/src/scheduler.rs",
+            "apps/win/viewmodel/src/usage.rs",
+            "apps/win/viewmodel/src/subscription.rs",
+            "apps/win/src/app.js",
+            "apps/win/src-tauri/src/lib.rs"
+          ]
+        }
+      ],
+      "lifecycle": {
+        "analysis": {
+          "result": "passed",
+          "method": "Semble first; original entrypoint, calls, state owners, contracts, branches and selected tests read locally"
+        },
+        "draft": {
+          "result": "passed",
+          "method": "Checked assertion groups against source symbols before expression editing; original declarations kept distinct from current wiring"
+        },
+        "expression": {
+          "result": "passed",
+          "method": "Separate technical-editing.md pass after draft source check; precise identifiers, conditions, values, tables and links preserved"
+        },
+        "fact_recheck": {
+          "result": "passed",
+          "method": "Rechecked credential_accounts and private-write order, boundary_wake formula and scheduler save-failure control flow against original source after expression edits"
+        }
+      },
+      "figure_ids": [
+        "d_084f9330-301b-4613-bcd3-1cf561127e93"
+      ],
+      "expression_changes": [
+        "Clarified chosen-boundary consumption and removal of past entries; formula and values retained"
+      ],
+      "pending": [
+        "Standalone SVG and Markdown visual checks delegated to root"
+      ]
+    }
+  ],
+  "source_hashes": {
+    "apps/win/src-tauri/src/alerts.rs": {
+      "algorithm": "sha256",
+      "value": "1c30a514f5d0822d58396278b771a511976942f9f943b57f3c440bfc12eedbe7"
+    },
+    "apps/win/src-tauri/src/collector.rs": {
+      "algorithm": "sha256",
+      "value": "b4b7af33c49afcdfa2b0c7bc3207cf0232eed28d63825e7f76972dfc1603ddbb"
+    },
+    "apps/win/src-tauri/src/credentials.rs": {
+      "algorithm": "sha256",
+      "value": "28813b76395e23147806bd2deac279e1c4357ad7f4aa91aeb38b90908b1e0f11"
+    },
+    "apps/win/src-tauri/src/credentials/lifecycle.rs": {
+      "algorithm": "sha256",
+      "value": "5a69cb5ce922659ea4112d86f815568fbaccb856d3df9e11fc7059eba20572fb"
+    },
+    "apps/win/src-tauri/src/credentials/windows_security.rs": {
+      "algorithm": "sha256",
+      "value": "3e0411c206f10945a4c3fb1e957791336a8ca995bfe13d4a5012c118f096210f"
+    },
+    "apps/win/src-tauri/src/lib.rs": {
+      "algorithm": "sha256",
+      "value": "2ea9c9b0d5280329a25c19a05d419fccc07f7eb9ceb19d0aba56c0b48174396a"
+    },
+    "apps/win/src-tauri/src/main.rs": {
+      "algorithm": "sha256",
+      "value": "538bce793bb2ea69299a30cd39de0146cf4d2b1ca20e8549612c016e2d4c46f8"
+    },
+    "apps/win/src-tauri/src/paths.rs": {
+      "algorithm": "sha256",
+      "value": "3c4d8f521d6f7d2c6743d0ccb19997886d757ed100c80d3af8d9a75c08210cab"
+    },
+    "apps/win/src-tauri/src/runtime_core.rs": {
+      "algorithm": "sha256",
+      "value": "15e282ef37109ed183310444abc355d351867ac16c249f5831125b7f86ea51df"
+    },
+    "apps/win/src-tauri/src/scheduler.rs": {
+      "algorithm": "sha256",
+      "value": "a6e11e120c212448dd2f887be8f7518fa6ef4449478788dc94789c8f1a1fd0bd"
+    },
+    "apps/win/src-tauri/src/settings.rs": {
+      "algorithm": "sha256",
+      "value": "55cc37101b17a8f00ee81acea5704f7a1b4b53f6bb957df98c610a46074397cd"
+    },
+    "apps/win/src-tauri/tauri.conf.json": {
+      "algorithm": "sha256",
+      "value": "ad1ddf918a7e06691e83608dc45cc37f5410b5712f0d62a9cdea8f523ef4def0"
+    },
+    "apps/win/src-tauri/tests/collector_configuration.rs": {
+      "algorithm": "sha256",
+      "value": "02cb1d7a9db4c74acdd1bdea1bcba29401733205d1617c761d618b09b00bf18a"
+    },
+    "apps/win/src-tauri/tests/runtime_coverage.rs": {
+      "algorithm": "sha256",
+      "value": "97c06e1e48a9ea4998c739e190f54dc5992aefc43bd5cd469c46c74b345ec2ca"
+    },
+    "apps/win/src-tauri/tests/scheduler_collector_coverage.rs": {
+      "algorithm": "sha256",
+      "value": "3c27d6ec748d8e65c3b2924f973f1da7e70a9d331e52c8d0893093f74d1a3b59"
+    },
+    "apps/win/src/app.js": {
+      "algorithm": "sha256",
+      "value": "f87d7f41d550fa7599cb991cb66368e5a5338bc4691f7f0efc89c70b9bb960af"
+    },
+    "apps/win/src/settings.js": {
+      "algorithm": "sha256",
+      "value": "f0b2f047b217c5e16d9cd831f46efc870447abbc40bc16b7ab8cf20bf716f89d"
+    },
+    "apps/win/tests/frontend.test.mjs": {
+      "algorithm": "sha256",
+      "value": "199ca27145873452e1ced7ad73e8164c230ae3f0f03079c3ed3b3d3950fddd19"
+    },
+    "apps/win/viewmodel/src/lib.rs": {
+      "algorithm": "sha256",
+      "value": "ae21f530c78caee79e04489d1d87994bba0396b74857bd45405e1b75e3f71c19"
+    },
+    "apps/win/viewmodel/src/models.rs": {
+      "algorithm": "sha256",
+      "value": "9724860f3bb4d06b1bafcad6388d0666188fb77d3cdc6e273b9aa49302cf3551"
+    },
+    "apps/win/viewmodel/src/subscription.rs": {
+      "algorithm": "sha256",
+      "value": "b88062176b42eced6eb4994e87e7f3c3d505ca5c3cd0fa72713c6607352b22ff"
+    },
+    "apps/win/viewmodel/src/usage.rs": {
+      "algorithm": "sha256",
+      "value": "7b025ee8533ff89474470702df4895763c34c4f87016d3a3194a6289e16732e1"
+    },
+    "apps/win/viewmodel/tests/fixture_parity.rs": {
+      "algorithm": "sha256",
+      "value": "66dff82a29c678c1170318f0744bc7984e49b534a49951fcb1f045147012db5e"
+    },
+    "docs/archive/0.12.0/change/C020.json": {
+      "algorithm": "sha256",
+      "value": "ec1b474abff5ba8b3b0db04193e173eb628df15938a357bb4e3744cfec0afc9c"
+    },
+    "docs/devel/change/C009.json": {
+      "algorithm": "sha256",
+      "value": "fbc6f10c3ea9f005f6be16b4b81f4bda5d2b0d8a8bdf30b2eb6ca1d451f972e1"
+    },
+    "docs/devel/change/C012.json": {
+      "algorithm": "sha256",
+      "value": "51ddf0fc7018d8bac60d540e932053ac70166a92c47947247eed8ecfadb1e4e9"
+    },
+    "docs/devel/design/05-Windows平台适配.md": {
+      "algorithm": "sha256",
+      "value": "9f5766dc8fd0b691b9eafd9547b80f3198dd054c2e5161d60706f9f1c424e77b"
+    }
+  },
+  "partial_reads": {
+    "apps/win/viewmodel/src/usage.rs": [
+      "1-185: mapper entry, usage aggregation, date selection, LIVE age, called monthly/heatmap construction"
+    ],
+    "apps/win/viewmodel/src/subscription.rs": [
+      "1-605: complete production mapping and beginning of tests"
+    ],
+    "apps/win/src/app.js": [
+      "1-250, 251-520 were read with generated-glyph output partly truncated; 520-993 fully read; detailed first-half chart drawing not exhaustively reviewed"
+    ],
+    "apps/win/src-tauri/tests/runtime_coverage.rs": [
+      "1-170",
+      "296-508",
+      "function inventory for remaining geometry tests"
+    ],
+    "apps/win/src-tauri/tests/scheduler_collector_coverage.rs": [
+      "186-280",
+      "function inventory for earlier tests"
+    ],
+    "apps/win/tests/frontend.test.mjs": [
+      "1-90",
+      "342-393",
+      "439-522",
+      "function inventory for remaining tests"
+    ]
+  },
+  "checks": [
+    {
+      "name": "JSON and SVG structural parse",
+      "result": "passed",
+      "method": "Existing python3 json and xml.etree; verify allowed semantic fields, unique IDs, endpoints, evidence paths, state events and SVG mapping",
+      "evidence": "7 nodes; 12 relations; all engineering mappings one-to-one; command Exit 0",
+      "required": true,
+      "scope": "candidate"
+    },
+    {
+      "name": "Article source links",
+      "result": "passed",
+      "method": "Resolve links as final docs/official paths, allowing the two owned staged Markdown outputs and owned staged SVG",
+      "evidence": "All linked original source paths exist; final cross-links and image target reserved",
+      "required": true,
+      "scope": "candidate"
+    },
+    {
+      "name": "Application tests and builds",
+      "result": "not_run",
+      "method": "Not authorized for this documentation task",
+      "evidence": "No test/build/runtime credential commands executed",
+      "required": false,
+      "scope": "candidate"
+    },
+    {
+      "name": "Standalone SVG and Markdown rendering",
+      "result": "not_run",
+      "method": "Root owns actual rendering and visual inspection",
+      "evidence": "Candidate awaiting root visual check",
+      "required": true,
+      "scope": "candidate",
+      "figure_ids": [
+        "d_084f9330-301b-4613-bcd3-1cf561127e93"
+      ]
+    }
+  ],
+  "figure": {
+    "id": "d_084f9330-301b-4613-bcd3-1cf561127e93",
+    "type": "state",
+    "view": "implementation",
+    "owner_article": "windows-state-mapping.md",
+    "article_paths": [
+      "windows-state-mapping.md"
+    ],
+    "semantic_candidate": "docs/official/.cards/runs/ccfe974f-59b1-40b1-9746-380c05801b4f/windows-snapshot-semantic.json",
+    "svg_candidate": "docs/assets/km/.staging/ccfe974f-59b1-40b1-9746-380c05801b4f/windows-snapshot-state.svg",
+    "svg_path": "docs/assets/km/windows-snapshot-state.svg",
+    "semantic_path": "docs/official/.cards/diagrams/d_084f9330-301b-4613-bcd3-1cf561127e93.json",
+    "source_paths": [
+      "apps/win/src-tauri/src/runtime_core.rs",
+      "apps/win/src-tauri/src/scheduler.rs"
+    ],
+    "required": true,
+    "trigger": "business_states",
+    "reason": "Explicit SnapshotState phases and artifact-presence guards determine failure/recovery presentation",
+    "content_hashes": {
+      "svg": {
+        "algorithm": "sha256",
+        "value": "c1374f01885a539993860d531384766a41918a86b8d732cbc9017d2eec9b052b"
+      },
+      "semantic": {
+        "algorithm": "sha256",
+        "value": "f012835eda5a859a31020a8989d747270cbbf56b876d2b308c8aac1114dcd400"
+      }
+    }
+  },
+  "issues": [
+    {
+      "kind": "implementation_mismatch",
+      "description": "settings lists Cline, while validate_credential_payload lacks clineQuotaAccounts provider contract and build_configured_request lacks cline mapping; documented as current static limitation, original sources unchanged"
+    },
+    {
+      "kind": "authorization_contract_difference",
+      "description": "consentVersion gates external credentials; usageEnabled independently gates localSessions and defaults true even with consentVersion 0; documented precisely"
+    },
+    {
+      "kind": "status_scheduler_difference",
+      "description": "Snapshot save failure sets stale/error but keeps applied Ok and therefore RefreshOutcome Success; documented and retained in state figure scope"
+    },
+    {
+      "kind": "historical_declaration_superseded",
+      "description": "C009 ledger assertions superseded by C020 archive and design05 removal; residual deepseek-tracking-id write exists in credentials.rs but no ledger consumer in inspected Windows source tree"
+    }
+  ],
+  "uncovered_scope": [
+    "Windows actual native behavior, live credentials and external provider requests",
+    "Windows bundling, installation, updater, release workflow end-to-end; parent may document delivery separately",
+    "Pixel-level fidelity of every CSS component and geometry fixture completeness",
+    "Detailed model catalog contents and all pricing numeric derivations",
+    "Every test case and unused demo/render-harness implementation"
+  ],
+  "candidate_hashes": {
+    "docs/official/.staging/ccfe974f-59b1-40b1-9746-380c05801b4f/windows-design.md": {
+      "algorithm": "sha256",
+      "value": "204f2a38bd3c91187f773ee2ca89d704a065aef3087de43e3492fb5c9bdaf740"
+    },
+    "docs/official/.staging/ccfe974f-59b1-40b1-9746-380c05801b4f/windows-state-mapping.md": {
+      "algorithm": "sha256",
+      "value": "53a3e68389fc97a1b1011ba9ab2e1badba28172410f6cbd48c7677973ccbab53"
+    }
+  }
+}

@@ -1,0 +1,235 @@
+{
+  "schema_version": "1.0",
+  "id": "d_1ae57d61-4db4-468c-b17b-5258dd915895",
+  "title": "Collector CLI 普通采集与响应关系",
+  "type": "architecture",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "stdin",
+      "label": "宿主 stdin",
+      "role": "actor",
+      "evidence_refs": [
+        "cli"
+      ]
+    },
+    {
+      "id": "validate",
+      "label": "Bridge 请求校验",
+      "role": "component",
+      "evidence_refs": [
+        "bridge"
+      ]
+    },
+    {
+      "id": "dispatch",
+      "label": "应用层并发编排",
+      "role": "component",
+      "evidence_refs": [
+        "parallel"
+      ]
+    },
+    {
+      "id": "local",
+      "label": "本地采集线程",
+      "role": "component",
+      "evidence_refs": [
+        "local"
+      ]
+    },
+    {
+      "id": "quota",
+      "label": "额度查询线程",
+      "role": "component",
+      "evidence_refs": [
+        "parallel",
+        "quotas",
+        "limits"
+      ]
+    },
+    {
+      "id": "assemble",
+      "label": "结果装配与发布前检查",
+      "role": "component",
+      "evidence_refs": [
+        "assemble",
+        "local"
+      ]
+    },
+    {
+      "id": "response",
+      "label": "Bridge 响应封套",
+      "role": "component",
+      "evidence_refs": [
+        "bridge",
+        "status"
+      ]
+    },
+    {
+      "id": "stdout",
+      "label": "宿主 stdout",
+      "role": "actor",
+      "evidence_refs": [
+        "cli"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "input",
+      "from": "stdin",
+      "to": "validate",
+      "kind": "publishes",
+      "label": "BridgeRequest",
+      "evidence_refs": [
+        "cli"
+      ]
+    },
+    {
+      "id": "accepted",
+      "from": "validate",
+      "to": "dispatch",
+      "kind": "calls",
+      "label": "校验通过",
+      "evidence_refs": [
+        "bridge"
+      ]
+    },
+    {
+      "id": "invalid",
+      "from": "validate",
+      "to": "response",
+      "kind": "publishes",
+      "label": "协议错误：artifact=null",
+      "evidence_refs": [
+        "bridge"
+      ],
+      "condition": "请求解析或校验失败"
+    },
+    {
+      "id": "start-local",
+      "from": "dispatch",
+      "to": "local",
+      "kind": "calls",
+      "label": "始终创建本地线程",
+      "evidence_refs": [
+        "parallel"
+      ]
+    },
+    {
+      "id": "start-quota",
+      "from": "dispatch",
+      "to": "quota",
+      "kind": "calls",
+      "label": "externalQuotas 允许才创建",
+      "evidence_refs": [
+        "parallel"
+      ],
+      "condition": "普通请求允许 externalQuotas"
+    },
+    {
+      "id": "local-result",
+      "from": "local",
+      "to": "assemble",
+      "kind": "publishes",
+      "label": "允许：贡献；未授权：占位；取消：错误",
+      "evidence_refs": [
+        "local",
+        "assemble"
+      ]
+    },
+    {
+      "id": "quota-result",
+      "from": "quota",
+      "to": "assemble",
+      "kind": "publishes",
+      "label": "services + 诊断 + 凭据输出",
+      "evidence_refs": [
+        "quotas"
+      ]
+    },
+    {
+      "id": "quota-denied",
+      "from": "dispatch",
+      "to": "assemble",
+      "kind": "publishes",
+      "label": "externalQuotas 未授权：服务占位",
+      "evidence_refs": [
+        "assemble"
+      ],
+      "condition": "普通请求未允许 externalQuotas"
+    },
+    {
+      "id": "assembled",
+      "from": "assemble",
+      "to": "response",
+      "kind": "publishes",
+      "label": "正常：artifact；本地失败：无 artifact",
+      "evidence_refs": [
+        "assemble",
+        "bridge"
+      ]
+    },
+    {
+      "id": "output",
+      "from": "response",
+      "to": "stdout",
+      "kind": "publishes",
+      "label": "success / partial / error",
+      "evidence_refs": [
+        "cli",
+        "status"
+      ]
+    }
+  ],
+  "evidence": {
+    "cli": {
+      "path": "core/collector/bin/Bruce-collector/src/main.rs",
+      "locator": "main",
+      "kind": "static_implementation",
+      "supports": "main 读取 stdin，调用 Bridge，将一份响应写 stdout 并退出。"
+    },
+    "bridge": {
+      "path": "core/collector/crates/collector-bridge/src/lib.rs",
+      "locator": "run_bytes; validate_request; validate_response_credentials",
+      "kind": "static_implementation",
+      "supports": "Bridge 校验请求；无效请求不调用应用；应用结果形成 BridgeResponse，凭据输出经校验。"
+    },
+    "parallel": {
+      "path": "core/collector/crates/collector-application/src/lib.rs",
+      "locator": "collect_agent_usage_with_dependencies_inner",
+      "kind": "static_implementation",
+      "supports": "普通分支以 scoped threads 同时启动本地线程与 externalQuotas 允许时的额度线程，join 后装配结果；该图不覆盖更早返回的 Codex 定向重试分支。"
+    },
+    "local": {
+      "path": "core/collector/crates/collector-application/src/lib.rs",
+      "locator": "collect_local_usage; finalize_local_agent; local_source_runtime_diagnostic",
+      "kind": "static_implementation",
+      "supports": "localSessions 控制扫描；未授权形成不可用占位；本地取消或超时返回错误并在发布前检查，普通源故障可保留结果。"
+    },
+    "quotas": {
+      "path": "core/collector/crates/collector-application/src/execution.rs",
+      "locator": "execute_quota_accounts; execute_one_uncached",
+      "kind": "static_implementation",
+      "supports": "额度按账号执行并汇总服务、诊断、凭据更新、凭据挑战，单账号错误成为服务错误。"
+    },
+    "assemble": {
+      "path": "core/collector/crates/collector-application/src/lib.rs",
+      "locator": "collect_agent_usage_with_dependencies_inner",
+      "kind": "static_implementation",
+      "supports": "外部额度未授权时生成 denied_service 占位；正常本地数据应用定价再与服务合成 artifact，取消或本地返回错误时不返回 artifact。"
+    },
+    "status": {
+      "path": "core/collector/crates/collector-domain/src/lib.rs",
+      "locator": "response_status; BridgeResponse::error",
+      "kind": "static_implementation",
+      "supports": "无 artifact 为 error；存在非行数截断诊断为 partial；无诊断或仅截断为 success。"
+    },
+    "limits": {
+      "path": "core/collector/crates/collector-runtime/src/lib.rs",
+      "locator": "RuntimeLimits::default",
+      "kind": "static_implementation",
+      "supports": "账号工作线程上限为 account_tasks=4。"
+    }
+  }
+}

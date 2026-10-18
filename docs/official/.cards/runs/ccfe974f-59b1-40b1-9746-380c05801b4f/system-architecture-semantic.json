@@ -1,0 +1,203 @@
+{
+  "schema_version": "1.0",
+  "id": "d_a20b6df3-7589-475f-8573-b4269438f480",
+  "title": "Bruce 模块关系",
+  "type": "architecture",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "mac",
+      "label": "macOS 原生应用",
+      "role": "component",
+      "evidence_refs": [
+        "mac-entry"
+      ]
+    },
+    {
+      "id": "credentials",
+      "label": "订阅配置与凭据",
+      "role": "store",
+      "evidence_refs": [
+        "mac-entry"
+      ]
+    },
+    {
+      "id": "mac-snapshot",
+      "label": "ArtifactStore 快照",
+      "role": "store",
+      "evidence_refs": [
+        "mac-entry"
+      ]
+    },
+    {
+      "id": "windows",
+      "label": "Windows 托盘应用",
+      "role": "component",
+      "evidence_refs": [
+        "win-entry"
+      ]
+    },
+    {
+      "id": "win-snapshot",
+      "label": "SnapshotState 快照",
+      "role": "store",
+      "evidence_refs": [
+        "win-store"
+      ]
+    },
+    {
+      "id": "bridge",
+      "label": "共享 Bridge 契约",
+      "role": "component",
+      "evidence_refs": [
+        "win-entry"
+      ]
+    },
+    {
+      "id": "local",
+      "label": "本地用量与计费",
+      "role": "component",
+      "evidence_refs": [
+        "collect"
+      ]
+    },
+    {
+      "id": "quota",
+      "label": "订阅额度查询",
+      "role": "component",
+      "evidence_refs": [
+        "collect"
+      ]
+    },
+    {
+      "id": "widget",
+      "label": "独立宿主 Widget",
+      "role": "component",
+      "evidence_refs": [
+        "widget"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "mac-bridge",
+      "from": "mac",
+      "to": "bridge",
+      "kind": "calls",
+      "label": "子进程 stdio",
+      "evidence_refs": [
+        "mac-stdio"
+      ]
+    },
+    {
+      "id": "win-bridge",
+      "from": "windows",
+      "to": "bridge",
+      "kind": "calls",
+      "label": "进程内调用",
+      "evidence_refs": [
+        "win-entry"
+      ]
+    },
+    {
+      "id": "mac-credentials",
+      "from": "mac",
+      "to": "credentials",
+      "kind": "reads",
+      "label": "配置与凭据",
+      "evidence_refs": [
+        "mac-input"
+      ]
+    },
+    {
+      "id": "mac-store",
+      "from": "mac",
+      "to": "mac-snapshot",
+      "kind": "writes",
+      "label": "快照发布",
+      "evidence_refs": [
+        "mac-publish"
+      ]
+    },
+    {
+      "id": "win-store",
+      "from": "windows",
+      "to": "win-snapshot",
+      "kind": "writes",
+      "label": "保存快照",
+      "evidence_refs": [
+        "win-store"
+      ]
+    },
+    {
+      "id": "local-branch",
+      "from": "bridge",
+      "to": "local",
+      "kind": "calls",
+      "label": "localSessions",
+      "evidence_refs": [
+        "collect"
+      ]
+    },
+    {
+      "id": "quota-branch",
+      "from": "bridge",
+      "to": "quota",
+      "kind": "calls",
+      "label": "externalQuotas",
+      "evidence_refs": [
+        "collect"
+      ]
+    }
+  ],
+  "evidence": {
+    "mac-entry": {
+      "path": "apps/macos/Sources/BruceApp/BruceApp.swift",
+      "locator": "BruceApp.init",
+      "kind": "static_implementation",
+      "supports": "装配凭据存储、CollectorRunner、ArtifactStore、Scheduler 与原生 UI。"
+    },
+    "win-entry": {
+      "path": "apps/win/src-tauri/src/collector.rs",
+      "locator": "run_configured_collection",
+      "kind": "static_implementation",
+      "supports": "Windows 序列化 BridgeRequest，在进程内调用 run_bytes_panic_safe。"
+    },
+    "collect": {
+      "path": "core/collector/crates/collector-application/src/lib.rs",
+      "locator": "collect_agent_usage_with_dependencies_inner",
+      "kind": "static_implementation",
+      "supports": "按 localSessions、externalQuotas 分支组织本地用量与订阅额度，合并为 Artifact。"
+    },
+    "win-store": {
+      "path": "apps/win/src-tauri/src/scheduler.rs",
+      "locator": "run_refresh_with_kind",
+      "kind": "static_implementation",
+      "supports": "调度器更新 SnapshotState 并保存，供前端读取。"
+    },
+    "widget": {
+      "path": "apps/widget/index.html",
+      "locator": "DaimonWidget callback registration",
+      "kind": "static_implementation",
+      "supports": "Widget 通过宿主数据、状态、主题事件渲染。"
+    },
+    "mac-stdio": {
+      "path": "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+      "locator": "SystemCollectorProcessLauncher.launch",
+      "kind": "static_implementation",
+      "supports": "设置子进程stdin/stdout/stderr Pipe，经stdin写入Bridge请求并读取响应。"
+    },
+    "mac-publish": {
+      "path": "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+      "locator": "finishPublishablePath",
+      "kind": "static_implementation",
+      "supports": "可发布结果先应用凭据更新，再调用 ArtifactStore.publish 保存 Artifact。"
+    },
+    "mac-input": {
+      "path": "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+      "locator": "OnboardingRunInputProvider",
+      "kind": "static_implementation",
+      "supports": "运行输入提供器按配置与访问策略读取应用凭据并构造Bridge输入。"
+    }
+  }
+}

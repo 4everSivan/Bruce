@@ -1,0 +1,23 @@
+{
+  "macos-design.md": {
+    "draft_sha256": "2058b067248b99eab2529e4fc34f6af3a4492967053594ec059d3ece7b23146f",
+    "edited_sha256": "ef3235749c484ac50233d4d96c9cc84cd0a0d67b443b552c85ac7bcb8552f723",
+    "protected_literals_and_links": "passed",
+    "edit_scope": "Paragraph expression only; headings, lists, tables, identifiers and link targets preserved",
+    "changes": 2
+  },
+  "credentials-design.md": {
+    "draft_sha256": "49da705f09770133bab54119aaef63ea9689b18758f96857c969aee636424224",
+    "edited_sha256": "bdcbaf0dc939b4916699ecc16a45bb31f0413d6cd24baa1b06f64fb43e8c21ec",
+    "protected_literals_and_links": "passed",
+    "edit_scope": "Paragraph expression only; headings, lists, tables, identifiers and link targets preserved",
+    "changes": 2
+  },
+  "refresh-lifecycle.md": {
+    "draft_sha256": "79d8c8ce874f332f09694917ecb54fcd5d9a96befa115c7be39e1c951b77383b",
+    "edited_sha256": "79d8c8ce874f332f09694917ecb54fcd5d9a96befa115c7be39e1c951b77383b",
+    "protected_literals_and_links": "passed",
+    "edit_scope": "Paragraph expression only; headings, lists, tables, identifiers and link targets preserved",
+    "changes": 0
+  }
+}

@@ -1,0 +1,408 @@
+{
+  "run_id": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+  "reviewer": "windows_docs",
+  "reviewed_at": "2026-10-18T13:21:14.000415+00:00",
+  "scope": "Independent read-only semantic and expression review of root four articles and ten cards",
+  "semantic_result": "passed_with_resolved_findings",
+  "blocking_semantic_findings": [],
+  "articles": [
+    {
+      "article": "system-design.md",
+      "result": "passed",
+      "actual_checks": [
+        "Composition roots, bootstrap scheduler-before-credential preparation, process transport and shared Collector checked",
+        "Pipeline credential apply precedes artifact publish; publish failure distinct",
+        "Windows cached panel does not start collection",
+        "C060 in_progress retained as original-card status; no new acceptance asserted"
+      ]
+    },
+    {
+      "article": "build-release.md",
+      "result": "passed",
+      "actual_checks": [
+        "Read verify scripts and main Preview script; defaults/paths and universal/install behavior agree",
+        "Read runtime bundle exclusions and executable checks",
+        "Read CI needs dependencies, exact CLI pin, upload pagination/flattening and draft=false public action",
+        "Formal signing/notarization/smoke is a separate manual script; no execution result asserted",
+        "Guide PORT/npm/health examples distinguished from actual desktop entrypoints"
+      ]
+    },
+    {
+      "article": "widget-design.md",
+      "result": "passed",
+      "actual_checks": [
+        "Read render/status/theme handlers and data.main fields",
+        "Read missing-data fallback preserving old card elements",
+        "Read today bucket, index-aligned daily series, top-four/rest group, 24-hour guard and Codex group average",
+        "Read visibility, 125 ms tick, 400 ms idle expiry, compact/reduced-motion and destroy",
+        "Read fake Canvas/scheduler harness; described expectations do not claim real host validation",
+        "Exhaustive network API/URL literal search returned no matches (rg Exit 1), not a software failure"
+      ]
+    },
+    {
+      "article": "glossary.md",
+      "result": "passed",
+      "actual_checks": [
+        "Compared all ten definitions/usages with original implementation",
+        "Independently reread repaired Bridge and TokenBucket sources and broadened artifact envelope locator",
+        "No static-to-runtime or acceptance overstatement found"
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "id": "k_2cbdfd96-ee67-4e9c-8d9c-609c0b4830be",
+      "term": "RefreshExecutionPipeline",
+      "semantic_result": "passed",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift"
+      ]
+    },
+    {
+      "id": "k_2d2834af-6729-4556-aea8-bf46fefc2e9f",
+      "term": "ArtifactStore",
+      "semantic_result": "passed",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/ArtifactStore.swift"
+      ]
+    },
+    {
+      "id": "k_4946a527-e50e-4c5e-88c3-020ab7bd06f7",
+      "term": "TokenBucket",
+      "semantic_result": "passed",
+      "source_paths": [
+        "core/collector/crates/collector-domain/src/lib.rs",
+        "core/collector/crates/collector-aggregate/src/lib.rs"
+      ]
+    },
+    {
+      "id": "k_4df7935b-560a-4dae-bd4b-a15bb1598015",
+      "term": "DaimonWidget",
+      "semantic_result": "passed",
+      "source_paths": [
+        "apps/widget/index.html"
+      ]
+    },
+    {
+      "id": "k_5ffd7ed6-34f6-46fb-b4db-e061bdb4a36d",
+      "term": "CollectionWindow",
+      "semantic_result": "passed",
+      "source_paths": [
+        "core/collector/crates/collector-domain/src/lib.rs"
+      ]
+    },
+    {
+      "id": "k_6a0c0f49-1e7b-4a84-af5c-ccb295ec829f",
+      "term": "SnapshotState",
+      "semantic_result": "passed",
+      "source_paths": [
+        "apps/win/src-tauri/src/runtime_core.rs"
+      ]
+    },
+    {
+      "id": "k_7fd110f8-bb21-4c74-912c-c9297513c53b",
+      "term": "AgentUsageArtifact",
+      "semantic_result": "passed",
+      "source_paths": [
+        "core/collector/crates/collector-domain/src/lib.rs"
+      ]
+    },
+    {
+      "id": "k_85c33776-d921-4e7a-b1f9-0a90455f8135",
+      "term": "PricingTable",
+      "semantic_result": "passed",
+      "source_paths": [
+        "core/collector/crates/collector-domain/src/pricing.rs"
+      ]
+    },
+    {
+      "id": "k_939717db-c182-4a5d-bb9b-b8416cccd9f6",
+      "term": "Bridge",
+      "semantic_result": "passed",
+      "source_paths": [
+        "core/collector/crates/collector-bridge/src/lib.rs",
+        "apps/win/src-tauri/src/collector.rs",
+        "apps/macos/Sources/BruceAppCore/CollectorRunner.swift"
+      ]
+    },
+    {
+      "id": "k_964595ab-af80-4c1c-9078-0d3b11c51456",
+      "term": "RefreshScheduler",
+      "semantic_result": "passed",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift"
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "id": "R1",
+      "severity": "P2",
+      "status": "resolved",
+      "target": "Bridge card and glossary",
+      "issue": "macOS stdin/stdout usage lacked direct transport source association",
+      "resolution": "Added CollectorRunner.swift SystemCollectorProcessLauncher.launch; read standardInput/standardOutput and request write"
+    },
+    {
+      "id": "R2",
+      "severity": "P2",
+      "status": "resolved",
+      "target": "TokenBucket card and glossary",
+      "issue": "Today versus trend input distinction needed aggregation consumer evidence",
+      "resolution": "Added UsageAccumulator::finalize_with_pricing; read daily.input=display_input and original today bucket"
+    },
+    {
+      "id": "R3",
+      "severity": "P3",
+      "status": "resolved",
+      "target": "AgentUsageArtifact card and glossary",
+      "issue": "Artifact-only locator did not name response envelope also explained in usage",
+      "resolution": "Locator broadened to AgentUsageArtifact; BridgeResponse; both declarations read"
+    }
+  ],
+  "expression_review": {
+    "result": "passed",
+    "method": "Separate check of actors, conditions, evidence categories, repetition and professional register; reviewer made no article edits"
+  },
+  "structural_review": {
+    "card_schema": "passed",
+    "source_paths": "passed",
+    "glossary_explicit_anchors": "passed",
+    "article_bindings": "pending_peer_outputs",
+    "pending": [
+      {
+        "id": "k_2cbdfd96-ee67-4e9c-8d9c-609c0b4830be",
+        "article": "refresh-lifecycle.md",
+        "reason": "Peer article not yet delivered at review time"
+      },
+      {
+        "id": "k_2d2834af-6729-4556-aea8-bf46fefc2e9f",
+        "article": "refresh-lifecycle.md",
+        "reason": "Peer article not yet delivered at review time"
+      },
+      {
+        "id": "k_2d2834af-6729-4556-aea8-bf46fefc2e9f",
+        "article": "macos-design.md",
+        "reason": "Peer article not yet delivered at review time"
+      },
+      {
+        "id": "k_964595ab-af80-4c1c-9078-0d3b11c51456",
+        "article": "refresh-lifecycle.md",
+        "reason": "Peer article not yet delivered at review time"
+      }
+    ],
+    "method": "Existing python JSON parser; strict card allowed/required fields, basis enums, IDs, source field coverage, target paths and anchors"
+  },
+  "original_source_hashes": {
+    ".github/workflows/ci.yml": {
+      "algorithm": "sha256",
+      "value": "cffdcc1c1a1853e4f338a5b3272342c5a7627a8d9c216e61ac3bb245988f37b8"
+    },
+    ".gitignore": {
+      "algorithm": "sha256",
+      "value": "ffdfb59d525805b099906a13452f1d85b20fe719039a77996c663d215a13f1a3"
+    },
+    "README.md": {
+      "algorithm": "sha256",
+      "value": "9ce5a5d4ec7d1e026396672b6cc0e26eb659627df8e2a69f301b372a1ca1cc88"
+    },
+    "apps/macos/Package.swift": {
+      "algorithm": "sha256",
+      "value": "54eeb97ad0771d53f112b5b50c25336b5f65bd4de11ac39dd5bd0b768b11ab22"
+    },
+    "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift": {
+      "algorithm": "sha256",
+      "value": "7908e4a4b22807fb242a80a18beae8c12c0e506d824acb71e72906d4135c5ec7"
+    },
+    "apps/macos/Sources/BruceApp/BruceApp.swift": {
+      "algorithm": "sha256",
+      "value": "dccbc4d237f079b6d5b9af361abc0984ddd4cfa10cb50d70f4557877ee1ce657"
+    },
+    "apps/macos/Sources/BruceAppCore/ArtifactStore.swift": {
+      "algorithm": "sha256",
+      "value": "bfd71a9c7002df21a625e8adc99382a1400997764248707c1813f850475a672a"
+    },
+    "apps/macos/Sources/BruceAppCore/CollectorRunner.swift": {
+      "algorithm": "sha256",
+      "value": "ad2b3c738032988bb9445dfefd36175f215be66b6f3fcac6f47d05a4970cbc96"
+    },
+    "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift": {
+      "algorithm": "sha256",
+      "value": "95a11a91b2655c675f8b9a456fc14f82ab2d486eb78cca8530d745e9c959bd33"
+    },
+    "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift": {
+      "algorithm": "sha256",
+      "value": "2007fad9ba784b86801a57b700c11bf29833627e7994c591ee6b655adf87f69d"
+    },
+    "apps/widget/index.html": {
+      "algorithm": "sha256",
+      "value": "1324e02f392ac5c7404d5ea790c4950df49c0784da407bb72924617c2ade0f2e"
+    },
+    "apps/win/src-tauri/src/collector.rs": {
+      "algorithm": "sha256",
+      "value": "b4b7af33c49afcdfa2b0c7bc3207cf0232eed28d63825e7f76972dfc1603ddbb"
+    },
+    "apps/win/src-tauri/src/runtime_core.rs": {
+      "algorithm": "sha256",
+      "value": "15e282ef37109ed183310444abc355d351867ac16c249f5831125b7f86ea51df"
+    },
+    "core/collector/crates/collector-aggregate/src/lib.rs": {
+      "algorithm": "sha256",
+      "value": "33c3a4ee8eedd8bd68ad043f1f59ddfb7216972b86650247b18f3c3682aa2314"
+    },
+    "core/collector/crates/collector-application/src/lib.rs": {
+      "algorithm": "sha256",
+      "value": "450fe36016c102bfe4c819b744f4a8a5fdceea8f958f754644c9fe75cc852c96"
+    },
+    "core/collector/crates/collector-bridge/src/lib.rs": {
+      "algorithm": "sha256",
+      "value": "825479f85c82fc891e0baabdddbb591d65079713003357726a79a05cf9d7342d"
+    },
+    "core/collector/crates/collector-domain/src/lib.rs": {
+      "algorithm": "sha256",
+      "value": "1e1adf7e35d50355c615b88d2396ef0eda355836f578b3d51372631b20dea00c"
+    },
+    "core/collector/crates/collector-domain/src/pricing.rs": {
+      "algorithm": "sha256",
+      "value": "3c6d2dde139fdb0b07dac6d307fd3e1d475edd9c38af70ab144623aeb1f31f8d"
+    },
+    "docs/devel/change/C060.json": {
+      "algorithm": "sha256",
+      "value": "b1cbe1783b19fef17f1fdb2b0ca867dcce2775d673e63e1df5d4dd55182beee3"
+    },
+    "docs/devel/design/00-系统总体设计.md": {
+      "algorithm": "sha256",
+      "value": "06ddb00847493f6e39489252e284380d5677582901c79c15f253d807c949ed47"
+    },
+    "docs/guide/01-本地部署指南.md": {
+      "algorithm": "sha256",
+      "value": "b1285d9b15f6e41d4efbb51ced7076cb7f772d120e6155599217bf389209e806"
+    },
+    "scripts/build-release-app.sh": {
+      "algorithm": "sha256",
+      "value": "3ff6a5f44139bed3866fcb7cbb1847a9c9446041e295fce71f85c6286b184648"
+    },
+    "scripts/build-test-app.sh": {
+      "algorithm": "sha256",
+      "value": "c2ea0dcebfa2d4494a181b3df980394e5e3933b8d88e6e2347419310fe72bfea"
+    },
+    "scripts/build-win-app.ps1": {
+      "algorithm": "sha256",
+      "value": "27287ae49f91ec8d074ba76abb4f4830e6012bf160ca7cee909c6cd565f597bb"
+    },
+    "scripts/check-release-pipeline.mjs": {
+      "algorithm": "sha256",
+      "value": "c67554a585ffaac529e5058f58711bfe8687335d523439a6a398340cdf614e00"
+    },
+    "scripts/release-notes.sh": {
+      "algorithm": "sha256",
+      "value": "d0149e0289a5578d99ea273d813fed9cb9b6b599359fedd79c6df565c7f4c72c"
+    },
+    "scripts/runtime-manifest.zsh": {
+      "algorithm": "sha256",
+      "value": "e8b837f3facc718e640e49b925545c732411ce5414f416dbb90d46bc6f7c6553"
+    },
+    "scripts/upload-win-release.ps1": {
+      "algorithm": "sha256",
+      "value": "321f421e1668b9cc24693ac581d6b974849257b0fc9b8f94620db3500031aa40"
+    },
+    "scripts/verify-local.sh": {
+      "algorithm": "sha256",
+      "value": "5c3e1b2653c16e98aa9950f9501a969324e34e12d20d4e47a157640ec5fe1608"
+    },
+    "scripts/verify-rust.sh": {
+      "algorithm": "sha256",
+      "value": "33978659a0da8b895af61513ee4be0a8fcf91ff92d713e6fe55bdcdf5022ecbf"
+    },
+    "scripts/widget-performance-harness.mjs": {
+      "algorithm": "sha256",
+      "value": "2170a92951ece055d201a91c4cda6fad0d414348450e745e3fd12848472a361d"
+    }
+  },
+  "candidate_hashes": {
+    "docs/official/.staging/ccfe974f-59b1-40b1-9746-380c05801b4f/system-design.md": {
+      "algorithm": "sha256",
+      "value": "a30b03e2671346f4e5f8b3617e8d26136d0d3a5f7ef5c3db5c63825b971551e9"
+    },
+    "docs/official/.staging/ccfe974f-59b1-40b1-9746-380c05801b4f/build-release.md": {
+      "algorithm": "sha256",
+      "value": "e98d957b876f1f9636929a54f64a504aad24988781c18fa1a4a3e8e6ab5cbfce"
+    },
+    "docs/official/.staging/ccfe974f-59b1-40b1-9746-380c05801b4f/widget-design.md": {
+      "algorithm": "sha256",
+      "value": "af9b53870258809473f307d8e8972090ea50af88640a3823efdc6f2a9da6cb0e"
+    },
+    "docs/official/.staging/ccfe974f-59b1-40b1-9746-380c05801b4f/glossary.md": {
+      "algorithm": "sha256",
+      "value": "7f9063195aab39959cfb3ddb4ce5620b3e36a70c883828925d48dbfcc8d3a6e7"
+    },
+    "docs/official/.cards/runs/ccfe974f-59b1-40b1-9746-380c05801b4f/cards/k_2cbdfd96-ee67-4e9c-8d9c-609c0b4830be.json": {
+      "algorithm": "sha256",
+      "value": "9100e190516986488cf04343c53bb4f92fadfef9c0e951cba6a8009c79214185"
+    },
+    "docs/official/.cards/runs/ccfe974f-59b1-40b1-9746-380c05801b4f/cards/k_2d2834af-6729-4556-aea8-bf46fefc2e9f.json": {
+      "algorithm": "sha256",
+      "value": "2dfc27445616ab95fd1148ead548cf98394bec6a223142a963b97df143b644ba"
+    },
+    "docs/official/.cards/runs/ccfe974f-59b1-40b1-9746-380c05801b4f/cards/k_4946a527-e50e-4c5e-88c3-020ab7bd06f7.json": {
+      "algorithm": "sha256",
+      "value": "092c7348fdb3e07a56d214c67b594b04d9670c42c131965292e3671d7a67d369"
+    },
+    "docs/official/.cards/runs/ccfe974f-59b1-40b1-9746-380c05801b4f/cards/k_4df7935b-560a-4dae-bd4b-a15bb1598015.json": {
+      "algorithm": "sha256",
+      "value": "1f9cc2739ae34eda25331d7a03a67797ab4d023f4be5c8ecd07419bb1a2e8394"
+    },
+    "docs/official/.cards/runs/ccfe974f-59b1-40b1-9746-380c05801b4f/cards/k_5ffd7ed6-34f6-46fb-b4db-e061bdb4a36d.json": {
+      "algorithm": "sha256",
+      "value": "8fe8f3f060e64d87fd5519a32a28284233b212fe51385105a0522f5c618c1e7d"
+    },
+    "docs/official/.cards/runs/ccfe974f-59b1-40b1-9746-380c05801b4f/cards/k_6a0c0f49-1e7b-4a84-af5c-ccb295ec829f.json": {
+      "algorithm": "sha256",
+      "value": "cbb8f8ea6287b7042006d7d9664ce474bd9dd6471c6616994afe5054708cfd29"
+    },
+    "docs/official/.cards/runs/ccfe974f-59b1-40b1-9746-380c05801b4f/cards/k_7fd110f8-bb21-4c74-912c-c9297513c53b.json": {
+      "algorithm": "sha256",
+      "value": "db4ce44ded7c53e84afaedfe4cb0915ede395f1f96706f14babdafdeaa784f30"
+    },
+    "docs/official/.cards/runs/ccfe974f-59b1-40b1-9746-380c05801b4f/cards/k_85c33776-d921-4e7a-b1f9-0a90455f8135.json": {
+      "algorithm": "sha256",
+      "value": "cb53699a0d616a18dc1f426b07f373823c8f7856ebdfae954491f321185a198c"
+    },
+    "docs/official/.cards/runs/ccfe974f-59b1-40b1-9746-380c05801b4f/cards/k_939717db-c182-4a5d-bb9b-b8416cccd9f6.json": {
+      "algorithm": "sha256",
+      "value": "d3d6af93b33b07600e9bbd220e4199a102b79d535037ce30444d24bce6fb5122"
+    },
+    "docs/official/.cards/runs/ccfe974f-59b1-40b1-9746-380c05801b4f/cards/k_964595ab-af80-4c1c-9078-0d3b11c51456.json": {
+      "algorithm": "sha256",
+      "value": "188f2683b2eec521b04793ba3cdb55309fa95bc259abc0e0e7ca45868ffd0950"
+    }
+  },
+  "partial_reads": {
+    "README.md": "1-100",
+    "docs/devel/design/00-系统总体设计.md": "1-115",
+    "docs/guide/01-本地部署指南.md": "1-100",
+    "apps/macos/Package.swift": "1-100",
+    "apps/macos/Sources/BruceApp/BruceApp.swift": "1-130",
+    "apps/macos/Sources/BruceAppCore/ArtifactStore.swift": "65-245",
+    "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift": "1-150 plus exact Pipeline call-site search",
+    "apps/macos/Sources/BruceAppCore/CollectorRunner.swift": "234-300 plus exact stdin/stdout/arguments search",
+    "core/collector/crates/collector-domain/src/lib.rs": "1-270 and 519-590",
+    "core/collector/crates/collector-domain/src/pricing.rs": "1-80 and 247-365",
+    "core/collector/crates/collector-aggregate/src/lib.rs": "15-144",
+    "core/collector/crates/collector-bridge/src/lib.rs": "1-190 and 300-365",
+    "core/collector/crates/collector-application/src/lib.rs": "1-180",
+    "scripts/build-release-app.sh": "1-110, 150-223 plus exact symbol inventory",
+    "apps/widget/index.html": "411-602 and 650-1004 plus exhaustive network API/URL scan"
+  },
+  "not_run": [
+    "Software tests/builds",
+    "Windows/macOS native runtime and live credentials",
+    "CI/release execution and remote state",
+    "SVG/Markdown visual inspection; root owns offline previews"
+  ],
+  "notes": [
+    "Original source hashes identify consulted bytes, not exhaustive whole-file review",
+    "Parent repaired outputs; reviewer writes only this receipt",
+    "First structural check stopped at pending peer article bindings; retained here as pending instead of claiming full pass"
+  ]
+}
