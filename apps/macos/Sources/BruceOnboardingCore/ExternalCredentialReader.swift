@@ -41,10 +41,10 @@ public struct SystemExternalCredentialReader: ExternalCredentialReader, Sendable
     ) throws -> String? {
         switch source {
         case .claudeCLI:
-            // C059 (对照 cc-switch 读取序): Keychain 静默尝试在前 (UISkip 永不弹窗,
-            // externalSources 白名单门禁保留), 家目录凭证文件回退在后 (只读用户自己的
-            // 文件, 不经钥匙串授权仪式门禁)。
-            if let keychain = try readClaudeKeychain(intent: intent) {
+            // C060 (与 cc-switch 同构): 每次读取无条件尝试 Keychain, 不再受
+            // externalSources 白名单 / state 门禁约束; UISkip 保证静默,
+            // 拦截时仅降级文件, 绝不唤起 SecurityAgent 弹窗。
+            if let keychain = try readClaudeKeychain() {
                 return keychain
             }
             return try readFile(
@@ -67,19 +67,12 @@ public struct SystemExternalCredentialReader: ExternalCredentialReader, Sendable
         }
     }
 
-    /// Claude CLI 外部 Keychain 项的静默读取.
-    /// - 白名单未开 / 条目不存在 / 被系统拦截 (锁定/ACL): 一律返回 nil 走文件回退
-    ///   (拦截时 markBlocked 记入 controller 状态, 供调用方给出可操作提示);
-    /// - 无论何种意图均强制 UISkip, 绝不唤起 SecurityAgent 弹窗 (项目红线)。
-    private func readClaudeKeychain(
-        intent: KeychainAccessIntent
-    ) throws -> String? {
-        guard accessController.allows(
-            source: .external(.claudeCLI),
-            intent: intent
-        ) else {
-            return nil
-        }
+    /// Claude CLI 外部 Keychain 项的无条件静默读取 (C060, 对照 cc-switch
+    /// `security find-generic-password -s "Claude Code-credentials" -w`).
+    /// - 条目不存在 / 被系统拦截 (锁定/ACL): 返回 nil 走文件回退;
+    /// - 拦截时不 markBlocked — 外部条目是可选来源, 不得污染 Bruce 自有存储策略;
+    /// - 强制 UISkip, 绝不唤起 SecurityAgent 弹窗 (项目红线)。
+    private func readClaudeKeychain() throws -> String? {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: Self.claudeKeychainService,
@@ -100,7 +93,6 @@ public struct SystemExternalCredentialReader: ExternalCredentialReader, Sendable
             if status == errSecInteractionNotAllowed
                 || status == errSecAuthFailed
                 || status == errSecUserCanceled {
-                accessController.markBlocked()
                 return nil
             }
             throw ExternalCredentialError.readFailed(.claudeCLI, status)

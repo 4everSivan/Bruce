@@ -231,8 +231,11 @@ public struct CCSwitchVolcengineImporter: Sendable {
 // MARK: - ClaudePasteParser
 
 /// Claude 引导粘贴解析 (Phase 2): 接受纯 token 或 `claudeAiOauth` 同构 JSON,
-/// 输出规范 `{"claudeAiOauth":{"accessToken":...}}` JSON 字符串.
-/// 无过期信息的 token 存 expiresAt null -> 双方按"未知未过期"处理.
+/// 输出规范 `{"claudeAiOauth":{...}}` JSON 字符串.
+/// C060 (对照 cc-switch): 完整保留原 OAuth 条目全部字段
+/// (refreshTokenExpiresAt / subscriptionType / rateLimitTier / scopes 等),
+/// 仅规范化包装键与 accessToken; 无过期信息的 token 存 expiresAt null ->
+/// 双方按"未知未过期"处理.
 public enum ClaudePasteParser {
     public static func parse(_ input: String) -> Result<String, SubscriptionImportError> {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -240,9 +243,9 @@ public enum ClaudePasteParser {
             return .failure(.missingField("Claude token"))
         }
 
+        var wrapperKey = "claudeAiOauth"
+        var entry: [String: Any] = [:]
         var accessToken = ""
-        var refreshToken = ""
-        var expiresAt: Any? = nil
 
         if trimmed.hasPrefix("{") {
             guard let data = trimmed.data(using: .utf8),
@@ -250,33 +253,33 @@ public enum ClaudePasteParser {
                   let dict = object as? [String: Any] else {
                 return .failure(.invalidJSON)
             }
-            let entry = (dict["claudeAiOauth"] as? [String: Any])
-                ?? (dict["claude.ai_oauth"] as? [String: Any])
-                ?? dict
+            if let oauth = dict["claudeAiOauth"] as? [String: Any] {
+                wrapperKey = "claudeAiOauth"
+                entry = oauth
+            } else if let legacy = dict["claude.ai_oauth"] as? [String: Any] {
+                wrapperKey = "claude.ai_oauth"
+                entry = legacy
+            } else {
+                // 直接粘贴 OAuth 条目本体 (无包装键).
+                entry = dict
+            }
             accessToken = (entry["accessToken"] as? String ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            refreshToken = (entry["refreshToken"] as? String ?? "")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            expiresAt = entry["expiresAt"]
         } else {
             // 纯 token: 单段或空白分隔 (token [refreshToken])
             let tokens = trimmed.split(whereSeparator: { $0.isWhitespace }).map(String.init)
             accessToken = tokens.first ?? ""
-            if tokens.count > 1 { refreshToken = tokens[1] }
+            if tokens.count > 1 {
+                entry["refreshToken"] = tokens[1]
+            }
         }
 
         guard !accessToken.isEmpty else {
             return .failure(.missingField("Claude access token"))
         }
 
-        var entry: [String: Any] = ["accessToken": accessToken]
-        if !refreshToken.isEmpty {
-            entry["refreshToken"] = refreshToken
-        }
-        if let expiresAt {
-            entry["expiresAt"] = expiresAt
-        }
-        let payload: [String: Any] = ["claudeAiOauth": entry]
+        entry["accessToken"] = accessToken
+        let payload: [String: Any] = [wrapperKey: entry]
         guard let data = try? JSONSerialization.data(
             withJSONObject: payload, options: [.sortedKeys]
         ), let json = String(data: data, encoding: .utf8) else {

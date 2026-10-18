@@ -54,6 +54,34 @@ extension BruceOnboardingCoreHarness {
         }
     }
 
+    /// C060: 解析保留完整账号字段 (Keychain 实载荷含 subscriptionType/
+    /// rateLimitTier/scopes/refreshTokenExpiresAt), 与 cc-switch 保留原始凭证一致.
+    static func claudePasteParserPreservesAccountFields() throws {
+        let input = #"""
+        {"claudeAiOauth":{"accessToken":"tok-a","expiresAt":1792356775306,
+          "rateLimitTier":"default_claude_max_20x","refreshToken":"tok-r",
+          "refreshTokenExpiresAt":1794788492566,"subscriptionType":"max",
+          "scopes":["user:inference","user:profile"]}}
+        """#
+        guard case .success(let parsed) = ClaudePasteParser.parse(input),
+              let data = parsed.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let entry = obj["claudeAiOauth"] as? [String: Any] else {
+            throw CoreTestFailure.expectation("完整字段解析失败")
+        }
+        try coreExpect(entry["refreshTokenExpiresAt"] != nil, "refreshTokenExpiresAt 被丢弃")
+        try coreExpect(entry["subscriptionType"] as? String == "max", "subscriptionType 被丢弃")
+        try coreExpect(entry["rateLimitTier"] as? String == "default_claude_max_20x", "rateLimitTier 被丢弃")
+        try coreExpect((entry["scopes"] as? [String])?.count == 2, "scopes 被丢弃")
+        try coreExpect(entry["expiresAt"] != nil, "expiresAt 被丢弃")
+        // 刷新令牌过期时间参与 refreshPending 判定 (C059 语义得以成立).
+        let now = Date(timeIntervalSince1970: 1_794_000_000)
+        try coreExpect(
+            SubscriptionCredentialEvaluator.claudeStatus(of: parsed, now: now) == .refreshPending,
+            "access 过期 + refresh 存活应判 refreshPending"
+        )
+    }
+
     /// GrokPasteParser: 纯 token 与 auth.json 同构 JSON 规范化.
     static func grokPasteParserTokenAndJSON() throws {
         let tokenResult = GrokPasteParser.parse("key-456")

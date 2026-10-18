@@ -99,20 +99,16 @@ struct LocalCredentialProbe: Sendable {
         }
     }
 
-    /// C059: 「从本机导入」读取 (userInitiated: Keychain 静默优先 → 文件回退,
-    /// 与 cc-switch 读取序一致; 全程 UISkip 绝不弹窗)。
-    /// Keychain 被系统拦截且两路皆无登录态时, 经 blocked 状态给出可操作提示。
+    /// C060: 「从本机导入」读取 (userInitiated: Keychain 静默优先 → 文件回退,
+    /// 与 cc-switch 读取序一致; 全程 UISkip 绝不弹窗; Keychain 读取无条件尝试)。
     func claudeLocalCredentialForImport() -> Result<String, SubscriptionImportError> {
         guard let raw = (try? externalCredentialReader.read(
             source: .claudeCLI,
             intent: .userInitiated
         )) else {
-            if keychainAccessController.policy.state == .blocked {
-                return .failure(.unreadable(
-                    "系统钥匙串拦截了 Claude 登录态的静默读取; 可在「钥匙串访问」中允许 Bruce 读取, 或改用粘贴导入"
-                ))
-            }
-            return .failure(.fileNotFound("本机 Claude 登录态"))
+            return .failure(.fileNotFound(
+                "本机 Claude 登录态 (钥匙串与 ~/.claude/.credentials.json 均不可读), 请先登录 Claude CLI 或改用粘贴导入"
+            ))
         }
         return ClaudePasteParser.parse(raw)
     }

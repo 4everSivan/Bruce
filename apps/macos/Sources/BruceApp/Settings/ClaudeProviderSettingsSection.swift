@@ -84,11 +84,18 @@ struct ClaudeProviderSettingsSection: View {
                     .disabled(busy)
                     .accessibilityHint("重新探测本机 Claude CLI 登录态")
                 }
-                Button("重新验证") {
-                    coordinator.reverify(.claude)
+                Button("从本机导入") {
+                    coordinator.importClaudeFromLocal()
                 }
                 .disabled(busy)
-                .accessibilityHint("用当前跟随的登录态重新验证 Claude 订阅")
+                .accessibilityHint("读取本机 Claude CLI 登录态 (钥匙串静默优先) 并保存为账号凭证")
+                if storedAccountCount > 0 {
+                    Button("重新验证") {
+                        coordinator.reverify(.claude)
+                    }
+                    .disabled(busy)
+                    .accessibilityHint("用已保存凭证重新验证 Claude 订阅")
+                }
                 if busy {
                     ProgressView().controlSize(.small)
                 }

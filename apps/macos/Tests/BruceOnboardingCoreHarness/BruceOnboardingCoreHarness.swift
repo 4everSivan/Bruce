@@ -141,6 +141,7 @@ struct BruceOnboardingCoreHarness {
         try evaluatorSharedExpiryFixtures()
         try claudePasteParserTokenAndJSON()
         try claudePasteParserRejectsEmpty()
+        try claudePasteParserPreservesAccountFields()
         try grokPasteParserTokenAndJSON()
         try grokPasteParserRejectsEmpty()
         try claudeCLIImporterReadsFixture()

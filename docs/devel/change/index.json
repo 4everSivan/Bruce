@@ -75,7 +75,8 @@
         "C039",
         "C042",
         "C058",
-        "C059"
+        "C059",
+        "C060"
       ]
     },
     "TokenUsage": {
@@ -628,6 +629,15 @@
       "topic": "SubscriptionQuota",
       "version": "",
       "file": "docs/devel/change/C059.json"
+    },
+    "C060": {
+      "title": "Claude 登录态自动读取仍偏离 cc-switch：Keychain 尝试被外部来源白名单/状态门禁挡住、导入规范化丢字段、设置区无显式读取入口",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C060-claude-login-read",
+      "topic": "SubscriptionQuota",
+      "version": "",
+      "file": "docs/devel/change/C060.json"
     }
   }
 }
