@@ -20,7 +20,7 @@
     "description": "预检 limits[]/weekly_scoped 解析是否已存在于代码库",
     "command": "grep -rn 'weekly_scoped' core/collector/crates/collector-provider/src/lib.rs | wc -l",
     "expected": "输出 0 表示未实现，需按本卡执行",
-    "is_completed": false,
+    "is_completed": true,
     "evidence": "实测输出 0：weekly_scoped 从未被解析，缺陷成立"
   },
 
@@ -70,21 +70,21 @@
         "item": "自动化测试",
         "true_if": "collector-provider 与 win viewmodel 相关测试全绿，退出码 0，含新增 limits[] 回归用例",
         "false_if": "存在任何测试失败或未覆盖回归用例",
-        "evidence": "",
+        "evidence": "collector-provider 40 passed/0 failed (含 4 例新 Claude 用例: renders_scoped/override_and_dedupe/skips_invalid_and_dirty/does_not_invent); win viewmodel 13+6+7+13+8+5 全绿 (含新 window_label_keeps_suffixed_weekly_variants 与 mac_parity_golden_matches); PanelViewModelHarness 54 passed; verify-local.sh 全量门禁退出码 0 (Rust fmt/test/clippy + fixture 扫描 19 文件无敏感 + Swift 9 harness)",
         "result": null
       },
       {
         "item": "行为实测",
         "true_if": "limits[] 含 fable/opus/sonnet scoped 行时窗口集合、覆盖与排序符合 cc-switch 语义；脏数据逐窗口跳过",
         "false_if": "窗口缺失、重复或整卡报错",
-        "evidence": "",
+        "evidence": "用例断言通过: limits[Fable 37.5] → 输出 [每 5 小时, 每周, 每周 Fable(37.5, 10080, resetsAt=1789171200)]; scoped 覆盖同名旧窗口 (Fable 80→0, 首条 0% 胜过后续 90%) 且 is_active=false 不过滤; kind/group/surface/percent/resets_at 九类非法行全部跳过; 脏 utilization 顶层窗口跳过且整卡不报错; limits null/[]/{} 不凭空造窗口",
         "result": null
       },
       {
         "item": "反向影响排查",
         "true_if": "既有 five_hour/extra_usage/inactive 行为不变；非 Claude 提供方不受影响；UI 既有标签映射不变",
         "false_if": "破坏其他提供方解析或既有展示",
-        "evidence": "",
+        "evidence": "既有聚合用例 (five_hour+extra_usage+inactive len 3 含 ownRow) 未改动且通过; '每周窗口'+10080 仍归一'每周' (win viewmodel 专门断言), mac_parity_golden_matches golden 快照零变更通过, 证明 Codex/Kimi 等既有展示逐字符不变; collector workspace 全测 + 9 harness 全绿",
         "result": null
       }
     ]
