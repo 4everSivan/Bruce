@@ -226,6 +226,10 @@ package enum PanelFormat {
                 return "每 5 小时"
             }
             if approximately(minutes, 10080) {
+                // Claude 模型专属周窗口 ("每周 Fable/Opus/Sonnet" 带空格后缀) 原样保留,
+                // 避免多行周窗口被归一成同一文案后不可区分 (C058);
+                // "每周窗口"/裸"每周"等无后缀形态仍归一。
+                if rawLabel.hasPrefix("每周 ") { return rawLabel }
                 return "每周"
             }
             if approximately(minutes, 43200) {

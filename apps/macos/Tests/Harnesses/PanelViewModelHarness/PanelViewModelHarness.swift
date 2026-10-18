@@ -181,6 +181,7 @@ struct PanelViewModelHarness {
     static func main() throws {
         try windowWordingMatrixMapsMinutes()
         try windowWordingFallsBackToKnownLabels()
+        try windowWordingKeepsSuffixedWeeklyLabels()
         try ownRowFlagIsPreserved()
         try balanceSinksToBottom()
         try kimiDisabledBoosterExtraIsHidden()
@@ -230,7 +231,7 @@ struct PanelViewModelHarness {
         try hourlyCollapsedPointsSumWithPeakText()
         try collapseStatePersistsAcrossAppModelInstances()
         try cardCollapseAnimationStabilityContracts()
-        print("PanelViewModel tests passed: 53")
+        print("PanelViewModel tests passed: 54")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -274,6 +275,29 @@ struct PanelViewModelHarness {
         try expect(
             labels == ["每 5 小时", "每周", "每周", "每月", "赠送额度"],
             "label 回落映射失败: \(labels)"
+        )
+    }
+
+    // Claude 模型专属周窗口 (C058): 带「每周」前缀的 label 原样保留,
+    // 避免总量 + Fable/Opus/Sonnet 多行被归一成同一文案; 普通 7 天窗口仍归一.
+    private static func windowWordingKeepsSuffixedWeeklyLabels() throws {
+        let service = makeService(
+            id: "claude",
+            name: "Claude",
+            windows: [
+                makeWindow(label: "每 5 小时", usedPercent: 68, windowMinutes: 300),
+                makeWindow(label: "每周", usedPercent: 39, windowMinutes: 10080),
+                makeWindow(label: "每周 Fable", usedPercent: 41, windowMinutes: 10080),
+                makeWindow(label: "每周 Opus", usedPercent: 12, windowMinutes: 10090),
+                makeWindow(label: "每周 Sonnet", usedPercent: 5, windowMinutes: 10080),
+                makeWindow(label: "7天窗口", usedPercent: 9, windowMinutes: 10080),
+            ]
+        )
+        let vm = try subscriptionSections(services: [service])
+        let labels = vm[0].windows.map(\.label)
+        try expect(
+            labels == ["每 5 小时", "每周", "每周 Fable", "每周 Opus", "每周 Sonnet", "每周"],
+            "模型专属周窗口文案保留失败: \(labels)"
         )
     }
 

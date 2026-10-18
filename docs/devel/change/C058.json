@@ -1,0 +1,101 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C058",
+  "title": "Claude 订阅统计脱节 cc-switch 现行口径：未解析 limits[] 模型专属周限额 (weekly_scoped)，缺 Fable 窗口且坏窗口会炸整卡",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C058-claude-scoped-limits",
+  "is_hotfix": false,
+
+  "target": {
+    "module": "core/collector",
+    "component": "collector-provider Claude 配额解析",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+
+  "why": "Bruce 的 Claude 订阅统计 (parse_claude_usage) 只解析 /api/oauth/usage 的旧版顶层窗口 (five_hour/seven_day/seven_day_opus/seven_day_sonnet)。对照 cc-switch (farion1231/cc-switch, services/subscription.rs, 2026-10-18 拉取) 现行实现，官方 API 已新增 limits[] 数组承载模型专属周限额 (kind=weekly_scoped, group=weekly, scope.model.display_name 区分 fable/opus/sonnet, 取 percent 字段并覆盖同名旧窗口)。Bruce 完全未解析该数组：Fable 周限额不可见，scoped 口径与旧窗口并存时显示旧值。另外 Bruce 遇到任一窗口 utilization 非数值会让整卡报错 (cc-switch 为逐窗口跳过)，单条脏数据即吞掉全部窗口。配套：双端 UI 的 windowMinutes 优先标签映射把 10080 分钟窗口统一改写为「每周」，会抹掉「每周 Opus/Sonnet/Fable」后缀，多行周窗口同文案不可区分。",
+
+  "precheck": {
+    "description": "预检 limits[]/weekly_scoped 解析是否已存在于代码库",
+    "command": "grep -rn 'weekly_scoped' core/collector/crates/collector-provider/src/lib.rs | wc -l",
+    "expected": "输出 0 表示未实现，需按本卡执行",
+    "is_completed": false,
+    "evidence": "实测输出 0：weekly_scoped 从未被解析，缺陷成立"
+  },
+
+  "callback": {
+    "before": [
+      "git checkout -b fix/C058-claude-scoped-limits"
+    ],
+    "after": [
+      "cargo test --manifest-path core/collector/Cargo.toml -p collector-provider",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml --lib viewmodel::subscription",
+      "swift test --package-path apps/macos 2>/dev/null || zsh scripts/verify-local.sh"
+    ]
+  },
+
+  "changes": [
+    {
+      "scope": "接口契约 / 解析规则",
+      "before": "parse_claude_usage 仅遍历顶层对象键 (跳过 extra_usage)，取 utilization/resets_at；任一含 utilization 键的值非数值时整卡报错；未知键按字母序混排；无 limits[] 解析；CLAUDE_TIERS 无 seven_day_fable",
+      "after": "对齐 cc-switch parse_claude_quota：1) 顶层窗口 utilization 非数值/缺失时逐窗口跳过 (不再炸整卡)；2) 新增 limits[] weekly_scoped 解析：kind=weekly_scoped 且 group=weekly 且 scope.surface 为 null，scope.model.display_name (trim+小写) 映射 fable/opus/sonnet，percent 须为非负 JSON 数值，resets_at 须为字符串或 null；不按 is_active 过滤；同名 tier 首条优先去重并覆盖同名旧窗口；3) 输出按已知 tier 顺序排序 (five_hour, seven_day, seven_day_fable, seven_day_opus, seven_day_sonnet)，未知窗口稳定排后；4) CLAUDE_TIERS 增补 seven_day_fable→「每周 Fable」(10080)；5) extra_usage 的 utilization 非数值时跳过该行而非报错",
+      "impact": "Claude 订阅卡窗口集合与官方 API/cc-switch 口径一致；单条脏窗口不再导致整卡错误；下游 Swift/Windows 均消费同一 artifact JSON，无接口形状变化 (仍为 windows[] label/usedPercent/windowMinutes/resetsAt)"
+    },
+    {
+      "scope": "UI 展示规则",
+      "before": "Swift PanelFormat.windowLabel 与 Windows window_label 均 windowMinutes 优先，10080 一律改写为「每周」，模型专属后缀被抹掉",
+      "after": "10080 周窗口若 collector label 已以「每周」开头 (每周 Opus/Sonnet/Fable 等模型专属变体) 则原样保留，否则仍归一为「每周」；双端同步修改保持逐字符对拍",
+      "impact": "多行周窗口 (总量 + Fable/Opus/Sonnet) 文案可区分；既有标签 (5h/7天窗口等) 行为不变"
+    }
+  ],
+
+  "design": {
+    "doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "topic": "SubscriptionQuota",
+    "modified": true,
+    "rule_diff": {
+      "before": "Claude /api/oauth/usage 解析仅覆盖顶层 utilization 窗口",
+      "after": "Claude /api/oauth/usage 解析覆盖顶层 utilization 窗口 + limits[] weekly_scoped 模型专属周限额 (覆盖同名旧窗口、首条去重、不按 is_active 过滤)，坏窗口逐条跳过不炸整卡"
+    }
+  },
+
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "collector-provider 与 win viewmodel 相关测试全绿，退出码 0，含新增 limits[] 回归用例",
+        "false_if": "存在任何测试失败或未覆盖回归用例",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "limits[] 含 fable/opus/sonnet scoped 行时窗口集合、覆盖与排序符合 cc-switch 语义；脏数据逐窗口跳过",
+        "false_if": "窗口缺失、重复或整卡报错",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "既有 five_hour/extra_usage/inactive 行为不变；非 Claude 提供方不受影响；UI 既有标签映射不变",
+        "false_if": "破坏其他提供方解析或既有展示",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+
+  "rejections": [],
+
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  }
+}

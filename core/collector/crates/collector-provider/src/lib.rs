@@ -1267,6 +1267,7 @@ pub fn parse_jev_models(payload: &Value) -> Result<Option<Value>, ProviderError>
 const CLAUDE_TIERS: &[(&str, &str, Option<u64>)] = &[
     ("five_hour", "每 5 小时", Some(300)),
     ("seven_day", "每周", Some(10080)),
+    ("seven_day_fable", "每周 Fable", Some(10080)),
     ("seven_day_opus", "每周 Opus", Some(10080)),
     ("seven_day_sonnet", "每周 Sonnet", Some(10080)),
 ];
@@ -1277,6 +1278,14 @@ fn claude_tier(key: &str) -> (&str, Option<u64>) {
         .find(|(known, _, _)| *known == key)
         .map(|(_, label, minutes)| (*label, *minutes))
         .unwrap_or((key, None))
+}
+
+/// 已知档位输出序 (对照 cc-switch KNOWN_TIERS 排序); 未知窗口返回 len 稳定排后。
+fn claude_tier_rank(key: &str) -> usize {
+    CLAUDE_TIERS
+        .iter()
+        .position(|(known, _, _)| *known == key)
+        .unwrap_or(CLAUDE_TIERS.len())
 }
 
 /// Parse the Cline plan usage-limits response (web dashboard source).
@@ -1370,41 +1379,98 @@ fn cline_plan_name(payload: &Value) -> Option<String> {
     })
 }
 
+/// Parse the Claude OAuth usage response (`/api/oauth/usage`).
+/// 对照 cc-switch `parse_claude_quota` (farion1231/cc-switch, 2026-10-18) 对齐口径:
+/// - 顶层旧版窗口取 `utilization`/`resets_at`, 单条脏数据 (utilization 非数值) 逐窗口跳过,
+///   不再让整卡报错;
+/// - `limits[]` 承载模型专属周限额: 仅收 `kind=weekly_scoped` + `group=weekly` 且
+///   `scope.surface` 为空的行, 模型归一自 `scope.model.display_name` (trim+小写 →
+///   fable/opus/sonnet), 取 `percent` (须为非负数值) 与 `resets_at` (字符串或 null);
+///   与 Claude Code 一致不按 `is_active` 过滤 (0%/null 重置也可能是有效额度), 同名档位
+///   首条优先去重并覆盖同名旧版顶层窗口;
+/// - 输出按已知档位序排列, 未知窗口稳定排后; `extra_usage` 独立成行追加在末尾。
 pub fn parse_claude_usage(payload: &Value) -> Result<Option<Value>, ProviderError> {
     let object = payload.as_object().ok_or_else(invalid_payload)?;
-    let mut windows = Vec::new();
+    let mut windows: Vec<(usize, Value)> = Vec::new();
     for (key, value) in object {
-        if key == "extra_usage" {
+        if key == "extra_usage" || key == "limits" {
             continue;
         }
-        let Some(value) = value.as_object() else {
+        let Some(entry) = value.as_object() else {
             continue;
         };
-        let Some(utilization) = value.get("utilization") else {
+        let Some(percent) = number(entry.get("utilization")) else {
             continue;
         };
-        let percent = number(Some(utilization)).ok_or_else(invalid_payload)?;
         let (label, minutes) = claude_tier(key);
-        windows.push(window(
-            label,
-            clamp_percent(percent),
-            minutes,
-            reset_epoch(value.get("resets_at")),
+        windows.push((
+            claude_tier_rank(key),
+            window(
+                label,
+                clamp_percent(percent),
+                minutes,
+                reset_epoch(entry.get("resets_at")),
+            ),
         ));
     }
+    if let Some(limits) = object.get("limits").and_then(Value::as_array) {
+        let mut scoped = BTreeSet::new();
+        for limit in limits {
+            if limit.get("kind").and_then(Value::as_str) != Some("weekly_scoped")
+                || limit.get("group").and_then(Value::as_str) != Some("weekly")
+                // 特定使用场景 (scope.surface) 的子限额不并入模型整体周限额。
+                || limit.pointer("/scope/surface").is_some_and(|value| !value.is_null())
+            {
+                continue;
+            }
+            let Some(model) = limit
+                .pointer("/scope/model/display_name")
+                .and_then(Value::as_str)
+            else {
+                continue;
+            };
+            let tier = match model.trim().to_ascii_lowercase().as_str() {
+                "fable" => "seven_day_fable",
+                "opus" => "seven_day_opus",
+                "sonnet" => "seven_day_sonnet",
+                _ => continue,
+            };
+            let Some(percent) = limit.get("percent").and_then(Value::as_f64) else {
+                continue;
+            };
+            // resets_at 仅收字符串或 null (cc-switch 反序列化同口径), 数值形态整行跳过;
+            // 校验必须先于去重插入, 否则被跳过的行会占掉该档位的"首条"名额。
+            let resets_at = match limit.get("resets_at") {
+                None | Some(Value::Null) => None,
+                Some(Value::String(_)) => reset_epoch(limit.get("resets_at")),
+                Some(_) => continue,
+            };
+            if !percent.is_finite() || percent < 0.0 || !scoped.insert(tier) {
+                continue;
+            }
+            let (label, minutes) = claude_tier(tier);
+            let row = window(label, clamp_percent(percent), minutes, resets_at);
+            let rank = claude_tier_rank(tier);
+            match windows.iter_mut().find(|(existing, _)| *existing == rank) {
+                Some(slot) => slot.1 = row,
+                None => windows.push((rank, row)),
+            }
+        }
+    }
+    windows.sort_by_key(|(rank, _)| *rank);
+    let mut rows: Vec<Value> = windows.into_iter().map(|(_, row)| row).collect();
     if let Some(extra) = object.get("extra_usage").and_then(Value::as_object) {
         if extra.get("is_enabled").and_then(Value::as_bool) == Some(true) {
-            if let Some(utilization) = extra.get("utilization") {
-                let percent = number(Some(utilization)).ok_or_else(invalid_payload)?;
+            if let Some(percent) = number(extra.get("utilization")) {
                 let mut value = window("额外用量", clamp_percent(percent), None, None);
                 if let Some(value) = value.as_object_mut() {
                     value.insert("ownRow".to_owned(), Value::Bool(true));
                 }
-                windows.push(value);
+                rows.push(value);
             }
         }
     }
-    Ok(Some(service_result("windows", None, windows)))
+    Ok(Some(service_result("windows", None, rows)))
 }
 
 fn seroval_object(body: &str) -> Option<&str> {
@@ -3634,6 +3700,145 @@ mod tests {
             .unwrap()
             .iter()
             .any(|window| window["ownRow"] == true));
+    }
+
+    /// C058: limits[] weekly_scoped 模型专属周限额被解析 (对照 cc-switch 用例)。
+    fn scoped_limit(model: &str, percent: Value, resets_at: Value, surface: Value) -> Value {
+        json!({
+            "kind": "weekly_scoped",
+            "group": "weekly",
+            "percent": percent,
+            "resets_at": resets_at,
+            "is_active": true,
+            "scope": { "model": { "id": null, "display_name": model }, "surface": surface }
+        })
+    }
+
+    #[test]
+    fn claude_usage_renders_scoped_model_weekly_limits() {
+        let claude = parse_claude_usage(&json!({
+            "five_hour": { "utilization": 12.0, "resets_at": "2026-09-09T15:00:00Z" },
+            "seven_day": { "utilization": 25.0, "resets_at": null },
+            "seven_day_opus": null,
+            "seven_day_sonnet": null,
+            "limits": [scoped_limit("Fable", json!(37.5), json!("2026-09-12T00:00:00Z"), Value::Null)]
+        }))
+        .unwrap()
+        .unwrap();
+        let windows = claude["windows"].as_array().unwrap();
+        assert_eq!(windows.len(), 3);
+        let labels: Vec<&str> = windows
+            .iter()
+            .map(|window| window["label"].as_str().unwrap())
+            .collect();
+        assert_eq!(labels, ["每 5 小时", "每周", "每周 Fable"]);
+        assert_eq!(windows[2]["usedPercent"], 37.5);
+        assert_eq!(windows[2]["windowMinutes"], 10080);
+        assert_eq!(windows[2]["resetsAt"], 1_789_171_200);
+    }
+
+    #[test]
+    fn claude_usage_scoped_limits_override_legacy_and_dedupe() {
+        // 模型名 trim+小写归一; is_active=false 不过滤; 同名首条优先 (0% 胜过 90%);
+        // 覆盖同名旧版顶层窗口 (Fable 80 → 0)。
+        let claude = parse_claude_usage(&json!({
+            "seven_day_fable": { "utilization": 80.0, "resets_at": "2026-09-11T00:00:00Z" },
+            "seven_day_opus": { "utilization": 20.0 },
+            "seven_day_sonnet": { "utilization": 30.0 },
+            "limits": [
+                scoped_limit("Sonnet", json!(5.0), json!("2026-09-12T00:00:00Z"), Value::Null),
+                scoped_limit("  fAbLe  ", json!(0.0), Value::Null, Value::Null),
+                scoped_limit("Fable", json!(90.0), json!("2026-09-13T00:00:00Z"), Value::Null),
+                scoped_limit("Opus", json!(6.0), json!("2026-09-14T00:00:00Z"), Value::Null)
+            ]
+        }))
+        .unwrap()
+        .unwrap();
+        let windows = claude["windows"].as_array().unwrap();
+        let rendered: Vec<(&str, &Value)> = windows
+            .iter()
+            .map(|window| (window["label"].as_str().unwrap(), &window["usedPercent"]))
+            .collect();
+        assert_eq!(
+            rendered,
+            [
+                ("每周 Fable", &json!(0.0)),
+                ("每周 Opus", &json!(6.0)),
+                ("每周 Sonnet", &json!(5.0))
+            ]
+        );
+        assert_eq!(windows[0]["resetsAt"], Value::Null);
+    }
+
+    #[test]
+    fn claude_usage_skips_invalid_scoped_rows_and_dirty_windows() {
+        let mut invalid = vec![Value::Null, json!("invalid")];
+        for (pointer, value) in [
+            ("/kind", json!("spend")),
+            ("/group", json!("daily")),
+            ("/percent", Value::Null),
+            ("/percent", json!("37")),
+            ("/percent", json!(-1)),
+            ("/resets_at", json!(123)),
+            ("/scope/model/display_name", Value::Null),
+            ("/scope/model/display_name", json!("Unknown")),
+            ("/scope/surface", json!("claude_code")),
+        ] {
+            let mut row = scoped_limit(
+                "Fable",
+                json!(37.0),
+                json!("2026-09-12T00:00:00Z"),
+                Value::Null,
+            );
+            *row.pointer_mut(pointer).unwrap() = value;
+            invalid.push(row);
+        }
+        let mut payload = json!({
+            "five_hour": { "utilization": 12.0 },
+            "seven_day_fable": { "utilization": 8.0 },
+            // 脏窗口逐条跳过, 不再让整卡报错 (C058 前为 invalid_payload 错误)。
+            "dirty": { "utilization": "not-a-number" },
+            "limits": invalid
+        });
+        let fallback = parse_claude_usage(&payload).unwrap().unwrap();
+        let fallback_windows = fallback["windows"].as_array().unwrap();
+        assert_eq!(fallback_windows.len(), 2);
+        assert_eq!(fallback_windows[1]["usedPercent"], 8.0);
+        payload["limits"].as_array_mut().unwrap().push(scoped_limit(
+            "Fable",
+            json!(37.0),
+            json!("2026-09-12T00:00:00Z"),
+            Value::Null,
+        ));
+        let claude = parse_claude_usage(&payload).unwrap().unwrap();
+        let windows = claude["windows"].as_array().unwrap();
+        assert_eq!(windows.len(), 2);
+        assert_eq!(windows[0]["usedPercent"], 12.0);
+        assert_eq!(windows[1]["usedPercent"], 37.0);
+    }
+
+    #[test]
+    fn claude_usage_does_not_invent_windows_from_empty_limits() {
+        for limits in [Value::Null, json!([]), json!({})] {
+            let claude = parse_claude_usage(&json!({
+                "five_hour": { "utilization": 12.0 },
+                "limits": limits
+            }))
+            .unwrap()
+            .unwrap();
+            let windows = claude["windows"].as_array().unwrap();
+            assert_eq!(windows.len(), 1);
+            assert_eq!(windows[0]["label"], "每 5 小时");
+        }
+        let only_scoped = parse_claude_usage(&json!({
+            "limits": [scoped_limit("Fable", json!(100.0), Value::Null, Value::Null)]
+        }))
+        .unwrap()
+        .unwrap();
+        let windows = only_scoped["windows"].as_array().unwrap();
+        assert_eq!(windows.len(), 1);
+        assert_eq!(windows[0]["label"], "每周 Fable");
+        assert_eq!(windows[0]["usedPercent"], 100.0);
     }
 
     #[test]

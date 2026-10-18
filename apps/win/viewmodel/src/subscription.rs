@@ -244,6 +244,12 @@ pub fn window_label(raw_label: &str, window_minutes: Option<i64>) -> String {
             return "每 5 小时".to_owned();
         }
         if approximates(10080) {
+            // Claude 模型专属周窗口 ("每周 Fable/Opus/Sonnet" 带空格后缀) 原样保留,
+            // 避免多行周窗口被归一成同一文案后不可区分 (C058);
+            // "每周窗口"/裸"每周"等无后缀形态仍归一。
+            if raw_label.starts_with("每周 ") {
+                return raw_label.to_owned();
+            }
             return "每周".to_owned();
         }
         if approximates(43200) {
@@ -588,6 +594,33 @@ mod tests {
     fn window_label_mapping_matches_mac() {
         assert_eq!(window_label("5h", Some(300)), "\u{6bcf} 5 \u{5c0f}\u{65f6}");
         assert_eq!(window_label("5h", None), "5h");
+    }
+
+    #[test]
+    fn window_label_keeps_suffixed_weekly_variants() {
+        // Claude 模型专属周窗口 (C058): 10080 分钟但 label 带「每周」前缀时原样保留,
+        // 普通 7 天窗口仍归一为「每周」。
+        assert_eq!(
+            window_label("\u{6bcf}\u{5468} Fable", Some(10080)),
+            "\u{6bcf}\u{5468} Fable"
+        );
+        assert_eq!(
+            window_label("\u{6bcf}\u{5468} Opus", Some(10090)),
+            "\u{6bcf}\u{5468} Opus"
+        );
+        assert_eq!(
+            window_label("\u{6bcf}\u{5468} Sonnet", None),
+            "\u{6bcf}\u{5468} Sonnet"
+        );
+        assert_eq!(
+            window_label("7\u{5929}\u{7a97}\u{53e3}", Some(10080)),
+            "\u{6bcf}\u{5468}"
+        );
+        // "每周窗口"不带空格后缀, 不在保留范围。
+        assert_eq!(
+            window_label("\u{6bcf}\u{5468}\u{7a97}\u{53e3}", Some(10080)),
+            "\u{6bcf}\u{5468}"
+        );
     }
 
     #[test]
