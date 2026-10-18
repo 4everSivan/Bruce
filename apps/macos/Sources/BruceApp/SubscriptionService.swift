@@ -781,16 +781,16 @@ final class SubscriptionService {
 
     // MARK: - Claude / Grok 手动导入 (Phase 2/3)
 
-    /// Claude: 从本机 CLI 凭证文件只读导入.
+    /// Claude: 从本机 CLI 登录态只读导入 (C059: Keychain 静默优先 → 凭证文件回退,
+    /// 与 cc-switch 读取序一致; 全程 UISkip 绝不弹窗).
     func importClaudeFromLocal() {
-        let fileURL = ClaudeCLICredentialImporter.defaultFileURL(homeURL)
-        switch ClaudeCLICredentialImporter().importCredentials(fileURL: fileURL) {
+        switch localProbe.claudeLocalCredentialForImport() {
             case .failure(let error):
-            model.setSettingsError(
-                "Claude 本机凭证导入失败: \(error.description)", for: .claude
-            )
+                model.setSettingsError(
+                    "Claude 本机凭证导入失败: \(error.description)", for: .claude
+                )
             case .success(let json):
-            saveClaudeOAuthJSON(json)
+                saveClaudeOAuthJSON(json)
         }
     }
 
@@ -815,19 +815,22 @@ final class SubscriptionService {
             case .missing, .malformed:
             model.setSettingsError("Claude 凭证无效, 请重新粘贴", for: .claude)
             return
-            case .valid:
-            // 多账号路径: 写入 ProviderAccountStore (upsert).
-            let access = Self.claudeAccessToken(from: json) ?? json
-            let accountID = ProviderAccountIDGenerator.claudeAccountID(accessToken: access)
-            let displayName = "Claude · " + String(accountID.prefix(8))
-            guard saveProviderAccountCredential(
-                for: .claude,
-                accountID: accountID,
-                displayName: displayName,
-                credentialJSON: json
-            ) else { return }
-            model.setSubscriptionCredentialConfigured(true, for: .claude)
-            finishVerification(.claude, status: .ok)
+            case .valid, .refreshPending:
+                // refreshPending (C059): 访问令牌过期但刷新令牌还活着 — 照常入库验证
+                // (与 cc-switch「过期也试一把」一致), 查询失败自然落到 needsRelogin,
+                // UI 按「运行一次 Claude CLI 可恢复」提示而非要求重新登录.
+                // 多账号路径: 写入 ProviderAccountStore (upsert).
+                let access = Self.claudeAccessToken(from: json) ?? json
+                let accountID = ProviderAccountIDGenerator.claudeAccountID(accessToken: access)
+                let displayName = "Claude · " + String(accountID.prefix(8))
+                guard saveProviderAccountCredential(
+                    for: .claude,
+                    accountID: accountID,
+                    displayName: displayName,
+                    credentialJSON: json
+                ) else { return }
+                model.setSubscriptionCredentialConfigured(true, for: .claude)
+                finishVerification(.claude, status: .ok)
             case .expired:
             // 过期凭证保留粘贴入口, 提示重新登录 (不写入 Keychain)
             model.setSettingsError("Claude 登录已过期, 请粘贴新凭证", for: .claude)
@@ -870,7 +873,8 @@ final class SubscriptionService {
             case .missing, .malformed:
             model.setSettingsError("Grok 凭证无效, 请重新粘贴", for: .grok)
             return
-            case .valid:
+            // refreshPending 仅 Claude 评估器会产出; 此处防御性同 valid 收口.
+            case .valid, .refreshPending:
             // 多账号路径: 写入 ProviderAccountStore (upsert).
             let key = Self.grokKey(from: json) ?? json
             let accountID = ProviderAccountIDGenerator.grokAccountID(key: key)
@@ -920,7 +924,8 @@ final class SubscriptionService {
                 for: .opencodeGo
             )
             return
-            case .valid:
+            // refreshPending 仅 Claude 评估器会产出; 此处防御性同 valid 收口.
+            case .valid, .refreshPending:
             let workspace = Self.opencodeGoWorkspaceID(from: json) ?? json
             let accountID = ProviderAccountIDGenerator.opencodeGoAccountID(
                 accessToken: workspace
@@ -1007,7 +1012,8 @@ final class SubscriptionService {
             switch SubscriptionCredentialEvaluator.claudeStatus(
                 of: record.credentialJSON, now: Date()
             ) {
-            case .valid:
+            case .valid, .refreshPending:
+                // refreshPending 照常放行验证 (C059), 实查询 401 才落 needsRelogin.
                 finishVerification(.claude, status: .ok)
             case .missing, .malformed:
                 model.setSettingsError("Claude 凭证无效, 请重新粘贴", for: .claude)
@@ -1018,7 +1024,7 @@ final class SubscriptionService {
             switch SubscriptionCredentialEvaluator.grokStatus(
                 of: record.credentialJSON, now: Date()
             ) {
-            case .valid:
+            case .valid, .refreshPending:
                 finishVerification(.grok, status: .ok)
             case .missing, .malformed:
                 model.setSettingsError("Grok 凭证无效, 请重新粘贴", for: .grok)
@@ -1029,7 +1035,7 @@ final class SubscriptionService {
             switch SubscriptionCredentialEvaluator.opencodeGoStatus(
                 of: record.credentialJSON
             ) {
-            case .valid:
+            case .valid, .refreshPending:
                 finishVerification(.opencodeGo, status: .ok)
             case .missing, .malformed:
                 model.setSettingsError("OpenCode GO 凭证不完整, 请重新粘贴", for: .opencodeGo)
@@ -1575,8 +1581,10 @@ final class SubscriptionService {
 
     /// 刷新 Claude / Grok 本机登录态可用性, 结果写入 model 供设置页渲染,
     /// 并经 `credentialConfigured` 重算 configured (应用 Keychain 优先于本机).
-    /// Grok auth.json 解析同步; Claude Keychain 探测放后台队列
-    /// (子进程 waitUntilExit 会泵 runloop, 因此放到后台队列避免视图事务重入).
+    /// C059: Claude 走统一读取序 (Keychain 静默 → 凭证文件), refreshPending/expired
+    /// 均计为「检测到登录态」(过期也照常试一把, 与 cc-switch 一致);
+    /// 读取含 Keychain 尝试, 统一放后台队列 (子进程 waitUntilExit 会泵 runloop,
+    /// 避免视图事务重入)。
     func refreshOfficialLocalAvailability() {
         let grokAvailable = localProbe.grokLocalAuthAvailable()
         model.setGrokLocalAvailable(grokAvailable)
@@ -1584,23 +1592,11 @@ final class SubscriptionService {
         credentialConfigured(.grok), for: .grok
         )
 
-        if localProbe.claudeCredentialsFileValid() {
-            model.setClaudeLocalAvailable(true)
-            model.setSubscriptionCredentialConfigured(
-            credentialConfigured(.claude), for: .claude
-            )
-            return
-        }
-        guard keychainAccessConfigured else {
-            model.setClaudeLocalAvailable(false)
-            model.setSubscriptionCredentialConfigured(false, for: .claude)
-            return
-        }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let exists = self?.localProbe.claudeKeychainItemExists() ?? false
+            let status = self?.localProbe.claudeLocalCredentialStatus()
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.model.setClaudeLocalAvailable(exists)
+                self.model.setClaudeLocalAvailable(status != nil)
                 self.model.setSubscriptionCredentialConfigured(
                 self.credentialConfigured(.claude), for: .claude
                 )

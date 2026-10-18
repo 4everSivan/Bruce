@@ -232,6 +232,7 @@ extension BruceOnboardingCoreHarness {
             case .valid: statusName = "valid"
             case .expired: statusName = "expired"
             case .malformed: statusName = "malformed"
+            case .refreshPending: statusName = "refreshPending"
             }
             try coreExpect(
                 statusName == expectedStatus,

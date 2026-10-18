@@ -1,0 +1,17 @@
+{
+  "id": "claude_refresh_pending",
+  "description": "C059: accessToken expired but refreshToken alive -> refreshPending (run CLI once to recover), cc-switch parity",
+  "now_ts": 1786000000,
+  "provider": "claude",
+  "expires_value": 1785900000,
+  "expected_is_expired": true,
+  "expected_status": "refreshPending",
+  "credential": {
+    "claudeAiOauth": {
+      "accessToken": "fixture-claude-refresh-pending",
+      "expiresAt": 1785900000,
+      "refreshToken": "fixture-refresh-token",
+      "refreshTokenExpiresAt": 1789000000
+    }
+  }
+}

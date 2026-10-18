@@ -39,20 +39,12 @@ public struct SystemExternalCredentialReader: ExternalCredentialReader, Sendable
         source: KeychainExternalSource,
         intent: KeychainAccessIntent
     ) throws -> String? {
-        guard accessController.allows(
-            source: .external(source),
-            intent: intent
-        ) else {
-            throw ExternalCredentialError.notAllowed(source)
-        }
-
         switch source {
         case .claudeCLI:
-            // Claude's CLI item is an external legacy login-Keychain item.
-            // Automatic reads must stay file-only; only an explicit import
-            // may open that external Keychain item and show its one prompt.
-            if intent == .userInitiated,
-               let keychain = try readClaudeKeychain(intent: intent) {
+            // C059 (对照 cc-switch 读取序): Keychain 静默尝试在前 (UISkip 永不弹窗,
+            // externalSources 白名单门禁保留), 家目录凭证文件回退在后 (只读用户自己的
+            // 文件, 不经钥匙串授权仪式门禁)。
+            if let keychain = try readClaudeKeychain(intent: intent) {
                 return keychain
             }
             return try readFile(
@@ -62,6 +54,12 @@ public struct SystemExternalCredentialReader: ExternalCredentialReader, Sendable
                 )
             )
         case .grokCLI:
+            guard accessController.allows(
+                source: .external(source),
+                intent: intent
+            ) else {
+                throw ExternalCredentialError.notAllowed(source)
+            }
             return try readFile(
                 source: source,
                 url: homeURL.appendingPathComponent(".grok/auth.json")
@@ -69,9 +67,19 @@ public struct SystemExternalCredentialReader: ExternalCredentialReader, Sendable
         }
     }
 
+    /// Claude CLI 外部 Keychain 项的静默读取.
+    /// - 白名单未开 / 条目不存在 / 被系统拦截 (锁定/ACL): 一律返回 nil 走文件回退
+    ///   (拦截时 markBlocked 记入 controller 状态, 供调用方给出可操作提示);
+    /// - 无论何种意图均强制 UISkip, 绝不唤起 SecurityAgent 弹窗 (项目红线)。
     private func readClaudeKeychain(
         intent: KeychainAccessIntent
     ) throws -> String? {
+        guard accessController.allows(
+            source: .external(.claudeCLI),
+            intent: intent
+        ) else {
+            return nil
+        }
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: Self.claudeKeychainService,
@@ -81,9 +89,6 @@ public struct SystemExternalCredentialReader: ExternalCredentialReader, Sendable
         let context = LAContext()
         context.interactionNotAllowed = true
         query[kSecUseAuthenticationContext as String] = context
-        // Claude Code-credentials 属于外部 CLI 的旧版 login Keychain
-        // 项目; 无论自动或交互模式均强制跳过需要 UI 的项目, 绝不唤起 SecurityAgent 弹窗.
-        // Keychain 锁定时直接返回 nil 并静默降级为读取本机明文配置文件.
         query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUISkip
 
         var result: AnyObject?
@@ -96,7 +101,7 @@ public struct SystemExternalCredentialReader: ExternalCredentialReader, Sendable
                 || status == errSecAuthFailed
                 || status == errSecUserCanceled {
                 accessController.markBlocked()
-                throw ExternalCredentialError.accessBlocked(.claudeCLI, status)
+                return nil
             }
             throw ExternalCredentialError.readFailed(.claudeCLI, status)
         }

@@ -74,7 +74,8 @@
         "C038",
         "C039",
         "C042",
-        "C058"
+        "C058",
+        "C059"
       ]
     },
     "TokenUsage": {
@@ -618,6 +619,15 @@
       "topic": "SubscriptionQuota",
       "version": "",
       "file": "docs/devel/change/C058.json"
+    },
+    "C059": {
+      "title": "Claude 订阅配置完整 cc-switch 化 (mac)：Keychain 登录态不可见不可导、设置区仍是 Phase 4 旧表单、无 RefreshPending 语义",
+      "type": "Enhancement",
+      "status": "in_progress",
+      "branch": "fix/C059-claude-ccswitch-config",
+      "topic": "SubscriptionQuota",
+      "version": "",
+      "file": "docs/devel/change/C059.json"
     }
   }
 }

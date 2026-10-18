@@ -98,9 +98,15 @@ public enum ConfiguredRuleEvaluator {
         case .claudeAppOrLocalProbe:
             if let raw = inputs.accountValues[SubscriptionCredentialAccount.claudeOAuth],
                !raw.isEmpty {
-                return SubscriptionCredentialEvaluator.claudeStatus(
+                // C059: refreshPending (刷新令牌活着) 同样视为就绪, 与 cc-switch 一致.
+                switch SubscriptionCredentialEvaluator.claudeStatus(
                     of: raw, now: inputs.now
-                ) == .valid
+                ) {
+                case .valid, .refreshPending:
+                    return true
+                case .missing, .malformed, .expired:
+                    return false
+                }
             }
             return inputs.claudeLocalAvailable
 

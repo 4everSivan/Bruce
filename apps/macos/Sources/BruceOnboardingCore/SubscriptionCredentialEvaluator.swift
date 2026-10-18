@@ -14,6 +14,9 @@ public enum SubscriptionCredentialStatus: Equatable, Sendable {
     case expired
     /// 凭证结构损坏或缺少关键字段.
     case malformed
+    /// 访问令牌已过期但刷新令牌仍可换新 (仅 Claude OAuth):
+    /// 运行一次 Claude CLI 即自动恢复, 不构成重新登录 (C059, 与 cc-switch 同语义).
+    case refreshPending
 }
 
 // MARK: - SubscriptionCredentialEvaluator
@@ -120,6 +123,15 @@ public enum SubscriptionCredentialEvaluator {
             return .missing
         }
         if isExpired(entry["expiresAt"], now: now) {
+            // C059: 刷新令牌还活着就按「待刷新」而非「已过期」处理;
+            // refreshTokenExpiresAt 缺失时视为可刷新 (与 cc-switch 同口径,
+            // 旧版凭据没有刷新令牌过期时间).
+            let refresh = (entry["refreshToken"] as? String ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !refresh.isEmpty,
+               !isExpired(entry["refreshTokenExpiresAt"], now: now) {
+                return .refreshPending
+            }
             return .expired
         }
         return .valid

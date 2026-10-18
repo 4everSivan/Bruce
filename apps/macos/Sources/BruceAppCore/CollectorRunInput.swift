@@ -722,14 +722,19 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
         accountID: String,
         displayName: String
     ) -> JSONValue? {
-        guard keychainAccessController.allows(
-            source: .external(source),
+        // C059: Claude 的门禁下沉到 reader 内部 (Keychain 白名单 + 文件无门禁回退),
+        // 不再前置整体拦截; Grok 维持白名单门禁 (与 reader 行为一致)。
+        if source == .grokCLI,
+           !keychainAccessController.allows(
+               source: .external(source),
+               intent: .automatic
+           ) {
+            return nil
+        }
+        guard let raw = try? externalCredentialReader.read(
+            source: source,
             intent: .automatic
-        ),
-              let raw = try? externalCredentialReader.read(
-                  source: source,
-                  intent: .automatic
-              ) else {
+        ) else {
             return nil
         }
 

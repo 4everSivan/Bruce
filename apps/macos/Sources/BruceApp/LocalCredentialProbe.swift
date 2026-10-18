@@ -72,12 +72,6 @@ struct LocalCredentialProbe: Sendable {
     /// 解析 ~/.claude/.credentials.json 是否为有效未过期 Claude OAuth.
     /// 未显式允许 Claude 来源时不触碰该文件.
     func claudeCredentialsFileValid(now: Date = Date()) -> Bool {
-        guard keychainAccessController.allows(
-            source: .external(.claudeCLI),
-            intent: .automatic
-        ) else {
-            return false
-        }
         let url = homeURL.appendingPathComponent(".claude/.credentials.json")
         guard let data = try? Data(contentsOf: url),
               let json = String(data: data, encoding: .utf8) else {
@@ -88,17 +82,38 @@ struct LocalCredentialProbe: Sendable {
         ) == .valid
     }
 
-    /// 探测 Claude CLI 外部登录态. 未显式允许来源时不触碰外部 Keychain.
-    func claudeKeychainItemExists() -> Bool {
-        guard keychainAccessController.allows(
-            source: .external(.claudeCLI),
-            intent: .automatic
-        ) else {
-            return false
-        }
-        return (try? externalCredentialReader.read(
+    /// C059: 本机 Claude 登录态探测 (automatic 读取序: Keychain 静默 → 凭证文件).
+    /// 返回 nil = 未读到可用形态 (无登录态 / 内容损坏); refreshPending 与 expired
+    /// 均计为「检测到登录态」(与 cc-switch 一致: 过期也照常试一把查询)。
+    func claudeLocalCredentialStatus(now: Date = Date()) -> SubscriptionCredentialStatus? {
+        guard let raw = (try? externalCredentialReader.read(
             source: .claudeCLI,
             intent: .automatic
-        )) != nil
+        )) else { return nil }
+        let status = SubscriptionCredentialEvaluator.claudeStatus(of: raw, now: now)
+        switch status {
+        case .valid, .expired, .refreshPending:
+            return status
+        case .missing, .malformed:
+            return nil
+        }
+    }
+
+    /// C059: 「从本机导入」读取 (userInitiated: Keychain 静默优先 → 文件回退,
+    /// 与 cc-switch 读取序一致; 全程 UISkip 绝不弹窗)。
+    /// Keychain 被系统拦截且两路皆无登录态时, 经 blocked 状态给出可操作提示。
+    func claudeLocalCredentialForImport() -> Result<String, SubscriptionImportError> {
+        guard let raw = (try? externalCredentialReader.read(
+            source: .claudeCLI,
+            intent: .userInitiated
+        )) else {
+            if keychainAccessController.policy.state == .blocked {
+                return .failure(.unreadable(
+                    "系统钥匙串拦截了 Claude 登录态的静默读取; 可在「钥匙串访问」中允许 Bruce 读取, 或改用粘贴导入"
+                ))
+            }
+            return .failure(.fileNotFound("本机 Claude 登录态"))
+        }
+        return ClaudePasteParser.parse(raw)
     }
 }

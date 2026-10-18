@@ -34,7 +34,7 @@ struct SubscriptionCredentialsHarness {
     static func main() async throws {
         try await claudeInjectedWhenCredentialPresent()
         try await grokInjectedWhenCredentialPresent()
-        try await disallowedClaudeSourceDoesNotInvokeExternalReader()
+        try await claudeFollowDoesNotRequireWhitelist()
         try await allowedClaudeSourceIsInjectedIntoQuotaAccounts()
         try await disallowedGrokSourceDoesNotInvokeExternalReader()
         try await claudeFallbackToMetaWhenNoCredential()
@@ -116,7 +116,10 @@ struct SubscriptionCredentialsHarness {
         return (input.context, input.credentials)
     }
 
-    private static func disallowedClaudeSourceDoesNotInvokeExternalReader() async throws {
+    /// C059: Claude 零配置跟随 — 读取器调用与注入不再要求 externalSources 白名单
+    /// (门禁下沉到 reader 内部: Keychain 尝试保留白名单, 家目录凭证文件回退无门禁;
+    /// InMemory 读取器不区分两路, 断言整体跟随行为)。
+    private static func claudeFollowDoesNotRequireWhitelist() async throws {
         let reader = InMemoryExternalCredentialReader(values: [
             .claudeCLI: #"{"claudeAiOauth":{"accessToken":"external"}}"#
         ])
@@ -127,13 +130,15 @@ struct SubscriptionCredentialsHarness {
         )
         let (_, credentials) = try await runInput(provider)
         try credentialsExpect(
-            reader.requestedSources().isEmpty,
-            "未允许 Claude 外部来源时不得调用读取器"
+            reader.requestedSources() == [.claudeCLI],
+            "Claude 零配置跟随应调用一次读取器 (文件回退无门禁)"
         )
-        try credentialsExpect(
-            credentials["claudeQuotaAccounts"] == nil,
-            "未允许 Claude 外部来源时不得注入账号"
-        )
+        guard case .object(let accounts)? = credentials["claudeQuotaAccounts"] else {
+            throw CredentialsTestFailure.expectation(
+                "Claude 零配置跟随未注入 quota account"
+            )
+        }
+        try credentialsExpect(accounts["claude-cli"] != nil, "Claude CLI account 缺失")
     }
 
     private static func allowedClaudeSourceIsInjectedIntoQuotaAccounts() async throws {
@@ -345,9 +350,12 @@ struct SubscriptionCredentialsHarness {
     }
 
     private static func claudeFallbackToMetaWhenNoCredential() async throws {
+        // C059: 注入空外部读取器保证封闭性 — 无 reader 时会走真实 System 读取器
+        // 读本机 ~/.claude/.credentials.json (文件回退无门禁), 开发机有登录态会误注入。
         let (provider, _, _) = try makeProvider(
             enabled: [.claude],
-            credentials: [:]
+            credentials: [:],
+            externalCredentialReader: InMemoryExternalCredentialReader()
         )
         let (_, credentials) = try await runInput(provider)
         try credentialsExpect(

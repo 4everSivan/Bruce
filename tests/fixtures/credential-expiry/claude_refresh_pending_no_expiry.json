@@ -1,0 +1,16 @@
+{
+  "id": "claude_refresh_pending_no_expiry",
+  "description": "C059: accessToken expired + refreshToken present but refreshTokenExpiresAt missing -> refreshPending (legacy credentials, cc-switch parity)",
+  "now_ts": 1786000000,
+  "provider": "claude",
+  "expires_value": 1785900000,
+  "expected_is_expired": true,
+  "expected_status": "refreshPending",
+  "credential": {
+    "claudeAiOauth": {
+      "accessToken": "fixture-claude-refresh-pending-legacy",
+      "expiresAt": 1785900000,
+      "refreshToken": "fixture-refresh-token"
+    }
+  }
+}
