@@ -5,8 +5,15 @@
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-10-19
+
+### Changed
+- **Claude 订阅配置完整 cc-switch 化 (C059)**：Claude 登录态读取改为 Keychain 静默优先（`kSecUseAuthenticationUISkip`，绝不弹窗）→ `~/.claude/.credentials.json` 文件回退；设置区升级为 Claude 专属区块（登录态状态行、零配置跟随、主操作行，粘贴入口收进「高级」）；新增 RefreshPending 语义（access token 过期但 refresh token 存活时提示运行一次 Claude CLI 即恢复）。
+
 ### Fixed
-- **Claude 订阅频繁 429：额度查询与本地刷新解耦 (C062)**：Bruce 的 `agentUsage` 原先把本地会话扫描与全部订阅额度查询绑在同一次 run，用户把刷新间隔设为 5 分钟时 Claude usage 端点约 288 次/天；Claude 单独 429 仍会按 5 分钟继续轮询，且全量 run 会用 error 覆盖上次窗口。现在自动额度查询改为 per-provider 最长 30 分钟一次：service 记录 `quotaAttemptedAt`/`rateLimitedAt`，未到期的 provider 跳过查询，全部未到期时执行 `localUsageOnly` 本地专用 run（不产生网络请求）；429 后进入 30 分钟冷却，失败时保留上次窗口并标 `stale`；手动刷新与定向刷新强制查询并绕过冷却，窗口边界唤醒强制查询但尊重冷却；启动/激活在运行中或 60 秒内不重复触发，消除启动时 4 秒内两次全量请求。设置页文案同步说明额度查询周期。
+- **Claude 订阅统计脱节 cc-switch 现行口径 (C058)**：新增 `limits[]` 模型专属周限额（`weekly_scoped`）解析与 Fable 窗口；坏窗口逐条跳过，不再因单条脏数据把整卡打成解析失败；双端周窗口标签保留模型后缀。
+- **Claude 登录态自动读取仍偏离 cc-switch (C060)**：Claude Keychain 读取去掉外部来源白名单/状态门禁（拦截仅静默降级、不污染全局策略）；凭据规范化完整保留 `refreshTokenExpiresAt`/`subscriptionType`/`rateLimitTier`/`scopes` 等字段；设置区恢复显式「从本机导入」入口。
+- **Claude 订阅频繁 429：额度查询与本地刷新解耦 (C062)**：`agentUsage` 原先把本地会话扫描与全部订阅额度查询绑在同一次 run，5 分钟刷新间隔下 Claude usage 端点约 288 次/天；Claude 单独 429 仍按 5 分钟继续轮询，且全量 run 会用 error 覆盖上次窗口。现在未到期的 provider 跳过查询，全部未到期时执行 `localUsageOnly` 本地专用 run（不产生网络请求）；429 后进入 30 分钟冷却，失败时保留上次窗口并标 `stale`；手动刷新与定向刷新强制查询并绕过冷却，窗口边界唤醒强制查询但尊重冷却；启动/激活在运行中或 60 秒内不重复触发。设置页文案同步说明额度查询周期。
 - **订阅刷新断网仍反复退避重试 (C061)**：全部订阅 Provider 共用的 `agentUsage` 刷新链路新增 `NWPathMonitor` 断网闸门。无网络时定时刷新、唤醒补偿与退避重试一律不启动 Collector、不排任何定时器，保留上次数据并提示「网络不可用, 已暂停自动刷新」；手动刷新（含单 Provider 定向刷新）仍可执行一次，但失败后不进入自动重试。网络恢复后只补偿一次刷新并恢复常规间隔，避免断网期间积压的重试在恢复瞬间叠加触发 Claude 等 Provider 的限流。同步更正设计基线 §7.2 中 429 重试间隔的文档漂移（15 分钟 → 实现值 300 秒）。
 
 ## [0.12.0] - 2026-10-16
