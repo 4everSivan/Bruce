@@ -617,28 +617,28 @@
     "C058": {
       "title": "Claude 订阅统计脱节 cc-switch 现行口径：未解析 limits[] 模型专属周限额 (weekly_scoped)，缺 Fable 窗口且坏窗口会炸整卡",
       "type": "BugFix",
-      "status": "in_progress",
-      "branch": "fix/C058-claude-scoped-limits",
+      "status": "verified",
+      "branch": "main",
       "topic": "SubscriptionQuota",
-      "version": "",
+      "version": "0.12.1",
       "file": "docs/devel/change/C058.json"
     },
     "C059": {
       "title": "Claude 订阅配置完整 cc-switch 化 (mac)：Keychain 登录态不可见不可导、设置区仍是 Phase 4 旧表单、无 RefreshPending 语义",
       "type": "Enhancement",
-      "status": "in_progress",
-      "branch": "fix/C059-claude-ccswitch-config",
+      "status": "verified",
+      "branch": "main",
       "topic": "SubscriptionQuota",
-      "version": "",
+      "version": "0.12.1",
       "file": "docs/devel/change/C059.json"
     },
     "C060": {
       "title": "Claude 登录态自动读取仍偏离 cc-switch：Keychain 尝试被外部来源白名单/状态门禁挡住、导入规范化丢字段、设置区无显式读取入口",
       "type": "BugFix",
-      "status": "in_progress",
-      "branch": "fix/C060-claude-login-read",
+      "status": "verified",
+      "branch": "main",
       "topic": "SubscriptionQuota",
-      "version": "",
+      "version": "0.12.1",
       "file": "docs/devel/change/C060.json"
     },
     "C061": {
@@ -647,7 +647,7 @@
       "status": "verified",
       "branch": "main",
       "topic": "SubscriptionQuota",
-      "version": "",
+      "version": "0.12.1",
       "file": "docs/devel/change/C061.json"
     },
     "C062": {
@@ -656,7 +656,7 @@
       "status": "verified",
       "branch": "main",
       "topic": "SubscriptionQuota",
-      "version": "",
+      "version": "0.12.1",
       "file": "docs/devel/change/C062.json"
     }
   }
