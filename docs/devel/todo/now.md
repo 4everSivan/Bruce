@@ -9,6 +9,8 @@
 | 登记编号 | 模块 | 现象简述 | 发现日期 | 处理去向 (建卡即删) |
 |---|---|---|---|---|
 | B-003 | apps/win 设置页 | C059 mac 侧 Claude 零配置跟随 (Keychain 静默 + 文件) 落地后, Windows 侧 Claude 配置仍是纯粘贴制, 需同步自动跟随本机 ~/.claude/.credentials.json (win 无 Keychain 场景) 与新版状态文案 | 2026-10-18 | 待建卡 |
+| B-004 | apps/win 刷新调度 | C061 mac 侧断网闸门落地后, Windows `scheduler.rs` / `runtime_core.rs` 仍只有限流/指数退避，无网络可达性判断；断网期间同样会按 5 次上限反复重试。需接入 Windows 连通性 API（或等价探测）并同步「离线不重试、联网单次补偿」语义 | 2026-10-19 | 待建卡 |
+| B-005 | apps/win 额度查询 | C062 mac 侧「30 分钟额度周期 + 429 冷却 + 旧值 stale 保留 + 启动激活去重」落地后，Windows 仍把本地采集与订阅额度查询绑在同一周期（`refreshIntervalSecs`），Claude 等端点同样会被高频轮询。需同步 per-provider 额度门禁、`quotaAttemptedAt`/`rateLimitedAt` 语义与 partial 429 冷却 | 2026-10-19 | 待建卡 |
 | B-002 | docs/devel/README.md §3.1 | 规范称「`version`（卡片必填）：变更卡（`Cxxx.json`）与任务卡（`Txx.json`）必须包含 `version` 声明归属发布批次」，但实测全部 63 张卡（change 57 + task 6，含归档）**无一张**含顶层 `version` 字段；该值实际只维护在 `index.json` 的卡条目里。属规范与实现（及实际做法）不一致，需二选一：规范降级为可选并在 `index.json` 说明 `version` 归属，或为卡片补该字段并加门禁。 | 2026-10-16 | 待建卡 |
 
 ---

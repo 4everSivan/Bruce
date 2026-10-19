@@ -361,7 +361,7 @@ struct SettingsView: View {
                 }
                 FluentRow(
                     "刷新间隔",
-                    sub: "已授权模块的自动采集周期, 变更后立即重新计时",
+                    sub: "本地统计采集周期；订阅云端额度自动查询最长 30 分钟一次，429 后自动冷却",
                     divided: true
                 ) {
                     FluentSegmentedPicker(

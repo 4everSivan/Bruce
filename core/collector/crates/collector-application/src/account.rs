@@ -105,7 +105,41 @@ pub(crate) fn build_account_plan(request: &BridgeRequest) -> Result<Vec<AccountP
         })
         .collect::<Vec<_>>();
     plans.extend(build_codex_account_plans(request)?);
+    // C062: 额度仍新鲜或 429 冷却中的 provider 不发起本轮 HTTP 查询.
+    let skip_apps = quota_skip_apps(&request.context)?;
+    plans.retain(|plan| !skip_apps.contains(&plan.service.app));
     Ok(plans)
+}
+
+fn quota_skip_apps(
+    context: &serde_json::Map<String, Value>,
+) -> Result<BTreeSet<String>, Diagnostic> {
+    let Some(value) = context.get("quotaSkipProviders") else {
+        return Ok(BTreeSet::new());
+    };
+    let Some(items) = value.as_array() else {
+        return Err(Diagnostic::new(
+            "BRIDGE_INVALID_REQUEST",
+            "protocol",
+            "context",
+            "quotaSkipProviders 必须是字符串数组",
+            false,
+        ));
+    };
+    items
+        .iter()
+        .map(|item| {
+            item.as_str().map(str::to_owned).ok_or_else(|| {
+                Diagnostic::new(
+                    "BRIDGE_INVALID_REQUEST",
+                    "protocol",
+                    "context",
+                    "quotaSkipProviders 必须是字符串数组",
+                    false,
+                )
+            })
+        })
+        .collect()
 }
 
 pub(crate) fn build_codex_account_plans(
@@ -284,5 +318,61 @@ mod tests {
             plans[0].credential.as_ref().unwrap()["access_token"],
             "fixture-z"
         );
+    }
+
+    #[test]
+    fn quota_skip_providers_filters_matching_apps() {
+        let request: BridgeRequest = serde_json::from_value(json!({
+            "schemaVersion": 1,
+            "runId": "12345678-1234-4234-9234-123456789abc",
+            "module": "agent-usage",
+            "timeouts": {
+                "localScanSeconds": 30,
+                "externalRequestSeconds": 10,
+                "moduleSeconds": 90
+            },
+            "context": {
+                "capabilities": ["externalQuotas"],
+                "quotaSkipProviders": ["claude"]
+            },
+            "credentials": {
+                "claudeQuotaAccounts": {
+                    "acc": {
+                        "display_name": "Claude",
+                        "oauth": {"claudeAiOauth": {"accessToken": "tok"}}
+                    }
+                },
+                "grokQuotaAccounts": {
+                    "a": {"display_name": "Grok A", "oauth": {"key": "secret"}}
+                },
+                "providerMeta": {"claude": {"enabled": true}}
+            }
+        }))
+        .unwrap();
+        let plans = build_account_plan(&request).unwrap();
+        assert!(plans.iter().all(|plan| plan.service.app != "claude"));
+        assert!(plans.iter().any(|plan| plan.service.app == "grok"));
+    }
+
+    #[test]
+    fn quota_skip_providers_rejects_non_string_items() {
+        let request: BridgeRequest = serde_json::from_value(json!({
+            "schemaVersion": 1,
+            "runId": "12345678-1234-4234-9234-123456789abc",
+            "module": "agent-usage",
+            "timeouts": {
+                "localScanSeconds": 30,
+                "externalRequestSeconds": 10,
+                "moduleSeconds": 90
+            },
+            "context": {
+                "capabilities": ["externalQuotas"],
+                "quotaSkipProviders": [1]
+            },
+            "credentials": {}
+        }))
+        .unwrap();
+        let error = build_account_plan(&request).unwrap_err();
+        assert_eq!(error.code, "BRIDGE_INVALID_REQUEST");
     }
 }

@@ -82,7 +82,8 @@ struct BruceApp: App {
         let scheduler = RefreshScheduler(
             executor: runner, store: resolvedStore,
             runInputProvider: runInputProvider,
-            credentialUpdateCoordinator: credentialUpdateCoordinator
+            credentialUpdateCoordinator: credentialUpdateCoordinator,
+            networkReachability: SystemNetworkReachability()
         )
         // 任务 9: 把 Codex token manager 挂到 Scheduler, 支持
         // quota 401 定向重试自愈 (强制刷新被挑战账号).

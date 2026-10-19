@@ -570,25 +570,18 @@ extension RefreshSchedulerHarness {
             "wake should trigger at most one compensating refresh"
         )
 
-        // The second and third wake calls should have set pendingIntent (merged)
-        // since the module is running
+        // C062: 运行中的 wake/activation 直接跳过, 不再排一次补偿 rerun.
         try refreshExpect(
-            scheduler.moduleState(for: .agentUsage)?.pendingIntent != nil,
-            "repeated wake should merge into pendingIntent"
-        )
-
-        // Release the compensating refresh
-        executor.release(module: .agentUsage)
-        await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 3)
-        // The rerun from pendingIntent
-
-        try refreshExpect(
-            executor.runCount[.agentUsage] == 3,
-            "pendingIntent should trigger one additional run"
+            scheduler.moduleState(for: .agentUsage)?.pendingIntent == nil,
+            "wake while running must not queue a rerun"
         )
 
         executor.release(module: .agentUsage)
         await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
+        try refreshExpect(
+            executor.runCount[.agentUsage] == 2,
+            "wake while running must not trigger an extra run"
+        )
     }
 
     // 10.5: Partial result publishes artifact
@@ -698,9 +691,16 @@ extension RefreshSchedulerHarness {
         )
         try refreshExpect(receivedArtifact != nil, "写回失败时 artifact 仍应发布到回调")
         let stored = try store.load(.agentUsage, now: clock.now(), staleAfter: 3600)
+        // C062 会在真实查询过的 service 上补 quotaAttemptedAt 等节流字段,
+        // 因此不再做逐字节相等; 关键契约是 artifact 未被写回失败清空.
         try refreshExpect(
-            stored.artifact == artifact,
+            stored.artifact.objectValue?["services"]?.arrayValue != nil,
             "写回失败时 store 仍应持有 artifact"
+        )
+        try refreshExpect(
+            stored.artifact.objectValue?["agents"]?.arrayValue?.count
+                == artifact.objectValue?["agents"]?.arrayValue?.count,
+            "写回失败时 agents 数据应完整保留"
         )
         let published = scheduler.lastPublishedDiagnostics
         try refreshExpect(

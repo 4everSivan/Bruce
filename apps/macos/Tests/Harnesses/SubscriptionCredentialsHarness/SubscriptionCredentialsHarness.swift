@@ -41,6 +41,7 @@ struct SubscriptionCredentialsHarness {
         try await grokFallbackToMetaWhenNoCredential()
         try await noInjectionWhenProviderDisabled()
         try await nonCredentialProvidersUnaffected()
+        try await quotaPolicyMapsToCollectorContext()
         try coordinatorSkipsCodexWithoutSave()
         try coordinatorSkipsKimiRotation()
         try coordinatorSkipsBadShapeAndUnknownProvider()
@@ -66,7 +67,7 @@ struct SubscriptionCredentialsHarness {
         try await clineNotInjectedWithoutCredential()
         try providerAccountStoreCorruptedIndexFailsClosed()
         try providerAccountStoreCorruptedRecordFailsClosed()
-        print("Subscription credentials tests passed: 35")
+        print("Subscription credentials tests passed: 36")
     }
 
     /// 构造 OnboardingRunInputProvider: 配置 claude 启用 + Keychain 持有 claude:oauth.
@@ -427,6 +428,48 @@ struct SubscriptionCredentialsHarness {
         try credentialsExpect(
             credentials["claudeQuotaAccounts"] == nil && credentials["grokQuotaAccounts"] == nil,
             "kimi 启用时不应注入 claude/grok 凭证"
+        )
+    }
+
+    /// C062: QuotaRunPolicy -> Collector context 的映射.
+    private static func quotaPolicyMapsToCollectorContext() async throws {
+        let claudeJSON = #"{"claudeAiOauth":{"accessToken":"tok"}}"#
+        let (provider, _, _) = try makeProvider(
+            enabled: [.claude],
+            credentials: [SubscriptionCredentialAccount.claudeOAuth: claudeJSON]
+        )
+
+        let local = try await provider.runInput(for: .agentUsage, quotaPolicy: .localOnly)
+        try credentialsExpect(
+            local.context["localUsageOnly"] == .boolean(true),
+            "本地 run 未注入 localUsageOnly"
+        )
+        let localCapabilities = local.context["capabilities"]?.arrayValue ?? []
+        try credentialsExpect(
+            !localCapabilities.contains(.string("externalQuotas")),
+            "本地 run 不得授予 externalQuotas"
+        )
+        try credentialsExpect(local.credentials.isEmpty, "本地 run 不得注入订阅凭证")
+
+        let quota = try await provider.runInput(
+            for: .agentUsage,
+            quotaPolicy: QuotaRunPolicy(
+                includeExternalQuotas: true,
+                skipProviders: [.claude]
+            )
+        )
+        try credentialsExpect(
+            quota.context["quotaSkipProviders"] == .array([.string("claude")]),
+            "skipProviders 未映射为 quotaSkipProviders"
+        )
+        let capabilities = quota.context["capabilities"]?.arrayValue ?? []
+        try credentialsExpect(
+            capabilities.contains(.string("externalQuotas")),
+            "额度 run 应授予 externalQuotas"
+        )
+        try credentialsExpect(
+            quota.credentials["claudeQuotaAccounts"] != nil,
+            "额度 run 应注入 claudeQuotaAccounts"
         )
     }
 

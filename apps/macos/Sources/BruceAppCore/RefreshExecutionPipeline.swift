@@ -16,19 +16,23 @@ struct RefreshPipelineRequest: Sendable {
     let scope: RefreshScope
     let staleAfter: TimeInterval
     let now: Date
+    /// C062 自动额度查询周期; <= 0 时不做新鲜度门禁 (测试兼容).
+    let quotaRefreshInterval: TimeInterval
 
     init(
         module: CollectorModule,
         intent: RefreshIntent,
         scope: RefreshScope = .all,
         staleAfter: TimeInterval,
-        now: Date
+        now: Date,
+        quotaRefreshInterval: TimeInterval = 0
     ) {
         self.module = module
         self.intent = intent
         self.scope = scope
         self.staleAfter = staleAfter
         self.now = now
+        self.quotaRefreshInterval = quotaRefreshInterval
     }
 }
 
@@ -124,7 +128,36 @@ struct RefreshExecutionPipeline {
             return .cancelled
         }
 
-        // 1. resolveRunInput — 取不到时不启动进程
+        // 1. loadPreviousArtifact — 同一轮内只读一次, 避免读到本轮 publish 覆盖.
+        // C062: 额度策略需要上一份 service 的 quotaAttemptedAt/rateLimitedAt,
+        // 因此必须先于运行输入解析.
+        let previousArtifact: JSONValue?
+        do {
+            previousArtifact = try store.load(
+                request.module,
+                now: request.now,
+                staleAfter: request.staleAfter
+            ).artifact
+        } catch {
+            previousArtifact = nil
+        }
+
+        // 2. 额度策略: 本地采集周期与外部额度查询周期解耦.
+        // 定向刷新由用户显式发起, 不受自动门禁约束.
+        let quotaPolicy: QuotaRunPolicy
+        if request.scope.isTargeted {
+            quotaPolicy = .includeAll
+        } else {
+            quotaPolicy = QuotaRefreshPolicy.plan(
+                previous: previousArtifact,
+                now: request.now,
+                interval: request.quotaRefreshInterval,
+                forceRefresh: request.intent.forceQuotaRefresh,
+                bypassCooldown: request.intent.reason == .manual
+            )
+        }
+
+        // 3. resolveRunInput — 取不到时不启动进程
         var context: [String: JSONValue] = [:]
         var credentials: [String: JSONValue] = [:]
         if let runInputProvider {
@@ -137,7 +170,10 @@ struct RefreshExecutionPipeline {
                     context = input.context
                     credentials = input.credentials
                 } else {
-                    let input = try await runInputProvider.runInput(for: request.module)
+                    let input = try await runInputProvider.runInput(
+                        for: request.module,
+                        quotaPolicy: quotaPolicy
+                    )
                     context = input.context
                     credentials = input.credentials
                 }
@@ -157,19 +193,7 @@ struct RefreshExecutionPipeline {
             return .cancelled
         }
 
-        // 2. loadPreviousArtifact — 同一轮内只读一次, 避免读到本轮 publish 覆盖
-        let previousArtifact: JSONValue?
-        do {
-            previousArtifact = try store.load(
-                request.module,
-                now: request.now,
-                staleAfter: request.staleAfter
-            ).artifact
-        } catch {
-            previousArtifact = nil
-        }
-
-        // 3. firstCollect
+        // 4. firstCollect
         let firstResult = await runCollector(
             module: request.module,
             context: context,
@@ -236,6 +260,11 @@ struct RefreshExecutionPipeline {
                     ))
                 }
             }
+            let annotatedArtifact = QuotaCarryOverMerger.annotate(
+                artifact: merged.artifact,
+                currentServiceIDs: serviceIDs(in: firstArtifact),
+                now: now()
+            )
             output = CollectorRunOutput(
                 response: BridgeResponse(
                     schemaVersion: 1,
@@ -243,13 +272,26 @@ struct RefreshExecutionPipeline {
                     generatedAt: merged.generatedAtValue
                         ?? firstOutput.response.generatedAt,
                     status: merged.recomputedStatus,
-                    artifact: merged.artifact,
+                    artifact: annotatedArtifact,
                     credentialUpdates: firstOutput.response.credentialUpdates,
                     diagnostics: collected,
                     credentialChallenges: []
                 ),
                 stderrDiagnostic: firstOutput.stderrDiagnostic
             )
+        } else if request.module == .agentUsage && !quotaPolicy.includeExternalQuotas {
+            // C062 本地专用 run: 不进入 Codex recovery/finalizer (本轮没有任何
+            // 额度结果, 合成失败状态会误报); 仅把上一份 services 回填到本轮
+            // 本地统计数据上.
+            let firstArtifact = firstOutput.response.artifact ?? .object([:])
+            let mergedArtifact = QuotaCarryOverMerger.merge(
+                previous: previousArtifact,
+                current: firstArtifact,
+                policy: quotaPolicy,
+                now: now(),
+                interval: request.quotaRefreshInterval
+            )
+            output = replacingArtifact(in: firstOutput, with: mergedArtifact)
         } else if request.module == .agentUsage {
             let recovery = CodexQuotaRecovery()
             let retryPhase = await recovery.handle(
@@ -270,18 +312,59 @@ struct RefreshExecutionPipeline {
             if isStopped() {
                 return .cancelled
             }
-            output = ArtifactFinalizer().finalize(
+            let finalized = ArtifactFinalizer().finalize(
                 firstOutput: firstOutput,
                 retryPhase: retryPhase,
                 previousArtifact: previousArtifact,
                 fallbackDecisions: runInputProvider?.codexTokenDecisions ?? []
             )
+            if let artifact = finalized.response.artifact {
+                let mergedArtifact = QuotaCarryOverMerger.merge(
+                    previous: previousArtifact,
+                    current: artifact,
+                    policy: quotaPolicy,
+                    now: now(),
+                    interval: request.quotaRefreshInterval
+                )
+                output = replacingArtifact(in: finalized, with: mergedArtifact)
+            } else {
+                output = finalized
+            }
         } else {
             output = firstOutput
         }
 
         // 6-8. credential apply → publish → quota (仅可发布路径)
         return finishPublishablePath(output: output, request: request)
+    }
+
+    /// 本轮真实查询到的 service ID 集合 (用于定向刷新后补写额度尝试时间戳).
+    private func serviceIDs(in artifact: JSONValue) -> Set<String> {
+        Set(
+            (artifact.objectValue?["services"]?.arrayValue ?? [])
+                .compactMap { $0.stringId() }
+        )
+    }
+
+    /// 仅替换 artifact, 保留 response 的 runId/generatedAt/status/诊断等.
+    private func replacingArtifact(
+        in output: CollectorRunOutput,
+        with artifact: JSONValue
+    ) -> CollectorRunOutput {
+        let response = output.response
+        return CollectorRunOutput(
+            response: BridgeResponse(
+                schemaVersion: response.schemaVersion,
+                runId: response.runId,
+                generatedAt: response.generatedAt,
+                status: response.status,
+                artifact: artifact,
+                credentialUpdates: response.credentialUpdates,
+                diagnostics: response.diagnostics,
+                credentialChallenges: response.credentialChallenges
+            ),
+            stderrDiagnostic: output.stderrDiagnostic
+        )
     }
 
     // MARK: - Publishable path

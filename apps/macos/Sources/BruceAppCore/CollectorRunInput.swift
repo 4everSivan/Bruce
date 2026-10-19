@@ -65,6 +65,14 @@ extension CodexCredentialStore: CodexMigrationExecuting {
 protocol CollectorRunInputProviding {
     func runInput(for module: CollectorModule) async throws -> CollectorRunInput
 
+    /// C062 额度节流输入: `includeExternalQuotas=false` 时只做本地扫描
+    /// (`localUsageOnly`), 不装配订阅凭证; 否则把 `skipProviders` 转为
+    /// Collector 的 `quotaSkipProviders` 上下文.
+    func runInput(
+        for module: CollectorModule,
+        quotaPolicy: QuotaRunPolicy
+    ) async throws -> CollectorRunInput
+
     /// 定向刷新运行输入: 只注入目标 Provider 的 `*QuotaAccounts` / `providerMeta`
     /// 与对应 Bridge 注入键, 并标记 `subscriptionQuotaOnly` / `subscriptionProviders`.
     /// 不携带 localSessions / localPricing, 不请求 days; 目标集合非法或凭证未装配
@@ -88,6 +96,14 @@ protocol CollectorRunInputProviding {
 }
 
 extension CollectorRunInputProviding {
+    /// 默认额度策略实现: 退回旧全量输入 (测试桩无需感知 C062).
+    func runInput(
+        for module: CollectorModule,
+        quotaPolicy: QuotaRunPolicy
+    ) async throws -> CollectorRunInput {
+        try await runInput(for: module)
+    }
+
     /// 默认定向输入实现: 退回全量输入 (保持非定向测试兼容).
     /// 生产路径由 `OnboardingRunInputProvider` 重写为只注入目标 Provider 凭证.
     func scopedRunInput(
@@ -196,9 +212,16 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
     }
 
     func runInput(for module: CollectorModule) async throws -> CollectorRunInput {
+        try await runInput(for: module, quotaPolicy: .includeAll)
+    }
+
+    func runInput(
+        for module: CollectorModule,
+        quotaPolicy: QuotaRunPolicy
+    ) async throws -> CollectorRunInput {
         switch module {
         case .agentUsage:
-            return try await agentUsageInput()
+            return try await agentUsageInput(quotaPolicy: quotaPolicy)
         }
     }
 
@@ -352,7 +375,7 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
         )
     }
 
-    private func agentUsageInput() async throws -> CollectorRunInput {
+    private func agentUsageInput(quotaPolicy: QuotaRunPolicy) async throws -> CollectorRunInput {
         // 每个首轮输入都是新的决议边界. 无授权、provider 被禁用、v2 index
         // 读取失败或账号为空时都不能沿用上一轮 decisions/order.
         codexTokenDecisions = []
@@ -387,6 +410,15 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
             }
         }
 
+        // C062: 额度仍新鲜/冷却中时只做本地扫描. 不装配订阅凭证, 也不授予
+        // externalQuotas; collector 见 localUsageOnly 后返回空 services 且不产生
+        // 额度相关占位/诊断.
+        guard quotaPolicy.includeExternalQuotas else {
+            context["localUsageOnly"] = .boolean(true)
+            context["capabilities"] = .array(capabilities)
+            return CollectorRunInput(context: context, credentials: credentials)
+        }
+
         // 统一授权未确认时永远不授予 externalQuotas;
         // 一个 provider 都没配齐时也不授予, collector 会返回未授权占位
         if config?.consentVersion != nil {
@@ -410,6 +442,14 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
                     )
                 }
             }
+        }
+        if !quotaPolicy.skipProviders.isEmpty {
+            context["quotaSkipProviders"] = .array(
+                quotaPolicy.skipProviders
+                    .map(\.collectorAppID)
+                    .sorted()
+                    .map { .string($0) }
+            )
         }
         context["capabilities"] = .array(capabilities)
         return CollectorRunInput(

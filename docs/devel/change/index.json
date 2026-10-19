@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-index.v1.json",
   "version": "1.0",
-  "updated_at": "2026-10-18",
+  "updated_at": "2026-10-19",
   "topics": {
     "SystemOverview": {
       "design_doc": "docs/devel/design/00-系统总体设计.md",
@@ -76,7 +76,9 @@
         "C042",
         "C058",
         "C059",
-        "C060"
+        "C060",
+        "C061",
+        "C062"
       ]
     },
     "TokenUsage": {
@@ -638,6 +640,24 @@
       "topic": "SubscriptionQuota",
       "version": "",
       "file": "docs/devel/change/C060.json"
+    },
+    "C061": {
+      "title": "订阅刷新断网仍反复退避重试：全部订阅接入网络可达性闸门，离线不发起自动刷新、不重试，联网后单次补偿",
+      "type": "BugFix",
+      "status": "verified",
+      "branch": "main",
+      "topic": "SubscriptionQuota",
+      "version": "",
+      "file": "docs/devel/change/C061.json"
+    },
+    "C062": {
+      "title": "Claude 订阅频繁 429：额度查询与本地刷新解耦（30 分钟额度周期 + 429 冷却/保留旧值 + 启动激活去重）",
+      "type": "BugFix",
+      "status": "verified",
+      "branch": "main",
+      "topic": "SubscriptionQuota",
+      "version": "",
+      "file": "docs/devel/change/C062.json"
     }
   }
 }

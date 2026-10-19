@@ -37,6 +37,8 @@ const ALLOWED_CONTEXT_FIELDS: &[&str] = &[
     "codexQuotaAccountOrder",
     "subscriptionQuotaOnly",
     "subscriptionProviders",
+    "localUsageOnly",
+    "quotaSkipProviders",
     "pricingOverrides",
 ];
 

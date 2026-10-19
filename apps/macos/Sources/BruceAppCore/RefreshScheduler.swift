@@ -25,6 +25,10 @@ struct SchedulerConfiguration: Sendable {
     let maxBackoffSeconds: Double
     let rateLimitBackoffSeconds: Double
     let capacityLimit: Int
+    /// C062 自动订阅额度查询周期; 本地采集仍按 refreshInterval.
+    let quotaRefreshInterval: TimeInterval
+    /// wake/activation 在距上次尝试该秒数内不重复触发 (消除启动双跑).
+    let wakeDedupSeconds: TimeInterval
 
     static let `default` = SchedulerConfiguration(
         refreshInterval: 1800,
@@ -33,7 +37,9 @@ struct SchedulerConfiguration: Sendable {
         baseBackoffSeconds: 30,
         maxBackoffSeconds: 1800,
         rateLimitBackoffSeconds: 300,
-        capacityLimit: 2
+        capacityLimit: 2,
+        quotaRefreshInterval: 1800,
+        wakeDedupSeconds: 60
     )
 }
 
@@ -56,6 +62,8 @@ struct ModuleScheduleState: Equatable, Sendable {
     var backoffRetryCount: Int = 0
     var pendingIntent: RefreshIntent? = nil
     var lastErrorCategory: SnapshotErrorCategory? = nil
+    /// 断网期间自动刷新被抑制; 联网后据此补偿一次刷新.
+    var offlinePaused: Bool = false
     /// 本轮刷新是否由手动触发; 手动刷新不弹额度预警.
     var lastTriggerWasManual: Bool = false
     /// 上次刷新后已超预警阈值的 5h 窗口 key 集合; 只有新跨越的窗口才报警.
@@ -77,6 +85,8 @@ package final class RefreshScheduler {
     private var runInputProvider: (any CollectorRunInputProviding)?
     /// 可选凭证写回协调器; nil 时跳过 credentialUpdates 应用 (测试/无凭证场景).
     private let credentialUpdateCoordinator: CredentialUpdateCoordinator?
+    /// 可选网络可达性监视器; nil 时保持旧行为 (始终视为在线).
+    private let networkReachability: (any NetworkReachabilityProviding)?
 
     private var states: [CollectorModule: ModuleScheduleState] = [:]
     private var timers: [CollectorModule: RunnerTimerToken] = [:]
@@ -114,7 +124,8 @@ package final class RefreshScheduler {
         executor: CollectorExecutable,
         store: ArtifactStore,
         runInputProvider: OnboardingRunInputProvider? = nil,
-        credentialUpdateCoordinator: CredentialUpdateCoordinator? = nil
+        credentialUpdateCoordinator: CredentialUpdateCoordinator? = nil,
+        networkReachability: (any NetworkReachabilityProviding)? = nil
     ) {
         self.init(
             executor: executor,
@@ -127,7 +138,8 @@ package final class RefreshScheduler {
             },
             registerWakeNotifications: true,
             runInputProvider: runInputProvider,
-            credentialUpdateCoordinator: credentialUpdateCoordinator
+            credentialUpdateCoordinator: credentialUpdateCoordinator,
+            networkReachability: networkReachability
         )
     }
 
@@ -142,7 +154,8 @@ package final class RefreshScheduler {
         },
         registerWakeNotifications: Bool = true,
         runInputProvider: (any CollectorRunInputProviding)? = nil,
-        credentialUpdateCoordinator: CredentialUpdateCoordinator? = nil
+        credentialUpdateCoordinator: CredentialUpdateCoordinator? = nil,
+        networkReachability: (any NetworkReachabilityProviding)? = nil
     ) {
         self.executor = executor
         self.store = store
@@ -153,6 +166,7 @@ package final class RefreshScheduler {
         self.registerWakeNotifications = registerWakeNotifications
         self.runInputProvider = runInputProvider
         self.credentialUpdateCoordinator = credentialUpdateCoordinator
+        self.networkReachability = networkReachability
 
         for module in CollectorModule.allCases {
             states[module] = ModuleScheduleState()
@@ -174,6 +188,15 @@ package final class RefreshScheduler {
         if started && !stopped { return }
         started = true
         stopped = false
+
+        // 断网闸门: 先接通网络监视, 再加载缓存/排程, 保证启动后的
+        // 首个定时触发 (delay=0) 也能拿到首轮可达性状态.
+        if let networkReachability {
+            networkReachability.onReachabilityChange = { [weak self] isAvailable in
+                self?.handleNetworkReachabilityChange(isAvailable)
+            }
+            networkReachability.start()
+        }
 
         for module in CollectorModule.allCases {
             loadCachedSnapshot(for: module)
@@ -201,6 +224,9 @@ package final class RefreshScheduler {
         for (_, timer) in timers { timer.cancel() }
         timers.removeAll()
         executor.cancelAll()
+
+        networkReachability?.onReachabilityChange = nil
+        networkReachability?.stop()
 
         if let observer = wakeObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(observer)
@@ -294,6 +320,13 @@ package final class RefreshScheduler {
         for (module, state) in states {
             guard state.enabled, state.autoRefreshEnabled else { continue }
             guard state.phase != .authRequired else { continue }
+            // C062: 运行中或刚尝试过的不再排队补偿 —— 启动时首轮 run 与
+            // didBecomeActive 撞车会在 4 秒内产生第二次全量请求.
+            guard state.phase != .running else { continue }
+            if let lastAttempt = state.lastAttemptAt,
+               now.timeIntervalSince(lastAttempt) < configuration.wakeDedupSeconds {
+                continue
+            }
 
             let isStale: Bool
             if let lastSuccess = state.lastSuccessAt {
@@ -357,17 +390,24 @@ package final class RefreshScheduler {
 
         // C037: 定时刷新不得跨过额度窗口边界 —— 否则槽/窗口重置后最长一个间隔内
         // 卡片仍展示上一窗口的百分比。首次调度 (delay=0) 不参与, 策略自带防风暴防线。
+        var boundaryTriggered = false
         if delay > 0 {
+            let intervalRemaining = delay
             delay = SubscriptionBoundaryWakePolicy.delay(
                 intervalRemaining: delay,
                 boundaries: windowBoundaries,
                 now: clock.now(),
                 consumed: &consumedWindowBoundaries
             )
+            // 边界唤醒必须强制查询额度, 否则 C062 的 30 分钟门禁会把它降级成本地 run.
+            boundaryTriggered = delay < intervalRemaining
         }
 
         timers[module] = timerScheduler.schedule(after: delay) { [weak self] in
-            self?.triggerRefresh(for: module, intent: .timer())
+            self?.triggerRefresh(
+                for: module,
+                intent: .timer(forceQuotaRefresh: boundaryTriggered)
+            )
         }
     }
 
@@ -377,6 +417,15 @@ package final class RefreshScheduler {
         guard !stopped else { return }
         guard let state = states[module], state.enabled else { return }
         let isManual = intent.reason == .manual || intent.includesManual
+
+        // 断网闸门: 自动触发 (timer / wake / backoff) 在无网络时不启动 Collector,
+        // 也不排任何重试; 手动刷新 (含定向刷新) 仍允许执行一次.
+        if !isNetworkAvailable && intent.reason != .manual {
+            // 运行中的任务自然会收尾; 自动意图不再排队, 防止离线期间积压补偿.
+            guard state.phase != .running else { return }
+            pauseForOffline(module: module, state: state)
+            return
+        }
 
         if state.phase == .running {
             // Intent-aware coalesce: merge preserves includesManual across sources.
@@ -409,6 +458,13 @@ package final class RefreshScheduler {
 
     private func startRefresh(for module: CollectorModule, intent: RefreshIntent) {
         guard var state = states[module], state.enabled else { return }
+        // 兜底: 容量队列 / pending drain 等绕过 triggerRefresh 的直接启动路径
+        // 同样受断网闸门约束, 防止离线期间仍发起自动请求.
+        if !isNetworkAvailable && intent.reason != .manual {
+            guard state.phase != .running else { return }
+            pauseForOffline(module: module, state: state)
+            return
+        }
         state.phase = .running
         state.lastAttemptAt = clock.now()
         state.lastTriggerWasManual = intent.includesManual
@@ -459,7 +515,8 @@ package final class RefreshScheduler {
             intent: intent,
             scope: intent.scope,
             staleAfter: configuration.staleAfter,
-            now: clock.now()
+            now: clock.now(),
+            quotaRefreshInterval: configuration.quotaRefreshInterval
         ))
         // 定向刷新: 在模块级结果映射之外, 单独向目标 Provider 发状态回调.
         emitSubscriptionState(for: intent.scope, result: result)
@@ -623,6 +680,7 @@ package final class RefreshScheduler {
             state.lastSuccessAt = now
             state.backoffRetryCount = 0
             state.lastErrorCategory = nil
+            state.offlinePaused = false
             state.phase = .idle
             onArtifactChange?(module, artifact)
             // C037: 记录本轮的额度窗口边界, 供下一次定时唤醒提前到边界 (见 scheduleNextRefresh)。
@@ -759,6 +817,91 @@ package final class RefreshScheduler {
         }
     }
 
+    // MARK: - Internal: network reachability
+
+    private var isNetworkAvailable: Bool {
+        networkReachability?.isNetworkAvailable ?? true
+    }
+
+    private static let offlineDetail = "网络不可用, 已暂停自动刷新"
+
+    /// 自动刷新被断网闸门拦下: 回到 idle, 打上补偿标记, 不留下任何重试定时器.
+    private func pauseForOffline(module: CollectorModule, state: ModuleScheduleState) {
+        var paused = state
+        paused.phase = .idle
+        // 自动意图被拦下时不再保留任何积压 (手动 pending 由运行收尾路径 drain).
+        paused.pendingIntent = nil
+        paused.offlinePaused = true
+        paused.lastErrorCategory = .network
+        states[module] = paused
+        timers[module]?.cancel()
+        timers[module] = nil
+        onStatusChange?(
+            module,
+            state.lastSuccessAt != nil ? .stale : .failed,
+            Self.offlineDetail
+        )
+    }
+
+    /// 网络可达性变化 (主线程回调).
+    private func handleNetworkReachabilityChange(_ isAvailable: Bool) {
+        guard !stopped else { return }
+        if isAvailable {
+            resumeAfterReconnect()
+        } else {
+            pauseBackoffForOffline()
+        }
+    }
+
+    /// 进入断网: 取消在途的退避重试, 避免恢复后旧定时器与补偿刷新叠加.
+    private func pauseBackoffForOffline() {
+        for module in CollectorModule.allCases {
+            guard var state = states[module], state.enabled else { continue }
+            guard state.phase == .backoff else { continue }
+            timers[module]?.cancel()
+            timers[module] = nil
+            state.phase = .idle
+            state.pendingIntent = nil
+            state.offlinePaused = true
+            state.lastErrorCategory = .network
+            states[module] = state
+            onStatusChange?(
+                module,
+                state.lastSuccessAt != nil ? .stale : .failed,
+                Self.offlineDetail
+            )
+        }
+    }
+
+    /// 恢复联网: 离线期间被抑制或本就陈旧的模块补偿一次刷新;
+    /// 数据仍新鲜且无积压的模块只恢复排程, 不额外发请求.
+    private func resumeAfterReconnect() {
+        let now = clock.now()
+        for module in CollectorModule.allCases {
+            guard var state = states[module],
+                  state.enabled, state.autoRefreshEnabled else { continue }
+            guard state.phase == .idle || state.phase == .backoff else { continue }
+
+            let isStale: Bool
+            if let lastSuccess = state.lastSuccessAt {
+                isStale = now.timeIntervalSince(lastSuccess) >= configuration.refreshInterval
+            } else {
+                isStale = true
+            }
+
+            guard state.offlinePaused || isStale else {
+                if timers[module] == nil {
+                    scheduleNextRefresh(for: module)
+                }
+                continue
+            }
+
+            state.offlinePaused = false
+            states[module] = state
+            triggerRefresh(for: module, intent: .wake())
+        }
+    }
+
     // MARK: - Internal: backoff
 
     private func handleBackoff(
@@ -769,6 +912,28 @@ package final class RefreshScheduler {
     ) -> (ModuleScheduleState, Bool) {
         var newState = state
         newState.lastErrorCategory = category
+
+        // 断网期间不重试: 不排退避定时器, 等待网络恢复后的单次补偿.
+        // 手动刷新同样只执行一次 (离线时请求必然失败, 重试只会放大限流风险).
+        if !isNetworkAvailable {
+            newState.phase = .idle
+            newState.backoffRetryCount = 0
+            newState.offlinePaused = true
+            newState.lastErrorCategory = .network
+            // 保留用户手动点击的 pending; 自动积压意图直接丢弃.
+            if newState.pendingIntent?.reason != .manual {
+                newState.pendingIntent = nil
+            }
+            timers[module]?.cancel()
+            timers[module] = nil
+            onStatusChange?(
+                module,
+                newState.lastSuccessAt != nil ? .stale : .failed,
+                Self.offlineDetail
+            )
+            return (newState, false)
+        }
+
         newState.backoffRetryCount += 1
 
         if newState.backoffRetryCount > configuration.maxBackoffRetries {
@@ -803,12 +968,10 @@ package final class RefreshScheduler {
             guard let self else { return }
             // Preserve prior lastTriggerWasManual across automatic backoff retries.
             let includesManual = self.states[module]?.lastTriggerWasManual ?? false
-            let intent = RefreshIntent(
-                reason: includesManual ? .manual : .timer,
-                includesManual: includesManual,
-                scope: .all
+            self.triggerRefresh(
+                for: module,
+                intent: .backoff(includesManual: includesManual)
             )
-            self.startRefresh(for: module, intent: intent)
         }
         return (newState, false)
     }

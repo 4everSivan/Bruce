@@ -1,0 +1,110 @@
+{
+  "$schema": "https://adflow.org/schemas/change-card.v1.json",
+  "id": "C062",
+  "title": "Claude 订阅频繁 429：额度查询与本地刷新解耦（30 分钟额度周期 + 429 冷却/保留旧值 + 启动激活去重）",
+  "type": "BugFix",
+  "status": "verified",
+  "branch": "main",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos",
+    "component": "RefreshScheduler / CollectorRunInput / Collector 额度查询",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+  "why": "用户实测 Bruce 的 Claude 订阅监控会触发 429 限流，而 cc-switch 不出现。逐层核对后确认不是请求格式问题：双方 endpoint 与 Header 完全一致 (`/api/oauth/usage` + Bearer + `anthropic-beta: oauth-2025-04-20`)。真实差异是请求量与生命周期：1) 用户本机 `refreshIntervalMinutes=5`，而 mac 的 `agentUsage` 把本地会话扫描与全部订阅额度查询耦合在同一次 run，实测 artifact 每 5 分 02 秒生成一次，单 Claude 账号约 288 次/天；2) Claude 单独 429 时本地扫描仍产出 artifact，响应为 partial，调度器按成功处理并继续 5 分钟轮询，`rateLimitBackoffSeconds` 的 error 路径根本保护不到；3) 全量 run 会用 error service 覆盖上次 Claude 窗口，用户每次都能看到 429；4) 启动时首次 run 与 `didBecomeActive` 的 wake 意图合并后在首轮结束立刻补跑，实测 09:36:40 / 09:36:44 两份 artifact，4 秒内两次 Claude 请求。cc-switch 的 Claude 额度查询绑定在「供应商卡片当前且挂载」的 UI 生命周期，且把 429 归为瞬时失败、保留上次成功值 10 分钟，因此请求更少且即使 429 也被旧值掩盖。",
+  "precheck": {
+    "description": "预检额度周期门禁、429 冷却与本地专用 run 是否已存在",
+    "command": "grep -rn 'quotaRefreshInterval\\|quotaSkipProviders\\|localUsageOnly\\|quotaAttempts' apps/macos/Sources core/collector/crates --include='*.swift' --include='*.rs' | wc -l",
+    "expected": "输出 0 表示额度查询仍与本地刷新耦合，缺陷成立",
+    "is_completed": true,
+    "evidence": "实测输出 0：无额度周期门禁、无 per-provider 跳过/冷却、collector 无本地专用模式"
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C062-quota-throttling"
+    ],
+    "after": [
+      "swift run --package-path apps/macos RefreshSchedulerHarness \"$PWD\"",
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "额度刷新周期 (QuotaRefreshPolicy)",
+      "before": "本地会话扫描与全部订阅额度查询同属一次 run，按用户刷新间隔（本机 5 分钟）执行；Claude 每天约 288 次请求",
+      "after": "新增 per-provider 额度门禁：自动 run 中，距上次额度尝试不足 30 分钟或上次成功 capturedAt 不足 30 分钟的 provider 跳过外部查询；全部 provider 均不需查询时退化为「本地专用 run」，不发起任何出站请求。手动刷新与窗口边界唤醒强制查询；手动绕过冷却，边界唤醒尊重 429 冷却。Codex 永不进入 skip 集合，保持既有 token 决议/重试链路完整",
+      "impact": "用户仍可保留 5 分钟本地统计，但 Claude/其他订阅额度最长 30 分钟查询一次；请求量从 288 次/天降到 ≤48 次/天"
+    },
+    {
+      "scope": "429 冷却与旧值保留 (QuotaCarryOverMerger)",
+      "before": "429 被写成 error service 并覆盖上次窗口；partial 429 不触发限流退避，下一轮仍按 5 分钟继续查询",
+      "after": "被跳过的 provider 由旧 artifact 原样回填（新鲜数据保持 freshness；冷却/过期数据标 stale）；本轮查询失败（含 429）且旧数据合格时，复制旧 windows/plan/extra/kind/capturedAt 并标 stale，不再清空窗口。429 provider 记录 30 分钟冷却，冷却期内自动 run 不再查询；查询成功（ok/empty）即清除冷却",
+      "impact": "限流期间 Claude 卡片继续展示上次窗口并明确标 stale；调度器不再在 5 分钟周期上反复撞 429，限流窗口可自然冷却"
+    },
+    {
+      "scope": "Collector 协议 (localUsageOnly / quotaSkipProviders)",
+      "before": "未授权 externalQuotas 时 collector 返回两个 denied 占位 service 与 COLLECTOR_PARTIAL_RESULT；无按 provider 跳过能力",
+      "after": "新增 context 标志 `localUsageOnly`: 仅本地扫描，services 为空且不产生额度相关诊断/占位；新增 `quotaSkipProviders` 字符串数组: 在 account plan 阶段过滤指定 app，不发起对应 HTTP 请求。两者均做类型校验，缺省保持旧行为",
+      "impact": "本地专用 run 不再污染 artifact/状态；额度周期 run 可精确跳过新鲜或冷却中的 provider"
+    },
+    {
+      "scope": "调度生命周期 (RefreshScheduler)",
+      "before": "wake/activation 在 run 进行中仍会合并意图并在首轮结束立即补跑；`forceQuotaRefresh` 无表达",
+      "after": "新增 `forceQuotaRefresh` 意图位（manual / 窗口边界为 true，合并时 OR）；手动与定向刷新强制额度查询。`handleWakeOrReactivation` 在模块 running 或距上次尝试不足 60 秒时直接跳过，消除启动/激活双跑。启动加载快照时用 services.capturedAt/429 状态回填 per-provider 尝试与冷却，避免重启后立即补打",
+      "impact": "启动不再出现 4 秒内两次 Claude 请求；手动刷新仍即时；窗口边界仍能拿到重置后的额度"
+    },
+    {
+      "scope": "设置文案",
+      "before": "「刷新间隔」只说明已授权模块的自动采集周期",
+      "after": "副文案明确「本地统计采集周期；订阅云端额度自动查询最长 30 分钟一次，429 后自动冷却」",
+      "impact": "用户不再误以为 5 分钟设置会把所有云端额度接口一起打成 5 分钟"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "topic": "SubscriptionQuota",
+    "modified": true,
+    "rule_diff": {
+      "before": "§7.2 只区分 429 拉长重试与断网不重试；订阅额度查询与本地采集同周期，未定义额度查询频率、429 冷却与旧值保留",
+      "after": "新增规则 12「订阅额度查询节流与 429 冷却」：本地采集周期与额度查询周期解耦（额度自动查询最长 30 分钟一次）；per-provider 尝试门禁与 30 分钟 429 冷却；失败保留上次窗口并标 stale；手动/边界唤醒的强制查询语义；Codex 不参与跳过；启动快照回填尝试状态。§7.2 同步补充 429 partial 路径不再按本地周期反复查询"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "",
+    "user_quote": "确认，推送",
+    "signoff": "2026-10-19 用户在会话中确认并指示推送 (原话: 「确认，推送」), AI 按卡执行并采集实测证据后代签。全量验证: zsh scripts/verify-local.sh 退出码 0, 末行「Bruce 本地验证全部通过」。待用户复核后转入 closed。",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "额度策略/合并器/调度/Rust 跳过逻辑均有回归用例，verify-local 退出码 0",
+        "false_if": "任何测试失败或未覆盖新语义",
+        "evidence": "`zsh scripts/verify-local.sh` 退出码 0，输出「Bruce 本地验证全部通过」；RefreshSchedulerHarness 99 passed（原 86 + C062 新增 13 例：政策/合并器/周期/429 冷却/手动绕过/边界唤醒/多账号/激活去重）；SubscriptionCredentialsHarness 36 passed（新增 QuotaRunPolicy -> localUsageOnly/quotaSkipProviders 映射用例）；Rust collector workspace 全绿（含 localUsageOnly、quotaSkipProviders 过滤与非法类型用例）；BruceOnboardingCore 165、PanelViewModel 54、CollectorRunner 28、LocalIntegration 2、PanelParity 三档对拍、其余 Harness 全绿；Rust fmt/test/clippy 与 fixture 敏感扫描均通过",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "5 分钟本地周期下 Claude 额度请求不超过 30 分钟一次；429 后冷却期内不再请求且卡片保留旧窗口标 stale；手动刷新仍即时",
+        "false_if": "仍按 5 分钟查询额度、429 覆盖旧窗口或手动刷新被门禁挡住",
+        "evidence": "实机安装后启动（10:27:34）：上一份 Claude `capturedAt=10:22:31`（仅 5 分钟前），本轮 artifact `generatedAt` 更新为 10:27:34，而 Claude `capturedAt` 保持 10:22:31、`quotaAttemptedAt` 未写入 → 证明启动只执行了本地专用 run，未再次请求额度端点；后续由 capturedAt 回落判定 30 分钟到期再查询。调度集成用例另验证：5 分钟 run 的 context 为 localUsageOnly 且不含 externalQuotas；30 分钟 run 恢复 externalQuotas；429 后 30 分钟冷却期内仅本地 run，到期恢复查询；手动刷新立即绕过冷却；窗口边界唤醒强制查询",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "C061 断网/恢复语义、Codex token 重试、定向 Provider 刷新、额度预警与窗口边界唤醒均不回归",
+        "false_if": "破坏既有调度相位、合并或凭证写回",
+        "evidence": "C061 两项断网用例与原有 84 项调度用例全部保留并通过；Codex challenge 定向重试、401 停止重试、限流固定退避、额度预警、窗口边界唤醒、定向 Provider 刷新、LocalIntegrationHarness 与 PanelParity 对拍均未回归；QuotaRunPolicy 为可选策略，测试夹具 quotaRefreshInterval=0 时保持旧的「每轮查询」行为",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  }
+}

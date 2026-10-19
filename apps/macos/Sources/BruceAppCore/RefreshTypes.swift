@@ -6,6 +6,9 @@ package enum RefreshTriggerReason: Equatable, Sendable {
     case timer
     case manual
     case wake
+    /// 失败后的自动退避重试. 与 `.timer` / `.manual` 区分, 断网闸门据此
+    /// 判断是否属于直接用户动作; `includesManual` 只负责额度预警抑制, 不再混用.
+    case backoff
 }
 
 /// 刷新范围: 全量 (`all`) 或定向到一组订阅 Provider (`subscriptionProviders`).
@@ -58,27 +61,42 @@ package struct RefreshIntent: Equatable, Sendable {
     package var includesManual: Bool
     /// 刷新范围; 默认 `.all` 保持历史全量调用方源码兼容.
     package var scope: RefreshScope
+    /// 本轮是否强制查询外部订阅额度 (手动刷新与窗口边界唤醒).
+    /// 为 false 时仍可能因额度周期到期而查询, 由 `QuotaRefreshPolicy` 判定.
+    package var forceQuotaRefresh: Bool
 
     package init(
         reason: RefreshTriggerReason,
         includesManual: Bool,
-        scope: RefreshScope = .all
+        scope: RefreshScope = .all,
+        forceQuotaRefresh: Bool = false
     ) {
         self.reason = reason
         self.includesManual = includesManual
         self.scope = scope
+        self.forceQuotaRefresh = forceQuotaRefresh
     }
 
     package static func manual() -> RefreshIntent {
-        RefreshIntent(reason: .manual, includesManual: true)
+        RefreshIntent(reason: .manual, includesManual: true, forceQuotaRefresh: true)
     }
 
-    package static func timer() -> RefreshIntent {
-        RefreshIntent(reason: .timer, includesManual: false)
+    package static func timer(forceQuotaRefresh: Bool = false) -> RefreshIntent {
+        RefreshIntent(
+            reason: .timer,
+            includesManual: false,
+            forceQuotaRefresh: forceQuotaRefresh
+        )
     }
 
     package static func wake() -> RefreshIntent {
         RefreshIntent(reason: .wake, includesManual: false)
+    }
+
+    /// 自动退避重试: includesManual 仅沿用上一轮的手动标记以抑制额度预警,
+    /// 不表示本次是用户直接动作.
+    package static func backoff(includesManual: Bool) -> RefreshIntent {
+        RefreshIntent(reason: .backoff, includesManual: includesManual)
     }
 
     /// 构造定向刷新意图 (单 Provider 按钮点击入口).
@@ -86,7 +104,8 @@ package struct RefreshIntent: Equatable, Sendable {
         RefreshIntent(
             reason: .manual,
             includesManual: true,
-            scope: .subscriptionProviders([provider])
+            scope: .subscriptionProviders([provider]),
+            forceQuotaRefresh: true
         )
     }
 }
@@ -118,7 +137,8 @@ package enum RefreshIntentMerge {
         return RefreshIntent(
             reason: reason,
             includesManual: includesManual,
-            scope: scope
+            scope: scope,
+            forceQuotaRefresh: existing.forceQuotaRefresh || incoming.forceQuotaRefresh
         )
     }
 }

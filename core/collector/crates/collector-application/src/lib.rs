@@ -103,6 +103,13 @@ fn collect_agent_usage_with_dependencies_inner(
 ) -> Result<CollectionOutput, Diagnostic> {
     let window = CollectionWindow::from_context(&request.context).map_err(window_diagnostic)?;
     let context = RunContext::new(request, window, http, credentials, RuntimeLimits::default())?;
+    // C062: 额度仍新鲜/429 冷却时 Swift 只请求本地统计; 此时不启动额度 worker,
+    // 也不输出 denied 占位, 避免把「本轮故意不查额度」误报成 partial.
+    let local_usage_only = request
+        .context
+        .get("localUsageOnly")
+        .and_then(Value::as_bool)
+        == Some(true);
     if request
         .context
         .get("codexQuotaRetryOnly")
@@ -113,8 +120,7 @@ fn collect_agent_usage_with_dependencies_inner(
     }
     let (local_result, quota_result) = std::thread::scope(|scope| {
         let local = scope.spawn(|| collect_local_usage(&context));
-        let quota = context
-            .capability_allowed("externalQuotas")
+        let quota = (!local_usage_only && context.capability_allowed("externalQuotas"))
             .then(|| scope.spawn(|| collect_quota_usage(&context)));
         // C043: worker panic 不再 expect 崩溃 —— 降级为诊断, 其余通道照常产出,
         // 保证 stdout 恒有可解释的 envelope (取消语义仍由 cancellation 诊断表达)。
@@ -241,30 +247,32 @@ fn collect_agent_usage_with_dependencies_inner(
             ));
         }
     }
-    let (services, credential_updates, credential_challenges) =
-        if context.capability_allowed("externalQuotas") {
-            let quota = quota_result.unwrap_or_default();
-            diagnostics.extend(quota.diagnostics);
-            (
-                quota.services,
-                quota.credential_updates,
-                quota.credential_challenges,
-            )
-        } else {
-            (
-                vec![
-                    denied_service(
-                        "cc_switch_providers",
-                        "CC Switch 云端额度",
-                        "cc-switch",
-                        &window,
-                    ),
-                    denied_service("codex_accounts", "Codex 账号额度", "codex", &window),
-                ],
-                Vec::new(),
-                Vec::new(),
-            )
-        };
+    let (services, credential_updates, credential_challenges) = if local_usage_only {
+        // 本轮只做本地统计: 不输出额度占位, 也不消费/产生额度诊断.
+        (Vec::new(), Vec::new(), Vec::new())
+    } else if context.capability_allowed("externalQuotas") {
+        let quota = quota_result.unwrap_or_default();
+        diagnostics.extend(quota.diagnostics);
+        (
+            quota.services,
+            quota.credential_updates,
+            quota.credential_challenges,
+        )
+    } else {
+        (
+            vec![
+                denied_service(
+                    "cc_switch_providers",
+                    "CC Switch 云端额度",
+                    "cc-switch",
+                    &window,
+                ),
+                denied_service("codex_accounts", "Codex 账号额度", "codex", &window),
+            ],
+            Vec::new(),
+            Vec::new(),
+        )
+    };
     if services.iter().any(|service| {
         matches!(
             service.get("status").and_then(Value::as_str),
@@ -1063,6 +1071,86 @@ mod tests {
         let artifact = output.artifact.as_object().unwrap();
         assert_eq!(artifact["agents"][1]["status"], "unavailable");
         assert_eq!(artifact["services"][0]["status"], "partial");
+    }
+
+    fn local_or_skipped_request(context_extra: serde_json::Value) -> BridgeRequest {
+        let mut request = request(&["localSessions", "localPricing", "externalQuotas"]);
+        request.context.insert(
+            "home".to_owned(),
+            json!(std::env::temp_dir().to_string_lossy()),
+        );
+        request.credentials.insert(
+            "claudeQuotaAccounts".to_owned(),
+            json!({
+                "acc": {
+                    "display_name": "Claude",
+                    "oauth": {"claudeAiOauth": {"accessToken": "tok"}}
+                }
+            }),
+        );
+        request.credentials.insert(
+            "providerMeta".to_owned(),
+            json!({"claude": {"enabled": true}}),
+        );
+        if let Some(extra) = context_extra.as_object() {
+            for (key, value) in extra {
+                request.context.insert(key.clone(), value.clone());
+            }
+        }
+        request
+    }
+
+    #[test]
+    fn local_usage_only_skips_quota_and_denied_placeholders() {
+        let request = local_or_skipped_request(json!({"localUsageOnly": true}));
+        let http = FixtureHttp {
+            calls: AtomicUsize::new(0),
+            body: b"{}".to_vec(),
+        };
+        let output = collect_agent_usage_with_dependencies(
+            &request,
+            &http,
+            &HostCredentialAccessMustNotBeUsed,
+        )
+        .unwrap();
+        assert_eq!(http.calls.load(Ordering::Acquire), 0, "不得发起额度请求");
+        let artifact = output.artifact.as_object().unwrap();
+        assert!(
+            artifact["services"].as_array().unwrap().is_empty(),
+            "不得输出占位 service"
+        );
+        assert!(
+            !output
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "COLLECTOR_PARTIAL_RESULT"),
+            "本地专用 run 不得被误报为 partial"
+        );
+    }
+
+    #[test]
+    fn quota_skip_providers_avoids_http_requests() {
+        let request = local_or_skipped_request(json!({"quotaSkipProviders": ["claude"]}));
+        let http = FixtureHttp {
+            calls: AtomicUsize::new(0),
+            body: b"{}".to_vec(),
+        };
+        let output = collect_agent_usage_with_dependencies(
+            &request,
+            &http,
+            &HostCredentialAccessMustNotBeUsed,
+        )
+        .unwrap();
+        assert_eq!(
+            http.calls.load(Ordering::Acquire),
+            0,
+            "跳过 provider 不得发起请求"
+        );
+        let artifact = output.artifact.as_object().unwrap();
+        assert!(
+            artifact["services"].as_array().unwrap().is_empty(),
+            "跳过的 provider 不应出现在本轮 services"
+        );
     }
 
     #[test]

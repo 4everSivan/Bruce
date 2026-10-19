@@ -99,8 +99,12 @@ final class MockCollectorExecutor: CollectorExecuting {
     var repository: URL?
     /// 非 nil 时优先于 fixture, 供额度预警等需要定制 services 的用例.
     var artifactOverride: JSONValue?
+    /// 每次调用收到的 context, 供 C062 额度节流用例断言.
+    private(set) var receivedContexts: [[String: JSONValue]] = []
 
     private var pending: [CollectorModule: [CheckedContinuation<CollectorRunOutput, Error>]] = [:]
+    /// C062: 记录本轮是否为 localUsageOnly, 供 release 返回本地专用 artifact.
+    private var pendingLocalOnly: [CollectorModule: Bool] = [:]
 
     func run(
         module: CollectorModule,
@@ -108,21 +112,25 @@ final class MockCollectorExecutor: CollectorExecuting {
         credentials: [String: JSONValue]
     ) async throws -> CollectorRunOutput {
         runCount[module, default: 0] += 1
+        receivedContexts.append(context)
+        let localOnly = isLocalOnlyContext(context)
+        pendingLocalOnly[module] = localOnly
 
         if blocksUntilReleased {
             return try await withCheckedThrowingContinuation { continuation in
                 pending[module, default: []].append(continuation)
             }
         }
-        return try makeOutput(for: module)
+        return try makeOutput(for: module, localOnly: localOnly)
     }
 
     func release(module: CollectorModule) {
         let continuations = pending[module] ?? []
         pending[module] = []
+        let localOnly = pendingLocalOnly[module] ?? false
         for c in continuations {
             do {
-                let output = try makeOutput(for: module)
+                let output = try makeOutput(for: module, localOnly: localOnly)
                 c.resume(returning: output)
             } catch {
                 c.resume(throwing: error)
@@ -155,26 +163,43 @@ final class MockCollectorExecutor: CollectorExecuting {
         pending.values.contains { !$0.isEmpty }
     }
 
-    private func makeOutput(for module: CollectorModule) throws -> CollectorRunOutput {
+    private func makeOutput(
+        for module: CollectorModule,
+        localOnly: Bool
+    ) throws -> CollectorRunOutput {
         guard let repository else {
             throw RefreshTestFailure.expectation(
                 "mock collector has no fixture repository"
             )
+        }
+        var artifact = try artifactOverride ?? loadFixture(
+            repository: repository,
+            module: module
+        )
+        if localOnly, var object = artifact.objectValue {
+            // 生产 collector 在 localUsageOnly 下返回空 services; mock 保持一致,
+            // 否则本地 run 会伪造一笔「刚查询成功」的额度时间戳.
+            object["services"] = .array([])
+            artifact = .object(object)
         }
         let response = BridgeResponse(
             schemaVersion: 1,
             runId: UUID().uuidString.lowercased(),
             generatedAt: "2026-07-28T12:00:00Z",
             status: .success,
-            artifact: try artifactOverride ?? loadFixture(
-                repository: repository,
-                module: module
-            ),
+            artifact: artifact,
             credentialUpdates: [],
             diagnostics: [],
         credentialChallenges: []
         )
         return CollectorRunOutput(response: response, stderrDiagnostic: nil)
+    }
+
+    private func isLocalOnlyContext(_ context: [String: JSONValue]) -> Bool {
+        if case .boolean(true)? = context["localUsageOnly"] {
+            return true
+        }
+        return false
     }
 }
 
@@ -261,7 +286,11 @@ func makeScheduler(
     repository: URL,
     executor: MockCollectorExecutor,
     clock: ManualClock,
-    timers: FakeTimerScheduler
+    timers: FakeTimerScheduler,
+    reachability: (any NetworkReachabilityProviding)? = nil,
+    refreshInterval: TimeInterval = 1800,
+    quotaRefreshInterval: TimeInterval = 0,
+    wakeDedupSeconds: TimeInterval = 0
 ) throws -> (RefreshScheduler, ArtifactStore, URL) {
     executor.repository = repository
     let root = FileManager.default.temporaryDirectory
@@ -269,13 +298,15 @@ func makeScheduler(
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     let store = try ArtifactStore(rootURL: root)
     let config = SchedulerConfiguration(
-        refreshInterval: 1800,
+        refreshInterval: refreshInterval,
         staleAfter: 3600,
         maxBackoffRetries: 3,
         baseBackoffSeconds: 30,
         maxBackoffSeconds: 1800,
         rateLimitBackoffSeconds: 300,
-        capacityLimit: 2
+        capacityLimit: 2,
+        quotaRefreshInterval: quotaRefreshInterval,
+        wakeDedupSeconds: wakeDedupSeconds
     )
     let scheduler = RefreshScheduler(
         executor: executor,
@@ -284,9 +315,37 @@ func makeScheduler(
         timerScheduler: timers,
         configuration: config,
         jitterProvider: { _ in 0 },
-        registerWakeNotifications: false
+        registerWakeNotifications: false,
+        networkReachability: reachability
     )
     return (scheduler, store, root)
+}
+
+/// 确定性网络可达性桩: 测试驱动 `setAvailable` 触发与生产相同的主线程回调.
+@MainActor
+final class StubNetworkReachability: NetworkReachabilityProviding {
+    private(set) var isNetworkAvailable: Bool
+    var onReachabilityChange: ((Bool) -> Void)?
+    private(set) var startCount = 0
+    private(set) var stopCount = 0
+
+    init(isAvailable: Bool) {
+        self.isNetworkAvailable = isAvailable
+    }
+
+    func start() {
+        startCount += 1
+    }
+
+    func stop() {
+        stopCount += 1
+    }
+
+    func setAvailable(_ available: Bool) {
+        guard available != isNetworkAvailable else { return }
+        isNetworkAvailable = available
+        onReachabilityChange?(available)
+    }
 }
 
 @MainActor
@@ -722,7 +781,8 @@ func makeSchedulerWithError(
     executor: CollectorExecuting,
     clock: ManualClock,
     timers: FakeTimerScheduler,
-    credentialUpdateCoordinator: CredentialUpdateCoordinator? = nil
+    credentialUpdateCoordinator: CredentialUpdateCoordinator? = nil,
+    reachability: (any NetworkReachabilityProviding)? = nil
 ) throws -> (RefreshScheduler, ArtifactStore, URL) {
     let root = FileManager.default.temporaryDirectory
         .appendingPathComponent("Bruce-sched-\(UUID().uuidString)", isDirectory: true)
@@ -735,7 +795,9 @@ func makeSchedulerWithError(
         baseBackoffSeconds: 30,
         maxBackoffSeconds: 1800,
         rateLimitBackoffSeconds: 300,
-        capacityLimit: 2
+        capacityLimit: 2,
+        quotaRefreshInterval: 0,
+        wakeDedupSeconds: 0
     )
     let scheduler = RefreshScheduler(
         executor: executor,
@@ -745,7 +807,8 @@ func makeSchedulerWithError(
         configuration: config,
         jitterProvider: { _ in 0 },
         registerWakeNotifications: false,
-        credentialUpdateCoordinator: credentialUpdateCoordinator
+        credentialUpdateCoordinator: credentialUpdateCoordinator,
+        networkReachability: reachability
     )
     return (scheduler, store, root)
 }
