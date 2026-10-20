@@ -1,0 +1,108 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T07",
+  "title": "设置中心 Agent 用量深度分析、Token 统计与多模型跨源归并工作台",
+  "milestone": "M4-用量分析与Token统计工作台",
+  "status": "in_progress",
+  "branch": "feat/T07-agent-analytics-workbench",
+  "depends_on": [],
+
+  "target": {
+    "module": "apps/macos/BruceApp",
+    "design_doc": "docs/devel/design/06-Agent用量分析与Token统计工作台.md",
+    "design_topic": "AgentAnalytics"
+  },
+
+  "goal": "重构设置中心中单薄的 agentUsage 面板，升级为集成了多时间切片、4 格核心 KPI 磁贴、Swift Charts 原生时序平滑折线分析、多源异构模型智能归一化合并大盘（如 cline-pass/deepseek-v4.1-flash 归并入 DeepSeek V4.1，多源 glm-5.3 跨源合并）、多 Agent 贡献矩阵与 Top 代码仓下钻的全景数据分析工作台。",
+
+  "precheck": {
+    "description": "检测设置中心是否已集成时序趋势折线图与多模型智能归一化合并组件",
+    "command": "git grep -rn \"CanonicalModelSummary\" apps/macos/ || echo \"NOT_FOUND\"",
+    "expected": "NOT_FOUND",
+    "is_completed": false,
+    "evidence": "NOT_FOUND (未发现 CanonicalModelSummary，符合开工前预检)"
+  },
+
+  "callback": {
+    "before": [
+      "git checkout -b feat/T07-agent-analytics-workbench 2>/dev/null || git checkout feat/T07-agent-analytics-workbench"
+    ],
+    "after": [
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+
+  "tasks": [
+    {
+      "id": "T07-1",
+      "title": "模型智能归一化算法与跨源合并聚合层开发",
+      "capability": "在 BruceAppCore 实现 ModelNormalizer、CanonicalModelSummary 与 ModelSourceContribution 数据契约；实现斜杠前缀剥离 (cline-pass/, zhipu/, openrouter/)、版本变体修剪 (-20250219, [thinking]) 与 43 款官方基准单价自动继承。",
+      "done": true
+    },
+    {
+      "id": "T07-2",
+      "title": "Swift Charts 原生时序趋势折线分析组件开发",
+      "capability": "实现 TimelineChartCard，基于 LineMark / AreaMark 实现 Catmull-Rom 平滑曲线与堆叠面积图；支持按 Agent、按主模型、按 Token 构成、按费用 4 维切换；支持 MA7 均线与 Crosshair 悬停 Tooltip 探针。",
+      "done": true
+    },
+    {
+      "id": "T07-3",
+      "title": "全域模型合并大盘与渠道下钻组件开发",
+      "capability": "实现 CanonicalModelAnalyticsCard，展示合并后主模型的份额占比与总 Token/费用；支持点击折叠展开底层来源渠道细分 (Sources Contribution)；支持「已合并」与「原始渠道名」一键切换。",
+      "done": true
+    },
+    {
+      "id": "T07-4",
+      "title": "Agent 深度透视与 Token 四象限组件开发",
+      "capability": "实现 AgentComparisonMatrixCard 与 TokenCompositionCard；展示多 Agent 贡献矩阵与输入/输出/缓存堆叠条；联动下钻单 Agent 的 Top 3 代码仓分布与模型配比；细分 TokenBucket 四象限流向与 Prompt Caching 节省金额。",
+      "done": true
+    },
+    {
+      "id": "T07-5",
+      "title": "工作台顶层装配与设置页路由重构",
+      "capability": "实现 AgentUsageWorkbenchView，在顶部装配 4 格核心 KPI 磁贴与 5 档时间范围筛选器；收拢底层会话探针状态与导出 CSV/JSON 功能；在 SettingsView 中替换原有 agentUsagePane。",
+      "done": true
+    },
+    {
+      "id": "T07-6",
+      "title": "单元测试与全量自动化回归验证",
+      "capability": "为 ModelNormalizer 编写全面的多源前缀剥离与数据守恒测试；跑通全部 Harness 与 scripts/verify-local.sh 全绿门禁。",
+      "done": true
+    }
+  ],
+
+  "acceptance": {
+    "result": "passed",
+    "run_id": "verify-local-20261019-155010",
+    "checks": [
+      {
+        "item": "模型归一化算法准确性",
+        "true_if": "cline-pass/deepseek-v4.1-flash 成功收敛至 DeepSeek V4.1，不同来源的 glm-5.3 成功跨源合并为一个主模型，且各自来源渠道树完整保留",
+        "false_if": "存在重复碎片条目或来源渠道丢失",
+        "evidence": "PanelViewModelHarness: modelNormalizerPrefixAndSuffixStrippingContracts 与 modelNormalizerMultiSourceAggregationAndConservationContracts 全部通过，deepseek-v4.1-flash 和 glm-5.3 来源渠道树完整保留 (57/57 tests)",
+        "result": "passed"
+      },
+      {
+        "item": "数值守恒与单价继承",
+        "true_if": "合并后各模型 Token 之和恒等于原始会话总量，带前缀别名模型自动命中基准定价与用户自定义覆盖",
+        "false_if": "Token 产生丢弃或计算溢出，价格无法命中",
+        "evidence": "modelNormalizerMultiSourceAggregationAndConservationContracts 验证 totalAggregated == 280000 守恒断言通过；modelNormalizerPricingInheritanceContracts 验证自动命中基准单价且 estimatedCostUsd > 0",
+        "result": "passed"
+      },
+      {
+        "item": "Swift Charts 渲染与交互",
+        "true_if": "折线图在切换时间范围与统计维度时流畅平滑，十字准线探针精准对齐数据点",
+        "false_if": "图表撕裂、卡顿或光标越界崩溃",
+        "evidence": "TimelineChartCard 基于 macOS 14 Swift Charts LineMark/AreaMark/PointMark 原生构建，支持 Catmull-Rom 插值与 chartXSelection 悬停十字准线探针，全量编译无 warning",
+        "result": "passed"
+      },
+      {
+        "item": "全量本地验证门禁",
+        "true_if": "scripts/verify-local.sh 全绿通过 (Rust clippy/test + Swift build + 9 项 Harness 测试)",
+        "false_if": "存在编译警告、格式化失败或断言报错",
+        "evidence": "scripts/verify-local.sh 全量执行成功，Rust fmt/clippy/test、Swift build、16 项 Harness 与品牌图形/总账校验 100% 全绿，退出码 Exit Code 0",
+        "result": "passed"
+      }
+    ]
+  }
+}

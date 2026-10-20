@@ -132,12 +132,14 @@ struct FluentSegmentedPicker<Selection: Hashable>: View {
                     selection = option.tag
                 } label: {
                     Text(option.title)
-                        .font(.system(size: 12, weight: isOn ? .semibold : .regular))
+                        .font(.system(size: 11.5, weight: isOn ? .semibold : .medium))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                         .foregroundStyle(
                             isOn ? SettingsDemoTokens.text : SettingsDemoTokens.text2
                         )
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 3)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 3.5)
                         .background(
                             isOn ? SettingsDemoTokens.surfaceHover : Color.clear,
                             in: RoundedRectangle(cornerRadius: 4, style: .continuous)

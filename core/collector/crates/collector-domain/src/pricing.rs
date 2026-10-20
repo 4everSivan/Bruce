@@ -82,6 +82,9 @@ impl PricingTable {
         add("kimi-for-coding", 3.0, 15.0, Some(0.30), "Kimi for Coding");
 
         // OpenAI / Codex
+        add("gpt-6.1-sol", 4.50, 22.50, Some(0.45), "GPT-6.1 Sol");
+        add("gpt-6-sol", 4.00, 20.00, Some(0.40), "GPT-6 Sol");
+        add("gpt-6-luna", 0.25, 1.50, Some(0.025), "GPT-6 Luna");
         add("gpt-5.6-luna", 0.20, 1.20, Some(0.02), "GPT-5.6 Luna");
         add("gpt-5.6-sol", 4.00, 20.00, Some(0.40), "GPT-5.6 Sol");
         add("gpt-5.6-terra", 2.00, 12.00, Some(0.20), "GPT-5.6 Terra");
@@ -95,6 +98,11 @@ impl PricingTable {
             Some(0.175),
             "Codex Auto Review",
         );
+        add("gpt-4o", 2.50, 10.00, Some(1.25), "GPT-4o");
+        add("gpt-4o-mini", 0.15, 0.60, Some(0.075), "GPT-4o mini");
+        add("o1", 15.00, 60.00, Some(7.50), "OpenAI o1");
+        add("o1-mini", 1.10, 4.40, Some(0.55), "OpenAI o1-mini");
+        add("o3-mini", 1.10, 4.40, Some(0.55), "OpenAI o3-mini");
 
         // DeepSeek
         add(
@@ -111,6 +119,7 @@ impl PricingTable {
             Some(0.022),
             "DeepSeek V4 Pro",
         );
+        add("deepseek-r1", 0.55, 2.19, Some(0.14), "DeepSeek R1");
         add("deepseek-chat", 0.14, 0.28, Some(0.014), "DeepSeek Chat");
         add(
             "deepseek-reasoner",
@@ -124,13 +133,18 @@ impl PricingTable {
         add("glm-5.3", 1.40, 4.40, Some(0.26), "GLM-5.3");
         add("glm-5.3-flash", 0.15, 0.50, Some(0.015), "GLM-5.3 Flash");
         add("glm-4-plus", 1.40, 1.40, Some(0.26), "GLM-4 Plus");
+        add("glm-4-air", 0.14, 0.14, Some(0.014), "GLM-4 Air");
+        add("glm-4-flash", 0.01, 0.01, Some(0.001), "GLM-4 Flash");
+        add("glm-4-long", 0.14, 0.14, Some(0.014), "GLM-4 Long");
+        add("codegeex-4", 0.14, 0.14, None, "CodeGeeX-4");
 
         // StepFun
-        add("step-3.7-flash", 0.20, 1.15, Some(0.03), "Step-3.7 Flash");
         add("step-5-preview", 1.00, 2.70, Some(0.05), "Step-5 Preview");
+        add("step-3.7-flash", 0.20, 1.15, Some(0.03), "Step-3.7 Flash");
+        add("step-2-16k", 5.30, 10.00, Some(0.50), "Step-2 16k");
+        add("step-1-8k", 0.70, 1.40, Some(0.07), "Step-1 8k");
 
         // Tencent Hunyuan
-        add("hy3", 0.15, 0.60, Some(0.015), "Tencent Hunyuan 3");
         add(
             "hy4-preview",
             0.85,
@@ -138,8 +152,17 @@ impl PricingTable {
             Some(0.08),
             "Tencent Hunyuan 4 Preview",
         );
+        add("hy3", 0.15, 0.60, Some(0.015), "Tencent Hunyuan 3");
+        add("hy3-x", 0.25, 0.75, Some(0.025), "Hunyuan 3X");
 
         // Anthropic Claude
+        add(
+            "claude-opus-5-5",
+            5.00,
+            25.00,
+            Some(0.50),
+            "Claude Opus 5.5",
+        );
         add(
             "claude-sonnet-5",
             2.00,
@@ -155,6 +178,13 @@ impl PricingTable {
             "Claude Haiku 4.5",
         );
         add(
+            "claude-3-7-sonnet",
+            3.00,
+            15.00,
+            Some(0.30),
+            "Claude 3.7 Sonnet",
+        );
+        add(
             "claude-3-5-sonnet",
             3.00,
             15.00,
@@ -168,10 +198,84 @@ impl PricingTable {
             Some(0.08),
             "Claude 3.5 Haiku",
         );
+        add("claude-3-opus", 15.00, 75.00, Some(1.50), "Claude 3 Opus");
+
+        // Google Gemini
+        add(
+            "gemini-2.0-flash",
+            0.10,
+            0.40,
+            Some(0.025),
+            "Gemini 2.0 Flash",
+        );
+        add(
+            "gemini-2.0-flash-thinking",
+            0.10,
+            0.40,
+            Some(0.025),
+            "Gemini 2.0 Flash Thinking",
+        );
+        add("gemini-2.0-pro", 1.25, 5.00, Some(0.30), "Gemini 2.0 Pro");
+        add("gemini-1.5-pro", 1.25, 5.00, Some(0.3125), "Gemini 1.5 Pro");
+        add(
+            "gemini-1.5-flash",
+            0.075,
+            0.30,
+            Some(0.01875),
+            "Gemini 1.5 Flash",
+        );
 
         // Grok
         add("grok-3", 3.00, 15.00, Some(0.75), "Grok 3");
         add("grok-3-mini", 0.30, 1.50, Some(0.075), "Grok 3 Mini");
+        add("grok-2", 2.00, 10.00, Some(0.50), "Grok 2");
+
+        // Alibaba Qwen
+        add("qwen-max", 2.80, 8.40, Some(0.28), "Qwen Max");
+        add("qwen-plus", 0.56, 1.68, Some(0.056), "Qwen Plus");
+        add("qwen-turbo", 0.04, 0.12, Some(0.004), "Qwen Turbo");
+        add(
+            "qwen-2.5-coder-32b",
+            0.20,
+            0.60,
+            Some(0.02),
+            "Qwen 2.5 Coder 32B",
+        );
+        add(
+            "qwen-2.5-coder-7b",
+            0.05,
+            0.15,
+            Some(0.005),
+            "Qwen 2.5 Coder 7B",
+        );
+
+        // ByteDance Doubao
+        add("doubao-pro-128k", 0.70, 1.40, Some(0.07), "Doubao Pro 128k");
+        add("doubao-pro-32k", 0.11, 0.28, Some(0.011), "Doubao Pro 32k");
+        add(
+            "doubao-lite-128k",
+            0.04,
+            0.14,
+            Some(0.004),
+            "Doubao Lite 128k",
+        );
+        add(
+            "doubao-lite-32k",
+            0.04,
+            0.08,
+            Some(0.004),
+            "Doubao Lite 32k",
+        );
+
+        // MiniMax
+        add("abab6.5s", 0.14, 0.28, Some(0.014), "MiniMax Abab 6.5s");
+
+        // 01.AI (零一万物)
+        add("yi-lightning", 0.14, 0.28, Some(0.014), "Yi Lightning");
+        add("yi-large", 2.80, 2.80, Some(0.28), "Yi Large");
+
+        // Baichuan (百川智能)
+        add("baichuan-4", 1.40, 1.40, Some(0.14), "Baichuan 4");
 
         // TypeSafe Jev
         add("jev-1.13.0", 0.042, 0.0, None, "Jev 1.13.0");
