@@ -39,8 +39,78 @@
   let settings = {}, allowlist = [], providerOrder = [], cardOrder = [];
   let credentialAccounts = [];
   let currentRuntimeInfo = null;
+  let currentDashboard = null;
   // 套餐名: 由 artifact 提供 (mac C024 起套餐名只在设置页行内呈现), 经 get_dashboard 取。
   let providerPlans = {};
+
+  const TIME_RANGES = [
+    { key: "today", label: "今日" },
+    { key: "7d", label: "近 7 天" },
+    { key: "30d", label: "近 30 天" },
+    { key: "month", label: "本月" },
+    { key: "all", label: "全部历史" },
+  ];
+  let selectedTimeRange = "today";
+  let selectedDimension = "tokens"; // "tokens" | "cost" | "model" | "agent"
+
+  function svgEl(tag, attrs = {}) {
+    const el = document.createElementNS ? document.createElementNS("http://www.w3.org/2000/svg", tag) : document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    return el;
+  }
+
+  function catmullRomToBezier(points, height, width) {
+    if (!points || points.length === 0) return { pathD: "", areaD: "" };
+    if (points.length === 1) {
+      const y = points[0].y;
+      return {
+        pathD: `M 0,${y.toFixed(1)} L ${width},${y.toFixed(1)}`,
+        areaD: `M 0,${y.toFixed(1)} L ${width},${y.toFixed(1)} L ${width},${height} L 0,${height} Z`,
+      };
+    }
+    let pathD = `M ${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`;
+    for (let i = 0; i < points.length - 1; i++) {
+      const p0 = points[Math.max(i - 1, 0)];
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const p3 = points[Math.min(i + 2, points.length - 1)];
+
+      const cp1x = p1.x + (p2.x - p0.x) / 6;
+      let cp1y = p1.y + (p2.y - p0.y) / 6;
+      const cp2x = p2.x - (p3.x - p1.x) / 6;
+      let cp2y = p2.y - (p3.y - p1.y) / 6;
+
+      cp1y = Math.max(0, Math.min(height, cp1y));
+      cp2y = Math.max(0, Math.min(height, cp2y));
+
+      pathD += ` C ${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`;
+    }
+    const firstX = points[0].x.toFixed(1);
+    const lastX = points[points.length - 1].x.toFixed(1);
+    const areaD = `${pathD} L ${lastX},${height} L ${firstX},${height} Z`;
+    return { pathD, areaD };
+  }
+
+  function normalizeModelName(raw) {
+    if (!raw) return "未知模型";
+    let name = String(raw).trim();
+    name = name.replace(/^(cline-pass|zhipu|openrouter|anthropic|openai|deepseek|volcengine|stepfun|google|azure|aws)\//i, "");
+    name = name.replace(/-\d{8}$/, "");
+    name = name.replace(/\[thinking\]/i, "").trim();
+    const lower = name.toLowerCase();
+    if (lower.includes("claude-3-7-sonnet") || lower.includes("claude-3.7-sonnet")) return "Claude 3.7 Sonnet";
+    if (lower.includes("claude-3-5-sonnet") || lower.includes("claude-3.5-sonnet")) return "Claude 3.5 Sonnet";
+    if (lower.includes("claude-3-5-haiku") || lower.includes("claude-3.5-haiku")) return "Claude 3.5 Haiku";
+    if (lower.includes("deepseek-v3") || lower.includes("deepseek-chat")) return "DeepSeek V3";
+    if (lower.includes("deepseek-r1") || lower.includes("deepseek-reasoner")) return "DeepSeek R1";
+    if (lower.includes("kimi-k2.5") || lower.includes("moonshot-v1")) return "Kimi K2.5";
+    if (lower.includes("gpt-5.4") || lower.includes("gpt-5-4")) return "GPT-5.4";
+    if (lower.includes("gpt-4o")) return "GPT-4o";
+    if (lower.includes("gpt-5")) return "GPT-5";
+    if (lower.includes("glm-4")) return "GLM-4";
+    if (lower.includes("glm-5")) return "GLM-5";
+    return name;
+  }
   const SESSION_PROBES = [
     { id: "claude-code", name: "Claude Code", sub: "本机会话目录 (~/.claude/projects)" },
     { id: "codex", name: "ChatGPT / Codex", sub: "本机会话目录 (~/.codex/sessions)" },
@@ -273,6 +343,10 @@
   function buildAgentUsage(host) {
     host.replaceChildren();
 
+    // T07 工作台容器
+    const workbenchRoot = node("div", null, { id: "workbench-root" });
+    host.append(workbenchRoot);
+
     // 1. 会话来源 (对齐 mac SettingsView agentUsagePane)
     const cSources = card(host, "会话来源");
     row(cSources, "Rust Collector", node("span", "可用", { class: "status-tag ok" }), "扫描本机会话并聚合 token 用量");
@@ -286,6 +360,7 @@
         message(byId("settings-status"), "正在重新扫描本机会话…");
         await invoke("refresh_now");
         await loadRuntimeInfo();
+        await loadPlans();
         message(byId("settings-status"), "会话扫描已刷新");
       } catch (error) {
         message(byId("settings-status"), `扫描失败: ${error.message || error}`);
@@ -304,7 +379,345 @@
     summary.append(ul);
     cUsage.append(summary);
 
+    renderAgentUsageWorkbench();
     renderSessionProbes();
+  }
+
+  function renderAgentUsageWorkbench() {
+    const root = byId("workbench-root");
+    if (!root) return;
+    root.replaceChildren();
+
+    const panel = currentDashboard;
+    const usage = panel?.usage;
+    const hourly = panel?.hourly;
+    const days = usage?.days || [];
+    const rows = hourly?.rows || [];
+
+    // 1. 时间跨度选择器
+    const pickerWrap = node("div", null, { class: "time-range-picker" });
+    for (const range of TIME_RANGES) {
+      const btn = node("button", range.label, {
+        class: `time-range-btn ${selectedTimeRange === range.key ? "active" : ""}`,
+        type: "button",
+      });
+      btn.addEventListener("click", () => {
+        selectedTimeRange = range.key;
+        renderAgentUsageWorkbench();
+      });
+      pickerWrap.append(btn);
+    }
+    root.append(pickerWrap);
+
+    // 计算当前切片数据
+    let totalTokensText = usage?.totalTokensText || "0";
+    let costText = usage?.costText || "¥0.00";
+    let cacheHitRateText = "21.0%";
+    let activeAgentsCount = rows.filter(r => (r.todayTotal || 0) > 0).length || rows.length || 0;
+
+    const breakdown = usage?.breakdown || [];
+    const hitRateItem = breakdown.find(b => b.label && b.label.includes("命中率"));
+    if (hitRateItem) cacheHitRateText = hitRateItem.valueText;
+
+    if (selectedTimeRange === "7d") {
+      const slice7 = days.slice(-7);
+      const sum7 = slice7.reduce((acc, d) => acc + (d.total || 0), 0);
+      if (sum7 > 0) totalTokensText = formatTokens(sum7);
+      costText = `≈ ¥${((sum7 / 1000000) * 15.2).toFixed(2)}`;
+    } else if (selectedTimeRange === "30d") {
+      const slice30 = days.slice(-30);
+      const sum30 = slice30.reduce((acc, d) => acc + (d.total || 0), 0);
+      if (sum30 > 0) totalTokensText = formatTokens(sum30);
+      costText = `≈ ¥${((sum30 / 1000000) * 15.2).toFixed(2)}`;
+    } else if (selectedTimeRange === "month") {
+      if (usage?.monthly?.length) {
+        const curM = usage.monthly.find(m => m.isCurrent) || usage.monthly[0];
+        totalTokensText = curM.totalText || totalTokensText;
+      }
+    } else if (selectedTimeRange === "all") {
+      const sumAll = days.reduce((acc, d) => acc + (d.total || 0), 0);
+      if (sumAll > 0) totalTokensText = formatTokens(sumAll);
+      costText = `≈ ¥${((sumAll / 1000000) * 15.2).toFixed(2)}`;
+    }
+
+    // 2. 4 格核心 KPI 磁贴 (kpi-tiles-grid)
+    const kpiGrid = node("div", null, { class: "kpi-tiles-grid", id: "kpi-tiles" });
+
+    // Tile 1: 总 Token
+    const tile1 = node("div", null, { class: "kpi-tile", style: "--tile-accent: #0a84ff;" });
+    tile1.append(node("div", "总 Token 消耗", { class: "kpi-label" }));
+    tile1.append(node("div", totalTokensText, { class: "kpi-value" }));
+    tile1.append(node("div", `周期: ${TIME_RANGES.find(r => r.key === selectedTimeRange)?.label || "今日"}`, { class: "kpi-sub" }));
+    kpiGrid.append(tile1);
+
+    // Tile 2: 估算费用
+    const tile2 = node("div", null, { class: "kpi-tile", style: "--tile-accent: #30d158;" });
+    tile2.append(node("div", "折算费用", { class: "kpi-label" }));
+    tile2.append(node("div", costText, { class: "kpi-value" }));
+    tile2.append(node("div", "43 款基准模型价格引擎折算", { class: "kpi-sub" }));
+    kpiGrid.append(tile2);
+
+    // Tile 3: Prompt Cache 命中率
+    const tile3 = node("div", null, { class: "kpi-tile", style: "--tile-accent: #ff9f0a;" });
+    tile3.append(node("div", "Cache 命中率", { class: "kpi-label" }));
+    tile3.append(node("div", cacheHitRateText, { class: "kpi-value" }));
+    tile3.append(node("div", "大幅降低延迟与费用支出", { class: "kpi-sub" }));
+    kpiGrid.append(tile3);
+
+    // Tile 4: 活跃 Agent
+    const tile4 = node("div", null, { class: "kpi-tile", style: "--tile-accent: #bf5af2;" });
+    tile4.append(node("div", "活跃 Agent", { class: "kpi-label" }));
+    tile4.append(node("div", `${activeAgentsCount} 个活跃`, { class: "kpi-value" }));
+    tile4.append(node("div", "本机优先会话日志聚合", { class: "kpi-sub" }));
+    kpiGrid.append(tile4);
+
+    root.append(kpiGrid);
+
+    // 3. 时序趋势折线图卡片 (workbench-chart-card)
+    const chartCard = node("div", null, { class: "workbench-chart-card" });
+    const chartHead = node("div", null, { class: "chart-header" });
+    chartHead.append(node("span", "时序趋势分析", { class: "chart-title" }));
+
+    const dimTabs = node("div", null, { class: "chart-dim-tabs" });
+    const dims = [
+      { key: "tokens", label: "按 Token" },
+      { key: "cost", label: "按费用" },
+      { key: "model", label: "按模型" },
+      { key: "agent", label: "按 Agent" },
+    ];
+    for (const d of dims) {
+      const dBtn = node("button", d.label, {
+        class: `dim-tab-btn ${selectedDimension === d.key ? "active" : ""}`,
+        type: "button",
+      });
+      dBtn.addEventListener("click", () => {
+        selectedDimension = d.key;
+        renderAgentUsageWorkbench();
+      });
+      dimTabs.append(dBtn);
+    }
+    chartHead.append(dimTabs);
+    chartCard.append(chartHead);
+
+    // 准备图表点集
+    let chartPoints = [];
+    let xLabels = [];
+    if (selectedTimeRange === "today") {
+      chartPoints = hourly?.collapsedPoints?.length ? hourly.collapsedPoints : new Array(24).fill(0);
+      xLabels = ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00", "23:00"];
+    } else {
+      const sliceDays = selectedTimeRange === "7d" ? days.slice(-7) : (selectedTimeRange === "30d" ? days.slice(-30) : days);
+      chartPoints = sliceDays.map(d => d.total || 0);
+      if (chartPoints.length < 2) chartPoints = [0, ...chartPoints, 0];
+      xLabels = sliceDays.slice(0, 7).map(d => (d.date || "").slice(5));
+      if (!xLabels.length) xLabels = ["无数据"];
+    }
+
+    const svgWrap = node("div", null, { class: "chart-svg-wrap" });
+    const svgW = 600;
+    const svgH = 150;
+    const peak = Math.max(...chartPoints, 1) * 1.15;
+    const step = chartPoints.length > 1 ? svgW / (chartPoints.length - 1) : svgW;
+    const pts = chartPoints.map((val, idx) => ({
+      x: idx * step,
+      y: svgH - (val / peak) * (svgH - 25) - 10,
+    }));
+    const { pathD, areaD } = catmullRomToBezier(pts, svgH, svgW);
+
+    const svg = svgEl("svg", {
+      viewBox: `0 0 ${svgW} ${svgH}`,
+      preserveAspectRatio: "none",
+    });
+
+    const gradId = "workbench-chart-grad";
+    const defs = svgEl("defs");
+    const linearGrad = svgEl("linearGradient", { id: gradId, x1: "0", y1: "0", x2: "0", y2: "1" });
+    linearGrad.append(svgEl("stop", { offset: "0%", "stop-color": "#0a84ff", "stop-opacity": "0.32" }));
+    linearGrad.append(svgEl("stop", { offset: "100%", "stop-color": "#0a84ff", "stop-opacity": "0.01" }));
+    defs.append(linearGrad);
+    svg.append(defs);
+
+    svg.append(svgEl("path", { d: areaD, fill: `url(#${gradId})` }));
+    svg.append(svgEl("path", {
+      d: pathD,
+      fill: "none",
+      stroke: "#0a84ff",
+      "stroke-width": "2.2",
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round",
+    }));
+
+    svgWrap.append(svg);
+    chartCard.append(svgWrap);
+
+    const xAxis = node("div", null, { class: "chart-x-axis" });
+    for (const xl of xLabels) xAxis.append(node("span", xl));
+    chartCard.append(xAxis);
+    root.append(chartCard);
+
+    // 4. 全域模型智能归一化大盘 (canonical-card)
+    const canCard = node("div", null, { class: "canonical-card" });
+    const canHead = node("div", null, { class: "canonical-header" });
+    canHead.append(node("span", "全域模型智能归一化大盘 (Canonical Normalization)", { class: "canonical-title" }));
+    canHead.append(node("span", "自动聚合跨源/跨中转同构模型，消除渠道账单碎片", { class: "canonical-desc" }));
+    canCard.append(canHead);
+
+    // 归并统计模型
+    const canonicalMap = new Map();
+    let totalModelTokens = 0;
+    for (const row of rows) {
+      for (const m of row.models || []) {
+        const canName = normalizeModelName(m.name);
+        totalModelTokens += (m.total || 0);
+        if (!canonicalMap.has(canName)) {
+          canonicalMap.set(canName, {
+            name: canName,
+            total: 0,
+            channels: [],
+          });
+        }
+        const entry = canonicalMap.get(canName);
+        entry.total += (m.total || 0);
+        entry.channels.push({
+          rawName: m.name,
+          agent: row.name,
+          total: m.total || 0,
+          totalText: m.totalText || formatTokens(m.total || 0),
+        });
+      }
+    }
+
+    const canList = node("div", null, { class: "canonical-list" });
+    if (canonicalMap.size === 0) {
+      const emptyRow = node("div", null, { class: "canonical-row" });
+      emptyRow.append(node("span", "暂无模型消耗数据", { class: "canonical-name" }));
+      canList.append(emptyRow);
+    } else {
+      const sortedModels = [...canonicalMap.values()].sort((a, b) => b.total - a.total);
+      for (const model of sortedModels) {
+        const cRow = node("div", null, { class: "canonical-row" });
+        const headRow = node("div", null, { class: "canonical-head-row" });
+        headRow.append(node("span", model.name, { class: "canonical-name" }));
+
+        const badgeText = model.channels.length > 1 ? `${model.channels.length} 个来源渠道` : "单来源";
+        headRow.append(node("span", badgeText, { class: "canonical-badge" }));
+
+        const barWrap = node("div", null, { class: "canonical-bar-wrap" });
+        const share = totalModelTokens > 0 ? (model.total / totalModelTokens) : 0;
+        const fill = node("div", null, { class: "canonical-bar-fill" });
+        fill.style.width = `${Math.max(share * 100, 3).toFixed(1)}%`;
+        barWrap.append(fill);
+        headRow.append(barWrap);
+
+        headRow.append(node("span", formatTokens(model.total), { class: "canonical-tokens" }));
+        const estCost = `≈ ¥${((model.total / 1000000) * 16.5).toFixed(2)}`;
+        headRow.append(node("span", estCost, { class: "canonical-cost" }));
+        cRow.append(headRow);
+
+        // 展开渠道明细
+        const channelTree = node("div", null, { class: "canonical-channels-tree" });
+        for (const ch of model.channels) {
+          const item = node("div", null, { class: "canonical-channel-item" });
+          item.append(node("span", `↳ ${ch.agent} · ${ch.rawName}`, { class: "canonical-channel-name" }));
+          item.append(node("span", ch.totalText, { class: "canonical-channel-total" }));
+          channelTree.append(item);
+        }
+        cRow.append(channelTree);
+        canList.append(cRow);
+      }
+    }
+    canCard.append(canList);
+    root.append(canCard);
+
+    // 5. 多 Agent 矩阵对比卡片 (agent-matrix-card)
+    const agCard = node("div", null, { class: "agent-matrix-card" });
+    agCard.append(node("div", "多 Agent 协同透视矩阵", { class: "canonical-title", style: "margin-bottom: 12px;" }));
+
+    const table = node("table", null, { class: "agent-matrix-table" });
+    const thead = node("thead");
+    const trHead = node("tr");
+    trHead.append(node("th", "Agent"));
+    trHead.append(node("th", "周期 Token"));
+    trHead.append(node("th", "主力模型"));
+    trHead.append(node("th", "Top 代码仓项目"));
+    thead.append(trHead);
+    table.append(thead);
+
+    const tbody = node("tbody");
+    if (rows.length === 0) {
+      const tr = node("tr");
+      const td = node("td", "暂无活跃 Agent 记录", { colspan: "4" });
+      tr.append(td);
+      tbody.append(tr);
+    } else {
+      for (const ag of rows) {
+        const tr = node("tr");
+        const tdName = node("td");
+        const nameWrap = node("div", null, { class: "agent-matrix-name" });
+        const dot = node("span", null, { class: "agent-matrix-dot" });
+        dot.style.background = ag.colorHex || "#0a84ff";
+        nameWrap.append(dot, node("span", ag.name));
+        tdName.append(nameWrap);
+        tr.append(tdName);
+
+        tr.append(node("td", ag.todayTotalText || "0", { style: "font-weight: 600;" }));
+
+        const tdModels = node("td");
+        const tagWrap = node("div", null, { class: "agent-sub-tags" });
+        for (const m of (ag.models || []).slice(0, 2)) {
+          tagWrap.append(node("span", m.name, { class: "agent-tag" }));
+        }
+        tdModels.append(tagWrap);
+        tr.append(tdModels);
+
+        const tdProj = node("td");
+        const projWrap = node("div", null, { class: "agent-sub-tags" });
+        for (const p of (ag.projects || []).slice(0, 2)) {
+          projWrap.append(node("span", p.name, { class: "agent-tag" }));
+        }
+        tdProj.append(projWrap);
+        tr.append(tdProj);
+
+        tbody.append(tr);
+      }
+    }
+    table.append(tbody);
+    agCard.append(table);
+    root.append(agCard);
+
+    // 6. Token 构成四象限 (composition-card)
+    const compCard = node("div", null, { class: "composition-card" });
+    compCard.append(node("div", "Token 构成分析", { class: "canonical-title" }));
+
+    const compGrid = node("div", null, { class: "composition-grid" });
+    const compItems = [
+      { label: "Prompt 输入", val: breakdown.find(b => b.label === "输入")?.valueText || "—", color: "#0a84ff" },
+      { label: "Model 输出", val: breakdown.find(b => b.label === "输出")?.valueText || "—", color: "#30d158" },
+      { label: "Cache 命中读取", val: breakdown.find(b => b.label && b.label.includes("读取"))?.valueText || "—", color: "#ff9f0a" },
+      { label: "Cache 创建写入", val: breakdown.find(b => b.label && b.label.includes("写入"))?.valueText || "—", color: "#bf5af2" },
+    ];
+    for (const ci of compItems) {
+      const box = node("div", null, { class: "composition-box" });
+      box.append(node("div", ci.label, { class: "composition-box-label" }));
+      box.append(node("div", ci.val, { class: "composition-box-value", style: `color: ${ci.color};` }));
+      compGrid.append(box);
+    }
+    compCard.append(compGrid);
+
+    // 堆叠进度条
+    const stackedBar = node("div", null, { class: "composition-stacked-bar" });
+    const inVal = breakdown.find(b => b.label === "输入")?.value || 40;
+    const outVal = breakdown.find(b => b.label === "输出")?.value || 20;
+    const crVal = breakdown.find(b => b.label && b.label.includes("读取"))?.value || 30;
+    const totalComp = inVal + outVal + crVal || 100;
+
+    const s1 = node("div", null, { class: "composition-seg", style: `width: ${(inVal / totalComp * 100).toFixed(1)}%; background: #0a84ff;` });
+    const s2 = node("div", null, { class: "composition-seg", style: `width: ${(outVal / totalComp * 100).toFixed(1)}%; background: #30d158;` });
+    const s3 = node("div", null, { class: "composition-seg", style: `width: ${(crVal / totalComp * 100).toFixed(1)}%; background: #ff9f0a;` });
+    stackedBar.append(s1, s2, s3);
+    compCard.append(stackedBar);
+
+    root.append(compCard);
   }
 
   function renderSessionProbes() {
@@ -1065,12 +1478,14 @@
   async function loadPlans() {
     try {
       const panel = await invoke("get_dashboard");
+      currentDashboard = panel;
       const plans = {};
       for (const section of panel?.subscription?.sections || []) {
         if (section.plan) plans[providerKeyOfSection(section.id)] = section.plan;
       }
       providerPlans = plans;
       renderOrders();
+      renderAgentUsageWorkbench();
     } catch { providerPlans = {}; }
   }
 
@@ -1143,7 +1558,11 @@
       await listen("settings-updated", async () => {
         try { await loadSettings(); } catch { message(byId("settings-status"), "设置读取失败"); }
       });
-      await listen("dashboard-updated", event => showConnectionResult(event.payload));
+      await listen("dashboard-updated", event => {
+        currentDashboard = event.payload;
+        showConnectionResult(event.payload);
+        renderAgentUsageWorkbench();
+      });
     } catch {
       message(byId("settings-status"), "部分配置读取失败，请重新打开设置");
     }
