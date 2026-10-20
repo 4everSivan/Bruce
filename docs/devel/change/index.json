@@ -80,7 +80,8 @@
         "C061",
         "C062",
         "C063",
-        "C064"
+        "C064",
+        "C065"
       ]
     },
     "TokenUsage": {
@@ -678,6 +679,15 @@
       "topic": "SubscriptionQuota",
       "version": "0.12.2",
       "file": "docs/devel/change/C064.json"
+    },
+    "C065": {
+      "title": "回调 30 分钟额度硬编码门禁：订阅刷新周期联动用户配置间隔（5/10 分钟生效）并加固锁屏状态探测",
+      "type": "BugFix",
+      "status": "draft",
+      "branch": "fix/C065-refresh-interval-callback",
+      "topic": "SubscriptionQuota",
+      "version": "0.12.2",
+      "file": "docs/devel/change/C065.json"
     }
   }
 }

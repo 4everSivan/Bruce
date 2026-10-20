@@ -224,6 +224,8 @@ struct RefreshSchedulerHarness {
         try await screenLockSuppressionDisabledAllowsQuotaQuery(repository: repository)
         print("Refresh scheduler: quota policy suppressed on screen lock")
         try quotaPolicySuppressedOnScreenLock()
-        print("Refresh scheduler tests passed: 102")
+        print("Refresh scheduler: quota refresh interval updates with scheduler interval")
+        try await quotaRefreshIntervalUpdatesWithSchedulerRefreshInterval(repository: repository)
+        print("Refresh scheduler tests passed: 103")
     }
 }

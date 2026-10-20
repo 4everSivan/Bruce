@@ -361,7 +361,7 @@ struct SettingsView: View {
                 }
                 FluentRow(
                     "刷新间隔",
-                    sub: "本地统计采集周期；订阅云端额度自动查询最长 30 分钟一次，429 后自动冷却",
+                    sub: "本地统计采集与订阅额度自动刷新周期；遇 429 限流时自动冷却",
                     divided: true
                 ) {
                     FluentSegmentedPicker(

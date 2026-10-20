@@ -42,7 +42,9 @@ package final class SystemScreenLockMonitor: ScreenLockStateProviding {
     private var screenWakeObserver: NSObjectProtocol?
     private var systemWakeObserver: NSObjectProtocol?
 
-    package var isScreenLocked: Bool { locked }
+    package var isScreenLocked: Bool {
+        locked || ScreenLockDetector.isScreenCurrentlyLocked()
+    }
     package var onScreenLockStateChange: ((Bool) -> Void)?
 
     package init() {

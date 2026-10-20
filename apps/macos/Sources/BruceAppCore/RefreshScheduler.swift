@@ -25,8 +25,8 @@ struct SchedulerConfiguration: Sendable {
     let maxBackoffSeconds: Double
     let rateLimitBackoffSeconds: Double
     let capacityLimit: Int
-    /// C062 自动订阅额度查询周期; 本地采集仍按 refreshInterval.
-    let quotaRefreshInterval: TimeInterval
+    /// 自动订阅额度查询周期; 与 refreshInterval 联动 (C065).
+    var quotaRefreshInterval: TimeInterval
     /// wake/activation 在距上次尝试该秒数内不重复触发 (消除启动双跑).
     let wakeDedupSeconds: TimeInterval
 
@@ -298,14 +298,26 @@ package final class RefreshScheduler {
     /// 沿用 setAutoRefresh 的更新模式: 按新间隔重排已启用 idle 模块的
     /// 计时器 (重启计时); 距上次成功已超过新间隔的模块 delay 为 0,
     /// 立即触发一次刷新.
+    /// 同时联动更新订阅额度查询周期 quotaRefreshInterval (C065).
     package func updateRefreshInterval(_ interval: TimeInterval) {
         configuration.refreshInterval = interval
+        configuration.quotaRefreshInterval = interval
         for module in CollectorModule.allCases {
             guard let state = states[module],
                   state.enabled, state.autoRefreshEnabled,
                   state.phase == .idle else { continue }
             scheduleNextRefresh(for: module)
         }
+    }
+
+    /// 当前自动刷新间隔 (秒).
+    package var refreshInterval: TimeInterval {
+        configuration.refreshInterval
+    }
+
+    /// 当前订阅额度刷新周期 (秒) (C065).
+    package var quotaRefreshInterval: TimeInterval {
+        configuration.quotaRefreshInterval
     }
 
     /// 当前屏幕是否处于锁定状态 (C064).

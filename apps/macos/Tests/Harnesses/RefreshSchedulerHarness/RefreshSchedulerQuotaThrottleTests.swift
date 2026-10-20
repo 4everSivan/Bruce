@@ -403,6 +403,86 @@ extension RefreshSchedulerHarness {
         )
     }
 
+    // MARK: - C065 额度周期联动与锁屏双检
+
+    static func quotaRefreshIntervalUpdatesWithSchedulerRefreshInterval(
+        repository: URL
+    ) async throws {
+        let clock = ManualClock(start: quotaBase)
+        let timers = FakeTimerScheduler()
+        let executor = MockCollectorExecutor()
+        let (scheduler, _, root) = try makeScheduler(
+            repository: repository, executor: executor, clock: clock, timers: timers,
+            refreshInterval: 1800, quotaRefreshInterval: 1800
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        // 1. 切换为 5 分钟 (300s): 调度器同时联动更新 refreshInterval 与 quotaRefreshInterval
+        scheduler.updateRefreshInterval(300)
+        try refreshExpect(
+            scheduler.refreshInterval == 300,
+            "刷新间隔应更新为 300 秒"
+        )
+        try refreshExpect(
+            scheduler.quotaRefreshInterval == 300,
+            "额度刷新周期应联动更新为 300 秒 (C065)"
+        )
+
+        // 2. 5 分钟周期下, 超过 5 分钟 (如 350 秒) 的订阅额度被判定为过期需查询
+        let now = quotaBase
+        let expired5m = quotaArtifact(services: [
+            quotaService(
+                capturedAt: now.addingTimeInterval(-350),
+                attemptedAt: now.addingTimeInterval(-350)
+            )
+        ])
+        let policy5m = QuotaRefreshPolicy.plan(
+            previous: expired5m,
+            now: now,
+            interval: scheduler.quotaRefreshInterval,
+            forceRefresh: false,
+            bypassCooldown: false
+        )
+        try refreshExpect(
+            policy5m.includeExternalQuotas,
+            "5 分钟周期下, 距今 350 秒的额度应执行云端查询而不是降级为本地 run"
+        )
+        try refreshExpect(
+            policy5m.skipProviders.isEmpty,
+            "5 分钟周期下已过期 provider 不应被跳过"
+        )
+
+        // 3. 5 分钟周期下, 距今不足 5 分钟 (如 100 秒) 的额度在定时轮询中仍保持新鲜度跳过
+        let fresh5m = quotaArtifact(services: [
+            quotaService(
+                capturedAt: now.addingTimeInterval(-100),
+                attemptedAt: now.addingTimeInterval(-100)
+            )
+        ])
+        let policyFresh = QuotaRefreshPolicy.plan(
+            previous: fresh5m,
+            now: now,
+            interval: scheduler.quotaRefreshInterval,
+            forceRefresh: false,
+            bypassCooldown: false
+        )
+        try refreshExpect(
+            policyFresh.skipProviders.contains(.claude),
+            "5 分钟周期下, 距今仅 100 秒的额度应避免重复查询"
+        )
+
+        // 4. 切换为 10 分钟 (600s): 同样联动更新
+        scheduler.updateRefreshInterval(600)
+        try refreshExpect(
+            scheduler.refreshInterval == 600,
+            "刷新间隔应更新为 600 秒"
+        )
+        try refreshExpect(
+            scheduler.quotaRefreshInterval == 600,
+            "额度刷新周期应联动更新为 600 秒 (C065)"
+        )
+    }
+
     // MARK: Helpers
 
     private static func isLocalOnly(_ context: [String: JSONValue]) -> Bool {
