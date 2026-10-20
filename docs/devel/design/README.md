@@ -1,6 +1,6 @@
 # 系统设计方案中心 (design/)
 
-> **created**: 2026-09-23 ｜ **last-change**: 2026-10-06 ｜ **status**: active
+> **created**: 2026-09-23 ｜ **last-change**: 2026-10-20 ｜ **status**: active
 
 ---
 
@@ -17,10 +17,11 @@
 |---|---|---|---|---|---|
 | [00-系统总体设计.md](00-系统总体设计.md) | `SystemOverview` | `DESIGN-SYS` | 系统宏观架构全景、分层定义与功能矩阵 | 现行基线 | 2026-10-16 |
 | [01-数据采集与多模型计费引擎.md](01-数据采集与多模型计费引擎.md) | `TokenUsage` | `DESIGN-COLLECTOR` | 8 大 Agent 扫描、增量缓存、43 款模型定价与 Token 费用核算 | 现行基线 | 2026-10-16 |
-| [02-订阅额度与凭据安全存储.md](02-订阅额度与凭据安全存储.md) | `SubscriptionQuota` | `DESIGN-SUBSCRIPTION` | 10 家 Provider 额度适配、POSIX 0600 凭据存储、原子落盘与防扰 | 现行基线 | 2026-10-16 |
+| [02-订阅额度与凭据安全存储.md](02-订阅额度与凭据安全存储.md) | `SubscriptionQuota` | `DESIGN-SUBSCRIPTION` | 10 家 Provider 额度适配、POSIX 0600 凭据存储、原子落盘与防扰 | 现行基线 | 2026-10-20 |
 | [03-菜单栏状态与多风格原生渲染.md](03-菜单栏状态与多风格原生渲染.md) | `MenuBarIndicator` | `DESIGN-DASHBOARD` | 赛博精密环形仪表、纯图标模式、液态玻璃与 Nothing 风格点阵控制台 | 现行基线 | 2026-10-16 |
 | [04-设置中心与价格校准交互.md](04-设置中心与价格校准交互.md) | `PricingEngine` | `DESIGN-SETTINGS` | 菜单栏实时预览条、卡片排序拖拽、全模型价格表与自定义覆盖校准 | 现行基线 | 2026-10-16 |
 | [05-Windows平台适配.md](05-Windows平台适配.md) | `WindowsCompat` | `DESIGN-WINDOWS` | Windows 托盘常驻看板（Tauri 2）、collector 单引擎双平台、Rust 视图模型与双端 fixture 对拍 | 现行基线 | 2026-10-16 |
+| [06-Agent用量分析与Token统计工作台.md](06-Agent用量分析与Token统计工作台.md) | `AgentAnalytics` | `DESIGN-ANALYTICS` | 设置中心全景工作台、时序折线分析、多源模型自动归一化合并、多 Agent 横向对比与代码仓下钻 | 现行基线 | 2026-10-19 |
 
 ---
 
@@ -34,9 +35,6 @@
 3. **大小需求分流**：
    - **大需求（新领域/子系统）**：在总体设计注册，新建独立功能文档（`0X-xxx.md`），按标准大纲撰写；
    - **小需求/日常变更**：直接在所属的独立功能文档中增补规则，在表格追加一行 `Cxxx` 记录，其他文档 0 污染；
-4. **历史资产统一归档隔离**：
-   - 所有历史设计原型（HTML Demo）与旧版开发过程记录，一律归档于 `_adflow_backup/original_docs/` 妥善留存；
-   - `docs/` 根树下严格仅保留现行微设计基线，杜绝散落历史废弃文档。
 4. **历史资产统一归档隔离**：
    - 所有历史设计原型（HTML Demo）与旧版开发过程记录，一律归档于 `_adflow_backup/original_docs/` 妥善留存；
    - `docs/` 根树下严格仅保留现行微设计基线，杜绝散落历史废弃文档。

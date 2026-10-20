@@ -1,0 +1,30 @@
+# Git
+.git/
+
+# IDE and Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Rust / Cargo（构建产物，全仓库约 20G+）
+target/
+*-target/
+**/*.rs.bk
+
+# Swift / Xcode（apps/macos/.build 约 4G）
+.build/
+*.xcodeproj/xcuserdata/
+
+# Node
+node_modules/
+
+# 打包输出（dist 约 48M）
+dist/
+out/
+build/
+
+# 日志与本机工作区（local/ 为日志、覆盖率、swift 临时文件的堆放区，约 9G）
+*.log
+local/
