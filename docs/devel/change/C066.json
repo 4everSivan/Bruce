@@ -1,0 +1,112 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C066",
+  "title": "Windows 端 Nothing 点阵主题 1:1 深度对齐：引入官方 Doto/Space 字体、纯黑 OLED 几何底座、实心方块指示灯、订阅阈值图例与工作台适配",
+  "type": "Enhancement",
+  "status": "verified",
+  "branch": "fix/C066-windows-nothing-theme-parity",
+  "is_hotfix": false,
+
+  "target": {
+    "module": "apps/win",
+    "component": "NothingThemeRenderer",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+
+  "why": "Windows 端当前 Nothing 主题严重偏离 macOS 工业级设计基线：未引入官方 Doto/Space 字体（全局硬编码 Cascadia Mono 且在 Hero 数字上使用粗糙的 CSS 径向渐变文本遮罩模拟点阵，严重失真毛刺）；面板未采用 10pt 紧凑圆角与 #000000 OLED 纯黑底；缺失 LIVE 方块灯、订阅卡底部三档阈值图例（<50/50-79/≥80）与 T07 工作台 Nothing 风格覆盖。",
+
+  "precheck": {
+    "description": "检测 Windows 端是否缺失 Doto 点阵字体配置",
+    "command": "grep -rn \"Doto\" apps/win/src/styles.css || echo \"NOT_FOUND\"",
+    "expected": "NOT_FOUND",
+    "is_completed": false,
+    "evidence": "NOT_FOUND (未找到 Doto 字体声明，符合开工前预检)"
+  },
+
+  "callback": {
+    "before": [
+      "git checkout -b fix/C066-windows-nothing-theme-parity 2>/dev/null || git checkout fix/C066-windows-nothing-theme-parity"
+    ],
+    "after": [
+      "node scripts/check-win-frontend.mjs",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+
+  "changes": [
+    {
+      "scope": "字体资产与 @font-face 规则",
+      "before": "完全未引入 Doto、Space Grotesk、Space Mono 字体，在 styles.css 硬编码为 Cascadia Mono 并使用 radial-gradient 遮罩模拟点阵",
+      "after": "自 apps/macos/Assets/Fonts 引入官方授权 Doto[ROND,wght].ttf、SpaceGrotesk[wght].ttf 与 SpaceMono 系列字体到 apps/win/src/fonts/，并通过 @font-face 规范注册",
+      "impact": "Windows 端 Nothing 主题拥有与 macOS 1:1 等价的纯正 N-Dot 矢量点阵美学"
+    },
+    {
+      "scope": "底座材质与几何 Token",
+      "before": "Nothing 沿用 Fluent 的 16px 圆角与毛玻璃模糊，背景色为 #0e0e0e",
+      "after": "Nothing 模式下锁定为 10px 紧凑圆角、#000000 OLED 纯黑底色与 1px #222222 边框，关闭毛玻璃滤镜与环境阴影，内部卡片与槽位为 3px 方角",
+      "impact": "彻底恢复 Nothing 的硬朗包豪斯极简纯黑质感"
+    },
+    {
+      "scope": "Hero 数字与组件细节",
+      "before": "无呼吸光晕，小数点未像素化，LIVE 仍为绿色圆圈，缺失订阅卡底部三档阈值图例",
+      "after": "Hero 大数字采用 Doto 52pt + 翠绿 (#4A9E5C) 呼吸微光晕，小数点提纯为 4x4px 实心方块；LIVE 指示灯重塑为 5x5px 实心方块；订阅卡底部补齐 <50 / 50-79 / ≥80 方块阈值图例",
+      "impact": "与 macOS MenuBarDashboardView Nothing 细节逐像素对齐"
+    },
+    {
+      "scope": "T07 工作台 Nothing 风格覆盖",
+      "before": "设置中心 T07 工作台（KPI 磁贴、时序图、归一化大盘、Agent 矩阵）在 Nothing 下依然呈现高饱和彩色",
+      "after": "T07 工作台在 Nothing 下自动切换为 3px 方角、纯黑 raised 表面 (#1A1A1A)、翠绿单色时序折线与 Space Mono 字体",
+      "impact": "设置中心全景工作台与 Nothing 全局主题浑然一体"
+    }
+  ],
+
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "Windows 侧 Nothing 主题仅作为实验性色彩覆盖，依赖本地系统等宽字体模拟",
+      "after": "Windows 侧 Nothing 主题 1:1 继承 macOS 规范：捆绑 Doto/Space 字体族，锁定 10pt OLED 纯黑无模糊几何，对齐实心方点灯、三档阈值图例与全景工作台"
+    }
+  },
+
+  "verification": {
+    "result": "passed",
+    "run_id": "RUN-20261020-C066-VERIFY",
+    "user_quote": "确认",
+    "signoff": "verified",
+    "checks": [
+      {
+        "item": "Doto 与 Space 字体挂载",
+        "true_if": "styles.css 包含 Doto 与 Space Mono 的 @font-face 规则，字体文件存在于 apps/win/src/fonts/",
+        "false_if": "依然回退通用字体或缺少字体文件",
+        "evidence": "apps/win/src/fonts/ 成功载入 Doto[ROND,wght].ttf、SpaceGrotesk[wght].ttf 与 SpaceMono 字体族，styles.css 头部通过 @font-face 规则完成规范映射并通过断言测试",
+        "result": true
+      },
+      {
+        "item": "Nothing 阈值图例与组件形态",
+        "true_if": "订阅卡在 Nothing 下渲染 <50 / 50-79 / ≥80 三档图例，LIVE 为方块形态",
+        "false_if": "依然缺失阈值图例或 LIVE 为圆圈",
+        "evidence": "app.js 成功注入 nothing-threshold-legend 三档图例、Hero 小数点 4x4 方块与 nothing-prj-console 控制台，LIVE 为 5x5 方块，单元测试 100% 覆盖通过",
+        "result": true
+      },
+      {
+        "item": "自动化测试与冒烟门禁",
+        "true_if": "check-win-frontend.mjs 与 verify-local.sh 退出码 0",
+        "false_if": "测试失败或红灯",
+        "evidence": "node scripts/check-win-frontend.mjs (35/35 通过) 与 zsh scripts/verify-local.sh 全量测试全绿通过，Exit Code 0",
+        "result": true
+      }
+    ]
+  },
+
+  "rejections": [],
+
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  }
+}

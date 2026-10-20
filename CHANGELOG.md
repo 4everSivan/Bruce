@@ -6,6 +6,15 @@
 ## [Unreleased]
 
 ### Added
+- **Windows 端 Nothing 点阵主题 1:1 深度对齐 (C066)**：
+  - **内置官方授权 Doto / Space 矢量字体族**：引入开源 SIL OFL 授权的 `Doto[ROND,wght].ttf`、`SpaceGrotesk[wght].ttf` 与 `SpaceMono` 系列字体，通过 `@font-face` 注册。彻底告别通用字体与 CSS 粗糙径向渐变伪点阵，还原与 macOS 1:1 等价的纯正 N-Dot 工业点阵质感。
+  - **OLED 纯黑纯平面几何基座**：Nothing 模式下锁定为 10px 紧凑圆角、`#000000` 纯黑底色与 1px `#222222` 细边框，彻底关闭毛玻璃模糊与阴影；内部卡片与槽位统一为 3px 硬朗方角。
+  - **逐像素对齐视觉组件**：
+    - **Hero 数字与呼吸微光晕**：Doto 52pt 翠绿 (`#4A9E5C`) 主数值，带呼吸微光晕；小数点提纯为 4×4px 实心小方块，与整数和小数部分平滑对齐；
+    - **LIVE 方块指示灯**：重塑为 5×5px 纯色实心方块，移除 Fluent 光晕呼吸环；
+    - **订阅卡三档阈值图例**：底部新增 `<50`（绿）/ `50–79`（黄）/ `≥80`（红）方块阈值图例；
+    - **Agent 展开区点阵控制台**：多模型占比采用 P4 方案（Top 1 翡翠绿，次要模型 45° 斜点阵条）；项目分布深度对齐 `PRJ.CONSOLE` 终端控制台（`[P1]` 标签、点阵导引虚线、数值、百分比 Badge 与 6-Tick 微型液晶进度格）；
+    - **T07 工作台 Nothing 风格化**：全景工作台（KPI 磁贴、时序分析图、归一化大盘、Agent 透视矩阵）在 Nothing 下自动切换为纯黑表面、单色翠绿折线与 Space Mono 字体。
 - **Windows 端视觉重塑与 T07 Agent 用量全景工作台深度对齐 (T08)**：
   - **窗口底座透明化与悬浮质感**：`tauri.conf.json` 配置 `transparent: true`，`#panel` 注入 16px 平滑连续圆角、0 24px 64px 弥散环境阴影与 1px 微发光边框，配合毛玻璃滤镜彻底消除黑灰直角方块感。
   - **Catmull-Rom 三阶平滑曲线走势图**：`app.js` 引入 `catmullRomToBezier` 平滑样条插值算法与渐变面积填充，终结生硬锯齿折线，对齐 macOS Swift Charts 工业级视觉质感；进度条全面升级为微圆角胶囊条与状态光晕。

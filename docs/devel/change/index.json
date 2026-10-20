@@ -54,7 +54,8 @@
         "C034",
         "C035",
         "C036",
-        "C056"
+        "C056",
+        "C066"
       ]
     },
     "SubscriptionQuota": {
@@ -688,6 +689,15 @@
       "topic": "SubscriptionQuota",
       "version": "0.12.2",
       "file": "docs/devel/change/C065.json"
+    },
+    "C066": {
+      "title": "Windows 端 Nothing 点阵主题 1:1 深度对齐：引入官方 Doto/Space 字体、纯黑 OLED 几何底座、实心方块指示灯、订阅阈值图例与工作台适配",
+      "type": "Enhancement",
+      "status": "verified",
+      "branch": "fix/C066-windows-nothing-theme-parity",
+      "topic": "WindowsCompat",
+      "version": "0.12.2",
+      "file": "docs/devel/change/C066.json"
     }
   }
 }

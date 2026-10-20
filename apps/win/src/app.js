@@ -315,7 +315,18 @@ function usageCard(usage) {
 
   // hero 行: 40pt 档位渐变数字 + tokens + 右侧成本
   const hero = el("div", "hero-row");
-  hero.append(el("span", "hero-num", usage.totalTokensText));
+  const heroNum = el("span", "hero-num");
+  if (isNothingTheme() && usage.totalTokensText && usage.totalTokensText.includes(".")) {
+    const dotIdx = usage.totalTokensText.indexOf(".");
+    heroNum.append(
+      el("span", null, usage.totalTokensText.slice(0, dotIdx)),
+      el("span", "dot-square"),
+      el("span", null, usage.totalTokensText.slice(dotIdx + 1))
+    );
+  } else {
+    heroNum.textContent = usage.totalTokensText;
+  }
+  hero.append(heroNum);
   hero.append(el("span", "hero-unit", "tokens"));
   if (usage.costText) hero.append(el("span", "hero-cost", usage.costText));
   card.append(hero);
@@ -705,6 +716,22 @@ function subscriptionCard(sub) {
       }
       body.append(block);
     }
+    if (isNothingTheme()) {
+      const legend = el("div", "nothing-threshold-legend");
+      const items = [
+        { color: "#4A9E5C", text: "<50" },
+        { color: "#D4A843", text: "50–79" },
+        { color: "#E44B47", text: "≥80" },
+      ];
+      for (const item of items) {
+        const span = el("span", "thresh-item");
+        const box = el("span", "thresh-box");
+        box.style.background = item.color;
+        span.append(box, el("span", "thresh-text", item.text));
+        legend.append(span);
+      }
+      body.append(legend);
+    }
   };
   renderSections();
   card.append(body);
@@ -749,6 +776,56 @@ function detailGroup(title, bars, shadeAt) {
   return group;
 }
 
+// Nothing 风格项目统计控制台 (镜像 mac nothingProjectConsoleSection 方案 A)
+function nothingProjectConsole(projects) {
+  const consoleEl = el("div", "nothing-prj-console");
+  const head = el("div", "prj-console-head");
+  head.append(
+    el("span", "prj-console-title", "项目统计 // PRJ.CONSOLE"),
+    el("span", "prj-console-count", `${projects.length} WORKSPACES`)
+  );
+  consoleEl.append(head);
+  const colors = [
+    { tag: "#30D158", name: "#30D158", bg: "rgba(48,209,88,0.12)", border: "rgba(48,209,88,0.35)", tick: "#30D158" },
+    { tag: "#4A9E5C", name: "#FFFFFF", bg: "rgba(74,158,92,0.10)", border: "rgba(74,158,92,0.30)", tick: "#4A9E5C" },
+    { tag: "#3E7B4B", name: "#E0E0E0", bg: "rgba(62,123,75,0.08)", border: "rgba(62,123,75,0.25)", tick: "#3E7B4B" },
+    { tag: "#2F5F3A", name: "#CCCCCC", bg: "rgba(47,95,58,0.06)", border: "rgba(47,95,58,0.20)", tick: "#2F5F3A" },
+  ];
+  for (const [index, bar] of projects.entries()) {
+    const rowEl = el("div", "prj-console-row");
+    const c = colors[Math.min(index, colors.length - 1)];
+    const activeTicks = Math.max(bar.share > 0 ? 1 : 0, Math.min(6, Math.round(bar.share * 6)));
+
+    const tag = el("span", "prj-tag", `[P${index + 1}]`);
+    tag.style.color = c.tag;
+
+    const name = el("span", "prj-name", bar.name);
+    name.style.color = c.name;
+
+    const leader = el("span", "prj-leader");
+    leader.style.borderColor = c.border;
+
+    const tokens = el("span", "prj-tokens", bar.totalText);
+
+    const badge = el("span", "prj-badge", sharePercentText(bar.share));
+    badge.style.color = c.tag;
+    badge.style.background = c.bg;
+    badge.style.borderColor = c.border;
+
+    const ticks = el("span", "prj-ticks");
+    for (let t = 0; t < 6; t++) {
+      const tick = el("span", "prj-tick");
+      tick.style.background = t < activeTicks ? c.tick : "#222222";
+      ticks.append(tick);
+    }
+
+    rowEl.append(tag, name, leader, tokens, badge, ticks);
+    rowEl.setAttribute("aria-label", `${bar.name} ${sharePercentText(bar.share)} · ${bar.totalText}`);
+    consoleEl.append(rowEl);
+  }
+  return consoleEl;
+}
+
 function agentRow(row, rerender) {
   const block = el("div", "agent-row");
   const expanded = expandedAgents.has(row.agentId);
@@ -769,7 +846,13 @@ function agentRow(row, rerender) {
   if (row.isExpandable) {
     const detail = el("div", "detail");
     if (row.models.length) detail.append(detailGroup("模型占比", row.models, (index) => modelShade(row.colorHex, index)));
-    if (row.projects.length) detail.append(detailGroup("项目分布", row.projects, projectShade));
+    if (row.projects.length) {
+      if (isNothingTheme()) {
+        detail.append(nothingProjectConsole(row.projects));
+      } else {
+        detail.append(detailGroup("项目分布", row.projects, projectShade));
+      }
+    }
     if (expanded) block.append(detail);
     // mac: 仅 headRow 是按钮 (图表与明细为兄弟节点), 故点击/键盘只挂行首行。
     line1.classList.add("expandable");
