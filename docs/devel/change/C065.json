@@ -3,8 +3,8 @@
   "id": "C065",
   "title": "回调 30 分钟额度硬编码门禁：订阅刷新周期联动用户配置间隔（5/10 分钟生效）并加固锁屏状态探测",
   "type": "BugFix",
-  "status": "draft",
-  "branch": "fix/C065-refresh-interval-callback",
+  "status": "verified",
+  "branch": "main",
   "is_hotfix": false,
 
   "target": {
