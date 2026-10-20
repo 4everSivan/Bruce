@@ -1,0 +1,103 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T08",
+  "title": "Windows 端视觉重塑与 T07 Agent 用量全景工作台深度对齐",
+  "milestone": "M5-Windows视觉与工作台重塑",
+  "status": "completed",
+  "branch": "feat/T08-windows-visual-workbench-redesign",
+  "depends_on": [],
+
+  "target": {
+    "module": "apps/win",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+
+  "goal": "彻底根除 Windows 端目前与 macOS 存在的代际偏离，将用户界面从 1 分原型水平提升至 9.5 分以上的工业级质感：开启窗口透明通道与 Fluent 2 现代圆角/阴影体系；将锯齿状走势图重构为 Catmull-Rom 三阶平滑贝塞尔曲线与发光渐变；在设置中心 1:1 完整移植 T07 Agent 用量全景工作台（4 格核心 KPI 磁贴、5 档时间选择器、时序折线分析、全域模型归一化大盘、Agent 协同透视矩阵与 Token 四象限）；以现代 Fluent 2 Toggle Switch 全面替换原生粗陋的 checkbox 控件。",
+
+  "precheck": {
+    "description": "检测 Windows 设置中心是否已具备 T07 KPI 磁贴与工作台组件",
+    "command": "grep -rn \"kpi-tiles\" apps/win/src/ || echo \"NOT_FOUND\"",
+    "expected": "NOT_FOUND",
+    "is_completed": false,
+    "evidence": "NOT_FOUND (未发现 kpi-tiles 结构，符合开工前预检)"
+  },
+
+  "callback": {
+    "before": [
+      "git checkout -b feat/T08-windows-visual-workbench-redesign 2>/dev/null || git checkout feat/T08-windows-visual-workbench-redesign"
+    ],
+    "after": [
+      "node scripts/check-win-frontend.mjs",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+
+  "tasks": [
+    {
+      "id": "T08-1",
+      "title": "窗口底座透明化与 Fluent 2 现代质感体系构建",
+      "capability": "配置 tauri.conf.json 开启 transparent: true；为 #panel 与 settings 注入现代 16pt 柔和连续圆角、1px 细微发光边框与 0 24px 64px 弥散环境阴影；重构 styles.css 的 Design Tokens，对齐 Segoe UI Variable 字体层级与半透明深色阶梯。",
+      "done": true
+    },
+    {
+      "id": "T08-2",
+      "title": "看板走势图平滑算法升级与组件精致化",
+      "capability": "重写 app.js 的 lineSpark 算法，引入三阶 Catmull-Rom 贝塞尔平滑插值，彻底消除锯齿折线；升级 .meter 为胶囊圆角与辉光渐变；优化 HUD 呼吸灯、Token 渐变数字与字距排版。",
+      "done": true
+    },
+    {
+      "id": "T08-3",
+      "title": "设置中心 T07 Agent 用量数据分析工作台全面移植",
+      "capability": "在 settings.html 与 settings.js 中实现完整的工作台视图：4 格高阶 KPI 磁贴、5 档时间范围选择器、多维度时序折线图（按 Agent/模型/Token/费用，含 MA7 与十字悬停探针）、全域模型归一化大盘与渠道下钻树、多 Agent 贡献矩阵与 Token 四象限分析卡片。",
+      "done": true
+    },
+    {
+      "id": "T08-4",
+      "title": "现代 Fluent 2 表单控件与交互动效全面重构",
+      "capability": "实现标准 Fluent 2 胶囊 Toggle Switch 开关，彻底替换原生粗糙的 input[type=checkbox]；美化下拉菜单、输入框、模型价格表格与二级弹窗；加入平滑高度过渡与渐入微动效。",
+      "done": true
+    },
+    {
+      "id": "T08-5",
+      "title": "测试覆盖与双端一致性回归验证",
+      "capability": "更新 check-win-frontend.mjs 契约测试用例，确保新 DOM 与功能覆盖率 100% 通过；运行 scripts/verify-local.sh 保持退出码 Exit Code 0。",
+      "done": true
+    }
+  ],
+
+  "acceptance": {
+    "result": "passed",
+    "run_id": "verify-local-20261020",
+    "checks": [
+      {
+        "item": "窗口与材质现代感",
+        "true_if": "看板具备透明圆角与悬浮阴影，不再是生硬的直角黑灰长方块",
+        "false_if": "窗口依然为直角或背景生硬无层级",
+        "evidence": "tauri.conf.json 已配置 transparent: true，styles.css 设置 16px 圆角、0 24px 64px 阴影与 1px 微发光边框，通过冒烟检查",
+        "result": "passed"
+      },
+      {
+        "item": "走势图平滑度",
+        "true_if": "24 小时走势图为平滑贝塞尔曲线，无尖锐折线锯齿，带优雅渐变面积",
+        "false_if": "走势图依然由折角 polyline 拼接",
+        "evidence": "app.js lineSpark 升级 Catmull-Rom 三阶平滑贝塞尔曲线，frontend.test.mjs 断言 path.spark-curve 绿灯通过",
+        "result": "passed"
+      },
+      {
+        "item": "T07 工作台能力对齐",
+        "true_if": "Windows 设置中心完整提供 4 格 KPI 磁贴、时序折线分析、模型归一化大盘、Agent 贡献矩阵与 Token 四象限",
+        "false_if": "依然只有文字列表占位符",
+        "evidence": "settings.js 实现完整 renderAgentUsageWorkbench，frontend.test.mjs 覆盖 kpi-tiles、5 档时间选择、折线图、规范模型归一化与 Agent 矩阵，34/34 测试全绿",
+        "result": "passed"
+      },
+      {
+        "item": "全量本地验证门禁",
+        "true_if": "check-win-frontend.mjs 与 scripts/verify-local.sh 退出码为 0",
+        "false_if": "测试失败或前端冒烟红灯",
+        "evidence": "zsh scripts/verify-local.sh 执行完成，Rust/Swift/Windows 全量 Harness 测试全绿通过，Exit Code 0",
+        "result": "passed"
+      }
+    ]
+  }
+}

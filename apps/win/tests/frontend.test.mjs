@@ -49,6 +49,60 @@ test("settings window navigation switches categories and persists configuration"
   assert.equal(app.node("pane-subscription").classList.contains("hidden"), false);
 });
 
+test("settings pane-agentUsage renders T07 analytics workbench with 4 KPI tiles, time range picker, smooth timeline chart, canonical models and agent matrix", async () => {
+  const app = await boot({ html: "settings.html" });
+  await app.document.querySelector('[data-category="agentUsage"]').click();
+  const pane = app.node("pane-agentUsage");
+  assert.equal(pane.classList.contains("hidden"), false);
+
+  // 1. 4 大核心 KPI 磁贴
+  const kpiGrid = pane.querySelector("#kpi-tiles");
+  assert.ok(kpiGrid, "必须包含 #kpi-tiles 容器");
+  assert.equal(kpiGrid.querySelectorAll(".kpi-tile").length, 4, "必须渲染 4 个 KPI 磁贴");
+  assert.match(kpiGrid.textContent, /总 Token 消耗/);
+  assert.match(kpiGrid.textContent, /折算费用/);
+  assert.match(kpiGrid.textContent, /Cache 命中率/);
+  assert.match(kpiGrid.textContent, /活跃 Agent/);
+  assert.match(kpiGrid.textContent, /184K/);
+
+  // 2. 5 档时间选择器切换
+  const timeBtns = pane.querySelectorAll(".time-range-btn");
+  assert.equal(timeBtns.length, 5, "包含 5 档时间切片按钮");
+  const sevenDayBtn = [...timeBtns].find((b) => b.textContent === "近 7 天");
+  assert.ok(sevenDayBtn);
+  await sevenDayBtn.click();
+  assert.equal(pane.querySelector(".time-range-btn.active").textContent, "近 7 天");
+
+  // 3. 时序趋势分析卡片与平滑图表
+  const chartCard = pane.querySelector(".workbench-chart-card");
+  assert.ok(chartCard, "包含时序走势卡片");
+  assert.ok(chartCard.querySelector("svg"), "渲染 SVG 图表");
+  assert.equal(chartCard.querySelectorAll(".dim-tab-btn").length, 4, "包含 4 档维度切换");
+
+  // 4. 规范模型智能归一化大盘
+  const canCard = pane.querySelector(".canonical-card");
+  assert.ok(canCard, "包含规范模型卡片");
+  assert.match(canCard.textContent, /Kimi K2.5/);
+  assert.match(canCard.textContent, /GPT-5.4/);
+  assert.ok(canCard.querySelectorAll(".canonical-row").length >= 2);
+
+  // 5. 多 Agent 矩阵对比
+  const matrixCard = pane.querySelector(".agent-matrix-card");
+  assert.ok(matrixCard, "包含 Agent 矩阵对比卡片");
+  assert.match(matrixCard.textContent, /Kimi Code/);
+  assert.match(matrixCard.textContent, /Codex CLI/);
+
+  // 6. Token 构成分析
+  const compCard = pane.querySelector(".composition-card");
+  assert.ok(compCard, "包含 Token 构成卡片");
+  assert.equal(compCard.querySelectorAll(".composition-box").length, 4);
+
+  // 7. 会话来源与授权下沉保留
+  assert.ok(pane.textContent.includes("Rust Collector"));
+  assert.ok(pane.textContent.includes("Claude Code"));
+  assert.ok(pane.textContent.includes("未发现会话记录"));
+});
+
 test("manual refresh submits one refresh intent without another collection/read", async () => {
   const app = await boot();
   const start = app.calls.length;
@@ -223,19 +277,19 @@ test("agent rows keep distribution details collapsed until expanded, then show m
 test("hourly chart, sparklines and live badge follow mac shapes", async () => {
   const app = await boot();
   const stack = () => app.node("stack");
-  // 24 点走势为 SVG 折线 (非点柱)
+  // 24 点走势为 SVG 平滑贝塞尔曲线 (非点柱)
   assert.equal(stack().querySelectorAll(".spark .b").length, 0);
-  assert.equal(stack().querySelectorAll(".spark svg polyline").length, 2);
+  assert.equal(stack().querySelectorAll(".spark svg path.spark-curve").length, 2);
   // 14 日柱顶恒显每日总量
   const totals = [...stack().querySelectorAll(".day-total")].map((n) => n.textContent);
   assert.deepEqual(totals, ["127K", "184K"]);
   // LIVE 文案 (mac LiveIndicator)
   assert.equal(stack().querySelector(".live-text").textContent, "LIVE");
-  // 收起态迷你折线 + 峰值文案
+  // 收起态迷你曲线 + 峰值文案
   const hourlyCard = stack().querySelector('[data-card="hourly"]');
   await hourlyCard.querySelector(".card-head").click();
   const collapsed = app.node("stack").querySelector('[data-card="hourly"]');
-  assert.ok(collapsed.querySelector(".mini-spark svg polyline"), "收起态迷你折线");
+  assert.ok(collapsed.querySelector(".mini-spark svg path.spark-curve"), "收起态迷你贝塞尔曲线");
   assert.equal(collapsed.querySelector(".mini-peak").textContent, "峰值 71K");
 });
 
@@ -327,6 +381,23 @@ test("styles.css hides head metadata when collapsed and defines subscription com
   for (const rule of [".sub-extra", ".sub-name-toggle", ".account-card", ".account-head", ".last-success", ".tag-chip", ".bal-slots", ".slot-value"]) {
     assert.ok(css.includes(rule), `styles.css 缺少 ${rule}`);
   }
+});
+
+test("styles.css defines T07 workbench and Fluent 2 toggle controls", () => {
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  for (const rule of [
+    ".time-range-picker",
+    ".kpi-tiles-grid",
+    ".kpi-tile",
+    ".workbench-chart-card",
+    ".canonical-card",
+    ".agent-matrix-card",
+    ".composition-card",
+  ]) {
+    assert.ok(css.includes(rule), `styles.css 缺少工作台组件 ${rule}`);
+  }
+  assert.match(css, /appearance:\s*none;/);
+  assert.match(css, /transform:\s*translateX\(18px\)/);
 });
 
 test("saved card order, provider order and usage visibility affect dashboard", async () => {

@@ -66,10 +66,12 @@ button, input, select, textarea {
   max-height: 100%;
   display: flex;
   flex-direction: column;
-  background: rgba(30,30,32,.94);
-  border: none;
-  border-radius: 0;
-  box-shadow: none;
+  background: rgba(26, 26, 30, 0.90);
+  backdrop-filter: blur(32px) saturate(180%);
+  -webkit-backdrop-filter: blur(32px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.08);
   overflow: hidden;
   position: relative;
 }
@@ -339,11 +341,11 @@ button, input, select, textarea {
 .acct-count, .updated { font-size: 10.5px; color: var(--secondary); white-space: nowrap; }
 .win-row { display: flex; align-items: center; gap: 8px; padding: 2.5px 0; }
 .win-row .wl { width: 62px; flex: none; font-size: 10px; color: var(--secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.meter { flex: 1; height: 5px; border-radius: 3px; background: var(--meter-track); overflow: hidden; }
-.meter > div { height: 100%; border-radius: 3px; }
-.meter.normal > div { background: linear-gradient(90deg, #30d158, #66d4a3); }
-.meter.warning > div { background: linear-gradient(90deg, #ff9f0a, #ffd60a); }
-.meter.critical > div { background: linear-gradient(90deg, #ff453a, #ff6961); }
+.meter { flex: 1; height: 6px; border-radius: 999px; background: var(--meter-track); overflow: hidden; }
+.meter > div { height: 100%; border-radius: 999px; transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+.meter.normal > div { background: linear-gradient(90deg, #30d158, #34c759); box-shadow: 0 0 6px rgba(48, 209, 88, 0.35); }
+.meter.warning > div { background: linear-gradient(90deg, #ff9f0a, #ffb340); box-shadow: 0 0 6px rgba(255, 159, 10, 0.35); }
+.meter.critical > div { background: linear-gradient(90deg, #ff453a, #ff6961); box-shadow: 0 0 6px rgba(255, 69, 58, 0.35); }
 .win-row .wp { width: 46px; flex: none; text-align: right; font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .win-row .wr { width: 48px; flex: none; text-align: right; font-size: 9px; color: var(--secondary); white-space: nowrap; }
 .bal-chip {
@@ -716,11 +718,65 @@ button, input, select, textarea {
   min-width: 140px;
 }
 
-.fluent-card input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
-  accent-color: var(--accent);
+/* Fluent 2 现代药丸滑动开关 (对齐 WinUI ToggleSwitch) */
+.fluent-card input[type="checkbox"],
+.sheet input[type="checkbox"],
+input[type="checkbox"].provider-toggle,
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 38px;
+  height: 20px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  position: relative;
   cursor: pointer;
+  outline: none;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  vertical-align: middle;
+  flex: none;
+  margin: 0;
+  display: inline-block;
+}
+
+.fluent-card input[type="checkbox"]::after,
+.sheet input[type="checkbox"]::after,
+input[type="checkbox"].provider-toggle::after,
+input[type="checkbox"]::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.fluent-card input[type="checkbox"]:hover,
+.sheet input[type="checkbox"]:hover,
+input[type="checkbox"].provider-toggle:hover,
+input[type="checkbox"]:hover {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.34);
+}
+
+.fluent-card input[type="checkbox"]:checked,
+.sheet input[type="checkbox"]:checked,
+input[type="checkbox"].provider-toggle:checked,
+input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.fluent-card input[type="checkbox"]:checked::after,
+.sheet input[type="checkbox"]:checked::after,
+input[type="checkbox"].provider-toggle:checked::after,
+input[type="checkbox"]:checked::after {
+  transform: translateX(18px);
 }
 
 .hotkey-field-wrap {
@@ -1256,6 +1312,369 @@ details summary {
 .theme-nothing .mini-peak { color: var(--subdued); }
 .theme-nothing .share-bar { border-radius: 0; }
 .theme-nothing .legend-row .sw { border-radius: 0; }
+.theme-nothing input[type="checkbox"] { border-radius: 2px; }
+.theme-nothing input[type="checkbox"]::after { border-radius: 1px; }
+.theme-nothing input[type="checkbox"]:checked { background: #ffffff; border-color: #ffffff; }
+.theme-nothing input[type="checkbox"]:checked::after { background: #000000; }
+
+/* ==========================================================================
+   PART 3: T07 Agent 用量深度分析与 Token 统计工作台
+   ========================================================================== */
+
+/* 时间跨度选择器 */
+.time-range-picker {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 3px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  gap: 2px;
+  margin-bottom: 16px;
+}
+.time-range-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.time-range-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+.time-range-btn.active {
+  color: #ffffff;
+  background: var(--accent);
+  box-shadow: 0 1px 4px rgba(10, 132, 255, 0.35);
+}
+
+/* 4 格核心 KPI 磁贴 */
+.kpi-tiles-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.kpi-tile {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 13px 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.kpi-tile:hover {
+  transform: translateY(-1px);
+  border-color: var(--border-strong);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+}
+.kpi-tile::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 3px;
+  background: var(--tile-accent, var(--accent));
+  opacity: 0.9;
+}
+.kpi-label {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.kpi-value {
+  font-size: 21px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.4px;
+  margin: 1px 0;
+}
+.kpi-sub {
+  font-size: 11px;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 时序走势图卡片 */
+.workbench-chart-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 18px;
+  position: relative;
+}
+.chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.chart-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+.chart-dim-tabs {
+  display: flex;
+  gap: 3px;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 2px;
+  border-radius: 6px;
+  border: 1px solid var(--hairline);
+}
+.dim-tab-btn {
+  background: transparent;
+  border: none;
+  font-size: 11px;
+  color: var(--text-2);
+  padding: 3px 9px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.dim-tab-btn:hover {
+  color: var(--text);
+}
+.dim-tab-btn.active {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  font-weight: 500;
+}
+.chart-svg-wrap {
+  width: 100%;
+  height: 160px;
+  position: relative;
+}
+.chart-svg-wrap svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.chart-x-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10.5px;
+  color: var(--text-3);
+  margin-top: 6px;
+  padding: 0 4px;
+}
+
+/* 规范模型归一化大盘 */
+.canonical-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 18px;
+}
+.canonical-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.canonical-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+.canonical-desc {
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.canonical-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.canonical-row {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  padding: 9px 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.canonical-row:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--border-strong);
+}
+.canonical-head-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.canonical-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  min-width: 140px;
+}
+.canonical-badge {
+  font-size: 10px;
+  padding: 1.5px 6px;
+  border-radius: 4px;
+  background: rgba(10, 132, 255, 0.14);
+  color: #5ac8fa;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.canonical-bar-wrap {
+  flex: 1;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.canonical-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #0a84ff, #5ac8fa);
+}
+.canonical-tokens {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  min-width: 54px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.canonical-cost {
+  font-size: 11px;
+  color: var(--text-2);
+  min-width: 65px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.canonical-channels-tree {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-left: 10px;
+}
+.canonical-channel-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-2);
+}
+.canonical-channel-name {
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 10.5px;
+  color: var(--text-2);
+}
+
+/* 多 Agent 矩阵对比 */
+.agent-matrix-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 18px;
+}
+.agent-matrix-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.agent-matrix-table th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--text-3);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.agent-matrix-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  vertical-align: middle;
+}
+.agent-matrix-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 600;
+}
+.agent-matrix-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+.agent-sub-tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.agent-tag {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-2);
+}
+
+/* Token 构成四象限 */
+.composition-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 18px;
+}
+.composition-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-top: 10px;
+}
+.composition-box {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  padding: 9px 11px;
+}
+.composition-box-label {
+  font-size: 11px;
+  color: var(--text-2);
+}
+.composition-box-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+.composition-stacked-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 10px;
+  background: rgba(255, 255, 255, 0.08);
+}
+.composition-seg {
+  height: 100%;
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before { animation: none !important; transition: none !important; }

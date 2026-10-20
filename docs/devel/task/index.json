@@ -33,6 +33,13 @@
       "tasks": [
         "T07"
       ]
+    },
+    "M5-Windows视觉与工作台重塑": {
+      "title": "Windows 端视觉重塑与 T07 Agent 用量全景工作台深度对齐",
+      "design_doc": "docs/devel/design/05-Windows平台适配.md",
+      "tasks": [
+        "T08"
+      ]
     }
   },
   "topics": {
@@ -42,7 +49,8 @@
         "T01",
         "T02",
         "T03",
-        "T04"
+        "T04",
+        "T08"
       ]
     },
     "SubscriptionQuota": {
@@ -143,6 +151,16 @@
       "depends_on": [],
       "file": "docs/devel/task/T07.json",
       "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T07-agent-analytics-workbench"
+    },
+    "T08": {
+      "title": "Windows 端视觉重塑与 T07 Agent 用量全景工作台深度对齐",
+      "status": "completed",
+      "branch": "feat/T08-windows-visual-workbench-redesign",
+      "topic": "WindowsCompat",
+      "milestone": "M5-Windows视觉与工作台重塑",
+      "depends_on": [],
+      "file": "docs/devel/task/T08.json",
+      "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T08-windows-visual-workbench-redesign"
     }
   }
 }

@@ -113,15 +113,51 @@ function isNothingTheme() {
   return document.body.classList.contains("theme-nothing");
 }
 
-/* ---------- SVG 迷你走势 (mac: 折线 1.5pt + 渐变面积) ---------- */
+/* ---------- SVG 迷你走势 (mac: Catmull-Rom 三次贝塞尔平滑曲线 + 渐变面积) ---------- */
 let sparkSeq = 0;
 // 颜色经 currentColor 传递, 由 CSS 决定 (Nothing 主题覆写为 heroGreen);
 // 严禁内联描边色 —— 会压过主题覆写 (C029 教训)。
+function catmullRomToBezier(points, height, width) {
+  if (!points || points.length === 0) return { pathD: "", areaD: "" };
+  if (points.length === 1) {
+    const y = points[0].y;
+    return {
+      pathD: `M 0,${y.toFixed(2)} L ${width},${y.toFixed(2)}`,
+      areaD: `M 0,${y.toFixed(2)} L ${width},${y.toFixed(2)} L ${width},${height} L 0,${height} Z`,
+    };
+  }
+  let pathD = `M ${points[0].x.toFixed(2)},${points[0].y.toFixed(2)}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[Math.max(i - 1, 0)];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[Math.min(i + 2, points.length - 1)];
+
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    let cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    let cp2y = p2.y - (p3.y - p1.y) / 6;
+
+    cp1y = Math.max(0, Math.min(height, cp1y));
+    cp2y = Math.max(0, Math.min(height, cp2y));
+
+    pathD += ` C ${cp1x.toFixed(2)},${cp1y.toFixed(2)} ${cp2x.toFixed(2)},${cp2y.toFixed(2)} ${p2.x.toFixed(2)},${p2.y.toFixed(2)}`;
+  }
+  const firstX = points[0].x.toFixed(2);
+  const lastX = points[points.length - 1].x.toFixed(2);
+  const areaD = `${pathD} L ${lastX},${height} L ${firstX},${height} Z`;
+  return { pathD, areaD };
+}
+
 function lineSpark(points, height) {
   const width = 240;
   const peak = Math.max(...points, 1) * 1.1;
   const step = points.length > 1 ? width / (points.length - 1) : width;
-  const coords = points.map((value, index) => `${(index * step).toFixed(2)},${(height - (value / peak) * height).toFixed(2)}`);
+  const pts = points.map((value, index) => ({
+    x: index * step,
+    y: height - (value / peak) * height,
+  }));
+  const { pathD, areaD } = catmullRomToBezier(pts, height, width);
   const svg = svgEl("svg", {
     viewBox: `0 0 ${width} ${height}`,
     preserveAspectRatio: "none",
@@ -130,23 +166,25 @@ function lineSpark(points, height) {
   });
   const gradientId = `spark-fill-${sparkSeq += 1}`;
   const gradient = svgEl("linearGradient", { id: gradientId, x1: "0", y1: "0", x2: "0", y2: "1" });
-  gradient.append(svgEl("stop", { offset: "0", "stop-color": "currentColor", "stop-opacity": "0.18" }));
-  gradient.append(svgEl("stop", { offset: "1", "stop-color": "currentColor", "stop-opacity": "0.02" }));
+  gradient.append(svgEl("stop", { offset: "0%", "stop-color": "currentColor", "stop-opacity": "0.25" }));
+  gradient.append(svgEl("stop", { offset: "100%", "stop-color": "currentColor", "stop-opacity": "0.02" }));
   const defs = svgEl("defs", {});
   defs.append(gradient);
   svg.append(defs);
-  svg.append(svgEl("polygon", {
-    points: `${coords.join(" ")} ${width},${height} 0,${height}`,
+  svg.append(svgEl("path", {
+    d: areaD,
     fill: `url(#${gradientId})`,
+    class: "spark-area",
   }));
-  svg.append(svgEl("polyline", {
-    points: coords.join(" "),
+  svg.append(svgEl("path", {
+    d: pathD,
     fill: "none",
     stroke: "currentColor",
-    "stroke-width": "1.5",
+    "stroke-width": "1.8",
     "vector-effect": "non-scaling-stroke",
     "stroke-linejoin": "round",
     "stroke-linecap": "round",
+    class: "spark-curve",
   }));
   return svg;
 }

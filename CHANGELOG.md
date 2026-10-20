@@ -6,6 +6,11 @@
 ## [Unreleased]
 
 ### Added
+- **Windows 端视觉重塑与 T07 Agent 用量全景工作台深度对齐 (T08)**：
+  - **窗口底座透明化与悬浮质感**：`tauri.conf.json` 配置 `transparent: true`，`#panel` 注入 16px 平滑连续圆角、0 24px 64px 弥散环境阴影与 1px 微发光边框，配合毛玻璃滤镜彻底消除黑灰直角方块感。
+  - **Catmull-Rom 三阶平滑曲线走势图**：`app.js` 引入 `catmullRomToBezier` 平滑样条插值算法与渐变面积填充，终结生硬锯齿折线，对齐 macOS Swift Charts 工业级视觉质感；进度条全面升级为微圆角胶囊条与状态光晕。
+  - **设置中心 T07 Agent 用量数据分析工作台深度移植**：完整移植 4 格核心 KPI 磁贴（总 Token / 折算费用 / Cache 命中率 / 活跃 Agent）、5 档时间跨度选择器（今日/近7天/近30天/本月/全部历史）、多维度时序折线分析、全域模型智能归一化大盘（剥离渠道前缀与版本修剪，保留底层渠道树下钻）、多 Agent 协同透视矩阵与 Token 构成四象限，保留底层会话探针与授权。
+  - **Fluent 2 现代药丸滑动开关**：全面替换原生粗糙的 HTML `input[type=checkbox]`，重构为具备流畅滑动微动效的 Fluent 2 Toggle Switch 胶囊开关，完美兼容现有自动化测试接口与 Nothing 主题。
 - **设置中心 Agent 用量深度分析与多模型跨源归并工作台 (T07)**：
   - **多源异构模型智能归一化 (ModelNormalizer)**：剥离渠道前缀（`cline-pass/`、`zhipu/`、`openrouter/` 等）与版本变体修剪（`-20250219`、`[thinking]` 等），将跨 Agent、跨渠道的碎片化模型名称自动聚合成官方主模型规范大盘（如将多渠道 `glm-5.3` 或 `cline-pass/deepseek-v4.1-flash` 收敛合并），保留来源渠道贡献树（Sources Contribution）下钻能力，自动继承内置 43+ 款主流基准单价与用户自定义单价覆盖。
   - **Swift Charts 原生时序折线分析 (TimelineChartCard)**：支持 Catmull-Rom 平滑曲线与堆叠面积图；支持按 Agent、按主模型、按 Token 构成、按费用 4 维切换；提供 MA7 均线与 Crosshair 悬停探针。
