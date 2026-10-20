@@ -155,7 +155,7 @@
     "T08": {
       "title": "Windows 端视觉重塑与 T07 Agent 用量全景工作台深度对齐",
       "status": "completed",
-      "branch": "feat/T08-windows-visual-workbench-redesign",
+      "branch": "main",
       "topic": "WindowsCompat",
       "milestone": "M5-Windows视觉与工作台重塑",
       "depends_on": [],
