@@ -4,7 +4,7 @@
   "title": "对齐 Claude Code (cc) 刷新机制：支持 OAuth 凭据自动续期、401 动态重试换取与轮换凭证持久化写回",
   "type": "BugFix",
   "status": "verified",
-  "branch": "feat/T07-agent-analytics-workbench",
+  "branch": "main",
   "is_hotfix": false,
   "target": {
     "module": "core/collector + apps/macos",

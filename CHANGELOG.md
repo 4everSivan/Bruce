@@ -6,6 +6,10 @@
 ## [Unreleased]
 
 ### Added
+- **设置中心 Agent 用量深度分析与多模型跨源归并工作台 (T07)**：
+  - **多源异构模型智能归一化 (ModelNormalizer)**：剥离渠道前缀（`cline-pass/`、`zhipu/`、`openrouter/` 等）与版本变体修剪（`-20250219`、`[thinking]` 等），将跨 Agent、跨渠道的碎片化模型名称自动聚合成官方主模型规范大盘（如将多渠道 `glm-5.3` 或 `cline-pass/deepseek-v4.1-flash` 收敛合并），保留来源渠道贡献树（Sources Contribution）下钻能力，自动继承内置 43+ 款主流基准单价与用户自定义单价覆盖。
+  - **Swift Charts 原生时序折线分析 (TimelineChartCard)**：支持 Catmull-Rom 平滑曲线与堆叠面积图；支持按 Agent、按主模型、按 Token 构成、按费用 4 维切换；提供 MA7 均线与 Crosshair 悬停探针。
+  - **全景数据分析组件矩阵**：实现 `CanonicalModelAnalyticsCard`（模型份额与渠道下钻）、`AgentComparisonMatrixCard`（多 Agent 贡献矩阵与 Top 3 代码仓分布）与 `TokenCompositionCard`（输入/输出/缓存四象限与 Prompt Caching 节省金额分析）。
 - **电脑锁屏后禁止订阅刷新 (C064)**：在设置中心新增「锁屏暂停订阅刷新」开关（持久化至 `OnboardingConfiguration.pauseSubscriptionRefreshOnScreenLock`，默认开启）。当开关开启且系统处于锁屏状态时，定时刷新自动降级为纯本地扫描（`localUsageOnly`，`includeExternalQuotas=false`），杜绝人离开电脑时的无意义云端订阅配额消耗与 429 限流风险；当屏幕解锁后，若订阅额度已陈旧或已到期，立即补偿触发一次全量刷新，实现无缝衔接。
 
 ### Fixed

@@ -4,7 +4,7 @@
   "title": "电脑锁屏后禁止订阅刷新：新增 ScreenLock 状态监视闸门与设置中心开关按钮",
   "type": "Enhancement",
   "status": "verified",
-  "branch": "feat/T07-agent-analytics-workbench",
+  "branch": "main",
   "is_hotfix": false,
   "target": {
     "module": "apps/macos",

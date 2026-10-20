@@ -3,8 +3,8 @@
   "id": "T07",
   "title": "设置中心 Agent 用量深度分析、Token 统计与多模型跨源归并工作台",
   "milestone": "M4-用量分析与Token统计工作台",
-  "status": "in_progress",
-  "branch": "feat/T07-agent-analytics-workbench",
+  "status": "completed",
+  "branch": "main",
   "depends_on": [],
 
   "target": {
