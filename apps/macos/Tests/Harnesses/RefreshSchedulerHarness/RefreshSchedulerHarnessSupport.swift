@@ -288,6 +288,7 @@ func makeScheduler(
     clock: ManualClock,
     timers: FakeTimerScheduler,
     reachability: (any NetworkReachabilityProviding)? = nil,
+    screenLock: (any ScreenLockStateProviding)? = nil,
     refreshInterval: TimeInterval = 1800,
     quotaRefreshInterval: TimeInterval = 0,
     wakeDedupSeconds: TimeInterval = 0
@@ -316,7 +317,8 @@ func makeScheduler(
         configuration: config,
         jitterProvider: { _ in 0 },
         registerWakeNotifications: false,
-        networkReachability: reachability
+        networkReachability: reachability,
+        screenLockState: screenLock
     )
     return (scheduler, store, root)
 }
@@ -345,6 +347,33 @@ final class StubNetworkReachability: NetworkReachabilityProviding {
         guard available != isNetworkAvailable else { return }
         isNetworkAvailable = available
         onReachabilityChange?(available)
+    }
+}
+
+/// 确定性屏幕锁定状态桩 (C064): 测试驱动 `setLocked` 触发与生产相同的主线程回调.
+@MainActor
+final class StubScreenLockState: ScreenLockStateProviding {
+    private(set) var isScreenLocked: Bool
+    var onScreenLockStateChange: ((Bool) -> Void)?
+    private(set) var startCount = 0
+    private(set) var stopCount = 0
+
+    init(isLocked: Bool) {
+        self.isScreenLocked = isLocked
+    }
+
+    func start() {
+        startCount += 1
+    }
+
+    func stop() {
+        stopCount += 1
+    }
+
+    func setLocked(_ locked: Bool) {
+        guard locked != isScreenLocked else { return }
+        isScreenLocked = locked
+        onScreenLockStateChange?(locked)
     }
 }
 

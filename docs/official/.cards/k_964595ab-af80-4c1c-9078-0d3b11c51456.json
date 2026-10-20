@@ -13,11 +13,11 @@
   "status": "current",
   "articles": [
     {
-      "path": "glossary.md",
+      "path": "术语表.md",
       "anchor": "refresh-scheduler"
     },
     {
-      "path": "refresh-lifecycle.md"
+      "path": "刷新生命周期设计.md"
     }
   ],
   "sources": [

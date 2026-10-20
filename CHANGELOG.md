@@ -5,6 +5,24 @@
 
 ## [Unreleased]
 
+### Added
+- **设置中心 Agent 用量深度分析与多模型跨源归并工作台 (T07)**：
+  - **多源异构模型智能归一化 (ModelNormalizer)**：剥离渠道前缀（`cline-pass/`、`zhipu/`、`openrouter/` 等）与版本变体修剪（`-20250219`、`[thinking]` 等），将跨 Agent、跨渠道的碎片化模型名称自动聚合成官方主模型规范大盘（如将多渠道 `glm-5.3` 或 `cline-pass/deepseek-v4.1-flash` 收敛合并），保留来源渠道贡献树（Sources Contribution）下钻能力，自动继承内置 43+ 款主流基准单价与用户自定义单价覆盖。
+  - **Swift Charts 原生时序折线分析 (TimelineChartCard)**：支持 Catmull-Rom 平滑曲线与堆叠面积图；支持按 Agent、按主模型、按 Token 构成、按费用 4 维切换；提供 MA7 均线与 Crosshair 悬停探针。
+  - **全景数据分析组件矩阵**：实现 `CanonicalModelAnalyticsCard`（模型份额与渠道下钻）、`AgentComparisonMatrixCard`（多 Agent 贡献矩阵与 Top 3 代码仓分布）与 `TokenCompositionCard`（输入/输出/缓存四象限与 Prompt Caching 节省金额分析）。
+- **电脑锁屏后禁止订阅刷新 (C064)**：在设置中心新增「锁屏暂停订阅刷新」开关（持久化至 `OnboardingConfiguration.pauseSubscriptionRefreshOnScreenLock`，默认开启）。当开关开启且系统处于锁屏状态时，定时刷新自动降级为纯本地扫描（`localUsageOnly`，`includeExternalQuotas=false`），杜绝人离开电脑时的无意义云端订阅配额消耗与 429 限流风险；当屏幕解锁后，若订阅额度已陈旧或已到期，立即补偿触发一次全量刷新，实现无缝衔接。
+
+### Fixed
+- **回调 30 分钟额度硬编码门禁 (C065)**：解决设置中心配置的 5 分钟或 10 分钟刷新间隔未能正常刷新订阅额度的问题。
+  - **额度周期与用户设置联动**：`RefreshScheduler` 的 `quotaRefreshInterval` 与用户在设置中心配置的 `refreshInterval` 实时双向联动绑定，当用户选择 5 分钟或 10 分钟时，订阅额度随定时器按 5/10 分钟周期真实查询刷新，不再被一刀切降级为 `localOnly`。
+  - **锁屏状态探测加固**：`SystemScreenLockMonitor.isScreenLocked` 引入动态双重判定（通知缓存 `locked` 与 `CGSessionCopyCurrentDictionary` 底层标志位或运算），确保锁屏状态 100% 精确感知，锁屏期间可靠抑制外部额度查询，解锁后无缝补偿全量刷新。
+  - **设置界面文案修正**：移除说明中“订阅云端额度自动查询最长 30 分钟一次”的限制性表述，对齐真实联动行为。
+- **对齐 Claude Code (cc) 刷新机制 (C063)**：解决 Claude 凭证在 8 小时 token 过期后必然报错 `PROVIDER_AUTH_REJECTED` 导致订阅额度刷新失效的问题。
+  - **Collector 主动续期与 401 容错**：在 `expires_at_epoch_ms` 剩余时间 $\le 60\text{s}$ 或遇到 401 时，主动调用官方 OAuth 刷新端点 `POST https://api.anthropic.com/v1/oauth/token`（对齐 cc 2.1.302 的 `client_id` 与请求头）；换取成功后向返回载荷附加 `credential_update` 指令。
+  - **凭据白名单与嵌套持久化**：`collector-credential` 增加 `claude` 的 `access_token` / `refresh_token` / `expiry` 校验；Swift 侧 `CredentialRotationMerge` 支持更新 `claudeAiOauth` 与 `claude.ai_oauth` 内部嵌套字段，`CredentialUpdateCoordinator` 对 `claude-cli` 自动写回 `ProviderAccountStore` 隔离存储，实现无感自动续期与持久化。
+  - **外部 CLI 读取静默防护与弹窗根除**：探测 Claude CLI 登录态时改用 `/usr/bin/security find-generic-password -s "Claude Code-credentials" -w` 独立子进程静默读取，彻底根除进程内触碰外部应用 Keychain 项触发的 macOS SecurityAgent 密码弹窗。
+  - **隔离与防护**：自动化测试全程使用 `FixtureHttp` 内存 Mock 与沙箱临时目录，严禁真实外网连接；遵循 POSIX `0600` 权限安全存储。
+
 ## [0.12.1] - 2026-10-19
 
 ### Changed

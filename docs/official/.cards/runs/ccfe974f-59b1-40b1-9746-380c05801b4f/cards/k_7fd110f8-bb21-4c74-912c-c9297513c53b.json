@@ -1,0 +1,41 @@
+{
+  "schema_version": "1.0",
+  "id": "k_7fd110f8-bb21-4c74-912c-c9297513c53b",
+  "term": "AgentUsageArtifact",
+  "category": "project_term",
+  "context": "Bruce 采集引擎",
+  "definition": "Collector 输出的用量与订阅数据对象。",
+  "project_usage": "位于 BridgeResponse.artifact，携带 agents、services 与 totalCostUsd；凭据更新和挑战属于响应封套，不是该展示对象。",
+  "basis": {
+    "definition": "code_supported",
+    "project_usage": "code_supported"
+  },
+  "status": "current",
+  "articles": [
+    {
+      "path": "glossary.md",
+      "anchor": "artifact"
+    },
+    {
+      "path": "collector-design.md"
+    },
+    {
+      "path": "system-design.md"
+    }
+  ],
+  "sources": [
+    {
+      "kind": "code",
+      "path": "core/collector/crates/collector-domain/src/lib.rs",
+      "symbol": "AgentUsageArtifact; BridgeResponse",
+      "supports": [
+        "definition",
+        "project_usage"
+      ]
+    }
+  ],
+  "tags": [
+    "Bruce",
+    "AgentUsageArtifact"
+  ]
+}

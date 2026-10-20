@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" id="d_93c87502-3b6a-4a18-9342-15e5ea7679e6" viewBox="0 0 1000 1064" role="img" aria-labelledby="d_93c87502-3b6a-4a18-9342-15e5ea7679e6-title d_93c87502-3b6a-4a18-9342-15e5ea7679e6-desc">
+<title id="d_93c87502-3b6a-4a18-9342-15e5ea7679e6-title">锁屏额度抑制与解锁补偿</title>
+<desc id="d_93c87502-3b6a-4a18-9342-15e5ea7679e6-desc">执行门禁与解锁事件是两条不同入口</desc>
+<defs><style>#d_93c87502-3b6a-4a18-9342-15e5ea7679e6{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif} text{fill:#243247;font-size:16px} .node{fill:#fff;stroke:#768397;stroke-width:1.5} .connector{fill:none;stroke:#516176;stroke-width:1.5}</style><marker id="d_93c87502-3b6a-4a18-9342-15e5ea7679e6-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#516176"/></marker></defs>
+<rect width="1000" height="1064" fill="#fff"/>
+<text x="24" y="30" style="font-size:20px;font-weight:600">锁屏额度抑制与解锁补偿</text>
+<g id="d_93c87502-3b6a-4a18-9342-15e5ea7679e6-r1" data-relation-id="r1"><polyline class="connector" points="500,142 500,194" marker-end="url(#d_93c87502-3b6a-4a18-9342-15e5ea7679e6-arrow)"/>
+<rect x="559" y="155.5" width="92" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="605" y="172.5">执行时采样</tspan>
+</text>
+</g>
+<g id="d_93c87502-3b6a-4a18-9342-15e5ea7679e6-r2" data-relation-id="r2"><polyline class="connector" points="320,260 250,260 250,408" marker-end="url(#d_93c87502-3b6a-4a18-9342-15e5ea7679e6-arrow)"/>
+<rect x="236" y="327.5" width="28" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="250" y="344.5">是</tspan>
+</text>
+</g>
+<g id="d_93c87502-3b6a-4a18-9342-15e5ea7679e6-r3" data-relation-id="r3"><polyline class="connector" points="680,260 750,260 750,408" marker-end="url(#d_93c87502-3b6a-4a18-9342-15e5ea7679e6-arrow)"/>
+<rect x="736" y="327.5" width="28" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="750" y="344.5">否</tspan>
+</text>
+</g>
+<g id="d_93c87502-3b6a-4a18-9342-15e5ea7679e6-r4" data-relation-id="r4"><polyline class="connector" points="500,642 500,694" marker-end="url(#d_93c87502-3b6a-4a18-9342-15e5ea7679e6-arrow)"/>
+<rect x="503" y="655.5" width="204" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="605" y="672.5">检查模块、相位和上次尝试</tspan>
+</text>
+</g>
+<g id="d_93c87502-3b6a-4a18-9342-15e5ea7679e6-r5" data-relation-id="r5"><polyline class="connector" points="320,760 250,760 250,918" marker-end="url(#d_93c87502-3b6a-4a18-9342-15e5ea7679e6-arrow)"/>
+<rect x="236" y="827.5" width="28" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="250" y="844.5">是</tspan>
+</text>
+</g>
+<g id="d_93c87502-3b6a-4a18-9342-15e5ea7679e6-r6" data-relation-id="r6"><polyline class="connector" points="680,760 750,760 750,918" marker-end="url(#d_93c87502-3b6a-4a18-9342-15e5ea7679e6-arrow)"/>
+<rect x="736" y="827.5" width="28" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="750" y="844.5">否</tspan>
+</text>
+</g>
+<g id="d_93c87502-3b6a-4a18-9342-15e5ea7679e6-start" data-node-id="start">
+<rect class="node" x="300" y="58" width="400" height="84" rx="22"/>
+<text text-anchor="middle">
+<tspan x="500" y="105.5">新轮次进入执行</tspan>
+</text></g>
+<g id="d_93c87502-3b6a-4a18-9342-15e5ea7679e6-gate" data-node-id="gate">
+<polygon class="node" points="500,194 680,260 500,326 320,260"/>
+<text text-anchor="middle">
+<tspan x="500" y="265.5">锁屏且开关开启且非手动？</tspan>
+</text></g>
+<g id="d_93c87502-3b6a-4a18-9342-15e5ea7679e6-local" data-node-id="local">
+<rect class="node" x="50" y="408" width="400" height="84" rx="22"/>
+<text text-anchor="middle">
+<tspan x="250" y="455.5">localOnly：本地采集与旧额度</tspan>
+</text></g>
+<g id="d_93c87502-3b6a-4a18-9342-15e5ea7679e6-normal" data-node-id="normal">
+<rect class="node" x="550" y="408" width="400" height="84" rx="22"/>
+<text text-anchor="middle">
+<tspan x="750" y="444">常规额度策略</tspan>
+<tspan x="750" y="467">手动可绕过新鲜度和冷却</tspan>
+</text></g>
+<g id="d_93c87502-3b6a-4a18-9342-15e5ea7679e6-unlock" data-node-id="unlock">
+<rect class="node" x="300" y="558" width="400" height="84" rx="22"/>
+<text text-anchor="middle">
+<tspan x="500" y="605.5">监视器报告解锁</tspan>
+</text></g>
+<g id="d_93c87502-3b6a-4a18-9342-15e5ea7679e6-eligible" data-node-id="eligible">
+<polygon class="node" points="500,694 680,760 500,826 320,760"/>
+<text text-anchor="middle">
+<tspan x="500" y="765.5">开关启用、自动可用且过去重？</tspan>
+</text></g>
+<g id="d_93c87502-3b6a-4a18-9342-15e5ea7679e6-wake" data-node-id="wake">
+<rect class="node" x="50" y="918" width="400" height="84" rx="22"/>
+<text text-anchor="middle">
+<tspan x="250" y="954">wake(forceQuotaRefresh: true)</tspan>
+<tspan x="250" y="977">仍经过网络与冷却规则</tspan>
+</text></g>
+<g id="d_93c87502-3b6a-4a18-9342-15e5ea7679e6-skip" data-node-id="skip">
+<rect class="node" x="550" y="918" width="400" height="84" rx="22"/>
+<text text-anchor="middle">
+<tspan x="750" y="965.5">本次不补偿</tspan>
+</text></g>
+</svg>

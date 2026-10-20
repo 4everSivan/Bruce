@@ -157,6 +157,8 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
     }
     /// 是否允许 Bruce 投递系统通知. 这是应用层开关, 不会修改 macOS 的系统授权状态.
     public var systemNotificationsEnabled: Bool
+    /// 电脑锁屏后是否禁止订阅额度刷新 (C064). 默认开启保护以节省云端 API 配额.
+    public var pauseSubscriptionRefreshOnScreenLock: Bool
 
     /// 默认自动刷新间隔 (分钟).
     public static let defaultRefreshIntervalMinutes = 30
@@ -217,7 +219,8 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         dashboardHotkey: GlobalHotkey? = nil,
         keychainAccessConfigured: Bool = false,
         keychainAccess: KeychainAccessConfiguration? = nil,
-        systemNotificationsEnabled: Bool = true
+        systemNotificationsEnabled: Bool = true,
+        pauseSubscriptionRefreshOnScreenLock: Bool = true
     ) {
         self.schemaVersion = schemaVersion
         self.selectedModules = selectedModules
@@ -236,6 +239,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
             bruceStoreConfigured: keychainAccessConfigured
         )
         self.systemNotificationsEnabled = systemNotificationsEnabled
+        self.pauseSubscriptionRefreshOnScreenLock = pauseSubscriptionRefreshOnScreenLock
     }
 
     /// 自定义解码: 旧版本配置缺失的键一律回落缺省, 不因新增字段拒绝加载.
@@ -298,6 +302,10 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         systemNotificationsEnabled = try container.decodeIfPresent(
             Bool.self, forKey: .systemNotificationsEnabled
         ) ?? true
+        // 电脑锁屏暂停订阅刷新: 旧配置缺该键时默认开启保护.
+        pauseSubscriptionRefreshOnScreenLock = try container.decodeIfPresent(
+            Bool.self, forKey: .pauseSubscriptionRefreshOnScreenLock
+        ) ?? true
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -317,6 +325,7 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         case keychainAccess
         case keychainAccessConfigured
         case systemNotificationsEnabled
+        case pauseSubscriptionRefreshOnScreenLock
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -340,6 +349,10 @@ public struct OnboardingConfiguration: Codable, Equatable, Sendable {
         try container.encodeIfPresent(dashboardHotkey, forKey: .dashboardHotkey)
         try container.encode(keychainAccess, forKey: .keychainAccess)
         try container.encode(systemNotificationsEnabled, forKey: .systemNotificationsEnabled)
+        try container.encode(
+            pauseSubscriptionRefreshOnScreenLock,
+            forKey: .pauseSubscriptionRefreshOnScreenLock
+        )
     }
 }
 

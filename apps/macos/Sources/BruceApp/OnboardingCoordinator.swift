@@ -33,6 +33,8 @@ final class OnboardingCoordinator: ObservableObject {
     @Published private(set) var externalKeychainSources: Set<KeychainExternalSource>
     /// Bruce 是否允许投递系统通知; 仅控制应用行为, 不撤销 macOS 系统授权.
     @Published private(set) var systemNotificationsEnabled: Bool
+    /// 电脑锁屏后是否禁止订阅刷新 (C064), 与配置持久化同步.
+    @Published private(set) var pauseSubscriptionRefreshOnScreenLock: Bool
     /// 模型单价人工校准覆盖 (模型名 -> 校准单价).
     @Published private(set) var pricingOverrides: [String: ModelPricingOverride]
     /// 可注入的能力探测 (测试); 默认读系统.
@@ -150,6 +152,9 @@ final class OnboardingCoordinator: ObservableObject {
         self.keychainAccessState = resolvedKeychainAccessController.policy.state
         self.externalKeychainSources = config?.keychainAccess.externalSources ?? []
         self.systemNotificationsEnabled = config?.systemNotificationsEnabled ?? true
+        let resolvedPauseOnLock = config?.pauseSubscriptionRefreshOnScreenLock ?? true
+        self.pauseSubscriptionRefreshOnScreenLock = resolvedPauseOnLock
+        scheduler.setPauseSubscriptionRefreshOnScreenLock(resolvedPauseOnLock)
         self.pricingOverrides = config?.pricingOverrides ?? [:]
 
         // SubscriptionService 在 self 部分初始化后创建; objectWillChange 经回调转发.
@@ -430,6 +435,25 @@ final class OnboardingCoordinator: ObservableObject {
         }
         refreshIntervalMinutes = normalized
         scheduler.updateRefreshInterval(TimeInterval(normalized * 60))
+        model.setSettingsError(nil)
+    }
+
+    /// 更新锁屏暂停订阅刷新偏好 (C064).
+    func setPauseSubscriptionRefreshOnScreenLock(_ enabled: Bool) {
+        guard let configStore else {
+            model.setSettingsError("配置存储不可用, 无法保存锁屏刷新偏好")
+            return
+        }
+        var config = configStore.load() ?? OnboardingConfiguration()
+        config.pauseSubscriptionRefreshOnScreenLock = enabled
+        do {
+            try configStore.save(config)
+        } catch {
+            model.setSettingsError("锁屏刷新偏好保存失败")
+            return
+        }
+        pauseSubscriptionRefreshOnScreenLock = enabled
+        scheduler.setPauseSubscriptionRefreshOnScreenLock(enabled)
         model.setSettingsError(nil)
     }
 

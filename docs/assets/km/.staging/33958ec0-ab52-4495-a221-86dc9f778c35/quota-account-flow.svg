@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" id="d_382e629e-29bd-42b3-acc8-7c33c123b340" viewBox="0 0 1000 904" role="img" aria-labelledby="d_382e629e-29bd-42b3-acc8-7c33c123b340-title d_382e629e-29bd-42b3-acc8-7c33c123b340-desc">
+<title id="d_382e629e-29bd-42b3-acc8-7c33c123b340-title">多账号额度执行数据流</title>
+<desc id="d_382e629e-29bd-42b3-acc8-7c33c123b340-desc">有界并发、同账号合并和结果顺序</desc>
+<defs><style>#d_382e629e-29bd-42b3-acc8-7c33c123b340{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif} text{fill:#243247;font-size:16px} .node{fill:#fff;stroke:#768397;stroke-width:1.5} .connector{fill:none;stroke:#516176;stroke-width:1.5}</style><marker id="d_382e629e-29bd-42b3-acc8-7c33c123b340-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#516176"/></marker></defs>
+<rect width="1000" height="904" fill="#fff"/>
+<text x="24" y="30" style="font-size:20px;font-weight:600">多账号额度执行数据流</text>
+<g id="d_382e629e-29bd-42b3-acc8-7c33c123b340-r1" data-relation-id="r1"><polyline class="connector" points="500,142 500,198" marker-end="url(#d_382e629e-29bd-42b3-acc8-7c33c123b340-arrow)"/>
+<rect x="550.6" y="157.5" width="108.8" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="605" y="174.5">AccountPlan</tspan>
+</text>
+</g>
+<g id="d_382e629e-29bd-42b3-acc8-7c33c123b340-r2" data-relation-id="r2"><polyline class="connector" points="500,282 500,338" marker-end="url(#d_382e629e-29bd-42b3-acc8-7c33c123b340-arrow)"/>
+<rect x="567" y="297.5" width="76" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="605" y="314.5">账号任务</tspan>
+</text>
+</g>
+<g id="d_382e629e-29bd-42b3-acc8-7c33c123b340-r3" data-relation-id="r3"><polyline class="connector" points="500,422 500,478" marker-end="url(#d_382e629e-29bd-42b3-acc8-7c33c123b340-arrow)"/>
+<rect x="543" y="437.5" width="124" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="605" y="454.5">未缓存账号请求</tspan>
+</text>
+</g>
+<g id="d_382e629e-29bd-42b3-acc8-7c33c123b340-r4" data-relation-id="r4"><polyline class="connector" points="500,562 500,618" marker-end="url(#d_382e629e-29bd-42b3-acc8-7c33c123b340-arrow)"/>
+<rect x="519" y="577.5" width="172" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="605" y="594.5">成功、空态或服务错误</tspan>
+</text>
+</g>
+<g id="d_382e629e-29bd-42b3-acc8-7c33c123b340-r5" data-relation-id="r5"><polyline class="connector" points="500,702 500,758" marker-end="url(#d_382e629e-29bd-42b3-acc8-7c33c123b340-arrow)"/>
+<rect x="543" y="717.5" width="124" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="605" y="734.5">按计划顺序汇总</tspan>
+</text>
+</g>
+<g id="d_382e629e-29bd-42b3-acc8-7c33c123b340-r6" data-relation-id="r6"><polyline class="connector" points="800,380 910,380 910,660 800,660" marker-end="url(#d_382e629e-29bd-42b3-acc8-7c33c123b340-arrow)"/>
+<rect x="830" y="492.5" width="140" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="900" y="509.5">重叠账号共享结果</tspan>
+</text>
+</g>
+<g id="d_382e629e-29bd-42b3-acc8-7c33c123b340-plan" data-node-id="plan">
+<rect class="node" x="200" y="58" width="600" height="84" rx="5"/>
+<text text-anchor="middle">
+<tspan x="500" y="105.5">账号计划与稳定顺序</tspan>
+</text></g>
+<g id="d_382e629e-29bd-42b3-acc8-7c33c123b340-workers" data-node-id="workers">
+<rect class="node" x="200" y="198" width="600" height="84" rx="5"/>
+<text text-anchor="middle">
+<tspan x="500" y="245.5">最多 4 个账号工作线程</tspan>
+</text></g>
+<g id="d_382e629e-29bd-42b3-acc8-7c33c123b340-singleflight" data-node-id="singleflight">
+<rect class="node" x="200" y="338" width="600" height="84" rx="5"/>
+<text text-anchor="middle">
+<tspan x="500" y="385.5">同账号重叠请求合并</tspan>
+</text></g>
+<g id="d_382e629e-29bd-42b3-acc8-7c33c123b340-provider" data-node-id="provider">
+<rect class="node" x="200" y="478" width="600" height="84" rx="5"/>
+<text text-anchor="middle">
+<tspan x="500" y="525.5">注入凭据与网络许可后查询</tspan>
+</text></g>
+<g id="d_382e629e-29bd-42b3-acc8-7c33c123b340-slots" data-node-id="slots">
+<rect class="node" x="200" y="618" width="600" height="84" rx="5"/>
+<text text-anchor="middle">
+<tspan x="500" y="665.5">按计划索引保存结果槽位</tspan>
+</text></g>
+<g id="d_382e629e-29bd-42b3-acc8-7c33c123b340-output" data-node-id="output">
+<rect class="node" x="200" y="758" width="600" height="84" rx="5"/>
+<text text-anchor="middle">
+<tspan x="500" y="805.5">有序服务与诊断</tspan>
+</text></g>
+</svg>

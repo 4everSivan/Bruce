@@ -1,0 +1,270 @@
+{
+  "schema_version": "2.0",
+  "run_id": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
+  "started_at": "2026-10-19T02:27:44.331828+00:00",
+  "coverage_status": "complete",
+  "validation_status": "passed",
+  "published": true,
+  "reviewed_paths": [
+    "CHANGELOG.md",
+    "README.md",
+    "VERSION",
+    "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+    "apps/macos/Sources/BruceApp/BruceApp.swift",
+    "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+    "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+    "apps/macos/Sources/BruceApp/Settings/ModelPricingSettingsView.swift",
+    "apps/macos/Sources/BruceApp/SettingsView.swift",
+    "apps/macos/Sources/BruceApp/Views/HourlyLineCard.swift",
+    "apps/macos/Sources/BruceApp/Views/UsageHeroCard.swift",
+    "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+    "apps/macos/Sources/BruceAppCore/DashboardPanelAnimationPolicy.swift",
+    "apps/macos/Sources/BruceAppCore/DashboardPanelPlacement.swift",
+    "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift",
+    "apps/macos/Sources/BruceAppCore/MenuBarMetrics.swift",
+    "apps/macos/Sources/BruceAppCore/MenuBarStatusItemContent.swift",
+    "apps/macos/Sources/BruceAppCore/NetworkReachability.swift",
+    "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+    "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+    "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+    "apps/macos/Sources/BruceAppCore/RefreshTypes.swift",
+    "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+    "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+    "apps/macos/Tests/Harnesses/RefreshSchedulerHarness/RefreshSchedulerCoreTests.swift",
+    "apps/macos/Tests/Harnesses/RefreshSchedulerHarness/RefreshSchedulerHarness.swift",
+    "apps/macos/Tests/Harnesses/RefreshSchedulerHarness/RefreshSchedulerHarnessSupport.swift",
+    "apps/macos/Tests/Harnesses/SubscriptionCredentialsHarness/SubscriptionCredentialsHarness.swift",
+    "apps/win/src-tauri/tauri.conf.json",
+    "apps/win/src/settings.js",
+    "core/collector/crates/collector-application/src/account.rs",
+    "core/collector/crates/collector-application/src/lib.rs",
+    "core/collector/crates/collector-bridge/src/lib.rs",
+    "core/collector/crates/collector-domain/src/pricing.rs",
+    "docs/devel/change/C061.json",
+    "docs/devel/change/C062.json",
+    "docs/devel/change/index.json",
+    "docs/devel/design/00-系统总体设计.md",
+    "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "docs/devel/design/04-设置中心与价格校准交互.md",
+    "docs/devel/design/05-Windows平台适配.md",
+    "docs/devel/todo/now.md"
+  ],
+  "excluded": [
+    {
+      "path": ".git/",
+      "reason": "VCS internals"
+    },
+    {
+      "path": "docs/official/",
+      "reason": "generated knowledge and retained generation material"
+    },
+    {
+      "path": "docs/assets/km/",
+      "reason": "generated figures"
+    },
+    {
+      "path": "local/ and dist/",
+      "reason": "runtime and build products"
+    },
+    {
+      "path": "**/target/ and **/.build/",
+      "reason": "compiler output"
+    },
+    {
+      "path": "node_modules/ and dependency caches",
+      "reason": "third-party dependencies"
+    },
+    {
+      "path": "_adflow_backup/",
+      "reason": "protected backup assets"
+    },
+    {
+      "path": ".env* and credential/key/private database files",
+      "reason": "obvious secret-bearing input"
+    },
+    {
+      "path": ".agents/ and .codex/ and tool configuration",
+      "reason": "agent instructions/resources kept separate from project factual evidence"
+    },
+    {
+      "path": "outside-root symlinks",
+      "reason": "out of project scope"
+    }
+  ],
+  "pending": [],
+  "conflicts": [],
+  "candidate_paths": [
+    ".cards/runs/722e8074-a29b-4f6e-9307-0eb5d003e6ce/document-plan.json",
+    ".cards/runs/722e8074-a29b-4f6e-9307-0eb5d003e6ce/diagram-plan.json",
+    ".staging/722e8074-a29b-4f6e-9307-0eb5d003e6ce/checked/",
+    ".cards/runs/722e8074-a29b-4f6e-9307-0eb5d003e6ce/checked-cards/",
+    ".cards/runs/722e8074-a29b-4f6e-9307-0eb5d003e6ce/checked-diagrams/",
+    "docs/assets/km/.staging/722e8074-a29b-4f6e-9307-0eb5d003e6ce/"
+  ],
+  "written_paths": [
+    "docs/assets/km/collector-flow.svg",
+    "docs/assets/km/dashboard-toggle-state.svg",
+    "docs/assets/km/macos-scheduler-state.svg",
+    "docs/assets/km/offline-refresh-gate.svg",
+    "docs/assets/km/refresh-sequence.svg",
+    "docs/assets/km/system-architecture.svg",
+    "docs/assets/km/windows-snapshot-state.svg",
+    "docs/official/.cards/diagrams/d_04caaf2e-14be-4711-904e-1faa0b4a797b.json",
+    "docs/official/.cards/diagrams/d_084f9330-301b-4613-bcd3-1cf561127e93.json",
+    "docs/official/.cards/diagrams/d_1ae57d61-4db4-468c-b17b-5258dd915895.json",
+    "docs/official/.cards/diagrams/d_76549499-2760-425c-8c1f-f23edea8f412.json",
+    "docs/official/.cards/diagrams/d_856cccba-17f1-402f-b8d2-d03c0c7de2e6.json",
+    "docs/official/.cards/diagrams/d_a20b6df3-7589-475f-8573-b4269438f480.json",
+    "docs/official/.cards/diagrams/d_a41b7373-2867-4803-820c-c1bba0c5fe64.json",
+    "docs/official/.cards/k_2cbdfd96-ee67-4e9c-8d9c-609c0b4830be.json",
+    "docs/official/.cards/k_2d2834af-6729-4556-aea8-bf46fefc2e9f.json",
+    "docs/official/.cards/k_4946a527-e50e-4c5e-88c3-020ab7bd06f7.json",
+    "docs/official/.cards/k_4df7935b-560a-4dae-bd4b-a15bb1598015.json",
+    "docs/official/.cards/k_5ffd7ed6-34f6-46fb-b4db-e061bdb4a36d.json",
+    "docs/official/.cards/k_6a0c0f49-1e7b-4a84-af5c-ccb295ec829f.json",
+    "docs/official/.cards/k_7fd110f8-bb21-4c74-912c-c9297513c53b.json",
+    "docs/official/.cards/k_85c33776-d921-4e7a-b1f9-0a90455f8135.json",
+    "docs/official/.cards/k_939717db-c182-4a5d-bb9b-b8416cccd9f6.json",
+    "docs/official/.cards/k_964595ab-af80-4c1c-9078-0d3b11c51456.json",
+    "docs/official/.cards/last_attempt.json",
+    "docs/official/.cards/manifest.json",
+    "docs/official/Bruce设计文档.md",
+    "docs/official/README.md",
+    "docs/official/Widget设计.md",
+    "docs/official/Windows应用设计.md",
+    "docs/official/Windows快照与刷新状态.md",
+    "docs/official/macOS原生应用设计.md",
+    "docs/official/刷新生命周期设计.md",
+    "docs/official/本地会话解析与计费.md",
+    "docs/official/术语表.md",
+    "docs/official/构建验证与发布.md",
+    "docs/official/菜单栏与看板设计.md",
+    "docs/official/订阅配置与凭据管理设计.md",
+    "docs/official/订阅额度查询设计.md",
+    "docs/official/设置中心与价格校准设计.md",
+    "docs/official/采集引擎与本地用量设计.md"
+  ],
+  "removed_paths": [
+    "docs/official/build-release.md",
+    "docs/official/collector-design.md",
+    "docs/official/collector-local-usage.md",
+    "docs/official/collector-provider-quota.md",
+    "docs/official/credentials-design.md",
+    "docs/official/glossary.md",
+    "docs/official/macos-design.md",
+    "docs/official/refresh-lifecycle.md",
+    "docs/official/system-design.md",
+    "docs/official/widget-design.md",
+    "docs/official/windows-design.md",
+    "docs/official/windows-state-mapping.md"
+  ],
+  "checks": [
+    {
+      "name": "design_topic_coverage",
+      "method": "Parent original-source analysis plus independent review and bounded repair/re-review; tools only check mappings",
+      "result": "passed",
+      "evidence": "10 topics, 9 modules, cross-module refresh flow; substantive overall sections and independent details. independent-review.json retains first 3 defects; second-review.json resolves them, not hidden.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "document_naming",
+      "method": "Actual Chinese semantic names, H1/name comparison and parent semantic review",
+      "result": "passed",
+      "evidence": "15 flat Markdown documents, README exception; identifiers Bruce/macOS/Windows/Widget preserved.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "document_associations",
+      "method": "Host checks on actual Markdown links/anchors, cards, figures and candidate manifest",
+      "result": "passed",
+      "evidence": "Current tool report collection-check.json; historical run evidence preserved and obsolete English paths retired only after repaired current associations.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "source_grounding_and_changed_semantics",
+      "method": "Original source/diff reading, current hash comparison and independent reviewer",
+      "result": "passed",
+      "evidence": "Read previous snapshot before quota policy/input; offline gates, targeted Codex recovery, local-only and skipped quota carryover distinguished. Current price/settings and dashboard render sources linked. Source hashes in final-source-snapshot.json.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "authoring_and_expression_review",
+      "method": "Separate content/expression/fact recheck with independent correction loop",
+      "result": "passed",
+      "evidence": "authoring-review.json, independent-review.json and second-review.json; current excerpt order and identifiers rechecked.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "first_embedding_capture",
+      "method": "Actual Chrome screenshot call",
+      "result": "failed",
+      "evidence": "Initial clip rectangle outside image; actual Exit 1 retained in preview/first-render-failure.json. Final capture uses scrolled viewport with render-frame wait.",
+      "required": false,
+      "scope": "candidate"
+    },
+    {
+      "name": "independent_first_review",
+      "method": "Actual independent bounded semantic review",
+      "result": "failed",
+      "evidence": "3 defects preserved in independent-review.json; repaired and passed second-review.json.",
+      "required": false,
+      "scope": "candidate"
+    },
+    {
+      "name": "standalone_svg_visual",
+      "method": "rsvg-convert 2.62.3 plus actual view_image inspection",
+      "result": "passed",
+      "evidence": "7 SVGs rendered; 5 changed/new inspected in first pass, repaired refresh sequence re-rendered and inspected. Two unchanged diagrams reused after current byte/hash check; Windows embedded preview inspected.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "markdown_embedding_visual",
+      "method": "marked plus isolated offline Chrome 155.0.8059.80; actual captures and view_image",
+      "result": "passed",
+      "evidence": "15 article renders at viewport 1120/content 920; 7 loaded images, no horizontal overflow. Actual diagram contexts and final settings captures inspected. preview/final/render-report.json records actual article hashes.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "source_and_owned_output_guard",
+      "method": "SHA-256 compare current originals and 33 owned files immediately before replacement",
+      "result": "passed",
+      "evidence": "Actual immediate pre-write guard passed: 425 source hashes, 33 owned hashes, 14 unoccupied new document targets plus 4 figure pair paths; state bytes and no symlink traversal checked.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "application_tests",
+      "method": "Documentation-only correction; no application execution, build, credentials, Provider requests or device acceptance",
+      "result": "not_run",
+      "evidence": "Not run; document checks cannot establish runtime correctness.",
+      "required": false,
+      "scope": "official_collection"
+    },
+    {
+      "name": "initial_collection_structure",
+      "method": "Host Python candidate checks; real H1 mismatch and host relation attribute assertion mistake",
+      "result": "failed",
+      "evidence": "collection-check-initial.json retains Exit 1; H1 fixed, assertion corrected and collection-check.json now passed Exit 0.",
+      "required": false,
+      "scope": "candidate"
+    },
+    {
+      "name": "postwrite_integrity",
+      "method": "Re-read actual delivered bytes against checked candidates; actual document set, local links/anchors and source hashes; same exact bytes inherit candidate semantic/card/figure checks.",
+      "result": "passed",
+      "evidence": ".cards/runs/722e8074-a29b-4f6e-9307-0eb5d003e6ce/postwrite-check.json: 39 delivered content files, 12 obsolete owned article names retired, 386 local references resolve, 425 original source files unchanged.",
+      "required": true,
+      "scope": "official_collection"
+    }
+  ],
+  "deferred_figures": []
+}

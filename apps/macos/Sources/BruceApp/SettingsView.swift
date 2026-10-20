@@ -361,7 +361,7 @@ struct SettingsView: View {
                 }
                 FluentRow(
                     "刷新间隔",
-                    sub: "本地统计采集周期；订阅云端额度自动查询最长 30 分钟一次，429 后自动冷却",
+                    sub: "本地统计采集与订阅额度自动刷新周期；遇 429 限流时自动冷却",
                     divided: true
                 ) {
                     FluentSegmentedPicker(
@@ -372,6 +372,29 @@ struct SettingsView: View {
                             set: { coordinator.setRefreshIntervalMinutes($0) }
                         )
                     )
+                }
+                FluentRow(
+                    "锁屏暂停订阅刷新",
+                    sub: "电脑锁屏期间暂停查询云端订阅额度，避免消耗配额；解锁后自动恢复",
+                    divided: true
+                ) {
+                    HStack(spacing: 8) {
+                        Toggle(
+                            "",
+                            isOn: Binding(
+                                get: { coordinator.pauseSubscriptionRefreshOnScreenLock },
+                                set: { coordinator.setPauseSubscriptionRefreshOnScreenLock($0) }
+                            )
+                        )
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        Text(coordinator.pauseSubscriptionRefreshOnScreenLock ? "已开启" : "已关闭")
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(
+                                coordinator.pauseSubscriptionRefreshOnScreenLock
+                                    ? SettingsDemoTokens.ok : SettingsDemoTokens.text3
+                            )
+                    }
                 }
                 FluentRow(
                     "系统通知",
@@ -898,124 +921,12 @@ struct SettingsView: View {
 
     // MARK: - Agent 用量面板
 
+    // MARK: - Agent 用量面板 (全景分析与 Token 统计工作台)
+
     private var agentUsagePane: some View {
-        let result = model.moduleResults[.agentUsage]
-        let sessionProbes = (result?.localDependencies ?? [])
-            .filter { $0.kind == .sessionDirectory }
-        let missingSessionNames = Set(
-            sessionProbes
-                .filter { $0.status == .missing }
-                .compactMap { $0.detail }
-        )
-        let busy = model.busyModules.contains(.agentUsage)
-        let rustAvailable = coordinator.collectorRuntimeStatus == .rustAvailable
-
-        return VStack(alignment: .leading, spacing: 14) {
-            paneCaption("会话来源")
-            FluentCard {
-                FluentRow(
-                    "Rust Collector",
-                    sub: "扫描本机会话并聚合 token 用量"
-                ) {
-                    HStack(spacing: 6) {
-                        FluentStatusDot(level: rustAvailable ? .ok : .warn)
-                        Text(rustAvailable ? "可用" : "不可用")
-                            .font(.system(size: 12.5))
-                            .foregroundStyle(
-                                rustAvailable ? SettingsDemoTokens.text2 : SettingsDemoTokens.warn
-                            )
-                    }
-                }
-                if sessionProbes.isEmpty {
-                    FluentRow("尚未检查", sub: "点击下方重新检查", divided: true)
-                } else {
-                    ForEach(Array(sessionProbes.enumerated()), id: \.offset) { _, probe in
-                        FluentRow(
-                            probe.detail ?? "会话源",
-                            sub: probe.kind == .sessionDirectory ? "本机会话目录" : "本机数据库",
-                            divided: true
-                        ) {
-                            HStack(spacing: 6) {
-                                let isAvailable = probe.status == .available
-                                let isMissing = probe.status == .missing
-                                if !isMissing {
-                                    FluentStatusDot(level: isAvailable ? .ok : .warn)
-                                }
-                                Text(isAvailable ? "就绪" : isMissing ? "未安装" : "未授权")
-                                    .font(.system(size: 12.5))
-                                    .foregroundStyle(
-                                        isAvailable
-                                            ? SettingsDemoTokens.text2
-                                            : isMissing ? SettingsDemoTokens.text3 : SettingsDemoTokens.warn
-                                    )
-                            }
-                        }
-                    }
-                }
-                ForEach(
-                    visibleAgentUsageWarnings(
-                        result?.warnings ?? [],
-                        missingSessionNames: missingSessionNames
-                    ),
-                    id: \.self
-                ) { warning in
-                    HStack(spacing: 6) {
-                        Image(systemName: "exclamationmark.triangle")
-                            .foregroundStyle(SettingsDemoTokens.warn)
-                        Text(warning)
-                            .font(.system(size: 11.5))
-                            .foregroundStyle(SettingsDemoTokens.text2)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .overlay(alignment: .top) {
-                        SettingsDemoTokens.separator.frame(height: 1)
-                    }
-                }
-                if let reason = result?.blockingReason {
-                    Text(reason)
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(SettingsDemoTokens.warn)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .overlay(alignment: .top) {
-                            SettingsDemoTokens.separator.frame(height: 1)
-                        }
-                }
-                HStack {
-                    Spacer()
-                    if busy {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-                    Button("重新检查") { coordinator.rescan() }
-                        .fluentButton()
-                        .disabled(busy)
-                        .accessibilityLabel("重新检查 Agent 用量依赖")
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .overlay(alignment: .top) {
-                    SettingsDemoTokens.separator.frame(height: 1)
-                }
-            }
-            .accessibilityElement(children: .contain)
-        }
+        AgentUsageWorkbenchView()
     }
 
-    /// Kimi Work 属于可选增强探测, 不在 Agent 用量配置卡片中展示其状态提示.
-    private func visibleAgentUsageWarnings(
-        _ warnings: [String],
-        missingSessionNames: Set<String>
-    ) -> [String] {
-        warnings.filter { warning in
-            guard !warning.hasPrefix("Kimi Work ") else { return false }
-            let duplicatesMissingSource = missingSessionNames.contains { name in
-                warning == "\(name) 不可用" || warning == "\(name) 暂不可用"
-            }
-            return !duplicatesMissingSource
-        }
-    }
 
     // MARK: - 订阅额度面板
 

@@ -1,0 +1,169 @@
+{
+  "schema_version": "1.0",
+  "id": "d_62f7970a-5036-440c-bd91-5fbcac4a7fbb",
+  "title": "macOS 应用生命周期",
+  "type": "flowchart",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "boot",
+      "label": "装配共享对象，绑定回调",
+      "role": "entry",
+      "evidence_refs": [
+        "boot"
+      ]
+    },
+    {
+      "id": "cache",
+      "label": "启动调度并读取本地快照",
+      "role": "action",
+      "evidence_refs": [
+        "boot"
+      ]
+    },
+    {
+      "id": "ready",
+      "label": "按配置准备凭据并协调模块",
+      "role": "action",
+      "evidence_refs": [
+        "boot"
+      ]
+    },
+    {
+      "id": "quit",
+      "label": "收到退出请求",
+      "role": "action",
+      "evidence_refs": [
+        "life"
+      ]
+    },
+    {
+      "id": "stop",
+      "label": "停止调度并取消运行任务",
+      "role": "action",
+      "evidence_refs": [
+        "life"
+      ]
+    },
+    {
+      "id": "pending",
+      "label": "仍有运行任务？",
+      "role": "decision",
+      "evidence_refs": [
+        "life"
+      ]
+    },
+    {
+      "id": "wait",
+      "label": "等待 2 秒，必要时强制终止",
+      "role": "action",
+      "evidence_refs": [
+        "life"
+      ]
+    },
+    {
+      "id": "end",
+      "label": "回复系统完成退出",
+      "role": "exit",
+      "evidence_refs": [
+        "life"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "r1",
+      "from": "boot",
+      "to": "cache",
+      "kind": "flow",
+      "evidence_refs": [
+        "boot"
+      ],
+      "label": "启动一次"
+    },
+    {
+      "id": "r2",
+      "from": "cache",
+      "to": "ready",
+      "kind": "flow",
+      "evidence_refs": [
+        "boot"
+      ],
+      "label": "不等待外部凭据"
+    },
+    {
+      "id": "r3",
+      "from": "ready",
+      "to": "quit",
+      "kind": "flow",
+      "evidence_refs": [
+        "life"
+      ],
+      "label": "应用生命周期继续"
+    },
+    {
+      "id": "r4",
+      "from": "quit",
+      "to": "stop",
+      "kind": "flow",
+      "evidence_refs": [
+        "life"
+      ],
+      "label": "beginTermination"
+    },
+    {
+      "id": "r5",
+      "from": "stop",
+      "to": "pending",
+      "kind": "flow",
+      "evidence_refs": [
+        "life"
+      ],
+      "label": "检查执行器"
+    },
+    {
+      "id": "r6",
+      "from": "pending",
+      "to": "wait",
+      "kind": "flow",
+      "evidence_refs": [
+        "life"
+      ],
+      "condition": "是"
+    },
+    {
+      "id": "r7",
+      "from": "pending",
+      "to": "end",
+      "kind": "flow",
+      "evidence_refs": [
+        "life"
+      ],
+      "condition": "否"
+    },
+    {
+      "id": "r8",
+      "from": "wait",
+      "to": "end",
+      "kind": "flow",
+      "evidence_refs": [
+        "life"
+      ],
+      "label": "宽限回调"
+    }
+  ],
+  "evidence": {
+    "boot": {
+      "path": "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+      "locator": "startIfNeeded",
+      "kind": "static_implementation",
+      "supports": "先绑定回调、runtime启动与快照恢复，再按访问配置准备凭据和扫描协调。"
+    },
+    "life": {
+      "path": "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift",
+      "locator": "beginTermination / cancelTermination",
+      "kind": "static_implementation",
+      "supports": "退出先停调度和取消任务，再按是否在途等待2秒与强制终止；取消退出另行恢复调度。"
+    }
+  }
+}

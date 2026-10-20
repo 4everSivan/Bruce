@@ -231,7 +231,13 @@ struct PanelViewModelHarness {
         try hourlyCollapsedPointsSumWithPeakText()
         try collapseStatePersistsAcrossAppModelInstances()
         try cardCollapseAnimationStabilityContracts()
-        print("PanelViewModel tests passed: 54")
+        try modelNormalizerPrefixAndSuffixStrippingContracts()
+        try modelNormalizerMultiSourceAggregationAndConservationContracts()
+        try modelNormalizerPricingInheritanceContracts()
+        try billionTokenFormattingContracts()
+        try deepseekVariantsAndMultiMonthAggregationContracts()
+        try timelineWeeklyBucketingPerformanceContracts()
+        print("PanelViewModel tests passed: 60")
     }
 
     // 措辞映射矩阵: windowMinutes 优先, 容差约 2%.
@@ -1918,6 +1924,186 @@ struct PanelViewModelHarness {
             let safeScale = Double(max(maxP, 1)) * 1.1
             try expect(safeScale > 1.0, "安全尺度必须大于 1.0 杜绝零除")
         }
+    }
+
+    // MARK: - ModelNormalizer 与跨源归并测试
+
+    private static func modelNormalizerPrefixAndSuffixStrippingContracts() throws {
+        // 1. 前缀剥离与规范主键收敛
+        let deepseekRaw = "cline-pass/deepseek-v4.1-flash"
+        let deepseekKey = ModelNormalizer.canonicalKey(for: deepseekRaw)
+        try expect(deepseekKey == "deepseek-v4.1-flash", "前缀剥离后必须为 deepseek-v4.1-flash: \(deepseekKey)")
+        try expect(ModelNormalizer.vendor(for: deepseekKey) == "DeepSeek", "厂商必须为 DeepSeek")
+        try expect(ModelNormalizer.displayName(for: deepseekKey) == "DeepSeek V4.1 Flash", "显示名必须为 DeepSeek V4.1 Flash")
+
+        let glmRaw1 = "zhipu/glm-5.3"
+        let glmKey1 = ModelNormalizer.canonicalKey(for: glmRaw1)
+        try expect(glmKey1 == "glm-5.3", "zhipu 前缀必须剥离为 glm-5.3")
+        try expect(ModelNormalizer.vendor(for: glmKey1).contains("智谱 AI"), "厂商必须包含 智谱 AI")
+
+        let glmRaw2 = "openrouter/glm-5.3"
+        let glmKey2 = ModelNormalizer.canonicalKey(for: glmRaw2)
+        try expect(glmKey2 == "glm-5.3", "openrouter 前缀必须剥离为 glm-5.3")
+
+        // 2. 日期与运行变体修剪
+        let claudeRaw = "anthropic/claude-3-7-sonnet-20250219"
+        let claudeKey = ModelNormalizer.canonicalKey(for: claudeRaw)
+        try expect(claudeKey == "claude-3-7-sonnet", "日期后缀与厂商前缀必须剔除: \(claudeKey)")
+        try expect(ModelNormalizer.vendor(for: claudeKey) == "Anthropic", "厂商必须为 Anthropic")
+
+        let gptRaw = "openai/gpt-5.4-preview"
+        let gptKey = ModelNormalizer.canonicalKey(for: gptRaw)
+        try expect(gptKey == "gpt-5.4", "-preview 后缀必须修剪: \(gptKey)")
+
+        let thinkingRaw = "deepseek-r1[thinking]"
+        let thinkingKey = ModelNormalizer.canonicalKey(for: thinkingRaw)
+        try expect(thinkingKey == "deepseek-r1", "[thinking] 标记必须剥离: \(thinkingKey)")
+    }
+
+    private static func modelNormalizerMultiSourceAggregationAndConservationContracts() throws {
+        // 构造使用异构渠道同一模型的 AgentUsageArtifact
+        let agent1 = makeAgent(
+            id: "claude-code",
+            name: "Claude Code",
+            today: makeBucket(input: 30000, output: 20000),
+            models: ["zhipu/glm-5.3": 50000]
+        )
+        let agent2 = makeAgent(
+            id: "opencode",
+            name: "OpenCode",
+            today: makeBucket(input: 20000, output: 10000),
+            models: ["openrouter/glm-5.3": 30000]
+        )
+        let agent3 = makeAgent(
+            id: "kimi-code-cli",
+            name: "Kimi Code CLI",
+            today: makeBucket(input: 80000, output: 40000),
+            models: ["cline-pass/deepseek-v4.1-flash": 120000]
+        )
+        let agent4 = makeAgent(
+            id: "codex",
+            name: "Codex",
+            today: makeBucket(input: 50000, output: 30000),
+            models: ["deepseek/deepseek-v4.1-flash": 80000]
+        )
+
+        let artifact = makeAgentUsageArtifact(agents: [agent1, agent2, agent3, agent4], services: [])
+        let canonicalModels = ModelNormalizer.aggregateCanonicalModels(from: artifact)
+
+        // 验证归并后仅有 2 个主模型: DeepSeek V4.1 Flash 与 GLM 5.3
+        try expect(canonicalModels.count == 2, "模型总数应归并为 2 个主模型, 实际为: \(canonicalModels.count)")
+
+        // 验证 DeepSeek V4.1 Flash (120k + 80k = 200k)
+        let deepseek = try unwrap(canonicalModels.first { $0.canonicalKey == "deepseek-v4.1-flash" })
+        try expect(deepseek.totalTokens == 200000, "DeepSeek 归并后总 Token 应为 200000, 实际为: \(deepseek.totalTokens)")
+        try expect(deepseek.sources.count == 2, "DeepSeek 来源应为 2 个渠道")
+        let dsSources = Set(deepseek.sources.map(\.rawModelName))
+        try expect(dsSources.contains("cline-pass/deepseek-v4.1-flash"), "必须包含 cline-pass 渠道")
+        try expect(dsSources.contains("deepseek/deepseek-v4.1-flash"), "必须包含 deepseek 渠道")
+
+        // 验证 GLM 5.3 (50k + 30k = 80k)
+        let glm = try unwrap(canonicalModels.first { $0.canonicalKey == "glm-5.3" })
+        try expect(glm.totalTokens == 80000, "GLM 5.3 归并后总 Token 应为 80000, 实际为: \(glm.totalTokens)")
+        try expect(glm.sources.count == 2, "GLM 5.3 来源应为 2 个渠道")
+        let glmSources = Set(glm.sources.map(\.rawModelName))
+        try expect(glmSources.contains("zhipu/glm-5.3"), "必须包含 zhipu 渠道")
+        try expect(glmSources.contains("openrouter/glm-5.3"), "必须包含 openrouter 渠道")
+
+        // 数值守恒性契约: 所有归并模型 Token 总和必须严格等于原始总和 280,000
+        let totalAggregated = canonicalModels.reduce(0) { $0 + $1.totalTokens }
+        try expect(totalAggregated == 280000, "数值守恒失败: 预期 280000, 实际: \(totalAggregated)")
+    }
+
+    private static func modelNormalizerPricingInheritanceContracts() throws {
+        // 带渠道前缀的模型自动继承官方基准单价
+        let agent = makeAgent(
+            id: "cline",
+            name: "Cline",
+            today: makeBucket(input: 50000, output: 50000),
+            models: ["cline-pass/deepseek-v4.1-flash": 100000]
+        )
+        let artifact = makeAgentUsageArtifact(agents: [agent], services: [])
+        let canonicalModels = ModelNormalizer.aggregateCanonicalModels(from: artifact)
+        let deepseek = try unwrap(canonicalModels.first { $0.canonicalKey == "deepseek-v4.1-flash" })
+
+        try expect(deepseek.estimatedCostUsd != nil, "带前缀的 deepseek-v4.1-flash 必须自动继承基准单价")
+        try expect((deepseek.estimatedCostUsd ?? 0) > 0, "费用必须大于 0")
+    }
+
+    private static func billionTokenFormattingContracts() throws {
+        try expect(PanelFormat.tokenCount(1_000_000_000) == "1B", "1B 格式化错误: \(PanelFormat.tokenCount(1_000_000_000))")
+        try expect(PanelFormat.tokenCount(1_500_000_000) == "1.5B", "1.5B 格式化错误: \(PanelFormat.tokenCount(1_500_000_000))")
+        try expect(PanelFormat.tokenCount(3_530_000_000) == "3.53B", "3.53B 格式化错误: \(PanelFormat.tokenCount(3_530_000_000))")
+        try expect(PanelFormat.tokenCount(4_743_838_856) == "4.74B", "4.74B 格式化错误: \(PanelFormat.tokenCount(4_743_838_856))")
+    }
+
+    private static func deepseekVariantsAndMultiMonthAggregationContracts() throws {
+        let rawKeys = [
+            "cline-pass/deepseek-v4.1-flash",
+            "deepseek-flash",
+            "deepseek-v4-flash",
+            "deepseek-v4.1-flash"
+        ]
+        for raw in rawKeys {
+            let key = ModelNormalizer.canonicalKey(for: raw)
+            try expect(key == "deepseek-v4.1-flash", "\(raw) 归一化键必须为 deepseek-v4.1-flash, 实际为: \(key)")
+        }
+
+        let agent = makeAgent(
+            id: "zcode",
+            name: "ZCode",
+            today: makeBucket(input: 100_000, output: 50_000),
+            models: ["cline-pass/deepseek-v4.1-flash": 600_000_000],
+            modelMonths: [
+                "2026-10": [
+                    "cline-pass/deepseek-v4.1-flash": 3_400_000_000,
+                    "deepseek-flash": 130_000_000
+                ]
+            ]
+        )
+        let artifact = makeAgentUsageArtifact(agents: [agent], services: [], generatedAt: "2026-10-19T14:00:00+00:00")
+
+        let monthModels = ModelNormalizer.aggregateCanonicalModels(from: artifact, range: .thisMonth)
+        let dsMonth = try unwrap(monthModels.first { $0.canonicalKey == "deepseek-v4.1-flash" })
+        try expect(dsMonth.totalTokens == 3_530_000_000, "本月 DeepSeek 总量应为 3.53B (3530000000), 实际为: \(dsMonth.totalTokens)")
+        try expect(dsMonth.totalTokensText == "3.53B", "文本格式化应为 3.53B, 实际为: \(dsMonth.totalTokensText)")
+        try expect(dsMonth.sources.count == 2, "本月应包含 2 个渠道来源")
+    }
+
+    private static func timelineWeeklyBucketingPerformanceContracts() throws {
+        var dates: [String] = []
+        for i in (0..<182).reversed() {
+            let d = fixedNow.addingTimeInterval(TimeInterval(-i * 86400))
+            let formatter = DateFormatter()
+            formatter.calendar = utcCalendar
+            formatter.timeZone = TimeZone(identifier: "UTC")
+            formatter.dateFormat = "yyyy-MM-dd"
+            dates.append(formatter.string(from: d))
+        }
+
+        let daily = dates.map { AgentDailyUsage(date: $0, input: 1000, output: 500, total: 1500) }
+        let agent = AgentUsageItem(
+            id: "zcode",
+            name: "ZCode",
+            status: "ok",
+            note: nil,
+            today: makeBucket(input: 1000, output: 500),
+            daily: daily,
+            hours: Array(repeating: 0, count: 24),
+            todayCostUsd: nil,
+            models: nil,
+            modelMonths: nil,
+            projects: nil
+        )
+        let artifact = makeAgentUsageArtifact(agents: [agent], services: [], generatedAt: "2026-10-19T14:00:00+00:00")
+
+        let timeline = ModelNormalizer.buildTimelinePoints(from: artifact, range: .allTime)
+        try expect(timeline.points.count <= 28, "全部历史数据点应分桶至 <= 28 个周点避免渲染卡顿, 实际点数: \(timeline.points.count)")
+        try expect(timeline.points.count >= 26, "182 天分桶周点数应在 26 点左右, 实际点数: \(timeline.points.count)")
+
+        let sumPoints = timeline.points.reduce(0) { $0 + $1.totalTokens }
+        let sumDaily = daily.reduce(0) { $0 + $1.total }
+        try expect(sumPoints == sumDaily, "分桶前后总 Token 必须完全守恒: 分桶=\(sumPoints), 原始=\(sumDaily)")
     }
 
     /// 轻量解包: 与 expect 同风格, 避免引入 XCTest.

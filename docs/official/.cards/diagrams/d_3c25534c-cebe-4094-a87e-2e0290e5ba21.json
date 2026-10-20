@@ -1,0 +1,163 @@
+{
+  "schema_version": "1.0",
+  "id": "d_3c25534c-cebe-4094-a87e-2e0290e5ba21",
+  "title": "SQLite 缓存增量判定",
+  "type": "flowchart",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "start",
+      "label": "只读连接与缓存元数据",
+      "role": "entry",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "hit",
+      "label": "身份签名相同且贡献可解码？",
+      "role": "decision",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "reuse",
+      "label": "复用缓存贡献",
+      "role": "exit",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "append",
+      "label": "追加条件齐全且旧贡献可解码？",
+      "role": "decision",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "read",
+      "label": "按 rowid 游标读取增量\n运行时取消或超时直接上抛",
+      "role": "action",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "safe",
+      "label": "增量无诊断且可安全追加？",
+      "role": "decision",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "merge",
+      "label": "合并贡献、推进游标并返回",
+      "role": "exit",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "full",
+      "label": "全量读取并重建缓存",
+      "role": "exit",
+      "evidence_refs": [
+        "source"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "r1",
+      "from": "start",
+      "to": "hit",
+      "kind": "flow",
+      "evidence_refs": [
+        "source"
+      ],
+      "label": "检查缓存"
+    },
+    {
+      "id": "r2",
+      "from": "hit",
+      "to": "reuse",
+      "kind": "flow",
+      "evidence_refs": [
+        "source"
+      ],
+      "condition": "是"
+    },
+    {
+      "id": "r3",
+      "from": "hit",
+      "to": "append",
+      "kind": "flow",
+      "evidence_refs": [
+        "source"
+      ],
+      "condition": "否"
+    },
+    {
+      "id": "r4",
+      "from": "append",
+      "to": "read",
+      "kind": "flow",
+      "evidence_refs": [
+        "source"
+      ],
+      "condition": "是"
+    },
+    {
+      "id": "r5",
+      "from": "append",
+      "to": "full",
+      "kind": "flow",
+      "evidence_refs": [
+        "source"
+      ],
+      "condition": "否"
+    },
+    {
+      "id": "r6",
+      "from": "read",
+      "to": "safe",
+      "kind": "flow",
+      "evidence_refs": [
+        "source"
+      ],
+      "label": "I/O失败按不安全处理"
+    },
+    {
+      "id": "r7",
+      "from": "safe",
+      "to": "merge",
+      "kind": "flow",
+      "evidence_refs": [
+        "source"
+      ],
+      "condition": "是"
+    },
+    {
+      "id": "r8",
+      "from": "safe",
+      "to": "full",
+      "kind": "flow",
+      "evidence_refs": [
+        "source"
+      ],
+      "condition": "否"
+    }
+  ],
+  "evidence": {
+    "source": {
+      "path": "core/collector/crates/collector-local/src/sqlite_cache.rs",
+      "locator": "scan_sqlite_cached / cache_identity_matches / append_signature_is_safe",
+      "kind": "static_implementation",
+      "supports": "追加还要求窗口、schema、库/WAL身份和rowid；增量I/O失败回退全量，运行时错误不回退。"
+    }
+  }
+}

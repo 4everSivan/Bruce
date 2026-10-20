@@ -1,0 +1,521 @@
+{
+  "figures": [
+    {
+      "id": "d_7f3ad701-7677-4fad-8ea8-e58da250f111",
+      "name": "local-cache-decision",
+      "owner_article": "本地会话解析与计费.md",
+      "article_paths": [
+        "本地会话解析与计费.md"
+      ],
+      "required": true,
+      "trigger": "文件增长并不必然允许追加；视图只表示完成相关读取后的判定",
+      "source_paths": [
+        "core/collector/crates/collector-local/src/jsonl_cache.rs"
+      ],
+      "svg_path": "docs/assets/km/local-cache-decision.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_7f3ad701-7677-4fad-8ea8-e58da250f111.json",
+      "checks": [],
+      "pending": []
+    },
+    {
+      "id": "d_ae615f73-9d9d-408e-8112-f8ec47afffbc",
+      "name": "local-pricing-decision",
+      "owner_article": "本地会话解析与计费.md",
+      "article_paths": [
+        "本地会话解析与计费.md"
+      ],
+      "required": true,
+      "trigger": "覆盖优先级、未知模型条件与费用空值",
+      "source_paths": [
+        "core/collector/crates/collector-domain/src/pricing.rs"
+      ],
+      "svg_path": "docs/assets/km/local-pricing-decision.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_ae615f73-9d9d-408e-8112-f8ec47afffbc.json",
+      "checks": [],
+      "pending": []
+    },
+    {
+      "id": "d_382e629e-29bd-42b3-acc8-7c33c123b340",
+      "name": "quota-account-flow",
+      "owner_article": "订阅额度查询设计.md",
+      "article_paths": [
+        "订阅额度查询设计.md"
+      ],
+      "required": true,
+      "trigger": "有界并发、同账号合并和结果顺序",
+      "source_paths": [
+        "core/collector/crates/collector-application/src/execution.rs"
+      ],
+      "svg_path": "docs/assets/km/quota-account-flow.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_382e629e-29bd-42b3-acc8-7c33c123b340.json",
+      "checks": [],
+      "pending": []
+    },
+    {
+      "id": "d_176bf773-8952-4814-b413-e5181bfe337b",
+      "name": "claude-oauth-refresh",
+      "owner_article": "订阅额度查询设计.md",
+      "article_paths": [
+        "订阅额度查询设计.md"
+      ],
+      "required": true,
+      "trigger": "主动到期续期、401补救和更新返回条件",
+      "source_paths": [
+        "core/collector/crates/collector-provider/src/lib.rs"
+      ],
+      "svg_path": "docs/assets/km/claude-oauth-refresh.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_176bf773-8952-4814-b413-e5181bfe337b.json",
+      "checks": [],
+      "pending": []
+    },
+    {
+      "id": "d_8e45187e-0751-4651-b9f2-160f2771bbb2",
+      "name": "credential-input-flow",
+      "owner_article": "订阅配置与凭据管理设计.md",
+      "article_paths": [
+        "订阅配置与凭据管理设计.md"
+      ],
+      "required": true,
+      "trigger": "敏感输入、只读外部来源和受控写回",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+        "apps/macos/Sources/BruceAppCore/CredentialUpdateCoordinator.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift"
+      ],
+      "svg_path": "docs/assets/km/credential-input-flow.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_8e45187e-0751-4651-b9f2-160f2771bbb2.json",
+      "checks": [],
+      "pending": []
+    },
+    {
+      "id": "d_62f7970a-5036-440c-bd91-5fbcac4a7fbb",
+      "name": "macos-app-lifecycle",
+      "owner_article": "macOS原生应用设计.md",
+      "article_paths": [
+        "macOS原生应用设计.md"
+      ],
+      "required": true,
+      "trigger": "启动与退出顺序；取消退出由正文说明，不在此线性退出图展开",
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+        "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift"
+      ],
+      "svg_path": "docs/assets/km/macos-app-lifecycle.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_62f7970a-5036-440c-bd91-5fbcac4a7fbb.json",
+      "checks": [],
+      "pending": []
+    },
+    {
+      "id": "d_7f1dffad-5e43-460b-9d30-c9c70bb943de",
+      "name": "settings-activation",
+      "owner_article": "设置中心与价格校准设计.md",
+      "article_paths": [
+        "设置中心与价格校准设计.md"
+      ],
+      "required": true,
+      "trigger": "两类设置保存失败的不同状态效果",
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift"
+      ],
+      "svg_path": "docs/assets/km/settings-activation.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_7f1dffad-5e43-460b-9d30-c9c70bb943de.json",
+      "checks": [],
+      "pending": []
+    },
+    {
+      "id": "d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36",
+      "name": "widget-lifecycle",
+      "owner_article": "Widget设计.md",
+      "article_paths": [
+        "Widget设计.md"
+      ],
+      "required": true,
+      "trigger": "可见性、运动偏好、交互和清理，不表示隐藏后不能重新显示",
+      "source_paths": [
+        "apps/widget/index.html"
+      ],
+      "svg_path": "docs/assets/km/widget-lifecycle.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36.json",
+      "checks": [],
+      "pending": []
+    },
+    {
+      "id": "d_93c87502-3b6a-4a18-9342-15e5ea7679e6",
+      "name": "screen-lock-gate",
+      "owner_article": "刷新生命周期设计.md",
+      "article_paths": [
+        "刷新生命周期设计.md"
+      ],
+      "required": true,
+      "trigger": "执行门禁与解锁事件是两条不同入口",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift"
+      ],
+      "svg_path": "docs/assets/km/screen-lock-gate.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_93c87502-3b6a-4a18-9342-15e5ea7679e6.json",
+      "checks": [],
+      "pending": []
+    },
+    {
+      "id": "d_cbbda8c9-188a-4f71-9dc7-152a77890a10",
+      "name": "analytics-model-flow",
+      "owner_article": "Agent用量分析设计.md",
+      "article_paths": [
+        "Agent用量分析设计.md"
+      ],
+      "required": true,
+      "trigger": "从工件到规范模型、来源树与消费者的变换",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/AppModel.swift",
+        "apps/macos/Sources/BruceAppCore/ModelNormalizer.swift"
+      ],
+      "svg_path": "docs/assets/km/analytics-model-flow.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_cbbda8c9-188a-4f71-9dc7-152a77890a10.json",
+      "checks": [],
+      "pending": []
+    },
+    {
+      "id": "d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3",
+      "name": "analytics-timeline-flow",
+      "owner_article": "Agent用量分析设计.md",
+      "article_paths": [
+        "Agent用量分析设计.md"
+      ],
+      "required": true,
+      "trigger": "历史分桶及估算系列，非所有系列都有逐项实测值",
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/Settings/TimelineChartCard.swift",
+        "apps/macos/Sources/BruceAppCore/ModelNormalizer.swift"
+      ],
+      "svg_path": "docs/assets/km/analytics-timeline-flow.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3.json",
+      "checks": [],
+      "pending": []
+    },
+    {
+      "id": "d_b9e5079c-f299-4c64-bc1f-0a639840238d",
+      "name": "windows-credential-recovery",
+      "owner_article": "Windows应用设计.md",
+      "article_paths": [
+        "Windows应用设计.md"
+      ],
+      "required": true,
+      "trigger": "凭据比较写回与定向重试，不展开操作系统ACL实现",
+      "source_paths": [
+        "apps/win/src-tauri/src/credentials/lifecycle.rs"
+      ],
+      "svg_path": "docs/assets/km/windows-credential-recovery.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_b9e5079c-f299-4c64-bc1f-0a639840238d.json",
+      "checks": [],
+      "pending": []
+    },
+    {
+      "id": "d_ac13d2c9-06bf-466a-8e98-523657c2adbf",
+      "name": "snapshot-recovery",
+      "owner_article": "刷新生命周期设计.md",
+      "article_paths": [
+        "刷新生命周期设计.md"
+      ],
+      "required": true,
+      "trigger": "当前、previous和一次回滚的有条件恢复",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/ArtifactStore.swift"
+      ],
+      "svg_path": "docs/assets/km/snapshot-recovery.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_ac13d2c9-06bf-466a-8e98-523657c2adbf.json",
+      "checks": [],
+      "pending": []
+    },
+    {
+      "id": "d_2873df93-a3b4-4c39-afb2-e65f8aeee860",
+      "name": "source-contribution-flow",
+      "owner_article": "本地会话解析与计费.md",
+      "article_paths": [
+        "本地会话解析与计费.md"
+      ],
+      "required": true,
+      "trigger": "此图仅表示 Kimi 的来源替换消费链；原始行不跨队列边界，其他来源使用各自适配器归并。",
+      "source_paths": [
+        "core/collector/crates/collector-application/src/aggregation.rs"
+      ],
+      "svg_path": "docs/assets/km/source-contribution-flow.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_2873df93-a3b4-4c39-afb2-e65f8aeee860.json",
+      "pending": []
+    },
+    {
+      "id": "d_3c25534c-cebe-4094-a87e-2e0290e5ba21",
+      "name": "sqlite-cache-decision",
+      "owner_article": "本地会话解析与计费.md",
+      "article_paths": [
+        "本地会话解析与计费.md"
+      ],
+      "required": true,
+      "trigger": "追加还要求窗口、schema、库/WAL身份和rowid；增量I/O失败回退全量，运行时错误不回退。",
+      "source_paths": [
+        "core/collector/crates/collector-local/src/sqlite_cache.rs"
+      ],
+      "svg_path": "docs/assets/km/sqlite-cache-decision.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_3c25534c-cebe-4094-a87e-2e0290e5ba21.json",
+      "pending": []
+    },
+    {
+      "id": "d_5a4da270-e951-4cb2-bfcf-0c2797da2120",
+      "name": "protected-credential-write",
+      "owner_article": "订阅配置与凭据管理设计.md",
+      "article_paths": [
+        "订阅配置与凭据管理设计.md"
+      ],
+      "required": true,
+      "trigger": "父目录已有时权限校正尽力执行；没有跨账号元数据和快照的统一回滚事务。",
+      "source_paths": [
+        "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift"
+      ],
+      "svg_path": "docs/assets/km/protected-credential-write.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_5a4da270-e951-4cb2-bfcf-0c2797da2120.json",
+      "pending": []
+    },
+    {
+      "id": "d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae",
+      "name": "windows-ipc-flow",
+      "owner_article": "Windows应用设计.md",
+      "article_paths": [
+        "Windows应用设计.md"
+      ],
+      "required": true,
+      "trigger": "前端先订阅后读缓存；系统窗口焦点与位置规则由正文说明。",
+      "source_paths": [
+        "apps/win/src-tauri/src/scheduler.rs",
+        "apps/win/src/app.js"
+      ],
+      "svg_path": "docs/assets/km/windows-ipc-flow.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae.json",
+      "pending": []
+    },
+    {
+      "id": "d_257519d2-e4c9-4ce5-b3ad-93159b88adf5",
+      "name": "release-job-flow",
+      "owner_article": "构建验证与发布.md",
+      "article_paths": [
+        "构建验证与发布.md"
+      ],
+      "required": true,
+      "trigger": "Declared parallel jobs and sequential release publication",
+      "source_paths": [
+        ".github/workflows/ci.yml",
+        "scripts/upload-win-release.ps1"
+      ],
+      "svg_path": "docs/assets/km/release-job-flow.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_257519d2-e4c9-4ce5-b3ad-93159b88adf5.json",
+      "pending": []
+    },
+    {
+      "svg_path": "docs/assets/km/system-architecture.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_a20b6df3-7589-475f-8573-b4269438f480.json",
+      "owner_article": "Bruce设计文档.md",
+      "article_paths": [
+        "Bruce设计文档.md"
+      ],
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/BruceApp.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+        "apps/widget/index.html",
+        "apps/win/src-tauri/src/collector.rs",
+        "apps/win/src-tauri/src/scheduler.rs",
+        "core/collector/crates/collector-application/src/lib.rs"
+      ],
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
+      "content_hashes": {
+        "svg": {
+          "algorithm": "sha256",
+          "value": "f4d635bfd6c4030743a1c0296fc9f48708332eaae0f6d4acfb091f40705893e5"
+        },
+        "semantic": {
+          "algorithm": "sha256",
+          "value": "f85b4a58dc6a67bef807dfafaeca682e02860febb08273e4d31b63d4ff105c72"
+        }
+      },
+      "id": "d_a20b6df3-7589-475f-8573-b4269438f480",
+      "name": "system-architecture",
+      "required": true,
+      "trigger": "Same original relationship/state view remains applicable; original source hashes and changed contexts rechecked",
+      "pending": []
+    },
+    {
+      "svg_path": "docs/assets/km/dashboard-toggle-state.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_76549499-2760-425c-8c1f-f23edea8f412.json",
+      "owner_article": "菜单栏与看板设计.md",
+      "article_paths": [
+        "菜单栏与看板设计.md"
+      ],
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+        "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift"
+      ],
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
+      "content_hashes": {
+        "svg": {
+          "algorithm": "sha256",
+          "value": "a0af43c52af7aeaf59339d9d5139a005efcc8224989de218543852301a648302"
+        },
+        "semantic": {
+          "algorithm": "sha256",
+          "value": "e9ee75e3bb7af8dd963c2f0908a737b5c8fefb03debe77b163c2626f963d0fe0"
+        }
+      },
+      "id": "d_76549499-2760-425c-8c1f-f23edea8f412",
+      "name": "dashboard-toggle-state",
+      "required": true,
+      "trigger": "Same original relationship/state view remains applicable; original source hashes and changed contexts rechecked",
+      "pending": []
+    },
+    {
+      "svg_path": "docs/assets/km/collector-flow.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_1ae57d61-4db4-468c-b17b-5258dd915895.json",
+      "owner_article": "采集引擎与本地用量设计.md",
+      "article_paths": [
+        "采集引擎与本地用量设计.md"
+      ],
+      "source_paths": [
+        "core/collector/bin/Bruce-collector/src/main.rs",
+        "core/collector/crates/collector-application/src/execution.rs",
+        "core/collector/crates/collector-application/src/lib.rs",
+        "core/collector/crates/collector-bridge/src/lib.rs",
+        "core/collector/crates/collector-domain/src/lib.rs",
+        "core/collector/crates/collector-runtime/src/lib.rs"
+      ],
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
+      "content_hashes": {
+        "svg": {
+          "algorithm": "sha256",
+          "value": "49cb3691085d982dd599ed72be15d9f79cdc4070f5c8bdd4ae786ade4d6e7a50"
+        },
+        "semantic": {
+          "algorithm": "sha256",
+          "value": "6506955a6a99e50fd317d6b8b86c4e085873b25ff386657aa60492a8a99f8443"
+        }
+      },
+      "id": "d_1ae57d61-4db4-468c-b17b-5258dd915895",
+      "name": "collector-flow",
+      "required": true,
+      "trigger": "Same original relationship/state view remains applicable; original source hashes and changed contexts rechecked",
+      "pending": []
+    },
+    {
+      "svg_path": "docs/assets/km/windows-snapshot-state.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_084f9330-301b-4613-bcd3-1cf561127e93.json",
+      "owner_article": "Windows快照与刷新状态.md",
+      "article_paths": [
+        "Windows快照与刷新状态.md"
+      ],
+      "source_paths": [
+        "apps/win/src-tauri/src/runtime_core.rs",
+        "apps/win/src-tauri/src/scheduler.rs"
+      ],
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
+      "content_hashes": {
+        "svg": {
+          "algorithm": "sha256",
+          "value": "c1374f01885a539993860d531384766a41918a86b8d732cbc9017d2eec9b052b"
+        },
+        "semantic": {
+          "algorithm": "sha256",
+          "value": "f012835eda5a859a31020a8989d747270cbbf56b876d2b308c8aac1114dcd400"
+        }
+      },
+      "id": "d_084f9330-301b-4613-bcd3-1cf561127e93",
+      "name": "windows-snapshot-state",
+      "required": true,
+      "trigger": "Same original relationship/state view remains applicable; original source hashes and changed contexts rechecked",
+      "pending": []
+    },
+    {
+      "svg_path": "docs/assets/km/refresh-sequence.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_856cccba-17f1-402f-b8d2-d03c0c7de2e6.json",
+      "owner_article": "刷新生命周期设计.md",
+      "article_paths": [
+        "Bruce设计文档.md",
+        "刷新生命周期设计.md"
+      ],
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift"
+      ],
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
+      "content_hashes": {
+        "svg": {
+          "algorithm": "sha256",
+          "value": "507664b69b48c82e7cd42e66dbb50c708ab91f25b7a2f310ebf39e93612780d6"
+        },
+        "semantic": {
+          "algorithm": "sha256",
+          "value": "a2c1746f9a6fed90d125ac5c022a6359a0707b35041bb8284f13ead28d3365a6"
+        }
+      },
+      "id": "d_856cccba-17f1-402f-b8d2-d03c0c7de2e6",
+      "name": "refresh-sequence",
+      "required": true,
+      "trigger": "Same original relationship/state view remains applicable; original source hashes and changed contexts rechecked",
+      "pending": []
+    },
+    {
+      "svg_path": "docs/assets/km/macos-scheduler-state.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_04caaf2e-14be-4711-904e-1faa0b4a797b.json",
+      "owner_article": "刷新生命周期设计.md",
+      "article_paths": [
+        "刷新生命周期设计.md"
+      ],
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/RefreshBackoffPolicy.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift"
+      ],
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
+      "content_hashes": {
+        "svg": {
+          "algorithm": "sha256",
+          "value": "137db6d21d002d8f3addd3aa9f6c741442731d6039d5043770a7384d559f599b"
+        },
+        "semantic": {
+          "algorithm": "sha256",
+          "value": "087432c6cc68624aac34641eb6781a12d5b4a98714a771f33d6f7c2a831e53c4"
+        }
+      },
+      "id": "d_04caaf2e-14be-4711-904e-1faa0b4a797b",
+      "name": "macos-scheduler-state",
+      "required": true,
+      "trigger": "Same original relationship/state view remains applicable; original source hashes and changed contexts rechecked",
+      "pending": []
+    },
+    {
+      "svg_path": "docs/assets/km/offline-refresh-gate.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_a41b7373-2867-4803-820c-c1bba0c5fe64.json",
+      "owner_article": "刷新生命周期设计.md",
+      "article_paths": [
+        "刷新生命周期设计.md"
+      ],
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/NetworkReachability.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift"
+      ],
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
+      "content_hashes": {
+        "svg": {
+          "algorithm": "sha256",
+          "value": "2b9108f9e662a068f05e2c0fce8a69a1d2aa861c51089c70854d3b32957d1fdd"
+        },
+        "semantic": {
+          "algorithm": "sha256",
+          "value": "b03bd43c3d3d4579555ac0f21183e14f873f233fc40616b1336bf31b17a6f4cd"
+        }
+      },
+      "id": "d_a41b7373-2867-4803-820c-c1bba0c5fe64",
+      "name": "offline-refresh-gate",
+      "required": true,
+      "trigger": "Same original relationship/state view remains applicable; original source hashes and changed contexts rechecked",
+      "pending": []
+    }
+  ],
+  "deferred_figures": []
+}

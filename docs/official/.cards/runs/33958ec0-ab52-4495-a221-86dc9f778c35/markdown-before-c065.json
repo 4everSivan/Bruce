@@ -1,0 +1,525 @@
+{
+  "browser": "155.0.8059.85",
+  "renderer": "bundled marked; offline local HTML preview, not a project-declared production viewer",
+  "viewport": {
+    "width": 1120,
+    "height": 1600
+  },
+  "contentWidth": 920,
+  "pages": [
+    {
+      "path": "Agent用量分析设计.md",
+      "key": "01",
+      "h1": "Agent 用量分析设计",
+      "h2": [
+        "目录",
+        "1. 目标",
+        "2. 设计",
+        "3. 流程",
+        "4. 数据与接口",
+        "5. 异常与边界",
+        "6. 验证要点",
+        "7. 参考文献"
+      ],
+      "overflow": false,
+      "images": [
+        {
+          "src": "file:///Users/sivan/code_project/my_project/app_project/Bruce/docs/assets/km/.staging/33958ec0-ab52-4495-a221-86dc9f778c35/analytics-model-flow.svg",
+          "loaded": true,
+          "width": 920,
+          "height": 1016
+        },
+        {
+          "src": "file:///Users/sivan/code_project/my_project/app_project/Bruce/docs/assets/km/.staging/33958ec0-ab52-4495-a221-86dc9f778c35/analytics-timeline-flow.svg",
+          "loaded": true,
+          "width": 920,
+          "height": 924
+        }
+      ],
+      "wideTables": 0,
+      "imageScreenshots": [
+        "01-image-0.png",
+        "01-image-1.png"
+      ]
+    },
+    {
+      "path": "Bruce设计文档.md",
+      "key": "02",
+      "h1": "Bruce 设计文档",
+      "h2": [
+        "目录",
+        "1. 简介",
+        "2. 需求",
+        "3. 目标",
+        "4. 功能设计",
+        "5. 架构设计",
+        "6. 详细设计",
+        "7. 参考文献"
+      ],
+      "overflow": false,
+      "images": [
+        {
+          "src": "file:///Users/sivan/code_project/my_project/app_project/Bruce/docs/assets/km/system-architecture.svg",
+          "loaded": true,
+          "width": 920,
+          "height": 530
+        },
+        {
+          "src": "file:///Users/sivan/code_project/my_project/app_project/Bruce/docs/assets/km/refresh-sequence.svg",
+          "loaded": true,
+          "width": 920,
+          "height": 827
+        }
+      ],
+      "wideTables": 0,
+      "imageScreenshots": [
+        "02-image-0.png",
+        "02-image-1.png"
+      ]
+    },
+    {
+      "path": "README.md",
+      "key": "03",
+      "h1": "Bruce 知识库",
+      "h2": [
+        "建立整体认识",
+        "理解采集与额度",
+        "理解桌面应用的行为",
+        "构建与交付"
+      ],
+      "overflow": false,
+      "images": [],
+      "wideTables": 0,
+      "imageScreenshots": []
+    },
+    {
+      "path": "Widget设计.md",
+      "key": "04",
+      "h1": "Widget 设计",
+      "h2": [
+        "目录",
+        "1. 目标与职责",
+        "2. 对外契约",
+        "3. 内部结构",
+        "4. 详细设计",
+        "5. 流程与状态",
+        "6. 异常与恢复",
+        "7. 参考文献"
+      ],
+      "overflow": false,
+      "images": [
+        {
+          "src": "file:///Users/sivan/code_project/my_project/app_project/Bruce/docs/assets/km/.staging/33958ec0-ab52-4495-a221-86dc9f778c35/widget-lifecycle.svg",
+          "loaded": true,
+          "width": 920,
+          "height": 878
+        }
+      ],
+      "wideTables": 0,
+      "imageScreenshots": [
+        "04-image-0.png"
+      ]
+    },
+    {
+      "path": "Windows应用设计.md",
+      "key": "05",
+      "h1": "Windows 应用设计",
+      "h2": [
+        "目录",
+        "1. 目标与职责",
+        "2. 对外契约",
+        "3. 内部结构",
+        "4. 详细设计",
+        "5. 流程与状态",
+        "6. 异常与恢复",
+        "7. 参考文献"
+      ],
+      "overflow": false,
+      "images": [
+        {
+          "src": "file:///Users/sivan/code_project/my_project/app_project/Bruce/docs/assets/km/.staging/33958ec0-ab52-4495-a221-86dc9f778c35/windows-credential-recovery.svg",
+          "loaded": true,
+          "width": 920,
+          "height": 1016
+        },
+        {
+          "src": "file:///Users/sivan/code_project/my_project/app_project/Bruce/docs/assets/km/.staging/33958ec0-ab52-4495-a221-86dc9f778c35/windows-ipc-flow.svg",
+          "loaded": true,
+          "width": 920,
+          "height": 903
+        }
+      ],
+      "wideTables": 0,
+      "imageScreenshots": [
+        "05-image-0.png",
+        "05-image-1.png"
+      ]
+    },
+    {
+      "path": "Windows快照与刷新状态.md",
+      "key": "06",
+      "h1": "Windows 快照与刷新状态",
+      "h2": [
+        "目录",
+        "1. 目标与范围",
+        "2. 参与者与契约",
+        "3. 流程设计",
+        "4. 状态与数据变化",
+        "5. 异常与恢复",
+        "6. 场景推演",
+        "7. 参考文献"
+      ],
+      "overflow": false,
+      "images": [
+        {
+          "src": "file:///Users/sivan/code_project/my_project/app_project/Bruce/docs/assets/km/windows-snapshot-state.svg",
+          "loaded": true,
+          "width": 920,
+          "height": 767
+        }
+      ],
+      "wideTables": 0,
+      "imageScreenshots": [
+        "06-image-0.png"
+      ]
+    },
+    {
+      "path": "macOS原生应用设计.md",
+      "key": "07",
+      "h1": "macOS 原生应用设计",
+      "h2": [
+        "目录",
+        "1. 目标与职责",
+        "2. 对外契约",
+        "3. 内部结构",
+        "4. 详细设计",
+        "5. 流程与状态",
+        "6. 异常与恢复",
+        "7. 参考文献"
+      ],
+      "overflow": false,
+      "images": [
+        {
+          "src": "file:///Users/sivan/code_project/my_project/app_project/Bruce/docs/assets/km/.staging/33958ec0-ab52-4495-a221-86dc9f778c35/macos-app-lifecycle.svg",
+          "loaded": true,
+          "width": 920,
+          "height": 703
+        }
+      ],
+      "wideTables": 0,
+      "imageScreenshots": [
+        "07-image-0.png"
+      ]
+    },
+    {
+      "path": "刷新生命周期设计.md",
+      "key": "08",
+      "h1": "刷新生命周期设计",
+      "h2": [
+        "目录",
+        "1. 目标与范围",
+        "2. 参与者与契约",
+        "3. 流程设计",
+        "4. 状态与数据变化",
+        "5. 异常与恢复",
+        "6. 场景推演",
+        "7. 参考文献"
+      ],
+      "overflow": false,
+      "images": [
+        {
+          "src": "file:///Users/sivan/code_project/my_project/app_project/Bruce/docs/assets/km/offline-refresh-gate.svg",
+          "loaded": true,
+          "width": 920,
+          "height": 423
+        },
+        {
+          "src": "file:///Users/sivan/code_project/my_project/app_project/Bruce/docs/assets/km/refresh-sequence.svg",
+          "loaded": true,
+          "width": 920,
+          "height": 827
+        },
+        {
+          "src": "file:///Users/sivan/code_project/my_project/app_project/Bruce/docs/assets/km/.staging/33958ec0-ab52-4495-a221-86dc9f778c35/screen-lock-gate.svg",
+          "loaded": true,
+          "width": 920,
+          "height": 979
+        },
+        {
+          "src": "file:///Users/sivan/code_project/my_project/app_project/Bruce/docs/assets/km/macos-scheduler-state.svg",
+          "loaded": true,
+          "width": 920,
+          "height": 797
+        },
+        {
+          "src": "file:///Users/sivan/code_project/my_project/app_project/Bruce/docs/assets/km/.staging/33958ec0-ab52-4495-a221-86dc9f778c35/snapshot-recovery.svg",
+          "loaded": true,
+          "width": 920,
+          "height": 887
+        }
+      ],
+      "wideTables": 0,
+      "imageScreenshots": [
+        "08-image-0.png",
+        "08-image-1.png",
+        "08-image-2.png",
+        "08-image-3.png",
+        "08-image-4.png"
+      ]
+    },
+    {
+      "path": "本地会话解析与计费.md",
+      "key": "09",
+      "h1": "本地会话解析与计费",
+      "h2": [
+        "目录",
+        "1. 目标与职责",
+        "2. 对外契约",
+        "3. 内部结构",
+        "4. 详细设计",
+        "5. 流程与状态",
+        "6. 异常与恢复",
+        "7. 参考文献"
+      ],
+      "overflow": false,
+      "images": [
+        {
+          "src": "file:///Users/sivan/code_project/my_project/app_project/Bruce/docs/assets/km/.staging/33958ec0-ab52-4495-a221-86dc9f778c35/source-contribution-flow.svg",
+          "loaded": true,
+          "width": 920,
+          "height": 830
+        },
+        {
+          "src": "file:///Users/sivan/code_project/my_project/app_project/Bruce/docs/assets/km/.staging/33958ec0-ab52-4495-a221-86dc9f778c35/sqlite-cache-decision.svg",
+          "loaded": true,
+          "width": 920,
+          "height": 1078
+        },
+        {
+          "src": "file:///Users/sivan/code_project/my_project/app_project/Bruce/docs/assets/km/.staging/33958ec0-ab52-4495-a221-86dc9f778c35/local-cache-decision.svg",
+          "loaded": true,
+          "width": 920,
+          "height": 684
+        },
+        {
+          "src": "file:///Users/sivan/code_project/my_project/app_project/Bruce/docs/assets/km/.staging/33958ec0-ab52-4495-a221-86dc9f778c35/local-pricing-decision.svg",
+          "loaded": true,
+          "width": 920,
+          "height": 694
+        }
+      ],
+      "wideTables": 0,
+      "imageScreenshots": [
+        "09-image-0.png",
+        "09-image-1.png",
+        "09-image-2.png",
+        "09-image-3.png"
+      ]
+    },
+    {
+      "path": "术语表.md",
+      "key": "10",
+      "h1": "术语表",
+      "h2": [
+        "Bridge",
+        "AgentUsageArtifact",
+        "CollectionWindow",
+        "TokenBucket",
+        "PricingTable",
+        "ArtifactStore",
+        "RefreshScheduler",
+        "RefreshExecutionPipeline",
+        "SnapshotState",
+        "DaimonWidget",
+        "CanonicalModelSummary",
+        "相关文档"
+      ],
+      "overflow": false,
+      "images": [],
+      "wideTables": 0,
+      "imageScreenshots": []
+    },
+    {
+      "path": "构建验证与发布.md",
+      "key": "11",
+      "h1": "构建验证与发布",
+      "h2": [
+        "目录",
+        "1. 目标与范围",
+        "2. 环境与约束",
+        "3. 部署拓扑",
+        "4. 组件与配置",
+        "5. 部署与变更流程",
+        "6. 故障与恢复",
+        "7. 参考文献"
+      ],
+      "overflow": false,
+      "images": [
+        {
+          "src": "file:///Users/sivan/code_project/my_project/app_project/Bruce/docs/assets/km/.staging/33958ec0-ab52-4495-a221-86dc9f778c35/release-job-flow.svg",
+          "loaded": true,
+          "width": 920,
+          "height": 911
+        }
+      ],
+      "wideTables": 0,
+      "imageScreenshots": [
+        "11-image-0.png"
+      ]
+    },
+    {
+      "path": "菜单栏与看板设计.md",
+      "key": "12",
+      "h1": "菜单栏与看板设计",
+      "h2": [
+        "目录",
+        "1. 目标",
+        "2. 设计",
+        "3. 流程",
+        "4. 数据与接口",
+        "5. 异常与边界",
+        "6. 验证要点",
+        "7. 参考文献"
+      ],
+      "overflow": false,
+      "images": [
+        {
+          "src": "file:///Users/sivan/code_project/my_project/app_project/Bruce/docs/assets/km/dashboard-toggle-state.svg",
+          "loaded": true,
+          "width": 920,
+          "height": 423
+        }
+      ],
+      "wideTables": 0,
+      "imageScreenshots": [
+        "12-image-0.png"
+      ]
+    },
+    {
+      "path": "订阅配置与凭据管理设计.md",
+      "key": "13",
+      "h1": "订阅配置与凭据管理设计",
+      "h2": [
+        "目录",
+        "1. 目标与职责",
+        "2. 对外契约",
+        "3. 内部结构",
+        "4. 详细设计",
+        "5. 流程与状态",
+        "6. 异常与恢复",
+        "7. 参考文献"
+      ],
+      "overflow": false,
+      "images": [
+        {
+          "src": "file:///Users/sivan/code_project/my_project/app_project/Bruce/docs/assets/km/.staging/33958ec0-ab52-4495-a221-86dc9f778c35/protected-credential-write.svg",
+          "loaded": true,
+          "width": 920,
+          "height": 876
+        },
+        {
+          "src": "file:///Users/sivan/code_project/my_project/app_project/Bruce/docs/assets/km/.staging/33958ec0-ab52-4495-a221-86dc9f778c35/credential-input-flow.svg",
+          "loaded": true,
+          "width": 920,
+          "height": 813
+        }
+      ],
+      "wideTables": 0,
+      "imageScreenshots": [
+        "13-image-0.png",
+        "13-image-1.png"
+      ]
+    },
+    {
+      "path": "订阅额度查询设计.md",
+      "key": "14",
+      "h1": "订阅额度查询设计",
+      "h2": [
+        "目录",
+        "1. 目标与职责",
+        "2. 对外契约",
+        "3. 内部结构",
+        "4. 详细设计",
+        "5. 流程与状态",
+        "6. 异常与恢复",
+        "7. 参考文献"
+      ],
+      "overflow": false,
+      "images": [
+        {
+          "src": "file:///Users/sivan/code_project/my_project/app_project/Bruce/docs/assets/km/.staging/33958ec0-ab52-4495-a221-86dc9f778c35/claude-oauth-refresh.svg",
+          "loaded": true,
+          "width": 920,
+          "height": 850
+        },
+        {
+          "src": "file:///Users/sivan/code_project/my_project/app_project/Bruce/docs/assets/km/.staging/33958ec0-ab52-4495-a221-86dc9f778c35/quota-account-flow.svg",
+          "loaded": true,
+          "width": 920,
+          "height": 832
+        }
+      ],
+      "wideTables": 0,
+      "imageScreenshots": [
+        "14-image-0.png",
+        "14-image-1.png"
+      ]
+    },
+    {
+      "path": "设置中心与价格校准设计.md",
+      "key": "15",
+      "h1": "设置中心与价格校准设计",
+      "h2": [
+        "目录",
+        "1. 目标与范围",
+        "2. 配置模型",
+        "3. 配置项设计",
+        "4. 加载与生效流程",
+        "5. 异常与安全边界",
+        "6. 配置示例",
+        "7. 参考文献"
+      ],
+      "overflow": false,
+      "images": [
+        {
+          "src": "file:///Users/sivan/code_project/my_project/app_project/Bruce/docs/assets/km/.staging/33958ec0-ab52-4495-a221-86dc9f778c35/settings-activation.svg",
+          "loaded": true,
+          "width": 920,
+          "height": 694
+        }
+      ],
+      "wideTables": 0,
+      "imageScreenshots": [
+        "15-image-0.png"
+      ]
+    },
+    {
+      "path": "采集引擎与本地用量设计.md",
+      "key": "16",
+      "h1": "采集引擎与本地用量设计",
+      "h2": [
+        "目录",
+        "1. 目标与职责",
+        "2. 对外契约",
+        "3. 内部结构",
+        "4. 详细设计",
+        "5. 流程与状态",
+        "6. 异常与恢复",
+        "7. 参考文献"
+      ],
+      "overflow": false,
+      "images": [
+        {
+          "src": "file:///Users/sivan/code_project/my_project/app_project/Bruce/docs/assets/km/collector-flow.svg",
+          "loaded": true,
+          "width": 920,
+          "height": 949
+        }
+      ],
+      "wideTables": 0,
+      "imageScreenshots": [
+        "16-image-0.png"
+      ]
+    }
+  ]
+}

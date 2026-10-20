@@ -1,0 +1,164 @@
+{
+  "schema_version": "1.0",
+  "id": "d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3",
+  "title": "分析趋势派生数据流",
+  "type": "data_flow",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "artifact",
+      "label": "工件 hours、daily 与模型份额",
+      "role": "source",
+      "evidence_refs": [
+        "normalizer"
+      ]
+    },
+    {
+      "id": "hours",
+      "label": "今日：固定 24 小时点",
+      "role": "process",
+      "evidence_refs": [
+        "normalizer"
+      ]
+    },
+    {
+      "id": "dates",
+      "label": "历史：日期并集排序与范围筛选",
+      "role": "process",
+      "evidence_refs": [
+        "normalizer"
+      ]
+    },
+    {
+      "id": "weeks",
+      "label": "allTime 且日期>28 时\n每 7 个现有日期分桶",
+      "role": "process",
+      "evidence_refs": [
+        "normalizer"
+      ]
+    },
+    {
+      "id": "series",
+      "label": "派生 Agent、模型与Token系列\n按固定单价估算费用",
+      "role": "process",
+      "evidence_refs": [
+        "normalizer"
+      ]
+    },
+    {
+      "id": "chart",
+      "label": "Charts 折线/面积、选择标签",
+      "role": "sink",
+      "evidence_refs": [
+        "chart"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "r1",
+      "from": "artifact",
+      "to": "hours",
+      "kind": "derives",
+      "evidence_refs": [
+        "normalizer"
+      ],
+      "properties": {
+        "data": "今日 hours"
+      },
+      "label": "今日 hours"
+    },
+    {
+      "id": "r2",
+      "from": "artifact",
+      "to": "dates",
+      "kind": "derives",
+      "evidence_refs": [
+        "normalizer"
+      ],
+      "properties": {
+        "data": "daily 日期及分项"
+      },
+      "label": "daily 日期及分项"
+    },
+    {
+      "id": "r3",
+      "from": "dates",
+      "to": "weeks",
+      "kind": "derives",
+      "evidence_refs": [
+        "normalizer"
+      ],
+      "properties": {
+        "data": "全部历史且日期数大于28"
+      },
+      "label": "全部历史且日期数大于28"
+    },
+    {
+      "id": "r4",
+      "from": "dates",
+      "to": "series",
+      "kind": "derives",
+      "evidence_refs": [
+        "normalizer"
+      ],
+      "properties": {
+        "data": "无需分桶的逐日点"
+      },
+      "label": "无需分桶的逐日点"
+    },
+    {
+      "id": "r5",
+      "from": "weeks",
+      "to": "series",
+      "kind": "derives",
+      "evidence_refs": [
+        "normalizer"
+      ],
+      "properties": {
+        "data": "七项桶的合计"
+      },
+      "label": "七项桶的合计"
+    },
+    {
+      "id": "r6",
+      "from": "hours",
+      "to": "series",
+      "kind": "derives",
+      "evidence_refs": [
+        "normalizer"
+      ],
+      "properties": {
+        "data": "逐小时总量与Agent值"
+      },
+      "label": "逐小时总量与Agent值"
+    },
+    {
+      "id": "r7",
+      "from": "series",
+      "to": "chart",
+      "kind": "derives",
+      "evidence_refs": [
+        "chart"
+      ],
+      "properties": {
+        "data": "AnalyticsTimelinePoint"
+      },
+      "label": "AnalyticsTimelinePoint"
+    }
+  ],
+  "evidence": {
+    "normalizer": {
+      "path": "apps/macos/Sources/BruceAppCore/ModelNormalizer.swift",
+      "locator": "buildTimelinePoints",
+      "kind": "static_implementation",
+      "supports": "今日小时点与历史日/七项桶；模型按全范围份额分配，今日构成与费用为固定比例估算。"
+    },
+    "chart": {
+      "path": "apps/macos/Sources/BruceApp/Settings/TimelineChartCard.swift",
+      "locator": "chartView / chartPoints / activeSeriesMeta",
+      "kind": "static_implementation",
+      "supports": "图表消费四类系列、切换折线面积并按标签选择；没有MA7计算。"
+    }
+  }
+}

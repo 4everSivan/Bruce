@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "id": "d_084f9330-301b-4613-bcd3-1cf561127e93",
+  "title": "Windows 快照阶段",
+  "type": "state",
+  "view": "implementation",
+  "nodes": [
+    {"id":"load","label":"加载快照","role":"initial","evidence_refs":["load"]},
+    {"id":"idle","label":"idle：尚无采集结果","role":"state","evidence_refs":["load","default"]},
+    {"id":"refreshing","label":"refreshing：正在刷新","role":"state","evidence_refs":["begin"]},
+    {"id":"fresh","label":"fresh：有效成功响应","role":"state","evidence_refs":["apply"]},
+    {"id":"partial","label":"partial：有效部分响应","role":"state","evidence_refs":["apply"]},
+    {"id":"stale","label":"stale：保留有效 artifact","role":"state","evidence_refs":["fail"]},
+    {"id":"failed","label":"failed：无有效 artifact","role":"state","evidence_refs":["fail","load"]}
+  ],
+  "relations": [
+    {"id":"missing-idle","from":"load","to":"idle","kind":"transition","label":"文件缺失","condition":"snapshot.json 不存在","properties":{"event":"SnapshotState::load","action":"返回默认状态"},"evidence_refs":["load","default"]},
+    {"id":"restore-stale","from":"load","to":"stale","kind":"transition","label":"有效文件且有 artifact","condition":"文件可解码且 artifact 通过校验并存在","properties":{"event":"SnapshotState::load","action":"fail(SNAPSHOT_RESTORED)"},"evidence_refs":["load","fail"]},
+    {"id":"load-failed","from":"load","to":"failed","kind":"transition","label":"读取或校验失败，或恢复无 artifact","condition":"非文件缺失的读取错误、无效持久内容，或有效状态不含 artifact","properties":{"event":"SnapshotState::load","action":"记录 SNAPSHOT_READ_FAILED、SNAPSHOT_INVALID 或 SNAPSHOT_RESTORED"},"evidence_refs":["load","fail"]},
+    {"id":"idle-begin","from":"idle","to":"refreshing","kind":"transition","label":"开始刷新","properties":{"event":"begin_refresh","action":"仅修改 phase，保留 artifact、error 与 lastSuccessAt"},"evidence_refs":["begin","scheduler"]},
+    {"id":"fresh-begin","from":"fresh","to":"refreshing","kind":"transition","label":"开始刷新","properties":{"event":"begin_refresh","action":"保留当前快照并发布刷新阶段"},"evidence_refs":["begin","scheduler"]},
+    {"id":"partial-begin","from":"partial","to":"refreshing","kind":"transition","label":"开始刷新","properties":{"event":"begin_refresh","action":"保留当前快照并发布刷新阶段"},"evidence_refs":["begin","scheduler"]},
+    {"id":"stale-begin","from":"stale","to":"refreshing","kind":"transition","label":"开始刷新","properties":{"event":"begin_refresh","action":"保留当前快照并发布刷新阶段"},"evidence_refs":["begin","scheduler"]},
+    {"id":"failed-begin","from":"failed","to":"refreshing","kind":"transition","label":"开始刷新","properties":{"event":"begin_refresh","action":"发布刷新阶段"},"evidence_refs":["begin","scheduler"]},
+    {"id":"response-fresh","from":"refreshing","to":"fresh","kind":"transition","label":"有效 Success","condition":"响应为 Success、artifact 有效且本次保存未失败","properties":{"event":"apply_response 与后续 save","action":"合并 artifact、清除错误并更新 lastSuccessAt"},"evidence_refs":["apply","scheduler"]},
+    {"id":"response-partial","from":"refreshing","to":"partial","kind":"transition","label":"有效 Partial","condition":"响应为 Partial、artifact 有效且本次保存未失败","properties":{"event":"apply_response 与后续 save","action":"合并 artifact、记录 COLLECTION_PARTIAL 并保留 lastSuccessAt"},"evidence_refs":["apply","scheduler"]},
+    {"id":"failure-stale","from":"refreshing","to":"stale","kind":"transition","label":"失败且有 artifact","condition":"发生采集、响应验证或快照写入失败，且内存存在有效 artifact","properties":{"event":"fail","action":"保留内存 artifact，合资格服务标为 stale，记录错误"},"evidence_refs":["apply","fail","scheduler"]},
+    {"id":"failure-empty","from":"refreshing","to":"failed","kind":"transition","label":"失败且无 artifact","condition":"发生采集、响应验证或快照写入失败，且内存无有效 artifact","properties":{"event":"fail","action":"保留无 artifact 状态并记录错误"},"evidence_refs":["apply","fail","scheduler"]}
+  ],
+  "evidence": {
+    "default":{"path":"apps/win/src-tauri/src/runtime_core.rs","locator":"impl Default for SnapshotState","kind":"static_implementation","supports":"默认 phase 为 idle，artifact、last_success_at、error 均为空。"},
+    "load":{"path":"apps/win/src-tauri/src/runtime_core.rs","locator":"SnapshotState::load","kind":"static_implementation","supports":"快照缺失返回默认值；读取或内容无效为 failed；有效状态通过 fail(SNAPSHOT_RESTORED) 恢复，结果依 artifact 是否存在分为 stale 或 failed。"},
+    "begin":{"path":"apps/win/src-tauri/src/runtime_core.rs","locator":"SnapshotState::begin_refresh","kind":"static_implementation","supports":"开始刷新只把 phase 设为 refreshing，其他字段不清空。"},
+    "apply":{"path":"apps/win/src-tauri/src/runtime_core.rs","locator":"SnapshotState::apply_response","kind":"static_implementation","supports":"Error、缺失或无效 artifact 走 fail；有效 Success/Partial 合并数据后分别设置 fresh/partial；仅 Success 更新 last_success_at。"},
+    "fail":{"path":"apps/win/src-tauri/src/runtime_core.rs","locator":"SnapshotState::fail","kind":"static_implementation","supports":"artifact 存在时 phase 为 stale，否则为 failed；保留内存数据并把合资格服务标为 stale。"},
+    "scheduler":{"path":"apps/win/src-tauri/src/scheduler.rs","locator":"run_refresh_with_kind 与 spawn","kind":"static_implementation","supports":"循环在每次采集前 begin_refresh；结果应用后尝试保存，保存失败调用 fail(SNAPSHOT_WRITE_FAILED)；采集返回错误调用 fail(COLLECTION_FAILED)。"}
+  }
+}

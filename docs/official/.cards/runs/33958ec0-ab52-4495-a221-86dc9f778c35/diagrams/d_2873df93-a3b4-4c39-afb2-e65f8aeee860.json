@@ -1,0 +1,117 @@
+{
+  "schema_version": "1.0",
+  "id": "d_2873df93-a3b4-4c39-afb2-e65f8aeee860",
+  "title": "来源贡献替换与聚合",
+  "type": "flowchart",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "queue",
+      "label": "有界队列中的 SourceDeltaChange",
+      "role": "entry",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "remove",
+      "label": "removed 存在时按 source_id 移除",
+      "role": "action",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "add",
+      "label": "added 存在时按 source_id 替换",
+      "role": "action",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "map",
+      "label": "按 source_id 排序的贡献映射",
+      "role": "action",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "fold",
+      "label": "流关闭后按键序 merge_delta",
+      "role": "action",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "out",
+      "label": "UsageAccumulator 与诊断",
+      "role": "exit",
+      "evidence_refs": [
+        "source"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "r1",
+      "from": "queue",
+      "to": "remove",
+      "kind": "flow",
+      "evidence_refs": [
+        "source"
+      ],
+      "label": "派生贡献替换事件"
+    },
+    {
+      "id": "r2",
+      "from": "remove",
+      "to": "add",
+      "kind": "flow",
+      "evidence_refs": [
+        "source"
+      ],
+      "label": "移除后再加入"
+    },
+    {
+      "id": "r3",
+      "from": "add",
+      "to": "map",
+      "kind": "flow",
+      "evidence_refs": [
+        "source"
+      ],
+      "label": "每个来源的最新贡献"
+    },
+    {
+      "id": "r4",
+      "from": "map",
+      "to": "fold",
+      "kind": "flow",
+      "evidence_refs": [
+        "source"
+      ],
+      "label": "固定顺序贡献"
+    },
+    {
+      "id": "r5",
+      "from": "fold",
+      "to": "out",
+      "kind": "flow",
+      "evidence_refs": [
+        "source"
+      ],
+      "label": "聚合结果；无效贡献附诊断"
+    }
+  ],
+  "evidence": {
+    "source": {
+      "path": "core/collector/crates/collector-application/src/aggregation.rs",
+      "locator": "consume_source_changes",
+      "kind": "static_implementation",
+      "supports": "此图仅表示 Kimi 的来源替换消费链；原始行不跨队列边界，其他来源使用各自适配器归并。"
+    }
+  }
+}

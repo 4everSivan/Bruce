@@ -54,13 +54,19 @@ package enum QuotaRefreshPolicy {
     ///   - interval: 额度查询周期; <= 0 表示不做新鲜度门禁 (测试兼容).
     ///   - forceRefresh: 手动或窗口边界触发, 绕过新鲜度门禁.
     ///   - bypassCooldown: 手动刷新为 true, 连 429 冷却也绕过.
+    ///   - suppressExternalQuotas: 锁屏等场景强制抑制外部额度查询 (C064).
     package static func plan(
         previous: JSONValue?,
         now: Date,
         interval: TimeInterval = interval,
         forceRefresh: Bool,
-        bypassCooldown: Bool
+        bypassCooldown: Bool,
+        suppressExternalQuotas: Bool = false
     ) -> QuotaRunPolicy {
+        if suppressExternalQuotas {
+            return .localOnly
+        }
+
         let services = previous?.objectValue?["services"]?.arrayValue ?? []
         guard !services.isEmpty, interval > 0 else {
             return .includeAll

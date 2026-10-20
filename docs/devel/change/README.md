@@ -1,6 +1,6 @@
 # 变更与核验卡池 (change/)
 
-> **created**: 2026-09-23 ｜ **last-change**: 2026-09-23 ｜ **status**: active
+> **created**: 2026-09-23 ｜ **last-change**: 2026-10-20 ｜ **status**: active
 
 ---
 

@@ -159,15 +159,18 @@ package enum PanelAgentColor: String, CaseIterable, Equatable, Sendable {
 // MARK: - 展示格式化
 
 package enum PanelFormat {
-    /// token 计数 K 格式化: 900 -> "900", 9000 -> "9K", 70500 -> "70.5K".
+    /// token 计数 K/M/B 格式化: 900 -> "900", 9000 -> "9K", 70500 -> "70.5K", 1.2M, 3.53B.
     package static func tokenCount(_ value: Int) -> String {
         if value < 1000 {
             return "\(value)"
         }
         if value < 1_000_000 {
-            return trimDecimal(String(format: "%.1f", Double(value) / 1000)) + "K"
+            return trimDecimal(String(format: "%.1f", Double(value) / 1000.0)) + "K"
         }
-        return trimDecimal(String(format: "%.1f", Double(value) / 1_000_000)) + "M"
+        if value < 1_000_000_000 {
+            return trimDecimal(String(format: "%.1f", Double(value) / 1_000_000.0)) + "M"
+        }
+        return trimDecimal(String(format: "%.2f", Double(value) / 1_000_000_000.0)) + "B"
     }
 
     /// 美元转人民币汇率; 暂为固定常量, 后续可做成配置项.
@@ -282,7 +285,16 @@ package enum PanelFormat {
     }
 
     private static func trimDecimal(_ text: String) -> String {
-        text.hasSuffix(".0") ? String(text.dropLast(2)) : text
+        var str = text
+        if str.contains(".") {
+            while str.hasSuffix("0") {
+                str.removeLast()
+            }
+            if str.hasSuffix(".") {
+                str.removeLast()
+            }
+        }
+        return str
     }
 }
 

@@ -121,11 +121,11 @@
       "from": "dispatch",
       "to": "quota",
       "kind": "calls",
-      "label": "externalQuotas 允许才创建",
+      "label": "允许外部额度且非本地专用才创建",
       "evidence_refs": [
         "parallel"
       ],
-      "condition": "普通请求允许 externalQuotas"
+      "condition": "普通请求允许 externalQuotas 且 localUsageOnly 不为 true"
     },
     {
       "id": "local-result",
@@ -153,11 +153,11 @@
       "from": "dispatch",
       "to": "assemble",
       "kind": "publishes",
-      "label": "externalQuotas 未授权：服务占位",
+      "label": "本地专用：空 services；否则未授权：服务占位",
       "evidence_refs": [
         "assemble"
       ],
-      "condition": "普通请求未允许 externalQuotas"
+      "condition": "localUsageOnly=true，或非本地专用且未允许 externalQuotas"
     },
     {
       "id": "assembled",
@@ -199,7 +199,7 @@
       "path": "core/collector/crates/collector-application/src/lib.rs",
       "locator": "collect_agent_usage_with_dependencies_inner",
       "kind": "static_implementation",
-      "supports": "普通分支以 scoped threads 同时启动本地线程与 externalQuotas 允许时的额度线程，join 后装配结果；该图不覆盖更早返回的 Codex 定向重试分支。"
+      "supports": "普通分支创建本地线程，仅在 localUsageOnly 不为 true 且 externalQuotas 允许时创建额度线程；该图不覆盖更早返回的 Codex 定向重试分支。"
     },
     "local": {
       "path": "core/collector/crates/collector-application/src/lib.rs",
@@ -217,7 +217,7 @@
       "path": "core/collector/crates/collector-application/src/lib.rs",
       "locator": "collect_agent_usage_with_dependencies_inner",
       "kind": "static_implementation",
-      "supports": "外部额度未授权时生成 denied_service 占位；正常本地数据应用定价再与服务合成 artifact，取消或本地返回错误时不返回 artifact。"
+      "supports": "localUsageOnly=true 时 services 和额度凭据输出为空；否则额度未授权时生成 denied_service 占位。正常本地数据应用定价并与服务合成工件，本地取消或错误不发布工件。"
     },
     "status": {
       "path": "core/collector/crates/collector-domain/src/lib.rs",

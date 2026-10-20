@@ -26,6 +26,13 @@
       "tasks": [
         "T06"
       ]
+    },
+    "M4-用量分析与Token统计工作台": {
+      "title": "设置中心 Agent 用量深度分析、Token 统计与多模型跨源归并工作台",
+      "design_doc": "docs/devel/design/06-Agent用量分析与Token统计工作台.md",
+      "tasks": [
+        "T07"
+      ]
     }
   },
   "topics": {
@@ -43,6 +50,12 @@
       "tasks": [
         "T05",
         "T06"
+      ]
+    },
+    "AgentAnalytics": {
+      "design_doc": "docs/devel/design/06-Agent用量分析与Token统计工作台.md",
+      "tasks": [
+        "T07"
       ]
     }
   },
@@ -120,6 +133,16 @@
       "depends_on": [],
       "file": "docs/archive/0.12.0/task/T06.json",
       "branch_note": "2026-10-14 用户确认方案后按 AGENTS.md 第五节建专属特性分支"
+    },
+    "T07": {
+      "title": "设置中心 Agent 用量深度分析、Token 统计与多模型跨源归并工作台",
+      "status": "completed",
+      "branch": "main",
+      "topic": "AgentAnalytics",
+      "milestone": "M4-用量分析与Token统计工作台",
+      "depends_on": [],
+      "file": "docs/devel/task/T07.json",
+      "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T07-agent-analytics-workbench"
     }
   }
 }

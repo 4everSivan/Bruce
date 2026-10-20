@@ -1,0 +1,145 @@
+{
+  "schema_version": "1.0",
+  "id": "d_ae615f73-9d9d-408e-8112-f8ec47afffbc",
+  "title": "Rust 模型价格决议",
+  "type": "flowchart",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "start",
+      "label": "清理模型名，查覆盖与内置表",
+      "role": "entry",
+      "evidence_refs": [
+        "pricing"
+      ]
+    },
+    {
+      "id": "builtin",
+      "label": "命中内置基准价？",
+      "role": "decision",
+      "evidence_refs": [
+        "pricing"
+      ]
+    },
+    {
+      "id": "merge",
+      "label": "覆盖已有字段，其余沿用基准",
+      "role": "action",
+      "evidence_refs": [
+        "pricing"
+      ]
+    },
+    {
+      "id": "custom",
+      "label": "覆盖含输入与输出单价？",
+      "role": "decision",
+      "evidence_refs": [
+        "pricing"
+      ]
+    },
+    {
+      "id": "use",
+      "label": "使用完整自定义规则",
+      "role": "action",
+      "evidence_refs": [
+        "pricing"
+      ]
+    },
+    {
+      "id": "unknown",
+      "label": "返回无价格",
+      "role": "exit",
+      "evidence_refs": [
+        "pricing"
+      ]
+    },
+    {
+      "id": "cost",
+      "label": "按四类 Token 与单价计算",
+      "role": "exit",
+      "evidence_refs": [
+        "pricing"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "r1",
+      "from": "start",
+      "to": "builtin",
+      "kind": "flow",
+      "evidence_refs": [
+        "pricing"
+      ],
+      "label": "匹配"
+    },
+    {
+      "id": "r2",
+      "from": "builtin",
+      "to": "merge",
+      "kind": "flow",
+      "evidence_refs": [
+        "pricing"
+      ],
+      "condition": "是"
+    },
+    {
+      "id": "r3",
+      "from": "builtin",
+      "to": "custom",
+      "kind": "flow",
+      "evidence_refs": [
+        "pricing"
+      ],
+      "condition": "否"
+    },
+    {
+      "id": "r4",
+      "from": "custom",
+      "to": "use",
+      "kind": "flow",
+      "evidence_refs": [
+        "pricing"
+      ],
+      "condition": "是"
+    },
+    {
+      "id": "r5",
+      "from": "custom",
+      "to": "unknown",
+      "kind": "flow",
+      "evidence_refs": [
+        "pricing"
+      ],
+      "condition": "否"
+    },
+    {
+      "id": "r6",
+      "from": "merge",
+      "to": "cost",
+      "kind": "flow",
+      "evidence_refs": [
+        "pricing"
+      ],
+      "label": "得到价格"
+    },
+    {
+      "id": "r7",
+      "from": "use",
+      "to": "cost",
+      "kind": "flow",
+      "evidence_refs": [
+        "pricing"
+      ],
+      "label": "得到价格"
+    }
+  ],
+  "evidence": {
+    "pricing": {
+      "path": "core/collector/crates/collector-domain/src/pricing.rs",
+      "locator": "PricingTable::resolve / calculate_cost",
+      "kind": "static_implementation",
+      "supports": "内置与覆盖组合、未知模型完整性和四类费用计算；未实现汇率换算。"
+    }
+  }
+}

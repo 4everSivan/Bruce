@@ -1,0 +1,41 @@
+{
+  "schema_version": "1.0",
+  "id": "k_2d2834af-6729-4556-aea8-bf46fefc2e9f",
+  "term": "ArtifactStore",
+  "category": "project_term",
+  "context": "Bruce macOS 刷新",
+  "definition": "macOS 应用校验、持久化和恢复模块 Artifact 的存储组件。",
+  "project_usage": "按模块保存当前快照和 previous，并维护独立元数据；publish 在写入前校验 Artifact，界面通过宿主状态消费快照。",
+  "basis": {
+    "definition": "code_supported",
+    "project_usage": "code_supported"
+  },
+  "status": "current",
+  "articles": [
+    {
+      "path": "glossary.md",
+      "anchor": "artifact-store"
+    },
+    {
+      "path": "refresh-lifecycle.md"
+    },
+    {
+      "path": "macos-design.md"
+    }
+  ],
+  "sources": [
+    {
+      "kind": "code",
+      "path": "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
+      "symbol": "ArtifactStore.publish",
+      "supports": [
+        "definition",
+        "project_usage"
+      ]
+    }
+  ],
+  "tags": [
+    "Bruce",
+    "ArtifactStore"
+  ]
+}

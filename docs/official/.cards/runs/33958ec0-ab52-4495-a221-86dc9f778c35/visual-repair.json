@@ -1,0 +1,18 @@
+{
+  "round": 1,
+  "first_visual_result": "failed",
+  "issues": [
+    "Label masks intersected nearby nodes in macOS lifecycle, credential flow and analytics model flow",
+    "Snapshot exception label exceeded left bounds",
+    "Claude false-branch label intersected merge route"
+  ],
+  "repair": "Moved labels and masks; preserved semantic graph and identifiers",
+  "re_rendered": [
+    "macos-app-lifecycle",
+    "claude-oauth-refresh",
+    "credential-input-flow",
+    "analytics-model-flow",
+    "snapshot-recovery"
+  ],
+  "next_check": "inspect repaired PNGs and Markdown embeddings"
+}

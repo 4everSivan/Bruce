@@ -1,0 +1,89 @@
+{
+  "schema_version": "1.0",
+  "id": "d_76549499-2760-425c-8c1f-f23edea8f412",
+  "title": "看板逻辑开关",
+  "type": "state",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "left",
+      "label": "closed · 逻辑关闭",
+      "role": "initial",
+      "evidence_refs": [
+        "controller",
+        "visibility"
+      ]
+    },
+    {
+      "id": "right",
+      "label": "open · 逻辑打开",
+      "role": "state",
+      "evidence_refs": [
+        "controller",
+        "visibility"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "open",
+      "from": "left",
+      "to": "right",
+      "kind": "transition",
+      "label": "状态项点击：打开",
+      "condition": "逻辑状态为 closed",
+      "properties": {
+        "event": "toggleDashboard"
+      },
+      "evidence_refs": [
+        "controller",
+        "visibility"
+      ]
+    },
+    {
+      "id": "close",
+      "from": "right",
+      "to": "left",
+      "kind": "transition",
+      "label": "再次点击：关闭",
+      "condition": "逻辑状态为 open",
+      "properties": {
+        "event": "toggleDashboard"
+      },
+      "evidence_refs": [
+        "controller",
+        "visibility"
+      ]
+    },
+    {
+      "id": "dismiss",
+      "from": "right",
+      "to": "left",
+      "kind": "transition",
+      "label": "外部失焦：可见、指针不在状态项、无状态项动作",
+      "condition": "面板可见且指针不在状态项且没有状态项动作正在处理",
+      "properties": {
+        "event": "applicationDidResignActive",
+        "action": "关闭并同步 SwiftUI 可见性"
+      },
+      "evidence_refs": [
+        "controller",
+        "visibility"
+      ]
+    }
+  ],
+  "evidence": {
+    "controller": {
+      "path": "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+      "locator": "dashboardToggleState; toggleDashboard; closeDashboard; applicationDidResignActive",
+      "kind": "static_implementation",
+      "supports": "逻辑状态初始 closed，点击按当前逻辑开关打开或关闭；失焦路径通过守卫关闭。"
+    },
+    "visibility": {
+      "path": "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift",
+      "locator": "DashboardPanelToggleState; DashboardPanelDismissalPolicy; DashboardPanelVisibilityTransition",
+      "kind": "static_implementation",
+      "supports": "开关 closed/open 分离于 AppKit 异步可见性；失焦需满足三个条件；关闭同步 visible=false。"
+    }
+  }
+}

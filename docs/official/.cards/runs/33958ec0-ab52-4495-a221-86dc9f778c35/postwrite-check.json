@@ -1,0 +1,10 @@
+{
+  "result": "passed",
+  "checked_at": "2026-10-20T04:31:04.670438+00:00",
+  "content_files": 77,
+  "written_content_files": 53,
+  "reused_content_files": 24,
+  "relative_references": 840,
+  "source_files_unchanged": 442,
+  "manifest_revision": 3
+}

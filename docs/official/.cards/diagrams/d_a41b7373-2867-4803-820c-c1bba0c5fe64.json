@@ -1,0 +1,90 @@
+{
+  "schema_version": "1.0",
+  "id": "d_a41b7373-2867-4803-820c-c1bba0c5fe64",
+  "title": "自动刷新网络门禁",
+  "type": "state",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "left",
+      "label": "网络可用",
+      "role": "initial",
+      "evidence_refs": [
+        "monitor",
+        "scheduler"
+      ]
+    },
+    {
+      "id": "right",
+      "label": "网络不可用",
+      "role": "state",
+      "evidence_refs": [
+        "monitor",
+        "scheduler"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "offline",
+      "from": "left",
+      "to": "right",
+      "kind": "transition",
+      "label": "网络变为不可用：暂停已有退避",
+      "condition": "调度器未停止",
+      "properties": {
+        "event": "可达性回调 false",
+        "action": "取消 backoff 定时器并标记 offlinePaused"
+      },
+      "evidence_refs": [
+        "monitor",
+        "scheduler"
+      ]
+    },
+    {
+      "id": "online",
+      "from": "right",
+      "to": "left",
+      "kind": "transition",
+      "label": "联网：暂停或陈旧则补偿，否则恢复排程",
+      "condition": "已启用、允许自动刷新且相位 idle/backoff",
+      "properties": {
+        "event": "可达性回调 true",
+        "action": "按 offlinePaused 或陈旧程度决定补偿"
+      },
+      "evidence_refs": [
+        "monitor",
+        "scheduler"
+      ]
+    },
+    {
+      "id": "automatic",
+      "from": "right",
+      "to": "right",
+      "kind": "transition",
+      "label": "自动意图暂停；手动可试一次，离线失败不排退避",
+      "condition": "自动意图不启动；仅 reason=manual 可启动",
+      "properties": {
+        "event": "timer/wake/backoff 或手动意图",
+        "action": "清除自动积压并保留补偿标记"
+      },
+      "evidence_refs": [
+        "scheduler"
+      ]
+    }
+  ],
+  "evidence": {
+    "monitor": {
+      "path": "apps/macos/Sources/BruceAppCore/NetworkReachability.swift",
+      "locator": "available; apply; start; stop",
+      "kind": "static_implementation",
+      "supports": "首个真实 NWPathMonitor 回调前 available=true；变化在主线程发布；stop取消监视。"
+    },
+    "scheduler": {
+      "path": "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+      "locator": "triggerRefresh; startRefresh; handleBackoff; pauseBackoffForOffline; resumeAfterReconnect",
+      "kind": "static_implementation",
+      "supports": "自动路径离线不启动、不排退避；手动可尝试一次。联网后对启用自动模块按暂停/陈旧决定补偿，否则恢复排程；offlinePaused是标记。"
+    }
+  }
+}

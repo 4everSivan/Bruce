@@ -12,7 +12,7 @@
     <tspan x="48" dy="0">模块调度状态</tspan>
   </text>
   <text x="48" y="58" class="sub">
-    <tspan x="48" dy="0">常规调度路径 · stopped 是整体标记；禁用后的在途收尾见正文</tspan>
+    <tspan x="48" dy="0">网络可用的常规路径 · 离线门禁及禁用后的在途收尾见正文</tspan>
   </text>
   <g id="d_04caaf2e-14be-4711-904e-1faa0b4a797b-r-enable" data-relation-id="enable">
     <path class="connector" d="M300 156 H460" marker-end="url(#d_04caaf2e-14be-4711-904e-1faa0b4a797b-arrow)" />

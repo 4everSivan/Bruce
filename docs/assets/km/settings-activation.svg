@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" id="d_7f1dffad-5e43-460b-9d30-c9c70bb943de" viewBox="0 0 1000 754" role="img" aria-labelledby="d_7f1dffad-5e43-460b-9d30-c9c70bb943de-title d_7f1dffad-5e43-460b-9d30-c9c70bb943de-desc">
+<title id="d_7f1dffad-5e43-460b-9d30-c9c70bb943de-title">价格与锁屏偏好生效</title>
+<desc id="d_7f1dffad-5e43-460b-9d30-c9c70bb943de-desc">两类设置保存失败的不同状态效果</desc>
+<defs><style>#d_7f1dffad-5e43-460b-9d30-c9c70bb943de{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif} text{fill:#243247;font-size:16px} .node{fill:#fff;stroke:#768397;stroke-width:1.5} .connector{fill:none;stroke:#516176;stroke-width:1.5}</style><marker id="d_7f1dffad-5e43-460b-9d30-c9c70bb943de-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#516176"/></marker></defs>
+<rect width="1000" height="754" fill="#fff"/>
+<text x="24" y="30" style="font-size:20px;font-weight:600">价格与锁屏偏好生效</text>
+<g id="d_7f1dffad-5e43-460b-9d30-c9c70bb943de-r1" data-relation-id="r1"><polyline class="connector" points="250,162 250,248" marker-end="url(#d_7f1dffad-5e43-460b-9d30-c9c70bb943de-arrow)"/>
+<rect x="309" y="192.5" width="92" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="355" y="209.5">覆盖项变更</tspan>
+</text>
+</g>
+<g id="d_7f1dffad-5e43-460b-9d30-c9c70bb943de-r2" data-relation-id="r2"><polyline class="connector" points="250,332 250,418" marker-end="url(#d_7f1dffad-5e43-460b-9d30-c9c70bb943de-arrow)"/>
+<rect x="301" y="362.5" width="108" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="355" y="379.5">当前覆盖集合</tspan>
+</text>
+</g>
+<g id="d_7f1dffad-5e43-460b-9d30-c9c70bb943de-r3" data-relation-id="r3"><polyline class="connector" points="250,502 250,608" marker-end="url(#d_7f1dffad-5e43-460b-9d30-c9c70bb943de-arrow)"/>
+<rect x="277" y="542.5" width="156" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="355" y="559.5">保存成功或错误结果</tspan>
+</text>
+</g>
+<g id="d_7f1dffad-5e43-460b-9d30-c9c70bb943de-r4" data-relation-id="r4"><polyline class="connector" points="750,162 750,338" marker-end="url(#d_7f1dffad-5e43-460b-9d30-c9c70bb943de-arrow)"/>
+<rect x="806.6" y="237.5" width="96.8" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="855" y="254.5">新 Bool 值</tspan>
+</text>
+</g>
+<g id="d_7f1dffad-5e43-460b-9d30-c9c70bb943de-r5" data-relation-id="r5"><polyline class="connector" points="750,422 750,608" marker-end="url(#d_7f1dffad-5e43-460b-9d30-c9c70bb943de-arrow)"/>
+<rect x="817" y="502.5" width="76" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="855" y="519.5">保存结果</tspan>
+</text>
+</g>
+<g id="d_7f1dffad-5e43-460b-9d30-c9c70bb943de-price" data-node-id="price">
+<rect class="node" x="70" y="78" width="360" height="84" rx="5"/>
+<text text-anchor="middle">
+<tspan x="250" y="125.5">价格编辑或重置动作</tspan>
+</text></g>
+<g id="d_7f1dffad-5e43-460b-9d30-c9c70bb943de-memory" data-node-id="memory">
+<rect class="node" x="70" y="248" width="360" height="84" rx="5"/>
+<text text-anchor="middle">
+<tspan x="250" y="295.5">先更新内存 pricingOverrides</tspan>
+</text></g>
+<g id="d_7f1dffad-5e43-460b-9d30-c9c70bb943de-saveprice" data-node-id="saveprice">
+<rect class="node" x="70" y="418" width="360" height="84" rx="5"/>
+<text text-anchor="middle">
+<tspan x="250" y="465.5">尝试保存配置</tspan>
+</text></g>
+<g id="d_7f1dffad-5e43-460b-9d30-c9c70bb943de-refresh" data-node-id="refresh">
+<rect class="node" x="50" y="608" width="400" height="84" rx="5"/>
+<text text-anchor="middle">
+<tspan x="250" y="644">成功触发 Collector 刷新</tspan>
+<tspan x="250" y="667">失败报告错误、内存值已改变</tspan>
+</text></g>
+<g id="d_7f1dffad-5e43-460b-9d30-c9c70bb943de-lock" data-node-id="lock">
+<rect class="node" x="570" y="78" width="360" height="84" rx="5"/>
+<text text-anchor="middle">
+<tspan x="750" y="125.5">锁屏暂停开关动作</tspan>
+</text></g>
+<g id="d_7f1dffad-5e43-460b-9d30-c9c70bb943de-savelock" data-node-id="savelock">
+<rect class="node" x="570" y="338" width="360" height="84" rx="5"/>
+<text text-anchor="middle">
+<tspan x="750" y="385.5">先尝试保存新偏好</tspan>
+</text></g>
+<g id="d_7f1dffad-5e43-460b-9d30-c9c70bb943de-activate" data-node-id="activate">
+<rect class="node" x="550" y="608" width="400" height="84" rx="5"/>
+<text text-anchor="middle">
+<tspan x="750" y="644">成功才发布 UI 与调度值</tspan>
+<tspan x="750" y="667">失败保持旧发布值</tspan>
+</text></g>
+</svg>

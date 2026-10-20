@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" id="d_ac13d2c9-06bf-466a-8e98-523657c2adbf" viewBox="0 0 1000 964" role="img" aria-labelledby="d_ac13d2c9-06bf-466a-8e98-523657c2adbf-title d_ac13d2c9-06bf-466a-8e98-523657c2adbf-desc">
+<title id="d_ac13d2c9-06bf-466a-8e98-523657c2adbf-title">macOS 快照读取恢复</title>
+<desc id="d_ac13d2c9-06bf-466a-8e98-523657c2adbf-desc">当前、previous和一次回滚的有条件恢复</desc>
+<defs><style>#d_ac13d2c9-06bf-466a-8e98-523657c2adbf{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif} text{fill:#243247;font-size:16px} .node{fill:#fff;stroke:#768397;stroke-width:1.5} .connector{fill:none;stroke:#516176;stroke-width:1.5}</style><marker id="d_ac13d2c9-06bf-466a-8e98-523657c2adbf-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#516176" /></marker></defs>
+<rect width="1000" height="964" fill="#fff" />
+<text x="24" y="30" style="font-size:20px;font-weight:600">macOS 快照读取恢复</text>
+<g id="d_ac13d2c9-06bf-466a-8e98-523657c2adbf-r1" data-relation-id="r1"><polyline class="connector" points="270,142 270,194" marker-end="url(#d_ac13d2c9-06bf-466a-8e98-523657c2adbf-arrow)" />
+<rect x="353" y="155.5" width="44" height="25" fill="#fff" /><text text-anchor="middle">
+<tspan x="375" y="172.5">结果</tspan>
+</text>
+</g>
+<g id="d_ac13d2c9-06bf-466a-8e98-523657c2adbf-r2" data-relation-id="r2"><polyline class="connector" points="450,260 540,260" marker-end="url(#d_ac13d2c9-06bf-466a-8e98-523657c2adbf-arrow)" />
+<rect x="473" y="225.5" width="44" height="25" fill="#fff" /><text text-anchor="middle">
+<tspan x="495" y="242.5">成功</tspan>
+</text>
+</g>
+<g id="d_ac13d2c9-06bf-466a-8e98-523657c2adbf-r3" data-relation-id="r3"><polyline class="connector" points="270,326 270,394" marker-end="url(#d_ac13d2c9-06bf-466a-8e98-523657c2adbf-arrow)" />
+<rect x="289.8" y="347.5" width="170.4" height="25" fill="#fff" /><text text-anchor="middle">
+<tspan x="375" y="364.5">ArtifactStoreError</tspan>
+</text>
+</g>
+<g id="d_ac13d2c9-06bf-466a-8e98-523657c2adbf-r4" data-relation-id="r4"><polyline class="connector" points="450,460 540,460" marker-end="url(#d_ac13d2c9-06bf-466a-8e98-523657c2adbf-arrow)" />
+<rect x="481" y="425.5" width="28" height="25" fill="#fff" /><text text-anchor="middle">
+<tspan x="495" y="442.5">是</tspan>
+</text>
+</g>
+<g id="d_ac13d2c9-06bf-466a-8e98-523657c2adbf-r5" data-relation-id="r5"><polyline class="connector" points="270,526 270,594" marker-end="url(#d_ac13d2c9-06bf-466a-8e98-523657c2adbf-arrow)" />
+<rect x="361" y="547.5" width="28" height="25" fill="#fff" /><text text-anchor="middle">
+<tspan x="375" y="564.5">否</tspan>
+</text>
+</g>
+<g id="d_ac13d2c9-06bf-466a-8e98-523657c2adbf-r6" data-relation-id="r6"><polyline class="connector" points="450,660 540,660" marker-end="url(#d_ac13d2c9-06bf-466a-8e98-523657c2adbf-arrow)" />
+<rect x="481" y="625.5" width="28" height="25" fill="#fff" /><text text-anchor="middle">
+<tspan x="495" y="642.5">是</tspan>
+</text>
+</g>
+<g id="d_ac13d2c9-06bf-466a-8e98-523657c2adbf-r7" data-relation-id="r7"><polyline class="connector" points="270,726 270,818" marker-end="url(#d_ac13d2c9-06bf-466a-8e98-523657c2adbf-arrow)" />
+<rect x="80.80000000000001" y="777.5" width="178.39999999999998" height="25" fill="#fff" /><text text-anchor="middle">
+<tspan x="170" y="794.5">否（previous不存在）</tspan></text>
+</g>
+<g id="d_ac13d2c9-06bf-466a-8e98-523657c2adbf-r8" data-relation-id="r8"><polyline class="connector" points="740,618 740,502" marker-end="url(#d_ac13d2c9-06bf-466a-8e98-523657c2adbf-arrow)" />
+<rect x="768" y="547.5" width="124" height="25" fill="#fff" /><text text-anchor="middle">
+<tspan x="830" y="564.5">回滚且校验成功</tspan>
+</text>
+</g>
+<g id="d_ac13d2c9-06bf-466a-8e98-523657c2adbf-r9" data-relation-id="r9"><polyline class="connector" points="740,702 740,770 270,770 270,818" marker-end="url(#d_ac13d2c9-06bf-466a-8e98-523657c2adbf-arrow)" />
+<rect x="628" y="732.5" width="44" height="25" fill="#fff" /><text text-anchor="middle">
+<tspan x="650" y="749.5">否则</tspan>
+</text>
+</g>
+<g id="d_ac13d2c9-06bf-466a-8e98-523657c2adbf-r10" data-relation-id="r10"><polyline class="connector" points="90,260 40,260 40,860 70,860" marker-end="url(#d_ac13d2c9-06bf-466a-8e98-523657c2adbf-arrow)" />
+<rect x="49.2" y="532.0" width="161.6" height="44" fill="#fff" /><text text-anchor="middle">
+<tspan x="130" y="549.0">其它异常</tspan><tspan x="130" y="568.0">corruptedSnapshot</tspan></text>
+</g>
+<g id="d_ac13d2c9-06bf-466a-8e98-523657c2adbf-current" data-node-id="current">
+<rect class="node" x="70" y="58" width="400" height="84" rx="22" />
+<text text-anchor="middle">
+<tspan x="270" y="105.5">读取并校验当前快照</tspan>
+</text></g>
+<g id="d_ac13d2c9-06bf-466a-8e98-523657c2adbf-valid" data-node-id="valid">
+<polygon class="node" points="270,194 450,260 270,326 90,260" />
+<text text-anchor="middle">
+<tspan x="270" y="265.5">当前读取结果</tspan>
+</text></g>
+<g id="d_ac13d2c9-06bf-466a-8e98-523657c2adbf-normal" data-node-id="normal">
+<rect class="node" x="540" y="218" width="400" height="84" rx="22" />
+<text text-anchor="middle">
+<tspan x="740" y="265.5">返回当前工件与元数据状态</tspan>
+</text></g>
+<g id="d_ac13d2c9-06bf-466a-8e98-523657c2adbf-previous" data-node-id="previous">
+<polygon class="node" points="270,394 450,460 270,526 90,460" />
+<text text-anchor="middle">
+<tspan x="270" y="465.5">previous 存在且有效？</tspan>
+</text></g>
+<g id="d_ac13d2c9-06bf-466a-8e98-523657c2adbf-fallback" data-node-id="fallback">
+<rect class="node" x="540" y="418" width="400" height="84" rx="22" />
+<text text-anchor="middle">
+<tspan x="740" y="465.5">返回恢复工件，强制陈旧</tspan>
+</text></g>
+<g id="d_ac13d2c9-06bf-466a-8e98-523657c2adbf-rollback" data-node-id="rollback">
+<polygon class="node" points="270,594 450,660 270,726 90,660" />
+<text text-anchor="middle">
+<tspan x="270" y="665.5">previous 存在但读取失败？</tspan>
+</text></g>
+<g id="d_ac13d2c9-06bf-466a-8e98-523657c2adbf-backup" data-node-id="backup">
+<rect class="node" x="540" y="618" width="400" height="84" rx="5" />
+<text text-anchor="middle">
+<tspan x="740" y="665.5">尝试一次底层备份回滚并校验</tspan>
+</text></g>
+<g id="d_ac13d2c9-06bf-466a-8e98-523657c2adbf-error" data-node-id="error">
+<rect class="node" x="70" y="818" width="400" height="84" rx="22" />
+<text text-anchor="middle">
+<tspan x="270" y="865.5">抛出存储错误</tspan>
+</text></g>
+</svg>

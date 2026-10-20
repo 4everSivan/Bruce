@@ -1,0 +1,140 @@
+{
+  "schema_version": "1.0",
+  "id": "d_7f1dffad-5e43-460b-9d30-c9c70bb943de",
+  "title": "价格与锁屏偏好生效",
+  "type": "data_flow",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "price",
+      "label": "价格编辑或重置动作",
+      "role": "source",
+      "evidence_refs": [
+        "settings"
+      ]
+    },
+    {
+      "id": "memory",
+      "label": "先更新内存 pricingOverrides",
+      "role": "store",
+      "evidence_refs": [
+        "settings"
+      ]
+    },
+    {
+      "id": "saveprice",
+      "label": "尝试保存配置",
+      "role": "process",
+      "evidence_refs": [
+        "settings"
+      ]
+    },
+    {
+      "id": "refresh",
+      "label": "成功触发 Collector 刷新\n失败报告错误、内存值已改变",
+      "role": "sink",
+      "evidence_refs": [
+        "settings"
+      ]
+    },
+    {
+      "id": "lock",
+      "label": "锁屏暂停开关动作",
+      "role": "source",
+      "evidence_refs": [
+        "settings"
+      ]
+    },
+    {
+      "id": "savelock",
+      "label": "先尝试保存新偏好",
+      "role": "process",
+      "evidence_refs": [
+        "settings"
+      ]
+    },
+    {
+      "id": "activate",
+      "label": "成功才发布 UI 与调度值\n失败保持旧发布值",
+      "role": "sink",
+      "evidence_refs": [
+        "settings"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "r1",
+      "from": "price",
+      "to": "memory",
+      "kind": "derives",
+      "evidence_refs": [
+        "settings"
+      ],
+      "properties": {
+        "data": "覆盖项变更"
+      },
+      "label": "覆盖项变更"
+    },
+    {
+      "id": "r2",
+      "from": "memory",
+      "to": "saveprice",
+      "kind": "derives",
+      "evidence_refs": [
+        "settings"
+      ],
+      "properties": {
+        "data": "当前覆盖集合"
+      },
+      "label": "当前覆盖集合"
+    },
+    {
+      "id": "r3",
+      "from": "saveprice",
+      "to": "refresh",
+      "kind": "derives",
+      "evidence_refs": [
+        "settings"
+      ],
+      "properties": {
+        "data": "保存成功或错误结果"
+      },
+      "label": "保存成功或错误结果"
+    },
+    {
+      "id": "r4",
+      "from": "lock",
+      "to": "savelock",
+      "kind": "derives",
+      "evidence_refs": [
+        "settings"
+      ],
+      "properties": {
+        "data": "新 Bool 值"
+      },
+      "label": "新 Bool 值"
+    },
+    {
+      "id": "r5",
+      "from": "savelock",
+      "to": "activate",
+      "kind": "derives",
+      "evidence_refs": [
+        "settings"
+      ],
+      "properties": {
+        "data": "保存结果"
+      },
+      "label": "保存结果"
+    }
+  ],
+  "evidence": {
+    "settings": {
+      "path": "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+      "locator": "setPricingOverride / persistPricingOverrides / setPauseSubscriptionRefreshOnScreenLock",
+      "kind": "static_implementation",
+      "supports": "价格先改内存再保存成功刷新；锁屏先保存成功才发布UI并通知调度器。"
+    }
+  }
+}

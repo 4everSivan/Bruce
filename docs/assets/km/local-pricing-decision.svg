@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" id="d_ae615f73-9d9d-408e-8112-f8ec47afffbc" viewBox="0 0 1000 754" role="img" aria-labelledby="d_ae615f73-9d9d-408e-8112-f8ec47afffbc-title d_ae615f73-9d9d-408e-8112-f8ec47afffbc-desc">
+<title id="d_ae615f73-9d9d-408e-8112-f8ec47afffbc-title">Rust 模型价格决议</title>
+<desc id="d_ae615f73-9d9d-408e-8112-f8ec47afffbc-desc">覆盖优先级、未知模型条件与费用空值</desc>
+<defs><style>#d_ae615f73-9d9d-408e-8112-f8ec47afffbc{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif} text{fill:#243247;font-size:16px} .node{fill:#fff;stroke:#768397;stroke-width:1.5} .connector{fill:none;stroke:#516176;stroke-width:1.5}</style><marker id="d_ae615f73-9d9d-408e-8112-f8ec47afffbc-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#516176"/></marker></defs>
+<rect width="1000" height="754" fill="#fff"/>
+<text x="24" y="30" style="font-size:20px;font-weight:600">Rust 模型价格决议</text>
+<g id="d_ae615f73-9d9d-408e-8112-f8ec47afffbc-r1" data-relation-id="r1"><polyline class="connector" points="270,142 270,184" marker-end="url(#d_ae615f73-9d9d-408e-8112-f8ec47afffbc-arrow)"/>
+<rect x="353" y="150.5" width="44" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="375" y="167.5">匹配</tspan>
+</text>
+</g>
+<g id="d_ae615f73-9d9d-408e-8112-f8ec47afffbc-r2" data-relation-id="r2"><polyline class="connector" points="450,250 540,250" marker-end="url(#d_ae615f73-9d9d-408e-8112-f8ec47afffbc-arrow)"/>
+<rect x="481" y="215.5" width="28" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="495" y="232.5">是</tspan>
+</text>
+</g>
+<g id="d_ae615f73-9d9d-408e-8112-f8ec47afffbc-r3" data-relation-id="r3"><polyline class="connector" points="270,316 270,384" marker-end="url(#d_ae615f73-9d9d-408e-8112-f8ec47afffbc-arrow)"/>
+<rect x="361" y="337.5" width="28" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="375" y="354.5">否</tspan>
+</text>
+</g>
+<g id="d_ae615f73-9d9d-408e-8112-f8ec47afffbc-r4" data-relation-id="r4"><polyline class="connector" points="450,450 540,450" marker-end="url(#d_ae615f73-9d9d-408e-8112-f8ec47afffbc-arrow)"/>
+<rect x="481" y="415.5" width="28" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="495" y="432.5">是</tspan>
+</text>
+</g>
+<g id="d_ae615f73-9d9d-408e-8112-f8ec47afffbc-r5" data-relation-id="r5"><polyline class="connector" points="270,516 270,608" marker-end="url(#d_ae615f73-9d9d-408e-8112-f8ec47afffbc-arrow)"/>
+<rect x="361" y="549.5" width="28" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="375" y="566.5">否</tspan>
+</text>
+</g>
+<g id="d_ae615f73-9d9d-408e-8112-f8ec47afffbc-r6" data-relation-id="r6"><polyline class="connector" points="940,250 980,250 980,650 940,650" marker-end="url(#d_ae615f73-9d9d-408e-8112-f8ec47afffbc-arrow)"/>
+<rect x="892" y="522.5" width="76" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="930" y="539.5">得到价格</tspan>
+</text>
+</g>
+<g id="d_ae615f73-9d9d-408e-8112-f8ec47afffbc-r7" data-relation-id="r7"><polyline class="connector" points="740,492 740,608" marker-end="url(#d_ae615f73-9d9d-408e-8112-f8ec47afffbc-arrow)"/>
+<rect x="807" y="537.5" width="76" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="845" y="554.5">得到价格</tspan>
+</text>
+</g>
+<g id="d_ae615f73-9d9d-408e-8112-f8ec47afffbc-start" data-node-id="start">
+<rect class="node" x="70" y="58" width="400" height="84" rx="22"/>
+<text text-anchor="middle">
+<tspan x="270" y="105.5">清理模型名，查覆盖与内置表</tspan>
+</text></g>
+<g id="d_ae615f73-9d9d-408e-8112-f8ec47afffbc-builtin" data-node-id="builtin">
+<polygon class="node" points="270,184 450,250 270,316 90,250"/>
+<text text-anchor="middle">
+<tspan x="270" y="255.5">命中内置基准价？</tspan>
+</text></g>
+<g id="d_ae615f73-9d9d-408e-8112-f8ec47afffbc-merge" data-node-id="merge">
+<rect class="node" x="540" y="208" width="400" height="84" rx="5"/>
+<text text-anchor="middle">
+<tspan x="740" y="255.5">覆盖已有字段，其余沿用基准</tspan>
+</text></g>
+<g id="d_ae615f73-9d9d-408e-8112-f8ec47afffbc-custom" data-node-id="custom">
+<polygon class="node" points="270,384 450,450 270,516 90,450"/>
+<text text-anchor="middle">
+<tspan x="270" y="455.5">覆盖含输入与输出单价？</tspan>
+</text></g>
+<g id="d_ae615f73-9d9d-408e-8112-f8ec47afffbc-use" data-node-id="use">
+<rect class="node" x="540" y="408" width="400" height="84" rx="5"/>
+<text text-anchor="middle">
+<tspan x="740" y="455.5">使用完整自定义规则</tspan>
+</text></g>
+<g id="d_ae615f73-9d9d-408e-8112-f8ec47afffbc-unknown" data-node-id="unknown">
+<rect class="node" x="70" y="608" width="400" height="84" rx="22"/>
+<text text-anchor="middle">
+<tspan x="270" y="655.5">返回无价格</tspan>
+</text></g>
+<g id="d_ae615f73-9d9d-408e-8112-f8ec47afffbc-cost" data-node-id="cost">
+<rect class="node" x="540" y="608" width="400" height="84" rx="22"/>
+<text text-anchor="middle">
+<tspan x="740" y="655.5">按四类 Token 与单价计算</tspan>
+</text></g>
+</svg>

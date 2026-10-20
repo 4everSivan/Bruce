@@ -1,0 +1,14 @@
+{
+  "system-design.md": "Bruce设计文档.md",
+  "collector-design.md": "采集引擎与本地用量设计.md",
+  "collector-local-usage.md": "本地会话解析与计费.md",
+  "collector-provider-quota.md": "订阅额度查询设计.md",
+  "credentials-design.md": "订阅配置与凭据管理设计.md",
+  "glossary.md": "术语表.md",
+  "macos-design.md": "macOS原生应用设计.md",
+  "refresh-lifecycle.md": "刷新生命周期设计.md",
+  "widget-design.md": "Widget设计.md",
+  "windows-design.md": "Windows应用设计.md",
+  "windows-state-mapping.md": "Windows快照与刷新状态.md",
+  "build-release.md": "构建验证与发布.md"
+}

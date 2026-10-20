@@ -13,11 +13,11 @@
   "status": "current",
   "articles": [
     {
-      "path": "glossary.md",
+      "path": "术语表.md",
       "anchor": "daimon-widget"
     },
     {
-      "path": "widget-design.md"
+      "path": "Widget设计.md"
     }
   ],
   "sources": [

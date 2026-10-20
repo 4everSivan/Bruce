@@ -1,0 +1,188 @@
+{
+  "schema_version": "1.0",
+  "id": "d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae",
+  "title": "Windows IPC 与后台数据通道",
+  "type": "data_flow",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "front",
+      "label": "前端订阅事件与读取面板",
+      "role": "external",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "cache",
+      "label": "get_dashboard：内存快照映射",
+      "role": "process",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "commands",
+      "label": "刷新动作：容量 1 手动通道",
+      "role": "source",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "worker",
+      "label": "唯一后台采集循环",
+      "role": "process",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "snapshot",
+      "label": "响应验证、合并与快照",
+      "role": "store",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "panel",
+      "label": "裁剪当前凭据并映射 Panel",
+      "role": "process",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "event",
+      "label": "dashboard-updated 与托盘状态",
+      "role": "sink",
+      "evidence_refs": [
+        "source"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "r1",
+      "from": "front",
+      "to": "cache",
+      "kind": "derives",
+      "evidence_refs": [
+        "source",
+        "frontend"
+      ],
+      "label": "get_dashboard 调用",
+      "properties": {
+        "data": "get_dashboard 调用"
+      }
+    },
+    {
+      "id": "r2",
+      "from": "cache",
+      "to": "front",
+      "kind": "derives",
+      "evidence_refs": [
+        "source",
+        "frontend"
+      ],
+      "label": "已有 Panel 数据，不启动采集",
+      "properties": {
+        "data": "已有 Panel 数据，不启动采集"
+      }
+    },
+    {
+      "id": "r3",
+      "from": "commands",
+      "to": "worker",
+      "kind": "derives",
+      "evidence_refs": [
+        "source"
+      ],
+      "label": "合并后的手动刷新意图",
+      "properties": {
+        "data": "合并后的手动刷新意图"
+      }
+    },
+    {
+      "id": "r4",
+      "from": "worker",
+      "to": "snapshot",
+      "kind": "derives",
+      "evidence_refs": [
+        "source"
+      ],
+      "label": "Bridge 结果",
+      "properties": {
+        "data": "Bridge 结果"
+      }
+    },
+    {
+      "id": "r5",
+      "from": "snapshot",
+      "to": "panel",
+      "kind": "derives",
+      "evidence_refs": [
+        "source"
+      ],
+      "label": "当前有效工件与运行相位",
+      "properties": {
+        "data": "当前有效工件与运行相位"
+      }
+    },
+    {
+      "id": "r6",
+      "from": "panel",
+      "to": "event",
+      "kind": "derives",
+      "evidence_refs": [
+        "source"
+      ],
+      "label": "Panel JSON 与阶段",
+      "properties": {
+        "data": "Panel JSON 与阶段"
+      }
+    },
+    {
+      "id": "r7",
+      "from": "event",
+      "to": "front",
+      "kind": "derives",
+      "evidence_refs": [
+        "source",
+        "frontend"
+      ],
+      "label": "前端可见时绘制；隐藏时待绘",
+      "properties": {
+        "data": "前端可见时绘制；隐藏时待绘"
+      }
+    },
+    {
+      "id": "r8",
+      "from": "snapshot",
+      "to": "cache",
+      "kind": "derives",
+      "label": "缓存工件与状态",
+      "properties": {
+        "data": "缓存工件与状态"
+      },
+      "evidence_refs": [
+        "source"
+      ]
+    }
+  ],
+  "evidence": {
+    "source": {
+      "path": "apps/win/src-tauri/src/scheduler.rs",
+      "locator": "SchedulerControl / cached_panel / publish / spawn",
+      "kind": "static_implementation",
+      "supports": "前端先订阅后读缓存；系统窗口焦点与位置规则由正文说明。"
+    },
+    "frontend": {
+      "path": "apps/win/src/app.js",
+      "locator": "init / renderWhenVisible",
+      "kind": "static_implementation",
+      "supports": "前端先listen，再get_settings和get_dashboard；可见性决定立即绘制或保留待绘面板。"
+    }
+  }
+}

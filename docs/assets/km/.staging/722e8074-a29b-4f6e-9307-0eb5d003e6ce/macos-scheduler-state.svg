@@ -1,0 +1,164 @@
+<svg xmlns="http://www.w3.org/2000/svg" id="d_04caaf2e-14be-4711-904e-1faa0b4a797b" viewBox="0 0 1200 1040" role="img" aria-labelledby="d_04caaf2e-14be-4711-904e-1faa0b4a797b-title d_04caaf2e-14be-4711-904e-1faa0b4a797b-desc">
+  <title id="d_04caaf2e-14be-4711-904e-1faa0b4a797b-title">模块调度状态</title>
+  <desc id="d_04caaf2e-14be-4711-904e-1faa0b4a797b-desc">RefreshScheduler 的五个模块相位，展示启用、执行、退避、授权阻断、取消及显式禁用。stopped 为叠加控制标记。</desc>
+  <defs>
+    <style>#d_04caaf2e-14be-4711-904e-1faa0b4a797b {font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif} #d_04caaf2e-14be-4711-904e-1faa0b4a797b text {fill:#243247;font-size:16px} #d_04caaf2e-14be-4711-904e-1faa0b4a797b .node {fill:#ffffff;stroke:#768397;stroke-width:1.5} #d_04caaf2e-14be-4711-904e-1faa0b4a797b .connector {fill:none;stroke:#516176;stroke-width:1.5} #d_04caaf2e-14be-4711-904e-1faa0b4a797b .sub {fill:#516176;font-size:14px}</style>
+    <marker id="d_04caaf2e-14be-4711-904e-1faa0b4a797b-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0 0 L8 4 L0 8 Z" fill="#516176" />
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="1200" height="1040" fill="#ffffff" />
+  <text x="48" y="34" style="font-size:23px">
+    <tspan x="48" dy="0">模块调度状态</tspan>
+  </text>
+  <text x="48" y="58" class="sub">
+    <tspan x="48" dy="0">网络可用的常规路径 · 离线门禁及禁用后的在途收尾见正文</tspan>
+  </text>
+  <g id="d_04caaf2e-14be-4711-904e-1faa0b4a797b-r-enable" data-relation-id="enable">
+    <path class="connector" d="M300 156 H460" marker-end="url(#d_04caaf2e-14be-4711-904e-1faa0b4a797b-arrow)" />
+    <rect x="328" y="122" width="58" height="23" fill="#ffffff" />
+    <text x="333" y="139">
+      <tspan x="333" dy="0">启用</tspan>
+    </text>
+  </g>
+  <g id="d_04caaf2e-14be-4711-904e-1faa0b4a797b-r-start" data-relation-id="start">
+    <path class="connector" d="M610 220 V440" marker-end="url(#d_04caaf2e-14be-4711-904e-1faa0b4a797b-arrow)" />
+    <rect x="625" y="293" width="130" height="69" fill="#ffffff" />
+    <text x="630" y="310">
+      <tspan x="630" dy="0">刷新意图</tspan>
+      <tspan x="630" dy="23">启用 / 未停止</tspan>
+      <tspan x="630" dy="23">容量可用</tspan>
+    </text>
+  </g>
+  <g id="d_04caaf2e-14be-4711-904e-1faa0b4a797b-r-finish-idle" data-relation-id="finish-idle">
+    <path class="connector" d="M530 440 V220" marker-end="url(#d_04caaf2e-14be-4711-904e-1faa0b4a797b-arrow)" />
+    <rect x="360" y="273" width="145" height="69" fill="#ffffff" />
+    <text x="365" y="290">
+      <tspan x="365" dy="0">发布成功</tspan>
+      <tspan x="365" dy="23">或失败计数 &gt; 5</tspan>
+      <tspan x="365" dy="23">或取消且有历史成功</tspan>
+    </text>
+  </g>
+  <g id="d_04caaf2e-14be-4711-904e-1faa0b4a797b-r-cancel-empty" data-relation-id="cancel-empty">
+    <path class="connector" d="M460 510 H100 V220" marker-end="url(#d_04caaf2e-14be-4711-904e-1faa0b4a797b-arrow)" />
+    <rect x="110" y="531" width="130" height="23" fill="#ffffff" />
+    <text x="115" y="548">
+      <tspan x="115" dy="0">取消且无历史成功</tspan>
+    </text>
+  </g>
+  <g id="d_04caaf2e-14be-4711-904e-1faa0b4a797b-r-retryable-failure" data-relation-id="retryable-failure">
+    <path class="connector" d="M700 468 H860" marker-end="url(#d_04caaf2e-14be-4711-904e-1faa0b4a797b-arrow)" />
+    <rect x="715" y="412" width="130" height="46" fill="#ffffff" />
+    <text x="720" y="429">
+      <tspan x="720" dy="0">非授权失败</tspan>
+      <tspan x="720" dy="23">退避计数 ≤ 5</tspan>
+    </text>
+  </g>
+  <g id="d_04caaf2e-14be-4711-904e-1faa0b4a797b-r-retry" data-relation-id="retry">
+    <path class="connector" d="M1040 530 V620 H660 V530" marker-end="url(#d_04caaf2e-14be-4711-904e-1faa0b4a797b-arrow)" />
+    <rect x="750" y="632" width="280" height="46" fill="#ffffff" />
+    <text x="755" y="649">
+      <tspan x="755" dy="0">退避到期 / 新刷新意图</tspan>
+      <tspan x="755" dy="23">模块启用；新意图还需未停止与容量可用</tspan>
+    </text>
+  </g>
+  <g id="d_04caaf2e-14be-4711-904e-1faa0b4a797b-r-authorization-failure" data-relation-id="authorization-failure">
+    <path class="connector" d="M530 530 V820" marker-end="url(#d_04caaf2e-14be-4711-904e-1faa0b4a797b-arrow)" />
+    <rect x="275" y="684" width="205" height="46" fill="#ffffff" />
+    <text x="280" y="701">
+      <tspan x="280" dy="0">输入缺授权</tspan>
+      <tspan x="280" dy="23">或 Bridge 授权阻断</tspan>
+    </text>
+  </g>
+  <g id="d_04caaf2e-14be-4711-904e-1faa0b4a797b-r-manual-recover" data-relation-id="manual-recover">
+    <path class="connector" d="M630 820 V530" marker-end="url(#d_04caaf2e-14be-4711-904e-1faa0b4a797b-arrow)" />
+    <rect x="645" y="736" width="235" height="46" fill="#ffffff" />
+    <text x="650" y="753">
+      <tspan x="650" dy="0">手动刷新</tspan>
+      <tspan x="650" dy="23">启用 / 未停止 / 容量可用</tspan>
+    </text>
+  </g>
+  <g id="d_04caaf2e-14be-4711-904e-1faa0b4a797b-r-disable-idle" data-relation-id="disable-idle">
+    <path class="connector" d="M460 192 H300" marker-end="url(#d_04caaf2e-14be-4711-904e-1faa0b4a797b-arrow)" />
+    <rect x="325" y="221" width="58" height="23" fill="#ffffff" />
+    <text x="330" y="238">
+      <tspan x="330" dy="0">禁用</tspan>
+    </text>
+  </g>
+  <g id="d_04caaf2e-14be-4711-904e-1faa0b4a797b-r-disable-running" data-relation-id="disable-running">
+    <path class="connector" d="M460 466 H340 V250 H180 V220" marker-end="url(#d_04caaf2e-14be-4711-904e-1faa0b4a797b-arrow)" />
+    <rect x="176" y="261" width="58" height="23" fill="#ffffff" />
+    <text x="181" y="278">
+      <tspan x="181" dy="0">禁用</tspan>
+    </text>
+  </g>
+  <g id="d_04caaf2e-14be-4711-904e-1faa0b4a797b-r-disable-backoff" data-relation-id="disable-backoff">
+    <path class="connector" d="M1100 474 H1160 V88 H260 V130" marker-end="url(#d_04caaf2e-14be-4711-904e-1faa0b4a797b-arrow)" />
+    <rect x="825" y="94" width="58" height="23" fill="#ffffff" />
+    <text x="830" y="111">
+      <tspan x="830" dy="0">禁用</tspan>
+    </text>
+  </g>
+  <g id="d_04caaf2e-14be-4711-904e-1faa0b4a797b-r-disable-auth-required" data-relation-id="disable-auth-required">
+    <path class="connector" d="M460 866 H32 V176 H60" marker-end="url(#d_04caaf2e-14be-4711-904e-1faa0b4a797b-arrow)" />
+    <rect x="44" y="829" width="58" height="23" fill="#ffffff" />
+    <text x="49" y="846">
+      <tspan x="49" dy="0">禁用</tspan>
+    </text>
+  </g>
+  <g id="d_04caaf2e-14be-4711-904e-1faa0b4a797b-n-disabled" data-node-id="disabled">
+    <rect class="node" x="60" y="130" width="240" height="90" rx="7" stroke="#768397" />
+    <text x="78" y="165">
+      <tspan x="78" dy="0">disabled · 初始禁用</tspan>
+    </text>
+    <text x="78" y="192" class="sub">
+      <tspan x="78" dy="0">不启动新的调度</tspan>
+    </text>
+    <circle cx="286" cy="144" r="4" fill="#243247" />
+  </g>
+  <g id="d_04caaf2e-14be-4711-904e-1faa0b4a797b-n-idle" data-node-id="idle">
+    <rect class="node" x="460" y="130" width="240" height="90" rx="7" stroke="#768397" />
+    <text x="478" y="165">
+      <tspan x="478" dy="0">idle · 等待</tspan>
+    </text>
+    <text x="478" y="192" class="sub">
+      <tspan x="478" dy="0">按周期或 pending 继续</tspan>
+    </text>
+  </g>
+  <g id="d_04caaf2e-14be-4711-904e-1faa0b4a797b-n-running" data-node-id="running">
+    <rect class="node" x="460" y="440" width="240" height="90" rx="7" stroke="#a13b22" />
+    <text x="478" y="475">
+      <tspan x="478" dy="0">running · 执行中</tspan>
+    </text>
+    <text x="478" y="502" class="sub">
+      <tspan x="478" dy="0">新请求合并到 pending</tspan>
+    </text>
+  </g>
+  <g id="d_04caaf2e-14be-4711-904e-1faa0b4a797b-n-backoff" data-node-id="backoff">
+    <rect class="node" x="860" y="440" width="240" height="90" rx="7" stroke="#768397" />
+    <text x="878" y="475">
+      <tspan x="878" dy="0">backoff · 退避</tspan>
+    </text>
+    <text x="878" y="502" class="sub">
+      <tspan x="878" dy="0">定向失败重试范围转全量</tspan>
+    </text>
+  </g>
+  <g id="d_04caaf2e-14be-4711-904e-1faa0b4a797b-n-auth-required" data-node-id="auth-required">
+    <rect class="node" x="460" y="820" width="240" height="90" rx="7" stroke="#768397" />
+    <text x="478" y="855">
+      <tspan x="478" dy="0">authRequired · 等待授权</tspan>
+    </text>
+    <text x="478" y="882" class="sub">
+      <tspan x="478" dy="0">自动触发不执行</tspan>
+    </text>
+  </g>
+  <text x="48" y="958" class="sub">
+    <tspan x="48" dy="0">授权阻断：无工件的 auth 诊断，或 error 响应被归类为 auth；有可发布部分结果时不阻断整模块。</tspan>
+  </text>
+  <text x="48" y="983" class="sub">
+    <tspan x="48" dy="0">禁用不取消在途进程：其收尾仍可改相位，但 enabled=false 阻止后续启动；此分支未展开。</tspan>
+  </text>
+  <text x="48" y="1008" class="sub">
+    <tspan x="48" dy="0">退避：限流 300 秒；其他 30 秒指数退避加抖动，封顶 1800 秒。取消有历史成功时 UI 显示 stale。</tspan>
+  </text>
+</svg>

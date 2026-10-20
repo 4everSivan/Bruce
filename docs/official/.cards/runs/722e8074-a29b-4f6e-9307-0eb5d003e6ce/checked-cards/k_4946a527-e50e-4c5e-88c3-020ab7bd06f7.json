@@ -1,0 +1,46 @@
+{
+  "schema_version": "1.0",
+  "id": "k_4946a527-e50e-4c5e-88c3-020ab7bd06f7",
+  "term": "TokenBucket",
+  "category": "project_term",
+  "context": "Bruce 采集引擎",
+  "definition": "记录普通输入、输出、缓存读取和缓存创建四类 Token 的聚合桶。",
+  "project_usage": "total 汇总四类；display_input 将普通输入与两类缓存相加。比较 today.input 与趋势输入时，需要保留两者的口径差异。",
+  "basis": {
+    "definition": "code_supported",
+    "project_usage": "code_supported"
+  },
+  "status": "current",
+  "articles": [
+    {
+      "path": "术语表.md",
+      "anchor": "token-bucket"
+    },
+    {
+      "path": "本地会话解析与计费.md"
+    }
+  ],
+  "sources": [
+    {
+      "kind": "code",
+      "path": "core/collector/crates/collector-domain/src/lib.rs",
+      "symbol": "TokenBucket",
+      "supports": [
+        "definition",
+        "project_usage"
+      ]
+    },
+    {
+      "kind": "code",
+      "path": "core/collector/crates/collector-aggregate/src/lib.rs",
+      "symbol": "UsageAccumulator::finalize_with_pricing",
+      "supports": [
+        "project_usage"
+      ]
+    }
+  ],
+  "tags": [
+    "Bruce",
+    "TokenBucket"
+  ]
+}

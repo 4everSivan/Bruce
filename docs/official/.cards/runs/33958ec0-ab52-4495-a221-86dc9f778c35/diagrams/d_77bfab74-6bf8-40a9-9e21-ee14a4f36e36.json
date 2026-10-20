@@ -1,0 +1,155 @@
+{
+  "schema_version": "1.0",
+  "id": "d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36",
+  "title": "Widget 像素场调度",
+  "type": "flowchart",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "start",
+      "label": "挂载实例并同步可见性",
+      "role": "entry",
+      "evidence_refs": [
+        "widget"
+      ]
+    },
+    {
+      "id": "visible",
+      "label": "文档可见且元素相交？",
+      "role": "decision",
+      "evidence_refs": [
+        "widget"
+      ]
+    },
+    {
+      "id": "hidden",
+      "label": "取消帧、定时器与交互态",
+      "role": "action",
+      "evidence_refs": [
+        "widget"
+      ]
+    },
+    {
+      "id": "motion",
+      "label": "允许运动且非交互？",
+      "role": "decision",
+      "evidence_refs": [
+        "widget"
+      ]
+    },
+    {
+      "id": "tick",
+      "label": "每 125 ms 绘制并续排",
+      "role": "action",
+      "evidence_refs": [
+        "widget"
+      ]
+    },
+    {
+      "id": "static",
+      "label": "不排持续漂移\n交互请求单帧、400ms 后结束",
+      "role": "action",
+      "evidence_refs": [
+        "widget"
+      ]
+    },
+    {
+      "id": "destroy",
+      "label": "数据替换时销毁旧实例\n解除监听、观察器与 Canvas",
+      "role": "exit",
+      "evidence_refs": [
+        "widget"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "r1",
+      "from": "start",
+      "to": "visible",
+      "kind": "flow",
+      "evidence_refs": [
+        "widget"
+      ],
+      "label": "同步观察状态"
+    },
+    {
+      "id": "r2",
+      "from": "visible",
+      "to": "hidden",
+      "kind": "flow",
+      "evidence_refs": [
+        "widget"
+      ],
+      "condition": "否"
+    },
+    {
+      "id": "r3",
+      "from": "visible",
+      "to": "motion",
+      "kind": "flow",
+      "evidence_refs": [
+        "widget"
+      ],
+      "condition": "是"
+    },
+    {
+      "id": "r4",
+      "from": "motion",
+      "to": "tick",
+      "kind": "flow",
+      "evidence_refs": [
+        "widget"
+      ],
+      "condition": "是"
+    },
+    {
+      "id": "r5",
+      "from": "motion",
+      "to": "static",
+      "kind": "flow",
+      "evidence_refs": [
+        "widget"
+      ],
+      "condition": "否"
+    },
+    {
+      "id": "r6",
+      "from": "hidden",
+      "to": "destroy",
+      "kind": "flow",
+      "evidence_refs": [
+        "widget"
+      ],
+      "label": "实例被替换或释放"
+    },
+    {
+      "id": "r7",
+      "from": "tick",
+      "to": "destroy",
+      "kind": "flow",
+      "evidence_refs": [
+        "widget"
+      ],
+      "label": "实例被替换或释放"
+    },
+    {
+      "id": "r8",
+      "from": "static",
+      "to": "destroy",
+      "kind": "flow",
+      "evidence_refs": [
+        "widget"
+      ],
+      "label": "实例被替换或释放"
+    }
+  ],
+  "evidence": {
+    "widget": {
+      "path": "apps/widget/index.html",
+      "locator": "KimiPixelField.mount / setVisible / scheduleVisibleTick / setInteractive / updateField",
+      "kind": "static_implementation",
+      "supports": "可见性、motionAllowed和交互决定计时；隐藏取消调度；destroy解除监听与观察器；更新先销毁旧实例。"
+    }
+  }
+}

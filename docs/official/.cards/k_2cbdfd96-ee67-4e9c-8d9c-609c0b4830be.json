@@ -5,7 +5,7 @@
   "category": "project_term",
   "context": "Bruce macOS 刷新",
   "definition": "macOS 单次刷新的输入、恢复和发布编排。",
-  "project_usage": "run 依次解析输入、读旧快照、采集、执行可选 Codex 恢复和 finalize，再应用凭据更新、发布 Artifact、生成预警候选；不持有周期定时状态。",
+  "project_usage": "run 先读取旧快照并形成额度策略，再解析输入与采集；按定向、本地专用或普通额度路径恢复和合并，应用凭据更新后发布 Artifact 并生成预警候选；不持有周期定时状态。",
   "basis": {
     "definition": "code_supported",
     "project_usage": "code_supported"
@@ -13,11 +13,11 @@
   "status": "current",
   "articles": [
     {
-      "path": "glossary.md",
+      "path": "术语表.md",
       "anchor": "refresh-pipeline"
     },
     {
-      "path": "refresh-lifecycle.md"
+      "path": "刷新生命周期设计.md"
     }
   ],
   "sources": [

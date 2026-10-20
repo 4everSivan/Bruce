@@ -13,11 +13,11 @@
   "status": "current",
   "articles": [
     {
-      "path": "glossary.md",
+      "path": "术语表.md",
       "anchor": "snapshot-state"
     },
     {
-      "path": "windows-state-mapping.md"
+      "path": "Windows快照与刷新状态.md"
     }
   ],
   "sources": [

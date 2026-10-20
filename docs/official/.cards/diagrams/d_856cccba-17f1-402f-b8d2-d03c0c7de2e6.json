@@ -61,6 +61,19 @@
       }
     },
     {
+      "id": "previous",
+      "from": "pipeline",
+      "to": "store",
+      "kind": "sync_call",
+      "label": "读取上一份 Artifact",
+      "evidence_refs": [
+        "pipeline"
+      ],
+      "properties": {
+        "order": 2
+      }
+    },
+    {
       "id": "resolve-inputs",
       "from": "pipeline",
       "to": "inputs",
@@ -70,7 +83,7 @@
         "pipeline"
       ],
       "properties": {
-        "order": 2
+        "order": 3
       }
     },
     {
@@ -83,22 +96,9 @@
         "pipeline"
       ],
       "properties": {
-        "order": 3
+        "order": 4
       },
       "condition": "失败则提前返回，不启动采集"
-    },
-    {
-      "id": "previous",
-      "from": "pipeline",
-      "to": "store",
-      "kind": "sync_call",
-      "label": "读取上一份 Artifact",
-      "evidence_refs": [
-        "pipeline"
-      ],
-      "properties": {
-        "order": 4
-      }
     },
     {
       "id": "first",
@@ -139,7 +139,7 @@
       "properties": {
         "order": 7
       },
-      "condition": "满足挑战恢复条件时；可选"
+      "condition": "包含额度且满足挑战恢复条件时；定向含 Codex 时亦可，本地专用轮次不执行"
     },
     {
       "id": "retry-return",
@@ -160,7 +160,7 @@
       "from": "pipeline",
       "to": "inputs",
       "kind": "sync_call",
-      "label": "finalize 后应用凭据更新",
+      "label": "合并结果后应用凭据更新",
       "evidence_refs": [
         "pipeline"
       ],
@@ -203,7 +203,7 @@
       "path": "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
       "locator": "run; finishPublishablePath",
       "kind": "static_implementation",
-      "supports": "依次解析输入、读旧快照、采集、可选 Codex 恢复、finalize、凭据写回、发布和预警候选；输入失败、错误响应、取消或发布失败提前返回。"
+      "supports": "先读历史工件并形成额度策略，再解析输入、采集；定向范围可执行 Codex 恢复后合并、本地专用回填，普通额度轮次按条件执行 Codex 恢复；结果合并后凭据写回，再发布及计算预警候选。输入失败、错误响应、取消或发布失败提前返回。"
     },
     "scheduler": {
       "path": "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",

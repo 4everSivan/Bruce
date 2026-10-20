@@ -218,6 +218,14 @@ struct RefreshSchedulerHarness {
         try await quotaBoundaryWakeForcesRefresh(repository: repository)
         print("Refresh scheduler: wake dedup recent attempt")
         try await wakeDedupSkipsRecentAttempt(repository: repository)
-        print("Refresh scheduler tests passed: 99")
+        print("Refresh scheduler: screen lock suppresses quota and wakes on unlock")
+        try await screenLockSuppressesQuotaQueryAndWakesOnUnlock(repository: repository)
+        print("Refresh scheduler: screen lock suppression disabled allows query")
+        try await screenLockSuppressionDisabledAllowsQuotaQuery(repository: repository)
+        print("Refresh scheduler: quota policy suppressed on screen lock")
+        try quotaPolicySuppressedOnScreenLock()
+        print("Refresh scheduler: quota refresh interval updates with scheduler interval")
+        try await quotaRefreshIntervalUpdatesWithSchedulerRefreshInterval(repository: repository)
+        print("Refresh scheduler tests passed: 103")
     }
 }

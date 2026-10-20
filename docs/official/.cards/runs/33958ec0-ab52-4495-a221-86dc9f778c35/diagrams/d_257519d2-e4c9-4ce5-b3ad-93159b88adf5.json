@@ -1,0 +1,162 @@
+{
+  "schema_version": "1.0",
+  "id": "d_257519d2-e4c9-4ce5-b3ad-93159b88adf5",
+  "title": "tag 发布作业依赖",
+  "type": "flowchart",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "tag",
+      "label": "v* tag 触发",
+      "role": "entry",
+      "evidence_refs": [
+        "ci"
+      ]
+    },
+    {
+      "id": "verify",
+      "label": "macOS verify",
+      "role": "action",
+      "evidence_refs": [
+        "ci"
+      ]
+    },
+    {
+      "id": "build",
+      "label": "Universal 2 组包与架构断言",
+      "role": "action",
+      "evidence_refs": [
+        "ci"
+      ]
+    },
+    {
+      "id": "draft",
+      "label": "release：重建并创建 macOS 草稿",
+      "role": "action",
+      "evidence_refs": [
+        "ci"
+      ]
+    },
+    {
+      "id": "win",
+      "label": "Windows verify-windows",
+      "role": "action",
+      "evidence_refs": [
+        "ci"
+      ]
+    },
+    {
+      "id": "upload",
+      "label": "release-windows：NSIS 构建与上传",
+      "role": "action",
+      "evidence_refs": [
+        "ci"
+      ]
+    },
+    {
+      "id": "public",
+      "label": "转为公开并标记 latest",
+      "role": "exit",
+      "evidence_refs": [
+        "ci"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "r1",
+      "from": "tag",
+      "to": "verify",
+      "kind": "flow",
+      "label": "并行",
+      "evidence_refs": [
+        "ci"
+      ]
+    },
+    {
+      "id": "r2",
+      "from": "tag",
+      "to": "build",
+      "kind": "flow",
+      "label": "并行",
+      "evidence_refs": [
+        "ci"
+      ]
+    },
+    {
+      "id": "r3",
+      "from": "tag",
+      "to": "win",
+      "kind": "flow",
+      "label": "并行",
+      "evidence_refs": [
+        "ci"
+      ]
+    },
+    {
+      "id": "r4",
+      "from": "verify",
+      "to": "draft",
+      "kind": "flow",
+      "label": "needs",
+      "evidence_refs": [
+        "ci"
+      ]
+    },
+    {
+      "id": "r5",
+      "from": "build",
+      "to": "draft",
+      "kind": "flow",
+      "label": "needs",
+      "evidence_refs": [
+        "ci"
+      ]
+    },
+    {
+      "id": "r6",
+      "from": "draft",
+      "to": "upload",
+      "kind": "flow",
+      "label": "needs",
+      "evidence_refs": [
+        "ci"
+      ]
+    },
+    {
+      "id": "r7",
+      "from": "win",
+      "to": "upload",
+      "kind": "flow",
+      "label": "needs",
+      "evidence_refs": [
+        "ci"
+      ]
+    },
+    {
+      "id": "r8",
+      "from": "upload",
+      "to": "public",
+      "kind": "flow",
+      "label": "上传脚本",
+      "evidence_refs": [
+        "ci",
+        "upload"
+      ]
+    }
+  ],
+  "evidence": {
+    "ci": {
+      "path": ".github/workflows/ci.yml",
+      "locator": "verify / verify-windows / build-release-app / release / release-windows",
+      "kind": "original_declaration",
+      "supports": "Job needs and tag guards declare this dependency graph; upload script publishes existing release, not an observed deployment."
+    },
+    "upload": {
+      "path": "scripts/upload-win-release.ps1",
+      "locator": "release update",
+      "kind": "static_implementation",
+      "supports": "Uploads assets then clears draft and marks latest."
+    }
+  }
+}

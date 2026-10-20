@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "id": "k_85c33776-d921-4e7a-b1f9-0a90455f8135",
+  "term": "PricingTable",
+  "category": "project_term",
+  "context": "Bruce 采集引擎",
+  "definition": "将模型名称解析到可用参考单价的价格规则集合。",
+  "project_usage": "resolve 结合用户覆盖与内置基准价格；未知且无完整覆盖的模型没有价格。calculate_cost 计算本地参考费用，不做汇率换算。",
+  "basis": {
+    "definition": "code_supported",
+    "project_usage": "code_supported"
+  },
+  "status": "current",
+  "articles": [
+    {
+      "path": "术语表.md",
+      "anchor": "pricing-table"
+    },
+    {
+      "path": "本地会话解析与计费.md"
+    }
+  ],
+  "sources": [
+    {
+      "kind": "code",
+      "path": "core/collector/crates/collector-domain/src/pricing.rs",
+      "symbol": "PricingTable::resolve; calculate_cost",
+      "supports": [
+        "definition",
+        "project_usage"
+      ]
+    }
+  ],
+  "tags": [
+    "Bruce",
+    "PricingTable"
+  ]
+}

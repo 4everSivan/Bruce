@@ -1,0 +1,77 @@
+{
+  "采集引擎与本地用量设计.md": [
+    "bridge-contract",
+    "collection-flow",
+    "cancellation"
+  ],
+  "本地会话解析与计费.md": [
+    "source-window",
+    "normalization",
+    "cache",
+    "contributions",
+    "pricing"
+  ],
+  "订阅额度查询设计.md": [
+    "account-plan",
+    "account-execution",
+    "provider-adapters",
+    "claude-refresh",
+    "credential-updates"
+  ],
+  "订阅配置与凭据管理设计.md": [
+    "storage",
+    "activation-gate",
+    "external-oauth",
+    "codex-accounts",
+    "rotation-writeback"
+  ],
+  "macOS原生应用设计.md": [
+    "bootstrap",
+    "app-contract",
+    "termination"
+  ],
+  "菜单栏与看板设计.md": [
+    "metrics",
+    "panel-toggle",
+    "theme"
+  ],
+  "设置中心与价格校准设计.md": [
+    "settings-window",
+    "settings-navigation",
+    "pricing-activation",
+    "lock-preference",
+    "windows-settings"
+  ],
+  "刷新生命周期设计.md": [
+    "scheduler-state",
+    "offline-quota",
+    "screen-lock",
+    "offline-quota",
+    "refresh-sequence",
+    "snapshot"
+  ],
+  "Windows应用设计.md": [
+    "windows-startup",
+    "windows-config",
+    "windows-credentials",
+    "windows-mapping"
+  ],
+  "Windows快照与刷新状态.md": [
+    "windows-triggers",
+    "windows-snapshot",
+    "windows-retry",
+    "windows-presentation"
+  ],
+  "Widget设计.md": [
+    "host-contract",
+    "display",
+    "animation"
+  ],
+  "Agent用量分析设计.md": [
+    "time-kpi",
+    "model-normalization",
+    "timeline-flow",
+    "analytics-display",
+    "export"
+  ]
+}

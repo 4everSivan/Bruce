@@ -13,14 +13,14 @@
   "status": "current",
   "articles": [
     {
-      "path": "glossary.md",
+      "path": "术语表.md",
       "anchor": "bridge"
     },
     {
-      "path": "collector-design.md"
+      "path": "采集引擎与本地用量设计.md"
     },
     {
-      "path": "windows-design.md"
+      "path": "Windows应用设计.md"
     }
   ],
   "sources": [

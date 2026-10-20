@@ -117,6 +117,60 @@ extension BruceOnboardingCoreHarness {
         )
     }
 
+    /// Claude OAuth 轮换写回时必须同步更新嵌套的 claudeAiOauth 字段 (accessToken, refreshToken, expiresAt).
+    static func rotationMergeClaudeUpdatesNestedOAuthFields() throws {
+        let existing = """
+        {
+            "claudeAiOauth": {
+                "accessToken": "old-access",
+                "refreshToken": "old-refresh",
+                "expiresAt": 1700000000000,
+                "scopes": ["user:read"]
+            }
+        }
+        """
+        let merged = CredentialRotationMerge.mergedAccountJSON(
+            existingCredentialJSON: existing,
+            update: CredentialRotationUpdate(
+                provider: "claude",
+                accountId: "claude-cli",
+                tokens: [
+                    "access_token": "new-access",
+                    "refresh_token": "new-refresh",
+                    "expiry": "1700028800"
+                ]
+            ),
+            providerID: .claude
+        )
+        guard let merged,
+              let data = merged.data(using: .utf8),
+              let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let oauth = dict["claudeAiOauth"] as? [String: Any] else {
+            throw CoreTestFailure.expectation("claude 轮换写回未能生成合法的嵌套 JSON: \(merged ?? "nil")")
+        }
+
+        try coreExpect(
+            oauth["accessToken"] as? String == "new-access",
+            "claudeAiOauth.accessToken 未被更新"
+        )
+        try coreExpect(
+            oauth["refreshToken"] as? String == "new-refresh",
+            "claudeAiOauth.refreshToken 未被更新"
+        )
+        try coreExpect(
+            oauth["expiresAt"] as? Int64 == 1700028800000,
+            "claudeAiOauth.expiresAt 毫秒数未被正确更新"
+        )
+        try coreExpect(
+            (oauth["scopes"] as? [String]) == ["user:read"],
+            "claudeAiOauth 原有 scopes 必须被保留"
+        )
+        try coreExpect(
+            dict["access_token"] as? String == "new-access",
+            "顶层 access_token 未被同步更新"
+        )
+    }
+
     // MARK: - 任务 5: 登录接入与账号发现
 
     /// 永不触发的 stub OAuth 客户端 (登录测试只验证入库, 不发起网络).

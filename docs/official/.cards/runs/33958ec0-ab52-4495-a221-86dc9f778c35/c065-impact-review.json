@@ -1,0 +1,25 @@
+{
+  "result": "passed",
+  "method": "Current C065 commit diff and original source review, then localized expression/fact check; no software execution",
+  "head": "19fd33278588bdad724930fcb26535ba51a0bc22",
+  "reviewed_paths": [
+    "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+    "apps/macos/Sources/BruceAppCore/ScreenLockMonitor.swift",
+    "apps/macos/Sources/BruceApp/SettingsView.swift",
+    "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+    "apps/macos/Tests/Harnesses/RefreshSchedulerHarness/RefreshSchedulerQuotaThrottleTests.swift",
+    "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "docs/devel/change/C065.json"
+  ],
+  "changed_articles": [
+    "Bruce设计文档.md",
+    "刷新生命周期设计.md",
+    "设置中心与价格校准设计.md"
+  ],
+  "observations": [
+    "Configuration save updates both intervals; initial config also applies this update",
+    "Cooldown remains 1800 seconds; predicate branches and figure geometry unchanged",
+    "Lock getter is cached flag OR live probe; does not establish 100 percent runtime detection",
+    "Harness source defines 300/600 second linkage and 350/100 second quota cases; not run here"
+  ]
+}

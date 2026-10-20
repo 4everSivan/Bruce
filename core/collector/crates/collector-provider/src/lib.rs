@@ -505,6 +505,9 @@ pub const ZHIPU_QUOTA_PATH: &str = "/api/monitor/usage/quota/limit";
 pub const CODEX_USAGE_URL: &str = "https://chatgpt.com/backend-api/wham/usage";
 pub const CLAUDE_USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
 pub const CLAUDE_BETA_HEADER: &str = "oauth-2025-04-20";
+pub const CLAUDE_OAUTH_TOKEN_URL: &str = "https://api.anthropic.com/v1/oauth/token";
+pub const CLAUDE_CLIENT_ID: &str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
+pub const CLAUDE_USER_AGENT: &str = "claude-code/2.1.302";
 pub const GROK_BILLING_URL: &str =
     "https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig";
 pub const OPENCODE_SERVER_URL: &str = "https://opencode.ai/_server";
@@ -2473,6 +2476,198 @@ fn claude_token(credential: &Value) -> Result<Option<String>, ProviderError> {
         .map(str::to_owned))
 }
 
+#[derive(Debug, Clone)]
+struct ClaudeOAuthCredentials {
+    access_token: String,
+    refresh_token: Option<String>,
+    expires_at_epoch_ms: Option<i64>,
+    scopes: Vec<String>,
+}
+
+fn parse_claude_oauth_credentials(
+    credential: &Value,
+) -> Result<Option<ClaudeOAuthCredentials>, ProviderError> {
+    let root = json_credential(credential)?;
+    let object = root.as_object().ok_or_else(invalid_credential)?;
+    let entry = object
+        .get("claudeAiOauth")
+        .or_else(|| object.get("claude.ai_oauth"))
+        .and_then(Value::as_object);
+    let Some(entry) = entry else {
+        return Ok(None);
+    };
+    let Some(access_token) = entry
+        .get("accessToken")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(None);
+    };
+    let refresh_token = entry
+        .get("refreshToken")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned);
+    let expires_at_epoch_ms = entry.get("expiresAt").and_then(|val| {
+        if let Some(num) = val.as_i64() {
+            Some(num)
+        } else if let Some(num) = val.as_f64() {
+            Some(num as i64)
+        } else if let Some(s) = val.as_str() {
+            s.parse::<i64>().ok()
+        } else {
+            None
+        }
+    });
+    let scopes = entry
+        .get("scopes")
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    Ok(Some(ClaudeOAuthCredentials {
+        access_token: access_token.to_owned(),
+        refresh_token,
+        expires_at_epoch_ms,
+        scopes,
+    }))
+}
+
+pub(crate) fn is_claude_token_expired(
+    expires_at_epoch_ms: Option<i64>,
+    now_epoch_secs: i64,
+) -> bool {
+    let Some(exp) = expires_at_epoch_ms else {
+        return false;
+    };
+    let exp_secs = if exp > 100_000_000_000 {
+        exp / 1000
+    } else {
+        exp
+    };
+    // 距过期不足 60 秒视为过期
+    now_epoch_secs >= exp_secs - 60
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RefreshedClaudeToken {
+    pub access_token: String,
+    pub refresh_token: String,
+    pub expires_in_secs: i64,
+}
+
+pub(crate) fn refresh_claude_token(
+    request: &ProviderRequest,
+    refresh_token: &str,
+    scopes: &[String],
+    http: &dyn HttpClient,
+    cancellation: &CancellationToken,
+) -> Result<RefreshedClaudeToken, ProviderError> {
+    let scope_str = if scopes.is_empty() {
+        "user:file_upload user:inference user:mcp_servers user:plugins user:profile user:sessions:claude_code".to_owned()
+    } else {
+        scopes.join(" ")
+    };
+
+    let payload = json!({
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+        "client_id": CLAUDE_CLIENT_ID,
+        "scope": scope_str,
+    });
+
+    let payload_bytes = serde_json::to_vec(&payload).map_err(|e| {
+        ProviderError::new(
+            "PROVIDER_REQUEST_FAILED",
+            "request",
+            format!("序列化 Claude 刷新请求失败: {e}"),
+            false,
+        )
+    })?;
+
+    let response = send_json(
+        request,
+        http,
+        cancellation,
+        "POST",
+        CLAUDE_OAUTH_TOKEN_URL.to_owned(),
+        provider_headers(&[
+            ("Content-Type", "application/json".to_owned()),
+            ("User-Agent", CLAUDE_USER_AGENT.to_owned()),
+            ("Accept", "application/json".to_owned()),
+        ]),
+        Some(payload_bytes),
+        Some("Claude 凭证刷新失败, 请重新登录 Claude CLI"),
+    )?;
+
+    let object = response.as_object().ok_or_else(|| {
+        ProviderError::new(
+            "PROVIDER_REMOTE_REJECTED",
+            "refresh",
+            "Claude 刷新响应格式无效",
+            false,
+        )
+    })?;
+
+    let access_token = object
+        .get("access_token")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| {
+            ProviderError::new(
+                "PROVIDER_REMOTE_REJECTED",
+                "refresh",
+                "Claude 刷新响应缺少有效 access_token",
+                false,
+            )
+        })?;
+
+    let new_refresh_token = object
+        .get("refresh_token")
+        .and_then(Value::as_str)
+        .unwrap_or(refresh_token);
+
+    let expires_in_secs = object
+        .get("expires_in")
+        .and_then(Value::as_i64)
+        .unwrap_or(28800);
+
+    Ok(RefreshedClaudeToken {
+        access_token: access_token.to_owned(),
+        refresh_token: new_refresh_token.to_owned(),
+        expires_in_secs,
+    })
+}
+
+fn query_claude_usage(
+    request: &ProviderRequest,
+    token: &str,
+    http: &dyn HttpClient,
+    cancellation: &CancellationToken,
+) -> Result<Option<Value>, ProviderError> {
+    let payload = send_json(
+        request,
+        http,
+        cancellation,
+        "GET",
+        CLAUDE_USAGE_URL.to_owned(),
+        provider_headers(&[
+            ("Authorization", format!("Bearer {token}")),
+            ("anthropic-beta", CLAUDE_BETA_HEADER.to_owned()),
+            ("User-Agent", CLAUDE_USER_AGENT.to_owned()),
+            ("Accept", "application/json".to_owned()),
+        ]),
+        None,
+        Some("Claude 凭证被拒绝, 请重新登录 Claude CLI"),
+    )?;
+    parse_claude_usage(&payload)
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ClaudeProvider;
 
@@ -2490,24 +2685,85 @@ impl QuotaProvider for ClaudeProvider {
         let Some(credential) = request.credential.as_ref() else {
             return Ok(None);
         };
-        let Some(token) = claude_token(credential)? else {
-            return Ok(None);
+        let mut creds = match parse_claude_oauth_credentials(credential)? {
+            Some(parsed) => parsed,
+            None => {
+                let Some(token) = claude_token(credential)? else {
+                    return Ok(None);
+                };
+                ClaudeOAuthCredentials {
+                    access_token: token,
+                    refresh_token: None,
+                    expires_at_epoch_ms: None,
+                    scopes: Vec::new(),
+                }
+            }
         };
-        let payload = send_json(
-            request,
-            http,
-            cancellation,
-            "GET",
-            CLAUDE_USAGE_URL.to_owned(),
-            provider_headers(&[
-                ("Authorization", format!("Bearer {token}")),
-                ("anthropic-beta", CLAUDE_BETA_HEADER.to_owned()),
-                ("Accept", "application/json".to_owned()),
-            ]),
-            None,
-            Some("Claude 凭证被拒绝, 请重新登录 Claude CLI"),
-        )?;
-        parse_claude_usage(&payload)
+
+        let now_epoch_secs = captured_epoch(&request.captured_at);
+        let mut active_token = creds.access_token.clone();
+        let mut active_refresh_token = creds.refresh_token.clone();
+        let mut active_expiry_secs =
+            creds
+                .expires_at_epoch_ms
+                .map(|ms| if ms > 100_000_000_000 { ms / 1000 } else { ms });
+        let mut refreshed = false;
+
+        // 1. 若 access_token 已过期（或即将过期 <= 60s）且有 refresh_token，主动发起 OAuth 刷新
+        if let Some(ref rt) = creds.refresh_token {
+            if is_claude_token_expired(creds.expires_at_epoch_ms, now_epoch_secs) {
+                if let Ok(new_tokens) =
+                    refresh_claude_token(request, rt, &creds.scopes, http, cancellation)
+                {
+                    active_token = new_tokens.access_token;
+                    active_refresh_token = Some(new_tokens.refresh_token.clone());
+                    active_expiry_secs = Some(now_epoch_secs + new_tokens.expires_in_secs);
+                    creds.refresh_token = Some(new_tokens.refresh_token);
+                    refreshed = true;
+                }
+            }
+        }
+
+        // 2. 执行配额查询
+        let mut query_result = query_claude_usage(request, &active_token, http, cancellation);
+
+        // 3. 若尚未成功刷新且返回 401 鉴权拒绝，且存在 refresh_token，尝试刷新并重试一次
+        if !refreshed {
+            if let Some(ref rt) = creds.refresh_token {
+                let is_auth_failure = match &query_result {
+                    Err(err) => err.diagnostic.code == "PROVIDER_AUTH_REJECTED",
+                    _ => false,
+                };
+                if is_auth_failure {
+                    if let Ok(new_tokens) =
+                        refresh_claude_token(request, rt, &creds.scopes, http, cancellation)
+                    {
+                        active_token = new_tokens.access_token;
+                        active_refresh_token = Some(new_tokens.refresh_token);
+                        active_expiry_secs = Some(now_epoch_secs + new_tokens.expires_in_secs);
+                        refreshed = true;
+                        query_result =
+                            query_claude_usage(request, &active_token, http, cancellation);
+                    }
+                }
+            }
+        }
+
+        let mut usage = query_result?;
+        if refreshed {
+            if let Some(obj) = usage.as_mut().and_then(Value::as_object_mut) {
+                let mut update = serde_json::Map::new();
+                update.insert("access_token".to_owned(), Value::String(active_token));
+                if let Some(rt) = active_refresh_token {
+                    update.insert("refresh_token".to_owned(), Value::String(rt));
+                }
+                if let Some(exp) = active_expiry_secs {
+                    update.insert("expiry".to_owned(), Value::String(exp.to_string()));
+                }
+                obj.insert("credential_update".to_owned(), Value::Object(update));
+            }
+        }
+        Ok(usage)
     }
 }
 
@@ -2929,14 +3185,15 @@ pub fn provider_for_app(app: &str) -> Option<Box<dyn QuotaProvider>> {
 mod tests {
     use super::{
         bounded_http_body, catalog_entries, codex_service_id, extract_stepfun_app_id,
-        extract_stepfun_device_id, is_stepfun_global, is_stepfun_token_expired, parse_claude_usage,
-        parse_cline_usage_limits, parse_codex_usage, parse_deepseek_balance, parse_grok_usage,
-        parse_jev_models, parse_kimi_usage, parse_opencode_go_body, parse_stepfun_usage,
-        parse_volcengine_usage, parse_zhipu_usage, reset_epoch, resolve_service_catalog,
-        service_template, AccountDescriptor, CancellationToken, CatalogInput, ClineProvider,
-        CodexProvider, DeepSeekProvider, HttpClient, HttpRequest, HttpResponse, JevProvider,
-        KimiProvider, OpenCodeGoProvider, ProviderError, ProviderRequest, QuotaProvider,
-        StepFunProvider, UreqHttpClient, VolcEngineProvider, ZhipuProvider, JEV_MODELS_URL,
+        extract_stepfun_device_id, is_claude_token_expired, is_stepfun_global,
+        is_stepfun_token_expired, parse_claude_usage, parse_cline_usage_limits, parse_codex_usage,
+        parse_deepseek_balance, parse_grok_usage, parse_jev_models, parse_kimi_usage,
+        parse_opencode_go_body, parse_stepfun_usage, parse_volcengine_usage, parse_zhipu_usage,
+        reset_epoch, resolve_service_catalog, service_template, AccountDescriptor,
+        CancellationToken, CatalogInput, ClaudeProvider, ClineProvider, CodexProvider,
+        DeepSeekProvider, HttpClient, HttpRequest, HttpResponse, JevProvider, KimiProvider,
+        OpenCodeGoProvider, ProviderError, ProviderRequest, QuotaProvider, StepFunProvider,
+        UreqHttpClient, VolcEngineProvider, ZhipuProvider, JEV_MODELS_URL,
         STEPFUN_GLOBAL_REFRESH_TOKEN_URL, STEPFUN_GLOBAL_STEP_PLAN_RATE_LIMIT_URL,
         STEPFUN_REFRESH_TOKEN_URL, STEPFUN_STEP_PLAN_RATE_LIMIT_URL,
     };
@@ -4438,5 +4695,177 @@ mod tests {
             .find(|e| e.app == "opencode-go")
             .expect("opencode-go 条目");
         assert_eq!(opencode.prefix, "opencode_go_");
+    }
+
+    #[test]
+    fn claude_token_expiry_detector_handles_milliseconds_and_buffer() {
+        let expired_ms = Some(1_700_000_000_000);
+        let fresh_ms = Some(2_100_000_000_000);
+        let near_expiry_ms = Some(1_700_000_050_000); // 50s left (< 60s)
+        let now_epoch_secs = 1_700_000_000;
+
+        assert!(is_claude_token_expired(expired_ms, now_epoch_secs));
+        assert!(!is_claude_token_expired(fresh_ms, now_epoch_secs));
+        assert!(is_claude_token_expired(near_expiry_ms, now_epoch_secs));
+        assert!(!is_claude_token_expired(None, now_epoch_secs));
+    }
+
+    #[test]
+    fn claude_provider_proactively_refreshes_expired_token() {
+        let cred = json!({
+            "claudeAiOauth": {
+                "accessToken": "sk-ant-oat01-stale_token",
+                "refreshToken": "sk-ant-ort01-refresh_me",
+                "expiresAt": 1_700_000_000_000_i64,
+                "scopes": ["user:profile", "user:inference"]
+            }
+        });
+        let refresh_resp = json!({
+            "token_type": "Bearer",
+            "access_token": "sk-ant-oat01-fresh_token",
+            "refresh_token": "sk-ant-ort01-new_refresh",
+            "expires_in": 28800,
+            "scope": "user:profile user:inference"
+        });
+        let usage_resp = json!({
+            "five_hour": { "utilization": 5.0, "resets_at": null },
+            "seven_day": { "utilization": 20.0, "resets_at": null },
+            "extra_usage": null,
+            "limits": [
+                { "kind": "session", "group": "session", "percent": 5, "severity": "normal" },
+                { "kind": "weekly_all", "group": "weekly", "percent": 20, "severity": "normal" }
+            ]
+        });
+
+        let http = FixtureHttp::new(vec![
+            // 1. Refresh endpoint responds with new tokens
+            Ok(HttpResponse {
+                status: 200,
+                body: serde_json::to_vec(&refresh_resp).unwrap(),
+            }),
+            // 2. Usage endpoint responds with fresh quota
+            Ok(HttpResponse {
+                status: 200,
+                body: serde_json::to_vec(&usage_resp).unwrap(),
+            }),
+        ]);
+
+        let request = ProviderRequest {
+            account_id: Some("claude-test".to_owned()),
+            captured_at: "2026-10-20T00:00:00Z".to_owned(), // captured epoch > 1700000000
+            timeout: Duration::from_secs(5),
+            max_response_body_bytes: 65536,
+            credential: Some(cred),
+        };
+
+        let result = ClaudeProvider
+            .query(&request, &http, &CancellationToken::default())
+            .unwrap()
+            .expect("should return usage value");
+
+        let requests = http.requests();
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[0].method, "POST");
+        assert!(requests[0].url.contains("/v1/oauth/token"));
+        assert_eq!(requests[1].method, "GET");
+        assert!(requests[1].url.contains("/api/oauth/usage"));
+        assert_eq!(
+            requests[1].headers.get("Authorization"),
+            Some(&"Bearer sk-ant-oat01-fresh_token".to_owned())
+        );
+
+        let update = result
+            .get("credential_update")
+            .expect("credential_update attached");
+        assert_eq!(
+            update["access_token"].as_str(),
+            Some("sk-ant-oat01-fresh_token")
+        );
+        assert_eq!(
+            update["refresh_token"].as_str(),
+            Some("sk-ant-ort01-new_refresh")
+        );
+    }
+
+    #[test]
+    fn claude_provider_refreshes_token_on_401_and_retries() {
+        let cred = json!({
+            "claudeAiOauth": {
+                "accessToken": "sk-ant-oat01-stale_token",
+                "refreshToken": "sk-ant-ort01-refresh_me",
+                "expiresAt": 2_100_000_000_000_i64, // looks unexpired
+                "scopes": ["user:profile"]
+            }
+        });
+        let refresh_resp = json!({
+            "token_type": "Bearer",
+            "access_token": "sk-ant-oat01-fresh_token_after_401",
+            "refresh_token": "sk-ant-ort01-new_refresh_after_401",
+            "expires_in": 28800,
+            "scope": "user:profile"
+        });
+        let usage_resp = json!({
+            "five_hour": { "utilization": 12.0, "resets_at": null },
+            "seven_day": { "utilization": 30.0, "resets_at": null },
+            "extra_usage": null,
+            "limits": [
+                { "kind": "session", "group": "session", "percent": 12, "severity": "normal" },
+                { "kind": "weekly_all", "group": "weekly", "percent": 30, "severity": "normal" }
+            ]
+        });
+
+        let http = FixtureHttp::new(vec![
+            // 1. Initial usage GET returns 401
+            Ok(HttpResponse {
+                status: 401,
+                body: b"{\"error\":\"expired\"}".to_vec(),
+            }),
+            // 2. Refresh endpoint responds with new tokens
+            Ok(HttpResponse {
+                status: 200,
+                body: serde_json::to_vec(&refresh_resp).unwrap(),
+            }),
+            // 3. Retry usage GET responds with 200
+            Ok(HttpResponse {
+                status: 200,
+                body: serde_json::to_vec(&usage_resp).unwrap(),
+            }),
+        ]);
+
+        let request = ProviderRequest {
+            account_id: Some("claude-test".to_owned()),
+            captured_at: "2026-10-20T00:00:00Z".to_owned(),
+            timeout: Duration::from_secs(5),
+            max_response_body_bytes: 65536,
+            credential: Some(cred),
+        };
+
+        let result = ClaudeProvider
+            .query(&request, &http, &CancellationToken::default())
+            .unwrap()
+            .expect("should return usage value");
+
+        let requests = http.requests();
+        assert_eq!(requests.len(), 3);
+        assert_eq!(requests[0].method, "GET");
+        assert_eq!(requests[1].method, "POST");
+        assert!(requests[1].url.contains("/v1/oauth/token"));
+        assert_eq!(requests[2].method, "GET");
+        assert_eq!(
+            requests[2].headers.get("Authorization"),
+            Some(&"Bearer sk-ant-oat01-fresh_token_after_401".to_owned())
+        );
+
+        let update = result
+            .get("credential_update")
+            .expect("credential_update attached");
+        assert_eq!(
+            update["access_token"].as_str(),
+            Some("sk-ant-oat01-fresh_token_after_401")
+        );
+        assert_eq!(
+            update["refresh_token"].as_str(),
+            Some("sk-ant-ort01-new_refresh_after_401")
+        );
     }
 }

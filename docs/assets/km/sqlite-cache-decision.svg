@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" id="d_3c25534c-cebe-4094-a87e-2e0290e5ba21" viewBox="0 0 1000 1172" role="img" aria-labelledby="d_3c25534c-cebe-4094-a87e-2e0290e5ba21-title d_3c25534c-cebe-4094-a87e-2e0290e5ba21-desc">
+<title id="d_3c25534c-cebe-4094-a87e-2e0290e5ba21-title">SQLite 缓存增量判定</title>
+<desc id="d_3c25534c-cebe-4094-a87e-2e0290e5ba21-desc">追加还要求窗口、schema、库/WAL身份和rowid；增量I/O失败回退全量，运行时错误不回退。</desc>
+<defs><style>#d_3c25534c-cebe-4094-a87e-2e0290e5ba21{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif}text{fill:#243247;font-size:16px}.node{fill:#fff;stroke:#768397;stroke-width:1.5}.connector{fill:none;stroke:#516176;stroke-width:1.5}</style><marker id="d_3c25534c-cebe-4094-a87e-2e0290e5ba21-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#516176"/></marker></defs>
+<rect width="1000" height="1172" fill="#fff"/><text x="24" y="30" style="font-size:20px;font-weight:600">SQLite 缓存增量判定</text>
+<g id="d_3c25534c-cebe-4094-a87e-2e0290e5ba21-r1" data-relation-id="r1"><polyline class="connector" points="270,142 270,194" marker-end="url(#d_3c25534c-cebe-4094-a87e-2e0290e5ba21-arrow)"/><rect x="347" y="167.5" width="76" height="25" fill="#fff"/><text text-anchor="middle"><tspan x="385" y="185">检查缓存</tspan></text></g>
+<g id="d_3c25534c-cebe-4094-a87e-2e0290e5ba21-r2" data-relation-id="r2"><polyline class="connector" points="450,260 540,260" marker-end="url(#d_3c25534c-cebe-4094-a87e-2e0290e5ba21-arrow)"/><rect x="481" y="225.5" width="28" height="25" fill="#fff"/><text text-anchor="middle"><tspan x="495" y="243">是</tspan></text></g>
+<g id="d_3c25534c-cebe-4094-a87e-2e0290e5ba21-r3" data-relation-id="r3"><polyline class="connector" points="270,326 270,404" marker-end="url(#d_3c25534c-cebe-4094-a87e-2e0290e5ba21-arrow)"/><rect x="371" y="352.5" width="28" height="25" fill="#fff"/><text text-anchor="middle"><tspan x="385" y="370">否</tspan></text></g>
+<g id="d_3c25534c-cebe-4094-a87e-2e0290e5ba21-r4" data-relation-id="r4"><polyline class="connector" points="270,536 270,638" marker-end="url(#d_3c25534c-cebe-4094-a87e-2e0290e5ba21-arrow)"/><rect x="371" y="562.5" width="28" height="25" fill="#fff"/><text text-anchor="middle"><tspan x="385" y="580">是</tspan></text></g>
+<g id="d_3c25534c-cebe-4094-a87e-2e0290e5ba21-r5" data-relation-id="r5"><polyline class="connector" points="90,470 40,470 40,1070 70,1070" marker-end="url(#d_3c25534c-cebe-4094-a87e-2e0290e5ba21-arrow)"/><rect x="86" y="767.5" width="28" height="25" fill="#fff"/><text text-anchor="middle"><tspan x="100" y="785">否</tspan></text></g>
+<g id="d_3c25534c-cebe-4094-a87e-2e0290e5ba21-r6" data-relation-id="r6"><polyline class="connector" points="270,722 270,804" marker-end="url(#d_3c25534c-cebe-4094-a87e-2e0290e5ba21-arrow)"/><rect x="301.8" y="762.5" width="166.4" height="25" fill="#fff"/><text text-anchor="middle"><tspan x="385" y="780">I/O失败按不安全处理</tspan></text></g>
+<g id="d_3c25534c-cebe-4094-a87e-2e0290e5ba21-r7" data-relation-id="r7"><polyline class="connector" points="450,870 540,870" marker-end="url(#d_3c25534c-cebe-4094-a87e-2e0290e5ba21-arrow)"/><rect x="481" y="835.5" width="28" height="25" fill="#fff"/><text text-anchor="middle"><tspan x="495" y="853">是</tspan></text></g>
+<g id="d_3c25534c-cebe-4094-a87e-2e0290e5ba21-r8" data-relation-id="r8"><polyline class="connector" points="270,936 270,1028" marker-end="url(#d_3c25534c-cebe-4094-a87e-2e0290e5ba21-arrow)"/><rect x="371" y="957.5" width="28" height="25" fill="#fff"/><text text-anchor="middle"><tspan x="385" y="975">否</tspan></text></g>
+<g id="d_3c25534c-cebe-4094-a87e-2e0290e5ba21-start" data-node-id="start">
+<rect class="node" x="70.0" y="58.0" width="400" height="84" rx="22"/>
+<text text-anchor="middle"><tspan x="270" y="105">只读连接与缓存元数据</tspan></text></g>
+<g id="d_3c25534c-cebe-4094-a87e-2e0290e5ba21-hit" data-node-id="hit">
+<polygon class="node" points="270,194.0 450.0,260 270,326.0 90.0,260"/>
+<text text-anchor="middle"><tspan x="270" y="265">身份签名相同且贡献可解码？</tspan></text></g>
+<g id="d_3c25534c-cebe-4094-a87e-2e0290e5ba21-reuse" data-node-id="reuse">
+<rect class="node" x="540.0" y="218.0" width="400" height="84" rx="22"/>
+<text text-anchor="middle"><tspan x="740" y="265">复用缓存贡献</tspan></text></g>
+<g id="d_3c25534c-cebe-4094-a87e-2e0290e5ba21-append" data-node-id="append">
+<polygon class="node" points="270,404.0 450.0,470 270,536.0 90.0,470"/>
+<text text-anchor="middle"><tspan x="270" y="475">追加条件齐全且旧贡献可解码？</tspan></text></g>
+<g id="d_3c25534c-cebe-4094-a87e-2e0290e5ba21-read" data-node-id="read">
+<rect class="node" x="70.0" y="638.0" width="400" height="84" rx="5"/>
+<text text-anchor="middle"><tspan x="270" y="674.5">按 rowid 游标读取增量</tspan><tspan x="270" y="695.5">运行时取消或超时直接上抛</tspan></text></g>
+<g id="d_3c25534c-cebe-4094-a87e-2e0290e5ba21-safe" data-node-id="safe">
+<polygon class="node" points="270,804.0 450.0,870 270,936.0 90.0,870"/>
+<text text-anchor="middle"><tspan x="270" y="875">增量无诊断且可安全追加？</tspan></text></g>
+<g id="d_3c25534c-cebe-4094-a87e-2e0290e5ba21-merge" data-node-id="merge">
+<rect class="node" x="540.0" y="828.0" width="400" height="84" rx="22"/>
+<text text-anchor="middle"><tspan x="740" y="875">合并贡献、推进游标并返回</tspan></text></g>
+<g id="d_3c25534c-cebe-4094-a87e-2e0290e5ba21-full" data-node-id="full">
+<rect class="node" x="70.0" y="1028.0" width="400" height="84" rx="22"/>
+<text text-anchor="middle"><tspan x="270" y="1075">全量读取并重建缓存</tspan></text></g>
+</svg>

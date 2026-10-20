@@ -1,0 +1,149 @@
+{
+  "schema_version": "1.0",
+  "id": "d_93c87502-3b6a-4a18-9342-15e5ea7679e6",
+  "title": "锁屏额度抑制与解锁补偿",
+  "type": "flowchart",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "start",
+      "label": "新轮次进入执行",
+      "role": "entry",
+      "evidence_refs": [
+        "scheduler"
+      ]
+    },
+    {
+      "id": "gate",
+      "label": "锁屏且开关开启且非手动？",
+      "role": "decision",
+      "evidence_refs": [
+        "scheduler"
+      ]
+    },
+    {
+      "id": "local",
+      "label": "localOnly：本地采集与旧额度",
+      "role": "exit",
+      "evidence_refs": [
+        "policy"
+      ]
+    },
+    {
+      "id": "normal",
+      "label": "常规额度策略\n手动可绕过新鲜度和冷却",
+      "role": "exit",
+      "evidence_refs": [
+        "policy"
+      ]
+    },
+    {
+      "id": "unlock",
+      "label": "监视器报告解锁",
+      "role": "entry",
+      "evidence_refs": [
+        "scheduler"
+      ]
+    },
+    {
+      "id": "eligible",
+      "label": "开关启用、自动可用且过去重？",
+      "role": "decision",
+      "evidence_refs": [
+        "scheduler"
+      ]
+    },
+    {
+      "id": "wake",
+      "label": "wake(forceQuotaRefresh: true)\n仍经过网络与冷却规则",
+      "role": "exit",
+      "evidence_refs": [
+        "scheduler"
+      ]
+    },
+    {
+      "id": "skip",
+      "label": "本次不补偿",
+      "role": "exit",
+      "evidence_refs": [
+        "scheduler"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "r1",
+      "from": "start",
+      "to": "gate",
+      "kind": "flow",
+      "evidence_refs": [
+        "scheduler"
+      ],
+      "label": "执行时采样"
+    },
+    {
+      "id": "r2",
+      "from": "gate",
+      "to": "local",
+      "kind": "flow",
+      "evidence_refs": [
+        "policy"
+      ],
+      "condition": "是"
+    },
+    {
+      "id": "r3",
+      "from": "gate",
+      "to": "normal",
+      "kind": "flow",
+      "evidence_refs": [
+        "policy"
+      ],
+      "condition": "否"
+    },
+    {
+      "id": "r4",
+      "from": "unlock",
+      "to": "eligible",
+      "kind": "flow",
+      "evidence_refs": [
+        "scheduler"
+      ],
+      "label": "检查模块、相位和上次尝试"
+    },
+    {
+      "id": "r5",
+      "from": "eligible",
+      "to": "wake",
+      "kind": "flow",
+      "evidence_refs": [
+        "scheduler"
+      ],
+      "condition": "是"
+    },
+    {
+      "id": "r6",
+      "from": "eligible",
+      "to": "skip",
+      "kind": "flow",
+      "evidence_refs": [
+        "scheduler"
+      ],
+      "condition": "否"
+    }
+  ],
+  "evidence": {
+    "scheduler": {
+      "path": "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+      "locator": "executeRefresh / handleScreenUnlocked / scheduleNextRefresh",
+      "kind": "static_implementation",
+      "supports": "非手动且锁屏和开关都成立时抑制；解锁要求启用、自动、非运行或授权相位及去重；不撤销在途查询。 Current lock getter combines cached flag with live system probe; existing branch guard is unchanged."
+    },
+    "policy": {
+      "path": "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+      "locator": "plan",
+      "kind": "static_implementation",
+      "supports": "抑制时直接localOnly；手动绕过冷却，自动强制刷新对非Codex仍保留冷却规则。"
+    }
+  }
+}

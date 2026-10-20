@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" id="d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3" viewBox="0 0 1000 1004" role="img" aria-labelledby="d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3-title d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3-desc">
+<title id="d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3-title">分析趋势派生数据流</title>
+<desc id="d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3-desc">历史分桶及估算系列，非所有系列都有逐项实测值</desc>
+<defs><style>#d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif} text{fill:#243247;font-size:16px} .node{fill:#fff;stroke:#768397;stroke-width:1.5} .connector{fill:none;stroke:#516176;stroke-width:1.5}</style><marker id="d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#516176"/></marker></defs>
+<rect width="1000" height="1004" fill="#fff"/>
+<text x="24" y="30" style="font-size:20px;font-weight:600">分析趋势派生数据流</text>
+<g id="d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3-r1" data-relation-id="r1"><polyline class="connector" points="400,142 400,190 230,190 230,238" marker-end="url(#d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3-arrow)"/>
+<rect x="191.6" y="202.5" width="96.8" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="240" y="219.5">今日 hours</tspan>
+</text>
+</g>
+<g id="d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3-r2" data-relation-id="r2"><polyline class="connector" points="600,142 600,190 770,190 770,238" marker-end="url(#d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3-arrow)"/>
+<rect x="697.6" y="202.5" width="144.8" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="770" y="219.5">daily 日期及分项</tspan>
+</text>
+</g>
+<g id="d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3-r3" data-relation-id="r3"><polyline class="connector" points="770,322 770,438" marker-end="url(#d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3-arrow)"/>
+<rect x="780.2" y="367.5" width="189.6" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="875" y="384.5">全部历史且日期数大于28</tspan>
+</text>
+</g>
+<g id="d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3-r4" data-relation-id="r4"><polyline class="connector" points="590,280 500,280 500,658" marker-end="url(#d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3-arrow)"/>
+<rect x="430" y="542.5" width="140" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="500" y="559.5">无需分桶的逐日点</tspan>
+</text>
+</g>
+<g id="d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3-r5" data-relation-id="r5"><polyline class="connector" points="770,522 770,590 650,590 650,658" marker-end="url(#d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3-arrow)"/>
+<rect x="716" y="607.5" width="108" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="770" y="624.5">七项桶的合计</tspan>
+</text>
+</g>
+<g id="d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3-r6" data-relation-id="r6"><polyline class="connector" points="230,322 230,590 350,590 350,658" marker-end="url(#d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3-arrow)"/>
+<rect x="146" y="487.5" width="168" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="230" y="504.5">逐小时总量与Agent值</tspan>
+</text>
+</g>
+<g id="d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3-r7" data-relation-id="r7"><polyline class="connector" points="500,742 500,858" marker-end="url(#d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3-arrow)"/>
+<rect x="502.2" y="787.5" width="205.6" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="605" y="804.5">AnalyticsTimelinePoint</tspan>
+</text>
+</g>
+<g id="d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3-artifact" data-node-id="artifact">
+<rect class="node" x="200" y="58" width="600" height="84" rx="5"/>
+<text text-anchor="middle">
+<tspan x="500" y="105.5">工件 hours、daily 与模型份额</tspan>
+</text></g>
+<g id="d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3-hours" data-node-id="hours">
+<rect class="node" x="50" y="238" width="360" height="84" rx="5"/>
+<text text-anchor="middle">
+<tspan x="230" y="285.5">今日：固定 24 小时点</tspan>
+</text></g>
+<g id="d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3-dates" data-node-id="dates">
+<rect class="node" x="590" y="238" width="360" height="84" rx="5"/>
+<text text-anchor="middle">
+<tspan x="770" y="285.5">历史：日期并集排序与范围筛选</tspan>
+</text></g>
+<g id="d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3-weeks" data-node-id="weeks">
+<rect class="node" x="590" y="438" width="360" height="84" rx="5"/>
+<text text-anchor="middle">
+<tspan x="770" y="474">allTime 且日期&gt;28 时</tspan>
+<tspan x="770" y="497">每 7 个现有日期分桶</tspan>
+</text></g>
+<g id="d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3-series" data-node-id="series">
+<rect class="node" x="200" y="658" width="600" height="84" rx="5"/>
+<text text-anchor="middle">
+<tspan x="500" y="694">派生 Agent、模型与Token系列</tspan>
+<tspan x="500" y="717">按固定单价估算费用</tspan>
+</text></g>
+<g id="d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3-chart" data-node-id="chart">
+<rect class="node" x="200" y="858" width="600" height="84" rx="5"/>
+<text text-anchor="middle">
+<tspan x="500" y="905.5">Charts 折线/面积、选择标签</tspan>
+</text></g>
+</svg>

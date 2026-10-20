@@ -310,7 +310,7 @@ pub fn validate_credential_updates(
                     "credentialUpdate provider 不受支持",
                 )
             })?;
-        if provider != "kimi" && provider != "stepfun" {
+        if provider != "kimi" && provider != "stepfun" && provider != "claude" {
             return Err(error(
                 "BRIDGE_INVALID_CREDENTIAL_UPDATE",
                 "credentialUpdate provider 不受支持",

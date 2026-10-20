@@ -1,0 +1,194 @@
+{
+  "schema_version": "1.0",
+  "review_type": "bounded_second_semantic_review",
+  "reviewer": "bruce_review",
+  "reviewed_at": "2026-10-19T02:50:44.902046+00:00",
+  "target_project": "/Users/sivan/code_project/my_project/app_project/Bruce",
+  "candidate_root": "/Users/sivan/code_project/my_project/skills/knowledge-map/local/acceptance/design-coverage/722e8074-a29b-4f6e-9307-0eb5d003e6ce/bruce",
+  "previous_review": {
+    "path": "independent-review.json",
+    "sha256": "dc1b8f105214ac43d72c1d4cbca5f77a81c5ce21df2b0c6dd6f4285ad4f4162d",
+    "preserved": true
+  },
+  "coverage_status": "complete",
+  "coverage_status_scope": "Only the explicitly requested fixes and Pipeline card/glossary ordering; not a new whole-project audit.",
+  "validation_status": "passed",
+  "blocking": false,
+  "published": false,
+  "findings": [],
+  "semantic_conclusion": "在本轮限定范围内，首轮三项发现均已得到实质修复。新增设置分类、指标预览/重排、价格搜索/筛选/校准字段/JSON预览和失败表述，以及菜单栏比例/阈值/宽度/动画/卡片折叠说明与当前源码一致。Codex 恢复条件已包含定向路径，并保留本地专用轮次不执行的例外。Pipeline 卡片与术语表现按先旧快照/策略、再输入/采集、分支恢复合并、凭据写回、发布/预警的顺序描述。没有遗留阻断。",
+  "resolved_findings": [
+    {
+      "id": "BRUCE-IR-001",
+      "status": "resolved",
+      "evidence": [
+        "drafts/设置中心与价格校准设计.md:13-37",
+        "drafts/设置中心与价格校准设计.md:39-60"
+      ],
+      "conclusion": "增加了当前已实现的设置分类、菜单栏预览和指标约束/排序、价格过滤与校准字段、样例费用和JSON预览，并保留输入未严格验证、预览与持久化分离及保存错误边界。算法通过现有文章承接。"
+    },
+    {
+      "id": "BRUCE-IR-002",
+      "status": "resolved",
+      "evidence": [
+        "drafts/菜单栏与看板设计.md:13-19",
+        "drafts/菜单栏与看板设计.md:48-52"
+      ],
+      "conclusion": "补齐指标选择与比例归一、动态宽度、0.05秒刷新动画、<15%/警告状态红色、<=0.005点显示与无比例底环，以及原生卡片裁切/透明度转场和迷你图表动画隔离。"
+    },
+    {
+      "id": "BRUCE-IR-003",
+      "status": "resolved",
+      "evidence": [
+        "figures/refresh-sequence.svg:25",
+        "figures/refresh-sequence.svg:39",
+        "diagrams/d_856cccba-17f1-402f-b8d2-d03c0c7de2e6.json:relations[id=retry].condition"
+      ],
+      "conclusion": "SVG 与语义清单均表明包含额度且满足挑战恢复条件，含定向Codex；本地专用轮次不执行。"
+    }
+  ],
+  "additional_requested_checks": [
+    {
+      "name": "Pipeline terminology card",
+      "result": "passed",
+      "evidence": "cards/k_2cbdfd96-ee67-4e9c-8d9c-609c0b4830be.json project_usage and original RefreshExecutionPipeline.swift:125-179,213-339,403-470",
+      "conclusion": "执行顺序正确，未把定时器状态归给Pipeline。"
+    },
+    {
+      "name": "Pipeline glossary",
+      "result": "passed",
+      "evidence": "drafts/术语表.md:61-67 and same original Pipeline ranges",
+      "conclusion": "与卡片和当前原始实现顺序一致，显式锚仍存在。"
+    },
+    {
+      "name": "Changed article source associations",
+      "result": "passed",
+      "evidence": "article-sources.json and document-plan.json design_topics for 菜单栏与看板/设置与价格校准",
+      "conclusion": "本轮新增 ModelPricingSettingsView、MenuBarMetrics、MenuBarStatusItemContent、HourlyLineCard、UsageHeroCard 等来源已纳入。"
+    }
+  ],
+  "reading_scope": {
+    "candidate_markdown": [
+      {
+        "path": "drafts/设置中心与价格校准设计.md",
+        "range": "full current article; bounded changed sections semantically rechecked"
+      },
+      {
+        "path": "drafts/菜单栏与看板设计.md",
+        "range": "full current article; bounded changed sections semantically rechecked"
+      },
+      {
+        "path": "drafts/术语表.md",
+        "range": "55-72 only"
+      }
+    ],
+    "candidate_json_and_svg": [
+      "cards/k_2cbdfd96-ee67-4e9c-8d9c-609c0b4830be.json (full)",
+      "diagrams/d_856cccba-17f1-402f-b8d2-d03c0c7de2e6.json (retry relation only)",
+      "figures/refresh-sequence.svg (retry label and local-only exception)",
+      "article-sources.json (two changed article records)",
+      "document-plan.json (two changed topic source records)"
+    ],
+    "original_source_ranges": {
+      "apps/macos/Sources/BruceApp/Settings/ModelPricingSettingsView.swift": [
+        "73-98",
+        "125-157",
+        "480-683",
+        "748-762"
+      ],
+      "apps/macos/Sources/BruceAppCore/MenuBarMetrics.swift": [
+        "1-80"
+      ],
+      "apps/macos/Sources/BruceApp/SettingsView.swift": [
+        "760-875",
+        "reused previously inspected 64-89,259-273,471-502,553-565,624-736; current file hash matched source snapshot"
+      ],
+      "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift": [
+        "728-761"
+      ],
+      "apps/macos/Sources/BruceAppCore/MenuBarStatusItemContent.swift": [
+        "34-96"
+      ],
+      "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift": [
+        "280-318",
+        "373-404",
+        "reused preceding actual-appearance rendering branch inspected in first review"
+      ],
+      "apps/macos/Sources/BruceApp/Views/UsageHeroCard.swift": [
+        "1-75"
+      ],
+      "apps/macos/Sources/BruceApp/Views/HourlyLineCard.swift": [
+        "1-78",
+        "107-145"
+      ],
+      "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift": [
+        "125-179",
+        "213-247",
+        "282-339",
+        "403-426",
+        "442-470"
+      ],
+      "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift": [
+        "ModelPricingOverride 75-98 reused from first review"
+      ]
+    }
+  },
+  "checks": [
+    {
+      "name": "changed source stability",
+      "method": "SHA-256 compare to source-snapshot.json",
+      "result": "passed",
+      "evidence": {
+        "checked": [
+          "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+          "apps/macos/Sources/BruceApp/Settings/ModelPricingSettingsView.swift",
+          "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+          "apps/macos/Sources/BruceApp/SettingsView.swift"
+        ],
+        "all_match": true
+      }
+    },
+    {
+      "name": "second review JSON parse",
+      "method": "json.loads after write",
+      "result": "passed"
+    },
+    {
+      "name": "application/runtime/external credentials",
+      "result": "not_run",
+      "evidence": "No application, network, real credentials or dependency installation used."
+    },
+    {
+      "name": "visual rendering",
+      "result": "not_run",
+      "evidence": "Only requested semantic diagram-condition verification was performed; parent must retain actual rendering evidence."
+    },
+    {
+      "name": "unchanged articles/cards/algorithms",
+      "result": "not_run",
+      "evidence": "Outside the bounded second-review request."
+    }
+  ],
+  "during_review_observation": {
+    "priority": "P3",
+    "status": "resolved_before_report",
+    "detail": "An initially read source note named filteredEntries; actual source symbol is filteredModels. Parent corrected it during review; final current line 37 was reread and matches the source."
+  },
+  "candidate_hashes": {
+    "drafts/设置中心与价格校准设计.md": "8152cd895479ef8e72c2e75e643e42214207ec6d19008346d6220db6a200ef58",
+    "drafts/菜单栏与看板设计.md": "8c4eb00a357a1a4f2b294ed9beb9a3b5674a4ea7210ccb2072a522ec1f1179e1",
+    "drafts/术语表.md": "ebd305711e018303804d81e2ac462bd65984a5e9e61e18fc0aa7d54a3297fcd4",
+    "cards/k_2cbdfd96-ee67-4e9c-8d9c-609c0b4830be.json": "e12a54a4b8423a40c5a557142bc34760149d9279995c1bdaf1d595657d866d63",
+    "figures/refresh-sequence.svg": "507664b69b48c82e7cd42e66dbb50c708ab91f25b7a2f310ebf39e93612780d6",
+    "diagrams/d_856cccba-17f1-402f-b8d2-d03c0c7de2e6.json": "a2c1746f9a6fed90d125ac5c022a6359a0707b35041bb8284f13ead28d3365a6",
+    "article-sources.json": "12736c2f9a74b041ca88041ca1def3ea783eb15368748aaf0749b29836dc0f9c",
+    "document-plan.json": "5d5d27ba3323f4371c996d15ff65079a4f9644285c2cd0ea73da98d7e4e8a019"
+  },
+  "write_scope": [
+    "second-review.json"
+  ],
+  "limits": [
+    "This scoped pass resolves first-round findings and requested terminology corrections. It does not independently establish whole-project implementation completeness, runtime/device acceptance, all collection checks or publication.",
+    "No candidate prose, figure, card, plan, source or first-round review file was modified by this reviewer."
+  ]
+}

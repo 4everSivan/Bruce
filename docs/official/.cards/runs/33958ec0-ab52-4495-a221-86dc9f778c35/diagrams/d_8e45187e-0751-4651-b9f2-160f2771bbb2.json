@@ -1,0 +1,157 @@
+{
+  "schema_version": "1.0",
+  "id": "d_8e45187e-0751-4651-b9f2-160f2771bbb2",
+  "title": "凭据输入与轮换边界",
+  "type": "data_flow",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "config",
+      "label": "配置、同意与 Provider 状态",
+      "role": "source",
+      "evidence_refs": [
+        "input"
+      ]
+    },
+    {
+      "id": "external",
+      "label": "外部 CLI 登录态（只读）",
+      "role": "source",
+      "evidence_refs": [
+        "input"
+      ]
+    },
+    {
+      "id": "store",
+      "label": "Bruce 自有凭据与账号记录",
+      "role": "store",
+      "evidence_refs": [
+        "input"
+      ]
+    },
+    {
+      "id": "input",
+      "label": "门控、账号决议与 CLI 比较",
+      "role": "process",
+      "evidence_refs": [
+        "input"
+      ]
+    },
+    {
+      "id": "bridge",
+      "label": "Collector 请求与响应封套",
+      "role": "process",
+      "evidence_refs": [
+        "pipeline"
+      ]
+    },
+    {
+      "id": "merge",
+      "label": "验证并合并 credentialUpdates",
+      "role": "process",
+      "evidence_refs": [
+        "rotation"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "r1",
+      "from": "config",
+      "to": "input",
+      "kind": "derives",
+      "evidence_refs": [
+        "input"
+      ],
+      "properties": {
+        "data": "配置与访问策略"
+      },
+      "label": "配置与访问策略"
+    },
+    {
+      "id": "r2",
+      "from": "external",
+      "to": "input",
+      "kind": "derives",
+      "evidence_refs": [
+        "input"
+      ],
+      "properties": {
+        "data": "只读 OAuth 数据"
+      },
+      "label": "只读 OAuth 数据"
+    },
+    {
+      "id": "r3",
+      "from": "store",
+      "to": "input",
+      "kind": "derives",
+      "evidence_refs": [
+        "input"
+      ],
+      "properties": {
+        "data": "账号与令牌"
+      },
+      "label": "账号与令牌"
+    },
+    {
+      "id": "r4",
+      "from": "input",
+      "to": "bridge",
+      "kind": "derives",
+      "evidence_refs": [
+        "input"
+      ],
+      "properties": {
+        "data": "context 与 credentials"
+      },
+      "label": "context 与 credentials"
+    },
+    {
+      "id": "r5",
+      "from": "bridge",
+      "to": "merge",
+      "kind": "derives",
+      "evidence_refs": [
+        "pipeline"
+      ],
+      "properties": {
+        "data": "合法轮换条目"
+      },
+      "label": "合法轮换条目"
+    },
+    {
+      "id": "r6",
+      "from": "merge",
+      "to": "store",
+      "kind": "derives",
+      "evidence_refs": [
+        "rotation"
+      ],
+      "properties": {
+        "data": "自有账号记录写回"
+      },
+      "label": "自有账号记录写回"
+    }
+  ],
+  "evidence": {
+    "input": {
+      "path": "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+      "locator": "agentUsageInput / externalOAuthAccount / claudeExpiresAt",
+      "kind": "static_implementation",
+      "supports": "本地门控、Provider账号装配、外部CLI读取与到期比较；localOnly提前返回不装配订阅凭据。"
+    },
+    "pipeline": {
+      "path": "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+      "locator": "finishPublishablePath",
+      "kind": "static_implementation",
+      "supports": "发布之前应用credentialUpdates，写回失败转诊断及partial。"
+    },
+    "rotation": {
+      "path": "apps/macos/Sources/BruceAppCore/CredentialUpdateCoordinator.swift",
+      "locator": "apply",
+      "kind": "static_implementation",
+      "supports": "按账号写回；claude-cli可自动upsert；不写外部CLI。"
+    }
+  }
+}

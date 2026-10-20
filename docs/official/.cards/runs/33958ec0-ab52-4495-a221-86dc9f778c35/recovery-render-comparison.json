@@ -1,0 +1,84 @@
+{
+  "result": "passed",
+  "same": 13,
+  "changed": [
+    {
+      "path": "Bruce设计文档.md",
+      "sameRenderedBody": false
+    },
+    {
+      "path": "刷新生命周期设计.md",
+      "sameRenderedBody": false
+    },
+    {
+      "path": "设置中心与价格校准设计.md",
+      "sameRenderedBody": false
+    }
+  ],
+  "pages": [
+    {
+      "path": "Agent用量分析设计.md",
+      "sameRenderedBody": true
+    },
+    {
+      "path": "Bruce设计文档.md",
+      "sameRenderedBody": false
+    },
+    {
+      "path": "README.md",
+      "sameRenderedBody": true
+    },
+    {
+      "path": "Widget设计.md",
+      "sameRenderedBody": true
+    },
+    {
+      "path": "Windows应用设计.md",
+      "sameRenderedBody": true
+    },
+    {
+      "path": "Windows快照与刷新状态.md",
+      "sameRenderedBody": true
+    },
+    {
+      "path": "macOS原生应用设计.md",
+      "sameRenderedBody": true
+    },
+    {
+      "path": "刷新生命周期设计.md",
+      "sameRenderedBody": false
+    },
+    {
+      "path": "本地会话解析与计费.md",
+      "sameRenderedBody": true
+    },
+    {
+      "path": "术语表.md",
+      "sameRenderedBody": true
+    },
+    {
+      "path": "构建验证与发布.md",
+      "sameRenderedBody": true
+    },
+    {
+      "path": "菜单栏与看板设计.md",
+      "sameRenderedBody": true
+    },
+    {
+      "path": "订阅配置与凭据管理设计.md",
+      "sameRenderedBody": true
+    },
+    {
+      "path": "订阅额度查询设计.md",
+      "sameRenderedBody": true
+    },
+    {
+      "path": "设置中心与价格校准设计.md",
+      "sameRenderedBody": false
+    },
+    {
+      "path": "采集引擎与本地用量设计.md",
+      "sameRenderedBody": true
+    }
+  ]
+}

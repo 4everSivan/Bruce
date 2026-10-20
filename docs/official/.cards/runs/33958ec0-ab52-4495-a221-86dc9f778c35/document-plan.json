@@ -1,0 +1,4082 @@
+{
+  "overall_article": "Bruce设计文档.md",
+  "design_topics": [
+    {
+      "name": "本地采集与计费",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+        "apps/win/src-tauri/src/collector.rs",
+        "core/collector/bin/Bruce-collector/src/main.rs",
+        "core/collector/crates/collector-aggregate/src/lib.rs",
+        "core/collector/crates/collector-application/src/aggregation.rs",
+        "core/collector/crates/collector-application/src/context.rs",
+        "core/collector/crates/collector-application/src/execution.rs",
+        "core/collector/crates/collector-application/src/lib.rs",
+        "core/collector/crates/collector-bridge/src/lib.rs",
+        "core/collector/crates/collector-bridge/src/metrics.rs",
+        "core/collector/crates/collector-domain/src/lib.rs",
+        "core/collector/crates/collector-runtime/src/lib.rs",
+        "core/collector/schemas/request-v1.schema.json",
+        "docs/devel/design/01-数据采集与多模型计费引擎.md"
+      ],
+      "overall_anchor": "local-usage",
+      "detail_article": "采集引擎与本地用量设计.md",
+      "pending": []
+    },
+    {
+      "name": "订阅额度查询",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+        "core/collector/crates/collector-application/src/account.rs",
+        "core/collector/crates/collector-application/src/execution.rs",
+        "core/collector/crates/collector-application/src/lib.rs",
+        "core/collector/crates/collector-bridge/src/lib.rs",
+        "core/collector/crates/collector-credential/src/lib.rs",
+        "core/collector/crates/collector-provider/src/lib.rs",
+        "core/collector/crates/collector-runtime/src/lib.rs",
+        "docs/devel/design/02-订阅额度与凭据安全存储.md"
+      ],
+      "overall_anchor": "provider-quota",
+      "detail_article": "订阅额度查询设计.md",
+      "pending": []
+    },
+    {
+      "name": "订阅配置与凭据",
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+        "apps/macos/Sources/BruceApp/BruceApp.swift",
+        "apps/macos/Sources/BruceApp/LocalCredentialProbe.swift",
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "apps/macos/Sources/BruceApp/Settings/ClaudeProviderSettingsSection.swift",
+        "apps/macos/Sources/BruceApp/SubscriptionService.swift",
+        "apps/macos/Sources/BruceAppCore/AppModel.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+        "apps/macos/Sources/BruceOnboardingCore/CodexTokenManager.swift",
+        "apps/macos/Sources/BruceOnboardingCore/CollectorActivationGate.swift",
+        "apps/macos/Sources/BruceOnboardingCore/ExternalCredentialReader.swift",
+        "apps/macos/Sources/BruceOnboardingCore/KeychainAccessPolicy.swift",
+        "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+        "apps/macos/Sources/BruceOnboardingCore/ProviderRegistry.swift",
+        "apps/macos/Sources/BruceOnboardingCore/SubscriptionCredentialImport.swift",
+        "apps/macos/Tests/BruceOnboardingCoreHarness/OnboardingClaudeGrokAndConfiguredRuleTests.swift",
+        "docs/devel/change/C060.json"
+      ],
+      "overall_anchor": "credentials",
+      "detail_article": "订阅配置与凭据管理设计.md",
+      "pending": []
+    },
+    {
+      "name": "macOS应用装配",
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+        "apps/macos/Sources/BruceApp/ApplicationLifecycle.swift",
+        "apps/macos/Sources/BruceApp/BruceApp.swift",
+        "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "apps/macos/Sources/BruceAppCore/AppModel.swift",
+        "apps/macos/Sources/BruceAppCore/AppRuntime.swift",
+        "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift",
+        "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+        "apps/macos/Sources/BruceAppCore/DashboardPanelAnimationPolicy.swift",
+        "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift",
+        "apps/macos/Sources/BruceAppCore/PanelViewModel.swift",
+        "apps/macos/Sources/BruceAppCore/SubscriptionMapping.swift",
+        "apps/macos/Sources/BruceAppCore/UsageMapping.swift",
+        "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+        "apps/macos/Tests/Harnesses/NativeLifecycleHarness/NativeLifecycleHarness.swift",
+        "docs/devel/design/04-设置中心与价格校准交互.md"
+      ],
+      "overall_anchor": "macos-app",
+      "detail_article": "macOS原生应用设计.md",
+      "pending": []
+    },
+    {
+      "name": "菜单栏与看板",
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/ApplicationLifecycle.swift",
+        "apps/macos/Sources/BruceApp/DashboardGlassPanelController.swift",
+        "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+        "apps/macos/Sources/BruceApp/Views/HourlyLineCard.swift",
+        "apps/macos/Sources/BruceApp/Views/UsageHeroCard.swift",
+        "apps/macos/Sources/BruceAppCore/AppModel.swift",
+        "apps/macos/Sources/BruceAppCore/DashboardPanelAnimationPolicy.swift",
+        "apps/macos/Sources/BruceAppCore/DashboardPanelPlacement.swift",
+        "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift",
+        "apps/macos/Sources/BruceAppCore/MenuBarMetrics.swift",
+        "apps/macos/Sources/BruceAppCore/MenuBarStatusItemContent.swift",
+        "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+        "docs/devel/design/03-菜单栏状态与多风格原生渲染.md"
+      ],
+      "overall_anchor": "dashboard",
+      "detail_article": "菜单栏与看板设计.md",
+      "pending": []
+    },
+    {
+      "name": "设置与价格校准",
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "apps/macos/Sources/BruceApp/Settings/ModelPricingSettingsView.swift",
+        "apps/macos/Sources/BruceApp/SettingsView.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+        "apps/macos/Sources/BruceAppCore/MenuBarMetrics.swift",
+        "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+        "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+        "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+        "apps/win/src-tauri/src/settings.rs",
+        "apps/win/src/settings.js",
+        "core/collector/crates/collector-domain/src/pricing.rs",
+        "docs/devel/design/04-设置中心与价格校准交互.md",
+        "docs/devel/design/05-Windows平台适配.md"
+      ],
+      "overall_anchor": "settings-pricing",
+      "detail_article": "设置中心与价格校准设计.md",
+      "pending": []
+    },
+    {
+      "name": "刷新、快照与恢复",
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+        "apps/macos/Sources/BruceApp/BruceApp.swift",
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "apps/macos/Sources/BruceApp/QuotaAlertNotifier.swift",
+        "apps/macos/Sources/BruceAppCore/AppModel.swift",
+        "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift",
+        "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+        "apps/macos/Sources/BruceAppCore/NetworkReachability.swift",
+        "apps/macos/Sources/BruceAppCore/QuotaAlertEvaluator.swift",
+        "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshBackoffPolicy.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshTypes.swift"
+      ],
+      "overall_anchor": "refresh-snapshot",
+      "detail_article": "刷新生命周期设计.md",
+      "pending": []
+    },
+    {
+      "name": "Windows平台适配",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+        "apps/win/src-tauri/src/alerts.rs",
+        "apps/win/src-tauri/src/collector.rs",
+        "apps/win/src-tauri/src/credentials.rs",
+        "apps/win/src-tauri/src/credentials/lifecycle.rs",
+        "apps/win/src-tauri/src/credentials/windows_security.rs",
+        "apps/win/src-tauri/src/lib.rs",
+        "apps/win/src-tauri/src/main.rs",
+        "apps/win/src-tauri/src/paths.rs",
+        "apps/win/src-tauri/src/runtime_core.rs",
+        "apps/win/src-tauri/src/scheduler.rs",
+        "apps/win/src-tauri/src/settings.rs",
+        "apps/win/src-tauri/tauri.conf.json",
+        "apps/win/src-tauri/tests/collector_configuration.rs",
+        "apps/win/src-tauri/tests/runtime_coverage.rs",
+        "apps/win/src/app.js",
+        "apps/win/src/settings.js",
+        "apps/win/tests/frontend.test.mjs",
+        "apps/win/viewmodel/src/lib.rs",
+        "apps/win/viewmodel/src/models.rs",
+        "apps/win/viewmodel/src/subscription.rs",
+        "apps/win/viewmodel/src/usage.rs",
+        "apps/win/viewmodel/tests/fixture_parity.rs",
+        "core/collector/crates/collector-bridge/src/lib.rs",
+        "docs/archive/0.12.0/change/C020.json",
+        "docs/devel/change/C009.json",
+        "docs/devel/change/C012.json",
+        "docs/devel/design/05-Windows平台适配.md"
+      ],
+      "overall_anchor": "windows",
+      "detail_article": "Windows应用设计.md",
+      "pending": []
+    },
+    {
+      "name": "独立Widget",
+      "source_paths": [
+        "apps/widget/index.html",
+        "scripts/runtime-manifest.zsh",
+        "scripts/widget-performance-harness.mjs"
+      ],
+      "overall_anchor": "widget",
+      "detail_article": "Widget设计.md",
+      "pending": []
+    },
+    {
+      "name": "工程验证与交付",
+      "source_paths": [
+        ".github/workflows/ci.yml",
+        ".gitignore",
+        "README.md",
+        "VERSION",
+        "apps/macos/Package.swift",
+        "docs/guide/01-本地部署指南.md",
+        "scripts/build-release-app.sh",
+        "scripts/build-test-app.sh",
+        "scripts/build-win-app.ps1",
+        "scripts/check-release-pipeline.mjs",
+        "scripts/release-notes.sh",
+        "scripts/runtime-manifest.zsh",
+        "scripts/upload-win-release.ps1",
+        "scripts/verify-local.sh",
+        "scripts/verify-rust.sh"
+      ],
+      "overall_anchor": "delivery",
+      "detail_article": "构建验证与发布.md",
+      "pending": []
+    },
+    {
+      "name": "Agent用量分析与跨源模型归并",
+      "source_paths": [
+        "docs/devel/design/06-Agent用量分析与Token统计工作台.md",
+        "apps/macos/Sources/BruceAppCore/ModelNormalizer.swift",
+        "apps/macos/Sources/BruceAppCore/AnalyticsModels.swift",
+        "apps/macos/Sources/BruceAppCore/AppModel.swift",
+        "apps/macos/Sources/BruceApp/Settings/AgentUsageWorkbenchView.swift",
+        "apps/macos/Sources/BruceApp/Settings/TimelineChartCard.swift",
+        "apps/macos/Sources/BruceApp/Settings/CanonicalModelAnalyticsCard.swift",
+        "apps/macos/Sources/BruceApp/Settings/AgentComparisonMatrixCard.swift",
+        "apps/macos/Sources/BruceApp/Settings/TokenCompositionCard.swift",
+        "apps/macos/Tests/Harnesses/PanelViewModelHarness/PanelViewModelHarness.swift"
+      ],
+      "overall_anchor": "agent-analytics",
+      "detail_article": "Agent用量分析设计.md",
+      "pending": []
+    }
+  ],
+  "modules": [
+    {
+      "name": "本地采集与计费",
+      "responsibility": "本地采集与计费的整体机制与契约",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+        "apps/win/src-tauri/src/collector.rs",
+        "core/collector/bin/Bruce-collector/src/main.rs",
+        "core/collector/crates/collector-aggregate/src/lib.rs",
+        "core/collector/crates/collector-application/src/aggregation.rs",
+        "core/collector/crates/collector-application/src/context.rs",
+        "core/collector/crates/collector-application/src/execution.rs",
+        "core/collector/crates/collector-application/src/lib.rs",
+        "core/collector/crates/collector-bridge/src/lib.rs",
+        "core/collector/crates/collector-bridge/src/metrics.rs",
+        "core/collector/crates/collector-domain/src/lib.rs",
+        "core/collector/crates/collector-runtime/src/lib.rs",
+        "core/collector/schemas/request-v1.schema.json",
+        "docs/devel/design/01-数据采集与多模型计费引擎.md"
+      ],
+      "main_article": "采集引擎与本地用量设计.md",
+      "topic_articles": [
+        "本地会话解析与计费.md"
+      ],
+      "pending": []
+    },
+    {
+      "name": "订阅额度查询",
+      "responsibility": "订阅额度查询的整体机制与契约",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+        "core/collector/crates/collector-application/src/account.rs",
+        "core/collector/crates/collector-application/src/execution.rs",
+        "core/collector/crates/collector-application/src/lib.rs",
+        "core/collector/crates/collector-bridge/src/lib.rs",
+        "core/collector/crates/collector-credential/src/lib.rs",
+        "core/collector/crates/collector-provider/src/lib.rs",
+        "core/collector/crates/collector-runtime/src/lib.rs",
+        "docs/devel/design/02-订阅额度与凭据安全存储.md"
+      ],
+      "main_article": "订阅额度查询设计.md",
+      "topic_articles": [],
+      "pending": []
+    },
+    {
+      "name": "订阅配置与凭据",
+      "responsibility": "订阅配置与凭据的整体机制与契约",
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+        "apps/macos/Sources/BruceApp/BruceApp.swift",
+        "apps/macos/Sources/BruceApp/LocalCredentialProbe.swift",
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "apps/macos/Sources/BruceApp/Settings/ClaudeProviderSettingsSection.swift",
+        "apps/macos/Sources/BruceApp/SubscriptionService.swift",
+        "apps/macos/Sources/BruceAppCore/AppModel.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+        "apps/macos/Sources/BruceOnboardingCore/CodexTokenManager.swift",
+        "apps/macos/Sources/BruceOnboardingCore/CollectorActivationGate.swift",
+        "apps/macos/Sources/BruceOnboardingCore/ExternalCredentialReader.swift",
+        "apps/macos/Sources/BruceOnboardingCore/KeychainAccessPolicy.swift",
+        "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+        "apps/macos/Sources/BruceOnboardingCore/ProviderRegistry.swift",
+        "apps/macos/Sources/BruceOnboardingCore/SubscriptionCredentialImport.swift",
+        "apps/macos/Tests/BruceOnboardingCoreHarness/OnboardingClaudeGrokAndConfiguredRuleTests.swift",
+        "docs/devel/change/C060.json"
+      ],
+      "main_article": "订阅配置与凭据管理设计.md",
+      "topic_articles": [],
+      "pending": []
+    },
+    {
+      "name": "macOS应用装配",
+      "responsibility": "macOS应用装配的整体机制与契约",
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+        "apps/macos/Sources/BruceApp/ApplicationLifecycle.swift",
+        "apps/macos/Sources/BruceApp/BruceApp.swift",
+        "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "apps/macos/Sources/BruceAppCore/AppModel.swift",
+        "apps/macos/Sources/BruceAppCore/AppRuntime.swift",
+        "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift",
+        "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+        "apps/macos/Sources/BruceAppCore/DashboardPanelAnimationPolicy.swift",
+        "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift",
+        "apps/macos/Sources/BruceAppCore/PanelViewModel.swift",
+        "apps/macos/Sources/BruceAppCore/SubscriptionMapping.swift",
+        "apps/macos/Sources/BruceAppCore/UsageMapping.swift",
+        "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+        "apps/macos/Tests/Harnesses/NativeLifecycleHarness/NativeLifecycleHarness.swift",
+        "docs/devel/design/04-设置中心与价格校准交互.md"
+      ],
+      "main_article": "macOS原生应用设计.md",
+      "topic_articles": [],
+      "pending": []
+    },
+    {
+      "name": "菜单栏与看板",
+      "responsibility": "菜单栏与看板的整体机制与契约",
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/ApplicationLifecycle.swift",
+        "apps/macos/Sources/BruceApp/DashboardGlassPanelController.swift",
+        "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+        "apps/macos/Sources/BruceApp/Views/HourlyLineCard.swift",
+        "apps/macos/Sources/BruceApp/Views/UsageHeroCard.swift",
+        "apps/macos/Sources/BruceAppCore/AppModel.swift",
+        "apps/macos/Sources/BruceAppCore/DashboardPanelAnimationPolicy.swift",
+        "apps/macos/Sources/BruceAppCore/DashboardPanelPlacement.swift",
+        "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift",
+        "apps/macos/Sources/BruceAppCore/MenuBarMetrics.swift",
+        "apps/macos/Sources/BruceAppCore/MenuBarStatusItemContent.swift",
+        "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+        "docs/devel/design/03-菜单栏状态与多风格原生渲染.md"
+      ],
+      "main_article": "菜单栏与看板设计.md",
+      "topic_articles": [],
+      "pending": []
+    },
+    {
+      "name": "设置与价格校准",
+      "responsibility": "设置与价格校准的整体机制与契约",
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "apps/macos/Sources/BruceApp/Settings/ModelPricingSettingsView.swift",
+        "apps/macos/Sources/BruceApp/SettingsView.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+        "apps/macos/Sources/BruceAppCore/MenuBarMetrics.swift",
+        "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+        "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+        "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+        "apps/win/src-tauri/src/settings.rs",
+        "apps/win/src/settings.js",
+        "core/collector/crates/collector-domain/src/pricing.rs",
+        "docs/devel/design/04-设置中心与价格校准交互.md",
+        "docs/devel/design/05-Windows平台适配.md"
+      ],
+      "main_article": "设置中心与价格校准设计.md",
+      "topic_articles": [],
+      "pending": []
+    },
+    {
+      "name": "Windows平台适配",
+      "responsibility": "Windows平台适配的整体机制与契约",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+        "apps/win/src-tauri/src/alerts.rs",
+        "apps/win/src-tauri/src/collector.rs",
+        "apps/win/src-tauri/src/credentials.rs",
+        "apps/win/src-tauri/src/credentials/lifecycle.rs",
+        "apps/win/src-tauri/src/credentials/windows_security.rs",
+        "apps/win/src-tauri/src/lib.rs",
+        "apps/win/src-tauri/src/main.rs",
+        "apps/win/src-tauri/src/paths.rs",
+        "apps/win/src-tauri/src/runtime_core.rs",
+        "apps/win/src-tauri/src/scheduler.rs",
+        "apps/win/src-tauri/src/settings.rs",
+        "apps/win/src-tauri/tauri.conf.json",
+        "apps/win/src-tauri/tests/collector_configuration.rs",
+        "apps/win/src-tauri/tests/runtime_coverage.rs",
+        "apps/win/src/app.js",
+        "apps/win/src/settings.js",
+        "apps/win/tests/frontend.test.mjs",
+        "apps/win/viewmodel/src/lib.rs",
+        "apps/win/viewmodel/src/models.rs",
+        "apps/win/viewmodel/src/subscription.rs",
+        "apps/win/viewmodel/src/usage.rs",
+        "apps/win/viewmodel/tests/fixture_parity.rs",
+        "core/collector/crates/collector-bridge/src/lib.rs",
+        "docs/archive/0.12.0/change/C020.json",
+        "docs/devel/change/C009.json",
+        "docs/devel/change/C012.json",
+        "docs/devel/design/05-Windows平台适配.md"
+      ],
+      "main_article": "Windows应用设计.md",
+      "topic_articles": [
+        "Windows快照与刷新状态.md"
+      ],
+      "pending": []
+    },
+    {
+      "name": "独立Widget",
+      "responsibility": "独立Widget的整体机制与契约",
+      "source_paths": [
+        "apps/widget/index.html",
+        "scripts/runtime-manifest.zsh",
+        "scripts/widget-performance-harness.mjs"
+      ],
+      "main_article": "Widget设计.md",
+      "topic_articles": [],
+      "pending": []
+    },
+    {
+      "name": "工程验证与交付",
+      "responsibility": "工程验证与交付的整体机制与契约",
+      "source_paths": [
+        ".github/workflows/ci.yml",
+        ".gitignore",
+        "README.md",
+        "VERSION",
+        "apps/macos/Package.swift",
+        "docs/guide/01-本地部署指南.md",
+        "scripts/build-release-app.sh",
+        "scripts/build-test-app.sh",
+        "scripts/build-win-app.ps1",
+        "scripts/check-release-pipeline.mjs",
+        "scripts/release-notes.sh",
+        "scripts/runtime-manifest.zsh",
+        "scripts/upload-win-release.ps1",
+        "scripts/verify-local.sh",
+        "scripts/verify-rust.sh"
+      ],
+      "main_article": "构建验证与发布.md",
+      "topic_articles": [],
+      "pending": []
+    },
+    {
+      "name": "Agent用量分析",
+      "responsibility": "从已缓存工件在内存生成KPI、跨源模型、趋势和Agent比较，并导出分析数据",
+      "source_paths": [
+        "docs/devel/design/06-Agent用量分析与Token统计工作台.md",
+        "apps/macos/Sources/BruceAppCore/ModelNormalizer.swift",
+        "apps/macos/Sources/BruceAppCore/AnalyticsModels.swift",
+        "apps/macos/Sources/BruceAppCore/AppModel.swift",
+        "apps/macos/Sources/BruceApp/Settings/AgentUsageWorkbenchView.swift",
+        "apps/macos/Sources/BruceApp/Settings/TimelineChartCard.swift",
+        "apps/macos/Sources/BruceApp/Settings/CanonicalModelAnalyticsCard.swift",
+        "apps/macos/Sources/BruceApp/Settings/AgentComparisonMatrixCard.swift",
+        "apps/macos/Sources/BruceApp/Settings/TokenCompositionCard.swift",
+        "apps/macos/Tests/Harnesses/PanelViewModelHarness/PanelViewModelHarness.swift"
+      ],
+      "main_article": "Agent用量分析设计.md",
+      "topic_articles": [],
+      "pending": []
+    }
+  ],
+  "cross_module_articles": [
+    {
+      "path": "刷新生命周期设计.md",
+      "modules": [
+        "macOS应用装配",
+        "订阅配置与凭据",
+        "本地采集与计费",
+        "订阅额度查询"
+      ],
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+        "apps/macos/Sources/BruceApp/BruceApp.swift",
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "apps/macos/Sources/BruceApp/QuotaAlertNotifier.swift",
+        "apps/macos/Sources/BruceAppCore/AppModel.swift",
+        "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift",
+        "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+        "apps/macos/Sources/BruceAppCore/NetworkReachability.swift",
+        "apps/macos/Sources/BruceAppCore/QuotaAlertEvaluator.swift",
+        "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshBackoffPolicy.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshTypes.swift"
+      ]
+    }
+  ],
+  "recognition_pending": [],
+  "articles": [
+    {
+      "path": "Bruce设计文档.md",
+      "document_type": "overall",
+      "outline": [
+        "1. 简介",
+        "2. 需求",
+        "3. 目标",
+        "4. 功能设计",
+        "5. 架构设计",
+        "6. 详细设计",
+        "7. 参考文献"
+      ],
+      "reader_questions": [
+        {
+          "question": "完整需求、能力、边界与设计主题如何关联？",
+          "source_paths": [
+            "docs/devel/design/00-系统总体设计.md",
+            "docs/devel/design/06-Agent用量分析与Token统计工作台.md",
+            "apps/macos/Sources/BruceAppCore/ModelNormalizer.swift",
+            "apps/macos/Sources/BruceAppCore/AnalyticsModels.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceApp/Settings/AgentUsageWorkbenchView.swift",
+            "apps/macos/Sources/BruceApp/Settings/TimelineChartCard.swift",
+            "apps/macos/Sources/BruceApp/Settings/CanonicalModelAnalyticsCard.swift",
+            "apps/macos/Sources/BruceApp/Settings/AgentComparisonMatrixCard.swift",
+            "apps/macos/Sources/BruceApp/Settings/TokenCompositionCard.swift",
+            "apps/macos/Tests/Harnesses/PanelViewModelHarness/PanelViewModelHarness.swift"
+          ],
+          "answer_sections": [
+            "Bruce设计文档.md#chapter-1",
+            "Bruce设计文档.md#chapter-2",
+            "Bruce设计文档.md#chapter-3",
+            "Bruce设计文档.md#chapter-4",
+            "Bruce设计文档.md#chapter-5",
+            "Bruce设计文档.md#chapter-6"
+          ]
+        }
+      ],
+      "functional_points": [
+        {
+          "key": "采集引擎与本地用量设计-1",
+          "principal_record": "采集引擎与本地用量设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "采集引擎与本地用量设计-2",
+          "principal_record": "采集引擎与本地用量设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "采集引擎与本地用量设计-3",
+          "principal_record": "采集引擎与本地用量设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "本地会话解析与计费-1",
+          "principal_record": "本地会话解析与计费.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "本地会话解析与计费-2",
+          "principal_record": "本地会话解析与计费.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "本地会话解析与计费-3",
+          "principal_record": "本地会话解析与计费.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "本地会话解析与计费-4",
+          "principal_record": "本地会话解析与计费.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "本地会话解析与计费-5",
+          "principal_record": "本地会话解析与计费.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "订阅额度查询设计-1",
+          "principal_record": "订阅额度查询设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "订阅额度查询设计-2",
+          "principal_record": "订阅额度查询设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "订阅额度查询设计-3",
+          "principal_record": "订阅额度查询设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "订阅额度查询设计-4",
+          "principal_record": "订阅额度查询设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "订阅额度查询设计-5",
+          "principal_record": "订阅额度查询设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "订阅配置与凭据管理设计-1",
+          "principal_record": "订阅配置与凭据管理设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "订阅配置与凭据管理设计-2",
+          "principal_record": "订阅配置与凭据管理设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "订阅配置与凭据管理设计-3",
+          "principal_record": "订阅配置与凭据管理设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "订阅配置与凭据管理设计-4",
+          "principal_record": "订阅配置与凭据管理设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "订阅配置与凭据管理设计-5",
+          "principal_record": "订阅配置与凭据管理设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "macOS原生应用设计-1",
+          "principal_record": "macOS原生应用设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "macOS原生应用设计-2",
+          "principal_record": "macOS原生应用设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "macOS原生应用设计-3",
+          "principal_record": "macOS原生应用设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "菜单栏与看板设计-1",
+          "principal_record": "菜单栏与看板设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "菜单栏与看板设计-2",
+          "principal_record": "菜单栏与看板设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "菜单栏与看板设计-3",
+          "principal_record": "菜单栏与看板设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "设置中心与价格校准设计-1",
+          "principal_record": "设置中心与价格校准设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "设置中心与价格校准设计-2",
+          "principal_record": "设置中心与价格校准设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "设置中心与价格校准设计-3",
+          "principal_record": "设置中心与价格校准设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "设置中心与价格校准设计-4",
+          "principal_record": "设置中心与价格校准设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "设置中心与价格校准设计-5",
+          "principal_record": "设置中心与价格校准设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "刷新生命周期设计-1",
+          "principal_record": "刷新生命周期设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "刷新生命周期设计-2",
+          "principal_record": "刷新生命周期设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "刷新生命周期设计-3",
+          "principal_record": "刷新生命周期设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "刷新生命周期设计-4",
+          "principal_record": "刷新生命周期设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "刷新生命周期设计-5",
+          "principal_record": "刷新生命周期设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "刷新生命周期设计-6",
+          "principal_record": "刷新生命周期设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "Windows应用设计-1",
+          "principal_record": "Windows应用设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "Windows应用设计-2",
+          "principal_record": "Windows应用设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "Windows应用设计-3",
+          "principal_record": "Windows应用设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "Windows应用设计-4",
+          "principal_record": "Windows应用设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "Windows快照与刷新状态-1",
+          "principal_record": "Windows快照与刷新状态.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "Windows快照与刷新状态-2",
+          "principal_record": "Windows快照与刷新状态.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "Windows快照与刷新状态-3",
+          "principal_record": "Windows快照与刷新状态.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "Windows快照与刷新状态-4",
+          "principal_record": "Windows快照与刷新状态.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "Widget设计-1",
+          "principal_record": "Widget设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "Widget设计-2",
+          "principal_record": "Widget设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "Widget设计-3",
+          "principal_record": "Widget设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "Agent用量分析设计-1",
+          "principal_record": "Agent用量分析设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "Agent用量分析设计-2",
+          "principal_record": "Agent用量分析设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "Agent用量分析设计-3",
+          "principal_record": "Agent用量分析设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "Agent用量分析设计-4",
+          "principal_record": "Agent用量分析设计.md",
+          "answer_sections": [],
+          "pending": []
+        },
+        {
+          "key": "Agent用量分析设计-5",
+          "principal_record": "Agent用量分析设计.md",
+          "answer_sections": [],
+          "pending": []
+        }
+      ],
+      "figure_assessment": {
+        "needed": true,
+        "reason": "Reviewed actual internal decisions, states, handoffs and data transformations against original source; required views embedded at answering sections",
+        "figure_ids": [
+          "d_a20b6df3-7589-475f-8573-b4269438f480",
+          "d_856cccba-17f1-402f-b8d2-d03c0c7de2e6"
+        ]
+      },
+      "pending": [],
+      "source_paths": [
+        ".github/workflows/ci.yml",
+        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+        "apps/macos/Sources/BruceApp/BruceApp.swift",
+        "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "apps/macos/Sources/BruceApp/Settings/AgentUsageWorkbenchView.swift",
+        "apps/macos/Sources/BruceApp/SettingsView.swift",
+        "apps/macos/Sources/BruceAppCore/AnalyticsModels.swift",
+        "apps/macos/Sources/BruceAppCore/AppModel.swift",
+        "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift",
+        "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+        "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift",
+        "apps/macos/Sources/BruceAppCore/ModelNormalizer.swift",
+        "apps/macos/Sources/BruceAppCore/NetworkReachability.swift",
+        "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+        "apps/macos/Sources/BruceOnboardingCore/ExternalCredentialReader.swift",
+        "apps/macos/Sources/BruceOnboardingCore/SubscriptionCredentialImport.swift",
+        "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+        "apps/widget/index.html",
+        "apps/win/src-tauri/src/collector.rs",
+        "apps/win/src-tauri/src/lib.rs",
+        "apps/win/src-tauri/src/main.rs",
+        "apps/win/src-tauri/src/runtime_core.rs",
+        "apps/win/src-tauri/src/scheduler.rs",
+        "apps/win/viewmodel/src/lib.rs",
+        "core/collector/bin/Bruce-collector/src/main.rs",
+        "core/collector/crates/collector-aggregate/src/lib.rs",
+        "core/collector/crates/collector-application/src/account.rs",
+        "core/collector/crates/collector-application/src/lib.rs",
+        "core/collector/crates/collector-bridge/src/lib.rs",
+        "core/collector/crates/collector-domain/src/lib.rs",
+        "core/collector/crates/collector-domain/src/pricing.rs",
+        "docs/devel/change/C060.json",
+        "docs/devel/change/index.json",
+        "docs/devel/design/00-系统总体设计.md",
+        "docs/devel/design/01-数据采集与多模型计费引擎.md",
+        "docs/devel/design/02-订阅额度与凭据安全存储.md",
+        "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+        "docs/devel/design/04-设置中心与价格校准交互.md",
+        "docs/devel/design/05-Windows平台适配.md",
+        "docs/devel/design/06-Agent用量分析与Token统计工作台.md",
+        "docs/devel/todo/now.md",
+        "docs/guide/01-本地部署指南.md",
+        "scripts/build-test-app.sh",
+        "scripts/runtime-manifest.zsh",
+        "scripts/verify-local.sh"
+      ]
+    },
+    {
+      "path": "采集引擎与本地用量设计.md",
+      "document_type": "module",
+      "outline": [
+        "1. 目标与职责",
+        "2. 对外契约",
+        "3. 内部结构",
+        "4. 详细设计",
+        "5. 流程与状态",
+        "6. 异常与恢复",
+        "7. 参考文献"
+      ],
+      "reader_questions": [
+        {
+          "question": "该能力从哪里进入，输入和状态由谁持有？",
+          "source_paths": [
+            "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+            "apps/win/src-tauri/src/collector.rs",
+            "core/collector/bin/Bruce-collector/src/main.rs",
+            "core/collector/crates/collector-aggregate/src/lib.rs",
+            "core/collector/crates/collector-application/src/aggregation.rs",
+            "core/collector/crates/collector-application/src/context.rs",
+            "core/collector/crates/collector-application/src/execution.rs",
+            "core/collector/crates/collector-application/src/lib.rs",
+            "core/collector/crates/collector-bridge/src/lib.rs",
+            "core/collector/crates/collector-bridge/src/metrics.rs",
+            "core/collector/crates/collector-domain/src/lib.rs",
+            "core/collector/crates/collector-runtime/src/lib.rs",
+            "core/collector/schemas/request-v1.schema.json",
+            "docs/devel/design/01-数据采集与多模型计费引擎.md"
+          ],
+          "answer_sections": [
+            "采集引擎与本地用量设计.md#chapter-1",
+            "采集引擎与本地用量设计.md#chapter-2",
+            "采集引擎与本地用量设计.md#chapter-3",
+            "采集引擎与本地用量设计.md#chapter-4",
+            "采集引擎与本地用量设计.md#chapter-5",
+            "采集引擎与本地用量设计.md#chapter-6"
+          ]
+        },
+        {
+          "question": "正常与重要替代路径如何选择，输出、失败和恢复有何差异？",
+          "source_paths": [
+            "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+            "apps/win/src-tauri/src/collector.rs",
+            "core/collector/bin/Bruce-collector/src/main.rs",
+            "core/collector/crates/collector-aggregate/src/lib.rs",
+            "core/collector/crates/collector-application/src/aggregation.rs",
+            "core/collector/crates/collector-application/src/context.rs",
+            "core/collector/crates/collector-application/src/execution.rs",
+            "core/collector/crates/collector-application/src/lib.rs",
+            "core/collector/crates/collector-bridge/src/lib.rs",
+            "core/collector/crates/collector-bridge/src/metrics.rs",
+            "core/collector/crates/collector-domain/src/lib.rs",
+            "core/collector/crates/collector-runtime/src/lib.rs",
+            "core/collector/schemas/request-v1.schema.json",
+            "docs/devel/design/01-数据采集与多模型计费引擎.md"
+          ],
+          "answer_sections": [
+            "采集引擎与本地用量设计.md#chapter-1",
+            "采集引擎与本地用量设计.md#chapter-2",
+            "采集引擎与本地用量设计.md#chapter-3",
+            "采集引擎与本地用量设计.md#chapter-4",
+            "采集引擎与本地用量设计.md#chapter-5",
+            "采集引擎与本地用量设计.md#chapter-6"
+          ]
+        }
+      ],
+      "functional_points": [
+        {
+          "key": "采集引擎与本地用量设计-1",
+          "name": "Bridge请求校验与跨宿主调用",
+          "source_paths": [
+            "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+            "apps/win/src-tauri/src/collector.rs",
+            "core/collector/bin/Bruce-collector/src/main.rs",
+            "core/collector/crates/collector-aggregate/src/lib.rs",
+            "core/collector/crates/collector-application/src/aggregation.rs",
+            "core/collector/crates/collector-application/src/context.rs",
+            "core/collector/crates/collector-application/src/execution.rs",
+            "core/collector/crates/collector-application/src/lib.rs",
+            "core/collector/crates/collector-bridge/src/lib.rs",
+            "core/collector/crates/collector-bridge/src/metrics.rs",
+            "core/collector/crates/collector-domain/src/lib.rs",
+            "core/collector/crates/collector-runtime/src/lib.rs",
+            "core/collector/schemas/request-v1.schema.json",
+            "docs/devel/design/01-数据采集与多模型计费引擎.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#local-usage"
+          ],
+          "detail_article": "采集引擎与本地用量设计.md",
+          "answer_sections": [
+            "采集引擎与本地用量设计.md#bridge-contract"
+          ],
+          "scenario_sections": [
+            "采集引擎与本地用量设计.md#bridge-contract"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_1ae57d61-4db4-468c-b17b-5258dd915895"
+            ]
+          },
+          "pending": []
+        },
+        {
+          "key": "采集引擎与本地用量设计-2",
+          "name": "本地与额度并行编排及工件装配",
+          "source_paths": [
+            "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+            "apps/win/src-tauri/src/collector.rs",
+            "core/collector/bin/Bruce-collector/src/main.rs",
+            "core/collector/crates/collector-aggregate/src/lib.rs",
+            "core/collector/crates/collector-application/src/aggregation.rs",
+            "core/collector/crates/collector-application/src/context.rs",
+            "core/collector/crates/collector-application/src/execution.rs",
+            "core/collector/crates/collector-application/src/lib.rs",
+            "core/collector/crates/collector-bridge/src/lib.rs",
+            "core/collector/crates/collector-bridge/src/metrics.rs",
+            "core/collector/crates/collector-domain/src/lib.rs",
+            "core/collector/crates/collector-runtime/src/lib.rs",
+            "core/collector/schemas/request-v1.schema.json",
+            "docs/devel/design/01-数据采集与多模型计费引擎.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#local-usage"
+          ],
+          "detail_article": "采集引擎与本地用量设计.md",
+          "answer_sections": [
+            "采集引擎与本地用量设计.md#collection-flow"
+          ],
+          "scenario_sections": [
+            "采集引擎与本地用量设计.md#collection-flow"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_1ae57d61-4db4-468c-b17b-5258dd915895"
+            ]
+          },
+          "pending": []
+        },
+        {
+          "key": "采集引擎与本地用量设计-3",
+          "name": "取消、资源限制与诊断封套",
+          "source_paths": [
+            "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+            "apps/win/src-tauri/src/collector.rs",
+            "core/collector/bin/Bruce-collector/src/main.rs",
+            "core/collector/crates/collector-aggregate/src/lib.rs",
+            "core/collector/crates/collector-application/src/aggregation.rs",
+            "core/collector/crates/collector-application/src/context.rs",
+            "core/collector/crates/collector-application/src/execution.rs",
+            "core/collector/crates/collector-application/src/lib.rs",
+            "core/collector/crates/collector-bridge/src/lib.rs",
+            "core/collector/crates/collector-bridge/src/metrics.rs",
+            "core/collector/crates/collector-domain/src/lib.rs",
+            "core/collector/crates/collector-runtime/src/lib.rs",
+            "core/collector/schemas/request-v1.schema.json",
+            "docs/devel/design/01-数据采集与多模型计费引擎.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#local-usage"
+          ],
+          "detail_article": "采集引擎与本地用量设计.md",
+          "answer_sections": [
+            "采集引擎与本地用量设计.md#cancellation"
+          ],
+          "scenario_sections": [
+            "采集引擎与本地用量设计.md#cancellation"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_1ae57d61-4db4-468c-b17b-5258dd915895"
+            ]
+          },
+          "pending": []
+        }
+      ],
+      "figure_assessment": {
+        "needed": true,
+        "reason": "Reviewed actual internal decisions, states, handoffs and data transformations against original source; required views embedded at answering sections",
+        "figure_ids": [
+          "d_1ae57d61-4db4-468c-b17b-5258dd915895"
+        ]
+      },
+      "pending": [],
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+        "apps/win/src-tauri/src/collector.rs",
+        "core/collector/bin/Bruce-collector/src/main.rs",
+        "core/collector/crates/collector-aggregate/src/lib.rs",
+        "core/collector/crates/collector-application/src/aggregation.rs",
+        "core/collector/crates/collector-application/src/context.rs",
+        "core/collector/crates/collector-application/src/execution.rs",
+        "core/collector/crates/collector-application/src/lib.rs",
+        "core/collector/crates/collector-bridge/src/lib.rs",
+        "core/collector/crates/collector-bridge/src/metrics.rs",
+        "core/collector/crates/collector-domain/src/lib.rs",
+        "core/collector/crates/collector-runtime/src/lib.rs",
+        "core/collector/schemas/request-v1.schema.json",
+        "docs/devel/design/01-数据采集与多模型计费引擎.md"
+      ]
+    },
+    {
+      "path": "本地会话解析与计费.md",
+      "document_type": "module",
+      "outline": [
+        "1. 目标与职责",
+        "2. 对外契约",
+        "3. 内部结构",
+        "4. 详细设计",
+        "5. 流程与状态",
+        "6. 异常与恢复",
+        "7. 参考文献"
+      ],
+      "reader_questions": [
+        {
+          "question": "该能力从哪里进入，输入和状态由谁持有？",
+          "source_paths": [
+            "core/collector/crates/collector-aggregate/src/lib.rs",
+            "core/collector/crates/collector-application/src/aggregation.rs",
+            "core/collector/crates/collector-application/src/lib.rs",
+            "core/collector/crates/collector-application/src/paths.rs",
+            "core/collector/crates/collector-domain/src/lib.rs",
+            "core/collector/crates/collector-domain/src/pricing.rs",
+            "core/collector/crates/collector-local/src/jsonl_cache.rs",
+            "core/collector/crates/collector-local/src/lib.rs",
+            "core/collector/crates/collector-local/src/sources.rs",
+            "core/collector/crates/collector-local/src/sqlite_cache.rs",
+            "docs/devel/design/01-数据采集与多模型计费引擎.md"
+          ],
+          "answer_sections": [
+            "本地会话解析与计费.md#chapter-1",
+            "本地会话解析与计费.md#chapter-2",
+            "本地会话解析与计费.md#chapter-3",
+            "本地会话解析与计费.md#chapter-4",
+            "本地会话解析与计费.md#chapter-5",
+            "本地会话解析与计费.md#chapter-6"
+          ]
+        },
+        {
+          "question": "正常与重要替代路径如何选择，输出、失败和恢复有何差异？",
+          "source_paths": [
+            "core/collector/crates/collector-aggregate/src/lib.rs",
+            "core/collector/crates/collector-application/src/aggregation.rs",
+            "core/collector/crates/collector-application/src/lib.rs",
+            "core/collector/crates/collector-application/src/paths.rs",
+            "core/collector/crates/collector-domain/src/lib.rs",
+            "core/collector/crates/collector-domain/src/pricing.rs",
+            "core/collector/crates/collector-local/src/jsonl_cache.rs",
+            "core/collector/crates/collector-local/src/lib.rs",
+            "core/collector/crates/collector-local/src/sources.rs",
+            "core/collector/crates/collector-local/src/sqlite_cache.rs",
+            "docs/devel/design/01-数据采集与多模型计费引擎.md"
+          ],
+          "answer_sections": [
+            "本地会话解析与计费.md#chapter-1",
+            "本地会话解析与计费.md#chapter-2",
+            "本地会话解析与计费.md#chapter-3",
+            "本地会话解析与计费.md#chapter-4",
+            "本地会话解析与计费.md#chapter-5",
+            "本地会话解析与计费.md#chapter-6"
+          ]
+        }
+      ],
+      "functional_points": [
+        {
+          "key": "本地会话解析与计费-1",
+          "name": "时间窗口与多源只读扫描",
+          "source_paths": [
+            "core/collector/crates/collector-aggregate/src/lib.rs",
+            "core/collector/crates/collector-application/src/aggregation.rs",
+            "core/collector/crates/collector-application/src/lib.rs",
+            "core/collector/crates/collector-application/src/paths.rs",
+            "core/collector/crates/collector-domain/src/lib.rs",
+            "core/collector/crates/collector-domain/src/pricing.rs",
+            "core/collector/crates/collector-local/src/jsonl_cache.rs",
+            "core/collector/crates/collector-local/src/lib.rs",
+            "core/collector/crates/collector-local/src/sources.rs",
+            "core/collector/crates/collector-local/src/sqlite_cache.rs",
+            "docs/devel/design/01-数据采集与多模型计费引擎.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#local-usage"
+          ],
+          "detail_article": "本地会话解析与计费.md",
+          "answer_sections": [
+            "本地会话解析与计费.md#source-window"
+          ],
+          "scenario_sections": [
+            "本地会话解析与计费.md#source-window"
+          ],
+          "figure_assessment": {
+            "needed": false,
+            "reason": "时间窗口与路径为参数、默认值和优先级查表，不建立独立运行状态。",
+            "figure_ids": []
+          },
+          "pending": []
+        },
+        {
+          "key": "本地会话解析与计费-2",
+          "name": "来源去重与Token归一化",
+          "source_paths": [
+            "core/collector/crates/collector-aggregate/src/lib.rs",
+            "core/collector/crates/collector-application/src/aggregation.rs",
+            "core/collector/crates/collector-application/src/lib.rs",
+            "core/collector/crates/collector-application/src/paths.rs",
+            "core/collector/crates/collector-domain/src/lib.rs",
+            "core/collector/crates/collector-domain/src/pricing.rs",
+            "core/collector/crates/collector-local/src/jsonl_cache.rs",
+            "core/collector/crates/collector-local/src/lib.rs",
+            "core/collector/crates/collector-local/src/sources.rs",
+            "core/collector/crates/collector-local/src/sqlite_cache.rs",
+            "docs/devel/design/01-数据采集与多模型计费引擎.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#local-usage"
+          ],
+          "detail_article": "本地会话解析与计费.md",
+          "answer_sections": [
+            "本地会话解析与计费.md#normalization"
+          ],
+          "scenario_sections": [
+            "本地会话解析与计费.md#normalization"
+          ],
+          "figure_assessment": {
+            "needed": false,
+            "reason": "适配器字段映射与单消息去重以对照表和数学规则说明；跨组件派生交接由贡献流图单独覆盖。",
+            "figure_ids": []
+          },
+          "pending": []
+        },
+        {
+          "key": "本地会话解析与计费-3",
+          "name": "文件/SQLite/整树缓存复用追加重建",
+          "source_paths": [
+            "core/collector/crates/collector-aggregate/src/lib.rs",
+            "core/collector/crates/collector-application/src/aggregation.rs",
+            "core/collector/crates/collector-application/src/lib.rs",
+            "core/collector/crates/collector-application/src/paths.rs",
+            "core/collector/crates/collector-domain/src/lib.rs",
+            "core/collector/crates/collector-domain/src/pricing.rs",
+            "core/collector/crates/collector-local/src/jsonl_cache.rs",
+            "core/collector/crates/collector-local/src/lib.rs",
+            "core/collector/crates/collector-local/src/sources.rs",
+            "core/collector/crates/collector-local/src/sqlite_cache.rs",
+            "docs/devel/design/01-数据采集与多模型计费引擎.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#local-usage"
+          ],
+          "detail_article": "本地会话解析与计费.md",
+          "answer_sections": [
+            "本地会话解析与计费.md#cache"
+          ],
+          "scenario_sections": [
+            "本地会话解析与计费.md#cache"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_7f3ad701-7677-4fad-8ea8-e58da250f111",
+              "d_3c25534c-cebe-4094-a87e-2e0290e5ba21"
+            ]
+          },
+          "pending": []
+        },
+        {
+          "key": "本地会话解析与计费-4",
+          "name": "贡献替换与多维聚合",
+          "source_paths": [
+            "core/collector/crates/collector-aggregate/src/lib.rs",
+            "core/collector/crates/collector-application/src/aggregation.rs",
+            "core/collector/crates/collector-application/src/lib.rs",
+            "core/collector/crates/collector-application/src/paths.rs",
+            "core/collector/crates/collector-domain/src/lib.rs",
+            "core/collector/crates/collector-domain/src/pricing.rs",
+            "core/collector/crates/collector-local/src/jsonl_cache.rs",
+            "core/collector/crates/collector-local/src/lib.rs",
+            "core/collector/crates/collector-local/src/sources.rs",
+            "core/collector/crates/collector-local/src/sqlite_cache.rs",
+            "docs/devel/design/01-数据采集与多模型计费引擎.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#local-usage"
+          ],
+          "detail_article": "本地会话解析与计费.md",
+          "answer_sections": [
+            "本地会话解析与计费.md#contributions"
+          ],
+          "scenario_sections": [
+            "本地会话解析与计费.md#contributions"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_2873df93-a3b4-4c39-afb2-e65f8aeee860"
+            ]
+          },
+          "pending": []
+        },
+        {
+          "key": "本地会话解析与计费-5",
+          "name": "价格匹配与四类Token计费",
+          "source_paths": [
+            "core/collector/crates/collector-aggregate/src/lib.rs",
+            "core/collector/crates/collector-application/src/aggregation.rs",
+            "core/collector/crates/collector-application/src/lib.rs",
+            "core/collector/crates/collector-application/src/paths.rs",
+            "core/collector/crates/collector-domain/src/lib.rs",
+            "core/collector/crates/collector-domain/src/pricing.rs",
+            "core/collector/crates/collector-local/src/jsonl_cache.rs",
+            "core/collector/crates/collector-local/src/lib.rs",
+            "core/collector/crates/collector-local/src/sources.rs",
+            "core/collector/crates/collector-local/src/sqlite_cache.rs",
+            "docs/devel/design/01-数据采集与多模型计费引擎.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#local-usage"
+          ],
+          "detail_article": "本地会话解析与计费.md",
+          "answer_sections": [
+            "本地会话解析与计费.md#pricing"
+          ],
+          "scenario_sections": [
+            "本地会话解析与计费.md#pricing"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_ae615f73-9d9d-408e-8112-f8ec47afffbc"
+            ]
+          },
+          "pending": []
+        }
+      ],
+      "figure_assessment": {
+        "needed": true,
+        "reason": "Reviewed actual internal decisions, states, handoffs and data transformations against original source; required views embedded at answering sections",
+        "figure_ids": [
+          "d_2873df93-a3b4-4c39-afb2-e65f8aeee860",
+          "d_3c25534c-cebe-4094-a87e-2e0290e5ba21",
+          "d_7f3ad701-7677-4fad-8ea8-e58da250f111",
+          "d_ae615f73-9d9d-408e-8112-f8ec47afffbc"
+        ]
+      },
+      "pending": [],
+      "source_paths": [
+        "core/collector/crates/collector-aggregate/src/lib.rs",
+        "core/collector/crates/collector-application/src/aggregation.rs",
+        "core/collector/crates/collector-application/src/lib.rs",
+        "core/collector/crates/collector-application/src/paths.rs",
+        "core/collector/crates/collector-domain/src/lib.rs",
+        "core/collector/crates/collector-domain/src/pricing.rs",
+        "core/collector/crates/collector-local/src/jsonl_cache.rs",
+        "core/collector/crates/collector-local/src/lib.rs",
+        "core/collector/crates/collector-local/src/sources.rs",
+        "core/collector/crates/collector-local/src/sqlite_cache.rs",
+        "docs/devel/design/01-数据采集与多模型计费引擎.md"
+      ]
+    },
+    {
+      "path": "订阅额度查询设计.md",
+      "document_type": "module",
+      "outline": [
+        "1. 目标与职责",
+        "2. 对外契约",
+        "3. 内部结构",
+        "4. 详细设计",
+        "5. 流程与状态",
+        "6. 异常与恢复",
+        "7. 参考文献"
+      ],
+      "reader_questions": [
+        {
+          "question": "该能力从哪里进入，输入和状态由谁持有？",
+          "source_paths": [
+            "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+            "core/collector/crates/collector-application/src/account.rs",
+            "core/collector/crates/collector-application/src/execution.rs",
+            "core/collector/crates/collector-application/src/lib.rs",
+            "core/collector/crates/collector-bridge/src/lib.rs",
+            "core/collector/crates/collector-credential/src/lib.rs",
+            "core/collector/crates/collector-provider/src/lib.rs",
+            "core/collector/crates/collector-runtime/src/lib.rs",
+            "docs/devel/design/02-订阅额度与凭据安全存储.md"
+          ],
+          "answer_sections": [
+            "订阅额度查询设计.md#chapter-1",
+            "订阅额度查询设计.md#chapter-2",
+            "订阅额度查询设计.md#chapter-3",
+            "订阅额度查询设计.md#chapter-4",
+            "订阅额度查询设计.md#chapter-5",
+            "订阅额度查询设计.md#chapter-6"
+          ]
+        },
+        {
+          "question": "正常与重要替代路径如何选择，输出、失败和恢复有何差异？",
+          "source_paths": [
+            "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+            "core/collector/crates/collector-application/src/account.rs",
+            "core/collector/crates/collector-application/src/execution.rs",
+            "core/collector/crates/collector-application/src/lib.rs",
+            "core/collector/crates/collector-bridge/src/lib.rs",
+            "core/collector/crates/collector-credential/src/lib.rs",
+            "core/collector/crates/collector-provider/src/lib.rs",
+            "core/collector/crates/collector-runtime/src/lib.rs",
+            "docs/devel/design/02-订阅额度与凭据安全存储.md"
+          ],
+          "answer_sections": [
+            "订阅额度查询设计.md#chapter-1",
+            "订阅额度查询设计.md#chapter-2",
+            "订阅额度查询设计.md#chapter-3",
+            "订阅额度查询设计.md#chapter-4",
+            "订阅额度查询设计.md#chapter-5",
+            "订阅额度查询设计.md#chapter-6"
+          ]
+        }
+      ],
+      "functional_points": [
+        {
+          "key": "订阅额度查询设计-1",
+          "name": "多账号计划与固定结果顺序",
+          "source_paths": [
+            "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+            "core/collector/crates/collector-application/src/account.rs",
+            "core/collector/crates/collector-application/src/execution.rs",
+            "core/collector/crates/collector-application/src/lib.rs",
+            "core/collector/crates/collector-bridge/src/lib.rs",
+            "core/collector/crates/collector-credential/src/lib.rs",
+            "core/collector/crates/collector-provider/src/lib.rs",
+            "core/collector/crates/collector-runtime/src/lib.rs",
+            "docs/devel/design/02-订阅额度与凭据安全存储.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#provider-quota"
+          ],
+          "detail_article": "订阅额度查询设计.md",
+          "answer_sections": [
+            "订阅额度查询设计.md#account-plan"
+          ],
+          "scenario_sections": [
+            "订阅额度查询设计.md#account-plan"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_382e629e-29bd-42b3-acc8-7c33c123b340"
+            ]
+          },
+          "pending": []
+        },
+        {
+          "key": "订阅额度查询设计-2",
+          "name": "限额并发、请求合并与服务隔离",
+          "source_paths": [
+            "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+            "core/collector/crates/collector-application/src/account.rs",
+            "core/collector/crates/collector-application/src/execution.rs",
+            "core/collector/crates/collector-application/src/lib.rs",
+            "core/collector/crates/collector-bridge/src/lib.rs",
+            "core/collector/crates/collector-credential/src/lib.rs",
+            "core/collector/crates/collector-provider/src/lib.rs",
+            "core/collector/crates/collector-runtime/src/lib.rs",
+            "docs/devel/design/02-订阅额度与凭据安全存储.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#provider-quota"
+          ],
+          "detail_article": "订阅额度查询设计.md",
+          "answer_sections": [
+            "订阅额度查询设计.md#account-execution"
+          ],
+          "scenario_sections": [
+            "订阅额度查询设计.md#account-execution"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_382e629e-29bd-42b3-acc8-7c33c123b340"
+            ]
+          },
+          "pending": []
+        },
+        {
+          "key": "订阅额度查询设计-3",
+          "name": "Provider窗口余额适配与Cline条件查询",
+          "source_paths": [
+            "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+            "core/collector/crates/collector-application/src/account.rs",
+            "core/collector/crates/collector-application/src/execution.rs",
+            "core/collector/crates/collector-application/src/lib.rs",
+            "core/collector/crates/collector-bridge/src/lib.rs",
+            "core/collector/crates/collector-credential/src/lib.rs",
+            "core/collector/crates/collector-provider/src/lib.rs",
+            "core/collector/crates/collector-runtime/src/lib.rs",
+            "docs/devel/design/02-订阅额度与凭据安全存储.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#provider-quota"
+          ],
+          "detail_article": "订阅额度查询设计.md",
+          "answer_sections": [
+            "订阅额度查询设计.md#provider-adapters"
+          ],
+          "scenario_sections": [
+            "订阅额度查询设计.md#provider-adapters"
+          ],
+          "figure_assessment": {
+            "needed": false,
+            "reason": "Provider 窗口字段映射与 Cline 两次 GET 的局部条件可由紧凑表和分支正文完整表达；并发和 OAuth 复杂恢复另有内部图。",
+            "figure_ids": []
+          },
+          "pending": []
+        },
+        {
+          "key": "订阅额度查询设计-4",
+          "name": "Claude到期续期与401重试",
+          "source_paths": [
+            "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+            "core/collector/crates/collector-application/src/account.rs",
+            "core/collector/crates/collector-application/src/execution.rs",
+            "core/collector/crates/collector-application/src/lib.rs",
+            "core/collector/crates/collector-bridge/src/lib.rs",
+            "core/collector/crates/collector-credential/src/lib.rs",
+            "core/collector/crates/collector-provider/src/lib.rs",
+            "core/collector/crates/collector-runtime/src/lib.rs",
+            "docs/devel/design/02-订阅额度与凭据安全存储.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#provider-quota"
+          ],
+          "detail_article": "订阅额度查询设计.md",
+          "answer_sections": [
+            "订阅额度查询设计.md#claude-refresh"
+          ],
+          "scenario_sections": [
+            "订阅额度查询设计.md#claude-refresh"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_176bf773-8952-4814-b413-e5181bfe337b"
+            ]
+          },
+          "pending": []
+        },
+        {
+          "key": "订阅额度查询设计-5",
+          "name": "凭据更新、Codex挑战与宿主门禁",
+          "source_paths": [
+            "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+            "core/collector/crates/collector-application/src/account.rs",
+            "core/collector/crates/collector-application/src/execution.rs",
+            "core/collector/crates/collector-application/src/lib.rs",
+            "core/collector/crates/collector-bridge/src/lib.rs",
+            "core/collector/crates/collector-credential/src/lib.rs",
+            "core/collector/crates/collector-provider/src/lib.rs",
+            "core/collector/crates/collector-runtime/src/lib.rs",
+            "docs/devel/design/02-订阅额度与凭据安全存储.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#provider-quota"
+          ],
+          "detail_article": "订阅额度查询设计.md",
+          "answer_sections": [
+            "订阅额度查询设计.md#credential-updates"
+          ],
+          "scenario_sections": [
+            "订阅额度查询设计.md#credential-updates"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_176bf773-8952-4814-b413-e5181bfe337b"
+            ]
+          },
+          "pending": []
+        }
+      ],
+      "figure_assessment": {
+        "needed": true,
+        "reason": "Reviewed actual internal decisions, states, handoffs and data transformations against original source; required views embedded at answering sections",
+        "figure_ids": [
+          "d_176bf773-8952-4814-b413-e5181bfe337b",
+          "d_382e629e-29bd-42b3-acc8-7c33c123b340"
+        ]
+      },
+      "pending": [],
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+        "core/collector/crates/collector-application/src/account.rs",
+        "core/collector/crates/collector-application/src/execution.rs",
+        "core/collector/crates/collector-application/src/lib.rs",
+        "core/collector/crates/collector-bridge/src/lib.rs",
+        "core/collector/crates/collector-credential/src/lib.rs",
+        "core/collector/crates/collector-provider/src/lib.rs",
+        "core/collector/crates/collector-runtime/src/lib.rs",
+        "docs/devel/design/02-订阅额度与凭据安全存储.md"
+      ]
+    },
+    {
+      "path": "订阅配置与凭据管理设计.md",
+      "document_type": "module",
+      "outline": [
+        "1. 目标与职责",
+        "2. 对外契约",
+        "3. 内部结构",
+        "4. 详细设计",
+        "5. 流程与状态",
+        "6. 异常与恢复",
+        "7. 参考文献"
+      ],
+      "reader_questions": [
+        {
+          "question": "该能力从哪里进入，输入和状态由谁持有？",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+            "apps/macos/Sources/BruceApp/BruceApp.swift",
+            "apps/macos/Sources/BruceApp/LocalCredentialProbe.swift",
+            "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+            "apps/macos/Sources/BruceApp/Settings/ClaudeProviderSettingsSection.swift",
+            "apps/macos/Sources/BruceApp/SubscriptionService.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+            "apps/macos/Sources/BruceOnboardingCore/CodexTokenManager.swift",
+            "apps/macos/Sources/BruceOnboardingCore/CollectorActivationGate.swift",
+            "apps/macos/Sources/BruceOnboardingCore/ExternalCredentialReader.swift",
+            "apps/macos/Sources/BruceOnboardingCore/KeychainAccessPolicy.swift",
+            "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+            "apps/macos/Sources/BruceOnboardingCore/ProviderRegistry.swift",
+            "apps/macos/Sources/BruceOnboardingCore/SubscriptionCredentialImport.swift",
+            "apps/macos/Tests/BruceOnboardingCoreHarness/OnboardingClaudeGrokAndConfiguredRuleTests.swift",
+            "docs/devel/change/C060.json"
+          ],
+          "answer_sections": [
+            "订阅配置与凭据管理设计.md#chapter-1",
+            "订阅配置与凭据管理设计.md#chapter-2",
+            "订阅配置与凭据管理设计.md#chapter-3",
+            "订阅配置与凭据管理设计.md#chapter-4",
+            "订阅配置与凭据管理设计.md#chapter-5",
+            "订阅配置与凭据管理设计.md#chapter-6"
+          ]
+        },
+        {
+          "question": "正常与重要替代路径如何选择，输出、失败和恢复有何差异？",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+            "apps/macos/Sources/BruceApp/BruceApp.swift",
+            "apps/macos/Sources/BruceApp/LocalCredentialProbe.swift",
+            "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+            "apps/macos/Sources/BruceApp/Settings/ClaudeProviderSettingsSection.swift",
+            "apps/macos/Sources/BruceApp/SubscriptionService.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+            "apps/macos/Sources/BruceOnboardingCore/CodexTokenManager.swift",
+            "apps/macos/Sources/BruceOnboardingCore/CollectorActivationGate.swift",
+            "apps/macos/Sources/BruceOnboardingCore/ExternalCredentialReader.swift",
+            "apps/macos/Sources/BruceOnboardingCore/KeychainAccessPolicy.swift",
+            "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+            "apps/macos/Sources/BruceOnboardingCore/ProviderRegistry.swift",
+            "apps/macos/Sources/BruceOnboardingCore/SubscriptionCredentialImport.swift",
+            "apps/macos/Tests/BruceOnboardingCoreHarness/OnboardingClaudeGrokAndConfiguredRuleTests.swift",
+            "docs/devel/change/C060.json"
+          ],
+          "answer_sections": [
+            "订阅配置与凭据管理设计.md#chapter-1",
+            "订阅配置与凭据管理设计.md#chapter-2",
+            "订阅配置与凭据管理设计.md#chapter-3",
+            "订阅配置与凭据管理设计.md#chapter-4",
+            "订阅配置与凭据管理设计.md#chapter-5",
+            "订阅配置与凭据管理设计.md#chapter-6"
+          ]
+        }
+      ],
+      "functional_points": [
+        {
+          "key": "订阅配置与凭据管理设计-1",
+          "name": "非敏感配置与自有凭据隔离存储",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+            "apps/macos/Sources/BruceApp/BruceApp.swift",
+            "apps/macos/Sources/BruceApp/LocalCredentialProbe.swift",
+            "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+            "apps/macos/Sources/BruceApp/Settings/ClaudeProviderSettingsSection.swift",
+            "apps/macos/Sources/BruceApp/SubscriptionService.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+            "apps/macos/Sources/BruceAppCore/CredentialUpdateCoordinator.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+            "apps/macos/Sources/BruceOnboardingCore/CodexTokenManager.swift",
+            "apps/macos/Sources/BruceOnboardingCore/CollectorActivationGate.swift",
+            "apps/macos/Sources/BruceOnboardingCore/CredentialRotationMerge.swift",
+            "apps/macos/Sources/BruceOnboardingCore/ExternalCredentialReader.swift",
+            "apps/macos/Sources/BruceOnboardingCore/KeychainAccessPolicy.swift",
+            "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+            "apps/macos/Sources/BruceOnboardingCore/ProviderRegistry.swift",
+            "apps/macos/Sources/BruceOnboardingCore/SubscriptionCredentialImport.swift",
+            "apps/macos/Tests/BruceOnboardingCoreHarness/OnboardingClaudeGrokAndConfiguredRuleTests.swift",
+            "core/collector/crates/collector-provider/src/lib.rs",
+            "docs/devel/change/C060.json",
+            "docs/devel/design/02-订阅额度与凭据安全存储.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#credentials"
+          ],
+          "detail_article": "订阅配置与凭据管理设计.md",
+          "answer_sections": [
+            "订阅配置与凭据管理设计.md#storage"
+          ],
+          "scenario_sections": [
+            "订阅配置与凭据管理设计.md#storage"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_5a4da270-e951-4cb2-bfcf-0c2797da2120"
+            ]
+          },
+          "pending": []
+        },
+        {
+          "key": "订阅配置与凭据管理设计-2",
+          "name": "统一同意与自动输入门控",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+            "apps/macos/Sources/BruceApp/BruceApp.swift",
+            "apps/macos/Sources/BruceApp/LocalCredentialProbe.swift",
+            "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+            "apps/macos/Sources/BruceApp/Settings/ClaudeProviderSettingsSection.swift",
+            "apps/macos/Sources/BruceApp/SubscriptionService.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+            "apps/macos/Sources/BruceAppCore/CredentialUpdateCoordinator.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+            "apps/macos/Sources/BruceOnboardingCore/CodexTokenManager.swift",
+            "apps/macos/Sources/BruceOnboardingCore/CollectorActivationGate.swift",
+            "apps/macos/Sources/BruceOnboardingCore/CredentialRotationMerge.swift",
+            "apps/macos/Sources/BruceOnboardingCore/ExternalCredentialReader.swift",
+            "apps/macos/Sources/BruceOnboardingCore/KeychainAccessPolicy.swift",
+            "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+            "apps/macos/Sources/BruceOnboardingCore/ProviderRegistry.swift",
+            "apps/macos/Sources/BruceOnboardingCore/SubscriptionCredentialImport.swift",
+            "apps/macos/Tests/BruceOnboardingCoreHarness/OnboardingClaudeGrokAndConfiguredRuleTests.swift",
+            "core/collector/crates/collector-provider/src/lib.rs",
+            "docs/devel/change/C060.json",
+            "docs/devel/design/02-订阅额度与凭据安全存储.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#credentials"
+          ],
+          "detail_article": "订阅配置与凭据管理设计.md",
+          "answer_sections": [
+            "订阅配置与凭据管理设计.md#activation-gate"
+          ],
+          "scenario_sections": [
+            "订阅配置与凭据管理设计.md#activation-gate"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_8e45187e-0751-4651-b9f2-160f2771bbb2"
+            ]
+          },
+          "pending": []
+        },
+        {
+          "key": "订阅配置与凭据管理设计-3",
+          "name": "Claude外部读取和较新CLI凭据选择",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+            "apps/macos/Sources/BruceApp/BruceApp.swift",
+            "apps/macos/Sources/BruceApp/LocalCredentialProbe.swift",
+            "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+            "apps/macos/Sources/BruceApp/Settings/ClaudeProviderSettingsSection.swift",
+            "apps/macos/Sources/BruceApp/SubscriptionService.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+            "apps/macos/Sources/BruceAppCore/CredentialUpdateCoordinator.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+            "apps/macos/Sources/BruceOnboardingCore/CodexTokenManager.swift",
+            "apps/macos/Sources/BruceOnboardingCore/CollectorActivationGate.swift",
+            "apps/macos/Sources/BruceOnboardingCore/CredentialRotationMerge.swift",
+            "apps/macos/Sources/BruceOnboardingCore/ExternalCredentialReader.swift",
+            "apps/macos/Sources/BruceOnboardingCore/KeychainAccessPolicy.swift",
+            "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+            "apps/macos/Sources/BruceOnboardingCore/ProviderRegistry.swift",
+            "apps/macos/Sources/BruceOnboardingCore/SubscriptionCredentialImport.swift",
+            "apps/macos/Tests/BruceOnboardingCoreHarness/OnboardingClaudeGrokAndConfiguredRuleTests.swift",
+            "core/collector/crates/collector-provider/src/lib.rs",
+            "docs/devel/change/C060.json",
+            "docs/devel/design/02-订阅额度与凭据安全存储.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#credentials"
+          ],
+          "detail_article": "订阅配置与凭据管理设计.md",
+          "answer_sections": [
+            "订阅配置与凭据管理设计.md#external-oauth"
+          ],
+          "scenario_sections": [
+            "订阅配置与凭据管理设计.md#external-oauth"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_8e45187e-0751-4651-b9f2-160f2771bbb2"
+            ]
+          },
+          "pending": []
+        },
+        {
+          "key": "订阅配置与凭据管理设计-4",
+          "name": "Codex发现登录与可用token决议",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+            "apps/macos/Sources/BruceApp/BruceApp.swift",
+            "apps/macos/Sources/BruceApp/LocalCredentialProbe.swift",
+            "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+            "apps/macos/Sources/BruceApp/Settings/ClaudeProviderSettingsSection.swift",
+            "apps/macos/Sources/BruceApp/SubscriptionService.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+            "apps/macos/Sources/BruceAppCore/CredentialUpdateCoordinator.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+            "apps/macos/Sources/BruceOnboardingCore/CodexTokenManager.swift",
+            "apps/macos/Sources/BruceOnboardingCore/CollectorActivationGate.swift",
+            "apps/macos/Sources/BruceOnboardingCore/CredentialRotationMerge.swift",
+            "apps/macos/Sources/BruceOnboardingCore/ExternalCredentialReader.swift",
+            "apps/macos/Sources/BruceOnboardingCore/KeychainAccessPolicy.swift",
+            "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+            "apps/macos/Sources/BruceOnboardingCore/ProviderRegistry.swift",
+            "apps/macos/Sources/BruceOnboardingCore/SubscriptionCredentialImport.swift",
+            "apps/macos/Tests/BruceOnboardingCoreHarness/OnboardingClaudeGrokAndConfiguredRuleTests.swift",
+            "core/collector/crates/collector-provider/src/lib.rs",
+            "docs/devel/change/C060.json",
+            "docs/devel/design/02-订阅额度与凭据安全存储.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#credentials"
+          ],
+          "detail_article": "订阅配置与凭据管理设计.md",
+          "answer_sections": [
+            "订阅配置与凭据管理设计.md#codex-accounts"
+          ],
+          "scenario_sections": [
+            "订阅配置与凭据管理设计.md#codex-accounts"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_8e45187e-0751-4651-b9f2-160f2771bbb2"
+            ]
+          },
+          "pending": []
+        },
+        {
+          "key": "订阅配置与凭据管理设计-5",
+          "name": "轮换合并、写回与失败降级",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+            "apps/macos/Sources/BruceApp/BruceApp.swift",
+            "apps/macos/Sources/BruceApp/LocalCredentialProbe.swift",
+            "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+            "apps/macos/Sources/BruceApp/Settings/ClaudeProviderSettingsSection.swift",
+            "apps/macos/Sources/BruceApp/SubscriptionService.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+            "apps/macos/Sources/BruceAppCore/CredentialUpdateCoordinator.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+            "apps/macos/Sources/BruceOnboardingCore/CodexTokenManager.swift",
+            "apps/macos/Sources/BruceOnboardingCore/CollectorActivationGate.swift",
+            "apps/macos/Sources/BruceOnboardingCore/CredentialRotationMerge.swift",
+            "apps/macos/Sources/BruceOnboardingCore/ExternalCredentialReader.swift",
+            "apps/macos/Sources/BruceOnboardingCore/KeychainAccessPolicy.swift",
+            "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+            "apps/macos/Sources/BruceOnboardingCore/ProviderRegistry.swift",
+            "apps/macos/Sources/BruceOnboardingCore/SubscriptionCredentialImport.swift",
+            "apps/macos/Tests/BruceOnboardingCoreHarness/OnboardingClaudeGrokAndConfiguredRuleTests.swift",
+            "core/collector/crates/collector-provider/src/lib.rs",
+            "docs/devel/change/C060.json",
+            "docs/devel/design/02-订阅额度与凭据安全存储.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#credentials"
+          ],
+          "detail_article": "订阅配置与凭据管理设计.md",
+          "answer_sections": [
+            "订阅配置与凭据管理设计.md#rotation-writeback"
+          ],
+          "scenario_sections": [
+            "订阅配置与凭据管理设计.md#rotation-writeback"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_8e45187e-0751-4651-b9f2-160f2771bbb2"
+            ]
+          },
+          "pending": []
+        }
+      ],
+      "figure_assessment": {
+        "needed": true,
+        "reason": "Reviewed actual internal decisions, states, handoffs and data transformations against original source; required views embedded at answering sections",
+        "figure_ids": [
+          "d_5a4da270-e951-4cb2-bfcf-0c2797da2120",
+          "d_8e45187e-0751-4651-b9f2-160f2771bbb2"
+        ]
+      },
+      "pending": [],
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+        "apps/macos/Sources/BruceApp/BruceApp.swift",
+        "apps/macos/Sources/BruceApp/LocalCredentialProbe.swift",
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "apps/macos/Sources/BruceApp/Settings/ClaudeProviderSettingsSection.swift",
+        "apps/macos/Sources/BruceApp/SubscriptionService.swift",
+        "apps/macos/Sources/BruceAppCore/AppModel.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+        "apps/macos/Sources/BruceAppCore/CredentialUpdateCoordinator.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+        "apps/macos/Sources/BruceOnboardingCore/CodexTokenManager.swift",
+        "apps/macos/Sources/BruceOnboardingCore/CollectorActivationGate.swift",
+        "apps/macos/Sources/BruceOnboardingCore/CredentialRotationMerge.swift",
+        "apps/macos/Sources/BruceOnboardingCore/ExternalCredentialReader.swift",
+        "apps/macos/Sources/BruceOnboardingCore/KeychainAccessPolicy.swift",
+        "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+        "apps/macos/Sources/BruceOnboardingCore/ProviderRegistry.swift",
+        "apps/macos/Sources/BruceOnboardingCore/SubscriptionCredentialImport.swift",
+        "apps/macos/Tests/BruceOnboardingCoreHarness/OnboardingClaudeGrokAndConfiguredRuleTests.swift",
+        "core/collector/crates/collector-provider/src/lib.rs",
+        "docs/devel/change/C060.json",
+        "docs/devel/design/02-订阅额度与凭据安全存储.md"
+      ]
+    },
+    {
+      "path": "macOS原生应用设计.md",
+      "document_type": "module",
+      "outline": [
+        "1. 目标与职责",
+        "2. 对外契约",
+        "3. 内部结构",
+        "4. 详细设计",
+        "5. 流程与状态",
+        "6. 异常与恢复",
+        "7. 参考文献"
+      ],
+      "reader_questions": [
+        {
+          "question": "该能力从哪里进入，输入和状态由谁持有？",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+            "apps/macos/Sources/BruceApp/ApplicationLifecycle.swift",
+            "apps/macos/Sources/BruceApp/BruceApp.swift",
+            "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+            "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceAppCore/AppRuntime.swift",
+            "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift",
+            "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+            "apps/macos/Sources/BruceAppCore/DashboardPanelAnimationPolicy.swift",
+            "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift",
+            "apps/macos/Sources/BruceAppCore/PanelViewModel.swift",
+            "apps/macos/Sources/BruceAppCore/SubscriptionMapping.swift",
+            "apps/macos/Sources/BruceAppCore/UsageMapping.swift",
+            "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+            "apps/macos/Tests/Harnesses/NativeLifecycleHarness/NativeLifecycleHarness.swift",
+            "docs/devel/design/04-设置中心与价格校准交互.md"
+          ],
+          "answer_sections": [
+            "macOS原生应用设计.md#chapter-1",
+            "macOS原生应用设计.md#chapter-2",
+            "macOS原生应用设计.md#chapter-3",
+            "macOS原生应用设计.md#chapter-4",
+            "macOS原生应用设计.md#chapter-5",
+            "macOS原生应用设计.md#chapter-6"
+          ]
+        },
+        {
+          "question": "正常与重要替代路径如何选择，输出、失败和恢复有何差异？",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+            "apps/macos/Sources/BruceApp/ApplicationLifecycle.swift",
+            "apps/macos/Sources/BruceApp/BruceApp.swift",
+            "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+            "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceAppCore/AppRuntime.swift",
+            "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift",
+            "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+            "apps/macos/Sources/BruceAppCore/DashboardPanelAnimationPolicy.swift",
+            "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift",
+            "apps/macos/Sources/BruceAppCore/PanelViewModel.swift",
+            "apps/macos/Sources/BruceAppCore/SubscriptionMapping.swift",
+            "apps/macos/Sources/BruceAppCore/UsageMapping.swift",
+            "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+            "apps/macos/Tests/Harnesses/NativeLifecycleHarness/NativeLifecycleHarness.swift",
+            "docs/devel/design/04-设置中心与价格校准交互.md"
+          ],
+          "answer_sections": [
+            "macOS原生应用设计.md#chapter-1",
+            "macOS原生应用设计.md#chapter-2",
+            "macOS原生应用设计.md#chapter-3",
+            "macOS原生应用设计.md#chapter-4",
+            "macOS原生应用设计.md#chapter-5",
+            "macOS原生应用设计.md#chapter-6"
+          ]
+        }
+      ],
+      "functional_points": [
+        {
+          "key": "macOS原生应用设计-1",
+          "name": "启动装配、缓存恢复与延后凭据准备",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+            "apps/macos/Sources/BruceApp/ApplicationLifecycle.swift",
+            "apps/macos/Sources/BruceApp/BruceApp.swift",
+            "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+            "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceAppCore/AppRuntime.swift",
+            "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift",
+            "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+            "apps/macos/Sources/BruceAppCore/DashboardPanelAnimationPolicy.swift",
+            "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift",
+            "apps/macos/Sources/BruceAppCore/PanelViewModel.swift",
+            "apps/macos/Sources/BruceAppCore/SubscriptionMapping.swift",
+            "apps/macos/Sources/BruceAppCore/UsageMapping.swift",
+            "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+            "apps/macos/Tests/Harnesses/NativeLifecycleHarness/NativeLifecycleHarness.swift",
+            "docs/devel/design/04-设置中心与价格校准交互.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#macos-app"
+          ],
+          "detail_article": "macOS原生应用设计.md",
+          "answer_sections": [
+            "macOS原生应用设计.md#bootstrap"
+          ],
+          "scenario_sections": [
+            "macOS原生应用设计.md#bootstrap"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_62f7970a-5036-440c-bd91-5fbcac4a7fbb"
+            ]
+          },
+          "pending": []
+        },
+        {
+          "key": "macOS原生应用设计-2",
+          "name": "共享模型失效和呈现过滤",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+            "apps/macos/Sources/BruceApp/ApplicationLifecycle.swift",
+            "apps/macos/Sources/BruceApp/BruceApp.swift",
+            "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+            "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceAppCore/AppRuntime.swift",
+            "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift",
+            "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+            "apps/macos/Sources/BruceAppCore/DashboardPanelAnimationPolicy.swift",
+            "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift",
+            "apps/macos/Sources/BruceAppCore/PanelViewModel.swift",
+            "apps/macos/Sources/BruceAppCore/SubscriptionMapping.swift",
+            "apps/macos/Sources/BruceAppCore/UsageMapping.swift",
+            "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+            "apps/macos/Tests/Harnesses/NativeLifecycleHarness/NativeLifecycleHarness.swift",
+            "docs/devel/design/04-设置中心与价格校准交互.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#macos-app"
+          ],
+          "detail_article": "macOS原生应用设计.md",
+          "answer_sections": [
+            "macOS原生应用设计.md#app-contract"
+          ],
+          "scenario_sections": [
+            "macOS原生应用设计.md#app-contract"
+          ],
+          "figure_assessment": {
+            "needed": false,
+            "reason": "AppModel 解码缓存版本是简单失效与纯映射；跨组件发布路径由刷新主流程负责。",
+            "figure_ids": []
+          },
+          "pending": []
+        },
+        {
+          "key": "macOS原生应用设计-3",
+          "name": "优雅退出、强制终止与取消退出",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+            "apps/macos/Sources/BruceApp/ApplicationLifecycle.swift",
+            "apps/macos/Sources/BruceApp/BruceApp.swift",
+            "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+            "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceAppCore/AppRuntime.swift",
+            "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift",
+            "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+            "apps/macos/Sources/BruceAppCore/DashboardPanelAnimationPolicy.swift",
+            "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift",
+            "apps/macos/Sources/BruceAppCore/PanelViewModel.swift",
+            "apps/macos/Sources/BruceAppCore/SubscriptionMapping.swift",
+            "apps/macos/Sources/BruceAppCore/UsageMapping.swift",
+            "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+            "apps/macos/Tests/Harnesses/NativeLifecycleHarness/NativeLifecycleHarness.swift",
+            "docs/devel/design/04-设置中心与价格校准交互.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#macos-app"
+          ],
+          "detail_article": "macOS原生应用设计.md",
+          "answer_sections": [
+            "macOS原生应用设计.md#termination"
+          ],
+          "scenario_sections": [
+            "macOS原生应用设计.md#termination"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_62f7970a-5036-440c-bd91-5fbcac4a7fbb"
+            ]
+          },
+          "pending": []
+        }
+      ],
+      "figure_assessment": {
+        "needed": true,
+        "reason": "Reviewed actual internal decisions, states, handoffs and data transformations against original source; required views embedded at answering sections",
+        "figure_ids": [
+          "d_62f7970a-5036-440c-bd91-5fbcac4a7fbb"
+        ]
+      },
+      "pending": [],
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+        "apps/macos/Sources/BruceApp/ApplicationLifecycle.swift",
+        "apps/macos/Sources/BruceApp/BruceApp.swift",
+        "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "apps/macos/Sources/BruceAppCore/AppModel.swift",
+        "apps/macos/Sources/BruceAppCore/AppRuntime.swift",
+        "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift",
+        "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+        "apps/macos/Sources/BruceAppCore/DashboardPanelAnimationPolicy.swift",
+        "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift",
+        "apps/macos/Sources/BruceAppCore/PanelViewModel.swift",
+        "apps/macos/Sources/BruceAppCore/SubscriptionMapping.swift",
+        "apps/macos/Sources/BruceAppCore/UsageMapping.swift",
+        "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+        "apps/macos/Tests/Harnesses/NativeLifecycleHarness/NativeLifecycleHarness.swift",
+        "docs/devel/design/04-设置中心与价格校准交互.md"
+      ]
+    },
+    {
+      "path": "菜单栏与看板设计.md",
+      "document_type": "feature",
+      "outline": [
+        "1. 目标",
+        "2. 设计",
+        "3. 流程",
+        "4. 数据与接口",
+        "5. 异常与边界",
+        "6. 验证要点",
+        "7. 参考文献"
+      ],
+      "reader_questions": [
+        {
+          "question": "该能力从哪里进入，输入和状态由谁持有？",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationLifecycle.swift",
+            "apps/macos/Sources/BruceApp/DashboardGlassPanelController.swift",
+            "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+            "apps/macos/Sources/BruceApp/Views/HourlyLineCard.swift",
+            "apps/macos/Sources/BruceApp/Views/UsageHeroCard.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceAppCore/DashboardPanelAnimationPolicy.swift",
+            "apps/macos/Sources/BruceAppCore/DashboardPanelPlacement.swift",
+            "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift",
+            "apps/macos/Sources/BruceAppCore/MenuBarMetrics.swift",
+            "apps/macos/Sources/BruceAppCore/MenuBarStatusItemContent.swift",
+            "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+            "docs/devel/design/03-菜单栏状态与多风格原生渲染.md"
+          ],
+          "answer_sections": [
+            "菜单栏与看板设计.md#chapter-1",
+            "菜单栏与看板设计.md#chapter-2",
+            "菜单栏与看板设计.md#chapter-3",
+            "菜单栏与看板设计.md#chapter-4",
+            "菜单栏与看板设计.md#chapter-5",
+            "菜单栏与看板设计.md#chapter-6"
+          ]
+        },
+        {
+          "question": "正常与重要替代路径如何选择，输出、失败和恢复有何差异？",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationLifecycle.swift",
+            "apps/macos/Sources/BruceApp/DashboardGlassPanelController.swift",
+            "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+            "apps/macos/Sources/BruceApp/Views/HourlyLineCard.swift",
+            "apps/macos/Sources/BruceApp/Views/UsageHeroCard.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceAppCore/DashboardPanelAnimationPolicy.swift",
+            "apps/macos/Sources/BruceAppCore/DashboardPanelPlacement.swift",
+            "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift",
+            "apps/macos/Sources/BruceAppCore/MenuBarMetrics.swift",
+            "apps/macos/Sources/BruceAppCore/MenuBarStatusItemContent.swift",
+            "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+            "docs/devel/design/03-菜单栏状态与多风格原生渲染.md"
+          ],
+          "answer_sections": [
+            "菜单栏与看板设计.md#chapter-1",
+            "菜单栏与看板设计.md#chapter-2",
+            "菜单栏与看板设计.md#chapter-3",
+            "菜单栏与看板设计.md#chapter-4",
+            "菜单栏与看板设计.md#chapter-5",
+            "菜单栏与看板设计.md#chapter-6"
+          ]
+        }
+      ],
+      "functional_points": [
+        {
+          "key": "菜单栏与看板设计-1",
+          "name": "指标选择与额度环规绘制",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationLifecycle.swift",
+            "apps/macos/Sources/BruceApp/DashboardGlassPanelController.swift",
+            "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+            "apps/macos/Sources/BruceApp/Views/HourlyLineCard.swift",
+            "apps/macos/Sources/BruceApp/Views/UsageHeroCard.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceAppCore/DashboardPanelAnimationPolicy.swift",
+            "apps/macos/Sources/BruceAppCore/DashboardPanelPlacement.swift",
+            "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift",
+            "apps/macos/Sources/BruceAppCore/MenuBarMetrics.swift",
+            "apps/macos/Sources/BruceAppCore/MenuBarStatusItemContent.swift",
+            "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+            "docs/devel/design/03-菜单栏状态与多风格原生渲染.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#dashboard"
+          ],
+          "detail_article": "菜单栏与看板设计.md",
+          "answer_sections": [
+            "菜单栏与看板设计.md#metrics"
+          ],
+          "scenario_sections": [
+            "菜单栏与看板设计.md#chapter-6"
+          ],
+          "figure_assessment": {
+            "needed": false,
+            "reason": "指标是字段选择、数值钳制与绘制参数，无多步业务交接。",
+            "figure_ids": []
+          },
+          "pending": []
+        },
+        {
+          "key": "菜单栏与看板设计-2",
+          "name": "面板点击切换与失焦关闭",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationLifecycle.swift",
+            "apps/macos/Sources/BruceApp/DashboardGlassPanelController.swift",
+            "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+            "apps/macos/Sources/BruceApp/Views/HourlyLineCard.swift",
+            "apps/macos/Sources/BruceApp/Views/UsageHeroCard.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceAppCore/DashboardPanelAnimationPolicy.swift",
+            "apps/macos/Sources/BruceAppCore/DashboardPanelPlacement.swift",
+            "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift",
+            "apps/macos/Sources/BruceAppCore/MenuBarMetrics.swift",
+            "apps/macos/Sources/BruceAppCore/MenuBarStatusItemContent.swift",
+            "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+            "docs/devel/design/03-菜单栏状态与多风格原生渲染.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#dashboard"
+          ],
+          "detail_article": "菜单栏与看板设计.md",
+          "answer_sections": [
+            "菜单栏与看板设计.md#panel-toggle"
+          ],
+          "scenario_sections": [
+            "菜单栏与看板设计.md#chapter-6"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_76549499-2760-425c-8c1f-f23edea8f412"
+            ]
+          },
+          "pending": []
+        },
+        {
+          "key": "菜单栏与看板设计-3",
+          "name": "主题解析、卡片折叠与隐藏释放",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationLifecycle.swift",
+            "apps/macos/Sources/BruceApp/DashboardGlassPanelController.swift",
+            "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+            "apps/macos/Sources/BruceApp/Views/HourlyLineCard.swift",
+            "apps/macos/Sources/BruceApp/Views/UsageHeroCard.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceAppCore/DashboardPanelAnimationPolicy.swift",
+            "apps/macos/Sources/BruceAppCore/DashboardPanelPlacement.swift",
+            "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift",
+            "apps/macos/Sources/BruceAppCore/MenuBarMetrics.swift",
+            "apps/macos/Sources/BruceAppCore/MenuBarStatusItemContent.swift",
+            "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+            "docs/devel/design/03-菜单栏状态与多风格原生渲染.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#dashboard"
+          ],
+          "detail_article": "菜单栏与看板设计.md",
+          "answer_sections": [
+            "菜单栏与看板设计.md#theme"
+          ],
+          "scenario_sections": [
+            "菜单栏与看板设计.md#chapter-6"
+          ],
+          "figure_assessment": {
+            "needed": false,
+            "reason": "主题是三值纯映射，折叠是 Bool 控制挂载；复杂焦点状态另由面板开关图解释。",
+            "figure_ids": []
+          },
+          "pending": []
+        }
+      ],
+      "figure_assessment": {
+        "needed": true,
+        "reason": "Reviewed actual internal decisions, states, handoffs and data transformations against original source; required views embedded at answering sections",
+        "figure_ids": [
+          "d_76549499-2760-425c-8c1f-f23edea8f412"
+        ]
+      },
+      "pending": [],
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/ApplicationLifecycle.swift",
+        "apps/macos/Sources/BruceApp/DashboardGlassPanelController.swift",
+        "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+        "apps/macos/Sources/BruceApp/Views/HourlyLineCard.swift",
+        "apps/macos/Sources/BruceApp/Views/UsageHeroCard.swift",
+        "apps/macos/Sources/BruceAppCore/AppModel.swift",
+        "apps/macos/Sources/BruceAppCore/DashboardPanelAnimationPolicy.swift",
+        "apps/macos/Sources/BruceAppCore/DashboardPanelPlacement.swift",
+        "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift",
+        "apps/macos/Sources/BruceAppCore/MenuBarMetrics.swift",
+        "apps/macos/Sources/BruceAppCore/MenuBarStatusItemContent.swift",
+        "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+        "docs/devel/design/03-菜单栏状态与多风格原生渲染.md"
+      ]
+    },
+    {
+      "path": "设置中心与价格校准设计.md",
+      "document_type": "configuration",
+      "outline": [
+        "1. 目标与范围",
+        "2. 配置模型",
+        "3. 配置项设计",
+        "4. 加载与生效流程",
+        "5. 异常与安全边界",
+        "6. 配置示例",
+        "7. 参考文献"
+      ],
+      "reader_questions": [
+        {
+          "question": "该能力从哪里进入，输入和状态由谁持有？",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+            "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+            "apps/macos/Sources/BruceApp/Settings/ModelPricingSettingsView.swift",
+            "apps/macos/Sources/BruceApp/SettingsView.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+            "apps/macos/Sources/BruceAppCore/MenuBarMetrics.swift",
+            "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+            "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+            "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+            "apps/win/src-tauri/src/settings.rs",
+            "apps/win/src/settings.js",
+            "core/collector/crates/collector-domain/src/pricing.rs",
+            "docs/devel/design/04-设置中心与价格校准交互.md",
+            "docs/devel/design/05-Windows平台适配.md"
+          ],
+          "answer_sections": [
+            "设置中心与价格校准设计.md#chapter-1",
+            "设置中心与价格校准设计.md#chapter-2",
+            "设置中心与价格校准设计.md#chapter-3",
+            "设置中心与价格校准设计.md#chapter-4",
+            "设置中心与价格校准设计.md#chapter-5",
+            "设置中心与价格校准设计.md#chapter-6"
+          ]
+        },
+        {
+          "question": "正常与重要替代路径如何选择，输出、失败和恢复有何差异？",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+            "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+            "apps/macos/Sources/BruceApp/Settings/ModelPricingSettingsView.swift",
+            "apps/macos/Sources/BruceApp/SettingsView.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+            "apps/macos/Sources/BruceAppCore/MenuBarMetrics.swift",
+            "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+            "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+            "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+            "apps/win/src-tauri/src/settings.rs",
+            "apps/win/src/settings.js",
+            "core/collector/crates/collector-domain/src/pricing.rs",
+            "docs/devel/design/04-设置中心与价格校准交互.md",
+            "docs/devel/design/05-Windows平台适配.md"
+          ],
+          "answer_sections": [
+            "设置中心与价格校准设计.md#chapter-1",
+            "设置中心与价格校准设计.md#chapter-2",
+            "设置中心与价格校准设计.md#chapter-3",
+            "设置中心与价格校准设计.md#chapter-4",
+            "设置中心与价格校准设计.md#chapter-5",
+            "设置中心与价格校准设计.md#chapter-6"
+          ]
+        }
+      ],
+      "functional_points": [
+        {
+          "key": "设置中心与价格校准设计-1",
+          "name": "设置窗口与偏好模型",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+            "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+            "apps/macos/Sources/BruceApp/Settings/ModelPricingSettingsView.swift",
+            "apps/macos/Sources/BruceApp/SettingsView.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+            "apps/macos/Sources/BruceAppCore/MenuBarMetrics.swift",
+            "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+            "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+            "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+            "apps/win/src-tauri/src/settings.rs",
+            "apps/win/src/settings.js",
+            "core/collector/crates/collector-domain/src/pricing.rs",
+            "docs/devel/design/04-设置中心与价格校准交互.md",
+            "docs/devel/design/05-Windows平台适配.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#settings-pricing"
+          ],
+          "detail_article": "设置中心与价格校准设计.md",
+          "answer_sections": [
+            "设置中心与价格校准设计.md#settings-window"
+          ],
+          "scenario_sections": [
+            "设置中心与价格校准设计.md#chapter-6"
+          ],
+          "figure_assessment": {
+            "needed": false,
+            "reason": "单窗口呈现和关闭契约直接描述，不涉及结构复杂的流程。",
+            "figure_ids": []
+          },
+          "pending": []
+        },
+        {
+          "key": "设置中心与价格校准设计-2",
+          "name": "指标编辑与主题生效",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+            "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+            "apps/macos/Sources/BruceApp/Settings/ModelPricingSettingsView.swift",
+            "apps/macos/Sources/BruceApp/SettingsView.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+            "apps/macos/Sources/BruceAppCore/MenuBarMetrics.swift",
+            "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+            "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+            "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+            "apps/win/src-tauri/src/settings.rs",
+            "apps/win/src/settings.js",
+            "core/collector/crates/collector-domain/src/pricing.rs",
+            "docs/devel/design/04-设置中心与价格校准交互.md",
+            "docs/devel/design/05-Windows平台适配.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#settings-pricing"
+          ],
+          "detail_article": "设置中心与价格校准设计.md",
+          "answer_sections": [
+            "设置中心与价格校准设计.md#settings-navigation"
+          ],
+          "scenario_sections": [
+            "设置中心与价格校准设计.md#chapter-6"
+          ],
+          "figure_assessment": {
+            "needed": false,
+            "reason": "指标选择和主题取值归一化为局部配置规则，保存激活另有图。",
+            "figure_ids": []
+          },
+          "pending": []
+        },
+        {
+          "key": "设置中心与价格校准设计-3",
+          "name": "价格校准保存、重置与刷新",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+            "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+            "apps/macos/Sources/BruceApp/Settings/ModelPricingSettingsView.swift",
+            "apps/macos/Sources/BruceApp/SettingsView.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+            "apps/macos/Sources/BruceAppCore/MenuBarMetrics.swift",
+            "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+            "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+            "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+            "apps/win/src-tauri/src/settings.rs",
+            "apps/win/src/settings.js",
+            "core/collector/crates/collector-domain/src/pricing.rs",
+            "docs/devel/design/04-设置中心与价格校准交互.md",
+            "docs/devel/design/05-Windows平台适配.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#settings-pricing"
+          ],
+          "detail_article": "设置中心与价格校准设计.md",
+          "answer_sections": [
+            "设置中心与价格校准设计.md#pricing-activation"
+          ],
+          "scenario_sections": [
+            "设置中心与价格校准设计.md#chapter-6"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_7f1dffad-5e43-460b-9d30-c9c70bb943de"
+            ]
+          },
+          "pending": []
+        },
+        {
+          "key": "设置中心与价格校准设计-4",
+          "name": "锁屏暂停开关保存与生效",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+            "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+            "apps/macos/Sources/BruceApp/Settings/ModelPricingSettingsView.swift",
+            "apps/macos/Sources/BruceApp/SettingsView.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+            "apps/macos/Sources/BruceAppCore/MenuBarMetrics.swift",
+            "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+            "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+            "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+            "apps/win/src-tauri/src/settings.rs",
+            "apps/win/src/settings.js",
+            "core/collector/crates/collector-domain/src/pricing.rs",
+            "docs/devel/design/04-设置中心与价格校准交互.md",
+            "docs/devel/design/05-Windows平台适配.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#settings-pricing"
+          ],
+          "detail_article": "设置中心与价格校准设计.md",
+          "answer_sections": [
+            "设置中心与价格校准设计.md#lock-preference"
+          ],
+          "scenario_sections": [
+            "设置中心与价格校准设计.md#chapter-6"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_7f1dffad-5e43-460b-9d30-c9c70bb943de"
+            ]
+          },
+          "pending": []
+        },
+        {
+          "key": "设置中心与价格校准设计-5",
+          "name": "Windows独立设置校验",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+            "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+            "apps/macos/Sources/BruceApp/Settings/ModelPricingSettingsView.swift",
+            "apps/macos/Sources/BruceApp/SettingsView.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+            "apps/macos/Sources/BruceAppCore/MenuBarMetrics.swift",
+            "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+            "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+            "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+            "apps/win/src-tauri/src/settings.rs",
+            "apps/win/src/settings.js",
+            "core/collector/crates/collector-domain/src/pricing.rs",
+            "docs/devel/design/04-设置中心与价格校准交互.md",
+            "docs/devel/design/05-Windows平台适配.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#settings-pricing"
+          ],
+          "detail_article": "设置中心与价格校准设计.md",
+          "answer_sections": [
+            "设置中心与价格校准设计.md#windows-settings"
+          ],
+          "scenario_sections": [
+            "设置中心与价格校准设计.md#chapter-6"
+          ],
+          "figure_assessment": {
+            "needed": false,
+            "reason": "Windows 价格验证是字段的类型与范围检查；完整平台 IPC 由 Windows 主设计拥有。",
+            "figure_ids": []
+          },
+          "pending": []
+        }
+      ],
+      "figure_assessment": {
+        "needed": true,
+        "reason": "Reviewed actual internal decisions, states, handoffs and data transformations against original source; required views embedded at answering sections",
+        "figure_ids": [
+          "d_7f1dffad-5e43-460b-9d30-c9c70bb943de"
+        ]
+      },
+      "pending": [],
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "apps/macos/Sources/BruceApp/Settings/ModelPricingSettingsView.swift",
+        "apps/macos/Sources/BruceApp/SettingsView.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+        "apps/macos/Sources/BruceAppCore/MenuBarMetrics.swift",
+        "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+        "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+        "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+        "apps/win/src-tauri/src/settings.rs",
+        "apps/win/src/settings.js",
+        "core/collector/crates/collector-domain/src/pricing.rs",
+        "docs/devel/design/04-设置中心与价格校准交互.md",
+        "docs/devel/design/05-Windows平台适配.md"
+      ]
+    },
+    {
+      "path": "刷新生命周期设计.md",
+      "document_type": "flow",
+      "outline": [
+        "1. 目标与范围",
+        "2. 参与者与契约",
+        "3. 流程设计",
+        "4. 状态与数据变化",
+        "5. 异常与恢复",
+        "6. 场景推演",
+        "7. 参考文献"
+      ],
+      "reader_questions": [
+        {
+          "question": "该能力从哪里进入，输入和状态由谁持有？",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+            "apps/macos/Sources/BruceApp/BruceApp.swift",
+            "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+            "apps/macos/Sources/BruceApp/QuotaAlertNotifier.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift",
+            "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+            "apps/macos/Sources/BruceAppCore/NetworkReachability.swift",
+            "apps/macos/Sources/BruceAppCore/QuotaAlertEvaluator.swift",
+            "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshBackoffPolicy.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshTypes.swift"
+          ],
+          "answer_sections": [
+            "刷新生命周期设计.md#chapter-1",
+            "刷新生命周期设计.md#chapter-2",
+            "刷新生命周期设计.md#chapter-3",
+            "刷新生命周期设计.md#chapter-4",
+            "刷新生命周期设计.md#chapter-5",
+            "刷新生命周期设计.md#chapter-6"
+          ]
+        },
+        {
+          "question": "正常与重要替代路径如何选择，输出、失败和恢复有何差异？",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+            "apps/macos/Sources/BruceApp/BruceApp.swift",
+            "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+            "apps/macos/Sources/BruceApp/QuotaAlertNotifier.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift",
+            "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+            "apps/macos/Sources/BruceAppCore/NetworkReachability.swift",
+            "apps/macos/Sources/BruceAppCore/QuotaAlertEvaluator.swift",
+            "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshBackoffPolicy.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshTypes.swift"
+          ],
+          "answer_sections": [
+            "刷新生命周期设计.md#chapter-1",
+            "刷新生命周期设计.md#chapter-2",
+            "刷新生命周期设计.md#chapter-3",
+            "刷新生命周期设计.md#chapter-4",
+            "刷新生命周期设计.md#chapter-5",
+            "刷新生命周期设计.md#chapter-6"
+          ]
+        }
+      ],
+      "functional_points": [
+        {
+          "key": "刷新生命周期设计-1",
+          "name": "定时手动定向触发与意图合并",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+            "apps/macos/Sources/BruceApp/BruceApp.swift",
+            "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+            "apps/macos/Sources/BruceApp/QuotaAlertNotifier.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift",
+            "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+            "apps/macos/Sources/BruceAppCore/NetworkReachability.swift",
+            "apps/macos/Sources/BruceAppCore/QuotaAlertEvaluator.swift",
+            "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshBackoffPolicy.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshTypes.swift",
+            "apps/macos/Sources/BruceAppCore/ScreenLockMonitor.swift",
+            "apps/macos/Tests/Harnesses/RefreshSchedulerHarness/RefreshSchedulerScreenLockTests.swift"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#refresh-snapshot"
+          ],
+          "detail_article": "刷新生命周期设计.md",
+          "answer_sections": [
+            "刷新生命周期设计.md#scheduler-state"
+          ],
+          "scenario_sections": [
+            "刷新生命周期设计.md#chapter-6"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_04caaf2e-14be-4711-904e-1faa0b4a797b"
+            ]
+          },
+          "pending": []
+        },
+        {
+          "key": "刷新生命周期设计-2",
+          "name": "离线暂停与联网补偿",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+            "apps/macos/Sources/BruceApp/BruceApp.swift",
+            "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+            "apps/macos/Sources/BruceApp/QuotaAlertNotifier.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift",
+            "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+            "apps/macos/Sources/BruceAppCore/NetworkReachability.swift",
+            "apps/macos/Sources/BruceAppCore/QuotaAlertEvaluator.swift",
+            "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshBackoffPolicy.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshTypes.swift",
+            "apps/macos/Sources/BruceAppCore/ScreenLockMonitor.swift",
+            "apps/macos/Tests/Harnesses/RefreshSchedulerHarness/RefreshSchedulerScreenLockTests.swift"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#refresh-snapshot"
+          ],
+          "detail_article": "刷新生命周期设计.md",
+          "answer_sections": [
+            "刷新生命周期设计.md#offline-quota"
+          ],
+          "scenario_sections": [
+            "刷新生命周期设计.md#chapter-6"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_a41b7373-2867-4803-820c-c1bba0c5fe64"
+            ]
+          },
+          "pending": []
+        },
+        {
+          "key": "刷新生命周期设计-3",
+          "name": "锁屏本地采集与解锁补偿",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+            "apps/macos/Sources/BruceApp/BruceApp.swift",
+            "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+            "apps/macos/Sources/BruceApp/QuotaAlertNotifier.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift",
+            "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+            "apps/macos/Sources/BruceAppCore/NetworkReachability.swift",
+            "apps/macos/Sources/BruceAppCore/QuotaAlertEvaluator.swift",
+            "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshBackoffPolicy.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshTypes.swift",
+            "apps/macos/Sources/BruceAppCore/ScreenLockMonitor.swift",
+            "apps/macos/Tests/Harnesses/RefreshSchedulerHarness/RefreshSchedulerScreenLockTests.swift"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#refresh-snapshot"
+          ],
+          "detail_article": "刷新生命周期设计.md",
+          "answer_sections": [
+            "刷新生命周期设计.md#screen-lock"
+          ],
+          "scenario_sections": [
+            "刷新生命周期设计.md#chapter-6"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_93c87502-3b6a-4a18-9342-15e5ea7679e6"
+            ]
+          },
+          "pending": []
+        },
+        {
+          "key": "刷新生命周期设计-4",
+          "name": "额度节流、限流冷却和旧服务回填",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+            "apps/macos/Sources/BruceApp/BruceApp.swift",
+            "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+            "apps/macos/Sources/BruceApp/QuotaAlertNotifier.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift",
+            "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+            "apps/macos/Sources/BruceAppCore/NetworkReachability.swift",
+            "apps/macos/Sources/BruceAppCore/QuotaAlertEvaluator.swift",
+            "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshBackoffPolicy.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshTypes.swift",
+            "apps/macos/Sources/BruceAppCore/ScreenLockMonitor.swift",
+            "apps/macos/Tests/Harnesses/RefreshSchedulerHarness/RefreshSchedulerScreenLockTests.swift"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#refresh-snapshot"
+          ],
+          "detail_article": "刷新生命周期设计.md",
+          "answer_sections": [
+            "刷新生命周期设计.md#offline-quota"
+          ],
+          "scenario_sections": [
+            "刷新生命周期设计.md#chapter-6"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_856cccba-17f1-402f-b8d2-d03c0c7de2e6"
+            ]
+          },
+          "pending": []
+        },
+        {
+          "key": "刷新生命周期设计-5",
+          "name": "单轮凭据恢复、发布和告警",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+            "apps/macos/Sources/BruceApp/BruceApp.swift",
+            "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+            "apps/macos/Sources/BruceApp/QuotaAlertNotifier.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift",
+            "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+            "apps/macos/Sources/BruceAppCore/NetworkReachability.swift",
+            "apps/macos/Sources/BruceAppCore/QuotaAlertEvaluator.swift",
+            "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshBackoffPolicy.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshTypes.swift",
+            "apps/macos/Sources/BruceAppCore/ScreenLockMonitor.swift",
+            "apps/macos/Tests/Harnesses/RefreshSchedulerHarness/RefreshSchedulerScreenLockTests.swift"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#refresh-snapshot"
+          ],
+          "detail_article": "刷新生命周期设计.md",
+          "answer_sections": [
+            "刷新生命周期设计.md#refresh-sequence"
+          ],
+          "scenario_sections": [
+            "刷新生命周期设计.md#chapter-6"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_856cccba-17f1-402f-b8d2-d03c0c7de2e6"
+            ]
+          },
+          "pending": []
+        },
+        {
+          "key": "刷新生命周期设计-6",
+          "name": "快照写入、损坏回退与取消退出",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+            "apps/macos/Sources/BruceApp/BruceApp.swift",
+            "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+            "apps/macos/Sources/BruceApp/QuotaAlertNotifier.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift",
+            "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+            "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+            "apps/macos/Sources/BruceAppCore/NetworkReachability.swift",
+            "apps/macos/Sources/BruceAppCore/QuotaAlertEvaluator.swift",
+            "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshBackoffPolicy.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+            "apps/macos/Sources/BruceAppCore/RefreshTypes.swift",
+            "apps/macos/Sources/BruceAppCore/ScreenLockMonitor.swift",
+            "apps/macos/Tests/Harnesses/RefreshSchedulerHarness/RefreshSchedulerScreenLockTests.swift"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#refresh-snapshot"
+          ],
+          "detail_article": "刷新生命周期设计.md",
+          "answer_sections": [
+            "刷新生命周期设计.md#snapshot"
+          ],
+          "scenario_sections": [
+            "刷新生命周期设计.md#chapter-6"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_ac13d2c9-06bf-466a-8e98-523657c2adbf"
+            ]
+          },
+          "pending": []
+        }
+      ],
+      "figure_assessment": {
+        "needed": true,
+        "reason": "Reviewed actual internal decisions, states, handoffs and data transformations against original source; required views embedded at answering sections",
+        "figure_ids": [
+          "d_a41b7373-2867-4803-820c-c1bba0c5fe64",
+          "d_856cccba-17f1-402f-b8d2-d03c0c7de2e6",
+          "d_93c87502-3b6a-4a18-9342-15e5ea7679e6",
+          "d_04caaf2e-14be-4711-904e-1faa0b4a797b",
+          "d_ac13d2c9-06bf-466a-8e98-523657c2adbf"
+        ]
+      },
+      "pending": [],
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+        "apps/macos/Sources/BruceApp/BruceApp.swift",
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "apps/macos/Sources/BruceApp/QuotaAlertNotifier.swift",
+        "apps/macos/Sources/BruceAppCore/AppModel.swift",
+        "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift",
+        "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+        "apps/macos/Sources/BruceAppCore/NetworkReachability.swift",
+        "apps/macos/Sources/BruceAppCore/QuotaAlertEvaluator.swift",
+        "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshBackoffPolicy.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshTypes.swift",
+        "apps/macos/Sources/BruceAppCore/ScreenLockMonitor.swift",
+        "apps/macos/Tests/Harnesses/RefreshSchedulerHarness/RefreshSchedulerScreenLockTests.swift"
+      ]
+    },
+    {
+      "path": "Windows应用设计.md",
+      "document_type": "module",
+      "outline": [
+        "1. 目标与职责",
+        "2. 对外契约",
+        "3. 内部结构",
+        "4. 详细设计",
+        "5. 流程与状态",
+        "6. 异常与恢复",
+        "7. 参考文献"
+      ],
+      "reader_questions": [
+        {
+          "question": "该能力从哪里进入，输入和状态由谁持有？",
+          "source_paths": [
+            "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+            "apps/win/src-tauri/src/alerts.rs",
+            "apps/win/src-tauri/src/collector.rs",
+            "apps/win/src-tauri/src/credentials.rs",
+            "apps/win/src-tauri/src/credentials/lifecycle.rs",
+            "apps/win/src-tauri/src/credentials/windows_security.rs",
+            "apps/win/src-tauri/src/lib.rs",
+            "apps/win/src-tauri/src/main.rs",
+            "apps/win/src-tauri/src/paths.rs",
+            "apps/win/src-tauri/src/runtime_core.rs",
+            "apps/win/src-tauri/src/scheduler.rs",
+            "apps/win/src-tauri/src/settings.rs",
+            "apps/win/src-tauri/tauri.conf.json",
+            "apps/win/src-tauri/tests/collector_configuration.rs",
+            "apps/win/src-tauri/tests/runtime_coverage.rs",
+            "apps/win/src/app.js",
+            "apps/win/src/settings.js",
+            "apps/win/tests/frontend.test.mjs",
+            "apps/win/viewmodel/src/lib.rs",
+            "apps/win/viewmodel/src/models.rs",
+            "apps/win/viewmodel/src/subscription.rs",
+            "apps/win/viewmodel/src/usage.rs",
+            "apps/win/viewmodel/tests/fixture_parity.rs",
+            "core/collector/crates/collector-bridge/src/lib.rs",
+            "docs/archive/0.12.0/change/C020.json",
+            "docs/devel/change/C009.json",
+            "docs/devel/change/C012.json",
+            "docs/devel/design/05-Windows平台适配.md"
+          ],
+          "answer_sections": [
+            "Windows应用设计.md#chapter-1",
+            "Windows应用设计.md#chapter-2",
+            "Windows应用设计.md#chapter-3",
+            "Windows应用设计.md#chapter-4",
+            "Windows应用设计.md#chapter-5",
+            "Windows应用设计.md#chapter-6"
+          ]
+        },
+        {
+          "question": "正常与重要替代路径如何选择，输出、失败和恢复有何差异？",
+          "source_paths": [
+            "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+            "apps/win/src-tauri/src/alerts.rs",
+            "apps/win/src-tauri/src/collector.rs",
+            "apps/win/src-tauri/src/credentials.rs",
+            "apps/win/src-tauri/src/credentials/lifecycle.rs",
+            "apps/win/src-tauri/src/credentials/windows_security.rs",
+            "apps/win/src-tauri/src/lib.rs",
+            "apps/win/src-tauri/src/main.rs",
+            "apps/win/src-tauri/src/paths.rs",
+            "apps/win/src-tauri/src/runtime_core.rs",
+            "apps/win/src-tauri/src/scheduler.rs",
+            "apps/win/src-tauri/src/settings.rs",
+            "apps/win/src-tauri/tauri.conf.json",
+            "apps/win/src-tauri/tests/collector_configuration.rs",
+            "apps/win/src-tauri/tests/runtime_coverage.rs",
+            "apps/win/src/app.js",
+            "apps/win/src/settings.js",
+            "apps/win/tests/frontend.test.mjs",
+            "apps/win/viewmodel/src/lib.rs",
+            "apps/win/viewmodel/src/models.rs",
+            "apps/win/viewmodel/src/subscription.rs",
+            "apps/win/viewmodel/src/usage.rs",
+            "apps/win/viewmodel/tests/fixture_parity.rs",
+            "core/collector/crates/collector-bridge/src/lib.rs",
+            "docs/archive/0.12.0/change/C020.json",
+            "docs/devel/change/C009.json",
+            "docs/devel/change/C012.json",
+            "docs/devel/design/05-Windows平台适配.md"
+          ],
+          "answer_sections": [
+            "Windows应用设计.md#chapter-1",
+            "Windows应用设计.md#chapter-2",
+            "Windows应用设计.md#chapter-3",
+            "Windows应用设计.md#chapter-4",
+            "Windows应用设计.md#chapter-5",
+            "Windows应用设计.md#chapter-6"
+          ]
+        }
+      ],
+      "functional_points": [
+        {
+          "key": "Windows应用设计-1",
+          "name": "Tauri启动与窗口IPC",
+          "source_paths": [
+            "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+            "apps/win/src-tauri/src/alerts.rs",
+            "apps/win/src-tauri/src/collector.rs",
+            "apps/win/src-tauri/src/credentials.rs",
+            "apps/win/src-tauri/src/credentials/lifecycle.rs",
+            "apps/win/src-tauri/src/credentials/windows_security.rs",
+            "apps/win/src-tauri/src/lib.rs",
+            "apps/win/src-tauri/src/main.rs",
+            "apps/win/src-tauri/src/paths.rs",
+            "apps/win/src-tauri/src/runtime_core.rs",
+            "apps/win/src-tauri/src/scheduler.rs",
+            "apps/win/src-tauri/src/settings.rs",
+            "apps/win/src-tauri/tauri.conf.json",
+            "apps/win/src-tauri/tests/collector_configuration.rs",
+            "apps/win/src-tauri/tests/runtime_coverage.rs",
+            "apps/win/src/app.js",
+            "apps/win/src/settings.js",
+            "apps/win/tests/frontend.test.mjs",
+            "apps/win/viewmodel/src/lib.rs",
+            "apps/win/viewmodel/src/models.rs",
+            "apps/win/viewmodel/src/subscription.rs",
+            "apps/win/viewmodel/src/usage.rs",
+            "apps/win/viewmodel/tests/fixture_parity.rs",
+            "core/collector/crates/collector-bridge/src/lib.rs",
+            "docs/archive/0.12.0/change/C020.json",
+            "docs/devel/change/C009.json",
+            "docs/devel/change/C012.json",
+            "docs/devel/design/05-Windows平台适配.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#windows"
+          ],
+          "detail_article": "Windows应用设计.md",
+          "answer_sections": [
+            "Windows应用设计.md#windows-startup"
+          ],
+          "scenario_sections": [
+            "Windows应用设计.md#windows-startup"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae"
+            ]
+          },
+          "pending": []
+        },
+        {
+          "key": "Windows应用设计-2",
+          "name": "授权配置与凭据装配",
+          "source_paths": [
+            "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+            "apps/win/src-tauri/src/alerts.rs",
+            "apps/win/src-tauri/src/collector.rs",
+            "apps/win/src-tauri/src/credentials.rs",
+            "apps/win/src-tauri/src/credentials/lifecycle.rs",
+            "apps/win/src-tauri/src/credentials/windows_security.rs",
+            "apps/win/src-tauri/src/lib.rs",
+            "apps/win/src-tauri/src/main.rs",
+            "apps/win/src-tauri/src/paths.rs",
+            "apps/win/src-tauri/src/runtime_core.rs",
+            "apps/win/src-tauri/src/scheduler.rs",
+            "apps/win/src-tauri/src/settings.rs",
+            "apps/win/src-tauri/tauri.conf.json",
+            "apps/win/src-tauri/tests/collector_configuration.rs",
+            "apps/win/src-tauri/tests/runtime_coverage.rs",
+            "apps/win/src/app.js",
+            "apps/win/src/settings.js",
+            "apps/win/tests/frontend.test.mjs",
+            "apps/win/viewmodel/src/lib.rs",
+            "apps/win/viewmodel/src/models.rs",
+            "apps/win/viewmodel/src/subscription.rs",
+            "apps/win/viewmodel/src/usage.rs",
+            "apps/win/viewmodel/tests/fixture_parity.rs",
+            "core/collector/crates/collector-bridge/src/lib.rs",
+            "docs/archive/0.12.0/change/C020.json",
+            "docs/devel/change/C009.json",
+            "docs/devel/change/C012.json",
+            "docs/devel/design/05-Windows平台适配.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#windows"
+          ],
+          "detail_article": "Windows应用设计.md",
+          "answer_sections": [
+            "Windows应用设计.md#windows-config"
+          ],
+          "scenario_sections": [
+            "Windows应用设计.md#windows-config"
+          ],
+          "figure_assessment": {
+            "needed": false,
+            "reason": "配置默认值、授权位与请求字段是查表契约；有序运行交接与恢复已分别画图。",
+            "figure_ids": []
+          },
+          "pending": []
+        },
+        {
+          "key": "Windows应用设计-3",
+          "name": "受限凭据落盘与Codex恢复",
+          "source_paths": [
+            "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+            "apps/win/src-tauri/src/alerts.rs",
+            "apps/win/src-tauri/src/collector.rs",
+            "apps/win/src-tauri/src/credentials.rs",
+            "apps/win/src-tauri/src/credentials/lifecycle.rs",
+            "apps/win/src-tauri/src/credentials/windows_security.rs",
+            "apps/win/src-tauri/src/lib.rs",
+            "apps/win/src-tauri/src/main.rs",
+            "apps/win/src-tauri/src/paths.rs",
+            "apps/win/src-tauri/src/runtime_core.rs",
+            "apps/win/src-tauri/src/scheduler.rs",
+            "apps/win/src-tauri/src/settings.rs",
+            "apps/win/src-tauri/tauri.conf.json",
+            "apps/win/src-tauri/tests/collector_configuration.rs",
+            "apps/win/src-tauri/tests/runtime_coverage.rs",
+            "apps/win/src/app.js",
+            "apps/win/src/settings.js",
+            "apps/win/tests/frontend.test.mjs",
+            "apps/win/viewmodel/src/lib.rs",
+            "apps/win/viewmodel/src/models.rs",
+            "apps/win/viewmodel/src/subscription.rs",
+            "apps/win/viewmodel/src/usage.rs",
+            "apps/win/viewmodel/tests/fixture_parity.rs",
+            "core/collector/crates/collector-bridge/src/lib.rs",
+            "docs/archive/0.12.0/change/C020.json",
+            "docs/devel/change/C009.json",
+            "docs/devel/change/C012.json",
+            "docs/devel/design/05-Windows平台适配.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#windows"
+          ],
+          "detail_article": "Windows应用设计.md",
+          "answer_sections": [
+            "Windows应用设计.md#windows-credentials"
+          ],
+          "scenario_sections": [
+            "Windows应用设计.md#windows-credentials"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_b9e5079c-f299-4c64-bc1f-0a639840238d"
+            ]
+          },
+          "pending": []
+        },
+        {
+          "key": "Windows应用设计-4",
+          "name": "面板映射、告警与导出",
+          "source_paths": [
+            "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+            "apps/win/src-tauri/src/alerts.rs",
+            "apps/win/src-tauri/src/collector.rs",
+            "apps/win/src-tauri/src/credentials.rs",
+            "apps/win/src-tauri/src/credentials/lifecycle.rs",
+            "apps/win/src-tauri/src/credentials/windows_security.rs",
+            "apps/win/src-tauri/src/lib.rs",
+            "apps/win/src-tauri/src/main.rs",
+            "apps/win/src-tauri/src/paths.rs",
+            "apps/win/src-tauri/src/runtime_core.rs",
+            "apps/win/src-tauri/src/scheduler.rs",
+            "apps/win/src-tauri/src/settings.rs",
+            "apps/win/src-tauri/tauri.conf.json",
+            "apps/win/src-tauri/tests/collector_configuration.rs",
+            "apps/win/src-tauri/tests/runtime_coverage.rs",
+            "apps/win/src/app.js",
+            "apps/win/src/settings.js",
+            "apps/win/tests/frontend.test.mjs",
+            "apps/win/viewmodel/src/lib.rs",
+            "apps/win/viewmodel/src/models.rs",
+            "apps/win/viewmodel/src/subscription.rs",
+            "apps/win/viewmodel/src/usage.rs",
+            "apps/win/viewmodel/tests/fixture_parity.rs",
+            "core/collector/crates/collector-bridge/src/lib.rs",
+            "docs/archive/0.12.0/change/C020.json",
+            "docs/devel/change/C009.json",
+            "docs/devel/change/C012.json",
+            "docs/devel/design/05-Windows平台适配.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#windows"
+          ],
+          "detail_article": "Windows应用设计.md",
+          "answer_sections": [
+            "Windows应用设计.md#windows-mapping"
+          ],
+          "scenario_sections": [
+            "Windows应用设计.md#windows-mapping"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae"
+            ]
+          },
+          "pending": []
+        }
+      ],
+      "figure_assessment": {
+        "needed": true,
+        "reason": "Reviewed actual internal decisions, states, handoffs and data transformations against original source; required views embedded at answering sections",
+        "figure_ids": [
+          "d_b9e5079c-f299-4c64-bc1f-0a639840238d",
+          "d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae"
+        ]
+      },
+      "pending": [],
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+        "apps/win/src-tauri/src/alerts.rs",
+        "apps/win/src-tauri/src/collector.rs",
+        "apps/win/src-tauri/src/credentials.rs",
+        "apps/win/src-tauri/src/credentials/lifecycle.rs",
+        "apps/win/src-tauri/src/credentials/windows_security.rs",
+        "apps/win/src-tauri/src/lib.rs",
+        "apps/win/src-tauri/src/main.rs",
+        "apps/win/src-tauri/src/paths.rs",
+        "apps/win/src-tauri/src/runtime_core.rs",
+        "apps/win/src-tauri/src/scheduler.rs",
+        "apps/win/src-tauri/src/settings.rs",
+        "apps/win/src-tauri/tauri.conf.json",
+        "apps/win/src-tauri/tests/collector_configuration.rs",
+        "apps/win/src-tauri/tests/runtime_coverage.rs",
+        "apps/win/src/app.js",
+        "apps/win/src/settings.js",
+        "apps/win/tests/frontend.test.mjs",
+        "apps/win/viewmodel/src/lib.rs",
+        "apps/win/viewmodel/src/models.rs",
+        "apps/win/viewmodel/src/subscription.rs",
+        "apps/win/viewmodel/src/usage.rs",
+        "apps/win/viewmodel/tests/fixture_parity.rs",
+        "core/collector/crates/collector-bridge/src/lib.rs",
+        "docs/archive/0.12.0/change/C020.json",
+        "docs/devel/change/C009.json",
+        "docs/devel/change/C012.json",
+        "docs/devel/design/05-Windows平台适配.md"
+      ]
+    },
+    {
+      "path": "Windows快照与刷新状态.md",
+      "document_type": "flow",
+      "outline": [
+        "1. 目标与范围",
+        "2. 参与者与契约",
+        "3. 流程设计",
+        "4. 状态与数据变化",
+        "5. 异常与恢复",
+        "6. 场景推演",
+        "7. 参考文献"
+      ],
+      "reader_questions": [
+        {
+          "question": "该能力从哪里进入，输入和状态由谁持有？",
+          "source_paths": [
+            "apps/win/src-tauri/src/alerts.rs",
+            "apps/win/src-tauri/src/lib.rs",
+            "apps/win/src-tauri/src/runtime_core.rs",
+            "apps/win/src-tauri/src/scheduler.rs",
+            "apps/win/src-tauri/tests/scheduler_collector_coverage.rs",
+            "apps/win/src/app.js",
+            "apps/win/viewmodel/src/subscription.rs",
+            "apps/win/viewmodel/src/usage.rs"
+          ],
+          "answer_sections": [
+            "Windows快照与刷新状态.md#chapter-1",
+            "Windows快照与刷新状态.md#chapter-2",
+            "Windows快照与刷新状态.md#chapter-3",
+            "Windows快照与刷新状态.md#chapter-4",
+            "Windows快照与刷新状态.md#chapter-5",
+            "Windows快照与刷新状态.md#chapter-6"
+          ]
+        },
+        {
+          "question": "正常与重要替代路径如何选择，输出、失败和恢复有何差异？",
+          "source_paths": [
+            "apps/win/src-tauri/src/alerts.rs",
+            "apps/win/src-tauri/src/lib.rs",
+            "apps/win/src-tauri/src/runtime_core.rs",
+            "apps/win/src-tauri/src/scheduler.rs",
+            "apps/win/src-tauri/tests/scheduler_collector_coverage.rs",
+            "apps/win/src/app.js",
+            "apps/win/viewmodel/src/subscription.rs",
+            "apps/win/viewmodel/src/usage.rs"
+          ],
+          "answer_sections": [
+            "Windows快照与刷新状态.md#chapter-1",
+            "Windows快照与刷新状态.md#chapter-2",
+            "Windows快照与刷新状态.md#chapter-3",
+            "Windows快照与刷新状态.md#chapter-4",
+            "Windows快照与刷新状态.md#chapter-5",
+            "Windows快照与刷新状态.md#chapter-6"
+          ]
+        }
+      ],
+      "functional_points": [
+        {
+          "key": "Windows快照与刷新状态-1",
+          "name": "容量一手动通道与后台循环",
+          "source_paths": [
+            "apps/win/src-tauri/src/alerts.rs",
+            "apps/win/src-tauri/src/lib.rs",
+            "apps/win/src-tauri/src/runtime_core.rs",
+            "apps/win/src-tauri/src/scheduler.rs",
+            "apps/win/src-tauri/tests/scheduler_collector_coverage.rs",
+            "apps/win/src/app.js",
+            "apps/win/viewmodel/src/subscription.rs",
+            "apps/win/viewmodel/src/usage.rs"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#windows"
+          ],
+          "detail_article": "Windows快照与刷新状态.md",
+          "answer_sections": [
+            "Windows快照与刷新状态.md#windows-triggers"
+          ],
+          "scenario_sections": [
+            "Windows快照与刷新状态.md#chapter-6"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_084f9330-301b-4613-bcd3-1cf561127e93"
+            ]
+          },
+          "pending": []
+        },
+        {
+          "key": "Windows快照与刷新状态-2",
+          "name": "快照阶段与旧服务保留",
+          "source_paths": [
+            "apps/win/src-tauri/src/alerts.rs",
+            "apps/win/src-tauri/src/lib.rs",
+            "apps/win/src-tauri/src/runtime_core.rs",
+            "apps/win/src-tauri/src/scheduler.rs",
+            "apps/win/src-tauri/tests/scheduler_collector_coverage.rs",
+            "apps/win/src/app.js",
+            "apps/win/viewmodel/src/subscription.rs",
+            "apps/win/viewmodel/src/usage.rs"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#windows"
+          ],
+          "detail_article": "Windows快照与刷新状态.md",
+          "answer_sections": [
+            "Windows快照与刷新状态.md#windows-snapshot"
+          ],
+          "scenario_sections": [
+            "Windows快照与刷新状态.md#chapter-6"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_084f9330-301b-4613-bcd3-1cf561127e93"
+            ]
+          },
+          "pending": []
+        },
+        {
+          "key": "Windows快照与刷新状态-3",
+          "name": "退避和窗口边界唤醒",
+          "source_paths": [
+            "apps/win/src-tauri/src/alerts.rs",
+            "apps/win/src-tauri/src/lib.rs",
+            "apps/win/src-tauri/src/runtime_core.rs",
+            "apps/win/src-tauri/src/scheduler.rs",
+            "apps/win/src-tauri/tests/scheduler_collector_coverage.rs",
+            "apps/win/src/app.js",
+            "apps/win/viewmodel/src/subscription.rs",
+            "apps/win/viewmodel/src/usage.rs"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#windows"
+          ],
+          "detail_article": "Windows快照与刷新状态.md",
+          "answer_sections": [
+            "Windows快照与刷新状态.md#windows-retry"
+          ],
+          "scenario_sections": [
+            "Windows快照与刷新状态.md#chapter-6"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_084f9330-301b-4613-bcd3-1cf561127e93"
+            ]
+          },
+          "pending": []
+        },
+        {
+          "key": "Windows快照与刷新状态-4",
+          "name": "缓存映射与可见性补绘",
+          "source_paths": [
+            "apps/win/src-tauri/src/alerts.rs",
+            "apps/win/src-tauri/src/lib.rs",
+            "apps/win/src-tauri/src/runtime_core.rs",
+            "apps/win/src-tauri/src/scheduler.rs",
+            "apps/win/src-tauri/tests/scheduler_collector_coverage.rs",
+            "apps/win/src/app.js",
+            "apps/win/viewmodel/src/subscription.rs",
+            "apps/win/viewmodel/src/usage.rs"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#windows"
+          ],
+          "detail_article": "Windows快照与刷新状态.md",
+          "answer_sections": [
+            "Windows快照与刷新状态.md#windows-presentation"
+          ],
+          "scenario_sections": [
+            "Windows快照与刷新状态.md#chapter-6"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_084f9330-301b-4613-bcd3-1cf561127e93"
+            ]
+          },
+          "pending": []
+        }
+      ],
+      "figure_assessment": {
+        "needed": true,
+        "reason": "Reviewed actual internal decisions, states, handoffs and data transformations against original source; required views embedded at answering sections",
+        "figure_ids": [
+          "d_084f9330-301b-4613-bcd3-1cf561127e93"
+        ]
+      },
+      "pending": [],
+      "source_paths": [
+        "apps/win/src-tauri/src/alerts.rs",
+        "apps/win/src-tauri/src/lib.rs",
+        "apps/win/src-tauri/src/runtime_core.rs",
+        "apps/win/src-tauri/src/scheduler.rs",
+        "apps/win/src-tauri/tests/scheduler_collector_coverage.rs",
+        "apps/win/src/app.js",
+        "apps/win/viewmodel/src/subscription.rs",
+        "apps/win/viewmodel/src/usage.rs"
+      ]
+    },
+    {
+      "path": "Widget设计.md",
+      "document_type": "module",
+      "outline": [
+        "1. 目标与职责",
+        "2. 对外契约",
+        "3. 内部结构",
+        "4. 详细设计",
+        "5. 流程与状态",
+        "6. 异常与恢复",
+        "7. 参考文献"
+      ],
+      "reader_questions": [
+        {
+          "question": "该能力从哪里进入，输入和状态由谁持有？",
+          "source_paths": [
+            "apps/widget/index.html",
+            "scripts/runtime-manifest.zsh",
+            "scripts/widget-performance-harness.mjs"
+          ],
+          "answer_sections": [
+            "Widget设计.md#chapter-1",
+            "Widget设计.md#chapter-2",
+            "Widget设计.md#chapter-3",
+            "Widget设计.md#chapter-4",
+            "Widget设计.md#chapter-5",
+            "Widget设计.md#chapter-6"
+          ]
+        },
+        {
+          "question": "正常与重要替代路径如何选择，输出、失败和恢复有何差异？",
+          "source_paths": [
+            "apps/widget/index.html",
+            "scripts/runtime-manifest.zsh",
+            "scripts/widget-performance-harness.mjs"
+          ],
+          "answer_sections": [
+            "Widget设计.md#chapter-1",
+            "Widget设计.md#chapter-2",
+            "Widget设计.md#chapter-3",
+            "Widget设计.md#chapter-4",
+            "Widget设计.md#chapter-5",
+            "Widget设计.md#chapter-6"
+          ]
+        }
+      ],
+      "functional_points": [
+        {
+          "key": "Widget设计-1",
+          "name": "宿主事件与缺失数据处理",
+          "source_paths": [
+            "apps/widget/index.html",
+            "scripts/runtime-manifest.zsh",
+            "scripts/widget-performance-harness.mjs"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#widget"
+          ],
+          "detail_article": "Widget设计.md",
+          "answer_sections": [
+            "Widget设计.md#host-contract"
+          ],
+          "scenario_sections": [
+            "Widget设计.md#host-contract"
+          ],
+          "figure_assessment": {
+            "needed": false,
+            "reason": "宿主接口为回调字段契约；无独立采集或网络状态机。",
+            "figure_ids": []
+          },
+          "pending": []
+        },
+        {
+          "key": "Widget设计-2",
+          "name": "用量额度展示与日期对齐",
+          "source_paths": [
+            "apps/widget/index.html",
+            "scripts/runtime-manifest.zsh",
+            "scripts/widget-performance-harness.mjs"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#widget"
+          ],
+          "detail_article": "Widget设计.md",
+          "answer_sections": [
+            "Widget设计.md#display"
+          ],
+          "scenario_sections": [
+            "Widget设计.md#display"
+          ],
+          "figure_assessment": {
+            "needed": false,
+            "reason": "用量与额度为数组排序、字段选择和直接百分比汇总；无多步变换或活跃业务状态。",
+            "figure_ids": []
+          },
+          "pending": []
+        },
+        {
+          "key": "Widget设计-3",
+          "name": "像素场可见性、交互与销毁",
+          "source_paths": [
+            "apps/widget/index.html",
+            "scripts/runtime-manifest.zsh",
+            "scripts/widget-performance-harness.mjs"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#widget"
+          ],
+          "detail_article": "Widget设计.md",
+          "answer_sections": [
+            "Widget设计.md#animation"
+          ],
+          "scenario_sections": [
+            "Widget设计.md#animation"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36"
+            ]
+          },
+          "pending": []
+        }
+      ],
+      "figure_assessment": {
+        "needed": true,
+        "reason": "Reviewed actual internal decisions, states, handoffs and data transformations against original source; required views embedded at answering sections",
+        "figure_ids": [
+          "d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36"
+        ]
+      },
+      "pending": [],
+      "source_paths": [
+        "apps/widget/index.html",
+        "scripts/runtime-manifest.zsh",
+        "scripts/widget-performance-harness.mjs"
+      ]
+    },
+    {
+      "path": "Agent用量分析设计.md",
+      "document_type": "feature",
+      "outline": [
+        "1. 目标",
+        "2. 设计",
+        "3. 流程",
+        "4. 数据与接口",
+        "5. 异常与边界",
+        "6. 验证要点",
+        "7. 参考文献"
+      ],
+      "reader_questions": [
+        {
+          "question": "该能力从哪里进入，输入和状态由谁持有？",
+          "source_paths": [
+            "docs/devel/design/06-Agent用量分析与Token统计工作台.md",
+            "apps/macos/Sources/BruceAppCore/ModelNormalizer.swift",
+            "apps/macos/Sources/BruceAppCore/AnalyticsModels.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceApp/Settings/AgentUsageWorkbenchView.swift",
+            "apps/macos/Sources/BruceApp/Settings/TimelineChartCard.swift",
+            "apps/macos/Sources/BruceApp/Settings/CanonicalModelAnalyticsCard.swift",
+            "apps/macos/Sources/BruceApp/Settings/AgentComparisonMatrixCard.swift",
+            "apps/macos/Sources/BruceApp/Settings/TokenCompositionCard.swift",
+            "apps/macos/Tests/Harnesses/PanelViewModelHarness/PanelViewModelHarness.swift"
+          ],
+          "answer_sections": [
+            "Agent用量分析设计.md#chapter-1",
+            "Agent用量分析设计.md#chapter-2",
+            "Agent用量分析设计.md#chapter-3",
+            "Agent用量分析设计.md#chapter-4",
+            "Agent用量分析设计.md#chapter-5",
+            "Agent用量分析设计.md#chapter-6"
+          ]
+        },
+        {
+          "question": "正常与重要替代路径如何选择，输出、失败和恢复有何差异？",
+          "source_paths": [
+            "docs/devel/design/06-Agent用量分析与Token统计工作台.md",
+            "apps/macos/Sources/BruceAppCore/ModelNormalizer.swift",
+            "apps/macos/Sources/BruceAppCore/AnalyticsModels.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceApp/Settings/AgentUsageWorkbenchView.swift",
+            "apps/macos/Sources/BruceApp/Settings/TimelineChartCard.swift",
+            "apps/macos/Sources/BruceApp/Settings/CanonicalModelAnalyticsCard.swift",
+            "apps/macos/Sources/BruceApp/Settings/AgentComparisonMatrixCard.swift",
+            "apps/macos/Sources/BruceApp/Settings/TokenCompositionCard.swift",
+            "apps/macos/Tests/Harnesses/PanelViewModelHarness/PanelViewModelHarness.swift"
+          ],
+          "answer_sections": [
+            "Agent用量分析设计.md#chapter-1",
+            "Agent用量分析设计.md#chapter-2",
+            "Agent用量分析设计.md#chapter-3",
+            "Agent用量分析设计.md#chapter-4",
+            "Agent用量分析设计.md#chapter-5",
+            "Agent用量分析设计.md#chapter-6"
+          ]
+        }
+      ],
+      "functional_points": [
+        {
+          "key": "Agent用量分析设计-1",
+          "name": "时间范围、KPI与估算口径",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/Settings/AgentComparisonMatrixCard.swift",
+            "apps/macos/Sources/BruceApp/Settings/AgentUsageWorkbenchView.swift",
+            "apps/macos/Sources/BruceApp/Settings/CanonicalModelAnalyticsCard.swift",
+            "apps/macos/Sources/BruceApp/Settings/TimelineChartCard.swift",
+            "apps/macos/Sources/BruceApp/Settings/TokenCompositionCard.swift",
+            "apps/macos/Sources/BruceApp/SettingsView.swift",
+            "apps/macos/Sources/BruceAppCore/AnalyticsModels.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceAppCore/ModelNormalizer.swift",
+            "apps/macos/Sources/BruceOnboardingCore/BuiltinModelPricingCatalog.swift",
+            "apps/macos/Tests/Harnesses/PanelViewModelHarness/PanelViewModelHarness.swift",
+            "docs/devel/design/06-Agent用量分析与Token统计工作台.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#agent-analytics"
+          ],
+          "detail_article": "Agent用量分析设计.md",
+          "answer_sections": [
+            "Agent用量分析设计.md#time-kpi"
+          ],
+          "scenario_sections": [
+            "Agent用量分析设计.md#chapter-6"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_cbbda8c9-188a-4f71-9dc7-152a77890a10"
+            ]
+          },
+          "pending": []
+        },
+        {
+          "key": "Agent用量分析设计-2",
+          "name": "模型归一化与保留来源渠道",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/Settings/AgentComparisonMatrixCard.swift",
+            "apps/macos/Sources/BruceApp/Settings/AgentUsageWorkbenchView.swift",
+            "apps/macos/Sources/BruceApp/Settings/CanonicalModelAnalyticsCard.swift",
+            "apps/macos/Sources/BruceApp/Settings/TimelineChartCard.swift",
+            "apps/macos/Sources/BruceApp/Settings/TokenCompositionCard.swift",
+            "apps/macos/Sources/BruceApp/SettingsView.swift",
+            "apps/macos/Sources/BruceAppCore/AnalyticsModels.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceAppCore/ModelNormalizer.swift",
+            "apps/macos/Sources/BruceOnboardingCore/BuiltinModelPricingCatalog.swift",
+            "apps/macos/Tests/Harnesses/PanelViewModelHarness/PanelViewModelHarness.swift",
+            "docs/devel/design/06-Agent用量分析与Token统计工作台.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#agent-analytics"
+          ],
+          "detail_article": "Agent用量分析设计.md",
+          "answer_sections": [
+            "Agent用量分析设计.md#model-normalization"
+          ],
+          "scenario_sections": [
+            "Agent用量分析设计.md#chapter-6"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_cbbda8c9-188a-4f71-9dc7-152a77890a10"
+            ]
+          },
+          "pending": []
+        },
+        {
+          "key": "Agent用量分析设计-3",
+          "name": "时间桶和趋势系列派生",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/Settings/AgentComparisonMatrixCard.swift",
+            "apps/macos/Sources/BruceApp/Settings/AgentUsageWorkbenchView.swift",
+            "apps/macos/Sources/BruceApp/Settings/CanonicalModelAnalyticsCard.swift",
+            "apps/macos/Sources/BruceApp/Settings/TimelineChartCard.swift",
+            "apps/macos/Sources/BruceApp/Settings/TokenCompositionCard.swift",
+            "apps/macos/Sources/BruceApp/SettingsView.swift",
+            "apps/macos/Sources/BruceAppCore/AnalyticsModels.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceAppCore/ModelNormalizer.swift",
+            "apps/macos/Sources/BruceOnboardingCore/BuiltinModelPricingCatalog.swift",
+            "apps/macos/Tests/Harnesses/PanelViewModelHarness/PanelViewModelHarness.swift",
+            "docs/devel/design/06-Agent用量分析与Token统计工作台.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#agent-analytics"
+          ],
+          "detail_article": "Agent用量分析设计.md",
+          "answer_sections": [
+            "Agent用量分析设计.md#timeline-flow"
+          ],
+          "scenario_sections": [
+            "Agent用量分析设计.md#chapter-6"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3"
+            ]
+          },
+          "pending": []
+        },
+        {
+          "key": "Agent用量分析设计-4",
+          "name": "Agent及项目下钻和Token构成",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/Settings/AgentComparisonMatrixCard.swift",
+            "apps/macos/Sources/BruceApp/Settings/AgentUsageWorkbenchView.swift",
+            "apps/macos/Sources/BruceApp/Settings/CanonicalModelAnalyticsCard.swift",
+            "apps/macos/Sources/BruceApp/Settings/TimelineChartCard.swift",
+            "apps/macos/Sources/BruceApp/Settings/TokenCompositionCard.swift",
+            "apps/macos/Sources/BruceApp/SettingsView.swift",
+            "apps/macos/Sources/BruceAppCore/AnalyticsModels.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceAppCore/ModelNormalizer.swift",
+            "apps/macos/Sources/BruceOnboardingCore/BuiltinModelPricingCatalog.swift",
+            "apps/macos/Tests/Harnesses/PanelViewModelHarness/PanelViewModelHarness.swift",
+            "docs/devel/design/06-Agent用量分析与Token统计工作台.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#agent-analytics"
+          ],
+          "detail_article": "Agent用量分析设计.md",
+          "answer_sections": [
+            "Agent用量分析设计.md#analytics-display"
+          ],
+          "scenario_sections": [
+            "Agent用量分析设计.md#chapter-6"
+          ],
+          "figure_assessment": {
+            "needed": true,
+            "reason": "Focused embedded view shows the actual question; remaining field/formula constraints explained in prose",
+            "figure_ids": [
+              "d_cbbda8c9-188a-4f71-9dc7-152a77890a10",
+              "d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3"
+            ]
+          },
+          "pending": []
+        },
+        {
+          "key": "Agent用量分析设计-5",
+          "name": "探针重检与CSV/JSON导出",
+          "source_paths": [
+            "apps/macos/Sources/BruceApp/Settings/AgentComparisonMatrixCard.swift",
+            "apps/macos/Sources/BruceApp/Settings/AgentUsageWorkbenchView.swift",
+            "apps/macos/Sources/BruceApp/Settings/CanonicalModelAnalyticsCard.swift",
+            "apps/macos/Sources/BruceApp/Settings/TimelineChartCard.swift",
+            "apps/macos/Sources/BruceApp/Settings/TokenCompositionCard.swift",
+            "apps/macos/Sources/BruceApp/SettingsView.swift",
+            "apps/macos/Sources/BruceAppCore/AnalyticsModels.swift",
+            "apps/macos/Sources/BruceAppCore/AppModel.swift",
+            "apps/macos/Sources/BruceAppCore/ModelNormalizer.swift",
+            "apps/macos/Sources/BruceOnboardingCore/BuiltinModelPricingCatalog.swift",
+            "apps/macos/Tests/Harnesses/PanelViewModelHarness/PanelViewModelHarness.swift",
+            "docs/devel/design/06-Agent用量分析与Token统计工作台.md"
+          ],
+          "overall_sections": [
+            "Bruce设计文档.md#agent-analytics"
+          ],
+          "detail_article": "Agent用量分析设计.md",
+          "answer_sections": [
+            "Agent用量分析设计.md#export"
+          ],
+          "scenario_sections": [
+            "Agent用量分析设计.md#chapter-6"
+          ],
+          "figure_assessment": {
+            "needed": false,
+            "reason": "CSV/JSON 是单次选文件、编码与写入，取消和失败局部结束，无复杂重试或多参与者交接。",
+            "figure_ids": []
+          },
+          "pending": []
+        }
+      ],
+      "figure_assessment": {
+        "needed": true,
+        "reason": "Reviewed actual internal decisions, states, handoffs and data transformations against original source; required views embedded at answering sections",
+        "figure_ids": [
+          "d_cbbda8c9-188a-4f71-9dc7-152a77890a10",
+          "d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3"
+        ]
+      },
+      "pending": [],
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/Settings/AgentComparisonMatrixCard.swift",
+        "apps/macos/Sources/BruceApp/Settings/AgentUsageWorkbenchView.swift",
+        "apps/macos/Sources/BruceApp/Settings/CanonicalModelAnalyticsCard.swift",
+        "apps/macos/Sources/BruceApp/Settings/TimelineChartCard.swift",
+        "apps/macos/Sources/BruceApp/Settings/TokenCompositionCard.swift",
+        "apps/macos/Sources/BruceApp/SettingsView.swift",
+        "apps/macos/Sources/BruceAppCore/AnalyticsModels.swift",
+        "apps/macos/Sources/BruceAppCore/AppModel.swift",
+        "apps/macos/Sources/BruceAppCore/ModelNormalizer.swift",
+        "apps/macos/Sources/BruceOnboardingCore/BuiltinModelPricingCatalog.swift",
+        "apps/macos/Tests/Harnesses/PanelViewModelHarness/PanelViewModelHarness.swift",
+        "docs/devel/design/06-Agent用量分析与Token统计工作台.md"
+      ]
+    },
+    {
+      "path": "构建验证与发布.md",
+      "document_type": "deployment",
+      "reader_questions": [
+        {
+          "question": "本地验证、组包和 tag CI 如何交接？失败会留下什么产物？",
+          "source_paths": [
+            ".github/workflows/ci.yml",
+            ".gitignore",
+            "README.md",
+            "VERSION",
+            "apps/macos/Package.swift",
+            "docs/guide/01-本地部署指南.md",
+            "scripts/build-release-app.sh",
+            "scripts/build-test-app.sh",
+            "scripts/build-win-app.ps1",
+            "scripts/check-release-pipeline.mjs",
+            "scripts/release-notes.sh",
+            "scripts/runtime-manifest.zsh",
+            "scripts/upload-win-release.ps1",
+            "scripts/verify-local.sh",
+            "scripts/verify-rust.sh"
+          ],
+          "answer_sections": [
+            "构建验证与发布.md#chapter-3",
+            "构建验证与发布.md#tag-publish",
+            "构建验证与发布.md#chapter-6"
+          ]
+        }
+      ],
+      "functional_points": [],
+      "pending": [],
+      "outline": [
+        "1. 目标与范围",
+        "2. 环境与约束",
+        "3. 部署拓扑",
+        "4. 组件与配置",
+        "5. 部署与变更流程",
+        "6. 故障与恢复",
+        "7. 参考文献"
+      ],
+      "source_paths": [
+        ".github/workflows/ci.yml",
+        ".gitignore",
+        "README.md",
+        "VERSION",
+        "apps/macos/Package.swift",
+        "docs/guide/01-本地部署指南.md",
+        "scripts/build-release-app.sh",
+        "scripts/build-test-app.sh",
+        "scripts/build-win-app.ps1",
+        "scripts/check-release-pipeline.mjs",
+        "scripts/release-notes.sh",
+        "scripts/runtime-manifest.zsh",
+        "scripts/upload-win-release.ps1",
+        "scripts/verify-local.sh",
+        "scripts/verify-rust.sh"
+      ],
+      "figure_assessment": {
+        "needed": true,
+        "reason": "Reviewed actual internal decisions, states, handoffs and data transformations against original source; required views embedded at answering sections",
+        "figure_ids": [
+          "d_257519d2-e4c9-4ce5-b3ad-93159b88adf5"
+        ]
+      }
+    }
+  ]
+}

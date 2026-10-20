@@ -13,11 +13,11 @@
   "status": "current",
   "articles": [
     {
-      "path": "glossary.md",
+      "path": "术语表.md",
       "anchor": "pricing-table"
     },
     {
-      "path": "collector-local-usage.md"
+      "path": "本地会话解析与计费.md"
     }
   ],
   "sources": [

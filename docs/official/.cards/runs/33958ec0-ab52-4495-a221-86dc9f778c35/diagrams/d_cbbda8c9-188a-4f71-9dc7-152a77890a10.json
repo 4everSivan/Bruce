@@ -1,0 +1,159 @@
+{
+  "schema_version": "1.0",
+  "id": "d_cbbda8c9-188a-4f71-9dc7-152a77890a10",
+  "title": "分析模型归并数据流",
+  "type": "data_flow",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "artifact",
+      "label": "已解码 AgentUsageArtifact",
+      "role": "source",
+      "evidence_refs": [
+        "normalizer"
+      ]
+    },
+    {
+      "id": "range",
+      "label": "范围选择与缺失数据回退",
+      "role": "process",
+      "evidence_refs": [
+        "normalizer"
+      ]
+    },
+    {
+      "id": "key",
+      "label": "名称清理和别名归一",
+      "role": "process",
+      "evidence_refs": [
+        "normalizer"
+      ]
+    },
+    {
+      "id": "pricing",
+      "label": "内置价格与用户覆盖",
+      "role": "source",
+      "evidence_refs": [
+        "normalizer"
+      ]
+    },
+    {
+      "id": "aggregate",
+      "label": "累加主键与原渠道贡献\n费用沿用或按比例估算",
+      "role": "process",
+      "evidence_refs": [
+        "normalizer"
+      ]
+    },
+    {
+      "id": "output",
+      "label": "主模型汇总与来源树",
+      "role": "sink",
+      "evidence_refs": [
+        "normalizer"
+      ]
+    },
+    {
+      "id": "kpi",
+      "label": "KPI 与模型/Agent 视图",
+      "role": "sink",
+      "evidence_refs": [
+        "appmodel"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "r1",
+      "from": "artifact",
+      "to": "range",
+      "kind": "derives",
+      "evidence_refs": [
+        "normalizer"
+      ],
+      "properties": {
+        "data": "todayModels、models、modelMonths、daily"
+      },
+      "label": "todayModels、models、modelMonths、daily"
+    },
+    {
+      "id": "r2",
+      "from": "range",
+      "to": "key",
+      "kind": "derives",
+      "evidence_refs": [
+        "normalizer"
+      ],
+      "properties": {
+        "data": "所选原模型与Token"
+      },
+      "label": "所选原模型与Token"
+    },
+    {
+      "id": "r3",
+      "from": "key",
+      "to": "aggregate",
+      "kind": "derives",
+      "evidence_refs": [
+        "normalizer"
+      ],
+      "properties": {
+        "data": "canonicalKey 与来源身份"
+      },
+      "label": "canonicalKey 与来源身份"
+    },
+    {
+      "id": "r4",
+      "from": "pricing",
+      "to": "aggregate",
+      "kind": "derives",
+      "evidence_refs": [
+        "normalizer"
+      ],
+      "properties": {
+        "data": "有效输入输出价格"
+      },
+      "label": "有效输入输出价格"
+    },
+    {
+      "id": "r5",
+      "from": "aggregate",
+      "to": "output",
+      "kind": "derives",
+      "evidence_refs": [
+        "normalizer"
+      ],
+      "properties": {
+        "data": "总量、可选费用与份额"
+      },
+      "label": "总量、可选费用与份额"
+    },
+    {
+      "id": "r6",
+      "from": "output",
+      "to": "kpi",
+      "kind": "derives",
+      "evidence_refs": [
+        "appmodel"
+      ],
+      "properties": {
+        "data": "派生模型及来源列表"
+      },
+      "label": "派生模型及来源列表"
+    }
+  ],
+  "evidence": {
+    "normalizer": {
+      "path": "apps/macos/Sources/BruceAppCore/ModelNormalizer.swift",
+      "locator": "canonicalKey / aggregateCanonicalModels",
+      "kind": "static_implementation",
+      "supports": "窗口数据按优先级选取或比例回退，合并规范模型并保留渠道，独立取整和费用估算。"
+    },
+    "appmodel": {
+      "path": "apps/macos/Sources/BruceAppCore/AppModel.swift",
+      "locator": "canonicalModels / analyticsKPISummary / analyticsAgents",
+      "kind": "static_implementation",
+      "supports": "消费规范模型结果用于KPI费用和Agent模型下钻。"
+    }
+  }
+}
