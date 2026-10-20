@@ -80,7 +80,8 @@ package struct CredentialUpdateCoordinator: Sendable {
                     credentialStore: credentialStore
                 )
                 let index = try? store.loadIndex()
-                if let index, index.entry(for: update.accountId) != nil {
+                let existingEntry = index?.entry(for: update.accountId)
+                if existingEntry != nil || (providerID == .claude && update.accountId == "claude-cli") {
                     do {
                         let record = try store.loadRecord(for: update.accountId)
                         guard let merged = CredentialRotationMerge.mergedAccountJSON(
@@ -91,17 +92,12 @@ package struct CredentialUpdateCoordinator: Sendable {
                             result.skippedCount += 1
                             continue
                         }
-                        var updated = record ?? ProviderAccountRecord(
+                        let displayName = existingEntry?.displayName ?? "Claude CLI"
+                        try store.upsertAccount(
                             accountID: update.accountId,
-                            displayName: index.entry(for: update.accountId)?.displayName ?? update.accountId,
-                            credentialJSON: merged,
-                            authorizationState: .connected,
-                            updatedAt: Date()
+                            displayName: displayName,
+                            credentialJSON: merged
                         )
-                        updated.credentialJSON = merged
-                        updated.authorizationState = .connected
-                        updated.updatedAt = Date()
-                        try store.saveRecord(updated)
                         try store.updateAuthorizationState(.connected, for: update.accountId)
                         result.appliedCount += 1
                     } catch {

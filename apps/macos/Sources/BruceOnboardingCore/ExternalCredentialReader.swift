@@ -26,13 +26,16 @@ public struct SystemExternalCredentialReader: ExternalCredentialReader, Sendable
 
     private let homeURL: URL
     private let accessController: KeychainAccessController
+    private let securityExecutablePath: String
 
     public init(
         homeURL: URL,
-        accessController: KeychainAccessController
+        accessController: KeychainAccessController,
+        securityExecutablePath: String = "/usr/bin/security"
     ) {
         self.homeURL = homeURL
         self.accessController = accessController
+        self.securityExecutablePath = securityExecutablePath
     }
 
     public func read(
@@ -41,17 +44,24 @@ public struct SystemExternalCredentialReader: ExternalCredentialReader, Sendable
     ) throws -> String? {
         switch source {
         case .claudeCLI:
-            // C060 (与 cc-switch 同构): 每次读取无条件尝试 Keychain, 不再受
-            // externalSources 白名单 / state 门禁约束; UISkip 保证静默,
-            // 拦截时仅降级文件, 绝不唤起 SecurityAgent 弹窗。
-            if let keychain = try readClaudeKeychain() {
+            // 对齐 cc-switch: 每次读取无条件尝试 /usr/bin/security 外部进程静默读取,
+            // 避免进程内 SecItemCopyMatching 在 Ad-hoc/非官方签名 App 触碰外部 Keychain 项时
+            // 引发 macOS SecurityAgent 侵入式密码授权弹窗 (项目红线);
+            // 失败时静默回退至 ~/.claude/.credentials.json 与 ~/.claude.json.
+            if let keychain = readClaudeKeychain() {
                 return keychain
             }
-            return try readFile(
+            if let file1 = try readFile(
                 source: source,
                 url: homeURL.appendingPathComponent(
                     ".claude/.credentials.json"
                 )
+            ) {
+                return file1
+            }
+            return try readFile(
+                source: source,
+                url: homeURL.appendingPathComponent(".claude.json")
             )
         case .grokCLI:
             guard accessController.allows(
@@ -67,53 +77,59 @@ public struct SystemExternalCredentialReader: ExternalCredentialReader, Sendable
         }
     }
 
-    /// Claude CLI 外部 Keychain 项的无条件静默读取 (C060, 对照 cc-switch
+    /// Claude CLI 外部 Keychain 项的无条件静默读取 (对照 cc-switch
     /// `security find-generic-password -s "Claude Code-credentials" -w`).
-    /// - 条目不存在 / 被系统拦截 (锁定/ACL): 返回 nil 走文件回退;
-    /// - 拦截时不 markBlocked — 外部条目是可选来源, 不得污染 Bruce 自有存储策略;
-    /// - 强制 UISkip, 绝不唤起 SecurityAgent 弹窗 (项目红线)。
-    private func readClaudeKeychain() throws -> String? {
-        var query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: Self.claudeKeychainService,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        let context = LAContext()
-        context.interactionNotAllowed = true
-        query[kSecUseAuthenticationContext as String] = context
-        query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUISkip
-
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        if status == errSecItemNotFound {
+    /// - 通过 /usr/bin/security 执行读取, 绝不唤起 SecurityAgent 系统密码弹窗;
+    /// - 条目不存在 / 被系统拦截 (非 0 退出码): 静默返回 nil 走文件回退;
+    /// - 拦截时不 markBlocked — 外部条目是可选来源, 不得污染 Bruce 自有存储策略。
+    private func readClaudeKeychain() -> String? {
+        let securityURL = URL(fileURLWithPath: securityExecutablePath)
+        guard FileManager.default.isExecutableFile(atPath: securityURL.path) else {
             return nil
         }
-        guard status == errSecSuccess else {
-            if status == errSecInteractionNotAllowed
-                || status == errSecAuthFailed
-                || status == errSecUserCanceled {
+        let process = Process()
+        process.executableURL = securityURL
+        process.arguments = [
+            "find-generic-password",
+            "-s", Self.claudeKeychainService,
+            "-w",
+        ]
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else {
                 return nil
             }
-            throw ExternalCredentialError.readFailed(.claudeCLI, status)
+            let data = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+            guard let output = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+                !output.isEmpty
+            else {
+                return nil
+            }
+            return output
+        } catch {
+            return nil
         }
-        guard let data = result as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
     }
 
     private func readFile(
         source: KeychainExternalSource,
         url: URL
     ) throws -> String? {
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return nil
+        }
         do {
             let data = try Data(contentsOf: url)
             return String(data: data, encoding: .utf8)
-        } catch CocoaError.fileNoSuchFile {
+        } catch {
             return nil
-        }
-        catch {
-            // 不暴露路径或系统错误文本.
-            throw ExternalCredentialError.readFailed(source, errSecIO)
         }
     }
 }

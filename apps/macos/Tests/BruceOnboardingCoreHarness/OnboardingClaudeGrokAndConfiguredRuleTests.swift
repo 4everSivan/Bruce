@@ -120,6 +120,72 @@ extension BruceOnboardingCoreHarness {
         }
     }
 
+    /// SystemExternalCredentialReader: 静默子进程调用与文件回退 (绝不唤起系统密码弹窗).
+    static func systemExternalCredentialReaderMockAndFallback() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("system-reader-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        // 1. 模拟 /usr/bin/security 输出
+        let mockScript = dir.appendingPathComponent("mock-security.sh")
+        let scriptContent = """
+        #!/bin/sh
+        for arg in "$@"; do
+            if [ "$arg" = "Claude Code-credentials" ]; then
+                echo '{"claudeAiOauth":{"accessToken":"mock-access-token","refreshToken":"mock-refresh"}}'
+                exit 0
+            fi
+        done
+        exit 44
+        """
+        try scriptContent.write(to: mockScript, atomically: true, encoding: .utf8)
+        let perms: [FileAttributeKey: Any] = [.posixPermissions: 0o755]
+        try FileManager.default.setAttributes(perms, ofItemAtPath: mockScript.path)
+
+        let controller = KeychainAccessController()
+        let reader = SystemExternalCredentialReader(
+            homeURL: dir,
+            accessController: controller,
+            securityExecutablePath: mockScript.path
+        )
+
+        let readFromMock = try reader.read(source: .claudeCLI, intent: .automatic)
+        guard let output = readFromMock else {
+            throw CoreTestFailure.expectation("Mock security 执行应返回凭据")
+        }
+        try coreExpect(
+            output.contains("mock-access-token"),
+            "输出应包含 mock-access-token"
+        )
+
+        // 2. 模拟 security 失败时静默回退至本地文件
+        let failingScript = dir.appendingPathComponent("fail-security.sh")
+        try "#!/bin/sh\nexit 1\n".write(to: failingScript, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(perms, ofItemAtPath: failingScript.path)
+
+        let claudeDir = dir.appendingPathComponent(".claude", isDirectory: true)
+        try FileManager.default.createDirectory(at: claudeDir, withIntermediateDirectories: true)
+        let credFile = claudeDir.appendingPathComponent(".credentials.json")
+        try #"{"claudeAiOauth":{"accessToken":"file-fallback-token"}}"#.write(
+            to: credFile, atomically: true, encoding: .utf8
+        )
+
+        let fallbackReader = SystemExternalCredentialReader(
+            homeURL: dir,
+            accessController: controller,
+            securityExecutablePath: failingScript.path
+        )
+        let readFromFile = try fallbackReader.read(source: .claudeCLI, intent: .automatic)
+        guard let fileOutput = readFromFile else {
+            throw CoreTestFailure.expectation("security 失败时应静默回退至文件")
+        }
+        try coreExpect(
+            fileOutput.contains("file-fallback-token"),
+            "输出应包含 file-fallback-token"
+        )
+    }
+
     /// ClaudeCLIImporter: fixture 文件读取并规范化.
     static func claudeCLIImporterReadsFixture() throws {
         let dir = FileManager.default.temporaryDirectory

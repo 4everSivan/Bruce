@@ -65,8 +65,34 @@ public enum CredentialRotationMerge {
             let token = tokens["access_token"] ?? tokens["refresh_token"]
             return token
 
-        case .claude, .grok, .opencodeGo:
-            // claudeAiOauth / scope 映射同构 JSON, 直接合并顶层
+        case .claude:
+            var root: [String: Any] = [:]
+            if let existingCredentialJSON,
+               let data = existingCredentialJSON.data(using: .utf8),
+               let object = try? JSONSerialization.jsonObject(with: data),
+               let dict = object as? [String: Any] {
+                root = dict
+            }
+            for (key, value) in tokens { root[key] = value }
+            if var oauth = (root["claudeAiOauth"] as? [String: Any]) {
+                if let access = tokens["access_token"] { oauth["accessToken"] = access }
+                if let refresh = tokens["refresh_token"] { oauth["refreshToken"] = refresh }
+                if let expiry = tokens["expiry"], let secs = Double(expiry) {
+                    oauth["expiresAt"] = Int64(secs * 1000)
+                }
+                root["claudeAiOauth"] = oauth
+            } else if var oauth = (root["claude.ai_oauth"] as? [String: Any]) {
+                if let access = tokens["access_token"] { oauth["accessToken"] = access }
+                if let refresh = tokens["refresh_token"] { oauth["refreshToken"] = refresh }
+                if let expiry = tokens["expiry"], let secs = Double(expiry) {
+                    oauth["expiresAt"] = Int64(secs * 1000)
+                }
+                root["claude.ai_oauth"] = oauth
+            }
+            return Self.jsonString(from: root)
+
+        case .grok, .opencodeGo:
+            // scope 映射同构 JSON, 直接合并顶层
             var root: [String: Any] = [:]
             if let existingCredentialJSON,
                let data = existingCredentialJSON.data(using: .utf8),
