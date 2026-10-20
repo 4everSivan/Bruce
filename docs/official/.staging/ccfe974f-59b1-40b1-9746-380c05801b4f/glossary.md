@@ -1,0 +1,91 @@
+# 术语表
+
+这里收录理解 Bruce 采集契约、费用口径和桌面刷新所需的项目术语。相同名称在不同平台可能承担不同状态责任，阅读时应保留下面的适用范围。
+
+<a id="bridge"></a>
+
+## Bridge
+
+Collector 与桌面宿主之间的受控请求和响应契约。macOS 通过 stdin/stdout 传输；Windows 将相同请求序列化后在进程内调用 run_bytes_panic_safe。校验由 Rust 类型、字段白名单与专门校验逻辑完成。
+
+依据：[`core/collector/crates/collector-bridge/src/lib.rs`](../../core/collector/crates/collector-bridge/src/lib.rs) 的 `run_bytes_panic_safe`；[`CollectorRunner.swift`](../../apps/macos/Sources/BruceAppCore/CollectorRunner.swift) 的 `SystemCollectorProcessLauncher.launch()`；[`apps/win/src-tauri/src/collector.rs`](../../apps/win/src-tauri/src/collector.rs) 的 `run_configured_collection()`。
+
+<a id="artifact"></a>
+
+## AgentUsageArtifact
+
+Collector 输出的用量与订阅数据对象。位于 BridgeResponse.artifact，携带 agents、services 与 totalCostUsd；凭据更新和挑战属于响应封套，不是该展示对象。
+
+依据：[`core/collector/crates/collector-domain/src/lib.rs`](../../core/collector/crates/collector-domain/src/lib.rs) 的 `AgentUsageArtifact`、`BridgeResponse`。
+
+<a id="collection-window"></a>
+
+## CollectionWindow
+
+一次采集共用的日期、时区和天数边界。from_context 解析 timezone、days 与 now；默认 UTC、14 天，允许 1 至 366 天。桌面宿主可以显式请求不同天数。
+
+依据：[`core/collector/crates/collector-domain/src/lib.rs`](../../core/collector/crates/collector-domain/src/lib.rs) 的 `CollectionWindow::from_context`。
+
+<a id="token-bucket"></a>
+
+## TokenBucket
+
+记录普通输入、输出、缓存读取和缓存创建四类 Token 的聚合桶。total 汇总四类；display_input 将普通输入与两类缓存相加。比较 today.input 与趋势输入时，需要保留两者的口径差异。
+
+依据：[`core/collector/crates/collector-domain/src/lib.rs`](../../core/collector/crates/collector-domain/src/lib.rs) 的 `TokenBucket`；[`collector-aggregate/src/lib.rs`](../../core/collector/crates/collector-aggregate/src/lib.rs) 的 `UsageAccumulator::finalize_with_pricing()`。
+
+<a id="pricing-table"></a>
+
+## PricingTable
+
+将模型名称解析到可用参考单价的价格规则集合。resolve 结合用户覆盖与内置基准价格；未知且无完整覆盖的模型没有价格。calculate_cost 计算本地参考费用，不做汇率换算。
+
+依据：[`core/collector/crates/collector-domain/src/pricing.rs`](../../core/collector/crates/collector-domain/src/pricing.rs) 的 `PricingTable::resolve; calculate_cost`。
+
+<a id="artifact-store"></a>
+
+## ArtifactStore
+
+macOS 应用校验、持久化和恢复模块 Artifact 的存储组件。按模块保存当前快照和 previous，并维护独立元数据；publish 在写入前校验 Artifact，界面通过宿主状态消费快照。
+
+依据：[`apps/macos/Sources/BruceAppCore/ArtifactStore.swift`](../../apps/macos/Sources/BruceAppCore/ArtifactStore.swift) 的 `ArtifactStore.publish`。
+
+<a id="refresh-scheduler"></a>
+
+## RefreshScheduler
+
+macOS 接收刷新触发、维护调度状态并控制执行的组件。它持有计时、待处理意图和运行任务，将单次工作交给 RefreshExecutionPipeline，再把结果映射到调度状态与回调。
+
+依据：[`apps/macos/Sources/BruceAppCore/RefreshScheduler.swift`](../../apps/macos/Sources/BruceAppCore/RefreshScheduler.swift) 的 `RefreshScheduler`。
+
+<a id="refresh-pipeline"></a>
+
+## RefreshExecutionPipeline
+
+macOS 单次刷新的输入、恢复和发布编排。run 依次解析输入、读旧快照、采集、执行可选 Codex 恢复和 finalize，再应用凭据更新、发布 Artifact、生成预警候选；不持有周期定时状态。
+
+依据：[`apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift`](../../apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift) 的 `RefreshExecutionPipeline.run; finishPublishablePath`。
+
+<a id="snapshot-state"></a>
+
+## SnapshotState
+
+Windows 壳内保存 Artifact、阶段、诊断和最后成功时间的快照状态。begin_refresh 保留既有 Artifact；失败时有 Artifact 则为 stale，否则为 failed。有效响应根据 success 或 partial 更新阶段，磁盘恢复的数据标为陈旧。
+
+依据：[`apps/win/src-tauri/src/runtime_core.rs`](../../apps/win/src-tauri/src/runtime_core.rs) 的 `SnapshotState`。
+
+<a id="daimon-widget"></a>
+
+## DaimonWidget
+
+独立 Widget 页面使用的宿主事件接口。页面注册 onDataChange、onStatusChange、onThemeChange，读取回调中的 data.main；页面自身不负责采集或订阅请求。
+
+依据：[`apps/widget/index.html`](../../apps/widget/index.html) 的 `DaimonWidget event registration`。
+
+## 相关文档
+
+- [系统设计](system-design.md)：将术语放回模块与数据责任中理解。
+- [刷新生命周期](refresh-lifecycle.md)：查看调度、快照与凭据更新之间的顺序。
+
+最后更新：2026-10-18
+

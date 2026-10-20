@@ -5,7 +5,7 @@
   "project": {
     "name": "Bruce"
   },
-  "library_revision": 1,
+  "library_revision": 2,
   "effective_config": {
     "source_roots": [
       "."
@@ -23,6 +23,7 @@
       ".github/workflows/ci.yml",
       ".gitignore",
       "AGENTS.md",
+      "CHANGELOG.md",
       "README.md",
       "VERSION",
       "apps/macos/Package.swift",
@@ -34,7 +35,11 @@
       "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
       "apps/macos/Sources/BruceApp/QuotaAlertNotifier.swift",
       "apps/macos/Sources/BruceApp/Settings/ClaudeProviderSettingsSection.swift",
+      "apps/macos/Sources/BruceApp/Settings/ModelPricingSettingsView.swift",
+      "apps/macos/Sources/BruceApp/SettingsView.swift",
       "apps/macos/Sources/BruceApp/SubscriptionService.swift",
+      "apps/macos/Sources/BruceApp/Views/HourlyLineCard.swift",
+      "apps/macos/Sources/BruceApp/Views/UsageHeroCard.swift",
       "apps/macos/Sources/BruceAppCore/AppModel.swift",
       "apps/macos/Sources/BruceAppCore/AppRuntime.swift",
       "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift",
@@ -45,9 +50,14 @@
       "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
       "apps/macos/Sources/BruceAppCore/CredentialUpdateCoordinator.swift",
       "apps/macos/Sources/BruceAppCore/DashboardPanelAnimationPolicy.swift",
+      "apps/macos/Sources/BruceAppCore/DashboardPanelPlacement.swift",
       "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift",
+      "apps/macos/Sources/BruceAppCore/MenuBarMetrics.swift",
+      "apps/macos/Sources/BruceAppCore/MenuBarStatusItemContent.swift",
+      "apps/macos/Sources/BruceAppCore/NetworkReachability.swift",
       "apps/macos/Sources/BruceAppCore/PanelViewModel.swift",
       "apps/macos/Sources/BruceAppCore/QuotaAlertEvaluator.swift",
+      "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
       "apps/macos/Sources/BruceAppCore/RefreshBackoffPolicy.swift",
       "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
       "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
@@ -67,6 +77,10 @@
       "apps/macos/Tests/BruceOnboardingCoreHarness/KeychainAccessPolicyTests.swift",
       "apps/macos/Tests/BruceOnboardingCoreHarness/OnboardingClaudeGrokAndConfiguredRuleTests.swift",
       "apps/macos/Tests/Harnesses/NativeLifecycleHarness/NativeLifecycleHarness.swift",
+      "apps/macos/Tests/Harnesses/RefreshSchedulerHarness/RefreshSchedulerCoreTests.swift",
+      "apps/macos/Tests/Harnesses/RefreshSchedulerHarness/RefreshSchedulerHarness.swift",
+      "apps/macos/Tests/Harnesses/RefreshSchedulerHarness/RefreshSchedulerHarnessSupport.swift",
+      "apps/macos/Tests/Harnesses/SubscriptionCredentialsHarness/SubscriptionCredentialsHarness.swift",
       "apps/widget/index.html",
       "apps/win/src-tauri/src/alerts.rs",
       "apps/win/src-tauri/src/collector.rs",
@@ -119,6 +133,9 @@
       "docs/devel/change/C009.json",
       "docs/devel/change/C012.json",
       "docs/devel/change/C060.json",
+      "docs/devel/change/C061.json",
+      "docs/devel/change/C062.json",
+      "docs/devel/change/index.json",
       "docs/devel/design/00-系统总体设计.md",
       "docs/devel/design/01-数据采集与多模型计费引擎.md",
       "docs/devel/design/02-订阅额度与凭据安全存储.md",
@@ -185,43 +202,93 @@
     "pending": []
   },
   "documents": {
-    "README.md": {
-      "source_paths": [],
-      "card_ids": [],
+    "macOS原生应用设计.md": {
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+        "apps/macos/Sources/BruceApp/ApplicationLifecycle.swift",
+        "apps/macos/Sources/BruceApp/BruceApp.swift",
+        "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "apps/macos/Sources/BruceAppCore/AppModel.swift",
+        "apps/macos/Sources/BruceAppCore/AppRuntime.swift",
+        "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift",
+        "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+        "apps/macos/Sources/BruceAppCore/DashboardPanelAnimationPolicy.swift",
+        "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift",
+        "apps/macos/Sources/BruceAppCore/PanelViewModel.swift",
+        "apps/macos/Sources/BruceAppCore/SubscriptionMapping.swift",
+        "apps/macos/Sources/BruceAppCore/UsageMapping.swift",
+        "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+        "apps/macos/Tests/Harnesses/NativeLifecycleHarness/NativeLifecycleHarness.swift",
+        "docs/devel/design/04-设置中心与价格校准交互.md"
+      ],
+      "card_ids": [
+        "k_2d2834af-6729-4556-aea8-bf46fefc2e9f"
+      ],
       "figure_ids": [],
-      "verified_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "1cfb6a0ae71b9bcb247d9c2abd3ad21f76b3b2de53dae69e7738a05b3b0a21ca"
+        "value": "af247bae7063ca68cdb1221201d107242ccb0a4ce9cae9f459693c1a5c8b6c31"
       }
     },
-    "build-release.md": {
+    "刷新生命周期设计.md": {
       "source_paths": [
-        ".github/workflows/ci.yml",
-        ".gitignore",
-        "README.md",
-        "VERSION",
-        "apps/macos/Package.swift",
-        "docs/guide/01-本地部署指南.md",
-        "scripts/build-release-app.sh",
-        "scripts/build-test-app.sh",
-        "scripts/build-win-app.ps1",
-        "scripts/check-release-pipeline.mjs",
-        "scripts/release-notes.sh",
-        "scripts/runtime-manifest.zsh",
-        "scripts/upload-win-release.ps1",
-        "scripts/verify-local.sh",
-        "scripts/verify-rust.sh"
+        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+        "apps/macos/Sources/BruceApp/BruceApp.swift",
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "apps/macos/Sources/BruceApp/QuotaAlertNotifier.swift",
+        "apps/macos/Sources/BruceAppCore/AppModel.swift",
+        "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift",
+        "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+        "apps/macos/Sources/BruceAppCore/NetworkReachability.swift",
+        "apps/macos/Sources/BruceAppCore/QuotaAlertEvaluator.swift",
+        "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshBackoffPolicy.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshTypes.swift"
+      ],
+      "card_ids": [
+        "k_2cbdfd96-ee67-4e9c-8d9c-609c0b4830be",
+        "k_2d2834af-6729-4556-aea8-bf46fefc2e9f",
+        "k_964595ab-af80-4c1c-9078-0d3b11c51456"
+      ],
+      "figure_ids": [
+        "d_04caaf2e-14be-4711-904e-1faa0b4a797b",
+        "d_856cccba-17f1-402f-b8d2-d03c0c7de2e6",
+        "d_a41b7373-2867-4803-820c-c1bba0c5fe64"
+      ],
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "99072c21b585890da83275e60b9d343244e4ce190a1e649a9d80d9f6ee44e4c1"
+      }
+    },
+    "订阅额度查询设计.md": {
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+        "core/collector/crates/collector-application/src/account.rs",
+        "core/collector/crates/collector-application/src/execution.rs",
+        "core/collector/crates/collector-application/src/lib.rs",
+        "core/collector/crates/collector-bridge/src/lib.rs",
+        "core/collector/crates/collector-credential/src/lib.rs",
+        "core/collector/crates/collector-provider/src/lib.rs",
+        "core/collector/crates/collector-runtime/src/lib.rs",
+        "docs/devel/design/02-订阅额度与凭据安全存储.md"
       ],
       "card_ids": [],
       "figure_ids": [],
-      "verified_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "e98d957b876f1f9636929a54f64a504aad24988781c18fa1a4a3e8e6ab5cbfce"
+        "value": "80be2d95fe61ae72d8a4b202097e25f82fd08c1b02b83301f674eb681134d9fd"
       }
     },
-    "collector-design.md": {
+    "采集引擎与本地用量设计.md": {
       "source_paths": [
         "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
         "apps/win/src-tauri/src/collector.rs",
@@ -245,88 +312,13 @@
       "figure_ids": [
         "d_1ae57d61-4db4-468c-b17b-5258dd915895"
       ],
-      "verified_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "cdd53919c8efb62139fc668848da24f9b923f30e2a6ae09a69cc88ad03536995"
+        "value": "5d2ef52a96abeb18040d86da89a37c1284929fe94fb5a6e49db4f661d9ee58c2"
       }
     },
-    "collector-local-usage.md": {
-      "source_paths": [
-        "core/collector/crates/collector-aggregate/src/lib.rs",
-        "core/collector/crates/collector-application/src/aggregation.rs",
-        "core/collector/crates/collector-application/src/lib.rs",
-        "core/collector/crates/collector-application/src/paths.rs",
-        "core/collector/crates/collector-domain/src/lib.rs",
-        "core/collector/crates/collector-domain/src/pricing.rs",
-        "core/collector/crates/collector-local/src/jsonl_cache.rs",
-        "core/collector/crates/collector-local/src/lib.rs",
-        "core/collector/crates/collector-local/src/sources.rs",
-        "core/collector/crates/collector-local/src/sqlite_cache.rs",
-        "docs/devel/design/01-数据采集与多模型计费引擎.md"
-      ],
-      "card_ids": [
-        "k_4946a527-e50e-4c5e-88c3-020ab7bd06f7",
-        "k_5ffd7ed6-34f6-46fb-b4db-e061bdb4a36d",
-        "k_85c33776-d921-4e7a-b1f9-0a90455f8135"
-      ],
-      "figure_ids": [],
-      "verified_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
-      "content_hash": {
-        "algorithm": "sha256",
-        "value": "26122862b5f22d73af7b47d1db69cbf2bb806d0650469e108ff1306204204693"
-      }
-    },
-    "collector-provider-quota.md": {
-      "source_paths": [
-        "core/collector/crates/collector-application/src/account.rs",
-        "core/collector/crates/collector-application/src/execution.rs",
-        "core/collector/crates/collector-application/src/lib.rs",
-        "core/collector/crates/collector-bridge/src/lib.rs",
-        "core/collector/crates/collector-credential/src/lib.rs",
-        "core/collector/crates/collector-provider/src/lib.rs",
-        "core/collector/crates/collector-runtime/src/lib.rs",
-        "docs/devel/design/02-订阅额度与凭据安全存储.md"
-      ],
-      "card_ids": [],
-      "figure_ids": [],
-      "verified_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
-      "content_hash": {
-        "algorithm": "sha256",
-        "value": "77b648c6058ee90ba206db05bdfcf802b15b61579391b81af08516b3335c5a5f"
-      }
-    },
-    "credentials-design.md": {
-      "source_paths": [
-        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
-        "apps/macos/Sources/BruceApp/BruceApp.swift",
-        "apps/macos/Sources/BruceApp/LocalCredentialProbe.swift",
-        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
-        "apps/macos/Sources/BruceApp/Settings/ClaudeProviderSettingsSection.swift",
-        "apps/macos/Sources/BruceApp/SubscriptionService.swift",
-        "apps/macos/Sources/BruceAppCore/AppModel.swift",
-        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
-        "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
-        "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
-        "apps/macos/Sources/BruceOnboardingCore/CodexTokenManager.swift",
-        "apps/macos/Sources/BruceOnboardingCore/CollectorActivationGate.swift",
-        "apps/macos/Sources/BruceOnboardingCore/ExternalCredentialReader.swift",
-        "apps/macos/Sources/BruceOnboardingCore/KeychainAccessPolicy.swift",
-        "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
-        "apps/macos/Sources/BruceOnboardingCore/ProviderRegistry.swift",
-        "apps/macos/Sources/BruceOnboardingCore/SubscriptionCredentialImport.swift",
-        "apps/macos/Tests/BruceOnboardingCoreHarness/OnboardingClaudeGrokAndConfiguredRuleTests.swift",
-        "docs/devel/change/C060.json"
-      ],
-      "card_ids": [],
-      "figure_ids": [],
-      "verified_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
-      "content_hash": {
-        "algorithm": "sha256",
-        "value": "bdcbaf0dc939b4916699ecc16a45bb31f0413d6cd24baa1b06f64fb43e8c21ec"
-      }
-    },
-    "glossary.md": {
+    "术语表.md": {
       "source_paths": [
         "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
         "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
@@ -353,109 +345,23 @@
         "k_964595ab-af80-4c1c-9078-0d3b11c51456"
       ],
       "figure_ids": [],
-      "verified_in": "7a682a9a-3ef8-45f8-b095-7ce903e71818",
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "e921317625d03336aa96a4345a782d47343db8591b7987b763aac4bef31118bf"
+        "value": "ebd305711e018303804d81e2ac462bd65984a5e9e61e18fc0aa7d54a3297fcd4"
       }
     },
-    "macos-design.md": {
-      "source_paths": [
-        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
-        "apps/macos/Sources/BruceApp/ApplicationLifecycle.swift",
-        "apps/macos/Sources/BruceApp/BruceApp.swift",
-        "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
-        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
-        "apps/macos/Sources/BruceAppCore/AppModel.swift",
-        "apps/macos/Sources/BruceAppCore/AppRuntime.swift",
-        "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift",
-        "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
-        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
-        "apps/macos/Sources/BruceAppCore/DashboardPanelAnimationPolicy.swift",
-        "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift",
-        "apps/macos/Sources/BruceAppCore/PanelViewModel.swift",
-        "apps/macos/Sources/BruceAppCore/SubscriptionMapping.swift",
-        "apps/macos/Sources/BruceAppCore/UsageMapping.swift",
-        "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
-        "apps/macos/Tests/Harnesses/NativeLifecycleHarness/NativeLifecycleHarness.swift",
-        "docs/devel/design/04-设置中心与价格校准交互.md"
-      ],
-      "card_ids": [
-        "k_2d2834af-6729-4556-aea8-bf46fefc2e9f"
-      ],
+    "README.md": {
+      "source_paths": [],
+      "card_ids": [],
       "figure_ids": [],
-      "verified_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "ef3235749c484ac50233d4d96c9cc84cd0a0d67b443b552c85ac7bcb8552f723"
+        "value": "2ea57b3f3dd104df44288c1e6930c14d533444c904fe65ebff49bf9ad1716f23"
       }
     },
-    "refresh-lifecycle.md": {
-      "source_paths": [
-        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
-        "apps/macos/Sources/BruceApp/BruceApp.swift",
-        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
-        "apps/macos/Sources/BruceApp/QuotaAlertNotifier.swift",
-        "apps/macos/Sources/BruceAppCore/AppModel.swift",
-        "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift",
-        "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
-        "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
-        "apps/macos/Sources/BruceAppCore/QuotaAlertEvaluator.swift",
-        "apps/macos/Sources/BruceAppCore/RefreshBackoffPolicy.swift",
-        "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
-        "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
-        "apps/macos/Sources/BruceAppCore/RefreshTypes.swift"
-      ],
-      "card_ids": [
-        "k_2cbdfd96-ee67-4e9c-8d9c-609c0b4830be",
-        "k_2d2834af-6729-4556-aea8-bf46fefc2e9f",
-        "k_964595ab-af80-4c1c-9078-0d3b11c51456"
-      ],
-      "figure_ids": [
-        "d_04caaf2e-14be-4711-904e-1faa0b4a797b",
-        "d_856cccba-17f1-402f-b8d2-d03c0c7de2e6"
-      ],
-      "verified_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
-      "content_hash": {
-        "algorithm": "sha256",
-        "value": "79d8c8ce874f332f09694917ecb54fcd5d9a96befa115c7be39e1c951b77383b"
-      }
-    },
-    "system-design.md": {
-      "source_paths": [
-        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
-        "apps/macos/Sources/BruceApp/BruceApp.swift",
-        "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
-        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
-        "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
-        "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
-        "apps/widget/index.html",
-        "apps/win/src-tauri/src/collector.rs",
-        "apps/win/src-tauri/src/lib.rs",
-        "apps/win/src-tauri/src/main.rs",
-        "apps/win/src-tauri/src/runtime_core.rs",
-        "apps/win/src-tauri/src/scheduler.rs",
-        "core/collector/crates/collector-application/src/lib.rs",
-        "core/collector/crates/collector-bridge/src/lib.rs",
-        "core/collector/crates/collector-domain/src/lib.rs",
-        "docs/devel/change/C060.json",
-        "docs/devel/design/00-系统总体设计.md",
-        "docs/devel/design/05-Windows平台适配.md",
-        "docs/devel/todo/now.md"
-      ],
-      "card_ids": [
-        "k_7fd110f8-bb21-4c74-912c-c9297513c53b"
-      ],
-      "figure_ids": [
-        "d_a20b6df3-7589-475f-8573-b4269438f480"
-      ],
-      "verified_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
-      "content_hash": {
-        "algorithm": "sha256",
-        "value": "a30b03e2671346f4e5f8b3617e8d26136d0d3a5f7ef5c3db5c63825b971551e9"
-      }
-    },
-    "widget-design.md": {
+    "Widget设计.md": {
       "source_paths": [
         "apps/widget/index.html",
         "scripts/runtime-manifest.zsh",
@@ -465,13 +371,39 @@
         "k_4df7935b-560a-4dae-bd4b-a15bb1598015"
       ],
       "figure_ids": [],
-      "verified_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "af9b53870258809473f307d8e8972090ea50af88640a3823efdc6f2a9da6cb0e"
+        "value": "c8073ba9dd28a8963f7300c1d37a1a8fdca41b245e45b93976336ae2e37db642"
       }
     },
-    "windows-design.md": {
+    "本地会话解析与计费.md": {
+      "source_paths": [
+        "core/collector/crates/collector-aggregate/src/lib.rs",
+        "core/collector/crates/collector-application/src/aggregation.rs",
+        "core/collector/crates/collector-application/src/lib.rs",
+        "core/collector/crates/collector-application/src/paths.rs",
+        "core/collector/crates/collector-domain/src/lib.rs",
+        "core/collector/crates/collector-domain/src/pricing.rs",
+        "core/collector/crates/collector-local/src/jsonl_cache.rs",
+        "core/collector/crates/collector-local/src/lib.rs",
+        "core/collector/crates/collector-local/src/sources.rs",
+        "core/collector/crates/collector-local/src/sqlite_cache.rs",
+        "docs/devel/design/01-数据采集与多模型计费引擎.md"
+      ],
+      "card_ids": [
+        "k_4946a527-e50e-4c5e-88c3-020ab7bd06f7",
+        "k_5ffd7ed6-34f6-46fb-b4db-e061bdb4a36d",
+        "k_85c33776-d921-4e7a-b1f9-0a90455f8135"
+      ],
+      "figure_ids": [],
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "2efc08268d252b3afe2a9da07b2ab84a8b249025ebb2cfd1cfd4664abd579805"
+      }
+    },
+    "Windows应用设计.md": {
       "source_paths": [
         "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
         "apps/win/src-tauri/src/alerts.rs",
@@ -506,13 +438,179 @@
         "k_939717db-c182-4a5d-bb9b-b8416cccd9f6"
       ],
       "figure_ids": [],
-      "verified_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "204f2a38bd3c91187f773ee2ca89d704a065aef3087de43e3492fb5c9bdaf740"
+        "value": "9be8831abf0eeddb56568d5d4b1f801c73b721718880f1e3d6a46493b2b5e0da"
       }
     },
-    "windows-state-mapping.md": {
+    "订阅配置与凭据管理设计.md": {
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+        "apps/macos/Sources/BruceApp/BruceApp.swift",
+        "apps/macos/Sources/BruceApp/LocalCredentialProbe.swift",
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "apps/macos/Sources/BruceApp/Settings/ClaudeProviderSettingsSection.swift",
+        "apps/macos/Sources/BruceApp/SubscriptionService.swift",
+        "apps/macos/Sources/BruceAppCore/AppModel.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+        "apps/macos/Sources/BruceOnboardingCore/CodexTokenManager.swift",
+        "apps/macos/Sources/BruceOnboardingCore/CollectorActivationGate.swift",
+        "apps/macos/Sources/BruceOnboardingCore/ExternalCredentialReader.swift",
+        "apps/macos/Sources/BruceOnboardingCore/KeychainAccessPolicy.swift",
+        "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+        "apps/macos/Sources/BruceOnboardingCore/ProviderRegistry.swift",
+        "apps/macos/Sources/BruceOnboardingCore/SubscriptionCredentialImport.swift",
+        "apps/macos/Tests/BruceOnboardingCoreHarness/OnboardingClaudeGrokAndConfiguredRuleTests.swift",
+        "docs/devel/change/C060.json"
+      ],
+      "card_ids": [],
+      "figure_ids": [],
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "aaaf64fa5d5dae258ce966976b385de05b3b110d43a59740651910d4b3f4e9e1"
+      }
+    },
+    "Bruce设计文档.md": {
+      "source_paths": [
+        ".github/workflows/ci.yml",
+        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+        "apps/macos/Sources/BruceApp/BruceApp.swift",
+        "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "apps/macos/Sources/BruceApp/SettingsView.swift",
+        "apps/macos/Sources/BruceAppCore/AppModel.swift",
+        "apps/macos/Sources/BruceAppCore/ApplicationLifecycleCore.swift",
+        "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+        "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift",
+        "apps/macos/Sources/BruceAppCore/NetworkReachability.swift",
+        "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+        "apps/macos/Sources/BruceOnboardingCore/ExternalCredentialReader.swift",
+        "apps/macos/Sources/BruceOnboardingCore/SubscriptionCredentialImport.swift",
+        "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+        "apps/widget/index.html",
+        "apps/win/src-tauri/src/collector.rs",
+        "apps/win/src-tauri/src/lib.rs",
+        "apps/win/src-tauri/src/main.rs",
+        "apps/win/src-tauri/src/runtime_core.rs",
+        "apps/win/src-tauri/src/scheduler.rs",
+        "apps/win/viewmodel/src/lib.rs",
+        "core/collector/crates/collector-aggregate/src/lib.rs",
+        "core/collector/crates/collector-application/src/account.rs",
+        "core/collector/crates/collector-application/src/lib.rs",
+        "core/collector/crates/collector-bridge/src/lib.rs",
+        "core/collector/crates/collector-domain/src/lib.rs",
+        "core/collector/crates/collector-domain/src/pricing.rs",
+        "docs/devel/change/C060.json",
+        "docs/devel/change/index.json",
+        "docs/devel/design/00-系统总体设计.md",
+        "docs/devel/design/02-订阅额度与凭据安全存储.md",
+        "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+        "docs/devel/design/04-设置中心与价格校准交互.md",
+        "docs/devel/design/05-Windows平台适配.md",
+        "docs/devel/todo/now.md",
+        "docs/guide/01-本地部署指南.md",
+        "scripts/build-test-app.sh",
+        "scripts/runtime-manifest.zsh",
+        "scripts/verify-local.sh"
+      ],
+      "card_ids": [
+        "k_7fd110f8-bb21-4c74-912c-c9297513c53b"
+      ],
+      "figure_ids": [
+        "d_a20b6df3-7589-475f-8573-b4269438f480"
+      ],
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "ba29daf5945492f835acd22f71bf1bb4e7bc37ddc727fb485b150fa18f0872fa"
+      }
+    },
+    "设置中心与价格校准设计.md": {
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "apps/macos/Sources/BruceApp/Settings/ModelPricingSettingsView.swift",
+        "apps/macos/Sources/BruceApp/SettingsView.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+        "apps/macos/Sources/BruceAppCore/MenuBarMetrics.swift",
+        "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+        "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+        "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+        "apps/win/src-tauri/src/settings.rs",
+        "apps/win/src/settings.js",
+        "core/collector/crates/collector-domain/src/pricing.rs",
+        "docs/devel/design/04-设置中心与价格校准交互.md",
+        "docs/devel/design/05-Windows平台适配.md"
+      ],
+      "card_ids": [],
+      "figure_ids": [],
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "8152cd895479ef8e72c2e75e643e42214207ec6d19008346d6220db6a200ef58"
+      }
+    },
+    "构建验证与发布.md": {
+      "source_paths": [
+        ".github/workflows/ci.yml",
+        ".gitignore",
+        "README.md",
+        "VERSION",
+        "apps/macos/Package.swift",
+        "docs/guide/01-本地部署指南.md",
+        "scripts/build-release-app.sh",
+        "scripts/build-test-app.sh",
+        "scripts/build-win-app.ps1",
+        "scripts/check-release-pipeline.mjs",
+        "scripts/release-notes.sh",
+        "scripts/runtime-manifest.zsh",
+        "scripts/upload-win-release.ps1",
+        "scripts/verify-local.sh",
+        "scripts/verify-rust.sh"
+      ],
+      "card_ids": [],
+      "figure_ids": [],
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "58e0ba35b57a667eab330419c144bbecaf241a84b3a0e134a3c1a47289149c51"
+      }
+    },
+    "菜单栏与看板设计.md": {
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/ApplicationLifecycle.swift",
+        "apps/macos/Sources/BruceApp/DashboardGlassPanelController.swift",
+        "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+        "apps/macos/Sources/BruceApp/Views/HourlyLineCard.swift",
+        "apps/macos/Sources/BruceApp/Views/UsageHeroCard.swift",
+        "apps/macos/Sources/BruceAppCore/AppModel.swift",
+        "apps/macos/Sources/BruceAppCore/DashboardPanelAnimationPolicy.swift",
+        "apps/macos/Sources/BruceAppCore/DashboardPanelPlacement.swift",
+        "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift",
+        "apps/macos/Sources/BruceAppCore/MenuBarMetrics.swift",
+        "apps/macos/Sources/BruceAppCore/MenuBarStatusItemContent.swift",
+        "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+        "docs/devel/design/03-菜单栏状态与多风格原生渲染.md"
+      ],
+      "card_ids": [],
+      "figure_ids": [
+        "d_76549499-2760-425c-8c1f-f23edea8f412"
+      ],
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "8c4eb00a357a1a4f2b294ed9beb9a3b5674a4ea7210ccb2072a522ec1f1179e1"
+      }
+    },
+    "Windows快照与刷新状态.md": {
       "source_paths": [
         "apps/win/src-tauri/src/alerts.rs",
         "apps/win/src-tauri/src/lib.rs",
@@ -529,68 +627,23 @@
       "figure_ids": [
         "d_084f9330-301b-4613-bcd3-1cf561127e93"
       ],
-      "verified_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "53a3e68389fc97a1b1011ba9ab2e1badba28172410f6cbd48c7677973ccbab53"
+        "value": "0851427672dd9891e2b6874c138be9bd92efd8bf617ae1c04b9759dd27be0a80"
       }
     }
   },
   "cards": {
-    "k_2cbdfd96-ee67-4e9c-8d9c-609c0b4830be": {
-      "path": ".cards/k_2cbdfd96-ee67-4e9c-8d9c-609c0b4830be.json",
+    "k_964595ab-af80-4c1c-9078-0d3b11c51456": {
+      "path": ".cards/k_964595ab-af80-4c1c-9078-0d3b11c51456.json",
       "source_paths": [
-        "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift"
+        "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift"
       ],
-      "verified_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "9100e190516986488cf04343c53bb4f92fadfef9c0e951cba6a8009c79214185"
-      }
-    },
-    "k_2d2834af-6729-4556-aea8-bf46fefc2e9f": {
-      "path": ".cards/k_2d2834af-6729-4556-aea8-bf46fefc2e9f.json",
-      "source_paths": [
-        "apps/macos/Sources/BruceAppCore/ArtifactStore.swift"
-      ],
-      "verified_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
-      "content_hash": {
-        "algorithm": "sha256",
-        "value": "2dfc27445616ab95fd1148ead548cf98394bec6a223142a963b97df143b644ba"
-      }
-    },
-    "k_4946a527-e50e-4c5e-88c3-020ab7bd06f7": {
-      "path": ".cards/k_4946a527-e50e-4c5e-88c3-020ab7bd06f7.json",
-      "source_paths": [
-        "core/collector/crates/collector-aggregate/src/lib.rs",
-        "core/collector/crates/collector-domain/src/lib.rs"
-      ],
-      "verified_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
-      "content_hash": {
-        "algorithm": "sha256",
-        "value": "092c7348fdb3e07a56d214c67b594b04d9670c42c131965292e3671d7a67d369"
-      }
-    },
-    "k_4df7935b-560a-4dae-bd4b-a15bb1598015": {
-      "path": ".cards/k_4df7935b-560a-4dae-bd4b-a15bb1598015.json",
-      "source_paths": [
-        "apps/widget/index.html"
-      ],
-      "verified_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
-      "content_hash": {
-        "algorithm": "sha256",
-        "value": "1f9cc2739ae34eda25331d7a03a67797ab4d023f4be5c8ecd07419bb1a2e8394"
-      }
-    },
-    "k_5ffd7ed6-34f6-46fb-b4db-e061bdb4a36d": {
-      "path": ".cards/k_5ffd7ed6-34f6-46fb-b4db-e061bdb4a36d.json",
-      "source_paths": [
-        "core/collector/crates/collector-domain/src/lib.rs"
-      ],
-      "verified_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
-      "content_hash": {
-        "algorithm": "sha256",
-        "value": "8fe8f3f060e64d87fd5519a32a28284233b212fe51385105a0522f5c618c1e7d"
+        "value": "d8f2d26d26d5d08a77e7e33f4b8198e690b109b11c05ef3b8fc8de9525c4842e"
       }
     },
     "k_6a0c0f49-1e7b-4a84-af5c-ccb295ec829f": {
@@ -598,10 +651,10 @@
       "source_paths": [
         "apps/win/src-tauri/src/runtime_core.rs"
       ],
-      "verified_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "cbb8f8ea6287b7042006d7d9664ce474bd9dd6471c6616994afe5054708cfd29"
+        "value": "d9e8428822f1e5a0a7274b46a42886b4c9a733b392a85d09b16493edf9ea6bb9"
       }
     },
     "k_7fd110f8-bb21-4c74-912c-c9297513c53b": {
@@ -609,21 +662,21 @@
       "source_paths": [
         "core/collector/crates/collector-domain/src/lib.rs"
       ],
-      "verified_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "7f1ec50c2db6db96f224a71eab03e4019eb2afac42002506853497118373b081"
+        "value": "fa88ab641e74e61e634b61107ebaecdd124403b61eb919c4f194cc8362833d86"
       }
     },
-    "k_85c33776-d921-4e7a-b1f9-0a90455f8135": {
-      "path": ".cards/k_85c33776-d921-4e7a-b1f9-0a90455f8135.json",
+    "k_2cbdfd96-ee67-4e9c-8d9c-609c0b4830be": {
+      "path": ".cards/k_2cbdfd96-ee67-4e9c-8d9c-609c0b4830be.json",
       "source_paths": [
-        "core/collector/crates/collector-domain/src/pricing.rs"
+        "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift"
       ],
-      "verified_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "cb53699a0d616a18dc1f426b07f373823c8f7856ebdfae954491f321185a198c"
+        "value": "e12a54a4b8423a40c5a557142bc34760149d9279995c1bdaf1d595657d866d63"
       }
     },
     "k_939717db-c182-4a5d-bb9b-b8416cccd9f6": {
@@ -633,21 +686,66 @@
         "apps/win/src-tauri/src/collector.rs",
         "core/collector/crates/collector-bridge/src/lib.rs"
       ],
-      "verified_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "d3d6af93b33b07600e9bbd220e4199a102b79d535037ce30444d24bce6fb5122"
+        "value": "40d671037d18eb6838684cc7ab483b5822573745d162bf9e98c9658886c039f7"
       }
     },
-    "k_964595ab-af80-4c1c-9078-0d3b11c51456": {
-      "path": ".cards/k_964595ab-af80-4c1c-9078-0d3b11c51456.json",
+    "k_85c33776-d921-4e7a-b1f9-0a90455f8135": {
+      "path": ".cards/k_85c33776-d921-4e7a-b1f9-0a90455f8135.json",
       "source_paths": [
-        "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift"
+        "core/collector/crates/collector-domain/src/pricing.rs"
       ],
-      "verified_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "188f2683b2eec521b04793ba3cdb55309fa95bc259abc0e0e7ca45868ffd0950"
+        "value": "9528c9b14cc150b4fd4e9ae0e179b41e6524fee0e0bc03ad4412c91eb7c629d3"
+      }
+    },
+    "k_5ffd7ed6-34f6-46fb-b4db-e061bdb4a36d": {
+      "path": ".cards/k_5ffd7ed6-34f6-46fb-b4db-e061bdb4a36d.json",
+      "source_paths": [
+        "core/collector/crates/collector-domain/src/lib.rs"
+      ],
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "aa41bac8962c1e60b8c5c5397ddd2cc64f70b93f69e0e12d85eb29a9cecec91a"
+      }
+    },
+    "k_4df7935b-560a-4dae-bd4b-a15bb1598015": {
+      "path": ".cards/k_4df7935b-560a-4dae-bd4b-a15bb1598015.json",
+      "source_paths": [
+        "apps/widget/index.html"
+      ],
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "7edf33ff5475762464da190635937637a1ccaa32dcb167f8c9f582d23701928d"
+      }
+    },
+    "k_4946a527-e50e-4c5e-88c3-020ab7bd06f7": {
+      "path": ".cards/k_4946a527-e50e-4c5e-88c3-020ab7bd06f7.json",
+      "source_paths": [
+        "core/collector/crates/collector-aggregate/src/lib.rs",
+        "core/collector/crates/collector-domain/src/lib.rs"
+      ],
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "a3bfc9c29a7da027b94e9ec6313ad62a67c44b276173b771aa2c08b15f1781d8"
+      }
+    },
+    "k_2d2834af-6729-4556-aea8-bf46fefc2e9f": {
+      "path": ".cards/k_2d2834af-6729-4556-aea8-bf46fefc2e9f.json",
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/ArtifactStore.swift"
+      ],
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "404ad280273d2e9e30245590661dea275bbdf9e282389fcca141c53ba497e540"
       }
     }
   },
@@ -655,9 +753,9 @@
     "d_a20b6df3-7589-475f-8573-b4269438f480": {
       "svg_path": "docs/assets/km/system-architecture.svg",
       "semantic_path": "docs/official/.cards/diagrams/d_a20b6df3-7589-475f-8573-b4269438f480.json",
-      "owner_article": "system-design.md",
+      "owner_article": "Bruce设计文档.md",
       "article_paths": [
-        "system-design.md"
+        "Bruce设计文档.md"
       ],
       "source_paths": [
         "apps/macos/Sources/BruceApp/BruceApp.swift",
@@ -669,7 +767,7 @@
         "apps/win/src-tauri/src/scheduler.rs",
         "core/collector/crates/collector-application/src/lib.rs"
       ],
-      "verified_in": "7a682a9a-3ef8-45f8-b095-7ce903e71818",
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hashes": {
         "svg": {
           "algorithm": "sha256",
@@ -681,35 +779,35 @@
         }
       }
     },
-    "d_856cccba-17f1-402f-b8d2-d03c0c7de2e6": {
-      "svg_path": "docs/assets/km/refresh-sequence.svg",
-      "semantic_path": "docs/official/.cards/diagrams/d_856cccba-17f1-402f-b8d2-d03c0c7de2e6.json",
-      "owner_article": "refresh-lifecycle.md",
+    "d_76549499-2760-425c-8c1f-f23edea8f412": {
+      "svg_path": "docs/assets/km/dashboard-toggle-state.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_76549499-2760-425c-8c1f-f23edea8f412.json",
+      "owner_article": "菜单栏与看板设计.md",
       "article_paths": [
-        "refresh-lifecycle.md"
+        "菜单栏与看板设计.md"
       ],
       "source_paths": [
-        "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
-        "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift"
+        "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+        "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift"
       ],
-      "verified_in": "7a682a9a-3ef8-45f8-b095-7ce903e71818",
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hashes": {
         "svg": {
           "algorithm": "sha256",
-          "value": "606ebc2bd54eb8431f37feb6d6b6dd3019ae71fcad9f276e8de04a9ad40b23a6"
+          "value": "a0af43c52af7aeaf59339d9d5139a005efcc8224989de218543852301a648302"
         },
         "semantic": {
           "algorithm": "sha256",
-          "value": "1fd28cbbf5bc6ca22226259738dd56b3351e1e47dacdf2abbad99dc0ac3aa306"
+          "value": "e9ee75e3bb7af8dd963c2f0908a737b5c8fefb03debe77b163c2626f963d0fe0"
         }
       }
     },
     "d_1ae57d61-4db4-468c-b17b-5258dd915895": {
       "svg_path": "docs/assets/km/collector-flow.svg",
       "semantic_path": "docs/official/.cards/diagrams/d_1ae57d61-4db4-468c-b17b-5258dd915895.json",
-      "owner_article": "collector-design.md",
+      "owner_article": "采集引擎与本地用量设计.md",
       "article_paths": [
-        "collector-design.md"
+        "采集引擎与本地用量设计.md"
       ],
       "source_paths": [
         "core/collector/bin/Bruce-collector/src/main.rs",
@@ -719,30 +817,30 @@
         "core/collector/crates/collector-domain/src/lib.rs",
         "core/collector/crates/collector-runtime/src/lib.rs"
       ],
-      "verified_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hashes": {
         "svg": {
           "algorithm": "sha256",
-          "value": "1e81b6614ea0b6e6fb5a9a909e823caa02d17db64a2782e647251af2245fe15e"
+          "value": "49cb3691085d982dd599ed72be15d9f79cdc4070f5c8bdd4ae786ade4d6e7a50"
         },
         "semantic": {
           "algorithm": "sha256",
-          "value": "250abf9c5e2462017848fd51146513fdd430c319046b742e4bf3855c436045da"
+          "value": "6506955a6a99e50fd317d6b8b86c4e085873b25ff386657aa60492a8a99f8443"
         }
       }
     },
     "d_084f9330-301b-4613-bcd3-1cf561127e93": {
       "svg_path": "docs/assets/km/windows-snapshot-state.svg",
       "semantic_path": "docs/official/.cards/diagrams/d_084f9330-301b-4613-bcd3-1cf561127e93.json",
-      "owner_article": "windows-state-mapping.md",
+      "owner_article": "Windows快照与刷新状态.md",
       "article_paths": [
-        "windows-state-mapping.md"
+        "Windows快照与刷新状态.md"
       ],
       "source_paths": [
         "apps/win/src-tauri/src/runtime_core.rs",
         "apps/win/src-tauri/src/scheduler.rs"
       ],
-      "verified_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hashes": {
         "svg": {
           "algorithm": "sha256",
@@ -754,26 +852,72 @@
         }
       }
     },
+    "d_856cccba-17f1-402f-b8d2-d03c0c7de2e6": {
+      "svg_path": "docs/assets/km/refresh-sequence.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_856cccba-17f1-402f-b8d2-d03c0c7de2e6.json",
+      "owner_article": "刷新生命周期设计.md",
+      "article_paths": [
+        "刷新生命周期设计.md"
+      ],
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift"
+      ],
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
+      "content_hashes": {
+        "svg": {
+          "algorithm": "sha256",
+          "value": "507664b69b48c82e7cd42e66dbb50c708ab91f25b7a2f310ebf39e93612780d6"
+        },
+        "semantic": {
+          "algorithm": "sha256",
+          "value": "a2c1746f9a6fed90d125ac5c022a6359a0707b35041bb8284f13ead28d3365a6"
+        }
+      }
+    },
     "d_04caaf2e-14be-4711-904e-1faa0b4a797b": {
       "svg_path": "docs/assets/km/macos-scheduler-state.svg",
       "semantic_path": "docs/official/.cards/diagrams/d_04caaf2e-14be-4711-904e-1faa0b4a797b.json",
-      "owner_article": "refresh-lifecycle.md",
+      "owner_article": "刷新生命周期设计.md",
       "article_paths": [
-        "refresh-lifecycle.md"
+        "刷新生命周期设计.md"
       ],
       "source_paths": [
         "apps/macos/Sources/BruceAppCore/RefreshBackoffPolicy.swift",
         "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift"
       ],
-      "verified_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hashes": {
         "svg": {
           "algorithm": "sha256",
-          "value": "64f2ce923286b76a479f6cbac108895f7f18d5a47c8d9af343f154bd1ce39594"
+          "value": "137db6d21d002d8f3addd3aa9f6c741442731d6039d5043770a7384d559f599b"
         },
         "semantic": {
           "algorithm": "sha256",
-          "value": "e28df802c3fef35735b6c81e1811e1dfcc3d6a40339a71845a7b38314d3ff735"
+          "value": "087432c6cc68624aac34641eb6781a12d5b4a98714a771f33d6f7c2a831e53c4"
+        }
+      }
+    },
+    "d_a41b7373-2867-4803-820c-c1bba0c5fe64": {
+      "svg_path": "docs/assets/km/offline-refresh-gate.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_a41b7373-2867-4803-820c-c1bba0c5fe64.json",
+      "owner_article": "刷新生命周期设计.md",
+      "article_paths": [
+        "刷新生命周期设计.md"
+      ],
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/NetworkReachability.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift"
+      ],
+      "verified_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
+      "content_hashes": {
+        "svg": {
+          "algorithm": "sha256",
+          "value": "2b9108f9e662a068f05e2c0fce8a69a1d2aa861c51089c70854d3b32957d1fdd"
+        },
+        "semantic": {
+          "algorithm": "sha256",
+          "value": "b03bd43c3d3d4579555ac0f21183e14f873f233fc40616b1336bf31b17a6f4cd"
         }
       }
     }
@@ -812,12 +956,12 @@
     "CHANGELOG.md": {
       "kind": "document",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "68378b90d8e2458e4328c64560260c0402880c5ef3fcf4d26c5d3873b86c3eb5"
+        "value": "defbbf52a459a6bc13f1bfaf09e1de813dc5739943bfd91f76381add4990faab"
       },
-      "review_scope": "inventory_only"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "LICENSE": {
       "kind": "config",
@@ -832,22 +976,22 @@
     "README.md": {
       "kind": "document",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "9ce5a5d4ec7d1e026396672b6cc0e26eb659627df8e2a69f301b372a1ca1cc88"
+        "value": "53444ec6e8a621289c0ae655e351e9739781f77154333226ee5269d4b83b5200"
       },
-      "review_scope": "source_sections"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "VERSION": {
       "kind": "config",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "8a932413d42f95082f8323447652379a4885e328329efca3a67ec9c793c09940"
+        "value": "f6ee69bf1c4b27a242266ccb5aeb4aa8c8306345b9ebe4ff7335b8c940452b81"
       },
-      "review_scope": "source_sections"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "adflow.config.json": {
       "kind": "config",
@@ -972,12 +1116,12 @@
     "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift": {
       "kind": "code",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
         "value": "7908e4a4b22807fb242a80a18beae8c12c0e506d824acb71e72906d4135c5ec7"
       },
-      "review_scope": "source_sections"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "apps/macos/Sources/BruceApp/ApplicationLifecycle.swift": {
       "kind": "code",
@@ -992,12 +1136,12 @@
     "apps/macos/Sources/BruceApp/BruceApp.swift": {
       "kind": "code",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "dccbc4d237f079b6d5b9af361abc0984ddd4cfa10cb50d70f4557877ee1ce657"
+        "value": "181ef97f06dfc44bfb7bdd5e0a2d0f8443f5020634446d2433823e0827d9ea41"
       },
-      "review_scope": "source_sections"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "apps/macos/Sources/BruceApp/DashboardGlassPanelController.swift": {
       "kind": "code",
@@ -1062,12 +1206,12 @@
     "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift": {
       "kind": "code",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
         "value": "726c895d502b52f7e69e6e2527bf9568b74f9b9c0c1cfad1652c28b363d4f71c"
       },
-      "review_scope": "source_sections"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "apps/macos/Sources/BruceApp/MenuBarViews.swift": {
       "kind": "code",
@@ -1092,12 +1236,12 @@
     "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift": {
       "kind": "code",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
         "value": "c5d7cf581d3618d5077db8bb6b115354ca58f525c0f6119f1bd1809227bbbceb"
       },
-      "review_scope": "source_sections"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "apps/macos/Sources/BruceApp/QuotaAlertNotifier.swift": {
       "kind": "code",
@@ -1162,12 +1306,12 @@
     "apps/macos/Sources/BruceApp/Settings/ModelPricingSettingsView.swift": {
       "kind": "code",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
         "value": "94cc180ee68c7c1ed93115e811a993d3c72b4970b7129ec5154474026a965207"
       },
-      "review_scope": "inventory_only"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "apps/macos/Sources/BruceApp/Settings/OfficialLocalProviderSettingsSection.swift": {
       "kind": "code",
@@ -1222,12 +1366,12 @@
     "apps/macos/Sources/BruceApp/SettingsView.swift": {
       "kind": "code",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "84eabc8ee177762a2d2f251fd557f456fb59f4ce0fecbc07510a3c6c13f9eb93"
+        "value": "da08debb88f7d7e8034fecb8e0a212338bef60449ee4f546e44ad53807754fca"
       },
-      "review_scope": "inventory_only"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "apps/macos/Sources/BruceApp/SubscriptionService.swift": {
       "kind": "code",
@@ -1242,12 +1386,12 @@
     "apps/macos/Sources/BruceApp/Views/HourlyLineCard.swift": {
       "kind": "code",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
         "value": "e3b3e7df15c21a9efd608c1795cc9da1989051d405575f03294e00f13a369832"
       },
-      "review_scope": "inventory_only"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "apps/macos/Sources/BruceApp/Views/PanelCardContainer.swift": {
       "kind": "code",
@@ -1282,12 +1426,12 @@
     "apps/macos/Sources/BruceApp/Views/UsageHeroCard.swift": {
       "kind": "code",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
         "value": "e6875d2a219ee4c767a5925334e81a80e6c7afa1caddb4153e12313109317528"
       },
-      "review_scope": "inventory_only"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "apps/macos/Sources/BruceAppCore/AppModel.swift": {
       "kind": "code",
@@ -1402,12 +1546,12 @@
     "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift": {
       "kind": "code",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "05d6547e3265120b45b9043a3496a406eced5b4547d32aa7d7e516dc5edecb28"
+        "value": "0a7ae560f381d97aefdba02a0b41f13622e72ea3e92b177fd19ea11362664bb9"
       },
-      "review_scope": "source_sections"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "apps/macos/Sources/BruceAppCore/CollectorRunner.swift": {
       "kind": "code",
@@ -1432,32 +1576,32 @@
     "apps/macos/Sources/BruceAppCore/DashboardPanelAnimationPolicy.swift": {
       "kind": "code",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
         "value": "f39fd7a47054116173421b60299b9f99950a23d6fa1a92f54520acb87ae722b4"
       },
-      "review_scope": "source_sections"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "apps/macos/Sources/BruceAppCore/DashboardPanelPlacement.swift": {
       "kind": "code",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
         "value": "3591fcdedf55eed4a15921d36af81679ee11e85fbbf6548ad572b5f4076cd2a2"
       },
-      "review_scope": "inventory_only"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift": {
       "kind": "code",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
         "value": "9f0eea2751c546aba797da4b18475ec06455ed62ff5ea980c6b39c1edd8559ac"
       },
-      "review_scope": "source_sections"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "apps/macos/Sources/BruceAppCore/Diagnostics.swift": {
       "kind": "code",
@@ -1472,22 +1616,22 @@
     "apps/macos/Sources/BruceAppCore/MenuBarMetrics.swift": {
       "kind": "code",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
         "value": "b9c6d2bd53b5c75894df494ae5858a3263126fda871ae81ab1963ef4b91dcf7b"
       },
-      "review_scope": "inventory_only"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "apps/macos/Sources/BruceAppCore/MenuBarStatusItemContent.swift": {
       "kind": "code",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
         "value": "7f07161ff3729cb8c76fd9a086a5c399ea512c1115ac95020fb2aba5f20c45db"
       },
-      "review_scope": "inventory_only"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "apps/macos/Sources/BruceAppCore/PanelModels.swift": {
       "kind": "code",
@@ -1572,32 +1716,32 @@
     "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift": {
       "kind": "code",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "95a11a91b2655c675f8b9a456fc14f82ab2d486eb78cca8530d745e9c959bd33"
+        "value": "fc9d4405324fe68fa15e10317dd9cdfcce3cdd79bfad2fc64bca23586d51868a"
       },
-      "review_scope": "source_sections"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift": {
       "kind": "code",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "2007fad9ba784b86801a57b700c11bf29833627e7994c591ee6b655adf87f69d"
+        "value": "d75621c6283cf49afbb203647ff5d773f3ab2cd8c9f787ed7e4d8acbe3580548"
       },
-      "review_scope": "source_sections"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "apps/macos/Sources/BruceAppCore/RefreshTypes.swift": {
       "kind": "code",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "c179c4de9b9507192de06e0cd22e1b9cd3f2206d9b9ca8016c627b98564f673a"
+        "value": "0bf4f2d9f01a1963baa5ef1a9870d9009febb9c59d8028d0c6672cd6e8ba1707"
       },
-      "review_scope": "source_sections"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "apps/macos/Sources/BruceAppCore/SVGPathBuilder.swift": {
       "kind": "code",
@@ -1872,12 +2016,12 @@
     "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift": {
       "kind": "code",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
         "value": "5f43270d9a129e297a7cf9e7fb1a173ad5d6f4559e766b82e33f8b558fcdcc58"
       },
-      "review_scope": "source_sections"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "apps/macos/Sources/BruceOnboardingCore/OnboardingModels.swift": {
       "kind": "code",
@@ -1972,12 +2116,12 @@
     "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift": {
       "kind": "code",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
         "value": "2daa969282fa73085b834bcccbd9119e4478e32748f73c166ee467f32973c41c"
       },
-      "review_scope": "source_sections"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "apps/macos/Tests/BruceOnboardingCoreHarness/BruceOnboardingCoreHarness.swift": {
       "kind": "test",
@@ -2242,32 +2386,32 @@
     "apps/macos/Tests/Harnesses/RefreshSchedulerHarness/RefreshSchedulerCoreTests.swift": {
       "kind": "test",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "0adce7ed92b7e7873423f34d39188858f84ea5b28c71f94beff7f089884cc415"
+        "value": "5ea6522c8d3f4e816262fe0efa7b5bd811f9e2f433bc387936adbb1eaed3f27f"
       },
-      "review_scope": "inventory_only"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "apps/macos/Tests/Harnesses/RefreshSchedulerHarness/RefreshSchedulerHarness.swift": {
       "kind": "test",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "00483a1e802869dd09d91d960a87d807752b8097a4fb6f92f06df4d83e6e7486"
+        "value": "02f3890da91bba521554c084750811a9f82879c63122ecc4851e30773105b976"
       },
-      "review_scope": "inventory_only"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "apps/macos/Tests/Harnesses/RefreshSchedulerHarness/RefreshSchedulerHarnessSupport.swift": {
       "kind": "test",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "0e127bba5cb9fde267ca60558eaa5540988fe7528d87ae1e2f105d1bf448b865"
+        "value": "da80d9deaf4eb894cebd64fa4c796188b05772769e0ad6706f5454f50a944e42"
       },
-      "review_scope": "inventory_only"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "apps/macos/Tests/Harnesses/RefreshSchedulerHarness/RefreshSchedulerMergerTests.swift": {
       "kind": "test",
@@ -2322,12 +2466,12 @@
     "apps/macos/Tests/Harnesses/SubscriptionCredentialsHarness/SubscriptionCredentialsHarness.swift": {
       "kind": "test",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "6279f565cf83755a0fc37d4f7859012562e62cdc7ba753ee92d97328f5727373"
+        "value": "e2e5956a6883c53a87f3bbe2e2acb60f922f94001ca49a46d6ea48f14a7543e3"
       },
-      "review_scope": "inventory_only"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "apps/macos/Tests/Harnesses/SubscriptionRefreshControlHarness/SubscriptionRefreshControlHarness.swift": {
       "kind": "test",
@@ -2612,12 +2756,12 @@
     "apps/win/src-tauri/tauri.conf.json": {
       "kind": "config",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "ad1ddf918a7e06691e83608dc45cc37f5410b5712f0d62a9cdea8f523ef4def0"
+        "value": "8c43001aa31792a0d3b926ff72a56c1a6c471dc7940cc66a12266ec827d75054"
       },
-      "review_scope": "source_sections"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "apps/win/src-tauri/tests/alerts_coverage.rs": {
       "kind": "test",
@@ -2722,12 +2866,12 @@
     "apps/win/src/settings.js": {
       "kind": "code",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
         "value": "f0b2f047b217c5e16d9cd831f46efc870447abbc40bc16b7ab8cf20bf716f89d"
       },
-      "review_scope": "source_sections"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "apps/win/src/styles.css": {
       "kind": "code",
@@ -3032,12 +3176,12 @@
     "core/collector/crates/collector-application/src/account.rs": {
       "kind": "code",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "1743ff425277b0b42bac1d21c234284b17841b0705a25009428c7c35bf395a20"
+        "value": "797bdc4e4b4a4a8665ebde400c10457c713e3db162606d155c68ff5e173807f1"
       },
-      "review_scope": "source_sections"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "core/collector/crates/collector-application/src/aggregation.rs": {
       "kind": "code",
@@ -3072,12 +3216,12 @@
     "core/collector/crates/collector-application/src/lib.rs": {
       "kind": "code",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "450fe36016c102bfe4c819b744f4a8a5fdceea8f958f754644c9fe75cc852c96"
+        "value": "63be7815c9de828bc02d654b649a57a083cc7c5685378d951b8e26e1425e5885"
       },
-      "review_scope": "source_sections"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "core/collector/crates/collector-application/src/paths.rs": {
       "kind": "code",
@@ -3102,12 +3246,12 @@
     "core/collector/crates/collector-bridge/src/lib.rs": {
       "kind": "code",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "825479f85c82fc891e0baabdddbb591d65079713003357726a79a05cf9d7342d"
+        "value": "2dca341ea53e27d9944b2e4c236c1437d377ec5cd2b7b5b57f43d3edee519918"
       },
-      "review_scope": "source_sections"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "core/collector/crates/collector-bridge/src/metrics.rs": {
       "kind": "code",
@@ -3162,12 +3306,12 @@
     "core/collector/crates/collector-domain/src/pricing.rs": {
       "kind": "code",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
         "value": "3c6d2dde139fdb0b07dac6d307fd3e1d475edd9c38af70ab144623aeb1f31f8d"
       },
-      "review_scope": "source_sections"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "core/collector/crates/collector-local/Cargo.toml": {
       "kind": "config",
@@ -4282,12 +4426,12 @@
     "docs/devel/change/index.json": {
       "kind": "config",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "d18077fd357751bfba60643a701dfe379f6caf72306462d178ba799d995ad3db"
+        "value": "95f024d6a8c02df6e435ae21d2c1051037f601f38a2b76aefb5ca3312fddd179"
       },
-      "review_scope": "inventory_only"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "docs/devel/change/template.json": {
       "kind": "config",
@@ -4302,62 +4446,62 @@
     "docs/devel/design/00-系统总体设计.md": {
       "kind": "document",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
         "value": "06ddb00847493f6e39489252e284380d5677582901c79c15f253d807c949ed47"
       },
-      "review_scope": "source_sections"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "docs/devel/design/01-数据采集与多模型计费引擎.md": {
       "kind": "document",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
         "value": "24e77a0aa1cd851c98ab07d95da7738fd45941dd1a78fbe516cc6d85c6eba359"
       },
-      "review_scope": "source_sections"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "docs/devel/design/02-订阅额度与凭据安全存储.md": {
       "kind": "document",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "8495c46b7feb08ff2f573e46e7dc08b2290f21f4811f115534abba104bb875d8"
+        "value": "b6423fa5090e82dd6ccdb7dfd50cfbae3b16a4813f63be702a84bb3726b51cbf"
       },
-      "review_scope": "source_sections"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "docs/devel/design/03-菜单栏状态与多风格原生渲染.md": {
       "kind": "document",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
         "value": "6ebcfff64cfa8869a9522a5121927460bdfab5cf8f61c1f1011392d3b7b4f599"
       },
-      "review_scope": "source_sections"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "docs/devel/design/04-设置中心与价格校准交互.md": {
       "kind": "document",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
         "value": "1f4fcc5eabe6fa82a4e806b762aaef7af832cb682c9c2c61c61c3e7bf0fe6475"
       },
-      "review_scope": "source_sections"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "docs/devel/design/05-Windows平台适配.md": {
       "kind": "document",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
         "value": "9f5766dc8fd0b691b9eafd9547b80f3198dd054c2e5161d60706f9f1c424e77b"
       },
-      "review_scope": "source_sections"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "docs/devel/design/README.md": {
       "kind": "document",
@@ -4472,12 +4616,12 @@
     "docs/devel/todo/now.md": {
       "kind": "document",
       "available": true,
-      "last_read_in": "ccfe974f-59b1-40b1-9746-380c05801b4f",
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "8f2401cd56444ddfce0e84dd14d9965bbd433fae603fc4a2aaba7182b652b759"
+        "value": "83d87c4c42f6eef042cd42344a1028abd1dbfaae3555ba1b78abbd4e5f0bd7d6"
       },
-      "review_scope": "source_sections"
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     },
     "docs/guide/01-本地部署指南.md": {
       "kind": "document",
@@ -4988,6 +5132,46 @@
         "value": "fc197992e074b986e68daec4c700e4ae6efabde596df28b840a8841326e78011"
       },
       "review_scope": "inventory_only"
+    },
+    "apps/macos/Sources/BruceAppCore/NetworkReachability.swift": {
+      "kind": "code",
+      "available": true,
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "26be13de99fe542557055934ecc553d4f1f61596d7ae4b89eb13482d82374241"
+      },
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
+    },
+    "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift": {
+      "kind": "code",
+      "available": true,
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "15a3d6ba7cf6c458fd7f67676678da4223dbfce7f58c3bf8b6ed379dd1b58cc2"
+      },
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
+    },
+    "docs/devel/change/C061.json": {
+      "kind": "document",
+      "available": true,
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "fe46d107b9a3dab0d21a76a55b03c295bef2bc84b9b741d315bfe1c6f761ba91"
+      },
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
+    },
+    "docs/devel/change/C062.json": {
+      "kind": "document",
+      "available": true,
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "f185ce778db63eb6bfe90f75220a9f48c86654edce71fd6dd6e98eea3b123323"
+      },
+      "last_read_in": "722e8074-a29b-4f6e-9307-0eb5d003e6ce",
+      "review_scope": "current source sections/diffs; source hash recheck, not runtime execution"
     }
   },
   "verification_batches": {
@@ -5370,6 +5554,161 @@
           "required": false,
           "scope": "candidate",
           "evidence": "No Bruce software test, build, credential access or deployment executed"
+        }
+      ]
+    },
+    "722e8074-a29b-4f6e-9307-0eb5d003e6ce": {
+      "checked_at": "2026-10-19T02:54:04.177525+00:00",
+      "reviewed_paths": [
+        "CHANGELOG.md",
+        "README.md",
+        "VERSION",
+        "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+        "apps/macos/Sources/BruceApp/BruceApp.swift",
+        "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "apps/macos/Sources/BruceApp/Settings/ModelPricingSettingsView.swift",
+        "apps/macos/Sources/BruceApp/SettingsView.swift",
+        "apps/macos/Sources/BruceApp/Views/HourlyLineCard.swift",
+        "apps/macos/Sources/BruceApp/Views/UsageHeroCard.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+        "apps/macos/Sources/BruceAppCore/DashboardPanelAnimationPolicy.swift",
+        "apps/macos/Sources/BruceAppCore/DashboardPanelPlacement.swift",
+        "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift",
+        "apps/macos/Sources/BruceAppCore/MenuBarMetrics.swift",
+        "apps/macos/Sources/BruceAppCore/MenuBarStatusItemContent.swift",
+        "apps/macos/Sources/BruceAppCore/NetworkReachability.swift",
+        "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+        "apps/macos/Sources/BruceAppCore/RefreshTypes.swift",
+        "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+        "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+        "apps/macos/Tests/Harnesses/RefreshSchedulerHarness/RefreshSchedulerCoreTests.swift",
+        "apps/macos/Tests/Harnesses/RefreshSchedulerHarness/RefreshSchedulerHarness.swift",
+        "apps/macos/Tests/Harnesses/RefreshSchedulerHarness/RefreshSchedulerHarnessSupport.swift",
+        "apps/macos/Tests/Harnesses/SubscriptionCredentialsHarness/SubscriptionCredentialsHarness.swift",
+        "apps/win/src-tauri/tauri.conf.json",
+        "apps/win/src/settings.js",
+        "core/collector/crates/collector-application/src/account.rs",
+        "core/collector/crates/collector-application/src/lib.rs",
+        "core/collector/crates/collector-bridge/src/lib.rs",
+        "core/collector/crates/collector-domain/src/pricing.rs",
+        "docs/devel/change/C061.json",
+        "docs/devel/change/C062.json",
+        "docs/devel/change/index.json",
+        "docs/devel/design/00-系统总体设计.md",
+        "docs/devel/design/01-数据采集与多模型计费引擎.md",
+        "docs/devel/design/02-订阅额度与凭据安全存储.md",
+        "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+        "docs/devel/design/04-设置中心与价格校准交互.md",
+        "docs/devel/design/05-Windows平台适配.md",
+        "docs/devel/todo/now.md"
+      ],
+      "checks": [
+        {
+          "name": "design_topic_coverage",
+          "method": "Parent original-source analysis plus independent review and bounded repair/re-review; tools only check mappings",
+          "result": "passed",
+          "evidence": "10 topics, 9 modules, cross-module refresh flow; substantive overall sections and independent details. independent-review.json retains first 3 defects; second-review.json resolves them, not hidden.",
+          "required": true,
+          "scope": "official_collection"
+        },
+        {
+          "name": "document_naming",
+          "method": "Actual Chinese semantic names, H1/name comparison and parent semantic review",
+          "result": "passed",
+          "evidence": "15 flat Markdown documents, README exception; identifiers Bruce/macOS/Windows/Widget preserved.",
+          "required": true,
+          "scope": "official_collection"
+        },
+        {
+          "name": "document_associations",
+          "method": "Host checks on actual Markdown links/anchors, cards, figures and candidate manifest",
+          "result": "passed",
+          "evidence": "Current tool report collection-check.json; historical run evidence preserved and obsolete English paths retired only after repaired current associations.",
+          "required": true,
+          "scope": "official_collection"
+        },
+        {
+          "name": "source_grounding_and_changed_semantics",
+          "method": "Original source/diff reading, current hash comparison and independent reviewer",
+          "result": "passed",
+          "evidence": "Read previous snapshot before quota policy/input; offline gates, targeted Codex recovery, local-only and skipped quota carryover distinguished. Current price/settings and dashboard render sources linked. Source hashes in final-source-snapshot.json.",
+          "required": true,
+          "scope": "official_collection"
+        },
+        {
+          "name": "authoring_and_expression_review",
+          "method": "Separate content/expression/fact recheck with independent correction loop",
+          "result": "passed",
+          "evidence": "authoring-review.json, independent-review.json and second-review.json; current excerpt order and identifiers rechecked.",
+          "required": true,
+          "scope": "official_collection"
+        },
+        {
+          "name": "first_embedding_capture",
+          "method": "Actual Chrome screenshot call",
+          "result": "failed",
+          "evidence": "Initial clip rectangle outside image; actual Exit 1 retained in preview/first-render-failure.json. Final capture uses scrolled viewport with render-frame wait.",
+          "required": false,
+          "scope": "candidate"
+        },
+        {
+          "name": "independent_first_review",
+          "method": "Actual independent bounded semantic review",
+          "result": "failed",
+          "evidence": "3 defects preserved in independent-review.json; repaired and passed second-review.json.",
+          "required": false,
+          "scope": "candidate"
+        },
+        {
+          "name": "standalone_svg_visual",
+          "method": "rsvg-convert 2.62.3 plus actual view_image inspection",
+          "result": "passed",
+          "evidence": "7 SVGs rendered; 5 changed/new inspected in first pass, repaired refresh sequence re-rendered and inspected. Two unchanged diagrams reused after current byte/hash check; Windows embedded preview inspected.",
+          "required": true,
+          "scope": "official_collection"
+        },
+        {
+          "name": "markdown_embedding_visual",
+          "method": "marked plus isolated offline Chrome 155.0.8059.80; actual captures and view_image",
+          "result": "passed",
+          "evidence": "15 article renders at viewport 1120/content 920; 7 loaded images, no horizontal overflow. Actual diagram contexts and final settings captures inspected. preview/final/render-report.json records actual article hashes.",
+          "required": true,
+          "scope": "official_collection"
+        },
+        {
+          "name": "source_and_owned_output_guard",
+          "method": "SHA-256 compare current originals and 33 owned files immediately before replacement",
+          "result": "passed",
+          "evidence": "Actual immediate pre-write guard passed: 425 source hashes, 33 owned hashes, 14 unoccupied new document targets plus 4 figure pair paths; state bytes and no symlink traversal checked.",
+          "required": true,
+          "scope": "official_collection"
+        },
+        {
+          "name": "application_tests",
+          "method": "Documentation-only correction; no application execution, build, credentials, Provider requests or device acceptance",
+          "result": "not_run",
+          "evidence": "Not run; document checks cannot establish runtime correctness.",
+          "required": false,
+          "scope": "official_collection"
+        },
+        {
+          "name": "initial_collection_structure",
+          "method": "Host Python candidate checks; real H1 mismatch and host relation attribute assertion mistake",
+          "result": "failed",
+          "evidence": "collection-check-initial.json retains Exit 1; H1 fixed, assertion corrected and collection-check.json now passed Exit 0.",
+          "required": false,
+          "scope": "candidate"
+        },
+        {
+          "name": "postwrite_integrity",
+          "method": "Re-read actual delivered bytes against checked candidates; actual document set, local links/anchors and source hashes; same exact bytes inherit candidate semantic/card/figure checks.",
+          "result": "passed",
+          "evidence": ".cards/runs/722e8074-a29b-4f6e-9307-0eb5d003e6ce/postwrite-check.json: 39 delivered content files, 12 obsolete owned article names retired, 386 local references resolve, 425 original source files unchanged.",
+          "required": true,
+          "scope": "official_collection"
         }
       ]
     }

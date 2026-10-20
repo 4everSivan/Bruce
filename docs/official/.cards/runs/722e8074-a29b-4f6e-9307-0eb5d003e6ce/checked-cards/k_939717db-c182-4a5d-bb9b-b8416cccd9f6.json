@@ -1,0 +1,57 @@
+{
+  "schema_version": "1.0",
+  "id": "k_939717db-c182-4a5d-bb9b-b8416cccd9f6",
+  "term": "Bridge",
+  "category": "project_term",
+  "context": "Bruce 采集引擎",
+  "definition": "Collector 与桌面宿主之间的受控请求和响应契约。",
+  "project_usage": "macOS 通过 stdin/stdout 传输；Windows 将相同请求序列化后在进程内调用 run_bytes_panic_safe。校验由 Rust 类型、字段白名单与专门校验逻辑完成。",
+  "basis": {
+    "definition": "code_supported",
+    "project_usage": "code_supported"
+  },
+  "status": "current",
+  "articles": [
+    {
+      "path": "术语表.md",
+      "anchor": "bridge"
+    },
+    {
+      "path": "采集引擎与本地用量设计.md"
+    },
+    {
+      "path": "Windows应用设计.md"
+    }
+  ],
+  "sources": [
+    {
+      "kind": "code",
+      "path": "core/collector/crates/collector-bridge/src/lib.rs",
+      "symbol": "run_bytes_panic_safe",
+      "supports": [
+        "definition",
+        "project_usage"
+      ]
+    },
+    {
+      "kind": "code",
+      "path": "apps/win/src-tauri/src/collector.rs",
+      "symbol": "run_configured_collection",
+      "supports": [
+        "project_usage"
+      ]
+    },
+    {
+      "kind": "code",
+      "path": "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+      "symbol": "SystemCollectorProcessLauncher.launch",
+      "supports": [
+        "project_usage"
+      ]
+    }
+  ],
+  "tags": [
+    "Bruce",
+    "Bridge"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "checked_at": "2026-10-19T02:52:15.310782+00:00",
+  "result": "passed",
+  "articles": 15,
+  "design_topics": 10,
+  "cards": 10,
+  "figures": 7,
+  "links": 386,
+  "issues": [],
+  "method": "Actual host JSON/XML, H1/name, current links/anchors, source sets, stable IDs, SVG data mappings and bidirectional document/card/figure association/hash checks; semantic completeness separately reviewed."
+}

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" id="d_1ae57d61-4db4-468c-b17b-5258dd915895" viewBox="0 0 1000 1032" role="img" aria-labelledby="d_1ae57d61-4db4-468c-b17b-5258dd915895-title d_1ae57d61-4db4-468c-b17b-5258dd915895-desc">
   <title id="d_1ae57d61-4db4-468c-b17b-5258dd915895-title">Collector CLI 普通采集与响应关系</title>
-  <desc id="d_1ae57d61-4db4-468c-b17b-5258dd915895-desc">宿主经 stdin 发送请求。Bridge 校验后应用层并发启动本地采集与获准的额度查询。本地扫描受 localSessions 控制，额度线程受 externalQuotas 控制。结果汇合并经过发布检查后，Bridge 输出成功、部分成功或错误封套。协议错误直接返回错误，本地取消不发布 artifact。Codex 定向重试不在本图范围。</desc>
+  <desc id="d_1ae57d61-4db4-468c-b17b-5258dd915895-desc">宿主经 stdin 发送请求。Bridge 校验后应用层并发启动本地采集与获准的额度查询。本地扫描受 localSessions 控制，额度线程受 externalQuotas 与 localUsageOnly 控制。结果汇合并经过发布检查后，Bridge 输出成功、部分成功或错误封套。协议错误直接返回错误，本地取消不发布 artifact。Codex 定向重试不在本图范围。</desc>
   <defs>
     <style>
       #d_1ae57d61-4db4-468c-b17b-5258dd915895 { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; }
@@ -35,7 +35,7 @@
   </g>
   <g id="d_1ae57d61-4db4-468c-b17b-5258dd915895-r-start-quota" data-relation-id="start-quota">
     <path class="connector" d="M 592 340 V 376 H 710 V 420" marker-end="url(#d_1ae57d61-4db4-468c-b17b-5258dd915895-arrow)"/>
-    <rect x="644" y="348" width="268" height="27" fill="#ffffff"/><text x="650" y="368" class="label">externalQuotas 允许才创建</text>
+    <rect x="644" y="348" width="268" height="27" fill="#ffffff"/><text x="650" y="368" class="caption">externalQuotas 允许且非本地专用</text>
   </g>
   <g id="d_1ae57d61-4db4-468c-b17b-5258dd915895-r-local-result" data-relation-id="local-result">
     <path class="connector" d="M 290 536 V 600 H 400 V 648" marker-end="url(#d_1ae57d61-4db4-468c-b17b-5258dd915895-arrow)"/>
@@ -49,8 +49,8 @@
   </g>
   <g id="d_1ae57d61-4db4-468c-b17b-5258dd915895-r-quota-denied" data-relation-id="quota-denied">
     <path class="connector" d="M 340 308 H 72 V 692 H 300" marker-end="url(#d_1ae57d61-4db4-468c-b17b-5258dd915895-arrow)"/>
-    <rect x="85" y="610" width="216" height="54" fill="#ffffff"/><text x="92" y="632" class="label">externalQuotas 未授权</text>
-    <text x="92" y="655" class="caption">直接装配服务占位</text>
+    <rect x="85" y="610" width="216" height="54" fill="#ffffff"/><text x="92" y="632" class="caption">localUsageOnly：空服务</text>
+    <text x="92" y="655" class="caption">否则未授权：服务占位</text>
   </g>
   <g id="d_1ae57d61-4db4-468c-b17b-5258dd915895-r-assembled" data-relation-id="assembled">
     <path class="connector" d="M 500 736 V 812" marker-end="url(#d_1ae57d61-4db4-468c-b17b-5258dd915895-arrow)"/>

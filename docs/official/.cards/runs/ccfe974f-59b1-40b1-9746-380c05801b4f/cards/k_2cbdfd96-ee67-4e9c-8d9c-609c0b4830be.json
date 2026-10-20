@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "id": "k_2cbdfd96-ee67-4e9c-8d9c-609c0b4830be",
+  "term": "RefreshExecutionPipeline",
+  "category": "project_term",
+  "context": "Bruce macOS 刷新",
+  "definition": "macOS 单次刷新的输入、恢复和发布编排。",
+  "project_usage": "run 依次解析输入、读旧快照、采集、执行可选 Codex 恢复和 finalize，再应用凭据更新、发布 Artifact、生成预警候选；不持有周期定时状态。",
+  "basis": {
+    "definition": "code_supported",
+    "project_usage": "code_supported"
+  },
+  "status": "current",
+  "articles": [
+    {
+      "path": "glossary.md",
+      "anchor": "refresh-pipeline"
+    },
+    {
+      "path": "refresh-lifecycle.md"
+    }
+  ],
+  "sources": [
+    {
+      "kind": "code",
+      "path": "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+      "symbol": "RefreshExecutionPipeline.run; finishPublishablePath",
+      "supports": [
+        "definition",
+        "project_usage"
+      ]
+    }
+  ],
+  "tags": [
+    "Bruce",
+    "RefreshExecutionPipeline"
+  ]
+}

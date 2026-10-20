@@ -1,0 +1,279 @@
+{
+  "schema_version": "1.0",
+  "id": "d_04caaf2e-14be-4711-904e-1faa0b4a797b",
+  "title": "模块调度状态（常规调度路径）",
+  "type": "state",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "disabled",
+      "label": "disabled · 初始禁用",
+      "role": "initial",
+      "evidence_refs": [
+        "phases"
+      ]
+    },
+    {
+      "id": "idle",
+      "label": "idle · 等待",
+      "role": "state",
+      "evidence_refs": [
+        "phases"
+      ]
+    },
+    {
+      "id": "running",
+      "label": "running · 执行中",
+      "role": "state",
+      "evidence_refs": [
+        "phases"
+      ]
+    },
+    {
+      "id": "backoff",
+      "label": "backoff · 退避",
+      "role": "state",
+      "evidence_refs": [
+        "phases"
+      ]
+    },
+    {
+      "id": "auth-required",
+      "label": "authRequired · 等待授权",
+      "role": "state",
+      "evidence_refs": [
+        "phases"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "enable",
+      "from": "disabled",
+      "to": "idle",
+      "kind": "transition",
+      "label": "enableModule",
+      "condition": "当前相位为 disabled",
+      "properties": {
+        "event": "enableModule"
+      },
+      "evidence_refs": [
+        "enable"
+      ]
+    },
+    {
+      "id": "start",
+      "from": "idle",
+      "to": "running",
+      "kind": "transition",
+      "label": "刷新意图",
+      "condition": "网络可用；模块启用、未停止、容量可用",
+      "properties": {
+        "event": "刷新意图"
+      },
+      "evidence_refs": [
+        "trigger"
+      ]
+    },
+    {
+      "id": "finish-idle",
+      "from": "running",
+      "to": "idle",
+      "kind": "transition",
+      "label": "发布成功 / 失败超重试数 / 取消有缓存",
+      "condition": "成功发布，或失败计数>5，或取消且已有历史成功",
+      "properties": {
+        "event": "发布成功 / 失败超重试数 / 取消有缓存",
+        "action": "成功时先排空 pending；超重试数回正常周期"
+      },
+      "evidence_refs": [
+        "completed",
+        "cancel"
+      ]
+    },
+    {
+      "id": "cancel-empty",
+      "from": "running",
+      "to": "disabled",
+      "kind": "transition",
+      "label": "取消且无历史成功",
+      "condition": "lastSuccessAt == nil",
+      "properties": {
+        "event": "取消且无历史成功"
+      },
+      "evidence_refs": [
+        "cancel"
+      ]
+    },
+    {
+      "id": "retryable-failure",
+      "from": "running",
+      "to": "backoff",
+      "kind": "transition",
+      "label": "非授权失败",
+      "condition": "网络可用；退避计数≤5",
+      "properties": {
+        "event": "非授权失败"
+      },
+      "evidence_refs": [
+        "failure",
+        "retry",
+        "policy"
+      ]
+    },
+    {
+      "id": "retry",
+      "from": "backoff",
+      "to": "running",
+      "kind": "transition",
+      "label": "退避到期 / 新刷新意图",
+      "condition": "网络可用；模块启用；新意图另需未停止且容量可用",
+      "properties": {
+        "event": "退避到期 / 新刷新意图",
+        "action": "退避回调范围为 all，保留手动属性"
+      },
+      "evidence_refs": [
+        "retry",
+        "trigger"
+      ]
+    },
+    {
+      "id": "authorization-failure",
+      "from": "running",
+      "to": "auth-required",
+      "kind": "transition",
+      "label": "授权阻断",
+      "condition": "输入缺授权，或无 artifact 的 auth，或 status.error 被分类为 auth",
+      "properties": {
+        "event": "授权阻断"
+      },
+      "evidence_refs": [
+        "failure"
+      ]
+    },
+    {
+      "id": "manual-recover",
+      "from": "auth-required",
+      "to": "running",
+      "kind": "transition",
+      "label": "手动刷新",
+      "condition": "模块启用、未停止、容量可用",
+      "properties": {
+        "event": "手动刷新"
+      },
+      "evidence_refs": [
+        "trigger"
+      ]
+    },
+    {
+      "id": "disable-idle",
+      "from": "idle",
+      "to": "disabled",
+      "kind": "transition",
+      "label": "disableModule",
+      "condition": "显式禁用模块",
+      "properties": {
+        "event": "disableModule",
+        "action": "清空 pending，取消模块定时器；不直接取消进程"
+      },
+      "evidence_refs": [
+        "enable"
+      ]
+    },
+    {
+      "id": "disable-running",
+      "from": "running",
+      "to": "disabled",
+      "kind": "transition",
+      "label": "disableModule",
+      "condition": "显式禁用模块",
+      "properties": {
+        "event": "disableModule",
+        "action": "清空 pending，取消模块定时器；不直接取消进程"
+      },
+      "evidence_refs": [
+        "enable"
+      ]
+    },
+    {
+      "id": "disable-backoff",
+      "from": "backoff",
+      "to": "disabled",
+      "kind": "transition",
+      "label": "disableModule",
+      "condition": "显式禁用模块",
+      "properties": {
+        "event": "disableModule",
+        "action": "清空 pending，取消模块定时器；不直接取消进程"
+      },
+      "evidence_refs": [
+        "enable"
+      ]
+    },
+    {
+      "id": "disable-auth-required",
+      "from": "auth-required",
+      "to": "disabled",
+      "kind": "transition",
+      "label": "disableModule",
+      "condition": "显式禁用模块",
+      "properties": {
+        "event": "disableModule",
+        "action": "清空 pending，取消模块定时器；不直接取消进程"
+      },
+      "evidence_refs": [
+        "enable"
+      ]
+    }
+  ],
+  "evidence": {
+    "phases": {
+      "path": "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+      "locator": "ModuleScheduleState.Phase; ModuleScheduleState.phase",
+      "kind": "static_implementation",
+      "supports": "模块有 disabled、idle、running、backoff、authRequired 五种相位，默认 disabled。"
+    },
+    "enable": {
+      "path": "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+      "locator": "enableModule; disableModule",
+      "kind": "static_implementation",
+      "supports": "启用将 disabled 转 idle；禁用将任意相位置 disabled，清 pending 并取消模块定时器，不直接取消进程。 图的常规路径未展开禁用后的在途收尾；applyCompleted 等不检查 enabled，正文另述其仍可改相位但不能启动新任务。"
+    },
+    "trigger": {
+      "path": "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+      "locator": "triggerRefresh; startRefresh",
+      "kind": "static_implementation",
+      "supports": "正常触发要求未整体停止且模块启用，authRequired 仅接受手动意图；容量允许时进入 running，否则合并 pending。"
+    },
+    "completed": {
+      "path": "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+      "locator": "applyCompleted; handleBackoff; finishCycle",
+      "kind": "static_implementation",
+      "supports": "发布成功回 idle；失败计数超过 maxBackoffRetries 也回 idle、计数归零并排正常周期；idle 收尾先 drain pending。"
+    },
+    "failure": {
+      "path": "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+      "locator": "handleRunInputFailure; applyCollectorFailure; applyStorageFailure; applyCompleted; handleBackoff",
+      "kind": "static_implementation",
+      "supports": "授权缺失进入 authRequired；无工件授权错误或错误状态被归类为 auth 也阻断；网络可用的其它失败按计数进入 backoff；离线门禁另图说明。"
+    },
+    "cancel": {
+      "path": "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+      "locator": "handleCancellation",
+      "kind": "static_implementation",
+      "supports": "取消后清 pending，有历史成功回 idle 并显示 stale，否则进入 disabled 并显示 notConfigured。"
+    },
+    "retry": {
+      "path": "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+      "locator": "handleBackoff; SchedulerConfiguration.default",
+      "kind": "static_implementation",
+      "supports": "网络可用的常规退避至多5次，回调以 backoff 意图经 triggerRefresh；重试 scope.all，includesManual 保留用于预警抑制；离线分支另图说明。"
+    },
+    "policy": {
+      "path": "apps/macos/Sources/BruceAppCore/RefreshBackoffPolicy.swift",
+      "locator": "RefreshBackoffPolicy.computeBackoff",
+      "kind": "static_implementation",
+      "supports": "限流固定300秒；其他基数30秒指数退避加抖动、封顶1800秒。"
+    }
+  }
+}

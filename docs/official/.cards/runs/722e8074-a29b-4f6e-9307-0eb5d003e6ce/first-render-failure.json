@@ -1,0 +1,7 @@
+{
+  "result": "failed",
+  "stage": "image-context screenshot crop",
+  "exit_code": 1,
+  "observed_error": "page.screenshot: Clipped area is either empty or outside the resulting image",
+  "repair": "Preserve the failure and capture the scrolled viewport around each image instead of off-viewport clips."
+}

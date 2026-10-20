@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "id": "k_6a0c0f49-1e7b-4a84-af5c-ccb295ec829f",
+  "term": "SnapshotState",
+  "category": "project_term",
+  "context": "Bruce Windows 应用",
+  "definition": "Windows 壳内保存 Artifact、阶段、诊断和最后成功时间的快照状态。",
+  "project_usage": "begin_refresh 保留既有 Artifact；失败时有 Artifact 则为 stale，否则为 failed。有效响应根据 success 或 partial 更新阶段，磁盘恢复的数据标为陈旧。",
+  "basis": {
+    "definition": "code_supported",
+    "project_usage": "code_supported"
+  },
+  "status": "current",
+  "articles": [
+    {
+      "path": "glossary.md",
+      "anchor": "snapshot-state"
+    },
+    {
+      "path": "windows-state-mapping.md"
+    }
+  ],
+  "sources": [
+    {
+      "kind": "code",
+      "path": "apps/win/src-tauri/src/runtime_core.rs",
+      "symbol": "SnapshotState",
+      "supports": [
+        "definition",
+        "project_usage"
+      ]
+    }
+  ],
+  "tags": [
+    "Bruce",
+    "SnapshotState"
+  ]
+}

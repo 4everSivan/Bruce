@@ -1,0 +1,10 @@
+{
+  "checked_at": "2026-10-19T02:54:04.177157+00:00",
+  "result": "passed",
+  "written_content_files": 39,
+  "removed_obsolete_articles": 12,
+  "local_links": 386,
+  "source_files_unchanged": 425,
+  "manifest_revision": 2,
+  "method": "Re-read actual delivered bytes against checked candidates; actual document set, local links/anchors and source hashes; same exact bytes inherit candidate semantic/card/figure checks."
+}

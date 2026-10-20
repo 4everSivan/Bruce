@@ -1,0 +1,176 @@
+{
+  "checked_at": "2026-10-19T02:49:29.649Z",
+  "browser": "155.0.8059.80",
+  "viewer": "marked + isolated Chrome",
+  "network": "offline; non-file/data blocked",
+  "viewportWidth": 1120,
+  "contentWidth": 920,
+  "records": [
+    {
+      "article": "Bruce设计文档.md",
+      "images": [
+        {
+          "src": "file:///Users/sivan/code_project/my_project/skills/knowledge-map/local/acceptance/design-coverage/722e8074-a29b-4f6e-9307-0eb5d003e6ce/bruce/figures/system-architecture.svg",
+          "loaded": true
+        }
+      ],
+      "overflow": false,
+      "screenshot": "/Users/sivan/code_project/my_project/skills/knowledge-map/local/acceptance/design-coverage/722e8074-a29b-4f6e-9307-0eb5d003e6ce/bruce/preview/final/Bruce设计文档.md.html.png",
+      "contexts": [
+        "/Users/sivan/code_project/my_project/skills/knowledge-map/local/acceptance/design-coverage/722e8074-a29b-4f6e-9307-0eb5d003e6ce/bruce/preview/final/Bruce设计文档.md.html.image-0.png"
+      ],
+      "article_sha256": "ba29daf5945492f835acd22f71bf1bb4e7bc37ddc727fb485b150fa18f0872fa"
+    },
+    {
+      "article": "README.md",
+      "images": [],
+      "overflow": false,
+      "screenshot": "/Users/sivan/code_project/my_project/skills/knowledge-map/local/acceptance/design-coverage/722e8074-a29b-4f6e-9307-0eb5d003e6ce/bruce/preview/final/README.md.html.png",
+      "contexts": [],
+      "article_sha256": "2ea57b3f3dd104df44288c1e6930c14d533444c904fe65ebff49bf9ad1716f23"
+    },
+    {
+      "article": "Widget设计.md",
+      "images": [],
+      "overflow": false,
+      "screenshot": "/Users/sivan/code_project/my_project/skills/knowledge-map/local/acceptance/design-coverage/722e8074-a29b-4f6e-9307-0eb5d003e6ce/bruce/preview/final/Widget设计.md.html.png",
+      "contexts": [],
+      "article_sha256": "c8073ba9dd28a8963f7300c1d37a1a8fdca41b245e45b93976336ae2e37db642"
+    },
+    {
+      "article": "Windows应用设计.md",
+      "images": [],
+      "overflow": false,
+      "screenshot": "/Users/sivan/code_project/my_project/skills/knowledge-map/local/acceptance/design-coverage/722e8074-a29b-4f6e-9307-0eb5d003e6ce/bruce/preview/final/Windows应用设计.md.html.png",
+      "contexts": [],
+      "article_sha256": "9be8831abf0eeddb56568d5d4b1f801c73b721718880f1e3d6a46493b2b5e0da"
+    },
+    {
+      "article": "Windows快照与刷新状态.md",
+      "images": [
+        {
+          "src": "file:///Users/sivan/code_project/my_project/skills/knowledge-map/local/acceptance/design-coverage/722e8074-a29b-4f6e-9307-0eb5d003e6ce/bruce/figures/windows-snapshot-state.svg",
+          "loaded": true
+        }
+      ],
+      "overflow": false,
+      "screenshot": "/Users/sivan/code_project/my_project/skills/knowledge-map/local/acceptance/design-coverage/722e8074-a29b-4f6e-9307-0eb5d003e6ce/bruce/preview/final/Windows快照与刷新状态.md.html.png",
+      "contexts": [
+        "/Users/sivan/code_project/my_project/skills/knowledge-map/local/acceptance/design-coverage/722e8074-a29b-4f6e-9307-0eb5d003e6ce/bruce/preview/final/Windows快照与刷新状态.md.html.image-0.png"
+      ],
+      "article_sha256": "0851427672dd9891e2b6874c138be9bd92efd8bf617ae1c04b9759dd27be0a80"
+    },
+    {
+      "article": "macOS原生应用设计.md",
+      "images": [],
+      "overflow": false,
+      "screenshot": "/Users/sivan/code_project/my_project/skills/knowledge-map/local/acceptance/design-coverage/722e8074-a29b-4f6e-9307-0eb5d003e6ce/bruce/preview/final/macOS原生应用设计.md.html.png",
+      "contexts": [],
+      "article_sha256": "af247bae7063ca68cdb1221201d107242ccb0a4ce9cae9f459693c1a5c8b6c31"
+    },
+    {
+      "article": "刷新生命周期设计.md",
+      "images": [
+        {
+          "src": "file:///Users/sivan/code_project/my_project/skills/knowledge-map/local/acceptance/design-coverage/722e8074-a29b-4f6e-9307-0eb5d003e6ce/bruce/figures/macos-scheduler-state.svg",
+          "loaded": true
+        },
+        {
+          "src": "file:///Users/sivan/code_project/my_project/skills/knowledge-map/local/acceptance/design-coverage/722e8074-a29b-4f6e-9307-0eb5d003e6ce/bruce/figures/offline-refresh-gate.svg",
+          "loaded": true
+        },
+        {
+          "src": "file:///Users/sivan/code_project/my_project/skills/knowledge-map/local/acceptance/design-coverage/722e8074-a29b-4f6e-9307-0eb5d003e6ce/bruce/figures/refresh-sequence.svg",
+          "loaded": true
+        }
+      ],
+      "overflow": false,
+      "screenshot": "/Users/sivan/code_project/my_project/skills/knowledge-map/local/acceptance/design-coverage/722e8074-a29b-4f6e-9307-0eb5d003e6ce/bruce/preview/final/刷新生命周期设计.md.html.png",
+      "contexts": [
+        "/Users/sivan/code_project/my_project/skills/knowledge-map/local/acceptance/design-coverage/722e8074-a29b-4f6e-9307-0eb5d003e6ce/bruce/preview/final/刷新生命周期设计.md.html.image-0.png",
+        "/Users/sivan/code_project/my_project/skills/knowledge-map/local/acceptance/design-coverage/722e8074-a29b-4f6e-9307-0eb5d003e6ce/bruce/preview/final/刷新生命周期设计.md.html.image-1.png",
+        "/Users/sivan/code_project/my_project/skills/knowledge-map/local/acceptance/design-coverage/722e8074-a29b-4f6e-9307-0eb5d003e6ce/bruce/preview/final/刷新生命周期设计.md.html.image-2.png"
+      ],
+      "article_sha256": "99072c21b585890da83275e60b9d343244e4ce190a1e649a9d80d9f6ee44e4c1"
+    },
+    {
+      "article": "本地会话解析与计费.md",
+      "images": [],
+      "overflow": false,
+      "screenshot": "/Users/sivan/code_project/my_project/skills/knowledge-map/local/acceptance/design-coverage/722e8074-a29b-4f6e-9307-0eb5d003e6ce/bruce/preview/final/本地会话解析与计费.md.html.png",
+      "contexts": [],
+      "article_sha256": "2efc08268d252b3afe2a9da07b2ab84a8b249025ebb2cfd1cfd4664abd579805"
+    },
+    {
+      "article": "术语表.md",
+      "images": [],
+      "overflow": false,
+      "screenshot": "/Users/sivan/code_project/my_project/skills/knowledge-map/local/acceptance/design-coverage/722e8074-a29b-4f6e-9307-0eb5d003e6ce/bruce/preview/final/术语表.md.html.png",
+      "contexts": [],
+      "article_sha256": "ebd305711e018303804d81e2ac462bd65984a5e9e61e18fc0aa7d54a3297fcd4"
+    },
+    {
+      "article": "构建验证与发布.md",
+      "images": [],
+      "overflow": false,
+      "screenshot": "/Users/sivan/code_project/my_project/skills/knowledge-map/local/acceptance/design-coverage/722e8074-a29b-4f6e-9307-0eb5d003e6ce/bruce/preview/final/构建验证与发布.md.html.png",
+      "contexts": [],
+      "article_sha256": "58e0ba35b57a667eab330419c144bbecaf241a84b3a0e134a3c1a47289149c51"
+    },
+    {
+      "article": "菜单栏与看板设计.md",
+      "images": [
+        {
+          "src": "file:///Users/sivan/code_project/my_project/skills/knowledge-map/local/acceptance/design-coverage/722e8074-a29b-4f6e-9307-0eb5d003e6ce/bruce/figures/dashboard-toggle-state.svg",
+          "loaded": true
+        }
+      ],
+      "overflow": false,
+      "screenshot": "/Users/sivan/code_project/my_project/skills/knowledge-map/local/acceptance/design-coverage/722e8074-a29b-4f6e-9307-0eb5d003e6ce/bruce/preview/final/菜单栏与看板设计.md.html.png",
+      "contexts": [
+        "/Users/sivan/code_project/my_project/skills/knowledge-map/local/acceptance/design-coverage/722e8074-a29b-4f6e-9307-0eb5d003e6ce/bruce/preview/final/菜单栏与看板设计.md.html.image-0.png"
+      ],
+      "article_sha256": "8c4eb00a357a1a4f2b294ed9beb9a3b5674a4ea7210ccb2072a522ec1f1179e1"
+    },
+    {
+      "article": "订阅配置与凭据管理设计.md",
+      "images": [],
+      "overflow": false,
+      "screenshot": "/Users/sivan/code_project/my_project/skills/knowledge-map/local/acceptance/design-coverage/722e8074-a29b-4f6e-9307-0eb5d003e6ce/bruce/preview/final/订阅配置与凭据管理设计.md.html.png",
+      "contexts": [],
+      "article_sha256": "aaaf64fa5d5dae258ce966976b385de05b3b110d43a59740651910d4b3f4e9e1"
+    },
+    {
+      "article": "订阅额度查询设计.md",
+      "images": [],
+      "overflow": false,
+      "screenshot": "/Users/sivan/code_project/my_project/skills/knowledge-map/local/acceptance/design-coverage/722e8074-a29b-4f6e-9307-0eb5d003e6ce/bruce/preview/final/订阅额度查询设计.md.html.png",
+      "contexts": [],
+      "article_sha256": "80be2d95fe61ae72d8a4b202097e25f82fd08c1b02b83301f674eb681134d9fd"
+    },
+    {
+      "article": "设置中心与价格校准设计.md",
+      "images": [],
+      "overflow": false,
+      "screenshot": "/Users/sivan/code_project/my_project/skills/knowledge-map/local/acceptance/design-coverage/722e8074-a29b-4f6e-9307-0eb5d003e6ce/bruce/preview/final/设置中心与价格校准设计.md.html.png",
+      "contexts": [],
+      "article_sha256": "8152cd895479ef8e72c2e75e643e42214207ec6d19008346d6220db6a200ef58"
+    },
+    {
+      "article": "采集引擎与本地用量设计.md",
+      "images": [
+        {
+          "src": "file:///Users/sivan/code_project/my_project/skills/knowledge-map/local/acceptance/design-coverage/722e8074-a29b-4f6e-9307-0eb5d003e6ce/bruce/figures/collector-flow.svg",
+          "loaded": true
+        }
+      ],
+      "overflow": false,
+      "screenshot": "/Users/sivan/code_project/my_project/skills/knowledge-map/local/acceptance/design-coverage/722e8074-a29b-4f6e-9307-0eb5d003e6ce/bruce/preview/final/采集引擎与本地用量设计.md.html.png",
+      "contexts": [
+        "/Users/sivan/code_project/my_project/skills/knowledge-map/local/acceptance/design-coverage/722e8074-a29b-4f6e-9307-0eb5d003e6ce/bruce/preview/final/采集引擎与本地用量设计.md.html.image-0.png"
+      ],
+      "article_sha256": "5d2ef52a96abeb18040d86da89a37c1284929fe94fb5a6e49db4f661d9ee58c2"
+    }
+  ],
+  "final_bytes_checked_at": "2026-10-19T02:52:41.404Z"
+}

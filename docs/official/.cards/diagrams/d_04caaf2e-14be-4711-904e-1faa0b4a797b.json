@@ -67,7 +67,7 @@
       "to": "running",
       "kind": "transition",
       "label": "刷新意图",
-      "condition": "模块启用、未停止、容量可用",
+      "condition": "网络可用；模块启用、未停止、容量可用",
       "properties": {
         "event": "刷新意图"
       },
@@ -111,7 +111,7 @@
       "to": "backoff",
       "kind": "transition",
       "label": "非授权失败",
-      "condition": "退避计数≤5",
+      "condition": "网络可用；退避计数≤5",
       "properties": {
         "event": "非授权失败"
       },
@@ -127,7 +127,7 @@
       "to": "running",
       "kind": "transition",
       "label": "退避到期 / 新刷新意图",
-      "condition": "模块启用；新意图另需未停止且容量可用",
+      "condition": "网络可用；模块启用；新意图另需未停止且容量可用",
       "properties": {
         "event": "退避到期 / 新刷新意图",
         "action": "退避回调范围为 all，保留手动属性"
@@ -255,7 +255,7 @@
       "path": "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
       "locator": "handleRunInputFailure; applyCollectorFailure; applyStorageFailure; applyCompleted; handleBackoff",
       "kind": "static_implementation",
-      "supports": "授权缺失进入 authRequired，Bridge 无 artifact 的 auth 或 status.error 被分类为 auth 也进入 authRequired；其他失败按计数进入 backoff。"
+      "supports": "授权缺失进入 authRequired；无工件授权错误或错误状态被归类为 auth 也阻断；网络可用的其它失败按计数进入 backoff；离线门禁另图说明。"
     },
     "cancel": {
       "path": "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
@@ -267,7 +267,7 @@
       "path": "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
       "locator": "handleBackoff; SchedulerConfiguration.default",
       "kind": "static_implementation",
-      "supports": "至多5次退避，回调 startRefresh 仍要求模块 enabled；重试 scope.all，保留手动属性。"
+      "supports": "网络可用的常规退避至多5次，回调以 backoff 意图经 triggerRefresh；重试 scope.all，includesManual 保留用于预警抑制；离线分支另图说明。"
     },
     "policy": {
       "path": "apps/macos/Sources/BruceAppCore/RefreshBackoffPolicy.swift",

@@ -1,0 +1,215 @@
+{
+  "schema_version": "1.0",
+  "id": "d_856cccba-17f1-402f-b8d2-d03c0c7de2e6",
+  "title": "macOS 单次刷新交互",
+  "type": "sequence",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "scheduler",
+      "label": "Scheduler",
+      "role": "service",
+      "evidence_refs": [
+        "scheduler"
+      ]
+    },
+    {
+      "id": "pipeline",
+      "label": "Pipeline",
+      "role": "service",
+      "evidence_refs": [
+        "pipeline"
+      ]
+    },
+    {
+      "id": "inputs",
+      "label": "输入与凭据",
+      "role": "service",
+      "evidence_refs": [
+        "pipeline"
+      ]
+    },
+    {
+      "id": "collector",
+      "label": "Collector",
+      "role": "service",
+      "evidence_refs": [
+        "pipeline"
+      ]
+    },
+    {
+      "id": "store",
+      "label": "ArtifactStore",
+      "role": "store",
+      "evidence_refs": [
+        "pipeline"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "start",
+      "from": "scheduler",
+      "to": "pipeline",
+      "kind": "sync_call",
+      "label": "开始单次刷新",
+      "evidence_refs": [
+        "scheduler"
+      ],
+      "properties": {
+        "order": 1
+      }
+    },
+    {
+      "id": "previous",
+      "from": "pipeline",
+      "to": "store",
+      "kind": "sync_call",
+      "label": "读取上一份 Artifact",
+      "evidence_refs": [
+        "pipeline"
+      ],
+      "properties": {
+        "order": 2
+      }
+    },
+    {
+      "id": "resolve-inputs",
+      "from": "pipeline",
+      "to": "inputs",
+      "kind": "sync_call",
+      "label": "装配受控输入",
+      "evidence_refs": [
+        "pipeline"
+      ],
+      "properties": {
+        "order": 3
+      }
+    },
+    {
+      "id": "inputs-return",
+      "from": "inputs",
+      "to": "pipeline",
+      "kind": "return",
+      "label": "输入或失败",
+      "evidence_refs": [
+        "pipeline"
+      ],
+      "properties": {
+        "order": 4
+      },
+      "condition": "失败则提前返回，不启动采集"
+    },
+    {
+      "id": "first",
+      "from": "pipeline",
+      "to": "collector",
+      "kind": "sync_call",
+      "label": "首次采集",
+      "evidence_refs": [
+        "pipeline"
+      ],
+      "properties": {
+        "order": 5
+      }
+    },
+    {
+      "id": "collected",
+      "from": "collector",
+      "to": "pipeline",
+      "kind": "return",
+      "label": "BridgeResponse 或进程错误",
+      "evidence_refs": [
+        "pipeline"
+      ],
+      "properties": {
+        "order": 6
+      },
+      "condition": "进程错误则提前返回"
+    },
+    {
+      "id": "retry",
+      "from": "pipeline",
+      "to": "collector",
+      "kind": "sync_call",
+      "label": "Codex 定向重试",
+      "evidence_refs": [
+        "pipeline"
+      ],
+      "properties": {
+        "order": 7
+      },
+      "condition": "包含额度且满足挑战恢复条件时；定向含 Codex 时亦可，本地专用轮次不执行"
+    },
+    {
+      "id": "retry-return",
+      "from": "collector",
+      "to": "pipeline",
+      "kind": "return",
+      "label": "重试结果参与合并",
+      "evidence_refs": [
+        "pipeline"
+      ],
+      "properties": {
+        "order": 8
+      },
+      "condition": "仅发生重试时"
+    },
+    {
+      "id": "credentials",
+      "from": "pipeline",
+      "to": "inputs",
+      "kind": "sync_call",
+      "label": "合并结果后应用凭据更新",
+      "evidence_refs": [
+        "pipeline"
+      ],
+      "properties": {
+        "order": 9
+      },
+      "condition": "可发布路径；存在 credentialUpdates"
+    },
+    {
+      "id": "publish",
+      "from": "pipeline",
+      "to": "store",
+      "kind": "sync_call",
+      "label": "发布 Artifact",
+      "evidence_refs": [
+        "pipeline"
+      ],
+      "properties": {
+        "order": 10
+      },
+      "condition": "status 非 error 且存在 Artifact"
+    },
+    {
+      "id": "done",
+      "from": "pipeline",
+      "to": "scheduler",
+      "kind": "return",
+      "label": "发布结果与预警候选",
+      "evidence_refs": [
+        "pipeline"
+      ],
+      "properties": {
+        "order": 11
+      },
+      "condition": "发布异常返回 publishFailed；取消返回 cancelled"
+    }
+  ],
+  "evidence": {
+    "pipeline": {
+      "path": "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+      "locator": "run; finishPublishablePath",
+      "kind": "static_implementation",
+      "supports": "先读历史工件并形成额度策略，再解析输入、采集；定向范围可执行 Codex 恢复后合并、本地专用回填，普通额度轮次按条件执行 Codex 恢复；结果合并后凭据写回，再发布及计算预警候选。输入失败、错误响应、取消或发布失败提前返回。"
+    },
+    "scheduler": {
+      "path": "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+      "locator": "executeRefresh",
+      "kind": "static_implementation",
+      "supports": "Scheduler 调用 Pipeline，将结果映射为调度状态与 UI 回调。"
+    }
+  }
+}

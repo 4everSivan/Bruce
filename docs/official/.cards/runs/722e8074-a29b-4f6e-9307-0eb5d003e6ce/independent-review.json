@@ -1,0 +1,646 @@
+{
+  "schema_version": "1.0",
+  "review_type": "independent_design_coverage_and_changed_claims",
+  "reviewer": "bruce_review",
+  "reviewed_at": "2026-10-19T02:47:56.558883+00:00",
+  "target_project": "/Users/sivan/code_project/my_project/app_project/Bruce",
+  "candidate_root": "/Users/sivan/code_project/my_project/skills/knowledge-map/local/acceptance/design-coverage/722e8074-a29b-4f6e-9307-0eb5d003e6ce/bruce",
+  "published": false,
+  "coverage_status": "partial",
+  "validation_status": "failed",
+  "blocking": true,
+  "semantic_conclusion": "总设计具有实质系统说明；10 个设计主题都有明确总体章节及独立详设回链。刷新/离线/额度节流和 Collector 本地专用、账号跳过本轮变更的主要正文条件与当前源码一致；设置和菜单栏详设仍遗漏已实现的核心交互/渲染契约，刷新图还需修正 Codex 恢复适用范围。修复并重验之前不宜把本批候选标为完整覆盖。",
+  "rules_read": [
+    "/Users/sivan/.agents/skills/km/SKILL.md",
+    "/Users/sivan/.agents/skills/km/references/writing.md",
+    "/Users/sivan/.agents/skills/km/references/library-state.md",
+    "/Users/sivan/.agents/skills/km/references/authoring.md",
+    "/Users/sivan/.agents/skills/km/references/technical-editing.md",
+    "/Users/sivan/.agents/skills/km/references/diagrams.md#required-checks",
+    "/Users/sivan/code_project/my_project/app_project/Bruce/AGENTS.md"
+  ],
+  "reading_scope": {
+    "full_candidate_markdown": [
+      "Bruce设计文档.md",
+      "菜单栏与看板设计.md",
+      "设置中心与价格校准设计.md",
+      "刷新生命周期设计.md",
+      "采集引擎与本地用量设计.md",
+      "订阅额度查询设计.md",
+      "macOS原生应用设计.md",
+      "Widget设计.md",
+      "构建验证与发布.md",
+      "订阅配置与凭据管理设计.md"
+    ],
+    "targeted_candidate_markdown": [
+      {
+        "path": "本地会话解析与计费.md",
+        "scope": "outline and model-matching/pricing section, lines 80-98"
+      },
+      {
+        "path": "Windows应用设计.md",
+        "scope": "introduction, complete outline and settings/pricing metadata matches"
+      },
+      {
+        "path": "Windows快照与刷新状态.md",
+        "scope": "introduction and complete outline"
+      },
+      {
+        "path": "README.md",
+        "scope": "introduction and section structure"
+      },
+      {
+        "path": "术语表.md",
+        "scope": "introduction and complete outline"
+      }
+    ],
+    "planning_material": [
+      "document-plan.json",
+      "article-sources.json",
+      "source-snapshot.json"
+    ],
+    "original_designs": [
+      {
+        "path": "docs/devel/design/00-系统总体设计.md",
+        "scope": "full"
+      },
+      {
+        "path": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+        "scope": "full"
+      },
+      {
+        "path": "docs/devel/design/04-设置中心与价格校准交互.md",
+        "scope": "full"
+      },
+      {
+        "path": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+        "scope": "headings/topic declarations"
+      },
+      {
+        "path": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+        "scope": "headings/topic declarations"
+      },
+      {
+        "path": "docs/devel/design/05-Windows平台适配.md",
+        "scope": "headings/topic declarations"
+      }
+    ],
+    "current_code": [
+      {
+        "path": "apps/macos/Sources/BruceApp/ApplicationBootstrap.swift",
+        "scope": "lines 1-140 and 210-339"
+      },
+      {
+        "path": "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "scope": "lines 704-795"
+      },
+      {
+        "path": "apps/macos/Sources/BruceApp/SettingsView.swift",
+        "scope": "lines 1-230, 250-290, 340-475, 470-630, 650-740"
+      },
+      {
+        "path": "apps/macos/Sources/BruceApp/Settings/ModelPricingSettingsView.swift",
+        "scope": "lines 1-105, 125-180, 580-762; some large tool output was truncated, cited claims use visible ranges"
+      },
+      {
+        "path": "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+        "scope": "lines 1-150"
+      },
+      {
+        "path": "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+        "scope": "lines 1-200, 204-415, 498-605"
+      },
+      {
+        "path": "apps/macos/Sources/BruceAppCore/MenuBarStatusItemContent.swift",
+        "scope": "full"
+      },
+      {
+        "path": "apps/macos/Sources/BruceAppCore/MenuBarMetrics.swift",
+        "scope": "formatter lines 180-236"
+      },
+      {
+        "path": "apps/macos/Sources/BruceAppCore/DashboardPanelVisibility.swift",
+        "scope": "full"
+      },
+      {
+        "path": "apps/macos/Sources/BruceAppCore/DashboardPanelAnimationPolicy.swift",
+        "scope": "full"
+      },
+      {
+        "path": "apps/macos/Sources/BruceOnboardingCore/ThemeResolution.swift",
+        "scope": "full"
+      },
+      {
+        "path": "apps/macos/Sources/BruceApp/Views/HourlyLineCard.swift",
+        "scope": "exact folding/transaction matches"
+      },
+      {
+        "path": "apps/macos/Sources/BruceApp/Views/UsageHeroCard.swift",
+        "scope": "exact folding/transaction matches"
+      },
+      {
+        "path": "apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
+        "scope": "full"
+      },
+      {
+        "path": "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+        "scope": "full"
+      },
+      {
+        "path": "apps/macos/Sources/BruceAppCore/RefreshScheduler.swift",
+        "scope": "lines 184-239, 318-358, 376-488, 823-954"
+      },
+      {
+        "path": "apps/macos/Sources/BruceAppCore/NetworkReachability.swift",
+        "scope": "full"
+      },
+      {
+        "path": "apps/macos/Sources/BruceAppCore/RefreshTypes.swift",
+        "scope": "full"
+      },
+      {
+        "path": "apps/macos/Sources/BruceAppCore/CollectorRunInput.swift",
+        "scope": "lines 1-140 and 360-460"
+      },
+      {
+        "path": "core/collector/crates/collector-application/src/lib.rs",
+        "scope": "lines 55-172 and literal new-field matches"
+      },
+      {
+        "path": "core/collector/crates/collector-application/src/account.rs",
+        "scope": "lines 12-145"
+      },
+      {
+        "path": "core/collector/crates/collector-bridge/src/lib.rs",
+        "scope": "lines 15-58 and 245-285"
+      },
+      {
+        "path": "apps/win/src/settings.js",
+        "scope": "persistOverrides lines 577-600"
+      }
+    ],
+    "figures": "Semantic JSON read for architecture, dashboard toggle, collector flow, macOS scheduler, refresh sequence and offline gate; refresh-sequence SVG text inspected. No visual-render pass performed by this reviewer.",
+    "comparison_only": "Attempted old official/candidate diff; renamed candidate paths made these appear as added files, so no facts or semantic pass were inferred from that comparison."
+  },
+  "topic_mapping": [
+    {
+      "name": "本地采集与计费",
+      "overall_article": "Bruce设计文档.md",
+      "overall_anchor": "local-usage",
+      "detail_article": "采集引擎与本地用量设计.md",
+      "anchor_exists": true,
+      "detail_exists": true,
+      "backlink_exists": true,
+      "overall_substance": "sufficient_system_summary",
+      "detail_review": "no_coverage_gap_identified_in_scoped_review"
+    },
+    {
+      "name": "订阅额度查询",
+      "overall_article": "Bruce设计文档.md",
+      "overall_anchor": "provider-quota",
+      "detail_article": "订阅额度查询设计.md",
+      "anchor_exists": true,
+      "detail_exists": true,
+      "backlink_exists": true,
+      "overall_substance": "sufficient_system_summary",
+      "detail_review": "no_coverage_gap_identified_in_scoped_review"
+    },
+    {
+      "name": "订阅配置与凭据",
+      "overall_article": "Bruce设计文档.md",
+      "overall_anchor": "credentials",
+      "detail_article": "订阅配置与凭据管理设计.md",
+      "anchor_exists": true,
+      "detail_exists": true,
+      "backlink_exists": true,
+      "overall_substance": "sufficient_system_summary",
+      "detail_review": "no_coverage_gap_identified_in_scoped_review"
+    },
+    {
+      "name": "macOS应用装配",
+      "overall_article": "Bruce设计文档.md",
+      "overall_anchor": "macos-app",
+      "detail_article": "macOS原生应用设计.md",
+      "anchor_exists": true,
+      "detail_exists": true,
+      "backlink_exists": true,
+      "overall_substance": "sufficient_system_summary",
+      "detail_review": "no_coverage_gap_identified_in_scoped_review"
+    },
+    {
+      "name": "菜单栏与看板",
+      "overall_article": "Bruce设计文档.md",
+      "overall_anchor": "dashboard",
+      "detail_article": "菜单栏与看板设计.md",
+      "anchor_exists": true,
+      "detail_exists": true,
+      "backlink_exists": true,
+      "overall_substance": "sufficient_system_summary",
+      "detail_review": "requires_repair"
+    },
+    {
+      "name": "设置与价格校准",
+      "overall_article": "Bruce设计文档.md",
+      "overall_anchor": "settings-pricing",
+      "detail_article": "设置中心与价格校准设计.md",
+      "anchor_exists": true,
+      "detail_exists": true,
+      "backlink_exists": true,
+      "overall_substance": "sufficient_system_summary",
+      "detail_review": "requires_repair"
+    },
+    {
+      "name": "刷新、快照与恢复",
+      "overall_article": "Bruce设计文档.md",
+      "overall_anchor": "refresh-snapshot",
+      "detail_article": "刷新生命周期设计.md",
+      "anchor_exists": true,
+      "detail_exists": true,
+      "backlink_exists": true,
+      "overall_substance": "sufficient_system_summary",
+      "detail_review": "no_coverage_gap_identified_in_scoped_review"
+    },
+    {
+      "name": "Windows平台适配",
+      "overall_article": "Bruce设计文档.md",
+      "overall_anchor": "windows",
+      "detail_article": "Windows应用设计.md",
+      "anchor_exists": true,
+      "detail_exists": true,
+      "backlink_exists": true,
+      "overall_substance": "sufficient_system_summary",
+      "detail_review": "no_coverage_gap_identified_in_scoped_review"
+    },
+    {
+      "name": "独立Widget",
+      "overall_article": "Bruce设计文档.md",
+      "overall_anchor": "widget",
+      "detail_article": "Widget设计.md",
+      "anchor_exists": true,
+      "detail_exists": true,
+      "backlink_exists": true,
+      "overall_substance": "sufficient_system_summary",
+      "detail_review": "no_coverage_gap_identified_in_scoped_review"
+    },
+    {
+      "name": "工程验证与交付",
+      "overall_article": "Bruce设计文档.md",
+      "overall_anchor": "delivery",
+      "detail_article": "构建验证与发布.md",
+      "anchor_exists": true,
+      "detail_exists": true,
+      "backlink_exists": true,
+      "overall_substance": "sufficient_system_summary",
+      "detail_review": "no_coverage_gap_identified_in_scoped_review"
+    }
+  ],
+  "findings": [
+    {
+      "id": "BRUCE-IR-001",
+      "priority": "P2",
+      "kind": "required_detail_coverage",
+      "blocking": true,
+      "status": "open",
+      "title": "设置详设尚未说明已实现的校准交互与菜单栏配置契约",
+      "candidate_evidence": [
+        {
+          "path": "drafts/设置中心与价格校准设计.md",
+          "lines": [
+            13,
+            34
+          ]
+        }
+      ],
+      "source_evidence": [
+        {
+          "path": "docs/devel/design/04-设置中心与价格校准交互.md",
+          "lines": [
+            22,
+            29
+          ],
+          "symbol": "原设计主题声明"
+        },
+        {
+          "path": "apps/macos/Sources/BruceApp/SettingsView.swift",
+          "lines": [
+            64,
+            89
+          ],
+          "symbol": "SettingsCategory"
+        },
+        {
+          "path": "apps/macos/Sources/BruceApp/SettingsView.swift",
+          "lines": [
+            259,
+            273
+          ],
+          "symbol": "paneContent/modelPricingPane"
+        },
+        {
+          "path": "apps/macos/Sources/BruceApp/SettingsView.swift",
+          "lines": [
+            471,
+            502
+          ],
+          "symbol": "预览、仅图标开关与指标重排入口"
+        },
+        {
+          "path": "apps/macos/Sources/BruceApp/SettingsView.swift",
+          "lines": [
+            553,
+            565
+          ],
+          "symbol": "moveMenuBarMetric"
+        },
+        {
+          "path": "apps/macos/Sources/BruceApp/SettingsView.swift",
+          "lines": [
+            624,
+            736
+          ],
+          "symbol": "menuBarPreviewStrip/menuBarReorderableCardsSection"
+        },
+        {
+          "path": "apps/macos/Sources/BruceApp/Settings/ModelPricingSettingsView.swift",
+          "lines": [
+            18,
+            24
+          ],
+          "symbol": "PricingFilterMode"
+        },
+        {
+          "path": "apps/macos/Sources/BruceApp/Settings/ModelPricingSettingsView.swift",
+          "lines": [
+            73,
+            98
+          ],
+          "symbol": "allEffectiveModels/filteredModels"
+        },
+        {
+          "path": "apps/macos/Sources/BruceApp/Settings/ModelPricingSettingsView.swift",
+          "lines": [
+            125,
+            157
+          ],
+          "symbol": "body: edit sheet/reset-all confirmation"
+        },
+        {
+          "path": "apps/macos/Sources/BruceApp/Settings/ModelPricingSettingsView.swift",
+          "lines": [
+            748,
+            762
+          ],
+          "symbol": "saveChanges"
+        },
+        {
+          "path": "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+          "lines": [
+            75,
+            98
+          ],
+          "symbol": "ModelPricingOverride"
+        },
+        {
+          "path": "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+          "lines": [
+            728,
+            761
+          ],
+          "symbol": "setPricingOverride/persistPricingOverrides"
+        }
+      ],
+      "detail": "候选仅列协调器方法与刷新链路，未解释当前六分类、价格表的搜索/过滤、校准弹窗字段及可选项、单模型和全量重置确认，也未解释实际菜单栏预览、仅图标与指标排序。全库穷尽匹配未找到其它文章承接这些交互；本地会话解析与计费的模型匹配与参考费用一节承接的是 Collector 算法。保存失败时协调器已先更新内存 pricingOverrides，当前实现没有在 catch 中回滚，不能补写为事务成功后才改变内存。",
+      "impact": "已识别的设置与价格校准主题有独立文件，但详设尚不能让维护者理解该主题已实现的主要输入与交互规则，不能据此宣称详设覆盖完整。",
+      "repair": "在本详设局部补齐真实配置交互与 ModelPricingOverride 字段/空值/保存失败边界；算法链接到现有计费文章。新增来源同步纳入 article-sources 和 document-plan。不要把原设计中的无扫描热重算、43 款数量或 UI 性能目标直接当实测事实。"
+    },
+    {
+      "id": "BRUCE-IR-002",
+      "priority": "P2",
+      "kind": "required_detail_coverage",
+      "blocking": true,
+      "status": "open",
+      "title": "菜单栏详设遗漏指标、环规与原生卡片折叠规则",
+      "candidate_evidence": [
+        {
+          "path": "drafts/菜单栏与看板设计.md",
+          "lines": [
+            5,
+            46
+          ]
+        }
+      ],
+      "source_evidence": [
+        {
+          "path": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+          "lines": [
+            38,
+            50
+          ],
+          "symbol": "原菜单栏/卡片设计主题"
+        },
+        {
+          "path": "apps/macos/Sources/BruceAppCore/MenuBarStatusItemContent.swift",
+          "lines": [
+            34,
+            96
+          ],
+          "symbol": "MenuBarStatusItemContentBuilder.build/iconName"
+        },
+        {
+          "path": "apps/macos/Sources/BruceAppCore/MenuBarMetrics.swift",
+          "lines": [
+            192,
+            235
+          ],
+          "symbol": "MenuBarMetricFormatter"
+        },
+        {
+          "path": "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+          "lines": [
+            280,
+            298
+          ],
+          "symbol": "刷新动画定时器"
+        },
+        {
+          "path": "apps/macos/Sources/BruceApp/MenuBarStatusItemController.swift",
+          "lines": [
+            300,
+            415
+          ],
+          "symbol": "targetStatusItemLength/makeStatusItemImage"
+        },
+        {
+          "path": "apps/macos/Sources/BruceApp/Views/HourlyLineCard.swift",
+          "lines": [
+            58,
+            74
+          ],
+          "symbol": "折叠内容 clipped/opacity"
+        },
+        {
+          "path": "apps/macos/Sources/BruceApp/Views/HourlyLineCard.swift",
+          "lines": [
+            130,
+            146
+          ],
+          "symbol": "迷你图表 animation=nil"
+        },
+        {
+          "path": "apps/macos/Sources/BruceApp/Views/UsageHeroCard.swift",
+          "lines": [
+            52,
+            70
+          ],
+          "symbol": "折叠呈现"
+        }
+      ],
+      "detail": "当前详设解释控制器、开关和主题，但没有说明选最低额度时的优先取数、其它配置优先平均额度、仅图标的文本隐藏、状态图标与比例归一，未说明真实环规告警/近零/刷新分支及卡片折叠图表事务隔离。全库未有其它原生 UI 详设承接；Windows 多账号折叠和 Widget 渲染是不同平台契约。",
+      "impact": "MenuBarIndicator 原设计的主体含指标与卡片渲染，当前详设只覆盖窗口控制与主题子集，仍有实质覆盖缺口。",
+      "repair": "局部补充当前指标/环规分支和原生卡片折叠契约，引用实际源文件并同步来源计划。当前状态项红色条件为剩余比例 <0.15 或告警图标，不能照抄原设计互相不一致的 70/90、75/95 阈值；刷新动画为 0.05 秒计时，不宣称空闲 0% CPU 或 120Hz 已验收。"
+    },
+    {
+      "id": "BRUCE-IR-003",
+      "priority": "P2",
+      "kind": "figure_condition",
+      "blocking": true,
+      "status": "open",
+      "title": "单次刷新图不应把 Codex 恢复限为普通范围",
+      "candidate_evidence": [
+        {
+          "path": "figures/refresh-sequence.svg",
+          "lines": [
+            24,
+            25
+          ]
+        },
+        {
+          "path": "diagrams/d_856cccba-17f1-402f-b8d2-d03c0c7de2e6.json",
+          "lines": null,
+          "symbol": "relations[id=retry].condition"
+        }
+      ],
+      "source_evidence": [
+        {
+          "path": "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+          "lines": [
+            216,
+            247
+          ],
+          "symbol": "scope.isTargeted recovery branch"
+        },
+        {
+          "path": "apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+          "lines": [
+            282,
+            320
+          ],
+          "symbol": "local-only and ordinary recovery branches"
+        }
+      ],
+      "detail": "SVG 写“普通额度路径且满足恢复条件”，语义清单同样限定普通额度路径；但定向分支也调用 CodexQuotaRecovery，正文执行交接第 4 步已说明定向合并。图未明确限定仅描述 scope.all，因此该限定会让读者误以为定向 Codex 刷新不能执行恢复。",
+      "impact": "图、语义清单与当前 Pipeline 的恢复适用范围不一致。",
+      "repair": "将条件明确写为满足 Codex 挑战恢复条件时，普通额度轮次与含 Codex 的定向轮次均可；保留本地专用轮次不执行的限定，并同步 SVG/清单。"
+    }
+  ],
+  "checks": [
+    {
+      "name": "design_topic_recognition",
+      "method": "Original 00/03/04 full reading; other original design declarations plus responsibilities/entrypoints in current code; compare against 10-topic plan",
+      "result": "passed",
+      "evidence": "Original TokenUsage, SubscriptionQuota, WindowsCompat, MenuBarIndicator, PricingEngine responsibilities are represented, with quota/credentials and native/dashboard/settings split and cross-module refresh, Widget and delivery topics."
+    },
+    {
+      "name": "overall_substance",
+      "method": "Full semantic read of Bruce设计文档.md",
+      "result": "passed",
+      "evidence": "Purpose/boundaries, responsibility/dependency table, 10 prose sections with mechanisms/relations/constraints, shared constraints and backbone refresh ordering."
+    },
+    {
+      "name": "topic_anchor_detail_backlinks",
+      "method": "Read-only Python checks against actual candidate Markdown",
+      "result": "passed",
+      "exit_code": 0,
+      "evidence": "10/10 explicit overall anchors, detailed files and correct overall-section backlinks."
+    },
+    {
+      "name": "detailed_topic_substance",
+      "method": "Compare current source-supported responsibilities and cross-article ownership, with exhaustive candidate literal matches",
+      "result": "failed",
+      "evidence": [
+        "BRUCE-IR-001",
+        "BRUCE-IR-002"
+      ]
+    },
+    {
+      "name": "changed_refresh_collector_quota_claims",
+      "method": "Read current Swift policy/pipeline/network gates and Rust local-only/account-filter branches",
+      "result": "passed",
+      "evidence": "Direct manual reason bypasses offline gate; backoff remains automatic; read previous before run input; local-only avoids credentials/quota workers and Codex finalizer; quota skip removes account plans; skipped results carry over and queried-but-absent do not revive. No runtime outcome inferred."
+    },
+    {
+      "name": "refresh_figure_conditions",
+      "method": "Compare JSON relation condition and SVG label with current targeted and ordinary Pipeline branches",
+      "result": "failed",
+      "evidence": [
+        "BRUCE-IR-003"
+      ]
+    },
+    {
+      "name": "critical_source_snapshot_stability",
+      "method": "SHA-256 current files vs supplied source-snapshot hashes",
+      "result": "passed",
+      "evidence": {
+        "checked_count": 11,
+        "all_match": true
+      }
+    },
+    {
+      "name": "runtime_application_and_external_services",
+      "method": "Not authorized or needed for this document review",
+      "result": "not_run"
+    },
+    {
+      "name": "new_visual_render_acceptance",
+      "method": "No rendering or screenshot visual inspection by this reviewer",
+      "result": "not_run"
+    },
+    {
+      "name": "all_unchanged_algorithm_audit_and_cards",
+      "method": "Outside scoped independent review; existing generated prose is comparison material only",
+      "result": "not_run"
+    }
+  ],
+  "reviewed_candidate_hashes": {
+    "drafts/Bruce设计文档.md": "16ea9347cf1aff19db1cec95f67ce7bdba388bb0ef9acd11ed52cee69df61f24",
+    "drafts/菜单栏与看板设计.md": "6a4d58de21577c9f9d8c157a1f026aafeda609f566b2ce54855d63436b0815d8",
+    "drafts/设置中心与价格校准设计.md": "a2a66b2fa87dcce1e1c0149105273946522e68fee20371845f90155f548120a3",
+    "drafts/刷新生命周期设计.md": "99072c21b585890da83275e60b9d343244e4ce190a1e649a9d80d9f6ee44e4c1",
+    "drafts/采集引擎与本地用量设计.md": "5d2ef52a96abeb18040d86da89a37c1284929fe94fb5a6e49db4f661d9ee58c2",
+    "drafts/订阅额度查询设计.md": "80be2d95fe61ae72d8a4b202097e25f82fd08c1b02b83301f674eb681134d9fd",
+    "drafts/macOS原生应用设计.md": "af247bae7063ca68cdb1221201d107242ccb0a4ce9cae9f459693c1a5c8b6c31",
+    "drafts/Widget设计.md": "c8073ba9dd28a8963f7300c1d37a1a8fdca41b245e45b93976336ae2e37db642",
+    "drafts/构建验证与发布.md": "a5d525c57dd30c591c7e9727bc9c713dd81378071c4a45ba1613d7474459d439",
+    "drafts/订阅配置与凭据管理设计.md": "aaaf64fa5d5dae258ce966976b385de05b3b110d43a59740651910d4b3f4e9e1",
+    "figures/refresh-sequence.svg": "1f6c3024685652fca31e713904e36bfed51f8cdb2719d57dd62c8d68dcb2628e",
+    "diagrams/d_856cccba-17f1-402f-b8d2-d03c0c7de2e6.json": "addcc5803d6e139b0fc079d640c5ef526a25b2ffd44bacf2eef5c75663c9e579"
+  },
+  "limits": [
+    "This is a scoped independent semantic review, not whole-repository deep implementation verification.",
+    "No network, credentials, dependency installation, application execution, publication or candidate edits were performed.",
+    "The only write owned by this reviewer is independent-review.json.",
+    "Full collection naming, all card/manifest associations and visual rendering need the parent collection checks."
+  ],
+  "tool_check_history": [
+    {
+      "check": "Initial read-only topic map inspection",
+      "exit_code": 1,
+      "detail": "Inline Python f-string backslash syntax error; no code executed or files changed."
+    },
+    {
+      "check": "Corrected read-only topic map inspection",
+      "exit_code": 0,
+      "detail": "All 10 anchor/detail/backlink checks returned true."
+    }
+  ]
+}

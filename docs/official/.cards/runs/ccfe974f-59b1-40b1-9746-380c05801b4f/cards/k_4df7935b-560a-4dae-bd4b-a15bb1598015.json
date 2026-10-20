@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "id": "k_4df7935b-560a-4dae-bd4b-a15bb1598015",
+  "term": "DaimonWidget",
+  "category": "project_term",
+  "context": "Bruce 独立 Widget",
+  "definition": "独立 Widget 页面使用的宿主事件接口。",
+  "project_usage": "页面注册 onDataChange、onStatusChange、onThemeChange，读取回调中的 data.main；页面自身不负责采集或订阅请求。",
+  "basis": {
+    "definition": "code_supported",
+    "project_usage": "code_supported"
+  },
+  "status": "current",
+  "articles": [
+    {
+      "path": "glossary.md",
+      "anchor": "daimon-widget"
+    },
+    {
+      "path": "widget-design.md"
+    }
+  ],
+  "sources": [
+    {
+      "kind": "code",
+      "path": "apps/widget/index.html",
+      "symbol": "DaimonWidget event registration",
+      "supports": [
+        "definition",
+        "project_usage"
+      ]
+    }
+  ],
+  "tags": [
+    "Bruce",
+    "DaimonWidget"
+  ]
+}

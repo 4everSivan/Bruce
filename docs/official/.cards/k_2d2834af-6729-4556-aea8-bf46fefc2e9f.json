@@ -13,14 +13,14 @@
   "status": "current",
   "articles": [
     {
-      "path": "glossary.md",
+      "path": "术语表.md",
       "anchor": "artifact-store"
     },
     {
-      "path": "refresh-lifecycle.md"
+      "path": "刷新生命周期设计.md"
     },
     {
-      "path": "macos-design.md"
+      "path": "macOS原生应用设计.md"
     }
   ],
   "sources": [

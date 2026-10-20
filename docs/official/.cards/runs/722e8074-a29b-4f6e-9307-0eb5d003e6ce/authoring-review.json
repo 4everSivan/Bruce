@@ -1,0 +1,25 @@
+{
+  "checked_at": "2026-10-19T02:42:06.359950+00:00",
+  "content_review": "Compared changed source diffs, new quota/network code, theme/window/price entrypoints, original design topics and reusable source hashes; structural candidate check passed.",
+  "expression_editing": "Separate pass after content review; removed repeated generic verification narration from the new overall design; preserved identifiers, paths, guards, values, headings and ownership.",
+  "edits": [
+    {
+      "before": "该设计消费设置与模型，不能从截图、状态项创建成功或静态分支推定所有系统版本的视觉体验已验收。",
+      "after": "该设计消费设置与模型，系统能力回退和窗口焦点规则由原生控制器落实。"
+    },
+    {
+      "before": "动画、可见性与释放属于 Widget 的生命周期责任，不能仅因 HTML 已加载就认定宿主事件、数据接入或桌面环境已正确配置。",
+      "after": "动画、可见性与释放属于 Widget 的生命周期责任，宿主负责提供事件和口径一致的数据。"
+    },
+    {
+      "before": "验证命令存在不表示本次已执行，流水线定义也不表示某个 Release 已完成或设备验收通过。发布判断需结合真实作业和产物证据，文档更新本身不启动打包、凭据访问或对外发布。",
+      "after": "本地验证、CI 作业和平台安装验证覆盖不同责任。正式交付需分别核对作业结果、产物组成与平台验证记录。"
+    },
+    {
+      "before": "当前研发卡片的未闭环事项保留其来源状态，不由知识文档的交付状态覆盖。",
+      "after": "未完成的平台与凭据事项由研发卡片记录，仍需对应环境验证。"
+    }
+  ],
+  "fact_recheck": "Rechecked edited claims against their cited original implementation and distinct platform/host responsibilities.",
+  "remaining": "Current source/output hashes and final collection associations rechecked before publication."
+}
