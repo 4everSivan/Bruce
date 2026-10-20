@@ -2,6 +2,42 @@
    Bruce 面板 · mac MenuBarDashboardView & SettingsView 1:1 对齐规范
    ========================================================================== */
 
+/* ==========================================================================
+   Nothing 官方授权字体入口 (@font-face 规范注册)
+   ========================================================================== */
+
+@font-face {
+  font-family: "Doto";
+  src: url("fonts/Doto[ROND,wght].ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Space Grotesk";
+  src: url("fonts/SpaceGrotesk[wght].ttf") format("truetype");
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Space Mono";
+  src: url("fonts/SpaceMono-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Space Mono";
+  src: url("fonts/SpaceMono-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   /* Classic / Fluent 深色 token (1:1 镜像 mac Color.adaptive dark 侧与 SettingsDemoTokens) */
   --ink: rgba(255,255,255,.92);
@@ -1242,80 +1278,475 @@ details summary {
 }
 
 /* ==========================================================================
-   PART 3: Nothing 点阵主题覆盖
+   PART 3: Nothing 点阵主题覆盖 (1:1 对齐 mac Nothing 设计基线)
    ========================================================================== */
 
 .theme-nothing {
-  --accent: #e44b47;
-  --card-bg: #151515;
-  --card-border: #3c3c3c;
-  --panel-border: #555;
-  --ink: #f4f4f0;
-  --secondary: #b3b3ae;
-  --subdued: #999;
-  --badge-bg: #242424;
-  --bg: #0e0e0e;
-  --window: #141414;
-  --nav: #111111;
-  --surface: #1e1e1e;
-  --border: #2a2a2a;
-  font-family: "Cascadia Mono", Consolas, monospace;
+  --ink: #FFFFFF;
+  --secondary: #999999;
+  --subdued: #999999;
+  --faint: #666666;
+  --hairline: #222222;
+  --divider: #222222;
+  --footer-hairline: #222222;
+  --panel-border: #222222;
+  --card-bg: #111111;
+  --card-border: #222222;
+  --badge-bg: #1A1A1A;
+  --accent: #E44B47;
+  --hero-accent: #4A9E5C;
+  --bg: #000000;
+  --window: #000000;
+  --nav: #080808;
+  --surface: #111111;
+  --surface-raised: #1A1A1A;
+  --border: #222222;
+  --border-strong: #333333;
+  --text: #FFFFFF;
+  --text-2: #E8E8E8;
+  --text-3: #999999;
+  font-family: "Space Grotesk", "Space Mono", monospace;
 }
 
-.theme-nothing #panel,
-.theme-nothing.settings-window { background: #0e0e0e; }
+/* Nothing 面板底座: 10px 硬朗圆角、纯黑 OLED 底、零模糊、无高光发线 */
+.theme-nothing #panel {
+  background: #000000 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 1px solid #222222 !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+}
+.theme-nothing #panel::before {
+  display: none !important;
+}
+
+.theme-nothing.settings-window,
+.theme-nothing #settings-app {
+  background: #000000 !important;
+  color: #FFFFFF !important;
+}
+
 .theme-nothing .card,
-.theme-nothing .fluent-card { border-radius: 3px; box-shadow: none; }
-.theme-nothing .hud-brand { letter-spacing: 1.5px; }
+.theme-nothing .fluent-card {
+  border-radius: 3px !important;
+  background: #111111 !important;
+  border-color: #222222 !important;
+  box-shadow: none !important;
+}
+
+.theme-nothing .hud-brand {
+  font-family: "Space Grotesk", sans-serif;
+  letter-spacing: 1.5px;
+}
+
+/* LIVE 状态灯: 5x5 实心方格 + 无光晕 + Space Mono */
+.theme-nothing .hud-dot-wrap.live::before {
+  display: none !important;
+}
+.theme-nothing .hud-dot {
+  width: 5px !important;
+  height: 5px !important;
+  border-radius: 0 !important;
+  background: #4A9E5C !important;
+  box-shadow: none !important;
+}
+.theme-nothing .live-text {
+  font-family: "Space Mono", monospace !important;
+  font-size: 9px !important;
+  letter-spacing: 1.08px !important;
+  color: #999999 !important;
+}
+
+/* Hero 数字: 官方 Doto 52pt 矢量点阵字体 + 翠绿呼吸微光晕 */
 .theme-nothing .hero-num {
-  color: #f2f2ee;
+  font-family: "Doto", "Space Grotesk", monospace !important;
+  font-size: 48px !important;
+  font-weight: 800 !important;
+  letter-spacing: -1px;
+  color: #4A9E5C !important;
+  text-shadow: 0 0 16px rgba(74, 158, 92, 0.45), 0 0 4px rgba(74, 158, 92, 0.7);
   background: radial-gradient(currentColor 1.2px, transparent 1.8px);
   background-size: 4px 4px;
   background-clip: text;
   -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  display: inline-flex;
+  align-items: baseline;
+  line-height: 1;
 }
+
+.theme-nothing .hero-num .dot-square {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  background: #4A9E5C;
+  margin: 0 4px;
+  vertical-align: baseline;
+  box-shadow: 0 0 8px rgba(74, 158, 92, 0.6);
+}
+
+.theme-nothing .hero-unit {
+  font-family: "Space Mono", monospace;
+  color: #999999;
+}
+
 /* Nothing 收起态数字走纯色 accent (等价 mac nothingHeroAccent 深色侧), 不用渐变 */
 .theme-nothing .collapsed-summary .mini-num {
+  font-family: "Doto", "Space Mono", monospace;
   background: none;
   color: #4A9E5C;
 }
-/* Nothing 主题的 --accent 是告警红, 若被成本数字沿用会渲染出 mac 不存在的红字;
-   mac Nothing 下成本用 nothingPrimary (墨色), 故此处显式回落 --ink。 */
-.theme-nothing .hero-cost { color: var(--ink); }
-.theme-nothing .card::before,
-.theme-nothing #panel::before { display: none; }
+
+.theme-nothing .hero-cost {
+  font-family: "Space Mono", monospace;
+  color: var(--ink);
+}
+
 .theme-nothing .chip,
 .theme-nothing button,
-.theme-nothing .btn { border-radius: 2px; }
-/* Nothing 覆写: C027 新增的订阅组件 (账号子卡 / 余额双槽 / tag 胶囊 / 头部附加文案).
-   mac Nothing 形态为圆角 3、surfaceRaised 底 (#1A1A1A)、border (#222222)。 */
+.theme-nothing .btn {
+  border-radius: 2px !important;
+}
+
+/* Nothing 订阅组件 (账号子卡 / 余额双槽 / tag 胶囊 / 头部附加文案) */
 .theme-nothing .account-card,
 .theme-nothing .bal-slots .slot {
   border-radius: 3px;
   background: #1A1A1A;
   border-color: #222222;
 }
+
 .theme-nothing .last-success,
-.theme-nothing .sub-extra { color: var(--subdued); }
+.theme-nothing .sub-extra {
+  font-family: "Space Mono", monospace;
+  color: var(--subdued);
+}
+
 .theme-nothing .tag-chip {
   color: var(--text-2);
   background: transparent;
   border: 1px solid #333333;
-  font-family: inherit;
+  font-family: "Space Mono", monospace;
 }
-/* Nothing: 24 点走势改用 heroGreen (mac nothing 分支), 折线/面积同色 */
-.theme-nothing .spark { color: #4A9E5C; }
+
+/* Nothing 走势线 */
+.theme-nothing .spark {
+  color: #4A9E5C;
+}
 .theme-nothing .detail-title,
 .theme-nothing .legend-row .sep,
 .theme-nothing .mini-spark,
-.theme-nothing .mini-peak { color: var(--subdued); }
-.theme-nothing .share-bar { border-radius: 0; }
-.theme-nothing .legend-row .sw { border-radius: 0; }
-.theme-nothing input[type="checkbox"] { border-radius: 2px; }
-.theme-nothing input[type="checkbox"]::after { border-radius: 1px; }
-.theme-nothing input[type="checkbox"]:checked { background: #ffffff; border-color: #ffffff; }
-.theme-nothing input[type="checkbox"]:checked::after { background: #000000; }
+.theme-nothing .mini-peak {
+  color: var(--subdued);
+}
+
+/* Nothing 订阅阈值图例 (定稿 .thresh) */
+.nothing-threshold-legend {
+  margin-top: 11px;
+  padding-top: 10px;
+  border-top: 1px solid #222222;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.thresh-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.thresh-box {
+  width: 8px;
+  height: 8px;
+  display: inline-block;
+  flex: none;
+}
+.thresh-text {
+  font-family: "Space Mono", monospace;
+  font-size: 9px;
+  color: #666666;
+}
+
+/* Nothing P4 份额堆叠条与图例 (Top 1 翠绿, 其余斜点阵) */
+.theme-nothing .share-bar {
+  border-radius: 0;
+  background: transparent !important;
+  gap: 2px !important;
+}
+.theme-nothing .share-seg:first-child {
+  background: #4A9E5C !important;
+}
+.theme-nothing .share-seg:not(:first-child) {
+  background: repeating-linear-gradient(45deg, #333, #333 2px, #1a1a1a 2px, #1a1a1a 4px) !important;
+}
+.theme-nothing .legend-row .sw {
+  border-radius: 0;
+}
+.theme-nothing .legend-row:first-of-type .sw {
+  background: #4A9E5C !important;
+}
+.theme-nothing .legend-row:not(:first-of-type) .sw {
+  background: repeating-linear-gradient(45deg, #555, #555 1px, transparent 1px, transparent 2px) !important;
+}
+.theme-nothing .legend-row:first-of-type .pct {
+  color: #4A9E5C !important;
+  font-weight: 700 !important;
+}
+.theme-nothing .legend-row .pct,
+.theme-nothing .legend-row .sep {
+  font-family: "Space Mono", monospace;
+}
+
+/* Nothing 风格项目统计控制台 (Dot-Leader Console) */
+.nothing-prj-console {
+  margin-top: 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.prj-console-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+}
+.prj-console-title {
+  font-family: "Space Mono", monospace;
+  font-size: 9px;
+  letter-spacing: 0.8px;
+  color: var(--secondary);
+}
+.prj-console-count {
+  font-family: "Space Mono", monospace;
+  font-size: 8.5px;
+  color: var(--subdued);
+}
+.prj-console-row {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 1.5px 0;
+}
+.prj-tag {
+  font-family: "Space Mono", monospace;
+  font-size: 8.5px;
+  font-weight: 700;
+  flex: none;
+}
+.prj-name {
+  font-family: "Space Mono", monospace;
+  font-size: 9.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: none;
+  max-width: 110px;
+}
+.prj-leader {
+  flex: 1;
+  min-width: 10px;
+  border-bottom: 1px dotted rgba(74, 158, 92, 0.35);
+  margin: 0 2px;
+  height: 6px;
+}
+.prj-tokens {
+  font-family: "Space Mono", monospace;
+  font-size: 9px;
+  color: var(--subdued);
+  white-space: nowrap;
+  flex: none;
+}
+.prj-badge {
+  font-family: "Space Mono", monospace;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 0 4px;
+  border-radius: 2px;
+  border: 1px solid;
+  white-space: nowrap;
+  flex: none;
+}
+.prj-ticks {
+  display: inline-flex;
+  gap: 1.5px;
+  align-items: center;
+  margin-left: 3px;
+  flex: none;
+}
+.prj-tick {
+  width: 2.5px;
+  height: 6px;
+  border-radius: 0.5px;
+  display: inline-block;
+}
+
+/* Nothing 药丸开关覆盖 */
+.theme-nothing input[type="checkbox"] {
+  border-radius: 2px !important;
+}
+.theme-nothing input[type="checkbox"]::after {
+  border-radius: 1px !important;
+}
+.theme-nothing input[type="checkbox"]:checked {
+  background: #ffffff !important;
+  border-color: #ffffff !important;
+}
+.theme-nothing input[type="checkbox"]:checked::after {
+  background: #000000 !important;
+}
+
+/* Nothing 设置侧栏与面板 */
+.theme-nothing .sidenav {
+  background: #080808 !important;
+  border-right: 1px solid #1A1A1A !important;
+}
+.theme-nothing .navitem {
+  font-family: "Space Grotesk", sans-serif !important;
+  border-radius: 2px !important;
+  color: #999999 !important;
+}
+.theme-nothing .navitem:hover {
+  background: #141414 !important;
+  color: #FFFFFF !important;
+}
+.theme-nothing .navitem.active {
+  background: #1A1A1A !important;
+  color: #FFFFFF !important;
+  border-left: 2px solid #4A9E5C !important;
+}
+
+/* Nothing T07 工作台全套覆盖 */
+.theme-nothing .time-range-picker {
+  background: #111111 !important;
+  border-color: #222222 !important;
+  border-radius: 2px !important;
+}
+.theme-nothing .time-range-btn {
+  font-family: "Space Mono", monospace !important;
+  font-size: 11px !important;
+  border-radius: 2px !important;
+  color: #999999 !important;
+}
+.theme-nothing .time-range-btn.active {
+  background: #4A9E5C !important;
+  color: #000000 !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
+}
+
+.theme-nothing .kpi-tile {
+  background: #111111 !important;
+  border: 1px solid #222222 !important;
+  border-radius: 3px !important;
+  box-shadow: none !important;
+}
+.theme-nothing .kpi-tile::before {
+  display: none !important;
+}
+.theme-nothing .kpi-label {
+  font-family: "Space Grotesk", sans-serif !important;
+  color: #999999 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+}
+.theme-nothing .kpi-value {
+  font-family: "Doto", "Space Mono", monospace !important;
+  color: #FFFFFF !important;
+  font-size: 24px !important;
+}
+.theme-nothing .kpi-sub {
+  font-family: "Space Mono", monospace !important;
+  color: #666666 !important;
+}
+
+.theme-nothing .workbench-chart-card,
+.theme-nothing .canonical-card,
+.theme-nothing .agent-matrix-card,
+.theme-nothing .composition-card {
+  background: #111111 !important;
+  border: 1px solid #222222 !important;
+  border-radius: 3px !important;
+  box-shadow: none !important;
+}
+
+.theme-nothing .chart-title,
+.theme-nothing .canonical-title {
+  font-family: "Space Grotesk", sans-serif !important;
+  letter-spacing: 0.04em !important;
+}
+.theme-nothing .dim-tab-btn {
+  font-family: "Space Mono", monospace !important;
+  border-radius: 2px !important;
+}
+.theme-nothing .dim-tab-btn.active {
+  background: #222222 !important;
+  color: #4A9E5C !important;
+}
+
+.theme-nothing .canonical-row {
+  border-radius: 2px !important;
+  background: #141414 !important;
+  border-color: #222222 !important;
+}
+.theme-nothing .canonical-name {
+  font-family: "Space Grotesk", sans-serif !important;
+}
+.theme-nothing .canonical-badge {
+  border-radius: 2px !important;
+  background: #1A1A1A !important;
+  color: #4A9E5C !important;
+  border: 1px solid #222222 !important;
+  font-family: "Space Mono", monospace !important;
+}
+.theme-nothing .canonical-bar-wrap {
+  border-radius: 0 !important;
+  background: #1A1A1A !important;
+}
+.theme-nothing .canonical-bar-fill {
+  background: #4A9E5C !important;
+  border-radius: 0 !important;
+}
+.theme-nothing .canonical-tokens,
+.theme-nothing .canonical-cost,
+.theme-nothing .canonical-channel-name,
+.theme-nothing .canonical-channel-item {
+  font-family: "Space Mono", monospace !important;
+}
+
+.theme-nothing .agent-matrix-table th {
+  font-family: "Space Grotesk", sans-serif !important;
+  border-color: #222222 !important;
+  color: #666666 !important;
+  text-transform: uppercase !important;
+}
+.theme-nothing .agent-matrix-table td {
+  border-color: #1A1A1A !important;
+  font-family: "Space Mono", monospace !important;
+}
+.theme-nothing .agent-tag {
+  font-family: "Space Mono", monospace !important;
+  background: #1A1A1A !important;
+  border-radius: 2px !important;
+}
+
+.theme-nothing .composition-box {
+  background: #141414 !important;
+  border: 1px solid #222222 !important;
+  border-radius: 2px !important;
+}
+.theme-nothing .composition-box-label {
+  font-family: "Space Grotesk", sans-serif !important;
+  color: #999999 !important;
+}
+.theme-nothing .composition-box-value {
+  font-family: "Space Mono", monospace !important;
+}
+.theme-nothing .composition-stacked-bar {
+  border-radius: 0 !important;
+  background: #1A1A1A !important;
+}
+.theme-nothing .composition-seg {
+  border-radius: 0 !important;
+}
 
 /* ==========================================================================
    PART 3: T07 Agent 用量深度分析与 Token 统计工作台

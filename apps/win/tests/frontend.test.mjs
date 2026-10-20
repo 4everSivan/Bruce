@@ -345,6 +345,55 @@ test("styles.css defines the Nothing segmented meter and dot grid", () => {
   assert.match(css, /\.theme-nothing \.daily-chart \.day-total\s*\{\s*opacity:\s*0/);
 });
 
+test("Nothing theme renders hero dot-square, threshold legend, project console, and authentic typography tokens", async () => {
+  const panel = structuredClone(fixture);
+  panel.usage.totalTokensText = "128.4K";
+  panel.hourly.rows[0].projects = [
+    { name: "Bruce", share: 0.75, total: 96000, totalText: "96K" },
+    { name: "OtherApp", share: 0.25, total: 32000, totalText: "32K" },
+  ];
+  const app = await boot({ panel });
+  // 切到 Nothing 主题
+  app.state.settings.theme = "nothing";
+  await app.emit("settings-updated", app.state.settings);
+
+  const stack = app.node("stack");
+
+  // 1. Hero 总量数字拆分: 带有 .dot-square 4x4 方块
+  const heroNum = stack.querySelector(".hero-num");
+  assert.ok(heroNum.querySelector(".dot-square"), "Nothing 下带有 .dot-square 独立小数方块");
+  assert.equal(heroNum.textContent, "1284K", "文本内容正确且小方块分隔");
+
+  // 2. 订阅卡底部阈值图例: 3 档 (<50, 50–79, ≥80)
+  const legend = stack.querySelector(".nothing-threshold-legend");
+  assert.ok(legend, "Nothing 主题订阅卡包含三档阈值图例");
+  const legendTexts = [...legend.querySelectorAll(".thresh-text")].map((t) => t.textContent);
+  assert.deepEqual(legendTexts, ["<50", "50–79", "≥80"]);
+
+  // 3. 项目统计控制台: 展开首个 agent 检验 Dot-Leader console
+  const getFirstRow = () => stack.querySelectorAll(".agent-row")[0];
+  await getFirstRow().querySelector(".line1").click();
+  const prjConsole = getFirstRow().querySelector(".nothing-prj-console");
+  assert.ok(prjConsole, "Nothing 主题下项目分布使用点阵终端控制台渲染");
+  assert.match(prjConsole.querySelector(".prj-console-title").textContent, /PRJ\.CONSOLE/);
+  assert.match(prjConsole.querySelector(".prj-console-count").textContent, /2 WORKSPACES/);
+  const prjRows = prjConsole.querySelectorAll(".prj-console-row");
+  assert.equal(prjRows.length, 2);
+  assert.equal(prjRows[0].querySelector(".prj-tag").textContent, "[P1]");
+  assert.equal(prjRows[0].querySelector(".prj-name").textContent, "Bruce");
+  assert.ok(prjRows[0].querySelector(".prj-leader"), "包含点阵导引虚线");
+  assert.equal(prjRows[0].querySelectorAll(".prj-tick").length, 6, "包含 6-Tick 微型液晶进度格");
+
+  // 4. styles.css 中的字体定义与几何契约
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  assert.match(css, /@font-face\s*\{[^}]*font-family:\s*"Doto"/, "必须引入 Doto 字体");
+  assert.match(css, /@font-face\s*\{[^}]*font-family:\s*"Space Grotesk"/, "必须引入 Space Grotesk 字体");
+  assert.match(css, /@font-face\s*\{[^}]*font-family:\s*"Space Mono"/, "必须引入 Space Mono 字体");
+  assert.match(css, /\.theme-nothing #panel\s*\{[^}]*border-radius:\s*10px/, "面板圆角对齐 macOS 10px");
+  assert.match(css, /\.theme-nothing #panel\s*\{[^}]*background:\s*#000000/, "面板底色对齐 macOS #000000 OLED 纯黑");
+  assert.match(css, /\.theme-nothing \.hud-dot\s*\{[^}]*border-radius:\s*0/, "LIVE 指示灯对齐方块几何");
+});
+
 test("styles.css defines the P2 shapes and keeps theme overrides for them", () => {
   const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
   for (const rule of [".daily-chart .day-total", ".share-bar", ".legend-row", ".mini-spark", ".live-text", ".drag-handle", ".card.usage-card"]) {
