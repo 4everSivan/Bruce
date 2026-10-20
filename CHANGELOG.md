@@ -5,6 +5,16 @@
 
 ## [Unreleased]
 
+### Added
+- **电脑锁屏后禁止订阅刷新 (C064)**：在设置中心新增「锁屏暂停订阅刷新」开关（持久化至 `OnboardingConfiguration.pauseSubscriptionRefreshOnScreenLock`，默认开启）。当开关开启且系统处于锁屏状态时，定时刷新自动降级为纯本地扫描（`localUsageOnly`，`includeExternalQuotas=false`），杜绝人离开电脑时的无意义云端订阅配额消耗与 429 限流风险；当屏幕解锁后，若订阅额度已陈旧或已到期，立即补偿触发一次全量刷新，实现无缝衔接。
+
+### Fixed
+- **对齐 Claude Code (cc) 刷新机制 (C063)**：解决 Claude 凭证在 8 小时 token 过期后必然报错 `PROVIDER_AUTH_REJECTED` 导致订阅额度刷新失效的问题。
+  - **Collector 主动续期与 401 容错**：在 `expires_at_epoch_ms` 剩余时间 $\le 60\text{s}$ 或遇到 401 时，主动调用官方 OAuth 刷新端点 `POST https://api.anthropic.com/v1/oauth/token`（对齐 cc 2.1.302 的 `client_id` 与请求头）；换取成功后向返回载荷附加 `credential_update` 指令。
+  - **凭据白名单与嵌套持久化**：`collector-credential` 增加 `claude` 的 `access_token` / `refresh_token` / `expiry` 校验；Swift 侧 `CredentialRotationMerge` 支持更新 `claudeAiOauth` 与 `claude.ai_oauth` 内部嵌套字段，`CredentialUpdateCoordinator` 对 `claude-cli` 自动写回 `ProviderAccountStore` 隔离存储，实现无感自动续期与持久化。
+  - **外部 CLI 读取静默防护与弹窗根除**：探测 Claude CLI 登录态时改用 `/usr/bin/security find-generic-password -s "Claude Code-credentials" -w` 独立子进程静默读取，彻底根除进程内触碰外部应用 Keychain 项触发的 macOS SecurityAgent 密码弹窗。
+  - **隔离与防护**：自动化测试全程使用 `FixtureHttp` 内存 Mock 与沙箱临时目录，严禁真实外网连接；遵循 POSIX `0600` 权限安全存储。
+
 ## [0.12.1] - 2026-10-19
 
 ### Changed

@@ -83,7 +83,8 @@ struct BruceApp: App {
             executor: runner, store: resolvedStore,
             runInputProvider: runInputProvider,
             credentialUpdateCoordinator: credentialUpdateCoordinator,
-            networkReachability: SystemNetworkReachability()
+            networkReachability: SystemNetworkReachability(),
+            screenLockState: SystemScreenLockMonitor()
         )
         // 任务 9: 把 Codex token manager 挂到 Scheduler, 支持
         // quota 401 定向重试自愈 (强制刷新被挑战账号).

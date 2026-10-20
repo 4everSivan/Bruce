@@ -43,6 +43,7 @@ struct BruceOnboardingCoreHarness {
         try configStoreReturnsNilForUnknownSchema()
         try configStoreFilePermissions()
         try keychainAccessConfigurationRoundTrip()
+        try pauseSubscriptionRefreshOnScreenLockRoundTrip()
         try atomicStoreBackupRefreshesOnEachWrite()
         try credentialStoreRoundTrip()
         try credentialStoreDelete()
@@ -115,6 +116,7 @@ struct BruceOnboardingCoreHarness {
         try rotationMergeKimiRejected()
         try rotationMergeCodexRejected()
         try rotationMergeFiltersKeysAndRejectsUnknown()
+        try rotationMergeClaudeUpdatesNestedOAuthFields()
         try CodexCredentialStoreTests.runAll()
         try await CodexOAuthClientTests.runAll()
         try CredentialStateReducerTests.runAll()
@@ -142,6 +144,7 @@ struct BruceOnboardingCoreHarness {
         try claudePasteParserTokenAndJSON()
         try claudePasteParserRejectsEmpty()
         try claudePasteParserPreservesAccountFields()
+        try systemExternalCredentialReaderMockAndFallback()
         try grokPasteParserTokenAndJSON()
         try grokPasteParserRejectsEmpty()
         try claudeCLIImporterReadsFixture()
@@ -168,6 +171,6 @@ struct BruceOnboardingCoreHarness {
         try clineCredentialAccountsAndRegistry()
         try clineEvaluatorValidAndMalformed()
         try clineStoredCredentialParserRawKey()
-        print("BruceOnboardingCore tests passed: 165")
+        print("BruceOnboardingCore tests passed: 167")
     }
 }

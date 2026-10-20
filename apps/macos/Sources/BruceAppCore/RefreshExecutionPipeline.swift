@@ -18,6 +18,8 @@ struct RefreshPipelineRequest: Sendable {
     let now: Date
     /// C062 自动额度查询周期; <= 0 时不做新鲜度门禁 (测试兼容).
     let quotaRefreshInterval: TimeInterval
+    /// C064 锁屏等场景下强制抑制外部订阅额度查询.
+    let suppressSubscriptionRefresh: Bool
 
     init(
         module: CollectorModule,
@@ -25,7 +27,8 @@ struct RefreshPipelineRequest: Sendable {
         scope: RefreshScope = .all,
         staleAfter: TimeInterval,
         now: Date,
-        quotaRefreshInterval: TimeInterval = 0
+        quotaRefreshInterval: TimeInterval = 0,
+        suppressSubscriptionRefresh: Bool = false
     ) {
         self.module = module
         self.intent = intent
@@ -33,6 +36,7 @@ struct RefreshPipelineRequest: Sendable {
         self.staleAfter = staleAfter
         self.now = now
         self.quotaRefreshInterval = quotaRefreshInterval
+        self.suppressSubscriptionRefresh = suppressSubscriptionRefresh
     }
 }
 
@@ -146,14 +150,15 @@ struct RefreshExecutionPipeline {
         // 定向刷新由用户显式发起, 不受自动门禁约束.
         let quotaPolicy: QuotaRunPolicy
         if request.scope.isTargeted {
-            quotaPolicy = .includeAll
+            quotaPolicy = request.suppressSubscriptionRefresh ? .localOnly : .includeAll
         } else {
             quotaPolicy = QuotaRefreshPolicy.plan(
                 previous: previousArtifact,
                 now: request.now,
                 interval: request.quotaRefreshInterval,
                 forceRefresh: request.intent.forceQuotaRefresh,
-                bypassCooldown: request.intent.reason == .manual
+                bypassCooldown: request.intent.reason == .manual,
+                suppressExternalQuotas: request.suppressSubscriptionRefresh
             )
         }
 

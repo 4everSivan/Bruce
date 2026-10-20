@@ -1,0 +1,111 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C064",
+  "title": "电脑锁屏后禁止订阅刷新：新增 ScreenLock 状态监视闸门与设置中心开关按钮",
+  "type": "Enhancement",
+  "status": "verified",
+  "branch": "feat/T07-agent-analytics-workbench",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos",
+    "component": "RefreshScheduler / QuotaRefreshPolicy / OnboardingCoordinator / SettingsView",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+  "why": "用户需求「电脑锁屏后禁止订阅刷新，这个增加一个按钮在配置中设置」。当用户锁屏离开电脑时，无人查看菜单栏面板，但后台定时器若仍每 30 分钟轮询一次云端订阅额度（如 Claude、Codex 等），既浪费用户有限的 API 调用配额，又增加了触发 429 Rate Limit 的风险。需要支持锁屏状态下自动暂停云端订阅刷新（降级为本地扫描或抑制请求），并在用户解锁屏幕后立即补偿刷新一次；同时在设置中心提供显式开关按钮供用户自主开启或关闭。",
+  "precheck": {
+    "description": "预检代码库是否已有锁屏状态监听器或锁屏暂停订阅刷新开关",
+    "command": "grep -rn --exclude-dir=\".build\" 'pauseSubscriptionRefreshOnScreenLock' apps/macos/ || echo 'NOT_FOUND'",
+    "expected": "输出 NOT_FOUND，证实尚无该配置项与锁屏闸门",
+    "is_completed": true,
+    "evidence": "实测输出 NOT_FOUND：目前系统尚无 pauseSubscriptionRefreshOnScreenLock 配置项与锁屏监听逻辑"
+  },
+  "callback": {
+    "before": [
+      "# 确认当前环境与分支"
+    ],
+    "after": [
+      "swift run --package-path apps/macos BruceOnboardingCoreHarness",
+      "swift run --package-path apps/macos RefreshSchedulerHarness",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "非敏感配置定义与持久化 (OnboardingConfiguration)",
+      "before": "仅有 refreshIntervalMinutes、appearanceMode 等配置项，缺少锁屏订阅刷新控制",
+      "after": "新增 pauseSubscriptionRefreshOnScreenLock: Bool 属性（默认 true，支持解码缺省兼容），持久化存储于 onboarding-v1.json",
+      "impact": "用户可跨生命周期持久化锁屏暂停偏好"
+    },
+    {
+      "scope": "锁屏状态探测与监视 (ScreenLockStateProviding / SystemScreenLockMonitor)",
+      "before": "仅有 didWakeNotification 与 didBecomeActiveNotification 唤醒监听，无法感知屏幕锁定与解锁",
+      "after": "新增 ScreenLockStateProviding 协议与 SystemScreenLockMonitor 实现，监听 com.apple.screenIsLocked / com.apple.screenIsUnlocked 分布式通知及屏幕休眠/唤醒，并通过 CGSessionCopyCurrentDictionary 实时判定",
+      "impact": "调度器获得高灵敏度、零轮询的锁屏状态事件通知能力"
+    },
+    {
+      "scope": "额度策略与调度闸门 (QuotaRefreshPolicy / RefreshScheduler)",
+      "before": "定时刷新无论电脑是否锁屏均对外发起网络请求查询订阅额度",
+      "after": "当 isScreenLocked && pauseSubscriptionRefreshOnScreenLock 时，自动刷新策略强行降级为 QuotaRunPolicy.localOnly（不发任何外部额度请求，跳过全部 provider），窗口边界唤醒亦在锁屏时跳过；当屏幕解锁时触发 handleScreenUnlocked() 自动补偿一次刷新",
+      "impact": "彻底杜绝人离开锁屏时的外部订阅额度请求与限流损耗，解锁时立即无感刷新"
+    },
+    {
+      "scope": "设置交互与状态呈现 (OnboardingCoordinator / SettingsView)",
+      "before": "设置页仅有刷新间隔分段选择器，无锁屏控制开关",
+      "after": "在设置中心通用设置区域的刷新间隔下方新增「锁屏暂停订阅刷新」FluentRow 与 Switch 开关，支持即时响应与持久化",
+      "impact": "为用户提供直观明确的开关控制"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "topic": "SubscriptionQuota",
+    "modified": true,
+    "rule_diff": {
+      "before": "调度器仅在断网时（NWPathMonitor）通过断网闸门抑制网络刷新，锁屏状态下定时刷新依然发起网络请求",
+      "after": "调度器新增锁屏状态闸门；当配置项启用且屏幕锁定时，自动刷新降级为纯本地扫描（localUsageOnly），解锁后自动恢复补偿刷新"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "20261020-0315-verify",
+    "user_quote": "确认",
+    "signoff": "verified_by_user",
+    "checks": [
+      {
+        "item": "配置持久化与编解码单测",
+        "true_if": "OnboardingConfiguration 正确序列化与反序列化 pauseSubscriptionRefreshOnScreenLock，缺省回落为 true",
+        "false_if": "解码失败或字段丢失",
+        "evidence": "swift run BruceOnboardingCoreHarness (167 passed)，用例 pauseSubscriptionRefreshOnScreenLockRoundTrip 验证默认 true、显式 false 往返序列化以及旧版本 json 解码缺省回落均成功通过",
+        "result": true
+      },
+      {
+        "item": "纯逻辑 QuotaRefreshPolicy 锁屏抑制单测",
+        "true_if": "suppressExternalQuotas=true 时强制返回 localOnly，即使额度已超期或为强制刷新",
+        "false_if": "仍发起外部额度查询",
+        "evidence": "swift run RefreshSchedulerHarness 中 quotaPolicySuppressedOnScreenLock 验证通过，断言 includeExternalQuotas 为 false 且 policy 严格等于 localOnly",
+        "result": true
+      },
+      {
+        "item": "RefreshScheduler 锁屏抑制与解锁补偿单测",
+        "true_if": "锁屏期间定时触发不发起外部额度查询且不排边界唤醒；解锁后自动触发补偿刷新",
+        "false_if": "锁屏期间发起网络查询或解锁后未补偿",
+        "evidence": "swift run RefreshSchedulerHarness (102 passed)，用例 screenLockSuppressesQuotaQueryAndWakesOnUnlock 与 screenLockSuppressionDisabledAllowsQuotaQuery 全部通过，验证锁屏抑制与解锁自动补偿",
+        "result": true
+      },
+      {
+        "item": "全量本地验证门禁",
+        "true_if": "zsh scripts/verify-local.sh 退出码 0，全量测试通过",
+        "false_if": "存在编译报错或 Harness 失败",
+        "evidence": "zsh scripts/verify-local.sh 执行完毕，退出码 0，Rust fmt/test/clippy、敏感扫描、9 项 Swift Harness 及双端对拍全部全绿通过",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  }
+}

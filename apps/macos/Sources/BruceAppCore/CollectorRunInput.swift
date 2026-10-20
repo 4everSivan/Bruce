@@ -601,13 +601,21 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
                         ])
                     }
                 }
-                if accounts.isEmpty,
-                   let external = externalOAuthAccount(
-                       source: .claudeCLI,
-                       accountID: "claude-cli",
-                       displayName: "Claude CLI"
-                   ) {
-                    accounts["claude-cli"] = external
+                let external = externalOAuthAccount(
+                    source: .claudeCLI,
+                    accountID: "claude-cli",
+                    displayName: "Claude CLI"
+                )
+                if accounts.isEmpty {
+                    if let external {
+                        accounts["claude-cli"] = external
+                    }
+                } else if let storedCLI = accounts["claude-cli"], let external {
+                    let externalExp = Self.claudeExpiresAt(from: external) ?? 0
+                    let storedExp = Self.claudeExpiresAt(from: storedCLI) ?? 0
+                    if externalExp > storedExp {
+                        accounts["claude-cli"] = external
+                    }
                 }
                 if !accounts.isEmpty {
                     credentials["claudeQuotaAccounts"] = .object(accounts)
@@ -801,6 +809,27 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
             "display_name": .string(displayName),
             "oauth": oauth,
         ])
+    }
+
+    private static func claudeExpiresAt(from accountValue: JSONValue) -> Int64? {
+        guard case .object(let dict) = accountValue,
+              case .object(let oauth)? = dict["oauth"] else {
+            return nil
+        }
+        let entry = oauth["claudeAiOauth"] ?? oauth["claude.ai_oauth"]
+        guard case .object(let fields)? = entry else {
+            return nil
+        }
+        if case .integer(let n)? = fields["expiresAt"] {
+            return Int64(n)
+        }
+        if case .double(let d)? = fields["expiresAt"] {
+            return Int64(d)
+        }
+        if case .string(let s)? = fields["expiresAt"], let n = Int64(s) {
+            return n
+        }
+        return nil
     }
 
     /// 从 v2 索引取全部账号, 交给批量决议器最多 4 并行决议.

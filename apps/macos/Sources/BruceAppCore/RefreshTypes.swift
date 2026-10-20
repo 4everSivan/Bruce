@@ -89,8 +89,12 @@ package struct RefreshIntent: Equatable, Sendable {
         )
     }
 
-    package static func wake() -> RefreshIntent {
-        RefreshIntent(reason: .wake, includesManual: false)
+    package static func wake(forceQuotaRefresh: Bool = false) -> RefreshIntent {
+        RefreshIntent(
+            reason: .wake,
+            includesManual: false,
+            forceQuotaRefresh: forceQuotaRefresh
+        )
     }
 
     /// 自动退避重试: includesManual 仅沿用上一轮的手动标记以抑制额度预警,

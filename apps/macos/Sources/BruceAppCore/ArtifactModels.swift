@@ -17,8 +17,13 @@ package struct AgentDailyUsage: Codable, Equatable, Sendable {
 }
 
 package struct AgentProjectUsage: Codable, Equatable, Sendable {
-    let name: String
-    let total: Int
+    package let name: String
+    package let total: Int
+
+    package init(name: String, total: Int) {
+        self.name = name
+        self.total = total
+    }
 }
 
 package struct AgentModelUsageItem: Codable, Equatable, Sendable {

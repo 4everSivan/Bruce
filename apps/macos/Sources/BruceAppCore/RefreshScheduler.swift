@@ -87,6 +87,10 @@ package final class RefreshScheduler {
     private let credentialUpdateCoordinator: CredentialUpdateCoordinator?
     /// 可选网络可达性监视器; nil 时保持旧行为 (始终视为在线).
     private let networkReachability: (any NetworkReachabilityProviding)?
+    /// 可选屏幕锁定监视器 (C064); nil 时保持旧行为 (始终视为未锁屏).
+    private let screenLockState: (any ScreenLockStateProviding)?
+    /// 电脑锁屏后是否禁止订阅刷新 (C064), 与 OnboardingConfiguration 同步.
+    package private(set) var pauseSubscriptionRefreshOnScreenLock: Bool = true
 
     private var states: [CollectorModule: ModuleScheduleState] = [:]
     private var timers: [CollectorModule: RunnerTimerToken] = [:]
@@ -125,7 +129,8 @@ package final class RefreshScheduler {
         store: ArtifactStore,
         runInputProvider: OnboardingRunInputProvider? = nil,
         credentialUpdateCoordinator: CredentialUpdateCoordinator? = nil,
-        networkReachability: (any NetworkReachabilityProviding)? = nil
+        networkReachability: (any NetworkReachabilityProviding)? = nil,
+        screenLockState: (any ScreenLockStateProviding)? = nil
     ) {
         self.init(
             executor: executor,
@@ -139,7 +144,8 @@ package final class RefreshScheduler {
             registerWakeNotifications: true,
             runInputProvider: runInputProvider,
             credentialUpdateCoordinator: credentialUpdateCoordinator,
-            networkReachability: networkReachability
+            networkReachability: networkReachability,
+            screenLockState: screenLockState
         )
     }
 
@@ -155,7 +161,8 @@ package final class RefreshScheduler {
         registerWakeNotifications: Bool = true,
         runInputProvider: (any CollectorRunInputProviding)? = nil,
         credentialUpdateCoordinator: CredentialUpdateCoordinator? = nil,
-        networkReachability: (any NetworkReachabilityProviding)? = nil
+        networkReachability: (any NetworkReachabilityProviding)? = nil,
+        screenLockState: (any ScreenLockStateProviding)? = nil
     ) {
         self.executor = executor
         self.store = store
@@ -167,6 +174,7 @@ package final class RefreshScheduler {
         self.runInputProvider = runInputProvider
         self.credentialUpdateCoordinator = credentialUpdateCoordinator
         self.networkReachability = networkReachability
+        self.screenLockState = screenLockState
 
         for module in CollectorModule.allCases {
             states[module] = ModuleScheduleState()
@@ -198,6 +206,14 @@ package final class RefreshScheduler {
             networkReachability.start()
         }
 
+        // 锁屏闸门 (C064): 接通屏幕锁定监视
+        if let screenLockState {
+            screenLockState.onScreenLockStateChange = { [weak self] isLocked in
+                self?.handleScreenLockStateChange(isLocked)
+            }
+            screenLockState.start()
+        }
+
         for module in CollectorModule.allCases {
             loadCachedSnapshot(for: module)
         }
@@ -227,6 +243,9 @@ package final class RefreshScheduler {
 
         networkReachability?.onReachabilityChange = nil
         networkReachability?.stop()
+
+        screenLockState?.onScreenLockStateChange = nil
+        screenLockState?.stop()
 
         if let observer = wakeObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(observer)
@@ -287,6 +306,37 @@ package final class RefreshScheduler {
                   state.phase == .idle else { continue }
             scheduleNextRefresh(for: module)
         }
+    }
+
+    /// 当前屏幕是否处于锁定状态 (C064).
+    package var isScreenLocked: Bool {
+        screenLockState?.isScreenLocked ?? false
+    }
+
+    /// 更新锁屏暂停订阅刷新偏好 (C064).
+    package func setPauseSubscriptionRefreshOnScreenLock(_ enabled: Bool) {
+        self.pauseSubscriptionRefreshOnScreenLock = enabled
+    }
+
+    /// 屏幕锁屏/解锁状态变动回调 (C064).
+    private func handleScreenLockStateChange(_ isLocked: Bool) {
+        guard pauseSubscriptionRefreshOnScreenLock else { return }
+        if !isLocked {
+            handleScreenUnlocked()
+        }
+    }
+
+    /// 屏幕解锁时自动补偿订阅额度刷新 (C064).
+    package func handleScreenUnlocked() {
+        guard pauseSubscriptionRefreshOnScreenLock else { return }
+        guard let state = states[.agentUsage], state.enabled, state.autoRefreshEnabled else { return }
+        guard state.phase != .authRequired && state.phase != .running else { return }
+        let now = clock.now()
+        if let lastAttempt = state.lastAttemptAt,
+           now.timeIntervalSince(lastAttempt) < configuration.wakeDedupSeconds {
+            return
+        }
+        triggerRefresh(for: .agentUsage, intent: .wake(forceQuotaRefresh: true))
     }
 
     // MARK: - Manual refresh
@@ -390,8 +440,10 @@ package final class RefreshScheduler {
 
         // C037: 定时刷新不得跨过额度窗口边界 —— 否则槽/窗口重置后最长一个间隔内
         // 卡片仍展示上一窗口的百分比。首次调度 (delay=0) 不参与, 策略自带防风暴防线。
+        // C064: 锁屏且开启抑制时跳过边界提前唤醒, 避免在锁屏期间为了窗口重置多跑。
         var boundaryTriggered = false
-        if delay > 0 {
+        let shouldSkipBoundaryWake = isScreenLocked && pauseSubscriptionRefreshOnScreenLock
+        if delay > 0 && !shouldSkipBoundaryWake {
             let intervalRemaining = delay
             delay = SubscriptionBoundaryWakePolicy.delay(
                 intervalRemaining: delay,
@@ -510,13 +562,15 @@ package final class RefreshScheduler {
             // publish 用实时 clock; request.now 仅服务 load-previous 入口快照.
             now: { [clock] in clock.now() }
         )
+        let suppressQuotas = isScreenLocked && pauseSubscriptionRefreshOnScreenLock && intent.reason != .manual
         let result = await pipeline.run(RefreshPipelineRequest(
             module: module,
             intent: intent,
             scope: intent.scope,
             staleAfter: configuration.staleAfter,
             now: clock.now(),
-            quotaRefreshInterval: configuration.quotaRefreshInterval
+            quotaRefreshInterval: configuration.quotaRefreshInterval,
+            suppressSubscriptionRefresh: suppressQuotas
         ))
         // 定向刷新: 在模块级结果映射之外, 单独向目标 Provider 发状态回调.
         emitSubscriptionState(for: intent.scope, result: result)

@@ -78,7 +78,9 @@
         "C059",
         "C060",
         "C061",
-        "C062"
+        "C062",
+        "C063",
+        "C064"
       ]
     },
     "TokenUsage": {
@@ -658,6 +660,24 @@
       "topic": "SubscriptionQuota",
       "version": "0.12.1",
       "file": "docs/devel/change/C062.json"
+    },
+    "C063": {
+      "title": "对齐 Claude Code (cc) 刷新机制：支持 OAuth 凭据自动续期、401 动态重试换取与轮换凭证持久化写回",
+      "type": "BugFix",
+      "status": "verified",
+      "branch": "feat/T07-agent-analytics-workbench",
+      "topic": "SubscriptionQuota",
+      "version": "0.12.2",
+      "file": "docs/devel/change/C063.json"
+    },
+    "C064": {
+      "title": "电脑锁屏后禁止订阅刷新：新增 ScreenLock 状态监视闸门与设置中心开关按钮",
+      "type": "Enhancement",
+      "status": "verified",
+      "branch": "feat/T07-agent-analytics-workbench",
+      "topic": "SubscriptionQuota",
+      "version": "0.12.2",
+      "file": "docs/devel/change/C064.json"
     }
   }
 }

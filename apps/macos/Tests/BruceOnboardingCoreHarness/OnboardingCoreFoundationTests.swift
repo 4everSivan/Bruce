@@ -313,6 +313,32 @@ extension BruceOnboardingCoreHarness {
         )
     }
 
+    static func pauseSubscriptionRefreshOnScreenLockRoundTrip() throws {
+        var config = OnboardingConfiguration()
+        try coreExpect(
+            config.pauseSubscriptionRefreshOnScreenLock,
+            "new configuration must enable pause subscription refresh on screen lock by default"
+        )
+
+        config.pauseSubscriptionRefreshOnScreenLock = false
+        let data = try JSONEncoder().encode(config)
+        let decoded = try JSONDecoder().decode(OnboardingConfiguration.self, from: data)
+        try coreExpect(
+            !decoded.pauseSubscriptionRefreshOnScreenLock,
+            "pauseSubscriptionRefreshOnScreenLock state must survive configuration roundtrip"
+        )
+
+        let legacy = Data("{\"schemaVersion\":2}".utf8)
+        let legacyDecoded = try JSONDecoder().decode(
+            OnboardingConfiguration.self,
+            from: legacy
+        )
+        try coreExpect(
+            legacyDecoded.pauseSubscriptionRefreshOnScreenLock,
+            "legacy configuration without pauseSubscriptionRefreshOnScreenLock must default to true"
+        )
+    }
+
     // MARK: - Credential store
 
     static func credentialStoreRoundTrip() throws {
