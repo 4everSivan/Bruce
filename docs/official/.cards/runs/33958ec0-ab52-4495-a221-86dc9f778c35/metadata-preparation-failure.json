@@ -1,0 +1,6 @@
+{
+  "result": "failed",
+  "exit_code": 1,
+  "reason": "Host inline Python syntax error: missing final figure-record brace; no writes executed",
+  "repair": "Added missing brace and reran metadata preparation"
+}

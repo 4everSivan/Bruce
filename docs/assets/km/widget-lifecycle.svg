@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" id="d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36" viewBox="0 0 1000 954" role="img" aria-labelledby="d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36-title d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36-desc">
+<title id="d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36-title">Widget 像素场调度</title>
+<desc id="d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36-desc">可见性、运动偏好、交互和清理，不表示隐藏后不能重新显示</desc>
+<defs><style>#d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif} text{fill:#243247;font-size:16px} .node{fill:#fff;stroke:#768397;stroke-width:1.5} .connector{fill:none;stroke:#516176;stroke-width:1.5}</style><marker id="d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#516176"/></marker></defs>
+<rect width="1000" height="954" fill="#fff"/>
+<text x="24" y="30" style="font-size:20px;font-weight:600">Widget 像素场调度</text>
+<g id="d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36-r1" data-relation-id="r1"><polyline class="connector" points="270,142 270,184" marker-end="url(#d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36-arrow)"/>
+<rect x="321" y="150.5" width="108" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="375" y="167.5">同步观察状态</tspan>
+</text>
+</g>
+<g id="d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36-r2" data-relation-id="r2"><polyline class="connector" points="450,250 540,250" marker-end="url(#d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36-arrow)"/>
+<rect x="481" y="215.5" width="28" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="495" y="232.5">否</tspan>
+</text>
+</g>
+<g id="d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36-r3" data-relation-id="r3"><polyline class="connector" points="270,316 270,394" marker-end="url(#d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36-arrow)"/>
+<rect x="361" y="342.5" width="28" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="375" y="359.5">是</tspan>
+</text>
+</g>
+<g id="d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36-r4" data-relation-id="r4"><polyline class="connector" points="270,526 270,618" marker-end="url(#d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36-arrow)"/>
+<rect x="361" y="559.5" width="28" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="375" y="576.5">是</tspan>
+</text>
+</g>
+<g id="d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36-r5" data-relation-id="r5"><polyline class="connector" points="450,460 540,460" marker-end="url(#d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36-arrow)"/>
+<rect x="481" y="425.5" width="28" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="495" y="442.5">否</tspan>
+</text>
+</g>
+<g id="d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36-r6" data-relation-id="r6"><polyline class="connector" points="940,250 975,250 975,850 940,850" marker-end="url(#d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36-arrow)"/>
+<rect x="840" y="727.5" width="140" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="910" y="744.5">实例被替换或释放</tspan>
+</text>
+</g>
+<g id="d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36-r7" data-relation-id="r7"><polyline class="connector" points="270,702 270,850 540,850" marker-end="url(#d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36-arrow)"/>
+<rect x="270" y="807.5" width="140" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="340" y="824.5">实例被替换或释放</tspan>
+</text>
+</g>
+<g id="d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36-r8" data-relation-id="r8"><polyline class="connector" points="740,502 740,808" marker-end="url(#d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36-arrow)"/>
+<rect x="750" y="637.5" width="140" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="820" y="654.5">实例被替换或释放</tspan>
+</text>
+</g>
+<g id="d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36-start" data-node-id="start">
+<rect class="node" x="70" y="58" width="400" height="84" rx="22"/>
+<text text-anchor="middle">
+<tspan x="270" y="105.5">挂载实例并同步可见性</tspan>
+</text></g>
+<g id="d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36-visible" data-node-id="visible">
+<polygon class="node" points="270,184 450,250 270,316 90,250"/>
+<text text-anchor="middle">
+<tspan x="270" y="255.5">文档可见且元素相交？</tspan>
+</text></g>
+<g id="d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36-hidden" data-node-id="hidden">
+<rect class="node" x="540" y="208" width="400" height="84" rx="5"/>
+<text text-anchor="middle">
+<tspan x="740" y="255.5">取消帧、定时器与交互态</tspan>
+</text></g>
+<g id="d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36-motion" data-node-id="motion">
+<polygon class="node" points="270,394 450,460 270,526 90,460"/>
+<text text-anchor="middle">
+<tspan x="270" y="465.5">允许运动且非交互？</tspan>
+</text></g>
+<g id="d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36-tick" data-node-id="tick">
+<rect class="node" x="70" y="618" width="400" height="84" rx="5"/>
+<text text-anchor="middle">
+<tspan x="270" y="665.5">每 125 ms 绘制并续排</tspan>
+</text></g>
+<g id="d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36-static" data-node-id="static">
+<rect class="node" x="540" y="418" width="400" height="84" rx="5"/>
+<text text-anchor="middle">
+<tspan x="740" y="454">不排持续漂移</tspan>
+<tspan x="740" y="477">交互请求单帧、400ms 后结束</tspan>
+</text></g>
+<g id="d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36-destroy" data-node-id="destroy">
+<rect class="node" x="540" y="808" width="400" height="84" rx="22"/>
+<text text-anchor="middle">
+<tspan x="740" y="844">数据替换时销毁旧实例</tspan>
+<tspan x="740" y="867">解除监听、观察器与 Canvas</tspan>
+</text></g>
+</svg>

@@ -1,0 +1,31 @@
+{
+  "method": "Same-agent separate expression pass after content review; technical literals, link targets and anchors compared",
+  "result": "passed",
+  "edits": [
+    {
+      "path": "Agent用量分析设计.md",
+      "changed": true,
+      "reason": "remove process-oriented phrasing and clarify ownership without changing technical conditions",
+      "before_hash": "05b1ed94c0c6435f38b028cf3b1e2d89d99d9a69e02ad10c7321cd568e68da70",
+      "after_hash": "d36477a74479e0058710faf7ab62927c05141a20bbaac6caa1820fa2a51908b3"
+    },
+    {
+      "path": "订阅配置与凭据管理设计.md",
+      "changed": true,
+      "reason": "remove process-oriented phrasing and clarify ownership without changing technical conditions",
+      "before_hash": "87433a67b5f1e38231b9a00613c854960b6bd70706fe6d6b2a308793502699e9",
+      "after_hash": "5293fff7faa7abc40cd3ef4290fc6b1ebd468f25f0faacc52196f7913d325af2"
+    },
+    {
+      "path": "Bruce设计文档.md",
+      "changed": true,
+      "reason": "remove process-oriented phrasing and clarify ownership without changing technical conditions",
+      "before_hash": "06fe28583fec81b19a6dcfc0ef7b0d2d212a27abaadad2dc40aee2621e3aec19",
+      "after_hash": "c57eca7ab39373d0f41d8ed380baafd5959a9184a3071419bbc03e12d2119440"
+    }
+  ],
+  "unchanged_passages": "Other candidate prose retained where no readability defect was identified",
+  "fact_recheck": [
+    "No defaults, guards, units, IDs, algorithms, outputs or failure conditions changed; checked against corresponding current original sections"
+  ]
+}

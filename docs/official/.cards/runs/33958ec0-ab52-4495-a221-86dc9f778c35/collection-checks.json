@@ -1,0 +1,214 @@
+{
+  "coverage_status": "complete",
+  "validation_status": "passed",
+  "checks": [
+    {
+      "name": "design_topic_coverage",
+      "method": "Same-agent original-source semantic review plus mapping checks",
+      "result": "passed",
+      "evidence": "11 recognized topics have substantive overall sections and independent details; 10 business modules reconciled; no unresolved boundary. document-plan.json retains the map.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "document_naming",
+      "method": "Host path/H1 checks and semantic presentation review",
+      "result": "passed",
+      "evidence": "16 flat Chinese semantic Markdown paths; README exception; H1 topics match filenames.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "document_associations",
+      "method": "Host parsing of actual candidates, card bindings, figure uses and explicit anchors",
+      "result": "passed",
+      "evidence": "structure-check.json: Exit 0, 840 relative references; 16 articles, 11 cards and 25 figure pairs; current reverse bindings derived from actual references.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "document_outline",
+      "method": "Host chapter checks plus same-agent substantive outline review and actual Markdown preview",
+      "result": "passed",
+      "evidence": "14 design articles use the chosen seven-chapter category outlines; overall separates requirements, goals, capabilities, architecture and 11 topic details; tables and headings visually inspected.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "functional_point_coverage",
+      "method": "Original entrypoint/contract review and per-point prose/figure assessment",
+      "result": "passed",
+      "evidence": "document-plan.json retains source paths, overall/detail/answer sections, scenario sections and figure applicability; data/deployment concerns have reader questions without invented user features.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "detailed_design_depth",
+      "method": "Same-agent content check, separate expression pass, fact recheck and static normal/alternative walkthrough review",
+      "result": "passed",
+      "evidence": "Content review and C065 impact review cover contracts, precedence, cache append/rebuild, OAuth renewal/failure, lock/manual/unlock, ratio analytics and publishing; no runtime or independent-review claim.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "article_figure_coverage",
+      "method": "Semantic applicability review and actual Markdown image references",
+      "result": "passed",
+      "evidence": "25 figures across 26 embeddings cover relationships, internal flows, states, transformations and error retention. Per-point no-figure reasons describe actual field-only or bounded local rules; no deferred required views.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "figure_structure_and_meaning",
+      "method": "JSON/XML parsing and source-to-node/relation manual semantic review",
+      "result": "passed",
+      "evidence": "All SVG/list IDs and endpoints map one-to-one; source refs are original files; conditions, direction, payload and ownership reviewed. Source-kind declarations retained for CI.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "standalone_svg_visual",
+      "method": "rsvg-convert 2.62.3 and actual image inspection; unchanged prior view evidence reused by exact hash",
+      "result": "passed",
+      "evidence": "18 new SVGs inspected at width 1000. Seven unchanged SVG/list pairs match prior manifest hashes and retain prior standalone evidence; all also inspected in current Chrome embedding.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "markdown_embedding_visual",
+      "method": "Bundled marked + isolated offline Chrome 155.0.8059.85; actual page/figure screenshots",
+      "result": "passed",
+      "evidence": "16 pages rendered at content width 920, final viewport 1120x1600; 26 loaded images, no horizontal overflow or wide tables. Earlier overflow and screenshot crop were repaired; C065 changed three pages were rendered again.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "source_and_owned_output_guard",
+      "method": "Immediate SHA-256 comparison and confirmed-manifest equality",
+      "result": "passed",
+      "evidence": "442 inventory files unchanged from recovered current C065 baseline; all 39 prior owned content files match confirmed hashes; new targets must be unoccupied before delivery.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "first_figure_insertion",
+      "method": "Host text edit assertion",
+      "result": "failed",
+      "evidence": "Exit 1 for missing exact literal; content edits retained; corrected exact literal and next command Exit 0",
+      "required": false,
+      "scope": "candidate"
+    },
+    {
+      "name": "first_svg_visual",
+      "method": "Actual rsvg PNG inspection",
+      "result": "failed",
+      "evidence": "Five label/clearance defects repaired locally, then inspected again; visual-repair.json",
+      "required": false,
+      "scope": "candidate"
+    },
+    {
+      "name": "unicode_host_edit",
+      "method": "Host Python stdin parse",
+      "result": "failed",
+      "evidence": "Non-UTF-8 SyntaxError Exit 1 before writes; retried with ASCII JSON escaped strings",
+      "required": false,
+      "scope": "candidate"
+    },
+    {
+      "name": "first_markdown_launch",
+      "method": "Actual sandboxed Chrome launch",
+      "result": "failed",
+      "evidence": "Exit 1, SIGABRT/EPERM; authorized isolated local rendering succeeded with the sandbox escalation.",
+      "required": false,
+      "scope": "candidate"
+    },
+    {
+      "name": "first_markdown_overflow",
+      "method": "Actual Chrome layout report",
+      "result": "failed",
+      "evidence": "One long signature overflowed; symbol and individual argument names retain the contract and remove overflow. Final report has zero overflow.",
+      "required": false,
+      "scope": "candidate"
+    },
+    {
+      "name": "external_workspace_interruption",
+      "method": "Current paths, git branch/HEAD and original collection hashes",
+      "result": "failed",
+      "evidence": "External branch switch removed untracked candidates. Exact own tool inputs recovered the drafts; confirmed outputs remained intact. recovery-receipt.json and c065-impact-review.json record bounded recovery.",
+      "required": false,
+      "scope": "candidate"
+    },
+    {
+      "name": "application_tests",
+      "method": "Documentation-only work; no application build, Harness execution, credentials or external requests",
+      "result": "not_run",
+      "evidence": "Source test definitions are evidence of expected cases only. No runtime/device/human acceptance was performed.",
+      "required": false,
+      "scope": "official_collection"
+    }
+  ],
+  "semantic_review": "same conversation, not independent",
+  "inspected_preview_paths": [
+    "Agent用量分析设计.md",
+    "Bruce设计文档.md",
+    "README.md",
+    "Widget设计.md",
+    "Windows应用设计.md",
+    "Windows快照与刷新状态.md",
+    "macOS原生应用设计.md",
+    "刷新生命周期设计.md",
+    "本地会话解析与计费.md",
+    "术语表.md",
+    "构建验证与发布.md",
+    "菜单栏与看板设计.md",
+    "订阅配置与凭据管理设计.md",
+    "订阅额度查询设计.md",
+    "设置中心与价格校准设计.md",
+    "采集引擎与本地用量设计.md"
+  ],
+  "figure_ids": [
+    "d_7f3ad701-7677-4fad-8ea8-e58da250f111",
+    "d_ae615f73-9d9d-408e-8112-f8ec47afffbc",
+    "d_382e629e-29bd-42b3-acc8-7c33c123b340",
+    "d_176bf773-8952-4814-b413-e5181bfe337b",
+    "d_8e45187e-0751-4651-b9f2-160f2771bbb2",
+    "d_62f7970a-5036-440c-bd91-5fbcac4a7fbb",
+    "d_7f1dffad-5e43-460b-9d30-c9c70bb943de",
+    "d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36",
+    "d_93c87502-3b6a-4a18-9342-15e5ea7679e6",
+    "d_cbbda8c9-188a-4f71-9dc7-152a77890a10",
+    "d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3",
+    "d_b9e5079c-f299-4c64-bc1f-0a639840238d",
+    "d_ac13d2c9-06bf-466a-8e98-523657c2adbf",
+    "d_2873df93-a3b4-4c39-afb2-e65f8aeee860",
+    "d_3c25534c-cebe-4094-a87e-2e0290e5ba21",
+    "d_5a4da270-e951-4cb2-bfcf-0c2797da2120",
+    "d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae",
+    "d_257519d2-e4c9-4ce5-b3ad-93159b88adf5",
+    "d_a20b6df3-7589-475f-8573-b4269438f480",
+    "d_76549499-2760-425c-8c1f-f23edea8f412",
+    "d_1ae57d61-4db4-468c-b17b-5258dd915895",
+    "d_084f9330-301b-4613-bcd3-1cf561127e93",
+    "d_856cccba-17f1-402f-b8d2-d03c0c7de2e6",
+    "d_04caaf2e-14be-4711-904e-1faa0b4a797b",
+    "d_a41b7373-2867-4803-820c-c1bba0c5fe64"
+  ],
+  "candidate_hashes": {
+    "Agent用量分析设计.md": "d36477a74479e0058710faf7ab62927c05141a20bbaac6caa1820fa2a51908b3",
+    "Bruce设计文档.md": "59d4748196d787518336bdbd1f00a97e0b3e2728e436fa6efd83d6c0c06e24e9",
+    "README.md": "e96260b803a8248a50b507a015545eae2a7034e439a2b10352e0a00be69bb541",
+    "Widget设计.md": "8ea220b46bdf75edd56903154e5cc1c6ae6c6974cba90090cd50e2977a4e8c6f",
+    "Windows应用设计.md": "903f946bb8669c072c2e498dad7a76486574020a45a9f561db541f1940be62a3",
+    "Windows快照与刷新状态.md": "f427a19271e751cb49e261eae57258b71e5a562d1edff1615ed295804b4dc5cc",
+    "macOS原生应用设计.md": "f3ba50391e882bbf53b92a648f1b5874a18b8f9dc2a1900cb172ffdc6b215c8d",
+    "刷新生命周期设计.md": "c28c98de96f087c1c41ffe8ab7a0340f85ed5552285fb6e29bd380fc15f830d9",
+    "本地会话解析与计费.md": "b4db6023fc15e5c15ba559d08eaef644b63ade0c19c888e27bbeb53f1af6a1cf",
+    "术语表.md": "2fb7ffb232269cdb5b8879822c42c2df9fe53f60c293b53d7d3cc4efd1f858ac",
+    "构建验证与发布.md": "839ab0d336640b78939a980be49bce728b353d120a1962b77781035996d82586",
+    "菜单栏与看板设计.md": "23c43865cc0e1ba951665d4cad55da5e62fb18bced4c80059f374f6aa6a562cb",
+    "订阅配置与凭据管理设计.md": "0269b809f493995d868777b83b8fd983a8da9155f5c265833693da9a63069adc",
+    "订阅额度查询设计.md": "a0c70f1d11bc56125333e6474e24e87961963176e526427432977ca27ab4d751",
+    "设置中心与价格校准设计.md": "a658df2ab234f9477f4c51ca4a71f54d669d9a65c70a9172b20360ab3a28e00f",
+    "采集引擎与本地用量设计.md": "f62bc1a64d78359f119e33f78cd77bfb6dfed63ef2cfb1ca8146d7a11595b11f"
+  }
+}

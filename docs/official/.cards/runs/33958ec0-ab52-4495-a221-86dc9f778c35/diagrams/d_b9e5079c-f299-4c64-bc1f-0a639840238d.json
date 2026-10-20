@@ -1,0 +1,166 @@
+{
+  "schema_version": "1.0",
+  "id": "d_b9e5079c-f299-4c64-bc1f-0a639840238d",
+  "title": "Windows 凭据恢复数据流",
+  "type": "data_flow",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "first",
+      "label": "首轮 Bridge 响应与初始凭据",
+      "role": "source",
+      "evidence_refs": [
+        "recovery"
+      ]
+    },
+    {
+      "id": "updates",
+      "label": "应用合法更新并提取挑战",
+      "role": "process",
+      "evidence_refs": [
+        "recovery"
+      ]
+    },
+    {
+      "id": "compare",
+      "label": "账号与当前存储比较\n已删或已改则跳过",
+      "role": "process",
+      "evidence_refs": [
+        "recovery"
+      ]
+    },
+    {
+      "id": "refresh",
+      "label": "每账号有限刷新\nInvalidGrant 标记重新授权",
+      "role": "process",
+      "evidence_refs": [
+        "recovery"
+      ]
+    },
+    {
+      "id": "store",
+      "label": "比较后替换 Bruce 凭据",
+      "role": "store",
+      "evidence_refs": [
+        "recovery"
+      ]
+    },
+    {
+      "id": "retry",
+      "label": "成功账号合为一次 Codex 重试",
+      "role": "process",
+      "evidence_refs": [
+        "recovery"
+      ]
+    },
+    {
+      "id": "merge",
+      "label": "仅替换匹配 Codex 服务\n保留本地与其它服务",
+      "role": "sink",
+      "evidence_refs": [
+        "recovery"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "r1",
+      "from": "first",
+      "to": "updates",
+      "kind": "derives",
+      "evidence_refs": [
+        "recovery"
+      ],
+      "properties": {
+        "data": "首轮响应"
+      },
+      "label": "首轮响应"
+    },
+    {
+      "id": "r2",
+      "from": "updates",
+      "to": "compare",
+      "kind": "derives",
+      "evidence_refs": [
+        "recovery"
+      ],
+      "properties": {
+        "data": "去重的Codex挑战"
+      },
+      "label": "去重的Codex挑战"
+    },
+    {
+      "id": "r3",
+      "from": "compare",
+      "to": "refresh",
+      "kind": "derives",
+      "evidence_refs": [
+        "recovery"
+      ],
+      "properties": {
+        "data": "仍与初始值相同的账号"
+      },
+      "label": "仍与初始值相同的账号"
+    },
+    {
+      "id": "r4",
+      "from": "refresh",
+      "to": "store",
+      "kind": "derives",
+      "evidence_refs": [
+        "recovery"
+      ],
+      "properties": {
+        "data": "校验后的令牌或授权状态"
+      },
+      "label": "校验后的令牌或授权状态"
+    },
+    {
+      "id": "r5",
+      "from": "store",
+      "to": "retry",
+      "kind": "derives",
+      "evidence_refs": [
+        "recovery"
+      ],
+      "properties": {
+        "data": "成功替换的账号集合"
+      },
+      "label": "成功替换的账号集合"
+    },
+    {
+      "id": "r6",
+      "from": "retry",
+      "to": "merge",
+      "kind": "derives",
+      "evidence_refs": [
+        "recovery"
+      ],
+      "properties": {
+        "data": "重试服务和诊断"
+      },
+      "label": "重试服务和诊断"
+    },
+    {
+      "id": "r7",
+      "from": "updates",
+      "to": "merge",
+      "kind": "derives",
+      "evidence_refs": [
+        "recovery"
+      ],
+      "properties": {
+        "data": "首轮工件作为合并基底"
+      },
+      "label": "首轮工件作为合并基底"
+    }
+  ],
+  "evidence": {
+    "recovery": {
+      "path": "apps/win/src-tauri/src/credentials/lifecycle.rs",
+      "locator": "collect_with_recovery_using / apply_updates / compare_and_replace",
+      "kind": "static_implementation",
+      "supports": "账号去重和防覆盖；成功刷新后至多一次Codex重试，匹配服务替换；错误诊断保留。"
+    }
+  }
+}

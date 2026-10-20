@@ -1,0 +1,49 @@
+{
+  "stage": "content_before_expression",
+  "result": "passed",
+  "method": "Same-agent source-grounded semantic review; not independent review",
+  "articles": [
+    "macOS原生应用设计.md",
+    "刷新生命周期设计.md",
+    "订阅额度查询设计.md",
+    "采集引擎与本地用量设计.md",
+    "Agent用量分析设计.md",
+    "术语表.md",
+    "README.md",
+    "Widget设计.md",
+    "本地会话解析与计费.md",
+    "Windows应用设计.md",
+    "订阅配置与凭据管理设计.md",
+    "Bruce设计文档.md",
+    "设置中心与价格校准设计.md",
+    "构建验证与发布.md",
+    "菜单栏与看板设计.md",
+    "Windows快照与刷新状态.md"
+  ],
+  "claims_rechecked": [
+    "Claude proactive refresh, retry and object-result update condition",
+    "Credential nested merge absence on new claude-cli record",
+    "Screen lock manual bypass, no in-flight cancellation and guarded unlock",
+    "Analytics ratios, ranges, costs, project scope and incomplete MA7 target",
+    "Cache append identity and unknown-price behavior"
+  ],
+  "source_locator_repair": "jsonl_cache::process_file is distinct from lib::process_cached_file",
+  "draft_hashes": {
+    "macOS原生应用设计.md": "f3ba50391e882bbf53b92a648f1b5874a18b8f9dc2a1900cb172ffdc6b215c8d",
+    "刷新生命周期设计.md": "139d587efc956c45b8aa273e3999e1e7ae5fc7ae8caf2bfcab09a96673ce6a0c",
+    "订阅额度查询设计.md": "a0c70f1d11bc56125333e6474e24e87961963176e526427432977ca27ab4d751",
+    "采集引擎与本地用量设计.md": "f62bc1a64d78359f119e33f78cd77bfb6dfed63ef2cfb1ca8146d7a11595b11f",
+    "Agent用量分析设计.md": "05b1ed94c0c6435f38b028cf3b1e2d89d99d9a69e02ad10c7321cd568e68da70",
+    "术语表.md": "2fb7ffb232269cdb5b8879822c42c2df9fe53f60c293b53d7d3cc4efd1f858ac",
+    "README.md": "e96260b803a8248a50b507a015545eae2a7034e439a2b10352e0a00be69bb541",
+    "Widget设计.md": "8ea220b46bdf75edd56903154e5cc1c6ae6c6974cba90090cd50e2977a4e8c6f",
+    "本地会话解析与计费.md": "9629e173d7b7270950304db4fe63b636e3eca1d3d9aa9efab1f3fc8a6f84afba",
+    "Windows应用设计.md": "15b8519cd53adf1f6ba754f548403569516fd76936ab81e165b3ee5be7a80cd4",
+    "订阅配置与凭据管理设计.md": "87433a67b5f1e38231b9a00613c854960b6bd70706fe6d6b2a308793502699e9",
+    "Bruce设计文档.md": "69a870638c04cc59e97ef42fc86da7ac03130a9c4db8b96516e8286663fa2fe5",
+    "设置中心与价格校准设计.md": "45f3821c7745c2380dfd95771ade16e588f809aef436af0c49f210a47abc4016",
+    "构建验证与发布.md": "58e0ba35b57a667eab330419c144bbecaf241a84b3a0e134a3c1a47289149c51",
+    "菜单栏与看板设计.md": "23c43865cc0e1ba951665d4cad55da5e62fb18bced4c80059f374f6aa6a562cb",
+    "Windows快照与刷新状态.md": "f427a19271e751cb49e261eae57258b71e5a562d1edff1615ed295804b4dc5cc"
+  }
+}

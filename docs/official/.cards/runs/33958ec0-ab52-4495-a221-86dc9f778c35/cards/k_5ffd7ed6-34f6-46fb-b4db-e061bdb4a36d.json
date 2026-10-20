@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "id": "k_5ffd7ed6-34f6-46fb-b4db-e061bdb4a36d",
+  "term": "CollectionWindow",
+  "category": "project_term",
+  "context": "Bruce 采集引擎",
+  "definition": "一次采集共用的日期、时区和天数边界。",
+  "project_usage": "from_context 解析 timezone、days 与 now；默认 UTC、14 天，允许 1 至 366 天。桌面宿主可以显式请求不同天数。",
+  "basis": {
+    "definition": "code_supported",
+    "project_usage": "code_supported"
+  },
+  "status": "current",
+  "articles": [
+    {
+      "path": "术语表.md",
+      "anchor": "collection-window"
+    },
+    {
+      "path": "本地会话解析与计费.md"
+    }
+  ],
+  "sources": [
+    {
+      "kind": "code",
+      "path": "core/collector/crates/collector-domain/src/lib.rs",
+      "symbol": "CollectionWindow::from_context",
+      "supports": [
+        "definition",
+        "project_usage"
+      ]
+    }
+  ],
+  "tags": [
+    "Bruce",
+    "CollectionWindow"
+  ]
+}

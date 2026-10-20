@@ -1,0 +1,29 @@
+{
+  "stage": "before_svg",
+  "result": "passed",
+  "method": "Current source sections reviewed for nodes, direction, conditions, data meaning; existing source hashes compared to prior manifest",
+  "repairs": [
+    "AccountSingleFlight shared-result bypass added to slots",
+    "Snapshot current read distinguishes typed storage errors from other exceptions"
+  ],
+  "observations": [
+    "Claude refreshed credentials only attach on object usage results",
+    "Lock manual bypass and guarded unlock compensation retained",
+    "Analytics estimated data separated from exact artifact fields"
+  ],
+  "figures": [
+    "d_7f3ad701-7677-4fad-8ea8-e58da250f111",
+    "d_ae615f73-9d9d-408e-8112-f8ec47afffbc",
+    "d_382e629e-29bd-42b3-acc8-7c33c123b340",
+    "d_176bf773-8952-4814-b413-e5181bfe337b",
+    "d_8e45187e-0751-4651-b9f2-160f2771bbb2",
+    "d_62f7970a-5036-440c-bd91-5fbcac4a7fbb",
+    "d_7f1dffad-5e43-460b-9d30-c9c70bb943de",
+    "d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36",
+    "d_93c87502-3b6a-4a18-9342-15e5ea7679e6",
+    "d_cbbda8c9-188a-4f71-9dc7-152a77890a10",
+    "d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3",
+    "d_b9e5079c-f299-4c64-bc1f-0a639840238d",
+    "d_ac13d2c9-06bf-466a-8e98-523657c2adbf"
+  ]
+}

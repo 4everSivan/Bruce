@@ -1,0 +1,165 @@
+{
+  "schema_version": "1.0",
+  "id": "d_5a4da270-e951-4cb2-bfcf-0c2797da2120",
+  "title": "Bruce 凭据文件原子写入",
+  "type": "flowchart",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "start",
+      "label": "串行写入自有凭据请求",
+      "role": "entry",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "temp",
+      "label": "准备目录并创建 0600 临时文件",
+      "role": "action",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "write",
+      "label": "写入、同步并重读解码",
+      "role": "action",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "replace",
+      "label": "旧文件存在则备份后 replace\n否则将临时文件 move 到目标",
+      "role": "action",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "perms",
+      "label": "复位目标文件权限为 0600",
+      "role": "action",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "done",
+      "label": "返回保存成功",
+      "role": "exit",
+      "evidence_refs": [
+        "source"
+      ]
+    },
+    {
+      "id": "error",
+      "label": "上抛错误，尽力清理临时文件\n替换后的权限失败可能已改变目标",
+      "role": "exit",
+      "evidence_refs": [
+        "source"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "r1",
+      "from": "start",
+      "to": "temp",
+      "kind": "flow",
+      "evidence_refs": [
+        "source"
+      ],
+      "label": "准备"
+    },
+    {
+      "id": "r2",
+      "from": "temp",
+      "to": "write",
+      "kind": "flow",
+      "evidence_refs": [
+        "source"
+      ],
+      "label": "创建成功"
+    },
+    {
+      "id": "r3",
+      "from": "write",
+      "to": "replace",
+      "kind": "flow",
+      "evidence_refs": [
+        "source"
+      ],
+      "label": "落盘校验成功"
+    },
+    {
+      "id": "r4",
+      "from": "replace",
+      "to": "perms",
+      "kind": "flow",
+      "evidence_refs": [
+        "source"
+      ],
+      "label": "替换成功"
+    },
+    {
+      "id": "r5",
+      "from": "perms",
+      "to": "done",
+      "kind": "flow",
+      "evidence_refs": [
+        "source"
+      ],
+      "label": "权限设置成功"
+    },
+    {
+      "id": "r6",
+      "from": "temp",
+      "to": "error",
+      "kind": "flow",
+      "evidence_refs": [
+        "source"
+      ],
+      "label": "临时文件创建失败"
+    },
+    {
+      "id": "r7",
+      "from": "write",
+      "to": "error",
+      "kind": "flow",
+      "evidence_refs": [
+        "source"
+      ],
+      "label": "写入或校验失败"
+    },
+    {
+      "id": "r8",
+      "from": "replace",
+      "to": "error",
+      "kind": "flow",
+      "evidence_refs": [
+        "source"
+      ],
+      "label": "备份或替换失败"
+    },
+    {
+      "id": "r9",
+      "from": "perms",
+      "to": "error",
+      "kind": "flow",
+      "evidence_refs": [
+        "source"
+      ],
+      "label": "最终权限设置失败"
+    }
+  ],
+  "evidence": {
+    "source": {
+      "path": "apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift",
+      "locator": "ProtectedFileCredentialStore.writePayloadLocked",
+      "kind": "static_implementation",
+      "supports": "父目录已有时权限校正尽力执行；没有跨账号元数据和快照的统一回滚事务。"
+    }
+  }
+}

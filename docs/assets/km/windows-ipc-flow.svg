@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" id="d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae" viewBox="0 0 1000 982" role="img" aria-labelledby="d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae-title d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae-desc">
+<title id="d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae-title">Windows IPC 与后台数据通道</title>
+<desc id="d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae-desc">前端先订阅后读缓存；系统窗口焦点与位置规则由正文说明。</desc>
+<defs><style>#d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif}text{fill:#243247;font-size:16px}.node{fill:#fff;stroke:#768397;stroke-width:1.5}.connector{fill:none;stroke:#516176;stroke-width:1.5}</style><marker id="d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#516176"/></marker></defs>
+<rect width="1000" height="982" fill="#fff"/><text x="24" y="30" style="font-size:20px;font-weight:600">Windows IPC 与后台数据通道</text>
+<g id="d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae-r1" data-relation-id="r1"><polyline class="connector" points="400,142 400,190 230,190 230,238" marker-end="url(#d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae-arrow)"/><rect x="146.4" y="202.5" width="167.2" height="25" fill="#fff"/><text text-anchor="middle"><tspan x="230" y="220">get_dashboard 调用</tspan></text></g>
+<g id="d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae-r2" data-relation-id="r2"><polyline class="connector" points="50,280 30,280 30,100 200,100" marker-end="url(#d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae-arrow)"/><rect x="76" y="162" width="108" height="46" fill="#fff"/><text text-anchor="middle"><tspan x="130" y="179.5">已有面板返回</tspan><tspan x="130" y="200.5">不启动采集</tspan></text></g>
+<g id="d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae-r3" data-relation-id="r3"><polyline class="connector" points="770,322 770,438" marker-end="url(#d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae-arrow)"/><rect x="799" y="367.5" width="172" height="25" fill="#fff"/><text text-anchor="middle"><tspan x="885" y="385">合并后的手动刷新意图</tspan></text></g>
+<g id="d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae-r4" data-relation-id="r4"><polyline class="connector" points="770,522 770,638" marker-end="url(#d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae-arrow)"/><rect x="832.2" y="567.5" width="105.6" height="25" fill="#fff"/><text text-anchor="middle"><tspan x="885" y="585">Bridge 结果</tspan></text></g>
+<g id="d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae-r5" data-relation-id="r5"><polyline class="connector" points="770,722 770,790 650,790 650,838" marker-end="url(#d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae-arrow)"/><rect x="676" y="799.5" width="188" height="25" fill="#fff"/><text text-anchor="middle"><tspan x="770" y="817">当前有效工件与运行相位</tspan></text></g>
+<g id="d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae-r6" data-relation-id="r6"><polyline class="connector" points="200,880 170,880 170,722" marker-end="url(#d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae-arrow)"/><rect x="161.6" y="787.5" width="156.8" height="25" fill="#fff"/><text text-anchor="middle"><tspan x="240" y="805">Panel JSON 与阶段</tspan></text></g>
+<g id="d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae-r7" data-relation-id="r7"><polyline class="connector" points="50,680 10,680 10,120 200,120" marker-end="url(#d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae-arrow)"/><rect x="74" y="532" width="92" height="46" fill="#fff"/><text text-anchor="middle"><tspan x="120" y="549.5">事件面板</tspan><tspan x="120" y="570.5">可见才绘制</tspan></text></g>
+<g id="d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae-r8" data-relation-id="r8"><polyline class="connector" points="590,680 500,680 500,280 410,280" marker-end="url(#d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae-arrow)"/><rect x="438" y="587.5" width="124" height="25" fill="#fff"/><text text-anchor="middle"><tspan x="500" y="605">缓存工件与状态</tspan></text></g>
+<g id="d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae-front" data-node-id="front">
+<rect class="node" x="200.0" y="58.0" width="600" height="84" rx="5"/>
+<text text-anchor="middle"><tspan x="500" y="105">前端订阅事件与读取面板</tspan></text></g>
+<g id="d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae-cache" data-node-id="cache">
+<rect class="node" x="50.0" y="238.0" width="360" height="84" rx="5"/>
+<text text-anchor="middle"><tspan x="230" y="285">get_dashboard：内存快照映射</tspan></text></g>
+<g id="d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae-commands" data-node-id="commands">
+<rect class="node" x="590.0" y="238.0" width="360" height="84" rx="5"/>
+<text text-anchor="middle"><tspan x="770" y="285">刷新动作：容量 1 手动通道</tspan></text></g>
+<g id="d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae-worker" data-node-id="worker">
+<rect class="node" x="590.0" y="438.0" width="360" height="84" rx="5"/>
+<text text-anchor="middle"><tspan x="770" y="485">唯一后台采集循环</tspan></text></g>
+<g id="d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae-snapshot" data-node-id="snapshot">
+<rect class="node" x="590.0" y="638.0" width="360" height="84" rx="5"/>
+<text text-anchor="middle"><tspan x="770" y="685">响应验证、合并与快照</tspan></text></g>
+<g id="d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae-panel" data-node-id="panel">
+<rect class="node" x="200.0" y="838.0" width="600" height="84" rx="5"/>
+<text text-anchor="middle"><tspan x="500" y="885">裁剪当前凭据并映射 Panel</tspan></text></g>
+<g id="d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae-event" data-node-id="event">
+<rect class="node" x="50.0" y="638.0" width="360" height="84" rx="5"/>
+<text text-anchor="middle"><tspan x="230" y="685">dashboard-updated 与托盘状态</tspan></text></g>
+</svg>

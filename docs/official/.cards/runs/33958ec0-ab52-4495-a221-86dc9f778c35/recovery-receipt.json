@@ -1,0 +1,152 @@
+{
+  "result": "passed",
+  "jobs": [
+    {
+      "call_id": "call_0c7d5102504342e9bacef9417430f6cb",
+      "kind": "candidate production recovery",
+      "exit_code": 0,
+      "output": "\"d_77bfab74-6bf8-40a9-9e21-ee14a4f36e36\",\n  \"screen-lock-gate\": \"d_93c87502-3b6a-4a18-9342-15e5ea7679e6\",\n  \"analytics-model-flow\": \"d_cbbda8c9-188a-4f71-9dc7-152a77890a10\",\n  \"analytics-timeline-flow\": \"d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3\",\n  \"windows-credential-recovery\": \"d_b9e5079c-f299-4c64-bc1f-0a639840238d\",\n  \"snapshot-recovery\": \"d_ac13d2c9-06bf-466a-8e98-523657c2adbf\"\n}\nPLAN 11 10 13\n",
+      "error": ""
+    },
+    {
+      "call_id": "call_53c8f35549994b61bcf96a1845fe5bc0",
+      "kind": "candidate production recovery",
+      "exit_code": 0,
+      "output": "CANDIDATES 14 existing prose preserved in category chapters\n",
+      "error": ""
+    },
+    {
+      "call_id": "call_e7e9cdb626464c50a16a66fcb78d3763",
+      "kind": "candidate production recovery",
+      "exit_code": 0,
+      "output": "Recovery: content blocks restored\n",
+      "error": ""
+    },
+    {
+      "call_id": "call_56bb500a8a1c4c3aa8341aea478808ee",
+      "kind": "candidate production recovery",
+      "exit_code": 0,
+      "output": "Exit 0: figure uses inserted; prior insertion attempt stopped at missing literal before any figure insertion\n",
+      "error": ""
+    },
+    {
+      "call_id": "call_ded5ef2a1a924cb4b9b0c2e0fbe8d5c7",
+      "kind": "exact patch recovery",
+      "exit_code": 0
+    },
+    {
+      "call_id": "call_55f640a7d6ab440dae8164b6d7b9b7a7",
+      "kind": "candidate production recovery",
+      "exit_code": 0,
+      "output": "OVERALL seven chapters, eleven topics, precise functional references\n",
+      "error": ""
+    },
+    {
+      "call_id": "call_159eb139bcce423aa2d49261b242f058",
+      "kind": "candidate production recovery",
+      "exit_code": 0,
+      "output": "SEMANTIC_CANDIDATES 13 source-backed nodes and relations; no SVG drawn yet\n",
+      "error": ""
+    },
+    {
+      "call_id": "call_13235fcad28b4ef0b8a6770573ee357b",
+      "kind": "candidate production recovery",
+      "exit_code": 0,
+      "output": "SEMANTIC_REVIEW passed after local corrections\n",
+      "error": ""
+    },
+    {
+      "call_id": "call_79adee4fda764203aab796d5a47f6151",
+      "kind": "candidate production recovery",
+      "exit_code": 0,
+      "output": "SVG_CANDIDATES 13\n",
+      "error": ""
+    },
+    {
+      "call_id": "call_2428faed4f1842a3a8a60b81c4b6da52",
+      "kind": "candidate production recovery",
+      "exit_code": 1,
+      "output": "",
+      "error": "Traceback (most recent call last):\n  File \"<stdin>\", line 3, in <module>\n  File \"/Library/Frameworks/Python.framework/Versions/3.9/lib/python3.9/pathlib.py\", line 1323, in mkdir\n    self._accessor.mkdir(self, mode)\nFileExistsError: [Errno 17] File exists: 'local/km/33958ec0-ab52-4495-a221-86dc9f778c35/preview'\n"
+    },
+    {
+      "call_id": "call_2428faed4f1842a3a8a60b81c4b6da52",
+      "kind": "candidate recovery continuation",
+      "exit_code": 0,
+      "output": "RENDERED 13 rsvg rsvg-convert version 2.62.3\n\nlibraries used:\n  cairo 1.18.4\n  pango 1.57.1\n  harfbuzz 14.2.1\n  fontconfig 2.18.1\nPREVIEW local/km/33958ec0-ab52-4495-a221-86dc9f778c35/preview\n",
+      "error": ""
+    },
+    {
+      "call_id": "call_80615ffd2ed241a8b68332b50536b99c",
+      "kind": "candidate recovery continuation",
+      "exit_code": 0,
+      "output": "REPAIRED ['macos-app-lifecycle', 'claude-oauth-refresh', 'credential-input-flow', 'analytics-model-flow', 'snapshot-recovery']\n",
+      "error": ""
+    },
+    {
+      "call_id": "call_01d5ff7822ff489e9bf6161bfa95056a",
+      "kind": "candidate recovery continuation",
+      "exit_code": 0,
+      "output": "STRUCTURED 16 documents; 11 cards\n",
+      "error": ""
+    },
+    {
+      "call_id": "call_55a6d30021ca4b089542718c89447eb9",
+      "kind": "candidate recovery continuation",
+      "exit_code": 0,
+      "output": "8c35/Bruce设计文档.md:257:查询是否发生同时受授权和本轮额度策略约束。当前 macOS 以历史服务时间戳决定本地专用采集或需要查询的 Provider；Bridge 接受 `localUsageOnly` 与 `quotaSkipProviders`，应用层据此跳过额度任务或账号计划。旧额度由宿主回填，必须与本轮真实查询结果区分；这些新增门禁不能推定 Windows 已采用相同策略。\ndocs/official/.staging/33958ec0-ab52-4495-a221-86dc9f778c35/Bruce设计文档.md:338:### 6.9 独立 Widget 设计\n",
+      "error": ""
+    },
+    {
+      "call_id": "call_69efa9ac29a8460ab87c2b564506bcb3",
+      "kind": "candidate recovery continuation",
+      "exit_code": 0,
+      "output": "FOCUSED SEMANTIC CANDIDATES added 4\n",
+      "error": ""
+    },
+    {
+      "call_id": "call_d826a0897deb478ebf262bb233c6f16a",
+      "kind": "candidate recovery continuation",
+      "exit_code": 0,
+      "output": "ADDITIONAL semantic/source checks and 4 SVG renders complete\n",
+      "error": ""
+    },
+    {
+      "call_id": "call_4329a331d9324b9cb2519333cd772617",
+      "kind": "candidate recovery continuation",
+      "exit_code": 0,
+      "output": "Candidate source associations and ongoing attempt saved; confirmed manifest unchanged\n",
+      "error": ""
+    },
+    {
+      "call_id": "call_9344ba63e22a4b45aca4fc954e9ef90c",
+      "kind": "candidate recovery continuation",
+      "exit_code": 0,
+      "output": "Delivery topic converted to deployment design; CI figure semantics retained before drawing\n",
+      "error": ""
+    },
+    {
+      "call_id": "call_1ca915115ed647a6aed4e03435667b09",
+      "kind": "candidate recovery continuation",
+      "exit_code": 0,
+      "output": "ect { $_.name -eq $name } | Select-Object -First 1\n65:        gh api --method DELETE \"repos/$repo/releases/assets/$($stale.id)\"\n73:Write-Host \"多端产物上传完毕，发布 Release $($release.id)\"\n74:gh api --method PATCH \"repos/$repo/releases/$($release.id)\" -F draft=false -F make_latest=true\nRelease graph rendered\n",
+      "error": ""
+    },
+    {
+      "call_id": "call_7b80f3e509114f46a9c18843e583f458",
+      "kind": "candidate recovery continuation",
+      "exit_code": 0,
+      "output": "PLAN_RECONCILED 14 design articles 11 topics 25 figures 26 embeddings\n",
+      "error": ""
+    },
+    {
+      "call_id": "call_7a02fa7d2bb14137978fdc01ce9d904c",
+      "kind": "candidate recovery continuation",
+      "exit_code": 0,
+      "output": "Long signature reformatted into symbol plus individual argument names; technical contract unchanged\n",
+      "error": ""
+    }
+  ],
+  "adjustment": "Preserved existing local preview directory with exist_ok; no removal or reset",
+  "pending": "C065 impact recheck"
+}

@@ -1,0 +1,393 @@
+{
+  "run_id": "33958ec0-ab52-4495-a221-86dc9f778c35",
+  "project": "Bruce",
+  "reported_at": "2026-10-20T04:33:59.631790+00:00",
+  "language": "zh-CN",
+  "result": "已交付",
+  "library_revision": 3,
+  "entrypoint": "docs/official/README.md",
+  "overall_design": "docs/official/Bruce设计文档.md",
+  "declared_scope": {
+    "source_roots": [
+      "."
+    ],
+    "exclude": [],
+    "fact_sources": [
+      "core/collector/",
+      "apps/macos/",
+      "apps/win/",
+      "apps/widget/",
+      "scripts/",
+      "项目原始配置、文档和测试定义"
+    ],
+    "exclusions": [
+      {
+        "path": ".git/",
+        "reason": "VCS internals"
+      },
+      {
+        "path": "docs/official/",
+        "reason": "generated knowledge and retained generation material"
+      },
+      {
+        "path": "docs/assets/km/",
+        "reason": "generated figures"
+      },
+      {
+        "path": "local/ and dist/",
+        "reason": "runtime and build products"
+      },
+      {
+        "path": "**/target/ and **/.build/",
+        "reason": "compiler output"
+      },
+      {
+        "path": "node_modules/ and dependency caches",
+        "reason": "third-party dependencies"
+      },
+      {
+        "path": "_adflow_backup/",
+        "reason": "protected backup assets"
+      },
+      {
+        "path": ".env* and credential/key/private database files",
+        "reason": "obvious secret-bearing input"
+      },
+      {
+        "path": ".agents/ and .codex/ and tool configuration",
+        "reason": "agent instructions/resources kept separate from project factual evidence"
+      },
+      {
+        "path": "outside-root symlinks",
+        "reason": "out of project scope"
+      }
+    ],
+    "inventory_count": 442,
+    "inventory_limit": "哈希库存不代表逐行深读全部文件；事实来自本次相关段落及哈希未变的既有来源证据。AGENTS.md 等规则文件仅作稳定性库存，不作为产品事实来源。"
+  },
+  "knowledge": {
+    "articles": 16,
+    "terminology_cards": 11,
+    "figure_pairs": 25,
+    "created_articles": [
+      "Agent用量分析设计.md"
+    ],
+    "updated_article_count": 15,
+    "created_cards": [
+      "k_4b4b55a7-3376-4d6a-8b85-d52e99c726b0"
+    ],
+    "created_figure_pairs": 18,
+    "retired": [],
+    "written_content_files": 53,
+    "reused_content_files": 24,
+    "reuse_basis": "10 张原有术语卡和 7 组 SVG/语义清单字节未变，SHA-256 与原确认清单一致；7 组图复用同一渲染器和字体环境的原独立预览证据，并检查了本次 Markdown 嵌入效果。"
+  },
+  "coverage": {
+    "status": "complete",
+    "business_modules": 10,
+    "design_topics": [
+      {
+        "name": "本地采集与计费",
+        "overall_anchor": "local-usage",
+        "detail_article": "采集引擎与本地用量设计.md"
+      },
+      {
+        "name": "订阅额度查询",
+        "overall_anchor": "provider-quota",
+        "detail_article": "订阅额度查询设计.md"
+      },
+      {
+        "name": "订阅配置与凭据",
+        "overall_anchor": "credentials",
+        "detail_article": "订阅配置与凭据管理设计.md"
+      },
+      {
+        "name": "macOS应用装配",
+        "overall_anchor": "macos-app",
+        "detail_article": "macOS原生应用设计.md"
+      },
+      {
+        "name": "菜单栏与看板",
+        "overall_anchor": "dashboard",
+        "detail_article": "菜单栏与看板设计.md"
+      },
+      {
+        "name": "设置与价格校准",
+        "overall_anchor": "settings-pricing",
+        "detail_article": "设置中心与价格校准设计.md"
+      },
+      {
+        "name": "刷新、快照与恢复",
+        "overall_anchor": "refresh-snapshot",
+        "detail_article": "刷新生命周期设计.md"
+      },
+      {
+        "name": "Windows平台适配",
+        "overall_anchor": "windows",
+        "detail_article": "Windows应用设计.md"
+      },
+      {
+        "name": "独立Widget",
+        "overall_anchor": "widget",
+        "detail_article": "Widget设计.md"
+      },
+      {
+        "name": "工程验证与交付",
+        "overall_anchor": "delivery",
+        "detail_article": "构建验证与发布.md"
+      },
+      {
+        "name": "Agent用量分析与跨源模型归并",
+        "overall_anchor": "agent-analytics",
+        "detail_article": "Agent用量分析设计.md"
+      }
+    ],
+    "design_article_count": 14,
+    "unresolved_module_boundaries": [],
+    "missing_designs": [],
+    "pending_topics": [],
+    "pending_figures": [],
+    "deferred_optional_figures": [],
+    "detail_evidence": "document-plan.json 保留读者问题、回答章节、条件契约、场景分支、图示必要性、原始来源和图 ID。"
+  },
+  "principal_changes": [
+    "新增 Agent 用量分析独立设计，区分时间范围、模型归一、比例估算、截断、导出口径及尚未实现的设计目标。",
+    "补齐 Claude 凭据发现、OAuth 续期、401 分支、持久化条件和当前包装结构限制。",
+    "补齐锁屏本地采集、手动刷新、解锁补偿及实时探针和缓存状态的边界。",
+    "纳入当前 C065 实现：刷新间隔同时更新额度新鲜度间隔；429 冷却仍固定为 1800 秒。",
+    "总体设计与 11 个主题逐项映射，详细文章增加必要的内部机制图。"
+  ],
+  "verification": {
+    "required_checks": [
+      {
+        "name": "design_topic_coverage",
+        "method": "Same-agent original-source semantic review plus mapping checks",
+        "result": "passed",
+        "evidence": "11 recognized topics have substantive overall sections and independent details; 10 business modules reconciled; no unresolved boundary. document-plan.json retains the map.",
+        "required": true,
+        "scope": "official_collection"
+      },
+      {
+        "name": "document_naming",
+        "method": "Host path/H1 checks and semantic presentation review",
+        "result": "passed",
+        "evidence": "16 flat Chinese semantic Markdown paths; README exception; H1 topics match filenames.",
+        "required": true,
+        "scope": "official_collection"
+      },
+      {
+        "name": "document_associations",
+        "method": "Host parsing of actual candidates, card bindings, figure uses and explicit anchors",
+        "result": "passed",
+        "evidence": "structure-check.json: Exit 0, 840 relative references; 16 articles, 11 cards and 25 figure pairs; current reverse bindings derived from actual references.",
+        "required": true,
+        "scope": "official_collection"
+      },
+      {
+        "name": "document_outline",
+        "method": "Host chapter checks plus same-agent substantive outline review and actual Markdown preview",
+        "result": "passed",
+        "evidence": "14 design articles use the chosen seven-chapter category outlines; overall separates requirements, goals, capabilities, architecture and 11 topic details; tables and headings visually inspected.",
+        "required": true,
+        "scope": "official_collection"
+      },
+      {
+        "name": "functional_point_coverage",
+        "method": "Original entrypoint/contract review and per-point prose/figure assessment",
+        "result": "passed",
+        "evidence": "document-plan.json retains source paths, overall/detail/answer sections, scenario sections and figure applicability; data/deployment concerns have reader questions without invented user features.",
+        "required": true,
+        "scope": "official_collection"
+      },
+      {
+        "name": "detailed_design_depth",
+        "method": "Same-agent content check, separate expression pass, fact recheck and static normal/alternative walkthrough review",
+        "result": "passed",
+        "evidence": "Content review and C065 impact review cover contracts, precedence, cache append/rebuild, OAuth renewal/failure, lock/manual/unlock, ratio analytics and publishing; no runtime or independent-review claim.",
+        "required": true,
+        "scope": "official_collection"
+      },
+      {
+        "name": "article_figure_coverage",
+        "method": "Semantic applicability review and actual Markdown image references",
+        "result": "passed",
+        "evidence": "25 figures across 26 embeddings cover relationships, internal flows, states, transformations and error retention. Per-point no-figure reasons describe actual field-only or bounded local rules; no deferred required views.",
+        "required": true,
+        "scope": "official_collection"
+      },
+      {
+        "name": "figure_structure_and_meaning",
+        "method": "JSON/XML parsing and source-to-node/relation manual semantic review",
+        "result": "passed",
+        "evidence": "All SVG/list IDs and endpoints map one-to-one; source refs are original files; conditions, direction, payload and ownership reviewed. Source-kind declarations retained for CI.",
+        "required": true,
+        "scope": "official_collection"
+      },
+      {
+        "name": "standalone_svg_visual",
+        "method": "rsvg-convert 2.62.3 and actual image inspection; unchanged prior view evidence reused by exact hash",
+        "result": "passed",
+        "evidence": "18 new SVGs inspected at width 1000. Seven unchanged SVG/list pairs match prior manifest hashes and retain prior standalone evidence; all also inspected in current Chrome embedding.",
+        "required": true,
+        "scope": "official_collection"
+      },
+      {
+        "name": "markdown_embedding_visual",
+        "method": "Bundled marked + isolated offline Chrome 155.0.8059.85; actual page/figure screenshots",
+        "result": "passed",
+        "evidence": "16 pages rendered at content width 920, final viewport 1120x1600; 26 loaded images, no horizontal overflow or wide tables. Earlier overflow and screenshot crop were repaired; C065 changed three pages were rendered again.",
+        "required": true,
+        "scope": "official_collection"
+      },
+      {
+        "name": "source_and_owned_output_guard",
+        "method": "Immediate SHA-256 comparison and confirmed-manifest equality",
+        "result": "passed",
+        "evidence": "442 inventory files unchanged from recovered current C065 baseline; all 39 prior owned content files match confirmed hashes; new targets must be unoccupied before delivery.",
+        "required": true,
+        "scope": "official_collection"
+      }
+    ],
+    "candidate_and_optional_checks": [
+      {
+        "name": "first_figure_insertion",
+        "method": "Host text edit assertion",
+        "result": "failed",
+        "evidence": "Exit 1 for missing exact literal; content edits retained; corrected exact literal and next command Exit 0",
+        "required": false,
+        "scope": "candidate"
+      },
+      {
+        "name": "first_svg_visual",
+        "method": "Actual rsvg PNG inspection",
+        "result": "failed",
+        "evidence": "Five label/clearance defects repaired locally, then inspected again; visual-repair.json",
+        "required": false,
+        "scope": "candidate"
+      },
+      {
+        "name": "unicode_host_edit",
+        "method": "Host Python stdin parse",
+        "result": "failed",
+        "evidence": "Non-UTF-8 SyntaxError Exit 1 before writes; retried with ASCII JSON escaped strings",
+        "required": false,
+        "scope": "candidate"
+      },
+      {
+        "name": "first_markdown_launch",
+        "method": "Actual sandboxed Chrome launch",
+        "result": "failed",
+        "evidence": "Exit 1, SIGABRT/EPERM; authorized isolated local rendering succeeded with the sandbox escalation.",
+        "required": false,
+        "scope": "candidate"
+      },
+      {
+        "name": "first_markdown_overflow",
+        "method": "Actual Chrome layout report",
+        "result": "failed",
+        "evidence": "One long signature overflowed; symbol and individual argument names retain the contract and remove overflow. Final report has zero overflow.",
+        "required": false,
+        "scope": "candidate"
+      },
+      {
+        "name": "external_workspace_interruption",
+        "method": "Current paths, git branch/HEAD and original collection hashes",
+        "result": "failed",
+        "evidence": "External branch switch removed untracked candidates. Exact own tool inputs recovered the drafts; confirmed outputs remained intact. recovery-receipt.json and c065-impact-review.json record bounded recovery.",
+        "required": false,
+        "scope": "candidate"
+      },
+      {
+        "name": "application_tests",
+        "method": "Documentation-only work; no application build, Harness execution, credentials or external requests",
+        "result": "not_run",
+        "evidence": "Source test definitions are evidence of expected cases only. No runtime/device/human acceptance was performed.",
+        "required": false,
+        "scope": "official_collection"
+      }
+    ],
+    "postwrite": {
+      "result": "passed",
+      "checked_at": "2026-10-20T04:31:04.670438+00:00",
+      "content_files": 77,
+      "written_content_files": 53,
+      "reused_content_files": 24,
+      "relative_references": 840,
+      "source_files_unchanged": 442,
+      "manifest_revision": 3
+    },
+    "final_guard": {
+      "checked_at": "2026-10-20T04:33:59.631790+00:00",
+      "manifest_content_files_matched": 77,
+      "original_inventory_files_unchanged": 442,
+      "source_drift": [],
+      "output_drift": [],
+      "outside_km_changes": [],
+      "git_diff_check": {
+        "command": "git diff --check",
+        "exit_code": 0,
+        "output": ""
+      }
+    },
+    "tool_checks": "JSON/XML 解析、路径与锚点、840 处相对引用、SHA-256、关联绑定、离线渲染与布局测量、git diff。",
+    "semantic_review": "同一会话内进行了原始来源核对、内容审查、单独表达编辑、事实复查和实际图片检查；没有独立审查声明。",
+    "not_run": [
+      "应用构建",
+      "Rust 或 Swift 自动化用例执行",
+      "真实账号或凭据验证",
+      "真实 Keychain ACL 交互验收",
+      "Windows/macOS 设备验收",
+      "人类验收代签"
+    ],
+    "evidence_boundary": "源码测试定义只说明预期场景，文档校验不构成软件运行或生产验收。"
+  },
+  "preview": {
+    "svg": {
+      "renderer": "rsvg-convert 2.62.3",
+      "cairo": "1.18.4",
+      "pango": "1.57.1",
+      "harfbuzz": "14.2.1",
+      "fontconfig": "2.18.1",
+      "new_figures_inspected": 18,
+      "width": 1000
+    },
+    "markdown": {
+      "parser": "bundled marked",
+      "browser": "Chrome 155.0.8059.85",
+      "mode": "隔离、离线、本地候选内容",
+      "viewport": [
+        1120,
+        1600
+      ],
+      "content_width": 920,
+      "pages": 16,
+      "image_embeddings": 26,
+      "horizontal_overflow": 0,
+      "wide_tables": 0,
+      "c065_pages_rerendered": 3
+    },
+    "artifacts": "local/km/33958ec0-ab52-4495-a221-86dc9f778c35/preview/",
+    "limits": "使用本机可用 Markdown 解析器与 Chrome；项目未声明生产 Markdown 阅读器。不推及其他客户端、PDF 或 Word 的布局表现。"
+  },
+  "interruption_and_conflicts": {
+    "recovered": true,
+    "description": "外部切换分支曾移除未跟踪候选；确认旧正式产物完整后，从本会话自己的精确工具输入恢复草稿，保留 local 数据并核对当前 C065 源码。13 篇未受 C065 影响的恢复页面与原已查预览正文完全相同；3 篇受影响文章重新渲染。",
+    "current_branch": "fix/C065-refresh-interval-callback",
+    "source_head": "19fd33278588bdad724930fcb26535ba51a0bc22",
+    "conflicts": [],
+    "pending": [],
+    "receipts": [
+      "recovery-receipt.json",
+      "recovery-render-comparison.json",
+      "c065-impact-review.json"
+    ],
+    "ownership": "只替换已确认所有权的知识库产物；没有回滚源码、切换分支、提交或推送。"
+  },
+  "retained_candidates": {
+    "articles": "docs/official/.staging/33958ec0-ab52-4495-a221-86dc9f778c35/",
+    "figures": "docs/assets/km/.staging/33958ec0-ab52-4495-a221-86dc9f778c35/",
+    "purpose": "已通过检查的候选副本与恢复材料，不表示未完成工作。"
+  },
+  "remaining_work": [],
+  "next_invocation": "基于下次运行时的原始来源与已确认 manifest 做增量检查；复用未变内容，仅更新受影响章节和图示。"
+}

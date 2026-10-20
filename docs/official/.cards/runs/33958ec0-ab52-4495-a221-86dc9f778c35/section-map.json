@@ -1,0 +1,399 @@
+{
+  "采集引擎与本地用量设计.md": [
+    {
+      "anchor": "structure",
+      "title": "职责与技术边界",
+      "chapter": 3
+    },
+    {
+      "anchor": "bridge-contract",
+      "title": "Bridge 输入与输出",
+      "chapter": 2
+    },
+    {
+      "anchor": "collection-flow",
+      "title": "一次采集的处理路径",
+      "chapter": 5
+    },
+    {
+      "anchor": "local-output",
+      "title": "本地模块的输入、输出与状态",
+      "chapter": 4
+    },
+    {
+      "anchor": "cancellation",
+      "title": "取消、故障与资源限制",
+      "chapter": 6
+    },
+    {
+      "anchor": "metrics",
+      "title": "度量边界",
+      "chapter": 4
+    },
+    {
+      "anchor": "related",
+      "title": "相关文档",
+      "chapter": 7
+    }
+  ],
+  "本地会话解析与计费.md": [
+    {
+      "anchor": "source-window",
+      "title": "时间窗口与来源路径",
+      "chapter": 2
+    },
+    {
+      "anchor": "normalization",
+      "title": "记录归一化与去重",
+      "chapter": 4
+    },
+    {
+      "anchor": "cache",
+      "title": "缓存的四种形态",
+      "chapter": 5
+    },
+    {
+      "anchor": "contributions",
+      "title": "派生贡献与聚合维度",
+      "chapter": 3
+    },
+    {
+      "anchor": "pricing",
+      "title": "模型匹配与参考费用",
+      "chapter": 4
+    },
+    {
+      "anchor": "read-failure",
+      "title": "读取失败与终止",
+      "chapter": 6
+    },
+    {
+      "anchor": "related",
+      "title": "相关文档",
+      "chapter": 7
+    }
+  ],
+  "订阅额度查询设计.md": [
+    {
+      "anchor": "quota-contract",
+      "title": "责任与外部契约",
+      "chapter": 2
+    },
+    {
+      "anchor": "account-plan",
+      "title": "账号目录与顺序",
+      "chapter": 3
+    },
+    {
+      "anchor": "account-execution",
+      "title": "请求执行与故障隔离",
+      "chapter": 5
+    },
+    {
+      "anchor": "provider-adapters",
+      "title": "服务商适配口径",
+      "chapter": 4
+    },
+    {
+      "anchor": "claude-windows",
+      "title": "Claude 模型窗口",
+      "chapter": 4
+    },
+    {
+      "anchor": "cline-windows",
+      "title": "Cline 服务端窗口",
+      "chapter": 4
+    },
+    {
+      "anchor": "credential-updates",
+      "title": "凭据更新、挑战与安全边界",
+      "chapter": 6
+    },
+    {
+      "anchor": "host-quota-policy",
+      "title": "宿主额度策略与跳过行为",
+      "chapter": 4
+    },
+    {
+      "anchor": "related",
+      "title": "相关文档",
+      "chapter": 7
+    }
+  ],
+  "订阅配置与凭据管理设计.md": [
+    {
+      "anchor": "credential-contract",
+      "title": "配置、凭据与账号的边界",
+      "chapter": 2
+    },
+    {
+      "anchor": "storage",
+      "title": "文件存储与兼容读取",
+      "chapter": 3
+    },
+    {
+      "anchor": "activation-gate",
+      "title": "统一同意与调度门控",
+      "chapter": 5
+    },
+    {
+      "anchor": "external-oauth",
+      "title": "Claude 与 Grok 的外部读取",
+      "chapter": 4
+    },
+    {
+      "anchor": "codex-accounts",
+      "title": "Codex 账号发现、登录与 token 决议",
+      "chapter": 4
+    },
+    {
+      "anchor": "credential-failure",
+      "title": "失败与安全边界",
+      "chapter": 6
+    },
+    {
+      "anchor": "local-only-input",
+      "title": "本地专用输入的凭据边界",
+      "chapter": 4
+    },
+    {
+      "anchor": "related",
+      "title": "相关文档",
+      "chapter": 7
+    }
+  ],
+  "macOS原生应用设计.md": [
+    {
+      "anchor": "bootstrap",
+      "title": "应用入口与对象装配",
+      "chapter": 5
+    },
+    {
+      "anchor": "app-contract",
+      "title": "对外契约与内部职责",
+      "chapter": 2
+    },
+    {
+      "anchor": "collaboration",
+      "title": "呈现与设置的协作边界",
+      "chapter": 3
+    },
+    {
+      "anchor": "termination",
+      "title": "退出与恢复",
+      "chapter": 6
+    },
+    {
+      "anchor": "related",
+      "title": "相关文档",
+      "chapter": 7
+    }
+  ],
+  "菜单栏与看板设计.md": [
+    {
+      "anchor": "status-item",
+      "title": "状态项与输入契约",
+      "chapter": 4
+    },
+    {
+      "anchor": "metrics",
+      "title": "指标、额度环规与刷新呈现",
+      "chapter": 2
+    },
+    {
+      "anchor": "panel-toggle",
+      "title": "面板开关与可见性",
+      "chapter": 3
+    },
+    {
+      "anchor": "theme",
+      "title": "主题与原生材质",
+      "chapter": 2
+    },
+    {
+      "anchor": "collapse",
+      "title": "原生卡片折叠",
+      "chapter": 2
+    },
+    {
+      "anchor": "visibility",
+      "title": "隐藏、释放与异常边界",
+      "chapter": 5
+    },
+    {
+      "anchor": "related",
+      "title": "相关文档",
+      "chapter": 7
+    }
+  ],
+  "设置中心与价格校准设计.md": [
+    {
+      "anchor": "settings-window",
+      "title": "窗口入口与职责",
+      "chapter": 1
+    },
+    {
+      "anchor": "settings-navigation",
+      "title": "分类、指标编辑与预览",
+      "chapter": 3
+    },
+    {
+      "anchor": "pricing-editor",
+      "title": "模型价格表与校准交互",
+      "chapter": 3
+    },
+    {
+      "anchor": "pricing-activation",
+      "title": "模型价格覆盖与生效路径",
+      "chapter": 4
+    },
+    {
+      "anchor": "refresh-preferences",
+      "title": "刷新与展示配置的边界",
+      "chapter": 2
+    },
+    {
+      "anchor": "windows-settings",
+      "title": "Windows 设置接入",
+      "chapter": 5
+    },
+    {
+      "anchor": "related",
+      "title": "相关文档",
+      "chapter": 7
+    }
+  ],
+  "刷新生命周期设计.md": [
+    {
+      "anchor": "triggers",
+      "title": "启动与触发",
+      "chapter": 2
+    },
+    {
+      "anchor": "scheduler-state",
+      "title": "调度状态与意图合并",
+      "chapter": 4
+    },
+    {
+      "anchor": "offline-quota",
+      "title": "离线暂停与额度查询门禁",
+      "chapter": 3
+    },
+    {
+      "anchor": "refresh-sequence",
+      "title": "一次执行的交接顺序",
+      "chapter": 3
+    },
+    {
+      "anchor": "runner-contract",
+      "title": "Bridge 子进程边界",
+      "chapter": 2
+    },
+    {
+      "anchor": "snapshot",
+      "title": "快照与界面更新",
+      "chapter": 4
+    },
+    {
+      "anchor": "alert-shutdown",
+      "title": "预警、后台与退出",
+      "chapter": 5
+    },
+    {
+      "anchor": "related",
+      "title": "相关文档",
+      "chapter": 7
+    }
+  ],
+  "Windows应用设计.md": [
+    {
+      "anchor": "windows-contract",
+      "title": "职责与接口",
+      "chapter": 2
+    },
+    {
+      "anchor": "windows-startup",
+      "title": "启动、刷新与展示",
+      "chapter": 5
+    },
+    {
+      "anchor": "windows-config",
+      "title": "配置与采集授权",
+      "chapter": 3
+    },
+    {
+      "anchor": "windows-credentials",
+      "title": "凭证存储与恢复",
+      "chapter": 4
+    },
+    {
+      "anchor": "windows-mapping",
+      "title": "视图模型、告警与维护",
+      "chapter": 4
+    },
+    {
+      "anchor": "windows-limits",
+      "title": "对齐范围与证据边界",
+      "chapter": 6
+    },
+    {
+      "anchor": "related",
+      "title": "相关文档",
+      "chapter": 7
+    }
+  ],
+  "Windows快照与刷新状态.md": [
+    {
+      "anchor": "windows-triggers",
+      "title": "刷新入口与唯一采集通道",
+      "chapter": 2
+    },
+    {
+      "anchor": "windows-snapshot",
+      "title": "快照阶段与结果应用",
+      "chapter": 4
+    },
+    {
+      "anchor": "windows-carryover",
+      "title": "服务级旧数据保留",
+      "chapter": 4
+    },
+    {
+      "anchor": "windows-retry",
+      "title": "重试与额度窗口唤醒",
+      "chapter": 3
+    },
+    {
+      "anchor": "windows-presentation",
+      "title": "从快照到界面状态",
+      "chapter": 3
+    },
+    {
+      "anchor": "related",
+      "title": "相关文档",
+      "chapter": 7
+    }
+  ],
+  "Widget设计.md": [
+    {
+      "anchor": "host-contract",
+      "title": "宿主接口与数据边界",
+      "chapter": 2
+    },
+    {
+      "anchor": "display",
+      "title": "用量与额度的展示口径",
+      "chapter": 4
+    },
+    {
+      "anchor": "animation",
+      "title": "动画的可见性与释放",
+      "chapter": 5
+    },
+    {
+      "anchor": "related",
+      "title": "相关文档",
+      "chapter": 7
+    }
+  ]
+}

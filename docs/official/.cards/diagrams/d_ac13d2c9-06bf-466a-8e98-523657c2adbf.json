@@ -1,0 +1,183 @@
+{
+  "schema_version": "1.0",
+  "id": "d_ac13d2c9-06bf-466a-8e98-523657c2adbf",
+  "title": "macOS 快照读取恢复",
+  "type": "flowchart",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "current",
+      "label": "读取并校验当前快照",
+      "role": "entry",
+      "evidence_refs": [
+        "store"
+      ]
+    },
+    {
+      "id": "valid",
+      "label": "当前读取结果",
+      "role": "decision",
+      "evidence_refs": [
+        "store"
+      ]
+    },
+    {
+      "id": "normal",
+      "label": "返回当前工件与元数据状态",
+      "role": "exit",
+      "evidence_refs": [
+        "store"
+      ]
+    },
+    {
+      "id": "previous",
+      "label": "previous 存在且有效？",
+      "role": "decision",
+      "evidence_refs": [
+        "store"
+      ]
+    },
+    {
+      "id": "fallback",
+      "label": "返回恢复工件，强制陈旧",
+      "role": "exit",
+      "evidence_refs": [
+        "store"
+      ]
+    },
+    {
+      "id": "rollback",
+      "label": "previous 存在但读取失败？",
+      "role": "decision",
+      "evidence_refs": [
+        "store"
+      ]
+    },
+    {
+      "id": "backup",
+      "label": "尝试一次底层备份回滚并校验",
+      "role": "action",
+      "evidence_refs": [
+        "store"
+      ]
+    },
+    {
+      "id": "error",
+      "label": "抛出存储错误",
+      "role": "exit",
+      "evidence_refs": [
+        "store"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "r1",
+      "from": "current",
+      "to": "valid",
+      "kind": "flow",
+      "evidence_refs": [
+        "store"
+      ],
+      "label": "结果"
+    },
+    {
+      "id": "r2",
+      "from": "valid",
+      "to": "normal",
+      "kind": "flow",
+      "evidence_refs": [
+        "store"
+      ],
+      "condition": "成功"
+    },
+    {
+      "id": "r3",
+      "from": "valid",
+      "to": "previous",
+      "kind": "flow",
+      "evidence_refs": [
+        "store"
+      ],
+      "condition": "ArtifactStoreError"
+    },
+    {
+      "id": "r4",
+      "from": "previous",
+      "to": "fallback",
+      "kind": "flow",
+      "evidence_refs": [
+        "store"
+      ],
+      "condition": "是"
+    },
+    {
+      "id": "r5",
+      "from": "previous",
+      "to": "rollback",
+      "kind": "flow",
+      "evidence_refs": [
+        "store"
+      ],
+      "condition": "否"
+    },
+    {
+      "id": "r6",
+      "from": "rollback",
+      "to": "backup",
+      "kind": "flow",
+      "evidence_refs": [
+        "store"
+      ],
+      "condition": "是"
+    },
+    {
+      "id": "r7",
+      "from": "rollback",
+      "to": "error",
+      "kind": "flow",
+      "evidence_refs": [
+        "store"
+      ],
+      "condition": "否（previous不存在）"
+    },
+    {
+      "id": "r8",
+      "from": "backup",
+      "to": "fallback",
+      "kind": "flow",
+      "evidence_refs": [
+        "store"
+      ],
+      "label": "回滚且校验成功"
+    },
+    {
+      "id": "r9",
+      "from": "backup",
+      "to": "error",
+      "kind": "flow",
+      "evidence_refs": [
+        "store"
+      ],
+      "label": "否则"
+    },
+    {
+      "id": "r10",
+      "from": "valid",
+      "to": "error",
+      "kind": "flow",
+      "condition": "其它异常：corruptedSnapshot",
+      "evidence_refs": [
+        "store"
+      ]
+    }
+  ],
+  "evidence": {
+    "store": {
+      "path": "apps/macos/Sources/BruceAppCore/ArtifactStore.swift",
+      "locator": "load / storedArtifact",
+      "kind": "static_implementation",
+      "supports": "只对ArtifactStoreError进入previous回退；previous存在且读取失败才尝试一次底层回滚；恢复强制陈旧；其它异常归为corruptedSnapshot。"
+    }
+  }
+}

@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" id="d_62f7970a-5036-440c-bd91-5fbcac4a7fbb" viewBox="0 0 1000 764" role="img" aria-labelledby="d_62f7970a-5036-440c-bd91-5fbcac4a7fbb-title d_62f7970a-5036-440c-bd91-5fbcac4a7fbb-desc">
+<title id="d_62f7970a-5036-440c-bd91-5fbcac4a7fbb-title">macOS 应用生命周期</title>
+<desc id="d_62f7970a-5036-440c-bd91-5fbcac4a7fbb-desc">启动与退出顺序；取消退出由正文说明，不在此线性退出图展开</desc>
+<defs><style>#d_62f7970a-5036-440c-bd91-5fbcac4a7fbb{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif} text{fill:#243247;font-size:16px} .node{fill:#fff;stroke:#768397;stroke-width:1.5} .connector{fill:none;stroke:#516176;stroke-width:1.5}</style><marker id="d_62f7970a-5036-440c-bd91-5fbcac4a7fbb-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#516176" /></marker></defs>
+<rect width="1000" height="764" fill="#fff" />
+<text x="24" y="30" style="font-size:20px;font-weight:600">macOS 应用生命周期</text>
+<g id="d_62f7970a-5036-440c-bd91-5fbcac4a7fbb-r1" data-relation-id="r1"><polyline class="connector" points="270,162 270,238" marker-end="url(#d_62f7970a-5036-440c-bd91-5fbcac4a7fbb-arrow)" />
+<rect x="337" y="187.5" width="76" height="25" fill="#fff" /><text text-anchor="middle">
+<tspan x="375" y="204.5">启动一次</tspan>
+</text>
+</g>
+<g id="d_62f7970a-5036-440c-bd91-5fbcac4a7fbb-r2" data-relation-id="r2"><polyline class="connector" points="270,322 270,398" marker-end="url(#d_62f7970a-5036-440c-bd91-5fbcac4a7fbb-arrow)" />
+<rect x="313" y="347.5" width="124" height="25" fill="#fff" /><text text-anchor="middle">
+<tspan x="375" y="364.5">不等待外部凭据</tspan>
+</text>
+</g>
+<g id="d_62f7970a-5036-440c-bd91-5fbcac4a7fbb-r3" data-relation-id="r3"><polyline class="connector" points="470,440 510,440 510,64 740,64 740,78" marker-end="url(#d_62f7970a-5036-440c-bd91-5fbcac4a7fbb-arrow)" />
+<rect x="440" y="192.5" width="140" height="25" fill="#fff" /><text text-anchor="middle">
+<tspan x="510" y="209.5">应用生命周期继续</tspan>
+</text>
+</g>
+<g id="d_62f7970a-5036-440c-bd91-5fbcac4a7fbb-r4" data-relation-id="r4"><polyline class="connector" points="740,162 740,238" marker-end="url(#d_62f7970a-5036-440c-bd91-5fbcac4a7fbb-arrow)" />
+<rect x="768.6" y="187.5" width="152.8" height="25" fill="#fff" /><text text-anchor="middle">
+<tspan x="845" y="204.5">beginTermination</tspan>
+</text>
+</g>
+<g id="d_62f7970a-5036-440c-bd91-5fbcac4a7fbb-r5" data-relation-id="r5"><polyline class="connector" points="740,322 740,394" marker-end="url(#d_62f7970a-5036-440c-bd91-5fbcac4a7fbb-arrow)" />
+<rect x="799" y="345.5" width="92" height="25" fill="#fff" /><text text-anchor="middle">
+<tspan x="845" y="362.5">检查执行器</tspan>
+</text>
+</g>
+<g id="d_62f7970a-5036-440c-bd91-5fbcac4a7fbb-r6" data-relation-id="r6"><polyline class="connector" points="740,526 740,618" marker-end="url(#d_62f7970a-5036-440c-bd91-5fbcac4a7fbb-arrow)" />
+<rect x="831" y="559.5" width="28" height="25" fill="#fff" /><text text-anchor="middle">
+<tspan x="845" y="576.5">是</tspan>
+</text>
+</g>
+<g id="d_62f7970a-5036-440c-bd91-5fbcac4a7fbb-r7" data-relation-id="r7"><polyline class="connector" points="560,460 520,460 520,560 270,560 270,618" marker-end="url(#d_62f7970a-5036-440c-bd91-5fbcac4a7fbb-arrow)" />
+<rect x="406.0" y="527.5" width="28" height="25" fill="#fff" /><text text-anchor="middle">
+<tspan x="420" y="544.5">否</tspan></text>
+</g>
+<g id="d_62f7970a-5036-440c-bd91-5fbcac4a7fbb-r8" data-relation-id="r8"><polyline class="connector" points="540,660 470,660" marker-end="url(#d_62f7970a-5036-440c-bd91-5fbcac4a7fbb-arrow)" />
+<rect x="467" y="617.5" width="76" height="25" fill="#fff" /><text text-anchor="middle">
+<tspan x="505" y="634.5">宽限回调</tspan>
+</text>
+</g>
+<g id="d_62f7970a-5036-440c-bd91-5fbcac4a7fbb-boot" data-node-id="boot">
+<rect class="node" x="70" y="78" width="400" height="84" rx="22" />
+<text text-anchor="middle">
+<tspan x="270" y="125.5">装配共享对象，绑定回调</tspan>
+</text></g>
+<g id="d_62f7970a-5036-440c-bd91-5fbcac4a7fbb-cache" data-node-id="cache">
+<rect class="node" x="70" y="238" width="400" height="84" rx="5" />
+<text text-anchor="middle">
+<tspan x="270" y="285.5">启动调度并读取本地快照</tspan>
+</text></g>
+<g id="d_62f7970a-5036-440c-bd91-5fbcac4a7fbb-ready" data-node-id="ready">
+<rect class="node" x="70" y="398" width="400" height="84" rx="5" />
+<text text-anchor="middle">
+<tspan x="270" y="445.5">按配置准备凭据并协调模块</tspan>
+</text></g>
+<g id="d_62f7970a-5036-440c-bd91-5fbcac4a7fbb-quit" data-node-id="quit">
+<rect class="node" x="540" y="78" width="400" height="84" rx="5" />
+<text text-anchor="middle">
+<tspan x="740" y="125.5">收到退出请求</tspan>
+</text></g>
+<g id="d_62f7970a-5036-440c-bd91-5fbcac4a7fbb-stop" data-node-id="stop">
+<rect class="node" x="540" y="238" width="400" height="84" rx="5" />
+<text text-anchor="middle">
+<tspan x="740" y="285.5">停止调度并取消运行任务</tspan>
+</text></g>
+<g id="d_62f7970a-5036-440c-bd91-5fbcac4a7fbb-pending" data-node-id="pending">
+<polygon class="node" points="740,394 920,460 740,526 560,460" />
+<text text-anchor="middle">
+<tspan x="740" y="465.5">仍有运行任务？</tspan>
+</text></g>
+<g id="d_62f7970a-5036-440c-bd91-5fbcac4a7fbb-wait" data-node-id="wait">
+<rect class="node" x="540" y="618" width="400" height="84" rx="5" />
+<text text-anchor="middle">
+<tspan x="740" y="665.5">等待 2 秒，必要时强制终止</tspan>
+</text></g>
+<g id="d_62f7970a-5036-440c-bd91-5fbcac4a7fbb-end" data-node-id="end">
+<rect class="node" x="70" y="618" width="400" height="84" rx="22" />
+<text text-anchor="middle">
+<tspan x="270" y="665.5">回复系统完成退出</tspan>
+</text></g>
+</svg>

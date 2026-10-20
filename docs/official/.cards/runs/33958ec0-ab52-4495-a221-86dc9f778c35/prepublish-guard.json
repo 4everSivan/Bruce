@@ -1,0 +1,10 @@
+{
+  "result": "passed",
+  "checked_at": "2026-10-20T04:31:04.502811+00:00",
+  "head": "19fd33278588bdad724930fcb26535ba51a0bc22",
+  "source_hash_count": 442,
+  "prior_owned_count": 39,
+  "intended_content_writes": 53,
+  "checked_content_count": 77,
+  "candidate_hashes_verified": true
+}

@@ -1,0 +1,155 @@
+{
+  "schema_version": "1.0",
+  "id": "d_176bf773-8952-4814-b413-e5181bfe337b",
+  "title": "Claude OAuth 有限续期",
+  "type": "flowchart",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "start",
+      "label": "解析嵌套 OAuth 凭据",
+      "role": "entry",
+      "evidence_refs": [
+        "claude"
+      ]
+    },
+    {
+      "id": "due",
+      "label": "有刷新 Token 且距到期≤60秒？",
+      "role": "decision",
+      "evidence_refs": [
+        "claude"
+      ]
+    },
+    {
+      "id": "pre",
+      "label": "尝试主动续期\n成功更新令牌与 refreshed 标记",
+      "role": "action",
+      "evidence_refs": [
+        "claude"
+      ]
+    },
+    {
+      "id": "query",
+      "label": "使用当前访问 Token 查询 usage",
+      "role": "action",
+      "evidence_refs": [
+        "claude"
+      ]
+    },
+    {
+      "id": "retry",
+      "label": "尚未成功刷新且401且有刷新Token？",
+      "role": "decision",
+      "evidence_refs": [
+        "claude"
+      ]
+    },
+    {
+      "id": "recover",
+      "label": "尝试续期；成功才重查一次\n失败保留原查询错误",
+      "role": "action",
+      "evidence_refs": [
+        "claude"
+      ]
+    },
+    {
+      "id": "out",
+      "label": "返回查询结果\n成功刷新且结果为对象才附更新",
+      "role": "exit",
+      "evidence_refs": [
+        "claude"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "r1",
+      "from": "start",
+      "to": "due",
+      "kind": "flow",
+      "evidence_refs": [
+        "claude"
+      ],
+      "label": "检查期限"
+    },
+    {
+      "id": "r2",
+      "from": "due",
+      "to": "pre",
+      "kind": "flow",
+      "evidence_refs": [
+        "claude"
+      ],
+      "condition": "是"
+    },
+    {
+      "id": "r3",
+      "from": "due",
+      "to": "query",
+      "kind": "flow",
+      "evidence_refs": [
+        "claude"
+      ],
+      "condition": "否或无期限"
+    },
+    {
+      "id": "r4",
+      "from": "pre",
+      "to": "query",
+      "kind": "flow",
+      "evidence_refs": [
+        "claude"
+      ],
+      "label": "无论主动续期是否成功"
+    },
+    {
+      "id": "r5",
+      "from": "query",
+      "to": "retry",
+      "kind": "flow",
+      "evidence_refs": [
+        "claude"
+      ],
+      "label": "检查查询结果"
+    },
+    {
+      "id": "r6",
+      "from": "retry",
+      "to": "recover",
+      "kind": "flow",
+      "evidence_refs": [
+        "claude"
+      ],
+      "condition": "是"
+    },
+    {
+      "id": "r7",
+      "from": "retry",
+      "to": "out",
+      "kind": "flow",
+      "evidence_refs": [
+        "claude"
+      ],
+      "condition": "否"
+    },
+    {
+      "id": "r8",
+      "from": "recover",
+      "to": "out",
+      "kind": "flow",
+      "evidence_refs": [
+        "claude"
+      ],
+      "label": "不继续循环"
+    }
+  ],
+  "evidence": {
+    "claude": {
+      "path": "core/collector/crates/collector-provider/src/lib.rs",
+      "locator": "ClaudeProvider::query / is_claude_token_expired / refresh_claude_token",
+      "kind": "static_implementation",
+      "supports": "主动到期刷新和未成功刷新后的401补救；成功返回对象才附内部更新；失败沿原查询结果返回。"
+    }
+  }
+}

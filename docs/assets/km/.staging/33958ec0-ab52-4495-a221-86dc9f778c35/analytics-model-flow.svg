@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" id="d_cbbda8c9-188a-4f71-9dc7-152a77890a10" viewBox="0 0 1000 1104" role="img" aria-labelledby="d_cbbda8c9-188a-4f71-9dc7-152a77890a10-title d_cbbda8c9-188a-4f71-9dc7-152a77890a10-desc">
+<title id="d_cbbda8c9-188a-4f71-9dc7-152a77890a10-title">分析模型归并数据流</title>
+<desc id="d_cbbda8c9-188a-4f71-9dc7-152a77890a10-desc">从工件到规范模型、来源树与消费者的变换</desc>
+<defs><style>#d_cbbda8c9-188a-4f71-9dc7-152a77890a10{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif} text{fill:#243247;font-size:16px} .node{fill:#fff;stroke:#768397;stroke-width:1.5} .connector{fill:none;stroke:#516176;stroke-width:1.5}</style><marker id="d_cbbda8c9-188a-4f71-9dc7-152a77890a10-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#516176" /></marker></defs>
+<rect width="1000" height="1104" fill="#fff" />
+<text x="24" y="30" style="font-size:20px;font-weight:600">分析模型归并数据流</text>
+<g id="d_cbbda8c9-188a-4f71-9dc7-152a77890a10-r1" data-relation-id="r1"><polyline class="connector" points="500,142 500,208" marker-end="url(#d_cbbda8c9-188a-4f71-9dc7-152a77890a10-arrow)" />
+<rect x="571.0" y="153.0" width="188.00000000000003" height="44" fill="#fff" /><text text-anchor="middle">
+<tspan x="665" y="170.0">todayModels / models</tspan><tspan x="665" y="189.0">modelMonths / daily</tspan></text>
+</g>
+<g id="d_cbbda8c9-188a-4f71-9dc7-152a77890a10-r2" data-relation-id="r2"><polyline class="connector" points="500,292 500,358" marker-end="url(#d_cbbda8c9-188a-4f71-9dc7-152a77890a10-arrow)" />
+<rect x="529" y="312.5" width="152" height="25" fill="#fff" /><text text-anchor="middle">
+<tspan x="605" y="329.5">所选原模型与Token</tspan>
+</text>
+</g>
+<g id="d_cbbda8c9-188a-4f71-9dc7-152a77890a10-r3" data-relation-id="r3"><polyline class="connector" points="500,442 500,658" marker-end="url(#d_cbbda8c9-188a-4f71-9dc7-152a77890a10-arrow)" />
+<rect x="276.8" y="527.5" width="206.39999999999998" height="25" fill="#fff" /><text text-anchor="middle">
+<tspan x="380" y="544.5">canonicalKey 与来源身份</tspan></text>
+</g>
+<g id="d_cbbda8c9-188a-4f71-9dc7-152a77890a10-r4" data-relation-id="r4"><polyline class="connector" points="820,592 820,620 650,620 650,658" marker-end="url(#d_cbbda8c9-188a-4f71-9dc7-152a77890a10-arrow)" />
+<rect x="740" y="622.5" width="140" height="25" fill="#fff" /><text text-anchor="middle">
+<tspan x="810" y="639.5">有效输入输出价格</tspan>
+</text>
+</g>
+<g id="d_cbbda8c9-188a-4f71-9dc7-152a77890a10-r5" data-relation-id="r5"><polyline class="connector" points="500,742 500,808" marker-end="url(#d_cbbda8c9-188a-4f71-9dc7-152a77890a10-arrow)" />
+<rect x="519" y="762.5" width="172" height="25" fill="#fff" /><text text-anchor="middle">
+<tspan x="605" y="779.5">总量、可选费用与份额</tspan>
+</text>
+</g>
+<g id="d_cbbda8c9-188a-4f71-9dc7-152a77890a10-r6" data-relation-id="r6"><polyline class="connector" points="500,892 500,958" marker-end="url(#d_cbbda8c9-188a-4f71-9dc7-152a77890a10-arrow)" />
+<rect x="527" y="912.5" width="156" height="25" fill="#fff" /><text text-anchor="middle">
+<tspan x="605" y="929.5">派生模型及来源列表</tspan>
+</text>
+</g>
+<g id="d_cbbda8c9-188a-4f71-9dc7-152a77890a10-artifact" data-node-id="artifact">
+<rect class="node" x="200" y="58" width="600" height="84" rx="5" />
+<text text-anchor="middle">
+<tspan x="500" y="105.5">已解码 AgentUsageArtifact</tspan>
+</text></g>
+<g id="d_cbbda8c9-188a-4f71-9dc7-152a77890a10-range" data-node-id="range">
+<rect class="node" x="200" y="208" width="600" height="84" rx="5" />
+<text text-anchor="middle">
+<tspan x="500" y="255.5">范围选择与缺失数据回退</tspan>
+</text></g>
+<g id="d_cbbda8c9-188a-4f71-9dc7-152a77890a10-key" data-node-id="key">
+<rect class="node" x="200" y="358" width="600" height="84" rx="5" />
+<text text-anchor="middle">
+<tspan x="500" y="405.5">名称清理和别名归一</tspan>
+</text></g>
+<g id="d_cbbda8c9-188a-4f71-9dc7-152a77890a10-pricing" data-node-id="pricing">
+<rect class="node" x="680" y="508" width="280" height="84" rx="5" />
+<text text-anchor="middle">
+<tspan x="820" y="555.5">内置价格与用户覆盖</tspan>
+</text></g>
+<g id="d_cbbda8c9-188a-4f71-9dc7-152a77890a10-aggregate" data-node-id="aggregate">
+<rect class="node" x="200" y="658" width="600" height="84" rx="5" />
+<text text-anchor="middle">
+<tspan x="500" y="694">累加主键与原渠道贡献</tspan>
+<tspan x="500" y="717">费用沿用或按比例估算</tspan>
+</text></g>
+<g id="d_cbbda8c9-188a-4f71-9dc7-152a77890a10-output" data-node-id="output">
+<rect class="node" x="200" y="808" width="600" height="84" rx="5" />
+<text text-anchor="middle">
+<tspan x="500" y="855.5">主模型汇总与来源树</tspan>
+</text></g>
+<g id="d_cbbda8c9-188a-4f71-9dc7-152a77890a10-kpi" data-node-id="kpi">
+<rect class="node" x="200" y="958" width="600" height="84" rx="5" />
+<text text-anchor="middle">
+<tspan x="500" y="1005.5">KPI 与模型/Agent 视图</tspan>
+</text></g>
+</svg>

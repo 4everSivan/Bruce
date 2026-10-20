@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" id="d_2873df93-a3b4-4c39-afb2-e65f8aeee860" viewBox="0 0 1000 902" role="img" aria-labelledby="d_2873df93-a3b4-4c39-afb2-e65f8aeee860-title d_2873df93-a3b4-4c39-afb2-e65f8aeee860-desc">
+<title id="d_2873df93-a3b4-4c39-afb2-e65f8aeee860-title">来源贡献替换与聚合</title>
+<desc id="d_2873df93-a3b4-4c39-afb2-e65f8aeee860-desc">此图仅表示 Kimi 的来源替换消费链；原始行不跨队列边界，其他来源使用各自适配器归并。</desc>
+<defs><style>#d_2873df93-a3b4-4c39-afb2-e65f8aeee860{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif}text{fill:#243247;font-size:16px}.node{fill:#fff;stroke:#768397;stroke-width:1.5}.connector{fill:none;stroke:#516176;stroke-width:1.5}</style><marker id="d_2873df93-a3b4-4c39-afb2-e65f8aeee860-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#516176"/></marker></defs>
+<rect width="1000" height="902" fill="#fff"/><text x="24" y="30" style="font-size:20px;font-weight:600">来源贡献替换与聚合</text>
+<g id="d_2873df93-a3b4-4c39-afb2-e65f8aeee860-r1" data-relation-id="r1"><polyline class="connector" points="500,142 500,198" marker-end="url(#d_2873df93-a3b4-4c39-afb2-e65f8aeee860-arrow)"/><rect x="545" y="157.5" width="140" height="25" fill="#fff"/><text text-anchor="middle"><tspan x="615" y="175">派生贡献替换事件</tspan></text></g>
+<g id="d_2873df93-a3b4-4c39-afb2-e65f8aeee860-r2" data-relation-id="r2"><polyline class="connector" points="500,282 500,338" marker-end="url(#d_2873df93-a3b4-4c39-afb2-e65f8aeee860-arrow)"/><rect x="561" y="297.5" width="108" height="25" fill="#fff"/><text text-anchor="middle"><tspan x="615" y="315">移除后再加入</tspan></text></g>
+<g id="d_2873df93-a3b4-4c39-afb2-e65f8aeee860-r3" data-relation-id="r3"><polyline class="connector" points="500,422 500,478" marker-end="url(#d_2873df93-a3b4-4c39-afb2-e65f8aeee860-arrow)"/><rect x="537" y="437.5" width="156" height="25" fill="#fff"/><text text-anchor="middle"><tspan x="615" y="455">每个来源的最新贡献</tspan></text></g>
+<g id="d_2873df93-a3b4-4c39-afb2-e65f8aeee860-r4" data-relation-id="r4"><polyline class="connector" points="500,562 500,618" marker-end="url(#d_2873df93-a3b4-4c39-afb2-e65f8aeee860-arrow)"/><rect x="561" y="577.5" width="108" height="25" fill="#fff"/><text text-anchor="middle"><tspan x="615" y="595">固定顺序贡献</tspan></text></g>
+<g id="d_2873df93-a3b4-4c39-afb2-e65f8aeee860-r5" data-relation-id="r5"><polyline class="connector" points="500,702 500,758" marker-end="url(#d_2873df93-a3b4-4c39-afb2-e65f8aeee860-arrow)"/><rect x="513" y="717.5" width="204" height="25" fill="#fff"/><text text-anchor="middle"><tspan x="615" y="735">聚合结果；无效贡献附诊断</tspan></text></g>
+<g id="d_2873df93-a3b4-4c39-afb2-e65f8aeee860-queue" data-node-id="queue">
+<rect class="node" x="200.0" y="58.0" width="600" height="84" rx="22"/>
+<text text-anchor="middle"><tspan x="500" y="105">有界队列中的 SourceDeltaChange</tspan></text></g>
+<g id="d_2873df93-a3b4-4c39-afb2-e65f8aeee860-remove" data-node-id="remove">
+<rect class="node" x="200.0" y="198.0" width="600" height="84" rx="5"/>
+<text text-anchor="middle"><tspan x="500" y="245">removed 存在时按 source_id 移除</tspan></text></g>
+<g id="d_2873df93-a3b4-4c39-afb2-e65f8aeee860-add" data-node-id="add">
+<rect class="node" x="200.0" y="338.0" width="600" height="84" rx="5"/>
+<text text-anchor="middle"><tspan x="500" y="385">added 存在时按 source_id 替换</tspan></text></g>
+<g id="d_2873df93-a3b4-4c39-afb2-e65f8aeee860-map" data-node-id="map">
+<rect class="node" x="200.0" y="478.0" width="600" height="84" rx="5"/>
+<text text-anchor="middle"><tspan x="500" y="525">按 source_id 排序的贡献映射</tspan></text></g>
+<g id="d_2873df93-a3b4-4c39-afb2-e65f8aeee860-fold" data-node-id="fold">
+<rect class="node" x="200.0" y="618.0" width="600" height="84" rx="5"/>
+<text text-anchor="middle"><tspan x="500" y="665">流关闭后按键序 merge_delta</tspan></text></g>
+<g id="d_2873df93-a3b4-4c39-afb2-e65f8aeee860-out" data-node-id="out">
+<rect class="node" x="200.0" y="758.0" width="600" height="84" rx="22"/>
+<text text-anchor="middle"><tspan x="500" y="805">UsageAccumulator 与诊断</tspan></text></g>
+</svg>

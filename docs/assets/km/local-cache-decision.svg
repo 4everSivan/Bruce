@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" id="d_7f3ad701-7677-4fad-8ea8-e58da250f111" viewBox="0 0 1000 744" role="img" aria-labelledby="d_7f3ad701-7677-4fad-8ea8-e58da250f111-title d_7f3ad701-7677-4fad-8ea8-e58da250f111-desc">
+<title id="d_7f3ad701-7677-4fad-8ea8-e58da250f111-title">JSONL 文件缓存判定</title>
+<desc id="d_7f3ad701-7677-4fad-8ea8-e58da250f111-desc">文件增长并不必然允许追加；视图只表示完成相关读取后的判定</desc>
+<defs><style>#d_7f3ad701-7677-4fad-8ea8-e58da250f111{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif} text{fill:#243247;font-size:16px} .node{fill:#fff;stroke:#768397;stroke-width:1.5} .connector{fill:none;stroke:#516176;stroke-width:1.5}</style><marker id="d_7f3ad701-7677-4fad-8ea8-e58da250f111-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#516176"/></marker></defs>
+<rect width="1000" height="744" fill="#fff"/>
+<text x="24" y="30" style="font-size:20px;font-weight:600">JSONL 文件缓存判定</text>
+<g id="d_7f3ad701-7677-4fad-8ea8-e58da250f111-r1" data-relation-id="r1"><polyline class="connector" points="270,142 270,174" marker-end="url(#d_7f3ad701-7677-4fad-8ea8-e58da250f111-arrow)"/>
+<rect x="353" y="145.5" width="44" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="375" y="162.5">检查</tspan>
+</text>
+</g>
+<g id="d_7f3ad701-7677-4fad-8ea8-e58da250f111-r2" data-relation-id="r2"><polyline class="connector" points="450,240 540,240" marker-end="url(#d_7f3ad701-7677-4fad-8ea8-e58da250f111-arrow)"/>
+<rect x="481" y="205.5" width="28" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="495" y="222.5">是</tspan>
+</text>
+</g>
+<g id="d_7f3ad701-7677-4fad-8ea8-e58da250f111-r3" data-relation-id="r3"><polyline class="connector" points="270,306 270,374" marker-end="url(#d_7f3ad701-7677-4fad-8ea8-e58da250f111-arrow)"/>
+<rect x="361" y="327.5" width="28" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="375" y="344.5">否</tspan>
+</text>
+</g>
+<g id="d_7f3ad701-7677-4fad-8ea8-e58da250f111-r4" data-relation-id="r4"><polyline class="connector" points="450,440 540,440" marker-end="url(#d_7f3ad701-7677-4fad-8ea8-e58da250f111-arrow)"/>
+<rect x="481" y="405.5" width="28" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="495" y="422.5">是</tspan>
+</text>
+</g>
+<g id="d_7f3ad701-7677-4fad-8ea8-e58da250f111-r5" data-relation-id="r5"><polyline class="connector" points="270,506 270,598" marker-end="url(#d_7f3ad701-7677-4fad-8ea8-e58da250f111-arrow)"/>
+<rect x="361" y="539.5" width="28" height="25" fill="#fff"/><text text-anchor="middle">
+<tspan x="375" y="556.5">否</tspan>
+</text>
+</g>
+<g id="d_7f3ad701-7677-4fad-8ea8-e58da250f111-start" data-node-id="start">
+<rect class="node" x="70" y="58" width="400" height="84" rx="22"/>
+<text text-anchor="middle">
+<tspan x="270" y="105.5">读取文件签名与缓存条目</tspan>
+</text></g>
+<g id="d_7f3ad701-7677-4fad-8ea8-e58da250f111-reuse" data-node-id="reuse">
+<polygon class="node" points="270,174 450,240 270,306 90,240"/>
+<text text-anchor="middle">
+<tspan x="270" y="245.5">身份、签名与载荷均有效？</tspan>
+</text></g>
+<g id="d_7f3ad701-7677-4fad-8ea8-e58da250f111-hit" data-node-id="hit">
+<rect class="node" x="540" y="198" width="400" height="84" rx="22"/>
+<text text-anchor="middle">
+<tspan x="740" y="245.5">复用旧派生载荷</tspan>
+</text></g>
+<g id="d_7f3ad701-7677-4fad-8ea8-e58da250f111-append" data-node-id="append">
+<polygon class="node" points="270,374 450,440 270,506 90,440"/>
+<text text-anchor="middle">
+<tspan x="270" y="445.5">身份与载荷有效且安全追加？</tspan>
+</text></g>
+<g id="d_7f3ad701-7677-4fad-8ea8-e58da250f111-tail" data-node-id="tail">
+<rect class="node" x="540" y="398" width="400" height="84" rx="22"/>
+<text text-anchor="middle">
+<tspan x="740" y="445.5">从 safe_offset 解析并合并</tspan>
+</text></g>
+<g id="d_7f3ad701-7677-4fad-8ea8-e58da250f111-rebuild" data-node-id="rebuild">
+<rect class="node" x="70" y="598" width="400" height="84" rx="22"/>
+<text text-anchor="middle">
+<tspan x="270" y="645.5">从偏移 0 重新解析</tspan>
+</text></g>
+</svg>

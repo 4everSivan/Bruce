@@ -2,7 +2,34 @@
 
 Windows 把采集结果保存在 `SnapshotState`，由一个后台采集线程更新，再映射成看板 JSON。运行阶段、服务新鲜度和界面的 LIVE 标记各自描述不同事实：一次刷新失败可以保留旧卡片，显示 LIVE 也不表示本次采集成功。
 
-## 刷新入口与唯一采集通道
+## 目录
+
+- [1. 目标与范围](#chapter-1)
+- [2. 参与者与契约](#chapter-2)
+  - [2.1 刷新入口与唯一采集通道](#windows-triggers)
+- [3. 流程设计](#chapter-3)
+  - [3.1 重试与额度窗口唤醒](#windows-retry)
+  - [3.2 从快照到界面状态](#windows-presentation)
+- [4. 状态与数据变化](#chapter-4)
+  - [4.1 快照阶段与结果应用](#windows-snapshot)
+  - [4.2 服务级旧数据保留](#windows-carryover)
+- [5. 异常与恢复](#chapter-5)
+- [6. 场景推演](#chapter-6)
+- [7. 参考文献](#chapter-7)
+  - [7.1 原始资料与实现入口](#original-references)
+  - [7.2 相关文档](#related)
+
+<a id="chapter-1"></a>
+## 1. 目标与范围
+
+本流程从后台线程或手动唤醒开始，以更新内存快照和面板事件、再进入可中断等待结束。界面读缓存不另发起采集。
+
+
+<a id="chapter-2"></a>
+## 2. 参与者与契约
+
+<a id="windows-triggers"></a>
+### 2.1 刷新入口与唯一采集通道
 
 `desktop::run()` 载入磁盘快照后调用 `scheduler::spawn`。线程启动即执行首次采集，后续按正常间隔、失败退避或手动唤醒继续。托盘刷新、打开看板、设置保存、凭证更新和 `refresh_now` 都调用 `request_manual_refresh`。
 
@@ -20,7 +47,47 @@ Windows 把采集结果保存在 `SnapshotState`，由一个后台采集线程�
 
 依据：[`lib.rs`](../../apps/win/src-tauri/src/lib.rs) 的 `desktop::run`、`refresh_now`、凭证与设置命令；[`scheduler.rs`](../../apps/win/src-tauri/src/scheduler.rs) 的 `SchedulerControl`、`spawn`、`run_refresh_with_kind`、`cached_panel`；[`app.js`](../../apps/win/src/app.js) 的刷新按钮与 `init`。
 
-## 快照阶段与结果应用
+
+<a id="chapter-3"></a>
+## 3. 流程设计
+
+<a id="windows-retry"></a>
+### 3.1 重试与额度窗口唤醒
+
+采集成功等待配置间隔；失败的前 `5` 次重试等待退避，第 `6` 次失败后等待正常间隔，再重置计数。正常间隔加载时限制为 `60` 至 `86400` 秒。退避取代正常间隔，不把两段等待相加。
+
+限流由诊断码 `PROVIDER_RATE_LIMIT` 或兼容分类 `rateLimit` 识别，固定等待 `300` 秒。其他失败从 `30` 秒起指数增加，叠加小于约 `10%` 的纳秒取模抖动，最大 `1800` 秒。手动来源通过 `manual_alert_reason` 延续到本次失败产生的退避重试，避免重试转为自动通知；进入下一正常周期后不再保留该来源。
+
+成功采集后，`window_boundaries` 提取 `kind = windows` 服务中的整数 `resetsAt`。`boundary_wake` 只考虑严格在未来且未消费的边界，计算 `resetsAt + 20 秒 - 当前时间`，若比原等待短就采用。这里的 `20` 秒加在重置时刻之后；例如距离重置 `600` 秒，候选等待为 `620` 秒。每次只消费选中的边界，并移除过去的记录；未选中边界时保留原等待。
+
+依据：[`scheduler.rs`](../../apps/win/src-tauri/src/scheduler.rs) 的 `compute_backoff`、`classify_rate_limited`、`spawn`；[`runtime_core.rs`](../../apps/win/src-tauri/src/runtime_core.rs) 的 `next_delay`、`manual_alert_reason`、`window_boundaries`、`boundary_wake`；[`scheduler_collector_coverage.rs`](../../apps/win/src-tauri/tests/scheduler_collector_coverage.rs) 的 `boundary_wake_never_crosses_future_window_reset` 规定 `600 + 20 = 620` 的预期。
+
+<a id="windows-presentation"></a>
+### 3.2 从快照到界面状态
+
+`panel_json` 在 typed artifact 上先过滤未启用 Provider，调用纯映射器后再按设置顺序排列订阅段，并追加 `runtime.phase`、`lastSuccessAt`、`error`、`diagnosticCodes`。关闭 `usageEnabled` 时把 `usage` 与 `hourly` 置空，不删除存储中的用量数据。
+
+运行阶段、服务新鲜度与 LIVE 标记分工如下。
+
+| 层次 | 字段或规则 | 表达的事实 |
+|---|---|---|
+| 采集运行 | `runtime.phase` | 最近一次刷新流程所处阶段或结果 |
+| 服务数据 | service 的 `freshness` | 当前窗口或余额是新鲜结果、借用旧值，还是无可用值 |
+| 用量时间 | `usage.isLive` | artifact 的 `generatedAt` 相对当前时间在默认 `-300` 至 `2700` 秒内 |
+| 窗口时间 | `resetText` | 重置时间已过时显示“刷新中”，不直接证明调度器正在执行 |
+
+`publish` 根据运行阶段调整托盘提示与指示色，并发送 `dashboard-updated`。看板显示中文阶段及错误码，服务错误进入主看板诊断区；Agent 探测与缺少会话的说明放在设置页。`usage.isLive` 由 artifact 时间决定，不检查 `runtime.phase`；窗口的“刷新中”也只是到期文案，两者均不能替代本次采集结果。
+
+`clear_snapshot_cache` 仅删除磁盘 `snapshot.json`，文件不存在视为成功，再提交手动刷新。它不立即清空 `SchedulerControl.snapshot`，所以新采集完成前仍可能看到内存中的卡片。
+
+依据：[`runtime_core.rs`](../../apps/win/src-tauri/src/runtime_core.rs) 的 `SnapshotState::panel_json`、`clear_snapshot`；[`usage.rs`](../../apps/win/viewmodel/src/usage.rs) 的 `LIVE_LOOKBACK_SECS`、`DEFAULT_LIVE_THRESHOLD_SECS`、`make_usage`；[`subscription.rs`](../../apps/win/viewmodel/src/subscription.rs) 的 `reset_text`；[`scheduler.rs`](../../apps/win/src-tauri/src/scheduler.rs) 的 `publish`；[`app.js`](../../apps/win/src/app.js) 的 `renderStatus`、`render`；[`lib.rs`](../../apps/win/src-tauri/src/lib.rs) 的 `clear_snapshot_cache`。
+
+
+<a id="chapter-4"></a>
+## 4. 状态与数据变化
+
+<a id="windows-snapshot"></a>
+### 4.1 快照阶段与结果应用
 
 图中的状态属于 `SnapshotState.phase`，`idle` 表示尚无采集结果，不表示后台线程暂停。图省略运行期间重复进入同一阶段的细节，失败分支以当前内存中是否存在有效 artifact 为界。
 
@@ -45,7 +112,8 @@ Windows 把采集结果保存在 `SnapshotState`，由一个后台采集线程�
 
 依据：[`runtime_core.rs`](../../apps/win/src-tauri/src/runtime_core.rs) 的 `SnapshotState::default`、`load`、`begin_refresh`、`apply_response`、`fail`、`save`、`validate_artifact`；[`scheduler.rs`](../../apps/win/src-tauri/src/scheduler.rs) 的 `run_refresh_with_kind`。
 
-## 服务级旧数据保留
+<a id="windows-carryover"></a>
+### 4.2 服务级旧数据保留
 
 响应整体为 `partial` 时，每个服务仍可能有不同的新鲜度。`merge_snapshot` 只遍历本次返回的服务 ID：服务状态为 `ok` 或 `empty` 时标记为 `fresh`；失败服务仅在同 ID 的历史项通过资格检查后借用旧展示字段。历史项必须具有可解析的 `capturedAt`，且新鲜度为 `fresh`、`stale`，或在没有新鲜度字段时状态为 `ok`、空字符串。
 
@@ -57,38 +125,33 @@ Windows 把采集结果保存在 `SnapshotState`，由一个后台采集线程�
 
 依据：[`runtime_core.rs`](../../apps/win/src-tauri/src/runtime_core.rs) 的 `qualified`、`merge_snapshot`、`SnapshotState::prune_credentials`、`fail`；[`subscription.rs`](../../apps/win/viewmodel/src/subscription.rs) 的 `last_success_text`、`make_subscription`；[`alerts.rs`](../../apps/win/src-tauri/src/alerts.rs) 的 `over_threshold_entries`。
 
-## 重试与额度窗口唤醒
 
-采集成功等待配置间隔；失败的前 `5` 次重试等待退避，第 `6` 次失败后等待正常间隔，再重置计数。正常间隔加载时限制为 `60` 至 `86400` 秒。退避取代正常间隔，不把两段等待相加。
+<a id="chapter-5"></a>
+## 5. 异常与恢复
 
-限流由诊断码 `PROVIDER_RATE_LIMIT` 或兼容分类 `rateLimit` 识别，固定等待 `300` 秒。其他失败从 `30` 秒起指数增加，叠加小于约 `10%` 的纳秒取模抖动，最大 `1800` 秒。手动来源通过 `manual_alert_reason` 延续到本次失败产生的退避重试，避免重试转为自动通知；进入下一正常周期后不再保留该来源。
+整体失败时保留合格的旧服务并标陈旧；没有旧工件时为 failed。磁盘写失败可以留下内存数据，并且调度返回值仍沿用采集成功路径；该差异不能通过一条“刷新失败”说明省略。
 
-成功采集后，`window_boundaries` 提取 `kind = windows` 服务中的整数 `resetsAt`。`boundary_wake` 只考虑严格在未来且未消费的边界，计算 `resetsAt + 20 秒 - 当前时间`，若比原等待短就采用。这里的 `20` 秒加在重置时刻之后；例如距离重置 `600` 秒，候选等待为 `620` 秒。每次只消费选中的边界，并移除过去的记录；未选中边界时保留原等待。
 
-依据：[`scheduler.rs`](../../apps/win/src-tauri/src/scheduler.rs) 的 `compute_backoff`、`classify_rate_limited`、`spawn`；[`runtime_core.rs`](../../apps/win/src-tauri/src/runtime_core.rs) 的 `next_delay`、`manual_alert_reason`、`window_boundaries`、`boundary_wake`；[`scheduler_collector_coverage.rs`](../../apps/win/src-tauri/tests/scheduler_collector_coverage.rs) 的 `boundary_wake_never_crosses_future_window_reset` 规定 `600 + 20 = 620` 的预期。
+<a id="chapter-6"></a>
+## 6. 场景推演
 
-## 从快照到界面状态
+按实现推演：磁盘存在有效快照时先恢复为 stale，首次采集进入 refreshing；有效 success 更新最近成功时间并进入 fresh。若下一轮失败，保留旧数据为 stale，等待退避。采集中连续点击只留下一个待执行手动请求；保存快照失败的轮次虽显示 stale，仍按 Success 选择下一等待。
 
-`panel_json` 在 typed artifact 上先过滤未启用 Provider，调用纯映射器后再按设置顺序排列订阅段，并追加 `runtime.phase`、`lastSuccessAt`、`error`、`diagnosticCodes`。关闭 `usageEnabled` 时把 `usage` 与 `hourly` 置空，不删除存储中的用量数据。
 
-运行阶段、服务新鲜度与 LIVE 标记分工如下。
+<a id="chapter-7"></a>
+## 7. 参考文献
 
-| 层次 | 字段或规则 | 表达的事实 |
-|---|---|---|
-| 采集运行 | `runtime.phase` | 最近一次刷新流程所处阶段或结果 |
-| 服务数据 | service 的 `freshness` | 当前窗口或余额是新鲜结果、借用旧值，还是无可用值 |
-| 用量时间 | `usage.isLive` | artifact 的 `generatedAt` 相对当前时间在默认 `-300` 至 `2700` 秒内 |
-| 窗口时间 | `resetText` | 重置时间已过时显示“刷新中”，不直接证明调度器正在执行 |
+<a id="original-references"></a>
+### 7.1 原始资料与实现入口
 
-`publish` 根据运行阶段调整托盘提示与指示色，并发送 `dashboard-updated`。看板显示中文阶段及错误码，服务错误进入主看板诊断区；Agent 探测与缺少会话的说明放在设置页。`usage.isLive` 由 artifact 时间决定，不检查 `runtime.phase`；窗口的“刷新中”也只是到期文案，两者均不能替代本次采集结果。
+- [lib.rs](../../apps/win/src-tauri/src/lib.rs)：本主题的原始声明或实现入口。
+- [scheduler.rs](../../apps/win/src-tauri/src/scheduler.rs)：本主题的原始声明或实现入口。
+- [app.js](../../apps/win/src/app.js)：本主题的原始声明或实现入口。
 
-`clear_snapshot_cache` 仅删除磁盘 `snapshot.json`，文件不存在视为成功，再提交手动刷新。它不立即清空 `SchedulerControl.snapshot`，所以新采集完成前仍可能看到内存中的卡片。
-
-依据：[`runtime_core.rs`](../../apps/win/src-tauri/src/runtime_core.rs) 的 `SnapshotState::panel_json`、`clear_snapshot`；[`usage.rs`](../../apps/win/viewmodel/src/usage.rs) 的 `LIVE_LOOKBACK_SECS`、`DEFAULT_LIVE_THRESHOLD_SECS`、`make_usage`；[`subscription.rs`](../../apps/win/viewmodel/src/subscription.rs) 的 `reset_text`；[`scheduler.rs`](../../apps/win/src-tauri/src/scheduler.rs) 的 `publish`；[`app.js`](../../apps/win/src/app.js) 的 `renderStatus`、`render`；[`lib.rs`](../../apps/win/src-tauri/src/lib.rs) 的 `clear_snapshot_cache`。
-
-## 相关文档
+<a id="related"></a>
+### 7.2 相关文档
 
 - [Bruce 设计文档](Bruce设计文档.md#windows)：本主题在完整系统中的职责、关系和约束。
 - [Windows 应用设计](Windows应用设计.md)：系统入口、IPC、配置门控、凭证恢复与证据范围。
 
-最后更新：2026-10-19
+最后更新：2026-10-20

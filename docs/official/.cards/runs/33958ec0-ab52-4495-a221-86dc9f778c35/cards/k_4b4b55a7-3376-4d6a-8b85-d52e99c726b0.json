@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "id": "k_4b4b55a7-3376-4d6a-8b85-d52e99c726b0",
+  "term": "CanonicalModelSummary",
+  "category": "project_term",
+  "context": "Bruce macOS Agent 用量分析",
+  "definition": "按规范模型键汇总用量、可选费用与原始渠道贡献的分析数据对象。",
+  "project_usage": "ModelNormalizer 从已缓存工件和所选范围生成此对象；sources 保留原模型名与 Agent 身份。历史回退可能按比例分配，不能据此视为逐笔精确计量。",
+  "basis": {
+    "definition": "code_supported",
+    "project_usage": "code_supported"
+  },
+  "status": "current",
+  "articles": [
+    {
+      "path": "术语表.md",
+      "anchor": "canonical-model-summary"
+    },
+    {
+      "path": "Agent用量分析设计.md",
+      "anchor": "model-normalization"
+    }
+  ],
+  "sources": [
+    {
+      "kind": "code",
+      "path": "apps/macos/Sources/BruceAppCore/AnalyticsModels.swift",
+      "symbol": "CanonicalModelSummary",
+      "supports": [
+        "definition"
+      ]
+    },
+    {
+      "kind": "code",
+      "path": "apps/macos/Sources/BruceAppCore/ModelNormalizer.swift",
+      "symbol": "aggregateCanonicalModels",
+      "supports": [
+        "definition",
+        "project_usage"
+      ]
+    }
+  ],
+  "tags": [
+    "Bruce",
+    "模型归并",
+    "用量分析"
+  ]
+}

@@ -1,0 +1,117 @@
+{
+  "schema_version": "1.0",
+  "id": "d_7f3ad701-7677-4fad-8ea8-e58da250f111",
+  "title": "JSONL 文件缓存判定",
+  "type": "flowchart",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "start",
+      "label": "读取文件签名与缓存条目",
+      "role": "entry",
+      "evidence_refs": [
+        "cache"
+      ]
+    },
+    {
+      "id": "reuse",
+      "label": "身份、签名与载荷均有效？",
+      "role": "decision",
+      "evidence_refs": [
+        "cache"
+      ]
+    },
+    {
+      "id": "hit",
+      "label": "复用旧派生载荷",
+      "role": "exit",
+      "evidence_refs": [
+        "cache"
+      ]
+    },
+    {
+      "id": "append",
+      "label": "身份与载荷有效且安全追加？",
+      "role": "decision",
+      "evidence_refs": [
+        "cache"
+      ]
+    },
+    {
+      "id": "tail",
+      "label": "从 safe_offset 解析并合并",
+      "role": "exit",
+      "evidence_refs": [
+        "cache"
+      ]
+    },
+    {
+      "id": "rebuild",
+      "label": "从偏移 0 重新解析",
+      "role": "exit",
+      "evidence_refs": [
+        "cache"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "r1",
+      "from": "start",
+      "to": "reuse",
+      "kind": "flow",
+      "evidence_refs": [
+        "cache"
+      ],
+      "label": "检查"
+    },
+    {
+      "id": "r2",
+      "from": "reuse",
+      "to": "hit",
+      "kind": "flow",
+      "evidence_refs": [
+        "cache"
+      ],
+      "condition": "是"
+    },
+    {
+      "id": "r3",
+      "from": "reuse",
+      "to": "append",
+      "kind": "flow",
+      "evidence_refs": [
+        "cache"
+      ],
+      "condition": "否"
+    },
+    {
+      "id": "r4",
+      "from": "append",
+      "to": "tail",
+      "kind": "flow",
+      "evidence_refs": [
+        "cache"
+      ],
+      "condition": "是"
+    },
+    {
+      "id": "r5",
+      "from": "append",
+      "to": "rebuild",
+      "kind": "flow",
+      "evidence_refs": [
+        "cache"
+      ],
+      "condition": "否"
+    }
+  ],
+  "evidence": {
+    "cache": {
+      "path": "core/collector/crates/collector-local/src/jsonl_cache.rs",
+      "locator": "process_file / append_is_safe / make_entry",
+      "kind": "static_implementation",
+      "supports": "身份、文件签名、载荷有效性和安全偏移共同决定复用、追加、重建；取消与I/O错误沿原调用返回。"
+    }
+  }
+}

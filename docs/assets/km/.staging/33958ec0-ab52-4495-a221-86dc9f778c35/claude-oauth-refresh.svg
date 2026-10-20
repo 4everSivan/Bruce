@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" id="d_176bf773-8952-4814-b413-e5181bfe337b" viewBox="0 0 1000 924" role="img" aria-labelledby="d_176bf773-8952-4814-b413-e5181bfe337b-title d_176bf773-8952-4814-b413-e5181bfe337b-desc">
+<title id="d_176bf773-8952-4814-b413-e5181bfe337b-title">Claude OAuth 有限续期</title>
+<desc id="d_176bf773-8952-4814-b413-e5181bfe337b-desc">主动到期续期、401补救和更新返回条件</desc>
+<defs><style>#d_176bf773-8952-4814-b413-e5181bfe337b{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif} text{fill:#243247;font-size:16px} .node{fill:#fff;stroke:#768397;stroke-width:1.5} .connector{fill:none;stroke:#516176;stroke-width:1.5}</style><marker id="d_176bf773-8952-4814-b413-e5181bfe337b-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#516176" /></marker></defs>
+<rect width="1000" height="924" fill="#fff" />
+<text x="24" y="30" style="font-size:20px;font-weight:600">Claude OAuth 有限续期</text>
+<g id="d_176bf773-8952-4814-b413-e5181bfe337b-r1" data-relation-id="r1"><polyline class="connector" points="270,132 270,174" marker-end="url(#d_176bf773-8952-4814-b413-e5181bfe337b-arrow)" />
+<rect x="337" y="140.5" width="76" height="25" fill="#fff" /><text text-anchor="middle">
+<tspan x="375" y="157.5">检查期限</tspan>
+</text>
+</g>
+<g id="d_176bf773-8952-4814-b413-e5181bfe337b-r2" data-relation-id="r2"><polyline class="connector" points="450,240 540,240" marker-end="url(#d_176bf773-8952-4814-b413-e5181bfe337b-arrow)" />
+<rect x="481" y="205.5" width="28" height="25" fill="#fff" /><text text-anchor="middle">
+<tspan x="495" y="222.5">是</tspan>
+</text>
+</g>
+<g id="d_176bf773-8952-4814-b413-e5181bfe337b-r3" data-relation-id="r3"><polyline class="connector" points="270,306 270,388" marker-end="url(#d_176bf773-8952-4814-b413-e5181bfe337b-arrow)" />
+<rect x="329.0" y="312.5" width="92" height="25" fill="#fff" /><text text-anchor="middle">
+<tspan x="375" y="329.5">否或无期限</tspan></text>
+</g>
+<g id="d_176bf773-8952-4814-b413-e5181bfe337b-r4" data-relation-id="r4"><polyline class="connector" points="740,282 740,350 270,350 270,388" marker-end="url(#d_176bf773-8952-4814-b413-e5181bfe337b-arrow)" />
+<rect x="504" y="313.5" width="172" height="25" fill="#fff" /><text text-anchor="middle">
+<tspan x="590" y="330.5">无论主动续期是否成功</tspan>
+</text>
+</g>
+<g id="d_176bf773-8952-4814-b413-e5181bfe337b-r5" data-relation-id="r5"><polyline class="connector" points="270,472 270,534" marker-end="url(#d_176bf773-8952-4814-b413-e5181bfe337b-arrow)" />
+<rect x="321" y="490.5" width="108" height="25" fill="#fff" /><text text-anchor="middle">
+<tspan x="375" y="507.5">检查查询结果</tspan>
+</text>
+</g>
+<g id="d_176bf773-8952-4814-b413-e5181bfe337b-r6" data-relation-id="r6"><polyline class="connector" points="450,600 540,600" marker-end="url(#d_176bf773-8952-4814-b413-e5181bfe337b-arrow)" />
+<rect x="481" y="565.5" width="28" height="25" fill="#fff" /><text text-anchor="middle">
+<tspan x="495" y="582.5">是</tspan>
+</text>
+</g>
+<g id="d_176bf773-8952-4814-b413-e5181bfe337b-r7" data-relation-id="r7"><polyline class="connector" points="270,666 270,778" marker-end="url(#d_176bf773-8952-4814-b413-e5181bfe337b-arrow)" />
+<rect x="361" y="709.5" width="28" height="25" fill="#fff" /><text text-anchor="middle">
+<tspan x="375" y="726.5">否</tspan>
+</text>
+</g>
+<g id="d_176bf773-8952-4814-b413-e5181bfe337b-r8" data-relation-id="r8"><polyline class="connector" points="740,642 740,735 270,735 270,778" marker-end="url(#d_176bf773-8952-4814-b413-e5181bfe337b-arrow)" />
+<rect x="574" y="697.5" width="92" height="25" fill="#fff" /><text text-anchor="middle">
+<tspan x="620" y="714.5">不继续循环</tspan>
+</text>
+</g>
+<g id="d_176bf773-8952-4814-b413-e5181bfe337b-start" data-node-id="start">
+<rect class="node" x="70" y="48" width="400" height="84" rx="22" />
+<text text-anchor="middle">
+<tspan x="270" y="95.5">解析嵌套 OAuth 凭据</tspan>
+</text></g>
+<g id="d_176bf773-8952-4814-b413-e5181bfe337b-due" data-node-id="due">
+<polygon class="node" points="270,174 450,240 270,306 90,240" />
+<text text-anchor="middle">
+<tspan x="270" y="245.5">有刷新 Token 且距到期≤60秒？</tspan>
+</text></g>
+<g id="d_176bf773-8952-4814-b413-e5181bfe337b-pre" data-node-id="pre">
+<rect class="node" x="540" y="198" width="400" height="84" rx="5" />
+<text text-anchor="middle">
+<tspan x="740" y="234">尝试主动续期</tspan>
+<tspan x="740" y="257">成功更新令牌与 refreshed 标记</tspan>
+</text></g>
+<g id="d_176bf773-8952-4814-b413-e5181bfe337b-query" data-node-id="query">
+<rect class="node" x="70" y="388" width="400" height="84" rx="5" />
+<text text-anchor="middle">
+<tspan x="270" y="435.5">使用当前访问 Token 查询 usage</tspan>
+</text></g>
+<g id="d_176bf773-8952-4814-b413-e5181bfe337b-retry" data-node-id="retry">
+<polygon class="node" points="270,534 450,600 270,666 90,600" />
+<text text-anchor="middle">
+<tspan x="270" y="605.5">尚未成功刷新且401且有刷新Token？</tspan>
+</text></g>
+<g id="d_176bf773-8952-4814-b413-e5181bfe337b-recover" data-node-id="recover">
+<rect class="node" x="540" y="558" width="400" height="84" rx="5" />
+<text text-anchor="middle">
+<tspan x="740" y="594">尝试续期；成功才重查一次</tspan>
+<tspan x="740" y="617">失败保留原查询错误</tspan>
+</text></g>
+<g id="d_176bf773-8952-4814-b413-e5181bfe337b-out" data-node-id="out">
+<rect class="node" x="70" y="778" width="400" height="84" rx="22" />
+<text text-anchor="middle">
+<tspan x="270" y="814">返回查询结果</tspan>
+<tspan x="270" y="837">成功刷新且结果为对象才附更新</tspan>
+</text></g>
+</svg>
