@@ -64,8 +64,24 @@ package enum QuotaRefreshPolicy {
         suppressExternalQuotas: Bool = false
     ) -> QuotaRunPolicy {
         if suppressExternalQuotas {
-            return .localOnly
+            // C071: 「本轮被抑制跳过查询」等价于「全部 provider 进入 skip」,
+            // 让 QuotaCarryOverMerger 原样回填上一份 services; 若返回空
+            // skipProviders 的 localOnly, 抑制运行会发布零 services 的
+            // artifact, 仪表盘订阅卡在解锁后被清空。与下方「全部 provider
+            // 仍新鲜」路径的 skip = Set(byProvider.keys) 语义同构。
+            let carried = previous?.objectValue?["services"]?.arrayValue ?? []
+            var suppressed: Set<SubscriptionProviderID> = []
+            for service in carried {
+                if let provider = provider(of: service) {
+                    suppressed.insert(provider)
+                }
+            }
+            return QuotaRunPolicy(
+                includeExternalQuotas: false,
+                skipProviders: suppressed
+            )
         }
+
 
         let services = previous?.objectValue?["services"]?.arrayValue ?? []
         guard !services.isEmpty, interval > 0 else {

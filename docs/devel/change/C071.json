@@ -1,0 +1,95 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C071",
+  "title": "修复锁屏抑制刷新清空订阅服务：抑制运行的额度策略回填上一份 services，解锁后订阅卡不再消失",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C071-lockquota-carryover",
+  "is_hotfix": false,
+
+  "target": {
+    "module": "apps/macos",
+    "component": "QuotaRefreshPolicy / QuotaCarryOverMerger / RefreshExecutionPipeline",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+
+  "why": "用户实测反馈「每次锁屏解锁后仪表盘中的订阅用量卡片整个消失，需要手动刷新才会出现」（安装版 v0.12.1, 2026-10-20 构建）。经代码级定位与实机证据双重验证根因：C064 引入的锁屏抑制路径在 QuotaRefreshPolicy.plan 的 suppressExternalQuotas 分支直接返回 .localOnly（skipProviders 恒为空集）；而 QuotaCarryOverMerger.merge 仅回填 skipProviders 命中的 provider，其余上一份 service 按「账号删除/不可用」语义丢弃。于是锁屏期间任何一次自动刷新（用户配置 refreshIntervalMinutes=5，锁屏超过 5 分钟必命中）发布的 artifact services 为空，订阅卡整体消失；且该次发布刷新了 lastSuccessAt/lastAttemptAt，解锁补偿刷新受 60 秒去重与新鲜度门控约束不会立即补刷，只能靠手动刷新（manual 绕过抑制与冷却）恢复。",
+  "precheck": {
+    "description": "预检抑制分支是否仍返回空 skipProviders 的 localOnly（缺陷未修）",
+    "command": "sed -n '66,68p' apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift | grep -q 'return .localOnly' && echo DEFECT_PRESENT || echo ALREADY_FIXED",
+    "expected": "DEFECT_PRESENT",
+    "is_completed": true,
+    "evidence": "实测输出 DEFECT_PRESENT：suppressExternalQuotas 分支无条件 return .localOnly，无上一份 services 回填"
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C071-lockquota-carryover 2>/dev/null || git checkout fix/C071-lockquota-carryover"
+    ],
+    "after": [
+      "swift run --package-path apps/macos RefreshSchedulerHarness",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "额度策略抑制分支 (QuotaRefreshPolicy.plan)",
+      "before": "suppressExternalQuotas 分支无条件返回 .localOnly (skipProviders 为空集)，QuotaCarryOverMerger 按「缺席即不复活」语义丢弃全部上一份 services，发布零 services artifact",
+      "after": "抑制分支解析上一份 artifact 的全部 provider 并返回 QuotaRunPolicy(includeExternalQuotas: false, skipProviders: 全部上一份 provider)；与「全部 provider 仍新鲜」的既有本地专用路径 (skip = Set(byProvider.keys)) 语义同构，merger 原样回填并按新鲜期标注 fresh/stale，codex 一并回填（本轮无首轮结果，不存在四源合并冲突）",
+      "impact": "锁屏期间自动刷新发布的 artifact 保留订阅服务，解锁后订阅卡不再消失；抑制运行仍不发起任何外部额度请求"
+    },
+    {
+      "scope": "回归用例 (RefreshSchedulerHarness)",
+      "before": "无「抑制运行保留上一份 services」的断言；quotaPolicySuppressedOnScreenLock 仅断言 includeExternalQuotas == false",
+      "after": "新增策略级用例（抑制返回的 skipProviders 覆盖上一份全部 provider 含 codex）与调度器级端到端用例（未锁屏首发含 services → 锁屏定时刷新 → store 中 artifact services 保留且本轮 context 保持 localUsageOnly）",
+      "impact": "锁定锁屏抑制不清空订阅卡的契约，防止回归"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "topic": "SubscriptionQuota",
+    "modified": true,
+    "rule_diff": {
+      "before": "锁屏抑制外部额度查询时返回空 skipProviders 的 localOnly 策略",
+      "after": "锁屏抑制等价于「本轮全部 provider 跳过查询」：返回 skipProviders 覆盖上一份全部 provider 的本地专用策略，由 QuotaCarryOverMerger 回填上一份 services 并按新鲜期标注"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "RefreshSchedulerHarness 全绿（含新增抑制回填用例）且 verify-local.sh 退出码 0",
+        "false_if": "任何测试失败或新增用例未覆盖",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测",
+        "true_if": "锁屏期间定时刷新后订阅服务保留；解锁后订阅卡不消失或短暂缺失后自动恢复",
+        "false_if": "锁屏后发布的 artifact services 仍为空",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "抑制运行仍无外部额度请求（context localUsageOnly）；手动/解锁/边界唤醒的全量查询行为不变；既有 103+ 项调度器用例全绿",
+        "false_if": "锁屏期间发起了额度请求或正常刷新链路行为改变",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+
+  "rejections": [],
+
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  }
+}
