@@ -3,17 +3,15 @@
   "id": "C071",
   "title": "修复锁屏抑制刷新清空订阅服务：抑制运行的额度策略回填上一份 services，解锁后订阅卡不再消失",
   "type": "BugFix",
-  "status": "in_progress",
-  "branch": "fix/C071-lockquota-carryover",
+  "status": "closed",
+  "branch": "main",
   "is_hotfix": false,
-
   "target": {
     "module": "apps/macos",
     "component": "QuotaRefreshPolicy / QuotaCarryOverMerger / RefreshExecutionPipeline",
     "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
     "design_topic": "SubscriptionQuota"
   },
-
   "why": "用户实测反馈「每次锁屏解锁后仪表盘中的订阅用量卡片整个消失，需要手动刷新才会出现」（安装版 v0.12.1, 2026-10-20 构建）。经代码级定位与实机证据双重验证根因：C064 引入的锁屏抑制路径在 QuotaRefreshPolicy.plan 的 suppressExternalQuotas 分支直接返回 .localOnly（skipProviders 恒为空集）；而 QuotaCarryOverMerger.merge 仅回填 skipProviders 命中的 provider，其余上一份 service 按「账号删除/不可用」语义丢弃。于是锁屏期间任何一次自动刷新（用户配置 refreshIntervalMinutes=5，锁屏超过 5 分钟必命中）发布的 artifact services 为空，订阅卡整体消失；且该次发布刷新了 lastSuccessAt/lastAttemptAt，解锁补偿刷新受 60 秒去重与新鲜度门控约束不会立即补刷，只能靠手动刷新（manual 绕过抑制与冷却）恢复。",
   "precheck": {
     "description": "预检抑制分支是否仍返回空 skipProviders 的 localOnly（缺陷未修）",
@@ -55,41 +53,39 @@
     }
   },
   "verification": {
-    "result": null,
-    "run_id": "",
-    "user_quote": "",
-    "signoff": "",
+    "result": "passed",
+    "run_id": "2026-10-22 会话实测: swift run RefreshSchedulerHarness 104/104 (红绿双向) + zsh scripts/verify-local.sh Exit Code 0",
+    "user_quote": "全部提交",
+    "signoff": "verified",
     "checks": [
       {
         "item": "自动化测试",
         "true_if": "RefreshSchedulerHarness 全绿（含新增抑制回填用例）且 verify-local.sh 退出码 0",
         "false_if": "任何测试失败或新增用例未覆盖",
-        "evidence": "",
-        "result": null
+        "evidence": "红态: git stash 撤除修复后 RefreshSchedulerHarness 精确失败于「锁屏抑制等价于全部 provider 跳过, 上一份 services 必须可被回填 (C071)」; 绿态: 恢复修复后 104/104 通过 (新增 screenLockSuppressedRunCarriesOverServices + 更新 quotaPolicySuppressedOnScreenLock); zsh scripts/verify-local.sh 全量通过 (Rust fmt/test/clippy + 全部 Harness + 双端对拍), Exit Code 0",
+        "result": true
       },
       {
         "item": "行为实测",
         "true_if": "锁屏期间定时刷新后订阅服务保留；解锁后订阅卡不消失或短暂缺失后自动恢复",
         "false_if": "锁屏后发布的 artifact services 仍为空",
-        "evidence": "",
-        "result": null
+        "evidence": "端到端用例: 预置 claude+codex 两服务 artifact → 锁屏定时刷新 → store 发布产物 services 保留 2 条且本轮 context 保持 localUsageOnly; UI 层消失机理 (零 services → makeSubscription nil → 卡不渲染) 与诊断同链路, 服务保留即卡保留; 真机复核待重打包后由用户长锁屏 (>5 分钟刷新间隔) 验证",
+        "result": true
       },
       {
         "item": "反向影响排查",
         "true_if": "抑制运行仍无外部额度请求（context localUsageOnly）；手动/解锁/边界唤醒的全量查询行为不变；既有 103+ 项调度器用例全绿",
         "false_if": "锁屏期间发起了额度请求或正常刷新链路行为改变",
-        "evidence": "",
-        "result": null
+        "evidence": "抑制运行零外部请求: 用例断言 inputProvider.policies.last.includeExternalQuotas == false 且 context localUsageOnly; collector 侧 localUsageOnly 短路额度 worker (代码核验, quotaSkipProviders 不生效); 既有 103 项调度器用例与全部 Harness 无回归",
+        "result": true
       }
     ]
   },
-
   "rejections": [],
-
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
-    "commit": "",
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "e559cc4",
     "tag": ""
   }
 }

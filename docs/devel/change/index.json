@@ -748,8 +748,8 @@
     "C071": {
       "title": "修复锁屏抑制刷新清空订阅服务：抑制运行回填上一份 services，解锁后订阅卡不再消失",
       "type": "BugFix",
-      "status": "in_progress",
-      "branch": "fix/C071-lockquota-carryover",
+      "status": "closed",
+      "branch": "main",
       "topic": "SubscriptionQuota",
       "version": "0.12.2",
       "file": "docs/devel/change/C071.json"
