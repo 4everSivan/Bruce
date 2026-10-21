@@ -568,8 +568,9 @@ extension RefreshSchedulerHarness {
 }
 
 /// C062 测试桩: 把 QuotaRunPolicy 映射为 Collector context, 供调度用例断言.
+/// (C071 起供锁屏抑制回填用例共用, 故放开为模块内可见.)
 @MainActor
-private final class QuotaPolicyInputProvider: CollectorRunInputProviding {
+final class QuotaPolicyInputProvider: CollectorRunInputProviding {
     private(set) var policies: [QuotaRunPolicy] = []
 
     func runInput(for module: CollectorModule) async throws -> CollectorRunInput {
