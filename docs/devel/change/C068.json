@@ -3,8 +3,8 @@
   "id": "C068",
   "title": "Windows 订阅卡 Provider 定向刷新 (对齐 mac ProviderRefreshButton) 并补齐 Cline 凭证注入",
   "type": "BugFix",
-  "status": "in_progress",
-  "branch": "fix/C067-win-mac-visual-parity",
+  "status": "closed",
+  "branch": "main",
   "is_hotfix": false,
   "target": {
     "module": "apps/win",
@@ -76,8 +76,8 @@
   "verification": {
     "result": "passed",
     "run_id": "RUN-20261021-C068-VERIFY",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "签收",
+    "signoff": "verified",
     "checks": [
       {
         "item": "自动化测试",
@@ -106,7 +106,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "cf16710",
     "tag": ""
   }
 }

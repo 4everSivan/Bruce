@@ -3,8 +3,8 @@
   "id": "C067",
   "title": "Windows 看板与设置窗口按 mac 源码逐项对齐：修复无效 font 简写/日柱零高/热力图例无色等渲染缺陷，B 级 token 格式化，设置窗口不再套用 Nothing",
   "type": "BugFix",
-  "status": "in_progress",
-  "branch": "fix/C067-win-mac-visual-parity",
+  "status": "closed",
+  "branch": "main",
   "is_hotfix": false,
   "target": {
     "module": "apps/win",
@@ -87,8 +87,8 @@
   "verification": {
     "result": "passed",
     "run_id": "RUN-20261020-C067-VERIFY",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "签收",
+    "signoff": "verified",
     "checks": [
       {
         "item": "自动化测试",
@@ -117,7 +117,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "ae380b5",
     "tag": ""
   }
 }

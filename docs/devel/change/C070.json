@@ -3,8 +3,8 @@
   "id": "C070",
   "title": "Agent 用量工作台改为真实数据: 采集端输出逐日/逐月/今日逐小时 × 模型 token 桶与计价, mac 与 Windows 去除全部估算并以 golden 对拍",
   "type": "BugFix",
-  "status": "in_progress",
-  "branch": "fix/C067-win-mac-visual-parity",
+  "status": "closed",
+  "branch": "main",
   "is_hotfix": false,
   "target": {
     "module": "core/collector + apps/macos + apps/win",
@@ -151,8 +151,8 @@
   "verification": {
     "result": "passed",
     "run_id": "local/c070-verify.log (2026-10-21, zsh scripts/verify-local.sh exit 0)",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "签收",
+    "signoff": "verified",
     "checks": [
       "zsh scripts/verify-local.sh: exit 0 —— Rust 3 个 manifest fmt / test / clippy -D warnings 通过 (38 组 324 项, 0 失败); 前端 51/51, geometry 2/2; Swift 全部 Harness 通过 (PanelViewModel 60)",
       "PanelParityHarness: 工作台分析 workbench / valid 与 Panel valid / partial / empty 共 5 份 golden 对拍通过",
@@ -166,7 +166,7 @@
   "sync": {
     "design_pinned": false,
     "changelog": true,
-    "commit": "",
+    "commit": "70dfa5e",
     "tag": ""
   }
 }

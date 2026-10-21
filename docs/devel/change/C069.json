@@ -3,8 +3,8 @@
   "id": "C069",
   "title": "Windows 设置窗口改为即时生效 (对齐 mac SettingsView), 移除全局「保存设置」并按采集输入变化门控全量采集",
   "type": "BugFix",
-  "status": "in_progress",
-  "branch": "fix/C067-win-mac-visual-parity",
+  "status": "closed",
+  "branch": "main",
   "is_hotfix": false,
   "target": {
     "module": "apps/win",
@@ -56,8 +56,8 @@
   "verification": {
     "result": "passed",
     "run_id": "RUN-20261021-C069-VERIFY",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "签收",
+    "signoff": "verified",
     "checks": [
       {
         "item": "自动化测试",
@@ -86,7 +86,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "cf16710",
     "tag": ""
   }
 }
