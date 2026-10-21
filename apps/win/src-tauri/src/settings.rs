@@ -72,6 +72,21 @@ impl Default for AppSettings {
     }
 }
 
+/// 设置变更是否需要立即重新采集 (C069)。设置窗口改为即时生效后每个控件都会单独保存,
+/// 只有改变采集输入的字段才值得一次全量采集 —— 授权、本机会话开关、启用的 Provider 集合、
+/// 价格覆盖, 以及刷新间隔 (mac「变更后立即重新计时」); 主题、卡片/Provider 顺序、通知、
+/// 热键与面板位置只需重新发布看板, 否则连续切换开关会触发一串全量扫描。
+pub fn requires_collection(previous: &AppSettings, next: &AppSettings) -> bool {
+    let providers = |settings: &AppSettings| -> BTreeSet<String> {
+        settings.enabled_providers.iter().cloned().collect()
+    };
+    previous.consent_version != next.consent_version
+        || previous.usage_enabled != next.usage_enabled
+        || providers(previous) != providers(next)
+        || previous.pricing_overrides != next.pricing_overrides
+        || previous.refresh_interval_secs != next.refresh_interval_secs
+}
+
 fn settings_path(root: &Path) -> PathBuf {
     root.join("config").join("settings.json")
 }

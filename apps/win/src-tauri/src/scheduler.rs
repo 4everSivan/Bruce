@@ -1,5 +1,6 @@
 //! One collector channel, bounded manual wakeups and a single interruptible retry wait.
 
+use std::collections::BTreeSet;
 use std::sync::{mpsc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -17,6 +18,11 @@ pub struct SchedulerControl {
     pub retry_count: Mutex<u32>,
     pub alert_state: Mutex<AlertDeliveryState>,
     pub snapshot: Mutex<SnapshotState>,
+    /// 采集通道互斥: 全量周期与 Provider 定向刷新串行执行, 快照写入不交错
+    /// (mac RefreshScheduler 同一容量约束)。
+    pub collection: Mutex<()>,
+    /// 定向刷新进行中的 Provider (UI 契约: 目标按钮显示进度并禁用)。
+    pub refreshing_providers: Mutex<BTreeSet<String>>,
 }
 
 impl SchedulerControl {
@@ -31,6 +37,32 @@ impl SchedulerControl {
                 let _ = sender.try_send(());
             }
         }
+    }
+
+    /// 登记一次 Provider 定向刷新; 同一 Provider 已在刷新时拒绝 (按钮禁用态的后端兜底)。
+    pub fn begin_provider_refresh(&self, provider: &str) -> Result<(), String> {
+        let mut providers = self
+            .refreshing_providers
+            .lock()
+            .map_err(|_| "SCOPED_REFRESH_LOCK_FAILED")?;
+        if providers.insert(provider.to_owned()) {
+            Ok(())
+        } else {
+            Err("SCOPED_REFRESH_RUNNING".into())
+        }
+    }
+
+    pub fn end_provider_refresh(&self, provider: &str) {
+        if let Ok(mut providers) = self.refreshing_providers.lock() {
+            providers.remove(provider);
+        }
+    }
+
+    pub fn refreshing_provider_list(&self) -> Vec<String> {
+        self.refreshing_providers
+            .lock()
+            .map(|providers| providers.iter().cloned().collect())
+            .unwrap_or_default()
     }
 
     pub fn connect_manual_refresh(&self) -> mpsc::Receiver<()> {
@@ -125,12 +157,18 @@ mod desktop {
             .lock()
             .map_err(|_| "SNAPSHOT_LOCK_FAILED")?;
         state.prune_credentials(&credentials::load_credentials(&root));
-        let panel = state.panel_json(
+        let mut panel = state.panel_json(
             chrono::Local::now().fixed_offset(),
             settings.usage_enabled,
             &settings.enabled_providers,
             &settings.provider_order,
         );
+        drop(state);
+        // 订阅段定向刷新按钮的呈现输入 (mac SubscriptionRefreshControlPolicy):
+        // 进行中的 Provider 与「出站额度查询已授权」。
+        panel["runtime"]["refreshingProviders"] =
+            serde_json::json!(control.refreshing_provider_list());
+        panel["runtime"]["quotaRefreshAllowed"] = Value::Bool(settings.consent_version == 1);
         Ok(panel)
     }
 
@@ -188,6 +226,9 @@ mod desktop {
         manual: bool,
     ) -> RefreshOutcome {
         let root = paths::data_root();
+        // 与定向刷新串行: 进行中的定向刷新结束后再开始全量采集。
+        let control = app.state::<SchedulerControl>();
+        let _collection = control.collection.lock();
         if let Ok(mut state) = app.state::<SchedulerControl>().snapshot.lock() {
             state.begin_refresh();
         }
@@ -240,6 +281,69 @@ mod desktop {
         };
         publish(app);
         outcome
+    }
+
+    /// Provider 定向刷新 (mac `RefreshScheduler.refreshSubscription` 同契约): 只重新查询
+    /// 目标 Provider 的订阅额度, 不重扫本机会话、不影响其他订阅; 全量刷新进行中、未授权、
+    /// 未启用或未知 Provider 一律拒绝 (fail-closed)。立即返回, 结果经 dashboard-updated 发布;
+    /// 定向刷新属于手动操作, 不投递配额预警。
+    pub fn refresh_subscription(app: &AppHandle, section_id: &str) -> Result<(), String> {
+        let provider = crate::runtime_core::provider_of_id(section_id);
+        if !crate::settings::PROVIDERS.contains(&provider) {
+            return Err("SCOPED_REFRESH_UNKNOWN_PROVIDER".into());
+        }
+        let provider = provider.to_owned();
+        let settings = load_settings(&paths::data_root());
+        if settings.consent_version != 1 {
+            return Err("SCOPED_REFRESH_UNAUTHORIZED".into());
+        }
+        if !settings.enabled_providers.contains(&provider) {
+            return Err("SCOPED_REFRESH_DISABLED".into());
+        }
+        let control = app.state::<SchedulerControl>();
+        let full_refresh_running = control
+            .snapshot
+            .lock()
+            .map(|state| state.phase == "refreshing")
+            .unwrap_or(true);
+        if full_refresh_running {
+            return Err("FULL_REFRESH_RUNNING".into());
+        }
+        control.begin_provider_refresh(&provider)?;
+        publish(app);
+        let app = app.clone();
+        std::thread::spawn(move || {
+            let control = app.state::<SchedulerControl>();
+            {
+                let _collection = control.collection.lock();
+                let root = paths::data_root();
+                let settings = load_settings(&root);
+                let payloads = credentials::load_credentials(&root);
+                let mut first = true;
+                let result = credentials::collect_with_recovery(&root, payloads, |payloads| {
+                    if first {
+                        first = false;
+                        collector::run_scoped_collection(payloads, &settings, &provider)
+                    } else {
+                        collector::run_codex_retry(payloads, &settings)
+                    }
+                });
+                if let Ok(mut state) = control.snapshot.lock() {
+                    match &result {
+                        Ok(response) => {
+                            let _ = state.apply_scoped_response(response, &provider);
+                        }
+                        Err(_) => state.mark_provider_stale(&provider),
+                    }
+                    if state.save(&root).is_err() {
+                        state.fail("SNAPSHOT_WRITE_FAILED");
+                    }
+                }
+            }
+            control.end_provider_refresh(&provider);
+            publish(&app);
+        });
+        Ok(())
     }
 
     pub fn spawn(app: AppHandle) {
@@ -319,4 +423,6 @@ mod desktop {
 }
 
 #[cfg(feature = "desktop")]
-pub use desktop::{cached_artifact, cached_panel, publish, run_refresh, spawn};
+pub use desktop::{
+    cached_artifact, cached_panel, publish, refresh_subscription, run_refresh, spawn,
+};

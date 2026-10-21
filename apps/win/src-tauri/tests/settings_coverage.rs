@@ -4,7 +4,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use bruce_win_lib::settings::{
-    load_settings, save_settings, validate_settings, AppSettings, PROVIDERS,
+    load_settings, requires_collection, save_settings, validate_settings, AppSettings, PROVIDERS,
 };
 
 fn temp_root() -> PathBuf {
@@ -215,4 +215,37 @@ fn validate_theme_and_hotkey_boundaries() {
         ..Default::default()
     })
     .is_err());
+}
+
+#[test]
+fn only_collection_inputs_trigger_an_immediate_collection() {
+    // C069: 设置即时生效后每个控件单独保存; 只有改变采集输入的字段才触发全量采集。
+    let base = AppSettings::default();
+    let changed = |edit: fn(&mut AppSettings)| {
+        let mut next = base.clone();
+        edit(&mut next);
+        requires_collection(&base, &next)
+    };
+    assert!(changed(|s| s.consent_version = 1));
+    assert!(changed(|s| s.usage_enabled = false));
+    assert!(changed(|s| s.enabled_providers.retain(|p| p != "kimi")));
+    assert!(changed(|s| {
+        s.pricing_overrides.insert(
+            "k3".into(),
+            serde_json::json!({"inputPricePerMillion": 1.0}),
+        );
+    }));
+    assert!(
+        changed(|s| s.refresh_interval_secs = 300),
+        "变更后立即重新计时"
+    );
+    // 纯展示 / 交互偏好: 只重新发布看板
+    assert!(!changed(|s| s.theme = "nothing".into()));
+    assert!(!changed(|s| s.card_order.reverse()));
+    assert!(!changed(|s| s.provider_order = vec!["cline".into()]));
+    assert!(!changed(|s| s.notifications_enabled = false));
+    assert!(!changed(|s| s.hotkey = "Control+Shift+B".into()));
+    assert!(!changed(|s| s.panel_x = Some(10)));
+    // 启用集合相同、仅顺序不同不算采集输入变化
+    assert!(!changed(|s| s.enabled_providers.reverse()));
 }

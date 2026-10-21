@@ -3,7 +3,9 @@
 /// 美元转人民币汇率; 暂为固定常量, 后续可做成配置项 (与 mac 一致)。
 pub const CNY_PER_USD: f64 = 7.2;
 
-/// token 计数 K 格式化: 900 -> "900", 9000 -> "9K", 70500 -> "70.5K"。
+/// token 计数 K/M/B 格式化: 900 -> "900", 9000 -> "9K", 70500 -> "70.5K", 1.2M, 3.53B。
+/// B 档保留两位小数 (mac `PanelFormat.tokenCount` 同口径), 半年合计等 ≥1B 数值
+/// 不得退化成 "6235.9M"。
 pub fn token_count(value: i64) -> String {
     if value < 1000 {
         return value.to_string();
@@ -14,9 +16,15 @@ pub fn token_count(value: i64) -> String {
             trim_decimal(&format!("{:.1}", value as f64 / 1000.0))
         );
     }
+    if value < 1_000_000_000 {
+        return format!(
+            "{}M",
+            trim_decimal(&format!("{:.1}", value as f64 / 1_000_000.0))
+        );
+    }
     format!(
-        "{}M",
-        trim_decimal(&format!("{:.1}", value as f64 / 1_000_000.0))
+        "{}B",
+        trim_decimal(&format!("{:.2}", value as f64 / 1_000_000_000.0))
     )
 }
 
@@ -71,8 +79,13 @@ pub fn credits_text(amount: f64) -> String {
     )
 }
 
+/// 裁掉小数部分的末尾 0 与悬空小数点 ("6.70" -> "6.7", "2.00" -> "2"),
+/// 与 mac `PanelFormat.trimDecimal` 逐字符对齐; 无小数点的整数原样返回。
 fn trim_decimal(text: &str) -> String {
-    text.strip_suffix(".0").unwrap_or(text).to_owned()
+    if !text.contains('.') {
+        return text.to_owned();
+    }
+    text.trim_end_matches('0').trim_end_matches('.').to_owned()
 }
 
 #[cfg(test)]
@@ -87,6 +100,19 @@ mod tests {
         assert_eq!(token_count(999_999), "1000K");
         assert_eq!(token_count(1_000_000), "1M");
         assert_eq!(token_count(124_000), "124K");
+    }
+
+    #[test]
+    fn token_count_switches_to_billions_like_mac() {
+        assert_eq!(token_count(999_999_999), "1000M");
+        assert_eq!(token_count(1_000_000_000), "1B");
+        assert_eq!(token_count(6_235_900_000), "6.24B");
+        assert_eq!(token_count(6_748_200_000), "6.75B");
+        // 4.145 的二进制近似值略小于 4.145, 与 C printf (mac String(format:)) 同为 4.14。
+        assert_eq!(token_count(4_145_000_000), "4.14B");
+        assert_eq!(token_count(4_146_000_000), "4.15B");
+        assert_eq!(token_count(1_700_000_000), "1.7B");
+        assert_eq!(token_count(12_000_000_000), "12B");
     }
 
     #[test]

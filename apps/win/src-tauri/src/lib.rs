@@ -6,7 +6,6 @@
 pub mod alerts;
 pub mod collector;
 pub mod credentials;
-mod model_catalog;
 pub mod paths;
 pub mod scheduler;
 pub mod settings;
@@ -18,11 +17,12 @@ mod desktop {
     use std::collections::BTreeMap;
 
     use super::{credentials, paths, scheduler, settings};
-    use crate::model_catalog;
     use crate::runtime_core::{
         compute_dashboard_geometry, replace_hotkey, window_action, MonitorBounds, TrayIconBounds,
         WindowAction,
     };
+    use bruce_win_viewmodel::analytics::AnalyticsRange;
+    use bruce_win_viewmodel::model_catalog;
     use std::sync::Mutex;
     use tauri::{
         menu::{Menu, MenuItem},
@@ -219,6 +219,63 @@ mod desktop {
         Ok(serde_json::json!({ "path": target }))
     }
 
+    /// 设置页「Agent 用量」工作台快照 (C070): 计算见 viewmodel `analytics` (mac golden 对拍)。
+    #[tauri::command]
+    fn get_usage_analytics(
+        app: tauri::AppHandle,
+        range: String,
+    ) -> Result<bruce_win_viewmodel::analytics::AnalyticsSnapshot, String> {
+        let range = AnalyticsRange::parse(&range).ok_or("UNKNOWN_RANGE")?;
+        let settings = settings::load_settings(&paths::data_root());
+        let artifact = scheduler::cached_artifact(&app);
+        Ok(crate::runtime_core::usage_analytics(
+            artifact.as_ref(),
+            settings.usage_enabled,
+            range,
+        ))
+    }
+
+    /// 工作台「导出 CSV 账单」(mac `exportCSV`): 所选范围的归一模型; UTF-8 BOM 前置 (Excel)。
+    #[tauri::command]
+    fn export_workbench_csv(
+        app: tauri::AppHandle,
+        range: String,
+        path: Option<String>,
+    ) -> Result<serde_json::Value, String> {
+        let snapshot = get_usage_analytics(app, range)?;
+        let csv = crate::runtime_core::workbench_csv(&snapshot)
+            .ok_or_else(|| "当前范围暂无模型用量明细, 请先刷新".to_owned())?;
+        let target = crate::runtime_core::resolve_export_path(
+            &paths::data_root(),
+            "bruce_agent_usage",
+            "csv",
+            path.as_deref(),
+        )?;
+        crate::runtime_core::write_export(&target, format!("\u{feff}{csv}").as_bytes())?;
+        Ok(serde_json::json!({ "path": target }))
+    }
+
+    /// 工作台「导出 JSON 明细」(mac `exportJSON`): 完整 artifact, 键排序缩进。
+    #[tauri::command]
+    fn export_workbench_json(
+        app: tauri::AppHandle,
+        path: Option<String>,
+    ) -> Result<serde_json::Value, String> {
+        let Some(artifact) = scheduler::cached_artifact(&app) else {
+            return Err("当前暂无已缓存的 Agent 用量数据".to_owned());
+        };
+        let body =
+            serde_json::to_vec_pretty(&artifact).map_err(|_| "EXPORT_WRITE_FAILED".to_owned())?;
+        let target = crate::runtime_core::resolve_export_path(
+            &paths::data_root(),
+            "bruce_agent_usage_artifact",
+            "json",
+            path.as_deref(),
+        )?;
+        crate::runtime_core::write_export(&target, &body)?;
+        Ok(serde_json::json!({ "path": target }))
+    }
+
     /// 导出诊断报告: 脱敏单文件 JSON (mac 为 zip 包, Windows 侧不引入压缩依赖)。
     #[tauri::command]
     fn export_diagnostics(
@@ -257,6 +314,7 @@ mod desktop {
     #[tauri::command]
     fn save_settings_command(app: tauri::AppHandle, settings: AppSettings) -> Result<(), String> {
         settings::validate_settings(&settings)?;
+        let previous = settings::load_settings(&paths::data_root());
         let registered = app.state::<RegisteredHotkey>();
         let mut current = registered.0.lock().map_err(|_| "HOTKEY_LOCK_FAILED")?;
         replace_hotkey(
@@ -274,7 +332,10 @@ mod desktop {
         drop(current);
         let _ = app.emit("settings-updated", &settings);
         scheduler::publish(&app);
-        app.state::<SchedulerControl>().request_manual_refresh();
+        // 设置即时生效 (C069): 只有采集输入变化才触发全量采集, 其余变更仅重新发布看板
+        if settings::requires_collection(&previous, &settings) {
+            app.state::<SchedulerControl>().request_manual_refresh();
+        }
         Ok(())
     }
 
@@ -345,6 +406,12 @@ mod desktop {
     #[tauri::command]
     fn refresh_now(control: tauri::State<SchedulerControl>) {
         control.request_manual_refresh();
+    }
+
+    /// 订阅卡 Provider 定向刷新 (section ID 由后端归一为 provider, 未知一律拒绝)。
+    #[tauri::command]
+    fn refresh_subscription(app: tauri::AppHandle, section_id: String) -> Result<(), String> {
+        scheduler::refresh_subscription(&app, &section_id)
     }
 
     #[tauri::command]
@@ -508,6 +575,9 @@ mod desktop {
                 clear_snapshot_cache,
                 export_billing,
                 export_diagnostics,
+                get_usage_analytics,
+                export_workbench_csv,
+                export_workbench_json,
                 get_model_prices,
                 get_credential_accounts,
                 remove_credential_account,
@@ -519,6 +589,7 @@ mod desktop {
                 get_credential_fields,
                 save_credentials_command,
                 refresh_now,
+                refresh_subscription,
                 open_settings,
                 hide_dashboard,
                 quit_app
