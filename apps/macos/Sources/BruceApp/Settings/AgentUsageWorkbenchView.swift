@@ -14,45 +14,34 @@ struct AgentUsageWorkbenchView: View {
     @State private var showsExportAlert: Bool = false
 
     var body: some View {
-        let kpi = model.analyticsKPISummary(range: timeRange, overrides: coordinator.pricingOverrides)
-        let canonicalModels = model.canonicalModels(range: timeRange, overrides: coordinator.pricingOverrides)
-        let timeline = model.analyticsTimeline(range: timeRange, overrides: coordinator.pricingOverrides)
-        let agents = model.analyticsAgents(range: timeRange, overrides: coordinator.pricingOverrides)
-
-        // 汇总 24 小时 hourlyTokens
-        let artifact = model.decodedAgentUsageArtifact()
-        let hourlyTokens: [Int] = (0..<24).map { hour in
-            artifact?.agents.reduce(0) { sum, agent in
-                sum + (hour < agent.hours.count ? agent.hours[hour] : 0)
-            } ?? 0
-        }
+        let snapshot = model.analyticsSnapshot(range: timeRange)
 
         return VStack(alignment: .leading, spacing: 14) {
             // 顶部时间切片与导出工具条
             headerToolbar
 
             // 4 格核心 KPI 磁贴
-            kpiTilesGrid(kpi)
+            kpiTilesGrid(snapshot.kpi)
 
             // 时序趋势折线分析
             TimelineChartCard(
-                points: timeline.points,
-                peakSummary: timeline.peakSummary,
-                avgSummary: timeline.avgSummary,
-                availableAgents: agents,
-                availableModels: canonicalModels
+                points: snapshot.timeline.points,
+                peakSummary: snapshot.timeline.peakSummary,
+                avgSummary: snapshot.timeline.avgSummary,
+                availableAgents: snapshot.agents,
+                availableModels: snapshot.models
             )
 
             // 全域模型跨源归并大盘
-            CanonicalModelAnalyticsCard(canonicalModels: canonicalModels)
+            CanonicalModelAnalyticsCard(canonicalModels: snapshot.models)
 
             // 多 Agent 协同矩阵与工程下钻
-            AgentComparisonMatrixCard(agents: agents)
+            AgentComparisonMatrixCard(agents: snapshot.agents)
 
-            // Token 构成四象限与活跃时段
+            // Token 构成四象限与今日活跃时段
             TokenCompositionCard(
-                kpi: kpi,
-                hourlyTokens: hourlyTokens
+                kpi: snapshot.kpi,
+                hourlyTokens: snapshot.todayHourlyTokens
             )
 
             // 底部会话探针与数据管理
@@ -111,12 +100,12 @@ struct AgentUsageWorkbenchView: View {
                 color: SettingsDemoTokens.accent
             )
 
-            // 2. 估算费用
+            // 2. 费用 (采集端按单价表逐桶计价, 未定价部分不计入)
             kpiTile(
-                title: "估算费用",
+                title: "费用",
                 value: kpi.costText,
                 sub: kpi.averageCostPerMillionText,
-                tag: "官方定价",
+                tag: kpi.costTagText,
                 color: SettingsDemoTokens.ok
             )
 
@@ -129,11 +118,11 @@ struct AgentUsageWorkbenchView: View {
                 color: Color(hex: "10B981")
             )
 
-            // 4. 活跃 Agent 与会话
+            // 4. 活跃 Agent 与最活跃者占比
             kpiTile(
                 title: "活跃 Agent",
                 value: "\(kpi.activeAgentsCount) 个",
-                sub: "\(kpi.totalTurns) 轮交互",
+                sub: kpi.topAgentText,
                 tag: "全域",
                 color: Color(hex: "8B5CF6")
             )
@@ -299,11 +288,13 @@ struct AgentUsageWorkbenchView: View {
     // MARK: - 数据导出实现
 
     private func exportCSV() {
-        let canonicalModels = model.canonicalModels(range: timeRange, overrides: coordinator.pricingOverrides)
+        let canonicalModels = model.analyticsSnapshot(range: timeRange).models
         var csv = "CanonicalModel,Vendor,TotalTokens,EstimatedCostUSD,SharePercent,SourceCount\n"
+        let quoted = { (text: String) in "\"" + text.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }
         for m in canonicalModels {
-            let cost = m.estimatedCostUsd.map { String(format: "%.4f", $0) } ?? "0.0"
-            csv += "\"\(m.displayName)\",\"\(m.vendor)\",\(m.totalTokens),\(cost),\(String(format: "%.2f", m.sharePercent)),\(m.sources.count)\n"
+            // 未定价模型留空, 不写 0 冒充免费; 列与 Windows `runtime_core::workbench_csv` 一致
+            let cost = m.estimatedCostUsd.map { String(format: "%.4f", $0) } ?? ""
+            csv += "\(quoted(m.displayName)),\(quoted(m.vendor)),\(m.totalTokens),\(cost),\(String(format: "%.2f", m.sharePercent)),\(m.sources.count)\n"
         }
 
         saveTextToFile(content: csv, defaultName: "bruce_agent_usage_\(Date.now.formatted(.iso8601.year().month().day())).csv")

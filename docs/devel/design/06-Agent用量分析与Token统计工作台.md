@@ -2,7 +2,7 @@
 
 <!-- @topic: AgentAnalytics -->
 > **文档ID**: DESIGN-ANALYTICS ｜ **状态**: 现行基线
-> **最后更新**: 2026-10-19 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `AgentAnalytics`
+> **最后更新**: 2026-10-21 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `AgentAnalytics`
 
 ---
 
@@ -59,12 +59,12 @@
 ```mermaid
 flowchart TD
     subgraph DataEngine ["底层引擎 (core/collector)"]
-        Artifact["AgentUsageArtifact<br/>(agents, today, daily, hours, models, projects)"]
-        Pricing["PricingTable<br/>(43 基准模型 + 用户 pricingOverrides)"]
+        Artifact["AgentUsageArtifact<br/>(agents, today, daily+缓存拆分, hours, models, projects,<br/>dailyModels / monthModels / hourModels 含 costUsd)"]
+        Pricing["PricingTable<br/>(43 基准模型 + 用户 pricingOverrides, 采集端逐桶计价)"]
     end
 
     subgraph NormalizationLayer ["归一化与聚合计算层 (BruceAppCore)"]
-        Norm["ModelNormalizer<br/>1. 剥离 prefix: cline-pass/, zhipu/ 等<br/>2. 修剪 suffix: -20250219 等<br/>3. 别名词典匹配"]
+        Norm["ModelNormalizer<br/>1. 剥离渠道前缀与 [标记]<br/>2. 修剪日期 / -latest 后缀<br/>(不做跨型号别名合并)"]
         Agg["AnalyticsViewModel<br/>- 全局 KPI 与环比推导<br/>- 多模型归并大盘 (CanonicalModelSummary)<br/>- 时序折线数据集 (DailyTimelineSeries)<br/>- Agent 对比与代码仓分布"]
     end
 
@@ -79,8 +79,8 @@ flowchart TD
         ProbeCard["SessionProbeFooterCard (探针 + CSV/JSON 导出)"]
     end
 
+    Pricing --> Artifact
     Artifact --> Norm
-    Pricing --> Norm
     Norm --> Agg
     Agg --> TimeTabs
     Agg --> KPICard
@@ -98,26 +98,20 @@ flowchart TD
 
 ### 4.1 模型智能归一化算法规范 (`ModelNormalizer`)
 
-#### 1. 前缀剥离规则 (Prefix Stripping)
-识别字符串中首个或最后一个 `/`：
-- 若包含已知厂商或渠道前缀（如 `cline-pass/`, `zhipu/`, `zhipuai/`, `openrouter/`, `anthropic/`, `openai/`, `deepseek/`, `google/`, `moonshot/`, `minimax/`），剥离前缀，仅保留后缀；
-- 若无 `/`，保留原字符串。
+#### 1. 规范键 (Canonical Key) —— C070 修订
+归一化只做「同一型号的不同写法」收敛, **不做跨型号别名合并** (C070 前的子串别名表会把 `glm-4.5` 记为 GLM 5.3、把任何含 `opus` 的模型记为 Claude Opus 5.5、把 `deepseek-chat` 并入 `deepseek-v4.1-flash`, 不同单价的模型被混算):
+1. 转小写、去首尾空白;
+2. 截去第一个 `[` 起的标记 (如 `[thinking]`);
+3. 以最后一个 `/` 为界剥离渠道 / 厂商前缀 (如 `cline-pass/`, `zhipu/`, `anthropic/`);
+4. 剥离尾部快照日期 `-YYYYMMDD` (8 位), 其次 `-MMDD` (4 位); 剥离尾部 `-latest`;
+5. `-preview` / `-flash` / `-pro` / `-chat` 等为不同型号, 保留。
 
-#### 2. 变体与标记清理 (Variant Trimming)
-1. 剥离方括号标记：如 `[thinking]`, `[online]`, `[stream]`, `[contributor]`；
-2. 剥离版本后缀：
-   - 匹配尾部日期格式（如 `-\d{8}`，例如 `-20250219`, `-20241022`）；
-   - 匹配 `-latest`, `-preview`, `-chat`（若主干已有型号）；
-3. 规范化统一转为小写，空格转连字符。
+#### 2. 展示元数据
+- **展示名 / 厂商**: 规范键与内置价格目录 (`BuiltinModelPricingCatalog` / Windows `model_catalog.rs`, 与采集端 `PricingTable` 同表) 的模型名**按同一规则归一后精确相等**时取目录的展示名与厂商; 否则展示名即规范键, 厂商按前缀表推断 (`claude`→Anthropic, `gpt`/`o`→OpenAI, `deepseek`→DeepSeek, `glm`→智谱, `kimi`/`k`→Moonshot …), 未知为「其他」;
+- **配色**: 按规范键前缀取品牌色 (纯展示, 不参与统计)。
 
-#### 3. 规范主键归集表 (Canonical Key Resolution)
-| 原始多源示例 | 归一化规范键 (Canonical Key) | 规范呈现名称 (Display Name) | 厂商归属 (Vendor) |
-|---|---|---|---|
-| `zhipu/glm-5.3`<br/>`cline-pass/glm-5.3`<br/>`glm-5.3-flash` | `glm-5.3` | **GLM 5.3** | 智谱 AI / Zhipu |
-| `cline-pass/deepseek-v4.1-flash`<br/>`deepseek/deepseek-v4.1-flash`<br/>`deepseek-chat` | `deepseek-v4.1-flash` | **DeepSeek V4.1 Flash** | DeepSeek |
-| `claude-3-7-sonnet`<br/>`anthropic/claude-3-7-sonnet-20250219` | `claude-3-7-sonnet` | **Claude 3.7 Sonnet** | Anthropic |
-| `gpt-5.4`<br/>`openai/gpt-5.4-preview`<br/>`gpt-5.4-0414` | `gpt-5.4` | **GPT 5.4** | OpenAI |
-| `kimi-k2.5`<br/>`moonshot/kimi-k2.5` | `kimi-k2.5` | **Kimi K2.5** | Moonshot |
+#### 3. 费用归属
+费用不在客户端估算: 采集端对每个 `dailyModels` / `monthModels` / `hourModels` 桶以 `PricingTable` (内置 + 用户 `pricingOverrides`) 计价并写入 `costUsd` / `cacheSavingsUsd`; 渠道前缀与 `[标记]` 由 `PricingTable` 自身剥离 (`cline-pass/deepseek-v4.1-flash` 命中 `deepseek-v4.1-flash`)。前缀匹配存在多个候选时取**最长**的目录键 (最具体), 结果与进程无关 (C070 前遍历 HashMap 取首个命中, 跨进程可能落到不同单价)。无匹配单价的桶 `costUsd` 为 null, 工作台计为「未定价 tokens」而不是按平均单价折算。
 
 #### 4. 双层数据结构契约
 ```swift
@@ -151,19 +145,53 @@ public struct ModelSourceContribution: Identifiable, Equatable, Sendable {
 
 ---
 
-### 4.2 时序趋势折线图设计 (`TimelineChartCard`)
+### 4.2 真实数据口径 (C070)
+
+C070 前工作台多处数值为估算 (今日逐小时固定按 42/18/40 拆输入/输出/缓存; 时序费用 tokens × $2.8/1M; KPI 无定价时同样平价兜底; 「轮交互」= 活跃 Agent × 12; 缓存节省按 90% 折扣 + $3/1M 兜底; 7/30 天模型构成由当月构成按比例缩放; Token 构成四象限「输出」= 总量 / 5、「缓存写入」= 缓存读取 / 4; 多日缓存命中恒为 0 —— `daily.input` 已含缓存, 再以 `total − input − output` 求缓存必为 0)。C070 起所有数值只取自采集端真实聚合, 采集端缺数据的指标显示「—」而不是估算。
+
+**artifact 契约 (agent 层, 均为可选字段, 旧快照缺失时工作台对应指标显示「—」直至下次采集)**:
+
+| 字段 | 粒度 / 范围 | 内容 |
+|---|---|---|
+| `daily[].cacheRead` / `daily[].cacheCreation` | 逐日, 采集窗口全部天 | 原始缓存读取 / 写入 token (`daily[].input` 仍为含缓存的展示口径, 原始输入 = `input − cacheRead − cacheCreation`) |
+| `dailyModels[]` | 逐日 × 模型, 截至今日的最近 31 天 | `{date, model, input, output, cacheRead, cacheCreation, total, costUsd, cacheSavingsUsd}` (token 为原始口径, 与 `today` 同) |
+| `monthModels[]` | 自然月 × 模型, 采集窗口内全部月份 | `{month, model, …同上}` |
+| `hourModels[]` | 今日逐小时 × 模型 | `{hour, model, …同上}` |
+
+非零桶才输出; 不过滤任何模型 (含 `unknown`), 因此任一范围内「模型桶合计 = 该范围 token 合计」恒等。增量缓存新增逐日×模型与今日小时×模型桶, `AGGREGATION_VERSION` 升级, 首次升级后全量重扫一次。
+
+**各时间范围的数据来源**:
+
+| 范围 | 日期集合 | token / Agent / 构成 | 模型与费用 | 时序点 |
+|---|---|---|---|---|
+| 今日 | 今日 | `today` 桶 / `hours` | `dailyModels` (今日) | 24 个小时点, 来自 `hours` 与 `hourModels` |
+| 近 7 天 / 近 30 天 | 窗口日序列末尾 7 / 30 天 | `daily` | `dailyModels` | 逐日 |
+| 本月 | 窗口内本自然月各天 | `daily` | `dailyModels` (31 天覆盖整月) | 逐日 |
+| 全部历史 | 窗口全部天 (约半年) | `daily` | `monthModels` | **逐月** (逐日模型数据只保留 31 天, 故全部历史改以月为粒度, 不再按周估算) |
+
+**指标定义**: 输入 (原始输入 + 缓存写入, 即按输入计价的部分) / 输出 / 缓存读取 / 缓存写入 四象限直接取聚合值; 缓存命中率 = 缓存读取 ÷ (原始输入 + 缓存读取 + 缓存写入); 费用 = 范围内各模型桶 `costUsd` 之和, 另报「未定价 tokens」; 每 1M 均价 = 费用 ÷ 已定价 tokens; 缓存收益 = 范围内 `cacheSavingsUsd` 之和 (缓存读取 × (输入单价 − 缓存读取单价)); 活跃 Agent = 范围内 token > 0 的 Agent 数, 副标题为最活跃 Agent 及其占比 (不再展示无数据来源的「轮交互」); Agent 矩阵的代码工程分布只有今日数据, 仅在「今日」范围展示; 24 小时密度为今日数据, 标题注明「今日」。
+
+**缺数据与边界语义**:
+- 费用 / 缓存收益: 范围内无明细桶 (无用量) 为 `$0.00`; 有桶但全部未定价为「—」; 旧 artifact 无明细数组为「—」, 费用标签为「无明细」(有未定价桶时标签为「X 未定价」, 否则「单价表计价」);
+- 旧 artifact 的多日范围缺 `daily` 缓存拆分时, 输入 / 缓存读取 / 缓存写入 / 命中率显示「—」(输出照常), 时序不出 Token 构成序列; 「今日」恒取 `today` 桶 (自带拆分);
+- 次序键全部显式: 模型按 token 降序 → 规范键; 来源按 token 降序 → 原始模型名 → Agent 在 artifact 中的位置; Agent 按 token 降序 → artifact 位置; 峰值取首个最大点, 全 0 时为「—」; 均值为整数除法;
+- 浮点累加顺序固定 (按 artifact 中 Agent 顺序、各明细数组原序左累加), 保证双端逐位相同。
+
+**双端一致性**: mac `BruceAppCore/WorkbenchAnalytics.swift` 为计算事实源; Windows 在 `apps/win/viewmodel/src/analytics.rs` 逐条镜像, 经 Tauri 命令 `get_usage_analytics(range)` 下发, 前端只做呈现。mac `PanelParityHarness` 对共享 fixture (`workbench.json` 新版 / `valid.json` 旧版) 逐范围产出 `tests/fixtures/viewmodel-parity/agent-usage-*.analytics.json`, 由 `apps/win/viewmodel/tests/analytics_parity.rs` 逐字段 (含浮点位) 对拍锁定 (与面板视图模型同一机制)。工作台「导出 CSV 账单」双端列一致 (未定价模型费用列留空)。
+
+### 4.3 时序趋势折线图设计 (`TimelineChartCard`)
 
 #### 1. 维度支持
 1. **按 Agent 拆分**（四色曲线：Claude Code 橙、Codex 绿、Kimi 蓝、OpenCode 紫）；
-2. **按主模型拆分**（多源合并后的主模型：Claude 3.7、GLM 5.3、DeepSeek V4.1 等）；
-3. **按 Token 构成拆分**（Prompt Input 蓝、Model Output 紫、Cache Read 绿）；
-4. **按费用走势 ($)**（每日折算美元金额与光晕面积）。
+2. **按主模型拆分**（范围内 token 前 5 的规范模型, 数据来自 `dailyModels` / `hourModels` / `monthModels`）；
+3. **按 Token 构成拆分**（输入 [含缓存写入] 蓝、输出 紫、缓存读取 绿, 三者之和等于该点总量）；
+4. **按费用走势 ($)**（各点模型桶 `costUsd` 之和; 未定价桶计 0, 未定价 token 量见费用 KPI 标签）。
 
-#### 2. Swift Charts 实现参数
-- 曲线平滑：`.interpolationMethod(.catmullRom)`；
-- 面积填充：`AreaMark` + `LinearGradient(colors: [color.opacity(0.18), .clear], startPoint: .top, endPoint: .bottom)`；
-- 均线绘制：`StrokeStyle(lineWidth: 1.5, dash: [4, 4])`，计算公式为滑动窗口 7 日加权；
-- 十字准线交互：使用 `chartOverlay` 监听指针悬停，通过 `proxy.value(atX:)` 映射离散索引，驱动原生浮动 Tooltip。
+#### 2. 实现参数 (mac Swift Charts; Windows SVG 等价实现)
+- 曲线平滑：`.interpolationMethod(.catmullRom)`；折线 / 面积可切换，面积为 `LinearGradient(color.opacity(0.35) → 0.04)`；点数 ≤ 14 时绘制点标记；
+- x 轴为字符串分带刻度：点位于各带中心、首末点不贴边，标签至多 8 个；y 轴刻度在左（费用 `$x.xx`，token `x.xM` / `xK`）；
+- 悬停选点：`chartXSelection` 选中最近点，画虚线 RuleMark，底部概览条改为「📍 标签 + 合计 + 前 3 项细分」，未选中时显示峰值 / 均值摘要；
+- （C070 校正：此前文档所列 7 日均线 mac 端从未实现，已删除。）
 
 ---
 
@@ -171,5 +199,7 @@ public struct ModelSourceContribution: Identifiable, Equatable, Sendable {
 
 1. **归一化算法幂等性**：输入已归一化的模型名，输出不变；各种前缀（带斜杠、无斜杠）和日期后缀均能精准收敛；
 2. **合并统计数值恒等**：所有合并后的模型总 Token 之和，必须严格等于底层对应各 Agent 原始日志的总 Token，零溢出、零丢弃；
-3. **定价自动继承**：带有前缀的 `cline-pass/deepseek-v4.1-flash` 能自动命中 `deepseek-v4.1-flash` 的价格，无需手动补充单价；
-4. **UI 性能与流畅度**：切换时间维度（今日/7天/30天/历史）与切换归并模式时，视图响应延迟 $\le 16\text{ms}$，Swift Charts 缩放平滑无撕裂。
+3. **定价自动继承**：带有前缀的 `cline-pass/deepseek-v4.1-flash` 由采集端自动命中 `deepseek-v4.1-flash` 的价格，无需手动补充单价；前缀匹配多候选时取最长键, 结果确定；
+4. **UI 性能与流畅度**：切换时间维度（今日/7天/30天/历史）与切换归并模式时，视图响应延迟 $\le 16\text{ms}$，Swift Charts 缩放平滑无撕裂；
+5. **零估算**（C070）：工作台任何数值都可追溯到 artifact 字段或采集端计价结果, 不存在固定比例拆分、平均单价兜底或常数乘数; 数据缺失显示「—」；
+6. **双端对拍**（C070）：同一 fixture 下 mac 与 Windows 各范围的 KPI、模型归并、时序点与 Agent 矩阵逐字段一致。

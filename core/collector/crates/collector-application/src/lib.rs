@@ -946,6 +946,8 @@ mod tests {
             models_today: Vec::new(),
             projects_today: Vec::new(),
             hours: Vec::new(),
+            models_by_day: std::collections::BTreeMap::new(),
+            hour_models_today: std::collections::BTreeMap::new(),
         };
         invalid.by_day.insert(
             "1999-01-01".to_owned(),

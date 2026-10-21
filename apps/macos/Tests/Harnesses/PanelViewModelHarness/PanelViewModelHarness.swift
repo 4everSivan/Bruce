@@ -92,6 +92,75 @@ private func makeAgent(
     )
 }
 
+/// 工作台 fixture (C070): 两个活跃 Agent + 一个零用量 Agent, 金额取 0.25 的倍数以免浮点噪声.
+/// - Claude Code: 14 天每天 500 (原始输入 100 / 输出 50 / 缓存读 300 / 缓存写 50),
+///   模型 sonnet 400 ($1.25, 省 $0.5) + 未定价 deepseek-flash 100; 今日 9 点 200、14 点 300.
+/// - Codex: 仅最后 2 天每天 2000 (输入 1000 / 输出 200 / 缓存读 800), gpt-5.4 $2.0 (省 $0.75); 今日 14 点.
+private func makeWorkbenchArtifact() -> AgentUsageArtifact {
+    func detail(
+        date: String? = nil, month: String? = nil, hour: Int? = nil, model: String,
+        _ input: Int, _ output: Int, _ cacheRead: Int, _ cacheCreation: Int,
+        cost: Double?, savings: Double?
+    ) -> AgentModelDetail {
+        AgentModelDetail(
+            date: date, month: month, hour: hour, model: model,
+            input: input, output: output, cacheRead: cacheRead, cacheCreation: cacheCreation,
+            total: input + output + cacheRead + cacheCreation, costUsd: cost, cacheSavingsUsd: savings
+        )
+    }
+    var claudeHours = Array(repeating: 0, count: 24)
+    claudeHours[9] = 200
+    claudeHours[14] = 300
+    let claude = AgentUsageItem(
+        id: "claude-code", name: "Claude Code", status: "ok", note: nil,
+        today: makeBucket(input: 100, output: 50, cacheRead: 300, cacheCreation: 50),
+        daily: dayList.map {
+            AgentDailyUsage(date: $0, input: 450, output: 50, total: 500, cacheRead: 300, cacheCreation: 50)
+        },
+        hours: claudeHours, todayCostUsd: 1.25, models: nil, modelMonths: nil,
+        projects: [AgentProjectUsage(name: "bruce", total: 500)],
+        dailyModels: dayList.flatMap { date in [
+            detail(date: date, model: "anthropic/claude-sonnet-5", 80, 40, 240, 40, cost: 1.25, savings: 0.5),
+            detail(date: date, model: "deepseek-flash", 20, 10, 60, 10, cost: nil, savings: nil),
+        ] },
+        monthModels: [
+            detail(month: "2026-07", model: "anthropic/claude-sonnet-5", 1_120, 560, 3_360, 560, cost: 17.5, savings: 7.0),
+            detail(month: "2026-07", model: "deepseek-flash", 280, 140, 840, 140, cost: nil, savings: nil),
+        ],
+        hourModels: [
+            detail(hour: 9, model: "anthropic/claude-sonnet-5", 40, 20, 120, 20, cost: 0.5, savings: 0.2),
+            detail(hour: 14, model: "anthropic/claude-sonnet-5", 40, 20, 120, 20, cost: 0.75, savings: 0.3),
+            detail(hour: 14, model: "deepseek-flash", 20, 10, 60, 10, cost: nil, savings: nil),
+        ]
+    )
+    var codexHours = Array(repeating: 0, count: 24)
+    codexHours[14] = 2_000
+    let activeDays = Array(dayList.suffix(2))
+    let codex = AgentUsageItem(
+        id: "codex", name: "Codex", status: "ok", note: nil,
+        today: makeBucket(input: 1_000, output: 200, cacheRead: 800),
+        daily: dayList.map { date in
+            activeDays.contains(date)
+                ? AgentDailyUsage(date: date, input: 1_800, output: 200, total: 2_000, cacheRead: 800, cacheCreation: 0)
+                : AgentDailyUsage(date: date, input: 0, output: 0, total: 0, cacheRead: 0, cacheCreation: 0)
+        },
+        hours: codexHours, todayCostUsd: 2.0, models: nil, modelMonths: nil, projects: nil,
+        dailyModels: activeDays.map {
+            detail(date: $0, model: "gpt-5.4", 1_000, 200, 800, 0, cost: 2.0, savings: 0.75)
+        },
+        monthModels: [detail(month: "2026-07", model: "gpt-5.4", 2_000, 400, 1_600, 0, cost: 4.0, savings: 1.5)],
+        hourModels: [detail(hour: 14, model: "gpt-5.4", 1_000, 200, 800, 0, cost: 2.0, savings: 0.75)]
+    )
+    let idle = AgentUsageItem(
+        id: "gemini-cli", name: "Gemini CLI", status: "ok", note: nil,
+        today: makeBucket(),
+        daily: dayList.map { AgentDailyUsage(date: $0, input: 0, output: 0, total: 0, cacheRead: 0, cacheCreation: 0) },
+        hours: Array(repeating: 0, count: 24), todayCostUsd: nil, models: nil, modelMonths: nil, projects: nil,
+        dailyModels: [], monthModels: [], hourModels: []
+    )
+    return makeAgentUsageArtifact(agents: [claude, codex, idle], services: [], totalCostUsd: 3.25)
+}
+
 private func makeWindow(
     label: String,
     usedPercent: Double,
@@ -231,12 +300,12 @@ struct PanelViewModelHarness {
         try hourlyCollapsedPointsSumWithPeakText()
         try collapseStatePersistsAcrossAppModelInstances()
         try cardCollapseAnimationStabilityContracts()
-        try modelNormalizerPrefixAndSuffixStrippingContracts()
-        try modelNormalizerMultiSourceAggregationAndConservationContracts()
-        try modelNormalizerPricingInheritanceContracts()
+        try modelNormalizerCanonicalKeyContracts()
+        try workbenchTodayRangeUsesRealBucketsContracts()
+        try workbenchMultiDayRangesUseDailyDetailContracts()
+        try workbenchThisMonthStopsAtMonthBoundaryContracts()
+        try workbenchLegacyArtifactShowsDashesContracts()
         try billionTokenFormattingContracts()
-        try deepseekVariantsAndMultiMonthAggregationContracts()
-        try timelineWeeklyBucketingPerformanceContracts()
         print("PanelViewModel tests passed: 60")
     }
 
@@ -1926,108 +1995,168 @@ struct PanelViewModelHarness {
         }
     }
 
-    // MARK: - ModelNormalizer 与跨源归并测试
+    // MARK: - ModelNormalizer 与工作台分析 (C070)
 
-    private static func modelNormalizerPrefixAndSuffixStrippingContracts() throws {
-        // 1. 前缀剥离与规范主键收敛
-        let deepseekRaw = "cline-pass/deepseek-v4.1-flash"
-        let deepseekKey = ModelNormalizer.canonicalKey(for: deepseekRaw)
+    private static func modelNormalizerCanonicalKeyContracts() throws {
+        // 1. 渠道 / 厂商前缀剥离, 目录精确命中取展示名与厂商
+        let deepseekKey = ModelNormalizer.canonicalKey(for: "cline-pass/deepseek-v4.1-flash")
         try expect(deepseekKey == "deepseek-v4.1-flash", "前缀剥离后必须为 deepseek-v4.1-flash: \(deepseekKey)")
         try expect(ModelNormalizer.vendor(for: deepseekKey) == "DeepSeek", "厂商必须为 DeepSeek")
-        try expect(ModelNormalizer.displayName(for: deepseekKey) == "DeepSeek V4.1 Flash", "显示名必须为 DeepSeek V4.1 Flash")
+        try expect(ModelNormalizer.displayName(for: deepseekKey) == "DeepSeek V4.1 Flash", "显示名取目录")
+        for raw in ["zhipu/glm-5.3", "openrouter/glm-5.3", "GLM-5.3"] {
+            try expect(ModelNormalizer.canonicalKey(for: raw) == "glm-5.3", "\(raw) 必须收敛为 glm-5.3")
+        }
+        try expect(ModelNormalizer.vendor(for: "glm-5.3").contains("智谱 AI"), "厂商必须包含 智谱 AI")
 
-        let glmRaw1 = "zhipu/glm-5.3"
-        let glmKey1 = ModelNormalizer.canonicalKey(for: glmRaw1)
-        try expect(glmKey1 == "glm-5.3", "zhipu 前缀必须剥离为 glm-5.3")
-        try expect(ModelNormalizer.vendor(for: glmKey1).contains("智谱 AI"), "厂商必须包含 智谱 AI")
-
-        let glmRaw2 = "openrouter/glm-5.3"
-        let glmKey2 = ModelNormalizer.canonicalKey(for: glmRaw2)
-        try expect(glmKey2 == "glm-5.3", "openrouter 前缀必须剥离为 glm-5.3")
-
-        // 2. 日期与运行变体修剪
-        let claudeRaw = "anthropic/claude-3-7-sonnet-20250219"
-        let claudeKey = ModelNormalizer.canonicalKey(for: claudeRaw)
+        // 2. 快照日期 / -latest / [标记] 修剪
+        let claudeKey = ModelNormalizer.canonicalKey(for: "anthropic/claude-3-7-sonnet-20250219")
         try expect(claudeKey == "claude-3-7-sonnet", "日期后缀与厂商前缀必须剔除: \(claudeKey)")
         try expect(ModelNormalizer.vendor(for: claudeKey) == "Anthropic", "厂商必须为 Anthropic")
+        try expect(ModelNormalizer.canonicalKey(for: "gpt-4o-latest") == "gpt-4o", "-latest 必须剔除")
+        try expect(ModelNormalizer.canonicalKey(for: "deepseek-r1[thinking]") == "deepseek-r1", "[thinking] 必须剥离")
+        try expect(ModelNormalizer.canonicalKey(for: "  ") == "unknown", "空名归为 unknown")
 
-        let gptRaw = "openai/gpt-5.4-preview"
-        let gptKey = ModelNormalizer.canonicalKey(for: gptRaw)
-        try expect(gptKey == "gpt-5.4", "-preview 后缀必须修剪: \(gptKey)")
-
-        let thinkingRaw = "deepseek-r1[thinking]"
-        let thinkingKey = ModelNormalizer.canonicalKey(for: thinkingRaw)
-        try expect(thinkingKey == "deepseek-r1", "[thinking] 标记必须剥离: \(thinkingKey)")
+        // 3. 不做跨型号别名: 不同型号单价不同, 合并即混算
+        for raw in ["deepseek-flash", "glm-4.5", "gpt-5.4-preview", "claude-opus-4-1", "deepseek-chat"] {
+            try expect(ModelNormalizer.canonicalKey(for: raw) == raw, "\(raw) 不得被别名合并")
+        }
+        try expect(ModelNormalizer.displayName(for: "deepseek-flash") == "deepseek-flash", "目录未收录时展示名即规范键")
+        try expect(ModelNormalizer.vendor(for: "deepseek-flash") == "DeepSeek", "目录未收录时按前缀推断厂商")
+        try expect(ModelNormalizer.vendor(for: "acme-coder") == "其他", "未知厂商为「其他」")
     }
 
-    private static func modelNormalizerMultiSourceAggregationAndConservationContracts() throws {
-        // 构造使用异构渠道同一模型的 AgentUsageArtifact
-        let agent1 = makeAgent(
-            id: "claude-code",
-            name: "Claude Code",
-            today: makeBucket(input: 30000, output: 20000),
-            models: ["zhipu/glm-5.3": 50000]
+    private static func workbenchTodayRangeUsesRealBucketsContracts() throws {
+        let snapshot = WorkbenchAnalytics.make(artifact: makeWorkbenchArtifact(), range: .today)
+        let kpi = snapshot.kpi
+        // 四象限为原始口径, 之和 = 总量
+        try expect(kpi.totalTokens == 2_500, "今日总量: \(kpi.totalTokens)")
+        try expect(
+            [kpi.inputTokens, kpi.outputTokens, kpi.cacheReadTokens, kpi.cacheCreationTokens] == [1_100, 250, 1_100, 50],
+            "今日四象限取 today 桶"
         )
-        let agent2 = makeAgent(
-            id: "opencode",
-            name: "OpenCode",
-            today: makeBucket(input: 20000, output: 10000),
-            models: ["openrouter/glm-5.3": 30000]
+        try expect(kpi.costText == "$3.25", "费用 = 已定价明细桶之和: \(kpi.costText)")
+        try expect(kpi.pricedTokens == 2_400 && kpi.unpricedTokens == 100, "已定价 / 未定价 token 分别计")
+        try expect(kpi.costTagText == "100 未定价", "未定价量标在费用标签: \(kpi.costTagText)")
+        try expect(kpi.averageCostPerMillionText == "$1354.17 / 1M", "均价 = 费用 ÷ 已定价 tokens: \(kpi.averageCostPerMillionText)")
+        try expect(kpi.cacheHitRateText == "48.9%", "命中率 = 缓存读 ÷ (输入 + 缓存读写): \(kpi.cacheHitRateText)")
+        try expect(kpi.cacheSavedCostText == "省 $1.25", "缓存节省取采集端计价: \(kpi.cacheSavedCostText)")
+        try expect(kpi.activeAgentsCount == 2, "零用量 Agent 不计入活跃")
+        try expect(kpi.topAgentText == "最活跃 Codex · 80.0%", "最活跃 Agent: \(kpi.topAgentText)")
+
+        // 时序: 24 个整点, Token 构成取小时 × 模型桶, 三者之和 = 该小时总量
+        let timeline = snapshot.timeline
+        try expect(timeline.granularity == .hour && timeline.points.count == 24, "今日逐小时 24 点")
+        let peak = timeline.points[14]
+        try expect(peak.label == "14:00" && peak.totalTokens == 2_300, "14 点合计")
+        try expect(peak.seriesValues["claude-code"] == 300 && peak.seriesValues["codex"] == 2_000, "Agent 序列取 hours")
+        try expect(
+            [peak.seriesValues["type_input"], peak.seriesValues["type_output"], peak.seriesValues["type_cache"]] == [1_090, 230, 980],
+            "小时 Token 构成 (输入含缓存写入)"
         )
-        let agent3 = makeAgent(
-            id: "kimi-code-cli",
-            name: "Kimi Code CLI",
-            today: makeBucket(input: 80000, output: 40000),
-            models: ["cline-pass/deepseek-v4.1-flash": 120000]
-        )
-        let agent4 = makeAgent(
-            id: "codex",
-            name: "Codex",
-            today: makeBucket(input: 50000, output: 30000),
-            models: ["deepseek/deepseek-v4.1-flash": 80000]
-        )
+        try expect(peak.costUsd == 2.75, "小时费用取小时桶计价: \(peak.costUsd)")
+        try expect(peak.seriesValues["model_gpt-5.4"] == 2_000, "模型序列按规范键")
+        let idle = timeline.points[3]
+        try expect(idle.totalTokens == 0 && idle.seriesValues["type_input"] == 0 && idle.costUsd == 0, "空小时构成为 0")
+        try expect(timeline.peakSummary == "🔥 峰值时段: **14:00** (\(PanelFormat.tokenCount(2_300)) Tokens)", timeline.peakSummary)
+        try expect(timeline.avgSummary == "时均: **\(PanelFormat.tokenCount(2_500 / 24))** Tokens", timeline.avgSummary)
+        try expect(snapshot.todayHourlyTokens[9] == 200 && snapshot.todayHourlyTokens[14] == 2_300, "今日 24h 密度")
 
-        let artifact = makeAgentUsageArtifact(agents: [agent1, agent2, agent3, agent4], services: [])
-        let canonicalModels = ModelNormalizer.aggregateCanonicalModels(from: artifact)
-
-        // 验证归并后仅有 2 个主模型: DeepSeek V4.1 Flash 与 GLM 5.3
-        try expect(canonicalModels.count == 2, "模型总数应归并为 2 个主模型, 实际为: \(canonicalModels.count)")
-
-        // 验证 DeepSeek V4.1 Flash (120k + 80k = 200k)
-        let deepseek = try unwrap(canonicalModels.first { $0.canonicalKey == "deepseek-v4.1-flash" })
-        try expect(deepseek.totalTokens == 200000, "DeepSeek 归并后总 Token 应为 200000, 实际为: \(deepseek.totalTokens)")
-        try expect(deepseek.sources.count == 2, "DeepSeek 来源应为 2 个渠道")
-        let dsSources = Set(deepseek.sources.map(\.rawModelName))
-        try expect(dsSources.contains("cline-pass/deepseek-v4.1-flash"), "必须包含 cline-pass 渠道")
-        try expect(dsSources.contains("deepseek/deepseek-v4.1-flash"), "必须包含 deepseek 渠道")
-
-        // 验证 GLM 5.3 (50k + 30k = 80k)
-        let glm = try unwrap(canonicalModels.first { $0.canonicalKey == "glm-5.3" })
-        try expect(glm.totalTokens == 80000, "GLM 5.3 归并后总 Token 应为 80000, 实际为: \(glm.totalTokens)")
-        try expect(glm.sources.count == 2, "GLM 5.3 来源应为 2 个渠道")
-        let glmSources = Set(glm.sources.map(\.rawModelName))
-        try expect(glmSources.contains("zhipu/glm-5.3"), "必须包含 zhipu 渠道")
-        try expect(glmSources.contains("openrouter/glm-5.3"), "必须包含 openrouter 渠道")
-
-        // 数值守恒性契约: 所有归并模型 Token 总和必须严格等于原始总和 280,000
-        let totalAggregated = canonicalModels.reduce(0) { $0 + $1.totalTokens }
-        try expect(totalAggregated == 280000, "数值守恒失败: 预期 280000, 实际: \(totalAggregated)")
+        // 项目分布只有今日数据, 今日范围才下发
+        let claude = try unwrap(snapshot.agents.first { $0.agentID == "claude-code" })
+        try expect(claude.topProjects.map(\.name) == ["bruce"], "今日范围下发项目分布")
     }
 
-    private static func modelNormalizerPricingInheritanceContracts() throws {
-        // 带渠道前缀的模型自动继承官方基准单价
+    private static func workbenchMultiDayRangesUseDailyDetailContracts() throws {
+        let artifact = makeWorkbenchArtifact()
+        let week = WorkbenchAnalytics.make(artifact: artifact, range: .sevenDays)
+        try expect(week.kpi.totalTokens == 7_500, "近 7 天总量: \(week.kpi.totalTokens)")
+        try expect(week.kpi.inputTokens == 2_700 && week.kpi.cacheCreationTokens == 350, "原始输入 = daily.input − 缓存读写")
+        try expect(week.kpi.costText == "$12.75", "近 7 天费用取逐日明细: \(week.kpi.costText)")
+        try expect(week.kpi.topAgentText == "最活跃 Codex · 53.3%", week.kpi.topAgentText)
+
+        // 模型归并: token 降序, 来源保留原始名与 Agent
+        try expect(week.models.map(\.canonicalKey) == ["gpt-5.4", "claude-sonnet-5", "deepseek-flash"], "模型按量降序")
+        let sonnet = week.models[1]
+        try expect(sonnet.totalTokens == 2_800 && sonnet.costText == "$8.75", "模型费用为来源费用之和")
+        try expect(sonnet.sources.map(\.rawModelName) == ["anthropic/claude-sonnet-5"], "来源为原始模型名")
+        try expect(week.models[2].costText == nil, "未定价模型不出费用")
+        let shareSum = week.models.reduce(0.0) { $0 + $1.sharePercent }
+        try expect(abs(shareSum - 100) < 1e-9, "模型占比之和为 100%")
+
+        // Agent 对比: 只列活跃者, 比例条三段之和 = 总量, 非今日不冒用今日项目
+        try expect(week.agents.map(\.agentID) == ["codex", "claude-code"], "活跃 Agent 按量降序")
+        let claude = week.agents[1]
+        try expect(claude.inputTokens + claude.outputTokens + claude.cacheReadTokens == claude.totalTokens, "比例条守恒")
+        try expect(claude.costText == "$8.75" && claude.topProjects.isEmpty, "Agent 费用取自身明细; 项目仅今日")
+        try expect(claude.topModels.map(\.canonicalKey) == ["claude-sonnet-5", "deepseek-flash"], "Agent 模型下钻")
+
+        // 逐日时序: 标签 MM-dd, 构成之和 = 当日总量, 峰值取首个最大日
+        let timeline = week.timeline
+        try expect(timeline.granularity == .day && timeline.points.map(\.label).first == "07-24", "近 7 天逐日")
+        let last = try unwrap(timeline.points.last)
+        try expect(last.label == "07-30" && last.totalTokens == 2_500 && last.costUsd == 3.25, "当日合计与费用")
+        let types = ["type_input", "type_output", "type_cache"].compactMap { last.seriesValues[$0] }
+        try expect(types == [1_150, 250, 1_100], "逐日 Token 构成: \(types)")
+        try expect(timeline.peakSummary.contains("**07-29**"), "峰值取首个最大日: \(timeline.peakSummary)")
+        try expect(timeline.avgSummary == "日均: **\(PanelFormat.tokenCount(7_500 / 7))** Tokens", timeline.avgSummary)
+
+        // 全部历史: monthModels 定模型与费用, 逐月时序
+        let all = WorkbenchAnalytics.make(artifact: artifact, range: .allTime)
+        try expect(all.kpi.totalTokens == 11_000 && all.kpi.costText == "$21.50", "全部历史取月明细: \(all.kpi.costText)")
+        try expect(all.timeline.granularity == .month && all.timeline.points.map(\.label) == ["2026-07"], "逐月时序")
+        try expect(all.timeline.points[0].costUsd == 21.5, "月费用")
+        let month = WorkbenchAnalytics.make(artifact: artifact, range: .thisMonth)
+        try expect(month.kpi.totalTokens == 11_000 && month.kpi.costText == "$21.50", "本月 = 当月逐日明细")
+    }
+
+    private static func workbenchThisMonthStopsAtMonthBoundaryContracts() throws {
+        let dates = ["2026-07-30", "2026-07-31", "2026-08-01", "2026-08-02"]
+        let daily = dates.map { AgentDailyUsage(date: $0, input: 100, output: 0, total: 100, cacheRead: 0, cacheCreation: 0) }
+        let agent = AgentUsageItem(
+            id: "codex", name: "Codex", status: "ok", note: nil,
+            today: makeBucket(input: 100), daily: daily, hours: Array(repeating: 0, count: 24),
+            todayCostUsd: nil, models: nil, modelMonths: nil, projects: nil,
+            dailyModels: dates.map {
+                AgentModelDetail(date: $0, model: "gpt-5.4", input: 100, output: 0, cacheRead: 0, cacheCreation: 0,
+                                 total: 100, costUsd: 0.25, cacheSavingsUsd: 0)
+            },
+            monthModels: [], hourModels: []
+        )
+        let artifact = makeAgentUsageArtifact(agents: [agent], services: [], generatedAt: "2026-08-02T09:00:00+00:00")
+        let month = WorkbenchAnalytics.make(artifact: artifact, range: .thisMonth)
+        try expect(month.kpi.totalTokens == 200 && month.kpi.costText == "$0.50", "本月只含今日所在自然月")
+        try expect(month.timeline.points.map(\.label) == ["08-01", "08-02"], "本月时序从 1 日起")
+        let all = WorkbenchAnalytics.make(artifact: artifact, range: .allTime)
+        try expect(all.timeline.points.map(\.label) == ["2026-07", "2026-08"], "全部历史跨月分桶")
+    }
+
+    private static func workbenchLegacyArtifactShowsDashesContracts() throws {
+        // C070 前的 artifact: 无明细桶, daily 无缓存拆分 —— 一律「—」, 不估算
         let agent = makeAgent(
-            id: "cline",
-            name: "Cline",
-            today: makeBucket(input: 50000, output: 50000),
-            models: ["cline-pass/deepseek-v4.1-flash": 100000]
+            id: "codex", name: "Codex",
+            today: makeBucket(input: 400, output: 200, cacheRead: 400),
+            dailyTotals: Array(repeating: 0, count: 13) + [1_000],
+            todayCostUsd: 0.5,
+            models: ["gpt-5.4": 1_000]
         )
-        let artifact = makeAgentUsageArtifact(agents: [agent], services: [])
-        let canonicalModels = ModelNormalizer.aggregateCanonicalModels(from: artifact)
-        let deepseek = try unwrap(canonicalModels.first { $0.canonicalKey == "deepseek-v4.1-flash" })
+        let artifact = makeAgentUsageArtifact(agents: [agent], services: [], totalCostUsd: 0.5)
+        let week = WorkbenchAnalytics.make(artifact: artifact, range: .sevenDays)
+        try expect(week.kpi.totalTokens == 1_000, "总量仍取 daily")
+        try expect(week.kpi.costText == "—" && week.kpi.costTagText == "无明细", "无明细不估算费用")
+        try expect(week.kpi.cacheHitRateText == "—" && week.kpi.cacheReadTokensText == "—", "无拆分不出缓存指标")
+        try expect(week.kpi.inputTokensText == "—" && week.kpi.outputTokensText == "0", "输入未知, 输出已知")
+        try expect(week.kpi.cacheSavedCostText == "—" && week.kpi.averageCostPerMillionText == "—", "节省 / 均价为「—」")
+        try expect(week.models.isEmpty, "无明细不出模型归并")
+        try expect(week.agents.first?.costText == "—", "Agent 费用为「—」")
+        let last = try unwrap(week.timeline.points.last)
+        try expect(last.seriesValues["type_input"] == nil, "无拆分不出 Token 构成序列")
 
-        try expect(deepseek.estimatedCostUsd != nil, "带前缀的 deepseek-v4.1-flash 必须自动继承基准单价")
-        try expect((deepseek.estimatedCostUsd ?? 0) > 0, "费用必须大于 0")
+        let today = WorkbenchAnalytics.make(artifact: artifact, range: .today)
+        try expect(today.kpi.cacheHitRateText == "50.0%", "今日 today 桶恒带拆分: \(today.kpi.cacheHitRateText)")
+        try expect(today.timeline.points[0].seriesValues["type_input"] == nil, "无小时明细不出构成")
+
+        let empty = WorkbenchAnalytics.empty(range: .today)
+        try expect(empty.kpi.costText == "—" && empty.agents.isEmpty && empty.todayHourlyTokens.count == 24, "无 artifact 空快照")
     }
 
     private static func billionTokenFormattingContracts() throws {
@@ -2035,75 +2164,6 @@ struct PanelViewModelHarness {
         try expect(PanelFormat.tokenCount(1_500_000_000) == "1.5B", "1.5B 格式化错误: \(PanelFormat.tokenCount(1_500_000_000))")
         try expect(PanelFormat.tokenCount(3_530_000_000) == "3.53B", "3.53B 格式化错误: \(PanelFormat.tokenCount(3_530_000_000))")
         try expect(PanelFormat.tokenCount(4_743_838_856) == "4.74B", "4.74B 格式化错误: \(PanelFormat.tokenCount(4_743_838_856))")
-    }
-
-    private static func deepseekVariantsAndMultiMonthAggregationContracts() throws {
-        let rawKeys = [
-            "cline-pass/deepseek-v4.1-flash",
-            "deepseek-flash",
-            "deepseek-v4-flash",
-            "deepseek-v4.1-flash"
-        ]
-        for raw in rawKeys {
-            let key = ModelNormalizer.canonicalKey(for: raw)
-            try expect(key == "deepseek-v4.1-flash", "\(raw) 归一化键必须为 deepseek-v4.1-flash, 实际为: \(key)")
-        }
-
-        let agent = makeAgent(
-            id: "zcode",
-            name: "ZCode",
-            today: makeBucket(input: 100_000, output: 50_000),
-            models: ["cline-pass/deepseek-v4.1-flash": 600_000_000],
-            modelMonths: [
-                "2026-10": [
-                    "cline-pass/deepseek-v4.1-flash": 3_400_000_000,
-                    "deepseek-flash": 130_000_000
-                ]
-            ]
-        )
-        let artifact = makeAgentUsageArtifact(agents: [agent], services: [], generatedAt: "2026-10-19T14:00:00+00:00")
-
-        let monthModels = ModelNormalizer.aggregateCanonicalModels(from: artifact, range: .thisMonth)
-        let dsMonth = try unwrap(monthModels.first { $0.canonicalKey == "deepseek-v4.1-flash" })
-        try expect(dsMonth.totalTokens == 3_530_000_000, "本月 DeepSeek 总量应为 3.53B (3530000000), 实际为: \(dsMonth.totalTokens)")
-        try expect(dsMonth.totalTokensText == "3.53B", "文本格式化应为 3.53B, 实际为: \(dsMonth.totalTokensText)")
-        try expect(dsMonth.sources.count == 2, "本月应包含 2 个渠道来源")
-    }
-
-    private static func timelineWeeklyBucketingPerformanceContracts() throws {
-        var dates: [String] = []
-        for i in (0..<182).reversed() {
-            let d = fixedNow.addingTimeInterval(TimeInterval(-i * 86400))
-            let formatter = DateFormatter()
-            formatter.calendar = utcCalendar
-            formatter.timeZone = TimeZone(identifier: "UTC")
-            formatter.dateFormat = "yyyy-MM-dd"
-            dates.append(formatter.string(from: d))
-        }
-
-        let daily = dates.map { AgentDailyUsage(date: $0, input: 1000, output: 500, total: 1500) }
-        let agent = AgentUsageItem(
-            id: "zcode",
-            name: "ZCode",
-            status: "ok",
-            note: nil,
-            today: makeBucket(input: 1000, output: 500),
-            daily: daily,
-            hours: Array(repeating: 0, count: 24),
-            todayCostUsd: nil,
-            models: nil,
-            modelMonths: nil,
-            projects: nil
-        )
-        let artifact = makeAgentUsageArtifact(agents: [agent], services: [], generatedAt: "2026-10-19T14:00:00+00:00")
-
-        let timeline = ModelNormalizer.buildTimelinePoints(from: artifact, range: .allTime)
-        try expect(timeline.points.count <= 28, "全部历史数据点应分桶至 <= 28 个周点避免渲染卡顿, 实际点数: \(timeline.points.count)")
-        try expect(timeline.points.count >= 26, "182 天分桶周点数应在 26 点左右, 实际点数: \(timeline.points.count)")
-
-        let sumPoints = timeline.points.reduce(0) { $0 + $1.totalTokens }
-        let sumDaily = daily.reduce(0) { $0 + $1.total }
-        try expect(sumPoints == sumDaily, "分桶前后总 Token 必须完全守恒: 分桶=\(sumPoints), 原始=\(sumDaily)")
     }
 
     /// 轻量解包: 与 expect 同风格, 避免引入 XCTest.

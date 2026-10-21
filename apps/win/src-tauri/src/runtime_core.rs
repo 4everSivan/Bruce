@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use bruce_win_viewmodel::analytics::{self, AnalyticsRange, AnalyticsSnapshot};
 use chrono::{DateTime, FixedOffset};
 use collector_domain::{AgentUsageArtifact, BridgeResponse, ResponseStatus};
 use serde::{Deserialize, Serialize};
@@ -89,7 +90,13 @@ pub fn manual_alert_reason(input: bool, retries: u32, previous: bool) -> bool {
 }
 
 pub fn provider_id(service: &Value) -> &str {
-    let id = service.get("id").and_then(Value::as_str).unwrap_or("");
+    provider_of_id(service.get("id").and_then(Value::as_str).unwrap_or(""))
+}
+
+/// service / 订阅卡 section ID → provider rawValue。单账号 section 的 ID 是带账号后缀的
+/// service ID (如 `zhipu_9be9…`), 多账号分组 section 的 ID 即 provider 本身 (如 `cline`),
+/// 两者经同一前缀规则归一 (mac `SubscriptionPresentationPolicy.providerID` 同义)。
+pub fn provider_of_id(id: &str) -> &str {
     if id.starts_with("codex") {
         "codex"
     } else if id.starts_with("claude") {
@@ -188,6 +195,43 @@ pub fn merge_snapshot(previous: Option<&Value>, current: &Value) -> Value {
             }
         }
     }
+    result
+}
+
+/// 定向刷新快照合并 (mac `ScopedQuotaSnapshotMerger` 同语义): 定向运行只返回目标
+/// Provider 的 services (agents 为空、不含成本), 合并回上一份完整 artifact ——
+/// 保留 agents / totalCostUsd 与**非目标** Provider 的 services; 目标 Provider 只取本轮
+/// 返回的 service (已断开的账号不从历史复活), 成功标 fresh, 失败借用合格旧窗口标
+/// stale, 无合格历史标 unavailable; generatedAt 取本轮。
+pub fn merge_scoped_snapshot(previous: Option<&Value>, current: &Value, provider: &str) -> Value {
+    let round = merge_snapshot(previous, current);
+    let mut result = current.clone();
+    let mut services: Vec<Value> = previous
+        .and_then(|value| value.get("services"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|service| provider_id(service) != provider)
+        .cloned()
+        .collect();
+    services.extend(
+        round
+            .get("services")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter(|service| provider_id(service) == provider)
+            .cloned(),
+    );
+    result["services"] = Value::Array(services);
+    result["agents"] = previous
+        .and_then(|value| value.get("agents"))
+        .cloned()
+        .unwrap_or_else(|| json!([]));
+    result["totalCostUsd"] = previous
+        .and_then(|value| value.get("totalCostUsd"))
+        .cloned()
+        .unwrap_or(Value::Null);
     result
 }
 
@@ -358,6 +402,45 @@ pub fn diagnostics_report(version: &str, panel: &Value) -> Value {
             .unwrap_or_else(|| json!([])),
         "note": "脱敏报告: 不含凭证、账号标识、完整本机路径与业务活动数据",
     })
+}
+
+/// 设置页「Agent 用量」工作台快照 (C070, mac `AppModel.analyticsSnapshot`): 无快照或本机会话
+/// 读取已关闭 (与看板隐藏用量同一开关) 时返回空快照 —— 全部指标为 0 / 「—」。
+pub fn usage_analytics(
+    artifact: Option<&Value>,
+    usage_enabled: bool,
+    range: AnalyticsRange,
+) -> AnalyticsSnapshot {
+    match artifact {
+        Some(artifact) if usage_enabled => analytics::make(artifact, range),
+        _ => analytics::empty(range),
+    }
+}
+
+/// 工作台「导出 CSV 账单」: 列与 mac `AgentUsageWorkbenchView.exportCSV` 一致 —— 所选范围的
+/// 归一模型逐行; 未定价模型费用列留空 (不写 0 冒充免费)。无模型明细时返回 None。
+pub fn workbench_csv(snapshot: &AnalyticsSnapshot) -> Option<String> {
+    if snapshot.models.is_empty() {
+        return None;
+    }
+    let quoted = |text: &str| format!("\"{}\"", text.replace('"', "\"\""));
+    let mut csv =
+        "CanonicalModel,Vendor,TotalTokens,EstimatedCostUSD,SharePercent,SourceCount\n".to_owned();
+    for model in &snapshot.models {
+        csv.push_str(&format!(
+            "{},{},{},{},{:.2},{}\n",
+            quoted(&model.display_name),
+            quoted(&model.vendor),
+            model.total_tokens,
+            model
+                .cost_usd
+                .map(|cost| format!("{cost:.4}"))
+                .unwrap_or_default(),
+            model.share_percent,
+            model.sources.len()
+        ));
+    }
+    Some(csv)
 }
 
 /// 导出路径: `<root>/exports/<prefix>-<yyyyMMdd-HHmmss>.<extension>` (UTC), 目录不存在
@@ -554,6 +637,55 @@ impl SnapshotState {
         Ok(())
     }
 
+    /// 定向刷新只替换目标 Provider 的额度: 全局 phase / lastSuccessAt / 诊断沿用最近一次
+    /// 全量采集 (定向刷新不代表本机会话已更新)。Bridge 整体失败或 artifact 不合法时,
+    /// 只把目标 Provider 的合格旧值降级为 stale 并返回错误, 不触碰其他 Provider。
+    pub fn apply_scoped_response(
+        &mut self,
+        response: &BridgeResponse,
+        provider: &str,
+    ) -> Result<(), String> {
+        let code = if response.status == ResponseStatus::Error {
+            Some("SCOPED_REFRESH_FAILED")
+        } else {
+            match response.artifact.as_ref() {
+                None => Some("ARTIFACT_MISSING"),
+                Some(current) if validate_artifact(current).is_err() => Some("ARTIFACT_INVALID"),
+                Some(current) => {
+                    self.artifact = Some(merge_scoped_snapshot(
+                        self.artifact.as_ref(),
+                        current,
+                        provider,
+                    ));
+                    None
+                }
+            }
+        };
+        match code {
+            Some(code) => {
+                self.mark_provider_stale(provider);
+                Err(code.into())
+            }
+            None => Ok(()),
+        }
+    }
+
+    /// 定向刷新失败: 仅目标 Provider 的合格旧值标 stale (与全量 `fail` 同一资格判定)。
+    pub fn mark_provider_stale(&mut self, provider: &str) {
+        if let Some(services) = self
+            .artifact
+            .as_mut()
+            .and_then(|a| a.get_mut("services"))
+            .and_then(Value::as_array_mut)
+        {
+            for service in services {
+                if provider_id(service) == provider && qualified(service) {
+                    service["freshness"] = json!("stale");
+                }
+            }
+        }
+    }
+
     pub fn panel_json(
         &self,
         now: DateTime<FixedOffset>,
@@ -594,6 +726,15 @@ impl SnapshotState {
                     .position(|p| p == provider_id(section))
                     .unwrap_or(usize::MAX)
             });
+            // 渲染层所需的 provider 键 (定向刷新目标 / 品牌徽章): 由 Rust 侧单点归一后附在
+            // section 上, 前端不再镜像前缀规则与 provider 清单; 未知 provider 不附 (fail-closed)。
+            // 只在运行时层追加, 不进入 mac 对拍的视图模型契约。
+            for section in sections.iter_mut() {
+                let provider = provider_id(section);
+                if crate::settings::PROVIDERS.contains(&provider) {
+                    section["provider"] = json!(provider);
+                }
+            }
         }
         panel["runtime"] = json!({"phase":self.phase,"lastSuccessAt":self.last_success_at,"error":self.error,"diagnosticCodes":self.diagnostics});
         panel

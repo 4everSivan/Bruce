@@ -13,6 +13,9 @@ import BruceAppCore
 //   swift run PanelParityHarness <repoRoot>              # 比对模式 (CI 用)
 //   swift run PanelParityHarness <repoRoot> --update     # 刷新 golden 快照
 //
+// C070 起同时产出工作台分析 golden (`*.analytics.json`), 对拍锁:
+// apps/win/viewmodel/tests/analytics_parity.rs。
+//
 // 约定: DeepSeek 月度统计 (C020 已移除), 面板 JSON 不再输出 deepSeekMonthlyUsage 字段。
 
 // MARK: - 轻量 JSON 构建器 (显式控制 null 与数值类型)
@@ -306,6 +309,109 @@ private func encodeDiagnostic(_ diagnostic: PanelDiagnostic) -> J {
     }
 }
 
+// MARK: - 工作台分析 -> J (C070, 与 bruce-win-viewmodel analytics 模块 serde 输出同构)
+
+private func optionalDouble(_ value: Double?) -> J {
+    value.map(J.d) ?? .nul
+}
+
+private func optionalString(_ value: String?) -> J {
+    value.map(J.s) ?? .nul
+}
+
+private func encodeAnalytics(_ snapshot: WorkbenchAnalytics.Snapshot) -> J {
+    let kpi = snapshot.kpi
+    return .o([
+        ("range", .s(snapshot.range.rawValue)),
+        ("kpi", .o([
+            ("totalTokens", .i(kpi.totalTokens)),
+            ("totalTokensText", .s(kpi.totalTokensText)),
+            ("equivalentMText", .s(kpi.equivalentMText)),
+            ("inputTokens", .i(kpi.inputTokens)),
+            ("outputTokens", .i(kpi.outputTokens)),
+            ("cacheReadTokens", .i(kpi.cacheReadTokens)),
+            ("cacheCreationTokens", .i(kpi.cacheCreationTokens)),
+            ("cacheSplitAvailable", .b(kpi.cacheSplitAvailable)),
+            ("inputTokensText", .s(kpi.inputTokensText)),
+            ("outputTokensText", .s(kpi.outputTokensText)),
+            ("cacheReadTokensText", .s(kpi.cacheReadTokensText)),
+            ("cacheCreationTokensText", .s(kpi.cacheCreationTokensText)),
+            ("totalCostUsd", optionalDouble(kpi.totalCostUsd)),
+            ("costText", .s(kpi.costText)),
+            ("pricedTokens", .i(kpi.pricedTokens)),
+            ("unpricedTokens", .i(kpi.unpricedTokens)),
+            ("averageCostPerMillionText", .s(kpi.averageCostPerMillionText)),
+            ("costTagText", .s(kpi.costTagText)),
+            ("cacheHitRateText", .s(kpi.cacheHitRateText)),
+            ("cacheSavingsUsd", optionalDouble(kpi.cacheSavingsUsd)),
+            ("cacheSavedCostText", .s(kpi.cacheSavedCostText)),
+            ("activeAgentsCount", .i(kpi.activeAgentsCount)),
+            ("topAgentText", .s(kpi.topAgentText)),
+        ])),
+        ("models", .a(snapshot.models.map(encodeCanonicalModel))),
+        ("timeline", .o([
+            ("granularity", .s(snapshot.timeline.granularity.rawValue)),
+            ("points", .a(snapshot.timeline.points.map { point in
+                .o([
+                    ("label", .s(point.label)),
+                    ("totalTokens", .i(point.totalTokens)),
+                    ("costUsd", .d(point.costUsd)),
+                    ("seriesValues", .o(point.seriesValues.map { ($0.key, J.i($0.value)) })),
+                ])
+            })),
+            ("peakSummary", .s(snapshot.timeline.peakSummary)),
+            ("avgSummary", .s(snapshot.timeline.avgSummary)),
+        ])),
+        ("agents", .a(snapshot.agents.map { agent in
+            .o([
+                ("agentId", .s(agent.agentID)),
+                ("name", .s(agent.name)),
+                ("status", .s(agent.status)),
+                ("note", optionalString(agent.note)),
+                ("totalTokens", .i(agent.totalTokens)),
+                ("totalTokensText", .s(agent.totalTokensText)),
+                ("costUsd", optionalDouble(agent.costUsd)),
+                ("costText", .s(agent.costText)),
+                ("sharePercent", .d(agent.sharePercent)),
+                ("inputTokens", .i(agent.inputTokens)),
+                ("outputTokens", .i(agent.outputTokens)),
+                ("cacheReadTokens", .i(agent.cacheReadTokens)),
+                ("cacheCreationTokens", .i(agent.cacheCreationTokens)),
+                ("colorHex", .s(agent.colorHex)),
+                ("topProjects", .a(agent.topProjects.map { .o([("name", .s($0.name)), ("total", .i($0.total))]) })),
+                ("topModels", .a(agent.topModels.map(encodeCanonicalModel))),
+            ])
+        })),
+        ("todayHourlyTokens", .a(snapshot.todayHourlyTokens.map(J.i))),
+    ])
+}
+
+private func encodeCanonicalModel(_ model: CanonicalModelSummary) -> J {
+    .o([
+        ("canonicalKey", .s(model.canonicalKey)),
+        ("displayName", .s(model.displayName)),
+        ("vendor", .s(model.vendor)),
+        ("colorHex", .s(model.colorHex)),
+        ("totalTokens", .i(model.totalTokens)),
+        ("totalTokensText", .s(model.totalTokensText)),
+        ("costUsd", optionalDouble(model.estimatedCostUsd)),
+        ("costText", optionalString(model.costText)),
+        ("sharePercent", .d(model.sharePercent)),
+        ("sources", .a(model.sources.map { source in
+            .o([
+                ("rawModelName", .s(source.rawModelName)),
+                ("agentId", .s(source.agentID)),
+                ("agentDisplayName", .s(source.agentDisplayName)),
+                ("tokens", .i(source.tokens)),
+                ("tokensText", .s(source.tokensText)),
+                ("costUsd", optionalDouble(source.costUsd)),
+                ("costText", optionalString(source.costText)),
+                ("shareOfModelPercent", .d(source.shareOfModelPercent)),
+            ])
+        })),
+    ])
+}
+
 // MARK: - 结构化对拍 (数值感知)
 
 private func compare(_ lhs: Any, _ rhs: Any, path: String, errors: inout [String]) {
@@ -367,6 +473,27 @@ struct PanelParityHarness {
         }
         let updateMode = arguments.contains("--update")
         let root = URL(fileURLWithPath: repoRoot, isDirectory: true)
+        // 工作台分析 golden (C070): 新版 artifact (workbench, 含明细桶) 与旧版 (valid, 无明细) 各一份,
+        // 每份含全部 5 个时间范围; Windows 侧 apps/win/viewmodel/tests/analytics_parity.rs 逐字段比对。
+        for name in ["workbench", "valid"] {
+            let fixtureURL = root.appendingPathComponent("tests/fixtures/artifacts/agent-usage/\(name).json")
+            let goldenURL = root.appendingPathComponent("tests/fixtures/viewmodel-parity/agent-usage-\(name).analytics.json")
+            do {
+                let artifact = try decodeAgentUsageArtifact(fixtureURL: fixtureURL)
+                let snapshots = AnalyticsTimeRange.allCases.map {
+                    encodeAnalytics(WorkbenchAnalytics.make(artifact: artifact, range: $0))
+                }
+                try checkOrUpdate(
+                    produced: J.data(.a(snapshots)),
+                    goldenURL: goldenURL,
+                    label: "工作台分析 \(name)",
+                    updateMode: updateMode
+                )
+            } catch {
+                print("PanelParityHarness 执行失败 (\(name) 工作台分析): \(error)")
+                exit(1)
+            }
+        }
         for name in ["valid", "partial", "empty"] {
             let fixtureURL = root.appendingPathComponent("tests/fixtures/artifacts/agent-usage/\(name).json")
             let goldenURL = root.appendingPathComponent("tests/fixtures/viewmodel-parity/agent-usage-\(name).panel.json")
@@ -393,38 +520,45 @@ struct PanelParityHarness {
                     providerOrder: []
                 )
 
-                let produced = try J.data(encode(panel))
-
-                if updateMode {
-                    try FileManager.default.createDirectory(
-                        at: goldenURL.deletingLastPathComponent(),
-                        withIntermediateDirectories: true
-                    )
-                    try produced.write(to: goldenURL)
-                    print("golden 快照已刷新: \(goldenURL.path)")
-                    continue
-                }
-
-                guard FileManager.default.fileExists(atPath: goldenURL.path) else {
-                    print("golden 快照不存在: \(goldenURL.path) (先运行 --update 生成)")
-                    exit(1)
-                }
-                let goldenObject = try JSONSerialization.jsonObject(with: Data(contentsOf: goldenURL))
-                let producedObject = try JSONSerialization.jsonObject(with: produced)
-                var errors: [String] = []
-                compare(producedObject, goldenObject, path: "$", errors: &errors)
-                if errors.isEmpty {
-                    print("Panel 视图模型双端对拍通过 (\(name): mac 产出 ≡ golden 快照)")
-                } else {
-                    print("双端对拍失败, \(errors.count) 处差异:")
-                    errors.prefix(20).forEach { print("  - \($0)") }
-                    print("若为 mac 端预期行为变更, 运行 --update 刷新 golden 并同步审视 Windows 侧实现")
-                    exit(1)
-                }
+                try checkOrUpdate(
+                    produced: J.data(encode(panel)),
+                    goldenURL: goldenURL,
+                    label: "Panel 视图模型 \(name)",
+                    updateMode: updateMode
+                )
             } catch {
                 print("PanelParityHarness 执行失败: \(error)")
                 exit(1)
             }
+        }
+    }
+
+    /// 比对模式: 与 golden 逐字段比对, 不一致即退出 1; 刷新模式: 覆盖写入 golden.
+    private static func checkOrUpdate(produced: Data, goldenURL: URL, label: String, updateMode: Bool) throws {
+        if updateMode {
+            try FileManager.default.createDirectory(
+                at: goldenURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try produced.write(to: goldenURL)
+            print("golden 快照已刷新: \(goldenURL.path)")
+            return
+        }
+        guard FileManager.default.fileExists(atPath: goldenURL.path) else {
+            print("golden 快照不存在: \(goldenURL.path) (先运行 --update 生成)")
+            exit(1)
+        }
+        let goldenObject = try JSONSerialization.jsonObject(with: Data(contentsOf: goldenURL))
+        let producedObject = try JSONSerialization.jsonObject(with: produced)
+        var errors: [String] = []
+        compare(producedObject, goldenObject, path: "$", errors: &errors)
+        if errors.isEmpty {
+            print("\(label) 双端对拍通过 (mac 产出 ≡ golden 快照)")
+        } else {
+            print("\(label) 双端对拍失败, \(errors.count) 处差异:")
+            errors.prefix(20).forEach { print("  - \($0)") }
+            print("若为 mac 端预期行为变更, 运行 --update 刷新 golden 并同步审视 Windows 侧实现")
+            exit(1)
         }
     }
 }

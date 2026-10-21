@@ -18,9 +18,12 @@ fn token_count_boundaries_match_mac_formatting() {
     assert_eq!(token_count(999_999), "1000K");
     assert_eq!(token_count(1_000_000), "1M");
     assert_eq!(token_count(1_234_567), "1.2M");
+    // B 边界 (mac PanelFormat.tokenCount: ≥1B 走两位小数 + 末尾 0 裁剪)。
+    assert_eq!(token_count(999_999_999), "1000M");
+    assert_eq!(token_count(1_000_000_000), "1B");
     // 超大计数 (Windows 真实月度量级)。
-    assert_eq!(token_count(12_345_678_901), "12345.7M");
-    assert_eq!(token_count(1_000_000_000_000), "1000000M");
+    assert_eq!(token_count(12_345_678_901), "12.35B");
+    assert_eq!(token_count(1_000_000_000_000), "1000B");
 }
 
 #[test]

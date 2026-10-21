@@ -1,0 +1,3621 @@
+{
+  "artifact": {
+    "schemaVersion": 1,
+    "module": "agent-usage",
+    "generatedAt": "2026-08-03T10:00:00+08:00",
+    "agents": [
+      {
+        "id": "claude-code",
+        "name": "Claude Code",
+        "status": "ok",
+        "note": null,
+        "today": {
+          "input": 152808,
+          "output": 38283,
+          "cacheRead": 322759,
+          "cacheCreation": 16615,
+          "total": 530465
+        },
+        "daily": [
+          {
+            "date": "2026-06-25",
+            "input": 641123,
+            "output": 37499,
+            "total": 678622,
+            "cacheRead": 431538,
+            "cacheCreation": 19766
+          },
+          {
+            "date": "2026-06-26",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-06-27",
+            "input": 205813,
+            "output": 5676,
+            "total": 211489,
+            "cacheRead": 159079,
+            "cacheCreation": 4192
+          },
+          {
+            "date": "2026-06-28",
+            "input": 512021,
+            "output": 44812,
+            "total": 556833,
+            "cacheRead": 334119,
+            "cacheCreation": 17816
+          },
+          {
+            "date": "2026-06-29",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-06-30",
+            "input": 423111,
+            "output": 20984,
+            "total": 444095,
+            "cacheRead": 329646,
+            "cacheCreation": 9155
+          },
+          {
+            "date": "2026-07-01",
+            "input": 604600,
+            "output": 42257,
+            "total": 646857,
+            "cacheRead": 399101,
+            "cacheCreation": 19820
+          },
+          {
+            "date": "2026-07-02",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-03",
+            "input": 507141,
+            "output": 44739,
+            "total": 551880,
+            "cacheRead": 354338,
+            "cacheCreation": 15803
+          },
+          {
+            "date": "2026-07-04",
+            "input": 519644,
+            "output": 29546,
+            "total": 549190,
+            "cacheRead": 392634,
+            "cacheCreation": 12524
+          },
+          {
+            "date": "2026-07-05",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-06",
+            "input": 417969,
+            "output": 34974,
+            "total": 452943,
+            "cacheRead": 265586,
+            "cacheCreation": 14988
+          },
+          {
+            "date": "2026-07-07",
+            "input": 658187,
+            "output": 37169,
+            "total": 695356,
+            "cacheRead": 472313,
+            "cacheCreation": 17843
+          },
+          {
+            "date": "2026-07-08",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-09",
+            "input": 763332,
+            "output": 23981,
+            "total": 787313,
+            "cacheRead": 575583,
+            "cacheCreation": 16938
+          },
+          {
+            "date": "2026-07-10",
+            "input": 772133,
+            "output": 43728,
+            "total": 815861,
+            "cacheRead": 510978,
+            "cacheCreation": 24390
+          },
+          {
+            "date": "2026-07-11",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-12",
+            "input": 697005,
+            "output": 30271,
+            "total": 727276,
+            "cacheRead": 484382,
+            "cacheCreation": 19431
+          },
+          {
+            "date": "2026-07-13",
+            "input": 386226,
+            "output": 38967,
+            "total": 425193,
+            "cacheRead": 266968,
+            "cacheCreation": 12658
+          },
+          {
+            "date": "2026-07-14",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-15",
+            "input": 529763,
+            "output": 27403,
+            "total": 557166,
+            "cacheRead": 359340,
+            "cacheCreation": 15825
+          },
+          {
+            "date": "2026-07-16",
+            "input": 473875,
+            "output": 39020,
+            "total": 512895,
+            "cacheRead": 317986,
+            "cacheCreation": 15592
+          },
+          {
+            "date": "2026-07-17",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-18",
+            "input": 290507,
+            "output": 13167,
+            "total": 303674,
+            "cacheRead": 172410,
+            "cacheCreation": 10501
+          },
+          {
+            "date": "2026-07-19",
+            "input": 220885,
+            "output": 19765,
+            "total": 240650,
+            "cacheRead": 157062,
+            "cacheCreation": 6687
+          },
+          {
+            "date": "2026-07-20",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-21",
+            "input": 654491,
+            "output": 60926,
+            "total": 715417,
+            "cacheRead": 445416,
+            "cacheCreation": 21599
+          },
+          {
+            "date": "2026-07-22",
+            "input": 612245,
+            "output": 26338,
+            "total": 638583,
+            "cacheRead": 475604,
+            "cacheCreation": 13037
+          },
+          {
+            "date": "2026-07-23",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-24",
+            "input": 406038,
+            "output": 26486,
+            "total": 432524,
+            "cacheRead": 284608,
+            "cacheCreation": 11833
+          },
+          {
+            "date": "2026-07-25",
+            "input": 444501,
+            "output": 31270,
+            "total": 475771,
+            "cacheRead": 310905,
+            "cacheCreation": 13188
+          },
+          {
+            "date": "2026-07-26",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-27",
+            "input": 317058,
+            "output": 17618,
+            "total": 334676,
+            "cacheRead": 191635,
+            "cacheCreation": 11443
+          },
+          {
+            "date": "2026-07-28",
+            "input": 210064,
+            "output": 14741,
+            "total": 224805,
+            "cacheRead": 134804,
+            "cacheCreation": 7200
+          },
+          {
+            "date": "2026-07-29",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-30",
+            "input": 550442,
+            "output": 31637,
+            "total": 582079,
+            "cacheRead": 416962,
+            "cacheCreation": 13208
+          },
+          {
+            "date": "2026-07-31",
+            "input": 298197,
+            "output": 23557,
+            "total": 321754,
+            "cacheRead": 164126,
+            "cacheCreation": 12610
+          },
+          {
+            "date": "2026-08-01",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-08-02",
+            "input": 497927,
+            "output": 41039,
+            "total": 538966,
+            "cacheRead": 323981,
+            "cacheCreation": 17198
+          },
+          {
+            "date": "2026-08-03",
+            "input": 492182,
+            "output": 38283,
+            "total": 530465,
+            "cacheRead": 322759,
+            "cacheCreation": 16615
+          }
+        ],
+        "hours": [
+          101045,
+          0,
+          0,
+          0,
+          0,
+          109457,
+          0,
+          0,
+          0,
+          0,
+          109457,
+          0,
+          101045,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          109461,
+          0,
+          0,
+          0,
+          0
+        ],
+        "todayCostUsd": 1.6143051,
+        "projects": [
+          {
+            "name": "bruce",
+            "total": 371325
+          },
+          {
+            "name": "notes",
+            "total": 159140
+          }
+        ],
+        "dailyModels": [
+          {
+            "date": "2026-07-04",
+            "model": "anthropic/claude-opus-5-5-20260601",
+            "input": 62083,
+            "output": 9447,
+            "cacheRead": 172291,
+            "cacheCreation": 6220,
+            "total": 250041,
+            "costUsd": 0.6638355,
+            "cacheSavingsUsd": 0.7753095
+          },
+          {
+            "date": "2026-07-04",
+            "model": "claude-sonnet-5",
+            "input": 52403,
+            "output": 20099,
+            "cacheRead": 220343,
+            "cacheCreation": 6304,
+            "total": 299149,
+            "costUsd": 0.5437089,
+            "cacheSavingsUsd": 0.5949261000000001
+          },
+          {
+            "date": "2026-07-06",
+            "model": "anthropic/claude-opus-5-5-20260601",
+            "input": 86862,
+            "output": 24769,
+            "cacheRead": 149791,
+            "cacheCreation": 9707,
+            "total": 271129,
+            "costUsd": 1.1769655,
+            "cacheSavingsUsd": 0.6740595
+          },
+          {
+            "date": "2026-07-06",
+            "model": "claude-sonnet-5",
+            "input": 50533,
+            "output": 10205,
+            "cacheRead": 115795,
+            "cacheCreation": 5281,
+            "total": 181814,
+            "costUsd": 0.3552555,
+            "cacheSavingsUsd": 0.3126465
+          },
+          {
+            "date": "2026-07-07",
+            "model": "anthropic/claude-opus-5-5-20260601",
+            "input": 106939,
+            "output": 25212,
+            "cacheRead": 239454,
+            "cacheCreation": 11491,
+            "total": 383096,
+            "costUsd": 1.342177,
+            "cacheSavingsUsd": 1.077543
+          },
+          {
+            "date": "2026-07-07",
+            "model": "claude-sonnet-5",
+            "input": 61092,
+            "output": 11957,
+            "cacheRead": 232859,
+            "cacheCreation": 6352,
+            "total": 312260,
+            "costUsd": 0.45154469999999997,
+            "cacheSavingsUsd": 0.6287193000000001
+          },
+          {
+            "date": "2026-07-09",
+            "model": "anthropic/claude-opus-5-5-20260601",
+            "input": 94917,
+            "output": 13751,
+            "cacheRead": 285680,
+            "cacheCreation": 9449,
+            "total": 403797,
+            "costUsd": 1.008445,
+            "cacheSavingsUsd": 1.28556
+          },
+          {
+            "date": "2026-07-09",
+            "model": "claude-sonnet-5",
+            "input": 75894,
+            "output": 10230,
+            "cacheRead": 289903,
+            "cacheCreation": 7489,
+            "total": 383516,
+            "costUsd": 0.4905699,
+            "cacheSavingsUsd": 0.7827381000000001
+          },
+          {
+            "date": "2026-07-10",
+            "model": "anthropic/claude-opus-5-5-20260601",
+            "input": 140860,
+            "output": 17291,
+            "cacheRead": 267563,
+            "cacheCreation": 13752,
+            "total": 439466,
+            "costUsd": 1.3391165,
+            "cacheSavingsUsd": 1.2040335
+          },
+          {
+            "date": "2026-07-10",
+            "model": "claude-sonnet-5",
+            "input": 95905,
+            "output": 26437,
+            "cacheRead": 243415,
+            "cacheCreation": 10638,
+            "total": 376395,
+            "costUsd": 0.7892085,
+            "cacheSavingsUsd": 0.6572205
+          },
+          {
+            "date": "2026-07-12",
+            "model": "anthropic/claude-opus-5-5-20260601",
+            "input": 67766,
+            "output": 12056,
+            "cacheRead": 200988,
+            "cacheCreation": 6941,
+            "total": 287751,
+            "costUsd": 0.775429,
+            "cacheSavingsUsd": 0.904446
+          },
+          {
+            "date": "2026-07-12",
+            "model": "claude-sonnet-5",
+            "input": 125426,
+            "output": 18215,
+            "cacheRead": 283394,
+            "cacheCreation": 12490,
+            "total": 439525,
+            "costUsd": 0.7719912,
+            "cacheSavingsUsd": 0.7651638000000001
+          },
+          {
+            "date": "2026-07-13",
+            "model": "anthropic/claude-opus-5-5-20260601",
+            "input": 106600,
+            "output": 38967,
+            "cacheRead": 266968,
+            "cacheCreation": 12658,
+            "total": 425193,
+            "costUsd": 1.7039490000000002,
+            "cacheSavingsUsd": 1.201356
+          },
+          {
+            "date": "2026-07-15",
+            "model": "anthropic/claude-opus-5-5-20260601",
+            "input": 90192,
+            "output": 10691,
+            "cacheRead": 263204,
+            "cacheCreation": 8772,
+            "total": 372859,
+            "costUsd": 0.893697,
+            "cacheSavingsUsd": 1.184418
+          },
+          {
+            "date": "2026-07-15",
+            "model": "claude-sonnet-5",
+            "input": 64406,
+            "output": 16712,
+            "cacheRead": 96136,
+            "cacheCreation": 7053,
+            "total": 184307,
+            "costUsd": 0.4938978,
+            "cacheSavingsUsd": 0.2595672
+          },
+          {
+            "date": "2026-07-16",
+            "model": "anthropic/claude-opus-5-5-20260601",
+            "input": 94348,
+            "output": 19376,
+            "cacheRead": 181174,
+            "cacheCreation": 9889,
+            "total": 304787,
+            "costUsd": 1.096172,
+            "cacheSavingsUsd": 0.815283
+          },
+          {
+            "date": "2026-07-16",
+            "model": "claude-sonnet-5",
+            "input": 45949,
+            "output": 19644,
+            "cacheRead": 136812,
+            "cacheCreation": 5703,
+            "total": 208108,
+            "costUsd": 0.4906596,
+            "cacheSavingsUsd": 0.3693924
+          },
+          {
+            "date": "2026-07-18",
+            "model": "anthropic/claude-opus-5-5-20260601",
+            "input": 107596,
+            "output": 13167,
+            "cacheRead": 172410,
+            "cacheCreation": 10501,
+            "total": 303674,
+            "costUsd": 1.005865,
+            "cacheSavingsUsd": 0.775845
+          },
+          {
+            "date": "2026-07-19",
+            "model": "anthropic/claude-opus-5-5-20260601",
+            "input": 57136,
+            "output": 19765,
+            "cacheRead": 157062,
+            "cacheCreation": 6687,
+            "total": 240650,
+            "costUsd": 0.891771,
+            "cacheSavingsUsd": 0.706779
+          },
+          {
+            "date": "2026-07-21",
+            "model": "anthropic/claude-opus-5-5-20260601",
+            "input": 103320,
+            "output": 26553,
+            "cacheRead": 167243,
+            "cacheCreation": 11293,
+            "total": 308409,
+            "costUsd": 1.3205115,
+            "cacheSavingsUsd": 0.7525935
+          },
+          {
+            "date": "2026-07-21",
+            "model": "claude-sonnet-5",
+            "input": 84156,
+            "output": 34373,
+            "cacheRead": 278173,
+            "cacheCreation": 10306,
+            "total": 407008,
+            "costUsd": 0.8824329000000001,
+            "cacheSavingsUsd": 0.7510671000000001
+          },
+          {
+            "date": "2026-07-22",
+            "model": "anthropic/claude-opus-5-5-20260601",
+            "input": 61305,
+            "output": 18697,
+            "cacheRead": 251457,
+            "cacheCreation": 6956,
+            "total": 338415,
+            "costUsd": 0.9344585,
+            "cacheSavingsUsd": 1.1315565
+          },
+          {
+            "date": "2026-07-22",
+            "model": "claude-sonnet-5",
+            "input": 62299,
+            "output": 7641,
+            "cacheRead": 224147,
+            "cacheCreation": 6081,
+            "total": 300168,
+            "costUsd": 0.3869991,
+            "cacheSavingsUsd": 0.6051969
+          },
+          {
+            "date": "2026-07-24",
+            "model": "anthropic/claude-opus-5-5-20260601",
+            "input": 69258,
+            "output": 13258,
+            "cacheRead": 148943,
+            "cacheCreation": 7175,
+            "total": 238634,
+            "costUsd": 0.7880865,
+            "cacheSavingsUsd": 0.6702435
+          },
+          {
+            "date": "2026-07-24",
+            "model": "claude-sonnet-5",
+            "input": 40339,
+            "output": 13228,
+            "cacheRead": 135665,
+            "cacheCreation": 4658,
+            "total": 193890,
+            "costUsd": 0.3741105,
+            "cacheSavingsUsd": 0.3662955
+          },
+          {
+            "date": "2026-07-25",
+            "model": "anthropic/claude-opus-5-5-20260601",
+            "input": 69562,
+            "output": 21941,
+            "cacheRead": 113063,
+            "cacheCreation": 7956,
+            "total": 212522,
+            "costUsd": 0.9926465000000001,
+            "cacheSavingsUsd": 0.5087835
+          },
+          {
+            "date": "2026-07-25",
+            "model": "claude-sonnet-5",
+            "input": 50846,
+            "output": 9329,
+            "cacheRead": 197842,
+            "cacheCreation": 5232,
+            "total": 263249,
+            "costUsd": 0.36752159999999995,
+            "cacheSavingsUsd": 0.5341734
+          },
+          {
+            "date": "2026-07-27",
+            "model": "claude-sonnet-5",
+            "input": 113980,
+            "output": 17618,
+            "cacheRead": 191635,
+            "cacheCreation": 11443,
+            "total": 334676,
+            "costUsd": 0.6980295000000001,
+            "cacheSavingsUsd": 0.5174145000000001
+          },
+          {
+            "date": "2026-07-28",
+            "model": "anthropic/claude-opus-5-5-20260601",
+            "input": 68060,
+            "output": 14741,
+            "cacheRead": 134804,
+            "cacheCreation": 7200,
+            "total": 224805,
+            "costUsd": 0.812227,
+            "cacheSavingsUsd": 0.606618
+          },
+          {
+            "date": "2026-07-30",
+            "model": "anthropic/claude-opus-5-5-20260601",
+            "input": 53185,
+            "output": 18815,
+            "cacheRead": 161524,
+            "cacheCreation": 6260,
+            "total": 239784,
+            "costUsd": 0.848362,
+            "cacheSavingsUsd": 0.726858
+          },
+          {
+            "date": "2026-07-30",
+            "model": "claude-sonnet-5",
+            "input": 67087,
+            "output": 12822,
+            "cacheRead": 255438,
+            "cacheCreation": 6948,
+            "total": 342295,
+            "costUsd": 0.4910664,
+            "cacheSavingsUsd": 0.6896826000000001
+          },
+          {
+            "date": "2026-07-31",
+            "model": "anthropic/claude-opus-5-5-20260601",
+            "input": 121461,
+            "output": 23557,
+            "cacheRead": 164126,
+            "cacheCreation": 12610,
+            "total": 321754,
+            "costUsd": 1.341343,
+            "cacheSavingsUsd": 0.738567
+          },
+          {
+            "date": "2026-08-02",
+            "model": "anthropic/claude-opus-5-5-20260601",
+            "input": 37091,
+            "output": 12750,
+            "cacheRead": 160545,
+            "cacheCreation": 4334,
+            "total": 214720,
+            "costUsd": 0.6061475,
+            "cacheSavingsUsd": 0.7224525
+          },
+          {
+            "date": "2026-08-02",
+            "model": "claude-sonnet-5",
+            "input": 119657,
+            "output": 28289,
+            "cacheRead": 163436,
+            "cacheCreation": 12864,
+            "total": 324246,
+            "costUsd": 0.8709288000000001,
+            "cacheSavingsUsd": 0.44127720000000004
+          },
+          {
+            "date": "2026-08-03",
+            "model": "anthropic/claude-opus-5-5-20260601",
+            "input": 100054,
+            "output": 17429,
+            "cacheRead": 200677,
+            "cacheCreation": 10215,
+            "total": 328375,
+            "costUsd": 1.0874085,
+            "cacheSavingsUsd": 0.9030465
+          },
+          {
+            "date": "2026-08-03",
+            "model": "claude-sonnet-5",
+            "input": 52754,
+            "output": 20854,
+            "cacheRead": 122082,
+            "cacheCreation": 6400,
+            "total": 202090,
+            "costUsd": 0.5268965999999999,
+            "cacheSavingsUsd": 0.3296214
+          }
+        ],
+        "monthModels": [
+          {
+            "month": "2026-06",
+            "model": "anthropic/claude-opus-5-5-20260601",
+            "input": 156516,
+            "output": 44557,
+            "cacheRead": 485749,
+            "cacheCreation": 17483,
+            "total": 704305,
+            "costUsd": 2.2267945,
+            "cacheSavingsUsd": 2.1858705
+          },
+          {
+            "month": "2026-06",
+            "model": "claude-sonnet-5",
+            "input": 320241,
+            "output": 64414,
+            "cacheRead": 768633,
+            "cacheCreation": 33446,
+            "total": 1186734,
+            "costUsd": 2.2578609,
+            "cacheSavingsUsd": 2.0753091
+          },
+          {
+            "month": "2026-07",
+            "model": "anthropic/claude-opus-5-5-20260601",
+            "input": 1719652,
+            "output": 380390,
+            "cacheRead": 3824869,
+            "cacheCreation": 182607,
+            "total": 6107518,
+            "costUsd": 20.9334795,
+            "cacheSavingsUsd": 17.2119105
+          },
+          {
+            "month": "2026-07",
+            "model": "claude-sonnet-5",
+            "input": 1154792,
+            "output": 277170,
+            "cacheRead": 3327872,
+            "cacheCreation": 124511,
+            "total": 4884345,
+            "costUsd": 8.993820600000001,
+            "cacheSavingsUsd": 8.9852544
+          },
+          {
+            "month": "2026-08",
+            "model": "anthropic/claude-opus-5-5-20260601",
+            "input": 137145,
+            "output": 30179,
+            "cacheRead": 361222,
+            "cacheCreation": 14549,
+            "total": 543095,
+            "costUsd": 1.693556,
+            "cacheSavingsUsd": 1.625499
+          },
+          {
+            "month": "2026-08",
+            "model": "claude-sonnet-5",
+            "input": 172411,
+            "output": 49143,
+            "cacheRead": 285518,
+            "cacheCreation": 19264,
+            "total": 526336,
+            "costUsd": 1.3978254,
+            "cacheSavingsUsd": 0.7708986000000001
+          }
+        ],
+        "hourModels": [
+          {
+            "hour": 0,
+            "model": "claude-sonnet-5",
+            "input": 26377,
+            "output": 10427,
+            "cacheRead": 61041,
+            "cacheCreation": 3200,
+            "total": 101045,
+            "costUsd": 0.26344829999999997,
+            "cacheSavingsUsd": 0.1648107
+          },
+          {
+            "hour": 5,
+            "model": "anthropic/claude-opus-5-5-20260601",
+            "input": 33351,
+            "output": 5809,
+            "cacheRead": 66892,
+            "cacheCreation": 3405,
+            "total": 109457,
+            "costUsd": 0.36245099999999997,
+            "cacheSavingsUsd": 0.301014
+          },
+          {
+            "hour": 10,
+            "model": "anthropic/claude-opus-5-5-20260601",
+            "input": 33351,
+            "output": 5809,
+            "cacheRead": 66892,
+            "cacheCreation": 3405,
+            "total": 109457,
+            "costUsd": 0.36245099999999997,
+            "cacheSavingsUsd": 0.301014
+          },
+          {
+            "hour": 12,
+            "model": "claude-sonnet-5",
+            "input": 26377,
+            "output": 10427,
+            "cacheRead": 61041,
+            "cacheCreation": 3200,
+            "total": 101045,
+            "costUsd": 0.26344829999999997,
+            "cacheSavingsUsd": 0.1648107
+          },
+          {
+            "hour": 19,
+            "model": "anthropic/claude-opus-5-5-20260601",
+            "input": 33352,
+            "output": 5811,
+            "cacheRead": 66893,
+            "cacheCreation": 3405,
+            "total": 109461,
+            "costUsd": 0.36250649999999995,
+            "cacheSavingsUsd": 0.3010185
+          }
+        ]
+      },
+      {
+        "id": "codex",
+        "name": "Codex",
+        "status": "ok",
+        "note": null,
+        "today": {
+          "input": 86297,
+          "output": 22679,
+          "cacheRead": 106928,
+          "cacheCreation": 9475,
+          "total": 225379
+        },
+        "daily": [
+          {
+            "date": "2026-06-25",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-06-26",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-06-27",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-06-28",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-06-29",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-06-30",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-01",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-02",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-03",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-04",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-05",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-06",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-07",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-08",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-09",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-10",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-11",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-12",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-13",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-14",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-15",
+            "input": 171611,
+            "output": 21698,
+            "total": 193309,
+            "cacheRead": 87053,
+            "cacheCreation": 8499
+          },
+          {
+            "date": "2026-07-16",
+            "input": 142581,
+            "output": 7709,
+            "total": 150290,
+            "cacheRead": 78606,
+            "cacheCreation": 5734
+          },
+          {
+            "date": "2026-07-17",
+            "input": 169524,
+            "output": 23616,
+            "total": 193140,
+            "cacheRead": 91323,
+            "cacheCreation": 8144
+          },
+          {
+            "date": "2026-07-18",
+            "input": 229948,
+            "output": 26115,
+            "total": 256063,
+            "cacheRead": 119413,
+            "cacheCreation": 10931
+          },
+          {
+            "date": "2026-07-19",
+            "input": 292807,
+            "output": 40662,
+            "total": 333469,
+            "cacheRead": 146525,
+            "cacheCreation": 14955
+          },
+          {
+            "date": "2026-07-20",
+            "input": 213789,
+            "output": 22190,
+            "total": 235979,
+            "cacheRead": 108790,
+            "cacheCreation": 10175
+          },
+          {
+            "date": "2026-07-21",
+            "input": 147844,
+            "output": 17321,
+            "total": 165165,
+            "cacheRead": 63223,
+            "cacheCreation": 8155
+          },
+          {
+            "date": "2026-07-22",
+            "input": 233062,
+            "output": 32160,
+            "total": 265222,
+            "cacheRead": 136489,
+            "cacheCreation": 10297
+          },
+          {
+            "date": "2026-07-23",
+            "input": 75930,
+            "output": 4747,
+            "total": 80677,
+            "cacheRead": 35607,
+            "cacheCreation": 3605
+          },
+          {
+            "date": "2026-07-24",
+            "input": 179215,
+            "output": 12047,
+            "total": 191262,
+            "cacheRead": 78487,
+            "cacheCreation": 9022
+          },
+          {
+            "date": "2026-07-25",
+            "input": 349735,
+            "output": 28484,
+            "total": 378219,
+            "cacheRead": 168858,
+            "cacheCreation": 16748
+          },
+          {
+            "date": "2026-07-26",
+            "input": 335130,
+            "output": 42727,
+            "total": 377857,
+            "cacheRead": 162221,
+            "cacheCreation": 17250
+          },
+          {
+            "date": "2026-07-27",
+            "input": 179083,
+            "output": 18961,
+            "total": 198044,
+            "cacheRead": 100837,
+            "cacheCreation": 7775
+          },
+          {
+            "date": "2026-07-28",
+            "input": 231102,
+            "output": 36132,
+            "total": 267234,
+            "cacheRead": 104605,
+            "cacheCreation": 13009
+          },
+          {
+            "date": "2026-07-29",
+            "input": 302436,
+            "output": 33664,
+            "total": 336100,
+            "cacheRead": 147378,
+            "cacheCreation": 15097
+          },
+          {
+            "date": "2026-07-30",
+            "input": 213465,
+            "output": 30525,
+            "total": 243990,
+            "cacheRead": 92265,
+            "cacheCreation": 12138
+          },
+          {
+            "date": "2026-07-31",
+            "input": 189244,
+            "output": 17814,
+            "total": 207058,
+            "cacheRead": 99115,
+            "cacheCreation": 8635
+          },
+          {
+            "date": "2026-08-01",
+            "input": 206940,
+            "output": 24983,
+            "total": 231923,
+            "cacheRead": 96350,
+            "cacheCreation": 10845
+          },
+          {
+            "date": "2026-08-02",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-08-03",
+            "input": 202700,
+            "output": 22679,
+            "total": 225379,
+            "cacheRead": 106928,
+            "cacheCreation": 9475
+          }
+        ],
+        "hours": [
+          0,
+          0,
+          0,
+          0,
+          65536,
+          0,
+          0,
+          31433,
+          0,
+          0,
+          0,
+          31433,
+          0,
+          0,
+          0,
+          65540,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          31437,
+          0
+        ],
+        "todayCostUsd": 0.25510211,
+        "projects": [],
+        "dailyModels": [
+          {
+            "date": "2026-07-15",
+            "model": "gpt-5.4",
+            "input": 37062,
+            "output": 13860,
+            "cacheRead": 45955,
+            "cacheCreation": 4427,
+            "total": 101304,
+            "costUsd": 0.196205625,
+            "cacheSavingsUsd": 0.051699375
+          },
+          {
+            "date": "2026-07-15",
+            "model": "gpt-5.4-mini-20260305",
+            "input": 38997,
+            "output": 7838,
+            "cacheRead": 41098,
+            "cacheCreation": 4072,
+            "total": 92005,
+            "costUsd": 0.01177962,
+            "cacheSavingsUsd": 0.00554823
+          },
+          {
+            "date": "2026-07-16",
+            "model": "gpt-5.4",
+            "input": 58241,
+            "output": 7709,
+            "cacheRead": 78606,
+            "cacheCreation": 5734,
+            "total": 150290,
+            "costUsd": 0.1668845,
+            "cacheSavingsUsd": 0.08843175
+          },
+          {
+            "date": "2026-07-17",
+            "model": "gpt-5.4",
+            "input": 34365,
+            "output": 10104,
+            "cacheRead": 50698,
+            "cacheCreation": 3866,
+            "total": 99033,
+            "costUsd": 0.15516599999999997,
+            "cacheSavingsUsd": 0.05703525
+          },
+          {
+            "date": "2026-07-17",
+            "model": "gpt-5.4-mini-20260305",
+            "input": 35692,
+            "output": 13512,
+            "cacheRead": 40625,
+            "cacheCreation": 4278,
+            "total": 94107,
+            "costUsd": 0.014712075000000002,
+            "cacheSavingsUsd": 0.005484375
+          },
+          {
+            "date": "2026-07-18",
+            "model": "gpt-5.4",
+            "input": 59732,
+            "output": 21292,
+            "cacheRead": 67898,
+            "cacheCreation": 7045,
+            "total": 155967,
+            "costUsd": 0.3048785,
+            "cacheSavingsUsd": 0.07638525
+          },
+          {
+            "date": "2026-07-18",
+            "model": "gpt-5.4-mini-20260305",
+            "input": 39872,
+            "output": 4823,
+            "cacheRead": 51515,
+            "cacheCreation": 3886,
+            "total": 100096,
+            "costUsd": 0.010230225,
+            "cacheSavingsUsd": 0.0069545250000000005
+          },
+          {
+            "date": "2026-07-19",
+            "model": "gpt-5.4",
+            "input": 54602,
+            "output": 21392,
+            "cacheRead": 71773,
+            "cacheCreation": 6608,
+            "total": 154375,
+            "costUsd": 0.29940412499999997,
+            "cacheSavingsUsd": 0.080744625
+          },
+          {
+            "date": "2026-07-19",
+            "model": "gpt-5.4-mini-20260305",
+            "input": 76725,
+            "output": 19270,
+            "cacheRead": 74752,
+            "cacheCreation": 8347,
+            "total": 179094,
+            "costUsd": 0.02544408,
+            "cacheSavingsUsd": 0.01009152
+          },
+          {
+            "date": "2026-07-20",
+            "model": "gpt-5.4",
+            "input": 33730,
+            "output": 11696,
+            "cacheRead": 33553,
+            "cacheCreation": 3950,
+            "total": 82929,
+            "costUsd": 0.168254125,
+            "cacheSavingsUsd": 0.037747125
+          },
+          {
+            "date": "2026-07-20",
+            "model": "gpt-5.4-mini-20260305",
+            "input": 61094,
+            "output": 10494,
+            "cacheRead": 75237,
+            "cacheCreation": 6225,
+            "total": 153050,
+            "costUsd": 0.017522805,
+            "cacheSavingsUsd": 0.010156995
+          },
+          {
+            "date": "2026-07-21",
+            "model": "gpt-5.4",
+            "input": 76466,
+            "output": 17321,
+            "cacheRead": 63223,
+            "cacheCreation": 8155,
+            "total": 165165,
+            "costUsd": 0.28688912499999997,
+            "cacheSavingsUsd": 0.071125875
+          },
+          {
+            "date": "2026-07-22",
+            "model": "gpt-5.4",
+            "input": 57521,
+            "output": 20529,
+            "cacheRead": 99086,
+            "cacheCreation": 6786,
+            "total": 183922,
+            "costUsd": 0.2980595,
+            "cacheSavingsUsd": 0.11147175
+          },
+          {
+            "date": "2026-07-22",
+            "model": "gpt-5.4-mini-20260305",
+            "input": 28755,
+            "output": 11631,
+            "cacheRead": 37403,
+            "cacheCreation": 3511,
+            "total": 81300,
+            "costUsd": 0.012379544999999999,
+            "cacheSavingsUsd": 0.005049405000000001
+          },
+          {
+            "date": "2026-07-23",
+            "model": "gpt-5.4-mini-20260305",
+            "input": 36718,
+            "output": 4747,
+            "cacheRead": 35607,
+            "cacheCreation": 3605,
+            "total": 80677,
+            "costUsd": 0.009430754999999999,
+            "cacheSavingsUsd": 0.004806945000000001
+          },
+          {
+            "date": "2026-07-24",
+            "model": "gpt-5.4",
+            "input": 39865,
+            "output": 4617,
+            "cacheRead": 40862,
+            "cacheCreation": 3868,
+            "total": 89212,
+            "costUsd": 0.10594400000000001,
+            "cacheSavingsUsd": 0.04596975
+          },
+          {
+            "date": "2026-07-24",
+            "model": "gpt-5.4-mini-20260305",
+            "input": 51841,
+            "output": 7430,
+            "cacheRead": 37625,
+            "cacheCreation": 5154,
+            "total": 102050,
+            "costUsd": 0.013571625,
+            "cacheSavingsUsd": 0.005079375
+          },
+          {
+            "date": "2026-07-25",
+            "model": "gpt-5.4",
+            "input": 83812,
+            "output": 15001,
+            "cacheRead": 83484,
+            "cacheCreation": 8592,
+            "total": 190889,
+            "costUsd": 0.2759505,
+            "cacheSavingsUsd": 0.0939195
+          },
+          {
+            "date": "2026-07-25",
+            "model": "gpt-5.4-mini-20260305",
+            "input": 80317,
+            "output": 13483,
+            "cacheRead": 85374,
+            "cacheCreation": 8156,
+            "total": 187330,
+            "costUsd": 0.02264136,
+            "cacheSavingsUsd": 0.011525490000000001
+          },
+          {
+            "date": "2026-07-26",
+            "model": "gpt-5.4",
+            "input": 76854,
+            "output": 13113,
+            "cacheRead": 92428,
+            "cacheCreation": 7823,
+            "total": 190218,
+            "costUsd": 0.24852975,
+            "cacheSavingsUsd": 0.1039815
+          },
+          {
+            "date": "2026-07-26",
+            "model": "gpt-5.4-mini-20260305",
+            "input": 78805,
+            "output": 29614,
+            "cacheRead": 69793,
+            "cacheCreation": 9427,
+            "total": 187639,
+            "costUsd": 0.032050094999999994,
+            "cacheSavingsUsd": 0.009422055
+          },
+          {
+            "date": "2026-07-27",
+            "model": "gpt-5.4",
+            "input": 37771,
+            "output": 8329,
+            "cacheRead": 51437,
+            "cacheCreation": 4008,
+            "total": 101545,
+            "costUsd": 0.14194337499999998,
+            "cacheSavingsUsd": 0.057866625
+          },
+          {
+            "date": "2026-07-27",
+            "model": "gpt-5.4-mini-20260305",
+            "input": 32700,
+            "output": 10632,
+            "cacheRead": 49400,
+            "cacheCreation": 3767,
+            "total": 96499,
+            "costUsd": 0.012590249999999999,
+            "cacheSavingsUsd": 0.006669
+          },
+          {
+            "date": "2026-07-28",
+            "model": "gpt-5.4",
+            "input": 59588,
+            "output": 13936,
+            "cacheRead": 48883,
+            "cacheCreation": 6393,
+            "total": 128800,
+            "costUsd": 0.227946625,
+            "cacheSavingsUsd": 0.054993375
+          },
+          {
+            "date": "2026-07-28",
+            "model": "gpt-5.4-mini-20260305",
+            "input": 53900,
+            "output": 22196,
+            "cacheRead": 55722,
+            "cacheCreation": 6616,
+            "total": 138434,
+            "costUsd": 0.02323083,
+            "cacheSavingsUsd": 0.00752247
+          },
+          {
+            "date": "2026-07-29",
+            "model": "gpt-5.4",
+            "input": 67614,
+            "output": 10173,
+            "cacheRead": 71957,
+            "cacheCreation": 6764,
+            "total": 156508,
+            "costUsd": 0.203697125,
+            "cacheSavingsUsd": 0.080951625
+          },
+          {
+            "date": "2026-07-29",
+            "model": "gpt-5.4-mini-20260305",
+            "input": 72347,
+            "output": 23491,
+            "cacheRead": 75421,
+            "cacheCreation": 8333,
+            "total": 179592,
+            "costUsd": 0.027327915,
+            "cacheSavingsUsd": 0.010181835
+          },
+          {
+            "date": "2026-07-30",
+            "model": "gpt-5.4",
+            "input": 40352,
+            "output": 10754,
+            "cacheRead": 31917,
+            "cacheCreation": 4444,
+            "total": 87467,
+            "costUsd": 0.167524625,
+            "cacheSavingsUsd": 0.035906625
+          },
+          {
+            "date": "2026-07-30",
+            "model": "gpt-5.4-mini-20260305",
+            "input": 68710,
+            "output": 19771,
+            "cacheRead": 60348,
+            "cacheCreation": 7694,
+            "total": 156523,
+            "costUsd": 0.02422842,
+            "cacheSavingsUsd": 0.00814698
+          },
+          {
+            "date": "2026-07-31",
+            "model": "gpt-5.4",
+            "input": 32423,
+            "output": 8281,
+            "cacheRead": 44838,
+            "cacheCreation": 3539,
+            "total": 89081,
+            "costUsd": 0.13336725,
+            "cacheSavingsUsd": 0.05044275
+          },
+          {
+            "date": "2026-07-31",
+            "model": "gpt-5.4-mini-20260305",
+            "input": 49071,
+            "output": 9533,
+            "cacheRead": 54277,
+            "cacheCreation": 5096,
+            "total": 117977,
+            "costUsd": 0.014659005000000001,
+            "cacheSavingsUsd": 0.0073273950000000004
+          },
+          {
+            "date": "2026-08-01",
+            "model": "gpt-5.4",
+            "input": 47387,
+            "output": 14796,
+            "cacheRead": 54588,
+            "cacheCreation": 5407,
+            "total": 122178,
+            "costUsd": 0.22077600000000003,
+            "cacheSavingsUsd": 0.0614115
+          },
+          {
+            "date": "2026-08-01",
+            "model": "gpt-5.4-mini-20260305",
+            "input": 52358,
+            "output": 10187,
+            "cacheRead": 41762,
+            "cacheCreation": 5438,
+            "total": 109745,
+            "costUsd": 0.01540803,
+            "cacheSavingsUsd": 0.0056378700000000006
+          },
+          {
+            "date": "2026-08-03",
+            "model": "gpt-5.4",
+            "input": 47177,
+            "output": 17101,
+            "cacheRead": 61209,
+            "cacheCreation": 5589,
+            "total": 131076,
+            "costUsd": 0.244618625,
+            "cacheSavingsUsd": 0.068860125
+          },
+          {
+            "date": "2026-08-03",
+            "model": "gpt-5.4-mini-20260305",
+            "input": 39120,
+            "output": 5578,
+            "cacheRead": 45719,
+            "cacheCreation": 3886,
+            "total": 94303,
+            "costUsd": 0.010483484999999999,
+            "cacheSavingsUsd": 0.006172065000000001
+          }
+        ],
+        "monthModels": [
+          {
+            "month": "2026-07",
+            "model": "gpt-5.4",
+            "input": 849998,
+            "output": 208107,
+            "cacheRead": 976598,
+            "cacheCreation": 92002,
+            "total": 2126705,
+            "costUsd": 3.38064475,
+            "cacheSavingsUsd": 1.09867275
+          },
+          {
+            "month": "2026-07",
+            "model": "gpt-5.4-mini-20260305",
+            "input": 805544,
+            "output": 208465,
+            "cacheRead": 844197,
+            "cacheCreation": 88167,
+            "total": 1946373,
+            "costUsd": 0.27179860499999997,
+            "cacheSavingsUsd": 0.113966595
+          },
+          {
+            "month": "2026-08",
+            "model": "gpt-5.4",
+            "input": 94564,
+            "output": 31897,
+            "cacheRead": 115797,
+            "cacheCreation": 10996,
+            "total": 253254,
+            "costUsd": 0.465394625,
+            "cacheSavingsUsd": 0.130271625
+          },
+          {
+            "month": "2026-08",
+            "model": "gpt-5.4-mini-20260305",
+            "input": 91478,
+            "output": 15765,
+            "cacheRead": 87481,
+            "cacheCreation": 9324,
+            "total": 204048,
+            "costUsd": 0.025891514999999997,
+            "cacheSavingsUsd": 0.011809935
+          }
+        ],
+        "hourModels": [
+          {
+            "hour": 4,
+            "model": "gpt-5.4",
+            "input": 23588,
+            "output": 8550,
+            "cacheRead": 30604,
+            "cacheCreation": 2794,
+            "total": 65536,
+            "costUsd": 0.122303,
+            "cacheSavingsUsd": 0.0344295
+          },
+          {
+            "hour": 7,
+            "model": "gpt-5.4-mini-20260305",
+            "input": 13040,
+            "output": 1859,
+            "cacheRead": 15239,
+            "cacheCreation": 1295,
+            "total": 31433,
+            "costUsd": 0.0034942349999999996,
+            "cacheSavingsUsd": 0.0020572650000000004
+          },
+          {
+            "hour": 11,
+            "model": "gpt-5.4-mini-20260305",
+            "input": 13040,
+            "output": 1859,
+            "cacheRead": 15239,
+            "cacheCreation": 1295,
+            "total": 31433,
+            "costUsd": 0.0034942349999999996,
+            "cacheSavingsUsd": 0.0020572650000000004
+          },
+          {
+            "hour": 15,
+            "model": "gpt-5.4",
+            "input": 23589,
+            "output": 8551,
+            "cacheRead": 30605,
+            "cacheCreation": 2795,
+            "total": 65540,
+            "costUsd": 0.122315625,
+            "cacheSavingsUsd": 0.034430625
+          },
+          {
+            "hour": 22,
+            "model": "gpt-5.4-mini-20260305",
+            "input": 13040,
+            "output": 1860,
+            "cacheRead": 15241,
+            "cacheCreation": 1296,
+            "total": 31437,
+            "costUsd": 0.003495015,
+            "cacheSavingsUsd": 0.002057535
+          }
+        ]
+      },
+      {
+        "id": "cline",
+        "name": "Cline",
+        "status": "idle",
+        "note": "VS Code 扩展",
+        "today": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheCreation": 0,
+          "total": 0
+        },
+        "daily": [
+          {
+            "date": "2026-06-25",
+            "input": 46432,
+            "output": 10556,
+            "total": 56988,
+            "cacheRead": 13176,
+            "cacheCreation": 3504
+          },
+          {
+            "date": "2026-06-26",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-06-27",
+            "input": 141765,
+            "output": 30020,
+            "total": 171785,
+            "cacheRead": 43588,
+            "cacheCreation": 10254
+          },
+          {
+            "date": "2026-06-28",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-06-29",
+            "input": 125129,
+            "output": 17078,
+            "total": 142207,
+            "cacheRead": 40921,
+            "cacheCreation": 8102
+          },
+          {
+            "date": "2026-06-30",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-01",
+            "input": 161277,
+            "output": 26847,
+            "total": 188124,
+            "cacheRead": 56467,
+            "cacheCreation": 10531
+          },
+          {
+            "date": "2026-07-02",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-03",
+            "input": 147358,
+            "output": 24600,
+            "total": 171958,
+            "cacheRead": 46489,
+            "cacheCreation": 10036
+          },
+          {
+            "date": "2026-07-04",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-05",
+            "input": 179922,
+            "output": 26033,
+            "total": 205955,
+            "cacheRead": 50542,
+            "cacheCreation": 12432
+          },
+          {
+            "date": "2026-07-06",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-07",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-08",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-09",
+            "input": 136669,
+            "output": 21328,
+            "total": 157997,
+            "cacheRead": 43226,
+            "cacheCreation": 9180
+          },
+          {
+            "date": "2026-07-10",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-11",
+            "input": 159098,
+            "output": 17147,
+            "total": 176245,
+            "cacheRead": 51360,
+            "cacheCreation": 9989
+          },
+          {
+            "date": "2026-07-12",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-13",
+            "input": 154080,
+            "output": 20868,
+            "total": 174948,
+            "cacheRead": 47178,
+            "cacheCreation": 10220
+          },
+          {
+            "date": "2026-07-14",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-15",
+            "input": 153109,
+            "output": 22067,
+            "total": 175176,
+            "cacheRead": 52276,
+            "cacheCreation": 9831
+          },
+          {
+            "date": "2026-07-16",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-17",
+            "input": 99791,
+            "output": 15865,
+            "total": 115656,
+            "cacheRead": 27341,
+            "cacheCreation": 7064
+          },
+          {
+            "date": "2026-07-18",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-19",
+            "input": 140300,
+            "output": 21818,
+            "total": 162118,
+            "cacheRead": 41986,
+            "cacheCreation": 9609
+          },
+          {
+            "date": "2026-07-20",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-21",
+            "input": 149339,
+            "output": 29037,
+            "total": 178376,
+            "cacheRead": 47920,
+            "cacheCreation": 10435
+          },
+          {
+            "date": "2026-07-22",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-23",
+            "input": 86533,
+            "output": 18075,
+            "total": 104608,
+            "cacheRead": 24658,
+            "cacheCreation": 6395
+          },
+          {
+            "date": "2026-07-24",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-25",
+            "input": 91724,
+            "output": 12726,
+            "total": 104450,
+            "cacheRead": 28331,
+            "cacheCreation": 6089
+          },
+          {
+            "date": "2026-07-26",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-27",
+            "input": 169186,
+            "output": 27011,
+            "total": 196197,
+            "cacheRead": 49509,
+            "cacheCreation": 11733
+          },
+          {
+            "date": "2026-07-28",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-29",
+            "input": 145564,
+            "output": 25216,
+            "total": 170780,
+            "cacheRead": 46310,
+            "cacheCreation": 9955
+          },
+          {
+            "date": "2026-07-30",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-31",
+            "input": 120396,
+            "output": 24374,
+            "total": 144770,
+            "cacheRead": 43091,
+            "cacheCreation": 8134
+          },
+          {
+            "date": "2026-08-01",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-08-02",
+            "input": 197305,
+            "output": 31968,
+            "total": 229273,
+            "cacheRead": 62184,
+            "cacheCreation": 13365
+          },
+          {
+            "date": "2026-08-03",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          }
+        ],
+        "hours": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "todayCostUsd": 0,
+        "projects": [],
+        "dailyModels": [
+          {
+            "date": "2026-07-05",
+            "model": "cline-pass/deepseek-v4.1-flash",
+            "input": 28638,
+            "output": 4036,
+            "cacheRead": 14644,
+            "cacheCreation": 2841,
+            "total": 50159,
+            "costUsd": 0.007187381999999999,
+            "cacheSavingsUsd": 0.0021526679999999995
+          },
+          {
+            "date": "2026-07-05",
+            "model": "deepseek-flash",
+            "input": 40784,
+            "output": 12410,
+            "cacheRead": 18648,
+            "cacheCreation": 4625,
+            "total": 76467,
+            "costUsd": null,
+            "cacheSavingsUsd": null
+          },
+          {
+            "date": "2026-07-05",
+            "model": "zhipu/glm-5.3",
+            "input": 47526,
+            "output": 9587,
+            "cacheRead": 17250,
+            "cacheCreation": 4966,
+            "total": 79329,
+            "costUsd": 0.12015659999999999,
+            "cacheSavingsUsd": 0.019665
+          },
+          {
+            "date": "2026-07-09",
+            "model": "cline-pass/deepseek-v4.1-flash",
+            "input": 22521,
+            "output": 3818,
+            "cacheRead": 11306,
+            "cacheCreation": 2290,
+            "total": 39935,
+            "costUsd": 0.006046367999999999,
+            "cacheSavingsUsd": 0.001661982
+          },
+          {
+            "date": "2026-07-09",
+            "model": "deepseek-flash",
+            "input": 20713,
+            "output": 8692,
+            "cacheRead": 14684,
+            "cacheCreation": 2556,
+            "total": 46645,
+            "costUsd": null,
+            "cacheSavingsUsd": null
+          },
+          {
+            "date": "2026-07-09",
+            "model": "zhipu/glm-5.3",
+            "input": 41029,
+            "output": 8818,
+            "cacheRead": 17236,
+            "cacheCreation": 4334,
+            "total": 71417,
+            "costUsd": 0.10678876000000001,
+            "cacheSavingsUsd": 0.019649039999999996
+          },
+          {
+            "date": "2026-07-11",
+            "model": "cline-pass/deepseek-v4.1-flash",
+            "input": 24726,
+            "output": 5393,
+            "cacheRead": 11346,
+            "cacheCreation": 2618,
+            "total": 44083,
+            "costUsd": 0.007371438,
+            "cacheSavingsUsd": 0.0016678619999999998
+          },
+          {
+            "date": "2026-07-11",
+            "model": "deepseek-flash",
+            "input": 41282,
+            "output": 7219,
+            "cacheRead": 24357,
+            "cacheCreation": 4217,
+            "total": 77075,
+            "costUsd": null,
+            "cacheSavingsUsd": null
+          },
+          {
+            "date": "2026-07-11",
+            "model": "zhipu/glm-5.3",
+            "input": 31741,
+            "output": 4535,
+            "cacheRead": 15657,
+            "cacheCreation": 3154,
+            "total": 55087,
+            "costUsd": 0.07287782,
+            "cacheSavingsUsd": 0.01784898
+          },
+          {
+            "date": "2026-07-13",
+            "model": "cline-pass/deepseek-v4.1-flash",
+            "input": 43161,
+            "output": 5420,
+            "cacheRead": 15988,
+            "cacheCreation": 4224,
+            "total": 68793,
+            "costUsd": 0.010407713999999998,
+            "cacheSavingsUsd": 0.002350236
+          },
+          {
+            "date": "2026-07-13",
+            "model": "deepseek-flash",
+            "input": 28525,
+            "output": 4913,
+            "cacheRead": 13207,
+            "cacheCreation": 2907,
+            "total": 49552,
+            "costUsd": null,
+            "cacheSavingsUsd": null
+          },
+          {
+            "date": "2026-07-13",
+            "model": "zhipu/glm-5.3",
+            "input": 24996,
+            "output": 10535,
+            "cacheRead": 17983,
+            "cacheCreation": 3089,
+            "total": 56603,
+            "costUsd": 0.09034858,
+            "cacheSavingsUsd": 0.02050062
+          },
+          {
+            "date": "2026-07-15",
+            "model": "cline-pass/deepseek-v4.1-flash",
+            "input": 32458,
+            "output": 5195,
+            "cacheRead": 14265,
+            "cacheCreation": 3274,
+            "total": 55192,
+            "costUsd": 0.008519595,
+            "cacheSavingsUsd": 0.0020969549999999997
+          },
+          {
+            "date": "2026-07-15",
+            "model": "deepseek-flash",
+            "input": 25359,
+            "output": 5942,
+            "cacheRead": 15254,
+            "cacheCreation": 2721,
+            "total": 49276,
+            "costUsd": null,
+            "cacheSavingsUsd": null
+          },
+          {
+            "date": "2026-07-15",
+            "model": "zhipu/glm-5.3",
+            "input": 33185,
+            "output": 10930,
+            "cacheRead": 22757,
+            "cacheCreation": 3836,
+            "total": 70708,
+            "costUsd": 0.10583822000000001,
+            "cacheSavingsUsd": 0.02594298
+          },
+          {
+            "date": "2026-07-17",
+            "model": "cline-pass/deepseek-v4.1-flash",
+            "input": 21448,
+            "output": 3257,
+            "cacheRead": 8697,
+            "cacheCreation": 2148,
+            "total": 35550,
+            "costUsd": 0.005519690999999999,
+            "cacheSavingsUsd": 0.0012784589999999998
+          },
+          {
+            "date": "2026-07-17",
+            "model": "deepseek-flash",
+            "input": 20227,
+            "output": 3688,
+            "cacheRead": 7983,
+            "cacheCreation": 2079,
+            "total": 33977,
+            "costUsd": null,
+            "cacheSavingsUsd": null
+          },
+          {
+            "date": "2026-07-17",
+            "model": "zhipu/glm-5.3",
+            "input": 23711,
+            "output": 8920,
+            "cacheRead": 10661,
+            "cacheCreation": 2837,
+            "total": 46129,
+            "costUsd": 0.07918705999999999,
+            "cacheSavingsUsd": 0.01215354
+          },
+          {
+            "date": "2026-07-19",
+            "model": "cline-pass/deepseek-v4.1-flash",
+            "input": 33271,
+            "output": 8055,
+            "cacheRead": 16353,
+            "cacheCreation": 3593,
+            "total": 61272,
+            "costUsd": 0.010411659,
+            "cacheSavingsUsd": 0.002403891
+          },
+          {
+            "date": "2026-07-19",
+            "model": "deepseek-flash",
+            "input": 36310,
+            "output": 8336,
+            "cacheRead": 17961,
+            "cacheCreation": 3882,
+            "total": 66489,
+            "costUsd": null,
+            "cacheSavingsUsd": null
+          },
+          {
+            "date": "2026-07-19",
+            "model": "zhipu/glm-5.3",
+            "input": 19124,
+            "output": 5427,
+            "cacheRead": 7672,
+            "cacheCreation": 2134,
+            "total": 34357,
+            "costUsd": 0.05563472,
+            "cacheSavingsUsd": 0.00874608
+          },
+          {
+            "date": "2026-07-21",
+            "model": "cline-pass/deepseek-v4.1-flash",
+            "input": 31588,
+            "output": 8474,
+            "cacheRead": 14492,
+            "cacheCreation": 3483,
+            "total": 58037,
+            "costUsd": 0.010388526,
+            "cacheSavingsUsd": 0.0021303240000000003
+          },
+          {
+            "date": "2026-07-21",
+            "model": "deepseek-flash",
+            "input": 19594,
+            "output": 5299,
+            "cacheRead": 10674,
+            "cacheCreation": 2164,
+            "total": 37731,
+            "costUsd": null,
+            "cacheSavingsUsd": null
+          },
+          {
+            "date": "2026-07-21",
+            "model": "zhipu/glm-5.3",
+            "input": 39802,
+            "output": 15264,
+            "cacheRead": 22754,
+            "cacheCreation": 4788,
+            "total": 82608,
+            "costUsd": 0.13550364,
+            "cacheSavingsUsd": 0.025939559999999997
+          },
+          {
+            "date": "2026-07-23",
+            "model": "cline-pass/deepseek-v4.1-flash",
+            "input": 23109,
+            "output": 5699,
+            "cacheRead": 10951,
+            "cacheCreation": 2504,
+            "total": 42263,
+            "costUsd": 0.007294203,
+            "cacheSavingsUsd": 0.0016097969999999998
+          },
+          {
+            "date": "2026-07-23",
+            "model": "zhipu/glm-5.3",
+            "input": 32371,
+            "output": 12376,
+            "cacheRead": 13707,
+            "cacheCreation": 3891,
+            "total": 62345,
+            "costUsd": 0.10878502,
+            "cacheSavingsUsd": 0.01562598
+          },
+          {
+            "date": "2026-07-25",
+            "model": "cline-pass/deepseek-v4.1-flash",
+            "input": 29271,
+            "output": 5141,
+            "cacheRead": 13120,
+            "cacheCreation": 2992,
+            "total": 50524,
+            "costUsd": 0.007963409999999999,
+            "cacheSavingsUsd": 0.00192864
+          },
+          {
+            "date": "2026-07-25",
+            "model": "deepseek-flash",
+            "input": 28033,
+            "output": 7585,
+            "cacheRead": 15211,
+            "cacheCreation": 3097,
+            "total": 53926,
+            "costUsd": null,
+            "cacheSavingsUsd": null
+          },
+          {
+            "date": "2026-07-27",
+            "model": "cline-pass/deepseek-v4.1-flash",
+            "input": 41841,
+            "output": 7985,
+            "cacheRead": 15473,
+            "cacheCreation": 4332,
+            "total": 69631,
+            "costUsd": 0.011763369000000001,
+            "cacheSavingsUsd": 0.0022745309999999998
+          },
+          {
+            "date": "2026-07-27",
+            "model": "deepseek-flash",
+            "input": 28489,
+            "output": 6261,
+            "cacheRead": 12006,
+            "cacheCreation": 3021,
+            "total": 49777,
+            "costUsd": null,
+            "cacheSavingsUsd": null
+          },
+          {
+            "date": "2026-07-27",
+            "model": "zhipu/glm-5.3",
+            "input": 37614,
+            "output": 12765,
+            "cacheRead": 22030,
+            "cacheCreation": 4380,
+            "total": 76789,
+            "costUsd": 0.12068540000000001,
+            "cacheSavingsUsd": 0.025114199999999996
+          },
+          {
+            "date": "2026-07-29",
+            "model": "cline-pass/deepseek-v4.1-flash",
+            "input": 35497,
+            "output": 12123,
+            "cacheRead": 23932,
+            "cacheCreation": 4140,
+            "total": 75692,
+            "costUsd": 0.013291146000000002,
+            "cacheSavingsUsd": 0.003518004
+          },
+          {
+            "date": "2026-07-29",
+            "model": "deepseek-flash",
+            "input": 35608,
+            "output": 7125,
+            "cacheRead": 14638,
+            "cacheCreation": 3715,
+            "total": 61086,
+            "costUsd": null,
+            "cacheSavingsUsd": null
+          },
+          {
+            "date": "2026-07-29",
+            "model": "zhipu/glm-5.3",
+            "input": 18194,
+            "output": 5968,
+            "cacheRead": 7740,
+            "cacheCreation": 2100,
+            "total": 34002,
+            "costUsd": 0.05668319999999999,
+            "cacheSavingsUsd": 0.0088236
+          },
+          {
+            "date": "2026-07-31",
+            "model": "cline-pass/deepseek-v4.1-flash",
+            "input": 31449,
+            "output": 8963,
+            "cacheRead": 17983,
+            "cacheCreation": 3514,
+            "total": 61909,
+            "costUsd": 0.010676199,
+            "cacheSavingsUsd": 0.002643501
+          },
+          {
+            "date": "2026-07-31",
+            "model": "zhipu/glm-5.3",
+            "input": 37722,
+            "output": 15411,
+            "cacheRead": 25108,
+            "cacheCreation": 4620,
+            "total": 82861,
+            "costUsd": 0.13361528,
+            "cacheSavingsUsd": 0.02862312
+          },
+          {
+            "date": "2026-08-02",
+            "model": "cline-pass/deepseek-v4.1-flash",
+            "input": 38338,
+            "output": 11752,
+            "cacheRead": 22350,
+            "cacheCreation": 4355,
+            "total": 76795,
+            "costUsd": 0.0135222,
+            "cacheSavingsUsd": 0.0032854499999999997
+          },
+          {
+            "date": "2026-08-02",
+            "model": "deepseek-flash",
+            "input": 41297,
+            "output": 11497,
+            "cacheRead": 20939,
+            "cacheCreation": 4590,
+            "total": 78323,
+            "costUsd": null,
+            "cacheSavingsUsd": null
+          },
+          {
+            "date": "2026-08-02",
+            "model": "zhipu/glm-5.3",
+            "input": 42121,
+            "output": 8719,
+            "cacheRead": 18895,
+            "cacheCreation": 4420,
+            "total": 74155,
+            "costUsd": 0.10843370000000001,
+            "cacheSavingsUsd": 0.0215403
+          }
+        ],
+        "monthModels": [
+          {
+            "month": "2026-06",
+            "model": "cline-pass/deepseek-v4.1-flash",
+            "input": 63169,
+            "output": 15136,
+            "cacheRead": 37137,
+            "cacheCreation": 6809,
+            "total": 122251,
+            "costUsd": 0.019689711000000002,
+            "cacheSavingsUsd": 0.005459139
+          },
+          {
+            "month": "2026-06",
+            "model": "deepseek-flash",
+            "input": 47589,
+            "output": 14608,
+            "cacheRead": 20900,
+            "cacheCreation": 5407,
+            "total": 88504,
+            "costUsd": null,
+            "cacheSavingsUsd": null
+          },
+          {
+            "month": "2026-06",
+            "model": "zhipu/glm-5.3",
+            "input": 83023,
+            "output": 27910,
+            "cacheRead": 39648,
+            "cacheCreation": 9644,
+            "total": 160225,
+            "costUsd": 0.26284628,
+            "cacheSavingsUsd": 0.04519871999999999
+          },
+          {
+            "month": "2026-07",
+            "model": "cline-pass/deepseek-v4.1-flash",
+            "input": 463273,
+            "output": 102880,
+            "cacheRead": 221858,
+            "cacheCreation": 49223,
+            "total": 837234,
+            "costUsd": 0.13926797400000002,
+            "cacheSavingsUsd": 0.032613126
+          },
+          {
+            "month": "2026-07",
+            "model": "deepseek-flash",
+            "input": 375839,
+            "output": 91321,
+            "cacheRead": 196257,
+            "cacheCreation": 40615,
+            "total": 704032,
+            "costUsd": null,
+            "cacheSavingsUsd": null
+          },
+          {
+            "month": "2026-07",
+            "model": "zhipu/glm-5.3",
+            "input": 456917,
+            "output": 138811,
+            "cacheRead": 238569,
+            "cacheCreation": 51795,
+            "total": 886092,
+            "costUsd": 1.38499314,
+            "cacheSavingsUsd": 0.27196866
+          },
+          {
+            "month": "2026-08",
+            "model": "cline-pass/deepseek-v4.1-flash",
+            "input": 38338,
+            "output": 11752,
+            "cacheRead": 22350,
+            "cacheCreation": 4355,
+            "total": 76795,
+            "costUsd": 0.0135222,
+            "cacheSavingsUsd": 0.0032854499999999997
+          },
+          {
+            "month": "2026-08",
+            "model": "deepseek-flash",
+            "input": 41297,
+            "output": 11497,
+            "cacheRead": 20939,
+            "cacheCreation": 4590,
+            "total": 78323,
+            "costUsd": null,
+            "cacheSavingsUsd": null
+          },
+          {
+            "month": "2026-08",
+            "model": "zhipu/glm-5.3",
+            "input": 42121,
+            "output": 8719,
+            "cacheRead": 18895,
+            "cacheCreation": 4420,
+            "total": 74155,
+            "costUsd": 0.10843370000000001,
+            "cacheSavingsUsd": 0.0215403
+          }
+        ],
+        "hourModels": []
+      },
+      {
+        "id": "opencode",
+        "name": "OpenCode",
+        "status": "ok",
+        "note": null,
+        "today": {
+          "input": 48720,
+          "output": 12068,
+          "cacheRead": 12968,
+          "cacheCreation": 5285,
+          "total": 79041
+        },
+        "daily": [
+          {
+            "date": "2026-06-25",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-06-26",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-06-27",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-06-28",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-06-29",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-06-30",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-01",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-02",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-03",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-04",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-05",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-06",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-07",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-08",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-09",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-10",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-11",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-12",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-13",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-14",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-15",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-16",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-17",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-18",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-19",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-20",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-21",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-22",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-23",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-24",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-25",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-26",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-27",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-28",
+            "input": 42507,
+            "output": 3515,
+            "total": 46022,
+            "cacheRead": 8079,
+            "cacheCreation": 3035
+          },
+          {
+            "date": "2026-07-29",
+            "input": 35620,
+            "output": 4999,
+            "total": 40619,
+            "cacheRead": 7173,
+            "cacheCreation": 2675
+          },
+          {
+            "date": "2026-07-30",
+            "input": 68564,
+            "output": 18213,
+            "total": 86777,
+            "cacheRead": 13008,
+            "cacheCreation": 5900
+          },
+          {
+            "date": "2026-07-31",
+            "input": 59489,
+            "output": 13455,
+            "total": 72944,
+            "cacheRead": 15158,
+            "cacheCreation": 4622
+          },
+          {
+            "date": "2026-08-01",
+            "input": 80142,
+            "output": 17568,
+            "total": 97710,
+            "cacheRead": 15736,
+            "cacheCreation": 6557
+          },
+          {
+            "date": "2026-08-02",
+            "input": 58770,
+            "output": 12967,
+            "total": 71737,
+            "cacheRead": 14595,
+            "cacheCreation": 4570
+          },
+          {
+            "date": "2026-08-03",
+            "input": 66973,
+            "output": 12068,
+            "total": 79041,
+            "cacheRead": 12968,
+            "cacheCreation": 5285
+          }
+        ],
+        "hours": [
+          0,
+          0,
+          24284,
+          10156,
+          0,
+          0,
+          0,
+          0,
+          0,
+          24288,
+          0,
+          10156,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          10157
+        ],
+        "todayCostUsd": 0.063121937,
+        "projects": [],
+        "dailyModels": [
+          {
+            "date": "2026-07-28",
+            "model": "openrouter/glm-5.3",
+            "input": 31393,
+            "output": 3515,
+            "cacheRead": 8079,
+            "cacheCreation": 3035,
+            "total": 46022,
+            "costUsd": 0.06576573999999999,
+            "cacheSavingsUsd": 0.009210059999999999
+          },
+          {
+            "date": "2026-07-29",
+            "model": "openrouter/glm-5.3",
+            "input": 25772,
+            "output": 4999,
+            "cacheRead": 7173,
+            "cacheCreation": 2675,
+            "total": 40619,
+            "costUsd": 0.06368638,
+            "cacheSavingsUsd": 0.008177219999999999
+          },
+          {
+            "date": "2026-07-30",
+            "model": "deepseek-v4.1-flash[thinking]",
+            "input": 20281,
+            "output": 5777,
+            "cacheRead": 4950,
+            "cacheCreation": 2265,
+            "total": 33273,
+            "costUsd": 0.00686295,
+            "cacheSavingsUsd": 0.0007276499999999999
+          },
+          {
+            "date": "2026-07-30",
+            "model": "openrouter/glm-5.3",
+            "input": 29375,
+            "output": 12436,
+            "cacheRead": 8058,
+            "cacheCreation": 3635,
+            "total": 53504,
+            "costUsd": 0.10302747999999999,
+            "cacheSavingsUsd": 0.009186119999999999
+          },
+          {
+            "date": "2026-07-31",
+            "model": "deepseek-v4.1-flash[thinking]",
+            "input": 19547,
+            "output": 5592,
+            "cacheRead": 7417,
+            "cacheCreation": 2186,
+            "total": 34742,
+            "costUsd": 0.006637400999999999,
+            "cacheSavingsUsd": 0.001090299
+          },
+          {
+            "date": "2026-07-31",
+            "model": "openrouter/glm-5.3",
+            "input": 20162,
+            "output": 7863,
+            "cacheRead": 7741,
+            "cacheCreation": 2436,
+            "total": 38202,
+            "costUsd": 0.06824706,
+            "cacheSavingsUsd": 0.00882474
+          },
+          {
+            "date": "2026-08-01",
+            "model": "deepseek-v4.1-flash[thinking]",
+            "input": 26214,
+            "output": 7555,
+            "cacheRead": 7910,
+            "cacheCreation": 2936,
+            "total": 44615,
+            "costUsd": 0.00892923,
+            "cacheSavingsUsd": 0.00116277
+          },
+          {
+            "date": "2026-08-01",
+            "model": "openrouter/glm-5.3",
+            "input": 31635,
+            "output": 10013,
+            "cacheRead": 7826,
+            "cacheCreation": 3621,
+            "total": 53095,
+            "costUsd": 0.09545036000000001,
+            "cacheSavingsUsd": 0.00892164
+          },
+          {
+            "date": "2026-08-02",
+            "model": "deepseek-v4.1-flash[thinking]",
+            "input": 18987,
+            "output": 6631,
+            "cacheRead": 7047,
+            "cacheCreation": 2227,
+            "total": 34892,
+            "costUsd": 0.007181840999999999,
+            "cacheSavingsUsd": 0.0010359089999999998
+          },
+          {
+            "date": "2026-08-02",
+            "model": "openrouter/glm-5.3",
+            "input": 20618,
+            "output": 6336,
+            "cacheRead": 7548,
+            "cacheCreation": 2343,
+            "total": 36845,
+            "costUsd": 0.06198628,
+            "cacheSavingsUsd": 0.00860472
+          },
+          {
+            "date": "2026-08-03",
+            "model": "deepseek-v4.1-flash[thinking]",
+            "input": 31767,
+            "output": 6113,
+            "cacheRead": 7399,
+            "cacheCreation": 3293,
+            "total": 48572,
+            "costUsd": 0.008948996999999998,
+            "cacheSavingsUsd": 0.001087653
+          },
+          {
+            "date": "2026-08-03",
+            "model": "openrouter/glm-5.3",
+            "input": 16953,
+            "output": 5955,
+            "cacheRead": 5569,
+            "cacheCreation": 1992,
+            "total": 30469,
+            "costUsd": 0.05417294,
+            "cacheSavingsUsd": 0.00634866
+          }
+        ],
+        "monthModels": [
+          {
+            "month": "2026-07",
+            "model": "deepseek-v4.1-flash[thinking]",
+            "input": 39828,
+            "output": 11369,
+            "cacheRead": 12367,
+            "cacheCreation": 4451,
+            "total": 68015,
+            "costUsd": 0.013500351,
+            "cacheSavingsUsd": 0.001817949
+          },
+          {
+            "month": "2026-07",
+            "model": "openrouter/glm-5.3",
+            "input": 106702,
+            "output": 28813,
+            "cacheRead": 31051,
+            "cacheCreation": 11781,
+            "total": 178347,
+            "costUsd": 0.30072666,
+            "cacheSavingsUsd": 0.03539814
+          },
+          {
+            "month": "2026-08",
+            "model": "deepseek-v4.1-flash[thinking]",
+            "input": 76968,
+            "output": 20299,
+            "cacheRead": 22356,
+            "cacheCreation": 8456,
+            "total": 128079,
+            "costUsd": 0.025060067999999998,
+            "cacheSavingsUsd": 0.003286332
+          },
+          {
+            "month": "2026-08",
+            "model": "openrouter/glm-5.3",
+            "input": 69206,
+            "output": 22304,
+            "cacheRead": 20943,
+            "cacheCreation": 7956,
+            "total": 120409,
+            "costUsd": 0.21160958,
+            "cacheSavingsUsd": 0.023875019999999997
+          }
+        ],
+        "hourModels": [
+          {
+            "hour": 2,
+            "model": "deepseek-v4.1-flash[thinking]",
+            "input": 15883,
+            "output": 3056,
+            "cacheRead": 3699,
+            "cacheCreation": 1646,
+            "total": 24284,
+            "costUsd": 0.004474047,
+            "cacheSavingsUsd": 0.0005437529999999999
+          },
+          {
+            "hour": 3,
+            "model": "openrouter/glm-5.3",
+            "input": 5651,
+            "output": 1985,
+            "cacheRead": 1856,
+            "cacheCreation": 664,
+            "total": 10156,
+            "costUsd": 0.018057559999999997,
+            "cacheSavingsUsd": 0.0021158399999999995
+          },
+          {
+            "hour": 9,
+            "model": "deepseek-v4.1-flash[thinking]",
+            "input": 15884,
+            "output": 3057,
+            "cacheRead": 3700,
+            "cacheCreation": 1647,
+            "total": 24288,
+            "costUsd": 0.00447495,
+            "cacheSavingsUsd": 0.0005438999999999999
+          },
+          {
+            "hour": 11,
+            "model": "openrouter/glm-5.3",
+            "input": 5651,
+            "output": 1985,
+            "cacheRead": 1856,
+            "cacheCreation": 664,
+            "total": 10156,
+            "costUsd": 0.018057559999999997,
+            "cacheSavingsUsd": 0.0021158399999999995
+          },
+          {
+            "hour": 23,
+            "model": "openrouter/glm-5.3",
+            "input": 5651,
+            "output": 1985,
+            "cacheRead": 1857,
+            "cacheCreation": 664,
+            "total": 10157,
+            "costUsd": 0.018057819999999995,
+            "cacheSavingsUsd": 0.00211698
+          }
+        ]
+      },
+      {
+        "id": "kimi-code-cli",
+        "name": "Kimi Code CLI",
+        "status": "idle",
+        "note": null,
+        "today": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheCreation": 0,
+          "total": 0
+        },
+        "daily": [
+          {
+            "date": "2026-06-25",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-06-26",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-06-27",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-06-28",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-06-29",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-06-30",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-01",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-02",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-03",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-04",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-05",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-06",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-07",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-08",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-09",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-10",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-11",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-12",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-13",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-14",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-15",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-16",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-17",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-18",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-19",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-20",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-21",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-22",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-23",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-24",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-25",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-26",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-27",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-28",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-29",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-30",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-07-31",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-08-01",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-08-02",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          },
+          {
+            "date": "2026-08-03",
+            "input": 0,
+            "output": 0,
+            "total": 0,
+            "cacheRead": 0,
+            "cacheCreation": 0
+          }
+        ],
+        "hours": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "todayCostUsd": null,
+        "projects": [],
+        "dailyModels": [],
+        "monthModels": [],
+        "hourModels": []
+      }
+    ],
+    "services": [],
+    "totalCostUsd": 1.932529147
+  }
+}

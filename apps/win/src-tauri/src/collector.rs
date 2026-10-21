@@ -75,6 +75,25 @@ pub fn run_local_collection(credentials: CredentialPayloads) -> Result<BridgeRes
     run_configured_collection(credentials, &AppSettings::default())
 }
 
+/// Provider rawValue → 出站额度凭证字段 (mac `ProviderRegistry` 的 injectionKind 同表)。
+/// 增删 provider 必须与 `settings::PROVIDERS` 同步: 缺表即该家额度静默不查 ——
+/// C068 实测 Cline 曾漏表 (设置页可配置并保存凭证, 采集请求却从不携带)。
+pub fn quota_credential_field(provider: &str) -> Option<&'static str> {
+    match provider {
+        "kimi" => Some("kimiQuotaAccounts"),
+        "deepseek" => Some("deepseekQuotaAccounts"),
+        "volcengine" => Some("volcengineQuotaAccounts"),
+        "zhipu" => Some("zhipuQuotaAccounts"),
+        "claude" => Some("claudeQuotaAccounts"),
+        "grok" => Some("grokQuotaAccounts"),
+        "opencodeGo" => Some("opencodeGoQuotaAccounts"),
+        "codex" => Some("codexQuotaAccounts"),
+        "stepfun" => Some("stepfunQuotaAccounts"),
+        "cline" => Some("clineQuotaAccounts"),
+        _ => None,
+    }
+}
+
 /// 应用入口统一消费配置；凭据存在并不等于用户已授权联网。
 pub fn build_configured_request(
     now: chrono::DateTime<Local>,
@@ -84,17 +103,8 @@ pub fn build_configured_request(
     let mut filtered = CredentialPayloads::new();
     if settings.consent_version == 1 {
         for provider in &settings.enabled_providers {
-            let field = match provider.as_str() {
-                "kimi" => "kimiQuotaAccounts",
-                "deepseek" => "deepseekQuotaAccounts",
-                "volcengine" => "volcengineQuotaAccounts",
-                "zhipu" => "zhipuQuotaAccounts",
-                "claude" => "claudeQuotaAccounts",
-                "grok" => "grokQuotaAccounts",
-                "opencodeGo" => "opencodeGoQuotaAccounts",
-                "codex" => "codexQuotaAccounts",
-                "stepfun" => "stepfunQuotaAccounts",
-                _ => continue,
+            let Some(field) = quota_credential_field(provider) else {
+                continue;
             };
             if let Some(value) = credentials
                 .get(field)
@@ -177,6 +187,58 @@ pub fn run_configured_collection(
     settings: &AppSettings,
 ) -> Result<BridgeResponse, String> {
     let request = build_configured_request(Local::now(), &credentials, settings);
+    let input = serde_json::to_vec(&request).map_err(|error| error.to_string())?;
+    Ok(run_bytes_panic_safe(&input))
+}
+
+/// 定向刷新单个订阅 Provider 的请求 (mac `CollectorRunInput.scopedRunInput` 同契约):
+/// 只装配目标 Provider 的凭证 (含 Claude/Grok 的 OAuth 与 providerMeta), capabilities
+/// 仅 `externalQuotas`, 并标记 `subscriptionQuotaOnly` / `subscriptionProviders`;
+/// 不携带本机会话、本地定价与 `days` —— 定向刷新不重扫会话、不重算成本。
+/// fail-closed: 未授权 / 未启用 / 无凭证一律返回错误, 不启动采集, 不伪造成功。
+pub fn build_scoped_request(
+    now: chrono::DateTime<Local>,
+    credentials: &CredentialPayloads,
+    settings: &AppSettings,
+    provider: &str,
+) -> Result<BridgeRequest, String> {
+    if settings.consent_version != 1 {
+        return Err("SCOPED_REFRESH_UNAUTHORIZED".into());
+    }
+    if quota_credential_field(provider).is_none() {
+        return Err("SCOPED_REFRESH_UNKNOWN_PROVIDER".into());
+    }
+    if !settings.enabled_providers.iter().any(|p| p == provider) {
+        return Err("SCOPED_REFRESH_DISABLED".into());
+    }
+    let mut scoped = settings.clone();
+    scoped.enabled_providers = vec![provider.to_owned()];
+    scoped.usage_enabled = false;
+    scoped.pricing_overrides.clear();
+    let mut request = build_configured_request(now, credentials, &scoped);
+    if request.credentials.is_empty() {
+        return Err("SCOPED_REFRESH_UNCONFIGURED".into());
+    }
+    request.context.remove("days");
+    request
+        .context
+        .insert("capabilities".into(), serde_json::json!(["externalQuotas"]));
+    request
+        .context
+        .insert("subscriptionQuotaOnly".into(), Value::Bool(true));
+    request.context.insert(
+        "subscriptionProviders".into(),
+        serde_json::json!([provider]),
+    );
+    Ok(request)
+}
+
+pub fn run_scoped_collection(
+    credentials: CredentialPayloads,
+    settings: &AppSettings,
+    provider: &str,
+) -> Result<BridgeResponse, String> {
+    let request = build_scoped_request(Local::now(), &credentials, settings, provider)?;
     let input = serde_json::to_vec(&request).map_err(|error| error.to_string())?;
     Ok(run_bytes_panic_safe(&input))
 }

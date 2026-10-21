@@ -100,6 +100,16 @@
         "total": {
           "type": "integer",
           "minimum": 0
+        },
+        "cacheRead": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "原始缓存读取 token (C070); input 为含缓存的展示口径, 原始输入 = input − cacheRead − cacheCreation"
+        },
+        "cacheCreation": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "原始缓存写入 token (C070)"
         }
       }
     },
@@ -175,6 +185,24 @@
               "minimum": 0
             }
           }
+        },
+        "dailyModels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dailyModel"
+          }
+        },
+        "monthModels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/monthModel"
+          }
+        },
+        "hourModels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hourModel"
+          }
         }
       }
     },
@@ -198,6 +226,187 @@
         },
         "windows": {
           "type": "array"
+        }
+      }
+    },
+    "dailyModel": {
+      "type": "object",
+      "description": "日期 × 模型 token 桶 (原始口径), 只覆盖截至今日最近 31 天 (C070)",
+      "required": [
+        "date",
+        "model",
+        "input",
+        "output",
+        "cacheRead",
+        "cacheCreation",
+        "total",
+        "costUsd",
+        "cacheSavingsUsd"
+      ],
+      "properties": {
+        "date": {
+          "type": "string",
+          "format": "date"
+        },
+        "model": {
+          "type": "string"
+        },
+        "input": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cacheRead": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cacheCreation": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "costUsd": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "采集端按 PricingTable 计价; 无匹配单价为 null"
+        },
+        "cacheSavingsUsd": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "缓存读取 × (输入单价 − 缓存读取单价)"
+        }
+      }
+    },
+    "monthModel": {
+      "type": "object",
+      "description": "自然月 × 模型 token 桶, 覆盖采集窗口全部月份 (C070)",
+      "required": [
+        "month",
+        "model",
+        "input",
+        "output",
+        "cacheRead",
+        "cacheCreation",
+        "total",
+        "costUsd",
+        "cacheSavingsUsd"
+      ],
+      "properties": {
+        "month": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}$"
+        },
+        "model": {
+          "type": "string"
+        },
+        "input": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cacheRead": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cacheCreation": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "costUsd": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "采集端按 PricingTable 计价; 无匹配单价为 null"
+        },
+        "cacheSavingsUsd": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "缓存读取 × (输入单价 − 缓存读取单价)"
+        }
+      }
+    },
+    "hourModel": {
+      "type": "object",
+      "description": "今日 小时 × 模型 token 桶 (C070)",
+      "required": [
+        "hour",
+        "model",
+        "input",
+        "output",
+        "cacheRead",
+        "cacheCreation",
+        "total",
+        "costUsd",
+        "cacheSavingsUsd"
+      ],
+      "properties": {
+        "hour": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 23
+        },
+        "model": {
+          "type": "string"
+        },
+        "input": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cacheRead": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cacheCreation": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "costUsd": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "采集端按 PricingTable 计价; 无匹配单价为 null"
+        },
+        "cacheSavingsUsd": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "缓存读取 × (输入单价 − 缓存读取单价)"
         }
       }
     }

@@ -296,7 +296,18 @@ pub struct UsageContribution {
     pub models_today: Vec<ModelDelta>,
     pub projects_today: Vec<ProjectDelta>,
     pub hours: Vec<u64>,
+    /// 日期 × 模型 token 桶, 只覆盖截至今日的最近 [`DETAIL_DAYS`] 天 (C070):
+    /// 支撑工作台近 7 / 30 天与本月的真实模型构成与按桶计价。
+    #[serde(default)]
+    pub models_by_day: BTreeMap<String, BTreeMap<String, TokenBucket>>,
+    /// 今日 小时 × 模型 token 桶 (C070): 支撑今日逐小时的构成 / 模型 / 费用走势。
+    #[serde(default)]
+    pub hour_models_today: BTreeMap<u8, BTreeMap<String, TokenBucket>>,
 }
+
+/// 逐日 × 模型明细保留的天数 (截至今日, 含今日; C070)。覆盖近 30 天与任意整月;
+/// 更早的历史只保留月 × 模型粒度, 以控制增量缓存与 artifact 体积。
+pub const DETAIL_DAYS: usize = 31;
 
 /// A bounded source-level replacement. It allows local adapters to describe
 /// append, rewrite, and delete without exposing raw records to aggregation.
@@ -334,6 +345,8 @@ pub struct UsageContributionBuilder {
     projects_today: HashMap<String, u64>,
     project_order: Vec<String>,
     hours: [u64; 24],
+    models_by_day: BTreeMap<String, BTreeMap<String, TokenBucket>>,
+    hour_models_today: BTreeMap<u8, BTreeMap<String, TokenBucket>>,
 }
 
 impl UsageContributionBuilder {
@@ -347,6 +360,8 @@ impl UsageContributionBuilder {
             projects_today: HashMap::new(),
             project_order: Vec::new(),
             hours: [0; 24],
+            models_by_day: BTreeMap::new(),
+            hour_models_today: BTreeMap::new(),
         }
     }
 
@@ -386,6 +401,20 @@ impl UsageContributionBuilder {
                     sample.cache_read,
                     sample.cache_creation,
                 );
+            // 日期 × 模型只保留最近 DETAIL_DAYS 天 (C070)
+            if day_index + DETAIL_DAYS >= self.window.day_list.len() {
+                self.models_by_day
+                    .entry(date.clone())
+                    .or_default()
+                    .entry(model.to_owned())
+                    .or_default()
+                    .add(
+                        sample.input,
+                        sample.output,
+                        sample.cache_read,
+                        sample.cache_creation,
+                    );
+            }
         }
         if day_index + 1 != self.window.day_list.len() {
             return true;
@@ -407,6 +436,17 @@ impl UsageContributionBuilder {
                     .saturating_add(sample.cache_read)
                     .saturating_add(sample.cache_creation),
             );
+            self.hour_models_today
+                .entry(hour as u8)
+                .or_default()
+                .entry(model.to_owned())
+                .or_default()
+                .add(
+                    sample.input,
+                    sample.output,
+                    sample.cache_read,
+                    sample.cache_creation,
+                );
         }
         if let Some(project) = sample.project.filter(|value| !value.is_empty()) {
             if !self.projects_today.contains_key(project) {
@@ -441,6 +481,20 @@ impl UsageContributionBuilder {
         let Some(day_indexes) = day_indexes else {
             return false;
         };
+        // 新增明细与 by_day 同一校验口径, 且在任何合并前完成 (失败不留半合并状态)
+        let detail_outside_window = contribution.models_by_day.keys().any(|day| {
+            !self
+                .window
+                .day_list
+                .iter()
+                .any(|candidate| candidate == day)
+        }) || contribution
+            .hour_models_today
+            .keys()
+            .any(|hour| usize::from(*hour) >= self.hours.len());
+        if detail_outside_window {
+            return false;
+        }
         for ((_, bucket), day_index) in contribution.by_day.iter().zip(day_indexes) {
             self.by_day.entry(day_index).or_default().merge(bucket);
         }
@@ -468,6 +522,18 @@ impl UsageContributionBuilder {
         }
         for (index, value) in contribution.hours.iter().enumerate() {
             self.hours[index] = self.hours[index].saturating_add(*value);
+        }
+        for (day, models) in &contribution.models_by_day {
+            let day_entry = self.models_by_day.entry(day.clone()).or_default();
+            for (model, bucket) in models {
+                day_entry.entry(model.clone()).or_default().merge(bucket);
+            }
+        }
+        for (hour, models) in &contribution.hour_models_today {
+            let hour_entry = self.hour_models_today.entry(*hour).or_default();
+            for (model, bucket) in models {
+                hour_entry.entry(model.clone()).or_default().merge(bucket);
+            }
         }
         true
     }
@@ -513,16 +579,61 @@ impl UsageContributionBuilder {
                 })
                 .collect(),
             hours: self.hours.to_vec(),
+            models_by_day: self.models_by_day.clone(),
+            hour_models_today: self.hour_models_today.clone(),
         }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct DailyUsage {
     pub date: String,
+    /// 展示口径: 含缓存读取与缓存写入 (历史契约, 保持不变)。
     pub input: u64,
     pub output: u64,
     pub total: u64,
+    /// 原始缓存读取 / 写入 (C070): 原始输入 = input − cacheRead − cacheCreation。
+    #[serde(default)]
+    pub cache_read: u64,
+    #[serde(default)]
+    pub cache_creation: u64,
+}
+
+/// 日期 × 模型 token 桶 (原始口径, 与 `AgentUsage.today` 同) 及采集端计价 (C070)。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DailyModelUsage {
+    pub date: String,
+    pub model: String,
+    #[serde(flatten)]
+    pub tokens: TokenBucket,
+    pub cost_usd: Option<f64>,
+    pub cache_savings_usd: Option<f64>,
+}
+
+/// 自然月 × 模型 token 桶及计价 (C070)。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MonthModelUsage {
+    pub month: String,
+    pub model: String,
+    #[serde(flatten)]
+    pub tokens: TokenBucket,
+    pub cost_usd: Option<f64>,
+    pub cache_savings_usd: Option<f64>,
+}
+
+/// 今日 小时 × 模型 token 桶及计价 (C070)。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct HourModelUsage {
+    pub hour: u8,
+    pub model: String,
+    #[serde(flatten)]
+    pub tokens: TokenBucket,
+    pub cost_usd: Option<f64>,
+    pub cache_savings_usd: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -562,6 +673,13 @@ pub struct AgentUsage {
     #[serde(default)]
     pub hours: Vec<u64>,
     pub today_cost_usd: Option<f64>,
+    /// C070 工作台明细 (旧 artifact 缺失时为空, 工作台对应指标显示「—」)。
+    #[serde(default)]
+    pub daily_models: Vec<DailyModelUsage>,
+    #[serde(default)]
+    pub month_models: Vec<MonthModelUsage>,
+    #[serde(default)]
+    pub hour_models: Vec<HourModelUsage>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -820,6 +938,8 @@ mod tests {
             models_today: Vec::new(),
             projects_today: Vec::new(),
             hours: vec![0; 24],
+            models_by_day: Default::default(),
+            hour_models_today: Default::default(),
         };
         let encoded = serde_json::to_value(SourceDeltaChange::replace(
             "source-a",

@@ -29,7 +29,8 @@ pub const MAX_JSONL_RECORD_BYTES: usize = 1024 * 1024;
 pub const CACHE_SCHEMA_VERSION: u32 = 1;
 pub const PARSER_VERSION: u32 = 2;
 /// v2: 缓存条目新增自然月 × 模型聚合 (modelMonths); 旧条目按版本不匹配全量重建一次.
-pub const AGGREGATION_VERSION: u32 = 2;
+/// v3 (C070): 新增最近 31 天 日期 × 模型 与今日 小时 × 模型 token 桶; 旧条目全量重建一次.
+pub const AGGREGATION_VERSION: u32 = 3;
 const FINGERPRINT_SEGMENT_BYTES: u64 = 64 * 1024;
 // Cache files are small but numerous; one bounded writer avoids APFS metadata
 // contention while still overlapping serialization with the source scan.
@@ -499,6 +500,10 @@ struct CacheEntry {
 /// every daily bucket while the domain contribution remains ergonomic.
 /// 自然月 × 模型的压缩缓存表示 (月 key → 模型 → 五元 token 桶).
 type CompactMonthModels = Vec<(String, Vec<(String, [u64; 5])>)>;
+/// 日期 × 模型的压缩缓存表示 (窗口日序号 → 模型 → 五元 token 桶; C070).
+type CompactDayModels = Vec<(u16, Vec<(String, [u64; 5])>)>;
+/// 今日 小时 × 模型的压缩缓存表示 (小时 → 模型 → 五元 token 桶; C070).
+type CompactHourModels = Vec<(u8, Vec<(String, [u64; 5])>)>;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub(crate) struct CompactContribution {
@@ -508,6 +513,24 @@ pub(crate) struct CompactContribution {
     models_today: Vec<(String, [u64; 5])>,
     projects_today: Vec<(String, u64)>,
     hours: Vec<u64>,
+    #[serde(default)]
+    day_models: CompactDayModels,
+    #[serde(default)]
+    hour_models: CompactHourModels,
+}
+
+fn compact_models(models: &BTreeMap<String, TokenBucket>) -> Vec<(String, [u64; 5])> {
+    models
+        .iter()
+        .map(|(model, bucket)| (model.clone(), bucket_array(bucket)))
+        .collect()
+}
+
+fn expand_models(models: &[(String, [u64; 5])]) -> BTreeMap<String, TokenBucket> {
+    models
+        .iter()
+        .map(|(model, values)| (model.clone(), bucket_from_array(*values)))
+        .collect()
 }
 
 impl CompactContribution {
@@ -540,9 +563,28 @@ impl CompactContribution {
                 )
             })
             .collect();
+        let day_models = value
+            .models_by_day
+            .iter()
+            .map(|(day, models)| {
+                window
+                    .day_list
+                    .iter()
+                    .position(|candidate| candidate == day)
+                    .and_then(|index| u16::try_from(index).ok())
+                    .map(|index| (index, compact_models(models)))
+            })
+            .collect::<Option<Vec<_>>>()?;
+        let hour_models = value
+            .hour_models_today
+            .iter()
+            .map(|(hour, models)| (*hour, compact_models(models)))
+            .collect();
         Some(Self {
             days,
             month_models,
+            day_models,
+            hour_models,
             models_today: value
                 .models_today
                 .iter()
@@ -567,6 +609,17 @@ impl CompactContribution {
                     .get(*index as usize)
                     .cloned()
                     .map(|day| (day, bucket_from_array(*values)))
+            })
+            .collect::<Option<BTreeMap<_, _>>>()?;
+        let models_by_day = self
+            .day_models
+            .iter()
+            .map(|(index, models)| {
+                window
+                    .day_list
+                    .get(*index as usize)
+                    .cloned()
+                    .map(|day| (day, expand_models(models)))
             })
             .collect::<Option<BTreeMap<_, _>>>()?;
         Some(UsageContribution {
@@ -601,6 +654,12 @@ impl CompactContribution {
                 .collect(),
             hours: self.hours.clone(),
             by_day,
+            models_by_day,
+            hour_models_today: self
+                .hour_models
+                .iter()
+                .map(|(hour, models)| (*hour, expand_models(models)))
+                .collect(),
         })
     }
 }
@@ -1359,6 +1418,53 @@ mod tests {
             "cancelled reconciliation must not replace the source manifest"
         );
         let _ = fs::remove_dir_all(root);
+    }
+
+    /// C070: 压缩缓存表示必须无损保留 日期×模型 与 今日 小时×模型 明细桶;
+    /// 旧条目 (无新字段) 仍可反序列化, 由 AGGREGATION_VERSION 升级触发重建。
+    #[test]
+    fn compact_cache_round_trips_workbench_detail_buckets() {
+        let context = serde_json::from_value(json!({
+            "now": "2026-07-28T12:00:00+08:00", "timezone": "Asia/Shanghai", "days": 40
+        }))
+        .unwrap();
+        let window = CollectionWindow::from_context(&context).unwrap();
+        let mut builder = UsageContributionBuilder::new(window.clone());
+        for (at, model) in [
+            (1_785_211_200_000i64 - 39 * 86_400_000, "old-model"),
+            (1_785_211_200_000 - 5 * 86_400_000, "k3-agent"),
+            (1_785_211_200_000 - 3_600_000, "k3-agent"),
+            (1_785_211_200_000, "gpt-5"),
+        ] {
+            assert!(builder.record(collector_domain::UsageSample {
+                timestamp_millis: at,
+                model: Some(model),
+                input: 7,
+                output: 3,
+                cache_read: 2,
+                cache_creation: 1,
+                project: None,
+            }));
+        }
+        let contribution = builder.contribution();
+        assert_eq!(contribution.models_by_day.len(), 2, "39 天前不进逐日明细");
+        assert_eq!(contribution.hour_models_today.len(), 2);
+        let compact = super::CompactContribution::from_domain(&contribution, &window).unwrap();
+        let encoded = serde_json::to_string(&compact).unwrap();
+        let decoded: super::CompactContribution = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded.to_domain(&window).unwrap(), contribution);
+
+        let mut legacy = serde_json::to_value(&compact).unwrap();
+        legacy.as_object_mut().unwrap().remove("day_models");
+        legacy.as_object_mut().unwrap().remove("hour_models");
+        let legacy: super::CompactContribution = serde_json::from_value(legacy).unwrap();
+        let restored = legacy.to_domain(&window).unwrap();
+        assert!(restored.models_by_day.is_empty() && restored.hour_models_today.is_empty());
+        assert_eq!(
+            super::AGGREGATION_VERSION,
+            3,
+            "明细结构变化须升级缓存聚合版本"
+        );
     }
 
     #[test]

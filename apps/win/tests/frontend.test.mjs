@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { boot, defaults, fixture } from "./dom.mjs";
+import { analytics, boot, defaults, fixture, settle } from "./dom.mjs";
 
 test("valid collector view model renders cards and keyboard-accessible collapse", async () => {
   const app = await boot();
@@ -39,68 +39,145 @@ test("settings window navigation switches categories and persists configuration"
   await app.document.querySelector('[data-category="modelPricing"]').click();
   assert.equal(app.node("pane-modelPricing").classList.contains("hidden"), false);
   await app.document.querySelector('[data-category="general"]').click();
-  app.node("setting-theme").value = "nothing";
-  app.node("setting-hotkey").value = "Control+Shift+J";
-  await app.node("settings-save").click();
+  // 界面风格为 mac FluentSegmentedPicker 等价分段按钮, 隐藏 <select> 仍是值载体
+  const themeChoices = () => [...app.node("pane-general").querySelectorAll(".fluent-seg")][0].querySelectorAll(".seg-opt");
+  assert.deepEqual([...themeChoices()].map((n) => n.textContent), ["经典", "Nothing"]);
+  assert.equal(themeChoices()[0].classList.contains("active"), true, "读取设置后同步选中项");
+  await themeChoices()[1].click();
+  assert.equal(app.node("setting-theme").value, "nothing");
+  assert.equal(themeChoices()[1].getAttribute("aria-checked"), "true");
+  // 设置即时生效 (C069): 分段点击即保存, 热键在 change (失焦/回车) 时保存
   assert.equal(app.state.settings.theme, "nothing");
+  app.node("setting-hotkey").value = "Control+Shift+J";
+  await app.node("setting-hotkey").dispatch("change");
   assert.equal(app.state.settings.hotkey, "Control+Shift+J");
-  assert.equal(app.document.body.classList.contains("theme-nothing"), true);
+  assert.equal(app.node("settings-save"), null, "无全局保存按钮");
+  // mac SettingsView 恒用 SettingsDemoTokens Fluent 平面 token: 界面风格只作用于看板,
+  // 设置窗口本身不得切到 Nothing (C067)
+  assert.equal(app.document.body.classList.contains("theme-nothing"), false);
+  assert.equal(app.document.body.classList.contains("theme-fluent"), true);
   await app.document.querySelector('[data-category="subscription"]').click();
   assert.equal(app.node("pane-subscription").classList.contains("hidden"), false);
 });
 
-test("settings pane-agentUsage renders T07 analytics workbench with 4 KPI tiles, time range picker, smooth timeline chart, canonical models and agent matrix", async () => {
+test("agent usage workbench renders the Rust analytics snapshot verbatim, without estimates (C070)", async () => {
   const app = await boot({ html: "settings.html" });
   await app.document.querySelector('[data-category="agentUsage"]').click();
+  await settle();
   const pane = app.node("pane-agentUsage");
   assert.equal(pane.classList.contains("hidden"), false);
+  // mac 工作台默认「近 7 天」, 数值只来自 get_usage_analytics
+  assert.ok(app.calls.some(call => call.command === "get_usage_analytics" && call.args.range === "7d"));
+  const week = analytics["7d"];
 
-  // 1. 4 大核心 KPI 磁贴
-  const kpiGrid = pane.querySelector("#kpi-tiles");
-  assert.ok(kpiGrid, "必须包含 #kpi-tiles 容器");
-  assert.equal(kpiGrid.querySelectorAll(".kpi-tile").length, 4, "必须渲染 4 个 KPI 磁贴");
-  assert.match(kpiGrid.textContent, /总 Token 消耗/);
-  assert.match(kpiGrid.textContent, /折算费用/);
-  assert.match(kpiGrid.textContent, /Cache 命中率/);
-  assert.match(kpiGrid.textContent, /活跃 Agent/);
-  assert.match(kpiGrid.textContent, /184K/);
+  // 1. KPI 磁贴: 文案逐字取自快照, 不再有 ×15.2 / ×16.5 / 写死命中率
+  const tiles = pane.querySelectorAll("#kpi-tiles .kpi-tile");
+  assert.equal(tiles.length, 4);
+  assert.deepEqual(tiles.map(tile => tile.querySelector(".kpi-value").textContent), [
+    week.kpi.totalTokensText, week.kpi.costText, week.kpi.cacheHitRateText, `${week.kpi.activeAgentsCount} 个`,
+  ]);
+  assert.equal(tiles[1].querySelector(".wb-chip").textContent, week.kpi.costTagText);
+  assert.equal(tiles[3].querySelector(".kpi-sub").textContent, week.kpi.topAgentText);
+  assert.doesNotMatch(pane.textContent, /≈ ¥|折算费用|价格引擎/);
 
-  // 2. 5 档时间选择器切换
-  const timeBtns = pane.querySelectorAll(".time-range-btn");
-  assert.equal(timeBtns.length, 5, "包含 5 档时间切片按钮");
-  const sevenDayBtn = [...timeBtns].find((b) => b.textContent === "近 7 天");
-  assert.ok(sevenDayBtn);
-  await sevenDayBtn.click();
-  assert.equal(pane.querySelector(".time-range-btn.active").textContent, "近 7 天");
+  // 2. 时序: Agent 维度图例 = 活跃 Agent; 摘要为峰值 / 均值
+  const chart = pane.querySelector(".workbench-chart-card");
+  assert.ok(chart.querySelector("svg"));
+  assert.equal(chart.querySelectorAll(".wb-legend-item").length, week.agents.length);
+  assert.equal(chart.querySelectorAll(".wb-point").length, week.agents.length * week.timeline.points.length, "≤14 点画点标记");
+  assert.equal(chart.querySelector(".wb-summary-peak").textContent, week.timeline.peakSummary.replaceAll("**", ""));
+  await [...chart.querySelectorAll(".chart-dim-tabs .seg-opt")].find(b => b.textContent === "Token 构成").click();
+  assert.deepEqual(pane.querySelectorAll(".workbench-chart-card .wb-legend-item").map(item => item.textContent), ["输入 Prompt", "输出 Output", "缓存命中 Read"]);
+  await [...pane.querySelectorAll(".workbench-chart-card .chart-dim-tabs .seg-opt")].find(b => b.textContent === "费用").click();
+  assert.equal(pane.querySelector(".workbench-chart-card .wb-legend-item").textContent, "折算总费用 ($)");
 
-  // 3. 时序趋势分析卡片与平滑图表
-  const chartCard = pane.querySelector(".workbench-chart-card");
-  assert.ok(chartCard, "包含时序走势卡片");
-  assert.ok(chartCard.querySelector("svg"), "渲染 SVG 图表");
-  assert.equal(chartCard.querySelectorAll(".dim-tab-btn").length, 4, "包含 4 档维度切换");
+  // 3. 模型分布: 合并视图逐行, 多渠道可展开; 原始渠道平铺全部来源
+  const models = pane.querySelector(".canonical-card");
+  const sourceCount = week.models.reduce((sum, model) => sum + Math.max(1, model.sources.length), 0);
+  assert.match(models.textContent, new RegExp(`${week.models.length} 款主模型 · ${sourceCount} 个渠道`));
+  assert.equal(models.querySelectorAll(".canonical-row").length, week.models.length);
+  const first = models.querySelectorAll(".canonical-row")[0];
+  assert.match(first.textContent, new RegExp(`${week.models[0].displayName}.*规范键: ${week.models[0].canonicalKey}`));
+  assert.ok(first.textContent.includes(week.models[0].costText));
+  const unpriced = week.models.find(model => model.costText === null);
+  assert.ok(unpriced, "fixture 含未定价模型");
+  const merged = week.models.findIndex(model => model.sources.length > 1);
+  await pane.querySelectorAll(".canonical-card .canonical-row")[merged].querySelector(".wb-expand").click();
+  assert.equal(pane.querySelectorAll(".canonical-card .wb-source").length, week.models[merged].sources.length);
+  await [...pane.querySelectorAll(".canonical-card .seg-opt")].find(b => b.textContent === "原始渠道").click();
+  assert.equal(pane.querySelectorAll(".canonical-card .wb-raw-row").length, sourceCount);
 
-  // 4. 规范模型智能归一化大盘
-  const canCard = pane.querySelector(".canonical-card");
-  assert.ok(canCard, "包含规范模型卡片");
-  assert.match(canCard.textContent, /Kimi K2.5/);
-  assert.match(canCard.textContent, /GPT-5.4/);
-  assert.ok(canCard.querySelectorAll(".canonical-row").length >= 2);
+  // 4. Agent 表现: 只列活跃 Agent; 非今日范围不下发项目分布
+  const agents = pane.querySelector(".agent-matrix-card");
+  assert.match(agents.textContent, new RegExp(`${week.agents.length} 个活跃`));
+  assert.equal(agents.querySelectorAll(".wb-agent").length, week.agents.length);
+  assert.equal(agents.querySelectorAll(".wb-stack i").length, week.agents.length * 3);
+  await agents.querySelector(".wb-expand").click();
+  assert.doesNotMatch(pane.querySelector(".agent-matrix-card").textContent, /今日 Top 工程/);
 
-  // 5. 多 Agent 矩阵对比
-  const matrixCard = pane.querySelector(".agent-matrix-card");
-  assert.ok(matrixCard, "包含 Agent 矩阵对比卡片");
-  assert.match(matrixCard.textContent, /Kimi Code/);
-  assert.match(matrixCard.textContent, /Codex CLI/);
+  // 5. Token 构成: 四象限取原始口径文案, 24 格今日时段
+  const composition = pane.querySelector(".composition-card");
+  assert.deepEqual(composition.querySelectorAll(".composition-box-value").map(value => value.textContent), [
+    week.kpi.inputTokensText, week.kpi.outputTokensText, week.kpi.cacheReadTokensText, week.kpi.cacheCreationTokensText,
+  ]);
+  assert.equal(composition.querySelectorAll(".wb-hour").length, 24);
+  assert.equal(composition.querySelectorAll(".wb-hour.zero").length, week.todayHourlyTokens.filter(value => value === 0).length);
 
-  // 6. Token 构成分析
-  const compCard = pane.querySelector(".composition-card");
-  assert.ok(compCard, "包含 Token 构成卡片");
-  assert.equal(compCard.querySelectorAll(".composition-box").length, 4);
+  // 6. 切到「今日」: 重新取数, 项目分布只在今日出现
+  await [...pane.querySelectorAll(".time-range-picker .seg-opt")].find(b => b.textContent === "今日").click();
+  assert.equal(app.calls.filter(call => call.command === "get_usage_analytics").at(-1).args.range, "today");
+  assert.equal(pane.querySelector(".time-range-picker .seg-opt.active").textContent, "今日");
+  assert.equal(pane.querySelector("#kpi-tiles .kpi-value").textContent, analytics.today.kpi.totalTokensText);
+  // 展开状态跨范围保留 (mac @State expandedAgentIDs): 第 4 步展开的 Claude Code 此时显示今日项目
+  const claude = pane.querySelectorAll(".agent-matrix-card .wb-agent").find(row => row.textContent.includes("Claude Code"));
+  assert.equal(claude.querySelector(".wb-expand").getAttribute("aria-expanded"), "true");
+  assert.match(pane.querySelector(".agent-matrix-card").textContent, /今日 Top 工程:.*bruce/);
 
-  // 7. 会话来源与授权下沉保留
-  assert.ok(pane.textContent.includes("Rust Collector"));
-  assert.ok(pane.textContent.includes("Claude Code"));
-  assert.ok(pane.textContent.includes("未发现会话记录"));
+  // 7. 会话来源与采集探针 (mac footer) 保留
+  assert.match(pane.textContent, /会话来源与采集探针/);
+  assert.ok(pane.textContent.includes("所有会话仅在本机分析，绝不上报远程服务器"));
+});
+
+test("legacy artifacts and missing snapshots render dashes, never zero-cost guesses (C070)", async () => {
+  const legacy = Object.fromEntries(
+    JSON.parse(readFileSync(new URL("../../../tests/fixtures/viewmodel-parity/agent-usage-valid.analytics.json", import.meta.url), "utf8"))
+      .map(snapshot => [snapshot.range, snapshot]),
+  );
+  const app = await boot({ html: "settings.html", workbench: legacy });
+  await app.document.querySelector('[data-category="agentUsage"]').click();
+  await settle();
+  const pane = app.node("pane-agentUsage");
+  const tiles = pane.querySelectorAll("#kpi-tiles .kpi-tile");
+  assert.equal(tiles[1].querySelector(".kpi-value").textContent, "—");
+  assert.equal(tiles[1].querySelector(".wb-chip").textContent, "无明细");
+  assert.equal(tiles[2].querySelector(".kpi-value").textContent, "—");
+  assert.match(pane.querySelector(".canonical-card").textContent, /暂无模型消耗数据/);
+
+  const empty = await boot({ html: "settings.html", workbench: {} });
+  await empty.document.querySelector('[data-category="agentUsage"]').click();
+  await settle();
+  const root = empty.node("workbench-root");
+  assert.ok(root.querySelector(".time-range-picker"), "无快照时仍可切换范围");
+  assert.equal(root.querySelector("#kpi-tiles"), null);
+  assert.equal(empty.errors.length, 0);
+});
+
+test("workbench exports go through the save dialog with mac file names and the selected range (C070)", async () => {
+  const app = await boot({ html: "settings.html" });
+  await app.document.querySelector('[data-category="agentUsage"]').click();
+  await settle();
+  let start = app.calls.length;
+  await app.node("workbench-export-csv").click();
+  let calls = app.calls.slice(start);
+  assert.match(calls[0].args.options.defaultPath, /^bruce_agent_usage_\d{4}-\d{2}-\d{2}\.csv$/);
+  assert.equal(calls[1].command, "export_workbench_csv");
+  assert.equal(calls[1].args.range, "7d");
+  assert.equal(calls[1].args.path, "C:\\\\Users\\\\demo\\\\导出.csv");
+  start = app.calls.length;
+  await app.node("workbench-export-json").click();
+  calls = app.calls.slice(start);
+  assert.equal(calls[0].args.options.defaultPath, "bruce_agent_usage_artifact.json");
+  assert.equal(calls[1].command, "export_workbench_json");
 });
 
 test("manual refresh submits one refresh intent without another collection/read", async () => {
@@ -232,7 +309,12 @@ test("styles.css consumes tier variables and keeps Nothing overrides on new comp
   const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
   assert.match(css, /\.hero-num\s*\{[^}]*--hero-grad-start/, "hero 必须消费档位变量");
   assert.match(css, /\.collapsed-summary \.mini-num\s*\{[^}]*--hero-grad-start/, "收起态数字必须消费档位变量");
-  assert.match(css, /\.theme-nothing \.hero-num\s*\{[^}]*radial-gradient/, "Nothing 点阵覆写必须保留");
+  // Nothing hero = Doto 字体自身的点阵 + 纯色 accent (mac NothingFont.display); 不得再叠加
+  // radial 遮罩 —— 遮罩会把 Doto 的点再切碎, 与 mac 渲染不一致 (C067 并排实测)。
+  const nothingHero = css.match(/\.theme-nothing \.hero-num\s*\{[^}]*\}/)[0];
+  assert.match(nothingHero, /font-family:\s*"Doto"/, "Nothing hero 使用 Doto");
+  assert.match(nothingHero, /background:\s*none/, "Nothing hero 走纯色");
+  assert.doesNotMatch(nothingHero, /radial-gradient/, "Nothing hero 不叠加点阵遮罩");
   assert.match(css, /\.theme-nothing \.collapsed-summary \.mini-num\s*\{[^}]*background:\s*none/, "Nothing 收起态数字走纯色");
   for (const rule of [".theme-nothing .account-card", ".theme-nothing .bal-slots .slot", ".theme-nothing .tag-chip"]) {
     assert.ok(css.includes(rule), `styles.css 缺少 Nothing 覆写 ${rule}`);
@@ -253,10 +335,12 @@ test("agent rows keep distribution details collapsed until expanded, then show m
   // 默认收起 (mac @State 同语义): 明细不渲染, chevron 与 aria 状态一致
   assert.equal(firstRow().querySelectorAll(".legend-row").length, 0);
   assert.equal(firstRow().querySelector(".line1").getAttribute("aria-expanded"), "false");
-  assert.equal(firstRow().querySelector(".row-chev").textContent, "\u2304");
+  assert.equal(firstRow().querySelector(".row-chev").classList.contains("open"), false, "chevron.right 未旋转");
+  assert.ok(firstRow().querySelector(".row-chev svg"), "chevron 为线性图标 (mac SF Symbol 等价)");
   await firstRow().querySelector(".line1").click();
   const row = firstRow();
   assert.equal(row.querySelector(".line1").getAttribute("aria-expanded"), "true");
+  assert.equal(row.querySelector(".row-chev").classList.contains("open"), true, "展开后 chevron 旋转 90°");
   assert.deepEqual([...row.querySelectorAll(".detail-title")].map((n) => n.textContent), ["模型占比", "项目分布"]);
   // 模型 5 条 (含「其他」与极小份额) + 项目 2 条, 全部渲染 (前端不得截断)
   assert.equal(row.querySelectorAll(".legend-row").length, 7);
@@ -277,7 +361,7 @@ test("agent rows keep distribution details collapsed until expanded, then show m
 test("hourly chart, sparklines and live badge follow mac shapes", async () => {
   const app = await boot();
   const stack = () => app.node("stack");
-  // 24 点走势为 SVG 平滑贝塞尔曲线 (非点柱)
+  // 24 点走势为 SVG 折线 (mac LineMark 默认线性插值, 非点柱)
   assert.equal(stack().querySelectorAll(".spark .b").length, 0);
   assert.equal(stack().querySelectorAll(".spark svg path.spark-curve").length, 2);
   // 14 日柱顶恒显每日总量
@@ -289,7 +373,7 @@ test("hourly chart, sparklines and live badge follow mac shapes", async () => {
   const hourlyCard = stack().querySelector('[data-card="hourly"]');
   await hourlyCard.querySelector(".card-head").click();
   const collapsed = app.node("stack").querySelector('[data-card="hourly"]');
-  assert.ok(collapsed.querySelector(".mini-spark svg path.spark-curve"), "收起态迷你贝塞尔曲线");
+  assert.ok(collapsed.querySelector(".mini-spark svg path.spark-curve"), "收起态迷你折线");
   assert.equal(collapsed.querySelector(".mini-peak").textContent, "峰值 71K");
 });
 
@@ -391,7 +475,9 @@ test("Nothing theme renders hero dot-square, threshold legend, project console, 
   assert.match(css, /@font-face\s*\{[^}]*font-family:\s*"Space Mono"/, "必须引入 Space Mono 字体");
   assert.match(css, /\.theme-nothing #panel\s*\{[^}]*border-radius:\s*10px/, "面板圆角对齐 macOS 10px");
   assert.match(css, /\.theme-nothing #panel\s*\{[^}]*background:\s*#000000/, "面板底色对齐 macOS #000000 OLED 纯黑");
-  assert.match(css, /\.theme-nothing \.hud-dot\s*\{[^}]*border-radius:\s*0/, "LIVE 指示灯对齐方块几何");
+  // mac: 卡内 LIVE 为 5pt 实心方点; 顶部 Header 状态灯在 Nothing 下仍是圆点 (Circle)
+  assert.match(css, /\.theme-nothing \.live-dot::after\s*\{[^}]*border-radius:\s*0/, "LIVE 指示灯对齐方块几何");
+  assert.doesNotMatch(css, /\.theme-nothing \.hud-dot\s*\{[^}]*border-radius:\s*0/, "Header 状态灯保持圆形");
 });
 
 test("styles.css defines the P2 shapes and keeps theme overrides for them", () => {
@@ -401,8 +487,9 @@ test("styles.css defines the P2 shapes and keeps theme overrides for them", () =
   }
   // 拖拽手柄仅折叠态可见; Nothing 走势色为 heroGreen; 趋势/纹样不得用内联色
   assert.match(css, /\.card\.collapsed > \.card-head \.drag-handle\s*\{\s*display:\s*inline-flex/);
-  assert.match(css, /\.theme-nothing \.spark\s*\{\s*color:\s*#4A9E5C/);
-  assert.match(css, /\.theme-nothing \.card\.usage-card\s*\{[^}]*radial-gradient/);
+  // mac Nothing 走势线为 heroGreen (#30D158 dark), 用量卡背景为 16pt 点阵层
+  assert.match(css, /\.theme-nothing \.spark\s*\{\s*color:\s*#30D158/);
+  assert.match(css, /\.theme-nothing \.usage-bg\s*\{[^}]*radial-gradient/);
 });
 
 test("settings expose Cline with mac-aligned display names", async () => {
@@ -424,9 +511,9 @@ test("settings expose Cline with mac-aligned display names", async () => {
 
 test("styles.css hides head metadata when collapsed and defines subscription components", () => {
   const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
-  // 折叠态 status 槽被 mini 摘要取代: 「最后更新」与 LIVE 必须随折叠隐藏
-  assert.match(css, /\.card\.collapsed > \.card-head \.updated/);
-  assert.match(css, /\.card\.collapsed > \.card-head \.hud-dot-wrap/);
+  // 折叠态 status 槽被 mini 摘要取代: 「最后更新」与 LIVE 所在的状态件必须随折叠隐藏
+  assert.match(css, /\.card\.collapsed > \.card-head \.card-status\s*\{\s*display:\s*none/);
+  assert.match(css, /\.card\.collapsed > \.card-head \.collapsed-summary\s*\{\s*display:\s*flex/);
   for (const rule of [".sub-extra", ".sub-name-toggle", ".account-card", ".account-head", ".last-success", ".tag-chip", ".bal-slots", ".slot-value"]) {
     assert.ok(css.includes(rule), `styles.css 缺少 ${rule}`);
   }
@@ -435,13 +522,13 @@ test("styles.css hides head metadata when collapsed and defines subscription com
 test("styles.css defines T07 workbench and Fluent 2 toggle controls", () => {
   const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
   for (const rule of [
-    ".time-range-picker",
     ".kpi-tiles-grid",
     ".kpi-tile",
-    ".workbench-chart-card",
-    ".canonical-card",
-    ".agent-matrix-card",
-    ".composition-card",
+    ".wb-chart",
+    ".wb-row",
+    ".wb-stack",
+    ".composition-grid",
+    ".wb-hour-cells",
   ]) {
     assert.ok(css.includes(rule), `styles.css 缺少工作台组件 ${rule}`);
   }
@@ -482,11 +569,18 @@ test("independent settings support consent, model prices, provider gates and mai
   assert.equal(app.state.settings.consentVersion, 0);
   assert.equal(app.state.settings.usageEnabled, false);
   assert.equal(app.node("consent-state").textContent, "尚未授权");
-  // 全局保存覆盖其余设置项, 且不吞掉既有价格校准 (校准来源改为 settings.pricingOverrides)
+  // 单个开关即时保存, 且基于后端最新设置合并, 不吞掉既有价格校准
+  await app.node("consent-confirm").click();
   app.node("setting-usage").checked = false;
-  await app.node("settings-save").click();
+  await app.node("setting-usage").dispatch("change");
   assert.equal(app.state.settings.usageEnabled, false);
-  assert.equal(app.state.settings.pricingOverrides["custom-model"].inputPricePerMillion, 3, "既有校准不被全局保存吞掉");
+  assert.equal(app.state.settings.consentVersion, 1, "其他字段沿用最新值");
+  assert.equal(app.state.settings.pricingOverrides["custom-model"].inputPricePerMillion, 3, "既有校准不被即时保存吞掉");
+  // 授权页单一开关: 切换即撤销 / 确认授权 (修复前该开关不接任何动作)
+  app.node("setting-usage-consent").checked = false;
+  await app.node("setting-usage-consent").dispatch("change");
+  assert.equal(app.state.settings.consentVersion, 0);
+  assert.equal(app.node("consent-state").textContent, "尚未授权");
 });
 
 test("exports use the native save dialog with cancel and fallback paths", async () => {
@@ -595,8 +689,9 @@ test("subscription rows carry brand badge, credential form, plan tag, state and 
   const toggles = [...app.node("setting-providers").querySelectorAll("input.provider-toggle")];
   assert.equal(toggles.length, 10);
   for (const toggle of toggles) toggle.checked = true;
-  toggles.find((node) => node.dataset.provider === "codex").checked = false;
-  await app.node("settings-save").click();
+  const codexToggle = toggles.find((node) => node.dataset.provider === "codex");
+  codexToggle.checked = false;
+  await codexToggle.dispatch("change");
   assert.deepEqual([...app.state.settings.enabledProviders].sort(),
     ["claude", "cline", "deepseek", "grok", "kimi", "opencodeGo", "stepfun", "volcengine", "zhipu"],
     "仅 codex 被取消启用");
@@ -619,14 +714,23 @@ test("credential accounts are keyed objects and save clears secret inputs", asyn
 });
 
 test("invalid credentials/price overrides do not persist and command failures are visible", async () => {
-  // 非法单价覆盖 (来自配置文件的越界值) 必须在保存时被拦下
+  // 非法单价覆盖 (来自配置文件的越界值) 必须在任何即时保存时被拦下, 控件回滚
   const app = await boot({ html: "settings.html", settings: { ...defaults, pricingOverrides: { broken: { inputPricePerMillion: -1 } } } });
-  await app.node("settings-save").click();
+  const themeChoices = [...app.node("pane-general").querySelectorAll(".fluent-seg")][0].querySelectorAll(".seg-opt");
+  await themeChoices[1].click();
   assert.equal(app.calls.some(call => call.command === "save_settings_command"), false, "非法覆盖不得写回");
-  // 命令失败要在界面可见
+  assert.equal(app.node("setting-theme").value, "fluent", "保存失败回滚分段选择");
+  assert.equal(app.node("settings-status").dataset.tone, "warn");
+  // 命令失败 (热键冲突) 要在界面可见, 且热键框回滚为已生效值
   const failing = await boot({ html: "settings.html", reject: { save_settings_command: "热键冲突" } });
-  await failing.node("settings-save").click();
+  failing.node("setting-hotkey").value = "Control+Alt+K";
+  await failing.node("setting-hotkey").dispatch("change");
   assert.match(failing.node("settings-status").textContent, /热键冲突/);
+  assert.equal(failing.node("setting-hotkey").value, "", "冲突热键不留在输入框里冒充已生效");
+  // 失败的开关同样回滚
+  failing.node("setting-notifications").checked = false;
+  await failing.node("setting-notifications").dispatch("change");
+  assert.equal(failing.node("setting-notifications").checked, true);
 });
 
 test("Zhipu optional API address supplies the collector's required default", async () => {
@@ -675,3 +779,213 @@ test("styles.css guarantees adaptive height and pinned footer without flex trunc
   assert.match(css, /#footer\s*\{[^}]*flex:\s*0 0 auto;/);
 });
 
+// ---------- C067: Windows 看板按 mac 源码逐项对齐的回归锁 ----------
+
+test("styles.css never puts `inherit` inside a font shorthand (C067)", () => {
+  // `font: 600 12.5px/1.3 inherit` 是无效声明, 浏览器整条丢弃: 卡片标题失去半粗,
+  // 模型档位按钮回落到 UA 13.33px —— 这是 Windows 与 mac 观感差异的根因之一。
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  // 单独的 `font: inherit` 是合法的 CSS 全局关键字; 只有与其他取值混写才失效
+  assert.doesNotMatch(css, /font:\s*[^\s;{}][^;{}]*\s+inherit\s*;/);
+});
+
+test("heatmap legend swatches carry level colors in both themes (C067)", () => {
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  for (let level = 1; level <= 5; level += 1) {
+    assert.match(css, new RegExp(`\\.heat-legend \\.sw\\.l${level}[^{]*\\{[^}]*background`), `classic 图例 l${level} 有底色`);
+    assert.match(css, new RegExp(`\\.theme-nothing \\.heat-legend \\.sw\\.l${level}[^{]*\\{[^}]*background`), `Nothing 图例 l${level} 有底色`);
+  }
+});
+
+test("classic daily bars scale by day total and stack segments by in-day share (C067)", async () => {
+  const app = await boot();
+  const bars = [...app.node("stack").querySelectorAll(".day-bars")];
+  // fixture 两日 127K / 184K: 峰值日比例 1, 另一日 127/184
+  assert.equal(bars.length, 2);
+  assert.equal(bars[1].style["--ratio"], "1.0000");
+  assert.equal(Number(bars[0].style["--ratio"]).toFixed(2), (127 / 184).toFixed(2));
+  for (const bar of bars) {
+    const total = bar.children.reduce((sum, seg) => sum + parseFloat(seg.style.height), 0);
+    assert.ok(Math.abs(total - 100) < 0.01, "段高为当日内份额, 合计 100%");
+  }
+  // 修复前 .day 由内容定高, flex:1 的柱容器恒为 0 高 —— 必须撑满图表高度
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  assert.match(css, /\.daily-chart \.day\s*\{[^}]*height:\s*100%/);
+  assert.match(css, /\.daily-chart \.day-bars\s*\{[^}]*var\(--ratio/);
+});
+
+test("card header follows mac CollapsibleCardHeader order and embeds the collapsed mini summary (C067)", async () => {
+  const app = await boot();
+  const usage = app.node("stack").querySelector('[data-card="usage"]');
+  const head = usage.querySelector(".card-head");
+  const order = head.children.map((child) => child.className);
+  assert.deepEqual(order, ["drag-handle", "card-title", "card-status", "collapsed-summary", "chev"]);
+  assert.equal(head.querySelector(".card-status .live-text").textContent, "LIVE", "LIVE 位于状态件 (行尾)");
+  const sub = app.node("stack").querySelector('[data-card="subscription"]');
+  assert.ok(sub.querySelector(".card-head .card-status .updated"), "最后更新位于状态件 (行尾)");
+  assert.ok(head.querySelector(".chev svg"), "chevron 为线性图标");
+});
+
+test("model usage chevron toggles top-3 and full list without an extra text row (C067)", async () => {
+  const panel = structuredClone(fixture);
+  const row = (name) => ({ name, share: 0.2, colorHex: "#123456", totalText: "1K", pctText: "20%" });
+  panel.usage.models = { currentMonthKey: "2026-07",
+    tiers: [{ label: "本月", rows: ["a", "b", "c", "d", "e"].map(row) }, { label: "3 月", rows: [] }, { label: "6 月", rows: [] }],
+    months: [] };
+  const app = await boot({ panel });
+  const rows = () => app.node("stack").querySelectorAll(".model-row").length;
+  assert.equal(rows(), 3);
+  assert.doesNotMatch(app.node("stack").textContent, /展开全部/);
+  const expand = app.node("stack").querySelector(".models-expand");
+  assert.equal(expand.getAttribute("aria-expanded"), "false");
+  await expand.click();
+  assert.equal(rows(), 5);
+  assert.equal(app.node("stack").querySelector(".models-expand").getAttribute("aria-expanded"), "true");
+  // 空档位: mac「暂无模型数据」
+  await app.node("stack").querySelectorAll(".tier-seg button")[1].click();
+  assert.match(app.node("stack").textContent, /暂无模型数据/);
+});
+
+test("HUD header mirrors mac dashboardTopHeader in both themes (C067)", async () => {
+  const app = await boot();
+  assert.equal(app.node("runtime-status").textContent, "SYS.OK", "健康态与 mac 同字");
+  assert.equal(app.node("hud-agents").textContent, "● 2 AGENTS ACTIVE");
+  app.state.settings.theme = "nothing";
+  await app.emit("settings-updated", app.state.settings);
+  assert.equal(app.node("hud-agents").textContent, "2 AGENTS RUNNING");
+  // 运行态异常仍显式可见 (C009), 且标记告警样式
+  await app.emit("dashboard-updated", { ...fixture, runtime: { phase: "stale" } });
+  assert.equal(app.node("runtime-status").textContent, "数据过期");
+  assert.equal(app.node("runtime-status").classList.contains("degraded"), true);
+});
+
+test("Nothing dot columns fill top-down like mac nothingCellSlots (C067)", async () => {
+  const panel = structuredClone(fixture);
+  panel.usage.days = [{ date: "2026-07-28", total: 100, totalText: "100", segments: [
+    { agentId: "kimi-code-cli", color: "blue", colorHex: "#0a84ff", value: 25 },
+    { agentId: "codex", color: "purple", colorHex: "#bf5af2", value: 75 },
+  ] }];
+  const app = await boot({ panel });
+  app.state.settings.theme = "nothing";
+  await app.emit("settings-updated", app.state.settings);
+  const cells = app.node("stack").querySelector(".day-dots").children.map((cell) => cell.style.background || null);
+  // 峰值日铺满 24 格; 首段 (kimi, round(0.25×24)=6 格) 落在顶部, 末段 (codex) 吃掉余下 18 格到底
+  assert.deepEqual(cells.slice(0, 6), new Array(6).fill("#8CCB98"));
+  assert.deepEqual(cells.slice(6), new Array(18).fill("#4A9E5C"));
+});
+
+test("Nothing tokens keep accents green and thresholds on mac values (C067)", async () => {
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  const nothing = css.slice(css.indexOf("PART 3: Nothing"), css.indexOf("PART 4: T07"));
+  // 当月/选中月份标签为 hero accent 绿, 不得沿用阈值红; Nothing 块不再把 --accent 覆写为红
+  assert.match(nothing, /\.theme-nothing \.chip\.current \.m, \.theme-nothing \.chip\.selected \.m\s*\{\s*color:\s*#4A9E5C/);
+  assert.doesNotMatch(nothing, /--accent:\s*#E44B47/);
+  assert.match(nothing, /\.theme-nothing \.win-row \.wp\.critical\s*\{\s*color:\s*#D71921/);
+  // 设置窗口在 mac 不随界面风格切换: Nothing 块不得包含设置窗口覆写
+  for (const selector of [".navitem", ".sidenav", ".fluent-card", ".time-range-btn", ".kpi-tile"]) {
+    assert.ok(!nothing.includes(selector), `Nothing 块不应覆写设置窗口 ${selector}`);
+  }
+  const app = await boot({ panel: structuredClone(fixture) });
+  app.state.settings.theme = "nothing";
+  await app.emit("settings-updated", app.state.settings);
+  const legend = [...app.node("stack").querySelectorAll(".thresh-box")].map((box) => box.style.background);
+  assert.deepEqual(legend, ["#4A9E5C", "#D4A843", "#D71921"]);
+});
+
+test("provider badges pass brand colors as CSS variables with a dark-brand fallback (C067)", async () => {
+  const panel = { ...fixture, subscription: { updatedText: null, sections: [
+    { id: "kimi", name: "Kimi", status: "ok", windows: [{ label: "每周", usedPercent: 10, percentText: "10%", resetText: "" }], accounts: [] },
+    { id: "zhipu", name: "Z.ai", status: "ok", windows: [{ label: "每周", usedPercent: 10, percentText: "10%", resetText: "" }], accounts: [] },
+  ] } };
+  const app = await boot({ panel });
+  const badges = [...app.node("stack").querySelectorAll(".sub-head .pbadge")];
+  assert.equal(badges[0].style["--brand"], "#0a84ff");
+  assert.equal(badges[0].style["--brand-nothing"], "#0a84ff");
+  assert.equal(badges[1].style["--brand"], "#2D2D2D");
+  assert.equal(badges[1].style["--brand-nothing"], "#999999", "深色品牌在 Nothing 下退回 secondary 灰");
+  assert.equal(badges[0].style.background, undefined, "不得写内联 background, 以免压过主题覆写");
+});
+
+// ---------- C068: 订阅段 Provider 定向刷新按钮 (mac ProviderRefreshButton 契约) ----------
+
+// golden fixture 是视图模型契约输出; 真实面板由 Rust runtime_core::panel_json 在其上为
+// 已知 provider 的 section 附加 `provider`。测试按同一语义补齐, 未知 section 不附加。
+function withProviders(panel, providers = { kimi_coding: "kimi", codex_4eversivan: "codex" }) {
+  const copy = structuredClone(panel);
+  for (const section of copy.subscription.sections) {
+    if (providers[section.id]) section.provider = providers[section.id];
+  }
+  return copy;
+}
+
+test("each known provider section ends with a scoped refresh button that invokes refresh_subscription (C068)", async () => {
+  // 缺 provider 键 (契约原样输出) 时 fail-closed: 不渲染按钮
+  const bare = await boot();
+  assert.equal(bare.node("stack").querySelectorAll(".sub-refresh").length, 0);
+  const app = await boot({ panel: withProviders(fixture) });
+  const buttons = () => [...app.node("stack").querySelectorAll(".sub-head .sub-refresh")];
+  assert.deepEqual(buttons().map((b) => b.dataset.provider), ["kimi", "codex"]);
+  assert.deepEqual(buttons().map((b) => b.getAttribute("aria-label")), ["刷新 Kimi 订阅额度", "刷新 ChatGPT 订阅额度"]);
+  assert.ok(buttons()[0].querySelector("svg"), "常态为 arrow.clockwise 图标");
+  const start = app.calls.length;
+  await buttons()[1].click();
+  assert.deepEqual(app.calls.slice(start).map((c) => [c.command, c.args?.sectionId]), [["refresh_subscription", "codex_4eversivan"]]);
+});
+
+test("scoped refresh buttons follow the mac presentation policy (C068)", async () => {
+  // 目标刷新中: 进度环 + 禁用 + 「正在刷新」; 其他 provider 仍可点
+  const app = await boot({ panel: { ...withProviders(fixture), runtime: { phase: "fresh", quotaRefreshAllowed: true, refreshingProviders: ["codex"] } } });
+  const byProvider = (provider) => app.node("stack").querySelector(`.sub-refresh[data-provider="${provider}"]`);
+  assert.equal(byProvider("codex").disabled, true);
+  assert.ok(byProvider("codex").querySelector(".sub-spinner"));
+  assert.equal(byProvider("codex").getAttribute("aria-label"), "正在刷新 ChatGPT 订阅额度");
+  assert.equal(byProvider("kimi").disabled, false);
+  // 全量刷新进行中: 全部禁用
+  await app.emit("dashboard-updated", { ...withProviders(fixture), runtime: { phase: "refreshing", quotaRefreshAllowed: true, refreshingProviders: [] } });
+  assert.equal(byProvider("kimi").disabled, true);
+  assert.equal(byProvider("codex").disabled, true);
+  // 未授权出站查询: 禁用
+  await app.emit("dashboard-updated", { ...withProviders(fixture), runtime: { phase: "fresh", quotaRefreshAllowed: false, refreshingProviders: [] } });
+  assert.equal(byProvider("kimi").disabled, true);
+});
+
+test("scoped refresh is fail-closed for unknown sections and does not toggle multi-account expansion (C068)", async () => {
+  const panel = { ...fixture, subscription: { updatedText: null, sections: [
+    { id: "mystery_x", name: "Mystery", status: "ok", windows: [{ label: "每周", usedPercent: 10, percentText: "10%", resetText: "" }], accounts: [] },
+    { id: "cline", provider: "cline", name: "Cline", status: "ok", windows: [], accountCountText: "2 个账号",
+      collapsedWindow: { label: "5h", usedPercent: 2, percentText: "2%", resetText: "" },
+      accounts: [{ id: "a", name: "a", status: "ok", windows: [] }, { id: "b", name: "b", status: "ok", windows: [] }] },
+  ] } };
+  // 默认设置未启用 cline: 按钮渲染但禁用 (未启用 → 不可运行)
+  const disabled = await boot({ panel });
+  assert.equal(disabled.node("stack").querySelector(".sub-refresh").disabled, true);
+  const app = await boot({ panel, settings: { ...defaults, enabledProviders: [...defaults.enabledProviders, "cline"] } });
+  const refreshes = [...app.node("stack").querySelectorAll(".sub-refresh")];
+  assert.deepEqual(refreshes.map((b) => b.dataset.provider), ["cline"], "未知 provider 不渲染按钮");
+  await refreshes[0].click();
+  assert.equal(app.node("stack").querySelector(".sub-name-toggle").getAttribute("aria-expanded"), "false");
+  assert.ok(app.calls.some((c) => c.command === "refresh_subscription" && c.args.sectionId === "cline"));
+});
+
+test("scoped refresh refusals surface a readable notice (C068)", async () => {
+  const app = await boot({ panel: withProviders(fixture), reject: { refresh_subscription: "SCOPED_REFRESH_UNCONFIGURED" } });
+  await app.node("stack").querySelector(".sub-refresh").click();
+  assert.equal(app.node("dashboard-status").textContent, "该订阅尚未配置凭证");
+  assert.equal(app.node("runtime-status").textContent, "SYS.OK", "定向刷新被拒不代表整体运行失败");
+});
+
+test("settings saves are serialized and each merges the latest backend state (C069)", async () => {
+  const app = await boot({ html: "settings.html" });
+  // 连续操作 (不等待前一次完成) 不得相互覆盖
+  const intervalChoices = [...app.node("pane-general").querySelectorAll(".fluent-seg")][1].querySelectorAll(".seg-opt");
+  const pending = [intervalChoices[0].click(), app.node("card-down-usage").click()];
+  app.node("setting-notifications").checked = false;
+  pending.push(app.node("setting-notifications").dispatch("change"));
+  await Promise.all(pending);
+  assert.equal(app.state.settings.refreshIntervalSecs, 300);
+  assert.deepEqual([...app.state.settings.cardOrder], ["subscription", "usage", "hourly"]);
+  assert.equal(app.state.settings.notificationsEnabled, false);
+  assert.equal(app.node("setting-notifications-state").textContent, "已关闭", "mac 开关旁状态字");
+  const saves = app.calls.filter((call) => call.command === "save_settings_command").length;
+  assert.equal(saves, 3, "每个控件各保存一次");
+});

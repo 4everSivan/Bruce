@@ -50,8 +50,8 @@
     { key: "month", label: "本月" },
     { key: "all", label: "全部历史" },
   ];
-  let selectedTimeRange = "today";
-  let selectedDimension = "tokens"; // "tokens" | "cost" | "model" | "agent"
+  // mac AgentUsageWorkbenchView @State timeRange 初值 .sevenDays
+  let selectedTimeRange = "7d";
 
   function svgEl(tag, attrs = {}) {
     const el = document.createElementNS ? document.createElementNS("http://www.w3.org/2000/svg", tag) : document.createElement(tag);
@@ -91,26 +91,6 @@
     return { pathD, areaD };
   }
 
-  function normalizeModelName(raw) {
-    if (!raw) return "未知模型";
-    let name = String(raw).trim();
-    name = name.replace(/^(cline-pass|zhipu|openrouter|anthropic|openai|deepseek|volcengine|stepfun|google|azure|aws)\//i, "");
-    name = name.replace(/-\d{8}$/, "");
-    name = name.replace(/\[thinking\]/i, "").trim();
-    const lower = name.toLowerCase();
-    if (lower.includes("claude-3-7-sonnet") || lower.includes("claude-3.7-sonnet")) return "Claude 3.7 Sonnet";
-    if (lower.includes("claude-3-5-sonnet") || lower.includes("claude-3.5-sonnet")) return "Claude 3.5 Sonnet";
-    if (lower.includes("claude-3-5-haiku") || lower.includes("claude-3.5-haiku")) return "Claude 3.5 Haiku";
-    if (lower.includes("deepseek-v3") || lower.includes("deepseek-chat")) return "DeepSeek V3";
-    if (lower.includes("deepseek-r1") || lower.includes("deepseek-reasoner")) return "DeepSeek R1";
-    if (lower.includes("kimi-k2.5") || lower.includes("moonshot-v1")) return "Kimi K2.5";
-    if (lower.includes("gpt-5.4") || lower.includes("gpt-5-4")) return "GPT-5.4";
-    if (lower.includes("gpt-4o")) return "GPT-4o";
-    if (lower.includes("gpt-5")) return "GPT-5";
-    if (lower.includes("glm-4")) return "GLM-4";
-    if (lower.includes("glm-5")) return "GLM-5";
-    return name;
-  }
   const SESSION_PROBES = [
     { id: "claude-code", name: "Claude Code", sub: "本机会话目录 (~/.claude/projects)" },
     { id: "codex", name: "ChatGPT / Codex", sub: "本机会话目录 (~/.codex/sessions)" },
@@ -124,12 +104,46 @@
     { id: "codebuddy", name: "CodeBuddy", sub: "本机会话目录" },
   ];
 
-  const applyTheme = theme => {
-    document.body.classList.toggle("theme-nothing", theme === "nothing");
-    document.body.classList.toggle("theme-fluent", theme !== "nothing");
+  // 界面风格 (Fluent / Nothing) 只作用于看板: mac SettingsView 恒用 SettingsDemoTokens
+  // Fluent 平面 token, 不随 interfaceStyle 切换 (C067), 故设置窗口固定 Fluent。
+  const applyTheme = () => {
+    document.body.classList.remove("theme-nothing");
+    document.body.classList.add("theme-fluent");
   };
 
-  function message(host, text) { if (host) host.textContent = text; }
+  // 状态行位于内容区顶部 (mac settingsErrorMessage 同位置); 失败类消息以告警色呈现。
+  function message(host, text, tone = "info") {
+    if (!host) return;
+    host.textContent = text;
+    host.dataset.tone = tone;
+  }
+
+  // mac 设置即时生效 (C069): 每个控件变更立即保存, 无全局「保存设置」。保存串行排队,
+  // 每次都基于后端最新设置合并本次改动, 连续操作不会相互覆盖; 失败时由调用方回滚控件,
+  // 并在状态行给出原因 (例如热键冲突)。成功不打扰 (mac 无保存提示)。
+  let saveQueue = Promise.resolve();
+  function persist(patch, { revert } = {}) {
+    const run = async () => {
+      const status = byId("settings-status");
+      try {
+        const updated = { ...await invoke("get_settings"), ...patch };
+        validateOverrides(updated.pricingOverrides || {});
+        const minutes = Math.round((updated.refreshIntervalSecs || 0) / 60);
+        if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) throw new Error("刷新间隔须为 1–1440 的整数分钟");
+        await invoke("save_settings_command", { settings: updated });
+        settings = updated;
+        window.dispatchEvent(new CustomEvent("settings-saved", { detail: updated }));
+        if (status?.dataset.tone === "warn") message(status, "");
+        return true;
+      } catch (error) {
+        revert?.();
+        message(status, `保存失败：${error.message || error}`, "warn");
+        return false;
+      }
+    };
+    saveQueue = saveQueue.then(run, run);
+    return saveQueue;
+  }
   function input(id, type = "text", attrs = {}) { return node("input", null, { id, type, ...attrs }); }
   function row(parent, title, control, sub = null) {
     const label = node("label", null, { class: "fluent-row" });
@@ -140,11 +154,46 @@
     parent.append(label);
     return control;
   }
+  // mac paneCaption 与 FluentCard 为兄弟节点: 分组标题位于卡片上方, 卡片内只有行。
   function card(parent, title = null) {
+    if (title) parent.append(node("h2", title, { class: "card-caption" }));
     const block = node("section", null, { class: "fluent-card" });
-    if (title) block.append(node("h2", title, { class: "card-caption" }));
     parent.append(block);
     return block;
+  }
+  // mac FluentSegmentedPicker 等价: 深底 + 1px 描边 + 6px 圆角, 选中项浅底白字。
+  // 原生 <select> 仍是值的唯一载体 (读取/保存/历史值追加逻辑不变), 仅视觉上由分段
+  // 按钮代理; select 置于按钮之前, 使行 <label> 的激活目标落在隐藏的 select 上,
+  // 点击行标题不会误选第一个分段。
+  const segmentRenderers = [];
+  function segmented(select, onChange) {
+    select.setAttribute("class", "seg-source");
+    select.setAttribute("tabindex", "-1");
+    select.setAttribute("aria-hidden", "true");
+    const group = node("div", null, { class: "fluent-seg", role: "radiogroup" });
+    const render = () => {
+      group.replaceChildren();
+      for (const option of select.querySelectorAll("option")) {
+        const value = option.getAttribute("value");
+        const isOn = select.value === value;
+        const choice = node("button", option.textContent, {
+          type: "button", class: isOn ? "seg-opt active" : "seg-opt", role: "radio", "aria-checked": String(isOn),
+        });
+        choice.addEventListener("click", () => {
+          if (select.value === value) return;
+          const previous = select.value;
+          select.value = value;
+          render();
+          return onChange?.(value, () => { select.value = previous; render(); });
+        });
+        group.append(choice);
+      }
+    };
+    render();
+    segmentRenderers.push(render);
+    const wrap = node("div", null, { class: "seg-wrap" });
+    wrap.append(select, group);
+    return wrap;
   }
   function button(parent, id, title, callback, cls = "btn") {
     const value = node("button", title, { id, type: "button", class: cls });
@@ -254,8 +303,8 @@
         const line = node("div", null, { class: "order-row" });
         line.append(node("span", { usage: "Token 用量", subscription: "订阅额度", hourly: "Agent 用量" }[id] || id));
         const btns = node("div", null, { class: "order-btns" });
-        button(btns, `card-up-${id}`, "上移", () => { move(cardOrder, index, -1); renderOrders(); });
-        button(btns, `card-down-${id}`, "下移", () => { move(cardOrder, index, 1); renderOrders(); });
+        button(btns, `card-up-${id}`, "上移", () => reorder(cardOrder, index, -1, "cardOrder"));
+        button(btns, `card-down-${id}`, "下移", () => reorder(cardOrder, index, 1, "cardOrder"));
         line.append(btns);
         cards.append(line);
       });
@@ -281,31 +330,62 @@
         const toggle = input(`provider-${id}`, "checkbox", { "data-provider": id, class: "provider-toggle" });
         toggle.checked = prior.has(id) ? prior.get(id) : enabledProvidersOf().includes(id);
         toggle.setAttribute("aria-label", `${descriptor[1]} 启用开关`);
+        toggle.addEventListener("change", () => persist({ enabledProviders: checkedProviders() }, {
+          revert: () => { toggle.checked = !toggle.checked; },
+        }));
         line.append(toggle);
         const btns = node("div", null, { class: "order-btns" });
-        button(btns, `provider-up-${id}`, "上移", () => { move(providerOrder, index, -1); renderOrders(); });
-        button(btns, `provider-down-${id}`, "下移", () => { move(providerOrder, index, 1); renderOrders(); });
+        button(btns, `provider-up-${id}`, "上移", () => reorder(providerOrder, index, -1, "providerOrder"));
+        button(btns, `provider-down-${id}`, "下移", () => reorder(providerOrder, index, 1, "providerOrder"));
         line.append(btns);
         host.append(line);
       });
     }
   }
 
+  function checkedProviders() {
+    return [...(byId("setting-providers")?.querySelectorAll("input") || [])].filter(v => v.checked).map(v => v.dataset.provider);
+  }
+
+  // 上移 / 下移即时生效; 保存失败时恢复原顺序
+  function reorder(order, index, delta, key) {
+    const before = [...order];
+    move(order, index, delta);
+    renderOrders();
+    return persist({ [key]: [...order] }, {
+      revert: () => { order.splice(0, order.length, ...before); renderOrders(); },
+    });
+  }
+
   // MARK: - 分类面板构建
 
   function buildGeneral(host) {
     host.replaceChildren();
-    const c1 = card(host, "常规偏好");
+    // mac generalPane 首卡无分组标题; 行序: 界面风格 → 刷新间隔 → 系统通知 → 版本
+    // (配色模式 / 钥匙串 / 外部 CLI 来源为 mac 独有能力, Windows 恒深色且无钥匙串)。
+    const c1 = card(host);
+    const theme = node("select", null, { id: "setting-theme" });
+    theme.append(node("option", "经典", { value: "fluent" }), node("option", "Nothing", { value: "nothing" }));
+    row(c1, "界面风格", segmented(theme, (value, revert) => persist({ theme: value }, { revert })),
+      "经典为深色材质面板; Nothing 为纯色平面风格, 无模糊无玻璃 (Windows 恒深色)");
     // 刷新间隔对齐 mac 允许集合 (5/15/30/60 分钟); 当前值不在集合内时由 loadSettings
     // 追加为一项, 避免静默改写用户既有配置。
-    const interval = node("select", null, { id: "setting-interval", class: "fluent-select" });
+    const interval = node("select", null, { id: "setting-interval" });
     for (const minutes of REFRESH_PRESETS) interval.append(node("option", `${minutes} 分钟`, { value: String(minutes) }));
-    row(c1, "刷新间隔", interval, "已授权模块的自动采集周期，变更后立即重新计时");
-    row(c1, "配额预警通知", input("setting-notifications", "checkbox"), "预警与额度提醒；关闭后 Bruce 不会投递通知");
-    const theme = node("select", null, { id: "setting-theme", class: "fluent-select" });
-    theme.append(node("option", "Fluent", { value: "fluent" }), node("option", "Nothing 点阵", { value: "nothing" }));
-    row(c1, "外观主题", theme, "经典 Fluent 为深色材质面板；Nothing 为纯色平面风格（Windows 恒深色）");
-    row(c1, "版本", node("span", "—", { id: "setting-version", class: "row-value" }), "当前运行的 Bruce 版本");
+    row(c1, "刷新间隔", segmented(interval, (value, revert) => persist({ refreshIntervalSecs: Number(value) * 60 }, { revert })),
+      "已授权模块的自动采集周期，变更后立即重新计时");
+    // mac: 开关旁以「已开启 / 已关闭」状态字呈现当前值
+    const notifyWrap = node("div", null, { class: "toggle-with-state" });
+    const notify = input("setting-notifications", "checkbox");
+    notifyWrap.append(notify, node("span", "", { id: "setting-notifications-state", class: "toggle-state" }));
+    notify.addEventListener("change", () => {
+      syncToggleState("setting-notifications");
+      return persist({ notificationsEnabled: notify.checked }, {
+        revert: () => { notify.checked = !notify.checked; syncToggleState("setting-notifications"); },
+      });
+    });
+    row(c1, "系统通知", notifyWrap, "预警与额度提醒; 关闭后 Bruce 不会投递通知");
+    row(c1, "版本", node("span", "—", { id: "setting-version", class: "row-value" }));
 
     const hotkeyWrap = node("div", null, { class: "hotkey-field-wrap" });
     hotkeyWrap.append(input("setting-hotkey", "text", { placeholder: "Control+Shift+B", autocomplete: "off" }));
@@ -318,9 +398,9 @@
     button(hotkeyWrap, "hotkey-clear", "清除", () => {
       const field = byId("setting-hotkey");
       if (field) { field.value = ""; field.dataset.recording = "false"; }
-      message(byId("settings-status"), "已清除热键，保存设置后生效");
+      return saveHotkey();
     });
-    row(c1, "全局热键", hotkeyWrap, "唤出或隐藏置顶看板；留空关闭全局快捷键");
+    row(card(host, "全局快捷键"), "唤出看板", hotkeyWrap, "唤出或隐藏置顶看板; 留空关闭全局快捷键");
 
     byId("setting-hotkey")?.addEventListener("keydown", event => {
       const field = byId("setting-hotkey");
@@ -333,11 +413,30 @@
       parts.push(event.key.length === 1 ? event.key.toUpperCase() : event.key);
       field.value = parts.join("+");
       field.dataset.recording = "false";
+      return saveHotkey();
     });
+    // 手动键入的热键在失焦 / 回车时生效
+    byId("setting-hotkey")?.addEventListener("change", () => saveHotkey());
 
     const c2 = card(host, "看板卡片顺序");
-    c2.append(node("p", "拖动或点击上下移调整置顶面板各卡片的堆叠顺序。", { class: "hint" }));
+    c2.append(node("p", "点击上移 / 下移调整置顶面板各卡片的堆叠顺序, 即时生效; 看板中收起的卡片也可直接拖拽排序。", { class: "hint" }));
     c2.append(node("div", null, { id: "setting-card-order", class: "order-list" }));
+  }
+
+  // 热键即时生效; 注册失败 (如被其他程序占用) 时回滚为已生效的热键并提示原因。
+  function saveHotkey() {
+    const field = byId("setting-hotkey");
+    if (!field) return Promise.resolve();
+    const hotkey = field.value.trim();
+    if (hotkey === (settings.hotkey || "")) return Promise.resolve();
+    return persist({ hotkey }, { revert: () => { field.value = settings.hotkey || ""; } });
+  }
+
+  function syncToggleState(id) {
+    const box = byId(id), state = byId(`${id}-state`);
+    if (!box || !state) return;
+    state.textContent = box.checked ? "已开启" : "已关闭";
+    state.className = box.checked ? "toggle-state on" : "toggle-state";
   }
 
   function buildAgentUsage(host) {
@@ -347,14 +446,15 @@
     const workbenchRoot = node("div", null, { id: "workbench-root" });
     host.append(workbenchRoot);
 
-    // 1. 会话来源 (对齐 mac SettingsView agentUsagePane)
-    const cSources = card(host, "会话来源");
-    row(cSources, "Rust Collector", node("span", "可用", { class: "status-tag ok" }), "扫描本机会话并聚合 token 用量");
+    // 1. 会话来源与采集探针 (对齐 mac AgentUsageWorkbenchView.sessionProbeFooterCard)
+    const cSources = card(host, "会话来源与采集探针");
+    row(cSources, "Rust Collector", node("span", "可用", { class: "status-tag ok" }), "扫描本机会话目录并计算 Token 增量缓存与指纹");
 
     const probeList = node("div", null, { id: "session-probes" });
     cSources.append(probeList);
 
     const act = actions(cSources);
+    act.append(node("span", "所有会话仅在本机分析，绝不上报远程服务器", { class: "card-actions-note" }));
     button(act, "session-rescan", "重新检查", async () => {
       try {
         message(byId("settings-status"), "正在重新扫描本机会话…");
@@ -369,7 +469,11 @@
 
     // 2. Agent 会话采集授权 (对齐 mac)
     const cUsage = card(host, "Agent 会话采集");
-    row(cUsage, "读取本机 Agent 会话用量", input("setting-usage", "checkbox"), "开启后在本机读取会话记录，计算 Token 用量与费用。");
+    const usageToggle = input("setting-usage", "checkbox");
+    usageToggle.addEventListener("change", () => persist({ usageEnabled: usageToggle.checked }, {
+      revert: () => { usageToggle.checked = !usageToggle.checked; },
+    }));
+    row(cUsage, "读取本机 Agent 会话用量", usageToggle, "开启后在本机读取会话记录，计算 Token 用量与费用。");
     const summary = node("div", null, { class: "hint-box" });
     summary.append(node("p", "授权后应用将：", { class: "hint-title" }));
     const ul = node("ul", null, { class: "hint-list" });
@@ -383,341 +487,544 @@
     renderSessionProbes();
   }
 
-  function renderAgentUsageWorkbench() {
+  // MARK: - Agent 用量工作台 (C070, 对齐 mac AgentUsageWorkbenchView 及其卡片)
+  //
+  // 数值全部来自 get_usage_analytics (Rust viewmodel analytics, 与 mac golden 逐字段对拍);
+  // 前端只负责呈现与交互状态, 不做任何汇总或估算。
+
+  // Rust/C `{:.N}` 按精确二进制值舍入、平局取偶; JS toFixed 平局进位。
+  // 只在恰为平局时改取偶, 使悬停数值文案与 mac 逐字符一致。
+  function fixedEven(value, digits) {
+    const rounded = value.toFixed(digits);
+    const [whole, fraction = ""] = value.toFixed(20).split(".");
+    const tail = fraction.slice(digits);
+    if (!/^50*$/.test(tail)) return rounded;
+    const kept = fraction.slice(0, digits);
+    const lastDigit = Number((digits ? kept : whole).slice(-1));
+    return lastDigit % 2 === 0 ? (digits ? `${whole}.${kept}` : whole) : rounded;
+  }
+
+  // mac PanelFormat.tokenCount / Rust format::token_count: K/M 一位小数、B 两位, 去尾零。
+  function tokenCount(value) {
+    const trim = text => text.replace(/\.?0+$/, "");
+    if (value < 1000) return String(value);
+    if (value < 1_000_000) return `${trim(fixedEven(value / 1000, 1))}K`;
+    if (value < 1_000_000_000) return `${trim(fixedEven(value / 1_000_000, 1))}M`;
+    return `${trim(fixedEven(value / 1_000_000_000, 2))}B`;
+  }
+
+  const percentText = value => `${fixedEven(value, 1)}%`;
+
+  const TOKEN_TYPE_SERIES = [
+    { key: "type_input", name: "输入 Prompt", color: "#4C9CFF", short: "输入" },
+    { key: "type_output", name: "输出 Output", color: "#A855F7", short: "输出" },
+    { key: "type_cache", name: "缓存命中 Read", color: "#10B981", short: "缓存" },
+  ];
+  const CHART_MODES = [["agent", "Agent"], ["model", "模型"], ["tokenType", "Token 构成"], ["cost", "费用"]];
+
+  const workbench = {
+    snapshot: null,
+    seq: 0,
+    chartMode: "agent",
+    chartType: "line",
+    selectedIndex: null,
+    mergedModels: true,
+    expandedModels: new Set(),
+    expandedAgents: new Set(),
+    hoveredHour: null,
+  };
+
+  function chip(text, color, cls = "wb-chip") {
+    return node("span", text, { class: cls, style: `--chip: ${color};` });
+  }
+
+  // 「**粗体**」片段 (峰值 / 均值摘要) -> 文本 + <strong>
+  function markdownLine(text, cls) {
+    const line = node("span", null, { class: cls });
+    String(text).split("**").forEach((part, index) => {
+      if (part) line.append(index % 2 ? node("strong", part) : part);
+    });
+    return line;
+  }
+
+  function segButtons(options, value, onPick, cls = "") {
+    const group = node("div", null, { class: `fluent-seg ${cls}`.trim(), role: "radiogroup" });
+    for (const [key, label] of options) {
+      const isOn = key === value;
+      const choice = node("button", label, {
+        type: "button", class: isOn ? "seg-opt active" : "seg-opt", role: "radio", "aria-checked": String(isOn),
+      });
+      choice.addEventListener("click", () => (isOn ? undefined : onPick(key)));
+      group.append(choice);
+    }
+    return group;
+  }
+
+  function cardHeader(title, badge, badgeColor, sub, trailing = []) {
+    const head = node("div", null, { class: "wb-head" });
+    const meta = node("div", null, { class: "wb-head-meta" });
+    const line = node("div", null, { class: "wb-title-line" });
+    line.append(node("span", title, { class: "wb-title" }));
+    if (badge) line.append(chip(badge, badgeColor, "wb-chip wb-chip-lg"));
+    meta.append(line, node("span", sub, { class: "wb-sub" }));
+    head.append(meta, node("span", null, { class: "wb-spacer" }), ...trailing);
+    return head;
+  }
+
+  // mac chevron.down.circle / chevron.up.circle.fill
+  function expandButton(expanded, help, onToggle) {
+    const toggle = node("button", null, {
+      type: "button", class: expanded ? "wb-expand on" : "wb-expand", title: help, "aria-label": help, "aria-expanded": String(expanded),
+    });
+    const glyph = svgEl("svg", { viewBox: "0 0 16 16", "aria-hidden": "true" });
+    glyph.append(svgEl("circle", { cx: "8", cy: "8", r: "6.75", class: "wb-expand-ring" }));
+    glyph.append(svgEl("path", { d: expanded ? "M5.2 9.4 8 6.6l2.8 2.8" : "M5.2 6.6 8 9.4l2.8-2.8", class: "wb-expand-chevron" }));
+    toggle.append(glyph);
+    toggle.addEventListener("click", onToggle);
+    return toggle;
+  }
+
+  async function renderAgentUsageWorkbench() {
     const root = byId("workbench-root");
     if (!root) return;
-    root.replaceChildren();
-
-    const panel = currentDashboard;
-    const usage = panel?.usage;
-    const hourly = panel?.hourly;
-    const days = usage?.days || [];
-    const rows = hourly?.rows || [];
-
-    // 1. 时间跨度选择器
-    const pickerWrap = node("div", null, { class: "time-range-picker" });
-    for (const range of TIME_RANGES) {
-      const btn = node("button", range.label, {
-        class: `time-range-btn ${selectedTimeRange === range.key ? "active" : ""}`,
-        type: "button",
-      });
-      btn.addEventListener("click", () => {
-        selectedTimeRange = range.key;
-        renderAgentUsageWorkbench();
-      });
-      pickerWrap.append(btn);
+    const seq = ++workbench.seq;
+    let snapshot = null;
+    try {
+      snapshot = await invoke("get_usage_analytics", { range: selectedTimeRange });
+    } catch (error) {
+      message(byId("settings-status"), `用量分析读取失败：${error.message || error}`, "warn");
     }
-    root.append(pickerWrap);
+    // 期间又切换了范围或收到新快照: 丢弃过期结果
+    if (seq !== workbench.seq) return;
+    workbench.snapshot = snapshot;
+    workbench.selectedIndex = null;
+    drawWorkbench();
+  }
 
-    // 计算当前切片数据
-    let totalTokensText = usage?.totalTokensText || "0";
-    let costText = usage?.costText || "¥0.00";
-    let cacheHitRateText = "21.0%";
-    let activeAgentsCount = rows.filter(r => (r.todayTotal || 0) > 0).length || rows.length || 0;
+  function drawWorkbench() {
+    const root = byId("workbench-root");
+    if (!root) return;
+    const snapshot = workbench.snapshot;
+    root.replaceChildren(workbenchToolbar());
+    if (!snapshot) return;
+    const slots = ["timeline", "models", "agents", "composition"].map(name => node("div", null, { id: `wb-${name}`, class: "wb-slot" }));
+    root.append(kpiTiles(snapshot.kpi), ...slots);
+    drawTimeline();
+    drawModels();
+    drawAgents();
+    drawComposition();
+  }
 
-    const breakdown = usage?.breakdown || [];
-    const hitRateItem = breakdown.find(b => b.label && b.label.includes("命中率"));
-    if (hitRateItem) cacheHitRateText = hitRateItem.valueText;
+  function fillSlot(name, content) {
+    const slot = byId(`wb-${name}`);
+    if (slot) slot.replaceChildren(content);
+  }
 
-    if (selectedTimeRange === "7d") {
-      const slice7 = days.slice(-7);
-      const sum7 = slice7.reduce((acc, d) => acc + (d.total || 0), 0);
-      if (sum7 > 0) totalTokensText = formatTokens(sum7);
-      costText = `≈ ¥${((sum7 / 1000000) * 15.2).toFixed(2)}`;
-    } else if (selectedTimeRange === "30d") {
-      const slice30 = days.slice(-30);
-      const sum30 = slice30.reduce((acc, d) => acc + (d.total || 0), 0);
-      if (sum30 > 0) totalTokensText = formatTokens(sum30);
-      costText = `≈ ¥${((sum30 / 1000000) * 15.2).toFixed(2)}`;
-    } else if (selectedTimeRange === "month") {
-      if (usage?.monthly?.length) {
-        const curM = usage.monthly.find(m => m.isCurrent) || usage.monthly[0];
-        totalTokensText = curM.totalText || totalTokensText;
-      }
-    } else if (selectedTimeRange === "all") {
-      const sumAll = days.reduce((acc, d) => acc + (d.total || 0), 0);
-      if (sumAll > 0) totalTokensText = formatTokens(sumAll);
-      costText = `≈ ¥${((sumAll / 1000000) * 15.2).toFixed(2)}`;
-    }
-
-    // 2. 4 格核心 KPI 磁贴 (kpi-tiles-grid)
-    const kpiGrid = node("div", null, { class: "kpi-tiles-grid", id: "kpi-tiles" });
-
-    // Tile 1: 总 Token
-    const tile1 = node("div", null, { class: "kpi-tile", style: "--tile-accent: #0a84ff;" });
-    tile1.append(node("div", "总 Token 消耗", { class: "kpi-label" }));
-    tile1.append(node("div", totalTokensText, { class: "kpi-value" }));
-    tile1.append(node("div", `周期: ${TIME_RANGES.find(r => r.key === selectedTimeRange)?.label || "今日"}`, { class: "kpi-sub" }));
-    kpiGrid.append(tile1);
-
-    // Tile 2: 估算费用
-    const tile2 = node("div", null, { class: "kpi-tile", style: "--tile-accent: #30d158;" });
-    tile2.append(node("div", "折算费用", { class: "kpi-label" }));
-    tile2.append(node("div", costText, { class: "kpi-value" }));
-    tile2.append(node("div", "43 款基准模型价格引擎折算", { class: "kpi-sub" }));
-    kpiGrid.append(tile2);
-
-    // Tile 3: Prompt Cache 命中率
-    const tile3 = node("div", null, { class: "kpi-tile", style: "--tile-accent: #ff9f0a;" });
-    tile3.append(node("div", "Cache 命中率", { class: "kpi-label" }));
-    tile3.append(node("div", cacheHitRateText, { class: "kpi-value" }));
-    tile3.append(node("div", "大幅降低延迟与费用支出", { class: "kpi-sub" }));
-    kpiGrid.append(tile3);
-
-    // Tile 4: 活跃 Agent
-    const tile4 = node("div", null, { class: "kpi-tile", style: "--tile-accent: #bf5af2;" });
-    tile4.append(node("div", "活跃 Agent", { class: "kpi-label" }));
-    tile4.append(node("div", `${activeAgentsCount} 个活跃`, { class: "kpi-value" }));
-    tile4.append(node("div", "本机优先会话日志聚合", { class: "kpi-sub" }));
-    kpiGrid.append(tile4);
-
-    root.append(kpiGrid);
-
-    // 3. 时序趋势折线图卡片 (workbench-chart-card)
-    const chartCard = node("div", null, { class: "workbench-chart-card" });
-    const chartHead = node("div", null, { class: "chart-header" });
-    chartHead.append(node("span", "时序趋势分析", { class: "chart-title" }));
-
-    const dimTabs = node("div", null, { class: "chart-dim-tabs" });
-    const dims = [
-      { key: "tokens", label: "按 Token" },
-      { key: "cost", label: "按费用" },
-      { key: "model", label: "按模型" },
-      { key: "agent", label: "按 Agent" },
-    ];
-    for (const d of dims) {
-      const dBtn = node("button", d.label, {
-        class: `dim-tab-btn ${selectedDimension === d.key ? "active" : ""}`,
-        type: "button",
-      });
-      dBtn.addEventListener("click", () => {
-        selectedDimension = d.key;
-        renderAgentUsageWorkbench();
-      });
-      dimTabs.append(dBtn);
-    }
-    chartHead.append(dimTabs);
-    chartCard.append(chartHead);
-
-    // 准备图表点集
-    let chartPoints = [];
-    let xLabels = [];
-    if (selectedTimeRange === "today") {
-      chartPoints = hourly?.collapsedPoints?.length ? hourly.collapsedPoints : new Array(24).fill(0);
-      xLabels = ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00", "23:00"];
-    } else {
-      const sliceDays = selectedTimeRange === "7d" ? days.slice(-7) : (selectedTimeRange === "30d" ? days.slice(-30) : days);
-      chartPoints = sliceDays.map(d => d.total || 0);
-      if (chartPoints.length < 2) chartPoints = [0, ...chartPoints, 0];
-      xLabels = sliceDays.slice(0, 7).map(d => (d.date || "").slice(5));
-      if (!xLabels.length) xLabels = ["无数据"];
-    }
-
-    const svgWrap = node("div", null, { class: "chart-svg-wrap" });
-    const svgW = 600;
-    const svgH = 150;
-    const peak = Math.max(...chartPoints, 1) * 1.15;
-    const step = chartPoints.length > 1 ? svgW / (chartPoints.length - 1) : svgW;
-    const pts = chartPoints.map((val, idx) => ({
-      x: idx * step,
-      y: svgH - (val / peak) * (svgH - 25) - 10,
+  function workbenchToolbar() {
+    const bar = node("div", null, { class: "wb-toolbar" });
+    bar.append(segButtons(TIME_RANGES.map(range => [range.key, range.label]), selectedTimeRange, key => {
+      selectedTimeRange = key;
+      return renderAgentUsageWorkbench();
+    }, "time-range-picker"));
+    bar.append(node("span", null, { class: "wb-spacer" }));
+    const csv = button(bar, "workbench-export-csv", "导出 CSV 账单", () => runExport("export_workbench_csv", "CSV 账单", "csv", {
+      // mac Date.now.formatted(.iso8601.year().month().day()) 为 UTC 日期
+      defaultName: `bruce_agent_usage_${new Date().toISOString().slice(0, 10)}.csv`,
+      args: { range: selectedTimeRange },
     }));
-    const { pathD, areaD } = catmullRomToBezier(pts, svgH, svgW);
+    csv.setAttribute("title", "导出归一化模型与 Token 账单 CSV");
+    const json = button(bar, "workbench-export-json", "导出 JSON 明细", () => runExport("export_workbench_json", "JSON 明细", "json", {
+      defaultName: "bruce_agent_usage_artifact.json",
+    }));
+    json.setAttribute("title", "导出完整会话用量 JSON 原始结构");
+    return bar;
+  }
 
-    const svg = svgEl("svg", {
-      viewBox: `0 0 ${svgW} ${svgH}`,
-      preserveAspectRatio: "none",
-    });
+  // MARK: 4 格核心 KPI 磁贴
 
-    const gradId = "workbench-chart-grad";
+  function kpiTiles(kpi) {
+    const grid = node("div", null, { class: "kpi-tiles-grid", id: "kpi-tiles" });
+    const rangeLabel = TIME_RANGES.find(range => range.key === selectedTimeRange)?.label || "";
+    const tiles = [
+      ["总 Token", kpi.totalTokensText, `${kpi.equivalentMText} Tokens`, rangeLabel, "var(--settings-accent)"],
+      ["费用", kpi.costText, kpi.averageCostPerMillionText, kpi.costTagText, "var(--ok)"],
+      ["缓存收益", kpi.cacheHitRateText, kpi.cacheSavedCostText, "已省", "#10B981"],
+      ["活跃 Agent", `${kpi.activeAgentsCount} 个`, kpi.topAgentText, "全域", "#8B5CF6"],
+    ];
+    for (const [title, value, sub, tag, color] of tiles) {
+      const tile = node("div", null, { class: "kpi-tile" });
+      const head = node("div", null, { class: "kpi-head" });
+      head.append(node("span", title, { class: "kpi-label" }), chip(tag, color));
+      tile.append(head, node("div", value, { class: "kpi-value" }), node("div", sub, { class: "kpi-sub", title: sub }));
+      grid.append(tile);
+    }
+    return grid;
+  }
+
+  // MARK: 时序趋势 (mac TimelineChartCard)
+
+  function chartSeries(snapshot) {
+    switch (workbench.chartMode) {
+      case "agent":
+        return snapshot.agents.map(agent => ({ key: agent.agentId, name: agent.name, color: agent.colorHex, value: point => point.seriesValues[agent.agentId] || 0 }));
+      case "model":
+        return snapshot.models.slice(0, 5).map(model => ({ key: `model_${model.canonicalKey}`, name: model.displayName, color: model.colorHex, value: point => point.seriesValues[`model_${model.canonicalKey}`] || 0 }));
+      case "tokenType":
+        return TOKEN_TYPE_SERIES.map(type => ({ ...type, value: point => point.seriesValues[type.key] || 0 }));
+      default:
+        return [{ key: "cost", name: "折算总费用 ($)", color: "#10B981", value: point => point.costUsd }];
+    }
+  }
+
+  // 纵轴刻度: 约 4 段的「整」步长 (1/2/2.5/5 × 10^n)
+  function niceTicks(max) {
+    if (!(max > 0)) return { top: 1, ticks: [0] };
+    const raw = max / 4;
+    const magnitude = 10 ** Math.floor(Math.log10(raw));
+    const step = [1, 2, 2.5, 5, 10].map(factor => factor * magnitude).find(value => value >= raw);
+    const top = Math.ceil(max / step) * step;
+    const ticks = [];
+    for (let index = 0; index * step <= top + step / 2; index += 1) ticks.push(index * step);
+    return { top, ticks };
+  }
+
+  // mac yAxisValue: 费用 "$x.xx"; token "x.xM" / "xK" / 整数
+  function axisLabel(value) {
+    if (workbench.chartMode === "cost") return `$${fixedEven(value, 2)}`;
+    const whole = Math.trunc(value);
+    if (whole >= 1_000_000) return `${fixedEven(whole / 1_000_000, 1)}M`;
+    if (whole >= 1_000) return `${fixedEven(whole / 1_000, 0)}K`;
+    return String(whole);
+  }
+
+  function drawTimeline() {
+    const snapshot = workbench.snapshot;
+    const timeline = snapshot.timeline;
+    const series = chartSeries(snapshot);
+    const card = node("section", null, { class: "fluent-card wb-card workbench-chart-card" });
+    card.append(cardHeader("时序趋势", null, null, "多维度用量走势与峰值下钻分析", [
+      segButtons([["line", "折线"], ["area", "面积"]], workbench.chartType, type => { workbench.chartType = type; drawTimeline(); }, "chart-type-picker"),
+      segButtons(CHART_MODES, workbench.chartMode, mode => { workbench.chartMode = mode; workbench.selectedIndex = null; drawTimeline(); }, "chart-dim-tabs"),
+    ]));
+    const legend = node("div", null, { class: "wb-legend" });
+    for (const item of series) {
+      const entry = node("span", null, { class: "wb-legend-item" });
+      entry.append(node("i", null, { class: "wb-dot", style: `background: ${item.color};` }), item.name);
+      legend.append(entry);
+    }
+    card.append(legend);
+    if (!timeline.points.length || !series.length) {
+      const empty = node("div", null, { class: "wb-chart-empty" });
+      empty.append(node("span", "⌁", { class: "wb-chart-empty-icon" }), node("span", "当前时间跨度暂无活跃用量点"));
+      card.append(empty);
+    } else {
+      card.append(timelineChart(timeline.points, series));
+    }
+    card.append(node("div", null, { class: "wb-summary", id: "wb-timeline-summary" }));
+    fillSlot("timeline", card);
+    drawTimelineSummary();
+  }
+
+  function timelineChart(points, series) {
+    const width = 1000;
+    const height = 200;
+    const values = points.flatMap(point => series.map(item => item.value(point)));
+    const { top, ticks } = niceTicks(Math.max(0, ...values));
+    // Swift Charts 对字符串 x 值用分带刻度: 点位于各带中心, 首末点不贴边
+    const xAt = index => ((index + 0.5) / points.length) * width;
+    const yAt = value => height - (value / top) * height;
+
+    const chart = node("div", null, { class: "wb-chart" });
+    const yAxis = node("div", null, { class: "wb-chart-y" });
+    for (const tick of ticks) yAxis.append(node("span", axisLabel(tick), { style: `bottom: ${(tick / top) * 100}%;` }));
+    const plot = node("div", null, { class: "wb-chart-plot" });
+    const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, preserveAspectRatio: "none" });
+    for (const tick of ticks) {
+      svg.append(svgEl("line", { x1: 0, x2: width, y1: yAt(tick), y2: yAt(tick), class: "wb-grid", "vector-effect": "non-scaling-stroke" }));
+    }
     const defs = svgEl("defs");
-    const linearGrad = svgEl("linearGradient", { id: gradId, x1: "0", y1: "0", x2: "0", y2: "1" });
-    linearGrad.append(svgEl("stop", { offset: "0%", "stop-color": "#0a84ff", "stop-opacity": "0.32" }));
-    linearGrad.append(svgEl("stop", { offset: "100%", "stop-color": "#0a84ff", "stop-opacity": "0.01" }));
-    defs.append(linearGrad);
     svg.append(defs);
-
-    svg.append(svgEl("path", { d: areaD, fill: `url(#${gradId})` }));
-    svg.append(svgEl("path", {
-      d: pathD,
-      fill: "none",
-      stroke: "#0a84ff",
-      "stroke-width": "2.2",
-      "stroke-linecap": "round",
-      "stroke-linejoin": "round",
-    }));
-
-    svgWrap.append(svg);
-    chartCard.append(svgWrap);
-
-    const xAxis = node("div", null, { class: "chart-x-axis" });
-    for (const xl of xLabels) xAxis.append(node("span", xl));
-    chartCard.append(xAxis);
-    root.append(chartCard);
-
-    // 4. 全域模型智能归一化大盘 (canonical-card)
-    const canCard = node("div", null, { class: "canonical-card" });
-    const canHead = node("div", null, { class: "canonical-header" });
-    canHead.append(node("span", "全域模型智能归一化大盘 (Canonical Normalization)", { class: "canonical-title" }));
-    canHead.append(node("span", "自动聚合跨源/跨中转同构模型，消除渠道账单碎片", { class: "canonical-desc" }));
-    canCard.append(canHead);
-
-    // 归并统计模型
-    const canonicalMap = new Map();
-    let totalModelTokens = 0;
-    for (const row of rows) {
-      for (const m of row.models || []) {
-        const canName = normalizeModelName(m.name);
-        totalModelTokens += (m.total || 0);
-        if (!canonicalMap.has(canName)) {
-          canonicalMap.set(canName, {
-            name: canName,
-            total: 0,
-            channels: [],
-          });
-        }
-        const entry = canonicalMap.get(canName);
-        entry.total += (m.total || 0);
-        entry.channels.push({
-          rawName: m.name,
-          agent: row.name,
-          total: m.total || 0,
-          totalText: m.totalText || formatTokens(m.total || 0),
-        });
+    series.forEach((item, index) => {
+      const { pathD, areaD } = catmullRomToBezier(points.map((point, at) => ({ x: xAt(at), y: yAt(item.value(point)) })), height, width);
+      if (workbench.chartType === "area") {
+        const gradient = svgEl("linearGradient", { id: `wb-grad-${index}`, x1: "0", y1: "0", x2: "0", y2: "1" });
+        gradient.append(svgEl("stop", { offset: "0%", "stop-color": item.color, "stop-opacity": "0.35" }));
+        gradient.append(svgEl("stop", { offset: "100%", "stop-color": item.color, "stop-opacity": "0.04" }));
+        defs.append(gradient);
+        svg.append(svgEl("path", { d: areaD, fill: `url(#wb-grad-${index})` }));
       }
+      svg.append(svgEl("path", { d: pathD, fill: "none", stroke: item.color, "stroke-width": "2", "vector-effect": "non-scaling-stroke", class: "wb-line" }));
+    });
+    const rule = svgEl("line", { id: "wb-rule", x1: 0, x2: 0, y1: 0, y2: height, class: "wb-rule hidden", "vector-effect": "non-scaling-stroke" });
+    svg.append(rule);
+    plot.append(svg);
+    // mac 在 ≤14 个点时画点标记; HTML 圆点避免 preserveAspectRatio=none 把圆拉成椭圆
+    if (points.length <= 14) {
+      series.forEach(item => points.forEach((point, index) => {
+        plot.append(node("i", null, {
+          class: "wb-point",
+          style: `left: ${(xAt(index) / width) * 100}%; bottom: ${(item.value(point) / top) * 100}%; background: ${item.color};`,
+        }));
+      }));
     }
+    // 悬停选点 (mac chartXSelection): 就近点, 移出清除
+    const select = index => {
+      if (index === workbench.selectedIndex) return;
+      workbench.selectedIndex = index;
+      rule.setAttribute("class", index == null ? "wb-rule hidden" : "wb-rule");
+      if (index != null) {
+        rule.setAttribute("x1", xAt(index));
+        rule.setAttribute("x2", xAt(index));
+      }
+      drawTimelineSummary();
+    };
+    plot.addEventListener("mousemove", event => {
+      const rect = plot.getBoundingClientRect?.();
+      if (!rect || !rect.width) return;
+      const band = Math.floor(((event.clientX - rect.left) / rect.width) * points.length);
+      select(Math.min(points.length - 1, Math.max(0, band)));
+    });
+    plot.addEventListener("mouseleave", () => select(null));
 
-    const canList = node("div", null, { class: "canonical-list" });
-    if (canonicalMap.size === 0) {
-      const emptyRow = node("div", null, { class: "canonical-row" });
-      emptyRow.append(node("span", "暂无模型消耗数据", { class: "canonical-name" }));
-      canList.append(emptyRow);
+    const xAxis = node("div", null, { class: "wb-chart-x" });
+    const labelCount = Math.min(points.length, 8);
+    const labelIndexes = new Set(Array.from({ length: labelCount }, (_, at) => (labelCount > 1 ? Math.round((at * (points.length - 1)) / (labelCount - 1)) : 0)));
+    for (const index of labelIndexes) {
+      xAxis.append(node("span", points[index].label, { style: `left: ${(xAt(index) / width) * 100}%;` }));
+    }
+    chart.append(yAxis, plot, xAxis);
+    return chart;
+  }
+
+  function drawTimelineSummary() {
+    const host = byId("wb-timeline-summary");
+    const snapshot = workbench.snapshot;
+    if (!host || !snapshot) return;
+    host.replaceChildren();
+    const point = workbench.selectedIndex == null ? null : snapshot.timeline.points[workbench.selectedIndex];
+    if (!point) {
+      host.append(
+        markdownLine(snapshot.timeline.peakSummary, "wb-summary-peak"),
+        node("span", null, { class: "wb-spacer" }),
+        markdownLine(snapshot.timeline.avgSummary, "wb-summary-avg"),
+      );
+      return;
+    }
+    host.append(node("span", `📍 ${point.label}`, { class: "wb-summary-label" }));
+    if (workbench.chartMode === "cost") {
+      host.append(node("span", `$${fixedEven(point.costUsd, 4)}`, { class: "wb-summary-value cost" }));
+      return;
+    }
+    host.append(node("span", `${tokenCount(point.totalTokens)} Tokens`, { class: "wb-summary-value" }));
+    const parts = workbench.chartMode === "agent"
+      ? snapshot.agents.slice(0, 3).map(agent => [agent.name, point.seriesValues[agent.agentId], agent.colorHex])
+      : workbench.chartMode === "model"
+        ? snapshot.models.slice(0, 3).map(model => [model.displayName, point.seriesValues[`model_${model.canonicalKey}`], model.colorHex])
+        : TOKEN_TYPE_SERIES.map(type => [type.short, point.seriesValues[type.key], type.color]);
+    for (const [name, value, color] of parts) {
+      if (value > 0) host.append(node("span", `${name}: ${tokenCount(value)}`, { class: "wb-summary-part", style: `color: ${color};` }));
+    }
+  }
+
+  // MARK: 模型分布 (mac CanonicalModelAnalyticsCard)
+
+  function drawModels() {
+    const models = workbench.snapshot.models;
+    const sourceCount = models.reduce((sum, model) => sum + Math.max(1, model.sources.length), 0);
+    const card = node("section", null, { class: "fluent-card wb-card canonical-card" });
+    card.append(cardHeader("模型分布", `${models.length} 款主模型 · ${sourceCount} 个渠道`, "var(--ok)", "自动归并同类模型，支持展开查看各渠道细分贡献", [
+      segButtons([["merged", "合并视图"], ["raw", "原始渠道"]], workbench.mergedModels ? "merged" : "raw", view => { workbench.mergedModels = view === "merged"; drawModels(); }),
+    ]));
+    const list = node("div", null, { class: "wb-list" });
+    if (!models.length) {
+      list.append(node("div", "暂无模型消耗数据", { class: "wb-empty" }));
+    } else if (workbench.mergedModels) {
+      for (const model of models) list.append(modelRow(model));
     } else {
-      const sortedModels = [...canonicalMap.values()].sort((a, b) => b.total - a.total);
-      for (const model of sortedModels) {
-        const cRow = node("div", null, { class: "canonical-row" });
-        const headRow = node("div", null, { class: "canonical-head-row" });
-        headRow.append(node("span", model.name, { class: "canonical-name" }));
-
-        const badgeText = model.channels.length > 1 ? `${model.channels.length} 个来源渠道` : "单来源";
-        headRow.append(node("span", badgeText, { class: "canonical-badge" }));
-
-        const barWrap = node("div", null, { class: "canonical-bar-wrap" });
-        const share = totalModelTokens > 0 ? (model.total / totalModelTokens) : 0;
-        const fill = node("div", null, { class: "canonical-bar-fill" });
-        fill.style.width = `${Math.max(share * 100, 3).toFixed(1)}%`;
-        barWrap.append(fill);
-        headRow.append(barWrap);
-
-        headRow.append(node("span", formatTokens(model.total), { class: "canonical-tokens" }));
-        const estCost = `≈ ¥${((model.total / 1000000) * 16.5).toFixed(2)}`;
-        headRow.append(node("span", estCost, { class: "canonical-cost" }));
-        cRow.append(headRow);
-
-        // 展开渠道明细
-        const channelTree = node("div", null, { class: "canonical-channels-tree" });
-        for (const ch of model.channels) {
-          const item = node("div", null, { class: "canonical-channel-item" });
-          item.append(node("span", `↳ ${ch.agent} · ${ch.rawName}`, { class: "canonical-channel-name" }));
-          item.append(node("span", ch.totalText, { class: "canonical-channel-total" }));
-          channelTree.append(item);
-        }
-        cRow.append(channelTree);
-        canList.append(cRow);
-      }
+      const sources = models.flatMap(model => model.sources).sort((left, right) => right.tokens - left.tokens);
+      sources.forEach((source, index) => {
+        const item = node("div", null, { class: "wb-row wb-raw-row" });
+        const meta = node("div", null, { class: "wb-row-meta" });
+        meta.append(node("span", source.rawModelName, { class: "wb-mono-name" }), node("span", `来源 Agent: ${source.agentDisplayName}`, { class: "wb-row-sub" }));
+        item.append(node("span", `#${index + 1}`, { class: "wb-rank" }), meta, node("span", null, { class: "wb-spacer" }), node("span", source.tokensText, { class: "wb-tokens" }));
+        if (source.costText) item.append(node("span", source.costText, { class: "wb-cost" }));
+        list.append(item);
+      });
     }
-    canCard.append(canList);
-    root.append(canCard);
+    card.append(list);
+    fillSlot("models", card);
+  }
 
-    // 5. 多 Agent 矩阵对比卡片 (agent-matrix-card)
-    const agCard = node("div", null, { class: "agent-matrix-card" });
-    agCard.append(node("div", "多 Agent 协同透视矩阵", { class: "canonical-title", style: "margin-bottom: 12px;" }));
-
-    const table = node("table", null, { class: "agent-matrix-table" });
-    const thead = node("thead");
-    const trHead = node("tr");
-    trHead.append(node("th", "Agent"));
-    trHead.append(node("th", "周期 Token"));
-    trHead.append(node("th", "主力模型"));
-    trHead.append(node("th", "Top 代码仓项目"));
-    thead.append(trHead);
-    table.append(thead);
-
-    const tbody = node("tbody");
-    if (rows.length === 0) {
-      const tr = node("tr");
-      const td = node("td", "暂无活跃 Agent 记录", { colspan: "4" });
-      tr.append(td);
-      tbody.append(tr);
-    } else {
-      for (const ag of rows) {
-        const tr = node("tr");
-        const tdName = node("td");
-        const nameWrap = node("div", null, { class: "agent-matrix-name" });
-        const dot = node("span", null, { class: "agent-matrix-dot" });
-        dot.style.background = ag.colorHex || "#0a84ff";
-        nameWrap.append(dot, node("span", ag.name));
-        tdName.append(nameWrap);
-        tr.append(tdName);
-
-        tr.append(node("td", ag.todayTotalText || "0", { style: "font-weight: 600;" }));
-
-        const tdModels = node("td");
-        const tagWrap = node("div", null, { class: "agent-sub-tags" });
-        for (const m of (ag.models || []).slice(0, 2)) {
-          tagWrap.append(node("span", m.name, { class: "agent-tag" }));
-        }
-        tdModels.append(tagWrap);
-        tr.append(tdModels);
-
-        const tdProj = node("td");
-        const projWrap = node("div", null, { class: "agent-sub-tags" });
-        for (const p of (ag.projects || []).slice(0, 2)) {
-          projWrap.append(node("span", p.name, { class: "agent-tag" }));
-        }
-        tdProj.append(projWrap);
-        tr.append(tdProj);
-
-        tbody.append(tr);
+  function modelRow(model) {
+    const expanded = workbench.expandedModels.has(model.canonicalKey);
+    const multi = model.sources.length > 1;
+    const group = node("div", null, { class: "canonical-row" });
+    const line = node("div", null, { class: "wb-row" });
+    const meta = node("div", null, { class: "wb-row-meta" });
+    const title = node("div", null, { class: "wb-name-line" });
+    title.append(node("span", model.displayName, { class: "wb-name" }), node("span", model.vendor, { class: "wb-tag" }));
+    if (multi) title.append(chip(`合并 ${model.sources.length} 个渠道`, "var(--settings-accent)"));
+    meta.append(title, node("span", `规范键: ${model.canonicalKey}`, { class: "wb-row-sub wb-mono" }));
+    const figures = node("div", null, { class: "wb-figures" });
+    const shareLine = node("div", null, { class: "wb-share-line" });
+    const bar = node("span", null, { class: "wb-share-bar" });
+    bar.append(node("i", null, { style: `width: max(2px, ${Math.min(100, Math.max(0, model.sharePercent))}%); background: ${model.colorHex};` }));
+    shareLine.append(bar, node("span", percentText(model.sharePercent), { class: "wb-share" }));
+    const amountLine = node("div", null, { class: "wb-amount-line" });
+    amountLine.append(node("span", model.totalTokensText, { class: "wb-tokens" }));
+    if (model.costText) amountLine.append(node("span", model.costText, { class: "wb-cost" }));
+    figures.append(shareLine, amountLine);
+    line.append(node("i", null, { class: "wb-dot wb-dot-lg", style: `background: ${model.colorHex};` }), meta, node("span", null, { class: "wb-spacer" }), figures);
+    line.append(multi
+      ? expandButton(expanded, expanded ? "收起渠道明细" : `展开 ${model.sources.length} 个渠道明细`, () => {
+        workbench.expandedModels[expanded ? "delete" : "add"](model.canonicalKey);
+        drawModels();
+      })
+      : node("span", null, { class: "wb-expand-placeholder" }));
+    group.append(line);
+    if (expanded && multi) {
+      const tree = node("div", null, { class: "wb-sources" });
+      for (const source of model.sources) {
+        const item = node("div", null, { class: "wb-source" });
+        item.append(
+          node("span", "↳", { class: "wb-source-arrow" }),
+          node("span", source.rawModelName, { class: "wb-mono-name" }),
+          node("span", source.agentDisplayName, { class: "wb-tag" }),
+          node("span", null, { class: "wb-spacer" }),
+          node("span", `${source.tokensText} (${percentText(source.shareOfModelPercent)})`, { class: "wb-source-share" }),
+        );
+        if (source.costText) item.append(node("span", source.costText, { class: "wb-cost" }));
+        tree.append(item);
       }
+      group.append(tree);
     }
-    table.append(tbody);
-    agCard.append(table);
-    root.append(agCard);
+    return group;
+  }
 
-    // 6. Token 构成四象限 (composition-card)
-    const compCard = node("div", null, { class: "composition-card" });
-    compCard.append(node("div", "Token 构成分析", { class: "canonical-title" }));
+  // MARK: Agent 表现 (mac AgentComparisonMatrixCard)
 
-    const compGrid = node("div", null, { class: "composition-grid" });
-    const compItems = [
-      { label: "Prompt 输入", val: breakdown.find(b => b.label === "输入")?.valueText || "—", color: "#0a84ff" },
-      { label: "Model 输出", val: breakdown.find(b => b.label === "输出")?.valueText || "—", color: "#30d158" },
-      { label: "Cache 命中读取", val: breakdown.find(b => b.label && b.label.includes("读取"))?.valueText || "—", color: "#ff9f0a" },
-      { label: "Cache 创建写入", val: breakdown.find(b => b.label && b.label.includes("写入"))?.valueText || "—", color: "#bf5af2" },
+  function drawAgents() {
+    const agents = workbench.snapshot.agents;
+    const card = node("section", null, { class: "fluent-card wb-card agent-matrix-card" });
+    card.append(cardHeader("Agent 表现", `${agents.length} 个活跃`, "var(--settings-accent)", "透视各 Agent 用量占比、Token 结构与关联工程"));
+    const list = node("div", null, { class: "wb-list" });
+    if (!agents.length) list.append(node("div", "暂无活跃 Agent 消耗数据", { class: "wb-empty" }));
+    for (const agent of agents) list.append(agentRow(agent));
+    card.append(list);
+    fillSlot("agents", card);
+  }
+
+  function agentRow(agent) {
+    const expanded = workbench.expandedAgents.has(agent.agentId);
+    const hasDetails = agent.topProjects.length > 0 || agent.topModels.length > 0;
+    const group = node("div", null, { class: "wb-agent" });
+    const line = node("div", null, { class: "wb-row" });
+    const meta = node("div", null, { class: "wb-row-meta" });
+    const title = node("div", null, { class: "wb-name-line" });
+    title.append(node("span", agent.name, { class: "wb-name" }), node("span", agent.status, { class: "wb-tag strong" }));
+    meta.append(title);
+    if (agent.note) meta.append(node("span", agent.note, { class: "wb-row-sub" }));
+    // 构成比例条: 输入 (含缓存写入) 蓝 + 输出紫 + 缓存读取绿, 三段之和 = 总量
+    const total = Math.max(1, agent.inputTokens + agent.outputTokens + agent.cacheReadTokens);
+    const stack = node("span", null, { class: "wb-stack" });
+    for (const [value, color] of [[agent.inputTokens, "#4C9CFF"], [agent.outputTokens, "#A855F7"], [agent.cacheReadTokens, "#10B981"]]) {
+      stack.append(node("i", null, { style: `width: max(1px, ${(value / total) * 100}%); background: ${color};` }));
+    }
+    const figures = node("div", null, { class: "wb-figures" });
+    const amounts = node("div", null, { class: "wb-amount-line" });
+    amounts.append(
+      node("span", agent.totalTokensText, { class: "wb-tokens" }),
+      node("span", agent.costText, { class: "wb-cost" }),
+      node("span", percentText(agent.sharePercent), { class: "wb-share wb-share-narrow" }),
+    );
+    figures.append(stack, amounts);
+    line.append(node("i", null, { class: "wb-dot wb-dot-lg", style: `background: ${agent.colorHex};` }), meta, node("span", null, { class: "wb-spacer" }), figures);
+    line.append(hasDetails
+      ? expandButton(expanded, expanded ? "收起关联工程与模型" : "展开关联工程与模型下钻", () => {
+        workbench.expandedAgents[expanded ? "delete" : "add"](agent.agentId);
+        drawAgents();
+      })
+      : node("span", null, { class: "wb-expand-placeholder" }));
+    group.append(line);
+    if (expanded && hasDetails) {
+      const detail = node("div", null, { class: "wb-agent-detail" });
+      if (agent.topProjects.length) {
+        const row = node("div", null, { class: "wb-detail-row" });
+        const tags = node("div", null, { class: "wb-flow" });
+        for (const project of agent.topProjects.slice(0, 4)) {
+          const tag = node("span", null, { class: "wb-flow-tag" });
+          tag.append(node("span", project.name, { class: "wb-mono-name" }), node("span", `(${tokenCount(project.total)})`, { class: "wb-flow-dim" }));
+          tags.append(tag);
+        }
+        row.append(node("span", "📁 今日 Top 工程:", { class: "wb-detail-label" }), tags);
+        detail.append(row);
+      }
+      if (agent.topModels.length) {
+        const row = node("div", null, { class: "wb-detail-row" });
+        const tags = node("div", null, { class: "wb-flow" });
+        for (const model of agent.topModels.slice(0, 3)) {
+          const tag = node("span", null, { class: "wb-flow-tag" });
+          tag.append(node("i", null, { class: "wb-dot wb-dot-sm", style: `background: ${model.colorHex};` }), node("span", model.displayName, { class: "wb-flow-name" }), node("span", `(${model.totalTokensText})`, { class: "wb-flow-dim" }));
+          tags.append(tag);
+        }
+        row.append(node("span", "⚡️ 主要消耗模型:", { class: "wb-detail-label" }), tags);
+        detail.append(row);
+      }
+      group.append(detail);
+    }
+    return group;
+  }
+
+  // MARK: Token 构成与今日时段 (mac TokenCompositionCard)
+
+  function drawComposition() {
+    const { kpi, todayHourlyTokens: hours } = workbench.snapshot;
+    const card = node("section", null, { class: "fluent-card wb-card composition-card" });
+    card.append(cardHeader("Token 构成与时段", "Prompt Cache 专项分析", "var(--ok)", "所选范围的输入、输出与缓存读写结构，以及今日 24 小时活跃分布"));
+    const grid = node("div", null, { class: "composition-grid" });
+    const quadrants = [
+      ["Prompt Input", "用户提示词与工程上下文", kpi.inputTokensText, "输入基础", "#4C9CFF"],
+      ["Model Output", "大模型生成与代码产出", kpi.outputTokensText, "高单价", "#A855F7"],
+      ["Prompt Cache Read", `命中率 ${kpi.cacheHitRateText} · ${kpi.cacheSavedCostText}`, kpi.cacheReadTokensText, "已节省", "#10B981"],
+      ["Cache Creation", "写入提示缓存的上下文", kpi.cacheCreationTokensText, "写入", "#F59E0B"],
     ];
-    for (const ci of compItems) {
-      const box = node("div", null, { class: "composition-box" });
-      box.append(node("div", ci.label, { class: "composition-box-label" }));
-      box.append(node("div", ci.val, { class: "composition-box-value", style: `color: ${ci.color};` }));
-      compGrid.append(box);
+    for (const [title, sub, value, tag, color] of quadrants) {
+      const box = node("div", null, { class: "composition-box", style: `--chip: ${color};` });
+      const head = node("div", null, { class: "kpi-head" });
+      head.append(node("span", title, { class: "composition-box-label" }), chip(tag, color));
+      box.append(head, node("div", value, { class: "composition-box-value" }), node("div", sub, { class: "composition-box-sub", title: sub }));
+      grid.append(box);
     }
-    compCard.append(compGrid);
+    card.append(grid, node("div", null, { class: "wb-divider" }));
 
-    // 堆叠进度条
-    const stackedBar = node("div", null, { class: "composition-stacked-bar" });
-    const inVal = breakdown.find(b => b.label === "输入")?.value || 40;
-    const outVal = breakdown.find(b => b.label === "输出")?.value || 20;
-    const crVal = breakdown.find(b => b.label && b.label.includes("读取"))?.value || 30;
-    const totalComp = inVal + outVal + crVal || 100;
-
-    const s1 = node("div", null, { class: "composition-seg", style: `width: ${(inVal / totalComp * 100).toFixed(1)}%; background: #0a84ff;` });
-    const s2 = node("div", null, { class: "composition-seg", style: `width: ${(outVal / totalComp * 100).toFixed(1)}%; background: #30d158;` });
-    const s3 = node("div", null, { class: "composition-seg", style: `width: ${(crVal / totalComp * 100).toFixed(1)}%; background: #ff9f0a;` });
-    stackedBar.append(s1, s2, s3);
-    compCard.append(stackedBar);
-
-    root.append(compCard);
+    const heat = node("div", null, { class: "wb-hours" });
+    const head = node("div", null, { class: "wb-hours-head" });
+    const probe = node("span", null, { class: "wb-hours-probe", id: "wb-hours-probe" });
+    head.append(node("span", "今日 24 小时交互密度 (00:00 - 23:00)", { class: "wb-hours-title" }), node("span", null, { class: "wb-spacer" }), probe);
+    const peak = Math.max(1, ...hours);
+    const cells = node("div", null, { class: "wb-hour-cells" });
+    const showProbe = () => {
+      const hour = workbench.hoveredHour;
+      probe.textContent = hour == null ? "鼠标悬停查看单时段用量" : `📍 ${String(hour).padStart(2, "0")}:00 : ${tokenCount(hours[hour] || 0)} Tokens`;
+      probe.className = hour == null ? "wb-hours-probe" : "wb-hours-probe on";
+    };
+    hours.forEach((value, hour) => {
+      const cell = node("i", null, {
+        class: value ? "wb-hour" : "wb-hour zero",
+        // mac accent.opacity(0.25 + 0.75 × 强度): 只作用于填充, 悬停描边不随之变淡
+        style: value ? `background: color-mix(in srgb, var(--settings-accent) ${(25 + 75 * (value / peak)).toFixed(1)}%, transparent);` : "",
+        title: `${String(hour).padStart(2, "0")}:00`,
+      });
+      cell.addEventListener("mouseenter", () => { workbench.hoveredHour = hour; showProbe(); });
+      cell.addEventListener("mouseleave", () => { workbench.hoveredHour = null; showProbe(); });
+      cells.append(cell);
+    });
+    const ticks = node("div", null, { class: "wb-hour-ticks" });
+    for (const label of ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00", "23:00"]) ticks.append(node("span", label));
+    heat.append(head, cells, ticks);
+    card.append(heat);
+    fillSlot("composition", card);
+    showProbe();
   }
 
   function renderSessionProbes() {
@@ -987,14 +1294,15 @@
     pricingEditing = null;
   }
 
+  // 返回是否已保存: 失败原因已由 persist 写入状态行, 调用方只需决定是否关闭弹窗。
   async function persistOverrides(overrides, statusText) {
     validateOverrides(overrides);
-    const updated = { ...await invoke("get_settings"), pricingOverrides: overrides };
-    await invoke("save_settings_command", { settings: updated });
-    settings = updated;
-    window.dispatchEvent(new CustomEvent("settings-saved", { detail: updated }));
-    message(byId("settings-status"), statusText);
-    renderPricingPane();
+    const saved = await persist({ pricingOverrides: overrides });
+    if (saved) {
+      message(byId("settings-status"), statusText);
+      renderPricingPane();
+    }
+    return saved;
   }
 
   async function saveCalibration() {
@@ -1013,8 +1321,7 @@
       if (note) value.note = note;
       value.currency = entry.currency || "USD";
       overrides[entry.key] = value;
-      await persistOverrides(overrides, "已保存校准");
-      closeCalibrationSheet();
+      if (await persistOverrides(overrides, "已保存校准")) closeCalibrationSheet();
     } catch (error) {
       message(byId("settings-status"), `保存失败：${error.message || error}`);
     }
@@ -1024,8 +1331,7 @@
     try {
       const overrides = { ...(settings.pricingOverrides || {}) };
       delete overrides[key];
-      await persistOverrides(overrides, `已恢复 ${key} 的内置基准`);
-      closeCalibrationSheet();
+      if (await persistOverrides(overrides, `已恢复 ${key} 的内置基准`)) closeCalibrationSheet();
     } catch (error) {
       message(byId("settings-status"), `恢复失败：${error.message || error}`);
     }
@@ -1033,8 +1339,7 @@
 
   async function resetAllPricing() {
     try {
-      await persistOverrides({}, "已恢复全部内置基准");
-      closeCalibrationSheet();
+      if (await persistOverrides({}, "已恢复全部内置基准")) closeCalibrationSheet();
     } catch (error) {
       message(byId("settings-status"), `恢复失败：${error.message || error}`);
     }
@@ -1136,7 +1441,10 @@
     const c1 = card(host, "授权与隐私");
     // mac 语义: 单一模块授权开关 + 「确认授权 / 撤销全部授权」两个动作按钮
     // (采集与云端额度查询同属一次授权), 说明文案随刷新间隔与已启用 provider 动态变化。
-    row(c1, "Agent 用量", input("setting-usage-consent", "checkbox"), "允许按授权范围采集本机会话用量");
+    // mac 单一模块授权开关: 切换即等价于「确认授权 / 撤销全部授权」
+    const consentToggle = input("setting-usage-consent", "checkbox");
+    consentToggle.addEventListener("change", () => applyConsent(consentToggle.checked));
+    row(c1, "Agent 用量", consentToggle, "允许按授权范围采集本机会话用量");
     const lines = node("div", null, { class: "auth-lines" });
     const list = node("ul", null, { class: "hint-list" });
     list.append(
@@ -1185,7 +1493,7 @@
 
   // 导出: 先经系统保存对话框选位置 (与 mac NSSavePanel 等价), 再交给后端写入并回显路径。
   // 对话框不可用 (插件未授权/异常) 时回落到默认导出目录; 用户取消则不写文件。
-  async function runExport(command, label, extension) {
+  async function runExport(command, label, extension, { defaultName = null, args = {} } = {}) {
     const status = byId("settings-status");
     let requested = null;
     let dialogAvailable = true;
@@ -1193,7 +1501,7 @@
       requested = await invoke("plugin:dialog|save", {
         options: {
           title: `导出${label}`,
-          defaultPath: `Bruce-${command === "export_billing" ? "billing" : "diagnostics"}.${extension}`,
+          defaultPath: defaultName || `Bruce-${command === "export_billing" ? "billing" : "diagnostics"}.${extension}`,
           filters: [{ name: label, extensions: [extension] }],
         },
       });
@@ -1205,7 +1513,7 @@
       return;
     }
     try {
-      const result = await invoke(command, { path: requested ?? null });
+      const result = await invoke(command, { ...args, path: requested ?? null });
       message(status, `${label}已导出：${result?.path || "默认导出目录"}`);
     } catch (error) {
       message(status, `${label}导出失败：${error.message || error}`);
@@ -1245,20 +1553,15 @@
   // 授权动作即时生效 (对齐 mac confirmConsent/revokeAllConsent 的即时语义)
   async function applyConsent(granted) {
     const status = byId("consent-status");
-    try {
-      const current = { ...await invoke("get_settings") };
-      const updated = { ...current, consentVersion: granted ? 1 : 0, usageEnabled: granted ? true : false };
-      await invoke("save_settings_command", { settings: updated });
-      settings = updated;
-      const box = byId("setting-usage-consent");
-      if (box) box.checked = granted;
-      const state = byId("consent-state");
-      if (state) { state.textContent = granted ? "当前授权有效" : "尚未授权"; state.className = granted ? "auth-state ok" : "auth-state off"; }
-      window.dispatchEvent(new CustomEvent("settings-saved", { detail: updated }));
-      message(status, granted ? "已确认授权" : "已撤销全部授权");
-    } catch (error) {
-      message(status, `授权更新失败：${error.message || error}`);
-    }
+    const box = byId("setting-usage-consent");
+    const saved = await persist({ consentVersion: granted ? 1 : 0, usageEnabled: granted }, {
+      revert: () => { if (box) box.checked = !granted; },
+    });
+    if (!saved) { message(status, "授权更新失败", "warn"); return; }
+    if (box) box.checked = granted;
+    const state = byId("consent-state");
+    if (state) { state.textContent = granted ? "当前授权有效" : "尚未授权"; state.className = granted ? "auth-state ok" : "auth-state off"; }
+    message(status, granted ? "已确认授权" : "已撤销全部授权");
   }
 
   // MARK: - 数据交互逻辑
@@ -1270,6 +1573,8 @@
       const status = info.status && typeof info.status === "object" ? info.status : { phase: info.status || info.phase };
       const version = byId("setting-version");
       if (version) version.textContent = info.version || "—";
+      const navVersion = byId("nav-version");
+      if (navVersion) navVersion.textContent = info.version || "";
       const box = byId("runtime-info");
       if (box) {
         box.textContent = [
@@ -1307,6 +1612,7 @@
       intervalSelect.value = String(minutes);
     }
     if (byId("setting-notifications")) byId("setting-notifications").checked = settings.notificationsEnabled;
+    syncToggleState("setting-notifications");
     if (byId("setting-hotkey")) byId("setting-hotkey").value = settings.hotkey || "";
     if (byId("setting-theme")) byId("setting-theme").value = settings.theme;
     if (byId("setting-usage-consent")) byId("setting-usage-consent").checked = settings.consentVersion === 1;
@@ -1320,37 +1626,8 @@
     cardOrder = orderedAll(settings.cardOrder || [], ["usage", "subscription", "hourly"]);
     providerOrder = orderedAll(settings.providerOrder || [], providers.map(value => value[0]));
     renderOrders();
-    applyTheme(settings.theme);
-  }
-
-  async function saveSettings() {
-    const status = byId("settings-status"), save = byId("settings-save");
-    if (save) save.disabled = true;
-    try {
-      const interval = Number(byId("setting-interval")?.value || 30);
-      if (!Number.isInteger(interval) || interval < 1 || interval > 1440) throw new Error("刷新间隔须为 1–1440 的整数分钟");
-      const overrides = validateOverrides(settings.pricingOverrides || {});
-      const updated = {
-        ...await invoke("get_settings"),
-        refreshIntervalSecs: interval * 60,
-        notificationsEnabled: byId("setting-notifications")?.checked ?? true,
-        hotkey: byId("setting-hotkey")?.value.trim() || "",
-        theme: byId("setting-theme")?.value || "fluent",
-        // 授权版本由授权页的确认/撤销动作即时写入 (对齐 mac 即时语义), 此处沿用现值
-        consentVersion: settings.consentVersion ?? 0,
-        usageEnabled: byId("setting-usage")?.checked ?? true,
-        cardOrder: [...cardOrder],
-        providerOrder: [...providerOrder],
-        enabledProviders: [...(byId("setting-providers")?.querySelectorAll("input") || [])].filter(v => v.checked).map(v => v.dataset.provider),
-        pricingOverrides: overrides,
-      };
-      await invoke("save_settings_command", { settings: updated });
-      settings = updated;
-      applyTheme(updated.theme);
-      window.dispatchEvent(new CustomEvent("settings-saved", { detail: updated }));
-      message(status, "已保存");
-    } catch (error) { message(status, `保存失败：${error.message || error}`); }
-    finally { if (save) save.disabled = false; }
+    for (const render of segmentRenderers) render();
+    applyTheme();
   }
 
   function validatePayloads(payloads) {
@@ -1538,8 +1815,6 @@
     for (const navBtn of document.querySelectorAll(".navitem")) {
       navBtn.addEventListener("click", () => switchCategory(navBtn.dataset.category));
     }
-    const saveBtn = byId("settings-save");
-    if (saveBtn) saveBtn.addEventListener("click", saveSettings);
 
     const gHost = byId("pane-general-content");
     const uHost = byId("pane-agentUsage-content");

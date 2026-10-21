@@ -3,7 +3,8 @@
 //! Token, cost, day, model, and project aggregation.
 
 use collector_domain::{
-    AgentUsage, CollectionWindow, DailyUsage, ModelUsage, PricingTable, ProjectUsage, TokenBucket,
+    AgentUsage, CollectionWindow, DailyModelUsage, DailyUsage, HourModelUsage, ModelUsage,
+    MonthModelUsage, PricingTable, ProjectUsage, TokenBucket,
 };
 use std::collections::{BTreeMap, HashMap};
 
@@ -19,6 +20,23 @@ pub struct UsageAccumulator {
     projects_today: HashMap<String, u64>,
     project_order: Vec<String>,
     hours: [u64; 24],
+    models_by_day: BTreeMap<String, BTreeMap<String, TokenBucket>>,
+    hour_models_today: BTreeMap<u8, BTreeMap<String, TokenBucket>>,
+}
+
+/// 一个 token 桶的采集端计价 (C070): 无匹配单价时两者均为 None, 工作台计为未定价。
+fn price_bucket(
+    pricing: &PricingTable,
+    model: &str,
+    bucket: &TokenBucket,
+) -> (Option<f64>, Option<f64>) {
+    match pricing.resolve(model) {
+        Some(rule) => (
+            Some(pricing.calculate_cost(bucket, &rule)),
+            Some(pricing.calculate_cache_savings(bucket, &rule)),
+        ),
+        None => (None, None),
+    }
 }
 
 impl UsageAccumulator {
@@ -32,6 +50,8 @@ impl UsageAccumulator {
             projects_today: HashMap::new(),
             project_order: Vec::new(),
             hours: [0; 24],
+            models_by_day: BTreeMap::new(),
+            hour_models_today: BTreeMap::new(),
         }
     }
 
@@ -67,6 +87,18 @@ impl UsageAccumulator {
         for (index, value) in delta.hours.iter().enumerate() {
             self.hours[index] = self.hours[index].saturating_add(*value);
         }
+        for (day, models) in &delta.models_by_day {
+            let day_entry = self.models_by_day.entry(day.clone()).or_default();
+            for (model, bucket) in models {
+                day_entry.entry(model.clone()).or_default().merge(bucket);
+            }
+        }
+        for (hour, models) in &delta.hour_models_today {
+            let hour_entry = self.hour_models_today.entry(*hour).or_default();
+            for (model, bucket) in models {
+                hour_entry.entry(model.clone()).or_default().merge(bucket);
+            }
+        }
         true
     }
 
@@ -92,6 +124,8 @@ impl UsageAccumulator {
                     input: bucket.display_input(),
                     output: bucket.output,
                     total: bucket.total,
+                    cache_read: bucket.cache_read,
+                    cache_creation: bucket.cache_creation,
                 }
             })
             .collect();
@@ -186,6 +220,77 @@ impl UsageAccumulator {
             .map(|(_, name, total)| ProjectUsage { name, total })
             .collect();
 
+        // C070 工作台明细: 非零桶全部输出 (不过滤任何模型), 任一范围内模型桶合计 = token 合计。
+        // 只保留窗口内且属于最近 DETAIL_DAYS 天的日期 (增量缓存可能残留更早日期)。
+        let detail_floor = self
+            .window
+            .day_list
+            .len()
+            .saturating_sub(collector_domain::DETAIL_DAYS);
+        let detail_days: std::collections::BTreeSet<&String> =
+            self.window.day_list[detail_floor..].iter().collect();
+        let daily_models = self
+            .models_by_day
+            .iter()
+            .filter(|(day, _)| detail_days.contains(day))
+            .flat_map(|(day, models)| {
+                models
+                    .iter()
+                    .filter(|(_, bucket)| bucket.total > 0)
+                    .map(move |(model, bucket)| (day, model, bucket))
+            })
+            .map(|(day, model, bucket)| {
+                let (cost_usd, cache_savings_usd) = price_bucket(pricing, model, bucket);
+                DailyModelUsage {
+                    date: day.clone(),
+                    model: model.clone(),
+                    tokens: bucket.clone(),
+                    cost_usd,
+                    cache_savings_usd,
+                }
+            })
+            .collect();
+        let month_models = self
+            .models_by_month
+            .iter()
+            .flat_map(|(month, models)| {
+                models
+                    .iter()
+                    .filter(|(_, bucket)| bucket.total > 0)
+                    .map(move |(model, bucket)| (month, model, bucket))
+            })
+            .map(|(month, model, bucket)| {
+                let (cost_usd, cache_savings_usd) = price_bucket(pricing, model, bucket);
+                MonthModelUsage {
+                    month: month.clone(),
+                    model: model.clone(),
+                    tokens: bucket.clone(),
+                    cost_usd,
+                    cache_savings_usd,
+                }
+            })
+            .collect();
+        let hour_models = self
+            .hour_models_today
+            .iter()
+            .flat_map(|(hour, models)| {
+                models
+                    .iter()
+                    .filter(|(_, bucket)| bucket.total > 0)
+                    .map(move |(model, bucket)| (*hour, model, bucket))
+            })
+            .map(|(hour, model, bucket)| {
+                let (cost_usd, cache_savings_usd) = price_bucket(pricing, model, bucket);
+                HourModelUsage {
+                    hour,
+                    model: model.clone(),
+                    tokens: bucket.clone(),
+                    cost_usd,
+                    cache_savings_usd,
+                }
+            })
+            .collect();
+
         AgentUsage {
             id: agent_id.to_owned(),
             name: agent_name.to_owned(),
@@ -200,6 +305,9 @@ impl UsageAccumulator {
             projects,
             hours: self.hours.to_vec(),
             today_cost_usd,
+            daily_models,
+            month_models,
+            hour_models,
         }
     }
 }
@@ -278,5 +386,108 @@ mod tests {
         let cost = agent.today_cost_usd.unwrap();
         assert!((cost - 4.65).abs() < 1e-4);
         assert_eq!(agent.today_models[0].cost_usd, Some(cost));
+    }
+
+    /// C070: 工作台明细桶 —— 最近 31 天 日期×模型、全部月份 月×模型、今日 小时×模型,
+    /// 均为原始 token 口径并带采集端计价; 逐日补充原始缓存拆分。
+    #[test]
+    fn workbench_detail_buckets_are_real_bounded_and_priced() {
+        const NOW: i64 = 1_785_211_200_000; // 2026-07-28T12:00:00+08:00
+        const DAY: i64 = 86_400_000;
+        let window = {
+            let context = serde_json::from_value(json!({
+                "now": "2026-07-28T12:00:00+08:00", "timezone": "Asia/Shanghai", "days": 40
+            }))
+            .unwrap();
+            CollectionWindow::from_context(&context).unwrap()
+        };
+        let mut builder = UsageContributionBuilder::new(window.clone());
+        let sample = |at: i64, model: &'static str, input: u64, cache_read: u64| UsageSample {
+            timestamp_millis: at,
+            model: Some(model),
+            input,
+            output: 100,
+            cache_read,
+            cache_creation: 10,
+            project: None,
+        };
+        // 39 天前 (超出 31 天明细期, 只进月桶), 20 天前, 今日 10:00 与 12:00 两个模型
+        for record in [
+            sample(NOW - 39 * DAY, "k3-agent", 1_000, 0),
+            sample(NOW - 20 * DAY, "k3-agent", 2_000, 500),
+            sample(NOW - 2 * 3_600_000, "k3-agent", 3_000, 1_000),
+            sample(NOW, "mystery-model", 4_000, 0),
+        ] {
+            assert!(builder.record(record));
+        }
+        let mut aggregate = UsageAccumulator::new(window);
+        assert!(aggregate.merge_delta(&builder.contribution()));
+        let agent = aggregate.finalize("fixture", "Fixture");
+
+        // 逐日原始缓存拆分; input 仍为含缓存的展示口径
+        let today = agent.daily.last().unwrap();
+        assert_eq!(today.cache_read, 1_000);
+        assert_eq!(today.cache_creation, 20);
+        assert_eq!(today.input, 3_000 + 4_000 + 1_000 + 20);
+
+        // 日期×模型: 39 天前的样本不在明细期内; 每天模型桶之和 = 当日合计
+        let dates: std::collections::BTreeSet<&str> =
+            agent.daily_models.iter().map(|d| d.date.as_str()).collect();
+        assert_eq!(dates.len(), 2, "只含 20 天前与今日");
+        for day in &agent.daily {
+            let sum: u64 = agent
+                .daily_models
+                .iter()
+                .filter(|d| d.date == day.date)
+                .map(|d| d.tokens.total)
+                .sum();
+            if dates.contains(day.date.as_str()) {
+                assert_eq!(sum, day.total, "{}", day.date);
+            }
+        }
+        // 月×模型覆盖全部月份 (6 月与 7 月)
+        let months: std::collections::BTreeSet<&str> = agent
+            .month_models
+            .iter()
+            .map(|m| m.month.as_str())
+            .collect();
+        assert_eq!(months, ["2026-06", "2026-07"].into_iter().collect());
+        let month_total: u64 = agent.month_models.iter().map(|m| m.tokens.total).sum();
+        let daily_total: u64 = agent.daily.iter().map(|d| d.total).sum();
+        assert_eq!(month_total, daily_total);
+
+        // 今日 小时×模型: 10 点 k3-agent, 12 点 mystery-model; 与 hours 合计一致
+        let hours: Vec<(u8, &str)> = agent
+            .hour_models
+            .iter()
+            .map(|h| (h.hour, h.model.as_str()))
+            .collect();
+        assert_eq!(hours, vec![(10, "k3-agent"), (12, "mystery-model")]);
+        let hour_sum: u64 = agent.hour_models.iter().map(|h| h.tokens.total).sum();
+        assert_eq!(hour_sum, agent.hours.iter().sum::<u64>());
+
+        // 计价: 内置单价命中则有费用与缓存收益; 未知模型两者为 null (工作台计为未定价)
+        let priced = agent
+            .daily_models
+            .iter()
+            .find(|d| d.model == "k3-agent" && d.tokens.cache_read == 1_000)
+            .unwrap();
+        // k3-agent: 输入 3.00 / 输出 15.00 / 缓存读 0.30 (USD/1M); 缓存写入按输入计价
+        let expected = (3_000.0 * 3.0 + 100.0 * 15.0 + 1_000.0 * 0.30 + 10.0 * 3.0) / 1_000_000.0;
+        assert!((priced.cost_usd.unwrap() - expected).abs() < 1e-12);
+        assert!((priced.cache_savings_usd.unwrap() - 1_000.0 * 2.70 / 1_000_000.0).abs() < 1e-12);
+        let unpriced = agent
+            .hour_models
+            .iter()
+            .find(|h| h.model == "mystery-model")
+            .unwrap();
+        assert!(unpriced.cost_usd.is_none() && unpriced.cache_savings_usd.is_none());
+
+        // 序列化字段名 (artifact 契约)
+        let encoded = serde_json::to_value(&agent).unwrap();
+        assert!(encoded["dailyModels"][0]["cacheRead"].is_u64());
+        assert!(encoded["monthModels"][0]["month"].is_string());
+        assert!(encoded["hourModels"][0]["hour"].is_u64());
+        assert!(encoded["daily"][0]["cacheCreation"].is_u64());
     }
 }

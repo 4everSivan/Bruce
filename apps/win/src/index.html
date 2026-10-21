@@ -8,14 +8,14 @@
 </head>
 <body class="theme-fluent">
   <main id="panel">
-    <!-- HUD 头: 呼吸灯 + 品牌 + 系统态 (mac dashboardTopHeader) -->
+    <!-- HUD 头 (mac dashboardTopHeader): 左 [状态灯 品牌 SYS.OK] · 右 Agent 运行数 -->
     <header id="hud">
       <div class="hud-left">
         <span id="hud-dot-wrap" class="hud-dot-wrap"><span class="hud-dot"></span></span>
         <span class="hud-brand">Bruce // HUD</span>
+        <span id="runtime-status" class="hud-sysok" role="status">SYS.OK</span>
       </div>
-      <span id="runtime-status" class="hud-sysok" role="status">等待刷新</span>
-      <span id="hud-agents" class="hud-right">STANDBY</span>
+      <span id="hud-agents" class="hud-right standby">STANDBY</span>
     </header>
 
     <div id="scroll">
@@ -27,13 +27,14 @@
       </section>
     </div>
 
-    <!-- 底栏动作 (mac actionFooter: 刷新/设置/退出) -->
+    <!-- 底栏动作 (mac actionFooter: 刷新/设置/退出, 仅图标; 图标为自绘 SF Symbols 等价几何:
+         arrow.clockwise / gearshape / power) -->
     <footer id="footer">
       <div class="foot-inner">
-        <button id="refresh" class="foot-btn" title="立即刷新">⟳</button>
+        <button id="refresh" class="foot-btn" type="button" title="刷新全部模块" aria-label="刷新全部模块"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M12.76 5.25A5.5 5.5 0 1 1 8 2.5"/><path d="M6.3 0.8L8.3 2.5L6.3 4.2"/></svg></button>
         <span class="foot-spacer"></span>
-        <button id="foot-settings" class="foot-btn" title="设置">⚙</button>
-        <button id="foot-quit" class="foot-btn" title="退出 Bruce">⏻</button>
+        <button id="foot-settings" class="foot-btn" type="button" title="设置" aria-label="设置"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.45 2.93L6.68 1.23L9.32 1.23L9.55 2.93L10.49 3.32L11.86 2.28L13.72 4.14L12.68 5.51L13.07 6.45L14.77 6.68L14.77 9.32L13.07 9.55L12.68 10.49L13.72 11.86L11.86 13.72L10.49 12.68L9.55 13.07L9.32 14.77L6.68 14.77L6.45 13.07L5.51 12.68L4.14 13.72L2.28 11.86L3.32 10.49L2.93 9.55L1.23 9.32L1.23 6.68L2.93 6.45L3.32 5.51L2.28 4.14L4.14 2.28L5.51 3.32Z"/><circle cx="8" cy="8" r="2.2"/></svg></button>
+        <button id="foot-quit" class="foot-btn" type="button" title="退出 Bruce" aria-label="退出 Bruce"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.75V7.5"/><path d="M4.6 3.7A5.5 5.5 0 1 0 11.4 3.7"/></svg></button>
       </div>
     </footer>
   </main>

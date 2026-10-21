@@ -1,0 +1,3494 @@
+[
+  {
+    "agents" : [
+      {
+        "agentId" : "claude-code",
+        "cacheCreationTokens" : 16615,
+        "cacheReadTokens" : 322759,
+        "colorHex" : "#ff7a59",
+        "costText" : "$1.61",
+        "costUsd" : 1.6143050999999999,
+        "inputTokens" : 169423,
+        "name" : "Claude Code",
+        "note" : null,
+        "outputTokens" : 38283,
+        "sharePercent" : 63.537493187684532,
+        "status" : "ok",
+        "topModels" : [
+          {
+            "canonicalKey" : "claude-opus-5-5",
+            "colorHex" : "#FF9F0A",
+            "costText" : "$1.09",
+            "costUsd" : 1.0874085,
+            "displayName" : "Claude Opus 5.5",
+            "sharePercent" : 61.903235840253366,
+            "sources" : [
+              {
+                "agentDisplayName" : "Claude Code",
+                "agentId" : "claude-code",
+                "costText" : "$1.09",
+                "costUsd" : 1.0874085,
+                "rawModelName" : "anthropic/claude-opus-5-5-20260601",
+                "shareOfModelPercent" : 100,
+                "tokens" : 328375,
+                "tokensText" : "328.4K"
+              }
+            ],
+            "totalTokens" : 328375,
+            "totalTokensText" : "328.4K",
+            "vendor" : "Anthropic"
+          },
+          {
+            "canonicalKey" : "claude-sonnet-5",
+            "colorHex" : "#FF9F0A",
+            "costText" : "$0.53",
+            "costUsd" : 0.52689659999999994,
+            "displayName" : "Claude Sonnet 5",
+            "sharePercent" : 38.096764159746641,
+            "sources" : [
+              {
+                "agentDisplayName" : "Claude Code",
+                "agentId" : "claude-code",
+                "costText" : "$0.53",
+                "costUsd" : 0.52689659999999994,
+                "rawModelName" : "claude-sonnet-5",
+                "shareOfModelPercent" : 100,
+                "tokens" : 202090,
+                "tokensText" : "202.1K"
+              }
+            ],
+            "totalTokens" : 202090,
+            "totalTokensText" : "202.1K",
+            "vendor" : "Anthropic"
+          }
+        ],
+        "topProjects" : [
+          {
+            "name" : "bruce",
+            "total" : 371325
+          },
+          {
+            "name" : "notes",
+            "total" : 159140
+          }
+        ],
+        "totalTokens" : 530465,
+        "totalTokensText" : "530.5K"
+      },
+      {
+        "agentId" : "codex",
+        "cacheCreationTokens" : 9475,
+        "cacheReadTokens" : 106928,
+        "colorHex" : "#bf5af2",
+        "costText" : "$0.26",
+        "costUsd" : 0.25510210999999999,
+        "inputTokens" : 95772,
+        "name" : "Codex",
+        "note" : null,
+        "outputTokens" : 22679,
+        "sharePercent" : 26.995214909837884,
+        "status" : "ok",
+        "topModels" : [
+          {
+            "canonicalKey" : "gpt-5.4",
+            "colorHex" : "#0A84FF",
+            "costText" : "$0.24",
+            "costUsd" : 0.24461862500000001,
+            "displayName" : "GPT-5.4",
+            "sharePercent" : 58.15803601932744,
+            "sources" : [
+              {
+                "agentDisplayName" : "Codex",
+                "agentId" : "codex",
+                "costText" : "$0.24",
+                "costUsd" : 0.24461862500000001,
+                "rawModelName" : "gpt-5.4",
+                "shareOfModelPercent" : 100,
+                "tokens" : 131076,
+                "tokensText" : "131.1K"
+              }
+            ],
+            "totalTokens" : 131076,
+            "totalTokensText" : "131.1K",
+            "vendor" : "OpenAI / Codex"
+          },
+          {
+            "canonicalKey" : "gpt-5.4-mini",
+            "colorHex" : "#0A84FF",
+            "costText" : "$0.01",
+            "costUsd" : 0.010483484999999999,
+            "displayName" : "GPT-5.4 mini",
+            "sharePercent" : 41.84196398067256,
+            "sources" : [
+              {
+                "agentDisplayName" : "Codex",
+                "agentId" : "codex",
+                "costText" : "$0.01",
+                "costUsd" : 0.010483484999999999,
+                "rawModelName" : "gpt-5.4-mini-20260305",
+                "shareOfModelPercent" : 100,
+                "tokens" : 94303,
+                "tokensText" : "94.3K"
+              }
+            ],
+            "totalTokens" : 94303,
+            "totalTokensText" : "94.3K",
+            "vendor" : "OpenAI / Codex"
+          }
+        ],
+        "topProjects" : [
+
+        ],
+        "totalTokens" : 225379,
+        "totalTokensText" : "225.4K"
+      },
+      {
+        "agentId" : "opencode",
+        "cacheCreationTokens" : 5285,
+        "cacheReadTokens" : 12968,
+        "colorHex" : "#30d158",
+        "costText" : "$0.06",
+        "costUsd" : 0.063121937000000003,
+        "inputTokens" : 54005,
+        "name" : "OpenCode",
+        "note" : null,
+        "outputTokens" : 12068,
+        "sharePercent" : 9.4672919024775872,
+        "status" : "ok",
+        "topModels" : [
+          {
+            "canonicalKey" : "deepseek-v4.1-flash",
+            "colorHex" : "#30D158",
+            "costText" : "$0.01",
+            "costUsd" : 0.0089489969999999985,
+            "displayName" : "DeepSeek V4.1 Flash",
+            "sharePercent" : 61.45165167444744,
+            "sources" : [
+              {
+                "agentDisplayName" : "OpenCode",
+                "agentId" : "opencode",
+                "costText" : "$0.01",
+                "costUsd" : 0.0089489969999999985,
+                "rawModelName" : "deepseek-v4.1-flash[thinking]",
+                "shareOfModelPercent" : 100,
+                "tokens" : 48572,
+                "tokensText" : "48.6K"
+              }
+            ],
+            "totalTokens" : 48572,
+            "totalTokensText" : "48.6K",
+            "vendor" : "DeepSeek"
+          },
+          {
+            "canonicalKey" : "glm-5.3",
+            "colorHex" : "#40C8E0",
+            "costText" : "$0.05",
+            "costUsd" : 0.054172940000000003,
+            "displayName" : "GLM-5.3",
+            "sharePercent" : 38.54834832555256,
+            "sources" : [
+              {
+                "agentDisplayName" : "OpenCode",
+                "agentId" : "opencode",
+                "costText" : "$0.05",
+                "costUsd" : 0.054172940000000003,
+                "rawModelName" : "openrouter/glm-5.3",
+                "shareOfModelPercent" : 100,
+                "tokens" : 30469,
+                "tokensText" : "30.5K"
+              }
+            ],
+            "totalTokens" : 30469,
+            "totalTokensText" : "30.5K",
+            "vendor" : "智谱 AI (Zhipu)"
+          }
+        ],
+        "topProjects" : [
+
+        ],
+        "totalTokens" : 79041,
+        "totalTokensText" : "79K"
+      }
+    ],
+    "kpi" : {
+      "activeAgentsCount" : 3,
+      "averageCostPerMillionText" : "$2.31 / 1M",
+      "cacheCreationTokens" : 31375,
+      "cacheCreationTokensText" : "31.4K",
+      "cacheHitRateText" : "58.1%",
+      "cacheReadTokens" : 442655,
+      "cacheReadTokensText" : "442.7K",
+      "cacheSavedCostText" : "省 $1.32",
+      "cacheSavingsUsd" : 1.3151364029999999,
+      "cacheSplitAvailable" : true,
+      "costTagText" : "单价表计价",
+      "costText" : "$1.93",
+      "equivalentMText" : "834.9 K",
+      "inputTokens" : 287825,
+      "inputTokensText" : "287.8K",
+      "outputTokens" : 73030,
+      "outputTokensText" : "73K",
+      "pricedTokens" : 834885,
+      "topAgentText" : "最活跃 Claude Code · 63.5%",
+      "totalCostUsd" : 1.9325291469999999,
+      "totalTokens" : 834885,
+      "totalTokensText" : "834.9K",
+      "unpricedTokens" : 0
+    },
+    "models" : [
+      {
+        "canonicalKey" : "claude-opus-5-5",
+        "colorHex" : "#FF9F0A",
+        "costText" : "$1.09",
+        "costUsd" : 1.0874085,
+        "displayName" : "Claude Opus 5.5",
+        "sharePercent" : 39.331764254957271,
+        "sources" : [
+          {
+            "agentDisplayName" : "Claude Code",
+            "agentId" : "claude-code",
+            "costText" : "$1.09",
+            "costUsd" : 1.0874085,
+            "rawModelName" : "anthropic/claude-opus-5-5-20260601",
+            "shareOfModelPercent" : 100,
+            "tokens" : 328375,
+            "tokensText" : "328.4K"
+          }
+        ],
+        "totalTokens" : 328375,
+        "totalTokensText" : "328.4K",
+        "vendor" : "Anthropic"
+      },
+      {
+        "canonicalKey" : "claude-sonnet-5",
+        "colorHex" : "#FF9F0A",
+        "costText" : "$0.53",
+        "costUsd" : 0.52689659999999994,
+        "displayName" : "Claude Sonnet 5",
+        "sharePercent" : 24.205728932727261,
+        "sources" : [
+          {
+            "agentDisplayName" : "Claude Code",
+            "agentId" : "claude-code",
+            "costText" : "$0.53",
+            "costUsd" : 0.52689659999999994,
+            "rawModelName" : "claude-sonnet-5",
+            "shareOfModelPercent" : 100,
+            "tokens" : 202090,
+            "tokensText" : "202.1K"
+          }
+        ],
+        "totalTokens" : 202090,
+        "totalTokensText" : "202.1K",
+        "vendor" : "Anthropic"
+      },
+      {
+        "canonicalKey" : "gpt-5.4",
+        "colorHex" : "#0A84FF",
+        "costText" : "$0.24",
+        "costUsd" : 0.24461862500000001,
+        "displayName" : "GPT-5.4",
+        "sharePercent" : 15.699886810758368,
+        "sources" : [
+          {
+            "agentDisplayName" : "Codex",
+            "agentId" : "codex",
+            "costText" : "$0.24",
+            "costUsd" : 0.24461862500000001,
+            "rawModelName" : "gpt-5.4",
+            "shareOfModelPercent" : 100,
+            "tokens" : 131076,
+            "tokensText" : "131.1K"
+          }
+        ],
+        "totalTokens" : 131076,
+        "totalTokensText" : "131.1K",
+        "vendor" : "OpenAI / Codex"
+      },
+      {
+        "canonicalKey" : "gpt-5.4-mini",
+        "colorHex" : "#0A84FF",
+        "costText" : "$0.01",
+        "costUsd" : 0.010483484999999999,
+        "displayName" : "GPT-5.4 mini",
+        "sharePercent" : 11.295328099079514,
+        "sources" : [
+          {
+            "agentDisplayName" : "Codex",
+            "agentId" : "codex",
+            "costText" : "$0.01",
+            "costUsd" : 0.010483484999999999,
+            "rawModelName" : "gpt-5.4-mini-20260305",
+            "shareOfModelPercent" : 100,
+            "tokens" : 94303,
+            "tokensText" : "94.3K"
+          }
+        ],
+        "totalTokens" : 94303,
+        "totalTokensText" : "94.3K",
+        "vendor" : "OpenAI / Codex"
+      },
+      {
+        "canonicalKey" : "deepseek-v4.1-flash",
+        "colorHex" : "#30D158",
+        "costText" : "$0.01",
+        "costUsd" : 0.0089489969999999985,
+        "displayName" : "DeepSeek V4.1 Flash",
+        "sharePercent" : 5.8178072429136947,
+        "sources" : [
+          {
+            "agentDisplayName" : "OpenCode",
+            "agentId" : "opencode",
+            "costText" : "$0.01",
+            "costUsd" : 0.0089489969999999985,
+            "rawModelName" : "deepseek-v4.1-flash[thinking]",
+            "shareOfModelPercent" : 100,
+            "tokens" : 48572,
+            "tokensText" : "48.6K"
+          }
+        ],
+        "totalTokens" : 48572,
+        "totalTokensText" : "48.6K",
+        "vendor" : "DeepSeek"
+      },
+      {
+        "canonicalKey" : "glm-5.3",
+        "colorHex" : "#40C8E0",
+        "costText" : "$0.05",
+        "costUsd" : 0.054172940000000003,
+        "displayName" : "GLM-5.3",
+        "sharePercent" : 3.6494846595638917,
+        "sources" : [
+          {
+            "agentDisplayName" : "OpenCode",
+            "agentId" : "opencode",
+            "costText" : "$0.05",
+            "costUsd" : 0.054172940000000003,
+            "rawModelName" : "openrouter/glm-5.3",
+            "shareOfModelPercent" : 100,
+            "tokens" : 30469,
+            "tokensText" : "30.5K"
+          }
+        ],
+        "totalTokens" : 30469,
+        "totalTokensText" : "30.5K",
+        "vendor" : "智谱 AI (Zhipu)"
+      }
+    ],
+    "range" : "today",
+    "timeline" : {
+      "avgSummary" : "时均: **34.8K** Tokens",
+      "granularity" : "hour",
+      "peakSummary" : "🔥 峰值时段: **19:00** (109.5K Tokens)",
+      "points" : [
+        {
+          "costUsd" : 0.26344829999999997,
+          "label" : "00:00",
+          "seriesValues" : {
+            "claude-code" : 101045,
+            "model_claude-sonnet-5" : 101045,
+            "type_cache" : 61041,
+            "type_input" : 29577,
+            "type_output" : 10427
+          },
+          "totalTokens" : 101045
+        },
+        {
+          "costUsd" : 0,
+          "label" : "01:00",
+          "seriesValues" : {
+            "type_cache" : 0,
+            "type_input" : 0,
+            "type_output" : 0
+          },
+          "totalTokens" : 0
+        },
+        {
+          "costUsd" : 0.0044740470000000001,
+          "label" : "02:00",
+          "seriesValues" : {
+            "model_deepseek-v4.1-flash" : 24284,
+            "opencode" : 24284,
+            "type_cache" : 3699,
+            "type_input" : 17529,
+            "type_output" : 3056
+          },
+          "totalTokens" : 24284
+        },
+        {
+          "costUsd" : 0.018057559999999997,
+          "label" : "03:00",
+          "seriesValues" : {
+            "opencode" : 10156,
+            "type_cache" : 1856,
+            "type_input" : 6315,
+            "type_output" : 1985
+          },
+          "totalTokens" : 10156
+        },
+        {
+          "costUsd" : 0.122303,
+          "label" : "04:00",
+          "seriesValues" : {
+            "codex" : 65536,
+            "model_gpt-5.4" : 65536,
+            "type_cache" : 30604,
+            "type_input" : 26382,
+            "type_output" : 8550
+          },
+          "totalTokens" : 65536
+        },
+        {
+          "costUsd" : 0.36245099999999997,
+          "label" : "05:00",
+          "seriesValues" : {
+            "claude-code" : 109457,
+            "model_claude-opus-5-5" : 109457,
+            "type_cache" : 66892,
+            "type_input" : 36756,
+            "type_output" : 5809
+          },
+          "totalTokens" : 109457
+        },
+        {
+          "costUsd" : 0,
+          "label" : "06:00",
+          "seriesValues" : {
+            "type_cache" : 0,
+            "type_input" : 0,
+            "type_output" : 0
+          },
+          "totalTokens" : 0
+        },
+        {
+          "costUsd" : 0.0034942349999999996,
+          "label" : "07:00",
+          "seriesValues" : {
+            "codex" : 31433,
+            "model_gpt-5.4-mini" : 31433,
+            "type_cache" : 15239,
+            "type_input" : 14335,
+            "type_output" : 1859
+          },
+          "totalTokens" : 31433
+        },
+        {
+          "costUsd" : 0,
+          "label" : "08:00",
+          "seriesValues" : {
+            "type_cache" : 0,
+            "type_input" : 0,
+            "type_output" : 0
+          },
+          "totalTokens" : 0
+        },
+        {
+          "costUsd" : 0.0044749500000000001,
+          "label" : "09:00",
+          "seriesValues" : {
+            "model_deepseek-v4.1-flash" : 24288,
+            "opencode" : 24288,
+            "type_cache" : 3700,
+            "type_input" : 17531,
+            "type_output" : 3057
+          },
+          "totalTokens" : 24288
+        },
+        {
+          "costUsd" : 0.36245099999999997,
+          "label" : "10:00",
+          "seriesValues" : {
+            "claude-code" : 109457,
+            "model_claude-opus-5-5" : 109457,
+            "type_cache" : 66892,
+            "type_input" : 36756,
+            "type_output" : 5809
+          },
+          "totalTokens" : 109457
+        },
+        {
+          "costUsd" : 0.021551794999999995,
+          "label" : "11:00",
+          "seriesValues" : {
+            "codex" : 31433,
+            "model_gpt-5.4-mini" : 31433,
+            "opencode" : 10156,
+            "type_cache" : 17095,
+            "type_input" : 20650,
+            "type_output" : 3844
+          },
+          "totalTokens" : 41589
+        },
+        {
+          "costUsd" : 0.26344829999999997,
+          "label" : "12:00",
+          "seriesValues" : {
+            "claude-code" : 101045,
+            "model_claude-sonnet-5" : 101045,
+            "type_cache" : 61041,
+            "type_input" : 29577,
+            "type_output" : 10427
+          },
+          "totalTokens" : 101045
+        },
+        {
+          "costUsd" : 0,
+          "label" : "13:00",
+          "seriesValues" : {
+            "type_cache" : 0,
+            "type_input" : 0,
+            "type_output" : 0
+          },
+          "totalTokens" : 0
+        },
+        {
+          "costUsd" : 0,
+          "label" : "14:00",
+          "seriesValues" : {
+            "type_cache" : 0,
+            "type_input" : 0,
+            "type_output" : 0
+          },
+          "totalTokens" : 0
+        },
+        {
+          "costUsd" : 0.122315625,
+          "label" : "15:00",
+          "seriesValues" : {
+            "codex" : 65540,
+            "model_gpt-5.4" : 65540,
+            "type_cache" : 30605,
+            "type_input" : 26384,
+            "type_output" : 8551
+          },
+          "totalTokens" : 65540
+        },
+        {
+          "costUsd" : 0,
+          "label" : "16:00",
+          "seriesValues" : {
+            "type_cache" : 0,
+            "type_input" : 0,
+            "type_output" : 0
+          },
+          "totalTokens" : 0
+        },
+        {
+          "costUsd" : 0,
+          "label" : "17:00",
+          "seriesValues" : {
+            "type_cache" : 0,
+            "type_input" : 0,
+            "type_output" : 0
+          },
+          "totalTokens" : 0
+        },
+        {
+          "costUsd" : 0,
+          "label" : "18:00",
+          "seriesValues" : {
+            "type_cache" : 0,
+            "type_input" : 0,
+            "type_output" : 0
+          },
+          "totalTokens" : 0
+        },
+        {
+          "costUsd" : 0.36250649999999995,
+          "label" : "19:00",
+          "seriesValues" : {
+            "claude-code" : 109461,
+            "model_claude-opus-5-5" : 109461,
+            "type_cache" : 66893,
+            "type_input" : 36757,
+            "type_output" : 5811
+          },
+          "totalTokens" : 109461
+        },
+        {
+          "costUsd" : 0,
+          "label" : "20:00",
+          "seriesValues" : {
+            "type_cache" : 0,
+            "type_input" : 0,
+            "type_output" : 0
+          },
+          "totalTokens" : 0
+        },
+        {
+          "costUsd" : 0,
+          "label" : "21:00",
+          "seriesValues" : {
+            "type_cache" : 0,
+            "type_input" : 0,
+            "type_output" : 0
+          },
+          "totalTokens" : 0
+        },
+        {
+          "costUsd" : 0.0034950150000000002,
+          "label" : "22:00",
+          "seriesValues" : {
+            "codex" : 31437,
+            "model_gpt-5.4-mini" : 31437,
+            "type_cache" : 15241,
+            "type_input" : 14336,
+            "type_output" : 1860
+          },
+          "totalTokens" : 31437
+        },
+        {
+          "costUsd" : 0.018057819999999995,
+          "label" : "23:00",
+          "seriesValues" : {
+            "opencode" : 10157,
+            "type_cache" : 1857,
+            "type_input" : 6315,
+            "type_output" : 1985
+          },
+          "totalTokens" : 10157
+        }
+      ]
+    },
+    "todayHourlyTokens" : [
+      101045,
+      0,
+      24284,
+      10156,
+      65536,
+      109457,
+      0,
+      31433,
+      0,
+      24288,
+      109457,
+      41589,
+      101045,
+      0,
+      0,
+      65540,
+      0,
+      0,
+      0,
+      109461,
+      0,
+      0,
+      31437,
+      10157
+    ]
+  },
+  {
+    "agents" : [
+      {
+        "agentId" : "claude-code",
+        "cacheCreationTokens" : 66831,
+        "cacheReadTokens" : 1362632,
+        "colorHex" : "#ff7a59",
+        "costText" : "$6.58",
+        "costUsd" : 6.5843797999999998,
+        "inputTokens" : 686180,
+        "name" : "Claude Code",
+        "note" : null,
+        "outputTokens" : 149257,
+        "sharePercent" : 46.280729502891511,
+        "status" : "ok",
+        "topModels" : [
+          {
+            "canonicalKey" : "claude-opus-5-5",
+            "colorHex" : "#FF9F0A",
+            "costText" : "$4.70",
+            "costUsd" : 4.6954880000000001,
+            "displayName" : "Claude Opus 5.5",
+            "sharePercent" : 60.482086777075693,
+            "sources" : [
+              {
+                "agentDisplayName" : "Claude Code",
+                "agentId" : "claude-code",
+                "costText" : "$4.70",
+                "costUsd" : 4.6954880000000001,
+                "rawModelName" : "anthropic/claude-opus-5-5-20260601",
+                "shareOfModelPercent" : 100,
+                "tokens" : 1329438,
+                "tokensText" : "1.3M"
+              }
+            ],
+            "totalTokens" : 1329438,
+            "totalTokensText" : "1.3M",
+            "vendor" : "Anthropic"
+          },
+          {
+            "canonicalKey" : "claude-sonnet-5",
+            "colorHex" : "#FF9F0A",
+            "costText" : "$1.89",
+            "costUsd" : 1.8888917999999999,
+            "displayName" : "Claude Sonnet 5",
+            "sharePercent" : 39.517913222924307,
+            "sources" : [
+              {
+                "agentDisplayName" : "Claude Code",
+                "agentId" : "claude-code",
+                "costText" : "$1.89",
+                "costUsd" : 1.8888917999999999,
+                "rawModelName" : "claude-sonnet-5",
+                "shareOfModelPercent" : 100,
+                "tokens" : 868631,
+                "tokensText" : "868.6K"
+              }
+            ],
+            "totalTokens" : 868631,
+            "totalTokensText" : "868.6K",
+            "vendor" : "Anthropic"
+          }
+        ],
+        "topProjects" : [
+
+        ],
+        "totalTokens" : 2198069,
+        "totalTokensText" : "2.2M"
+      },
+      {
+        "agentId" : "codex",
+        "cacheCreationTokens" : 69199,
+        "cacheReadTokens" : 646641,
+        "colorHex" : "#bf5af2",
+        "costText" : "$1.31",
+        "costUsd" : 1.3132679349999998,
+        "inputTokens" : 699246,
+        "name" : "Codex",
+        "note" : null,
+        "outputTokens" : 165797,
+        "sharePercent" : 31.828772571674978,
+        "status" : "ok",
+        "topModels" : [
+          {
+            "canonicalKey" : "gpt-5.4-mini",
+            "colorHex" : "#0A84FF",
+            "costText" : "$0.12",
+            "costUsd" : 0.11533768500000001,
+            "displayName" : "GPT-5.4 mini",
+            "sharePercent" : 52.694478475660254,
+            "sources" : [
+              {
+                "agentDisplayName" : "Codex",
+                "agentId" : "codex",
+                "costText" : "$0.12",
+                "costUsd" : 0.11533768500000001,
+                "rawModelName" : "gpt-5.4-mini-20260305",
+                "shareOfModelPercent" : 100,
+                "tokens" : 796574,
+                "tokensText" : "796.6K"
+              }
+            ],
+            "totalTokens" : 796574,
+            "totalTokensText" : "796.6K",
+            "vendor" : "OpenAI / Codex"
+          },
+          {
+            "canonicalKey" : "gpt-5.4",
+            "colorHex" : "#0A84FF",
+            "costText" : "$1.20",
+            "costUsd" : 1.19793025,
+            "displayName" : "GPT-5.4",
+            "sharePercent" : 47.305521524339746,
+            "sources" : [
+              {
+                "agentDisplayName" : "Codex",
+                "agentId" : "codex",
+                "costText" : "$1.20",
+                "costUsd" : 1.19793025,
+                "rawModelName" : "gpt-5.4",
+                "shareOfModelPercent" : 100,
+                "tokens" : 715110,
+                "tokensText" : "715.1K"
+              }
+            ],
+            "totalTokens" : 715110,
+            "totalTokensText" : "715.1K",
+            "vendor" : "OpenAI / Codex"
+          }
+        ],
+        "topProjects" : [
+
+        ],
+        "totalTokens" : 1511684,
+        "totalTokensText" : "1.5M"
+      },
+      {
+        "agentId" : "cline",
+        "cacheCreationTokens" : 31454,
+        "cacheReadTokens" : 151585,
+        "colorHex" : "#40c8e0",
+        "costText" : "$0.34",
+        "costUsd" : 0.33622172500000003,
+        "inputTokens" : 311680,
+        "name" : "Cline",
+        "note" : "VS Code 扩展",
+        "outputTokens" : 81558,
+        "sharePercent" : 11.471344116110032,
+        "status" : "idle",
+        "topModels" : [
+          {
+            "canonicalKey" : "deepseek-v4.1-flash",
+            "colorHex" : "#30D158",
+            "costText" : "$0.04",
+            "costUsd" : 0.037489544999999999,
+            "displayName" : "DeepSeek V4.1 Flash",
+            "sharePercent" : 39.35149580689508,
+            "sources" : [
+              {
+                "agentDisplayName" : "Cline",
+                "agentId" : "cline",
+                "costText" : "$0.04",
+                "costUsd" : 0.037489544999999999,
+                "rawModelName" : "cline-pass/deepseek-v4.1-flash",
+                "shareOfModelPercent" : 100,
+                "tokens" : 214396,
+                "tokensText" : "214.4K"
+              }
+            ],
+            "totalTokens" : 214396,
+            "totalTokensText" : "214.4K",
+            "vendor" : "DeepSeek"
+          },
+          {
+            "canonicalKey" : "glm-5.3",
+            "colorHex" : "#40C8E0",
+            "costText" : "$0.30",
+            "costUsd" : 0.29873218000000001,
+            "displayName" : "GLM-5.3",
+            "sharePercent" : 35.060560952823209,
+            "sources" : [
+              {
+                "agentDisplayName" : "Cline",
+                "agentId" : "cline",
+                "costText" : "$0.30",
+                "costUsd" : 0.29873218000000001,
+                "rawModelName" : "zhipu/glm-5.3",
+                "shareOfModelPercent" : 100,
+                "tokens" : 191018,
+                "tokensText" : "191K"
+              }
+            ],
+            "totalTokens" : 191018,
+            "totalTokensText" : "191K",
+            "vendor" : "智谱 AI (Zhipu)"
+          },
+          {
+            "canonicalKey" : "deepseek-flash",
+            "colorHex" : "#30D158",
+            "costText" : null,
+            "costUsd" : null,
+            "displayName" : "deepseek-flash",
+            "sharePercent" : 25.587943240281707,
+            "sources" : [
+              {
+                "agentDisplayName" : "Cline",
+                "agentId" : "cline",
+                "costText" : null,
+                "costUsd" : null,
+                "rawModelName" : "deepseek-flash",
+                "shareOfModelPercent" : 100,
+                "tokens" : 139409,
+                "tokensText" : "139.4K"
+              }
+            ],
+            "totalTokens" : 139409,
+            "totalTokensText" : "139.4K",
+            "vendor" : "DeepSeek"
+          }
+        ],
+        "topProjects" : [
+
+        ],
+        "totalTokens" : 544823,
+        "totalTokensText" : "544.8K"
+      },
+      {
+        "agentId" : "opencode",
+        "cacheCreationTokens" : 32644,
+        "cacheReadTokens" : 86717,
+        "colorHex" : "#30d158",
+        "costText" : "$0.55",
+        "costUsd" : 0.55089665899999996,
+        "inputTokens" : 325348,
+        "name" : "OpenCode",
+        "note" : null,
+        "outputTokens" : 82785,
+        "sharePercent" : 10.419153809323484,
+        "status" : "ok",
+        "topModels" : [
+          {
+            "canonicalKey" : "glm-5.3",
+            "colorHex" : "#40C8E0",
+            "costText" : "$0.51",
+            "costUsd" : 0.51233624,
+            "displayName" : "GLM-5.3",
+            "sharePercent" : 60.373042336061431,
+            "sources" : [
+              {
+                "agentDisplayName" : "OpenCode",
+                "agentId" : "opencode",
+                "costText" : "$0.51",
+                "costUsd" : 0.51233624,
+                "rawModelName" : "openrouter/glm-5.3",
+                "shareOfModelPercent" : 100,
+                "tokens" : 298756,
+                "tokensText" : "298.8K"
+              }
+            ],
+            "totalTokens" : 298756,
+            "totalTokensText" : "298.8K",
+            "vendor" : "智谱 AI (Zhipu)"
+          },
+          {
+            "canonicalKey" : "deepseek-v4.1-flash",
+            "colorHex" : "#30D158",
+            "costText" : "$0.04",
+            "costUsd" : 0.038560418999999992,
+            "displayName" : "DeepSeek V4.1 Flash",
+            "sharePercent" : 39.626957663938569,
+            "sources" : [
+              {
+                "agentDisplayName" : "OpenCode",
+                "agentId" : "opencode",
+                "costText" : "$0.04",
+                "costUsd" : 0.038560418999999992,
+                "rawModelName" : "deepseek-v4.1-flash[thinking]",
+                "shareOfModelPercent" : 100,
+                "tokens" : 196094,
+                "tokensText" : "196.1K"
+              }
+            ],
+            "totalTokens" : 196094,
+            "totalTokensText" : "196.1K",
+            "vendor" : "DeepSeek"
+          }
+        ],
+        "topProjects" : [
+
+        ],
+        "totalTokens" : 494850,
+        "totalTokensText" : "494.9K"
+      }
+    ],
+    "kpi" : {
+      "activeAgentsCount" : 4,
+      "averageCostPerMillionText" : "$1.91 / 1M",
+      "cacheCreationTokens" : 200128,
+      "cacheCreationTokensText" : "200.1K",
+      "cacheHitRateText" : "52.6%",
+      "cacheReadTokens" : 2247575,
+      "cacheReadTokensText" : "2.2M",
+      "cacheSavedCostText" : "省 $5.69",
+      "cacheSavingsUsd" : 5.6884892309999984,
+      "cacheSplitAvailable" : true,
+      "costTagText" : "139.4K 未定价",
+      "costText" : "$8.78",
+      "equivalentMText" : "4.75 M",
+      "inputTokens" : 1822326,
+      "inputTokensText" : "1.8M",
+      "outputTokens" : 479397,
+      "outputTokensText" : "479.4K",
+      "pricedTokens" : 4610017,
+      "topAgentText" : "最活跃 Claude Code · 46.3%",
+      "totalCostUsd" : 8.7847661190000004,
+      "totalTokens" : 4749426,
+      "totalTokensText" : "4.7M",
+      "unpricedTokens" : 139409
+    },
+    "models" : [
+      {
+        "canonicalKey" : "claude-opus-5-5",
+        "colorHex" : "#FF9F0A",
+        "costText" : "$4.70",
+        "costUsd" : 4.6954880000000001,
+        "displayName" : "Claude Opus 5.5",
+        "sharePercent" : 27.991550979002515,
+        "sources" : [
+          {
+            "agentDisplayName" : "Claude Code",
+            "agentId" : "claude-code",
+            "costText" : "$4.70",
+            "costUsd" : 4.6954880000000001,
+            "rawModelName" : "anthropic/claude-opus-5-5-20260601",
+            "shareOfModelPercent" : 100,
+            "tokens" : 1329438,
+            "tokensText" : "1.3M"
+          }
+        ],
+        "totalTokens" : 1329438,
+        "totalTokensText" : "1.3M",
+        "vendor" : "Anthropic"
+      },
+      {
+        "canonicalKey" : "claude-sonnet-5",
+        "colorHex" : "#FF9F0A",
+        "costText" : "$1.89",
+        "costUsd" : 1.8888917999999999,
+        "displayName" : "Claude Sonnet 5",
+        "sharePercent" : 18.289178523888992,
+        "sources" : [
+          {
+            "agentDisplayName" : "Claude Code",
+            "agentId" : "claude-code",
+            "costText" : "$1.89",
+            "costUsd" : 1.8888917999999999,
+            "rawModelName" : "claude-sonnet-5",
+            "shareOfModelPercent" : 100,
+            "tokens" : 868631,
+            "tokensText" : "868.6K"
+          }
+        ],
+        "totalTokens" : 868631,
+        "totalTokensText" : "868.6K",
+        "vendor" : "Anthropic"
+      },
+      {
+        "canonicalKey" : "gpt-5.4-mini",
+        "colorHex" : "#0A84FF",
+        "costText" : "$0.12",
+        "costUsd" : 0.11533768500000001,
+        "displayName" : "GPT-5.4 mini",
+        "sharePercent" : 16.772005711848127,
+        "sources" : [
+          {
+            "agentDisplayName" : "Codex",
+            "agentId" : "codex",
+            "costText" : "$0.12",
+            "costUsd" : 0.11533768500000001,
+            "rawModelName" : "gpt-5.4-mini-20260305",
+            "shareOfModelPercent" : 100,
+            "tokens" : 796574,
+            "tokensText" : "796.6K"
+          }
+        ],
+        "totalTokens" : 796574,
+        "totalTokensText" : "796.6K",
+        "vendor" : "OpenAI / Codex"
+      },
+      {
+        "canonicalKey" : "gpt-5.4",
+        "colorHex" : "#0A84FF",
+        "costText" : "$1.20",
+        "costUsd" : 1.19793025,
+        "displayName" : "GPT-5.4",
+        "sharePercent" : 15.056766859826851,
+        "sources" : [
+          {
+            "agentDisplayName" : "Codex",
+            "agentId" : "codex",
+            "costText" : "$1.20",
+            "costUsd" : 1.19793025,
+            "rawModelName" : "gpt-5.4",
+            "shareOfModelPercent" : 100,
+            "tokens" : 715110,
+            "tokensText" : "715.1K"
+          }
+        ],
+        "totalTokens" : 715110,
+        "totalTokensText" : "715.1K",
+        "vendor" : "OpenAI / Codex"
+      },
+      {
+        "canonicalKey" : "glm-5.3",
+        "colorHex" : "#40C8E0",
+        "costText" : "$0.81",
+        "costUsd" : 0.81106842000000001,
+        "displayName" : "GLM-5.3",
+        "sharePercent" : 10.312277736299082,
+        "sources" : [
+          {
+            "agentDisplayName" : "OpenCode",
+            "agentId" : "opencode",
+            "costText" : "$0.51",
+            "costUsd" : 0.51233624,
+            "rawModelName" : "openrouter/glm-5.3",
+            "shareOfModelPercent" : 60.998746360566301,
+            "tokens" : 298756,
+            "tokensText" : "298.8K"
+          },
+          {
+            "agentDisplayName" : "Cline",
+            "agentId" : "cline",
+            "costText" : "$0.30",
+            "costUsd" : 0.29873218000000001,
+            "rawModelName" : "zhipu/glm-5.3",
+            "shareOfModelPercent" : 39.001253639433699,
+            "tokens" : 191018,
+            "tokensText" : "191K"
+          }
+        ],
+        "totalTokens" : 489774,
+        "totalTokensText" : "489.8K",
+        "vendor" : "智谱 AI (Zhipu)"
+      },
+      {
+        "canonicalKey" : "deepseek-v4.1-flash",
+        "colorHex" : "#30D158",
+        "costText" : "$0.08",
+        "costUsd" : 0.076049963999999998,
+        "displayName" : "DeepSeek V4.1 Flash",
+        "sharePercent" : 8.6429391678068033,
+        "sources" : [
+          {
+            "agentDisplayName" : "Cline",
+            "agentId" : "cline",
+            "costText" : "$0.04",
+            "costUsd" : 0.037489544999999999,
+            "rawModelName" : "cline-pass/deepseek-v4.1-flash",
+            "shareOfModelPercent" : 52.229286949742992,
+            "tokens" : 214396,
+            "tokensText" : "214.4K"
+          },
+          {
+            "agentDisplayName" : "OpenCode",
+            "agentId" : "opencode",
+            "costText" : "$0.04",
+            "costUsd" : 0.038560418999999992,
+            "rawModelName" : "deepseek-v4.1-flash[thinking]",
+            "shareOfModelPercent" : 47.770713050257008,
+            "tokens" : 196094,
+            "tokensText" : "196.1K"
+          }
+        ],
+        "totalTokens" : 410490,
+        "totalTokensText" : "410.5K",
+        "vendor" : "DeepSeek"
+      },
+      {
+        "canonicalKey" : "deepseek-flash",
+        "colorHex" : "#30D158",
+        "costText" : null,
+        "costUsd" : null,
+        "displayName" : "deepseek-flash",
+        "sharePercent" : 2.9352810213276301,
+        "sources" : [
+          {
+            "agentDisplayName" : "Cline",
+            "agentId" : "cline",
+            "costText" : null,
+            "costUsd" : null,
+            "rawModelName" : "deepseek-flash",
+            "shareOfModelPercent" : 100,
+            "tokens" : 139409,
+            "tokensText" : "139.4K"
+          }
+        ],
+        "totalTokens" : 139409,
+        "totalTokensText" : "139.4K",
+        "vendor" : "DeepSeek"
+      }
+    ],
+    "range" : "7d",
+    "timeline" : {
+      "avgSummary" : "日均: **678.5K** Tokens",
+      "granularity" : "day",
+      "peakSummary" : "🔥 峰值: **07-30** (912.8K Tokens)",
+      "points" : [
+        {
+          "costUsd" : 1.1291701949999999,
+          "label" : "07-28",
+          "seriesValues" : {
+            "claude-code" : 224805,
+            "codex" : 267234,
+            "model_claude-opus-5-5" : 224805,
+            "model_glm-5.3" : 46022,
+            "model_gpt-5.4" : 128800,
+            "model_gpt-5.4-mini" : 138434,
+            "opencode" : 46022,
+            "type_cache" : 247488,
+            "type_input" : 236185,
+            "type_output" : 54388
+          },
+          "totalTokens" : 538061
+        },
+        {
+          "costUsd" : 0.36468576599999997,
+          "label" : "07-29",
+          "seriesValues" : {
+            "cline" : 170780,
+            "codex" : 336100,
+            "model_glm-5.3" : 74621,
+            "model_gpt-5.4" : 156508,
+            "model_gpt-5.4-mini" : 179592,
+            "opencode" : 40619,
+            "type_cache" : 200861,
+            "type_input" : 282759,
+            "type_output" : 63879
+          },
+          "totalTokens" : 547499
+        },
+        {
+          "costUsd" : 1.641071875,
+          "label" : "07-30",
+          "seriesValues" : {
+            "claude-code" : 582079,
+            "codex" : 243990,
+            "model_claude-opus-5-5" : 239784,
+            "model_claude-sonnet-5" : 342295,
+            "model_glm-5.3" : 53504,
+            "model_gpt-5.4" : 87467,
+            "model_gpt-5.4-mini" : 156523,
+            "opencode" : 86777,
+            "type_cache" : 522235,
+            "type_input" : 310236,
+            "type_output" : 80375
+          },
+          "totalTokens" : 912846
+        },
+        {
+          "costUsd" : 1.7085451949999999,
+          "label" : "07-31",
+          "seriesValues" : {
+            "claude-code" : 321754,
+            "cline" : 144770,
+            "codex" : 207058,
+            "model_claude-opus-5-5" : 321754,
+            "model_glm-5.3" : 121063,
+            "model_gpt-5.4" : 89081,
+            "model_gpt-5.4-mini" : 117977,
+            "opencode" : 72944,
+            "type_cache" : 321490,
+            "type_input" : 345836,
+            "type_output" : 79200
+          },
+          "totalTokens" : 746526
+        },
+        {
+          "costUsd" : 0.34056362000000007,
+          "label" : "08-01",
+          "seriesValues" : {
+            "codex" : 231923,
+            "model_glm-5.3" : 53095,
+            "model_gpt-5.4" : 122178,
+            "model_gpt-5.4-mini" : 109745,
+            "opencode" : 97710,
+            "type_cache" : 112086,
+            "type_input" : 174996,
+            "type_output" : 42551
+          },
+          "totalTokens" : 329633
+        },
+        {
+          "costUsd" : 1.6682003209999998,
+          "label" : "08-02",
+          "seriesValues" : {
+            "claude-code" : 538966,
+            "cline" : 229273,
+            "model_claude-opus-5-5" : 214720,
+            "model_claude-sonnet-5" : 324246,
+            "model_glm-5.3" : 111000,
+            "opencode" : 71737,
+            "type_cache" : 400760,
+            "type_input" : 353242,
+            "type_output" : 85974
+          },
+          "totalTokens" : 839976
+        },
+        {
+          "costUsd" : 1.9325291469999999,
+          "label" : "08-03",
+          "seriesValues" : {
+            "claude-code" : 530465,
+            "codex" : 225379,
+            "model_claude-opus-5-5" : 328375,
+            "model_claude-sonnet-5" : 202090,
+            "model_glm-5.3" : 30469,
+            "model_gpt-5.4" : 131076,
+            "model_gpt-5.4-mini" : 94303,
+            "opencode" : 79041,
+            "type_cache" : 442655,
+            "type_input" : 319200,
+            "type_output" : 73030
+          },
+          "totalTokens" : 834885
+        }
+      ]
+    },
+    "todayHourlyTokens" : [
+      101045,
+      0,
+      24284,
+      10156,
+      65536,
+      109457,
+      0,
+      31433,
+      0,
+      24288,
+      109457,
+      41589,
+      101045,
+      0,
+      0,
+      65540,
+      0,
+      0,
+      0,
+      109461,
+      0,
+      0,
+      31437,
+      10157
+    ]
+  },
+  {
+    "agents" : [
+      {
+        "agentId" : "claude-code",
+        "cacheCreationTokens" : 292784,
+        "cacheReadTokens" : 6653408,
+        "colorHex" : "#ff7a59",
+        "costText" : "$28.41",
+        "costUsd" : 28.405890600000003,
+        "inputTokens" : 3039619,
+        "name" : "Claude Code",
+        "note" : null,
+        "outputTokens" : 620340,
+        "sharePercent" : 58.481891785868967,
+        "status" : "ok",
+        "topModels" : [
+          {
+            "canonicalKey" : "claude-opus-5-5",
+            "colorHex" : "#FF9F0A",
+            "costText" : "$19.96",
+            "costUsd" : 19.964777999999995,
+            "displayName" : "Claude Opus 5.5",
+            "sharePercent" : 56.817720149006625,
+            "sources" : [
+              {
+                "agentDisplayName" : "Claude Code",
+                "agentId" : "claude-code",
+                "costText" : "$19.96",
+                "costUsd" : 19.964777999999995,
+                "rawModelName" : "anthropic/claude-opus-5-5-20260601",
+                "shareOfModelPercent" : 100,
+                "tokens" : 5859820,
+                "tokensText" : "5.9M"
+              }
+            ],
+            "totalTokens" : 5859820,
+            "totalTokensText" : "5.9M",
+            "vendor" : "Anthropic"
+          },
+          {
+            "canonicalKey" : "claude-sonnet-5",
+            "colorHex" : "#FF9F0A",
+            "costText" : "$8.44",
+            "costUsd" : 8.4411126000000003,
+            "displayName" : "Claude Sonnet 5",
+            "sharePercent" : 43.182279850993375,
+            "sources" : [
+              {
+                "agentDisplayName" : "Claude Code",
+                "agentId" : "claude-code",
+                "costText" : "$8.44",
+                "costUsd" : 8.4411126000000003,
+                "rawModelName" : "claude-sonnet-5",
+                "shareOfModelPercent" : 100,
+                "tokens" : 4453547,
+                "tokensText" : "4.5M"
+              }
+            ],
+            "totalTokens" : 4453547,
+            "totalTokensText" : "4.5M",
+            "vendor" : "Anthropic"
+          }
+        ],
+        "topProjects" : [
+
+        ],
+        "totalTokens" : 10313367,
+        "totalTokensText" : "10.3M"
+      },
+      {
+        "agentId" : "codex",
+        "cacheCreationTokens" : 200489,
+        "cacheReadTokens" : 2024073,
+        "colorHex" : "#bf5af2",
+        "costText" : "$4.14",
+        "costUsd" : 4.1437294949999997,
+        "inputTokens" : 2042073,
+        "name" : "Codex",
+        "note" : null,
+        "outputTokens" : 464234,
+        "sharePercent" : 25.689495284019763,
+        "status" : "ok",
+        "topModels" : [
+          {
+            "canonicalKey" : "gpt-5.4",
+            "colorHex" : "#0A84FF",
+            "costText" : "$3.85",
+            "costUsd" : 3.8460393749999997,
+            "displayName" : "GPT-5.4",
+            "sharePercent" : 52.53331950079243,
+            "sources" : [
+              {
+                "agentDisplayName" : "Codex",
+                "agentId" : "codex",
+                "costText" : "$3.85",
+                "costUsd" : 3.8460393749999997,
+                "rawModelName" : "gpt-5.4",
+                "shareOfModelPercent" : 100,
+                "tokens" : 2379959,
+                "tokensText" : "2.4M"
+              }
+            ],
+            "totalTokens" : 2379959,
+            "totalTokensText" : "2.4M",
+            "vendor" : "OpenAI / Codex"
+          },
+          {
+            "canonicalKey" : "gpt-5.4-mini",
+            "colorHex" : "#0A84FF",
+            "costText" : "$0.30",
+            "costUsd" : 0.29769012000000006,
+            "displayName" : "GPT-5.4 mini",
+            "sharePercent" : 47.46668049920757,
+            "sources" : [
+              {
+                "agentDisplayName" : "Codex",
+                "agentId" : "codex",
+                "costText" : "$0.30",
+                "costUsd" : 0.29769012000000006,
+                "rawModelName" : "gpt-5.4-mini-20260305",
+                "shareOfModelPercent" : 100,
+                "tokens" : 2150421,
+                "tokensText" : "2.2M"
+              }
+            ],
+            "totalTokens" : 2150421,
+            "totalTokensText" : "2.2M",
+            "vendor" : "OpenAI / Codex"
+          }
+        ],
+        "topProjects" : [
+
+        ],
+        "totalTokens" : 4530380,
+        "totalTokensText" : "4.5M"
+      },
+      {
+        "agentId" : "cline",
+        "cacheCreationTokens" : 134431,
+        "cacheReadTokens" : 615912,
+        "colorHex" : "#40c8e0",
+        "costText" : "$1.42",
+        "costUsd" : 1.4249008999999997,
+        "inputTokens" : 1367104,
+        "name" : "Cline",
+        "note" : "VS Code 扩展",
+        "outputTokens" : 313533,
+        "sharePercent" : 13.022568681881058,
+        "status" : "idle",
+        "topModels" : [
+          {
+            "canonicalKey" : "glm-5.3",
+            "colorHex" : "#40C8E0",
+            "costText" : "$1.29",
+            "costUsd" : 1.2945380000000002,
+            "displayName" : "GLM-5.3",
+            "sharePercent" : 35.98399163266275,
+            "sources" : [
+              {
+                "agentDisplayName" : "Cline",
+                "agentId" : "cline",
+                "costText" : "$1.29",
+                "costUsd" : 1.2945380000000002,
+                "rawModelName" : "zhipu/glm-5.3",
+                "shareOfModelPercent" : 100,
+                "tokens" : 826390,
+                "tokensText" : "826.4K"
+              }
+            ],
+            "totalTokens" : 826390,
+            "totalTokensText" : "826.4K",
+            "vendor" : "智谱 AI (Zhipu)"
+          },
+          {
+            "canonicalKey" : "deepseek-v4.1-flash",
+            "colorHex" : "#30D158",
+            "costText" : "$0.13",
+            "costUsd" : 0.1303629,
+            "displayName" : "DeepSeek V4.1 Flash",
+            "sharePercent" : 34.392255510333115,
+            "sources" : [
+              {
+                "agentDisplayName" : "Cline",
+                "agentId" : "cline",
+                "costText" : "$0.13",
+                "costUsd" : 0.1303629,
+                "rawModelName" : "cline-pass/deepseek-v4.1-flash",
+                "shareOfModelPercent" : 100,
+                "tokens" : 789835,
+                "tokensText" : "789.8K"
+              }
+            ],
+            "totalTokens" : 789835,
+            "totalTokensText" : "789.8K",
+            "vendor" : "DeepSeek"
+          },
+          {
+            "canonicalKey" : "deepseek-flash",
+            "colorHex" : "#30D158",
+            "costText" : null,
+            "costUsd" : null,
+            "displayName" : "deepseek-flash",
+            "sharePercent" : 29.623752857004138,
+            "sources" : [
+              {
+                "agentDisplayName" : "Cline",
+                "agentId" : "cline",
+                "costText" : null,
+                "costUsd" : null,
+                "rawModelName" : "deepseek-flash",
+                "shareOfModelPercent" : 100,
+                "tokens" : 680324,
+                "tokensText" : "680.3K"
+              }
+            ],
+            "totalTokens" : 680324,
+            "totalTokensText" : "680.3K",
+            "vendor" : "DeepSeek"
+          }
+        ],
+        "topProjects" : [
+
+        ],
+        "totalTokens" : 2296549,
+        "totalTokensText" : "2.3M"
+      },
+      {
+        "agentId" : "opencode",
+        "cacheCreationTokens" : 32644,
+        "cacheReadTokens" : 86717,
+        "colorHex" : "#30d158",
+        "costText" : "$0.55",
+        "costUsd" : 0.55089665899999996,
+        "inputTokens" : 325348,
+        "name" : "OpenCode",
+        "note" : null,
+        "outputTokens" : 82785,
+        "sharePercent" : 2.8060442482302101,
+        "status" : "ok",
+        "topModels" : [
+          {
+            "canonicalKey" : "glm-5.3",
+            "colorHex" : "#40C8E0",
+            "costText" : "$0.51",
+            "costUsd" : 0.51233624,
+            "displayName" : "GLM-5.3",
+            "sharePercent" : 60.373042336061431,
+            "sources" : [
+              {
+                "agentDisplayName" : "OpenCode",
+                "agentId" : "opencode",
+                "costText" : "$0.51",
+                "costUsd" : 0.51233624,
+                "rawModelName" : "openrouter/glm-5.3",
+                "shareOfModelPercent" : 100,
+                "tokens" : 298756,
+                "tokensText" : "298.8K"
+              }
+            ],
+            "totalTokens" : 298756,
+            "totalTokensText" : "298.8K",
+            "vendor" : "智谱 AI (Zhipu)"
+          },
+          {
+            "canonicalKey" : "deepseek-v4.1-flash",
+            "colorHex" : "#30D158",
+            "costText" : "$0.04",
+            "costUsd" : 0.038560418999999992,
+            "displayName" : "DeepSeek V4.1 Flash",
+            "sharePercent" : 39.626957663938569,
+            "sources" : [
+              {
+                "agentDisplayName" : "OpenCode",
+                "agentId" : "opencode",
+                "costText" : "$0.04",
+                "costUsd" : 0.038560418999999992,
+                "rawModelName" : "deepseek-v4.1-flash[thinking]",
+                "shareOfModelPercent" : 100,
+                "tokens" : 196094,
+                "tokensText" : "196.1K"
+              }
+            ],
+            "totalTokens" : 196094,
+            "totalTokensText" : "196.1K",
+            "vendor" : "DeepSeek"
+          }
+        ],
+        "topProjects" : [
+
+        ],
+        "totalTokens" : 494850,
+        "totalTokensText" : "494.9K"
+      }
+    ],
+    "kpi" : {
+      "activeAgentsCount" : 4,
+      "averageCostPerMillionText" : "$2.04 / 1M",
+      "cacheCreationTokens" : 660348,
+      "cacheCreationTokensText" : "660.3K",
+      "cacheHitRateText" : "58.1%",
+      "cacheReadTokens" : 9380110,
+      "cacheReadTokensText" : "9.4M",
+      "cacheSavedCostText" : "省 $26.30",
+      "cacheSavingsUsd" : 26.300492046000024,
+      "cacheSplitAvailable" : true,
+      "costTagText" : "680.3K 未定价",
+      "costText" : "$34.53",
+      "equivalentMText" : "17.64 M",
+      "inputTokens" : 6113796,
+      "inputTokensText" : "6.1M",
+      "outputTokens" : 1480892,
+      "outputTokensText" : "1.5M",
+      "pricedTokens" : 16954822,
+      "topAgentText" : "最活跃 Claude Code · 58.5%",
+      "totalCostUsd" : 34.525417654000023,
+      "totalTokens" : 17635146,
+      "totalTokensText" : "17.6M",
+      "unpricedTokens" : 680324
+    },
+    "models" : [
+      {
+        "canonicalKey" : "claude-opus-5-5",
+        "colorHex" : "#FF9F0A",
+        "costText" : "$19.96",
+        "costUsd" : 19.964777999999995,
+        "displayName" : "Claude Opus 5.5",
+        "sharePercent" : 33.228077612739924,
+        "sources" : [
+          {
+            "agentDisplayName" : "Claude Code",
+            "agentId" : "claude-code",
+            "costText" : "$19.96",
+            "costUsd" : 19.964777999999995,
+            "rawModelName" : "anthropic/claude-opus-5-5-20260601",
+            "shareOfModelPercent" : 100,
+            "tokens" : 5859820,
+            "tokensText" : "5.9M"
+          }
+        ],
+        "totalTokens" : 5859820,
+        "totalTokensText" : "5.9M",
+        "vendor" : "Anthropic"
+      },
+      {
+        "canonicalKey" : "claude-sonnet-5",
+        "colorHex" : "#FF9F0A",
+        "costText" : "$8.44",
+        "costUsd" : 8.4411126000000003,
+        "displayName" : "Claude Sonnet 5",
+        "sharePercent" : 25.253814173129047,
+        "sources" : [
+          {
+            "agentDisplayName" : "Claude Code",
+            "agentId" : "claude-code",
+            "costText" : "$8.44",
+            "costUsd" : 8.4411126000000003,
+            "rawModelName" : "claude-sonnet-5",
+            "shareOfModelPercent" : 100,
+            "tokens" : 4453547,
+            "tokensText" : "4.5M"
+          }
+        ],
+        "totalTokens" : 4453547,
+        "totalTokensText" : "4.5M",
+        "vendor" : "Anthropic"
+      },
+      {
+        "canonicalKey" : "gpt-5.4",
+        "colorHex" : "#0A84FF",
+        "costText" : "$3.85",
+        "costUsd" : 3.8460393749999997,
+        "displayName" : "GPT-5.4",
+        "sharePercent" : 13.495544635695106,
+        "sources" : [
+          {
+            "agentDisplayName" : "Codex",
+            "agentId" : "codex",
+            "costText" : "$3.85",
+            "costUsd" : 3.8460393749999997,
+            "rawModelName" : "gpt-5.4",
+            "shareOfModelPercent" : 100,
+            "tokens" : 2379959,
+            "tokensText" : "2.4M"
+          }
+        ],
+        "totalTokens" : 2379959,
+        "totalTokensText" : "2.4M",
+        "vendor" : "OpenAI / Codex"
+      },
+      {
+        "canonicalKey" : "gpt-5.4-mini",
+        "colorHex" : "#0A84FF",
+        "costText" : "$0.30",
+        "costUsd" : 0.29769012000000006,
+        "displayName" : "GPT-5.4 mini",
+        "sharePercent" : 12.193950648324659,
+        "sources" : [
+          {
+            "agentDisplayName" : "Codex",
+            "agentId" : "codex",
+            "costText" : "$0.30",
+            "costUsd" : 0.29769012000000006,
+            "rawModelName" : "gpt-5.4-mini-20260305",
+            "shareOfModelPercent" : 100,
+            "tokens" : 2150421,
+            "tokensText" : "2.2M"
+          }
+        ],
+        "totalTokens" : 2150421,
+        "totalTokensText" : "2.2M",
+        "vendor" : "OpenAI / Codex"
+      },
+      {
+        "canonicalKey" : "glm-5.3",
+        "colorHex" : "#40C8E0",
+        "costText" : "$1.81",
+        "costUsd" : 1.8068742400000002,
+        "displayName" : "GLM-5.3",
+        "sharePercent" : 6.3801343067984808,
+        "sources" : [
+          {
+            "agentDisplayName" : "Cline",
+            "agentId" : "cline",
+            "costText" : "$1.29",
+            "costUsd" : 1.2945380000000002,
+            "rawModelName" : "zhipu/glm-5.3",
+            "shareOfModelPercent" : 73.44735705410676,
+            "tokens" : 826390,
+            "tokensText" : "826.4K"
+          },
+          {
+            "agentDisplayName" : "OpenCode",
+            "agentId" : "opencode",
+            "costText" : "$0.51",
+            "costUsd" : 0.51233624,
+            "rawModelName" : "openrouter/glm-5.3",
+            "shareOfModelPercent" : 26.552642945893247,
+            "tokens" : 298756,
+            "tokensText" : "298.8K"
+          }
+        ],
+        "totalTokens" : 1125146,
+        "totalTokensText" : "1.1M",
+        "vendor" : "智谱 AI (Zhipu)"
+      },
+      {
+        "canonicalKey" : "deepseek-v4.1-flash",
+        "colorHex" : "#30D158",
+        "costText" : "$0.17",
+        "costUsd" : 0.16892331899999999,
+        "displayName" : "DeepSeek V4.1 Flash",
+        "sharePercent" : 5.5907050613587206,
+        "sources" : [
+          {
+            "agentDisplayName" : "Cline",
+            "agentId" : "cline",
+            "costText" : "$0.13",
+            "costUsd" : 0.1303629,
+            "rawModelName" : "cline-pass/deepseek-v4.1-flash",
+            "shareOfModelPercent" : 80.11073819717241,
+            "tokens" : 789835,
+            "tokensText" : "789.8K"
+          },
+          {
+            "agentDisplayName" : "OpenCode",
+            "agentId" : "opencode",
+            "costText" : "$0.04",
+            "costUsd" : 0.038560418999999992,
+            "rawModelName" : "deepseek-v4.1-flash[thinking]",
+            "shareOfModelPercent" : 19.889261802827587,
+            "tokens" : 196094,
+            "tokensText" : "196.1K"
+          }
+        ],
+        "totalTokens" : 985929,
+        "totalTokensText" : "985.9K",
+        "vendor" : "DeepSeek"
+      },
+      {
+        "canonicalKey" : "deepseek-flash",
+        "colorHex" : "#30D158",
+        "costText" : null,
+        "costUsd" : null,
+        "displayName" : "deepseek-flash",
+        "sharePercent" : 3.8577735619540663,
+        "sources" : [
+          {
+            "agentDisplayName" : "Cline",
+            "agentId" : "cline",
+            "costText" : null,
+            "costUsd" : null,
+            "rawModelName" : "deepseek-flash",
+            "shareOfModelPercent" : 100,
+            "tokens" : 680324,
+            "tokensText" : "680.3K"
+          }
+        ],
+        "totalTokens" : 680324,
+        "totalTokensText" : "680.3K",
+        "vendor" : "DeepSeek"
+      }
+    ],
+    "range" : "30d",
+    "timeline" : {
+      "avgSummary" : "日均: **587.8K** Tokens",
+      "granularity" : "day",
+      "peakSummary" : "🔥 峰值: **07-21** (1.1M Tokens)",
+      "points" : [
+        {
+          "costUsd" : 0.12734398199999999,
+          "label" : "07-05",
+          "seriesValues" : {
+            "cline" : 205955,
+            "model_glm-5.3" : 79329,
+            "type_cache" : 50542,
+            "type_input" : 129380,
+            "type_output" : 26033
+          },
+          "totalTokens" : 205955
+        },
+        {
+          "costUsd" : 1.5322210000000001,
+          "label" : "07-06",
+          "seriesValues" : {
+            "claude-code" : 452943,
+            "model_claude-opus-5-5" : 271129,
+            "model_claude-sonnet-5" : 181814,
+            "type_cache" : 265586,
+            "type_input" : 152383,
+            "type_output" : 34974
+          },
+          "totalTokens" : 452943
+        },
+        {
+          "costUsd" : 1.7937216999999999,
+          "label" : "07-07",
+          "seriesValues" : {
+            "claude-code" : 695356,
+            "model_claude-opus-5-5" : 383096,
+            "model_claude-sonnet-5" : 312260,
+            "type_cache" : 472313,
+            "type_input" : 185874,
+            "type_output" : 37169
+          },
+          "totalTokens" : 695356
+        },
+        {
+          "costUsd" : 0,
+          "label" : "07-08",
+          "seriesValues" : {
+            "type_cache" : 0,
+            "type_input" : 0,
+            "type_output" : 0
+          },
+          "totalTokens" : 0
+        },
+        {
+          "costUsd" : 1.6118500280000001,
+          "label" : "07-09",
+          "seriesValues" : {
+            "claude-code" : 787313,
+            "cline" : 157997,
+            "model_claude-opus-5-5" : 403797,
+            "model_claude-sonnet-5" : 383516,
+            "model_glm-5.3" : 71417,
+            "type_cache" : 618809,
+            "type_input" : 281192,
+            "type_output" : 45309
+          },
+          "totalTokens" : 945310
+        },
+        {
+          "costUsd" : 2.1283250000000002,
+          "label" : "07-10",
+          "seriesValues" : {
+            "claude-code" : 815861,
+            "model_claude-opus-5-5" : 439466,
+            "model_claude-sonnet-5" : 376395,
+            "type_cache" : 510978,
+            "type_input" : 261155,
+            "type_output" : 43728
+          },
+          "totalTokens" : 815861
+        },
+        {
+          "costUsd" : 0.08024925799999999,
+          "label" : "07-11",
+          "seriesValues" : {
+            "cline" : 176245,
+            "model_glm-5.3" : 55087,
+            "type_cache" : 51360,
+            "type_input" : 107738,
+            "type_output" : 17147
+          },
+          "totalTokens" : 176245
+        },
+        {
+          "costUsd" : 1.5474201999999999,
+          "label" : "07-12",
+          "seriesValues" : {
+            "claude-code" : 727276,
+            "model_claude-opus-5-5" : 287751,
+            "model_claude-sonnet-5" : 439525,
+            "type_cache" : 484382,
+            "type_input" : 212623,
+            "type_output" : 30271
+          },
+          "totalTokens" : 727276
+        },
+        {
+          "costUsd" : 1.8047052940000001,
+          "label" : "07-13",
+          "seriesValues" : {
+            "claude-code" : 425193,
+            "cline" : 174948,
+            "model_claude-opus-5-5" : 425193,
+            "model_glm-5.3" : 56603,
+            "type_cache" : 314146,
+            "type_input" : 226160,
+            "type_output" : 59835
+          },
+          "totalTokens" : 600141
+        },
+        {
+          "costUsd" : 0,
+          "label" : "07-14",
+          "seriesValues" : {
+            "type_cache" : 0,
+            "type_input" : 0,
+            "type_output" : 0
+          },
+          "totalTokens" : 0
+        },
+        {
+          "costUsd" : 1.7099378600000001,
+          "label" : "07-15",
+          "seriesValues" : {
+            "claude-code" : 557166,
+            "cline" : 175176,
+            "codex" : 193309,
+            "model_claude-opus-5-5" : 372859,
+            "model_claude-sonnet-5" : 184307,
+            "model_glm-5.3" : 70708,
+            "model_gpt-5.4" : 101304,
+            "model_gpt-5.4-mini" : 92005,
+            "type_cache" : 498669,
+            "type_input" : 355814,
+            "type_output" : 71168
+          },
+          "totalTokens" : 925651
+        },
+        {
+          "costUsd" : 1.7537161000000001,
+          "label" : "07-16",
+          "seriesValues" : {
+            "claude-code" : 512895,
+            "codex" : 150290,
+            "model_claude-opus-5-5" : 304787,
+            "model_claude-sonnet-5" : 208108,
+            "model_gpt-5.4" : 150290,
+            "type_cache" : 396592,
+            "type_input" : 219864,
+            "type_output" : 46729
+          },
+          "totalTokens" : 663185
+        },
+        {
+          "costUsd" : 0.25458482599999993,
+          "label" : "07-17",
+          "seriesValues" : {
+            "cline" : 115656,
+            "codex" : 193140,
+            "model_glm-5.3" : 46129,
+            "model_gpt-5.4" : 99033,
+            "model_gpt-5.4-mini" : 94107,
+            "type_cache" : 118664,
+            "type_input" : 150651,
+            "type_output" : 39481
+          },
+          "totalTokens" : 308796
+        },
+        {
+          "costUsd" : 1.320973725,
+          "label" : "07-18",
+          "seriesValues" : {
+            "claude-code" : 303674,
+            "codex" : 256063,
+            "model_claude-opus-5-5" : 303674,
+            "model_gpt-5.4" : 155967,
+            "model_gpt-5.4-mini" : 100096,
+            "type_cache" : 291823,
+            "type_input" : 228632,
+            "type_output" : 39282
+          },
+          "totalTokens" : 559737
+        },
+        {
+          "costUsd" : 1.2826655840000001,
+          "label" : "07-19",
+          "seriesValues" : {
+            "claude-code" : 240650,
+            "cline" : 162118,
+            "codex" : 333469,
+            "model_claude-opus-5-5" : 240650,
+            "model_glm-5.3" : 34357,
+            "model_gpt-5.4" : 154375,
+            "model_gpt-5.4-mini" : 179094,
+            "type_cache" : 345573,
+            "type_input" : 308419,
+            "type_output" : 82245
+          },
+          "totalTokens" : 736237
+        },
+        {
+          "costUsd" : 0.18577693000000001,
+          "label" : "07-20",
+          "seriesValues" : {
+            "codex" : 235979,
+            "model_gpt-5.4" : 82929,
+            "model_gpt-5.4-mini" : 153050,
+            "type_cache" : 108790,
+            "type_input" : 104999,
+            "type_output" : 22190
+          },
+          "totalTokens" : 235979
+        },
+        {
+          "costUsd" : 2.6357256910000002,
+          "label" : "07-21",
+          "seriesValues" : {
+            "claude-code" : 715417,
+            "cline" : 178376,
+            "codex" : 165165,
+            "model_claude-opus-5-5" : 308409,
+            "model_claude-sonnet-5" : 407008,
+            "model_glm-5.3" : 82608,
+            "model_gpt-5.4" : 165165,
+            "type_cache" : 556559,
+            "type_input" : 395115,
+            "type_output" : 107284
+          },
+          "totalTokens" : 1058958
+        },
+        {
+          "costUsd" : 1.6318966449999999,
+          "label" : "07-22",
+          "seriesValues" : {
+            "claude-code" : 638583,
+            "codex" : 265222,
+            "model_claude-opus-5-5" : 338415,
+            "model_claude-sonnet-5" : 300168,
+            "model_gpt-5.4" : 183922,
+            "model_gpt-5.4-mini" : 81300,
+            "type_cache" : 612093,
+            "type_input" : 233214,
+            "type_output" : 58498
+          },
+          "totalTokens" : 903805
+        },
+        {
+          "costUsd" : 0.12550997799999999,
+          "label" : "07-23",
+          "seriesValues" : {
+            "cline" : 104608,
+            "codex" : 80677,
+            "model_glm-5.3" : 62345,
+            "model_gpt-5.4-mini" : 80677,
+            "type_cache" : 60265,
+            "type_input" : 102198,
+            "type_output" : 22822
+          },
+          "totalTokens" : 185285
+        },
+        {
+          "costUsd" : 1.2817126249999999,
+          "label" : "07-24",
+          "seriesValues" : {
+            "claude-code" : 432524,
+            "codex" : 191262,
+            "model_claude-opus-5-5" : 238634,
+            "model_claude-sonnet-5" : 193890,
+            "model_gpt-5.4" : 89212,
+            "model_gpt-5.4-mini" : 102050,
+            "type_cache" : 363095,
+            "type_input" : 222158,
+            "type_output" : 38533
+          },
+          "totalTokens" : 623786
+        },
+        {
+          "costUsd" : 1.6667233699999999,
+          "label" : "07-25",
+          "seriesValues" : {
+            "claude-code" : 475771,
+            "cline" : 104450,
+            "codex" : 378219,
+            "model_claude-opus-5-5" : 212522,
+            "model_claude-sonnet-5" : 263249,
+            "model_gpt-5.4" : 190889,
+            "model_gpt-5.4-mini" : 187330,
+            "type_cache" : 508094,
+            "type_input" : 377866,
+            "type_output" : 72480
+          },
+          "totalTokens" : 958440
+        },
+        {
+          "costUsd" : 0.28057984499999999,
+          "label" : "07-26",
+          "seriesValues" : {
+            "codex" : 377857,
+            "model_gpt-5.4" : 190218,
+            "model_gpt-5.4-mini" : 187639,
+            "type_cache" : 162221,
+            "type_input" : 172909,
+            "type_output" : 42727
+          },
+          "totalTokens" : 377857
+        },
+        {
+          "costUsd" : 0.98501189400000011,
+          "label" : "07-27",
+          "seriesValues" : {
+            "claude-code" : 334676,
+            "cline" : 196197,
+            "codex" : 198044,
+            "model_claude-sonnet-5" : 334676,
+            "model_glm-5.3" : 76789,
+            "model_gpt-5.4" : 101545,
+            "model_gpt-5.4-mini" : 96499,
+            "type_cache" : 341981,
+            "type_input" : 323346,
+            "type_output" : 63590
+          },
+          "totalTokens" : 728917
+        },
+        {
+          "costUsd" : 1.1291701949999999,
+          "label" : "07-28",
+          "seriesValues" : {
+            "claude-code" : 224805,
+            "codex" : 267234,
+            "model_claude-opus-5-5" : 224805,
+            "model_glm-5.3" : 46022,
+            "model_gpt-5.4" : 128800,
+            "model_gpt-5.4-mini" : 138434,
+            "opencode" : 46022,
+            "type_cache" : 247488,
+            "type_input" : 236185,
+            "type_output" : 54388
+          },
+          "totalTokens" : 538061
+        },
+        {
+          "costUsd" : 0.36468576599999997,
+          "label" : "07-29",
+          "seriesValues" : {
+            "cline" : 170780,
+            "codex" : 336100,
+            "model_glm-5.3" : 74621,
+            "model_gpt-5.4" : 156508,
+            "model_gpt-5.4-mini" : 179592,
+            "opencode" : 40619,
+            "type_cache" : 200861,
+            "type_input" : 282759,
+            "type_output" : 63879
+          },
+          "totalTokens" : 547499
+        },
+        {
+          "costUsd" : 1.641071875,
+          "label" : "07-30",
+          "seriesValues" : {
+            "claude-code" : 582079,
+            "codex" : 243990,
+            "model_claude-opus-5-5" : 239784,
+            "model_claude-sonnet-5" : 342295,
+            "model_glm-5.3" : 53504,
+            "model_gpt-5.4" : 87467,
+            "model_gpt-5.4-mini" : 156523,
+            "opencode" : 86777,
+            "type_cache" : 522235,
+            "type_input" : 310236,
+            "type_output" : 80375
+          },
+          "totalTokens" : 912846
+        },
+        {
+          "costUsd" : 1.7085451949999999,
+          "label" : "07-31",
+          "seriesValues" : {
+            "claude-code" : 321754,
+            "cline" : 144770,
+            "codex" : 207058,
+            "model_claude-opus-5-5" : 321754,
+            "model_glm-5.3" : 121063,
+            "model_gpt-5.4" : 89081,
+            "model_gpt-5.4-mini" : 117977,
+            "opencode" : 72944,
+            "type_cache" : 321490,
+            "type_input" : 345836,
+            "type_output" : 79200
+          },
+          "totalTokens" : 746526
+        },
+        {
+          "costUsd" : 0.34056362000000007,
+          "label" : "08-01",
+          "seriesValues" : {
+            "codex" : 231923,
+            "model_glm-5.3" : 53095,
+            "model_gpt-5.4" : 122178,
+            "model_gpt-5.4-mini" : 109745,
+            "opencode" : 97710,
+            "type_cache" : 112086,
+            "type_input" : 174996,
+            "type_output" : 42551
+          },
+          "totalTokens" : 329633
+        },
+        {
+          "costUsd" : 1.6682003209999998,
+          "label" : "08-02",
+          "seriesValues" : {
+            "claude-code" : 538966,
+            "cline" : 229273,
+            "model_claude-opus-5-5" : 214720,
+            "model_claude-sonnet-5" : 324246,
+            "model_glm-5.3" : 111000,
+            "opencode" : 71737,
+            "type_cache" : 400760,
+            "type_input" : 353242,
+            "type_output" : 85974
+          },
+          "totalTokens" : 839976
+        },
+        {
+          "costUsd" : 1.9325291469999999,
+          "label" : "08-03",
+          "seriesValues" : {
+            "claude-code" : 530465,
+            "codex" : 225379,
+            "model_claude-opus-5-5" : 328375,
+            "model_claude-sonnet-5" : 202090,
+            "model_glm-5.3" : 30469,
+            "model_gpt-5.4" : 131076,
+            "model_gpt-5.4-mini" : 94303,
+            "opencode" : 79041,
+            "type_cache" : 442655,
+            "type_input" : 319200,
+            "type_output" : 73030
+          },
+          "totalTokens" : 834885
+        }
+      ]
+    },
+    "todayHourlyTokens" : [
+      101045,
+      0,
+      24284,
+      10156,
+      65536,
+      109457,
+      0,
+      31433,
+      0,
+      24288,
+      109457,
+      41589,
+      101045,
+      0,
+      0,
+      65540,
+      0,
+      0,
+      0,
+      109461,
+      0,
+      0,
+      31437,
+      10157
+    ]
+  },
+  {
+    "agents" : [
+      {
+        "agentId" : "claude-code",
+        "cacheCreationTokens" : 33813,
+        "cacheReadTokens" : 646740,
+        "colorHex" : "#ff7a59",
+        "costText" : "$3.09",
+        "costUsd" : 3.0913813999999995,
+        "inputTokens" : 343369,
+        "name" : "Claude Code",
+        "note" : null,
+        "outputTokens" : 79322,
+        "sharePercent" : 53.351668800205942,
+        "status" : "ok",
+        "topModels" : [
+          {
+            "canonicalKey" : "claude-opus-5-5",
+            "colorHex" : "#FF9F0A",
+            "costText" : "$1.69",
+            "costUsd" : 1.6935560000000001,
+            "displayName" : "Claude Opus 5.5",
+            "sharePercent" : 50.78354751264925,
+            "sources" : [
+              {
+                "agentDisplayName" : "Claude Code",
+                "agentId" : "claude-code",
+                "costText" : "$1.69",
+                "costUsd" : 1.6935560000000001,
+                "rawModelName" : "anthropic/claude-opus-5-5-20260601",
+                "shareOfModelPercent" : 100,
+                "tokens" : 543095,
+                "tokensText" : "543.1K"
+              }
+            ],
+            "totalTokens" : 543095,
+            "totalTokensText" : "543.1K",
+            "vendor" : "Anthropic"
+          },
+          {
+            "canonicalKey" : "claude-sonnet-5",
+            "colorHex" : "#FF9F0A",
+            "costText" : "$1.40",
+            "costUsd" : 1.3978253999999999,
+            "displayName" : "Claude Sonnet 5",
+            "sharePercent" : 49.21645248735075,
+            "sources" : [
+              {
+                "agentDisplayName" : "Claude Code",
+                "agentId" : "claude-code",
+                "costText" : "$1.40",
+                "costUsd" : 1.3978253999999999,
+                "rawModelName" : "claude-sonnet-5",
+                "shareOfModelPercent" : 100,
+                "tokens" : 526336,
+                "tokensText" : "526.3K"
+              }
+            ],
+            "totalTokens" : 526336,
+            "totalTokensText" : "526.3K",
+            "vendor" : "Anthropic"
+          }
+        ],
+        "topProjects" : [
+
+        ],
+        "totalTokens" : 1069431,
+        "totalTokensText" : "1.1M"
+      },
+      {
+        "agentId" : "codex",
+        "cacheCreationTokens" : 20320,
+        "cacheReadTokens" : 203278,
+        "colorHex" : "#bf5af2",
+        "costText" : "$0.49",
+        "costUsd" : 0.49128614000000004,
+        "inputTokens" : 206362,
+        "name" : "Codex",
+        "note" : null,
+        "outputTokens" : 47662,
+        "sharePercent" : 22.813837307569891,
+        "status" : "ok",
+        "topModels" : [
+          {
+            "canonicalKey" : "gpt-5.4",
+            "colorHex" : "#0A84FF",
+            "costText" : "$0.47",
+            "costUsd" : 0.46539462500000006,
+            "displayName" : "GPT-5.4",
+            "sharePercent" : 55.380033325898424,
+            "sources" : [
+              {
+                "agentDisplayName" : "Codex",
+                "agentId" : "codex",
+                "costText" : "$0.47",
+                "costUsd" : 0.46539462500000006,
+                "rawModelName" : "gpt-5.4",
+                "shareOfModelPercent" : 100,
+                "tokens" : 253254,
+                "tokensText" : "253.3K"
+              }
+            ],
+            "totalTokens" : 253254,
+            "totalTokensText" : "253.3K",
+            "vendor" : "OpenAI / Codex"
+          },
+          {
+            "canonicalKey" : "gpt-5.4-mini",
+            "colorHex" : "#0A84FF",
+            "costText" : "$0.03",
+            "costUsd" : 0.025891514999999997,
+            "displayName" : "GPT-5.4 mini",
+            "sharePercent" : 44.619966674101583,
+            "sources" : [
+              {
+                "agentDisplayName" : "Codex",
+                "agentId" : "codex",
+                "costText" : "$0.03",
+                "costUsd" : 0.025891514999999997,
+                "rawModelName" : "gpt-5.4-mini-20260305",
+                "shareOfModelPercent" : 100,
+                "tokens" : 204048,
+                "tokensText" : "204K"
+              }
+            ],
+            "totalTokens" : 204048,
+            "totalTokensText" : "204K",
+            "vendor" : "OpenAI / Codex"
+          }
+        ],
+        "topProjects" : [
+
+        ],
+        "totalTokens" : 457302,
+        "totalTokensText" : "457.3K"
+      },
+      {
+        "agentId" : "opencode",
+        "cacheCreationTokens" : 16412,
+        "cacheReadTokens" : 43299,
+        "colorHex" : "#30d158",
+        "costText" : "$0.24",
+        "costUsd" : 0.23666964799999998,
+        "inputTokens" : 162586,
+        "name" : "OpenCode",
+        "note" : null,
+        "outputTokens" : 42603,
+        "sharePercent" : 12.39654496346709,
+        "status" : "ok",
+        "topModels" : [
+          {
+            "canonicalKey" : "deepseek-v4.1-flash",
+            "colorHex" : "#30D158",
+            "costText" : "$0.03",
+            "costUsd" : 0.025060067999999998,
+            "displayName" : "DeepSeek V4.1 Flash",
+            "sharePercent" : 51.543334084543311,
+            "sources" : [
+              {
+                "agentDisplayName" : "OpenCode",
+                "agentId" : "opencode",
+                "costText" : "$0.03",
+                "costUsd" : 0.025060067999999998,
+                "rawModelName" : "deepseek-v4.1-flash[thinking]",
+                "shareOfModelPercent" : 100,
+                "tokens" : 128079,
+                "tokensText" : "128.1K"
+              }
+            ],
+            "totalTokens" : 128079,
+            "totalTokensText" : "128.1K",
+            "vendor" : "DeepSeek"
+          },
+          {
+            "canonicalKey" : "glm-5.3",
+            "colorHex" : "#40C8E0",
+            "costText" : "$0.21",
+            "costUsd" : 0.21160958000000002,
+            "displayName" : "GLM-5.3",
+            "sharePercent" : 48.456665915456682,
+            "sources" : [
+              {
+                "agentDisplayName" : "OpenCode",
+                "agentId" : "opencode",
+                "costText" : "$0.21",
+                "costUsd" : 0.21160958000000002,
+                "rawModelName" : "openrouter/glm-5.3",
+                "shareOfModelPercent" : 100,
+                "tokens" : 120409,
+                "tokensText" : "120.4K"
+              }
+            ],
+            "totalTokens" : 120409,
+            "totalTokensText" : "120.4K",
+            "vendor" : "智谱 AI (Zhipu)"
+          }
+        ],
+        "topProjects" : [
+
+        ],
+        "totalTokens" : 248488,
+        "totalTokensText" : "248.5K"
+      },
+      {
+        "agentId" : "cline",
+        "cacheCreationTokens" : 13365,
+        "cacheReadTokens" : 62184,
+        "colorHex" : "#40c8e0",
+        "costText" : "$0.12",
+        "costUsd" : 0.12195590000000001,
+        "inputTokens" : 135121,
+        "name" : "Cline",
+        "note" : "VS Code 扩展",
+        "outputTokens" : 31968,
+        "sharePercent" : 11.437948928757082,
+        "status" : "idle",
+        "topModels" : [
+          {
+            "canonicalKey" : "deepseek-flash",
+            "colorHex" : "#30D158",
+            "costText" : null,
+            "costUsd" : null,
+            "displayName" : "deepseek-flash",
+            "sharePercent" : 34.161458174316209,
+            "sources" : [
+              {
+                "agentDisplayName" : "Cline",
+                "agentId" : "cline",
+                "costText" : null,
+                "costUsd" : null,
+                "rawModelName" : "deepseek-flash",
+                "shareOfModelPercent" : 100,
+                "tokens" : 78323,
+                "tokensText" : "78.3K"
+              }
+            ],
+            "totalTokens" : 78323,
+            "totalTokensText" : "78.3K",
+            "vendor" : "DeepSeek"
+          },
+          {
+            "canonicalKey" : "deepseek-v4.1-flash",
+            "colorHex" : "#30D158",
+            "costText" : "$0.01",
+            "costUsd" : 0.0135222,
+            "displayName" : "DeepSeek V4.1 Flash",
+            "sharePercent" : 33.495003772794881,
+            "sources" : [
+              {
+                "agentDisplayName" : "Cline",
+                "agentId" : "cline",
+                "costText" : "$0.01",
+                "costUsd" : 0.0135222,
+                "rawModelName" : "cline-pass/deepseek-v4.1-flash",
+                "shareOfModelPercent" : 100,
+                "tokens" : 76795,
+                "tokensText" : "76.8K"
+              }
+            ],
+            "totalTokens" : 76795,
+            "totalTokensText" : "76.8K",
+            "vendor" : "DeepSeek"
+          },
+          {
+            "canonicalKey" : "glm-5.3",
+            "colorHex" : "#40C8E0",
+            "costText" : "$0.11",
+            "costUsd" : 0.10843370000000001,
+            "displayName" : "GLM-5.3",
+            "sharePercent" : 32.343538052888917,
+            "sources" : [
+              {
+                "agentDisplayName" : "Cline",
+                "agentId" : "cline",
+                "costText" : "$0.11",
+                "costUsd" : 0.10843370000000001,
+                "rawModelName" : "zhipu/glm-5.3",
+                "shareOfModelPercent" : 100,
+                "tokens" : 74155,
+                "tokensText" : "74.2K"
+              }
+            ],
+            "totalTokens" : 74155,
+            "totalTokensText" : "74.2K",
+            "vendor" : "智谱 AI (Zhipu)"
+          }
+        ],
+        "topProjects" : [
+
+        ],
+        "totalTokens" : 229273,
+        "totalTokensText" : "229.3K"
+      }
+    ],
+    "kpi" : {
+      "activeAgentsCount" : 4,
+      "averageCostPerMillionText" : "$2.05 / 1M",
+      "cacheCreationTokens" : 83910,
+      "cacheCreationTokensText" : "83.9K",
+      "cacheHitRateText" : "53.0%",
+      "cacheReadTokens" : 955501,
+      "cacheReadTokensText" : "955.5K",
+      "cacheSavedCostText" : "省 $2.59",
+      "cacheSavingsUsd" : 2.5904662620000005,
+      "cacheSplitAvailable" : true,
+      "costTagText" : "78.3K 未定价",
+      "costText" : "$3.94",
+      "equivalentMText" : "2.00 M",
+      "inputTokens" : 763528,
+      "inputTokensText" : "763.5K",
+      "outputTokens" : 201555,
+      "outputTokensText" : "201.6K",
+      "pricedTokens" : 1926171,
+      "topAgentText" : "最活跃 Claude Code · 53.4%",
+      "totalCostUsd" : 3.9412930880000001,
+      "totalTokens" : 2004494,
+      "totalTokensText" : "2M",
+      "unpricedTokens" : 78323
+    },
+    "models" : [
+      {
+        "canonicalKey" : "claude-opus-5-5",
+        "colorHex" : "#FF9F0A",
+        "costText" : "$1.69",
+        "costUsd" : 1.6935560000000001,
+        "displayName" : "Claude Opus 5.5",
+        "sharePercent" : 27.093870073943847,
+        "sources" : [
+          {
+            "agentDisplayName" : "Claude Code",
+            "agentId" : "claude-code",
+            "costText" : "$1.69",
+            "costUsd" : 1.6935560000000001,
+            "rawModelName" : "anthropic/claude-opus-5-5-20260601",
+            "shareOfModelPercent" : 100,
+            "tokens" : 543095,
+            "tokensText" : "543.1K"
+          }
+        ],
+        "totalTokens" : 543095,
+        "totalTokensText" : "543.1K",
+        "vendor" : "Anthropic"
+      },
+      {
+        "canonicalKey" : "claude-sonnet-5",
+        "colorHex" : "#FF9F0A",
+        "costText" : "$1.40",
+        "costUsd" : 1.3978253999999999,
+        "displayName" : "Claude Sonnet 5",
+        "sharePercent" : 26.257798726262088,
+        "sources" : [
+          {
+            "agentDisplayName" : "Claude Code",
+            "agentId" : "claude-code",
+            "costText" : "$1.40",
+            "costUsd" : 1.3978253999999999,
+            "rawModelName" : "claude-sonnet-5",
+            "shareOfModelPercent" : 100,
+            "tokens" : 526336,
+            "tokensText" : "526.3K"
+          }
+        ],
+        "totalTokens" : 526336,
+        "totalTokensText" : "526.3K",
+        "vendor" : "Anthropic"
+      },
+      {
+        "canonicalKey" : "gpt-5.4",
+        "colorHex" : "#0A84FF",
+        "costText" : "$0.47",
+        "costUsd" : 0.46539462500000006,
+        "displayName" : "GPT-5.4",
+        "sharePercent" : 12.634310703848453,
+        "sources" : [
+          {
+            "agentDisplayName" : "Codex",
+            "agentId" : "codex",
+            "costText" : "$0.47",
+            "costUsd" : 0.46539462500000006,
+            "rawModelName" : "gpt-5.4",
+            "shareOfModelPercent" : 100,
+            "tokens" : 253254,
+            "tokensText" : "253.3K"
+          }
+        ],
+        "totalTokens" : 253254,
+        "totalTokensText" : "253.3K",
+        "vendor" : "OpenAI / Codex"
+      },
+      {
+        "canonicalKey" : "deepseek-v4.1-flash",
+        "colorHex" : "#30D158",
+        "costText" : "$0.04",
+        "costUsd" : 0.038582267999999996,
+        "displayName" : "DeepSeek V4.1 Flash",
+        "sharePercent" : 10.220734010678006,
+        "sources" : [
+          {
+            "agentDisplayName" : "OpenCode",
+            "agentId" : "opencode",
+            "costText" : "$0.03",
+            "costUsd" : 0.025060067999999998,
+            "rawModelName" : "deepseek-v4.1-flash[thinking]",
+            "shareOfModelPercent" : 62.51598543495026,
+            "tokens" : 128079,
+            "tokensText" : "128.1K"
+          },
+          {
+            "agentDisplayName" : "Cline",
+            "agentId" : "cline",
+            "costText" : "$0.01",
+            "costUsd" : 0.0135222,
+            "rawModelName" : "cline-pass/deepseek-v4.1-flash",
+            "shareOfModelPercent" : 37.48401456504974,
+            "tokens" : 76795,
+            "tokensText" : "76.8K"
+          }
+        ],
+        "totalTokens" : 204874,
+        "totalTokensText" : "204.9K",
+        "vendor" : "DeepSeek"
+      },
+      {
+        "canonicalKey" : "gpt-5.4-mini",
+        "colorHex" : "#0A84FF",
+        "costText" : "$0.03",
+        "costUsd" : 0.025891514999999997,
+        "displayName" : "GPT-5.4 mini",
+        "sharePercent" : 10.179526603721438,
+        "sources" : [
+          {
+            "agentDisplayName" : "Codex",
+            "agentId" : "codex",
+            "costText" : "$0.03",
+            "costUsd" : 0.025891514999999997,
+            "rawModelName" : "gpt-5.4-mini-20260305",
+            "shareOfModelPercent" : 100,
+            "tokens" : 204048,
+            "tokensText" : "204K"
+          }
+        ],
+        "totalTokens" : 204048,
+        "totalTokensText" : "204K",
+        "vendor" : "OpenAI / Codex"
+      },
+      {
+        "canonicalKey" : "glm-5.3",
+        "colorHex" : "#40C8E0",
+        "costText" : "$0.32",
+        "costUsd" : 0.32004328000000004,
+        "displayName" : "GLM-5.3",
+        "sharePercent" : 9.7063897422491667,
+        "sources" : [
+          {
+            "agentDisplayName" : "OpenCode",
+            "agentId" : "opencode",
+            "costText" : "$0.21",
+            "costUsd" : 0.21160958000000002,
+            "rawModelName" : "openrouter/glm-5.3",
+            "shareOfModelPercent" : 61.886577167410209,
+            "tokens" : 120409,
+            "tokensText" : "120.4K"
+          },
+          {
+            "agentDisplayName" : "Cline",
+            "agentId" : "cline",
+            "costText" : "$0.11",
+            "costUsd" : 0.10843370000000001,
+            "rawModelName" : "zhipu/glm-5.3",
+            "shareOfModelPercent" : 38.113422832589791,
+            "tokens" : 74155,
+            "tokensText" : "74.2K"
+          }
+        ],
+        "totalTokens" : 194564,
+        "totalTokensText" : "194.6K",
+        "vendor" : "智谱 AI (Zhipu)"
+      },
+      {
+        "canonicalKey" : "deepseek-flash",
+        "colorHex" : "#30D158",
+        "costText" : null,
+        "costUsd" : null,
+        "displayName" : "deepseek-flash",
+        "sharePercent" : 3.9073701392969999,
+        "sources" : [
+          {
+            "agentDisplayName" : "Cline",
+            "agentId" : "cline",
+            "costText" : null,
+            "costUsd" : null,
+            "rawModelName" : "deepseek-flash",
+            "shareOfModelPercent" : 100,
+            "tokens" : 78323,
+            "tokensText" : "78.3K"
+          }
+        ],
+        "totalTokens" : 78323,
+        "totalTokensText" : "78.3K",
+        "vendor" : "DeepSeek"
+      }
+    ],
+    "range" : "month",
+    "timeline" : {
+      "avgSummary" : "日均: **668.2K** Tokens",
+      "granularity" : "day",
+      "peakSummary" : "🔥 峰值: **08-02** (840K Tokens)",
+      "points" : [
+        {
+          "costUsd" : 0.34056362000000007,
+          "label" : "08-01",
+          "seriesValues" : {
+            "codex" : 231923,
+            "model_deepseek-v4.1-flash" : 44615,
+            "model_gpt-5.4" : 122178,
+            "model_gpt-5.4-mini" : 109745,
+            "opencode" : 97710,
+            "type_cache" : 112086,
+            "type_input" : 174996,
+            "type_output" : 42551
+          },
+          "totalTokens" : 329633
+        },
+        {
+          "costUsd" : 1.6682003209999998,
+          "label" : "08-02",
+          "seriesValues" : {
+            "claude-code" : 538966,
+            "cline" : 229273,
+            "model_claude-opus-5-5" : 214720,
+            "model_claude-sonnet-5" : 324246,
+            "model_deepseek-v4.1-flash" : 111687,
+            "opencode" : 71737,
+            "type_cache" : 400760,
+            "type_input" : 353242,
+            "type_output" : 85974
+          },
+          "totalTokens" : 839976
+        },
+        {
+          "costUsd" : 1.9325291469999999,
+          "label" : "08-03",
+          "seriesValues" : {
+            "claude-code" : 530465,
+            "codex" : 225379,
+            "model_claude-opus-5-5" : 328375,
+            "model_claude-sonnet-5" : 202090,
+            "model_deepseek-v4.1-flash" : 48572,
+            "model_gpt-5.4" : 131076,
+            "model_gpt-5.4-mini" : 94303,
+            "opencode" : 79041,
+            "type_cache" : 442655,
+            "type_input" : 319200,
+            "type_output" : 73030
+          },
+          "totalTokens" : 834885
+        }
+      ]
+    },
+    "todayHourlyTokens" : [
+      101045,
+      0,
+      24284,
+      10156,
+      65536,
+      109457,
+      0,
+      31433,
+      0,
+      24288,
+      109457,
+      41589,
+      101045,
+      0,
+      0,
+      65540,
+      0,
+      0,
+      0,
+      109461,
+      0,
+      0,
+      31437,
+      10157
+    ]
+  },
+  {
+    "agents" : [
+      {
+        "agentId" : "claude-code",
+        "cacheCreationTokens" : 391860,
+        "cacheReadTokens" : 9053863,
+        "colorHex" : "#ff7a59",
+        "costText" : "$37.50",
+        "costUsd" : 37.503336900000001,
+        "inputTokens" : 4052617,
+        "name" : "Claude Code",
+        "note" : null,
+        "outputTokens" : 845853,
+        "sharePercent" : 63.40478380220943,
+        "status" : "ok",
+        "topModels" : [
+          {
+            "canonicalKey" : "claude-opus-5-5",
+            "colorHex" : "#FF9F0A",
+            "costText" : "$24.85",
+            "costUsd" : 24.853830000000002,
+            "displayName" : "Claude Opus 5.5",
+            "sharePercent" : 52.714610524275763,
+            "sources" : [
+              {
+                "agentDisplayName" : "Claude Code",
+                "agentId" : "claude-code",
+                "costText" : "$24.85",
+                "costUsd" : 24.853830000000002,
+                "rawModelName" : "anthropic/claude-opus-5-5-20260601",
+                "shareOfModelPercent" : 100,
+                "tokens" : 7354918,
+                "tokensText" : "7.4M"
+              }
+            ],
+            "totalTokens" : 7354918,
+            "totalTokensText" : "7.4M",
+            "vendor" : "Anthropic"
+          },
+          {
+            "canonicalKey" : "claude-sonnet-5",
+            "colorHex" : "#FF9F0A",
+            "costText" : "$12.65",
+            "costUsd" : 12.6495069,
+            "displayName" : "Claude Sonnet 5",
+            "sharePercent" : 47.285389475724237,
+            "sources" : [
+              {
+                "agentDisplayName" : "Claude Code",
+                "agentId" : "claude-code",
+                "costText" : "$12.65",
+                "costUsd" : 12.6495069,
+                "rawModelName" : "claude-sonnet-5",
+                "shareOfModelPercent" : 100,
+                "tokens" : 6597415,
+                "tokensText" : "6.6M"
+              }
+            ],
+            "totalTokens" : 6597415,
+            "totalTokensText" : "6.6M",
+            "vendor" : "Anthropic"
+          }
+        ],
+        "topProjects" : [
+
+        ],
+        "totalTokens" : 13952333,
+        "totalTokensText" : "14M"
+      },
+      {
+        "agentId" : "codex",
+        "cacheCreationTokens" : 200489,
+        "cacheReadTokens" : 2024073,
+        "colorHex" : "#bf5af2",
+        "costText" : "$4.14",
+        "costUsd" : 4.1437294949999997,
+        "inputTokens" : 2042073,
+        "name" : "Codex",
+        "note" : null,
+        "outputTokens" : 464234,
+        "sharePercent" : 20.587794488696158,
+        "status" : "ok",
+        "topModels" : [
+          {
+            "canonicalKey" : "gpt-5.4",
+            "colorHex" : "#0A84FF",
+            "costText" : "$3.85",
+            "costUsd" : 3.8460393750000001,
+            "displayName" : "GPT-5.4",
+            "sharePercent" : 52.53331950079243,
+            "sources" : [
+              {
+                "agentDisplayName" : "Codex",
+                "agentId" : "codex",
+                "costText" : "$3.85",
+                "costUsd" : 3.8460393750000001,
+                "rawModelName" : "gpt-5.4",
+                "shareOfModelPercent" : 100,
+                "tokens" : 2379959,
+                "tokensText" : "2.4M"
+              }
+            ],
+            "totalTokens" : 2379959,
+            "totalTokensText" : "2.4M",
+            "vendor" : "OpenAI / Codex"
+          },
+          {
+            "canonicalKey" : "gpt-5.4-mini",
+            "colorHex" : "#0A84FF",
+            "costText" : "$0.30",
+            "costUsd" : 0.29769011999999995,
+            "displayName" : "GPT-5.4 mini",
+            "sharePercent" : 47.46668049920757,
+            "sources" : [
+              {
+                "agentDisplayName" : "Codex",
+                "agentId" : "codex",
+                "costText" : "$0.30",
+                "costUsd" : 0.29769011999999995,
+                "rawModelName" : "gpt-5.4-mini-20260305",
+                "shareOfModelPercent" : 100,
+                "tokens" : 2150421,
+                "tokensText" : "2.2M"
+              }
+            ],
+            "totalTokens" : 2150421,
+            "totalTokensText" : "2.2M",
+            "vendor" : "OpenAI / Codex"
+          }
+        ],
+        "topProjects" : [
+
+        ],
+        "totalTokens" : 4530380,
+        "totalTokensText" : "4.5M"
+      },
+      {
+        "agentId" : "cline",
+        "cacheCreationTokens" : 176858,
+        "cacheReadTokens" : 816553,
+        "colorHex" : "#40c8e0",
+        "costText" : "$1.93",
+        "costUsd" : 1.9287530049999999,
+        "inputTokens" : 1788424,
+        "name" : "Cline",
+        "note" : "VS Code 扩展",
+        "outputTokens" : 422634,
+        "sharePercent" : 13.758632401634271,
+        "status" : "idle",
+        "topModels" : [
+          {
+            "canonicalKey" : "glm-5.3",
+            "colorHex" : "#40C8E0",
+            "costText" : "$1.76",
+            "costUsd" : 1.7562731199999999,
+            "displayName" : "GLM-5.3",
+            "sharePercent" : 37.008453199568905,
+            "sources" : [
+              {
+                "agentDisplayName" : "Cline",
+                "agentId" : "cline",
+                "costText" : "$1.76",
+                "costUsd" : 1.7562731199999999,
+                "rawModelName" : "zhipu/glm-5.3",
+                "shareOfModelPercent" : 100,
+                "tokens" : 1120472,
+                "tokensText" : "1.1M"
+              }
+            ],
+            "totalTokens" : 1120472,
+            "totalTokensText" : "1.1M",
+            "vendor" : "智谱 AI (Zhipu)"
+          },
+          {
+            "canonicalKey" : "deepseek-v4.1-flash",
+            "colorHex" : "#30D158",
+            "costText" : "$0.17",
+            "costUsd" : 0.17247988500000003,
+            "displayName" : "DeepSeek V4.1 Flash",
+            "sharePercent" : 34.227646814600689,
+            "sources" : [
+              {
+                "agentDisplayName" : "Cline",
+                "agentId" : "cline",
+                "costText" : "$0.17",
+                "costUsd" : 0.17247988500000003,
+                "rawModelName" : "cline-pass/deepseek-v4.1-flash",
+                "shareOfModelPercent" : 100,
+                "tokens" : 1036280,
+                "tokensText" : "1M"
+              }
+            ],
+            "totalTokens" : 1036280,
+            "totalTokensText" : "1M",
+            "vendor" : "DeepSeek"
+          },
+          {
+            "canonicalKey" : "deepseek-flash",
+            "colorHex" : "#30D158",
+            "costText" : null,
+            "costUsd" : null,
+            "displayName" : "deepseek-flash",
+            "sharePercent" : 28.76389998583041,
+            "sources" : [
+              {
+                "agentDisplayName" : "Cline",
+                "agentId" : "cline",
+                "costText" : null,
+                "costUsd" : null,
+                "rawModelName" : "deepseek-flash",
+                "shareOfModelPercent" : 100,
+                "tokens" : 870859,
+                "tokensText" : "870.9K"
+              }
+            ],
+            "totalTokens" : 870859,
+            "totalTokensText" : "870.9K",
+            "vendor" : "DeepSeek"
+          }
+        ],
+        "topProjects" : [
+
+        ],
+        "totalTokens" : 3027611,
+        "totalTokensText" : "3M"
+      },
+      {
+        "agentId" : "opencode",
+        "cacheCreationTokens" : 32644,
+        "cacheReadTokens" : 86717,
+        "colorHex" : "#30d158",
+        "costText" : "$0.55",
+        "costUsd" : 0.55089665899999996,
+        "inputTokens" : 325348,
+        "name" : "OpenCode",
+        "note" : null,
+        "outputTokens" : 82785,
+        "sharePercent" : 2.2487893074601457,
+        "status" : "ok",
+        "topModels" : [
+          {
+            "canonicalKey" : "glm-5.3",
+            "colorHex" : "#40C8E0",
+            "costText" : "$0.51",
+            "costUsd" : 0.51233624,
+            "displayName" : "GLM-5.3",
+            "sharePercent" : 60.373042336061431,
+            "sources" : [
+              {
+                "agentDisplayName" : "OpenCode",
+                "agentId" : "opencode",
+                "costText" : "$0.51",
+                "costUsd" : 0.51233624,
+                "rawModelName" : "openrouter/glm-5.3",
+                "shareOfModelPercent" : 100,
+                "tokens" : 298756,
+                "tokensText" : "298.8K"
+              }
+            ],
+            "totalTokens" : 298756,
+            "totalTokensText" : "298.8K",
+            "vendor" : "智谱 AI (Zhipu)"
+          },
+          {
+            "canonicalKey" : "deepseek-v4.1-flash",
+            "colorHex" : "#30D158",
+            "costText" : "$0.04",
+            "costUsd" : 0.038560418999999999,
+            "displayName" : "DeepSeek V4.1 Flash",
+            "sharePercent" : 39.626957663938569,
+            "sources" : [
+              {
+                "agentDisplayName" : "OpenCode",
+                "agentId" : "opencode",
+                "costText" : "$0.04",
+                "costUsd" : 0.038560418999999999,
+                "rawModelName" : "deepseek-v4.1-flash[thinking]",
+                "shareOfModelPercent" : 100,
+                "tokens" : 196094,
+                "tokensText" : "196.1K"
+              }
+            ],
+            "totalTokens" : 196094,
+            "totalTokensText" : "196.1K",
+            "vendor" : "DeepSeek"
+          }
+        ],
+        "topProjects" : [
+
+        ],
+        "totalTokens" : 494850,
+        "totalTokensText" : "494.9K"
+      }
+    ],
+    "kpi" : {
+      "activeAgentsCount" : 4,
+      "averageCostPerMillionText" : "$2.09 / 1M",
+      "cacheCreationTokens" : 801851,
+      "cacheCreationTokensText" : "801.9K",
+      "cacheHitRateText" : "59.3%",
+      "cacheReadTokens" : 11981206,
+      "cacheReadTokensText" : "12M",
+      "cacheSavedCostText" : "省 $34.65",
+      "cacheSavingsUsd" : 34.653905841000004,
+      "cacheSplitAvailable" : true,
+      "costTagText" : "870.9K 未定价",
+      "costText" : "$44.13",
+      "equivalentMText" : "22.01 M",
+      "inputTokens" : 7406611,
+      "inputTokensText" : "7.4M",
+      "outputTokens" : 1815506,
+      "outputTokensText" : "1.8M",
+      "pricedTokens" : 21134315,
+      "topAgentText" : "最活跃 Claude Code · 63.4%",
+      "totalCostUsd" : 44.126716058999996,
+      "totalTokens" : 22005174,
+      "totalTokensText" : "22M",
+      "unpricedTokens" : 870859
+    },
+    "models" : [
+      {
+        "canonicalKey" : "claude-opus-5-5",
+        "colorHex" : "#FF9F0A",
+        "costText" : "$24.85",
+        "costUsd" : 24.853830000000002,
+        "displayName" : "Claude Opus 5.5",
+        "sharePercent" : 33.423584835093784,
+        "sources" : [
+          {
+            "agentDisplayName" : "Claude Code",
+            "agentId" : "claude-code",
+            "costText" : "$24.85",
+            "costUsd" : 24.853830000000002,
+            "rawModelName" : "anthropic/claude-opus-5-5-20260601",
+            "shareOfModelPercent" : 100,
+            "tokens" : 7354918,
+            "tokensText" : "7.4M"
+          }
+        ],
+        "totalTokens" : 7354918,
+        "totalTokensText" : "7.4M",
+        "vendor" : "Anthropic"
+      },
+      {
+        "canonicalKey" : "claude-sonnet-5",
+        "colorHex" : "#FF9F0A",
+        "costText" : "$12.65",
+        "costUsd" : 12.6495069,
+        "displayName" : "Claude Sonnet 5",
+        "sharePercent" : 29.981198967115642,
+        "sources" : [
+          {
+            "agentDisplayName" : "Claude Code",
+            "agentId" : "claude-code",
+            "costText" : "$12.65",
+            "costUsd" : 12.6495069,
+            "rawModelName" : "claude-sonnet-5",
+            "shareOfModelPercent" : 100,
+            "tokens" : 6597415,
+            "tokensText" : "6.6M"
+          }
+        ],
+        "totalTokens" : 6597415,
+        "totalTokensText" : "6.6M",
+        "vendor" : "Anthropic"
+      },
+      {
+        "canonicalKey" : "gpt-5.4",
+        "colorHex" : "#0A84FF",
+        "costText" : "$3.85",
+        "costUsd" : 3.8460393750000001,
+        "displayName" : "GPT-5.4",
+        "sharePercent" : 10.815451856913286,
+        "sources" : [
+          {
+            "agentDisplayName" : "Codex",
+            "agentId" : "codex",
+            "costText" : "$3.85",
+            "costUsd" : 3.8460393750000001,
+            "rawModelName" : "gpt-5.4",
+            "shareOfModelPercent" : 100,
+            "tokens" : 2379959,
+            "tokensText" : "2.4M"
+          }
+        ],
+        "totalTokens" : 2379959,
+        "totalTokensText" : "2.4M",
+        "vendor" : "OpenAI / Codex"
+      },
+      {
+        "canonicalKey" : "gpt-5.4-mini",
+        "colorHex" : "#0A84FF",
+        "costText" : "$0.30",
+        "costUsd" : 0.29769011999999995,
+        "displayName" : "GPT-5.4 mini",
+        "sharePercent" : 9.7723426317828714,
+        "sources" : [
+          {
+            "agentDisplayName" : "Codex",
+            "agentId" : "codex",
+            "costText" : "$0.30",
+            "costUsd" : 0.29769011999999995,
+            "rawModelName" : "gpt-5.4-mini-20260305",
+            "shareOfModelPercent" : 100,
+            "tokens" : 2150421,
+            "tokensText" : "2.2M"
+          }
+        ],
+        "totalTokens" : 2150421,
+        "totalTokensText" : "2.2M",
+        "vendor" : "OpenAI / Codex"
+      },
+      {
+        "canonicalKey" : "glm-5.3",
+        "colorHex" : "#40C8E0",
+        "costText" : "$2.27",
+        "costUsd" : 2.2686093600000001,
+        "displayName" : "GLM-5.3",
+        "sharePercent" : 6.4495195539012782,
+        "sources" : [
+          {
+            "agentDisplayName" : "Cline",
+            "agentId" : "cline",
+            "costText" : "$1.76",
+            "costUsd" : 1.7562731199999999,
+            "rawModelName" : "zhipu/glm-5.3",
+            "shareOfModelPercent" : 78.949400660077174,
+            "tokens" : 1120472,
+            "tokensText" : "1.1M"
+          },
+          {
+            "agentDisplayName" : "OpenCode",
+            "agentId" : "opencode",
+            "costText" : "$0.51",
+            "costUsd" : 0.51233624,
+            "rawModelName" : "openrouter/glm-5.3",
+            "shareOfModelPercent" : 21.050599339922833,
+            "tokens" : 298756,
+            "tokensText" : "298.8K"
+          }
+        ],
+        "totalTokens" : 1419228,
+        "totalTokensText" : "1.4M",
+        "vendor" : "智谱 AI (Zhipu)"
+      },
+      {
+        "canonicalKey" : "deepseek-v4.1-flash",
+        "colorHex" : "#30D158",
+        "costText" : "$0.21",
+        "costUsd" : 0.21104030400000001,
+        "displayName" : "DeepSeek V4.1 Flash",
+        "sharePercent" : 5.6003828917689988,
+        "sources" : [
+          {
+            "agentDisplayName" : "Cline",
+            "agentId" : "cline",
+            "costText" : "$0.17",
+            "costUsd" : 0.17247988500000003,
+            "rawModelName" : "cline-pass/deepseek-v4.1-flash",
+            "shareOfModelPercent" : 84.088109616074334,
+            "tokens" : 1036280,
+            "tokensText" : "1M"
+          },
+          {
+            "agentDisplayName" : "OpenCode",
+            "agentId" : "opencode",
+            "costText" : "$0.04",
+            "costUsd" : 0.038560418999999999,
+            "rawModelName" : "deepseek-v4.1-flash[thinking]",
+            "shareOfModelPercent" : 15.911890383925659,
+            "tokens" : 196094,
+            "tokensText" : "196.1K"
+          }
+        ],
+        "totalTokens" : 1232374,
+        "totalTokensText" : "1.2M",
+        "vendor" : "DeepSeek"
+      },
+      {
+        "canonicalKey" : "deepseek-flash",
+        "colorHex" : "#30D158",
+        "costText" : null,
+        "costUsd" : null,
+        "displayName" : "deepseek-flash",
+        "sharePercent" : 3.9575192634241385,
+        "sources" : [
+          {
+            "agentDisplayName" : "Cline",
+            "agentId" : "cline",
+            "costText" : null,
+            "costUsd" : null,
+            "rawModelName" : "deepseek-flash",
+            "shareOfModelPercent" : 100,
+            "tokens" : 870859,
+            "tokensText" : "870.9K"
+          }
+        ],
+        "totalTokens" : 870859,
+        "totalTokensText" : "870.9K",
+        "vendor" : "DeepSeek"
+      }
+    ],
+    "range" : "all",
+    "timeline" : {
+      "avgSummary" : "月均: **7.3M** Tokens",
+      "granularity" : "month",
+      "peakSummary" : "🔥 峰值月: **2026-07** (17.7M Tokens)",
+      "points" : [
+        {
+          "costUsd" : 4.767191390999999,
+          "label" : "2026-06",
+          "seriesValues" : {
+            "claude-code" : 1891039,
+            "cline" : 370980,
+            "model_claude-opus-5-5" : 704305,
+            "model_claude-sonnet-5" : 1186734,
+            "model_glm-5.3" : 160225,
+            "type_cache" : 1352067,
+            "type_input" : 743327,
+            "type_output" : 166625
+          },
+          "totalTokens" : 2262019
+        },
+        {
+          "costUsd" : 35.418231580000004,
+          "label" : "2026-07",
+          "seriesValues" : {
+            "claude-code" : 10991863,
+            "cline" : 2427358,
+            "codex" : 4073078,
+            "model_claude-opus-5-5" : 6107518,
+            "model_claude-sonnet-5" : 4884345,
+            "model_glm-5.3" : 1064439,
+            "model_gpt-5.4" : 2126705,
+            "model_gpt-5.4-mini" : 1946373,
+            "opencode" : 246362,
+            "type_cache" : 9673638,
+            "type_input" : 6617697,
+            "type_output" : 1447326
+          },
+          "totalTokens" : 17738661
+        },
+        {
+          "costUsd" : 3.941293088000001,
+          "label" : "2026-08",
+          "seriesValues" : {
+            "claude-code" : 1069431,
+            "cline" : 229273,
+            "codex" : 457302,
+            "model_claude-opus-5-5" : 543095,
+            "model_claude-sonnet-5" : 526336,
+            "model_glm-5.3" : 194564,
+            "model_gpt-5.4" : 253254,
+            "model_gpt-5.4-mini" : 204048,
+            "opencode" : 248488,
+            "type_cache" : 955501,
+            "type_input" : 847438,
+            "type_output" : 201555
+          },
+          "totalTokens" : 2004494
+        }
+      ]
+    },
+    "todayHourlyTokens" : [
+      101045,
+      0,
+      24284,
+      10156,
+      65536,
+      109457,
+      0,
+      31433,
+      0,
+      24288,
+      109457,
+      41589,
+      101045,
+      0,
+      0,
+      65540,
+      0,
+      0,
+      0,
+      109461,
+      0,
+      0,
+      31437,
+      10157
+    ]
+  }
+]
