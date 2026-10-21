@@ -11,9 +11,57 @@ package struct AgentTokenBucket: Codable, Equatable, Sendable {
 
 package struct AgentDailyUsage: Codable, Equatable, Sendable {
     let date: String
+    /// 展示口径: 含缓存读取与缓存写入.
     let input: Int
     let output: Int
     let total: Int
+    /// 原始缓存读取 / 写入 (C070); 旧 artifact 无此字段 (nil).
+    /// 原始输入 = input − cacheRead − cacheCreation.
+    var cacheRead: Int? = nil
+    var cacheCreation: Int? = nil
+}
+
+/// 模型 × 时段 token 桶 (C070): `dailyModels` 带 date, `monthModels` 带 month,
+/// `hourModels` 带 hour; token 为原始口径 (与 `today` 同), 费用由采集端按单价表计价,
+/// 无匹配单价时为 nil (工作台计为未定价, 不估算).
+package struct AgentModelDetail: Codable, Equatable, Sendable {
+    package var date: String? = nil
+    package var month: String? = nil
+    package var hour: Int? = nil
+    package let model: String
+    package let input: Int
+    package let output: Int
+    package let cacheRead: Int
+    package let cacheCreation: Int
+    package let total: Int
+    package let costUsd: Double?
+    package let cacheSavingsUsd: Double?
+
+    package init(
+        date: String? = nil,
+        month: String? = nil,
+        hour: Int? = nil,
+        model: String,
+        input: Int,
+        output: Int,
+        cacheRead: Int,
+        cacheCreation: Int,
+        total: Int,
+        costUsd: Double?,
+        cacheSavingsUsd: Double?
+    ) {
+        self.date = date
+        self.month = month
+        self.hour = hour
+        self.model = model
+        self.input = input
+        self.output = output
+        self.cacheRead = cacheRead
+        self.cacheCreation = cacheCreation
+        self.total = total
+        self.costUsd = costUsd
+        self.cacheSavingsUsd = cacheSavingsUsd
+    }
 }
 
 package struct AgentProjectUsage: Codable, Equatable, Sendable {
@@ -52,6 +100,10 @@ package struct AgentUsageItem: Codable, Equatable, Sendable {
     package let modelMonths: [String: [String: Int]]?
     /// 今日按项目聚合的分布 (collector 只保留 Top 3).
     package let projects: [AgentProjectUsage]?
+    /// C070 工作台明细; 旧 artifact 无这些字段 (nil), 工作台对应指标显示「—」.
+    package var dailyModels: [AgentModelDetail]? = nil
+    package var monthModels: [AgentModelDetail]? = nil
+    package var hourModels: [AgentModelDetail]? = nil
 
     package init(
         id: String,
@@ -65,7 +117,10 @@ package struct AgentUsageItem: Codable, Equatable, Sendable {
         models: [String: Int]?,
         todayModels: [AgentModelUsageItem]? = nil,
         modelMonths: [String: [String: Int]]?,
-        projects: [AgentProjectUsage]?
+        projects: [AgentProjectUsage]?,
+        dailyModels: [AgentModelDetail]? = nil,
+        monthModels: [AgentModelDetail]? = nil,
+        hourModels: [AgentModelDetail]? = nil
     ) {
         self.id = id
         self.name = name
@@ -79,6 +134,9 @@ package struct AgentUsageItem: Codable, Equatable, Sendable {
         self.todayModels = todayModels
         self.modelMonths = modelMonths
         self.projects = projects
+        self.dailyModels = dailyModels
+        self.monthModels = monthModels
+        self.hourModels = hourModels
     }
 }
 
@@ -239,9 +297,27 @@ package struct ArtifactValidator {
                     guard validDay(day.date),
                           day.input >= 0,
                           day.output >= 0,
-                          day.total >= 0 else {
+                          day.total >= 0,
+                          (day.cacheRead ?? 0) >= 0,
+                          (day.cacheCreation ?? 0) >= 0 else {
                         throw ArtifactValidationError.invalidValue
                     }
+                }
+                // C070 明细桶: 非负、时段键合法, 费用非负.
+                let details = (agent.dailyModels ?? []) + (agent.monthModels ?? []) + (agent.hourModels ?? [])
+                for detail in details {
+                    guard [detail.input, detail.output, detail.cacheRead, detail.cacheCreation, detail.total]
+                            .allSatisfy({ $0 >= 0 }),
+                          detail.costUsd.map({ $0 >= 0 }) ?? true,
+                          detail.cacheSavingsUsd.map({ $0 >= 0 }) ?? true else {
+                        throw ArtifactValidationError.invalidValue
+                    }
+                }
+                for detail in agent.dailyModels ?? [] where !validDay(detail.date ?? "") {
+                    throw ArtifactValidationError.invalidValue
+                }
+                for detail in agent.hourModels ?? [] where !(0..<24).contains(detail.hour ?? -1) {
+                    throw ArtifactValidationError.invalidValue
                 }
             }
             return .agentUsage(decoded)

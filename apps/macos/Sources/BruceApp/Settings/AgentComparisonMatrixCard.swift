@@ -142,7 +142,7 @@ struct AgentComparisonMatrixCard: View {
                     // Top Projects
                     if !agent.topProjects.isEmpty {
                         HStack(alignment: .top, spacing: 8) {
-                            Text("📁 Top 代码工程:")
+                            Text("📁 今日 Top 工程:")
                                 .font(.system(size: 10.5, weight: .medium))
                                 .foregroundStyle(SettingsDemoTokens.text3)
                                 .frame(width: 90, alignment: .leading)

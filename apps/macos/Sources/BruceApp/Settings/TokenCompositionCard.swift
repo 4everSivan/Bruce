@@ -1,7 +1,7 @@
 import SwiftUI
 import BruceAppCore
 
-/// Token 构成四象限与 24 小时活跃时段卡片
+/// Token 构成四象限 (所选范围, 原始口径) 与今日 24 小时活跃时段卡片
 struct TokenCompositionCard: View {
     let kpi: AnalyticsKPISummary
     let hourlyTokens: [Int] // 24 个整数
@@ -31,7 +31,7 @@ struct TokenCompositionCard: View {
                                 in: RoundedRectangle(cornerRadius: 4, style: .continuous)
                             )
                     }
-                    Text("输入、输出与缓存读取结构，以及全天 24 小时活跃分布")
+                    Text("所选范围的输入、输出与缓存读写结构，以及今日 24 小时活跃分布")
                         .font(.system(size: 11.5))
                         .foregroundStyle(SettingsDemoTokens.text2)
                 }
@@ -53,11 +53,11 @@ struct TokenCompositionCard: View {
 
     private var quadrantGrid: some View {
         HStack(spacing: 10) {
-            // 1. Prompt Input
+            // 1. Prompt Input (不含缓存读写)
             quadrantTile(
                 title: "Prompt Input",
                 sub: "用户提示词与工程上下文",
-                val: PanelFormat.tokenCount(max(0, kpi.totalTokens - kpi.cacheReadTokens)),
+                val: kpi.inputTokensText,
                 tag: "输入基础",
                 color: Color(hex: "4C9CFF")
             )
@@ -66,7 +66,7 @@ struct TokenCompositionCard: View {
             quadrantTile(
                 title: "Model Output",
                 sub: "大模型生成与代码产出",
-                val: PanelFormat.tokenCount(kpi.totalTokens / 5), // 约 20%
+                val: kpi.outputTokensText,
                 tag: "高单价",
                 color: Color(hex: "A855F7")
             )
@@ -80,11 +80,11 @@ struct TokenCompositionCard: View {
                 color: Color(hex: "10B981")
             )
 
-            // 4. Cache Creation / Ephemeral
+            // 4. Cache Creation
             quadrantTile(
                 title: "Cache Creation",
-                sub: "5 分钟生命周期缓存写入",
-                val: PanelFormat.tokenCount(kpi.cacheReadTokens / 4),
+                sub: "写入提示缓存的上下文",
+                val: kpi.cacheCreationTokensText,
                 tag: "写入",
                 color: Color(hex: "F59E0B")
             )
@@ -139,7 +139,7 @@ struct TokenCompositionCard: View {
     private var hourlyHeatmapSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("24 小时交互密度热力分布 (00:00 - 23:00)")
+                Text("今日 24 小时交互密度 (00:00 - 23:00)")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(SettingsDemoTokens.text)
                 Spacer()
