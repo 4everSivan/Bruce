@@ -2,6 +2,8 @@
 
 设置中心的 Agent 用量工作台消费已缓存的 `AgentUsageArtifact`，在内存中生成 KPI、模型归并、趋势和 Agent 比较。切换视图不重新扫描会话；探针重检才交回协调器触发扫描。模型归并、历史比例分配与费用估算有不同精度，不能把界面的全部数字当作原始逐笔计量。
 
+本文的分析算法属于 macOS。Windows 新工作台使用 PanelViewModel 和独立 JavaScript 派生，范围、别名与费用规则见 [Windows 用量工作台设计](Windows用量工作台设计.md)。
+
 ## 目录
 
 - [1. 目标](#chapter-1)
@@ -131,6 +133,10 @@ allTime 且日期数超过 28 时，每七个现有日期组成一桶，末尾�
 | `analyticsAgents(range:overrides:)` | Agent 总量、模型来源与 projects | 项目沿用原工件范围 |
 | `CanonicalModelSummary.sources` | 原模型名、agentID、Token、费用与模型内份额 | 保留渠道身份 |
 | `AnalyticsTimelinePoint` | label、totalTokens、costUsd、seriesValues | id 为 label |
+
+![macOS 规范模型通过 sources 数组包含保留原名和 Agent 身份的来源贡献](../assets/km/analytics-entities.svg)
+
+图：内存逻辑实体关系，非数据库表或外键。一个规范模型包含零至多个来源对象；构造器允许空数组，实际归并只为有贡献的模型创建结果。来源 id 在当前主模型内用于合并，不能推导为跨窗口持久主键。`shareOfModelPercent` 与主模型自身份额的分母不同，见[归一化规则](#model-normalization)。
 
 AppModel 没有可解码工件时，KPI 返回零量和空费用，模型、趋势、Agent 返回空集合。范围、图表维度、图形类型及展开集合为 SwiftUI `@State`；价格覆盖由协调器提供，保存流程见[价格配置](设置中心与价格校准设计.md#pricing-activation)。
 

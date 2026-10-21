@@ -1,0 +1,11 @@
+{
+  "checked_at": "2026-10-20T08:38:16.611903+00:00",
+  "exit_code": 0,
+  "active_content_files": 90,
+  "content_writes": 19,
+  "byte_identical_reuses": 71,
+  "source_inventory_files": 450,
+  "relative_links": 911,
+  "manifest_associations": "documents/cards/figures both directions and per-file hashes checked",
+  "errors": []
+}

@@ -1,0 +1,112 @@
+{
+  "schema_version": "1.0",
+  "id": "d_893a33bc-c2da-4cd9-bf95-868b28ceb426",
+  "title": "Windows 共享契约的编译依赖",
+  "type": "dependency",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "shell",
+      "label": "bruce-win",
+      "role": "package",
+      "evidence_refs": [
+        "shell"
+      ]
+    },
+    {
+      "id": "viewmodel",
+      "label": "bruce-win-viewmodel",
+      "role": "package",
+      "evidence_refs": [
+        "shell",
+        "viewmodel"
+      ]
+    },
+    {
+      "id": "bridge",
+      "label": "collector-bridge",
+      "role": "package",
+      "evidence_refs": [
+        "shell",
+        "bridge"
+      ]
+    },
+    {
+      "id": "domain",
+      "label": "collector-domain",
+      "role": "package",
+      "evidence_refs": [
+        "shell",
+        "viewmodel",
+        "bridge"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "shell-viewmodel",
+      "from": "shell",
+      "to": "viewmodel",
+      "kind": "depends_on",
+      "evidence_refs": [
+        "shell"
+      ]
+    },
+    {
+      "id": "shell-bridge",
+      "from": "shell",
+      "to": "bridge",
+      "kind": "depends_on",
+      "evidence_refs": [
+        "shell"
+      ]
+    },
+    {
+      "id": "shell-domain",
+      "from": "shell",
+      "to": "domain",
+      "kind": "depends_on",
+      "evidence_refs": [
+        "shell"
+      ]
+    },
+    {
+      "id": "viewmodel-domain",
+      "from": "viewmodel",
+      "to": "domain",
+      "kind": "depends_on",
+      "evidence_refs": [
+        "viewmodel"
+      ]
+    },
+    {
+      "id": "bridge-domain",
+      "from": "bridge",
+      "to": "domain",
+      "kind": "depends_on",
+      "evidence_refs": [
+        "bridge"
+      ]
+    }
+  ],
+  "evidence": {
+    "shell": {
+      "path": "apps/win/src-tauri/Cargo.toml",
+      "locator": "dependencies",
+      "kind": "original_declaration",
+      "supports": "声明直接依赖viewmodel、bridge和domain；图只展示这四个包之间的边。"
+    },
+    "viewmodel": {
+      "path": "apps/win/viewmodel/Cargo.toml",
+      "locator": "dependencies",
+      "kind": "original_declaration",
+      "supports": "纯Rust视图模型包直接依赖collector-domain，不依赖Tauri壳。"
+    },
+    "bridge": {
+      "path": "core/collector/crates/collector-bridge/Cargo.toml",
+      "locator": "dependencies",
+      "kind": "original_declaration",
+      "supports": "Bridge直接依赖collector-domain，其他应用层依赖在本图范围外。"
+    }
+  }
+}

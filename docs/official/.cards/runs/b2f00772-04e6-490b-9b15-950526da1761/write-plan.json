@@ -1,0 +1,154 @@
+[
+  {
+    "target": "docs/official/Agent用量分析设计.md",
+    "candidate": "docs/official/.staging/b2f00772-04e6-490b-9b15-950526da1761/Agent用量分析设计.md",
+    "content_hash": {
+      "algorithm": "sha256",
+      "value": "ad52c9cd30fd2b03858a3a97fca9fccf71ccd78679dad3ae5cb7eb57564d917c"
+    }
+  },
+  {
+    "target": "docs/official/Windows用量工作台设计.md",
+    "candidate": "docs/official/.staging/b2f00772-04e6-490b-9b15-950526da1761/Windows用量工作台设计.md",
+    "content_hash": {
+      "algorithm": "sha256",
+      "value": "e7cc2000d1b9e3f56fe70904811cadb8c8c3cb67ffddeabb32ae70703c849e2e"
+    }
+  },
+  {
+    "target": "docs/official/README.md",
+    "candidate": "docs/official/.staging/b2f00772-04e6-490b-9b15-950526da1761/README.md",
+    "content_hash": {
+      "algorithm": "sha256",
+      "value": "44d1aab6b23cf5b422206b025c7a1dd573157bdeeec3e2e7bdfd1046058d5ce5"
+    }
+  },
+  {
+    "target": "docs/official/Windows应用设计.md",
+    "candidate": "docs/official/.staging/b2f00772-04e6-490b-9b15-950526da1761/Windows应用设计.md",
+    "content_hash": {
+      "algorithm": "sha256",
+      "value": "86382879eb6ddc8c3ffd25cf6c4c59a54a59641bd355e6d963f510ad698d4b91"
+    }
+  },
+  {
+    "target": "docs/official/Bruce设计文档.md",
+    "candidate": "docs/official/.staging/b2f00772-04e6-490b-9b15-950526da1761/Bruce设计文档.md",
+    "content_hash": {
+      "algorithm": "sha256",
+      "value": "e2d99411056b9790d2cd8251fb5644cde7204c72f10a11fee21d639286be6743"
+    }
+  },
+  {
+    "target": "docs/official/设置中心与价格校准设计.md",
+    "candidate": "docs/official/.staging/b2f00772-04e6-490b-9b15-950526da1761/设置中心与价格校准设计.md",
+    "content_hash": {
+      "algorithm": "sha256",
+      "value": "5095ba5f680d9237f6b54a6b5630be0057d13c9825f9b279f0094b7da276e629"
+    }
+  },
+  {
+    "target": "docs/official/构建验证与发布.md",
+    "candidate": "docs/official/.staging/b2f00772-04e6-490b-9b15-950526da1761/构建验证与发布.md",
+    "content_hash": {
+      "algorithm": "sha256",
+      "value": "2620003375d58730d0be578166cde00badbf163aaeb55e70aeac7c3afe2dea30"
+    }
+  },
+  {
+    "target": "docs/assets/km/windows-workbench-lineage.svg",
+    "candidate": "docs/assets/km/.staging/b2f00772-04e6-490b-9b15-950526da1761/windows-workbench-lineage.svg",
+    "content_hash": {
+      "algorithm": "sha256",
+      "value": "7845f10017e3f43530e00280c03a938200c3f502c5094877ae657025acdf6291"
+    }
+  },
+  {
+    "target": "docs/official/.cards/diagrams/d_60d22960-cfaa-43ce-9088-123463dc90ff.json",
+    "candidate": "docs/official/.cards/runs/b2f00772-04e6-490b-9b15-950526da1761/diagrams/d_60d22960-cfaa-43ce-9088-123463dc90ff.json",
+    "content_hash": {
+      "algorithm": "sha256",
+      "value": "239cc0a40d78ac5155a2ce894ffa316fcbbe4f6c19603dac65a82f2fa581534f"
+    }
+  },
+  {
+    "target": "docs/assets/km/analytics-entities.svg",
+    "candidate": "docs/assets/km/.staging/b2f00772-04e6-490b-9b15-950526da1761/analytics-entities.svg",
+    "content_hash": {
+      "algorithm": "sha256",
+      "value": "6246bb49c64bc9c61a5b6c086b2e4a5bc7af5168a6035cadd5b7835e57f523be"
+    }
+  },
+  {
+    "target": "docs/official/.cards/diagrams/d_bf0858eb-e493-4a95-93a8-6ba35eb83c37.json",
+    "candidate": "docs/official/.cards/runs/b2f00772-04e6-490b-9b15-950526da1761/diagrams/d_bf0858eb-e493-4a95-93a8-6ba35eb83c37.json",
+    "content_hash": {
+      "algorithm": "sha256",
+      "value": "aed78b088bb7e50da392371ba3887cfa09048743dcf6cf8374223967c4b77ac6"
+    }
+  },
+  {
+    "target": "docs/assets/km/desktop-process-placement.svg",
+    "candidate": "docs/assets/km/.staging/b2f00772-04e6-490b-9b15-950526da1761/desktop-process-placement.svg",
+    "content_hash": {
+      "algorithm": "sha256",
+      "value": "aeb7410df832f9b91c5fab77c1ae2d0489c653e03d7d064fd8f738b0b23ee55c"
+    }
+  },
+  {
+    "target": "docs/official/.cards/diagrams/d_b8c03e41-f102-4ff4-a34f-026c09168989.json",
+    "candidate": "docs/official/.cards/runs/b2f00772-04e6-490b-9b15-950526da1761/diagrams/d_b8c03e41-f102-4ff4-a34f-026c09168989.json",
+    "content_hash": {
+      "algorithm": "sha256",
+      "value": "0d8e5995f9568c98c7d13d5adce7b580ef64ed2f727597f7e31d39ba2e46d3c7"
+    }
+  },
+  {
+    "target": "docs/assets/km/windows-build-dependencies.svg",
+    "candidate": "docs/assets/km/.staging/b2f00772-04e6-490b-9b15-950526da1761/windows-build-dependencies.svg",
+    "content_hash": {
+      "algorithm": "sha256",
+      "value": "16e4564ff54fed13107048b075fef767575065c31bae8ce7dfb82167bee6f7d0"
+    }
+  },
+  {
+    "target": "docs/official/.cards/diagrams/d_893a33bc-c2da-4cd9-bf95-868b28ceb426.json",
+    "candidate": "docs/official/.cards/runs/b2f00772-04e6-490b-9b15-950526da1761/diagrams/d_893a33bc-c2da-4cd9-bf95-868b28ceb426.json",
+    "content_hash": {
+      "algorithm": "sha256",
+      "value": "36d32cf8c1027f50593fb29de0f0560fe1ecf569e9c0cd4d30ccbdede4c6d18c"
+    }
+  },
+  {
+    "target": "docs/assets/km/pricing-save-sequence.svg",
+    "candidate": "docs/assets/km/.staging/b2f00772-04e6-490b-9b15-950526da1761/pricing-save-sequence.svg",
+    "content_hash": {
+      "algorithm": "sha256",
+      "value": "82c2d58ce69881d48bc0622dd7210b3c51f4a72f6f01917af2fb9d7a871ada77"
+    }
+  },
+  {
+    "target": "docs/official/.cards/diagrams/d_34942c0a-0796-4135-bbb5-7626b5914373.json",
+    "candidate": "docs/official/.cards/runs/b2f00772-04e6-490b-9b15-950526da1761/diagrams/d_34942c0a-0796-4135-bbb5-7626b5914373.json",
+    "content_hash": {
+      "algorithm": "sha256",
+      "value": "67ad6fccc544606be15d13cf9999294f2acec40c3ee62e5493b1b5f40ed94b5b"
+    }
+  },
+  {
+    "target": "docs/assets/km/windows-workbench-refresh-sequence.svg",
+    "candidate": "docs/assets/km/.staging/b2f00772-04e6-490b-9b15-950526da1761/windows-workbench-refresh-sequence.svg",
+    "content_hash": {
+      "algorithm": "sha256",
+      "value": "b161e066241c08c9f64d1352111ebfd66c1b6453e541e2723a5ad77022f967f9"
+    }
+  },
+  {
+    "target": "docs/official/.cards/diagrams/d_1a5b580c-b59f-4bdd-8cc5-5b15a0aa46a4.json",
+    "candidate": "docs/official/.cards/runs/b2f00772-04e6-490b-9b15-950526da1761/diagrams/d_1a5b580c-b59f-4bdd-8cc5-5b15a0aa46a4.json",
+    "content_hash": {
+      "algorithm": "sha256",
+      "value": "e75f015f2769b6e6c0ba9ed58e52de978716988d314a14f66f1c01697c25a1a6"
+    }
+  }
+]

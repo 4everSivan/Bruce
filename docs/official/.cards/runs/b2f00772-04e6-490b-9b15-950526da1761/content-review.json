@@ -1,0 +1,26 @@
+{
+  "stage": "content check before expression editing",
+  "articles": [
+    "Windows用量工作台设计.md",
+    "Windows应用设计.md",
+    "Bruce设计文档.md",
+    "README.md",
+    "Agent用量分析设计.md",
+    "构建验证与发布.md",
+    "设置中心与价格校准设计.md"
+  ],
+  "findings_repaired": [
+    "runtime-manifest function locator corrected to actual name before drawing",
+    "model data described as upstream Panel rows rather than universal daily window",
+    "48px Hero and 5px decimal square taken from CSS instead of C066 targets",
+    "settings event subscription occurs after initial loads, unlike dashboard frontend"
+  ],
+  "semantic_lists_reviewed": [
+    "d_60d22960-cfaa-43ce-9088-123463dc90ff",
+    "d_bf0858eb-e493-4a95-93a8-6ba35eb83c37",
+    "d_b8c03e41-f102-4ff4-a34f-026c09168989",
+    "d_893a33bc-c2da-4cd9-bf95-868b28ceb426",
+    "d_34942c0a-0796-4135-bbb5-7626b5914373"
+  ],
+  "evidence": "Read current changed source, upstream make_usage/make_hourly, coordinator persist sequence, analytics type definitions and Cargo declarations; no runtime claims"
+}

@@ -1,0 +1,92 @@
+{
+  "schema_version": "1.0",
+  "id": "d_b8c03e41-f102-4ff4-a34f-026c09168989",
+  "title": "桌面安装的 Collector 进程位置",
+  "type": "deployment",
+  "view": "implementation",
+  "groups": [
+    {
+      "id": "mac",
+      "label": "macOS 安装：同一用户环境",
+      "kind": "environment",
+      "evidence_refs": [
+        "bundle",
+        "process"
+      ]
+    },
+    {
+      "id": "win",
+      "label": "Windows 安装：另一平台环境",
+      "kind": "environment",
+      "evidence_refs": [
+        "win"
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "app",
+      "label": "BruceApp 主进程",
+      "role": "workload",
+      "evidence_refs": [
+        "bundle",
+        "process"
+      ],
+      "group_id": "mac"
+    },
+    {
+      "id": "cli",
+      "label": "内置 Bruce-collector 子进程",
+      "role": "workload",
+      "evidence_refs": [
+        "bundle",
+        "process"
+      ],
+      "group_id": "mac"
+    },
+    {
+      "id": "tauri",
+      "label": "Tauri 原生进程（内含共享 Collector）",
+      "role": "workload",
+      "evidence_refs": [
+        "win"
+      ],
+      "group_id": "win"
+    }
+  ],
+  "relations": [
+    {
+      "id": "stdio",
+      "from": "app",
+      "to": "cli",
+      "kind": "connects_to",
+      "evidence_refs": [
+        "process"
+      ],
+      "label": "一次请求 / 一份响应",
+      "properties": {
+        "protocol": "stdin/stdout 管道"
+      }
+    }
+  ],
+  "evidence": {
+    "bundle": {
+      "path": "scripts/runtime-manifest.zsh",
+      "locator": "Bruce_copy_rust_collector; Bruce_validate_release_bundle",
+      "kind": "static_implementation",
+      "supports": "应用包包含 Resources/Bruce-collector；此图表示脚本声明的组成，不是当前安装观测。"
+    },
+    "process": {
+      "path": "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+      "locator": "SystemCollectorProcessLauncher.launch",
+      "kind": "static_implementation",
+      "supports": "Process 创建子进程并设置 stdin/stdout Pipe，宿主读写 Bridge JSON。"
+    },
+    "win": {
+      "path": "apps/win/src-tauri/src/collector.rs",
+      "locator": "run_configured_collection",
+      "kind": "static_implementation",
+      "supports": "共享 run_bytes_panic_safe 在原生宿主进程内调用；不启动 macOS CLI。"
+    }
+  }
+}

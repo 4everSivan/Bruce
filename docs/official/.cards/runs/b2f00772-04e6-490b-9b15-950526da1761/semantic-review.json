@@ -1,0 +1,25 @@
+{
+  "reviewed_at": "2026-10-20T08:36:37.241642+00:00",
+  "method": "Same-agent original-source semantic review; no delegated or independent reviewer",
+  "changed_articles": [
+    "Agent用量分析设计.md",
+    "Windows用量工作台设计.md",
+    "README.md",
+    "Windows应用设计.md",
+    "Bruce设计文档.md",
+    "设置中心与价格校准设计.md",
+    "构建验证与发布.md"
+  ],
+  "unchanged_article_count": 10,
+  "source_basis": "Hashes compared with the confirmed manifest; actual affected entrypoints, consumers and declarations read. Generated outputs used only for comparison.",
+  "view_basis": "Eight-type questions independently cover responsibility, conditions, interaction, lifecycle, data lineage, identity/cardinality, process placement and build coupling.",
+  "new_interaction_review": "request_manual_refresh uses nonblocking try_send and ignores its result; the selected success diagram shows a possible ordering, not guaranteed worker/cache order. Expression checked after this content addition; no wording changes needed.",
+  "not_implemented_in_source": [
+    "Windows independent dimension series, MA7 and crosshair",
+    "Windows full-history query from workbench buttons",
+    "Windows model-price override use in workbench fixed estimates"
+  ],
+  "unresolved_module_boundaries": [],
+  "pending": [],
+  "deferred_figures": []
+}

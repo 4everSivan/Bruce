@@ -1,0 +1,21 @@
+{
+  "exit_code": 0,
+  "documents": 17,
+  "cards": 11,
+  "figures": 31,
+  "relative_links": 911,
+  "design_topics": 12,
+  "design_articles": 15,
+  "figure_types": {
+    "flowchart": 11,
+    "data_flow": 8,
+    "architecture": 2,
+    "state": 4,
+    "sequence": 3,
+    "er": 1,
+    "deployment": 1,
+    "dependency": 1
+  },
+  "functional_points": 58,
+  "errors": []
+}

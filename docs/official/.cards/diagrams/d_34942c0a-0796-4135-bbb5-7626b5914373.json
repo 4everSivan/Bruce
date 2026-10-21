@@ -1,0 +1,143 @@
+{
+  "schema_version": "1.0",
+  "id": "d_34942c0a-0796-4135-bbb5-7626b5914373",
+  "title": "macOS 价格覆盖保存与刷新顺序",
+  "type": "sequence",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "view",
+      "label": "价格编辑视图",
+      "role": "actor",
+      "evidence_refs": [
+        "view"
+      ]
+    },
+    {
+      "id": "coordinator",
+      "label": "OnboardingCoordinator",
+      "role": "service",
+      "evidence_refs": [
+        "save"
+      ]
+    },
+    {
+      "id": "store",
+      "label": "ConfigurationStore",
+      "role": "store",
+      "evidence_refs": [
+        "save"
+      ]
+    },
+    {
+      "id": "scheduler",
+      "label": "RefreshScheduler",
+      "role": "service",
+      "evidence_refs": [
+        "save"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "edit",
+      "from": "view",
+      "to": "coordinator",
+      "kind": "sync_call",
+      "evidence_refs": [
+        "view",
+        "save"
+      ],
+      "label": "提交覆盖项",
+      "properties": {
+        "order": 1
+      }
+    },
+    {
+      "id": "memory",
+      "from": "coordinator",
+      "to": "coordinator",
+      "kind": "sync_call",
+      "evidence_refs": [
+        "save"
+      ],
+      "label": "先更新已发布的内存集合",
+      "properties": {
+        "order": 2
+      }
+    },
+    {
+      "id": "save",
+      "from": "coordinator",
+      "to": "store",
+      "kind": "sync_call",
+      "evidence_refs": [
+        "save"
+      ],
+      "label": "load 后 save(config)",
+      "condition": "configStore 可用",
+      "properties": {
+        "order": 3
+      }
+    },
+    {
+      "id": "success",
+      "from": "store",
+      "to": "coordinator",
+      "kind": "return",
+      "evidence_refs": [
+        "save"
+      ],
+      "label": "保存成功",
+      "condition": "save 未抛出错误",
+      "properties": {
+        "order": 4,
+        "scenario": "成功分支"
+      }
+    },
+    {
+      "id": "refresh",
+      "from": "coordinator",
+      "to": "scheduler",
+      "kind": "sync_call",
+      "evidence_refs": [
+        "save"
+      ],
+      "label": "refresh(.agentUsage)，不等待采集完成",
+      "condition": "保存成功",
+      "properties": {
+        "order": 5,
+        "scenario": "成功分支"
+      }
+    },
+    {
+      "id": "error",
+      "from": "store",
+      "to": "coordinator",
+      "kind": "return",
+      "evidence_refs": [
+        "save"
+      ],
+      "label": "抛出错误；显示设置错误，内存不回滚",
+      "condition": "save 抛出错误",
+      "properties": {
+        "order": 6,
+        "scenario": "失败分支，与成功分支互斥"
+      }
+    }
+  ],
+  "evidence": {
+    "save": {
+      "path": "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+      "locator": "setPricingOverride; persistPricingOverrides",
+      "kind": "static_implementation",
+      "supports": "先改已发布内存，再加载保存配置；成功同步调用refresh，失败只设置错误；无存储时也不刷新。"
+    },
+    "view": {
+      "path": "apps/macos/Sources/BruceApp/Settings/ModelPricingSettingsView.swift",
+      "locator": "saveChanges",
+      "kind": "static_implementation",
+      "supports": "视图提交覆盖项给协调器，然后关闭编辑sheet。"
+    }
+  }
+}

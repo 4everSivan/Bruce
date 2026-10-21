@@ -1,0 +1,91 @@
+{
+  "schema_version": "1.0",
+  "id": "d_bf0858eb-e493-4a95-93a8-6ba35eb83c37",
+  "title": "macOS 主模型与来源身份",
+  "type": "er",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "canonical",
+      "label": "CanonicalModelSummary",
+      "role": "entity",
+      "evidence_refs": [
+        "models"
+      ],
+      "properties": {
+        "fields": [
+          {
+            "name": "canonicalKey",
+            "type": "String",
+            "key": "identifier"
+          },
+          {
+            "name": "totalTokens",
+            "type": "Int"
+          },
+          {
+            "name": "sources",
+            "type": "[ModelSourceContribution]"
+          }
+        ]
+      }
+    },
+    {
+      "id": "source",
+      "label": "ModelSourceContribution",
+      "role": "entity",
+      "evidence_refs": [
+        "models",
+        "aggregation"
+      ],
+      "properties": {
+        "fields": [
+          {
+            "name": "id = rawModelName + \"@\" + agentID",
+            "type": "String",
+            "key": "identifier"
+          },
+          {
+            "name": "rawModelName / agentID",
+            "type": "String"
+          },
+          {
+            "name": "tokens / shareOfModelPercent",
+            "type": "Int / Double"
+          }
+        ]
+      }
+    }
+  ],
+  "relations": [
+    {
+      "id": "contains",
+      "from": "canonical",
+      "to": "source",
+      "kind": "association",
+      "evidence_refs": [
+        "models",
+        "aggregation"
+      ],
+      "label": "sources 包含（当前主模型内）",
+      "properties": {
+        "from_cardinality": "1",
+        "to_cardinality": "0..*"
+      }
+    }
+  ],
+  "evidence": {
+    "models": {
+      "path": "apps/macos/Sources/BruceAppCore/AnalyticsModels.swift",
+      "locator": "CanonicalModelSummary; ModelSourceContribution",
+      "kind": "static_implementation",
+      "supports": "模型的id来自canonicalKey，sources为数组；来源id由原模型名和AgentID组成；类型允许空数组。"
+    },
+    "aggregation": {
+      "path": "apps/macos/Sources/BruceAppCore/ModelNormalizer.swift",
+      "locator": "aggregateCanonicalModels",
+      "kind": "static_implementation",
+      "supports": "在每个规范模型分组内按来源身份合并，份额分别以模型或全部模型总量计算。"
+    }
+  }
+}

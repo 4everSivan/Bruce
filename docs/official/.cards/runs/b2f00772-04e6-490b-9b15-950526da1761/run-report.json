@@ -1,0 +1,288 @@
+{
+  "project": "Bruce",
+  "scope": [
+    "."
+  ],
+  "source_inventory_files": 450,
+  "inventory_is_not_deep_read_of_every_file": true,
+  "exclusions": [
+    {
+      "path": ".git/",
+      "reason": "VCS internals"
+    },
+    {
+      "path": "docs/official/",
+      "reason": "generated knowledge and retained generation material"
+    },
+    {
+      "path": "docs/assets/km/",
+      "reason": "generated figures"
+    },
+    {
+      "path": "local/ and dist/",
+      "reason": "runtime and build products"
+    },
+    {
+      "path": "**/target/ and **/.build/",
+      "reason": "compiler output"
+    },
+    {
+      "path": "node_modules/ and dependency caches",
+      "reason": "third-party dependencies"
+    },
+    {
+      "path": "_adflow_backup/",
+      "reason": "protected backup assets"
+    },
+    {
+      "path": ".env* and credential/key/private database files",
+      "reason": "obvious secret-bearing input"
+    },
+    {
+      "path": ".agents/ and .codex/ and tool configuration",
+      "reason": "agent instructions/resources kept separate from project factual evidence"
+    },
+    {
+      "path": "outside-root symlinks",
+      "reason": "out of project scope"
+    },
+    {
+      "path": "AGENTS.md and .claudeignore factual use",
+      "reason": "Policy/filter files inventoried only for stability; not implementation evidence"
+    }
+  ],
+  "library_revision": 4,
+  "coverage_status": "complete",
+  "validation_status": "passed",
+  "published": true,
+  "created_articles": [
+    "Windows用量工作台设计.md"
+  ],
+  "updated_articles": [
+    "Agent用量分析设计.md",
+    "README.md",
+    "Windows应用设计.md",
+    "Bruce设计文档.md",
+    "设置中心与价格校准设计.md",
+    "构建验证与发布.md"
+  ],
+  "reused_articles": [
+    "Widget设计.md",
+    "Windows快照与刷新状态.md",
+    "macOS原生应用设计.md",
+    "刷新生命周期设计.md",
+    "本地会话解析与计费.md",
+    "术语表.md",
+    "菜单栏与看板设计.md",
+    "订阅配置与凭据管理设计.md",
+    "订阅额度查询设计.md",
+    "采集引擎与本地用量设计.md"
+  ],
+  "reused_cards": 11,
+  "created_figures": [
+    "windows-workbench-lineage",
+    "analytics-entities",
+    "desktop-process-placement",
+    "windows-build-dependencies",
+    "pricing-save-sequence",
+    "windows-workbench-refresh-sequence"
+  ],
+  "reused_figures": 25,
+  "retired": [],
+  "reuse_basis": "Exact confirmed output/source hashes; changed-source impact analysis; unchanged prior visual evidence reused only with matching SVG/viewer/font/width/CSS conditions.",
+  "overall_design": "Bruce设计文档.md",
+  "design_topic_detail_count": 12,
+  "modules": 10,
+  "design_article_count": 15,
+  "functional_points": 58,
+  "figure_types": {
+    "flowchart": 11,
+    "data_flow": 8,
+    "architecture": 2,
+    "state": 4,
+    "sequence": 3,
+    "er": 1,
+    "deployment": 1,
+    "dependency": 1
+  },
+  "views": "All eight types required and present. Other duplicate views were not added where the existing scoped explanation already answers the same question.",
+  "unresolved_module_boundaries": [],
+  "missing_designs": [],
+  "pending": [],
+  "deferred_figures": [],
+  "conflicts": [],
+  "checks": [
+    {
+      "name": "source_inventory",
+      "method": "SHA-256 comparison of current first-party tracked/untracked sources, excluding protected/generated/runtime/dependency roots",
+      "result": "passed",
+      "evidence": "450 inventory files; 18 changed/new, zero missing. Six new font files match existing macOS font bytes. Inventory is not deep reading of every file.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "design_topic_coverage",
+      "method": "Original changed design/task declarations and source entrypoint review, plus actual overall/detail anchor checks",
+      "result": "passed",
+      "evidence": "12 design topics mapped to substantive overall sections and independent detailed articles; 10 module boundaries carried from unchanged original evidence. New Windows analysis topic traces actual Panel consumers, not T08 completion prose.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "document_outline",
+      "method": "Selected category review, exact H2 comparison and actual offline Markdown page inspection",
+      "result": "passed",
+      "evidence": "15 design articles retain seven substantive category chapters; contents and useful H3 anchors checked. 17 pages rendered; updated sections and overview screenshots inspected.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "functional_point_coverage",
+      "method": "Same-agent source/behavior review plus principal-record and answer-section tool checks",
+      "result": "passed",
+      "evidence": "58 principal functional points mapped to overall/detail answers; repeated overall entries resolve to principal records. Windows ranges, dimensions, alias aggregation, matrix, theme and refresh alternatives checked against actual source.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "detailed_design_depth",
+      "method": "Content check, separate technical expression pass, source fact recheck and normal/alternative walkthrough review",
+      "result": "passed",
+      "evidence": "Windows workbench expands exact defaults, 14-date restriction, 15.2/16.5 estimates, zero/missing behavior, unchanged chart dimensions, model identity and cache/event ordering. Existing mechanism prose reused only with identical original support; no independent-review or runtime claim.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "article_figure_coverage",
+      "method": "Per-article/per-point source applicability review plus image-use checks",
+      "result": "passed",
+      "evidence": "31 figures / 32 embeddings. Six added views answer Windows lineage and recheck timing, model identity/cardinality, process placement, build dependencies and price save ordering. No pending or deferred required figure.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "figure_view_coverage",
+      "method": "Eight independent original-source questions reconciled with type-specific semantics and actual uses",
+      "result": "passed",
+      "evidence": "Architecture 2; flowchart 11; sequence 3; state 4; data_flow 8; er 1; deployment 1; dependency 1. All eight applicable views required. No type was omitted as inapplicable; no extra diagram quota used.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "document_naming",
+      "method": "Flat Chinese semantic path/H1 review and filename checks",
+      "result": "passed",
+      "evidence": "17 direct Markdown articles; README is the navigation exception. Existing names and dates retained where prose unchanged.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "document_associations",
+      "method": "Inline host JSON/XML/link/anchor and forward/reverse association checks",
+      "result": "passed",
+      "evidence": "structure-check.json Exit 0: 911 relative links; card bindings, 12 overall/detail maps, figure IDs/endpoints, SVG element mappings and source paths checked.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "figure_structure_and_meaning",
+      "method": "JSON/XML parsing plus same-agent evidence-to-node/relation/type review",
+      "result": "passed",
+      "evidence": "31 semantic/SVG pairs have matching node/relation/group IDs; new ER uses logical 1 to 0..* containment, deployment uses declared/static process boundaries, dependencies point consumer to provider, sequences distinguish calls/returns/async.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "professional_presentation",
+      "method": "17 page overview inspection; detailed changed sections and new figures inspected; unchanged page evidence reused by byte hash",
+      "result": "passed",
+      "evidence": "Contents, chapter hierarchy, comparison tables, Chinese glyphs and paragraph flow are legible in offline preview; no generation narration added to official pages.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "standalone_svg_visual",
+      "method": "rsvg-convert 2.62.3 with actual PNG inspection",
+      "result": "passed",
+      "evidence": "All six new SVGs inspected at width 1000. Twenty-five unchanged SVGs exactly match confirmed manifest hashes and reuse prior batch 33958ec0-ab52-4495-a221-86dc9f778c35 standalone evidence on the same local rendering environment. Actual captures are in local/km/b2f00772-04e6-490b-9b15-950526da1761/",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "markdown_embedding_visual",
+      "method": "Bundled marked, previous CSS byte-identical, isolated offline Chrome 155.0.8059.85",
+      "result": "passed",
+      "evidence": "17 pages rendered at viewport 1120x1600 and content width 920; 32 images loaded, zero page overflow and zero wide tables. Six new image embeddings and changed passages inspected; unchanged visual evidence reused under matching CSS/viewer/font/width conditions. No production Markdown viewer compatibility claim.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "application_tests",
+      "method": "Documentation-only task",
+      "result": "not_run",
+      "evidence": "Application build, Rust/Swift/JS tests, real credentials, Provider requests, target Windows device and human acceptance were not performed.",
+      "required": false,
+      "scope": "official_collection"
+    },
+    {
+      "name": "first_markdown_launch",
+      "method": "Actual host command",
+      "result": "failed",
+      "evidence": "Exit 1; isolated Chrome SIGABRT and kill EPERM in sandbox. Retried outside sandbox with offline routing.",
+      "required": false,
+      "scope": "candidate"
+    },
+    {
+      "name": "first_plan_update",
+      "method": "Actual host command",
+      "result": "failed",
+      "evidence": "Python stdin Non-UTF-8 SyntaxError Exit 1 before writes; retried using ASCII Unicode escapes.",
+      "required": false,
+      "scope": "candidate"
+    },
+    {
+      "name": "first_structure_parser",
+      "method": "Actual inline host Python",
+      "result": "failed",
+      "evidence": "Exit 1 KeyError overall_sections before report write; validator corrected to resolve allowed principal_record references. Re-run Exit 0.",
+      "required": false,
+      "scope": "candidate"
+    },
+    {
+      "name": "interaction_tool_input_parse",
+      "method": "Tool JavaScript parser",
+      "result": "failed",
+      "evidence": "Unexpected identifier in a template containing Markdown backticks; no command or filesystem write occurred. Retried with a separate structured patch.",
+      "required": false,
+      "scope": "candidate"
+    },
+    {
+      "name": "source_and_owned_output_guard",
+      "method": "Immediate original inventory/manifest/output SHA-256 and unoccupied-target comparison",
+      "result": "passed",
+      "evidence": "450 source inventory files unchanged; 77 prior content files match confirmed hashes; all 13 new content targets unoccupied; candidate hashes stable. New/missing source scan also agrees.",
+      "required": true,
+      "scope": "official_collection"
+    },
+    {
+      "name": "postwrite_integrity",
+      "method": "Actual delivered bytes, SHA-256 and manifest forward/reverse references",
+      "result": "passed",
+      "evidence": "postwrite-check.json Exit 0: 90 active content files, 19 content writes, 71 byte-identical reuses; 450 source hashes stable; associations and all final targets verified.",
+      "required": true,
+      "scope": "official_collection"
+    }
+  ],
+  "preview": {
+    "markdown": "bundled marked, isolated offline Chrome 155.0.8059.85, viewport1120x1600, content width920;17 pages/32 loaded images, zero overflow/wide tables",
+    "svg": "rsvg-convert 2.62.3;6 new figures visually inspected at width1000;25 unchanged figures reuse confirmed same-environment evidence",
+    "limits": "No project-declared production Markdown viewer established. This is offline local preview, not all Markdown/PDF/Word compatibility or software runtime acceptance.",
+    "artifacts": "local/km/b2f00772-04e6-490b-9b15-950526da1761/preview/"
+  },
+  "software_runtime_build_tests_acceptance": "not_run",
+  "entrypoint": "docs/official/README.md",
+  "interrupted_writes": [],
+  "next_invocation": "Compare current original sources and managed-output hashes against revision4, then update affected topics; no remaining generation work recorded.",
+  "source_writes": [],
+  "finished_at": "2026-10-20T08:38:16.626158+00:00"
+}

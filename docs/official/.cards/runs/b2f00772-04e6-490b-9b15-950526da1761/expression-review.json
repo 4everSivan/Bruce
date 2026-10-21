@@ -1,0 +1,26 @@
+{
+  "stage": "separate expression pass after content-review.json",
+  "changes": [
+    {
+      "article": "Windows用量工作台设计.md",
+      "before": "下面区分已接通的展示和仍停留在任务目标中的能力，不把任务卡的完成状态当作算法等价证明。",
+      "after": "当前展示与任务目标中的部分分析能力尚有差异，任务卡的完成状态不能单独证明算法等价。",
+      "reason": "Remove drafting narration and explain actual data relationships directly; technical literals preserved"
+    },
+    {
+      "article": "Windows用量工作台设计.md",
+      "before": "以下为按源码规则的静态推演，未执行应用测试：",
+      "after": "以下场景按当前规则推演，用于区分输入范围和派生结果：",
+      "reason": "Remove drafting narration and explain actual data relationships directly; technical literals preserved"
+    },
+    {
+      "article": "Windows用量工作台设计.md",
+      "before": "理解每张卡片的输入范围，才能解释同页数字之间的差异。",
+      "after": "同页数字的差异来自各张卡片的输入范围和派生规则。",
+      "reason": "Remove drafting narration and explain actual data relationships directly; technical literals preserved"
+    }
+  ],
+  "fact_recheck": "Rechecked relevant range, model, theme and save-sequence claims against original settings.js, usage.rs, styles.css, OnboardingCoordinator.swift; no factual change in expression pass",
+  "cards": "Unchanged; meanings retain original source support and macOS/Windows contexts",
+  "independent_review": false
+}

@@ -1,0 +1,135 @@
+{
+  "schema_version": "1.0",
+  "id": "d_60d22960-cfaa-43ce-9088-123463dc90ff",
+  "title": "Windows 工作台的数据范围",
+  "type": "data_flow",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "panel",
+      "label": "缓存 PanelViewModel",
+      "role": "source",
+      "evidence_refs": [
+        "front",
+        "mapper"
+      ]
+    },
+    {
+      "id": "kpi",
+      "label": "范围选择与 KPI",
+      "role": "process",
+      "evidence_refs": [
+        "front"
+      ]
+    },
+    {
+      "id": "curve",
+      "label": "总量曲线",
+      "role": "sink",
+      "evidence_refs": [
+        "front"
+      ]
+    },
+    {
+      "id": "model",
+      "label": "模型名称归并",
+      "role": "process",
+      "evidence_refs": [
+        "front"
+      ]
+    },
+    {
+      "id": "channels",
+      "label": "模型与渠道列表",
+      "role": "sink",
+      "evidence_refs": [
+        "front"
+      ]
+    },
+    {
+      "id": "matrix",
+      "label": "Agent 矩阵与构成",
+      "role": "sink",
+      "evidence_refs": [
+        "front"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "kpi-input",
+      "from": "panel",
+      "to": "kpi",
+      "kind": "derives",
+      "evidence_refs": [
+        "front",
+        "mapper"
+      ],
+      "properties": {
+        "data": "days≤14项 / monthly / breakdown"
+      }
+    },
+    {
+      "id": "curve-input",
+      "from": "panel",
+      "to": "curve",
+      "kind": "derives",
+      "evidence_refs": [
+        "front"
+      ],
+      "properties": {
+        "data": "今日小时点；其它范围 days 总量"
+      }
+    },
+    {
+      "id": "model-input",
+      "from": "panel",
+      "to": "model",
+      "kind": "transfers",
+      "evidence_refs": [
+        "front"
+      ],
+      "properties": {
+        "data": "hourly.rows[].models"
+      }
+    },
+    {
+      "id": "model-output",
+      "from": "model",
+      "to": "channels",
+      "kind": "derives",
+      "evidence_refs": [
+        "front"
+      ],
+      "properties": {
+        "data": "合并总量、追加渠道、固定单价估算"
+      }
+    },
+    {
+      "id": "matrix-input",
+      "from": "panel",
+      "to": "matrix",
+      "kind": "derives",
+      "evidence_refs": [
+        "front"
+      ],
+      "properties": {
+        "data": "今日 Agent 行 / breakdown；不随范围重算"
+      }
+    }
+  ],
+  "evidence": {
+    "front": {
+      "path": "apps/win/src/settings.js",
+      "locator": "renderAgentUsageWorkbench; normalizeModelName",
+      "kind": "static_implementation",
+      "supports": "不同输入分别形成 KPI、总量曲线、名称汇总与矩阵；selectedDimension 不参与点集计算。"
+    },
+    "mapper": {
+      "path": "apps/win/viewmodel/src/usage.rs",
+      "locator": "make_usage; make_hourly",
+      "kind": "static_implementation",
+      "supports": "days 只留最后14个日期；hourly 仅含今日有量Agent，模型和项目为Top3加其余聚合。"
+    }
+  }
+}

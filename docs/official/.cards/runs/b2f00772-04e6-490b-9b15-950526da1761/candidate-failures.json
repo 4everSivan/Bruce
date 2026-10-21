@@ -1,0 +1,12 @@
+[
+  {
+    "name": "first_markdown_launch",
+    "result": "failed",
+    "evidence": "Exit 1; isolated Chrome SIGABRT and kill EPERM in sandbox. Retried outside sandbox with offline routing."
+  },
+  {
+    "name": "first_plan_update",
+    "result": "failed",
+    "evidence": "Python stdin Non-UTF-8 SyntaxError Exit 1 before writes; retried using ASCII Unicode escapes."
+  }
+]

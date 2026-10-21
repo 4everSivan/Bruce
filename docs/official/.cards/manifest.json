@@ -5,7 +5,7 @@
   "project": {
     "name": "Bruce"
   },
-  "library_revision": 3,
+  "library_revision": 4,
   "effective_config": {
     "source_roots": [
       "."
@@ -225,6 +225,12 @@
       "apps/win/src-tauri/tests/scheduler_collector_coverage.rs",
       "apps/win/src-tauri/tests/settings_coverage.rs",
       "apps/win/src/app.js",
+      "apps/win/src/fonts/Doto[ROND,wght].ttf",
+      "apps/win/src/fonts/SpaceGrotesk[wght].ttf",
+      "apps/win/src/fonts/SpaceMono-Bold.ttf",
+      "apps/win/src/fonts/SpaceMono-BoldItalic.ttf",
+      "apps/win/src/fonts/SpaceMono-Italic.ttf",
+      "apps/win/src/fonts/SpaceMono-Regular.ttf",
       "apps/win/src/index.html",
       "apps/win/src/provider-brand.js",
       "apps/win/src/settings.html",
@@ -388,6 +394,7 @@
       "docs/devel/change/C063.json",
       "docs/devel/change/C064.json",
       "docs/devel/change/C065.json",
+      "docs/devel/change/C066.json",
       "docs/devel/change/README.md",
       "docs/devel/change/index.json",
       "docs/devel/change/template.json",
@@ -406,6 +413,7 @@
       "docs/devel/task/T03.json",
       "docs/devel/task/T04.json",
       "docs/devel/task/T07.json",
+      "docs/devel/task/T08.json",
       "docs/devel/task/index.json",
       "docs/devel/task/template.json",
       "docs/devel/todo/README.md",
@@ -531,13 +539,14 @@
         "k_4b4b55a7-3376-4d6a-8b85-d52e99c726b0"
       ],
       "figure_ids": [
+        "d_bf0858eb-e493-4a95-93a8-6ba35eb83c37",
         "d_ca8a0cf0-77b5-4b01-805f-1b73b95c6ce3",
         "d_cbbda8c9-188a-4f71-9dc7-152a77890a10"
       ],
-      "verified_in": "33958ec0-ab52-4495-a221-86dc9f778c35",
+      "verified_in": "b2f00772-04e6-490b-9b15-950526da1761",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "d36477a74479e0058710faf7ab62927c05141a20bbaac6caa1820fa2a51908b3"
+        "value": "ad52c9cd30fd2b03858a3a97fca9fccf71ccd78679dad3ae5cb7eb57564d917c"
       }
     },
     "Bruce设计文档.md": {
@@ -570,7 +579,9 @@
         "apps/win/src-tauri/src/main.rs",
         "apps/win/src-tauri/src/runtime_core.rs",
         "apps/win/src-tauri/src/scheduler.rs",
+        "apps/win/src/settings.js",
         "apps/win/viewmodel/src/lib.rs",
+        "apps/win/viewmodel/src/usage.rs",
         "core/collector/bin/Bruce-collector/src/main.rs",
         "core/collector/crates/collector-aggregate/src/lib.rs",
         "core/collector/crates/collector-application/src/account.rs",
@@ -587,6 +598,7 @@
         "docs/devel/design/04-设置中心与价格校准交互.md",
         "docs/devel/design/05-Windows平台适配.md",
         "docs/devel/design/06-Agent用量分析与Token统计工作台.md",
+        "docs/devel/task/T08.json",
         "docs/devel/todo/now.md",
         "docs/guide/01-本地部署指南.md",
         "scripts/build-test-app.sh",
@@ -600,20 +612,20 @@
         "d_856cccba-17f1-402f-b8d2-d03c0c7de2e6",
         "d_a20b6df3-7589-475f-8573-b4269438f480"
       ],
-      "verified_in": "33958ec0-ab52-4495-a221-86dc9f778c35",
+      "verified_in": "b2f00772-04e6-490b-9b15-950526da1761",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "59d4748196d787518336bdbd1f00a97e0b3e2728e436fa6efd83d6c0c06e24e9"
+        "value": "e2d99411056b9790d2cd8251fb5644cde7204c72f10a11fee21d639286be6743"
       }
     },
     "README.md": {
       "source_paths": [],
       "card_ids": [],
       "figure_ids": [],
-      "verified_in": "33958ec0-ab52-4495-a221-86dc9f778c35",
+      "verified_in": "b2f00772-04e6-490b-9b15-950526da1761",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "e96260b803a8248a50b507a015545eae2a7034e439a2b10352e0a00be69bb541"
+        "value": "44d1aab6b23cf5b422206b025c7a1dd573157bdeeec3e2e7bdfd1046058d5ce5"
       }
     },
     "Widget设计.md": {
@@ -637,6 +649,7 @@
     "Windows应用设计.md": {
       "source_paths": [
         "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+        "apps/win/src-tauri/Cargo.toml",
         "apps/win/src-tauri/src/alerts.rs",
         "apps/win/src-tauri/src/collector.rs",
         "apps/win/src-tauri/src/credentials.rs",
@@ -653,29 +666,35 @@
         "apps/win/src-tauri/tests/runtime_coverage.rs",
         "apps/win/src/app.js",
         "apps/win/src/settings.js",
+        "apps/win/src/styles.css",
         "apps/win/tests/frontend.test.mjs",
+        "apps/win/viewmodel/Cargo.toml",
         "apps/win/viewmodel/src/lib.rs",
         "apps/win/viewmodel/src/models.rs",
         "apps/win/viewmodel/src/subscription.rs",
         "apps/win/viewmodel/src/usage.rs",
         "apps/win/viewmodel/tests/fixture_parity.rs",
+        "core/collector/crates/collector-bridge/Cargo.toml",
         "core/collector/crates/collector-bridge/src/lib.rs",
         "docs/archive/0.12.0/change/C020.json",
         "docs/devel/change/C009.json",
         "docs/devel/change/C012.json",
-        "docs/devel/design/05-Windows平台适配.md"
+        "docs/devel/change/C066.json",
+        "docs/devel/design/05-Windows平台适配.md",
+        "docs/devel/task/T08.json"
       ],
       "card_ids": [
         "k_939717db-c182-4a5d-bb9b-b8416cccd9f6"
       ],
       "figure_ids": [
+        "d_893a33bc-c2da-4cd9-bf95-868b28ceb426",
         "d_b9e5079c-f299-4c64-bc1f-0a639840238d",
         "d_ffd0c04c-ccff-405e-95d2-ae26db4f1aae"
       ],
-      "verified_in": "33958ec0-ab52-4495-a221-86dc9f778c35",
+      "verified_in": "b2f00772-04e6-490b-9b15-950526da1761",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "903f946bb8669c072c2e498dad7a76486574020a45a9f561db541f1940be62a3"
+        "value": "86382879eb6ddc8c3ffd25cf6c4c59a54a59641bd355e6d963f510ad698d4b91"
       }
     },
     "Windows快照与刷新状态.md": {
@@ -847,6 +866,8 @@
         "README.md",
         "VERSION",
         "apps/macos/Package.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+        "apps/win/src-tauri/src/collector.rs",
         "docs/guide/01-本地部署指南.md",
         "scripts/build-release-app.sh",
         "scripts/build-test-app.sh",
@@ -860,12 +881,13 @@
       ],
       "card_ids": [],
       "figure_ids": [
-        "d_257519d2-e4c9-4ce5-b3ad-93159b88adf5"
+        "d_257519d2-e4c9-4ce5-b3ad-93159b88adf5",
+        "d_b8c03e41-f102-4ff4-a34f-026c09168989"
       ],
-      "verified_in": "33958ec0-ab52-4495-a221-86dc9f778c35",
+      "verified_in": "b2f00772-04e6-490b-9b15-950526da1761",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "839ab0d336640b78939a980be49bce728b353d120a1962b77781035996d82586"
+        "value": "2620003375d58730d0be578166cde00badbf163aaeb55e70aeac7c3afe2dea30"
       }
     },
     "菜单栏与看板设计.md": {
@@ -973,12 +995,13 @@
       ],
       "card_ids": [],
       "figure_ids": [
+        "d_34942c0a-0796-4135-bbb5-7626b5914373",
         "d_7f1dffad-5e43-460b-9d30-c9c70bb943de"
       ],
-      "verified_in": "33958ec0-ab52-4495-a221-86dc9f778c35",
+      "verified_in": "b2f00772-04e6-490b-9b15-950526da1761",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "a658df2ab234f9477f4c51ca4a71f54d669d9a65c70a9172b20360ab3a28e00f"
+        "value": "5095ba5f680d9237f6b54a6b5630be0057d13c9825f9b279f0094b7da276e629"
       }
     },
     "采集引擎与本地用量设计.md": {
@@ -1009,6 +1032,25 @@
       "content_hash": {
         "algorithm": "sha256",
         "value": "f62bc1a64d78359f119e33f78cd77bfb6dfed63ef2cfb1ca8146d7a11595b11f"
+      }
+    },
+    "Windows用量工作台设计.md": {
+      "source_paths": [
+        "apps/win/src-tauri/src/scheduler.rs",
+        "apps/win/src/settings.js",
+        "apps/win/tests/frontend.test.mjs",
+        "apps/win/viewmodel/src/usage.rs",
+        "docs/devel/task/T08.json"
+      ],
+      "card_ids": [],
+      "figure_ids": [
+        "d_1a5b580c-b59f-4bdd-8cc5-5b15a0aa46a4",
+        "d_60d22960-cfaa-43ce-9088-123463dc90ff"
+      ],
+      "verified_in": "b2f00772-04e6-490b-9b15-950526da1761",
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "e7cc2000d1b9e3f56fe70904811cadb8c8c3cb67ffddeabb32ae70703c849e2e"
       }
     }
   },
@@ -1715,6 +1757,147 @@
           "value": "b03bd43c3d3d4579555ac0f21183e14f873f233fc40616b1336bf31b17a6f4cd"
         }
       }
+    },
+    "d_60d22960-cfaa-43ce-9088-123463dc90ff": {
+      "svg_path": "docs/assets/km/windows-workbench-lineage.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_60d22960-cfaa-43ce-9088-123463dc90ff.json",
+      "owner_article": "Windows用量工作台设计.md",
+      "article_paths": [
+        "Windows用量工作台设计.md"
+      ],
+      "source_paths": [
+        "apps/win/src/settings.js",
+        "apps/win/viewmodel/src/usage.rs"
+      ],
+      "verified_in": "b2f00772-04e6-490b-9b15-950526da1761",
+      "content_hashes": {
+        "svg": {
+          "algorithm": "sha256",
+          "value": "7845f10017e3f43530e00280c03a938200c3f502c5094877ae657025acdf6291"
+        },
+        "semantic": {
+          "algorithm": "sha256",
+          "value": "239cc0a40d78ac5155a2ce894ffa316fcbbe4f6c19603dac65a82f2fa581534f"
+        }
+      }
+    },
+    "d_bf0858eb-e493-4a95-93a8-6ba35eb83c37": {
+      "svg_path": "docs/assets/km/analytics-entities.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_bf0858eb-e493-4a95-93a8-6ba35eb83c37.json",
+      "owner_article": "Agent用量分析设计.md",
+      "article_paths": [
+        "Agent用量分析设计.md"
+      ],
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/AnalyticsModels.swift",
+        "apps/macos/Sources/BruceAppCore/ModelNormalizer.swift"
+      ],
+      "verified_in": "b2f00772-04e6-490b-9b15-950526da1761",
+      "content_hashes": {
+        "svg": {
+          "algorithm": "sha256",
+          "value": "6246bb49c64bc9c61a5b6c086b2e4a5bc7af5168a6035cadd5b7835e57f523be"
+        },
+        "semantic": {
+          "algorithm": "sha256",
+          "value": "aed78b088bb7e50da392371ba3887cfa09048743dcf6cf8374223967c4b77ac6"
+        }
+      }
+    },
+    "d_b8c03e41-f102-4ff4-a34f-026c09168989": {
+      "svg_path": "docs/assets/km/desktop-process-placement.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_b8c03e41-f102-4ff4-a34f-026c09168989.json",
+      "owner_article": "构建验证与发布.md",
+      "article_paths": [
+        "构建验证与发布.md"
+      ],
+      "source_paths": [
+        "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+        "apps/win/src-tauri/src/collector.rs",
+        "scripts/runtime-manifest.zsh"
+      ],
+      "verified_in": "b2f00772-04e6-490b-9b15-950526da1761",
+      "content_hashes": {
+        "svg": {
+          "algorithm": "sha256",
+          "value": "aeb7410df832f9b91c5fab77c1ae2d0489c653e03d7d064fd8f738b0b23ee55c"
+        },
+        "semantic": {
+          "algorithm": "sha256",
+          "value": "0d8e5995f9568c98c7d13d5adce7b580ef64ed2f727597f7e31d39ba2e46d3c7"
+        }
+      }
+    },
+    "d_893a33bc-c2da-4cd9-bf95-868b28ceb426": {
+      "svg_path": "docs/assets/km/windows-build-dependencies.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_893a33bc-c2da-4cd9-bf95-868b28ceb426.json",
+      "owner_article": "Windows应用设计.md",
+      "article_paths": [
+        "Windows应用设计.md"
+      ],
+      "source_paths": [
+        "apps/win/src-tauri/Cargo.toml",
+        "apps/win/viewmodel/Cargo.toml",
+        "core/collector/crates/collector-bridge/Cargo.toml"
+      ],
+      "verified_in": "b2f00772-04e6-490b-9b15-950526da1761",
+      "content_hashes": {
+        "svg": {
+          "algorithm": "sha256",
+          "value": "16e4564ff54fed13107048b075fef767575065c31bae8ce7dfb82167bee6f7d0"
+        },
+        "semantic": {
+          "algorithm": "sha256",
+          "value": "36d32cf8c1027f50593fb29de0f0560fe1ecf569e9c0cd4d30ccbdede4c6d18c"
+        }
+      }
+    },
+    "d_34942c0a-0796-4135-bbb5-7626b5914373": {
+      "svg_path": "docs/assets/km/pricing-save-sequence.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_34942c0a-0796-4135-bbb5-7626b5914373.json",
+      "owner_article": "设置中心与价格校准设计.md",
+      "article_paths": [
+        "设置中心与价格校准设计.md"
+      ],
+      "source_paths": [
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "apps/macos/Sources/BruceApp/Settings/ModelPricingSettingsView.swift"
+      ],
+      "verified_in": "b2f00772-04e6-490b-9b15-950526da1761",
+      "content_hashes": {
+        "svg": {
+          "algorithm": "sha256",
+          "value": "82c2d58ce69881d48bc0622dd7210b3c51f4a72f6f01917af2fb9d7a871ada77"
+        },
+        "semantic": {
+          "algorithm": "sha256",
+          "value": "67ad6fccc544606be15d13cf9999294f2acec40c3ee62e5493b1b5f40ed94b5b"
+        }
+      }
+    },
+    "d_1a5b580c-b59f-4bdd-8cc5-5b15a0aa46a4": {
+      "svg_path": "docs/assets/km/windows-workbench-refresh-sequence.svg",
+      "semantic_path": "docs/official/.cards/diagrams/d_1a5b580c-b59f-4bdd-8cc5-5b15a0aa46a4.json",
+      "owner_article": "Windows用量工作台设计.md",
+      "article_paths": [
+        "Windows用量工作台设计.md"
+      ],
+      "source_paths": [
+        "apps/win/src-tauri/src/lib.rs",
+        "apps/win/src-tauri/src/scheduler.rs",
+        "apps/win/src/settings.js"
+      ],
+      "verified_in": "b2f00772-04e6-490b-9b15-950526da1761",
+      "content_hashes": {
+        "svg": {
+          "algorithm": "sha256",
+          "value": "b161e066241c08c9f64d1352111ebfd66c1b6453e541e2723a5ad77022f967f9"
+        },
+        "semantic": {
+          "algorithm": "sha256",
+          "value": "e75f015f2769b6e6c0ba9ed58e52de978716988d314a14f66f1c01697c25a1a6"
+        }
+      }
     }
   },
   "sources": {
@@ -1751,12 +1934,12 @@
     "CHANGELOG.md": {
       "kind": "document",
       "available": true,
-      "last_read_in": "33958ec0-ab52-4495-a221-86dc9f778c35",
+      "last_read_in": "b2f00772-04e6-490b-9b15-950526da1761",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "f1abd2571676fe2534e0dcbd82b67df5d90e7b70ae51ae9022f39105fe1fa946"
+        "value": "74ac8b42c2801b8c54bdc8e806bdca562cf2ddf596c7c571a659ebbe802543e2"
       },
-      "review_scope": "current source sections or hash-verified prior evidence; inventory does not imply deep reading of every file"
+      "review_scope": "Actual affected source sections read, or asset bytes compared; inventory/hash does not establish runtime or human acceptance."
     },
     "LICENSE": {
       "kind": "config",
@@ -2031,12 +2214,12 @@
     "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift": {
       "kind": "code",
       "available": true,
-      "last_read_in": "33958ec0-ab52-4495-a221-86dc9f778c35",
+      "last_read_in": "b2f00772-04e6-490b-9b15-950526da1761",
       "content_hash": {
         "algorithm": "sha256",
         "value": "f4b6509d132cc7045d94d6a20b24e20528abed4bb180902ae3e28c1bd287cc8f"
       },
-      "review_scope": "current source sections or hash-verified prior evidence; inventory does not imply deep reading of every file"
+      "review_scope": "Actual affected source sections read, or asset bytes compared; inventory/hash does not establish runtime or human acceptance."
     },
     "apps/macos/Sources/BruceApp/QuotaAlertNotifier.swift": {
       "kind": "code",
@@ -2101,12 +2284,12 @@
     "apps/macos/Sources/BruceApp/Settings/ModelPricingSettingsView.swift": {
       "kind": "code",
       "available": true,
-      "last_read_in": "33958ec0-ab52-4495-a221-86dc9f778c35",
+      "last_read_in": "b2f00772-04e6-490b-9b15-950526da1761",
       "content_hash": {
         "algorithm": "sha256",
         "value": "94cc180ee68c7c1ed93115e811a993d3c72b4970b7129ec5154474026a965207"
       },
-      "review_scope": "current source sections or hash-verified prior evidence; inventory does not imply deep reading of every file"
+      "review_scope": "Actual affected source sections read, or asset bytes compared; inventory/hash does not establish runtime or human acceptance."
     },
     "apps/macos/Sources/BruceApp/Settings/OfficialLocalProviderSettingsSection.swift": {
       "kind": "code",
@@ -2351,12 +2534,12 @@
     "apps/macos/Sources/BruceAppCore/CollectorRunner.swift": {
       "kind": "code",
       "available": true,
-      "last_read_in": "33958ec0-ab52-4495-a221-86dc9f778c35",
+      "last_read_in": "b2f00772-04e6-490b-9b15-950526da1761",
       "content_hash": {
         "algorithm": "sha256",
         "value": "ad2b3c738032988bb9445dfefd36175f215be66b6f3fcac6f47d05a4970cbc96"
       },
-      "review_scope": "current source sections or hash-verified prior evidence; inventory does not imply deep reading of every file"
+      "review_scope": "Actual affected source sections read, or asset bytes compared; inventory/hash does not establish runtime or human acceptance."
     },
     "apps/macos/Sources/BruceAppCore/CredentialUpdateCoordinator.swift": {
       "kind": "code",
@@ -3331,12 +3514,12 @@
     "apps/win/src-tauri/Cargo.toml": {
       "kind": "config",
       "available": true,
-      "last_read_in": "33958ec0-ab52-4495-a221-86dc9f778c35",
+      "last_read_in": "b2f00772-04e6-490b-9b15-950526da1761",
       "content_hash": {
         "algorithm": "sha256",
         "value": "e57b686726250d2cd83dc0a21fe7ed4ad14a650bf5e91984006c7c3177c5b41b"
       },
-      "review_scope": "current source sections or hash-verified prior evidence; inventory does not imply deep reading of every file"
+      "review_scope": "Actual affected source sections read, or asset bytes compared; inventory/hash does not establish runtime or human acceptance."
     },
     "apps/win/src-tauri/build.rs": {
       "kind": "code",
@@ -3441,12 +3624,12 @@
     "apps/win/src-tauri/src/collector.rs": {
       "kind": "code",
       "available": true,
-      "last_read_in": "33958ec0-ab52-4495-a221-86dc9f778c35",
+      "last_read_in": "b2f00772-04e6-490b-9b15-950526da1761",
       "content_hash": {
         "algorithm": "sha256",
         "value": "b4b7af33c49afcdfa2b0c7bc3207cf0232eed28d63825e7f76972dfc1603ddbb"
       },
-      "review_scope": "current source sections or hash-verified prior evidence; inventory does not imply deep reading of every file"
+      "review_scope": "Actual affected source sections read, or asset bytes compared; inventory/hash does not establish runtime or human acceptance."
     },
     "apps/win/src-tauri/src/credentials.rs": {
       "kind": "code",
@@ -3481,12 +3664,12 @@
     "apps/win/src-tauri/src/lib.rs": {
       "kind": "code",
       "available": true,
-      "last_read_in": "33958ec0-ab52-4495-a221-86dc9f778c35",
+      "last_read_in": "b2f00772-04e6-490b-9b15-950526da1761",
       "content_hash": {
         "algorithm": "sha256",
         "value": "2ea9c9b0d5280329a25c19a05d419fccc07f7eb9ceb19d0aba56c0b48174396a"
       },
-      "review_scope": "current source sections or hash-verified prior evidence; inventory does not imply deep reading of every file"
+      "review_scope": "Actual affected source sections read, or asset bytes compared; inventory/hash does not establish runtime or human acceptance."
     },
     "apps/win/src-tauri/src/main.rs": {
       "kind": "code",
@@ -3531,12 +3714,12 @@
     "apps/win/src-tauri/src/scheduler.rs": {
       "kind": "code",
       "available": true,
-      "last_read_in": "33958ec0-ab52-4495-a221-86dc9f778c35",
+      "last_read_in": "b2f00772-04e6-490b-9b15-950526da1761",
       "content_hash": {
         "algorithm": "sha256",
         "value": "a6e11e120c212448dd2f887be8f7518fa6ef4449478788dc94789c8f1a1fd0bd"
       },
-      "review_scope": "current source sections or hash-verified prior evidence; inventory does not imply deep reading of every file"
+      "review_scope": "Actual affected source sections read, or asset bytes compared; inventory/hash does not establish runtime or human acceptance."
     },
     "apps/win/src-tauri/src/settings.rs": {
       "kind": "code",
@@ -3551,12 +3734,12 @@
     "apps/win/src-tauri/tauri.conf.json": {
       "kind": "config",
       "available": true,
-      "last_read_in": "33958ec0-ab52-4495-a221-86dc9f778c35",
+      "last_read_in": "b2f00772-04e6-490b-9b15-950526da1761",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "8c43001aa31792a0d3b926ff72a56c1a6c471dc7940cc66a12266ec827d75054"
+        "value": "78bcabfcb3b4f3bcf45c439a1905dca52e668f59ebda70eef5ae548a1f33faa3"
       },
-      "review_scope": "current source sections or hash-verified prior evidence; inventory does not imply deep reading of every file"
+      "review_scope": "Actual affected source sections read, or asset bytes compared; inventory/hash does not establish runtime or human acceptance."
     },
     "apps/win/src-tauri/tests/alerts_coverage.rs": {
       "kind": "test",
@@ -3621,12 +3804,12 @@
     "apps/win/src/app.js": {
       "kind": "code",
       "available": true,
-      "last_read_in": "33958ec0-ab52-4495-a221-86dc9f778c35",
+      "last_read_in": "b2f00772-04e6-490b-9b15-950526da1761",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "f87d7f41d550fa7599cb991cb66368e5a5338bc4691f7f0efc89c70b9bb960af"
+        "value": "d74ef15647446aafb5704623b837cb697947cd1b2a33a0f4ce4e2d5f383a8f21"
       },
-      "review_scope": "current source sections or hash-verified prior evidence; inventory does not imply deep reading of every file"
+      "review_scope": "Actual affected source sections read, or asset bytes compared; inventory/hash does not establish runtime or human acceptance."
     },
     "apps/win/src/index.html": {
       "kind": "code",
@@ -3661,22 +3844,22 @@
     "apps/win/src/settings.js": {
       "kind": "code",
       "available": true,
-      "last_read_in": "33958ec0-ab52-4495-a221-86dc9f778c35",
+      "last_read_in": "b2f00772-04e6-490b-9b15-950526da1761",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "f0b2f047b217c5e16d9cd831f46efc870447abbc40bc16b7ab8cf20bf716f89d"
+        "value": "b28a6daa7dfadbbe7511a43dbe125b8eadacd1ef2cf82a26b9f494415f363ff0"
       },
-      "review_scope": "current source sections or hash-verified prior evidence; inventory does not imply deep reading of every file"
+      "review_scope": "Actual affected source sections read, or asset bytes compared; inventory/hash does not establish runtime or human acceptance."
     },
     "apps/win/src/styles.css": {
       "kind": "code",
       "available": true,
-      "last_read_in": "33958ec0-ab52-4495-a221-86dc9f778c35",
+      "last_read_in": "b2f00772-04e6-490b-9b15-950526da1761",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "5021555b5682bb69cd911107433e7216ef48893a011e10bcd57da7ffa7e1190c"
+        "value": "9ec9474215cf1fc434aa4fe054cd4790a6dfb6eddd1dc6d49b1c6b87e35209d5"
       },
-      "review_scope": "current source sections or hash-verified prior evidence; inventory does not imply deep reading of every file"
+      "review_scope": "Actual affected source sections read, or asset bytes compared; inventory/hash does not establish runtime or human acceptance."
     },
     "apps/win/tests/dom.mjs": {
       "kind": "test",
@@ -3691,12 +3874,12 @@
     "apps/win/tests/frontend.test.mjs": {
       "kind": "test",
       "available": true,
-      "last_read_in": "33958ec0-ab52-4495-a221-86dc9f778c35",
+      "last_read_in": "b2f00772-04e6-490b-9b15-950526da1761",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "199ca27145873452e1ced7ad73e8164c230ae3f0f03079c3ed3b3d3950fddd19"
+        "value": "dda49e1789885dcd74b4122cf1b2db4aa543e6d0ecae32ef2ce01db8e8a96bc9"
       },
-      "review_scope": "current source sections or hash-verified prior evidence; inventory does not imply deep reading of every file"
+      "review_scope": "Actual affected source sections read, or asset bytes compared; inventory/hash does not establish runtime or human acceptance."
     },
     "apps/win/tests/geometry-parity.test.mjs": {
       "kind": "test",
@@ -3751,12 +3934,12 @@
     "apps/win/viewmodel/Cargo.toml": {
       "kind": "config",
       "available": true,
-      "last_read_in": "33958ec0-ab52-4495-a221-86dc9f778c35",
+      "last_read_in": "b2f00772-04e6-490b-9b15-950526da1761",
       "content_hash": {
         "algorithm": "sha256",
         "value": "56765970df1a4f818e3412b289d0db22b59e51c4294a6289a7a41879cd722e00"
       },
-      "review_scope": "current source sections or hash-verified prior evidence; inventory does not imply deep reading of every file"
+      "review_scope": "Actual affected source sections read, or asset bytes compared; inventory/hash does not establish runtime or human acceptance."
     },
     "apps/win/viewmodel/examples/dump_panel.rs": {
       "kind": "code",
@@ -3821,12 +4004,12 @@
     "apps/win/viewmodel/src/usage.rs": {
       "kind": "code",
       "available": true,
-      "last_read_in": "33958ec0-ab52-4495-a221-86dc9f778c35",
+      "last_read_in": "b2f00772-04e6-490b-9b15-950526da1761",
       "content_hash": {
         "algorithm": "sha256",
         "value": "7b025ee8533ff89474470702df4895763c34c4f87016d3a3194a6289e16732e1"
       },
-      "review_scope": "current source sections or hash-verified prior evidence; inventory does not imply deep reading of every file"
+      "review_scope": "Actual affected source sections read, or asset bytes compared; inventory/hash does not establish runtime or human acceptance."
     },
     "apps/win/viewmodel/tests/fixture_parity.rs": {
       "kind": "test",
@@ -4031,12 +4214,12 @@
     "core/collector/crates/collector-bridge/Cargo.toml": {
       "kind": "config",
       "available": true,
-      "last_read_in": "33958ec0-ab52-4495-a221-86dc9f778c35",
+      "last_read_in": "b2f00772-04e6-490b-9b15-950526da1761",
       "content_hash": {
         "algorithm": "sha256",
         "value": "a329e7e2a07ce4397b54fe24534686076781ed8cdd57825ad176f95b451cf049"
       },
-      "review_scope": "current source sections or hash-verified prior evidence; inventory does not imply deep reading of every file"
+      "review_scope": "Actual affected source sections read, or asset bytes compared; inventory/hash does not establish runtime or human acceptance."
     },
     "core/collector/crates/collector-bridge/src/lib.rs": {
       "kind": "code",
@@ -5221,12 +5404,12 @@
     "docs/devel/change/index.json": {
       "kind": "config",
       "available": true,
-      "last_read_in": "33958ec0-ab52-4495-a221-86dc9f778c35",
+      "last_read_in": "b2f00772-04e6-490b-9b15-950526da1761",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "06b836b124bc7952de18873f9169b06f597eda2cdd0507659d1d7bfac75f5e10"
+        "value": "26bd1d2d76e5e6193bac1a43ddf161393651cc6f91a31d5689f7970d6ca4047e"
       },
-      "review_scope": "current source sections or hash-verified prior evidence; inventory does not imply deep reading of every file"
+      "review_scope": "Actual affected source sections read, or asset bytes compared; inventory/hash does not establish runtime or human acceptance."
     },
     "docs/devel/change/template.json": {
       "kind": "config",
@@ -5291,12 +5474,12 @@
     "docs/devel/design/05-Windows平台适配.md": {
       "kind": "document",
       "available": true,
-      "last_read_in": "33958ec0-ab52-4495-a221-86dc9f778c35",
+      "last_read_in": "b2f00772-04e6-490b-9b15-950526da1761",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "9f5766dc8fd0b691b9eafd9547b80f3198dd054c2e5161d60706f9f1c424e77b"
+        "value": "1aa6b3ff2868d2426b7fadda1cc778567a16b94982cc1e5392e42c76f79f32e6"
       },
-      "review_scope": "current source sections or hash-verified prior evidence; inventory does not imply deep reading of every file"
+      "review_scope": "Actual affected source sections read, or asset bytes compared; inventory/hash does not establish runtime or human acceptance."
     },
     "docs/devel/design/README.md": {
       "kind": "document",
@@ -5371,12 +5554,12 @@
     "docs/devel/task/index.json": {
       "kind": "config",
       "available": true,
-      "last_read_in": "33958ec0-ab52-4495-a221-86dc9f778c35",
+      "last_read_in": "b2f00772-04e6-490b-9b15-950526da1761",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "846d6589f6d5c3ffcbf83ba51c3cb913a4a78cf6cbd855b4912e51755bb4f6b3"
+        "value": "4493b8aba5e81b9a665c88d353574a82a99bd673dbbf675621cfede8ddc326fd"
       },
-      "review_scope": "current source sections or hash-verified prior evidence; inventory does not imply deep reading of every file"
+      "review_scope": "Actual affected source sections read, or asset bytes compared; inventory/hash does not establish runtime or human acceptance."
     },
     "docs/devel/task/template.json": {
       "kind": "config",
@@ -5571,12 +5754,12 @@
     "scripts/runtime-manifest.zsh": {
       "kind": "code",
       "available": true,
-      "last_read_in": "33958ec0-ab52-4495-a221-86dc9f778c35",
+      "last_read_in": "b2f00772-04e6-490b-9b15-950526da1761",
       "content_hash": {
         "algorithm": "sha256",
         "value": "e8b837f3facc718e640e49b925545c732411ce5414f416dbb90d46bc6f7c6553"
       },
-      "review_scope": "current source sections or hash-verified prior evidence; inventory does not imply deep reading of every file"
+      "review_scope": "Actual affected source sections read, or asset bytes compared; inventory/hash does not establish runtime or human acceptance."
     },
     "scripts/swift-sdk.zsh": {
       "kind": "code",
@@ -6031,22 +6214,22 @@
     "apps/macos/Sources/BruceAppCore/AnalyticsModels.swift": {
       "kind": "code",
       "available": true,
-      "last_read_in": "33958ec0-ab52-4495-a221-86dc9f778c35",
+      "last_read_in": "b2f00772-04e6-490b-9b15-950526da1761",
       "content_hash": {
         "algorithm": "sha256",
         "value": "8c2ef6fb133b50cad5a16f1b3efbd11411eb855385b1d223a10b7081c0d295c9"
       },
-      "review_scope": "current source sections or hash-verified prior evidence; inventory does not imply deep reading of every file"
+      "review_scope": "Actual affected source sections read, or asset bytes compared; inventory/hash does not establish runtime or human acceptance."
     },
     "apps/macos/Sources/BruceAppCore/ModelNormalizer.swift": {
       "kind": "code",
       "available": true,
-      "last_read_in": "33958ec0-ab52-4495-a221-86dc9f778c35",
+      "last_read_in": "b2f00772-04e6-490b-9b15-950526da1761",
       "content_hash": {
         "algorithm": "sha256",
         "value": "96eb7c12d3584164ff7feabd3133720dfa2dc62cdee9b0c103061b45d64ff361"
       },
-      "review_scope": "current source sections or hash-verified prior evidence; inventory does not imply deep reading of every file"
+      "review_scope": "Actual affected source sections read, or asset bytes compared; inventory/hash does not establish runtime or human acceptance."
     },
     "apps/macos/Sources/BruceAppCore/ScreenLockMonitor.swift": {
       "kind": "code",
@@ -6111,12 +6294,12 @@
     "docs/devel/change/C065.json": {
       "kind": "document",
       "available": true,
-      "last_read_in": "33958ec0-ab52-4495-a221-86dc9f778c35",
+      "last_read_in": "b2f00772-04e6-490b-9b15-950526da1761",
       "content_hash": {
         "algorithm": "sha256",
-        "value": "1ea9a2edffc1a9dd0261dbf0213d8df6782f9471d5a266f63dc9fa33bb5178b1"
+        "value": "c6b1d6085d8c06814330d58be691e97dab2249fed84042c7ba0042c0fcb6f0a5"
       },
-      "review_scope": "current source sections or hash-verified prior evidence; inventory does not imply deep reading of every file"
+      "review_scope": "Actual affected source sections read, or asset bytes compared; inventory/hash does not establish runtime or human acceptance."
     },
     "docs/devel/design/06-Agent用量分析与Token统计工作台.md": {
       "kind": "document",
@@ -6137,6 +6320,86 @@
         "value": "8c934bea849cef6f5ec56057a27683c89a1d063fc956fd378e9a352c50d5be0f"
       },
       "review_scope": "current source sections or hash-verified prior evidence; inventory does not imply deep reading of every file"
+    },
+    "apps/win/src/fonts/Doto[ROND,wght].ttf": {
+      "kind": "asset",
+      "available": true,
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "6f4fe7d37853b91df3698daa84cde2dbe1c9695d88c986e6510134910337d426"
+      },
+      "last_read_in": "b2f00772-04e6-490b-9b15-950526da1761",
+      "review_scope": "Actual affected source sections read, or asset bytes compared; inventory/hash does not establish runtime or human acceptance."
+    },
+    "apps/win/src/fonts/SpaceGrotesk[wght].ttf": {
+      "kind": "asset",
+      "available": true,
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "acad6de1fc93436f5c0f1f4137751ef04f1aea3063e7036535970ffcfbd79f72"
+      },
+      "last_read_in": "b2f00772-04e6-490b-9b15-950526da1761",
+      "review_scope": "Actual affected source sections read, or asset bytes compared; inventory/hash does not establish runtime or human acceptance."
+    },
+    "apps/win/src/fonts/SpaceMono-Bold.ttf": {
+      "kind": "asset",
+      "available": true,
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "405e73d41afb7e5906efce206a326af5c956f38e255f35421c260e861e599c59"
+      },
+      "last_read_in": "b2f00772-04e6-490b-9b15-950526da1761",
+      "review_scope": "Actual affected source sections read, or asset bytes compared; inventory/hash does not establish runtime or human acceptance."
+    },
+    "apps/win/src/fonts/SpaceMono-BoldItalic.ttf": {
+      "kind": "asset",
+      "available": true,
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "cdcc95eddee312879a9728494e595f591cb159f3f276d79bc58673dec7e57138"
+      },
+      "last_read_in": "b2f00772-04e6-490b-9b15-950526da1761",
+      "review_scope": "Actual affected source sections read, or asset bytes compared; inventory/hash does not establish runtime or human acceptance."
+    },
+    "apps/win/src/fonts/SpaceMono-Italic.ttf": {
+      "kind": "asset",
+      "available": true,
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "eca264c8690a91fe837d19a6badf2d88961610c4c8aafcb196526192a9f258c5"
+      },
+      "last_read_in": "b2f00772-04e6-490b-9b15-950526da1761",
+      "review_scope": "Actual affected source sections read, or asset bytes compared; inventory/hash does not establish runtime or human acceptance."
+    },
+    "apps/win/src/fonts/SpaceMono-Regular.ttf": {
+      "kind": "asset",
+      "available": true,
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "95837e182baeeada83368f7748db28357f0a1b75c6b84ff7065b5edf933c8e18"
+      },
+      "last_read_in": "b2f00772-04e6-490b-9b15-950526da1761",
+      "review_scope": "Actual affected source sections read, or asset bytes compared; inventory/hash does not establish runtime or human acceptance."
+    },
+    "docs/devel/change/C066.json": {
+      "kind": "document",
+      "available": true,
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "0e34553ede3abd4ecf5ec65d8291d53162464422b6a39aa92941c89436acc22c"
+      },
+      "last_read_in": "b2f00772-04e6-490b-9b15-950526da1761",
+      "review_scope": "Actual affected source sections read, or asset bytes compared; inventory/hash does not establish runtime or human acceptance."
+    },
+    "docs/devel/task/T08.json": {
+      "kind": "document",
+      "available": true,
+      "content_hash": {
+        "algorithm": "sha256",
+        "value": "234b731efeb98d4b6c0b998b90653a672950164620c84d581e416f7d4002c99c"
+      },
+      "last_read_in": "b2f00772-04e6-490b-9b15-950526da1761",
+      "review_scope": "Actual affected source sections read, or asset bytes compared; inventory/hash does not establish runtime or human acceptance."
     }
   },
   "verification_batches": {
@@ -7286,6 +7549,204 @@
         }
       ],
       "review_method": "Content inventory by hash for all paths; changed source sections and current outline/functional requirements reviewed; unchanged original evidence reused from prior batches."
+    },
+    "b2f00772-04e6-490b-9b15-950526da1761": {
+      "checked_at": "2026-10-20T08:38:16.612171+00:00",
+      "reviewed_paths": [
+        "CHANGELOG.md",
+        "apps/macos/Sources/BruceApp/OnboardingCoordinator.swift",
+        "apps/macos/Sources/BruceApp/Settings/ModelPricingSettingsView.swift",
+        "apps/macos/Sources/BruceAppCore/AnalyticsModels.swift",
+        "apps/macos/Sources/BruceAppCore/CollectorRunner.swift",
+        "apps/macos/Sources/BruceAppCore/ModelNormalizer.swift",
+        "apps/win/src-tauri/Cargo.toml",
+        "apps/win/src-tauri/src/collector.rs",
+        "apps/win/src-tauri/src/lib.rs",
+        "apps/win/src-tauri/src/scheduler.rs",
+        "apps/win/src-tauri/tauri.conf.json",
+        "apps/win/src/app.js",
+        "apps/win/src/fonts/Doto[ROND,wght].ttf",
+        "apps/win/src/fonts/SpaceGrotesk[wght].ttf",
+        "apps/win/src/fonts/SpaceMono-Bold.ttf",
+        "apps/win/src/fonts/SpaceMono-BoldItalic.ttf",
+        "apps/win/src/fonts/SpaceMono-Italic.ttf",
+        "apps/win/src/fonts/SpaceMono-Regular.ttf",
+        "apps/win/src/settings.js",
+        "apps/win/src/styles.css",
+        "apps/win/tests/frontend.test.mjs",
+        "apps/win/viewmodel/Cargo.toml",
+        "apps/win/viewmodel/src/usage.rs",
+        "core/collector/crates/collector-bridge/Cargo.toml",
+        "docs/devel/change/C065.json",
+        "docs/devel/change/C066.json",
+        "docs/devel/change/index.json",
+        "docs/devel/design/05-Windows平台适配.md",
+        "docs/devel/task/T08.json",
+        "docs/devel/task/index.json",
+        "scripts/runtime-manifest.zsh"
+      ],
+      "checks": [
+        {
+          "name": "source_inventory",
+          "method": "SHA-256 comparison of current first-party tracked/untracked sources, excluding protected/generated/runtime/dependency roots",
+          "result": "passed",
+          "evidence": "450 inventory files; 18 changed/new, zero missing. Six new font files match existing macOS font bytes. Inventory is not deep reading of every file.",
+          "required": true,
+          "scope": "official_collection"
+        },
+        {
+          "name": "design_topic_coverage",
+          "method": "Original changed design/task declarations and source entrypoint review, plus actual overall/detail anchor checks",
+          "result": "passed",
+          "evidence": "12 design topics mapped to substantive overall sections and independent detailed articles; 10 module boundaries carried from unchanged original evidence. New Windows analysis topic traces actual Panel consumers, not T08 completion prose.",
+          "required": true,
+          "scope": "official_collection"
+        },
+        {
+          "name": "document_outline",
+          "method": "Selected category review, exact H2 comparison and actual offline Markdown page inspection",
+          "result": "passed",
+          "evidence": "15 design articles retain seven substantive category chapters; contents and useful H3 anchors checked. 17 pages rendered; updated sections and overview screenshots inspected.",
+          "required": true,
+          "scope": "official_collection"
+        },
+        {
+          "name": "functional_point_coverage",
+          "method": "Same-agent source/behavior review plus principal-record and answer-section tool checks",
+          "result": "passed",
+          "evidence": "58 principal functional points mapped to overall/detail answers; repeated overall entries resolve to principal records. Windows ranges, dimensions, alias aggregation, matrix, theme and refresh alternatives checked against actual source.",
+          "required": true,
+          "scope": "official_collection"
+        },
+        {
+          "name": "detailed_design_depth",
+          "method": "Content check, separate technical expression pass, source fact recheck and normal/alternative walkthrough review",
+          "result": "passed",
+          "evidence": "Windows workbench expands exact defaults, 14-date restriction, 15.2/16.5 estimates, zero/missing behavior, unchanged chart dimensions, model identity and cache/event ordering. Existing mechanism prose reused only with identical original support; no independent-review or runtime claim.",
+          "required": true,
+          "scope": "official_collection"
+        },
+        {
+          "name": "article_figure_coverage",
+          "method": "Per-article/per-point source applicability review plus image-use checks",
+          "result": "passed",
+          "evidence": "31 figures / 32 embeddings. Six added views answer Windows lineage and recheck timing, model identity/cardinality, process placement, build dependencies and price save ordering. No pending or deferred required figure.",
+          "required": true,
+          "scope": "official_collection"
+        },
+        {
+          "name": "figure_view_coverage",
+          "method": "Eight independent original-source questions reconciled with type-specific semantics and actual uses",
+          "result": "passed",
+          "evidence": "Architecture 2; flowchart 11; sequence 3; state 4; data_flow 8; er 1; deployment 1; dependency 1. All eight applicable views required. No type was omitted as inapplicable; no extra diagram quota used.",
+          "required": true,
+          "scope": "official_collection"
+        },
+        {
+          "name": "document_naming",
+          "method": "Flat Chinese semantic path/H1 review and filename checks",
+          "result": "passed",
+          "evidence": "17 direct Markdown articles; README is the navigation exception. Existing names and dates retained where prose unchanged.",
+          "required": true,
+          "scope": "official_collection"
+        },
+        {
+          "name": "document_associations",
+          "method": "Inline host JSON/XML/link/anchor and forward/reverse association checks",
+          "result": "passed",
+          "evidence": "structure-check.json Exit 0: 911 relative links; card bindings, 12 overall/detail maps, figure IDs/endpoints, SVG element mappings and source paths checked.",
+          "required": true,
+          "scope": "official_collection"
+        },
+        {
+          "name": "figure_structure_and_meaning",
+          "method": "JSON/XML parsing plus same-agent evidence-to-node/relation/type review",
+          "result": "passed",
+          "evidence": "31 semantic/SVG pairs have matching node/relation/group IDs; new ER uses logical 1 to 0..* containment, deployment uses declared/static process boundaries, dependencies point consumer to provider, sequences distinguish calls/returns/async.",
+          "required": true,
+          "scope": "official_collection"
+        },
+        {
+          "name": "professional_presentation",
+          "method": "17 page overview inspection; detailed changed sections and new figures inspected; unchanged page evidence reused by byte hash",
+          "result": "passed",
+          "evidence": "Contents, chapter hierarchy, comparison tables, Chinese glyphs and paragraph flow are legible in offline preview; no generation narration added to official pages.",
+          "required": true,
+          "scope": "official_collection"
+        },
+        {
+          "name": "standalone_svg_visual",
+          "method": "rsvg-convert 2.62.3 with actual PNG inspection",
+          "result": "passed",
+          "evidence": "All six new SVGs inspected at width 1000. Twenty-five unchanged SVGs exactly match confirmed manifest hashes and reuse prior batch 33958ec0-ab52-4495-a221-86dc9f778c35 standalone evidence on the same local rendering environment. Actual captures are in local/km/b2f00772-04e6-490b-9b15-950526da1761/",
+          "required": true,
+          "scope": "official_collection"
+        },
+        {
+          "name": "markdown_embedding_visual",
+          "method": "Bundled marked, previous CSS byte-identical, isolated offline Chrome 155.0.8059.85",
+          "result": "passed",
+          "evidence": "17 pages rendered at viewport 1120x1600 and content width 920; 32 images loaded, zero page overflow and zero wide tables. Six new image embeddings and changed passages inspected; unchanged visual evidence reused under matching CSS/viewer/font/width conditions. No production Markdown viewer compatibility claim.",
+          "required": true,
+          "scope": "official_collection"
+        },
+        {
+          "name": "application_tests",
+          "method": "Documentation-only task",
+          "result": "not_run",
+          "evidence": "Application build, Rust/Swift/JS tests, real credentials, Provider requests, target Windows device and human acceptance were not performed.",
+          "required": false,
+          "scope": "official_collection"
+        },
+        {
+          "name": "first_markdown_launch",
+          "method": "Actual host command",
+          "result": "failed",
+          "evidence": "Exit 1; isolated Chrome SIGABRT and kill EPERM in sandbox. Retried outside sandbox with offline routing.",
+          "required": false,
+          "scope": "candidate"
+        },
+        {
+          "name": "first_plan_update",
+          "method": "Actual host command",
+          "result": "failed",
+          "evidence": "Python stdin Non-UTF-8 SyntaxError Exit 1 before writes; retried using ASCII Unicode escapes.",
+          "required": false,
+          "scope": "candidate"
+        },
+        {
+          "name": "first_structure_parser",
+          "method": "Actual inline host Python",
+          "result": "failed",
+          "evidence": "Exit 1 KeyError overall_sections before report write; validator corrected to resolve allowed principal_record references. Re-run Exit 0.",
+          "required": false,
+          "scope": "candidate"
+        },
+        {
+          "name": "interaction_tool_input_parse",
+          "method": "Tool JavaScript parser",
+          "result": "failed",
+          "evidence": "Unexpected identifier in a template containing Markdown backticks; no command or filesystem write occurred. Retried with a separate structured patch.",
+          "required": false,
+          "scope": "candidate"
+        },
+        {
+          "name": "source_and_owned_output_guard",
+          "method": "Immediate original inventory/manifest/output SHA-256 and unoccupied-target comparison",
+          "result": "passed",
+          "evidence": "450 source inventory files unchanged; 77 prior content files match confirmed hashes; all 13 new content targets unoccupied; candidate hashes stable. New/missing source scan also agrees.",
+          "required": true,
+          "scope": "official_collection"
+        },
+        {
+          "name": "postwrite_integrity",
+          "method": "Actual delivered bytes, SHA-256 and manifest forward/reverse references",
+          "result": "passed",
+          "evidence": "postwrite-check.json Exit 0: 90 active content files, 19 content writes, 71 byte-identical reuses; 450 source hashes stable; associations and all final targets verified.",
+          "required": true,
+          "scope": "official_collection"
+        }
+      ]
     }
   }
 }

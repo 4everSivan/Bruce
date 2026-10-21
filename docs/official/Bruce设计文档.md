@@ -29,6 +29,7 @@ Bruce 将本机 AI Agent 的会话用量、参考费用和服务端订阅额度�
   - [6.9 独立 Widget 设计](#widget)
   - [6.10 工程验证与交付设计](#delivery)
   - [6.11 Agent 用量分析与跨源归并设计](#agent-analytics)
+  - [6.12 Windows 用量工作台设计](#windows-workbench)
 - [7. 参考文献](#chapter-7)
   - [7.1 原始设计与实现入口](#source-references)
   - [7.2 相关文档](#related-reading)
@@ -164,6 +165,8 @@ Windows 使用独立调度、凭证和窗口规则；Widget 消费宿主事件�
 
 | 功能点 | 主要规则与结果位置 |
 |---|---|
+| Windows主题、字体与项目终端形态 | [Windows应用设计](Windows应用设计.md#windows-theme) |
+| Windows工作台范围、曲线与模型汇总 | [Windows用量工作台设计](Windows用量工作台设计.md#windows-ranges) |
 | Tauri启动与窗口IPC | [Windows应用设计](Windows应用设计.md#windows-startup) |
 | 授权配置与凭据装配 | [Windows应用设计](Windows应用设计.md#windows-config) |
 | 受限凭据落盘与Codex恢复 | [Windows应用设计](Windows应用设计.md#windows-credentials) |
@@ -330,6 +333,8 @@ Windows 使用 Tauri 提供托盘、窗口、设置与 IPC，后台线程在进�
 
 Windows 与 macOS 共享协议及部分视图模型语义，但凭据装配、调度、存储路径和界面实现分别维护。配置差异、错误恢复和真实系统交互必须按 Windows 来源解释；共享 crate 或 fixture 对拍不能证明双端的授权、窗口、快捷键与设备行为完全相同。
 
+Windows 看板新增透明窗口配置和平滑曲线；Nothing 使用本地 Doto/Space 字体、纯黑几何底座、固定阈值图例及 PRJ.CONSOLE 项目形态。主题只作用于展示，不改变共享采集规则；源码与原卡片目标的局部尺寸差异在平台详设中说明。设置页的新分析工作台另有自己的窗口和估算规则，见[工作台设计](#windows-workbench)。
+
 详细设计：[Windows 应用设计](Windows应用设计.md)；状态细节见[Windows 快照与刷新状态](Windows快照与刷新状态.md)。
 
 依据：[原 Windows 设计](../devel/design/05-Windows平台适配.md)；[`apps/win/src-tauri/src/lib.rs`](../../apps/win/src-tauri/src/lib.rs)；[`apps/win/src-tauri/src/runtime_core.rs`](../../apps/win/src-tauri/src/runtime_core.rs)；[`apps/win/viewmodel/src/lib.rs`](../../apps/win/viewmodel/src/lib.rs)。
@@ -367,6 +372,17 @@ tag CI、Preview 产物与手工签名公证路径各有责任。本地验证、
 
 依据：[`ModelNormalizer.swift`](../../apps/macos/Sources/BruceAppCore/ModelNormalizer.swift)；[`AnalyticsModels.swift`](../../apps/macos/Sources/BruceAppCore/AnalyticsModels.swift)；[`AgentUsageWorkbenchView.swift`](../../apps/macos/Sources/BruceApp/Settings/AgentUsageWorkbenchView.swift)；[原分析设计](../devel/design/06-Agent用量分析与Token统计工作台.md)。
 
+
+<a id="windows-workbench"></a>
+### 6.12 Windows 用量工作台设计
+
+Windows 设置页从缓存 PanelViewModel 分别消费 days、monthly、hourly 与 breakdown，构造五档时间按钮、四格 KPI、总量曲线、模型汇总和 Agent 矩阵。days 只保留最后 14 个日期，近 30 天和全部历史不会另取完整工件；按月 KPI 取另一条月汇总，而模型与 Agent 仍沿用原面板行。它没有复用 macOS 的 ModelNormalizer。
+
+模型按有限别名合并并追加渠道明细；KPI 历史费用、模型费用及缺失命中率分别使用固定规则。四个维度按钮当前只改变选中样式，没有不同数据系列，MA7 和悬停探针也未接入。重新检查只提交后台意图，再读缓存，后续采集结果通过事件到达，不能把按钮提示等同于该轮采集完成。
+
+这些边界解释了组件外形对齐与计算口径之间的差异。详细设计：[Windows 用量工作台设计](Windows用量工作台设计.md)，包含范围、模型、空数据与正常/替代场景。
+
+依据：[`settings.js`](../../apps/win/src/settings.js) 的 `renderAgentUsageWorkbench`、`loadPlans` 和 ready；[`usage.rs`](../../apps/win/viewmodel/src/usage.rs) 的 `make_usage`、`make_hourly`；[T08](../devel/task/T08.json)。
 
 <a id="chapter-7"></a>
 ## 7. 参考文献

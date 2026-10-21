@@ -1,0 +1,189 @@
+{
+  "schema_version": "1.0",
+  "id": "d_1a5b580c-b59f-4bdd-8cc5-5b15a0aa46a4",
+  "title": "Windows 重检命令与结果事件",
+  "type": "sequence",
+  "view": "implementation",
+  "nodes": [
+    {
+      "id": "view",
+      "label": "设置页",
+      "role": "actor",
+      "evidence_refs": [
+        "front"
+      ]
+    },
+    {
+      "id": "ipc",
+      "label": "Tauri IPC",
+      "role": "service",
+      "evidence_refs": [
+        "ipc"
+      ]
+    },
+    {
+      "id": "worker",
+      "label": "后台循环",
+      "role": "service",
+      "evidence_refs": [
+        "scheduler"
+      ]
+    },
+    {
+      "id": "snapshot",
+      "label": "缓存快照",
+      "role": "store",
+      "evidence_refs": [
+        "scheduler"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "request",
+      "from": "view",
+      "to": "ipc",
+      "kind": "sync_call",
+      "label": "refresh_now",
+      "evidence_refs": [
+        "front"
+      ],
+      "properties": {
+        "order": 1,
+        "scenario": "示例：请求可用且后台成功晚于缓存读取"
+      }
+    },
+    {
+      "id": "enqueue",
+      "from": "ipc",
+      "to": "worker",
+      "kind": "async_message",
+      "label": "try_send 刷新意图（结果被忽略）",
+      "evidence_refs": [
+        "scheduler"
+      ],
+      "properties": {
+        "order": 2,
+        "scenario": "示例：请求可用且后台成功晚于缓存读取"
+      }
+    },
+    {
+      "id": "returned",
+      "from": "ipc",
+      "to": "view",
+      "kind": "return",
+      "label": "命令返回，不确认采集完成",
+      "evidence_refs": [
+        "ipc"
+      ],
+      "properties": {
+        "order": 3,
+        "scenario": "示例：请求可用且后台成功晚于缓存读取"
+      }
+    },
+    {
+      "id": "read",
+      "from": "view",
+      "to": "ipc",
+      "kind": "sync_call",
+      "label": "读取运行信息 / get_dashboard",
+      "evidence_refs": [
+        "front"
+      ],
+      "properties": {
+        "order": 4,
+        "scenario": "示例：请求可用且后台成功晚于缓存读取"
+      }
+    },
+    {
+      "id": "cache-read",
+      "from": "ipc",
+      "to": "snapshot",
+      "kind": "sync_call",
+      "label": "读取当前缓存，非采集",
+      "evidence_refs": [
+        "ipc"
+      ],
+      "properties": {
+        "order": 5,
+        "scenario": "示例：请求可用且后台成功晚于缓存读取"
+      }
+    },
+    {
+      "id": "cache-return",
+      "from": "snapshot",
+      "to": "ipc",
+      "kind": "return",
+      "label": "当前面板，可能仍旧",
+      "evidence_refs": [
+        "scheduler"
+      ],
+      "properties": {
+        "order": 6,
+        "scenario": "示例：请求可用且后台成功晚于缓存读取"
+      }
+    },
+    {
+      "id": "panel",
+      "from": "ipc",
+      "to": "view",
+      "kind": "return",
+      "label": "先用缓存重绘",
+      "evidence_refs": [
+        "front"
+      ],
+      "properties": {
+        "order": 7,
+        "scenario": "示例：请求可用且后台成功晚于缓存读取"
+      }
+    },
+    {
+      "id": "publish",
+      "from": "worker",
+      "to": "snapshot",
+      "kind": "sync_call",
+      "label": "采集成功后更新快照",
+      "evidence_refs": [
+        "scheduler"
+      ],
+      "properties": {
+        "order": 8,
+        "scenario": "示例：请求可用且后台成功晚于缓存读取"
+      }
+    },
+    {
+      "id": "event",
+      "from": "worker",
+      "to": "view",
+      "kind": "async_message",
+      "label": "dashboard-updated，替换面板并重绘",
+      "evidence_refs": [
+        "scheduler"
+      ],
+      "properties": {
+        "order": 9,
+        "scenario": "示例：请求可用且后台成功晚于缓存读取"
+      }
+    }
+  ],
+  "evidence": {
+    "front": {
+      "path": "apps/win/src/settings.js",
+      "locator": "session-rescan callback; loadPlans; ready dashboard-updated listener",
+      "kind": "static_implementation",
+      "supports": "await刷新命令后读运行信息与缓存；后台事件另外替换currentDashboard。"
+    },
+    "ipc": {
+      "path": "apps/win/src-tauri/src/lib.rs",
+      "locator": "refresh_now; get_dashboard; get_runtime_info",
+      "kind": "static_implementation",
+      "supports": "刷新命令只调用request_manual_refresh并返回；get_dashboard读取cached_panel。"
+    },
+    "scheduler": {
+      "path": "apps/win/src-tauri/src/scheduler.rs",
+      "locator": "SchedulerControl.request_manual_refresh; spawn; cached_panel; run_refresh_with_kind",
+      "kind": "static_implementation",
+      "supports": "try_send不阻塞且忽略结果，后台线程独立采集更新快照并发布dashboard-updated；此图是合法成功时序示例，非保证全序。"
+    }
+  }
+}
