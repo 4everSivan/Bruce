@@ -12,10 +12,10 @@ const svgEl = (tag, attrs) => {
 };
 
 /* ---------- 用量档位色阶 (唯一事实源: mac PanelModels.UsageTier.tierColors) ---------- */
-// 五档绿色阶 sage/moss/fern/pine/forest: 基色用于热力图与收起态迷你条, 浅色作为
-// hero 渐变末端. mac heroGradient 为 topLeading→bottomTrailing、基色 30% → 浅色 100%;
-// 档位由视图模型下发的 usageTier 决定 (今日总量 100M 步进), 前端不得写死单档.
-const TIER_ORDER = ["sage", "moss", "fern", "pine", "forest"];
+// 五档绿色阶 sage/moss/fern/pine/forest: 基色用于热力图与收起态迷你条 (styles.css
+// .l1-.l5 同值), 浅色作为 hero 渐变末端. mac heroGradient 为 topLeading→bottomTrailing、
+// 基色 30% → 浅色 100%; 档位由视图模型下发的 usageTier 决定 (今日总量 100M 步进),
+// 前端不得写死单档.
 const TIER_COLORS = {
   sage: ["#7D9B76", "#9DB597"],
   moss: ["#63885E", "#82A57C"],
@@ -24,17 +24,12 @@ const TIER_COLORS = {
   forest: ["#26452A", "#456B42"],
 };
 // 档位色只以 CSS 自定义属性下发, 由 styles.css 的 .hero-num / .mini-num 消费;
-// 严禁在此写内联背景 —— 内联 background-image 会压过 Nothing 主题的 radial
-// 点阵覆写 (C027 实测回归, 见 C029)。
+// 严禁在此写内联背景 —— 内联 background-image 会压过 Nothing 主题的纯色
+// 覆写 (C027 实测回归, 见 C029)。
 function applyTierVars(node, tier) {
   const [start, end] = TIER_COLORS[tier] || TIER_COLORS.sage;
   node.style.setProperty("--hero-grad-start", start);
   node.style.setProperty("--hero-grad-end", end);
-}
-// 热力/迷你条 level 0-5 取色: 0 为空白底, 1-5 依次取五档基色 (与 mac miniHeatColor 同表).
-function heatLevelColor(level) {
-  const tier = TIER_ORDER[level - 1];
-  return tier ? TIER_COLORS[tier][0] : "rgba(255,255,255,.07)";
 }
 
 /* ---------- 份额文案与色阶 (对齐 mac sharePercentText / distributionGroup) ---------- */
@@ -113,51 +108,39 @@ function isNothingTheme() {
   return document.body.classList.contains("theme-nothing");
 }
 
-/* ---------- SVG 迷你走势 (mac: Catmull-Rom 三次贝塞尔平滑曲线 + 渐变面积) ---------- */
-let sparkSeq = 0;
-// 颜色经 currentColor 传递, 由 CSS 决定 (Nothing 主题覆写为 heroGreen);
-// 严禁内联描边色 —— 会压过主题覆写 (C029 教训)。
-function catmullRomToBezier(points, height, width) {
-  if (!points || points.length === 0) return { pathD: "", areaD: "" };
-  if (points.length === 1) {
-    const y = points[0].y;
-    return {
-      pathD: `M 0,${y.toFixed(2)} L ${width},${y.toFixed(2)}`,
-      areaD: `M 0,${y.toFixed(2)} L ${width},${y.toFixed(2)} L ${width},${height} L 0,${height} Z`,
-    };
+/* ---------- SF Symbols 等价线性图标 (mac chevron.right / chevron.down) ---------- */
+// 16×16 视窗自绘描边几何, 颜色经 currentColor 由 CSS 决定 (不引第三方图标库)。
+const ICON_PATHS = {
+  chevronRight: ["M6 3.5 L10.5 8 L6 12.5"],
+  chevronDown: ["M3.5 6 L8 10.5 L12.5 6"],
+  // arrow.clockwise: 300° 圆弧 + 顶部向右箭头 (与底栏刷新图标同一几何)
+  arrowClockwise: ["M12.76 5.25A5.5 5.5 0 1 1 8 2.5", "M6.3 0.8L8.3 2.5L6.3 4.2"],
+};
+function icon(name, strokeWidth = 2.2) {
+  const svg = svgEl("svg", { viewBox: "0 0 16 16", "aria-hidden": "true" });
+  for (const d of ICON_PATHS[name]) {
+    svg.append(svgEl("path", {
+      d, fill: "none", stroke: "currentColor", "stroke-width": String(strokeWidth),
+      "stroke-linecap": "round", "stroke-linejoin": "round",
+    }));
   }
-  let pathD = `M ${points[0].x.toFixed(2)},${points[0].y.toFixed(2)}`;
-  for (let i = 0; i < points.length - 1; i++) {
-    const p0 = points[Math.max(i - 1, 0)];
-    const p1 = points[i];
-    const p2 = points[i + 1];
-    const p3 = points[Math.min(i + 2, points.length - 1)];
-
-    const cp1x = p1.x + (p2.x - p0.x) / 6;
-    let cp1y = p1.y + (p2.y - p0.y) / 6;
-    const cp2x = p2.x - (p3.x - p1.x) / 6;
-    let cp2y = p2.y - (p3.y - p1.y) / 6;
-
-    cp1y = Math.max(0, Math.min(height, cp1y));
-    cp2y = Math.max(0, Math.min(height, cp2y));
-
-    pathD += ` C ${cp1x.toFixed(2)},${cp1y.toFixed(2)} ${cp2x.toFixed(2)},${cp2y.toFixed(2)} ${p2.x.toFixed(2)},${p2.y.toFixed(2)}`;
-  }
-  const firstX = points[0].x.toFixed(2);
-  const lastX = points[points.length - 1].x.toFixed(2);
-  const areaD = `${pathD} L ${lastX},${height} L ${firstX},${height} Z`;
-  return { pathD, areaD };
+  return svg;
 }
 
+/* ---------- SVG 迷你走势 (mac LineMark 默认线性插值 + 渐变面积) ---------- */
+let sparkSeq = 0;
+// 颜色经 currentColor 传递, 由 CSS 决定 (Nothing 主题覆写为 heroGreen);
+// 严禁内联描边色 —— 会压过主题覆写 (C029 教训)。mac 仪表盘折线未设
+// interpolationMethod, 即逐点直线连接 (只有设置页时序图用 catmullRom)。
 function lineSpark(points, height) {
   const width = 240;
+  // mac chartYScale(domain: 0...max*1.1): 顶部留 10% 余量, 峰值线不被裁掉
   const peak = Math.max(...points, 1) * 1.1;
   const step = points.length > 1 ? width / (points.length - 1) : width;
-  const pts = points.map((value, index) => ({
-    x: index * step,
-    y: height - (value / peak) * height,
-  }));
-  const { pathD, areaD } = catmullRomToBezier(pts, height, width);
+  const coords = points.map((value, index) => `${(index * step).toFixed(2)},${(height - (value / peak) * height).toFixed(2)}`);
+  if (coords.length === 1) coords.push(`${width},${coords[0].split(",")[1]}`);
+  const pathD = `M ${coords.join(" L ")}`;
+  const areaD = `${pathD} L ${width},${height} L 0,${height} Z`;
   const svg = svgEl("svg", {
     viewBox: `0 0 ${width} ${height}`,
     preserveAspectRatio: "none",
@@ -166,8 +149,9 @@ function lineSpark(points, height) {
   });
   const gradientId = `spark-fill-${sparkSeq += 1}`;
   const gradient = svgEl("linearGradient", { id: gradientId, x1: "0", y1: "0", x2: "0", y2: "1" });
-  gradient.append(svgEl("stop", { offset: "0%", "stop-color": "currentColor", "stop-opacity": "0.25" }));
-  gradient.append(svgEl("stop", { offset: "100%", "stop-color": "currentColor", "stop-opacity": "0.02" }));
+  // classic: 主色 18% → 2% (mac AreaMark); Nothing 由 CSS 覆写为 16% → 0
+  gradient.append(svgEl("stop", { offset: "0%", "stop-color": "currentColor", "stop-opacity": "0.18", class: "stop-top" }));
+  gradient.append(svgEl("stop", { offset: "100%", "stop-color": "currentColor", "stop-opacity": "0.02", class: "stop-bottom" }));
   const defs = svgEl("defs", {});
   defs.append(gradient);
   svg.append(defs);
@@ -180,7 +164,7 @@ function lineSpark(points, height) {
     d: pathD,
     fill: "none",
     stroke: "currentColor",
-    "stroke-width": "1.8",
+    "stroke-width": "1.5",
     "vector-effect": "non-scaling-stroke",
     "stroke-linejoin": "round",
     "stroke-linecap": "round",
@@ -231,11 +215,14 @@ async function reorderCards(from, to) {
   try { await invoke("save_settings_command", { settings: currentSettings }); }
   catch (error) { showError(error); }
 }
+// 手柄由 cardHead 预置在标题之前 (mac DashboardDragHandle 位于展开按钮左侧、
+// 物理独立于它), 这里只接线拖放事件; 仅收起态由 CSS 显示。
 function attachDragHandle(card, key) {
-  const handle = el("span", "drag-handle", "\u22EE\u22EE");
-  handle.setAttribute("title", "拖拽调整卡片顺序");
+  const handle = card.querySelector(".drag-handle");
+  if (!handle) return;
   handle.setAttribute("draggable", "true");
-  handle.setAttribute("aria-hidden", "true");
+  // 点击手柄不得冒泡成标题行的展开/收起 (mac 两者为兄弟控件)
+  handle.addEventListener("click", (event) => event.stopPropagation?.());
   handle.addEventListener("dragstart", (event) => {
     draggingCard = key;
     card.classList.add("dragging");
@@ -261,7 +248,22 @@ function attachDragHandle(card, key) {
     card.classList.remove("drop-target");
     if (draggingCard && draggingCard !== key) reorderCards(draggingCard, key);
   });
-  card.querySelector(".card-head")?.append(handle);
+}
+
+// 卡片标题行 (mac CollapsibleCardHeader): [拖拽手柄] [定宽标题] [状态件]; 收起态
+// 迷你摘要与 chevron 由 makeCollapsible 追加。状态件 (LIVE / 最后更新) 经 CSS
+// margin-left:auto 推到行尾, 等价 mac 的 Spacer。
+function cardHead(card, title, status) {
+  const head = el("div", "card-head");
+  const handle = el("span", "drag-handle");
+  for (let index = 0; index < 6; index += 1) handle.append(el("i"));
+  handle.setAttribute("title", "拖拽调整卡片顺序");
+  handle.setAttribute("aria-hidden", "true");
+  const slot = el("span", "card-status");
+  if (status) slot.append(status);
+  head.append(handle, el("span", "card-title", title), slot);
+  card.append(head);
+  return head;
 }
 
 function makeCollapsible(card, summary) {
@@ -270,10 +272,14 @@ function makeCollapsible(card, summary) {
   head.setAttribute("tabindex", "0");
   head.setAttribute("aria-expanded", "true");
   if (summary) {
-    const mini = el("div", "collapsed-summary");
+    // 收起态摘要嵌在标题行内 (取代状态件), 而非另起一行
+    const mini = el("span", "collapsed-summary");
     mini.append(summary());
-    card.append(mini);
+    head.append(mini);
   }
+  const chev = el("span", "chev");
+  chev.append(icon("chevronRight"));
+  head.append(chev);
   const toggle = () => {
     const collapsed = card.classList.toggle("collapsed");
     head.classList.toggle("collapsed", collapsed);
@@ -285,35 +291,34 @@ function makeCollapsible(card, summary) {
   });
 }
 
-/* ---------- Token 用量卡 ---------- */
+/* ---------- Token 用量卡 (mac UsageHeroCard) ---------- */
 function usageCard(usage) {
   const card = el("div", "card usage-card");
   // 档位色注入卡片容器, .hero-num 与 .mini-num 经 CSS 变量继承取色
   applyTierVars(card, usage.usageTier);
-  // 背景字符流纹样: tint 取档位浅色 (mac CodeStreamBackground tint = tierColors.1)
+  // 背景纹样层: classic 字符流 tint 取档位浅色 (mac CodeStreamBackground tint = tierColors.1);
+  // Nothing 由 CSS 改为点阵。独立成层以便只对纹样做底部渐隐 mask。
   const tint = (TIER_COLORS[usage.usageTier] || TIER_COLORS.sage)[1];
   card.style.setProperty("--code-stream", codeStreamImage(tint));
-  const head = el("div", "card-head");
-  head.append(el("span", "card-title", "Token 用量"));
+  const background = el("div", "usage-bg");
+  background.setAttribute("aria-hidden", "true");
+  card.append(background);
+  let live = null;
   if (usage.isLive) {
-    const live = el("span", "hud-dot-wrap live live-badge");
-    live.append(el("span", "hud-dot"), el("span", "live-text", "LIVE"));
-    head.append(live);
+    live = el("span", "live-badge");
+    live.append(el("span", "live-dot"), el("span", "live-text", "LIVE"));
   }
-  head.append(el("span", "chev", "\u276F"));
-  card.append(head);
+  cardHead(card, "Token 用量", live);
+  // 收起态: 17pt 总量 + 近 7 天迷你热力条 (level 0-5, 与展开态热力图同源配色)
   makeCollapsible(card, () => {
-    const mini = document.createElement("span");
-    mini.append(el("b", "mini-num", usage.totalTokensText));
-    for (const level of usage.collapsedWeekLevels) {
-      const bar = document.createElement("span");
-      bar.style.cssText = `flex:1;height:10px;border-radius:2px;background:${heatLevelColor(level)};`;
-      mini.append(bar);
-    }
+    const mini = el("span", "usage-mini");
+    const week = el("span", "mini-week");
+    for (const level of usage.collapsedWeekLevels) week.append(el("i", level > 0 ? `l${Math.min(level, 5)}` : null));
+    mini.append(el("b", "mini-num", usage.totalTokensText), week);
     return mini;
   });
 
-  // hero 行: 40pt 档位渐变数字 + tokens + 右侧成本
+  // hero 行: 40pt 档位渐变数字 (Nothing: Doto 52 纯色 + 方块小数点) + tokens + 右侧成本
   const hero = el("div", "hero-row");
   const heroNum = el("span", "hero-num");
   if (isNothingTheme() && usage.totalTokensText && usage.totalTokensText.includes(".")) {
@@ -333,7 +338,7 @@ function usageCard(usage) {
 
   card.append(el("div", "divider"));
 
-  // 四格细分
+  // 四格细分 (各格按内容定宽)
   const row = el("div", "breakdown");
   for (const item of usage.breakdown) {
     const cell = el("div", "cell");
@@ -374,6 +379,7 @@ function usageCard(usage) {
         if (models && month.key) {
           chip.setAttribute("role", "button");
           chip.setAttribute("tabindex", "0");
+          chip.setAttribute("aria-label", `${month.label} ${month.totalText}，查看该月模型用量`);
           const selectMonth = () => { selectedKey = month.key; mode = "month"; renderGrid(); renderSeg(); renderModelRows(); };
           chip.addEventListener("click", selectMonth);
           chip.addEventListener("keydown", event => {
@@ -387,24 +393,25 @@ function usageCard(usage) {
     sec.append(grid);
     card.append(sec);
 
-    // 模型用量: 三档 segment + 月卡联动, 默认本月 top3 + 展开钮;
-    // 无模型月度数据 (models 为 null) 时整块隐藏, 对齐 mac 行为。
+    // 模型用量 (mac modelUsageSection): 标题旁 chevron 切换「前 3 / 全部」, 右侧三档
+    // segment 与月卡联动, 默认本月; 无模型月度数据 (models 为 null) 时整块隐藏。
     if (models) {
-      // 模型用量: 三档 segment + 月卡联动, 默认本月 top3 + 展开钮
       const msec = el("div", null); msec.id = "models-sec";
       const mhead = el("div", "models-head");
       const left = el("div", "sec-row");
       const titleSpan = el("span", "sec", "模型用量");
-      left.append(titleSpan);
-      const expand = el("span", null, "\u2304");
-      expand.style.cssText = "font-size:10px;color:var(--subdued);cursor:pointer;transition:transform .15s;";
-      left.append(expand);
+      let expanded = false;
+      const expand = el("button", "models-expand");
+      expand.type = "button";
+      expand.append(icon("chevronDown"));
+      left.append(titleSpan, expand);
       mhead.append(left);
       const seg = el("div", "tier-seg");
       renderSeg = () => {
         seg.innerHTML = "";
         models.tiers.forEach((tier, index) => {
           const b = el("button", null, tier.label);
+          b.type = "button";
           if (mode === `tier${index}`) b.classList.add("active");
           b.addEventListener("click", () => { mode = `tier${index}`; renderGrid(); renderSeg(); renderModelRows(); });
           seg.append(b);
@@ -414,9 +421,10 @@ function usageCard(usage) {
       mhead.append(seg);
       msec.append(mhead);
       const rowsHost = el("div");
-      let expanded = false;
       renderModelRows = () => {
         titleSpan.textContent = "模型用量" + (mode === "month" ? ` · ${(usage.monthly.find((m) => m.key === selectedKey) || {}).label || ""}` : "");
+        expand.setAttribute("aria-expanded", String(expanded));
+        expand.setAttribute("aria-label", expanded ? "收起全部模型" : "展开全部模型");
         rowsHost.innerHTML = "";
         let rows;
         if (mode === "month") {
@@ -438,16 +446,9 @@ function usageCard(usage) {
           line.append(el("span", "tot", row.totalText));
           rowsHost.append(line);
         }
-        if (!rows.length) rowsHost.append(el("div", "models-more", "暂无模型数据"));
-        const total = mode === "month"
-          ? (models.months.find((m) => m.id === selectedKey) || { rows: [] }).rows.length
-          : (models.tiers[Number(mode.slice(4))]?.rows || []).length;
-        if (total > 3) {
-          const more = el("div", "models-more", expanded ? "收起" : `展开全部 ${total} 项`);
-          more.addEventListener("click", () => { expanded = !expanded; renderModelRows(); });
-          rowsHost.append(more);
-        }
+        if (!rows.length) rowsHost.append(el("div", "models-empty", "暂无模型数据"));
       };
+      expand.addEventListener("click", () => { expanded = !expanded; renderModelRows(); });
       renderModelRows();
       msec.append(rowsHost);
       card.append(msec);
@@ -460,35 +461,33 @@ function usageCard(usage) {
     sec.append(el("div", "sec", "热力图 · 近半年"));
     const grid = el("div", "heatmap");
     let first = null, last = null;
-    for (const week of usage.heatmap) {
+    usage.heatmap.forEach((week, column) => {
       const col = el("div", "col");
-      for (const cell of week.cells) {
+      week.cells.forEach((cell, row) => {
         const box = el("div", "cell");
         if (!cell) { box.classList.add("empty"); }
         else {
-          if (cell.level > 0) box.classList.add(`l${cell.level}`);
+          if (cell.level > 0) box.classList.add(`l${Math.min(cell.level, 5)}`);
           box.title = `${cell.date}  ${cell.total.toLocaleString()}`;
+          // Nothing 填充格错相位呼吸的相位 (mac: (列×0.12 + 行×0.05) mod 3.2 秒)
+          box.style.setProperty("--d", `${((column * 0.12 + row * 0.05) % 3.2).toFixed(2)}s`);
           if (!first) first = cell.date;
           last = cell.date;
         }
         col.append(box);
-      }
+      });
       grid.append(col);
-    }
+    });
     sec.append(grid);
     const axis = el("div", "heat-axis");
     const fmt = (value) => { const p = value.split("-"); return `${p[0].slice(2)}/${p[1]}/${p[2]}`; };
-    if (first) axis.append(el("span", null, fmt(first)));
-    axis.append(el("span", null, ""));
-    if (last) axis.append(el("span", null, fmt(last)));
+    axis.append(el("span", null, first ? fmt(first) : ""), el("span", null, last ? fmt(last) : ""));
     sec.append(axis);
     const legend = el("div", "heat-legend");
-    legend.append(document.createTextNode("少"));
-    for (let level = 0; level <= 5; level += 1) {
-      const sw = el("span", `sw${level ? ` l${level}` : ""}`);
-      legend.append(sw);
-    }
-    legend.append(document.createTextNode("多"));
+    legend.setAttribute("aria-label", "热力图程度图例: 颜色从少到多");
+    legend.append(el("span", null, "少"));
+    for (let level = 0; level <= 5; level += 1) legend.append(el("span", `sw${level ? ` l${level}` : ""}`));
+    legend.append(el("span", null, "多"));
     sec.append(legend);
     card.append(sec);
   }
@@ -522,10 +521,16 @@ function providerKey(id) { return String(id || "").split("_")[0]; }
 // 品牌图形徽章 (C026): 品牌色瓷砖 + 品牌图形 (PROVIDER_GLYPHS, 由
 // scripts/gen-provider-glyphs.mjs 生成); 无图形数据的 provider 回退首字母。
 // SVG 用 DOM API 构建 (而非 innerHTML), 与前端测试的极简 DOM 边界保持兼容。
+// mac ProviderBrandPalette.isDarkBrand: 深色品牌在 Nothing 深色表面不可读, 图形退回 secondary 灰。
+const DARK_BRANDS = new Set(["grok", "zhipu", "cline"]);
 function badge(providerID, name) {
   const key = providerKey(providerID);
   const b = el("span", "pbadge");
-  b.style.background = PROVIDER_COLORS[key] || "#8e8e93";
+  // 品牌色以 CSS 变量下发: classic 为实底瓷砖 + 白图形, Nothing 由 CSS 改为
+  // 品牌色 16% 底 + 品牌色图形 (mac S3 柔彩定稿); 不写内联 background 以免压过主题覆写。
+  const color = PROVIDER_COLORS[key] || "#8e8e93";
+  b.style.setProperty("--brand", color);
+  b.style.setProperty("--brand-nothing", DARK_BRANDS.has(key) ? "#999999" : color);
   const glyph = PROVIDER_GLYPHS[key];
   if (glyph) {
     b.append(glyphSvg(glyph));
@@ -571,14 +576,55 @@ function windowRow(row) {
     ? nothingMeter(level, row.usedPercent)
     : el("div", `meter ${level}`);
   if (!isNothingTheme()) {
-    const fill = el("div"); fill.style.width = `${Math.round(clampedPercent(row.usedPercent))}%`;
+    const fill = el("span"); fill.style.width = `${Math.round(clampedPercent(row.usedPercent))}%`;
     meter.append(fill);
   }
   line.append(meter);
-  line.append(el("span", "wp", row.percentText));
+  line.append(el("span", `wp ${level}`, row.percentText));
   line.append(el("span", "wr", row.resetText));
   return line;
 }
+// 订阅段 Provider 定向刷新 (mac ProviderRefreshButton + SubscriptionRefreshControlPolicy)。
+// 目标 provider 取自运行时层附在 section 上的 `provider` (Rust runtime_core 单点归一,
+// 只对已知 provider 附加); 缺失即不渲染按钮 (fail-closed, 前端不猜测目标)。
+const SCOPED_REFRESH_ERRORS = {
+  SCOPED_REFRESH_UNAUTHORIZED: "尚未确认授权, 无法刷新订阅额度",
+  SCOPED_REFRESH_DISABLED: "该订阅未启用",
+  SCOPED_REFRESH_UNCONFIGURED: "该订阅尚未配置凭证",
+  SCOPED_REFRESH_RUNNING: "该订阅正在刷新",
+  FULL_REFRESH_RUNNING: "全量刷新进行中, 请稍后再试",
+};
+// 呈现与 mac 契约一致: 目标刷新中显示进度并禁用; 全量刷新中 / 未授权 / 未启用时禁用。
+function providerRefreshButton(section) {
+  const provider = section.provider;
+  if (!provider) return null;
+  const runtime = currentPanel?.runtime || {};
+  const refreshing = (runtime.refreshingProviders || []).includes(provider);
+  const runnable = runtime.quotaRefreshAllowed !== false
+    && (!currentSettings.enabledProviders || currentSettings.enabledProviders.includes(provider));
+  const enabled = runnable && !refreshing && runtime.phase !== "refreshing";
+  const button = el("button", refreshing ? "sub-refresh busy" : "sub-refresh");
+  button.type = "button";
+  button.disabled = !enabled;
+  button.dataset.provider = provider;
+  button.setAttribute("aria-label", refreshing ? `正在刷新 ${section.name} 订阅额度` : `刷新 ${section.name} 订阅额度`);
+  button.setAttribute("title", `只重新查询 ${section.name} 的订阅额度, 不影响其他订阅与本地统计`);
+  button.append(refreshing ? el("span", "sub-spinner") : icon("arrowClockwise", 2.1));
+  button.addEventListener("click", async (event) => {
+    event.stopPropagation?.();
+    if (button.disabled) return;
+    button.disabled = true;
+    try {
+      await invoke("refresh_subscription", { sectionId: section.id });
+    } catch (error) {
+      const code = String(error?.message || error);
+      document.getElementById("dashboard-status").textContent = SCOPED_REFRESH_ERRORS[code] || `订阅刷新失败：${code}`;
+      button.disabled = false;
+    }
+  });
+  return button;
+}
+
 // 多账号 (accounts >= 2) 与纯余额型判定, 对齐 mac SubscriptionProviderSection 的两个计算属性。
 function isMultiAccount(section) { return (section.accounts || []).length >= 2; }
 function isBalanceBased(section) {
@@ -629,28 +675,20 @@ function accountCard(account) {
 }
 function subscriptionCard(sub) {
   const card = el("div", "card");
-  const head = el("div", "card-head");
-  head.append(el("span", "card-title", "订阅用量"));
-  if (sub.updatedText) head.append(el("span", "updated", sub.updatedText));
-  head.append(el("span", "chev", "\u276F"));
-  card.append(head);
+  cardHead(card, "订阅用量", sub.updatedText ? el("span", "updated", sub.updatedText) : null);
+  // 收起态: 各 provider 一组「品牌徽章 + 5pt 迷你量条」, 量条取最紧张窗口;
+  // 纯余额型 (无窗口) 不出迷你量条 (mac collapsedMini)。
   makeCollapsible(card, () => {
-    const mini = document.createElement("span");
+    const mini = el("span", "sub-mini");
     for (const section of sub.sections) {
       const peak = collapsedPeakWindow(section);
       if (!peak) continue;
-      const group = document.createElement("span");
-      group.style.cssText = "display:flex;align-items:center;gap:5px;flex:1;min-width:0;";
-      group.append(badge(section.id, section.name));
-      const level = meterLevel(peak.usedPercent);
-      const meterEl = document.createElement("span");
-      meterEl.className = `meter ${level}`;
-      meterEl.style.cssText = "flex:1;height:5px;";
-      const fill = document.createElement("span");
+      const group = el("span", "sub-mini-group");
+      const meterEl = el("span", `meter ${meterLevel(peak.usedPercent)}`);
+      const fill = el("span");
       fill.style.width = `${Math.round(clampedPercent(peak.usedPercent))}%`;
       meterEl.append(fill);
-      group.append(meterEl);
-      void level;
+      group.append(badge(section.provider || section.id, section.name), meterEl);
       mini.append(group);
     }
     return mini;
@@ -665,13 +703,15 @@ function subscriptionCard(sub) {
       const balanceBased = isBalanceBased(section);
       const block = el("div", "sub-section");
       const h = el("div", "sub-head");
-      h.append(badge(section.id, section.name));
+      h.append(badge(section.provider || section.id, section.name));
       if (multi) {
         // mac: 多账号时名称本身就是展开开关 (名称 + chevron)
         const expanded = expandedSections.has(section.id);
         const toggle = el("button", "sub-name-toggle");
         toggle.type = "button";
-        toggle.append(el("span", "sub-name", section.name), el("span", "sub-chev", expanded ? "\u2303" : "\u2304"));
+        const chevron = el("span", expanded ? "sub-chev open" : "sub-chev");
+        chevron.append(icon("chevronDown"));
+        toggle.append(el("span", "sub-name", section.name), chevron);
         toggle.setAttribute("aria-expanded", String(expanded));
         toggle.setAttribute("aria-label", `${section.name} 账号列表`);
         toggle.addEventListener("click", () => {
@@ -687,13 +727,16 @@ function subscriptionCard(sub) {
       if (!balanceBased && section.balance) {
         const chip = el("span", "bal-chip");
         const dot = el("span", "dot");
-        dot.style.background = PROVIDER_COLORS[providerKey(section.id)] || "#8e8e93";
+        dot.style.background = PROVIDER_COLORS[providerKey(section.provider || section.id)] || "#8e8e93";
         chip.append(dot, el("b", null, section.balance.amountText));
         chip.title = section.balance.label;
         h.append(chip);
       }
       if (section.accountCountText) h.append(el("span", "acct-count", section.accountCountText));
       if (section.extraText) h.append(el("span", "sub-extra", section.extraText));
+      // 定向刷新按钮钉在头部行尾 (单/多账号位置统一), 与名称展开开关为兄弟控件
+      const refresh = providerRefreshButton(section);
+      if (refresh) h.append(refresh);
       block.append(h);
 
       if (multi) {
@@ -721,7 +764,7 @@ function subscriptionCard(sub) {
       const items = [
         { color: "#4A9E5C", text: "<50" },
         { color: "#D4A843", text: "50–79" },
-        { color: "#E44B47", text: "≥80" },
+        { color: "#D71921", text: "≥80" },
       ];
       for (const item of items) {
         const span = el("span", "thresh-item");
@@ -776,7 +819,13 @@ function detailGroup(title, bars, shadeAt) {
   return group;
 }
 
-// Nothing 风格项目统计控制台 (镜像 mac nothingProjectConsoleSection 方案 A)
+// Nothing 风格项目统计控制台 (镜像 mac nothingProjectConsoleSection 方案 A + 色系 1 翡翠绿阶):
+// P1 亮绿 (标签/名称同色), P2 翡翠绿 (名称 primary), P3 起暗薄荷绿 (名称 secondary)。
+const PROJECT_TIERS = [
+  { tag: "#30D158", name: "#30D158", bg: "rgba(48,209,88,.12)", border: "rgba(48,209,88,.35)", leader: "rgba(48,209,88,.35)" },
+  { tag: "#4A9E5C", name: "#E8E8E8", bg: "rgba(74,158,92,.10)", border: "rgba(74,158,92,.25)", leader: "rgba(74,158,92,.35)" },
+  { tag: "#2B7A42", name: "#999999", bg: "#1A1A1A", border: "#222222", leader: "rgba(43,122,66,.35)" },
+];
 function nothingProjectConsole(projects) {
   const consoleEl = el("div", "nothing-prj-console");
   const head = el("div", "prj-console-head");
@@ -785,45 +834,41 @@ function nothingProjectConsole(projects) {
     el("span", "prj-console-count", `${projects.length} WORKSPACES`)
   );
   consoleEl.append(head);
-  const colors = [
-    { tag: "#30D158", name: "#30D158", bg: "rgba(48,209,88,0.12)", border: "rgba(48,209,88,0.35)", tick: "#30D158" },
-    { tag: "#4A9E5C", name: "#FFFFFF", bg: "rgba(74,158,92,0.10)", border: "rgba(74,158,92,0.30)", tick: "#4A9E5C" },
-    { tag: "#3E7B4B", name: "#E0E0E0", bg: "rgba(62,123,75,0.08)", border: "rgba(62,123,75,0.25)", tick: "#3E7B4B" },
-    { tag: "#2F5F3A", name: "#CCCCCC", bg: "rgba(47,95,58,0.06)", border: "rgba(47,95,58,0.20)", tick: "#2F5F3A" },
-  ];
   for (const [index, bar] of projects.entries()) {
     const rowEl = el("div", "prj-console-row");
-    const c = colors[Math.min(index, colors.length - 1)];
+    const tier = PROJECT_TIERS[Math.min(index, PROJECT_TIERS.length - 1)];
+    // 6-Tick 进度格: round(share×6), 非零份额至少 1 格
     const activeTicks = Math.max(bar.share > 0 ? 1 : 0, Math.min(6, Math.round(bar.share * 6)));
 
     const tag = el("span", "prj-tag", `[P${index + 1}]`);
-    tag.style.color = c.tag;
-
-    const name = el("span", "prj-name", bar.name);
-    name.style.color = c.name;
-
+    tag.style.color = tier.tag;
+    const name = el("span", index === 0 ? "prj-name top" : "prj-name", bar.name);
+    name.style.color = tier.name;
     const leader = el("span", "prj-leader");
-    leader.style.borderColor = c.border;
-
+    leader.style.setProperty("--leader", tier.leader);
     const tokens = el("span", "prj-tokens", bar.totalText);
-
-    const badge = el("span", "prj-badge", sharePercentText(bar.share));
-    badge.style.color = c.tag;
-    badge.style.background = c.bg;
-    badge.style.borderColor = c.border;
-
+    const share = el("span", "prj-badge", sharePercentText(bar.share));
+    share.style.color = tier.tag;
+    share.style.background = tier.bg;
+    share.style.borderColor = tier.border;
     const ticks = el("span", "prj-ticks");
-    for (let t = 0; t < 6; t++) {
+    for (let t = 0; t < 6; t += 1) {
       const tick = el("span", "prj-tick");
-      tick.style.background = t < activeTicks ? c.tick : "#222222";
+      tick.style.background = t < activeTicks ? tier.tag : "#222222";
       ticks.append(tick);
     }
 
-    rowEl.append(tag, name, leader, tokens, badge, ticks);
+    rowEl.append(tag, name, leader, tokens, share, ticks);
     rowEl.setAttribute("aria-label", `${bar.name} ${sharePercentText(bar.share)} · ${bar.totalText}`);
     consoleEl.append(rowEl);
   }
   return consoleEl;
+}
+
+// agent 色: classic 取品牌色 (视图模型 colorHex), Nothing 取 5 档绿阶 (mac nothingRampHex),
+// 与 14 日点阵分段、图例色块同源。
+function agentColor(agentId, colorHex) {
+  return isNothingTheme() ? nothingRampHex(agentId) : colorHex;
 }
 
 function agentRow(row, rerender) {
@@ -831,13 +876,17 @@ function agentRow(row, rerender) {
   const expanded = expandedAgents.has(row.agentId);
   const line1 = el("div", "line1");
   const dot = el("span", "dot");
-  dot.style.background = row.colorHex;
+  dot.style.background = agentColor(row.agentId, row.colorHex);
   line1.append(dot, el("span", "an", row.name));
-  if (row.isExpandable) line1.append(el("span", "row-chev", expanded ? "\u2303" : "\u2304"));
+  if (row.isExpandable) {
+    const chevron = el("span", expanded ? "row-chev open" : "row-chev");
+    chevron.append(icon("chevronRight"));
+    line1.append(chevron);
+  }
   line1.append(el("span", "at", row.todayTotalText));
   block.append(line1);
 
-  // 24 点走势: mac 为折线 1.5pt + 渐变面积 (颜色经 currentColor 由 CSS 决定)
+  // 24 点走势: mac 为线性折线 1.5pt + 渐变面积 (颜色经 currentColor 由 CSS 决定)
   const spark = el("div", "spark");
   spark.style.setProperty("--spark-color", row.colorHex);
   spark.append(lineSpark(row.points.length ? row.points : new Array(24).fill(0), 26));
@@ -854,7 +903,7 @@ function agentRow(row, rerender) {
       }
     }
     if (expanded) block.append(detail);
-    // mac: 仅 headRow 是按钮 (图表与明细为兄弟节点), 故点击/键盘只挂行首行。
+    // mac: 整行为按钮; Windows 只在行首行挂点击, 图表区仍可悬停而不误触。
     line1.classList.add("expandable");
     line1.setAttribute("role", "button");
     line1.setAttribute("tabindex", "0");
@@ -877,14 +926,10 @@ function agentRow(row, rerender) {
 
 function hourlyCard(hourly, usage) {
   const card = el("div", "card");
-  const head = el("div", "card-head");
-  head.append(el("span", "card-title", "Agent 用量"));
-  head.append(el("span", "chev", "\u276F"));
-  card.append(head);
-  // 收起态: 12px 迷你折线 + 峰值文案 (mac collapsedMini 同结构)
+  cardHead(card, "Agent 用量", null);
+  // 收起态: 12pt 全 agent 合计迷你折线 + 峰值文案 (mac collapsedMini 同结构)
   makeCollapsible(card, () => {
-    const mini = document.createElement("span");
-    mini.className = "hourly-mini";
+    const mini = el("span", "hourly-mini");
     const points = hourly.collapsedPoints?.length ? hourly.collapsedPoints : new Array(24).fill(0);
     const chart = el("span", "mini-spark");
     chart.append(lineSpark(points, 12));
@@ -905,48 +950,39 @@ function hourlyCard(hourly, usage) {
         col.title = `${day.date}  ${day.totalText}`;
         col.append(el("div", "day-total", day.totalText));
         if (nothing) {
-          // mac Nothing 日柱: 3 列 × 8 行 = 24 格点阵 (6×6, 间隔 2), 自下而上填充;
-          // 填充格数 = max(1, round(total/maxDayTotal * 24)); 段落槽非末段至少 1 格、
-          // 末段吃掉剩余格; 退化 (无段或 filled < 段数) 时统一用 accent 单色。
+          // mac Nothing 日柱 (nothingCellSlots): 3 列 × 8 行 = 24 格点阵 (6×6, 间隔 2),
+          // 格子自上而下编号; 填充格数 = max(1, round(total/maxDayTotal × 24)), 从第
+          // 24 - filled 格起按 segments 顺序落槽 (非末段至少 1 格, 末段吃掉剩余直至末格),
+          // 故首段位于填充区顶部; 无分段或格数少于段数时退化为 accent 单色。
           const filled = Math.max(1, Math.round((day.total / maxTotal) * 24));
-          const segments = day.segments;
-          const degenerate = !segments.length || filled < segments.length;
-          const counts = [];
-          let assigned = 0;
-          segments.forEach((segment, index) => {
-            if (index === segments.length - 1) {
-              counts.push(Math.max(0, filled - assigned));
-              return;
-            }
-            const share = Math.round((segment.value / Math.max(day.total, 1)) * filled);
-            const count = Math.min(Math.max(1, share), Math.max(0, filled - assigned));
-            counts.push(count);
-            assigned += count;
-          });
-          const colors = segments.map((segment) => nothingRampHex(segment.agentId));
+          const segments = day.segments.filter((segment) => segment.value > 0);
+          const slots = new Array(24).fill(null);
+          if (!segments.length || filled < segments.length) {
+            for (let cell = 24 - filled; cell < 24; cell += 1) slots[cell] = "#4A9E5C";
+          } else {
+            let index = 24 - filled;
+            segments.forEach((segment, offset) => {
+              const count = offset === segments.length - 1
+                ? Math.max(0, 24 - index)
+                : Math.max(1, Math.round((segment.value / day.total) * filled));
+              const color = nothingRampHex(segment.agentId);
+              for (let step = 0; step < count && index < 24; step += 1) slots[index++] = color;
+            });
+          }
           const grid = el("div", "day-dots");
-          for (let cell = 0; cell < 24; cell += 1) {
+          for (const color of slots) {
             const dot = el("i");
-            if (cell >= 24 - filled) {
-              const position = 23 - cell;   // 0 = 最下一格
-              let color = NOTHING_RAMP[2];
-              if (!degenerate) {
-                let cumulative = 0;
-                for (let index = 0; index < counts.length; index += 1) {
-                  cumulative += counts[index];
-                  if (position < cumulative) { color = colors[index]; break; }
-                }
-              }
-              dot.style.background = color;
-            }
+            if (color) dot.style.background = color;
             grid.append(dot);
           }
           col.append(grid);
         } else {
+          // classic: 柱高 = 当日总量 / 14 日峰值 (--ratio), 段高按当日内份额堆叠
           const bars = el("div", "day-bars");
+          bars.style.setProperty("--ratio", (day.total / maxTotal).toFixed(4));
           for (const seg of day.segments) {
             const bar = el("div", "seg");
-            bar.style.height = `${(seg.value / maxTotal) * 100}%`;
+            bar.style.height = `${(seg.value / Math.max(day.total, 1)) * 100}%`;
             bar.style.background = seg.colorHex;
             bars.append(bar);
           }
@@ -963,8 +999,8 @@ function hourlyCard(hourly, usage) {
         for (const item of usage.legend) {
           const span = el("span");
           const sw = el("span", "sw");
-          sw.style.background = item.colorHex;
-          span.append(sw, document.createTextNode(item.name));
+          sw.style.background = agentColor(item.agentId, item.colorHex);
+          span.append(sw, el("span", null, item.name));
           legend.append(span);
         }
         body.append(legend);
@@ -973,7 +1009,6 @@ function hourlyCard(hourly, usage) {
     }
 
     const titleRow = el("div", "hourly-title-row");
-    titleRow.style.marginTop = "8px";
     titleRow.append(el("span", "sec", "逐小时"));
     titleRow.append(el("span", "range", "0 – 23 时"));
     body.append(titleRow);
@@ -992,6 +1027,7 @@ const listen = window.__TAURI__?.event?.listen || (async () => () => {});
 let currentPanel = null;
 let currentSettings = { cardOrder: ["usage", "subscription", "hourly"], providerOrder: [], usageEnabled: true };
 
+const HEALTHY_PHASES = new Set(["ok", "fresh", "idle"]);
 function statusLabel(status) {
   return { ok: "正常", fresh: "正常", refreshing: "刷新中", loading: "刷新中", partial: "部分失败", failed: "刷新失败", error: "失败", stale: "数据过期", unavailable: "不可用", idle: "等待刷新", empty: "暂无数据", authRequired: "需要授权" }[status] || status;
 }
@@ -999,7 +1035,12 @@ function renderStatus(panel) {
   const runtime = panel.runtime || {};
   const diagnostics = panel.diagnostics || [];
   const phase = runtime.phase || (panel.usage || panel.subscription ? "fresh" : "empty");
-  document.getElementById("runtime-status").textContent = statusLabel(phase);
+  // mac Header 恒显 SYS.OK; Windows 保留显式运行态 (C009): 健康时与 mac 同字,
+  // 其余状态 (刷新中 / 失败 / 过期 …) 在同一小牌内直出中文并以告警色区分。
+  const healthy = HEALTHY_PHASES.has(phase);
+  const badge = document.getElementById("runtime-status");
+  badge.textContent = healthy ? "SYS.OK" : statusLabel(phase);
+  badge.classList.toggle("degraded", !healthy && phase !== "refreshing" && phase !== "loading");
   const details = [runtime.error];
   if (runtime.lastSuccessAt) details.push(`上次成功 ${runtime.lastSuccessAt}`);
   if (!panel.usage && !panel.subscription && !panel.hourly) details.push("暂无采集数据，可刷新或检查设置。");
@@ -1015,14 +1056,22 @@ function renderStatus(panel) {
       host.append(el("div", "note-line", `${identity ? `${identity}: ` : ""}${message}`));
     }
   }
-  document.getElementById("refresh").disabled = phase === "refreshing" || phase === "loading";
+  const refreshing = phase === "refreshing" || phase === "loading";
+  const refresh = document.getElementById("refresh");
+  refresh.disabled = refreshing;
+  refresh.classList.toggle("spinning", refreshing);
 }
 function render(panel) {
   if (!panel || typeof panel !== "object") throw new Error("看板数据不可用");
   currentPanel = panel;
   const activeCount = panel.hourly?.rows.filter(r => r.todayTotal > 0).length || 0;
   document.getElementById("hud-dot-wrap").classList.toggle("live", Boolean(panel.usage?.isLive));
-  document.getElementById("hud-agents").textContent = activeCount > 0 ? `● ${activeCount} AGENTS ACTIVE` : "STANDBY";
+  // mac dashboardTopHeader: classic「● N AGENTS ACTIVE」/ Nothing「N AGENTS RUNNING」/ 无活跃 STANDBY
+  const agents = document.getElementById("hud-agents");
+  agents.textContent = activeCount > 0
+    ? (isNothingTheme() ? `${activeCount} AGENTS RUNNING` : `● ${activeCount} AGENTS ACTIVE`)
+    : "STANDBY";
+  agents.classList.toggle("standby", activeCount === 0);
   renderStatus(panel);
   const stack = document.getElementById("stack");
   stack.replaceChildren();
@@ -1058,7 +1107,9 @@ function render(panel) {
   }
 }
 function showError(error) {
-  document.getElementById("runtime-status").textContent = "失败";
+  const badge = document.getElementById("runtime-status");
+  badge.textContent = "失败";
+  badge.classList.add("degraded");
   document.getElementById("dashboard-status").textContent = String(error);
 }
 document.getElementById("refresh").addEventListener("click", async () => {

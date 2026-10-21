@@ -10,9 +10,6 @@
   <div id="settings-app" class="settings-layout">
     <!-- Fluent 侧边栏: WinUI NavigationView 1:1 对齐 mac SettingsView -->
     <nav id="settings-nav" class="sidenav" aria-label="设置导航">
-      <div class="nav-header">
-        <span class="nav-brand">Bruce 设置</span>
-      </div>
       <div class="nav-list">
         <button type="button" class="navitem active" data-category="general">
           <svg class="ic" viewBox="0 0 24 24"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
@@ -39,7 +36,8 @@
           <span class="nav-text">维护</span>
         </button>
       </div>
-      <div class="nav-foot">Bruce · 本地优先监控</div>
+      <!-- mac sidebar 底部: 当前版本号 (10.5pt tertiary) -->
+      <div id="nav-version" class="nav-foot"></div>
     </nav>
 
     <!-- 分隔发线 -->
@@ -48,6 +46,8 @@
     <!-- 右侧内容面板主区域 -->
     <main id="content-wrap" class="content-wrap">
       <div class="content-scroll">
+        <!-- 状态行 (mac settingsErrorMessage 位置): 设置即时生效, 无全局保存栏 (C069) -->
+        <div id="settings-status" class="settings-status" role="status"></div>
         <header class="pane-header">
           <div id="crumb" class="crumb">设置 / 通用</div>
           <h1 id="pane-title" class="pane-title">通用</h1>
@@ -84,11 +84,6 @@
         </section>
       </div>
 
-      <!-- 全局动作底栏 -->
-      <footer class="pane-footer">
-        <button type="button" id="settings-save" class="btn primary">保存设置</button>
-        <span id="settings-status" role="status" class="status-msg"></span>
-      </footer>
     </main>
   </div>
   <script src="provider-brand.js"></script>

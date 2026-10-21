@@ -11,10 +11,13 @@
 <body>
 <script type="module">
 // 设置窗口渲染自检 harness: 载入真实 settings.html body 标记 + settings.js + styles.css。
-const [html, fixture] = await Promise.all([
+const [html, fixture, analytics] = await Promise.all([
   fetch("/apps/win/src/settings.html").then((r) => r.text()),
   fetch("/tests/fixtures/viewmodel-parity/agent-usage-valid.panel.json").then((r) => r.json()),
+  // 工作台 (C070): mac 产出、Rust 对拍锁定的 golden, 按范围索引
+  fetch("/tests/fixtures/viewmodel-parity/agent-usage-workbench.analytics.json").then((r) => r.json()),
 ]);
+const analyticsByRange = Object.fromEntries(analytics.map((snapshot) => [snapshot.range, snapshot]));
 
 const settings = {
   refreshIntervalSecs: 1800, notificationsEnabled: true, theme: "fluent",
@@ -31,7 +34,7 @@ const callLog = [];
 window.__calls = callLog;
 async function invoke(command, args) {
   callLog.push([command, args]);
-  if (command === "export_billing" || command === "export_diagnostics") {
+  if (["export_billing", "export_diagnostics", "export_workbench_csv", "export_workbench_json"].includes(command)) {
     // 回显导出落点: 有对话框选定路径则用它, 否则给默认导出目录 (便于自检核对链路)
     return { path: args?.path || "C:\\Users\\sivan\\AppData\\Roaming\\Bruce\\exports\\default.csv" };
   }
@@ -53,6 +56,7 @@ async function invoke(command, args) {
   if (command === "get_credential_fields") return ["codexQuotaAccounts", "clineQuotaAccounts"];
   if (command === "get_credential_accounts") return structuredClone(accounts);
   if (command === "get_dashboard") return structuredClone(fixture);
+  if (command === "get_usage_analytics") return structuredClone(analyticsByRange[args.range] ?? null);
   return null;
 }
 async function listen(name, callback) { listeners.set(name, [...(listeners.get(name) || []), callback]); return () => {}; }
