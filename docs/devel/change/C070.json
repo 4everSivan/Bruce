@@ -1,0 +1,172 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C070",
+  "title": "Agent 用量工作台改为真实数据: 采集端输出逐日/逐月/今日逐小时 × 模型 token 桶与计价, mac 与 Windows 去除全部估算并以 golden 对拍",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C067-win-mac-visual-parity",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector + apps/macos + apps/win",
+    "component": "collector-domain / collector-aggregate / collector-local / BruceAppCore ModelNormalizer & analytics / Windows viewmodel analytics & 工作台",
+    "design_doc": "docs/devel/design/06-Agent用量分析与Token统计工作台.md",
+    "design_topic": "AgentAnalytics"
+  },
+  "why": "工作台数值多为估算 (见 design 06 §4.2): mac 今日逐小时固定 42/18/40 拆分、时序与 KPI 费用按 $2.8/1M 平价折算、轮交互 = Agent × 12、缓存节省 90%+$3/1M 兜底、7/30 天模型构成按当月比例缩放、构成四象限输出 = 总量/5 与缓存写入 = 缓存读取/4、多日缓存命中恒为 0、模型归并子串别名误并不同型号; Windows 只用看板 14 日数据 (近 30 天实为 ≤14 天) 且费用 ×¥15.2/1M、缓存命中写死 21.0%。根因是 artifact 缺少逐日模型构成与按桶计价; 另发现采集端价格前缀匹配遍历 HashMap 取首个命中, 跨进程结果不确定。用户已拍板: 双端改真实数据, 并扩展采集端输出 (接受缓存格式升级后全量重扫一次)。",
+  "precheck": {
+    "description": "嗅探: mac 分析代码存在固定估算常数, Windows 工作台存在硬编码乘数",
+    "command": "grep -n '0.0000028\\|0.42)\\|\\* 12' apps/macos/Sources/BruceAppCore/ModelNormalizer.swift apps/macos/Sources/BruceAppCore/AppModel.swift; grep -n '15.2\\|16.5\\|21.0%' apps/win/src/settings.js",
+    "expected": "两处均命中",
+    "is_completed": true,
+    "evidence": "代码审阅确认: ModelNormalizer.buildTimelinePoints 的 0.42/0.18/0.40 与 0.0000028/0.0000027、AppModel.analyticsKPISummary 的 0.0000028 兜底与 totalTurns = activeAgentsCount * 12、TokenCompositionCard 的 totalTokens / 5 与 cacheReadTokens / 4; settings.js renderAgentUsageWorkbench 的 ×15.2 / ×16.5 与 \"21.0%\""
+  },
+  "callback": {
+    "before": [
+      "git checkout fix/C067-win-mac-visual-parity"
+    ],
+    "after": [
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "cargo test --manifest-path apps/win/viewmodel/Cargo.toml",
+      "swift run --package-path apps/macos PanelViewModelHarness",
+      "swift run --package-path apps/macos PanelParityHarness <repoRoot>",
+      "node scripts/check-win-frontend.mjs",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "path": "core/collector/crates/collector-domain/src/lib.rs",
+      "summary": "UsageContribution 新增 models_by_day (近 DETAIL_DAYS=31 天) / hour_models_today; DailyUsage 补 cacheRead/cacheCreation; AgentUsage 新增 dailyModels / monthModels / hourModels"
+    },
+    {
+      "path": "core/collector/crates/collector-domain/src/pricing.rs",
+      "summary": "best_prefix_match 确定性最长前缀; calculate_cache_savings"
+    },
+    {
+      "path": "core/collector/crates/collector-aggregate/src/lib.rs",
+      "summary": "finalize 输出逐日缓存拆分与三类明细桶, 每桶计价"
+    },
+    {
+      "path": "core/collector/crates/collector-local/src/lib.rs",
+      "summary": "AGGREGATION_VERSION=3; CompactContribution 持久化明细桶"
+    },
+    {
+      "path": "core/collector/schemas/artifacts/agent-usage-v1.schema.json",
+      "summary": "daily 缓存拆分与 dailyModel / monthModel / hourModel 定义"
+    },
+    {
+      "path": "apps/macos/Sources/BruceAppCore/WorkbenchAnalytics.swift",
+      "summary": "新增: 工作台唯一计算入口 (KPI / 模型归并 / 时序 / Agent 对比 / 今日 24h), 零估算"
+    },
+    {
+      "path": "apps/macos/Sources/BruceAppCore/ModelNormalizer.swift",
+      "summary": "重写: 规范键只收敛同型号写法, 展示名 / 厂商取目录精确命中; 移除别名表与估算时序"
+    },
+    {
+      "path": "apps/macos/Sources/BruceAppCore/AnalyticsModels.swift",
+      "summary": "AnalyticsKPISummary 去估算 (费用标签 / 缓存拆分可用性 / 最活跃 Agent); AnalyticsTimeline; AnalyticsFormat"
+    },
+    {
+      "path": "apps/macos/Sources/BruceAppCore/ArtifactModels.swift",
+      "summary": "解码新字段 (可选, 兼容旧 artifact)"
+    },
+    {
+      "path": "apps/macos/Sources/BruceAppCore/AppModel.swift",
+      "summary": "四个估算分析函数合并为 analyticsSnapshot(range:)"
+    },
+    {
+      "path": "apps/macos/Sources/BruceApp/Settings/AgentUsageWorkbenchView.swift",
+      "summary": "改用快照; KPI 费用标签与最活跃 Agent; CSV 未定价留空"
+    },
+    {
+      "path": "apps/macos/Sources/BruceApp/Settings/TokenCompositionCard.swift",
+      "summary": "四象限取真实输入/输出/缓存读写; 24h 标注为今日"
+    },
+    {
+      "path": "apps/macos/Sources/BruceApp/Settings/AgentComparisonMatrixCard.swift",
+      "summary": "项目分布标注为今日"
+    },
+    {
+      "path": "apps/macos/Tests/Harnesses/PanelViewModelHarness/PanelViewModelHarness.swift",
+      "summary": "别名 / 周分桶 / 平价测试替换为规范键与真实桶契约 (5 项)"
+    },
+    {
+      "path": "apps/macos/Tests/Harnesses/PanelParityHarness/PanelParityHarness.swift",
+      "summary": "产出工作台 golden (*.analytics.json, 新旧 artifact × 5 范围)"
+    },
+    {
+      "path": "tests/fixtures/artifacts/agent-usage/workbench.json",
+      "summary": "新增: 新版 artifact fixture (40 天 / 跨 3 个月 / 未定价模型 / 跨渠道归并)"
+    },
+    {
+      "path": "tests/fixtures/viewmodel-parity/agent-usage-{workbench,valid}.analytics.json",
+      "summary": "新增: mac 产出的工作台 golden"
+    },
+    {
+      "path": "apps/win/viewmodel/src/analytics.rs",
+      "summary": "新增: WorkbenchAnalytics / ModelNormalizer 的 Rust 逐条镜像"
+    },
+    {
+      "path": "apps/win/viewmodel/src/model_catalog.rs",
+      "summary": "由 src-tauri 迁入 (工作台展示名 / 厂商共用)"
+    },
+    {
+      "path": "apps/win/viewmodel/tests/analytics_parity.rs",
+      "summary": "新增: 对 mac golden 逐字段对拍 (含浮点位)"
+    },
+    {
+      "path": "apps/win/src-tauri/src/runtime_core.rs",
+      "summary": "usage_analytics (与看板同一本机会话开关) / workbench_csv"
+    },
+    {
+      "path": "apps/win/src-tauri/src/lib.rs",
+      "summary": "命令 get_usage_analytics / export_workbench_csv / export_workbench_json"
+    },
+    {
+      "path": "apps/win/src-tauri/tests/workbench_analytics_coverage.rs",
+      "summary": "新增: 门控与 CSV 列契约"
+    },
+    {
+      "path": "apps/win/src/settings.js",
+      "summary": "工作台按 mac 卡片重做, 移除 ×15.2 / ×16.5 / 21.0% 与前端模型别名"
+    },
+    {
+      "path": "apps/win/src/styles.css",
+      "summary": "PART 4 工作台样式按 SettingsDemoTokens 重写"
+    },
+    {
+      "path": "apps/win/tests/frontend.test.mjs, apps/win/tests/dom.mjs, apps/win/tests/render-harness/settings-harness.html",
+      "summary": "工作台测试改为渲染真实 golden"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/06-Agent用量分析与Token统计工作台.md",
+    "topic": "AgentAnalytics",
+    "modified": true,
+    "rule_diff": {
+      "before": "ModelNormalizer 以子串别名表跨型号归并; 工作台费用/构成/时序在缺数据时按固定比例或平均单价估算",
+      "after": "规范键只收敛同型号写法; 采集端逐桶计价 (最长前缀匹配确定), artifact 新增 dailyModels / monthModels / hourModels 与逐日缓存拆分; 工作台零估算, 缺数据显示「—」; 全部历史以月为粒度; Windows 以 mac golden 对拍"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "local/c070-verify.log (2026-10-21, zsh scripts/verify-local.sh exit 0)",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      "zsh scripts/verify-local.sh: exit 0 —— Rust 3 个 manifest fmt / test / clippy -D warnings 通过 (38 组 324 项, 0 失败); 前端 51/51, geometry 2/2; Swift 全部 Harness 通过 (PanelViewModel 60)",
+      "PanelParityHarness: 工作台分析 workbench / valid 与 Panel valid / partial / empty 共 5 份 golden 对拍通过",
+      "apps/win/viewmodel tests/analytics_parity.rs: Rust 与 mac golden 逐字段 (含浮点位) 一致, 5 个范围 × 新旧两份 artifact; 变异测试 (时序费用 ×1.000000001) 报 55 处差异, 确认对拍有效",
+      "PanelViewModelHarness 新契约 5 项: 规范键不跨型号别名; 今日 / 多日 / 本月跨月边界取真实桶; 旧 artifact 一律「—」",
+      "collector: workbench_detail_buckets_are_real_bounded_and_priced / compact_cache_round_trips_workbench_detail_buckets / 价格最长前缀确定性测试通过; 本机真实数据 (隔离 HOME) 月桶合计 = daily 合计, 近 31 天日桶合计 = daily 合计",
+      "渲染核对: Windows render-harness 与 mac ImageRenderer 对同一 fixture 并排比对 (local/win-mac-parity/c070/), 7d 与今日两个范围数值与卡片结构一致; 修正 Windows 时序 x 轴为分带刻度 (原末标签溢出)"
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  }
+}

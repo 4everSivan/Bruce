@@ -1,0 +1,92 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C069",
+  "title": "Windows 设置窗口改为即时生效 (对齐 mac SettingsView), 移除全局「保存设置」并按采集输入变化门控全量采集",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C067-win-mac-visual-parity",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win",
+    "component": "settings.js / save_settings_command / settings::requires_collection",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "mac 设置窗口每个控件即时生效 (coordinator setter), Windows 仍需底部「保存设置」统一提交, 行为与观感均不一致; 同时 save_settings_command 每次保存都触发一次全量采集 —— 若简单改为即时保存, 连续切换主题/顺序/开关会触发一串全量扫描。另发现授权页「Agent 用量」开关只回显状态、切换不触发任何动作。",
+  "precheck": {
+    "description": "嗅探: 设置窗口存在全局保存按钮, 后端每次保存都请求采集",
+    "command": "grep -n 'settings-save' apps/win/src/settings.html; grep -n 'request_manual_refresh' apps/win/src-tauri/src/lib.rs",
+    "expected": "命中保存按钮; save_settings_command 内无条件 request_manual_refresh",
+    "is_completed": true,
+    "evidence": "改动前代码审阅确认: settings.html 底栏 #settings-save; lib.rs save_settings_command 末尾无条件 request_manual_refresh(); settings.js 中 #setting-usage-consent 无事件绑定"
+  },
+  "callback": {
+    "before": [
+      "git checkout fix/C067-win-mac-visual-parity"
+    ],
+    "after": [
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "node --test apps/win/tests/frontend.test.mjs",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "设置前端 (settings.js / settings.html)",
+      "before": "控件改动停留在页面, 需点「保存设置」整表提交; 授权页开关无绑定",
+      "after": "persist(patch) 串行队列: 每次基于后端最新设置合并本次改动后保存, 失败回滚控件并在顶部状态行以告警色提示 (如热键冲突); 界面风格 / 刷新间隔 (分段)、系统通知 (含 mac「已开启/已关闭」状态字)、热键 (录制完成 / 清除 / 失焦即存)、卡片与 Provider 上移下移、Provider 启用开关、本机会话开关、授权开关 (切换即确认/撤销授权) 全部即时生效; 移除底部保存栏, 状态行移至内容区顶部",
+      "impact": "与 mac SettingsView 交互一致"
+    },
+    {
+      "scope": "save_settings_command / settings::requires_collection (Rust)",
+      "before": "每次保存无条件 request_manual_refresh",
+      "after": "仅当授权、本机会话开关、启用 Provider 集合、价格覆盖或刷新间隔变化时请求全量采集; 主题 / 顺序 / 通知 / 热键 / 面板位置只重新发布看板",
+      "impact": "即时保存不会引发采集风暴"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "设置窗口保留全局保存栏 (mac 为即时生效, 属已知行为差异)",
+      "after": "设置窗口即时生效 (规则 15): 串行合并保存、失败回滚、仅采集输入变化触发全量采集"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "RUN-20261021-C069-VERIFY",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "settings_coverage + 前端用例全绿且 verify-local 退出码 0",
+        "false_if": "任何失败",
+        "evidence": "zsh scripts/verify-local.sh Exit Code 0 (local/c068-c069-verify.log, 2026-10-21, 含 C067/C068/C069 全部改动): Rust 36 组 test result 全 ok / 0 FAILED, fmt + clippy -D warnings 通过, frontend.test.mjs 49/49 + geometry-parity 2/2, Swift 全部 Harness 与 PanelParityHarness 对拍通过; 唯一 warning 为本机 ~/.cargo/config.toml 未用键, 与改动无关。 针对性用例: settings_coverage.rs requires_collection (采集输入 5 类触发 / 展示偏好 6 类不触发 / 启用集合仅顺序变化不触发); frontend.test.mjs 改写 4 条 + 新增 1 条 (分段即存、热键 change 即存、单开关合并最新设置不吞价格覆盖、授权开关、非法覆盖拦截并回滚、热键冲突回滚、失败开关回滚、并发操作串行合并各存一次)。",
+        "result": true
+      },
+      {
+        "item": "并排渲染实测",
+        "true_if": "设置窗口无保存栏、状态字与 mac 一致",
+        "false_if": "布局破损",
+        "evidence": "real/after5/settings-general-c069.png: 无底部保存栏, 系统通知开关旁「已开启」; 980×620 最小尺寸无行溢出。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "价格校准 / 授权 / 导出等既有即时动作不受影响",
+        "false_if": "回归",
+        "evidence": "model pricing pane / consent / exports / maintenance 既有用例全绿; persistOverrides 改走同一串行队列。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  }
+}

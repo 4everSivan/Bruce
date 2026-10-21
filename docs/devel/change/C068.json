@@ -1,0 +1,112 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C068",
+  "title": "Windows 订阅卡 Provider 定向刷新 (对齐 mac ProviderRefreshButton) 并补齐 Cline 凭证注入",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C067-win-mac-visual-parity",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win",
+    "component": "scheduler / collector / runtime_core / DashboardRenderer",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "mac 订阅卡每个 Provider 头部行尾有定向刷新按钮 (RefreshScheduler.refreshSubscription: 只重新查询该 Provider 额度, 不重扫本机会话), Windows 后端只有全量 refresh_now, C067 只能暂不渲染该按钮。核对采集请求时另发现 collector::build_configured_request 的 provider→凭证字段表漏了 cline: 设置页可保存 Cline 凭证, 采集请求却从不携带, Windows 看板永远拿不到 Cline 额度 (与 mac ProviderRegistry 注入表不一致)。",
+  "precheck": {
+    "description": "嗅探: Windows 无定向刷新命令, 且凭证字段表无 cline 分支",
+    "command": "grep -n 'refresh_subscription' apps/win/src-tauri/src/lib.rs || echo NO_SCOPED_COMMAND; grep -n '\"cline\" =>' apps/win/src-tauri/src/collector.rs || echo NO_CLINE_FIELD",
+    "expected": "NO_SCOPED_COMMAND 与 NO_CLINE_FIELD",
+    "is_completed": true,
+    "evidence": "改动前通过代码审阅确认 (未单独执行该嗅探命令): lib.rs invoke_handler 仅注册 refresh_now, 无定向刷新命令; collector.rs build_configured_request 的 match 表含 kimi/deepseek/volcengine/zhipu/claude/grok/opencodeGo/codex/stepfun 九家, 无 cline 分支 (落入 `_ => continue`)"
+  },
+  "callback": {
+    "before": [
+      "git checkout fix/C067-win-mac-visual-parity"
+    ],
+    "after": [
+      "cargo fmt --manifest-path apps/win/src-tauri/Cargo.toml --all -- --check",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "cargo clippy --manifest-path apps/win/src-tauri/Cargo.toml --all-targets -- -D warnings",
+      "node --test apps/win/tests/frontend.test.mjs",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "collector (Rust)",
+      "before": "build_configured_request 内联 9 家 provider→字段 match, 缺 cline; 无定向请求",
+      "after": "quota_credential_field 单表 (10 家含 cline, 测试锁定与 settings::PROVIDERS 及 Bridge 白名单一致); build_scoped_request / run_scoped_collection: 只装配目标凭证 (Claude/Grok 含 OAuth 与 providerMeta), capabilities 仅 externalQuotas, 标记 subscriptionQuotaOnly / subscriptionProviders, 不带 days / pricingOverrides; 未授权 / 未知 / 未启用 / 无凭证 fail-closed",
+      "impact": "Cline 额度在 Windows 首次被查询; 定向刷新不触发本机会话扫描"
+    },
+    {
+      "scope": "runtime_core 快照合并 (Rust)",
+      "before": "只有全量 merge_snapshot",
+      "after": "merge_scoped_snapshot (mac ScopedQuotaSnapshotMerger 同语义: 保留 agents / totalCostUsd / 非目标 services; 目标成功 fresh、失败借合格旧窗口 stale、无历史 unavailable; 已断开账号不复活); SnapshotState::apply_scoped_response 不改全局 phase / lastSuccessAt / 诊断, Bridge 整体失败只把目标降级 stale; provider_of_id 统一 section/service ID 归一",
+      "impact": "定向刷新不会把一次失败的全量采集伪装成成功"
+    },
+    {
+      "scope": "scheduler / Tauri 命令",
+      "before": "—",
+      "after": "refresh_subscription(section_id) 命令: 后端归一 provider 并做授权/启用/全量刷新中校验; collection 互斥锁让全量周期与定向刷新串行, refreshing_providers 集合经 panel.runtime.refreshingProviders 与 quotaRefreshAllowed 下发; 定向刷新属手动操作, 不投递配额预警",
+      "impact": "快照写入不交错; 前端可按 mac 契约呈现按钮状态"
+    },
+    {
+      "scope": "看板前端",
+      "before": "订阅段无刷新按钮",
+      "after": "每个可识别 Provider 头部行尾渲染 arrow.clockwise 按钮 (14×14, secondary): 目标刷新中进度环 + 禁用 +「正在刷新 X 订阅额度」; 全量刷新中 / 未授权 / 未启用禁用 (45% 透明); 未知 provider 不渲染; 与多账号展开开关为兄弟控件; 后端拒绝时在状态行给出可读提示且不把整体运行态标为失败",
+      "impact": "与 mac SubscriptionCard 头部行一致"
+    },
+    {
+      "scope": "运行时层 section provider 键 (追加)",
+      "before": "前端 app.js 镜像 Rust 的 ID 前缀规则与 provider 清单判定刷新目标; 徽章按 id.split('_')[0] 取色, opencode_go_* 落空为灰底无图形",
+      "after": "runtime_core::panel_json 为已知 provider 的订阅 section 附加 provider 键 (provider_of_id 单点归一, 未知不附), 前端刷新按钮与徽章只读该键; 不进入 mac 对拍契约",
+      "impact": "provider 清单与前缀规则只剩 Rust 一处; OpenCode GO 徽章恢复品牌色与图形"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "订阅段定向刷新按钮依赖单 provider 刷新命令, Windows 后端尚无该能力, 暂不渲染 (C067 规则 13 刻意保留差异); Provider 注册表三处事实源",
+      "after": "Windows 具备 refresh_subscription 定向刷新 (规则 14), 订阅段与 mac 同样渲染定向刷新按钮; Provider 注册表增为四处事实源 (新增 collector::quota_credential_field); 前端不再镜像 provider 清单/前缀规则, 由运行时层附 section.provider"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "RUN-20261021-C068-VERIFY",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "scoped_refresh_coverage.rs 10/10 全绿且 verify-local 退出码 0",
+        "false_if": "任何失败",
+        "evidence": "zsh scripts/verify-local.sh Exit Code 0 (local/c068-c069-verify.log, 2026-10-21, 含 C067/C068/C069 全部改动): Rust 36 组 test result 全 ok / 0 FAILED, fmt + clippy -D warnings 通过, frontend.test.mjs 49/49 + geometry-parity 2/2, Swift 全部 Harness 与 PanelParityHarness 对拍通过; 唯一 warning 为本机 ~/.cargo/config.toml 未用键, 与改动无关。 针对性用例: tests/scoped_refresh_coverage.rs 10 条 (凭证字段表覆盖全部 PROVIDERS、Cline 注入、定向请求形态、fail-closed 四种拒绝、section ID 归一、合并成功/失败/无历史、全局状态不变、section.provider 附加); frontend.test.mjs C068 4 条 (按钮渲染与调用、呈现策略、未知 section fail-closed 且不触发多账号展开、拒绝提示)。",
+        "result": true
+      },
+      {
+        "item": "并排渲染实测",
+        "true_if": "订阅段行尾按钮位置与 mac 一致",
+        "false_if": "错位或溢出",
+        "evidence": "real/after5/cmp-nothing-sub.png: Nothing 主题下 Z.ai / Claude / StepFun / Cline / DeepSeek / ChatGPT 头部行尾 ↻ 与 mac 位置一致。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "全量刷新链路与快照语义不变",
+        "false_if": "破坏既有刷新/快照",
+        "evidence": "run_refresh_with_kind 仅新增 collection 互斥锁; 既有 runtime_coverage / scheduler_collector_coverage 用例全绿; panel_json 仅在运行时层追加 section.provider, mac 对拍 golden 不变 (PanelParityHarness 通过)。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  }
+}

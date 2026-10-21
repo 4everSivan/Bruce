@@ -1,0 +1,123 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C067",
+  "title": "Windows 看板与设置窗口按 mac 源码逐项对齐：修复无效 font 简写/日柱零高/热力图例无色等渲染缺陷，B 级 token 格式化，设置窗口不再套用 Nothing",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C067-win-mac-visual-parity",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win",
+    "component": "DashboardRenderer / SettingsWindow / viewmodel::format",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "用户反馈 Windows 看板 (Token 用量 / 订阅用量 / Agent 用量) 与设置窗口观感和 mac 差异巨大。以 mac SwiftUI 卡片视图离屏渲染 (ImageRenderer) 与 Windows 前端真实内核渲染 (render-harness) 在同一份 artifact 上并排比对，定位到的根因并非单纯配色，而是多处渲染缺陷与偏离 mac 源码的自创形态：(1) `.card-title` / `.tier-seg button` / `.pbadge` 使用 `font: … inherit` 简写 —— `inherit` 不能出现在 font 简写里，整条声明被浏览器丢弃，卡片标题失去 12.5pt 半粗、模型档位按钮回落到 UA 13.33px；(2) 14 日柱的 `.day` 在 `align-items: flex-end` 下高度由内容决定，`.day-bars { flex: 1 }` 恒为 0 高，Fluent 下柱体完全不可见只剩悬空数字；(3) 热力图例 `.heat-legend .sw.lN` 无配色规则，图例色块全透明；(4) 卡片头部状态件 (LIVE / 最后更新) 紧贴标题而非右对齐，收起态迷你摘要另起一行而非嵌入标题行；(5) Rust `token_count` 缺少 B 档且只裁剪 `.0`，≥1B 数值显示为 6235.9M (mac 为 6.24B)；(6) Nothing 主题下 `--accent` 为红色，当月/选中月份标签与 hero 等被染红 (mac 为 #4A9E5C 绿)，热力图沿用 Fluent 绿阶而非 accent 透明度阶，量条阈值红 #E44B47 偏离 mac #D71921，hero 叠加 radial 点阵遮罩 + 48px (mac Doto 52pt 纯色)，品牌徽章仍为品牌色实底 (mac Nothing 为 16% 品牌色底 + 品牌色图形)；(7) mac 设置窗口恒用 SettingsDemoTokens Fluent 平面 token，不随界面风格切换，而 Windows 在 Nothing 下把设置窗口与 T07 工作台整体改成纯黑 + 红色主按钮 + 黑白开关 (C066 自创，mac 不存在该形态)。",
+  "precheck": {
+    "description": "缺陷复现嗅探：styles.css 存在 `font: … inherit` 无效简写，且 Rust token_count 无 B 档",
+    "command": "grep -nE 'font: [0-9]+ [0-9.]+px/[0-9.]+ inherit' apps/win/src/styles.css; grep -c '\"B\"\\|}B' apps/win/viewmodel/src/format.rs",
+    "expected": "命中 3 处 inherit 简写；format.rs B 档计数为 0",
+    "is_completed": true,
+    "evidence": "styles.css:245 `.card-title { font: 600 12.5px/1.3 inherit }`、:331 `.tier-seg button { font: 600 9px/1 inherit }`、:367 `.pbadge { font: 700 9px/1 inherit }` 三处命中；format.rs 无 B 档 (真实快照渲染出 6235.9M / 6748.2M，mac 为 6.24B / 6.75B)。并排截图证据: local/win-mac-parity/real/before/cmp-*.png"
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C067-win-mac-visual-parity 2>/dev/null || git checkout fix/C067-win-mac-visual-parity"
+    ],
+    "after": [
+      "node scripts/check-win-frontend.mjs",
+      "node --test apps/win/tests/frontend.test.mjs apps/win/tests/geometry-parity.test.mjs",
+      "cargo test --manifest-path apps/win/viewmodel/Cargo.toml",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "渲染缺陷 (styles.css / app.js)",
+      "before": "`.card-title` / `.tier-seg button` / `.pbadge` 使用 `font: … inherit` 无效简写被整条丢弃；`.daily-chart .day` 由内容定高致 `.day-bars { flex:1 }` 恒为 0 高；`.heat-legend .sw.lN` 无配色",
+      "after": "逐项声明字体并以 frontend.test.mjs 断言禁止混写 inherit；日柱 `.day` 撑满 68 高，柱高 = (100% - 标注行) × 当日/峰值 (`--ratio`)，段按日内份额堆叠、柱宽约日槽 72%；图例与收起态迷你条共用 `.lN` 档位色",
+      "impact": "Fluent 下 Agent 用量 14 日柱重新可见；标题/档位按钮字号字重与 mac 一致"
+    },
+    {
+      "scope": "看板结构 (CollapsibleCardHeader / Header / 底栏 / 模型用量)",
+      "before": "状态件 (LIVE / 最后更新) 紧贴标题；收起态摘要另起一行；拖拽手柄位于行尾；Header 中部显示中文运行态；模型用量另有「展开全部 N 项」文本行；底栏为 ⟳ ⚙ ⏻ Unicode 字符",
+      "after": "标题行 `[手柄][定宽标题][行尾状态件|迷你摘要][chevron]`；Header `[灯 品牌 SYS.OK] … [N AGENTS ACTIVE/RUNNING]`，非健康态在 SYS.OK 小牌内显式中文并标告警色；模型用量由标题旁 chevron 切换前 3/全部；底栏为自绘 arrow.clockwise / gearshape / power 线性图标，刷新中旋转",
+      "impact": "看板版式与 mac MenuBarDashboardView 同构"
+    },
+    {
+      "scope": "数值 token (Fluent = mac classic dark / Nothing = isNothing dark)",
+      "before": "classic 卡片描边白 10% + 顶部高光、面板圆角 16、量条高 6 带外发光、走势线 Catmull-Rom 平滑；全局行高 normal；CSS border 叠加在 mac 等价内边距之外",
+      "after": "描边白 24%、无高光、面板圆角 22；量条高 5 / 圆角 3 / mac 三档渐变；走势线 mac LineMark 线性折线；系统字体行高 1.2、Nothing 字体行高取自身度量；带边框组件 padding 扣除边框 (等价 mac overlay strokeBorder)",
+      "impact": "同一 artifact 下与 mac 离屏渲染逐区块对齐 (垂直偏差 ≤ 约 2pt/区块)"
+    },
+    {
+      "scope": "Nothing 主题",
+      "before": "`--accent` 覆写为红，当月月份/档位等被染红；热力图沿用 classic 绿阶；hero 48px 叠加 radial 点阵遮罩；容器级换 Space Grotesk；徽章为品牌色实底；阈值红 #E44B47；走势线 #4A9E5C；点阵日柱首段在底；Header 状态灯方块化",
+      "after": "强调色取 hero accent #4A9E5C；热力图 accent 透明度五阶 + 错相位呼吸；hero Doto 52 纯色 + 呼吸光晕；只在 mac 指定元素上换字体；徽章品牌色 16% 底 + 品牌色图形 (深色品牌退回 #999)；阈值红 #D71921；走势线 heroGreen #30D158；点阵日柱按 mac nothingCellSlots 段序 (首段在顶)；Header 状态灯为圆点 (卡内 LIVE 仍为方点)",
+      "impact": "与用户日常使用的 mac Nothing 深色观感一致"
+    },
+    {
+      "scope": "viewmodel::format::token_count (Rust)",
+      "before": "≥1B 仍走 M 档 (6235.9M)，trim_decimal 只裁 `.0`",
+      "after": "补齐 B 档两位小数 (6.24B)，trim_decimal 与 mac 一致裁剪全部末尾 0",
+      "impact": "半年合计 / 月度 chip / 模型总量等大数值与 mac 同文案；fixture golden 不受影响 (数值 <1B)"
+    },
+    {
+      "scope": "设置窗口",
+      "before": "Nothing 下设置窗口与 T07 工作台整体纯黑 + 红色主按钮 + 黑白开关 (C066 自创)；侧栏带「Bruce 设置」标题，分组标题在卡片内；界面风格/刷新间隔为下拉框",
+      "after": "设置窗口恒为 Fluent 平面 token (mac SettingsDemoTokens)，界面风格只作用于看板；侧栏 216 宽以版本号收尾，分组标题位于卡片上方，行标题 13pt 常规，按钮 12pt、主色 #4C9CFF；界面风格/刷新间隔为分段选择器 (隐藏 select 仍为值载体)，热键独立为「全局快捷键」分组",
+      "impact": "设置窗口观感与 mac 一致 (保存语义随后由 C069 改为即时生效)"
+    },
+    {
+      "scope": "热力图列宽 (追加)",
+      "before": "Windows 自加列宽上限 14px (数据仅数周时与 mac 不同)",
+      "after": "按用户要求移除上限, 列等宽撑满整卡, 与 mac heatmapView 一致",
+      "impact": "数据只覆盖数周时格子变大, 与 mac 相同"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "Windows 侧 Nothing 主题 1:1 继承 macOS 规范 (C066)，并将设置中心 T07 工作台全量 Nothing 纯黑单色化；渲染层数值以 C027/C029 对标清单为准",
+      "after": "渲染层以 mac 源码为唯一数值来源 (规则 13)：系统字体行高 1.2 / Nothing 字体行高取自身度量、描边按 overlay 等价扣除、禁止 font 简写混写 inherit、看板走势线线性插值；设置窗口恒用 Fluent 平面 token，不随界面风格切换 (撤销 C066 工作台 Nothing 化)；首轮暂留的三项差异随后均已消除：热力图列宽上限在本卡内撤销 (与 mac 一致)，定向刷新按钮由 C068 补齐，全局保存栏由 C069 改为即时生效"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "RUN-20261020-C067-VERIFY",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "Windows 前端测试、geometry 对拍、viewmodel cargo test/fmt/clippy 与 verify-local.sh 全绿，退出码 0，含 C067 回归用例",
+        "false_if": "存在任何测试失败或未覆盖回归用例",
+        "evidence": "zsh scripts/verify-local.sh Exit Code 0 (日志 local/c067-verify.log: Rust 35 组 test result 全 ok / 0 FAILED, fmt+clippy -D warnings 通过, frontend.test.mjs 44/44 + geometry-parity 2/2, Swift 全部 Harness 通过, PanelParityHarness valid/partial/empty 对拍通过; 唯一 warning 为本机 ~/.cargo/config.toml 未用键, 与本卡无关)。新增 C067 回归用例 9 条: font 简写禁混 inherit (对旧 styles.css 命中 3 处)、热力图例两主题配色、日柱 --ratio 与段高、标题行结构、模型用量 chevron 展开、HUD 双主题文案、Nothing 点阵段序、Nothing token、徽章 CSS 变量; viewmodel 新增 B 档用例。 追加改动 (热力图列宽) 后复验: zsh scripts/verify-local.sh Exit Code 0 (local/c068-c069-verify.log, 2026-10-21, 含 C067/C068/C069 全部改动): Rust 36 组 test result 全 ok / 0 FAILED, fmt + clippy -D warnings 通过, frontend.test.mjs 49/49 + geometry-parity 2/2, Swift 全部 Harness 与 PanelParityHarness 对拍通过; 唯一 warning 为本机 ~/.cargo/config.toml 未用键, 与改动无关。",
+        "result": true
+      },
+      {
+        "item": "并排渲染实测",
+        "true_if": "同一真实 artifact 下 mac 卡片离屏渲染与 Windows harness 截图 (Fluent / Nothing / 收起态 / 设置窗口各分类) 逐区块一致，无横向溢出与破图",
+        "false_if": "出现结构错位、配色偏离或溢出",
+        "evidence": "mac 端以 ImageRenderer 离屏渲染真实 UsageHeroCard / SubscriptionCard / HourlyLineCard (MacOSX26.5 SDK, 同一份本机真实 artifact), Windows 端以 render-harness 真实内核渲染 Rust dump_panel 产出; 并排截图 local/win-mac-parity/real/{before,after3,after4}/cmp-*.png: Nothing 与 Fluent 展开态 / 收起态逐区块对齐, 设置窗口 6 分类及 980×620 最小尺寸无行溢出。首轮暂留差异 (定向刷新按钮 / 热力图列宽上限 / 全局保存栏) 已分别由 C068 / 本卡追加改动 / C069 消除。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "mac 代码零改动；viewmodel golden 对拍通过；设置保存/读取、拖拽排序、折叠、多账号展开等交互回归用例全绿",
+        "false_if": "破坏上下游接口或交互",
+        "evidence": "mac 源码零改动 (git diff 无 apps/macos 路径); viewmodel fixture_parity golden 对拍通过 (fixture 数值 <1B 不受 B 档影响); 设置保存/读取、主题分段选择、拖拽排序、折叠、多账号展开、余额双槽、Escape 收起等既有交互用例全绿。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  }
+}
