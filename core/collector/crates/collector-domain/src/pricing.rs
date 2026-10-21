@@ -356,30 +356,14 @@ impl PricingTable {
             .overrides
             .get(raw_model_name)
             .or_else(|| self.overrides.get(&normalized))
-            .or_else(|| {
-                self.overrides.iter().find_map(|(k, v)| {
-                    if Self::model_matches(&normalized, k) {
-                        Some(v)
-                    } else {
-                        None
-                    }
-                })
-            });
+            .or_else(|| Self::best_prefix_match(&self.overrides, &normalized));
 
         // 2. Direct or normalized match in builtin
         let matched_builtin = self
             .builtin
             .get(&normalized)
             .or_else(|| self.builtin.get(raw_model_name))
-            .or_else(|| {
-                self.builtin.iter().find_map(|(k, v)| {
-                    if Self::model_matches(&normalized, k) {
-                        Some(v)
-                    } else {
-                        None
-                    }
-                })
-            });
+            .or_else(|| Self::best_prefix_match(&self.builtin, &normalized));
 
         match (matched_builtin, matched_override) {
             (Some(builtin), Some(over)) => Some(ModelPricing {
@@ -430,6 +414,31 @@ impl PricingTable {
         s.trim().to_string()
     }
 
+    /// 前缀匹配多候选时的确定性选择 (C070): 遍历 HashMap 取首个命中会随进程哈希种子
+    /// 变化 (如 `gpt-5.4-mini-2026` 可能落到 `gpt-5.4` 而非 `gpt-5.4-mini` 的单价)。
+    /// 优先「目录键是模型名前缀」的候选并取最长 (最具体的基础型号); 其次「模型名是目录键
+    /// 前缀」的候选取最短; 同长按键名字典序。
+    fn best_prefix_match<'a, V>(map: &'a HashMap<String, V>, normalized: &str) -> Option<&'a V> {
+        map.iter()
+            .filter(|(key, _)| Self::model_matches(normalized, key))
+            .map(|(key, value)| {
+                let target = Self::normalize_model_name(key);
+                let base_of_model = normalized.starts_with(&target);
+                // 排序键: (基础型号优先, 基础型号越长越好 / 扩展型号越短越好, 字典序)
+                let length_rank = if base_of_model {
+                    target.len() as i64
+                } else {
+                    -(target.len() as i64)
+                };
+                (
+                    (base_of_model, length_rank, std::cmp::Reverse(key.clone())),
+                    value,
+                )
+            })
+            .max_by(|left, right| left.0.cmp(&right.0))
+            .map(|(_, value)| value)
+    }
+
     fn model_matches(model: &str, target: &str) -> bool {
         let t = Self::normalize_model_name(target);
         !t.is_empty() && (model == t || model.starts_with(&t) || t.starts_with(model))
@@ -447,11 +456,61 @@ impl PricingTable {
             (bucket.cache_creation as f64) * pricing.input_price_per_million / 1_000_000.0;
         input_cost + output_cost + cache_read_cost + cache_creation_cost
     }
+
+    /// 缓存读取相对按输入单价计费节省的 USD (C070):
+    /// cacheRead × (输入单价 − 缓存读取单价); 缓存读取单价缺省时与 `calculate_cost` 同取输入 10%。
+    pub fn calculate_cache_savings(&self, bucket: &TokenBucket, pricing: &ModelPricing) -> f64 {
+        let cache_rate = pricing
+            .cache_read_price_per_million
+            .unwrap_or(pricing.input_price_per_million * 0.1);
+        let saved_rate = (pricing.input_price_per_million - cache_rate).max(0.0);
+        (bucket.cache_read as f64) * saved_rate / 1_000_000.0
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prefix_resolution_is_deterministic_and_prefers_the_most_specific_base() {
+        let table = PricingTable::default();
+        // 两个目录键都是模型名前缀: 取最长的 gpt-5.4-mini, 而不是遍历顺序碰到的 gpt-5.4
+        let rule = table.resolve("gpt-5.4-mini-2026").unwrap();
+        assert_eq!(rule.input_price_per_million, 0.15);
+        let rule = table.resolve("openai/o1-mini-preview").unwrap();
+        assert_eq!(rule.input_price_per_million, 1.10);
+        // 反复解析结果恒定 (不同 PricingTable 实例的 HashMap 哈希种子不同)
+        for _ in 0..16 {
+            let fresh = PricingTable::default();
+            assert_eq!(
+                fresh
+                    .resolve("gpt-5.4-mini-2026")
+                    .unwrap()
+                    .input_price_per_million,
+                0.15
+            );
+            assert_eq!(
+                fresh.resolve("glm-5").map(|r| r.input_price_per_million),
+                table.resolve("glm-5").map(|r| r.input_price_per_million),
+            );
+        }
+    }
+
+    #[test]
+    fn cache_savings_price_cache_reads_against_the_input_rate() {
+        let table = PricingTable::default();
+        let rule = table.resolve("k3-agent").unwrap();
+        let bucket = TokenBucket {
+            input: 0,
+            output: 0,
+            cache_read: 1_000_000,
+            cache_creation: 0,
+            total: 1_000_000,
+        };
+        // (3.00 − 0.30) USD / 1M
+        assert!((table.calculate_cache_savings(&bucket, &rule) - 2.70).abs() < 1e-9);
+    }
 
     #[test]
     fn builtin_pricing_resolves_and_calculates_cost() {

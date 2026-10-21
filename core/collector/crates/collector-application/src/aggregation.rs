@@ -138,6 +138,8 @@ mod tests {
             }],
             projects_today: Vec::new(),
             hours,
+            models_by_day: BTreeMap::new(),
+            hour_models_today: BTreeMap::new(),
         }
     }
 
