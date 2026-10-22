@@ -18,12 +18,17 @@ source "$BRUCE_SCRIPT_DIR/swift-sdk.zsh"
 Bruce_prepare_swift_sdk
 Bruce_prepare_cargo_home
 
+# 例外: ad-flow 治理校验器 scripts/adflow_verify.py —— ad-flow v1.5.0 规范要求逐字安装,
+# 且 --mode init 校验其版本与 docs/index.json 的 adflow_version 一致, 属治理工具链而非
+# Python 构建/工具资产。仅放行这一个受管路径, 其余任何 Python 资产仍一律禁止
+# (见 AGENTS.md「项目自定义规则」第 6 条)。
 BRUCE_LEGACY_SOURCE=$(find . \
   -path './.git' -prune -o \
   -path './.build' -prune -o \
   -path './dist' -prune -o \
   -path './local' -prune -o \
   -path '*/target' -prune -o \
+  -path './scripts/adflow_verify.py' -prune -o \
   \( -name '*.py' -o -name '*.pyc' -o -name 'pyproject.toml' \) -print -quit)
 if [[ -n "$BRUCE_LEGACY_SOURCE" ]]; then
   echo "检测到已移除的 Python 资产: $BRUCE_LEGACY_SOURCE" >&2

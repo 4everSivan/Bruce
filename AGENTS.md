@@ -209,3 +209,8 @@ scripts/adflow-verify --card <卡号> --receipt
 - **代码语义探索先用 Semble**：定位实现、查找调用关系或理解代码结构时，优先调用 `semble` MCP 语义搜索，获取精确行号与文件后再按需读取，避免在整个仓库盲目 grep。
 - **大上下文优先使用 Headroom**：大文件 diff、长日志或多文件探索进入推理前，优先使用 Headroom 进行保真压缩与结构化提取。
 - **第三方库查阅 Context7**：涉及外部 SDK、云服务或系统框架变更时，优先使用 Context7 查询官方实时文档。
+
+### 6. 仓库内禁 Python 资产及其唯一例外
+
+- **红线**：仓库内严禁引入任何 Python 资产（`*.py` / `*.pyc` / `pyproject.toml`），由 `scripts/verify-local.sh` 的 `find` 门禁强制拦截并 `exit 1`；AI 工具脚本一律用 Node 或项目原生语言编写。
+- **唯一例外（2026-10-22 登记）**：`scripts/adflow_verify.py` —— ad-flow 治理规范 v1.5.0 要求逐字安装的校验器，其 `--mode init` 会校验自身版本与 `docs/index.json` 的 `adflow_version` 一致。该文件属**治理工具链**而非 Python 构建/工具资产，故在门禁中按精确路径白名单放行；除此路径外任何 Python 资产仍一律禁止。**改动该文件即视为改动治理基线**，须同步 `docs/index.json.adflow_version` 与 `AGENTS.md` 顶部标记。
