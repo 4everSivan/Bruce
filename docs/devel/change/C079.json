@@ -1,0 +1,98 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C079",
+  "title": "看板顶部撤除运行态状态行与诊断行：完全对齐 mac，服务级失败归入订阅卡内部与设置页",
+  "type": "Enhancement",
+  "status": "closed",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src",
+    "component": "看板 HUD 顶部状态呈现 (app.js renderStatus + index.html)",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "C078 只修正了状态行的文案与诊断行的过滤口径, 两行仍在。用户在逐项复核后决定: 看板顶部除 HUD 头外不再有任何运行态文字行, 完全对齐 mac。\n\n**参照事实 (同 C078 复核结论)**: mac 看板结构为 `VStack{ header; ScrollView{ cardStack }; footer }`, header 与卡片栈之间无任何元素 (MenuBarViews.swift:71); `PanelViewModel` 无 runtime 字段; `PanelDiagnostic` 在 mac 仅被 BruceAppCore 生产、无任何 View 消费点; mac 把单家失败放在订阅卡内部 (SubscriptionCard.swift:233), 整体错误放在设置窗口 (SettingsView.swift:102)。故 mac 看板在常规态与失败态下顶部都只有 HUD 头。\n\n**两行内容的去向 (无信息丢失)**: 「上次成功 <时间>」与订阅卡的「最后更新 HH:mm」/ 用量卡 LIVE 指示重复; 空数据提示与已设计好的「未配置模块, 前往设置」空态卡重复; 需用户动作的服务级失败 (如「Claude 凭证被拒绝, 请重新登录」) 由订阅卡内部的 section/account note 承载 (demo 复核已确认 DeepSeek 的失败说明正落在此处)。\n\n**元素去留 (关键区分)**: `#dashboard-status` 必须保留 —— 它另有**两个事件驱动**的写入点, 均非「运行态状态行」: ① 定向刷新被后端拒绝时的可读提示 (C068 契约, 有测试守护); ② `showError` 的致命路径 (面板无法渲染 / IPC 失败)。`styles.css` 已有 `.dashboard-status:empty { display: none; }`, 故常规态该行不可见 —— 用户可见结果与 mac 一致。`#dashboard-diagnostics` 在本卡后无任何生产者, 元素与样式一并移除。",
+  "precheck": {
+    "description": "预检: 确认 renderStatus 仍在写状态行与诊断行, 且 dashboard-diagnostics 无其它生产者",
+    "command": "grep -n 'dashboard-status\\|dashboard-diagnostics' apps/win/src/app.js apps/win/src/index.html",
+    "expected": "app.js 中 renderStatus 写 dashboard-status (runtime 详情) 与 dashboard-diagnostics (诊断循环); index.html 两元素均在; dashboard-diagnostics 仅被 renderStatus 引用",
+    "is_completed": false,
+    "evidence": "2026-10-22 复核: app.js:1093 写 dashboard-status、:1094 取 dashboard-diagnostics 并循环填充; :621 (定向刷新拒绝) 与 :1159 (showError) 另写 dashboard-status; dashboard-diagnostics 仅有 renderStatus 一个生产者, 缺陷/冗余确认存在"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护在 main 直接实施 (本次依用户指示不建新分支)"
+    ],
+    "after": [
+      "node scripts/check-win-frontend.mjs",
+      "node apps/win/tests/frontend.test.mjs"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "看板运行态呈现 (apps/win/src/app.js renderStatus)",
+      "before": "renderStatus 写 #dashboard-status (运行态详情: 报错文案 / 上次成功 / 空数据提示) 并填充 #dashboard-diagnostics (服务级诊断行)",
+      "after": "renderStatus 只更新 HUD 状态牌 (SYS.OK / 中文态 + degraded 告警色) 与刷新按钮态, 不再写任何顶部文字行; C078 引入的 RUNTIME_ERROR_TEXT / BENIGN_RUNTIME_CODES / runtimeErrorText / lastSuccessText / ACTIONABLE_SERVICE_NOTE_MARKERS / isActionableServiceIssue 随之成为死代码, 一并删除",
+      "impact": "看板顶部常规态与失败态都只剩 HUD 头; 状态牌语义不变"
+    },
+    {
+      "scope": "诊断行元素 (apps/win/src/index.html)",
+      "before": "index.html 预置 <div id=\"dashboard-diagnostics\">, 由 renderStatus 填充",
+      "after": "移除该元素 (无生产者); #dashboard-status 保留 —— 定向刷新拒绝提示 (C068) 与 showError 致命路径仍写入, 靠既有 .dashboard-status:empty{display:none} 在常规态不可见",
+      "impact": "DOM 少一个空节点; 定向刷新被拒的提示与致命错误提示行为不变"
+    },
+    {
+      "scope": "回归用例 (apps/win/tests/frontend.test.mjs)",
+      "before": "既有用例断言失败态下 dashboard-status 显示错误文案、dashboard-diagnostics 显示「请重新授权」; C078 两条用例断言状态行文案映射",
+      "after": "改按新契约断言: 失败态下顶部两行保持空白 (不承载运行态), HUD 状态牌仍显「刷新失败」且缓存卡片保留; 需用户动作的失败说明出现在订阅卡内部; 定向刷新被拒提示仍写入 dashboard-status (C068 契约不回归)",
+      "impact": "锁定「顶部不承载运行态、失败信息归卡片与设置页」契约"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/05 规则 11 (C015 + C078): 主看板「仅保留严重服务级故障 (如需重新授权)」, 并约束状态行/诊断行的文案纪律 (不得直出诊断码、过滤收紧为需用户动作的故障)",
+      "after": "规则 11 改为 (C079): 主看板除 HUD 头 (状态牌 + Agent 计数) 外**不再承载任何运行态状态行与诊断行** —— 服务级失败在订阅卡内部的 section/account note 呈现, 整体采集错误在设置窗口呈现, Agent 探针信息在设置中心「Agent 用量 -> 会话来源」呈现; 保留 `#dashboard-status` 元素仅用于两个事件驱动场景 (定向刷新被拒的可读提示、面板无法渲染的致命错误), 常规态经 `.dashboard-status:empty{display:none}` 不可见; 同时删除 C078 的状态行/诊断行文案纪律 (其约束对象已不存在)"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "2026-10-22 会话实测: check-win-frontend.mjs Exit Code 0 + frontend.test.mjs 55→54 passed (改写既有失败态用例为顶部零输出契约, 新增 C079 用例 3 项) + 几何对拍 2 passed",
+    "user_quote": "确认提交，并推送",
+    "signoff": "verified",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "frontend.test.mjs 全绿 (含改写的失败态契约用例与 C079 新用例), check-win-frontend.mjs 退出码 0, 定向刷新被拒提示用例不回归",
+        "false_if": "任何测试失败, 或为通过而删除断言",
+        "evidence": "node scripts/check-win-frontend.mjs → Exit Code 0 (Windows 前端结构冒烟通过; frontend.test.mjs 55 passed / 0 failed; 几何对拍 2 passed); 既有「失败态保留缓存卡片」用例按新契约改写 (顶部两行空白 + 缓存卡片保留 + 失败说明不入看板), 「定向刷新被拒」C068 用例原断言不变并通过; 新增 C079 用例 3 项",
+        "result": true
+      },
+      {
+        "item": "行为实测 (Windows 真机)",
+        "true_if": "冷启动、部分失败、限流、数据过期各态下看板顶部均只有 HUD 头, 无任何文字行; 需重新授权的失败可在订阅卡内看到; 定向刷新被拒时仍出现可读提示",
+        "false_if": "任一常规态顶部仍出现文字行, 或失败信息整体消失无处可查",
+        "evidence": "待 Windows 真机复核: 冷启动 / 部分失败 / 限流 / 数据过期各态下看板顶部均只有 HUD 头。demo 复核已确认四个数据源 × 两主题 (local/win-demo-dashboard.html?panel=combined|real|partial|unconfigured 与 ?theme=nothing): 顶部仅 HUD 头, DeepSeek 的失败 note 落在订阅卡内部, 空态卡上方无提示行",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "HUD 状态牌语义不变 (既有 C067 用例全绿); 空态卡、订阅卡内部 note、设置页错误行、定向刷新被拒提示均不受影响",
+        "false_if": "状态牌被误改, 或订阅卡/设置页的失败信息被一并隐藏",
+        "evidence": "HUD 状态牌语义未动 (既有 C067 用例「HUD header mirrors mac dashboardTopHeader」全绿); 空态卡与订阅卡内部 note (含 .note-line / account.lastSuccessText) 不受影响; 定向刷新被拒提示仍写入 #dashboard-status (新增用例断言); 无死代码残留 —— RUNTIME_ERROR_TEXT / BENIGN_RUNTIME_CODES / runtimeErrorText / lastSuccessText / ACTIONABLE_SERVICE_NOTE_MARKERS / isActionableServiceIssue 全部删除, grep 确认零引用",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "7c27bf3",
+    "tag": ""
+  }
+}

@@ -1,0 +1,104 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C080",
+  "title": "看板顶部彻底零输出：移除状态行元素、定向刷新拒绝提示与致命错误文案，仅保留 HUD 状态牌",
+  "type": "Enhancement",
+  "status": "closed",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src",
+    "component": "看板顶部输出 (app.js / index.html / styles.css)",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "用户明确要求「看板顶部不要任何输出」。C079 已撤掉运行态状态行与诊断行的**内容**, 但保留了 `#dashboard-status` 元素给两个事件驱动场景 —— ① 定向刷新被后端拒绝时的可读提示 (C068 契约); ② `showError` 的致命路径 (写 `String(error)`)。本次连元素一并移除, 使顶部除 HUD 状态牌外不存在任何文字承载点。\n\n**参照事实 (mac 同样静默)**: mac `RefreshScheduler.refreshSubscription` 在拒绝条件 (模块未启用) 下直接 `return`, **不产生任何用户可见提示** (RefreshScheduler.swift:370); UI 层靠 `SubscriptionRefreshControl` 禁用按钮预防该路径。mac 看板亦无任何状态行/诊断行元素。故「拒绝静默」不是降级, 而是对齐 mac。\n\n**代价与替代 (已确认)**: 定向刷新被拒后用户可见反馈仅剩「按钮从禁用态恢复」; 致命错误 (面板无法渲染 / IPC 失败) 的详情改走 `console.error`, 不进入 UI —— 保住可诊断性, 同时满足顶部零输出。HUD 状态牌 (`SYS.OK` / 刷新中 / 部分失败 / 数据过期) 保留不变 (用户明确要求保留, 属 C009 既定取舍)。",
+  "precheck": {
+    "description": "预检: 确认 #dashboard-status 仍存在且有两个写入点, SCOPED_REFRESH_ERRORS 仅服务该提示",
+    "command": "grep -n 'dashboard-status\\|SCOPED_REFRESH_ERRORS' apps/win/src/app.js apps/win/src/index.html apps/win/src/styles.css",
+    "expected": "index.html 预置该元素; app.js 两处写入 (定向刷新拒绝 / showError); styles.css 有 .dashboard-status 与 :empty 规则; SCOPED_REFRESH_ERRORS 仅用于拒绝提示",
+    "is_completed": false,
+    "evidence": "2026-10-22 复核: index.html:26 预置元素; app.js:621 (拒绝提示, 用 SCOPED_REFRESH_ERRORS) 与 :1104 (showError 写 String(error)); styles.css:191/:197 为该类样式; SCOPED_REFRESH_ERRORS 定义于 app.js:590 且仅 :621 消费"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护在 main 直接实施 (本次依用户指示不建新分支)"
+    ],
+    "after": [
+      "node scripts/check-win-frontend.mjs",
+      "node apps/win/tests/frontend.test.mjs"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "顶部承载点 (apps/win/src/index.html + styles.css)",
+      "before": "index.html 预置 <div id=\"dashboard-status\">, styles.css 有 .dashboard-status 与 .dashboard-status:empty 两条规则",
+      "after": "移除该元素与两条样式 (元素移除后样式成为死代码); 看板顶部结构变为「HUD 头 → 卡片栈」, 与 mac MenuBarViews 的 VStack 结构一致",
+      "impact": "顶部不再存在任何可承载文字的元素"
+    },
+    {
+      "scope": "定向刷新拒绝反馈 (apps/win/src/app.js)",
+      "before": "refresh_subscription 被拒时把 SCOPED_REFRESH_ERRORS 文案写入 #dashboard-status",
+      "after": "拒绝不再写任何 UI 文案 (对齐 mac 静默 return); 仅恢复按钮禁用态作为可见反馈; SCOPED_REFRESH_ERRORS 映射表随之删除",
+      "impact": "拒绝反馈从「状态行文案」变为「按钮恢复可点」, 与 mac 一致"
+    },
+    {
+      "scope": "致命错误反馈 (apps/win/src/app.js showError)",
+      "before": "showError 把 String(error) 写入 #dashboard-status",
+      "after": "showError 只更新 HUD 状态牌 (「失败」+ degraded) 并把详情输出到 console.error, 不写任何 UI 文案",
+      "impact": "面板渲染失败时顶部无文案, 详情仍可在控制台查看"
+    },
+    {
+      "scope": "回归用例 (apps/win/tests/frontend.test.mjs)",
+      "before": "C068 用例断言拒绝提示写入 #dashboard-status; C079 用例断言该元素内容为空",
+      "after": "改按新契约: 该元素在 DOM 中不存在; 拒绝后按钮恢复可点且不产生任何顶部文案; 失败态下看板仍保留缓存卡片、HUD 状态牌仍显中文态",
+      "impact": "锁定「顶部零输出」契约"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/05 规则 11 (C079) 保留 `#dashboard-status` 作为「事件驱动例外」(定向刷新被拒提示 + 致命错误); 规则 14 (C068) 约定「被后端拒绝时在状态行给出可读提示, 不把整体运行态标为失败」",
+      "after": "规则 11 改为: 主看板顶部**不存在任何文字承载点** (无状态行/诊断行元素), 除 HUD 状态牌外零输出; 规则 14 的拒绝反馈改为「静默, 与 mac `refreshSubscription` 一致, 由 `SubscriptionRefreshControl` 式的按钮禁用态预防」; 致命错误详情走 console, 不进入 UI"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "2026-10-22 会话实测: check-win-frontend.mjs Exit Code 0 (DOM id 交叉无残留引用) + frontend.test.mjs 54 passed (C068 拒绝用例改写为静默契约) + 几何对拍 2 passed",
+    "user_quote": "确认提交，并推送",
+    "signoff": "verified",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "frontend.test.mjs 全绿 (含改写的拒绝用例与 C079 用例), check-win-frontend.mjs 退出码 0 (DOM id 交叉无残留引用)",
+        "false_if": "任何测试失败, 或 app.js 残留对已移除元素的引用",
+        "evidence": "node scripts/check-win-frontend.mjs → Exit Code 0 (Windows 前端结构冒烟通过, DOM id 交叉无残留引用; frontend.test.mjs 54 passed / 0 failed; 几何对拍 2 passed); C068 拒绝用例按新契约改写 (顶部两元素均不存在 + 按钮恢复可点 + 状态牌仍 SYS.OK), C079 两条用例改断元素不存在",
+        "result": true
+      },
+      {
+        "item": "行为实测 (Windows 真机)",
+        "true_if": "冷启动 / 部分失败 / 限流 / 数据过期 / 面板渲染失败各态下看板顶部均无任何文字; 定向刷新被拒时无文案且按钮恢复可点",
+        "false_if": "任一状态顶部出现文字, 或按钮卡在禁用态",
+        "evidence": "待 Windows 真机复核: 冷启动 / 部分失败 / 限流 / 数据过期 / 面板渲染失败各态下顶部均无文字。demo 复核已确认五个状态 (local/win-demo-dashboard.html?panel=combined|real|partial|unconfigured 与 ?theme=nothing&phase=failed): 顶部仅 HUD 头, 失败态状态牌显「刷新失败」而卡片栈紧接其下; DeepSeek 的失败 note 仍在订阅卡内部",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "HUD 状态牌语义不变 (既有 C067 用例全绿); 空态卡、订阅卡内部 note、设置页错误行不受影响; 无死代码残留 (SCOPED_REFRESH_ERRORS / .dashboard-status 样式)",
+        "false_if": "状态牌被误改, 或订阅卡/设置页的失败信息被一并隐藏",
+        "evidence": "HUD 状态牌语义未动 (既有 C067 用例全绿); 空态卡与订阅卡内部 note 不受影响; 无死代码残留 —— SCOPED_REFRESH_ERRORS 映射表与 .dashboard-status / :empty 两条样式均已删除, grep 确认 src 中零引用 (仅注释提及); 订阅卡/设置页失败信息未被隐藏",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "7c27bf3",
+    "tag": ""
+  }
+}

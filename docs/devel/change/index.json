@@ -63,7 +63,9 @@
         "C075",
         "C076",
         "C077",
-        "C078"
+        "C078",
+        "C079",
+        "C080"
       ]
     },
     "SubscriptionQuota": {
@@ -823,6 +825,24 @@
       "topic": "WindowsCompat",
       "version": "0.12.2+",
       "file": "docs/devel/change/C078.json"
+    },
+    "C079": {
+      "title": "看板顶部撤除运行态状态行与诊断行：完全对齐 mac，服务级失败归入订阅卡内部与设置页",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.12.2+",
+      "file": "docs/devel/change/C079.json"
+    },
+    "C080": {
+      "title": "看板顶部彻底零输出：移除状态行元素、定向刷新拒绝提示与致命错误文案，仅保留 HUD 状态牌",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.12.2+",
+      "file": "docs/devel/change/C080.json"
     }
   }
 }
