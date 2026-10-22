@@ -119,6 +119,15 @@ impl PricingTable {
             Some(0.022),
             "DeepSeek V4 Pro",
         );
+        // C073: 官方 API 旧命名 (zcode 等直连 DeepSeek key 的历史 model_id),
+        // 与 V4 Flash 同档; 不并入 v4.1 (ClinePass 档单价不同, 跨型号不归并)。
+        add(
+            "deepseek-flash",
+            0.15,
+            0.60,
+            Some(0.003),
+            "DeepSeek Flash (官方 API 旧命名)",
+        );
         add("deepseek-r1", 0.55, 2.19, Some(0.14), "DeepSeek R1");
         add("deepseek-chat", 0.14, 0.28, Some(0.014), "DeepSeek Chat");
         add(
@@ -632,5 +641,33 @@ mod tests {
             .resolve("glm-5.3-flash")
             .expect("glm-5.3-flash should exist");
         assert_eq!(glm.cache_read_price_per_million, Some(0.015));
+    }
+
+    #[test]
+    fn deepseek_flash_legacy_name_priced_official_tier() {
+        // C073: 官方 API 旧命名 deepseek-flash 按 V4 Flash 档计价,
+        // 且不劫持也不并入 v4.1 (ClinePass 档) 与 v4-flash 的解析。
+        let table = PricingTable::default();
+        let rule = table
+            .resolve("deepseek-flash")
+            .expect("deepseek-flash should resolve");
+        assert_eq!(rule.input_price_per_million, 0.15);
+        assert_eq!(rule.output_price_per_million, 0.60);
+        assert_eq!(rule.cache_read_price_per_million, Some(0.003));
+
+        let v41 = table
+            .resolve("deepseek-v4.1-flash")
+            .expect("deepseek-v4.1-flash should stay on ClinePass tier");
+        assert_eq!(v41.input_price_per_million, 0.30);
+
+        let mut bucket = TokenBucket::default();
+        bucket.add(1_299_047, 190_062, 138_345_856, 0);
+        // 实机 2026-10 旧命名桶: input 1.3M + output 0.19M + cache 138.3M
+        // input: 1.299047 * 0.15 = 0.19486
+        // output: 0.190062 * 0.60 = 0.11404
+        // cache: 138.345856 * 0.003 = 0.41504
+        // total ≈ 0.72393
+        let cost = table.calculate_cost(&bucket, &rule);
+        assert!((cost - 0.723_936).abs() < 1e-4, "cost = {cost}");
     }
 }

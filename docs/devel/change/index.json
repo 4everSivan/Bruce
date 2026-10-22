@@ -105,7 +105,8 @@
         "C050",
         "C051",
         "C055",
-        "C072"
+        "C072",
+        "C073"
       ]
     },
     "AgentAnalytics": {
@@ -763,6 +764,15 @@
       "topic": "TokenUsage",
       "version": "0.12.2",
       "file": "docs/devel/change/C072.json"
+    },
+    "C073": {
+      "title": "价卡表补 deepseek-flash（官方 API 旧命名）条目：消除工作台唯一未定价模型",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C073-deepseek-flash-pricing",
+      "topic": "TokenUsage",
+      "version": "0.12.2",
+      "file": "docs/devel/change/C073.json"
     }
   }
 }
