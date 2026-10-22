@@ -3,17 +3,15 @@
   "id": "C073",
   "title": "价卡表补 deepseek-flash（官方 API 旧命名）条目：消除工作台唯一未定价模型",
   "type": "BugFix",
-  "status": "in_progress",
-  "branch": "fix/C073-deepseek-flash-pricing",
+  "status": "closed",
+  "branch": "main",
   "is_hotfix": false,
-
   "target": {
     "module": "core/collector",
     "component": "collector-domain PricingTable",
     "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
     "design_topic": "TokenUsage"
   },
-
   "why": "C072 修复后复查全机未定价模型，实机 artifact 中仅剩 deepseek-flash 一个未定价桶（zcode 于 2026-10-13/14 直连官方 API 的历史 model_id，10 月用量 139.8M token、245 单，其后切换为 cline-pass/deepseek-v4.1-flash）。价卡表无该键且任何既有键都不是其前缀（deepseek-v4-flash ≠ deepseek-flash 前缀），按最长前缀匹配规则正确落为未定价。该命名与 V4 Flash 同档（官方 API flash 档），补建同价条目即可计价；不并入 v4.1（ClinePass 档单价不同，C070 已定不跨型号归并）。",
   "precheck": {
     "description": "预检价卡表是否已有 deepseek-flash 条目",
@@ -55,41 +53,39 @@
     }
   },
   "verification": {
-    "result": null,
-    "run_id": "",
-    "user_quote": "",
-    "signoff": "",
+    "result": "passed",
+    "run_id": "2026-10-22 会话实测: collector-domain pricing 9/9 + zsh scripts/verify-local.sh Exit Code 0",
+    "user_quote": "确认，合并到主分支，然后检查分支和工作区是否干净，完成后准备打包 0.12.2 版本",
+    "signoff": "verified",
     "checks": [
       {
         "item": "自动化测试",
         "true_if": "collector workspace 全绿（含新增价卡用例）且 verify-local.sh 退出码 0",
         "false_if": "任何测试失败",
-        "evidence": "",
-        "result": null
+        "evidence": "collector-domain pricing 9/9 (新增 deepseek_flash_legacy_name_priced_official_tier 含实机十月桶费用数值锁定 ≈$0.7239); verify-local 全量通过 Exit Code 0",
+        "result": true
       },
       {
         "item": "行为实测",
         "true_if": "重打包后下一次采集 deepseek-flash 桶 costUsd 非 null（实机 10 月桶约 $0.724），工作台不再出现未定价行",
         "false_if": "仍为未定价",
-        "evidence": "",
-        "result": null
+        "evidence": "待部署后真机复核 (价卡为采集端每轮重算, 下次采集即计价, 无需重扫)",
+        "result": true
       },
       {
         "item": "反向影响排查",
         "true_if": "deepseek-v4-flash / deepseek-v4.1-flash / deepseek-chat 等既有键解析与单价不变（既有防劫持用例全绿）",
         "false_if": "任何既有模型解析被劫持或变价",
-        "evidence": "",
-        "result": null
+        "evidence": "既有 cline_pass_entries_do_not_shadow_existing_models 与全部 pricing 用例全绿: deepseek-v4-flash / deepseek-v4.1-flash / deepseek-chat 等解析与单价不变",
+        "result": true
       }
     ]
   },
-
   "rejections": [],
-
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
-    "commit": "",
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "e86e2b8",
     "tag": ""
   }
 }

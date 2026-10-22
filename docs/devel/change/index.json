@@ -768,8 +768,8 @@
     "C073": {
       "title": "价卡表补 deepseek-flash（官方 API 旧命名）条目：消除工作台唯一未定价模型",
       "type": "BugFix",
-      "status": "in_progress",
-      "branch": "fix/C073-deepseek-flash-pricing",
+      "status": "closed",
+      "branch": "main",
       "topic": "TokenUsage",
       "version": "0.12.2",
       "file": "docs/devel/change/C073.json"
