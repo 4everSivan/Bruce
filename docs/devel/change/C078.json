@@ -1,0 +1,98 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C078",
+  "title": "修正 Windows 看板顶部状态行直出诊断码与诊断行过宽：机器码改中文文案、正常重启码不入文案、诊断行收紧到需用户动作的严重故障",
+  "type": "BugFix",
+  "status": "closed",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src",
+    "component": "看板 HUD 状态呈现 (app.js renderStatus)",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "用户在 demo 复核时指出看板顶部「很丑」。核查后确认为 C009「显式运行态」落地时的两处偏差（本次不推翻该决策，仅修正落地口径；HUD 状态牌原样保留）：\n\n① **状态行直出机器码**：`renderStatus` 无条件把 `runtime.error` 拼进 `#dashboard-status`，于是屏幕上出现 `COLLECTION_PARTIAL`。更日常的是 `SNAPSHOT_RESTORED` —— 它是每次正常启动 `SnapshotState::load` 必写的码（runtime_core.rs:542），而 `last_success_at` 是持久化字段，故冷启动至首次刷新完成之间，看板顶部必然挂着 `SNAPSHOT_RESTORED · 上次成功 …`；同一行内 `上次成功` 后还直出 ISO 原文（`2026-10-22T08:00:00Z`），同属机器数据入用户文案。\n\n② **诊断行过滤比既有规则宽**：design/05 规则 11 明确「主看板仅保留严重服务级故障（如需重新授权）」，而 app.js 的实现是 `d.status === \"error\"` 即上主看板，导致一次「临时不可用」/限流与「需要重新授权」被同等对待。\n\n**参照事实（mac 无此 UI，故不能靠对拍发现）**：mac `PanelViewModel` 只有 usage/subscription/hourly/diagnostics 四个字段，**无 runtime 字段**，看板结构为 `VStack{ header; ScrollView{ cardStack }; footer }`，header 与卡片栈之间无任何状态行（MenuBarViews.swift:71）；header 的状态牌硬编码 `Text(\"SYS.OK\")` 且无分支（:214/:233）；`PanelDiagnostic` 在 mac 仅被 BruceAppCore 生产、**无任何 View 消费点**。mac 把单家失败放在订阅卡内部（SubscriptionCard.swift:233），整体错误放在设置窗口（SettingsView.swift:102）。",
+  "precheck": {
+    "description": "预检: 确认 app.js 状态行仍直出 runtime.error, 且诊断行过滤条件仍为 status === \"error\"",
+    "command": "grep -n 'const details = \\[runtime.error\\]\\|d.status === \"error\"' apps/win/src/app.js",
+    "expected": "两处命中: 状态行 details 首项为 runtime.error 原文; 诊断行过滤含 status === \"error\"",
+    "is_completed": false,
+    "evidence": "2026-10-22 复核: 两处均命中 (renderStatus 内 `const details = [runtime.error];` 与 `diagnostics.filter(d => d.kind === \"serviceIssue\" && (d.status === \"error\" || d.note?.includes(\"重新授权\")))`), 缺陷确认存在"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护在 main 直接实施 (本次依用户指示不建新分支)"
+    ],
+    "after": [
+      "node scripts/check-win-frontend.mjs",
+      "node apps/win/tests/frontend.test.mjs"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "看板状态行文案 (apps/win/src/app.js renderStatus)",
+      "before": "`const details = [runtime.error]` 无条件拼入状态行, 直出诊断码 (COLLECTION_PARTIAL / SNAPSHOT_RESTORED 等); 「上次成功」后直出 ISO 原文",
+      "after": "新增 `runtimeErrorText`: 诊断码映射为中文文案; 正常流程码 (BENIGN_RUNTIME_CODES, 现含 SNAPSHOT_RESTORED) 不产生文案; 未收录的 SCREAMING_SNAKE 码回退「采集状态异常」, 已含中文的人工文案原样透出; 「上次成功」时间改为本地可读 (yyyy-MM-dd HH:mm), 非 ISO 值原样保留",
+      "impact": "看板顶部不再出现机器码与 ISO 原文; 健康/失败态文案均为中文"
+    },
+    {
+      "scope": "看板诊断行过滤 (apps/win/src/app.js renderStatus)",
+      "before": "`d.kind === \"serviceIssue\" && (d.status === \"error\" || d.note?.includes(\"重新授权\"))` —— 任何 error 级服务问题都上主看板",
+      "after": "新增 `isActionableServiceIssue` + `ACTIONABLE_SERVICE_NOTE_MARKERS` (认证/权限/凭证缺失类标记): 只有需用户动作的严重故障上主看板; 一次性失败 (限流、超时) 不再出现在看板顶部, 仍保留在订阅卡内部与设置页",
+      "impact": "落实 design/05 规则 11 的原意; 限流/瞬时失败不再与「需要重新授权」同等展示"
+    },
+    {
+      "scope": "回归用例 (apps/win/tests/frontend.test.mjs)",
+      "before": "仅覆盖「失败态保留缓存卡片」与「定向刷新被拒」两条, 未锁定文案与过滤口径",
+      "after": "新增: 诊断码不直出且映射为中文; SNAPSHOT_RESTORED 被抑制而「上次成功」保留; 需动作故障上诊断行、限流/瞬时失败不上诊断行; 「上次成功」时间戳可读",
+      "impact": "锁定「机器码不入用户文案 + 诊断行只留需动作故障」契约"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/05 规则 11 仅约定「主看板仅保留严重服务级故障（如需重新授权）；所有 Agent 探针元数据一律收归设置中心」, 未声明状态行/诊断行的文案纪律, 也未定义「严重」的判定口径",
+      "after": "规则 11 补状态呈现纪律 (C078): 看板状态行与诊断行面向用户, 不得直出诊断码 —— 机器码一律映射中文文案, 正常流程码 (如每次重启必写的 SNAPSHOT_RESTORED) 不进用户可见文案; 诊断行过滤收紧为「需用户动作的严重故障」(认证/权限/凭证缺失类), 一次性失败 (限流、超时) 不上主看板"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "2026-10-22 会话实测: check-win-frontend.mjs Exit Code 0 + frontend.test.mjs 54 passed (新增 C078 用例 2 项) + 几何对拍 2 passed",
+    "user_quote": "确认",
+    "signoff": "verified",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "frontend.test.mjs 新增用例全绿, check-win-frontend.mjs 退出码 0, 既有用例不回归",
+        "false_if": "任何测试失败或既有断言被改弱",
+        "evidence": "node scripts/check-win-frontend.mjs → Exit Code 0 (前端结构冒烟通过; frontend.test.mjs 54 passed / 0 failed, 含新增 2 项 C078 用例; 几何对拍 2 passed); 既有 52 项用例无回归, 含「refresh failure retains cached cards」「scoped refresh refusals surface a readable notice」两条相关断言未被改弱",
+        "result": true
+      },
+      {
+        "item": "行为实测 (Windows 真机)",
+        "true_if": "冷启动至首次刷新完成之间看板顶部不再出现 SNAPSHOT_RESTORED; 单家限流时顶部无诊断行而订阅卡内部仍可见失败说明",
+        "false_if": "仍直出机器码, 或限流/瞬时失败仍占据看板顶部",
+        "evidence": "待 Windows 真机复核: 冷启动至首次刷新完成之间看板顶部不再出现 SNAPSHOT_RESTORED; 单家限流时顶部无诊断行而订阅卡内部仍可见失败说明。demo 复核已确认后者 (local/win-demo-dashboard.html?panel=partial: 顶部仅「部分订阅查询失败」, DeepSeek 的 note 只在订阅卡内部呈现)",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "HUD 状态牌 (SYS.OK / 中文态) 语义不变; 定向刷新被拒的状态行提示、空态卡、订阅卡内部 note 均不受影响",
+        "false_if": "状态牌或既有提示被误改, 或订阅卡/设置页的失败信息被一并隐藏",
+        "evidence": "HUD 状态牌语义未动: 既有用例「HUD header mirrors mac dashboardTopHeader in both themes (C067)」全绿 (SYS.OK / 刷新中 / 部分失败 / 数据过期 与 degraded 告警色不变); 定向刷新被拒的状态行提示 (「该订阅尚未配置凭证」) 与空态卡不受影响; 订阅卡内部 note 与设置页失败信息未被一并隐藏",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "f4e4b76",
+    "tag": ""
+  }
+}

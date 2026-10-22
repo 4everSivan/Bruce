@@ -62,7 +62,8 @@
         "C069",
         "C075",
         "C076",
-        "C077"
+        "C077",
+        "C078"
       ]
     },
     "SubscriptionQuota": {
@@ -813,6 +814,15 @@
       "topic": "WindowsCompat",
       "version": "0.12.2+",
       "file": "docs/devel/change/C077.json"
+    },
+    "C078": {
+      "title": "修正 Windows 看板顶部状态行直出诊断码与诊断行过宽：机器码改中文文案、正常重启码不入文案、诊断行收紧到需用户动作的严重故障",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.12.2+",
+      "file": "docs/devel/change/C078.json"
     }
   }
 }
