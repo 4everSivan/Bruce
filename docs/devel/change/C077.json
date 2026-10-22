@@ -1,0 +1,98 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C077",
+  "title": "Windows 订阅额度查询补 per-provider 门禁：quotaAttemptedAt/rateLimitedAt 记账与 partial 429 冷却（对齐 mac C062，范围依 C065 订正）",
+  "type": "BugFix",
+  "status": "closed",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src-tauri",
+    "component": "collector / runtime_core 订阅额度门禁",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "mac 侧 QuotaRefreshPolicy 实现了 per-provider 额度门禁: 按 quotaAttemptedAt 判新鲜度、按 rateLimitedAt 施加 30 分钟 429 冷却（apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift:46-47、:242-290、:420-429），429 只冷却命中的 provider（partial），其余 provider 照常查询。Windows 侧完全缺这一层：build_configured_request 每轮把全部已启用 provider 的凭据连同 externalQuotas 一并下发（apps/win/src-tauri/src/collector.rs:100-140），全仓无 quotaAttemptedAt/rateLimitedAt 记账，429 只有整轮固定 300s 退避（scheduler.rs:12、:78）——一个 provider 被限流会把整轮刷新一起拖入退避，且无法表达「某 provider 仍在冷却、其余正常」。**范围订正（2026-10-22）**：原登记（2026-10-19）称「Windows 仍把本地采集与订阅额度查询绑在同一周期 refreshIntervalSecs、Claude 等端点被高频轮询」已过时——C065（2026-10-20）撤销了 mac 侧 30 分钟额度硬编码，mac 的 quotaRefreshInterval 现与用户配置间隔联动，周期绑定不再是双端差异。原列「旧值 stale 保留」为缺口亦不准确：Windows 已由 runtime_core::merge_snapshot 实现失败账号借用合格旧窗口字段并标 freshness=stale（apps/win/src-tauri/src/runtime_core.rs:146-199）。故本卡范围收窄为 per-provider 新鲜度门禁 / 时间戳记账 / partial 429 冷却三项。",
+  "precheck": {
+    "description": "预检: 确认 Windows 侧无 per-provider 额度时间戳记账与 429 冷却",
+    "command": "grep -rn \"quotaAttemptedAt\\|rateLimitedAt\" apps/win/src-tauri/src apps/win/viewmodel/src",
+    "expected": "无命中 (grep 退出码 1): Windows 无 per-provider 额度时间戳语义",
+    "is_completed": false,
+    "evidence": "2026-10-22 复核: 该 grep 在 apps/win 源码零命中; build_configured_request 每轮全量下发全部 provider 凭据, 429 仅整轮 300s 退避, 缺口确认存在"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护在 main 直接实施 (本次依用户指示不建新分支)"
+    ],
+    "after": [
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "cargo clippy --manifest-path apps/win/src-tauri/Cargo.toml --all-targets -- -D warnings"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "额度新鲜度门禁 (collector / runtime_core)",
+      "before": "每轮刷新把全部已启用 provider 凭据连同 externalQuotas 一并下发, 无 per-provider 新鲜度判断",
+      "after": "引入 per-provider 额度新鲜度门禁（对齐 mac QuotaRefreshPolicy）: 仅对「距上次真实额度尝试已超过刷新间隔」的 provider 装配 externalQuotas 请求, 新鲜者跳过; 无凭据/未启用 provider 仍 fail-closed",
+      "impact": "避免对全部 provider 每轮无条件发起额度查询"
+    },
+    {
+      "scope": "时间戳记账与 429 冷却 (runtime_core 合并 + artifact)",
+      "before": "无 quotaAttemptedAt/rateLimitedAt 字段; 429 仅触发整轮 300s 退避",
+      "after": "在 service 上写入 quotaAttemptedAt（每次真实额度尝试）与 rateLimitedAt（命中限流时, 成功后清除）; 命中 429 的 provider 进入 30 分钟冷却（partial, 仅该 provider）, 冷却期内跳过且保留上一份 stale 值; 手动刷新绕过冷却（对齐 mac bypassCooldown）",
+      "impact": "单 provider 限流不再拖垮整轮刷新; 冷却语义与 mac 一致"
+    },
+    {
+      "scope": "回归用例 (apps/win/src-tauri/tests)",
+      "before": "无 per-provider 门禁与 429 冷却用例",
+      "after": "新增: 新鲜 provider 被跳过 / 过期 provider 发起查询; 429 provider 进入冷却且其余 provider 照常; 冷却期结束后恢复; quotaAttemptedAt/rateLimitedAt 写回与清除; 手动刷新绕过冷却",
+      "impact": "锁定 per-provider 门禁与 partial 冷却契约"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/05 未声明 Windows 订阅额度查询的 per-provider 门禁语义",
+      "after": "补一条: Windows 订阅额度按 provider 独立门控 (quotaAttemptedAt 新鲜度 + rateLimitedAt 30 分钟 partial 冷却, 保留 stale 值, 手动刷新绕过冷却), 对齐 mac QuotaRefreshPolicy; 并注明 mac 侧额度周期已由 C065 联动用户配置间隔"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "2026-10-22 会话实测: cargo test --test quota_policy_coverage 12 passed + cargo test 全量绿 + clippy/fmt Exit 0",
+    "user_quote": "确认，提交",
+    "signoff": "verified",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "src-tauri 新增门禁/冷却用例全绿, clippy -D warnings 通过",
+        "false_if": "任何测试失败或 partial 冷却路径未被覆盖",
+        "evidence": "cargo test --manifest-path apps/win/src-tauri/Cargo.toml --test quota_policy_coverage → 12 passed; 0 failed (新鲜跳过/过期重查/新 provider 首查/429 partial 冷却/冷却到期恢复/手动绕过/Codex 例外/时间戳写回与清除/回填 stale/端到端快照回填); cargo test 全量 + clippy --all-targets -- -D warnings → Exit Code 0; cargo fmt --all -- --check → Exit Code 0",
+        "result": true
+      },
+      {
+        "item": "行为实测 (Windows 真机)",
+        "true_if": "单一 provider 触发 429 时仅该 provider 进入冷却并在 UI 标 stale, 其余 provider 正常刷新; 冷却期满自动恢复",
+        "false_if": "429 仍导致整轮退避, 或冷却 provider 的旧值被清空",
+        "evidence": "待 Windows 真机复核: 单 provider 触发 429 时仅该 provider 进入冷却并在 UI 标 stale, 其余 provider 正常刷新; 冷却期满自动恢复",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "本地会话采集、定向刷新合并、额度窗口边界唤醒与锁屏抑制语义不变",
+        "false_if": "per-provider 门禁误伤本地采集或破坏既有合并/唤醒逻辑",
+        "evidence": "本地会话采集与定向刷新合并语义未改 (scoped_refresh_coverage / runtime_coverage 全绿); per-provider 门禁只影响 externalQuotas 凭证装配, 不动 localSessions 与定价",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "bf7d764",
+    "tag": ""
+  }
+}

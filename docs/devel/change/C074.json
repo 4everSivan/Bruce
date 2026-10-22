@@ -1,0 +1,83 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C074",
+  "title": "修正 docs/devel/README.md §3.1 的 version 规范归属：Markdown 元数据节误载 JSON 卡必填字段，与 81 张卡实测实现不一致",
+  "type": "BugFix",
+  "status": "closed",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
+  "is_hotfix": false,
+  "target": {
+    "module": "docs/devel",
+    "component": "change/task 卡元数据规范 (README §3.1)",
+    "design_doc": "docs/devel/design/00-系统总体设计.md",
+    "design_topic": "SystemOverview"
+  },
+  "why": "docs/devel/README.md §3.1 标题为「头部元数据规范」，正文通篇约束 Markdown 文档头（created / last-change / status），却在其中写「`version`（卡片必填/设计可选）：变更卡（Cxxx.json）与任务卡（Txx.json）必须包含 version 声明归属发布批次」。实测全部 81 张卡（change 73 + task 8，含 docs/archive）无一张含顶层 version 字段；该值只维护在 change/index.json 与 task/index.json 的卡条目里（change 侧 73/73 条均带）。即该条目既是本小节唯一指向 JSON 卡文件的规则，又与实现及实际做法不一致，属规范与实现双向失真：按规范写卡会得到无消费者的冗余字段，按实现写卡则违规。",
+  "precheck": {
+    "description": "预检: 统计全部卡片是否含顶层 version 字段, 并核对总账卡条目是否承载该值",
+    "command": "python3 -c \"import json,glob;print(sum('version' in json.load(open(p)) for p in glob.glob('docs/devel/change/C*.json')+glob.glob('docs/devel/task/T*.json')+glob.glob('docs/archive/**/C*.json',recursive=True)+glob.glob('docs/archive/**/T*.json',recursive=True)))\"",
+    "expected": "0 (81 张卡无一张含顶层 version); 而 change/index.json 的卡条目 73/73 均含 version",
+    "is_completed": false,
+    "evidence": "2026-10-22 复核实测输出 0: change 73 + task 8 (含 docs/archive) 全部无顶层 version; index.json 卡条目 73/73 含该字段, 证实「该值只维护在总账」"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护在 main 直接实施 (本次依用户指示不建新分支)"
+    ],
+    "after": [
+      "node scripts/check-change-ledger.mjs",
+      "# 纯文档变更 (仅 docs/devel/README.md, 无代码/设计基线路径), 不跑 verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "docs/devel/README.md §3.1 头部元数据规范",
+      "before": "小节标题为「头部元数据规范」, 正文通篇约束 Markdown 文档头 (created / last-change / status), 却夹带一条指向 JSON 卡文件的规则:「version（卡片必填/设计可选）：变更卡与任务卡必须包含 version 声明归属发布批次」",
+      "after": "把 version 规则移出「头部元数据规范」小节, 改写为「卡片 version 由 change/index.json 与 task/index.json 的卡条目承载, 卡片文件本身不重复声明」, 使规范与实现及实际做法一致",
+      "impact": "仅 docs/devel/README.md 文本; 不涉及代码、卡片数据或总账结构"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/00-系统总体设计.md",
+    "topic": "SystemOverview",
+    "modified": false,
+    "rule_diff": null
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "2026-10-22 会话实测: python3 卡片 version 统计命中 0 + node scripts/check-change-ledger.mjs Exit Code 0 (纯文档变更, 卡内声明不跑 verify-local)",
+    "user_quote": "确认，提交",
+    "signoff": "verified",
+    "checks": [
+      {
+        "item": "规范自洽核验",
+        "true_if": "§3.1 不再出现「卡片必须含顶层 version」的表述, 且版本归属明确指向 index.json 卡条目",
+        "false_if": "规范仍要求卡片文件含 version, 或归属仍含混",
+        "evidence": "node scripts/check-change-ledger.mjs → 变更总账一致 (cards=77 topics=7), Exit Code 0; §3.1 现只保留 created/last-change/status 三条 Markdown 头部规则, 卡片发布批次归属改为指向 change/index.json 卡条目",
+        "result": true
+      },
+      {
+        "item": "实现一致性核验",
+        "true_if": "按修订后规范写卡不再产生冗余字段; 现有 81 张卡与总账 73 条卡条目均与规范自洽",
+        "false_if": "修订后规范与既有卡数据/总账产生新的不一致",
+        "evidence": "预检复算: python3 统计 81 张卡顶层 version = 0; change/index.json 卡条目 77/77 含 version, 与修订后规范自洽 (按规范写卡不再产生冗余字段)",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "docs/devel 其余章节与 AGENTS.md 未引用该 version 必填条款, 无连带失真",
+        "false_if": "存在其它文档引用该条款而未被同步",
+        "evidence": "grep -rn '卡片必填|必须包含 version|声明归属发布批次' docs/ AGENTS.md → 仅命中 C074 卡自身, 无其它文档引用被删条款",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "d9ad520",
+    "tag": ""
+  }
+}

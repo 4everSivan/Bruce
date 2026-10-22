@@ -1,0 +1,99 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C076",
+  "title": "Windows 刷新调度接入网络可达性闸门：离线不发起自动刷新、不重试，联网后单次补偿（对齐 mac C061）",
+  "type": "BugFix",
+  "status": "closed",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src-tauri",
+    "component": "scheduler / runtime_core 刷新调度",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "mac 侧 C061 已为全部订阅刷新接入网络可达性闸门（apps/macos/Sources/BruceAppCore/NetworkReachability.swift + RefreshScheduler 的 offlinePaused 分支）: 离线不发起自动刷新、不重试, 联网后单次补偿。Windows 侧只有限流/指数退避: scheduler.rs 的 compute_backoff (指数 + 抖动, 限流固定 300s) 与 5 次重试上限, 全无网络可达性判断（apps/win/src-tauri/src/scheduler.rs:11-12、:78-105、:360-425）。断网期间 Windows 仍会按 5 次上限反复重试, 既浪费电与 CPU, 又在网络恢复瞬间叠加一串补偿请求; runtime_core.rs 注释亦自陈「no GUI, network or user-home access」, 可达性探测完全缺位。",
+  "precheck": {
+    "description": "预检: 确认 Windows 调度链无任何网络可达性/离线判断",
+    "command": "grep -rn \"NetworkReachability\\|offlinePaused\\|InternetGetConnectedState\\|NetworkListManager\\|is_online\\|reachab\" apps/win/src-tauri/src apps/win/viewmodel/src",
+    "expected": "无命中 (grep 退出码 1): 仅 scheduler.rs 存在 connect_manual_refresh 等无关命中",
+    "is_completed": false,
+    "evidence": "2026-10-22 复核: 该 grep 在 apps/win 源码零命中; scheduler.rs 只有 compute_backoff + retries>5 上限, 与断网无关地反复重试, 缺口确认存在"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护在 main 直接实施 (本次依用户指示不建新分支)"
+    ],
+    "after": [
+      "node scripts/check-win-frontend.mjs",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "cargo clippy --manifest-path apps/win/src-tauri/Cargo.toml --all-targets -- -D warnings"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "网络可达性探测 (apps/win/src-tauri)",
+      "before": "无任何连通性探测",
+      "after": "新增可达性探测层（对齐 mac NetworkReachability 语义）: 以可注入探针 (trait/函数指针) 包装 Windows 连通性 API（如 InternetGetConnectedState 或 Network List Manager COM），并在无网/探测失败时保守判定离线; 探测实现与调度逻辑解耦以便在 mac 本机用假探针跑单测",
+      "impact": "为调度门控提供唯一可达性事实源"
+    },
+    {
+      "scope": "刷新调度门控 (scheduler.rs / runtime_core.rs)",
+      "before": "每轮定时唤醒无条件发起刷新, 失败按指数/限流退避重试至 5 次上限",
+      "after": "自动刷新前先判可达性: 离线则跳过本轮且不累加 retries、不进入退避; 探测到网络恢复时触发一次补偿刷新 (单次, 不补发离线期间积压的多轮); 手动刷新语义不变",
+      "impact": "断网期间不再空转重试; 联网后只补偿一次"
+    },
+    {
+      "scope": "回归用例 (apps/win/src-tauri/tests)",
+      "before": "无离线门控用例",
+      "after": "新增: 假探针置离线 → 定时唤醒跳过且 retries 不增长; 离线→在线跃迁 → 触发恰好一次补偿; 在线路径与既有退避语义不变",
+      "impact": "锁定「离线不重试、联网单次补偿」契约"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/05 未声明 Windows 刷新调度的网络可达性语义",
+      "after": "补一条: Windows 自动刷新前置网络可达性闸门, 离线不发起自动刷新/不重试, 联网后单次补偿 (与 mac C061 同语义)"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "2026-10-22 会话实测: cargo test 全量绿 (含 reachability_coverage 3) + check-win-frontend.mjs Exit 0 + clippy/fmt Exit 0",
+    "user_quote": "确认，提交",
+    "signoff": "verified",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "src-tauri 新增离线门控用例全绿, clippy -D warnings 通过",
+        "false_if": "任何测试失败或离线路径未被覆盖",
+        "evidence": "cargo test --manifest-path apps/win/src-tauri/Cargo.toml → 全绿 (lib 22 + reachability_coverage 3, 含离线跳过/联网单次补偿/手动不变/探针可注入); node scripts/check-win-frontend.mjs → Exit Code 0; cargo clippy --all-targets -- -D warnings → Exit Code 0; cargo fmt --all -- --check → Exit Code 0",
+        "result": true
+      },
+      {
+        "item": "行为实测 (Windows 真机)",
+        "true_if": "断网时定时刷新不再发起请求、无退避重试日志; 恢复网络后仅发生一次补偿刷新",
+        "false_if": "断网仍反复重试, 或恢复后补发多轮",
+        "evidence": "待 Windows 真机复核: 断网时定时刷新不再发起请求、无退避重试日志; 恢复网络后仅一次补偿刷新 (探针走 InternetGetConnectedState, mac 开发机无该 API 恒在线 fail-open)",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "手动刷新、锁屏抑制、限流退避与额度窗口边界唤醒等既有语义不变",
+        "false_if": "可达性门控误伤在线路径或破坏既有退避/唤醒逻辑",
+        "evidence": "手动刷新/锁屏抑制/限流退避/额度窗口边界唤醒语义未改: should_skip_refresh 仅「离线且非手动」跳过; 既有 next_delay/compute_backoff/boundary_wake 用例全绿",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "bf7d764",
+    "tag": ""
+  }
+}

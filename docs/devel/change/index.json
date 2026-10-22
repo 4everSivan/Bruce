@@ -11,7 +11,8 @@
         "C052",
         "C053",
         "C054",
-        "C057"
+        "C057",
+        "C074"
       ]
     },
     "MenuBarIndicator": {
@@ -58,7 +59,10 @@
         "C066",
         "C067",
         "C068",
-        "C069"
+        "C069",
+        "C075",
+        "C076",
+        "C077"
       ]
     },
     "SubscriptionQuota": {
@@ -773,6 +777,42 @@
       "topic": "TokenUsage",
       "version": "0.12.2",
       "file": "docs/devel/change/C073.json"
+    },
+    "C074": {
+      "title": "修正 docs/devel/README.md §3.1 的 version 规范归属：Markdown 元数据节误载 JSON 卡必填字段，与 81 张卡实测实现不一致",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "SystemOverview",
+      "version": "0.12.2+",
+      "file": "docs/devel/change/C074.json"
+    },
+    "C075": {
+      "title": "Windows 侧 Claude 订阅凭据对齐 mac 零配置跟随：自动读取本机 ~/.claude/.credentials.json（含 ~/.claude.json 回退）替代纯粘贴",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.12.2+",
+      "file": "docs/devel/change/C075.json"
+    },
+    "C076": {
+      "title": "Windows 刷新调度接入网络可达性闸门：离线不发起自动刷新、不重试，联网后单次补偿（对齐 mac C061）",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.12.2+",
+      "file": "docs/devel/change/C076.json"
+    },
+    "C077": {
+      "title": "Windows 订阅额度查询补 per-provider 门禁：quotaAttemptedAt/rateLimitedAt 记账与 partial 429 冷却（对齐 mac C062，范围依 C065 订正）",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "main",
+      "topic": "WindowsCompat",
+      "version": "0.12.2+",
+      "file": "docs/devel/change/C077.json"
     }
   }
 }

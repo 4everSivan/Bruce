@@ -150,7 +150,7 @@
 
 - 订阅凭据统一落盘 `%APPDATA%\Bruce\credentials.json`，目录与文件 ACL 限定当前用户（等价 mac POSIX 0600 语义），temp + rename 原子替换；
 - 外部应用 SQLite（opencode/zcode/cc-switch）强制 `mode=ro` 只读连接；
-- Claude CLI Windows 凭证位置实测前，`CredentialSource` Windows 实现仅做文件探测 + 静默回退，绝不触发交互式鉴权 UI；
+- **Claude 本机登录态跟随（C075）**：Windows 无 Keychain，Claude 凭据按 `%USERPROFILE%\.claude\.credentials.json` → `%USERPROFILE%\.claude.json` 只读跟随（对齐 mac `SystemExternalCredentialReader` 的读取序去掉 Keychain 段），规范化后注入 `claudeQuotaAccounts`；文件缺失/非 UTF-8/JSON 非法/无 `accessToken` 一律静默回落，**仅只读、不回写外部文件**，手工粘贴路径始终保留作多账号兜底；
 - 严禁向 `core/collector` 引入任何 Windows 专有出站行为。
 
 ### 4.4 设置中心对标（C031）
@@ -160,6 +160,7 @@
 | 区域 | 规则 |
 |---|---|
 | 订阅额度行 | 每行 = 品牌图形徽章（26px，与看板同一套生成产物）+ 显示名 + 凭证形态副标题（`Web 令牌`/`API Key`/`OAuth 设备码`/`CLI 登录态`/`Step Plan Token`，多账号追加 `N 个账号`）+ 套餐标签（取自 artifact `service.plan`，C024 起只在设置页呈现）+ 状态尾件（`未配置`/`已配置`/`需要重新授权`）+ 行内启用开关 + 上移/下移 |
+| Claude 本机登录态（C075） | 「Claude 本机登录态」卡：状态文案（已跟随 / 未发现 / 已过期，对齐 mac `ClaudeProviderSettingsSection`）+ `立即检测`（`claude_local_status`）+ `读取本机登录态`（`import_claude_from_local`，持久化为 `claude-cli` 账号）；启用 Claude 后自动只读跟随，粘贴入口保留作多账号兜底（见规则 17） |
 | 授权与隐私 | mac 语义：单一 `Agent 用量` 开关 + 四条动态说明（含刷新间隔与已启用 provider 名单）+ `当前授权有效` 状态 + `确认授权` / `撤销全部授权` 两个**即时生效**按钮（不走全局保存）；采集与云端额度查询同属一次授权 |
 | 通用 | 首卡行序对齐 mac：界面风格（经典 / Nothing）→ 刷新间隔（5/15/30/60 分钟；历史遗留的非集合值追加为选项，禁止静默改写）→ 系统通知 → 版本（来自 `get_runtime_info.version`）；界面风格与刷新间隔为 mac `FluentSegmentedPicker` 等价分段按钮（隐藏的原生 `<select>` 仍是值载体）；热键独立为「全局快捷键」分组卡（`录制`/`清除`）（C067） |
 | 窗口观感（C067） | 设置窗口恒用 Fluent 平面 token（mac `SettingsDemoTokens` dark 侧），界面风格只作用于看板，**设置窗口不得套用 `.theme-nothing`**；侧栏 216 宽、项 12.5pt / 内边距 10·7 / 圆角 5、选中左缘 3pt accent 条，底部为版本号（无 Windows 自创标题）；内容区内边距 24·18，crumb · 标题 · 内容间距 14；分组标题（11pt 半粗 tertiary）位于卡片上方而非卡内；行标题 13pt 常规；按钮 12pt / 12·5 / 圆角 5，主按钮 `#4C9CFF`。设置即时生效、无全局保存栏（C069，见规则 15） |
@@ -229,6 +230,9 @@ Windows Tauri 后端 (Rust)
 | C069 | 缺陷修复 | 设置窗口即时生效 | 移除全局「保存设置」, 每个控件变更串行合并保存、失败回滚; 仅采集输入变化才触发全量采集（见规则 15） |
 | C068 | 缺陷修复 | 订阅卡 Provider 定向刷新与 Cline 凭证注入 | 新增 `refresh_subscription` 定向刷新 (只查目标 Provider 额度、合并回快照、与全量串行); 补齐漏表的 Cline 凭证注入; 运行时层为 section 附 `provider` 键（见规则 14） |
 | C067 | 缺陷修复 | 看板与设置窗口按 mac 源码逐项对齐 | 以 mac SwiftUI 卡片离屏渲染与 Windows 真实内核渲染并排比对定位偏差：修复无效 `font: … inherit` 简写、14 日柱零高、热力图例无色、标题行状态件与迷你摘要位置；Rust `token_count` 补 B 档；Nothing 字体行高取自身度量、描边改 overlay 等价；设置窗口不再套用 Nothing（见规则 13） |
+| C075 | 缺陷修复 | Claude 凭据零配置跟随本机 CLI 登录态 | 新增本机登录态只读探测（`%USERPROFILE%\.claude\.credentials.json` → `.claude.json`），采集前自动注入 `claude-cli` 账号；设置页新增「读取本机登录态」入口与状态文案（见规则 17） |
+| C076 | 缺陷修复 | 刷新调度接入网络可达性闸门 | 自动刷新前置可达性探测，离线不发起/不重试、联网后单次补偿；手动刷新语义不变（见规则 18） |
+| C077 | 缺陷修复 | 订阅额度 per-provider 门禁与 429 冷却 | 按 `quotaAttemptedAt` 新鲜度 + `rateLimitedAt` 30 分钟 partial 冷却独立门控各 provider；跳过者回填旧值，手动刷新绕过冷却（见规则 19） |
 | 暂无增量变更 | - | 初始基线定稿 | Windows 适配初始设计（Tauri 2 / 首版全量 / Rust 视图模型+对拍） |
 
 #### 现行设计规则
@@ -268,6 +272,24 @@ Windows Tauri 后端 (Rust)
     - **对拍**：`apps/win/viewmodel/tests/analytics_parity.rs` 对 mac `PanelParityHarness` 产出的 `*.analytics.json` 逐字段（含浮点位）比对；前端测试与 render-harness 直接渲染同一 golden；
     - **呈现**：分段时间范围（默认近 7 天）+ 导出 CSV 账单 / JSON 明细（系统保存对话框，默认文件名同 mac）→ 4 格 KPI → 时序（折线 / 面积 × Agent / 模型 / Token 构成 / 费用，分带 x 轴、≤14 点画点、悬停选点）→ 模型分布（合并 / 原始渠道，多渠道可展开）→ Agent 表现（构成比例条，今日范围才有工程分布，展开状态跨范围保留）→ Token 构成四象限与今日 24 小时密度；其下为「会话来源与采集探针」及 Windows 独有的「Agent 会话采集」开关卡；
     - **悬停文案**：`token_count` 的 JS 镜像对恰为平局的二进制值取偶（JS `toFixed` 平局进位，Rust / C 取偶），与 mac 逐字符一致。
+17. **Claude 本机登录态零配置跟随**（C075，mac `SystemExternalCredentialReader` + `ClaudePasteParser` 同语义）：
+    - **读取序**：`%USERPROFILE%\.claude\.credentials.json` → `%USERPROFILE%\.claude.json`（mac 读取序去掉 Keychain 段，Windows 无 Keychain）；命中即返回原文，非 UTF-8 视为不可读并继续回退；
+    - **规范化**：接受包装键 `claudeAiOauth` / `claude.ai_oauth`、OAuth 条目本体或纯 token（`token [refreshToken]`），输出 `{"claudeAiOauth":{…}}`；无 `accessToken` 视为无登录态；
+    - **注入**：采集前（全量与定向刷新同路径）经 `credentials::with_local_claude` 注入 `claudeQuotaAccounts["claude-cli"]`，**不落盘**；用户已存自有账号时手工配置优先，已存 `claude-cli` 时仅当本机 `expiresAt` 更大才替换；
+    - **设置页**：新增「Claude 本机登录态」卡（`claude_local_status` / `import_claude_from_local` 两个命令），状态文案为已跟随 / 未发现 / 已过期（对齐 mac `ClaudeProviderSettingsSection`）；「读取本机登录态」把本机登录态显式持久化为 `claude-cli` 账号，粘贴入口保留作多账号兜底；
+    - **红线**：仅只读，绝不回写外部文件；文件缺失/非法一律静默回落，不报错、不弹窗。
+18. **网络可达性闸门**（C076，mac `NetworkReachability` + `RefreshScheduler.offlinePaused` 同语义）：
+    - **探测**：`reachability::SystemNetworkProbe` 在 Windows 走 `InternetGetConnectedState`（返回 0 判离线），其它平台恒在线（fail-open，不误挡 mac 开发/CI）；探针以 `NetworkProbe` trait 注入，与调度逻辑解耦；
+    - **闸门**：`ReachabilityGate` 初始视为在线（首个真实观测前 fail-open）；离线时跳过本轮自动刷新，**不累加 retries、不进入退避**，只按 30s 固定周期重探（`OFFLINE_PROBE_INTERVAL_SECS`），并把快照标为 `NETWORK_UNAVAILABLE`；
+    - **补偿**：离线→在线跃迁给出 `Compensate`，本轮刷新即离线期间唯一一次补偿（不补发积压的多轮）；持续在线为 `Online`，语义与既有退避/边界唤醒不变；
+    - **手动不变**：`should_skip_refresh` 只在「离线且非手动」时跳过 —— 手动刷新（含定向刷新）离线仍执行一次，不重试。
+19. **订阅额度 per-provider 门禁与 429 冷却**（C077，mac `QuotaRefreshPolicy` + `QuotaCarryOverMerger` 同语义）：
+    - **新鲜度门禁**：`quota_policy::plan` 逐 provider 判定 —— `quotaAttemptedAt`（回退 `capturedAt`，失败回退 `rateLimitedAt`）距今不足刷新间隔则跳过（多账号需全部新鲜才跳过）；无历史 service 的 provider 必须首查；上次快照后有窗口 `resetsAt` 已过则强制重查（C037 兼容）；
+    - **429 冷却**：service 带 `rateLimitedAt` 且距今不足 30 分钟（`RATE_LIMIT_COOLDOWN_SECS`）时该 provider 进入冷却（partial，仅该 provider；其余照常查询）；命中判定用 service `note` 的限流文案（429 / 限流 / RATE_LIMIT）；
+    - **Codex 例外**：Codex 永不因新鲜度或冷却进入 `skip_providers`（四源合并/重试链路需要完整首轮结果）；全部 provider 仍新鲜时整轮退化为本地专用 run 并回填全部旧 service；
+    - **记账与回填**：本轮真实查询过的 service 写 `quotaAttemptedAt`，命中限流写 `rateLimitedAt`、成功则清除（跨重启保留节流状态）；被跳过的 provider 用上一份 service 原样回填，冷却/失败/过期标 `stale`，不丢旧值也不误标 `fresh`；
+    - **手动绕过**：手动刷新 `forceRefresh + bypassCooldown` 直接查询全部 provider，不受新鲜度与冷却约束；定向刷新属手动操作，只写回目标 provider 的时间戳。
+    - **范围说明（C065 联动）**：mac 侧额度查询周期已由 C065 与用户配置刷新间隔联动，Windows 侧同步以 `refresh_interval_secs` 作新鲜度间隔；不再存在「本地采集与额度查询周期绑定的双端差异」。
 
 ### 6.1 Rust 端改动清单（收敛后）
 
@@ -277,7 +299,7 @@ Windows Tauri 后端 (Rust)
 | R2 | Windows CI job | `.github/workflows/ci.yml` | 新增 `windows-latest` job：`cargo fmt --check` / `cargo test --workspace` / `cargo clippy` | **已实施**：`verify-windows` job 在 `windows-latest` 上执行前端结构冒烟、发布脚本 AST 语法门禁与三个 manifest（`core/collector`、`apps/win/viewmodel`、`apps/win/src-tauri`）的 fmt / test / clippy |
 | R3 | 验证脚本抽取 | `scripts/` | Rust 平台无关部分抽为 `verify-rust.sh`（Windows 侧 PowerShell 等价或 PowerShell 驱动） | **已实施**：`scripts/verify-rust.sh` 已抽取并被 `verify-local.sh` 与 CI 双侧复用（Windows 侧由 CI 直接执行等价 cargo 命令，zsh 依赖不适用于 Windows） |
 | R4 | 真机路径实测 | 本文档 §3.4 | P0 实测后回填；如有布局差异改 `paths.rs` 对应 resolver 并补测试 | **未实施（真机欠账）**：§3.4 仍为待实测表 |
-| R5 | Claude CLI Windows 凭证 | `collector-credential` | 视实测结论：文件回退已覆盖则仅登记；否则实现 Windows `CredentialSource`（文件探测优先，禁止交互） | **已闭合（另一路线）**：未引入 Windows 侧 `CredentialSource`；Windows 壳以 `CredentialPayloads` 的 `claudeOAuth` 字段注入凭证，不做 CLI 文件探测与交互式读取 |
+| R5 | Claude CLI Windows 凭证 | `collector-credential` | 视实测结论：文件回退已覆盖则仅登记；否则实现 Windows `CredentialSource`（文件探测优先，禁止交互） | **已闭合（另一路线，C075 落地）**：未向 `collector-credential` 引入 Windows 侧 `CredentialSource`；Windows 壳在 `src-tauri/src/credentials/claude_local.rs` 只读跟随本机 `~/.claude/.credentials.json` → `.claude.json`，注入 `claudeQuotaAccounts`（见规则 17），并保留 `claudeOAuth` 粘贴注入 |
 
 ### 6.2 Windows 视图模型层（`apps/win/viewmodel/`，独立纯 Rust crate）
 
@@ -289,6 +311,9 @@ Windows Tauri 后端 (Rust)
 | `viewmodel/src/subscription.rs` | `SubscriptionMapping.swift` / `SubscriptionPresentationPolicy` | Provider 额度快照 → 订阅卡展示模型（窗口语义、进度、告警态） |
 | `src-tauri/src/alerts.rs` | `QuotaAlertEvaluator.swift` / `SystemNotificationDeliveryPolicy` | 配额告警判定与通知去重 |
 | `src-tauri/src/scheduler.rs`、`runtime_core.rs` | `RefreshScheduler.swift` / `RefreshBackoffPolicy` / `RefreshExecutionPipeline` | 刷新调度、指数退避与可独立测试的策略 |
+| `src-tauri/src/reachability.rs` | `NetworkReachability.swift` | 网络可达性闸门状态机与可注入探针（C076，见规则 18） |
+| `src-tauri/src/quota_policy.rs` | `QuotaRefreshPolicy.swift` / `QuotaCarryOverMerger.swift` | per-provider 额度新鲜度门禁、429 冷却与旧值回填（C077，见规则 19） |
+| `src-tauri/src/credentials/claude_local.rs` | `SystemExternalCredentialReader.swift` / `ClaudePasteParser.swift` | 本机 Claude CLI 登录态只读跟随与规范化（C075，见规则 17） |
 | `src-tauri/src/runtime_core.rs` | `CodexQuotaSnapshotMerger` 等 | 快照持久化与 stale 合并（DeepSeek 月度账本已于 C020 双端移除） |
 | `src-tauri/src/settings.rs`、`src/settings.js` | 设置中心相关 | 价格校准、卡片排序、主题偏好的加载与持久化 |
 

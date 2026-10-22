@@ -1,0 +1,100 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C075",
+  "title": "Windows 侧 Claude 订阅凭据对齐 mac 零配置跟随：自动读取本机 ~/.claude/.credentials.json（含 ~/.claude.json 回退）替代纯粘贴",
+  "type": "BugFix",
+  "status": "closed",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src-tauri + apps/win/src",
+    "component": "credentials / 设置中心 Claude 凭据",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "mac 侧 C059/C060 已把 Claude 订阅配置做成 cc-switch 式零配置跟随：ExternalCredentialReader 先静默查 Keychain, 失败回退读 ~/.claude/.credentials.json, 再回退 ~/.claude.json（apps/macos/Sources/BruceOnboardingCore/ExternalCredentialReader.swift:46-64）。Windows 侧仍是纯粘贴制：设置页把 Claude 标为「CLI 登录态」（apps/win/src/settings.js:242），但账号表单强制要求粘贴 Access Token 或 OAuth JSON（apps/win/src/settings.js:1666-1668），且 win 唯一的文件导入只支持 Codex auth.json 与 Bruce 凭据 JSON（apps/win/src/settings.js:1404-1425），全仓无任何读取 ~/.claude/.credentials.json 的路径。结果是 Windows 用户每次 Claude 登录态轮换后都要手工复制粘贴, 与 mac 体验割裂; win 无 Keychain 场景, 应以文件跟随为主。",
+  "precheck": {
+    "description": "预检: 确认 Windows 侧无本机 Claude 登录态自动读取路径",
+    "command": "grep -rn \"\\.claude/\\.credentials\\.json\\|\\.claude\\.json\" apps/win/src apps/win/src-tauri/src",
+    "expected": "无命中 (grep 退出码 1): Windows 仅存在设置页「本机会话目录 (~/.claude/projects)」文案, 无凭据自动读取",
+    "is_completed": false,
+    "evidence": "2026-10-22 复核: 该 grep 无命中; Claude 表单 (settings.js:1666-1668) 与文件导入 (settings.js:1404-1425) 均为粘贴/Codex 专用, 缺口确认存在"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护在 main 直接实施 (本次依用户指示不建新分支)"
+    ],
+    "after": [
+      "node scripts/check-win-frontend.mjs",
+      "node apps/win/tests/frontend.test.mjs",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "cargo clippy --manifest-path apps/win/src-tauri/Cargo.toml --all-targets -- -D warnings"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "Claude 凭据读取 (apps/win/src-tauri/src/credentials)",
+      "before": "仅接受设置页粘贴的 Access Token / OAuth JSON; 无本机 Claude 登录态探测",
+      "after": "新增本机 Claude 登录态只读探测: 按 %USERPROFILE%\\.claude\\.credentials.json → %USERPROFILE%\\.claude.json 顺序读取 (对齐 mac ExternalCredentialReader 的回退序, win 无 Keychain 段), 解析为 claudeQuotaAccounts 的 oauth 载荷; 文件缺失/格式非法时静默跳过并回退粘贴路径",
+      "impact": "Windows 用户无需手工粘贴即可跟随本机 Claude CLI 登录态"
+    },
+    {
+      "scope": "设置中心 Claude 区 (apps/win/src/settings.js)",
+      "before": "Claude 账号表单只有粘贴入口, 标签写「CLI 登录态」但无对应动作",
+      "after": "新增显式「读取本机登录态」入口与状态文案 (已跟随 / 未发现 / 已过期), 与 mac ClaudeProviderSettingsSection 语义对齐; 保留手工粘贴作为回退",
+      "impact": "设置页交互与 mac 一致; 标签与实际能力不再矛盾"
+    },
+    {
+      "scope": "回归用例 (apps/win/src-tauri/tests/credentials_coverage.rs + frontend.test.mjs)",
+      "before": "无本机 Claude 登录态探测用例",
+      "after": "新增: 临时 HOME 下写入 .credentials.json 可被解析并注入 claudeQuotaAccounts; 文件缺失/非法 JSON 静默回退不报错; .claude.json 回退分支命中; 前端读取入口渲染与调用断言",
+      "impact": "锁定跟随契约, 防止回退顺序被后续改动破坏"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/05 §4.3 凭证与安全红线 未声明 Windows 侧 Claude 登录态跟随语义 (仅约定粘贴式凭据入库)",
+      "after": "补一条: Windows 无 Keychain, Claude 凭据按 %USERPROFILE%\\.claude\\.credentials.json → .claude.json 只读跟随, 失败静默回退粘贴; 仅只读, 不回写外部文件"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "2026-10-22 会话实测: cargo test --test credentials_coverage 20 passed + node --test frontend.test.mjs 52 passed + check-win-frontend.mjs Exit 0 + clippy/fmt Exit 0",
+    "user_quote": "确认，提交",
+    "signoff": "verified",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "credentials_coverage 与 frontend.test.mjs 新增用例全绿, check-win-frontend 退出码 0",
+        "false_if": "任何测试失败或新增用例未覆盖回退分支",
+        "evidence": "cargo test --manifest-path apps/win/src-tauri/Cargo.toml --test credentials_coverage → 20 passed; 0 failed (新增 6 项: 跟随/回退/静默/过期/不覆盖自有账号/持久化); node --test apps/win/tests/frontend.test.mjs → 52 passed (含 C075 用例); node scripts/check-win-frontend.mjs → Exit Code 0; cargo clippy --all-targets -- -D warnings → Exit Code 0; cargo fmt --all -- --check → Exit Code 0",
+        "result": true
+      },
+      {
+        "item": "行为实测 (Windows 真机)",
+        "true_if": "本机存在 Claude CLI 登录态时, 设置页「读取本机登录态」能填充并保存, 订阅卡出现 Claude 额度; 无文件时提示未发现且不报错",
+        "false_if": "读取失败、误报或触发异常弹窗",
+        "evidence": "待 Windows 真机复核: 本机存在 Claude CLI 登录态时设置页「读取本机登录态」填充并保存、订阅卡出现 Claude 额度; 无文件时提示未发现且不报错 (自动化用例已用临时 HOME 覆盖两分支, 真机欠账登记)",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "手工粘贴路径与其它 provider 凭据读写不受影响; 不对外部文件做写操作",
+        "false_if": "破坏既有凭据 CRUD 或产生外部文件写入",
+        "evidence": "手工粘贴路径与其它 provider 凭据读写未改动 (既有 20 项凭证用例全绿); with_local_claude 仅在 claudeQuotaAccounts 为空或已存 claude-cli 更旧时注入, 用户自有账号优先; 全程只读, 无外部文件写操作",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "bf7d764",
+    "tag": ""
+  }
+}
