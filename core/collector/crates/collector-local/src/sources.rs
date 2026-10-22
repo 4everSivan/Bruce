@@ -4320,6 +4320,104 @@ mod tests {
         fs::remove_dir_all(root).ok();
     }
 
+    /// C072: 聚合版本失配的旧格式条目必须回退全量重建, 不得以缺明细的
+    /// v2 base 增量追加 —— 否则 C070 新增的逐日/逐小时模型明细会在升级
+    /// 后永久缺失 (月明细为 v2 既有字段而幸存, 形成月/日视图口径分裂)。
+    #[test]
+    fn zcode_sqlite_cache_aggregation_version_mismatch_rebuilds_detail() {
+        use rusqlite::Connection;
+
+        let root = temp_root("zcode-cache-aggregation-version");
+        let db_path = root.join("zcode.db");
+        let cache_root = root.join("cache");
+        let base = 1_785_211_200_000_i64; // 2026-07-28T12:00+08, 与 window() 锚点一致
+        let connection = Connection::open(&db_path).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE session (id text primary key, directory text, task_type text);
+                 CREATE TABLE model_usage (
+                    started_at integer not null, model_id text,
+                    input_tokens integer, output_tokens integer, reasoning_tokens integer,
+                    cache_creation_input_tokens integer, cache_read_input_tokens integer,
+                    session_id text
+                 );",
+            )
+            .unwrap();
+        let insert = |connection: &Connection, timestamp: i64, input: i64| {
+            connection
+                .execute(
+                    "INSERT INTO model_usage (started_at, model_id, input_tokens, output_tokens) \
+                     VALUES (?1, 'glm', ?2, 3)",
+                    rusqlite::params![timestamp, input],
+                )
+                .unwrap();
+        };
+        // 一单在前天 (窗口内非今日, 进 models_by_day 明细), 一单在今日。
+        insert(&connection, base - 2 * 86_400_000, 5);
+        insert(&connection, base - 1_800_000, 7);
+        drop(connection);
+
+        // 冷扫写入当前格式条目 (aggregation_version=3 + 全量日明细)。
+        let seeded =
+            scan_zcode_cached(&db_path, &window(), &cache_root, &CancellationToken::new()).unwrap();
+        assert!(seeded.found);
+        assert_eq!(
+            seeded.contribution.models_by_day.len(),
+            2,
+            "冷扫应产出两个日期的逐日模型明细"
+        );
+
+        // 把条目改写成 v2 形状: 剥离 aggregation_version 与逐日/逐小时明细
+        // (字段均为 serde 可缺省), 复刻升级当晚生产缓存的真实状态。
+        let cache_files: Vec<_> = fs::read_dir(&cache_root)
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .map(|name| name.starts_with("sqlite-") && name.ends_with(".json"))
+                    .unwrap_or(false)
+            })
+            .collect();
+        assert_eq!(cache_files.len(), 1, "应恰好存在一个 sqlite 缓存条目");
+        let legacy: Value = {
+            let mut value: Value =
+                serde_json::from_str(&fs::read_to_string(&cache_files[0]).unwrap()).unwrap();
+            let object = value.as_object_mut().unwrap();
+            object.remove("aggregation_version");
+            let contribution = object.get_mut("contribution").unwrap();
+            let contribution = contribution.as_object_mut().unwrap();
+            contribution.remove("day_models");
+            contribution.remove("hour_models");
+            value
+        };
+        fs::write(&cache_files[0], serde_json::to_string(&legacy).unwrap()).unwrap();
+
+        // DB 追加新行 (签名前进, 旧行为会走增量追加)。
+        let connection = Connection::open(&db_path).unwrap();
+        insert(&connection, base - 900_000, 11);
+        drop(connection);
+
+        let upgraded =
+            scan_zcode_cached(&db_path, &window(), &cache_root, &CancellationToken::new()).unwrap();
+        let expected = scan_zcode(&db_path, &window());
+        assert_eq!(
+            upgraded.contribution, expected.contribution,
+            "聚合版本失配必须回退全量重建, 不得以缺明细的 v2 base 增量合并"
+        );
+        assert_eq!(
+            upgraded.contribution.models_by_day.len(),
+            2,
+            "重建后前天的逐日模型明细必须恢复"
+        );
+        assert_eq!(
+            upgraded.stats.cache_appends, 0,
+            "聚合版本失配时不得走增量追加路径"
+        );
+        fs::remove_dir_all(root).ok();
+    }
+
     #[test]
     fn zcode_sqlite_cache_reuses_unchanged_and_reads_append() {
         use rusqlite::Connection;
