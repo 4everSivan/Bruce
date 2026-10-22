@@ -592,6 +592,40 @@ impl SnapshotState {
     /// Validate before mutating the saved snapshot. Bridge error artifacts never
     /// replace a valid previous snapshot, and malformed JSON is a visible failure.
     pub fn apply_response(&mut self, response: &BridgeResponse) -> Result<(), String> {
+        self.apply_response_with_policy(response, None, 0, 0)
+    }
+
+    /// C077: 带 per-provider 额度门禁的响应应用 —— 在既有合并之后追加
+    /// `quotaAttemptedAt`/`rateLimitedAt` 时间戳, 并用上一份 service 回填被跳过的
+    /// provider (冷却/新鲜 provider 不丢旧值, 也不被误标 fresh)。
+    pub fn apply_response_with_policy(
+        &mut self,
+        response: &BridgeResponse,
+        policy: Option<&crate::quota_policy::QuotaRunPolicy>,
+        now_ms: i64,
+        interval_secs: i64,
+    ) -> Result<(), String> {
+        let previous = self.artifact.clone();
+        self.apply_response_inner(response)?;
+        if let Some(policy) = policy {
+            let now_iso = crate::quota_policy::timestamp_iso(now_ms);
+            let mut artifact = self.artifact.take();
+            if let Some(artifact) = artifact.as_mut() {
+                crate::quota_policy::annotate_attempts(artifact, policy, &now_iso);
+                crate::quota_policy::carry_over_skipped(
+                    artifact,
+                    previous.as_ref(),
+                    policy,
+                    now_ms,
+                    interval_secs,
+                );
+            }
+            self.artifact = artifact;
+        }
+        Ok(())
+    }
+
+    fn apply_response_inner(&mut self, response: &BridgeResponse) -> Result<(), String> {
         self.diagnostics = response
             .diagnostics
             .iter()
@@ -641,6 +675,32 @@ impl SnapshotState {
     /// 全量采集 (定向刷新不代表本机会话已更新)。Bridge 整体失败或 artifact 不合法时,
     /// 只把目标 Provider 的合格旧值降级为 stale 并返回错误, 不触碰其他 Provider。
     pub fn apply_scoped_response(
+        &mut self,
+        response: &BridgeResponse,
+        provider: &str,
+    ) -> Result<(), String> {
+        self.apply_scoped_response_inner(response, provider)
+    }
+
+    /// C077: 定向刷新应用 —— 额外给目标 provider 写 `quotaAttemptedAt` /
+    /// `rateLimitedAt` (定向刷新属手动操作, 绕过冷却)。
+    pub fn apply_scoped_response_with_policy(
+        &mut self,
+        response: &BridgeResponse,
+        provider: &str,
+        now_ms: i64,
+    ) -> Result<(), String> {
+        let result = self.apply_scoped_response_inner(response, provider);
+        if result.is_ok() {
+            let now_iso = crate::quota_policy::timestamp_iso(now_ms);
+            if let Some(artifact) = self.artifact.as_mut() {
+                crate::quota_policy::annotate_provider(artifact, provider, &now_iso);
+            }
+        }
+        result
+    }
+
+    fn apply_scoped_response_inner(
         &mut self,
         response: &BridgeResponse,
         provider: &str,

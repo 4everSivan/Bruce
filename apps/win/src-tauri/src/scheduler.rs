@@ -109,6 +109,7 @@ pub fn classify_rate_limited(response: &collector_domain::BridgeResponse) -> boo
 mod desktop {
     use super::*;
     use crate::alerts::{over_threshold_entries, QuotaAlert};
+    use crate::reachability::NetworkProbe;
     use crate::runtime_core::next_delay;
     use crate::settings::{load_settings, AppSettings};
     use crate::{collector, credentials, paths};
@@ -233,14 +234,41 @@ mod desktop {
             state.begin_refresh();
         }
         publish(app);
+        // C077: per-provider 额度门禁 —— 由上一份快照决定本轮查询哪些 provider
+        // (新鲜或处于 429 冷却者跳过, 稍后由 carry_over 回填旧值); 手动刷新绕过两者。
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        let interval_secs = settings.refresh_interval_secs as i64;
+        let (policy, effective_settings) = {
+            let previous = control
+                .snapshot
+                .lock()
+                .ok()
+                .and_then(|state| state.artifact().cloned());
+            let policy = crate::quota_policy::plan(
+                previous.as_ref(),
+                &settings.enabled_providers,
+                now_ms,
+                interval_secs,
+                manual,
+                manual,
+            );
+            let mut scoped = settings.clone();
+            scoped
+                .enabled_providers
+                .retain(|provider| !policy.is_skipped(provider));
+            (policy, scoped)
+        };
         let payloads = credentials::load_credentials(&root);
+        // C075: 采集前自动跟随本机 Claude CLI 登录态 (零配置, 不落盘)。
+        let home = paths::home_root();
         let mut first = true;
         let result = credentials::collect_with_recovery(&root, payloads, |payloads| {
+            let payloads = credentials::with_local_claude(payloads, &home);
             if first {
                 first = false;
-                collector::run_configured_collection(payloads, settings)
+                collector::run_configured_collection(payloads, &effective_settings)
             } else {
-                collector::run_codex_retry(payloads, settings)
+                collector::run_codex_retry(payloads, &effective_settings)
             }
         });
         let control = app.state::<SchedulerControl>();
@@ -251,7 +279,12 @@ mod desktop {
                     .snapshot
                     .lock()
                     .map(|mut state| {
-                        let result = state.apply_response(&response);
+                        let result = state.apply_response_with_policy(
+                            &response,
+                            Some(&policy),
+                            now_ms,
+                            interval_secs,
+                        );
                         if state.save(&root).is_err() {
                             state.fail("SNAPSHOT_WRITE_FAILED");
                         }
@@ -319,8 +352,11 @@ mod desktop {
                 let root = paths::data_root();
                 let settings = load_settings(&root);
                 let payloads = credentials::load_credentials(&root);
+                // C075: 定向刷新同样跟随本机 Claude CLI 登录态。
+                let home = paths::home_root();
                 let mut first = true;
                 let result = credentials::collect_with_recovery(&root, payloads, |payloads| {
+                    let payloads = credentials::with_local_claude(payloads, &home);
                     if first {
                         first = false;
                         collector::run_scoped_collection(payloads, &settings, &provider)
@@ -331,7 +367,12 @@ mod desktop {
                 if let Ok(mut state) = control.snapshot.lock() {
                     match &result {
                         Ok(response) => {
-                            let _ = state.apply_scoped_response(response, &provider);
+                            // C077: 定向刷新写回目标 provider 的额度尝试时间戳。
+                            let _ = state.apply_scoped_response_with_policy(
+                                response,
+                                &provider,
+                                chrono::Utc::now().timestamp_millis(),
+                            );
                         }
                         Err(_) => state.mark_provider_stale(&provider),
                     }
@@ -364,11 +405,34 @@ mod desktop {
             let mut manual_reason = false;
             // C037: 边界唤醒已消费集合 —— 同一窗口重置时刻只提前唤醒一次。
             let mut boundary_consumed = std::collections::BTreeSet::new();
+            // C076: 网络可达性闸门 —— 离线不发起自动刷新/不重试, 联网后单次补偿。
+            let probe = crate::reachability::SystemNetworkProbe;
+            let mut gate = crate::reachability::ReachabilityGate::new();
             loop {
                 // Collapse requests already queued before this run into its manual reason.
                 manual |= receiver.try_iter().next().is_some();
                 if manual {
                     retries = 0;
+                }
+                let decision = gate.observe(probe.is_online());
+                // 断网闸门: 自动触发在无网络时不启动采集, 也不排任何重试; 手动刷新
+                // (含定向刷新) 仍允许执行一次 (对齐 mac RefreshScheduler)。
+                if crate::reachability::should_skip_refresh(decision, manual) {
+                    retries = 0;
+                    if let Ok(mut count) = app.state::<SchedulerControl>().retry_count.lock() {
+                        *count = 0;
+                    }
+                    if let Ok(mut state) = app.state::<SchedulerControl>().snapshot.lock() {
+                        state.fail(crate::reachability::NETWORK_UNAVAILABLE);
+                    }
+                    publish(&app);
+                    // 短周期重探, 不进入指数退避; 手动输入可提前打断。
+                    manual = receiver
+                        .recv_timeout(Duration::from_secs(
+                            crate::reachability::OFFLINE_PROBE_INTERVAL_SECS,
+                        ))
+                        .is_ok();
+                    continue;
                 }
                 manual_reason =
                     crate::runtime_core::manual_alert_reason(manual, retries, manual_reason);

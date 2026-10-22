@@ -1370,6 +1370,18 @@
     c2.append(node("p", "凭证保存在当前用户专属的本机目录。保存后仅展示账号元数据，不回显密钥。", { class: "hint" }));
     c2.append(node("div", null, { id: "credential-accounts", class: "account-list" }));
 
+    // Claude 本机登录态跟随 (C075, 对齐 mac ClaudeProviderSettingsSection): 启用后自动
+    // 只读跟随本机 Claude CLI 登录态, 无需手工粘贴; 粘贴入口保留作多账号兜底。
+    const cClaude = card(host, "Claude 本机登录态");
+    cClaude.append(node("p", "启用 Claude 订阅后自动只读跟随本机 Claude CLI 登录态（%USERPROFILE%\\.claude\\.credentials.json，缺失时回退 %USERPROFILE%\\.claude.json），不回写、不弹窗。", { class: "hint" }));
+    const claudeState = node("div", null, { class: "auth-state-line" });
+    claudeState.append(node("span", "检测中…", { id: "claude-local-state", class: "auth-state" }));
+    cClaude.append(claudeState);
+    const claudeAct = actions(cClaude);
+    button(claudeAct, "claude-local-detect", "立即检测", loadClaudeLocalStatus);
+    button(claudeAct, "claude-local-import", "读取本机登录态", importClaudeFromLocal, "btn primary");
+    claudeAct.append(node("span", null, { id: "claude-local-status", role: "status", class: "status-msg" }));
+
     const c3 = card(host, "添加或更新账号凭证");
     const providerSel = node("select", null, { id: "account-provider", class: "fluent-select" });
     for (const [, name, field] of providers) providerSel.append(node("option", name, { value: field }));
@@ -1809,6 +1821,44 @@
     host.textContent = lines.join("\n") || "尚无订阅查询结果";
   }
 
+  // MARK: - Claude 本机登录态 (C075)
+
+  // 状态行文案与 mac ClaudeProviderSettingsSection 同语义: 已跟随 / 未发现 / 已过期。
+  async function loadClaudeLocalStatus() {
+    const state = byId("claude-local-state");
+    if (!state) return;
+    try {
+      const info = await invoke("claude_local_status");
+      const stored = info?.storedAccountCount || 0;
+      if (info?.status === "followed") {
+        state.textContent = stored > 0
+          ? `已存 ${stored} 个账号凭证，正在使用`
+          : "已启用，自动跟随本机 Claude CLI 登录态";
+        state.className = "auth-state ok";
+      } else if (info?.status === "expired") {
+        state.textContent = "登录已过期，运行一次 Claude CLI 可自动恢复，Bruce 会重新跟随";
+        state.className = "auth-state off";
+      } else {
+        state.textContent = "未检测到本机 Claude 登录态，登录 Claude CLI 后自动跟随";
+        state.className = "auth-state off";
+      }
+    } catch (error) {
+      state.textContent = "本机登录态检测不可用";
+      state.className = "auth-state off";
+    }
+  }
+
+  async function importClaudeFromLocal() {
+    try {
+      const result = await invoke("import_claude_from_local");
+      message(byId("claude-local-status"), result?.status === "notFound"
+        ? "未发现本机 Claude 登录态，请先登录 Claude CLI 或改用粘贴导入"
+        : "已读取本机 Claude 登录态并保存");
+      await loadCredentials();
+      await loadClaudeLocalStatus();
+    } catch (error) { message(byId("claude-local-status"), `读取失败：${error.message || error}`); }
+  }
+
   // MARK: - 初始化
   const ready = (async () => {
     // 绑定侧栏点击
@@ -1829,7 +1879,7 @@
     if (mHost) buildMaintenance(mHost);
 
     try {
-      await Promise.all([loadSettings(), loadCredentials(), loadPrices(), loadRuntimeInfo(), loadPlans()]);
+      await Promise.all([loadSettings(), loadCredentials(), loadPrices(), loadRuntimeInfo(), loadPlans(), loadClaudeLocalStatus()]);
       await listen("settings-updated", async () => {
         try { await loadSettings(); } catch { message(byId("settings-status"), "设置读取失败"); }
       });

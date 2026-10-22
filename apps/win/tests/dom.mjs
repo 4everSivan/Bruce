@@ -142,7 +142,7 @@ export const defaults = {
   usageEnabled: true, enabledProviders: ["kimi", "codex", "claude", "deepseek"], providerOrder: [], pricingOverrides: {},
 };
 export async function settle() { await new Promise(resolve => setImmediate(resolve)); }
-export async function boot({ html = "index.html", panel = fixture, settings = defaults, reject = {}, accounts = [], dialogPath = "C:\\\\Users\\\\demo\\\\导出.csv", workbench = analytics } = {}) {
+export async function boot({ html = "index.html", panel = fixture, settings = defaults, reject = {}, accounts = [], dialogPath = "C:\\\\Users\\\\demo\\\\导出.csv", workbench = analytics, claudeLocal = { status: "followed", storedAccountCount: 0 } } = {}) {
   const htmlSource = readFileSync(resolve("apps/win/src", html), "utf8");
   const document = parseHTML(htmlSource);
   const calls = [], errors = [], events = new Map();
@@ -160,6 +160,8 @@ export async function boot({ html = "index.html", panel = fixture, settings = de
     if (command === "plugin:dialog|save") return dialogPath;
     if (command === "get_usage_analytics") return structuredClone(workbench[args.range] ?? null);
     if (command === "get_model_prices") return [{ model: "fixture-model", displayName: "Fixture Model", vendor: "Fixture Vendor", inputPricePerMillion: 1, outputPricePerMillion: 2, cacheReadPricePerMillion: null, currency: "USD", note: "fixture 备注" }];
+    if (command === "claude_local_status") return structuredClone(claudeLocal);
+    if (command === "import_claude_from_local") return { status: claudeLocal.status };
     if (command === "get_runtime_info") return { version: "0.11.5", dataRoot: "isolated-data", cacheRoot: "isolated-cache", snapshotPath: "isolated-snapshot", status: { phase: "stale", lastSuccessAt: "2026-10-08T08:00:00Z", error: "COLLECTION_PARTIAL", diagnosticCodes: ["PROVIDER_RATE_LIMIT"] } };
     return null;
   };

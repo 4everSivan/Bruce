@@ -989,3 +989,24 @@ test("settings saves are serialized and each merges the latest backend state (C0
   const saves = app.calls.filter((call) => call.command === "save_settings_command").length;
   assert.equal(saves, 3, "每个控件各保存一次");
 });
+
+test("Claude local login state renders status text and imports from the machine (C075)", async () => {
+  const followed = await boot({ html: "settings.html" });
+  assert.ok(followed.calls.some((call) => call.command === "claude_local_status"), "初始化即探测本机登录态");
+  assert.equal(followed.node("claude-local-state").textContent, "已启用，自动跟随本机 Claude CLI 登录态");
+  assert.equal(followed.node("claude-local-state").classList.contains("ok"), true);
+  const start = followed.calls.length;
+  await followed.node("claude-local-import").click();
+  assert.deepEqual(
+    followed.calls.slice(start).map((call) => call.command).filter((name) => name === "import_claude_from_local"),
+    ["import_claude_from_local"],
+  );
+  assert.equal(followed.node("claude-local-status").textContent, "已读取本机 Claude 登录态并保存");
+
+  const missing = await boot({ html: "settings.html", claudeLocal: { status: "notFound", storedAccountCount: 0 } });
+  assert.equal(missing.node("claude-local-state").textContent, "未检测到本机 Claude 登录态，登录 Claude CLI 后自动跟随");
+  assert.equal(missing.node("claude-local-state").classList.contains("off"), true);
+
+  const expired = await boot({ html: "settings.html", claudeLocal: { status: "expired", storedAccountCount: 1 } });
+  assert.equal(expired.node("claude-local-state").textContent, "登录已过期，运行一次 Claude CLI 可自动恢复，Bruce 会重新跟随");
+});

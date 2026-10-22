@@ -9,7 +9,8 @@ pub fn data_root() -> PathBuf {
     app_data_root(&home_root())
 }
 
-fn home_root() -> PathBuf {
+/// 当前用户主目录 (本机 CLI 登录态探测与采集会话路径解析共用同一事实源)。
+pub fn home_root() -> PathBuf {
     std::env::var_os("USERPROFILE")
         .or_else(|| std::env::var_os("HOME"))
         .map(PathBuf::from)

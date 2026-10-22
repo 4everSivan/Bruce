@@ -7,6 +7,8 @@ pub mod alerts;
 pub mod collector;
 pub mod credentials;
 pub mod paths;
+pub mod quota_policy;
+pub mod reachability;
 pub mod scheduler;
 pub mod settings;
 
@@ -403,6 +405,29 @@ mod desktop {
         Ok(())
     }
 
+    /// 本机 Claude CLI 登录态只读探测 (C075, 设置页状态文案): 返回状态与已存账号数。
+    #[tauri::command]
+    fn claude_local_status() -> serde_json::Value {
+        let home = paths::home_root();
+        let status = credentials::local_claude_status(&home, chrono::Utc::now().timestamp_millis());
+        let stored = credentials::load_credentials(&paths::data_root())
+            .get("claudeQuotaAccounts")
+            .and_then(serde_json::Value::as_object)
+            .map(|accounts| accounts.len())
+            .unwrap_or(0);
+        serde_json::json!({"status": status.as_str(), "storedAccountCount": stored})
+    }
+
+    /// 读取本机 Claude 登录态并保存为 `claude-cli` 账号 (C075): 只读外部文件, 不回写。
+    #[tauri::command]
+    fn import_claude_from_local(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+        let status = credentials::follow_local_claude(&paths::data_root(), &paths::home_root())?;
+        if status != credentials::ClaudeLocalStatus::NotFound {
+            app.state::<SchedulerControl>().request_manual_refresh();
+        }
+        Ok(serde_json::json!({"status": status.as_str()}))
+    }
+
     #[tauri::command]
     fn refresh_now(control: tauri::State<SchedulerControl>) {
         control.request_manual_refresh();
@@ -583,6 +608,8 @@ mod desktop {
                 remove_credential_account,
                 save_credential_account,
                 import_codex_auth,
+                claude_local_status,
+                import_claude_from_local,
                 get_settings,
                 save_settings_command,
                 credential_allowlist,

@@ -7,7 +7,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use bruce_win_lib::credentials::{
-    app_data_root_with, load_credentials, merge_credentials, save_credentials, CredentialPayloads,
+    app_data_root_with, follow_local_claude, load_credentials, local_claude_status,
+    merge_credentials, save_credentials, with_local_claude, ClaudeLocalStatus, CredentialPayloads,
 };
 use serde_json::json;
 
@@ -236,4 +237,141 @@ fn account_arrays_are_rejected_instead_of_silently_ignored_by_collector() {
         Some(json!([{"accountID":"a1","apiKey":"fixture"}])),
     )]);
     assert!(merge_credentials(&CredentialPayloads::new(), &patch).is_err());
+}
+
+// MARK: - 本机 Claude CLI 登录态跟随 (C075)
+
+/// 独立临时 home 目录。
+fn temp_home() -> PathBuf {
+    let root = temp_root().join("home");
+    fs::create_dir_all(&root).unwrap();
+    root
+}
+
+/// 写一份 Claude CLI 凭证文件 (`.claude/.credentials.json`)。
+fn write_claude_credentials(home: &std::path::Path, expires_at_ms: i64) {
+    let dir = home.join(".claude");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join(".credentials.json"),
+        json!({"claudeAiOauth": {
+            "accessToken": "sk-ant-oat-fixture",
+            "refreshToken": "sk-ant-ort-fixture",
+            "expiresAt": expires_at_ms,
+        }})
+        .to_string(),
+    )
+    .unwrap();
+}
+
+const FAR_FUTURE_MS: i64 = 4_102_444_800_000; // 2100-01-01
+const LONG_PAST_MS: i64 = 1_600_000_000_000; // 2020-09-13 (毫秒, > 1e12 触发毫秒口径)
+
+#[test]
+fn claude_local_credentials_file_is_followed_without_manual_paste() {
+    let home = temp_home();
+    write_claude_credentials(&home, FAR_FUTURE_MS);
+    assert_eq!(
+        local_claude_status(&home, FAR_FUTURE_MS - 1),
+        ClaudeLocalStatus::Followed
+    );
+    let injected = with_local_claude(CredentialPayloads::new(), &home);
+    assert_eq!(
+        injected["claudeQuotaAccounts"]["claude-cli"]["oauth"]["claudeAiOauth"]["accessToken"],
+        json!("sk-ant-oat-fixture")
+    );
+    assert_eq!(
+        injected["claudeQuotaAccounts"]["claude-cli"]["display_name"],
+        json!("Claude CLI")
+    );
+}
+
+#[test]
+fn claude_local_falls_back_to_dot_claude_json() {
+    let home = temp_home();
+    // 无 .claude/.credentials.json, 仅 .claude.json 存在 → 回退命中。
+    fs::write(
+        home.join(".claude.json"),
+        json!({"claudeAiOauth": {"accessToken": "sk-ant-oat-json"}}).to_string(),
+    )
+    .unwrap();
+    assert_eq!(
+        local_claude_status(&home, FAR_FUTURE_MS),
+        ClaudeLocalStatus::Followed
+    );
+    let injected = with_local_claude(CredentialPayloads::new(), &home);
+    assert_eq!(
+        injected["claudeQuotaAccounts"]["claude-cli"]["oauth"]["claudeAiOauth"]["accessToken"],
+        json!("sk-ant-oat-json")
+    );
+}
+
+#[test]
+fn claude_local_missing_or_malformed_is_silent() {
+    let home = temp_home();
+    // 无文件: 不报错, 状态 NotFound, 注入保持原样 (不新增空字段)。
+    assert_eq!(
+        local_claude_status(&home, FAR_FUTURE_MS),
+        ClaudeLocalStatus::NotFound
+    );
+    let original = sample_payloads();
+    assert_eq!(with_local_claude(original.clone(), &home), original);
+
+    // 结构非法 (无 accessToken): 同样静默回落。
+    fs::create_dir_all(home.join(".claude")).unwrap();
+    fs::write(
+        home.join(".claude").join(".credentials.json"),
+        "{broken json",
+    )
+    .unwrap();
+    assert_eq!(
+        local_claude_status(&home, FAR_FUTURE_MS),
+        ClaudeLocalStatus::NotFound
+    );
+}
+
+#[test]
+fn claude_local_expired_token_is_reported_as_expired() {
+    let home = temp_home();
+    write_claude_credentials(&home, LONG_PAST_MS);
+    assert_eq!(
+        local_claude_status(&home, FAR_FUTURE_MS),
+        ClaudeLocalStatus::Expired
+    );
+}
+
+#[test]
+fn claude_local_does_not_override_user_stored_accounts() {
+    let home = temp_home();
+    write_claude_credentials(&home, FAR_FUTURE_MS);
+    let stored = CredentialPayloads::from([(
+        "claudeQuotaAccounts".to_owned(),
+        json!({"work": {"display_name": "工作", "oauth": {"claudeAiOauth": {"accessToken": "stored"}}}}),
+    )]);
+    // 用户已存自有账号 → 不注入 CLI 跟随 (手工配置优先)。
+    assert_eq!(with_local_claude(stored.clone(), &home), stored);
+}
+
+#[test]
+fn follow_local_claude_persists_cli_account() {
+    let home = temp_home();
+    let root = temp_root();
+    write_claude_credentials(&home, FAR_FUTURE_MS);
+    assert_eq!(
+        follow_local_claude(&root, &home).unwrap(),
+        ClaudeLocalStatus::Followed
+    );
+    let stored = load_credentials(&root);
+    assert_eq!(
+        stored["claudeQuotaAccounts"]["claude-cli"]["oauth"]["claudeAiOauth"]["accessToken"],
+        json!("sk-ant-oat-fixture")
+    );
+    // 无本机登录态时不写入任何凭证。
+    let empty_home = temp_home();
+    let empty_root = temp_root();
+    assert_eq!(
+        follow_local_claude(&empty_root, &empty_home).unwrap(),
+        ClaudeLocalStatus::NotFound
+    );
+    assert!(load_credentials(&empty_root).is_empty());
 }

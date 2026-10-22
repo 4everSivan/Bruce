@@ -1,9 +1,11 @@
 //! App-owned credential storage. Secrets never cross the metadata IPC boundary.
 //! Windows uses a protected DACL for the process token SID before secret writes.
 
+mod claude_local;
 mod lifecycle;
 #[cfg(windows)]
 mod windows_security;
+pub use claude_local::{local_claude_status, with_local_claude, ClaudeLocalStatus};
 pub use lifecycle::{collect_with_recovery, collect_with_recovery_using, CodexRefreshError};
 
 use collector_bridge::ALLOWED_CREDENTIAL_FIELDS;
@@ -271,6 +273,22 @@ pub fn import_codex_auth(root: &Path, document: &Value) -> Result<(), String> {
     }
     save_credential_account(root, "codexQuotaAccounts", id, &Value::Object(account))
 }
+/// 读取本机 Claude 登录态并保存为 `claude-cli` 账号 (C075 设置页「读取本机登录态」)。
+/// 仅只读外部文件; 无可用登录态时返回 `NotFound` 且不写入任何凭证。
+pub fn follow_local_claude(root: &Path, home: &Path) -> Result<ClaudeLocalStatus, String> {
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let Some(oauth) = claude_local::read_local_claude_oauth(home) else {
+        return Ok(ClaudeLocalStatus::NotFound);
+    };
+    save_credential_account(
+        root,
+        "claudeQuotaAccounts",
+        "claude-cli",
+        &claude_local::claude_cli_account(&oauth),
+    )?;
+    Ok(claude_local::status_of(&oauth, now_ms))
+}
+
 fn save_unlocked(root: &Path, payloads: &CredentialPayloads) -> Result<(), String> {
     for (field, payload) in payloads {
         validate_credential_payload(field, payload)?;

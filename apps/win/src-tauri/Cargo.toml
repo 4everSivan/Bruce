@@ -45,4 +45,4 @@ serde_json = { version = "1", features = ["float_roundtrip"] }
 ureq = { version = "=2.12.1", default-features = false, features = ["tls", "json"] }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_Security", "Win32_Security_Authorization", "Win32_System_Threading", "Win32_Storage_FileSystem", "Win32_Foundation", "Win32_System_Memory"] }
+windows-sys = { version = "0.59", features = ["Win32_Security", "Win32_Security_Authorization", "Win32_System_Threading", "Win32_Storage_FileSystem", "Win32_Foundation", "Win32_System_Memory", "Win32_Networking_WinInet"] }
