@@ -21,8 +21,8 @@
     <div id="scroll">
       <!-- 看板视图: 卡片栈由 app.js 按 viewmodel 契约渲染 (1:1 对齐 mac MenuBarDashboardView) -->
       <section id="view-dashboard">
-        <div id="dashboard-status" class="dashboard-status" role="status"></div>
-        <div id="dashboard-diagnostics" class="dashboard-status"></div>
+        <!-- 顶部零输出 (C080): 除 HUD 头外不存在任何文字承载点, 与 mac 一致
+             (mac 的 header 与卡片栈之间无任何元素; 失败信息归订阅卡内部与设置页)。 -->
         <div id="stack" class="card-stack"></div>
       </section>
     </div>

@@ -587,13 +587,6 @@ function windowRow(row) {
 // 订阅段 Provider 定向刷新 (mac ProviderRefreshButton + SubscriptionRefreshControlPolicy)。
 // 目标 provider 取自运行时层附在 section 上的 `provider` (Rust runtime_core 单点归一,
 // 只对已知 provider 附加); 缺失即不渲染按钮 (fail-closed, 前端不猜测目标)。
-const SCOPED_REFRESH_ERRORS = {
-  SCOPED_REFRESH_UNAUTHORIZED: "尚未确认授权, 无法刷新订阅额度",
-  SCOPED_REFRESH_DISABLED: "该订阅未启用",
-  SCOPED_REFRESH_UNCONFIGURED: "该订阅尚未配置凭证",
-  SCOPED_REFRESH_RUNNING: "该订阅正在刷新",
-  FULL_REFRESH_RUNNING: "全量刷新进行中, 请稍后再试",
-};
 // 呈现与 mac 契约一致: 目标刷新中显示进度并禁用; 全量刷新中 / 未授权 / 未启用时禁用。
 function providerRefreshButton(section) {
   const provider = section.provider;
@@ -616,9 +609,9 @@ function providerRefreshButton(section) {
     button.disabled = true;
     try {
       await invoke("refresh_subscription", { sectionId: section.id });
-    } catch (error) {
-      const code = String(error?.message || error);
-      document.getElementById("dashboard-status").textContent = SCOPED_REFRESH_ERRORS[code] || `订阅刷新失败：${code}`;
+    } catch {
+      // 被拒时静默 (C080, 对齐 mac RefreshScheduler.refreshSubscription 的静默 return):
+      // 顶部不产生任何文案, 可见反馈仅为按钮恢复可点; 详情留在控制台。
       button.disabled = false;
     }
   });
@@ -1032,54 +1025,13 @@ function statusLabel(status) {
   return { ok: "正常", fresh: "正常", refreshing: "刷新中", loading: "刷新中", partial: "部分失败", failed: "刷新失败", error: "失败", stale: "数据过期", unavailable: "不可用", idle: "等待刷新", empty: "暂无数据", authRequired: "需要授权" }[status] || status;
 }
 
-/* ---------- 运行态文案与诊断口径 (C078) ---------- */
-// 状态行与诊断行面向用户, 不得直出诊断码。机器码一律映射中文文案; 正常流程产生的码
-// 不进用户可见文案 (SNAPSHOT_RESTORED 是每次正常启动 SnapshotState::load 必写的码,
-// 而 last_success_at 持久化 —— 直出会让冷启动到首次刷新之间恒挂一行机器码)。
-const RUNTIME_ERROR_TEXT = {
-  COLLECTION_PARTIAL: "部分订阅查询失败",
-  COLLECTION_FAILED: "刷新失败",
-  ARTIFACT_MISSING: "未取得采集结果",
-  ARTIFACT_INVALID: "采集结果格式异常",
-  SNAPSHOT_INVALID: "本地快照损坏, 已重新采集",
-  SNAPSHOT_READ_FAILED: "本地快照读取失败",
-  SNAPSHOT_WRITE_FAILED: "本地快照写入失败",
-  SNAPSHOT_LOCK_FAILED: "本地快照被占用",
-  SCOPED_REFRESH_FAILED: "该订阅额度查询失败",
-  NETWORK_UNAVAILABLE: "网络不可用, 已暂停自动刷新",
-};
-const BENIGN_RUNTIME_CODES = new Set(["SNAPSHOT_RESTORED"]);
-function runtimeErrorText(code) {
-  if (!code) return "";
-  if (BENIGN_RUNTIME_CODES.has(code)) return "";
-  if (RUNTIME_ERROR_TEXT[code]) return RUNTIME_ERROR_TEXT[code];
-  // 未收录的 SCREAMING_SNAKE 码回退通用文案; 已含中文的人工文案原样透出。
-  return /^[A-Z][A-Z0-9_]*$/.test(code) ? "采集状态异常" : code;
-}
-// 「上次成功」以本地可读时间呈现 (ISO 原文对用户无意义); 非 ISO 值原样保留。
-function lastSuccessText(value) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-// design/05 规则 11: 主看板只保留「需用户动作」的严重服务级故障 (认证/权限/凭证缺失类);
-// 一次性失败 (限流、超时) 不上主看板 —— 仍保留在订阅卡内部与设置页。
-// 标记取自 collector 的实际文案; 未命中的失败一律不上看板 (fail-closed, 宁缺勿噪)。
-const ACTIONABLE_SERVICE_NOTE_MARKERS = [
-  "重新登录", "重新授权", "重新 grok login",
-  "凭证被拒绝", "凭证刷新失败", "凭证格式无效", "请求被拒绝",
-  "登录态已失效", "会话已失效", "无权访问", "未检测到",
-];
-function isActionableServiceIssue(diagnostic) {
-  if (diagnostic.kind !== "serviceIssue") return false;
-  const note = diagnostic.note || "";
-  return ACTIONABLE_SERVICE_NOTE_MARKERS.some((marker) => note.includes(marker));
-}
-
+/* ---------- 看板顶部运行态 (C079/C080) ---------- */
+// 看板顶部除 HUD 头外零输出, 完全对齐 mac (mac header 与卡片栈之间无任何元素;
+// PanelViewModel 无 runtime 字段)。服务级失败在订阅卡内部的 section/account note
+// 呈现, 整体采集错误在设置窗口呈现, Agent 探针信息在设置中心呈现。
+// C080 起连 #dashboard-status 元素一并移除, 顶部不存在任何文字承载点。
 function renderStatus(panel) {
   const runtime = panel.runtime || {};
-  const diagnostics = panel.diagnostics || [];
   const phase = runtime.phase || (panel.usage || panel.subscription ? "fresh" : "empty");
   // mac Header 恒显 SYS.OK; Windows 保留显式运行态 (C009): 健康时与 mac 同字,
   // 其余状态 (刷新中 / 失败 / 过期 …) 在同一小牌内直出中文并以告警色区分。
@@ -1087,21 +1039,6 @@ function renderStatus(panel) {
   const badge = document.getElementById("runtime-status");
   badge.textContent = healthy ? "SYS.OK" : statusLabel(phase);
   badge.classList.toggle("degraded", !healthy && phase !== "refreshing" && phase !== "loading");
-  const details = [runtimeErrorText(runtime.error)];
-  if (runtime.lastSuccessAt) details.push(`上次成功 ${lastSuccessText(runtime.lastSuccessAt)}`);
-  if (!panel.usage && !panel.subscription && !panel.hourly) details.push("暂无采集数据，可刷新或检查设置。");
-  document.getElementById("dashboard-status").textContent = details.filter(Boolean).join(" · ");
-  const host = document.getElementById("dashboard-diagnostics");
-  if (host) {
-    host.replaceChildren();
-    // 过滤会话探测项：未发现会话记录与空 Agent 提示归入设置中心，仪表盘仅保留需用户动作的服务级故障
-    const serviceIssues = diagnostics.filter(isActionableServiceIssue);
-    for (const diagnostic of serviceIssues) {
-      const identity = diagnostic.serviceId || diagnostic.module || "";
-      const message = diagnostic.note || diagnostic.reason || statusLabel(diagnostic.status || diagnostic.kind);
-      host.append(el("div", "note-line", `${identity ? `${identity}: ` : ""}${message}`));
-    }
-  }
   const refreshing = phase === "refreshing" || phase === "loading";
   const refresh = document.getElementById("refresh");
   refresh.disabled = refreshing;
@@ -1152,11 +1089,13 @@ function render(panel) {
     stack.append(empty);
   }
 }
+// 致命错误 (面板无法渲染 / IPC 失败): 顶部零输出 (C080), 只把 HUD 状态牌标为失败,
+// 详情走控制台保留可诊断性。
 function showError(error) {
   const badge = document.getElementById("runtime-status");
   badge.textContent = "失败";
   badge.classList.add("degraded");
-  document.getElementById("dashboard-status").textContent = String(error);
+  console.error("看板渲染失败:", error);
 }
 document.getElementById("refresh").addEventListener("click", async () => {
   const button = document.getElementById("refresh");

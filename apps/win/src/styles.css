@@ -188,14 +188,6 @@ button, input, select, textarea {
 #scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,.22); border-radius: 2px; }
 #scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.38); }
 
-.dashboard-status {
-  padding: 6px 14px 0;
-  color: var(--secondary);
-  font-size: 11px;
-  overflow-wrap: anywhere;
-}
-.dashboard-status:empty { display: none; }
-
 /* mac cardStack: classic 水平 12 / 顶 10 / 底 4, 卡间距 10 */
 .card-stack {
   padding: 10px 12px 4px;

@@ -202,15 +202,19 @@ test("model default tier and calendar month selection use distinct periods", asy
   assert.match(app.node("stack").textContent, /tier-model-0/);
 });
 
-test("refresh failure retains cached cards and exposes stale/error diagnostics", async () => {
+test("refresh failure retains cached cards without any top status line (C079)", async () => {
   const app = await boot();
   const panel = { ...fixture, runtime: { phase: "failed", lastSuccessAt: "2026-10-08T00:00:00Z", error: "服务暂不可用" },
     diagnostics: [{ kind: "serviceIssue", serviceId: "codex", status: "error", note: "请重新授权" }] };
   await app.emit("dashboard-updated", panel);
+  // HUD 状态牌仍显失败/过期 (C009 显式运行态保留)
   assert.match(app.node("runtime-status").textContent, /失败|过期/);
-  assert.match(app.node("dashboard-status").textContent, /服务暂不可用/);
-  assert.match(app.node("dashboard-diagnostics").textContent, /请重新授权/);
+  // 顶部零输出 (C079/C080): 两个承载元素都不存在
+  assert.equal(app.node("dashboard-status"), null, "顶部无状态行元素 (C080)");
+  assert.equal(app.node("dashboard-diagnostics"), null, "顶部无诊断行元素 (C079)");
+  // 缓存卡片保留, 失败说明在订阅卡内部呈现
   assert.ok(app.node("stack").children.length >= 2);
+  assert.doesNotMatch(app.node("stack").textContent, /服务暂不可用/);
 });
 
 test("single-account sections render each window row and collector note exactly once", async () => {
@@ -967,10 +971,15 @@ test("scoped refresh is fail-closed for unknown sections and does not toggle mul
   assert.ok(app.calls.some((c) => c.command === "refresh_subscription" && c.args.sectionId === "cline"));
 });
 
-test("scoped refresh refusals surface a readable notice (C068)", async () => {
+test("scoped refresh refusal is silent and only restores the button (C080, mac parity)", async () => {
   const app = await boot({ panel: withProviders(fixture), reject: { refresh_subscription: "SCOPED_REFRESH_UNCONFIGURED" } });
-  await app.node("stack").querySelector(".sub-refresh").click();
-  assert.equal(app.node("dashboard-status").textContent, "该订阅尚未配置凭证");
+  const button = app.node("stack").querySelector(".sub-refresh");
+  await button.click();
+  // 顶部零输出: 不存在任何承载拒绝文案的元素
+  assert.equal(app.node("dashboard-status"), null, "顶部无状态行元素");
+  assert.equal(app.node("dashboard-diagnostics"), null, "顶部无诊断行元素");
+  // 可见反馈仅为按钮恢复可点 (对齐 mac RefreshScheduler.refreshSubscription 的静默 return)
+  assert.equal(button.disabled, false, "拒绝后按钮恢复可点");
   assert.equal(app.node("runtime-status").textContent, "SYS.OK", "定向刷新被拒不代表整体运行失败");
 });
 
@@ -1011,28 +1020,30 @@ test("Claude local login state renders status text and imports from the machine 
   assert.equal(expired.node("claude-local-state").textContent, "登录已过期，运行一次 Claude CLI 可自动恢复，Bruce 会重新跟随");
 });
 
-test("dashboard status line never leaks diagnostic codes (C078)", async () => {
+test("dashboard top carries no runtime status line in any phase (C079)", async () => {
   const app = await boot();
   const withRuntime = (runtime, diagnostics = []) => ({ ...fixture, runtime, diagnostics });
 
-  // 诊断码 → 中文文案, 机器码本身不得出现
-  await app.emit("dashboard-updated", withRuntime({ phase: "partial", error: "COLLECTION_PARTIAL" }));
-  assert.equal(app.node("dashboard-status").textContent, "部分订阅查询失败");
-  assert.doesNotMatch(app.node("dashboard-status").textContent, /COLLECTION_PARTIAL/);
-
-  // 每次正常重启必写的 SNAPSHOT_RESTORED 不进用户文案, 「上次成功」保留且可读
-  await app.emit("dashboard-updated", withRuntime({ phase: "stale", error: "SNAPSHOT_RESTORED", lastSuccessAt: "2026-10-22T08:00:00Z" }));
-  assert.doesNotMatch(app.node("dashboard-status").textContent, /SNAPSHOT_RESTORED/);
-  assert.match(app.node("dashboard-status").textContent, /^上次成功 \d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
-
-  // 未收录的码回退通用文案; 已含中文的人工文案原样透出
-  await app.emit("dashboard-updated", withRuntime({ phase: "failed", error: "SOME_NEW_CODE" }));
-  assert.equal(app.node("dashboard-status").textContent, "采集状态异常");
-  await app.emit("dashboard-updated", withRuntime({ phase: "failed", error: "服务暂不可用" }));
-  assert.equal(app.node("dashboard-status").textContent, "服务暂不可用");
+  // 部分失败 / 冷启动恢复 / 致命失败 / 中文文案: 顶部一律保持空白
+  for (const runtime of [
+    { phase: "partial", error: "COLLECTION_PARTIAL" },
+    { phase: "stale", error: "SNAPSHOT_RESTORED", lastSuccessAt: "2026-10-22T08:00:00Z" },
+    { phase: "failed", error: "SOME_NEW_CODE" },
+    { phase: "failed", error: "服务暂不可用" },
+  ]) {
+    await app.emit("dashboard-updated", withRuntime(runtime));
+    assert.equal(app.node("dashboard-status"), null, `phase=${runtime.phase} 顶部无状态行元素`);
+    assert.equal(app.node("dashboard-diagnostics"), null);
+  }
+  // 状态牌语义未变 (C009): 健康态 SYS.OK, 异常态中文 + degraded
+  await app.emit("dashboard-updated", withRuntime({ phase: "fresh" }));
+  assert.equal(app.node("runtime-status").textContent, "SYS.OK");
+  await app.emit("dashboard-updated", withRuntime({ phase: "partial" }));
+  assert.equal(app.node("runtime-status").textContent, "部分失败");
+  assert.equal(app.node("runtime-status").classList.contains("degraded"), true);
 });
 
-test("dashboard diagnostics keep only action-required service faults (C078)", async () => {
+test("service faults stay inside the subscription card, never at the dashboard top (C079)", async () => {
   const app = await boot();
   await app.emit("dashboard-updated", {
     ...fixture,
@@ -1040,14 +1051,13 @@ test("dashboard diagnostics keep only action-required service faults (C078)", as
     diagnostics: [
       { kind: "serviceIssue", serviceId: "claude", status: "error", note: "Claude 凭证被拒绝, 请重新登录 Claude CLI" },
       { kind: "serviceIssue", serviceId: "kimi", status: "error", note: "查询失败: Provider 请求触发限流 (HTTP 429)" },
-      { kind: "serviceIssue", serviceId: "deepseek", status: "error", note: "额度查询暂时失败, 请稍后重试" },
-      { kind: "serviceIssue", serviceId: "codex", status: "ok", note: "" },
       { kind: "agentIssue", agentId: "grok", status: "not_found", note: "未发现会话记录" },
     ],
   });
-  const shown = app.node("dashboard-diagnostics").textContent;
-  assert.match(shown, /claude: Claude 凭证被拒绝/, "需用户动作的故障上主看板");
-  assert.doesNotMatch(shown, /限流/, "一次性限流失败不上主看板");
-  assert.doesNotMatch(shown, /稍后重试/, "瞬时失败不上主看板");
-  assert.doesNotMatch(shown, /未发现会话记录/, "会话探针仍归设置中心");
+  // 顶部两个承载元素都不存在 (零输出)
+  assert.equal(app.node("dashboard-status"), null);
+  assert.equal(app.node("dashboard-diagnostics"), null);
+  // 会话探针与失败说明都不上主看板 (归订阅卡内部与设置中心)
+  assert.doesNotMatch(app.node("stack").textContent, /未发现会话记录/);
 });
+
