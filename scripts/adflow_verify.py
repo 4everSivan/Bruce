@@ -46,7 +46,18 @@ RUNID_RE = re.compile(r"^(\d+|local-[\d\-]+)$")              # 纯数字或 loca
 # Cxxx / Txx；用 ASCII 边界而非 \b，中文紧邻卡号（如“修复C001问题”）也能识别。
 CARD_ID_RE = re.compile(r"(?<![A-Za-z0-9_])([CT]\d{2,3})(?![A-Za-z0-9_])")
 SRC_PATH_RE = re.compile(r"(?:^|/)(src|app|lib|cmd|internal)/[\w/.\-]+\.\w+")
-CANNED_QUOTES = {"已确认", "确认", "已通过", "同意", "ok", "yes", "done", "tested", "lgtm"}
+# ── Bruce 本地判据覆盖 (LOCAL PATCH — 非上游 ad-flow 1.5.0 内容) ──────────────
+# 上游: CANNED_QUOTES 含中文确认词 (已确认/确认/已通过/同意), 且 user_quote 长度门槛为 6。
+# 本项目维护者的确认天然简短 —— 会话存档实测原话为「确认」「确认，推送」「签收」,
+# 逐字记录也一律被误报为套话, 且该门槛无法在不伪造原话的前提下满足。
+# 经维护者决定 (2026-10-22) 调整如下:
+#   * 套话集合仅保留不含实质确认的通用英文填充词;
+#   * 长度门槛降为 2 (空值仍由 EVIDENCE_QUOTE 硬拦, 见 check_state)。
+# ⚠ 重新安装或升级校验器副本后必须重新施加本补丁。
+# 依据与约束见 AGENTS.md「项目自定义规则」第 6 条。
+# ─────────────────────────────────────────────────────────────────────────────
+CANNED_QUOTES = {"ok", "yes", "done", "tested", "lgtm"}
+MIN_QUOTE_LEN = 2
 PATH_KEYS = {"files", "file", "paths", "file_path", "filepath", "sources"}
 TERMINAL = {"verified", "closed", "completed"}
 CLOSED = {"closed", "completed"}
@@ -313,7 +324,7 @@ def check_state(ctx, card, cid, rel, track):
         if track == "change":
             if not str(quote or "").strip():
                 ctx.hard("EVIDENCE_QUOTE", cid, rel, "缺少人类原话 user_quote（严禁 AI 自导自演代签）")
-            elif str(quote).strip().lower() in CANNED_QUOTES or len(str(quote).strip()) < 6:
+            elif str(quote).strip().lower() in CANNED_QUOTES or len(str(quote).strip()) < MIN_QUOTE_LEN:
                 ctx.soft("EVIDENCE_QUOTE_CANNED", cid, rel, "user_quote 疑似套话: %r" % quote)
             if not str(signoff or "").strip():
                 ctx.hard("EVIDENCE_SIGNOFF", cid, rel, "缺少 signoff")

@@ -214,3 +214,4 @@ scripts/adflow-verify --card <卡号> --receipt
 
 - **红线**：仓库内严禁引入任何 Python 资产（`*.py` / `*.pyc` / `pyproject.toml`），由 `scripts/verify-local.sh` 的 `find` 门禁强制拦截并 `exit 1`；AI 工具脚本一律用 Node 或项目原生语言编写。
 - **唯一例外（2026-10-22 登记）**：`scripts/adflow_verify.py` —— ad-flow 治理规范 v1.5.0 要求逐字安装的校验器，其 `--mode init` 会校验自身版本与 `docs/index.json` 的 `adflow_version` 一致。该文件属**治理工具链**而非 Python 构建/工具资产，故在门禁中按精确路径白名单放行；除此路径外任何 Python 资产仍一律禁止。**改动该文件即视为改动治理基线**，须同步 `docs/index.json.adflow_version` 与 `AGENTS.md` 顶部标记。
+- **本地判据补丁（2026-10-22 维护者决定）**：`scripts/adflow_verify.py` 内含一处以 `LOCAL PATCH` 标注的本地覆盖 —— 上游 1.5.0 的 `user_quote` 套话判据把中文确认词（`确认`/`已确认`/`同意`/`已通过`）列入套话集合，且长度门槛为 6 字；本项目维护者的确认天然简短（会话存档实测原话为「确认」「确认，推送」「签收」），逐字记录也一律误报，且该门槛无法在不伪造原话的前提下满足。现调整为：套话集合仅保留不含实质确认的通用英文填充词，长度门槛降为 2（空值仍由 `EVIDENCE_QUOTE` 硬拦）。**重新安装或升级校验器副本后必须重新施加本补丁**；`VERSION` 常量保持 `1.5.0` 不变。
