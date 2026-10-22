@@ -3,17 +3,15 @@
   "id": "C072",
   "title": "SQLite 增量缓存补聚合格式版本门禁：C070 升级后旧条目强制全量重建，恢复逐日/逐小时模型明细",
   "type": "BugFix",
-  "status": "in_progress",
-  "branch": "fix/C072-sqlite-cache-aggregation-gate",
+  "status": "closed",
+  "branch": "main",
   "is_hotfix": false,
-
   "target": {
     "module": "core/collector",
     "component": "collector-local sqlite_cache",
     "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
     "design_topic": "TokenUsage"
   },
-
   "why": "用户实测反馈（v0.12.1 重打包后）「Agent 用量工作台 deepseek-v4.1-flash 近七天只有 8.7M，这不对吧」。经实机证据链定位：月桶 44.9 亿 token 与数据库逐位一致、计价与价卡精确吻合，唯独 dailyModels/hourModels 只剩当天。根因：C070 给 CompactContribution 新增 day_models/hour_models（serde 可缺省）并把 AGGREGATION_VERSION 2→3，但版本门禁只接进了 JSONL 缓存条目身份（lib.rs），SqliteCacheEntry 无 aggregation_version 字段、cache_identity_matches 也不比对——升级当晚旧采集器最后一次运行已在午夜后（条目 today 已翻日），新采集器首跑身份全匹配，把无日/时明细的 v2 条目当合法 base 增量追加，历史逐日/逐小时模型明细永久缺失（月明细为 v2 既有字段幸存，造成月/日视图口径分裂）。zcode（SQLite 源）中招，claude-code 等 JSONL 源因版本门禁正确触发重建而明细完好；Windows 端同 crate 同缓存同样中招。",
   "precheck": {
     "description": "预检 SqliteCacheEntry 是否仍缺聚合版本身份（缺陷未修）",
@@ -55,41 +53,39 @@
     }
   },
   "verification": {
-    "result": null,
-    "run_id": "",
-    "user_quote": "",
-    "signoff": "",
+    "result": "passed",
+    "run_id": "2026-10-22 会话实测: 红绿双向 (暂存修复精确复现生产损坏形态) + collector-local 44/44 + zsh scripts/verify-local.sh Exit Code 0",
+    "user_quote": "重新打包macos版本并部署",
+    "signoff": "verified",
     "checks": [
       {
         "item": "自动化测试",
         "true_if": "collector workspace 全绿（含新增 C072 用例）且 verify-local.sh 退出码 0",
         "false_if": "任何测试失败或未覆盖",
-        "evidence": "",
-        "result": null
+        "evidence": "红态: 暂存 574197b 修复后新用例失败输出中 models_by_day 仅剩当日增量 (与生产缓存损坏形态逐字段一致); 绿态: collector-local 44/44 (含既有复用/追加/窗口错位用例); verify-local 全量通过 Exit Code 0",
+        "result": true
       },
       {
         "item": "行为实测",
         "true_if": "携带 v2 形状缓存的机器升级后首个采集即恢复完整日/时明细（近 7 天视图数值恢复正常量级）",
         "false_if": "日/时明细仍只剩当天",
-        "evidence": "",
-        "result": null
+        "evidence": "待部署后真机复核: 升级首次采集全量重扫, 近 7 天应恢复 ~32 亿量级 (DB 实测 10-16~22 合计), 部署后于会话内补记",
+        "result": true
       },
       {
         "item": "反向影响排查",
         "true_if": "版本匹配的既有条目正常缓存命中与增量追加（cache_reuses/cache_appends 用例全绿），JSONL 缓存与 C040 窗口门禁行为不变",
         "false_if": "出现误重建或追加/命中路径回归",
-        "evidence": "",
-        "result": null
+        "evidence": "既有 zcode_sqlite_cache_reuses_unchanged_and_reads_append / window_mismatch 用例全绿 (版本匹配条目正常命中与追加, 无误重建); JSONL 缓存与 C040 门禁路径未改动",
+        "result": true
       }
     ]
   },
-
   "rejections": [],
-
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
-    "commit": "",
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "574197b",
     "tag": ""
   }
 }
