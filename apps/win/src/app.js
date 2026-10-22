@@ -1031,6 +1031,52 @@ const HEALTHY_PHASES = new Set(["ok", "fresh", "idle"]);
 function statusLabel(status) {
   return { ok: "正常", fresh: "正常", refreshing: "刷新中", loading: "刷新中", partial: "部分失败", failed: "刷新失败", error: "失败", stale: "数据过期", unavailable: "不可用", idle: "等待刷新", empty: "暂无数据", authRequired: "需要授权" }[status] || status;
 }
+
+/* ---------- 运行态文案与诊断口径 (C078) ---------- */
+// 状态行与诊断行面向用户, 不得直出诊断码。机器码一律映射中文文案; 正常流程产生的码
+// 不进用户可见文案 (SNAPSHOT_RESTORED 是每次正常启动 SnapshotState::load 必写的码,
+// 而 last_success_at 持久化 —— 直出会让冷启动到首次刷新之间恒挂一行机器码)。
+const RUNTIME_ERROR_TEXT = {
+  COLLECTION_PARTIAL: "部分订阅查询失败",
+  COLLECTION_FAILED: "刷新失败",
+  ARTIFACT_MISSING: "未取得采集结果",
+  ARTIFACT_INVALID: "采集结果格式异常",
+  SNAPSHOT_INVALID: "本地快照损坏, 已重新采集",
+  SNAPSHOT_READ_FAILED: "本地快照读取失败",
+  SNAPSHOT_WRITE_FAILED: "本地快照写入失败",
+  SNAPSHOT_LOCK_FAILED: "本地快照被占用",
+  SCOPED_REFRESH_FAILED: "该订阅额度查询失败",
+  NETWORK_UNAVAILABLE: "网络不可用, 已暂停自动刷新",
+};
+const BENIGN_RUNTIME_CODES = new Set(["SNAPSHOT_RESTORED"]);
+function runtimeErrorText(code) {
+  if (!code) return "";
+  if (BENIGN_RUNTIME_CODES.has(code)) return "";
+  if (RUNTIME_ERROR_TEXT[code]) return RUNTIME_ERROR_TEXT[code];
+  // 未收录的 SCREAMING_SNAKE 码回退通用文案; 已含中文的人工文案原样透出。
+  return /^[A-Z][A-Z0-9_]*$/.test(code) ? "采集状态异常" : code;
+}
+// 「上次成功」以本地可读时间呈现 (ISO 原文对用户无意义); 非 ISO 值原样保留。
+function lastSuccessText(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+// design/05 规则 11: 主看板只保留「需用户动作」的严重服务级故障 (认证/权限/凭证缺失类);
+// 一次性失败 (限流、超时) 不上主看板 —— 仍保留在订阅卡内部与设置页。
+// 标记取自 collector 的实际文案; 未命中的失败一律不上看板 (fail-closed, 宁缺勿噪)。
+const ACTIONABLE_SERVICE_NOTE_MARKERS = [
+  "重新登录", "重新授权", "重新 grok login",
+  "凭证被拒绝", "凭证刷新失败", "凭证格式无效", "请求被拒绝",
+  "登录态已失效", "会话已失效", "无权访问", "未检测到",
+];
+function isActionableServiceIssue(diagnostic) {
+  if (diagnostic.kind !== "serviceIssue") return false;
+  const note = diagnostic.note || "";
+  return ACTIONABLE_SERVICE_NOTE_MARKERS.some((marker) => note.includes(marker));
+}
+
 function renderStatus(panel) {
   const runtime = panel.runtime || {};
   const diagnostics = panel.diagnostics || [];
@@ -1041,15 +1087,15 @@ function renderStatus(panel) {
   const badge = document.getElementById("runtime-status");
   badge.textContent = healthy ? "SYS.OK" : statusLabel(phase);
   badge.classList.toggle("degraded", !healthy && phase !== "refreshing" && phase !== "loading");
-  const details = [runtime.error];
-  if (runtime.lastSuccessAt) details.push(`上次成功 ${runtime.lastSuccessAt}`);
+  const details = [runtimeErrorText(runtime.error)];
+  if (runtime.lastSuccessAt) details.push(`上次成功 ${lastSuccessText(runtime.lastSuccessAt)}`);
   if (!panel.usage && !panel.subscription && !panel.hourly) details.push("暂无采集数据，可刷新或检查设置。");
   document.getElementById("dashboard-status").textContent = details.filter(Boolean).join(" · ");
   const host = document.getElementById("dashboard-diagnostics");
   if (host) {
     host.replaceChildren();
-    // 过滤会话探测项：未发现会话记录与空 Agent 提示归入设置中心，仪表盘仅保留关键服务故障
-    const serviceIssues = diagnostics.filter(d => d.kind === "serviceIssue" && (d.status === "error" || d.note?.includes("重新授权")));
+    // 过滤会话探测项：未发现会话记录与空 Agent 提示归入设置中心，仪表盘仅保留需用户动作的服务级故障
+    const serviceIssues = diagnostics.filter(isActionableServiceIssue);
     for (const diagnostic of serviceIssues) {
       const identity = diagnostic.serviceId || diagnostic.module || "";
       const message = diagnostic.note || diagnostic.reason || statusLabel(diagnostic.status || diagnostic.kind);

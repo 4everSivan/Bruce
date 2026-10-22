@@ -1010,3 +1010,44 @@ test("Claude local login state renders status text and imports from the machine 
   const expired = await boot({ html: "settings.html", claudeLocal: { status: "expired", storedAccountCount: 1 } });
   assert.equal(expired.node("claude-local-state").textContent, "登录已过期，运行一次 Claude CLI 可自动恢复，Bruce 会重新跟随");
 });
+
+test("dashboard status line never leaks diagnostic codes (C078)", async () => {
+  const app = await boot();
+  const withRuntime = (runtime, diagnostics = []) => ({ ...fixture, runtime, diagnostics });
+
+  // 诊断码 → 中文文案, 机器码本身不得出现
+  await app.emit("dashboard-updated", withRuntime({ phase: "partial", error: "COLLECTION_PARTIAL" }));
+  assert.equal(app.node("dashboard-status").textContent, "部分订阅查询失败");
+  assert.doesNotMatch(app.node("dashboard-status").textContent, /COLLECTION_PARTIAL/);
+
+  // 每次正常重启必写的 SNAPSHOT_RESTORED 不进用户文案, 「上次成功」保留且可读
+  await app.emit("dashboard-updated", withRuntime({ phase: "stale", error: "SNAPSHOT_RESTORED", lastSuccessAt: "2026-10-22T08:00:00Z" }));
+  assert.doesNotMatch(app.node("dashboard-status").textContent, /SNAPSHOT_RESTORED/);
+  assert.match(app.node("dashboard-status").textContent, /^上次成功 \d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+
+  // 未收录的码回退通用文案; 已含中文的人工文案原样透出
+  await app.emit("dashboard-updated", withRuntime({ phase: "failed", error: "SOME_NEW_CODE" }));
+  assert.equal(app.node("dashboard-status").textContent, "采集状态异常");
+  await app.emit("dashboard-updated", withRuntime({ phase: "failed", error: "服务暂不可用" }));
+  assert.equal(app.node("dashboard-status").textContent, "服务暂不可用");
+});
+
+test("dashboard diagnostics keep only action-required service faults (C078)", async () => {
+  const app = await boot();
+  await app.emit("dashboard-updated", {
+    ...fixture,
+    runtime: { phase: "partial", error: "COLLECTION_PARTIAL" },
+    diagnostics: [
+      { kind: "serviceIssue", serviceId: "claude", status: "error", note: "Claude 凭证被拒绝, 请重新登录 Claude CLI" },
+      { kind: "serviceIssue", serviceId: "kimi", status: "error", note: "查询失败: Provider 请求触发限流 (HTTP 429)" },
+      { kind: "serviceIssue", serviceId: "deepseek", status: "error", note: "额度查询暂时失败, 请稍后重试" },
+      { kind: "serviceIssue", serviceId: "codex", status: "ok", note: "" },
+      { kind: "agentIssue", agentId: "grok", status: "not_found", note: "未发现会话记录" },
+    ],
+  });
+  const shown = app.node("dashboard-diagnostics").textContent;
+  assert.match(shown, /claude: Claude 凭证被拒绝/, "需用户动作的故障上主看板");
+  assert.doesNotMatch(shown, /限流/, "一次性限流失败不上主看板");
+  assert.doesNotMatch(shown, /稍后重试/, "瞬时失败不上主看板");
+  assert.doesNotMatch(shown, /未发现会话记录/, "会话探针仍归设置中心");
+});
