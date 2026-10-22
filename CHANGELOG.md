@@ -5,10 +5,6 @@
 
 ## [Unreleased]
 
-（暂无）
-
-## [0.12.2] - 2026-10-22
-
 ### Added
 - **Windows 端 Nothing 点阵主题 1:1 深度对齐 (C066)**：
   - **内置官方授权 Doto / Space 矢量字体族**：引入开源 SIL OFL 授权的 `Doto[ROND,wght].ttf`、`SpaceGrotesk[wght].ttf` 与 `SpaceMono` 系列字体，通过 `@font-face` 注册。彻底告别通用字体与 CSS 粗糙径向渐变伪点阵，还原与 macOS 1:1 等价的纯正 N-Dot 工业点阵质感。
