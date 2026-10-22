@@ -38,14 +38,15 @@
 所有内场 Markdown 文档必须在一级标题正下方标注引用块元数据：
 - **`created`**（必填）：初次创建日期，格式 `YYYY-MM-DD`；
 - **`last-change`**（必填）：最近实质变更日期，格式 `YYYY-MM-DD`；
-- **`status`**（必填）：纯净状态枚举（如 `active`、`baseline`、`draft`）；
-- **`version`**（卡片必填/设计可选）：变更卡（`Cxxx.json`）与任务卡（`Txx.json`）必须包含 `version` 声明归属发布批次；设计文档不设独立小版本号。
+- **`status`**（必填）：纯净状态枚举（如 `active`、`baseline`、`draft`）。
 
 ```markdown
 # 模块名称或设计方案
 
 > **created**: YYYY-MM-DD ｜ **last-change**: YYYY-MM-DD ｜ **status**: active
 ```
+
+> 📌 **卡片发布批次归属**：变更卡的发布批次**不写入 `Cxxx.json` 卡片文件本体**，统一由总账 [change/index.json](change/index.json) 的卡条目 `version` 字段承载（如 `"0.12.2+"`）；设计文档与 Markdown 头部均不标注 `version`，不设独立小版本号。
 
 ### 3.2 研发红线纪律
 1. **设计基线唯一性**：`design/` 下的方案代表系统当下的最新状态，以 `<!-- @topic <name> -->` 作为主题锚点；
