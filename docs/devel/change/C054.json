@@ -82,7 +82,7 @@
   },
   "verification": {
     "result": "passed",
-    "run_id": "c054-readme-rewrite-20261016",
+    "run_id": "local-20261016",
     "user_quote": "把 README 提交推送",
     "signoff": "2026-10-16 用户在收到本卡实测证据汇报后指示「把 README 提交推送」, 据此确认改动并代签收口。证据明细见各 check (均为实跑脚本输出); 未执行 verify-local.sh 的理由已在「改动面隔离」项显式在案, 非遗漏。",
     "checks": [

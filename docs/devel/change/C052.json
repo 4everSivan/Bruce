@@ -72,7 +72,7 @@
   },
   "verification": {
     "result": "passed",
-    "run_id": "c052-doc-writeback-20261016 + verify-local-202610161509",
+    "run_id": "local-20261016-1509",
     "user_quote": "所有缺陷全部都要立项修复",
     "signoff": "2026-10-16 用户指示修复全部审查缺陷 (原话: 「所有缺陷全部都要立项修复」), AI 按卡执行并采集实测证据后代签；证据明细见各 check。待用户复核后转入 closed。批次全量验证: zsh scripts/verify-local.sh 退出码 0, 末行「Bruce 本地验证全部通过」 (日志 local/c042-c052-verify.log, 含 Rust 全量 / fixture 敏感扫描 / Swift 全部 Harness / Panel 双端对拍 3/3)。",
     "checks": [

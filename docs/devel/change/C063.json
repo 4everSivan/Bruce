@@ -67,7 +67,7 @@
   },
   "verification": {
     "result": "passed",
-    "run_id": "20261020-0248-verify",
+    "run_id": "local-20261020-0248",
     "user_quote": "确认",
     "signoff": "verified_by_user",
     "checks": [

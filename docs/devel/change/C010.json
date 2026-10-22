@@ -46,7 +46,7 @@
   },
   "verification": {
     "result": true,
-    "run_id": "run-20261010-c010-credits-balance-verified",
+    "run_id": "local-20261010",
     "user_quote": "确认",
     "signoff": "2026-10-10 Verified jointly with C011 head-chip restyle after universal packaging install",
     "checks": [

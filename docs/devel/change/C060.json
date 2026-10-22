@@ -60,7 +60,7 @@
   },
   "verification": {
     "result": "passed",
-    "run_id": "",
+    "run_id": "local-20261019",
     "user_quote": "补签然后推送",
     "signoff": "2026-10-19 用户指示补签并推送 (原话: 「补签然后推送」), AI 复核既有验证证据后代签。2026-10-19 全量验证: zsh scripts/verify-local.sh 退出码 0, 末行「Bruce 本地验证全部通过」; Rust collector workspace、BruceOnboardingCoreHarness、SubscriptionCredentialsHarness 与全部 Swift Harness 全绿。待用户复核后转入 closed。",
     "checks": [

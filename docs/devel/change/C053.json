@@ -3,7 +3,7 @@
   "id": "C053",
   "title": "按职责拆分巨型文件：sources.rs / collector-provider lib.rs / SettingsView.swift / SubscriptionService.swift（纯结构重构，行为不变）",
   "type": "Refactor",
-  "status": "open",
+  "status": "pending",
   "branch": "main",
   "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用)",
   "is_hotfix": false,

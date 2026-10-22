@@ -34,7 +34,7 @@
   },
   "verification": {
     "result": true,
-    "run_id": "run-20261010-c012-palette-baseline-verified",
+    "run_id": "local-20261010",
     "user_quote": "提交，并推送",
     "signoff": "2026-10-10 Verified with palette script diff and frontend smoke; baseline backfill included",
     "checks": [

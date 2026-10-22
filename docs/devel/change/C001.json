@@ -6,16 +6,13 @@
   "status": "verified",
   "branch": "main",
   "is_hotfix": false,
-
   "target": {
     "module": "EngineeringStructure",
     "component": "WorkspaceTopology",
     "design_doc": "docs/devel/design/00-系统总体设计.md",
     "design_topic": "SystemOverview"
   },
-
   "why": "根目录存在历史幽灵与碎片目录（agent-usage, bridge, data, designs），核心源码以平台/语言直接命名且嵌套冗余；同时 Rust target 缓存占用 4.0GB，项目结构不干净、不符合现代跨平台 Monorepo 工程规范。",
-
   "changes": [
     {
       "scope": "工程目录拓扑",
@@ -36,7 +33,6 @@
       "impact": "工程体积恢复轻巧"
     }
   ],
-
   "design": {
     "doc": "docs/devel/design/00-系统总体设计.md",
     "topic": "SystemOverview",
@@ -46,10 +42,9 @@
       "after": "目录约定为 core/collector 与 apps/macos, apps/widget"
     }
   },
-
   "verification": {
     "result": true,
-    "run_id": "run-20260923-monorepo-verified",
+    "run_id": "local-20260923",
     "user_quote": "确认，然后还要清理掉rust产生的缓存，按当前项目的治理流程走 / 为什么没有成当前项目的设计文档，根据旧文档生成当前项目的设计文档",
     "signoff": "2026-09-23 Verified with ad-flow design baseline sync",
     "checks": [
@@ -76,9 +71,7 @@
       }
     ]
   },
-
   "rejections": [],
-
   "sync": {
     "design_pinned": true,
     "changelog": true,

@@ -3,7 +3,7 @@
   "id": "C048",
   "title": "provider 专属逻辑下沉：codex 新鲜度/失败类别/挑战改由 provider 层标准化输出，编排层与协议层去除 app 名字分支",
   "type": "BugFix",
-  "status": "open",
+  "status": "pending",
   "branch": "main",
   "is_hotfix": false,
   "target": {

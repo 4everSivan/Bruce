@@ -6,16 +6,13 @@
   "status": "verified",
   "branch": "main",
   "is_hotfix": false,
-
   "target": {
     "module": "BruceApp",
     "component": "MenuBarStatusItemController",
     "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
     "design_topic": "MenuBarIndicator"
   },
-
   "why": "用户提出视觉微调诉求，希望菜单栏图标更加通透、极简。原状态项图标在底环与配额圆弧内部绘制了 2.4pt 的中心微点，在 macOS 菜单栏 22pt 高度场景下显得略微拥挤，且与设置中心里的极简圆环预览条不统一。移除中心小点可增强圆环的轻盈感与通透度。",
-
   "changes": [
     {
       "scope": "MenuBarStatusItemController 绘制链路",
@@ -24,7 +21,6 @@
       "impact": "菜单栏圆环图标更加通透轻盈，与设置窗口预览条保持 100% 视觉对齐"
     }
   ],
-
   "design": {
     "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
     "topic": "MenuBarIndicator",
@@ -34,10 +30,9 @@
       "after": "菜单栏精密数字环规定义为纯净极简圆环（底环 + 进度弧），中心完全通透不绘制点阵微粒"
     }
   },
-
   "verification": {
     "result": true,
-    "run_id": "run-20260923-c004-verify",
+    "run_id": "local-20260923",
     "user_quote": "确认",
     "signoff": "AI代签 (用户确认: 确认)",
     "checks": [
@@ -57,9 +52,7 @@
       }
     ]
   },
-
   "rejections": [],
-
   "sync": {
     "design_pinned": true,
     "changelog": true,

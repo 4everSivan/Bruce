@@ -6,16 +6,13 @@
   "status": "verified",
   "branch": "main",
   "is_hotfix": false,
-
   "target": {
     "module": "BruceApp",
     "component": "HourlyLineCard",
     "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
     "design_topic": "MenuBarIndicator"
   },
-
   "why": "用户在控制台面板折叠操作时反馈 Agent 用量卡片的收起动画与 Token 用量卡片、订阅用量卡片不一致。排查确认：HourlyLineCard 收起时，标题栏迷你折线图因 Swift Charts 继承父级 0.25s 动画事务触发几何重插值产生形变抖动；且展开区域内的 14 日柱状图与各 Agent 逐小时图表在容器高度收缩时被垂直挤压变形，观感与另外两张卡片的平滑淡出折叠脱节。",
-
   "changes": [
     {
       "scope": "HourlyLineCard 收起态迷你折线图动画隔离",
@@ -36,7 +33,6 @@
       "impact": "标题栏左右元素在收起/展开过程中位置稳定无晃动"
     }
   ],
-
   "design": {
     "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
     "topic": "MenuBarIndicator",
@@ -46,10 +42,9 @@
       "after": "包含动态图表的卡片在折叠/收起时必须对内部 Mark 阻断动画事务，并在展开区应用 .clipped() 与 .transition(.opacity) 保证视觉一致性"
     }
   },
-
   "verification": {
     "result": true,
-    "run_id": "run-20260923-c003-verified",
+    "run_id": "local-20260923",
     "user_quote": "确认",
     "signoff": "2026-09-23 Verified by human quote '确认'; animation aligned across all dashboard cards",
     "checks": [
@@ -69,9 +64,7 @@
       }
     ]
   },
-
   "rejections": [],
-
   "sync": {
     "design_pinned": true,
     "changelog": true,

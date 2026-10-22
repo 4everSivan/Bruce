@@ -46,7 +46,7 @@
   },
   "verification": {
     "result": true,
-    "run_id": "20261013-c014",
+    "run_id": "local-20261013",
     "user_quote": "/commit",
     "signoff": "2026-10-13 由人类开发者口头确认收口 (/commit)",
     "checks": [

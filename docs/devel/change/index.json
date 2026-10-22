@@ -550,7 +550,7 @@
     "C048": {
       "title": "provider 专属逻辑下沉：codex 新鲜度/失败类别/挑战改由 provider 层标准化输出，编排层与协议层去除 app 名字分支",
       "type": "BugFix",
-      "status": "open",
+      "status": "pending",
       "branch": "main",
       "topic": "TokenUsage",
       "version": "0.12.0+",
@@ -595,7 +595,7 @@
     "C053": {
       "title": "按职责拆分巨型文件：sources.rs / collector-provider lib.rs / SettingsView.swift / SubscriptionService.swift（纯结构重构，行为不变）",
       "type": "Refactor",
-      "status": "open",
+      "status": "pending",
       "branch": "main",
       "topic": "SystemOverview",
       "version": "0.12.0+",
