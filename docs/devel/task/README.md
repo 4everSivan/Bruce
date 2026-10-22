@@ -2,42 +2,65 @@
 
 > **created**: 2026-09-23 ｜ **last-change**: 2026-10-20 ｜ **status**: active
 
----
+## 1. 简介
 
-## 1. 为什么需要任务卡？
+T 卡把已批准设计拆成可执行、可验收的能力单元，用 `depends_on` 表达先后依赖。卡片记录尚未交付与已完成能力，避免把设计批准误当成实现完成；具体缺陷修复按 [C 变更轨](../change/README.md) 执行。
 
-在新阶段立项或进行大模块重构时：
-1. **架构到执行的桥梁**：将设计方案（`design/`）中的宏观设计拆解为可逐个执行、可独立验收的最小研发单元；
-2. **拓扑顺序保障**：通过 `depends_on` 显式声明任务间依赖，防止越级开发导致的频繁返工；
-3. **完成定义防烂尾**：每个任务定义明确的 `acceptance.checks`，全部通过方可标记为 `completed`。
+共同路径、授权、校验结果与修复边界见 [文档中心](../../README.md)。日常无需访问 ad-flow 技能源目录。
 
----
+## 2. 索引
 
-## 2. 任务卡流转流程
+| 入口 | 用途 | 维护时机 |
+|---|---|---|
+| [任务卡模板](../../standards/task-template.json) | 复制生成真实 T 卡 | 阶段拆解与建卡时 |
+| [index.json](index.json) | `tasks` 保存卡片路由，`milestones` 和 `topics` 聚合事项 | 建卡、转状态和归档时 |
+| [设计中心](../design/README.md) | 明确设计正文、主题及能力边界 | 任务拆解前 |
+| [待办池](../todo/README.md) | 暂存尚未入轨的需求方向 | 建卡登记后移出对应行 |
+| [归档库](../../archive/README.md) | 查询历史完成任务、发布封箱 | 依赖核对或阶段发版时 |
 
+已有项目若使用 `cards` 作为任务登记字段，沿用现有结构，不为本次规范同步迁移历史数据。
+
+## 3. 建卡与依赖规则
+
+卡号按总账已有最大编号递增，如 `T01`；包含历史归档登记，跨版本不重置。最大号 +1 不提供原子预占，并行合入须核对重复号与 Git 冲突；改号时同步卡内子任务编号、索引和依赖引用，不覆盖已有事项。
+
+| 字段组 | 建卡时写什么 | 完成时补什么 |
+|---|---|---|
+| 身份与计划 | `id`、`title`、真实发布批次 `version`、`milestone`、`branch` | 与总账保持一致 |
+| `target` / `goal` | 具体设计正文、匹配主题及交付边界 | 按实际交付校正描述 |
+| `tasks[]` / `depends_on` | 能力单元、初始 `done: false` 及前置任务 | 如实记录各项完成情况 |
+| `precheck` / `callback` | 实际适用的完成性预检与前后回调 | 保存结果，按授权执行回调 |
+| `acceptance` | 预定义各项 `true_if` / `false_if`，结果先留 `null` | 真实 `evidence`、`run_id` 及验收结果 |
+| `sync` / `gate` | 保留模板默认值 | 真实 `sync.commit` 及工具记录的门禁结果 |
+
+`target.design_doc` 使用项目根目录相对路径，指向含匹配 `<!-- @topic: TopicName -->` 的具体设计正文，不能指向 README。`tasks[].capability` 描述能力、数据契约或接口，不用源码文件清单代替交付目标。
+
+| 状态 | 含义 | 执行条件 |
+|---|---|---|
+| `pending` | 等待开工 | 目标、设计与验收定义已登记 |
+| `in_progress` | 正在交付 | 所有前置任务已 `completed`，执行范围已明确 |
+| `completed` | 能力验收及完成预检通过 | 业务验收满足、提交可追溯，卡片与索引同步 |
+
+由总账 `file` 定位依赖卡，核对文件、卡号和状态；归档依赖同样可用。归档卡只读解析身份与状态，不按当前规则重新验收或回写 `gate`。依赖缺失、未完成或成环时应先澄清，不假定任务已就绪。
+
+## 4. 执行与完成
+
+1. **设计与建卡**：确认对应设计，按阶段或里程碑拆解 T 卡，在总账登记。来自 todo 的事项在建卡登记后同步删除原行，不因仅完成设计就丢失执行事项。
+2. **选择就绪任务**：从 `pending` 卡中筛选所有依赖均已 `completed` 的任务，同步卡片与索引为 `in_progress`；不跨过未完成依赖。
+3. **预检与实现**：运行授权范围内的 `precheck.command`。已实现时记录证据并跳过重复编码，仍做验收；否则执行适用回调、能力实现与对应测试。
+4. **逐项验收**：核对 `tasks[].done` 与 `acceptance.checks`，保存真实命令、输出和 `run_id`。业务验收项须全部满足，完成项目要求的人工验收；工具的 `ADVISORY` 不代替业务判断，也不新增硬门槛。
+5. **完成预检**：回填真实 `sync.commit`，核对其为当前 HEAD 祖先；保持当前状态，运行以下命令。Exit 0 后同步卡片与索引为 `completed`，再以节点回执复核。
+
+以下以 `T01` 为例，执行时使用真实卡号；命令均在项目根目录运行：
+
+```bash
+scripts/adflow-verify --card T01 --to completed --record
 ```
-[阶段立项 / 里程碑规划]
-        ↓
-[从 template.json 复制新建 Txx.json]
-        ↓
-[填写 branch、capability 交付目标、depends_on 依赖、precheck 预检与 callback 钩子]
-        ↓
-[在 index.json 注册该卡]
-        ↓
-[根据 DAG 依赖拓扑，依赖全满足的任务就绪开工 (status: in_progress)]
-        ↓
-[执行 precheck 嗅探已完成性 -> 执行 callback.before 前置准备]
-        ↓
-[纯函数/服务实现 + 单测覆盖 -> 执行 callback.after 收尾校验]
-        ↓
-[DoD 验收全绿 (result: true) -> 状态转为 completed]
-        ↓
-[阶段全量任务完成 -> 打版本 Git Tag 整体封箱归档至 archive/<version>/task/]
+
+预检 Exit 0 后，同步状态再运行下列命令复核，并把输出的节点回执按 [AGENTS.md](../../../AGENTS.md) 二.3 的格式转交人类（只填「未覆盖」「需要你」两行）。`--record` 仅记录本卡真实门禁结果，不更新状态，也不证明能力已交付。失败时按 [共同校验规则](../../README.md#4-校验与收口) 补证或修复，不手改 gate、验收条件或依赖来绕过失败。
+
+```bash
+scripts/adflow-verify --card T01 --receipt
 ```
 
----
-
-## 3. 标准模板与中枢总账
-
-- **标准任务模板**：[template.json](template.json)
-- **全局任务总账**：里程碑聚合大盘与任务拓扑图请查阅 [index.json](index.json)。
+6. **阶段发布**：本阶段任务完成后，按项目要求完成集成、构建和发布验收，更新根目录 CHANGELOG；运行 `scripts/adflow-verify --release <version>` 取得 Exit 0 后，在发布已获授权时按 [归档操作](../../archive/README.md) 封箱本批次卡片。任务 `completed` 不自动触发发版、部署或推送。

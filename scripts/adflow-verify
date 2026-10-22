@@ -1,0 +1,11 @@
+#!/bin/sh
+# adflow-verify —— ad-flow 流程纪律校验层的薄封装。
+# 用法：adflow-verify [target_dir=.] [--json] [--warn-only] [--mode init]
+#       [--card ID [--to verified|closed|completed]] [--record] [--release VERSION]
+#       [--card ID --receipt]
+# 退出码：0 干净 / 4 确定性违规（阻断）/ 6 仅软告警。
+# ADVISORY 旁路诊断不改变退出码；--to 不修改卡片/索引状态；--release 只读预检发布批次；
+# --receipt 只读复核并按固定格式输出卡片节点回执。
+set -eu
+_here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+exec python3 "$_here/adflow_verify.py" "$@"

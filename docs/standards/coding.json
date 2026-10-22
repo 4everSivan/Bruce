@@ -1,0 +1,158 @@
+{
+  "format_version": 2,
+  "scope": "Apply to newly written or modified first-party code. Exclude generated and third-party code; avoid unrelated formatting changes.",
+  "basis": "Project defaults adapted from the official references below; this is not a claim of full upstream compliance.",
+  "precedence": [
+    "Explicit project conventions and existing formatter/linter configuration",
+    "Selected language requirements",
+    "Common requirements"
+  ],
+  "documentation_language": "Use the project's established language for code comments and API documentation; default to Chinese when unspecified. The English language of this specification does not require English comments. Preserve verbatim evidence and quotations.",
+  "sources": [
+    {
+      "title": "Google Engineering Practices: Code Review",
+      "url": "https://google.github.io/eng-practices/review/reviewer/looking-for.html"
+    },
+    {
+      "title": "Google C++ Style Guide: Comments",
+      "url": "https://google.github.io/styleguide/cppguide.html#Comments"
+    },
+    {
+      "title": "Go Doc Comments",
+      "url": "https://go.dev/doc/comment"
+    }
+  ],
+  "common": {
+    "design": [
+      "Keep functions focused and control flow readable; avoid speculative abstractions and hidden side effects.",
+      "Reuse existing modules and standard libraries; explain the need for new dependencies.",
+      "Validate untrusted input at boundaries and keep business rules separate from external I/O where useful."
+    ],
+    "naming": [
+      "Use domain-specific names and consistent terminology; avoid unexplained abbreviations and magic values.",
+      "Names and types must make units, mutability and important ownership constraints clear."
+    ],
+    "comments": [
+      "Explain non-obvious reasons, invariants, algorithms, compatibility workarounds and concurrency constraints near the relevant code.",
+      "Do not narrate obvious statements or add comments merely to satisfy a count or length quota.",
+      "Update or remove stale comments in the same change as the behavior they describe; remove commented-out dead code.",
+      "Write TODO(owner-or-issue): actionable follow-up. Supply a real owner or existing issue reference; never invent identifiers.",
+      "Every lint/type-check suppression or unsafe operation needs a local explanation of necessity and applicable safety conditions.",
+      "Comments and examples must not contain credentials, sensitive production data or unsupported claims."
+    ],
+    "api_documentation": [
+      "Document public/exported APIs and module entrypoints; document private helpers when their contracts or behavior are non-obvious.",
+      "State purpose, parameter meaning and constraints, result semantics and failure conditions; omit sections that do not apply.",
+      "Describe applicable units, nullability, ownership, mutation, side effects, cancellation and thread-safety guarantees.",
+      "Keep caller-facing contracts beside declarations and implementation reasoning beside implementation code.",
+      "Do not repeat types already expressed by the language. Keep examples minimal, accurate and executable when practical.",
+      "Generated declarations, accurate inherited documentation and obvious trivial accessors may omit redundant documentation."
+    ],
+    "error_handling": [
+      "Handle errors explicitly or propagate them with useful context; never silently convert failure into success.",
+      "Release resources predictably and bound retries, timeouts and background work according to the operation contract.",
+      "Logs must preserve useful failure context without exposing secrets; avoid duplicate logging of the same propagated error."
+    ],
+    "testing": [
+      "Cover changed behavior, regressions and important boundaries with meaningful assertions rather than restating implementation.",
+      "Keep tests deterministic; distinguish isolated tests, integration evidence and real-environment acceptance.",
+      "Run the project checks relevant to the change and report actual results, failures and skipped coverage.",
+      "Synchronize affected API documentation, examples and operational guidance with behavior changes."
+    ]
+  },
+  "languages": {
+    "rust": {
+      "sources": [
+        {
+          "title": "The Rust Style Guide",
+          "url": "https://doc.rust-lang.org/style-guide/"
+        },
+        {
+          "title": "The Rust Book: Documentation Comments",
+          "url": "https://doc.rust-lang.org/book/ch14-02-publishing-to-crates-io.html"
+        },
+        {
+          "title": "The Rust Book: Recoverable Errors",
+          "url": "https://doc.rust-lang.org/book/ch09-02-recoverable-errors-with-result.html"
+        }
+      ],
+      "format": {
+        "formatter": "rustfmt",
+        "indent_spaces": 4,
+        "line_width": 100
+      },
+      "naming": {
+        "functions_variables_modules": "snake_case",
+        "types_traits": "UpperCamelCase",
+        "constants": "UPPER_SNAKE_CASE"
+      },
+      "documentation": [
+        "Use //! for crate/module documentation and /// for public items.",
+        "Include applicable Examples, Errors, Panics and Safety sections; keep examples suitable for doctests.",
+        "Unsafe APIs must explain caller obligations; unsafe blocks need local SAFETY comments establishing their invariants."
+      ],
+      "rules": [
+        "Use existing rustfmt configuration and preserve import groups.",
+        "Express recoverable failures with Result; handle or propagate errors with ?.",
+        "Avoid unjustified unwrap/expect in business paths; explain intentional panic conditions.",
+        "Keep ownership and borrowing explicit; do not introduce unsafe solely to bypass borrow checking."
+      ]
+    },
+    "javascript": {
+      "sources": [
+        {
+          "title": "Google JavaScript Style Guide",
+          "url": "https://google.github.io/styleguide/jsguide.html",
+          "note": "Upstream is no longer updated. These JavaScript defaults do not require a TypeScript migration."
+        }
+      ],
+      "format": {
+        "indent_spaces": 2,
+        "line_width": 80
+      },
+      "naming": {
+        "functions_variables": "lowerCamelCase",
+        "classes": "UpperCamelCase"
+      },
+      "documentation": [
+        "Use JSDoc for public/exported APIs; describe parameters, return values and thrown or rejected errors.",
+        "Use type tags when useful in untyped JavaScript, following existing tooling.",
+        "Use ordinary comments for implementation reasoning; keep JSDoc next to its declaration."
+      ],
+      "rules": [
+        "Prefer const; use let for reassignment and do not introduce var.",
+        "Use strict equality by default and avoid surprising implicit coercion.",
+        "Respect existing module configuration; prefer ES modules when supported.",
+        "Handle asynchronous failures; do not create implicit globals or mutate built-in prototypes."
+      ]
+    },
+    "shell": {
+      "sources": [
+        {
+          "title": "Google Shell Style Guide",
+          "url": "https://google.github.io/styleguide/shellguide.html",
+          "note": "Upstream targets Bash. Bash-only syntax must not be introduced into POSIX sh scripts."
+        }
+      ],
+      "format": {
+        "indent_spaces": 2,
+        "line_width": 80
+      },
+      "naming": {
+        "functions_variables": "lower_snake_case",
+        "constants_environment": "UPPER_SNAKE_CASE"
+      },
+      "documentation": [
+        "Add a file-header purpose comment after the shebang.",
+        "Document library functions and non-obvious functions: purpose, Globals, Arguments, Outputs and Returns as applicable.",
+        "Describe exit-status meanings and destructive effects; explain surprising quoting or portability requirements."
+      ],
+      "rules": [
+        "Declare the actual shell dialect; use local only when supported.",
+        "Quote expansions and forward arguments with \"$@\"; prefer $(...) over backticks.",
+        "Use Bash arrays or POSIX positional arguments for lists; avoid eval and command-string assembly.",
+        "Check important command/pipeline failures, write errors to stderr and use the correct ShellCheck dialect."
+      ]
+    }
+  }
+}

@@ -2,6 +2,7 @@
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C[001~999]",
   "title": "简述变更核心要义",
+  "version": "",
   "type": "BugFix",
   "status": "draft",
   "branch": "fix/C[001~999]-[short-desc]",
@@ -29,7 +30,8 @@
       "# 变更执行前脚本或流程，如环境检查、分支检出、现场快照备份等"
     ],
     "after": [
-      "# 变更执行后脚本或流程，如代码格式化、质量门禁、单测覆盖率检查等"
+      "# 变更执行后脚本或流程，如代码格式化、质量门禁、单测覆盖率检查等",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 closed；目标状态预检使用 --card <本卡号> --to <目标状态> --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card <本卡号> --receipt 复核、输出节点回执"
     ]
   },
 
@@ -89,5 +91,11 @@
     "changelog": false,
     "commit": "",
     "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
   }
 }

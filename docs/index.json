@@ -2,7 +2,7 @@
   "$schema": "adflow-docs-index-v1",
   "project": "Bruce",
   "created": "2026-09-23",
-  "last_change": "2026-09-23",
+  "last_change": "2026-10-22",
   "status": "active",
   "description": "工程顶层文档中枢路由表，定义各子系统的边界与机器访问入口",
   "directories": [
@@ -34,5 +34,11 @@
       "readme": "docs/assets/README.md",
       "index": null
     }
-  ]
+  ],
+  "adflow_version": "1.5.0",
+  "standards": {
+    "coding": "docs/standards/coding.json",
+    "task_template": "docs/standards/task-template.json",
+    "change_template": "docs/standards/change-template.json"
+  }
 }
