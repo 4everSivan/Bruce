@@ -6,7 +6,7 @@
 //! in this module.
 
 use super::sources::{SourceScan, SourceScanError};
-use super::{CompactContribution, ScanStats};
+use super::{CompactContribution, ScanStats, AGGREGATION_VERSION};
 use collector_domain::{CollectionWindow, UsageContribution};
 use collector_runtime::CancellationToken;
 use rusqlite::{Connection, OpenFlags};
@@ -112,6 +112,12 @@ pub(crate) struct SqliteCacheEntry {
     pub(crate) source_id: String,
     pub(crate) parser_version: u32,
     pub(crate) schema_fingerprint: String,
+    /// 聚合格式版本 (C072): 旧条目缺失该字段按 0 解出, 身份失配强制全量重建。
+    /// C070 曾只给 CompactContribution 加 #[serde(default)] 明细字段而未在
+    /// SQLite 缓存侧设版本门禁 —— 升级后旧条目被当作合法 base 增量追加,
+    /// 历史逐日/逐小时模型明细永久缺失 (月明细为 v2 既有字段而幸存)。
+    #[serde(default)]
+    pub(crate) aggregation_version: u32,
     pub(crate) signature: SqliteSignature,
     pub(crate) cursor: SqliteCursor,
     pub(crate) window_days: u32,
@@ -366,6 +372,8 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
         schema_version: SQLITE_CACHE_SCHEMA_VERSION,
         source_id: config.source_id.clone(),
         parser_version: config.parser_version,
+        // C072: 重建条目同样打上当前聚合格式版本。
+        aggregation_version: AGGREGATION_VERSION,
         schema_fingerprint,
         signature,
         cursor: result.cursor,
@@ -405,9 +413,13 @@ fn cache_identity_matches(
     config: &SqliteCacheConfig,
     schema_fingerprint: &str,
 ) -> bool {
+    // C072: 聚合版本必须参与身份 —— 明细格式演进 (如 C070 的 day/hour 模型桶)
+    // 只升 AGGREGATION_VERSION 即可让全部旧条目失配回退全量重建, 与 JSONL
+    // 缓存 (lib.rs jsonl 条目身份) 同一防线。
     entry.schema_version == SQLITE_CACHE_SCHEMA_VERSION
         && entry.source_id == config.source_id
         && entry.parser_version == config.parser_version
+        && entry.aggregation_version == AGGREGATION_VERSION
         && entry.schema_fingerprint == schema_fingerprint
         && entry.window_days == config.window.days
         && entry.timezone == config.window.timezone_name
@@ -465,6 +477,8 @@ fn make_entry(
         schema_version: SQLITE_CACHE_SCHEMA_VERSION,
         source_id: config.source_id.clone(),
         parser_version: config.parser_version,
+        // C072: 条目随写入打上当前聚合格式版本, 身份比对据此拒绝旧格式 base。
+        aggregation_version: AGGREGATION_VERSION,
         schema_fingerprint: schema_fingerprint.to_owned(),
         signature: signature.clone(),
         cursor: cursor.clone(),

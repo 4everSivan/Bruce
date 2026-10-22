@@ -104,7 +104,8 @@
         "C049",
         "C050",
         "C051",
-        "C055"
+        "C055",
+        "C072"
       ]
     },
     "AgentAnalytics": {
@@ -753,6 +754,15 @@
       "topic": "SubscriptionQuota",
       "version": "0.12.2",
       "file": "docs/devel/change/C071.json"
+    },
+    "C072": {
+      "title": "SQLite 增量缓存补聚合格式版本门禁：C070 升级后旧条目强制全量重建，恢复逐日/逐小时模型明细",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C072-sqlite-cache-aggregation-gate",
+      "topic": "TokenUsage",
+      "version": "0.12.2",
+      "file": "docs/devel/change/C072.json"
     }
   }
 }
