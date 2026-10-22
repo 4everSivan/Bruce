@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/task-index.v1.json",
   "phase": "Phase 2 - Windows 平台适配",
-  "updated_at": "2026-10-14",
+  "updated_at": "2026-10-22",
   "milestones": {
     "M1-Windows适配": {
       "title": "Windows 托盘常驻看板与采集链路全量对齐（Tauri 2 / 首版全量 / Rust 视图模型+fixture 对拍）",
@@ -149,7 +149,7 @@
       "topic": "AgentAnalytics",
       "milestone": "M4-用量分析与Token统计工作台",
       "depends_on": [],
-      "file": "docs/devel/task/T07.json",
+      "file": "docs/archive/0.12.2/task/T07.json",
       "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T07-agent-analytics-workbench"
     },
     "T08": {
@@ -159,7 +159,7 @@
       "topic": "WindowsCompat",
       "milestone": "M5-Windows视觉与工作台重塑",
       "depends_on": [],
-      "file": "docs/devel/task/T08.json",
+      "file": "docs/archive/0.12.2/task/T08.json",
       "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T08-windows-visual-workbench-redesign"
     }
   }

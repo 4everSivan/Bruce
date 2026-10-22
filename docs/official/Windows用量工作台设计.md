@@ -25,7 +25,7 @@ T08 声明对齐 macOS 分析工作台，并提出多维系列、MA7、悬停探
 
 macOS 的归一化键、历史模型份额、趋势系列和导出由独立实现负责，见 [Agent 用量分析设计](Agent用量分析设计.md)。Windows 的缓存、采集与窗口边界见 [Windows 应用设计](Windows应用设计.md)。
 
-依据：[T08](../devel/task/T08.json) 的目标与任务；[`settings.js`](../../apps/win/src/settings.js) 的 `buildAgentUsage`、`renderAgentUsageWorkbench`。
+依据：[T08](../archive/0.12.2/task/T08.json) 的目标与任务；[`settings.js`](../../apps/win/src/settings.js) 的 `buildAgentUsage`、`renderAgentUsageWorkbench`。
 
 <a id="chapter-2"></a>
 ## 2. 设计
@@ -147,7 +147,7 @@ macOS 的归一化键、历史模型份额、趋势系列和导出由独立实�
 - [`settings.js`](../../apps/win/src/settings.js)：工作台入口、范围规则、模型归并、事件和缓存读取。
 - [`usage.rs`](../../apps/win/viewmodel/src/usage.rs)：面板日期截断、月汇总与今日构成。
 - [`frontend.test.mjs`](../../apps/win/tests/frontend.test.mjs)：工作台结构和交互的测试定义。
-- [T08](../devel/task/T08.json)：工作台目标与历史完成记录。
+- [T08](../archive/0.12.2/task/T08.json)：工作台目标与历史完成记录。
 - [Bruce 设计文档](Bruce设计文档.md#windows-workbench)：本主题的系统职责与边界。
 - [Agent 用量分析设计](Agent用量分析设计.md)：macOS 的独立算法与口径。
 

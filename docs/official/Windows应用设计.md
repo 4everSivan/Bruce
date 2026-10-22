@@ -155,7 +155,7 @@ Nothing 使用 `#000000` 面板、10px 圆角、关闭背景模糊和阴影，�
 
 这些选择器和格式分支没有更改采集、凭据、告警或计费口径。工作台也有 Nothing 字体、颜色和几何覆写，但不能由样式推断其数据算法已与 macOS 等价。
 
-依据：[`app.js`](../../apps/win/src/app.js) 的 `applySettings`、`usageCard`、`subscriptionCard`、`nothingProjectConsole`；[`styles.css`](../../apps/win/src/styles.css) 的 @font-face 与 theme-nothing；[`tauri.conf.json`](../../apps/win/src-tauri/tauri.conf.json)；[C066](../devel/change/C066.json) 的目标与变更记录。
+依据：[`app.js`](../../apps/win/src/app.js) 的 `applySettings`、`usageCard`、`subscriptionCard`、`nothingProjectConsole`；[`styles.css`](../../apps/win/src/styles.css) 的 @font-face 与 theme-nothing；[`tauri.conf.json`](../../apps/win/src-tauri/tauri.conf.json)；[C066](../archive/0.12.2/change/C066.json) 的目标与变更记录。
 
 <a id="windows-workbench"></a>
 ### 4.4 Agent 用量工作台
@@ -164,7 +164,7 @@ Nothing 使用 `#000000` 面板、10px 圆角、关闭背景模糊和阴影，�
 
 当前维度按钮只更新选中样式，费用和命中率含固定规则或默认值；MA7、十字悬停和项目下钻没有执行路径。完整的正常、空数据和跨端差异见 [Windows 用量工作台设计](Windows用量工作台设计.md)。
 
-依据：[`settings.js`](../../apps/win/src/settings.js) 的 `renderAgentUsageWorkbench`；[`usage.rs`](../../apps/win/viewmodel/src/usage.rs) 的 `make_usage`、`make_hourly`；[T08](../devel/task/T08.json)。
+依据：[`settings.js`](../../apps/win/src/settings.js) 的 `renderAgentUsageWorkbench`；[`usage.rs`](../../apps/win/viewmodel/src/usage.rs) 的 `make_usage`、`make_hourly`；[T08](../archive/0.12.2/task/T08.json)。
 
 <a id="chapter-5"></a>
 ## 5. 流程与状态

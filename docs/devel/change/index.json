@@ -716,7 +716,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.12.2",
-      "file": "docs/devel/change/C066.json"
+      "file": "docs/archive/0.12.2/change/C066.json"
     },
     "C067": {
       "title": "Windows 看板与设置窗口按 mac 源码逐项对齐 (渲染缺陷修复 / B 级 token 格式化 / 设置窗口不套 Nothing)",
@@ -725,7 +725,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.12.2",
-      "file": "docs/devel/change/C067.json"
+      "file": "docs/archive/0.12.2/change/C067.json"
     },
     "C068": {
       "title": "Windows 订阅卡 Provider 定向刷新 (对齐 mac ProviderRefreshButton) 并补齐 Cline 凭证注入",
@@ -734,7 +734,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.12.2",
-      "file": "docs/devel/change/C068.json"
+      "file": "docs/archive/0.12.2/change/C068.json"
     },
     "C069": {
       "title": "Windows 设置窗口改为即时生效 (对齐 mac SettingsView), 移除全局保存并按采集输入门控全量采集",
@@ -743,7 +743,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.12.2",
-      "file": "docs/devel/change/C069.json"
+      "file": "docs/archive/0.12.2/change/C069.json"
     },
     "C070": {
       "title": "Agent 用量工作台改为真实数据 (采集端逐日/逐月/今日逐小时 × 模型计价, 双端去估算并 golden 对拍)",
@@ -752,7 +752,7 @@
       "branch": "main",
       "topic": "AgentAnalytics",
       "version": "0.12.2",
-      "file": "docs/devel/change/C070.json"
+      "file": "docs/archive/0.12.2/change/C070.json"
     },
     "C071": {
       "title": "修复锁屏抑制刷新清空订阅服务：抑制运行回填上一份 services，解锁后订阅卡不再消失",
@@ -761,7 +761,7 @@
       "branch": "main",
       "topic": "SubscriptionQuota",
       "version": "0.12.2",
-      "file": "docs/devel/change/C071.json"
+      "file": "docs/archive/0.12.2/change/C071.json"
     },
     "C072": {
       "title": "SQLite 增量缓存补聚合格式版本门禁：C070 升级后旧条目强制全量重建，恢复逐日/逐小时模型明细",
@@ -770,7 +770,7 @@
       "branch": "main",
       "topic": "TokenUsage",
       "version": "0.12.2",
-      "file": "docs/devel/change/C072.json"
+      "file": "docs/archive/0.12.2/change/C072.json"
     },
     "C073": {
       "title": "价卡表补 deepseek-flash（官方 API 旧命名）条目：消除工作台唯一未定价模型",
@@ -779,7 +779,7 @@
       "branch": "main",
       "topic": "TokenUsage",
       "version": "0.12.2",
-      "file": "docs/devel/change/C073.json"
+      "file": "docs/archive/0.12.2/change/C073.json"
     },
     "C074": {
       "title": "修正 docs/devel/README.md §3.1 的 version 规范归属：Markdown 元数据节误载 JSON 卡必填字段，与 81 张卡实测实现不一致",
@@ -788,7 +788,7 @@
       "branch": "main",
       "topic": "SystemOverview",
       "version": "0.12.2+",
-      "file": "docs/devel/change/C074.json"
+      "file": "docs/archive/0.12.2/change/C074.json"
     },
     "C075": {
       "title": "Windows 侧 Claude 订阅凭据对齐 mac 零配置跟随：自动读取本机 ~/.claude/.credentials.json（含 ~/.claude.json 回退）替代纯粘贴",
@@ -797,7 +797,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.12.2+",
-      "file": "docs/devel/change/C075.json"
+      "file": "docs/archive/0.12.2/change/C075.json"
     },
     "C076": {
       "title": "Windows 刷新调度接入网络可达性闸门：离线不发起自动刷新、不重试，联网后单次补偿（对齐 mac C061）",
@@ -806,7 +806,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.12.2+",
-      "file": "docs/devel/change/C076.json"
+      "file": "docs/archive/0.12.2/change/C076.json"
     },
     "C077": {
       "title": "Windows 订阅额度查询补 per-provider 门禁：quotaAttemptedAt/rateLimitedAt 记账与 partial 429 冷却（对齐 mac C062，范围依 C065 订正）",
@@ -815,7 +815,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.12.2+",
-      "file": "docs/devel/change/C077.json"
+      "file": "docs/archive/0.12.2/change/C077.json"
     },
     "C078": {
       "title": "修正 Windows 看板顶部状态行直出诊断码与诊断行过宽：机器码改中文文案、正常重启码不入文案、诊断行收紧到需用户动作的严重故障",
@@ -824,7 +824,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.12.2+",
-      "file": "docs/devel/change/C078.json"
+      "file": "docs/archive/0.12.2/change/C078.json"
     },
     "C079": {
       "title": "看板顶部撤除运行态状态行与诊断行：完全对齐 mac，服务级失败归入订阅卡内部与设置页",
@@ -833,7 +833,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.12.2+",
-      "file": "docs/devel/change/C079.json"
+      "file": "docs/archive/0.12.2/change/C079.json"
     },
     "C080": {
       "title": "看板顶部彻底零输出：移除状态行元素、定向刷新拒绝提示与致命错误文案，仅保留 HUD 状态牌",
@@ -842,7 +842,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.12.2+",
-      "file": "docs/devel/change/C080.json"
+      "file": "docs/archive/0.12.2/change/C080.json"
     }
   }
 }

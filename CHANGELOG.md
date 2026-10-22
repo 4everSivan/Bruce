@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+（暂无）
+
+## [0.12.2] - 2026-10-22
+
 ### Added
 - **Windows 端 Claude 凭据零配置跟随本机 CLI 登录态 (C075)**：对齐 mac 的 cc-switch 式跟随范式，Windows 不再强制手工粘贴 —— 启用 Claude 订阅后自动只读跟随本机 `%USERPROFILE%\.claude\.credentials.json`（缺失时回退 `%USERPROFILE%\.claude.json`），规范化后注入 `claudeQuotaAccounts` 的 `claude-cli` 账号（用户已存自有账号时手工配置优先）；设置中心「订阅额度」新增「Claude 本机登录态」卡，显示已跟随 / 未发现 / 已过期，并提供「立即检测」与「读取本机登录态」（显式持久化为账号凭证）。仅只读、不回写外部文件，文件缺失或格式非法时静默回落，粘贴入口保留作多账号兜底。
 - **Windows 端 Nothing 点阵主题 1:1 深度对齐 (C066)**：

@@ -382,7 +382,7 @@ Windows 设置页从缓存 PanelViewModel 分别消费 days、monthly、hourly �
 
 这些边界解释了组件外形对齐与计算口径之间的差异。详细设计：[Windows 用量工作台设计](Windows用量工作台设计.md)，包含范围、模型、空数据与正常/替代场景。
 
-依据：[`settings.js`](../../apps/win/src/settings.js) 的 `renderAgentUsageWorkbench`、`loadPlans` 和 ready；[`usage.rs`](../../apps/win/viewmodel/src/usage.rs) 的 `make_usage`、`make_hourly`；[T08](../devel/task/T08.json)。
+依据：[`settings.js`](../../apps/win/src/settings.js) 的 `renderAgentUsageWorkbench`、`loadPlans` 和 ready；[`usage.rs`](../../apps/win/viewmodel/src/usage.rs) 的 `make_usage`、`make_hourly`；[T08](../archive/0.12.2/task/T08.json)。
 
 <a id="chapter-7"></a>
 ## 7. 参考文献

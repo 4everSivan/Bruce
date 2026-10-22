@@ -1,0 +1,21 @@
+{
+  "kind": "bruce-archive-task-snapshot",
+  "release": "0.12.2",
+  "archived_at": "2026-10-22",
+  "status": "frozen",
+  "note": "随 v0.12.2 tag 封箱。收拢本版本周期 completed 任务卡 T07 (设置中心 Agent 用量工作台) 与 T08 (Windows 视觉重塑与工作台对齐); T01–T04 仍为 in_progress (待 Windows 真机验收), 按 SOP 留在 docs/devel/task/。",
+  "tasks": {
+    "T07": {
+      "title": "设置中心 Agent 用量深度分析、Token 统计与多模型跨源归并工作台",
+      "status": "completed",
+      "milestone": "M4-用量分析与Token统计工作台",
+      "file": "docs/archive/0.12.2/task/T07.json"
+    },
+    "T08": {
+      "title": "Windows 端视觉重塑与 T07 Agent 用量全景工作台深度对齐",
+      "status": "completed",
+      "milestone": "M5-Windows视觉与工作台重塑",
+      "file": "docs/archive/0.12.2/task/T08.json"
+    }
+  }
+}

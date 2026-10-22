@@ -31,14 +31,23 @@
 ```
 docs/archive/
 ├── README.md                 # 本索引文档
-└── 0.12.0/                   # v0.12.0 发版封箱归档
-    ├── change/               # 全部 closed 变更卡 (29 张)
-    │   ├── index.json        # 该版本变更总账快照 (卡片 id/type/version/file)
-    │   ├── C015.json ... C041.json, C056.json, C057.json
-    ├── task/                 # 全部 completed 任务卡
-    │   ├── index.json        # 该版本任务总账快照
-    │   └── T05.json, T06.json
+├── 0.12.0/                   # v0.12.0 发版封箱归档
+│   ├── change/               # closed 变更卡 (29 张) + index.json 变更总账快照
+│   └── task/                 # completed 任务卡 (T05/T06) + index.json 任务总账快照
+└── 0.12.2/                   # v0.12.2 发版封箱归档
+    ├── change/               # closed 变更卡 (C066–C080, 15 张) + index.json
+    └── task/                 # completed 任务卡 (T07/T08) + index.json
 ```
+
+**归档实况（2026-10-22，随 v0.12.2 tag 封箱）**
+
+| 项 | 实况 |
+|---|---|
+| 变更卡 | 15 张（C066–C080），全部为 `closed` 状态；`docs/devel/change/index.json` 的 `file` 映射已同步刷新为归档路径 |
+| 任务卡 | 2 张（T07 Agent 用量工作台、T08 Windows 视觉重塑与工作台对齐），状态为 `completed`；T01–T04 仍为 `in_progress`（待 Windows 真机验收），故留在 `docs/devel/task/` |
+| 卡片内容 | 一字未改，仅迁移物理位置；目录冻结只读 |
+| 断链核验 | 归档前全仓指向这 17 张卡的 Markdown 链接共 4 处（`docs/official/Windows应用设计.md` → C066；`docs/official/Windows用量工作台设计.md` ×2 与 `docs/official/Bruce设计文档.md` → T08），已同步改写为归档路径，归档后 0 断链 |
+| 累积说明 | v0.12.1 发布时未执行归档 SOP，故本次一并收拢了 v0.12.0 封箱之后新闭环的 C066–C080（其 `version` 声明分别为 v0.12.1 / v0.12.2 周期，卡内原样保留） |
 
 **归档实况（2026-10-16，随 v0.12.0 tag 封箱）**
 
