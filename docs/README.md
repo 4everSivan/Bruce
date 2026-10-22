@@ -1,10 +1,10 @@
 # 文档中心 (docs/)
 
-> **created**: 2026-09-23 ｜ **last-change**: 2026-10-20 ｜ **status**: active
+> **created**: 2026-09-23 ｜ **last-change**: 2026-10-22 ｜ **status**: active
 
 ## 1. 简介
 
-本目录提供项目文档入口与共同规则。设计正文描述已批准的业务规则，C/T 卡片记录执行和验收，指南说明操作方法，归档保留历史事实。
+本目录提供项目文档入口与共同规则。设计正文描述已批准的业务规则，C/T 卡片记录执行和验收，指南说明操作方法，归档保留历史事实；[`official/`](official/README.md) 是面向使用者的 **Bruce 知识库**（源码级静态说明，由独立流水线维护，不属 C/T 双轨治理范围）。
 
 首次初始化后，日常工作直接使用本项目的 [AGENTS.md](../AGENTS.md)、目录 README、索引、模板和校验器；仅在同步治理规范时再次调用 `$ad-flow`。本文负责共同约定，各目录 README 负责对应操作。
 
@@ -20,6 +20,7 @@
 | 准备、启动或排查环境 | [操作指南](guide/README.md) / [环境治理](devel/env/README.md) | [指南索引](guide/index.json) | 可复现操作及实际结果 |
 | 存放文档图片与图稿 | [资源库](assets/README.md) | 文档中的相对链接 | 可复用的静态资源 |
 | 发布归档或追溯历史 | [归档库](archive/README.md) | C/T 现行总账中的归档路径 | 本批次卡片及总账快照 |
+| 了解系统机制（面向使用者） | [Bruce 知识库](official/README.md) | 独立流水线的 manifest 与卡片产物 | 源码级静态说明文档 |
 
 机器入口为 [index.json](index.json)。其中 `standards` 登记 [代码编写规范](standards/coding.json)、[变更卡模板](standards/change-template.json) 和 [任务卡模板](standards/task-template.json)。`standards/` 无需另建 README 或索引；真实设计、卡片和研发记录仍在 `devel/`。
 
@@ -111,6 +112,8 @@ docs/
 │   ├── task/               # 【阶段研发任务】Phase/Milestone 拆解流
 │   ├── todo/               # 【待办缓冲池】未入轨需求与缺陷（零沉淀）
 │   └── env/                # 【环境治理】环境盘点、依赖恢复与分级清理
+├── official/               # 【Bruce 知识库】面向使用者的源码级静态说明（独立流水线维护）
+│   └── README.md           # 知识库总入口与阅读路径
 └── archive/                # 【历史归档区】版本发版打 Tag 后整体封存（只读冻结）
     └── README.md           # 归档库索引与发版封箱 SOP
 ```
@@ -123,6 +126,7 @@ docs/
 | **guide/** | [guide/index.json](guide/index.json) | 标准环境准备、服务启停、配置全表与健康检查 | 运维 / 联调者 / Agent |
 | **devel/** | [devel/index.json](devel/index.json) | 系统设计真理、缺陷修复核验、特性任务推进与零沉淀待办 | 开发者 / 架构师 / Agent |
 | **archive/** | *(随发版归档)* | 历史版本发版打 Tag 后的只读镜像，永久冻结 | 审计 / 追溯者 |
+| **official/** | [official/README.md](official/README.md) | Bruce 知识库：面向使用者的源码级静态说明，由独立流水线维护 | 使用者 / 新成员 / Agent |
 ### 3.2 格式与标点红线
 1. **键值分隔**：键名加粗，键值之间**强制采用半角冒号加单空格**（`**created**: 2026-09-23`）；
 2. **字段分隔**：同一行内多个键值对之间**统一采用前后带空格的全角竖线**（` ｜ `）；

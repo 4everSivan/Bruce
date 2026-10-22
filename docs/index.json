@@ -33,6 +33,13 @@
       "description": "文档与工程资源库（系统架构图、流程图、UI 截图与演示素材）",
       "readme": "docs/assets/README.md",
       "index": null
+    },
+    {
+      "name": "official",
+      "path": "docs/official",
+      "description": "Bruce 知识库（面向使用者的源码级静态说明，由独立流水线维护）",
+      "readme": "docs/official/README.md",
+      "index": null
     }
   ],
   "adflow_version": "1.5.0",
