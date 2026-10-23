@@ -886,7 +886,7 @@
     "C083": {
       "title": "Windows API Key 类五家专属配置对话框：字段标签/引导文案/外链/脚注逐字对齐，火山引擎补 CC Switch 导入，Z.ai 改站点单选",
       "type": "Enhancement",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.13.0",
@@ -949,7 +949,7 @@
     "C090": {
       "title": "Windows 验证结果不驱动启用开关：验证通过即启用、失败/需重新登录即禁用，首次安装订阅集合不再默认全开",
       "type": "BugFix",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.13.0",
@@ -1012,7 +1012,7 @@
     "C097": {
       "title": "Windows 无法配置 Cline：clineQuotaAccounts 在凭证校验器中无匹配分支，保存恒返回「凭证字段不受支持」",
       "type": "BugFix",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.13.0",
@@ -1039,7 +1039,7 @@
     "C100": {
       "title": "双端仪表盘顶部状态牌改为四色状态灯：删除 SYS.OK 文字牌，触碰显示状态原因，品牌字统一为 Bruce",
       "type": "Enhancement",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "MenuBarIndicator",
       "version": "0.13.0",
@@ -1048,7 +1048,7 @@
     "C101": {
       "title": "Windows 看板滚动区隐藏右侧滚动条：对齐 mac 恒不显示滚动指示条，仅保留滚轮/触控板滚动",
       "type": "BugFix",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.13.0",

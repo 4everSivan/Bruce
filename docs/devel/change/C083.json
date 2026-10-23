@@ -4,7 +4,7 @@
   "title": "Windows API Key 类五家专属配置对话框：字段标签/引导文案/外链/脚注逐字对齐，火山引擎补 CC Switch 导入，Z.ai 改站点单选",
   "version": "0.13.0",
   "type": "Enhancement",
-  "status": "verified",
+  "status": "closed",
   "branch": "main",
   "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
   "is_hotfix": false,
@@ -102,7 +102,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "d78aa595fc4cdf4b4076eaeb008ab8474ccb34d9",
     "tag": ""
   },
   "gate": {
@@ -110,7 +110,7 @@
     "version": "1.5.0",
     "ran_at": "2026-10-23",
     "exit_code": 0,
-    "from_status": "in_progress",
-    "target_status": "verified"
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

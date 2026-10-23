@@ -4,7 +4,7 @@
   "title": "Windows 看板滚动区隐藏右侧滚动条：对齐 mac 恒不显示滚动指示条，仅保留滚轮/触控板滚动",
   "version": "0.13.0",
   "type": "BugFix",
-  "status": "verified",
+  "status": "closed",
   "branch": "main",
   "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用)",
   "is_hotfix": false,
@@ -88,7 +88,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "d78aa595fc4cdf4b4076eaeb008ab8474ccb34d9",
     "tag": ""
   },
   "gate": {
@@ -96,7 +96,7 @@
     "version": "1.5.0",
     "ran_at": "2026-10-23",
     "exit_code": 0,
-    "from_status": "in_progress",
-    "target_status": "verified"
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }
