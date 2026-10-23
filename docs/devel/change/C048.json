@@ -4,7 +4,7 @@
   "version": "0.12.0+",
   "title": "provider 专属逻辑下沉：codex 新鲜度/失败类别/挑战改由 provider 层标准化输出，编排层与协议层去除 app 名字分支",
   "type": "BugFix",
-  "status": "verified",
+  "status": "closed",
   "branch": "main",
   "is_hotfix": false,
   "target": {
@@ -99,7 +99,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": false,
-    "commit": "",
+    "commit": "a69e16e13ac5fab1679499ac352850d2e68f31a2",
     "tag": ""
   },
   "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用)",
@@ -108,7 +108,7 @@
     "version": "1.5.0",
     "ran_at": "2026-10-23",
     "exit_code": 0,
-    "from_status": "in_progress",
-    "target_status": "verified"
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

@@ -4,7 +4,7 @@
   "version": "0.12.0+",
   "title": "按职责拆分巨型文件：sources.rs / collector-provider lib.rs / SettingsView.swift / SubscriptionService.swift（纯结构重构，行为不变）",
   "type": "Refactor",
-  "status": "verified",
+  "status": "closed",
   "branch": "main",
   "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用)",
   "is_hotfix": false,
@@ -99,7 +99,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": false,
-    "commit": "",
+    "commit": "a69e16e13ac5fab1679499ac352850d2e68f31a2",
     "tag": ""
   },
   "gate": {
@@ -107,7 +107,7 @@
     "version": "1.5.0",
     "ran_at": "2026-10-23",
     "exit_code": 0,
-    "from_status": "in_progress",
-    "target_status": "verified"
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }
