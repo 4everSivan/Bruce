@@ -59,8 +59,8 @@
         "item": "Windows CI 全绿",
         "true_if": "windows-latest job 中 cargo fmt --check / cargo test --workspace / cargo clippy 全部通过",
         "false_if": "任一编译、clippy 告警或测试失败",
-        "evidence": "2026-10-23: .github/workflows/ci.yml 的 verify-windows (windows-latest) job 存在, 但当前 HEAD (939f96a) 的 11 个提交未推送, Windows CI 未在本批代码上运行过; 上次成功运行停在 55921b9 (本批之前)。本机 macOS 无法交叉编译 MSVC (ring 需要 Windows C 工具链), 故无法本地替代。",
-        "result": false
+        "evidence": "2026-10-23: 推送后 GitHub Actions CI/CD (run 39923729794, commit 2706918) 全部成功 —— macos-26「本地验证套件」success、windows-latest「Rust 验证 (Windows)」success (Windows 前端结构冒烟 / 打包发布脚本 AST 门禁 / 发布流水线契约测试 / Rust fmt --check / workspace 测试 / clippy / Windows 视图模型 crate fmt·test·clippy / Windows 壳 fmt·clippy·测试 全部通过)、「构建测试版 App」success。",
+        "result": true
       },
       {
         "item": "缓存根平台正确且 mac 零回归",
@@ -105,7 +105,7 @@
     "version": "1.5.0",
     "ran_at": "2026-10-23",
     "exit_code": 0,
-    "from_status": "in_progress",
+    "from_status": "completed",
     "target_status": "completed"
   }
 }
