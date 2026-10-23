@@ -102,16 +102,16 @@
   "rejections": [],
   "sync": {
     "design_pinned": true,
-    "changelog": false,
-    "commit": "",
+    "changelog": true,
+    "commit": "a69e16e13ac5fab1679499ac352850d2e68f31a2",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "2026-10-22",
-    "exit_code": 0,
-    "from_status": "in_progress",
-    "target_status": "verified"
+    "ran_at": "2026-10-23",
+    "exit_code": 6,
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

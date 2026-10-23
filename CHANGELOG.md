@@ -28,6 +28,7 @@
   - **Grok 本机只读跟随**：新增 `%USERPROFILE%\.grok\auth.json` 只读跟随（取带非空 `key` 的 `https://auth.x.ai::*` / `*/sign-in` 作用域条目，按 `expires_at` 判过期），提供「重新检测」与「从本机导入」；本机跟随计入「已配置」（与 Claude 同范式），采集与定向刷新前同样自动注入 `grok-cli` 账号，全程只读不回写。
   - **OpenCode GO 引导与身份**：粘贴引导逐字对齐 mac（`打开 opencode.ai → 登录 → 开发者工具 → Application → Cookies → 复制 auth 值 (Fe26.2**...) 与 workspace URL 中的 wrk_ ID`），账号身份改由 `workspaceId` 派生 —— 同一工作区重新粘贴即 upsert 到同一账号；缺键文案改为「OpenCode GO 凭证不完整, 请重新粘贴」。
   - **三家验证语义**：Claude 访问令牌过期但刷新令牌仍有效时按「待刷新」照常放行、刷新令牌亦失效才判需重新登录；Grok 按作用域条目 `expires_at` 判定；OpenCode GO 按 `auth` + `workspaceId` 双非空判定。
+- **Windows 订阅额度页骨架 1:1 对齐 mac (C082)**：页面收敛为「订阅服务（已添加行 + 配置按钮 + 拖拽重排）+ 添加服务（只列尚未添加项）」；新增按 Provider 的专属配置对话框基座与 Provider 验证状态存储（`enabled` / `lastVerifiedAt` / `verificationStatus` / `failureReason`），「保存并验证」写入成功后立即跑结构校验并按结果落状态，ok 触发该 Provider 定向刷新。
 - **Windows StepFun 配置对话框与网页登录自动捕获 (C086)**：
   - **StepFun 对话框**：Oasis-Token 字段 + 引导文案（`可点击上方一键登录自动绑定(支持国内/国际站)，或控制台按 F12 复制 Cookie`）+ 控制台外链 + 脚注 + 网页登录自动绑定区（`🇨🇳 登录国内站` / `🌐 登录国际站`）。
   - **内置网页登录窗口**：独立 `WebviewWindow` + `WebviewUrl::External` 加载站点订阅页；导航栏（标题 + 站点切换 + 取消）+ 工具栏（后退/前进/刷新/订阅页/平台首页/当前 URL）+ 底部（清除登录缓存 / 我已登录，立即绑定）；UA 用桌面 Chrome 串 —— 用户在内置窗口登录即可，无需外部浏览器与 devtools。
@@ -39,6 +40,7 @@
 - **Windows 删除三张 mac 没有的遗留凭证卡片 (C095)**：在 C084–C086 三个专属录入通道就位后，移除「添加或更新账号凭证」「导入账号」「高级：完整凭证字段维护」三张卡与整页「检查已保存账号连接」—— 凭据只能经专属对话框（保存即验证）写入，不再保留绕过验证与「已添加」步骤的旁路入口。
 
 ### Fixed
+- **Windows 订阅凭据载荷形状与「已配置」判据修正 (C081)**：Claude / Grok / OpenCode GO 三家手工录入的载荷改为采集端可解析的原生形状（`claudeAiOauth` 包装 / 作用域条目 / `{auth, workspaceId}`），形状不合法时在写入前即拒绝；「已配置」改为 fail-closed —— 只有完整可用的凭据记录才算数，形状不合法或被读取侧丢弃的账号不再计入；出站注入仍只下发采集端需要的字段并剔除 `reauthRequired` 账号。
 - **Windows「移除服务」只删已添加条目不删凭据 (C089)**：移除改为后端 `remove_provider_credentials` 在凭据存储锁内一次原子写删除该 Provider 全部凭据（含读取侧已丢弃、界面不可见的不合规账号，以及 Claude / Grok 遗留的整体 OAuth 字段），再移出已添加集合并派生收敛启用态；删除失败即中止、不改已添加集合（fail-closed），杜绝半删状态；删除前二次确认，失败以就地错误给出可诊断原因；重加服务不再复活旧账号。
 - **Windows 订阅行状态尾件不读验证结果与本机登录态 (C091)**：行尾件判据改为「配置判据 × verificationStatus」两维，输出未配置 / 已配置 / 验证失败 / 需重新登录四态；本机只读跟随的 Claude 登录态计入「已配置」（对齐 mac `claudeAppOrLocalProbe`），该判据由行尾件、启用开关禁用态、对话框横幅与「重新验证」入口、授权摘要共用；未发现或已过期的本机登录态仍算未配置。
 - **Windows 接受 mac 拒绝的密钥格式 (C092)**：`validate_credential_payload` 按 Provider 补齐格式校验——含空白字符一律拒绝；火山 AccessKey / SecretKey 长度 ≥8；Cline ≥16；Z.ai 必须 `id.secret` 形式且站点主机为 `open.bigmodel.cn` / `api.z.ai`；Kimi 非空无空白。写入与验证共用同一套判据，拒绝时指出具体不合规字段。
