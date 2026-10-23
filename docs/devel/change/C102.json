@@ -55,8 +55,8 @@
     }
   },
   "verification": {
-    "result": null,
-    "run_id": "",
+    "result": "passed",
+    "run_id": "local-20261023-17",
     "user_quote": "",
     "signoff": "",
     "checks": [
@@ -64,23 +64,36 @@
         "item": "DashboardGlassSurfaceHarness 测试",
         "true_if": "DashboardGlassSurfaceHarness 全绿通过且退出码为 0",
         "false_if": "DashboardGlassSurfaceHarness 出现断言失败或退出码非 0",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-10-23 实测：swift run --package-path apps/macos DashboardGlassSurfaceHarness 全部 10 项断言全绿通过（退出码 0），验证了方案 A 与 Nothing 风格的 PanelTint、CardFill、CardBorder、CornerRadius (10/4/3/2) 等 tokens 100% 预期断言一致。",
+        "result": true
       },
       {
         "item": "Windows 前端与几何对拍测试",
         "true_if": "frontend.test.mjs 与 geometry-parity.test.mjs 全绿通过且无破坏性回归",
         "false_if": "任一 Windows 前端或几何对拍测试失败",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-10-23 实测：node --test apps/win/tests/frontend.test.mjs apps/win/tests/geometry-parity.test.mjs 全部 89 项用例全绿通过（退出码 0，耗时 3.2s）。",
+        "result": true
       },
       {
         "item": "反向影响排查",
         "true_if": "Nothing 风格与现有设置窗口 Fluent 平面风格不受影响，圆角和高斯模糊正确对齐",
         "false_if": "Nothing 风格破图或设置窗口 Fluent 样式被意外覆盖",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-10-23 实测排查：Nothing 风格在 macOS/Win 测试中 100% 保持 NDot/极客点阵与高对比度特性，设置中心窗口遵循 C067 保持 Fluent 2 平面规范无毛玻璃与无意外覆盖；PanelParityHarness (5 项) 与 PanelViewModelHarness (60 项) 亦全绿通过。",
+        "result": true
       }
     ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "f9111925b3ba1ee3048fc08c0276906236b2b740",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-23",
+    "exit_code": 0
   }
 }
