@@ -1,0 +1,108 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T11",
+  "title": "Windows 软件更新全链路：维护页更新卡与 tauri-plugin-updater 自动升级",
+  "version": "0.13.0",
+  "milestone": "M6-软件更新",
+  "status": "pending",
+  "branch": "feat/T11-windows-software-update",
+  "depends_on": ["T09"],
+
+  "target": {
+    "module": "apps/win",
+    "design_doc": "docs/devel/design/07-软件更新.md",
+    "design_topic": "SoftwareUpdate"
+  },
+
+  "goal": "在 Windows 设置中心维护页交付与高保真 demo（apps/win/demo/win-settings-update-flow-demo.html）逐字逐 token 一致的「软件更新」卡（07 设计 §4.2 R3/R4，方案 B：维护页顶部、诊断分组之前、通用页「版本」行占位迁入本卡），并接入 tauri-plugin-updater 完成检查、下载进度、minisign 签名校验、NSIS 静默安装与应用重启（§4.2 R7），配套签名密钥生成与离线保管流程。",
+
+  "precheck": {
+    "description": "检测 Windows 侧是否已存在更新器接入或更新卡实现",
+    "command": "grep -rn \"tauri-plugin-updater\\|update-stage\\|软件更新\" apps/win/src-tauri/ apps/win/src/ 2>/dev/null || echo \"NOT_FOUND\"",
+    "expected": "NOT_FOUND",
+    "is_completed": false,
+    "evidence": ""
+  },
+
+  "callback": {
+    "before": [
+      "git checkout -b feat/T11-windows-software-update 2>/dev/null || git checkout feat/T11-windows-software-update"
+    ],
+    "after": [
+      "node scripts/check-win-frontend.mjs",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 completed；目标状态预检使用 --card T11 --to completed --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card T11 --receipt 复核、输出节点回执"
+    ]
+  },
+
+  "tasks": [
+    {
+      "id": "T11-1",
+      "title": "tauri-plugin-updater 接入与 command 封装",
+      "capability": "按项目钉版原则核对并锁定与 tauri =2.11.6 兼容的插件精确版本；endpoint 配置 latest.json 直链；capability 仅授 updater:default；Rust 侧封装 update_check/update_download/update_install command 并广播状态事件供前端渲染 8 态状态机。",
+      "done": false
+    },
+    {
+      "id": "T11-2",
+      "title": "设置页维护页软件更新卡 UI",
+      "capability": "settings.js 维护 pane 顶部（诊断 caption 之前）插入软件更新分组：三行 + update-stage 状态区 8 态 + 导航角标（nav-dot 6px #4C9CFF 发光）；styles.css 新增 PART U 三类（update-stage/update-banner/update-progress，token 值逐项对齐 07 §4.2 R3 表）；文案逐字对齐 demo；移除通用页「版本」行占位并将 setting-version 接入本卡当前版本行；settings-status warn 口径。",
+      "done": false
+    },
+    {
+      "id": "T11-3",
+      "title": "签名密钥基建与保管流程",
+      "capability": "tauri signer generate 生成 minisign 密钥对：私钥离线保管流程写入 docs/devel/env/ 指南（绝不入仓库，纳入敏感扫描关注项），公钥写入 tauri.conf.json updater 配置；与 T09 的 TAURI_SIGNING_PRIVATE_KEY 构建注入口径衔接。",
+      "done": false
+    },
+    {
+      "id": "T11-4",
+      "title": "契约测试与对拍",
+      "capability": "check-win-frontend.mjs 扩展：软件更新卡 DOM 结构、逐字文案、状态类名、导航角标断言；Rust updater command 对 fixture 清单的单测；状态机文案与 demo 共享 fixture 对拍（与 T10 同一份 cases）；verify-local 全绿。",
+      "done": false
+    }
+  ],
+
+  "acceptance": {
+    "result": null,
+    "run_id": "",
+    "checks": [
+      {
+        "item": "UI 与 demo 一致",
+        "true_if": "Windows 维护页顶部软件更新卡的 DOM 结构、逐字文案、PART U 样式 token、8 态状态区与导航角标与 demo 完全一致（方案 B），通用页版本行已迁入",
+        "false_if": "布局位置偏离、文案改写、token 值漂移或状态缺失",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "升级链路贯通",
+        "true_if": "检查→发现新版本→下载（进度/取消）→安装并重启的状态事件全链路贯通；签名校验失败拒绝安装；失败态按 demo 呈现（含状态行 warn）",
+        "false_if": "状态事件断裂、无签名校验或失败无呈现",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "密钥安全",
+        "true_if": "minisign 私钥不入仓库（.gitignore/敏感扫描覆盖），公钥配置与清单 signature 由同一密钥对生成",
+        "false_if": "私钥出现在仓库或公私钥不匹配",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "契约测试全绿",
+        "true_if": "node scripts/check-win-frontend.mjs 与 zsh scripts/verify-local.sh 退出码 0",
+        "false_if": "任一断言失败",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "sync": {
+    "commit": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

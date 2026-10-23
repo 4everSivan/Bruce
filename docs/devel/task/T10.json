@@ -1,0 +1,107 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T10",
+  "title": "macOS 软件更新全链路：维护页更新卡、检查服务与自替换安装器",
+  "version": "0.13.0",
+  "milestone": "M6-软件更新",
+  "status": "pending",
+  "branch": "feat/T10-macos-software-update",
+  "depends_on": ["T09"],
+
+  "target": {
+    "module": "apps/macos",
+    "design_doc": "docs/devel/design/07-软件更新.md",
+    "design_topic": "SoftwareUpdate"
+  },
+
+  "goal": "在 macOS 设置中心维护页交付与高保真 demo（apps/win/demo/win-settings-update-flow-demo.html）完全一致的「软件更新」卡（07 §4.2 R3/R4，方案 B：维护页顶部、先于数据/诊断分组、移除通用页原版本行），并打通检查更新（latest.json 直链 + semver 比较）、自动检查（默认开、启动 30 秒、24 小时间隔、静默失败）、8 态状态机、导航角标、跳过版本，以及下载校验与 /Applications 原子自替换安装（07 §4.2 R6：SHA256 校验、xattr 剥离、版本复核、备份回滚、Process 重启）。",
+
+  "precheck": {
+    "description": "检测 macOS 侧是否已存在软件更新相关实现",
+    "command": "grep -rn \"SoftwareUpdate\\|检查更新\\|latest.json\" apps/macos/Sources/ 2>/dev/null || echo \"NOT_FOUND\"",
+    "expected": "NOT_FOUND",
+    "is_completed": false,
+    "evidence": ""
+  },
+
+  "callback": {
+    "before": [
+      "git checkout -b feat/T10-macos-software-update 2>/dev/null || git checkout feat/T10-macos-software-update"
+    ],
+    "after": [
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 completed；目标状态预检使用 --card T10 --to completed --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card T10 --receipt 复核、输出节点回执"
+    ]
+  },
+
+  "tasks": [
+    {
+      "id": "T10-1",
+      "title": "BruceAppCore 更新服务（UpdateService）",
+      "capability": "latest.json 直链拉取（URLSession，超时 10 秒）、semver 纯函数比较、dev 构建降级（无 bundle 版本时禁用检查并显示开发版本，07 §4.2 R2）、自动检查调度（启动 30 秒 + 24 小时 + 上次检查时间戳持久化）、8 态状态机、跳过版本记录与自动解除（远端出现更新版本时恢复提醒）。",
+      "done": false
+    },
+    {
+      "id": "T10-2",
+      "title": "设置中心维护页软件更新卡 UI",
+      "capability": "按 07 §4.2 R3/R4 实现：维护 pane 顶部分组（paneCaption 软件更新 + FluentCard，先于数据/诊断分组）；三行（自动检查更新开关+状态字 / 当前版本等宽值 / 检查更新按钮+上次检查副标题）+ update-stage 状态区 8 态；文案逐字对齐 demo；导航角标 6pt settings-accent 发光圆点挂维护导航项；failed 态 settingsErrorMessage warn 口径；移除通用页原「版本」行；SwiftUI 映射见 R3「macOS 实现映射」。",
+      "done": false
+    },
+    {
+      "id": "T10-3",
+      "title": "下载校验与自替换安装器",
+      "capability": "下载至 ~/Library/Application Support/Bruce/updates/ 带进度与取消；SHA256 校验失败拒绝安装；ditto 解压 + xattr -cr 剥离 quarantine；解压产物 Info.plist 版本复核（须大于本地）；非用户可写位置降级为引导手动更新；同卷原子替换（旧 app → updates/backup/，新 app → /Applications/Bruce.app）+ 失败回滚 + Process 重启（07 §4.2 R6）。",
+      "done": false
+    },
+    {
+      "id": "T10-4",
+      "title": "测试与 demo 对拍",
+      "capability": "UpdateService 单测（fixture 清单解析/semver/状态机迁移/跳过解除/dev 降级）；安装器对临时目录夹具 bundle 的替换与回滚单测（不触碰真实 /Applications）；状态机逐字文案与 demo 的共享 fixture 对拍（沿用 status-tone-parity 模式）；verify-local 全绿。",
+      "done": false
+    }
+  ],
+
+  "acceptance": {
+    "result": null,
+    "run_id": "",
+    "checks": [
+      {
+        "item": "UI 与 demo 一致",
+        "true_if": "维护页顶部软件更新卡的结构、逐字文案、8 态状态区、导航角标与 apps/win/demo/win-settings-update-flow-demo.html 完全一致（方案 B），通用页原版本行已移除",
+        "false_if": "布局位置偏离方案 B、文案改写或状态缺失",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "检查与自动检查",
+        "true_if": "手动检查走 检查中→已是最新/发现新版本；自动检查默认开启、启动 30 秒、24 小时间隔、失败完全静默；跳过版本按口径解除",
+        "false_if": "自动检查失败打扰用户、间隔口径不符或跳过语义错误",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "安装安全与原子性",
+        "true_if": "SHA256 校验失败或版本复核失败拒绝安装；替换失败回滚原 app；升级重启后版本更新且侧栏/卡内版本同步",
+        "false_if": "存在未校验安装、失败后 app 损坏或版本显示陈旧",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "全量本地验证门禁",
+        "true_if": "zsh scripts/verify-local.sh 退出码 0（含新增单测与对拍 fixture）",
+        "false_if": "任一测试失败",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "sync": {
+    "commit": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}
