@@ -4,7 +4,7 @@
   "title": "修复 Windows 全局快捷键唤出看板焦点闪退与录制器编码缺陷：唤出保护期、连发/失焦防抖、光标多屏定位与 event.code 规范化录制",
   "version": "0.13.0",
   "type": "BugFix",
-  "status": "verified",
+  "status": "closed",
   "branch": "main",
   "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
   "is_hotfix": false,
@@ -116,7 +116,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "af6eaef603ca46968378b165b08e6b25811fbcb3",
     "tag": ""
   },
   "gate": {
@@ -124,7 +124,7 @@
     "version": "1.5.0",
     "ran_at": "2026-10-23",
     "exit_code": 0,
-    "from_status": "rejected",
-    "target_status": "verified"
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

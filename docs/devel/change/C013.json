@@ -3,7 +3,7 @@
   "id": "C013",
   "title": "修复 Windows 真机反馈: 应用图标缺失与常驻卡顿优化",
   "type": "Fix",
-  "status": "verified",
+  "status": "closed",
   "branch": "fix/C013-win-icon-perf",
   "is_hotfix": false,
   "target": {
@@ -84,7 +84,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "af6eaef603ca46968378b165b08e6b25811fbcb3",
     "tag": ""
   },
   "gate": {
@@ -92,7 +92,7 @@
     "version": "1.5.0",
     "ran_at": "2026-10-23",
     "exit_code": 0,
-    "from_status": "in_progress",
-    "target_status": "verified"
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

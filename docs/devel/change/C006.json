@@ -3,7 +3,7 @@
   "id": "C006",
   "title": "修复限流退避分类双端死代码：诊断限流判定改按 code 并防御退避输入下溢",
   "type": "Fix",
-  "status": "verified",
+  "status": "closed",
   "branch": "main",
   "is_hotfix": false,
   "target": {
@@ -78,7 +78,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "af6eaef603ca46968378b165b08e6b25811fbcb3",
     "tag": ""
   },
   "gate": {
@@ -86,7 +86,7 @@
     "version": "1.5.0",
     "ran_at": "2026-10-23",
     "exit_code": 0,
-    "from_status": "in_progress",
-    "target_status": "verified"
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

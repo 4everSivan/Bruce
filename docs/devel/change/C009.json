@@ -3,7 +3,7 @@
   "id": "C009",
   "title": "修复 Windows 仪表盘、设置与运行生命周期偏离 mac 基线",
   "type": "BugFix",
-  "status": "verified",
+  "status": "closed",
   "branch": "codex/fix-c009-windows-parity",
   "is_hotfix": false,
   "target": {
@@ -153,7 +153,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "af6eaef603ca46968378b165b08e6b25811fbcb3",
     "tag": ""
   },
   "version": "0.10.0+",
@@ -162,7 +162,7 @@
     "version": "1.5.0",
     "ran_at": "2026-10-23",
     "exit_code": 0,
-    "from_status": "in_progress",
-    "target_status": "verified"
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

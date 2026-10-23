@@ -3,7 +3,7 @@
   "id": "C005",
   "title": "修复 Windows 前端三重脱节白屏：补齐 index.html 骨架、接入 PANEL 数据流并对齐窗口宽度",
   "type": "Fix",
-  "status": "verified",
+  "status": "closed",
   "branch": "main",
   "is_hotfix": false,
   "target": {
@@ -97,7 +97,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "af6eaef603ca46968378b165b08e6b25811fbcb3",
     "tag": ""
   },
   "gate": {
@@ -105,7 +105,7 @@
     "version": "1.5.0",
     "ran_at": "2026-10-23",
     "exit_code": 0,
-    "from_status": "in_progress",
-    "target_status": "verified"
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }
