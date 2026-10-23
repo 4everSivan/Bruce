@@ -4,7 +4,7 @@
   "title": "Windows 订阅额度页骨架 1:1 对齐 mac：已添加行 + 配置按钮 + 拖拽重排 + 添加服务 picker + Provider 验证状态存储",
   "version": "0.13.0",
   "type": "Enhancement",
-  "status": "verified",
+  "status": "closed",
   "branch": "main",
   "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
   "is_hotfix": false,
@@ -102,14 +102,14 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "a69e16e13ac5fab1679499ac352850d2e68f31a2",
+    "commit": "08a532aa27ade8a67056ee4e96a5550745548eb8",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
     "ran_at": "2026-10-23",
-    "exit_code": 6,
+    "exit_code": 0,
     "from_status": "verified",
     "target_status": "closed"
   }

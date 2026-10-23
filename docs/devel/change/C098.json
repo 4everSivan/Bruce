@@ -4,7 +4,7 @@
   "title": "面板底栏刷新按钮右侧新增外观切换按钮：单击循环「跟随系统/浅色/深色」，与设置中心共用同一持久化偏好",
   "version": "0.13.0",
   "type": "Enhancement",
-  "status": "verified",
+  "status": "closed",
   "branch": "main",
   "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
   "is_hotfix": false,
@@ -113,7 +113,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "a69e16e13ac5fab1679499ac352850d2e68f31a2",
     "tag": ""
   },
   "gate": {
@@ -121,7 +121,7 @@
     "version": "1.5.0",
     "ran_at": "2026-10-23",
     "exit_code": 0,
-    "from_status": "in_progress",
-    "target_status": "verified"
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

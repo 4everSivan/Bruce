@@ -4,7 +4,7 @@
   "title": "双端仪表盘新布局：顶栏三图标 Tab 切换、角标融合、方案1水平定向滑动动效与通用设置开关",
   "version": "0.13.0",
   "type": "Enhancement",
-  "status": "verified",
+  "status": "closed",
   "branch": "main",
   "branch_note": "单人维护: 直接在 main 实施 (沿用既有工程约定)",
   "is_hotfix": false,
@@ -105,15 +105,15 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "a69e16e13ac5fab1679499ac352850d2e68f31a2",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "2026-10-22",
+    "ran_at": "2026-10-23",
     "exit_code": 0,
-    "from_status": "in_progress",
-    "target_status": "verified"
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }
