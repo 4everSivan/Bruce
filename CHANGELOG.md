@@ -18,7 +18,14 @@
   - **触碰按需展开原因**：状态灯绑定悬停提示与无障碍标签（mac `.help` + `.accessibilityLabel`，Windows `title` + `aria-label` + `role="status"`），健康态显示「运行正常」、刷新中显示「正在刷新…」、异常态按「态名 · 具体原因」展开：采集侧决定灯色时取采集详情（Windows `runtime.error` 机器码先转为中文释义，未登记的码不外露），订阅侧更严重时点名对应服务（如「失败 · Codex」）。
 - **Windows API Key 类五家专属配置对话框逐字对齐 mac (C083)**：Kimi / DeepSeek / Z.ai / Cline 统一为 `API Key` 单字段、火山引擎为 `Access Key` + `Secret Key` 双字段，字段标签、引导文案、控制台外链与脚注逐字对齐 mac 对应对话框（如 Kimi「在 kimi.com/code 申请 Kimi For Coding API key」、Cline「在 Cline 控制台 Settings > API Keys 创建 API Key」，Cline 另带 ClinePass 三窗口脚注）。火山引擎新增「从 CC Switch 导入」：以 `SQLITE_OPEN_READ_ONLY` 只读打开 CC Switch 本地库执行 `SELECT meta FROM providers WHERE name='火山Codingplan' LIMIT 1`，取 `usage_script.accessKeyId` / `secretAccessKey`（回落顶层同名键）并对 SK 逐层 base64 解码，导入前先拉起只读确认；库不存在时按钮隐藏、行缺失时给出可诊断错误，全程不回写外部库。Z.ai 由自由输入站点改为 `国内站 (open.bigmodel.cn)` / `国外站 (api.z.ai)` 单选并据此派生 `base_url`。保存成功后立即执行该 Provider 的结构校验（DeepSeek 额外一次真实余额试查，关闭重定向以避免 Bearer 随重定向外泄），并新增「重新验证」按钮。
 
+- **Windows 订阅额度页文案与交互细节对齐 mac (C096)**：底部提示位置移到两张卡下方且措辞逐字对齐（含「统一」）；空态补「尚未配置任何订阅 Provider」+ 副标题「从下方添加服务」；对话框在验证通过时追加「 · 验证通过」后缀（对齐 mac `APIKeyProviderConfigDialog`）；「添加服务」改为「选择 → 点『添加…』」两步交互（对齐 mac `ProviderPopUpPicker`，选中仅暂存、点确认才落库）；必填字段未填齐时「保存并验证」置灰、填齐即启用；账号移除前弹出「移除 <名称> 账号?」二次确认。
+
 ### Fixed
+- **Windows「移除服务」只删已添加条目不删凭据 (C089)**：移除改为后端 `remove_provider_credentials` 在凭据存储锁内一次原子写删除该 Provider 全部凭据（含读取侧已丢弃、界面不可见的不合规账号，以及 Claude / Grok 遗留的整体 OAuth 字段），再移出已添加集合并派生收敛启用态；删除失败即中止、不改已添加集合（fail-closed），杜绝半删状态；删除前二次确认，失败以就地错误给出可诊断原因；重加服务不再复活旧账号。
+- **Windows 订阅行状态尾件不读验证结果与本机登录态 (C091)**：行尾件判据改为「配置判据 × verificationStatus」两维，输出未配置 / 已配置 / 验证失败 / 需重新登录四态；本机只读跟随的 Claude 登录态计入「已配置」（对齐 mac `claudeAppOrLocalProbe`），该判据由行尾件、启用开关禁用态、对话框横幅与「重新验证」入口、授权摘要共用；未发现或已过期的本机登录态仍算未配置。
+- **Windows 接受 mac 拒绝的密钥格式 (C092)**：`validate_credential_payload` 按 Provider 补齐格式校验——含空白字符一律拒绝；火山 AccessKey / SecretKey 长度 ≥8；Cline ≥16；Z.ai 必须 `id.secret` 形式且站点主机为 `open.bigmodel.cn` / `api.z.ai`；Kimi 非空无空白。写入与验证共用同一套判据，拒绝时指出具体不合规字段。
+- **Windows StepFun 站点由对话框默认值决定而非令牌 (C093)**：站点不再预选默认值，仅当用户显式选择时才写入 `site`，未选择则只存 token、由采集端按令牌推导；采集端 `is_stepfun_global` 明确「用户显式选择 > 令牌推导」优先序，保存值等于自动推导结果时视同未指定，避免国际站令牌被默认值查错站点。
+- **Windows「授权与隐私」摘要列出全部启用 Provider (C094)**：摘要改取「已启用 ∧ 已配置」交集（与行尾件共用同一判据，含规则 21 fail-closed 与本机跟随），未配置或未启用的 Provider 不再出现，空集保留兜底文案，并随验证结果 / 启用开关 / `settings-updated` 一起重绘。
 - **Windows 全局快捷键唤出看板焦点闪退、重复触发与设置页录制器键码缺陷 (C099)**：
   - **唤出焦点保护期与防抖状态机 (`DashboardActivityState`)**：新增 180ms 唤出焦点保护期（过滤 Windows 前台切换瞬态 `Focused(false)` 并补发 `set_focus`，杜绝按快捷键闪退）、250ms 热键防抖（距上一次生效切换不足 250ms 的触发一律忽略；global-hotkey 以 `MOD_NOREPEAT` 注册，长按本身不会连发）、以及 300ms 被动失焦防重开（防止修饰键或托盘点击先触发失焦隐藏后紧接着反向重开面板）。
   - **多显示器光标定位与移除冗余写盘**：扩展托盘 `Move`/`Enter`/`Click` 事件自动缓存托盘矩形；托盘唤出贴托盘弹出，快捷键唤出始终在当前鼠标光标所在显示器弹出（托盘不在该屏时按该屏任务栏角落贴靠，不再借用别屏托盘坐标，也不会因悬停过托盘而被钉在托盘屏）；移除每次失焦收起时无意义的 `panel_x/panel_y` 磁盘写入。
