@@ -383,7 +383,7 @@ Windows Tauri 后端 (Rust)
 | R1 | 缓存根平台化 | `collector-local/src/lib.rs`（`default_cache_root` / `windows_cache_root`） | `#[cfg(windows)]` 返回 `%LOCALAPPDATA%\Bruce\collector-cache-v1`（env 优先，回退 `~/AppData/Local`），mac/Linux 行为不变；补单元测试 | **已实施**：`default_cache_root` 现按 `#[cfg(windows)]` 分派，`LOCALAPPDATA` 空白值按未设置处理以保留 home 相对回退；mac/Linux 分支行为不变 |
 | R2 | Windows CI job | `.github/workflows/ci.yml` | 新增 `windows-latest` job：`cargo fmt --check` / `cargo test --workspace` / `cargo clippy` | **已实施**：`verify-windows` job 在 `windows-latest` 上执行前端结构冒烟、发布脚本 AST 语法门禁与三个 manifest（`core/collector`、`apps/win/viewmodel`、`apps/win/src-tauri`）的 fmt / test / clippy |
 | R3 | 验证脚本抽取 | `scripts/` | Rust 平台无关部分抽为 `verify-rust.sh`（Windows 侧 PowerShell 等价或 PowerShell 驱动） | **已实施**：`scripts/verify-rust.sh` 已抽取并被 `verify-local.sh` 与 CI 双侧复用（Windows 侧由 CI 直接执行等价 cargo 命令，zsh 依赖不适用于 Windows） |
-| R4 | 真机路径实测 | 本文档 §3.4 | P0 实测后回填；如有布局差异改 `paths.rs` 对应 resolver 并补测试 | **未实施（真机欠账）**：§3.4 仍为待实测表 |
+| R4 | 真机路径实测 | 本文档 §3.4 | P0 实测后回填；如有布局差异改 `paths.rs` 对应 resolver 并补测试 | **已实施（人类真机实测，2026-10-23）**：维护者在 Windows 真机完成路径实测并确认通过（T01 验收已记人类原话）；本文档 §3.4 待实测表的实测值回填待维护者提供 |
 | R5 | Claude CLI Windows 凭证 | `collector-credential` | 视实测结论：文件回退已覆盖则仅登记；否则实现 Windows `CredentialSource`（文件探测优先，禁止交互） | **已闭合（另一路线，C075 落地）**：未向 `collector-credential` 引入 Windows 侧 `CredentialSource`；Windows 壳在 `src-tauri/src/credentials/claude_local.rs` 只读跟随本机 `~/.claude/.credentials.json` → `.claude.json`，注入 `claudeQuotaAccounts`（见规则 17），并保留 `claudeOAuth` 粘贴注入 |
 
 ### 6.2 Windows 视图模型层（`apps/win/viewmodel/`，独立纯 Rust crate）

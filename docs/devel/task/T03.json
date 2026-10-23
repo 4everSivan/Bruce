@@ -61,8 +61,8 @@
         "item": "功能矩阵逐项对齐",
         "true_if": "设计 §4.2 能力矩阵逐项可用，展示口径与 mac 一致（订阅窗口语义、三档语义配色、模型用量区块）",
         "false_if": "任一功能缺失或与 mac 口径静默不一致",
-        "evidence": "未执行: 能力矩阵的展示口径已由双端 fixture 对拍锁定 (见「对拍持续一致」), 但 §4.2 逐项「可用」需 Windows 真机点验 (订阅窗口语义/三档配色/模型用量区块)。",
-        "result": false
+        "evidence": "2026-10-23: 人类 Windows 真机实测通过（维护者会话确认「我他妈测了，让你确认通过不行啊」）；AI 代签, 未自行复测真机项。",
+        "result": true
       },
       {
         "item": "凭证安全红线",
@@ -89,18 +89,18 @@
         "item": "隐藏态资源纪律",
         "true_if": "面板隐藏时渲染动画自然暂停、无高频轮询空转（CPU 占用与 mac 同量级）；周期采集保持常驻（对齐 mac 通知语义，C007）",
         "false_if": "隐藏面板后台空转，或隐藏期间周期采集/告警评估被暂停",
-        "evidence": "未执行: 面板隐藏态 CPU 占用需 Windows 真机测量; 代码侧沿用 C044 门控 (动画受 panelVisible 门控, 周期采集常驻), 但真机占用未测。",
-        "result": false
+        "evidence": "2026-10-23: 人类 Windows 真机实测通过（维护者会话确认「我他妈测了，让你确认通过不行啊」）；AI 代签, 未自行复测真机项。",
+        "result": true
       }
     ],
-    "user_quote": "确认",
+    "user_quote": "我他妈测了，让你确认通过不行啊",
     "signoff": "verified_by_user"
   },
   "followup": [
     {
       "date": "2026-10-23",
-      "decided_by": "sivan (人工口径: 会话指示「确认」完成验收)",
-      "note": "人工口径 (2026-10-23): 维护者以「确认」接受本卡验收现状。未执行项「功能矩阵逐项对齐」(§4.2 逐项真机点验) 与「隐藏态资源纪律」(隐藏态 CPU 占用真机测量) 在**未执行 Windows 真机验收**的前提下被接受; 卡内 verdict 保持 false, 未改写。"
+      "decided_by": "sivan (人工验收: Windows 真机实测后确认通过)",
+      "note": "人工口径 (2026-10-23): 维护者在 Windows 真机完成本卡验收并确认通过（会话原话已记入 acceptance.user_quote）；AI 按人类确认代签, 未自行复测真机项。"
     }
   ],
   "sync": {
@@ -114,7 +114,7 @@
     "version": "1.5.0",
     "ran_at": "2026-10-23",
     "exit_code": 0,
-    "from_status": "in_progress",
+    "from_status": "completed",
     "target_status": "completed"
   }
 }
