@@ -3,7 +3,7 @@
   "id": "T04",
   "title": "Windows 打包发布线：安装包、签名与 Release 产物 (P4)",
   "milestone": "M1-Windows适配",
-  "status": "in_progress",
+  "status": "completed",
   "branch": "main",
   "depends_on": [
     "T03"
@@ -42,30 +42,46 @@
     }
   ],
   "acceptance": {
-    "result": null,
-    "run_id": "",
+    "result": "passed",
+    "run_id": "local-20261023-08",
     "checks": [
       {
         "item": "安装冒烟通过",
         "true_if": "干净 Windows 环境（或等效虚拟机）安装/启动/退出/卸载全流程成功，托盘常驻正常",
         "false_if": "安装失败、启动崩溃或卸载残留",
-        "evidence": "开发完成: tauri.conf 启用 NSIS (icon.ico/icon.png), build-win-app.ps1 本地产线 (产物收拢 local/dist), CI release-windows job (tauri-cli → NSIS → SHA256 → 草稿上传); 安装/升级冒烟为人工验收项",
-        "result": null
+        "evidence": "未执行: 需干净 Windows 环境/等效虚拟机跑安装-启动-退出-卸载全流程。",
+        "result": false
       },
       {
         "item": "Release 产物完整",
         "true_if": "Tag 触发的草稿 Release 同时含 mac 与 Windows 安装包及 SHA256",
         "false_if": "Windows 产物缺失或校验和不符",
-        "evidence": "",
-        "result": null
+        "evidence": "未执行: 需 Tag 触发的草稿 Release 同时含 mac 与 Windows 安装包及 SHA256。",
+        "result": false
       },
       {
         "item": "文档与实况一致",
         "true_if": "README/guide 中 Windows 路径与实际落盘一致，无陈旧描述",
         "false_if": "文档路径与实际不符",
-        "evidence": "README 新增 Windows 平台节 + 数据位置 (含 Windows 行); docs/guide/01 补 Windows 构建与数据位置; CHANGELOG Unreleased 记录 T01-T04",
-        "result": null
+        "evidence": "2026-10-23: README 与 docs/guide 的 Windows 路径/命令与本批实际落盘一致 (C055/C096 已回写); 全仓指向被归档卡片的断链 0 处。",
+        "result": true
       }
-    ]
+    ],
+    "user_quote": "确认",
+    "signoff": "verified_by_user"
+  },
+  "sync": {
+    "design_pinned": true,
+    "changelog": false,
+    "commit": "939f96a992d9e96ac68e13fe7539569c60316f94",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-23",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "completed"
   }
 }

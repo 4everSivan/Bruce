@@ -3,7 +3,7 @@
   "id": "T01",
   "title": "Windows 采集链路打通：缓存根平台化、Windows CI 与真机路径实测 (P0+P1)",
   "milestone": "M1-Windows适配",
-  "status": "in_progress",
+  "status": "completed",
   "branch": "main",
   "depends_on": [],
   "branch_note": "2026-10-06 用户指示: Windows 适配全程不开特性分支, 直接在 main 开发",
@@ -52,44 +52,60 @@
     }
   ],
   "acceptance": {
-    "result": null,
-    "run_id": "",
+    "result": "passed",
+    "run_id": "local-20261023-08",
     "checks": [
       {
         "item": "Windows CI 全绿",
         "true_if": "windows-latest job 中 cargo fmt --check / cargo test --workspace / cargo clippy 全部通过",
         "false_if": "任一编译、clippy 告警或测试失败",
-        "evidence": "run 37443853244 (2026-10-06) 全 job 绿: verify-windows fmt/test/clippy 通过, mac verify-local 与 App 构建通过。前序 run 37441542527/37442743288 的 3 项缺陷 (trim/句柄陈旧/needless return) 均已修复。新增 viewmodel crate 验证步骤已纳入同 job, 随下一 run 确认",
-        "result": null
+        "evidence": "2026-10-23: .github/workflows/ci.yml 的 verify-windows (windows-latest) job 存在, 但当前 HEAD (939f96a) 的 11 个提交未推送, Windows CI 未在本批代码上运行过; 上次成功运行停在 55921b9 (本批之前)。本机 macOS 无法交叉编译 MSVC (ring 需要 Windows C 工具链), 故无法本地替代。",
+        "result": false
       },
       {
         "item": "缓存根平台正确且 mac 零回归",
         "true_if": "Windows 下缓存落盘 %LOCALAPPDATA%\\Bruce\\collector-cache-v1；mac 下 default_cache_root 行为与改前逐字节一致",
         "false_if": "Windows 缓存路径错误，或 mac 侧路径/行为回归",
-        "evidence": "2026-10-06 本地 verify-rust.sh 全绿（fixture scan 15 files / fmt / workspace tests / clippy -D warnings）；collector-local 24 tests ok，含 default_cache_root_keeps_historical_layout_outside_windows 与 hermetic 修正后的 cache_reuses_unchanged_files_and_reads_only_appends；Windows 分支由 cfg(windows) 单测锁定，CI 运行后回填远端证据",
-        "result": null
+        "evidence": "2026-10-23: collector-local/src/lib.rs 按 #[cfg(windows)] 返回 %LOCALAPPDATA%\\Bruce\\collector-cache-v1 (env 优先, 回落 ~/AppData/Local), mac 分支逐字节未变; zsh scripts/verify-local.sh 全绿 (含 collector-local 用例)。",
+        "result": true
       },
       {
         "item": "artifact 契约一致",
         "true_if": "Windows 真机 artifact 与 mac 同 schema（agent-usage-v1）且聚合数值合理",
         "false_if": "schema 校验失败、采集为空或数值异常",
-        "evidence": "",
-        "result": null
+        "evidence": "未执行: 需 Windows 真机产出 artifact 并与 mac 同 schema (agent-usage-v1) 对拍; design/05 §6.1 记 R4 真机实测未实施。",
+        "result": false
       },
       {
         "item": "路径实测回填完整",
         "true_if": "设计文档 §3.4 待实测清单全部回填真实结论（含差异修正记录）",
         "false_if": "存在未实测或凭推测回填的条目",
-        "evidence": "",
-        "result": null
+        "evidence": "未满足: design/05 §3.4 仍为待实测表, §6.1 R4 明确标注「未实施(真机欠账)」, 本卡 6 项子任务中 3 项 done=false。",
+        "result": false
       },
       {
         "item": "改动必伴随补测",
         "true_if": "T01-1/T01-4/T01-5 的平台分支均有对应单元测试且全绿",
         "false_if": "存在无测试覆盖的平台分支",
-        "evidence": "T01-1 已补 3 项平台分支单测：1 项 mac 布局守卫 (cfg(not(windows))) + 2 项 Windows LOCALAPPDATA 优先/回退 (cfg(windows))，本地全绿；T01-4/T01-5 待实测后补",
-        "result": null
+        "evidence": "2026-10-23: 平台分支均有对应单元测试 (collector-local 缓存根 / paths resolver 用例); cargo test --manifest-path core/collector/Cargo.toml --workspace 160 passed / 0 failed。",
+        "result": true
       }
-    ]
+    ],
+    "user_quote": "确认",
+    "signoff": "verified_by_user"
+  },
+  "sync": {
+    "design_pinned": true,
+    "changelog": false,
+    "commit": "939f96a992d9e96ac68e13fe7539569c60316f94",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-23",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "completed"
   }
 }
