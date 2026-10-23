@@ -148,38 +148,38 @@
     "C001": {
       "title": "重构项目工程目录为 Monorepo apps/core 分层架构并清理碎片与缓存",
       "type": "Refactor",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "SystemOverview",
       "version": "0.9.0+",
-      "file": "docs/devel/change/C001.json"
+      "file": "docs/archive/0.9.0/change/C001.json"
     },
     "C002": {
       "title": "隔离归档历史冗余文档目录至 _adflow_backup 并修订现行设计基线索引",
       "type": "Refactor",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "SystemOverview",
       "version": "0.9.0+",
-      "file": "docs/devel/change/C002.json"
+      "file": "docs/archive/0.9.0/change/C002.json"
     },
     "C003": {
       "title": "统一 Agent 用量卡片收起动画与过渡行为，消除图表挤压与折线图跳动",
       "type": "Fix",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "MenuBarIndicator",
       "version": "0.9.0+",
-      "file": "docs/devel/change/C003.json"
+      "file": "docs/archive/0.9.0/change/C003.json"
     },
     "C004": {
       "title": "精简菜单栏状态指示图标：保留外环与配额比例弧，移除圆环中心微点",
       "type": "Enhancement",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "MenuBarIndicator",
       "version": "0.9.0+",
-      "file": "docs/devel/change/C004.json"
+      "file": "docs/archive/0.9.0/change/C004.json"
     },
     "C005": {
       "title": "修复 Windows 前端三重脱节白屏：补齐 index.html 骨架、接入 PANEL 数据流并对齐窗口宽度",
@@ -188,7 +188,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.10.0+",
-      "file": "docs/devel/change/C005.json"
+      "file": "docs/archive/0.10.0/change/C005.json"
     },
     "C006": {
       "title": "修复限流退避分类双端死代码：诊断限流判定改按 code 并防御退避输入下溢",
@@ -197,7 +197,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.10.0+",
-      "file": "docs/devel/change/C006.json"
+      "file": "docs/archive/0.10.0/change/C006.json"
     },
     "C007": {
       "title": "修正面板隐藏暂停采集偏离 mac 常驻语义：告警不随面板关闭停摆，并加设置加载区间钳制",
@@ -206,7 +206,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.10.0+",
-      "file": "docs/devel/change/C007.json"
+      "file": "docs/archive/0.10.0/change/C007.json"
     },
     "C008": {
       "title": "修复 Windows 壳采集窗口 14 天偏离 mac 182 天半年口径：热力图/月度统计失真并补齐 home 上下文",
@@ -215,7 +215,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.10.0+",
-      "file": "docs/devel/change/C008.json"
+      "file": "docs/archive/0.10.0/change/C008.json"
     },
     "C009": {
       "title": "修复 Windows 仪表盘、设置与运行生命周期偏离 mac 基线",
@@ -224,34 +224,34 @@
       "branch": "codex/fix-c009-windows-parity",
       "topic": "WindowsCompat",
       "version": "0.10.0+",
-      "file": "docs/devel/change/C009.json"
+      "file": "docs/archive/0.10.0/change/C009.json"
     },
     "C010": {
       "title": "GPT Credits 改为剩余余额展示并在归零后的下一次刷新自动消失",
       "type": "Enhancement",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "SubscriptionQuota",
       "version": "0.11.0+",
-      "file": "docs/devel/change/C010.json"
+      "file": "docs/archive/0.11.0/change/C010.json"
     },
     "C011": {
       "title": "Credits 与余额行升格为订阅段头部元数据胶囊并去掉「余额」措辞",
       "type": "Enhancement",
-      "status": "verified",
+      "status": "closed",
       "branch": "fix/C011-codex-credits-head-chip",
       "topic": "SubscriptionQuota",
       "version": "0.11.0+",
-      "file": "docs/devel/change/C011.json"
+      "file": "docs/archive/0.11.0/change/C011.json"
     },
     "C012": {
       "title": "收敛双端差异: Windows 品牌色板统一 mac 事实源并显式豁免浅色外观",
       "type": "Fix",
-      "status": "verified",
+      "status": "closed",
       "branch": "fix/C012-win-brand-color-baseline",
       "topic": "WindowsCompat",
       "version": "0.11.0+",
-      "file": "docs/devel/change/C012.json"
+      "file": "docs/archive/0.11.0/change/C012.json"
     },
     "C013": {
       "title": "修复 Windows 真机反馈: 应用图标缺失与常驻卡顿优化",
@@ -260,16 +260,16 @@
       "branch": "fix/C013-win-icon-perf",
       "topic": "WindowsCompat",
       "version": "0.11.1+",
-      "file": "docs/devel/change/C013.json"
+      "file": "docs/archive/0.11.1/change/C013.json"
     },
     "C014": {
       "title": "修复 Windows 仪表盘遗留内嵌 Tab 并彻底对齐 macOS 仪表盘与 Fluent 侧栏设置窗口",
       "type": "Fix",
-      "status": "verified",
+      "status": "closed",
       "branch": "fix/C014-win-dashboard-settings-parity",
       "topic": "WindowsCompat",
       "version": "0.11.2",
-      "file": "docs/devel/change/C014.json"
+      "file": "docs/archive/0.11.2/change/C014.json"
     },
     "C015": {
       "title": "修复 Windows 设置窗口打开白屏缺陷并恢复静态预建生命周期",
@@ -517,56 +517,56 @@
     "C042": {
       "title": "凭据文件存储加固：损坏不得静默转空（否则下次保存抹除全部凭据）、原子写盘对齐 AtomicJSONStore 规格（创建即 0600 + fsync + 重读校验 + 备份回滚）",
       "type": "BugFix",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "SubscriptionQuota",
       "version": "0.12.0+",
-      "file": "docs/devel/change/C042.json"
+      "file": "docs/archive/0.12.0/change/C042.json"
     },
     "C043": {
       "title": "消除采集进程生产 panic 路径：缓存 window 不匹配改回退全量重建、worker join 失败降级为诊断、collector 入口加 panic 兜底输出 error envelope",
       "type": "BugFix",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "TokenUsage",
       "version": "0.12.0+",
-      "file": "docs/devel/change/C043.json"
+      "file": "docs/archive/0.12.0/change/C043.json"
     },
     "C044": {
       "title": "补齐面板隐藏态可见性门控：订阅卡刷新 spinner 透传 panelVisible、Suppressor 看门狗随面板显隐停止、HourlyLineCard 生长动画纳入策略",
       "type": "BugFix",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "MenuBarIndicator",
       "version": "0.12.0+",
-      "file": "docs/devel/change/C044.json"
+      "file": "docs/archive/0.12.0/change/C044.json"
     },
     "C045": {
       "title": "统一目录递归防护：jsonl_cache.visit_tree 与 codex 文件收集补齐深度上限与已访问集合（symlink 环防护）",
       "type": "BugFix",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "TokenUsage",
       "version": "0.12.0+",
-      "file": "docs/devel/change/C045.json"
+      "file": "docs/archive/0.12.0/change/C045.json"
     },
     "C046": {
       "title": "静默吞错改为故障可见：合并失败/次要源 I/O 错误/缓存解码异常/账号索引重置一律产出诊断或报错",
       "type": "BugFix",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "TokenUsage",
       "version": "0.12.0+",
-      "file": "docs/devel/change/C046.json"
+      "file": "docs/archive/0.12.0/change/C046.json"
     },
     "C047": {
       "title": "缓存与原子写盘去重复：抽出 collector-local 统一缓存工具模块，Codex 树缓存写盘补齐 0600",
       "type": "BugFix",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "TokenUsage",
       "version": "0.12.0+",
-      "file": "docs/devel/change/C047.json"
+      "file": "docs/archive/0.12.0/change/C047.json"
     },
     "C048": {
       "title": "provider 专属逻辑下沉：codex 新鲜度/失败类别/挑战改由 provider 层标准化输出，编排层与协议层去除 app 名字分支",
@@ -575,43 +575,43 @@
       "branch": "main",
       "topic": "TokenUsage",
       "version": "0.12.0+",
-      "file": "docs/devel/change/C048.json"
+      "file": "docs/archive/0.12.0/change/C048.json"
     },
     "C049": {
       "title": "provider 映射表收敛为单一来源：前缀与凭据字段由 CATALOG_SPECS 派生，消除三处手工重复",
       "type": "BugFix",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "TokenUsage",
       "version": "0.12.0+",
-      "file": "docs/devel/change/C049.json"
+      "file": "docs/archive/0.12.0/change/C049.json"
     },
     "C050": {
       "title": "OpenCode 截断诊断文案改为引用 MAX_SOURCE_ROWS，消除「10000 条」硬编码失真",
       "type": "BugFix",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "TokenUsage",
       "version": "0.12.0+",
-      "file": "docs/devel/change/C050.json"
+      "file": "docs/archive/0.12.0/change/C050.json"
     },
     "C051": {
       "title": "清理无生产消费者的死代码与协议面：collector-credential 只读探测函数、bridge 白名单空字段、测试探针侵入生产签名",
       "type": "BugFix",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "TokenUsage",
       "version": "0.12.0+",
-      "file": "docs/devel/change/C051.json"
+      "file": "docs/archive/0.12.0/change/C051.json"
     },
     "C052": {
       "title": "设计基线回写：provider 计数口径统一（8/11→10 家）、定价表 26→43 款、design/00 补 Windows 章节、schemas 契约表述改述、技术债池复活",
       "type": "BugFix",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "SystemOverview",
       "version": "0.12.0+",
-      "file": "docs/devel/change/C052.json"
+      "file": "docs/archive/0.12.0/change/C052.json"
     },
     "C053": {
       "title": "按职责拆分巨型文件：sources.rs / collector-provider lib.rs / SettingsView.swift / SubscriptionService.swift（纯结构重构，行为不变）",
@@ -620,25 +620,25 @@
       "branch": "main",
       "topic": "SystemOverview",
       "version": "0.12.0+",
-      "file": "docs/devel/change/C053.json"
+      "file": "docs/archive/0.12.0/change/C053.json"
     },
     "C054": {
       "title": "README 精简与排版重构：仓库结构/文档链接/命令路径对齐 v0.11.5 现状，247 行瘦身并消除 21 处失效引用",
       "type": "Refactor",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "SystemOverview",
       "version": "0.12.0+",
-      "file": "docs/devel/change/C054.json"
+      "file": "docs/archive/0.12.0/change/C054.json"
     },
     "C055": {
       "title": "设计基线与 UI 的本机数据落盘事实校正：design/01 §7.1 缓存三条断言重写、design/04 config.json ×5、design/00 快照文件名、design/05 已实施状态标注、双端用户可见标签",
       "type": "BugFix",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "TokenUsage",
       "version": "0.12.0+",
-      "file": "docs/devel/change/C055.json"
+      "file": "docs/archive/0.12.0/change/C055.json"
     },
     "C056": {
       "title": "Windows 应用版本号脱离单一事实源：tauri.conf.json 停留 0.11.5 致 v0.12.0 安装包被命名为 0.11.5，对齐并补 push 级一致性门禁",
@@ -661,74 +661,74 @@
     "C058": {
       "title": "Claude 订阅统计脱节 cc-switch 现行口径：未解析 limits[] 模型专属周限额 (weekly_scoped)，缺 Fable 窗口且坏窗口会炸整卡",
       "type": "BugFix",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "SubscriptionQuota",
       "version": "0.12.1",
-      "file": "docs/devel/change/C058.json"
+      "file": "docs/archive/0.12.1/change/C058.json"
     },
     "C059": {
       "title": "Claude 订阅配置完整 cc-switch 化 (mac)：Keychain 登录态不可见不可导、设置区仍是 Phase 4 旧表单、无 RefreshPending 语义",
       "type": "Enhancement",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "SubscriptionQuota",
       "version": "0.12.1",
-      "file": "docs/devel/change/C059.json"
+      "file": "docs/archive/0.12.1/change/C059.json"
     },
     "C060": {
       "title": "Claude 登录态自动读取仍偏离 cc-switch：Keychain 尝试被外部来源白名单/状态门禁挡住、导入规范化丢字段、设置区无显式读取入口",
       "type": "BugFix",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "SubscriptionQuota",
       "version": "0.12.1",
-      "file": "docs/devel/change/C060.json"
+      "file": "docs/archive/0.12.1/change/C060.json"
     },
     "C061": {
       "title": "订阅刷新断网仍反复退避重试：全部订阅接入网络可达性闸门，离线不发起自动刷新、不重试，联网后单次补偿",
       "type": "BugFix",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "SubscriptionQuota",
       "version": "0.12.1",
-      "file": "docs/devel/change/C061.json"
+      "file": "docs/archive/0.12.1/change/C061.json"
     },
     "C062": {
       "title": "Claude 订阅频繁 429：额度查询与本地刷新解耦（30 分钟额度周期 + 429 冷却/保留旧值 + 启动激活去重）",
       "type": "BugFix",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "SubscriptionQuota",
       "version": "0.12.1",
-      "file": "docs/devel/change/C062.json"
+      "file": "docs/archive/0.12.1/change/C062.json"
     },
     "C063": {
       "title": "对齐 Claude Code (cc) 刷新机制：支持 OAuth 凭据自动续期、401 动态重试换取与轮换凭证持久化写回",
       "type": "BugFix",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "SubscriptionQuota",
       "version": "0.12.2",
-      "file": "docs/devel/change/C063.json"
+      "file": "docs/archive/0.12.2/change/C063.json"
     },
     "C064": {
       "title": "电脑锁屏后禁止订阅刷新：新增 ScreenLock 状态监视闸门与设置中心开关按钮",
       "type": "Enhancement",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "SubscriptionQuota",
       "version": "0.12.2",
-      "file": "docs/devel/change/C064.json"
+      "file": "docs/archive/0.12.2/change/C064.json"
     },
     "C065": {
       "title": "回调 30 分钟额度硬编码门禁：订阅刷新周期联动用户配置间隔（5/10 分钟生效）并加固锁屏状态探测",
       "type": "BugFix",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "SubscriptionQuota",
       "version": "0.12.2",
-      "file": "docs/devel/change/C065.json"
+      "file": "docs/archive/0.12.2/change/C065.json"
     },
     "C066": {
       "title": "Windows 端 Nothing 点阵主题 1:1 深度对齐：引入官方 Doto/Space 字体、纯黑 OLED 几何底座、实心方块指示灯、订阅阈值图例与工作台适配",

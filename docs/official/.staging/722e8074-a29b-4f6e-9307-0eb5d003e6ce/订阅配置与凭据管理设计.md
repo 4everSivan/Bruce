@@ -46,7 +46,7 @@ Grok 自动读取仍要求外部来源白名单和允许状态，然后读取 `~
 
 运行输入优先使用已存多账号记录；没有记录时才尝试 CLI 跟随。Claude 显式“从本机导入”走同一静默读取顺序，再经 `ClaudePasteParser` 规范化并保存到 Bruce。解析器保留 OAuth 条目全部字段，仅规范包装形式并修剪 `accessToken`；兼容 `claudeAiOauth`、`claude.ai_oauth`、条目本体及纯 token 输入。`saveClaudeOAuthJSON` 依据本地有效期分类处理，`valid` 或 `refreshPending` 可以入库，`expired` 提示重新登录。这一路径的 `.ok` 是本地判定，不是实际远端查询结果。
 
-> **说明**：以上 Claude 行为包含工作区中进行中的 [C060](../devel/change/C060.json) 修改。该卡的验证结论尚未填写，不能据此宣称设备实测或人工验收完成。
+> **说明**：以上 Claude 行为包含工作区中进行中的 [C060](../../../archive/0.12.1/change/C060.json) 修改。该卡的验证结论尚未填写，不能据此宣称设备实测或人工验收完成。
 
 依据：[`ExternalCredentialReader.swift`](../../apps/macos/Sources/BruceOnboardingCore/ExternalCredentialReader.swift) 的 `read`、`readClaudeKeychain`；[`LocalCredentialProbe.swift`](../../apps/macos/Sources/BruceApp/LocalCredentialProbe.swift)；[`CollectorRunInput.swift`](../../apps/macos/Sources/BruceAppCore/CollectorRunInput.swift) 的 Claude/Grok 注入分支；[`SubscriptionCredentialImport.swift`](../../apps/macos/Sources/BruceOnboardingCore/SubscriptionCredentialImport.swift) 的 `ClaudePasteParser.parse`；[`SubscriptionService.swift`](../../apps/macos/Sources/BruceApp/SubscriptionService.swift) 的 `importClaudeFromLocal`、`saveClaudeOAuthJSON`；[`ClaudeProviderSettingsSection.swift`](../../apps/macos/Sources/BruceApp/Settings/ClaudeProviderSettingsSection.swift)。
 

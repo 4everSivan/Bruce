@@ -1,0 +1,91 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C049",
+  "title": "provider 映射表收敛为单一来源：前缀与凭据字段由 CATALOG_SPECS 派生，消除三处手工重复",
+  "type": "BugFix",
+  "status": "closed",
+  "branch": "main",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector/crates/collector-provider + collector-application (account.rs)",
+    "component": "provider 目录与凭据字段映射的单一事实源",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "2026-10-16 全仓对抗性审查 (RV-008) 确认映射表三处手工重复且无编译期约束: collector-provider/lib.rs:19-80 CATALOG_SPECS 定义 (provider, prefix, display_prefix, app); collector-application/account.rs:15-26 ACCOUNT_FIELDS 定义 (app, 凭据字段名); account.rs:34-48 account_prefix 又逐字重复一遍 prefix 字符串 (opencode_go_/kimi_coding_/deepseek_/... 共 10 条)。任何一处漏改 (新增 provider、调整前缀) 都会静默取不到凭据或算错账户归属, 且 clippy/测试均无法发现。",
+  "precheck": {
+    "description": "预检: 确认 prefix 字符串在 provider 与 application 两处重复定义",
+    "command": "grep -n 'opencode_go_' core/collector/crates/collector-provider/src/lib.rs core/collector/crates/collector-application/src/account.rs; grep -n 'ACCOUNT_FIELDS\\|fn account_prefix' core/collector/crates/collector-application/src/account.rs",
+    "expected": "两文件均命中前缀字符串; ACCOUNT_FIELDS 与 account_prefix 同时存在",
+    "is_completed": true,
+    "evidence": ""
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护已在 main 实施"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "前缀单一来源",
+      "before": "prefix 在 CATALOG_SPECS 与 account_prefix() 各写一份",
+      "after": "provider 暴露 catalog 查询 API (by_app/by_prefix), application 从中派生, 删除 account_prefix 手写表",
+      "impact": "前缀只有一处定义, 漏改不可能"
+    },
+    {
+      "scope": "凭据字段单一来源",
+      "before": "ACCOUNT_FIELDS 与 CATALOG_SPECS 的 app 序列各自维护",
+      "after": "凭据字段名并入 CatalogSpec (credential_field 字段), ACCOUNT_FIELDS 删除",
+      "impact": "新增 provider 只需改一处定义 + provider 实现"
+    },
+    {
+      "scope": "一致性测试",
+      "before": "无跨表一致性断言",
+      "after": "新增单测: 遍历 CATALOG_SPECS 断言每个 app 均有凭据字段与可解析前缀, 且无多余映射",
+      "impact": "漂移在测试期即被发现"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/01 未约定 provider 目录的单一事实源位置",
+      "after": "新增规则: provider 的前缀/显示名/凭据字段/app 标识统一定义在 collector-provider 的目录表, 其他 crate 一律派生, 禁止复写字符串"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "local-20261016-1509",
+    "user_quote": "所有缺陷全部都要立项修复",
+    "signoff": "2026-10-16 用户指示修复全部审查缺陷 (原话: 「所有缺陷全部都要立项修复」), AI 按卡执行并采集实测证据后代签；证据明细见各 check。待用户复核后转入 closed。批次全量验证: zsh scripts/verify-local.sh 退出码 0, 末行「Bruce 本地验证全部通过」 (日志 local/c042-c052-verify.log, 含 Rust 全量 / fixture 敏感扫描 / Swift 全部 Harness / Panel 双端对拍 3/3)。",
+    "checks": [
+      {
+        "item": "映射表单一来源 + 一致性锁定",
+        "true_if": "application 不再复写 prefix/凭据字段；新增一致性用例断言 10 条目的 app/prefix/credential_field 齐备且唯一",
+        "false_if": "仍存在第二份映射表或无一致性断言",
+        "evidence": "CatalogSpec 增 credential_field 并新增 pub catalog_entries() 投影；account.rs 删除 ACCOUNT_FIELDS 与 account_prefix 手写表，改为 catalog_entry() 派生；新增 catalog_entries_are_complete_and_unique (含 kimi_coding_/opencode_go_/kimiQuotaAccounts 逐字抽查)；collector workspace 138 项全绿",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": false,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用)",
+  "closure": {
+    "mode": "backfill",
+    "decided_by": "sivan (人工治理口径: 2026-10-23 会话确认「确认」授权本批账实修复)",
+    "basis": "已随 0.12.0+ 实际交付 —— CHANGELOG 已记账、版本已打 Git tag、会话内已有真实人工确认",
+    "note": "卡片状态系人工口径补收并随本批次归档, 非当时真实收口; 该版本验收以 Git tag、CHANGELOG 与运行事实为准。user_quote / signoff 为当时会话真实记录未改写; sync.commit 缺失即留空, 未伪造。"
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C060",
+  "title": "Claude 登录态自动读取仍偏离 cc-switch：Keychain 尝试被外部来源白名单/状态门禁挡住、导入规范化丢字段、设置区无显式读取入口",
+  "type": "BugFix",
+  "status": "closed",
+  "branch": "main",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos",
+    "component": "Claude CLI 登录态读取链路与设置区动作",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+  "why": "用户实测反馈「自动读取本地 Claude CLI 登录的账号信息有问题」。对照 cc-switch (farion1231/cc-switch services/subscription.rs) 逐行复核后定位三处自造偏离: 1) cc-switch 每次查询都无条件执行 `security find-generic-password -s \"Claude Code-credentials\" -w` 读 Keychain; Bruce 的 Keychain 读取仍被 KeychainAccessPolicy 的 externalSources 白名单 + state==allowed 前置门禁挡住 (C059 只放开了文件回退), 配置漂移或白名单未开时自动读取整体失效, 且拦截时还会 markBlocked 污染 Bruce 自有存储策略; 2) cc-switch 保留完整凭据 JSON; Bruce 的 ClaudePasteParser 规范化时丢弃 refreshTokenExpiresAt/subscriptionType/rateLimitTier/scopes 等账号信息字段, 导入/跟随后的凭证信息不完整, RefreshPending 判断也失去刷新令牌到期时间; 3) C059 新 UI 移除了「从本机导入」显式读取入口, 零配置跟随只在状态行隐式体现, 且无存储账号时「重新验证」必然报「未找到已保存凭证」。本机实测: Keychain 条目静默可读 (UISkip 查询 status=0, claudeAiOauth 字段完整, ad-hoc 签名 App 内同样可读), 故问题不在 ACL, 在读取门禁与 UI 动作。",
+  "precheck": {
+    "description": "预检 Keychain 读取是否仍受外部来源白名单约束",
+    "command": "grep -n 'allows(' apps/macos/Sources/BruceOnboardingCore/ExternalCredentialReader.swift | head -3",
+    "expected": "命中 readClaudeKeychain 内的 allows 门禁即缺陷成立",
+    "is_completed": true,
+    "evidence": "readClaudeKeychain 仍以 accessController.allows(.external(.claudeCLI), intent) 前置门禁, 与 cc-switch 无条件读取不一致"
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C060-claude-login-read"
+    ],
+    "after": [
+      "swift run --package-path apps/macos BruceOnboardingCoreHarness",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "读取策略 (ExternalCredentialReader)",
+      "before": "Claude Keychain 读取受 externalSources 白名单 + state==allowed 门禁; 被拦截时 markBlocked() 污染全局策略并返回 nil",
+      "after": "与 cc-switch 同构: Claude 登录态读取无条件发起 (每次读取都尝试 Keychain, UISkip 保证静默), 不再受外部来源白名单/state 约束, 拦截时仅返回 nil 不 markBlocked; ~/.claude/.credentials.json 文件回退保持无门禁。externalSources 白名单语义收窄为仅约束 Grok (reader 内 grok 分支保留门禁)",
+      "impact": "白名单未开/策略漂移时 Claude 登录态仍可自动读取; 不再因外部条目拦截破坏 Bruce 自有存储访问"
+    },
+    {
+      "scope": "凭据规范化 (ClaudePasteParser)",
+      "before": "只保留 accessToken/refreshToken/expiresAt, 丢弃 refreshTokenExpiresAt/subscriptionType/rateLimitTier/scopes 等字段",
+      "after": "完整保留原 OAuth 条目全部字段 (仅 trim accessToken 并保证包装键 claudeAiOauth / claude.ai_oauth 形态), 与 cc-switch 保留原始凭证一致; 纯 token 输入仍合成最小条目",
+      "impact": "导入/跟随后的账号信息完整; refreshPending 可依据 refreshTokenExpiresAt 精确判断; 下游 collector 仅取 accessToken 不受影响"
+    },
+    {
+      "scope": "设置区动作 (ClaudeProviderSettingsSection)",
+      "before": "无「从本机导入」按钮; 无存储账号时点「重新验证」必报未找到已保存凭证",
+      "after": "恢复显式「从本机导入」(Keychain 静默优先 → 文件, 读取即入库验证); 「重新验证」仅在存在已存账号时显示; 零配置跟随状态行保留",
+      "impact": "账号读取可显式触发与核验; 消除必然报错的按钮路径"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "topic": "SubscriptionQuota",
+    "modified": true,
+    "rule_diff": {
+      "before": "规则 2: 外部 Keychain 读取须同时满足 externalSources 白名单与 state==allowed; 被拦截 markBlocked",
+      "after": "规则 2 修订: Claude 登录态读取与 cc-switch 同构——无条件静默尝试 (UISkip, 拦截仅降级不污染全局策略), 文件回退无门禁; externalSources 白名单仅约束 Grok; 凭据规范化保留全部字段"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "local-20261019",
+    "user_quote": "补签然后推送",
+    "signoff": "2026-10-19 用户指示补签并推送 (原话: 「补签然后推送」), AI 复核既有验证证据后代签。2026-10-19 全量验证: zsh scripts/verify-local.sh 退出码 0, 末行「Bruce 本地验证全部通过」; Rust collector workspace、BruceOnboardingCoreHarness、SubscriptionCredentialsHarness 与全部 Swift Harness 全绿。待用户复核后转入 closed。",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "新增字段保留与读取用例通过, verify-local 退出码 0",
+        "false_if": "任何测试失败",
+        "evidence": "verify-local.sh 退出码 0「Bruce 本地验证全部通过」; BruceOnboardingCoreHarness 新增 claudePasteParserPreservesAccountFields 通过 (refreshTokenExpiresAt/subscriptionType/rateLimitTier/scopes/expiresAt 全保留, 且过期+刷新存活判 refreshPending); 既有 165 项与订阅凭证 35 项全绿",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "本机 (Keychain-only) 上探测返回可用且字段完整; 导入后存储 JSON 含 refreshTokenExpiresAt",
+        "false_if": "探测仍不可用或字段仍丢失",
+        "evidence": "本机诊断 (未联系 Claude): `security find-generic-password -s \"Claude Code-credentials\"` 条目存在 (acct=sivan); UISkip SecItem 查询 status=0, claudeAiOauth 字段完整 (access/refresh/subscriptionType/rateLimitTier/scopes); 同一查询在 ad-hoc 签名 .app 内同样 status=0 → 读取链路可用; 凭证文件不存在 (Keychain-only 场景), 门禁移除后探测/导入可直达 Keychain",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "Grok 白名单门禁不变; Bruce 自有 Keychain 策略不被外部读取污染; collector 注入契约不变",
+        "false_if": "破坏其他 provider 或策略状态",
+        "evidence": "Grok/OpenCode GO 用例全绿; Grok 读取仍走 externalSources 白名单 + 文件单源 (reader 分流未变); Claude 拦截不再 markBlocked, Bruce 自有 store 策略不受外部条目影响 (代码级确认: readClaudeKeychain 无 markBlocked 调用); collector claudeQuotaAccounts 注入契约未改, 全 workspace 测试通过",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "closure": {
+    "mode": "backfill",
+    "decided_by": "sivan (人工治理口径: 2026-10-23 会话确认「确认」授权本批账实修复)",
+    "basis": "已随 0.12.1 实际交付 —— CHANGELOG 已记账、版本已打 Git tag、会话内已有真实人工确认",
+    "note": "卡片状态系人工口径补收并随本批次归档, 非当时真实收口; 该版本验收以 Git tag、CHANGELOG 与运行事实为准。user_quote / signoff 为当时会话真实记录未改写; sync.commit 缺失即留空, 未伪造。"
+  }
+}

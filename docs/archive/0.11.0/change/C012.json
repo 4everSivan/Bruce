@@ -1,0 +1,70 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C012",
+  "title": "收敛双端差异: Windows 品牌色板统一 mac 事实源并显式豁免浅色外观",
+  "type": "Fix",
+  "status": "closed",
+  "branch": "fix/C012-win-brand-color-baseline",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win 前端 + 设计基线 05",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "双端对齐审计 (2026-10-10, v0.11.0 发布后) 发现两处真实漂移与一处文档失真: (1) win PROVIDER_COLORS 与 mac ProviderLogoBadge.brandColor 9 家中 7 家不一致 (deepseek/volcengine/zhipu/claude/grok/opencodeGo/stepfun), 违背 styles.css 头部「配色 token 全部按 mac 源码数值」契约, 影响订阅徽章与 C011 余额胶囊圆点; (2) win 为 mac dark 侧单侧复刻、无浅色外观, 但基线 05 未声明该取舍 (对比液态玻璃有显式豁免); (3) 基线写「8 Provider」实际双端 9 家 (StepFun)。用户指示收敛差异与漂移。",
+  "changes": [
+    {
+      "scope": "apps/win/src/app.js PROVIDER_COLORS",
+      "before": "9 家中 7 家与 mac 漂移 (deepseek #4A9E5C / volcengine #ff9f0a / zhipu #bf5af2 / claude #ff7a59 / grok #6c63ff / opencodeGo #30d158 / stepfun #64d2ff)",
+      "after": "以 mac ProviderLogoBadge.brandColor 为唯一事实源逐家对齐 (deepseek #4d6bfe / volcengine #ff6a00 / zhipu #3859ff / claude #d97757 / grok #111111 / opencodeGo #8a63d2 / stepfun #0c5efc; kimi/codex 本就一致), 并以注释声明事实源契约",
+      "impact": "订阅徽章与余额胶囊圆点双端同色; grok 沿用 mac 深色徽章形态 (#111111 + 白字)"
+    },
+    {
+      "scope": "docs/devel/design/05-Windows平台适配.md",
+      "before": "非目标仅豁免液态玻璃等 5 项, 未声明浅色取舍; 看板矩阵写「8 Provider」; Nothing 主题未注明保真边界",
+      "after": "非目标新增第 2 条「浅色外观不移植 (恒深色)」: mac dark 侧 1:1 复刻, 真浅色立项走 T 卡; 看板矩阵修正为 9 Provider (含 StepFun) 并注明品牌色板事实源与 Nothing 简化覆写保真边界",
+      "impact": "设计与现实一致, 漂移要么收敛要么显式豁免"
+    }
+  ],
+  "design": {
+    "before_behavior": "win 订阅徽章/胶囊圆点用自维护色板, 与 mac 同名 provider 颜色不同; 浅色缺位为未声明行为",
+    "after_behavior": "徽章/胶囊圆点双端逐家同色 (mac 事实源); 浅色与液态玻璃同款显式豁免, 记录于基线 05 非目标",
+    "true_if": "app.js PROVIDER_COLORS 与 mac brandColor 9 家全等; 基线 05 含恒深色豁免与 9 Provider 表述; 前端冒烟全绿",
+    "false_if": "任一色值仍漂移, 或基线未回写"
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261010",
+    "user_quote": "提交，并推送",
+    "signoff": "2026-10-10 Verified with palette script diff and frontend smoke; baseline backfill included",
+    "checks": [
+      {
+        "item": "色板逐家对齐",
+        "true_if": "win PROVIDER_COLORS 9 家与 mac ProviderLogoBadge.brandColor 全等 (脚本比对)",
+        "false_if": "任一色值不一致",
+        "evidence": "已运行 (2026-10-10): 双端色值脚本比对 (含多标签 case 解析) 9/9 全等 — kimi #0a84ff / deepseek #4d6bfe / volcengine #ff6a00 / zhipu #3859ff / codex #10a37f / claude #d97757 / grok #111111 / opencodeGo #8a63d2 / stepfun #0c5efc, 输出 ALL 9 ALIGNED",
+        "result": true
+      },
+      {
+        "item": "前端结构冒烟",
+        "true_if": "node scripts/check-win-frontend.mjs 退出码 0 (结构检查 + frontend.test.mjs 行为回归)",
+        "false_if": "app.js 结构校验或行为回归红",
+        "evidence": "已运行 (2026-10-10): node scripts/check-win-frontend.mjs 退出码 0, frontend.test.mjs 行为回归 12 pass / 0 fail",
+        "result": true
+      },
+      {
+        "item": "基线回写完整",
+        "true_if": "基线 05 非目标含恒深色豁免; 看板矩阵为 9 Provider 且注明色板事实源",
+        "false_if": "任一回写缺失",
+        "evidence": "已核对 (2026-10-10): 基线 05 diff — 非目标新增「浅色外观不移植 (恒深色)」条目; §4.2 修正为 9 Provider 并注明品牌色板事实源与 Nothing 简化覆写保真边界",
+        "result": true
+      }
+    ]
+  },
+  "closure": {
+    "mode": "backfill",
+    "decided_by": "sivan (人工治理口径: 2026-10-23 会话确认「确认」授权本批账实修复)",
+    "basis": "已随 0.11.0+ 实际交付 —— CHANGELOG 已记账、版本已打 Git tag、会话内已有真实人工确认",
+    "note": "卡片状态系人工口径补收并随本批次归档, 非当时真实收口; 该版本验收以 Git tag、CHANGELOG 与运行事实为准。user_quote / signoff 为当时会话真实记录未改写; sync.commit 缺失即留空, 未伪造。"
+  }
+}

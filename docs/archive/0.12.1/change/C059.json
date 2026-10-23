@@ -1,0 +1,109 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C059",
+  "title": "Claude 订阅配置完整 cc-switch 化 (mac)：Keychain 登录态不可见不可导、设置区仍是 Phase 4 旧表单、无 RefreshPending 语义",
+  "type": "Enhancement",
+  "status": "closed",
+  "branch": "main",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos",
+    "component": "Claude 订阅配置链路 (设置区 UI / 外部凭证读取 / 状态评估)",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+  "why": "用户实测反馈 Claude 配置窗口是旧版本、按钮布局待更新, 并要求配置方法采用 cc-switch 同款。代码级对照 (farion1231/cc-switch services/subscription.rs, 2026-10-18) 定位三处脱节: 1) Claude CLI 存 macOS Keychain 的登录态在 Bruce 完全不可见不可导 — 探测函数 claudeKeychainItemExists 名不副实 (.automatic 意图下 reader 只读文件), 「从本机导入」只读 ~/.claude/.credentials.json, 而现成的 Keychain 优先读取器 (kSecUseAuthenticationUISkip 防弹窗) 无任何 userInitiated 调用方, 属死代码; Keychain-only 用户永远看到「未检测到 Claude 登录态」或导入报「未找到凭证文件」。2) 设置区是 Phase 4 通用表单 OfficialLocalProviderSettingsSection (与 Grok/OpenCode GO 共用), 落后于 APIKey 对话框版与 Codex 新范式。3) 无 RefreshPending 语义 — cc-switch 区分「access token 过期但 refresh token 活着 → 运行一次 CLI 即恢复」, Bruce 一律判 needsRelogin 引导重新粘贴。collector 装配层其实已有零配置回退 (CollectorRunInput.externalOAuthAccount), 但被白名单+文件单源限制成近乎不可用。",
+  "precheck": {
+    "description": "预检 Keychain 优先导入与专属设置区是否已存在",
+    "command": "grep -rn 'claudeLocalCredentialJSON\\|refreshPending' apps/macos/Sources --include='*.swift' | wc -l",
+    "expected": "输出 0 表示未实现",
+    "is_completed": true,
+    "evidence": "实测输出 0: refreshPending 语义与本卡读取链路均不存在, 缺陷成立"
+  },
+  "callback": {
+    "before": [
+      "git checkout -b fix/C059-claude-ccswitch-config"
+    ],
+    "after": [
+      "swift run --package-path apps/macos BruceOnboardingCoreHarness",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "读取策略 (ExternalCredentialReader)",
+      "before": ".claudeCLI 仅 userInitiated 才尝试 Keychain, automatic 只读文件; 整个来源受 externalSources 白名单 + state==allowed 前置门禁 (文件读取也被挡); 被拦截一律抛 accessBlocked",
+      "after": "对照 cc-switch 读取序: Claude 读取一律 Keychain 静默尝试在前 (UISkip 永不弹窗, 白名单门禁保留) → ~/.claude/.credentials.json 文件回退 (家目录只读文件, 不再受钥匙串授权仪式门禁); automatic 意图下被系统拦截时 markBlocked 后静默降级文件 (不抛), userInitiated 保留 accessBlocked 上抛供导入提示",
+      "impact": "开了白名单的用户的 Keychain 登录态在自动刷新与探测中可见; 未开白名单用户文件路径始终可用; 红线「绝不唤起系统弹窗」不变 (UISkip 全程强制)"
+    },
+    {
+      "scope": "状态评估 (SubscriptionCredentialEvaluator)",
+      "before": "claudeStatus 仅 valid/expired; 过期一律 needsRelogin 引导重贴",
+      "after": "新增 refreshPending: accessToken 过期但 refreshToken 非空且 refreshTokenExpiresAt 未过期 (缺失视为可刷新, 与 cc-switch 同) → 提示「运行一次 Claude CLI 可自动恢复」; 探测把 refreshPending 计为检测到登录态; 导入保存 refreshPending 凭证照常入库验证",
+      "impact": "与 cc-switch 状态机对齐; 减少「重新登录」误导"
+    },
+    {
+      "scope": "导入与探测链 (LocalCredentialProbe / SubscriptionService)",
+      "before": "importClaudeFromLocal 只经 ClaudeCLICredentialImporter 读文件; claudeKeychainItemExists 实为文件存在检查; claudeCredentialsFileValid 被白名单门禁",
+      "after": "探测新增 claudeLocalCredentialStatus() (automatic 读取 + 评估, 返回三态); 导入改走 claudeLocalCredentialJSON() (userInitiated: Keychain 静默优先 → 文件, ClaudePasteParser 归一); refreshOfficialLocalAvailability 以状态为准 (valid/refreshPending = 可用)",
+      "impact": "「从本机导入」在 Keychain-only 机器上真实可用 (白名单开启时); 探测结果与实际可读登录态一致"
+    },
+    {
+      "scope": "设置区 UI",
+      "before": "ClaudeProviderSettingsSection 直接包 OfficialLocalProviderSettingsSection 通用表单 (粘贴框常驻 + 从本机导入/验证并保存/取消/更换/重新验证/重新检测按钮堆叠)",
+      "after": "Claude 专属区块 (Codex 范式): 登录态状态行 (已启用跟随/检测到待启用/待刷新运行一次 CLI/已过期/未检测到/钥匙串被拦截) + 主操作行 (立即检测/重新验证/移除) + 粘贴多账号收进「高级」次级入口 + ProviderCredentialGuide 引导 (登录 CLI 即可, 只读不回写)",
+      "impact": "按钮布局对齐新版管理区范式; 零配置跟随在 UI 上可见可解释; Grok/OpenCode GO 继续用通用表单不受影响"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "topic": "SubscriptionQuota",
+    "modified": true,
+    "rule_diff": {
+      "before": "规则 2: 自动探测只读文件, 仅显式导入可开外部 Keychain 项 (并显示一次系统提示)",
+      "after": "规则 2 修订: Claude 登录态读取序 = Keychain 静默尝试 (UISkip, 白名单门禁, 被拦即降级, 绝不弹窗) → 凭证文件 (无门禁); 新增 RefreshPending 语义与零配置跟随说明 (启用即自动跟随本机登录态, 不落盘)"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "local-20261019",
+    "user_quote": "补签然后推送",
+    "signoff": "2026-10-19 用户指示补签并推送 (原话: 「补签然后推送」), AI 复核既有验证证据后代签。2026-10-19 全量验证: zsh scripts/verify-local.sh 退出码 0, 末行「Bruce 本地验证全部通过」; Rust collector workspace、BruceOnboardingCoreHarness、SubscriptionCredentialsHarness 与全部 Swift Harness 全绿。待用户复核后转入 closed。",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "BruceOnboardingCoreHarness 全绿 (含新增 refreshPending/读取序用例), verify-local 退出码 0",
+        "false_if": "任何测试失败或未覆盖新语义",
+        "evidence": "verify-local.sh 退出码 0「Bruce 本地验证全部通过」; BruceOnboardingCoreHarness 165 passed (credential-expiry fixture 新增 3 例: refreshPending 有/无 refreshTokenExpiresAt + 刷新令牌亦过期的 expired 边界); SubscriptionCredentialsHarness 35 passed (旧契约用例「未允许 Claude 外部来源时不得调用读取器」翻转为新契约 claudeFollowDoesNotRequireWhitelist, 并为 claudeFallbackToMetaWhenNoCredential 注入空 reader 恢复封闭性); 其余 harness 全绿 (PanelViewModel 54 / RefreshScheduler 84 / CollectorRunner 28 等); fixture 扫描 21 文件无敏感",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "Keychain-only 场景探测/导入可达 (注入式 reader 用例); 文件场景不回归; 设置区新布局渲染",
+        "false_if": "探测/导入仍不可用或旧表单回归",
+        "evidence": "claudeFollowDoesNotRequireWhitelist: 无白名单时读取器被调用且 claude-cli 账号注入 (零配置跟随); allowedClaudeSourceIsInjectedIntoQuotaAccounts 维持白名单路径; 编译期 exhaustive switch 穷尽性保证 refreshPending 在保存/复验/registry 四处收口; 设置区新布局 (状态行+主按钮+高级粘贴) 编译通过且 PanelParity golden 对拍零变更",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "Grok/OpenCode GO 通用表单与读取行为不变; collector 装配契约不变; 既有 165 项 Onboarding 用例全绿",
+        "false_if": "破坏其他 provider 或注入契约",
+        "evidence": "Grok 路径维持白名单前置门禁 (reader 分流 + externalOAuthAccount 仅对 grokCLI 保留 guard); disallowedGrokSourceDoesNotInvokeExternalReader 等用例未改动且通过; claudeQuotaAccounts 注入形状不变 (display_name+oauth), collector 零改动; OfficialLocalProviderSettingsSection 仍服务 Grok/OpenCode GO",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "closure": {
+    "mode": "backfill",
+    "decided_by": "sivan (人工治理口径: 2026-10-23 会话确认「确认」授权本批账实修复)",
+    "basis": "已随 0.12.1 实际交付 —— CHANGELOG 已记账、版本已打 Git tag、会话内已有真实人工确认",
+    "note": "卡片状态系人工口径补收并随本批次归档, 非当时真实收口; 该版本验收以 Git tag、CHANGELOG 与运行事实为准。user_quote / signoff 为当时会话真实记录未改写; sync.commit 缺失即留空, 未伪造。"
+  }
+}

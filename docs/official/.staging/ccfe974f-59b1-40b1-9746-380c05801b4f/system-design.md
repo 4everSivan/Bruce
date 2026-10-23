@@ -48,7 +48,7 @@ macOS 的一轮刷新由 `RefreshScheduler` 接收触发和合并意图，`Refre
 
 当前工作区的 Claude 读取、导入和设置交互包含 C060 的修改；变更卡仍为 `in_progress`。Windows 也保留未闭环的实现与实机事项，且 Provider 配置和请求装配有具体差异。这些状态影响相关行为的验收结论，不应被文档发布状态覆盖。
 
-依据：[`CollectorRunInput.swift`](../../apps/macos/Sources/BruceAppCore/CollectorRunInput.swift)；[`collector-bridge/src/lib.rs`](../../core/collector/crates/collector-bridge/src/lib.rs) 的凭据更新校验；[C060 变更卡](../devel/change/C060.json)；[Windows 待办](../devel/todo/now.md)；[原 Windows 设计](../devel/design/05-Windows平台适配.md)。
+依据：[`CollectorRunInput.swift`](../../apps/macos/Sources/BruceAppCore/CollectorRunInput.swift)；[`collector-bridge/src/lib.rs`](../../core/collector/crates/collector-bridge/src/lib.rs) 的凭据更新校验；[C060 变更卡](../../../archive/0.12.1/change/C060.json)；[Windows 待办](../devel/todo/now.md)；[原 Windows 设计](../devel/design/05-Windows平台适配.md)。
 
 ## 相关文档
 

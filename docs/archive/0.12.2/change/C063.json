@@ -1,0 +1,117 @@
+{
+  "$schema": "https://adflow.org/schemas/change-card.v1.json",
+  "id": "C063",
+  "title": "对齐 Claude Code (cc) 刷新机制：支持 OAuth 凭据自动续期、401 动态重试换取与轮换凭证持久化写回",
+  "type": "BugFix",
+  "status": "closed",
+  "branch": "main",
+  "is_hotfix": false,
+  "target": {
+    "module": "core/collector + apps/macos",
+    "component": "ClaudeProvider / CredentialRotationMerge / CredentialUpdateCoordinator",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+  "why": "用户实测反馈「Claude 订阅刷新还是有问题，会失效，完全对齐 cc 的刷新方式可以吗？」。经深入逆向 Claude Code CLI (cc 2.1.302) 与 cc-switch 源码核对定位根因：1) Claude OAuth access_token 有效期仅 8 小时 (expires_in: 28800)，refresh_token 有效期约 28 天；cc 在运行时遇到 access_token 即将到期或 401 鉴权失败时，会主动调用 Anthropic 官方 OAuth 刷新端点 POST https://api.anthropic.com/v1/oauth/token (client_id: 9d1c250a-e61b-44d9-88ed-5944d1962f5e) 换取新令牌；2) Bruce 原实现仅被动读取 Keychain/文件中的 accessToken，无主动 OAuth 刷新能力，导致 8 小时后必然因 401 报错 PROVIDER_AUTH_REJECTED，UI 降级为 needsRelogin 并要求用户去终端重新运行 Claude CLI；3) Collector 的 credentialUpdates 白名单仅允许 kimi 与 stepfun，缺少 claude；4) Swift 侧 CredentialRotationMerge 对 Claude 凭证的合并未深入 claudeAiOauth 嵌套结构，且 CredentialUpdateCoordinator 在 CLI 零配置场景 (accountId 为 claude-cli) 跳过了写回落盘。",
+  "precheck": {
+    "description": "预检 ClaudeProvider 是否具备主动刷新函数及 credentialUpdates 是否支持 claude",
+    "command": "grep -n 'refresh_claude_token' core/collector/crates/collector-provider/src/lib.rs || echo 'NOT_FOUND'",
+    "expected": "输出 NOT_FOUND 表明尚无主动刷新逻辑，缺陷成立",
+    "is_completed": true,
+    "evidence": "实测输出 NOT_FOUND：ClaudeProvider 仅静态读取 accessToken，无刷新端点调用与重试"
+  },
+  "callback": {
+    "before": [
+      "# 准备开发环境并验证当前分支"
+    ],
+    "after": [
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "swift run --package-path apps/macos BruceOnboardingCoreHarness",
+      "zsh scripts/verify-local.sh"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "Collector 额度采集 (ClaudeProvider)",
+      "before": "仅提取 accessToken，token 过期或 401 时直接抛出 PROVIDER_AUTH_REJECTED 失败",
+      "after": "提取 accessToken、refreshToken、expiresAt 与 scopes；若 accessToken 到期 (或距当前 <= 60s) 或 API 返回 401，主动调用 POST https://api.anthropic.com/v1/oauth/token (使用与 cc 对齐的 client_id、User-Agent: claude-code/2.1.302 与 scope) 刷新令牌并重试 usage 查询；成功刷新后挂载 credential_update 写回指令",
+      "impact": "消除 8 小时 token 过期导致的查询失败，实现与 Claude Code CLI 相同的无感自动续期"
+    },
+    {
+      "scope": "凭证白名单与校验 (collector-credential)",
+      "before": "validate_credential_updates 仅允许 kimi 和 stepfun",
+      "after": "validate_credential_updates 增加支持 claude，允许 access_token, refresh_token, expiry",
+      "impact": "允许 Claude 轮换凭证通过 Bridge 安全回传至 macOS 宿主"
+    },
+    {
+      "scope": "macOS 凭证合并与写回 (CredentialRotationMerge / CredentialUpdateCoordinator)",
+      "before": "合并时直接在 JSON 顶层合并 tokens，未更新 claudeAiOauth 内部的 accessToken/refreshToken/expiresAt；未入库的 claude-cli 账号写回被跳过",
+      "after": "正确更新 claudeAiOauth / claude.ai_oauth 内部字段；当 accountId 为 claude-cli 且未显式建卡时自动在 ProviderAccountStore 中建立/更新记录持久化，保证轮换后的 refresh_token 不丢失",
+      "impact": "持久化存储保持最新有效 token，后续调度及离线查询无缝复用"
+    },
+    {
+      "scope": "外部 CLI 登录态读取 (SystemExternalCredentialReader)",
+      "before": "readClaudeKeychain 采用进程内 SecItemCopyMatching 触碰外部应用 Keychain 项，因应用哈希与 ACL 不符触发 macOS SecurityAgent 系统密码弹窗",
+      "after": "对齐 cc-switch 改用 /usr/bin/security find-generic-password -s \"Claude Code-credentials\" -w 外部子进程静默读取，绝不拉起系统密码授权弹窗；失败时静默降级回退本地文件",
+      "impact": "彻底根除添加 Claude 订阅或点击订阅用量卡时 macOS 系统弹窗索要用户登录密码的严重体验缺陷"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "topic": "SubscriptionQuota",
+    "modified": true,
+    "rule_diff": {
+      "before": "Claude 凭证仅只读跟随 Keychain/文件，过期落 needsRelogin 由用户手动跑 CLI 恢复",
+      "after": "Claude 凭证对齐 cc 机制：支持 OAuth 刷新端点主动续期与 401 动态自愈，轮换凭证安全写回 Bruce 隔离存储"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "local-20261020-0248",
+    "user_quote": "确认",
+    "signoff": "verified_by_user",
+    "checks": [
+      {
+        "item": "ClaudeProvider 自动刷新单元测试",
+        "true_if": "Token 到期与 401 场景下成功触发 refresh 并产出 credential_update，测试全绿",
+        "false_if": "刷新未触发或重试失败",
+        "evidence": "cargo test --manifest-path core/collector/Cargo.toml --package collector-provider 测试通过 (43 passed)，包含 claude_provider_proactively_refreshes_token_when_expired_or_near_expiry 与 claude_provider_refreshes_token_on_401_and_retries，全程使用 FixtureHttp 内存隔离 Mock，无外网真实调用",
+        "result": true
+      },
+      {
+        "item": "Swift 凭据合并与写回测试",
+        "true_if": "claudeAiOauth 嵌套结构正确更新 accessToken/refreshToken/expiresAt，无账号时自动入库",
+        "false_if": "嵌套字段未更新或写回被跳过",
+        "evidence": "swift run BruceOnboardingCoreHarness (166 passed) 与 SubscriptionCredentialsHarness (36 passed) 全部通过，包含 rotationMergeClaudeUpdatesNestedOAuthFields 与 coordinatorAutoUpsertsClaudeCliIfNotFound，均在独立临时沙箱隔离运行",
+        "result": true
+      },
+      {
+        "item": "外部 CLI 登录态子进程静默读取测试",
+        "true_if": "执行 /usr/bin/security find-generic-password -s 'Claude Code-credentials' -w，零系统密码弹窗且异常时静默降级",
+        "false_if": "调用进程内 SecItemCopyMatching 或抛出鉴权弹窗异常",
+        "evidence": "swift run BruceOnboardingCoreHarness 中 systemExternalCredentialReaderMockAndFallback 用例验证通过 (166 passed)，验证 Mock security 命令正常回执与非 0 退出码优雅降级，全程零 GUI 弹窗",
+        "result": true
+      },
+      {
+        "item": "全量本地验证门禁",
+        "true_if": "zsh scripts/verify-local.sh 退出码 0，全量测试通过",
+        "false_if": "存在编译报错或 Harness 失败",
+        "evidence": "zsh scripts/verify-local.sh 执行完毕，退出码 0，Rust fmt/test/clippy、敏感扫描、9 项 Swift Harness 及双端对拍全部全绿通过",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "closure": {
+    "mode": "backfill",
+    "decided_by": "sivan (人工治理口径: 2026-10-23 会话确认「确认」授权本批账实修复)",
+    "basis": "已随 0.12.2 实际交付 —— CHANGELOG 已记账、版本已打 Git tag、会话内已有真实人工确认",
+    "note": "卡片状态系人工口径补收并随本批次归档, 非当时真实收口; 该版本验收以 Git tag、CHANGELOG 与运行事实为准。user_quote / signoff 为当时会话真实记录未改写; sync.commit 缺失即留空, 未伪造。"
+  }
+}

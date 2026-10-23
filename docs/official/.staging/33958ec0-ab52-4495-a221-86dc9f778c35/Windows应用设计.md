@@ -127,7 +127,7 @@ Codex 的 `refresh_token`、`id_token`、`expiry` 等恢复字段留在应用存
 
 维护页可导出 UTF-8 BOM 的账单 CSV 和限定字段的诊断 JSON。前端优先打开系统保存对话框，取消时不导出；对话框不可用时回落数据根下的 `exports/`。诊断文件仅取版本、平台、模块阶段、最近成功、错误码与诊断码，不加入凭证、账号、完整本机路径或用量明细。设置页诊断预览另保留目录末段名。
 
-依据：[`models.rs`](../../apps/win/viewmodel/src/models.rs) 的 `PanelViewModel`；[`usage.rs`](../../apps/win/viewmodel/src/usage.rs) 的 `PanelViewModelMapper::make`、`make_usage`；[`subscription.rs`](../../apps/win/viewmodel/src/subscription.rs) 的 `make_subscription`、`last_success_text`；[`app.js`](../../apps/win/src/app.js) 的 `subscriptionCard`、`isMultiAccount`、`isBalanceBased`；[`alerts.rs`](../../apps/win/src-tauri/src/alerts.rs) 的 `over_threshold_entries`、`AlertDeliveryState`；[`runtime_core.rs`](../../apps/win/src-tauri/src/runtime_core.rs) 的 `billing_csv`、`diagnostics_report`；[`settings.js`](../../apps/win/src/settings.js) 的 `runExport`、`showDiagnosticsPreview`；[C020](../archive/0.12.0/change/C020.json) 的 DeepSeek 月度统计移除声明。
+依据：[`models.rs`](../../apps/win/viewmodel/src/models.rs) 的 `PanelViewModel`；[`usage.rs`](../../apps/win/viewmodel/src/usage.rs) 的 `PanelViewModelMapper::make`、`make_usage`；[`subscription.rs`](../../apps/win/viewmodel/src/subscription.rs) 的 `make_subscription`、`last_success_text`；[`app.js`](../../apps/win/src/app.js) 的 `subscriptionCard`、`isMultiAccount`、`isBalanceBased`；[`alerts.rs`](../../apps/win/src-tauri/src/alerts.rs) 的 `over_threshold_entries`、`AlertDeliveryState`；[`runtime_core.rs`](../../apps/win/src-tauri/src/runtime_core.rs) 的 `billing_csv`、`diagnostics_report`；[`settings.js`](../../apps/win/src/settings.js) 的 `runExport`、`showDiagnosticsPreview`；[C020](../../../archive/0.12.0/change/C020.json) 的 DeepSeek 月度统计移除声明。
 
 
 <a id="chapter-5"></a>
@@ -165,7 +165,7 @@ Tauri 在启动时预建 `dashboard` 与 `settings` 两个隐藏窗口。看板�
 
 C009 仍为 `in_progress`，其原验收记录将 WebView2、原生焦点与窗口重开、系统热键冲突、Toast、实际 SID ACL、真实 Agent 与凭证路径列为未完成项。设计 05 也保留真机路径与任务栏实测清单。维护者判断是否可发布时，应分别检查自动化结果与这些目标环境证据。
 
-依据：[Windows 平台适配设计](../devel/design/05-Windows平台适配.md) 的目标、非目标、真机清单与对拍规则；[C009](../devel/change/C009.json) 的 `status`、`verification`；[C012](../devel/change/C012.json) 的历史色板验证；[`fixture_parity.rs`](../../apps/win/viewmodel/tests/fixture_parity.rs) 的 `mac_parity_golden_matches`；[`runtime_coverage.rs`](../../apps/win/src-tauri/tests/runtime_coverage.rs)；[`collector_configuration.rs`](../../apps/win/src-tauri/tests/collector_configuration.rs)；[`frontend.test.mjs`](../../apps/win/tests/frontend.test.mjs)。
+依据：[Windows 平台适配设计](../devel/design/05-Windows平台适配.md) 的目标、非目标、真机清单与对拍规则；[C009](../../../archive/0.10.0/change/C009.json) 的 `status`、`verification`；[C012](../../../archive/0.11.0/change/C012.json) 的历史色板验证；[`fixture_parity.rs`](../../apps/win/viewmodel/tests/fixture_parity.rs) 的 `mac_parity_golden_matches`；[`runtime_coverage.rs`](../../apps/win/src-tauri/tests/runtime_coverage.rs)；[`collector_configuration.rs`](../../apps/win/src-tauri/tests/collector_configuration.rs)；[`frontend.test.mjs`](../../apps/win/tests/frontend.test.mjs)。
 
 
 <a id="chapter-7"></a>
@@ -175,7 +175,7 @@ C009 仍为 `in_progress`，其原验收记录将 WebView2、原生焦点与窗�
 ### 7.1 原始资料与实现入口
 
 - [05-Windows平台适配.md](../devel/design/05-Windows平台适配.md)：本主题的原始声明或实现入口。
-- [C009.json](../devel/change/C009.json)：本主题的原始声明或实现入口。
+- [C009.json](../../../archive/0.10.0/change/C009.json)：本主题的原始声明或实现入口。
 - [main.rs](../../apps/win/src-tauri/src/main.rs)：本主题的原始声明或实现入口。
 - [lib.rs](../../apps/win/src-tauri/src/lib.rs)：本主题的原始声明或实现入口。
 - [scheduler.rs](../../apps/win/src-tauri/src/scheduler.rs)：本主题的原始声明或实现入口。
