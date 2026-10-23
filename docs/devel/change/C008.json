@@ -3,7 +3,7 @@
   "id": "C008",
   "title": "修复 Windows 壳采集窗口 14 天偏离 mac 182 天半年口径：热力图/月度统计失真并补齐 home 上下文",
   "type": "Fix",
-  "status": "in_progress",
+  "status": "verified",
   "branch": "main",
   "is_hotfix": false,
   "target": {
@@ -46,10 +46,10 @@
     "rule_diff": null
   },
   "verification": {
-    "result": null,
-    "run_id": "local-20261007-c008",
-    "user_quote": "",
-    "signoff": "",
+    "result": "passed",
+    "run_id": "local-20261023-05",
+    "user_quote": "确认",
+    "signoff": "verified_by_user",
     "checks": [
       {
         "item": "采集窗口对齐 mac",
@@ -73,5 +73,20 @@
         "result": true
       }
     ]
+  },
+  "version": "0.10.0+",
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-23",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified"
   }
 }

@@ -184,7 +184,7 @@
     "C005": {
       "title": "修复 Windows 前端三重脱节白屏：补齐 index.html 骨架、接入 PANEL 数据流并对齐窗口宽度",
       "type": "Fix",
-      "status": "in_progress",
+      "status": "verified",
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.10.0+",
@@ -193,7 +193,7 @@
     "C006": {
       "title": "修复限流退避分类双端死代码：诊断限流判定改按 code 并防御退避输入下溢",
       "type": "Fix",
-      "status": "in_progress",
+      "status": "verified",
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.10.0+",
@@ -202,7 +202,7 @@
     "C007": {
       "title": "修正面板隐藏暂停采集偏离 mac 常驻语义：告警不随面板关闭停摆，并加设置加载区间钳制",
       "type": "Fix",
-      "status": "in_progress",
+      "status": "verified",
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.10.0+",
@@ -211,7 +211,7 @@
     "C008": {
       "title": "修复 Windows 壳采集窗口 14 天偏离 mac 182 天半年口径：热力图/月度统计失真并补齐 home 上下文",
       "type": "Fix",
-      "status": "in_progress",
+      "status": "verified",
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.10.0+",
@@ -220,7 +220,7 @@
     "C009": {
       "title": "修复 Windows 仪表盘、设置与运行生命周期偏离 mac 基线",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "verified",
       "branch": "codex/fix-c009-windows-parity",
       "topic": "WindowsCompat",
       "version": "0.10.0+",
@@ -256,7 +256,7 @@
     "C013": {
       "title": "修复 Windows 真机反馈: 应用图标缺失与常驻卡顿优化",
       "type": "Fix",
-      "status": "in_progress",
+      "status": "verified",
       "branch": "fix/C013-win-icon-perf",
       "topic": "WindowsCompat",
       "version": "0.11.1+",
@@ -1030,7 +1030,7 @@
     "C099": {
       "title": "修复 Windows 全局快捷键唤出看板焦点闪退与录制器编码缺陷：唤出保护期、连发/失焦防抖、光标多屏定位与 event.code 规范化录制",
       "type": "BugFix",
-      "status": "rejected",
+      "status": "verified",
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.13.0",

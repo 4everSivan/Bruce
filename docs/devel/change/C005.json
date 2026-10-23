@@ -3,7 +3,7 @@
   "id": "C005",
   "title": "修复 Windows 前端三重脱节白屏：补齐 index.html 骨架、接入 PANEL 数据流并对齐窗口宽度",
   "type": "Fix",
-  "status": "in_progress",
+  "status": "verified",
   "branch": "main",
   "is_hotfix": false,
   "target": {
@@ -58,39 +58,54 @@
     "rule_diff": null
   },
   "verification": {
-    "result": null,
-    "run_id": "",
-    "user_quote": "",
-    "signoff": "",
+    "result": "passed",
+    "run_id": "local-20261023-05",
+    "user_quote": "确认",
+    "signoff": "verified_by_user",
     "checks": [
       {
         "item": "前端 DOM 契约一致",
         "true_if": "app.js 引用的全部 DOM id 在 index.html 中存在, 且 node 结构冒烟脚本通过",
         "false_if": "任一 getElementById 目标缺失或 app.js 存在未定义全局引用",
         "evidence": "2026-10-07 与设置窗口化合并审查: ①app.js 无 PANEL 全局残留 ②DOM id 交叉引用全部可达 (check-win-frontend.mjs 冒烟通过) ③窗口 440x760 ④usageCard models 判空已补 (与窗口化交叠处由本轮修复) ⑤styles body padding 0。核实结论: 白屏三重脱节修复完整",
-        "result": null
+        "result": true
       },
       {
         "item": "窗口与布局宽度对齐",
         "true_if": "tauri.conf.json 窗口宽度 >= styles.css #panel 固定宽度 (440)",
         "false_if": "布局在窗口内水平溢出",
         "evidence": "2026-10-07 与设置窗口化合并审查: ①app.js 无 PANEL 全局残留 ②DOM id 交叉引用全部可达 (check-win-frontend.mjs 冒烟通过) ③窗口 440x760 ④usageCard models 判空已补 (与窗口化交叠处由本轮修复) ⑤styles body padding 0。核实结论: 白屏三重脱节修复完整",
-        "result": null
+        "result": true
       },
       {
         "item": "CI 前端冒烟接线",
         "true_if": "verify-rust.sh 与 verify-windows job 均执行 check-win-frontend.mjs 且本地通过",
         "false_if": "冒烟脚本未接线或在干净检出上失败",
         "evidence": "2026-10-07 与设置窗口化合并审查: ①app.js 无 PANEL 全局残留 ②DOM id 交叉引用全部可达 (check-win-frontend.mjs 冒烟通过) ③窗口 440x760 ④usageCard models 判空已补 (与窗口化交叠处由本轮修复) ⑤styles body padding 0。核实结论: 白屏三重脱节修复完整",
-        "result": null
+        "result": true
       },
       {
         "item": "Rust 侧零回归",
         "true_if": "src-tauri fmt/clippy/test 全绿",
         "false_if": "任一编译、clippy 或测试失败",
         "evidence": "2026-10-07 与设置窗口化合并审查: ①app.js 无 PANEL 全局残留 ②DOM id 交叉引用全部可达 (check-win-frontend.mjs 冒烟通过) ③窗口 440x760 ④usageCard models 判空已补 (与窗口化交叠处由本轮修复) ⑤styles body padding 0。核实结论: 白屏三重脱节修复完整",
-        "result": null
+        "result": true
       }
     ]
+  },
+  "version": "0.10.0+",
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-23",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified"
   }
 }

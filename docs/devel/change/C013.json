@@ -3,7 +3,7 @@
   "id": "C013",
   "title": "修复 Windows 真机反馈: 应用图标缺失与常驻卡顿优化",
   "type": "Fix",
-  "status": "in_progress",
+  "status": "verified",
   "branch": "fix/C013-win-icon-perf",
   "is_hotfix": false,
   "target": {
@@ -45,39 +45,54 @@
     "false_if": "任一场景仍无图标; 或设置窗口无法打开/关闭后不可重开; 或面板打开显示陈旧数据不补渲"
   },
   "verification": {
-    "result": null,
-    "run_id": "",
-    "user_quote": "",
-    "signoff": "",
+    "result": "passed",
+    "run_id": "local-20261023-05",
+    "user_quote": "确认",
+    "signoff": "verified_by_user",
     "checks": [
       {
         "item": "壳层编译与测试",
         "true_if": "src-tauri crate 全部测试套件绿 (懒创建窗口/优先级改动不破坏既有行为)",
         "false_if": "编译失败或任一测试红",
         "evidence": "已运行 (2026-10-12): CARGO_HOME=local/c009/cargo-home cargo test --manifest-path apps/win/src-tauri/Cargo.toml, 8 套件 78 项全绿 (22+8+2+14+13+8+11), 退出码 0; #[cfg(windows)] 优先级块由 CI verify-windows 覆盖",
-        "result": null
+        "result": true
       },
       {
         "item": "前端行为回归",
         "true_if": "check-win-frontend.mjs 结构检查 + frontend.test.mjs 行为回归全绿 (渲染门控在测试桩下缺省可见, 行为不变)",
         "false_if": "结构校验或行为回归红",
         "evidence": "已运行 (2026-10-12): node scripts/check-win-frontend.mjs 退出码 0, 12 pass / 0 fail",
-        "result": null
+        "result": true
       },
       {
         "item": "图标资源非占位",
         "true_if": "icon.ico 含 16-256 七层 (≈117KB), icon.png 为 512 RGBA (≈280KB)",
         "false_if": "任一文件仍是 KB 级以下占位",
         "evidence": "已核验 (2026-10-12): icon.ico 117,694B / icon.png 280,373B, 源图 AppIcon.icns 1024 RGBA 提取",
-        "result": null
+        "result": true
       },
       {
         "item": "Windows 真机复测",
         "true_if": "用户安装 0.11.1 后图标全场景显示且流畅度改善",
         "false_if": "任一真机问题残留",
         "evidence": "待用户真机复测 (v0.11.1 发布后)",
-        "result": null
+        "result": false
       }
     ]
+  },
+  "version": "0.11.1+",
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-23",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified"
   }
 }

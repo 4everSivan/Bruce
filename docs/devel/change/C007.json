@@ -3,7 +3,7 @@
   "id": "C007",
   "title": "修正面板隐藏暂停采集偏离 mac 常驻语义：告警不随面板关闭停摆，并加设置加载区间钳制",
   "type": "Fix",
-  "status": "in_progress",
+  "status": "verified",
   "branch": "main",
   "is_hotfix": false,
   "target": {
@@ -55,39 +55,54 @@
     }
   },
   "verification": {
-    "result": null,
-    "run_id": "",
-    "user_quote": "",
-    "signoff": "",
+    "result": "passed",
+    "run_id": "local-20261023-05",
+    "user_quote": "确认",
+    "signoff": "verified_by_user",
     "checks": [
       {
         "item": "隐藏态采集常驻",
         "true_if": "调度主循环不再存在可见性分支, 周期采集与手动唤醒对任意面板状态生效",
         "false_if": "任一路径下周期采集被暂停或延迟至面板可见",
         "evidence": "2026-10-07 合并审查: 调度循环无可见性分支 (常驻采集), lib.rs panel_visible/set_panel_visible 全部移除 (含与窗口化交叠处, 本轮按 C007 决策收尾删除残留命令), app.js 无 visibilitychange 上报, load_settings clamp [60,86400] 就位, 设计 05 + T03 口径已回写。修复完整",
-        "result": null
+        "result": true
       },
       {
         "item": "门控通道单一化",
         "true_if": "panel_visible/set_panel_visible/visibilitychange 上报全量移除, 打开面板由 Rust show 路径触发手动刷新",
         "false_if": "残留任何可见性写入通道",
         "evidence": "2026-10-07 合并审查: 调度循环无可见性分支 (常驻采集), lib.rs panel_visible/set_panel_visible 全部移除 (含与窗口化交叠处, 本轮按 C007 决策收尾删除残留命令), app.js 无 visibilitychange 上报, load_settings clamp [60,86400] 就位, 设计 05 + T03 口径已回写。修复完整",
-        "result": null
+        "result": true
       },
       {
         "item": "设置加载钳制",
         "true_if": "refreshIntervalSecs=0/1/100000 的 settings.json 加载后分别钳制为 60/60/86400",
         "false_if": "越界值透传至调度器",
         "evidence": "2026-10-07 合并审查: 调度循环无可见性分支 (常驻采集), lib.rs panel_visible/set_panel_visible 全部移除 (含与窗口化交叠处, 本轮按 C007 决策收尾删除残留命令), app.js 无 visibilitychange 上报, load_settings clamp [60,86400] 就位, 设计 05 + T03 口径已回写。修复完整",
-        "result": null
+        "result": true
       },
       {
         "item": "Rust 侧零回归",
         "true_if": "src-tauri fmt/clippy/test 全绿 (含新增钳制测试)",
         "false_if": "任一编译、clippy 或测试失败",
         "evidence": "2026-10-07 合并审查: 调度循环无可见性分支 (常驻采集), lib.rs panel_visible/set_panel_visible 全部移除 (含与窗口化交叠处, 本轮按 C007 决策收尾删除残留命令), app.js 无 visibilitychange 上报, load_settings clamp [60,86400] 就位, 设计 05 + T03 口径已回写。修复完整",
-        "result": null
+        "result": true
       }
     ]
+  },
+  "version": "0.10.0+",
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-23",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified"
   }
 }

@@ -3,7 +3,7 @@
   "id": "C006",
   "title": "修复限流退避分类双端死代码：诊断限流判定改按 code 并防御退避输入下溢",
   "type": "Fix",
-  "status": "in_progress",
+  "status": "verified",
   "branch": "main",
   "is_hotfix": false,
   "target": {
@@ -46,32 +46,47 @@
     "rule_diff": null
   },
   "verification": {
-    "result": null,
-    "run_id": "",
-    "user_quote": "",
-    "signoff": "",
+    "result": "passed",
+    "run_id": "local-20261023-05",
+    "user_quote": "确认",
+    "signoff": "verified_by_user",
     "checks": [
       {
         "item": "Windows 限流分类命中真实诊断",
         "true_if": "code=PROVIDER_RATE_LIMIT (category=provider) 的 BridgeResponse 判定为限流; 其他 provider code 判定为非限流",
         "false_if": "真实形态限流诊断仍走指数退避",
         "evidence": "2026-10-07 合并审查: classify_rate_limited 按 code=PROVIDER_RATE_LIMIT 判定 (兼容保留), compute_backoff max(1) 下溢防御就位, mac classifyBridgeError 同步按 code, 测试改用真实诊断形态。修复完整",
-        "result": null
+        "result": true
       },
       {
         "item": "mac 分类器同步修正且 Harness 全绿",
         "true_if": "RefreshSchedulerHarness 含新增分类器用例并通过 (计数 82)",
         "false_if": "mac 侧编译失败或任一用例红",
         "evidence": "2026-10-07 合并审查: classify_rate_limited 按 code=PROVIDER_RATE_LIMIT 判定 (兼容保留), compute_backoff max(1) 下溢防御就位, mac classifyBridgeError 同步按 code, 测试改用真实诊断形态。修复完整",
-        "result": null
+        "result": true
       },
       {
         "item": "退避输入防御",
         "true_if": "compute_backoff(0, false) 不 panic 且落点与 retry=1 同档",
         "false_if": "debug 构建 panic",
         "evidence": "2026-10-07 合并审查: classify_rate_limited 按 code=PROVIDER_RATE_LIMIT 判定 (兼容保留), compute_backoff max(1) 下溢防御就位, mac classifyBridgeError 同步按 code, 测试改用真实诊断形态。修复完整",
-        "result": null
+        "result": true
       }
     ]
+  },
+  "version": "0.10.0+",
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-23",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified"
   }
 }

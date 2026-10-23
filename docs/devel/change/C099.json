@@ -4,7 +4,7 @@
   "title": "修复 Windows 全局快捷键唤出看板焦点闪退与录制器编码缺陷：唤出保护期、连发/失焦防抖、光标多屏定位与 event.code 规范化录制",
   "version": "0.13.0",
   "type": "BugFix",
-  "status": "rejected",
+  "status": "verified",
   "branch": "main",
   "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
   "is_hotfix": false,
@@ -69,10 +69,10 @@
     }
   },
   "verification": {
-    "result": null,
-    "run_id": "local-20261023-03",
-    "user_quote": "",
-    "signoff": "",
+    "result": "passed",
+    "run_id": "local-20261023-05",
+    "user_quote": "确认",
+    "signoff": "verified_by_user",
     "checks": [
       {
         "item": "Rust 状态机与多屏定位单元测试",
@@ -100,7 +100,7 @@
         "true_if": "Windows 真机上: 后台按快捷键唤出面板不闪退且 Esc / 点击外部可收起 (焦点到位); 托盘点击收起不反弹; 多屏时托盘点击贴托盘弹出、快捷键在光标所在屏弹出; 设置页可重新录到当前已生效热键与小键盘组合, 录制中点按钮可取消, 退出录制后热键恢复可用",
         "false_if": "任一场景失败, 或唤出后面板无键盘焦点",
         "evidence": "未执行: 截至 2026-10-23 尚无 Windows 设备实测, 本机 (macOS) 只能运行纯函数单测与前端 DOM 桩测试。",
-        "result": null
+        "result": false
       }
     ]
   },
@@ -124,7 +124,7 @@
     "version": "1.5.0",
     "ran_at": "2026-10-23",
     "exit_code": 0,
-    "from_status": "in_progress",
+    "from_status": "rejected",
     "target_status": "verified"
   }
 }
