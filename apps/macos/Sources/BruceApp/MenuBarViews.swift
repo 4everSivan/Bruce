@@ -180,24 +180,6 @@ struct MenuBarDashboardView: View {
         .overlay {
             panelShape.strokeBorder(panelBorderColor, lineWidth: 1)
         }
-        .overlay(alignment: .top) {
-            // Fluent / macOS 顶部 1px 微发光发线: 提升复杂壁纸下的边缘轮廓与立体悬浮质感
-            // 配合 10pt 紧凑圆角左右内缩 8pt
-            if !isNothingTheme {
-                LinearGradient(
-                    colors: [
-                        .clear,
-                        Color.white.opacity(colorScheme == .dark ? 0.35 : 0.70),
-                        .clear
-                    ],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-                .frame(height: 1)
-                .padding(.horizontal, 8)
-                .offset(y: 0.5)
-            }
-        }
         .clipShape(panelShape)
         .preferredColorScheme(coordinator.appearanceMode.colorScheme)
         .environment(\.BruceResolvedTheme, coordinator.resolvedTheme)

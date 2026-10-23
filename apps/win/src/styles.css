@@ -48,9 +48,9 @@
   --divider: rgba(255,255,255,.10);
   --footer-hairline: rgba(255,255,255,.15);
   --panel-border: rgba(255,255,255,.14);
-  --card-bg: rgba(255,255,255,.085);
-  /* mac GlassSurfacePlan.classic(dark).cardBorder = 白 18% */
-  --card-border: rgba(255,255,255,.18);
+  --card-bg: rgba(255,255,255,.065);
+  /* mac GlassSurfacePlan.classic(dark).cardBorder = 白 12% */
+  --card-border: rgba(255,255,255,.12);
   --accent: #0a84ff;
   --accent-soft: rgba(10,132,255,.14);
   --badge-bg: rgba(255,255,255,.06);
@@ -109,9 +109,9 @@ button, input, select, textarea {
   max-height: 100%;
   display: flex;
   flex-direction: column;
-  background: rgba(18, 20, 26, 0.48);
-  backdrop-filter: blur(36px) saturate(185%);
-  -webkit-backdrop-filter: blur(36px) saturate(185%);
+  background: rgba(18, 20, 26, 0.55);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
   border: 1px solid var(--panel-border);
   /* mac panelCornerRadius: 统一为 Nothing 紧凑圆角 10px */
   border-radius: 10px;
@@ -120,15 +120,6 @@ button, input, select, textarea {
   /* SwiftUI Text 行高约为字号 1.2 倍; CSS normal 行高 (Segoe / 雅黑约 1.33~1.4)
      会让每行比 mac 高出一截, 卡片整体被拉高约 20% (C067 并排实测)。 */
   line-height: 1.2;
-}
-
-/* mac 顶部 1px 微发光发线 (白 35%, 左右内缩 8) */
-#panel::before {
-  content: "";
-  position: absolute;
-  top: 0; left: 8px; right: 8px; height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent);
-  z-index: 3;
 }
 
 /* HUD 顶部 Header (mac dashboardTopHeader): 左 [四色状态灯 品牌 Bruce] · 右 Agent 状态 (C100) */
@@ -298,19 +289,9 @@ button, input, select, textarea {
   border: 1px solid var(--card-border);
   border-radius: 4px;
   padding: 12px 14px;
-  box-shadow: 0 1px 5px rgba(0,0,0,.18);
+  box-shadow: 0 1px 4px rgba(0,0,0,.14);
   position: relative;
   overflow: hidden;
-}
-
-/* 顶部 1px 光学折光高光边 (配合 4px 圆角左右内缩 4px) */
-.card::before {
-  content: "";
-  position: absolute;
-  top: 0; left: 4px; right: 4px; height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,.28), transparent);
-  pointer-events: none;
-  z-index: 2;
 }
 
 /* 空面板引导卡片 */

@@ -42,17 +42,6 @@ struct PanelCardContainer<Content: View>: View {
             .overlay {
                 shape.strokeBorder(surfaceTokens.borderColor, lineWidth: 1)
             }
-            .overlay(alignment: .top) {
-                // 顶部 1px 细微光学折光唇边 (Design Spells Specular Lip): 配合 4pt 圆角左右内缩 4pt
-                // Nothing: 1px 边框已承担分层, 高光矩形不渲染.
-                if !isNothingSurface {
-                    Rectangle()
-                        .fill(surfaceTokens.highlightColor)
-                        .frame(height: 1)
-                        .padding(.horizontal, 4)
-                        .offset(y: 0.5)
-                }
-            }
             .clipShape(shape)
             .shadow(
                 color: surfaceTokens.shadowColor,
