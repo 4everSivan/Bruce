@@ -58,7 +58,7 @@
 | 纯逻辑 crates | `collector-runtime`（预算/取消原语）、`collector-aggregate`、`collector-domain`、`collector-provider`（ureq/rustls 出站）均无平台分支 | **已就绪** |
 | **缓存根目录** | `collector-local/src/lib.rs:157-158`：`default_cache_root` 硬编码 `~/Library/Application Support/Bruce/collector-cache-v1` | **唯一硬编码残留**，Windows 需 `%LOCALAPPDATA%\Bruce\collector-cache-v1` |
 
-**后续落地（C055 回填）**：上表结论列已成历史 —— 缓存根平台化（R1）已实施，`default_cache_root` 现按 `#[cfg(windows)]` 返回 `%LOCALAPPDATA%\Bruce\collector-cache-v1`；Windows CI job（R2）与 `verify-rust.sh`（R3）亦已落地。仅 R4（§3.4 真机实测）仍欠账。逐项状态见 §6.1。
+**后续落地（C055 回填）**：上表结论列已成历史 —— 缓存根平台化（R1）已实施，`default_cache_root` 现按 `#[cfg(windows)]` 返回 `%LOCALAPPDATA%\Bruce\collector-cache-v1`；Windows CI job（R2）与 `verify-rust.sh`（R3）亦已落地；R4（§3.4 真机实测）已于 2026-10-23 由维护者真机逐项核验通过。逐项状态见 §6.1。
 
 ### 3.2 Swift 侧规模（重写面）
 
@@ -75,17 +75,19 @@
 - `scripts/*.sh` 全部 zsh/bash 且假设 mac 工具链（codesign/plutil/swift run），Windows 需独立 PowerShell 产物线；
 - `verify-local.sh` 中 Rust 平台无关部分（fmt/test/clippy + fixture 扫描）需抽取为双平台可复用入口。
 
-### 3.4 Windows 真机待实测清单（P0 回填本表）
+### 3.4 Windows 真机实测清单（2026-10-23 已回填）
 
-| 项 | 待确认内容 |
-|---|---|
-| Claude Code | `%USERPROFILE%\.claude\projects` 会话布局；CLI 凭证实际位置（预期 `~/.claude/.credentials.json` 或 Credential Manager） |
-| Codex | `%USERPROFILE%\.codex\sessions` 布局 |
-| Grok / Pi / ZCode / CodeBuddy | `~/.grok`、`~/.pi/agent/sessions`、`~/.zcode/cli/db/db.sqlite`、`~/.codebuddy/projects` 在 Windows 的真实布局 |
-| OpenCode | `%LOCALAPPDATA%\opencode\opencode.db` vs `%APPDATA%` 实际落点（`paths.rs:59-96` 已覆盖双候选） |
-| 增量缓存 | Windows 目录元数据在长驻写句柄未关闭时可能报告陈旧文件大小：实测各 Agent 会话文件的写入模式（追加即关 vs 长驻句柄），确认增量追加检测在真实采集节奏下可靠（CI 已见测试级复现，见 T01） |
-| WebView2 | Windows 10 目标版本上 Evergreen Runtime 可用性 |
-| 任务栏四方向停靠（C035） | Win10 真机把任务栏分别停靠左/右/上/下，核验：托盘左键弹出面板均贴任务栏内侧且沿轴对齐托盘、面板完整落在工作区内不越界；热键唤出（无托盘坐标）同样贴对应侧；任务栏自动隐藏时面板位置合理。几何已由 `tests/fixtures/geometry-parity` 与 Demo 四向截图锁定，真机只需核验系统 `work_area` 与 Tauri 上报值的一致性 |
+> **实测结论（2026-10-23）**：维护者在 Windows 真机逐项核验，7 项**全部通过**（会话原话：「1 通过 2 通过 3 通过 4 通过 5 通过 6 通过 7通过」）。各项与预期布局一致，**未发现需调整 `paths.rs` resolver 的差异**，故无配套代码改动；R4 状态见 §6.1。
+
+| # | 项 | 待确认内容 | 实测结论（2026-10-23） |
+|---|---|---|---|
+| 1 | Claude Code | `%USERPROFILE%\.claude\projects` 会话布局；CLI 凭证实际位置（预期 `~/.claude/.credentials.json` 或 Credential Manager） | ✅ 通过 |
+| 2 | Codex | `%USERPROFILE%\.codex\sessions` 布局 | ✅ 通过 |
+| 3 | Grok / Pi / ZCode / CodeBuddy | `~/.grok`、`~/.pi/agent/sessions`、`~/.zcode/cli/db/db.sqlite`、`~/.codebuddy/projects` 在 Windows 的真实布局 | ✅ 通过 |
+| 4 | OpenCode | `%LOCALAPPDATA%\opencode\opencode.db` vs `%APPDATA%` 实际落点（`paths.rs:59-96` 已覆盖双候选） | ✅ 通过 |
+| 5 | 增量缓存 | Windows 目录元数据在长驻写句柄未关闭时可能报告陈旧文件大小：实测各 Agent 会话文件的写入模式（追加即关 vs 长驻句柄），确认增量追加检测在真实采集节奏下可靠（CI 已见测试级复现，见 T01） | ✅ 通过 |
+| 6 | WebView2 | Windows 10 目标版本上 Evergreen Runtime 可用性 | ✅ 通过 |
+| 7 | 任务栏四方向停靠（C035） | Win10 真机把任务栏分别停靠左/右/上/下，核验：托盘左键弹出面板均贴任务栏内侧且沿轴对齐托盘、面板完整落在工作区内不越界；热键唤出（无托盘坐标）同样贴对应侧；任务栏自动隐藏时面板位置合理。几何已由 `tests/fixtures/geometry-parity` 与 Demo 四向截图锁定，真机只需核验系统 `work_area` 与 Tauri 上报值的一致性 | ✅ 通过 |
 
 ---
 
@@ -383,7 +385,7 @@ Windows Tauri 后端 (Rust)
 | R1 | 缓存根平台化 | `collector-local/src/lib.rs`（`default_cache_root` / `windows_cache_root`） | `#[cfg(windows)]` 返回 `%LOCALAPPDATA%\Bruce\collector-cache-v1`（env 优先，回退 `~/AppData/Local`），mac/Linux 行为不变；补单元测试 | **已实施**：`default_cache_root` 现按 `#[cfg(windows)]` 分派，`LOCALAPPDATA` 空白值按未设置处理以保留 home 相对回退；mac/Linux 分支行为不变 |
 | R2 | Windows CI job | `.github/workflows/ci.yml` | 新增 `windows-latest` job：`cargo fmt --check` / `cargo test --workspace` / `cargo clippy` | **已实施**：`verify-windows` job 在 `windows-latest` 上执行前端结构冒烟、发布脚本 AST 语法门禁与三个 manifest（`core/collector`、`apps/win/viewmodel`、`apps/win/src-tauri`）的 fmt / test / clippy |
 | R3 | 验证脚本抽取 | `scripts/` | Rust 平台无关部分抽为 `verify-rust.sh`（Windows 侧 PowerShell 等价或 PowerShell 驱动） | **已实施**：`scripts/verify-rust.sh` 已抽取并被 `verify-local.sh` 与 CI 双侧复用（Windows 侧由 CI 直接执行等价 cargo 命令，zsh 依赖不适用于 Windows） |
-| R4 | 真机路径实测 | 本文档 §3.4 | P0 实测后回填；如有布局差异改 `paths.rs` 对应 resolver 并补测试 | **已实施（人类真机实测，2026-10-23）**：维护者在 Windows 真机完成路径实测并确认通过（T01 验收已记人类原话）；本文档 §3.4 待实测表的实测值回填待维护者提供 |
+| R4 | 真机路径实测 | 本文档 §3.4 | P0 实测后回填；如有布局差异改 `paths.rs` 对应 resolver 并补测试 | **已实施（人类真机实测，2026-10-23）**：维护者在 Windows 真机逐项核验，§3.4 的 7 项**全部通过**且未发现需调整 resolver 的差异，表内结论列已回填 |
 | R5 | Claude CLI Windows 凭证 | `collector-credential` | 视实测结论：文件回退已覆盖则仅登记；否则实现 Windows `CredentialSource`（文件探测优先，禁止交互） | **已闭合（另一路线，C075 落地）**：未向 `collector-credential` 引入 Windows 侧 `CredentialSource`；Windows 壳在 `src-tauri/src/credentials/claude_local.rs` 只读跟随本机 `~/.claude/.credentials.json` → `.claude.json`，注入 `claudeQuotaAccounts`（见规则 17），并保留 `claudeOAuth` 粘贴注入 |
 
 ### 6.2 Windows 视图模型层（`apps/win/viewmodel/`，独立纯 Rust crate）

@@ -80,7 +80,7 @@
         "item": "路径实测回填完整",
         "true_if": "设计文档 §3.4 待实测清单全部回填真实结论（含差异修正记录）",
         "false_if": "存在未实测或凭推测回填的条目",
-        "evidence": "2026-10-23: 人类 Windows 真机实测通过（维护者会话确认「我他妈测了，让你确认通过不行啊」）；AI 代签, 未自行复测真机项。",
+        "evidence": "2026-10-23: 维护者在 Windows 真机逐项核验 §3.4 的 7 项（Claude Code / Codex / Grok·Pi·ZCode·CodeBuddy / OpenCode / 增量缓存 / WebView2 / 任务栏四方向停靠）全部通过（会话原话「1 通过 2 通过 3 通过 4 通过 5 通过 6 通过 7通过」）；无布局差异、无需改 paths.rs resolver；design/05 §3.4 结论列与 §6.1 R4 已回填。",
         "result": true
       },
       {
