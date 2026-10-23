@@ -540,9 +540,9 @@ button, input, select, textarea {
 .sub-section:first-child { padding-top: 10px; }
 .sub-section + .sub-section { border-top: 1px solid var(--divider); }
 .sub-head { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; min-width: 0; }
-/* 品牌徽章 (mac ProviderBrandBadge 15pt): 品牌色瓷砖 + 白色图形, 圆角 4.5 */
+/* 品牌徽章 (mac ProviderBrandBadge 15pt): 品牌色瓷砖 + 白色图形, 圆角 3px (与 Nothing 统一) */
 .pbadge {
-  width: 15px; height: 15px; border-radius: 4.5px; flex: none;
+  width: 15px; height: 15px; border-radius: 3px; flex: none;
   display: inline-flex; align-items: center; justify-content: center;
   background: var(--brand, #8e8e93); color: #fff;
   font-size: 9px; font-weight: 700; line-height: 1;
