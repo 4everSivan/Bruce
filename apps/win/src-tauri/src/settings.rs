@@ -161,6 +161,19 @@ pub fn sync_enabled_providers(settings: &mut AppSettings) {
         .collect();
 }
 
+/// 看板展示门禁的验证通过 Provider 集合 (C087, 对齐 mac `AppModel.verifiedProviderIDs`):
+/// 仅保留 `subscriptionProviders[id].verificationStatus == "ok"` 的 Provider;
+/// 未验证 (`none`) / 验证失败 (`failed`) / 需重新登录 (`needsRelogin`) 一律过滤。
+pub fn verified_provider_ids(settings: &AppSettings) -> BTreeSet<String> {
+    added_subscription_providers(settings)
+        .into_iter()
+        .filter_map(|(id, state)| {
+            bruce_win_viewmodel::subscription::is_verified_for_dashboard(&state.verification_status)
+                .then_some(id)
+        })
+        .collect()
+}
+
 /// 设置变更是否需要立即重新采集 (C069)。设置窗口改为即时生效后每个控件都会单独保存,
 /// 只有改变采集输入的字段才值得一次全量采集 —— 授权、本机会话开关、启用的 Provider 集合、
 /// 价格覆盖, 以及刷新间隔 (mac「变更后立即重新计时」); 主题、卡片/Provider 顺序、通知、

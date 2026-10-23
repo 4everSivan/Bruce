@@ -19,6 +19,24 @@
 - **Windows API Key 类五家专属配置对话框逐字对齐 mac (C083)**：Kimi / DeepSeek / Z.ai / Cline 统一为 `API Key` 单字段、火山引擎为 `Access Key` + `Secret Key` 双字段，字段标签、引导文案、控制台外链与脚注逐字对齐 mac 对应对话框（如 Kimi「在 kimi.com/code 申请 Kimi For Coding API key」、Cline「在 Cline 控制台 Settings > API Keys 创建 API Key」，Cline 另带 ClinePass 三窗口脚注）。火山引擎新增「从 CC Switch 导入」：以 `SQLITE_OPEN_READ_ONLY` 只读打开 CC Switch 本地库执行 `SELECT meta FROM providers WHERE name='火山Codingplan' LIMIT 1`，取 `usage_script.accessKeyId` / `secretAccessKey`（回落顶层同名键）并对 SK 逐层 base64 解码，导入前先拉起只读确认；库不存在时按钮隐藏、行缺失时给出可诊断错误，全程不回写外部库。Z.ai 由自由输入站点改为 `国内站 (open.bigmodel.cn)` / `国外站 (api.z.ai)` 单选并据此派生 `base_url`。保存成功后立即执行该 Provider 的结构校验（DeepSeek 额外一次真实余额试查，关闭重定向以避免 Bearer 随重定向外泄），并新增「重新验证」按钮。
 
 - **Windows 订阅额度页文案与交互细节对齐 mac (C096)**：底部提示位置移到两张卡下方且措辞逐字对齐（含「统一」）；空态补「尚未配置任何订阅 Provider」+ 副标题「从下方添加服务」；对话框在验证通过时追加「 · 验证通过」后缀（对齐 mac `APIKeyProviderConfigDialog`）；「添加服务」改为「选择 → 点『添加…』」两步交互（对齐 mac `ProviderPopUpPicker`，选中仅暂存、点确认才落库）；必填字段未填齐时「保存并验证」置灰、填齐即启用；账号移除前弹出「移除 <名称> 账号?」二次确认。
+- **Windows Codex 设备码登录与本机账号只读发现 (C084)**：
+  - **设备码三步登录**：设置页新增「登录新账号」，按 mac `CodexDeviceFlow` 同一契约走 `POST /api/accounts/deviceauth/usercode`（JSON `{client_id}`）→ 在 `https://auth.openai.com/codex/device` 输入验证码 → 轮询 `POST …/deviceauth/token`（403/404 待授权、其余非 200 fail-closed，超 `expires_in` 报过期，服务端未给 `code_verifier` 时本地 PKCE 回落）→ `POST /oauth/token` 换 `id/access/refresh` 三令牌齐备才成功；只解析不验签 `id_token` 取 `chatgpt_account_id`（namespaced → 顶层 → `organizations` 首项）与 `email`，缺账号标识 fail-closed 不写半成品。验证页由 `ShellExecuteW` 打开（不新增 opener 插件），打不开时前端仍展示验证码与地址供手动访问。
+  - **本机账号只读发现**：`发现本机 CLI 账号` 只读 `%USERPROFILE%\.codex\auth.json`（取 `tokens.account_id` + email），`发现 CC Switch 账号` 只读 `%USERPROFILE%\.cc-switch\codex_oauth_auth.json`（取 `accounts.*.email`）；两者一律只写元数据（`authorization_state = reauthRequired`，**不导入任何令牌**），已有记录不覆盖、外部文件绝不回写。
+  - **fail-closed「已配置」判据**：`codexQuotaAccounts` 的 `access_token` 必填放宽为「元数据记录可缺令牌」，并新增逐账号「完整可用凭据记录」判定经 IPC 下发（`usable`）；UI 的「已配置」、启用开关禁用态与对话框横幅据此排除元数据记录 —— 发现账号在行上呈现为「需要重新授权」，但不会让看板去查询必然失败的额度。
+- **Windows Claude / Grok / OpenCode GO 对话框对齐 mac (C085)**：
+  - **Claude 高级入口收拢**：零配置只读跟随仍是主路径，手工粘贴令牌与凭证 JSON 收进「高级」折叠区（默认折叠），状态行、重新检测与移除服务保持不变。
+  - **Grok 本机只读跟随**：新增 `%USERPROFILE%\.grok\auth.json` 只读跟随（取带非空 `key` 的 `https://auth.x.ai::*` / `*/sign-in` 作用域条目，按 `expires_at` 判过期），提供「重新检测」与「从本机导入」；本机跟随计入「已配置」（与 Claude 同范式），采集与定向刷新前同样自动注入 `grok-cli` 账号，全程只读不回写。
+  - **OpenCode GO 引导与身份**：粘贴引导逐字对齐 mac（`打开 opencode.ai → 登录 → 开发者工具 → Application → Cookies → 复制 auth 值 (Fe26.2**...) 与 workspace URL 中的 wrk_ ID`），账号身份改由 `workspaceId` 派生 —— 同一工作区重新粘贴即 upsert 到同一账号；缺键文案改为「OpenCode GO 凭证不完整, 请重新粘贴」。
+  - **三家验证语义**：Claude 访问令牌过期但刷新令牌仍有效时按「待刷新」照常放行、刷新令牌亦失效才判需重新登录；Grok 按作用域条目 `expires_at` 判定；OpenCode GO 按 `auth` + `workspaceId` 双非空判定。
+- **Windows StepFun 配置对话框与网页登录自动捕获 (C086)**：
+  - **StepFun 对话框**：Oasis-Token 字段 + 引导文案（`可点击上方一键登录自动绑定(支持国内/国际站)，或控制台按 F12 复制 Cookie`）+ 控制台外链 + 脚注 + 网页登录自动绑定区（`🇨🇳 登录国内站` / `🌐 登录国际站`）。
+  - **内置网页登录窗口**：独立 `WebviewWindow` + `WebviewUrl::External` 加载站点订阅页；导航栏（标题 + 站点切换 + 取消）+ 工具栏（后退/前进/刷新/订阅页/平台首页/当前 URL）+ 底部（清除登录缓存 / 我已登录，立即绑定）；UA 用桌面 Chrome 串 —— 用户在内置窗口登录即可，无需外部浏览器与 devtools。
+  - **cookie 捕获与远程校验**：cookie 变更 + 2s 轮询双轨；仅在当前页面 URL 属目标站点域名时自动捕获，取 `Oasis-Token` 且长度 >10 且 cookie 域含目标关键字；捕获后 POST `QueryStepPlanRateLimit`（带 `Oasis-Token` / `Oasis-appID` 10300|20700 / `Oasis-Platform` / `Oasis-Language` / `Oasis-Webid`），200 才回填绑定并持久化；「清除登录缓存」删除该域全部 cookie 后重载。
+  - **实现约束与平台退路**：cookie 读取必须经 async command 或独立线程（Windows 同步 command 会死锁）；若真机无法稳定读取，退化为「外部浏览器登录 + 手动粘贴 Oasis-Token」并按设计规则 24 登记为平台差异。
+- **Windows 看板订阅段按 Provider 验证状态过滤 (C087)**：看板订阅段只保留 `verificationStatus == ok` 的 Provider 的 service（对齐 mac），未验证 / 验证失败 / 需重新登录一律过滤；本地用量（agents）与总成本不受影响；过滤点落在视图模型 / 面板组装层，不在前端做猜测。
+
+### Removed
+- **Windows 删除三张 mac 没有的遗留凭证卡片 (C095)**：在 C084–C086 三个专属录入通道就位后，移除「添加或更新账号凭证」「导入账号」「高级：完整凭证字段维护」三张卡与整页「检查已保存账号连接」—— 凭据只能经专属对话框（保存即验证）写入，不再保留绕过验证与「已添加」步骤的旁路入口。
 
 ### Fixed
 - **Windows「移除服务」只删已添加条目不删凭据 (C089)**：移除改为后端 `remove_provider_credentials` 在凭据存储锁内一次原子写删除该 Provider 全部凭据（含读取侧已丢弃、界面不可见的不合规账号，以及 Claude / Grok 遗留的整体 OAuth 字段），再移出已添加集合并派生收敛启用态；删除失败即中止、不改已添加集合（fail-closed），杜绝半删状态；删除前二次确认，失败以就地错误给出可诊断原因；重加服务不再复活旧账号。

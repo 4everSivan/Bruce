@@ -506,10 +506,13 @@ test("settings expose Cline with mac-aligned display names", async () => {
   assert.match(pane.textContent, /Kimi/);
   assert.match(pane.textContent, /Z\.ai/);
   assert.doesNotMatch(pane.textContent, /Kimi For Coding|ChatGPT \/ Codex/, "显示名对齐 mac");
-  app.node("account-provider").value = "clineQuotaAccounts";
-  app.node("account-id").value = "work";
-  app.node("account-secret").value = "fixture-cline-key";
-  await app.node("account-save").click();
+  const clineOpt = [...app.document.querySelectorAll("#provider-add-row .cfg-picker-option")]
+    .find(opt => opt.textContent === "Cline");
+  await clineOpt.click();
+  await app.node("provider-add-confirm").click();
+  app.node("cfg-cline-apiKey").value = "fixture-cline-key";
+  await app.node("cfg-cline-apiKey").dispatch("input");
+  await app.node("cfg-save-cline").click();
   const call = app.calls.find(x => x.command === "save_credential_account");
   assert.equal(call.args.field, "clineQuotaAccounts");
   assert.equal(call.args.payload.api_key, "fixture-cline-key");
@@ -803,17 +806,15 @@ test("provider dialog saves with verification status and re-verifies (C082)", as
 
 test("credential accounts are keyed objects and save clears secret inputs", async () => {
   const app = await boot({ html: "settings.html" });
-  app.node("account-provider").value = "kimiQuotaAccounts";
-  await app.node("account-provider").dispatch("change");
-  app.node("account-id").value = "work";
-  app.node("account-name").value = "工作";
-  app.node("account-secret").value = "fixture-secret";
-  await app.node("account-save").click();
+  await app.node("provider-configure-kimi").click();
+  app.node("cfg-kimi-apiKey").value = "fixture-secret";
+  await app.node("cfg-kimi-apiKey").dispatch("input");
+  await app.node("cfg-save-kimi").click();
   const call = app.calls.find(x => x.command === "save_credential_account");
   assert.equal(call.args.field, "kimiQuotaAccounts");
-  assert.equal(call.args.accountId, "work");
+  assert.match(call.args.accountId, /^kimi-[0-9a-f]{8}$/);
   assert.equal(call.args.payload.api_key, "fixture-secret");
-  assert.equal(app.node("account-secret").value, "");
+  assert.equal(app.node("cfg-kimi-apiKey").value, "");
   assert.doesNotMatch(app.document.body.textContent, /fixture-secret/);
 });
 
@@ -838,11 +839,14 @@ test("invalid credentials/price overrides do not persist and command failures ar
 });
 
 test("Zhipu optional API address supplies the collector's required default", async () => {
-  const app = await boot({ html: "settings.html" });
-  app.node("account-provider").value = "zhipuQuotaAccounts";
-  app.node("account-id").value = "work";
-  app.node("account-secret").value = "fixture-key";
-  await app.node("account-save").click();
+  const app = await boot({
+    html: "settings.html",
+    settings: { ...defaults, enabledProviders: ["zhipu"] },
+  });
+  await app.node("provider-configure-zhipu").click();
+  app.node("cfg-zhipu-apiKey").value = "id-part.secret-part";
+  await app.node("cfg-zhipu-apiKey").dispatch("input");
+  await app.node("cfg-save-zhipu").click();
   const call = app.calls.find(x => x.command === "save_credential_account");
   assert.equal(call.args.payload.base_url, "https://open.bigmodel.cn/api/paas/v4");
 });
@@ -854,33 +858,38 @@ const oauthJSON = value => JSON.stringify(value);
 
 test("oauth providers save collector-native oauth shapes (C081)", async () => {
   const claude = await boot({ html: "settings.html" });
-  claude.node("account-provider").value = "claudeQuotaAccounts";
-  claude.node("account-id").value = "work";
-  claude.node("account-secret").value = "fixture-access";
-  claude.node("account-secondary").value = "fixture-refresh";
-  await claude.node("account-save").click();
+  await claude.node("provider-configure-claude").click();
+  claude.node("cfg-claude-paste").value = '{"accessToken":"fixture-access","refreshToken":"fixture-refresh"}';
+  await claude.node("cfg-claude-paste").dispatch("input");
+  await claude.node("cfg-save-claude").click();
   const claudeCall = claude.calls.find(x => x.command === "save_credential_account");
   assert.equal(
     oauthJSON(claudeCall.args.payload.oauth),
     oauthJSON({ claudeAiOauth: { accessToken: "fixture-access", refreshToken: "fixture-refresh" } })
   );
 
-  const grok = await boot({ html: "settings.html" });
-  grok.node("account-provider").value = "grokQuotaAccounts";
-  grok.node("account-id").value = "work";
-  grok.node("account-secret").value = "fixture-grok";
-  await grok.node("account-save").click();
+  const grok = await boot({
+    html: "settings.html",
+    settings: { ...defaults, enabledProviders: ["grok"] },
+  });
+  await grok.node("provider-configure-grok").click();
+  grok.node("cfg-grok-paste").value = '{"https://auth.x.ai::injected":{"key":"fixture-grok"}}';
+  await grok.node("cfg-grok-paste").dispatch("input");
+  await grok.node("cfg-save-grok").click();
   const grokCall = grok.calls.find(x => x.command === "save_credential_account");
   assert.equal(
     oauthJSON(grokCall.args.payload.oauth),
     oauthJSON({ "https://auth.x.ai::injected": { key: "fixture-grok" } })
   );
 
-  const opencode = await boot({ html: "settings.html" });
-  opencode.node("account-provider").value = "opencodeGoQuotaAccounts";
-  opencode.node("account-id").value = "work";
-  opencode.node("account-extra").value = '{"auth":"Fe26.2**fixture","workspaceId":"wrk_fixture"}';
-  await opencode.node("account-save").click();
+  const opencode = await boot({
+    html: "settings.html",
+    settings: { ...defaults, enabledProviders: ["opencodeGo"] },
+  });
+  await opencode.node("provider-configure-opencodeGo").click();
+  opencode.node("cfg-opencodeGo-paste").value = '{"auth":"Fe26.2**fixture","workspaceId":"wrk_fixture"}';
+  await opencode.node("cfg-opencodeGo-paste").dispatch("input");
+  await opencode.node("cfg-save-opencodeGo").click();
   const opencodeCall = opencode.calls.find(x => x.command === "save_credential_account");
   assert.equal(
     oauthJSON(opencodeCall.args.payload.oauth),
@@ -890,10 +899,10 @@ test("oauth providers save collector-native oauth shapes (C081)", async () => {
 
 test("claude paste keeps a wrapped entry and wraps a bare one (C081)", async () => {
   const wrapped = await boot({ html: "settings.html" });
-  wrapped.node("account-provider").value = "claudeQuotaAccounts";
-  wrapped.node("account-id").value = "work";
-  wrapped.node("account-extra").value = '{"claudeAiOauth":{"accessToken":"fixture-wrapped","scopes":["a"]}}';
-  await wrapped.node("account-save").click();
+  await wrapped.node("provider-configure-claude").click();
+  wrapped.node("cfg-claude-paste").value = '{"claudeAiOauth":{"accessToken":"fixture-wrapped","scopes":["a"]}}';
+  await wrapped.node("cfg-claude-paste").dispatch("input");
+  await wrapped.node("cfg-save-claude").click();
   const wrappedCall = wrapped.calls.find(x => x.command === "save_credential_account");
   assert.equal(
     oauthJSON(wrappedCall.args.payload.oauth),
@@ -901,10 +910,10 @@ test("claude paste keeps a wrapped entry and wraps a bare one (C081)", async () 
   );
 
   const bare = await boot({ html: "settings.html" });
-  bare.node("account-provider").value = "claudeQuotaAccounts";
-  bare.node("account-id").value = "work";
-  bare.node("account-extra").value = '{"accessToken":"fixture-bare"}';
-  await bare.node("account-save").click();
+  await bare.node("provider-configure-claude").click();
+  bare.node("cfg-claude-paste").value = '{"accessToken":"fixture-bare"}';
+  await bare.node("cfg-claude-paste").dispatch("input");
+  await bare.node("cfg-save-claude").click();
   const bareCall = bare.calls.find(x => x.command === "save_credential_account");
   assert.equal(
     oauthJSON(bareCall.args.payload.oauth),
@@ -913,17 +922,59 @@ test("claude paste keeps a wrapped entry and wraps a bare one (C081)", async () 
 });
 
 test("OpenCode GO requires auth and workspaceId and surfaces the reason (C081)", async () => {
-  const app = await boot({ html: "settings.html" });
-  app.node("account-provider").value = "opencodeGoQuotaAccounts";
-  app.node("account-id").value = "work";
-  app.node("account-extra").value = '{"auth":"Fe26.2**fixture"}';
-  await app.node("account-save").click();
+  const app = await boot({
+    html: "settings.html",
+    settings: { ...defaults, enabledProviders: ["opencodeGo"] },
+  });
+  await app.node("provider-configure-opencodeGo").click();
+  app.node("cfg-opencodeGo-paste").value = '{"auth":"Fe26.2**fixture"}';
+  await app.node("cfg-opencodeGo-paste").dispatch("input");
+  await app.node("cfg-save-opencodeGo").click();
   assert.equal(
     app.calls.some(call => call.command === "save_credential_account"),
     false,
     "缺 workspaceId 不得提交"
   );
-  assert.match(app.node("account-status").textContent, /workspaceId/);
+  assert.match(app.node("cfg-status").textContent, /workspaceId/);
+});
+
+test("subscription pane removes legacy bypass credential cards and keeps only two cards (C095)", async () => {
+  const app = await boot({ html: "settings.html" });
+  const pane = app.node("pane-subscription-content");
+  const cardTitles = [...pane.querySelectorAll(".card-caption")].map(n => n.textContent);
+  assert.deepEqual(
+    cardTitles,
+    ["订阅服务", "添加服务"],
+    "订阅额度页只保留「订阅服务」与「添加服务」两张卡 (对齐 mac SettingsView.subscriptionPane)"
+  );
+  assert.equal(pane.querySelectorAll(".fluent-card").length, 2, "订阅额度页仅渲染 2 张卡片容器");
+  for (const legacyText of [
+    "添加或更新账号凭证",
+    "导入账号",
+    "高级：完整凭证字段维护",
+    "检查已保存账号连接",
+  ]) {
+    assert.doesNotMatch(
+      pane.textContent,
+      new RegExp(legacyText),
+      `遗留旁路卡片/按钮「${legacyText}」必须已被移除`
+    );
+  }
+  for (const legacyId of [
+    "account-provider",
+    "account-id",
+    "account-save",
+    "credentials-validate",
+    "connection-status",
+    "credential-import",
+    "credential-fields",
+    "credentials-save",
+  ]) {
+    assert.equal(app.node(legacyId), null, `遗留 DOM #${legacyId} 不得存在`);
+  }
+  // Codex 通过专属配置对话框走设备码登录与账号发现 (C084)
+  await app.node("provider-configure-codex").click();
+  assert.ok(app.node("cfg-codex-login"), "Codex 对话框提供设备码登录入口");
 });
 
 test("dashboard dismisses via Escape key calling hide_dashboard", async () => {
@@ -1878,3 +1929,189 @@ test("top HUD four-color status light matches shared parity fixture and drives D
     assert.ok(css.includes(toneRule), `styles.css 包含 ${toneRule}`);
   }
 });
+
+test("codex dialog drives device login and discovery buttons follow local files (C084)", async () => {
+  const flush = async (times = 8) => {
+    for (let i = 0; i < times; i += 1) {
+      await new Promise(resolve => setTimeout(resolve, 0));
+      await settle();
+    }
+  };
+  const app = await boot({
+    html: "settings.html",
+    settings: { ...defaults, enabledProviders: ["codex"] },
+  });
+  await app.node("provider-configure-codex").click();
+  // 两个来源都存在时两个发现入口都出现
+  assert.ok(app.node("cfg-codex-discover-cli"), "本机 CLI 来源存在即显示发现按钮");
+  assert.ok(app.node("cfg-codex-discover-ccswitch"), "CC Switch 来源存在即显示发现按钮");
+
+  await app.node("cfg-codex-login").click();
+  assert.ok(app.calls.some(c => c.command === "codex_device_start"), "点击登录即发起设备码申请");
+  assert.match(app.node("provider-dialog").textContent, /ABCD-1234/, "展示服务端下发的验证码");
+  assert.equal(app.node("cfg-codex-device").classList.contains("hidden"), false, "设备码面板可见");
+  await app.node("cfg-codex-reopen").click();
+  assert.ok(app.calls.some(c => c.command === "open_verification_page"), "可重新打开验证页");
+
+  // 轮询 pending → authorized (fixture intervalSeconds=0)
+  await flush();
+  const polls = app.calls.filter(c => c.command === "codex_device_poll");
+  assert.ok(polls.length >= 2, `授权完成前逐轮轮询 (实际 ${polls.length} 次)`);
+  assert.equal(polls[0].args.userCode, "ABCD-1234", "轮询带上服务端下发的验证码");
+  // 授权完成后账号落库并进入已配置
+  assert.match(app.node("provider-dialog").textContent, /acct-1/, "授权后账号出现在已配置清单");
+  assert.match(app.node("provider-dialog").textContent, /已登录 a@b\.c/, "回执点名新登录账号");
+  const codexTail = () => [...app.node("setting-providers").querySelectorAll(".provider-row")]
+    .find(row => row.querySelector(".provider-name").textContent === "Codex")
+    .querySelector(".auth-state");
+  assert.equal(codexTail().textContent, "已配置");
+});
+
+test("codex discovered metadata accounts need reauthorization and stay out of configured (C084)", async () => {
+  const app = await boot({
+    html: "settings.html",
+    accounts: [{ field: "codexQuotaAccounts", accountId: "discovered-1", displayName: "discovered-1", authorizationState: "reauthRequired", usable: false }],
+    settings: { ...defaults, enabledProviders: [] },
+  });
+  const row = () => [...app.node("setting-providers").querySelectorAll(".provider-row")]
+    .find(item => item.querySelector(".provider-name").textContent === "Codex");
+  // 发现的账号只写元数据: 行尾件提示「需要重新授权」, 但不得计入「已配置」
+  assert.equal(row().querySelector(".auth-state").textContent, "需要重新授权");
+  assert.equal(app.node("provider-codex").disabled, true, "元数据账号不得启用 (fail-closed)");
+
+  await app.node("provider-configure-codex").click();
+  assert.match(app.node("provider-dialog").textContent, /需要重新授权/, "对话框列出待授权账号");
+  assert.match(app.node("provider-dialog").textContent, /未配置/, "横幅不得写已配置");
+  await app.node("cfg-codex-discover-cli").click();
+  assert.ok(app.calls.some(c => c.command === "codex_import_discovered"), "发现按钮调用只读发现命令");
+  assert.match(app.node("provider-dialog").textContent, /发现 1 个账号（需重新授权）/, "发现回执说明只写元数据");
+});
+
+test("codex dialog hides discovery entries when no local account files exist (C084)", async () => {
+  const app = await boot({
+    html: "settings.html",
+    codexSources: { cliAuth: false, ccSwitch: false },
+    settings: { ...defaults, enabledProviders: ["codex"] },
+  });
+  await app.node("provider-configure-codex").click();
+  assert.equal(app.node("cfg-codex-discover-cli"), null, "无 CLI 文件时不显示对应入口");
+  assert.equal(app.node("cfg-codex-discover-ccswitch"), null, "无 CC Switch 文件时不显示对应入口");
+  assert.match(app.node("provider-dialog").textContent, /未发现本机 Codex CLI/, "给出缺失说明");
+});
+
+test("grok dialog follows the local CLI login and counts as configured (C085)", async () => {
+  const app = await boot({
+    html: "settings.html",
+    accounts: [],
+    grokLocal: { status: "followed", storedAccountCount: 0 },
+    settings: { ...defaults, enabledProviders: ["grok"] },
+  });
+  // 本机只读跟随计入「已配置」(设计规则 26), 不落盘也应显示已配置。
+  const row = () => [...app.node("setting-providers").querySelectorAll(".provider-row")]
+    .find(item => item.querySelector(".provider-name").textContent === "Grok");
+  assert.equal(row().querySelector(".auth-state").textContent, "已配置");
+
+  await app.node("provider-configure-grok").click();
+  assert.match(app.node("provider-dialog").textContent, /%USERPROFILE%\\\.grok\\auth\.json/, "说明只读来源");
+  assert.match(app.node("grok-local-state").textContent, /自动跟随本机 Grok CLI 登录态/);
+  assert.equal(app.node("grok-local-state").classList.contains("ok"), true);
+  await app.node("grok-local-detect").click();
+  assert.ok(app.calls.some(c => c.command === "grok_local_status"), "重新检测调用探测命令");
+  await app.node("grok-local-import").click();
+  assert.ok(app.calls.some(c => c.command === "import_grok_from_local"), "从本机导入调用导入命令");
+
+  // 未发现 / 已过期时不计入「已配置」
+  for (const [status, text] of [["notFound", "未检测到本机 Grok 登录态"], ["expired", "登录已过期"]]) {
+    const other = await boot({
+      html: "settings.html",
+      accounts: [],
+      grokLocal: { status, storedAccountCount: 0 },
+      settings: { ...defaults, enabledProviders: ["grok"] },
+    });
+    const otherRow = [...other.node("setting-providers").querySelectorAll(".provider-row")]
+      .find(item => item.querySelector(".provider-name").textContent === "Grok");
+    assert.equal(otherRow.querySelector(".auth-state").textContent, "未配置", `${status} 不得计入已配置`);
+    await other.node("provider-configure-grok").click();
+    assert.match(other.node("grok-local-state").textContent, new RegExp(text));
+  }
+});
+
+test("claude dialog keeps the paste entry collapsed behind an advanced section (C085)", async () => {
+  const app = await boot({
+    html: "settings.html",
+    accounts: [],
+    claudeLocal: { status: "followed", storedAccountCount: 0 },
+    settings: { ...defaults, enabledProviders: ["claude"] },
+  });
+  await app.node("provider-configure-claude").click();
+  const details = app.node("provider-dialog").querySelector(".cfg-advanced");
+  assert.ok(details, "粘贴入口收进 .cfg-advanced 折叠区");
+  assert.equal(details.getAttribute("open"), null, "默认折叠 (无 open 属性)");
+  assert.ok(details.querySelector("#cfg-claude-paste"), "折叠区内仍是原粘贴元素 (id 不变)");
+  assert.ok(details.querySelector("#cfg-claude-secret"), "纯令牌入口同样在折叠区内");
+});
+
+test("opencode GO account id derives from workspaceId so re-pasting upserts (C085)", async () => {
+  const app = await boot({ html: "settings.html", settings: { ...defaults, enabledProviders: ["opencodeGo"] } });
+  const paste = async (workspaceId) => {
+    await app.node("provider-configure-opencodeGo").click();
+    app.node("cfg-opencodeGo-paste").value = JSON.stringify({ auth: "Fe26.2**fixture", workspaceId });
+    await app.node("cfg-opencodeGo-paste").dispatch("input");
+    await app.node("cfg-save-opencodeGo").click();
+    return app.calls.filter(c => c.command === "save_credential_account").pop().args.accountId;
+  };
+  const first = await paste("wrk_first");
+  const again = await paste("wrk_first");
+  assert.equal(first, again, "同一 workspaceId 重复粘贴必须 upsert 到同一账号");
+  const other = await paste("wrk_second");
+  assert.notEqual(first, other, "不同 workspaceId 视为不同账号");
+});
+
+test("stepfun dialog supports embedded web login auto-capture, site switch, session clear and manual fallback (C086)", async () => {
+  const app = await boot({
+    html: "settings.html",
+    settings: {
+      ...defaults,
+      enabledProviders: [],
+      subscriptionProviders: {
+        stepfun: { enabled: false, lastVerifiedAt: null, verificationStatus: "none", failureReason: null },
+      },
+    },
+    stepfunPoll: [
+      { status: "captured", site: "global", currentUrl: "https://platform.stepfun.ai/plan-subscribe", accountId: "stepfun-web1", message: "🎉 检测到 🌐 国际站 登录完成，已提取 Oasis-Token" },
+    ],
+  });
+  await app.node("provider-configure-stepfun").click();
+
+  // 1. 网页登录自动绑定入口与手动粘贴并存，引导与 mac 逐字对齐
+  assert.ok(app.node("cfg-stepfun-login-domestic"), "包含国内站网页登录按钮");
+  assert.ok(app.node("cfg-stepfun-login-global"), "包含国际站网页登录按钮");
+  assert.match(app.node("provider-dialog").textContent, /可点击上方一键登录自动绑定\(支持国内\/国际站\)，或控制台按 F12 复制 Cookie/);
+  assert.equal(app.node("cfg-stepfun-web-panel").classList.contains("hidden"), true, "初始隐藏网页登录控制面板");
+
+  // 2. 点击「登录国内站」打开网页窗口并展开控制面板
+  await app.node("cfg-stepfun-login-domestic").click();
+  assert.ok(app.calls.some(c => c.command === "stepfun_web_login_open" && c.args.site === "domestic"));
+  assert.equal(app.node("cfg-stepfun-web-panel").classList.contains("hidden"), false, "打开网页窗口后显示控制面板");
+  assert.equal(app.node("cfg-stepfun-web-title").textContent, "登录阶跃星辰开放平台 · 🇨🇳 国内站");
+  assert.equal(app.node("cfg-stepfun-web-url").textContent, "https://platform.stepfun.com/step-plan");
+
+  // 3. 工具栏导航与清理缓存可正常调用
+  await app.node("cfg-stepfun-web-home").click();
+  assert.ok(app.calls.some(c => c.command === "stepfun_web_login_action" && c.args.action === "home"));
+  assert.equal(app.node("cfg-stepfun-web-url").textContent, "https://platform.stepfun.com");
+  await app.node("cfg-stepfun-web-clear").click();
+  assert.ok(app.calls.some(c => c.command === "stepfun_web_login_clear_session"));
+  assert.match(app.node("cfg-stepfun-web-status").textContent, /已清空 .* 登录缓存/);
+
+  // 4. 切换到国际站，再由页面加载事件触发轮询完成自动捕获
+  await app.node("cfg-stepfun-web-site-global").click();
+  assert.ok(app.calls.some(c => c.command === "stepfun_web_login_open" && c.args.site === "global"));
+  assert.equal(app.node("cfg-stepfun-web-title").textContent, "登录阶跃星辰开放平台 · 🌐 国际站");
+
+  await app.emit("stepfun-page-load", { url: "https://platform.stepfun.ai/plan-subscribe", loading: false });
+  assert.ok(app.calls.some(c => c.command === "verify_subscription" && c.args.provider === "stepfun"), "捕获后触发订阅验证");
+  assert.equal(app.state.settings.subscriptionProviders.stepfun.enabled, true, "验证通过后启用 StepFun");
+  assert.match(app.node("provider-dialog").textContent, /StepFun · web1/, "捕获的账号进入已配置列表");
+});
+

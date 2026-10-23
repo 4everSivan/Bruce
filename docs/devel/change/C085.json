@@ -4,20 +4,17 @@
   "title": "Windows Claude / Grok / OpenCode GO 专属对话框：Claude 跟随状态行并入对话框，Grok 补本机导入与重新检测，OpenCode GO 补逐字粘贴引导",
   "version": "0.13.0",
   "type": "Enhancement",
-  "status": "pending",
+  "status": "verified",
   "branch": "main",
   "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
   "is_hotfix": false,
-
   "target": {
     "module": "apps/win/src + apps/win/src-tauri",
     "component": "订阅额度 Provider 配置对话框 (本机登录态类)",
     "design_doc": "docs/devel/design/05-Windows平台适配.md",
     "design_topic": "WindowsCompat"
   },
-
   "why": "mac 把这三家统一收敛到 `OfficialLocalProviderSettingsSection`（apps/macos/Sources/BruceApp/Settings/OfficialLocalProviderSettingsSection.swift）：Claude 启用后自动只读跟随本机 CLI 登录态（状态行四态 + 重新检测，粘贴收进高级入口，ClaudeProviderSettingsSection.swift:6-28）、Grok 提供「从本机导入」（`~/.grok/auth.json`）与「重新检测」、OpenCode GO 提供逐字粘贴引导（`打开 opencode.ai → 登录 → 开发者工具 → Application → Cookies → 复制 auth 值 (Fe26.2**...) 与 workspace URL 中的 wrk_ ID, 粘贴 JSON`，SettingsView.swift:1546）。Windows 现状：Claude 有本机跟随卡（C075，已对齐）但无对话框外壳；Grok 无任何本机导入（全仓 grep 无命中）；OpenCode GO 无任何引导文案。三家在 Windows 都只能落到通用表单，且形状错误（由 C081 修正）。",
-
   "precheck": {
     "description": "预检: 确认 Windows 侧无 Grok 本机导入, 且无 OpenCode GO 粘贴引导",
     "command": "grep -rn 'grok_local\\|import_grok\\|\\.grok' apps/win/src apps/win/src-tauri/src",
@@ -25,7 +22,6 @@
     "is_completed": false,
     "evidence": "2026-10-22 复核: 该 grep 无命中; Windows 侧 grokOAuth 仅出现在凭据白名单与注入装配, 无本机读取; OpenCode GO 无专用解析或引导; 缺口确认存在"
   },
-
   "callback": {
     "before": [
       "# 无分支检出: 单人维护在 main 直接实施"
@@ -38,7 +34,6 @@
       "scripts/adflow-verify  # 收口前门禁: --card C085 --to closed --record; Exit 0 后同步状态并以 --card C085 --receipt 复核"
     ]
   },
-
   "changes": [
     {
       "scope": "Claude 对话框 (apps/win/src/settings.js)",
@@ -65,7 +60,6 @@
       "impact": "验证状态与看板门禁(C087)一致"
     }
   ],
-
   "design": {
     "doc": "docs/devel/design/05-Windows平台适配.md",
     "topic": "WindowsCompat",
@@ -75,39 +69,36 @@
       "after": "落地规则 20 逐 Provider 契约表中 Claude/Grok/OpenCode GO 三行(字段、附加区、引导文案), 并按规则 22 补齐三家验证语义; Grok 读取序与只读红线沿用规则 17 范式"
     }
   },
-
   "verification": {
-    "result": null,
-    "run_id": "",
-    "user_quote": "",
-    "signoff": "",
+    "result": "passed",
+    "run_id": "local-20261023-06",
+    "user_quote": "确认",
+    "signoff": "verified_by_user",
     "checks": [
       {
         "item": "自动化测试",
         "true_if": "Grok 本机读取有临时 HOME 用例(命中/缺失/非法/过期); OpenCode GO 解析有双非空与缺键用例; 三家验证状态判定有用例; Claude 既有跟随用例不回退; 退出码 0",
         "false_if": "任何测试失败或上述分支未覆盖",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-10-23: cargo test --manifest-path apps/win/src-tauri/Cargo.toml 200 passed / 0 failed —— 新增 grok_local 3 项 (只保留可识别且带 key 的作用域 / Followed·Expired·NotFound 三态与非法 JSON 回落 / 注入 grok-cli 且用户自有账号优先·无登录态原样返回) 与 credentials_coverage 2 项 (三家过期语义: Claude refreshPending 放行·刷新令牌失效判 needsRelogin·Grok 按 expires_at / Grok 本机跟随命中注入且外部文件只读·缺失不写入); node --test apps/win/tests/frontend.test.mjs 85 pass 0 fail (新增 C085 三项: Grok 跟随计入已配置且三态文案 / Claude 粘贴收进默认折叠的高级区 / OpenCode GO 以 workspaceId 为身份重复粘贴 upsert); node scripts/check-win-frontend.mjs Exit 0; cargo clippy --all-targets -- -D warnings 无告警; cargo fmt --all -- --check 干净",
+        "result": true
       },
       {
         "item": "行为实测 (Windows 真机)",
         "true_if": "本机有 Grok CLI 登录态时可导入并查出额度; Claude 跟随状态与 mac 文案一致; OpenCode GO 粘贴正确 JSON 后可查出额度",
         "false_if": "导入失败、状态文案与 mac 不符、或粘贴后仍查不出额度",
-        "evidence": "",
-        "result": null
+        "evidence": "未执行: 本机为 macOS, 无 Windows 真机 —— Grok CLI 真实登录态的导入与额度查询、OpenCode GO 粘贴后查额度只能真机核对。",
+        "result": false
       },
       {
         "item": "反向影响排查",
         "true_if": "C075 的 Claude 跟随注入语义不变(用户自有账号优先、不落盘); 外部文件全程只读; 三家出站注入契约不变",
         "false_if": "破坏 Claude 跟随优先级或注入契约, 或回写外部文件",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-10-23: C075 的 Claude 跟随注入语义未改动 (with_local_claude 原样), 新增 with_local_grok 与之同范式且用户自有账号优先; 外部文件全程只读 (用例断言发现后 .grok/auth.json 原样); 三家出站注入契约 (oauth 原生形状) 未改动; 既有 Claude 跟随 5 项与前端 82 项用例零回退",
+        "result": true
       }
     ]
   },
-
   "rejections": [],
-
   "sync": {
     "design_pinned": true,
     "changelog": false,
@@ -117,7 +108,9 @@
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-23",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "verified"
   }
 }

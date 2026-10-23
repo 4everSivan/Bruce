@@ -488,11 +488,122 @@ mod desktop {
         Ok(())
     }
 
+    /// 用系统默认浏览器打开外部地址 (C084)。走 Win32 `ShellExecuteW`, 不新增依赖;
+    /// 非 Windows 构建下不可用 (开发机只跑测试, 真实打开由 Windows 侧承担)。
+    #[cfg(windows)]
+    fn open_external_url(url: &str) -> Result<(), String> {
+        use windows_sys::Win32::UI::Shell::ShellExecuteW;
+        let operation: Vec<u16> = "open\0".encode_utf16().collect();
+        let file: Vec<u16> = format!("{url}\0").encode_utf16().collect();
+        // Win32 约定: 返回值 <= 32 表示失败。
+        let result = unsafe {
+            ShellExecuteW(
+                std::ptr::null_mut(),
+                operation.as_ptr(),
+                file.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                1, // SW_SHOWNORMAL
+            )
+        };
+        if result as isize > 32 {
+            Ok(())
+        } else {
+            Err("无法打开系统浏览器".to_owned())
+        }
+    }
+
+    #[cfg(not(windows))]
+    fn open_external_url(_url: &str) -> Result<(), String> {
+        Err("仅 Windows 支持打开外部浏览器".to_owned())
+    }
+
     #[tauri::command]
     fn import_codex_auth(app: tauri::AppHandle, auth: serde_json::Value) -> Result<(), String> {
         credentials::import_codex_auth(&paths::data_root(), &auth)?;
         app.state::<SchedulerControl>().request_manual_refresh();
         Ok(())
+    }
+
+    /// Codex 设备码登录第一步 (C084 / 设计规则 23): 申请设备码并尝试打开官方验证页。
+    /// 只由用户在设置页点击触发。打不开浏览器不算致命 —— 前端仍展示 user_code 与地址。
+    #[tauri::command]
+    fn codex_device_start() -> Result<serde_json::Value, String> {
+        let authorization = credentials::codex_device_start().map_err(|e| e.message())?;
+        let browser_opened = open_external_url(credentials::CODEX_VERIFICATION_URL).is_ok();
+        Ok(serde_json::json!({
+            "deviceAuthId": authorization.device_auth_id,
+            "userCode": authorization.user_code,
+            "verificationUrl": credentials::CODEX_VERIFICATION_URL,
+            "intervalSeconds": authorization.interval_secs,
+            "expiresInSeconds": authorization.expires_in_secs,
+            "browserOpened": browser_opened,
+        }))
+    }
+
+    /// Codex 设备码登录第二步: 单次轮询 (前端按 interval 驱动, 便于呈现等待 / 完成阶段)。
+    /// 授权完成后在同一次调用里换码、写账号并请求定向刷新; 任一步失败 fail-closed, 不写半成品。
+    #[tauri::command]
+    fn codex_device_poll(
+        app: tauri::AppHandle,
+        device_auth_id: String,
+        user_code: String,
+        issued_at_millis: i64,
+        expires_in_seconds: u64,
+    ) -> Result<serde_json::Value, String> {
+        let elapsed = chrono::Utc::now().timestamp_millis() - issued_at_millis;
+        if elapsed >= (expires_in_seconds as i64) * 1000 {
+            return Ok(serde_json::json!({"status": "expired"}));
+        }
+        let authorization = credentials::CodexDeviceAuthorization {
+            device_auth_id,
+            user_code,
+            interval_secs: 0,
+            expires_in_secs: expires_in_seconds,
+        };
+        match credentials::codex_device_poll_once(&authorization).map_err(|e| e.message())? {
+            credentials::CodexPollOutcome::Pending => Ok(serde_json::json!({"status": "pending"})),
+            credentials::CodexPollOutcome::Authorized(grant) => {
+                let account =
+                    credentials::codex_device_exchange(&grant, chrono::Utc::now().timestamp())
+                        .map_err(|e| e.message())?;
+                credentials::save_credential_account(
+                    &paths::data_root(),
+                    "codexQuotaAccounts",
+                    &account.account_id,
+                    &account.to_payload(),
+                )?;
+                app.state::<SchedulerControl>().request_manual_refresh();
+                Ok(serde_json::json!({
+                    "status": "authorized",
+                    "accountId": account.account_id,
+                    "email": account.email,
+                }))
+            }
+        }
+    }
+
+    /// 重新打开 Codex 验证页 (C084)。
+    #[tauri::command]
+    fn open_verification_page() -> Result<(), String> {
+        open_external_url(credentials::CODEX_VERIFICATION_URL)
+    }
+
+    /// 只读发现本机 Codex 账号 (C084): 读 CLI 与 CC Switch 文件, 只写元数据、不导入令牌。
+    #[tauri::command]
+    fn codex_import_discovered(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+        let added = credentials::import_codex_discovered(&paths::data_root(), &paths::home_root())?;
+        if added > 0 {
+            app.state::<SchedulerControl>().request_manual_refresh();
+        }
+        Ok(serde_json::json!({"added": added}))
+    }
+
+    /// 两个 Codex 发现来源文件是否存在 (设置页按钮显隐)。
+    #[tauri::command]
+    fn codex_discovery_sources() -> serde_json::Value {
+        let (cli_auth, cc_switch) = credentials::codex_discovery_sources(&paths::home_root());
+        serde_json::json!({"cliAuth": cli_auth, "ccSwitch": cc_switch})
     }
 
     /// 本机 Claude CLI 登录态只读探测 (C075, 设置页状态文案): 返回状态与已存账号数。
@@ -513,6 +624,29 @@ mod desktop {
     fn import_claude_from_local(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
         let status = credentials::follow_local_claude(&paths::data_root(), &paths::home_root())?;
         if status != credentials::ClaudeLocalStatus::NotFound {
+            app.state::<SchedulerControl>().request_manual_refresh();
+        }
+        Ok(serde_json::json!({"status": status.as_str()}))
+    }
+
+    /// 本机 Grok CLI 登录态只读探测 (C085, 设置页状态文案): 返回状态与已存账号数。
+    #[tauri::command]
+    fn grok_local_status() -> serde_json::Value {
+        let home = paths::home_root();
+        let status = credentials::local_grok_status(&home, chrono::Utc::now().timestamp_millis());
+        let stored = credentials::load_credentials(&paths::data_root())
+            .get("grokQuotaAccounts")
+            .and_then(serde_json::Value::as_object)
+            .map(|accounts| accounts.len())
+            .unwrap_or(0);
+        serde_json::json!({"status": status.as_str(), "storedAccountCount": stored})
+    }
+
+    /// 读取本机 Grok 登录态并保存为 `grok-cli` 账号 (C085): 只读外部文件, 不回写。
+    #[tauri::command]
+    fn import_grok_from_local(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+        let status = credentials::follow_local_grok(&paths::data_root(), &paths::home_root())?;
+        if status != credentials::GrokLocalStatus::NotFound {
             app.state::<SchedulerControl>().request_manual_refresh();
         }
         Ok(serde_json::json!({"status": status.as_str()}))
@@ -558,6 +692,242 @@ mod desktop {
         )?;
         app.state::<SchedulerControl>().request_manual_refresh();
         Ok(serde_json::json!({"status": result.status, "reason": result.reason}))
+    }
+
+    // ── StepFun 网页登录窗口与 Cookie 自动捕获 (C086 / 设计规则 24) ───────────────
+
+    const STEPFUN_LOGIN_WINDOW_LABEL: &str = "stepfun-login";
+
+    fn parse_stepfun_site(raw: &str) -> Result<credentials::StepFunSite, String> {
+        credentials::StepFunSite::parse(raw).ok_or_else(|| "未知 StepFun 站点".to_owned())
+    }
+
+    /// 从 WebviewWindow 采集候选 Cookie。
+    ///
+    /// 调用方必须位于 `async` command 或独立线程: WebView2 的 `cookies()` / `cookies_for_url()`
+    /// 在 Windows 同步 command 中会因 STA 重入死锁 (wry#583)。
+    fn collect_stepfun_cookies(
+        window: &tauri::WebviewWindow,
+        site: credentials::StepFunSite,
+    ) -> Vec<credentials::StepFunCookieCandidate> {
+        let mut out = Vec::new();
+        if let Ok(home_url) = site.home_url().parse::<tauri::Url>() {
+            if let Ok(cookies) = window.cookies_for_url(home_url) {
+                for cookie in cookies {
+                    out.push(credentials::StepFunCookieCandidate {
+                        name: cookie.name().to_owned(),
+                        value: cookie.value().to_owned(),
+                        domain: cookie.domain().unwrap_or(site.domain_keyword()).to_owned(),
+                    });
+                }
+            }
+        }
+        if let Ok(cookies) = window.cookies() {
+            for cookie in cookies {
+                out.push(credentials::StepFunCookieCandidate {
+                    name: cookie.name().to_owned(),
+                    value: cookie.value().to_owned(),
+                    domain: cookie.domain().unwrap_or_default().to_owned(),
+                });
+            }
+        }
+        out
+    }
+
+    /// 打开或切换 StepFun 网页登录窗口 (`WebviewUrl::External`, async command 避免 STA 死锁)。
+    #[tauri::command]
+    async fn stepfun_web_login_open(
+        app: tauri::AppHandle,
+        site: String,
+    ) -> Result<serde_json::Value, String> {
+        let site = parse_stepfun_site(&site)?;
+        let target_url: tauri::Url = site
+            .base_url()
+            .parse()
+            .map_err(|_| "StepFun 订阅页地址无效".to_owned())?;
+        let title = format!("登录阶跃星辰开放平台 · {}", site.display_name());
+
+        if let Some(window) = app.get_webview_window(STEPFUN_LOGIN_WINDOW_LABEL) {
+            let _ = window.set_title(&title);
+            let _ = window.navigate(target_url);
+            let _ = window.unminimize();
+            let _ = window.show();
+            let _ = window.set_focus();
+        } else {
+            let app_for_load = app.clone();
+            let window = tauri::WebviewWindowBuilder::new(
+                &app,
+                STEPFUN_LOGIN_WINDOW_LABEL,
+                tauri::WebviewUrl::External(target_url),
+            )
+            .title(&title)
+            .inner_size(580.0, 700.0)
+            .min_inner_size(540.0, 640.0)
+            .resizable(true)
+            .center()
+            .user_agent(credentials::STEPFUN_DESKTOP_CHROME_UA)
+            .on_page_load(move |_window, payload| {
+                let loading = matches!(payload.event(), tauri::webview::PageLoadEvent::Started);
+                let _ = app_for_load.emit(
+                    "stepfun-page-load",
+                    serde_json::json!({
+                        "url": payload.url().as_str(),
+                        "loading": loading,
+                    }),
+                );
+            })
+            .build()
+            .map_err(|e| format!("无法打开 StepFun 登录窗口: {e}"))?;
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+
+        Ok(serde_json::json!({
+            "site": site.as_str(),
+            "url": site.base_url(),
+            "title": title,
+            "intervalMs": 2000,
+        }))
+    }
+
+    /// 网页登录工具栏动作: 后退 / 前进 / 刷新 / 订阅页 / 平台首页。
+    #[tauri::command]
+    async fn stepfun_web_login_action(
+        app: tauri::AppHandle,
+        action: String,
+        site: Option<String>,
+    ) -> Result<serde_json::Value, String> {
+        let window = app
+            .get_webview_window(STEPFUN_LOGIN_WINDOW_LABEL)
+            .ok_or_else(|| "StepFun 登录窗口尚未打开".to_owned())?;
+        let parsed_site = site
+            .as_deref()
+            .and_then(credentials::StepFunSite::parse)
+            .unwrap_or(credentials::StepFunSite::Domestic);
+        match action.as_str() {
+            "back" => {
+                let _ = window.eval("window.history.back()");
+            }
+            "forward" => {
+                let _ = window.eval("window.history.forward()");
+            }
+            "reload" => {
+                let _ = window.reload();
+            }
+            "plan" => {
+                if let Ok(url) = parsed_site.base_url().parse::<tauri::Url>() {
+                    let _ = window.navigate(url);
+                }
+            }
+            "home" => {
+                if let Ok(url) = parsed_site.home_url().parse::<tauri::Url>() {
+                    let _ = window.navigate(url);
+                }
+            }
+            _ => return Err("未知网页操作".to_owned()),
+        }
+        let current_url = window.url().map(|u| u.to_string()).unwrap_or_default();
+        Ok(serde_json::json!({ "url": current_url }))
+    }
+
+    /// 双轨自动轮询与手动「我已登录，立即绑定」共用的异步 Cookie 提取与远程校验入口。
+    ///
+    /// 必须保持 `async fn`: 在 Tokio 工作线程上调用 `cookies_for_url` / `cookies` 与远程
+    /// `QueryStepPlanRateLimit` 校验, 绝不阻塞 Win32 STA 主线程。
+    #[tauri::command]
+    async fn stepfun_web_login_poll(
+        app: tauri::AppHandle,
+        site: String,
+        manual: bool,
+    ) -> Result<serde_json::Value, String> {
+        let site = parse_stepfun_site(&site)?;
+        let Some(window) = app.get_webview_window(STEPFUN_LOGIN_WINDOW_LABEL) else {
+            return Ok(serde_json::json!({
+                "status": "closed",
+                "message": "登录窗口已关闭",
+                "currentUrl": "",
+            }));
+        };
+        let current_url = window.url().map(|u| u.to_string()).unwrap_or_default();
+        let cookies = collect_stepfun_cookies(&window, site);
+        match credentials::capture_stepfun_cookie(
+            &paths::data_root(),
+            site,
+            &current_url,
+            &cookies,
+            manual,
+        )? {
+            credentials::StepFunCaptureOutcome::Captured {
+                site: captured_site,
+                account_id,
+                message,
+                ..
+            } => {
+                let _ = window.close();
+                app.state::<SchedulerControl>().request_manual_refresh();
+                Ok(serde_json::json!({
+                    "status": "captured",
+                    "site": captured_site.as_str(),
+                    "accountId": account_id,
+                    "message": message,
+                    "currentUrl": current_url,
+                }))
+            }
+            credentials::StepFunCaptureOutcome::Waiting { message } => Ok(serde_json::json!({
+                "status": "waiting",
+                "message": message,
+                "currentUrl": current_url,
+            })),
+            credentials::StepFunCaptureOutcome::Failed { message } => Ok(serde_json::json!({
+                "status": "failed",
+                "message": message,
+                "currentUrl": current_url,
+            })),
+        }
+    }
+
+    /// 清除当前站点域下的全部登录 Cookie 并重新加载订阅页 (对齐 `clearSessionAndReload`)。
+    #[tauri::command]
+    async fn stepfun_web_login_clear_session(
+        app: tauri::AppHandle,
+        site: String,
+    ) -> Result<serde_json::Value, String> {
+        let site = parse_stepfun_site(&site)?;
+        let window = app
+            .get_webview_window(STEPFUN_LOGIN_WINDOW_LABEL)
+            .ok_or_else(|| "StepFun 登录窗口尚未打开".to_owned())?;
+        if let Ok(home_url) = site.home_url().parse::<tauri::Url>() {
+            if let Ok(cookies) = window.cookies_for_url(home_url) {
+                for cookie in cookies {
+                    let _ = window.delete_cookie(cookie);
+                }
+            }
+        }
+        if let Ok(cookies) = window.cookies() {
+            for cookie in cookies {
+                let domain = cookie.domain().unwrap_or_default();
+                if credentials::stepfun_cookie_matches_site(domain, site) {
+                    let _ = window.delete_cookie(cookie);
+                }
+            }
+        }
+        if let Ok(base_url) = site.base_url().parse::<tauri::Url>() {
+            let _ = window.navigate(base_url);
+        }
+        Ok(serde_json::json!({
+            "status": "cleared",
+            "url": site.base_url(),
+            "message": format!("已清空 {} 登录缓存，正在刷新...", site.display_name()),
+        }))
+    }
+
+    /// 关闭 StepFun 网页登录窗口。
+    #[tauri::command]
+    async fn stepfun_web_login_close(app: tauri::AppHandle) -> Result<(), String> {
+        if let Some(window) = app.get_webview_window(STEPFUN_LOGIN_WINDOW_LABEL) {
+            let _ = window.close();
+        }
+        Ok(())
     }
 
     #[tauri::command]
@@ -805,8 +1175,15 @@ mod desktop {
                 remove_credential_account,
                 save_credential_account,
                 import_codex_auth,
+                codex_device_start,
+                codex_device_poll,
+                open_verification_page,
+                codex_import_discovered,
+                codex_discovery_sources,
                 claude_local_status,
                 import_claude_from_local,
+                grok_local_status,
+                import_grok_from_local,
                 get_settings,
                 save_settings_command,
                 credential_allowlist,
@@ -816,6 +1193,11 @@ mod desktop {
                 remove_provider_credentials,
                 ccswitch_status,
                 import_volcengine_from_ccswitch,
+                stepfun_web_login_open,
+                stepfun_web_login_action,
+                stepfun_web_login_poll,
+                stepfun_web_login_clear_session,
+                stepfun_web_login_close,
                 refresh_now,
                 refresh_subscription,
                 open_settings,

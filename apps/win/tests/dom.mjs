@@ -143,7 +143,7 @@ export const defaults = {
   layoutMode: "stack", activeCardId: "usage",
 };
 export async function settle() { await new Promise(resolve => setImmediate(resolve)); }
-export async function boot({ html = "index.html", panel = fixture, settings = defaults, reject = {}, accounts = [], rejections = [], dialogPath = "C:\\\\Users\\\\demo\\\\导出.csv", workbench = analytics, claudeLocal = { status: "followed", storedAccountCount: 0 }, verify = { status: "ok", reason: null } } = {}) {
+export async function boot({ html = "index.html", panel = fixture, settings = defaults, reject = {}, accounts = [], rejections = [], dialogPath = "C:\\\\Users\\\\demo\\\\导出.csv", workbench = analytics, claudeLocal = { status: "followed", storedAccountCount: 0 }, verify = { status: "ok", reason: null }, grokLocal = { status: "followed", storedAccountCount: 0 }, codexSources = { cliAuth: true, ccSwitch: true }, codexStart = { deviceAuthId: "dev-1", userCode: "ABCD-1234", verificationUrl: "https://auth.openai.com/codex/device", intervalSeconds: 0, expiresInSeconds: 900, browserOpened: true }, codexPoll = [{ status: "pending" }, { status: "authorized", accountId: "acct-1", email: "a@b.c" }], codexImport = { added: 1 }, stepfunOpen = { site: "domestic", url: "https://platform.stepfun.com/step-plan", intervalMs: 2000 }, stepfunPoll = [{ status: "waiting", currentUrl: "https://platform.stepfun.com/step-plan", message: "等待 🇨🇳 国内站 登录完成中..." }, { status: "captured", site: "domestic", currentUrl: "https://platform.stepfun.com/step-plan", accountId: "stepfun-web1", message: "🎉 检测到 🇨🇳 国内站 登录完成，已提取 Oasis-Token" }], stepfunClear = { url: "https://platform.stepfun.com/step-plan", message: "已清空 🇨🇳 国内站 登录缓存，正在刷新..." } } = {}) {
   const htmlSource = readFileSync(resolve("apps/win/src", html), "utf8");
   const document = parseHTML(htmlSource);
   const calls = [], errors = [], events = new Map();
@@ -180,9 +180,50 @@ export async function boot({ html = "index.html", panel = fixture, settings = de
     if (command === "get_model_prices") return [{ model: "fixture-model", displayName: "Fixture Model", vendor: "Fixture Vendor", inputPricePerMillion: 1, outputPricePerMillion: 2, cacheReadPricePerMillion: null, currency: "USD", note: "fixture 备注" }];
     if (command === "claude_local_status") return structuredClone(claudeLocal);
     if (command === "import_claude_from_local") return { status: claudeLocal.status };
+    // C085: Grok 本机只读跟随。
+    if (command === "grok_local_status") return structuredClone(grokLocal);
+    if (command === "import_grok_from_local") return { status: grokLocal.status };
     if (command === "verify_subscription") return structuredClone(typeof verify === "function" ? verify(args) : verify);
     if (command === "ccswitch_status") return { available: true };
     if (command === "import_volcengine_from_ccswitch") return { status: "ok", reason: null };
+    // C084: Codex 设备码登录与只读账号发现。
+    if (command === "codex_discovery_sources") return structuredClone(codexSources);
+    if (command === "codex_device_start") return structuredClone(codexStart);
+    if (command === "open_verification_page") return null;
+    if (command === "codex_device_poll") {
+      const next = codexPoll.shift() ?? { status: "pending" };
+      if (next.status === "authorized") {
+        state.accounts = [...state.accounts, { field: "codexQuotaAccounts", accountId: next.accountId, displayName: next.accountId, authorizationState: "connected", usable: true }];
+      }
+      return structuredClone(next);
+    }
+    if (command === "codex_import_discovered") {
+      state.accounts = [...state.accounts, { field: "codexQuotaAccounts", accountId: "discovered-1", displayName: "discovered-1", authorizationState: "reauthRequired", usable: false }];
+      return structuredClone(codexImport);
+    }
+    // C086: StepFun 内嵌网页登录与自动抓 Cookie。
+    if (command === "stepfun_web_login_open") {
+      const site = args?.site === "global" ? "global" : "domestic";
+      const url = site === "global" ? "https://platform.stepfun.ai/plan-subscribe" : "https://platform.stepfun.com/step-plan";
+      return structuredClone({ ...stepfunOpen, site, url });
+    }
+    if (command === "stepfun_web_login_action") {
+      const url = args?.action === "home" ? "https://platform.stepfun.com" : "https://platform.stepfun.com/step-plan";
+      return { url };
+    }
+    if (command === "stepfun_web_login_poll") {
+      const next = stepfunPoll.shift() ?? { status: "waiting", currentUrl: "https://platform.stepfun.com/step-plan", message: "等待 🇨🇳 国内站 登录完成中..." };
+      if (next.status === "captured") {
+        const id = next.accountId || "stepfun-web1";
+        state.accounts = [
+          ...state.accounts.filter(a => !(a.field === "stepfunQuotaAccounts" && a.accountId === id)),
+          { field: "stepfunQuotaAccounts", accountId: id, displayName: `StepFun · ${id.split("-").pop()}`, authorizationState: "ok", usable: true },
+        ];
+      }
+      return structuredClone(next);
+    }
+    if (command === "stepfun_web_login_clear_session") return structuredClone(stepfunClear);
+    if (command === "stepfun_web_login_close") return null;
     if (command === "get_runtime_info") return { version: "0.11.5", dataRoot: "isolated-data", cacheRoot: "isolated-cache", snapshotPath: "isolated-snapshot", status: { phase: "stale", lastSuccessAt: "2026-10-08T08:00:00Z", error: "COLLECTION_PARTIAL", diagnosticCodes: ["PROVIDER_RATE_LIMIT"] } };
     return null;
   };

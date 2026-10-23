@@ -753,11 +753,29 @@ impl SnapshotState {
         enabled_providers: &[String],
         provider_order: &[String],
     ) -> Value {
+        self.panel_json_verified(now, usage_enabled, enabled_providers, None, provider_order)
+    }
+
+    /// 携带 Provider 验证状态门禁的看板视图模型组装 (C087, 对齐 mac `AppModel.gatedAgentUsageArtifact`):
+    /// 当 `verified_providers` 为 `Some` 时, 订阅段在 `enabled_providers` 过滤之上只保留
+    /// `verificationStatus == "ok"` 的 Provider 的 service; 本地用量 (`agents` / `totalCostUsd`) 不受影响。
+    pub fn panel_json_verified(
+        &self,
+        now: DateTime<FixedOffset>,
+        usage_enabled: bool,
+        enabled_providers: &[String],
+        verified_providers: Option<&std::collections::BTreeSet<String>>,
+        provider_order: &[String],
+    ) -> Value {
         let mut typed = self
             .artifact
             .as_ref()
             .and_then(|a| serde_json::from_value::<AgentUsageArtifact>(a.clone()).ok());
         if let Some(artifact) = typed.as_mut() {
+            if let Some(verified) = verified_providers {
+                *artifact =
+                    bruce_win_viewmodel::subscription::gate_verified_services(artifact, verified);
+            }
             artifact
                 .services
                 .retain(|service| enabled_providers.iter().any(|p| p == provider_id(service)));

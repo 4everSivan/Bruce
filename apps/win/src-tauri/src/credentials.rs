@@ -3,14 +3,43 @@
 
 mod ccswitch;
 mod claude_local;
+mod codex_device;
+mod codex_local;
+mod grok_local;
 mod lifecycle;
+mod stepfun_web;
 #[cfg(windows)]
 mod windows_security;
 pub use ccswitch::{
     database_path as ccswitch_database_path, import_credentials as ccswitch_volcengine_credentials,
 };
 pub use claude_local::{local_claude_status, with_local_claude, ClaudeLocalStatus};
+pub use codex_device::{
+    account_id_of as codex_account_id_of, exchange as codex_device_exchange,
+    poll_once as codex_device_poll_once, start as codex_device_start, CodexLoginAccount,
+    DeviceAuthError as CodexDeviceAuthError, DeviceAuthorization as CodexDeviceAuthorization,
+    DeviceGrant as CodexDeviceGrant, PollOutcome as CodexPollOutcome,
+    VERIFICATION_URL as CODEX_VERIFICATION_URL,
+};
+pub use codex_local::{
+    discover_from_files as codex_discover_from_files, discovery_sources as codex_discovery_sources,
+    metadata_payload as codex_metadata_payload,
+};
+pub use grok_local::{local_grok_status, with_local_grok, GrokLocalStatus};
 pub use lifecycle::{collect_with_recovery, collect_with_recovery_using, CodexRefreshError};
+pub use stepfun_web::{
+    build_verify_request as stepfun_build_verify_request,
+    cookie_matches_site as stepfun_cookie_matches_site,
+    cookies_to_clear as stepfun_cookies_to_clear,
+    evaluate_capture_with as stepfun_evaluate_capture_with,
+    extract_app_id as stepfun_extract_app_id, extract_device_id as stepfun_extract_device_id,
+    is_global_token as stepfun_is_global_token,
+    page_allows_auto_capture as stepfun_page_allows_auto_capture,
+    select_oasis_token as stepfun_select_oasis_token, stepfun_account_id, stepfun_account_payload,
+    verify_remote as stepfun_verify_remote, verify_remote_with as stepfun_verify_remote_with,
+    CookieCandidate as StepFunCookieCandidate, StepFunCaptureOutcome, StepFunRemoteTransport,
+    StepFunSite, StepFunVerifyRequest, UreqStepFunTransport, STEPFUN_DESKTOP_CHROME_UA,
+};
 
 use collector_bridge::ALLOWED_CREDENTIAL_FIELDS;
 use serde_json::{json, Value};
@@ -103,13 +132,14 @@ pub fn validate_credential_payload(field: &str, payload: &Value) -> Result<(), S
             "codexQuotaAccounts" => (
                 &[
                     "display_name",
+                    "email",
                     "access_token",
                     "refresh_token",
                     "id_token",
                     "expiry",
                     "authorization_state",
                 ],
-                &["display_name", "access_token"],
+                &["display_name"],
             ),
             "claudeQuotaAccounts" | "grokQuotaAccounts" | "opencodeGoQuotaAccounts" => {
                 (&["display_name", "oauth"], &[])
@@ -125,6 +155,15 @@ pub fn validate_credential_payload(field: &str, payload: &Value) -> Result<(), S
             })
         {
             return Err("凭证账号字段无效或缺少必填值".to_owned());
+        }
+        // C084: 只读发现写入的是 metadata-only 记录 (authorization_state = reauthRequired,
+        // 无令牌), 故 access_token 必填放宽为「非元数据记录才必填」; 可出站的账号形状
+        // 仍然完整, 采集端另有 reauthRequired 过滤 (collector.rs)。
+        if field == "codexQuotaAccounts"
+            && account.get("authorization_state").and_then(Value::as_str) != Some("reauthRequired")
+            && !nonempty_string(account.get("access_token"))
+        {
+            return Err("Codex 账号缺少 access_token".to_owned());
         }
         if matches!(
             field,
@@ -241,7 +280,8 @@ fn grok_oauth_ready(object: &serde_json::Map<String, Value>) -> Result<(), Strin
 fn opencode_go_oauth_ready(object: &serde_json::Map<String, Value>) -> Result<(), String> {
     (nonempty_string(object.get("auth")) && nonempty_string(object.get("workspaceId")))
         .then_some(())
-        .ok_or_else(|| "OpenCode GO 凭证需 auth 与 workspaceId".to_owned())
+        // C085: 文案直指「重新粘贴」, 用户能据此回到引导行重新取 Cookie 与 wrk_ ID。
+        .ok_or_else(|| "OpenCode GO 凭证不完整, 请重新粘贴".to_owned())
 }
 /// 对齐 `collector-provider::grok_token`: 顶层 `key`, 或作用域条目
 /// (`https://auth.x.ai::*` / `*/sign-in`) 内的 `key`。
@@ -406,6 +446,20 @@ pub fn remove_provider_credentials(root: &Path, provider: &str) -> Result<(), St
     };
     save_unlocked(root, &latest)
 }
+/// 单条账号是否为「完整可用凭据记录」(C084 / 设计规则 23)。
+///
+/// 只读发现写入的 metadata-only 记录 (`authorization_state = reauthRequired`) 会在 UI 中
+/// 呈现, 但**不计入「已配置」** —— 它们没有可出站的令牌 (采集端同样跳过, 见 collector.rs)。
+/// codex 另要求非空 `access_token`, 与 `lifecycle` 的 `connected` 判定同口径。
+fn account_is_usable(field: &str, account: &Value) -> bool {
+    if account.get("authorization_state").and_then(Value::as_str) == Some("reauthRequired") {
+        return false;
+    }
+    if field == "codexQuotaAccounts" {
+        return nonempty_string(account.get("access_token"));
+    }
+    true
+}
 /// Only these explicit metadata fields are allowed over IPC.
 pub fn credential_accounts(root: &Path) -> Vec<Value> {
     let mut result = Vec::new();
@@ -415,11 +469,46 @@ pub fn credential_accounts(root: &Path) -> Vec<Value> {
         }
         if let Some(accounts) = payload.as_object() {
             for (id, value) in accounts {
-                result.push(json!({"field":field,"accountId":id,"displayName":value.get("display_name").and_then(Value::as_str).unwrap_or(id),"authorizationState":value.get("authorization_state").and_then(Value::as_str)}));
+                result.push(json!({"field":field,"accountId":id,"displayName":value.get("display_name").and_then(Value::as_str).unwrap_or(id),"authorizationState":value.get("authorization_state").and_then(Value::as_str),"usable":account_is_usable(&field,value)}));
             }
         }
     }
     result
+}
+/// 只读发现本机 Codex 账号 (C084 / 设计规则 23)。
+///
+/// 读取 `%USERPROFILE%\.codex\auth.json` 与 `%USERPROFILE%\.cc-switch\codex_oauth_auth.json`,
+/// 以 metadata-only 记录 (`authorization_state = reauthRequired`) 写入 `codexQuotaAccounts`。
+/// 已存在的账号一律不覆盖 —— 用户自己登录出来的完整记录优先。返回新增条数。
+/// 外部文件只读, 绝不回写; 读取或解析失败按 fail-closed 报错, 不产生半成品记录。
+pub fn import_codex_discovered(root: &Path, home: &Path) -> Result<usize, String> {
+    let discovered = codex_local::discover_from_files(home)?;
+    if discovered.is_empty() {
+        return Ok(0);
+    }
+    let _guard = STORE_LOCK.lock().map_err(|_| "凭证存储事务不可用")?;
+    let mut latest = read_raw_credentials(root);
+    let accounts = latest
+        .entry("codexQuotaAccounts".to_owned())
+        .or_insert_with(|| json!({}))
+        .as_object_mut()
+        .ok_or("凭证账号映射损坏")?;
+    let mut added = 0usize;
+    for account in &discovered {
+        if accounts.contains_key(&account.account_id) {
+            continue;
+        }
+        accounts.insert(
+            account.account_id.clone(),
+            codex_local::metadata_payload(account),
+        );
+        added += 1;
+    }
+    if added == 0 {
+        return Ok(0);
+    }
+    save_unlocked(root, &latest)?;
+    Ok(added)
 }
 /// 被读取侧丢弃的账号 (C092): 只回**字段 / 账号 ID / 原因文案**, 不含任何凭据值。
 ///
@@ -479,6 +568,22 @@ pub fn follow_local_claude(root: &Path, home: &Path) -> Result<ClaudeLocalStatus
         &claude_local::claude_cli_account(&oauth),
     )?;
     Ok(claude_local::status_of(&oauth, now_ms))
+}
+
+/// 读取本机 Grok 登录态并保存为 `grok-cli` 账号 (C085, 对齐 mac 的「从本机导入」)。
+/// 仅只读外部文件; 无可用登录态时返回 `NotFound` 且不写入任何凭证。
+pub fn follow_local_grok(root: &Path, home: &Path) -> Result<GrokLocalStatus, String> {
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let Some(oauth) = grok_local::read_local_grok_oauth(home) else {
+        return Ok(GrokLocalStatus::NotFound);
+    };
+    save_credential_account(
+        root,
+        "grokQuotaAccounts",
+        "grok-cli",
+        &grok_local::grok_cli_account(&oauth),
+    )?;
+    Ok(grok_local::status_of(&oauth, now_ms))
 }
 
 /// 订阅 Provider 的验证结果 (C082)。
@@ -587,6 +692,7 @@ pub fn verify_subscription_with(
     let mut needs_relogin = false;
     let mut first_error: Option<String> = None;
     let mut first_api_key: Option<String> = None;
+    let now_ms = chrono::Utc::now().timestamp_millis();
     for (id, account) in accounts {
         match validate_credential_payload(field, &json!({ id.as_str(): account.clone() })) {
             Ok(()) => {
@@ -600,6 +706,10 @@ pub fn verify_subscription_with(
                 if account.get("authorization_state").and_then(Value::as_str)
                     == Some("reauthRequired")
                 {
+                    needs_relogin = true;
+                }
+                // C085 / 设计规则 20: 三家 OAuth Provider 的过期语义。
+                if account_needs_relogin(field, account, now_ms) {
                     needs_relogin = true;
                 }
             }
@@ -631,6 +741,53 @@ pub fn verify_subscription_with(
     }
 }
 
+/// 三家 OAuth Provider 的过期判定 (C085 / 设计规则 20)。
+///
+/// - **Claude**: `accessToken` 过期但 `refreshToken` 仍有效 (或旧凭据无
+///   `refreshTokenExpiresAt`) 时按「待刷新」照常放行 (对齐 mac
+///   `SubscriptionCredentialEvaluator.claudeStatus` 的 `refreshPending`); 刷新令牌亦
+///   失效/缺失才算需重新登录。
+/// - **Grok**: 作用域条目 `expires_at` 已过期即需重新登录 (与 `grokStatus` 同判据)。
+/// - **OpenCode GO**: cookie 自身无过期字段, 不做过期判定 (仅双非空结构校验)。
+fn account_needs_relogin(field: &str, account: &Value, now_ms: i64) -> bool {
+    match field {
+        "claudeQuotaAccounts" => {
+            let Some(entry) = account
+                .get("oauth")
+                .and_then(Value::as_object)
+                .and_then(|object| {
+                    object
+                        .get("claudeAiOauth")
+                        .or_else(|| object.get("claude.ai_oauth"))
+                })
+                .and_then(Value::as_object)
+            else {
+                return false;
+            };
+            if !claude_local::is_expired(entry.get("expiresAt"), now_ms) {
+                return false;
+            }
+            let refresh_alive = entry
+                .get("refreshToken")
+                .and_then(Value::as_str)
+                .is_some_and(|token| !token.trim().is_empty())
+                && !claude_local::is_expired(entry.get("refreshTokenExpiresAt"), now_ms);
+            !refresh_alive
+        }
+        "grokQuotaAccounts" => {
+            account
+                .get("oauth")
+                .and_then(Value::as_object)
+                .is_some_and(|object| {
+                    object
+                        .values()
+                        .any(|entry| claude_local::is_expired(entry.get("expires_at"), now_ms))
+                })
+        }
+        _ => false,
+    }
+}
+
 /// 订阅 Provider 验证, 计入本机 CLI 只读跟随 (C091 / 设计规则 26)。
 ///
 /// Claude 的零配置跟随 (C075) 不落盘, 仅凭已存凭据验证会恒为 `none` —— 而验证结果
@@ -645,19 +802,34 @@ pub fn verify_subscription_following_local(
     now_ms: i64,
 ) -> SubscriptionVerification {
     let stored = verify_subscription(root, provider);
-    if provider != "claude" || stored.status != "none" {
+    if stored.status != "none" {
         return stored;
     }
-    match local_claude_status(home, now_ms) {
-        ClaudeLocalStatus::Followed => SubscriptionVerification {
+    // 无已存凭据时按本机只读跟随判定: 跟随中 → ok; 已过期 → needsRelogin; 未发现 → 保持 none。
+    let local = match provider {
+        "claude" => match local_claude_status(home, now_ms) {
+            ClaudeLocalStatus::Followed => Some(true),
+            ClaudeLocalStatus::Expired => Some(false),
+            ClaudeLocalStatus::NotFound => None,
+        },
+        // C085: Grok 与 Claude 同范式 (本机 CLI 只读跟随计入可验证状态)。
+        "grok" => match local_grok_status(home, now_ms) {
+            GrokLocalStatus::Followed => Some(true),
+            GrokLocalStatus::Expired => Some(false),
+            GrokLocalStatus::NotFound => None,
+        },
+        _ => None,
+    };
+    match local {
+        Some(true) => SubscriptionVerification {
             status: "ok",
             reason: None,
         },
-        ClaudeLocalStatus::Expired => SubscriptionVerification {
+        Some(false) => SubscriptionVerification {
             status: "needsRelogin",
             reason: None,
         },
-        ClaudeLocalStatus::NotFound => stored,
+        None => stored,
     }
 }
 
@@ -678,6 +850,50 @@ pub fn import_volcengine_from_cc_switch(
     });
     save_credential_account(root, "volcengineQuotaAccounts", &account_id, &payload)?;
     Ok(verify_subscription(root, "volcengine"))
+}
+
+/// StepFun 网页登录 Cookie 捕获与持久化 (C086 / 设计规则 24)。
+///
+/// 只有当 `Oasis-Token` 通过远程 `QueryStepPlanRateLimit` (HTTP 200) 校验时才写入
+/// `stepfunQuotaAccounts`; 校验未通过或无匹配 Cookie 时绝不落盘半成品凭据。
+pub fn capture_stepfun_cookie_with(
+    root: &Path,
+    site: StepFunSite,
+    current_url: &str,
+    cookies: &[StepFunCookieCandidate],
+    is_manual: bool,
+    transport: &dyn StepFunRemoteTransport,
+) -> Result<StepFunCaptureOutcome, String> {
+    let outcome =
+        stepfun_web::evaluate_capture_with(site, current_url, cookies, is_manual, transport);
+    if let StepFunCaptureOutcome::Captured {
+        ref token,
+        site: captured_site,
+        ref account_id,
+        ..
+    } = outcome
+    {
+        let payload = stepfun_web::stepfun_account_payload(token, captured_site, account_id);
+        save_credential_account(root, "stepfunQuotaAccounts", account_id, &payload)?;
+    }
+    Ok(outcome)
+}
+
+pub fn capture_stepfun_cookie(
+    root: &Path,
+    site: StepFunSite,
+    current_url: &str,
+    cookies: &[StepFunCookieCandidate],
+    is_manual: bool,
+) -> Result<StepFunCaptureOutcome, String> {
+    capture_stepfun_cookie_with(
+        root,
+        site,
+        current_url,
+        cookies,
+        is_manual,
+        &UreqStepFunTransport,
+    )
 }
 
 /// 账号 ID: AK 的稳定散列 (同一 AK 重复导入即 upsert)。

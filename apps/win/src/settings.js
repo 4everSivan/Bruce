@@ -251,6 +251,10 @@
   /// 因此「有账号」等价于「存在完整可用凭据记录」; 被丢弃账号的原因另经
   /// `credentialRejections` 回传 (C092), 不混进本清单。
   function accountsFor(id) { return credentialAccounts.filter(account => account.field === providerDescriptor(id)[2]); }
+  /// 其中「完整可用凭据记录」(C084 / 设计规则 23): 后端逐条下发 `usable`。
+  /// 只读发现写入的 metadata-only 记录 (authorization_state = reauthRequired) 会在对话框
+  /// 里呈现, 但**不计入「已配置」** —— 它们没有可出站的令牌。旧后端无该字段时按可用处理。
+  function usableAccountsFor(id) { return accountsFor(id).filter(account => account.usable !== false); }
   /// 该 Provider 被丢弃账号的原因清单 (C092)。
   function rejectionsFor(id) { return credentialRejections.filter(item => item.field === providerDescriptor(id)[2]); }
   // 状态尾件 (mac subscriptionStatusTail): 未配置 / 已配置 / 验证失败 / 需重新登录
@@ -262,23 +266,24 @@
   /// 正在跟随的本机登录态等价于已配置, 即使没有落盘账号 (C075 的零配置跟随不落盘)。
   function localFollowConfigured(id) {
     if (id === "claude") return claudeLocalInfo?.status === "followed";
-    // Grok 的本机跟随随 C085 落地, 届时在此接入 grok_local_status。
+    // C085: Grok 与 Claude 同范式, 本机只读跟随计入「已配置」(设计规则 26)。
+    if (id === "grok") return grokLocalInfo?.status === "followed";
     return false;
   }
 
-  /// 「已配置」判据 (C081 / C091): 存在完整可用凭据记录, 或正在只读跟随本机 CLI 登录态。
-  /// 行尾件、启用开关禁用态、配置对话框横幅与授权摘要共用此判据, 不得各自另算 ——
-  /// 否则会出现行上「已配置」而开关不可点、对话框写「未配置」的自相矛盾。
-  function providerConfigured(id) { return accountsFor(id).length > 0 || localFollowConfigured(id); }
+  /// 「已配置」判据 (C081 / C091 / C084): 存在**完整可用**凭据记录, 或正在只读跟随本机
+  /// CLI 登录态。只读发现写入的 metadata-only 记录不算 —— 否则没有令牌的账号会让看板
+  /// 去查询必然失败的额度。行尾件、启用开关禁用态、对话框横幅与授权摘要共用此判据。
+  function providerConfigured(id) { return usableAccountsFor(id).length > 0 || localFollowConfigured(id); }
 
   function providerState(id) {
     const accounts = accountsFor(id);
-    if (!providerConfigured(id)) return { text: "未配置", cls: "off" };
-    // 账号级 authorizationState == reauthRequired 的「需要重新授权」为规则 21 登记措辞,
-    // 优先于行级验证态呈现 (两者分工见规则 26)。
+    // C084: 需要重新授权的账号 (设备码发现) 优先呈现 —— 它们不计入「已配置」, 但用户必须
+    // 看到「有账号待授权」, 否则只能看到「未配置」而无从下手。规则 21 登记措辞。
     if (accounts.some(account => account.authorizationState === "reauthRequired")) {
       return { text: "需要重新授权", cls: "warn" };
     }
+    if (!providerConfigured(id)) return { text: "未配置", cls: "off" };
     const status = subscriptionProviderState(id).verificationStatus;
     if (status === "failed") return { text: "验证失败", cls: "warn" };
     if (status === "needsRelogin") return { text: "需重新登录", cls: "warn" };
@@ -1639,12 +1644,12 @@
     stepfun: {
       kind: "apiKey",
       fields: [["token", "Oasis-Token", "•••••••• (输入后不回显)"]],
-      // C093: 网页登录入口尚未交付 (C086), 不得出现「点击上方一键登录」——
-      // 文案不承诺不存在的能力; C086 落地后按规则 20 恢复「一键登录自动绑定」措辞。
-      guide: "在 StepFun 控制台登录后按 F12, 从 Cookie 复制 Oasis-Token",
+      // C086 / 设计规则 20 & 24: 网页登录入口落地后恢复与 mac 逐字一致的引导文案。
+      guide: "可点击上方一键登录自动绑定(支持国内/国际站)，或控制台按 F12 复制 Cookie",
       link: { title: "打开 StepFun 控制台", url: "https://platform.stepfun.com" },
       footnote: "凭据安全保存在本应用的本机凭据文件 (仅当前用户可读), 支持国内站与国际站多账号混合添加; 未选择站点时按令牌自动判定",
       sitePicker: true,
+      webLogin: true,
     },
     cline: {
       kind: "apiKey",
@@ -1655,9 +1660,9 @@
     },
     codex: {
       kind: "codex",
-      guide: "通过 OpenAI 官方设备码登录获取额度; 也可只读导入本机 CLI 或 CC Switch 已登录账号的元数据.",
+      guide: "通过 OpenAI 官方设备码登录获取额度; 也可只读发现本机 CLI 或 CC Switch 已登录账号的元数据.",
       link: { title: "打开 Codex 设备码登录页", url: "https://auth.openai.com/codex/device" },
-      footnote: "设备码登录与账号发现将在后续卡片补齐; 当前可用下方「导入账号」选择 auth.json。",
+      footnote: "设备码登录全程在官方页面完成, 验证码只在本机展示; 发现的本机账号只写元数据、不导入令牌, 需在本应用内重新授权后才参与额度查询。",
     },
     claude: {
       kind: "localFollow",
@@ -1693,6 +1698,18 @@
       ccSwitchAvailable = Boolean((await invoke("ccswitch_status"))?.available);
     } catch {
       ccSwitchAvailable = false;
+    }
+  }
+
+  // Codex 发现来源可用性 (C084): 决定对话框里两个「发现…账号」按钮的显隐。
+  let codexSources = { cliAuth: false, ccSwitch: false };
+
+  async function loadCodexSources() {
+    try {
+      const sources = await invoke("codex_discovery_sources");
+      codexSources = { cliAuth: Boolean(sources?.cliAuth), ccSwitch: Boolean(sources?.ccSwitch) };
+    } catch {
+      codexSources = { cliAuth: false, ccSwitch: false };
     }
   }
 
@@ -1781,8 +1798,14 @@
   /// 国内站 → 修复后再存一次」会生成第二个账号, 旧账号还停在错误站点。以 token 为身份后,
   /// 重新保存即 upsert 到同一账号, 顺带改写或清除站点 (未选站点 → 由采集端按令牌推导)。
   function credentialAccountId(id, credential) {
-    const identity = id === "stepfun" && credential && typeof credential === "object"
-      ? { token: credential.token }
+    // 身份字段: StepFun 以 token、OpenCode GO 以 workspaceId 为身份 (C093 / C085) ——
+    // 同一身份重新保存即 upsert, 不会因重新粘贴多出一条账号。
+    const identity = credential && typeof credential === "object"
+      ? id === "stepfun"
+        ? { token: credential.token }
+        : id === "opencodeGo"
+          ? { workspaceId: credential.oauth?.workspaceId }
+          : credential
       : credential;
     const text = `${id}:${JSON.stringify(identity)}`;
     let hash = 5381;
@@ -1818,7 +1841,7 @@
       if (!trimmed("apiKey")) throw new Error("请填写 API Key");
       return { api_key: trimmed("apiKey") };
     }
-    if (id === "codex") throw new Error("Codex 请使用「导入账号」选择 auth.json");
+    if (id === "codex") throw new Error("Codex 请使用上方「登录新账号」完成设备码登录");
     // Claude / Grok / OpenCode GO: 粘贴凭证 JSON (Claude 亦接受纯令牌)。
     const raw = (values.paste || "").trim();
     if (!raw) throw new Error("请粘贴凭证 JSON");
@@ -1845,6 +1868,7 @@
   }
 
   function closeProviderDialog() {
+    stopStepFunWebLogin(true);
     const host = byId("provider-dialog");
     if (!host) return;
     host.classList.add("hidden");
@@ -1933,6 +1957,21 @@
       loadClaudeLocalStatus();
     }
 
+    // C085 / 设计规则 20: Grok 本机登录态跟随 (与 Claude 同范式, mac
+    // OfficialLocalProviderSettingsSection)。
+    if (config.kind === "localFollow" && id === "grok") {
+      body.append(node("p", "启用 Grok 订阅后自动只读跟随本机 Grok CLI 登录态（%USERPROFILE%\\.grok\\auth.json），不回写、不弹窗。", { class: "hint" }));
+      const line = node("div", null, { class: "auth-state-line" });
+      line.append(node("span", "检测中…", { id: "grok-local-state", class: "auth-state" }));
+      body.append(line);
+      const act = actions(body);
+      button(act, "grok-local-detect", "重新检测", loadGrokLocalStatus);
+      button(act, "grok-local-import", "从本机导入", importGrokFromLocal, "btn primary");
+      act.append(node("span", null, { id: "grok-local-status", role: "status", class: "status-msg" }));
+      renderGrokLocalState();
+      loadGrokLocalStatus();
+    }
+
     // 字段组 / 粘贴区
     if (config.kind === "apiKey") {
       for (const [key, label2, placeholder] of config.fields) {
@@ -1951,21 +1990,32 @@
         body.append(sitePickerRow(id, [["domestic", "国内站 (stepfun.com)"], ["global", "国际站 (stepfun.ai)"]], null));
       }
     } else if (config.kind === "paste" || config.kind === "localFollow") {
+      // C085: Claude 的粘贴入口收进「高级」折叠区并默认折叠 —— 零配置跟随才是主路径,
+      // 手粘令牌是兜底 (对齐 mac ClaudeProviderSettingsSection 的高级入口)。
+      const advanced = id === "claude" ? node("details", null, { class: "cfg-advanced" }) : null;
+      if (advanced) advanced.append(node("summary", "高级：粘贴令牌或凭证 JSON"));
+      const pasteHost = advanced || body;
       const group = node("div", null, { class: "cfg-paste" });
       group.append(node("p", config.pasteLabel, { class: "hint" }));
       group.append(node("textarea", null, { id: `cfg-${id}-paste`, rows: "4", spellcheck: "false", autocomplete: "off", class: "code-area", "aria-label": `${descriptor[1]} 凭证 JSON` }));
-      body.append(group);
+      pasteHost.append(group);
       if (id === "claude") {
         const group2 = node("div", null, { class: "cfg-field" });
         group2.append(node("label", "或粘贴纯访问令牌", { class: "cfg-label", for: `cfg-${id}-secret` }));
         group2.append(node("input", null, { id: `cfg-${id}-secret`, type: "password", placeholder: "sk-ant-•••••••• (输入后不回显)", autocomplete: "new-password", class: "cfg-input" }));
-        body.append(group2);
+        pasteHost.append(group2);
       }
-    } else {
-      body.append(node("p", "Codex 通过「导入账号」选择 auth.json 导入; 设备码登录见后续卡片。", { class: "hint" }));
+      if (advanced) body.append(advanced);
+    } else if (config.kind === "codex") {
+      // C084 / 设计规则 23: 设备码登录 + 只读账号发现 (对齐 mac CodexProviderConfigDialog)。
+      renderCodexSections(body);
     }
 
     body.append(node("p", "只保存到本应用的本机凭据文件 (仅当前用户可读), 不会写入其他应用的数据库", { class: "hint" }));
+    // StepFun: 网页登录自动绑定区与控制面板 (C086 / 设计规则 24, 对齐 mac StepFunWebLoginView)
+    if (id === "stepfun" && config.webLogin) {
+      renderStepFunWebLoginSection(body);
+    }
     // 火山引擎: 从 CC Switch 只读导入 (C083, 对齐 mac 的确认对话框)
     if (id === "volcengine" && ccSwitchAvailable) {
       const block = node("div", null, { class: "cfg-extra" });
@@ -2031,6 +2081,374 @@
     // 粘贴类 (Claude / Grok / OpenCode GO): 粘贴框或 Claude 的纯令牌入口二者其一。
     if ((byId(`cfg-${id}-paste`)?.value || "").trim()) return true;
     return id === "claude" && (byId(`cfg-${id}-secret`)?.value || "").trim().length > 0;
+  }
+
+  // ── Codex 设备码登录与只读发现 (C084 / 设计规则 23) ──────────────────────────
+
+  /// 设备码登录会话: 轮询由前端按服务端 interval 驱动, 便于呈现「等待授权 / 完成」阶段。
+  let codexDeviceLogin = null;
+  let codexPollTimer = null;
+
+  /// Codex 对话框专属区: 登录新账号 (验证码 + 重新打开验证页 + 取消 + 阶段态) 与两条
+  /// 只读发现入口 (按来源文件存在与否显隐)。
+  function renderCodexSections(body) {
+    const login = node("div", null, { class: "cfg-extra" });
+    login.append(node("p", "登录新账号：点击后在浏览器打开的官方验证页输入下方验证码。", { class: "hint" }));
+    const loginAct = actions(login);
+    button(loginAct, "cfg-codex-login", "登录新账号", startCodexLogin, "btn primary");
+    loginAct.append(node("span", null, { id: "cfg-codex-login-status", role: "status", class: "status-msg" }));
+    login.append(node("div", null, { id: "cfg-codex-device", class: "cfg-device hidden" }));
+    body.append(login);
+
+    const discover = node("div", null, { class: "cfg-extra" });
+    discover.append(node("p", "发现本机已登录账号（只读元数据，不导入令牌）：", { class: "hint" }));
+    const discoverAct = actions(discover);
+    if (codexSources.cliAuth) {
+      button(discoverAct, "cfg-codex-discover-cli", "发现本机 CLI 账号", () => importCodexDiscovered("本机 CLI"));
+    }
+    if (codexSources.ccSwitch) {
+      button(discoverAct, "cfg-codex-discover-ccswitch", "发现 CC Switch 账号", () => importCodexDiscovered("CC Switch"));
+    }
+    if (!codexSources.cliAuth && !codexSources.ccSwitch) {
+      discover.append(node("p", "未发现本机 Codex CLI (%USERPROFILE%\\.codex\\auth.json) 或 CC Switch (%USERPROFILE%\\.cc-switch\\codex_oauth_auth.json) 账号文件", { class: "hint" }));
+    }
+    discoverAct.append(node("span", null, { id: "cfg-codex-discover-status", role: "status", class: "status-msg" }));
+    body.append(discover);
+    renderCodexDevicePanel();
+  }
+
+  async function startCodexLogin() {
+    stopCodexPoll();
+    const status = byId("cfg-codex-login-status");
+    try {
+      const started = await invoke("codex_device_start");
+      codexDeviceLogin = {
+        deviceAuthId: started.deviceAuthId,
+        userCode: started.userCode,
+        // 0 是合法间隔 (服务端可要求立即轮询), 不能用 `||` 回落。
+        intervalSeconds: Number.isFinite(Number(started.intervalSeconds)) ? Number(started.intervalSeconds) : 5,
+        expiresInSeconds: Number.isFinite(Number(started.expiresInSeconds)) ? Number(started.expiresInSeconds) : 900,
+        issuedAtMillis: Date.now(),
+      };
+      renderCodexDevicePanel();
+      message(status, started.browserOpened ? "已在浏览器打开验证页" : "请手动打开验证页输入验证码");
+      scheduleCodexPoll();
+    } catch (error) {
+      codexDeviceLogin = null;
+      renderCodexDevicePanel();
+      message(status, `登录发起失败：${error.message || error}`, "warn");
+    }
+  }
+
+  function renderCodexDevicePanel() {
+    const panel = byId("cfg-codex-device");
+    if (!panel) return;
+    panel.replaceChildren();
+    if (!codexDeviceLogin) {
+      panel.classList.add("hidden");
+      return;
+    }
+    panel.classList.remove("hidden");
+    panel.append(node("p", `验证码：${codexDeviceLogin.userCode}`, { class: "cfg-code", id: "cfg-codex-user-code" }));
+    const act = actions(panel);
+    button(act, "cfg-codex-reopen", "重新打开验证页", () => { invoke("open_verification_page").catch(() => {}); });
+    button(act, "cfg-codex-cancel", "取消", cancelCodexLogin, "btn");
+    act.append(node("span", "等待授权中…", { id: "cfg-codex-stage", role: "status", class: "status-msg" }));
+  }
+
+  function scheduleCodexPoll() {
+    stopCodexPoll();
+    if (!codexDeviceLogin) return;
+    codexPollTimer = setTimeout(pollCodexLogin, codexDeviceLogin.intervalSeconds * 1000);
+  }
+
+  function stopCodexPoll() {
+    if (codexPollTimer) {
+      clearTimeout(codexPollTimer);
+      codexPollTimer = null;
+    }
+  }
+
+  function cancelCodexLogin() {
+    stopCodexPoll();
+    codexDeviceLogin = null;
+    renderCodexDevicePanel();
+    message(byId("cfg-codex-login-status"), "已取消登录");
+  }
+
+  async function pollCodexLogin() {
+    const session = codexDeviceLogin;
+    if (!session) return;
+    try {
+      const result = await invoke("codex_device_poll", {
+        deviceAuthId: session.deviceAuthId,
+        userCode: session.userCode,
+        issuedAtMillis: session.issuedAtMillis,
+        expiresInSeconds: session.expiresInSeconds,
+      });
+      if (result?.status === "pending") {
+        scheduleCodexPoll();
+        return;
+      }
+      stopCodexPoll();
+      codexDeviceLogin = null;
+      if (result?.status === "expired") {
+        renderCodexDevicePanel();
+        message(byId("cfg-codex-login-status"), "验证码已过期，请重新发起登录", "warn");
+        return;
+      }
+      await loadCredentials();
+      rerenderOpenDialog();
+      message(byId("cfg-codex-login-status"), `已登录 ${result?.email || result?.accountId || "新账号"}`);
+    } catch (error) {
+      stopCodexPoll();
+      codexDeviceLogin = null;
+      renderCodexDevicePanel();
+      message(byId("cfg-codex-login-status"), `登录失败：${error.message || error}`, "warn");
+    }
+  }
+
+  /// 只读发现本机账号 (C084): 只写元数据, 发现后账号显示为「需要重新授权」。
+  async function importCodexDiscovered(sourceLabel) {
+    try {
+      const result = await invoke("codex_import_discovered");
+      await loadCredentials();
+      rerenderOpenDialog();
+      const added = Number(result?.added) || 0;
+      message(
+        byId("cfg-codex-discover-status"),
+        added > 0 ? `已从${sourceLabel}发现 ${added} 个账号（需重新授权）` : "未发现新账号",
+      );
+    } catch (error) {
+      message(byId("cfg-codex-discover-status"), `发现失败：${error.message || error}`, "warn");
+    }
+  }
+
+  /// 重绘当前打开的对话框 (登录 / 发现后账号列表需要刷新)。
+  function rerenderOpenDialog() {
+    const id = byId("provider-dialog")?.dataset.provider;
+    if (id) renderProviderDialog(id);
+  }
+
+  // ── StepFun 网页登录自动捕获 (C086 / 设计规则 24, 对齐 mac StepFunWebLoginView) ──
+
+  const STEPFUN_SITE_NAMES = {
+    domestic: "🇨🇳 国内站",
+    global: "🌐 国际站",
+  };
+  let stepfunWebSession = null;
+  let stepfunPollTimer = null;
+
+  function stepfunSiteDisplayName(site) {
+    return STEPFUN_SITE_NAMES[site] || STEPFUN_SITE_NAMES.domestic;
+  }
+
+  function renderStepFunWebLoginSection(body) {
+    const block = node("div", null, { class: "cfg-extra", id: "cfg-stepfun-web-extra" });
+    block.append(node("div", "网页登录自动绑定", { class: "cfg-label" }));
+    const act = actions(block);
+    button(act, "cfg-stepfun-login-domestic", "🇨🇳 登录国内站", () => startStepFunWebLogin("domestic"), "btn primary");
+    button(act, "cfg-stepfun-login-global", "🌐 登录国际站", () => startStepFunWebLogin("global"), "btn primary");
+    block.append(node("p", "在内置窗口登录对应站点，完成后自动提取 Oasis-Token 绑定", { class: "hint" }));
+    block.append(node("div", null, { id: "cfg-stepfun-web-panel", class: "cfg-device hidden" }));
+    body.append(block);
+    renderStepFunWebPanel();
+  }
+
+  function renderStepFunWebPanel() {
+    const panel = byId("cfg-stepfun-web-panel");
+    if (!panel) return;
+    panel.replaceChildren();
+    if (!stepfunWebSession) {
+      panel.classList.add("hidden");
+      return;
+    }
+    panel.classList.remove("hidden");
+    const site = stepfunWebSession.site;
+    const siteName = stepfunSiteDisplayName(site);
+
+    // 1. 顶部导航栏: 标题 + 状态行 + 站点切换 + 取消 (对齐 StepFunWebLoginView 顶部栏)
+    const nav = node("div", null, { class: "cfg-web-nav" });
+    nav.append(node("div", `登录阶跃星辰开放平台 · ${siteName}`, { class: "cfg-label", id: "cfg-stepfun-web-title" }));
+    nav.append(node("p", stepfunWebSession.statusText || `正在加载 ${siteName} 登录页面...`, {
+      id: "cfg-stepfun-web-status",
+      role: "status",
+      class: "status-msg",
+    }));
+    const navAct = actions(nav);
+    button(
+      navAct,
+      "cfg-stepfun-web-site-domestic",
+      "🇨🇳 国内站",
+      () => switchStepFunWebSite("domestic"),
+      site === "domestic" ? "btn primary" : "btn",
+    );
+    button(
+      navAct,
+      "cfg-stepfun-web-site-global",
+      "🌐 国际站",
+      () => switchStepFunWebSite("global"),
+      site === "global" ? "btn primary" : "btn",
+    );
+    button(navAct, "cfg-stepfun-web-cancel", "取消", () => cancelStepFunWebLogin(), "btn");
+    panel.append(nav);
+
+    // 2. 网页操作快捷工具栏: 后退 / 前进 / 刷新 / 订阅页 / 平台首页 / 当前 URL
+    const toolbar = node("div", null, { class: "cfg-web-toolbar" });
+    const toolAct = actions(toolbar);
+    button(toolAct, "cfg-stepfun-web-back", "后退", () => runStepFunWebAction("back"), "btn");
+    button(toolAct, "cfg-stepfun-web-forward", "前进", () => runStepFunWebAction("forward"), "btn");
+    button(toolAct, "cfg-stepfun-web-reload", "刷新", () => runStepFunWebAction("reload"), "btn");
+    button(
+      toolAct,
+      "cfg-stepfun-web-plan",
+      site === "global" ? "订阅页 (/plan-subscribe)" : "订阅页 (/step-plan)",
+      () => runStepFunWebAction("plan"),
+      "btn",
+    );
+    button(
+      toolAct,
+      "cfg-stepfun-web-home",
+      site === "global" ? "平台首页 (stepfun.ai)" : "平台首页 (stepfun.com)",
+      () => runStepFunWebAction("home"),
+      "btn",
+    );
+    toolbar.append(node("p", stepfunWebSession.currentUrl || "", {
+      id: "cfg-stepfun-web-url",
+      class: "hint wb-mono",
+    }));
+    panel.append(toolbar);
+
+    // 3. 底部操作栏: 清除登录缓存 / 我已登录，立即绑定
+    const foot = actions(panel);
+    button(foot, "cfg-stepfun-web-clear", "清除登录缓存", clearStepFunWebSession, "btn danger");
+    button(foot, "cfg-stepfun-web-bind", "我已登录，立即绑定", () => pollStepFunWebLogin(true), "btn primary");
+  }
+
+  async function startStepFunWebLogin(site) {
+    stopStepFunWebPoll();
+    const siteName = stepfunSiteDisplayName(site);
+    stepfunWebSession = {
+      site,
+      intervalMs: 2000,
+      currentUrl: site === "global" ? "https://platform.stepfun.ai/plan-subscribe" : "https://platform.stepfun.com/step-plan",
+      statusText: `正在加载 ${siteName} 登录页面...`,
+    };
+    renderStepFunWebPanel();
+    try {
+      const opened = await invoke("stepfun_web_login_open", { site });
+      if (!stepfunWebSession || stepfunWebSession.site !== site) return;
+      if (opened?.url) stepfunWebSession.currentUrl = opened.url;
+      if (Number.isFinite(Number(opened?.intervalMs))) {
+        stepfunWebSession.intervalMs = Number(opened.intervalMs);
+      }
+      stepfunWebSession.statusText = `等待 ${siteName} 登录完成中...`;
+      renderStepFunWebPanel();
+      scheduleStepFunWebPoll();
+    } catch (error) {
+      stepfunWebSession = null;
+      renderStepFunWebPanel();
+      message(byId("cfg-status"), `网页登录窗口打开失败：${error.message || error}`, "warn");
+    }
+  }
+
+  async function switchStepFunWebSite(site) {
+    if (stepfunWebSession?.site === site) return;
+    await startStepFunWebLogin(site);
+  }
+
+  async function runStepFunWebAction(action) {
+    if (!stepfunWebSession) return;
+    try {
+      const res = await invoke("stepfun_web_login_action", { action, site: stepfunWebSession.site });
+      if (stepfunWebSession && res?.url) {
+        stepfunWebSession.currentUrl = res.url;
+        renderStepFunWebPanel();
+      }
+    } catch (error) {
+      if (byId("cfg-stepfun-web-status")) {
+        message(byId("cfg-stepfun-web-status"), `操作失败：${error.message || error}`, "warn");
+      }
+    }
+  }
+
+  async function clearStepFunWebSession() {
+    if (!stepfunWebSession) return;
+    try {
+      const res = await invoke("stepfun_web_login_clear_session", { site: stepfunWebSession.site });
+      if (!stepfunWebSession) return;
+      if (res?.url) stepfunWebSession.currentUrl = res.url;
+      stepfunWebSession.statusText = res?.message || `已清空 ${stepfunSiteDisplayName(stepfunWebSession.site)} 登录缓存，正在刷新...`;
+      renderStepFunWebPanel();
+    } catch (error) {
+      if (byId("cfg-stepfun-web-status")) {
+        message(byId("cfg-stepfun-web-status"), `清除缓存失败：${error.message || error}`, "warn");
+      }
+    }
+  }
+
+  function scheduleStepFunWebPoll() {
+    stopStepFunWebPoll();
+    if (!stepfunWebSession) return;
+    stepfunPollTimer = setTimeout(() => pollStepFunWebLogin(false), stepfunWebSession.intervalMs);
+  }
+
+  function stopStepFunWebPoll() {
+    if (stepfunPollTimer) {
+      clearTimeout(stepfunPollTimer);
+      stepfunPollTimer = null;
+    }
+  }
+
+  function stopStepFunWebLogin(closeRemote = false) {
+    stopStepFunWebPoll();
+    const hadSession = Boolean(stepfunWebSession);
+    stepfunWebSession = null;
+    if (closeRemote && hadSession) {
+      invoke("stepfun_web_login_close").catch(() => {});
+    }
+  }
+
+  function cancelStepFunWebLogin() {
+    stopStepFunWebLogin(true);
+    renderStepFunWebPanel();
+    message(byId("cfg-status"), "已取消网页登录");
+  }
+
+  async function pollStepFunWebLogin(manual = false) {
+    const session = stepfunWebSession;
+    if (!session) return;
+    try {
+      const result = await invoke("stepfun_web_login_poll", {
+        site: session.site,
+        manual: Boolean(manual),
+      });
+      if (!stepfunWebSession || stepfunWebSession.site !== session.site) return;
+      if (result?.currentUrl) stepfunWebSession.currentUrl = result.currentUrl;
+      if (result?.status === "closed") {
+        stopStepFunWebLogin(false);
+        renderStepFunWebPanel();
+        return;
+      }
+      if (result?.status === "captured") {
+        stopStepFunWebLogin(false);
+        await loadCredentials();
+        await reverifyProvider("stepfun");
+        rerenderOpenDialog();
+        message(byId("cfg-status"), result.message || "已通过网页登录自动绑定 StepFun");
+        return;
+      }
+      if (result?.message) {
+        stepfunWebSession.statusText = result.message;
+        renderStepFunWebPanel();
+      }
+      scheduleStepFunWebPoll();
+    } catch (error) {
+      if (!stepfunWebSession) return;
+      stepfunWebSession.statusText = `校验失败：${error.message || error}`;
+      renderStepFunWebPanel();
+      if (!manual) scheduleStepFunWebPoll();
+    }
   }
 
   /// 移除服务 (C089 / 设计规则 25)。
@@ -2167,7 +2585,7 @@
       menu.append(option);
     }
     trigger.addEventListener("click", () => menu.classList.toggle("hidden"));
-    addButton.addEventListener("click", () => { if (pending) addProvider(pending); });
+    addButton.addEventListener("click", () => { if (pending) return addProvider(pending); });
     picker.append(trigger, menu);
     host.append(picker, addButton);
   }
@@ -2214,72 +2632,11 @@
 
     // 本机登录态探测 (C075/C082): 面板构建即探测一次, 结果缓存供对话框渲染。
     loadClaudeLocalStatus();
+    // C085: Grok 同范式探测。
+    loadGrokLocalStatus();
     loadCCSwitchStatus();
-
-    const c3 = card(host, "添加或更新账号凭证");
-    const providerSel = node("select", null, { id: "account-provider", class: "fluent-select" });
-    for (const [, name, field] of providers) providerSel.append(node("option", name, { value: field }));
-    providerSel.value = providers[0][2];
-    row(c3, "服务提供商", providerSel);
-    row(c3, "账号标识", input("account-id", "text", { placeholder: "例如 work 或 personal", autocomplete: "off" }));
-    row(c3, "显示名称", input("account-name", "text", { placeholder: "例如工作账号" }));
-    row(c3, "密钥 / Access Token", input("account-secret", "password", { autocomplete: "new-password" }));
-    row(c3, "附加密钥 / Refresh Token", input("account-secondary", "password", { autocomplete: "new-password" }), "如火山引擎 Secret Key 或 OAuth 刷新凭证");
-    row(c3, "Z.ai API 地址（可选）", input("account-base-url", "text", { placeholder: "https://open.bigmodel.cn/api/paas/v4" }));
-    const site = node("select", null, { id: "account-site", class: "fluent-select" });
-    site.append(node("option", "国内", { value: "domestic" }), node("option", "国际", { value: "global" }));
-    row(c3, "StepFun 站点", site);
-
-    const extra = node("details", null, { class: "extra-details" });
-    extra.append(node("summary", "OAuth 或其他附加凭证 (JSON)"));
-    extra.append(node("textarea", null, { id: "account-extra", rows: "3", placeholder: "可粘贴完整 OAuth JSON", autocomplete: "off", spellcheck: "false", "aria-label": "OAuth 附加凭证", class: "code-area" }));
-    c3.append(extra);
-
-    providerSel.addEventListener("change", () => {
-      byId("account-secret").value = "";
-      byId("account-secondary").value = "";
-      byId("account-extra").value = "";
-    });
-
-    const act = actions(c3);
-    button(act, "account-save", "保存此账号", saveAccount, "btn primary");
-    button(act, "credentials-validate", "检查已保存账号连接", validateConnections);
-    act.append(node("span", null, { id: "account-status", role: "status", class: "status-msg" }));
-    c3.append(node("div", null, { id: "connection-status", role: "status", class: "connection-status-box" }));
-
-    const c4 = card(host, "导入账号");
-    c4.append(node("p", "选择本机 Codex auth.json 或 Bruce 凭证 JSON 导入账号，导入前自动校验格式。", { class: "hint" }));
-    c4.append(input("credential-import-file", "file", { accept: ".json,application/json", class: "file-input" }));
-    const impAct = actions(c4);
-    button(impAct, "credential-import", "导入所选文件", async () => {
-      try {
-        const file = byId("credential-import-file").files?.[0];
-        if (!file) throw new Error("请选择 JSON 文件");
-        const auth = objectJSON(await file.text(), "导入文件");
-        if (auth.tokens) await invoke("import_codex_auth", { auth });
-        else {
-          const payloads = validatePayloads(auth);
-          for (const [field, value] of Object.entries(payloads)) {
-            if (field.endsWith("Accounts") && value) {
-              for (const [accountId, payload] of Object.entries(value)) await invoke("save_credential_account", { field, accountId, payload });
-            } else await invoke("save_credentials_command", { payloads: { [field]: value } });
-          }
-        }
-        byId("credential-import-file").value = "";
-        message(byId("credentials-status"), "导入完成");
-        await loadCredentials();
-      } catch (error) { message(byId("credentials-status"), `导入失败：${error.message || error}`); }
-    });
-
-    const c5 = card(host, "高级：完整凭证字段维护");
-    const adv = node("details");
-    adv.append(node("summary", "展开查看或替换完整凭证字段"));
-    adv.append(node("p", "仅在需要批量导出或替换整个字段时使用。留空保留原有字段，填写 null 删除对应字段。", { class: "hint" }));
-    adv.append(node("div", null, { id: "credential-fields" }));
-    const advAct = actions(adv);
-    button(advAct, "credentials-save", "保存完整字段", saveCredentials);
-    advAct.append(node("span", null, { id: "credentials-status", role: "status", class: "status-msg" }));
-    c5.append(adv);
+    // Codex 发现来源 (C084): 决定对话框里「发现…账号」按钮的显隐。
+    loadCodexSources();
   }
 
   /// 重建「授权后应用将：」摘要列表 (C094 / 设计规则 29)。
@@ -2492,20 +2849,6 @@
     applyTheme();
   }
 
-  function validatePayloads(payloads) {
-    for (const [field, value] of Object.entries(payloads)) {
-      if (!allowlist.includes(field)) throw new Error("包含不支持的凭证字段");
-      if (value === null) continue;
-      if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("凭证字段必须是对象或 null");
-      if (field.endsWith("Accounts")) {
-        for (const [id, payload] of Object.entries(value)) {
-          if (!id.trim() || !payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error("账号凭证格式无效");
-        }
-      }
-    }
-    return payloads;
-  }
-
   // C081: 三家 OAuth Provider 的 oauth 原生形状 —— 与采集端解析器契约一致
   // (collector-provider 的 claude_token / grok_token / opencode_credential)。
   // 形状不对时采集端会静默查不出额度, 故在此按 Provider 组装, 并由后端二次校验。
@@ -2532,56 +2875,8 @@
     return { "https://auth.x.ai::injected": { key: secret } };
   }
 
-  function clearSecrets() {
-    for (const id of ["account-secret", "account-secondary", "account-extra"]) {
-      const inputEl = byId(id);
-      if (inputEl) inputEl.value = "";
-    }
-  }
-
-  async function saveAccount() {
-    const save = byId("account-save");
-    if (save) save.disabled = true;
-    try {
-      const field = byId("account-provider").value, accountId = byId("account-id").value.trim();
-      const secret = byId("account-secret").value.trim(), secondary = byId("account-secondary").value.trim();
-      if (!accountId || accountId.length > 200 || /[\x00-\x1f]/.test(accountId)) throw new Error("请填写有效的账号标识");
-      const extra = byId("account-extra").value.trim();
-      let payload = extra ? objectJSON(extra, "附加凭证") : {};
-      if (field === "volcengineQuotaAccounts") {
-        if (!secret || !secondary) throw new Error("火山引擎需要 Access Key 与 Secret Key");
-        payload = { ...payload, accessKeyId: secret, secretAccessKey: secondary };
-      } else if (["claudeQuotaAccounts", "grokQuotaAccounts", "opencodeGoQuotaAccounts"].includes(field)) {
-        // C081: 三家 OAuth Provider 的 oauth 必须是采集端解析器认得的原生形状,
-        // 扁平 {access_token} 会被采集端静默忽略 —— 这里按 Provider 组装正确形状。
-        payload = { oauth: oauthPayload(field, payload, secret, secondary) };
-      } else if (field === "codexQuotaAccounts") {
-        if (!secret) throw new Error("请填写 Access Token，或通过 auth.json 导入");
-        payload = { ...payload, access_token: secret, ...(secondary ? { refresh_token: secondary } : {}) };
-      } else if (field === "stepfunQuotaAccounts") {
-        if (!secret) throw new Error("请填写 Token");
-        const site = byId("account-site").value;
-        payload = { ...payload, token: secret, site, is_global: site === "global" };
-      } else {
-        if (!secret) throw new Error("请填写 API Key");
-        payload.api_key = secret;
-        if (field === "zhipuQuotaAccounts") {
-          const url = new URL(byId("account-base-url").value.trim() || "https://open.bigmodel.cn/api/paas/v4");
-          if (url.protocol !== "https:") throw new Error("API 地址须使用 HTTPS");
-          payload.base_url = url.href;
-        }
-      }
-      payload.display_name = byId("account-name").value.trim() || accountId;
-      await invoke("save_credential_account", { field, accountId, payload });
-      clearSecrets();
-      message(byId("account-status"), "账号已保存");
-      await loadCredentials();
-    } catch (error) { message(byId("account-status"), `保存失败：${error.message || error}`); }
-    finally { if (save) save.disabled = false; }
-  }
-
   async function loadCredentials() {
-    const [fields, configured, accounts, rejections] = await Promise.all([
+    const [fields, , accounts, rejections] = await Promise.all([
       invoke("credential_allowlist"),
       invoke("get_credential_fields"),
       invoke("get_credential_accounts"),
@@ -2594,47 +2889,6 @@
     // 授权摘要与行尾件都依赖「已配置」判据 (C091 / C094): 凭据加载完成后重跑一次,
     // 否则摘要会停留在「无已配置 Provider」的兜底文案上。
     renderConsentSummary();
-    const host = byId("credential-fields");
-    if (host) {
-      host.replaceChildren();
-      for (const field of fields) {
-        const block = node("div", null, { class: "credential-field" });
-        const title = providers.find(v => v[2] === field)?.[1] || field;
-        const label = node("label", `${title}${configured.includes(field) ? "（已配置，留空保留）" : ""}`);
-        const textarea = node("textarea", null, { rows: "2", "data-field": field, autocomplete: "off", spellcheck: "false", "aria-label": title, class: "code-area" });
-        textarea.placeholder = field.endsWith("Accounts") ? '{"work":{"display_name":"工作","api_key":"…"}}' : "{…}";
-        block.append(label, textarea);
-        host.append(block);
-      }
-    }
-
-    const inventory = byId("credential-accounts");
-    if (inventory) {
-      inventory.replaceChildren();
-      for (const account of credentialAccounts) {
-        const line = node("div", null, { class: "account-row" });
-        const label = providers.find(v => v[2] === account.field)?.[1] || account.field;
-        line.append(node("span", `${label} · ${account.displayName || account.accountId}${account.authorizationState === "reauthRequired" ? " · 需要重新授权" : ""}`, { class: "account-label" }));
-        const btns = node("div", null, { class: "account-actions" });
-        button(btns, `edit-${account.field}-${account.accountId}`, "替换凭证", () => {
-          clearSecrets();
-          byId("account-provider").value = account.field;
-          byId("account-id").value = account.accountId;
-          byId("account-name").value = account.displayName || "";
-          message(byId("account-status"), "填写新凭证后保存此账号");
-        });
-        button(btns, `remove-${account.field}-${account.accountId}`, "移除账号", async () => {
-          try {
-            await invoke("remove_credential_account", { field: account.field, accountId: account.accountId });
-            message(byId("account-status"), "账号已移除");
-            await loadCredentials();
-          } catch { message(byId("account-status"), "移除账号失败"); }
-        }, "btn danger");
-        line.append(btns);
-        inventory.append(line);
-      }
-      if (!credentialAccounts.length) inventory.append(node("p", "尚未配置账号", { class: "hint" }));
-    }
   }
 
   // 套餐名: 取自 artifact (mac C024 起只在设置页行内呈现套餐标签), 按 provider 归一化键归并。
@@ -2658,49 +2912,6 @@
       renderOrders();
       renderAgentUsageWorkbench();
     } catch { providerPlans = {}; }
-  }
-
-  async function saveCredentials() {
-    const save = byId("credentials-save");
-    if (save) save.disabled = true;
-    try {
-      const payloads = {};
-      for (const textarea of byId("credential-fields")?.querySelectorAll("textarea") || []) {
-        const raw = textarea.value.trim();
-        if (!raw) continue;
-        payloads[textarea.dataset.field] = raw === "null" ? null : objectJSON(raw, "凭证字段");
-      }
-      validatePayloads(payloads);
-      if (!Object.keys(payloads).length) throw new Error("没有需要保存的内容");
-      await invoke("save_credentials_command", { payloads });
-      message(byId("credentials-status"), "已保存");
-      await loadCredentials();
-    } catch (error) { message(byId("credentials-status"), `保存失败：${error.message || error}`); }
-    finally { if (save) save.disabled = false; }
-  }
-
-  async function validateConnections() {
-    try {
-      const saved = await invoke("get_settings");
-      if (saved.consentVersion !== 1) throw new Error("请先在授权与隐私中允许订阅查询并保存设置");
-      await invoke("refresh_now");
-      message(byId("connection-status"), "正在检查已启用账号，等待查询结果…");
-    } catch (error) { message(byId("connection-status"), error.message || String(error)); }
-  }
-
-  function showConnectionResult(panel) {
-    const host = byId("connection-status");
-    if (!host) return;
-    const lines = [];
-    for (const section of panel.subscription?.sections || []) {
-      const plan = section.plan ? ` · ${section.plan}` : "";
-      lines.push(`${section.name}：${section.status === "ok" ? "连接正常" : section.note || section.status || "等待结果"}${plan}`);
-      for (const account of section.accounts || []) {
-        lines.push(`${account.name}：${account.status === "ok" ? "连接正常" : account.note || account.status}`);
-      }
-    }
-    if (panel.runtime?.error) lines.push(panel.runtime.error);
-    host.textContent = lines.join("\n") || "尚无订阅查询结果";
   }
 
   // MARK: - Claude 本机登录态 (C075)
@@ -2754,6 +2965,53 @@
     } catch (error) { message(byId("claude-local-status"), `读取失败：${error.message || error}`); }
   }
 
+  // MARK: - Grok 本机登录态 (C085 / 设计规则 20)
+
+  // 与 Claude 同范式 (mac OfficialLocalProviderSettingsSection): 只读
+  // %USERPROFILE%\.grok\auth.json, 状态行四态文案与「重新检测 / 从本机导入」入口。
+  let grokLocalInfo = null;
+
+  function renderGrokLocalState() {
+    const state = byId("grok-local-state");
+    if (!state || !grokLocalInfo) return;
+    const stored = grokLocalInfo.storedAccountCount || 0;
+    if (grokLocalInfo.status === "followed") {
+      state.textContent = stored > 0
+        ? `已存 ${stored} 个账号凭证，正在使用`
+        : "已启用，自动跟随本机 Grok CLI 登录态";
+      state.className = "auth-state ok";
+    } else if (grokLocalInfo.status === "expired") {
+      state.textContent = "登录已过期，运行一次 Grok CLI 可自动恢复，Bruce 会重新跟随";
+      state.className = "auth-state off";
+    } else {
+      state.textContent = "未检测到本机 Grok 登录态，登录 Grok CLI 后自动跟随";
+      state.className = "auth-state off";
+    }
+  }
+
+  async function loadGrokLocalStatus() {
+    try {
+      grokLocalInfo = await invoke("grok_local_status");
+    } catch {
+      grokLocalInfo = { status: "notFound", storedAccountCount: 0 };
+    }
+    renderGrokLocalState();
+    // 行尾件与授权摘要共用「已配置」判据 (C091 / C094): 探测完成后刷新对应区域。
+    if (byId("setting-providers")) renderOrders();
+    if (byId("consent-list") || byId("setting-providers")) renderConsentSummary();
+  }
+
+  async function importGrokFromLocal() {
+    try {
+      const result = await invoke("import_grok_from_local");
+      message(byId("grok-local-status"), result?.status === "notFound"
+        ? "未发现本机 Grok 登录态，请先通过 Grok CLI 登录或改用粘贴导入"
+        : "已读取本机 Grok 登录态并保存");
+      await loadCredentials();
+      await loadGrokLocalStatus();
+    } catch (error) { message(byId("grok-local-status"), `读取失败：${error.message || error}`); }
+  }
+
   // MARK: - 初始化
   const ready = (async () => {
     // 绑定侧栏点击
@@ -2780,8 +3038,19 @@
       });
       await listen("dashboard-updated", event => {
         currentDashboard = event.payload;
-        showConnectionResult(event.payload);
         renderAgentUsageWorkbench();
+      });
+      // StepFun 双轨捕获 (C086): WebView2 页面加载事件到达时同步更新当前 URL 并立即试捕一次。
+      await listen("stepfun-page-load", event => {
+        if (!stepfunWebSession) return;
+        const payload = event?.payload || {};
+        if (payload.url) {
+          stepfunWebSession.currentUrl = payload.url;
+          renderStepFunWebPanel();
+        }
+        if (payload.loading === false) {
+          pollStepFunWebLogin(false);
+        }
       });
     } catch {
       message(byId("settings-status"), "部分配置读取失败，请重新打开设置");

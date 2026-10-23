@@ -12,7 +12,6 @@ use collector_application::{
 use collector_domain::{
     response_status, BridgeRequest, BridgeResponse, Diagnostic, BRIDGE_SCHEMA_VERSION,
 };
-use std::collections::BTreeSet;
 use std::io::{self, Read};
 use std::time::Instant;
 use uuid::Uuid;
@@ -21,10 +20,6 @@ const MAX_REQUEST_BYTES: usize = 4 * 1024 * 1024;
 const MAX_LOCAL_SCAN_SECONDS: f64 = 300.0;
 const MAX_EXTERNAL_REQUEST_SECONDS: f64 = 300.0;
 const MAX_MODULE_SECONDS: f64 = 600.0;
-const CODEX_QUOTA_ACCOUNT_MAX: usize = 64;
-const CODEX_QUOTA_ACCOUNT_ID_MAX: usize = 256;
-const CODEX_QUOTA_DISPLAY_NAME_MAX: usize = 256;
-const CODEX_QUOTA_ACCESS_TOKEN_MAX: usize = 8192;
 
 const ALLOWED_CONTEXT_FIELDS: &[&str] = &[
     "home",
@@ -344,7 +339,6 @@ fn validate_request(request: &BridgeRequest) -> Result<(), Diagnostic> {
             ));
         }
     }
-    validate_codex_request(request)?;
     for key in request.credentials.keys() {
         if !ALLOWED_CREDENTIAL_FIELDS.contains(&key.as_str()) {
             return Err(Diagnostic::new(
@@ -355,133 +349,6 @@ fn validate_request(request: &BridgeRequest) -> Result<(), Diagnostic> {
                 false,
             ));
         }
-    }
-    Ok(())
-}
-
-fn validate_codex_request(request: &BridgeRequest) -> Result<(), Diagnostic> {
-    let accounts = request.credentials.get("codexQuotaAccounts");
-    let order = request.context.get("codexQuotaAccountOrder");
-    if let Some(retry_only) = request.context.get("codexQuotaRetryOnly") {
-        if !retry_only.is_boolean() {
-            return Err(protocol_error(
-                "BRIDGE_INVALID_REQUEST",
-                "codexQuotaRetryOnly 必须是布尔值",
-            ));
-        }
-    }
-    let Some(accounts) = accounts else {
-        if order.is_some() {
-            return Err(protocol_error(
-                "BRIDGE_INVALID_REQUEST",
-                "codexQuotaAccountOrder 必须携带 codexQuotaAccounts",
-            ));
-        }
-        return Ok(());
-    };
-    let Some(accounts) = accounts.as_object() else {
-        return Err(protocol_error(
-            "BRIDGE_INVALID_REQUEST",
-            "codexQuotaAccounts 必须是 JSON object",
-        ));
-    };
-    if accounts.is_empty() || accounts.len() > CODEX_QUOTA_ACCOUNT_MAX {
-        return Err(protocol_error(
-            "BRIDGE_INVALID_REQUEST",
-            "codexQuotaAccounts 数量无效",
-        ));
-    }
-    for (account_id, payload) in accounts {
-        if account_id.is_empty()
-            || account_id.len() > CODEX_QUOTA_ACCOUNT_ID_MAX
-            || account_id.chars().any(char::is_control)
-        {
-            return Err(protocol_error(
-                "BRIDGE_INVALID_REQUEST",
-                "codexQuotaAccounts 账号 id 无效",
-            ));
-        }
-        let Some(payload) = payload.as_object() else {
-            return Err(Diagnostic::new(
-                "BRIDGE_CREDENTIAL_SCOPE",
-                "security",
-                "request",
-                "codexQuotaAccounts 账号条目无效",
-                false,
-            ));
-        };
-        let allowed = BTreeSet::from(["access_token", "display_name"]);
-        if payload.keys().any(|key| !allowed.contains(key.as_str())) {
-            return Err(Diagnostic::new(
-                "BRIDGE_CREDENTIAL_SCOPE",
-                "security",
-                "request",
-                "codexQuotaAccounts 账号条目包含不允许的字段",
-                false,
-            ));
-        }
-        let access_token = payload
-            .get("access_token")
-            .and_then(|value| value.as_str())
-            .filter(|value| !value.is_empty())
-            .ok_or_else(|| {
-                protocol_error(
-                    "BRIDGE_INVALID_REQUEST",
-                    "codexQuotaAccounts 缺少 access_token",
-                )
-            })?;
-        if access_token.len() > CODEX_QUOTA_ACCESS_TOKEN_MAX {
-            return Err(protocol_error(
-                "BRIDGE_INVALID_REQUEST",
-                "codexQuotaAccounts access_token 超过长度上限",
-            ));
-        }
-        let display_name = payload
-            .get("display_name")
-            .and_then(|value| value.as_str())
-            .filter(|value| !value.is_empty())
-            .ok_or_else(|| {
-                protocol_error(
-                    "BRIDGE_INVALID_REQUEST",
-                    "codexQuotaAccounts 缺少 display_name",
-                )
-            })?;
-        if display_name.len() > CODEX_QUOTA_DISPLAY_NAME_MAX {
-            return Err(protocol_error(
-                "BRIDGE_INVALID_REQUEST",
-                "codexQuotaAccounts display_name 超过长度上限",
-            ));
-        }
-    }
-    let Some(order) = order.and_then(|value| value.as_array()) else {
-        return Err(protocol_error(
-            "BRIDGE_INVALID_REQUEST",
-            "codexQuotaAccounts 必须携带 codexQuotaAccountOrder",
-        ));
-    };
-    if order.is_empty() || order.len() > CODEX_QUOTA_ACCOUNT_MAX {
-        return Err(protocol_error(
-            "BRIDGE_INVALID_REQUEST",
-            "codexQuotaAccountOrder 数量无效",
-        ));
-    }
-    let order = order
-        .iter()
-        .map(|value| value.as_str().map(str::to_owned))
-        .collect::<Option<Vec<_>>>()
-        .ok_or_else(|| {
-            protocol_error(
-                "BRIDGE_INVALID_REQUEST",
-                "codexQuotaAccountOrder 必须是字符串数组",
-            )
-        })?;
-    let order_set = order.iter().collect::<BTreeSet<_>>();
-    let account_set = accounts.keys().collect::<BTreeSet<_>>();
-    if order_set.len() != order.len() || order_set != account_set {
-        return Err(protocol_error(
-            "BRIDGE_INVALID_REQUEST",
-            "codexQuotaAccountOrder 与 codexQuotaAccounts 不一致",
-        ));
     }
     Ok(())
 }

@@ -158,10 +158,12 @@ mod desktop {
             .lock()
             .map_err(|_| "SNAPSHOT_LOCK_FAILED")?;
         state.prune_credentials(&credentials::load_credentials(&root));
-        let mut panel = state.panel_json(
+        let verified = crate::settings::verified_provider_ids(&settings);
+        let mut panel = state.panel_json_verified(
             chrono::Local::now().fixed_offset(),
             settings.usage_enabled,
             &settings.enabled_providers,
+            Some(&verified),
             &settings.provider_order,
         );
         drop(state);
@@ -253,6 +255,8 @@ mod desktop {
         let mut first = true;
         let result = credentials::collect_with_recovery(&root, payloads, |payloads| {
             let payloads = credentials::with_local_claude(payloads, &home);
+            // C085: 同范式跟随本机 Grok CLI 登录态 (零配置, 不落盘)。
+            let payloads = credentials::with_local_grok(payloads, &home);
             if first {
                 first = false;
                 collector::run_configured_collection(payloads, &effective_settings)
@@ -346,6 +350,8 @@ mod desktop {
                 let mut first = true;
                 let result = credentials::collect_with_recovery(&root, payloads, |payloads| {
                     let payloads = credentials::with_local_claude(payloads, &home);
+                    // C085: 定向刷新同样跟随本机 Grok CLI 登录态。
+                    let payloads = credentials::with_local_grok(payloads, &home);
                     if first {
                         first = false;
                         collector::run_scoped_collection(payloads, &settings, &provider)

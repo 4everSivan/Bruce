@@ -1,9 +1,10 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C048",
+  "version": "0.12.0+",
   "title": "provider 专属逻辑下沉：codex 新鲜度/失败类别/挑战改由 provider 层标准化输出，编排层与协议层去除 app 名字分支",
   "type": "BugFix",
-  "status": "pending",
+  "status": "verified",
   "branch": "main",
   "is_hotfix": false,
   "target": {
@@ -18,7 +19,7 @@
     "command": "grep -n 'app == \"codex\"' core/collector/crates/collector-application/src/*.rs; grep -n '\"claude\" =>\\|\"grok\" =>' core/collector/crates/collector-application/src/execution.rs; grep -n 'fn validate_codex_request' core/collector/crates/collector-bridge/src/lib.rs",
     "expected": "codex 字符串判定在 application 命中多处; 凭据解析硬编码命中; bridge 的 codex 校验函数存在",
     "is_completed": true,
-    "evidence": ""
+    "evidence": "precheck 实测命中 execution.rs:254 (if plan.service.app == \"codex\")、execution.rs:334-335 (\"claude\" => / \"grok\" =>) 与 collector-bridge/src/lib.rs:362 (fn validate_codex_request)"
   },
   "callback": {
     "before": [
@@ -60,31 +61,31 @@
     }
   },
   "verification": {
-    "result": null,
-    "run_id": "c048-deferred-20261016",
-    "user_quote": "",
-    "signoff": "范围较大且触及刚经 C037/C041 验证的 codex 重试/降级路径，需独立回归窗口：本轮登记为结构性债 TD-005，状态保持 open，建议独立开批实施（先补 codex 回归用例再重构）。",
+    "result": true,
+    "run_id": "local-20261023-07",
+    "user_quote": "确认",
+    "signoff": "verified_by_user",
     "checks": [
       {
         "item": "自动化测试",
         "true_if": "全量单测全绿，退出码为 0，含针对性回归测试",
         "false_if": "存在任何测试失败、报错或未覆盖回归用例",
-        "evidence": "",
-        "result": null
+        "evidence": "zsh scripts/verify-local.sh exit 0；cargo test --workspace 全绿（新增 codex_provider_finalize_outcome_standardizes_freshness_failure_kind_and_challenges / catalog_entry_for_app_declares_credential_metadata_without_application_hardcoding / validate_account_request_enforces_codex_account_invariants 回归测试通过）",
+        "result": true
       },
       {
         "item": "行为实测",
         "true_if": "预期行为正常回执，核心功能指标符合要求",
         "false_if": "出现报错、非预期返回值或行为失真",
-        "evidence": "",
-        "result": null
+        "evidence": "grep 实测 execution.rs 无 app == \"codex\" 与 \"claude\" => / \"grok\" => 分支，collector-bridge/src/lib.rs 无 fn validate_codex_request；finalize_provider_outcome 与 validate_account_request 保持原有诊断码、新鲜度与挑战语义完全一致",
+        "result": true
       },
       {
         "item": "反向影响排查",
         "true_if": "未引入副作用，关联模块运行正常",
         "false_if": "破坏了上下游其他接口或产生连锁反应",
-        "evidence": "",
-        "result": null
+        "evidence": "cargo clippy --workspace --all-targets -- -D warnings 0 warnings；Swift 全部 Harness 与 PanelParityHarness 双端对拍全绿",
+        "result": true
       }
     ]
   },
@@ -96,10 +97,18 @@
     }
   ],
   "sync": {
-    "design_pinned": false,
+    "design_pinned": true,
     "changelog": false,
     "commit": "",
     "tag": ""
   },
-  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用)"
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用)",
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-23",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified"
+  }
 }

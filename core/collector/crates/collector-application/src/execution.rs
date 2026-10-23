@@ -2,11 +2,11 @@ use crate::account::AccountPlan;
 use crate::context::RunContext;
 use collector_domain::Diagnostic;
 use collector_provider::{
-    finalize_service, provider_for_app, service_template, HttpClient, HttpRequest, HttpResponse,
-    ProviderError, ProviderRequest,
+    catalog_entry_for_app, provider_for_app, service_template, HttpClient, HttpRequest,
+    HttpResponse, ProviderError, ProviderRequest,
 };
 use collector_runtime::{AccountSingleFlight, RuntimeError, SingleFlightError};
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -221,105 +221,12 @@ fn execute_one_uncached(context: &RunContext<'_>, plan: &AccountPlan) -> Service
     if let Err(error) = &result {
         diagnostics.push(error.diagnostic.clone());
     }
-    let credential_challenges = codex_challenge(plan, &result);
-    let mut credential_updates = Vec::new();
-    let mut clean_result = result.clone();
-    if let Ok(Some(Value::Object(map))) = &mut clean_result {
-        if let Some(update_val) = map.remove("credential_update") {
-            if let Some(account_id) = plan.account_id.as_deref().filter(|s| !s.is_empty()) {
-                credential_updates.push(json!({
-                    "provider": plan.service.app,
-                    "accountId": account_id,
-                    "kind": "oauthTokens",
-                    "operation": "replace",
-                    "credentials": update_val,
-                }));
-            }
-        }
-    }
-    let service = finalize_service(service, clean_result);
-    let service = finalize_codex_service(service, plan, &result);
+    let outcome = provider.finalize_outcome(service, plan.account_id.as_deref(), result);
     ServiceExecution {
-        service,
+        service: outcome.service,
         diagnostics,
-        credential_updates,
-        credential_challenges,
-    }
-}
-
-fn codex_challenge(
-    plan: &AccountPlan,
-    result: &Result<Option<Value>, ProviderError>,
-) -> Vec<Value> {
-    if plan.service.app == "codex"
-        && plan.account_id.is_some()
-        && result
-            .as_ref()
-            .err()
-            .is_some_and(|error| error.diagnostic.code == "PROVIDER_AUTH_REJECTED")
-    {
-        return vec![json!({
-            "provider": "codex",
-            "accountId": plan.account_id.as_deref().unwrap_or_default(),
-            "reason": "accessRejected",
-        })];
-    }
-    Vec::new()
-}
-
-fn finalize_codex_service(
-    mut service: Value,
-    plan: &AccountPlan,
-    result: &Result<Option<Value>, ProviderError>,
-) -> Value {
-    if plan.service.app != "codex" {
-        return service;
-    }
-    let Some(object) = service.as_object_mut() else {
-        return service;
-    };
-    match result {
-        Ok(_) => {
-            object.insert("freshness".to_owned(), Value::String("fresh".to_owned()));
-            object.insert("failureKind".to_owned(), Value::Null);
-        }
-        Err(error) => {
-            object.remove("capturedAt");
-            object.insert(
-                "freshness".to_owned(),
-                Value::String("unavailable".to_owned()),
-            );
-            object.insert(
-                "failureKind".to_owned(),
-                Value::String(codex_failure_kind(error).to_owned()),
-            );
-            object.insert(
-                "note".to_owned(),
-                Value::String(codex_failure_note(error).to_owned()),
-            );
-        }
-    }
-    service
-}
-
-fn codex_failure_kind(error: &ProviderError) -> &'static str {
-    match error.diagnostic.code.as_str() {
-        "PROVIDER_AUTH_REJECTED" => "auth",
-        "PROVIDER_PERMISSION_DENIED" => "permission",
-        "PROVIDER_RATE_LIMIT" => "rateLimit",
-        "PROVIDER_SERVER_ERROR" => "server",
-        "PROVIDER_INVALID_JSON" | "PROVIDER_INVALID_PAYLOAD" | "PROVIDER_RESPONSE_TOO_LARGE" => {
-            "invalidResponse"
-        }
-        _ => "network",
-    }
-}
-
-fn codex_failure_note(error: &ProviderError) -> &'static str {
-    match error.diagnostic.code.as_str() {
-        "PROVIDER_AUTH_REJECTED" => "登录态已失效, 请重新登录该账号",
-        "PROVIDER_PERMISSION_DENIED" => "当前账号无权访问该额度接口",
-        _ => "额度查询暂时失败, 请稍后重试",
+        credential_updates: outcome.credential_updates,
+        credential_challenges: outcome.credential_challenges,
     }
 }
 
@@ -330,11 +237,12 @@ fn resolve_credential(
     if plan.credential.is_some() {
         return Ok(plan.credential.clone());
     }
-    match plan.service.app.as_str() {
-        "claude" => Err(missing_credential("Claude", "Swift 注入")),
-        "grok" => Err(missing_credential("Grok", "Swift 注入")),
-        _ => Ok(None),
+    if let Some(entry) = catalog_entry_for_app(&plan.service.app) {
+        if let Some(source) = entry.missing_credential_source {
+            return Err(missing_credential(entry.display_prefix, source));
+        }
     }
+    Ok(None)
 }
 
 fn missing_credential(provider: &str, source: &str) -> Diagnostic {

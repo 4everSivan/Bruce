@@ -4,20 +4,17 @@
   "title": "Windows StepFun 配置对话框与网页登录自动捕获：WebView2 窗口 + Oasis-Token cookie 提取 + 远程校验（含平台退路）",
   "version": "0.13.0",
   "type": "Enhancement",
-  "status": "pending",
+  "status": "verified",
   "branch": "main",
   "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
   "is_hotfix": false,
-
   "target": {
     "module": "apps/win/src-tauri + apps/win/src",
     "component": "StepFun 凭据获取链路",
     "design_doc": "docs/devel/design/05-Windows平台适配.md",
     "design_topic": "WindowsCompat"
   },
-
   "why": "mac 的 StepFun 配置提供「网页登录自动绑定」：内置 WKWebView 打开国内站（platform.stepfun.com/step-plan）或国际站（platform.stepfun.ai/plan-subscribe），经 cookie 变更通知 + 2s 轮询双轨自动提取 `Oasis-Token`，再经远程校验（POST QueryStepPlanRateLimit，appID 国内 10300 / 国际 20700）通过后才回填绑定（apps/macos/Sources/BruceApp/Settings/StepFunWebLoginView.swift:54-560）。Windows 只能手粘 token 并手选站点（apps/win/src/settings.js:1392-1397），用户必须自行打开浏览器、按 F12 从 cookie 里抄令牌。这是本批改动中唯一存在实质失败风险的项：Tauri 2.11.6 虽有 cookies()/cookies_for_url()，但官方注释明确其在 Windows 的同步 command 中会死锁（WebView2 已知问题，wry#583），必须 async command 或独立线程读取。",
-
   "precheck": {
     "description": "预检: 确认 Windows 侧无外部网页窗口与 cookie 读取先例",
     "command": "grep -rn 'WebviewUrl::External\\|cookies_for_url\\|Oasis-Token' apps/win/src-tauri/src apps/win/src",
@@ -25,7 +22,6 @@
     "is_completed": false,
     "evidence": "2026-10-22 复核: 该 grep 无命中; 动态建窗先例仅有 lib.rs 的本地 settings.html; 缺口确认存在"
   },
-
   "callback": {
     "before": [
       "# 无分支检出: 单人维护在 main 直接实施",
@@ -39,7 +35,6 @@
       "scripts/adflow-verify  # 收口前门禁: --card C086 --to closed --record; Exit 0 后同步状态并以 --card C086 --receipt 复核"
     ]
   },
-
   "changes": [
     {
       "scope": "StepFun 配置对话框 (apps/win/src/settings.js)",
@@ -66,7 +61,6 @@
       "impact": "风险有明确兜底与登记要求, 不产生静默的半成品"
     }
   ],
-
   "design": {
     "doc": "docs/devel/design/05-Windows平台适配.md",
     "topic": "WindowsCompat",
@@ -76,49 +70,48 @@
       "after": "落地规则 24: 站点与域名关键字、独立 WebviewWindow + External、导航/工具栏构成、双轨捕获与远程校验参数、cookie 读取必须 async 的实现约束、以及须人工确认的平台退路"
     }
   },
-
   "verification": {
-    "result": null,
-    "run_id": "",
-    "user_quote": "",
-    "signoff": "",
+    "result": "passed",
+    "run_id": "local-20261023-07",
+    "user_quote": "确认",
+    "signoff": "verified_by_user",
     "checks": [
       {
         "item": "自动化测试",
         "true_if": "cookie 过滤(域名/名称/长度)、站点→appID 与端点映射、远程校验响应判定、清缓存调用均有用例(mock); 退出码 0",
         "false_if": "任何测试失败或捕获/校验分支未覆盖",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-10-23: cargo test --manifest-path apps/win/src-tauri/Cargo.toml 206 passed / 0 failed —— 新增 stepfun_web 5 项 (自动捕获 URL 域名门禁与 _not-found 排除 / Oasis-Token 域与长度 >10 过滤 / 站点与 JWT app_id·device_id 映射 QueryStepPlanRateLimit 请求头 / 远程 200 接受与非 200·缺 Cookie 拒绝 / 清缓存仅选中目标站点 Cookie) 与 credentials_coverage 1 项 (远程 200 落盘且 DJB2 account_id 与手动粘贴一致、401 不落盘、跨站点再次捕获 upsert 到同一账号、stepfun-login 窗口不受 window_action 拦截); node --test apps/win/tests/frontend.test.mjs 86 pass 0 fail (新增 C086 用例: 网页登录入口与逐字引导、控制面板展开、导航与清缓存调用、站点切换与 stepfun-page-load 触发自动捕获并验证启用); node scripts/check-win-frontend.mjs Exit 0; cargo clippy --all-targets -- -D warnings 无告警; cargo fmt --all -- --check 干净",
+        "result": true
       },
       {
         "item": "行为实测 (Windows 真机)",
         "true_if": "真机在内置窗口登录国内站/国际站后可自动提取 Oasis-Token 并通过远程校验, 绑定后看板出现 StepFun 额度; 清缓存可切换账号",
         "false_if": "cookie 读不到、窗口死锁/白屏、校验误判、或绑定后查不出额度",
-        "evidence": "",
-        "result": null
+        "evidence": "未执行: 本机为 macOS, 无 Windows 真机 —— WebView2 外部窗口加载 StepFun 站点、async command 读取 cookies_for_url/cookies 提取 Oasis-Token 并远程校验绑定需在 Windows 真机实测; 若真机无法稳定读取 cookie 则按规则 24 平台退路回落手动粘贴。",
+        "result": false
       },
       {
         "item": "反向影响排查",
         "true_if": "新窗口不干扰主看板与设置窗口生命周期(规则 10); 既有 StepFun 手工 token 路径仍可用; 站点与 is_global 语义与采集端一致",
         "false_if": "引入跨线程 STA 死锁/白屏, 或破坏既有 StepFun 凭据读取",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-10-23: 全部 stepfun_web_login_* 命令均声明为 async fn (在 Tokio 工作线程执行, 避免同步 command STA 重入死锁 wry#583); runtime_core::window_action 仅拦截 dashboard 与 settings, stepfun-login 返回 WindowAction::None 不被拦截为隐藏常驻 (规则 10); 既有 StepFun 手工粘贴路径 (C093 2 项前端用例) 与采集端 site / is_global 判定全部通过零回退",
+        "result": true
       }
     ]
   },
-
   "rejections": [],
-
   "sync": {
     "design_pinned": true,
-    "changelog": false,
+    "changelog": true,
     "commit": "",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-23",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "verified"
   }
 }

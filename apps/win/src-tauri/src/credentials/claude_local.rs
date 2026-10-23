@@ -118,7 +118,8 @@ fn oauth_entry(oauth: &Value) -> Option<&Map<String, Value>> {
 
 /// 过期判定 (对齐 mac `SubscriptionCredentialEvaluator.isExpired`): nil / 无法解析
 /// 一律视为未过期; 数值 > 1e12 视为毫秒, 否则视为秒; 字符串按 RFC 3339 解析。
-fn is_expired(value: Option<&Value>, now_ms: i64) -> bool {
+/// `pub(super)`: Grok 本机跟随 (C085) 复用同一张判定表, 避免两处口径漂移。
+pub(super) fn is_expired(value: Option<&Value>, now_ms: i64) -> bool {
     let Some(value) = value else {
         return false;
     };

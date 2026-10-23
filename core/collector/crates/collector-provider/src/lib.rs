@@ -1,15 +1,38 @@
 #![deny(unsafe_code)]
 
 //! Read-only quota and Provider adapters.
+//! Submodules split protocol decoders, signing helpers, quota parsers, and
+//! provider implementations by single responsibility (C053).
+
+mod protobuf;
+mod providers;
+mod quota_parsers;
+mod seroval;
+mod signing;
+#[cfg(test)]
+mod tests_parsers;
+#[cfg(test)]
+mod tests_providers;
+
+pub use protobuf::parse_grok_usage;
+pub use providers::{
+    ClaudeProvider, ClineProvider, CodexProvider, DeepSeekProvider, GrokProvider, JevProvider,
+    KimiProvider, OpenCodeGoProvider, StepFunProvider, VolcEngineProvider, ZhipuProvider,
+};
+pub use quota_parsers::{
+    codex_service_id, parse_claude_usage, parse_cline_usage_limits, parse_codex_usage,
+    parse_deepseek_balance, parse_jev_models, parse_kimi_usage, parse_stepfun_usage,
+    parse_volcengine_usage, parse_zhipu_usage,
+};
+pub use seroval::{parse_opencode_go_body, parse_opencode_go_usage};
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 use collector_domain::Diagnostic;
 use collector_runtime::{CancellationToken, RuntimeError};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::{self, Display, Formatter, Write as _};
+use std::fmt::{self, Display, Formatter};
 use std::io::Read;
 use std::time::Duration;
 
@@ -23,6 +46,9 @@ const CATALOG_SPECS: &[CatalogSpec] = &[
         display_prefix: "OpenCode GO",
         app: "opencode-go",
         credential_field: "opencodeGoQuotaAccounts",
+        direct_credential_field: None,
+        missing_credential_source: None,
+        unwraps_oauth_payload: true,
     },
     CatalogSpec {
         provider: "kimi",
@@ -30,6 +56,9 @@ const CATALOG_SPECS: &[CatalogSpec] = &[
         display_prefix: "Kimi",
         app: "kimi",
         credential_field: "kimiQuotaAccounts",
+        direct_credential_field: None,
+        missing_credential_source: None,
+        unwraps_oauth_payload: false,
     },
     CatalogSpec {
         provider: "deepseek",
@@ -37,6 +66,9 @@ const CATALOG_SPECS: &[CatalogSpec] = &[
         display_prefix: "DeepSeek",
         app: "deepseek",
         credential_field: "deepseekQuotaAccounts",
+        direct_credential_field: None,
+        missing_credential_source: None,
+        unwraps_oauth_payload: false,
     },
     CatalogSpec {
         provider: "zhipu",
@@ -44,6 +76,9 @@ const CATALOG_SPECS: &[CatalogSpec] = &[
         display_prefix: "Z.ai",
         app: "zhipu",
         credential_field: "zhipuQuotaAccounts",
+        direct_credential_field: None,
+        missing_credential_source: None,
+        unwraps_oauth_payload: false,
     },
     CatalogSpec {
         provider: "volcengine",
@@ -51,6 +86,9 @@ const CATALOG_SPECS: &[CatalogSpec] = &[
         display_prefix: "火山引擎",
         app: "volcengine",
         credential_field: "volcengineQuotaAccounts",
+        direct_credential_field: None,
+        missing_credential_source: None,
+        unwraps_oauth_payload: false,
     },
     CatalogSpec {
         provider: "claude",
@@ -58,6 +96,9 @@ const CATALOG_SPECS: &[CatalogSpec] = &[
         display_prefix: "Claude",
         app: "claude",
         credential_field: "claudeQuotaAccounts",
+        direct_credential_field: Some("claudeOAuth"),
+        missing_credential_source: Some("Swift 注入"),
+        unwraps_oauth_payload: true,
     },
     CatalogSpec {
         provider: "grok",
@@ -65,6 +106,9 @@ const CATALOG_SPECS: &[CatalogSpec] = &[
         display_prefix: "Grok",
         app: "grok",
         credential_field: "grokQuotaAccounts",
+        direct_credential_field: Some("grokOAuth"),
+        missing_credential_source: Some("Swift 注入"),
+        unwraps_oauth_payload: true,
     },
     CatalogSpec {
         provider: "stepfun",
@@ -72,6 +116,9 @@ const CATALOG_SPECS: &[CatalogSpec] = &[
         display_prefix: "StepFun",
         app: "stepfun",
         credential_field: "stepfunQuotaAccounts",
+        direct_credential_field: None,
+        missing_credential_source: None,
+        unwraps_oauth_payload: false,
     },
     CatalogSpec {
         provider: "jev",
@@ -79,6 +126,9 @@ const CATALOG_SPECS: &[CatalogSpec] = &[
         display_prefix: "Jev",
         app: "jev",
         credential_field: "jevQuotaAccounts",
+        direct_credential_field: None,
+        missing_credential_source: None,
+        unwraps_oauth_payload: false,
     },
     CatalogSpec {
         provider: "cline",
@@ -86,6 +136,9 @@ const CATALOG_SPECS: &[CatalogSpec] = &[
         display_prefix: "Cline",
         app: "cline",
         credential_field: "clineQuotaAccounts",
+        direct_credential_field: None,
+        missing_credential_source: None,
+        unwraps_oauth_payload: false,
     },
 ];
 
@@ -98,9 +151,15 @@ struct CatalogSpec {
     /// 凭据字段名 (C049): 与 prefix/app 同源定义, 供 collector-application
     /// 派生而不复写字符串 —— 三处手工映射表曾各自维护且无编译期约束。
     credential_field: &'static str,
+    /// 官方直通凭据字段 (C048): 当启用了官方本地凭证但无账号条目时读取的字段。
+    direct_credential_field: Option<&'static str>,
+    /// 缺失凭据来源提示 (C048): 声明式判定 CREDENTIAL_MISSING, 消除编排层按 app 名分支。
+    missing_credential_source: Option<&'static str>,
+    /// 账号条目是否内嵌 `oauth` 子对象需解包 (C048)。
+    unwraps_oauth_payload: bool,
 }
 
-/// 目录表对外只读投影 (C049): 前缀 / app / 凭据字段的唯一事实源。
+/// 目录表对外只读投影 (C049 / C048): 前缀 / app / 凭据字段与凭据需求的唯一事实源。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CatalogEntry {
     pub provider: &'static str,
@@ -108,6 +167,9 @@ pub struct CatalogEntry {
     pub display_prefix: &'static str,
     pub app: &'static str,
     pub credential_field: &'static str,
+    pub direct_credential_field: Option<&'static str>,
+    pub missing_credential_source: Option<&'static str>,
+    pub unwraps_oauth_payload: bool,
 }
 
 /// 返回目录表全部条目 (顺序即定义顺序)。
@@ -120,8 +182,16 @@ pub fn catalog_entries() -> Vec<CatalogEntry> {
             display_prefix: spec.display_prefix,
             app: spec.app,
             credential_field: spec.credential_field,
+            direct_credential_field: spec.direct_credential_field,
+            missing_credential_source: spec.missing_credential_source,
+            unwraps_oauth_payload: spec.unwraps_oauth_payload,
         })
         .collect()
+}
+
+/// 按 app ID 查询目录表条目 (C048)。
+pub fn catalog_entry_for_app(app: &str) -> Option<CatalogEntry> {
+    catalog_entries().into_iter().find(|entry| entry.app == app)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -197,7 +267,7 @@ pub fn resolve_service_catalog(
         }
         if services.iter().all(|service| service.app != spec.app)
             && input.enabled_official.contains(spec.app)
-            && matches!(spec.provider, "claude" | "grok")
+            && spec.direct_credential_field.is_some()
         {
             services.push(ServiceDescriptor {
                 id: spec.app.to_owned(),
@@ -335,6 +405,16 @@ impl HttpClient for UreqHttpClient {
     }
 }
 
+/// Standardized provider execution outcome (C048): encapsulates the finalized
+/// service JSON alongside any credential updates or challenges produced by the
+/// provider, eliminating provider-name branching in `collector-application`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderOutcome {
+    pub service: Value,
+    pub credential_updates: Vec<Value>,
+    pub credential_challenges: Vec<Value>,
+}
+
 pub trait QuotaProvider: Send + Sync {
     fn app(&self) -> &str;
 
@@ -344,6 +424,19 @@ pub trait QuotaProvider: Send + Sync {
         http: &dyn HttpClient,
         cancellation: &CancellationToken,
     ) -> Result<Option<Value>, ProviderError>;
+
+    /// Finalize raw provider query output into a standardized `ProviderOutcome` (C048).
+    /// Providers with custom freshness, failure taxonomy, or challenge semantics
+    /// (such as `CodexProvider`) override this method so `collector-application`
+    /// never branches on `app` name.
+    fn finalize_outcome(
+        &self,
+        service: Value,
+        account_id: Option<&str>,
+        result: Result<Option<Value>, ProviderError>,
+    ) -> ProviderOutcome {
+        finalize_provider_outcome(self.app(), service, account_id, result)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -497,6 +590,108 @@ pub fn finalize_service(mut service: Value, result: Result<Option<Value>, Provid
     service
 }
 
+/// Default provider outcome finalization (C048): extracts optional `credential_update`
+/// from the provider result and delegates service status/note population to `finalize_service`.
+pub fn finalize_provider_outcome(
+    app: &str,
+    service: Value,
+    account_id: Option<&str>,
+    result: Result<Option<Value>, ProviderError>,
+) -> ProviderOutcome {
+    let mut credential_updates = Vec::new();
+    let mut clean_result = result;
+    if let Ok(Some(Value::Object(map))) = &mut clean_result {
+        if let Some(update_val) = map.remove("credential_update") {
+            if let Some(account_id) = account_id.filter(|s| !s.is_empty()) {
+                credential_updates.push(json!({
+                    "provider": app,
+                    "accountId": account_id,
+                    "kind": "oauthTokens",
+                    "operation": "replace",
+                    "credentials": update_val,
+                }));
+            }
+        }
+    }
+    let service = finalize_service(service, clean_result);
+    ProviderOutcome {
+        service,
+        credential_updates,
+        credential_challenges: Vec::new(),
+    }
+}
+
+/// Codex-specific outcome finalization (C048): populates `freshness`, `failureKind`,
+/// failure `note`, and emits `accessRejected` credential challenges when an account's
+/// access token is rejected.
+pub fn finalize_codex_outcome(
+    service: Value,
+    account_id: Option<&str>,
+    result: Result<Option<Value>, ProviderError>,
+) -> ProviderOutcome {
+    let credential_challenges = if account_id.is_some()
+        && result
+            .as_ref()
+            .err()
+            .is_some_and(|error| error.diagnostic.code == "PROVIDER_AUTH_REJECTED")
+    {
+        vec![json!({
+            "provider": "codex",
+            "accountId": account_id.unwrap_or_default(),
+            "reason": "accessRejected",
+        })]
+    } else {
+        Vec::new()
+    };
+    let mut outcome = finalize_provider_outcome("codex", service, account_id, result.clone());
+    if let Some(object) = outcome.service.as_object_mut() {
+        match &result {
+            Ok(_) => {
+                object.insert("freshness".to_owned(), Value::String("fresh".to_owned()));
+                object.insert("failureKind".to_owned(), Value::Null);
+            }
+            Err(error) => {
+                object.remove("capturedAt");
+                object.insert(
+                    "freshness".to_owned(),
+                    Value::String("unavailable".to_owned()),
+                );
+                object.insert(
+                    "failureKind".to_owned(),
+                    Value::String(codex_failure_kind(error).to_owned()),
+                );
+                object.insert(
+                    "note".to_owned(),
+                    Value::String(codex_failure_note(error).to_owned()),
+                );
+            }
+        }
+    }
+    outcome.credential_challenges = credential_challenges;
+    outcome
+}
+
+fn codex_failure_kind(error: &ProviderError) -> &'static str {
+    match error.diagnostic.code.as_str() {
+        "PROVIDER_AUTH_REJECTED" => "auth",
+        "PROVIDER_PERMISSION_DENIED" => "permission",
+        "PROVIDER_RATE_LIMIT" => "rateLimit",
+        "PROVIDER_SERVER_ERROR" => "server",
+        "PROVIDER_INVALID_JSON" | "PROVIDER_INVALID_PAYLOAD" | "PROVIDER_RESPONSE_TOO_LARGE" => {
+            "invalidResponse"
+        }
+        _ => "network",
+    }
+}
+
+fn codex_failure_note(error: &ProviderError) -> &'static str {
+    match error.diagnostic.code.as_str() {
+        "PROVIDER_AUTH_REJECTED" => "登录态已失效, 请重新登录该账号",
+        "PROVIDER_PERMISSION_DENIED" => "当前账号无权访问该额度接口",
+        _ => "额度查询暂时失败, 请稍后重试",
+    }
+}
+
 pub const CLINE_API_BASE: &str = "https://api.cline.bot/api/v1";
 
 pub const KIMI_USAGE_URL: &str = "https://api.kimi.com/coding/v1/usages";
@@ -523,7 +718,7 @@ pub const STEPFUN_GLOBAL_REFRESH_TOKEN_URL: &str =
     "https://platform.stepfun.ai/passport/proto.api.passport.v1.PassportService/RefreshToken";
 pub const JEV_MODELS_URL: &str = "https://api.typesafe.ai/v1/models";
 
-fn invalid_payload() -> ProviderError {
+pub(crate) fn invalid_payload() -> ProviderError {
     ProviderError::new(
         "PROVIDER_INVALID_PAYLOAD",
         "parse",
@@ -532,7 +727,7 @@ fn invalid_payload() -> ProviderError {
     )
 }
 
-fn invalid_credential() -> ProviderError {
+pub(crate) fn invalid_credential() -> ProviderError {
     ProviderError::new(
         "PROVIDER_INVALID_CREDENTIAL",
         "credential",
@@ -541,7 +736,7 @@ fn invalid_credential() -> ProviderError {
     )
 }
 
-fn credential_string<'a>(credential: &'a Value, keys: &[&str]) -> Option<&'a str> {
+pub(crate) fn credential_string<'a>(credential: &'a Value, keys: &[&str]) -> Option<&'a str> {
     if let Some(value) = credential.as_str() {
         return (!value.is_empty()).then_some(value);
     }
@@ -554,7 +749,7 @@ fn credential_string<'a>(credential: &'a Value, keys: &[&str]) -> Option<&'a str
     })
 }
 
-fn number(value: Option<&Value>) -> Option<f64> {
+pub(crate) fn number(value: Option<&Value>) -> Option<f64> {
     let parsed = match value? {
         Value::Number(value) => value.as_f64(),
         Value::String(value) => value.trim().parse::<f64>().ok(),
@@ -563,7 +758,7 @@ fn number(value: Option<&Value>) -> Option<f64> {
     parsed.is_finite().then_some(parsed)
 }
 
-fn number_with_default(
+pub(crate) fn number_with_default(
     value: Option<&Value>,
     default: f64,
     zero_is_default: bool,
@@ -582,11 +777,11 @@ fn number_with_default(
     }
 }
 
-fn clamp_percent(value: f64) -> f64 {
+pub(crate) fn clamp_percent(value: f64) -> f64 {
     value.clamp(0.0, 100.0)
 }
 
-fn reset_epoch(value: Option<&Value>) -> Option<i64> {
+pub(crate) fn reset_epoch(value: Option<&Value>) -> Option<i64> {
     let value = value?;
     if let Some(number) = number(Some(value)) {
         if number <= 0.0 {
@@ -614,7 +809,7 @@ fn reset_epoch(value: Option<&Value>) -> Option<i64> {
         .map(|parsed| parsed.and_utc().timestamp())
 }
 
-fn captured_epoch(captured_at: &str) -> i64 {
+pub(crate) fn captured_epoch(captured_at: &str) -> i64 {
     DateTime::parse_from_rfc3339(captured_at)
         .map(|value| value.timestamp())
         .or_else(|_| {
@@ -624,7 +819,7 @@ fn captured_epoch(captured_at: &str) -> i64 {
         .unwrap_or_else(|_| Utc::now().timestamp())
 }
 
-fn parse_window_percentage(
+pub(crate) fn parse_window_percentage(
     limit: Option<&Value>,
     used: Option<&Value>,
     remaining: Option<&Value>,
@@ -643,7 +838,7 @@ fn parse_window_percentage(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn send_json(
+pub(crate) fn send_json(
     request: &ProviderRequest,
     http: &dyn HttpClient,
     cancellation: &CancellationToken,
@@ -676,7 +871,7 @@ fn send_json(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn send_body(
+pub(crate) fn send_body(
     request: &ProviderRequest,
     http: &dyn HttpClient,
     cancellation: &CancellationToken,
@@ -745,7 +940,7 @@ fn send_response(
     Ok(response)
 }
 
-fn service_result(kind: &str, plan: Option<Value>, windows: Vec<Value>) -> Value {
+pub(crate) fn service_result(kind: &str, plan: Option<Value>, windows: Vec<Value>) -> Value {
     json!({
         "kind": kind,
         "plan": plan,
@@ -753,7 +948,7 @@ fn service_result(kind: &str, plan: Option<Value>, windows: Vec<Value>) -> Value
     })
 }
 
-fn window(
+pub(crate) fn window(
     label: &str,
     used_percent: f64,
     window_minutes: Option<u64>,
@@ -767,1099 +962,7 @@ fn window(
     })
 }
 
-/// Return the stable Codex service ID shared by Swift and Rust.
-pub fn codex_service_id(account_id: &str) -> String {
-    let digest = Sha256::digest(account_id.as_bytes());
-    format!("codex_{:x}", digest)[..22].to_owned()
-}
-
-fn codex_window_label(seconds: Option<i64>) -> &'static str {
-    match seconds {
-        Some(seconds) if seconds <= 6 * 60 * 60 => "5小时窗口",
-        Some(seconds) if seconds <= 8 * 24 * 60 * 60 => "每周窗口",
-        Some(_) => "每月窗口",
-        None => "窗口",
-    }
-}
-
-fn codex_window_seconds(value: Option<&Value>) -> Option<i64> {
-    number(value).map(|value| value as i64)
-}
-
-/// Parse the Codex `wham/usage` response without retaining the access token.
-/// The shape intentionally follows the legacy wire contract because Swift's
-/// panel and Codex snapshot merger already consume these fields.
-pub fn parse_codex_usage(payload: &Value) -> Result<Option<Value>, ProviderError> {
-    let object = payload.as_object().ok_or_else(invalid_payload)?;
-    let rate_limit = object
-        .get("rate_limit")
-        .and_then(Value::as_object)
-        .cloned()
-        .unwrap_or_default();
-    let mut windows = Vec::new();
-    for key in ["primary_window", "secondary_window"] {
-        let Some(window) = rate_limit.get(key).and_then(Value::as_object) else {
-            continue;
-        };
-        let seconds = codex_window_seconds(window.get("limit_window_seconds"));
-        let used_percent = match window.get("used_percent") {
-            None | Some(Value::Null) => 0.0,
-            Some(value) => number(Some(value)).ok_or_else(invalid_payload)?,
-        };
-        windows.push(json!({
-            "label": codex_window_label(seconds),
-            "usedPercent": clamp_percent(used_percent),
-            "windowMinutes": seconds.map(|value| value / 60),
-            "resetsAt": window.get("reset_at").cloned().unwrap_or(Value::Null),
-        }));
-    }
-    let plan = object
-        .get("plan_type")
-        .filter(|value| !value.is_null())
-        .cloned();
-    let mut result = service_result("windows", plan, windows);
-    if let Some(credits) = object.get("credits").and_then(Value::as_object) {
-        if credits.get("unlimited").and_then(Value::as_bool) == Some(true) {
-            result["extra"] = Value::String("Credits 不限量".to_owned());
-        } else if credits.get("has_credits").and_then(Value::as_bool) == Some(true) {
-            // Credits 剩余余额走结构化 balance 字段 (双端渲染于窗口行下方);
-            // 归零或耗尽时不产出, 下一次刷新条目自动消失。
-            // currency=credits 为展示层判别键 (非货币), 勿按汇率符号渲染。
-            if let Some(balance) = number(credits.get("balance")).filter(|value| *value > 0.0) {
-                result["balance"] = json!(balance);
-                result["currency"] = Value::String("credits".to_owned());
-            }
-        }
-    }
-    result["freshness"] = Value::String("fresh".to_owned());
-    result["failureKind"] = Value::Null;
-    Ok(Some(result))
-}
-
-/// Parse the Kimi For Coding usage response without retaining the API key.
-pub fn parse_kimi_usage(payload: &Value) -> Result<Option<Value>, ProviderError> {
-    let object = payload.as_object().ok_or_else(invalid_payload)?;
-    let mut windows = Vec::new();
-    if let Some(limits) = object.get("limits").and_then(Value::as_array) {
-        for item in limits {
-            let Some(detail) = item.get("detail").and_then(Value::as_object) else {
-                continue;
-            };
-            let Ok(limit) = number_with_default(detail.get("limit"), 1.0, true) else {
-                continue;
-            };
-            let Ok(remaining) = number_with_default(detail.get("remaining"), 0.0, true) else {
-                continue;
-            };
-            let used = (limit - remaining).max(0.0);
-            let percent = if limit > 0.0 {
-                used / limit * 100.0
-            } else {
-                0.0
-            };
-            windows.push(window(
-                "5小时窗口",
-                percent,
-                Some(300),
-                reset_epoch(detail.get("resetTime")),
-            ));
-        }
-    }
-    if let Some(usage) = object.get("usage").and_then(Value::as_object) {
-        let limit = number_with_default(usage.get("limit"), 1.0, true).unwrap_or(1.0);
-        let remaining = number_with_default(usage.get("remaining"), 0.0, true).unwrap_or(0.0);
-        let used = (limit - remaining).max(0.0);
-        let percent = if limit > 0.0 {
-            used / limit * 100.0
-        } else {
-            0.0
-        };
-        windows.push(window(
-            "7天窗口",
-            percent,
-            Some(7 * 24 * 60),
-            reset_epoch(usage.get("resetTime")),
-        ));
-    }
-    Ok(Some(json!({
-        "kind": "windows",
-        "plan": null,
-        "windows": windows,
-        "extra": null,
-    })))
-}
-
-/// Parse the DeepSeek balance response. An absent balance list is a valid empty result.
-pub fn parse_deepseek_balance(payload: &Value) -> Result<Option<Value>, ProviderError> {
-    let object = payload.as_object().ok_or_else(invalid_payload)?;
-    let Some(info) = object
-        .get("balance_infos")
-        .and_then(Value::as_array)
-        .and_then(|items| items.first())
-        .and_then(Value::as_object)
-    else {
-        return Ok(None);
-    };
-    let balance = number(info.get("total_balance")).unwrap_or(0.0);
-    let currency = info
-        .get("currency")
-        .and_then(Value::as_str)
-        .filter(|value| !value.is_empty())
-        .unwrap_or("CNY");
-    Ok(Some(json!({
-        "kind": "balance",
-        "plan": null,
-        "windows": [],
-        "balance": balance,
-        "currency": currency,
-    })))
-}
-
-fn zhipu_reset(value: Option<&Value>) -> Option<i64> {
-    let number = number(value)?;
-    if number <= 0.0 {
-        return None;
-    }
-    Some(if number > 1_000_000_000_000.0 {
-        (number / 1_000.0) as i64
-    } else {
-        number as i64
-    })
-}
-
-fn zhipu_percentage(object: &serde_json::Map<String, Value>) -> f64 {
-    let limit = object_value(object, &["usage", "limit", "total"]);
-    let used = object_value(
-        object,
-        &["currentValue", "current_value", "used", "usedValue"],
-    );
-    let remaining = object_value(object, &["remaining", "remain"]);
-    let explicit = object_value(
-        object,
-        &[
-            "percentage",
-            "usedPercent",
-            "used_percent",
-            "usedPercentage",
-        ],
-    )
-    .and_then(|value| number(Some(value)));
-    let derived = || {
-        parse_window_percentage(limit, used, remaining).or_else(|| {
-            let used = number(used)?;
-            let remaining = number(remaining)?;
-            let total = used + remaining;
-            (total > 0.0).then_some((used / total) * 100.0)
-        })
-    };
-    let remaining_percent = object_value(
-        object,
-        &[
-            "remainingPercentage",
-            "remaining_percent",
-            "remainingPercent",
-        ],
-    )
-    .and_then(|value| number(Some(value)))
-    .map(|value| 100.0 - value);
-
-    explicit
-        .or_else(derived)
-        .or(remaining_percent)
-        .map(clamp_percent)
-        .unwrap_or(0.0)
-}
-
-fn zhipu_windows(limits: Option<&Value>) -> Vec<Value> {
-    let mut five_hour: Option<(Option<i64>, f64)> = None;
-    let mut weekly: Option<(Option<i64>, f64)> = None;
-    let mut unclassified = Vec::new();
-    if let Some(items) = limits.and_then(Value::as_array) {
-        for item in items {
-            let Some(object) = item.as_object() else {
-                continue;
-            };
-            let kind = object_value(object, &["type"])
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_ascii_uppercase();
-            if kind != "TOKENS_LIMIT" && kind != "CREDIT_LIMIT" {
-                continue;
-            }
-            let percentage = zhipu_percentage(object);
-            let entry = (
-                zhipu_reset(object_value(
-                    object,
-                    &["nextResetTime", "resetTime", "reset_time"],
-                )),
-                percentage,
-            );
-            let unit = object_value(object, &["unit"])
-                .and_then(|value| number(Some(value)))
-                .map(|value| value as i64);
-            let number = object_value(object, &["number"])
-                .and_then(|value| number(Some(value)))
-                .map(|value| value as i64);
-            match (unit, number) {
-                (Some(3), _) | (_, Some(5)) if five_hour.is_none() => five_hour = Some(entry),
-                (Some(6), _) | (_, Some(1)) if weekly.is_none() => weekly = Some(entry),
-                _ => unclassified.push(entry),
-            }
-        }
-    }
-    unclassified.sort_by_key(|(reset, _)| (*reset).unwrap_or(-1));
-    for entry in unclassified {
-        if five_hour.is_none() {
-            five_hour = Some(entry);
-        } else if weekly.is_none() {
-            weekly = Some(entry);
-        }
-    }
-    let mut windows = Vec::new();
-    if let Some((reset, percent)) = five_hour {
-        windows.push(window("每 5 小时", percent, Some(300), reset));
-    }
-    if let Some((reset, percent)) = weekly {
-        windows.push(window("每周", percent, Some(10080), reset));
-    }
-    windows
-}
-
-/// Parse the Zhipu Coding Plan quota response.
-pub fn parse_zhipu_usage(payload: &Value) -> Result<Option<Value>, ProviderError> {
-    let object = payload.as_object().ok_or_else(invalid_payload)?;
-    if object.get("success").and_then(Value::as_bool) == Some(false) {
-        return Err(ProviderError::new(
-            "PROVIDER_REMOTE_REJECTED",
-            "parse",
-            "Z.ai 额度查询被服务端拒绝",
-            false,
-        ));
-    }
-    let data = object.get("data").ok_or_else(invalid_payload)?;
-    let (plan, limits) = match data {
-        Value::Object(data) => (
-            object_value(data, &["level", "plan"])
-                .cloned()
-                .unwrap_or(Value::Null),
-            object_value(data, &["limits"]),
-        ),
-        // Newer Coding Plan responses return `data` as the limits array
-        // directly: {"code":200,"data":[...]}.
-        Value::Array(_) => (
-            object_value(object, &["level", "plan"])
-                .cloned()
-                .unwrap_or(Value::Null),
-            Some(data),
-        ),
-        _ => return Err(invalid_payload()),
-    };
-    Ok(Some(service_result(
-        "windows",
-        Some(plan),
-        zhipu_windows(limits),
-    )))
-}
-
-/// Parse the StepFun Step Plan quota/rate-limit response.
-pub fn parse_stepfun_usage(payload: &Value) -> Result<Option<Value>, ProviderError> {
-    let object = payload.as_object().ok_or_else(invalid_payload)?;
-    if let Some(code) = object.get("code").and_then(Value::as_i64) {
-        if code != 0 && code != 200 {
-            let msg = object
-                .get("message")
-                .and_then(Value::as_str)
-                .unwrap_or("StepFun 服务端拒绝");
-            return Err(ProviderError::new(
-                "PROVIDER_REMOTE_REJECTED",
-                "parse",
-                msg,
-                false,
-            ));
-        }
-    }
-
-    let mut windows = Vec::new();
-
-    // Credit-based plan rate limit
-    if let Some(credit_limit) = object
-        .get("plan_credit_rate_limit")
-        .and_then(Value::as_object)
-    {
-        if let Some(left_rate) = number(credit_limit.get("subscription_credit_left_rate")) {
-            let used_percent = clamp_percent((1.0 - left_rate) * 100.0);
-            let resets_at = credit_limit
-                .get("credit_buckets")
-                .and_then(Value::as_array)
-                .and_then(|arr| arr.first())
-                .and_then(Value::as_object)
-                .and_then(|b| {
-                    number(b.get("next_reset_at")).or_else(|| number(b.get("reset_time")))
-                })
-                .or_else(|| number(credit_limit.get("subscription_credit_reset_time")))
-                .map(|t| {
-                    if t > 1_000_000_000_000.0 {
-                        (t / 1000.0) as i64
-                    } else {
-                        t as i64
-                    }
-                });
-            windows.push(window("Credits", used_percent, None, resets_at));
-        }
-        if let Some(topup_left_rate) = number(credit_limit.get("topup_credit_left_rate")) {
-            if topup_left_rate > 0.0 && topup_left_rate < 1.0 {
-                let used_percent = clamp_percent((1.0 - topup_left_rate) * 100.0);
-                windows.push(window("加油包 Credits", used_percent, None, None));
-            }
-        }
-    }
-
-    // 5-hour window
-    if let Some(left_rate) = number(object.get("five_hour_usage_left_rate")) {
-        let resets_at = number(object.get("five_hour_usage_reset_time")).map(|t| {
-            if t > 1_000_000_000_000.0 {
-                (t / 1000.0) as i64
-            } else {
-                t as i64
-            }
-        });
-        if left_rate > 0.0 || resets_at.unwrap_or(0) > 0 {
-            let used_percent = clamp_percent((1.0 - left_rate) * 100.0);
-            windows.push(window("5小时窗口", used_percent, Some(300), resets_at));
-        }
-    }
-
-    // Weekly window
-    if let Some(left_rate) = number(object.get("weekly_usage_left_rate")) {
-        let resets_at = number(object.get("weekly_usage_reset_time")).map(|t| {
-            if t > 1_000_000_000_000.0 {
-                (t / 1000.0) as i64
-            } else {
-                t as i64
-            }
-        });
-        if left_rate > 0.0 || resets_at.unwrap_or(0) > 0 {
-            let used_percent = clamp_percent((1.0 - left_rate) * 100.0);
-            windows.push(window("每周窗口", used_percent, Some(10080), resets_at));
-        }
-    }
-
-    if windows.is_empty() {
-        return Ok(None);
-    }
-
-    let plan = object
-        .get("plan_name")
-        .or_else(|| object.get("plan"))
-        .cloned();
-
-    Ok(Some(service_result("windows", plan, windows)))
-}
-
-fn object_value<'a>(
-    object: &'a serde_json::Map<String, Value>,
-    names: &[&str],
-) -> Option<&'a Value> {
-    names.iter().find_map(|name| {
-        object
-            .iter()
-            .find(|(key, _)| key.eq_ignore_ascii_case(name))
-            .map(|(_, value)| value)
-    })
-}
-
-fn volc_window(node: Option<&Value>, label: &str) -> Option<Value> {
-    let object = node?.as_object()?;
-    let limit = object_value(object, &["Limit", "Total", "Quota", "TotalQuota"]);
-    let used = object_value(object, &["Used", "Usage", "UsedQuota"]);
-    let remaining = object_value(object, &["Remaining", "Remain"]);
-    let percent = parse_window_percentage(limit, used, remaining)?;
-    let reset = object_value(object, &["ResetTime", "QuotaResetTime"])
-        .and_then(|value| reset_epoch(Some(value)));
-    Some(window(label, percent, None, reset))
-}
-
-/// Parse both known Volcengine quota response shapes.
-pub fn parse_volcengine_usage(payload: &Value) -> Result<Option<Value>, ProviderError> {
-    let object = payload.as_object().ok_or_else(invalid_payload)?;
-    let mut windows = Vec::new();
-    if let Some(items) = object.get("QuotaUsage").and_then(Value::as_array) {
-        for item in items {
-            let Some(item) = item.as_object() else {
-                continue;
-            };
-            let level = item
-                .get("Level")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_ascii_lowercase();
-            let label = match level.as_str() {
-                "session" => "5小时窗口",
-                "weekly" => "每周窗口",
-                "monthly" => "每月窗口",
-                _ if !level.is_empty() => level.as_str(),
-                _ => "窗口",
-            };
-            let Some(percent) = number(item.get("Percent")) else {
-                continue;
-            };
-            let reset = reset_epoch(item.get("ResetTimestamp"));
-            windows.push(window(label, clamp_percent(percent), None, reset));
-        }
-    } else {
-        for (key, label) in [
-            ("AFPFiveHour", "5小时窗口"),
-            ("FiveHour", "5小时窗口"),
-            ("AFPWeekly", "每周窗口"),
-            ("Weekly", "每周窗口"),
-            ("AFPMonthly", "每月窗口"),
-            ("Monthly", "每月窗口"),
-        ] {
-            if windows.is_empty() || !windows.iter().any(|value| value["label"] == label) {
-                if let Some(value) = volc_window(object.get(key), label) {
-                    windows.push(value);
-                }
-            }
-        }
-        if windows.is_empty() {
-            for (key, value) in object {
-                let lower = key.to_ascii_lowercase();
-                let label = if lower.contains("fivehour") || lower.contains("5hour") {
-                    Some("5小时窗口")
-                } else if lower.contains("weekly") || lower.contains("week") {
-                    Some("每周窗口")
-                } else if lower.contains("monthly") || lower.contains("month") {
-                    Some("每月窗口")
-                } else {
-                    None
-                };
-                if let Some(label) = label {
-                    if let Some(parsed) = volc_window(Some(value), label) {
-                        windows.push(parsed);
-                    }
-                }
-            }
-        }
-    }
-    let plan = ["PlanType", "Plan", "PlanName"]
-        .iter()
-        .find_map(|key| object.get(*key).and_then(Value::as_str))
-        .map(|value| Value::String(value.to_owned()));
-    Ok(Some(service_result("windows", plan, windows)))
-}
-
-/// Parse the TypeSafe models response for Jev.
-/// Jev 为纯余额/按量计费决策模型，不生成伪造的速率限额进度条，也不在看板输出冗余模型与计费描述。
-pub fn parse_jev_models(payload: &Value) -> Result<Option<Value>, ProviderError> {
-    let object = payload.as_object().ok_or_else(invalid_payload)?;
-    let _models = object
-        .get("models")
-        .and_then(Value::as_array)
-        .ok_or_else(invalid_payload)?;
-
-    let windows: Vec<Value> = Vec::new();
-
-    Ok(Some(json!({
-        "kind": "balance",
-        "plan": "System One",
-        "windows": windows,
-        "extra": Value::Null,
-    })))
-}
-
-const CLAUDE_TIERS: &[(&str, &str, Option<u64>)] = &[
-    ("five_hour", "每 5 小时", Some(300)),
-    ("seven_day", "每周", Some(10080)),
-    ("seven_day_fable", "每周 Fable", Some(10080)),
-    ("seven_day_opus", "每周 Opus", Some(10080)),
-    ("seven_day_sonnet", "每周 Sonnet", Some(10080)),
-];
-
-fn claude_tier(key: &str) -> (&str, Option<u64>) {
-    CLAUDE_TIERS
-        .iter()
-        .find(|(known, _, _)| *known == key)
-        .map(|(_, label, minutes)| (*label, *minutes))
-        .unwrap_or((key, None))
-}
-
-/// 已知档位输出序 (对照 cc-switch KNOWN_TIERS 排序); 未知窗口返回 len 稳定排后。
-fn claude_tier_rank(key: &str) -> usize {
-    CLAUDE_TIERS
-        .iter()
-        .position(|(known, _, _)| *known == key)
-        .unwrap_or(CLAUDE_TIERS.len())
-}
-
-/// Parse the Cline plan usage-limits response (web dashboard source).
-/// ClinePass 三窗口直读网页控制台同源权威端点 `/users/me/plan/usage-limits` (C039):
-/// `percentUsed` 与 `resetsAt` 由服务端算好返回 (与网页逐字一致), Bruce 不做任何本地窗口建模.
-/// 服务端语义备查 (仅作理解, 严禁据此复刻建模): 5h = 「上一块到期后首单开块 [t, t+5h)」的活动块;
-/// weekly/monthly = 窗口内最早一单 + 7d/30d 的滚动窗口 (纳秒级 resetsAt 实证, 2026-10-16).
-/// `limits` 缺失或形状异常返回错误 (fail-visible); 未知窗口类型跳过.
-pub fn parse_cline_usage_limits(
-    plan_payload: &Value,
-    limits_payload: &Value,
-) -> Result<Option<Value>, ProviderError> {
-    if cline_pass_entitled(plan_payload) != Some(true) {
-        return Ok(None);
-    }
-    let limits = limits_payload
-        .get("data")
-        .and_then(|data| data.get("limits"))
-        .and_then(Value::as_array)
-        .ok_or_else(invalid_payload)?;
-    let mut windows = Vec::with_capacity(limits.len());
-    for limit in limits {
-        let kind = limit
-            .get("type")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .unwrap_or_default();
-        let (label, window_minutes) = match kind {
-            "five_hour" => ("每 5 小时", Some(300_u64)),
-            "weekly" => ("每周", Some(10080)),
-            "monthly" => ("每月", Some(43200)),
-            _ => continue,
-        };
-        let percent = clamp_percent(number(limit.get("percentUsed")).ok_or_else(invalid_payload)?);
-        let resets_at = reset_epoch(limit.get("resetsAt"));
-        windows.push(window(label, percent, window_minutes, resets_at));
-    }
-    // C020: 不再注入订阅生命周期注记 (extra), 卡片仅展示计划名与三窗口.
-    Ok(Some(service_result(
-        "windows",
-        cline_plan_name(plan_payload).map(Value::String),
-        windows,
-    )))
-}
-
-/// 定位 `/users/me/plan` 返回体的订阅外层对象 (`data`):
-/// 真实报文为 `{"data":{"planHistoryId","plan":{...},"cancelAt","canceledAt"},"success":true}`,
-/// 订阅生命周期字段 (`canceledAt`/`cancelAt`/`currentPeriodStart`) 位于本层;
-/// 直接传 data 对象时原样返回.
-fn cline_plan_outer(payload: &Value) -> &Value {
-    payload.get("data").unwrap_or(payload)
-}
-
-/// 定位内层 `ClineSubscriptionPlan` (`displayName` / `entitlements` 所在层).
-fn cline_plan_inner(payload: &Value) -> &Value {
-    let outer = cline_plan_outer(payload);
-    outer.get("plan").unwrap_or(outer)
-}
-
-/// ClinePass 订阅门槛: `entitlements.cline_pass` 存在、未显式停用且三窗口限额均为正
-/// (真实阈值来自 `inferenceCapThreshold`, 账户级计划如 `[Internal]` 与公开计划可能不同).
-/// `Some(false)` = 非 ClinePass 账户 (空态); `None` = 报文缺订阅信息 (同按非 Pass 处理).
-fn cline_pass_entitled(payload: &Value) -> Option<bool> {
-    let entitlements = cline_plan_inner(payload)
-        .get("entitlements")?
-        .get("cline_pass")?;
-    if entitlements.get("enabled").and_then(Value::as_bool) == Some(false) {
-        return Some(false);
-    }
-    let caps = entitlements.get("inferenceCapThreshold")?;
-    let entitled = [
-        "last5HoursUsageCostUSDPerUser",
-        "last7daysUsageCostUSDPerUser",
-        "last30daysUsageCostUSDPerUser",
-    ]
-    .iter()
-    .filter_map(|key| number(caps.get(key)))
-    .all(|cap| cap > 0.0);
-    Some(entitled)
-}
-
-fn cline_plan_name(payload: &Value) -> Option<String> {
-    let inner = cline_plan_inner(payload);
-    ["displayName", "name"].iter().find_map(|key| {
-        inner
-            .get(*key)
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_owned)
-    })
-}
-
-/// Parse the Claude OAuth usage response (`/api/oauth/usage`).
-/// 对照 cc-switch `parse_claude_quota` (farion1231/cc-switch, 2026-10-18) 对齐口径:
-/// - 顶层旧版窗口取 `utilization`/`resets_at`, 单条脏数据 (utilization 非数值) 逐窗口跳过,
-///   不再让整卡报错;
-/// - `limits[]` 承载模型专属周限额: 仅收 `kind=weekly_scoped` + `group=weekly` 且
-///   `scope.surface` 为空的行, 模型归一自 `scope.model.display_name` (trim+小写 →
-///   fable/opus/sonnet), 取 `percent` (须为非负数值) 与 `resets_at` (字符串或 null);
-///   与 Claude Code 一致不按 `is_active` 过滤 (0%/null 重置也可能是有效额度), 同名档位
-///   首条优先去重并覆盖同名旧版顶层窗口;
-/// - 输出按已知档位序排列, 未知窗口稳定排后; `extra_usage` 独立成行追加在末尾。
-pub fn parse_claude_usage(payload: &Value) -> Result<Option<Value>, ProviderError> {
-    let object = payload.as_object().ok_or_else(invalid_payload)?;
-    let mut windows: Vec<(usize, Value)> = Vec::new();
-    for (key, value) in object {
-        if key == "extra_usage" || key == "limits" {
-            continue;
-        }
-        let Some(entry) = value.as_object() else {
-            continue;
-        };
-        let Some(percent) = number(entry.get("utilization")) else {
-            continue;
-        };
-        let (label, minutes) = claude_tier(key);
-        windows.push((
-            claude_tier_rank(key),
-            window(
-                label,
-                clamp_percent(percent),
-                minutes,
-                reset_epoch(entry.get("resets_at")),
-            ),
-        ));
-    }
-    if let Some(limits) = object.get("limits").and_then(Value::as_array) {
-        let mut scoped = BTreeSet::new();
-        for limit in limits {
-            if limit.get("kind").and_then(Value::as_str) != Some("weekly_scoped")
-                || limit.get("group").and_then(Value::as_str) != Some("weekly")
-                // 特定使用场景 (scope.surface) 的子限额不并入模型整体周限额。
-                || limit.pointer("/scope/surface").is_some_and(|value| !value.is_null())
-            {
-                continue;
-            }
-            let Some(model) = limit
-                .pointer("/scope/model/display_name")
-                .and_then(Value::as_str)
-            else {
-                continue;
-            };
-            let tier = match model.trim().to_ascii_lowercase().as_str() {
-                "fable" => "seven_day_fable",
-                "opus" => "seven_day_opus",
-                "sonnet" => "seven_day_sonnet",
-                _ => continue,
-            };
-            let Some(percent) = limit.get("percent").and_then(Value::as_f64) else {
-                continue;
-            };
-            // resets_at 仅收字符串或 null (cc-switch 反序列化同口径), 数值形态整行跳过;
-            // 校验必须先于去重插入, 否则被跳过的行会占掉该档位的"首条"名额。
-            let resets_at = match limit.get("resets_at") {
-                None | Some(Value::Null) => None,
-                Some(Value::String(_)) => reset_epoch(limit.get("resets_at")),
-                Some(_) => continue,
-            };
-            if !percent.is_finite() || percent < 0.0 || !scoped.insert(tier) {
-                continue;
-            }
-            let (label, minutes) = claude_tier(tier);
-            let row = window(label, clamp_percent(percent), minutes, resets_at);
-            let rank = claude_tier_rank(tier);
-            match windows.iter_mut().find(|(existing, _)| *existing == rank) {
-                Some(slot) => slot.1 = row,
-                None => windows.push((rank, row)),
-            }
-        }
-    }
-    windows.sort_by_key(|(rank, _)| *rank);
-    let mut rows: Vec<Value> = windows.into_iter().map(|(_, row)| row).collect();
-    if let Some(extra) = object.get("extra_usage").and_then(Value::as_object) {
-        if extra.get("is_enabled").and_then(Value::as_bool) == Some(true) {
-            if let Some(percent) = number(extra.get("utilization")) {
-                let mut value = window("额外用量", clamp_percent(percent), None, None);
-                if let Some(value) = value.as_object_mut() {
-                    value.insert("ownRow".to_owned(), Value::Bool(true));
-                }
-                rows.push(value);
-            }
-        }
-    }
-    Ok(Some(service_result("windows", None, rows)))
-}
-
-fn seroval_object(body: &str) -> Option<&str> {
-    let marker = "$R[0]={";
-    let start = body.find(marker)? + marker.len() - 1;
-    let bytes = body.as_bytes();
-    let mut depth = 0usize;
-    let mut in_string = false;
-    let mut escaped = false;
-    for (index, byte) in bytes.iter().enumerate().skip(start) {
-        let character = *byte as char;
-        if in_string {
-            if escaped {
-                escaped = false;
-            } else if character == '\\' {
-                escaped = true;
-            } else if character == '"' {
-                in_string = false;
-            }
-            continue;
-        }
-        match character {
-            '"' => in_string = true,
-            '{' => depth += 1,
-            '}' => {
-                depth = depth.saturating_sub(1);
-                if depth == 0 {
-                    return body.get(start..=index);
-                }
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
-fn rewrite_seroval_tokens(input: &str) -> String {
-    let bytes = input.as_bytes();
-    let mut output = String::with_capacity(input.len());
-    let mut index = 0usize;
-    let mut in_string = false;
-    let mut escaped = false;
-    while index < bytes.len() {
-        let character = bytes[index] as char;
-        if in_string {
-            output.push(character);
-            if escaped {
-                escaped = false;
-            } else if character == '\\' {
-                escaped = true;
-            } else if character == '"' {
-                in_string = false;
-            }
-            index += 1;
-            continue;
-        }
-        if character == '"' {
-            in_string = true;
-            output.push(character);
-            index += 1;
-            continue;
-        }
-        if bytes[index..].starts_with(b"$R[") {
-            if let Some(end) = input[index + 3..].find(']') {
-                let end = index + 3 + end + 1;
-                let mut cursor = end;
-                while cursor < bytes.len() && bytes[cursor].is_ascii_whitespace() {
-                    cursor += 1;
-                }
-                if cursor < bytes.len() && bytes[cursor] == b'=' {
-                    index = cursor + 1;
-                    continue;
-                }
-                output.push_str("null");
-                index = end;
-                continue;
-            }
-        }
-        if bytes[index..].starts_with(b"!0") {
-            output.push_str("false");
-            index += 2;
-            continue;
-        }
-        if bytes[index..].starts_with(b"!1") {
-            output.push_str("true");
-            index += 2;
-            continue;
-        }
-        if input[index..].starts_with("undefined") {
-            output.push_str("null");
-            index += "undefined".len();
-            continue;
-        }
-        output.push(character);
-        index += 1;
-    }
-    quote_seroval_keys(&output)
-}
-
-fn quote_seroval_keys(input: &str) -> String {
-    let bytes = input.as_bytes();
-    let mut output = String::with_capacity(input.len() + 32);
-    let mut index = 0usize;
-    let mut in_string = false;
-    let mut escaped = false;
-    while index < bytes.len() {
-        let character = bytes[index] as char;
-        if in_string {
-            output.push(character);
-            if escaped {
-                escaped = false;
-            } else if character == '\\' {
-                escaped = true;
-            } else if character == '"' {
-                in_string = false;
-            }
-            index += 1;
-            continue;
-        }
-        if character == '"' {
-            in_string = true;
-            output.push(character);
-            index += 1;
-            continue;
-        }
-        if character == '{' || character == ',' {
-            output.push(character);
-            index += 1;
-            while index < bytes.len() && bytes[index].is_ascii_whitespace() {
-                output.push(bytes[index] as char);
-                index += 1;
-            }
-            let start = index;
-            while index < bytes.len()
-                && (bytes[index].is_ascii_alphanumeric() || bytes[index] == b'_')
-            {
-                index += 1;
-            }
-            if index > start {
-                let mut cursor = index;
-                while cursor < bytes.len() && bytes[cursor].is_ascii_whitespace() {
-                    cursor += 1;
-                }
-                if cursor < bytes.len() && bytes[cursor] == b':' {
-                    output.push('"');
-                    output.push_str(&input[start..index]);
-                    output.push('"');
-                    output.push_str(&input[index..cursor]);
-                    index = cursor;
-                    continue;
-                }
-                output.push_str(&input[start..index]);
-            }
-            continue;
-        }
-        output.push(character);
-        index += 1;
-    }
-    output
-}
-
-/// Parse the private OpenCode GO seroval response into the stable quota shape.
-pub fn parse_opencode_go_body(body: &[u8], now_epoch: i64) -> Result<Option<Value>, ProviderError> {
-    let text = std::str::from_utf8(body).map_err(|_| invalid_payload())?;
-    let object = seroval_object(text).ok_or_else(invalid_payload)?;
-    let normalized = rewrite_seroval_tokens(object);
-    let payload: Value = serde_json::from_str(&normalized).map_err(|_| invalid_payload())?;
-    parse_opencode_go_usage(&payload, now_epoch)
-}
-
-/// Parse normalized OpenCode GO usage. Missing/non-active windows are omitted.
-pub fn parse_opencode_go_usage(
-    payload: &Value,
-    now_epoch: i64,
-) -> Result<Option<Value>, ProviderError> {
-    let object = payload.as_object().ok_or_else(invalid_payload)?;
-    let mut windows = Vec::new();
-    for (key, label, minutes) in [
-        ("rollingUsage", "每 5 小时", 300u64),
-        ("weeklyUsage", "每周", 10080u64),
-        ("monthlyUsage", "每月", 43200u64),
-    ] {
-        let Some(usage) = object.get(key).and_then(Value::as_object) else {
-            continue;
-        };
-        if usage.get("status").and_then(Value::as_str) != Some("ok") {
-            continue;
-        }
-        let percent = number(usage.get("usagePercent")).unwrap_or(0.0);
-        let reset = number(usage.get("resetInSec"))
-            .filter(|value| value.is_finite())
-            .map(|value| now_epoch.saturating_add(value as i64));
-        windows.push(window(label, clamp_percent(percent), Some(minutes), reset));
-    }
-    Ok(Some(service_result("windows", None, windows)))
-}
-
-#[derive(Default)]
-struct ProtoScan {
-    varint: Vec<(Vec<u32>, u64)>,
-    fixed32: Vec<(Vec<u32>, f32, usize)>,
-}
-
-fn read_varint(data: &[u8], index: &mut usize) -> Option<u64> {
-    let mut value = 0u64;
-    let mut shift = 0u32;
-    while *index < data.len() && shift < 64 {
-        let byte = data[*index];
-        *index += 1;
-        value |= u64::from(byte & 0x7f) << shift;
-        if byte & 0x80 == 0 {
-            return Some(value);
-        }
-        shift += 7;
-    }
-    None
-}
-
-fn scan_protobuf(data: &[u8], depth: u8, path: &[u32], order: &mut usize, scan: &mut ProtoScan) {
-    let mut index = 0usize;
-    while index < data.len() {
-        let field_start = index;
-        let Some(key) = read_varint(data, &mut index) else {
-            index = field_start.saturating_add(1);
-            continue;
-        };
-        if key == 0 {
-            index = field_start.saturating_add(1);
-            continue;
-        }
-        let field_number = (key >> 3) as u32;
-        let wire_type = key & 7;
-        if field_number == 0 {
-            index = field_start.saturating_add(1);
-            continue;
-        }
-        let mut field_path = path.to_vec();
-        field_path.push(field_number);
-        match wire_type {
-            0 => {
-                if let Some(value) = read_varint(data, &mut index) {
-                    scan.varint.push((field_path, value));
-                } else {
-                    index = field_start.saturating_add(1);
-                }
-            }
-            1 => {
-                if index + 8 > data.len() {
-                    return;
-                }
-                index += 8;
-            }
-            2 => {
-                let Some(length) =
-                    read_varint(data, &mut index).and_then(|value| usize::try_from(value).ok())
-                else {
-                    index = field_start.saturating_add(1);
-                    continue;
-                };
-                let Some(end) = index.checked_add(length) else {
-                    index = field_start.saturating_add(1);
-                    continue;
-                };
-                if end > data.len() {
-                    index = field_start.saturating_add(1);
-                    continue;
-                }
-                if depth < 4 {
-                    scan_protobuf(&data[index..end], depth + 1, &field_path, order, scan);
-                }
-                index = end;
-            }
-            5 => {
-                if index + 4 > data.len() {
-                    return;
-                }
-                let value = f32::from_le_bytes(data[index..index + 4].try_into().unwrap());
-                scan.fixed32.push((field_path, value, *order));
-                *order += 1;
-                index += 4;
-            }
-            _ => index = field_start.saturating_add(1),
-        }
-    }
-}
-
-fn grpc_data_frames(data: &[u8]) -> Option<Vec<&[u8]>> {
-    let mut frames = Vec::new();
-    let mut index = 0usize;
-    while index < data.len() {
-        if index + 5 > data.len() {
-            return None;
-        }
-        let flags = data[index];
-        let length = u32::from_be_bytes(data[index + 1..index + 5].try_into().ok()?) as usize;
-        let start = index + 5;
-        let end = start.checked_add(length)?;
-        if end > data.len() {
-            return None;
-        }
-        if flags & 0x80 == 0 {
-            frames.push(&data[start..end]);
-        }
-        index = end;
-    }
-    Some(frames)
-}
-
-fn looks_like_protobuf(data: &[u8]) -> bool {
-    data.first()
-        .is_some_and(|byte| byte >> 3 > 0 && matches!(byte & 7, 0 | 1 | 2 | 5))
-}
-
-fn grok_window(resets_at: Option<i64>, now_epoch: i64) -> (&'static str, Option<u64>) {
-    let Some(reset) = resets_at else {
-        return ("额度", None);
-    };
-    let days = (((reset - now_epoch) as f64) / 86_400.0).round() as i64;
-    if days < 1 {
-        ("每 5 小时", Some(300))
-    } else if (4..=12).contains(&days) {
-        ("每周", Some(10080))
-    } else if (20..=45).contains(&days) {
-        ("每月", Some(43200))
-    } else {
-        ("额度", None)
-    }
-}
-
-/// Parse Grok's gRPC-web/protobuf billing response using the shared bounded heuristic.
-pub fn parse_grok_usage(body: &[u8], now_epoch: i64) -> Result<Option<Value>, ProviderError> {
-    let frames = grpc_data_frames(body).filter(|frames| !frames.is_empty());
-    let payloads: Vec<&[u8]> = match frames {
-        Some(frames) => frames,
-        None if looks_like_protobuf(body) => vec![body],
-        None => return Err(invalid_payload()),
-    };
-    let mut scan = ProtoScan::default();
-    let mut order = 0usize;
-    for payload in payloads {
-        scan_protobuf(payload, 0, &[], &mut order, &mut scan);
-    }
-    let mut percent = scan
-        .fixed32
-        .iter()
-        .filter(|(path, value, _)| {
-            !path.is_empty()
-                && *path.last().unwrap_or(&0) == 1
-                && value.is_finite()
-                && (0.0..=100.0).contains(value)
-        })
-        .min_by_key(|(path, _, order)| (path.len(), *order))
-        .map(|(_, value, _)| f64::from(*value));
-    let mut resets = scan
-        .varint
-        .iter()
-        .filter(|(_, value)| {
-            (1_700_000_000..=2_100_000_000).contains(value) && (*value as i64) > now_epoch
-        })
-        .map(|(path, value)| (path, *value as i64))
-        .collect::<Vec<_>>();
-    let reset = resets
-        .iter()
-        .filter(|(path, _)| *path == &[1, 5, 1])
-        .map(|(_, value)| *value)
-        .min()
-        .or_else(|| {
-            resets.sort_by_key(|(_, value)| *value);
-            resets.first().map(|(_, value)| *value)
-        });
-    let has_period = scan.varint.iter().any(|(path, value)| {
-        path.starts_with(&[1, 6]) || (path == &[1, 8, 1] && matches!(value, 1 | 2))
-    });
-    if percent.is_none() && scan.fixed32.is_empty() && reset.is_some() && has_period {
-        percent = Some(0.0);
-    }
-    let percent = percent.ok_or_else(invalid_payload)?;
-    let (label, minutes) = grok_window(reset, now_epoch);
-    Ok(Some(service_result(
-        "windows",
-        None,
-        vec![window(label, clamp_percent(percent), minutes, reset)],
-    )))
-}
-
-fn optional_credential_string<'a>(
+pub(crate) fn optional_credential_string<'a>(
     request: &'a ProviderRequest,
     keys: &[&str],
 ) -> Result<Option<&'a str>, ProviderError> {
@@ -1874,7 +977,7 @@ fn optional_credential_string<'a>(
         .ok_or_else(invalid_credential)
 }
 
-fn json_credential(credential: &Value) -> Result<Value, ProviderError> {
+pub(crate) fn json_credential(credential: &Value) -> Result<Value, ProviderError> {
     match credential {
         Value::String(value) => serde_json::from_str(value).map_err(|_| invalid_credential()),
         Value::Object(_) => Ok(credential.clone()),
@@ -1882,1289 +985,11 @@ fn json_credential(credential: &Value) -> Result<Value, ProviderError> {
     }
 }
 
-fn provider_headers(entries: &[(&str, String)]) -> BTreeMap<String, String> {
+pub(crate) fn provider_headers(entries: &[(&str, String)]) -> BTreeMap<String, String> {
     entries
         .iter()
         .map(|(key, value)| ((*key).to_owned(), value.clone()))
         .collect()
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct KimiProvider;
-
-impl QuotaProvider for KimiProvider {
-    fn app(&self) -> &str {
-        "kimi"
-    }
-
-    fn query(
-        &self,
-        request: &ProviderRequest,
-        http: &dyn HttpClient,
-        cancellation: &CancellationToken,
-    ) -> Result<Option<Value>, ProviderError> {
-        let Some(api_key) = optional_credential_string(request, &["api_key", "apiKey", "token"])?
-        else {
-            return Ok(None);
-        };
-        let payload = send_json(
-            request,
-            http,
-            cancellation,
-            "GET",
-            KIMI_USAGE_URL.to_owned(),
-            provider_headers(&[
-                ("Authorization", format!("Bearer {api_key}")),
-                ("Accept", "application/json".to_owned()),
-            ]),
-            None,
-            Some("Kimi 凭证被拒绝, 请检查 API key"),
-        )?;
-        parse_kimi_usage(&payload)
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct DeepSeekProvider;
-
-impl QuotaProvider for DeepSeekProvider {
-    fn app(&self) -> &str {
-        "deepseek"
-    }
-
-    fn query(
-        &self,
-        request: &ProviderRequest,
-        http: &dyn HttpClient,
-        cancellation: &CancellationToken,
-    ) -> Result<Option<Value>, ProviderError> {
-        let Some(api_key) = optional_credential_string(request, &["api_key", "apiKey", "token"])?
-        else {
-            return Ok(None);
-        };
-        let payload = send_json(
-            request,
-            http,
-            cancellation,
-            "GET",
-            DEEPSEEK_BALANCE_URL.to_owned(),
-            provider_headers(&[
-                ("Authorization", format!("Bearer {api_key}")),
-                ("Accept", "application/json".to_owned()),
-            ]),
-            None,
-            Some("DeepSeek 凭证被拒绝, 请检查 API key"),
-        )?;
-        parse_deepseek_balance(&payload)
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ZhipuProvider;
-
-impl QuotaProvider for ZhipuProvider {
-    fn app(&self) -> &str {
-        "zhipu"
-    }
-
-    fn query(
-        &self,
-        request: &ProviderRequest,
-        http: &dyn HttpClient,
-        cancellation: &CancellationToken,
-    ) -> Result<Option<Value>, ProviderError> {
-        let Some(credential) = request.credential.as_ref() else {
-            return Ok(None);
-        };
-        let object = credential.as_object().ok_or_else(invalid_credential)?;
-        let Some(api_key) = object
-            .get("api_key")
-            .or_else(|| object.get("apiKey"))
-            .and_then(Value::as_str)
-            .filter(|value| !value.is_empty())
-        else {
-            return Err(invalid_credential());
-        };
-        let Some(base_url) = object.get("base_url").and_then(Value::as_str) else {
-            return Err(invalid_credential());
-        };
-        let host = if base_url.to_ascii_lowercase().contains("bigmodel.cn") {
-            "open.bigmodel.cn"
-        } else {
-            "api.z.ai"
-        };
-        let payload = send_json(
-            request,
-            http,
-            cancellation,
-            "GET",
-            format!("https://{host}{ZHIPU_QUOTA_PATH}"),
-            provider_headers(&[
-                ("Authorization", api_key.to_owned()),
-                ("Content-Type", "application/json".to_owned()),
-                ("Accept-Language", "en-US,en".to_owned()),
-            ]),
-            None,
-            Some("Z.ai 凭证被拒绝, 请检查 API key"),
-        )?;
-        parse_zhipu_usage(&payload)
-    }
-}
-
-fn sha256_hex(value: &[u8]) -> String {
-    let digest = Sha256::digest(value);
-    hex_bytes(&digest)
-}
-
-fn hex_bytes(value: &[u8]) -> String {
-    let mut output = String::with_capacity(value.len() * 2);
-    for byte in value {
-        let _ = write!(&mut output, "{byte:02x}");
-    }
-    output
-}
-
-fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; 32] {
-    let mut normalized = [0u8; 64];
-    if key.len() > 64 {
-        normalized[..32].copy_from_slice(&Sha256::digest(key));
-    } else {
-        normalized[..key.len()].copy_from_slice(key);
-    }
-    let mut inner_key = [0u8; 64];
-    let mut outer_key = [0u8; 64];
-    for index in 0..64 {
-        inner_key[index] = normalized[index] ^ 0x36;
-        outer_key[index] = normalized[index] ^ 0x5c;
-    }
-    let mut inner = Sha256::new();
-    inner.update(inner_key);
-    inner.update(message);
-    let inner_digest = inner.finalize();
-    let mut outer = Sha256::new();
-    outer.update(outer_key);
-    outer.update(inner_digest);
-    outer.finalize().into()
-}
-
-fn hmac_hex(key: &[u8], message: &[u8]) -> String {
-    hex_bytes(&hmac_sha256(key, message))
-}
-
-fn base64_decode_text(value: &str) -> Option<String> {
-    let mut output = Vec::new();
-    let mut accumulator = 0u32;
-    let mut bits = 0u8;
-    for byte in value.bytes().filter(|byte| !byte.is_ascii_whitespace()) {
-        if byte == b'=' {
-            break;
-        }
-        let digit = match byte {
-            b'A'..=b'Z' => byte - b'A',
-            b'a'..=b'z' => byte - b'a' + 26,
-            b'0'..=b'9' => byte - b'0' + 52,
-            b'+' | b'-' => 62,
-            b'/' | b'_' => 63,
-            _ => return None,
-        };
-        accumulator = (accumulator << 6) | u32::from(digit);
-        bits += 6;
-        while bits >= 8 {
-            bits -= 8;
-            output.push((accumulator >> bits) as u8);
-            if bits > 0 {
-                accumulator &= (1 << bits) - 1;
-            } else {
-                accumulator = 0;
-            }
-        }
-    }
-    String::from_utf8(output)
-        .ok()
-        .filter(|value| !value.is_empty())
-}
-
-pub(crate) fn extract_stepfun_device_id(token: &str) -> Option<String> {
-    let target_jwt = token.split("...").last().unwrap_or(token);
-    let mut parts = target_jwt.split('.');
-    let _header = parts.next()?;
-    let payload_b64 = parts.next()?;
-    let payload_str = base64_decode_text(payload_b64)?;
-    let parsed: Value = serde_json::from_str(&payload_str).ok()?;
-    parsed
-        .get("device_id")
-        .and_then(Value::as_str)
-        .map(|s| s.to_owned())
-}
-
-pub(crate) fn is_stepfun_token_expired(token: &str, now_epoch: i64) -> bool {
-    let first_jwt = token.split("...").next().unwrap_or(token);
-    let mut parts = first_jwt.split('.');
-    let _header = match parts.next() {
-        Some(h) => h,
-        None => return false,
-    };
-    let payload_b64 = match parts.next() {
-        Some(p) => p,
-        None => return false,
-    };
-    let payload_str = match base64_decode_text(payload_b64) {
-        Some(s) => s,
-        None => return false,
-    };
-    let parsed: Value = match serde_json::from_str(&payload_str) {
-        Ok(v) => v,
-        Err(_) => return false,
-    };
-    if let Some(exp) = parsed.get("exp").and_then(Value::as_i64) {
-        return exp <= now_epoch + 30;
-    }
-    false
-}
-
-pub(crate) fn extract_stepfun_app_id(token: &str) -> Option<u32> {
-    let target_jwt = token.split("...").last().unwrap_or(token);
-    let mut parts = target_jwt.split('.');
-    let _header = parts.next()?;
-    let payload_b64 = parts.next()?;
-    let payload_str = base64_decode_text(payload_b64)?;
-    let parsed: Value = serde_json::from_str(&payload_str).ok()?;
-    parsed
-        .get("app_id")
-        .and_then(Value::as_u64)
-        .map(|id| id as u32)
-}
-
-/// StepFun 站点判定 (C093 / 设计规则 28)。优先序为**用户显式选择 > 令牌推导**:
-/// 保存了 `site` / `is_global` 时以它为准 (Windows 设置页仅在用户显式选择时才写入),
-/// 否则回落到从令牌解析的 `app_id` (国际站 20700)。保存值等于推导结果时两者结论一致,
-/// 不构成覆盖 —— 故前端不再写入默认站点后, 国际站令牌不会因默认值被查错站点。
-pub(crate) fn is_stepfun_global(token: &str, request: &ProviderRequest) -> bool {
-    if let Some(credential) = request.credential.as_ref() {
-        if let Some(obj) = credential.as_object() {
-            if let Some(site) = obj.get("site").and_then(Value::as_str) {
-                if site.eq_ignore_ascii_case("global") || site.contains(".ai") {
-                    return true;
-                }
-                if site.eq_ignore_ascii_case("domestic") || site.contains(".com") {
-                    return false;
-                }
-            }
-            if let Some(is_global) = obj.get("is_global").and_then(Value::as_bool) {
-                return is_global;
-            }
-            if let Some(display_name) = obj.get("display_name").and_then(Value::as_str) {
-                if display_name.contains("国际") || display_name.contains("Global") {
-                    return true;
-                }
-            }
-        }
-    }
-    if let Some(app_id) = extract_stepfun_app_id(token) {
-        return app_id == 20700;
-    }
-    if let Some(credential) = request.credential.as_ref() {
-        if let Some(obj) = credential.as_object() {
-            if let Some(orig_token) = obj.get("token").and_then(Value::as_str) {
-                if let Some(app_id) = extract_stepfun_app_id(orig_token) {
-                    return app_id == 20700;
-                }
-            }
-        } else if let Some(orig_token) = credential.as_str() {
-            if let Some(app_id) = extract_stepfun_app_id(orig_token) {
-                return app_id == 20700;
-            }
-        }
-    }
-    false
-}
-
-pub(crate) fn refresh_stepfun_token(
-    request: &ProviderRequest,
-    token: &str,
-    http: &dyn HttpClient,
-    cancellation: &CancellationToken,
-) -> Result<String, ProviderError> {
-    let device_id = extract_stepfun_device_id(token);
-    let is_global = is_stepfun_global(token, request);
-    let app_id = if is_global { "20700" } else { "10300" };
-    let origin = if is_global {
-        "https://platform.stepfun.ai"
-    } else {
-        "https://platform.stepfun.com"
-    };
-    let referer = if is_global {
-        "https://platform.stepfun.ai/"
-    } else {
-        "https://platform.stepfun.com/"
-    };
-    let refresh_url = if is_global {
-        STEPFUN_GLOBAL_REFRESH_TOKEN_URL
-    } else {
-        STEPFUN_REFRESH_TOKEN_URL
-    };
-
-    let mut headers = vec![
-        ("Cookie", format!("Oasis-Token={token}")),
-        ("Oasis-Token", token.to_owned()),
-        ("Oasis-appID", app_id.to_owned()),
-        ("Oasis-Platform", "web".to_owned()),
-        ("Oasis-Language", "zh-CN".to_owned()),
-        ("Content-Type", "application/json".to_owned()),
-        ("Accept", "application/json".to_owned()),
-        ("Origin", origin.to_owned()),
-        ("Referer", referer.to_owned()),
-        (
-            "User-Agent",
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36".to_owned(),
-        ),
-    ];
-    if let Some(did) = device_id {
-        headers.push(("Oasis-Webid", did));
-    }
-
-    let payload = send_json(
-        request,
-        http,
-        cancellation,
-        "POST",
-        refresh_url.to_owned(),
-        provider_headers(&headers),
-        Some(b"{}".to_vec()),
-        Some("StepFun 凭证刷新失败, 账号可能需要重新登录"),
-    )?;
-
-    let object = payload.as_object().ok_or_else(|| {
-        ProviderError::new(
-            "PROVIDER_REMOTE_REJECTED",
-            "refresh",
-            "StepFun 刷新响应格式无效",
-            false,
-        )
-    })?;
-
-    let access_raw = object
-        .get("accessToken")
-        .and_then(Value::as_object)
-        .and_then(|t| t.get("raw"))
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| {
-            ProviderError::new(
-                "PROVIDER_REMOTE_REJECTED",
-                "refresh",
-                "StepFun 刷新响应未包含有效 access token",
-                false,
-            )
-        })?;
-
-    let refresh_raw = object
-        .get("refreshToken")
-        .and_then(Value::as_object)
-        .and_then(|t| t.get("raw"))
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty());
-
-    let new_token = match refresh_raw {
-        Some(r) => format!("{access_raw}...{r}"),
-        None => {
-            let parts: Vec<&str> = token.split("...").collect();
-            if parts.len() > 1 {
-                format!("{access_raw}...{}", parts[1])
-            } else {
-                access_raw.to_owned()
-            }
-        }
-    };
-    Ok(new_token)
-}
-
-fn query_stepfun_rate_limit(
-    request: &ProviderRequest,
-    token: &str,
-    http: &dyn HttpClient,
-    cancellation: &CancellationToken,
-) -> Result<Option<Value>, ProviderError> {
-    let device_id = extract_stepfun_device_id(token);
-    let is_global = is_stepfun_global(token, request);
-    let app_id = if is_global { "20700" } else { "10300" };
-    let origin = if is_global {
-        "https://platform.stepfun.ai"
-    } else {
-        "https://platform.stepfun.com"
-    };
-    let referer = if is_global {
-        "https://platform.stepfun.ai/"
-    } else {
-        "https://platform.stepfun.com/"
-    };
-    let rate_limit_url = if is_global {
-        STEPFUN_GLOBAL_STEP_PLAN_RATE_LIMIT_URL
-    } else {
-        STEPFUN_STEP_PLAN_RATE_LIMIT_URL
-    };
-
-    let mut headers = vec![
-        ("Cookie", format!("Oasis-Token={token}")),
-        ("Oasis-Token", token.to_owned()),
-        ("Oasis-appID", app_id.to_owned()),
-        ("Oasis-Platform", "web".to_owned()),
-        ("Oasis-Language", "zh-CN".to_owned()),
-        ("Content-Type", "application/json".to_owned()),
-        ("Accept", "application/json".to_owned()),
-        ("Origin", origin.to_owned()),
-        ("Referer", referer.to_owned()),
-        (
-            "User-Agent",
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36".to_owned(),
-        ),
-    ];
-    if let Some(did) = device_id {
-        headers.push(("Oasis-Webid", did));
-    }
-
-    let payload = send_json(
-        request,
-        http,
-        cancellation,
-        "POST",
-        rate_limit_url.to_owned(),
-        provider_headers(&headers),
-        Some(b"{}".to_vec()),
-        Some("StepFun 凭证被拒绝或已过期, 请检查 Oasis-Token"),
-    )?;
-    parse_stepfun_usage(&payload)
-}
-
-fn volc_secret_candidates(raw: &str) -> Vec<String> {
-    let mut candidates = vec![raw.to_owned()];
-    let mut current = raw.to_owned();
-    for _ in 0..2 {
-        let Some(decoded) = base64_decode_text(&current) else {
-            break;
-        };
-        if candidates.contains(&decoded) {
-            break;
-        }
-        current = decoded.clone();
-        candidates.push(decoded);
-    }
-    candidates
-}
-
-fn volc_credential_field<'a>(credential: &'a Value, key: &str) -> Option<&'a str> {
-    let object = credential.as_object()?;
-    let nested = object.get("usage_script").and_then(Value::as_object);
-    nested
-        .and_then(|value| value.get(key))
-        .or_else(|| object.get(key))
-        .and_then(Value::as_str)
-        .filter(|value| !value.is_empty())
-}
-
-fn volc_headers(
-    secret: &str,
-    access_key: &str,
-    captured_at: &str,
-    query: &str,
-) -> BTreeMap<String, String> {
-    let epoch = captured_epoch(captured_at);
-    let date = DateTime::<Utc>::from_timestamp(epoch, 0).unwrap_or_else(Utc::now);
-    let x_date = date.format("%Y%m%dT%H%M%SZ").to_string();
-    let short_date = date.format("%Y%m%d").to_string();
-    let payload_hash = sha256_hex(b"");
-    let signed_headers = "host;x-date;x-content-sha256;content-type";
-    let canonical_headers = format!(
-        "host:open.volcengineapi.com\nx-date:{x_date}\nx-content-sha256:{payload_hash}\ncontent-type:application/json; charset=utf-8\n"
-    );
-    let canonical = format!("GET\n/\n{query}\n{canonical_headers}{signed_headers}\n{payload_hash}");
-    let scope = format!("{short_date}/cn-beijing/ark/request");
-    let string_to_sign = format!(
-        "HMAC-SHA256\n{x_date}\n{scope}\n{}",
-        sha256_hex(canonical.as_bytes())
-    );
-    let date_key = hmac_sha256(secret.as_bytes(), short_date.as_bytes());
-    let region_key = hmac_sha256(&date_key, b"cn-beijing");
-    let service_key = hmac_sha256(&region_key, b"ark");
-    let signing_key = hmac_sha256(&service_key, b"request");
-    let signature = hmac_hex(&signing_key, string_to_sign.as_bytes());
-    provider_headers(&[
-        (
-            "Authorization",
-            format!(
-                "HMAC-SHA256 Credential={access_key}/{scope}, SignedHeaders={signed_headers}, Signature={signature}"
-            ),
-        ),
-        ("x-date", x_date),
-        ("x-content-sha256", payload_hash),
-        (
-            "content-type",
-            "application/json; charset=utf-8".to_owned(),
-        ),
-    ])
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct VolcEngineProvider;
-
-impl QuotaProvider for VolcEngineProvider {
-    fn app(&self) -> &str {
-        "volcengine"
-    }
-
-    fn query(
-        &self,
-        request: &ProviderRequest,
-        http: &dyn HttpClient,
-        cancellation: &CancellationToken,
-    ) -> Result<Option<Value>, ProviderError> {
-        let Some(credential) = request.credential.as_ref() else {
-            return Ok(None);
-        };
-        let Some(access_key) = volc_credential_field(credential, "accessKeyId") else {
-            return Err(invalid_credential());
-        };
-        let Some(secret) = volc_credential_field(credential, "secretAccessKey") else {
-            return Err(invalid_credential());
-        };
-        let mut last_error = None;
-        for candidate in volc_secret_candidates(secret) {
-            for action in ["GetCodingPlanUsage", "GetAFPUsage"] {
-                let query = format!("Action={action}&Version=2024-01-01");
-                let result = send_json(
-                    request,
-                    http,
-                    cancellation,
-                    "GET",
-                    format!("https://open.volcengineapi.com/?{query}"),
-                    volc_headers(&candidate, access_key, &request.captured_at, &query),
-                    None,
-                    Some("火山引擎额度请求被拒绝, 请检查访问凭证"),
-                )
-                .and_then(|payload| {
-                    let result = payload
-                        .get("Result")
-                        .or_else(|| payload.get("result"))
-                        .unwrap_or(&payload);
-                    parse_volcengine_usage(result).map(|value| value.unwrap_or(Value::Null))
-                });
-                match result {
-                    Ok(Value::Null) => return Ok(None),
-                    Ok(value) => return Ok(Some(value)),
-                    Err(error) => last_error = Some(error),
-                }
-            }
-        }
-        Err(last_error.unwrap_or_else(|| {
-            ProviderError::new(
-                "PROVIDER_REQUEST_FAILED",
-                "request",
-                "火山引擎额度查询失败",
-                true,
-            )
-        }))
-    }
-}
-
-fn claude_token(credential: &Value) -> Result<Option<String>, ProviderError> {
-    let root = json_credential(credential)?;
-    let object = root.as_object().ok_or_else(invalid_credential)?;
-    let entry = object
-        .get("claudeAiOauth")
-        .or_else(|| object.get("claude.ai_oauth"))
-        .and_then(Value::as_object);
-    Ok(entry
-        .and_then(|value| value.get("accessToken"))
-        .and_then(Value::as_str)
-        .filter(|value| !value.is_empty())
-        .map(str::to_owned))
-}
-
-#[derive(Debug, Clone)]
-struct ClaudeOAuthCredentials {
-    access_token: String,
-    refresh_token: Option<String>,
-    expires_at_epoch_ms: Option<i64>,
-    scopes: Vec<String>,
-}
-
-fn parse_claude_oauth_credentials(
-    credential: &Value,
-) -> Result<Option<ClaudeOAuthCredentials>, ProviderError> {
-    let root = json_credential(credential)?;
-    let object = root.as_object().ok_or_else(invalid_credential)?;
-    let entry = object
-        .get("claudeAiOauth")
-        .or_else(|| object.get("claude.ai_oauth"))
-        .and_then(Value::as_object);
-    let Some(entry) = entry else {
-        return Ok(None);
-    };
-    let Some(access_token) = entry
-        .get("accessToken")
-        .and_then(Value::as_str)
-        .filter(|value| !value.is_empty())
-    else {
-        return Ok(None);
-    };
-    let refresh_token = entry
-        .get("refreshToken")
-        .and_then(Value::as_str)
-        .filter(|value| !value.is_empty())
-        .map(str::to_owned);
-    let expires_at_epoch_ms = entry.get("expiresAt").and_then(|val| {
-        if let Some(num) = val.as_i64() {
-            Some(num)
-        } else if let Some(num) = val.as_f64() {
-            Some(num as i64)
-        } else if let Some(s) = val.as_str() {
-            s.parse::<i64>().ok()
-        } else {
-            None
-        }
-    });
-    let scopes = entry
-        .get("scopes")
-        .and_then(Value::as_array)
-        .map(|arr| {
-            arr.iter()
-                .filter_map(Value::as_str)
-                .map(str::to_owned)
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-
-    Ok(Some(ClaudeOAuthCredentials {
-        access_token: access_token.to_owned(),
-        refresh_token,
-        expires_at_epoch_ms,
-        scopes,
-    }))
-}
-
-pub(crate) fn is_claude_token_expired(
-    expires_at_epoch_ms: Option<i64>,
-    now_epoch_secs: i64,
-) -> bool {
-    let Some(exp) = expires_at_epoch_ms else {
-        return false;
-    };
-    let exp_secs = if exp > 100_000_000_000 {
-        exp / 1000
-    } else {
-        exp
-    };
-    // 距过期不足 60 秒视为过期
-    now_epoch_secs >= exp_secs - 60
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct RefreshedClaudeToken {
-    pub access_token: String,
-    pub refresh_token: String,
-    pub expires_in_secs: i64,
-}
-
-pub(crate) fn refresh_claude_token(
-    request: &ProviderRequest,
-    refresh_token: &str,
-    scopes: &[String],
-    http: &dyn HttpClient,
-    cancellation: &CancellationToken,
-) -> Result<RefreshedClaudeToken, ProviderError> {
-    let scope_str = if scopes.is_empty() {
-        "user:file_upload user:inference user:mcp_servers user:plugins user:profile user:sessions:claude_code".to_owned()
-    } else {
-        scopes.join(" ")
-    };
-
-    let payload = json!({
-        "grant_type": "refresh_token",
-        "refresh_token": refresh_token,
-        "client_id": CLAUDE_CLIENT_ID,
-        "scope": scope_str,
-    });
-
-    let payload_bytes = serde_json::to_vec(&payload).map_err(|e| {
-        ProviderError::new(
-            "PROVIDER_REQUEST_FAILED",
-            "request",
-            format!("序列化 Claude 刷新请求失败: {e}"),
-            false,
-        )
-    })?;
-
-    let response = send_json(
-        request,
-        http,
-        cancellation,
-        "POST",
-        CLAUDE_OAUTH_TOKEN_URL.to_owned(),
-        provider_headers(&[
-            ("Content-Type", "application/json".to_owned()),
-            ("User-Agent", CLAUDE_USER_AGENT.to_owned()),
-            ("Accept", "application/json".to_owned()),
-        ]),
-        Some(payload_bytes),
-        Some("Claude 凭证刷新失败, 请重新登录 Claude CLI"),
-    )?;
-
-    let object = response.as_object().ok_or_else(|| {
-        ProviderError::new(
-            "PROVIDER_REMOTE_REJECTED",
-            "refresh",
-            "Claude 刷新响应格式无效",
-            false,
-        )
-    })?;
-
-    let access_token = object
-        .get("access_token")
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| {
-            ProviderError::new(
-                "PROVIDER_REMOTE_REJECTED",
-                "refresh",
-                "Claude 刷新响应缺少有效 access_token",
-                false,
-            )
-        })?;
-
-    let new_refresh_token = object
-        .get("refresh_token")
-        .and_then(Value::as_str)
-        .unwrap_or(refresh_token);
-
-    let expires_in_secs = object
-        .get("expires_in")
-        .and_then(Value::as_i64)
-        .unwrap_or(28800);
-
-    Ok(RefreshedClaudeToken {
-        access_token: access_token.to_owned(),
-        refresh_token: new_refresh_token.to_owned(),
-        expires_in_secs,
-    })
-}
-
-fn query_claude_usage(
-    request: &ProviderRequest,
-    token: &str,
-    http: &dyn HttpClient,
-    cancellation: &CancellationToken,
-) -> Result<Option<Value>, ProviderError> {
-    let payload = send_json(
-        request,
-        http,
-        cancellation,
-        "GET",
-        CLAUDE_USAGE_URL.to_owned(),
-        provider_headers(&[
-            ("Authorization", format!("Bearer {token}")),
-            ("anthropic-beta", CLAUDE_BETA_HEADER.to_owned()),
-            ("User-Agent", CLAUDE_USER_AGENT.to_owned()),
-            ("Accept", "application/json".to_owned()),
-        ]),
-        None,
-        Some("Claude 凭证被拒绝, 请重新登录 Claude CLI"),
-    )?;
-    parse_claude_usage(&payload)
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ClaudeProvider;
-
-impl QuotaProvider for ClaudeProvider {
-    fn app(&self) -> &str {
-        "claude"
-    }
-
-    fn query(
-        &self,
-        request: &ProviderRequest,
-        http: &dyn HttpClient,
-        cancellation: &CancellationToken,
-    ) -> Result<Option<Value>, ProviderError> {
-        let Some(credential) = request.credential.as_ref() else {
-            return Ok(None);
-        };
-        let mut creds = match parse_claude_oauth_credentials(credential)? {
-            Some(parsed) => parsed,
-            None => {
-                let Some(token) = claude_token(credential)? else {
-                    return Ok(None);
-                };
-                ClaudeOAuthCredentials {
-                    access_token: token,
-                    refresh_token: None,
-                    expires_at_epoch_ms: None,
-                    scopes: Vec::new(),
-                }
-            }
-        };
-
-        let now_epoch_secs = captured_epoch(&request.captured_at);
-        let mut active_token = creds.access_token.clone();
-        let mut active_refresh_token = creds.refresh_token.clone();
-        let mut active_expiry_secs =
-            creds
-                .expires_at_epoch_ms
-                .map(|ms| if ms > 100_000_000_000 { ms / 1000 } else { ms });
-        let mut refreshed = false;
-
-        // 1. 若 access_token 已过期（或即将过期 <= 60s）且有 refresh_token，主动发起 OAuth 刷新
-        if let Some(ref rt) = creds.refresh_token {
-            if is_claude_token_expired(creds.expires_at_epoch_ms, now_epoch_secs) {
-                if let Ok(new_tokens) =
-                    refresh_claude_token(request, rt, &creds.scopes, http, cancellation)
-                {
-                    active_token = new_tokens.access_token;
-                    active_refresh_token = Some(new_tokens.refresh_token.clone());
-                    active_expiry_secs = Some(now_epoch_secs + new_tokens.expires_in_secs);
-                    creds.refresh_token = Some(new_tokens.refresh_token);
-                    refreshed = true;
-                }
-            }
-        }
-
-        // 2. 执行配额查询
-        let mut query_result = query_claude_usage(request, &active_token, http, cancellation);
-
-        // 3. 若尚未成功刷新且返回 401 鉴权拒绝，且存在 refresh_token，尝试刷新并重试一次
-        if !refreshed {
-            if let Some(ref rt) = creds.refresh_token {
-                let is_auth_failure = match &query_result {
-                    Err(err) => err.diagnostic.code == "PROVIDER_AUTH_REJECTED",
-                    _ => false,
-                };
-                if is_auth_failure {
-                    if let Ok(new_tokens) =
-                        refresh_claude_token(request, rt, &creds.scopes, http, cancellation)
-                    {
-                        active_token = new_tokens.access_token;
-                        active_refresh_token = Some(new_tokens.refresh_token);
-                        active_expiry_secs = Some(now_epoch_secs + new_tokens.expires_in_secs);
-                        refreshed = true;
-                        query_result =
-                            query_claude_usage(request, &active_token, http, cancellation);
-                    }
-                }
-            }
-        }
-
-        let mut usage = query_result?;
-        if refreshed {
-            if let Some(obj) = usage.as_mut().and_then(Value::as_object_mut) {
-                let mut update = serde_json::Map::new();
-                update.insert("access_token".to_owned(), Value::String(active_token));
-                if let Some(rt) = active_refresh_token {
-                    update.insert("refresh_token".to_owned(), Value::String(rt));
-                }
-                if let Some(exp) = active_expiry_secs {
-                    update.insert("expiry".to_owned(), Value::String(exp.to_string()));
-                }
-                obj.insert("credential_update".to_owned(), Value::Object(update));
-            }
-        }
-        Ok(usage)
-    }
-}
-
-fn opencode_credential(credential: &Value) -> Result<(&str, &str), ProviderError> {
-    let object = credential.as_object().ok_or_else(invalid_credential)?;
-    let auth = object
-        .get("auth")
-        .and_then(Value::as_str)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(invalid_credential)?;
-    let workspace = object
-        .get("workspaceId")
-        .and_then(Value::as_str)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(invalid_credential)?;
-    Ok((auth, workspace))
-}
-
-fn percent_encode(value: &str) -> String {
-    let mut output = String::with_capacity(value.len());
-    for byte in value.bytes() {
-        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
-            output.push(byte as char);
-        } else {
-            output.push('%');
-            output.push_str(&format!("{byte:02X}"));
-        }
-    }
-    output
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct OpenCodeGoProvider;
-
-impl QuotaProvider for OpenCodeGoProvider {
-    fn app(&self) -> &str {
-        "opencode-go"
-    }
-
-    fn query(
-        &self,
-        request: &ProviderRequest,
-        http: &dyn HttpClient,
-        cancellation: &CancellationToken,
-    ) -> Result<Option<Value>, ProviderError> {
-        let Some(credential) = request.credential.as_ref() else {
-            return Ok(None);
-        };
-        let (auth, workspace) = opencode_credential(credential)?;
-        let url = format!(
-            "{OPENCODE_SERVER_URL}?id={}&args=%5B%22{}%22%5D",
-            OPENCODE_SERVER_ID,
-            percent_encode(workspace)
-        );
-        let mut last_error = None;
-        for _ in 0..2 {
-            let body = send_body(
-                request,
-                http,
-                cancellation,
-                "GET",
-                url.clone(),
-                provider_headers(&[
-                    ("Cookie", format!("auth={auth}")),
-                    ("Accept", "*/*".to_owned()),
-                    ("X-Server-Id", OPENCODE_SERVER_ID.to_owned()),
-                    ("X-Server-Instance", "server-fn:bruce".to_owned()),
-                ]),
-                None,
-                Some("OpenCode GO 会话已失效, 请重新登录 opencode.ai"),
-            );
-            match body.and_then(|body| {
-                parse_opencode_go_body(&body, captured_epoch(&request.captured_at))
-            }) {
-                Ok(result) => return Ok(result),
-                Err(error) => last_error = Some(error),
-            }
-        }
-        Err(last_error.unwrap_or_else(|| {
-            ProviderError::new(
-                "PROVIDER_REQUEST_FAILED",
-                "request",
-                "OpenCode GO 查询失败",
-                true,
-            )
-        }))
-    }
-}
-
-fn grok_token(credential: &Value) -> Result<Option<String>, ProviderError> {
-    let root = json_credential(credential)?;
-    let object = root.as_object().ok_or_else(invalid_credential)?;
-    if let Some(token) = object.get("key").and_then(Value::as_str) {
-        return Ok((!token.is_empty()).then_some(token.to_owned()));
-    }
-    let mut legacy = None;
-    for (scope, value) in object {
-        let Some(value) = value.as_object() else {
-            continue;
-        };
-        let Some(token) = value
-            .get("key")
-            .and_then(Value::as_str)
-            .filter(|value| !value.is_empty())
-        else {
-            continue;
-        };
-        if scope.starts_with("https://auth.x.ai::") {
-            return Ok(Some(token.to_owned()));
-        }
-        if scope == "https://accounts.x.ai/sign-in" || scope.contains("/sign-in") {
-            legacy = Some(token.to_owned());
-        }
-    }
-    Ok(legacy)
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct GrokProvider;
-
-impl QuotaProvider for GrokProvider {
-    fn app(&self) -> &str {
-        "grok"
-    }
-
-    fn query(
-        &self,
-        request: &ProviderRequest,
-        http: &dyn HttpClient,
-        cancellation: &CancellationToken,
-    ) -> Result<Option<Value>, ProviderError> {
-        let Some(credential) = request.credential.as_ref() else {
-            return Ok(None);
-        };
-        let Some(token) = grok_token(credential)? else {
-            return Ok(None);
-        };
-        let body = send_body(
-            request,
-            http,
-            cancellation,
-            "POST",
-            GROK_BILLING_URL.to_owned(),
-            provider_headers(&[
-                ("Authorization", format!("Bearer {token}")),
-                ("Origin", "https://grok.com".to_owned()),
-                ("Referer", "https://grok.com/?_s=usage".to_owned()),
-                ("Accept", "*/*".to_owned()),
-                ("Content-Type", "application/grpc-web+proto".to_owned()),
-                ("x-grpc-web", "1".to_owned()),
-                ("x-user-agent", "connect-es/2.1.1".to_owned()),
-                ("User-Agent", "Bruce-collector".to_owned()),
-            ]),
-            Some(vec![0; 5]),
-            Some("Grok 凭证被拒绝, 请重新 grok login"),
-        )?;
-        parse_grok_usage(&body, captured_epoch(&request.captured_at))
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct CodexProvider;
-
-impl QuotaProvider for CodexProvider {
-    fn app(&self) -> &str {
-        "codex"
-    }
-
-    fn query(
-        &self,
-        request: &ProviderRequest,
-        http: &dyn HttpClient,
-        cancellation: &CancellationToken,
-    ) -> Result<Option<Value>, ProviderError> {
-        let Some(credential) = request.credential.as_ref() else {
-            return Ok(None);
-        };
-        let token =
-            credential_string(credential, &["access_token"]).ok_or_else(invalid_credential)?;
-        let account_id = request
-            .account_id
-            .as_deref()
-            .filter(|value| !value.is_empty())
-            .ok_or_else(invalid_credential)?;
-        let payload = send_json(
-            request,
-            http,
-            cancellation,
-            "GET",
-            CODEX_USAGE_URL.to_owned(),
-            provider_headers(&[
-                ("Authorization", format!("Bearer {token}")),
-                ("chatgpt-account-id", account_id.to_owned()),
-                ("User-Agent", "codex-cli/1.0".to_owned()),
-                ("Accept", "application/json".to_owned()),
-            ]),
-            None,
-            Some("Codex 登录态已失效, 请重新登录该账号"),
-        )?;
-        parse_codex_usage(&payload)
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct StepFunProvider;
-
-impl QuotaProvider for StepFunProvider {
-    fn app(&self) -> &str {
-        "stepfun"
-    }
-
-    fn query(
-        &self,
-        request: &ProviderRequest,
-        http: &dyn HttpClient,
-        cancellation: &CancellationToken,
-    ) -> Result<Option<Value>, ProviderError> {
-        let Some(raw_token) =
-            optional_credential_string(request, &["token", "oasis_token", "apiKey", "api_key"])?
-        else {
-            return Ok(None);
-        };
-        let token = raw_token.trim().trim_matches('"').trim();
-        let token = token.strip_prefix("Bearer ").unwrap_or(token).trim();
-        let can_refresh = token.contains("...");
-        let now_epoch = captured_epoch(&request.captured_at);
-        let mut active_token = token.to_owned();
-        let mut refreshed = false;
-
-        // 1. 若是两段式 Oasis-Token 且短期 access token 已过期 (或即将过期), 主动尝试刷新
-        if can_refresh && is_stepfun_token_expired(&active_token, now_epoch) {
-            if let Ok(new_token) = refresh_stepfun_token(request, &active_token, http, cancellation)
-            {
-                active_token = new_token;
-                refreshed = true;
-            }
-        }
-
-        // 2. 执行配额查询
-        let mut query_result = query_stepfun_rate_limit(request, &active_token, http, cancellation);
-
-        // 3. 若尚未刷新且返回鉴权失败，尝试刷新并重试一次
-        if !refreshed && can_refresh {
-            let is_auth_failure = match &query_result {
-                Err(err) => {
-                    err.diagnostic.code == "PROVIDER_AUTH_REJECTED"
-                        || err.diagnostic.code == "PROVIDER_REMOTE_REJECTED"
-                }
-                _ => false,
-            };
-            if is_auth_failure {
-                if let Ok(new_token) = refresh_stepfun_token(request, token, http, cancellation) {
-                    active_token = new_token;
-                    refreshed = true;
-                    query_result =
-                        query_stepfun_rate_limit(request, &active_token, http, cancellation);
-                }
-            }
-        }
-
-        let mut usage = query_result?;
-        if refreshed {
-            if let Some(obj) = usage.as_mut().and_then(Value::as_object_mut) {
-                obj.insert(
-                    "credential_update".to_owned(),
-                    json!({
-                        "access_token": active_token,
-                    }),
-                );
-            }
-        }
-        Ok(usage)
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct JevProvider;
-
-impl QuotaProvider for JevProvider {
-    fn app(&self) -> &str {
-        "jev"
-    }
-
-    fn query(
-        &self,
-        request: &ProviderRequest,
-        http: &dyn HttpClient,
-        cancellation: &CancellationToken,
-    ) -> Result<Option<Value>, ProviderError> {
-        let Some(raw_key) = optional_credential_string(request, &["api_key", "apiKey", "token"])?
-        else {
-            return Ok(None);
-        };
-        let api_key = raw_key.trim().trim_matches('"').trim();
-        let api_key = api_key.strip_prefix("Bearer ").unwrap_or(api_key).trim();
-        if api_key.is_empty() {
-            return Ok(None);
-        }
-        let base_url = request
-            .credential
-            .as_ref()
-            .and_then(|cred| credential_string(cred, &["base_url", "baseUrl"]))
-            .unwrap_or(JEV_MODELS_URL);
-        let url = if base_url == JEV_MODELS_URL || base_url.ends_with("/v1/models") {
-            base_url.to_owned()
-        } else {
-            format!("{}/v1/models", base_url.trim_end_matches('/'))
-        };
-        let payload = send_json(
-            request,
-            http,
-            cancellation,
-            "GET",
-            url,
-            provider_headers(&[
-                ("Authorization", format!("Bearer {api_key}")),
-                ("Accept", "application/json".to_owned()),
-            ]),
-            None,
-            Some("Jev 凭证被拒绝, 请检查 API key"),
-        )?;
-        let mut result = parse_jev_models(&payload)?;
-        if let Some(res) = result.as_mut().and_then(Value::as_object_mut) {
-            if let Some(cred) = request.credential.as_ref() {
-                if let Some(balance) = cred.get("balance").and_then(Value::as_f64) {
-                    res.insert("balance".to_owned(), json!(balance));
-                    res.insert("currency".to_owned(), json!("USD"));
-                }
-            }
-        }
-        Ok(result)
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ClineProvider;
-
-impl QuotaProvider for ClineProvider {
-    fn app(&self) -> &str {
-        "cline"
-    }
-
-    /// C039: 三窗口直读网页控制台同源权威端点 `/users/me/plan/usage-limits`
-    /// (百分比与重置时刻由服务端算好返回, 与网页逐字一致), 恒定 2 次 GET;
-    /// 台账翻页与本地窗口建模已删除 (无本地状态, 网络故障恢复后下轮刷新即精确)。
-    fn query(
-        &self,
-        request: &ProviderRequest,
-        http: &dyn HttpClient,
-        cancellation: &CancellationToken,
-    ) -> Result<Option<Value>, ProviderError> {
-        let Some(raw_key) = optional_credential_string(request, &["api_key", "apiKey", "token"])?
-        else {
-            return Ok(None);
-        };
-        let api_key = raw_key.trim().trim_matches('"').trim();
-        let api_key = api_key.strip_prefix("Bearer ").unwrap_or(api_key).trim();
-        if api_key.is_empty() {
-            return Ok(None);
-        }
-        let auth_header = format!("Bearer {api_key}");
-        let headers = || {
-            provider_headers(&[
-                ("Authorization", auth_header.clone()),
-                ("Accept", "application/json".to_owned()),
-            ])
-        };
-        let auth_error = "Cline 凭证被拒绝, 请检查 API key";
-
-        let plan_payload = send_json(
-            request,
-            http,
-            cancellation,
-            "GET",
-            format!("{CLINE_API_BASE}/users/me/plan"),
-            headers(),
-            None,
-            Some(auth_error),
-        )?;
-        if cline_pass_entitled(&plan_payload) != Some(true) {
-            // 非 ClinePass 订阅账户 (无 entitlements 三窗口): 不查询额度, 直接空态.
-            return Ok(None);
-        }
-
-        let limits_payload = send_json(
-            request,
-            http,
-            cancellation,
-            "GET",
-            format!("{CLINE_API_BASE}/users/me/plan/usage-limits"),
-            headers(),
-            None,
-            Some(auth_error),
-        )?;
-
-        parse_cline_usage_limits(&plan_payload, &limits_payload)
-    }
 }
 
 /// Return the read-only quota adapter for a stable provider app ID.
@@ -3182,1767 +1007,5 @@ pub fn provider_for_app(app: &str) -> Option<Box<dyn QuotaProvider>> {
         "jev" => Some(Box::new(JevProvider)),
         "cline" => Some(Box::new(ClineProvider)),
         _ => None,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        bounded_http_body, catalog_entries, claude_token, codex_service_id, extract_stepfun_app_id,
-        extract_stepfun_device_id, grok_token, is_claude_token_expired, is_stepfun_global,
-        is_stepfun_token_expired, opencode_credential, parse_claude_usage,
-        parse_cline_usage_limits, parse_codex_usage, parse_deepseek_balance, parse_grok_usage,
-        parse_jev_models, parse_kimi_usage, parse_opencode_go_body, parse_stepfun_usage,
-        parse_volcengine_usage, parse_zhipu_usage, reset_epoch, resolve_service_catalog,
-        service_template, AccountDescriptor, CancellationToken, CatalogInput, ClaudeProvider,
-        ClineProvider, CodexProvider, DeepSeekProvider, HttpClient, HttpRequest, HttpResponse,
-        JevProvider, KimiProvider, OpenCodeGoProvider, ProviderError, ProviderRequest,
-        QuotaProvider, StepFunProvider, UreqHttpClient, VolcEngineProvider, ZhipuProvider,
-        JEV_MODELS_URL, STEPFUN_GLOBAL_REFRESH_TOKEN_URL, STEPFUN_GLOBAL_STEP_PLAN_RATE_LIMIT_URL,
-        STEPFUN_REFRESH_TOKEN_URL, STEPFUN_STEP_PLAN_RATE_LIMIT_URL,
-    };
-    use collector_runtime::RuntimeLimits;
-    use serde_json::{json, Value};
-    use sha2::Digest;
-    use std::collections::{BTreeMap, BTreeSet};
-    use std::sync::Mutex;
-    use std::time::Duration;
-
-    struct FixtureHttp {
-        responses: Mutex<std::collections::VecDeque<Result<HttpResponse, ProviderError>>>,
-        requests: Mutex<Vec<HttpRequest>>,
-    }
-
-    impl FixtureHttp {
-        fn new(responses: Vec<Result<HttpResponse, ProviderError>>) -> Self {
-            Self {
-                responses: Mutex::new(responses.into()),
-                requests: Mutex::new(Vec::new()),
-            }
-        }
-
-        fn requests(&self) -> Vec<HttpRequest> {
-            self.requests.lock().unwrap().clone()
-        }
-    }
-
-    impl HttpClient for FixtureHttp {
-        fn send(
-            &self,
-            request: HttpRequest,
-            cancellation: &CancellationToken,
-        ) -> Result<HttpResponse, ProviderError> {
-            cancellation.check().map_err(ProviderError::from_runtime)?;
-            self.requests.lock().unwrap().push(request);
-            self.responses
-                .lock()
-                .unwrap()
-                .pop_front()
-                .unwrap_or_else(|| {
-                    Err(ProviderError::new(
-                        "FIXTURE_EXHAUSTED",
-                        "test",
-                        "fixture response 不足",
-                        false,
-                    ))
-                })
-        }
-    }
-
-    fn provider_request(_app: &str, credential: Value) -> ProviderRequest {
-        ProviderRequest {
-            account_id: None,
-            captured_at: "2026-08-21T00:00:00Z".to_owned(),
-            timeout: Duration::from_secs(8),
-            max_response_body_bytes: RuntimeLimits::default().response_body_bytes,
-            credential: Some(credential),
-        }
-    }
-
-    fn response(body: &str) -> Result<HttpResponse, ProviderError> {
-        Ok(HttpResponse {
-            status: 200,
-            body: body.as_bytes().to_vec(),
-        })
-    }
-
-    #[test]
-    fn catalog_is_stable_and_rejects_duplicate_accounts() {
-        let mut input = CatalogInput::default();
-        input.accounts.insert(
-            "kimi".to_owned(),
-            vec![
-                AccountDescriptor {
-                    account_id: "z-account".to_owned(),
-                    display_name: None,
-                },
-                AccountDescriptor {
-                    account_id: "a-account".to_owned(),
-                    display_name: Some("Kimi · A".to_owned()),
-                },
-            ],
-        );
-        input.enabled_official.insert("claude".to_owned());
-        let services = resolve_service_catalog(&input).unwrap();
-        assert_eq!(services[0].id, "kimi_coding_a-account");
-        assert_eq!(services[1].id, "kimi_coding_z-account");
-        assert_eq!(services[2].id, "claude");
-        let mut duplicate = input;
-        duplicate
-            .accounts
-            .get_mut("kimi")
-            .unwrap()
-            .push(AccountDescriptor {
-                account_id: "a-account".to_owned(),
-                display_name: None,
-            });
-        assert!(resolve_service_catalog(&duplicate).is_err());
-    }
-
-    #[test]
-    fn response_body_and_service_template_are_bounded() {
-        assert_eq!(
-            bounded_http_body(
-                HttpResponse {
-                    status: 200,
-                    body: br#"{"ok":true}"#.to_vec(),
-                },
-                128,
-            )
-            .unwrap(),
-            br#"{"ok":true}"#.to_vec()
-        );
-        assert!(bounded_http_body(
-            HttpResponse {
-                status: 200,
-                body: vec![b'x'; 129],
-            },
-            128,
-        )
-        .is_err());
-        let rate_limit = bounded_http_body(
-            HttpResponse {
-                status: 429,
-                body: br#"{"error":"rate limited"}"#.to_vec(),
-            },
-            128,
-        )
-        .unwrap_err();
-        assert_eq!(rate_limit.diagnostic.code, "PROVIDER_RATE_LIMIT");
-        assert!(rate_limit.diagnostic.message.contains("HTTP 429"));
-        let server_error = bounded_http_body(
-            HttpResponse {
-                status: 502,
-                body: b"<html>bad gateway</html>".to_vec(),
-            },
-            128,
-        )
-        .unwrap_err();
-        assert_eq!(server_error.diagnostic.code, "PROVIDER_SERVER_ERROR");
-        assert!(server_error.diagnostic.message.contains("HTTP 502"));
-        let client_error = bounded_http_body(
-            HttpResponse {
-                status: 404,
-                body: b"not found".to_vec(),
-            },
-            128,
-        )
-        .unwrap_err();
-        assert_eq!(client_error.diagnostic.code, "PROVIDER_HTTP_STATUS");
-        assert!(client_error.diagnostic.message.contains("HTTP 404"));
-        let parsed: Value = serde_json::from_slice(
-            &bounded_http_body(
-                HttpResponse {
-                    status: 200,
-                    body: br#"{"windows":[]}"#.to_vec(),
-                },
-                128,
-            )
-            .unwrap(),
-        )
-        .unwrap();
-        assert!(parsed.is_object());
-        let service = super::ServiceDescriptor {
-            id: "kimi_coding_a".to_owned(),
-            name: "Kimi · A".to_owned(),
-            app: "kimi".to_owned(),
-            is_current: false,
-        };
-        let value = service_template(&service, "2026-08-21T00:00:00+00:00");
-        assert_eq!(value["status"], "ok");
-    }
-
-    #[test]
-    fn catalog_input_uses_ordered_maps_without_hash_iteration() {
-        let input = CatalogInput {
-            accounts: BTreeMap::new(),
-            enabled_official: BTreeSet::new(),
-        };
-        assert!(resolve_service_catalog(&input).unwrap().is_empty());
-    }
-
-    #[test]
-    fn provider_registry_resolves_only_supported_stable_app_ids() {
-        for app in [
-            "opencode-go",
-            "kimi",
-            "deepseek",
-            "zhipu",
-            "volcengine",
-            "claude",
-            "grok",
-            "codex",
-            "stepfun",
-        ] {
-            assert_eq!(super::provider_for_app(app).unwrap().app(), app);
-        }
-        assert_eq!(super::provider_for_app("codex").unwrap().app(), "codex");
-        let _ = UreqHttpClient::default();
-    }
-
-    #[test]
-    fn stepfun_parser_handles_credit_rate_limit_and_windows() {
-        let payload = json!({
-            "code": 0,
-            "message": "success",
-            "plan_name": "Plus",
-            "plan_credit_rate_limit": {
-                "subscription_credit_left_rate": 0.9641,
-                "topup_credit_left_rate": 0.8,
-                "credit_buckets": [
-                    {
-                        "total_credit": 1600000000_i64,
-                        "left_credit": 1542560000_i64,
-                        "reset_time": 1789900000_i64
-                    }
-                ]
-            },
-            "five_hour_usage_left_rate": 0.99,
-            "five_hour_usage_reset_time": 1789900000_i64,
-            "weekly_usage_left_rate": 0.95,
-            "weekly_usage_reset_time": 1789900000_i64
-        });
-        let result = parse_stepfun_usage(&payload).unwrap().unwrap();
-        assert_eq!(result["kind"], "windows");
-        assert_eq!(result["plan"], "Plus");
-        let windows = result["windows"].as_array().unwrap();
-        assert_eq!(windows.len(), 4);
-        assert_eq!(windows[0]["label"], "Credits");
-        assert!((windows[0]["usedPercent"].as_f64().unwrap() - 3.59).abs() < 0.01);
-        assert_eq!(windows[0]["resetsAt"], 1789900000);
-        assert_eq!(windows[1]["label"], "加油包 Credits");
-        assert!((windows[1]["usedPercent"].as_f64().unwrap() - 20.0).abs() < 0.01);
-        assert_eq!(windows[2]["label"], "5小时窗口");
-        assert_eq!(windows[3]["label"], "每周窗口");
-    }
-
-    #[test]
-    fn stepfun_parser_handles_remote_rejected_error() {
-        let payload = json!({
-            "code": 401,
-            "message": "invalid token"
-        });
-        let error = parse_stepfun_usage(&payload).unwrap_err();
-        assert_eq!(error.diagnostic.code, "PROVIDER_REMOTE_REJECTED");
-        let _ = StepFunProvider;
-    }
-
-    #[test]
-    fn stepfun_parser_handles_real_plan_family_credit_response() {
-        let payload = json!({
-            "status": 1,
-            "desc": "",
-            "five_hour_usage_left_rate": 0,
-            "five_hour_usage_reset_time": "0",
-            "weekly_usage_left_rate": 0,
-            "weekly_usage_reset_time": "0",
-            "plan_family": 2,
-            "plan_credit_rate_limit": {
-                "subscription_credit_left_rate": 0.96789026,
-                "subscription_credit_reset_time": "1792485144",
-                "topup_credit_left_rate": 0,
-                "credit_buckets": [
-                    {
-                        "type": 1,
-                        "credit_total": "1600000000",
-                        "credit_residual": "1548624323",
-                        "expire_at": "1795059029",
-                        "next_reset_at": "1792485144"
-                    }
-                ]
-            }
-        });
-        let result = parse_stepfun_usage(&payload).unwrap().unwrap();
-        assert_eq!(result["kind"], "windows");
-        let windows = result["windows"].as_array().unwrap();
-        assert_eq!(windows.len(), 1);
-        assert_eq!(windows[0]["label"], "Credits");
-        assert!((windows[0]["usedPercent"].as_f64().unwrap() - 3.21).abs() < 0.05);
-        assert_eq!(windows[0]["resetsAt"], 1792485144);
-    }
-
-    #[test]
-    fn stepfun_device_id_extractor_handles_jwt_payload() {
-        // Base64Url-encoded payload: {"app_id":10300,"device_id":"test-device-uuid-1234"}
-        let dummy_jwt = "eyJhbGciOiJIUzI1NiJ9.eyJhcHBfaWQiOjEwMzAwLCJkZXZpY2VfaWQiOiJ0ZXN0LWRldmljZS11dWlkLTEyMzQifQ.signature";
-        assert_eq!(
-            extract_stepfun_device_id(dummy_jwt).as_deref(),
-            Some("test-device-uuid-1234")
-        );
-        let multi_part = format!("header.part1.sig...{dummy_jwt}");
-        assert_eq!(
-            extract_stepfun_device_id(&multi_part).as_deref(),
-            Some("test-device-uuid-1234")
-        );
-    }
-
-    #[test]
-    fn stepfun_token_expiry_detector_handles_jwt_exp() {
-        let expired_jwt = "header.eyJleHAiOiAxNzAwMDAwMDAwfQ.sig...header.payload2.sig";
-        let fresh_jwt = "header.eyJleHAiOiAyMTAwMDAwMDAwfQ.sig...header.payload2.sig";
-        let now_epoch = 1780000000;
-        assert!(is_stepfun_token_expired(expired_jwt, now_epoch));
-        assert!(!is_stepfun_token_expired(fresh_jwt, now_epoch));
-        assert!(!is_stepfun_token_expired("not-a-jwt", now_epoch));
-    }
-
-    #[test]
-    fn stepfun_provider_refreshes_token_on_401_and_retries() {
-        let old_token =
-            "header.part1.sig...header.eyJhcHBfaWQiOjEwMzAwLCJkZXZpY2VfaWQiOiJkZXYtMSJ9.sig";
-        let refresh_resp = json!({
-            "accessToken": {"raw": "header.new_part1.sig"},
-            "refreshToken": {"raw": "header.new_part2.sig"}
-        });
-        let quota_resp = json!({
-            "status": 1,
-            "desc": "",
-            "plan_credit_rate_limit": {
-                "subscription_credit_left_rate": 0.85,
-                "subscription_credit_reset_time": "1792485144",
-                "credit_buckets": []
-            }
-        });
-        let http = FixtureHttp::new(vec![
-            // 1. Initial query returns 401
-            Ok(HttpResponse {
-                status: 401,
-                body: b"unauthenticated".to_vec(),
-            }),
-            // 2. Refresh request returns 200 with new tokens
-            Ok(HttpResponse {
-                status: 200,
-                body: serde_json::to_vec(&refresh_resp).unwrap(),
-            }),
-            // 3. Retry query returns 200 with quota
-            Ok(HttpResponse {
-                status: 200,
-                body: serde_json::to_vec(&quota_resp).unwrap(),
-            }),
-        ]);
-        let request = ProviderRequest {
-            account_id: Some("test-acc".to_owned()),
-            captured_at: "2026-09-21T00:00:00Z".to_owned(),
-            timeout: Duration::from_secs(5),
-            max_response_body_bytes: 65536,
-            credential: Some(json!({ "token": old_token })),
-        };
-        let cancel = CancellationToken::default();
-        let result = StepFunProvider
-            .query(&request, &http, &cancel)
-            .unwrap()
-            .unwrap();
-        assert_eq!(result["kind"], "windows");
-        assert_eq!(
-            result["credential_update"]["access_token"],
-            "header.new_part1.sig...header.new_part2.sig"
-        );
-        let requests = http.requests();
-        assert_eq!(requests.len(), 3);
-        assert_eq!(requests[0].url, STEPFUN_STEP_PLAN_RATE_LIMIT_URL);
-        assert_eq!(requests[1].url, STEPFUN_REFRESH_TOKEN_URL);
-        assert_eq!(requests[2].url, STEPFUN_STEP_PLAN_RATE_LIMIT_URL);
-    }
-
-    #[test]
-    fn stepfun_app_id_and_site_detector_identifies_domestic_and_global_tokens() {
-        // domestic: app_id 10300
-        let domestic_jwt =
-            "header.part1.sig...header.eyJhcHBfaWQiOjEwMzAwLCJkZXZpY2VfaWQiOiJkZXYtMSJ9.sig";
-        assert_eq!(extract_stepfun_app_id(domestic_jwt), Some(10300));
-        let req_domestic = ProviderRequest {
-            account_id: Some("test".to_owned()),
-            captured_at: "2026-09-21T00:00:00Z".to_owned(),
-            timeout: Duration::from_secs(5),
-            max_response_body_bytes: 65536,
-            credential: Some(json!({ "token": domestic_jwt })),
-        };
-        assert!(!is_stepfun_global(domestic_jwt, &req_domestic));
-
-        // global: app_id 20700
-        let global_jwt =
-            "header.part1.sig...header.eyJhcHBfaWQiOjIwNzAwLCJkZXZpY2VfaWQiOiJkZXYtMiJ9.sig";
-        assert_eq!(extract_stepfun_app_id(global_jwt), Some(20700));
-        let req_global = ProviderRequest {
-            account_id: Some("test".to_owned()),
-            captured_at: "2026-09-21T00:00:00Z".to_owned(),
-            timeout: Duration::from_secs(5),
-            max_response_body_bytes: 65536,
-            credential: Some(json!({ "token": global_jwt })),
-        };
-        assert!(is_stepfun_global(global_jwt, &req_global));
-
-        // override via credential.site = "global"
-        let req_override = ProviderRequest {
-            account_id: Some("test".to_owned()),
-            captured_at: "2026-09-21T00:00:00Z".to_owned(),
-            timeout: Duration::from_secs(5),
-            max_response_body_bytes: 65536,
-            credential: Some(json!({ "token": domestic_jwt, "site": "global" })),
-        };
-        assert!(is_stepfun_global(domestic_jwt, &req_override));
-
-        // C093 / 设计规则 28: 显式选择优先于令牌推导, 反向亦然 (国内站选择覆盖国际站令牌)。
-        let req_override_domestic = ProviderRequest {
-            account_id: Some("test".to_owned()),
-            captured_at: "2026-09-21T00:00:00Z".to_owned(),
-            timeout: Duration::from_secs(5),
-            max_response_body_bytes: 65536,
-            credential: Some(json!({ "token": global_jwt, "site": "domestic" })),
-        };
-        assert!(!is_stepfun_global(global_jwt, &req_override_domestic));
-
-        // 未写入 site (C093 起前端不再写默认站点) 时, 国际站令牌必须判为国际站 ——
-        // 这正是「国际站令牌被默认国内站查错站点」的回归锁。
-        let req_token_only = ProviderRequest {
-            account_id: Some("test".to_owned()),
-            captured_at: "2026-09-21T00:00:00Z".to_owned(),
-            timeout: Duration::from_secs(5),
-            max_response_body_bytes: 65536,
-            credential: Some(json!({ "token": global_jwt })),
-        };
-        assert!(is_stepfun_global(global_jwt, &req_token_only));
-    }
-
-    #[test]
-    fn stepfun_provider_routes_to_global_endpoints_when_global_token() {
-        let global_token =
-            "header.part1.sig...header.eyJhcHBfaWQiOjIwNzAwLCJkZXZpY2VfaWQiOiJkZXYtZ2xvYmFsIn0.sig";
-        let refresh_resp = json!({
-            "accessToken": {"raw": "header.new_global1.sig"},
-            "refreshToken": {"raw": "header.new_global2.sig"}
-        });
-        let quota_resp = json!({
-            "status": 1,
-            "desc": "",
-            "plan_credit_rate_limit": {
-                "subscription_credit_left_rate": 0.9,
-                "subscription_credit_reset_time": "1792485144",
-                "credit_buckets": []
-            }
-        });
-        let http = FixtureHttp::new(vec![
-            Ok(HttpResponse {
-                status: 401,
-                body: b"unauthenticated".to_vec(),
-            }),
-            Ok(HttpResponse {
-                status: 200,
-                body: serde_json::to_vec(&refresh_resp).unwrap(),
-            }),
-            Ok(HttpResponse {
-                status: 200,
-                body: serde_json::to_vec(&quota_resp).unwrap(),
-            }),
-        ]);
-        let request = ProviderRequest {
-            account_id: Some("test-global-acc".to_owned()),
-            captured_at: "2026-09-21T00:00:00Z".to_owned(),
-            timeout: Duration::from_secs(5),
-            max_response_body_bytes: 65536,
-            credential: Some(json!({ "token": global_token })),
-        };
-        let cancel = CancellationToken::default();
-        let result = StepFunProvider
-            .query(&request, &http, &cancel)
-            .unwrap()
-            .unwrap();
-        assert_eq!(result["kind"], "windows");
-        assert_eq!(
-            result["credential_update"]["access_token"],
-            "header.new_global1.sig...header.new_global2.sig"
-        );
-        let requests = http.requests();
-        assert_eq!(requests.len(), 3);
-        assert_eq!(requests[0].url, STEPFUN_GLOBAL_STEP_PLAN_RATE_LIMIT_URL);
-        assert_eq!(requests[0].headers["Oasis-appID"], "20700");
-        assert_eq!(requests[1].url, STEPFUN_GLOBAL_REFRESH_TOKEN_URL);
-        assert_eq!(requests[1].headers["Oasis-appID"], "20700");
-        assert_eq!(requests[1].headers["Origin"], "https://platform.stepfun.ai");
-        assert_eq!(requests[2].url, STEPFUN_GLOBAL_STEP_PLAN_RATE_LIMIT_URL);
-        assert_eq!(requests[0].headers["Oasis-Webid"], "dev-global");
-    }
-
-    #[test]
-    fn codex_credits_map_to_structured_balance_and_vanish_at_zero() {
-        // 有余额: 结构化 balance + credits 判别键, 不再有余额 extra 文本。
-        let parsed = parse_codex_usage(&json!({
-            "plan_type": "plus",
-            "rate_limit": {},
-            "credits": {"has_credits": true, "balance": 2998.116571}
-        }))
-        .unwrap()
-        .unwrap();
-        assert_eq!(parsed["balance"], 2998.116571);
-        assert_eq!(parsed["currency"], "credits");
-        assert!(parsed.get("extra").is_none());
-
-        // 归零: 不产出 balance (下一次刷新条目自动消失)。
-        let parsed = parse_codex_usage(&json!({
-            "plan_type": "plus",
-            "rate_limit": {},
-            "credits": {"has_credits": true, "balance": 0.0}
-        }))
-        .unwrap()
-        .unwrap();
-        assert!(parsed.get("balance").is_none());
-        assert!(parsed.get("extra").is_none());
-
-        // 耗尽 (has_credits=false): 同样不产出。
-        let parsed = parse_codex_usage(&json!({
-            "plan_type": "plus",
-            "rate_limit": {},
-            "credits": {"has_credits": false, "balance": 12.0}
-        }))
-        .unwrap()
-        .unwrap();
-        assert!(parsed.get("balance").is_none());
-
-        // 不限量: 维持 extra 文本, 无 balance。
-        let parsed = parse_codex_usage(&json!({
-            "plan_type": "plus",
-            "rate_limit": {},
-            "credits": {"unlimited": true}
-        }))
-        .unwrap()
-        .unwrap();
-        assert_eq!(parsed["extra"], "Credits 不限量");
-        assert!(parsed.get("balance").is_none());
-    }
-
-    #[test]
-    fn codex_parser_and_provider_preserve_account_quota_contract() {
-        let parsed = parse_codex_usage(&json!({
-            "plan_type": "fixture-plan",
-            "rate_limit": {
-                "primary_window": {
-                    "limit_window_seconds": 18000,
-                    "used_percent": 42,
-                    "reset_at": "2026-08-21T17:00:00+08:00"
-                },
-                "secondary_window": {
-                    "limit_window_seconds": 604800,
-                    "used_percent": 12.5,
-                    "reset_at": 1785000000
-                }
-            },
-            "credits": {"unlimited": true}
-        }))
-        .unwrap()
-        .unwrap();
-        assert_eq!(parsed["kind"], "windows");
-        assert_eq!(parsed["plan"], "fixture-plan");
-        assert_eq!(parsed["windows"][0]["label"], "5小时窗口");
-        assert_eq!(parsed["windows"][0]["windowMinutes"], 300);
-        assert_eq!(parsed["windows"][0]["usedPercent"], 42.0);
-        assert_eq!(parsed["extra"], "Credits 不限量");
-        assert_eq!(
-            codex_service_id("acc-1"),
-            "codex_".to_owned() + &sha256_prefix("acc-1")
-        );
-
-        let http = FixtureHttp::new(vec![response(
-            r#"{"plan_type":"fixture-plan","rate_limit":{"primary_window":{"limit_window_seconds":18000,"used_percent":42,"reset_at":"2026-08-21T17:00:00+08:00"}}}"#,
-        )]);
-        let mut request = provider_request(
-            "codex",
-            json!({"display_name": "Codex · user", "access_token": "fixture-token"}),
-        );
-        request.account_id = Some("acc-1".to_owned());
-        let result = CodexProvider
-            .query(&request, &http, &CancellationToken::new())
-            .unwrap()
-            .unwrap();
-        assert_eq!(result["windows"][0]["usedPercent"], 42.0);
-        let sent = &http.requests()[0];
-        assert_eq!(sent.url, super::CODEX_USAGE_URL);
-        assert_eq!(sent.headers["Authorization"], "Bearer fixture-token");
-        assert_eq!(sent.headers["chatgpt-account-id"], "acc-1");
-        assert!(!sent.url.contains("fixture-token"));
-    }
-
-    fn sha256_prefix(value: &str) -> String {
-        let digest = sha2::Sha256::digest(value.as_bytes());
-        format!("{:x}", digest)[..16].to_owned()
-    }
-
-    #[test]
-    fn codex_401_is_auth_error_without_secret_in_diagnostic() {
-        let secret = "fixture-codex-token";
-        let http = FixtureHttp::new(vec![Ok(HttpResponse {
-            status: 401,
-            body: br#"{"error":"unauthorized"}"#.to_vec(),
-        })]);
-        let mut request = provider_request("codex", json!({"access_token": secret}));
-        request.account_id = Some("acc-1".to_owned());
-        let error = CodexProvider
-            .query(&request, &http, &CancellationToken::new())
-            .unwrap_err();
-        assert_eq!(error.diagnostic.code, "PROVIDER_AUTH_REJECTED");
-        assert!(error.diagnostic.message.contains("HTTP 401"));
-        assert!(!error.diagnostic.message.contains(secret));
-    }
-
-    #[test]
-    fn zhipu_query_parses_quota_and_uses_monitor_endpoint() {
-        let secret = "fixture-zhipu-secret";
-        let http = FixtureHttp::new(vec![response(
-            r#"{"success":true,"data":{"level":"pro","limits":[{"type":"TOKENS_LIMIT","unit":3,"percentage":18.0,"nextResetTime":1800000000000}]}}"#,
-        )]);
-        let result = ZhipuProvider
-            .query(
-                &provider_request(
-                    "zhipu",
-                    json!({
-                        "api_key": secret,
-                        "base_url": "https://open.bigmodel.cn/api/paas/v4"
-                    }),
-                ),
-                &http,
-                &CancellationToken::new(),
-            )
-            .unwrap()
-            .unwrap();
-        assert_eq!(result["plan"], "pro");
-        assert_eq!(result["windows"][0]["usedPercent"], 18.0);
-        let sent = &http.requests()[0];
-        assert_eq!(
-            sent.url,
-            "https://open.bigmodel.cn/api/monitor/usage/quota/limit"
-        );
-        assert_eq!(sent.headers["Authorization"], secret);
-        assert!(!sent.url.contains(secret));
-    }
-
-    #[test]
-    fn zhipu_non_json_response_keeps_status_without_response_body() {
-        let secret = "fixture-zhipu-secret";
-        let http = FixtureHttp::new(vec![Ok(HttpResponse {
-            status: 200,
-            body: b"<html>gateway response</html>".to_vec(),
-        })]);
-        let error = ZhipuProvider
-            .query(
-                &provider_request(
-                    "zhipu",
-                    json!({
-                        "api_key": secret,
-                        "base_url": "https://open.bigmodel.cn/api/paas/v4"
-                    }),
-                ),
-                &http,
-                &CancellationToken::new(),
-            )
-            .unwrap_err();
-        assert_eq!(error.diagnostic.code, "PROVIDER_INVALID_JSON");
-        assert_eq!(
-            error.diagnostic.message,
-            "Provider 响应不是有效 JSON (HTTP 200)"
-        );
-        assert!(!error.diagnostic.message.contains(secret));
-        assert!(!error.diagnostic.message.contains("gateway response"));
-    }
-
-    #[test]
-    fn zhipu_http_failures_are_not_reported_as_invalid_json() {
-        let credential = json!({
-            "api_key": "fixture-zhipu-secret",
-            "base_url": "https://api.z.ai/api/paas/v4"
-        });
-        let rate_limit = FixtureHttp::new(vec![Ok(HttpResponse {
-            status: 429,
-            body: br#"{"message":"too many requests"}"#.to_vec(),
-        })]);
-        let error = ZhipuProvider
-            .query(
-                &provider_request("zhipu", credential.clone()),
-                &rate_limit,
-                &CancellationToken::new(),
-            )
-            .unwrap_err();
-        assert_eq!(error.diagnostic.code, "PROVIDER_RATE_LIMIT");
-        assert!(error.diagnostic.message.contains("HTTP 429"));
-
-        let server_error = FixtureHttp::new(vec![Ok(HttpResponse {
-            status: 502,
-            body: b"<html>bad gateway</html>".to_vec(),
-        })]);
-        let error = ZhipuProvider
-            .query(
-                &provider_request("zhipu", credential),
-                &server_error,
-                &CancellationToken::new(),
-            )
-            .unwrap_err();
-        assert_eq!(error.diagnostic.code, "PROVIDER_SERVER_ERROR");
-        assert!(error.diagnostic.message.contains("HTTP 502"));
-    }
-
-    #[test]
-    fn zhipu_business_error_json_is_not_misclassified_as_invalid_json() {
-        let http = FixtureHttp::new(vec![response(
-            r#"{"success":false,"code":1000,"msg":"Authentication Failed"}"#,
-        )]);
-        let error = ZhipuProvider
-            .query(
-                &provider_request(
-                    "zhipu",
-                    json!({
-                        "api_key": "fixture-zhipu-secret",
-                        "base_url": "https://api.z.ai/api/paas/v4"
-                    }),
-                ),
-                &http,
-                &CancellationToken::new(),
-            )
-            .unwrap_err();
-        assert_eq!(error.diagnostic.code, "PROVIDER_REMOTE_REJECTED");
-        assert!(!error.diagnostic.message.contains("Authentication Failed"));
-    }
-
-    #[test]
-    fn provider_parsers_preserve_quota_shapes_and_reset_units() {
-        let kimi = parse_kimi_usage(&json!({
-            "limits": [{"detail": {"limit": 100, "remaining": 25, "resetTime": "2026-08-21T01:00:00Z"}}],
-            "usage": {"limit": 200, "remaining": 100, "resetTime": "2026-08-22T00:00:00Z"}
-        }))
-        .unwrap()
-        .unwrap();
-        assert_eq!(kimi["windows"][0]["usedPercent"], 75.0);
-        assert_eq!(kimi["windows"][0]["windowMinutes"], 300);
-        assert_eq!(kimi["windows"][1]["windowMinutes"], 10080);
-
-        let deepseek = parse_deepseek_balance(&json!({
-            "balance_infos": [{"total_balance": "12.5", "currency": "USD"}]
-        }))
-        .unwrap()
-        .unwrap();
-        assert_eq!(deepseek["balance"], 12.5);
-        assert_eq!(deepseek["currency"], "USD");
-
-        let zhipu = parse_zhipu_usage(&json!({
-            "success": true,
-            "data": {
-                "level": "pro",
-                "limits": [
-                    {"type": "CREDIT_LIMIT", "unit": 3, "percentage": 18.0, "nextResetTime": 1_800_000_000_000i64},
-                    {"type": "TOKENS_LIMIT", "unit": 6, "percentage": 42.0, "nextResetTime": 1_800_100_000i64},
-                    {"type": "TIME_LIMIT", "unit": 3, "percentage": 99.0}
-                ]
-            }
-        }))
-        .unwrap()
-        .unwrap();
-        assert_eq!(zhipu["plan"], "pro");
-        assert_eq!(zhipu["windows"].as_array().unwrap().len(), 2);
-        assert_eq!(zhipu["windows"][0]["resetsAt"], 1_800_000_000);
-
-        let volc = parse_volcengine_usage(&json!({
-            "QuotaUsage": [
-                {"Level": "session", "Percent": 101.0, "ResetTimestamp": -1},
-                {"Level": "weekly", "Percent": 33.0, "ResetTimestamp": 1_800_000_000}
-            ]
-        }))
-        .unwrap()
-        .unwrap();
-        assert_eq!(volc["windows"][0]["usedPercent"], 100.0);
-        assert_eq!(volc["windows"][0]["resetsAt"], Value::Null);
-        assert_eq!(volc["windows"][1]["resetsAt"], 1_800_000_000);
-
-        let claude = parse_claude_usage(&json!({
-            "five_hour": {"utilization": 7.0, "resets_at": "2026-08-21T02:00:00Z"},
-            "extra_usage": {"is_enabled": true, "utilization": 3.0},
-            "inactive": {"status": "not_subscribed", "utilization": 99.0}
-        }))
-        .unwrap()
-        .unwrap();
-        assert_eq!(claude["windows"].as_array().unwrap().len(), 3);
-        assert!(claude["windows"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|window| window["ownRow"] == true));
-    }
-
-    /// C058: limits[] weekly_scoped 模型专属周限额被解析 (对照 cc-switch 用例)。
-    fn scoped_limit(model: &str, percent: Value, resets_at: Value, surface: Value) -> Value {
-        json!({
-            "kind": "weekly_scoped",
-            "group": "weekly",
-            "percent": percent,
-            "resets_at": resets_at,
-            "is_active": true,
-            "scope": { "model": { "id": null, "display_name": model }, "surface": surface }
-        })
-    }
-
-    #[test]
-    fn claude_usage_renders_scoped_model_weekly_limits() {
-        let claude = parse_claude_usage(&json!({
-            "five_hour": { "utilization": 12.0, "resets_at": "2026-09-09T15:00:00Z" },
-            "seven_day": { "utilization": 25.0, "resets_at": null },
-            "seven_day_opus": null,
-            "seven_day_sonnet": null,
-            "limits": [scoped_limit("Fable", json!(37.5), json!("2026-09-12T00:00:00Z"), Value::Null)]
-        }))
-        .unwrap()
-        .unwrap();
-        let windows = claude["windows"].as_array().unwrap();
-        assert_eq!(windows.len(), 3);
-        let labels: Vec<&str> = windows
-            .iter()
-            .map(|window| window["label"].as_str().unwrap())
-            .collect();
-        assert_eq!(labels, ["每 5 小时", "每周", "每周 Fable"]);
-        assert_eq!(windows[2]["usedPercent"], 37.5);
-        assert_eq!(windows[2]["windowMinutes"], 10080);
-        assert_eq!(windows[2]["resetsAt"], 1_789_171_200);
-    }
-
-    #[test]
-    fn claude_usage_scoped_limits_override_legacy_and_dedupe() {
-        // 模型名 trim+小写归一; is_active=false 不过滤; 同名首条优先 (0% 胜过 90%);
-        // 覆盖同名旧版顶层窗口 (Fable 80 → 0)。
-        let claude = parse_claude_usage(&json!({
-            "seven_day_fable": { "utilization": 80.0, "resets_at": "2026-09-11T00:00:00Z" },
-            "seven_day_opus": { "utilization": 20.0 },
-            "seven_day_sonnet": { "utilization": 30.0 },
-            "limits": [
-                scoped_limit("Sonnet", json!(5.0), json!("2026-09-12T00:00:00Z"), Value::Null),
-                scoped_limit("  fAbLe  ", json!(0.0), Value::Null, Value::Null),
-                scoped_limit("Fable", json!(90.0), json!("2026-09-13T00:00:00Z"), Value::Null),
-                scoped_limit("Opus", json!(6.0), json!("2026-09-14T00:00:00Z"), Value::Null)
-            ]
-        }))
-        .unwrap()
-        .unwrap();
-        let windows = claude["windows"].as_array().unwrap();
-        let rendered: Vec<(&str, &Value)> = windows
-            .iter()
-            .map(|window| (window["label"].as_str().unwrap(), &window["usedPercent"]))
-            .collect();
-        assert_eq!(
-            rendered,
-            [
-                ("每周 Fable", &json!(0.0)),
-                ("每周 Opus", &json!(6.0)),
-                ("每周 Sonnet", &json!(5.0))
-            ]
-        );
-        assert_eq!(windows[0]["resetsAt"], Value::Null);
-    }
-
-    #[test]
-    fn claude_usage_skips_invalid_scoped_rows_and_dirty_windows() {
-        let mut invalid = vec![Value::Null, json!("invalid")];
-        for (pointer, value) in [
-            ("/kind", json!("spend")),
-            ("/group", json!("daily")),
-            ("/percent", Value::Null),
-            ("/percent", json!("37")),
-            ("/percent", json!(-1)),
-            ("/resets_at", json!(123)),
-            ("/scope/model/display_name", Value::Null),
-            ("/scope/model/display_name", json!("Unknown")),
-            ("/scope/surface", json!("claude_code")),
-        ] {
-            let mut row = scoped_limit(
-                "Fable",
-                json!(37.0),
-                json!("2026-09-12T00:00:00Z"),
-                Value::Null,
-            );
-            *row.pointer_mut(pointer).unwrap() = value;
-            invalid.push(row);
-        }
-        let mut payload = json!({
-            "five_hour": { "utilization": 12.0 },
-            "seven_day_fable": { "utilization": 8.0 },
-            // 脏窗口逐条跳过, 不再让整卡报错 (C058 前为 invalid_payload 错误)。
-            "dirty": { "utilization": "not-a-number" },
-            "limits": invalid
-        });
-        let fallback = parse_claude_usage(&payload).unwrap().unwrap();
-        let fallback_windows = fallback["windows"].as_array().unwrap();
-        assert_eq!(fallback_windows.len(), 2);
-        assert_eq!(fallback_windows[1]["usedPercent"], 8.0);
-        payload["limits"].as_array_mut().unwrap().push(scoped_limit(
-            "Fable",
-            json!(37.0),
-            json!("2026-09-12T00:00:00Z"),
-            Value::Null,
-        ));
-        let claude = parse_claude_usage(&payload).unwrap().unwrap();
-        let windows = claude["windows"].as_array().unwrap();
-        assert_eq!(windows.len(), 2);
-        assert_eq!(windows[0]["usedPercent"], 12.0);
-        assert_eq!(windows[1]["usedPercent"], 37.0);
-    }
-
-    #[test]
-    fn claude_usage_does_not_invent_windows_from_empty_limits() {
-        for limits in [Value::Null, json!([]), json!({})] {
-            let claude = parse_claude_usage(&json!({
-                "five_hour": { "utilization": 12.0 },
-                "limits": limits
-            }))
-            .unwrap()
-            .unwrap();
-            let windows = claude["windows"].as_array().unwrap();
-            assert_eq!(windows.len(), 1);
-            assert_eq!(windows[0]["label"], "每 5 小时");
-        }
-        let only_scoped = parse_claude_usage(&json!({
-            "limits": [scoped_limit("Fable", json!(100.0), Value::Null, Value::Null)]
-        }))
-        .unwrap()
-        .unwrap();
-        let windows = only_scoped["windows"].as_array().unwrap();
-        assert_eq!(windows.len(), 1);
-        assert_eq!(windows[0]["label"], "每周 Fable");
-        assert_eq!(windows[0]["usedPercent"], 100.0);
-    }
-
-    #[test]
-    fn zhipu_current_credit_limit_array_response_is_rendered() {
-        let zhipu = parse_zhipu_usage(&json!({
-            "code": 200,
-            "message": "success",
-            "data": [
-                {
-                    "type": "CREDIT_LIMIT",
-                    "unit": 3,
-                    "number": 5,
-                    "currentValue": 5,
-                    "remaining": 0,
-                    "nextResetTime": 1_800_000_000_000i64
-                },
-                {
-                    "type": "CREDIT_LIMIT",
-                    "unit": 6,
-                    "number": 1,
-                    "currentValue": 2,
-                    "remaining": 8,
-                    "nextResetTime": 1_800_100_000_000i64
-                }
-            ]
-        }))
-        .unwrap()
-        .unwrap();
-
-        assert_eq!(zhipu["plan"], Value::Null);
-        assert_eq!(zhipu["windows"].as_array().unwrap().len(), 2);
-        assert_eq!(zhipu["windows"][0]["label"], "每 5 小时");
-        assert_eq!(zhipu["windows"][0]["usedPercent"], 100.0);
-        assert_eq!(zhipu["windows"][0]["resetsAt"], 1_800_000_000);
-        assert_eq!(zhipu["windows"][1]["label"], "每周");
-        assert_eq!(zhipu["windows"][1]["usedPercent"], 20.0);
-        assert_eq!(zhipu["windows"][1]["resetsAt"], 1_800_100_000);
-    }
-
-    #[test]
-    fn opencode_seroval_parser_omits_unsubscribed_windows() {
-        let body = br#";((self.$R=self.$R||{})["server-fn:x"]=[],($R=>$R[0]={mine:!0,rollingUsage:{status:"ok",usagePercent:12.5,resetInSec:60},weeklyUsage:{status:"ok",usagePercent:20,resetInSec:3600},monthlyUsage:{status:"not_subscribed",usagePercent:99}})($R["server-fn:x"]))"#;
-        let parsed = parse_opencode_go_body(body, 1_800_000_000)
-            .unwrap()
-            .unwrap();
-        assert_eq!(parsed["windows"].as_array().unwrap().len(), 2);
-        assert_eq!(parsed["windows"][0]["usedPercent"], 12.5);
-        assert_eq!(parsed["windows"][0]["resetsAt"], 1_800_000_060i64);
-    }
-
-    #[test]
-    fn grok_parser_handles_bounded_grpc_web_heuristic() {
-        let reset = 1_800_000_100u64;
-        let nested_reset = {
-            let mut value = vec![0x08];
-            value.extend(encode_varint(reset));
-            value
-        };
-        let mut nested = vec![0x2a, nested_reset.len() as u8];
-        nested.extend(nested_reset);
-        nested.extend([0x30, 0x01]);
-        let mut body = vec![0x0d];
-        body.extend(20.0f32.to_le_bytes());
-        body.extend([0x0a, nested.len() as u8]);
-        body.extend(nested);
-        let parsed = parse_grok_usage(&body, 1_800_000_000).unwrap().unwrap();
-        assert_eq!(parsed["windows"][0]["usedPercent"], 20.0);
-        assert_eq!(parsed["windows"][0]["label"], "每 5 小时");
-    }
-
-    fn encode_varint(mut value: u64) -> Vec<u8> {
-        let mut output = Vec::new();
-        loop {
-            let mut byte = (value & 0x7f) as u8;
-            value >>= 7;
-            if value != 0 {
-                byte |= 0x80;
-            }
-            output.push(byte);
-            if value == 0 {
-                return output;
-            }
-        }
-    }
-
-    #[test]
-    fn fixture_http_client_checks_request_headers_and_retry_count() {
-        let http = FixtureHttp::new(vec![
-            response("not seroval"),
-            response("$R[0]={rollingUsage:{status:\"ok\",usagePercent:10,resetInSec:5}}"),
-        ]);
-        let request = provider_request(
-            "opencode-go",
-            json!({"auth": "fixture-cookie", "workspaceId": "wrk_fixture"}),
-        );
-        let result = OpenCodeGoProvider
-            .query(&request, &http, &CancellationToken::new())
-            .unwrap()
-            .unwrap();
-        assert_eq!(result["windows"][0]["usedPercent"], 10.0);
-        let requests = http.requests();
-        assert_eq!(requests.len(), 2);
-        assert_eq!(requests[0].timeout, Duration::from_secs(8));
-        assert_eq!(requests[0].headers["Cookie"], "auth=fixture-cookie");
-        assert!(!requests[0].url.contains("fixture-cookie"));
-    }
-
-    #[test]
-    fn fixture_provider_clients_never_put_credential_in_diagnostic() {
-        let secret = "fixture-provider-secret";
-        let http = FixtureHttp::new(vec![response("[]")]);
-        let request = provider_request("kimi", json!({"api_key": secret}));
-        let error = KimiProvider
-            .query(&request, &http, &CancellationToken::new())
-            .unwrap_err();
-        assert!(!error.diagnostic.message.contains(secret));
-
-        let bad_status = FixtureHttp::new(vec![Ok(HttpResponse {
-            status: 401,
-            body: Vec::new(),
-        })]);
-        let error = DeepSeekProvider
-            .query(
-                &provider_request("deepseek", json!({"api_key": secret})),
-                &bad_status,
-                &CancellationToken::new(),
-            )
-            .unwrap_err();
-        assert_eq!(error.diagnostic.code, "PROVIDER_AUTH_REJECTED");
-        assert!(!error.diagnostic.message.contains(secret));
-    }
-
-    #[test]
-    fn provider_request_uses_bounded_body_and_volc_signature_path() {
-        let http = FixtureHttp::new(vec![response(
-            r#"{"QuotaUsage":[{"Level":"session","Percent":12.0,"ResetTimestamp":-1}]}"#,
-        )]);
-        let result = VolcEngineProvider
-            .query(
-                &provider_request(
-                    "volcengine",
-                    json!({"accessKeyId":"fixture-ak","secretAccessKey":"fixture-sk"}),
-                ),
-                &http,
-                &CancellationToken::new(),
-            )
-            .unwrap()
-            .unwrap();
-        assert_eq!(result["windows"][0]["usedPercent"], 12.0);
-        let request = &http.requests()[0];
-        assert!(request.headers.contains_key("Authorization"));
-        assert!(!request.headers["Authorization"].contains("fixture-sk"));
-    }
-
-    #[test]
-    fn jev_parser_handles_valid_models_response() {
-        let payload = json!({
-            "models": [
-                {
-                    "name": "jev-latest",
-                    "description": "The most recent stable release.",
-                    "release_date": "2025-01-01"
-                },
-                {
-                    "name": "jev-preview",
-                    "description": "The most recent preview release.",
-                    "release_date": "2025-01-01"
-                }
-            ]
-        });
-        let result = parse_jev_models(&payload).unwrap().unwrap();
-        assert_eq!(result["kind"], "balance");
-        assert_eq!(result["plan"], "System One");
-        assert!(result["extra"].is_null());
-        assert_eq!(result["windows"].as_array().unwrap().len(), 0);
-    }
-
-    #[test]
-    fn jev_parser_handles_empty_models_response() {
-        let payload = json!({ "models": [] });
-        let result = parse_jev_models(&payload).unwrap().unwrap();
-        assert_eq!(result["kind"], "balance");
-        assert!(result["extra"].is_null());
-        assert_eq!(result["windows"].as_array().unwrap().len(), 0);
-    }
-
-    #[test]
-    fn jev_parser_rejects_invalid_payload() {
-        let payload = json!({ "error": "not models" });
-        assert!(parse_jev_models(&payload).is_err());
-    }
-
-    #[test]
-    fn jev_provider_query_success_and_auth_failure() {
-        let secret = "sk-typesafe-test-key";
-        let http = FixtureHttp::new(vec![response(
-            r#"{"models":[{"name":"jev-latest","description":"test","release_date":"2025-01-01"}]}"#,
-        )]);
-        let result = JevProvider
-            .query(
-                &provider_request("jev", json!({"api_key": secret})),
-                &http,
-                &CancellationToken::new(),
-            )
-            .unwrap()
-            .unwrap();
-        assert_eq!(result["plan"], "System One");
-        let request = &http.requests()[0];
-        assert_eq!(request.method, "GET");
-        assert_eq!(request.url, JEV_MODELS_URL);
-        assert_eq!(request.headers["Authorization"], format!("Bearer {secret}"));
-
-        // 401 鉴权拒绝
-        let bad_http = FixtureHttp::new(vec![Ok(HttpResponse {
-            status: 401,
-            body: Vec::new(),
-        })]);
-        let err = JevProvider
-            .query(
-                &provider_request("jev", json!({"api_key": secret})),
-                &bad_http,
-                &CancellationToken::new(),
-            )
-            .unwrap_err();
-        assert_eq!(err.diagnostic.code, "PROVIDER_AUTH_REJECTED");
-        assert!(!err.diagnostic.message.contains(secret));
-
-        // 429 限流
-        let rate_limited_http = FixtureHttp::new(vec![Ok(HttpResponse {
-            status: 429,
-            body: Vec::new(),
-        })]);
-        let err = JevProvider
-            .query(
-                &provider_request("jev", json!({"api_key": secret})),
-                &rate_limited_http,
-                &CancellationToken::new(),
-            )
-            .unwrap_err();
-        assert_eq!(err.diagnostic.code, "PROVIDER_RATE_LIMIT");
-
-        // 余额注入测试
-        let balance_http = FixtureHttp::new(vec![response(
-            r#"{"models":[{"name":"jev-latest","description":"test","release_date":"2025-01-01"}]}"#,
-        )]);
-        let result = JevProvider
-            .query(
-                &provider_request("jev", json!({"api_key": secret, "balance": 18.5})),
-                &balance_http,
-                &CancellationToken::new(),
-            )
-            .unwrap()
-            .unwrap();
-        assert_eq!(result["kind"], "balance");
-        assert_eq!(result["balance"], 18.5);
-        assert_eq!(result["currency"], "USD");
-    }
-
-    fn cline_plan_payload(thresholds: (u64, u64, u64), canceled_at: Option<&str>) -> Value {
-        json!({
-            "data": {
-                "planHistoryId": "iph-fixture",
-                "userId": "usr-fixture",
-                "plan": {
-                    "id": "pln-fixture",
-                    "name": "Cline Pass (Monthly)[Internal]",
-                    "displayName": "Cline Pass (Monthly)",
-                    "type": "individual",
-                    "interval": "Monthly",
-                    "pricePerSeatCents": 999,
-                    "entitlements": {
-                        "cline_pass": {
-                            "enabled": true,
-                            "inferenceCapThreshold": {
-                                "last5HoursUsageCostUSDPerUser": thresholds.0,
-                                "last7daysUsageCostUSDPerUser": thresholds.1,
-                                "last30daysUsageCostUSDPerUser": thresholds.2,
-                            }
-                        }
-                    }
-                },
-                "subscriptionId": "sub-fixture",
-                "currentPeriodStart": "2026-10-14T11:52:39Z",
-                "currentPeriodEnd": "2026-11-14T11:52:39Z",
-                "cancelAt": "2026-11-14T11:52:39Z",
-                "canceledAt": canceled_at,
-            },
-            "success": true,
-        })
-    }
-
-    fn cline_request(secret: &str) -> ProviderRequest {
-        ProviderRequest {
-            account_id: None,
-            captured_at: "2026-10-14T12:00:00Z".to_owned(),
-            timeout: Duration::from_secs(8),
-            max_response_body_bytes: RuntimeLimits::default().response_body_bytes,
-            credential: Some(json!({ "api_key": secret })),
-        }
-    }
-
-    /// 服务端权威端点 (C039): /users/me/plan + /users/me/plan/usage-limits 恒定 2 次 GET,
-    /// 百分比与重置时刻由服务端返回、Bruce 直读映射, 不做任何本地窗口建模。
-    #[test]
-    fn cline_provider_reads_server_usage_limits() {
-        let secret = "sk-cline-fixture-key";
-        let usage_limits = json!({
-            "data": {
-                "limits": [
-                    {"type": "five_hour", "percentUsed": 2,
-                     "resetsAt": "2026-10-16T05:51:46.262166334Z"},
-                    {"type": "weekly", "percentUsed": 34,
-                     "resetsAt": "2026-10-21T12:00:46.265101164Z"},
-                    {"type": "monthly", "percentUsed": 17,
-                     "resetsAt": "2026-11-13T12:00:46.267955904Z"},
-                ]
-            },
-            "success": true,
-        });
-        let http = FixtureHttp::new(vec![
-            response(
-                &cline_plan_payload((1_000_000_000, 2_500_000_000, 5_000_000_000), None)
-                    .to_string(),
-            ),
-            response(&usage_limits.to_string()),
-        ]);
-        let result = ClineProvider
-            .query(&cline_request(secret), &http, &CancellationToken::new())
-            .unwrap()
-            .unwrap();
-        assert_eq!(result["kind"], "windows");
-        assert_eq!(result["plan"], "Cline Pass (Monthly)");
-        assert!(result["extra"].is_null());
-        let windows = result["windows"].as_array().expect("windows array");
-        assert_eq!(windows.len(), 3);
-        // 服务端整数百分比原样透传
-        assert_eq!(windows[0]["label"], "每 5 小时");
-        assert_eq!(windows[0]["windowMinutes"], json!(300));
-        assert!((windows[0]["usedPercent"].as_f64().unwrap() - 2.0).abs() < 1e-6);
-        assert_eq!(windows[1]["windowMinutes"], json!(10080));
-        assert!((windows[1]["usedPercent"].as_f64().unwrap() - 34.0).abs() < 1e-6);
-        assert_eq!(windows[2]["windowMinutes"], json!(43200));
-        assert!((windows[2]["usedPercent"].as_f64().unwrap() - 17.0).abs() < 1e-6);
-        // 纳秒级 resetsAt 截断到秒 (chrono rfc3339 原生解析任意位小数)
-        assert_eq!(
-            windows[0]["resetsAt"],
-            json!(reset_epoch(Some(&json!("2026-10-16T05:51:46.262166334Z"))).unwrap())
-        );
-        assert_eq!(
-            windows[1]["resetsAt"],
-            json!(reset_epoch(Some(&json!("2026-10-21T12:00:46.265101164Z"))).unwrap())
-        );
-        assert_eq!(
-            windows[2]["resetsAt"],
-            json!(reset_epoch(Some(&json!("2026-11-13T12:00:46.267955904Z"))).unwrap())
-        );
-        // 请求序列与鉴权头: 恒定 2 次 GET (plan → usage-limits), 不再请求 /users/me 与台账
-        let requests = http.requests();
-        assert_eq!(requests.len(), 2);
-        assert_eq!(
-            requests[0].url,
-            "https://api.cline.bot/api/v1/users/me/plan"
-        );
-        assert_eq!(
-            requests[1].url,
-            "https://api.cline.bot/api/v1/users/me/plan/usage-limits"
-        );
-        for request in requests {
-            assert_eq!(request.headers["Authorization"], format!("Bearer {secret}"));
-        }
-    }
-
-    #[test]
-    fn cline_provider_maps_auth_and_rate_limit_without_leaking_key() {
-        let secret = "sk-cline-fixture-key";
-        let unauthorized = FixtureHttp::new(vec![Ok(HttpResponse {
-            status: 401,
-            body: Vec::new(),
-        })]);
-        let err = ClineProvider
-            .query(
-                &cline_request(secret),
-                &unauthorized,
-                &CancellationToken::new(),
-            )
-            .unwrap_err();
-        assert_eq!(err.diagnostic.code, "PROVIDER_AUTH_REJECTED");
-        assert!(!err.diagnostic.message.contains(secret));
-
-        let rate_limited = FixtureHttp::new(vec![Ok(HttpResponse {
-            status: 429,
-            body: Vec::new(),
-        })]);
-        let err = ClineProvider
-            .query(
-                &cline_request(secret),
-                &rate_limited,
-                &CancellationToken::new(),
-            )
-            .unwrap_err();
-        assert_eq!(err.diagnostic.code, "PROVIDER_RATE_LIMIT");
-    }
-
-    #[test]
-    fn cline_provider_returns_empty_without_pass_entitlements() {
-        let mut plan = cline_plan_payload((1_000_000_000, 2_500_000_000, 5_000_000_000), None);
-        plan["data"]["plan"]["entitlements"]["cline_pass"]["enabled"] = json!(false);
-        let http = FixtureHttp::new(vec![response(&plan.to_string())]);
-        let result = ClineProvider
-            .query(
-                &cline_request("sk-cline-fixture-key"),
-                &http,
-                &CancellationToken::new(),
-            )
-            .unwrap();
-        assert!(result.is_none());
-        // 非 ClinePass 账户不得继续查询 usage-limits
-        assert_eq!(http.requests().len(), 1);
-    }
-
-    #[test]
-    fn cline_usage_limits_navigation_and_defense() {
-        // 报文含 canceledAt/cancelAt (data 层), 但 C020 起不再产出任何生命周期注记.
-        let plan = cline_plan_payload(
-            (1_000_000_000, 2_500_000_000, 5_000_000_000),
-            Some("2026-10-14T12:02:20Z"),
-        );
-        // 未知窗口类型跳过; 缺 resetsAt 仅不展示倒计时; 百分比收敛在 0..=100.
-        let limits = json!({
-            "data": {
-                "limits": [
-                    {"type": "five_hour", "percentUsed": 250, "resetsAt": "2026-10-16T05:51:46Z"},
-                    {"type": "weekly", "percentUsed": 34},
-                    {"type": "daily_experimental", "percentUsed": 9,
-                     "resetsAt": "2026-10-17T00:00:00Z"}
-                ]
-            },
-            "success": true,
-        });
-        let result = parse_cline_usage_limits(&plan, &limits).unwrap().unwrap();
-        let windows = result["windows"].as_array().expect("windows array");
-        assert_eq!(windows.len(), 2);
-        assert_eq!(windows[0]["label"], "每 5 小时");
-        assert!((windows[0]["usedPercent"].as_f64().unwrap() - 100.0).abs() < 1e-6);
-        assert!(windows[1]
-            .get("resetsAt")
-            .is_some_and(|value| value.is_null()));
-        assert!(
-            result.get("extra").is_none(),
-            "C020: 不得再注入生命周期注记"
-        );
-
-        // entitlements 缺失 (典型非 Pass 账户) → 空态
-        let missing = json!({
-            "data": {
-                "planHistoryId": "iph-fixture",
-                "plan": {"displayName": "Cline Free"}
-            },
-            "success": true
-        });
-        assert!(parse_cline_usage_limits(&missing, &limits)
-            .unwrap()
-            .is_none());
-
-        // limits 缺失/形状异常 → 显式报错 (fail-visible, 不得静默渲染空窗口)
-        assert!(parse_cline_usage_limits(&plan, &json!({"success": true})).is_err());
-        assert!(parse_cline_usage_limits(
-            &plan,
-            &json!({"data": {"limits": "oops"}, "success": true})
-        )
-        .is_err());
-    }
-
-    /// 线上真实报文形态锁定 (2026-10-14 实测 `/users/me/plan`、2026-10-16 实测
-    /// `/users/me/plan/usage-limits` 响应, 标识已替换为 fixture):
-    /// 生命周期字段 (`canceledAt`) 位于 `data` 层, `displayName`/`entitlements` 位于
-    /// `data.plan` 层; usage-limits 为 `data.limits[]` (type/percentUsed/纳秒级 resetsAt).
-    #[test]
-    fn cline_live_plan_payload_shape_is_supported() {
-        let live_shaped: Value = serde_json::from_str(
-            r#"{
-              "data": {
-                "planHistoryId": "iph-fixture",
-                "userId": "usr-fixture",
-                "plan": {
-                  "id": "pln-fixture",
-                  "name": "Cline Pass (Monthly)[Internal]",
-                  "displayName": "Cline Pass (Monthly)",
-                  "description": "Cline Pass brings agentic coding...",
-                  "type": "individual",
-                  "interval": "Monthly",
-                  "pricePerSeatCents": 999,
-                  "priceId": "price-fixture",
-                  "maxSeats": 1000000,
-                  "features": {
-                    "fee_dollars": 0.61,
-                    "free_seats": 0,
-                    "included": ["Low cost subscription pricing"]
-                  },
-                  "entitlements": {
-                    "cline_pass": {
-                      "enabled": true,
-                      "inferenceCapThreshold": {
-                        "last5HoursUsageCostUSDPerUser": 1000000000,
-                        "last7daysUsageCostUSDPerUser": 2500000000,
-                        "last30daysUsageCostUSDPerUser": 5000000000
-                      }
-                    }
-                  },
-                  "isActive": true,
-                  "createdAt": "2026-05-26T09:34:05.877169Z",
-                  "updatedAt": "2026-09-21T10:11:10.680596Z"
-                },
-                "subscriptionId": "sub-fixture",
-                "currentPeriodStart": "2026-10-14T11:52:39Z",
-                "currentPeriodEnd": "2026-11-14T11:52:39Z",
-                "cancelAt": "2026-11-14T11:52:39Z",
-                "canceledAt": "2026-10-14T12:02:20Z"
-              },
-              "success": true
-            }"#,
-        )
-        .expect("live-shaped payload parses");
-        let live_limits: Value = serde_json::from_str(
-            r#"{
-              "data": {
-                "limits": [
-                  {"type": "five_hour", "percentUsed": 0,
-                   "resetsAt": "2026-10-16T05:51:46.262166334Z"},
-                  {"type": "weekly", "percentUsed": 34,
-                   "resetsAt": "2026-10-21T12:00:46.265101164Z"},
-                  {"type": "monthly", "percentUsed": 17,
-                   "resetsAt": "2026-11-13T12:00:46.267955904Z"}
-                ]
-              },
-              "success": true
-            }"#,
-        )
-        .expect("live-shaped usage-limits payload parses");
-        let result = parse_cline_usage_limits(&live_shaped, &live_limits)
-            .unwrap()
-            .unwrap();
-        assert_eq!(result["plan"], "Cline Pass (Monthly)");
-        let windows = result["windows"].as_array().expect("windows array");
-        assert_eq!(windows.len(), 3);
-        // 服务端整数百分比与纳秒 resetsAt 直读 (2026-10-16 与网页控制台逐字一致)
-        assert!((windows[1]["usedPercent"].as_f64().unwrap() - 34.0).abs() < 1e-6);
-        assert!((windows[2]["usedPercent"].as_f64().unwrap() - 17.0).abs() < 1e-6);
-        assert_eq!(
-            windows[0]["resetsAt"],
-            json!(reset_epoch(Some(&json!("2026-10-16T05:51:46.262166334Z"))).unwrap())
-        );
-        // C020: 线上报文含 canceledAt 也不得产出任何注记 (extra 键不出现)
-        assert!(result.get("extra").is_none());
-    }
-
-    /// C049: 目录表是前缀/凭据字段的单一事实源。
-    /// 断言每条目的三项映射齐备且无重复 —— 任何漏填都会在测试期暴露,
-    /// 而不是等到某个 provider 静默取不到凭据。
-    #[test]
-    fn catalog_entries_are_complete_and_unique() {
-        let entries = catalog_entries();
-        assert_eq!(entries.len(), 10, "目录表应含 10 家 provider");
-
-        let mut apps = std::collections::BTreeSet::new();
-        let mut prefixes = std::collections::BTreeSet::new();
-        let mut fields = std::collections::BTreeSet::new();
-        for entry in &entries {
-            assert!(!entry.app.is_empty(), "app 不得为空: {entry:?}");
-            assert!(!entry.prefix.is_empty(), "prefix 不得为空: {entry:?}");
-            assert!(
-                !entry.credential_field.is_empty(),
-                "credential_field 不得为空: {entry:?}"
-            );
-            assert!(
-                entry.prefix.ends_with('_'),
-                "prefix 应以下划线结尾 (与账户标识拼接约定一致): {entry:?}"
-            );
-            assert!(apps.insert(entry.app), "app 重复: {}", entry.app);
-            assert!(
-                prefixes.insert(entry.prefix),
-                "prefix 重复: {}",
-                entry.prefix
-            );
-            assert!(
-                fields.insert(entry.credential_field),
-                "credential_field 重复: {}",
-                entry.credential_field
-            );
-        }
-        // 关键约定抽查: 三处曾手工重复的前缀必须逐字一致
-        let kimi = entries.iter().find(|e| e.app == "kimi").expect("kimi 条目");
-        assert_eq!(kimi.prefix, "kimi_coding_");
-        assert_eq!(kimi.credential_field, "kimiQuotaAccounts");
-        let opencode = entries
-            .iter()
-            .find(|e| e.app == "opencode-go")
-            .expect("opencode-go 条目");
-        assert_eq!(opencode.prefix, "opencode_go_");
-    }
-
-    #[test]
-    fn claude_token_expiry_detector_handles_milliseconds_and_buffer() {
-        let expired_ms = Some(1_700_000_000_000);
-        let fresh_ms = Some(2_100_000_000_000);
-        let near_expiry_ms = Some(1_700_000_050_000); // 50s left (< 60s)
-        let now_epoch_secs = 1_700_000_000;
-
-        assert!(is_claude_token_expired(expired_ms, now_epoch_secs));
-        assert!(!is_claude_token_expired(fresh_ms, now_epoch_secs));
-        assert!(is_claude_token_expired(near_expiry_ms, now_epoch_secs));
-        assert!(!is_claude_token_expired(None, now_epoch_secs));
-    }
-
-    #[test]
-    fn claude_provider_proactively_refreshes_expired_token() {
-        let cred = json!({
-            "claudeAiOauth": {
-                "accessToken": "sk-ant-oat01-stale_token",
-                "refreshToken": "sk-ant-ort01-refresh_me",
-                "expiresAt": 1_700_000_000_000_i64,
-                "scopes": ["user:profile", "user:inference"]
-            }
-        });
-        let refresh_resp = json!({
-            "token_type": "Bearer",
-            "access_token": "sk-ant-oat01-fresh_token",
-            "refresh_token": "sk-ant-ort01-new_refresh",
-            "expires_in": 28800,
-            "scope": "user:profile user:inference"
-        });
-        let usage_resp = json!({
-            "five_hour": { "utilization": 5.0, "resets_at": null },
-            "seven_day": { "utilization": 20.0, "resets_at": null },
-            "extra_usage": null,
-            "limits": [
-                { "kind": "session", "group": "session", "percent": 5, "severity": "normal" },
-                { "kind": "weekly_all", "group": "weekly", "percent": 20, "severity": "normal" }
-            ]
-        });
-
-        let http = FixtureHttp::new(vec![
-            // 1. Refresh endpoint responds with new tokens
-            Ok(HttpResponse {
-                status: 200,
-                body: serde_json::to_vec(&refresh_resp).unwrap(),
-            }),
-            // 2. Usage endpoint responds with fresh quota
-            Ok(HttpResponse {
-                status: 200,
-                body: serde_json::to_vec(&usage_resp).unwrap(),
-            }),
-        ]);
-
-        let request = ProviderRequest {
-            account_id: Some("claude-test".to_owned()),
-            captured_at: "2026-10-20T00:00:00Z".to_owned(), // captured epoch > 1700000000
-            timeout: Duration::from_secs(5),
-            max_response_body_bytes: 65536,
-            credential: Some(cred),
-        };
-
-        let result = ClaudeProvider
-            .query(&request, &http, &CancellationToken::default())
-            .unwrap()
-            .expect("should return usage value");
-
-        let requests = http.requests();
-        assert_eq!(requests.len(), 2);
-        assert_eq!(requests[0].method, "POST");
-        assert!(requests[0].url.contains("/v1/oauth/token"));
-        assert_eq!(requests[1].method, "GET");
-        assert!(requests[1].url.contains("/api/oauth/usage"));
-        assert_eq!(
-            requests[1].headers.get("Authorization"),
-            Some(&"Bearer sk-ant-oat01-fresh_token".to_owned())
-        );
-
-        let update = result
-            .get("credential_update")
-            .expect("credential_update attached");
-        assert_eq!(
-            update["access_token"].as_str(),
-            Some("sk-ant-oat01-fresh_token")
-        );
-        assert_eq!(
-            update["refresh_token"].as_str(),
-            Some("sk-ant-ort01-new_refresh")
-        );
-    }
-
-    #[test]
-    fn claude_provider_refreshes_token_on_401_and_retries() {
-        let cred = json!({
-            "claudeAiOauth": {
-                "accessToken": "sk-ant-oat01-stale_token",
-                "refreshToken": "sk-ant-ort01-refresh_me",
-                "expiresAt": 2_100_000_000_000_i64, // looks unexpired
-                "scopes": ["user:profile"]
-            }
-        });
-        let refresh_resp = json!({
-            "token_type": "Bearer",
-            "access_token": "sk-ant-oat01-fresh_token_after_401",
-            "refresh_token": "sk-ant-ort01-new_refresh_after_401",
-            "expires_in": 28800,
-            "scope": "user:profile"
-        });
-        let usage_resp = json!({
-            "five_hour": { "utilization": 12.0, "resets_at": null },
-            "seven_day": { "utilization": 30.0, "resets_at": null },
-            "extra_usage": null,
-            "limits": [
-                { "kind": "session", "group": "session", "percent": 12, "severity": "normal" },
-                { "kind": "weekly_all", "group": "weekly", "percent": 30, "severity": "normal" }
-            ]
-        });
-
-        let http = FixtureHttp::new(vec![
-            // 1. Initial usage GET returns 401
-            Ok(HttpResponse {
-                status: 401,
-                body: b"{\"error\":\"expired\"}".to_vec(),
-            }),
-            // 2. Refresh endpoint responds with new tokens
-            Ok(HttpResponse {
-                status: 200,
-                body: serde_json::to_vec(&refresh_resp).unwrap(),
-            }),
-            // 3. Retry usage GET responds with 200
-            Ok(HttpResponse {
-                status: 200,
-                body: serde_json::to_vec(&usage_resp).unwrap(),
-            }),
-        ]);
-
-        let request = ProviderRequest {
-            account_id: Some("claude-test".to_owned()),
-            captured_at: "2026-10-20T00:00:00Z".to_owned(),
-            timeout: Duration::from_secs(5),
-            max_response_body_bytes: 65536,
-            credential: Some(cred),
-        };
-
-        let result = ClaudeProvider
-            .query(&request, &http, &CancellationToken::default())
-            .unwrap()
-            .expect("should return usage value");
-
-        let requests = http.requests();
-        assert_eq!(requests.len(), 3);
-        assert_eq!(requests[0].method, "GET");
-        assert_eq!(requests[1].method, "POST");
-        assert!(requests[1].url.contains("/v1/oauth/token"));
-        assert_eq!(requests[2].method, "GET");
-        assert_eq!(
-            requests[2].headers.get("Authorization"),
-            Some(&"Bearer sk-ant-oat01-fresh_token_after_401".to_owned())
-        );
-
-        let update = result
-            .get("credential_update")
-            .expect("credential_update attached");
-        assert_eq!(
-            update["access_token"].as_str(),
-            Some("sk-ant-oat01-fresh_token_after_401")
-        );
-        assert_eq!(
-            update["refresh_token"].as_str(),
-            Some("sk-ant-ort01-new_refresh_after_401")
-        );
-    }
-
-    // 凭据形状契约 (C081 / 设计规则 21): 两端的 oauth 形状契约由本组用例锁定 ——
-    // 客户端 (mac / Windows) 落盘的形状必须能被这里的真实解析器读出凭据,
-    // 且旧扁平形状必须读不出 (否则即为「保存成功但查不出额度」的静默失效)。
-    // 契约漂移 (解析器改形状) 时本组用例转红。
-    #[test]
-    fn oauth_credential_shapes_are_parseable_by_real_parsers() {
-        // Claude: claudeAiOauth / claude.ai_oauth 包装 + accessToken。
-        for wrapper in ["claudeAiOauth", "claude.ai_oauth"] {
-            let credential = json!({ wrapper: { "accessToken": "fixture-claude-token" } });
-            assert_eq!(
-                claude_token(&credential).unwrap().as_deref(),
-                Some("fixture-claude-token"),
-                "{wrapper} 包装必须被解析"
-            );
-        }
-        // Grok: 顶层 key 与 https://auth.x.ai:: 作用域条目。
-        assert_eq!(
-            grok_token(&json!({ "key": "fixture-grok-token" }))
-                .unwrap()
-                .as_deref(),
-            Some("fixture-grok-token")
-        );
-        assert_eq!(
-            grok_token(&json!({"https://auth.x.ai::injected": {"key": "fixture-grok-scoped"}}))
-                .unwrap()
-                .as_deref(),
-            Some("fixture-grok-scoped")
-        );
-        // OpenCode GO: auth + workspaceId 双必填。
-        let opencode = json!({"auth": "Fe26.2**fixture", "workspaceId": "wrk_fixture"});
-        assert_eq!(
-            opencode_credential(&opencode).unwrap(),
-            ("Fe26.2**fixture", "wrk_fixture")
-        );
-    }
-
-    #[test]
-    fn flat_oauth_token_shape_yields_no_credential() {
-        // 旧 Windows 通用表单写出的形状: 采集端既不报错也取不到凭据。
-        let flat = json!({ "access_token": "fixture-token", "refresh_token": "fixture-refresh" });
-        assert_eq!(
-            claude_token(&flat).unwrap(),
-            None,
-            "扁平形状读不出 Claude 凭据"
-        );
-        assert_eq!(grok_token(&flat).unwrap(), None, "扁平形状读不出 Grok 凭据");
-        assert!(
-            opencode_credential(&flat).is_err(),
-            "扁平形状读不出 OpenCode GO 凭据"
-        );
     }
 }

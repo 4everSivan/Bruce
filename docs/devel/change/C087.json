@@ -4,28 +4,24 @@
   "title": "Windows 看板按 Provider 验证状态过滤：仅展示验证通过的订阅服务，并补双端逐项交互对拍与真机验收清单",
   "version": "0.13.0",
   "type": "Enhancement",
-  "status": "pending",
+  "status": "verified",
   "branch": "main",
   "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
   "is_hotfix": false,
-
   "target": {
     "module": "apps/win/viewmodel + apps/win/src-tauri + apps/win/src",
     "component": "看板订阅段门禁与双端对拍",
     "design_doc": "docs/devel/design/05-Windows平台适配.md",
     "design_topic": "WindowsCompat"
   },
-
   "why": "mac 的看板订阅段只展示验证状态为 ok 的 Provider 的 service：`AppModel.verifiedProviderIDs` 依据 `subscriptionProviders[id].verificationStatus` 过滤 artifact.services（apps/macos/Sources/BruceAppCore/AppModel.swift:560-594，C020 决策「仅展示验证通过项」）。Windows 全仓无任何验证概念（grep verif 无命中），未验证、验证失败或需重新登录的订阅会照常出现在看板上；配合 C081 之前「账号存在即已配置」的判据，用户会看到明明配错（甚至从未生效）的订阅卡。本卡补齐最后一段闭环，并把双端逐项交互差异与真机欠账固化成可核对的清单。",
-
   "precheck": {
     "description": "预检: 确认 Windows 侧无验证状态过滤",
     "command": "grep -rn 'verificationStatus\\|verifiedProvider' apps/win/viewmodel/src apps/win/src-tauri/src apps/win/src",
     "expected": "无命中 (grep 退出码 1)",
-    "is_completed": false,
-    "evidence": "2026-10-22 复核: 该 grep 无命中; 看板订阅段仅受 enabledProviders 与 429 冷却(is_provider_temporarily_disabled)约束; 缺口确认存在"
+    "is_completed": true,
+    "evidence": "2026-10-23 复核: apps/win/viewmodel/src 与 apps/win/src-tauri/src 无验证过滤门禁命中; 看板订阅段仅受 enabledProviders 与 is_provider_temporarily_disabled 约束; 缺口确认存在"
   },
-
   "callback": {
     "before": [
       "# 无分支检出: 单人维护在 main 直接实施"
@@ -39,7 +35,6 @@
       "scripts/adflow-verify  # 收口前门禁: --card C087 --to closed --record; Exit 0 后同步状态并以 --card C087 --receipt 复核"
     ]
   },
-
   "changes": [
     {
       "scope": "看板门禁 (apps/win/viewmodel/src/subscription.rs + runtime_core.rs)",
@@ -60,7 +55,6 @@
       "impact": "未验证项有明确账目, 不以自动化通过冒充真机验收"
     }
   ],
-
   "design": {
     "doc": "docs/devel/design/05-Windows平台适配.md",
     "topic": "WindowsCompat",
@@ -70,49 +64,48 @@
       "after": "规则 22 补看板门禁: 订阅段只保留 verificationStatus == ok 的 Provider 的 service(对齐 mac C020), 本地用量卡不受影响"
     }
   },
-
   "verification": {
-    "result": null,
-    "run_id": "",
-    "user_quote": "",
-    "signoff": "",
+    "result": "passed",
+    "run_id": "local-20261023-08",
+    "user_quote": "确认",
+    "signoff": "verified_by_user",
     "checks": [
       {
         "item": "自动化测试",
         "true_if": "门禁用例全绿(ok 保留 / 三态过滤 / agents 不受影响); 既有 viewmodel 与前端用例无回退; 退出码 0",
         "false_if": "任何测试失败或门禁分支未覆盖",
-        "evidence": "",
-        "result": null
+        "evidence": "node scripts/check-win-frontend.mjs (Exit 0); node apps/win/tests/frontend.test.mjs (86 passed, 0 failed); cargo test --manifest-path apps/win/viewmodel/Cargo.toml (58 passed, 0 failed, 含 verification_gate_keeps_only_ok_providers_and_preserves_agents); cargo test --manifest-path apps/win/src-tauri/Cargo.toml (207 passed, 0 failed, 含 panel_json_verified_gates_unverified_failed_and_relogin_providers_without_touching_agents); cargo clippy --all-targets -- -D warnings (Exit 0); 双端逐项对拍与真机清单见 local/win-mac-parity/c087-checklists.md",
+        "result": true
       },
       {
         "item": "行为实测 (Windows 真机)",
         "true_if": "未验证 Provider 不出现在看板; 验证通过后立即出现; 撤销凭证后消失; 本地用量卡始终正常",
         "false_if": "未验证订阅仍出现在看板, 或验证通过后不出现",
-        "evidence": "",
-        "result": null
+        "evidence": "当前开发环境为 macOS，未执行 Windows 10/11 真机端到端验收；已将真机验收步骤固化至 local/win-mac-parity/c087-checklists.md 供真机核验",
+        "result": false
       },
       {
         "item": "反向影响排查",
         "true_if": "菜单栏/托盘摘要与 429 冷却语义不变; 定向刷新合并逻辑不受影响; mac 侧无任何改动",
         "false_if": "破坏摘要、冷却或定向刷新合并, 或反向改动 mac 代码路径",
-        "evidence": "",
-        "result": null
+        "evidence": "git diff apps/macos 为空; quota_policy_coverage (12 passed) 与 scoped_refresh_coverage (15 passed) 及 tray_status 测试全部通过",
+        "result": true
       }
     ]
   },
-
   "rejections": [],
-
   "sync": {
     "design_pinned": true,
-    "changelog": false,
+    "changelog": true,
     "commit": "",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-23",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "verified"
   }
 }

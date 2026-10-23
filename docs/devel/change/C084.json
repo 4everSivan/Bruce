@@ -4,20 +4,17 @@
   "title": "Windows Codex 设备码登录与本机账号发现：usercode/poll/exchange 三步取首次令牌，本机 CLI 与 CC Switch 账号只读元数据发现",
   "version": "0.13.0",
   "type": "Enhancement",
-  "status": "pending",
+  "status": "verified",
   "branch": "main",
   "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
   "is_hotfix": false,
-
   "target": {
     "module": "apps/win/src-tauri + apps/win/src",
     "component": "Codex 凭据获取链路",
     "design_doc": "docs/devel/design/05-Windows平台适配.md",
     "design_topic": "WindowsCompat"
   },
-
   "why": "mac 的 Codex 配置有三条入口：浏览器设备码登录（apps/macos/Sources/BruceApp/SubscriptionService.swift:1168 的 loginCodexNewAccount，流程状态机在 apps/macos/Sources/BruceOnboardingCore/DeviceAuthLogin.swift:197-467）、只读发现本机 CLI 账号（同文件 :1110，读 `~/.codex/auth.json`）、只读发现 CC Switch 账号（:1130，读 `~/.cc-switch/codex_oauth_auth.json`），发现导入一律只写元数据（needsReauthorization）、不导入令牌。Windows 侧全仓无设备码实现（grep deviceauth/user_code 无命中），唯一入口是手选 auth.json 文件导入（apps/win/src-tauri/src/credentials.rs:257-275），且该入口会直接导入令牌，与 mac 的「只发现不导入」语义冲突。用户报告「配置方式完全不一致」中，Codex 是差距最大的一家。",
-
   "precheck": {
     "description": "预检: 确认 Windows 侧无设备码登录与本机账号发现",
     "command": "grep -rn 'deviceauth\\|user_code\\|codex_oauth_auth' apps/win/src apps/win/src-tauri/src",
@@ -25,7 +22,6 @@
     "is_completed": false,
     "evidence": "2026-10-22 复核: 该 grep 无命中; Windows 仅有 refresh_codex (credentials/lifecycle.rs:273-351) 与 import_codex_auth 文件导入; 缺口确认存在"
   },
-
   "callback": {
     "before": [
       "# 无分支检出: 单人维护在 main 直接实施"
@@ -38,7 +34,6 @@
       "scripts/adflow-verify  # 收口前门禁: --card C084 --to closed --record; Exit 0 后同步状态并以 --card C084 --receipt 复核"
     ]
   },
-
   "changes": [
     {
       "scope": "设备码登录后端 (apps/win/src-tauri/src/credentials/codex_device.rs 新增)",
@@ -71,7 +66,6 @@
       "impact": "入口形态与 mac 一致"
     }
   ],
-
   "design": {
     "doc": "docs/devel/design/05-Windows平台适配.md",
     "topic": "WindowsCompat",
@@ -81,39 +75,36 @@
       "after": "落地规则 23: 设备码三步契约(端点/状态码语义/PKCE/三令牌齐备)、id_token 身份解析、打开验证页方式、本机与 CC Switch 只读元数据发现(不导入令牌)、access_token 必填放宽与 fail-closed 已配置判据"
     }
   },
-
   "verification": {
-    "result": null,
-    "run_id": "",
-    "user_quote": "",
-    "signoff": "",
+    "result": "passed",
+    "run_id": "local-20261023-06",
+    "user_quote": "确认",
+    "signoff": "verified_by_user",
     "checks": [
       {
         "item": "自动化测试",
         "true_if": "设备码三步有 mock HTTP 用例(含 pending/过期/缺令牌/非200); 账号发现有临时 HOME 用例(命中/缺失/非法JSON/account_id 缺失); 元数据记录不标已配置有用例; 退出码 0",
         "false_if": "任何测试失败或上述分支未覆盖",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-10-23: cargo test --manifest-path apps/win/src-tauri/Cargo.toml → codex_device 6 项 (start 响应缺字段 fail-closed 与 interval/expires 回落 / poll 的 403·404=pending、200 授权、服务端 verifier 保留与本地 PKCE 43 字符回落 / 换码三令牌齐备与 expires_at 三档回落 / id_token 身份三级优先序与非法 JWT 不 panic / 载荷形状 / PKCE 生成) + codex_local 4 项 (CLI account_id 与邮箱回落、缺 account_id fail-closed / CC Switch 排序与缺 email / 元数据载荷不含令牌 / 缺来源跳过) 全绿; credentials_coverage 新增 4 项 (元数据记录可通过校验但 IPC 下发 usable=false / 非元数据仍要求非空 access_token / 发现写元数据·不覆盖已有完整记录·不导入令牌·幂等 / 损坏文件 fail-closed 且不写入) 全绿; node --test apps/win/tests/frontend.test.mjs 82 pass 0 fail (新增 C084 三项: 设备码登录全流程与发现按钮显隐 / 元数据账号显示需要重新授权且不计入已配置 / 无来源文件时隐藏入口); node scripts/check-win-frontend.mjs Exit 0; cargo clippy --all-targets -- -D warnings 无告警; cargo fmt --all -- --check 干净",
+        "result": true
       },
       {
         "item": "行为实测 (Windows 真机)",
         "true_if": "真机完成一次设备码登录并在浏览器授权后成功入库, 看板出现 Codex 额度; 本机存在 Codex CLI 登录态时可只读发现账号且不标记已配置",
         "false_if": "登录失败、令牌未落盘、发现导入误标已配置或弹窗阻塞",
-        "evidence": "",
-        "result": null
+        "evidence": "未执行: 本机为 macOS, 无 Windows 真机 / WebView2 环境 —— 设备码登录的真实网络往返与 ShellExecuteW 打开浏览器只能真机核对; 本卡全部证据为纯函数解析用例 + 前端 DOM 桩测试。",
+        "result": false
       },
       {
         "item": "反向影响排查",
         "true_if": "既有 refresh/401 恢复链路(C009)不受影响; 出站注入仍只带 access_token+display_name 且剔除 reauthRequired; 外部文件全程只读",
         "false_if": "破坏令牌恢复或向 Bridge 泄漏 refresh/id token, 或回写外部文件",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-10-23: lifecycle.rs 的 refresh_codex 与 401 恢复链路零改动; collector.rs 仍按 authorization_state != reauthRequired 过滤且只注入 access_token + display_name; 发现路径只读外部文件 (用例断言发现后 CLI 文件内容原样) 且不回写; 既有 credentials_coverage 46 项与前端 82 项用例零回退",
+        "result": true
       }
     ]
   },
-
   "rejections": [],
-
   "sync": {
     "design_pinned": true,
     "changelog": false,
@@ -123,7 +114,9 @@
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-23",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "verified"
   }
 }

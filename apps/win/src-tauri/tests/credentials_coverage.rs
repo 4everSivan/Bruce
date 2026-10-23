@@ -8,13 +8,17 @@ use std::path::PathBuf;
 
 use base64::Engine;
 use bruce_win_lib::credentials::{
-    app_data_root_with, credential_accounts, credential_rejections, follow_local_claude,
-    import_volcengine_from_cc_switch, load_credentials, local_claude_status, merge_credentials,
-    remove_provider_credentials, save_credential_account, save_credentials,
-    validate_credential_payload, verify_subscription, verify_subscription_following_local,
-    verify_subscription_with, with_local_claude, ClaudeLocalStatus, CredentialPayloads,
-    DeepSeekProbe, SubscriptionVerification,
+    app_data_root_with, capture_stepfun_cookie_with, credential_accounts, credential_rejections,
+    follow_local_claude, follow_local_grok, import_codex_discovered,
+    import_volcengine_from_cc_switch, load_credentials, local_claude_status, local_grok_status,
+    merge_credentials, remove_provider_credentials, save_credential_account, save_credentials,
+    stepfun_account_id, validate_credential_payload, verify_subscription,
+    verify_subscription_following_local, verify_subscription_with, with_local_claude,
+    ClaudeLocalStatus, CredentialPayloads, DeepSeekProbe, GrokLocalStatus, StepFunCaptureOutcome,
+    StepFunCookieCandidate, StepFunRemoteTransport, StepFunSite, StepFunVerifyRequest,
+    SubscriptionVerification,
 };
+use bruce_win_lib::runtime_core::{window_action, WindowAction};
 use serde_json::json;
 
 fn temp_root() -> PathBuf {
@@ -569,7 +573,8 @@ fn oauth_shape_failures_are_diagnosable_without_echoing_secrets() {
         (
             "opencodeGoQuotaAccounts",
             json!({"a": {"display_name": "A", "oauth": {"auth": "fixture-secret"}}}),
-            "workspaceId",
+            // C085: 文案改为直指「重新粘贴」(用户据此回到引导行重取 Cookie 与 wrk_ ID)。
+            "重新粘贴",
         ),
     ];
     for (field, shape, needle) in cases {
@@ -1027,4 +1032,347 @@ fn rejected_accounts_report_a_reason_without_leaking_secrets() {
         !serialized.contains("fixture kimi key"),
         "原因清单不得回传凭据值"
     );
+}
+
+// ── C084: Codex 设备码登录与本机账号只读发现 ──────────────────────────────────
+
+/// 只读发现的 metadata-only 记录可通过校验 (无令牌), 但经 IPC 下发时 `usable = false`。
+#[test]
+fn codex_metadata_records_validate_but_are_not_usable() {
+    let metadata = json!({"discovered-1": {"display_name":"discovered-1","email":"a@b.c","authorization_state":"reauthRequired"}});
+    validate_credential_payload("codexQuotaAccounts", &metadata)
+        .expect("metadata-only 记录必须通过校验 (C084)");
+
+    let root = temp_root();
+    let mut payloads = CredentialPayloads::new();
+    payloads.insert("codexQuotaAccounts".to_owned(), metadata);
+    save_credentials(&root, &payloads).unwrap();
+
+    let accounts = credential_accounts(&root);
+    assert_eq!(accounts.len(), 1);
+    assert_eq!(accounts[0]["authorizationState"], json!("reauthRequired"));
+    assert_eq!(
+        accounts[0]["usable"],
+        json!(false),
+        "发现账号必须被标为不可用, 否则 UI 会误报已配置"
+    );
+    // 采集侧同样跳过 (collector.rs 过滤 reauthRequired), 账号不会触发出站查询。
+}
+
+/// 非元数据记录仍要求非空 access_token —— 放宽只针对发现写入的占位记录。
+#[test]
+fn codex_non_metadata_records_still_require_access_token() {
+    let missing = json!({"a1": {"display_name":"a1"}});
+    assert!(
+        validate_credential_payload("codexQuotaAccounts", &missing).is_err(),
+        "缺少 access_token 且非 reauthRequired 必须被拒"
+    );
+    let blank = json!({"a1": {"display_name":"a1","access_token":"   "}});
+    assert!(validate_credential_payload("codexQuotaAccounts", &blank).is_err());
+    let connected = json!({"a1": {"display_name":"a1","access_token":"fixture-access"}});
+    assert!(validate_credential_payload("codexQuotaAccounts", &connected).is_ok());
+}
+
+/// 只读发现: 写 metadata-only、不覆盖已有记录、不导入任何令牌。
+#[test]
+fn codex_discovery_writes_metadata_only_and_never_overwrites() {
+    let root = temp_root();
+    let home = temp_root();
+    fs::create_dir_all(home.join(".codex")).unwrap();
+    fs::write(
+        home.join(".codex").join("auth.json"),
+        r#"{"tokens":{"account_id":"cli-1","email":"cli@b.c","access_token":"cli-secret"}}"#,
+    )
+    .unwrap();
+    fs::create_dir_all(home.join(".cc-switch")).unwrap();
+    fs::write(
+        home.join(".cc-switch").join("codex_oauth_auth.json"),
+        r#"{"accounts":{"cc-1":{"email":"cc@b.c"}}}"#,
+    )
+    .unwrap();
+
+    // 用户已自己登录出来的完整记录必须保留原状。
+    save_credential_account(
+        &root,
+        "codexQuotaAccounts",
+        "cli-1",
+        &json!({"display_name":"cli-1","access_token":"user-access","authorization_state":"connected"}),
+    )
+    .unwrap();
+
+    let added = import_codex_discovered(&root, &home).unwrap();
+    assert_eq!(added, 1, "只新增未存在的账号 (cli-1 已有, 不覆盖)");
+
+    let stored = load_credentials(&root)["codexQuotaAccounts"].clone();
+    assert_eq!(
+        stored["cli-1"]["access_token"],
+        json!("user-access"),
+        "已有完整记录不得被元数据覆盖"
+    );
+    assert_eq!(stored["cli-1"]["authorization_state"], json!("connected"));
+    assert_eq!(
+        stored["cc-1"]["authorization_state"],
+        json!("reauthRequired")
+    );
+    assert_eq!(stored["cc-1"]["email"], json!("cc@b.c"));
+    for key in ["access_token", "refresh_token", "id_token"] {
+        assert!(stored["cc-1"].get(key).is_none(), "发现记录不得携带 {key}");
+    }
+    // 外部文件只读: 发现过程不改写 CLI / CC Switch 文件。
+    assert!(fs::read_to_string(home.join(".codex").join("auth.json"))
+        .unwrap()
+        .contains("cli-secret"));
+    // 再次发现不产生新增 (幂等)。
+    assert_eq!(import_codex_discovered(&root, &home).unwrap(), 0);
+    let _ = fs::remove_dir_all(&root);
+    let _ = fs::remove_dir_all(&home);
+}
+
+/// 发现文件损坏时 fail-closed: 报可诊断错误, 不写半成品记录。
+#[test]
+fn codex_discovery_fails_closed_on_broken_file() {
+    let root = temp_root();
+    let home = temp_root();
+    fs::create_dir_all(home.join(".codex")).unwrap();
+    fs::write(home.join(".codex").join("auth.json"), "{ not json").unwrap();
+
+    let error = import_codex_discovered(&root, &home).expect_err("损坏文件必须报错");
+    assert!(error.contains("解析失败"), "错误须可诊断: {error}");
+    assert!(
+        !load_credentials(&root).contains_key("codexQuotaAccounts"),
+        "失败时不得写入任何记录"
+    );
+    // 无任何发现来源时是空结果, 不是错误。
+    let empty_home = temp_root();
+    assert_eq!(import_codex_discovered(&root, &empty_home).unwrap(), 0);
+    let _ = fs::remove_dir_all(&root);
+    let _ = fs::remove_dir_all(&home);
+    let _ = fs::remove_dir_all(&empty_home);
+}
+
+// ── C085: Claude / Grok / OpenCode GO 专属对话框 ─────────────────────────────
+
+/// 三家 OAuth Provider 的过期语义 (对齐 mac `SubscriptionCredentialEvaluator`)。
+#[test]
+fn oauth_providers_expiry_semantics_follow_mac() {
+    let root = temp_root();
+    let past = 1_600_000_000_000i64; // 2020-09 (毫秒)
+    let future = 4_102_444_800_000i64; // 2100 (毫秒)
+
+    // Claude: accessToken 过期但 refreshToken 仍在有效期 → 照常放行 (refreshPending)
+    save_credential_account(
+        &root,
+        "claudeQuotaAccounts",
+        "c1",
+        &json!({"display_name":"c1","oauth":{"claudeAiOauth":{
+            "accessToken":"fixture-access","expiresAt":past,
+            "refreshToken":"fixture-refresh","refreshTokenExpiresAt":future}}}),
+    )
+    .unwrap();
+    assert_eq!(
+        verify_subscription(&root, "claude").status,
+        "ok",
+        "refreshPending 照常放行 (C085)"
+    );
+
+    // refreshToken 亦失效 → 需重新登录
+    save_credential_account(
+        &root,
+        "claudeQuotaAccounts",
+        "c1",
+        &json!({"display_name":"c1","oauth":{"claudeAiOauth":{
+            "accessToken":"fixture-access","expiresAt":past,
+            "refreshToken":"fixture-refresh","refreshTokenExpiresAt":past}}}),
+    )
+    .unwrap();
+    assert_eq!(verify_subscription(&root, "claude").status, "needsRelogin");
+
+    // Grok: 作用域条目过期 → 需重新登录; 未过期 → ok
+    save_credential_account(
+        &root,
+        "grokQuotaAccounts",
+        "g1",
+        &json!({"display_name":"g1","oauth":{"https://auth.x.ai::injected":{"key":"fixture-key","expires_at":past}}}),
+    )
+    .unwrap();
+    assert_eq!(verify_subscription(&root, "grok").status, "needsRelogin");
+    save_credential_account(
+        &root,
+        "grokQuotaAccounts",
+        "g1",
+        &json!({"display_name":"g1","oauth":{"https://auth.x.ai::injected":{"key":"fixture-key","expires_at":future}}}),
+    )
+    .unwrap();
+    assert_eq!(verify_subscription(&root, "grok").status, "ok");
+
+    // OpenCode GO: 缺 workspaceId 的文案必须指向「重新粘贴」(C085)
+    let error = validate_credential_payload(
+        "opencodeGoQuotaAccounts",
+        &json!({"o1":{"display_name":"o1","oauth":{"auth":"fixture-cookie"}}}),
+    )
+    .expect_err("缺 workspaceId 必须被拒");
+    assert!(error.contains("重新粘贴"), "文案须指向重新粘贴: {error}");
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// Grok 本机只读跟随: 命中注入 `grok-cli`、缺失静默回落、外部文件不被改写。
+#[test]
+fn grok_local_follow_reads_file_without_writing_back() {
+    let root = temp_root();
+    let home = temp_root();
+    fs::create_dir_all(home.join(".grok")).unwrap();
+    let path = home.join(".grok").join("auth.json");
+    fs::write(
+        &path,
+        r#"{"https://auth.x.ai::injected":{"key":"local-key","expires_at":4102444800000}}"#,
+    )
+    .unwrap();
+
+    assert_eq!(
+        local_grok_status(&home, chrono::Utc::now().timestamp_millis()),
+        GrokLocalStatus::Followed
+    );
+    assert_eq!(
+        follow_local_grok(&root, &home).unwrap(),
+        GrokLocalStatus::Followed
+    );
+    let stored = load_credentials(&root)["grokQuotaAccounts"].clone();
+    assert_eq!(
+        stored["grok-cli"]["oauth"]["https://auth.x.ai::injected"]["key"],
+        json!("local-key")
+    );
+    // 外部文件只读
+    assert!(fs::read_to_string(&path).unwrap().contains("local-key"));
+    // 无本机登录态时不写入、返回 NotFound
+    let empty = temp_root();
+    let clean = temp_root();
+    assert_eq!(
+        follow_local_grok(&clean, &empty).unwrap(),
+        GrokLocalStatus::NotFound
+    );
+    assert!(!load_credentials(&clean).contains_key("grokQuotaAccounts"));
+    let _ = fs::remove_dir_all(&root);
+    let _ = fs::remove_dir_all(&home);
+    let _ = fs::remove_dir_all(&empty);
+    let _ = fs::remove_dir_all(&clean);
+}
+
+// ── C086: StepFun 内嵌网页登录与自动抓 Cookie ─────────────────────────────────
+
+struct StubStepFunTransport {
+    status: u16,
+    calls: std::sync::Mutex<Vec<StepFunVerifyRequest>>,
+}
+
+impl StubStepFunTransport {
+    fn new(status: u16) -> Self {
+        Self {
+            status,
+            calls: std::sync::Mutex::new(Vec::new()),
+        }
+    }
+}
+
+impl StepFunRemoteTransport for StubStepFunTransport {
+    fn post_status(&self, request: &StepFunVerifyRequest) -> Result<u16, String> {
+        self.calls.lock().unwrap().push(request.clone());
+        Ok(self.status)
+    }
+}
+
+/// 网页登录自动抓 Cookie: 远程 `QueryStepPlanRateLimit` 校验通过后按 DJB2 派生账号 ID 落盘,
+/// 与手动粘贴同一 token 落在同一账号 (upsert 不重复), 且校验失败时不落盘。
+#[test]
+fn stepfun_cookie_capture_verifies_remotely_and_upserts_matching_manual_account_id() {
+    let root = temp_root();
+    let token = "eyJhbGciOiJIUzI1NiJ9.eyJhcHBfaWQiOiIxMDMwMCIsImRldmljZV9pZCI6ImRldi1hIn0.sig";
+    let cookies = vec![StepFunCookieCandidate {
+        name: "Oasis-Token".to_owned(),
+        value: token.to_owned(),
+        domain: ".stepfun.com".to_owned(),
+    }];
+
+    // 1. 远程返回 401 时拒绝落盘 (自动轮询返回 Waiting, 手动点击返回 Failed)
+    let rejected = StubStepFunTransport::new(401);
+    let outcome_rejected = capture_stepfun_cookie_with(
+        &root,
+        StepFunSite::Domestic,
+        "https://platform.stepfun.com/step-plan",
+        &cookies,
+        true,
+        &rejected,
+    )
+    .unwrap();
+    assert!(matches!(
+        outcome_rejected,
+        StepFunCaptureOutcome::Failed { .. }
+    ));
+    assert!(
+        !load_credentials(&root).contains_key("stepfunQuotaAccounts"),
+        "远程校验失败不得落盘"
+    );
+
+    // 2. 远程返回 200 时落盘，且派生的 account_id 与 stepfun_account_id 完全一致
+    let ok = StubStepFunTransport::new(200);
+    let outcome_ok = capture_stepfun_cookie_with(
+        &root,
+        StepFunSite::Domestic,
+        "https://platform.stepfun.com/step-plan",
+        &cookies,
+        false,
+        &ok,
+    )
+    .unwrap();
+    let account_id = match outcome_ok {
+        StepFunCaptureOutcome::Captured { account_id, .. } => account_id,
+        other => panic!("expected Captured, got {other:?}"),
+    };
+    assert_eq!(account_id, stepfun_account_id(token));
+
+    let stored = load_credentials(&root)["stepfunQuotaAccounts"].clone();
+    assert_eq!(
+        stored[&account_id]["token"],
+        json!(token),
+        "Oasis-Token 完整写入 token"
+    );
+    assert_eq!(stored[&account_id]["site"], json!("domestic"));
+    assert_eq!(stored[&account_id]["is_global"], json!(false));
+    assert_eq!(verify_subscription(&root, "stepfun").status, "ok");
+
+    // 3. 再次以国际站捕获同一 token: upsert 到同一 account_id 并更新站点
+    let global_cookies = vec![StepFunCookieCandidate {
+        name: "Oasis-Token".to_owned(),
+        value: token.to_owned(),
+        domain: ".stepfun.ai".to_owned(),
+    }];
+    let global_ok = StubStepFunTransport::new(200);
+    let outcome_global = capture_stepfun_cookie_with(
+        &root,
+        StepFunSite::Global,
+        "https://platform.stepfun.ai/plan-subscribe",
+        &global_cookies,
+        false,
+        &global_ok,
+    )
+    .unwrap();
+    let again_id = match outcome_global {
+        StepFunCaptureOutcome::Captured { account_id, .. } => account_id,
+        other => panic!("expected Captured, got {other:?}"),
+    };
+    assert_eq!(again_id, account_id, "同一 token 必须 upsert 到同一账号");
+    let updated = load_credentials(&root)["stepfunQuotaAccounts"].clone();
+    assert_eq!(updated.as_object().unwrap().len(), 1);
+    assert_eq!(updated[&account_id]["site"], json!("global"));
+    assert_eq!(updated[&account_id]["is_global"], json!(true));
+
+    // 4. 辅助窗口 `stepfun-login` 绝不被 runtime_core::window_action 拦截为隐藏常驻 (规则 10)
+    assert_eq!(
+        window_action("stepfun-login", false, true),
+        WindowAction::None
+    );
+    assert_eq!(
+        window_action("stepfun-login", true, false),
+        WindowAction::None
+    );
+    let _ = fs::remove_dir_all(&root);
 }

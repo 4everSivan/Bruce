@@ -103,10 +103,34 @@ fn is_provider_temporarily_disabled(provider_id: &str) -> bool {
     provider_id == "jev"
 }
 
+/// 仪表盘订阅段展示门禁 (C087, 对齐 mac `SubscriptionPresentationPolicy.isVerifiedForDashboard`):
+/// 仅验证状态 `ok` 的 Provider 才进入订阅段; 未验证 (`none`) / 验证失败 (`failed`) /
+/// 需重新登录 (`needsRelogin`) 一律过滤, 避免未验证订阅出现在仪表盘。
+pub fn is_verified_for_dashboard(verification_status: &str) -> bool {
+    verification_status == "ok"
+}
+
+/// 按验证状态过滤 `artifact.services` (C087, 对齐 mac `AppModel.gatedAgentUsageArtifact`):
+/// 只保留 `provider_id_for_service(service.id)` 落入 `verified_providers` 的 service;
+/// 本地用量 (`agents`) 与 `total_cost_usd` 原样保留。
+pub fn gate_verified_services(
+    artifact: &AgentUsageArtifact,
+    verified_providers: &std::collections::BTreeSet<String>,
+) -> AgentUsageArtifact {
+    let mut gated = artifact.clone();
+    gated.services.retain(|service| {
+        service
+            .get("id")
+            .and_then(Value::as_str)
+            .is_some_and(|id| verified_providers.contains(&provider_id_for_service(id)))
+    });
+    gated
+}
+
 /// 把 artifact service ID 归一化为 provider rawValue。
 /// Kimi 的 service ID 是 "kimi_coding" 而 provider rawValue 是 "kimi";
 /// 多账号 service ID 格式 "<provider>_<accountID>"; collector 连字符命名归一。
-fn provider_id_for_service(service_id: &str) -> String {
+pub fn provider_id_for_service(service_id: &str) -> String {
     if service_id == "kimi_coding" {
         return "kimi".to_owned();
     }
@@ -781,5 +805,57 @@ mod tests {
             item,
             PanelDiagnostic::ServiceIssue { service_id, .. } if service_id == "codex_bbb"
         )));
+    }
+
+    #[test]
+    fn verification_gate_keeps_only_ok_providers_and_preserves_agents() {
+        // C087 (对齐 mac C020): 仅 verificationStatus == "ok" 的 Provider 的 service 进入订阅段;
+        // none / failed / needsRelogin 一律过滤; 多账号 service 按 provider_id_for_service 归一后判定;
+        // 本地用量 agents 与 totalCostUsd 原样保留。
+        assert!(is_verified_for_dashboard("ok"));
+        assert!(!is_verified_for_dashboard("none"));
+        assert!(!is_verified_for_dashboard("failed"));
+        assert!(!is_verified_for_dashboard("needsRelogin"));
+
+        let artifact: AgentUsageArtifact = serde_json::from_value(json!({
+            "schemaVersion": 1,
+            "module": "agent-usage",
+            "generatedAt": "2026-07-28T12:00:00+08:00",
+            "agents": [{
+                "id": "claude-code",
+                "name": "Claude Code",
+                "status": "ok",
+                "note": "",
+                "quota": null,
+                "today": {"input": 1000, "output": 234, "cacheRead": 0, "cacheCreation": 0, "total": 1234},
+                "daily": [{"date": "2026-07-28", "input": 1000, "output": 234, "cacheRead": 0, "cacheCreation": 0, "total": 1234}],
+                "todayCostUsd": 4.25
+            }],
+            "services": [
+                {"id": "kimi_coding", "name": "Kimi", "status": "ok", "kind": "windows",
+                 "windows": [{"label": "5h", "windowMinutes": 300, "usedPercent": 15.0}]},
+                {"id": "codex_acc1", "name": "Codex · Acc1", "app": "codex", "status": "ok", "kind": "windows",
+                 "windows": [{"label": "5h", "windowMinutes": 300, "usedPercent": 20.0}]},
+                {"id": "codex_acc2", "name": "Codex · Acc2", "app": "codex", "status": "ok", "kind": "windows",
+                 "windows": [{"label": "5h", "windowMinutes": 300, "usedPercent": 40.0}]},
+                {"id": "opencode_go_team", "name": "OpenCode GO · Team", "status": "ok", "kind": "windows",
+                 "windows": [{"label": "5h", "windowMinutes": 300, "usedPercent": 30.0}]},
+                {"id": "deepseek", "name": "DeepSeek", "status": "ok", "kind": "balance",
+                 "windows": [], "balance": 12.0, "currency": "CNY"}
+            ],
+            "totalCostUsd": 4.25
+        }))
+        .unwrap();
+
+        let verified = std::collections::BTreeSet::from(["kimi".to_owned(), "codex".to_owned()]);
+        let gated = gate_verified_services(&artifact, &verified);
+        let ids: Vec<&str> = gated
+            .services
+            .iter()
+            .filter_map(|s| s.get("id").and_then(Value::as_str))
+            .collect();
+        assert_eq!(ids, vec!["kimi_coding", "codex_acc1", "codex_acc2"]);
+        assert_eq!(gated.agents.len(), 1);
+        assert_eq!(gated.total_cost_usd, Some(4.25));
     }
 }

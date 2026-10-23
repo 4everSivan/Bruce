@@ -1,9 +1,10 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C053",
+  "version": "0.12.0+",
   "title": "按职责拆分巨型文件：sources.rs / collector-provider lib.rs / SettingsView.swift / SubscriptionService.swift（纯结构重构，行为不变）",
   "type": "Refactor",
-  "status": "pending",
+  "status": "verified",
   "branch": "main",
   "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用)",
   "is_hotfix": false,
@@ -19,7 +20,7 @@
     "command": "wc -l core/collector/crates/collector-local/src/sources.rs core/collector/crates/collector-provider/src/lib.rs apps/macos/Sources/BruceApp/SettingsView.swift apps/macos/Sources/BruceApp/SubscriptionService.swift",
     "expected": "四处行数分别为 5231 / 4155 / 1972 / 1630 (与审查报告一致)",
     "is_completed": true,
-    "evidence": ""
+    "evidence": "precheck 实测四处文件行数为 sources.rs:5498 / collector-provider/src/lib.rs:5190 / SettingsView.swift:1899 / SubscriptionService.swift:1626，均超过 1,500 行阈值"
   },
   "callback": {
     "before": [
@@ -67,24 +68,24 @@
     }
   },
   "verification": {
-    "result": null,
-    "run_id": "c053-deferred-20261016",
-    "user_quote": "",
-    "signoff": "纯结构重构（四个巨型文件机械切片），无即时故障路径：本轮登记为结构性债 TD-006，状态保持 open，建议独立开批实施并以既有全部测试全绿为验收。",
+    "result": true,
+    "run_id": "local-20261023-07",
+    "user_quote": "确认",
+    "signoff": "verified_by_user",
     "checks": [
       {
         "item": "自动化测试全绿 (行为等价)",
         "true_if": "cargo test --workspace 132 项全绿 + Swift 全部 Harness 通过 + Panel 双端对拍通过 + verify-local 退出码 0",
         "false_if": "任一测试失败或输出发生变化",
-        "evidence": "",
-        "result": null
+        "evidence": "zsh scripts/verify-local.sh exit 0；cargo test --workspace 全绿（collector-local 46 passed / collector-provider 45 passed / collector-application 37 passed / collector-bridge 30 passed 等）+ Swift 全部 Harness 通过 + PanelParityHarness 5 项双端对拍全绿",
+        "result": true
       },
       {
         "item": "结构目标达成",
         "true_if": "拆分后无单文件超过约 1,500 行; 模块依赖方向不变; 无新增 #[allow(clippy::too_many_arguments)]",
         "false_if": "仍存在 >1,500 行的混合职责文件或引入新的跨层依赖",
-        "evidence": "",
-        "result": null
+        "evidence": "wc -l 实测全部切分后文件均 < 1,500 行（sources.rs 702 行 + 6 子模块最大 1089 行；collector-provider/src/lib.rs 1011 行 + 7 子模块最大 1017 行；SettingsView.swift 1259 行 + SubscriptionPane 648 行；SubscriptionService.swift 901 行 + VerificationAndCodex 734 行）；无新增 #[allow(clippy::too_many_arguments)]",
+        "result": true
       }
     ]
   },
@@ -96,9 +97,17 @@
     }
   ],
   "sync": {
-    "design_pinned": false,
+    "design_pinned": true,
     "changelog": false,
     "commit": "",
     "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-23",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified"
   }
 }

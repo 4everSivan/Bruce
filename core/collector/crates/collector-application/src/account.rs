@@ -1,9 +1,15 @@
 use collector_domain::{BridgeRequest, Diagnostic};
 use collector_provider::{
-    codex_service_id, resolve_service_catalog, AccountDescriptor, CatalogInput, ServiceDescriptor,
+    catalog_entries, catalog_entry_for_app, codex_service_id, resolve_service_catalog,
+    AccountDescriptor, CatalogInput, ServiceDescriptor,
 };
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
+
+const CODEX_QUOTA_ACCOUNT_MAX: usize = 64;
+const CODEX_QUOTA_ACCOUNT_ID_MAX: usize = 256;
+const CODEX_QUOTA_DISPLAY_NAME_MAX: usize = 256;
+const CODEX_QUOTA_ACCESS_TOKEN_MAX: usize = 8192;
 
 #[derive(Debug, Clone)]
 pub(crate) struct AccountPlan {
@@ -12,20 +18,10 @@ pub(crate) struct AccountPlan {
     pub credential: Option<Value>,
 }
 
-// C049: 前缀 / 凭据字段一律从 collector-provider 的目录表派生,
-// 不再在本文件复写字符串 (原实现手工维护两份映射且无编译期约束)。
-fn catalog_entry(app: &str) -> Option<collector_provider::CatalogEntry> {
-    collector_provider::catalog_entries()
-        .into_iter()
-        .find(|entry| entry.app == app)
-}
-
-fn account_field(app: &str) -> Option<&'static str> {
-    catalog_entry(app).map(|entry| entry.credential_field)
-}
-
+// C049 / C048: 前缀 / 凭据字段 / 凭据需求一律从 collector-provider 的目录表派生,
+// 不再在本文件复写字符串。
 fn account_prefix(app: &str) -> Option<&'static str> {
-    catalog_entry(app).map(|entry| entry.prefix)
+    catalog_entry_for_app(app).map(|entry| entry.prefix)
 }
 
 fn display_name(value: &Value) -> Option<String> {
@@ -49,18 +45,153 @@ fn enabled_official(credentials: &serde_json::Map<String, Value>) -> BTreeSet<St
     let Some(meta) = credentials.get("providerMeta").and_then(Value::as_object) else {
         return enabled;
     };
-    for app in ["claude", "grok"] {
+    for entry in catalog_entries()
+        .into_iter()
+        .filter(|entry| entry.direct_credential_field.is_some())
+    {
         if meta
-            .get(app)
+            .get(entry.app)
             .and_then(Value::as_object)
             .and_then(|value| value.get("enabled"))
             .and_then(Value::as_bool)
             == Some(true)
         {
-            enabled.insert(app.to_owned());
+            enabled.insert(entry.app.to_owned());
         }
     }
     enabled
+}
+
+fn account_protocol_error(code: &str, message: &str) -> Diagnostic {
+    Diagnostic::new(code, "protocol", "request", message, false)
+}
+
+/// C048: 账户计划专属语义校验 (从 collector-bridge 下沉至 account 模块)。
+pub(crate) fn validate_account_request(request: &BridgeRequest) -> Result<(), Diagnostic> {
+    let accounts = request.credentials.get("codexQuotaAccounts");
+    let order = request.context.get("codexQuotaAccountOrder");
+    if let Some(retry_only) = request.context.get("codexQuotaRetryOnly") {
+        if !retry_only.is_boolean() {
+            return Err(account_protocol_error(
+                "BRIDGE_INVALID_REQUEST",
+                "codexQuotaRetryOnly 必须是布尔值",
+            ));
+        }
+    }
+    let Some(accounts) = accounts else {
+        if order.is_some() {
+            return Err(account_protocol_error(
+                "BRIDGE_INVALID_REQUEST",
+                "codexQuotaAccountOrder 必须携带 codexQuotaAccounts",
+            ));
+        }
+        return Ok(());
+    };
+    let Some(accounts) = accounts.as_object() else {
+        return Err(account_protocol_error(
+            "BRIDGE_INVALID_REQUEST",
+            "codexQuotaAccounts 必须是 JSON object",
+        ));
+    };
+    if accounts.is_empty() || accounts.len() > CODEX_QUOTA_ACCOUNT_MAX {
+        return Err(account_protocol_error(
+            "BRIDGE_INVALID_REQUEST",
+            "codexQuotaAccounts 数量无效",
+        ));
+    }
+    for (account_id, payload) in accounts {
+        if account_id.is_empty()
+            || account_id.len() > CODEX_QUOTA_ACCOUNT_ID_MAX
+            || account_id.chars().any(char::is_control)
+        {
+            return Err(account_protocol_error(
+                "BRIDGE_INVALID_REQUEST",
+                "codexQuotaAccounts 账号 id 无效",
+            ));
+        }
+        let Some(payload) = payload.as_object() else {
+            return Err(Diagnostic::new(
+                "BRIDGE_CREDENTIAL_SCOPE",
+                "security",
+                "request",
+                "codexQuotaAccounts 账号条目无效",
+                false,
+            ));
+        };
+        let allowed = BTreeSet::from(["access_token", "display_name"]);
+        if payload.keys().any(|key| !allowed.contains(key.as_str())) {
+            return Err(Diagnostic::new(
+                "BRIDGE_CREDENTIAL_SCOPE",
+                "security",
+                "request",
+                "codexQuotaAccounts 账号条目包含不允许的字段",
+                false,
+            ));
+        }
+        let access_token = payload
+            .get("access_token")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                account_protocol_error(
+                    "BRIDGE_INVALID_REQUEST",
+                    "codexQuotaAccounts 缺少 access_token",
+                )
+            })?;
+        if access_token.len() > CODEX_QUOTA_ACCESS_TOKEN_MAX {
+            return Err(account_protocol_error(
+                "BRIDGE_INVALID_REQUEST",
+                "codexQuotaAccounts access_token 超过长度上限",
+            ));
+        }
+        let display_name = payload
+            .get("display_name")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                account_protocol_error(
+                    "BRIDGE_INVALID_REQUEST",
+                    "codexQuotaAccounts 缺少 display_name",
+                )
+            })?;
+        if display_name.len() > CODEX_QUOTA_DISPLAY_NAME_MAX {
+            return Err(account_protocol_error(
+                "BRIDGE_INVALID_REQUEST",
+                "codexQuotaAccounts display_name 超过长度上限",
+            ));
+        }
+    }
+    let Some(order) = order.and_then(Value::as_array) else {
+        return Err(account_protocol_error(
+            "BRIDGE_INVALID_REQUEST",
+            "codexQuotaAccounts 必须携带 codexQuotaAccountOrder",
+        ));
+    };
+    if order.is_empty() || order.len() > CODEX_QUOTA_ACCOUNT_MAX {
+        return Err(account_protocol_error(
+            "BRIDGE_INVALID_REQUEST",
+            "codexQuotaAccountOrder 数量无效",
+        ));
+    }
+    let order = order
+        .iter()
+        .map(|value| value.as_str().map(str::to_owned))
+        .collect::<Option<Vec<_>>>()
+        .ok_or_else(|| {
+            account_protocol_error(
+                "BRIDGE_INVALID_REQUEST",
+                "codexQuotaAccountOrder 必须是字符串数组",
+            )
+        })?;
+    let order_set = order.iter().collect::<BTreeSet<_>>();
+    let account_set = accounts.keys().collect::<BTreeSet<_>>();
+    if order_set.len() != order.len() || order_set != account_set {
+        return Err(account_protocol_error(
+            "BRIDGE_INVALID_REQUEST",
+            "codexQuotaAccountOrder 与 codexQuotaAccounts 不一致",
+        ));
+    }
+    Ok(())
 }
 
 pub(crate) fn build_account_plan(request: &BridgeRequest) -> Result<Vec<AccountPlan>, Diagnostic> {
@@ -145,6 +276,7 @@ fn quota_skip_apps(
 pub(crate) fn build_codex_account_plans(
     request: &BridgeRequest,
 ) -> Result<Vec<AccountPlan>, Diagnostic> {
+    validate_account_request(request)?;
     let Some(raw_accounts) = request.credentials.get("codexQuotaAccounts") else {
         return Ok(Vec::new());
     };
@@ -222,27 +354,21 @@ fn credential_for_service(
     credentials: &serde_json::Map<String, Value>,
     service: &ServiceDescriptor,
 ) -> Option<Value> {
-    let field = account_field(&service.app)?;
-    if let Some(prefix) = account_prefix(&service.app) {
-        if let Some(account_id) = service.id.strip_prefix(prefix) {
-            let payload = provider_accounts(credentials, field)?
-                .get(account_id)?
-                .clone();
-            if matches!(service.app.as_str(), "opencode-go" | "claude" | "grok") {
-                return payload
-                    .as_object()
-                    .and_then(|object| object.get("oauth"))
-                    .cloned()
-                    .or(Some(payload));
-            }
-            return Some(payload);
+    let entry = catalog_entry_for_app(&service.app)?;
+    if let Some(account_id) = service.id.strip_prefix(entry.prefix) {
+        let payload = provider_accounts(credentials, entry.credential_field)?
+            .get(account_id)?
+            .clone();
+        if entry.unwraps_oauth_payload {
+            return payload
+                .as_object()
+                .and_then(|object| object.get("oauth"))
+                .cloned()
+                .or(Some(payload));
         }
+        return Some(payload);
     }
-    let direct_field = match service.app.as_str() {
-        "claude" => "claudeOAuth",
-        "grok" => "grokOAuth",
-        _ => return None,
-    };
+    let direct_field = entry.direct_credential_field?;
     credentials.get(direct_field).cloned()
 }
 
@@ -374,5 +500,52 @@ mod tests {
         .unwrap();
         let error = build_account_plan(&request).unwrap_err();
         assert_eq!(error.code, "BRIDGE_INVALID_REQUEST");
+    }
+
+    #[test]
+    fn validate_account_request_enforces_codex_account_invariants() {
+        let bad_order: BridgeRequest = serde_json::from_value(json!({
+            "schemaVersion": 1,
+            "runId": "12345678-1234-4234-9234-123456789abc",
+            "module": "agent-usage",
+            "timeouts": {
+                "localScanSeconds": 30,
+                "externalRequestSeconds": 10,
+                "moduleSeconds": 90
+            },
+            "context": {
+                "codexQuotaAccountOrder": ["acc-a"]
+            },
+            "credentials": {}
+        }))
+        .unwrap();
+        let err = super::validate_account_request(&bad_order).unwrap_err();
+        assert_eq!(err.code, "BRIDGE_INVALID_REQUEST");
+
+        let bad_scope: BridgeRequest = serde_json::from_value(json!({
+            "schemaVersion": 1,
+            "runId": "12345678-1234-4234-9234-123456789abc",
+            "module": "agent-usage",
+            "timeouts": {
+                "localScanSeconds": 30,
+                "externalRequestSeconds": 10,
+                "moduleSeconds": 90
+            },
+            "context": {
+                "codexQuotaAccountOrder": ["acc-a"]
+            },
+            "credentials": {
+                "codexQuotaAccounts": {
+                    "acc-a": {
+                        "display_name": "Codex A",
+                        "access_token": "tok",
+                        "unexpected_secret": "nope"
+                    }
+                }
+            }
+        }))
+        .unwrap();
+        let err = super::validate_account_request(&bad_scope).unwrap_err();
+        assert_eq!(err.code, "BRIDGE_CREDENTIAL_SCOPE");
     }
 }

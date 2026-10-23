@@ -166,6 +166,147 @@ fn panel_json_provider_visibility_covers_cline_and_jev() {
 }
 
 #[test]
+fn panel_json_verified_gates_unverified_failed_and_relogin_providers_without_touching_agents() {
+    // C087 (对齐 mac C020 `AppModel.verifiedProviderIDs` + `gatedAgentUsageArtifact`):
+    // 看板订阅段只保留 verificationStatus == "ok" 的 Provider 的 service;
+    // none / failed / needsRelogin 一律过滤; 多账号 service 归一化后按 Provider 判定;
+    // 本地用量 (agents / totalCostUsd) 不受影响。
+    use bruce_win_lib::settings::{verified_provider_ids, AppSettings, SubscriptionProviderState};
+    use std::collections::BTreeMap;
+
+    let mut artifact = valid_artifact();
+    artifact["agents"] = json!([{
+        "id": "claude-code",
+        "name": "Claude Code",
+        "status": "ok",
+        "note": "",
+        "quota": null,
+        "today": {"input": 800, "output": 200, "cacheRead": 0, "cacheCreation": 0, "total": 1000},
+        "daily": [{"date": "2026-10-08", "input": 800, "output": 200, "cacheRead": 0, "cacheCreation": 0, "total": 1000}],
+        "todayCostUsd": 1.25
+    }]);
+    artifact["totalCostUsd"] = json!(1.25);
+    artifact["services"] = json!([
+        {"id": "kimi_coding", "name": "Kimi", "status": "ok", "kind": "windows",
+         "capturedAt": "2026-10-08T08:00:00Z",
+         "windows": [{"label": "每 5 小时", "usedPercent": 18.0}]},
+        {"id": "codex_acc1", "name": "Codex · Acc1", "app": "codex", "status": "ok", "kind": "windows",
+         "capturedAt": "2026-10-08T08:00:00Z",
+         "windows": [{"label": "每 5 小时", "usedPercent": 22.0}]},
+        {"id": "codex_acc2", "name": "Codex · Acc2", "app": "codex", "status": "ok", "kind": "windows",
+         "capturedAt": "2026-10-08T08:00:00Z",
+         "windows": [{"label": "每 5 小时", "usedPercent": 35.0}]},
+        {"id": "deepseek", "name": "DeepSeek", "status": "ok", "kind": "balance",
+         "capturedAt": "2026-10-08T08:00:00Z", "windows": [], "balance": 50.0, "currency": "CNY"},
+        {"id": "claude_cli", "name": "Claude · CLI", "status": "ok", "kind": "windows",
+         "capturedAt": "2026-10-08T08:00:00Z",
+         "windows": [{"label": "每 5 小时", "usedPercent": 40.0}]},
+        {"id": "stepfun_cn", "name": "StepFun · CN", "status": "ok", "kind": "windows",
+         "capturedAt": "2026-10-08T08:00:00Z",
+         "windows": [{"label": "每 5 小时", "usedPercent": 12.0}]}
+    ]);
+
+    let mut state = SnapshotState::default();
+    state
+        .apply_response(&response(artifact, ResponseStatus::Success))
+        .unwrap();
+    let now = chrono::DateTime::parse_from_rfc3339("2026-10-08T08:30:00Z").unwrap();
+
+    let settings = AppSettings {
+        enabled_providers: vec![
+            "kimi".into(),
+            "codex".into(),
+            "deepseek".into(),
+            "claude".into(),
+            "stepfun".into(),
+        ],
+        subscription_providers: Some(BTreeMap::from([
+            (
+                "kimi".into(),
+                SubscriptionProviderState {
+                    enabled: true,
+                    last_verified_at: Some("2026-10-08T08:00:00Z".into()),
+                    verification_status: "ok".into(),
+                    failure_reason: None,
+                },
+            ),
+            (
+                "codex".into(),
+                SubscriptionProviderState {
+                    enabled: true,
+                    last_verified_at: Some("2026-10-08T08:00:00Z".into()),
+                    verification_status: "ok".into(),
+                    failure_reason: None,
+                },
+            ),
+            (
+                "deepseek".into(),
+                SubscriptionProviderState {
+                    enabled: true,
+                    last_verified_at: None,
+                    verification_status: "none".into(),
+                    failure_reason: None,
+                },
+            ),
+            (
+                "claude".into(),
+                SubscriptionProviderState {
+                    enabled: true,
+                    last_verified_at: Some("2026-10-08T08:00:00Z".into()),
+                    verification_status: "needsRelogin".into(),
+                    failure_reason: None,
+                },
+            ),
+            (
+                "stepfun".into(),
+                SubscriptionProviderState {
+                    enabled: true,
+                    last_verified_at: Some("2026-10-08T08:00:00Z".into()),
+                    verification_status: "failed".into(),
+                    failure_reason: Some("Oasis-Token 无效".into()),
+                },
+            ),
+        ])),
+        ..AppSettings::default()
+    };
+
+    let verified = verified_provider_ids(&settings);
+    assert_eq!(
+        verified,
+        std::collections::BTreeSet::from(["kimi".to_owned(), "codex".to_owned()])
+    );
+
+    let panel = state.panel_json_verified(
+        now,
+        true,
+        &settings.enabled_providers,
+        Some(&verified),
+        &["kimi".into(), "codex".into()],
+    );
+    let sections = panel["subscription"]["sections"].as_array().unwrap();
+    let section_providers: Vec<&str> = sections
+        .iter()
+        .filter_map(|s| s["provider"].as_str())
+        .collect();
+    assert_eq!(
+        section_providers,
+        vec!["kimi", "codex"],
+        "仅 verificationStatus == ok 的 kimi 与 codex 进入看板订阅段; none/failed/needsRelogin 一律过滤"
+    );
+    assert_eq!(
+        sections[1]["accountCountText"], "2 个账号",
+        "多账号 codex_acc1/acc2 经 provider_id_for_service 归一化后完整保留"
+    );
+    // 本地用量 (usage / hourly) 完全不受订阅验证状态门禁影响
+    assert_eq!(panel["usage"]["totalTokens"], 1000, "本地用量卡不受影响");
+    assert_eq!(
+        panel["hourly"]["rows"].as_array().unwrap().len(),
+        1,
+        "Agent 用量明细完整保留"
+    );
+}
+
+#[test]
 fn clear_snapshot_removes_only_the_snapshot_file_and_is_idempotent() {
     // C031: 「清理用量缓存」等价 mac 语义 —— 只删本应用快照, 不动配置与凭证。
     let root = std::env::temp_dir().join(format!("bruce-c031-clear-{}", std::process::id()));

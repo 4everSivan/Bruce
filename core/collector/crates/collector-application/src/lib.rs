@@ -12,7 +12,7 @@ mod context;
 mod execution;
 mod paths;
 
-use account::{build_account_plan, build_codex_account_plans};
+use account::{build_account_plan, build_codex_account_plans, validate_account_request};
 use aggregation::{consume_source_changes, AggregationResult};
 use collector_aggregate::UsageAccumulator;
 use collector_credential::{
@@ -101,6 +101,7 @@ fn collect_agent_usage_with_dependencies_inner(
     credentials: &dyn CredentialSource,
     #[cfg(test)] final_probe: Option<&mut dyn FnMut(&collector_runtime::CancellationToken)>,
 ) -> Result<CollectionOutput, Diagnostic> {
+    validate_account_request(request)?;
     let window = CollectionWindow::from_context(&request.context).map_err(window_diagnostic)?;
     let context = RunContext::new(request, window, http, credentials, RuntimeLimits::default())?;
     // C062: 额度仍新鲜/429 冷却时 Swift 只请求本地统计; 此时不启动额度 worker,
