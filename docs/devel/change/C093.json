@@ -1,0 +1,115 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C093",
+  "title": "Windows StepFun 站点由对话框默认值决定而非令牌：取消隐式默认站点写入，未显式选择时由令牌推导",
+  "version": "0.13.0",
+  "type": "BugFix",
+  "status": "verified",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src/settings.js + core/collector/crates/collector-provider/src/lib.rs",
+    "component": "StepFun 站点来源与优先序",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "mac 只保存 token, 站点由采集端从令牌推导。Windows 的 StepFun 对话框带站点单选且**首项默认选中**（`sitePickerRow` 把 index 0 置为 checked, apps/win/src/settings.js:1746; StepFun 选项顺序为 `国内站 (stepfun.com)` → `国际站 (stepfun.ai)`, :1675）, `providerCredential` 又**无条件写入** `site`（:1559-1560 `const site = values.site === \"global\" ? \"global\" : \"domestic\"`）。而采集端 `is_stepfun_global`（core/collector/crates/collector-provider/src/lib.rs:2138）**优先信任已保存的 `site`**, 只有 `site` 缺失时才回落到从令牌解析 `app_id`（`extract_stepfun_app_id`, 国际站 20700）。于是用户粘贴一个国际站 token、不碰站点单选, 保存下来的就是 `site=domestic` → 采集端按国内站端点与 appID 查询国际站账号, 必然失败。附带一处文案失真: 该对话框引导写「可点击上方一键登录自动绑定(支持国内/国际站)」, 而 Windows 的网页登录入口要等 C086 才有, 当前不存在「上方一键登录」。",
+  "precheck": {
+    "description": "预检: 确认站点恒被写入且采集端优先读 site",
+    "command": "grep -n 'const site = values.site' apps/win/src/settings.js",
+    "expected": "命中 (站点无条件写入, 无「未选择/按令牌自动」态)",
+    "is_completed": false,
+    "evidence": "2026-10-22 复核: 命中 settings.js:1559; sitePickerRow 首项默认 checked (:1746); 采集端 is_stepfun_global 先读 site (:2141) 再回落令牌; 缺口确认存在"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护在 main 直接实施"
+    ],
+    "after": [
+      "node apps/win/tests/frontend.test.mjs",
+      "cargo test --manifest-path core/collector/Cargo.toml -p collector-provider",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "scripts/adflow-verify  # 收口前门禁: --card C093 --to closed --record; Exit 0 后同步状态并以 --card C093 --receipt 复核"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "站点来源 (apps/win/src/settings.js)",
+      "before": "站点单选默认国内站, 且保存时无条件写入 site",
+      "after": "站点默认不预选 (或提供「按令牌自动」态); 仅当用户显式选择时才写入 site, 未选择则只存 token, 由采集端推导",
+      "impact": "国际站 token 不再被默认国内站覆盖"
+    },
+    {
+      "scope": "采集端优先序 (core/collector/crates/collector-provider/src/lib.rs is_stepfun_global)",
+      "before": "site 存在即优先于令牌推导, 语义未显式登记",
+      "after": "明确并注释优先序: 用户显式选择 > 令牌推导; 保存值等于自动推导结果时视同未指定",
+      "impact": "站点判定口径单一、可测、可解释"
+    },
+    {
+      "scope": "引导文案 (apps/win/src/settings.js StepFun config)",
+      "before": "「可点击上方一键登录自动绑定(支持国内/国际站), 或控制台按 F12 复制 Cookie」",
+      "after": "与 C086 的实际交付形态对齐: 网页登录入口未交付前不得出现「点击上方一键登录」",
+      "impact": "文案不承诺尚不存在的能力"
+    },
+    {
+      "scope": "回归用例",
+      "before": "无站点判定用例",
+      "after": "断言未选站点时载荷不含 site、显式选择时按选择写入、采集端在国际站 token + 无 site 时判 global、显式 domestic 优先",
+      "impact": "站点契约被测试锁定"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "规则 20 的 StepFun 行只写「网页登录自动绑定」, 未定义 site 字段来源与优先序",
+      "after": "落地规则 28: StepFun 站点以用户显式选择为准, 未选择时不写入 site、由令牌推导 (国际站 app_id 20700); 采集端 site 优先于令牌, 但保存值等于推导值时视同未指定"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "local-20261023-01",
+    "user_quote": "确认",
+    "signoff": "verified_by_user",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "站点判定用例全绿 (未选不写 site / 显式选择生效 / 采集端优先序); 既有 StepFun 用例无回退; 退出码 0",
+        "false_if": "任何测试失败, 或未选站点仍写入默认国内站",
+        "evidence": "2026-10-22: 前端「StepFun site is written only when explicitly chosen (C093)」+ collector-provider is_stepfun_global 优先序用例 (含未写 site 时国际站令牌判 global, 显式 domestic 覆盖国际站令牌) 全绿；后续项: 账号身份改为由 token 派生 (站点不参与身份) —— 重新保存同一 token 即 upsert 到同一账号并改写/清除旧站点, 不再产生重复账号; 用例「re-saving the same StepFun token upserts one account and clears a stale site (C093)」",
+        "result": true
+      },
+      {
+        "item": "行为实测 (Windows 真机)",
+        "true_if": "在 Windows 真机上实测通过, 且行为符合预期: 粘贴国际站 token 且不选站点时, 额度查询走国际站并成功返回; 显式选国内站时走国内站",
+        "false_if": "未在 Windows 真机实测 (本机 macOS 无法实跑 Tauri/WebView2), 或实测行为不符: 国际站 token 仍被按国内站查询并失败",
+        "evidence": "2026-10-23: 未执行 —— 本机为 macOS, 无法实跑 Windows Tauri/WebView2; 该缺口已在节点回执「未覆盖」中如实报告, 人工在知晓该缺口的前提下确认验收。",
+        "result": false
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "已保存 site 的既有账号行为不变 (显式值继续优先); Z.ai 站点单选不受影响; mac 侧无任何改动",
+        "false_if": "破坏既有账号站点判定或波及 Z.ai",
+        "evidence": "2026-10-22: cargo test apps/win/src-tauri + apps/win/viewmodel + core/collector --workspace 全部通过; cargo clippy --all-targets -- -D warnings 无告警; cargo fmt --check 干净; node scripts/check-win-frontend.mjs Exit 0; mac 侧文件未改动",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-23",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified"
+  }
+}

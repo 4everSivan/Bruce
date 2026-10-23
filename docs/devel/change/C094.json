@@ -1,0 +1,102 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C094",
+  "title": "Windows「授权与隐私」摘要列出全部启用 Provider：改为只列「已启用且已配置」的 Provider，与 mac 一致",
+  "version": "0.13.0",
+  "type": "BugFix",
+  "status": "verified",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src/settings.js",
+    "component": "授权与隐私摘要 Provider 列表口径",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "mac 的授权摘要取 `coordinator.enabledConfiguredSubscriptionProviders`（apps/macos/Sources/BruceApp/SettingsView.swift:1614-1622）, 即「启用 **且** 已配置」的 Provider 才进列表, 空集时走「未配置启用的订阅额度 Provider, 不会访问云端额度接口」兜底文案。Windows 的 `buildConsent` 取 `enabledProvidersOf()`（apps/win/src/settings.js:1960）, 而 `enabled_providers` 默认全量 10 家（apps/win/src-tauri/src/settings.rs:100）—— 于是摘要写着「确认授权后查询已启用订阅 Provider 的云端额度: Kimi / DeepSeek / 火山引擎 / Z.ai / StepFun / Cline / Codex / Claude / Grok / OpenCode GO」, 把从未添加、根本没有凭据的 Provider 全部列进去。这与同一列表里的兜底文案语义直接矛盾: 文案声称「不会访问云端额度接口」, 上面却列了 10 家。授权摘要属用户判断「授权后会发生什么」的依据, 失真会让用户对出站行为产生错误预期。",
+  "precheck": {
+    "description": "预检: 确认摘要数据源为启用集合, 未叠加配置判据",
+    "command": "awk '/function buildConsent/,/^  }/' apps/win/src/settings.js | grep -c 'enabledProvidersOf'",
+    "expected": "1 (数据源仅启用集合)",
+    "is_completed": false,
+    "evidence": "2026-10-22 复核: 命中 settings.js:1960 `const enabled = enabledProvidersOf().map(...)`; 缺口确认存在"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护在 main 直接实施"
+    ],
+    "after": [
+      "node apps/win/tests/frontend.test.mjs",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "scripts/adflow-verify  # 收口前门禁: --card C094 --to closed --record; Exit 0 后同步状态并以 --card C094 --receipt 复核"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "摘要数据源 (apps/win/src/settings.js buildConsent)",
+      "before": "enabledProvidersOf() 全量启用集合",
+      "after": "取「已启用 ∧ 已配置」交集; 「已配置」与行尾件共用同一判据 (规则 21 fail-closed + 本机跟随); 空集时保留既有兜底文案; 启用态变化 (验证结果 / 手动切换 / settings-updated) 后摘要随订阅行一起重绘",
+      "impact": "摘要与真实会发起云端查询的范围一致"
+    },
+    {
+      "scope": "回归用例 (apps/win/tests/frontend.test.mjs)",
+      "before": "无摘要口径用例",
+      "after": "断言未配置 Provider 不出现在摘要、已配置但未启用的也不出现、空集走兜底文案、多 Provider 分隔符与顺序与 mac 一致",
+      "impact": "摘要口径被测试锁定"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "规则 15 只定义授权页开关与按钮语义, 未定义摘要 Provider 列表口径",
+      "after": "落地规则 29: 授权与隐私摘要只列「已启用且已配置」的 Provider (对齐 mac enabledConfiguredSubscriptionProviders), 空集保留兜底文案"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "local-20261023-01",
+    "user_quote": "确认",
+    "signoff": "verified_by_user",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "摘要口径用例全绿 (未配置不列出 / 未启用不列出 / 空集兜底); 既有用例无回退; 退出码 0",
+        "false_if": "任何测试失败, 或未配置 Provider 仍被列出",
+        "evidence": "2026-10-22 复测: 前端「consent summary lists only enabled and configured providers (C094)」(未配置不入摘要 / 已配置且启用入摘要 / 空集兜底) +「consent summary follows verification, the switch and settings updates (C094)」(已配置未启用不入摘要 / 验证通过后立即出现 / 手动关闭后立即移除 / settings-updated 后同步); 前端 75/75; 变异校验: 去掉启用态变化后的摘要重绘后该用例转红；规则 29: 启用态变化 (验证结果 / 手动切换 / settings-updated) 后摘要经 renderSubscriptionViews 随订阅行一起重绘, 不停留在旧集合",
+        "result": true
+      },
+      {
+        "item": "行为实测 (Windows 真机)",
+        "true_if": "在 Windows 真机上实测通过, 且行为符合预期: 全新安装授权页显示兜底文案而非 10 家清单; 添加并验证一家后摘要只出现该家",
+        "false_if": "未在 Windows 真机实测 (本机 macOS 无法实跑 Tauri/WebView2), 或实测行为不符: 摘要仍列出未配置 Provider",
+        "evidence": "2026-10-23: 未执行 —— 本机为 macOS, 无法实跑 Windows Tauri/WebView2; 该缺口已在节点回执「未覆盖」中如实报告, 人工在知晓该缺口的前提下确认验收。",
+        "result": false
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "刷新间隔行、撤销/确认授权按钮与状态行语义不变; 与 C089 移除、C090 启用联动后的集合一致; mac 侧无任何改动",
+        "false_if": "摘要与真实查询范围仍不一致, 或破坏授权页其他部件",
+        "evidence": "2026-10-22 复测: node apps/win/tests/frontend.test.mjs 75/75; cargo test apps/win/src-tauri 全部通过; cargo clippy --all-targets -- -D warnings 无告警; cargo fmt --check 干净; node scripts/check-win-frontend.mjs Exit 0; mac 侧文件未改动",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-23",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified"
+  }
+}

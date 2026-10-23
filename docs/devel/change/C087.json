@@ -1,0 +1,118 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C087",
+  "title": "Windows 看板按 Provider 验证状态过滤：仅展示验证通过的订阅服务，并补双端逐项交互对拍与真机验收清单",
+  "version": "0.13.0",
+  "type": "Enhancement",
+  "status": "pending",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
+  "is_hotfix": false,
+
+  "target": {
+    "module": "apps/win/viewmodel + apps/win/src-tauri + apps/win/src",
+    "component": "看板订阅段门禁与双端对拍",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+
+  "why": "mac 的看板订阅段只展示验证状态为 ok 的 Provider 的 service：`AppModel.verifiedProviderIDs` 依据 `subscriptionProviders[id].verificationStatus` 过滤 artifact.services（apps/macos/Sources/BruceAppCore/AppModel.swift:560-594，C020 决策「仅展示验证通过项」）。Windows 全仓无任何验证概念（grep verif 无命中），未验证、验证失败或需重新登录的订阅会照常出现在看板上；配合 C081 之前「账号存在即已配置」的判据，用户会看到明明配错（甚至从未生效）的订阅卡。本卡补齐最后一段闭环，并把双端逐项交互差异与真机欠账固化成可核对的清单。",
+
+  "precheck": {
+    "description": "预检: 确认 Windows 侧无验证状态过滤",
+    "command": "grep -rn 'verificationStatus\\|verifiedProvider' apps/win/viewmodel/src apps/win/src-tauri/src apps/win/src",
+    "expected": "无命中 (grep 退出码 1)",
+    "is_completed": false,
+    "evidence": "2026-10-22 复核: 该 grep 无命中; 看板订阅段仅受 enabledProviders 与 429 冷却(is_provider_temporarily_disabled)约束; 缺口确认存在"
+  },
+
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护在 main 直接实施"
+    ],
+    "after": [
+      "node scripts/check-win-frontend.mjs",
+      "node apps/win/tests/frontend.test.mjs",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "cargo test --manifest-path apps/win/viewmodel/Cargo.toml",
+      "cargo clippy --manifest-path apps/win/src-tauri/Cargo.toml --all-targets -- -D warnings",
+      "scripts/adflow-verify  # 收口前门禁: --card C087 --to closed --record; Exit 0 后同步状态并以 --card C087 --receipt 复核"
+    ]
+  },
+
+  "changes": [
+    {
+      "scope": "看板门禁 (apps/win/viewmodel/src/subscription.rs + runtime_core.rs)",
+      "before": "订阅段仅按 enabledProviders 与 429 冷却过滤; 无验证状态概念",
+      "after": "订阅段只保留 verificationStatus == ok 的 Provider 的 service(对齐 mac C020); 未验证/验证失败/需重新登录一律过滤; 本地用量(agents)不受影响; 过滤点与 mac 同层(视图模型/面板组装层), 不在前端做猜测",
+      "impact": "看板只呈现真实可用的订阅, 与 mac 一致"
+    },
+    {
+      "scope": "回归用例",
+      "before": "无验证门禁用例",
+      "after": "断言 ok 保留、none/failed/needsRelogin 过滤、agents 与总成本不受影响、多账号 service 归一化后按 Provider 判定",
+      "impact": "门禁契约被测试锁定"
+    },
+    {
+      "scope": "双端对拍与真机验收清单 (文档 + local/ 脚本, 不入库)",
+      "before": "C067 遗留的并排比对做法只覆盖渲染层",
+      "after": "逐 Provider 交互对拍清单(行结构/对话框字段与文案/状态尾件/添加移除/拖拽) + Windows 真机验收清单(CC Switch 库路径、WebView2 cookie、设备码端点状态码、DACL 权限); 清单登记为本卡 check 与设计规则 20/22/23/24 的验收口径",
+      "impact": "未验证项有明确账目, 不以自动化通过冒充真机验收"
+    }
+  ],
+
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "规则 22 仅定义状态模型与验证语义, 未定义看板消费口径",
+      "after": "规则 22 补看板门禁: 订阅段只保留 verificationStatus == ok 的 Provider 的 service(对齐 mac C020), 本地用量卡不受影响"
+    }
+  },
+
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "门禁用例全绿(ok 保留 / 三态过滤 / agents 不受影响); 既有 viewmodel 与前端用例无回退; 退出码 0",
+        "false_if": "任何测试失败或门禁分支未覆盖",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测 (Windows 真机)",
+        "true_if": "未验证 Provider 不出现在看板; 验证通过后立即出现; 撤销凭证后消失; 本地用量卡始终正常",
+        "false_if": "未验证订阅仍出现在看板, 或验证通过后不出现",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "菜单栏/托盘摘要与 429 冷却语义不变; 定向刷新合并逻辑不受影响; mac 侧无任何改动",
+        "false_if": "破坏摘要、冷却或定向刷新合并, 或反向改动 mac 代码路径",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+
+  "rejections": [],
+
+  "sync": {
+    "design_pinned": true,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

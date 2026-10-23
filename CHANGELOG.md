@@ -5,7 +5,27 @@
 
 ## [Unreleased]
 
-（暂无）
+### Added
+- **双端仪表盘顶栏三图标 Tab 切换、角标融合与水平滑动动效 (C088)**：
+  - **顶栏三图标导航与角标融合**：在仪表盘顶部 HUD Header 右侧以三图标导航（Token 用量 `chart.bar.xaxis` / 订阅配额 `creditcard` / Agent 活跃 `waveform.path.ecg`）替代原 `N AGENTS ACTIVE / STANDBY` 文本；Agent 运行状态作为绿色呼吸小点无缝融合于第 3 个图标右上角（悬停展示实时活跃数量与状态提示）。
+  - **单卡轻量呈现与方案 1 方向感知水平滑动动效**：Tab 模式下仪表盘只展示当前激活卡片，卡片切换遵循方向感知水平滑动（左→右从右侧推入，右→左从左侧推入）配合药丸滑动指示条与卡片高度弹性过渡，保留键盘 `1`/`2`/`3` 快捷切卡；既有三张卡片内部视觉、指标与布局 100% 原样保留。
+  - **卡片停留状态记忆与通用设置开关**：最后停留的 Tab 分页自动持久化并在下次唤醒面板时无缝恢复；通用设置中新增「看板卡片布局」分段选择器（`纵向级联` vs `顶栏 Tab`），macOS 与 Windows 11 双端 1:1 对齐交付。
+- **面板底栏新增外观切换按钮 (C098)**：仪表盘底栏「刷新」按钮右侧新增一个仅图标按钮，单击在「跟随系统 → 浅色 → 深色 → 跟随系统」间循环，图标即当前态（`circle.lefthalf.filled` / `sun.max` / `moon`），无需打开设置窗口即可在面板内即时切换配色。与设置中心「通用 → 配色模式」共用同一持久化偏好 `OnboardingConfiguration.appearanceMode` 与「先存后生效」语义（保存失败不变更运行态外观），循环顺序由 `AppearancePreference.next` 单一纯函数给出，避免两处顺序漂移。该能力为 mac 独有（Windows 恒深色、无配色模式偏好，底栏有意不镜像，已在 `apps/win/src/index.html` 注释登记分歧）。
+- **双端仪表盘顶部状态牌改为四色状态灯 (C100)**：
+  - **形态收敛与品牌字统一**：删除 HUD 顶部左侧的 `SYS.OK` 文字牌（mac `MenuBarViews.swift` 与 Windows `index.html` `#runtime-status`），顶部左侧收敛为「状态灯 + 品牌字」；品牌字在所有主题（Classic / Liquid Glass / Nothing）统一为 `Bruce`（移除 `// HUD` 后缀与 Nothing `.hud-brand` 的 `uppercase` 转换）。
+  - **四色语义与双端同口径聚合**：新增纯函数判定源 `DashboardStatusToneResolver.resolve`（mac `BruceAppCore` 与 Windows `app.js` `resolveDashboardStatus` 共享 `tests/fixtures/status-tone-parity/cases.json` 对拍），聚合「采集健康度」与「订阅服务健康度（`sections[].status`）」按 `error > warn > ok > neutral` 取并：绿（正常）、黄（`partial` / `stale` / `authRequired`）、红（`failed` / `error` / `unavailable`）、中性灰（`notConfigured` / `empty` 首次无数据），刷新中呈呼吸脉冲（遵循 C044 面板可见性门控）。
+  - **Windows 托盘角标同源**：托盘图标角标色与提示文案改由与 HUD 状态灯同一判定表计算（Rust 端第三份实现，同读共享 fixture 对拍），不再出现托盘显绿「数据已更新」而看板亮红灯的分歧；提示为「Bruce · 原因」。
+  - **触碰按需展开原因**：状态灯绑定悬停提示与无障碍标签（mac `.help` + `.accessibilityLabel`，Windows `title` + `aria-label` + `role="status"`），健康态显示「运行正常」、刷新中显示「正在刷新…」、异常态按「态名 · 具体原因」展开：采集侧决定灯色时取采集详情（Windows `runtime.error` 机器码先转为中文释义，未登记的码不外露），订阅侧更严重时点名对应服务（如「失败 · Codex」）。
+- **Windows API Key 类五家专属配置对话框逐字对齐 mac (C083)**：Kimi / DeepSeek / Z.ai / Cline 统一为 `API Key` 单字段、火山引擎为 `Access Key` + `Secret Key` 双字段，字段标签、引导文案、控制台外链与脚注逐字对齐 mac 对应对话框（如 Kimi「在 kimi.com/code 申请 Kimi For Coding API key」、Cline「在 Cline 控制台 Settings > API Keys 创建 API Key」，Cline 另带 ClinePass 三窗口脚注）。火山引擎新增「从 CC Switch 导入」：以 `SQLITE_OPEN_READ_ONLY` 只读打开 CC Switch 本地库执行 `SELECT meta FROM providers WHERE name='火山Codingplan' LIMIT 1`，取 `usage_script.accessKeyId` / `secretAccessKey`（回落顶层同名键）并对 SK 逐层 base64 解码，导入前先拉起只读确认；库不存在时按钮隐藏、行缺失时给出可诊断错误，全程不回写外部库。Z.ai 由自由输入站点改为 `国内站 (open.bigmodel.cn)` / `国外站 (api.z.ai)` 单选并据此派生 `base_url`。保存成功后立即执行该 Provider 的结构校验（DeepSeek 额外一次真实余额试查，关闭重定向以避免 Bearer 随重定向外泄），并新增「重新验证」按钮。
+
+### Fixed
+- **Windows 全局快捷键唤出看板焦点闪退、重复触发与设置页录制器键码缺陷 (C099)**：
+  - **唤出焦点保护期与防抖状态机 (`DashboardActivityState`)**：新增 180ms 唤出焦点保护期（过滤 Windows 前台切换瞬态 `Focused(false)` 并补发 `set_focus`，杜绝按快捷键闪退）、250ms 热键防抖（距上一次生效切换不足 250ms 的触发一律忽略；global-hotkey 以 `MOD_NOREPEAT` 注册，长按本身不会连发）、以及 300ms 被动失焦防重开（防止修饰键或托盘点击先触发失焦隐藏后紧接着反向重开面板）。
+  - **多显示器光标定位与移除冗余写盘**：扩展托盘 `Move`/`Enter`/`Click` 事件自动缓存托盘矩形；托盘唤出贴托盘弹出，快捷键唤出始终在当前鼠标光标所在显示器弹出（托盘不在该屏时按该屏任务栏角落贴靠，不再借用别屏托盘坐标，也不会因悬停过托盘而被钉在托盘屏）；移除每次失焦收起时无意义的 `panel_x/panel_y` 磁盘写入。
+  - **设置页物理键码规范化与录制态挂起**：录制器改按 `event.code`（回退 `event.key`）规范化主键（彻底修复 `Ctrl+Shift+1` 被录成 `Control+Shift+!`、`Alt+Space` 被录成 `Alt+ ` 导致注册失败的问题），小键盘键原名保留（`Control+Alt+Numpad1` 不再被录成主键盘的 `Control+Alt+1`），无法解析的键直接提示不支持；拦截系统保留热键（`Alt+Tab` / `Alt+F4` / `Control+Escape` 等）与纯 `Shift+非功能键`。录制期间真正注销已生效热键（`RegisterHotKey` 会截走组合键，否则设置页录不到当前热键），退出录制或关闭设置窗口即恢复注册、恢复失败给出提示；录制中再次点击「录制热键」即取消（对齐 mac），也可 `Esc` 或失焦退出并恢复原值。
+- **Windows 看板右侧滚动条与 mac 不一致 (C101)**：主看板卡片滚动区 `#scroll` 原有一条半透明细滚动条（`scrollbar-width: thin` + 4px `::-webkit-scrollbar`），而 mac 看板恒隐藏滚动指示条（`.scrollIndicators(.hidden)` + C044 看门狗）。现改为 `scrollbar-width: none` + `::-webkit-scrollbar { display: none }` 不再显示滚动条，滚轮 / 触控板滚动照常；内容溢出时卡片也不再因让出滚动条宽度而变窄。设置窗口的滚动条不在本次范围内。
+- **Windows 订阅启用开关不再跟随验证结果 (C090)**：`subscription_providers[].enabled` 升为该 Provider 启用态的唯一事实源（`enabled_providers` 降级为兼容读入），验证 `ok` 即启用、`failed` / `needsRelogin` 即禁用（fail-closed），与 mac `applyingVerification` 同语义；启用开关恒取已保存的启用态渲染（移除重绘前勾选的沿用），验证结果与 `settings-updated` 后开关即时跟随；全新安装的订阅集合默认不在已添加/启用集合内（不再默认全开），既有用户配置按迁移规则保留、不做批量关闭。
+- **Windows 无法配置 Cline，保存恒报「凭证字段不受支持」(C097)**：`clineQuotaAccounts` 并入 `api_key` 类分支（allowed `display_name` / `api_key`，required `api_key`），与 Kimi / DeepSeek / Jev 同形；合法 Cline 凭据可保存并读回，过短仍按 C092 的长度下限规则拒绝。
 
 ## [0.12.2] - 2026-10-22
 

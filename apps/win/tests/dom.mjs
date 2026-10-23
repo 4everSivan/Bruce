@@ -140,28 +140,49 @@ export const defaults = {
   refreshIntervalSecs: 1800, notificationsEnabled: true, theme: "fluent",
   cardOrder: ["usage", "subscription", "hourly"], hotkey: "", consentVersion: 0,
   usageEnabled: true, enabledProviders: ["kimi", "codex", "claude", "deepseek"], providerOrder: [], pricingOverrides: {},
+  layoutMode: "stack", activeCardId: "usage",
 };
 export async function settle() { await new Promise(resolve => setImmediate(resolve)); }
-export async function boot({ html = "index.html", panel = fixture, settings = defaults, reject = {}, accounts = [], dialogPath = "C:\\\\Users\\\\demo\\\\导出.csv", workbench = analytics, claudeLocal = { status: "followed", storedAccountCount: 0 } } = {}) {
+export async function boot({ html = "index.html", panel = fixture, settings = defaults, reject = {}, accounts = [], rejections = [], dialogPath = "C:\\\\Users\\\\demo\\\\导出.csv", workbench = analytics, claudeLocal = { status: "followed", storedAccountCount: 0 }, verify = { status: "ok", reason: null } } = {}) {
   const htmlSource = readFileSync(resolve("apps/win/src", html), "utf8");
   const document = parseHTML(htmlSource);
   const calls = [], errors = [], events = new Map();
   const window = new Element("window");
-  const state = { panel: structuredClone(panel), settings: structuredClone(settings) };
+  // 凭据账号随移除命令收敛 (C089): 移除服务后重新添加须得到空账号列表。
+  const state = { panel: structuredClone(panel), settings: structuredClone(settings), accounts: structuredClone(accounts) };
   const invoke = async (command, args) => {
     calls.push({ command, args });
     if (reject[command]) throw new Error(reject[command]);
     if (command === "get_dashboard") return structuredClone(state.panel);
     if (command === "get_settings") return structuredClone(state.settings);
-    if (command === "save_settings_command") { state.settings = structuredClone(args.settings); return; }
+    if (command === "save_settings_command") {
+      // 镜像后端契约 (C090): enabled_providers 是 subscriptionProviders[id].enabled 的派生投影,
+      // 保存时由后端归一, 并把归一结果回传前端作本地缓存。
+      const next = structuredClone(args.settings);
+      if (next.subscriptionProviders) {
+        next.enabledProviders = Object.keys(next.subscriptionProviders)
+          .filter((id) => next.subscriptionProviders[id]?.enabled);
+      }
+      state.settings = next;
+      return structuredClone(next);
+    }
     if (command === "credential_allowlist") return ["kimiQuotaAccounts", "codexQuotaAccounts", "volcengineQuotaAccounts", "providerMeta"];
-    if (command === "get_credential_fields") return accounts.length ? ["kimiQuotaAccounts"] : [];
-    if (command === "get_credential_accounts") return accounts;
+    if (command === "get_credential_fields") return state.accounts.length ? ["kimiQuotaAccounts"] : [];
+    if (command === "get_credential_accounts") return structuredClone(state.accounts);
+    // C092: 被丢弃账号的原因清单 (测试可按需注入 rejections fixture)。
+    if (command === "get_credential_rejections") return structuredClone(rejections);
+    if (command === "remove_provider_credentials") {
+      state.accounts = state.accounts.filter(account => account.field !== `${args.provider}QuotaAccounts`);
+      return null;
+    }
     if (command === "plugin:dialog|save") return dialogPath;
     if (command === "get_usage_analytics") return structuredClone(workbench[args.range] ?? null);
     if (command === "get_model_prices") return [{ model: "fixture-model", displayName: "Fixture Model", vendor: "Fixture Vendor", inputPricePerMillion: 1, outputPricePerMillion: 2, cacheReadPricePerMillion: null, currency: "USD", note: "fixture 备注" }];
     if (command === "claude_local_status") return structuredClone(claudeLocal);
     if (command === "import_claude_from_local") return { status: claudeLocal.status };
+    if (command === "verify_subscription") return structuredClone(typeof verify === "function" ? verify(args) : verify);
+    if (command === "ccswitch_status") return { available: true };
+    if (command === "import_volcengine_from_ccswitch") return { status: "ok", reason: null };
     if (command === "get_runtime_info") return { version: "0.11.5", dataRoot: "isolated-data", cacheRoot: "isolated-cache", snapshotPath: "isolated-snapshot", status: { phase: "stale", lastSuccessAt: "2026-10-08T08:00:00Z", error: "COLLECTION_PARTIAL", diagnosticCodes: ["PROVIDER_RATE_LIMIT"] } };
     return null;
   };

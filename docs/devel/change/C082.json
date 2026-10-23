@@ -1,0 +1,116 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C082",
+  "title": "Windows 订阅额度页骨架 1:1 对齐 mac：已添加行 + 配置按钮 + 拖拽重排 + 添加服务 picker + Provider 验证状态存储",
+  "version": "0.13.0",
+  "type": "Enhancement",
+  "status": "verified",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src + apps/win/src-tauri",
+    "component": "设置中心 订阅额度页 / Provider 状态存储",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "mac 的订阅额度页是「只列出已添加 Provider 的行 + 每行『配置』按钮 + 拖拽重排 + 『添加服务』下拉」，配置动作全部收进该 Provider 的专属对话框（apps/macos/Sources/BruceApp/SettingsView.swift:940-1075 的行与添加卡、:1193-1417 的对话框路由、:1506-1551 的专用管理区）。Windows 现在是 10 家全列 + 行内启用开关 + 上移/下移 + 一张通用表单（apps/win/src/settings.js:1363-1449），既没有「配置」入口，也没有「添加/移除服务」语义，provider 行尾件只有三态文字、无验证状态与最近验证时间。用户报告的核心体验问题（配置方式与 mac 完全不一致、非常难用）正是这一层骨架差异；C083–C086 的逐家对话框必须挂在这一层骨架上。",
+  "precheck": {
+    "description": "预检: 确认通用表单与上移/下移仍在, 骨架未对齐",
+    "command": "grep -n 'account-provider\\|provider-up-' apps/win/src/settings.js",
+    "expected": "命中通用表单 provider 下拉与上移/下移按钮, 说明骨架仍为旧形态",
+    "is_completed": false,
+    "evidence": "2026-10-22 复核: 命中 settings.js:1386 (account-provider 下拉) 与 :338-339 (provider-up/down); 无 per-provider 配置入口; 缺口确认存在"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护在 main 直接实施"
+    ],
+    "after": [
+      "node scripts/check-win-frontend.mjs",
+      "node apps/win/tests/frontend.test.mjs",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "cargo clippy --manifest-path apps/win/src-tauri/Cargo.toml --all-targets -- -D warnings",
+      "scripts/adflow-verify  # 收口前门禁: --card C082 --to closed --record; Exit 0 后同步状态并以 --card C082 --receipt 复核"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "订阅额度页骨架 (apps/win/src/settings.js)",
+      "before": "六张卡: 订阅服务(10 家全列+上移/下移) / 已配置账号 / Claude 本机登录态 / 添加或更新账号凭证(通用表单) / 导入账号 / 高级完整凭证字段维护",
+      "after": "两张卡: 订阅服务(仅已添加 Provider 行) + 添加服务(下拉只列未添加项, 添加后立即打开配置对话框); Provider 行 = 拖拽手柄 + 品牌徽章 26px + 名称 + 凭证形态副标题 + 套餐标签 + 状态尾件 + 配置按钮 + 启用开关(未配置禁用); 排序改为拖拽重排",
+      "impact": "入口形态与 mac 一致; 通用表单等 Windows 独有卡在 C083–C086 落地后移除"
+    },
+    {
+      "scope": "专属配置对话框基座 (apps/win/src/settings.js + styles.css)",
+      "before": "无对话框; 配置动作是页内通用表单",
+      "after": "设置窗口内模态浮层基座: 标题(品牌徽章 + `配置 <显示名>`) + 状态横幅 + 已配置账号列表 + 字段区 + 固定说明 + 附加区 + 引导行 + 脚注 + 就地错误 + footer(移除服务 / 重新验证 / 取消 / 保存并验证); 逐家内容由 C083–C086 填充",
+      "impact": "C083–C086 的逐 Provider 交互有统一承载"
+    },
+    {
+      "scope": "Provider 验证状态存储 (apps/win/src-tauri/src/settings.rs)",
+      "before": "仅有 enabledProviders 数组; 无 enabled/lastVerifiedAt/verificationStatus 结构, 无验证状态概念",
+      "after": "新增 subscriptionProviders: {<provider>: {enabled, lastVerifiedAt, verificationStatus}}; 兼容读入既有 enabledProviders 并迁移; enabled 语义与既有 enabledProviders 等价(采集侧仍消费归一化后的启用集合)",
+      "impact": "状态尾件、状态横幅、看板门禁(C087)有数据来源"
+    },
+    {
+      "scope": "回归用例 (apps/win/tests/frontend.test.mjs + src-tauri/tests/settings_coverage.rs)",
+      "before": "断言 10 行全列 + 上移/下移; 无添加/移除/拖拽/对话框断言; 无 subscriptionProviders 迁移断言",
+      "after": "断言仅已添加行可见、添加服务只列未添加项、配置按钮打开对话框、启用开关未配置时禁用、拖拽重排持久化、旧 enabledProviders 配置迁移后启用集合不变",
+      "impact": "骨架契约被测试锁定"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "§4.4 设置中心对标规定「订阅额度行 = 徽章 + 显示名 + 副标题 + 套餐标签 + 状态尾件 + 行内启用开关 + 上移/下移」, 无配置入口与添加服务语义",
+      "after": "新增规则 20 页面骨架与行结构 (拖拽重排取代上移/下移, 行内新增「配置」按钮, 未配置禁用开关, 仅列已添加项 + 添加服务 picker) 与规则 22 状态模型; §4.4 对应行随规则 20 修订"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "local-20261022-02",
+    "user_quote": "确认",
+    "signoff": "verified",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "前端与 Rust 新增用例全绿, 既有订阅/设置用例按新骨架更新后全绿, 退出码 0",
+        "false_if": "任何测试失败或新骨架无断言覆盖",
+        "evidence": "node apps/win/tests/frontend.test.mjs → 59 passed; 0 failed (新增: 逐 Provider 对话框 mac 文案与字段 / 保存即验证并落 verificationStatus 且触发定向刷新; 更新: 订阅行只列已添加项+拖拽手柄+无上移下移 / C069 保存计数 / C075 本机登录态控件移入对话框); cargo test --manifest-path apps/win/src-tauri/Cargo.toml → credentials_coverage 30 passed (新增 4 项 verify_subscription: 无凭据 none / 合法记录 ok / 遗留坏形状 failed 且原因可诊断 / reauthRequired → needsRelogin), settings::tests 新增 4 项 (未迁移按启用集合播种 / 显式空集合保留 / 未知服务与非法状态拒绝 / 已添加集合变化不触发全量采集); node scripts/check-win-frontend.mjs → Exit Code 0 (含 geometry-parity 2 passed); cargo clippy --all-targets -- -D warnings → Exit Code 0; cargo fmt --all -- --check → Exit Code 0",
+        "result": true
+      },
+      {
+        "item": "行为实测 (Windows 真机)",
+        "true_if": "设置页可添加 Provider 并立即弹出配置对话框, 拖拽可重排且重启后保持, 未配置 Provider 的启用开关禁用",
+        "false_if": "添加/移除/拖拽无效, 排序丢失, 或开关状态与配置不符",
+        "evidence": "待 Windows 真机复核: 添加服务 → 对话框弹出、拖拽重排持久化、未配置项开关禁用、对话框浮层在真实 WebView2 下的尺寸与滚动; 本轮以真实 JS 事件回归 (harness 控制真实 DOM/IPC) 替代, 真机欠账登记",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "看板 provider 顺序与启用集合语义不变; 既有 enabledProviders 配置可无损迁移; 设置即时生效(C069)链路不受影响",
+        "false_if": "看板顺序/启用项错乱, 或旧配置迁移丢失启用项",
+        "evidence": "enabled_providers 仍是启用事实源 (requires_collection 与采集注入未改动, 新增用例断言已添加集合变化不触发采集); 已添加集合未迁移时按 enabledProviders ∪ 已配置集合派生, 升级不改变可见行; providerOrder 复用既有键, 看板顺序链路 (runtime_core::panel_json) 未改动; C069 即时保存用例更新后仍绿; C075 本机跟随用例 (元素 id 不变) 仍绿",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-22",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified"
+  }
+}

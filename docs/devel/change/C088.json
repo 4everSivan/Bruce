@@ -1,0 +1,119 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C088",
+  "title": "双端仪表盘新布局：顶栏三图标 Tab 切换、角标融合、方案1水平定向滑动动效与通用设置开关",
+  "version": "0.13.0",
+  "type": "Enhancement",
+  "status": "verified",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施 (沿用既有工程约定)",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos + apps/win",
+    "component": "菜单栏面板与托盘看板双端 Tab 布局系统",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "当前 Bruce 仪表盘默认将 Token 用量、订阅配额与 Agent 逐时卡片按纵向级联堆叠展示。随着各卡片可视化细节（热力图、模型条形图、多账号订阅进度条、逐时柱图与排行）日益丰富，纵向堆叠高度经常突破 700~900pt，在 MacBook 与 Windows 屏幕上面临频繁滚动与信息过载。本卡引入顶栏三图标 Tab 切换模式：在 HUD Header 右侧以三图标导航替换原 agent running 文本，将 Agent 运行状态以绿色呼吸小点融合在第 3 个图标右上角（角标融合），提供方案 1 方向感知水平滑动动效、键盘 1/2/3 切换与卡片记忆，并在通用设置中提供布局模式切换开关，macOS 与 Windows 双端 1:1 对齐交付。",
+  "precheck": {
+    "description": "预检当前代码中是否已存在 dashboard.layoutMode 选项与顶栏 Tab 切换支持",
+    "command": "grep -rn 'dashboard\\.layoutMode' apps/macos apps/win",
+    "expected": "无命中 (grep 退出码 1)",
+    "is_completed": true,
+    "evidence": "2026-10-22 复核: grep 无命中，当前仅支持纵向 cardOrder 堆叠，顶栏 Tab 布局缺口确认存在"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护在 main 直接实施"
+    ],
+    "after": [
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify  # 收口前门禁"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "数据模型 (apps/macos/Sources/BruceAppCore/PanelModels.swift + AppModel.swift)",
+      "before": "仅支持 cardOrder 纵向排列与折叠展开状态",
+      "after": "新增 DashboardLayoutMode (.stack, .tabbed) 与 selectedCardID，持久化至 UserDefaults (dashboard.layoutMode 与 dashboard.activeCardID)",
+      "impact": "提供双布局模式切换与卡片停留记忆"
+    },
+    {
+      "scope": "macOS 面板视图 (apps/macos/Sources/BruceApp/MenuBarViews.swift)",
+      "before": "Header 右侧展示 N AGENTS ACTIVE / STANDBY 纯文本；下方 ScrollView 纵向堆叠全部三张卡片",
+      "after": "Tab 模式下 Header 右侧展示 3 图标分段控制器带滑动背景药丸，第 3 图标右上角融合呼吸绿点角标；下方按方案 1 执行方向感知水平滑动切换单一卡片，既有三张卡片结构与指标样式保持不变",
+      "impact": "macOS 面板高度大幅精简为 340~420pt，支持无感切卡"
+    },
+    {
+      "scope": "macOS 设置界面 (apps/macos/Sources/BruceApp/SettingsView.swift)",
+      "before": "通用面板仅有配色模式、界面风格、模糊风格、刷新间隔",
+      "after": "通用面板新增「看板卡片布局」分段选择器（纵向级联 vs 顶栏 Tab）",
+      "impact": "用户可随时在两种布局间切换"
+    },
+    {
+      "scope": "Windows 托盘面板与切卡逻辑 (apps/win/src/index.html + app.js + styles.css)",
+      "before": "HUD 右侧仅有 #hud-agents 文本；#stack 仅支持纵向卡片渲染",
+      "after": "与 macOS 1:1 对齐：HUD 右侧渲染 3 图标分段控制与角标融合，app.js 支持 Tab 切换与方案 1 CSS 水平定向滑动，支持键盘 1/2/3 切卡与 activeCardID 记忆",
+      "impact": "Windows 11 托盘面板同步享有轻量单卡体验"
+    },
+    {
+      "scope": "Windows 设置界面 (apps/win/src/settings.js)",
+      "before": "通用面板首卡仅有界面风格、刷新间隔、系统通知",
+      "after": "通用面板新增「看板布局」分段选择器，持久化至 settings.json",
+      "impact": "Windows 用户可在设置中切换布局模式"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "仅定义 FR-3 模块化卡片流纵向瀑布流与 FR-4 折叠态交互",
+      "after": "新增 FR-5 顶栏单卡 Tab 切换与角标融合布局，定义双模式切换、顶栏三图标、角标融合、方案 1 方向感知水平滑动动效与双端等价契约"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "local-20261022-01",
+    "user_quote": "确认",
+    "signoff": "verified_by_user",
+    "checks": [
+      {
+        "item": "macOS 原生 Tab 布局与持久化单测",
+        "true_if": "PanelModels 与 AppModel 正确序列化 layoutMode 与 selectedCardID，切卡即时生效并持久化",
+        "false_if": "状态丢失或 Harness 失败",
+        "evidence": "swift run AppModelCacheHarness 中 dashboardLayoutModeAndCardSelectionPersists() 通过，PanelViewModelHarness 60 项全绿通过",
+        "result": true
+      },
+      {
+        "item": "Windows 端 Tab 布局、滑动动效与持久化单测",
+        "true_if": "Windows 前端与 Tauri 后端正确保存 layoutMode 与 activeCardId，单卡与级联自由切换",
+        "false_if": "前端测试失败或状态未持久化",
+        "evidence": "node scripts/check-win-frontend.mjs 61 项全部通过（含 C088 专属用例），cargo test --manifest-path apps/win/src-tauri/Cargo.toml 132 项全部通过",
+        "result": true
+      },
+      {
+        "item": "全量本地验证门禁",
+        "true_if": "zsh scripts/verify-local.sh 退出码 0，全量测试通过",
+        "false_if": "存在编译报错或 Harness 失败",
+        "evidence": "zsh scripts/verify-local.sh 执行完毕，退出码 0，Rust fmt/test/clippy、敏感扫描、9 项 Swift Harness 及双端对拍全部全绿通过",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-22",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified"
+  }
+}

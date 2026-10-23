@@ -204,11 +204,13 @@ test("model default tier and calendar month selection use distinct periods", asy
 
 test("refresh failure retains cached cards without any top status line (C079)", async () => {
   const app = await boot();
-  const panel = { ...fixture, runtime: { phase: "failed", lastSuccessAt: "2026-10-08T00:00:00Z", error: "服务暂不可用" },
+  const panel = { ...fixture, runtime: { phase: "failed", lastSuccessAt: "2026-10-08T00:00:00Z", error: "COLLECTION_FAILED" },
     diagnostics: [{ kind: "serviceIssue", serviceId: "codex", status: "error", note: "请重新授权" }] };
   await app.emit("dashboard-updated", panel);
-  // HUD 状态牌仍显失败/过期 (C009 显式运行态保留)
-  assert.match(app.node("runtime-status").textContent, /失败|过期/);
+  // C100: HUD 顶部状态灯呈红色 error, 悬停提示展示原因
+  assert.equal(app.node("runtime-status"), null, "C100 已移除 #runtime-status 文字牌");
+  assert.equal(app.node("hud-dot-wrap").classList.contains("tone-error"), true);
+  assert.equal(app.node("hud-dot-wrap").getAttribute("title"), "刷新失败 · 本次采集失败", "runtime.error 机器码按中文释义展示");
   // 顶部零输出 (C079/C080): 两个承载元素都不存在
   assert.equal(app.node("dashboard-status"), null, "顶部无状态行元素 (C080)");
   assert.equal(app.node("dashboard-diagnostics"), null, "顶部无诊断行元素 (C079)");
@@ -676,7 +678,9 @@ test("subscription rows carry brand badge, credential form, plan tag, state and 
   ];
   const app = await boot({ html: "settings.html", accounts });
   const rows = [...app.node("setting-providers").querySelectorAll(".provider-row")];
-  assert.equal(rows.length, 10, "10 家 provider 行");
+  // C082: 只列出已添加的 Provider —— 启用集合 (kimi/codex/claude/deepseek) 与
+  // 已配置集合 (codex/cline) 的并集, 不再 10 家全列。
+  assert.equal(rows.length, 5, "只列已添加的 provider 行");
   const byName = (name) => rows.find((row) => row.querySelector(".provider-name").textContent === name);
   const kimi = byName("Kimi");
   assert.ok(kimi.querySelector(".pbadge svg"), "品牌图形徽章");
@@ -689,16 +693,112 @@ test("subscription rows carry brand badge, credential form, plan tag, state and 
   const cline = byName("Cline");
   assert.equal(cline.querySelector(".auth-state").textContent, "需要重新授权");
   assert.equal(cline.querySelector(".auth-state").classList.contains("warn"), true);
+  // 行结构: 拖拽手柄 + 配置按钮, 不再有上移/下移按钮
+  assert.equal(rows.every((row) => row.querySelector(".drag-handle")), true, "每行有拖拽手柄");
+  assert.equal(app.node("setting-providers").querySelector(".order-btns"), null, "不再使用上移/下移");
   // 启用开关落在行内, 保存时按行收集
   const toggles = [...app.node("setting-providers").querySelectorAll("input.provider-toggle")];
-  assert.equal(toggles.length, 10);
-  for (const toggle of toggles) toggle.checked = true;
+  assert.equal(toggles.length, 5);
+  // C090: 每个开关只写自己 Provider 的启用态 (不再整页收集复选框), 故逐个提交。
   const codexToggle = toggles.find((node) => node.dataset.provider === "codex");
+  for (const toggle of toggles) {
+    if (toggle === codexToggle || toggle.checked) continue;
+    toggle.checked = true;
+    await toggle.dispatch("change");
+  }
   codexToggle.checked = false;
   await codexToggle.dispatch("change");
   assert.deepEqual([...app.state.settings.enabledProviders].sort(),
-    ["claude", "cline", "deepseek", "grok", "kimi", "opencodeGo", "stepfun", "volcengine", "zhipu"],
+    ["claude", "cline", "deepseek", "kimi"],
     "仅 codex 被取消启用");
+  // 启用态唯一事实源为 subscriptionProviders[id].enabled, enabledProviders 是其派生投影。
+  assert.equal(app.state.settings.subscriptionProviders.codex.enabled, false);
+  assert.equal(app.state.settings.subscriptionProviders.cline.enabled, true);
+});
+
+test("each provider row opens its own config dialog with mac texts (C082)", async () => {
+  // 该用例需要覆盖火山引擎/Z.ai 行, 故启用集合包含这两家。
+  const app = await boot({
+    html: "settings.html",
+    settings: { ...defaults, enabledProviders: ["kimi", "volcengine", "zhipu", "codex", "claude", "deepseek"] },
+  });
+  assert.equal(app.node("provider-dialog").classList.contains("hidden"), true, "对话框默认关闭");
+  await app.node("provider-configure-kimi").click();
+  assert.equal(app.node("provider-dialog").classList.contains("hidden"), false, "配置按钮打开对话框");
+  assert.match(app.node("provider-dialog").textContent, /配置 Kimi/);
+  assert.match(app.node("cfg-status").textContent, /未配置/);
+  assert.equal(app.node("cfg-kimi-apiKey").getAttribute("placeholder"), "sk-•••••••••••••••• (输入后不回显)");
+  assert.match(app.node("provider-dialog").textContent, /在 kimi\.com\/code 申请 Kimi For Coding API key/);
+  assert.match(app.node("provider-dialog").textContent, /只保存到本应用的本机凭据文件/);
+  await app.node("cfg-cancel-kimi").click();
+  assert.equal(app.node("provider-dialog").classList.contains("hidden"), true, "取消关闭对话框");
+
+  // 火山引擎: 双具名字段 + 脚注
+  await app.node("provider-configure-volcengine").click();
+  assert.ok(app.node("cfg-volcengine-accessKeyId"), "Access Key 字段");
+  assert.ok(app.node("cfg-volcengine-secretAccessKey"), "Secret Key 字段");
+  assert.match(app.node("provider-dialog").textContent, /此处仅做本地格式校验/);
+
+  // Z.ai: 站点单选派生 base_url
+  await app.node("cfg-cancel-volcengine").click();
+  await app.node("provider-configure-zhipu").click();
+  assert.ok(app.node("cfg-zhipu-site-domestic"), "国内站单选");
+  assert.ok(app.node("cfg-zhipu-site-global"), "国外站单选");
+  app.node("cfg-zhipu-apiKey").value = "fixture-key";
+  app.node("cfg-zhipu-site-global").checked = true;
+  // C096: 必填字段未填齐时「保存并验证」置灰, 故需像真实输入那样派发 input。
+  await app.node("cfg-zhipu-apiKey").dispatch("input");
+  await app.node("cfg-save-zhipu").click();
+  const zhipu = app.calls.filter(x => x.command === "save_credential_account").pop();
+  assert.equal(zhipu.args.field, "zhipuQuotaAccounts");
+  assert.equal(zhipu.args.payload.base_url, "https://api.z.ai/api/paas/v4");
+
+  // 添加服务只列尚未添加的 Provider
+  const options = [...app.document.querySelectorAll("#provider-add-row .cfg-picker-option")];
+  assert.equal(options.length, 4, "10 家减去已添加的 6 家");
+});
+
+test("volcengine dialog imports from CC Switch behind a read-only confirm (C083)", async () => {
+  const app = await boot({
+    html: "settings.html",
+    settings: { ...defaults, enabledProviders: ["volcengine"] },
+  });
+  await app.node("provider-configure-volcengine").click();
+  await app.node("cfg-volcengine-ccswitch").click();
+  assert.match(
+    app.node("provider-dialog").textContent,
+    /只读访问 CC Switch 数据库, 不会修改 CC Switch 的任何数据/,
+    "确认文案须声明只读",
+  );
+  await app.node("cfg-ccswitch-confirm").click();
+  assert.ok(
+    app.calls.some(c => c.command === "import_volcengine_from_ccswitch"),
+    "确认后调用导入命令",
+  );
+  assert.equal(app.state.settings.subscriptionProviders.volcengine.verificationStatus, "ok");
+  assert.ok(app.calls.some(c => c.command === "refresh_subscription"), "验证通过即定向刷新");
+});
+
+test("provider dialog saves with verification status and re-verifies (C082)", async () => {
+  const app = await boot({ html: "settings.html" });
+  await app.node("provider-configure-kimi").click();
+  // C096: 字段未填齐时「保存并验证」置灰, 填齐即启用 (对齐 mac)。
+  assert.equal(app.node("cfg-save-kimi").disabled, true, "未填齐时保存按钮禁用");
+  app.node("cfg-kimi-apiKey").value = "fixture-kimi-key";
+  await app.node("cfg-kimi-apiKey").dispatch("input");
+  assert.equal(app.node("cfg-save-kimi").disabled, false, "填齐后保存按钮启用");
+  await app.node("cfg-save-kimi").click();
+  const save = app.calls.find(x => x.command === "save_credential_account");
+  assert.equal(save.args.field, "kimiQuotaAccounts");
+  assert.equal(save.args.payload.api_key, "fixture-kimi-key");
+  const verify = app.calls.find(x => x.command === "verify_subscription");
+  assert.equal(verify.args.provider, "kimi");
+  assert.equal(app.state.settings.subscriptionProviders.kimi.verificationStatus, "ok");
+  assert.equal(app.state.settings.subscriptionProviders.kimi.failureReason, null);
+  assert.ok(
+    app.calls.some(x => x.command === "refresh_subscription"),
+    "验证通过即触发该 Provider 定向刷新",
+  );
 });
 
 test("credential accounts are keyed objects and save clears secret inputs", async () => {
@@ -747,6 +847,85 @@ test("Zhipu optional API address supplies the collector's required default", asy
   assert.equal(call.args.payload.base_url, "https://open.bigmodel.cn/api/paas/v4");
 });
 
+// C081: 三家 OAuth Provider 的 oauth 必须是采集端解析器认得的原生形状,
+// 扁平 {access_token} 会被采集端静默忽略 (保存成功但永远查不出额度)。
+// 载荷对象来自 harness 的独立 realm, 故按序列化结果比对 (deepStrictEqual 会因原型不同失败)。
+const oauthJSON = value => JSON.stringify(value);
+
+test("oauth providers save collector-native oauth shapes (C081)", async () => {
+  const claude = await boot({ html: "settings.html" });
+  claude.node("account-provider").value = "claudeQuotaAccounts";
+  claude.node("account-id").value = "work";
+  claude.node("account-secret").value = "fixture-access";
+  claude.node("account-secondary").value = "fixture-refresh";
+  await claude.node("account-save").click();
+  const claudeCall = claude.calls.find(x => x.command === "save_credential_account");
+  assert.equal(
+    oauthJSON(claudeCall.args.payload.oauth),
+    oauthJSON({ claudeAiOauth: { accessToken: "fixture-access", refreshToken: "fixture-refresh" } })
+  );
+
+  const grok = await boot({ html: "settings.html" });
+  grok.node("account-provider").value = "grokQuotaAccounts";
+  grok.node("account-id").value = "work";
+  grok.node("account-secret").value = "fixture-grok";
+  await grok.node("account-save").click();
+  const grokCall = grok.calls.find(x => x.command === "save_credential_account");
+  assert.equal(
+    oauthJSON(grokCall.args.payload.oauth),
+    oauthJSON({ "https://auth.x.ai::injected": { key: "fixture-grok" } })
+  );
+
+  const opencode = await boot({ html: "settings.html" });
+  opencode.node("account-provider").value = "opencodeGoQuotaAccounts";
+  opencode.node("account-id").value = "work";
+  opencode.node("account-extra").value = '{"auth":"Fe26.2**fixture","workspaceId":"wrk_fixture"}';
+  await opencode.node("account-save").click();
+  const opencodeCall = opencode.calls.find(x => x.command === "save_credential_account");
+  assert.equal(
+    oauthJSON(opencodeCall.args.payload.oauth),
+    oauthJSON({ auth: "Fe26.2**fixture", workspaceId: "wrk_fixture" })
+  );
+});
+
+test("claude paste keeps a wrapped entry and wraps a bare one (C081)", async () => {
+  const wrapped = await boot({ html: "settings.html" });
+  wrapped.node("account-provider").value = "claudeQuotaAccounts";
+  wrapped.node("account-id").value = "work";
+  wrapped.node("account-extra").value = '{"claudeAiOauth":{"accessToken":"fixture-wrapped","scopes":["a"]}}';
+  await wrapped.node("account-save").click();
+  const wrappedCall = wrapped.calls.find(x => x.command === "save_credential_account");
+  assert.equal(
+    oauthJSON(wrappedCall.args.payload.oauth),
+    oauthJSON({ claudeAiOauth: { accessToken: "fixture-wrapped", scopes: ["a"] } })
+  );
+
+  const bare = await boot({ html: "settings.html" });
+  bare.node("account-provider").value = "claudeQuotaAccounts";
+  bare.node("account-id").value = "work";
+  bare.node("account-extra").value = '{"accessToken":"fixture-bare"}';
+  await bare.node("account-save").click();
+  const bareCall = bare.calls.find(x => x.command === "save_credential_account");
+  assert.equal(
+    oauthJSON(bareCall.args.payload.oauth),
+    oauthJSON({ claudeAiOauth: { accessToken: "fixture-bare" } })
+  );
+});
+
+test("OpenCode GO requires auth and workspaceId and surfaces the reason (C081)", async () => {
+  const app = await boot({ html: "settings.html" });
+  app.node("account-provider").value = "opencodeGoQuotaAccounts";
+  app.node("account-id").value = "work";
+  app.node("account-extra").value = '{"auth":"Fe26.2**fixture"}';
+  await app.node("account-save").click();
+  assert.equal(
+    app.calls.some(call => call.command === "save_credential_account"),
+    false,
+    "缺 workspaceId 不得提交"
+  );
+  assert.match(app.node("account-status").textContent, /workspaceId/);
+});
+
 test("dashboard dismisses via Escape key calling hide_dashboard", async () => {
   const app = await boot();
   const start = app.calls.length;
@@ -781,6 +960,17 @@ test("styles.css guarantees adaptive height and pinned footer without flex trunc
   assert.match(css, /#scroll\s*\{[^}]*min-height:\s*0;/);
   assert.match(css, /#scroll\s*\{[^}]*flex:\s*1 1 0;/);
   assert.match(css, /#footer\s*\{[^}]*flex:\s*0 0 auto;/);
+});
+
+test("dashboard scroll area hides its scrollbar like mac but stays scrollable (C101)", () => {
+  // mac 看板 ScrollView 恒隐藏滚动指示条 (.scrollIndicators(.hidden) + C044 看门狗),
+  // Windows 同样不画滚动条; overflow-y 必须仍为 auto, 否则滚轮也滚不动。
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  assert.match(css, /#scroll\s*\{[^}]*overflow-y:\s*auto;/);
+  assert.match(css, /#scroll\s*\{[^}]*scrollbar-width:\s*none;/);
+  assert.match(css, /#scroll::-webkit-scrollbar\s*\{[^}]*display:\s*none;/);
+  assert.doesNotMatch(css, /#scroll\s*\{[^}]*scrollbar-color:/);
+  assert.doesNotMatch(css, /#scroll::-webkit-scrollbar-thumb/);
 });
 
 // ---------- C067: Windows 看板按 mac 源码逐项对齐的回归锁 ----------
@@ -850,17 +1040,21 @@ test("model usage chevron toggles top-3 and full list without an extra text row 
   assert.match(app.node("stack").textContent, /暂无模型数据/);
 });
 
-test("HUD header mirrors mac dashboardTopHeader in both themes (C067)", async () => {
+test("HUD header mirrors mac dashboardTopHeader in both themes (C067 / C100)", async () => {
   const app = await boot();
-  assert.equal(app.node("runtime-status").textContent, "SYS.OK", "健康态与 mac 同字");
+  assert.equal(app.node("runtime-status"), null, "C100 移除 SYS.OK 文字牌");
+  assert.equal(app.document.querySelector(".hud-brand").textContent, "Bruce", "品牌字统一为 Bruce");
+  assert.equal(app.node("hud-dot-wrap").classList.contains("tone-ok"), true);
+  assert.equal(app.node("hud-dot-wrap").getAttribute("title"), "运行正常");
   assert.equal(app.node("hud-agents").textContent, "● 2 AGENTS ACTIVE");
   app.state.settings.theme = "nothing";
   await app.emit("settings-updated", app.state.settings);
+  assert.equal(app.document.querySelector(".hud-brand").textContent, "Bruce", "Nothing 主题品牌字同样统一为 Bruce");
   assert.equal(app.node("hud-agents").textContent, "2 AGENTS RUNNING");
-  // 运行态异常仍显式可见 (C009), 且标记告警样式
+  // 运行态异常由顶部四色状态灯 (C100) 与 hover 原因承载
   await app.emit("dashboard-updated", { ...fixture, runtime: { phase: "stale" } });
-  assert.equal(app.node("runtime-status").textContent, "数据过期");
-  assert.equal(app.node("runtime-status").classList.contains("degraded"), true);
+  assert.equal(app.node("hud-dot-wrap").classList.contains("tone-warn"), true);
+  assert.equal(app.node("hud-dot-wrap").getAttribute("title"), "数据过期");
 });
 
 test("Nothing dot columns fill top-down like mac nothingCellSlots (C067)", async () => {
@@ -980,7 +1174,8 @@ test("scoped refresh refusal is silent and only restores the button (C080, mac p
   assert.equal(app.node("dashboard-diagnostics"), null, "顶部无诊断行元素");
   // 可见反馈仅为按钮恢复可点 (对齐 mac RefreshScheduler.refreshSubscription 的静默 return)
   assert.equal(button.disabled, false, "拒绝后按钮恢复可点");
-  assert.equal(app.node("runtime-status").textContent, "SYS.OK", "定向刷新被拒不代表整体运行失败");
+  assert.equal(app.node("hud-dot-wrap").classList.contains("tone-ok"), true, "定向刷新被拒不代表整体运行失败");
+  assert.equal(app.node("hud-dot-wrap").getAttribute("title"), "运行正常");
 });
 
 test("settings saves are serialized and each merges the latest backend state (C069)", async () => {
@@ -1000,8 +1195,10 @@ test("settings saves are serialized and each merges the latest backend state (C0
 });
 
 test("Claude local login state renders status text and imports from the machine (C075)", async () => {
+  // C082: 本机登录态控件移入 Claude 配置对话框 (元素 id 与 C075 一致), 面板构建时仍先探测一次。
   const followed = await boot({ html: "settings.html" });
-  assert.ok(followed.calls.some((call) => call.command === "claude_local_status"), "初始化即探测本机登录态");
+  assert.ok(followed.calls.some((call) => call.command === "claude_local_status"), "面板构建即探测本机登录态");
+  await followed.node("provider-configure-claude").click();
   assert.equal(followed.node("claude-local-state").textContent, "已启用，自动跟随本机 Claude CLI 登录态");
   assert.equal(followed.node("claude-local-state").classList.contains("ok"), true);
   const start = followed.calls.length;
@@ -1013,10 +1210,12 @@ test("Claude local login state renders status text and imports from the machine 
   assert.equal(followed.node("claude-local-status").textContent, "已读取本机 Claude 登录态并保存");
 
   const missing = await boot({ html: "settings.html", claudeLocal: { status: "notFound", storedAccountCount: 0 } });
+  await missing.node("provider-configure-claude").click();
   assert.equal(missing.node("claude-local-state").textContent, "未检测到本机 Claude 登录态，登录 Claude CLI 后自动跟随");
   assert.equal(missing.node("claude-local-state").classList.contains("off"), true);
 
   const expired = await boot({ html: "settings.html", claudeLocal: { status: "expired", storedAccountCount: 1 } });
+  await expired.node("provider-configure-claude").click();
   assert.equal(expired.node("claude-local-state").textContent, "登录已过期，运行一次 Claude CLI 可自动恢复，Bruce 会重新跟随");
 });
 
@@ -1035,12 +1234,13 @@ test("dashboard top carries no runtime status line in any phase (C079)", async (
     assert.equal(app.node("dashboard-status"), null, `phase=${runtime.phase} 顶部无状态行元素`);
     assert.equal(app.node("dashboard-diagnostics"), null);
   }
-  // 状态牌语义未变 (C009): 健康态 SYS.OK, 异常态中文 + degraded
+  // C100: 状态灯承载四色与 hover 原因
   await app.emit("dashboard-updated", withRuntime({ phase: "fresh" }));
-  assert.equal(app.node("runtime-status").textContent, "SYS.OK");
-  await app.emit("dashboard-updated", withRuntime({ phase: "partial" }));
-  assert.equal(app.node("runtime-status").textContent, "部分失败");
-  assert.equal(app.node("runtime-status").classList.contains("degraded"), true);
+  assert.equal(app.node("hud-dot-wrap").classList.contains("tone-ok"), true);
+  assert.equal(app.node("hud-dot-wrap").getAttribute("title"), "运行正常");
+  await app.emit("dashboard-updated", withRuntime({ phase: "partial", error: "COLLECTION_PARTIAL" }));
+  assert.equal(app.node("hud-dot-wrap").classList.contains("tone-warn"), true);
+  assert.equal(app.node("hud-dot-wrap").getAttribute("title"), "部分失败 · 部分来源未能采集");
 });
 
 test("service faults stay inside the subscription card, never at the dashboard top (C079)", async () => {
@@ -1061,3 +1261,620 @@ test("service faults stay inside the subscription card, never at the dashboard t
   assert.doesNotMatch(app.node("stack").textContent, /未发现会话记录/);
 });
 
+test("dashboard tabbed layout toggles single card, supports directional slide and persists selection (C088)", async () => {
+  // 1. Stack 默认布局: 显示 hud-agents, 隐藏 hud-tabs, 堆叠多张卡片
+  const stackApp = await boot({ settings: { ...defaults, layoutMode: "stack" } });
+  assert.equal(stackApp.node("hud-tabs").style.display, "none");
+  assert.equal(stackApp.node("hud-agents").style.display, "");
+  assert.ok(stackApp.node("stack").children.length >= 2, "stack 模式展示级联多卡");
+
+  // 2. Tabbed 布局: 隐藏 hud-agents, 显示 hud-tabs, stack 仅渲染单卡
+  const tabApp = await boot({ settings: { ...defaults, layoutMode: "tabbed", activeCardId: "usage" } });
+  assert.equal(tabApp.node("hud-tabs").style.display, "inline-flex");
+  assert.equal(tabApp.node("hud-agents").style.display, "none");
+  assert.equal(tabApp.node("stack").children.length, 1, "tab 模式仅展示 1 张激活卡片");
+  assert.equal(tabApp.node("tab-btn-usage").classList.contains("active"), true);
+  assert.equal(tabApp.node("tab-active-dot").style.display, "block", "角标融合: 有活跃 Agent 时第 3 图标显示绿点");
+
+  // 3. 点击切卡至 subscription
+  await tabApp.node("tab-btn-subscription").click();
+  await settle();
+  assert.equal(tabApp.node("tab-btn-subscription").classList.contains("active"), true);
+  assert.equal(tabApp.node("tab-btn-usage").classList.contains("active"), false);
+  assert.equal(tabApp.node("stack").children.length, 1);
+  assert.equal(tabApp.state.settings.activeCardId, "subscription", "持久化已激活卡片");
+
+  // 4. 键盘数字键 3 切至 hourly
+  await tabApp.window.dispatch("keydown", { key: "3" });
+  await settle();
+  assert.equal(tabApp.node("tab-btn-hourly").classList.contains("active"), true);
+  assert.equal(tabApp.node("stack").children.length, 1);
+  assert.equal(tabApp.state.settings.activeCardId, "hourly");
+});
+
+
+
+// MARK: - C089 / C090 / C091 / C093 / C094 / C096 订阅额度页语义与文案
+
+test("removing a service deletes every credential and drops it from the added set (C089)", async () => {
+  const accounts = [
+    { field: "kimiQuotaAccounts", accountId: "k1", displayName: "k1", authorizationState: "ok" },
+    { field: "kimiQuotaAccounts", accountId: "k2", displayName: "k2", authorizationState: "ok" },
+    { field: "clineQuotaAccounts", accountId: "c1", displayName: "c1", authorizationState: "ok" },
+  ];
+  const app = await boot({
+    html: "settings.html",
+    accounts,
+    settings: { ...defaults, enabledProviders: ["kimi", "cline"] },
+  });
+  await app.node("provider-configure-kimi").click();
+  // 二次确认: 点「移除服务」不得立即删除 (对齐 mac 的破坏性语义)
+  await app.node("cfg-remove-provider-kimi").click();
+  assert.equal(
+    app.calls.some(call => call.command === "remove_credential_account"),
+    false,
+    "确认前不得删除凭据",
+  );
+  await app.node("cfg-remove-confirm-kimi").click();
+  // 一次原子删除整个 Provider 的凭据 (含界面不可见的不合规账号), 不再逐账号调用
+  const removed = app.calls.filter(call => call.command === "remove_provider_credentials");
+  assert.deepEqual(removed.map(call => call.args.provider), ["kimi"], "删除该 Provider 的全部凭据");
+  assert.equal(
+    app.calls.some(call => call.command === "remove_credential_account"),
+    false,
+    "不得逐账号删除 (中途失败会留下半删状态)",
+  );
+  assert.equal(app.state.settings.subscriptionProviders.kimi, undefined, "移出已添加集合");
+  assert.deepEqual(
+    [...app.state.settings.enabledProviders],
+    ["cline"],
+    "启用集合随已添加集合收敛, 移除即停止查询",
+  );
+
+  // 重新添加: 账号列表为空, 且默认关闭 —— 旧账号不复活
+  const option = [...app.document.querySelectorAll("#provider-add-row .cfg-picker-option")]
+    .find(node => node.textContent.includes("Kimi"));
+  await option.click();
+  await app.node("provider-add-confirm").click();
+  await settle();
+  assert.equal(app.state.settings.subscriptionProviders.kimi.enabled, false);
+  assert.equal(app.node("provider-dialog").dataset.provider, "kimi", "重新添加即打开配置对话框");
+  assert.doesNotMatch(app.node("provider-dialog").textContent, /已配置账号/, "重新添加后无旧账号");
+  assert.equal(app.node("cfg-status").textContent, "未配置");
+});
+
+test("a failed service removal keeps the service and all of its state (C089)", async () => {
+  const app = await boot({
+    html: "settings.html",
+    accounts: [{ field: "kimiQuotaAccounts", accountId: "k1", displayName: "k1", authorizationState: "ok" }],
+    reject: { remove_provider_credentials: "凭证存储事务不可用" },
+    settings: {
+      ...defaults,
+      enabledProviders: ["kimi"],
+      subscriptionProviders: {
+        kimi: { enabled: true, lastVerifiedAt: null, verificationStatus: "ok", failureReason: null },
+      },
+    },
+  });
+  await app.node("provider-configure-kimi").click();
+  await app.node("cfg-remove-provider-kimi").click();
+  const saves = app.calls.filter(call => call.command === "save_settings_command").length;
+  await app.node("cfg-remove-confirm-kimi").click();
+  assert.match(app.node("cfg-status").textContent, /移除失败：凭证存储事务不可用/, "失败原因就地可见");
+  assert.equal(
+    app.calls.filter(call => call.command === "save_settings_command").length,
+    saves,
+    "凭据删除失败时不得改动已添加集合",
+  );
+  assert.equal(app.state.settings.subscriptionProviders.kimi.enabled, true, "启用态保持不变");
+  assert.equal(app.node("provider-dialog").classList.contains("hidden"), false, "对话框保持打开");
+});
+
+test("verification result drives the enable switch and re-adding starts disabled (C090)", async () => {
+  const app = await boot({ html: "settings.html", settings: { ...defaults, enabledProviders: ["kimi"] } });
+  // 添加服务为两步交互 (C096): 选中仅暂存, 必须再点「添加…」
+  const option = [...app.document.querySelectorAll("#provider-add-row .cfg-picker-option")]
+    .find(node => node.textContent.includes("Grok"));
+  await option.click();
+  assert.equal(
+    app.state.settings.subscriptionProviders?.grok,
+    undefined,
+    "选中下拉项不产生已添加行",
+  );
+  assert.equal(app.node("provider-add-confirm").disabled, false, "选中后「添加…」可点");
+  await app.node("provider-add-confirm").click();
+  assert.equal(app.state.settings.subscriptionProviders.grok.enabled, false, "新添加的 Provider 默认关闭");
+  assert.equal(
+    app.state.settings.enabledProviders.includes("grok"),
+    false,
+    "未验证的新 Provider 不进入启用集合",
+  );
+});
+
+test("verification ok enables and failed / needsRelogin disables, and the switch follows (C090)", async () => {
+  let next = { status: "ok", reason: null };
+  const app = await boot({
+    html: "settings.html",
+    accounts: [{ field: "kimiQuotaAccounts", accountId: "k1", displayName: "k1", authorizationState: "ok" }],
+    verify: () => next,
+    settings: {
+      ...defaults,
+      enabledProviders: [],
+      subscriptionProviders: {
+        kimi: { enabled: false, lastVerifiedAt: null, verificationStatus: "none", failureReason: null },
+      },
+    },
+  });
+  // 首轮渲染不得把未启用的开关画成开启 (设置载入前不回落为「全部启用」)
+  assert.equal(app.node("provider-kimi").checked, false, "启动时开关与已保存启用态一致");
+
+  await app.node("provider-configure-kimi").click();
+  app.node("cfg-kimi-apiKey").value = "fixture-kimi-key";
+  await app.node("cfg-kimi-apiKey").dispatch("input");
+  await app.node("cfg-save-kimi").click();
+  assert.equal(app.state.settings.subscriptionProviders.kimi.enabled, true, "验证 ok → 启用");
+  assert.deepEqual(app.state.settings.enabledProviders, ["kimi"]);
+  assert.equal(app.node("provider-kimi").checked, true, "开关随验证结果打开");
+
+  next = { status: "failed", reason: "API key 无效或已过期" };
+  await app.node("cfg-reverify-kimi").click();
+  assert.equal(app.state.settings.subscriptionProviders.kimi.enabled, false, "验证 failed → 禁用");
+  assert.equal(app.state.settings.subscriptionProviders.kimi.failureReason, "API key 无效或已过期");
+  assert.equal(app.node("provider-kimi").checked, false, "开关随验证失败关闭");
+
+  next = { status: "ok", reason: null };
+  await app.node("cfg-reverify-kimi").click();
+  assert.equal(app.node("provider-kimi").checked, true);
+  next = { status: "needsRelogin", reason: null };
+  await app.node("cfg-reverify-kimi").click();
+  assert.equal(app.state.settings.subscriptionProviders.kimi.enabled, false, "验证 needsRelogin → 禁用");
+  assert.equal(app.node("provider-kimi").checked, false, "开关随需重新登录关闭");
+
+  // 外部变更 (后端 settings-updated) 后开关取已保存启用态, 不沿用重绘前的勾选
+  app.state.settings.subscriptionProviders.kimi.enabled = true;
+  app.state.settings.enabledProviders = ["kimi"];
+  await app.emit("settings-updated", app.state.settings);
+  assert.equal(app.node("provider-kimi").checked, true, "开关跟随已保存启用态");
+});
+
+test("row status tail reflects verification status and local CLI follow (C091)", async () => {
+  const accounts = [
+    { field: "kimiQuotaAccounts", accountId: "k1", displayName: "k1", authorizationState: "ok" },
+    { field: "clineQuotaAccounts", accountId: "c1", displayName: "c1", authorizationState: "ok" },
+  ];
+  const app = await boot({
+    html: "settings.html",
+    accounts,
+    settings: {
+      ...defaults,
+      enabledProviders: ["kimi", "cline"],
+      subscriptionProviders: {
+        kimi: { enabled: false, lastVerifiedAt: null, verificationStatus: "failed", failureReason: "API key 无效或已过期" },
+        cline: { enabled: false, lastVerifiedAt: null, verificationStatus: "needsRelogin", failureReason: null },
+      },
+    },
+  });
+  const tail = (name) => [...app.node("setting-providers").querySelectorAll(".provider-row")]
+    .find(row => row.querySelector(".provider-name").textContent === name)
+    .querySelector(".auth-state");
+  assert.equal(tail("Kimi").textContent, "验证失败", "验证失败不得伪装成已配置");
+  assert.equal(tail("Kimi").classList.contains("warn"), true);
+  assert.equal(tail("Cline").textContent, "需重新登录");
+
+  // 本机 CLI 只读跟随计入「已配置」(对齐 mac claudeAppOrLocalProbe)
+  const followed = await boot({
+    html: "settings.html",
+    accounts: [],
+    claudeLocal: { status: "followed", storedAccountCount: 0 },
+    settings: { ...defaults, enabledProviders: ["claude"] },
+  });
+  const followedRow = [...followed.node("setting-providers").querySelectorAll(".provider-row")][0];
+  assert.equal(followedRow.querySelector(".auth-state").textContent, "已配置", "跟随中视为已配置");
+
+  const absent = await boot({
+    html: "settings.html",
+    accounts: [],
+    claudeLocal: { status: "notFound", storedAccountCount: 0 },
+    settings: { ...defaults, enabledProviders: ["claude"] },
+  });
+  const absentRow = [...absent.node("setting-providers").querySelectorAll(".provider-row")][0];
+  assert.equal(absentRow.querySelector(".auth-state").textContent, "未配置");
+});
+
+test("local CLI follow counts as configured for the switch, dialog and verification (C091)", async () => {
+  const added = { claude: { enabled: false, lastVerifiedAt: null, verificationStatus: "none", failureReason: null } };
+  const app = await boot({
+    html: "settings.html",
+    accounts: [],
+    claudeLocal: { status: "followed", storedAccountCount: 0 },
+    settings: { ...defaults, enabledProviders: [], subscriptionProviders: added },
+  });
+  // 行尾件、开关、对话框横幅共用同一「已配置」判据 (对齐 mac `.disabled(!configured)`)
+  assert.equal(app.node("provider-claude").disabled, false, "跟随中 → 开关可用");
+  await app.node("provider-configure-claude").click();
+  assert.equal(app.node("cfg-status").textContent, "已配置 · 未验证", "对话框不得写「未配置」");
+  assert.ok(app.node("cfg-reverify-claude"), "跟随中可重新验证");
+  await app.node("cfg-reverify-claude").click();
+  assert.equal(app.calls.find(call => call.command === "verify_subscription").args.provider, "claude");
+  assert.equal(app.state.settings.subscriptionProviders.claude.enabled, true, "跟随验证通过 → 启用");
+  assert.equal(app.node("provider-claude").checked, true);
+
+  const absent = await boot({
+    html: "settings.html",
+    accounts: [],
+    claudeLocal: { status: "notFound", storedAccountCount: 0 },
+    settings: { ...defaults, enabledProviders: [], subscriptionProviders: added },
+  });
+  assert.equal(absent.node("provider-claude").disabled, true, "未配置且未启用 → 开关禁用");
+  await absent.node("provider-configure-claude").click();
+  assert.equal(absent.node("cfg-status").textContent, "未配置");
+  assert.equal(absent.node("cfg-reverify-claude"), null);
+});
+
+test("StepFun site is written only when explicitly chosen (C093)", async () => {
+  const unselected = await boot({
+    html: "settings.html",
+    settings: { ...defaults, enabledProviders: ["stepfun"] },
+  });
+  await unselected.node("provider-configure-stepfun").click();
+  assert.equal(unselected.node("cfg-stepfun-site-domestic").checked, false, "站点默认不预选");
+  assert.equal(unselected.node("cfg-stepfun-site-global").checked, false, "站点默认不预选");
+  unselected.node("cfg-stepfun-token").value = "fixture-oasis-token";
+  await unselected.node("cfg-stepfun-token").dispatch("input");
+  await unselected.node("cfg-save-stepfun").click();
+  const saved = unselected.calls.filter(call => call.command === "save_credential_account").pop();
+  assert.equal("site" in saved.args.payload, false, "未选择站点时不写入 site, 交由采集端按令牌推导");
+  assert.equal("is_global" in saved.args.payload, false);
+
+  const chosen = await boot({
+    html: "settings.html",
+    settings: { ...defaults, enabledProviders: ["stepfun"] },
+  });
+  await chosen.node("provider-configure-stepfun").click();
+  chosen.node("cfg-stepfun-token").value = "fixture-oasis-token";
+  await chosen.node("cfg-stepfun-token").dispatch("input");
+  chosen.node("cfg-stepfun-site-global").checked = true;
+  await chosen.node("cfg-save-stepfun").click();
+  const explicit = chosen.calls.filter(call => call.command === "save_credential_account").pop();
+  assert.equal(explicit.args.payload.site, "global", "显式选择写入 site");
+  assert.equal(explicit.args.payload.is_global, true);
+});
+
+test("consent summary lists only enabled and configured providers (C094)", async () => {
+  const app = await boot({
+    html: "settings.html",
+    accounts: [{ field: "kimiQuotaAccounts", accountId: "k1", displayName: "k1", authorizationState: "ok" }],
+    settings: { ...defaults, enabledProviders: ["kimi", "cline"] },
+  });
+  const summary = app.node("consent-list").textContent;
+  assert.match(summary, /Kimi/, "已启用且已配置的 Provider 进入摘要");
+  assert.doesNotMatch(summary, /Cline/, "未配置的 Provider 不得出现在摘要");
+
+  const empty = await boot({ html: "settings.html", accounts: [], settings: { ...defaults, enabledProviders: [] } });
+  assert.match(empty.node("consent-list").textContent, /不会访问云端额度接口/, "空集走兜底文案");
+});
+
+test("consent summary follows verification, the switch and settings updates (C094)", async () => {
+  const app = await boot({
+    html: "settings.html",
+    accounts: [{ field: "kimiQuotaAccounts", accountId: "k1", displayName: "k1", authorizationState: "ok" }],
+    claudeLocal: { status: "notFound", storedAccountCount: 0 },
+    settings: {
+      ...defaults,
+      enabledProviders: [],
+      subscriptionProviders: {
+        kimi: { enabled: false, lastVerifiedAt: null, verificationStatus: "none", failureReason: null },
+      },
+    },
+  });
+  const summary = () => app.node("consent-list").textContent;
+  assert.match(summary(), /不会访问云端额度接口/, "已配置但未启用不入摘要");
+
+  await app.node("provider-configure-kimi").click();
+  app.node("cfg-kimi-apiKey").value = "fixture-kimi-key";
+  await app.node("cfg-kimi-apiKey").dispatch("input");
+  await app.node("cfg-save-kimi").click();
+  assert.match(summary(), /查询已启用订阅 Provider 的云端额度：Kimi/, "验证通过启用后摘要立即出现该 Provider");
+
+  app.node("provider-kimi").checked = false;
+  await app.node("provider-kimi").dispatch("change");
+  assert.equal(app.state.settings.subscriptionProviders.kimi.enabled, false);
+  assert.match(summary(), /不会访问云端额度接口/, "手动关闭后摘要立即移除");
+
+  app.state.settings.subscriptionProviders.kimi.enabled = true;
+  app.state.settings.enabledProviders = ["kimi"];
+  await app.emit("settings-updated", app.state.settings);
+  assert.match(summary(), /Kimi/, "后端 settings-updated 后摘要同步");
+});
+
+test("subscription pane wording and layout follow mac (C096)", async () => {
+  const app = await boot({ html: "settings.html", accounts: [], settings: { ...defaults, enabledProviders: [] } });
+  // 底部提示位于两张卡下方且逐字含「统一」
+  const hint = app.document.querySelectorAll(".subscription-hint");
+  assert.equal(hint.length, 1);
+  assert.match(hint[0].textContent, /统一授权生效时/);
+  const cards = [...app.node("pane-subscription-content").querySelectorAll(".fluent-card")];
+  assert.equal(cards.at(-1).querySelector(".subscription-hint"), null, "提示不在卡内");
+  // 空态副标题
+  assert.match(app.node("setting-providers").textContent, /尚未配置任何订阅 Provider/);
+  assert.match(app.node("setting-providers").textContent, /从下方添加服务/);
+});
+
+test("verified dialog banner carries the mac suffix and account removal asks first (C096)", async () => {
+  const accounts = [{ field: "kimiQuotaAccounts", accountId: "k1", displayName: "k1", authorizationState: "ok" }];
+  const app = await boot({
+    html: "settings.html",
+    accounts,
+    settings: {
+      ...defaults,
+      enabledProviders: ["kimi"],
+      subscriptionProviders: {
+        kimi: { enabled: true, lastVerifiedAt: "2026-10-22T08:00:00Z", verificationStatus: "ok", failureReason: null },
+      },
+    },
+  });
+  await app.node("provider-configure-kimi").click();
+  assert.match(app.node("cfg-status").textContent, /· 验证通过/, "验证通过横幅带 mac 后缀");
+
+  // 账号移除需二次确认
+  await app.node("cfg-remove-k1").click();
+  assert.equal(
+    app.calls.some(call => call.command === "remove_credential_account"),
+    false,
+    "确认前不得删除账号",
+  );
+  assert.match(app.node("provider-dialog").textContent, /移除 k1 账号\?/);
+  await app.node("cfg-remove-confirm-k1").click();
+  const removed = app.calls.find(call => call.command === "remove_credential_account");
+  assert.equal(removed.args.accountId, "k1", "确认后才删除");
+});
+
+test("rejected legacy accounts are explained in the dialog and stay out of the account list (C092)", async () => {
+  const app = await boot({
+    html: "settings.html",
+    accounts: [],
+    rejections: [{ field: "kimiQuotaAccounts", accountId: "legacy", reason: "api_key 含空白字符, 格式不合理" }],
+    settings: { ...defaults, enabledProviders: ["kimi"] },
+  });
+  const row = [...app.node("setting-providers").querySelectorAll(".provider-row")][0];
+  assert.equal(row.querySelector(".auth-state").textContent, "未配置", "不合规账号不计入已配置");
+  assert.equal(row.querySelector(".provider-sub").textContent, "Web 令牌", "账号数不把不合规记录算进去");
+  await app.node("provider-configure-kimi").click();
+  assert.match(
+    app.node("cfg-rejections-kimi").textContent,
+    /存在 1 个格式不合规的旧账号.*legacy（api_key 含空白字符, 格式不合理）/,
+    "对话框须说明原因",
+  );
+});
+
+test("re-saving the same StepFun token upserts one account and clears a stale site (C093)", async () => {
+  const app = await boot({ html: "settings.html", settings: { ...defaults, enabledProviders: ["stepfun"] } });
+  // 旧版行为: 站点单选默认选中并写入国内站
+  await app.node("provider-configure-stepfun").click();
+  app.node("cfg-stepfun-token").value = "fixture-oasis-token";
+  await app.node("cfg-stepfun-token").dispatch("input");
+  app.node("cfg-stepfun-site-domestic").checked = true;
+  await app.node("cfg-save-stepfun").click();
+  const first = app.calls.filter(call => call.command === "save_credential_account").pop();
+  assert.equal(first.args.payload.site, "domestic");
+
+  // 修复后再存同一 token 且不选站点: 必须 upsert 到同一账号并清除旧站点
+  await app.node("provider-configure-stepfun").click();
+  app.node("cfg-stepfun-token").value = "fixture-oasis-token";
+  await app.node("cfg-stepfun-token").dispatch("input");
+  await app.node("cfg-save-stepfun").click();
+  const second = app.calls.filter(call => call.command === "save_credential_account").pop();
+  assert.equal(second.args.accountId, first.args.accountId, "同一 token 必须落在同一账号 (不产生重复)");
+  assert.equal("site" in second.args.payload, false, "未选站点时清除旧站点, 由采集端按令牌推导");
+  assert.equal("is_global" in second.args.payload, false);
+});
+
+test("add button follows the picker and the banner uses the mac relogin wording (C096)", async () => {
+  const app = await boot({
+    html: "settings.html",
+    accounts: [{ field: "kimiQuotaAccounts", accountId: "k1", displayName: "k1", authorizationState: "ok" }],
+    settings: {
+      ...defaults,
+      enabledProviders: ["kimi"],
+      subscriptionProviders: {
+        kimi: { enabled: false, lastVerifiedAt: null, verificationStatus: "needsRelogin", failureReason: null },
+      },
+    },
+  });
+  const children = [...app.node("provider-add-row").children];
+  const pickerIndex = children.findIndex(child => child.classList?.contains("cfg-picker"));
+  const buttonIndex = children.findIndex(child => child.id === "provider-add-confirm");
+  assert.ok(pickerIndex >= 0 && buttonIndex >= 0, "选择器与「添加…」都存在");
+  assert.ok(pickerIndex < buttonIndex, "「添加…」必须位于选择器之后");
+
+  // 对话框横幅用 mac ProviderStatusBanner 的「需要重新登录」;
+  // 行尾件保持 mac subscriptionStatusTail 的「需重新登录」—— mac 本就不同。
+  await app.node("provider-configure-kimi").click();
+  assert.match(app.node("cfg-status").textContent, /需要重新登录/);
+  const row = [...app.node("setting-providers").querySelectorAll(".provider-row")][0];
+  assert.equal(row.querySelector(".auth-state").textContent, "需重新登录");
+});
+
+test("hotkey recorder normalizes physical key codes, blocks reserved combos, and suspends backend hotkey during recording (C099)", async () => {
+  const app = await boot({ html: "settings.html" });
+  await app.document.querySelector('[data-category="general"]').click();
+
+  const field = app.node("setting-hotkey");
+  const recordBtn = app.node("hotkey-record");
+
+  // 1. 进入录制态: 按钮文案更新且通知后端挂起全局热键
+  await recordBtn.click();
+  assert.equal(field.dataset.recording, "true");
+  assert.match(recordBtn.textContent, /按键中/);
+  assert.ok(app.calls.some(c => c.command === "set_hotkey_recording" && c.args.recording === true));
+
+  // 2. Ctrl+Shift+1: 浏览器上报 key="!" 但物理 code="Digit1"，必须规范化为 Control+Shift+1
+  await field.dispatch("keydown", { ctrlKey: true, shiftKey: true, key: "!", code: "Digit1" });
+  assert.equal(field.dataset.recording, "false");
+  assert.equal(field.value, "Control+Shift+1");
+  assert.equal(app.state.settings.hotkey, "Control+Shift+1");
+  assert.ok(app.calls.some(c => c.command === "set_hotkey_recording" && c.args.recording === false));
+
+  // 3. Alt+Space: key=" " 规范化为 Alt+Space
+  await recordBtn.click();
+  await field.dispatch("keydown", { altKey: true, key: " ", code: "Space" });
+  assert.equal(field.value, "Alt+Space");
+  assert.equal(app.state.settings.hotkey, "Alt+Space");
+
+  // 4. 系统保留热键 (Alt+Tab) 与纯 Shift+字母拦截，不落盘
+  await recordBtn.click();
+  await field.dispatch("keydown", { altKey: true, key: "Tab", code: "Tab" });
+  assert.equal(field.dataset.recording, "true", "系统保留组合键拦截后仍留在录制态重录");
+  assert.equal(app.node("settings-status").dataset.tone, "warn");
+  await field.dispatch("keydown", { shiftKey: true, key: "A", code: "KeyA" });
+  assert.equal(field.dataset.recording, "true", "纯 Shift+字母不允许作为全局热键");
+
+  // 5. Escape 取消录制并恢复已生效热键显示
+  await field.dispatch("keydown", { key: "Escape", code: "Escape" });
+  assert.equal(field.dataset.recording, "false");
+  assert.equal(field.value, "Alt+Space");
+
+  // 6. 失焦 (blur) 自动退出录制态并恢复原值
+  await recordBtn.click();
+  assert.equal(field.value, "");
+  await field.dispatch("blur");
+  assert.equal(field.dataset.recording, "false");
+  assert.equal(field.value, "Alt+Space");
+});
+
+test("hotkey recorder keeps numpad keys distinct, rejects unsupported keys, cancels from the button, and reports a failed resume (C099)", async () => {
+  const app = await boot({ html: "settings.html", settings: { ...defaults, hotkey: "Control+Shift+B" } });
+  await app.document.querySelector('[data-category="general"]').click();
+  const field = app.node("setting-hotkey");
+  const recordBtn = app.node("hotkey-record");
+
+  // 1. 小键盘数字在 global-hotkey 中与主键盘数字是不同的键, 必须录成 Numpad1 而不是 1
+  await recordBtn.click();
+  await field.dispatch("keydown", { ctrlKey: true, altKey: true, key: "1", code: "Numpad1" });
+  assert.equal(field.value, "Control+Alt+Numpad1");
+  assert.equal(app.state.settings.hotkey, "Control+Alt+Numpad1");
+  await recordBtn.click();
+  await field.dispatch("keydown", { ctrlKey: true, key: "+", code: "NumpadAdd" });
+  assert.equal(app.state.settings.hotkey, "Control+NumpadAdd", "小键盘 + 不得拼成无法解析的 Control++");
+
+  // 2. global-hotkey 不认识的键码直接拦截提示, 不落盘也不退出录制
+  await recordBtn.click();
+  await field.dispatch("keydown", { ctrlKey: true, key: "ContextMenu", code: "ContextMenu" });
+  assert.equal(field.dataset.recording, "true");
+  assert.equal(app.node("settings-status").dataset.tone, "warn");
+  assert.match(app.node("settings-status").textContent, /不支持/);
+  assert.equal(app.state.settings.hotkey, "Control+NumpadAdd");
+
+  // 3. 录制中按下录制按钮不夺走输入框焦点 (WebView2 先 blur 后 click), 再次点击即取消录制
+  let prevented = false;
+  await recordBtn.dispatch("mousedown", { preventDefault() { prevented = true; } });
+  assert.equal(prevented, true, "录制中按下按钮必须阻止输入框失焦");
+  await recordBtn.click();
+  assert.equal(field.dataset.recording, "false");
+  assert.equal(field.value, "Control+NumpadAdd");
+  assert.equal(app.node("settings-status").textContent, "已取消快捷键录制");
+  const recordingCalls = app.calls.filter(c => c.command === "set_hotkey_recording").map(c => c.args.recording);
+  assert.deepEqual(recordingCalls.slice(-2), [true, false], "进入与退出录制各通知后端一次");
+  prevented = false;
+  await recordBtn.dispatch("mousedown", { preventDefault() { prevented = true; } });
+  assert.equal(prevented, false, "非录制态不干预按钮默认焦点行为");
+
+  // 4. 退出录制时后端恢复已生效热键失败: 必须提示用户当前热键已失效
+  const failing = await boot({ html: "settings.html", settings: { ...defaults, hotkey: "Control+Shift+B" }, reject: { set_hotkey_recording: "HOTKEY_RESUME_FAILED" } });
+  await failing.document.querySelector('[data-category="general"]').click();
+  await failing.node("hotkey-record").click();
+  await settle();
+  assert.notEqual(failing.node("settings-status").dataset.tone, "warn", "进入录制失败不打扰");
+  await failing.node("setting-hotkey").dispatch("keydown", { key: "Escape", code: "Escape" });
+  await settle();
+  assert.equal(failing.node("settings-status").dataset.tone, "warn");
+  assert.match(failing.node("settings-status").textContent, /恢复失败/);
+});
+
+test("top HUD four-color status light matches shared parity fixture and drives DOM tone/tooltip (C100)", async () => {
+  const app = await boot();
+  const parity = JSON.parse(
+    readFileSync(new URL("../../../tests/fixtures/status-tone-parity/cases.json", import.meta.url), "utf8"),
+  );
+  assert.ok(parity.cases.length >= 20, "共享 fixture 覆盖全部判定分支");
+  for (const item of parity.cases) {
+    const resolved = app.context.resolveDashboardStatus({
+      moduleState: item.moduleState,
+      subscriptions: item.subscriptions,
+      hasData: item.hasData,
+      detail: item.detail,
+    });
+    assert.equal(resolved.tone, item.expectedTone, `${item.name}: tone`);
+    assert.equal(resolved.isRefreshing, item.expectedRefreshing, `${item.name}: isRefreshing`);
+    assert.equal(resolved.reason, item.expectedReason, `${item.name}: reason`);
+  }
+
+  // DOM 呈现: 四色状态灯 + refreshing 脉冲 + hover 原因 + 品牌字 Bruce + 无 #runtime-status
+  const dotWrap = app.node("hud-dot-wrap");
+  assert.equal(app.node("runtime-status"), null, "删除 #runtime-status 文字牌");
+  assert.equal(dotWrap.getAttribute("role"), "status", "迁移 role=status 语义");
+  assert.equal(app.document.querySelector(".hud-brand").textContent, "Bruce");
+
+  // 1. 绿 (ok)
+  await app.emit("dashboard-updated", { ...fixture, runtime: { phase: "fresh" } });
+  assert.equal(dotWrap.classList.contains("tone-ok"), true);
+  assert.equal(dotWrap.classList.contains("refreshing"), false);
+  assert.equal(dotWrap.getAttribute("title"), "运行正常");
+  assert.equal(dotWrap.getAttribute("aria-label"), "运行正常");
+
+  // 2. 黄 (warn: 订阅段 partial 提升采集 fresh), 原因点名该服务
+  const subWarnPanel = structuredClone(fixture);
+  subWarnPanel.runtime = { phase: "fresh" };
+  subWarnPanel.subscription.sections[0].status = "partial";
+  await app.emit("dashboard-updated", subWarnPanel);
+  assert.equal(dotWrap.classList.contains("tone-warn"), true);
+  assert.equal(dotWrap.getAttribute("title"), "部分失败 · Kimi");
+
+  // 3. 红 (error: 订阅段 error 提升采集 partial): 原因点名订阅服务, 不挂采集侧错误
+  const subErrorPanel = structuredClone(fixture);
+  subErrorPanel.runtime = { phase: "partial", error: "COLLECTION_PARTIAL" };
+  subErrorPanel.subscription.sections[0].status = "error";
+  await app.emit("dashboard-updated", subErrorPanel);
+  assert.equal(dotWrap.classList.contains("tone-error"), true);
+  assert.equal(dotWrap.getAttribute("title"), "失败 · Kimi");
+
+  // 3b. Windows runtime.error 只是机器码: 已登记的码展示中文释义, 未登记的码绝不外露
+  await app.emit("dashboard-updated", { ...fixture, runtime: { phase: "stale", error: "SNAPSHOT_RESTORED" } });
+  assert.equal(dotWrap.getAttribute("title"), "数据过期 · 显示上次保存的数据");
+  await app.emit("dashboard-updated", { ...fixture, runtime: { phase: "stale", error: "NETWORK_UNAVAILABLE" } });
+  assert.equal(dotWrap.getAttribute("title"), "数据过期 · 网络不可用");
+  await app.emit("dashboard-updated", { ...fixture, runtime: { phase: "failed", error: "SOME_FUTURE_CODE" } });
+  assert.equal(dotWrap.getAttribute("title"), "刷新失败");
+  for (const code of ["COLLECTION_PARTIAL", "COLLECTION_FAILED", "SNAPSHOT_RESTORED", "SNAPSHOT_WRITE_FAILED",
+    "SNAPSHOT_INVALID", "SNAPSHOT_READ_FAILED", "ARTIFACT_MISSING", "ARTIFACT_INVALID", "NETWORK_UNAVAILABLE"]) {
+    await app.emit("dashboard-updated", { ...fixture, runtime: { phase: "partial", error: code } });
+    assert.doesNotMatch(dotWrap.getAttribute("title"), /[A-Z]{2,}_[A-Z]/, `${code} 不得以机器码出现在悬停原因中`);
+    assert.notEqual(dotWrap.getAttribute("title"), "部分失败", `${code} 应有中文释义`);
+  }
+
+  // 4. 中性灰 (neutral / idle: 首次启动无数据)
+  await app.emit("dashboard-updated", { usage: null, subscription: null, hourly: null, diagnostics: [], runtime: { phase: "empty" } });
+  assert.equal(dotWrap.classList.contains("tone-neutral"), true);
+  assert.equal(dotWrap.classList.contains("tone-idle"), true);
+  assert.equal(dotWrap.getAttribute("title"), "暂无数据");
+
+  // 5. 刷新中脉冲 (refreshing + 底色保持当前态色)
+  await app.emit("dashboard-updated", { ...fixture, runtime: { phase: "refreshing" } });
+  assert.equal(dotWrap.classList.contains("tone-ok"), true);
+  assert.equal(dotWrap.classList.contains("refreshing"), true);
+  assert.equal(dotWrap.getAttribute("title"), "正在刷新…");
+  assert.equal(app.node("refresh").disabled, true);
+
+  // 5b. 首帧数据到达前不得预先亮绿灯「运行正常」
+  const indexHtml = readFileSync(new URL("../src/index.html", import.meta.url), "utf8");
+  assert.match(indexHtml, /id="hud-dot-wrap" class="hud-dot-wrap tone-neutral tone-idle"[^>]*title="暂无数据"/);
+
+  // 6. styles.css 契约: 无 .hud-sysok 残留, Nothing 品牌字无 uppercase, 定义四色 tone 规则
+  const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+  assert.doesNotMatch(css, /\.hud-sysok\b/, "styles.css 已删除 .hud-sysok 规则");
+  const nothingBrand = css.match(/\.theme-nothing \.hud-brand\s*\{[^}]*\}/)[0];
+  assert.doesNotMatch(nothingBrand, /text-transform:\s*uppercase/, "Nothing .hud-brand 不得強制 uppercase");
+  for (const toneRule of [".hud-dot-wrap.tone-ok", ".hud-dot-wrap.tone-warn", ".hud-dot-wrap.tone-error", ".hud-dot-wrap.tone-neutral"]) {
+    assert.ok(css.includes(toneRule), `styles.css 包含 ${toneRule}`);
+  }
+});

@@ -1,0 +1,116 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C095",
+  "title": "Windows 删除三张 mac 没有的遗留凭证卡片（添加或更新账号凭证 / 导入账号 / 高级完整字段维护），执行规则 20 已登记的移除，依赖 C084–C086",
+  "version": "0.13.0",
+  "type": "Enhancement",
+  "status": "pending",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
+  "is_hotfix": false,
+
+  "target": {
+    "module": "apps/win/src/settings.js",
+    "component": "订阅额度页遗留卡片清理",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+
+  "why": "规则 20「删除 Windows 独有项」已登记要移除通用表单（「添加或更新账号凭证」）、「导入账号」文件卡、「高级：完整凭证字段维护」卡与整页「检查已保存账号连接」, 并明确「移除顺序不得倒置: 先具备每 Provider 的专用录入与验证能力, 再删逃生通道」。但该条规则**没有执行卡**: 三张卡仍在（apps/win/src/settings.js:1879 / 1910 / 1934）。危害是它们绕过整条验证链路 —— 「添加或更新账号凭证」的 `saveAccount` 与「高级」的 `saveCredentials` 直接调 `save_credential_account` / `save_credentials_command` 落盘, 不经专属对话框、不做「已添加」步骤; 于是 C089 的移除语义、C090 的验证驱动启用、C091 的行状态尾件、C092 的格式校验在这条路径上全部失效, 形成一条可以静默写入未验证凭据的旁路。另需注意顺序: Codex 在 `providerCredential` 中被显式拒绝（:1565「Codex 请使用『导入账号』选择 auth.json」）, 故在 C084 交付设备码登录前, 「导入账号」是 Windows 唯一的 Codex 通道, 不可先删。",
+
+  "precheck": {
+    "description": "预检: 确认三张遗留卡片仍在",
+    "command": "grep -n 'card(host, \"添加或更新账号凭证\")\\|card(host, \"导入账号\")\\|card(host, \"高级：完整凭证字段维护\")' apps/win/src/settings.js",
+    "expected": "3 命中 (三张卡仍在)",
+    "is_completed": false,
+    "evidence": "2026-10-22 复核: 命中 apps/win/src/settings.js:1879 / 1910 / 1934 三处; 规则 20 已登记移除但无执行卡, 缺口确认存在"
+  },
+
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护在 main 直接实施",
+      "node -e \"for (const c of ['C084','C085','C086']) console.log(c, require('./docs/devel/change/'+c+'.json').status)\"  # 前置: 确认专用录入通道已交付"
+    ],
+    "after": [
+      "node apps/win/tests/frontend.test.mjs",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "scripts/adflow-verify  # 收口前门禁: --card C095 --to closed --record; Exit 0 后同步状态并以 --card C095 --receipt 复核"
+    ]
+  },
+
+  "changes": [
+    {
+      "scope": "卡片移除 (apps/win/src/settings.js)",
+      "before": "订阅额度页保留三张 mac 没有的卡片, 可直接落盘凭据并绕过验证",
+      "after": "移除「添加或更新账号凭证」与「高级：完整凭证字段维护」及整页「检查已保存账号连接」; 「导入账号」在 C084 交付 Codex 设备码登录后一并移除",
+      "impact": "所有凭据录入只能走专属对话框, 统一经验证、格式校验与「已添加」步骤"
+    },
+    {
+      "scope": "移除顺序门禁",
+      "before": "无顺序约束",
+      "after": "逐项确认对应 Provider 已有专用录入通道后再删: Codex 依赖 C084, Claude / Grok / OpenCode GO 依赖 C085, StepFun 依赖 C086; 未交付的 Provider 保留其通道",
+      "impact": "不制造无路可走的 Provider, 不出现「功能先于入口被删」"
+    },
+    {
+      "scope": "回归用例 (apps/win/tests/frontend.test.mjs)",
+      "before": "无卡片结构用例",
+      "after": "断言被移除卡片不再存在、凭据只能经专属对话框写入、Codex 走设备码登录入口",
+      "impact": "页面结构与旁路禁令被测试锁定"
+    }
+  ],
+
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "规则 20 已登记「删除 Windows 独有项」与顺序纪律, 但无执行卡, 实际未落地",
+      "after": "规则 20 该条补执行卡号 (C095) 与前置依赖 (C084 / C085 / C086), 并明确「绕过验证与已添加步骤的落盘入口一律不得保留」为硬约束"
+    }
+  },
+
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "卡片结构与旁路禁令用例全绿; 既有前端用例无回退; 退出码 0",
+        "false_if": "任何测试失败, 或仍存在绕过验证的落盘入口",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测 (Windows 真机)",
+        "true_if": "订阅额度页只剩「订阅服务」与「添加服务」两张卡; 所有 Provider 均能经专属对话框完成录入与验证; Codex 有可用登录入口",
+        "false_if": "任一 Provider 失去录入通道, 或旧卡片仍可见",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "导入既有凭据文件的能力 (若 mac 亦有对应入口) 未被误删; 维护页导出/诊断不受影响; mac 侧无任何改动",
+        "false_if": "误删 mac 也具备的能力, 或破坏维护页",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+
+  "rejections": [],
+
+  "sync": {
+    "design_pinned": true,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

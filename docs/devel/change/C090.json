@@ -1,0 +1,116 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C090",
+  "title": "Windows 验证结果不驱动启用开关：验证通过即启用、失败/需重新登录即禁用，首次安装订阅集合不再默认全开",
+  "version": "0.13.0",
+  "type": "BugFix",
+  "status": "verified",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src-tauri/src/settings.rs + apps/win/src/settings.js",
+    "component": "Provider 启用态与验证结果联动",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "mac 把启用开关与验证结果绑定: `SubscriptionProviderConfiguration.applyingVerification` 置 `copy.enabled = (status == .ok)`（apps/macos/Sources/BruceOnboardingCore/SubscriptionCredentialImport.swift:72）, failed / needsRelogin 一律保持禁用。Windows 现状两层缺失: ① `applyVerification`（apps/win/src/settings.js:1515）只落 `verificationStatus` / `lastVerifiedAt` / `failureReason`, 完全不碰 `enabledProviders`（实测该段 grep `enabledProviders` 为 0）; ② `SubscriptionProviderState`（apps/win/src-tauri/src/settings.rs:35）根本没有 `enabled` 字段 —— 规则 22 声明的 `subscriptionProviders: {<provider>: {enabled, lastVerifiedAt, verificationStatus}}` 从未落地, 启用态仍单独由 `enabled_providers` 承载。叠加 `AppSettings::default()` 的 `enabled_providers: PROVIDERS.iter().map(|s| (*s).to_owned()).collect()`（settings.rs:100）, 全新安装即 10 家全开: 验证失败或从未配置的 Provider 也处于「启用」态, 一旦存在凭据（含 C075 的本机跟随注入）就被查询并上板。另一表现: 用户手动翻过任一开关后, 新验证通过的 Provider 仍是关的, 需再手动开一次。",
+  "precheck": {
+    "description": "预检: 确认状态模型无 enabled 字段, 且验证落盘不联动启用集合",
+    "command": "awk '/pub struct SubscriptionProviderState/,/^}/' apps/win/src-tauri/src/settings.rs | grep -c 'enabled'",
+    "expected": "0 (状态模型无 enabled 字段)",
+    "is_completed": false,
+    "evidence": "2026-10-22 复核: 期望 0 实测 0; 另 `sed -n '1515,1524p' apps/win/src/settings.js | grep -c enabledProviders` 亦为 0; 规则 22 声明的 enabled 未落地, 缺口确认存在"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护在 main 直接实施"
+    ],
+    "after": [
+      "node apps/win/tests/frontend.test.mjs",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "cargo test --manifest-path apps/win/viewmodel/Cargo.toml",
+      "cargo clippy --manifest-path apps/win/src-tauri/Cargo.toml --all-targets -- -D warnings",
+      "scripts/adflow-verify  # 收口前门禁: --card C090 --to closed --record; Exit 0 后同步状态并以 --card C090 --receipt 复核"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "状态模型 (apps/win/src-tauri/src/settings.rs)",
+      "before": "SubscriptionProviderState 只有 last_verified_at / verification_status / failure_reason; 启用态另存 enabled_providers, 规则 22 声明的 enabled 缺失",
+      "after": "补 enabled 字段并使其成为该 Provider 启用态的唯一事实源; enabled_providers 降级为兼容读入 (迁移完成后不再作为开关), 与 mac 状态模型一致",
+      "impact": "启用开关与验证状态同源, 不再出现两套真相"
+    },
+    {
+      "scope": "验证 → 启用迁移 (apps/win/src/settings.js)",
+      "before": "applyVerification 只记录结果, 开关由用户独立切换",
+      "after": "验证 ok → enabled = true; failed / needsRelogin → enabled = false (fail-closed); 与 mac applyingVerification 同语义; 启用开关恒取已保存的 enabled 渲染 (移除重绘前勾选的沿用), 验证结果与 settings-updated 后开关即时跟随",
+      "impact": "验证通过的 Provider 自动上线, 验证失败/需重新登录的自动下线"
+    },
+    {
+      "scope": "首次安装默认集合 (apps/win/src-tauri/src/settings.rs:100)",
+      "before": "enabled_providers 默认全量 10 家",
+      "after": "订阅 Provider 默认不在已添加/启用集合内 (对齐 mac 全新安装「未添加」); 既有用户配置按迁移规则保留, 不做批量关闭",
+      "impact": "全新安装不再出现「10 家默认在线」的假象; 升级用户行为不变"
+    },
+    {
+      "scope": "回归用例",
+      "before": "无验证-启用联动用例",
+      "after": "断言 ok → enabled true、failed / needsRelogin → enabled false、默认集合不含未添加 Provider、迁移不误关既有配置、手动切换仍可覆盖",
+      "impact": "联动契约被测试锁定"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "规则 22 声明 subscriptionProviders 含 enabled 字段但未定义其与验证结果的关系; 规则 20 仅规定「未配置时禁用开关」",
+      "after": "规则 22 补「验证结果驱动启用」: ok → 启用, failed / needsRelogin → 禁用 (fail-closed), enabled 为该 Provider 启用态的唯一事实源; 全新安装订阅集合为空, 由「添加服务」显式建立"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "local-20261023-04",
+    "user_quote": "确认",
+    "signoff": "verified_by_user",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "验证-启用联动用例全绿 (ok 启用 / failed 与 needsRelogin 禁用 / 默认集合为空 / 迁移不误关); 既有用例无回退; 退出码 0",
+        "false_if": "任何测试失败, 或验证失败后仍处于启用态",
+        "evidence": "2026-10-22 复测: 前端「verification ok enables and failed / needsRelogin disables, and the switch follows (C090)」(启动时开关与已保存启用态一致 / ok → 启用且开关打开 / failed → 禁用且开关关闭、记录原因 / needsRelogin → 禁用 / settings-updated 后开关跟随已保存启用态) +「verification result drives the enable switch and re-adding starts disabled (C090)」; settings_coverage「enabled_providers_is_derived_from_subscription_state」「unknown_provider_is_still_rejected_before_normalization」与 settings.rs 迁移播种用例全绿; 前端 75/75; 变异校验: 恢复重绘前勾选沿用后 C090 用例转红",
+        "result": true
+      },
+      {
+        "item": "行为实测 (Windows 真机)",
+        "true_if": "全新安装订阅页无已添加行; 保存并验证通过后该 Provider 开关自动打开; 验证失败后自动关闭; 手动开关仍可覆盖并持久化",
+        "false_if": "全新安装即显示 10 家启用, 或验证结果不影响开关",
+        "evidence": "",
+        "result": false
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "升级用户既有配置不被批量关闭; 采集装配 / 看板过滤 / 授权摘要随新启用态正确联动; mac 侧无任何改动",
+        "false_if": "升级后用户既有 Provider 被误关, 或采集与看板未跟随新启用态",
+        "evidence": "2026-10-22 复测: node apps/win/tests/frontend.test.mjs 75/75; cargo test apps/win/src-tauri 全部通过; cargo clippy --all-targets -- -D warnings 无告警; cargo fmt --check 干净; node scripts/check-win-frontend.mjs Exit 0; mac 侧文件未改动",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-23",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified"
+  }
+}

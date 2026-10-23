@@ -836,7 +836,25 @@ package struct HourlyLineViewModel: Equatable, Sendable {
     }
 }
 
-// MARK: - 卡片收起状态
+// MARK: - 卡片收起状态与布局模式
+
+/// 仪表盘卡片布局模式: stack (纵向级联滚动) vs tabbed (顶栏三图标单卡切换).
+package enum DashboardLayoutMode: String, CaseIterable, Equatable, Sendable, Identifiable {
+    package var id: String { rawValue }
+    /// 纵向瀑布流级联排列 (原版)
+    case stack
+    /// 顶栏 Tab 单卡切换 (极简新方案)
+    case tabbed
+
+    package var displayName: String {
+        switch self {
+        case .stack:
+            return "纵向级联 (滚动)"
+        case .tabbed:
+            return "顶栏 Tab (单卡)"
+        }
+    }
+}
 
 /// 仪表盘可收起卡片标识; rawValue 作为 UserDefaults 持久化键值.
 package enum DashboardCardID: String, CaseIterable, Equatable, Sendable, Identifiable {
@@ -847,6 +865,22 @@ package enum DashboardCardID: String, CaseIterable, Equatable, Sendable, Identif
     case subscription
     /// Agent 用量 (逐小时) 卡.
     case hourly
+
+    package var title: String {
+        switch self {
+        case .usage: return "Token 用量"
+        case .subscription: return "订阅与配额"
+        case .hourly: return "Agent 活跃"
+        }
+    }
+
+    package var systemImage: String {
+        switch self {
+        case .usage: return "chart.bar.xaxis"
+        case .subscription: return "creditcard"
+        case .hourly: return "waveform.path.ecg"
+        }
+    }
 }
 
 // MARK: - 面板容器

@@ -38,6 +38,8 @@
   const REFRESH_PRESETS = [5, 15, 30, 60];
   let settings = {}, allowlist = [], providerOrder = [], cardOrder = [];
   let credentialAccounts = [];
+  // 被读取侧丢弃的账号原因 (C092): 只含字段 / 账号 ID / 原因文案, 不含凭据值。
+  let credentialRejections = [];
   let currentRuntimeInfo = null;
   let currentDashboard = null;
   // 套餐名: 由 artifact 提供 (mac C024 起套餐名只在设置页行内呈现), 经 get_dashboard 取。
@@ -130,8 +132,10 @@
         validateOverrides(updated.pricingOverrides || {});
         const minutes = Math.round((updated.refreshIntervalSecs || 0) / 60);
         if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) throw new Error("刷新间隔须为 1–1440 的整数分钟");
-        await invoke("save_settings_command", { settings: updated });
-        settings = updated;
+        // 后端归一后回传 (C090): enabled_providers 由 subscriptionProviders 派生,
+        // 取回传值作本地缓存, 避免两处启用口径漂移 (测试桩返回空值时回落到本次提交值)。
+        const saved = await invoke("save_settings_command", { settings: updated });
+        settings = saved || updated;
         window.dispatchEvent(new CustomEvent("settings-saved", { detail: updated }));
         if (status?.dataset.tone === "warn") message(status, "");
         return true;
@@ -243,15 +247,45 @@
     opencodeGo: "OAuth 设备码", stepfun: "Step Plan Token",
   };
   function providerDescriptor(id) { return providers.find(value => value[0] === id) || [id, id, "", ""]; }
+  /// 该 Provider 的账号记录。形状不合规的账号在读取侧即被丢弃 (规则 21 fail-closed),
+  /// 因此「有账号」等价于「存在完整可用凭据记录」; 被丢弃账号的原因另经
+  /// `credentialRejections` 回传 (C092), 不混进本清单。
   function accountsFor(id) { return credentialAccounts.filter(account => account.field === providerDescriptor(id)[2]); }
-  // 状态尾件 (mac subscriptionStatusTail): 未配置 / 已配置 / 需要重新授权
+  /// 该 Provider 被丢弃账号的原因清单 (C092)。
+  function rejectionsFor(id) { return credentialRejections.filter(item => item.field === providerDescriptor(id)[2]); }
+  // 状态尾件 (mac subscriptionStatusTail): 未配置 / 已配置 / 验证失败 / 需重新登录
+  // C081: 判据为 fail-closed —— 形状不合法的账号在读取时即被丢弃, 故
+  // 「有账号」等价于「存在完整可用凭据记录」。
+  // C091: 在配置判据之上叠加 verificationStatus; 本机 CLI 只读跟随计入「已配置」。
+  /// 本机 CLI 登录态是否可作为「已配置」依据 (C091 / 设计规则 26)。
+  /// 对齐 mac `ProviderRegistry` 的 claudeAppOrLocalProbe / grokAppOrLocalProbe:
+  /// 正在跟随的本机登录态等价于已配置, 即使没有落盘账号 (C075 的零配置跟随不落盘)。
+  function localFollowConfigured(id) {
+    if (id === "claude") return claudeLocalInfo?.status === "followed";
+    // Grok 的本机跟随随 C085 落地, 届时在此接入 grok_local_status。
+    return false;
+  }
+
+  /// 「已配置」判据 (C081 / C091): 存在完整可用凭据记录, 或正在只读跟随本机 CLI 登录态。
+  /// 行尾件、启用开关禁用态、配置对话框横幅与授权摘要共用此判据, 不得各自另算 ——
+  /// 否则会出现行上「已配置」而开关不可点、对话框写「未配置」的自相矛盾。
+  function providerConfigured(id) { return accountsFor(id).length > 0 || localFollowConfigured(id); }
+
   function providerState(id) {
     const accounts = accountsFor(id);
-    if (!accounts.length) return { text: "未配置", cls: "off" };
-    if (accounts.some(account => account.authorizationState === "reauthRequired")) return { text: "需要重新授权", cls: "warn" };
+    if (!providerConfigured(id)) return { text: "未配置", cls: "off" };
+    // 账号级 authorizationState == reauthRequired 的「需要重新授权」为规则 21 登记措辞,
+    // 优先于行级验证态呈现 (两者分工见规则 26)。
+    if (accounts.some(account => account.authorizationState === "reauthRequired")) {
+      return { text: "需要重新授权", cls: "warn" };
+    }
+    const status = subscriptionProviderState(id).verificationStatus;
+    if (status === "failed") return { text: "验证失败", cls: "warn" };
+    if (status === "needsRelogin") return { text: "需重新登录", cls: "warn" };
     return { text: "已配置", cls: "ok" };
   }
-  function enabledProvidersOf() { return settings.enabledProviders || providers.map(value => value[0]); }
+  // 设置尚未载入时视为空集 (C090): 不得回落为「全部启用」, 否则首轮渲染会把全部开关画成开启。
+  function enabledProvidersOf() { return settings.enabledProviders || []; }
 
   function objectJSON(raw, label) {
     let value;
@@ -312,39 +346,74 @@
 
     const host = byId("setting-providers");
     if (host) {
-      const prior = new Map([...host.querySelectorAll("input[type=checkbox]")].map(value => [value.dataset.provider, value.checked]));
       host.replaceChildren();
-      providerOrder.forEach((id, index) => {
+      // C082: 只列出已添加的 Provider; 行 = 拖拽手柄 + 品牌徽章 + 名称/副标题 +
+      // 套餐标签 + 状态尾件 + 「配置」按钮 + 启用开关 (未配置且未启用时禁用)。
+      for (const id of orderedAddedProviders()) {
         const descriptor = providerDescriptor(id);
         const state = providerState(id);
+        const configured = providerConfigured(id);
         const line = node("div", null, { class: "provider-row" });
+        line.dataset.provider = id;
+        const handle = node("span", "⠿", { class: "drag-handle", draggable: "true", title: "拖拽调整顺序", "aria-hidden": "true" });
+        handle.addEventListener("dragstart", event => {
+          dragProviderId = id;
+          event.dataTransfer?.setData("text/plain", id);
+          if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+        });
+        handle.addEventListener("dragend", () => { dragProviderId = null; });
+        line.append(handle);
         line.append(providerBadge(id, descriptor[1]));
         const meta = node("div", null, { class: "provider-meta" });
         meta.append(node("span", descriptor[1], { class: "provider-name" }));
-        const accounts = accountsFor(id);
-        const suffix = accounts.length > 1 ? ` · ${accounts.length} 个账号` : "";
-        meta.append(node("span", `${CREDENTIAL_FORMS[id] || "API Key"}${suffix}`, { class: "provider-sub" }));
+        meta.append(node("span", providerSubtitle(id), { class: "provider-sub" }));
         line.append(meta);
         if (providerPlans[id]) line.append(node("span", providerPlans[id], { class: "plan-chip" }));
         line.append(node("span", state.text, { class: `auth-state ${state.cls}` }));
+        button(line, `provider-configure-${id}`, "配置", () => openProviderDialog(id), "btn");
         const toggle = input(`provider-${id}`, "checkbox", { "data-provider": id, class: "provider-toggle" });
-        toggle.checked = prior.has(id) ? prior.get(id) : enabledProvidersOf().includes(id);
+        // C090: 开关恒取已保存的启用态 (唯一事实源), 不沿用重绘前的勾选 —— 验证结果、
+        // 移除等外部变更改写启用态后, 旧勾选会让开关与真实启用态相反。
+        const enabled = subscriptionProviderState(id).enabled;
+        toggle.checked = enabled;
+        toggle.disabled = !configured && !enabled;
         toggle.setAttribute("aria-label", `${descriptor[1]} 启用开关`);
-        toggle.addEventListener("change", () => persist({ enabledProviders: checkedProviders() }, {
-          revert: () => { toggle.checked = !toggle.checked; },
-        }));
+        toggle.addEventListener("change", async () => {
+          // C090: 启用态写入 subscriptionProviders[id].enabled (唯一事实源),
+          // enabled_providers 由后端派生, 不再由前端直接写。
+          const map = subscriptionProviderMap();
+          map[id] = { ...(map[id] || subscriptionProviderState(id)), enabled: toggle.checked };
+          await persist({ subscriptionProviders: map }, {
+            revert: () => { toggle.checked = !toggle.checked; },
+          });
+          renderSubscriptionViews();
+        });
         line.append(toggle);
-        const btns = node("div", null, { class: "order-btns" });
-        button(btns, `provider-up-${id}`, "上移", () => reorder(providerOrder, index, -1, "providerOrder"));
-        button(btns, `provider-down-${id}`, "下移", () => reorder(providerOrder, index, 1, "providerOrder"));
-        line.append(btns);
+        line.addEventListener("dragover", event => { event.preventDefault(); });
+        line.addEventListener("drop", event => {
+          event.preventDefault();
+          const dragged = dragProviderId || event.dataTransfer?.getData("text/plain");
+          dragProviderId = null;
+          reorderProviders(dragged, id);
+        });
         host.append(line);
-      });
+      }
+      if (!orderedAddedProviders().length) {
+        // C096: 空态补副标题「从下方添加服务」(对齐 mac FluentRow 的 sub)。
+        const empty = node("div", null, { class: "provider-empty" });
+        empty.append(node("span", "尚未配置任何订阅 Provider", { class: "row-title" }));
+        empty.append(node("span", "从下方添加服务", { class: "row-sub" }));
+        host.append(empty);
+      }
     }
+    renderProviderAddRow();
   }
 
-  function checkedProviders() {
-    return [...(byId("setting-providers")?.querySelectorAll("input") || [])].filter(v => v.checked).map(v => v.dataset.provider);
+  /// 订阅行与授权摘要都依赖启用态与「已配置」判据 (C090 / C094): 启用态变化后一起重绘,
+  /// 否则摘要停留在旧的启用集合上。
+  function renderSubscriptionViews() {
+    renderOrders();
+    renderConsentSummary();
   }
 
   // 上移 / 下移即时生效; 保存失败时恢复原顺序
@@ -374,6 +443,10 @@
     for (const minutes of REFRESH_PRESETS) interval.append(node("option", `${minutes} 分钟`, { value: String(minutes) }));
     row(c1, "刷新间隔", segmented(interval, (value, revert) => persist({ refreshIntervalSecs: Number(value) * 60 }, { revert })),
       "已授权模块的自动采集周期，变更后立即重新计时");
+    const layout = node("select", null, { id: "setting-layout-mode" });
+    layout.append(node("option", "纵向级联 (滚动)", { value: "stack" }), node("option", "顶栏 Tab (单卡)", { value: "tabbed" }));
+    row(c1, "看板布局", segmented(layout, (value, revert) => persist({ layoutMode: value }, { revert })),
+      "选择置顶面板呈现方式，顶栏 Tab 模式通过右上角小图标在用量、订阅与活跃卡片间快速切换");
     // mac: 开关旁以「已开启 / 已关闭」状态字呈现当前值
     const notifyWrap = node("div", null, { class: "toggle-with-state" });
     const notify = input("setting-notifications", "checkbox");
@@ -389,38 +462,213 @@
 
     const hotkeyWrap = node("div", null, { class: "hotkey-field-wrap" });
     hotkeyWrap.append(input("setting-hotkey", "text", { placeholder: "Control+Shift+B", autocomplete: "off" }));
-    button(hotkeyWrap, "hotkey-record", "录制热键", () => {
+    const recordButton = button(hotkeyWrap, "hotkey-record", "录制热键", () => {
       const field = byId("setting-hotkey");
+      if (!field) return;
+      if (field.dataset.recording === "true") {
+        setHotkeyRecording(false);
+        message(byId("settings-status"), "已取消快捷键录制");
+        return;
+      }
+      field.value = "";
+      setHotkeyRecording(true);
       field.focus?.();
       message(byId("settings-status"), "在热键输入框按下组合键；按 Esc 取消录制");
-      field.dataset.recording = "true";
+    });
+    // 按下录制按钮时保留输入框焦点: WebView2 会先派发输入框 blur 再派发按钮 click,
+    // 若放任失焦, blur 先结束录制、click 又重新开始, 「再点一次取消」永远走不到 (mac 录制按钮即切换语义)。
+    recordButton.addEventListener("mousedown", event => {
+      if (byId("setting-hotkey")?.dataset.recording === "true") event.preventDefault();
     });
     button(hotkeyWrap, "hotkey-clear", "清除", () => {
       const field = byId("setting-hotkey");
-      if (field) { field.value = ""; field.dataset.recording = "false"; }
+      setHotkeyRecording(false);
+      if (field) field.value = "";
       return saveHotkey();
     });
     row(card(host, "全局快捷键"), "唤出看板", hotkeyWrap, "唤出或隐藏置顶看板; 留空关闭全局快捷键");
 
     byId("setting-hotkey")?.addEventListener("keydown", event => {
       const field = byId("setting-hotkey");
-      if (field.dataset.recording !== "true") return;
+      if (field?.dataset.recording !== "true") return;
       event.preventDefault();
-      if (event.key === "Escape") { field.dataset.recording = "false"; return; }
-      if (["Control", "Alt", "Shift", "Meta"].includes(event.key)) return;
-      const parts = [event.ctrlKey && "Control", event.altKey && "Alt", event.shiftKey && "Shift", event.metaKey && "Super"].filter(Boolean);
-      if (!parts.length) { message(byId("settings-status"), "请使用 Ctrl、Alt、Shift 或 Win 键与其他键组合"); return; }
-      parts.push(event.key.length === 1 ? event.key.toUpperCase() : event.key);
-      field.value = parts.join("+");
-      field.dataset.recording = "false";
+      const parsed = normalizeHotkeyEvent(event);
+      if (parsed.action === "ignore") return;
+      if (parsed.action === "cancel") {
+        setHotkeyRecording(false);
+        message(byId("settings-status"), "已取消快捷键录制");
+        return;
+      }
+      if (parsed.action === "error") {
+        message(byId("settings-status"), parsed.reason, "warn");
+        return;
+      }
+      setHotkeyRecording(false);
+      field.value = parsed.accelerator;
       return saveHotkey();
     });
+    byId("setting-hotkey")?.addEventListener("blur", () => {
+      const field = byId("setting-hotkey");
+      if (field?.dataset.recording === "true") {
+        setHotkeyRecording(false);
+      }
+    });
     // 手动键入的热键在失焦 / 回车时生效
-    byId("setting-hotkey")?.addEventListener("change", () => saveHotkey());
+    byId("setting-hotkey")?.addEventListener("change", () => {
+      if (byId("setting-hotkey")?.dataset.recording === "true") return Promise.resolve();
+      return saveHotkey();
+    });
 
     const c2 = card(host, "看板卡片顺序");
     c2.append(node("p", "点击上移 / 下移调整置顶面板各卡片的堆叠顺序, 即时生效; 看板中收起的卡片也可直接拖拽排序。", { class: "hint" }));
     c2.append(node("div", null, { id: "setting-card-order", class: "order-list" }));
+  }
+
+  const HOTKEY_CODE_MAP = {
+    Space: "Space",
+    Minus: "-",
+    Equal: "=",
+    BracketLeft: "[",
+    BracketRight: "]",
+    Backslash: "\\",
+    Semicolon: ";",
+    Quote: "'",
+    Backquote: "`",
+    Comma: ",",
+    Period: ".",
+    Slash: "/",
+    ArrowUp: "Up",
+    ArrowDown: "Down",
+    ArrowLeft: "Left",
+    ArrowRight: "Right",
+    Enter: "Enter",
+    Tab: "Tab",
+    Backspace: "Backspace",
+    Delete: "Delete",
+    Insert: "Insert",
+    Home: "Home",
+    End: "End",
+    PageUp: "PageUp",
+    PageDown: "PageDown",
+    Escape: "Escape",
+    PrintScreen: "PrintScreen",
+    ScrollLock: "ScrollLock",
+    Pause: "Pause",
+    // 小键盘键与主键盘同名键在 global-hotkey 中是不同的键 (Numpad1 ≠ Digit1), 必须原样保留
+    NumpadAdd: "NumpadAdd",
+    NumpadSubtract: "NumpadSubtract",
+    NumpadMultiply: "NumpadMultiply",
+    NumpadDivide: "NumpadDivide",
+    NumpadDecimal: "NumpadDecimal",
+    NumpadEnter: "NumpadEnter",
+    NumpadEqual: "NumpadEqual",
+  };
+  // 无 event.code 时按 event.key 回退可接受的命名键 (与 global-hotkey 解析表一致)
+  const HOTKEY_NAMED_KEYS = new Set([
+    "Enter", "Tab", "Backspace", "Delete", "Insert", "Home", "End", "PageUp", "PageDown",
+    "Escape", "PrintScreen", "ScrollLock", "Pause",
+  ]);
+  const HOTKEY_UNSUPPORTED = "unsupported";
+
+  const SHIFTED_DIGIT_KEY_MAP = {
+    "!": "1",
+    "@": "2",
+    "#": "3",
+    "$": "4",
+    "%": "5",
+    "^": "6",
+    "&": "7",
+    "*": "8",
+    "(": "9",
+    ")": "0",
+  };
+
+  const RESERVED_HOTKEYS = new Set([
+    "Alt+Tab",
+    "Alt+F4",
+    "Control+Escape",
+    "Control+Shift+Escape",
+    "Super+L",
+    "Super+D",
+    "Super+R",
+    "Super+E",
+  ]);
+
+  function resolveHotkeyPrimaryKey(event) {
+    const code = typeof event.code === "string" ? event.code : "";
+    if (code) {
+      if (/^(Control|Shift|Alt|Meta|OS)(Left|Right)?$/.test(code)) return null;
+      const keyMatch = code.match(/^Key([A-Z])$/);
+      if (keyMatch) return keyMatch[1];
+      const digitMatch = code.match(/^Digit([0-9])$/);
+      if (digitMatch) return digitMatch[1];
+      const numpadMatch = code.match(/^Numpad([0-9])$/);
+      if (numpadMatch) return `Numpad${numpadMatch[1]}`;
+      if (/^F([1-9]|1[0-9]|2[0-4])$/.test(code)) return code;
+      if (HOTKEY_CODE_MAP[code]) return HOTKEY_CODE_MAP[code];
+      return HOTKEY_UNSUPPORTED;
+    }
+    const key = typeof event.key === "string" ? event.key : "";
+    if (!key || ["Control", "Alt", "Shift", "Meta", "OS", "Dead", "Process"].includes(key)) return null;
+    if (key === " " || key === "Spacebar" || key === "Space") return "Space";
+    const arrowMatch = key.match(/^Arrow(Up|Down|Left|Right)$/);
+    if (arrowMatch) return arrowMatch[1];
+    if (event.shiftKey && SHIFTED_DIGIT_KEY_MAP[key]) return SHIFTED_DIGIT_KEY_MAP[key];
+    if (/^F([1-9]|1[0-9]|2[0-4])$/.test(key) || HOTKEY_NAMED_KEYS.has(key)) return key;
+    if (/^[a-z0-9]$/i.test(key)) return key.toUpperCase();
+    if (Object.values(HOTKEY_CODE_MAP).includes(key) && key.length === 1) return key;
+    return HOTKEY_UNSUPPORTED;
+  }
+
+  function normalizeHotkeyEvent(event) {
+    const noMods = !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey;
+    if (noMods && (event.key === "Escape" || event.code === "Escape" || event.key === "Backspace" || event.key === "Delete")) {
+      return { action: "cancel" };
+    }
+    const primary = resolveHotkeyPrimaryKey(event);
+    if (!primary) return { action: "ignore" };
+    if (primary === HOTKEY_UNSUPPORTED) return { action: "error", reason: "该键不支持作为全局快捷键，请换一个" };
+    const mods = [
+      event.ctrlKey && "Control",
+      event.altKey && "Alt",
+      event.shiftKey && "Shift",
+      event.metaKey && "Super",
+    ].filter(Boolean);
+    const isFunctionKey = /^F([1-9]|1[0-9]|2[0-4])$/.test(primary);
+    const hasPrimaryMod = Boolean(event.ctrlKey || event.altKey || event.metaKey);
+    if (!hasPrimaryMod && !(event.shiftKey && isFunctionKey)) {
+      return { action: "error", reason: "请使用 Ctrl、Alt、Win（或 Shift+F1~F24）与其他键组合" };
+    }
+    const accelerator = [...mods, primary].join("+");
+    if (RESERVED_HOTKEYS.has(accelerator)) {
+      return { action: "error", reason: `${accelerator} 为系统保留快捷键，请更换组合` };
+    }
+    return { action: "commit", accelerator };
+  }
+
+  function setHotkeyRecording(active) {
+    const field = byId("setting-hotkey");
+    const btn = byId("hotkey-record");
+    if (!field) return;
+    const wasRecording = field.dataset.recording === "true";
+    field.dataset.recording = active ? "true" : "false";
+    field.classList.toggle("recording", Boolean(active));
+    if (btn) {
+      btn.textContent = active ? "按键中… (Esc 取消)" : "录制热键";
+      btn.classList.toggle("recording", Boolean(active));
+    }
+    if (active) {
+      field.placeholder = "请按下组合键…";
+    } else {
+      field.placeholder = "Control+Shift+B";
+      field.value = settings.hotkey || "";
+    }
+    if (wasRecording !== Boolean(active)) {
+      invoke("set_hotkey_recording", { recording: Boolean(active) }).catch(() => {
+        // 进入录制注销失败只影响能否录到当前热键; 退出录制恢复失败则当前热键已失效, 必须告知
+        if (!active) message(byId("settings-status"), "已生效的全局快捷键恢复失败，请重新录制", "warn");
+      });
+    }
   }
 
   // 热键即时生效; 注册失败 (如被其他程序占用) 时回滚为已生效的热键并提示原因。
@@ -1360,27 +1608,613 @@
     host.append(overlay);
   }
 
+  // MARK: - 订阅 Provider 配置对话框 (C082, 对齐 mac SettingsView 的 providerConfigSheet)
+
+  // 逐 Provider 配置描述: 字段 (键/标签/占位符)、引导文案、控制台外链、脚注、附加区。
+  // 文案逐字对齐 mac SettingsView.apiKeyProviderDialog / ProviderSettingsSection。
+  const PROVIDER_CONFIG = {
+    kimi: {
+      kind: "apiKey",
+      fields: [["apiKey", "API Key", "sk-•••••••••••••••• (输入后不回显)"]],
+      guide: "在 kimi.com/code 申请 Kimi For Coding API key",
+    },
+    deepseek: {
+      kind: "apiKey",
+      fields: [["apiKey", "API Key", "sk-•••••••••••••••• (输入后不回显)"]],
+      guide: "在 DeepSeek 平台获取 API key",
+    },
+    volcengine: {
+      kind: "apiKey",
+      fields: [["accessKeyId", "Access Key", "AK•••••••• (输入后不回显)"], ["secretAccessKey", "Secret Key", "SK•••••••• (输入后不回显)"]],
+      guide: "在火山引擎控制台获取 Access Key 与 Secret Key",
+      footnote: "此处仅做本地格式校验, 完整额度试查由 Collector 运行时承担",
+    },
+    zhipu: {
+      kind: "apiKey",
+      fields: [["apiKey", "API Key", "•••••••• (输入后不回显)"]],
+      guide: "在 Z.ai（BigModel）控制台获取 API key",
+      footnote: "此处仅做本地格式校验, 完整额度试查由 Collector 运行时承担",
+      sitePicker: true,
+    },
+    stepfun: {
+      kind: "apiKey",
+      fields: [["token", "Oasis-Token", "•••••••• (输入后不回显)"]],
+      // C093: 网页登录入口尚未交付 (C086), 不得出现「点击上方一键登录」——
+      // 文案不承诺不存在的能力; C086 落地后按规则 20 恢复「一键登录自动绑定」措辞。
+      guide: "在 StepFun 控制台登录后按 F12, 从 Cookie 复制 Oasis-Token",
+      link: { title: "打开 StepFun 控制台", url: "https://platform.stepfun.com" },
+      footnote: "凭据安全保存在本应用的本机凭据文件 (仅当前用户可读), 支持国内站与国际站多账号混合添加; 未选择站点时按令牌自动判定",
+      sitePicker: true,
+    },
+    cline: {
+      kind: "apiKey",
+      fields: [["apiKey", "API Key", "•••••••• (输入后不回显)"]],
+      guide: "在 Cline 控制台 Settings > API Keys 创建 API Key",
+      link: { title: "打开 Cline 控制台", url: "https://app.cline.bot" },
+      footnote: "ClinePass 三窗口额度 (5h / 7d / 30d) 由采集端读取账户计划与逐单台账自动计算",
+    },
+    codex: {
+      kind: "codex",
+      guide: "通过 OpenAI 官方设备码登录获取额度; 也可只读导入本机 CLI 或 CC Switch 已登录账号的元数据.",
+      link: { title: "打开 Codex 设备码登录页", url: "https://auth.openai.com/codex/device" },
+      footnote: "设备码登录与账号发现将在后续卡片补齐; 当前可用下方「导入账号」选择 auth.json。",
+    },
+    claude: {
+      kind: "localFollow",
+      guide: "未检测到本机 Claude 登录态, 登录 Claude CLI 后自动跟随",
+      pasteLabel: "粘贴 Claude 访问令牌或凭证 JSON (高级)",
+    },
+    grok: {
+      kind: "localFollow",
+      guide: "未检测到 Grok 登录态, 请先通过 Grok CLI 登录 (~/.grok/auth.json)",
+      pasteLabel: "粘贴 Grok 访问令牌或凭证 JSON",
+    },
+    opencodeGo: {
+      kind: "paste",
+      pasteLabel: "打开 opencode.ai → 登录 → 开发者工具 → Application → Cookies → 复制 auth 值 (Fe26.2**...) 与 workspace URL 中的 wrk_ ID, 粘贴 JSON",
+    },
+  };
+
+  const VERIFICATION_LABELS = {
+    none: ["已配置 · 未验证", "off"],
+    ok: ["已配置", "ok"],
+    failed: ["验证失败", "warn"],
+    // C096: 对话框横幅用「需要重新登录」(对齐 mac `ProviderStatusBanner` 的文案);
+    // 行尾件用的是「需重新登录」(mac `subscriptionStatusTail`), 两者 mac 本就不同, 不统一。
+    needsRelogin: ["需要重新登录", "warn"],
+  };
+
+  let dragProviderId = null;
+  // CC Switch 库可用性 (C083): 决定火山引擎对话框是否显示「从 CC Switch 导入」。
+  let ccSwitchAvailable = false;
+
+  async function loadCCSwitchStatus() {
+    try {
+      ccSwitchAvailable = Boolean((await invoke("ccswitch_status"))?.available);
+    } catch {
+      ccSwitchAvailable = false;
+    }
+  }
+
+  /// 从 CC Switch 只读导入火山引擎凭证并验证 (C083): 导入成功后立即落验证状态。
+  async function importVolcengineFromCCSwitch() {
+    try {
+      const result = await invoke("import_volcengine_from_ccswitch");
+      await loadCredentials();
+      await applyVerification("volcengine", result?.status || "none", result?.reason || null);
+      if (result?.status === "ok") {
+        invoke("refresh_subscription", { sectionId: quotaFieldOf("volcengine") }).catch(() => {});
+      }
+      renderProviderDialog("volcengine");
+      message(byId("cfg-status"), result?.status === "ok" ? "已从 CC Switch 导入并验证通过" : "已从 CC Switch 导入");
+    } catch (error) {
+      message(byId("cfg-status"), `导入失败：${error.message || error}`, "warn");
+    }
+  }
+
+  function configFor(id) { return PROVIDER_CONFIG[id] || { kind: "apiKey", fields: [["apiKey", "API Key", "•••••••• (输入后不回显)"]] }; }
+
+  /// 已添加的 Provider 集合 (C082): 键存在即已添加。尚未迁移时按当前启用集合派生 ——
+  /// 升级不改变可见集合, 也不在启动时产生额外写入; 用户首次增删后即为显式集合。
+  function addedProviderIds() {
+    if (settings.subscriptionProviders) return Object.keys(settings.subscriptionProviders);
+    const enabled = enabledProvidersOf();
+    const configured = providers.map(value => value[0]).filter(id => accountsFor(id).length > 0);
+    return [...new Set([...enabled, ...configured])];
+  }
+
+  /// 可写入的已添加映射 (把派生结果物化为显式集合)。
+  function subscriptionProviderMap() {
+    if (settings.subscriptionProviders) return { ...settings.subscriptionProviders };
+    return Object.fromEntries(addedProviderIds().map(id => [id, subscriptionProviderState(id)]));
+  }
+
+  /// 单个 Provider 的已添加 / 验证 / 启用状态 (C082 / C090)。
+  /// 未迁移时按启用集合播种, 与后端 `added_subscription_providers` 同口径 ——
+  /// 否则升级后所有启用开关会显示为关。
+  function subscriptionProviderState(id) {
+    const stored = (settings.subscriptionProviders || {})[id];
+    if (stored) {
+      return { enabled: false, lastVerifiedAt: null, verificationStatus: "none", failureReason: null, ...stored };
+    }
+    return {
+      enabled: enabledProvidersOf().includes(id),
+      lastVerifiedAt: null,
+      verificationStatus: "none",
+      failureReason: null,
+    };
+  }
+
+  /// 已添加集合按 providerOrder 排序; 未在顺序表内的追加在后。
+  function orderedAddedProviders() {
+    const added = new Set(addedProviderIds());
+    return orderedAll(providerOrder, [...added]).filter(id => added.has(id));
+  }
+
+  /// 保存验证状态 (C082) 并按验证结果驱动启用开关 (C090, 对齐 mac `applyingVerification`):
+  /// ok → 启用; failed / needsRelogin → 禁用 (fail-closed)。启用态的唯一事实源是
+  /// `subscriptionProviders[id].enabled`, `enabled_providers` 由后端派生。
+  async function applyVerification(id, status, reason = null) {
+    const map = subscriptionProviderMap();
+    const previous = map[id] || {};
+    map[id] = {
+      ...previous,
+      enabled: status === "ok",
+      lastVerifiedAt: status === "ok" ? new Date().toISOString() : previous.lastVerifiedAt || null,
+      verificationStatus: status,
+      failureReason: reason || null,
+    };
+    await persist({ subscriptionProviders: map });
+    renderSubscriptionViews();
+  }
+
+  /// 已添加 Provider 的凭证形态副标题 (对齐 mac subscriptionRowSubtitle)。
+  function providerSubtitle(id) {
+    const count = accountsFor(id).length;
+    const kind = CREDENTIAL_FORMS[id] || "API Key";
+    return count > 1 ? `${kind} · ${count} 个账号` : kind;
+  }
+
+  /// 由凭证内容派生稳定账号 ID (同凭证重复保存即 upsert)。
+  /// 由凭证内容派生稳定账号 ID (同凭证重复保存即 upsert)。
+  /// C093: StepFun 的站点是可选派生元数据, **不参与账号身份** —— 否则「旧版无条件写入
+  /// 国内站 → 修复后再存一次」会生成第二个账号, 旧账号还停在错误站点。以 token 为身份后,
+  /// 重新保存即 upsert 到同一账号, 顺带改写或清除站点 (未选站点 → 由采集端按令牌推导)。
+  function credentialAccountId(id, credential) {
+    const identity = id === "stepfun" && credential && typeof credential === "object"
+      ? { token: credential.token }
+      : credential;
+    const text = `${id}:${JSON.stringify(identity)}`;
+    let hash = 5381;
+    for (let index = 0; index < text.length; index += 1) hash = ((hash * 33) ^ text.charCodeAt(index)) >>> 0;
+    return `${id}-${hash.toString(16).padStart(8, "0")}`;
+  }
+
+  /// 对话框字段值 → 采集端凭据载荷 (形状契约见设计规则 21)。
+  function providerCredential(id, values) {
+    const config = configFor(id);
+    if (config.kind === "apiKey") {
+      const trimmed = key => (values[key] || "").trim();
+      if (id === "volcengine") {
+        if (!trimmed("accessKeyId") || !trimmed("secretAccessKey")) throw new Error("火山引擎需要 Access Key 与 Secret Key");
+        return { accessKeyId: trimmed("accessKeyId"), secretAccessKey: trimmed("secretAccessKey") };
+      }
+      if (id === "zhipu") {
+        if (!trimmed("apiKey")) throw new Error("请填写 API Key");
+        return {
+          api_key: trimmed("apiKey"),
+          base_url: values.site === "global" ? "https://api.z.ai/api/paas/v4" : "https://open.bigmodel.cn/api/paas/v4",
+        };
+      }
+      if (id === "stepfun") {
+        if (!trimmed("token")) throw new Error("请填写 Oasis-Token");
+        // C093 / 设计规则 28: 未显式选择站点时不写入 site, 由采集端从令牌推导
+        // (国际站 app_id 20700)。写入默认「国内站」会把国际站令牌查错站点。
+        const site = values.site;
+        return site
+          ? { token: trimmed("token"), site, is_global: site === "global" }
+          : { token: trimmed("token") };
+      }
+      if (!trimmed("apiKey")) throw new Error("请填写 API Key");
+      return { api_key: trimmed("apiKey") };
+    }
+    if (id === "codex") throw new Error("Codex 请使用「导入账号」选择 auth.json");
+    // Claude / Grok / OpenCode GO: 粘贴凭证 JSON (Claude 亦接受纯令牌)。
+    const raw = (values.paste || "").trim();
+    if (!raw) throw new Error("请粘贴凭证 JSON");
+    let parsed = null;
+    try { parsed = JSON.parse(raw); } catch { parsed = null; }
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return { oauth: oauthPayload(quotaFieldOf(id), parsed, (values.secret || "").trim(), "") };
+    }
+    if (id === "claude" && raw.length > 10) return { oauth: oauthPayload(quotaFieldOf(id), {}, raw, "") };
+    throw new Error("凭证必须是 JSON 对象");
+  }
+
+  function quotaFieldOf(id) { return providerDescriptor(id)[2]; }
+
+  /// 打开某个 Provider 的配置对话框。
+  function openProviderDialog(id) {
+    const host = byId("provider-dialog");
+    if (!host) return;
+    host.dataset.provider = id;
+    host.classList.remove("hidden");
+    renderProviderDialog(id);
+    const focus = host.querySelector(".cfg-field input, .cfg-paste textarea");
+    focus?.focus();
+  }
+
+  function closeProviderDialog() {
+    const host = byId("provider-dialog");
+    if (!host) return;
+    host.classList.add("hidden");
+    host.replaceChildren();
+    delete host.dataset.provider;
+  }
+
+  /// 对话框内容: 标题 + 状态横幅 + 已配置账号 + 字段组 + 固定说明 + 附加区 +
+  /// 引导行 + 脚注 + 就地错误 + footer (对齐 mac APIKeyProviderConfigDialog)。
+  function renderProviderDialog(id) {
+    const host = byId("provider-dialog");
+    if (!host) return;
+    const config = configFor(id);
+    const descriptor = providerDescriptor(id);
+    const state = subscriptionProviderState(id);
+    const configured = providerConfigured(id);
+    host.replaceChildren();
+
+    const dialog = node("div", null, { class: "cfg-dialog" });
+    const head = node("div", null, { class: "cfg-head" });
+    head.append(providerBadge(id, descriptor[1]), node("span", `配置 ${descriptor[1]}`, { class: "cfg-title" }));
+    dialog.append(head);
+
+    const body = node("div", null, { class: "cfg-body" });
+    // 状态横幅
+    const [label, tone] = configured
+      ? VERIFICATION_LABELS[state.verificationStatus] || VERIFICATION_LABELS.none
+      : ["未配置", "off"];
+    const detail = state.verificationStatus === "failed" && state.failureReason
+      ? `验证失败: ${state.failureReason}`
+      : state.verificationStatus === "ok"
+        // C096: 对齐 mac ProviderStatusBanner 的「已配置 · 上次验证 <时间> · 验证通过」。
+        ? `${label}${state.lastVerifiedAt ? ` · 上次验证 ${localTime(state.lastVerifiedAt)}` : ""} · 验证通过`
+        : label;
+    const banner = node("div", null, { class: `cfg-banner ${configured ? tone : "off"}` });
+    banner.append(node("span", null, { class: "cfg-dot", "aria-hidden": "true" }), node("span", detail, { id: "cfg-status", role: "status" }));
+    body.append(banner);
+
+    // 账号列表: 形状不合规的账号在读取侧已被丢弃, 故这里只列「计入已配置」的记录。
+    const accounts = accountsFor(id);
+    if (accounts.length) {
+      body.append(node("div", `已配置账号 (${accounts.length})`, { class: "cfg-section" }));
+      for (const account of accounts) {
+        const line = node("div", null, { class: "cfg-account" });
+        line.append(node("span", account.displayName || account.accountId, { class: "cfg-account-name" }));
+        if (account.authorizationState === "reauthRequired") line.append(node("span", "需要重新授权", { class: "auth-state warn" }));
+        button(line, `cfg-remove-${account.accountId}`, "移除", () => {
+          // C096: 账号移除前二次确认 (对齐 mac SettingsView.swift:162 的 confirmationDialog),
+          // 不再直接删除 —— 误点即丢凭据。
+          const confirm = node("div", null, { class: "cfg-confirm" });
+          confirm.append(node("p", `移除 ${account.displayName || account.accountId} 账号?`, { class: "cfg-label" }));
+          const act = actions(confirm);
+          button(act, `cfg-remove-confirm-${account.accountId}`, "移除账号", async () => {
+            try {
+              await invoke("remove_credential_account", { field: account.field, accountId: account.accountId });
+              await loadCredentials();
+              renderProviderDialog(id);
+            } catch (error) { message(byId("cfg-status"), `移除失败：${error.message || error}`, "warn"); }
+          }, "btn danger");
+          button(act, `cfg-remove-cancel-${account.accountId}`, "取消", () => renderProviderDialog(id), "btn");
+          body.append(confirm);
+        }, "btn link");
+        body.append(line);
+      }
+    }
+    // C092: 被读取侧丢弃的旧账号原因。它们不计入「已配置」(规则 21 fail-closed) 且不进
+    // 账号清单, 但必须把原因摆出来 —— 否则格式校验收紧后旧账号只是静默变成「未配置」,
+    // 用户既不知为何也不知如何处置 (处置入口: 重新配置覆盖, 或用「移除服务」连隐藏账号一并删除)。
+    const rejections = rejectionsFor(id);
+    if (rejections.length) {
+      body.append(node("p", `存在 ${rejections.length} 个格式不合规的旧账号, 未计入「已配置」: ${rejections.map(item => `${item.accountId}（${item.reason}）`).join("; ")}`, { class: "hint", id: `cfg-rejections-${id}` }));
+    }
+
+    // Claude 本机登录态跟随 (C075) 现位于对话框内, 元素 id 保持不变。
+    if (config.kind === "localFollow" && id === "claude") {
+      body.append(node("p", "启用 Claude 订阅后自动只读跟随本机 Claude CLI 登录态（%USERPROFILE%\\.claude\\.credentials.json，缺失时回退 %USERPROFILE%\\.claude.json），不回写、不弹窗。", { class: "hint" }));
+      const line = node("div", null, { class: "auth-state-line" });
+      line.append(node("span", "检测中…", { id: "claude-local-state", class: "auth-state" }));
+      body.append(line);
+      const act = actions(body);
+      button(act, "claude-local-detect", "立即检测", loadClaudeLocalStatus);
+      button(act, "claude-local-import", "读取本机登录态", importClaudeFromLocal, "btn primary");
+      act.append(node("span", null, { id: "claude-local-status", role: "status", class: "status-msg" }));
+      // 打开对话框即重新探测 (与 mac 打开配置窗口时的实时只读探测同语义)。
+      renderClaudeLocalState();
+      loadClaudeLocalStatus();
+    }
+
+    // 字段组 / 粘贴区
+    if (config.kind === "apiKey") {
+      for (const [key, label2, placeholder] of config.fields) {
+        const group = node("div", null, { class: "cfg-field" });
+        group.append(node("label", label2, { class: "cfg-label", for: `cfg-${id}-${key}` }));
+        group.append(node("input", null, { id: `cfg-${id}-${key}`, type: "password", placeholder, autocomplete: "new-password", class: "cfg-input" }));
+        body.append(group);
+      }
+      if (config.sitePicker && id === "zhipu") {
+        body.append(sitePickerRow(id, [["domestic", "国内站 (open.bigmodel.cn)"], ["global", "国外站 (api.z.ai)"]]));
+      }
+      if (config.sitePicker && id === "stepfun") {
+        // C093 / 设计规则 28: StepFun 站点**不预选** —— 未显式选择时不写入 site,
+        // 由采集端从令牌推导 (国际站 app_id 20700)。预选「国内站」会把国际站令牌
+        // 查错站点 (采集端优先信任已保存的 site)。
+        body.append(sitePickerRow(id, [["domestic", "国内站 (stepfun.com)"], ["global", "国际站 (stepfun.ai)"]], null));
+      }
+    } else if (config.kind === "paste" || config.kind === "localFollow") {
+      const group = node("div", null, { class: "cfg-paste" });
+      group.append(node("p", config.pasteLabel, { class: "hint" }));
+      group.append(node("textarea", null, { id: `cfg-${id}-paste`, rows: "4", spellcheck: "false", autocomplete: "off", class: "code-area", "aria-label": `${descriptor[1]} 凭证 JSON` }));
+      body.append(group);
+      if (id === "claude") {
+        const group2 = node("div", null, { class: "cfg-field" });
+        group2.append(node("label", "或粘贴纯访问令牌", { class: "cfg-label", for: `cfg-${id}-secret` }));
+        group2.append(node("input", null, { id: `cfg-${id}-secret`, type: "password", placeholder: "sk-ant-•••••••• (输入后不回显)", autocomplete: "new-password", class: "cfg-input" }));
+        body.append(group2);
+      }
+    } else {
+      body.append(node("p", "Codex 通过「导入账号」选择 auth.json 导入; 设备码登录见后续卡片。", { class: "hint" }));
+    }
+
+    body.append(node("p", "只保存到本应用的本机凭据文件 (仅当前用户可读), 不会写入其他应用的数据库", { class: "hint" }));
+    // 火山引擎: 从 CC Switch 只读导入 (C083, 对齐 mac 的确认对话框)
+    if (id === "volcengine" && ccSwitchAvailable) {
+      const block = node("div", null, { class: "cfg-extra" });
+      button(block, "cfg-volcengine-ccswitch", "从 CC Switch 导入", () => {
+        block.replaceChildren();
+        const confirm = node("div", null, { class: "cfg-confirm" });
+        confirm.append(node("p", "从 CC Switch 导入火山引擎凭证?", { class: "cfg-label" }));
+        confirm.append(node("p", "只读访问 CC Switch 数据库, 不会修改 CC Switch 的任何数据", { class: "hint" }));
+        const act = actions(confirm);
+        button(act, "cfg-ccswitch-confirm", "导入", importVolcengineFromCCSwitch, "btn primary");
+        button(act, "cfg-ccswitch-cancel", "取消", () => renderProviderDialog(id));
+        block.append(confirm);
+      });
+      body.append(block);
+    }
+    // 引导行
+    const guide = node("div", null, { class: "cfg-guide" });
+    guide.append(node("span", "🌐", { class: "cfg-guide-icon", "aria-hidden": "true" }));
+    guide.append(node("span", config.guide || "", { class: "cfg-guide-text" }));
+    if (config.link) {
+      const link = node("a", config.link.title, { href: config.link.url, target: "_blank", rel: "noreferrer", class: "cfg-link" });
+      guide.append(link);
+    }
+    body.append(guide);
+    if (config.footnote) body.append(node("p", config.footnote, { class: "hint" }));
+    dialog.append(body);
+
+    // footer
+    const foot = node("div", null, { class: "cfg-foot" });
+    button(foot, `cfg-remove-provider-${id}`, "移除服务", () => {
+      // C089 / 设计规则 25: 移除前二次确认 (对齐 mac removeSubscriptionProvider 的破坏性语义)。
+      const confirm = node("div", null, { class: "cfg-confirm" });
+      confirm.append(node("p", `移除 ${descriptor[1]} 服务?`, { class: "cfg-label" }));
+      confirm.append(node("p", "将删除该服务的全部账号凭证并停止查询; 重新添加需再次配置", { class: "hint" }));
+      const act = actions(confirm);
+      button(act, `cfg-remove-confirm-${id}`, "移除", () => removeProvider(id), "btn danger");
+      button(act, `cfg-remove-cancel-${id}`, "取消", () => renderProviderDialog(id), "btn");
+      body.append(confirm);
+    }, "btn link danger");
+    if (configured) {
+      button(foot, `cfg-reverify-${id}`, "重新验证", () => reverifyProvider(id), "btn link");
+    }
+    foot.append(node("div", null, { class: "cfg-spacer" }));
+    button(foot, `cfg-cancel-${id}`, "取消", closeProviderDialog);
+    const saveButton = button(foot, `cfg-save-${id}`, "保存并验证", () => saveProviderCredential(id), "btn primary");
+    // C096: 必填字段未填齐时「保存并验证」置灰 (对齐 mac), 填齐即启用 —— 不再点后才报错。
+    const syncSaveDisabled = () => { saveButton.disabled = !providerFieldsFilled(id); };
+    syncSaveDisabled();
+    for (const field of dialog.querySelectorAll("input") || []) field.addEventListener("input", syncSaveDisabled);
+    for (const field of dialog.querySelectorAll("textarea") || []) field.addEventListener("input", syncSaveDisabled);
+    dialog.append(foot);
+    host.append(dialog);
+  }
+
+  /// 对话框必填字段是否已填齐 (C096)。mac 在未填齐时置灰「保存并验证」。
+  function providerFieldsFilled(id) {
+    const config = configFor(id);
+    // 设备码登录类 (Codex) 无密钥字段, 由登录流程自身把关。
+    if (config.kind === "codex") return true;
+    if (config.kind === "apiKey") {
+      return (config.fields || []).every(([key]) => (byId(`cfg-${id}-${key}`)?.value || "").trim().length > 0);
+    }
+    // 粘贴类 (Claude / Grok / OpenCode GO): 粘贴框或 Claude 的纯令牌入口二者其一。
+    if ((byId(`cfg-${id}-paste`)?.value || "").trim()) return true;
+    return id === "claude" && (byId(`cfg-${id}-secret`)?.value || "").trim().length > 0;
+  }
+
+  /// 移除服务 (C089 / 设计规则 25)。
+  ///
+  /// 对齐 mac `SubscriptionService.removeSubscriptionProvider`: ① 删除该 Provider 全部凭据
+  /// → ② 移出已添加集合。启用集合由后端从 `subscriptionProviders` 派生 (C090), 故移出即关闭
+  /// 查询与看板展示, 不需要单独写 `enabledProviders`。
+  /// ① 由后端一次原子写完成 (`remove_provider_credentials`): 连同界面不可见的不合规账号与
+  /// 遗留整体 OAuth 字段一并删除, 失败时一个都不删 —— 不再逐账号调用, 避免「删了一半」。
+  /// ① 失败即中止, 不动已添加集合 (fail-closed)。
+  async function removeProvider(id) {
+    try {
+      await invoke("remove_provider_credentials", { provider: id });
+    } catch (error) {
+      message(byId("cfg-status"), `移除失败：${error.message || error}`, "warn");
+      return;
+    }
+    const map = subscriptionProviderMap();
+    delete map[id];
+    const saved = await persist({ subscriptionProviders: map });
+    await loadCredentials();
+    if (!saved) return;
+    renderOrders();
+    closeProviderDialog();
+  }
+
+  /// 站点单选行。`defaultIndex` 为 null 表示**不预选** (C093: StepFun 未选择时
+  /// 不写入 site, 交由采集端从令牌推导); 默认仍预选首项 (Z.ai 需要派生 base_url)。
+  function sitePickerRow(id, options, defaultIndex = 0) {
+    const group = node("div", null, { class: "cfg-field" });
+    group.append(node("span", "站点", { class: "cfg-label" }));
+    const picker = node("div", null, { class: "cfg-radios", role: "radiogroup", "aria-label": "站点" });
+    options.forEach(([value, title], index) => {
+      const option = node("label", null, { class: "cfg-radio" });
+      const radio = node("input", null, { type: "radio", name: `cfg-${id}-site`, value, id: `cfg-${id}-site-${value}`, class: "cfg-radio-input" });
+      if (defaultIndex !== null && index === defaultIndex) radio.checked = true;
+      option.append(radio, node("span", title));
+      picker.append(option);
+    });
+    group.append(picker);
+    return group;
+  }
+
+  /// 站点选择的显式值; 未选择返回 null (C093)。
+  function siteValue(id) {
+    if (byId(`cfg-${id}-site-global`)?.checked) return "global";
+    if (byId(`cfg-${id}-site-domestic`)?.checked) return "domestic";
+    return null;
+  }
+
+  /// 读取对话框字段值 (按元素 id 前缀收集, 避免复合选择器依赖)。
+  function dialogValues(id) {
+    const host = byId("provider-dialog");
+    const values = {};
+    const prefix = `cfg-${id}-`;
+    const collect = element => {
+      if (!element.id || !element.id.startsWith(prefix) || element.type === "radio") return;
+      values[element.id.slice(prefix.length)] = element.value;
+    };
+    for (const element of host?.querySelectorAll("input") || []) collect(element);
+    for (const element of host?.querySelectorAll("textarea") || []) collect(element);
+    if (configFor(id).sitePicker) values.site = siteValue(id);
+    return values;
+  }
+
+  /// 保存并验证 (C082): 写入凭据 → 立即结构校验 → 落验证状态 → ok 时触发定向刷新。
+  async function saveProviderCredential(id) {
+    const saveButton = byId(`cfg-save-${id}`);
+    if (saveButton) saveButton.disabled = true;
+    try {
+      const credential = providerCredential(id, dialogValues(id));
+      const accountId = credentialAccountId(id, credential);
+      const payload = { ...credential, display_name: `${providerDescriptor(id)[1]} · ${accountId.split("-").pop()}` };
+      await invoke("save_credential_account", { field: quotaFieldOf(id), accountId, payload });
+      await loadCredentials();
+      await reverifyProvider(id);
+      renderProviderDialog(id);
+    } catch (error) {
+      message(byId("cfg-status"), `保存失败：${error.message || error}`, "warn");
+    } finally {
+      if (saveButton) saveButton.disabled = false;
+    }
+  }
+
+  /// 重新验证 (C082): 后端按写入路径同一套结构校验判定, 通过则触发定向刷新。
+  async function reverifyProvider(id) {
+    try {
+      const result = await invoke("verify_subscription", { provider: id });
+      await applyVerification(id, result.status || "none", result.reason || null);
+      if (result.status === "ok") invoke("refresh_subscription", { sectionId: providerDescriptor(id)[2] }).catch(() => {});
+      return result;
+    } catch (error) {
+      message(byId("cfg-status"), `验证失败：${error.message || error}`, "warn");
+      return { status: "failed", reason: String(error.message || error) };
+    }
+  }
+
+  function localTime(iso) {
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return "";
+    return `${date.getMonth() + 1}月${date.getDate()}日 ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  }
+
+  /// 「添加服务」行: 自定义下拉 (原生 select 无法渲染品牌图形) + 添加按钮。
+  function renderProviderAddRow() {
+    const host = byId("provider-add-row");
+    if (!host) return;
+    const added = new Set(addedProviderIds());
+    const candidates = providers.map(value => value[0]).filter(id => !added.has(id));
+    host.replaceChildren();
+    host.append(node("span", "添加服务", { class: "row-title" }));
+    host.append(node("span", "只列出尚未配置的 Provider, 添加后打开配置窗口", { class: "row-sub" }));
+    const picker = node("div", null, { class: "cfg-picker" });
+    // C096: 两步交互「选择 → 添加…」(对齐 mac `ProviderPopUpPicker`) —— 选中仅暂存,
+    // 必须再点「添加…」才入列表并打开配置对话框, 避免误选直接产生已添加行。
+    let pending = null;
+    const triggerLabel = node("span", candidates.length ? "选择 Provider" : "全部已添加");
+    const trigger = node("button", null, { id: "provider-to-add", type: "button", class: "btn cfg-picker-trigger" });
+    trigger.disabled = !candidates.length;
+    trigger.append(triggerLabel);
+    const menu = node("div", null, { class: "cfg-picker-menu hidden", role: "listbox" });
+    // C096: 按钮顺序对齐 mac —— 下拉选择器在前、「添加…」在后 (此前按钮被插在选择器之前)。
+    const addButton = node("button", "添加…", { id: "provider-add-confirm", type: "button", class: "btn primary" });
+    addButton.disabled = true;
+    for (const id of candidates) {
+      const option = node("button", null, { type: "button", class: "cfg-picker-option", role: "option" });
+      option.append(providerBadge(id, providerDescriptor(id)[1]), node("span", providerDescriptor(id)[1]));
+      option.addEventListener("click", () => {
+        pending = id;
+        triggerLabel.replaceChildren(node("span", providerDescriptor(id)[1]));
+        addButton.disabled = false;
+        menu.classList.add("hidden");
+      });
+      menu.append(option);
+    }
+    trigger.addEventListener("click", () => menu.classList.toggle("hidden"));
+    addButton.addEventListener("click", () => { if (pending) addProvider(pending); });
+    picker.append(trigger, menu);
+    host.append(picker, addButton);
+  }
+
+  /// 添加服务 (C082): 入已添加集合后立即打开配置对话框 (对齐 mac「添加…」)。
+  /// 新添加的 Provider 一律**关闭** (对齐 mac: 验证通过才启用, C090)。
+  async function addProvider(id) {
+    const map = subscriptionProviderMap();
+    if (!map[id]) map[id] = { enabled: false, lastVerifiedAt: null, verificationStatus: "none", failureReason: null };
+    await persist({ subscriptionProviders: map });
+    renderOrders();
+    openProviderDialog(id);
+  }
+
+  /// 拖拽重排 (C082): 顺序写入 providerOrder, 与看板展示顺序同源。
+  function reorderProviders(dragged, target) {
+    if (!dragged || dragged === target) return;
+    const order = orderedAddedProviders();
+    const from = order.indexOf(dragged);
+    const to = order.indexOf(target);
+    if (from < 0 || to < 0) return;
+    order.splice(to, 0, ...order.splice(from, 1));
+    providerOrder = orderedAll(order, providers.map(value => value[0]));
+    renderOrders();
+    persist({ providerOrder: [...providerOrder] }, { revert: () => { providerOrder = orderedAll(settings.providerOrder || [], providers.map(value => value[0])); renderOrders(); } });
+  }
+
   function buildSubscription(host) {
     host.replaceChildren();
     const c1 = card(host, "订阅服务");
-    c1.append(node("p", "配置并启用后, Agent 用量将在授权生效时查询对应云端额度; 上移/下移调整看板展示顺序。", { class: "hint" }));
     c1.append(node("div", null, { id: "setting-providers", class: "provider-list" }));
 
-    const c2 = card(host, "已配置账号");
-    c2.append(node("p", "凭证保存在当前用户专属的本机目录。保存后仅展示账号元数据，不回显密钥。", { class: "hint" }));
-    c2.append(node("div", null, { id: "credential-accounts", class: "account-list" }));
+    // 添加服务 (C082): 只列尚未添加的 Provider。
+    const c2 = card(host, "添加服务");
+    c2.append(node("div", null, { id: "provider-add-row", class: "fluent-row" }));
 
-    // Claude 本机登录态跟随 (C075, 对齐 mac ClaudeProviderSettingsSection): 启用后自动
-    // 只读跟随本机 Claude CLI 登录态, 无需手工粘贴; 粘贴入口保留作多账号兜底。
-    const cClaude = card(host, "Claude 本机登录态");
-    cClaude.append(node("p", "启用 Claude 订阅后自动只读跟随本机 Claude CLI 登录态（%USERPROFILE%\\.claude\\.credentials.json，缺失时回退 %USERPROFILE%\\.claude.json），不回写、不弹窗。", { class: "hint" }));
-    const claudeState = node("div", null, { class: "auth-state-line" });
-    claudeState.append(node("span", "检测中…", { id: "claude-local-state", class: "auth-state" }));
-    cClaude.append(claudeState);
-    const claudeAct = actions(cClaude);
-    button(claudeAct, "claude-local-detect", "立即检测", loadClaudeLocalStatus);
-    button(claudeAct, "claude-local-import", "读取本机登录态", importClaudeFromLocal, "btn primary");
-    claudeAct.append(node("span", null, { id: "claude-local-status", role: "status", class: "status-msg" }));
+    // C096: 底部提示位于**两张卡下方**且逐字含「统一」(对齐 mac SettingsView.swift:1000)。
+    host.append(node("p", "配置并启用后, Agent 用量将在统一授权生效时查询对应云端额度; 拖拽行调整看板展示顺序", { class: "hint subscription-hint" }));
+
+    // 配置对话框浮层: 设置窗口内模态 (mac 为 sheet), 不新建系统窗口。
+    const dialogHost = node("div", null, { id: "provider-dialog", class: "cfg-overlay hidden", role: "dialog", "aria-modal": "true" });
+    dialogHost.addEventListener("click", event => { if (event.target === dialogHost) closeProviderDialog(); });
+    host.append(dialogHost);
+
+    // 本机登录态探测 (C075/C082): 面板构建即探测一次, 结果缓存供对话框渲染。
+    loadClaudeLocalStatus();
+    loadCCSwitchStatus();
 
     const c3 = card(host, "添加或更新账号凭证");
     const providerSel = node("select", null, { id: "account-provider", class: "fluent-select" });
@@ -1448,6 +2282,28 @@
     c5.append(adv);
   }
 
+  /// 重建「授权后应用将：」摘要列表 (C094 / 设计规则 29)。
+  ///
+  /// 云端额度行只列「已启用 ∧ 已配置」的 Provider (对齐 mac
+  /// `enabledConfiguredSubscriptionProviders`); 空集走兜底文案。不得以启用集合直接充当
+  /// 摘要 —— 全新安装启用集合为空, 但升级前它默认含全部 Provider, 直接列出会与
+  /// 「不会访问云端额度接口」的兜底文案自相矛盾。本机登录态探测完成后需重跑 (C091)。
+  function renderConsentSummary() {
+    const list = byId("consent-list");
+    if (!list) return;
+    const enabled = enabledProvidersOf()
+      .filter(id => providerConfigured(id))
+      .map(id => providerDescriptor(id)[1]);
+    list.replaceChildren(
+      node("li", "扫描本机 Agent 会话目录和 CC Switch 数据库（只读）"),
+      node("li", `每 ${Math.round((settings.refreshIntervalSecs || 1800) / 60)} 分钟自动刷新已授权模块`),
+      node("li", enabled.length
+        ? `确认授权后查询已启用订阅 Provider 的云端额度：${enabled.join(" / ")}`
+        : "未配置启用的订阅额度 Provider，不会访问云端额度接口"),
+      node("li", "可随时在此撤销授权暂停采集"),
+    );
+  }
+
   function buildConsent(host) {
     host.replaceChildren();
     const c1 = card(host, "授权与隐私");
@@ -1458,18 +2314,10 @@
     consentToggle.addEventListener("change", () => applyConsent(consentToggle.checked));
     row(c1, "Agent 用量", consentToggle, "允许按授权范围采集本机会话用量");
     const lines = node("div", null, { class: "auth-lines" });
-    const list = node("ul", null, { class: "hint-list" });
-    list.append(
-      node("li", "扫描本机 Agent 会话目录和 CC Switch 数据库（只读）"),
-      node("li", `每 ${Math.round((settings.refreshIntervalSecs || 1800) / 60)} 分钟自动刷新已授权模块`),
-    );
-    const enabled = enabledProvidersOf().map(id => providerDescriptor(id)[1]);
-    list.append(node("li", enabled.length
-      ? `确认授权后查询已启用订阅 Provider 的云端额度：${enabled.join(" / ")}`
-      : "未配置启用的订阅额度 Provider，不会访问云端额度接口"));
-    list.append(node("li", "可随时在此撤销授权暂停采集"));
+    const list = node("ul", null, { id: "consent-list", class: "hint-list" });
     lines.append(node("p", "授权后应用将：", { class: "hint-title" }), list);
     c1.append(lines);
+    renderConsentSummary();
     const state = node("div", null, { class: "auth-state-line" });
     state.append(node("span", settings.consentVersion === 1 ? "当前授权有效" : "尚未授权", { id: "consent-state", class: settings.consentVersion === 1 ? "auth-state ok" : "auth-state off" }));
     c1.append(state);
@@ -1627,6 +2475,7 @@
     syncToggleState("setting-notifications");
     if (byId("setting-hotkey")) byId("setting-hotkey").value = settings.hotkey || "";
     if (byId("setting-theme")) byId("setting-theme").value = settings.theme;
+    if (byId("setting-layout-mode")) byId("setting-layout-mode").value = settings.layoutMode || "stack";
     if (byId("setting-usage-consent")) byId("setting-usage-consent").checked = settings.consentVersion === 1;
     if (byId("setting-usage")) byId("setting-usage").checked = settings.usageEnabled !== false;
     const consentState = byId("consent-state");
@@ -1637,7 +2486,8 @@
     if (byId("setting-pricing-overrides")) byId("setting-pricing-overrides").value = JSON.stringify(settings.pricingOverrides || {}, null, 2);
     cardOrder = orderedAll(settings.cardOrder || [], ["usage", "subscription", "hourly"]);
     providerOrder = orderedAll(settings.providerOrder || [], providers.map(value => value[0]));
-    renderOrders();
+    // settings-updated 也走此处: 启用态可能已变, 摘要须随行一起重绘 (C094)。
+    renderSubscriptionViews();
     for (const render of segmentRenderers) render();
     applyTheme();
   }
@@ -1654,6 +2504,32 @@
       }
     }
     return payloads;
+  }
+
+  // C081: 三家 OAuth Provider 的 oauth 原生形状 —— 与采集端解析器契约一致
+  // (collector-provider 的 claude_token / grok_token / opencode_credential)。
+  // 形状不对时采集端会静默查不出额度, 故在此按 Provider 组装, 并由后端二次校验。
+  function oauthPayload(field, extra, secret, secondary) {
+    if (field === "opencodeGoQuotaAccounts") {
+      const auth = String(extra.auth || "").trim();
+      const workspaceId = String(extra.workspaceId || "").trim();
+      if (!auth || !workspaceId) throw new Error("请粘贴包含 auth 与 workspaceId 的 JSON");
+      return { ...extra, auth, workspaceId };
+    }
+    if (field === "claudeQuotaAccounts") {
+      const wrapped = extra.claudeAiOauth || extra["claude.ai_oauth"];
+      if (wrapped && typeof wrapped === "object") return extra;
+      // 裸 OAuth 条目或纯令牌: 统一包成 claudeAiOauth 包装。
+      const entry = { ...extra };
+      if (secret) entry.accessToken = secret;
+      if (secondary) entry.refreshToken = secondary;
+      if (!entry.accessToken) throw new Error("请填写 Access Token 或粘贴 Claude OAuth 凭证 JSON");
+      return { claudeAiOauth: entry };
+    }
+    // Grok: 顶层 key 与作用域条目采集端均可解析, 原样保留; 纯令牌按注入作用域包装。
+    if (extra.key || Object.keys(extra).some(key => key.startsWith("https://auth.x.ai::"))) return extra;
+    if (!secret) throw new Error("请填写 Access Token 或粘贴 Grok 凭证 JSON");
+    return { "https://auth.x.ai::injected": { key: secret } };
   }
 
   function clearSecrets() {
@@ -1676,8 +2552,9 @@
         if (!secret || !secondary) throw new Error("火山引擎需要 Access Key 与 Secret Key");
         payload = { ...payload, accessKeyId: secret, secretAccessKey: secondary };
       } else if (["claudeQuotaAccounts", "grokQuotaAccounts", "opencodeGoQuotaAccounts"].includes(field)) {
-        if (!secret && !extra) throw new Error("请填写 Access Token 或 OAuth 凭证");
-        payload = { oauth: { ...payload, ...(secret ? { access_token: secret } : {}), ...(secondary ? { refresh_token: secondary } : {}) } };
+        // C081: 三家 OAuth Provider 的 oauth 必须是采集端解析器认得的原生形状,
+        // 扁平 {access_token} 会被采集端静默忽略 —— 这里按 Provider 组装正确形状。
+        payload = { oauth: oauthPayload(field, payload, secret, secondary) };
       } else if (field === "codexQuotaAccounts") {
         if (!secret) throw new Error("请填写 Access Token，或通过 auth.json 导入");
         payload = { ...payload, access_token: secret, ...(secondary ? { refresh_token: secondary } : {}) };
@@ -1704,14 +2581,19 @@
   }
 
   async function loadCredentials() {
-    const [fields, configured, accounts] = await Promise.all([
+    const [fields, configured, accounts, rejections] = await Promise.all([
       invoke("credential_allowlist"),
       invoke("get_credential_fields"),
       invoke("get_credential_accounts"),
+      invoke("get_credential_rejections"),
     ]);
     allowlist = fields;
     credentialAccounts = accounts || [];
+    credentialRejections = rejections || [];
     renderOrders();
+    // 授权摘要与行尾件都依赖「已配置」判据 (C091 / C094): 凭据加载完成后重跑一次,
+    // 否则摘要会停留在「无已配置 Provider」的兜底文案上。
+    renderConsentSummary();
     const host = byId("credential-fields");
     if (host) {
       host.replaceChildren();
@@ -1824,28 +2706,41 @@
   // MARK: - Claude 本机登录态 (C075)
 
   // 状态行文案与 mac ClaudeProviderSettingsSection 同语义: 已跟随 / 未发现 / 已过期。
-  async function loadClaudeLocalStatus() {
+  // C082: 本机登录态探测在订阅额度页构建时执行 (对齐 mac `refreshOfficialLocalAvailability`
+  // 的 onAppear), 结果缓存供 Claude 配置对话框渲染; 对话框内的元素 id 与 C075 保持一致。
+  let claudeLocalInfo = null;
+
+  function renderClaudeLocalState() {
     const state = byId("claude-local-state");
-    if (!state) return;
-    try {
-      const info = await invoke("claude_local_status");
-      const stored = info?.storedAccountCount || 0;
-      if (info?.status === "followed") {
-        state.textContent = stored > 0
-          ? `已存 ${stored} 个账号凭证，正在使用`
-          : "已启用，自动跟随本机 Claude CLI 登录态";
-        state.className = "auth-state ok";
-      } else if (info?.status === "expired") {
-        state.textContent = "登录已过期，运行一次 Claude CLI 可自动恢复，Bruce 会重新跟随";
-        state.className = "auth-state off";
-      } else {
-        state.textContent = "未检测到本机 Claude 登录态，登录 Claude CLI 后自动跟随";
-        state.className = "auth-state off";
-      }
-    } catch (error) {
+    if (!state || !claudeLocalInfo) return;
+    const stored = claudeLocalInfo.storedAccountCount || 0;
+    if (claudeLocalInfo.status === "followed") {
+      state.textContent = stored > 0
+        ? `已存 ${stored} 个账号凭证，正在使用`
+        : "已启用，自动跟随本机 Claude CLI 登录态";
+      state.className = "auth-state ok";
+    } else if (claudeLocalInfo.status === "expired") {
+      state.textContent = "登录已过期，运行一次 Claude CLI 可自动恢复，Bruce 会重新跟随";
+      state.className = "auth-state off";
+    } else if (claudeLocalInfo.status === "unavailable") {
       state.textContent = "本机登录态检测不可用";
       state.className = "auth-state off";
+    } else {
+      state.textContent = "未检测到本机 Claude 登录态，登录 Claude CLI 后自动跟随";
+      state.className = "auth-state off";
     }
+  }
+
+  async function loadClaudeLocalStatus() {
+    try {
+      claudeLocalInfo = await invoke("claude_local_status");
+    } catch {
+      claudeLocalInfo = { status: "unavailable", storedAccountCount: 0 };
+    }
+    renderClaudeLocalState();
+    // 行尾件与授权摘要都依赖本机登录态 (C091 / C094): 探测完成后刷新对应区域。
+    if (byId("setting-providers")) renderOrders();
+    if (byId("consent-list") || byId("setting-providers")) renderConsentSummary();
   }
 
   async function importClaudeFromLocal() {

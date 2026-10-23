@@ -1,10 +1,12 @@
 //! 设置持久化覆盖 —— 校验边界、损坏回落、位置记忆与目录自建。
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 
 use bruce_win_lib::settings::{
-    load_settings, requires_collection, save_settings, validate_settings, AppSettings, PROVIDERS,
+    load_settings, requires_collection, save_settings, sync_enabled_providers, validate_settings,
+    AppSettings, SubscriptionProviderState, PROVIDERS,
 };
 
 fn temp_root() -> PathBuf {
@@ -105,9 +107,21 @@ fn cline_is_a_known_provider_and_kept_in_enabled_list() {
         ..AppSettings::default()
     };
     assert!(validate_settings(&settings).is_ok());
-    assert!(AppSettings::default()
-        .enabled_providers
-        .contains(&"cline".to_owned()));
+    // C090: 默认不再预置任何 Provider; cline 作为已知 Provider 可被显式启用并保留。
+    assert!(
+        AppSettings::default().enabled_providers.is_empty(),
+        "全新安装订阅集合为空"
+    );
+    let mut explicit = settings.clone();
+    explicit.subscription_providers = Some(BTreeMap::from([(
+        "cline".to_owned(),
+        SubscriptionProviderState {
+            enabled: true,
+            ..SubscriptionProviderState::default()
+        },
+    )]));
+    sync_enabled_providers(&mut explicit);
+    assert_eq!(explicit.enabled_providers, vec!["cline".to_owned()]);
 }
 
 #[test]
@@ -220,7 +234,11 @@ fn validate_theme_and_hotkey_boundaries() {
 #[test]
 fn only_collection_inputs_trigger_an_immediate_collection() {
     // C069: 设置即时生效后每个控件单独保存; 只有改变采集输入的字段才触发全量采集。
-    let base = AppSettings::default();
+    // C090: 启用集合由 subscription_providers 派生, 故基线取「已有启用项」的配置。
+    let base = AppSettings {
+        enabled_providers: PROVIDERS.iter().map(|s| (*s).to_owned()).collect(),
+        ..AppSettings::default()
+    };
     let changed = |edit: fn(&mut AppSettings)| {
         let mut next = base.clone();
         edit(&mut next);

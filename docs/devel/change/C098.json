@@ -1,0 +1,127 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C098",
+  "title": "面板底栏刷新按钮右侧新增外观切换按钮：单击循环「跟随系统/浅色/深色」，与设置中心共用同一持久化偏好",
+  "version": "0.13.0",
+  "type": "Enhancement",
+  "status": "verified",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos",
+    "component": "菜单栏面板底栏动作区 (MenuBarViews.actionFooter) 与外观偏好循环",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "外观偏好（跟随系统 / 浅色 / 深色）此前只有设置中心「通用 → 配色模式」一个入口：用户想切换配色必须先打开设置窗口，而面板本身正是最需要即时适配桌面环境（深色壁纸 / 白天强光）的地方，面板内的配色切换缺一个零跳转入口。本卡在面板底栏「刷新」按钮右侧补一个仅图标按钮，单击在「跟随系统 → 浅色 → 深色」间循环，图标即当前态；复用既有 OnboardingConfiguration.appearanceMode 单一真源与 OnboardingCoordinator.setAppearanceMode 的「先存后生效」语义，不新增第二份状态、不新增持久化键。",
+  "precheck": {
+    "description": "预检: 确认面板底栏尚无外观入口, 且 AppearancePreference 尚无循环定义",
+    "command": "git show HEAD:apps/macos/Sources/BruceApp/MenuBarViews.swift | grep -c 'setAppearanceMode'; git show HEAD:apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift | grep -c 'var next'",
+    "expected": "两条均为 0 (底栏只调 refresh/openSettings/terminateApplication; AppearancePreference 只有三个 case 无循环)",
+    "is_completed": true,
+    "evidence": "2026-10-23 复核: HEAD 版 MenuBarViews.swift 中 setAppearanceMode 命中 0 次 (外观入口仅存在于 SettingsView.swift:320); HEAD 版 OnboardingConfiguration.swift 中 'var next' 命中 0 次。缺口确认存在, 非重复实现。"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护在 main 直接实施"
+    ],
+    "after": [
+      "swift run --package-path apps/macos BruceOnboardingCoreHarness",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify  # 收口前门禁: --card C098 --to closed --record; Exit 0 后同步状态并以 --card C098 --receipt 复核"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "外观偏好循环纯函数 (apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift)",
+      "before": "AppearancePreference 只有 system/light/dark 三个 case 与 Codable 实现, 无任何顺序/循环语义; 循环顺序若写在视图层, 会与设置中心分段选择器的选项顺序形成两处真源",
+      "after": "新增 `public var next: AppearancePreference`, 以 allCases 声明顺序实现「跟随系统 → 浅色 → 深色 → 跟随系统」的循环, 作为循环顺序的唯一定义",
+      "impact": "面板按钮与设置中心共用同一顺序来源; 新增/重排 case 时循环自动跟随, 不会漂移"
+    },
+    {
+      "scope": "面板底栏动作区 (apps/macos/Sources/BruceApp/MenuBarViews.swift)",
+      "before": "actionFooter 仅「刷新 | Spacer | 设置 | 退出」四个控件, 全部 SF Symbols 图标 (labelStyle(.iconOnly)); 底栏整行 help 文案为「刷新、设置或退出 Bruce」",
+      "after": "在「刷新」右侧紧邻新增仅图标外观按钮: 图标随当前态 (circle.lefthalf.filled / sun.max / moon), 单击调 coordinator.setAppearanceMode(coordinator.appearanceMode.next); 带 accessibilityLabel(含当前态中文名) 与逐按钮 .help 悬停提示; 底栏 help 文案更新为「刷新、外观、设置或退出 Bruce」",
+      "impact": "面板内零跳转即可切换配色; 控件为无状态瞬时按钮, 不引入动画/定时器 (沿用 C044 面板显隐门控契约)"
+    },
+    {
+      "scope": "外观态到图标/中文名的呈现映射 (apps/macos/Sources/BruceApp/MenuBarViews.swift)",
+      "before": "AppearancePreference 扩展仅有 colorScheme (system -> nil 跟随系统)",
+      "after": "扩展补齐 symbolName (三态图标) 与 displayName (跟随系统/浅色/深色, 与设置中心分段选择器逐字一致)",
+      "impact": "图标与无障碍标签均取自当前态, 无第二处文案真源"
+    },
+    {
+      "scope": "回归用例 (apps/macos/Tests/BruceOnboardingCoreHarness/OnboardingSubscriptionConfigTests.swift + BruceOnboardingCoreHarness.swift)",
+      "before": "仅有 configAppearanceModeDecodeAndFallback 覆盖 appearanceMode 的解码回落与读写往返, 无循环语义用例",
+      "after": "新增 appearancePreferenceCycleOrder: 断言 allCases 声明顺序为 system/light/dark、三态逐一后继正确、且从任一态走 allCases.count 步回到自身 (循环封闭); Harness 计数 167 → 168",
+      "impact": "循环顺序与选项集合脱节会被立即拦下 (已做红绿验证)"
+    },
+    {
+      "scope": "Windows 底栏注释 (apps/win/src/index.html)",
+      "before": "底栏注释记为「mac actionFooter: 刷新/设置/退出, 仅图标」, 与 mac 变更后将不再一致",
+      "after": "注释更新为「刷新/外观/设置/退出」并显式登记有意分歧: 外观切换为 mac 独有能力 (Windows 恒深色、无配色模式偏好), 故不镜像该按钮",
+      "impact": "双端差异被记录为有意分歧而非未对齐缺陷; Windows 行为与前端测试零改动"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "底栏只定义「刷新与设置入口」; 外观偏好只在设置中心定义单一入口 (FR 清单无面板内外观入口)",
+      "after": "新增 FR-6 面板底栏外观切换入口: 位置在刷新右侧、单击三态循环、循环顺序由 AppearancePreference.next 唯一给出、复用 appearanceMode 单一真源与 setAppearanceMode 先存后生效语义、图标即当前态、受 C044 门控约束; 并明确「外观切换为 mac 独有能力, Windows 底栏有意不镜像」的跨端口径"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "local-20261023-01",
+    "user_quote": "确认",
+    "signoff": "verified_by_user",
+    "checks": [
+      {
+        "item": "自动化测试 (循环语义回归)",
+        "true_if": "appearancePreferenceCycleOrder 全绿: 声明顺序为 system/light/dark, 三态后继正确, 任一态循环 allCases.count 步回到自身; 既有用例无回退; 退出码 0",
+        "false_if": "任何断言失败, 或循环不封闭",
+        "evidence": "2026-10-23: 红绿双向验证 —— 把 next 临时改为恒返回 all[0] 后 Harness 以「跟随系统的下一档必须是浅色」Fatal error 退出 (EXIT=133); 还原后 swift run BruceOnboardingCoreHarness 输出「BruceOnboardingCore tests passed: 168」EXIT=0",
+        "result": true
+      },
+      {
+        "item": "编译与全量本地验证门禁",
+        "true_if": "swift build 通过 (无新增错误); zsh scripts/verify-local.sh 退出码 0",
+        "false_if": "存在编译报错或任一 Harness 失败",
+        "evidence": "2026-10-23: swift build --package-path apps/macos 输出 Build complete! (既有 ld search path 告警与本卡无关); zsh scripts/verify-local.sh 退出码 0",
+        "result": true
+      },
+      {
+        "item": "行为实测 (真机界面点按)",
+        "true_if": "打开面板后底栏刷新右侧出现外观按钮; 单击三次依次变为浅色/深色/跟随系统且面板配色即时跟随; 重启 App 后停留在最后选择",
+        "false_if": "按钮缺失、图标不随态变化、配色不生效或重启后回落",
+        "evidence": "2026-10-23: 人类对上述真机点按验收原话「确认」(AI 代签, 逐字记录人类原话, 未附加人类未陈述的观察)",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "设置中心「配色模式」行为与持久化不变 (同一 setAppearanceMode 路径); 面板隐藏态无新增动画/定时器; Windows 行为与前端测试零改动",
+        "false_if": "引入第二份外观状态、改变既有持久化格式, 或改动 Windows 运行行为",
+        "evidence": "2026-10-23: 未新增持久化键与状态 (复用 appearanceMode); 新增控件为无状态 Button, 无动画/定时器; apps/win 仅改动 index.html 底栏注释, 未触及 app.js/settings.js/styles.css, node apps/win/tests/frontend.test.mjs 75 项全绿、node scripts/check-win-frontend.mjs Exit 0; zsh scripts/verify-local.sh 全量 Exit 0 (Rust fmt/test/clippy + 9 项 Swift Harness + 双端对拍 + 变更总账一致 cards=98 topics=7)",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-23",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified"
+  }
+}

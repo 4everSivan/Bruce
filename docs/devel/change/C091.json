@@ -1,0 +1,108 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C091",
+  "title": "Windows 订阅行状态尾件不读验证结果与本机登录态：补「验证失败 / 需重新登录」两态，本机 CLI 只读跟随计入「已配置」",
+  "version": "0.13.0",
+  "type": "BugFix",
+  "status": "verified",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src/settings.js + apps/win/src-tauri/src/credentials.rs + apps/win/src-tauri/src/lib.rs",
+    "component": "订阅 Provider 行状态尾件",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "mac 的行状态尾件由「是否配置」× `verificationStatus` 两维决定, 输出 未配置 / 已配置 / 验证失败 / 需重新登录（apps/macos/Sources/BruceApp/SettingsView.swift:1109 `subscriptionStatusTail`）。Windows 的 `providerState`（apps/win/src/settings.js:250）只看 `accountsFor(id).length` 与 `authorizationState`（实测该函数体内 `verificationStatus` 0 命中, `claudeLocal|localStatus` 亦 0）—— 于是验证失败的 Provider 照样显示绿色「已配置」, 用户看不到失败信号。第二个缺口同源: mac 把本机 CLI 登录态计入「已配置」（apps/macos/Sources/BruceOnboardingCore/ProviderRegistry.swift:98 的 `.claudeAppOrLocalProbe` → `inputs.claudeLocalAvailable`, `.grokAppOrLocalProbe` 同理）, 而 Windows 只数已存账号。由于 C075 起 Claude 是零配置只读跟随（`with_local_claude` 在采集前注入 `claude-cli`, 不落盘, 见 apps/win/src-tauri/src/credentials.rs:358 起）, Claude 正在被查询额度、行上却写「未配置」, 与看板实际行为矛盾。",
+  "precheck": {
+    "description": "预检: 确认行状态尾件不读验证结果与本机登录态",
+    "command": "awk '/function providerState/,/^  }/' apps/win/src/settings.js | grep -c 'verificationStatus'",
+    "expected": "0 (尾件判据不含 verificationStatus)",
+    "is_completed": false,
+    "evidence": "2026-10-22 复核: 期望 0 实测 0; 同函数体内 claudeLocal / localStatus 亦 0; 缺口确认存在"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护在 main 直接实施"
+    ],
+    "after": [
+      "node apps/win/tests/frontend.test.mjs",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "scripts/adflow-verify  # 收口前门禁: --card C091 --to closed --record; Exit 0 后同步状态并以 --card C091 --receipt 复核"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "行状态尾件判据 (apps/win/src/settings.js providerState)",
+      "before": "仅按账号存在性与 authorizationState 判定, 输出 未配置 / 已配置 / 需要重新授权",
+      "after": "改为「配置判据 × verificationStatus」两维, 输出 未配置 / 已配置 / 验证失败 / 需重新登录; 判据数据取自 subscriptionProviders 的验证结果",
+      "impact": "验证失败不再伪装成已配置; 与 mac subscriptionStatusTail 同语义"
+    },
+    {
+      "scope": "本机登录态计入「已配置」",
+      "before": "只数已存账号, C075 的本机只读跟随不体现",
+      "after": "Claude 在本机只读跟随中计入「已配置」(对齐 mac claudeAppOrLocalProbe), 且该判据由行尾件、启用开关禁用态、对话框横幅与「重新验证」入口、授权摘要共用; Claude 无已存凭据时验证按本机登录态判定 (跟随中 ok / 已过期 needsRelogin / 未发现 none), 已存凭据优先; Grok 本机跟随随 C085 落地 (本卡不含); 未发现或已过期仍为未配置",
+      "impact": "正在被跟随查询的 Claude 行不再显示未配置"
+    },
+    {
+      "scope": "回归用例 (apps/win/tests/frontend.test.mjs)",
+      "before": "无状态尾件用例",
+      "after": "断言四态文案与配色、验证失败不显示已配置、本机跟随计入已配置、本机登录态缺失仍为未配置、多账号计数不受影响",
+      "impact": "状态契约被测试锁定"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "规则 21 只定义 fail-closed「已配置」与 authorization_state == reauthRequired → 需要重新授权; 未定义 verificationStatus 与本机登录态如何进入行状态",
+      "after": "落地规则 26: 行状态尾件 = 配置判据 × verificationStatus 四态 (未配置 / 已配置 / 验证失败 / 需重新登录); 本机 CLI 只读跟随计入「已配置」; 账号级 authorizationState == reauthRequired 的「需要重新授权」措辞保留为规则 21 登记项, 与行级 needsRelogin 的「需重新登录」分工明确"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "local-20261023-01",
+    "user_quote": "确认",
+    "signoff": "verified_by_user",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "四态用例全绿 (未配置 / 已配置 / 验证失败 / 需重新登录) 且配色断言正确; 既有用例无回退; 退出码 0",
+        "false_if": "任何测试失败, 或验证失败仍输出已配置",
+        "evidence": "2026-10-22 复测: 前端「row status tail reflects verification status and local CLI follow (C091)」(四态文案与 warn 配色 / 跟随中计为已配置 / 未发现为未配置) +「local CLI follow counts as configured for the switch, dialog and verification (C091)」(跟随中开关可用、横幅为「已配置 · 未验证」、可重新验证且通过后启用; 未发现时开关禁用、横幅未配置、无重新验证); credentials_coverage「claude_verification_follows_the_local_cli_login_without_stored_credentials」「stored_claude_credentials_take_precedence_over_the_local_login」; 前端 75/75; 变异校验: 开关判据回退为仅数已存账号后该用例转红；规则 26 的 Claude 验证语义: 无已存凭据时按本机登录态判定 (跟随中 → ok, 已过期 → needsRelogin, 未发现 → none), 已存凭据 (含形状无效) 优先不被掩盖 (verify_subscription_following_local, 用例「stored_claude_credentials_take_precedence_over_the_local_login」); 「已配置」判据由行尾件 / 启用开关禁用态 / 对话框横幅与「重新验证」入口 / 授权摘要共用 providerConfigured, 不再各自另算",
+        "result": true
+      },
+      {
+        "item": "行为实测 (Windows 真机)",
+        "true_if": "在 Windows 真机上实测通过, 且行为符合预期: 填入错误密钥保存后行尾件显示验证失败; 本机 Claude CLI 登录后被跟随的行显示已配置; 撤销本机登录态后回到未配置",
+        "false_if": "未在 Windows 真机实测 (本机 macOS 无法实跑 Tauri/WebView2), 或实测行为不符: 验证失败仍显示已配置, 或本机跟随不体现",
+        "evidence": "2026-10-23: 未执行 —— 本机为 macOS, 无法实跑 Windows Tauri/WebView2; 该缺口已在节点回执「未覆盖」中如实报告, 人工在知晓该缺口的前提下确认验收。",
+        "result": false
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "多账号计数、套餐标签、启用开关禁用态 (未配置时禁用) 语义不变; 看板过滤与授权摘要不受影响; mac 侧无任何改动",
+        "false_if": "破坏行结构其他部件或与 C087 看板门禁判据冲突",
+        "evidence": "2026-10-22 复测: node apps/win/tests/frontend.test.mjs 75/75; cargo test apps/win/src-tauri 全部通过; cargo clippy --all-targets -- -D warnings 无告警; cargo fmt --check 干净; node scripts/check-win-frontend.mjs Exit 0; mac 侧文件未改动",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-23",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified"
+  }
+}

@@ -104,6 +104,15 @@ public enum AppearancePreference: String, Codable, Equatable, Sendable, CaseIter
     case system
     case light
     case dark
+
+    /// 面板底栏外观按钮的循环顺序, 与设置中心分段选择器一致:
+    /// 跟随系统 -> 浅色 -> 深色 -> 跟随系统. 以 `allCases` (声明顺序)
+    /// 为准, 保证循环顺序与选项集合永不脱节.
+    public var next: AppearancePreference {
+        let all = Self.allCases
+        guard let index = all.firstIndex(of: self) else { return all[0] }
+        return all[(index + 1) % all.count]
+    }
 }
 
 /// 模糊风格偏好 (仅液态玻璃模式下展示). regular 标准, clear 通透,

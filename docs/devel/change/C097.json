@@ -1,0 +1,102 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C097",
+  "title": "Windows 无法配置 Cline：clineQuotaAccounts 在凭证校验器中无匹配分支，保存恒返回「凭证字段不受支持」",
+  "version": "0.13.0",
+  "type": "BugFix",
+  "status": "verified",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src-tauri/src/credentials.rs",
+    "component": "凭据字段校验分支覆盖",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "执行 C092（保存前格式校验）时发现的独立缺陷: `clineQuotaAccounts` 已在 `collector_bridge::ALLOWED_CREDENTIAL_FIELDS` 白名单内（core/collector/crates/collector-bridge/src/lib.rs:62）, 故 `is_allowed_field` 放行; 但 `validate_credential_payload` 的 (allowed, required) 匹配表（apps/win/src-tauri/src/credentials.rs:89-117）**没有 Cline 分支**, 于是落到 `_ => return Err(\"凭证字段不受支持\")`。前端 Cline 走的就是这条路（providers 表 `[\"cline\", \"Cline\", \"clineQuotaAccounts\"]`, apps/win/src/settings.js:22 → `saveProviderCredential` → `save_credential_account`）, 因此 **Cline 的「保存并验证」在 Windows 上 100% 失败**, 而 Cline 正是 C083 覆盖的五家 API Key Provider 之一 —— 五家里有一家根本无法配置。既有测试未覆盖该字段, 故未被发现。",
+  "precheck": {
+    "description": "预检: 确认 clineQuotaAccounts 在白名单内但无校验分支",
+    "command": "grep -c 'clineQuotaAccounts' apps/win/src-tauri/src/credentials.rs core/collector/crates/collector-bridge/src/lib.rs",
+    "expected": "credentials.rs 仅格式校验分支命中 (校验表无该字段); bridge 白名单 1 命中",
+    "is_completed": false,
+    "evidence": "2026-10-22 复核: bridge 白名单含 clineQuotaAccounts (:62); credentials.rs 的 (allowed,required) 表 arms 为 kimi/deepseek/jev/zhipu/volcengine/stepfun/codex/claude+grok+opencodeGo, 无 cline; 缺口确认存在"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护在 main 直接实施"
+    ],
+    "after": [
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "node apps/win/tests/frontend.test.mjs",
+      "scripts/adflow-verify  # 收口前门禁: --card C097 --to closed --record; Exit 0 后同步状态并以 --card C097 --receipt 复核"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "校验分支 (apps/win/src-tauri/src/credentials.rs)",
+      "before": "clineQuotaAccounts 无匹配分支, 落到 `_ => Err(\"凭证字段不受支持\")`",
+      "after": "把 clineQuotaAccounts 并入 api_key 类分支 (allowed `display_name` / `api_key`, required `api_key`), 与 Kimi / DeepSeek / Jev 同形",
+      "impact": "Cline 的保存与验证恢复正常"
+    },
+    {
+      "scope": "回归用例 (apps/win/src-tauri/tests/credentials_coverage.rs)",
+      "before": "无 clineQuotaAccounts 用例",
+      "after": "断言合法 Cline 载荷可保存且可校验通过; 与 C092 的长度下限用例共同锁定该分支",
+      "impact": "该分支不再可能被静默遗漏"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "规则 21 的形状契约表列出「Kimi / DeepSeek / Cline / Jev: api_key」, 但实现未覆盖 Cline 分支, 规则与实现不一致",
+      "after": "规则 21 的形状契约落实为校验表全覆盖: 契约表列出的每个字段都必须有对应校验分支, 无分支即视为缺陷 (新增字段时同批补齐白名单与校验表)"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "local-20261023-04",
+    "user_quote": "确认",
+    "signoff": "verified_by_user",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "clineQuotaAccounts 正反用例全绿 (合法载荷通过、非法载荷按 C092 规则拒绝); 既有用例无回退; 退出码 0",
+        "false_if": "任何测试失败, 或 Cline 字段仍被拒",
+        "evidence": "2026-10-22: credentials_coverage「cline_credentials_can_be_saved_like_other_api_key_providers」全绿: 合法 Cline 凭据可保存且读回, 过短仍按 C092 规则拒绝",
+        "result": true
+      },
+      {
+        "item": "行为实测 (Windows 真机)",
+        "true_if": "Cline 对话框填入合法 API Key 后「保存并验证」成功, 行尾件转为已配置, 并可触发定向刷新",
+        "false_if": "仍报「凭证字段不受支持」",
+        "evidence": "",
+        "result": false
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "白名单 / 桥接边界不变; 其他 Provider 的校验分支不受影响; 采集端 Cline 注入路径 (collector.rs:92) 与保存字段名一致; mac 侧无任何改动",
+        "false_if": "改变桥接允许字段集, 或与采集端字段名不一致",
+        "evidence": "2026-10-22: cargo test apps/win/src-tauri + apps/win/viewmodel + core/collector --workspace 全部通过; cargo clippy --all-targets -- -D warnings 无告警; cargo fmt --check 干净; node scripts/check-win-frontend.mjs Exit 0; mac 侧文件未改动",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-23",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified"
+  }
+}

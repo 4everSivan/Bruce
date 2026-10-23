@@ -20,8 +20,9 @@ mod desktop {
 
     use super::{credentials, paths, scheduler, settings};
     use crate::runtime_core::{
-        compute_dashboard_geometry, replace_hotkey, window_action, MonitorBounds, TrayIconBounds,
-        WindowAction,
+        compute_dashboard_geometry, replace_hotkey, select_dashboard_placement,
+        suspend_or_resume_hotkey, window_action, DashboardActivityState, DashboardOpenSource,
+        MonitorBounds, ToggleDecision, TrayIconBounds, UnfocusDecision, WindowAction,
     };
     use bruce_win_viewmodel::analytics::AnalyticsRange;
     use bruce_win_viewmodel::model_catalog;
@@ -39,6 +40,9 @@ mod desktop {
     #[derive(Clone, Default)]
     struct TrayBoundsState(std::sync::Arc<std::sync::Mutex<Option<TrayIconBounds>>>);
 
+    #[derive(Clone, Default)]
+    struct ActivityState(std::sync::Arc<std::sync::Mutex<DashboardActivityState>>);
+
     fn rect_to_bounds(rect: &tauri::Rect, scale: f64) -> TrayIconBounds {
         let pos = rect.position.to_physical::<i32>(scale);
         let sz = rect.size.to_physical::<u32>(scale);
@@ -50,83 +54,93 @@ mod desktop {
         }
     }
 
-    /// 依据目标显示器物理工作区 (work_area) 与托盘位置动态计算自适应尺寸并贴靠定位。
+    fn monitor_to_bounds(m: &tauri::Monitor) -> MonitorBounds {
+        let scale = m.scale_factor();
+        let pos = m.position();
+        let size = m.size();
+        let work = m.work_area();
+        MonitorBounds {
+            x: pos.x,
+            y: pos.y,
+            width: size.width,
+            height: size.height,
+            work_x: work.position.x,
+            work_y: work.position.y,
+            work_width: work.size.width,
+            work_height: work.size.height,
+            scale_factor: scale,
+        }
+    }
+
+    /// 依据目标显示器物理工作区 (work_area) 与托盘/光标位置动态计算自适应尺寸并贴靠定位 (C016/C099):
+    /// 托盘唤出贴托盘, 热键唤出在光标所在屏弹出 (托盘不在该屏时按该屏任务栏角落贴靠)。
     fn apply_dashboard_geometry(
         window: &tauri::WebviewWindow,
         tray_bounds: Option<&TrayIconBounds>,
+        source: DashboardOpenSource,
     ) {
-        let monitor = if let (Some(tray), Ok(monitors)) = (tray_bounds, window.available_monitors())
-        {
-            monitors.into_iter().find(|m| {
-                let pos = m.position();
-                let sz = m.size();
-                tray.x >= pos.x
-                    && tray.x < pos.x + sz.width as i32
-                    && tray.y >= pos.y
-                    && tray.y < pos.y + sz.height as i32
-            })
-        } else {
-            None
+        let cursor = window
+            .cursor_position()
+            .ok()
+            .map(|pos| (pos.x.round() as i32, pos.y.round() as i32));
+        let (placed_monitor, tray_anchor) = match window.available_monitors() {
+            Ok(monitors) => {
+                let bounds: Vec<MonitorBounds> = monitors.iter().map(monitor_to_bounds).collect();
+                let placement = select_dashboard_placement(&bounds, tray_bounds, cursor, source);
+                (
+                    placement
+                        .monitor_index
+                        .and_then(|idx| monitors.into_iter().nth(idx)),
+                    placement.tray_anchor,
+                )
+            }
+            Err(_) => (None, tray_bounds.copied()),
         };
-
-        let target_monitor = monitor
+        let target_monitor = placed_monitor
             .or_else(|| window.current_monitor().ok().flatten())
             .or_else(|| window.primary_monitor().ok().flatten());
 
         if let Some(m) = target_monitor {
-            let scale = m.scale_factor();
-            let pos = m.position();
-            let size = m.size();
-            let work = m.work_area();
-
-            let monitor_bounds = MonitorBounds {
-                x: pos.x,
-                y: pos.y,
-                width: size.width,
-                height: size.height,
-                work_x: work.position.x,
-                work_y: work.position.y,
-                work_width: work.size.width,
-                work_height: work.size.height,
-                scale_factor: scale,
-            };
-
-            let geom = compute_dashboard_geometry(&monitor_bounds, tray_bounds);
+            let monitor_bounds = monitor_to_bounds(&m);
+            let geom = compute_dashboard_geometry(&monitor_bounds, tray_anchor.as_ref());
             let _ = window.set_size(PhysicalSize::new(geom.width, geom.height));
             let _ = window.set_position(PhysicalPosition::new(geom.x, geom.y));
+        }
+    }
+
+    fn show_dashboard(app: &tauri::AppHandle, source: DashboardOpenSource) {
+        if let Some(window) = app.get_webview_window("dashboard") {
+            let tray_bounds = app
+                .try_state::<TrayBoundsState>()
+                .and_then(|s| s.0.lock().ok().and_then(|guard| *guard));
+            apply_dashboard_geometry(&window, tray_bounds.as_ref(), source);
+            let _ = window.unminimize();
+            let _ = window.show();
+            let _ = window.set_always_on_top(true);
+            let _ = window.set_focus();
+            // 打开面板立即出新数据 (常驻周期之外的手动唤醒通道, C007)。
+            app.state::<SchedulerControl>().request_manual_refresh();
         }
     }
 
     fn toggle_dashboard(app: &tauri::AppHandle) {
         if let Some(window) = app.get_webview_window("dashboard") {
             if window.is_visible().unwrap_or(false) {
+                if let Some(activity) = app.try_state::<ActivityState>() {
+                    if let Ok(mut guard) = activity.0.lock() {
+                        guard.record_explicit_hide();
+                    }
+                }
                 let _ = window.hide();
             } else {
-                let tray_bounds = app
-                    .try_state::<TrayBoundsState>()
-                    .and_then(|s| s.0.lock().ok().and_then(|guard| *guard));
-                apply_dashboard_geometry(&window, tray_bounds.as_ref());
-                let _ = window.show();
-                let _ = window.set_focus();
-                // 打开面板立即出新数据 (常驻周期之外的手动唤醒通道, C007)。
-                app.state::<SchedulerControl>().request_manual_refresh();
+                if let Some(activity) = app.try_state::<ActivityState>() {
+                    if let Ok(mut guard) = activity.0.lock() {
+                        guard.record_shown(std::time::Instant::now());
+                    }
+                }
+                // 仅托盘菜单「显示看板」调用: 菜单弹在托盘处, 面板随托盘定位
+                show_dashboard(app, DashboardOpenSource::Tray);
             }
-        }
-    }
-
-    fn persist_outer_position(x: i32, y: i32) {
-        let root = paths::data_root();
-        let mut stored = settings::load_settings(&root);
-        if stored.panel_x != Some(x) || stored.panel_y != Some(y) {
-            stored.panel_x = Some(x);
-            stored.panel_y = Some(y);
-            let _ = settings::save_settings(&root, &stored);
-        }
-    }
-
-    fn persist_position(window: &tauri::Window) {
-        if let Ok(PhysicalPosition { x, y }) = window.outer_position() {
-            persist_outer_position(x, y);
         }
     }
 
@@ -140,7 +154,31 @@ mod desktop {
         app.global_shortcut()
             .on_shortcut(parsed, |app, _shortcut, event| {
                 if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                    toggle_dashboard(app);
+                    let is_visible = app
+                        .get_webview_window("dashboard")
+                        .and_then(|w| w.is_visible().ok())
+                        .unwrap_or(false);
+                    let decision = app
+                        .try_state::<ActivityState>()
+                        .and_then(|s| {
+                            s.0.lock().ok().map(|mut g| {
+                                g.on_hotkey_pressed(std::time::Instant::now(), is_visible)
+                            })
+                        })
+                        .unwrap_or(if is_visible {
+                            ToggleDecision::Hide
+                        } else {
+                            ToggleDecision::Show
+                        });
+                    match decision {
+                        ToggleDecision::Show => show_dashboard(app, DashboardOpenSource::Hotkey),
+                        ToggleDecision::Hide => {
+                            if let Some(window) = app.get_webview_window("dashboard") {
+                                let _ = window.hide();
+                            }
+                        }
+                        ToggleDecision::Ignore => {}
+                    }
                 }
             })
             .map_err(|_| "HOTKEY_REGISTER_FAILED".into())
@@ -148,6 +186,44 @@ mod desktop {
 
     #[derive(Default)]
     struct RegisteredHotkey(Mutex<String>);
+
+    /// 进入 / 退出热键录制态 (C099): 先翻转防误弹开关, 再真正注销 / 恢复已生效热键 ——
+    /// RegisterHotKey 会截走组合键, 只挂起回调时设置页仍录不到当前热键。
+    fn apply_hotkey_recording(
+        app: &tauri::AppHandle,
+        current: &mut String,
+        recording: bool,
+    ) -> Result<(), String> {
+        let was_recording = app
+            .try_state::<ActivityState>()
+            .and_then(|s| {
+                s.0.lock()
+                    .ok()
+                    .map(|mut g| g.set_recording_hotkey(recording))
+            })
+            .unwrap_or(false);
+        let result = suspend_or_resume_hotkey(
+            current,
+            was_recording,
+            recording,
+            |key| register_hotkey(app, key),
+            |key| {
+                app.global_shortcut()
+                    .unregister(key)
+                    .map_err(|_| "HOTKEY_SUSPEND_FAILED".into())
+            },
+        );
+        if result.is_err() && !recording {
+            // 挂起时注销未成功 (热键仍在册) 则视为已恢复; 否则热键已失效, 清空登记,
+            // 避免后续替换去注销一个不存在的注册。
+            if app.global_shortcut().is_registered(current.as_str()) {
+                return Ok(());
+            }
+            current.clear();
+            return Err("HOTKEY_RESUME_FAILED".into());
+        }
+        result
+    }
 
     // MARK: - IPC 命令
 
@@ -314,11 +390,19 @@ mod desktop {
     }
 
     #[tauri::command]
-    fn save_settings_command(app: tauri::AppHandle, settings: AppSettings) -> Result<(), String> {
+    fn save_settings_command(
+        app: tauri::AppHandle,
+        mut settings: AppSettings,
+    ) -> Result<AppSettings, String> {
         settings::validate_settings(&settings)?;
+        // 启用集合恒由 subscription_providers 派生 (C090 / 设计规则 22): 归一后落盘并回传,
+        // 前端据此刷新本地缓存, 避免两处启用口径漂移。
+        settings::sync_enabled_providers(&mut settings);
         let previous = settings::load_settings(&paths::data_root());
         let registered = app.state::<RegisteredHotkey>();
         let mut current = registered.0.lock().map_err(|_| "HOTKEY_LOCK_FAILED")?;
+        // 录制态下旧热键处于注销状态: 先恢复登记, 替换流程才能按原语义注销旧键。
+        let _ = apply_hotkey_recording(&app, &mut current, false);
         replace_hotkey(
             &current,
             &settings.hotkey,
@@ -338,7 +422,7 @@ mod desktop {
         if settings::requires_collection(&previous, &settings) {
             app.state::<SchedulerControl>().request_manual_refresh();
         }
-        Ok(())
+        Ok(settings)
     }
 
     #[tauri::command]
@@ -373,6 +457,12 @@ mod desktop {
     #[tauri::command]
     fn get_credential_accounts() -> Vec<serde_json::Value> {
         credentials::credential_accounts(&paths::data_root())
+    }
+
+    /// 被读取侧丢弃的账号原因 (C092): 只回字段 / 账号 ID / 原因文案, 不含凭据值。
+    #[tauri::command]
+    fn get_credential_rejections() -> Vec<serde_json::Value> {
+        credentials::credential_rejections(&paths::data_root())
     }
 
     #[tauri::command]
@@ -428,6 +518,48 @@ mod desktop {
         Ok(serde_json::json!({"status": status.as_str()}))
     }
 
+    /// 订阅 Provider 验证 (C082): 结构校验口径与写入路径一致, 返回
+    /// `{status, reason}`; 前端据此落 `subscriptionProviders` 的验证状态。
+    /// DeepSeek 在结构校验通过后追加一次真实试查 (C083)。
+    /// Claude 无已存凭据时按本机 CLI 只读跟随判定 (C091)。
+    #[tauri::command]
+    fn verify_subscription(provider: String) -> serde_json::Value {
+        let result = credentials::verify_subscription_following_local(
+            &paths::data_root(),
+            &paths::home_root(),
+            &provider,
+            chrono::Utc::now().timestamp_millis(),
+        );
+        serde_json::json!({"status": result.status, "reason": result.reason})
+    }
+
+    /// 移除服务 (C089): 一次性删除该 Provider 的全部凭据; 失败时一个都不删。
+    #[tauri::command]
+    fn remove_provider_credentials(app: tauri::AppHandle, provider: String) -> Result<(), String> {
+        credentials::remove_provider_credentials(&paths::data_root(), &provider)?;
+        app.state::<SchedulerControl>().request_manual_refresh();
+        Ok(())
+    }
+
+    /// CC Switch 库是否可用 (C083): 决定火山引擎对话框是否显示「从 CC Switch 导入」。
+    #[tauri::command]
+    fn ccswitch_status() -> serde_json::Value {
+        serde_json::json!({
+            "available": credentials::ccswitch_database_path(&paths::home_root()).is_some()
+        })
+    }
+
+    /// 从 CC Switch 只读导入火山引擎 AK/SK 并保存 (C083); 不修改外部库。
+    #[tauri::command]
+    fn import_volcengine_from_ccswitch(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+        let result = credentials::import_volcengine_from_cc_switch(
+            &paths::data_root(),
+            &paths::home_root(),
+        )?;
+        app.state::<SchedulerControl>().request_manual_refresh();
+        Ok(serde_json::json!({"status": result.status, "reason": result.reason}))
+    }
+
     #[tauri::command]
     fn refresh_now(control: tauri::State<SchedulerControl>) {
         control.request_manual_refresh();
@@ -441,12 +573,23 @@ mod desktop {
 
     #[tauri::command]
     fn hide_dashboard(app: tauri::AppHandle) {
-        if let Some(window) = app.get_webview_window("dashboard") {
-            if let Ok(PhysicalPosition { x, y }) = window.outer_position() {
-                persist_outer_position(x, y);
+        if let Some(activity) = app.try_state::<ActivityState>() {
+            if let Ok(mut guard) = activity.0.lock() {
+                guard.record_explicit_hide();
             }
+        }
+        if let Some(window) = app.get_webview_window("dashboard") {
             let _ = window.hide();
         }
+    }
+
+    /// 设置页热键录制态门控 (C099): 录制期间注销已生效热键, 设置页才能重新录到同一组合键;
+    /// 退出录制即恢复注册, 恢复失败回 `HOTKEY_RESUME_FAILED` 供前端提示。
+    #[tauri::command]
+    fn set_hotkey_recording(app: tauri::AppHandle, recording: bool) -> Result<(), String> {
+        let registered = app.state::<RegisteredHotkey>();
+        let mut current = registered.0.lock().map_err(|_| "HOTKEY_LOCK_FAILED")?;
+        apply_hotkey_recording(&app, &mut current, recording)
     }
 
     #[tauri::command]
@@ -488,10 +631,6 @@ mod desktop {
     // MARK: - 入口
 
     pub fn run() {
-        let last_unfocus = std::sync::Arc::new(std::sync::Mutex::new(None::<std::time::Instant>));
-        let last_unfocus_tray = last_unfocus.clone();
-        let last_unfocus_window = last_unfocus.clone();
-
         tauri::Builder::default()
             .plugin(tauri_plugin_notification::init())
             .plugin(tauri_plugin_global_shortcut::Builder::new().build())
@@ -506,6 +645,7 @@ mod desktop {
                 app.manage(control);
                 app.manage(RegisteredHotkey::default());
                 app.manage(TrayBoundsState::default());
+                app.manage(ActivityState::default());
                 // 后台调度器 (常驻周期采集 + 退避 + Toast)。
                 // 全局热键 (设置可配)。
                 let hotkey = settings::load_settings(&paths::data_root()).hotkey;
@@ -535,34 +675,62 @@ mod desktop {
                         _ => {}
                     })
                     .on_tray_icon_event(move |tray, event| {
-                        if let TrayIconEvent::Click {
-                            button: MouseButton::Left,
-                            button_state: MouseButtonState::Up,
-                            rect,
-                            ..
-                        } = event
-                        {
-                            // 防抖: 若刚刚因失去焦点隐藏（即用户点击托盘图标旨在收起面板），不再反向重新唤出
-                            if let Ok(mut lock) = last_unfocus_tray.lock() {
-                                if let Some(instant) = lock.take() {
-                                    if instant.elapsed() < std::time::Duration::from_millis(300) {
-                                        return;
-                                    }
-                                }
-                            }
-                            let app = tray.app_handle();
+                        let app = tray.app_handle();
+                        let tray_rect = match &event {
+                            TrayIconEvent::Click { rect, .. }
+                            | TrayIconEvent::DoubleClick { rect, .. }
+                            | TrayIconEvent::Enter { rect, .. }
+                            | TrayIconEvent::Move { rect, .. } => Some(rect),
+                            _ => None,
+                        };
+                        if let Some(rect) = tray_rect {
                             let scale = app
                                 .get_webview_window("dashboard")
                                 .and_then(|w| w.primary_monitor().ok().flatten())
                                 .map(|m| m.scale_factor())
                                 .unwrap_or(1.0);
-                            let bounds = rect_to_bounds(&rect, scale);
-                            if let Some(state) = app.try_state::<TrayBoundsState>() {
-                                if let Ok(mut lock) = state.0.lock() {
-                                    *lock = Some(bounds);
+                            let bounds = rect_to_bounds(rect, scale);
+                            if bounds.width > 0 && bounds.height > 0 {
+                                if let Some(state) = app.try_state::<TrayBoundsState>() {
+                                    if let Ok(mut lock) = state.0.lock() {
+                                        *lock = Some(bounds);
+                                    }
                                 }
                             }
-                            toggle_dashboard(app);
+                        }
+                        if let TrayIconEvent::Click {
+                            button: MouseButton::Left,
+                            button_state: MouseButtonState::Up,
+                            ..
+                        } = event
+                        {
+                            let is_visible = app
+                                .get_webview_window("dashboard")
+                                .and_then(|w| w.is_visible().ok())
+                                .unwrap_or(false);
+                            let decision = app
+                                .try_state::<ActivityState>()
+                                .and_then(|s| {
+                                    s.0.lock().ok().map(|mut g| {
+                                        g.on_tray_left_click(std::time::Instant::now(), is_visible)
+                                    })
+                                })
+                                .unwrap_or(if is_visible {
+                                    ToggleDecision::Hide
+                                } else {
+                                    ToggleDecision::Show
+                                });
+                            match decision {
+                                ToggleDecision::Show => {
+                                    show_dashboard(app, DashboardOpenSource::Tray)
+                                }
+                                ToggleDecision::Hide => {
+                                    if let Some(window) = app.get_webview_window("dashboard") {
+                                        let _ = window.hide();
+                                    }
+                                }
+                                ToggleDecision::Ignore => {}
+                            }
                         }
                     })
                     .build(app)?;
@@ -574,20 +742,48 @@ mod desktop {
                 let close = matches!(event, WindowEvent::CloseRequested { .. });
                 match window_action(window.label(), lost_focus, close) {
                     WindowAction::HideDashboardAndPersist => {
-                        if lost_focus {
-                            if let Ok(mut lock) = last_unfocus_window.lock() {
-                                *lock = Some(std::time::Instant::now());
-                            }
-                        }
                         if let WindowEvent::CloseRequested { api, .. } = event {
                             api.prevent_close();
                         }
-                        persist_position(window);
+                        if lost_focus {
+                            let decision = window
+                                .app_handle()
+                                .try_state::<ActivityState>()
+                                .and_then(|s| {
+                                    s.0.lock().ok().map(|mut g| {
+                                        g.on_dashboard_unfocus(std::time::Instant::now())
+                                    })
+                                })
+                                .unwrap_or(UnfocusDecision::Hide);
+                            match decision {
+                                UnfocusDecision::IgnoreTransientAndRefocus => {
+                                    let _ = window.set_focus();
+                                    return;
+                                }
+                                UnfocusDecision::AlreadyHidden => {
+                                    return;
+                                }
+                                UnfocusDecision::Hide => {}
+                            }
+                        } else if let Some(activity) =
+                            window.app_handle().try_state::<ActivityState>()
+                        {
+                            if let Ok(mut guard) = activity.0.lock() {
+                                guard.record_explicit_hide();
+                            }
+                        }
                         let _ = window.hide();
                     }
                     WindowAction::HideSettings => {
                         if let WindowEvent::CloseRequested { api, .. } = event {
                             api.prevent_close();
+                        }
+                        // 录制中关闭设置窗口: 恢复被注销的已生效热键。
+                        let app = window.app_handle();
+                        if let Ok(mut current) = app.state::<RegisteredHotkey>().0.lock() {
+                            if let Err(error) = apply_hotkey_recording(app, &mut current, false) {
+                                eprintln!("全局热键恢复失败: {error}");
+                            }
                         }
                         let _ = window.hide();
                     }
@@ -605,6 +801,7 @@ mod desktop {
                 export_workbench_json,
                 get_model_prices,
                 get_credential_accounts,
+                get_credential_rejections,
                 remove_credential_account,
                 save_credential_account,
                 import_codex_auth,
@@ -615,10 +812,15 @@ mod desktop {
                 credential_allowlist,
                 get_credential_fields,
                 save_credentials_command,
+                verify_subscription,
+                remove_provider_credentials,
+                ccswitch_status,
+                import_volcengine_from_ccswitch,
                 refresh_now,
                 refresh_subscription,
                 open_settings,
                 hide_dashboard,
+                set_hotkey_recording,
                 quit_app
             ])
             .run(tauri::generate_context!())

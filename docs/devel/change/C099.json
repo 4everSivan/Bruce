@@ -1,0 +1,130 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C099",
+  "title": "修复 Windows 全局快捷键唤出看板焦点闪退与录制器编码缺陷：唤出保护期、连发/失焦防抖、光标多屏定位与 event.code 规范化录制",
+  "version": "0.13.0",
+  "type": "BugFix",
+  "status": "rejected",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win",
+    "component": "全局热键唤出状态机、多显示器定位与设置中心热键录制器 (lib.rs / runtime_core.rs / settings.js)",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "Windows 全局快捷键打开/收起仪表盘存在三类交互缺陷：(1) 唤出焦点与防抖：后台按快捷键唤出时 Windows 前台窗口切换偶发瞬态 `WindowEvent::Focused(false)` 导致面板闪退，或 `set_focus` 失败导致面板无键盘焦点（Esc 与外部点击失焦关闭失效）；长按快捷键触发 OS Key-Repeat 导致面板高频闪烁；含 Alt/Win 等修饰键的热键在关闭面板时可能先触发 `Focused(false)` 隐藏再到达热键回调，导致刚关掉又立即重新弹出。(2) 定位与冗余写盘：`TrayBoundsState` 仅在左键点击过托盘后才有值，开机直接按热键未跟随当前光标所在显示器；每次隐藏面板都无意义地写入 `settings.json` 的 `panel_x/panel_y`（C016 起已不再读取）。(3) 设置页录制器：`settings.js` 使用 `event.key` 而非物理键码 `event.code` 拼接，导致 `Ctrl+Shift+1` 变成 `Control+Shift+!`、`Alt+Space` 变成 `Alt+ ` 被 Tauri `Shortcut::parse` 拒绝；录制期间未挂起旧热键响应，且缺少失焦/Esc 自动退出录制态与系统保留快捷键拦截。 (2026-10-23 返工复核: global-hotkey 0.8 在 Windows 恒以 MOD_NOREPEAT 调用 RegisterHotKey 且以 50ms 轮询 GetAsyncKeyState 投递 Released, 长按不会产生连发事件, 上述「长按 OS Key-Repeat 高频闪烁」前提不成立, 已撤除长按抑制逻辑。)",
+  "precheck": {
+    "description": "预检: 确认 runtime_core.rs 尚无 DashboardActivityState 状态机，且 settings.js 热键录制仍基于 event.key 拼接",
+    "command": "grep -c 'DashboardActivityState' apps/win/src-tauri/src/runtime_core.rs; grep -c 'normalizeHotkeyEvent' apps/win/src/settings.js",
+    "expected": "两条均为 0",
+    "is_completed": true,
+    "evidence": "2026-10-23 复核: runtime_core.rs 中 DashboardActivityState 命中 0 次; settings.js 中 normalizeHotkeyEvent 命中 0 次 (L478-490 仍直接使用 event.key 拼接)。缺陷确认存在。"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护在 main 直接实施"
+    ],
+    "after": [
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "node scripts/check-win-frontend.mjs",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify  # 收口前门禁: --card C099 --to closed --record; Exit 0 后同步状态并以 --card C099 --receipt 复核"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "面板显隐与热键防抖状态机 (apps/win/src-tauri/src/runtime_core.rs + lib.rs)",
+      "before": "仅在托盘左键点击做 300ms 失焦防抖；热键无长按防抖、无失焦竞态防重开、无唤出焦点保护期；每次隐藏均写盘 persist_position",
+      "after": "新增纯状态机 `DashboardActivityState`（含 180ms 唤出焦点保护期 `SHOW_FOCUS_GRACE_MS`、250ms 热键防抖 `HOTKEY_REPEAT_DEBOUNCE_MS`（以上一次生效切换计时, 被忽略的触发不顺延窗口）、300ms 失焦竞态防重开 `UNFOCUS_REOPEN_GUARD_MS`、录制态开关 `recording_hotkey`）；唤出时执行 `unminimize -> show -> set_always_on_top(true) -> set_focus`；移除每次失焦隐藏时无意义的 `persist_position` 磁盘写操作。返工撤除长按抑制 (`hotkey_held` / `HOTKEY_HOLD_MAX_MS` / `Released` 分支): MOD_NOREPEAT 下它不防任何事, 且滑动窗口在 Released 丢失时会吞掉真实按键",
+      "impact": "杜绝快捷键唤出闪退与关闭后反弹重开; 唤出后键盘焦点是否可靠仍待 Windows 真机核实"
+    },
+    {
+      "scope": "托盘坐标捕获扩展与按唤出来源的多屏定位 (apps/win/src-tauri/src/runtime_core.rs + lib.rs)",
+      "before": "仅在托盘左键松开时记录 TrayBoundsState；无托盘坐标时仅回退 current_monitor / primary_monitor",
+      "after": "托盘 Move/Enter/Click 事件只要携带非零 rect 即静默缓存 TrayBoundsState；新增纯函数 `select_dashboard_placement`（取代 select_target_monitor_index）按唤出来源定位: 托盘左键 / 托盘菜单优先托盘所在屏并贴托盘, 全局热键优先光标所在屏（对齐 mac 面板随活动屏菜单栏出现）, 各自以另一方兜底, 均未命中回退当前/主显示器; 托盘锚点只用于托盘所在屏, 别屏按该屏任务栏角落贴靠。维护者决定 (2026-10-23 会话原话「Monitor choice and tray tint: Go with your recommended fix.」): 热键始终跟随光标所在屏, 不因悬停过托盘而被钉在托盘屏",
+      "impact": "托盘点击贴托盘弹出; 快捷键在当前活动屏幕弹出, 不再借用另一块屏上的托盘坐标定位"
+    },
+    {
+      "scope": "设置页热键录制器物理键码规范化与交互闭环 (apps/win/src/settings.js + styles.css + lib.rs)",
+      "before": "基于 event.key 拼接快捷键，Ctrl+Shift+1 录为 Control+Shift+!、Alt+Space 录为 Alt+ ；无录制态热键挂起、失焦不退出录制态、无系统保留快捷键拦截",
+      "after": "新增 `normalizeHotkeyEvent` 基于 `event.code`（仅无 code 时回退 `event.key`）规范化映射物理键码与修饰键组合: 小键盘键原名保留 (Numpad0~9 / NumpadAdd 等, global-hotkey 中与主键盘同名键是不同的键), 未识别键码提示不支持; 拦截系统保留热键（Alt+Tab / Alt+F4 / Control+Escape / Control+Shift+Escape）与纯 Shift+非功能键。录制入口为「录制热键」按钮, 录制中再次点击即取消（对齐 mac GlobalHotkeyRecorder; 按钮 mousedown 阻止输入框失焦, 否则 WebView2 先 blur 结束录制、click 又重新开始）; Esc/Backspace/Delete/失焦退出并恢复原值展示。进入录制时 `set_hotkey_recording` 置位防误弹开关并真正注销已生效热键（RegisterHotKey 会截走组合键, 仅挂起回调时设置页录不到当前热键）, 退出录制 / 录制中关闭设置窗口 / 保存设置前恢复注册, 恢复失败回 HOTKEY_RESUME_FAILED 并在设置页提示",
+      "impact": "解决 Shift+数字/符号、Space 与小键盘组合键注册失败或录错问题; 录制期间可重新录到当前已生效热键, 且按下它不再误弹面板"
+    },
+    {
+      "scope": "自动化测试覆盖 (apps/win/src-tauri/tests/runtime_coverage.rs + apps/win/tests/frontend.test.mjs)",
+      "before": "无热键防抖/保护期/多屏选择单测，前端仅测 #setting-hotkey 的 change 事件",
+      "after": "Rust 补充 `DashboardActivityState` 热键路径单测（唤出保护期、防抖不顺延、失焦竞态防重开、显式关闭后立即重开、录制态挂起）、托盘左键路径单测（切换、点托盘收起时吞掉 300ms 内的松开事件且只吞一次、超窗后正常唤出）、`suspend_or_resume_hotkey` 注销/恢复单测与 `select_dashboard_placement` 多屏定位单测（托盘 / 热键两种来源、同屏贴托盘、别屏不借托盘坐标、空托盘与无光标兜底）；前端补充 `Ctrl+Shift+1` (Digit1)、`Alt+Space`、`Control+Alt+Numpad1`、`Control+NumpadAdd`、不支持键拦截、系统保留键拦截、录制中点按钮取消、Esc/失焦取消录制、录制态 IPC 及恢复失败提示测试",
+      "impact": "双端门禁锁定快捷键唤出与录制行为; Windows 前台焦点行为仍需真机核实"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "规则 7 / 11 / 12 仅规定全局热键经 Tauri global-shortcut 注册、面板支持 300ms 托盘防抖与四方向贴靠，未规定唤出焦点保护期、热键长按与失焦竞态防抖、无托盘时的光标屏幕选择及设置页录制器的物理键码规范化",
+      "after": "新增规则 30「全局热键唤出焦点保障、防抖状态机与物理键码录制规范」：明确 180ms 唤出焦点保护期、250ms 热键防抖（MOD_NOREPEAT 下不设长按抑制）、300ms 失焦竞态防重开、托盘多事件坐标缓存与按唤出来源的多屏定位（托盘贴托盘、热键跟随光标所在屏）、移除失焦写盘、设置页基于 event.code 的键码规范化（小键盘独立）、录制按钮切换取消以及录制期间真正注销已生效热键的挂起 / 恢复闭环"
+    }
+  },
+  "verification": {
+    "result": null,
+    "run_id": "local-20261023-03",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "Rust 状态机与多屏定位单元测试",
+        "true_if": "cargo test --manifest-path apps/win/src-tauri/Cargo.toml 全绿通过，覆盖唤出保护期、长按防抖、失焦竞态防重开、录制态挂起与光标多屏定位",
+        "false_if": "任一单测失败或存在编译/clippy 警告",
+        "evidence": "2026-10-23: cargo test --manifest-path apps/win/src-tauri/Cargo.toml 退出码 0 (lib 33 + runtime_coverage 44 含托盘路径、suspend_or_resume_hotkey 与 select_dashboard_placement 多屏定位用例 + 其余集成测试全部 ok); cargo clippy --all-targets -- -D warnings 退出码 0; lib 单测连跑 25 次 0 失败 (修复 ccswitch/settings 测试临时目录撞名的间歇失败后); 把热键来源改回「托盘屏优先」后定位用例失败 (left Some(0) / right Some(1)), 恢复后通过",
+        "result": true
+      },
+      {
+        "item": "Windows 前端录制器与回归测试",
+        "true_if": "node scripts/check-win-frontend.mjs 全绿通过，覆盖 Digit1/Space/小键盘/不支持键/系统保留热键拦截/按钮与 Esc 与失焦退出录制/录制态 IPC 与恢复失败提示及既有 change 事件兼容",
+        "false_if": "任一前端测试失败",
+        "evidence": "2026-10-23: node --test apps/win/tests/frontend.test.mjs 78 pass / 0 fail (新增用例对回退小键盘映射与按钮 mousedown 保焦点两处修复各做红绿验证: 回退后用例失败, 恢复后通过)",
+        "result": true
+      },
+      {
+        "item": "全量本地验证门禁",
+        "true_if": "zsh scripts/verify-local.sh 退出码为 0",
+        "false_if": "全量验证非 0 退出",
+        "evidence": "2026-10-23: zsh scripts/verify-local.sh 退出码 0 (Rust fmt --check / test / clippy -D warnings 覆盖 core/collector + apps/win viewmodel + apps/win/src-tauri, 其中 runtime_coverage 44 passed; Windows 前端 78/78 + 几何对拍 2/2; swift build + 全部 macOS Harness 含 DashboardStatusToneHarness passed: 3; 变更总账一致 cards=100 topics=7)",
+        "result": true
+      },
+      {
+        "item": "Windows 真机唤出与录制实测",
+        "true_if": "Windows 真机上: 后台按快捷键唤出面板不闪退且 Esc / 点击外部可收起 (焦点到位); 托盘点击收起不反弹; 多屏时托盘点击贴托盘弹出、快捷键在光标所在屏弹出; 设置页可重新录到当前已生效热键与小键盘组合, 录制中点按钮可取消, 退出录制后热键恢复可用",
+        "false_if": "任一场景失败, 或唤出后面板无键盘焦点",
+        "evidence": "未执行: 截至 2026-10-23 尚无 Windows 设备实测, 本机 (macOS) 只能运行纯函数单测与前端 DOM 桩测试。",
+        "result": null
+      }
+    ]
+  },
+  "rejections": [
+    {
+      "date": "2026-10-23",
+      "reason": "复核发现: (1) 录制态只挂起回调未注销热键, RegisterHotKey 截走组合键, 设置页录不到当前热键; (2) 小键盘数字被录成主键盘数字 (Control+Numpad1 -> Control+1), 注册后按原组合键不触发; (3) 录制中点击按钮无法取消 (WebView2 先 blur 结束录制, click 又重新开始); (4) 卡面声称「点击输入框进入录制」未实现; (5) on_tray_left_click 无单测而卡面称全路径单测; (6) 长按抑制所防的 Key-Repeat 在 MOD_NOREPEAT 下不存在; (7) 全部证据为 mac 上运行的单测, 无 Windows 真机项。原签署「确认」(run local-20261023-01) 随本次驳回作废。",
+      "rework": "同卡返工: 录制期间注销 / 恢复已生效热键 (suspend_or_resume_hotkey + HOTKEY_RESUME_FAILED 提示); 小键盘与命名键按 global-hotkey 解析表映射, 未识别键提示不支持; 录制按钮 mousedown 保焦点以支持点击取消; 卡面改为按钮单入口 (对齐 mac); 撤除长按抑制; 补托盘路径与挂起 / 恢复单测; 新增 Windows 真机验收项。",
+      "by": "sivan (会话指示, AI 代登记)",
+      "user_quote": "Can you go ahead and fix these issues for me?"
+    }
+  ],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-23",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified"
+  }
+}

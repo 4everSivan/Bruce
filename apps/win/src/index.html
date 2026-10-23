@@ -8,14 +8,28 @@
 </head>
 <body class="theme-fluent">
   <main id="panel">
-    <!-- HUD 头 (mac dashboardTopHeader): 左 [状态灯 品牌 SYS.OK] · 右 Agent 运行数 -->
+    <!-- HUD 头 (mac dashboardTopHeader): 左 [四色状态灯 品牌 Bruce] · 右 Agent 运行数 / Tab 分段 -->
     <header id="hud">
       <div class="hud-left">
-        <span id="hud-dot-wrap" class="hud-dot-wrap"><span class="hud-dot"></span></span>
-        <span class="hud-brand">Bruce // HUD</span>
-        <span id="runtime-status" class="hud-sysok" role="status">SYS.OK</span>
+        <span id="hud-dot-wrap" class="hud-dot-wrap tone-neutral tone-idle" role="status" title="暂无数据" aria-label="暂无数据"><span class="hud-dot"></span></span>
+        <span class="hud-brand">Bruce</span>
       </div>
-      <span id="hud-agents" class="hud-right standby">STANDBY</span>
+      <div id="hud-right-wrap">
+        <span id="hud-agents" class="hud-right standby">STANDBY</span>
+        <div id="hud-tabs" class="segmented-track" style="display: none;" role="tablist">
+          <div id="tab-active-pill"></div>
+          <button id="tab-btn-usage" class="tab-icon-btn active" type="button" title="Token 用量 (1)" aria-label="Token 用量">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg>
+          </button>
+          <button id="tab-btn-subscription" class="tab-icon-btn" type="button" title="订阅与配额 (2)" aria-label="订阅与配额">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+          </button>
+          <button id="tab-btn-hourly" class="tab-icon-btn relative" type="button" title="Agent 活跃 (3)" aria-label="Agent 活跃">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            <span id="tab-active-dot" class="tab-badge-dot" style="display: none;"></span>
+          </button>
+        </div>
+      </div>
     </header>
 
     <div id="scroll">
@@ -27,8 +41,10 @@
       </section>
     </div>
 
-    <!-- 底栏动作 (mac actionFooter: 刷新/设置/退出, 仅图标; 图标为自绘 SF Symbols 等价几何:
-         arrow.clockwise / gearshape / power) -->
+    <!-- 底栏动作 (mac actionFooter: 刷新/外观/设置/退出, 仅图标; 图标为自绘 SF Symbols 等价几何:
+         arrow.clockwise / circle.lefthalf.filled|sun.max|moon / gearshape / power)。
+         C098 有意分歧: 外观切换按钮为 mac 独有能力 —— Windows 恒深色, 无配色模式偏好,
+         故此处不镜像该按钮 (与 settings.js「配色模式 / 钥匙串 / 外部 CLI 来源为 mac 独有能力」同口径)。 -->
     <footer id="footer">
       <div class="foot-inner">
         <button id="refresh" class="foot-btn" type="button" title="刷新全部模块" aria-label="刷新全部模块"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M12.76 5.25A5.5 5.5 0 1 1 8 2.5"/><path d="M6.3 0.8L8.3 2.5L6.3 4.2"/></svg></button>

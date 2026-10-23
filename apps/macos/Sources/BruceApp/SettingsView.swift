@@ -360,6 +360,22 @@ struct SettingsView: View {
                     }
                 }
                 FluentRow(
+                    "仪表盘卡片布局",
+                    sub: "纵向级联可滚轮纵览全部卡片；顶栏 Tab 切换通过右上角小图标在用量、订阅与活跃卡片间快速切换",
+                    divided: true
+                ) {
+                    FluentSegmentedPicker(
+                        options: [
+                            ("纵向级联", DashboardLayoutMode.stack),
+                            ("顶栏 Tab", DashboardLayoutMode.tabbed),
+                        ],
+                        selection: Binding(
+                            get: { model.layoutMode },
+                            set: { model.setLayoutMode($0) }
+                        )
+                    )
+                }
+                FluentRow(
                     "刷新间隔",
                     sub: "本地统计采集与订阅额度自动刷新周期；遇 429 限流时自动冷却",
                     divided: true

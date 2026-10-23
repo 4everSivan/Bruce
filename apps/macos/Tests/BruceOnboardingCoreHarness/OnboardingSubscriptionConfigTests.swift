@@ -384,6 +384,38 @@ extension BruceOnboardingCoreHarness {
         )
     }
 
+    /// 底栏外观按钮的循环顺序: 跟随系统 -> 浅色 -> 深色 -> 跟随系统,
+    /// 与设置中心分段选择器 (跟随系统/浅色/深色) 一致; 三轮回到原点.
+    static func appearancePreferenceCycleOrder() throws {
+        try coreExpect(
+            AppearancePreference.allCases == [.system, .light, .dark],
+            "循环顺序以声明顺序为准: 跟随系统/浅色/深色"
+        )
+        try coreExpect(
+            AppearancePreference.system.next == .light,
+            "跟随系统的下一档必须是浅色"
+        )
+        try coreExpect(
+            AppearancePreference.light.next == .dark,
+            "浅色的下一档必须是深色"
+        )
+        try coreExpect(
+            AppearancePreference.dark.next == .system,
+            "深色的下一档必须回到跟随系统"
+        )
+        // 循环封闭: 从任一档出发走 allCases.count 步必须回到自身.
+        for mode in AppearancePreference.allCases {
+            var current = mode
+            for _ in 0..<AppearancePreference.allCases.count {
+                current = current.next
+            }
+            try coreExpect(
+                current == mode,
+                "\(mode.rawValue) 循环 \(AppearancePreference.allCases.count) 步必须回到自身"
+            )
+        }
+    }
+
     /// glassStyle / interfaceStyle: 缺键与非法值回落; 主题解析能力矩阵.
     static func configGlassStyleDecodeAndFallback() throws {
         // 缺键 -> nil -> 标准模糊

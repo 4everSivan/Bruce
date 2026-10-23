@@ -30,7 +30,8 @@ struct AppModelCacheHarness {
     static func main() throws {
         try menuBarSummaryDoesNotReturnStaleNilAfterArtifactArrives()
         try menuBarSummaryRebuildsAfterArtifactChange()
-        print("AppModelCache tests passed: 2")
+        try dashboardLayoutModeAndCardSelectionPersists()
+        print("AppModelCache tests passed: 3")
     }
 
     /// 回归: artifact 就绪后菜单栏摘要必须反映实际 token, 不得返回陈旧空摘要.
@@ -67,6 +68,29 @@ struct AppModelCacheHarness {
             model.makeMenuBarSummary().todayTokens == 200,
             "artifact 更新后摘要应重算, 不得返回旧值"
         )
+    }
+
+    /// 验证: 仪表盘布局模式与选定卡片切换持久化到 UserDefaults 并可在实例间恢复.
+    private static func dashboardLayoutModeAndCardSelectionPersists() throws {
+        let suiteName = "test.bruce.dashboard.layout.\(UUID().uuidString)"
+        guard let suite = UserDefaults(suiteName: suiteName) else {
+            throw AppModelCacheFailure.expectation("无法创建隔离测试 suite")
+        }
+        defer { suite.removePersistentDomain(forName: suiteName) }
+
+        let model1 = AppModel(collapsedDefaults: suite)
+        try expect(model1.layoutMode == .stack, "默认布局模式应为 .stack")
+        try expect(model1.selectedCardID == .usage, "默认选中卡片应为 .usage")
+
+        model1.setLayoutMode(.tabbed)
+        model1.selectCard(.hourly)
+        try expect(model1.layoutMode == .tabbed, "设置后布局应为 .tabbed")
+        try expect(model1.selectedCardID == .hourly, "设置后选中卡片应为 .hourly")
+
+        // 重新初始化测试 UserDefaults 恢复
+        let model2 = AppModel(collapsedDefaults: suite)
+        try expect(model2.layoutMode == .tabbed, "恢复后布局应维持 .tabbed")
+        try expect(model2.selectedCardID == .hourly, "恢复后选中卡片应维持 .hourly")
     }
 
     /// 构造通过 ArtifactValidator 的最小合法 agent-usage artifact.

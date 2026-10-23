@@ -380,6 +380,7 @@ dependencies = [
  "collector-local",
  "collector-provider",
  "iana-time-zone",
+ "rusqlite",
  "serde",
  "serde_json",
  "tauri",

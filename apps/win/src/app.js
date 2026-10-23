@@ -1018,43 +1018,242 @@ const tauriCore = window.__TAURI__?.core || window.__TAURI_INTERNALS__;
 const invoke = tauriCore?.invoke || (window.__TAURI__ && window.__TAURI__.invoke) || (async () => null);
 const listen = window.__TAURI__?.event?.listen || (async () => () => {});
 let currentPanel = null;
-let currentSettings = { cardOrder: ["usage", "subscription", "hourly"], providerOrder: [], usageEnabled: true };
+let currentSettings = {
+  cardOrder: ["usage", "subscription", "hourly"],
+  providerOrder: [],
+  usageEnabled: true,
+  layoutMode: "stack",
+  activeCardId: "usage",
+  activeCardID: "usage"
+};
+let lastSlideDirection = "right";
 
-const HEALTHY_PHASES = new Set(["ok", "fresh", "idle"]);
-function statusLabel(status) {
-  return { ok: "正常", fresh: "正常", refreshing: "刷新中", loading: "刷新中", partial: "部分失败", failed: "刷新失败", error: "失败", stale: "数据过期", unavailable: "不可用", idle: "等待刷新", empty: "暂无数据", authRequired: "需要授权" }[status] || status;
+async function selectTab(targetKey) {
+  const tabKeys = ["usage", "subscription", "hourly"];
+  const currentKey = currentSettings.activeCardId || currentSettings.activeCardID || "usage";
+  if (targetKey === currentKey) return;
+  const fromIndex = tabKeys.indexOf(currentKey);
+  const toIndex = tabKeys.indexOf(targetKey);
+  lastSlideDirection = toIndex > fromIndex ? "right" : "left";
+  currentSettings.activeCardId = targetKey;
+  currentSettings.activeCardID = targetKey;
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("bruce_active_tab", targetKey);
+    }
+  } catch (e) {}
+  try {
+    const updated = { ...await invoke("get_settings"), activeCardId: targetKey };
+    await invoke("save_settings_command", { settings: updated });
+  } catch (e) {}
+  if (currentPanel) render(currentPanel);
 }
 
-/* ---------- 看板顶部运行态 (C079/C080) ---------- */
+document.getElementById("tab-btn-usage")?.addEventListener("click", () => selectTab("usage"));
+document.getElementById("tab-btn-subscription")?.addEventListener("click", () => selectTab("subscription"));
+document.getElementById("tab-btn-hourly")?.addEventListener("click", () => selectTab("hourly"));
+
+function statusLabel(status) {
+  return {
+    ok: "正常",
+    fresh: "正常",
+    ready: "可刷新",
+    refreshing: "刷新中",
+    loading: "刷新中",
+    partial: "部分失败",
+    failed: "刷新失败",
+    error: "失败",
+    stale: "数据过期",
+    unavailable: "不可用",
+    idle: "等待刷新",
+    empty: "暂无数据",
+    notConfigured: "未配置",
+    authRequired: "需要授权",
+  }[status] || status;
+}
+
+const TONE_RANK = { neutral: 0, ok: 1, warn: 2, error: 3 };
+const TONE_CLASSES = ["tone-ok", "tone-warn", "tone-error", "tone-neutral", "tone-idle"];
+
+function collectionTone(moduleState, hasData) {
+  switch (moduleState) {
+    case "failed":
+    case "error":
+    case "unavailable":
+      return "error";
+    case "partial":
+    case "stale":
+    case "authRequired":
+      return "warn";
+    case "fresh":
+    case "ready":
+    case "ok":
+      return "ok";
+    case "idle":
+    case "refreshing":
+    case "loading":
+      return hasData ? "ok" : "neutral";
+    case "notConfigured":
+    case "empty":
+    default:
+      return "neutral";
+  }
+}
+
+function sectionTone(status) {
+  switch (status) {
+    case "error":
+    case "failed":
+    case "unavailable":
+      return "error";
+    case "partial":
+    case "stale":
+    case "authRequired":
+      return "warn";
+    case "ok":
+    case "fresh":
+    case "ready":
+      return "ok";
+    case "empty":
+    case "notConfigured":
+    case "idle":
+    default:
+      return "neutral";
+  }
+}
+
+// C100: 双端同构的顶部四色状态灯单一判定源 (与 mac BruceAppCore.DashboardStatusToneResolver 逐字对齐)。
+// detail 只描述采集侧; 订阅侧更严重时原因点名对应服务, 不挂采集侧 detail。
+function resolveDashboardStatus({
+  moduleState = "empty",
+  subscriptions = [],
+  hasData = true,
+  detail = null,
+} = {}) {
+  const isRefreshing = moduleState === "refreshing" || moduleState === "loading";
+  const modTone = collectionTone(moduleState, Boolean(hasData));
+
+  let subTone = "neutral";
+  let worstSubStatus = "empty";
+  for (const subscription of subscriptions || []) {
+    const candidate = sectionTone(subscription.status);
+    if (TONE_RANK[candidate] > TONE_RANK[subTone]) {
+      subTone = candidate;
+      worstSubStatus = subscription.status;
+    }
+  }
+
+  const tone = TONE_RANK[subTone] > TONE_RANK[modTone] ? subTone : modTone;
+  const trimmedDetail = typeof detail === "string" ? detail.trim() : "";
+
+  let reason;
+  if (isRefreshing) {
+    reason = "正在刷新…";
+  } else if (tone === "ok") {
+    reason = "运行正常";
+  } else if (TONE_RANK[subTone] > TONE_RANK[modTone]) {
+    const label = statusLabel(worstSubStatus);
+    const names = [];
+    for (const subscription of subscriptions || []) {
+      if (sectionTone(subscription.status) !== subTone) continue;
+      const name = typeof subscription.name === "string" ? subscription.name.trim() : "";
+      if (name && !names.includes(name)) names.push(name);
+    }
+    reason = names.length ? `${label} · ${names.join("、")}` : label;
+  } else {
+    const effectiveState = moduleState === "idle" && !hasData ? "empty" : moduleState;
+    const label = statusLabel(effectiveState);
+    reason = trimmedDetail && trimmedDetail !== label ? `${label} · ${trimmedDetail}` : label;
+  }
+
+  return { tone, isRefreshing, reason };
+}
+
+// runtime.error 只承载机器码 (scheduler / SnapshotState::fail); hover 原因只展示中文释义,
+// 未登记的码不外露 (沿用 C078 文案纪律: 诊断码不直出看板)。原码仍在设置中心诊断区可查。
+const RUNTIME_ERROR_TEXT = {
+  COLLECTION_PARTIAL: "部分来源未能采集",
+  COLLECTION_FAILED: "本次采集失败",
+  SNAPSHOT_RESTORED: "显示上次保存的数据",
+  SNAPSHOT_WRITE_FAILED: "本地快照写入失败",
+  SNAPSHOT_INVALID: "本地快照无法读取",
+  SNAPSHOT_READ_FAILED: "本地快照无法读取",
+  ARTIFACT_MISSING: "采集结果缺失",
+  ARTIFACT_INVALID: "采集结果格式无效",
+  NETWORK_UNAVAILABLE: "网络不可用",
+};
+function runtimeErrorText(code) {
+  return (typeof code === "string" && RUNTIME_ERROR_TEXT[code]) || null;
+}
+
+/* ---------- 看板顶部运行态与四色状态灯 (C079/C080/C100) ---------- */
 // 看板顶部除 HUD 头外零输出, 完全对齐 mac (mac header 与卡片栈之间无任何元素;
 // PanelViewModel 无 runtime 字段)。服务级失败在订阅卡内部的 section/account note
 // 呈现, 整体采集错误在设置窗口呈现, Agent 探针信息在设置中心呈现。
-// C080 起连 #dashboard-status 元素一并移除, 顶部不存在任何文字承载点。
+// C100 起移除 #runtime-status 文字牌, 顶部由单一四色状态灯 (#hud-dot-wrap) 承载健康度与 hover 原因。
 function renderStatus(panel) {
   const runtime = panel.runtime || {};
-  const phase = runtime.phase || (panel.usage || panel.subscription ? "fresh" : "empty");
-  // mac Header 恒显 SYS.OK; Windows 保留显式运行态 (C009): 健康时与 mac 同字,
-  // 其余状态 (刷新中 / 失败 / 过期 …) 在同一小牌内直出中文并以告警色区分。
-  const healthy = HEALTHY_PHASES.has(phase);
-  const badge = document.getElementById("runtime-status");
-  badge.textContent = healthy ? "SYS.OK" : statusLabel(phase);
-  badge.classList.toggle("degraded", !healthy && phase !== "refreshing" && phase !== "loading");
-  const refreshing = phase === "refreshing" || phase === "loading";
+  const hasData = Boolean(panel.usage || panel.subscription || panel.hourly);
+  const phase = runtime.phase || (hasData ? "fresh" : "empty");
+  const subscriptions = (panel.subscription?.sections || [])
+    .filter((section) => section?.status)
+    .map((section) => ({ status: section.status, name: section.name || "" }));
+  const resolved = resolveDashboardStatus({
+    moduleState: phase,
+    subscriptions,
+    hasData,
+    detail: runtimeErrorText(runtime.error),
+  });
+  const dotWrap = document.getElementById("hud-dot-wrap");
+  if (dotWrap) {
+    dotWrap.classList.remove(...TONE_CLASSES);
+    dotWrap.classList.add(`tone-${resolved.tone}`);
+    if (resolved.tone === "neutral") dotWrap.classList.add("tone-idle");
+    dotWrap.classList.toggle("refreshing", resolved.isRefreshing);
+    dotWrap.setAttribute("title", resolved.reason);
+    dotWrap.setAttribute("aria-label", resolved.reason);
+  }
   const refresh = document.getElementById("refresh");
-  refresh.disabled = refreshing;
-  refresh.classList.toggle("spinning", refreshing);
+  refresh.disabled = resolved.isRefreshing;
+  refresh.classList.toggle("spinning", resolved.isRefreshing);
 }
 function render(panel) {
   if (!panel || typeof panel !== "object") throw new Error("看板数据不可用");
   currentPanel = panel;
   const activeCount = panel.hourly?.rows.filter(r => r.todayTotal > 0).length || 0;
   document.getElementById("hud-dot-wrap").classList.toggle("live", Boolean(panel.usage?.isLive));
-  // mac dashboardTopHeader: classic「● N AGENTS ACTIVE」/ Nothing「N AGENTS RUNNING」/ 无活跃 STANDBY
+
+  const isTabbed = currentSettings.layoutMode === "tabbed";
   const agents = document.getElementById("hud-agents");
-  agents.textContent = activeCount > 0
-    ? (isNothingTheme() ? `${activeCount} AGENTS RUNNING` : `● ${activeCount} AGENTS ACTIVE`)
-    : "STANDBY";
-  agents.classList.toggle("standby", activeCount === 0);
+  const hudTabs = document.getElementById("hud-tabs");
+  if (isTabbed) {
+    if (agents) agents.style.display = "none";
+    if (hudTabs) {
+      hudTabs.style.display = "inline-flex";
+      const tabKeys = ["usage", "subscription", "hourly"];
+      const activeKey = currentSettings.activeCardId || currentSettings.activeCardID || "usage";
+      const activeIndex = Math.max(0, tabKeys.indexOf(activeKey));
+      const pill = document.getElementById("tab-active-pill");
+      if (pill) pill.style.transform = `translateX(${activeIndex * 28}px)`;
+      tabKeys.forEach((key, idx) => {
+        const btn = document.getElementById(`tab-btn-${key}`);
+        if (btn) btn.classList.toggle("active", idx === activeIndex);
+      });
+      const activeDot = document.getElementById("tab-active-dot");
+      if (activeDot) activeDot.style.display = activeCount > 0 ? "block" : "none";
+    }
+  } else {
+    if (agents) {
+      agents.style.display = "";
+      // mac dashboardTopHeader: classic「● N AGENTS ACTIVE」/ Nothing「N AGENTS RUNNING」/ 无活跃 STANDBY
+      agents.textContent = activeCount > 0
+        ? (isNothingTheme() ? `${activeCount} AGENTS RUNNING` : `● ${activeCount} AGENTS ACTIVE`)
+        : "STANDBY";
+      agents.classList.toggle("standby", activeCount === 0);
+    }
+    if (hudTabs) hudTabs.style.display = "none";
+  }
+
   renderStatus(panel);
   const stack = document.getElementById("stack");
   stack.replaceChildren();
@@ -1068,15 +1267,34 @@ function render(panel) {
     subscription: () => subscription ? subscriptionCard(subscription) : null,
     hourly: () => currentSettings.usageEnabled !== false && panel.hourly ? hourlyCard(panel.hourly, panel.usage) : null,
   };
-  const order = [...new Set([...(currentSettings.cardOrder || []), "usage", "subscription", "hourly"])];
-  for (const key of order) {
-    const card = factories[key]?.();
+
+  if (isTabbed) {
+    const tabKeys = ["usage", "subscription", "hourly"];
+    let activeKey = currentSettings.activeCardId || currentSettings.activeCardID || "usage";
+    let card = factories[activeKey]?.();
+    if (!card) {
+      for (const k of tabKeys) {
+        card = factories[k]?.();
+        if (card) { activeKey = k; break; }
+      }
+    }
     if (card) {
-      card.dataset.card = key;
-      attachDragHandle(card, key);
+      card.dataset.card = activeKey;
+      card.classList.add(lastSlideDirection === "left" ? "card-slide-enter-left" : "card-slide-enter-right");
       stack.append(card);
     }
+  } else {
+    const order = [...new Set([...(currentSettings.cardOrder || []), "usage", "subscription", "hourly"])];
+    for (const key of order) {
+      const card = factories[key]?.();
+      if (card) {
+        card.dataset.card = key;
+        attachDragHandle(card, key);
+        stack.append(card);
+      }
+    }
   }
+
   if (!stack.children.length) {
     const empty = el("div", "card empty-panel-card");
     const inner = el("div", "empty-panel-inner");
@@ -1089,12 +1307,16 @@ function render(panel) {
     stack.append(empty);
   }
 }
-// 致命错误 (面板无法渲染 / IPC 失败): 顶部零输出 (C080), 只把 HUD 状态牌标为失败,
+// 致命错误 (面板无法渲染 / IPC 失败): 顶部零输出 (C080/C100), 只把 HUD 状态灯标为红色「失败」,
 // 详情走控制台保留可诊断性。
 function showError(error) {
-  const badge = document.getElementById("runtime-status");
-  badge.textContent = "失败";
-  badge.classList.add("degraded");
+  const dotWrap = document.getElementById("hud-dot-wrap");
+  if (dotWrap) {
+    dotWrap.classList.remove(...TONE_CLASSES, "refreshing");
+    dotWrap.classList.add("tone-error");
+    dotWrap.setAttribute("title", "失败");
+    dotWrap.setAttribute("aria-label", "失败");
+  }
   console.error("看板渲染失败:", error);
 }
 document.getElementById("refresh").addEventListener("click", async () => {
@@ -1138,6 +1360,10 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener("keydown", event => {
   if (event.key === "Escape") {
     invoke("hide_dashboard").catch(() => {});
+  } else if (currentSettings.layoutMode === "tabbed") {
+    if (event.key === "1") selectTab("usage");
+    else if (event.key === "2") selectTab("subscription");
+    else if (event.key === "3") selectTab("hourly");
   }
 });
 (async function init() {

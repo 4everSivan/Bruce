@@ -2135,6 +2135,10 @@ pub(crate) fn extract_stepfun_app_id(token: &str) -> Option<u32> {
         .map(|id| id as u32)
 }
 
+/// StepFun 站点判定 (C093 / 设计规则 28)。优先序为**用户显式选择 > 令牌推导**:
+/// 保存了 `site` / `is_global` 时以它为准 (Windows 设置页仅在用户显式选择时才写入),
+/// 否则回落到从令牌解析的 `app_id` (国际站 20700)。保存值等于推导结果时两者结论一致,
+/// 不构成覆盖 —— 故前端不再写入默认站点后, 国际站令牌不会因默认值被查错站点。
 pub(crate) fn is_stepfun_global(token: &str, request: &ProviderRequest) -> bool {
     if let Some(credential) = request.credential.as_ref() {
         if let Some(obj) = credential.as_object() {
@@ -3184,17 +3188,17 @@ pub fn provider_for_app(app: &str) -> Option<Box<dyn QuotaProvider>> {
 #[cfg(test)]
 mod tests {
     use super::{
-        bounded_http_body, catalog_entries, codex_service_id, extract_stepfun_app_id,
-        extract_stepfun_device_id, is_claude_token_expired, is_stepfun_global,
-        is_stepfun_token_expired, parse_claude_usage, parse_cline_usage_limits, parse_codex_usage,
-        parse_deepseek_balance, parse_grok_usage, parse_jev_models, parse_kimi_usage,
-        parse_opencode_go_body, parse_stepfun_usage, parse_volcengine_usage, parse_zhipu_usage,
-        reset_epoch, resolve_service_catalog, service_template, AccountDescriptor,
-        CancellationToken, CatalogInput, ClaudeProvider, ClineProvider, CodexProvider,
-        DeepSeekProvider, HttpClient, HttpRequest, HttpResponse, JevProvider, KimiProvider,
-        OpenCodeGoProvider, ProviderError, ProviderRequest, QuotaProvider, StepFunProvider,
-        UreqHttpClient, VolcEngineProvider, ZhipuProvider, JEV_MODELS_URL,
-        STEPFUN_GLOBAL_REFRESH_TOKEN_URL, STEPFUN_GLOBAL_STEP_PLAN_RATE_LIMIT_URL,
+        bounded_http_body, catalog_entries, claude_token, codex_service_id, extract_stepfun_app_id,
+        extract_stepfun_device_id, grok_token, is_claude_token_expired, is_stepfun_global,
+        is_stepfun_token_expired, opencode_credential, parse_claude_usage,
+        parse_cline_usage_limits, parse_codex_usage, parse_deepseek_balance, parse_grok_usage,
+        parse_jev_models, parse_kimi_usage, parse_opencode_go_body, parse_stepfun_usage,
+        parse_volcengine_usage, parse_zhipu_usage, reset_epoch, resolve_service_catalog,
+        service_template, AccountDescriptor, CancellationToken, CatalogInput, ClaudeProvider,
+        ClineProvider, CodexProvider, DeepSeekProvider, HttpClient, HttpRequest, HttpResponse,
+        JevProvider, KimiProvider, OpenCodeGoProvider, ProviderError, ProviderRequest,
+        QuotaProvider, StepFunProvider, UreqHttpClient, VolcEngineProvider, ZhipuProvider,
+        JEV_MODELS_URL, STEPFUN_GLOBAL_REFRESH_TOKEN_URL, STEPFUN_GLOBAL_STEP_PLAN_RATE_LIMIT_URL,
         STEPFUN_REFRESH_TOKEN_URL, STEPFUN_STEP_PLAN_RATE_LIMIT_URL,
     };
     use collector_runtime::RuntimeLimits;
@@ -3597,6 +3601,27 @@ mod tests {
             credential: Some(json!({ "token": domestic_jwt, "site": "global" })),
         };
         assert!(is_stepfun_global(domestic_jwt, &req_override));
+
+        // C093 / 设计规则 28: 显式选择优先于令牌推导, 反向亦然 (国内站选择覆盖国际站令牌)。
+        let req_override_domestic = ProviderRequest {
+            account_id: Some("test".to_owned()),
+            captured_at: "2026-09-21T00:00:00Z".to_owned(),
+            timeout: Duration::from_secs(5),
+            max_response_body_bytes: 65536,
+            credential: Some(json!({ "token": global_jwt, "site": "domestic" })),
+        };
+        assert!(!is_stepfun_global(global_jwt, &req_override_domestic));
+
+        // 未写入 site (C093 起前端不再写默认站点) 时, 国际站令牌必须判为国际站 ——
+        // 这正是「国际站令牌被默认国内站查错站点」的回归锁。
+        let req_token_only = ProviderRequest {
+            account_id: Some("test".to_owned()),
+            captured_at: "2026-09-21T00:00:00Z".to_owned(),
+            timeout: Duration::from_secs(5),
+            max_response_body_bytes: 65536,
+            credential: Some(json!({ "token": global_jwt })),
+        };
+        assert!(is_stepfun_global(global_jwt, &req_token_only));
     }
 
     #[test]
@@ -4866,6 +4891,58 @@ mod tests {
         assert_eq!(
             update["refresh_token"].as_str(),
             Some("sk-ant-ort01-new_refresh_after_401")
+        );
+    }
+
+    // 凭据形状契约 (C081 / 设计规则 21): 两端的 oauth 形状契约由本组用例锁定 ——
+    // 客户端 (mac / Windows) 落盘的形状必须能被这里的真实解析器读出凭据,
+    // 且旧扁平形状必须读不出 (否则即为「保存成功但查不出额度」的静默失效)。
+    // 契约漂移 (解析器改形状) 时本组用例转红。
+    #[test]
+    fn oauth_credential_shapes_are_parseable_by_real_parsers() {
+        // Claude: claudeAiOauth / claude.ai_oauth 包装 + accessToken。
+        for wrapper in ["claudeAiOauth", "claude.ai_oauth"] {
+            let credential = json!({ wrapper: { "accessToken": "fixture-claude-token" } });
+            assert_eq!(
+                claude_token(&credential).unwrap().as_deref(),
+                Some("fixture-claude-token"),
+                "{wrapper} 包装必须被解析"
+            );
+        }
+        // Grok: 顶层 key 与 https://auth.x.ai:: 作用域条目。
+        assert_eq!(
+            grok_token(&json!({ "key": "fixture-grok-token" }))
+                .unwrap()
+                .as_deref(),
+            Some("fixture-grok-token")
+        );
+        assert_eq!(
+            grok_token(&json!({"https://auth.x.ai::injected": {"key": "fixture-grok-scoped"}}))
+                .unwrap()
+                .as_deref(),
+            Some("fixture-grok-scoped")
+        );
+        // OpenCode GO: auth + workspaceId 双必填。
+        let opencode = json!({"auth": "Fe26.2**fixture", "workspaceId": "wrk_fixture"});
+        assert_eq!(
+            opencode_credential(&opencode).unwrap(),
+            ("Fe26.2**fixture", "wrk_fixture")
+        );
+    }
+
+    #[test]
+    fn flat_oauth_token_shape_yields_no_credential() {
+        // 旧 Windows 通用表单写出的形状: 采集端既不报错也取不到凭据。
+        let flat = json!({ "access_token": "fixture-token", "refresh_token": "fixture-refresh" });
+        assert_eq!(
+            claude_token(&flat).unwrap(),
+            None,
+            "扁平形状读不出 Claude 凭据"
+        );
+        assert_eq!(grok_token(&flat).unwrap(), None, "扁平形状读不出 Grok 凭据");
+        assert!(
+            opencode_credential(&flat).is_err(),
+            "扁平形状读不出 OpenCode GO 凭据"
         );
     }
 }

@@ -1,0 +1,102 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C101",
+  "title": "Windows 看板滚动区隐藏右侧滚动条：对齐 mac 恒不显示滚动指示条，仅保留滚轮/触控板滚动",
+  "version": "0.13.0",
+  "type": "BugFix",
+  "status": "verified",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用)",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win",
+    "component": "主看板卡片滚动区 #scroll (apps/win/src/styles.css)",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "维护者反馈 (2026-10-22 会话原话「I noticed the Windows version's dashboard has a scrollbar on the right, and it doesn't match macOS—it looks off. Can we get rid of it and just scroll with the mouse wheel instead?」): Windows 主看板内容溢出时右侧出现滚动条, 与 mac 观感不一致。根因: styles.css 的 #scroll 显式绘制了半透明细滚动条 (scrollbar-width: thin + scrollbar-color + 4px ::-webkit-scrollbar 系列规则), 且 design/05 规则 12 把「半透明 4px 细滚动条」写成了约束; 而 mac 看板 ScrollView 以 .scrollIndicators(.hidden) 并配 ScrollIndicatorSuppressor 看门狗 (C044, MenuBarViews.swift:139-161) 恒隐藏滚动指示条。另一个副作用: 非覆盖式滚动条在溢出时占用宽度, 卡片栈随之变窄, 与 mac 不溢出/溢出同宽不一致。",
+  "precheck": {
+    "description": "预检: 确认 #scroll 仍绘制细滚动条、尚未隐藏",
+    "command": "git show HEAD:apps/win/src/styles.css | grep -n '#scroll\\|scrollbar-width\\|scrollbar-color'; grep -n 'scrollbar-width: thin\\|#scroll::-webkit-scrollbar { width: 4px' apps/win/src/styles.css",
+    "expected": "#scroll 块内命中 scrollbar-width: thin 与 4px ::-webkit-scrollbar (缺陷仍在); 无 scrollbar-width: none",
+    "is_completed": false,
+    "evidence": "2026-10-22 预检实测: HEAD 与工作区 styles.css 的 #scroll 均为 scrollbar-width: thin + scrollbar-color rgba(255,255,255,.22) + ::-webkit-scrollbar { width: 4px } 及 track/thumb/thumb:hover 规则; 无 scrollbar-width: none。缺陷存在, 未被前序改动意外修复。"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护在 main 直接实施"
+    ],
+    "after": [
+      "node --test apps/win/tests/frontend.test.mjs apps/win/tests/geometry-parity.test.mjs",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify  # 收口前门禁: --card C101 --to closed --record; Exit 0 后同步状态并以 --card C101 --receipt 复核"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "看板滚动区样式 (apps/win/src/styles.css #scroll)",
+      "before": "#scroll { overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.22) transparent } + ::-webkit-scrollbar { width: 4px } 及 track / thumb / thumb:hover 四条规则; 内容溢出时右侧显示滚动条并占用宽度",
+      "after": "#scroll 保留 overflow-y: auto / overflow-x: hidden / flex: 1 1 0 / min-height: 0, 改为 scrollbar-width: none (WebView2 Chromium 121+) + ::-webkit-scrollbar { display: none } (更早运行时兜底); 删除 scrollbar-color 与 track/thumb 规则",
+      "impact": "看板不再显示滚动条, 滚轮 / 触控板滚动照常; 溢出时卡片栈不再因滚动条变窄。仅影响主看板 #scroll, 设置窗口 (.content-scroll / .sidenav / .price-table-wrap / .runtime-info-box) 的滚动条保持不变"
+    },
+    {
+      "scope": "回归用例 (apps/win/tests/frontend.test.mjs)",
+      "before": "仅断言 #scroll 的 flex: 1 1 0 与 min-height: 0, 不约束滚动条",
+      "after": "新增 C101 用例: 断言 #scroll 保留 overflow-y: auto (仍可滚动)、scrollbar-width: none、::-webkit-scrollbar { display: none }, 且不再有 scrollbar-color 与 ::-webkit-scrollbar-thumb 规则",
+      "impact": "滚动条被重新加回或误把 overflow 改成 hidden 都会被拦下"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/05 规则 12: 前端 #scroll 必须使用 flex: 1 1 0; min-height: 0; 配合半透明 4px 细滚动条",
+      "after": "design/05 规则 12: #scroll 必须使用 flex: 1 1 0; min-height: 0;, 且不显示滚动条 (对齐 mac .scrollIndicators(.hidden) + C044 看门狗), overflow-y: auto 保留、滚轮 / 触控板照常滚动; 变更表补 C101 行"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "local-20261023-04",
+    "user_quote": "确认",
+    "signoff": "verified_by_user",
+    "checks": [
+      {
+        "item": "自动化测试 (滚动条样式回归锁)",
+        "true_if": "frontend.test.mjs 新增 C101 用例与既有用例全绿; 该用例对改动前的 HEAD 样式断言失败 (证明用例有效)",
+        "false_if": "任一用例失败, 或 C101 用例对旧样式同样通过",
+        "evidence": "2026-10-22: node --test apps/win/tests/frontend.test.mjs apps/win/tests/geometry-parity.test.mjs → tests 81, pass 81, fail 0 (含新增 C101 用例)。反向验证: 同组正则对 git show HEAD:apps/win/src/styles.css 逐条执行, overflow-y: auto 通过, scrollbar-width: none / ::-webkit-scrollbar display: none / 无 scrollbar-color / 无 thumb 规则 4 条均失败, 证明用例能拦住旧样式。",
+        "result": true
+      },
+      {
+        "item": "全量本地验证门禁",
+        "true_if": "zsh scripts/verify-local.sh 退出码 0",
+        "false_if": "任一检查失败",
+        "evidence": "2026-10-22: zsh scripts/verify-local.sh 退出码 0, 末行「Bruce 本地验证全部通过」(日志 local/logs/c101-verify-local.log): collector fixture 扫描 secretFindings=[]; Windows 前端 79/79 + 几何对拍 2/2; Rust fmt/test/clippy 覆盖 core/collector + apps/win viewmodel + src-tauri; swift build 与全部 macOS Harness 通过; 变更总账一致 cards=101 topics=7; Panel/工作台双端对拍通过。日志中仅有既存环境告警 (cargo config 未用键 source.crates-io.index; ld 搜索路径 CommandLineTools/Developer 不存在), 与本卡无关。",
+        "result": true
+      },
+      {
+        "item": "行为实测 (Windows 真机)",
+        "true_if": "Windows 10/11 WebView2 下看板内容溢出时右侧无滚动条; 鼠标滚轮与触控板可滚动到底, 底栏始终可见; 卡片宽度溢出与否一致",
+        "false_if": "仍可见滚动条、滚轮无法滚动或卡片宽度跳变",
+        "evidence": "未执行: 本机为 macOS, 无 Windows 真机 / WebView2 环境, 待维护者在 Windows 上核对。",
+        "result": false
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-23",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified"
+  }
+}

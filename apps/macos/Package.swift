@@ -104,5 +104,10 @@ let package = Package(
             dependencies: ["BruceAppCore", "BruceOnboardingCore"],
             path: "Tests/Harnesses/SubscriptionBrandGlyphHarness"
         ),
+        .executableTarget(
+            name: "DashboardStatusToneHarness",
+            dependencies: ["BruceAppCore", "BruceOnboardingCore"],
+            path: "Tests/Harnesses/DashboardStatusToneHarness"
+        ),
     ]
 )

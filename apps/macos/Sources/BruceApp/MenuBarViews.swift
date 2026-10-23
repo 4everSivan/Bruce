@@ -15,6 +15,30 @@ extension AppearancePreference {
             return .dark
         }
     }
+
+    /// 底栏外观按钮的当前态图标: 跟随系统为半明半暗圆, 浅色为太阳, 深色为月亮.
+    var symbolName: String {
+        switch self {
+        case .system:
+            return "circle.lefthalf.filled"
+        case .light:
+            return "sun.max"
+        case .dark:
+            return "moon"
+        }
+    }
+
+    /// 外观偏好中文名, 与设置中心「配色模式」分段选择器一致.
+    var displayName: String {
+        switch self {
+        case .system:
+            return "跟随系统"
+        case .light:
+            return "浅色"
+        case .dark:
+            return "深色"
+        }
+    }
 }
 
 /// 刷新进行中的旋转指示. 仅在刷新时挂载, onAppear 启动无限旋转,
@@ -33,6 +57,30 @@ private struct SpinningRefreshIcon: View {
     }
 }
 
+/// 顶部四色状态灯刷新呼吸脉冲 (C100): 仅在刷新中且面板可见时挂载,
+/// 面板隐藏或刷新结束即卸载, 严守 C044 隐藏态零持续动画门控.
+private struct PulsingStatusDot: View {
+    let dotColor: Color
+    @State private var breathing = false
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(dotColor.opacity(breathing ? 0.35 : 0.12))
+                .frame(width: 12, height: 12)
+            Circle()
+                .fill(dotColor.opacity(breathing ? 1.0 : 0.42))
+                .frame(width: 6, height: 6)
+        }
+        .frame(width: 12, height: 12)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                breathing = true
+            }
+        }
+    }
+}
+
 /// 菜单栏原生液态玻璃面板: 纵向卡片 (按 PanelViewModel 非 nil 渲染) + 底栏.
 /// 卡片栈包 ScrollView: 内容超出屏幕可用高度时封顶出滚动条, 不足时高度自适应;
 /// 底栏在滚动区外固定; 卡片全空时展示未配置引导.
@@ -40,6 +88,7 @@ struct MenuBarDashboardView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var coordinator: OnboardingCoordinator
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let openSettings: @MainActor () -> Void
     let terminateApplication: @MainActor () -> Void
@@ -63,6 +112,10 @@ struct MenuBarDashboardView: View {
 
     /// 底栏实测高度 (发线+操作行); 0 表示尚未测量, 封顶时用 49 兜底预留, 保证底栏不被挤出屏幕.
     @State private var footerHeight: CGFloat = 0
+
+    /// Tab 模式方案 1 水平定向滑动方向
+    @State private var slideDirection: Edge = .trailing
+    @Namespace private var tabPillNamespace
 
     var body: some View {
         let panel = model.makePanelViewModel()
@@ -159,6 +212,27 @@ struct MenuBarDashboardView: View {
         .onChange(of: coordinator.appearanceMode) { _, _ in
             onSurfaceThemeChange?(coordinator.resolvedTheme, coordinator.appearanceMode.colorScheme)
         }
+        .onKeyPress("1") {
+            if model.layoutMode == .tabbed {
+                selectTab(.usage)
+                return .handled
+            }
+            return .ignored
+        }
+        .onKeyPress("2") {
+            if model.layoutMode == .tabbed {
+                selectTab(.subscription)
+                return .handled
+            }
+            return .ignored
+        }
+        .onKeyPress("3") {
+            if model.layoutMode == .tabbed {
+                selectTab(.hourly)
+                return .handled
+            }
+            return .ignored
+        }
     }
 
     /// 面板外边框圆角: Nothing 主题 10 (与定稿 token 对齐), 其余主题维持 22.
@@ -198,108 +272,196 @@ struct MenuBarDashboardView: View {
     private func dashboardTopHeader(_ panel: PanelViewModel) -> some View {
         let activeCount = panel.hourly?.rows.filter { $0.todayTotal > 0 }.count ?? 0
         let isLive = panel.usage?.isLive ?? false
+        let resolvedStatus = DashboardStatusToneResolver.resolve(
+            moduleStatus: model.status(for: .agentUsage),
+            panel: panel
+        )
 
         HStack(spacing: isNothingTheme ? 8 : 10) {
-            // 左侧：呼吸指示灯 + 品牌与终端标识
+            // 左侧：四色状态灯 (C100, hover 显示原因) + 统一品牌字 Bruce
             HStack(spacing: 6) {
-                topHeaderStatusDot(isLive: isLive)
+                topHeaderStatusDot(status: resolvedStatus, isLive: isLive)
                 if isNothingTheme {
-                    Text("BRUCE // HUD")
+                    Text("Bruce")
                         .font(NothingFont.ui(11, weight: .bold))
                         .tracking(0.8)
                         .foregroundStyle(Color.adaptive(
                             light: Color(hex: "#1A1A1A"),
                             dark: Color(hex: "#E8E8E8")
                         ))
-                    Text("SYS.OK")
-                        .font(NothingFont.mono(8.5))
-                        .foregroundStyle(Color.adaptive(
-                            light: Color(hex: "#666666"),
-                            dark: Color(hex: "#8A8A8A")
-                        ))
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 2, style: .continuous)
-                                .strokeBorder(
-                                    Color.adaptive(light: Color(hex: "#CCCCCC"), dark: Color(hex: "#303030")),
-                                    lineWidth: 1
-                                )
-                        }
                 } else {
-                    Text("Bruce // HUD")
+                    Text("Bruce")
                         .font(.system(size: 11.5, weight: .bold, design: .monospaced))
                         .foregroundStyle(Color.primary)
-                    Text("SYS.OK")
-                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1.5)
-                        .background {
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(Color.primary.opacity(0.06))
-                        }
                 }
             }
 
             Spacer(minLength: 0)
 
-            // 右侧：全局 AI / Agent 状态指示
-            HStack(spacing: 4) {
-                if activeCount > 0 {
-                    if isNothingTheme {
-                        Text("\(activeCount) AGENTS RUNNING")
-                            .font(NothingFont.mono(9))
-                            .foregroundStyle(Color.adaptive(
-                                light: Color(hex: "#666666"),
-                                dark: Color(hex: "#8A8A8A")
-                            ))
-                    } else {
-                        Text("● \(activeCount) AGENTS ACTIVE")
-                            .font(.system(size: 9.5, weight: .medium, design: .monospaced))
-                            .foregroundStyle(Color.adaptive(
-                                light: Color(hex: "#0A7D3B"),
-                                dark: Color(hex: "#30D158")
-                            ))
-                    }
-                } else {
-                    if isNothingTheme {
-                        Text("STANDBY")
-                            .font(NothingFont.mono(9))
-                            .foregroundStyle(Color.adaptive(
-                                light: Color(hex: "#999999"),
-                                dark: Color(hex: "#666666")
-                            ))
-                    } else {
-                        Text("STANDBY")
-                            .font(.system(size: 9.5, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                    }
-                }
+            // 右侧：Tab 模式下展示三图标分段切换（角标融合），Stack 模式下展示 Agent 运行状态
+            if model.layoutMode == .tabbed {
+                headerTabSwitcher(activeCount: activeCount)
+            } else {
+                headerAgentStatusText(activeCount: activeCount)
             }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
     }
 
-    /// 顶部状态呼吸灯: 实时态微弱脉冲, 待机态常亮小点
+    /// 顶栏 Tab 分段切换器: 3 个图标 + 方案 1 滑动药丸底 + 第 3 个图标呼吸绿点角标
     @ViewBuilder
-    private func topHeaderStatusDot(isLive: Bool) -> some View {
-        let dotColor: Color = isNothingTheme
-            ? Color.adaptive(light: Color(hex: "#D4A843"), dark: Color(hex: "#4A9E5C"))
-            : Color.adaptive(light: Color(hex: "#0A7D3B"), dark: Color(hex: "#30D158"))
+    private func headerTabSwitcher(activeCount: Int) -> some View {
+        HStack(spacing: 2) {
+            ForEach(DashboardCardID.allCases) { cardID in
+                let isSelected = model.selectedCardID == cardID
+                Button {
+                    selectTab(cardID)
+                } label: {
+                    ZStack(alignment: .topTrailing) {
+                        Image(systemName: cardID.systemImage)
+                            .font(.system(size: isNothingTheme ? 10.5 : 11, weight: .semibold))
+                            .foregroundStyle(
+                                isSelected
+                                    ? (isNothingTheme ? Color(nsColor: .windowBackgroundColor) : Color.primary)
+                                    : Color.secondary
+                            )
+                            .frame(width: isNothingTheme ? 24 : 27, height: isNothingTheme ? 20 : 22)
+                            .background {
+                                if isSelected {
+                                    if isNothingTheme {
+                                        RoundedRectangle(cornerRadius: 2, style: .continuous)
+                                            .fill(Color.primary)
+                                    } else {
+                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                            .fill(Color.primary.opacity(colorScheme == .dark ? 0.16 : 0.10))
+                                            .matchedGeometryEffect(id: "activeTabPill", in: tabPillNamespace)
+                                    }
+                                }
+                            }
+                            .contentShape(Rectangle())
 
-        ZStack {
-            if isLive {
-                Circle()
-                    .fill(dotColor.opacity(0.25))
-                    .frame(width: 12, height: 12)
+                        if cardID == .hourly && activeCount > 0 {
+                            Circle()
+                                .fill(isNothingTheme ? Color(hex: "#4A9E5C") : Color(hex: "#30D158"))
+                                .frame(width: 5.5, height: 5.5)
+                                .offset(x: 1, y: -1)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+                .help("\(cardID.title)\(cardID == .hourly && activeCount > 0 ? " (\(activeCount) 个运行中)" : "")")
             }
-            Circle()
-                .fill(dotColor)
-                .frame(width: 6, height: 6)
         }
-        .frame(width: 12, height: 12)
+        .padding(2)
+        .background {
+            if isNothingTheme {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .strokeBorder(
+                        Color.adaptive(light: Color(hex: "#CCCCCC"), dark: Color(hex: "#303030")),
+                        lineWidth: 1
+                    )
+            } else {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.primary.opacity(0.05))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                    }
+            }
+        }
+    }
+
+    /// 原版纯文本运行状态指示
+    @ViewBuilder
+    private func headerAgentStatusText(activeCount: Int) -> some View {
+        HStack(spacing: 4) {
+            if activeCount > 0 {
+                if isNothingTheme {
+                    Text("\(activeCount) AGENTS RUNNING")
+                        .font(NothingFont.mono(9))
+                        .foregroundStyle(Color.adaptive(
+                            light: Color(hex: "#666666"),
+                            dark: Color(hex: "#8A8A8A")
+                        ))
+                } else {
+                    Text("● \(activeCount) AGENTS ACTIVE")
+                        .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                        .foregroundStyle(Color.adaptive(
+                            light: Color(hex: "#0A7D3B"),
+                            dark: Color(hex: "#30D158")
+                        ))
+                }
+            } else {
+                if isNothingTheme {
+                    Text("STANDBY")
+                        .font(NothingFont.mono(9))
+                        .foregroundStyle(Color.adaptive(
+                            light: Color(hex: "#999999"),
+                            dark: Color(hex: "#666666")
+                        ))
+                } else {
+                    Text("STANDBY")
+                        .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    /// 顶部四色状态灯 (C100): 绿 (ok) / 黄 (warn) / 红 (error) / 中性灰 (neutral),
+    /// 刷新中且面板可见时呼吸脉冲, 触碰显示状态原因 (.help + .accessibilityLabel).
+    @ViewBuilder
+    private func topHeaderStatusDot(status: DashboardStatusResolution, isLive: Bool) -> some View {
+        let dotColor = statusDotColor(for: status.tone)
+        let shouldPulse = status.isRefreshing
+            && DashboardPanelAnimationPolicy.allowsHero(
+                panelVisible: model.dashboardPanelVisible,
+                reduceMotion: reduceMotion
+            )
+
+        Group {
+            if shouldPulse {
+                PulsingStatusDot(dotColor: dotColor)
+            } else {
+                ZStack {
+                    if isLive || status.isRefreshing {
+                        Circle()
+                            .fill(dotColor.opacity(0.25))
+                            .frame(width: 12, height: 12)
+                    }
+                    Circle()
+                        .fill(dotColor)
+                        .frame(width: 6, height: 6)
+                }
+                .frame(width: 12, height: 12)
+            }
+        }
+        .contentShape(Rectangle())
+        .help(status.reason)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(status.reason)
+    }
+
+    private func statusDotColor(for tone: DashboardStatusTone) -> Color {
+        switch tone {
+        case .ok:
+            return isNothingTheme
+                ? Color.adaptive(light: Color(hex: "#2E7D32"), dark: Color(hex: "#4A9E5C"))
+                : Color.adaptive(light: Color(hex: "#0A7D3B"), dark: Color(hex: "#30D158"))
+        case .warn:
+            return isNothingTheme
+                ? Color.adaptive(light: Color(hex: "#B8860B"), dark: Color(hex: "#D4A843"))
+                : Color.adaptive(light: Color(hex: "#B25000"), dark: Color(hex: "#D4A843"))
+        case .error:
+            return isNothingTheme
+                ? Color.adaptive(light: Color(hex: "#C62828"), dark: Color(hex: "#D71921"))
+                : Color.adaptive(light: Color(hex: "#C62828"), dark: Color(hex: "#E5534B"))
+        case .neutral:
+            return isNothingTheme
+                ? Color.adaptive(light: Color(hex: "#999999"), dark: Color(hex: "#666666"))
+                : Color.adaptive(light: Color(hex: "#8E8E93"), dark: Color(hex: "#8A8A8A"))
+        }
     }
 
     /// 顶部分隔发线: 1px 高度, 与 footerHairline 保持严格分层对称
@@ -309,14 +471,146 @@ struct MenuBarDashboardView: View {
             .frame(height: 1)
     }
 
-    // MARK: 卡片栈
+    // MARK: 卡片栈与 Tab 视图
 
     @ViewBuilder
     private func glassCardStack(_ panel: PanelViewModel) -> some View {
         // The AppKit surface is the single window-level material. Keeping the
         // existing card backgrounds independent avoids blurring dashboard text
         // and charts through a container that spans the full scroll content.
-        cardStack(panel)
+        if model.layoutMode == .tabbed {
+            tabbedCardView(panel)
+        } else {
+            cardStack(panel)
+        }
+    }
+
+    /// Tab 模式：单卡渲染 + 方案 1 水平定向滑动过渡
+    @ViewBuilder
+    private func tabbedCardView(_ panel: PanelViewModel) -> some View {
+        let hasCards = panel.usage != nil
+            || panel.subscription != nil
+            || panel.hourly != nil
+        Group {
+            if hasCards {
+                renderSingleTabCard(model.selectedCardID, panel: panel)
+                    .id(model.selectedCardID)
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: slideDirection).combined(with: .opacity),
+                            removal: .move(edge: slideDirection == .trailing ? .leading : .trailing).combined(with: .opacity)
+                        )
+                    )
+            } else {
+                emptyPanelState
+            }
+        }
+        .padding(.horizontal, isNothingTheme ? 10 : 12)
+        .padding(.top, isNothingTheme ? 8 : 10)
+        .padding(.bottom, isNothingTheme ? 10 : 4)
+    }
+
+    @ViewBuilder
+    private func renderSingleTabCard(_ cardID: DashboardCardID, panel: PanelViewModel) -> some View {
+        switch cardID {
+        case .usage:
+            if let usage = panel.usage {
+                PanelCardContainer {
+                    UsageHeroCard(
+                        viewModel: usage,
+                        panelVisible: model.dashboardPanelVisible,
+                        isCollapsed: false,
+                        onToggleCollapse: {}
+                    )
+                }
+            } else {
+                fallbackTabCard(panel)
+            }
+        case .subscription:
+            if let subscription = panel.subscription {
+                PanelCardContainer {
+                    SubscriptionCard(
+                        viewModel: subscription,
+                        isCollapsed: false,
+                        onToggleCollapse: {},
+                        refreshControls: subscriptionRefreshControls(for: subscription),
+                        onRefreshProvider: { provider in
+                            coordinator.refreshSubscription(provider)
+                        },
+                        panelVisible: model.dashboardPanelVisible
+                    )
+                }
+            } else {
+                fallbackTabCard(panel)
+            }
+        case .hourly:
+            if let hourly = panel.hourly {
+                PanelCardContainer {
+                    HourlyLineCard(
+                        viewModel: hourly,
+                        dailyDays: panel.usage?.days ?? [],
+                        dailyLegend: panel.usage?.legend ?? [],
+                        isCollapsed: false,
+                        onToggleCollapse: {},
+                        panelVisible: model.dashboardPanelVisible
+                    )
+                }
+            } else {
+                fallbackTabCard(panel)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func fallbackTabCard(_ panel: PanelViewModel) -> some View {
+        if let usage = panel.usage {
+            PanelCardContainer {
+                UsageHeroCard(
+                    viewModel: usage,
+                    panelVisible: model.dashboardPanelVisible,
+                    isCollapsed: false,
+                    onToggleCollapse: {}
+                )
+            }
+        } else if let subscription = panel.subscription {
+            PanelCardContainer {
+                SubscriptionCard(
+                    viewModel: subscription,
+                    isCollapsed: false,
+                    onToggleCollapse: {},
+                    refreshControls: subscriptionRefreshControls(for: subscription),
+                    onRefreshProvider: { provider in
+                        coordinator.refreshSubscription(provider)
+                    },
+                    panelVisible: model.dashboardPanelVisible
+                )
+            }
+        } else if let hourly = panel.hourly {
+            PanelCardContainer {
+                HourlyLineCard(
+                    viewModel: hourly,
+                    dailyDays: panel.usage?.days ?? [],
+                    dailyLegend: panel.usage?.legend ?? [],
+                    isCollapsed: false,
+                    onToggleCollapse: {},
+                    panelVisible: model.dashboardPanelVisible
+                )
+            }
+        } else {
+            emptyPanelState
+        }
+    }
+
+    /// 切换 Tab 并自动判定水平滑入方向
+    private func selectTab(_ target: DashboardCardID) {
+        guard target != model.selectedCardID else { return }
+        let order: [DashboardCardID] = [.usage, .subscription, .hourly]
+        let fromIndex = order.firstIndex(of: model.selectedCardID) ?? 0
+        let toIndex = order.firstIndex(of: target) ?? 0
+        slideDirection = toIndex > fromIndex ? .trailing : .leading
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+            model.selectCard(target)
+        }
     }
 
     @ViewBuilder
@@ -490,6 +784,20 @@ struct MenuBarDashboardView: View {
             .disabled(refreshableModules.isEmpty)
             .accessibilityLabel(refreshing ? "正在刷新全部模块" : "刷新全部模块")
             .accessibilityHint("使用当前授权重新采集全部已就绪模块")
+            // 外观切换: 单击在「跟随系统 -> 浅色 -> 深色」间循环,
+            // 图标即当前态; 与设置中心「配色模式」共用同一持久化偏好.
+            Button {
+                coordinator.setAppearanceMode(coordinator.appearanceMode.next)
+            } label: {
+                Label {
+                    Text("外观")
+                } icon: {
+                    Image(systemName: coordinator.appearanceMode.symbolName)
+                }
+            }
+            .accessibilityLabel("外观：\(coordinator.appearanceMode.displayName)")
+            .accessibilityHint("点击切换浅色、深色或跟随系统")
+            .help("外观：\(coordinator.appearanceMode.displayName)（点击切换）")
             Spacer()
             Button(action: openSettings) {
                 Label("设置", systemImage: "gearshape")
@@ -499,7 +807,7 @@ struct MenuBarDashboardView: View {
             }
         }
         .labelStyle(.iconOnly)
-        .help("刷新、设置或退出 Bruce")
+        .help("刷新、外观、设置或退出 Bruce")
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
         .panelGlassButtonStyle()

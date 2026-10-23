@@ -207,10 +207,16 @@ package final class AppModel: ObservableObject {
     @Published package private(set) var collapsedCards: Set<DashboardCardID>
     /// 仪表盘卡片展示顺序 (持久化到 UserDefaults, 支持拖拽调序).
     @Published package private(set) var cardOrder: [DashboardCardID]
+    /// 仪表盘布局模式 (持久化到 UserDefaults: stack 纵向级联 vs tabbed 顶栏 Tab 单卡).
+    @Published package private(set) var layoutMode: DashboardLayoutMode
+    /// 顶栏 Tab 模式当前选中的卡片 (持久化到 UserDefaults 记忆状态).
+    @Published package private(set) var selectedCardID: DashboardCardID
     /// 收起状态与顺序持久化存储 (测试注入隔离 suite).
     private let collapsedDefaults: UserDefaults
     private static let collapsedCardsDefaultsKey = "dashboard.collapsedCards"
     private static let cardOrderDefaultsKey = "dashboard.cardOrder"
+    private static let layoutModeDefaultsKey = "dashboard.layoutMode"
+    private static let activeCardDefaultsKey = "dashboard.activeCardID"
 
     package init(
         menuBarMetricRawValues: [String]? = nil,
@@ -226,6 +232,14 @@ package final class AppModel: ObservableObject {
             forKey: Self.cardOrderDefaultsKey
         )
         cardOrder = Self.resolveCardOrder(storedOrder)
+        let storedLayoutMode = collapsedDefaults.string(
+            forKey: Self.layoutModeDefaultsKey
+        ).flatMap(DashboardLayoutMode.init(rawValue:)) ?? .stack
+        layoutMode = storedLayoutMode
+        let storedActiveCard = collapsedDefaults.string(
+            forKey: Self.activeCardDefaultsKey
+        ).flatMap(DashboardCardID.init(rawValue:)) ?? .usage
+        selectedCardID = storedActiveCard
         self.menuBarIconOnly = menuBarIconOnly
         menuBarMetrics = MenuBarMetricConfiguration(
             rawValues: menuBarMetricRawValues
@@ -431,6 +445,20 @@ package final class AppModel: ObservableObject {
             cardOrder.map(\.rawValue),
             forKey: Self.cardOrderDefaultsKey
         )
+    }
+
+    /// 切换仪表盘布局模式 (stack 纵向级联 vs tabbed 顶栏 Tab 单卡).
+    package func setLayoutMode(_ mode: DashboardLayoutMode) {
+        guard layoutMode != mode else { return }
+        layoutMode = mode
+        collapsedDefaults.set(mode.rawValue, forKey: Self.layoutModeDefaultsKey)
+    }
+
+    /// 顶栏 Tab 模式选择卡片并持久化记忆状态.
+    package func selectCard(_ cardID: DashboardCardID) {
+        guard selectedCardID != cardID else { return }
+        selectedCardID = cardID
+        collapsedDefaults.set(cardID.rawValue, forKey: Self.activeCardDefaultsKey)
     }
 
     package func setSubscriptionProviders(

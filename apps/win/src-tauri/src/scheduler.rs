@@ -175,28 +175,17 @@ mod desktop {
 
     pub fn publish(app: &AppHandle) {
         if let Ok(panel) = cached_panel(app) {
-            let phase = panel
-                .pointer("/runtime/phase")
-                .and_then(Value::as_str)
-                .unwrap_or("failed");
             if let Some(tray) = app.tray_by_id("bruce") {
-                let tooltip = match phase {
-                    "refreshing" => "Bruce · 正在刷新",
-                    "fresh" => "Bruce · 数据已更新",
-                    "idle" => "Bruce · 等待采集",
-                    _ => "Bruce · 数据过期或采集异常",
-                };
-                let _ = tray.set_tooltip(Some(tooltip));
-                // Reuse the application icon, but visibly tint its indicator per runtime phase.
+                // 托盘角标与提示和看板 HUD 状态灯同源 (C100): 同一判定表、同一色值与原因文案,
+                // 两处不会一绿一红。
+                let status = crate::runtime_core::dashboard_status_from_panel(&panel);
+                let _ = tray.set_tooltip(Some(format!("Bruce · {}", status.reason)));
+                // Reuse the application icon, but visibly tint its indicator per status tone.
                 if let Some(source) = app.default_window_icon() {
                     let mut pixels = source.rgba().to_vec();
                     let width = source.width() as usize;
                     let height = source.height() as usize;
-                    let color = match phase {
-                        "refreshing" => [60, 150, 255, 255],
-                        "fresh" | "idle" => [50, 200, 100, 255],
-                        _ => [255, 175, 30, 255],
-                    };
+                    let color = status.tone.tray_rgba();
                     let radius = (width.min(height) / 5).max(1);
                     for y in height.saturating_sub(radius * 2)..height {
                         for x in width.saturating_sub(radius * 2)..width {

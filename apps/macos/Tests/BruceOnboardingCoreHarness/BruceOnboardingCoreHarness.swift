@@ -128,6 +128,7 @@ struct BruceOnboardingCoreHarness {
         try await reauthorizationReplacesOnlyCurrentAccount()
         try await disconnectRemovesRecordButKeepsOthers()
         try configAppearanceModeDecodeAndFallback()
+        try appearancePreferenceCycleOrder()
         try configGlassStyleDecodeAndFallback()
         try configNothingStyleDecodeAndResolution()
         try codexAccountIdentityServiceIDMatchesRustContract()
@@ -171,6 +172,6 @@ struct BruceOnboardingCoreHarness {
         try clineCredentialAccountsAndRegistry()
         try clineEvaluatorValidAndMalformed()
         try clineStoredCredentialParserRawKey()
-        print("BruceOnboardingCore tests passed: 167")
+        print("BruceOnboardingCore tests passed: 168")
     }
 }

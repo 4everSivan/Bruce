@@ -43,6 +43,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 
 ureq = { version = "=2.12.1", default-features = false, features = ["tls", "json"] }
+# CC Switch 火山引擎凭据只读导入 (C083): 与 collector-local 同版本同 features,
+# 复用构建图内已有的 bundled sqlite, 不引入第二份构建。
+rusqlite = { version = "=0.32.1", features = ["bundled"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Security", "Win32_Security_Authorization", "Win32_System_Threading", "Win32_Storage_FileSystem", "Win32_Foundation", "Win32_System_Memory", "Win32_Networking_WinInet"] }

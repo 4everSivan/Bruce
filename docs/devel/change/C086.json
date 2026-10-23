@@ -1,0 +1,124 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C086",
+  "title": "Windows StepFun 配置对话框与网页登录自动捕获：WebView2 窗口 + Oasis-Token cookie 提取 + 远程校验（含平台退路）",
+  "version": "0.13.0",
+  "type": "Enhancement",
+  "status": "pending",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
+  "is_hotfix": false,
+
+  "target": {
+    "module": "apps/win/src-tauri + apps/win/src",
+    "component": "StepFun 凭据获取链路",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+
+  "why": "mac 的 StepFun 配置提供「网页登录自动绑定」：内置 WKWebView 打开国内站（platform.stepfun.com/step-plan）或国际站（platform.stepfun.ai/plan-subscribe），经 cookie 变更通知 + 2s 轮询双轨自动提取 `Oasis-Token`，再经远程校验（POST QueryStepPlanRateLimit，appID 国内 10300 / 国际 20700）通过后才回填绑定（apps/macos/Sources/BruceApp/Settings/StepFunWebLoginView.swift:54-560）。Windows 只能手粘 token 并手选站点（apps/win/src/settings.js:1392-1397），用户必须自行打开浏览器、按 F12 从 cookie 里抄令牌。这是本批改动中唯一存在实质失败风险的项：Tauri 2.11.6 虽有 cookies()/cookies_for_url()，但官方注释明确其在 Windows 的同步 command 中会死锁（WebView2 已知问题，wry#583），必须 async command 或独立线程读取。",
+
+  "precheck": {
+    "description": "预检: 确认 Windows 侧无外部网页窗口与 cookie 读取先例",
+    "command": "grep -rn 'WebviewUrl::External\\|cookies_for_url\\|Oasis-Token' apps/win/src-tauri/src apps/win/src",
+    "expected": "无命中 (grep 退出码 1)",
+    "is_completed": false,
+    "evidence": "2026-10-22 复核: 该 grep 无命中; 动态建窗先例仅有 lib.rs 的本地 settings.html; 缺口确认存在"
+  },
+
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护在 main 直接实施",
+      "# spike: 真机验证 WebView2 cookie 可读性 (async command 读取 Oasis-Token) 后再进入完整实现"
+    ],
+    "after": [
+      "node scripts/check-win-frontend.mjs",
+      "node apps/win/tests/frontend.test.mjs",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "cargo clippy --manifest-path apps/win/src-tauri/Cargo.toml --all-targets -- -D warnings",
+      "scripts/adflow-verify  # 收口前门禁: --card C086 --to closed --record; Exit 0 后同步状态并以 --card C086 --receipt 复核"
+    ]
+  },
+
+  "changes": [
+    {
+      "scope": "StepFun 配置对话框 (apps/win/src/settings.js)",
+      "before": "通用表单的「密钥 / Access Token」+ 常显站点下拉",
+      "after": "Oasis-Token 字段 + 引导文案(`可点击上方一键登录自动绑定(支持国内/国际站)，或控制台按 F12 复制 Cookie`)+ 控制台外链(https://platform.stepfun.com)+ 脚注 + 网页登录自动绑定区(`🇨🇳 登录国内站` / `🌐 登录国际站`)",
+      "impact": "StepFun 入口形态与 mac 一致"
+    },
+    {
+      "scope": "网页登录窗口 (apps/win/src-tauri/src + 前端)",
+      "before": "无外部网页窗口能力",
+      "after": "独立 WebviewWindow + WebviewUrl::External 加载站点订阅页; 导航栏(标题 + 站点切换 + 取消) + 工具栏(后退/前进/刷新/订阅页/平台首页/当前URL) + 底部(清除登录缓存 / 我已登录，立即绑定); UA 用桌面 Chrome 串",
+      "impact": "用户在内置窗口登录即可, 无需外部浏览器与 devtools"
+    },
+    {
+      "scope": "cookie 捕获与远程校验 (apps/win/src-tauri/src)",
+      "before": "无捕获与校验",
+      "after": "cookie 变更 + 2s 轮询双轨; 仅当当前页面 URL 属目标站点域名时自动捕获; 取 Oasis-Token 且长度>10 且 cookie 域含目标关键字; 捕获后 POST /api/step.openapi.devcenter.Dashboard/QueryStepPlanRateLimit 校验(带 Oasis-Token / Oasis-appID 10300|20700 / Oasis-Platform / Oasis-Language / Oasis-Webid), 200 才回填绑定并持久化; 清缓存删除该域全部 cookie 后重载",
+      "impact": "捕获路径与 mac 同语义, 且只有真有效凭据才落盘"
+    },
+    {
+      "scope": "实现约束与平台退路 (登记项)",
+      "before": "—",
+      "after": "cookie 读取必须经 async command 或独立线程(Windows 同步 command 会死锁); 若真机 spike 无法稳定读取 cookie, 退化为「外部浏览器登录 + 手动粘贴 Oasis-Token」并在设计规则 24 内登记为平台差异, 不得以未验证状态宣称已对齐",
+      "impact": "风险有明确兜底与登记要求, 不产生静默的半成品"
+    }
+  ],
+
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "规则 20 的 StepFun 行仅为规范; 无网页登录窗口与 cookie 捕获规则",
+      "after": "落地规则 24: 站点与域名关键字、独立 WebviewWindow + External、导航/工具栏构成、双轨捕获与远程校验参数、cookie 读取必须 async 的实现约束、以及须人工确认的平台退路"
+    }
+  },
+
+  "verification": {
+    "result": null,
+    "run_id": "",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "cookie 过滤(域名/名称/长度)、站点→appID 与端点映射、远程校验响应判定、清缓存调用均有用例(mock); 退出码 0",
+        "false_if": "任何测试失败或捕获/校验分支未覆盖",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为实测 (Windows 真机)",
+        "true_if": "真机在内置窗口登录国内站/国际站后可自动提取 Oasis-Token 并通过远程校验, 绑定后看板出现 StepFun 额度; 清缓存可切换账号",
+        "false_if": "cookie 读不到、窗口死锁/白屏、校验误判、或绑定后查不出额度",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "新窗口不干扰主看板与设置窗口生命周期(规则 10); 既有 StepFun 手工 token 路径仍可用; 站点与 is_global 语义与采集端一致",
+        "false_if": "引入跨线程 STA 死锁/白屏, 或破坏既有 StepFun 凭据读取",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+
+  "rejections": [],
+
+  "sync": {
+    "design_pinned": true,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

@@ -1,0 +1,117 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C081",
+  "title": "Windows 订阅凭据载荷形状修正与「已配置」fail-closed：Claude/Grok/OpenCode GO 手工录入改采采集端可解析的原生形状",
+  "version": "0.13.0",
+  "type": "BugFix",
+  "status": "verified",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src-tauri + apps/win/src + core/collector",
+    "component": "credentials / 设置中心订阅凭据录入",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "Windows 设置页的通用账号表单把 Claude/Grok/OpenCode GO 三家 OAuth 形状 Provider 的凭证统一写成 `oauth: {access_token, refresh_token}`（apps/win/src/settings.js:1678-1680），但采集端要求的是各 Provider 原生形状：Claude 需 `oauth.claudeAiOauth.accessToken`（core/collector/crates/collector-provider/src/lib.rs:2465-2476 的 claude_token / :2487-2535 的 parse_claude_oauth_credentials）、Grok 需 `oauth.key` 或 `https://auth.x.ai::` scope 条目（同文件 :2856-2885 的 grok_token）、OpenCode GO 需 `oauth.{auth, workspaceId}`（同文件 :2770-2786 的 opencode_credential）。中间无任何归一化：collector-application/src/account.rs:231-237 只做 `oauth` 解包，apps/win/src-tauri/src/collector.rs:132-134 原样透传。结果是用户点「保存此账号」后提示「账号已保存」、Provider 行尾件显示「已配置」（settings.js:248-253 只判断账号是否存在），但额度永远查不出来 —— 静默失效且无从诊断。Windows 侧现有测试只覆盖 Claude 本机跟随路径（tests/credentials_coverage.rs:271-366 断言 oauth.claudeAiOauth.accessToken），通用表单这条路径无任何用例，缺陷得以长期存在。",
+  "precheck": {
+    "description": "预检: 确认通用表单仍把三家 OAuth Provider 写成扁平 oauth.access_token",
+    "command": "grep -n 'access_token: secret' apps/win/src/settings.js",
+    "expected": "命中 1 处 (settings.js:1680 的 oauth 分支), 说明坏形状仍在产出",
+    "is_completed": false,
+    "evidence": "2026-10-22 复核: 命中 apps/win/src/settings.js:1680 `payload = { oauth: { ...payload, ...(secret ? { access_token: secret } : {}), ...(secondary ? { refresh_token: secondary } : {}) } };`; 同文件 1678 行分支覆盖 claudeQuotaAccounts / grokQuotaAccounts / opencodeGoQuotaAccounts 三家; 缺口确认存在"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护在 main 直接实施"
+    ],
+    "after": [
+      "node scripts/check-win-frontend.mjs",
+      "node apps/win/tests/frontend.test.mjs",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "cargo test --manifest-path core/collector/Cargo.toml -p collector-provider",
+      "cargo clippy --manifest-path apps/win/src-tauri/Cargo.toml --all-targets -- -D warnings",
+      "scripts/adflow-verify  # 收口前门禁: 目标状态预检用 --card C081 --to closed --record, Exit 0 后同步状态并以 --card C081 --receipt 复核"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "凭据形状校验 (apps/win/src-tauri/src/credentials.rs)",
+      "before": "claudeQuotaAccounts / grokQuotaAccounts / opencodeGoQuotaAccounts 只校验 `oauth` 是 JSON 对象 (credentials.rs:124-130), 内部键一概不管, 任意形状均可落盘",
+      "after": "按 Provider 校验 `oauth` 必需键: Claude 需 claudeAiOauth/claude.ai_oauth 包装且 accessToken 非空; Grok 需顶层 key 非空或存在 `https://auth.x.ai::` / `/sign-in` scope 条目且其 key 非空; OpenCode GO 需 auth 与 workspaceId 双非空; 不合法即拒绝保存并返回可诊断文案, 不落盘半成品",
+      "impact": "坏形状在写入前被拦下, 不再出现「保存成功但查不出额度」"
+    },
+    {
+      "scope": "前端账号录入 (apps/win/src/settings.js)",
+      "before": "saveAccount 三家分支统一产出 `oauth: {access_token, refresh_token}` (settings.js:1678-1680)",
+      "after": "三家分别产出采集端原生形状: Claude `{oauth: {\"claudeAiOauth\": {accessToken, refreshToken?}}}`; Grok `{oauth: {\"https://auth.x.ai::injected\": {key}}}` (纯 token 输入时按该 scope 包装); OpenCode GO `{oauth: {auth, workspaceId}}` (要求粘贴 JSON, 缺任一键即报错)",
+      "impact": "手工录入的凭证与采集端解析器契约一致, 额度可正常查询"
+    },
+    {
+      "scope": "「已配置」判据 (apps/win/src-tauri/src/credentials.rs)",
+      "before": "Provider 行尾件只要该 Provider 下存在任一账号即显示「已配置」(settings.js:248-253); 校验器只查 oauth 是对象, 形状不合法的账号同样落盘并计入已配置",
+      "after": "读取侧改为逐账号容错: 单账号形状不合法时只丢弃该账号、保留同字段其它可用记录, 全部不合法时该字段整体消失 (磁盘文件不改写); 因此 UI 的「有账号」等价于「存在完整可用凭据记录」, 未配置判据自然 fail-closed",
+      "impact": "状态呈现与真实可用性一致, 未生效的配置不再伪装成功; 同一字段内的合法账号不因邻居损坏而丢失"
+    },
+    {
+      "scope": "双向契约测试锁 (apps/win/src-tauri/tests + core/collector/crates/collector-provider)",
+      "before": "三家 OAuth 形状无任何测试; collector-provider 侧也没有断言「规范形状可被解析」的用例",
+      "after": "Windows 侧: 断言前端产出的三家规范形状被校验器接受、旧扁平形状被拒绝、元数据记录不算已配置; collector-provider 侧: 断言三家规范形状能被真实解析器 (parse_claude_oauth_credentials / grok_token / opencode_credential) 解析出凭据, 且旧扁平形状解析为空 —— 契约漂移即测试红",
+      "impact": "跨端形状契约被测试锁定, 同类静默失效无法再复发"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "§4.3 凭证与安全红线只约定凭据落盘位置与 ACL, 未声明账号载荷的形状契约; §6.0 规则未定义「已配置」判据",
+      "after": "新增规则 21: 账号记录恒为 {display_name, oauth: <Provider 原生形状>}, 逐 Provider 列出必需键; 校验器按 Provider 校验 oauth 必需键; 「已配置」改 fail-closed (仅完整凭据记录成立); 双向测试锁锁定跨端契约"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "local-20261022-01",
+    "user_quote": "确认",
+    "signoff": "verified",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "Windows 侧与 collector-provider 侧新增用例全绿, 既有用例无回退, 退出码 0",
+        "false_if": "任何测试失败或新增用例未覆盖三家形状与 fail-closed 判据",
+        "evidence": "cargo test --manifest-path apps/win/src-tauri/Cargo.toml → credentials_coverage 26 passed; 0 failed (新增 6 项: 扁平形状拒绝 / 规范形状接受 / 诊断文案不回显凭据 / 逐账号容错保留合法兄弟 / 坏形状不进账号清单 / 保存路径拒绝且不留半成品); 其余套件 22+8+2+12+3+37+11+10+13+2 passed, 全 0 failed; cargo test -p collector-provider → 45 passed; 0 failed (新增 2 项: 三家规范形状可被真实解析器解析 / 扁平形状解析为空); node apps/win/tests/frontend.test.mjs → 57 passed; 0 failed (新增 3 项: 三家原生形状载荷 / Claude 包装与裸条目 / OpenCode GO 缺键拦截); node scripts/check-win-frontend.mjs → Exit Code 0; cargo clippy --all-targets -- -D warnings → Exit Code 0; cargo fmt --all -- --check → Exit Code 0",
+        "result": true
+      },
+      {
+        "item": "行为实测 (Windows 真机)",
+        "true_if": "设置页手工录入 Claude/Grok/OpenCode GO 凭证后, 定向刷新能查出额度; 粘贴旧扁平形状被拒并给出可诊断文案; 仅有元数据的 Provider 显示「未配置」",
+        "false_if": "保存后仍查不出额度, 或坏形状被接受, 或元数据被标为已配置",
+        "evidence": "待 Windows 真机复核: 三家凭证录入后定向刷新应查出额度、旧扁平形状应被拒且文案可诊断、坏形状账号应显示「未配置」; 本轮以双侧自动化证据替代 (Windows 侧校验器断言 + collector-provider 真实解析器断言), 真机欠账登记",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "Kimi/DeepSeek/火山引擎/Z.ai/StepFun/Cline/Codex 的既有保存路径与 Claude 本机跟随路径不受影响; 采集注入契约与 Bridge 边界不变",
+        "false_if": "破坏既有 provider 凭据读写、本机跟随注入或 Bridge 凭证白名单",
+        "evidence": "既有 credentials_coverage 20 项全绿 (含 Claude 本机跟随 6 项, 其 oauth.claudeAiOauth.accessToken 形状与本次契约一致); collector_configuration / scoped_refresh_coverage / quota_policy_coverage 全绿, 注入契约 (codex 只留 access_token+display_name、claude/grok 额外 OAuth 与 providerMeta) 未改动; 读取侧逐账号容错仅在字段整体校验失败时生效, 合法字段路径行为不变; 磁盘文件不被读取路径改写 (用例断言 legacy 账号仍留在磁盘上)",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-22",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified"
+  }
+}

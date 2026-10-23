@@ -1,0 +1,116 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C083",
+  "title": "Windows API Key 类五家专属配置对话框：字段标签/引导文案/外链/脚注逐字对齐，火山引擎补 CC Switch 导入，Z.ai 改站点单选",
+  "version": "0.13.0",
+  "type": "Enhancement",
+  "status": "verified",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src + apps/win/src-tauri",
+    "component": "订阅额度 Provider 配置对话框 (API Key 类)",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "mac 为每家 API Key Provider 提供专属对话框：字段标签与占位符按 Provider 命名（Kimi/DeepSeek/Z.ai/Cline 为 `API Key`、火山引擎为 `Access Key`+`Secret Key`）、带申请引导文案、部分带控制台外链与脚注、火山引擎带「从 CC Switch 导入」、Z.ai 带国内/国际站点单选并派生 base_url（apps/macos/Sources/BruceApp/SettingsView.swift:1193-1417 与 apps/macos/Sources/BruceApp/Settings/APIKeyProviderConfigDialog.swift）。Windows 现在只有一张通用表单：字段标签是「密钥 / Access Token」「附加密钥 / Refresh Token」，Z.ai 的 API 地址要用户手填、StepFun 站点下拉对无关 Provider 也常显，且全仓无任何凭据申请引导或外链（apps/win/src/settings.js:1385-1414、:1666-1704）。用户报告「非常难用」的直接来源即此。 实施说明: 逐 Provider 的字段标签/引导文案/控制台外链/脚注与 Z.ai 站点单选已随 C082 的对话框描述表落地, 本卡只覆盖剩余部分 (CC Switch 只读导入 + DeepSeek 真实试查)。",
+  "precheck": {
+    "description": "预检: 确认 Windows 侧无 CC Switch 导入与站点单选, 且无任何凭据申请外链",
+    "command": "grep -rn 'cc-switch\\|cc_switch\\|open.bigmodel.cn' apps/win/src/settings.js apps/win/src-tauri/src",
+    "expected": "仅命中 zhipu 的 base_url 默认值字符串, 无 CC Switch 导入实现",
+    "is_completed": false,
+    "evidence": "2026-10-22 复核: 命中 settings.js:1394/:1692 的 open.bigmodel.cn 默认地址; 全仓无 cc-switch 导入; 全仓无凭据申请外链 (settings.js 内 https 仅命中 SVG 命名空间与 base_url 占位); 缺口确认存在"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护在 main 直接实施"
+    ],
+    "after": [
+      "node scripts/check-win-frontend.mjs",
+      "node apps/win/tests/frontend.test.mjs",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "cargo clippy --manifest-path apps/win/src-tauri/Cargo.toml --all-targets -- -D warnings",
+      "scripts/adflow-verify  # 收口前门禁: --card C083 --to closed --record; Exit 0 后同步状态并以 --card C083 --receipt 复核"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "五家对话框内容 (apps/win/src/settings.js)",
+      "before": "通用表单: 字段标签与 Provider 无关, 无引导、无外链、无脚注",
+      "after": "逐家对齐 mac 文案 —— Kimi/DeepSeek/Z.ai/Cline 为 `API Key`; 火山引擎为 `Access Key`+`Secret Key`; 引导行逐字对齐(如 Kimi「在 kimi.com/code 申请 Kimi For Coding API key」、Cline「在 Cline 控制台 Settings > API Keys 创建 API Key」); Cline/StepFun 带控制台外链; 火山引擎与 Z.ai 带「此处仅做本地格式校验, 完整额度试查由 Collector 运行时承担」脚注; Cline 带 ClinePass 三窗口脚注",
+      "impact": "配置入口对用户自解释, 不再需要外部知识"
+    },
+    {
+      "scope": "火山引擎 CC Switch 导入 (apps/win/src-tauri/src + 前端)",
+      "before": "无 CC Switch 导入; 用户只能手抄 AK/SK",
+      "after": "只读 rusqlite 打开 CC Switch 库 (OpenFlags::SQLITE_OPEN_READ_ONLY) 执行 `SELECT meta FROM providers WHERE name='火山Codingplan' LIMIT 1`; 取 meta.usage_script.accessKeyId/secretAccessKey (回落顶层同名键); SK 经 base64 逐层解码; 库不存在时按钮不显示(ccswitch_status), 行缺失时点击后给出可诊断错误; 前端「从 CC Switch 导入」先拉起只读确认(对齐 mac confirmationDialog), 确认后导入并立即保存验证",
+      "impact": "火山引擎配置从手抄降为零点击; 只读不改外部库"
+    },
+    {
+      "scope": "Z.ai 站点单选 (apps/win/src/settings.js)",
+      "before": "手填 `Z.ai API 地址（可选）` 文本框, 默认国内地址, 且该字段对无关 Provider 也常显",
+      "after": "站点单选 `国内站 (open.bigmodel.cn)` / `国外站 (api.z.ai)`, 选中后派生 base_url; 站点控件只在 Z.ai 对话框内出现",
+      "impact": "用户无需知道 base_url; 无关字段不再干扰其他 Provider"
+    },
+    {
+      "scope": "保存即验证与就地错误 (apps/win/src-tauri/src + 前端)",
+      "before": "「保存此账号」后需另点整页「检查已保存账号连接」触发全量刷新, 结果以文本块输出",
+      "after": "`保存并验证`: 写入成功后立即跑该 Provider 的结构校验 (DeepSeek 额外一次真实网络试查 `https://api.deepseek.com/user/balance`, 关闭重定向以杜绝 Bearer 随重定向外泄 —— 与 mac 允许同 host 重定向的差异已作为登记项写入代码注释), 落 lastVerifiedAt/verificationStatus; ok 触发该 Provider 定向刷新(refresh_subscription), failed/needsRelogin 只写就地错误; 新增「重新验证」按钮(已配置时出现)",
+      "impact": "保存即知结果, 验证通过即出现在看板(C087 门禁)"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "规则 20 的逐 Provider 契约表为本次新增的规范; §4.3 只约定外部 SQLite 强制 mode=ro, 未落地 CC Switch 导入",
+      "after": "落地规则 20 逐 Provider 契约表中 API Key 类五家的字段/引导/外链/脚注/附加区, 以及规则 22 的验证语义 (本地结构校验 + DeepSeek 网络试查 + 保存即验证)"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "local-20261023-04",
+    "user_quote": "确认",
+    "signoff": "verified_by_user",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "五家对话框渲染与保存载荷断言全绿; CC Switch 只读查询与字段映射有单测(含库缺失/行缺失/字段缺失三分支); DeepSeek 验证有 mock 用例; 退出码 0",
+        "false_if": "任何测试失败或 CC Switch 查询/验证分支未覆盖",
+        "evidence": "cargo test --manifest-path apps/win/src-tauri/Cargo.toml → credentials_coverage 35 passed; 0 failed (新增 5 项: DeepSeek 结构通过后调用注入式试查且收到 api_key / 形状不合法时不触网 / 其他 Provider 不触网 / CC Switch 导入保存解码后的 SK 且外部库行数不变 / 无库时干净报错且不写入; ccswitch 模块内联 5 项: usage_script 取值 / 顶层键回落 / 行缺失与字段缺失 / 库不存在 / 解码候选在首次失败即停止); node apps/win/tests/frontend.test.mjs → 60 passed; 0 failed (新增: 火山引擎对话框经只读确认后调用导入命令并落 ok 状态与定向刷新); node scripts/check-win-frontend.mjs → Exit Code 0; cargo clippy --all-targets -- -D warnings → Exit Code 0; cargo fmt --all -- --check → Exit Code 0",
+        "result": true
+      },
+      {
+        "item": "行为实测 (Windows 真机)",
+        "true_if": "五家可正常保存并显示验证结果; 本机装有 CC Switch 且含火山 Coding Plan 时可一键导入并查出额度; Z.ai 切站点后 base_url 正确",
+        "false_if": "保存失败、验证状态错报、CC Switch 导入失败或读错库、站点切换后地址错误",
+        "evidence": "待 Windows 真机复核: (1) CC Switch 在 Windows 的数据库落点 —— 代码探测 %APPDATA%\\cc-switch\\cc-switch.db 与 %USERPROFILE%\\.cc-switch\\cc-switch.db 两个候选, 实际落点未实测; (2) DeepSeek 真实试查为真实出站调用 (测试以注入式桩替代, 不触网), 需真机确认 200/401 分支与代理环境行为; (3) 导入后定向刷新能否查出火山额度; 真机欠账登记",
+        "result": false
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "CC Switch 库全程只读(不改写外部文件); 既有 Kimi/DeepSeek/Z.ai/Cline 凭据可继续读取与查询; 定向刷新链路不受影响",
+        "false_if": "对外部数据库产生写操作, 或破坏既有凭据兼容读取",
+        "evidence": "只读红线由 SQLITE_OPEN_READ_ONLY 保证, 用例断言导入后外部库 providers 行数不变; DeepSeek 试查改为可注入边界后, 非 DeepSeek Provider 有用例断言从不触网 (既有 kimi/claude/codex 验证用例不受影响); rusqlite 与 collector-local 同版本同 features, 复用构建图内已有 bundled sqlite; 既有 31 项凭证用例全绿",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-23",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified"
+  }
+}

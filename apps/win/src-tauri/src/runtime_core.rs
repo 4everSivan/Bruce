@@ -829,6 +829,156 @@ pub fn window_action(label: &str, lost_focus: bool, close: bool) -> WindowAction
     }
 }
 
+/// 面板唤出后的瞬态失焦保护期 (ms)：Windows 跨进程前台切换偶发瞬态 `Focused(false)`，
+/// 保护期内忽略隐藏并重申焦点，防止按快捷键后面板“闪一下即消失”。
+pub const SHOW_FOCUS_GRACE_MS: u64 = 180;
+
+/// 全局热键防抖窗口 (ms)：距上一次生效的切换不足该窗口的触发一律忽略。
+/// global-hotkey 在 Windows 恒以 `MOD_NOREPEAT` 注册, 长按不会产生连发事件;
+/// 此窗口只兜底极短间隔的重复投递与连按抖动。
+pub const HOTKEY_REPEAT_DEBOUNCE_MS: u64 = 250;
+
+/// 被动失焦隐藏后的防重开窗口 (ms)：防止点击托盘或按下修饰键先触发 `Focused(false)` 收起面板、
+/// 紧接着到达的点击/热键回调又把面板反向重新打开。
+pub const UNFOCUS_REOPEN_GUARD_MS: u64 = 300;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToggleDecision {
+    Show,
+    Hide,
+    Ignore,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnfocusDecision {
+    Hide,
+    IgnoreTransientAndRefocus,
+    AlreadyHidden,
+}
+
+/// 看板面板显隐、焦点保护期与全局热键防抖状态机 (C099)。
+#[derive(Debug, Clone, Default)]
+pub struct DashboardActivityState {
+    pub panel_open: bool,
+    pub last_shown_at: Option<std::time::Instant>,
+    pub last_unfocus_at: Option<std::time::Instant>,
+    pub last_hotkey_at: Option<std::time::Instant>,
+    pub recording_hotkey: bool,
+}
+
+impl DashboardActivityState {
+    pub fn record_shown(&mut self, now: std::time::Instant) {
+        self.panel_open = true;
+        self.last_shown_at = Some(now);
+        self.last_unfocus_at = None;
+    }
+
+    pub fn record_explicit_hide(&mut self) {
+        self.panel_open = false;
+        self.last_shown_at = None;
+        self.last_unfocus_at = None;
+    }
+
+    /// 切换录制态并返回切换前的取值, 供调用方判断是否需要真正注销/恢复热键。
+    pub fn set_recording_hotkey(&mut self, recording: bool) -> bool {
+        let was_recording = self.recording_hotkey;
+        self.recording_hotkey = recording;
+        was_recording
+    }
+
+    pub fn on_dashboard_unfocus(&mut self, now: std::time::Instant) -> UnfocusDecision {
+        if !self.panel_open {
+            return UnfocusDecision::AlreadyHidden;
+        }
+        if let Some(shown_at) = self.last_shown_at {
+            if now.saturating_duration_since(shown_at)
+                < std::time::Duration::from_millis(SHOW_FOCUS_GRACE_MS)
+            {
+                return UnfocusDecision::IgnoreTransientAndRefocus;
+            }
+        }
+        self.panel_open = false;
+        self.last_shown_at = None;
+        self.last_unfocus_at = Some(now);
+        UnfocusDecision::Hide
+    }
+
+    pub fn on_hotkey_pressed(
+        &mut self,
+        now: std::time::Instant,
+        is_visible: bool,
+    ) -> ToggleDecision {
+        if self.recording_hotkey {
+            return ToggleDecision::Ignore;
+        }
+        if let Some(last) = self.last_hotkey_at {
+            if now.saturating_duration_since(last)
+                < std::time::Duration::from_millis(HOTKEY_REPEAT_DEBOUNCE_MS)
+            {
+                return ToggleDecision::Ignore;
+            }
+        }
+        self.last_hotkey_at = Some(now);
+        if is_visible {
+            self.record_explicit_hide();
+            return ToggleDecision::Hide;
+        }
+        if let Some(unfocus_at) = self.last_unfocus_at.take() {
+            if now.saturating_duration_since(unfocus_at)
+                < std::time::Duration::from_millis(UNFOCUS_REOPEN_GUARD_MS)
+            {
+                return ToggleDecision::Ignore;
+            }
+        }
+        self.record_shown(now);
+        ToggleDecision::Show
+    }
+
+    pub fn on_tray_left_click(
+        &mut self,
+        now: std::time::Instant,
+        is_visible: bool,
+    ) -> ToggleDecision {
+        if is_visible {
+            self.record_explicit_hide();
+            return ToggleDecision::Hide;
+        }
+        if let Some(unfocus_at) = self.last_unfocus_at.take() {
+            if now.saturating_duration_since(unfocus_at)
+                < std::time::Duration::from_millis(UNFOCUS_REOPEN_GUARD_MS)
+            {
+                return ToggleDecision::Ignore;
+            }
+        }
+        self.record_shown(now);
+        ToggleDecision::Show
+    }
+}
+
+/// 录制态挂起 / 恢复已生效热键 (C099): `RegisterHotKey` 注册的组合键会被系统直接截走,
+/// 不再投递给前台窗口, 因此录制期间必须真正注销, 设置页才能录到该组合键;
+/// 退出录制再按已生效热键重新注册。录制态未变化或未设热键时不触碰注册表。
+pub fn suspend_or_resume_hotkey<R, U>(
+    current: &str,
+    was_recording: bool,
+    recording: bool,
+    mut register: R,
+    mut unregister: U,
+) -> Result<(), String>
+where
+    R: FnMut(&str) -> Result<(), String>,
+    U: FnMut(&str) -> Result<(), String>,
+{
+    if was_recording == recording || current.is_empty() {
+        return Ok(());
+    }
+    if recording {
+        unregister(current)
+    } else {
+        register(current)
+    }
+}
+
 /// Stage replacement before unregistering the working shortcut; roll back either
 /// registration or persistence failure. Empty means explicitly disable shortcuts.
 pub fn replace_hotkey<R, U, S>(
@@ -899,6 +1049,57 @@ pub struct DashboardGeometry {
     pub y: i32,
     pub width: u32,
     pub height: u32,
+}
+
+fn point_in_monitor(m: &MonitorBounds, px: i32, py: i32) -> bool {
+    px >= m.x && px < m.x + m.width as i32 && py >= m.y && py < m.y + m.height as i32
+}
+
+/// 看板唤出来源 (C099): 决定目标显示器与托盘锚点的取舍。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DashboardOpenSource {
+    /// 托盘左键 / 托盘菜单: 面板贴托盘弹出。
+    Tray,
+    /// 全局热键: 面板在光标所在屏弹出 (对齐 mac 面板随活动屏菜单栏出现)。
+    Hotkey,
+}
+
+/// 看板弹出位置: 目标显示器下标 (`None` 由调用方回退 `current_monitor` / `primary_monitor`)
+/// 与参与几何计算的托盘锚点。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DashboardPlacement {
+    pub monitor_index: Option<usize>,
+    pub tray_anchor: Option<TrayIconBounds>,
+}
+
+/// 选择看板弹出位置 (C099)：
+/// - 托盘唤出优先取托盘所在屏, 热键唤出优先取光标所在屏, 各自以另一方兜底;
+/// - 托盘锚点只用于托盘所在屏 —— 别屏按该屏任务栏角落贴靠, 不借用另一块屏上的托盘坐标;
+/// - 均未命中时不改变托盘锚点, 由调用方回退当前 / 主显示器。
+pub fn select_dashboard_placement(
+    monitors: &[MonitorBounds],
+    tray: Option<&TrayIconBounds>,
+    cursor: Option<(i32, i32)>,
+    source: DashboardOpenSource,
+) -> DashboardPlacement {
+    let tray = tray.copied().filter(|t| t.width > 0 && t.height > 0);
+    let tray_monitor =
+        tray.and_then(|t| monitors.iter().position(|m| point_in_monitor(m, t.x, t.y)));
+    let cursor_monitor =
+        cursor.and_then(|(cx, cy)| monitors.iter().position(|m| point_in_monitor(m, cx, cy)));
+    let monitor_index = match source {
+        DashboardOpenSource::Tray => tray_monitor.or(cursor_monitor),
+        DashboardOpenSource::Hotkey => cursor_monitor.or(tray_monitor),
+    };
+    let tray_anchor = if monitor_index.is_none() || monitor_index == tray_monitor {
+        tray
+    } else {
+        None
+    };
+    DashboardPlacement {
+        monitor_index,
+        tray_anchor,
+    }
 }
 
 /// 任务栏停靠边 (Windows 任务栏可置于屏幕四边任意一侧)。
@@ -1153,4 +1354,193 @@ pub fn compute_dashboard_geometry(
         width: win_w as u32,
         height: win_h as u32,
     }
+}
+
+// MARK: - 顶部四色状态灯判定 (C100)
+
+/// 状态灯四色, 严重度 `Neutral < Ok < Warn < Error`。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum StatusTone {
+    Neutral,
+    Ok,
+    Warn,
+    Error,
+}
+
+impl StatusTone {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Neutral => "neutral",
+            Self::Ok => "ok",
+            Self::Warn => "warn",
+            Self::Error => "error",
+        }
+    }
+
+    /// 托盘图标角标色, 与看板 HUD 状态灯同值 (styles.css `--ok` / `--warn` / `--danger` / 中性灰)。
+    pub fn tray_rgba(self) -> [u8; 4] {
+        match self {
+            Self::Neutral => [0x8A, 0x8A, 0x8A, 0xFF],
+            Self::Ok => [0x4A, 0x9E, 0x5C, 0xFF],
+            Self::Warn => [0xD4, 0xA8, 0x43, 0xFF],
+            Self::Error => [0xE5, 0x53, 0x4B, 0xFF],
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DashboardStatus {
+    pub tone: StatusTone,
+    pub is_refreshing: bool,
+    pub reason: String,
+}
+
+/// 状态码 -> 中文态名 (与 mac `DashboardStatusToneResolver.statusLabel` / `app.js` `statusLabel` 同表)。
+fn status_label(state: &str) -> &str {
+    match state {
+        "ok" | "fresh" => "正常",
+        "ready" => "可刷新",
+        "refreshing" | "loading" => "刷新中",
+        "partial" => "部分失败",
+        "failed" => "刷新失败",
+        "error" => "失败",
+        "stale" => "数据过期",
+        "unavailable" => "不可用",
+        "idle" => "等待刷新",
+        "empty" => "暂无数据",
+        "notConfigured" => "未配置",
+        "authRequired" => "需要授权",
+        other => other,
+    }
+}
+
+fn collection_tone(module_state: &str, has_data: bool) -> StatusTone {
+    match module_state {
+        "failed" | "error" | "unavailable" => StatusTone::Error,
+        "partial" | "stale" | "authRequired" => StatusTone::Warn,
+        "fresh" | "ready" | "ok" => StatusTone::Ok,
+        "idle" | "refreshing" | "loading" if has_data => StatusTone::Ok,
+        _ => StatusTone::Neutral,
+    }
+}
+
+fn section_tone(status: &str) -> StatusTone {
+    match status {
+        "error" | "failed" | "unavailable" => StatusTone::Error,
+        "partial" | "stale" | "authRequired" => StatusTone::Warn,
+        "ok" | "fresh" | "ready" => StatusTone::Ok,
+        _ => StatusTone::Neutral,
+    }
+}
+
+/// `runtime.error` 机器码 -> 中文释义 (与 `app.js` `RUNTIME_ERROR_TEXT` 同表, 由测试锁定);
+/// 未登记的码返回 `None`, 不外露到原因文案。
+pub fn runtime_error_text(code: &str) -> Option<&'static str> {
+    Some(match code {
+        "COLLECTION_PARTIAL" => "部分来源未能采集",
+        "COLLECTION_FAILED" => "本次采集失败",
+        "SNAPSHOT_RESTORED" => "显示上次保存的数据",
+        "SNAPSHOT_WRITE_FAILED" => "本地快照写入失败",
+        "SNAPSHOT_INVALID" | "SNAPSHOT_READ_FAILED" => "本地快照无法读取",
+        "ARTIFACT_MISSING" => "采集结果缺失",
+        "ARTIFACT_INVALID" => "采集结果格式无效",
+        crate::reachability::NETWORK_UNAVAILABLE => "网络不可用",
+        _ => return None,
+    })
+}
+
+/// 顶部状态灯单一判定 (与 mac `DashboardStatusToneResolver.resolve` / `app.js`
+/// `resolveDashboardStatus` 逐字对齐, 三端共用 `tests/fixtures/status-tone-parity` 对拍):
+/// 聚合采集与订阅健康度取最严重态; `detail` 只描述采集侧, 订阅侧更严重时原因点名服务。
+pub fn resolve_dashboard_status(
+    module_state: &str,
+    subscriptions: &[(&str, &str)],
+    has_data: bool,
+    detail: Option<&str>,
+) -> DashboardStatus {
+    let is_refreshing = matches!(module_state, "refreshing" | "loading");
+    let mod_tone = collection_tone(module_state, has_data);
+
+    let mut sub_tone = StatusTone::Neutral;
+    let mut worst_sub_status = "empty";
+    for (status, _) in subscriptions {
+        let candidate = section_tone(status);
+        if candidate > sub_tone {
+            sub_tone = candidate;
+            worst_sub_status = status;
+        }
+    }
+
+    let tone = mod_tone.max(sub_tone);
+    let detail = detail.map(str::trim).unwrap_or_default();
+    let reason = if is_refreshing {
+        "正在刷新…".to_owned()
+    } else if tone == StatusTone::Ok {
+        "运行正常".to_owned()
+    } else if sub_tone > mod_tone {
+        let label = status_label(worst_sub_status);
+        let mut names: Vec<&str> = Vec::new();
+        for (status, name) in subscriptions {
+            let name = name.trim();
+            if section_tone(status) == sub_tone && !name.is_empty() && !names.contains(&name) {
+                names.push(name);
+            }
+        }
+        if names.is_empty() {
+            label.to_owned()
+        } else {
+            format!("{label} · {}", names.join("、"))
+        }
+    } else {
+        let effective = if module_state == "idle" && !has_data {
+            "empty"
+        } else {
+            module_state
+        };
+        let label = status_label(effective);
+        if !detail.is_empty() && detail != label {
+            format!("{label} · {detail}")
+        } else {
+            label.to_owned()
+        }
+    };
+
+    DashboardStatus {
+        tone,
+        is_refreshing,
+        reason,
+    }
+}
+
+/// 从已发布的看板 JSON 计算状态灯 (与 `app.js` `renderStatus` 取数口径一致), 供托盘角标与提示使用。
+pub fn dashboard_status_from_panel(panel: &Value) -> DashboardStatus {
+    let present = |key: &str| panel.get(key).is_some_and(|value| !value.is_null());
+    let has_data = present("usage") || present("subscription") || present("hourly");
+    let phase = panel
+        .pointer("/runtime/phase")
+        .and_then(Value::as_str)
+        .filter(|phase| !phase.is_empty())
+        .unwrap_or(if has_data { "fresh" } else { "empty" });
+    let subscriptions: Vec<(&str, &str)> = panel
+        .pointer("/subscription/sections")
+        .and_then(Value::as_array)
+        .map(|sections| {
+            sections
+                .iter()
+                .filter_map(|section| {
+                    let status = section
+                        .get("status")
+                        .and_then(Value::as_str)
+                        .filter(|s| !s.is_empty())?;
+                    let name = section.get("name").and_then(Value::as_str).unwrap_or("");
+                    Some((status, name))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let detail = panel
+        .pointer("/runtime/error")
+        .and_then(Value::as_str)
+        .and_then(runtime_error_text);
+    resolve_dashboard_status(phase, &subscriptions, has_data, detail)
 }

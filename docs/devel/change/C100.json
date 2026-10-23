@@ -1,0 +1,140 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C100",
+  "title": "双端仪表盘顶部状态牌改为四色状态灯：删除 SYS.OK 文字牌，触碰显示状态原因，品牌字统一为 Bruce",
+  "version": "0.13.0",
+  "type": "Enhancement",
+  "status": "verified",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用)",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos + apps/win",
+    "component": "仪表盘顶部 HUD Header 状态指示 (mac MenuBarViews.dashboardTopHeader / win app.js renderStatus) + Windows 托盘角标与提示 (scheduler.rs publish)",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "仪表盘顶部 HUD 头左侧目前是「圆点灯 + 品牌字 + SYS.OK 文字牌」的三件套。这个文字牌在两端语义并不一致：mac 侧是硬编码静态文字 (MenuBarViews.swift:263 / :282), 无论采集或订阅刷新是否失败都恒显 SYS.OK, 属于装饰而非状态; win 侧则是 C009 刻意引入的状态驱动文字牌 (app.js:1069-1074), 健康时显 SYS.OK、异常时在同一小牌内直出中文并以橙色区分。结果是同一处 UI 两端行为相反, 且顶部同时存在「灯」与「牌」两个状态载体, 视觉冗余、口径含糊。本次统一为单一四色状态灯: 绿/黄/红表达健康度、中性灰表达尚无数据, 刷新中以呼吸脉冲表达; 触碰 (hover) 灯体显示状态原因, 把原先由文字牌承载的信息改为按需展开, 顶部回到极简; 同时把两端品牌字统一收敛为 Bruce。",
+  "precheck": {
+    "description": "预检: 确认两端 SYS.OK 文字牌仍在、四色状态灯判定逻辑尚不存在、品牌字仍带 // HUD 后缀",
+    "command": "git show HEAD:apps/macos/Sources/BruceApp/MenuBarViews.swift | grep -c 'SYS.OK'; git show HEAD:apps/win/src/index.html | grep -c 'SYS.OK'; git show HEAD:apps/win/src/app.js | grep -c 'tone-ok\\|tone-warn\\|tone-error'; git show HEAD:apps/macos/Sources/BruceApp/MenuBarViews.swift | grep -c 'DashboardStatusTone\\|tone:'",
+    "expected": "SYS.OK 命中 >0 (文字牌仍在); 四色 tone 逻辑命中 0 (尚未实现)",
+    "is_completed": true,
+    "evidence": "2026-10-23 预检实测: mac MenuBarViews.swift SYS.OK 命中 2 次 (Nothing/Classic 各一处); win index.html SYS.OK 命中 2 次 (元素 + 初值); win app.js 四色 tone 命中 0 次; mac 顶部 tone 逻辑命中 0 次; 品牌字 'Bruce // HUD' / 'BRUCE // HUD' 命中 2 次。缺口确认存在, 非重复实现。"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护在 main 直接实施"
+    ],
+    "after": [
+      "node apps/win/tests/frontend.test.mjs",
+      "swift run --package-path apps/macos BruceOnboardingCoreHarness",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify  # 收口前门禁: --card C100 --to closed --record; Exit 0 后同步状态并以 --card C100 --receipt 复核"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "统一状态判定纯函数 (新增 apps/macos/Sources/BruceAppCore/DashboardStatusTone.swift; win 侧在 app.js 内实现同表)",
+      "before": "两端各自为政: mac 顶部灯只吃 panel.usage.isLive (数据新鲜度), 颜色按主题硬编码单色; win 顶部牌吃 panel.runtime.phase, 健康判据为 HEALTHY_PHASES={ok,fresh,idle}, 不聚合订阅 section 状态",
+      "after": "新增单一判定源 resolve(moduleState:subscriptions:hasData:detail:) -> (tone, reason), subscriptions 为 {status, name} 列表: 四色 ok/warn/error/neutral + refreshing 脉冲态; 聚合「采集健康度 (mac moduleStatuses[.agentUsage] / win runtime.phase)」与「订阅服务健康度 (两端 panel.subscription.sections[].status + name)」两个同构来源, 按最严重态优先 error > warn > ok 取并; 中性灰仅在采集与订阅均无数据时出现; 两端口径逐字一致",
+      "impact": "mac 视图与 win 前端共用同一张映射表; 判定语义不再分叉, 可通过共享 fixture 双端对拍锁死"
+    },
+    {
+      "scope": "状态到灯色的映射表 (mac DashboardStatusTone / win tone-* class)",
+      "before": "无状态到颜色的语义映射; 灯色只随主题切换",
+      "after": "绿 = fresh/ready (mac) / ok/fresh/idle 有数据 (win); 黄 = partial/stale/authRequired (两端同); 红 = failed (mac) / failed/error/unavailable (win); 中性灰 = notConfigured (mac) / empty 与无 artifact 首次启动 (win); 刷新中 = 呼吸脉冲且底色取当前态色 (stale 按维护者指示归黄)",
+      "impact": "顶部灯成为唯一状态载体; 卡内 LIVE 指示与订阅卡内 section/account note 保持不变、不与顶部灯联动"
+    },
+    {
+      "scope": "触碰显示原因 (mac MenuBarViews.topHeaderStatusDot / win index.html #hud-dot-wrap)",
+      "before": "win 文字牌直出中文态名与橙色; mac 文字牌恒显 SYS.OK 不含原因",
+      "after": "状态灯挂 hover 提示: mac 用 .help(reason) + .accessibilityLabel(reason); win 用 title + aria-label (原 #runtime-status 的 role=status 语义一并迁移); 文案规则为「态名 · 具体原因」, 原因按决定灯色的一侧取 —— 采集侧决定 (含同级) 时取采集详情: mac 取 ModuleStatus.detail, win 取 runtime.error 机器码经 RUNTIME_ERROR_TEXT 转成的中文释义 (未登记的码不外露, 只显示态名); 订阅侧更严重时点名该级别的服务名 (去重, 「、」连接), 不挂采集侧详情; 健康态显示「运行正常」, 刷新中显示「正在刷新…」",
+      "impact": "删除文字牌后信息不丢失, 改为按需展开; 顶部恢复极简且两端一致"
+    },
+    {
+      "scope": "品牌字与排版 (mac MenuBarViews.dashboardTopHeader / win index.html .hud-brand / styles.css)",
+      "before": "两端品牌字为 'BRUCE // HUD' (Nothing) 与 'Bruce // HUD' (Classic); Nothing 主题 CSS 带 text-transform: uppercase; 左侧簇间距 6",
+      "after": "所有主题品牌字统一为 'Bruce' (删除 // HUD 后缀), 并去掉 Nothing 主题 .hud-brand 的 uppercase transform 以确保字面即 Bruce; 左侧簇由「灯 + 品牌 + 牌」收为「灯 + 品牌」, 灯与品牌间距保持 6, 移除文字牌的 padding/overlay/background 代码",
+      "impact": "品牌簇视觉配重随移除文字牌重新平衡; 右侧 Tab 切换器 / Agent 计数靠 Spacer 自动右对齐, 无需改动"
+    },
+    {
+      "scope": "Windows 顶部元素与样式清理 (apps/win/src/index.html / app.js renderStatus / styles.css)",
+      "before": "index.html:16 存在 <span id=\"runtime-status\" class=\"hud-sysok\">; renderStatus 改写其 textContent 并 toggle .degraded; styles.css 有 .hud-sysok 与 Nothing 覆盖规则、.live 光晕为固定绿色",
+      "after": "移除 #runtime-status 元素; renderStatus 改为驱动 #hud-dot-wrap 的 tone-ok/warn/error/neutral(+idle) class 与 title/aria-label, 并把订阅 sections[].{status,name} 纳入聚合; 首帧数据到达前状态灯为中性灰「暂无数据」(不预先亮绿); 删除 .hud-sysok 全部规则与已无引用的 HEALTHY_PHASES, 新增 .hud-dot-wrap.tone-* 色值 (复用 --ok #4A9E5C / --warn #D4A843 / --danger #E5534B, Nothing 用 --crit #D71921), .live 光晕改为按 tone 上色",
+      "impact": "Windows 顶部与 mac 1:1 收敛; statusLabel 保留复用; 前端测试同步更新 renderStatus 用例并改用后端真实下发的 runtime.error 机器码"
+    },
+    {
+      "scope": "Windows 托盘角标与提示同源 (apps/win/src-tauri/src/runtime_core.rs + scheduler.rs)",
+      "before": "托盘角标只看 runtime.phase: refreshing 蓝 / fresh 与 idle 绿 / 其余橙, 提示为四句固定文案; 不聚合订阅 section 状态, 采集 fresh 而订阅 error 时托盘显绿「数据已更新」、看板却亮红灯; idle 无数据也显绿",
+      "after": "新增 Rust 端判定 `resolve_dashboard_status` / `dashboard_status_from_panel`（与 mac / app.js 同表, 取数口径同 renderStatus）与 `runtime_error_text`（与 app.js RUNTIME_ERROR_TEXT 同表, 由测试逐条比对）; scheduler::publish 以其 tone 着色托盘角标（色值同 HUD: #4A9E5C / #D4A843 / #E5534B / #8A8A8A, 刷新中保持当前态色）, 提示改为「Bruce · 原因」。维护者决定 (2026-10-23 会话原话「Monitor choice and tray tint: Go with your recommended fix.」)",
+      "impact": "托盘与看板顶部状态灯不再一绿一红; 判定表三端 (Swift / JS / Rust) 由同一份 fixture 锁死"
+    },
+    {
+      "scope": "回归与双端对拍用例 (apps/win/tests/frontend.test.mjs + 新增 mac DashboardStatusToneHarness + 共享映射 fixture)",
+      "before": "win 有 renderStatus 的 SYS.OK/degraded 文案用例; mac 无顶部状态判定 Harness",
+      "after": "共享映射 fixture (tests/fixtures/status-tone-parity/cases.json, 24 条, 订阅侧以 {status, name} 表达) 由 mac Swift 与 win JS 各自读同一份对拍, 覆盖订阅侧最严重时点名服务、多服务去重、无服务名、采集与订阅同级取采集详情等分支; win 补四色 + tooltip 文案用例, 并逐一断言 9 个 runtime.error 机器码均有中文释义且不外露、未登记的码只显示态名; mac Harness 覆盖判定表全部分支与聚合优先级, 无参数运行时按 #filePath 正确回溯到仓库根; Rust runtime_coverage 以同一 fixture 对拍托盘判定, 并覆盖从看板 JSON 取数、机器码释义、未登记码不外露与 app.js 释义表逐条一致",
+      "impact": "两端语义漂移会被对拍立即拦下; 沿用 C088 双端对拍范式"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/03 FR 清单只定义菜单栏指标色彩动力学 (FR-2, 针对菜单栏额度阈值) 与顶栏 Tab 布局 (FR-5), 未定义下拉面板 HUD 头状态灯的语义与配色; 面板顶部的 SYS.OK 文字牌无设计约束。design/05 规则 11 明文登记「HUD 状态牌 (SYS.OK / 刷新中 / 部分失败 / 数据过期) 为 C009 刻意新增的 Windows 显式运行态, 保留不变 (偏离 mac 属既定取舍)」",
+      "after": "design/03 新增 FR-7 顶部四色状态灯: 删除文字牌, 以四色灯 (绿/黄/红/中性灰) + 刷新中呼吸脉冲承载采集与订阅刷新健康度, 触碰显示原因, 品牌字统一为 Bruce, 并明确「聚合最严重态优先、两端同口径」与「卡内 LIVE 不联动」边界。design/05 规则 11 的「状态牌保留不变」改写为「状态牌 → 状态灯」, 并登记这是 Windows 向 mac 的收敛 (不再作为既定分歧); 同步在变更表补 C100 行; design/05 托盘指示器登记为与 HUD 状态灯同源 (三端同表)"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "local-20261023-04",
+    "user_quote": "确认",
+    "signoff": "verified_by_user",
+    "checks": [
+      {
+        "item": "自动化测试 (双端状态映射)",
+        "true_if": "共享映射 fixture 三端对拍一致 (mac Swift / win JS / win Rust 托盘); mac DashboardStatusToneHarness、win frontend.test.mjs 四色 + tooltip 用例与 Rust 托盘判定用例全绿, 退出码 0",
+        "false_if": "任一断言失败或两端判定不一致",
+        "evidence": "2026-10-23: swift run --package-path apps/macos DashboardStatusToneHarness (无参数与带仓库根参数) 均 passed: 3, 退出码 0 (返工前无参数运行因 fixture 路径少回溯一级以 133 崩溃); 共享 fixture 24 条三端对拍一致 (Swift harness / node --test apps/win/tests/frontend.test.mjs 78 pass 0 fail / cargo test runtime_coverage 中 tray_status_resolver_matches_shared_status_tone_fixture); Rust 端另验从看板 JSON 取数、机器码释义与未登记码不外露, 并逐条比对 app.js RUNTIME_ERROR_TEXT (9 条) 与 runtime_error_text 一致",
+        "result": true
+      },
+      {
+        "item": "编译与全量本地验证门禁",
+        "true_if": "swift build 与前端构建通过; zsh scripts/verify-local.sh 退出码 0",
+        "false_if": "存在编译报错或任一 Harness 失败",
+        "evidence": "2026-10-23: zsh scripts/verify-local.sh 退出码 0 (Rust fmt --check / test / clippy -D warnings 覆盖 core/collector + apps/win viewmodel + apps/win/src-tauri, 其中 runtime_coverage 44 passed; Windows 前端 78/78 + 几何对拍 2/2; swift build + 全部 macOS Harness 含 DashboardStatusToneHarness passed: 3; 变更总账一致 cards=100 topics=7)",
+        "result": true
+      },
+      {
+        "item": "行为实测 (双端真机点按与悬停)",
+        "true_if": "两端顶部均只显示「状态灯 + Bruce」; 健康绿、降级黄、失败红、无数据灰; 刷新中呼吸脉冲; 悬停灯体显示态名与原因; 卡内 LIVE 指示不受影响; Windows 托盘角标色与悬停提示和顶部灯一致",
+        "false_if": "文字牌残留、灯色与状态不符、悬停无提示或卡内指示被联动改动",
+        "evidence": "未执行: 截至 2026-10-23 双端均未做真机点按与悬停实测; 此前登记的 result=true 仅依据代码审阅, 属超额认定, 已撤回。待 mac 与 Windows 真机各自核对四色、脉冲与悬停原因文案后再填。",
+        "result": false
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "面板隐藏态无新增动画/定时器 (沿用 C044 门控); 订阅卡内部 note 与设置页诊断呈现不变; Windows 其余运行行为与既有测试无回退",
+        "false_if": "引入持续动画、改变既有诊断归属或破坏既有前端用例",
+        "evidence": "mac: PulsingStatusDot 受 DashboardPanelAnimationPolicy.allowsHero(panelVisible:reduceMotion:) 门控, NativeLifecycleHarness 通过; Windows: 面板隐藏时 render 按 document.hidden 挂起至下次可见补渲 (app.js pendingPanel), 刷新中脉冲为 CSS 动画, 隐藏态是否停帧依赖 WebView2 可见性, 未经真机核实; 既有 Windows 前端用例与全部 Swift/Rust 测试零回退",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-23",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified"
+  }
+}

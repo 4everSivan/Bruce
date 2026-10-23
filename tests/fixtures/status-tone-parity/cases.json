@@ -1,0 +1,343 @@
+{
+  "description": "C100 双端仪表盘顶部四色状态灯 (DashboardStatusTone) 共享对拍用例; detail 只描述采集侧, 订阅侧更严重时原因点名服务",
+  "cases": [
+    {
+      "name": "mac_fresh_healthy",
+      "moduleState": "fresh",
+      "subscriptions": [
+        {
+          "status": "ok",
+          "name": "Kimi"
+        },
+        {
+          "status": "ok",
+          "name": "Codex"
+        }
+      ],
+      "hasData": true,
+      "detail": null,
+      "expectedTone": "ok",
+      "expectedRefreshing": false,
+      "expectedReason": "运行正常"
+    },
+    {
+      "name": "mac_ready_no_subscriptions",
+      "moduleState": "ready",
+      "subscriptions": [],
+      "hasData": false,
+      "detail": null,
+      "expectedTone": "ok",
+      "expectedRefreshing": false,
+      "expectedReason": "运行正常"
+    },
+    {
+      "name": "win_ok_healthy",
+      "moduleState": "ok",
+      "subscriptions": [
+        {
+          "status": "ok",
+          "name": "Kimi"
+        }
+      ],
+      "hasData": true,
+      "detail": null,
+      "expectedTone": "ok",
+      "expectedRefreshing": false,
+      "expectedReason": "运行正常"
+    },
+    {
+      "name": "win_idle_with_data_is_ok",
+      "moduleState": "idle",
+      "subscriptions": [
+        {
+          "status": "ok",
+          "name": "Kimi"
+        }
+      ],
+      "hasData": true,
+      "detail": null,
+      "expectedTone": "ok",
+      "expectedRefreshing": false,
+      "expectedReason": "运行正常"
+    },
+    {
+      "name": "win_idle_without_data_is_neutral",
+      "moduleState": "idle",
+      "subscriptions": [],
+      "hasData": false,
+      "detail": null,
+      "expectedTone": "neutral",
+      "expectedRefreshing": false,
+      "expectedReason": "暂无数据"
+    },
+    {
+      "name": "win_empty_first_boot_is_neutral",
+      "moduleState": "empty",
+      "subscriptions": [],
+      "hasData": false,
+      "detail": null,
+      "expectedTone": "neutral",
+      "expectedRefreshing": false,
+      "expectedReason": "暂无数据"
+    },
+    {
+      "name": "mac_not_configured_without_detail",
+      "moduleState": "notConfigured",
+      "subscriptions": [],
+      "hasData": false,
+      "detail": null,
+      "expectedTone": "neutral",
+      "expectedRefreshing": false,
+      "expectedReason": "未配置"
+    },
+    {
+      "name": "mac_not_configured_with_detail",
+      "moduleState": "notConfigured",
+      "subscriptions": [],
+      "hasData": false,
+      "detail": "尚未完成授权",
+      "expectedTone": "neutral",
+      "expectedRefreshing": false,
+      "expectedReason": "未配置 · 尚未完成授权"
+    },
+    {
+      "name": "partial_with_detail_is_warn",
+      "moduleState": "partial",
+      "subscriptions": [
+        {
+          "status": "ok",
+          "name": "Kimi"
+        }
+      ],
+      "hasData": true,
+      "detail": "Kimi 请求触发限流",
+      "expectedTone": "warn",
+      "expectedRefreshing": false,
+      "expectedReason": "部分失败 · Kimi 请求触发限流"
+    },
+    {
+      "name": "stale_without_detail_is_warn",
+      "moduleState": "stale",
+      "subscriptions": [
+        {
+          "status": "ok",
+          "name": "Kimi"
+        }
+      ],
+      "hasData": true,
+      "detail": null,
+      "expectedTone": "warn",
+      "expectedRefreshing": false,
+      "expectedReason": "数据过期"
+    },
+    {
+      "name": "stale_with_detail_is_warn",
+      "moduleState": "stale",
+      "subscriptions": [
+        {
+          "status": "ok",
+          "name": "Kimi"
+        }
+      ],
+      "hasData": true,
+      "detail": "刷新失败, 等待下次周期",
+      "expectedTone": "warn",
+      "expectedRefreshing": false,
+      "expectedReason": "数据过期 · 刷新失败, 等待下次周期"
+    },
+    {
+      "name": "auth_required_with_detail_is_warn",
+      "moduleState": "authRequired",
+      "subscriptions": [],
+      "hasData": true,
+      "detail": "请前往设置重新登录",
+      "expectedTone": "warn",
+      "expectedRefreshing": false,
+      "expectedReason": "需要授权 · 请前往设置重新登录"
+    },
+    {
+      "name": "failed_with_detail_is_error",
+      "moduleState": "failed",
+      "subscriptions": [],
+      "hasData": false,
+      "detail": "服务暂不可用",
+      "expectedTone": "error",
+      "expectedRefreshing": false,
+      "expectedReason": "刷新失败 · 服务暂不可用"
+    },
+    {
+      "name": "error_without_detail_is_error",
+      "moduleState": "error",
+      "subscriptions": [],
+      "hasData": false,
+      "detail": null,
+      "expectedTone": "error",
+      "expectedRefreshing": false,
+      "expectedReason": "失败"
+    },
+    {
+      "name": "unavailable_with_detail_is_error",
+      "moduleState": "unavailable",
+      "subscriptions": [],
+      "hasData": false,
+      "detail": "Collector 进程不可用",
+      "expectedTone": "error",
+      "expectedRefreshing": false,
+      "expectedReason": "不可用 · Collector 进程不可用"
+    },
+    {
+      "name": "union_fresh_module_with_partial_subscription_elevates_to_warn",
+      "moduleState": "fresh",
+      "subscriptions": [
+        {
+          "status": "ok",
+          "name": "Kimi"
+        },
+        {
+          "status": "partial",
+          "name": "Codex"
+        }
+      ],
+      "hasData": true,
+      "detail": null,
+      "expectedTone": "warn",
+      "expectedRefreshing": false,
+      "expectedReason": "部分失败 · Codex"
+    },
+    {
+      "name": "union_fresh_module_with_error_subscription_elevates_to_error",
+      "moduleState": "fresh",
+      "subscriptions": [
+        {
+          "status": "ok",
+          "name": "Kimi"
+        },
+        {
+          "status": "error",
+          "name": "Codex"
+        }
+      ],
+      "hasData": true,
+      "detail": null,
+      "expectedTone": "error",
+      "expectedRefreshing": false,
+      "expectedReason": "失败 · Codex"
+    },
+    {
+      "name": "union_partial_module_with_error_subscription_names_service_not_collection_detail",
+      "moduleState": "partial",
+      "subscriptions": [
+        {
+          "status": "partial",
+          "name": "Kimi"
+        },
+        {
+          "status": "error",
+          "name": "Codex"
+        }
+      ],
+      "hasData": true,
+      "detail": "Gemini 会话目录不可读",
+      "expectedTone": "error",
+      "expectedRefreshing": false,
+      "expectedReason": "失败 · Codex"
+    },
+    {
+      "name": "union_multiple_error_subscriptions_names_each_service_once",
+      "moduleState": "fresh",
+      "subscriptions": [
+        {
+          "status": "error",
+          "name": "Codex"
+        },
+        {
+          "status": "partial",
+          "name": "Kimi"
+        },
+        {
+          "status": "failed",
+          "name": "DeepSeek"
+        },
+        {
+          "status": "error",
+          "name": "Codex"
+        }
+      ],
+      "hasData": true,
+      "detail": null,
+      "expectedTone": "error",
+      "expectedRefreshing": false,
+      "expectedReason": "失败 · Codex、DeepSeek"
+    },
+    {
+      "name": "union_subscription_worst_without_name_shows_label_only",
+      "moduleState": "fresh",
+      "subscriptions": [
+        {
+          "status": "partial",
+          "name": "  "
+        }
+      ],
+      "hasData": true,
+      "detail": null,
+      "expectedTone": "warn",
+      "expectedRefreshing": false,
+      "expectedReason": "部分失败"
+    },
+    {
+      "name": "tie_between_collection_and_subscription_keeps_collection_detail",
+      "moduleState": "partial",
+      "subscriptions": [
+        {
+          "status": "partial",
+          "name": "Kimi"
+        }
+      ],
+      "hasData": true,
+      "detail": "Gemini 会话目录不可读",
+      "expectedTone": "warn",
+      "expectedRefreshing": false,
+      "expectedReason": "部分失败 · Gemini 会话目录不可读"
+    },
+    {
+      "name": "refreshing_with_data_and_ok_subscriptions_pulses_green",
+      "moduleState": "refreshing",
+      "subscriptions": [
+        {
+          "status": "ok",
+          "name": "Kimi"
+        }
+      ],
+      "hasData": true,
+      "detail": null,
+      "expectedTone": "ok",
+      "expectedRefreshing": true,
+      "expectedReason": "正在刷新…"
+    },
+    {
+      "name": "loading_with_warn_subscription_pulses_yellow",
+      "moduleState": "loading",
+      "subscriptions": [
+        {
+          "status": "partial",
+          "name": "Kimi"
+        }
+      ],
+      "hasData": true,
+      "detail": null,
+      "expectedTone": "warn",
+      "expectedRefreshing": true,
+      "expectedReason": "正在刷新…"
+    },
+    {
+      "name": "refreshing_without_data_pulses_neutral",
+      "moduleState": "refreshing",
+      "subscriptions": [],
+      "hasData": false,
+      "detail": null,
+      "expectedTone": "neutral",
+      "expectedRefreshing": true,
+      "expectedReason": "正在刷新…"
+    }
+  ]
+}

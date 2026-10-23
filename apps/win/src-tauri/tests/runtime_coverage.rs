@@ -1111,3 +1111,426 @@ fn dashboard_geometry_parity_fixture_is_current() {
     assert_eq!(seen_edges.len(), 4, "fixture 必须覆盖任务栏四个方向");
     assert!(tray_cases > 0, "fixture 必须覆盖有托盘坐标的场景");
 }
+
+#[test]
+fn dashboard_activity_state_guards_transient_focus_debounce_and_unfocus_race() {
+    use bruce_win_lib::runtime_core::{
+        DashboardActivityState, ToggleDecision, UnfocusDecision, HOTKEY_REPEAT_DEBOUNCE_MS,
+        SHOW_FOCUS_GRACE_MS, UNFOCUS_REOPEN_GUARD_MS,
+    };
+    use std::time::{Duration, Instant};
+
+    let t0 = Instant::now();
+    let mut state = DashboardActivityState::default();
+
+    // 1. 首次按快捷键唤出看板
+    assert_eq!(state.on_hotkey_pressed(t0, false), ToggleDecision::Show);
+    assert!(state.panel_open);
+
+    // 2. 唤出保护期内 (180ms 内) 的瞬态 Focused(false) 被忽略并请求重申焦点，面板不闪退
+    let t_grace = t0 + Duration::from_millis(SHOW_FOCUS_GRACE_MS - 40);
+    assert_eq!(
+        state.on_dashboard_unfocus(t_grace),
+        UnfocusDecision::IgnoreTransientAndRefocus
+    );
+    assert!(state.panel_open);
+
+    // 3. 防抖窗口内的重复触发被忽略；被忽略的触发不顺延窗口 (以上一次生效切换计时)
+    let t_bounce = t0 + Duration::from_millis(HOTKEY_REPEAT_DEBOUNCE_MS - 50);
+    assert_eq!(
+        state.on_hotkey_pressed(t_bounce, true),
+        ToggleDecision::Ignore
+    );
+    let t_close = t0 + Duration::from_millis(HOTKEY_REPEAT_DEBOUNCE_MS + 10);
+    assert_eq!(state.on_hotkey_pressed(t_close, true), ToggleDecision::Hide);
+    assert!(!state.panel_open);
+
+    // 4. 显式关闭后系统派发的迟到 Focused(false) 返回 AlreadyHidden，不污染 last_unfocus_at，
+    //    允许用户在防抖窗口后立即再次按键打开
+    assert_eq!(
+        state.on_dashboard_unfocus(t_close + Duration::from_millis(10)),
+        UnfocusDecision::AlreadyHidden
+    );
+    let t_reopen = t_close + Duration::from_millis(HOTKEY_REPEAT_DEBOUNCE_MS + 20);
+    assert_eq!(
+        state.on_hotkey_pressed(t_reopen, false),
+        ToggleDecision::Show
+    );
+
+    // 5. 被动失焦竞态防重开：面板打开超过保护期后，因按下修饰键或点击托盘先触发 Focused(false) 被动隐藏，
+    //    随后 300ms 内紧接着到达的热键不得把面板反向重新打开
+    let t_passive_unfocus = t_reopen + Duration::from_millis(SHOW_FOCUS_GRACE_MS + 100);
+    assert_eq!(
+        state.on_dashboard_unfocus(t_passive_unfocus),
+        UnfocusDecision::Hide
+    );
+    assert!(!state.panel_open);
+    let t_race_hotkey = t_passive_unfocus + Duration::from_millis(UNFOCUS_REOPEN_GUARD_MS - 80);
+    assert_eq!(
+        state.on_hotkey_pressed(t_race_hotkey, false),
+        ToggleDecision::Ignore
+    );
+
+    // 6. 设置页处于热键录制态时，全局热键触发一律忽略；set_recording_hotkey 回传切换前取值
+    assert!(!state.set_recording_hotkey(true));
+    let t_recording = t_race_hotkey + Duration::from_millis(500);
+    assert_eq!(
+        state.on_hotkey_pressed(t_recording, false),
+        ToggleDecision::Ignore
+    );
+    assert!(state.set_recording_hotkey(false));
+    assert_eq!(
+        state.on_hotkey_pressed(t_recording + Duration::from_millis(300), false),
+        ToggleDecision::Show
+    );
+}
+
+#[test]
+fn dashboard_activity_state_tray_click_toggles_and_swallows_close_click_after_unfocus() {
+    use bruce_win_lib::runtime_core::{
+        DashboardActivityState, ToggleDecision, UnfocusDecision, SHOW_FOCUS_GRACE_MS,
+        UNFOCUS_REOPEN_GUARD_MS,
+    };
+    use std::time::{Duration, Instant};
+
+    let t0 = Instant::now();
+    let mut state = DashboardActivityState::default();
+
+    // 1. 托盘左键：隐藏态唤出、可见态收起
+    assert_eq!(state.on_tray_left_click(t0, false), ToggleDecision::Show);
+    assert!(state.panel_open);
+    let t_close = t0 + Duration::from_millis(SHOW_FOCUS_GRACE_MS + 50);
+    assert_eq!(
+        state.on_tray_left_click(t_close, true),
+        ToggleDecision::Hide
+    );
+    assert!(!state.panel_open);
+
+    // 2. 面板打开时点击托盘旨在收起: 鼠标按下先触发 Focused(false) 被动隐藏,
+    //    300ms 内到达的托盘松开事件不得把面板反向重开
+    let t_open = t_close + Duration::from_millis(1000);
+    assert_eq!(
+        state.on_tray_left_click(t_open, false),
+        ToggleDecision::Show
+    );
+    let t_unfocus = t_open + Duration::from_millis(SHOW_FOCUS_GRACE_MS + 50);
+    assert_eq!(state.on_dashboard_unfocus(t_unfocus), UnfocusDecision::Hide);
+    let t_click_up = t_unfocus + Duration::from_millis(UNFOCUS_REOPEN_GUARD_MS - 100);
+    assert_eq!(
+        state.on_tray_left_click(t_click_up, false),
+        ToggleDecision::Ignore
+    );
+
+    // 3. 防重开只吞一次: 下一次点击正常唤出
+    assert_eq!(
+        state.on_tray_left_click(t_click_up + Duration::from_millis(50), false),
+        ToggleDecision::Show
+    );
+
+    // 4. 被动失焦超过 300ms 后的托盘点击视为新的唤出意图
+    let t_unfocus_again = t_click_up + Duration::from_millis(SHOW_FOCUS_GRACE_MS + 500);
+    assert_eq!(
+        state.on_dashboard_unfocus(t_unfocus_again),
+        UnfocusDecision::Hide
+    );
+    let t_late_click = t_unfocus_again + Duration::from_millis(UNFOCUS_REOPEN_GUARD_MS + 20);
+    assert_eq!(
+        state.on_tray_left_click(t_late_click, false),
+        ToggleDecision::Show
+    );
+}
+
+#[test]
+fn hotkey_recording_unregisters_and_restores_the_active_shortcut() {
+    use bruce_win_lib::runtime_core::suspend_or_resume_hotkey;
+    use std::cell::RefCell;
+    use std::collections::BTreeSet;
+
+    let registered = RefCell::new(BTreeSet::from(["Control+Shift+B".to_owned()]));
+    let register = |key: &str| {
+        registered.borrow_mut().insert(key.to_owned());
+        Ok(())
+    };
+    let unregister = |key: &str| {
+        registered.borrow_mut().remove(key);
+        Ok(())
+    };
+
+    // 进入录制: 已生效热键必须真正注销, 否则系统截走组合键, 设置页录不到
+    suspend_or_resume_hotkey("Control+Shift+B", false, true, register, unregister).unwrap();
+    assert!(registered.borrow().is_empty());
+
+    // 重复进入录制不重复注销 (录制态未变化)
+    let mut calls = 0;
+    suspend_or_resume_hotkey(
+        "Control+Shift+B",
+        true,
+        true,
+        |_key| {
+            calls += 1;
+            Ok(())
+        },
+        |_key| Err("unexpected unregister".into()),
+    )
+    .unwrap();
+    assert_eq!(calls, 0);
+
+    // 退出录制: 恢复注册
+    suspend_or_resume_hotkey("Control+Shift+B", true, false, register, unregister).unwrap();
+    assert!(registered.borrow().contains("Control+Shift+B"));
+
+    // 未设热键时进入 / 退出录制均不触碰注册表
+    suspend_or_resume_hotkey(
+        "",
+        false,
+        true,
+        |_key| Err("unexpected register".into()),
+        |_key| Err("unexpected unregister".into()),
+    )
+    .unwrap();
+
+    // 恢复失败原样上报, 由调用方提示并清空登记
+    assert_eq!(
+        suspend_or_resume_hotkey(
+            "Control+Shift+B",
+            true,
+            false,
+            |_key| Err("HOTKEY_REGISTER_FAILED".into()),
+            unregister,
+        ),
+        Err("HOTKEY_REGISTER_FAILED".to_owned())
+    );
+}
+
+#[test]
+fn dashboard_placement_follows_tray_for_tray_and_cursor_for_hotkey() {
+    use bruce_win_lib::runtime_core::{
+        select_dashboard_placement, DashboardOpenSource, MonitorBounds, TrayIconBounds,
+    };
+
+    let primary = MonitorBounds {
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1080,
+        work_x: 0,
+        work_y: 0,
+        work_width: 1920,
+        work_height: 1040,
+        scale_factor: 1.0,
+    };
+    let secondary = MonitorBounds {
+        x: 1920,
+        y: 0,
+        width: 2560,
+        height: 1440,
+        work_x: 1920,
+        work_y: 0,
+        work_width: 2560,
+        work_height: 1400,
+        scale_factor: 1.25,
+    };
+    let monitors = [primary, secondary];
+    let tray_on_primary = TrayIconBounds {
+        x: 1800,
+        y: 1040,
+        width: 32,
+        height: 32,
+    };
+    let cursor_on_secondary = Some((2400, 500));
+    let cursor_on_primary = Some((400, 300));
+
+    // 托盘唤出: 托盘所在屏 + 托盘锚点, 与光标在哪无关
+    let tray_click = select_dashboard_placement(
+        &monitors,
+        Some(&tray_on_primary),
+        cursor_on_secondary,
+        DashboardOpenSource::Tray,
+    );
+    assert_eq!(tray_click.monitor_index, Some(0));
+    assert_eq!(tray_click.tray_anchor, Some(tray_on_primary));
+
+    // 热键唤出: 光标所在副屏; 托盘在主屏, 副屏不借用别屏托盘坐标, 按副屏任务栏角落贴靠
+    let hotkey_on_secondary = select_dashboard_placement(
+        &monitors,
+        Some(&tray_on_primary),
+        cursor_on_secondary,
+        DashboardOpenSource::Hotkey,
+    );
+    assert_eq!(hotkey_on_secondary.monitor_index, Some(1));
+    assert_eq!(hotkey_on_secondary.tray_anchor, None);
+
+    // 热键唤出且光标与托盘同屏: 仍贴托盘
+    let hotkey_on_primary = select_dashboard_placement(
+        &monitors,
+        Some(&tray_on_primary),
+        cursor_on_primary,
+        DashboardOpenSource::Hotkey,
+    );
+    assert_eq!(hotkey_on_primary.monitor_index, Some(0));
+    assert_eq!(hotkey_on_primary.tray_anchor, Some(tray_on_primary));
+
+    // 开机未触碰托盘 (无托盘坐标) 的热键唤出: 光标所在屏, 无锚点
+    let hotkey_no_tray = select_dashboard_placement(
+        &monitors,
+        None,
+        cursor_on_secondary,
+        DashboardOpenSource::Hotkey,
+    );
+    assert_eq!(hotkey_no_tray.monitor_index, Some(1));
+    assert_eq!(hotkey_no_tray.tray_anchor, None);
+
+    // 宽高为 0 的空托盘矩形视为无效: 托盘唤出退到光标所在屏
+    let empty_tray = TrayIconBounds {
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 0,
+    };
+    let tray_empty = select_dashboard_placement(
+        &monitors,
+        Some(&empty_tray),
+        cursor_on_secondary,
+        DashboardOpenSource::Tray,
+    );
+    assert_eq!(tray_empty.monitor_index, Some(1));
+    assert_eq!(tray_empty.tray_anchor, None);
+
+    // 光标坐标取不到时热键退到托盘所在屏并贴托盘
+    let hotkey_no_cursor = select_dashboard_placement(
+        &monitors,
+        Some(&tray_on_primary),
+        None,
+        DashboardOpenSource::Hotkey,
+    );
+    assert_eq!(hotkey_no_cursor.monitor_index, Some(0));
+    assert_eq!(hotkey_no_cursor.tray_anchor, Some(tray_on_primary));
+
+    // 均未命中: 不选屏, 托盘锚点原样交给调用方 (回退当前 / 主显示器)
+    let off_screen = TrayIconBounds {
+        x: -5000,
+        y: -5000,
+        width: 32,
+        height: 32,
+    };
+    let nothing = select_dashboard_placement(
+        &monitors,
+        Some(&off_screen),
+        Some((-6000, -6000)),
+        DashboardOpenSource::Hotkey,
+    );
+    assert_eq!(nothing.monitor_index, None);
+    assert_eq!(nothing.tray_anchor, Some(off_screen));
+}
+
+fn repo_root() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .find(|p| p.join("core/collector").is_dir())
+        .expect("repository root")
+        .to_path_buf()
+}
+
+#[test]
+fn tray_status_resolver_matches_shared_status_tone_fixture() {
+    use bruce_win_lib::runtime_core::resolve_dashboard_status;
+
+    let fixture: Value = serde_json::from_str(
+        &std::fs::read_to_string(repo_root().join("tests/fixtures/status-tone-parity/cases.json"))
+            .unwrap(),
+    )
+    .unwrap();
+    let cases = fixture["cases"].as_array().unwrap();
+    assert!(cases.len() >= 20, "共享 fixture 覆盖全部判定分支");
+    for case in cases {
+        let name = case["name"].as_str().unwrap();
+        let subscriptions: Vec<(&str, &str)> = case["subscriptions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|s| (s["status"].as_str().unwrap(), s["name"].as_str().unwrap()))
+            .collect();
+        let resolved = resolve_dashboard_status(
+            case["moduleState"].as_str().unwrap(),
+            &subscriptions,
+            case["hasData"].as_bool().unwrap(),
+            case["detail"].as_str(),
+        );
+        assert_eq!(
+            resolved.tone.as_str(),
+            case["expectedTone"].as_str().unwrap(),
+            "{name}: tone"
+        );
+        assert_eq!(
+            resolved.is_refreshing,
+            case["expectedRefreshing"].as_bool().unwrap(),
+            "{name}: isRefreshing"
+        );
+        assert_eq!(
+            resolved.reason,
+            case["expectedReason"].as_str().unwrap(),
+            "{name}: reason"
+        );
+    }
+}
+
+#[test]
+fn tray_status_reads_published_panel_like_the_hud_light() {
+    use bruce_win_lib::runtime_core::{dashboard_status_from_panel, StatusTone};
+
+    // 采集 fresh 但订阅段 error: 托盘与 HUD 同为红, 原因点名服务 (此前托盘仍显绿「数据已更新」)
+    let panel = json!({
+        "usage": {}, "subscription": {"sections": [
+            {"name": "Kimi", "status": "ok"}, {"name": "Codex", "status": "error"}
+        ]}, "hourly": null,
+        "runtime": {"phase": "fresh", "error": null}
+    });
+    let status = dashboard_status_from_panel(&panel);
+    assert_eq!(status.tone, StatusTone::Error);
+    assert_eq!(status.reason, "失败 · Codex");
+    assert_eq!(status.tone.tray_rgba(), [0xE5, 0x53, 0x4B, 0xFF]);
+
+    // 机器码转中文释义; 刷新中保持当前态色
+    let stale = json!({"usage": {}, "runtime": {"phase": "stale", "error": "SNAPSHOT_RESTORED"}});
+    let status = dashboard_status_from_panel(&stale);
+    assert_eq!(status.tone, StatusTone::Warn);
+    assert_eq!(status.reason, "数据过期 · 显示上次保存的数据");
+    let refreshing = json!({"usage": {}, "runtime": {"phase": "refreshing"}});
+    let status = dashboard_status_from_panel(&refreshing);
+    assert_eq!((status.tone, status.is_refreshing), (StatusTone::Ok, true));
+    assert_eq!(status.reason, "正在刷新…");
+
+    // 未登记的码不外露; 无 runtime 且无数据为中性灰 (此前托盘把 idle 一律显绿)
+    let unknown = json!({"usage": {}, "runtime": {"phase": "failed", "error": "SOME_FUTURE_CODE"}});
+    assert_eq!(dashboard_status_from_panel(&unknown).reason, "刷新失败");
+    let empty =
+        json!({"usage": null, "subscription": null, "hourly": null, "runtime": {"phase": "idle"}});
+    let status = dashboard_status_from_panel(&empty);
+    assert_eq!(status.tone, StatusTone::Neutral);
+    assert_eq!(status.reason, "暂无数据");
+    let bare = json!({});
+    assert_eq!(dashboard_status_from_panel(&bare).reason, "暂无数据");
+}
+
+#[test]
+fn runtime_error_text_matches_frontend_table() {
+    use bruce_win_lib::runtime_core::runtime_error_text;
+
+    // app.js RUNTIME_ERROR_TEXT 与 Rust runtime_error_text 必须逐条一致 (托盘提示与 HUD 悬停同文案)
+    let app_js = std::fs::read_to_string(repo_root().join("apps/win/src/app.js")).unwrap();
+    let start = app_js
+        .find("const RUNTIME_ERROR_TEXT = {")
+        .expect("app.js 定义 RUNTIME_ERROR_TEXT");
+    let block = &app_js[start..start + app_js[start..].find("};").unwrap()];
+    let mut entries = 0;
+    for line in block.lines().skip(1) {
+        let Some((code, text)) = line.trim().trim_end_matches(',').split_once(": ") else {
+            continue;
+        };
+        let text = text.trim_matches('"');
+        assert_eq!(runtime_error_text(code), Some(text), "{code}");
+        entries += 1;
+    }
+    assert_eq!(entries, 9, "前端表登记 9 个机器码");
+    assert_eq!(runtime_error_text("SOME_FUTURE_CODE"), None);
+}

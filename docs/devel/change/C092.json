@@ -1,0 +1,109 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C092",
+  "title": "Windows 接受 mac 拒绝的密钥格式：保存前补齐 Provider 专属格式校验（禁空白字符、长度下限、Z.ai id.secret 与站点主机）",
+  "version": "0.13.0",
+  "type": "BugFix",
+  "status": "verified",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src-tauri/src/credentials.rs",
+    "component": "凭据保存前的格式校验",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "mac 在保存前做格式校验, 不通过就什么都不落盘（apps/macos/Sources/BruceOnboardingCore/ProviderConnectionVerifier.swift:113 起）: Kimi API key 非空且不含空白字符; 火山 AccessKey / SecretKey 去首尾空白后非空、不含空白且长度 ≥8; Z.ai 必须 `id.secret` 形式且 base URL 主机为 bigmodel.cn 或 api.z.ai; Cline API key 长度 ≥16。Windows 的 `save_credential_account`（apps/win/src-tauri/src/credentials.rs:278）只调 `validate_credential_payload`, 而后者（同文件 :66）仅校验「键在白名单内 + 必填键为非空字符串」（实测该函数体内空白/长度校验 0 命中, 全文件 grep `is_whitespace|whitespace` 亦 0）。后果: 形状明显错误的密钥保存成功、行上显示「已配置」, 直到额度查询阶段才失败 —— 用户拿到的是「配好了却查不到」, 而非保存时的明确拒绝, 与 mac 的即时拒绝体验不一致。",
+  "precheck": {
+    "description": "预检: 确认 Windows 凭据校验无格式判据",
+    "command": "grep -c 'is_whitespace\\|whitespace' apps/win/src-tauri/src/credentials.rs",
+    "expected": "0 (无空白字符判据, 亦无长度下限与 Z.ai 站点主机校验)",
+    "is_completed": false,
+    "evidence": "2026-10-22 复核: 期望 0 实测 0; `awk '/pub fn validate_credential_payload/,/^}/' ... | grep -c \"len() >= 8\"` 亦为 0; 缺口确认存在"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护在 main 直接实施"
+    ],
+    "after": [
+      "node apps/win/tests/frontend.test.mjs",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "cargo clippy --manifest-path apps/win/src-tauri/Cargo.toml --all-targets -- -D warnings",
+      "scripts/adflow-verify  # 收口前门禁: --card C092 --to closed --record; Exit 0 后同步状态并以 --card C092 --receipt 复核"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "格式校验 (apps/win/src-tauri/src/credentials.rs validate_credential_payload)",
+      "before": "只校验键白名单与必填键非空",
+      "after": "按 Provider 补格式校验: 含空白字符一律拒绝; 火山 AccessKey / SecretKey 长度 ≥8; Kimi 非空无空白; Cline 长度 ≥16; Z.ai 必须 `id.secret` 形式且 base_url 主机为 open.bigmodel.cn / api.z.ai; StepFun token 非空",
+      "impact": "形状错误的密钥在保存时即被拒绝, 不再进入「已配置」状态"
+    },
+    {
+      "scope": "校验口径一致性",
+      "before": "保存路径与验证路径判据分离, 可能出现保存通过但验证失败",
+      "after": "写入与验证共用同一套格式判据, 避免错位; 拒绝时返回可诊断文案 (指出哪个字段不合规)",
+      "impact": "保存即验证的语义真正成立"
+    },
+    {
+      "scope": "回归用例 (apps/win/src-tauri/tests/credentials_coverage.rs)",
+      "before": "无格式校验用例",
+      "after": "逐 Provider 正反用例: 合法形状通过; 含空白 / 过短 / Z.ai 站点主机不符 / 缺 `id.secret` 一律拒绝并给出原因",
+      "impact": "格式契约被测试锁定"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "规则 21 只定义载荷「形状契约」与键级必填校验, 未定义 Provider 专属格式校验",
+      "after": "落地规则 27: 保存前按 Provider 校验格式 (禁空白字符 / 长度下限 / Z.ai id.secret 与站点主机), 不通过不落盘; 判据与 mac ProviderConnectionVerifier 对齐, 保存与验证共用同一套"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "local-20261023-01",
+    "user_quote": "确认",
+    "signoff": "verified_by_user",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "逐 Provider 格式正反用例全绿; 既有凭据用例无回退; 退出码 0",
+        "false_if": "任何测试失败, 或非法格式仍被接受",
+        "evidence": "2026-10-22: credentials_coverage「provider_specific_key_format_is_enforced_before_saving」14 组正反用例全绿 (Kimi 含空白 / 火山 AK·SK <8 / Z.ai 缺 id.secret 与站点主机不符 / StepFun 空白 / Cline <16 一律拒绝)；后续项: 新增 credential_rejections 元数据通道 (只回字段 / 账号 ID / 原因文案, 不含任何凭据值) 与对话框原因行 —— 旧账号不再只是静默变成「未配置」; 用例「rejected_accounts_report_a_reason_without_leaking_secrets」+ 前端「rejected legacy accounts are explained in the dialog and stay out of the account list (C092)」",
+        "result": true
+      },
+      {
+        "item": "行为实测 (Windows 真机)",
+        "true_if": "在 Windows 真机上实测通过, 且行为符合预期: 填入含空格的 Kimi key、5 字符火山 AK、非 id.secret 的 Z.ai key 均被保存动作拒绝并显示原因; 合法密钥正常保存",
+        "false_if": "未在 Windows 真机实测 (本机 macOS 无法实跑 Tauri/WebView2), 或实测行为不符: 非法格式被接受并落盘为已配置",
+        "evidence": "2026-10-23: 未执行 —— 本机为 macOS, 无法实跑 Windows Tauri/WebView2; 该缺口已在节点回执「未覆盖」中如实报告, 人工在知晓该缺口的前提下确认验收。",
+        "result": false
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "既有合法用户凭据不被新校验误拒 (含多账号与 C075 本机跟随注入路径); 导入路径不受破坏; mac 侧无任何改动",
+        "false_if": "误拒合法凭据, 或破坏导入 / 跟随注入",
+        "evidence": "2026-10-22: cargo test apps/win/src-tauri + apps/win/viewmodel + core/collector --workspace 全部通过; cargo clippy --all-targets -- -D warnings 无告警; cargo fmt --check 干净; node scripts/check-win-frontend.mjs Exit 0; mac 侧文件未改动",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-23",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified"
+  }
+}

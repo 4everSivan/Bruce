@@ -131,7 +131,7 @@ button, input, select, textarea {
   z-index: 3;
 }
 
-/* HUD 顶部 Header (mac dashboardTopHeader): 左 [呼吸灯 品牌 SYS.OK] · 右 Agent 状态 */
+/* HUD 顶部 Header (mac dashboardTopHeader): 左 [四色状态灯 品牌 Bruce] · 右 Agent 状态 (C100) */
 #hud {
   display: flex;
   align-items: center;
@@ -142,30 +142,37 @@ button, input, select, textarea {
 }
 .hud-left { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .hud-dot-wrap {
+  --dot-color: var(--ok);
   width: 12px; height: 12px; flex: none; position: relative;
   display: flex; align-items: center; justify-content: center;
 }
-.hud-dot { width: 6px; height: 6px; border-radius: 50%; background: #30D158; position: relative; }
-/* 实时态外圈光晕 (mac: 12pt 圆, 主色 25%), 静态无动画 */
-.hud-dot-wrap.live::before {
+.hud-dot-wrap.tone-ok { --dot-color: var(--ok); }
+.hud-dot-wrap.tone-warn { --dot-color: var(--warn); }
+.hud-dot-wrap.tone-error { --dot-color: var(--danger); }
+.hud-dot-wrap.tone-neutral,
+.hud-dot-wrap.tone-idle { --dot-color: #8A8A8A; }
+.hud-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--dot-color); position: relative; }
+/* 实时态与刷新态外圈光晕 (mac: 12pt 圆, 按当前 tone 主色 25%) */
+.hud-dot-wrap.live::before,
+.hud-dot-wrap.refreshing::before {
   content: ""; position: absolute; inset: 0; border-radius: 50%;
-  background: rgba(48, 209, 88, .25);
+  background: var(--dot-color);
+  opacity: .25;
+}
+@keyframes hudDotPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .40; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .hud-dot-wrap.refreshing {
+    animation: hudDotPulse 0.9s ease-in-out infinite;
+  }
 }
 .hud-brand {
   font: 700 11.5px/1.2 var(--mono-font);
   color: var(--ink);
   white-space: nowrap;
 }
-.hud-sysok {
-  font: 600 9px/1.2 var(--mono-font);
-  color: var(--secondary);
-  background: rgba(255,255,255,.06);
-  padding: 1.5px 5px;
-  border-radius: 4px;
-  white-space: nowrap;
-}
-/* 非健康态 (刷新失败 / 数据过期等) 仍须显式可见 (C009), 用 mac note 同款橙色 */
-.hud-sysok.degraded { color: #ff9f0a; }
 .hud-right {
   margin-left: auto;
   font: 500 9.5px/1.2 var(--mono-font);
@@ -174,19 +181,105 @@ button, input, select, textarea {
 }
 .hud-right.standby { color: var(--secondary); }
 
-/* 卡片滚动区 (ScrollView + cardStack) */
+/* ============ 顶栏 Tab 分段切换器 (对齐 mac FR-5) ============ */
+#hud-right-wrap { margin-left: auto; display: flex; align-items: center; }
+.segmented-track {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.24);
+  padding: 2px;
+  border-radius: 8px;
+  border: 1px solid var(--hairline);
+}
+.theme-nothing .segmented-track {
+  background: #000;
+  border-radius: 3px;
+  border: 1px solid #303030;
+  padding: 2px;
+}
+#tab-active-pill {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  height: 22px;
+  width: 27px;
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+}
+.theme-nothing #tab-active-pill {
+  background: #E8E8E8;
+  border-radius: 2px;
+}
+.tab-icon-btn {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 27px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--secondary);
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.15s ease;
+}
+.tab-icon-btn svg { width: 14px; height: 14px; display: block; }
+.tab-icon-btn:hover { color: var(--ink); }
+.tab-icon-btn.active { color: var(--ink); }
+.theme-nothing .tab-icon-btn.active { color: #000; }
+.tab-badge-dot {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 5.5px;
+  height: 5.5px;
+  border-radius: 50%;
+  background: #30D158;
+  pointer-events: none;
+  animation: tabBreathe 2.2s ease-in-out infinite;
+}
+.theme-nothing .tab-badge-dot { background: #4A9E5C; }
+@keyframes tabBreathe {
+  0% { transform: scale(0.95); opacity: 0.7; }
+  50% { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(0.95); opacity: 0.7; }
+}
+
+/* 方案 1: 水平定向滑动 (Directional Slide) */
+.card-slide-enter-right {
+  animation: cardSlideRight 0.30s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.card-slide-enter-left {
+  animation: cardSlideLeft 0.30s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes cardSlideRight {
+  from { opacity: 0; transform: translateX(24px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes cardSlideLeft {
+  from { opacity: 0; transform: translateX(-24px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* 卡片滚动区 (ScrollView + cardStack)。mac 以 .scrollIndicators(.hidden) +
+   ScrollIndicatorSuppressor 隐藏滚动条 (C044), 此处同样不显示 (C101): 滚轮 / 触控板
+   滚动不受影响, 溢出时也不再让出滚动条宽度挤窄卡片。scrollbar-width 供 WebView2
+   (Chromium 121+) 使用, ::-webkit-scrollbar 兜底更早的运行时。 */
 #scroll {
   overflow-y: auto;
   overflow-x: hidden;
   flex: 1 1 0;
   min-height: 0;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,.22) transparent;
+  scrollbar-width: none;
 }
-#scroll::-webkit-scrollbar { width: 4px; }
-#scroll::-webkit-scrollbar-track { background: transparent; }
-#scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,.22); border-radius: 2px; }
-#scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.38); }
+#scroll::-webkit-scrollbar { display: none; }
 
 /* mac cardStack: classic 水平 12 / 顶 10 / 底 4, 卡间距 10 */
 .card-stack {
@@ -810,6 +903,21 @@ button, input, select, textarea {
   padding: 6px 14px 10px;
 }
 
+/* C096: 订阅额度页底部提示 —— 位于两张卡下方 (不在卡内), 与卡内 .hint 的内边距区分。 */
+.subscription-hint {
+  padding: 10px 14px 2px;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+/* C096: 空态两行 (对齐 mac FluentRow 的 title + sub)。 */
+.provider-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 14px 10px;
+}
+
 /* 表单行 (demo .row & FluentRow) */
 /* 表单行 (mac FluentRow): 标题 13 常规 + 副标题 11.5 灰, 内边距 14/10, 最小高 42 */
 .fluent-row {
@@ -930,6 +1038,11 @@ input[type="checkbox"]:checked::after {
 }
 .hotkey-field-wrap input {
   width: 160px;
+}
+.hotkey-field-wrap input.recording,
+#hotkey-record.recording {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
 }
 
 .form-grid {
@@ -1098,6 +1211,89 @@ input[type="checkbox"]:checked::after {
 .auth-state.warn { background: rgba(212,168,67,.18); color: var(--warn); }
 .auth-state.off { background: rgba(255,255,255,.06); color: var(--text-3); }
 .provider-toggle { flex: none; }
+.provider-toggle:disabled { opacity: .45; cursor: not-allowed; }
+/* 订阅 Provider 行与配置对话框 (C082, 对齐 mac subscriptionProviderRow / APIKeyProviderConfigDialog) */
+.drag-handle {
+  flex: none; cursor: grab; color: var(--text-3); font-size: 12px;
+  line-height: 1; user-select: none;
+}
+.drag-handle:active { cursor: grabbing; }
+.provider-row[draggable="true"] { cursor: grab; }
+.cfg-picker { position: relative; flex: none; }
+.cfg-picker-trigger { min-width: 150px; text-align: left; }
+.cfg-picker-menu {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 20;
+  min-width: 190px; padding: 4px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.45);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.cfg-picker-option {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px; border: 0; border-radius: 4px;
+  background: transparent; color: var(--text); font-size: 12.5px; text-align: left;
+  cursor: pointer;
+}
+.cfg-picker-option:hover { background: rgba(255,255,255,.07); }
+.cfg-picker-option .pbadge { width: 18px; height: 18px; border-radius: 5px; font-size: 10px; }
+.cfg-overlay {
+  position: fixed; inset: 0; z-index: 40;
+  background: rgba(0,0,0,.45);
+  display: flex; align-items: center; justify-content: center;
+}
+.cfg-overlay.hidden { display: none; }
+.cfg-dialog {
+  width: 430px; max-width: calc(100% - 48px); max-height: calc(100% - 48px);
+  display: flex; flex-direction: column;
+  background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 18px 48px rgba(0,0,0,.5);
+}
+.cfg-head { display: flex; align-items: center; gap: 8px; padding: 14px 20px 10px; }
+.cfg-head .pbadge { width: 20px; height: 20px; border-radius: 6px; font-size: 11px; }
+.cfg-title { font-size: 14.5px; font-weight: 600; color: var(--text); }
+.cfg-body { padding: 4px 20px 8px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.cfg-banner {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-radius: 6px; font-size: 12px;
+  background: rgba(255,255,255,.06); color: var(--text-2);
+}
+.cfg-banner.ok { background: rgba(74,158,92,.13); color: #5ec273; }
+.cfg-banner.warn { background: rgba(212,168,67,.13); color: var(--warn); }
+.cfg-banner.off { background: rgba(255,255,255,.05); color: var(--text-3); }
+.cfg-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+.cfg-section { font-size: 11.5px; font-weight: 600; color: var(--text-2); }
+.cfg-account {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; border-radius: 6px; background: var(--bg); border: 1px solid var(--border);
+}
+.cfg-account-name { flex: 1; font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cfg-field { display: flex; flex-direction: column; gap: 5px; }
+.cfg-label { font-size: 12px; font-weight: 600; color: var(--text-2); }
+.cfg-input {
+  width: 100%; box-sizing: border-box;
+  padding: 7px 10px; font-size: 12.5px;
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 5px;
+}
+.cfg-radios { display: flex; flex-direction: column; gap: 4px; }
+.cfg-radio { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
+.cfg-paste { display: flex; flex-direction: column; gap: 6px; }
+.cfg-extra { display: flex; flex-direction: column; gap: 8px; }
+.cfg-confirm {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 10px 12px; border-radius: 6px;
+  background: var(--bg); border: 1px solid var(--border);
+}
+.cfg-confirm .card-actions { padding: 4px 0 0; }
+.cfg-guide { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--text-3); }
+.cfg-guide-icon { flex: none; }
+.cfg-link { color: var(--accent); text-decoration: none; }
+.cfg-link:hover { text-decoration: underline; }
+.cfg-foot { display: flex; align-items: center; gap: 8px; padding: 12px 20px 14px; }
+.cfg-spacer { flex: 1; }
+.btn.link { background: transparent; border: 0; padding: 0; color: var(--text-2); font-size: 12px; }
+.btn.link:hover { color: var(--text); }
+.btn.link.danger { color: var(--danger, #e44b47); }
 /* 授权与隐私页 (mac 语义): 说明清单 + 授权状态 */
 .auth-lines { padding: 4px 14px 6px; }
 .auth-lines .hint-title { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
@@ -1458,25 +1654,18 @@ details summary {
 .theme-nothing #panel::before { display: none; }
 .theme-nothing #hud, .theme-nothing #footer { background: #000000; }
 
-/* HUD Header: Space Grotesk 11 粗 大写 + SYS.OK 描边小牌 + 右侧 mono 9 运行数 */
+/* HUD Header: 四色状态灯 + Space Grotesk 11 粗 Bruce + 右侧 mono 9 运行数 (C100) */
 .theme-nothing #hud { gap: 8px; }
-.theme-nothing .hud-dot { background: #4A9E5C; }
-.theme-nothing .hud-dot-wrap.live::before { background: rgba(74, 158, 92, .25); }
+.theme-nothing .hud-dot-wrap.tone-ok { --dot-color: #4A9E5C; }
+.theme-nothing .hud-dot-wrap.tone-warn { --dot-color: #D4A843; }
+.theme-nothing .hud-dot-wrap.tone-error { --dot-color: var(--crit); }
+.theme-nothing .hud-dot-wrap.tone-neutral,
+.theme-nothing .hud-dot-wrap.tone-idle { --dot-color: #666666; }
 .theme-nothing .hud-brand {
   font: 700 11px/normal "Space Grotesk", sans-serif;
   letter-spacing: .8px;
-  text-transform: uppercase;
   color: #E8E8E8;
 }
-.theme-nothing .hud-sysok {
-  font: 400 8.5px/normal "Space Mono", var(--mono-font);
-  color: #8A8A8A;
-  background: transparent;
-  padding: 1px 4px;
-  box-shadow: inset 0 0 0 1px #303030;   /* overlay 描边, 不增加尺寸 */
-  border-radius: 2px;
-}
-.theme-nothing .hud-sysok.degraded { color: #D4A843; }
 .theme-nothing .hud-right { font: 400 9px/normal "Space Mono", var(--mono-font); color: #8A8A8A; }
 .theme-nothing .hud-right.standby { color: #666666; }
 

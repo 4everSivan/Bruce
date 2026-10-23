@@ -2,7 +2,7 @@
 
 <!-- @topic: WindowsCompat -->
 > **文档ID**: DESIGN-WINDOWS ｜ **状态**: 现行基线
-> **最后更新**: 2026-10-21 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `WindowsCompat`
+> **最后更新**: 2026-10-23 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `WindowsCompat`
 > 📌 **变更总账**: 参见 [变更总账 (WindowsCompat)](../change/index.json#WindowsCompat)
 
 ---
@@ -107,7 +107,7 @@
 
 ### 4.2 看板功能区（首版全量）
 
-对齐 mac `MenuBarViews`/`Views/` 能力矩阵，WebView 前端实现：今日总量 Hero 卡、Agent 用量卡（模型用量区块、月卡联动、三档语义配色）、逐小时折线、热力图、订阅额度卡（10 Provider，含 StepFun 与 Cline）、Nothing 风格控制台主题（Windows 侧以 CSS/点阵等价实现，保真边界为简化 CSS 覆写而非完整 Nothing token 体系）。菜单栏圆环指示器由托盘图标渲染等价承载（刷新中/告警态图标切换）。Provider 品牌色板（徽章与余额胶囊圆点）以 mac `ProviderLogoBadge.brandColor` 为唯一事实源，双端逐家对齐（C012）。
+对齐 mac `MenuBarViews`/`Views/` 能力矩阵，WebView 前端实现：今日总量 Hero 卡、Agent 用量卡（模型用量区块、月卡联动、三档语义配色）、逐小时折线、热力图、订阅额度卡（10 Provider，含 StepFun 与 Cline）、Nothing 风格控制台主题（Windows 侧以 CSS/点阵等价实现，保真边界为简化 CSS 覆写而非完整 Nothing token 体系）。菜单栏圆环指示器由托盘图标渲染等价承载：托盘角标色与提示文案和看板 HUD 状态灯同源（C100，Rust `runtime_core::dashboard_status_from_panel`，与 mac / `app.js` 三端共用 `tests/fixtures/status-tone-parity` 对拍），绿 / 黄 / 红 / 中性灰同值，提示为「Bruce · 原因」。Provider 品牌色板（徽章与余额胶囊圆点）以 mac `ProviderLogoBadge.brandColor` 为唯一事实源，双端逐家对齐（C012）。
 
 **Provider 注册表四处事实源（增删 provider 必须同步，遗漏任一处即静默缺失）**：
 
@@ -126,6 +126,7 @@
 
 | 规则 | mac 语义 | Windows 渲染层 |
 |---|---|---|
+| 看板布局与顶栏 Tab | 支持「纵向级联」与「顶栏 Tab (单卡极简)」双模式，持久化于 `dashboard.layoutMode`；Tab 模式下 HUD Header 右侧渲染 3 图标与滑动滑块，活跃 Agent > 0 时第 3 图标显示呼吸绿点角标；按键 1/2/3 切卡并按方案 1 执行水平定向滑动与 `dashboard.activeCardID` 状态记忆 | 同语义；设置中心 `buildGeneral` 提供对应分段选择器；Tauri 前端以硬件加速 CSS `transform: translateX` 驱动方案 1 水平滑动，持久化至 `%APPDATA%\Bruce\settings.json` 的 `layoutMode` 与 `activeCardID` 字段 |
 | 订阅段分支 | `accounts >= 2` 走多账号（默认折叠，折叠态渲染 `collapsedWindow` 单行，展开渲染账号子卡）；其余单账号段渲染 `windows`；`windows` 空且非多账号且 `balance` 非空为纯余额型，渲染「可用余额 / 订阅状态」双槽 | 同语义（`isMultiAccount` / `isBalanceBased`）；单账号段**不得**读取 `section.accounts`（Rust 对单账号同样下发单条 accounts，误读会重复渲染额度行） |
 | `section.note` | 仅 `status ∈ {error, empty}` 渲染 | 同 |
 | `account.note` | 仅 `account.status == "error"` 渲染 | 同 |
@@ -236,6 +237,24 @@ Windows Tauri 后端 (Rust)
 | C080 | 界面对齐 | 看板顶部彻底零输出 | 连 `#dashboard-status` 元素一并移除: 定向刷新被拒改为静默 (对齐 mac `refreshSubscription` 的静默 return), 致命错误详情走 console —— 顶部除 HUD 状态牌外不存在任何文字承载点 (见规则 11 / 14) |
 | C079 | 界面对齐 | 看板顶部撤除运行态状态行与诊断行 | 看板顶部除 HUD 头 (状态牌 + Agent 计数) 外不再承载任何运行态文字行, 完全对齐 mac; 服务级失败归订阅卡内部与设置页, 探针归设置中心; `#dashboard-status` 仅保留给定向刷新拒绝提示与致命错误两个事件驱动场景 (见规则 11) |
 | C078 | 缺陷修复 | 看板顶部状态行与诊断行口径修正 | 状态行不再直出诊断码（机器码映射中文、`SNAPSHOT_RESTORED` 等正常流程码不入文案、「上次成功」改本地可读时间）；诊断行收紧为「需用户动作」的严重故障（见规则 11 状态呈现纪律） |
+| C081 | 缺陷修复 | 订阅凭据载荷形状与「已配置」判据 | 三家 OAuth 形状 Provider（Claude/Grok/OpenCode GO）的手工录入载荷改为采集端可解析的原生形状，校验器按 Provider 校验必需键；「已配置」改 fail-closed（仅完整凭据记录成立）；双向测试锁防契约漂移（见规则 21） |
+| C082 | 界面对齐 | 订阅额度页骨架 1:1 对齐 mac | 页面收敛为「订阅服务（仅已添加行 + 配置按钮 + 拖拽重排）+ 添加服务（只列未添加项）」；新增专属配置对话框基座与 Provider 验证状态存储（见规则 20 / 22） |
+| C083 | 界面对齐 | API Key 类五家专属对话框 | Kimi / DeepSeek / 火山引擎 / Z.ai / Cline 的字段标签、引导文案、外链、脚注与附加区（CC Switch 导入、站点单选）逐字对齐；保存即验证、重新验证、就地错误（见规则 20 / 22） |
+| C084 | 界面对齐 | Codex 设备码登录与账号发现 | 设备码三步登录（usercode → poll → exchange，含 PKCE）取首次令牌；本机 CLI 与 CC Switch 账号只读元数据发现（见规则 23） |
+| C085 | 界面对齐 | Claude / Grok / OpenCode GO 对话框 | Claude 零配置跟随并入对话框（状态行 + 重新检测 + 高级粘贴）；Grok 本机导入与重新检测；OpenCode GO 粘贴与逐字引导（见规则 20） |
+| C086 | 界面对齐 | StepFun 对话框与网页登录自动捕获 | Oasis-Token 字段 + 国内/国际网页登录窗口（WebView2 cookie 捕获 + 远程校验）；cookie 读取须走 async command，退路见规则 24 |
+| C087 | 界面对齐 | 看板按验证状态过滤与对拍收口 | 看板订阅段仅展示验证通过的 Provider；补双端逐项交互对拍与真机验收清单（见规则 22） |
+| C089 | 缺陷修复 | 移除服务语义对齐 | 移除 = 删除该 Provider 全部凭据 + 移出已添加集合 + 关闭启用（fail-closed）；重加不复活旧账号（见规则 25） |
+| C090 | 缺陷修复 | 验证结果驱动启用开关 | 状态模型补 `enabled` 并作为启用态唯一事实源；验证 ok 即启用、failed / needsRelogin 即禁用；全新安装订阅集合为空（见规则 22） |
+| C091 | 缺陷修复 | 行状态尾件判据对齐 | 尾件改为「配置判据 × verificationStatus」四态；本机 CLI 只读跟随计入「已配置」（见规则 26） |
+| C092 | 缺陷修复 | 保存前格式校验对齐 | 按 Provider 补格式校验（禁空白字符 / 长度下限 / Z.ai `id.secret` 与站点主机）；不通过不落盘，写入与验证共用判据（见规则 27） |
+| C093 | 缺陷修复 | StepFun 站点来源与优先序 | 站点以显式选择为准，未选择不写 `site` 由令牌推导；采集端 site 优先但等于推导值时视同未指定（见规则 28） |
+| C094 | 缺陷修复 | 授权摘要 Provider 口径 | 摘要只列「已启用且已配置」的 Provider，空集走兜底文案（见规则 29） |
+| C095 | 界面对齐 | 遗留凭证卡片清理 | 执行规则 20 已登记的移除：删通用表单 / 导入账号 / 高级字段维护与整页连接检查，前置依赖 C084–C086（见规则 20） |
+| C096 | 界面对齐 | 订阅页文案与交互细节对齐 | 底部提示逐字与位置、空态副标题、横幅「· 验证通过」、添加服务两步交互、保存按钮禁用态、账号移除二次确认（见规则 20） |
+| C099 | 缺陷修复 | 全局热键唤出焦点保障、防抖状态机与物理键码录制 | 180ms 唤出焦点保护期、250ms 热键防抖、300ms 失焦竞态防重开；托盘多事件坐标缓存；托盘唤出贴托盘、热键唤出跟随光标所在屏；设置页录制器改基于 `event.code` 规范化（小键盘独立）并在录制期间真正注销已生效热键（见规则 30） |
+| C100 | 界面对齐 | 顶部状态牌改为四色状态灯 | 删除 `SYS.OK` 文字牌，改为绿/黄/红/中性灰四色灯 + 刷新中呼吸脉冲；聚合采集与订阅取最严重态、两端同口径；hover 显示态名与原因；品牌字统一为 `Bruce`（见规则 11 / design/03 FR-7） |
+| C101 | 界面对齐 | 看板滚动区隐藏滚动条 | 删除 `#scroll` 半透明 4px 细滚动条，与 mac 一样恒不显示；仅保留滚轮 / 触控板滚动（见规则 12） |
 | 暂无增量变更 | - | 初始基线定稿 | Windows 适配初始设计（Tauri 2 / 首版全量 / Rust 视图模型+对拍） |
 
 #### 现行设计规则
@@ -250,12 +269,12 @@ Windows Tauri 后端 (Rust)
 8. **证据边界**（C009）：真实 JS 渲染/事件回归、Rust 纯逻辑测试和 mac fixture 对拍不能替代 Win10/11 WebView2、系统热键、Toast 与 SID ACL 的真机验收。C009 与 T02/T03 在人工确认前保持 in_progress。
 9. **界面与窗口形态对齐**（C014）：主面板（HUD 面板）恒为纯净看板，严禁在主面板内以 Tab 或折叠方式内嵌设置/凭证表单；主面板只加载 `app.js`，不挂载 `settings.js`；设置窗口恒为独立窗口（1040×680），内部采用 Fluent L2 侧边栏结构导航 6 大分类面板（通用、Agent 用量、模型计费、订阅额度、授权与隐私、维护），右侧展示面包屑与 FluentCard 卡片组，彻底解耦主面板与配置中心。
 10. **设置窗口生命周期底线**（C015）：设置窗口必须在 `tauri.conf.json` 的 `windows` 列表中显式预声明（`visible: false`），由 Tauri 在启动阶段的 STA 主线程完成 WebView2 初始化并隐藏预备。严禁在 Tauri IPC 工作线程中通过 `WebviewWindowBuilder::build()` 动态懒建（在 Win32 下会因跨线程 COM STA 调度死锁/失败而出现全白屏无内容），呼出命令优先呈现既有窗口，关闭操作拦截并置为隐藏。
-11. **诊断与探针归属边界与托盘交互**（C015）：主看板（HUD 面板）仅保留严重服务级故障（如需重新授权）；所有 Agent 探针元数据（包括'未发现会话记录'、未安装等）一律收归独立设置中心的「Agent 用量 -> 会话来源」，严禁在主看板上展示。**顶部承载边界（C079）**：主看板顶部除 HUD 头（状态牌 + Agent 计数）外**不承载任何运行态状态行与诊断行**，完全对齐 mac —— mac 的 header 与卡片栈之间无任何元素（`MenuBarViews.swift:71`），`PanelViewModel` 无 runtime 字段，`PanelDiagnostic` 无 View 消费点。信息去向：服务级失败（含需重新授权的）在**订阅卡内部的 section / account note** 呈现（`SubscriptionCard.swift:233` 同位置），整体采集错误在**设置窗口**呈现（`SettingsView.swift:102` 同位置），Agent 探针信息在设置中心「Agent 用量 -> 会话来源」呈现。**零输出（C080）**：顶部**不存在任何文字承载点** —— `#dashboard-status` / `#dashboard-diagnostics` 元素均已移除，除 HUD 状态牌外没有任何元素能显示文字；定向刷新被拒改为静默（详见规则 14），致命错误（面板无法渲染 / IPC 失败）只把状态牌标为「失败」，详情走 `console.error`，不进入 UI。HUD 状态牌（`SYS.OK` / 刷新中 / 部分失败 / 数据过期）为 C009 刻意新增的 Windows 显式运行态，**保留不变**（偏离 mac 属既定取舍）。C078 曾引入的状态行文案纪律（诊断码映射、诊断行过滤）随本次撤行一并废止 —— 其约束对象已不存在。看板贴靠任务栏所在边的内侧（四方向自适应见规则 12），支持 300ms 失去焦点防抖（杜绝托盘反弹）及 `Escape` 键即时收起，体验 1:1 对齐 macOS 菜单栏。
+11. **诊断与探针归属边界与托盘交互**（C015）：主看板（HUD 面板）仅保留严重服务级故障（如需重新授权）；所有 Agent 探针元数据（包括'未发现会话记录'、未安装等）一律收归独立设置中心的「Agent 用量 -> 会话来源」，严禁在主看板上展示。**顶部承载边界（C079）**：主看板顶部除 HUD 头（状态牌 + Agent 计数）外**不承载任何运行态状态行与诊断行**，完全对齐 mac —— mac 的 header 与卡片栈之间无任何元素（`MenuBarViews.swift:71`），`PanelViewModel` 无 runtime 字段，`PanelDiagnostic` 无 View 消费点。信息去向：服务级失败（含需重新授权的）在**订阅卡内部的 section / account note** 呈现（`SubscriptionCard.swift:233` 同位置），整体采集错误在**设置窗口**呈现（`SettingsView.swift:102` 同位置），Agent 探针信息在设置中心「Agent 用量 -> 会话来源」呈现。**零输出（C080）**：顶部**不存在任何文字承载点** —— `#dashboard-status` / `#dashboard-diagnostics` 元素均已移除，顶部只余 HUD 状态灯（其态名与原因仅在 hover 提示中展开，见下）；定向刷新被拒改为静默（详见规则 14），致命错误（面板无法渲染 / IPC 失败）只把状态灯标为红色「失败」，详情走 `console.error`，不进入 UI。**状态牌 → 状态灯（C100）**：原 C009 刻意新增的 Windows 显式运行态文字牌（`SYS.OK` / 刷新中 / 部分失败 / 数据过期）**已被删除**，改为与 mac 1:1 收敛的四色状态灯（绿 / 黄 / 红 / 中性灰 + 刷新中呼吸脉冲）：四色语义、聚合口径（采集健康度 + 订阅 section 健康度取最严重态）、hover 原因文案由同一判定表生成（Windows `runtime.error` 只承载机器码，经 `app.js` `RUNTIME_ERROR_TEXT` 转为中文释义后才进入原因文案，未登记的码不外露）—— 该偏离**不再是既定取舍**，详见 design/03 FR-7。C078 曾引入的状态行文案纪律（诊断码映射、诊断行过滤）随本次撤行一并废止 —— 其约束对象已不存在。看板贴靠任务栏所在边的内侧（四方向自适应见规则 12），支持 300ms 失去焦点防抖（杜绝托盘反弹）及 `Escape` 键即时收起，体验 1:1 对齐 macOS 菜单栏。
 12. **任务栏四方向自适应定位与多分辨率自适应高度**（C016，四边统一模型由 C035 落地）：主面板必须彻底杜绝历史坐标死锁，每次唤出时以系统真实 `monitor.work_area()` 与托盘 `rect` 重新求解几何。定位为统一的四边模型 ——
     - **判边**：由工作区相对显示器四边的内缩量定位任务栏所在边，托盘 `rect` 落于哪条候选条带内即判该边（第三方 appbar/dock 与真任务栏共存时唯一可靠的消歧信号）；四边均无内缩（任务栏自动隐藏）时按托盘贴边方向推断，仍无结论则按 Windows 默认停靠顺序（底 > 右 > 上 > 左）兜底；
     - **贴边**：面板恒贴任务栏内侧（水平 12 / 垂直 10 逻辑px），完整落在工作区内，与任务栏条带永不相交；
     - **对齐**：沿任务栏轴向居中于托盘图标；托盘坐标缺失或与判定出的任务栏边不一致（陈旧 rect）时丢弃并贴托盘所在角落兜底；
-    - 窗口高度按可用工作区高度动态自适应（逻辑高度上限 760px），前端 `#scroll` 必须使用 `flex: 1 1 0; min-height: 0;` 配合半透明 4px 细滚动条，底栏 `#footer` 绝对锁定 `flex: 0 0 auto`，确保在 1080p 150%、1366x768 等任意笔记本分辨率下，窗口永不出界、底栏设置与退出按钮永久完整可见。
+    - 窗口高度按可用工作区高度动态自适应（逻辑高度上限 760px），前端 `#scroll` 必须使用 `flex: 1 1 0; min-height: 0;`，且**不显示滚动条**（C101，对齐 mac `.scrollIndicators(.hidden)` + C044 看门狗：`scrollbar-width: none` 供 WebView2 Chromium 121+，`::-webkit-scrollbar { display: none }` 兜底更早运行时；`overflow-y: auto` 保留，滚轮 / 触控板照常滚动，溢出时也不再让出滚动条宽度挤窄卡片），底栏 `#footer` 绝对锁定 `flex: 0 0 auto`，确保在 1080p 150%、1366x768 等任意笔记本分辨率下，窗口永不出界、底栏设置与退出按钮永久完整可见。
 13. **渲染层以 mac 源码为唯一数值来源**（C067）：看板与设置窗口的尺寸、字号、字重、颜色、圆角一律取自 mac `MenuBarViews.swift` / `Views/*.swift` / `SettingsView.swift` / `FluentSettingsChrome.swift` 及 `GlassSurfacePlan` token（Fluent = mac classic 分支 dark 侧，Nothing = isNothing 分支 dark 侧），不得自创形态。落地约束：
     - **字体与行高**：系统字体行高固定 1.2（Segoe / 雅黑自身度量高于 SF，`normal` 会把每行撑高约 20%）；Nothing 字体（Doto / Space Grotesk / Space Mono）双端为同一字体文件，行高一律 `normal`（取字体自身度量，与 SwiftUI 一致）。mac 只在显式指定的元素上换 Nothing 字体，Windows 不得在容器级改 `font-family`；
     - **描边**：mac 描边为 overlay `strokeBorder`（不增加尺寸），CSS `border` 会把盒子撑大 2px —— 带边框组件的 padding 必须扣除边框宽度，或改用 `box-shadow: inset 0 0 0 1px`；
@@ -293,6 +312,69 @@ Windows Tauri 后端 (Rust)
     - **记账与回填**：本轮真实查询过的 service 写 `quotaAttemptedAt`，命中限流写 `rateLimitedAt`、成功则清除（跨重启保留节流状态）；被跳过的 provider 用上一份 service 原样回填，冷却/失败/过期标 `stale`，不丢旧值也不误标 `fresh`；
     - **手动绕过**：手动刷新 `forceRefresh + bypassCooldown` 直接查询全部 provider，不受新鲜度与冷却约束；定向刷新属手动操作，只写回目标 provider 的时间戳。
     - **范围说明（C065 联动）**：mac 侧额度查询周期已由 C065 与用户配置刷新间隔联动，Windows 侧同步以 `refresh_interval_secs` 作新鲜度间隔；不再存在「本地采集与额度查询周期绑定的双端差异」。
+20. **订阅 Provider 配置形态 1:1 对齐**（C081–C087，mac `SettingsView.subscriptionPane` + `APIKeyProviderConfigDialog` + `OfficialLocalProviderSettingsSection` 同形态）：
+    - **页面骨架**：订阅额度页只有两张卡 —— 「订阅服务」（仅列出**已添加**的 Provider 行）与「添加服务」（下拉只列尚未添加的 Provider；**两步交互**：先在下拉中选中，再点「添加…」入列表并立即打开该 Provider 的配置对话框，选中本身不产生已添加行 —— 对齐 mac `ProviderPopUpPicker` 的「选择 → 添加…」流程，C096）。**行结构**（自左至右）：拖拽手柄（仅手柄可发起拖拽）→ 品牌图形徽章 26px → 显示名 + 凭证形态副标题（`Web 令牌` / `API Key` / `OAuth 设备码` / `CLI 登录态` / `Step Plan Token`，多账号追加 ` · N 个账号`）→ 套餐标签 → 状态尾件 → 「配置」按钮 → 启用开关（**未配置时禁用**）。排序为拖拽重排，不再使用上移/下移按钮；
+    - **配置入口**：点「配置」在设置窗口内打开该 Provider 的**专属模态对话框**（浮层，不新建系统窗口；mac 为 sheet）。对话框结构固定：标题（品牌徽章 + `配置 <显示名>`）→ 状态横幅 → 已配置账号列表（`已配置账号 (N)` + 逐账号移除）→ 字段组 → 固定说明 `只保存到本应用的本机凭据文件 (仅当前用户可读), 不会写入其他应用的数据库` → Provider 专属附加区 → 引导行（地球图标 + 文案 + 可选外链）→ 脚注 → 就地错误 → footer（`移除服务` 居左；`重新验证` 仅已配置时出现；`取消` + `保存并验证` 居右）；
+    - **移除门禁**：只要该 Provider 已在列表中即可移除（半添加状态必须有退出通道）；`重新验证` 仍要求已存在凭据记录；
+    - **逐 Provider 契约**（字段标签 / 附加区 / 引导与外链，与 mac 逐字一致）：
+
+      | Provider | 字段 | 附加区 | 引导 / 外链 |
+      |---|---|---|---|
+      | Kimi | `API Key` | — | 在 kimi.com/code 申请 Kimi For Coding API key |
+      | DeepSeek | `API Key` | — | 在 DeepSeek 平台获取 API key |
+      | 火山引擎 | `Access Key` / `Secret Key` | 从 CC Switch 导入（库存在时显示） | 在火山引擎控制台获取 Access Key 与 Secret Key；脚注：此处仅做本地格式校验, 完整额度试查由 Collector 运行时承担 |
+      | Z.ai | `API Key` | 站点单选：`国内站 (open.bigmodel.cn)` / `国外站 (api.z.ai)`，派生 `base_url` | 在 Z.ai（BigModel）控制台获取 API key |
+      | StepFun | `Oasis-Token` | 网页登录自动绑定（`登录国内站` / `登录国际站`） | 可点击上方一键登录自动绑定(支持国内/国际站)，或控制台按 F12 复制 Cookie；外链 `打开 StepFun 控制台` |
+      | Cline | `API Key` | — | 在 Cline 控制台 Settings > API Keys 创建 API Key；外链 `打开 Cline 控制台`；脚注：ClinePass 三窗口额度 (5h / 7d / 30d) 由采集端读取账户计划与逐单台账自动计算 |
+      | Codex | 设备码登录（无密钥字段） | 登录新账号 / 发现本机 CLI 账号 / 发现 CC Switch 账号 / 账号状态列表 | 通过 OpenAI 官方设备码登录获取额度; 也可只读导入本机 CLI 或 CC Switch 已登录账号的元数据.；外链 `打开 Codex 设备码登录页` |
+      | Claude | 粘贴（收进高级次级入口） | 本机登录态跟随（状态行 + 重新检测） | 未检测到本机 Claude 登录态, 登录 Claude CLI 后自动跟随 |
+      | Grok | 粘贴（高级） | 从本机导入 + 重新检测 | 未检测到 Grok 登录态, 请先通过 Grok CLI 登录 (~/.grok/auth.json) |
+      | OpenCode GO | 粘贴（唯一入口） | — | 打开 opencode.ai → 登录 → 开发者工具 → Application → Cookies → 复制 auth 值 (Fe26.2**...) 与 workspace URL 中的 wrk_ ID, 粘贴 JSON |
+
+    - **平台等价替换（登记项，非差异）**：mac 的 `Keychain` 字样统一改写为「本应用的本机凭据文件（仅当前用户可读）」；mac 的 `ProviderPopUpPicker`（NSPopUpButton + 品牌图形）在 Windows 以自定义 Fluent 下拉实现（原生 `<select>` 无法渲染 SVG）；Jev 两端均不在界面呈现，保持一致；
+    - **文案与交互细节纪律**（C096，逐项对拍所得，均以 mac 源码为准）：底部提示逐字为「配置并启用后, Agent 用量将在**统一**授权生效时查询对应云端额度; 拖拽行调整看板展示顺序」（`SettingsView.swift:1000`）且位于**两张卡下方**，不得置于卡内顶部或省略「统一」；空态为「尚未配置任何订阅 Provider」+ 副标题「从下方添加服务」（`SettingsView.swift:961`）；对话框状态横幅在验证通过时追加「 · 验证通过」（`APIKeyProviderConfigDialog.swift:24`）；「添加服务」为两步交互（见上）；必填字段未填齐时「保存并验证」置灰，填齐即启用（不得恒可点、点后才报错）；账号移除前弹「移除 <显示名> 账号?」二次确认（对齐 `SettingsView.swift:162` 的 `confirmationDialog`），不得直接删除；
+    - **删除 Windows 独有项**（执行卡 C095）：通用表单（「添加或更新账号凭证」）、全局「已配置账号」卡、「导入账号」文件卡、「高级：完整凭证字段维护」卡、整页「检查已保存账号连接」，在 C083–C086 落地后一律移除（mac 无对应物）。**移除顺序不得倒置**：先具备每 Provider 的专用录入与验证能力，再删逃生通道 —— Codex 依赖 C084、Claude / Grok / OpenCode GO 依赖 C085、StepFun 依赖 C086，对应能力未交付前保留其通道。**旁路禁令（硬约束）**：任何绕过「专属对话框 + 保存即验证 + 已添加步骤」的凭据落盘入口一律不得保留 —— 否则规则 25–27（移除语义 / 验证驱动启用 / 格式校验）在该路径上全部失效。
+21. **凭据载荷形状契约与 fail-closed「已配置」**（C081）：
+    - **形状契约**（账号记录恒为 `{display_name, oauth: <Provider 原生形状>}`，`oauth` 内容与采集端解析器一致）：
+      - Claude：`{"claudeAiOauth":{"accessToken":…,"refreshToken":…,"expiresAt":…}}`（对齐 `collector-provider` 的 `parse_claude_oauth_credentials`）；
+      - Grok：`{"https://auth.x.ai::injected":{"key":…,"expires_at":…}}`（对齐 `grok_token` 的 scope 规则）；
+      - OpenCode GO：`{"auth":"Fe26.2**…","workspaceId":"wrk_…"}`（对齐 `opencode_credential`）；
+      - Kimi / DeepSeek / Cline / Jev：`api_key`；火山引擎：`accessKeyId` + `secretAccessKey`；Z.ai：`api_key` + `base_url`（HTTPS）；StepFun：`token` + `site` + `is_global`；Codex：`access_token`（+ `refresh_token` / `id_token` / `expiry` / `authorization_state`）。
+    - **校验**：`credentials::validate_credential_payload` 对 `claudeQuotaAccounts` / `grokQuotaAccounts` / `opencodeGoQuotaAccounts` 的 `oauth` 由「必须是对象」升级为**按 Provider 校验必需键**；不合法即拒绝保存并返回可诊断文案，不落盘半成品；
+    - **fail-closed「已配置」**：Provider 行尾件只有在存在**完整可用凭据记录**时才显示 `已配置`；仅有账号元数据（发现导入）或形状不合法时不得显示 `已配置`；`authorization_state == "reauthRequired"` 显示 `需要重新授权`；
+    - **双向测试锁**：Windows 侧断言「前端产出的载荷形状」被校验器接受、旧坏形状被拒绝；`collector-provider` 侧断言上述三种规范形状能被真实解析器解析出凭据（契约漂移即测试红）。
+22. **Provider 验证状态与看板门禁**（C082 / C083 / C087，mac `SubscriptionVerificationStatus` + `AppModel.verifiedProviderIDs` 同语义）：
+    - **状态模型**：设置存储新增 `subscriptionProviders: {<provider>: {enabled, lastVerifiedAt, verificationStatus}}`（`verificationStatus ∈ none | ok | failed(reason) | needsRelogin`），兼容读入既有 `enabledProviders` 数组并迁移；`enabled` 为该 Provider 启用态的**唯一事实源**（C090），`enabledProviders` 迁移完成后降级为兼容读入，不再充当开关；
+    - **验证结果驱动启用**（C090，mac `applyingVerification` 同语义）：验证 `ok` → `enabled = true`；`failed` / `needsRelogin` → `enabled = false`（fail-closed）；用户显式切换仍可覆盖。启用开关**恒取已保存的 `enabled`** 渲染，不得沿用重绘前的勾选（否则验证结果改写启用态后开关与真实启用态相反）。**全新安装订阅集合为空**（对齐 mac「未添加」），不得默认全量启用 —— 升级用户的既有配置按迁移规则保留，不做批量关闭；
+    - **验证语义**（对齐 mac）：Kimi / 火山 / Z.ai / Cline / StepFun 为**本地结构校验**；DeepSeek 额外做一次真实网络试查（`https://api.deepseek.com/user/balance`，只允许同 host 重定向）；Claude / Grok / OpenCode GO 由结构 + 过期判定（Claude 访问令牌过期但刷新令牌有效时判 `ok`）；Codex 不提供本地重新验证；
+    - **保存即验证**：`保存并验证` 在写入成功后立即跑上述判定并落 `lastVerifiedAt`；`ok` 时触发该 Provider 定向刷新（复用 C068 `refresh_subscription`），`failed` / `needsRelogin` 只写就地错误、不触发刷新；
+    - **看板门禁**：看板订阅段只保留 `verificationStatus == ok` 的 Provider 的 service（对齐 mac C020）；未验证 / 验证失败 / 需重新登录一律过滤，本地用量卡不受影响。
+23. **Codex 设备码登录与本机账号发现**（C084，mac `CodexDeviceFlow` + `CodexDiscovery` 同契约）：
+    - **设备码三步**：`POST https://auth.openai.com/api/accounts/deviceauth/usercode`（JSON `{client_id}`，client_id 与 mac 相同）→ 按 `interval`（默认 5s，`expires_in` 默认 900s）轮询 `POST .../deviceauth/token`（JSON `{device_auth_id,user_code}`，**403/404 = 仍在等待**，其余非 200 fail-closed）→ `POST https://auth.openai.com/oauth/token`（form：`grant_type=authorization_code` / `client_id` / `code` / `redirect_uri=https://auth.openai.com/deviceauth/callback` / `code_verifier`，服务端未给 verifier 时本地 PKCE 生成）；换码要求 id / access / refresh 三令牌齐备；
+    - **身份**：解析 id_token（不验签）取 `chatgpt_account_id` 作账号标识；`expires_at` 按 `expires_in > JWT exp > 1h` 计算；
+    - **令牌刷新不在本卡范围**：访问令牌过期与 401 挑战的刷新沿用共享 collector + `credentials/lifecycle.rs` 既有恢复链路（C009），本卡只负责首次取得令牌；
+    - **打开验证页**：经 `tauri-plugin-opener`（或 `windows-sys` 的 `Win32_UI_Shell`）打开 `https://auth.openai.com/codex/device`；
+    - **账号发现（只读元数据）**：`%USERPROFILE%\.codex\auth.json` 取 `tokens.account_id` + email；`%USERPROFILE%\.cc-switch\codex_oauth_auth.json` 取 `accounts.*.email`；两者一律只写元数据（`authorization_state = "reauthRequired"`，**不导入任何令牌**），已存在记录不覆盖；因此 `codexQuotaAccounts` 的 `access_token` 必填放宽为「元数据记录可缺令牌」，并配套规则 21 的 fail-closed 已配置判据；
+    - **红线**：仅只读外部文件，不回写；发现导入后不得标记 `已配置`。
+24. **StepFun 网页登录自动捕获与平台退路**（C086，mac `StepFunWebLoginView` + `StepFunRemoteVerifier` 同语义）：
+    - **站点**：国内站 `platform.stepfun.com`（订阅页 `/step-plan`）、国际站 `platform.stepfun.ai`（订阅页 `/plan-subscribe`）；域名关键字 `stepfun.com` / `stepfun.ai` 用于 cookie 过滤；
+    - **窗口**：独立 Tauri `WebviewWindow` + `WebviewUrl::External`（WebView2 无法嵌入设置窗口内）；导航栏（标题 + 站点切换 + 取消）+ 工具栏（后退 / 前进 / 刷新 / 订阅页 / 平台首页 / 当前 URL）+ 底部（清除登录缓存 / 我已登录，立即绑定）；UA 使用桌面 Chrome 串；
+    - **捕获**：cookie 变更通知 + 2s 轮询双轨；仅在当前页面 URL 属目标站点域名时自动捕获；取 `Oasis-Token` 且值长度 > 10、cookie 域含目标关键字；捕获后先经远程校验（`POST /api/step.openapi.devcenter.Dashboard/QueryStepPlanRateLimit`，带 `Oasis-Token` / `Oasis-appID`（国内 10300、国际 20700）/ `Oasis-Platform` / `Oasis-Language` / `Oasis-Webid`），200 才算成功并回填绑定；
+    - **实现约束**：Tauri 的 `cookies()` / `cookies_for_url()` 在 Windows 的同步 command 中会死锁（WebView2 已知问题），**必须经 async command 或独立线程读取**；
+    - **平台退路（须人工确认后生效）**：若真机实测无法稳定读取 cookie，则退化为「外部浏览器登录 + 手动粘贴 Oasis-Token」，并在本规则内登记为平台差异，不得以「未验证」状态宣称已对齐。
+25. **移除服务语义**（C089，mac `SubscriptionService.removeSubscriptionProvider` 同语义）：`移除服务` = ① 删除该 Provider 全部凭据 → ② 移出已添加集合 → ③ 启用集合随之派生收敛（关闭）。① 由后端 `remove_provider_credentials` 在凭据存储锁内**一次原子写**完成：删除账号映射整字段（含读取侧已丢弃、界面不可见的不合规账号）及 Claude / Grok 的遗留整体 OAuth 字段；不得逐账号删除，以免中途失败留下半删状态。① 失败即中止、不动已添加集合（fail-closed）；② 失败时凭据已删、该行显示未配置（与 mac 先删凭据后改配置的顺序一致）。因此「移除」等价于 mac 的删除语义：重新添加得到**空账号列表**，不复活旧凭据。红线：移除后该 Provider 既不得再被采集装配（`build_configured_request` 只消费启用集合），也不得再出现在看板（订阅段按启用集合过滤）。
+26. **行状态尾件判据**（C091，mac `subscriptionStatusTail` 同语义）：订阅行状态尾件由「配置判据 × `verificationStatus`」两维决定，输出 未配置 / 已配置 / 验证失败 / 需重新登录；`failed` 不得显示为「已配置」。本机 CLI 只读跟随（规则 17 的 Claude、C085 的 Grok）计入「已配置」；未发现或已过期仍为未配置。该「已配置」判据（存在完整可用凭据记录 ∨ 本机 CLI 只读跟随中）由行尾件、启用开关禁用态、配置对话框横幅与「重新验证」入口、授权摘要（规则 29）**共用**，不得各自另算。Claude 无已存凭据时验证按本机登录态判定（跟随中 → ok，已过期 → needsRelogin，未发现 → none），否则跟随中的 Claude 无法经验证启用（规则 22）；已存凭据（含形状无效）优先，不被本机登录态掩盖。措辞分工：行级 `verificationStatus == needsRelogin` 用「需重新登录」；账号级 `authorization_state == reauthRequired` 的「需要重新授权」（规则 21 登记项）保持不变，两者不得互相顶替。
+27. **保存前格式校验**（C092，mac `ProviderConnectionVerifier` 同判据）：保存凭据前按 Provider 校验格式 —— 含空白字符一律拒绝；火山 AccessKey / SecretKey 长度 ≥8；Kimi 非空且无空白；Cline 长度 ≥16；Z.ai 必须 `id.secret` 形式且 base URL 主机为 `open.bigmodel.cn` / `api.z.ai`；StepFun token 非空。不通过即拒绝保存并返回可诊断文案（指出不合规字段），不落盘半成品；写入路径与验证路径**共用同一套判据**，避免「保存通过、验证失败」的错位。
+28. **StepFun 站点来源与优先序**（C093）：站点以用户**显式选择**为准；未选择时**不写入** `site`，由采集端从令牌推导（`extract_stepfun_app_id`，国际站 `app_id == 20700`）。采集端 `is_stepfun_global` 的优先序为「显式选择 > 令牌推导」，保存值等于自动推导结果时视同未指定。对话框引导文案不得承诺尚未交付的能力 —— 网页登录入口（规则 24）交付前不得写「点击上方一键登录」。
+29. **授权与隐私摘要口径**（C094，mac `enabledConfiguredSubscriptionProviders` 同语义）：摘要 Provider 列表取「已启用 ∧ 已配置」交集（「已配置」复用规则 21 的 fail-closed 判据），空集时显示兜底文案「未配置启用的订阅额度 Provider, 不会访问云端额度接口」；不得以启用集合直接充当摘要列表，否则摘要与实际出站范围不一致。启用态变化（验证结果、手动切换、`settings-updated`）后摘要须随订阅行一起重绘，不得停留在旧集合上。
+30. **全局热键唤出焦点保障、防抖状态机与物理键码录制规范**（C099）：
+    - **面板活动状态机 (`DashboardActivityState`)**：统一管理面板显隐、焦点保护与热键节流 ——
+      - **唤出焦点保护期（180ms，`SHOW_FOCUS_GRACE_MS`）**：面板唤出后 180ms 内收到的瞬态 `WindowEvent::Focused(false)` 判定为 Windows 跨进程前台切换抖动，不执行隐藏并补发一次 `set_focus()`；唤出序列固定为 `apply_dashboard_geometry → unminimize → show → set_always_on_top(true) → set_focus`；
+      - **热键防抖（250ms，`HOTKEY_REPEAT_DEBOUNCE_MS`）**：距上一次生效切换不足 250ms 的 `ShortcutState::Pressed` 一律忽略（被忽略的触发不顺延窗口）。global-hotkey 0.8 在 Windows 恒以 `MOD_NOREPEAT` 调用 `RegisterHotKey`，长按不会产生连发事件，故不设长按抑制，也不消费 `Released`；
+      - **失焦竞态防重开（300ms，`UNFOCUS_REOPEN_GUARD_MS`）**：仅当面板因外部失焦（`Focused(false)`）被动收起时记录 `last_unfocus_at`；若此后 300ms 内紧接着到达托盘左键或全局热键 `Pressed`（且面板已隐藏），视为同一次关闭动作的竞态尾波并忽略，不反向重新打开；显式收起（热键关闭 / `Esc` / 托盘关闭）不污染 `last_unfocus_at`，允许用户立即再次按键重开；
+    - **多显示器定位与磁盘写操作收敛**：托盘 `Move` / `Enter` / `Click` 事件凡带非零 `rect` 均静默缓存 `TrayBoundsState`；弹出位置由纯函数 `select_dashboard_placement` 按唤出来源决定 —— 托盘左键 / 托盘菜单优先托盘所在屏、热键优先光标所在屏（对齐 mac 面板随活动屏菜单栏出现；悬停过托盘后热键也不再被钉在托盘屏），各自以另一方兜底，均未命中回退当前/主显示器；托盘锚点只用于托盘所在屏，别屏按该屏任务栏角落贴靠，不借用另一块屏上的托盘坐标；移除每次失焦隐藏时写 `settings.json` 的冗余 `persist_position` 调用；
+    - **设置页物理键码录制与录制态挂起**：前端 `normalizeHotkeyEvent` 优先按 `event.code`（仅在无 `code` 时回退 `event.key`）映射物理主键（`KeyA~Z → A~Z`、`Digit0~9 → 0~9`、`Numpad0~9 → Numpad0~9` 与小键盘运算键原名保留（global-hotkey 中小键盘与主键盘同名键是不同的键）、`F1~F24`、`Space`、方向键、常用标点及 global-hotkey 可解析的命名键），未识别的键码直接提示「不支持」而不拼出无法解析的加速键；要求至少含 `Control` / `Alt` / `Super` 之一（纯 `Shift` 仅允许配合 `F1~F24`），并拦截系统保留组合键（`Alt+Tab`、`Alt+F4`、`Control+Escape`、`Control+Shift+Escape`）。录制入口只有「录制热键」按钮，录制中再次点击即取消（对齐 mac `GlobalHotkeyRecorder` 的切换语义；按钮 `mousedown` 阻止输入框失焦，否则 WebView2 先派发 blur 结束录制、click 又重新开始）；也可 `Escape` / `Backspace` / `Delete` 或失焦退出并恢复已生效热键回显。
+    - **录制态真正注销已生效热键**：`RegisterHotKey` 注册的组合键由系统直接截走、不投递给前台窗口，仅挂起回调时设置页录不到当前热键。故 `set_hotkey_recording(true)` 在置位防误弹开关后注销已生效热键，`set_hotkey_recording(false)`（含录制中关闭设置窗口、保存设置前）重新注册；恢复失败时清空后端登记并回 `HOTKEY_RESUME_FAILED`，设置页提示「已生效的全局快捷键恢复失败，请重新录制」。注销 / 恢复的判定为纯函数 `suspend_or_resume_hotkey`。
 
 ### 6.1 Rust 端改动清单（收敛后）
 

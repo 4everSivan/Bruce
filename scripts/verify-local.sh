@@ -97,6 +97,10 @@ swift run --package-path "$BRUCE_SWIFT_PACKAGE" SubscriptionRefreshControlHarnes
 echo "运行订阅品牌图形 Harness"
 swift run --package-path "$BRUCE_SWIFT_PACKAGE" SubscriptionBrandGlyphHarness
 
+echo "运行顶部四色状态灯 Harness"
+swift run --package-path "$BRUCE_SWIFT_PACKAGE" \
+  DashboardStatusToneHarness "$BRUCE_REPO_ROOT"
+
 echo "校验 Provider 品牌图形产物与源文件一致"
 node "$BRUCE_REPO_ROOT/scripts/gen-provider-glyphs.mjs" --check
 

@@ -1,0 +1,120 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C096",
+  "title": "Windows 订阅额度页文案与交互细节对齐 mac：底部提示位置与措辞、空态提示、验证通过横幅、添加服务两步交互、保存并验证禁用态、账号移除二次确认",
+  "version": "0.13.0",
+  "type": "Enhancement",
+  "status": "verified",
+  "branch": "main",
+  "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/win/src/settings.js + apps/win/src/styles.css",
+    "component": "订阅额度页文案与交互细节",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+  "why": "双端逐项对拍发现 6 处细节差异（均为 mac 有、Windows 无或不同）, 单条都小、累积起来是「一眼不像同一产品」: ① 底部提示: mac 文案为「…在**统一**授权生效时查询…」（apps/macos/Sources/BruceApp/SettingsView.swift:1000）且位于两张卡**下方**, Windows 掉了「统一」并把提示塞进「订阅服务」卡顶（apps/win/src/settings.js:1863）; ② 空态: mac 为「尚未配置任何订阅 Provider」+ 副标题「从下方添加服务」（SettingsView.swift:961）, Windows 缺副标题; ③ 对话框横幅: 验证通过时 mac 追加「 · 验证通过」（apps/macos/Sources/BruceApp/Settings/APIKeyProviderConfigDialog.swift:24）, Windows 无此后缀; ④ 「添加服务」: mac 为两步「选择 → 添加…」（ProviderPopUpPicker.swift:12 明示, SettingsView.swift:985 的 `Button(\"添加…\")`）, Windows 下拉项 click 即 `addProvider(id)` 并弹对话框（settings.js:1829）, 少一步、无确认机会; ⑤ 「保存并验证」: mac 在字段未填齐时置灰, Windows 创建时不带 disabled（settings.js:1734）, 点后才报错; ⑥ 账号移除: mac 对账号移除弹「移除 <名称> 账号?」确认（SettingsView.swift:162 `confirmationDialog`）, Windows 直接 `remove_credential_account`（settings.js:1639 / 2268）无确认, 误点即丢凭据。",
+  "precheck": {
+    "description": "预检: 确认添加服务为一步交互且保存按钮无禁用初值",
+    "command": "grep -n 'addProvider(id)' apps/win/src/settings.js",
+    "expected": "命中 (下拉项 click 直接添加, 无两步交互)",
+    "is_completed": false,
+    "evidence": "2026-10-22 复核: 命中 settings.js:1829 (option click → addProvider); 保存按钮创建处 (:1734) 无 disabled 初值; 账号移除处 (:1639 / :2268) 无确认; 缺口确认存在"
+  },
+  "callback": {
+    "before": [
+      "# 无分支检出: 单人维护在 main 直接实施"
+    ],
+    "after": [
+      "node apps/win/tests/frontend.test.mjs",
+      "node scripts/check-win-frontend.mjs",
+      "scripts/adflow-verify  # 收口前门禁: --card C096 --to closed --record; Exit 0 后同步状态并以 --card C096 --receipt 复核"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "底部提示与空态 (apps/win/src/settings.js)",
+      "before": "提示位于「订阅服务」卡顶且缺「统一」; 空态缺「从下方添加服务」",
+      "after": "文案逐字对齐 mac（含「统一」）; 位置移到两张卡下方; 空态补「尚未配置任何订阅 Provider」+ 副标题「从下方添加服务」",
+      "impact": "与 mac 逐字逐位一致"
+    },
+    {
+      "scope": "对话框横幅 (apps/win/src/settings.js)",
+      "before": "验证通过时无后缀",
+      "after": "验证通过时追加「 · 验证通过」, 与 mac APIKeyProviderConfigDialog 一致",
+      "impact": "状态横幅信息量对齐"
+    },
+    {
+      "scope": "添加服务两步交互 (apps/win/src/settings.js)",
+      "before": "选中下拉项即添加并弹对话框",
+      "after": "改为「选择 → 点『添加…』」两步 (对齐 mac ProviderPopUpPicker), 选中仅暂存",
+      "impact": "误选不再直接产生已添加行"
+    },
+    {
+      "scope": "保存按钮禁用态与账号移除确认 (apps/win/src/settings.js)",
+      "before": "「保存并验证」恒可点, 点后才报错; 账号移除无确认",
+      "after": "必填字段未填齐时「保存并验证」置灰, 填齐即启用; 账号移除前弹「移除 <名称> 账号?」二次确认 (对齐 mac)",
+      "impact": "可操作性与破坏性动作前置可见"
+    },
+    {
+      "scope": "回归用例 (apps/win/tests/frontend.test.mjs)",
+      "before": "无文案与交互细节用例",
+      "after": "断言提示文案逐字与位置、空态副标题、横幅后缀、两步添加、保存按钮禁用/启用切换、移除确认弹层",
+      "impact": "细节契约被测试锁定, 防再次漂移"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "规则 20 定义页面骨架与逐 Provider 字段契约, 但未覆盖底部提示的位置与逐字文案、空态副标题、横幅后缀、添加两步交互、保存按钮禁用态与账号移除确认; 且规则 20 原文「选中「添加…」即入列表」与 mac 实际的两步交互不符",
+      "after": "规则 20 补细节纪律: 底部提示逐字（含「统一」）且位于两张卡下方、空态副标题「从下方添加服务」、横幅「 · 验证通过」、添加服务为「选择 → 添加…」两步、必填未齐时「保存并验证」禁用、账号移除二次确认; 并修正「选中即入列表」的表述"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "local-20261023-01",
+    "user_quote": "确认",
+    "signoff": "verified_by_user",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "文案与交互细节用例全绿 (提示逐字与位置 / 空态 / 横幅 / 两步添加 / 禁用态 / 移除确认); 既有前端用例无回退; 退出码 0",
+        "false_if": "任何测试失败, 或文案与 mac 仍不一致",
+        "evidence": "2026-10-22: 前端「subscription pane wording and layout follow mac (C096)」「verified dialog banner carries the mac suffix and account removal asks first (C096)」+ 「保存并验证」禁用/启用切换断言全绿; 前端 75/75；后续项: 「添加…」按钮移到下拉选择器之后 (对齐 mac 顺序); 对话框横幅 needsRelogin 用「需要重新登录」(mac ProviderStatusBanner), 行尾件保持「需重新登录」(mac subscriptionStatusTail); 用例「add button follows the picker and the banner uses the mac relogin wording (C096)」",
+        "result": true
+      },
+      {
+        "item": "行为实测 (Windows 真机)",
+        "true_if": "在 Windows 真机上实测通过, 且行为符合预期: 与 mac 设置页并排比对时, 提示位置与文案、空态、横幅后缀、添加两步、保存按钮禁用态、移除确认逐项一致",
+        "false_if": "未在 Windows 真机实测 (本机 macOS 无法实跑 Tauri/WebView2), 或实测行为不符: 任一项仍与 mac 不一致",
+        "evidence": "2026-10-23: 未执行 —— 本机为 macOS, 无法实跑 Windows Tauri/WebView2; 该缺口已在节点回执「未覆盖」中如实报告, 人工在知晓该缺口的前提下确认验收。",
+        "result": false
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "两步添加不影响拖拽重排与已添加集合持久化; 移除确认不破坏 C089 的移除语义; 渲染层 token 与 Nothing 主题不受影响; mac 侧无任何改动",
+        "false_if": "破坏拖拽 / 已添加集合 / C089 移除语义, 或波及主题渲染",
+        "evidence": "2026-10-22: cargo test apps/win/src-tauri + apps/win/viewmodel + core/collector --workspace 全部通过; cargo clippy --all-targets -- -D warnings 无告警; cargo fmt --check 干净; node scripts/check-win-frontend.mjs Exit 0; mac 侧文件未改动",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-23",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified"
+  }
+}
