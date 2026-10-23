@@ -423,15 +423,15 @@ private struct BalanceDualSlotView: View {
                     light: Color.black.opacity(0.035),
                     dark: Color.white.opacity(0.06)
                 ),
-            in: RoundedRectangle(cornerRadius: isNothing ? 3 : 8, style: .continuous)
+            in: RoundedRectangle(cornerRadius: 3, style: .continuous)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: isNothing ? 3 : 8, style: .continuous)
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
                 .strokeBorder(
                     isNothing
                         ? NothingTokens.border(colorScheme)
                         : Color.adaptive(
-                            light: Color.black.opacity(0.05),
+                            light: Color.black.opacity(0.065),
                             dark: Color.white.opacity(0.10)
                         ),
                     lineWidth: isNothing ? 1 : 0.5
@@ -469,15 +469,15 @@ private struct BalanceDualSlotView: View {
                     light: Color.black.opacity(0.035),
                     dark: Color.white.opacity(0.06)
                 ),
-            in: RoundedRectangle(cornerRadius: isNothing ? 3 : 8, style: .continuous)
+            in: RoundedRectangle(cornerRadius: 3, style: .continuous)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: isNothing ? 3 : 8, style: .continuous)
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
                 .strokeBorder(
                     isNothing
                         ? NothingTokens.border(colorScheme)
                         : Color.adaptive(
-                            light: Color.black.opacity(0.05),
+                            light: Color.black.opacity(0.065),
                             dark: Color.white.opacity(0.10)
                         ),
                     lineWidth: isNothing ? 1 : 0.5
@@ -776,17 +776,17 @@ private struct ProviderAccountCard: View {
                     dark: Color.white.opacity(0.10)
                 ),
             in: RoundedRectangle(
-                cornerRadius: isNothing ? 3 : 10,
+                cornerRadius: 3,
                 style: .continuous
             )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: isNothing ? 3 : 10, style: .continuous)
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
                 .strokeBorder(
                     isNothing
                         ? NothingTokens.border(colorScheme)
                         : Color.adaptive(
-                            light: Color.white.opacity(0.5),
+                            light: Color.black.opacity(0.065),
                             dark: Color.white.opacity(0.18)
                         ),
                     lineWidth: 1

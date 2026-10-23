@@ -182,6 +182,7 @@ struct MenuBarDashboardView: View {
         }
         .overlay(alignment: .top) {
             // Fluent / macOS 顶部 1px 微发光发线: 提升复杂壁纸下的边缘轮廓与立体悬浮质感
+            // 配合 10pt 紧凑圆角左右内缩 8pt
             if !isNothingTheme {
                 LinearGradient(
                     colors: [
@@ -193,7 +194,7 @@ struct MenuBarDashboardView: View {
                     endPoint: .trailing
                 )
                 .frame(height: 1)
-                .padding(.horizontal, 18)
+                .padding(.horizontal, 8)
                 .offset(y: 0.5)
             }
         }
@@ -235,9 +236,9 @@ struct MenuBarDashboardView: View {
         }
     }
 
-    /// 面板外边框圆角: Nothing 主题 10 (与定稿 token 对齐), 其余主题维持 22.
+    /// 面板外边框圆角: 与 Nothing 风格 1:1 统一紧凑圆角 10pt (消除原 classic 22pt 臃肿大圆角).
     private var panelCornerRadius: CGFloat {
-        isNothingTheme ? 10 : 22
+        10
     }
 
     /// 面板外边框颜色:
@@ -333,7 +334,7 @@ struct MenuBarDashboardView: View {
                                         RoundedRectangle(cornerRadius: 2, style: .continuous)
                                             .fill(Color.primary)
                                     } else {
-                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        RoundedRectangle(cornerRadius: 2, style: .continuous)
                                             .fill(Color.primary.opacity(colorScheme == .dark ? 0.16 : 0.10))
                                             .matchedGeometryEffect(id: "activeTabPill", in: tabPillNamespace)
                                     }
@@ -362,10 +363,10 @@ struct MenuBarDashboardView: View {
                         lineWidth: 1
                     )
             } else {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
                     .fill(Color.primary.opacity(0.05))
                     .overlay {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
                             .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
                     }
             }
