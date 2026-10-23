@@ -4,7 +4,7 @@
   "title": "Windows 订阅额度页文案与交互细节对齐 mac：底部提示位置与措辞、空态提示、验证通过横幅、添加服务两步交互、保存并验证禁用态、账号移除二次确认",
   "version": "0.13.0",
   "type": "Enhancement",
-  "status": "verified",
+  "status": "closed",
   "branch": "main",
   "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
   "is_hotfix": false,
@@ -106,7 +106,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "01dceb725a6403e2920f3721d7f0ca5519eddc0c",
     "tag": ""
   },
   "gate": {
@@ -114,7 +114,7 @@
     "version": "1.5.0",
     "ran_at": "2026-10-23",
     "exit_code": 0,
-    "from_status": "in_progress",
-    "target_status": "verified"
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

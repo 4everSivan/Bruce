@@ -940,7 +940,7 @@
     "C089": {
       "title": "Windows「移除服务」只删已添加条目不删凭据：改为删除该 Provider 全部凭据 + 移出已添加集合 + 关闭启用，重加不复活旧账号",
       "type": "BugFix",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.13.0",
@@ -958,7 +958,7 @@
     "C091": {
       "title": "Windows 订阅行状态尾件不读验证结果与本机登录态：补「验证失败 / 需重新登录」两态，本机 CLI 只读跟随计入「已配置」",
       "type": "BugFix",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.13.0",
@@ -967,7 +967,7 @@
     "C092": {
       "title": "Windows 接受 mac 拒绝的密钥格式：保存前补齐 Provider 专属格式校验（禁空白字符、长度下限、Z.ai id.secret 与站点主机）",
       "type": "BugFix",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.13.0",
@@ -976,7 +976,7 @@
     "C093": {
       "title": "Windows StepFun 站点由对话框默认值决定而非令牌：取消隐式默认站点写入，未显式选择时由令牌推导",
       "type": "BugFix",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.13.0",
@@ -985,7 +985,7 @@
     "C094": {
       "title": "Windows「授权与隐私」摘要列出全部启用 Provider：改为只列「已启用且已配置」的 Provider，与 mac 一致",
       "type": "BugFix",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.13.0",
@@ -1003,7 +1003,7 @@
     "C096": {
       "title": "Windows 订阅额度页文案与交互细节对齐 mac：底部提示位置与措辞、空态提示、验证通过横幅、添加服务两步交互、保存并验证禁用态、账号移除二次确认",
       "type": "Enhancement",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.13.0",

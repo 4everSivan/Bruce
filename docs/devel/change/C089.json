@@ -4,7 +4,7 @@
   "title": "Windows「移除服务」只删已添加条目不删凭据：改为删除该 Provider 全部凭据 + 移出已添加集合 + 关闭启用，重加不复活旧账号",
   "version": "0.13.0",
   "type": "BugFix",
-  "status": "verified",
+  "status": "closed",
   "branch": "main",
   "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
   "is_hotfix": false,
@@ -95,7 +95,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "01dceb725a6403e2920f3721d7f0ca5519eddc0c",
     "tag": ""
   },
   "gate": {
@@ -103,7 +103,7 @@
     "version": "1.5.0",
     "ran_at": "2026-10-23",
     "exit_code": 0,
-    "from_status": "in_progress",
-    "target_status": "verified"
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

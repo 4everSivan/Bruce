@@ -4,7 +4,7 @@
   "title": "Windows 订阅行状态尾件不读验证结果与本机登录态：补「验证失败 / 需重新登录」两态，本机 CLI 只读跟随计入「已配置」",
   "version": "0.13.0",
   "type": "BugFix",
-  "status": "verified",
+  "status": "closed",
   "branch": "main",
   "branch_note": "单人维护: 直接在 main 实施并推送 (C029 起沿用); 本次依用户指示不建新分支",
   "is_hotfix": false,
@@ -94,7 +94,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "01dceb725a6403e2920f3721d7f0ca5519eddc0c",
     "tag": ""
   },
   "gate": {
@@ -102,7 +102,7 @@
     "version": "1.5.0",
     "ran_at": "2026-10-23",
     "exit_code": 0,
-    "from_status": "in_progress",
-    "target_status": "verified"
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }
