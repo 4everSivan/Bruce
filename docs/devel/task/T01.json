@@ -107,5 +107,12 @@
     "exit_code": 0,
     "from_status": "completed",
     "target_status": "completed"
-  }
+  },
+  "followup": [
+    {
+      "date": "2026-10-23",
+      "decided_by": "sivan (人工口径: 会话指示「确认」完成验收)",
+      "note": "人工口径 (2026-10-23): 维护者以「确认」接受本卡验收现状。未执行项「artifact 契约一致」(需 Windows 真机产出 artifact 对拍 schema) 与「路径实测回填完整」(design/05 §3.4 待实测表 + 3 项子任务 done=false) 在**未执行真机验收**的前提下被接受; 卡内 verdict 保持 false, 未改写。真机欠账由 design/05 §6.1 R4 登记。"
+    }
+  ]
 }

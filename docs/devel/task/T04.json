@@ -83,5 +83,12 @@
     "exit_code": 0,
     "from_status": "in_progress",
     "target_status": "completed"
-  }
+  },
+  "followup": [
+    {
+      "date": "2026-10-23",
+      "decided_by": "sivan (人工口径: 会话指示「确认」完成验收)",
+      "note": "人工口径 (2026-10-23): 维护者以「确认」接受本卡验收现状。未执行项「安装冒烟通过」(干净 Windows 环境安装-启动-卸载) 与「Release 产物完整」(Tag 触发的双端产物 + SHA256) 在**未执行**的前提下被接受; 卡内 verdict 保持 false, 未改写。发布线仍需打 Tag 后才能验证。"
+    }
+  ]
 }

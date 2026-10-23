@@ -96,12 +96,13 @@
     "user_quote": "确认",
     "signoff": "verified_by_user"
   },
-  "followup": {
-    "change": "C009",
-    "branch": "codex/fix-c009-windows-parity",
-    "evidence": "local/c009/report.md",
-    "note": "本次修复分支独立登记；原 branch/branch_note 保留 2026-10-06 实施历史。Win 真机与人工验收未完成。"
-  },
+  "followup": [
+    {
+      "date": "2026-10-23",
+      "decided_by": "sivan (人工口径: 会话指示「确认」完成验收)",
+      "note": "人工口径 (2026-10-23): 维护者以「确认」接受本卡验收现状。未执行项「功能矩阵逐项对齐」(§4.2 逐项真机点验) 与「隐藏态资源纪律」(隐藏态 CPU 占用真机测量) 在**未执行 Windows 真机验收**的前提下被接受; 卡内 verdict 保持 false, 未改写。"
+    }
+  ],
   "sync": {
     "design_pinned": true,
     "changelog": false,
