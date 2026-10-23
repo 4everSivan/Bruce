@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/task-index.v1.json",
   "phase": "Phase 2 - Windows 平台适配",
-  "updated_at": "2026-10-22",
+  "updated_at": "2026-10-23",
   "milestones": {
     "M1-Windows适配": {
       "title": "Windows 托盘常驻看板与采集链路全量对齐（Tauri 2 / 首版全量 / Rust 视图模型+fixture 对拍）",
@@ -40,6 +40,15 @@
       "tasks": [
         "T08"
       ]
+    },
+    "M6-软件更新": {
+      "title": "应用内软件更新：latest.json 清单、双端设置中心维护页更新卡（方案 B · demo 为规格基准）与自动升级",
+      "design_doc": "docs/devel/design/07-软件更新.md",
+      "tasks": [
+        "T09",
+        "T10",
+        "T11"
+      ]
     }
   },
   "topics": {
@@ -64,6 +73,14 @@
       "design_doc": "docs/devel/design/06-Agent用量分析与Token统计工作台.md",
       "tasks": [
         "T07"
+      ]
+    },
+    "SoftwareUpdate": {
+      "design_doc": "docs/devel/design/07-软件更新.md",
+      "tasks": [
+        "T09",
+        "T10",
+        "T11"
       ]
     }
   },
@@ -161,6 +178,40 @@
       "depends_on": [],
       "file": "docs/archive/0.12.2/task/T08.json",
       "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T08-windows-visual-workbench-redesign"
+    },
+    "T09": {
+      "title": "发版管线软件更新清单：latest.json 生成、双平台资产与签名产物",
+      "status": "pending",
+      "branch": "feat/T09-release-update-manifest",
+      "topic": "SoftwareUpdate",
+      "milestone": "M6-软件更新",
+      "depends_on": [],
+      "file": "docs/devel/task/T09.json",
+      "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T09-release-update-manifest"
+    },
+    "T10": {
+      "title": "macOS 软件更新全链路：维护页更新卡、检查服务与自替换安装器",
+      "status": "pending",
+      "branch": "feat/T10-macos-software-update",
+      "topic": "SoftwareUpdate",
+      "milestone": "M6-软件更新",
+      "depends_on": [
+        "T09"
+      ],
+      "file": "docs/devel/task/T10.json",
+      "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T10-macos-software-update"
+    },
+    "T11": {
+      "title": "Windows 软件更新全链路：维护页更新卡与 tauri-plugin-updater 自动升级",
+      "status": "pending",
+      "branch": "feat/T11-windows-software-update",
+      "topic": "SoftwareUpdate",
+      "milestone": "M6-软件更新",
+      "depends_on": [
+        "T09"
+      ],
+      "file": "docs/devel/task/T11.json",
+      "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T11-windows-software-update"
     }
   }
 }

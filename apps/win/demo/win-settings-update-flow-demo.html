@@ -1,0 +1,787 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bruce 设置 · 软件更新 高保真 Demo (基于现行 Fluent 设置窗口)</title>
+  <style>
+    /* =====================================================================
+       以下 token 与组件样式逐条复制自 apps/win/src/styles.css (2026-10-23),
+       未做视觉改写 —— demo 目的即在真实样式体系内讨论「软件更新」卡的新增布局。
+       新增样式仅有 PART U (软件更新状态区) 一节, 与现有 token 全兼容。
+       ===================================================================== */
+    :root {
+      --ink: rgba(255,255,255,.92);
+      --subdued: rgba(255,255,255,.50);
+      --faint: rgba(255,255,255,.55);
+      --secondary: rgba(255,255,255,.62);
+      --hairline: rgba(255,255,255,.12);
+      --divider: rgba(255,255,255,.10);
+      --panel-border: rgba(255,255,255,.14);
+      --card-bg: rgba(255,255,255,.085);
+      --card-border: rgba(255,255,255,.18);
+      --accent: #0a84ff;
+      --accent-soft: rgba(10,132,255,.14);
+      --badge-bg: rgba(255,255,255,.06);
+      --meter-track: rgba(255,255,255,.12);
+      --mono-font: "Cascadia Mono", "Cascadia Code", Consolas, "SF Mono", Menlo, ui-monospace, monospace;
+
+      /* Fluent 设置窗口专有 token (settings.css :root 原样) */
+      --bg: #1B1B1B;
+      --window: #242424;
+      --nav: #1F1F1F;
+      --surface: #2C2C2C;
+      --surface-hover: #333333;
+      --border: #3A3A3A;
+      --border-strong: #4A4A4A;
+      --text: #F2F2F2;
+      --text-2: #A8A8A8;
+      --text-3: #6E6E6E;
+      --ok: #4A9E5C;
+      --warn: #D4A843;
+      --danger: #E5534B;
+      --settings-accent: #4C9CFF;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    .hidden { display: none !important; } /* styles.css:748 原样 */
+
+    body {
+      background: #101014 radial-gradient(circle at 50% 8%, #23232e 0%, #0e0e12 100%);
+      font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", -apple-system, sans-serif;
+      font-size: 13px;
+      color: var(--ink);
+      user-select: none;
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 28px 20px 40px;
+    }
+    button, input, select, textarea { font-family: inherit; font-size: inherit; color: inherit; }
+
+    /* ---------- 演示画布: 独立设置窗口 (1040 × 680) ---------- */
+    .demo-stage {
+      width: 1040px;
+      max-width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .demo-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      font-size: 12px;
+      color: #9e9e9e;
+      background: rgba(0,0,0,.38);
+      border: 1px dashed rgba(255,255,255,.18);
+      border-radius: 8px;
+      padding: 8px 12px;
+    }
+    .demo-bar b { color: #fff; font-weight: 600; }
+    .demo-bar .grp { display: inline-flex; gap: 4px; align-items: center; }
+    .demo-btn {
+      font: inherit; font-size: 11.5px;
+      padding: 3px 9px; border-radius: 5px;
+      border: 1px solid rgba(255,255,255,.22);
+      background: rgba(255,255,255,.07);
+      color: #cfcfcf; cursor: pointer;
+    }
+    .demo-btn:hover { background: rgba(255,255,255,.16); color: #fff; }
+    .demo-btn.on { background: #4C9CFF; border-color: #4C9CFF; color: #fff; }
+    .demo-bar .sep { width: 1px; height: 16px; background: rgba(255,255,255,.18); }
+
+    /* ---------- 设置窗口本体 (settings.html 同构) ---------- */
+    .settings-window {
+      width: 1040px; height: 680px;
+      background: var(--bg);
+      color: var(--text);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      box-shadow: 0 32px 80px rgba(0,0,0,.75), 0 0 0 1px rgba(255,255,255,.06);
+      overflow: hidden;
+      position: relative;
+      flex: none;
+    }
+    .settings-layout { display: flex; height: 100%; width: 100%; overflow: hidden; }
+
+    /* 侧边栏 (styles.css .sidenav 原样) */
+    .sidenav {
+      width: 216px; flex: none;
+      background: var(--nav);
+      display: flex; flex-direction: column;
+      padding: 14px 8px 0;
+      overflow-y: auto;
+    }
+    .nav-list { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+    .navitem {
+      display: flex; align-items: center; gap: 10px;
+      padding: 7px 10px; border-radius: 5px;
+      color: var(--text-2); cursor: pointer; position: relative;
+      font-size: 12.5px; line-height: 1.2;
+      background: transparent; border: none; text-align: left; width: 100%;
+      transition: background .12s, color .12s;
+    }
+    .navitem svg.ic {
+      width: 15px; height: 15px; margin: 0 1.5px;
+      stroke: currentColor; fill: none;
+      stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
+      flex: none;
+    }
+    .navitem:hover { background: var(--surface-hover); color: var(--text); }
+    .navitem.active { background: var(--surface-hover); color: var(--text); font-weight: 600; }
+    .navitem.active::before {
+      content: ""; position: absolute;
+      left: -6px; top: 9px; bottom: 9px;
+      width: 3px; border-radius: 2px; background: var(--accent);
+    }
+    .navitem .nav-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--settings-accent);
+      margin-left: auto; flex: none;
+      box-shadow: 0 0 6px rgba(76,156,255,.8);
+    }
+    .nav-foot { margin-top: auto; padding: 0 10px 10px; font-size: 10.5px; color: var(--text-3); flex: none; }
+    .nav-separator { width: 1px; background: var(--border); flex: none; }
+
+    /* 右侧内容区 (styles.css 原样) */
+    .content-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--window); height: 100%; }
+    .content-scroll { flex: 1; overflow-y: auto; padding: 18px 24px; line-height: 1.2; }
+    .content-scroll::-webkit-scrollbar { width: 6px; }
+    .content-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius: 3px; }
+    .pane-header { margin-bottom: 14px; }
+    .crumb { font-size: 11px; color: var(--text-3); margin-bottom: 14px; }
+    .pane-title { font-size: 19px; font-weight: 600; color: var(--text); }
+
+    .settings-status { font-size: 12px; color: var(--text-2); margin-bottom: 14px; }
+    .settings-status:empty { display: none; }
+    .settings-status[data-tone="warn"] { color: #ff9f0a; }
+
+    /* 卡片与行 (styles.css 原样) */
+    .fluent-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 14px;
+      overflow: hidden;
+    }
+    .card-caption {
+      font-size: 11px; font-weight: 600; letter-spacing: .4px;
+      color: var(--text-3); margin: 0 0 14px 2px;
+    }
+    .fluent-row {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; padding: 10px 14px; min-height: 42px;
+      border-top: 1px solid var(--border);
+    }
+    .fluent-row > :not(.row-meta) { flex-shrink: 0; }
+    .fluent-card > .fluent-row:first-of-type { border-top: none; }
+    .row-meta { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
+    .row-title { font-size: 13px; font-weight: 400; color: var(--text); }
+    .row-sub { font-size: 11.5px; color: var(--text-2); line-height: 1.4; }
+    .row-value { font-size: 12.5px; color: var(--text-2); font-family: var(--mono-font); }
+
+    .hint { font-size: 12px; color: var(--text-2); line-height: 1.6; padding: 6px 14px 10px; }
+
+    /* 开关 (styles.css 药丸开关原样) */
+    input[type="checkbox"] {
+      appearance: none; -webkit-appearance: none;
+      width: 38px; height: 20px; border-radius: 999px;
+      background: rgba(255,255,255,.14);
+      border: 1px solid rgba(255,255,255,.22);
+      position: relative; cursor: pointer; outline: none;
+      transition: all .2s cubic-bezier(.16,1,.3,1);
+      vertical-align: middle; flex: none; margin: 0; display: inline-block;
+    }
+    input[type="checkbox"]::after {
+      content: ""; position: absolute; top: 2px; left: 2px;
+      width: 14px; height: 14px; border-radius: 50%;
+      background: #fff;
+      transition: transform .22s cubic-bezier(.16,1,.3,1), background-color .2s ease;
+      box-shadow: 0 1px 3px rgba(0,0,0,.35);
+    }
+    input[type="checkbox"]:hover { background: rgba(255,255,255,.22); border-color: rgba(255,255,255,.34); }
+    input[type="checkbox"]:checked { background: var(--accent); border-color: var(--accent); }
+    input[type="checkbox"]:checked::after { transform: translateX(18px); }
+    .toggle-with-state { display: inline-flex; align-items: center; gap: 8px; }
+    .toggle-state { font-size: 12.5px; color: var(--text-3); }
+    .toggle-state.on { color: var(--ok); }
+
+    /* 分段选择器 (styles.css 原样) */
+    .fluent-seg {
+      display: inline-flex; gap: 2px; padding: 2px;
+      background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    }
+    .seg-opt {
+      font: inherit; font-size: 11.5px; font-weight: 500; line-height: 1.2;
+      padding: 3.5px 9px; border: none; border-radius: 4px;
+      background: transparent; color: var(--text-2);
+      white-space: nowrap; cursor: pointer;
+    }
+    .seg-opt:hover { color: var(--text); }
+    .seg-opt.active { background: var(--surface-hover); color: var(--text); font-weight: 600; }
+
+    /* 按钮 (styles.css 原样) */
+    .btn {
+      font: inherit; font-size: 12px; line-height: 1.2;
+      padding: 5px 12px; border-radius: 5px;
+      border: 1px solid var(--border-strong);
+      background: var(--surface); color: var(--text);
+      cursor: pointer; transition: background .12s, border-color .12s;
+    }
+    .btn:hover { background: var(--surface-hover); border-color: var(--text-3); }
+    .btn.primary { background: var(--settings-accent); border-color: var(--settings-accent); color: #fff; }
+    .btn.primary:hover { background: rgba(76,156,255,.8); }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn.link { background: transparent; border: 0; padding: 0; color: var(--text-2); font-size: 12px; }
+    .btn.link:hover { color: var(--text); }
+
+    .hotkey-field-wrap { display: flex; align-items: center; gap: 8px; }
+    .hotkey-field-wrap input {
+      width: 160px; font-size: 12.5px; padding: 6px 10px;
+      border-radius: 5px; border: 1px solid var(--border-strong);
+      background: var(--bg); color: var(--text);
+    }
+
+    .order-list { padding: 4px 14px 12px; display: flex; flex-direction: column; gap: 8px; }
+    .order-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 6px 10px; background: var(--bg);
+      border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px;
+    }
+    .order-row > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+    .order-btns { display: flex; gap: 6px; flex: none; }
+    .order-btns .btn { padding: 3px 9px; font-size: 11.5px; }
+
+    .card-actions {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px; border-top: 1px solid var(--border); flex-wrap: wrap;
+    }
+
+    /* =====================================================================
+       PART U —— 「软件更新」卡新增样式 (本 demo 的讨论对象)
+       仅三个新类, 颜色/字号/内边距全部取自现有 token:
+         .update-stage     状态区容器 (行区之下, 与 card-actions 同节奏)
+         .update-banner    「发现新版本」横幅 (accent-soft 弱蓝底)
+         .update-progress  下载进度条 (meter-track / accent, 与看板进度条同源)
+       ===================================================================== */
+    .update-stage {
+      border-top: 1px solid var(--border);
+      padding: 10px 14px 12px;
+    }
+    .update-stage:empty { display: none; }
+    .update-line {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 12px; color: var(--text-2); line-height: 1.4;
+    }
+    .update-line .ok-tick { color: #5ec273; font-weight: 600; }
+    .update-line .warn-t { color: var(--warn); }
+    .update-spinner {
+      width: 12px; height: 12px; flex: none;
+      border-radius: 50%;
+      border: 2px solid var(--meter-track);
+      border-top-color: var(--settings-accent);
+      animation: upd-spin .8s linear infinite;
+    }
+    @keyframes upd-spin { to { transform: rotate(360deg); } }
+
+    .update-banner {
+      background: var(--accent-soft);
+      border: 1px solid rgba(10,132,255,.45);
+      border-radius: 6px;
+      padding: 10px 12px;
+    }
+    .update-banner-head {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      margin-bottom: 6px;
+    }
+    .update-banner-title { font-size: 13px; font-weight: 600; color: var(--text); }
+    .ver-flow {
+      font-family: var(--mono-font); font-size: 11.5px;
+      color: var(--text-2); display: inline-flex; align-items: center; gap: 5px;
+    }
+    .ver-flow .from { color: var(--text-3); text-decoration: line-through; text-decoration-color: rgba(255,255,255,.35); }
+    .ver-flow .arrow { color: var(--settings-accent); font-weight: 600; }
+    .ver-flow .to { color: var(--text); font-weight: 600; }
+    .update-notes {
+      font-size: 11.5px; color: var(--text-2); line-height: 1.5;
+      max-height: 3.2em; overflow: hidden;
+      margin-bottom: 4px;
+    }
+    .update-notes .more { color: var(--settings-accent); cursor: pointer; }
+    .update-banner-actions { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+    .update-size { font-size: 11.5px; color: var(--text-3); font-family: var(--mono-font); }
+
+    .update-progress { display: flex; flex-direction: column; gap: 6px; }
+    .update-progress .track {
+      height: 4px; border-radius: 2px; background: var(--meter-track); overflow: hidden;
+    }
+    .update-progress .fill {
+      height: 100%; border-radius: 2px; background: var(--accent);
+      width: 0%; transition: width .3s ease;
+    }
+    .update-progress .meta {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      font-size: 11.5px; color: var(--text-2);
+      font-variant-numeric: tabular-nums; font-family: var(--mono-font);
+    }
+
+    /* ---------- 底部对照说明 (demo 惯例 note-panel) ---------- */
+    .note-panel {
+      margin-top: 2px; max-width: 1040px;
+      font-size: 12px; color: #9e9e9e; line-height: 1.65;
+      background: rgba(0,0,0,.35); padding: 12px 18px;
+      border-radius: 8px; border: 1px dashed rgba(255,255,255,.15);
+    }
+    .note-panel b { color: #fff; }
+    .note-panel code { background: rgba(255,255,255,.1); padding: 1px 4px; border-radius: 3px; font-family: var(--mono-font); color: #64b5f6; }
+    .note-panel ul { padding-left: 18px; margin-top: 6px; }
+    .note-panel li { margin-bottom: 3px; }
+  </style>
+</head>
+<body>
+
+<div class="demo-stage">
+
+  <!-- ══════════ DEMO 控制条 (非产品 UI, 仅用于讨论时切换状态与布局方案) ══════════ -->
+  <div class="demo-bar">
+    <b>DEMO 控制</b>
+    <span class="sep"></span>
+    <span>状态:</span>
+    <span class="grp" id="state-btns">
+      <button class="demo-btn on" data-state="idle">空闲</button>
+      <button class="demo-btn" data-state="checking">检查中</button>
+      <button class="demo-btn" data-state="latest">已是最新</button>
+      <button class="demo-btn" data-state="available">发现新版本</button>
+      <button class="demo-btn" data-state="downloading">下载中</button>
+      <button class="demo-btn" data-state="ready">已就绪</button>
+      <button class="demo-btn" data-state="failed">检查失败</button>
+      <button class="demo-btn" data-state="skipped">已跳过</button>
+    </span>
+    <span class="sep"></span>
+    <span>位置方案:</span>
+    <span class="grp" id="place-btns">
+      <button class="demo-btn on" data-place="A">A · 通用页首卡之后 (推荐)</button>
+      <button class="demo-btn" data-place="A2">A2 · 通用页末尾</button>
+      <button class="demo-btn" data-place="B">B · 维护页顶部</button>
+    </span>
+  </div>
+
+  <!-- ══════════ 设置窗口本体 (1040 × 680 · settings.html 同构) ══════════ -->
+  <div class="settings-window">
+    <div class="settings-layout">
+
+      <nav class="sidenav" aria-label="设置导航">
+        <div class="nav-list">
+          <button type="button" class="navitem active" data-cat="general">
+            <svg class="ic" viewBox="0 0 24 24"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+            <span>通用</span>
+            <span class="nav-dot hidden" id="nav-update-dot" title="有可用更新"></span>
+          </button>
+          <button type="button" class="navitem" data-cat="agentUsage">
+            <svg class="ic" viewBox="0 0 24 24"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>
+            <span>Agent 用量</span>
+          </button>
+          <button type="button" class="navitem" data-cat="modelPricing">
+            <svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg>
+            <span>模型计费</span>
+          </button>
+          <button type="button" class="navitem" data-cat="subscription">
+            <svg class="ic" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
+            <span>订阅额度</span>
+          </button>
+          <button type="button" class="navitem" data-cat="consent">
+            <svg class="ic" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg>
+            <span>授权与隐私</span>
+          </button>
+          <button type="button" class="navitem" data-cat="maintenance">
+            <svg class="ic" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76Z"/></svg>
+            <span>维护</span>
+            <span class="nav-dot hidden" id="nav-update-dot-b" title="有可用更新"></span>
+          </button>
+        </div>
+        <div class="nav-foot" id="nav-version">v0.12.2</div>
+      </nav>
+
+      <div class="nav-separator"></div>
+
+      <main class="content-wrap">
+        <div class="content-scroll">
+
+          <div class="settings-status" id="settings-status" role="status"></div>
+          <header class="pane-header">
+            <div class="crumb" id="crumb">设置 / 通用</div>
+            <h1 class="pane-title" id="pane-title">通用</h1>
+          </header>
+
+          <!-- ════════ 分类面板 1: 通用 (现行实现 + 新增软件更新卡) ════════ -->
+          <section id="pane-general" class="category-pane">
+            <!-- 首卡: 无分组标题, 行序对齐 buildGeneral: 界面风格 → 刷新间隔 → 看板布局 → 系统通知
+                 (原「版本」行迁入下方软件更新卡, 避免同窗三处版本) -->
+            <section class="fluent-card" id="gc-basic">
+              <label class="fluent-row">
+                <div class="row-meta">
+                  <span class="row-title">界面风格</span>
+                  <span class="row-sub">经典为深色材质面板; Nothing 为纯色平面风格, 无模糊无玻璃 (Windows 恒深色)</span>
+                </div>
+                <div class="fluent-seg" role="radiogroup">
+                  <button class="seg-opt active" type="button">经典</button>
+                  <button class="seg-opt" type="button">Nothing</button>
+                </div>
+              </label>
+              <label class="fluent-row">
+                <div class="row-meta">
+                  <span class="row-title">刷新间隔</span>
+                  <span class="row-sub">已授权模块的自动采集周期，变更后立即重新计时</span>
+                </div>
+                <div class="fluent-seg" role="radiogroup">
+                  <button class="seg-opt" type="button">5 分钟</button>
+                  <button class="seg-opt active" type="button">15 分钟</button>
+                  <button class="seg-opt" type="button">30 分钟</button>
+                  <button class="seg-opt" type="button">60 分钟</button>
+                </div>
+              </label>
+              <label class="fluent-row">
+                <div class="row-meta">
+                  <span class="row-title">看板布局</span>
+                  <span class="row-sub">选择置顶面板呈现方式，顶栏 Tab 模式通过右上角小图标在用量、订阅与活跃卡片间快速切换</span>
+                </div>
+                <div class="fluent-seg" role="radiogroup">
+                  <button class="seg-opt active" type="button">纵向级联 (滚动)</button>
+                  <button class="seg-opt" type="button">顶栏 Tab (单卡)</button>
+                </div>
+              </label>
+              <label class="fluent-row">
+                <div class="row-meta">
+                  <span class="row-title">系统通知</span>
+                  <span class="row-sub">预警与额度提醒; 关闭后 Bruce 不会投递通知</span>
+                </div>
+                <span class="toggle-with-state">
+                  <input type="checkbox" id="notify-toggle" checked>
+                  <span class="toggle-state on" id="notify-state">已开启</span>
+                </span>
+              </label>
+            </section>
+
+            <!-- ═══ 软件更新卡 (本 demo 讨论对象 · 可经控制条切换位置方案) ═══ -->
+            <div id="update-group">
+              <h2 class="card-caption">软件更新</h2>
+              <section class="fluent-card" id="update-card">
+                <label class="fluent-row">
+                  <div class="row-meta">
+                    <span class="row-title">自动检查更新</span>
+                    <span class="row-sub">启动 30 秒后静默检查一次, 之后每 24 小时一次; 检查失败不打扰</span>
+                  </div>
+                  <span class="toggle-with-state">
+                    <input type="checkbox" id="autocheck-toggle" checked>
+                    <span class="toggle-state on" id="autocheck-state">已开启</span>
+                  </span>
+                </label>
+                <label class="fluent-row">
+                  <div class="row-meta">
+                    <span class="row-title">当前版本</span>
+                    <span class="row-sub" id="current-channel">正式版 · 从 GitHub Releases 检查 (4everSivan/Bruce)</span>
+                  </div>
+                  <span class="row-value" id="local-version">v0.12.2</span>
+                </label>
+                <label class="fluent-row">
+                  <div class="row-meta">
+                    <span class="row-title">检查更新</span>
+                    <span class="row-sub" id="last-check-sub">上次检查 今天 14:02</span>
+                  </div>
+                  <button class="btn" id="btn-check" type="button">检查更新</button>
+                </label>
+                <!-- 状态区: 随状态机渲染 (update-stage) -->
+                <div class="update-stage" id="update-stage"></div>
+              </section>
+            </div>
+
+            <!-- 全局快捷键 (现行实现示意) -->
+            <h2 class="card-caption">全局快捷键</h2>
+            <section class="fluent-card">
+              <label class="fluent-row">
+                <div class="row-meta">
+                  <span class="row-title">唤出看板</span>
+                  <span class="row-sub">唤出或隐藏置顶看板; 留空关闭全局快捷键</span>
+                </div>
+                <span class="hotkey-field-wrap">
+                  <input type="text" value="Control+Shift+B" readonly>
+                  <button class="btn" type="button">录制热键</button>
+                  <button class="btn" type="button">清除</button>
+                </span>
+              </label>
+            </section>
+
+            <!-- 看板卡片顺序 (现行实现示意) -->
+            <h2 class="card-caption">看板卡片顺序</h2>
+            <section class="fluent-card">
+              <p class="hint">点击上移 / 下移调整置顶面板各卡片的堆叠顺序, 即时生效。</p>
+              <div class="order-list">
+                <div class="order-row"><span>Token 用量</span><span class="order-btns"><button class="btn" type="button">上移</button><button class="btn" type="button">下移</button></span></div>
+                <div class="order-row"><span>订阅配额</span><span class="order-btns"><button class="btn" type="button">上移</button><button class="btn" type="button">下移</button></span></div>
+                <div class="order-row"><span>Agent 活跃</span><span class="order-btns"><button class="btn" type="button">上移</button><button class="btn" type="button">下移</button></span></div>
+              </div>
+            </section>
+          </section>
+
+          <!-- ════════ 其余面板 (轻量示意, 供导航完整感) ════════ -->
+          <section id="pane-agentUsage" class="category-pane hidden">
+            <section class="fluent-card">
+              <label class="fluent-row"><div class="row-meta"><span class="row-title">会话来源</span><span class="row-sub">本地目录探测与聚合就绪态 (示意)</span></div><span class="row-value">—</span></label>
+            </section>
+          </section>
+          <section id="pane-modelPricing" class="category-pane hidden">
+            <section class="fluent-card">
+              <label class="fluent-row"><div class="row-meta"><span class="row-title">模型计费</span><span class="row-sub">按模型维护单价与倍率 (示意)</span></div><span class="row-value">—</span></label>
+            </section>
+          </section>
+          <section id="pane-subscription" class="category-pane hidden">
+            <section class="fluent-card">
+              <label class="fluent-row"><div class="row-meta"><span class="row-title">订阅额度</span><span class="row-sub">Provider 凭证与启用管理 (示意)</span></div><span class="row-value">—</span></label>
+            </section>
+          </section>
+          <section id="pane-consent" class="category-pane hidden">
+            <section class="fluent-card">
+              <label class="fluent-row"><div class="row-meta"><span class="row-title">授权与隐私</span><span class="row-sub">本机采集范围与只读承诺 (示意)</span></div><span class="row-value">—</span></label>
+            </section>
+          </section>
+          <section id="pane-maintenance" class="category-pane hidden">
+            <!-- 方案 B: 软件更新卡置于此 (顶部); 方案 A/A2 时仅保留维护常规卡 -->
+            <div id="maintenance-anchor"></div>
+            <h2 class="card-caption">诊断</h2>
+            <section class="fluent-card">
+              <label class="fluent-row"><div class="row-meta"><span class="row-title">导出诊断包</span><span class="row-sub">导出不含 Artifact、账号信息或凭证的最小诊断包</span></div><button class="btn" type="button">导出…</button></label>
+              <label class="fluent-row"><div class="row-meta"><span class="row-title">导出用量 CSV</span><span class="row-sub">导出 token 用量与花费统计</span></div><button class="btn" type="button">导出…</button></label>
+            </section>
+          </section>
+
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- ══════════ 对照说明 (demo 惯例) ══════════ -->
+  <div class="note-panel">
+    <p><b>讨论要点 (样式体系 100% 取自现行 <code>apps/win/src/styles.css</code>, 仅新增 PART U 三个类)</b>：</p>
+    <ul>
+      <li><b>位置方案</b>:A 首卡之后 (推荐, 版本行原位延伸) / A2 通用页末尾 / B 维护页顶部 —— 用顶部控制条切换对比;原「版本」行迁入更新卡,侧栏底部版本号保留(全局可见)。</li>
+      <li><b>状态机 8 态</b>:空闲 → 检查中 → 已是最新 / 发现新版本 → 下载中(可取消) → 已就绪(安装并重启) / 检查失败 / 已跳过。卡内按钮可走完整闭环(模拟)。</li>
+      <li><b>导航角标</b>:发现新版本且未处理时,对应分类项尾部出现 6px 蓝点(静默提示,不弹窗)。</li>
+      <li><b>设计口径</b>:行/开关/分段选择器与「系统通知」「界面风格」完全同款;更新横幅用既有 <code>--accent-soft</code> 弱蓝底;进度条与看板 meter 同源(track + accent)。mac SwiftUI 侧以 FluentCard / FluentRow / FluentSegmentedPicker 等价实现,设置窗口恒 Fluent 深色(C067 口径,无 Nothing 变体)。</li>
+      <li><b>待定问题</b>:① 自动检查默认开还是关;②「跳过此版本」的解除口径(下个版本自动解除 or 手动恢复);③ 更新说明展开形态(行内「展开」vs 弹层);④ dev 构建(无 bundle 版本)时整卡降级文案。</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  // ---------- demo 常量 (模拟远端清单) ----------
+  var REMOTE = { version: "0.13.0", sizeMB: 7.1,
+    notes: "· 双端仪表盘顶栏三图标 Tab 切换与角标融合;\n· 面板底栏新增外观切换按钮 (mac);\n· Windows API Key 类五家配置对话框对齐;\n· 订阅额度 Claude 本机登录态跟随 (Windows)。" };
+  var localVersion = "0.12.2";
+  var skipped = null;
+
+  var $ = function (id) { return document.getElementById(id); };
+  var stage = $("update-stage");
+  var status = $("settings-status");
+  var state = "idle";
+
+  function say(text, tone) { status.textContent = text || ""; status.dataset.tone = tone || "info"; }
+  function markBtn(group, attr, value) {
+    [].forEach.call(document.querySelectorAll("#" + group + " .demo-btn"), function (b) {
+      b.classList.toggle("on", b.getAttribute(attr) === value);
+    });
+  }
+  function setDots(on) {
+    $("nav-update-dot").classList.toggle("hidden", !on || state === "idle");
+    $("nav-update-dot-b").classList.toggle("hidden", !on || state === "idle");
+  }
+  function clearStage() { stage.replaceChildren(); }
+
+  // ---------- 状态渲染 ----------
+  function render(next) {
+    state = next;
+    markBtn("state-btns", "data-state", next);
+    $("btn-check").disabled = (next === "checking" || next === "downloading");
+    clearStage();
+    setDots(next === "available" || next === "ready" || next === "downloading");
+    if (next === "idle") { say(""); return; }
+    if (next === "checking") {
+      var l = document.createElement("div"); l.className = "update-line";
+      var sp = document.createElement("span"); sp.className = "update-spinner";
+      l.append(sp, document.createTextNode("正在检查更新…"));
+      stage.append(l); return;
+    }
+    if (next === "latest") {
+      var l2 = document.createElement("div"); l2.className = "update-line";
+      var t = document.createElement("span"); t.className = "ok-tick"; t.textContent = "✓";
+      l2.append(t, document.createTextNode("已是最新版本 · 检查于 今天 " + new Date().toTimeString().slice(0, 5)));
+      stage.append(l2); say(""); return;
+    }
+    if (next === "skipped") {
+      var l3 = document.createElement("div"); l3.className = "update-line";
+      l3.append(document.createTextNode("已跳过 v" + skipped + ";发布下个版本前不再提醒 · "));
+      var undo = document.createElement("button"); undo.className = "btn link"; undo.textContent = "恢复检查";
+      undo.onclick = function () { skipped = null; render("available"); };
+      l3.append(undo); stage.append(l3); say(""); return;
+    }
+    if (next === "failed") {
+      var l4 = document.createElement("div"); l4.className = "update-line";
+      var w = document.createElement("span"); w.className = "warn-t"; w.textContent = "检查失败";
+      l4.append(w, document.createTextNode("无法访问 GitHub (超时 10 秒);可稍后重试或手动下载"));
+      var retry = document.createElement("button"); retry.className = "btn link"; retry.textContent = "重试";
+      retry.onclick = function () { runCheck(); };
+      var manual = document.createElement("button"); manual.className = "btn link"; manual.textContent = "手动下载 ↗";
+      l4.append(retry, manual); stage.append(l4);
+      say("检查更新失败：网络超时", "warn"); return;
+    }
+    if (next === "available") { renderBanner(); say(""); return; }
+    if (next === "downloading") { renderProgress(); return; }
+    if (next === "ready") {
+      var l5 = document.createElement("div"); l5.className = "update-line";
+      var t5 = document.createElement("span"); t5.className = "ok-tick"; t5.textContent = "✓";
+      l5.append(t5, document.createTextNode("v" + REMOTE.version + " 已下载完成,重启后生效"));
+      var wrap = document.createElement("div"); wrap.className = "update-banner-actions";
+      var install = document.createElement("button"); install.className = "btn primary"; install.textContent = "安装并重启";
+      install.onclick = function () { simulateUpgrade(); };
+      var later = document.createElement("button"); later.className = "btn link"; later.textContent = "稍后";
+      later.onclick = function () { render("available"); };
+      wrap.append(install, later); stage.append(l5, wrap); return;
+    }
+  }
+
+  function renderBanner() {
+    var banner = document.createElement("div"); banner.className = "update-banner";
+    var head = document.createElement("div"); head.className = "update-banner-head";
+    var title = document.createElement("span"); title.className = "update-banner-title"; title.textContent = "发现新版本";
+    var flow = document.createElement("span"); flow.className = "ver-flow";
+    var from = document.createElement("span"); from.className = "from"; from.textContent = "v" + localVersion;
+    var arrow = document.createElement("span"); arrow.className = "arrow"; arrow.textContent = "→";
+    var to = document.createElement("span"); to.className = "to"; to.textContent = "v" + REMOTE.version;
+    flow.append(from, arrow, to);
+    head.append(title, flow);
+    var notes = document.createElement("div"); notes.className = "update-notes";
+    var line = REMOTE.notes.split("\n").slice(0, 2).join("\n");
+    notes.append(document.createTextNode(line.replace(/\n/g, " ")));
+    var more = document.createElement("span"); more.className = "more"; more.textContent = " 展开";
+    more.onclick = function () {
+      notes.textContent = REMOTE.notes.replace(/\n/g, " ");
+      var less = document.createElement("span"); less.className = "more"; less.textContent = " 收起";
+      less.onclick = function () { renderBanner(); };
+      notes.append(less);
+    };
+    notes.append(more);
+    var actions = document.createElement("div"); actions.className = "update-banner-actions";
+    var dl = document.createElement("button"); dl.className = "btn primary"; dl.textContent = "下载并安装";
+    dl.onclick = function () { render("downloading"); tick(0); };
+    var skip = document.createElement("button"); skip.className = "btn"; skip.textContent = "跳过此版本";
+    skip.onclick = function () { skipped = REMOTE.version; render("skipped"); };
+    var page = document.createElement("button"); page.className = "btn link"; page.textContent = "查看发布页 ↗";
+    var size = document.createElement("span"); size.className = "update-size"; size.textContent = REMOTE.sizeMB.toFixed(1) + " MB";
+    actions.append(dl, skip, page, size);
+    banner.append(head, notes, actions);
+    stage.append(banner);
+  }
+
+  var timer = null;
+  function renderProgress() {
+    var wrap = document.createElement("div"); wrap.className = "update-progress";
+    var track = document.createElement("div"); track.className = "track";
+    var fill = document.createElement("div"); fill.className = "fill";
+    track.append(fill);
+    var meta = document.createElement("div"); meta.className = "meta";
+    var left = document.createElement("span"); left.textContent = "0.0 / " + REMOTE.sizeMB.toFixed(1) + " MB";
+    var cancel = document.createElement("button"); cancel.className = "btn link"; cancel.textContent = "取消";
+    cancel.onclick = function () { if (timer) { clearInterval(timer); timer = null; } render("available"); };
+    meta.append(left, cancel);
+    wrap.append(track, meta);
+    stage.append(wrap);
+    fill.style.width = "0%";
+  }
+  function tick(pct) {
+    var fill = stage.querySelector(".fill"), left = stage.querySelector(".meta > span");
+    if (!fill) return;
+    if (pct >= 100) { if (timer) { clearInterval(timer); timer = null; } render("ready"); return; }
+    fill.style.width = pct + "%";
+    if (left) left.textContent = (REMOTE.sizeMB * pct / 100).toFixed(1) + " / " + REMOTE.sizeMB.toFixed(1) + " MB · " + pct + "%";
+    timer = setTimeout(function () { tick(pct + 5); }, 120);
+  }
+
+  // ---------- 交互闭环 ----------
+  function runCheck() {
+    render("checking");
+    setTimeout(function () { render("available"); }, 1100);
+  }
+  $("btn-check").onclick = runCheck;
+  function simulateUpgrade() {
+    localVersion = REMOTE.version;
+    $("local-version").textContent = "v" + localVersion;
+    $("nav-version").textContent = "v" + localVersion;
+    REMOTE.version = (parseFloat(localVersion) + 0.01).toFixed(2); // 模拟更远的未来版本
+    render("latest");
+    say("已更新到 v" + localVersion + " (demo 模拟, 实机为替换 App 后自动重启)");
+  }
+  [].forEach.call(document.querySelectorAll('input[type="checkbox"]'), function (box) {
+    box.addEventListener("change", function () {
+      var stateEl = box.id === "autocheck-toggle" ? $("autocheck-state") : $("notify-state");
+      stateEl.textContent = box.checked ? "已开启" : "已关闭";
+      stateEl.classList.toggle("on", box.checked);
+    });
+  });
+  [].forEach.call(document.querySelectorAll(".fluent-seg"), function (group) {
+    [].forEach.call(group.querySelectorAll(".seg-opt"), function (opt) {
+      opt.addEventListener("click", function () {
+        [].forEach.call(group.querySelectorAll(".seg-opt"), function (o) { o.classList.remove("active"); });
+        opt.classList.add("active");
+      });
+    });
+  });
+
+  // ---------- 状态跳转 & 位置方案 ----------
+  [].forEach.call(document.querySelectorAll("#state-btns .demo-btn"), function (b) {
+    b.addEventListener("click", function () {
+      if (b.dataset.state === "downloading") { render("downloading"); tick(20); return; }
+      if (b.dataset.state === "skipped") { skipped = REMOTE.version; }
+      render(b.dataset.state);
+    });
+  });
+  var updateGroup = $("update-group");
+  var generalPane = $("pane-general");
+  var maintAnchor = $("maintenance-anchor");
+  function place(mode) {
+    markBtn("place-btns", "data-place", mode);
+    if (mode === "A") generalPane.insertBefore(updateGroup, generalPane.children[1]);
+    else if (mode === "A2") generalPane.append(updateGroup);
+    else maintAnchor.after(updateGroup);
+  }
+  [].forEach.call(document.querySelectorAll("#place-btns .demo-btn"), function (b) {
+    b.addEventListener("click", function () { place(b.dataset.place); });
+  });
+
+  // ---------- 导航切换 ----------
+  var titles = { general: ["设置 / 通用", "通用"], agentUsage: ["设置 / Agent 用量", "Agent 用量"],
+    modelPricing: ["设置 / 模型计费", "模型计费"], subscription: ["设置 / 订阅额度", "订阅额度"],
+    consent: ["设置 / 授权与隐私", "授权与隐私"], maintenance: ["设置 / 维护", "维护"] };
+  [].forEach.call(document.querySelectorAll(".navitem"), function (item) {
+    item.addEventListener("click", function () {
+      [].forEach.call(document.querySelectorAll(".navitem"), function (i) { i.classList.remove("active"); });
+      item.classList.add("active");
+      var cat = item.dataset.cat;
+      $("crumb").textContent = titles[cat][0];
+      $("pane-title").textContent = titles[cat][1];
+      [].forEach.call(document.querySelectorAll(".category-pane"), function (pane) {
+        pane.classList.toggle("hidden", pane.id !== "pane-" + cat);
+      });
+    });
+  });
+
+  render("idle");
+  place("A");
+})();
+</script>
+</body>
+</html>

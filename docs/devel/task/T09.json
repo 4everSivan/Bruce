@@ -1,0 +1,108 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T09",
+  "title": "发版管线软件更新清单：latest.json 生成、双平台资产与签名产物",
+  "version": "0.13.0",
+  "milestone": "M6-软件更新",
+  "status": "pending",
+  "branch": "feat/T09-release-update-manifest",
+  "depends_on": [],
+
+  "target": {
+    "module": "scripts/",
+    "design_doc": "docs/devel/design/07-软件更新.md",
+    "design_topic": "SoftwareUpdate"
+  },
+
+  "goal": "让每次 GitHub Release 附带机器可读的更新清单 latest.json（07 设计 §4.2 R1）：版本唯一来源为仓库根 VERSION 文件；清单含 darwin-universal（url + sha256）与 windows-x86_64（url + minisign signature）双平台条目；Windows 构建注入签名私钥产出 .sig，缺私钥显式失败不产半成品；上传幂等并有漏传防护，供 T10/T11 客户端消费。",
+
+  "precheck": {
+    "description": "检测发版管线是否已具备 latest.json 产出能力",
+    "command": "grep -rn \"latest.json\" scripts/ .github/workflows/ 2>/dev/null || echo \"NOT_FOUND\"",
+    "expected": "NOT_FOUND",
+    "is_completed": false,
+    "evidence": ""
+  },
+
+  "callback": {
+    "before": [
+      "git checkout -b feat/T09-release-update-manifest 2>/dev/null || git checkout feat/T09-release-update-manifest"
+    ],
+    "after": [
+      "node scripts/check-release-pipeline.mjs",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 completed；目标状态预检使用 --card T09 --to completed --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card T09 --receipt 复核、输出节点回执"
+    ]
+  },
+
+  "tasks": [
+    {
+      "id": "T09-1",
+      "title": "latest.json 清单生成器（Node 脚本）",
+      "capability": "输入 dist 产物与 VERSION，按 07 §4.2 R1.1 schema 输出 latest.json（version/pub_date/notes/platforms.darwin-universal{url,sha256}/platforms.windows-x86_64{url,signature}）；notes 从 release-notes-<ver>.md 生成纯文本摘要；sha256 与 SHA256SUMS 同源。仓库禁 Python（唯一例外 adflow_verify.py），脚本用 Node 编写。",
+      "done": false
+    },
+    {
+      "id": "T09-2",
+      "title": "Windows 签名产物注入",
+      "capability": "Windows 构建脚本注入 TAURI_SIGNING_PRIVATE_KEY 环境变量产出 setup.exe 的 .sig；缺私钥时构建显式失败、不产出未签名清单资产（与 build-release-app.sh 不发布半成品哲学一致）。",
+      "done": false
+    },
+    {
+      "id": "T09-3",
+      "title": "上传集成与漏传防护",
+      "capability": "扩展 upload-win-release.ps1 / 发版流程上传 latest.json 与 .sig；上传前清理同名残留资产保证幂等；check-release-pipeline.mjs 新增结构断言：latest.json 与 .sig 必须出现在上传清单中。",
+      "done": false
+    },
+    {
+      "id": "T09-4",
+      "title": "清单生成器契约测试",
+      "capability": "fixture 驱动单测（Node）：双平台字段齐全性、sha256/签名非空、版本与 VERSION 一致、notes 生成；不访问任何真实外网端点。",
+      "done": false
+    }
+  ],
+
+  "acceptance": {
+    "result": null,
+    "run_id": "",
+    "checks": [
+      {
+        "item": "清单契约完备",
+        "true_if": "生成的 latest.json 含双平台条目：darwin-universal 带 url+sha256、windows-x86_64 带 url+signature，版本与 VERSION 一致",
+        "false_if": "缺任一平台、任一校验字段或版本漂移",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "签名产物门禁",
+        "true_if": "无私钥构建显式失败且不产出未签名资产；.sig 与 setup.exe 成对产出并上传",
+        "false_if": "存在无签名的清单资产或 .sig 缺失仍可发版",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "幂等与漏传防护",
+        "true_if": "重跑上传不残留同名旧资产；check-release-pipeline.mjs 断言 latest.json/.sig 在上传清单中且测试通过",
+        "false_if": "重跑残留旧资产或断言缺失",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "管线契约测试全绿",
+        "true_if": "node scripts/check-release-pipeline.mjs 与生成器单测退出码 0",
+        "false_if": "任一断言失败",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "sync": {
+    "commit": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}
