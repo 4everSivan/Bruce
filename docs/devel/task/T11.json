@@ -14,7 +14,7 @@
     "design_topic": "SoftwareUpdate"
   },
 
-  "goal": "在 Windows 设置中心维护页交付与高保真 demo（apps/win/demo/win-settings-update-flow-demo.html）逐字逐 token 一致的「软件更新」卡（07 设计 §4.2 R3/R4，方案 B：维护页顶部、诊断分组之前、通用页「版本」行占位迁入本卡），并接入 tauri-plugin-updater 完成检查、下载进度、minisign 签名校验、NSIS 静默安装与应用重启（§4.2 R7），配套签名密钥生成与离线保管流程。",
+  "goal": "在 Windows 设置中心维护页交付与高保真 demo（apps/win/demo/win-settings-update-flow-demo.html）逐字逐 token 一致的「软件更新」卡（07 设计 §4.2 R3/R4，方案 B：维护页顶部、诊断分组之前、通用页「版本」行占位迁入本卡），并接入 tauri-plugin-updater 完成检查、下载进度、minisign 签名校验、NSIS 静默安装与应用重启（§4.2 R7），沿用 T09 已生成的签名密钥。",
 
   "precheck": {
     "description": "检测 Windows 侧是否已存在更新器接入或更新卡实现",
@@ -50,8 +50,8 @@
     },
     {
       "id": "T11-3",
-      "title": "签名密钥基建与保管流程",
-      "capability": "tauri signer generate 生成 minisign 密钥对：私钥离线保管流程写入 docs/devel/env/ 指南（绝不入仓库，纳入敏感扫描关注项），公钥写入 tauri.conf.json updater 配置；与 T09 的 TAURI_SIGNING_PRIVATE_KEY 构建注入口径衔接。",
+      "title": "签名密钥衔接（密钥基建已前移至 T09）",
+      "capability": "密钥对、公钥配置（tauri.conf.json plugins.updater.pubkey）、私钥保管流程（07 §4.2 R7）与仓库私钥特征扫描已由 T09 交付（2026-10-24 审查后前移：T09 无密钥则无法产出 .sig）。本任务在插件接入时沿用该公钥、不得重新生成（换钥即已发布签名全部失效），并核验插件读取的公钥与清单 signature 同源。",
       "done": false
     },
     {

@@ -34,14 +34,14 @@
     {
       "id": "T09-1",
       "title": "latest.json 清单生成器（Node 脚本）",
-      "capability": "输入 dist 产物与 VERSION，按 07 §4.2 R1.1 schema 输出 latest.json（version/pub_date/notes/platforms.darwin-universal{url,sha256}/platforms.windows-x86_64{url,signature}）；notes 从 release-notes-<ver>.md 生成纯文本摘要；sha256 与 SHA256SUMS 同源。仓库禁 Python（唯一例外 adflow_verify.py），脚本用 Node 编写。",
+      "capability": "输入 dist 产物与 VERSION，按 07 §4.2 R1.1 schema 输出 latest.json（version/pub_date/notes/platforms.darwin-universal{url,sha256,signature}/platforms.windows-x86_64{url,signature}；每个 platforms 条目都须有 url+signature，否则 tauri-plugin-updater 整份清单解析失败，2026-10-24 设计 07 修订）；notes 从 release-notes-<ver>.md 生成纯文本摘要；sha256 与 SHA256SUMS 同源。仓库禁 Python（唯一例外 adflow_verify.py），脚本用 Node 编写。",
       "done": true
     },
     {
       "id": "T09-2",
       "title": "Windows 签名产物注入",
-      "capability": "Windows 构建脚本注入 TAURI_SIGNING_PRIVATE_KEY 环境变量产出 setup.exe 的 .sig；缺私钥时构建显式失败、不产出未签名清单资产（与 build-release-app.sh 不发布半成品哲学一致）。",
-      "done": false
+      "capability": "Windows 构建脚本注入 TAURI_SIGNING_PRIVATE_KEY 环境变量产出 setup.exe 的 .sig（tauri.conf.json 须开 bundle.createUpdaterArtifacts 并配 plugins.updater.pubkey），并在 release-windows 内对 Bruce.zip 签名；缺私钥时构建显式失败、不产出未签名清单资产（与 build-release-app.sh 不发布半成品哲学一致）；本地无私钥构建以 --no-sign 降级。",
+      "done": true
     },
     {
       "id": "T09-3",
@@ -54,44 +54,57 @@
       "title": "清单生成器契约测试",
       "capability": "fixture 驱动单测（Node）：双平台字段齐全性、sha256/签名非空、版本与 VERSION 一致、notes 生成；不访问任何真实外网端点。",
       "done": true
+    },
+    {
+      "id": "T09-5",
+      "title": "签名密钥基建（自 T11-3 前移）",
+      "capability": "tauri signer generate 生成 minisign 密钥对：公钥写入 tauri.conf.json plugins.updater.pubkey；私钥与口令存维护者本机并写入 GitHub Actions secrets，另行离线备份（07 §4.2 R7）；check-release-pipeline.mjs 扫描全部受跟踪文件拦截私钥特征。前移原因：T09 无密钥则无法产出 .sig。",
+      "done": true
     }
   ],
   "acceptance": {
     "result": null,
-    "run_id": "verify-local-20261024-t09-review",
+    "run_id": "verify-local-20261024-t09-signing",
     "checks": [
       {
         "item": "清单契约完备",
-        "true_if": "生成的 latest.json 含双平台条目：darwin-universal 带 url+sha256、windows-x86_64 带 url+signature，版本与 VERSION 一致",
+        "true_if": "生成的 latest.json 含双平台条目：darwin-universal 带 url+sha256+signature、windows-x86_64 带 url+signature（每个条目都满足 tauri-plugin-updater 的 url+signature 必填），版本与 VERSION 一致",
         "false_if": "缺任一平台、任一校验字段或版本漂移",
-        "evidence": "夹具层通过 (2026-10-24 审查后重跑): check-release-pipeline.mjs 正例逐项精确断言 version/sha256/双平台 URL (含 Windows 反斜杠路径)/signature/notes 摘要。但契约本身待修订: 07 §4.2 R1.1 的 darwin-universal 条目无 signature, tauri-plugin-updater 反序列化 platforms 时要求每个条目都有 url+signature, 整份清单在 Windows 客户端解析失败; 须先修订设计 07 (文档先行) 再调整生成器, 故暂不判定",
-        "result": null
+        "evidence": "2026-10-24 设计 07 R1.1 修订 (darwin 条目补 signature) 后, check-release-pipeline.mjs 正例按 CI 调用形态 (--mac-zip/--mac-sums/--mac-sig/--win-setup 反斜杠路径/--tag) 实跑生成器, 逐项精确断言 version/sha256/双平台 signature/双平台 URL/notes 摘要, 并断言每个 platforms 条目都有非空 url+signature (Tauri 插件可解析); tag 漂移、双平台空 .sig、zip 哈希与 SHA256SUMS 不符四类失败例均按预期原因拒绝",
+        "result": "passed"
       },
       {
         "item": "签名产物门禁",
         "true_if": "无私钥构建显式失败且不产出未签名资产；.sig 与 setup.exe 成对产出并上传",
         "false_if": "存在无签名的清单资产或 .sig 缺失仍可发版",
-        "evidence": "门禁代码就位: ci.yml 缺钥即失败; upload-win-release.ps1 对缺/空 .sig 失败; build-win-app.ps1 -RequireUpdateSignature 构建后核验本轮 .sig (2026-10-24 审查补强)。但 .sig 从未实际产出: tauri.conf.json 未开 bundle.createUpdaterArtifacts、无 plugins.updater.pubkey (Tauri v2 二者缺一即不签名, 私钥被忽略); gh secret list 显示仓库未配置 TAURI_SIGNING_PRIVATE_KEY。当前状态下下一个 tag 的 release-windows 必然失败, 待密钥生成与 updater 配置落地后以真实构建取证",
+        "evidence": "2026-10-24 签名配置落地 (tauri.conf.json createUpdaterArtifacts=true + plugins.updater.pubkey), 本机以 tauri-cli 2.12.2 真实打包取证 (macOS --bundles app, 与 NSIS 共用同一 updater 签名路径): (a) 注入私钥 → 产出 Bruce.app.tar.gz.sig, EXIT 0, 独立校验对仓库公钥有效; (b) 无私钥 → 「A public key has been found, but no private key」EXIT 1 (印证本地降级 --no-sign 的必要); (c) 无私钥 + --no-sign → EXIT 0、跳过签名, 残留的旧 .sig 早于新包且校验无效 (印证 build-win-app.ps1 时间戳核验)。门禁代码: ci.yml 缺钥即失败, 上传脚本对缺/空双平台 .sig 失败。未判定原因: NSIS setup.exe.sig 尚未在 Windows 真实构建中观测; GitHub secrets 写入被本会话权限拦截, 待维护者执行后以真实 tag 运行取证",
         "result": null
       },
       {
         "item": "幂等与漏传防护",
         "true_if": "重跑上传不残留同名旧资产；check-release-pipeline.mjs 断言 latest.json/.sig 在上传清单中且测试通过",
         "false_if": "重跑残留旧资产或断言缺失",
-        "evidence": "结构断言层通过: upload-win-release.ps1 四资产 (setup/SHA256SUMS-windows/.sig/latest.json) 同名残留清理同覆盖; latest.json 改在上传脚本内生成, macOS 输入按资产 id 取自选定发布的同一 release (不再按 tag 回拉, 残留同 tag 草稿时不会错取哈希), check-release-pipeline.mjs 第 5 节锁定。「重跑不残留」尚未经任何真实 tag 运行验证, 暂不判定",
+        "evidence": "结构断言层通过: upload-win-release.ps1 五资产 (setup/SHA256SUMS-windows/<setup>.sig/Bruce.zip.sig/latest.json) 同名残留清理同覆盖; latest.json 在上传脚本内生成, macOS 输入 (Bruce.zip/SHA256SUMS/发布说明) 按资产 id 取自选定发布的同一 release (不按 tag 回拉, 残留同 tag 草稿时不会错取哈希), check-release-pipeline.mjs 第 5 节锁定。「重跑不残留」尚未经任何真实 tag 运行验证, 暂不判定",
         "result": null
       },
       {
         "item": "管线契约测试全绿",
         "true_if": "node scripts/check-release-pipeline.mjs 与生成器单测退出码 0",
         "false_if": "任一断言失败",
-        "evidence": "node scripts/check-release-pipeline.mjs 17/17 ok, EXIT 0 (2026-10-24 审查修复后, worktree feat/T09-release-update-manifest); 回归有效性: 同一测试对修复前生成器 (25587e2) EXIT 1, 命中 win url / notes 摘要 / tag 漂移三项; ci.yml YAML 解析合法 (ruby YAML.load_file 通过); .ps1 本机无 pwsh, 语法由 verify-windows AST 门禁在 CI 校验",
+        "evidence": "node scripts/check-release-pipeline.mjs 22/22 ok, EXIT 0 (2026-10-24 设计 07 修订与签名配置落地后, worktree feat/T09-release-update-manifest); 回归有效性: 生成器夹具对首版生成器 (25587e2) EXIT 1, 命中 win url / notes 摘要 / tag 漂移; check-win-frontend.mjs EXIT 0; ci.yml YAML 解析合法 (ruby YAML.load_file 通过); .ps1 本机无 pwsh, 语法由 verify-windows AST 门禁在 CI 校验",
+        "result": "passed"
+      },
+      {
+        "item": "签名密钥配对与保管",
+        "true_if": "仓库公钥 (tauri.conf.json) 与发版私钥签名可互验；私钥与口令不在任何受跟踪文件中",
+        "false_if": "公私钥不匹配，或私钥/口令出现在仓库",
+        "evidence": "2026-10-24 tauri-cli 2.12.2 signer generate 生成 key id 3C89880C672D7C33: 私钥 ~/.tauri/bruce-updater.key (0600), 口令存 macOS 钥匙串「Bruce updater signing key」; tauri.conf.json pubkey 与 .pub 文件逐字一致。互验: 以与写入 secrets 相同的取值 (私钥文件内容 + 钥匙串口令) 经 cargo tauri signer sign 签 200KB 随机文件, 独立 Node 校验 (Ed25519 + BLAKE2b-512 预哈希, alg=ED) keyid 一致/签名有效/trusted comment 有效/篡改后拒绝, 错误口令签名 EXIT 1; check-release-pipeline.mjs 扫描全部受跟踪文件无私钥特征",
         "result": "passed"
       }
     ]
   },
   "sync": {
-    "commit": "b354e85"
+    "commit": "818e2b5"
   },
   "gate": {
     "tool": "adflow-verify",
