@@ -155,9 +155,20 @@ jobs:
       # (run 38526082333) 实测通过的版本; 升版必须随下一次 tag 发布一并验证。
       - name: 安装 tauri-cli (钉版 2.12.2)
         run: cargo install tauri-cli --version "=2.12.2" --locked
-      - name: 构建 NSIS 安装包 (内置 WebView2 Bootstrapper)
-        run: cargo tauri build --bundles nsis
+      # T09: 更新签名门禁 —— 缺 TAURI_SIGNING_PRIVATE_KEY 时显式失败, 拒绝产出未签名
+      # 安装包 (漏签一次该版本即无法被已装用户推送, 宁可发版失败不可发裸包)。
+      - name: 构建 NSIS 安装包 (updater minisign 签名)
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        shell: pwsh
         working-directory: apps/win/src-tauri
+        run: |
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY) {
+            Write-Error "缺少 TAURI_SIGNING_PRIVATE_KEY secret: 未签名产物禁止发布 (T09 更新清单门禁)"
+            exit 1
+          }
+          cargo tauri build --bundles nsis
       - name: "signtool 签名 (可选, 仅在仓库 secret 配置证书后启用)"
         if: false # 占位: 配置 SIGN_CERT_PFX / SIGN_CERT_PASSWORD secret 后替换为真实签名步骤
         run: echo "signtool sign /fd SHA256 <setup.exe>"
@@ -168,6 +179,28 @@ jobs:
           $hash = (Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLower()
           "$hash  $($setup.Name)" | Out-File -FilePath "SHA256SUMS-windows.txt"
           "SHA256: $hash  $($setup.Name)"
+      # T09: 汇合双端产物生成 latest.json —— macOS zip 的 sha256 与发布说明从本 tag 草稿
+      # 回拉 (release 作业先跑已上传), 本地只有 setup.exe 与 .sig; 任一缺失即失败。
+      - name: 生成 latest.json 更新清单
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem -Path "apps/win/src-tauri/target/release/bundle/nsis" -Filter "*-setup.exe" | Select-Object -First 1
+          $sig = "$($setup.FullName).sig"
+          if (-not (Test-Path $sig) -or -not (Get-Content $sig -Raw).Trim()) {
+            Write-Error "minisign .sig 缺失或为空: $sig"
+            exit 1
+          }
+          gh release download "$env:GITHUB_REF_NAME" --pattern "SHA256SUMS" --pattern "release-notes-*.md" --clobber
+          $notes = Get-ChildItem -Filter "release-notes-*.md" | Select-Object -First 1
+          if (-not $notes) { Write-Error "草稿中未找到 release-notes-*.md"; exit 1 }
+          node scripts/generate-update-manifest.mjs `
+            --mac-sums SHA256SUMS `
+            --win-setup $setup.FullName `
+            --win-sig $sig `
+            --notes $notes.Name `
+            --out latest.json
       # 上传逻辑落在 scripts/upload-win-release.ps1: 该文件由 verify-windows 作业做
       # AST 语法门禁 (非 tag 场景也能验证), 见文件头部的纪律说明 (C036)。
       - name: 上传到既有草稿 Release

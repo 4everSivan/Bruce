@@ -2,7 +2,8 @@
 # 产物一律收拢到仓库 local/dist (AGENTS.md 本地隔离红线), 不污染源码树。
 # 用法: powershell -ExecutionPolicy Bypass -File scripts/build-win-app.ps1 [-SkipInstaller]
 param(
-    [switch]$SkipInstaller
+    [switch]$SkipInstaller,
+    [switch]$RequireUpdateSignature
 )
 
 $ErrorActionPreference = "Stop"
@@ -21,12 +22,23 @@ if (-not $SkipInstaller) {
         Write-Host "安装 tauri-cli 2.12.2 (一次性, 约 3-6 分钟)..."
         cargo install tauri-cli --version "=2.12.2" --locked
     }
+    # T09: 要求产出可推送更新的签名包时, 缺私钥显式失败 (与 CI release-windows 门禁同口径);
+    # 不带该开关的日常本地构建不受影响 (tauri 在设置 TAURI_SIGNING_PRIVATE_KEY 时自动产 .sig)。
+    if ($RequireUpdateSignature -and -not $env:TAURI_SIGNING_PRIVATE_KEY) {
+        Write-Error "缺少 TAURI_SIGNING_PRIVATE_KEY 环境变量, 拒绝产出未签名安装包 (-RequireUpdateSignature)"
+        exit 1
+    }
     cargo tauri build --bundles nsis
     $setup = Get-ChildItem -Path "target\release\bundle\nsis" -Filter "*-setup.exe" |
         Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if ($setup) {
         Copy-Item $setup.FullName $distDir
         Write-Host "安装包: $($setup.Name) -> local\dist"
+        $sig = "$($setup.FullName).sig"
+        if (Test-Path $sig) {
+            Copy-Item $sig $distDir
+            Write-Host "更新签名: $($setup.Name).sig -> local\dist"
+        }
     }
 }
 else {

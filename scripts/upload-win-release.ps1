@@ -58,7 +58,20 @@ if (-not $release) {
 Write-Host "上传目标 release id=$($release.id) created=$($release.created_at) draft=$($release.draft)"
 $uploadUrl = $release.upload_url -replace '\{.*$',''
 
-foreach ($name in @($setup.Name, $sumFile)) {
+# T09: 更新链资产 —— 安装包的 minisign 签名与双平台 latest.json 清单必须随包上传,
+# 缺任一即失败 (客户端检查更新依赖 latest.json, 漏传则全员静默无更新)。
+$sigFile = "$($setup.FullName).sig"
+$latestJson = "latest.json"
+if (-not (Test-Path $sigFile) -or -not (Get-Content $sigFile -Raw).Trim()) {
+    Write-Error "minisign .sig 缺失或为空: $sigFile (未签名产物禁止上传)"
+    exit 1
+}
+if (-not (Test-Path $latestJson)) {
+    Write-Error "$latestJson 未生成 (先运行 generate-update-manifest.mjs)"
+    exit 1
+}
+
+foreach ($name in @($setup.Name, $sumFile, "$($setup.Name).sig", $latestJson)) {
     $stale = $release.assets | Where-Object { $_.name -eq $name } | Select-Object -First 1
     if ($stale) {
         Write-Host "清理同名残留资产 $name (id=$($stale.id))"
@@ -68,6 +81,8 @@ foreach ($name in @($setup.Name, $sumFile)) {
 
 gh api --method POST "$($uploadUrl)?name=$($setup.Name)" -H "Content-Type: application/octet-stream" --input "$($setup.FullName)"
 gh api --method POST "$($uploadUrl)?name=$sumFile" -H "Content-Type: application/octet-stream" --input "$sumFile"
+gh api --method POST "$($uploadUrl)?name=$($setup.Name).sig" -H "Content-Type: application/octet-stream" --input $sigFile
+gh api --method POST "$($uploadUrl)?name=$latestJson" -H "Content-Type: application/octet-stream" --input $latestJson
 
 # 全量多端产物 (macOS + Windows) 上传完毕，正式将草稿发布为公开 Release
 Write-Host "多端产物上传完毕，发布 Release $($release.id)"
