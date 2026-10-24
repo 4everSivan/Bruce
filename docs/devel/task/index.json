@@ -181,7 +181,7 @@
     },
     "T09": {
       "title": "发版管线软件更新清单：latest.json 生成、双平台资产与签名产物",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "feat/T09-release-update-manifest",
       "topic": "SoftwareUpdate",
       "milestone": "M6-软件更新",
