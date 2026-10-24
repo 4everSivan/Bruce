@@ -41,7 +41,7 @@
       "id": "T09-2",
       "title": "Windows 签名产物注入",
       "capability": "Windows 构建脚本注入 TAURI_SIGNING_PRIVATE_KEY 环境变量产出 setup.exe 的 .sig；缺私钥时构建显式失败、不产出未签名清单资产（与 build-release-app.sh 不发布半成品哲学一致）。",
-      "done": true
+      "done": false
     },
     {
       "id": "T09-3",
@@ -58,40 +58,40 @@
   ],
   "acceptance": {
     "result": null,
-    "run_id": "verify-local-20261024-t09",
+    "run_id": "verify-local-20261024-t09-review",
     "checks": [
       {
         "item": "清单契约完备",
         "true_if": "生成的 latest.json 含双平台条目：darwin-universal 带 url+sha256、windows-x86_64 带 url+signature，版本与 VERSION 一致",
         "false_if": "缺任一平台、任一校验字段或版本漂移",
-        "evidence": "check-release-pipeline.mjs 生成器正例 (2026-10-24): 临时夹具实跑 generate-update-manifest.mjs, 产物 version=0.13.0/pub_date 固定值/darwin-universal.sha256=实算哈希/双平台 URL 含 tag v0.13.0/windows signature=.sig 内容/notes 顶级要点「; 」拼接 (嵌套子要点排除), 逐项断言通过",
-        "result": "passed"
+        "evidence": "夹具层通过 (2026-10-24 审查后重跑): check-release-pipeline.mjs 正例逐项精确断言 version/sha256/双平台 URL (含 Windows 反斜杠路径)/signature/notes 摘要。但契约本身待修订: 07 §4.2 R1.1 的 darwin-universal 条目无 signature, tauri-plugin-updater 反序列化 platforms 时要求每个条目都有 url+signature, 整份清单在 Windows 客户端解析失败; 须先修订设计 07 (文档先行) 再调整生成器, 故暂不判定",
+        "result": null
       },
       {
         "item": "签名产物门禁",
         "true_if": "无私钥构建显式失败且不产出未签名资产；.sig 与 setup.exe 成对产出并上传",
         "false_if": "存在无签名的清单资产或 .sig 缺失仍可发版",
-        "evidence": "ci.yml release-windows 构建 env 注入 secrets.TAURI_SIGNING_PRIVATE_KEY 且缺钥 Write-Error 退出; 生成与上传步骤对空/缺 .sig 均显式失败; build-win-app.ps1 -RequireUpdateSignature 本地同口径; 失败例「空 .sig 拒绝产出清单」断言绿",
-        "result": "passed"
+        "evidence": "门禁代码就位: ci.yml 缺钥即失败; upload-win-release.ps1 对缺/空 .sig 失败; build-win-app.ps1 -RequireUpdateSignature 构建后核验本轮 .sig (2026-10-24 审查补强)。但 .sig 从未实际产出: tauri.conf.json 未开 bundle.createUpdaterArtifacts、无 plugins.updater.pubkey (Tauri v2 二者缺一即不签名, 私钥被忽略); gh secret list 显示仓库未配置 TAURI_SIGNING_PRIVATE_KEY。当前状态下下一个 tag 的 release-windows 必然失败, 待密钥生成与 updater 配置落地后以真实构建取证",
+        "result": null
       },
       {
         "item": "幂等与漏传防护",
         "true_if": "重跑上传不残留同名旧资产；check-release-pipeline.mjs 断言 latest.json/.sig 在上传清单中且测试通过",
         "false_if": "重跑残留旧资产或断言缺失",
-        "evidence": "upload-win-release.ps1 上传列表扩展为四资产 (setup/SHA256SUMS-windows/.sig/latest.json), 同名残留清理 foreach 同覆盖; check-release-pipeline.mjs 第 5 节 6 项结构断言锁死链路不被裁撤, 全绿",
-        "result": "passed"
+        "evidence": "结构断言层通过: upload-win-release.ps1 四资产 (setup/SHA256SUMS-windows/.sig/latest.json) 同名残留清理同覆盖; latest.json 改在上传脚本内生成, macOS 输入按资产 id 取自选定发布的同一 release (不再按 tag 回拉, 残留同 tag 草稿时不会错取哈希), check-release-pipeline.mjs 第 5 节锁定。「重跑不残留」尚未经任何真实 tag 运行验证, 暂不判定",
+        "result": null
       },
       {
         "item": "管线契约测试全绿",
         "true_if": "node scripts/check-release-pipeline.mjs 与生成器单测退出码 0",
         "false_if": "任一断言失败",
-        "evidence": "node scripts/check-release-pipeline.mjs 16/16 ok, EXIT 0 (2026-10-24, worktree feat/T09-release-update-manifest); ci.yml YAML 解析合法 (ruby YAML.load_file 通过)",
+        "evidence": "node scripts/check-release-pipeline.mjs 17/17 ok, EXIT 0 (2026-10-24 审查修复后, worktree feat/T09-release-update-manifest); 回归有效性: 同一测试对修复前生成器 (25587e2) EXIT 1, 命中 win url / notes 摘要 / tag 漂移三项; ci.yml YAML 解析合法 (ruby YAML.load_file 通过); .ps1 本机无 pwsh, 语法由 verify-windows AST 门禁在 CI 校验",
         "result": "passed"
       }
     ]
   },
   "sync": {
-    "commit": "25587e2"
+    "commit": "b354e85"
   },
   "gate": {
     "tool": "adflow-verify",
