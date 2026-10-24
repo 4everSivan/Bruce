@@ -22,13 +22,20 @@ if (-not $SkipInstaller) {
         Write-Host "安装 tauri-cli 2.12.2 (一次性, 约 3-6 分钟)..."
         cargo install tauri-cli --version "=2.12.2" --locked
     }
-    # T09: 要求产出可推送更新的签名包时, 缺私钥显式失败 (与 CI release-windows 门禁同口径);
-    # 不带该开关的日常本地构建不受影响。
+    # T09: 要求产出可推送更新的签名包时, 缺私钥显式失败 (与 CI release-windows 门禁同口径)。
+    # tauri.conf.json 已开启 createUpdaterArtifacts, 无私钥时 tauri build 会直接报错; 日常
+    # 本地构建因此以 --no-sign 跳过更新签名 (此类包不可用于推送更新)。
     if ($RequireUpdateSignature -and -not $env:TAURI_SIGNING_PRIVATE_KEY) {
         Write-Error "缺少 TAURI_SIGNING_PRIVATE_KEY 环境变量, 拒绝产出未签名安装包 (-RequireUpdateSignature)"
         exit 1
     }
-    cargo tauri build --bundles nsis
+    if ($env:TAURI_SIGNING_PRIVATE_KEY) {
+        cargo tauri build --bundles nsis
+    }
+    else {
+        Write-Host "未设置 TAURI_SIGNING_PRIVATE_KEY: 以 --no-sign 构建, 不产出更新签名"
+        cargo tauri build --bundles nsis --no-sign
+    }
     $setup = Get-ChildItem -Path "target\release\bundle\nsis" -Filter "*-setup.exe" |
         Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if ($setup) {

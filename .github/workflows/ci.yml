@@ -181,10 +181,13 @@ jobs:
           "SHA256: $hash  $($setup.Name)"
       # 上传逻辑落在 scripts/upload-win-release.ps1: 该文件由 verify-windows 作业做
       # AST 语法门禁 (非 tag 场景也能验证), 见文件头部的纪律说明 (C036)。
-      # T09: latest.json 也在该脚本内生成 —— 必须与它选定发布的同一个草稿同源 (不按 tag 回拉)。
+      # T09: latest.json 也在该脚本内生成 —— 必须与它选定发布的同一个草稿同源 (不按 tag 回拉);
+      # 脚本还要对从草稿取回的 Bruce.zip 做 minisign 签名, 故同样注入签名私钥。
       - name: 上传到既有草稿 Release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         shell: pwsh
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/upload-win-release.ps1
 

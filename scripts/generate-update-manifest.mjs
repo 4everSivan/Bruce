@@ -1,19 +1,21 @@
 #!/usr/bin/env node
 // Bruce 应用内更新清单生成器 (T09 / 07-软件更新 §4.2 R1.3)。
 // 输入本地产物与 VERSION, 按 07 §4.2 R1.1 产出 latest.json:
-//   platforms.darwin-universal  { url, sha256 }
+//   platforms.darwin-universal  { url, sha256, signature }
 //   platforms.windows-x86_64    { url, signature }   (minisign, 取 .sig 文件内容)
+// tauri-plugin-updater 反序列化整张 platforms 表, 每个条目都必须有 url + signature,
+// 否则 Windows 客户端整份清单解析失败。
 //
 // 用法 (由 scripts/upload-win-release.ps1 在 release-windows 作业内调用, 仓库根):
 //   node scripts/generate-update-manifest.mjs \
-//     --mac-sums SHA256SUMS --mac-asset Bruce.zip \
+//     --mac-zip Bruce.zip --mac-sums SHA256SUMS --mac-sig Bruce.zip.sig \
 //     --win-setup apps/win/src-tauri/target/release/bundle/nsis/Bruce_x.y.z_x64-setup.exe \
 //     --win-sig  <同路径>.sig \
 //     --notes    release-notes-x.y.z.md \
 //     --tag      vx.y.z \
 //     --out      latest.json
-// 本地 mac 全量场景可改用 --mac-zip dist/Bruce.zip 直接计算 sha256 (与 --mac-sums 二选一,
-// 同时给出时以本地 zip 计算值与 sums 交叉核对, 不一致即失败)。
+// sha256 来源: --mac-zip 直接计算 与 --mac-sums 提取 至少给一个; 同时给出时交叉核对,
+// 不一致即失败 (CI 两者都给: 下载的 zip 必须与 mac 作业写下的 SHA256SUMS 一致)。
 //
 // 纪律: 任一输入缺失/为空/校验不符立即非零退出, 绝不产出半成品清单 (与 build-release-app.sh 同哲学)。
 
@@ -36,7 +38,7 @@ const OUT = opts.out || "latest.json";
 
 function usageExit(message) {
   console.error(`generate-update-manifest: ${message}`);
-  console.error("用法: node scripts/generate-update-manifest.mjs (--mac-zip PATH | --mac-sums PATH --mac-asset NAME) --win-setup PATH --win-sig PATH --notes PATH [--version-file PATH] [--repo O/R] [--tag v<VERSION>] [--pub-date ISO] [--out PATH]");
+  console.error("用法: node scripts/generate-update-manifest.mjs (--mac-zip PATH | --mac-sums PATH --mac-asset NAME) --mac-sig PATH --win-setup PATH --win-sig PATH --notes PATH [--version-file PATH] [--repo O/R] [--tag v<VERSION>] [--pub-date ISO] [--out PATH]");
   process.exit(1);
 }
 
@@ -44,6 +46,14 @@ function requireFile(path, label) {
   if (!path) usageExit(`缺少 --${label} 参数`);
   if (!existsSync(resolve(path))) usageExit(`${label} 不存在: ${path}`);
   return resolve(path);
+}
+
+// minisign 签名取 .sig 文件内容 (base64 文本); 空文件视为未签名产物
+function readSignature(label) {
+  const sigPath = requireFile(opts[label], label);
+  const signature = readFileSync(sigPath, "utf8").trim();
+  if (!signature) usageExit(`.sig 文件为空: ${sigPath} (未签名产物禁止进入更新清单)`);
+  return signature;
 }
 
 // ---- 版本: 单一事实源 VERSION, 拒绝 v 前缀与格式漂移 ----
@@ -78,14 +88,13 @@ if (opts["mac-sums"]) {
   macSha = macSha || sumsSha;
 }
 if (!macSha) usageExit("必须提供 --mac-zip 或 --mac-sums 之一以确定 macOS sha256");
+const macSignature = readSignature("mac-sig");
 
 // ---- Windows: setup.exe + minisign .sig ----
 const setupPath = requireFile(opts["win-setup"], "win-setup");
-const sigPath = requireFile(opts["win-sig"], "win-sig");
 // Windows runner 传入的是反斜杠路径; win32.basename 同时识别 \ 与 /, 两端都只取文件名。
 const setupName = win32.basename(setupPath);
-const signature = readFileSync(sigPath, "utf8").trim();
-if (!signature) usageExit(`.sig 文件为空: ${sigPath} (未签名产物禁止进入更新清单)`);
+const signature = readSignature("win-sig");
 
 // ---- notes: 从 release-notes-<ver>.md 压缩为纯文本摘要 (要点以「; 」连接, 上限 8 条) ----
 const notesPath = requireFile(opts.notes, "notes");
@@ -128,6 +137,7 @@ const manifest = {
     "darwin-universal": {
       url: `https://github.com/${REPO}/releases/download/${tag}/${encodeURIComponent(MAC_ASSET)}`,
       sha256: macSha,
+      signature: macSignature,
     },
     "windows-x86_64": {
       url: `https://github.com/${REPO}/releases/download/${tag}/${encodeURIComponent(setupName)}`,
@@ -138,6 +148,6 @@ const manifest = {
 writeFileSync(resolve(OUT), JSON.stringify(manifest, null, 2) + "\n");
 console.log(`latest.json 已生成 -> ${resolve(OUT)}`);
 console.log(`  version=${version} tag=${tag}`);
-console.log(`  darwin-universal  sha256=${macSha.slice(0, 16)}…`);
+console.log(`  darwin-universal  sha256=${macSha.slice(0, 16)}… sig=${macSignature.slice(0, 16)}…`);
 console.log(`  windows-x86_64    setup=${setupName} sig=${signature.slice(0, 16)}…`);
 console.log(`  notes: ${notes ? notes.length + " 字符" : "(空)"}`);

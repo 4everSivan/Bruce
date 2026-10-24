@@ -1,7 +1,8 @@
 # Bruce Windows 发布资产上传脚本 (T04 / C036)。
 # 由 .github/workflows/ci.yml 的 release-windows 作业调用 (tag 触发): 把 NSIS 安装包、
-# SHA256 校验和、minisign 签名与 latest.json 更新清单上传到 mac 侧 release 作业建好的
-# 同 tag 草稿 Release, 随后发布该草稿。
+# SHA256 校验和、双平台 minisign 签名 (<setup>.sig / Bruce.zip.sig) 与 latest.json 更新清单
+# 上传到 mac 侧 release 作业建好的同 tag 草稿 Release, 随后发布该草稿。
+# 需要环境变量 GH_TOKEN 与 TAURI_SIGNING_PRIVATE_KEY / _PASSWORD (签 Bruce.zip)。
 #
 # 纪律 (C036):
 #   1. release 列表必须分页 (--paginate --slurp): 该端点默认 30 条/页, release 总数超过
@@ -68,11 +69,12 @@ if (-not (Test-Path $sigFile) -or -not (Get-Content $sigFile -Raw).Trim()) {
     exit 1
 }
 
-# macOS 校验和与发布说明必须按资产 id 从上面选定的 $release 下载, 不得用
+# macOS 产物、校验和与发布说明必须按资产 id 从上面选定的 $release 下载, 不得用
 # gh release download <tag>: 残留同 tag 草稿时它按 tag 解析到的可能是另一份草稿, 清单里的
 # Bruce.zip 哈希会与实际发布的包不符, mac 端 SHA256 校验全员失败。
+$macZip = "Bruce.zip"
 $notesFile = "release-notes-$($tag -replace '^v', '').md"
-foreach ($name in @("SHA256SUMS", $notesFile)) {
+foreach ($name in @($macZip, "SHA256SUMS", $notesFile)) {
     $asset = $release.assets | Where-Object { $_.name -eq $name } | Select-Object -First 1
     if (-not $asset) {
         Write-Error "目标 release 缺少 macOS 侧资产 $name (release 作业未完成上传?)"
@@ -84,9 +86,22 @@ foreach ($name in @("SHA256SUMS", $notesFile)) {
         Accept        = "application/octet-stream"
     }
 }
+
+# latest.json 的 platforms 每个条目都须带 minisign 签名 (tauri-plugin-updater 解析要求),
+# Bruce.zip 在本作业签名: 私钥只注入 release-windows 一处, tauri-cli 已由前序步骤安装。
+$macSig = "$macZip.sig"
+Remove-Item $macSig -ErrorAction SilentlyContinue
+cargo tauri signer sign $macZip
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path $macSig) -or -not (Get-Content $macSig -Raw).Trim()) {
+    Write-Error "$macZip 签名失败或 $macSig 为空 (检查 TAURI_SIGNING_PRIVATE_KEY / _PASSWORD secret)"
+    exit 1
+}
+
 $latestJson = "latest.json"
 node scripts/generate-update-manifest.mjs `
+    --mac-zip $macZip `
     --mac-sums SHA256SUMS `
+    --mac-sig $macSig `
     --win-setup $setup.FullName `
     --win-sig $sigFile `
     --notes $notesFile `
@@ -98,7 +113,7 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-foreach ($name in @($setup.Name, $sumFile, "$($setup.Name).sig", $latestJson)) {
+foreach ($name in @($setup.Name, $sumFile, "$($setup.Name).sig", $macSig, $latestJson)) {
     $stale = $release.assets | Where-Object { $_.name -eq $name } | Select-Object -First 1
     if ($stale) {
         Write-Host "清理同名残留资产 $name (id=$($stale.id))"
@@ -109,6 +124,7 @@ foreach ($name in @($setup.Name, $sumFile, "$($setup.Name).sig", $latestJson)) {
 gh api --method POST "$($uploadUrl)?name=$($setup.Name)" -H "Content-Type: application/octet-stream" --input "$($setup.FullName)"
 gh api --method POST "$($uploadUrl)?name=$sumFile" -H "Content-Type: application/octet-stream" --input "$sumFile"
 gh api --method POST "$($uploadUrl)?name=$($setup.Name).sig" -H "Content-Type: application/octet-stream" --input $sigFile
+gh api --method POST "$($uploadUrl)?name=$macSig" -H "Content-Type: application/octet-stream" --input $macSig
 gh api --method POST "$($uploadUrl)?name=$latestJson" -H "Content-Type: application/octet-stream" --input $latestJson
 
 # 全量多端产物 (macOS + Windows) 上传完毕，正式将草稿发布为公开 Release
