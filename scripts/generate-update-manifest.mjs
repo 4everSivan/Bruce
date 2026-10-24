@@ -1,15 +1,16 @@
 #!/usr/bin/env node
 // Bruce 应用内更新清单生成器 (T09 / 07-软件更新 §4.2 R1.3)。
-// 输入本地产物与 VERSION, 产出 Tauri updater 兼容的 latest.json:
+// 输入本地产物与 VERSION, 按 07 §4.2 R1.1 产出 latest.json:
 //   platforms.darwin-universal  { url, sha256 }
 //   platforms.windows-x86_64    { url, signature }   (minisign, 取 .sig 文件内容)
 //
-// 用法 (CI release-windows 作业, 仓库根):
+// 用法 (由 scripts/upload-win-release.ps1 在 release-windows 作业内调用, 仓库根):
 //   node scripts/generate-update-manifest.mjs \
 //     --mac-sums SHA256SUMS --mac-asset Bruce.zip \
 //     --win-setup apps/win/src-tauri/target/release/bundle/nsis/Bruce_x.y.z_x64-setup.exe \
 //     --win-sig  <同路径>.sig \
-//     --notes    dist/release-notes-x.y.z.md \
+//     --notes    release-notes-x.y.z.md \
+//     --tag      vx.y.z \
 //     --out      latest.json
 // 本地 mac 全量场景可改用 --mac-zip dist/Bruce.zip 直接计算 sha256 (与 --mac-sums 二选一,
 // 同时给出时以本地 zip 计算值与 sums 交叉核对, 不一致即失败)。
@@ -18,7 +19,7 @@
 
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { resolve, win32 } from "node:path";
 
 const args = process.argv.slice(2);
 const opts = {};
@@ -35,7 +36,7 @@ const OUT = opts.out || "latest.json";
 
 function usageExit(message) {
   console.error(`generate-update-manifest: ${message}`);
-  console.error("用法: node scripts/generate-update-manifest.mjs (--mac-zip PATH | --mac-sums PATH --mac-asset NAME) --win-setup PATH --win-sig PATH --notes PATH [--version-file PATH] [--repo O/R] [--tag vX.Y.Z] [--pub-date ISO] [--out PATH]");
+  console.error("用法: node scripts/generate-update-manifest.mjs (--mac-zip PATH | --mac-sums PATH --mac-asset NAME) --win-setup PATH --win-sig PATH --notes PATH [--version-file PATH] [--repo O/R] [--tag v<VERSION>] [--pub-date ISO] [--out PATH]");
   process.exit(1);
 }
 
@@ -51,7 +52,12 @@ const version = readFileSync(versionPath, "utf8").trim();
 if (!/^\d+\.\d+\.\d+$/.test(version)) {
   usageExit(`VERSION 内容非法: "${version}" (需要 X.Y.Z 纯三段)`);
 }
-const tag = opts.tag || `v${version}`;
+// 清单 version 与下载 URL 都由 VERSION 派生; 调用方传入实际发版 tag 时必须一致, 否则
+// 清单会指向另一个 Release (例如打了 v0.13.0 但 VERSION 仍是 0.12.2)。
+const tag = `v${version}`;
+if (opts.tag && opts.tag !== tag) {
+  usageExit(`发版 tag ${opts.tag} 与 VERSION ${version} 不一致 (应为 ${tag}), 拒绝产出指向错误 Release 的清单`);
+}
 
 // ---- macOS sha256: 本地 zip 直算 或 从 SHA256SUMS 提取; 两者同给则交叉核对 ----
 let macSha = null;
@@ -76,20 +82,42 @@ if (!macSha) usageExit("必须提供 --mac-zip 或 --mac-sums 之一以确定 ma
 // ---- Windows: setup.exe + minisign .sig ----
 const setupPath = requireFile(opts["win-setup"], "win-setup");
 const sigPath = requireFile(opts["win-sig"], "win-sig");
-const setupName = setupPath.split("/").pop();
+// Windows runner 传入的是反斜杠路径; win32.basename 同时识别 \ 与 /, 两端都只取文件名。
+const setupName = win32.basename(setupPath);
 const signature = readFileSync(sigPath, "utf8").trim();
 if (!signature) usageExit(`.sig 文件为空: ${sigPath} (未签名产物禁止进入更新清单)`);
 
 // ---- notes: 从 release-notes-<ver>.md 压缩为纯文本摘要 (要点以「; 」连接, 上限 8 条) ----
 const notesPath = requireFile(opts.notes, "notes");
-// 只取列 0 的顶级要点 (CHANGELOG 形如 `- **标题**: 描述`); 嵌套子要点 (`  - 子项`) 不入摘要,
-// 避免同一条特性的子说明把 8 条上限挤爆。
-const bullets = readFileSync(notesPath, "utf8").split("\n")
-  .filter((l) => /^- /.test(l))
-  .map((l) => l.replace(/^- /, "").replace(/\*\*/g, "").replace(/`/g, "").trim())
-  .filter(Boolean)
-  .slice(0, 8);
-const notes = bullets.join("; ");
+// 只取顶级要点 (CHANGELOG 形如 `- **标题 (Cxxx)**：说明`) 的加粗标题并去掉卡号: 说明正文
+// 面向开发者 (配置键/诊断码), 且不少条目的正文全在嵌套子要点里, 取正文会出现空条目。
+// 8 条名额按小节轮转分配、输出保持原文顺序, 避免新功能条目多时修复类整节被挤掉。
+const NOTES_LIMIT = 8;
+const sections = [[]];
+for (const line of readFileSync(notesPath, "utf8").split(/\r?\n/)) {
+  if (/^#+ /.test(line)) {
+    sections.push([]);
+  } else if (/^- /.test(line)) {
+    const bold = line.match(/^- \*\*(.+?)\*\*/);
+    const title = (bold ? bold[1] : line.slice(2))
+      .replace(/\s*[(（][CT]\d+[^)）]*[)）]/g, "")
+      .replace(/[`*]/g, "")
+      .trim();
+    if (title) sections.at(-1).push(title);
+  }
+}
+const quota = sections.map(() => 0);
+for (let taken = 0, progressed = true; taken < NOTES_LIMIT && progressed;) {
+  progressed = false;
+  sections.forEach((items, i) => {
+    if (taken < NOTES_LIMIT && quota[i] < items.length) {
+      quota[i] += 1;
+      taken += 1;
+      progressed = true;
+    }
+  });
+}
+const notes = sections.flatMap((items, i) => items.slice(0, quota[i])).join("; ");
 
 // ---- 产出 ----
 const manifest = {

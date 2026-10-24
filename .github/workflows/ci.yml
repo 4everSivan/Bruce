@@ -179,30 +179,9 @@ jobs:
           $hash = (Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLower()
           "$hash  $($setup.Name)" | Out-File -FilePath "SHA256SUMS-windows.txt"
           "SHA256: $hash  $($setup.Name)"
-      # T09: 汇合双端产物生成 latest.json —— macOS zip 的 sha256 与发布说明从本 tag 草稿
-      # 回拉 (release 作业先跑已上传), 本地只有 setup.exe 与 .sig; 任一缺失即失败。
-      - name: 生成 latest.json 更新清单
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: pwsh
-        run: |
-          $setup = Get-ChildItem -Path "apps/win/src-tauri/target/release/bundle/nsis" -Filter "*-setup.exe" | Select-Object -First 1
-          $sig = "$($setup.FullName).sig"
-          if (-not (Test-Path $sig) -or -not (Get-Content $sig -Raw).Trim()) {
-            Write-Error "minisign .sig 缺失或为空: $sig"
-            exit 1
-          }
-          gh release download "$env:GITHUB_REF_NAME" --pattern "SHA256SUMS" --pattern "release-notes-*.md" --clobber
-          $notes = Get-ChildItem -Filter "release-notes-*.md" | Select-Object -First 1
-          if (-not $notes) { Write-Error "草稿中未找到 release-notes-*.md"; exit 1 }
-          node scripts/generate-update-manifest.mjs `
-            --mac-sums SHA256SUMS `
-            --win-setup $setup.FullName `
-            --win-sig $sig `
-            --notes $notes.Name `
-            --out latest.json
       # 上传逻辑落在 scripts/upload-win-release.ps1: 该文件由 verify-windows 作业做
       # AST 语法门禁 (非 tag 场景也能验证), 见文件头部的纪律说明 (C036)。
+      # T09: latest.json 也在该脚本内生成 —— 必须与它选定发布的同一个草稿同源 (不按 tag 回拉)。
       - name: 上传到既有草稿 Release
         env:
           GH_TOKEN: ${{ github.token }}
