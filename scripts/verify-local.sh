@@ -101,6 +101,10 @@ echo "运行顶部四色状态灯 Harness"
 swift run --package-path "$BRUCE_SWIFT_PACKAGE" \
   DashboardStatusToneHarness "$BRUCE_REPO_ROOT"
 
+echo "运行软件更新 Harness (清单 / 状态机 / 安装器 / 双端文案对拍)"
+swift run --package-path "$BRUCE_SWIFT_PACKAGE" \
+  SoftwareUpdateHarness "$BRUCE_REPO_ROOT"
+
 echo "校验 Provider 品牌图形产物与源文件一致"
 node "$BRUCE_REPO_ROOT/scripts/gen-provider-glyphs.mjs" --check
 

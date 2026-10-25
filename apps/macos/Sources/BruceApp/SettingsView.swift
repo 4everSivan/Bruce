@@ -12,6 +12,7 @@ struct SettingsView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var coordinator: OnboardingCoordinator
     @EnvironmentObject var diagnostics: DiagnosticService
+    @EnvironmentObject var updates: SoftwareUpdateService
     @Environment(\.colorScheme) var colorScheme
 
     /// 侧边栏选中分类.
@@ -217,6 +218,10 @@ struct SettingsView: View {
                                 weight: category == item ? .semibold : .regular
                             ))
                         Spacer()
+                        // 方案 B: 有可用更新且未处理时角标挂「维护」项尾部.
+                        if item == .maintenance && updates.phase.showsNavigationBadge {
+                            SoftwareUpdateNavigationBadge()
+                        }
                     }
                     .foregroundStyle(category == item ? Color.primary : Color.secondary)
                     .padding(.horizontal, 10)
@@ -241,7 +246,7 @@ struct SettingsView: View {
                 .accessibilityAddTraits(category == item ? .isSelected : [])
             }
             Spacer()
-            Text(AppVersion.current())
+            Text(updates.localVersion?.tag ?? AppVersion.current())
                 .font(.system(size: 10.5))
                 .foregroundStyle(.tertiary)
                 .padding(.horizontal, 10)
@@ -488,11 +493,7 @@ struct SettingsView: View {
                     }
                     .fluentButton()
                 }
-                FluentRow("版本", divided: true) {
-                    Text(AppVersion.current())
-                        .font(.system(size: 12.5, design: .monospaced))
-                        .foregroundStyle(SettingsDemoTokens.text2)
-                }
+                // 原「版本」行已迁入维护页「软件更新」卡 (07 §4.2 R3 方案 B), 避免同窗三处版本.
             }
             .sheet(isPresented: $showsExternalKeychainSourceManager) {
                 ExternalKeychainSourceManagerView()
@@ -1025,11 +1026,14 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - 维护面板 (数据 + 诊断)
+    // MARK: - 维护面板 (软件更新 + 数据 + 诊断)
 
-    /// 维护: 清理可再生缓存 (仅本应用快照), 账单导出, 诊断包预览与导出.
+    /// 维护: 软件更新 (方案 B 置顶), 清理可再生缓存 (仅本应用快照), 账单导出, 诊断包预览与导出.
     var maintenancePane: some View {
         VStack(alignment: .leading, spacing: 14) {
+            paneCaption(UpdateCopy.caption)
+            SoftwareUpdateCard()
+
             paneCaption("数据")
             FluentCard {
                 FluentRow("清理用量缓存", sub: "仅删除本应用快照, 不影响配置, 凭证与账单统计") {

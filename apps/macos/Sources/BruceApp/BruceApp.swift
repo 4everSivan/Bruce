@@ -9,6 +9,7 @@ struct BruceApp: App {
     @StateObject private var model: AppModel
     @StateObject private var coordinator: OnboardingCoordinator
     @StateObject private var diagnostics: DiagnosticService
+    @StateObject private var updates: SoftwareUpdateService
     private let runtime: AppRuntime
     private let scheduler: RefreshScheduler
     private let runner: CollectorExecutable & CollectorRuntimeControlling
@@ -114,6 +115,12 @@ struct BruceApp: App {
             store: resolvedStore
         )
         _diagnostics = StateObject(wrappedValue: diagnostics)
+        // 软件更新 (07 §4.2): 失败的手动检查经 AppModel 状态行告警, 安装完成后由等待器重启.
+        let updates = SoftwareUpdateService(
+            model: model,
+            terminate: { NSApplication.shared.terminate(nil) }
+        )
+        _updates = StateObject(wrappedValue: updates)
         bootstrap = ApplicationBootstrap(
             runtime: runtime,
             scheduler: scheduler,
@@ -127,7 +134,8 @@ struct BruceApp: App {
         let settingsController = SettingsWindowController(
             model: model,
             coordinator: coordinator,
-            diagnostics: diagnostics
+            diagnostics: diagnostics,
+            updates: updates
         )
         self.settingsWindowController = settingsController
         let statusController = MenuBarStatusItemController(
@@ -181,6 +189,9 @@ struct BruceApp: App {
             startApplication: {
                 Task { @MainActor in
                     let didStart = await bootstrap.startIfNeeded()
+                    if didStart {
+                        updates.start()
+                    }
                     if didStart,
                        (!coordinator.consentConfirmed
                         || !coordinator.keychainAccessConfigured) {

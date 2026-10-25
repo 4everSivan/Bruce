@@ -199,6 +199,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     private let model: AppModel
     private let coordinator: OnboardingCoordinator
     private let diagnostics: DiagnosticService
+    private let updates: SoftwareUpdateService
     private var window: NSWindow?
     private var isDockPresentationActive = false
 
@@ -207,11 +208,13 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     init(
         model: AppModel,
         coordinator: OnboardingCoordinator,
-        diagnostics: DiagnosticService
+        diagnostics: DiagnosticService,
+        updates: SoftwareUpdateService
     ) {
         self.model = model
         self.coordinator = coordinator
         self.diagnostics = diagnostics
+        self.updates = updates
         super.init()
     }
 
@@ -300,6 +303,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             .environmentObject(model)
             .environmentObject(coordinator)
             .environmentObject(diagnostics)
+            .environmentObject(updates)
             .frame(
                 minWidth: 980,
                 idealWidth: 1040,

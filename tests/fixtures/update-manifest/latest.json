@@ -1,0 +1,16 @@
+{
+  "version": "0.13.0",
+  "pub_date": "2026-10-30T00:00:00.000Z",
+  "notes": "应用内软件更新; 双端仪表盘顶栏三图标 Tab 切换与角标融合; 面板底栏新增外观切换按钮 (mac); 订阅额度 Claude 本机登录态跟随 (Windows)",
+  "platforms": {
+    "darwin-universal": {
+      "url": "https://github.com/4everSivan/Bruce/releases/download/v0.13.0/Bruce.zip",
+      "sha256": "4a83e99bf13939d3d91485823ec8d049bc9febf2da9e55c79f5a0ebcf69183a6",
+      "signature": "RkFLRS1NSU5JU0lHTi1EQVJXSU4tRklYVFVSRQ=="
+    },
+    "windows-x86_64": {
+      "url": "https://github.com/4everSivan/Bruce/releases/download/v0.13.0/Bruce_0.13.0_x64-setup.exe",
+      "signature": "RkFLRS1NSU5JU0lHTi1XSU5ET1dTLUZJWFRVUkU="
+    }
+  }
+}

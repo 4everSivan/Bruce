@@ -161,38 +161,42 @@ struct FluentSegmentedPicker<Selection: Hashable>: View {
     }
 }
 
-// MARK: - 按钮 (demo .btn / .btn.primary / .btn.danger)
+// MARK: - 按钮 (demo .btn / .btn.primary / .btn.danger / .btn.link)
 
 enum FluentButtonRole {
-    case plain, primary, danger
+    case plain, primary, danger, link
 }
 
 /// demo 按钮: 12px 字, 5/12 内边距, 5px 圆角; plain = surface 底 + 描边,
-/// primary = accent 实底白字, danger = 红字 (保留底与描边).
+/// primary = accent 实底白字, danger = 红字 (保留底与描边),
+/// link = 无底无框零内边距的灰字 (按下转正文色).
 struct FluentButtonStyle: SwiftUI.ButtonStyle {
     let role: FluentButtonRole
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
+        let padded = role != .link
+        return configuration.label
             .font(.system(size: 12))
-            .foregroundStyle(foreground)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 5)
+            .foregroundStyle(foreground(isPressed: configuration.isPressed))
+            .padding(.horizontal, padded ? 12 : 0)
+            .padding(.vertical, padded ? 5 : 0)
             .background(background(isPressed: configuration.isPressed))
             .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 5, style: .continuous)
                     .strokeBorder(border, lineWidth: 1)
             )
+            .contentShape(Rectangle())
             .opacity(isEnabled ? 1 : 0.45)
     }
 
-    private var foreground: Color {
+    private func foreground(isPressed: Bool) -> Color {
         switch role {
         case .plain: return SettingsDemoTokens.text
         case .primary: return .white
         case .danger: return SettingsDemoTokens.danger
+        case .link: return isPressed ? SettingsDemoTokens.text : SettingsDemoTokens.text2
         }
     }
 
@@ -204,6 +208,8 @@ struct FluentButtonStyle: SwiftUI.ButtonStyle {
             return SettingsDemoTokens.accent.opacity(isPressed ? 0.8 : 1)
         case .danger:
             return isPressed ? SettingsDemoTokens.surfaceHover : SettingsDemoTokens.surface
+        case .link:
+            return .clear
         }
     }
 
@@ -211,6 +217,7 @@ struct FluentButtonStyle: SwiftUI.ButtonStyle {
         switch role {
         case .primary: return SettingsDemoTokens.accent
         case .plain, .danger: return SettingsDemoTokens.borderStrong
+        case .link: return .clear
         }
     }
 }

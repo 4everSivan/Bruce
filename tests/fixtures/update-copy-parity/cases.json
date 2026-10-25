@@ -1,0 +1,260 @@
+{
+  "description": "T10/T11 双端设置页「软件更新」卡逐字文案与 8 态状态区共享对拍用例 (07-软件更新 §4.2 R3/R4, 规格基准 apps/win/demo/win-settings-update-flow-demo.html); 期望值按设计与 demo 手写, 不由实现反推",
+  "timeZone": "Asia/Shanghai",
+  "now": "2026-10-25T14:30:00+08:00",
+  "localVersion": "0.12.2",
+  "release": {
+    "version": "0.13.0",
+    "notes": "应用内软件更新; 双端仪表盘顶栏三图标 Tab 切换与角标融合; 面板底栏新增外观切换按钮 (mac); 订阅额度 Claude 本机登录态跟随 (Windows)",
+    "sizeBytes": 7100000
+  },
+  "rows": {
+    "caption": "软件更新",
+    "autoCheckTitle": "自动检查更新",
+    "autoCheckSubtitle": "启动 30 秒后静默检查一次, 之后每 24 小时一次; 检查失败不打扰",
+    "toggleOn": "已开启",
+    "toggleOff": "已关闭",
+    "currentVersionTitle": "当前版本",
+    "checkTitle": "检查更新",
+    "checkButton": "检查更新",
+    "navigationBadge": "有可用更新"
+  },
+  "currentVersion": [
+    {
+      "name": "release_build",
+      "localVersion": "0.12.2",
+      "expectedValue": "v0.12.2",
+      "expectedSubtitle": "正式版 · 从 GitHub Releases 检查 (4everSivan/Bruce)"
+    },
+    {
+      "name": "dev_build",
+      "localVersion": null,
+      "expectedValue": "开发版本",
+      "expectedSubtitle": "以 Release 构建安装后可用应用内更新"
+    }
+  ],
+  "lastCheck": [
+    { "name": "never_checked", "at": null, "expected": "上次检查 —" },
+    { "name": "same_day", "at": "2026-10-25T14:02:00+08:00", "expected": "上次检查 今天 14:02" },
+    { "name": "same_day_midnight", "at": "2026-10-25T00:00:00+08:00", "expected": "上次检查 今天 00:00" },
+    { "name": "previous_day", "at": "2026-10-24T09:05:00+08:00", "expected": "上次检查 10月24日 09:05" },
+    { "name": "previous_day_late", "at": "2026-10-24T23:59:00+08:00", "expected": "上次检查 10月24日 23:59" }
+  ],
+  "stages": [
+    {
+      "name": "idle",
+      "phase": { "kind": "idle" },
+      "expected": { "kind": "hidden" },
+      "navBadge": false,
+      "checkEnabled": true
+    },
+    {
+      "name": "checking",
+      "phase": { "kind": "checking" },
+      "expected": { "kind": "spinner", "text": "正在检查更新…" },
+      "navBadge": false,
+      "checkEnabled": false
+    },
+    {
+      "name": "latest",
+      "phase": { "kind": "latest", "checkedAt": "2026-10-25T14:02:00+08:00" },
+      "expected": { "kind": "confirmation", "text": "已是最新版本 · 检查于 今天 14:02" },
+      "navBadge": false,
+      "checkEnabled": true
+    },
+    {
+      "name": "available",
+      "phase": { "kind": "available" },
+      "canSelfInstall": true,
+      "expected": {
+        "kind": "banner",
+        "title": "发现新版本",
+        "fromVersion": "v0.12.2",
+        "toVersion": "v0.13.0",
+        "collapsedNotes": "应用内软件更新; 双端仪表盘顶栏三图标 Tab 切换与角标融合",
+        "fullNotes": "应用内软件更新; 双端仪表盘顶栏三图标 Tab 切换与角标融合; 面板底栏新增外观切换按钮 (mac); 订阅额度 Claude 本机登录态跟随 (Windows)",
+        "notesTruncated": true,
+        "sizeText": "7.1 MB",
+        "actions": ["下载并安装", "跳过此版本", "查看发布页 ↗"],
+        "hint": null
+      },
+      "navBadge": true,
+      "checkEnabled": true
+    },
+    {
+      "name": "available_manual_install_only",
+      "phase": { "kind": "available" },
+      "canSelfInstall": false,
+      "expected": {
+        "kind": "banner",
+        "title": "发现新版本",
+        "fromVersion": "v0.12.2",
+        "toVersion": "v0.13.0",
+        "collapsedNotes": "应用内软件更新; 双端仪表盘顶栏三图标 Tab 切换与角标融合",
+        "fullNotes": "应用内软件更新; 双端仪表盘顶栏三图标 Tab 切换与角标融合; 面板底栏新增外观切换按钮 (mac); 订阅额度 Claude 本机登录态跟随 (Windows)",
+        "notesTruncated": true,
+        "sizeText": "7.1 MB",
+        "actions": ["跳过此版本", "查看发布页 ↗"],
+        "hint": "当前安装位置不支持自动更新, 请从发布页下载新版本"
+      },
+      "navBadge": true,
+      "checkEnabled": true
+    },
+    {
+      "name": "available_short_notes_unknown_size",
+      "phase": { "kind": "available" },
+      "release": { "version": "0.13.0", "notes": "应用内软件更新; 修复托盘图标", "sizeBytes": null },
+      "canSelfInstall": true,
+      "expected": {
+        "kind": "banner",
+        "title": "发现新版本",
+        "fromVersion": "v0.12.2",
+        "toVersion": "v0.13.0",
+        "collapsedNotes": "应用内软件更新; 修复托盘图标",
+        "fullNotes": "应用内软件更新; 修复托盘图标",
+        "notesTruncated": false,
+        "sizeText": null,
+        "actions": ["下载并安装", "跳过此版本", "查看发布页 ↗"],
+        "hint": null
+      },
+      "navBadge": true,
+      "checkEnabled": true
+    },
+    {
+      "name": "available_demo_newline_notes",
+      "phase": { "kind": "available" },
+      "release": {
+        "version": "0.13.0",
+        "notes": "· 双端仪表盘顶栏三图标 Tab 切换与角标融合;\n· 面板底栏新增外观切换按钮 (mac);\n· Windows API Key 类五家配置对话框对齐;\n· 订阅额度 Claude 本机登录态跟随 (Windows)。",
+        "sizeBytes": 7100000
+      },
+      "canSelfInstall": true,
+      "expected": {
+        "kind": "banner",
+        "title": "发现新版本",
+        "fromVersion": "v0.12.2",
+        "toVersion": "v0.13.0",
+        "collapsedNotes": "· 双端仪表盘顶栏三图标 Tab 切换与角标融合; · 面板底栏新增外观切换按钮 (mac);",
+        "fullNotes": "· 双端仪表盘顶栏三图标 Tab 切换与角标融合; · 面板底栏新增外观切换按钮 (mac); · Windows API Key 类五家配置对话框对齐; · 订阅额度 Claude 本机登录态跟随 (Windows)。",
+        "notesTruncated": true,
+        "sizeText": "7.1 MB",
+        "actions": ["下载并安装", "跳过此版本", "查看发布页 ↗"],
+        "hint": null
+      },
+      "navBadge": true,
+      "checkEnabled": true
+    },
+    {
+      "name": "downloading_start",
+      "phase": { "kind": "downloading", "receivedBytes": 0, "totalBytes": 7100000 },
+      "expected": { "kind": "download", "percent": 0, "meta": "0.0 / 7.1 MB · 0%", "actions": ["取消"] },
+      "navBadge": true,
+      "checkEnabled": false
+    },
+    {
+      "name": "downloading_partial",
+      "phase": { "kind": "downloading", "receivedBytes": 3234567, "totalBytes": 7100000 },
+      "expected": { "kind": "download", "percent": 45, "meta": "3.2 / 7.1 MB · 45%", "actions": ["取消"] },
+      "navBadge": true,
+      "checkEnabled": false
+    },
+    {
+      "name": "downloading_complete",
+      "phase": { "kind": "downloading", "receivedBytes": 7100000, "totalBytes": 7100000 },
+      "expected": { "kind": "download", "percent": 100, "meta": "7.1 / 7.1 MB · 100%", "actions": ["取消"] },
+      "navBadge": true,
+      "checkEnabled": false
+    },
+    {
+      "name": "downloading_unknown_total",
+      "phase": { "kind": "downloading", "receivedBytes": 3234567, "totalBytes": null },
+      "expected": { "kind": "download", "percent": 0, "meta": "3.2 MB", "actions": ["取消"] },
+      "navBadge": true,
+      "checkEnabled": false
+    },
+    {
+      "name": "ready",
+      "phase": { "kind": "ready" },
+      "expected": { "kind": "ready", "text": "v0.13.0 已下载完成,重启后生效", "actions": ["安装并重启", "稍后"] },
+      "navBadge": true,
+      "checkEnabled": true
+    },
+    {
+      "name": "failed_timeout",
+      "phase": { "kind": "failed", "failure": "timedOut" },
+      "expected": {
+        "kind": "failure",
+        "title": "检查失败",
+        "detail": "无法访问 GitHub (超时 10 秒);可稍后重试或手动下载",
+        "actions": ["重试", "手动下载 ↗"],
+        "statusLine": "检查更新失败：网络超时"
+      },
+      "navBadge": false,
+      "checkEnabled": true
+    },
+    {
+      "name": "failed_offline",
+      "phase": { "kind": "failed", "failure": "offline" },
+      "expected": {
+        "kind": "failure",
+        "title": "检查失败",
+        "detail": "无法访问 GitHub (网络不可用);可稍后重试或手动下载",
+        "actions": ["重试", "手动下载 ↗"],
+        "statusLine": "检查更新失败：网络不可用"
+      },
+      "navBadge": false,
+      "checkEnabled": true
+    },
+    {
+      "name": "failed_http_404",
+      "phase": { "kind": "failed", "failure": "httpStatus", "httpStatus": 404 },
+      "expected": {
+        "kind": "failure",
+        "title": "检查失败",
+        "detail": "无法获取更新信息 (HTTP 404);可稍后重试或手动下载",
+        "actions": ["重试", "手动下载 ↗"],
+        "statusLine": "检查更新失败：HTTP 404"
+      },
+      "navBadge": false,
+      "checkEnabled": true
+    },
+    {
+      "name": "failed_invalid_manifest",
+      "phase": { "kind": "failed", "failure": "invalidManifest" },
+      "expected": {
+        "kind": "failure",
+        "title": "检查失败",
+        "detail": "更新信息无法识别;可稍后重试或手动下载",
+        "actions": ["重试", "手动下载 ↗"],
+        "statusLine": "检查更新失败：更新信息无效"
+      },
+      "navBadge": false,
+      "checkEnabled": true
+    },
+    {
+      "name": "skipped",
+      "phase": { "kind": "skipped" },
+      "expected": { "kind": "skipped", "text": "已跳过 v0.13.0;发布下个版本前不再提醒 · ", "actions": ["恢复检查"] },
+      "navBadge": false,
+      "checkEnabled": true
+    },
+    {
+      "name": "relaunching",
+      "phase": { "kind": "relaunching" },
+      "expected": { "kind": "spinner", "text": "正在安装并重启…" },
+      "navBadge": false,
+      "checkEnabled": false
+    }
+  ],
+  "installFailures": [
+    { "kind": "downloadFailed", "statusLine": "下载更新失败：网络错误, 可稍后重试" },
+    { "kind": "checksumMismatch", "statusLine": "更新包校验失败：SHA256 不一致, 已拒绝安装" },
+    { "kind": "extractFailed", "statusLine": "更新包校验失败：无法解压, 已拒绝安装" },
+    { "kind": "bundleMismatch", "statusLine": "更新包校验失败：应用标识不符, 已拒绝安装" },
+    { "kind": "versionMismatch", "statusLine": "更新包校验失败：版本与更新信息不符, 已拒绝安装" },
+    { "kind": "versionNotNewer", "statusLine": "更新包校验失败：版本未高于当前版本, 已拒绝安装" },
+    { "kind": "replaceFailedRolledBack", "statusLine": "安装更新失败：已恢复原版本" },
+    { "kind": "replaceFailedNotRolledBack", "statusLine": "安装更新失败：原版本恢复失败, 请从发布页重新安装" },
+    { "kind": "relaunchFailed", "statusLine": "新版本已安装, 自动重启失败, 请手动重新打开 Bruce" }
+  ]
+}
