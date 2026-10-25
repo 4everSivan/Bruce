@@ -87,14 +87,14 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "f9111925b3ba1ee3048fc08c0276906236b2b740",
+    "commit": "68a3047",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
     "ran_at": "2026-10-26",
-    "exit_code": 4,
+    "exit_code": 0,
     "from_status": "closed",
     "target_status": "closed"
   }
