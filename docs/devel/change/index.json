@@ -1058,7 +1058,7 @@
     "C102": {
       "title": "经典风格升级高斯模糊（方案A 柔光云母高斯）并与 Nothing 风格 1:1 统一紧凑圆角体系",
       "type": "Enhancement",
-      "status": "verified",
+      "status": "closed",
       "branch": "feat/C102-gaussian-blur-theme",
       "topic": "MenuBarIndicator",
       "version": "0.13.0",
