@@ -6,6 +6,11 @@
 ## [Unreleased]
 
 ### Added
+- **macOS 应用内软件更新 (T10)**：
+  - **维护页「软件更新」卡（方案 B）**：设置中心「维护」页顶部新增分组，三行（自动检查更新开关 / 当前版本 / 检查更新 + 上次检查时间）+ 底部状态区，结构与逐字文案对齐高保真 demo `apps/win/demo/win-settings-update-flow-demo.html`；有可用更新时「维护」导航项尾部出现 6pt 蓝色发光角标；通用页原「版本」行移除，侧栏底部版本号带 `v` 前缀。
+  - **检查与自动检查**：仅请求 Releases latest-download 直链 `latest.json`（不调用 GitHub API，超时 10 秒），semver 纯函数比较；自动检查默认开启、启动 30 秒后首查、此后每 24 小时一次，失败完全静默，仅手动检查失败在状态区与状态行告警；「跳过此版本」持久化，远端出现更新版本时自动恢复提醒；裸 `swift run` 等无 bundle 版本场景降级为「开发版本」且不发起网络请求。
+  - **下载校验与自替换安装**：下载到 `~/Library/Application Support/Bruce/updates/`（进度可取消），SHA256 对照清单、`ditto` 解压并 `xattr -cr` 剥离 quarantine，复核包内 bundle 标识与版本（须等于清单且高于本地）后才进入就绪；「安装并重启」同卷原子替换并把旧版本移入备份，替换失败自动回滚；重启采用先退后起的等待器，避免新旧实例同时占用菜单栏与全局快捷键；从 DMG / 随机只读挂载等不可写位置运行时降级为引导手动下载。
+  - **双端文案对拍 fixture**：8 态状态区与各失败分支的逐字文案落 `tests/fixtures/update-copy-parity/cases.json`，新增 `SoftwareUpdateHarness`（44 项）纳入 `verify-local.sh`，Windows 实现 (T11) 同读该文件。
 - **双端仪表盘顶栏三图标 Tab 切换、角标融合与水平滑动动效 (C088)**：
   - **顶栏三图标导航与角标融合**：在仪表盘顶部 HUD Header 右侧以三图标导航（Token 用量 `chart.bar.xaxis` / 订阅配额 `creditcard` / Agent 活跃 `waveform.path.ecg`）替代原 `N AGENTS ACTIVE / STANDBY` 文本；Agent 运行状态作为绿色呼吸小点无缝融合于第 3 个图标右上角（悬停展示实时活跃数量与状态提示）。
   - **单卡轻量呈现与方案 1 方向感知水平滑动动效**：Tab 模式下仪表盘只展示当前激活卡片，卡片切换遵循方向感知水平滑动（左→右从右侧推入，右→左从左侧推入）配合药丸滑动指示条与卡片高度弹性过渡，保留键盘 `1`/`2`/`3` 快捷切卡；既有三张卡片内部视觉、指标与布局 100% 原样保留。
