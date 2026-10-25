@@ -86,6 +86,19 @@ pub struct AppSettings {
     /// 面板位置记忆 (物理像素坐标; None 表示尚未记录)。
     pub panel_x: Option<i32>,
     pub panel_y: Option<i32>,
+    /// 软件更新 (T11, 07-软件更新 §4.2 R5): 自动检查默认开启。
+    #[serde(default = "default_auto_check_update")]
+    pub auto_check_update: bool,
+    /// 上次成功检查更新 (RFC3339 本地时区; None = 从未)。
+    #[serde(default)]
+    pub update_last_check_at: Option<String>,
+    /// 已跳过的版本 (远端出现更新版本时自动解除)。
+    #[serde(default)]
+    pub update_skipped_version: Option<String>,
+}
+
+fn default_auto_check_update() -> bool {
+    true
 }
 
 fn default_layout_mode() -> String {
@@ -120,6 +133,9 @@ impl Default for AppSettings {
             hotkey: String::new(),
             panel_x: None,
             panel_y: None,
+            auto_check_update: true,
+            update_last_check_at: None,
+            update_skipped_version: None,
         }
     }
 }

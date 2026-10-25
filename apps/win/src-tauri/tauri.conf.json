@@ -49,7 +49,10 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDNDODk4ODBDNjcyRDdDMzMKUldRemZDMW5ESWlKUEFTeXdGbmdjVlFzZzZKbGh6R1NObEMxQjY0TG81cU5VOE5sNDVMbVVvb3gK"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDNDODk4ODBDNjcyRDdDMzMKUldRemZDMW5ESWlKUEFTeXdGbmdjVlFzZzZKbGh6R1NObEMxQjY0TG81cU5VOE5sNDVMbVVvb3gK",
+      "endpoints": [
+        "https://github.com/4everSivan/Bruce/releases/latest/download/latest.json"
+      ]
     }
   }
 }

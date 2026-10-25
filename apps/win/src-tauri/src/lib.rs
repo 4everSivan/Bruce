@@ -11,6 +11,7 @@ pub mod quota_policy;
 pub mod reachability;
 pub mod scheduler;
 pub mod settings;
+pub mod software_update;
 
 pub mod runtime_core;
 
@@ -36,6 +37,7 @@ mod desktop {
 
     use crate::scheduler::SchedulerControl;
     use crate::settings::AppSettings;
+    use crate::software_update::desktop_impl::UpdateState;
 
     #[derive(Clone, Default)]
     struct TrayBoundsState(std::sync::Arc<std::sync::Mutex<Option<TrayIconBounds>>>);
@@ -1006,6 +1008,8 @@ mod desktop {
             .plugin(tauri_plugin_global_shortcut::Builder::new().build())
             // 导出文件的系统保存对话框 (C033): 与 mac NSSavePanel 等价
             .plugin(tauri_plugin_dialog::init())
+            // 应用内软件更新 (T11): latest.json 检查 + minisign 验签 + NSIS 静默安装
+            .plugin(tauri_plugin_updater::Builder::new().build())
             .setup(move |app| {
                 // 调度控制状态 (托盘菜单/命令/热键共享)。
                 let control = SchedulerControl::new();
@@ -1016,6 +1020,9 @@ mod desktop {
                 app.manage(RegisteredHotkey::default());
                 app.manage(TrayBoundsState::default());
                 app.manage(ActivityState::default());
+                // 软件更新状态机 + 自动检查 (启动 30 秒后首查, 每 24 小时一次)。
+                app.manage(UpdateState::default());
+                crate::software_update::desktop_impl::spawn_auto_check(app.handle().clone());
                 // 后台调度器 (常驻周期采集 + 退避 + Toast)。
                 // 全局热键 (设置可配)。
                 let hotkey = settings::load_settings(&paths::data_root()).hotkey;
@@ -1203,7 +1210,16 @@ mod desktop {
                 open_settings,
                 hide_dashboard,
                 set_hotkey_recording,
-                quit_app
+                quit_app,
+                crate::software_update::desktop_impl::update_state,
+                crate::software_update::desktop_impl::update_check,
+                crate::software_update::desktop_impl::update_download,
+                crate::software_update::desktop_impl::update_install,
+                crate::software_update::desktop_impl::update_cancel,
+                crate::software_update::desktop_impl::update_dismiss_ready,
+                crate::software_update::desktop_impl::update_skip,
+                crate::software_update::desktop_impl::update_unskip,
+                crate::software_update::desktop_impl::open_release_page
             ])
             .run(tauri::generate_context!())
             .expect("Bruce 托盘应用运行失败");

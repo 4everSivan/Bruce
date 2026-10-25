@@ -34,6 +34,9 @@
     return value;
   };
   const byId = id => document.getElementById(id);
+  // 软件更新共享表现层 (T11): 文案与状态区语义和 mac 同源, 双端同读
+  // tests/fixtures/update-copy-parity/cases.json 对拍 (check-win-frontend.mjs 执行)。
+  const UP = window.BruceUpdatePresentation;
   // mac 允许的自动采集周期 (OnboardingConfiguration.allowedRefreshIntervalMinutes)
   const REFRESH_PRESETS = [5, 15, 30, 60];
   let settings = {}, allowlist = [], providerOrder = [], cardOrder = [];
@@ -435,8 +438,9 @@
 
   function buildGeneral(host) {
     host.replaceChildren();
-    // mac generalPane 首卡无分组标题; 行序: 界面风格 → 刷新间隔 → 系统通知 → 版本
-    // (配色模式 / 钥匙串 / 外部 CLI 来源为 mac 独有能力, Windows 恒深色且无钥匙串)。
+    // mac generalPane 首卡无分组标题; 行序: 界面风格 → 刷新间隔 → 看板布局 → 系统通知
+    // (配色模式 / 钥匙串 / 外部 CLI 来源为 mac 独有能力, Windows 恒深色且无钥匙串;
+    // 原「版本」行已迁维护页软件更新卡 —— 07 §4.2 R3 方案 B)。
     const c1 = card(host);
     const theme = node("select", null, { id: "setting-theme" });
     theme.append(node("option", "经典", { value: "fluent" }), node("option", "Nothing", { value: "nothing" }));
@@ -463,7 +467,6 @@
       });
     });
     row(c1, "系统通知", notifyWrap, "预警与额度提醒; 关闭后 Bruce 不会投递通知");
-    row(c1, "版本", node("span", "—", { id: "setting-version", class: "row-value" }));
 
     const hotkeyWrap = node("div", null, { class: "hotkey-field-wrap" });
     hotkeyWrap.append(input("setting-hotkey", "text", { placeholder: "Control+Shift+B", autocomplete: "off" }));
@@ -2686,6 +2689,35 @@
 
   function buildMaintenance(host) {
     host.replaceChildren();
+    // 方案 B (07 §4.2 R3): 软件更新卡置维护页顶部, 先于数据/诊断; 固定文案取共享表现层。
+    const cu = card(host, UP.copy.caption);
+    const autoWrap = node("div", null, { class: "toggle-with-state" });
+    const autoBox = input("setting-auto-update", "checkbox");
+    autoWrap.append(autoBox, node("span", "", { id: "setting-auto-update-state", class: "toggle-state" }));
+    autoBox.addEventListener("change", () => {
+      syncToggleState("setting-auto-update");
+      return persist({ autoCheckUpdate: autoBox.checked }, {
+        revert: () => { autoBox.checked = !autoBox.checked; syncToggleState("setting-auto-update"); },
+      });
+    });
+    row(cu, UP.copy.autoCheckTitle, autoWrap, UP.copy.autoCheckSubtitle);
+    // 版本渠道与上次检查为动态副标题, row() 只接受静态字符串 —— 手砌同构行 (镜像 row() 内部)。
+    const versionRow = node("label", null, { class: "fluent-row" });
+    const versionMeta = node("div", null, { class: "row-meta" });
+    versionMeta.append(node("span", UP.copy.currentVersionTitle, { class: "row-title" }));
+    versionMeta.append(node("span", "", { id: "update-channel-sub", class: "row-sub" }));
+    versionRow.append(versionMeta, node("span", "—", { id: "setting-version", class: "row-value" }));
+    cu.append(versionRow);
+    const checkRow = node("label", null, { class: "fluent-row" });
+    const checkMeta = node("div", null, { class: "row-meta" });
+    checkMeta.append(node("span", UP.copy.checkTitle, { class: "row-title" }));
+    checkMeta.append(node("span", "", { id: "update-last-check", class: "row-sub" }));
+    const checkBtn = node("button", UP.copy.checkButton, { id: "btn-update-check", type: "button", class: "btn" });
+    checkBtn.addEventListener("click", () => invoke("update_check", { manual: true }).catch(() => {}));
+    checkRow.append(checkMeta, checkBtn);
+    cu.append(checkRow);
+    cu.append(node("div", null, { id: "update-stage", class: "update-stage" }));
+
     const c1 = card(host, "数据");
     const cacheWrap = node("div", null, { class: "actions-inline-flat" });
     button(cacheWrap, "cache-clear", "清理", () => clearCache(), "btn danger");
@@ -2781,6 +2813,157 @@
     message(status, granted ? "已确认授权" : "已撤销全部授权");
   }
 
+  // MARK: - 软件更新 (T11, 07-软件更新 §4.2 R4)
+  // 状态区渲染完全消费共享表现层 UP; 后端 update-state 事件快照为唯一事实源,
+  // 与 mac SoftwareUpdateHarness 读同一份 fixture —— 不在此层再造文案。
+
+  let updateSnapshot = null;
+
+  function dispatchUpdateAction(key) {
+    const release = updateSnapshot?.release || {};
+    const commands = {
+      downloadAndInstall: () => invoke("update_download"),
+      skipVersion: () => invoke("update_skip", { version: release.version }),
+      openReleasePage: () => invoke("open_release_page"),
+      cancelDownload: () => invoke("update_cancel"),
+      installAndRelaunch: () => invoke("update_install"),
+      later: () => invoke("update_dismiss_ready"),
+      retry: () => invoke("update_check", { manual: true }),
+      manualDownload: () => invoke("open_release_page"),
+      resumeChecks: () => invoke("update_unskip"),
+    };
+    (commands[key] || (() => {}))().catch(() => {});
+  }
+
+  function updateActionButton(parent, act) {
+    const cls = act.role === "primary" ? "btn primary" : act.role === "plain" ? "btn" : "btn link";
+    const el = node("button", act.title, { type: "button", class: cls });
+    el.addEventListener("click", () => dispatchUpdateAction(act.key));
+    parent.append(el);
+    return el;
+  }
+
+  function renderUpdateStage(view) {
+    const stage = byId("update-stage");
+    if (!stage) return;
+    stage.replaceChildren();
+    if (view.kind === "hidden") return;
+    if (view.kind === "spinner" || view.kind === "confirmation") {
+      const line = node("div", null, { class: "update-line" });
+      if (view.kind === "confirmation") line.append(node("span", "✓", { class: "ok-tick" }));
+      else line.append(node("span", null, { class: "update-spinner" }));
+      line.append(document.createTextNode(view.text));
+      stage.append(line);
+      return;
+    }
+    if (view.kind === "banner") {
+      const banner = node("div", null, { class: "update-banner" });
+      const head = node("div", null, { class: "update-banner-head" });
+      head.append(node("span", view.title, { class: "update-banner-title" }));
+      const flow = node("span", null, { class: "ver-flow" });
+      flow.append(node("span", view.fromVersion, { class: "from" }),
+        node("span", "→", { class: "arrow" }), node("span", view.toVersion, { class: "to" }));
+      head.append(flow);
+      banner.append(head);
+      const notes = node("div", null, { class: "update-notes" });
+      if (view.notesTruncated) {
+        const renderNotes = expanded => {
+          notes.replaceChildren(document.createTextNode(expanded ? view.fullNotes : view.collapsedNotes));
+          const toggle = node("span", expanded ? UP.copy.collapseNotes : UP.copy.expandNotes, { class: "more" });
+          toggle.addEventListener("click", () => renderNotes(!expanded));
+          notes.append(toggle);
+        };
+        renderNotes(false);
+      } else {
+        notes.append(document.createTextNode(view.fullNotes));
+      }
+      banner.append(notes);
+      if (view.hint) banner.append(node("p", view.hint, { class: "update-hint" }));
+      const actions = node("div", null, { class: "update-banner-actions" });
+      for (const act of view.actions) updateActionButton(actions, act);
+      if (view.sizeText) actions.append(node("span", view.sizeText, { class: "update-size" }));
+      banner.append(actions);
+      stage.append(banner);
+      return;
+    }
+    if (view.kind === "download") {
+      const wrap = node("div", null, { class: "update-progress" });
+      const track = node("div", null, { class: "track" });
+      const fill = node("div", null, { class: "fill" });
+      fill.style.width = Math.floor((view.fraction || 0) * 100) + "%";
+      track.append(fill);
+      const meta = node("div", null, { class: "meta" });
+      meta.append(node("span", view.meta));
+      for (const act of view.actions) updateActionButton(meta, act);
+      wrap.append(track, meta);
+      stage.append(wrap);
+      return;
+    }
+    if (view.kind === "ready") {
+      const line = node("div", null, { class: "update-line" });
+      line.append(node("span", "✓", { class: "ok-tick" }), document.createTextNode(view.text));
+      const actions = node("div", null, { class: "update-banner-actions" });
+      for (const act of view.actions) updateActionButton(actions, act);
+      stage.append(line, actions);
+      return;
+    }
+    if (view.kind === "failure") {
+      const line = node("div", null, { class: "update-line" });
+      line.append(node("span", view.title, { class: "warn-t" }), document.createTextNode(view.detail));
+      for (const act of view.actions) updateActionButton(line, act);
+      stage.append(line);
+      return;
+    }
+    if (view.kind === "skipped") {
+      const line = node("div", null, { class: "update-line" });
+      line.append(document.createTextNode(view.text));
+      for (const act of view.actions) updateActionButton(line, act);
+      stage.append(line);
+    }
+  }
+
+  function renderUpdateUI() {
+    const snap = updateSnapshot;
+    if (!snap) return;
+    const value = byId("setting-version");
+    if (value) {
+      const pair = UP.currentVersion(snap.localVersion || null);
+      value.textContent = pair.value;
+      const channelSub = byId("update-channel-sub");
+      if (channelSub) channelSub.textContent = pair.subtitle;
+    }
+    const lastCheck = byId("update-last-check");
+    if (lastCheck) lastCheck.textContent = UP.lastCheckSubtitle(snap.lastCheckAt);
+    const autoBox = byId("setting-auto-update");
+    if (autoBox) {
+      autoBox.checked = Boolean(snap.autoCheck);
+      syncToggleState("setting-auto-update");
+    }
+    const view = UP.stageView(snap.phase, {
+      release: snap.release, localVersion: snap.localVersion, canSelfInstall: true,
+    });
+    renderUpdateStage(view);
+    const flags = UP.stageFlags(snap.phase || { kind: "idle" });
+    const badge = byId("nav-update-dot");
+    if (badge) badge.classList.toggle("hidden", !flags.navBadge);
+    const checkBtn = byId("btn-update-check");
+    if (checkBtn) checkBtn.disabled = !flags.checkEnabled;
+    const status = byId("settings-status");
+    if (snap.installFailure) message(status, UP.installFailureStatusLine(snap.installFailure), "warn");
+    else if (snap.phase && snap.phase.kind === "failed") message(status, UP.failureStatusLine(snap.phase), "warn");
+  }
+
+  async function initSoftwareUpdate() {
+    try {
+      updateSnapshot = await invoke("update_state");
+      renderUpdateUI();
+    } catch { /* 后端命令不可用 (浏览器直开) 时维持占位 */ }
+    await listen("update-state", event => {
+      updateSnapshot = event.payload;
+      renderUpdateUI();
+    });
+  }
+
   // MARK: - 数据交互逻辑
 
   async function loadRuntimeInfo() {
@@ -2789,9 +2972,10 @@
       currentRuntimeInfo = info;
       const status = info.status && typeof info.status === "object" ? info.status : { phase: info.status || info.phase };
       const version = byId("setting-version");
-      if (version) version.textContent = info.version || "—";
+      // 版本值归维护页软件更新卡渲染 (含 dev 降级文案); 后端快照未到时先给 v 前缀占位。
+      if (version && !updateSnapshot) version.textContent = info.version ? `v${info.version}` : "—";
       const navVersion = byId("nav-version");
-      if (navVersion) navVersion.textContent = info.version || "";
+      if (navVersion) navVersion.textContent = info.version ? `v${info.version}` : "";
       const box = byId("runtime-info");
       if (box) {
         box.textContent = [
@@ -3032,7 +3216,7 @@
     if (mHost) buildMaintenance(mHost);
 
     try {
-      await Promise.all([loadSettings(), loadCredentials(), loadPrices(), loadRuntimeInfo(), loadPlans(), loadClaudeLocalStatus()]);
+      await Promise.all([loadSettings(), loadCredentials(), loadPrices(), loadRuntimeInfo(), loadPlans(), loadClaudeLocalStatus(), initSoftwareUpdate()]);
       await listen("settings-updated", async () => {
         try { await loadSettings(); } catch { message(byId("settings-status"), "设置读取失败"); }
       });

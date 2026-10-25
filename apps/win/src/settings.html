@@ -32,8 +32,10 @@
           <span class="nav-text">授权与隐私</span>
         </button>
         <button type="button" class="navitem" data-category="maintenance">
-          <svg class="ic" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76Z"/></svg>
+          <svg class="ic" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76Z"/></svg>
           <span class="nav-text">维护</span>
+          <!-- T11 方案 B: 有可用更新且未处理时的静默角标 (title/aria 与共享 fixture rows.navigationBadge 一致) -->
+          <span class="nav-dot hidden" id="nav-update-dot" title="有可用更新" aria-label="有可用更新"></span>
         </button>
       </div>
       <!-- mac sidebar 底部: 当前版本号 (10.5pt tertiary) -->
@@ -87,6 +89,7 @@
     </main>
   </div>
   <script src="provider-brand.js"></script>
+  <script src="update-presentation.js"></script>
   <script src="settings.js"></script>
 </body>
 </html>

@@ -568,7 +568,9 @@ test("independent settings support consent, model prices, provider gates and mai
   assert.match(app.node("runtime-info").textContent, /stale/);
   assert.match(app.node("runtime-info").textContent, /PROVIDER_RATE_LIMIT/);
   assert.doesNotMatch(app.node("runtime-info").textContent, /\[object Object\]/);
-  assert.equal(app.node("setting-version").textContent, "0.11.5", "通用页版本号来自 get_runtime_info");
+  // T11 方案 B: 版本行迁入维护页软件更新卡, 后端快照未到时由 get_runtime_info 预填 (v 前缀);
+  // 通用页不再有版本行。
+  assert.equal(app.node("setting-version").textContent, "v0.11.5", "维护页软件更新卡版本值 (get_runtime_info 预填, v 前缀)");
   // 授权页对齐 mac 语义: 确认授权 / 撤销全部授权即时生效 (无需全局保存)
   await app.node("consent-confirm").click();
   assert.equal(app.state.settings.consentVersion, 1);

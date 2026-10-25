@@ -78,8 +78,48 @@ if (failed) {
   process.exit(1);
 }
 console.log("Windows 前端结构冒烟通过");
+// 软件更新卡结构断言 (T11, 07-软件更新 §4.2 R3 方案 B): 文案对拍由
+// update-presentation.test.mjs 执行, 这里锁住「接线不得被裁撤」的结构面 ——
+// 通用页版本行不得回潮、维护页卡/角标/样式/插件接入缺一即红灯。
+{
+  const settingsHtml = readFileSync(join(repoRoot, "apps/win/src/settings.html"), "utf8");
+  const settingsJs = readFileSync(join(repoRoot, "apps/win/src/settings.js"), "utf8");
+  const stylesCss = readFileSync(join(repoRoot, "apps/win/src/styles.css"), "utf8");
+  const rustConf = JSON.parse(readFileSync(join(repoRoot, "apps/win/src-tauri/tauri.conf.json"), "utf8"));
+  const rustLib = readFileSync(join(repoRoot, "apps/win/src-tauri/src/software_update.rs"), "utf8");
+  const cargo = readFileSync(join(repoRoot, "apps/win/src-tauri/Cargo.toml"), "utf8");
+
+  if (/row\(c1, "版本"/.test(settingsJs)) {
+    fail("通用页仍存在「版本」行 (方案 B: 版本行迁入维护页软件更新卡, 07 §4.2 R3)");
+  } else {
+    console.log("ok: 通用页版本行已迁入维护页软件更新卡 (方案 B)");
+  }
+  for (const [label, source, pattern] of [
+    ["settings.html 载入表现层", settingsHtml, /<script src="update-presentation\.js"><\/script>/],
+    ["settings.html 导航角标", settingsHtml, /id="nav-update-dot"/],
+    ["settings.js 维护页状态区", settingsJs, /id: "update-stage"/],
+    ["settings.js 订阅更新事件", settingsJs, /listen\("update-state"/],
+    ["settings.js 检查更新命令", settingsJs, /invoke\("update_check"/],
+    ["styles.css PART U 状态区", stylesCss, /\.update-stage/],
+    ["styles.css PART U 横幅", stylesCss, /\.update-banner/],
+    ["styles.css PART U 进度", stylesCss, /\.update-progress/],
+    ["styles.css 导航角标", stylesCss, /\.nav-dot/],
+    ["Cargo 接入 updater 插件", cargo, /tauri-plugin-updater/],
+  ]) {
+    if (!pattern.test(source)) fail(`${label} 缺失 (T11 更新链裁撤即断)`);
+  }
+  const endpoint = rustConf?.plugins?.updater?.endpoints?.[0];
+  const rustEndpoint = rustLib.match(/const MANIFEST_URL[^"]*"([^"]+)"/)?.[1];
+  if (!endpoint) fail("tauri.conf.json 缺 plugins.updater.endpoints (插件检查无清单源)");
+  else if (rustEndpoint && rustEndpoint !== endpoint) {
+    fail(`清单直链两处漂移: conf=${endpoint} rust=${rustEndpoint}`);
+  } else {
+    console.log(`ok: 更新清单端点一致 (${endpoint})`);
+  }
+}
+
 // 交互回归 + 面板几何对拍 (demo 内联镜像 ↔ Rust runtime_core fixture, C035)
-for (const suite of ["apps/win/tests/frontend.test.mjs", "apps/win/tests/geometry-parity.test.mjs"]) {
+for (const suite of ["apps/win/tests/frontend.test.mjs", "apps/win/tests/geometry-parity.test.mjs", "apps/win/tests/update-presentation.test.mjs"]) {
   const behavior = spawnSync(process.execPath, ["--test", suite], {
     cwd: repoRoot, stdio: "inherit",
   });
