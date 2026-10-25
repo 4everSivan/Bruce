@@ -13,7 +13,8 @@ use serde::{Deserialize, Serialize};
 /// 更新清单直链 (Releases latest-download, 302 到 CDN, 避开 GitHub API 匿名限流)。
 /// 与 tauri.conf.json plugins.updater.endpoints[0] 必须一致 (check-win-frontend.mjs 锁定)。
 #[cfg(feature = "desktop")]
-const MANIFEST_URL: &str = "https://github.com/4everSivan/Bruce/releases/latest/download/latest.json";
+const MANIFEST_URL: &str =
+    "https://github.com/4everSivan/Bruce/releases/latest/download/latest.json";
 #[cfg(feature = "desktop")]
 const RELEASES_PAGE_URL: &str = "https://github.com/4everSivan/Bruce/releases/latest";
 
@@ -259,7 +260,11 @@ pub mod desktop_impl {
                 .header("Content-Length")
                 .and_then(|v| v.parse::<u64>().ok())
         });
-        Ok(ReleaseInfo { version, notes, size_bytes })
+        Ok(ReleaseInfo {
+            version,
+            notes,
+            size_bytes,
+        })
     }
 
     /// 核心检查: manifest 拉取 → 插件判定 (自身比对当前版本) → 跳过语义收敛。
@@ -277,7 +282,10 @@ pub mod desktop_impl {
                 if manual {
                     let state = app.state::<UpdateState>();
                     let mut guard = state.lock().unwrap_or_else(|p| p.into_inner());
-                    guard.phase = UpdatePhase::Failed { failure, http_status };
+                    guard.phase = UpdatePhase::Failed {
+                        failure,
+                        http_status,
+                    };
                     publish(app, &mut guard);
                 }
                 return;
@@ -309,7 +317,9 @@ pub mod desktop_impl {
         let mut guard = state.lock().unwrap_or_else(|p| p.into_inner());
         match offered {
             None => {
-                guard.phase = UpdatePhase::Latest { checked_at: checked_at.clone() };
+                guard.phase = UpdatePhase::Latest {
+                    checked_at: checked_at.clone(),
+                };
                 guard.release = None;
                 guard.pending = None;
             }
@@ -355,9 +365,15 @@ pub mod desktop_impl {
             }
             guard.downloading = true;
             guard.cancel = Arc::new(AtomicBool::new(false));
-            guard.phase = UpdatePhase::Downloading { received_bytes: 0, total_bytes: None };
+            guard.phase = UpdatePhase::Downloading {
+                received_bytes: 0,
+                total_bytes: None,
+            };
             publish(app, &mut guard);
-            (guard.pending.take().expect("checked above"), guard.cancel.clone())
+            (
+                guard.pending.take().expect("checked above"),
+                guard.cancel.clone(),
+            )
         };
         let app_for_chunk = app.clone();
         let cancel_in_chunk = cancel.clone();
@@ -377,8 +393,10 @@ pub mod desktop_impl {
                     last_emit = std::time::Instant::now();
                     let state = &app_for_chunk.state::<UpdateState>();
                     let mut guard = state.lock().unwrap_or_else(|p| p.into_inner());
-                    guard.phase =
-                        UpdatePhase::Downloading { received_bytes: received, total_bytes: total };
+                    guard.phase = UpdatePhase::Downloading {
+                        received_bytes: received,
+                        total_bytes: total,
+                    };
                     publish(&app_for_chunk, &mut guard);
                 }
             },
@@ -582,19 +600,40 @@ mod tests {
 
     #[test]
     fn semver_compares_three_segments() {
-        assert_eq!(compare_semver("0.13.0", "0.12.2"), std::cmp::Ordering::Greater);
-        assert_eq!(compare_semver("0.12.2", "0.12.2"), std::cmp::Ordering::Equal);
-        assert_eq!(compare_semver("v0.12.2", "0.12.2"), std::cmp::Ordering::Equal);
-        assert_eq!(compare_semver("1.0.0", "0.99.99"), std::cmp::Ordering::Greater);
-        assert_eq!(compare_semver("0.12.10", "0.12.9"), std::cmp::Ordering::Greater);
+        assert_eq!(
+            compare_semver("0.13.0", "0.12.2"),
+            std::cmp::Ordering::Greater
+        );
+        assert_eq!(
+            compare_semver("0.12.2", "0.12.2"),
+            std::cmp::Ordering::Equal
+        );
+        assert_eq!(
+            compare_semver("v0.12.2", "0.12.2"),
+            std::cmp::Ordering::Equal
+        );
+        assert_eq!(
+            compare_semver("1.0.0", "0.99.99"),
+            std::cmp::Ordering::Greater
+        );
+        assert_eq!(
+            compare_semver("0.12.10", "0.12.9"),
+            std::cmp::Ordering::Greater
+        );
     }
 
     #[test]
     fn skip_decision_restores_on_newer_offer() {
         // 未跳过 → 正常呈现。
-        assert!(matches!(skip_decision("0.13.0", None), SkipDecision::Offer { clear_skip: false }));
+        assert!(matches!(
+            skip_decision("0.13.0", None),
+            SkipDecision::Offer { clear_skip: false }
+        ));
         // 跳过同版本 → 不提醒。
-        assert!(matches!(skip_decision("0.13.0", Some("0.13.0")), SkipDecision::Ignore));
+        assert!(matches!(
+            skip_decision("0.13.0", Some("0.13.0")),
+            SkipDecision::Ignore
+        ));
         // 出现更新版本 → 自动恢复 (清除跳过记录)。
         assert!(matches!(
             skip_decision("0.14.0", Some("0.13.0")),
@@ -641,8 +680,14 @@ mod tests {
         .expect("fixture 不存在");
         let (version, _notes, url) = parse_manifest(&body).expect("清单应可解析");
         assert!(version.split('.').count() == 3, "版本应为三段: {version}");
-        assert!(url.starts_with("https://github.com/"), "平台 URL 应为 GitHub 直链: {url}");
-        assert!(url.contains("setup.exe"), "Windows 平台应指向 NSIS 安装包: {url}");
+        assert!(
+            url.starts_with("https://github.com/"),
+            "平台 URL 应为 GitHub 直链: {url}"
+        );
+        assert!(
+            url.contains("setup.exe"),
+            "Windows 平台应指向 NSIS 安装包: {url}"
+        );
         // 结构不符 → invalidManifest 语义 (返回 None)。
         assert!(parse_manifest("{\"version\": \"1.0.0\"}").is_none());
     }
@@ -652,6 +697,9 @@ mod tests {
         let stamp = now_rfc3339_local();
         // 秒级精度 + 偏移 (Z 或 ±HH:MM); 表现层按民事日字符串解析依赖该形态。
         assert!(stamp.matches(':').count() >= 2, "RFC3339 形态异常: {stamp}");
-        assert!(stamp.ends_with('Z') || stamp.contains("+") || stamp.contains("-"), "缺时区偏移: {stamp}");
+        assert!(
+            stamp.ends_with('Z') || stamp.contains("+") || stamp.contains("-"),
+            "缺时区偏移: {stamp}"
+        );
     }
 }
