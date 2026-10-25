@@ -203,7 +203,7 @@
     },
     "T11": {
       "title": "Windows 软件更新全链路：维护页更新卡与 tauri-plugin-updater 自动升级",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "feat/T11-windows-software-update",
       "topic": "SoftwareUpdate",
       "milestone": "M6-软件更新",

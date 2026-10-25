@@ -4,26 +4,24 @@
   "title": "Windows 软件更新全链路：维护页更新卡与 tauri-plugin-updater 自动升级",
   "version": "0.13.0",
   "milestone": "M6-软件更新",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "feat/T11-windows-software-update",
-  "depends_on": ["T09"],
-
+  "depends_on": [
+    "T09"
+  ],
   "target": {
     "module": "apps/win",
     "design_doc": "docs/devel/design/07-软件更新.md",
     "design_topic": "SoftwareUpdate"
   },
-
   "goal": "在 Windows 设置中心维护页交付与高保真 demo（apps/win/demo/win-settings-update-flow-demo.html）逐字逐 token 一致的「软件更新」卡（07 设计 §4.2 R3/R4，方案 B：维护页顶部、诊断分组之前、通用页「版本」行占位迁入本卡），并接入 tauri-plugin-updater 完成检查、下载进度、minisign 签名校验、NSIS 静默安装与应用重启（§4.2 R7），沿用 T09 已生成的签名密钥。",
-
   "precheck": {
     "description": "检测 Windows 侧是否已存在更新器接入或更新卡实现",
     "command": "grep -rn \"tauri-plugin-updater\\|update-stage\\|软件更新\" apps/win/src-tauri/ apps/win/src/ 2>/dev/null || echo \"NOT_FOUND\"",
     "expected": "NOT_FOUND",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "NOT_FOUND (2026-10-25 worktree feat/T11-windows-software-update 实测: apps/win 无 updater 接入与更新卡实现, 符合开工前预检)"
   },
-
   "callback": {
     "before": [
       "git checkout -b feat/T11-windows-software-update 2>/dev/null || git checkout feat/T11-windows-software-update"
@@ -34,70 +32,68 @@
       "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 completed；目标状态预检使用 --card T11 --to completed --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card T11 --receipt 复核、输出节点回执"
     ]
   },
-
   "tasks": [
     {
       "id": "T11-1",
       "title": "tauri-plugin-updater 接入与 command 封装",
       "capability": "按项目钉版原则核对并锁定与 tauri =2.11.6 兼容的插件精确版本；endpoint 配置 latest.json 直链；capability 仅授 updater:default；Rust 侧封装 update_check/update_download/update_install command 并广播状态事件供前端渲染 8 态状态机。",
-      "done": false
+      "done": true
     },
     {
       "id": "T11-2",
       "title": "设置页维护页软件更新卡 UI",
       "capability": "settings.js 维护 pane 顶部（诊断 caption 之前）插入软件更新分组：三行 + update-stage 状态区 8 态 + 导航角标（nav-dot 6px #4C9CFF 发光）；styles.css 新增 PART U 三类（update-stage/update-banner/update-progress，token 值逐项对齐 07 §4.2 R3 表）；文案逐字对齐 demo；移除通用页「版本」行占位并将 setting-version 接入本卡当前版本行；settings-status warn 口径。",
-      "done": false
+      "done": true
     },
     {
       "id": "T11-3",
-      "title": "签名密钥衔接（密钥基建已前移至 T09）",
+      "title": "签名密钥衔接（密钥基建已前移至 T09） (已随 T09 前移交付: tauri.conf pubkey/endpoints + TAURI_SIGNING_PRIVATE_KEY 构建注入, 见 T09 卡 1c2fe76)",
       "capability": "密钥对、公钥配置（tauri.conf.json plugins.updater.pubkey）、私钥保管流程（07 §4.2 R7）与仓库私钥特征扫描已由 T09 交付（2026-10-24 审查后前移：T09 无密钥则无法产出 .sig）。本任务在插件接入时沿用该公钥、不得重新生成（换钥即已发布签名全部失效），并核验插件读取的公钥与清单 signature 同源。",
-      "done": false
+      "done": true
     },
     {
       "id": "T11-4",
       "title": "契约测试与对拍",
       "capability": "check-win-frontend.mjs 扩展：软件更新卡 DOM 结构、逐字文案、状态类名、导航角标断言；Rust updater command 对 fixture 清单的单测；状态机文案与 demo 共享 fixture 对拍（与 T10 同一份 cases）；verify-local 全绿。",
-      "done": false
+      "done": true
     }
   ],
-
   "acceptance": {
     "result": null,
-    "run_id": "",
+    "run_id": "verify-local-20261025-t11",
     "checks": [
       {
         "item": "UI 与 demo 一致",
         "true_if": "Windows 维护页顶部软件更新卡的 DOM 结构、逐字文案、PART U 样式 token、8 态状态区与导航角标与 demo 完全一致（方案 B），通用页版本行已迁入",
         "false_if": "布局位置偏离、文案改写、token 值漂移或状态缺失",
-        "evidence": "",
+        "evidence": "2026-10-25 自动化部分: 固定文案/8 态状态区/角标/按钮可用性逐字取自共享表现层 apps/win/src/update-presentation.js, 与 mac 同读 tests/fixtures/update-copy-parity/cases.json —— check-win-frontend.mjs 挂载 update-presentation.test.mjs 逐例对拍 6/6 绿 (rows/currentVersion/lastCheck/18 态/flags/失败行); PART U 样式 token 复用 PART 2 变量; check-win-frontend 结构断言锁死接线 (版本行迁卡/端点一致/裁撤即断)。真机视觉对照 demo 待人工验收",
         "result": null
       },
       {
         "item": "升级链路贯通",
         "true_if": "检查→发现新版本→下载（进度/取消）→安装并重启的状态事件全链路贯通；签名校验失败拒绝安装；失败态按 demo 呈现（含状态行 warn）",
         "false_if": "状态事件断裂、无签名校验或失败无呈现",
-        "evidence": "",
+        "evidence": "2026-10-25 Rust 侧: tauri-plugin-updater 2.12.0 接入 (endpoints=latest.json 直链 + T09 pubkey), update_check/download/install/cancel/dismiss/skip/unskip 命令 + update-state 事件快照; 下载进度节流 120ms, minisign 验签失败按 signatureInvalid 拒绝安装; cargo check 0 错, cargo test --lib 56/56 绿 (含 software_update 5 项: semver/跳过解除/phase 序列化对 fixture 形态/清单解析对 update-manifest fixture/RFC3339 带偏移)。真实升级 E2E 依赖新版本发布, 待首次发版验证",
         "result": null
       },
       {
         "item": "密钥安全",
         "true_if": "minisign 私钥不入仓库（.gitignore/敏感扫描覆盖），公钥配置与清单 signature 由同一密钥对生成",
         "false_if": "私钥出现在仓库或公私钥不匹配",
-        "evidence": "",
+        "evidence": "minisign 私钥离线保管流程与 pubkey 配置已随 T09 交付 (T09-5, 提交 818e2b5/1c2fe76); 本卡零新增密钥资产, 敏感扫描随 verify-local 通过",
         "result": null
       },
       {
         "item": "契约测试全绿",
         "true_if": "node scripts/check-win-frontend.mjs 与 zsh scripts/verify-local.sh 退出码 0",
         "false_if": "任一断言失败",
-        "evidence": "",
+        "evidence": "node scripts/check-win-frontend.mjs EXIT 0 (2026-10-25): frontend 87/87 + geometry + update-presentation 6/6; cargo test --lib 56/56; verify-local 结果见 run_id",
         "result": null
       }
     ]
   },
   "sync": {
-    "commit": ""
+    "commit": "cc816e2"
   },
   "gate": {
     "tool": "adflow-verify",
