@@ -24,9 +24,9 @@ struct ProviderBrandBadge: View {
 
     private var isNothing: Bool { theme.interfaceStyle == .nothing }
 
-    /// Classic/LiquidGlass 4.5pt (15pt 徽章定稿), Nothing 3pt; 随尺寸等比放大。
+    /// 与 Nothing 风格统一紧凑圆角 3pt; 随尺寸等比放大。
     private var cornerRadius: CGFloat {
-        isNothing ? max(3, size * 0.2) : max(4.5, size * 0.3)
+        max(3, size * 0.2)
     }
 
     var body: some View {

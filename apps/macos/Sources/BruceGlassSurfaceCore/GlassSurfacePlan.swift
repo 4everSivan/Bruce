@@ -333,30 +333,32 @@ public struct DashboardGlassSurfaceStyle: Equatable, Sendable {
     private static func classic(for appearance: DashboardGlassAppearance) -> Self {
         switch appearance {
         case .dark:
+            // 经典风格 · 纯正高斯磨砂毛玻璃 (Dark): 结合系统级 hudWindow 磨砂底板，纯净雾面毛玻璃，无伪造折射高光
             return Self(
-                panelTint: .clear,
-                cardFill: .clear,
-                cardBorder: .white(0.24),
+                panelTint: .black(0.42),
+                cardFill: .white(0.065),
+                cardBorder: .white(0.12),
                 cardHighlight: .clear,
-                cardShadow: .black(0.08),
-                controlFill: .clear,
-                controlPressedFill: .clear,
+                cardShadow: .black(0.15),
+                controlFill: .white(0.08),
+                controlPressedFill: .white(0.16),
                 controlForeground: .white(1),
-                controlBorder: .white(0.24),
-                controlShadow: .black(0.08)
+                controlBorder: .white(0.14),
+                controlShadow: .black(0.16)
             )
         case .light:
+            // 经典风格 · 纯正高斯磨砂毛玻璃 (Light): 柔和透光 popover 底板 + 雾面白卡片 + 纯净微边框
             return Self(
-                panelTint: .clear,
-                cardFill: .clear,
-                cardBorder: .black(0.16),
+                panelTint: .rgb(243 / 255, 245 / 255, 250 / 255, alpha: 0.65),
+                cardFill: .white(0.58),
+                cardBorder: .black(0.08),
                 cardHighlight: .clear,
-                cardShadow: .black(0.08),
-                controlFill: .clear,
-                controlPressedFill: .clear,
-                controlForeground: .black(0.82),
-                controlBorder: .black(0.16),
-                controlShadow: .black(0.08)
+                cardShadow: .rgb(15 / 255, 23 / 255, 42 / 255, alpha: 0.04),
+                controlFill: .white(0.78),
+                controlPressedFill: .white(0.92),
+                controlForeground: .black(0.88),
+                controlBorder: .black(0.10),
+                controlShadow: .rgb(15 / 255, 23 / 255, 42 / 255, alpha: 0.05)
             )
         }
     }

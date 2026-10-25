@@ -1,0 +1,99 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C102",
+  "title": "经典风格升级高斯模糊（方案A 柔光云母高斯）并与 Nothing 风格 1:1 统一紧凑圆角体系",
+  "version": "0.13.0",
+  "type": "Enhancement",
+  "status": "verified",
+  "branch": "feat/C102-gaussian-blur-theme",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos + apps/win",
+    "component": "DashboardSurface + ThemeTokens + PanelCardContainer",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "用户提出将当前项目的经典风格变成高斯模糊主题，并确认采纳方案 A（柔光云母高斯，兼顾深色流光与浅色暖瓷浮岛高对比度层次），且要求卡片圆角和 Nothing 风格的紧凑圆角体系（面板 10pt、卡片 4pt、子槽/按钮 3pt）彻底统一，消灭原 classic 22pt/16pt 大圆角臃肿感与浅色发灰发脏问题。",
+  "precheck": {
+    "description": "预检代码库中经典风格是否仍为旧圆角与旧材质 token",
+    "command": "grep -n 'panelCornerRadius: CGFloat' apps/macos/Sources/BruceApp/MenuBarViews.swift; grep -n 'cornerRadius: isNothingSurface' apps/macos/Sources/BruceApp/Views/PanelCardContainer.swift",
+    "expected": "命中 classic 下仍为 22pt 面板圆角与 16pt 卡片圆角",
+    "is_completed": true,
+    "evidence": "2026-10-23 预检实测：MenuBarViews.swift:239 仍为 isNothingTheme ? 10 : 22，PanelCardContainer.swift:25 仍为 isNothingSurface ? 4 : 16，缺陷与改进空间明确存在。"
+  },
+  "callback": {
+    "before": [
+      "# 检出专属开发分支 feat/C102-gaussian-blur-theme"
+    ],
+    "after": [
+      "swift run --package-path apps/macos DashboardGlassSurfaceHarness",
+      "node --test apps/win/tests/frontend.test.mjs apps/win/tests/geometry-parity.test.mjs",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 closed"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "圆角体系统一 (macOS & Windows)",
+      "before": "classic 面板圆角 22pt、主卡片 16pt、底栏按钮 10pt，与 Nothing (10pt/4pt/3pt) 割裂",
+      "after": "全风格面板统一为 10pt，主卡片统一为 4pt，底栏按钮统一为 3pt (与 Nothing 1:1 对齐)",
+      "impact": "主看板呈现精密紧凑的现代桌面工具美学，消灭过大圆角带来的内容空间挤压"
+    },
+    {
+      "scope": "高斯模糊光学质感与浅色外观重构 (方案 A)",
+      "before": "classic 模式下面板与卡片材质叠层发闷、无透光度 (Windows 底色 90% 不透明)，浅色下白底白框无层次",
+      "after": "深色下采用高透高斯 (blur 36px, sat 185%, alpha 0.48) 搭配 1px 顶部高光折光边；浅色下重构为暖瓷云母底板 (alpha 0.72) + 纯白浮岛卡片 (alpha 0.62) + 双层复合边界 (外冷灰暗界 + 内纯白高光)，并适配森林绿/深海蓝高对比度语义色",
+      "impact": "macOS 与 Windows 看板在任何壁纸下均具备晶莹透光与高辨识度层次感"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "FR-3 / 现行设计规则 2: classic 为材质回退 (popover/contentBackground 纯色)，圆角 22pt/16pt",
+      "after": "FR-8: 经典风格升级为高斯模糊光学主题 (方案 A 柔光云母高斯)，圆角层级与 Nothing 风格 1:1 统一 (面板 10pt、卡片 4pt、子控件 3pt)"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "local-20261023-17",
+    "user_quote": "签收所有的卡片，检查远端分支的代码是否都合并到主分支 (2026-10-26, 会话原话)",
+    "signoff": "2026-10-26 人类口头确认 (AI 代签)",
+    "checks": [
+      {
+        "item": "DashboardGlassSurfaceHarness 测试",
+        "true_if": "DashboardGlassSurfaceHarness 全绿通过且退出码为 0",
+        "false_if": "DashboardGlassSurfaceHarness 出现断言失败或退出码非 0",
+        "evidence": "2026-10-23 实测：swift run --package-path apps/macos DashboardGlassSurfaceHarness 全部 10 项断言全绿通过（退出码 0），验证了方案 A 与 Nothing 风格的 PanelTint、CardFill、CardBorder、CornerRadius (10/4/3/2) 等 tokens 100% 预期断言一致。",
+        "result": true
+      },
+      {
+        "item": "Windows 前端与几何对拍测试",
+        "true_if": "frontend.test.mjs 与 geometry-parity.test.mjs 全绿通过且无破坏性回归",
+        "false_if": "任一 Windows 前端或几何对拍测试失败",
+        "evidence": "2026-10-23 实测：node --test apps/win/tests/frontend.test.mjs apps/win/tests/geometry-parity.test.mjs 全部 89 项用例全绿通过（退出码 0，耗时 3.2s）。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "Nothing 风格与现有设置窗口 Fluent 平面风格不受影响，圆角和高斯模糊正确对齐",
+        "false_if": "Nothing 风格破图或设置窗口 Fluent 样式被意外覆盖",
+        "evidence": "2026-10-23 实测排查：Nothing 风格在 macOS/Win 测试中 100% 保持 NDot/极客点阵与高对比度特性，设置中心窗口遵循 C067 保持 Fluent 2 平面规范无毛玻璃与无意外覆盖；PanelParityHarness (5 项) 与 PanelViewModelHarness (60 项) 亦全绿通过。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "f9111925b3ba1ee3048fc08c0276906236b2b740",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-23",
+    "exit_code": 0
+  }
+}

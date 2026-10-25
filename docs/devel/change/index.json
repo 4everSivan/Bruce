@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-index.v1.json",
   "version": "1.0",
-  "updated_at": "2026-10-23",
+  "updated_at": "2026-10-26",
   "topics": {
     "SystemOverview": {
       "design_doc": "docs/devel/design/00-系统总体设计.md",
@@ -23,7 +23,8 @@
         "C044",
         "C088",
         "C098",
-        "C100"
+        "C100",
+        "C102"
       ]
     },
     "PricingEngine": {
@@ -1053,6 +1054,15 @@
       "topic": "WindowsCompat",
       "version": "0.13.0",
       "file": "docs/devel/change/C101.json"
+    },
+    "C102": {
+      "title": "经典风格升级高斯模糊（方案A 柔光云母高斯）并与 Nothing 风格 1:1 统一紧凑圆角体系",
+      "type": "Enhancement",
+      "status": "verified",
+      "branch": "feat/C102-gaussian-blur-theme",
+      "topic": "MenuBarIndicator",
+      "version": "0.13.0",
+      "file": "docs/devel/change/C102.json"
     }
   }
 }

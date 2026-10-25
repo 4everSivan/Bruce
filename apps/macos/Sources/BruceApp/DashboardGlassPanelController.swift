@@ -48,9 +48,9 @@ final class DashboardGlassPanelController: NSViewController {
         view = rootView
     }
 
-    /// 面板圆角: Nothing 主题 10 (定稿 token), 其余主题维持 22.
+    /// 面板圆角: 与 Nothing 风格 1:1 统一紧凑圆角 10pt (消除原 classic 22pt 臃肿大圆角).
     private var panelCornerRadius: CGFloat {
-        theme.interfaceStyle == .nothing ? 10 : 22
+        10
     }
 
     override func viewDidLoad() {
@@ -232,7 +232,9 @@ final class DashboardGlassPanelController: NSViewController {
         case .matte:
             return .windowBackground
         case .classic:
-            return .contentBackground
+            // 经典风格升级为高斯模糊主题 (方案 A 柔光云母高斯):
+            // 暗色采用高透深邃的 .hudWindow，浅色采用柔和透光的 .popover
+            return isDarkAppearance ? .hudWindow : .popover
         case .nothing:
             // Nothing plan 走 .flatMonochrome 纯色路径, 不会进入 NSVisualEffectView;
             // 此分支仅为穷尽 switch, 兜底 contentBackground.

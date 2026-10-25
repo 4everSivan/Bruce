@@ -22,7 +22,7 @@ struct PanelCardContainer<Content: View>: View {
 
     private var shape: RoundedRectangle {
         RoundedRectangle(
-            cornerRadius: isNothingSurface ? 4 : 16,
+            cornerRadius: 4,
             style: .continuous
         )
     }
@@ -41,18 +41,6 @@ struct PanelCardContainer<Content: View>: View {
             .background { cardBackground }
             .overlay {
                 shape.strokeBorder(surfaceTokens.borderColor, lineWidth: 1)
-            }
-            .overlay(alignment: .top) {
-                // 低对比度顶部材质高光. 液态玻璃由系统承担主要边缘效果,
-                // 此处只保留很弱的结构提示, 避免重复描边.
-                // Nothing: 1px 边框已承担分层, 高光矩形不渲染.
-                if !isNothingSurface {
-                    Rectangle()
-                        .fill(surfaceTokens.highlightColor)
-                        .frame(height: 1)
-                        .padding(.horizontal, 10)
-                        .offset(y: 0.5)
-                }
             }
             .clipShape(shape)
             .shadow(
@@ -112,7 +100,15 @@ private struct PanelGlassButtonStyleModifier: ViewModifier {
                 )
             )
         } else {
-            content
+            // 经典高斯模糊主题下挂载自适应高斯控件面 (小圆角 3pt)
+            content.buttonStyle(
+                DashboardPanelGlassButtonStyle(
+                    tokens: DashboardGlassSurfaceTokens.resolve(
+                        theme: theme,
+                        colorScheme: colorScheme
+                    )
+                )
+            )
         }
     }
 }
@@ -161,10 +157,10 @@ private struct DashboardPanelGlassButtonStyle: ButtonStyle {
                 configuration.isPressed
                     ? tokens.controlPressedFillColor
                     : tokens.controlFillColor,
-                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                in: RoundedRectangle(cornerRadius: 3, style: .continuous)
             )
             .overlay {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
                     .strokeBorder(tokens.controlBorderColor, lineWidth: 1)
             }
             .shadow(
@@ -172,7 +168,7 @@ private struct DashboardPanelGlassButtonStyle: ButtonStyle {
                 radius: 3,
                 y: 1
             )
-            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
     }
 }
 

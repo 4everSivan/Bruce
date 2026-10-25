@@ -48,9 +48,9 @@
   --divider: rgba(255,255,255,.10);
   --footer-hairline: rgba(255,255,255,.15);
   --panel-border: rgba(255,255,255,.14);
-  --card-bg: rgba(255,255,255,.055);
-  /* mac GlassSurfacePlan.classic(dark).cardBorder = 白 24% */
-  --card-border: rgba(255,255,255,.24);
+  --card-bg: rgba(255,255,255,.065);
+  /* mac GlassSurfacePlan.classic(dark).cardBorder = 白 12% */
+  --card-border: rgba(255,255,255,.12);
   --accent: #0a84ff;
   --accent-soft: rgba(10,132,255,.14);
   --badge-bg: rgba(255,255,255,.06);
@@ -109,26 +109,17 @@ button, input, select, textarea {
   max-height: 100%;
   display: flex;
   flex-direction: column;
-  background: rgba(26, 26, 30, 0.90);
-  backdrop-filter: blur(32px) saturate(180%);
-  -webkit-backdrop-filter: blur(32px) saturate(180%);
+  background: rgba(18, 20, 26, 0.55);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
   border: 1px solid var(--panel-border);
-  /* mac panelCornerRadius: classic 22 / Nothing 10 */
-  border-radius: 22px;
+  /* mac panelCornerRadius: 统一为 Nothing 紧凑圆角 10px */
+  border-radius: 10px;
   overflow: hidden;
   position: relative;
   /* SwiftUI Text 行高约为字号 1.2 倍; CSS normal 行高 (Segoe / 雅黑约 1.33~1.4)
      会让每行比 mac 高出一截, 卡片整体被拉高约 20% (C067 并排实测)。 */
   line-height: 1.2;
-}
-
-/* mac 顶部 1px 微发光发线 (白 35%, 左右内缩 18) */
-#panel::before {
-  content: "";
-  position: absolute;
-  top: 0; left: 18px; right: 18px; height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent);
-  z-index: 3;
 }
 
 /* HUD 顶部 Header (mac dashboardTopHeader): 左 [四色状态灯 品牌 Bruce] · 右 Agent 状态 (C100) */
@@ -189,7 +180,7 @@ button, input, select, textarea {
   align-items: center;
   background: rgba(0, 0, 0, 0.24);
   padding: 2px;
-  border-radius: 8px;
+  border-radius: 3px;
   border: 1px solid var(--hairline);
 }
 .theme-nothing .segmented-track {
@@ -205,7 +196,7 @@ button, input, select, textarea {
   height: 22px;
   width: 27px;
   background: rgba(255, 255, 255, 0.16);
-  border-radius: 6px;
+  border-radius: 2px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
   transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
   pointer-events: none;
@@ -289,16 +280,16 @@ button, input, select, textarea {
   gap: 10px;
 }
 
-/* 卡片容器 (mac PanelCardContainer, classic dark token): 圆角 16, 内边距 15/13,
-   边框白 24%, 无顶部高光 (classic highlight 为 clear), 阴影黑 8% 半径 5。
+/* 卡片容器 (mac PanelCardContainer, classic dark token): 统一圆角 4px (与 Nothing 一致), 内边距 12/14,
+   边框白 18%, 顶部 1px 折光高光, 阴影黑 18% 半径 5。
    mac 描边是 overlay strokeBorder (画在内边距之内, 不增加尺寸), CSS border 会把盒子
    撑大 2px; 故各带边框组件的 padding 一律扣掉边框宽度, 外形尺寸与 mac 相同。 */
 .card {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
-  border-radius: 16px;
+  border-radius: 4px;
   padding: 12px 14px;
-  box-shadow: 0 1px 5px rgba(0,0,0,.08);
+  box-shadow: 0 1px 4px rgba(0,0,0,.14);
   position: relative;
   overflow: hidden;
 }
@@ -447,7 +438,7 @@ button, input, select, textarea {
 .chip {
   min-width: 0;
   padding: 5px 8px;
-  border-radius: 10px;
+  border-radius: 3px;
   background: rgba(255,255,255,.08);
   border: 1px solid rgba(255,255,255,.10);
 }
@@ -530,9 +521,9 @@ button, input, select, textarea {
 .sub-section:first-child { padding-top: 10px; }
 .sub-section + .sub-section { border-top: 1px solid var(--divider); }
 .sub-head { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; min-width: 0; }
-/* 品牌徽章 (mac ProviderBrandBadge 15pt): 品牌色瓷砖 + 白色图形, 圆角 4.5 */
+/* 品牌徽章 (mac ProviderBrandBadge 15pt): 品牌色瓷砖 + 白色图形, 圆角 3px (与 Nothing 统一) */
 .pbadge {
-  width: 15px; height: 15px; border-radius: 4.5px; flex: none;
+  width: 15px; height: 15px; border-radius: 3px; flex: none;
   display: inline-flex; align-items: center; justify-content: center;
   background: var(--brand, #8e8e93); color: #fff;
   font-size: 9px; font-weight: 700; line-height: 1;
@@ -599,10 +590,10 @@ button, input, select, textarea {
 .bal-chip b { font-size: 9.5px; font-weight: 600; color: var(--ink); opacity: .85; font-variant-numeric: tabular-nums; }
 .note-line { font-size: 10px; color: #ff9f0a; padding-top: 2px; }
 
-/* 多账号账号子卡 (mac ProviderAccountCard): 圆角 10, 白 10% 底, 白 18% 描边 */
+/* 多账号账号子卡 (mac ProviderAccountCard): 圆角 3, 白 10% 底, 白 18% 描边 */
 .account-list-inline { display: flex; flex-direction: column; gap: 4px; padding: 4px 0 2px; }
 .account-card {
-  padding: 5px 8px; border-radius: 10px;
+  padding: 5px 8px; border-radius: 3px;
   background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.18);
 }
 .account-head { display: flex; align-items: center; gap: 5px; padding-bottom: 2px; }
@@ -612,12 +603,12 @@ button, input, select, textarea {
 .tag-chip {
   flex: none; font-size: 8.5px; font-weight: 500; color: #0a84ff;
   background: rgba(10,132,255,.22); border: .5px solid rgba(10,132,255,.3);
-  border-radius: 3.5px; padding: 1px 5px; white-space: nowrap;
+  border-radius: 3px; padding: 1px 5px; white-space: nowrap;
 }
 /* 纯余额型双槽 (mac BalanceDualSlotView): 可用余额 / 订阅状态 */
 .bal-slots { display: flex; gap: 8px; padding: 4px 0 2px; }
 .bal-slots .slot {
-  flex: 1; min-width: 0; padding: 6.5px 8.5px; border-radius: 8px;
+  flex: 1; min-width: 0; padding: 6.5px 8.5px; border-radius: 3px;
   background: rgba(255,255,255,.06); border: .5px solid rgba(255,255,255,.10);
 }
 .slot-title { font-size: 10px; color: var(--secondary); }

@@ -375,20 +375,20 @@ struct UsageHeroCard: View {
             isNothing
                 ? (month.isCurrent ? Self.nothingSurfaceRaised : Color.clear)
                 : Color.adaptive(
-                    light: Color.white.opacity(month.isCurrent ? 0.6 : 0.4),
+                    light: Color.white.opacity(month.isCurrent ? 0.82 : 0.45),
                     dark: Color.white.opacity(month.isCurrent ? 0.14 : 0.08)
                 ),
-            in: RoundedRectangle(cornerRadius: isNothing ? 2 : 10, style: .continuous)
+            in: RoundedRectangle(cornerRadius: isNothing ? 2 : 3, style: .continuous)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: isNothing ? 2 : 10, style: .continuous)
+            RoundedRectangle(cornerRadius: isNothing ? 2 : 3, style: .continuous)
                 .strokeBorder(
                     isSelected && !isNothing ? Self.accent.opacity(0.85) :
                     isSelected ? Self.nothingHeroAccent :
                     (isNothing
                         ? (month.isCurrent ? Self.nothingBorderVisible : Self.nothingBorder)
                         : Color.adaptive(
-                            light: Color.white.opacity(0.55),
+                            light: Color.black.opacity(0.065),
                             dark: Color.white.opacity(0.1)
                         )),
                     lineWidth: 1
@@ -498,7 +498,7 @@ struct UsageHeroCard: View {
         }
         .padding(2)
         .background(
-            RoundedRectangle(cornerRadius: isNothing ? 3 : 8, style: .continuous)
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
                 .fill(isNothing ? Color.clear : Color.primary.opacity(0.06))
         )
         .overlay {
