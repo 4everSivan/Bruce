@@ -4,7 +4,7 @@
   "title": "Windows 软件更新全链路：维护页更新卡与 tauri-plugin-updater 自动升级",
   "version": "0.13.0",
   "milestone": "M6-软件更新",
-  "status": "in_progress",
+  "status": "completed",
   "branch": "feat/T11-windows-software-update",
   "depends_on": [
     "T09"
@@ -60,35 +60,35 @@
   ],
   "acceptance": {
     "result": null,
-    "run_id": "verify-local-20261025-t11",
+    "run_id": "local-20261026-03",
     "checks": [
       {
         "item": "UI 与 demo 一致",
         "true_if": "Windows 维护页顶部软件更新卡的 DOM 结构、逐字文案、PART U 样式 token、8 态状态区与导航角标与 demo 完全一致（方案 B），通用页版本行已迁入",
         "false_if": "布局位置偏离、文案改写、token 值漂移或状态缺失",
-        "evidence": "2026-10-25 自动化部分: 固定文案/8 态状态区/角标/按钮可用性逐字取自共享表现层 apps/win/src/update-presentation.js, 与 mac 同读 tests/fixtures/update-copy-parity/cases.json —— check-win-frontend.mjs 挂载 update-presentation.test.mjs 逐例对拍 6/6 绿 (rows/currentVersion/lastCheck/18 态/flags/失败行); PART U 样式 token 复用 PART 2 变量; check-win-frontend 结构断言锁死接线 (版本行迁卡/端点一致/裁撤即断)。真机视觉对照 demo 待人工验收",
-        "result": null
+        "evidence": "2026-10-25 自动化部分: 固定文案/8 态状态区/角标/按钮可用性逐字取自共享表现层 apps/win/src/update-presentation.js, 与 mac 同读 tests/fixtures/update-copy-parity/cases.json —— check-win-frontend.mjs 挂载 update-presentation.test.mjs 逐例对拍 6/6 绿 (rows/currentVersion/lastCheck/18 态/flags/失败行); PART U 样式 token 复用 PART 2 变量; check-win-frontend 结构断言锁死接线 (版本行迁卡/端点一致/裁撤即断)。真机视觉对照 demo 待人工验收。2026-10-26 人类签收裁决: 原话「签收所有的卡片，检查远端分支的代码是否都合并到主分支 (2026-10-26 会话原话)」; 自动化对拍 6/6 已锁文案与状态语义, Windows 真机视觉对照欠账知情接受",
+        "result": true
       },
       {
         "item": "升级链路贯通",
         "true_if": "检查→发现新版本→下载（进度/取消）→安装并重启的状态事件全链路贯通；签名校验失败拒绝安装；失败态按 demo 呈现（含状态行 warn）",
         "false_if": "状态事件断裂、无签名校验或失败无呈现",
-        "evidence": "2026-10-25 Rust 侧: tauri-plugin-updater 2.12.0 接入 (endpoints=latest.json 直链 + T09 pubkey), update_check/download/install/cancel/dismiss/skip/unskip 命令 + update-state 事件快照; 下载进度节流 120ms, minisign 验签失败按 signatureInvalid 拒绝安装; cargo check 0 错, cargo test --lib 56/56 绿 (含 software_update 5 项: semver/跳过解除/phase 序列化对 fixture 形态/清单解析对 update-manifest fixture/RFC3339 带偏移)。真实升级 E2E 依赖新版本发布, 待首次发版验证",
-        "result": null
+        "evidence": "2026-10-25 Rust 侧: tauri-plugin-updater 2.12.0 接入 (endpoints=latest.json 直链 + T09 pubkey), update_check/download/install/cancel/dismiss/skip/unskip 命令 + update-state 事件快照; 下载进度节流 120ms, minisign 验签失败按 signatureInvalid 拒绝安装; cargo check 0 错, cargo test --lib 56/56 绿 (含 software_update 5 项: semver/跳过解除/phase 序列化对 fixture 形态/清单解析对 update-manifest fixture/RFC3339 带偏移)。真实升级 E2E 依赖新版本发布, 待首次发版验证。2026-10-26 人类签收裁决: 原话「签收所有的卡片，检查远端分支的代码是否都合并到主分支 (2026-10-26 会话原话)」; 命令/事件/验签链路经 cargo test 与契约测试锁定, Windows 真机升级 E2E 欠账知情接受, 于 v0.13.0 发版后解除",
+        "result": true
       },
       {
         "item": "密钥安全",
         "true_if": "minisign 私钥不入仓库（.gitignore/敏感扫描覆盖），公钥配置与清单 signature 由同一密钥对生成",
         "false_if": "私钥出现在仓库或公私钥不匹配",
-        "evidence": "minisign 私钥离线保管流程与 pubkey 配置已随 T09 交付 (T09-5, 提交 818e2b5/1c2fe76); 本卡零新增密钥资产, 敏感扫描随 verify-local 通过",
-        "result": null
+        "evidence": "minisign 私钥离线保管流程与 pubkey 配置已随 T09 交付 (T09-5, 提交 818e2b5/1c2fe76); 本卡零新增密钥资产, 敏感扫描随 verify-local 通过。2026-10-26 人类签收裁决: 原话「签收所有的卡片，检查远端分支的代码是否都合并到主分支 (2026-10-26 会话原话)」",
+        "result": true
       },
       {
         "item": "契约测试全绿",
         "true_if": "node scripts/check-win-frontend.mjs 与 zsh scripts/verify-local.sh 退出码 0",
         "false_if": "任一断言失败",
-        "evidence": "node scripts/check-win-frontend.mjs EXIT 0 (2026-10-25): frontend 87/87 + geometry + update-presentation 6/6; cargo test --lib 56/56; verify-local 结果见 run_id。verify-local 首跑因 software_update.rs 未过 rustfmt 门禁退出 1, cargo fmt 修复后复跑 EXIT=0「Bruce 本地验证全部通过」(含 win crate fmt/clippy/test 段, /tmp/t11-verify2.log)",
-        "result": null
+        "evidence": "node scripts/check-win-frontend.mjs EXIT 0 (2026-10-25): frontend 87/87 + geometry + update-presentation 6/6; cargo test --lib 56/56; verify-local 结果见 run_id。verify-local 首跑因 software_update.rs 未过 rustfmt 门禁退出 1, cargo fmt 修复后复跑 EXIT=0「Bruce 本地验证全部通过」(含 win crate fmt/clippy/test 段, /tmp/t11-verify2.log)。2026-10-26 人类签收裁决: 原话「签收所有的卡片，检查远端分支的代码是否都合并到主分支 (2026-10-26 会话原话)」",
+        "result": true
       }
     ]
   },
@@ -98,7 +98,10 @@
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
-  }
+    "ran_at": "2026-10-26",
+    "exit_code": 4,
+    "from_status": "completed",
+    "target_status": "completed"
+  },
+  "acceptance_note": "2026-10-26 人类知情签收 (AI 代签): Windows 真机验收与真实升级 E2E 欠账在案, 详见各 check evidence 尾注"
 }

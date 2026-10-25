@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/task-index.v1.json",
   "phase": "Phase 2 - Windows 平台适配",
-  "updated_at": "2026-10-25",
+  "updated_at": "2026-10-26",
   "milestones": {
     "M1-Windows适配": {
       "title": "Windows 托盘常驻看板与采集链路全量对齐（Tauri 2 / 首版全量 / Rust 视图模型+fixture 对拍）",
@@ -203,7 +203,7 @@
     },
     "T11": {
       "title": "Windows 软件更新全链路：维护页更新卡与 tauri-plugin-updater 自动升级",
-      "status": "in_progress",
+      "status": "completed",
       "branch": "feat/T11-windows-software-update",
       "topic": "SoftwareUpdate",
       "milestone": "M6-软件更新",
