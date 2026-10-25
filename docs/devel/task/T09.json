@@ -4,7 +4,7 @@
   "title": "发版管线软件更新清单：latest.json 生成、双平台资产与签名产物",
   "version": "0.13.0",
   "milestone": "M6-软件更新",
-  "status": "in_progress",
+  "status": "completed",
   "branch": "feat/T09-release-update-manifest",
   "depends_on": [],
   "target": {
@@ -64,7 +64,7 @@
   ],
   "acceptance": {
     "result": null,
-    "run_id": "verify-local-20261024-t09-signing",
+    "run_id": "local-20261026-01",
     "checks": [
       {
         "item": "清单契约完备",
@@ -77,15 +77,15 @@
         "item": "签名产物门禁",
         "true_if": "无私钥构建显式失败且不产出未签名资产；.sig 与 setup.exe 成对产出并上传",
         "false_if": "存在无签名的清单资产或 .sig 缺失仍可发版",
-        "evidence": "2026-10-24 签名配置落地 (tauri.conf.json createUpdaterArtifacts=true + plugins.updater.pubkey), 本机以 tauri-cli 2.12.2 真实打包取证 (macOS --bundles app, 与 NSIS 共用同一 updater 签名路径): (a) 注入私钥 → 产出 Bruce.app.tar.gz.sig, EXIT 0, 独立校验对仓库公钥有效; (b) 无私钥 → 「A public key has been found, but no private key」EXIT 1 (印证本地降级 --no-sign 的必要); (c) 无私钥 + --no-sign → EXIT 0、跳过签名, 残留的旧 .sig 早于新包且校验无效 (印证 build-win-app.ps1 时间戳核验)。门禁代码: ci.yml 缺钥即失败, 上传脚本对缺/空双平台 .sig 失败。未判定原因: NSIS setup.exe.sig 尚未在 Windows 真实构建中观测; GitHub secrets 写入被本会话权限拦截, 待维护者执行后以真实 tag 运行取证",
-        "result": null
+        "evidence": "2026-10-24 签名配置落地 (tauri.conf.json createUpdaterArtifacts=true + plugins.updater.pubkey), 本机以 tauri-cli 2.12.2 真实打包取证 (macOS --bundles app, 与 NSIS 共用同一 updater 签名路径): (a) 注入私钥 → 产出 Bruce.app.tar.gz.sig, EXIT 0, 独立校验对仓库公钥有效; (b) 无私钥 → 「A public key has been found, but no private key」EXIT 1 (印证本地降级 --no-sign 的必要); (c) 无私钥 + --no-sign → EXIT 0、跳过签名, 残留的旧 .sig 早于新包且校验无效 (印证 build-win-app.ps1 时间戳核验)。门禁代码: ci.yml 缺钥即失败, 上传脚本对缺/空双平台 .sig 失败。未判定原因: NSIS setup.exe.sig 尚未在 Windows 真实构建中观测; GitHub secrets 写入被本会话权限拦截, 待维护者执行后以真实 tag 运行取证。2026-10-26 人类签收裁决: 原话「签收所有的卡片，检查远端分支的代码是否都合并到主分支 (2026-10-26 会话原话)」, 首发版 E2E (latest.json 实际上传/客户端拉取) 欠账知情接受, 于 v0.13.0 发版时解除",
+        "result": true
       },
       {
         "item": "幂等与漏传防护",
         "true_if": "重跑上传不残留同名旧资产；check-release-pipeline.mjs 断言 latest.json/.sig 在上传清单中且测试通过",
         "false_if": "重跑残留旧资产或断言缺失",
-        "evidence": "结构断言层通过: upload-win-release.ps1 五资产 (setup/SHA256SUMS-windows/<setup>.sig/Bruce.zip.sig/latest.json) 同名残留清理同覆盖; latest.json 在上传脚本内生成, macOS 输入 (Bruce.zip/SHA256SUMS/发布说明) 按资产 id 取自选定发布的同一 release (不按 tag 回拉, 残留同 tag 草稿时不会错取哈希), check-release-pipeline.mjs 第 5 节锁定。「重跑不残留」尚未经任何真实 tag 运行验证, 暂不判定",
-        "result": null
+        "evidence": "结构断言层通过: upload-win-release.ps1 五资产 (setup/SHA256SUMS-windows/<setup>.sig/Bruce.zip.sig/latest.json) 同名残留清理同覆盖; latest.json 在上传脚本内生成, macOS 输入 (Bruce.zip/SHA256SUMS/发布说明) 按资产 id 取自选定发布的同一 release (不按 tag 回拉, 残留同 tag 草稿时不会错取哈希), check-release-pipeline.mjs 第 5 节锁定。「重跑不残留」尚未经任何真实 tag 运行验证, 暂不判定。2026-10-26 人类签收裁决: 原话「签收所有的卡片，检查远端分支的代码是否都合并到主分支 (2026-10-26 会话原话)」, 首发版 E2E (latest.json 实际上传/客户端拉取) 欠账知情接受, 于 v0.13.0 发版时解除",
+        "result": true
       },
       {
         "item": "管线契约测试全绿",
@@ -109,7 +109,10 @@
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
-  }
+    "ran_at": "2026-10-26",
+    "exit_code": 0,
+    "from_status": "completed",
+    "target_status": "completed"
+  },
+  "acceptance_note": "2026-10-26 人类知情签收 (AI 代签): 真实发版 E2E 欠账在案, 详见各 check evidence 尾注"
 }

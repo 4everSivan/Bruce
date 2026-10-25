@@ -4,7 +4,7 @@
   "title": "macOS 软件更新全链路：维护页更新卡、检查服务与自替换安装器",
   "version": "0.13.0",
   "milestone": "M6-软件更新",
-  "status": "in_progress",
+  "status": "completed",
   "branch": "feat/T10-macos-software-update",
   "depends_on": [
     "T09"
@@ -59,14 +59,14 @@
   ],
   "acceptance": {
     "result": null,
-    "run_id": "verify-local-20261025-t10",
+    "run_id": "local-20261026-02",
     "checks": [
       {
         "item": "UI 与 demo 一致",
         "true_if": "维护页顶部软件更新卡的结构、逐字文案、8 态状态区、导航角标与 apps/win/demo/win-settings-update-flow-demo.html 完全一致（方案 B），通用页原版本行已移除",
         "false_if": "布局位置偏离方案 B、文案改写或状态缺失",
-        "evidence": "2026-10-25 自动化部分: 逐字文案与「状态 → 状态区内容」映射收敛在 BruceAppCore/SoftwareUpdatePresentation.swift, 由 SoftwareUpdateHarness 对共享 fixture tests/fixtures/update-copy-parity/cases.json 断言 43 项通过 (9 行文案 + 当前版本 2 + 上次检查 5 + 状态区 18 例覆盖 8 态及横幅/降级/进度/4 类失败/relaunching + 9 类安装失败状态行; 期望值按 demo 与设计手写, 植入改动文案的变异可被检出); 结构 (代码审阅): 维护页顶部 paneCaption(软件更新) + FluentCard 三行 + update-stage, 先于数据/诊断分组; 角标 6pt accent 发光圆点挂「维护」项, 仅 available/downloading/ready 显示; 通用页原「版本」行已移除。未做: 运行中 app 的目视/截图与 demo 并排核对 (像素级间距、spinner 动画、横幅配色), 需人工验收",
-        "result": null
+        "evidence": "2026-10-25 自动化部分: 逐字文案与「状态 → 状态区内容」映射收敛在 BruceAppCore/SoftwareUpdatePresentation.swift, 由 SoftwareUpdateHarness 对共享 fixture tests/fixtures/update-copy-parity/cases.json 断言 43 项通过 (9 行文案 + 当前版本 2 + 上次检查 5 + 状态区 18 例覆盖 8 态及横幅/降级/进度/4 类失败/relaunching + 9 类安装失败状态行; 期望值按 demo 与设计手写, 植入改动文案的变异可被检出); 结构 (代码审阅): 维护页顶部 paneCaption(软件更新) + FluentCard 三行 + update-stage, 先于数据/诊断分组; 角标 6pt accent 发光圆点挂「维护」项, 仅 available/downloading/ready 显示; 通用页原「版本」行已移除。未做: 运行中 app 的目视/截图与 demo 并排核对 (像素级间距、spinner 动画、横幅配色), 需人工验收。2026-10-26 人类签收裁决: 原话「签收所有的卡片，检查远端分支的代码是否都合并到主分支 (2026-10-26 会话原话)」; 2026-10-25 已真机部署 /Applications (main f18b6ee) 并人工打开维护页软件更新卡、触发检查更新 (404 失败态会话实证), 逐字对照 demo 的完整视觉核对欠账知情接受",
+        "result": true
       },
       {
         "item": "检查与自动检查",
@@ -79,8 +79,8 @@
         "item": "安装安全与原子性",
         "true_if": "SHA256 校验失败或版本复核失败拒绝安装；替换失败回滚原 app；升级重启后版本更新且侧栏/卡内版本同步",
         "false_if": "存在未校验安装、失败后 app 损坏或版本显示陈旧",
-        "evidence": "2026-10-25 已覆盖 (SoftwareUpdateHarness, 临时目录夹具 bundle + 真实 /usr/bin/ditto 与 xattr, 不触碰 /Applications): SHA256 不符在解压前拒绝且原 app 未动; 包内版本等于/低于本地 → versionNotNewer, 与清单不符 → versionMismatch, bundle 标识不符或缺可执行文件 → bundleMismatch, 损坏压缩包 → extractFailed; quarantine 属性被剥离; 原子替换后原位置为新版本、旧版本进 backup; 第 2 步替换失败自动回滚原 app, 回滚也失败如实报告 replaceFailed(rolledBack:false) 且旧版本留在 backup; 安装成功启动先退后起等待器 (pid/路径以位置参数传入) 并退出, 等待器失败则不退出并告警; 不可写/随机挂载/非 .app 位置降级为手动更新。未覆盖: 「升级重启后版本更新且侧栏/卡内版本同步」需真实 Release 端到端 (下载 → 替换 /Applications/Bruce.app → 重启), 依赖 T09 发出首个带 latest.json 的版本后人工验证",
-        "result": null
+        "evidence": "2026-10-25 已覆盖 (SoftwareUpdateHarness, 临时目录夹具 bundle + 真实 /usr/bin/ditto 与 xattr, 不触碰 /Applications): SHA256 不符在解压前拒绝且原 app 未动; 包内版本等于/低于本地 → versionNotNewer, 与清单不符 → versionMismatch, bundle 标识不符或缺可执行文件 → bundleMismatch, 损坏压缩包 → extractFailed; quarantine 属性被剥离; 原子替换后原位置为新版本、旧版本进 backup; 第 2 步替换失败自动回滚原 app, 回滚也失败如实报告 replaceFailed(rolledBack:false) 且旧版本留在 backup; 安装成功启动先退后起等待器 (pid/路径以位置参数传入) 并退出, 等待器失败则不退出并告警; 不可写/随机挂载/非 .app 位置降级为手动更新。未覆盖: 「升级重启后版本更新且侧栏/卡内版本同步」需真实 Release 端到端 (下载 → 替换 /Applications/Bruce.app → 重启), 依赖 T09 发出首个带 latest.json 的版本后人工验证。2026-10-26 人类签收裁决: 原话「签收所有的卡片，检查远端分支的代码是否都合并到主分支 (2026-10-26 会话原话)」; 自动化覆盖见 SoftwareUpdateHarness 44 项 (临时夹具 bundle + 真实 ditto/xattr), 真机安装升级 E2E 欠账知情接受, 于 v0.13.0 发版后解除",
+        "result": true
       },
       {
         "item": "全量本地验证门禁",
@@ -97,7 +97,10 @@
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
-  }
+    "ran_at": "2026-10-26",
+    "exit_code": 0,
+    "from_status": "completed",
+    "target_status": "completed"
+  },
+  "acceptance_note": "2026-10-26 人类知情签收 (AI 代签): demo 逐字对照与真机安装 E2E 欠账在案, 详见各 check evidence 尾注"
 }

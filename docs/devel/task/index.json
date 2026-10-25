@@ -181,7 +181,7 @@
     },
     "T09": {
       "title": "发版管线软件更新清单：latest.json 生成、双平台资产与签名产物",
-      "status": "in_progress",
+      "status": "completed",
       "branch": "feat/T09-release-update-manifest",
       "topic": "SoftwareUpdate",
       "milestone": "M6-软件更新",
@@ -191,7 +191,7 @@
     },
     "T10": {
       "title": "macOS 软件更新全链路：维护页更新卡、检查服务与自替换安装器",
-      "status": "in_progress",
+      "status": "completed",
       "branch": "feat/T10-macos-software-update",
       "topic": "SoftwareUpdate",
       "milestone": "M6-软件更新",
