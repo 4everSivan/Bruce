@@ -87,7 +87,7 @@
         "item": "契约测试全绿",
         "true_if": "node scripts/check-win-frontend.mjs 与 zsh scripts/verify-local.sh 退出码 0",
         "false_if": "任一断言失败",
-        "evidence": "node scripts/check-win-frontend.mjs EXIT 0 (2026-10-25): frontend 87/87 + geometry + update-presentation 6/6; cargo test --lib 56/56; verify-local 结果见 run_id",
+        "evidence": "node scripts/check-win-frontend.mjs EXIT 0 (2026-10-25): frontend 87/87 + geometry + update-presentation 6/6; cargo test --lib 56/56; verify-local 结果见 run_id。verify-local 首跑因 software_update.rs 未过 rustfmt 门禁退出 1, cargo fmt 修复后复跑 EXIT=0「Bruce 本地验证全部通过」(含 win crate fmt/clippy/test 段, /tmp/t11-verify2.log)",
         "result": null
       }
     ]
