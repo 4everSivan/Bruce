@@ -35,7 +35,8 @@
         "C001",
         "C002",
         "C052",
-        "C055"
+        "C055",
+        "C108"
       ]
     },
     "WindowsCompat": {
@@ -1093,6 +1094,15 @@
       "topic": "TokenUsage",
       "version": "0.13.1",
       "file": "docs/devel/change/C107.json"
+    },
+    "C108": {
+      "title": "价卡单一事实源：设置页展示单价与采集端计费同源（消除 deepseek-v4.1-flash 展示 $0.15 而按 $0.30 计费的漂移）",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C108-pricing-single-source",
+      "topic": "PricingEngine",
+      "version": "0.13.1",
+      "file": "docs/devel/change/C108.json"
     }
   }
 }

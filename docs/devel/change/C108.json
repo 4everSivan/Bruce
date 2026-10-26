@@ -1,0 +1,117 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C108",
+  "title": "价卡单一事实源：设置页展示单价与采集端计费同源（消除 deepseek-v4.1-flash 展示 $0.15 而按 $0.30 计费的漂移）",
+  "version": "0.13.1",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C108-pricing-single-source",
+  "is_hotfix": false,
+
+  "target": {
+    "module": "core/collector collector-domain / apps/macos BruceOnboardingCore / apps/win viewmodel",
+    "component": "PricingTable 内置价卡、BuiltinModelPricingCatalog、model_catalog",
+    "design_doc": "docs/devel/design/04-设置中心与价格校准交互.md",
+    "design_topic": "PricingEngine"
+  },
+
+  "why": "2026-10-25 架构审查：内置价卡在三处各自手写 —— 采集端 collector-domain/pricing.rs（计费口径）、mac BuiltinModelPricingCatalog.swift 与 Windows model_catalog.rs（设置页 / 工作台展示口径，后者注释自称「镜像 mac」）。三表已漂移：deepseek-v4.1-flash 设置页显示 $0.15/$0.60，采集端按 ClinePass 档 $0.30/$1.20 计费（C073 用例锁定）；采集端另有 deepseek-flash 与 4 个 Jev 别名行两端不知情。pricing.rs 中为「设置页共享事实源」预留的 builtin_catalog() 全仓零调用。mac 设置页覆盖项匹配取字典遍历首个前缀命中（gpt-5.4 / gpt-5.4-mini 等前缀族同时存在覆盖时结果随哈希种子漂移），可能展示与实际计费不同的覆盖单价。",
+
+  "precheck": {
+    "description": "确认改动前 deepseek-v4.1-flash 两端价卡不一致，且 builtin_catalog() 无调用方",
+    "command": "git show b070387:apps/macos/Sources/BruceOnboardingCore/BuiltinModelPricingCatalog.swift | grep -A4 '\"deepseek-v4.1-flash\"'; git show b070387:core/collector/crates/collector-domain/src/pricing.rs | grep -A3 '\"deepseek-v4.1-flash\"'; git grep -n builtin_catalog b070387 -- core apps | grep -v 'pub fn' | wc -l",
+    "expected": "mac 0.15 / 0.60，采集端 0.30 / 1.20；builtin_catalog 调用方 0 个（缺陷存在）",
+    "is_completed": false,
+    "evidence": "2026-10-26 预检实测：b070387 的 mac 目录 deepseek-v4.1-flash 为 inputPricePerMillion 0.15 / outputPricePerMillion 0.60，采集端 pricing.rs 为 0.30 / 1.20 / Some(0.006)（并有 C073 用例断言 0.30）；git grep builtin_catalog 除定义外 0 处调用 —— 漂移与死代码成立，需编码修复。"
+  },
+
+  "callback": {
+    "before": [
+      "git checkout -b fix/C108-pricing-single-source  # 叠加在 fix/C107-claude-pricing 之上"
+    ],
+    "after": [
+      "node scripts/gen-pricing-catalog.mjs --check",
+      "zsh scripts/verify-local.sh",
+      "cargo test --manifest-path apps/win/viewmodel/Cargo.toml",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "node --test apps/win/tests/*.test.mjs",
+      "scripts/adflow-verify --card C108 --to verified --record"
+    ]
+  },
+
+  "changes": [
+    {
+      "scope": "价卡事实源",
+      "before": "pricing.rs 内联 93 行 add(...)；mac 与 Windows 各手写 77 行展示目录",
+      "after": "唯一事实源 core/collector/crates/collector-domain/pricing-catalog.json（键、显示名、厂商、单价、缓存写入 TTL 倍率、备注、listed）；PricingTable::new 经 collector_domain::pricing::catalog() 加载；Windows model_catalog::catalog() 派生 listed 行；mac BuiltinModelPricingCatalog.allModels 由 scripts/gen-pricing-catalog.mjs 生成至 BuiltinModelPricingCatalog+Data.swift；删除零调用的 builtin_catalog()",
+      "impact": "设置页价格表行集由 77 行变为 86 行（新增 C107 的现行 Claude 型号），deepseek-v4.1-flash 展示单价校正为 $0.30/$1.20/$0.006；deepseek-flash、Jev 版本别名与 Mythos 以 listed=false 参与计费但不单列"
+    },
+    {
+      "scope": "漂移门禁",
+      "before": "三表一致性无任何自动校验",
+      "after": "verify-local 新增 node scripts/gen-pricing-catalog.mjs --check（生成文件与 JSON 不一致即 exit 1）；Rust catalog_is_well_formed 与 Windows catalog_rows_are_the_listed_collector_rows 用例锁定目录完整性与计费同源",
+      "impact": "价卡改动只需改 JSON 并重新生成"
+    },
+    {
+      "scope": "mac 设置页覆盖项匹配",
+      "before": "overrides.first(where: 前缀匹配)，字典遍历顺序决定命中",
+      "after": "BuiltinModelPricingCatalog.override(for:in:) 与采集端 PricingTable::resolve 同序：原样键 → 规范键 → 最具体前缀（基础型号取最长，扩展型号取最短，同秩字典序最小）",
+      "impact": "设置页展示的覆盖单价即实际计费单价"
+    }
+  ],
+
+  "design": {
+    "doc": "docs/devel/design/04-设置中心与价格校准交互.md",
+    "topic": "PricingEngine",
+    "modified": true,
+    "rule_diff": {
+      "before": "设置页「完整罗列 43 款官方基准模型定价」，未规定价卡来源；design/01 规则 1 称价卡与 pricing.rs 逐条对齐",
+      "after": "design/04 新增规则 0「价卡单一事实源」（pricing-catalog.json 唯一事实源、三端派生方式、禁止手写副本、listed 语义、覆盖项匹配与采集端同序）；design/01 规则 1 事实源改指 JSON；design/00、README 去除失真的「43 款」计数"
+    }
+  },
+
+  "verification": {
+    "result": null,
+    "run_id": "local-20261026-00",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "verify-local 退出码 0（含 Pricing catalog check 与新增 Swift 价卡 / 覆盖项用例），Windows viewmodel / src-tauri / 前端测试全绿",
+        "false_if": "任一测试失败",
+        "evidence": "2026-10-26: zsh scripts/verify-local.sh 退出码 0（local/logs/c108-verify.log）：Rust fmt/test/clippy 全绿；BruceOnboardingCore 170（新增 pricingCatalogMatchesCollectorRows、pricingOverrideSelectionMatchesCollector）、PanelViewModel 60、ArtifactStore 6、CollectorRunner 28、RefreshScheduler 104 等全部 Harness 通过；Pricing catalog check passed: 86 listed rows。cargo test apps/win/viewmodel 58 passed / 0 failed；apps/win/src-tauri 212 passed / 0 failed；node --test apps/win/tests/*.test.mjs 95 pass / 0 fail。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "JSON 计费行与改动前 pricing.rs 93 行逐行单价一致；生成的 mac 目录与 Windows 目录行集一致且 deepseek-v4.1-flash 展示 $0.30/$1.20；改动 JSON 而不重新生成时 --check 失败",
+        "false_if": "任一计费单价变化，或漂移未被拦截",
+        "evidence": "2026-10-26: 生成 JSON 时脚本逐行交叉核对改动前 pricing.rs 的 93 个键，单价全部一致后才写出；Rust catalog_is_well_formed 断言每一行按自身键解析回同一单价。Windows catalog_rows_are_the_listed_collector_rows 断言展示行 = listed 计费行；mac 生成目录 86 行，deepseek-v4.1-flash 为 0.30 / 1.20 / 0.006。负向实测：把 JSON 中 Opus 5.5 input 改为 4.5 而不重新生成，node scripts/gen-pricing-catalog.mjs --check 输出「mac 内置价卡与 pricing-catalog.json 不一致」并 exit 1，恢复后通过。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "工作台分析 / Panel 视图模型双端对拍全部通过（厂商归属不变）；Windows 设置页 get_model_prices JSON 字段契约不变",
+        "false_if": "对拍差异或前端契约回归",
+        "evidence": "2026-10-26: deepseek-v4.1-flash 保持厂商 DeepSeek 与原展示位置（首轮迁入 ClinePass 组时 analytics_parity 报 14 处厂商差异，已回退为原厂商）；verify-local 内 工作台分析 workbench / valid 与 Panel 视图模型 valid / partial / empty 双端对拍全部通过；model_catalog::as_json 字段键 model / displayName / vendor / *PricePerMillion / currency / note 不变（catalog_json_uses_frontend_contract_keys 通过）。",
+        "result": true
+      }
+    ]
+  },
+
+  "rejections": [],
+
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}
