@@ -14,7 +14,8 @@
         "C057",
         "C074",
         "C104",
-        "C106"
+        "C106",
+        "C114"
       ]
     },
     "MenuBarIndicator": {
@@ -1178,6 +1179,15 @@
       "topic": "SoftwareUpdate",
       "version": "0.13.1",
       "file": "docs/devel/change/C113.json"
+    },
+    "C114": {
+      "title": "CI/CD 与本地构建支持生成 Bruce-<version>.dmg 磁盘镜像作为 Release 附加资产",
+      "type": "Enhancement",
+      "status": "verified",
+      "branch": "feat/C114-release-dmg",
+      "topic": "SystemOverview",
+      "version": "0.13.1",
+      "file": "docs/devel/change/C114.json"
     }
   }
 }

@@ -1,0 +1,106 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C114",
+  "title": "CI/CD 与本地构建支持生成 Bruce-<version>.dmg 磁盘镜像作为 Release 附加资产",
+  "version": "0.13.1",
+  "type": "Enhancement",
+  "status": "verified",
+  "branch": "feat/C114-release-dmg",
+  "is_hotfix": false,
+  "target": {
+    "module": "scripts",
+    "component": "package-dmg.sh & build-test-app.sh & ci.yml",
+    "design_doc": "docs/devel/design/00-系统总体设计.md",
+    "design_topic": "SystemOverview"
+  },
+  "why": "当前 macOS 仅发布 Bruce.zip。对于习惯使用 DMG 镜像拖拽安装的 macOS 用户，仅提供 Bruce.zip 容易造成误判（以为没有 macOS 安装包）且首次安装体验不如 DMG 直观（缺少拖拽到 /Applications 软链接的引导）。通过新增 scripts/package-dmg.sh、为 scripts/build-test-app.sh 补充 --dmg 参数，并在 .github/workflows/ci.yml 的 build-release-app 与 release 作业中产出并上传 Bruce-<version>.dmg 及追加校验和，既满足应用内自动更新继续消费 Bruce.zip，又为 Release 页面提供开箱即用的友好 DMG 镜像资产。",
+  "precheck": {
+    "description": "检查 scripts/build-test-app.sh 是否支持 --dmg 参数以及 ci.yml 是否上传 dmg 镜像",
+    "command": "grep -c '\\-\\-dmg' scripts/build-test-app.sh || true; grep -c 'Bruce-.*\\.dmg' .github/workflows/ci.yml || true",
+    "expected": "两处命中数均为 0（尚未支持）",
+    "is_completed": true,
+    "evidence": "2026-10-26 预检实测：命中数均为 0，build-test-app.sh 尚未支持 --dmg，ci.yml 尚未构建和上传 dmg 资产。"
+  },
+  "callback": {
+    "before": [
+      "# 检出专属开发分支 feat/C114-release-dmg"
+    ],
+    "after": [
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 closed；目标状态预检使用 --card C114 --to verified/closed --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "macOS 镜像打包脚本",
+      "before": "仅存在 build-test-app.sh 产出 Bruce.zip，无 dmg 打包逻辑",
+      "after": "新增 scripts/package-dmg.sh，通过 hdiutil create 封装 Universal 2 应用与 /Applications 软链接为 UDZO 压缩镜像",
+      "impact": "支持本地与 CI 单独或联动生成 DMG 安装包"
+    },
+    {
+      "scope": "本地构建脚本 build-test-app.sh",
+      "before": "仅支持 --install 与 --universal 参数，固定产出 Bruce.app 与 Bruce.zip",
+      "after": "新增 --dmg 参数，构建完成后调用 package-dmg.sh 产出 dist/Bruce-<version>.dmg",
+      "impact": "本地与流水线可通过一条命令同时产出 zip 与 dmg"
+    },
+    {
+      "scope": "GitHub Actions 流水线 ci.yml",
+      "before": "build-release-app 与 release 仅构建 Bruce.zip 并上传至草稿 Release",
+      "after": "流水线传 --dmg 参数构建，校验 dmg 产物，并在 release 步骤将 Bruce-<version>.dmg 纳入 SHA256SUMS 与 gh release create 上传清单",
+      "impact": "Release 页面新增 macOS DMG 安装包附加资产"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/00-系统总体设计.md",
+    "topic": "SystemOverview",
+    "modified": true,
+    "rule_diff": {
+      "before": "macOS 产物仅包含 dist/Bruce.app 与 dist/Bruce.zip",
+      "after": "macOS 产物包含 dist/Bruce.app、dist/Bruce.zip 以及供用户首次安装的 dist/Bruce-<version>.dmg 磁盘镜像"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261026-16",
+    "user_quote": "清理工作区准备提交",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "全量单测全绿，退出码为 0，发布流水线契约测试通过",
+        "false_if": "存在任何测试失败、报错或未覆盖回归用例",
+        "evidence": "verify-local.sh 退出码 0，包含 17 项 Swift Harness、Rust workspace、Fixture 敏感扫描及 check-release-pipeline.mjs 发布流水线契约测试全绿通过",
+        "result": true
+      },
+      {
+        "item": "DMG 打包实测",
+        "true_if": "package-dmg.sh 与 build-test-app.sh --dmg 成功生成 Universal 2 的 Bruce-<version>.dmg，且内含 Applications 快捷方式与 Info.plist 完整性校验通过",
+        "false_if": "dmg 缺失、文件损坏或缺少 Applications 链接",
+        "evidence": "package-dmg.sh 与 build-test-app.sh --dmg 成功产出 dist/Bruce-0.13.0.dmg (15M)，挂载后验证含 Applications 软链接及 codesign --verify --deep --strict 通过",
+        "result": true
+      },
+      {
+        "item": "流水线一致性",
+        "true_if": "check-release-pipeline.mjs 与 ci.yml 契约对齐，SHA256SUMS 与 Release 资产清单完整",
+        "false_if": "发布清单缺失 dmg 或哈希校验失败",
+        "evidence": "ci.yml build-release-app 与 release 步骤均已配置 --dmg 构建、dmg 有效性校验及 SHA256SUMS/gh release create 清单上传",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-26",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified"
+  }
+}

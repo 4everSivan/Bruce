@@ -26,6 +26,7 @@ const read = (relative) => readFileSync(join(repoRoot, relative), "utf8");
 const workflow = read(".github/workflows/ci.yml");
 const uploadScript = read("scripts/upload-win-release.ps1");
 const localBuildScript = read("scripts/build-win-app.ps1");
+const buildTestAppScript = read("scripts/build-test-app.sh");
 const tauriConf = JSON.parse(read("apps/win/src-tauri/tauri.conf.json"));
 let generatorScript = "";
 try {
@@ -307,7 +308,39 @@ if (generatorScript) {
   }
 }
 
+// 7. (C114) macOS DMG 磁盘镜像发布契约: 用户初装直观体验 + Release 资产齐备
+let packageDmgScript = "";
+try {
+  packageDmgScript = read("scripts/package-dmg.sh");
+} catch {}
+
+if (!packageDmgScript) {
+  fail("缺少 scripts/package-dmg.sh (macOS DMG 打包脚本)");
+} else {
+  ok("scripts/package-dmg.sh 存在");
+}
+if (!/--dmg/.test(buildTestAppScript)) {
+  fail("scripts/build-test-app.sh 未支持 --dmg 参数");
+} else {
+  ok("build-test-app.sh 支持 --dmg 选项");
+}
+if (!/build-test-app\.sh --universal --dmg/.test(workflow)) {
+  fail("ci.yml 未在 build-release-app / release 传入 --dmg 参数构建");
+} else {
+  ok("ci.yml 流水线已接入 Universal 2 与 DMG 联动构建");
+}
+if (!/gh release create [^]*dist\/Bruce-\*\.dmg/.test(workflow)) {
+  fail("ci.yml release 作业未上传 dist/Bruce-*.dmg 资产");
+} else {
+  ok("ci.yml release 作业已将 dist/Bruce-*.dmg 纳入 Release 上传清单");
+}
+if (!/shasum -a 256 Bruce\.zip Bruce-\*\.dmg > SHA256SUMS/.test(workflow)) {
+  fail("ci.yml 未将 Bruce-*.dmg 写入 SHA256SUMS");
+} else {
+  ok("ci.yml 已将 Bruce.zip 与 Bruce-*.dmg 统一写入 SHA256SUMS 校验和");
+}
+
 if (failed) {
   process.exit(1);
 }
-console.log("Windows 发布流水线契约测试通过");
+console.log("发布流水线契约测试通过 (Windows & macOS DMG)");

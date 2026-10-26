@@ -4,6 +4,7 @@ set -euo pipefail
 
 BRUCE_INSTALL_PREVIEW=false
 BRUCE_BUILD_UNIVERSAL=false
+BRUCE_BUILD_DMG=false
 
 for arg in "$@"; do
     case "$arg" in
@@ -13,10 +14,14 @@ for arg in "$@"; do
         --universal)
             BRUCE_BUILD_UNIVERSAL=true
             ;;
+        --dmg)
+            BRUCE_BUILD_DMG=true
+            ;;
         *)
-            echo "用法: zsh scripts/build-test-app.sh [--install] [--universal]" >&2
+            echo "用法: zsh scripts/build-test-app.sh [--install] [--universal] [--dmg]" >&2
             echo "  --install 额外复制到 /Applications/Bruce.app 并注册 LaunchServices" >&2
             echo "  --universal 同时构建 arm64 与 x86_64 通用二进制 (兼容所有 Intel 与 Apple Silicon Mac)" >&2
+            echo "  --dmg 额外生成 dist/Bruce-<version>.dmg 磁盘镜像安装包 (Release 附加资产)" >&2
             exit 2
             ;;
     esac
@@ -193,6 +198,14 @@ mv "$BRUCE_STAGED_APP" "$BRUCE_OUTPUT_APP"
 ditto -c -k --sequesterRsrc --keepParent \
     "$BRUCE_OUTPUT_APP" "$BRUCE_OUTPUT_ZIP"
 
+BRUCE_OUTPUT_DMG="$BRUCE_DIST_DIR/Bruce-${BRUCE_VERSION}.dmg"
+if [[ "$BRUCE_BUILD_DMG" == true ]]; then
+    echo "打包 DMG 磁盘镜像 (Release 附加资产)"
+    zsh "$BRUCE_SCRIPT_DIR/package-dmg.sh" \
+        "$BRUCE_OUTPUT_APP" \
+        "$BRUCE_OUTPUT_DMG"
+fi
+
 echo "运行 Collector 安装/升级/回滚与旧 cache smoke (Preview 证据)"
 zsh "$BRUCE_SCRIPT_DIR/collector-release-smoke.sh" \
     "$BRUCE_OUTPUT_APP" --local-preview
@@ -200,6 +213,9 @@ zsh "$BRUCE_SCRIPT_DIR/collector-release-smoke.sh" \
 echo "Bruce App 已生成:"
 echo "  $BRUCE_OUTPUT_APP"
 echo "  $BRUCE_OUTPUT_ZIP"
+if [[ "$BRUCE_BUILD_DMG" == true ]]; then
+    echo "  $BRUCE_OUTPUT_DMG"
+fi
 
 if [[ "$BRUCE_INSTALL_PREVIEW" == true ]]; then
     BRUCE_LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"

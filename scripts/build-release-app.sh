@@ -222,6 +222,7 @@ BRUCE_EXPECTED_ARCHS="$BRUCE_EXPECTED_ARCHS" \
 
 BRUCE_FINAL_APP="$BRUCE_DIST_DIR/Bruce-$BRUCE_VERSION-macos/Bruce.app"
 BRUCE_FINAL_ZIP="$BRUCE_DIST_DIR/Bruce-$BRUCE_VERSION-macos/Bruce-$BRUCE_VERSION-macos.zip"
+BRUCE_FINAL_DMG="$BRUCE_DIST_DIR/Bruce-$BRUCE_VERSION-macos/Bruce-$BRUCE_VERSION.dmg"
 BRUCE_SHA256="$BRUCE_DIST_DIR/Bruce-$BRUCE_VERSION-macos/SHA256SUMS"
 BRUCE_NOTES="$BRUCE_DIST_DIR/Bruce-$BRUCE_VERSION-macos/release-notes-$BRUCE_VERSION.md"
 
@@ -231,9 +232,12 @@ mkdir -p "$(dirname "$BRUCE_FINAL_APP")"
 ditto "$BRUCE_STAGED_APP" "$BRUCE_FINAL_APP"
 ditto -c -k --sequesterRsrc --keepParent \
     "$BRUCE_FINAL_APP" "$BRUCE_FINAL_ZIP"
+zsh "$BRUCE_SCRIPT_DIR/package-dmg.sh" \
+    "$BRUCE_FINAL_APP" \
+    "$BRUCE_FINAL_DMG"
 (
     cd "$(dirname "$BRUCE_FINAL_ZIP")"
-    shasum -a 256 "$(basename "$BRUCE_FINAL_ZIP")" > "$BRUCE_SHA256"
+    shasum -a 256 "$(basename "$BRUCE_FINAL_ZIP")" "$(basename "$BRUCE_FINAL_DMG")" > "$BRUCE_SHA256"
 )
 
 # 发布说明从 CHANGELOG 生成 (风格与 v0.1/v0.2 一致), 不另写重复文案.
@@ -243,5 +247,6 @@ BRUCE_OUT="$BRUCE_NOTES" \
 echo "正式版已生成:"
 echo "  $BRUCE_FINAL_APP"
 echo "  $BRUCE_FINAL_ZIP"
+echo "  $BRUCE_FINAL_DMG"
 echo "  $BRUCE_SHA256"
 echo "  $BRUCE_NOTES"

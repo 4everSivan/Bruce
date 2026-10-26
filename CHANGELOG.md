@@ -6,6 +6,10 @@
 ## [Unreleased]
 
 ### Added
+- **macOS DMG 磁盘镜像安装包支持与 CI/CD 自动发布 (C114)**：
+  - **DMG 打包工具脚本 (package-dmg.sh)**：新增 `scripts/package-dmg.sh`，将 Universal 2 架构的 `Bruce.app` 与 `/Applications` 软链接封装为带卷名 `Bruce` 的标准 UDZO 压缩 DMG 磁盘镜像，便于用户首次下载后开箱即用、一键拖拽安装；
+  - **本地构建联动**：`scripts/build-test-app.sh` 与 `scripts/build-release-app.sh` 支持 `--dmg` 参数，可在组装完成 `Bruce.app` 与 `Bruce.zip` 后同步产出 `dist/Bruce-<version>.dmg`；
+  - **CI/CD 流水线附加资产与校验和**：`.github/workflows/ci.yml` 的 `build-release-app` 与 `release` 作业接入 `--dmg` 构建与镜像完整性校验，并将 `Bruce-<version>.dmg` 纳入 `SHA256SUMS` 和 Release 上传清单，与应用内更新依赖的 `Bruce.zip` 资产并存。
 - **Windows 系统托盘动态配额环与 420px 亚克力微缩实时预览卡 (T12)**：
   - **托盘动态配额环与状态指示**：Rust 后端基于聚合快照与视图模型，实时提取最紧俏 Provider 剩余百分比与四色健康状态灯（翠绿/琥珀/科技红/离线灰），纯数学内存绘制 32×32 动态透明配额环图标，动态同步托盘原生 Tooltip（`Bruce · 额度剩余 XX% · 运行正常 | 今日 $X.XX`）；
   - **420px 亚克力微缩实时预览卡**：在任务栏托盘悬停时弹出无边框、卡片级圆角（12px）、半透明 Fluent 亚克力（Mica/Acrylic）微缩子窗口；展示 42px 环形仪表、滑动窗口重置倒计时、今日费用/Token 以及活跃 Agent 状态点阵；
