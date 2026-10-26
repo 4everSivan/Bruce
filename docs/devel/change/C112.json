@@ -1,0 +1,104 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C112",
+  "title": "设置窗口交互与感知升级：分段选择器高对比选中浮岛、开关状态文字居左统一对齐、Agent用量更名模型用量",
+  "version": "0.13.1",
+  "type": "BugFix",
+  "status": "closed",
+  "branch": "fix/C112-settings-controls-and-naming",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos + apps/win",
+    "component": "SettingsView + FluentSettingsChrome + win settings.js/css",
+    "design_doc": "docs/devel/design/04-设置中心与价格校准交互.md",
+    "design_topic": "PricingEngine"
+  },
+  "why": "配置窗口存在三处视觉与易用性缺陷：1. 分段选择器（配色模式、界面风格、仪表盘布局、刷新间隔）选中项背景与轨道底色差过小（浅色仅 1/255 色差 #EFEFEF vs #F0F0F0），几乎无法分辨当前激活项；2. 「锁屏暂停订阅刷新」和「系统通知」的状态说明文字位于开关右侧，与其他控件排布不一致，需统一为文字在开关左侧；3. 「Agent 用量」侧栏分类与面板标题需更名为「模型用量」，更准确反映 Token 统计与计费核心定位。",
+  "precheck": {
+    "description": "确认改动前 FluentSegmentedPicker 选中项使用 surfaceHover，色差仅 1/255，且 Toggle 文字位于右侧",
+    "command": "grep -n -C 2 'isOn ? SettingsDemoTokens.surfaceHover : Color.clear' apps/macos/Sources/BruceApp/Settings/FluentSettingsChrome.swift",
+    "expected": "命中 SettingsDemoTokens.surfaceHover",
+    "is_completed": true,
+    "evidence": "2026-10-26 实测命中 FluentSettingsChrome.swift:144，浅色模式下 #EFEFEF 与 #F0F0F0 对比度极低，缺陷事实明确存在。"
+  },
+  "callback": {
+    "before": [
+      "# 检出专属开发分支 fix/C112-settings-controls-and-naming"
+    ],
+    "after": [
+      "swift test --package-path apps/macos",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 closed；目标状态预检使用 --card C112 --to verified/closed --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "分段选择器选中态对比度增强 (FluentSegmentedPicker / .fluent-seg)",
+      "before": "选中项仅采用与轨道底几乎等同的微弱灰底（浅色差 1/255），无边框无阴影，难以辨识选中项",
+      "after": "浅色模式采用纯白浮岛 #FFFFFF 配合 0.5px 浅微边框与立体软阴影，文字为高对比深黑；深色模式采用明亮灰阶 #383D48 + 浅白亮边与阴影，文字为纯白；对比度跃升，视觉层级清晰分明",
+      "impact": "配色模式、界面风格、看板布局、刷新间隔等全部设置选项激活态一目了然"
+    },
+    {
+      "scope": "开关与状态文字排布统一 (居左对齐契约)",
+      "before": "Toggle 开关在左，状态文字（「已开启」/「已关闭」）在开关右侧",
+      "after": "状态文字统一置于开关左侧，开关固定在最右侧，遵循 [状态文字] [Toggle开关] 视线流契约",
+      "impact": "锁屏暂停订阅刷新、系统通知等开关状态排布整齐划一"
+    },
+    {
+      "scope": "概念更名：Agent 用量 → 模型用量",
+      "before": "侧栏导航项、面板标题与面包屑显示为「Agent 用量」",
+      "after": "统一更名为「模型用量」，准确表达 Token 深度分析与各模型统计的业务内涵",
+      "impact": "导航与看板标题认知更自然统一"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/04-设置中心与价格校准交互.md",
+    "topic": "PricingEngine",
+    "modified": true,
+    "rule_diff": {
+      "before": "未明确分段选择器选中对比度、开关状态文字排布与分类更名规范",
+      "after": "新增现行设计规则 5「设置分段选择器选中态对比度、开关状态文字居左与模型用量命名规范」"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261026-03",
+    "user_quote": "“确认”签收，确认方案1",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "Swift 与全量测试全绿",
+        "true_if": "verify-local.sh 退出码为 0，17 项 Harness 全部通过",
+        "false_if": "存在编译或测试报错",
+        "evidence": "zsh scripts/verify-local.sh 全量执行 Exit 0，87 项 Windows 前端测试通过，17 项 Swift Harness 全部通过",
+        "result": true
+      },
+      {
+        "item": "分段选择器选中态与开关居左实测",
+        "true_if": "分段选择器选中态具备高对比度高亮背景，Toggle 开关状态文字位于左侧",
+        "false_if": "依然难以分辨选中项或文字排在开关右侧",
+        "evidence": "FluentSegmentedPicker 引入 segSelectedBg 纯白浮岛与深色浮岛微阴影；锁屏暂停订阅与系统通知开关重构为 [状态文字] [Toggle] 排布并居左",
+        "result": true
+      },
+      {
+        "item": "更名一致性核验",
+        "true_if": "设置侧栏、标题与面包屑均准确显示为「模型用量」",
+        "false_if": "依然残留「Agent 用量」或命名不一致",
+        "evidence": "macOS SettingsCategory、DashboardModule、授权行及 Windows settings.html/js 面包屑与导航均更名为「模型用量」，双端对拍与测试全绿",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "9e09a4e",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-26",
+    "exit_code": 0
+  }
+}

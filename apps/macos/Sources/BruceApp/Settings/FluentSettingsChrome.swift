@@ -23,6 +23,11 @@ enum SettingsDemoTokens {
     static let text = Color.adaptive(light: Color(hex: "1B1B1B"), dark: Color(hex: "F2F2F2"))
     static let text2 = Color.adaptive(light: Color(hex: "5C5C5C"), dark: Color(hex: "A8A8A8"))
     static let text3 = Color.adaptive(light: Color(hex: "9A9A9A"), dark: Color(hex: "6E6E6E"))
+    /// 分段选择器高对比度与高亮浮岛体系 (C112: 彻底解决背景对比微弱难识别缺陷).
+    static let segTrack = Color.adaptive(light: Color(hex: "EAECEF"), dark: Color(hex: "17191E"))
+    static let segSelectedBg = Color.adaptive(light: Color(hex: "FFFFFF"), dark: Color(hex: "343946"))
+    static let segSelectedBorder = Color.adaptive(light: Color.black.opacity(0.08), dark: Color.white.opacity(0.14))
+    static let segSelectedText = Color.adaptive(light: Color(hex: "0F172A"), dark: Color(hex: "FFFFFF"))
     /// 选中项浅底 (surface-hover): dark #333333 / light #F0F0F0.
     static let navSelected = surfaceHover
     /// accent: dark #4C9CFF / light #0B5CBB.
@@ -117,8 +122,7 @@ extension FluentRow where Tail == EmptyView {
 
 // MARK: - 分段选择器 (demo .picker)
 
-/// demo 分段选择器: 深底 + 1px 边框 + 6px 圆角; 选中项浅底白字,
-/// 不用系统 accent 蓝.
+/// demo 分段选择器: 柔和轨道 + 6px 圆角; 选中项高对比纯白/明亮浮岛 + 0.8px 细描边 + 软阴影 (C112).
 struct FluentSegmentedPicker<Selection: Hashable>: View {
     let options: [(title: String, tag: Selection)]
     @Binding var selection: Selection
@@ -129,21 +133,30 @@ struct FluentSegmentedPicker<Selection: Hashable>: View {
             ForEach(options, id: \.tag) { option in
                 let isOn = selection == option.tag
                 Button {
-                    selection = option.tag
+                    withAnimation(.spring(response: 0.22, dampingFraction: 0.85)) {
+                        selection = option.tag
+                    }
                 } label: {
                     Text(option.title)
                         .font(.system(size: 11.5, weight: isOn ? .semibold : .medium))
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
                         .foregroundStyle(
-                            isOn ? SettingsDemoTokens.text : SettingsDemoTokens.text2
+                            isOn ? SettingsDemoTokens.segSelectedText : SettingsDemoTokens.text2
                         )
                         .padding(.horizontal, 9)
                         .padding(.vertical, 3.5)
-                        .background(
-                            isOn ? SettingsDemoTokens.surfaceHover : Color.clear,
-                            in: RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        )
+                        .background {
+                            if isOn {
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .fill(SettingsDemoTokens.segSelectedBg)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                            .strokeBorder(SettingsDemoTokens.segSelectedBorder, lineWidth: 0.8)
+                                    )
+                                    .shadow(color: Color.black.opacity(0.10), radius: 2, x: 0, y: 1)
+                            }
+                        }
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -151,7 +164,7 @@ struct FluentSegmentedPicker<Selection: Hashable>: View {
             }
         }
         .padding(2)
-        .background(SettingsDemoTokens.bg)
+        .background(SettingsDemoTokens.segTrack)
         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 6, style: .continuous)

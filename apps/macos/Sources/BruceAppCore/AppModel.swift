@@ -10,7 +10,7 @@ package enum DashboardModule: String, CaseIterable, Codable, Identifiable, Senda
     package var title: String {
         switch self {
         case .agentUsage:
-            return "Agent 用量"
+            return "模型用量"
         case .settings:
             return "设置"
         }
