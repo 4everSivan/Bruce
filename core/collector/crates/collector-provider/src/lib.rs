@@ -518,11 +518,37 @@ pub fn bounded_http_body(
     Ok(response.body)
 }
 
+/// 服务所属订阅 Provider 的稳定标识 (C118), 与两端 `SubscriptionProviderID` rawValue 同值:
+/// 应用侧据此归属服务, 不再从 service id 前缀或 app 名推断。
+pub fn subscription_provider_id(app: &str) -> &str {
+    match app {
+        "opencode-go" => "opencodeGo",
+        other => other,
+    }
+}
+
+/// 失败分类 (C118, 原仅 Codex 输出): 应用侧据此判定限流冷却等, 不再匹配 note 文案。
+pub fn failure_kind_for_code(code: &str) -> &'static str {
+    match code {
+        "PROVIDER_AUTH_REJECTED" => "auth",
+        "PROVIDER_PERMISSION_DENIED" => "permission",
+        "PROVIDER_RATE_LIMIT" => "rateLimit",
+        "PROVIDER_SERVER_ERROR" => "server",
+        "PROVIDER_INVALID_JSON" | "PROVIDER_INVALID_PAYLOAD" | "PROVIDER_RESPONSE_TOO_LARGE" => {
+            "invalidResponse"
+        }
+        code if code.starts_with("CREDENTIAL_") => "credential",
+        _ => "network",
+    }
+}
+
 pub fn service_template(service: &ServiceDescriptor, captured_at: &str) -> Value {
     json!({
         "id": service.id,
         "name": service.name,
         "app": service.app,
+        "provider": subscription_provider_id(&service.app),
+        "failureKind": null,
         "isCurrent": service.is_current,
         "status": "ok",
         "kind": null,
@@ -560,6 +586,10 @@ pub fn finalize_service(mut service: Value, result: Result<Option<Value>, Provid
         Ok(Some(_)) => {
             object.insert("status".to_owned(), Value::String("error".to_owned()));
             object.insert(
+                "failureKind".to_owned(),
+                Value::String("invalidResponse".to_owned()),
+            );
+            object.insert(
                 "note".to_owned(),
                 Value::String("查询失败: Provider 返回格式无效".to_owned()),
             );
@@ -573,6 +603,10 @@ pub fn finalize_service(mut service: Value, result: Result<Option<Value>, Provid
         }
         Err(error) => {
             object.insert("status".to_owned(), Value::String("error".to_owned()));
+            object.insert(
+                "failureKind".to_owned(),
+                Value::String(failure_kind_for_code(&error.diagnostic.code).to_owned()),
+            );
             let mut message = error
                 .diagnostic
                 .message
@@ -658,7 +692,7 @@ pub fn finalize_codex_outcome(
                 );
                 object.insert(
                     "failureKind".to_owned(),
-                    Value::String(codex_failure_kind(error).to_owned()),
+                    Value::String(failure_kind_for_code(&error.diagnostic.code).to_owned()),
                 );
                 object.insert(
                     "note".to_owned(),
@@ -669,19 +703,6 @@ pub fn finalize_codex_outcome(
     }
     outcome.credential_challenges = credential_challenges;
     outcome
-}
-
-fn codex_failure_kind(error: &ProviderError) -> &'static str {
-    match error.diagnostic.code.as_str() {
-        "PROVIDER_AUTH_REJECTED" => "auth",
-        "PROVIDER_PERMISSION_DENIED" => "permission",
-        "PROVIDER_RATE_LIMIT" => "rateLimit",
-        "PROVIDER_SERVER_ERROR" => "server",
-        "PROVIDER_INVALID_JSON" | "PROVIDER_INVALID_PAYLOAD" | "PROVIDER_RESPONSE_TOO_LARGE" => {
-            "invalidResponse"
-        }
-        _ => "network",
-    }
 }
 
 fn codex_failure_note(error: &ProviderError) -> &'static str {

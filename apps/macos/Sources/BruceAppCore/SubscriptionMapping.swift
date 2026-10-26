@@ -54,7 +54,7 @@ extension PanelViewModelMapper {
                 parseWindow(raw, serviceID: service.id, now: now, diagnostics: &diagnostics)
             }
 
-            let providerID = SubscriptionPresentationPolicy.providerID(forServiceID: service.id)
+            let providerID = SubscriptionPresentationPolicy.providerID(for: service)
             if SubscriptionPresentationPolicy.isProviderTemporarilyDisabled(providerID) {
                 continue
             }

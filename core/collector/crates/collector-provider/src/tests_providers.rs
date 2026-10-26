@@ -808,3 +808,78 @@ fn catalog_entry_for_app_declares_credential_metadata_without_application_hardco
     assert_eq!(kimi.missing_credential_source, None);
     assert!(!kimi.unwraps_oauth_payload);
 }
+
+/// C118: 每个服务都带显式 provider (与应用侧 SubscriptionProviderID 同值) 与 failureKind;
+/// 应用不再从 id 前缀或 note 文案推断。
+#[test]
+fn services_carry_explicit_provider_and_failure_kind() {
+    use crate::{finalize_service, ServiceDescriptor};
+    let descriptor = |app: &str, id: &str| ServiceDescriptor {
+        id: id.to_owned(),
+        name: "fixture".to_owned(),
+        app: app.to_owned(),
+        is_current: false,
+    };
+    let template = service_template(
+        &descriptor("opencode-go", "opencode_go_x"),
+        "2026-10-26T00:00:00Z",
+    );
+    assert_eq!(template["provider"], "opencodeGo");
+    assert!(template["failureKind"].is_null());
+    // 与 mac / Windows 的 SubscriptionProviderID rawValue 一一对应
+    let provider_ids = [
+        "kimi",
+        "deepseek",
+        "volcengine",
+        "zhipu",
+        "codex",
+        "claude",
+        "grok",
+        "opencodeGo",
+        "stepfun",
+        "jev",
+        "cline",
+    ];
+    let mut apps = catalog_entries()
+        .into_iter()
+        .map(|entry| entry.app)
+        .collect::<Vec<_>>();
+    apps.push("codex");
+    for app in apps {
+        let service = service_template(&descriptor(app, "fixture_a"), "now");
+        let provider = service["provider"].as_str().unwrap_or_default();
+        assert!(provider_ids.contains(&provider), "{app} → {provider}");
+    }
+
+    let rate_limited = finalize_service(
+        service_template(&descriptor("kimi", "kimi_coding_a"), "now"),
+        Err(ProviderError::new(
+            "PROVIDER_RATE_LIMIT",
+            "response",
+            "限流",
+            true,
+        )),
+    );
+    assert_eq!(rate_limited["status"], "error");
+    assert_eq!(rate_limited["failureKind"], "rateLimit");
+
+    let invalid = finalize_service(
+        service_template(&descriptor("deepseek", "deepseek_a"), "now"),
+        Ok(Some(json!("not an object"))),
+    );
+    assert_eq!(invalid["failureKind"], "invalidResponse");
+
+    let ok = finalize_service(
+        service_template(&descriptor("zhipu", "zhipu_a"), "now"),
+        Ok(Some(
+            json!({"kind": "windows", "windows": [{"label": "5h", "usedPercent": 1}]}),
+        )),
+    );
+    assert_eq!(ok["status"], "ok");
+    assert!(ok["failureKind"].is_null());
+    assert_eq!(
+        crate::failure_kind_for_code("CREDENTIAL_MISSING"),
+        "credential"
+    );
+    assert_eq!(crate::failure_kind_for_code("PROVIDER_TIMEOUT"), "network");
+}

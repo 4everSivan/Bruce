@@ -176,11 +176,9 @@ package enum QuotaRefreshPolicy {
     /// service -> 稳定 provider. 多账号 service ID (`claude_<hash>`) 归一.
     package static func provider(of service: JSONValue) -> SubscriptionProviderID? {
         guard let object = service.objectValue else { return nil }
-        if let id = object["id"]?.stringIdValue {
-            let raw = SubscriptionPresentationPolicy.providerID(forServiceID: id)
-            if let provider = SubscriptionProviderID(rawValue: raw) {
-                return provider
-            }
+        if let raw = SubscriptionPresentationPolicy.providerID(forServiceObject: object),
+           let provider = SubscriptionProviderID(rawValue: raw) {
+            return provider
         }
         if let app = object["app"]?.stringIdValue {
             if let provider = SubscriptionProviderID(rawValue: app) {
@@ -204,8 +202,7 @@ package enum QuotaRefreshPolicy {
                   let provider = provider(of: service) else { continue }
             let status = object["status"]?.stringIdValue
             guard status == "error" || status == "partial" else { continue }
-            let note = object["note"]?.stringIdValue ?? ""
-            if isRateLimitedNote(note) {
+            if isRateLimited(object) {
                 result.insert(provider)
             }
         }
@@ -227,6 +224,15 @@ package enum QuotaRefreshPolicy {
             }
         }
         return result
+    }
+
+    /// 服务是否因限流失败 (C118): collector 下发 `failureKind` 时以其为准 (包括显式 null);
+    /// 旧 artifact 无该字段时回退匹配 note 文案。
+    package static func isRateLimited(_ object: [String: JSONValue]) -> Bool {
+        if object.keys.contains("failureKind") {
+            return object["failureKind"]?.stringIdValue == "rateLimit"
+        }
+        return isRateLimitedNote(object["note"]?.stringIdValue ?? "")
     }
 
     package static func isRateLimitedNote(_ note: String) -> Bool {
@@ -410,10 +416,9 @@ package enum QuotaCarryOverMerger {
         object["quotaAttemptedAt"] = .string(QuotaRefreshPolicy.timestamp(now))
 
         let status = object["status"]?.stringIdValue
-        let note = object["note"]?.stringIdValue ?? ""
         let failed = status == "error" || status == "partial" || status == "unavailable"
 
-        if failed && QuotaRefreshPolicy.isRateLimitedNote(note) {
+        if failed && QuotaRefreshPolicy.isRateLimited(object) {
             object["rateLimitedAt"] = .string(QuotaRefreshPolicy.timestamp(now))
         } else if !failed {
             object.removeValue(forKey: "rateLimitedAt")

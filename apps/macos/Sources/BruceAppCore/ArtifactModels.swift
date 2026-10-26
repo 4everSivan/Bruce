@@ -161,8 +161,12 @@ package struct AgentServiceItem: Codable, Equatable, Sendable {
     let capturedAt: String?
     /// 额度新鲜度: fresh (本轮成功), stale (保留旧额度), unavailable (从未成功).
     let freshness: String?
-    /// 失败类型: auth | permission | rateLimit | network | server | invalidResponse | storage | tokenUnavailable.
+    /// 失败类型: auth | permission | rateLimit | network | server | invalidResponse | credential |
+    /// storage | tokenUnavailable. C118 起 collector 对全部服务下发 (成功为 null)。
     let failureKind: String?
+    /// 订阅 Provider 稳定标识 (C118), 与 `SubscriptionProviderID` rawValue 同值;
+    /// 旧 artifact 为 nil, 由 `SubscriptionPresentationPolicy.providerID(for:)` 回退按 id 推断。
+    let provider: String?
 
     package init(
         id: String,
@@ -179,7 +183,8 @@ package struct AgentServiceItem: Codable, Equatable, Sendable {
         extra: String? = nil,
         capturedAt: String? = nil,
         freshness: String? = nil,
-        failureKind: String? = nil
+        failureKind: String? = nil,
+        provider: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -196,6 +201,7 @@ package struct AgentServiceItem: Codable, Equatable, Sendable {
         self.capturedAt = capturedAt
         self.freshness = freshness
         self.failureKind = failureKind
+        self.provider = provider
     }
 }
 

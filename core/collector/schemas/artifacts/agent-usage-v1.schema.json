@@ -226,6 +226,33 @@
         },
         "windows": {
           "type": "array"
+        },
+        "provider": {
+          "type": "string",
+          "description": "订阅 Provider 稳定标识 (C118), 与应用侧 SubscriptionProviderID rawValue 同值 (如 kimi / opencodeGo / codex); 旧 artifact 缺省时应用回退按 id 前缀推断"
+        },
+        "failureKind": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "auth",
+            "permission",
+            "rateLimit",
+            "server",
+            "invalidResponse",
+            "credential",
+            "network",
+            "storage",
+            "tokenUnavailable",
+            null
+          ],
+          "description": "失败分类 (C118): 成功为 null; 应用据此判定限流冷却, 不再匹配 note 文案. storage / tokenUnavailable 仅由 mac Codex 合并器在应用侧写入, collector 不产出"
+        },
+        "freshness": {
+          "type": "string",
+          "description": "额度新鲜度 (fresh / stale / unavailable): Codex 由 collector 写入 (C048), 其余 provider 由应用回填旧值时标注 (C062)"
         }
       }
     },

@@ -343,3 +343,41 @@ fn snapshot_carries_over_skipped_providers_end_to_end() {
     let kimi = services.iter().find(|s| s["id"] == "kimi_a").unwrap();
     assert_eq!(kimi["freshness"], "fresh", "未过期的回填保持 fresh");
 }
+
+/// C118: 显式 provider / failureKind 优先 (mac quotaPolicyPrefersExplicitProviderAndFailureKind 同义),
+/// 旧 artifact 回退 id 前缀与 note 文案。
+#[test]
+fn explicit_provider_and_failure_kind_take_precedence() {
+    use bruce_win_lib::quota_policy::{is_rate_limited, rate_limited_providers_in};
+    use bruce_win_lib::runtime_core::provider_id;
+    use serde_json::json;
+
+    assert_eq!(
+        provider_id(&json!({"id": "custom_account", "provider": "deepseek"})),
+        "deepseek"
+    );
+    assert_eq!(
+        provider_id(&json!({"id": "zhipu_abc"})),
+        "zhipu",
+        "旧 artifact 回退 id 前缀"
+    );
+
+    let codex = json!({"id": "codex_a", "provider": "codex", "status": "error",
+        "failureKind": "rateLimit", "note": "额度查询暂时失败, 请稍后重试"});
+    assert!(
+        is_rate_limited(&codex),
+        "failureKind=rateLimit 必须识别为限流"
+    );
+    let misleading = json!({"id": "deepseek", "provider": "deepseek", "status": "error",
+        "failureKind": "server", "note": "查询失败: 余额 429 元以下"});
+    assert!(
+        !is_rate_limited(&misleading),
+        "failureKind 存在时不得再匹配 note"
+    );
+    let legacy = json!({"id": "kimi_coding", "status": "error", "note": "查询失败: Provider 请求触发限流 (HTTP 429)"});
+    assert!(is_rate_limited(&legacy), "旧 artifact 回退 note 文案");
+
+    let artifact = json!({"services": [codex, misleading, legacy]});
+    let limited = rate_limited_providers_in(Some(&artifact));
+    assert!(limited.contains("codex") && limited.contains("kimi") && !limited.contains("deepseek"));
+}

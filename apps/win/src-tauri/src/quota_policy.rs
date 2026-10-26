@@ -109,6 +109,15 @@ pub fn is_rate_limited_note(note: &str) -> bool {
     note.contains("429") || note.contains("限流") || note.contains("RATE_LIMIT")
 }
 
+/// 服务是否因限流失败 (C118, mac `QuotaRefreshPolicy.isRateLimited` 同义): collector 下发
+/// `failureKind` 时以其为准 (包括显式 null), 旧 artifact 无该字段时回退匹配 note 文案。
+pub fn is_rate_limited(service: &Value) -> bool {
+    match service.get("failureKind") {
+        Some(kind) => kind.as_str() == Some("rateLimit"),
+        None => is_rate_limited_note(service.get("note").and_then(Value::as_str).unwrap_or("")),
+    }
+}
+
 /// 本轮发出过 429 的 provider (status error/partial + 限流文案)。
 pub fn rate_limited_providers_in(artifact: Option<&Value>) -> BTreeSet<String> {
     let mut result = BTreeSet::new();
@@ -122,8 +131,7 @@ pub fn rate_limited_providers_in(artifact: Option<&Value>) -> BTreeSet<String> {
         if !matches!(status, "error" | "partial") {
             continue;
         }
-        let note = service.get("note").and_then(Value::as_str).unwrap_or("");
-        if is_rate_limited_note(note) {
+        if is_rate_limited(service) {
             result.insert(crate::runtime_core::provider_id(service).to_owned());
         }
     }
@@ -280,6 +288,7 @@ pub fn plan(
 
 /// 给单个 service 写 `quotaAttemptedAt`, 命中限流时写 `rateLimitedAt`, 成功则清除。
 fn annotate_service(service: &mut Value, now_iso: &str) {
+    let rate_limited = is_rate_limited(service);
     let Some(object) = service.as_object_mut() else {
         return;
     };
@@ -288,9 +297,8 @@ fn annotate_service(service: &mut Value, now_iso: &str) {
         Value::String(now_iso.to_owned()),
     );
     let status = object.get("status").and_then(Value::as_str).unwrap_or("");
-    let note = object.get("note").and_then(Value::as_str).unwrap_or("");
     let failed = matches!(status, "error" | "partial" | "unavailable");
-    if failed && is_rate_limited_note(note) {
+    if failed && rate_limited {
         object.insert(
             "rateLimitedAt".to_owned(),
             Value::String(now_iso.to_owned()),

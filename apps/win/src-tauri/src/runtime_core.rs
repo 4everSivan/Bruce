@@ -89,8 +89,13 @@ pub fn manual_alert_reason(input: bool, retries: u32, previous: bool) -> bool {
     input || (retries > 0 && retries <= 5 && previous)
 }
 
+/// 服务所属 provider (C118): 优先 collector 显式下发的 `provider`, 旧 artifact 缺省时
+/// 回退按 service id 前缀推断 (mac `SubscriptionPresentationPolicy.providerID(for:)` 同义)。
 pub fn provider_id(service: &Value) -> &str {
-    provider_of_id(service.get("id").and_then(Value::as_str).unwrap_or(""))
+    match service.get("provider").and_then(Value::as_str) {
+        Some(provider) if !provider.is_empty() => provider,
+        _ => provider_of_id(service.get("id").and_then(Value::as_str).unwrap_or("")),
+    }
 }
 
 /// service / 订阅卡 section ID → provider rawValue。单账号 section 的 ID 是带账号后缀的

@@ -45,6 +45,51 @@ extension RefreshSchedulerHarness {
         try refreshExpect(policy.skipProviders.isEmpty, "过期 provider 不应跳过")
     }
 
+    /// C118: collector 显式下发的 provider / failureKind 优先; 旧 artifact 回退 id 前缀与 note 文案。
+    static func quotaPolicyPrefersExplicitProviderAndFailureKind() throws {
+        func service(_ fields: [String: JSONValue]) -> JSONValue {
+            var object: [String: JSONValue] = [
+                "id": .string("custom_account"), "name": .string("x"), "status": .string("error"),
+                "windows": .array([]), "note": .string(""),
+            ]
+            for (key, value) in fields { object[key] = value }
+            return .object(object)
+        }
+        // provider 字段优先于 id 前缀
+        try refreshExpect(
+            QuotaRefreshPolicy.provider(of: service(["provider": .string("deepseek")])) == .deepseek,
+            "显式 provider 应优先于 id 推断"
+        )
+        try refreshExpect(
+            QuotaRefreshPolicy.provider(of: service(["id": .string("zhipu_abc")])) == .zhipu,
+            "旧 artifact 回退 id 前缀"
+        )
+        // failureKind 优先于 note: Codex 限流 note 不含 429, 显式字段仍能识别
+        let codexRateLimited = service([
+            "provider": .string("codex"), "failureKind": .string("rateLimit"),
+            "note": .string("额度查询暂时失败, 请稍后重试"),
+        ])
+        try refreshExpect(
+            QuotaRefreshPolicy.rateLimitedProviders(in: quotaArtifact(services: [codexRateLimited])) == [.codex],
+            "failureKind=rateLimit 必须识别为限流"
+        )
+        // 显式非限流: note 偶然含 429 (如余额数字) 不得误判
+        let misleadingNote = service([
+            "provider": .string("deepseek"), "failureKind": .string("server"),
+            "note": .string("查询失败: 余额 429 元以下"),
+        ])
+        try refreshExpect(
+            QuotaRefreshPolicy.rateLimitedProviders(in: quotaArtifact(services: [misleadingNote])).isEmpty,
+            "failureKind 存在时不得再匹配 note 文案"
+        )
+        // 旧 artifact (无 failureKind 键) 仍按 note 识别
+        let legacy = service(["id": .string("kimi_coding"), "note": .string("查询失败: Provider 请求触发限流 (HTTP 429)")])
+        try refreshExpect(
+            QuotaRefreshPolicy.rateLimitedProviders(in: quotaArtifact(services: [legacy])) == [.kimi],
+            "旧 artifact 回退 note 文案"
+        )
+    }
+
     static func quotaPolicy429CooldownAndForceSemantics() throws {
         let now = quotaBase
         let previous = quotaArtifact(services: [

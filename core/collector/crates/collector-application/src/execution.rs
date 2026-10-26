@@ -2,8 +2,8 @@ use crate::account::AccountPlan;
 use crate::context::RunContext;
 use collector_domain::Diagnostic;
 use collector_provider::{
-    catalog_entry_for_app, provider_for_app, service_template, HttpClient, HttpRequest,
-    HttpResponse, ProviderError, ProviderRequest,
+    catalog_entry_for_app, failure_kind_for_code, provider_for_app, service_template, HttpClient,
+    HttpRequest, HttpResponse, ProviderError, ProviderRequest,
 };
 use collector_runtime::{AccountSingleFlight, RuntimeError, SingleFlightError};
 use serde_json::Value;
@@ -262,6 +262,10 @@ fn runtime_diagnostic(error: RuntimeError) -> Diagnostic {
 fn failed_service(mut service: Value, diagnostic: &Diagnostic) -> Value {
     if let Some(object) = service.as_object_mut() {
         object.insert("status".to_owned(), Value::String("error".to_owned()));
+        object.insert(
+            "failureKind".to_owned(),
+            Value::String(failure_kind_for_code(&diagnostic.code).to_owned()),
+        );
         let message = diagnostic.message.chars().take(60).collect::<String>();
         object.insert(
             "note".to_owned(),

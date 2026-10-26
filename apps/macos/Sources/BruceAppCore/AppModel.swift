@@ -602,7 +602,7 @@ package final class AppModel: ObservableObject {
     package func subscriptionPlan(for provider: SubscriptionProviderID) -> String? {
         guard let artifact = decodedAgentUsageArtifact() else { return nil }
         return artifact.services.first { service in
-            SubscriptionPresentationPolicy.providerID(forServiceID: service.id)
+            SubscriptionPresentationPolicy.providerID(for: service)
                 == provider.rawValue
         }?.plan
     }
@@ -613,7 +613,7 @@ package final class AppModel: ObservableObject {
         guard let artifact = decodedAgentUsageArtifact() else { return nil }
         let verified = verifiedProviderIDs
         let services = artifact.services.filter { service in
-            verified.contains(SubscriptionPresentationPolicy.providerID(forServiceID: service.id))
+            verified.contains(SubscriptionPresentationPolicy.providerID(for: service))
         }
         if services.count == artifact.services.count {
             return artifact

@@ -31,6 +31,23 @@ package enum SubscriptionPresentationPolicy: Sendable {
         }
     }
 
+    /// 服务所属 provider (C118): 优先 collector 显式下发的 `provider`, 旧 artifact 缺省时
+    /// 回退按 service id 前缀推断。
+    package static func providerID(for service: AgentServiceItem) -> String {
+        if let provider = service.provider, !provider.isEmpty {
+            return provider
+        }
+        return providerID(forServiceID: service.id)
+    }
+
+    /// 同 `providerID(for:)`, 供以 JSONValue 处理 artifact 的合并 / 节流路径使用。
+    package static func providerID(forServiceObject object: [String: JSONValue]) -> String? {
+        if let provider = object["provider"]?.stringIdValue, !provider.isEmpty {
+            return provider
+        }
+        return object["id"]?.stringIdValue.map(providerID(forServiceID:))
+    }
+
     /// 订阅展示名: 火山引擎剥离 collector 名称里的 Coding Plan 后缀, 仅显示层覆盖.
     package static func displayName(serviceID: String, serviceName: String) -> String {
         guard serviceID == "volcengine" else { return serviceName }
