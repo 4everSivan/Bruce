@@ -433,6 +433,38 @@ Windows Tauri 后端 (Rust)
 5. **验证边界**：以上四条的端到端验证只在 tag 发布时发生（`release` / `release-windows` 作业与打包脚本均 tag 触发）。push 级可验证部分是结构契约测试 `scripts/check-release-pipeline.mjs`（分页+展平 / 两端钉版 / 重跑幂等 / 脚本归属与门禁，随 `verify-windows` 执行）与 AST 语法门禁；**发版后需将一次真实 run 的结论回填到对应 C 卡**（C036 待回填）。
 6. **版本漂移必须在 push 级暴露（C056）**：v0.12.0 发布实测发现 `tauri.conf.json` 的 `version` 自 v0.11.5 起未再提升，而该字段只在 tag 场景被消费 —— 结果 `Bruce_0.11.5_x64-setup.exe` 被当作 v0.12.0 的产物上传、应用内版本行亦显示 0.11.5，缺陷直到发布后才可见。现把一致性断言前移到 `check-win-frontend.mjs`（随每次 push 执行），与上述「tag 才验证」项互补：**凡 tag 场景才消费的字段，必须在 push 级至少校验其与权威源的相等性。**
 
+### 6.5 Windows 系统托盘动态配额环与 420px 亚克力微缩实时预览卡（方案 1 落地规格，T12）
+
+<!-- @topic: WindowsCompat -->
+
+针对 Windows 用户与系统托盘交互的高频轻量感知诉求，Bruce Windows 端对齐方案 1（系统托盘动态环 + 鼠标悬停 420px 亚克力微缩预览卡，交互原型基准 `windows_taskbar_preview_proposal_demo.html`），具体规格如下：
+
+#### 6.5.1 托盘动态配额环与状态心跳渲染
+1. **动态像素图标合成**：
+   - 提取最新快照中最紧张 Provider 额度利用率百分比（`remaining_pct = 100 - max_used_pct`）及健康状态（翠绿充裕 / 琥珀预警 / 科技红紧缺 / 离线灰）；
+   - 在 Rust 后端生成 32×32 RGBA 像素缓冲区：绘制透明背景、底轨圆环、带状态色彩的动态进度弧（0°~360°）以及中心 2px 心跳状态点；
+   - 调度刷新或快照更新时，调用 `tray.set_icon(Some(img))` 动态置换托盘图标；
+2. **动态系统 Tooltip**：
+   - 托盘鼠标悬停的原生系统提示文本格式化为：`Bruce · 配额剩余 {remaining_pct}% | 今日 ${total_cost} (点击展开看板)`。
+
+#### 6.5.2 420px 亚克力微缩预览卡 (Micro-Flyout)
+1. **窗口与几何规格**：
+   - 独立轻量子窗口 `preview`，配置 `width: 420, height: 260`（自适应内部排版，固定宽度 420px，卡片级圆角 12px）；
+   - 样式：无原生标题栏（`decorations: false`）、窗口半透明（`transparent: true`）、置顶（`alwaysOnTop: true`）、不进任务栏（`skipTaskbar: true`）；
+   - 亚克力材质与色系：`backdrop-filter: blur(28px) saturate(180%)`，半透明深灰底色（`rgba(24, 28, 38, 0.88)`），1px 高光描边（`rgba(255, 255, 255, 0.12)`）与高质感阴影；
+2. **微缩卡内容架构**：
+   - **Header 顶栏**：品牌标识 `Bruce` + 四色状态心跳点胶囊（“额度充裕”等）+ 右侧微型展开按钮 `展开看板 ↗`；
+   - **配额环核心区**：42px 直径环形仪表（圆形倒计时/进度环），中心大字百分比，右侧附核心 Provider 名称与重置倒计时（如 `重置倒计时 1h 48m`）；
+   - **今日用量极简行**：今日费用（如 `$1.42`）与今日 Token（如 `384.2k`）；
+   - **活跃状态与快捷操作**：活跃 Agent 绿色指示点列表 + 立即刷新按钮；
+3. **交互与生命周期调度**：
+   - **悬停唤起**：监听 `TrayIconEvent::Enter`，防抖（150ms）后计算托盘图标所在屏幕边界与贴靠位置，平滑淡入呼出微缩卡；
+   - **互斥保证**：若主面板 `dashboard` 当前处于可见展开状态，托盘悬停**静默不弹出微缩卡**；
+   - **平滑收起**：鼠标移出微缩卡区域且未返回托盘、或微缩卡窗口失焦（`Focused(false)`）、或按下 Escape 键时，微缩卡淡出隐藏；
+   - **一键展开**：在微缩卡任意区域点击“展开看板 ↗”或点击系统托盘图标时，立即淡出隐藏微缩卡，并无缝展开主 `dashboard` 完整面板；
+4. **设置项管控**：
+   - 设置中心「通用」页面新增「托盘悬停实时预览」开关（Toggle 开关居右、状态说明文字居左），持久化于 `%APPDATA%\Bruce\settings.json` 的 `trayHoverPreview: true/false`（默认开启）。关闭时悬停不唤起微缩卡，仅保留系统 Tooltip。
+
 ---
 
 ## 7. 扩展设计 (Additional Technical Design)
@@ -446,6 +478,7 @@ Windows Tauri 后端 (Rust)
 | P2 | Tauri 骨架 + 视图模型 + fixture 对拍 + 最小看板 | T02 | 双端 fixture 对拍逐字段一致 |
 | P3 | 全功能对齐（订阅额度/通知/热键/设置/Onboarding） | T03 | 功能矩阵逐项勾选 |
 | P4 | 打包发布线 | T04 | 安装/升级冒烟 + SHA256 |
+| P5 | 托盘动态配额环与 420px 亚克力微缩预览卡 (方案 1) | T12 | 托盘动态绘图 + 420px 预览卡 UI + 悬停唤醒/失焦隐藏与对拍 |
 
 ### 7.2 风险与预案
 

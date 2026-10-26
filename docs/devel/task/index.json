@@ -49,6 +49,13 @@
         "T10",
         "T11"
       ]
+    },
+    "M7-Windows托盘动态配额与实时微缩预览": {
+      "title": "Windows 系统托盘动态配额环与 420px 亚克力微缩实时预览卡（方案 1 · 托盘重绘 + 微缩悬停面板 + 快速呼出）",
+      "design_doc": "docs/devel/design/05-Windows平台适配.md",
+      "tasks": [
+        "T12"
+      ]
     }
   },
   "topics": {
@@ -59,7 +66,8 @@
         "T02",
         "T03",
         "T04",
-        "T08"
+        "T08",
+        "T12"
       ]
     },
     "SubscriptionQuota": {
@@ -212,6 +220,16 @@
       ],
       "file": "docs/archive/0.13.0/task/T11.json",
       "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T11-windows-software-update"
+    },
+    "T12": {
+      "title": "Windows 系统托盘动态配额环与 420px 亚克力微缩实时预览卡 (方案 1)",
+      "status": "in_progress",
+      "branch": "feat/T12-win-tray-live-preview",
+      "topic": "WindowsCompat",
+      "milestone": "M7-Windows托盘动态配额与实时微缩预览",
+      "depends_on": [],
+      "file": "docs/devel/task/T12.json",
+      "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T12-win-tray-live-preview"
     }
   }
 }
