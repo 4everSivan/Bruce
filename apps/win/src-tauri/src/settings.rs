@@ -89,6 +89,9 @@ pub struct AppSettings {
     /// 软件更新 (T11, 07-软件更新 §4.2 R5): 自动检查默认开启。
     #[serde(default = "default_auto_check_update")]
     pub auto_check_update: bool,
+    /// 任务栏托盘悬停实时预览开关 (方案 1 实时微缩卡, 默认开启)。
+    #[serde(default = "default_tray_hover_preview")]
+    pub tray_hover_preview: bool,
     /// 上次成功检查更新 (RFC3339 本地时区; None = 从未)。
     #[serde(default)]
     pub update_last_check_at: Option<String>,
@@ -98,6 +101,10 @@ pub struct AppSettings {
 }
 
 fn default_auto_check_update() -> bool {
+    true
+}
+
+fn default_tray_hover_preview() -> bool {
     true
 }
 
@@ -134,6 +141,7 @@ impl Default for AppSettings {
             panel_x: None,
             panel_y: None,
             auto_check_update: true,
+            tray_hover_preview: true,
             update_last_check_at: None,
             update_skipped_version: None,
         }

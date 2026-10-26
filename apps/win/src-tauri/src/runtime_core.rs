@@ -837,12 +837,14 @@ pub enum WindowAction {
     None,
     HideDashboardAndPersist,
     HideSettings,
+    HidePreview,
 }
 
 pub fn window_action(label: &str, lost_focus: bool, close: bool) -> WindowAction {
     match (label, lost_focus, close) {
         ("dashboard", true, _) | ("dashboard", _, true) => WindowAction::HideDashboardAndPersist,
         ("settings", _, true) => WindowAction::HideSettings,
+        ("preview", true, _) | ("preview", _, true) => WindowAction::HidePreview,
         _ => WindowAction::None,
     }
 }
@@ -1332,6 +1334,74 @@ pub fn compute_dashboard_geometry(
     let anchor = usable_tray(monitor, edge, tray).map(rect_center);
 
     // 贴边轴: 面板紧贴任务栏内侧; 对齐轴: 居中于托盘, 无托盘坐标时贴托盘所在角落
+    let (target_x, target_y) = match edge {
+        TaskbarEdge::Bottom => (
+            anchor.map_or(work_right - margin_x - win_w, |(cx, _)| cx - win_w / 2),
+            work_bottom - margin_y - win_h,
+        ),
+        TaskbarEdge::Top => (
+            anchor.map_or(work_right - margin_x - win_w, |(cx, _)| cx - win_w / 2),
+            work_top + margin_y,
+        ),
+        TaskbarEdge::Left => (
+            work_left + margin_x,
+            anchor.map_or(work_bottom - margin_y - win_h, |(_, cy)| cy - win_h / 2),
+        ),
+        TaskbarEdge::Right => (
+            work_right - margin_x - win_w,
+            anchor.map_or(work_bottom - margin_y - win_h, |(_, cy)| cy - win_h / 2),
+        ),
+    };
+
+    let x = clamp_axis(
+        target_x,
+        work_left + margin_x,
+        work_right - margin_x - win_w,
+        work_left,
+        work_right - win_w,
+    );
+    let y = clamp_axis(
+        target_y,
+        work_top + margin_y,
+        work_bottom - margin_y - win_h,
+        work_top,
+        work_bottom - win_h,
+    );
+
+    DashboardGeometry {
+        x,
+        y,
+        width: win_w as u32,
+        height: win_h as u32,
+    }
+}
+
+/// 计算微缩实时预览卡 (方案 1 preview 窗口, 420x260) 的自适应几何贴靠位置
+pub fn compute_preview_geometry(
+    monitor: &MonitorBounds,
+    tray: Option<&TrayIconBounds>,
+) -> DashboardGeometry {
+    let scale = if monitor.scale_factor > 0.0 {
+        monitor.scale_factor
+    } else {
+        1.0
+    };
+
+    let win_w = ((420.0 * scale).round() as u32).min(monitor.work_width);
+    let win_h = ((260.0 * scale).round() as u32).min(monitor.work_height);
+    let (win_w, win_h) = (win_w as i32, win_h as i32);
+
+    let margin_x = ((12.0 * scale).round() as i32).max(4);
+    let margin_y = ((8.0 * scale).round() as i32).max(4);
+
+    let work_left = monitor.work_x;
+    let work_top = monitor.work_y;
+    let work_right = monitor.work_x + monitor.work_width as i32;
+    let work_bottom = monitor.work_y + monitor.work_height as i32;
+
+    let edge = detect_taskbar_edge(monitor, tray);
+    let anchor = usable_tray(monitor, edge, tray).map(rect_center);
+
     let (target_x, target_y) = match edge {
         TaskbarEdge::Bottom => (
             anchor.map_or(work_right - margin_x - win_w, |(cx, _)| cx - win_w / 2),

@@ -2117,3 +2117,39 @@ test("stepfun dialog supports embedded web login auto-capture, site switch, sess
   assert.match(app.node("provider-dialog").textContent, /StepFun · web1/, "捕获的账号进入已配置列表");
 });
 
+test("tray hover preview toggle persists in settings and preview.html has 420px ring flyout structure (T12)", async () => {
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+
+  // 1. preview.html 静态结构与 420px 环形仪表断言
+  const previewHtmlPath = path.resolve("apps/win/src/preview.html");
+  assert.ok(fs.existsSync(previewHtmlPath), "preview.html 必须存在");
+  const htmlContent = fs.readFileSync(previewHtmlPath, "utf-8");
+  assert.match(htmlContent, /class="micro-preview-card"/, "包含 420px 微缩卡容器");
+  assert.match(htmlContent, /id="ringCircle"/, "包含 42px 环形仪表圆弧");
+  assert.match(htmlContent, /id="expandBtn"/, "包含展开看板按钮");
+  assert.match(htmlContent, /expand_dashboard/, "绑定 expand_dashboard IPC 命令");
+
+  // 2. 设置中心通用页托盘实时预览开关联动
+  const app = await boot({
+    html: "settings.html",
+    settings: {
+      ...defaults,
+      trayHoverPreview: true,
+    },
+  });
+
+  const previewToggle = app.node("setting-tray-hover-preview");
+  const previewState = app.node("setting-tray-hover-preview-state");
+  assert.ok(previewToggle, "包含托盘实时预览开关");
+  assert.ok(previewState, "包含开关状态文本");
+  assert.equal(previewToggle.checked, true, "默认开启");
+  assert.equal(previewState.textContent, "已开启", "状态文字为已开启");
+
+  // 切换为关闭
+  previewToggle.checked = false;
+  await previewToggle.dispatch("change");
+  assert.equal(previewState.textContent, "已关闭", "切换后状态文字为已关闭");
+  assert.equal(app.state.settings.trayHoverPreview, false, "持久化保存为 false");
+});
+

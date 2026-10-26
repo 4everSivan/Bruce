@@ -178,31 +178,26 @@ mod desktop {
     pub fn publish(app: &AppHandle) {
         if let Ok(panel) = cached_panel(app) {
             if let Some(tray) = app.tray_by_id("bruce") {
-                // 托盘角标与提示和看板 HUD 状态灯同源 (C100): 同一判定表、同一色值与原因文案,
-                // 两处不会一绿一红。
-                let status = crate::runtime_core::dashboard_status_from_panel(&panel);
-                let _ = tray.set_tooltip(Some(format!("Bruce · {}", status.reason)));
-                // Reuse the application icon, but visibly tint its indicator per status tone.
-                if let Some(source) = app.default_window_icon() {
-                    let mut pixels = source.rgba().to_vec();
-                    let width = source.width() as usize;
-                    let height = source.height() as usize;
-                    let color = status.tone.tray_rgba();
-                    let radius = (width.min(height) / 5).max(1);
-                    for y in height.saturating_sub(radius * 2)..height {
-                        for x in width.saturating_sub(radius * 2)..width {
-                            let at = (y * width + x) * 4;
-                            if at + 4 <= pixels.len() {
-                                pixels[at..at + 4].copy_from_slice(&color);
-                            }
-                        }
-                    }
-                    let _ = tray.set_icon(Some(tauri::image::Image::new_owned(
-                        pixels,
-                        source.width(),
-                        source.height(),
-                    )));
-                }
+                // 方案 1: 系统托盘动态配额环与心跳状态指示
+                let summary = crate::tray_icon_renderer::extract_quota_summary(&panel);
+                let is_refreshing = app
+                    .state::<SchedulerControl>()
+                    .snapshot
+                    .lock()
+                    .map(|state| state.phase == "refreshing")
+                    .unwrap_or(false);
+                let pixels = crate::tray_icon_renderer::render_tray_quota_icon(
+                    32,
+                    summary.remaining_pct,
+                    summary.status_tone,
+                    is_refreshing,
+                );
+                let _ = tray.set_icon(Some(tauri::image::Image::new_owned(pixels, 32, 32)));
+                let tooltip = format!(
+                    "Bruce · 额度剩余 {:.0}% · {} | 今日 {}",
+                    summary.remaining_pct, summary.status_reason, summary.total_cost_text
+                );
+                let _ = tray.set_tooltip(Some(tooltip));
             }
             let _ = app.emit("dashboard-updated", panel);
         }

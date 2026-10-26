@@ -468,6 +468,18 @@
     });
     row(c1, "系统通知", notifyWrap, "预警与额度提醒; 关闭后 Bruce 不会投递通知");
 
+    // 方案 1: 任务栏托盘悬停预览开关
+    const previewWrap = node("div", null, { class: "toggle-with-state" });
+    const previewToggle = input("setting-tray-hover-preview", "checkbox");
+    previewWrap.append(node("span", "", { id: "setting-tray-hover-preview-state", class: "toggle-state" }), previewToggle);
+    previewToggle.addEventListener("change", () => {
+      syncToggleState("setting-tray-hover-preview");
+      return persist({ trayHoverPreview: previewToggle.checked }, {
+        revert: () => { previewToggle.checked = !previewToggle.checked; syncToggleState("setting-tray-hover-preview"); },
+      });
+    });
+    row(c1, "托盘实时预览", previewWrap, "鼠标悬停任务栏托盘图标时，弹出 420px 亚克力微缩实时预览卡");
+
     const hotkeyWrap = node("div", null, { class: "hotkey-field-wrap" });
     hotkeyWrap.append(input("setting-hotkey", "text", { placeholder: "Control+Shift+B", autocomplete: "off" }));
     const recordButton = button(hotkeyWrap, "hotkey-record", "录制热键", () => {
@@ -3014,6 +3026,8 @@
     }
     if (byId("setting-notifications")) byId("setting-notifications").checked = settings.notificationsEnabled;
     syncToggleState("setting-notifications");
+    if (byId("setting-tray-hover-preview")) byId("setting-tray-hover-preview").checked = settings.trayHoverPreview !== false;
+    syncToggleState("setting-tray-hover-preview");
     if (byId("setting-hotkey")) byId("setting-hotkey").value = settings.hotkey || "";
     if (byId("setting-theme")) byId("setting-theme").value = settings.theme;
     if (byId("setting-layout-mode")) byId("setting-layout-mode").value = settings.layoutMode || "stack";

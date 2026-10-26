@@ -33,6 +33,20 @@
         "visible": false,
         "resizable": true,
         "center": true
+      },
+      {
+        "label": "preview",
+        "title": "Bruce 实时预览",
+        "url": "preview.html",
+        "width": 420,
+        "height": 260,
+        "visible": false,
+        "decorations": false,
+        "transparent": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "shadow": false,
+        "alwaysOnTop": true
       }
     ]
   },

@@ -12,6 +12,7 @@ pub mod reachability;
 pub mod scheduler;
 pub mod settings;
 pub mod software_update;
+pub mod tray_icon_renderer;
 
 pub mod runtime_core;
 
@@ -110,7 +111,52 @@ mod desktop {
         }
     }
 
+    fn apply_preview_geometry(window: &tauri::WebviewWindow, tray_bounds: Option<&TrayIconBounds>) {
+        let target_monitor = window
+            .current_monitor()
+            .ok()
+            .flatten()
+            .or_else(|| window.primary_monitor().ok().flatten());
+
+        if let Some(m) = target_monitor {
+            let monitor_bounds = monitor_to_bounds(&m);
+            let geom = crate::runtime_core::compute_preview_geometry(&monitor_bounds, tray_bounds);
+            let _ = window.set_size(PhysicalSize::new(geom.width, geom.height));
+            let _ = window.set_position(PhysicalPosition::new(geom.x, geom.y));
+        }
+    }
+
+    fn show_preview(app: &tauri::AppHandle) {
+        // 互斥保障: 若主面板已打开，则不弹出微缩预览卡
+        if let Some(dashboard) = app.get_webview_window("dashboard") {
+            if dashboard.is_visible().unwrap_or(false) {
+                return;
+            }
+        }
+
+        let settings = settings::load_settings(&paths::data_root());
+        if !settings.tray_hover_preview {
+            return;
+        }
+
+        if let Some(preview_window) = app.get_webview_window("preview") {
+            let tray_bounds = app
+                .try_state::<TrayBoundsState>()
+                .and_then(|s| s.0.lock().ok().and_then(|guard| *guard));
+            apply_preview_geometry(&preview_window, tray_bounds.as_ref());
+            let _ = preview_window.show();
+            let _ = preview_window.set_always_on_top(true);
+        }
+    }
+
+    fn hide_preview(app: &tauri::AppHandle) {
+        if let Some(window) = app.get_webview_window("preview") {
+            let _ = window.hide();
+        }
+    }
+
     fn show_dashboard(app: &tauri::AppHandle, source: DashboardOpenSource) {
+        hide_preview(app);
         if let Some(window) = app.get_webview_window("dashboard") {
             let tray_bounds = app
                 .try_state::<TrayBoundsState>()
@@ -126,6 +172,7 @@ mod desktop {
     }
 
     fn toggle_dashboard(app: &tauri::AppHandle) {
+        hide_preview(app);
         if let Some(window) = app.get_webview_window("dashboard") {
             if window.is_visible().unwrap_or(false) {
                 if let Some(activity) = app.try_state::<ActivityState>() {
@@ -1012,6 +1059,20 @@ mod desktop {
         if let Some(window) = app.get_webview_window("dashboard") {
             let _ = window.hide();
         }
+        hide_preview(&app);
+    }
+
+    #[tauri::command]
+    fn hide_preview_window(app: tauri::AppHandle) -> Result<(), String> {
+        hide_preview(&app);
+        Ok(())
+    }
+
+    #[tauri::command]
+    fn expand_dashboard(app: tauri::AppHandle) -> Result<(), String> {
+        hide_preview(&app);
+        show_dashboard(&app, DashboardOpenSource::Tray);
+        Ok(())
     }
 
     /// 设置页热键录制态门控 (C099): 录制期间注销已生效热键, 设置页才能重新录到同一组合键;
@@ -1134,12 +1195,19 @@ mod desktop {
                                 }
                             }
                         }
+                        if matches!(
+                            &event,
+                            TrayIconEvent::Enter { .. } | TrayIconEvent::Move { .. }
+                        ) {
+                            show_preview(app);
+                        }
                         if let TrayIconEvent::Click {
                             button: MouseButton::Left,
                             button_state: MouseButtonState::Up,
                             ..
                         } = event
                         {
+                            hide_preview(app);
                             let is_visible = app
                                 .get_webview_window("dashboard")
                                 .and_then(|w| w.is_visible().ok())
@@ -1177,6 +1245,12 @@ mod desktop {
                 let lost_focus = matches!(event, WindowEvent::Focused(false));
                 let close = matches!(event, WindowEvent::CloseRequested { .. });
                 match window_action(window.label(), lost_focus, close) {
+                    WindowAction::HidePreview => {
+                        if let WindowEvent::CloseRequested { api, .. } = event {
+                            api.prevent_close();
+                        }
+                        let _ = window.hide();
+                    }
                     WindowAction::HideDashboardAndPersist => {
                         if let WindowEvent::CloseRequested { api, .. } = event {
                             api.prevent_close();
@@ -1268,6 +1342,8 @@ mod desktop {
                 refresh_subscription,
                 open_settings,
                 hide_dashboard,
+                hide_preview_window,
+                expand_dashboard,
                 set_hotkey_recording,
                 quit_app,
                 crate::software_update::desktop_impl::update_state,
