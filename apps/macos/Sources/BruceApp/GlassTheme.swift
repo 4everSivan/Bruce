@@ -204,8 +204,8 @@ func dashboardGlassBackground(
                 fallback: fallback
             )
         }
-    } else if surface == .card && plan.cardMaterial == .matte {
-        // 哑光(material)档位卡片: 实填充与磨砂面板拉开区分; 经典档位不命中.
+    } else if surface == .card && (plan.cardMaterial == .matte || plan.cardMaterial == .classic) {
+        // 哑光与经典档位卡片: 消费主题对应的真实卡片填充 token (避免 fallback 0.45 白引发水泥灰)
         shape.fill(tokens.cardFillColor)
     } else {
         dashboardGlassFallback(

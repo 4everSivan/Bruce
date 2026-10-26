@@ -24,7 +24,8 @@
         "C088",
         "C098",
         "C100",
-        "C102"
+        "C102",
+        "C103"
       ]
     },
     "PricingEngine": {
@@ -1063,6 +1064,15 @@
       "topic": "MenuBarIndicator",
       "version": "0.13.0",
       "file": "docs/devel/change/C102.json"
+    },
+    "C103": {
+      "title": "浅色经典风格视觉重构（方案A 苹果纯净白）与全主题 8pt 呼吸感圆角体系升级，修复视口腰斩、坐标下沉与布局塌陷 Bug",
+      "type": "BugFix",
+      "status": "verified",
+      "branch": "fix/C103-light-classic-and-radius",
+      "topic": "MenuBarIndicator",
+      "version": "0.13.0",
+      "file": "docs/devel/change/C103.json"
     }
   }
 }

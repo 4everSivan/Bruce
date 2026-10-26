@@ -159,6 +159,18 @@ struct MenuBarDashboardView: View {
                 : nil)
             // 隐藏滚动指示条, 滚轮/触控板滚动不受影响.
             .scrollIndicators(.hidden)
+            .overlay(alignment: .bottom) {
+                // 内容溢出视口时呈现轻柔渐隐下潜提示, 杜绝卡片被生硬腰斩
+                if cardStackHeight > (Self.maxCardStackHeight - max(footerHeight, 49) - max(headerHeight, 32)) {
+                    LinearGradient(
+                        colors: [.clear, Color.black.opacity(colorScheme == .dark ? 0.22 : 0.06)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: 12)
+                    .allowsHitTesting(false)
+                }
+            }
 
             VStack(spacing: 0) {
                 footerHairline
@@ -218,9 +230,9 @@ struct MenuBarDashboardView: View {
         }
     }
 
-    /// 面板外边框圆角: 与 Nothing 风格 1:1 统一紧凑圆角 10pt (消除原 classic 22pt 臃肿大圆角).
+    /// 面板外边框圆角: 全风格统一升级为 14pt 呼吸感协同圆角 (协同 8pt 卡片体系, 覆盖所有主题包含 Nothing).
     private var panelCornerRadius: CGFloat {
-        10
+        14
     }
 
     /// 面板外边框颜色:
@@ -490,7 +502,7 @@ struct MenuBarDashboardView: View {
         }
         .padding(.horizontal, isNothingTheme ? 10 : 12)
         .padding(.top, isNothingTheme ? 8 : 10)
-        .padding(.bottom, isNothingTheme ? 10 : 4)
+        .padding(.bottom, 10)
     }
 
     @ViewBuilder
@@ -625,7 +637,7 @@ struct MenuBarDashboardView: View {
         }
         .padding(.horizontal, isNothingTheme ? 10 : 12)
         .padding(.top, isNothingTheme ? 8 : 10)
-        .padding(.bottom, isNothingTheme ? 10 : 4)
+        .padding(.bottom, 10)
     }
 
     @ViewBuilder

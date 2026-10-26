@@ -113,8 +113,8 @@ button, input, select, textarea {
   backdrop-filter: blur(28px);
   -webkit-backdrop-filter: blur(28px);
   border: 1px solid var(--panel-border);
-  /* mac panelCornerRadius: 统一为 Nothing 紧凑圆角 10px */
-  border-radius: 10px;
+  /* mac panelCornerRadius: 全风格升级为 14px 协同圆角体系 (含 Nothing) */
+  border-radius: 14px;
   overflow: hidden;
   position: relative;
   /* SwiftUI Text 行高约为字号 1.2 倍; CSS normal 行高 (Segoe / 雅黑约 1.33~1.4)
@@ -287,7 +287,7 @@ button, input, select, textarea {
 .card {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
-  border-radius: 4px;
+  border-radius: 8px;
   padding: 12px 14px;
   box-shadow: 0 1px 4px rgba(0,0,0,.14);
   position: relative;
@@ -1660,9 +1660,9 @@ details summary {
 .theme-nothing .hud-right { font: 400 9px/normal "Space Mono", var(--mono-font); color: #8A8A8A; }
 .theme-nothing .hud-right.standby { color: #666666; }
 
-/* 卡片栈与卡片: 水平 10 / 顶 8 / 底 10, 间距 8; 卡片圆角 4、#111 底、#222 描边、无阴影 */
+/* 卡片栈与卡片: 水平 10 / 顶 8 / 底 10, 间距 8; 卡片圆角 8、#111 底、#222 描边、无阴影 */
 .theme-nothing .card-stack { padding: 8px 10px 10px; gap: 8px; }
-.theme-nothing .card { border-radius: 4px; box-shadow: none; }
+.theme-nothing .card { border-radius: 8px; box-shadow: none; }
 
 /* 标题行: 标题定宽 84, Space Grotesk 11.5 半粗 secondary; 行内间距 8 */
 .theme-nothing .card-head { gap: 8px; }

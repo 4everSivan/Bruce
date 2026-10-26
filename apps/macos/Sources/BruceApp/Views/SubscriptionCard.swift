@@ -423,10 +423,10 @@ private struct BalanceDualSlotView: View {
                     light: Color.black.opacity(0.035),
                     dark: Color.white.opacity(0.06)
                 ),
-            in: RoundedRectangle(cornerRadius: 3, style: .continuous)
+            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 3, style: .continuous)
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .strokeBorder(
                     isNothing
                         ? NothingTokens.border(colorScheme)
@@ -469,10 +469,10 @@ private struct BalanceDualSlotView: View {
                     light: Color.black.opacity(0.035),
                     dark: Color.white.opacity(0.06)
                 ),
-            in: RoundedRectangle(cornerRadius: 3, style: .continuous)
+            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 3, style: .continuous)
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .strokeBorder(
                     isNothing
                         ? NothingTokens.border(colorScheme)
@@ -776,12 +776,12 @@ private struct ProviderAccountCard: View {
                     dark: Color.white.opacity(0.10)
                 ),
             in: RoundedRectangle(
-                cornerRadius: 3,
+                cornerRadius: 6,
                 style: .continuous
             )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 3, style: .continuous)
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .strokeBorder(
                     isNothing
                         ? NothingTokens.border(colorScheme)

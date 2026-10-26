@@ -1,0 +1,107 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C103",
+  "title": "浅色经典风格视觉重构（方案A 苹果纯净白）与全主题 8pt 呼吸感圆角体系升级，修复视口腰斩、坐标下沉与布局塌陷 Bug",
+  "version": "0.13.0",
+  "type": "BugFix",
+  "status": "verified",
+  "branch": "fix/C103-light-classic-and-radius",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos + apps/win",
+    "component": "DashboardSurface + GlassTheme + PanelCardContainer + MenuBarViews + MenuBarStatusItemController",
+    "design_doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "design_topic": "MenuBarIndicator"
+  },
+  "why": "用户提出浅色经典风格看板存在布局在特定情况下异常（内容溢出时视口生硬硬截断导致 DeepSeek 双槽被腰斩、resizePanel 丢失下边界吸附致窗口沉出屏幕、HStack 中模型行 GeometryReader 挤压塌陷），且现有经典浅色配色发脏发灰（因材质 fallback 至 0.45 塑料白并在透黑底板上变水泥灰，混杂刺眼荧光色）。用户明确确认采纳「方案 A 苹果纯净白」与「全主题 8pt 现代呼吸感圆角体系（覆盖包括 Nothing 在内的所有主题）」。",
+  "precheck": {
+    "description": "检测当前卡片圆角是否仍为 4pt，且经典浅色卡片背景是否仍 fallback 至半透明 0.45 白",
+    "command": "grep -n 'cornerRadius: 4' apps/macos/Sources/BruceApp/Views/PanelCardContainer.swift; grep -n 'Color.white.opacity(0.45)' apps/macos/Sources/BruceApp/GlassTheme.swift",
+    "expected": "命中 cornerRadius: 4 与 Color.white.opacity(0.45) 回退分支",
+    "is_completed": true,
+    "evidence": "2026-10-26 预检实测：PanelCardContainer.swift:25 为 cornerRadius: 4，GlassTheme.swift:232 为 shape.fill(Color.white.opacity(0.45))，缺陷事实与改进空间明确存在。"
+  },
+  "callback": {
+    "before": [
+      "# 检出专属开发分支 fix/C103-light-classic-and-radius"
+    ],
+    "after": [
+      "swift run --package-path apps/macos DashboardGlassSurfaceHarness",
+      "node --test apps/win/tests/frontend.test.mjs apps/win/tests/geometry-parity.test.mjs",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 closed；目标状态预检使用 --card C103 --to verified/closed --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "圆角体系升级 (macOS & Windows 全主题包含 Nothing)",
+      "before": "全风格卡片为 4pt、面板为 10pt、子槽为 3pt，缺乏桌面呼吸感且方角过硬",
+      "after": "全风格统一升级为 8pt 现代精致圆角体系：外框面板 14pt、主卡片 8pt、内部子槽/芯片/按钮 6pt，全主题（经典、液态玻璃、Nothing）协同生效",
+      "impact": "macOS 与 Windows 看板全面具备高级工具美学，消灭局促方硬感"
+    },
+    {
+      "scope": "经典浅色高保真视觉与色彩系统 (方案 A 苹果纯净白)",
+      "before": "classic 浅色卡片漏掉 token 消费跌落至 0.45 塑料白，在 .popover 透黑底板上呈现水泥泥浆脏灰；Token 与金额色阶冲突",
+      "after": "classic 浅色卡片消费纯白浮岛 token (0.96 白 + 极微冷灰边框 + 羽化微阴影)；Token 总量升级为深邃森林墨绿 (#047857)，金额升级为优雅钴蓝 (#0284C7)，淡化浅色代码流字符噪点",
+      "impact": "浅色模式晶莹明亮，对比清晰高雅，彻底消灭水泥灰发脏问题"
+    },
+    {
+      "scope": "卡片布局 Bug 修复 (视口腰斩、下沉穿透、宽度塌陷)",
+      "before": "ScrollView 内容超出时被腰斩且无滚动感知；resizePanel 缺失边界吸附致窗口下沉穿透屏幕；长模型名称引发进度条塌陷",
+      "after": "ScrollView 底部增加平滑渐隐 Mask 提示下潜并优化底边 padding；resizePanel 补齐 visibleFrame.minY + 8 底部安全 Clamp；模型行增加宽度保护与截断权重",
+      "impact": "不同屏幕尺寸和长内容下卡片展示完整稳固，杜绝破图与下沉截断"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/03-菜单栏状态与多风格原生渲染.md",
+    "topic": "MenuBarIndicator",
+    "modified": true,
+    "rule_diff": {
+      "before": "FR-8: 紧凑圆角体系（面板 10pt、卡片 4pt、子控件 3pt）；classic 浅色卡片使用材质回退",
+      "after": "FR-9: 全主题升级为 8pt 现代呼吸感圆角体系（面板 14pt、主卡片 8pt、子控件 6pt）；经典浅色重构为方案 A 苹果纯净白（纯白浮岛 + 柔光云母底板 + 森林墨绿 & 钴蓝），并施加视口底部渐隐与窗口底部吸附保护"
+    }
+  },
+  "verification": {
+    "result": "passed",
+    "run_id": "local-20261026-01",
+    "user_quote": "确认",
+    "signoff": "2026-10-26 人类口头确认 (AI 代签)",
+    "checks": [
+      {
+        "item": "DashboardGlassSurfaceHarness 测试",
+        "true_if": "DashboardGlassSurfaceHarness 全绿通过且退出码为 0",
+        "false_if": "DashboardGlassSurfaceHarness 出现断言失败或退出码非 0",
+        "evidence": "2026-10-26: swift run --package-path apps/macos DashboardGlassSurfaceHarness 退出码 0，全部通过 (10)。方案 A 经典浅色纯白浮岛、云母底板及亮暗多态矩阵断言完全匹配。",
+        "result": true
+      },
+      {
+        "item": "Windows 前端与几何对拍测试",
+        "true_if": "frontend.test.mjs 与 geometry-parity.test.mjs 全绿通过且无破坏性回归",
+        "false_if": "任一 Windows 前端或几何对拍测试失败",
+        "evidence": "2026-10-26: node --test apps/win/tests/frontend.test.mjs apps/win/tests/geometry-parity.test.mjs apps/win/tests/update-presentation.test.mjs 退出码 0，89 + 6 项测试全绿通过。",
+        "result": true
+      },
+      {
+        "item": "全主题 8pt 圆角与双端对拍排查",
+        "true_if": "Nothing 风格与现有设置窗口 Fluent 平面风格不受破坏，8pt 圆角在各风格下均正常呈现",
+        "false_if": "Nothing 风格破坏或设置窗口出现样式污染",
+        "evidence": "2026-10-26: swift run --package-path apps/macos PanelParityHarness . 退出码 0 (双端对拍 5 项全部通过) + PanelViewModelHarness (60 项通过)；Windows styles.css 确认 .card 及 .theme-nothing .card 统一设定为 8px，面板 14px，子槽 6px。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-26",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "verified"
+  }
+}

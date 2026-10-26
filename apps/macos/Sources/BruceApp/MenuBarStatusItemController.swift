@@ -542,15 +542,19 @@ final class MenuBarStatusItemController: NSObject, NSWindowDelegate {
         }
     }
 
-    /// SwiftUI 内容理想尺寸变化时跟随调整面板 (顶边固定, 高度变化向下延伸).
+    /// SwiftUI 内容理想尺寸变化时跟随调整面板 (顶边固定, 高度变化向下延伸, 屏幕底部安全吸附保护).
     private func resizePanel(to size: CGSize) {
         guard panel.isVisible, size.width > 0, size.height > 0,
               abs(size.height - panel.frame.height) > 1 else {
             return
         }
         let topY = panel.frame.maxY
+        let screen = panel.screen ?? NSScreen.main
+        let minimumY = (screen?.visibleFrame.minY ?? 0) + 8
         panel.setContentSize(size)
-        panel.setFrameOrigin(NSPoint(x: panel.frame.origin.x, y: topY - panel.frame.height))
+        let unclampedY = topY - panel.frame.height
+        let targetY = max(unclampedY, minimumY)
+        panel.setFrameOrigin(NSPoint(x: panel.frame.origin.x, y: targetY))
     }
 
     @objc private func applicationDidResignActive(_ note: Notification) {

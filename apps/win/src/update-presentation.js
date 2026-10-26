@@ -56,6 +56,10 @@
 
   // 当前本地时间 → 同构民事字段 (年/月/日/时/分 + 与 civilFromIso 相同的字符串形态)。
   function civilNow(now) {
+    if (typeof now === "string") {
+      const fromIso = civilFromIso(now);
+      if (fromIso) return fromIso;
+    }
     const date = now instanceof Date ? now : new Date();
     const pad = (v, w = 2) => String(v).padStart(w, "0");
     return { y: date.getFullYear(), m: date.getMonth() + 1, d: date.getDate(), hh: pad(date.getHours()), mm: pad(date.getMinutes()) };

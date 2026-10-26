@@ -48,9 +48,9 @@ final class DashboardGlassPanelController: NSViewController {
         view = rootView
     }
 
-    /// 面板圆角: 与 Nothing 风格 1:1 统一紧凑圆角 10pt (消除原 classic 22pt 臃肿大圆角).
+    /// 面板圆角: 全风格统一升级为 14pt 呼吸感协同圆角 (协同 8pt 卡片体系, 覆盖所有主题包含 Nothing).
     private var panelCornerRadius: CGFloat {
-        10
+        14
     }
 
     override func viewDidLoad() {
@@ -178,6 +178,18 @@ final class DashboardGlassPanelController: NSViewController {
         effect.wantsLayer = true
         effect.layer?.cornerRadius = panelCornerRadius
         effect.layer?.masksToBounds = true
+
+        let tintView = NSView()
+        tintView.wantsLayer = true
+        tintView.layer?.backgroundColor = nsColor(for: surfaceStyle.panelTint).cgColor
+        tintView.translatesAutoresizingMaskIntoConstraints = false
+        effect.addSubview(tintView)
+        NSLayoutConstraint.activate([
+            tintView.leadingAnchor.constraint(equalTo: effect.leadingAnchor),
+            tintView.trailingAnchor.constraint(equalTo: effect.trailingAnchor),
+            tintView.topAnchor.constraint(equalTo: effect.topAnchor),
+            tintView.bottomAnchor.constraint(equalTo: effect.bottomAnchor),
+        ])
         return effect
     }
 

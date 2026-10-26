@@ -347,18 +347,18 @@ public struct DashboardGlassSurfaceStyle: Equatable, Sendable {
                 controlShadow: .black(0.16)
             )
         case .light:
-            // 经典风格 · 纯正高斯磨砂毛玻璃 (Light): 柔和透光 popover 底板 + 雾面白卡片 + 纯净微边框
+            // 经典风格 · 方案 A 苹果原生纯净白 (Light): 柔白透光底板 + 纯白浮岛卡片 + 细腻冷灰微边框
             return Self(
-                panelTint: .rgb(243 / 255, 245 / 255, 250 / 255, alpha: 0.65),
-                cardFill: .white(0.58),
-                cardBorder: .black(0.08),
+                panelTint: .rgb(246 / 255, 248 / 255, 252 / 255, alpha: 0.92),
+                cardFill: .white(0.96),
+                cardBorder: .rgb(15 / 255, 23 / 255, 42 / 255, alpha: 0.08),
                 cardHighlight: .clear,
-                cardShadow: .rgb(15 / 255, 23 / 255, 42 / 255, alpha: 0.04),
-                controlFill: .white(0.78),
-                controlPressedFill: .white(0.92),
-                controlForeground: .black(0.88),
-                controlBorder: .black(0.10),
-                controlShadow: .rgb(15 / 255, 23 / 255, 42 / 255, alpha: 0.05)
+                cardShadow: .rgb(15 / 255, 23 / 255, 42 / 255, alpha: 0.05),
+                controlFill: .white(0.85),
+                controlPressedFill: .white(0.96),
+                controlForeground: .rgb(15 / 255, 23 / 255, 42 / 255, alpha: 0.92),
+                controlBorder: .rgb(15 / 255, 23 / 255, 42 / 255, alpha: 0.08),
+                controlShadow: .rgb(15 / 255, 23 / 255, 42 / 255, alpha: 0.04)
             )
         }
     }

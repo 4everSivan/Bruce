@@ -378,10 +378,10 @@ struct UsageHeroCard: View {
                     light: Color.white.opacity(month.isCurrent ? 0.82 : 0.45),
                     dark: Color.white.opacity(month.isCurrent ? 0.14 : 0.08)
                 ),
-            in: RoundedRectangle(cornerRadius: isNothing ? 2 : 3, style: .continuous)
+            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: isNothing ? 2 : 3, style: .continuous)
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .strokeBorder(
                     isSelected && !isNothing ? Self.accent.opacity(0.85) :
                     isSelected ? Self.nothingHeroAccent :
@@ -520,6 +520,7 @@ struct UsageHeroCard: View {
                 .textCase(isNothing ? .uppercase : nil)
                 .foregroundStyle(Self.ink.opacity(0.9))
                 .lineLimit(1)
+                .frame(maxWidth: 135, alignment: .leading)
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: isNothing ? 0 : 2)
@@ -530,6 +531,7 @@ struct UsageHeroCard: View {
                 }
             }
             .frame(height: 4)
+            .frame(minWidth: 45)
             Text(row.pctText)
                 .font(.system(size: 8.5))
                 .monospacedDigit()
@@ -740,9 +742,12 @@ struct UsageHeroCard: View {
         return Self.tierColors(for: tier).0
     }
 
-    // MARK: 颜色常量 (浅色值换算自 mockup CSS, 深色值见 adaptive 调用)
+    // MARK: 颜色常量 (浅色方案 A 苹果纯净白, 深色自适应)
 
-    private static let accent = Color(hex: "#0a84ff")
+    private static let accent = Color.adaptive(
+        light: Color(hex: "#0284C7"),
+        dark: Color(hex: "#0a84ff")
+    )
     private static let ink = Color.primary
     private static let subdued = Color.primary.opacity(0.5)
     private static let faint = Color.primary.opacity(0.55)
@@ -804,19 +809,34 @@ struct UsageHeroCard: View {
     }
 
     /// 档位配色: 返回 (档位基色, 同族浅色); 基色同时用于热力图格子,
-    /// 浅色作为 hero 渐变末端与背景字符 tint. 五色同色相逐级加深.
+    /// 浅色作为 hero 渐变末端与背景字符 tint. 方案 A 浅色采用深邃森林墨绿, 深色沿用经典绿色阶.
     private static func tierColors(for tier: UsageTier) -> (Color, Color) {
         switch tier {
         case .sage:
-            return (Color(hex: "#7D9B76"), Color(hex: "#9DB597"))
+            return (
+                Color.adaptive(light: Color(hex: "#047857"), dark: Color(hex: "#7D9B76")),
+                Color.adaptive(light: Color(hex: "#059669"), dark: Color(hex: "#9DB597"))
+            )
         case .moss:
-            return (Color(hex: "#63885E"), Color(hex: "#82A57C"))
+            return (
+                Color.adaptive(light: Color(hex: "#059669"), dark: Color(hex: "#63885E")),
+                Color.adaptive(light: Color(hex: "#10B981"), dark: Color(hex: "#82A57C"))
+            )
         case .fern:
-            return (Color(hex: "#4C7249"), Color(hex: "#6A9064"))
+            return (
+                Color.adaptive(light: Color(hex: "#047857"), dark: Color(hex: "#4C7249")),
+                Color.adaptive(light: Color(hex: "#059669"), dark: Color(hex: "#6A9064"))
+            )
         case .pine:
-            return (Color(hex: "#385B38"), Color(hex: "#557B52"))
+            return (
+                Color.adaptive(light: Color(hex: "#065F46"), dark: Color(hex: "#385B38")),
+                Color.adaptive(light: Color(hex: "#047857"), dark: Color(hex: "#557B52"))
+            )
         case .forest:
-            return (Color(hex: "#26452A"), Color(hex: "#456B42"))
+            return (
+                Color.adaptive(light: Color(hex: "#064E3B"), dark: Color(hex: "#26452A")),
+                Color.adaptive(light: Color(hex: "#065F46"), dark: Color(hex: "#456B42"))
+            )
         }
     }
 
@@ -873,6 +893,7 @@ private struct NothingDotGridBackground: View {
 /// 10fps 慢速下流, 每列速度略有差异; Reduce Motion 时静止.
 private struct CodeStreamBackground: View {
     let tint: Color
+    @Environment(\.colorScheme) private var colorScheme
 
     private let characters: [Character] = [".", ":", "+", "*", "#"]
     private let spacing: CGFloat = 16
@@ -897,7 +918,8 @@ private struct CodeStreamBackground: View {
                     let y = base.truncatingRemainder(dividingBy: cycle) - spacing / 2
                     let hash = cellHash(col, row)
                     let char = characters[Int(hash % UInt64(characters.count))]
-                    ctx.opacity = 0.05 + 0.09 * Double((hash >> 8) % 101) / 100.0
+                    let baseOpacity = 0.05 + 0.09 * Double((hash >> 8) % 101) / 100.0
+                    ctx.opacity = colorScheme == .light ? baseOpacity * 0.35 : baseOpacity
                     ctx.draw(
                         Text(String(char))
                             .font(.system(size: 9, design: .monospaced))

@@ -22,7 +22,7 @@ struct PanelCardContainer<Content: View>: View {
 
     private var shape: RoundedRectangle {
         RoundedRectangle(
-            cornerRadius: 4,
+            cornerRadius: 8,
             style: .continuous
         )
     }
@@ -130,13 +130,13 @@ private struct NothingPanelButtonStyle: ButtonStyle {
                 configuration.isPressed
                     ? tokens.controlPressedFillColor
                     : tokens.controlFillColor,
-                in: RoundedRectangle(cornerRadius: 3, style: .continuous)
+                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
             )
             .overlay {
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .strokeBorder(tokens.controlBorderColor, lineWidth: 1)
             }
-            .contentShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 }
 
@@ -157,10 +157,10 @@ private struct DashboardPanelGlassButtonStyle: ButtonStyle {
                 configuration.isPressed
                     ? tokens.controlPressedFillColor
                     : tokens.controlFillColor,
-                in: RoundedRectangle(cornerRadius: 3, style: .continuous)
+                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
             )
             .overlay {
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .strokeBorder(tokens.controlBorderColor, lineWidth: 1)
             }
             .shadow(
