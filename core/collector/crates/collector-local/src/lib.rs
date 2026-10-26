@@ -681,6 +681,9 @@ fn bucket_from_array(values: [u64; 5]) -> TokenBucket {
         cache_read: values[2],
         cache_creation: values[3],
         total: values[4],
+        // 紧凑缓存表示不携带 1 小时 TTL 份额: 只有 Claude 有该拆分, 其聚合始终从
+        // 观测值重建 (C107)。
+        cache_creation_1h: 0,
     }
 }
 
@@ -919,6 +922,7 @@ fn record_into(builder: &mut UsageContributionBuilder, record: LocalUsageRecord)
         output: record.output,
         cache_read: record.cache_read,
         cache_creation: record.cache_creation,
+        cache_creation_1h: 0,
         project: None,
     });
 }
@@ -1443,6 +1447,7 @@ mod tests {
                 output: 3,
                 cache_read: 2,
                 cache_creation: 1,
+                cache_creation_1h: 0,
                 project: None,
             }));
         }

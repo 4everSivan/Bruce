@@ -957,6 +957,7 @@ mod tests {
                 output: 1,
                 cache_read: 0,
                 cache_creation: 0,
+                cache_creation_1h: 0,
                 total: 2,
             },
         );

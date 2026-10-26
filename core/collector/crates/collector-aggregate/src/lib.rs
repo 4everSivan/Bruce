@@ -338,6 +338,7 @@ mod tests {
             output: 3,
             cache_read: 2,
             cache_creation: 1,
+            cache_creation_1h: 0,
             project: Some("Bruce"),
         }));
         let contribution = builder.contribution();
@@ -376,6 +377,7 @@ mod tests {
             output: 100_000,
             cache_read: 500_000,
             cache_creation: 0,
+            cache_creation_1h: 0,
             project: Some("Bruce"),
         }));
         let contribution = builder.contribution();
@@ -409,6 +411,7 @@ mod tests {
             output: 100,
             cache_read,
             cache_creation: 10,
+            cache_creation_1h: 0,
             project: None,
         };
         // 39 天前 (超出 31 天明细期, 只进月桶), 20 天前, 今日 10:00 与 12:00 两个模型

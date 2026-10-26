@@ -2,15 +2,17 @@ use super::codebuddy::{
     codebuddy_message_id, codebuddy_model, codebuddy_scope, codebuddy_usage, CodeBuddyUsage,
 };
 use super::{
-    grok_content, number_u64, parse_json_line, project_from_parent, record, timestamp_number,
-    ClaudeUsage, SourceScan, SourceScanError,
+    claude_cache_creation_1h, grok_content, number_u64, parse_json_line, project_from_parent,
+    record, record_claude_usage, timestamp_number, ClaudeUsage, SourceScan, SourceScanError,
 };
 use crate::jsonl_cache::{
     scan_cached_jsonl_tree, scan_jsonl_file_from_offset, CachedFilePayload, CachedUsageObservation,
     JsonlCacheAdapter, JsonlCacheConfig,
 };
 use crate::{CompactContribution, ScanStats};
-use collector_domain::{CollectionWindow, UsageContribution, UsageContributionBuilder};
+use collector_domain::{
+    CollectionWindow, UsageContribution, UsageContributionBuilder, UsageSample,
+};
 use collector_runtime::CancellationToken;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -18,7 +20,8 @@ use std::collections::BTreeMap;
 use std::io;
 use std::path::{Path, PathBuf};
 
-const JSONL_CACHE_PARSER_VERSION: u32 = 1;
+/// v2 (C107): 观测值新增 Claude 1 小时 TTL 缓存写入份额; 旧条目按版本不匹配全量重建一次.
+const JSONL_CACHE_PARSER_VERSION: u32 = 2;
 const JSONL_CACHE_AGGREGATION_VERSION: u32 = 1;
 
 pub(super) fn jsonl_cache_config(
@@ -61,16 +64,16 @@ fn payload_from_observations(
 ) -> CachedFilePayload {
     let mut builder = UsageContributionBuilder::new(window.clone());
     for observation in &observations {
-        record(
-            &mut builder,
-            observation.timestamp_millis,
-            observation.model.as_deref(),
-            observation.input,
-            observation.output,
-            observation.cache_read,
-            observation.cache_creation,
-            observation.project.as_deref(),
-        );
+        let _ = builder.record(UsageSample {
+            timestamp_millis: observation.timestamp_millis,
+            model: observation.model.as_deref(),
+            input: observation.input,
+            output: observation.output,
+            cache_read: observation.cache_read,
+            cache_creation: observation.cache_creation,
+            cache_creation_1h: observation.cache_creation_1h,
+            project: observation.project.as_deref(),
+        });
     }
     compact_payload(observations, builder.contribution(), window)
 }
@@ -186,6 +189,7 @@ impl JsonlCacheAdapter for KimiWorkJsonlAdapter {
                     cache_creation: number_u64(
                         usage.and_then(|value| value.get("inputCacheCreation")),
                     ),
+                    cache_creation_1h: 0,
                     project: None,
                 })
             },
@@ -274,6 +278,7 @@ fn claude_observation(
         output: number_u64(usage.get("output_tokens")),
         cache_read: number_u64(usage.get("cache_read_input_tokens")),
         cache_creation: number_u64(usage.get("cache_creation_input_tokens")),
+        cache_creation_1h: claude_cache_creation_1h(usage),
         project,
     })
 }
@@ -284,6 +289,7 @@ fn claude_usage_from_observation(observation: &CachedUsageObservation) -> Claude
         output: observation.output,
         cache_read: observation.cache_read,
         cache_creation: observation.cache_creation,
+        cache_creation_1h: observation.cache_creation_1h,
         timestamp_millis: observation.timestamp_millis,
         model: observation.model.clone(),
         project: observation.project.clone(),
@@ -308,6 +314,7 @@ fn aggregate_claude_payloads(
                 entry.output = entry.output.max(usage.output);
                 entry.cache_read = entry.cache_read.max(usage.cache_read);
                 entry.cache_creation = entry.cache_creation.max(usage.cache_creation);
+                entry.cache_creation_1h = entry.cache_creation_1h.max(usage.cache_creation_1h);
                 entry.timestamp_millis = usage.timestamp_millis;
                 entry.model = usage.model;
                 entry.project = usage.project;
@@ -318,16 +325,7 @@ fn aggregate_claude_payloads(
     }
     let mut builder = UsageContributionBuilder::new(window.clone());
     for usage in best.into_values().chain(direct) {
-        record(
-            &mut builder,
-            usage.timestamp_millis,
-            usage.model.as_deref(),
-            usage.input,
-            usage.output,
-            usage.cache_read,
-            usage.cache_creation,
-            usage.project.as_deref(),
-        );
+        record_claude_usage(&mut builder, &usage);
     }
     Ok((builder.contribution(), !payloads.is_empty(), None))
 }
@@ -429,6 +427,7 @@ fn codebuddy_observation(
         output,
         cache_read,
         cache_creation,
+        cache_creation_1h: 0,
         project: project_from_parent(path),
     })
 }
@@ -576,6 +575,7 @@ fn grok_observation(path: &Path, modified: f64, value: &Value) -> Option<CachedU
         output: if kind == Some("assistant") { tokens } else { 0 },
         cache_read: 0,
         cache_creation: 0,
+        cache_creation_1h: 0,
         project,
     })
 }
@@ -719,6 +719,7 @@ fn pi_observation(
         output: number_u64(usage.get("output")).saturating_add(number_u64(usage.get("reasoning"))),
         cache_read: number_u64(usage.get("cacheRead")),
         cache_creation: number_u64(usage.get("cacheWrite")),
+        cache_creation_1h: 0,
         project: project_from_parent(path),
     })
 }

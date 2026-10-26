@@ -227,6 +227,14 @@ pub struct TokenBucket {
     pub cache_read: u64,
     pub cache_creation: u64,
     pub total: u64,
+    /// cache_creation 中按 1 小时 TTL 写入的部分 (C107): Anthropic 对 5 分钟 / 1 小时
+    /// 缓存写入分别按输入单价 1.25× / 2× 计费; 其余来源恒为 0, 序列化时省略。
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub cache_creation_1h: u64,
+}
+
+fn is_zero(value: &u64) -> bool {
+    *value == 0
 }
 
 impl TokenBucket {
@@ -243,6 +251,19 @@ impl TokenBucket {
         );
     }
 
+    /// 计入一条用量样本 (含 1 小时 TTL 缓存写入份额; C107)。
+    pub fn add_sample(&mut self, sample: &UsageSample<'_>) {
+        self.add(
+            sample.input,
+            sample.output,
+            sample.cache_read,
+            sample.cache_creation,
+        );
+        self.cache_creation_1h = self
+            .cache_creation_1h
+            .saturating_add(sample.cache_creation_1h.min(sample.cache_creation));
+    }
+
     pub fn display_input(&self) -> u64 {
         self.input
             .saturating_add(self.cache_read)
@@ -255,6 +276,9 @@ impl TokenBucket {
         self.cache_read = self.cache_read.saturating_add(other.cache_read);
         self.cache_creation = self.cache_creation.saturating_add(other.cache_creation);
         self.total = self.total.saturating_add(other.total);
+        self.cache_creation_1h = self
+            .cache_creation_1h
+            .saturating_add(other.cache_creation_1h);
     }
 }
 
@@ -268,6 +292,8 @@ pub struct UsageSample<'a> {
     pub output: u64,
     pub cache_read: u64,
     pub cache_creation: u64,
+    /// cache_creation 中按 1 小时 TTL 写入的部分 (C107); 来源未区分 TTL 时为 0。
+    pub cache_creation_1h: u64,
     pub project: Option<&'a str>,
 }
 
@@ -377,12 +403,10 @@ impl UsageContributionBuilder {
         let Some(day_index) = self.window.day_index_of_millis(sample.timestamp_millis) else {
             return false;
         };
-        self.by_day.entry(day_index).or_default().add(
-            sample.input,
-            sample.output,
-            sample.cache_read,
-            sample.cache_creation,
-        );
+        self.by_day
+            .entry(day_index)
+            .or_default()
+            .add_sample(&sample);
         let model = sample
             .model
             .filter(|value| !value.is_empty())
@@ -395,12 +419,7 @@ impl UsageContributionBuilder {
                 .or_default()
                 .entry(model.to_owned())
                 .or_default()
-                .add(
-                    sample.input,
-                    sample.output,
-                    sample.cache_read,
-                    sample.cache_creation,
-                );
+                .add_sample(&sample);
             // 日期 × 模型只保留最近 DETAIL_DAYS 天 (C070)
             if day_index + DETAIL_DAYS >= self.window.day_list.len() {
                 self.models_by_day
@@ -408,12 +427,7 @@ impl UsageContributionBuilder {
                     .or_default()
                     .entry(model.to_owned())
                     .or_default()
-                    .add(
-                        sample.input,
-                        sample.output,
-                        sample.cache_read,
-                        sample.cache_creation,
-                    );
+                    .add_sample(&sample);
             }
         }
         if day_index + 1 != self.window.day_list.len() {
@@ -422,12 +436,10 @@ impl UsageContributionBuilder {
         if !self.models_today.contains_key(model) {
             self.model_order.push(model.to_owned());
         }
-        self.models_today.entry(model.to_owned()).or_default().add(
-            sample.input,
-            sample.output,
-            sample.cache_read,
-            sample.cache_creation,
-        );
+        self.models_today
+            .entry(model.to_owned())
+            .or_default()
+            .add_sample(&sample);
         if let Some(hour) = self.window.hour_of_millis(sample.timestamp_millis) {
             self.hours[hour] = self.hours[hour].saturating_add(
                 sample
@@ -441,12 +453,7 @@ impl UsageContributionBuilder {
                 .or_default()
                 .entry(model.to_owned())
                 .or_default()
-                .add(
-                    sample.input,
-                    sample.output,
-                    sample.cache_read,
-                    sample.cache_creation,
-                );
+                .add_sample(&sample);
         }
         if let Some(project) = sample.project.filter(|value| !value.is_empty()) {
             if !self.projects_today.contains_key(project) {
@@ -825,6 +832,7 @@ mod tests {
             output: 2,
             cache_read: 3,
             cache_creation: 4,
+            cache_creation_1h: 0,
             total: 10,
         };
         let encoded = serde_json::to_value(&bucket).unwrap();
@@ -901,6 +909,7 @@ mod tests {
             output: 3,
             cache_read: 2,
             cache_creation: 1,
+            cache_creation_1h: 0,
             project: Some("Bruce"),
         }));
         assert!(!builder.record(UsageSample {
@@ -910,6 +919,7 @@ mod tests {
             output: 100,
             cache_read: 100,
             cache_creation: 100,
+            cache_creation_1h: 0,
             project: Some("ignored"),
         }));
         let contribution = builder.contribution();

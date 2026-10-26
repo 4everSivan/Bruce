@@ -68,6 +68,9 @@ pub(crate) struct CachedUsageObservation {
     pub(crate) output: u64,
     pub(crate) cache_read: u64,
     pub(crate) cache_creation: u64,
+    /// cache_creation 中按 1 小时 TTL 写入的部分 (C107); 旧缓存条目缺省为 0。
+    #[serde(default)]
+    pub(crate) cache_creation_1h: u64,
     pub(crate) project: Option<String>,
 }
 

@@ -266,9 +266,9 @@ pub const CATALOG: &[CatalogEntry] = &[
         model_name: "claude-opus-5-5",
         display_name: "Claude Opus 5.5",
         vendor: "Anthropic",
-        input_price_per_million: 5.00,
-        output_price_per_million: 25.00,
-        cache_read_price_per_million: Some(0.50),
+        input_price_per_million: 4.00,
+        output_price_per_million: 20.00,
+        cache_read_price_per_million: Some(0.20),
         note: "新一代高算力旗舰",
     },
     CatalogEntry {

@@ -118,6 +118,7 @@ mod tests {
             output: 0,
             cache_read: 0,
             cache_creation: 0,
+            cache_creation_1h: 0,
             total,
         };
         let mut by_day = BTreeMap::new();

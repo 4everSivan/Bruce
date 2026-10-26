@@ -16,7 +16,16 @@ pub struct ModelPricing {
     pub currency: String,
     #[serde(default)]
     pub note: Option<String>,
+    /// 5 分钟 TTL 缓存写入相对输入单价的倍率 (C107); 缺省 1.0 (按输入单价计)。
+    #[serde(default)]
+    pub cache_write_multiplier: Option<f64>,
+    /// 1 小时 TTL 缓存写入相对输入单价的倍率 (C107); 缺省沿用 5 分钟倍率。
+    #[serde(default)]
+    pub cache_write_1h_multiplier: Option<f64>,
 }
+
+/// Anthropic 缓存写入计价 (C107): 5 分钟 TTL 为输入单价 1.25×, 1 小时 TTL 为 2×。
+const ANTHROPIC_CACHE_WRITE: (f64, f64) = (1.25, 2.0);
 
 fn default_usd() -> String {
     "USD".to_string()
@@ -61,17 +70,28 @@ impl PricingTable {
     pub fn new(overrides: HashMap<String, ModelPricingOverride>) -> Self {
         let mut builtin = HashMap::new();
 
+        let mut add_with_cache_write =
+            |name: &str,
+             input: f64,
+             output: f64,
+             cache: Option<f64>,
+             note: &str,
+             cache_write: Option<(f64, f64)>| {
+                builtin.insert(
+                    name.to_lowercase(),
+                    ModelPricing {
+                        input_price_per_million: input,
+                        output_price_per_million: output,
+                        cache_read_price_per_million: cache,
+                        currency: "USD".to_string(),
+                        note: Some(note.to_string()),
+                        cache_write_multiplier: cache_write.map(|(five_minutes, _)| five_minutes),
+                        cache_write_1h_multiplier: cache_write.map(|(_, one_hour)| one_hour),
+                    },
+                );
+            };
         let mut add = |name: &str, input: f64, output: f64, cache: Option<f64>, note: &str| {
-            builtin.insert(
-                name.to_lowercase(),
-                ModelPricing {
-                    input_price_per_million: input,
-                    output_price_per_million: output,
-                    cache_read_price_per_million: cache,
-                    currency: "USD".to_string(),
-                    note: Some(note.to_string()),
-                },
-            );
+            add_with_cache_write(name, input, output, cache, note, None);
         };
 
         // Kimi
@@ -163,51 +183,6 @@ impl PricingTable {
         );
         add("hy3", 0.15, 0.60, Some(0.015), "Tencent Hunyuan 3");
         add("hy3-x", 0.25, 0.75, Some(0.025), "Hunyuan 3X");
-
-        // Anthropic Claude
-        add(
-            "claude-opus-5-5",
-            5.00,
-            25.00,
-            Some(0.50),
-            "Claude Opus 5.5",
-        );
-        add(
-            "claude-sonnet-5",
-            2.00,
-            10.00,
-            Some(0.20),
-            "Claude Sonnet 5",
-        );
-        add(
-            "claude-haiku-4-5",
-            1.00,
-            5.00,
-            Some(0.10),
-            "Claude Haiku 4.5",
-        );
-        add(
-            "claude-3-7-sonnet",
-            3.00,
-            15.00,
-            Some(0.30),
-            "Claude 3.7 Sonnet",
-        );
-        add(
-            "claude-3-5-sonnet",
-            3.00,
-            15.00,
-            Some(0.30),
-            "Claude 3.5 Sonnet",
-        );
-        add(
-            "claude-3-5-haiku",
-            0.80,
-            4.00,
-            Some(0.08),
-            "Claude 3.5 Haiku",
-        );
-        add("claude-3-opus", 15.00, 75.00, Some(1.50), "Claude 3 Opus");
 
         // Google Gemini
         add(
@@ -353,6 +328,33 @@ impl PricingTable {
             "Qwen3.7 Plus (ClinePass)",
         );
 
+        // Anthropic Claude (C107: 按 Anthropic 官方单价校正; 缓存写入 5 分钟 1.25× /
+        // 1 小时 2× 输入单价; 置于末尾, 以便在 `add` 的最后一次使用之后再借用)
+        let anthropic = Some(ANTHROPIC_CACHE_WRITE);
+        for (name, input, output, cache_read, note) in [
+            ("claude-fable-5-1", 10.00, 50.00, 0.25, "Claude Fable 5.1"),
+            ("claude-fable-5", 10.00, 50.00, 1.00, "Claude Fable 5"),
+            ("claude-mythos-5-1", 10.00, 50.00, 0.25, "Claude Mythos 5.1"),
+            ("claude-mythos-5", 10.00, 50.00, 1.00, "Claude Mythos 5"),
+            ("claude-opus-5-5", 4.00, 20.00, 0.20, "Claude Opus 5.5"),
+            ("claude-opus-5", 5.00, 25.00, 0.50, "Claude Opus 5"),
+            ("claude-opus-4-8", 5.00, 25.00, 0.50, "Claude Opus 4.8"),
+            ("claude-opus-4-7", 5.00, 25.00, 0.50, "Claude Opus 4.7"),
+            ("claude-opus-4-6", 5.00, 25.00, 0.50, "Claude Opus 4.6"),
+            ("claude-sonnet-5-5", 2.00, 10.00, 0.20, "Claude Sonnet 5.5"),
+            ("claude-sonnet-5", 2.00, 10.00, 0.20, "Claude Sonnet 5"),
+            ("claude-sonnet-4-6", 3.00, 15.00, 0.30, "Claude Sonnet 4.6"),
+            // Haiku 5.5: 取 ≤100K 提示档单价 (超长提示档 $0.50 / $2.50 暂不区分)
+            ("claude-haiku-5-5", 0.10, 0.50, 0.01, "Claude Haiku 5.5"),
+            ("claude-haiku-4-5", 1.00, 5.00, 0.10, "Claude Haiku 4.5"),
+            ("claude-3-7-sonnet", 3.00, 15.00, 0.30, "Claude 3.7 Sonnet"),
+            ("claude-3-5-sonnet", 3.00, 15.00, 0.30, "Claude 3.5 Sonnet"),
+            ("claude-3-5-haiku", 0.80, 4.00, 0.08, "Claude 3.5 Haiku"),
+            ("claude-3-opus", 15.00, 75.00, 1.50, "Claude 3 Opus"),
+        ] {
+            add_with_cache_write(name, input, output, Some(cache_read), note, anthropic);
+        }
+
         Self { builtin, overrides }
     }
 
@@ -390,6 +392,8 @@ impl PricingTable {
                     .clone()
                     .unwrap_or_else(|| builtin.currency.clone()),
                 note: over.note.clone().or_else(|| builtin.note.clone()),
+                cache_write_multiplier: builtin.cache_write_multiplier,
+                cache_write_1h_multiplier: builtin.cache_write_1h_multiplier,
             }),
             (Some(builtin), None) => Some(builtin.clone()),
             (None, Some(over)) => {
@@ -402,6 +406,8 @@ impl PricingTable {
                         cache_read_price_per_million: over.cache_read_price_per_million,
                         currency: over.currency.clone().unwrap_or_else(default_usd),
                         note: over.note.clone(),
+                        cache_write_multiplier: None,
+                        cache_write_1h_multiplier: None,
                     })
                 } else {
                     None
@@ -461,8 +467,17 @@ impl PricingTable {
             .cache_read_price_per_million
             .unwrap_or(pricing.input_price_per_million * 0.1);
         let cache_read_cost = (bucket.cache_read as f64) * cache_rate / 1_000_000.0;
-        let cache_creation_cost =
-            (bucket.cache_creation as f64) * pricing.input_price_per_million / 1_000_000.0;
+        // C107: 缓存写入按 TTL 拆分计价; 倍率缺省 1.0 (非 Anthropic 模型沿用输入单价)。
+        let one_hour = bucket.cache_creation_1h.min(bucket.cache_creation);
+        let five_minutes = bucket.cache_creation - one_hour;
+        let five_minute_multiplier = pricing.cache_write_multiplier.unwrap_or(1.0);
+        let one_hour_multiplier = pricing
+            .cache_write_1h_multiplier
+            .unwrap_or(five_minute_multiplier);
+        let cache_creation_cost = ((five_minutes as f64) * five_minute_multiplier
+            + (one_hour as f64) * one_hour_multiplier)
+            * pricing.input_price_per_million
+            / 1_000_000.0;
         input_cost + output_cost + cache_read_cost + cache_creation_cost
     }
 
@@ -515,6 +530,7 @@ mod tests {
             output: 0,
             cache_read: 1_000_000,
             cache_creation: 0,
+            cache_creation_1h: 0,
             total: 1_000_000,
         };
         // (3.00 − 0.30) USD / 1M
@@ -669,5 +685,80 @@ mod tests {
         // total ≈ 0.72393
         let cost = table.calculate_cost(&bucket, &rule);
         assert!((cost - 0.723_936).abs() < 1e-4, "cost = {cost}");
+    }
+
+    /// C107: Claude 单价按 Anthropic 官方校正; Opus 5 不得被 Opus 5.5 行反向前缀劫持。
+    #[test]
+    fn claude_rows_match_anthropic_list_prices() {
+        let table = PricingTable::default();
+        let opus55 = table.resolve("claude-opus-5-5").unwrap();
+        assert_eq!(
+            (
+                opus55.input_price_per_million,
+                opus55.output_price_per_million,
+                opus55.cache_read_price_per_million
+            ),
+            (4.0, 20.0, Some(0.20))
+        );
+        let opus5 = table.resolve("claude-opus-5").unwrap();
+        assert_eq!(opus5.input_price_per_million, 5.0, "Opus 5 走自身行");
+        let fable = table.resolve("claude-fable-5-1").unwrap();
+        assert_eq!(fable.cache_read_price_per_million, Some(0.25));
+        let haiku = table.resolve("claude-haiku-5-5").unwrap();
+        assert_eq!(haiku.input_price_per_million, 0.10);
+        let dated = table.resolve("claude-opus-5-5-20261001").unwrap();
+        assert_eq!(
+            dated.input_price_per_million, 4.0,
+            "带日期后缀取最具体基础型号"
+        );
+        for model in ["claude-opus-5-5", "claude-sonnet-5", "claude-haiku-4-5"] {
+            let rule = table.resolve(model).unwrap();
+            assert_eq!(rule.cache_write_multiplier, Some(1.25), "{model}");
+            assert_eq!(rule.cache_write_1h_multiplier, Some(2.0), "{model}");
+        }
+        assert_eq!(
+            table.resolve("gpt-5.4").unwrap().cache_write_multiplier,
+            None
+        );
+    }
+
+    /// C107: 缓存写入按 TTL 拆分计价 —— Anthropic 5 分钟 1.25×、1 小时 2× 输入单价;
+    /// 未声明倍率的模型保持按输入单价计 (与改动前一致)。
+    #[test]
+    fn cache_writes_are_priced_by_ttl() {
+        let table = PricingTable::default();
+        let bucket = TokenBucket {
+            input: 0,
+            output: 0,
+            cache_read: 0,
+            cache_creation: 1_000_000,
+            total: 1_000_000,
+            cache_creation_1h: 600_000,
+        };
+        let opus = table.resolve("claude-opus-5-5").unwrap();
+        // 400k × 1.25 × $4 + 600k × 2 × $4 = $2.0 + $4.8
+        let cost = table.calculate_cost(&bucket, &opus);
+        assert!((cost - 6.8).abs() < 1e-9, "cost = {cost}");
+
+        let gpt = table.resolve("gpt-5.4").unwrap();
+        let cost = table.calculate_cost(&bucket, &gpt);
+        assert!(
+            (cost - 2.5).abs() < 1e-9,
+            "非 Anthropic 模型按输入单价: {cost}"
+        );
+
+        // 覆盖输入单价时倍率随之生效
+        let mut overrides = HashMap::new();
+        overrides.insert(
+            "claude-opus-5-5".to_owned(),
+            ModelPricingOverride {
+                input_price_per_million: Some(10.0),
+                ..ModelPricingOverride::default()
+            },
+        );
+        let custom = PricingTable::new(overrides);
+        let rule = custom.resolve("claude-opus-5-5").unwrap();
+        let cost = custom.calculate_cost(&bucket, &rule);
+        assert!((cost - 17.0).abs() < 1e-9, "cost = {cost}");
     }
 }

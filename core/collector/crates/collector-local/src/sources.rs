@@ -166,7 +166,31 @@ pub(super) fn record(
         output,
         cache_read,
         cache_creation,
+        cache_creation_1h: 0,
         project,
+    });
+}
+
+/// Claude Code 用量里 1 小时 TTL 的缓存写入 token (C107): `usage.cache_creation.
+/// ephemeral_1h_input_tokens`; 旧日志无该拆分时为 0 (整体按 5 分钟写入计价)。
+pub(super) fn claude_cache_creation_1h(usage: &Value) -> u64 {
+    number_u64(
+        usage
+            .get("cache_creation")
+            .and_then(|split| split.get("ephemeral_1h_input_tokens")),
+    )
+}
+
+pub(super) fn record_claude_usage(builder: &mut UsageContributionBuilder, usage: &ClaudeUsage) {
+    let _ = builder.record(UsageSample {
+        timestamp_millis: usage.timestamp_millis,
+        model: usage.model.as_deref(),
+        input: usage.input,
+        output: usage.output,
+        cache_read: usage.cache_read,
+        cache_creation: usage.cache_creation,
+        cache_creation_1h: usage.cache_creation_1h,
+        project: usage.project.as_deref(),
     });
 }
 
@@ -452,6 +476,8 @@ pub(super) struct ClaudeUsage {
     pub(super) output: u64,
     pub(super) cache_read: u64,
     pub(super) cache_creation: u64,
+    /// cache_creation 中按 1 小时 TTL 写入的部分 (C107)。
+    pub(super) cache_creation_1h: u64,
     pub(super) timestamp_millis: i64,
     pub(super) model: Option<String>,
     pub(super) project: Option<String>,
@@ -506,6 +532,7 @@ pub fn scan_claude_with_cancellation(
                 output: number_u64(usage.get("output_tokens")),
                 cache_read: number_u64(usage.get("cache_read_input_tokens")),
                 cache_creation: number_u64(usage.get("cache_creation_input_tokens")),
+                cache_creation_1h: claude_cache_creation_1h(usage),
                 timestamp_millis: timestamp,
                 model: message
                     .get("model")
@@ -522,6 +549,7 @@ pub fn scan_claude_with_cancellation(
                 entry.output = entry.output.max(usage.output);
                 entry.cache_read = entry.cache_read.max(usage.cache_read);
                 entry.cache_creation = entry.cache_creation.max(usage.cache_creation);
+                entry.cache_creation_1h = entry.cache_creation_1h.max(usage.cache_creation_1h);
                 entry.timestamp_millis = usage.timestamp_millis;
                 entry.model = usage.model;
                 entry.project = usage.project;
@@ -533,16 +561,7 @@ pub fn scan_claude_with_cancellation(
     )?;
     let mut builder = UsageContributionBuilder::new(window.clone());
     for usage in best.into_values().chain(direct) {
-        record(
-            &mut builder,
-            usage.timestamp_millis,
-            usage.model.as_deref(),
-            usage.input,
-            usage.output,
-            usage.cache_read,
-            usage.cache_creation,
-            usage.project.as_deref(),
-        );
+        record_claude_usage(&mut builder, &usage);
     }
     Ok(finish(
         window,

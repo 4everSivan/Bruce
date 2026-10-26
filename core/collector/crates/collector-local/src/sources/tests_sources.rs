@@ -834,3 +834,88 @@ fn codex_collection_survives_symlink_cycle() {
     );
     fs::remove_dir_all(&root).ok();
 }
+
+/// C107: Claude Code 用量的 1 小时 TTL 缓存写入份额 (`usage.cache_creation.
+/// ephemeral_1h_input_tokens`) 必须在缓存 / 未缓存两条路径、缓存命中与追加后都被保留,
+/// 同一 message id 的重复写入按最大值去重 (不叠加)。
+#[test]
+fn claude_keeps_one_hour_cache_write_share_across_cache_paths() {
+    let root = temp_root("claude-1h");
+    let cache_root = temp_root("claude-1h-cache");
+    let project = root.join("-Users-demo-project");
+    fs::create_dir_all(&project).unwrap();
+    let line = |id: &str, creation: u64, one_hour: u64| {
+        json!({
+            "type": "assistant",
+            "timestamp": "2026-07-28T04:00:00Z",
+            "message": {
+                "id": id,
+                "model": "claude-opus-5-5",
+                "usage": {
+                    "input_tokens": 10,
+                    "output_tokens": 5,
+                    "cache_read_input_tokens": 100,
+                    "cache_creation_input_tokens": creation,
+                    "cache_creation": {
+                        "ephemeral_5m_input_tokens": creation - one_hour,
+                        "ephemeral_1h_input_tokens": one_hour
+                    }
+                }
+            }
+        })
+        .to_string()
+    };
+    let session = project.join("session.jsonl");
+    // m1 流式骨架与完整快照 (按最大值去重), m2 全部为 1 小时写入
+    fs::write(
+        &session,
+        format!(
+            "{}\n{}\n{}\n",
+            line("m1", 40, 30),
+            line("m1", 400, 300),
+            line("m2", 50, 50)
+        ),
+    )
+    .unwrap();
+
+    let today_bucket = |scan: &SourceScan| {
+        scan.contribution
+            .models_today
+            .iter()
+            .find(|model| model.model == "claude-opus-5-5")
+            .map(|model| model.bucket.clone())
+            .expect("claude-opus-5-5 应计入今日模型")
+    };
+    let uncached = super::scan_claude(&root, &window());
+    let cold = super::scan_claude_cached(&root, &window(), &cache_root, &CancellationToken::new())
+        .unwrap();
+    let warm = super::scan_claude_cached(&root, &window(), &cache_root, &CancellationToken::new())
+        .unwrap();
+    for (label, scan) in [("uncached", &uncached), ("cold", &cold), ("warm", &warm)] {
+        let bucket = today_bucket(scan);
+        assert_eq!(bucket.cache_creation, 450, "{label}: 缓存写入总量");
+        assert_eq!(
+            bucket.cache_creation_1h, 350,
+            "{label}: 1 小时 TTL 写入份额"
+        );
+    }
+    assert_eq!(warm.stats.cache_hits, 1, "第二次扫描应命中缓存");
+
+    // 追加一条后: 增量合并路径同样保留 1 小时份额
+    let mut file = fs::OpenOptions::new().append(true).open(&session).unwrap();
+    use std::io::Write as _;
+    writeln!(file, "{}", line("m3", 20, 0)).unwrap();
+    drop(file);
+    let appended =
+        super::scan_claude_cached(&root, &window(), &cache_root, &CancellationToken::new())
+            .unwrap();
+    let bucket = today_bucket(&appended);
+    assert_eq!(bucket.cache_creation, 470);
+    assert_eq!(
+        bucket.cache_creation_1h, 350,
+        "5 分钟写入不得计入 1 小时份额"
+    );
+
+    fs::remove_dir_all(&root).ok();
+    fs::remove_dir_all(&cache_root).ok();
+}

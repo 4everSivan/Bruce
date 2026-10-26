@@ -323,9 +323,9 @@ public enum BuiltinModelPricingCatalog {
             modelName: "claude-opus-5-5",
             displayName: "Claude Opus 5.5",
             vendor: "Anthropic",
-            inputPricePerMillion: 5.00,
-            outputPricePerMillion: 25.00,
-            cacheReadPricePerMillion: 0.50,
+            inputPricePerMillion: 4.00,
+            outputPricePerMillion: 20.00,
+            cacheReadPricePerMillion: 0.20,
             defaultNote: "新一代高算力旗舰"
         ),
         BuiltinModelPricing(
