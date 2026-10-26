@@ -4,7 +4,7 @@
   "title": "浅色经典风格视觉重构（方案A 苹果纯净白）与全主题 8pt 呼吸感圆角体系升级，修复视口腰斩、坐标下沉与布局塌陷 Bug",
   "version": "0.13.0",
   "type": "BugFix",
-  "status": "verified",
+  "status": "closed",
   "branch": "fix/C103-light-classic-and-radius",
   "is_hotfix": false,
   "target": {
@@ -93,7 +93,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "f547eb8",
     "tag": ""
   },
   "gate": {
@@ -101,7 +101,7 @@
     "version": "1.5.0",
     "ran_at": "2026-10-26",
     "exit_code": 0,
-    "from_status": "in_progress",
-    "target_status": "verified"
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }
