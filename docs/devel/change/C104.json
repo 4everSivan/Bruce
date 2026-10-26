@@ -2,7 +2,7 @@
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C104",
   "title": "优化本地验证脚本 verify-local.sh 执行耗时：单次并行构建全部 Harness 替换 17 次串行 swift run 并修复 find 剪枝，验证耗时由 11m39s 降至 30s 级",
-  "version": "0.14.0",
+  "version": "0.13.1",
   "type": "Enhancement",
   "status": "closed",
   "branch": "fix/C104-verify-speedup",

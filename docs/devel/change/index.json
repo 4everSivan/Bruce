@@ -1092,7 +1092,7 @@
       "status": "closed",
       "branch": "fix/C104-verify-speedup",
       "topic": "SystemOverview",
-      "version": "0.14.0",
+      "version": "0.13.1",
       "file": "docs/devel/change/C104.json"
     },
     "C105": {
