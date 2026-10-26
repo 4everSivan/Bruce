@@ -527,12 +527,45 @@ mod desktop {
         Ok(())
     }
 
+    /// 阻塞型网络请求移出主线程 (C109)。
+    ///
+    /// Tauri 2 的同步 command 在主线程执行: 期间托盘、看板与设置窗口全部失去响应,
+    /// 网络慢时最长卡住整个请求超时 (设备码 30 s / DeepSeek 试查 8 s)。凡含出站
+    /// HTTP 的 command 一律声明为 `async` 并经此放到阻塞线程池, 不占用 Tokio 工作线程。
+    async fn off_main_thread<T, F>(work: F) -> Result<T, String>
+    where
+        T: Send + 'static,
+        F: FnOnce() -> T + Send + 'static,
+    {
+        tauri::async_runtime::spawn_blocking(work)
+            .await
+            .map_err(|_| "BACKGROUND_TASK_FAILED".to_owned())
+    }
+
+    /// `ShellExecuteW` 可能委托经 COM 激活的 Shell 扩展, 须在已初始化 COM 的主 (STA)
+    /// 线程调用: async command 运行在 Tokio 工作线程, 故派回主线程执行并等待结果 (C109)。
+    async fn open_external_url_on_main_thread(app: &tauri::AppHandle, url: &'static str) -> bool {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let scheduled = app.run_on_main_thread(move || {
+            let _ = sender.send(open_external_url(url).is_ok());
+        });
+        if scheduled.is_err() {
+            return false;
+        }
+        off_main_thread(move || receiver.recv().unwrap_or(false))
+            .await
+            .unwrap_or(false)
+    }
+
     /// Codex 设备码登录第一步 (C084 / 设计规则 23): 申请设备码并尝试打开官方验证页。
     /// 只由用户在设置页点击触发。打不开浏览器不算致命 —— 前端仍展示 user_code 与地址。
     #[tauri::command]
-    fn codex_device_start() -> Result<serde_json::Value, String> {
-        let authorization = credentials::codex_device_start().map_err(|e| e.message())?;
-        let browser_opened = open_external_url(credentials::CODEX_VERIFICATION_URL).is_ok();
+    async fn codex_device_start(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+        let authorization = off_main_thread(credentials::codex_device_start)
+            .await?
+            .map_err(|e| e.message())?;
+        let browser_opened =
+            open_external_url_on_main_thread(&app, credentials::CODEX_VERIFICATION_URL).await;
         Ok(serde_json::json!({
             "deviceAuthId": authorization.device_auth_id,
             "userCode": authorization.user_code,
@@ -546,8 +579,28 @@ mod desktop {
     /// Codex 设备码登录第二步: 单次轮询 (前端按 interval 驱动, 便于呈现等待 / 完成阶段)。
     /// 授权完成后在同一次调用里换码、写账号并请求定向刷新; 任一步失败 fail-closed, 不写半成品。
     #[tauri::command]
-    fn codex_device_poll(
+    async fn codex_device_poll(
         app: tauri::AppHandle,
+        device_auth_id: String,
+        user_code: String,
+        issued_at_millis: i64,
+        expires_in_seconds: u64,
+    ) -> Result<serde_json::Value, String> {
+        off_main_thread(move || {
+            codex_device_poll_blocking(
+                &app,
+                device_auth_id,
+                user_code,
+                issued_at_millis,
+                expires_in_seconds,
+            )
+        })
+        .await?
+    }
+
+    /// 单次轮询 + 授权后换码落库 (均为阻塞 HTTP / 磁盘), 只在 `off_main_thread` 内调用。
+    fn codex_device_poll_blocking(
+        app: &tauri::AppHandle,
         device_auth_id: String,
         user_code: String,
         issued_at_millis: i64,
@@ -659,14 +712,20 @@ mod desktop {
     /// DeepSeek 在结构校验通过后追加一次真实试查 (C083)。
     /// Claude 无已存凭据时按本机 CLI 只读跟随判定 (C091)。
     #[tauri::command]
-    fn verify_subscription(provider: String) -> serde_json::Value {
-        let result = credentials::verify_subscription_following_local(
-            &paths::data_root(),
-            &paths::home_root(),
-            &provider,
-            chrono::Utc::now().timestamp_millis(),
-        );
-        serde_json::json!({"status": result.status, "reason": result.reason})
+    async fn verify_subscription(provider: String) -> serde_json::Value {
+        let verified = off_main_thread(move || {
+            credentials::verify_subscription_following_local(
+                &paths::data_root(),
+                &paths::home_root(),
+                &provider,
+                chrono::Utc::now().timestamp_millis(),
+            )
+        })
+        .await;
+        match verified {
+            Ok(result) => serde_json::json!({"status": result.status, "reason": result.reason}),
+            Err(_) => serde_json::json!({"status": "failed", "reason": "验证任务异常中止, 请重试"}),
+        }
     }
 
     /// 移除服务 (C089): 一次性删除该 Provider 的全部凭据; 失败时一个都不删。
