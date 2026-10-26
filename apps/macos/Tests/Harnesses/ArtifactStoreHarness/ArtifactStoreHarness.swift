@@ -39,7 +39,82 @@ struct ArtifactStoreHarness {
         try fallsBackAfterCorruptionAndWriteFailure(repository: repository)
         try migratesAndRejectsUnknownSchemas(repository: repository)
         try clearCachesRemovesSnapshotsAndStaysUsable(repository: repository)
-        print("ArtifactStore tests passed: 5")
+        try validatesCalendarDaysStrictlyAndQuickly(repository: repository)
+        print("ArtifactStore tests passed: 6")
+    }
+
+    /// C106: 逐日校验语义与旧「非宽松 DateFormatter + 回写比对」一致, 且 182 天 ×
+    /// 10 agent 的满尺寸 artifact 单次校验不再耗时数百毫秒.
+    private static func validatesCalendarDaysStrictlyAndQuickly(
+        repository: URL
+    ) throws {
+        for valid in ["2026-07-28", "2024-02-29", "2000-02-29", "0001-01-01", "2026-12-31"] {
+            try storeExpect(CalendarDay.isValid(valid), "valid day rejected: \(valid)")
+        }
+        for invalid in [
+            "", "2026-7-28", "2026-07-8", "2026-02-29", "1900-02-29", "2026-02-30",
+            "2026-04-31", "2026-13-01", "2026-00-10", "2026-01-00", "0000-01-01",
+            " 2026-07-28", "2026-07-28 ", "2026/07/28", "２０２６-07-28", "20260728xx",
+        ] {
+            try storeExpect(!CalendarDay.isValid(invalid), "invalid day accepted: \(invalid)")
+        }
+
+        let validator = ArtifactValidator()
+        var invalidDay = try fixture(repository: repository, module: .agentUsage)
+        if case .object(var object) = invalidDay,
+           case .array(var agents)? = object["agents"],
+           case .object(var agent)? = agents.first,
+           case .array(var daily)? = agent["daily"],
+           case .object(var day)? = daily.first {
+            day["date"] = .string("2026-02-30")
+            daily[0] = .object(day)
+            agent["daily"] = .array(daily)
+            agents[0] = .object(agent)
+            object["agents"] = .array(agents)
+            invalidDay = .object(object)
+        }
+        do {
+            _ = try validator.validate(invalidDay, for: .agentUsage)
+            throw StoreTestFailure.expectation("impossible calendar day accepted")
+        } catch ArtifactValidationError.invalidValue {
+        }
+
+        // 满尺寸 artifact: 与生产请求同口径 (days=182, 10 个 agent).
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let start = calendar.date(from: DateComponents(year: 2026, month: 4, day: 28))!
+        let dates = (0..<182).map { offset -> String in
+            let date = calendar.date(byAdding: .day, value: offset, to: start)!
+            let parts = calendar.dateComponents([.year, .month, .day], from: date)
+            return String(format: "%04d-%02d-%02d", parts.year!, parts.month!, parts.day!)
+        }
+        let daily = JSONValue.array(dates.map { date in
+            .object(["date": .string(date), "input": .integer(1), "output": .integer(1), "total": .integer(2)])
+        })
+        let zeroBucket = JSONValue.object([
+            "input": .integer(0), "output": .integer(0), "cacheRead": .integer(0),
+            "cacheCreation": .integer(0), "total": .integer(0),
+        ])
+        let agents = JSONValue.array((0..<10).map { index in
+            .object([
+                "id": .string("agent-\(index)"), "name": .string("Agent \(index)"),
+                "status": .string("ok"), "note": .null, "today": zeroBucket,
+                "daily": daily, "hours": .array(Array(repeating: .integer(0), count: 24)),
+                "todayCostUsd": .null,
+            ])
+        })
+        let large = JSONValue.object([
+            "schemaVersion": .integer(1), "module": .string("agent-usage"),
+            "generatedAt": .string("2026-10-26T00:00:00Z"), "agents": agents,
+            "services": .array([]), "totalCostUsd": .null,
+        ])
+        let started = Date()
+        _ = try validator.validate(large, for: .agentUsage)
+        let elapsed = Date().timeIntervalSince(started)
+        try storeExpect(
+            elapsed < 0.25,
+            "full-size artifact validation took \(Int(elapsed * 1000)) ms (expected < 250 ms)"
+        )
     }
 
     private static func fixture(

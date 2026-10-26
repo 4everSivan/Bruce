@@ -208,7 +208,7 @@ struct ScopedQuotaSnapshotMerger: Sendable {
     ) -> Bool {
         let capturedAt = service["capturedAt"]?.stringIdValue
         guard let capturedAt,
-              ISO8601DateFormatter().date(from: capturedAt) != nil else {
+              ISODate.parse(capturedAt) != nil else {
             return false
         }
         if let freshness = service["freshness"]?.stringIdValue {

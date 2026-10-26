@@ -454,6 +454,6 @@ package final class DiagnosticService: ObservableObject {
     }
 
     private static func timestamp(_ date: Date) -> String {
-        ISO8601DateFormatter().string(from: date)
+        ISODate.string(from: date)
     }
 }

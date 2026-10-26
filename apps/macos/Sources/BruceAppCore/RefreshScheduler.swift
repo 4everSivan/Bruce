@@ -415,7 +415,7 @@ package final class RefreshScheduler {
 
             if var state = states[module] {
                 state.lastSuccessAt = stored.metadata.lastSuccessAt
-                    .flatMap { ISO8601DateFormatter().date(from: $0) }
+                    .flatMap { ISODate.parse($0) }
                 // 用缓存快照回填预警阈值状态, 重启后不对已超的窗口重复报警
                 state.quotaAlertedKeys = Set(
                     QuotaAlertEvaluator.overThresholdEntries(artifact: stored.artifact)

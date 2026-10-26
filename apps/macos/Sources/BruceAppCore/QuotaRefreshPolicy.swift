@@ -261,22 +261,12 @@ package enum QuotaRefreshPolicy {
     }
 
     package static func timestamp(_ date: Date) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        return formatter.string(from: date)
+        ISODate.string(from: date)
     }
 
     static func parseISODate(_ value: String?) -> Date? {
         guard let value, !value.isEmpty else { return nil }
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = fractional.date(from: value) {
-            return date
-        }
-        let plain = ISO8601DateFormatter()
-        plain.formatOptions = [.withInternetDateTime]
-        return plain.date(from: value)
+        return ISODate.parseAllowingFractionalSeconds(value)
     }
 
     private static func isCooling(

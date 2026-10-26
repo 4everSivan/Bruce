@@ -550,9 +550,7 @@ package final class ArtifactStore {
                 errorCategory: nil
             )
         if let lastSuccessAt = metadata.lastSuccessAt,
-           let successDate = ISO8601DateFormatter().date(
-               from: lastSuccessAt
-           ) {
+           let successDate = ISODate.parse(lastSuccessAt) {
             metadata.isStale = now.timeIntervalSince(successDate) > staleAfter
         } else {
             metadata.isStale = true
@@ -570,7 +568,7 @@ package final class ArtifactStore {
     }
 
     private static func timestamp(_ date: Date) -> String {
-        ISO8601DateFormatter().string(from: date)
+        ISODate.string(from: date)
     }
 
     /// 将 `AtomicJSONStore` 的写阶段映射到本 store 的 `ArtifactStoreStage`,

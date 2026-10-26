@@ -64,7 +64,7 @@ package struct PanelViewModelMapper: Sendable {
     }
 
     static func parseISODate(_ value: String) -> Date? {
-        ISO8601DateFormatter().date(from: value)
+        ISODate.parse(value)
     }
 
     static func parseResetDate(_ value: JSONValue) -> Date? {

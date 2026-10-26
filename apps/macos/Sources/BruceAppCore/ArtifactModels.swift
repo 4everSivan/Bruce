@@ -344,20 +344,15 @@ package struct ArtifactValidator {
         guard module == expectedModule else {
             throw ArtifactValidationError.moduleMismatch
         }
-        guard ISO8601DateFormatter().date(from: generatedAt) != nil else {
+        guard ISODate.parse(generatedAt) != nil else {
             throw ArtifactValidationError.invalidDate
         }
     }
 
+    /// C106: 逐日校验不再每次新建 DateFormatter (约 0.26 ms/次, 182 天 × 10 agent
+    /// 的 artifact 单次校验即约 0.5 s 主线程耗时).
     private func validDay(_ value: String) -> Bool {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.isLenient = false
-        guard let date = formatter.date(from: value) else { return false }
-        return formatter.string(from: date) == value
+        CalendarDay.isValid(value)
     }
 
     private func containsSensitiveField(_ value: JSONValue) -> Bool {
