@@ -1,0 +1,110 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C117",
+  "title": "Codex 整树缓存改为按文件观测缓存：进行中会话追加与跨日不再整树重读",
+  "version": "0.13.1",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C117-codex-file-cache",
+  "is_hotfix": false,
+
+  "target": {
+    "module": "core/collector collector-local",
+    "component": "sources/codex.rs Codex 缓存扫描",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+
+  "why": "2026-10-25 架构审查：Codex 缓存是整树一份聚合快照，身份 = 全部候选文件的签名 + 窗口 days / timezone / today。Codex 正在使用时活动 rollout 每次刷新都在追加，任一文件变化即整树（窗口内全部 rollout）重读；每天首轮刷新与改动窗口长度同样整树重读；且每轮热刷新都要为全部候选文件读取头尾指纹来计算签名。本机实测窗口内 24 个 rollout / 39.8 MB / 575 个 token_count 事件，重读成本随 Codex 使用量线性增长。审查计划同期评估 SQLite（ZCode / OpenCode）缓存去窗口化：ZCode 窗口内 26,981 行、全量读取约 60 ms/天，改存观测值会让每轮热刷新解析约 3 MB，判定不改并在设计中登记依据。",
+
+  "precheck": {
+    "description": "确认改动前 Codex 缓存以整树签名 + today 为身份",
+    "command": "git show e018e85:core/collector/crates/collector-local/src/sources/codex.rs | grep -n 'self.today == window.today\\|fn codex_tree_signature('",
+    "expected": "命中整树签名函数与 today 身份比对（缺陷存在）",
+    "is_completed": false,
+    "evidence": "2026-10-26 预检实测：e018e85 的 codex.rs 含 `fn codex_tree_signature(`（整树签名）与 `self.today == window.today`（today 身份）—— 缺陷成立，需编码修复。"
+  },
+
+  "callback": {
+    "before": [
+      "git checkout -b fix/C117-codex-file-cache  # 叠加在 fix/C116-window-independent-jsonl-cache 之上"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all -- --check",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C117 --to verified --record"
+    ]
+  },
+
+  "changes": [
+    {
+      "scope": "Codex 缓存",
+      "before": "codex-tree-v1.json：整树签名（每轮为全部候选读头尾指纹）+ 按窗口聚合快照，身份含 days / timezone / today；任一文件变化整树重读",
+      "after": "codex-files-v1.json：会话组选择后，每个选中文件以路径摘要为键缓存与窗口无关的观测值与文件身份（size / modified / device / inode）；只重解析身份变化的文件；未再选中的条目随写回移除（cache_deletions）；身份仅 schema 与 timezone；旧 codex-tree-v1.json 自动删除；缓存文件损坏时整体重建并在 note 说明（C046）",
+      "impact": "活动会话追加、跨日与改窗口长度只重读变化的文件；热刷新不再为全部文件读取指纹；聚合结果不变"
+    },
+    {
+      "scope": "Codex 解析结构",
+      "before": "scan_selected_codex 在闭包内直接写入窗口聚合",
+      "after": "抽出 parse_codex_file 产出与窗口无关的观测值（单文件解析状态不变），缓存路径与不缓存的参照实现 scan_codex 共用",
+      "impact": "参照实现与缓存路径解析逻辑同源"
+    }
+  ],
+
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": true,
+    "rule_diff": {
+      "before": "§7.1 Codex 树缓存为单文件 codex-tree-v1.json，身份含 today",
+      "after": "§7.1 Codex 层改为按文件观测缓存 codex-files-v1.json（身份 schema / timezone + 逐文件身份）；新增「SQLite 层保留窗口身份（C117 实测决策）」登记不改依据"
+    }
+  },
+
+  "verification": {
+    "result": null,
+    "run_id": "local-20261026-08",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "collector workspace 测试全绿（含新增按文件缓存用例：跨日 / 改窗口全部命中且不读 rollout、追加只重解析该文件、删除文件移出缓存、旧整树缓存清理，结果均与 scan_codex 一致），fmt / clippy 通过，verify-local 退出码 0",
+        "false_if": "任一失败",
+        "evidence": "2026-10-26: cargo test --manifest-path core/collector/Cargo.toml --workspace --no-fail-fast 退出码 0，160 passed / 0 failed（新增 codex_file_cache_reparses_only_changed_files_and_survives_rollover；codex_cached_scan_skips_unchanged_files_and_increments_on_append 改为按文件断言：热 2 命中 / 0 重建、新增文件 2 命中 / 1 重建）；fmt --check 与 clippy -D warnings 退出码 0；SDKROOT=MacOSX26.5 zsh scripts/verify-local.sh 退出码 0（local/logs/c117-verify.log）。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "以冻结的本机 ~/.codex/sessions 副本对比改动前后 release collector：冷 / 热 / 活动会话追加 / 次日首轮四步 artifact（去 generatedAt）新旧一致，追加与次日首轮降至热缓存水平",
+        "false_if": "任一步结果不一致或追加 / 次日仍整树重读",
+        "evidence": "2026-10-26: 冻结 ~/.codex/sessions 两份副本（cp -Rp），以 main（e018e85）与本分支 release collector 各跑：冷 D / 热 D / 最新 rollout 追加一行后 D / D+1 首轮 —— 旧 0.07 / 0.01 / 0.04 / 0.04 s，新 0.04（复测，首测 0.49 s 为新复制副本页缓存未热）/ 0.01 / 0.01 / 0.01 s；四步 artifact 去 generatedAt 后新旧逐字节一致。交替复测冷扫新旧均 0.04 s。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "副本去重（硬链接 / 大文件副本 / 冲突组）、模型归属、重放快照去重等既有 Codex 用例全绿；删除的 codex_signature_cancellation 用例仅覆盖已移除的整树签名",
+        "false_if": "Codex 解析语义回归",
+        "evidence": "2026-10-26: codex_hardlink_and_large_copies_dedup_without_full_hash、codex_uses_last_token_usage_not_cumulative_total、codex_attributes_usage_to_the_current_turn_context_model、codex_deduplicates_replayed_token_snapshots_across_limit_sources、codex_uses_cumulative_total_when_last_usage_is_missing_across_model_switch、codex_uses_unknown_model_when_no_model_context_exists、codex_collection_survives_symlink_cycle 全部通过；删除的 codex_signature_cancellation_stops_before_all_candidates_are_hashed 只覆盖已移除的整树签名。",
+        "result": true
+      }
+    ]
+  },
+
+  "rejections": [],
+
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

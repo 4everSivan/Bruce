@@ -147,7 +147,8 @@
         "C073",
         "C107",
         "C110",
-        "C116"
+        "C116",
+        "C117"
       ]
     },
     "AgentAnalytics": {
@@ -1208,6 +1209,15 @@
       "topic": "TokenUsage",
       "version": "0.13.1",
       "file": "docs/devel/change/C116.json"
+    },
+    "C117": {
+      "title": "Codex 整树缓存改为按文件观测缓存：进行中会话追加与跨日不再整树重读",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C117-codex-file-cache",
+      "topic": "TokenUsage",
+      "version": "0.13.1",
+      "file": "docs/devel/change/C117.json"
     }
   }
 }
