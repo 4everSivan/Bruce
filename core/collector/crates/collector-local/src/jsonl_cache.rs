@@ -6,7 +6,7 @@
 use super::sources::{SourceScan, SourceScanError};
 use super::{
     read_bounded_line, trim_line_end, CompactContribution, ScanStats, MAX_DIRECTORY_SCAN_DEPTH,
-    MAX_JSONL_RECORD_BYTES,
+    MAX_JSONL_RECORD_BYTES, READ_BUFFER_BYTES,
 };
 use collector_domain::{CollectionWindow, UsageContribution};
 use collector_runtime::CancellationToken;
@@ -632,10 +632,13 @@ fn write_json<T: Serialize>(
             file.set_permissions(fs::Permissions::from_mode(0o600))
                 .map_err(SourceScanError::Io)?;
         }
-        serde_json::to_writer(&mut file, value).map_err(|error| {
+        // C110: 先序列化到内存再一次写入 —— 直接 to_writer 到未缓冲的 File 会把每个
+        // JSON 记号变成一次 write 系统调用 (Claude 冷扫约 0.6 s 内核态)。
+        let mut bytes = serde_json::to_vec(value).map_err(|error| {
             SourceScanError::Io(io::Error::new(io::ErrorKind::InvalidData, error))
         })?;
-        file.write_all(b"\n").map_err(SourceScanError::Io)?;
+        bytes.push(b'\n');
+        file.write_all(&bytes).map_err(SourceScanError::Io)?;
         drop(file);
         cancellation.check()?;
         fs::rename(&temporary, path).map_err(SourceScanError::Io)
@@ -659,10 +662,12 @@ where
     cancellation.check()?;
     let mut file = File::open(path)?;
     file.seek(SeekFrom::Start(start_offset))?;
-    let mut reader = BufReader::new(file);
+    let mut reader = BufReader::with_capacity(READ_BUFFER_BYTES, file);
+    let mut line_buffer = Vec::new();
     loop {
         cancellation.check()?;
-        let Some(line) = read_bounded_line(&mut reader, MAX_JSONL_RECORD_BYTES)? else {
+        let Some(line) = read_bounded_line(&mut reader, MAX_JSONL_RECORD_BYTES, &mut line_buffer)?
+        else {
             break;
         };
         stats.lines_seen = stats.lines_seen.saturating_add(1);
@@ -671,7 +676,7 @@ where
             stats.truncated_lines = stats.truncated_lines.saturating_add(1);
             continue;
         }
-        let line = trim_line_end(&line.bytes_data);
+        let line = trim_line_end(&line_buffer);
         if line.is_empty() {
             continue;
         }

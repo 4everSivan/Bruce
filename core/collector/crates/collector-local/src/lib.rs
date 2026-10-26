@@ -184,7 +184,7 @@ where
 {
     cancellation.check()?;
     let file = File::open(path)?;
-    let mut reader = BufReader::new(file);
+    let mut reader = BufReader::with_capacity(READ_BUFFER_BYTES, file);
     scan_reader_with_cancellation(&mut reader, cancellation, &mut callback)
 }
 
@@ -200,7 +200,7 @@ where
     cancellation.check()?;
     let mut file = File::open(path)?;
     file.seek(SeekFrom::Start(offset))?;
-    let mut reader = BufReader::new(file);
+    let mut reader = BufReader::with_capacity(READ_BUFFER_BYTES, file);
     scan_reader_with_cancellation(&mut reader, cancellation, &mut callback)
 }
 
@@ -1033,9 +1033,12 @@ fn write_cache(path: &Path, entry: &CacheEntry) -> io::Result<()> {
             .open(&temporary)?;
         #[cfg(unix)]
         file.set_permissions(fs::Permissions::from_mode(0o600))?;
-        serde_json::to_writer(&mut file, entry)
+        // C110: 先序列化到内存再一次写入 —— 直接 to_writer 到未缓冲的 File 会把每个
+        // JSON 记号变成一次 write 系统调用 (Claude 冷扫约 0.6 s 内核态)。
+        let mut bytes = serde_json::to_vec(entry)
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-        file.write_all(b"\n")?;
+        bytes.push(b'\n');
+        file.write_all(&bytes)?;
         // Cache entries are derived and rebuildable. The create-new temp file
         // followed by rename gives readers an atomic whole-entry view; doing a
         // durability fsync for every source file made cold refresh scale with
@@ -1072,9 +1075,10 @@ fn write_manifest(path: &Path, manifest: &CacheManifest) -> io::Result<()> {
             .open(&temporary)?;
         #[cfg(unix)]
         file.set_permissions(fs::Permissions::from_mode(0o600))?;
-        serde_json::to_writer(&mut file, manifest)
+        let mut bytes = serde_json::to_vec(manifest)
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-        file.write_all(b"\n")?;
+        bytes.push(b'\n');
+        file.write_all(&bytes)?;
         // The manifest is derived from per-file entries and can be rebuilt
         // after a crash. Atomic rename is sufficient here; a durability sync
         // on every refresh adds avoidable metadata latency.
@@ -1152,9 +1156,11 @@ where
     F: FnMut(LocalUsageRecord),
 {
     let mut stats = ScanStats::default();
+    let mut line_buffer = Vec::new();
     loop {
         cancellation.check()?;
-        let Some(line) = read_bounded_line(reader, MAX_JSONL_RECORD_BYTES)? else {
+        let Some(line) = read_bounded_line(reader, MAX_JSONL_RECORD_BYTES, &mut line_buffer)?
+        else {
             break;
         };
         stats.lines_seen += 1;
@@ -1163,7 +1169,7 @@ where
             stats.truncated_lines += 1;
             continue;
         }
-        let trimmed = trim_line_end(&line.bytes_data);
+        let trimmed = trim_line_end(&line_buffer);
         if trimmed.is_empty() {
             continue;
         }
@@ -1201,14 +1207,25 @@ where
     Ok(stats)
 }
 
-struct BoundedLine {
-    bytes_data: Vec<u8>,
+/// 会话文件读缓冲 (C110): 64 KiB 降低大文件的 read 系统调用次数 (默认 8 KiB)。
+pub(crate) const READ_BUFFER_BYTES: usize = 64 * 1024;
+
+pub(crate) struct BoundedLine {
     bytes: usize,
     truncated: bool,
 }
 
-fn read_bounded_line<R: BufRead>(reader: &mut R, limit: usize) -> io::Result<Option<BoundedLine>> {
-    let mut bytes_data = Vec::with_capacity(limit.min(4096));
+/// 读取一行到调用方复用的 `bytes_data` (C110)。
+///
+/// 旧实现每行新建 Vec: Claude Code 单行常达数百 KiB (工具输出), 逐行的大块分配
+/// 释放触发 mmap/munmap 与缺页清零, 冷扫 0.15 s 用户态之外另耗约 0.6 s 内核态。
+/// 复用缓冲后只在行长创新高时扩容。
+fn read_bounded_line<R: BufRead>(
+    reader: &mut R,
+    limit: usize,
+    bytes_data: &mut Vec<u8>,
+) -> io::Result<Option<BoundedLine>> {
+    bytes_data.clear();
     let mut bytes = 0usize;
     let mut truncated = false;
     loop {
@@ -1247,11 +1264,7 @@ fn read_bounded_line<R: BufRead>(reader: &mut R, limit: usize) -> io::Result<Opt
             break;
         }
     }
-    Ok(Some(BoundedLine {
-        bytes_data,
-        bytes,
-        truncated,
-    }))
+    Ok(Some(BoundedLine { bytes, truncated }))
 }
 
 fn trim_line_end(value: &[u8]) -> &[u8] {

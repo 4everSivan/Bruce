@@ -28,7 +28,7 @@ pub use sqlite_adapters::{
     scan_zcode_cached, scan_zcode_with_cancellation,
 };
 
-use super::{read_bounded_line, trim_line_end, ScanStats};
+use super::{read_bounded_line, trim_line_end, ScanStats, READ_BUFFER_BYTES};
 use collector_domain::{
     CollectionWindow, UsageContribution, UsageContributionBuilder, UsageSample,
 };
@@ -133,6 +133,15 @@ pub(super) fn number_u64(value: Option<&Value>) -> u64 {
                 .map(|value| value as u64)
         })
         .unwrap_or(0)
+}
+
+/// 解析前的字节级预筛 (C110): 行内不含任一 `needles` 子串时, 该行不可能产出用量
+/// (各适配器的判定字段必须以这些字面量出现), 直接计为 ignored 而不构建 JSON DOM。
+/// Claude Code 日志约 90% 字节在不含用量的 user / tool_result 行, 预筛可省去其全部解析。
+pub(super) fn line_may_match(line: &[u8], needles: &[&[u8]]) -> bool {
+    needles
+        .iter()
+        .any(|needle| memchr::memmem::find(line, needle).is_some())
 }
 
 pub(super) fn parse_json_line(line: &[u8], stats: &mut ScanStats) -> Option<Value> {
@@ -398,10 +407,13 @@ where
             return Ok(());
         }
     };
-    let mut reader = BufReader::new(file);
+    let mut reader = BufReader::with_capacity(READ_BUFFER_BYTES, file);
+    let mut line_buffer = Vec::new();
     loop {
         cancellation.check()?;
-        let Some(line) = read_bounded_line(&mut reader, super::MAX_JSONL_RECORD_BYTES)? else {
+        let Some(line) =
+            read_bounded_line(&mut reader, super::MAX_JSONL_RECORD_BYTES, &mut line_buffer)?
+        else {
             break;
         };
         stats.lines_seen = stats.lines_seen.saturating_add(1);
@@ -410,7 +422,7 @@ where
             stats.truncated_lines = stats.truncated_lines.saturating_add(1);
             continue;
         }
-        let line = trim_line_end(&line.bytes_data);
+        let line = trim_line_end(&line_buffer);
         if line.is_empty() {
             continue;
         }

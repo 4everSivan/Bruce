@@ -919,3 +919,49 @@ fn claude_keeps_one_hour_cache_write_share_across_cache_paths() {
     fs::remove_dir_all(&root).ok();
     fs::remove_dir_all(&cache_root).ok();
 }
+
+/// C110: 解析前预筛 —— 不含判定字面量的行 (Claude 的 user / tool_result 等) 不构建 JSON DOM,
+/// 计为 ignored; 用量结果与不预筛的参照实现逐日一致。
+#[test]
+fn claude_prefilter_skips_lines_that_cannot_carry_usage() {
+    let root = temp_root("claude-prefilter");
+    let cache_root = temp_root("claude-prefilter-cache");
+    let project = root.join("-Users-demo-project");
+    fs::create_dir_all(&project).unwrap();
+    let assistant = json!({
+        "type": "assistant",
+        "timestamp": "2026-07-28T04:00:00Z",
+        "message": {"id": "m1", "model": "claude-opus-5-5",
+            "usage": {"input_tokens": 7, "output_tokens": 3, "cache_read_input_tokens": 11}}
+    })
+    .to_string();
+    // 超大非用量行 (含故意损坏的 JSON): 预筛前会被完整解析并计为 malformed
+    let tool_output = format!(
+        "{{\"type\":\"user\",\"message\":{{\"content\":\"{}\"}} broken",
+        "x".repeat(256 * 1024)
+    );
+    fs::write(
+        project.join("session.jsonl"),
+        format!("{tool_output}\n{assistant}\n{tool_output}\n"),
+    )
+    .unwrap();
+
+    let scan = super::scan_claude_cached(&root, &window(), &cache_root, &CancellationToken::new())
+        .unwrap();
+    assert_eq!(scan.stats.json_lines_parsed, 1, "只解析 assistant 行");
+    assert_eq!(scan.stats.malformed_lines, 0, "非用量行不进入 JSON 解析");
+    assert_eq!(scan.stats.ignored_lines, 2);
+    let reference = super::scan_claude(&root, &window());
+    assert_eq!(scan.contribution.by_day, reference.contribution.by_day);
+    assert!(super::line_may_match(
+        assistant.as_bytes(),
+        &[b"\"assistant\""]
+    ));
+    assert!(!super::line_may_match(
+        tool_output.as_bytes(),
+        &[b"\"assistant\""]
+    ));
+
+    fs::remove_dir_all(&root).ok();
+    fs::remove_dir_all(&cache_root).ok();
+}

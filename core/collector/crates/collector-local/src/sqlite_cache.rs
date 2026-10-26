@@ -558,10 +558,13 @@ fn write_cache(
             file.set_permissions(fs::Permissions::from_mode(0o600))
                 .map_err(SourceScanError::Io)?;
         }
-        serde_json::to_writer(&mut file, entry).map_err(|error| {
+        // C110: 先序列化到内存再一次写入 —— 直接 to_writer 到未缓冲的 File 会把每个
+        // JSON 记号变成一次 write 系统调用 (Claude 冷扫约 0.6 s 内核态)。
+        let mut bytes = serde_json::to_vec(entry).map_err(|error| {
             SourceScanError::Io(io::Error::new(io::ErrorKind::InvalidData, error))
         })?;
-        file.write_all(b"\n").map_err(SourceScanError::Io)?;
+        bytes.push(b'\n');
+        file.write_all(&bytes).map_err(SourceScanError::Io)?;
         drop(file);
         cancellation.check()?;
         fs::rename(&temporary, path).map_err(SourceScanError::Io)

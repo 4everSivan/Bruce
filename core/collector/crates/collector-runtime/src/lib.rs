@@ -22,7 +22,8 @@ pub struct RuntimeLimits {
 impl Default for RuntimeLimits {
     fn default() -> Self {
         Self {
-            local_workers: 2,
+            // C110: 主源 + 次要源工作池共享本机扫描许可, 4 个许可即主源与 3 个次要源并行
+            local_workers: 4,
             network_workers: 4,
             account_tasks: 4,
             response_body_bytes: 4 * 1024 * 1024,

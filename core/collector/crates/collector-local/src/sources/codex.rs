@@ -1,6 +1,10 @@
 use super::{
-    finish, number_u64, parse_json_line, record, scan_jsonl_file, SourceScan, SourceScanError,
+    finish, line_may_match, number_u64, parse_json_line, record, scan_jsonl_file, SourceScan,
+    SourceScanError,
 };
+
+/// Codex rollout 中参与聚合的行类型 (C110 解析前预筛)。
+const CODEX_NEEDLES: &[&[u8]] = &[b"turn_context", b"token_count"];
 use crate::{ScanStats, MAX_DIRECTORY_SCAN_DEPTH};
 use collector_domain::{CollectionWindow, UsageContribution, UsageContributionBuilder};
 use collector_runtime::CancellationToken;
@@ -567,8 +571,10 @@ fn write_codex_tree_cache(
             }
             file
         };
-        serde_json::to_writer(&mut file, entry)?;
-        file.write_all(b"\n")?;
+        // C110: 序列化到内存后一次写入, 避免未缓冲 File 的逐记号 write 系统调用。
+        let mut bytes = serde_json::to_vec(entry)?;
+        bytes.push(b'\n');
+        file.write_all(&bytes)?;
         drop(file);
         cancellation.check().map_err(|error| {
             io::Error::new(
@@ -608,6 +614,11 @@ fn scan_selected_codex(
             candidate.modified,
             cancellation,
             &mut |_, _, line, stats| {
+                // C110: 只有 turn_context (模型) 与 token_count (用量) 行参与聚合
+                if !line_may_match(line, CODEX_NEEDLES) {
+                    stats.ignored_lines = stats.ignored_lines.saturating_add(1);
+                    return;
+                }
                 let Some(value) = parse_json_line(line, stats) else {
                     return;
                 };

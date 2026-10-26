@@ -35,10 +35,10 @@ use collector_runtime::{BoundedQueue, RuntimeError, RuntimeLimits};
 use context::RunContext;
 use execution::{execute_quota_accounts, QuotaExecution};
 use serde_json::{json, Value};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 pub use collector_local::ScanStats as CollectionScanStats;
@@ -351,253 +351,367 @@ struct LocalAgentResult {
 }
 
 fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diagnostic> {
-    let mut accumulator = UsageAccumulator::new(context.window.clone());
-    let mut agents = BTreeMap::new();
-    let mut diagnostics = Vec::new();
-    let mut scan_stats = ScanStats::default();
-    let mut source_metrics = Vec::new();
-    let sessions_allowed = context.capability_allowed("localSessions");
-    let root = session_root(&context.request.context);
-    let mut found = false;
-    if sessions_allowed {
-        let home = context.request.context.get("home").and_then(Value::as_str);
-        let Some(home) = home else {
-            return Err(Diagnostic::new(
-                "BRIDGE_INVALID_REQUEST",
-                "protocol",
-                "context",
-                "本地会话扫描需要 home",
-                false,
-            ));
-        };
-        if let Some(root) = root.as_deref() {
-            let _permit = context
-                .budgets
-                .acquire_local(&context.cancellation)
-                .map_err(local_source_runtime_diagnostic)?;
-            let config = CacheConfig {
-                cache_root: default_cache_root(Path::new(home)),
-                window: context.window.clone(),
-                pricing_version: 1,
+    let mut collection = LocalCollection {
+        accumulator: UsageAccumulator::new(context.window.clone()),
+        agents: BTreeMap::new(),
+        diagnostics: Vec::new(),
+        scan_stats: ScanStats::default(),
+        source_metrics: Vec::new(),
+        found: false,
+    };
+    if !context.capability_allowed("localSessions") {
+        return Ok(collection);
+    }
+    let Some(home) = context.request.context.get("home").and_then(Value::as_str) else {
+        return Err(Diagnostic::new(
+            "BRIDGE_INVALID_REQUEST",
+            "protocol",
+            "context",
+            "本地会话扫描需要 home",
+            false,
+        ));
+    };
+    let home = PathBuf::from(home);
+    let kimi_cli_root = source_path(
+        context,
+        "kimi_cli_sessions",
+        home.join(".kimi-code").join("sessions"),
+    );
+    let cache_root = default_cache_root(&home);
+    let jobs = secondary_source_jobs(context, &home, &cache_root);
+    // C110: 主源 (Kimi Code CLI) 在当前线程扫描, 8 个次要源同时交给 local_workers 大小的
+    // 工作池; 旧实现逐源串行, 冷扫耗时为各源之和。结果按源序合并, 诊断与指标顺序不变。
+    let (primary, secondary) = std::thread::scope(|scope| {
+        let pool = scope.spawn(|| run_secondary_sources(context, jobs));
+        let primary = scan_kimi_cli(context, &kimi_cli_root, &cache_root);
+        let secondary = pool
+            .join()
+            .unwrap_or_else(|_| Err(worker_panic_diagnostic("本机次要源扫描工作线程异常中止")));
+        (primary, secondary)
+    });
+    let primary = primary?;
+    collection.accumulator = primary.accumulator;
+    collection.diagnostics = primary.diagnostics;
+    collection.scan_stats = primary.scan_stats;
+    collection.source_metrics.push(primary.metric);
+    collection.found = primary.found;
+
+    for (source, source_metric, degradation) in secondary? {
+        let id = source_metric.source_id.clone();
+        collection.source_metrics.push(source_metric);
+        collection.scan_stats.merge(source.stats.clone());
+        // C046: 源读取失败 (I/O) 以信息级诊断暴露, 不再完全静默。
+        if let Some(warning) = degradation {
+            collection.diagnostics.push(warning);
+        }
+        if let Some(message) = source.diagnostic.clone() {
+            // C041: 行数截断是计划内降级, 用信息级诊断码;
+            // 其余 (真实 schema/读取故障) 保留原故障码与 Partial 语义。
+            let code = if source.capped {
+                LOCAL_SOURCE_ROWS_CAPPED
+            } else {
+                "LOCAL_SOURCE_SCHEMA_INCOMPATIBLE"
             };
-            let queue = Arc::new(
-                BoundedQueue::new(context.limits.aggregate_queue_capacity)
-                    .map_err(runtime_diagnostic)?,
-            );
-            let cancellation = context.cancellation.clone();
-            let scan_started = Instant::now();
-            let (scan_result, aggregation) = std::thread::scope(|scope| {
-                let consumer_queue = Arc::clone(&queue);
-                let consumer_window = context.window.clone();
-                let consumer_cancellation = cancellation.clone();
-                let consumer = scope.spawn(move || {
-                    consume_source_changes(consumer_queue, consumer_window, consumer_cancellation)
-                });
-                let scan_result = scan_tree_cached_with_sink_with_cancellation(
-                    root,
-                    &config,
-                    &context.cancellation,
-                    |change| {
-                        queue.push(change, &context.cancellation).map_err(|error| {
-                            std::io::Error::new(
-                                std::io::ErrorKind::Interrupted,
-                                format!("bounded local change stream stopped: {error:?}"),
-                            )
-                        })
-                    },
-                );
-                queue.close();
-                // C043: 聚合线程 panic 不再拖垮主线程 —— 以空结果 + 诊断降级,
-                // 扫描侧的 scan_result 照常返回 (用量可能不全但进程存活且可解释)。
-                let aggregation = consumer.join().unwrap_or_else(|_| AggregationResult {
-                    accumulator: UsageAccumulator::new(context.window.clone()),
-                    diagnostics: vec![worker_panic_diagnostic("本机聚合工作线程异常中止")],
-                });
-                (scan_result, aggregation)
-            });
-            source_metrics.push(SourcePerformanceMetric {
-                source_id: "kimi-code-cli".to_owned(),
-                elapsed_ms: scan_started.elapsed().as_millis() as u64,
-                stats: scan_result.as_ref().ok().cloned().unwrap_or_default(),
-            });
-            accumulator = aggregation.accumulator;
-            diagnostics.extend(aggregation.diagnostics);
-            match scan_result {
-                Ok(stats) => {
-                    found = stats.files_scanned > 0;
-                    scan_stats = stats;
-                    if scan_stats.io_errors > 0 {
-                        diagnostics.push(Diagnostic::new(
-                            "LOCAL_SOURCE_PARTIAL",
-                            "local",
-                            "scan",
-                            "部分本机会话文件无法读取",
-                            true,
-                        ));
-                    }
-                }
-                Err(CachedScanError::Runtime(error)) => {
-                    return Err(local_source_runtime_diagnostic(error));
-                }
-                Err(CachedScanError::Io(_)) => diagnostics.push(Diagnostic::new(
-                    "LOCAL_SOURCE_ERROR",
+            collection
+                .diagnostics
+                .push(Diagnostic::new(code, "local", &id, message, true));
+        }
+        collection.agents.insert(
+            id,
+            LocalAgentResult {
+                found: source.found,
+                contribution: source.contribution,
+                diagnostic: source.diagnostic,
+                capped: source.capped,
+            },
+        );
+    }
+    Ok(collection)
+}
+
+struct PrimaryScan {
+    accumulator: UsageAccumulator,
+    diagnostics: Vec<Diagnostic>,
+    scan_stats: ScanStats,
+    metric: SourcePerformanceMetric,
+    found: bool,
+}
+
+/// Kimi Code CLI 主源: 缓存扫描经有界队列流式交给聚合线程 (语义同 C110 前)。
+fn scan_kimi_cli(
+    context: &RunContext<'_>,
+    root: &Path,
+    cache_root: &Path,
+) -> Result<PrimaryScan, Diagnostic> {
+    let _permit = context
+        .budgets
+        .acquire_local(&context.cancellation)
+        .map_err(local_source_runtime_diagnostic)?;
+    let config = CacheConfig {
+        cache_root: cache_root.to_owned(),
+        window: context.window.clone(),
+        pricing_version: 1,
+    };
+    let queue = Arc::new(
+        BoundedQueue::new(context.limits.aggregate_queue_capacity).map_err(runtime_diagnostic)?,
+    );
+    let cancellation = context.cancellation.clone();
+    let scan_started = Instant::now();
+    let (scan_result, aggregation) = std::thread::scope(|scope| {
+        let consumer_queue = Arc::clone(&queue);
+        let consumer_window = context.window.clone();
+        let consumer_cancellation = cancellation.clone();
+        let consumer = scope.spawn(move || {
+            consume_source_changes(consumer_queue, consumer_window, consumer_cancellation)
+        });
+        let scan_result = scan_tree_cached_with_sink_with_cancellation(
+            root,
+            &config,
+            &context.cancellation,
+            |change| {
+                queue.push(change, &context.cancellation).map_err(|error| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::Interrupted,
+                        format!("bounded local change stream stopped: {error:?}"),
+                    )
+                })
+            },
+        );
+        queue.close();
+        // C043: 聚合线程 panic 不再拖垮主线程 —— 以空结果 + 诊断降级,
+        // 扫描侧的 scan_result 照常返回 (用量可能不全但进程存活且可解释)。
+        let aggregation = consumer.join().unwrap_or_else(|_| AggregationResult {
+            accumulator: UsageAccumulator::new(context.window.clone()),
+            diagnostics: vec![worker_panic_diagnostic("本机聚合工作线程异常中止")],
+        });
+        (scan_result, aggregation)
+    });
+    let metric = SourcePerformanceMetric {
+        source_id: "kimi-code-cli".to_owned(),
+        elapsed_ms: scan_started.elapsed().as_millis() as u64,
+        stats: scan_result.as_ref().ok().cloned().unwrap_or_default(),
+    };
+    let mut diagnostics = aggregation.diagnostics;
+    let mut scan_stats = ScanStats::default();
+    let mut found = false;
+    match scan_result {
+        Ok(stats) => {
+            found = stats.files_scanned > 0;
+            scan_stats = stats;
+            if scan_stats.io_errors > 0 {
+                diagnostics.push(Diagnostic::new(
+                    "LOCAL_SOURCE_PARTIAL",
                     "local",
                     "scan",
-                    "本机会话目录无法读取",
+                    "部分本机会话文件无法读取",
                     true,
-                )),
+                ));
             }
+        }
+        Err(CachedScanError::Runtime(error)) => {
+            return Err(local_source_runtime_diagnostic(error));
+        }
+        Err(CachedScanError::Io(_)) => diagnostics.push(Diagnostic::new(
+            "LOCAL_SOURCE_ERROR",
+            "local",
+            "scan",
+            "本机会话目录无法读取",
+            true,
+        )),
+    }
+    Ok(PrimaryScan {
+        accumulator: aggregation.accumulator,
+        diagnostics,
+        scan_stats,
+        metric,
+        found,
+    })
+}
 
-            let home = PathBuf::from(home);
-            let kimi_work = source_path(
-                context,
-                "daimon_kimi_sessions",
-                paths::resolve_kimi_work_sessions_path(&home),
-            );
-            let claude = source_path(
-                context,
-                "claude_projects",
-                paths::resolve_claude_projects_path(&home),
-            );
-            let codex = source_path(
-                context,
-                "codex_sessions",
-                paths::resolve_codex_sessions_path(&home),
-            );
-            let orca_home = source_path(context, "orca_home", paths::resolve_orca_home_path(&home));
-            let orca_sessions = source_path(
-                context,
-                "orca_codex_sessions",
-                orca_home
-                    .join("codex-runtime-home")
-                    .join("home")
-                    .join("sessions"),
-            );
-            let orca_accounts = source_path(
-                context,
-                "orca_codex_accounts",
-                orca_home.join("codex-accounts"),
-            );
-            let mut codex_roots = vec![codex, orca_sessions];
-            if let Ok(entries) = fs::read_dir(&orca_accounts) {
-                for entry in entries.flatten() {
-                    let sessions = entry.path().join("home").join("sessions");
-                    if sessions.is_dir() {
-                        codex_roots.push(sessions);
-                    }
-                }
-            }
-            let grok_root = source_path(context, "grok_home", paths::resolve_grok_home_path(&home));
-            let pi = source_path(
-                context,
-                "pi_sessions",
-                paths::resolve_pi_sessions_path(&home),
-            );
-            let opencode = source_path(
-                context,
-                "opencode_db",
-                paths::resolve_opencode_db_path(&home),
-            );
-            let zcode = source_path(context, "zcode_db", paths::resolve_zcode_db_path(&home));
-            let codebuddy = source_path(
-                context,
-                "codebuddy_projects",
-                paths::resolve_codebuddy_projects_path(&home),
-            );
-            let cache_root = default_cache_root(&home);
+type SecondaryScan<'a> = Box<dyn FnOnce() -> Result<SourceScan, SourceScanError> + Send + 'a>;
 
-            let source_results = [
-                collect_secondary_source(context, "kimi-work", || {
-                    scan_kimi_tree_cached(
-                        &kimi_work,
-                        &context.window,
-                        &cache_root,
-                        &context.cancellation,
-                    )
-                })?,
-                collect_secondary_source(context, "claude-code", || {
-                    scan_claude_cached(&claude, &context.window, &cache_root, &context.cancellation)
-                })?,
-                collect_secondary_source(context, "codex", || {
-                    scan_codex_cached_with_cancellation(
-                        &codex_roots,
-                        &context.window,
-                        &cache_root,
-                        &context.cancellation,
-                    )
-                })?,
-                collect_secondary_source(context, "codebuddy", || {
-                    scan_codebuddy_cached(
-                        &codebuddy,
-                        &context.window,
-                        &cache_root,
-                        &context.cancellation,
-                    )
-                })?,
-                collect_secondary_source(context, "grok", || {
-                    scan_grok_cached(
-                        &[
-                            grok_root.join("sessions"),
-                            grok_root.join("archived_sessions"),
-                        ],
-                        &context.window,
-                        &cache_root,
-                        &context.cancellation,
-                    )
-                })?,
-                collect_secondary_source(context, "opencode", || {
-                    scan_opencode_cached(
-                        &opencode,
-                        &context.window,
-                        &cache_root,
-                        &context.cancellation,
-                    )
-                })?,
-                collect_secondary_source(context, "pi", || {
-                    scan_pi_cached(&pi, &context.window, &cache_root, &context.cancellation)
-                })?,
-                collect_secondary_source(context, "zcode", || {
-                    scan_zcode_cached(&zcode, &context.window, &cache_root, &context.cancellation)
-                })?,
-            ];
-            for (source, source_metric, degradation) in source_results {
-                let id = source_metric.source_id.clone();
-                source_metrics.push(source_metric);
-                scan_stats.merge(source.stats.clone());
-                // C046: 源读取失败 (I/O) 以信息级诊断暴露, 不再完全静默。
-                if let Some(warning) = degradation {
-                    diagnostics.push(warning);
-                }
-                if let Some(message) = source.diagnostic.clone() {
-                    // C041: 行数截断是计划内降级, 用信息级诊断码;
-                    // 其余 (真实 schema/读取故障) 保留原故障码与 Partial 语义。
-                    let code = if source.capped {
-                        LOCAL_SOURCE_ROWS_CAPPED
-                    } else {
-                        "LOCAL_SOURCE_SCHEMA_INCOMPATIBLE"
-                    };
-                    diagnostics.push(Diagnostic::new(code, "local", &id, message, true));
-                }
-                agents.insert(
-                    id,
-                    LocalAgentResult {
-                        found: source.found,
-                        contribution: source.contribution,
-                        diagnostic: source.diagnostic,
-                        capped: source.capped,
-                    },
-                );
+struct SecondaryJob<'a> {
+    source_id: &'static str,
+    scan: SecondaryScan<'a>,
+}
+
+type SecondaryResult = (SourceScan, SourcePerformanceMetric, Option<Diagnostic>);
+
+/// 8 个次要源的扫描任务, 顺序即 artifact 诊断与指标顺序。
+fn secondary_source_jobs<'a>(
+    context: &'a RunContext<'a>,
+    home: &Path,
+    cache_root: &'a Path,
+) -> Vec<SecondaryJob<'a>> {
+    let window = &context.window;
+    let cancellation = &context.cancellation;
+    let kimi_work = source_path(
+        context,
+        "daimon_kimi_sessions",
+        paths::resolve_kimi_work_sessions_path(home),
+    );
+    let claude = source_path(
+        context,
+        "claude_projects",
+        paths::resolve_claude_projects_path(home),
+    );
+    let codex = source_path(
+        context,
+        "codex_sessions",
+        paths::resolve_codex_sessions_path(home),
+    );
+    let orca_home = source_path(context, "orca_home", paths::resolve_orca_home_path(home));
+    let orca_sessions = source_path(
+        context,
+        "orca_codex_sessions",
+        orca_home
+            .join("codex-runtime-home")
+            .join("home")
+            .join("sessions"),
+    );
+    let orca_accounts = source_path(
+        context,
+        "orca_codex_accounts",
+        orca_home.join("codex-accounts"),
+    );
+    let mut codex_roots = vec![codex, orca_sessions];
+    if let Ok(entries) = fs::read_dir(&orca_accounts) {
+        for entry in entries.flatten() {
+            let sessions = entry.path().join("home").join("sessions");
+            if sessions.is_dir() {
+                codex_roots.push(sessions);
             }
         }
     }
-    Ok(LocalCollection {
-        accumulator,
-        agents,
-        diagnostics,
-        scan_stats,
-        source_metrics,
-        found,
-    })
+    let grok_root = source_path(context, "grok_home", paths::resolve_grok_home_path(home));
+    let grok_roots = [
+        grok_root.join("sessions"),
+        grok_root.join("archived_sessions"),
+    ];
+    let pi = source_path(
+        context,
+        "pi_sessions",
+        paths::resolve_pi_sessions_path(home),
+    );
+    let opencode = source_path(
+        context,
+        "opencode_db",
+        paths::resolve_opencode_db_path(home),
+    );
+    let zcode = source_path(context, "zcode_db", paths::resolve_zcode_db_path(home));
+    let codebuddy = source_path(
+        context,
+        "codebuddy_projects",
+        paths::resolve_codebuddy_projects_path(home),
+    );
+    vec![
+        SecondaryJob {
+            source_id: "kimi-work",
+            scan: Box::new(move || {
+                scan_kimi_tree_cached(&kimi_work, window, cache_root, cancellation)
+            }),
+        },
+        SecondaryJob {
+            source_id: "claude-code",
+            scan: Box::new(move || scan_claude_cached(&claude, window, cache_root, cancellation)),
+        },
+        SecondaryJob {
+            source_id: "codex",
+            scan: Box::new(move || {
+                scan_codex_cached_with_cancellation(&codex_roots, window, cache_root, cancellation)
+            }),
+        },
+        SecondaryJob {
+            source_id: "codebuddy",
+            scan: Box::new(move || {
+                scan_codebuddy_cached(&codebuddy, window, cache_root, cancellation)
+            }),
+        },
+        SecondaryJob {
+            source_id: "grok",
+            scan: Box::new(move || scan_grok_cached(&grok_roots, window, cache_root, cancellation)),
+        },
+        SecondaryJob {
+            source_id: "opencode",
+            scan: Box::new(move || {
+                scan_opencode_cached(&opencode, window, cache_root, cancellation)
+            }),
+        },
+        SecondaryJob {
+            source_id: "pi",
+            scan: Box::new(move || scan_pi_cached(&pi, window, cache_root, cancellation)),
+        },
+        SecondaryJob {
+            source_id: "zcode",
+            scan: Box::new(move || scan_zcode_cached(&zcode, window, cache_root, cancellation)),
+        },
+    ]
+}
+
+/// 以 `local_workers` 大小的工作池执行次要源扫描 (C110); 每个任务另需一个本机扫描
+/// 许可, 与主源合计并发不超过预算。结果按任务原序返回, 取消/超时按原序上报首个错误;
+/// 单个任务所在线程 panic 时降级为该源的空结果 + 诊断 (C043)。
+fn run_secondary_sources(
+    context: &RunContext<'_>,
+    jobs: Vec<SecondaryJob<'_>>,
+) -> Result<Vec<SecondaryResult>, Diagnostic> {
+    let source_ids = jobs.iter().map(|job| job.source_id).collect::<Vec<_>>();
+    let workers = context.limits.local_workers.clamp(1, jobs.len().max(1));
+    let queue = Mutex::new(jobs.into_iter().enumerate().collect::<VecDeque<_>>());
+    let results = Mutex::new(
+        (0..source_ids.len())
+            .map(|_| None)
+            .collect::<Vec<Option<Result<SecondaryResult, Diagnostic>>>>(),
+    );
+    std::thread::scope(|scope| {
+        let handles = (0..workers)
+            .map(|_| {
+                scope.spawn(|| loop {
+                    let next = queue
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .pop_front();
+                    let Some((index, job)) = next else {
+                        break;
+                    };
+                    let result = context
+                        .budgets
+                        .acquire_local(&context.cancellation)
+                        .map_err(local_source_runtime_diagnostic)
+                        .and_then(|_permit| {
+                            collect_secondary_source(context, job.source_id, job.scan)
+                        });
+                    results
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())[index] = Some(result);
+                })
+            })
+            .collect::<Vec<_>>();
+        for handle in handles {
+            let _ = handle.join();
+        }
+    });
+    results
+        .into_inner()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .into_iter()
+        .zip(source_ids)
+        .map(|(result, source_id)| {
+            result.unwrap_or_else(|| {
+                let warning =
+                    worker_panic_diagnostic(&format!("本机 {source_id} 扫描工作线程异常中止"));
+                Ok((
+                    SourceScan::empty(&context.window),
+                    SourcePerformanceMetric {
+                        source_id: source_id.to_owned(),
+                        elapsed_ms: 0,
+                        stats: ScanStats::default(),
+                    },
+                    Some(warning),
+                ))
+            })
+        })
+        .collect()
 }
 
 /// Execute one local source scan and retain only its aggregate diagnostics.
@@ -829,19 +943,6 @@ fn window_diagnostic(error: WindowError) -> Diagnostic {
         error.to_string(),
         false,
     )
-}
-
-fn session_root(context: &serde_json::Map<String, Value>) -> Option<PathBuf> {
-    let home = context.get("home").and_then(Value::as_str)?;
-    if let Some(path) = context
-        .get("paths")
-        .and_then(Value::as_object)
-        .and_then(|paths| paths.get("kimi_cli_sessions"))
-        .and_then(Value::as_str)
-    {
-        return Some(PathBuf::from(path));
-    }
-    Some(Path::new(home).join(".kimi-code/sessions"))
 }
 
 fn source_path(context: &RunContext<'_>, key: &str, default: PathBuf) -> PathBuf {

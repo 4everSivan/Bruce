@@ -2,9 +2,16 @@ use super::codebuddy::{
     codebuddy_message_id, codebuddy_model, codebuddy_scope, codebuddy_usage, CodeBuddyUsage,
 };
 use super::{
-    claude_cache_creation_1h, grok_content, number_u64, parse_json_line, project_from_parent,
-    record, record_claude_usage, timestamp_number, ClaudeUsage, SourceScan, SourceScanError,
+    claude_cache_creation_1h, grok_content, line_may_match, number_u64, parse_json_line,
+    project_from_parent, record, record_claude_usage, timestamp_number, ClaudeUsage, SourceScan,
+    SourceScanError,
 };
+
+/// 各 JSONL 适配器的解析前预筛子串 (C110): 只含判定所需的字面量, 是产出用量的必要条件。
+const KIMI_USAGE_NEEDLES: &[&[u8]] = &[b"usage.record"];
+const ASSISTANT_NEEDLES: &[&[u8]] = &[b"\"assistant\""];
+const CODEBUDDY_NEEDLES: &[&[u8]] = &[b"\"assistant\"", b"\"function_call\""];
+const GROK_NEEDLES: &[&[u8]] = &[b"\"user\"", b"\"assistant\""];
 use crate::jsonl_cache::{
     scan_cached_jsonl_tree, scan_jsonl_file_from_offset, CachedFilePayload, CachedUsageObservation,
     JsonlCacheAdapter, JsonlCacheConfig,
@@ -112,6 +119,7 @@ fn aggregate_additive_payloads(
     Ok((builder.contribution(), !payloads.is_empty(), None))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn parse_cached_file<F>(
     path: &Path,
     modified: f64,
@@ -119,6 +127,7 @@ fn parse_cached_file<F>(
     window: &CollectionWindow,
     cancellation: &CancellationToken,
     stats: &mut ScanStats,
+    needles: &[&[u8]],
     mut parse: F,
 ) -> Result<CachedFilePayload, SourceScanError>
 where
@@ -131,6 +140,10 @@ where
         cancellation,
         stats,
         |path, line, stats| {
+            if !line_may_match(line, needles) {
+                stats.ignored_lines = stats.ignored_lines.saturating_add(1);
+                return;
+            }
             let Some(value) = parse_json_line(line, stats) else {
                 return;
             };
@@ -165,6 +178,7 @@ impl JsonlCacheAdapter for KimiWorkJsonlAdapter {
             window,
             cancellation,
             stats,
+            KIMI_USAGE_NEEDLES,
             |_, _, value, stats| {
                 if value.get("type").and_then(Value::as_str) != Some("usage.record") {
                     stats.ignored_lines = stats.ignored_lines.saturating_add(1);
@@ -351,6 +365,7 @@ impl JsonlCacheAdapter for ClaudeJsonlAdapter {
             window,
             cancellation,
             stats,
+            ASSISTANT_NEEDLES,
             |path, _, value, stats| {
                 let observation = claude_observation(path, window, &value);
                 if observation.is_some() {
@@ -510,6 +525,7 @@ impl JsonlCacheAdapter for CodeBuddyJsonlAdapter {
             window,
             cancellation,
             stats,
+            CODEBUDDY_NEEDLES,
             |path, _, value, stats| codebuddy_observation(path, &value, stats),
         )
     }
@@ -601,6 +617,7 @@ impl JsonlCacheAdapter for GrokJsonlAdapter {
             window,
             cancellation,
             stats,
+            GROK_NEEDLES,
             |path, modified, value, stats| {
                 let observation = grok_observation(path, modified, &value);
                 if observation.is_some() {
@@ -745,6 +762,7 @@ impl JsonlCacheAdapter for PiJsonlAdapter {
             window,
             cancellation,
             stats,
+            ASSISTANT_NEEDLES,
             |path, _, value, stats| {
                 let observation = pi_observation(path, window, &value);
                 if observation.is_some() {
