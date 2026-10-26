@@ -13,6 +13,7 @@
         "C054",
         "C057",
         "C074",
+        "C104",
         "C106"
       ]
     },
@@ -1084,6 +1085,15 @@
       "topic": "MenuBarIndicator",
       "version": "0.13.0",
       "file": "docs/archive/0.13.0/change/C103.json"
+    },
+    "C104": {
+      "title": "优化本地验证脚本 verify-local.sh 执行耗时：单次并行构建全部 Harness 替换 17 次串行 swift run 并修复 find 剪枝，验证耗时由 11m39s 降至 30s 级",
+      "type": "Enhancement",
+      "status": "closed",
+      "branch": "fix/C104-verify-speedup",
+      "topic": "SystemOverview",
+      "version": "0.14.0",
+      "file": "docs/devel/change/C104.json"
     },
     "C105": {
       "title": "补发版前置核实规则：签名 secrets 须以 gh secret list 实测为准（原 C104 撞号改号）",

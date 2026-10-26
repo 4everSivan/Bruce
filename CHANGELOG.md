@@ -14,6 +14,7 @@
 
 ### Changed
 - **本机扫描提速：缓存一次性写盘、解析前字节预筛、次要源并行扫描 (C110)**：五处缓存写盘由 `serde_json::to_writer` 直写未缓冲文件改为 `to_vec` 后单次 `write_all`（Claude 冷扫内核态 0.61 s → 0.03 s）；行读取复用缓冲、JSONL / Codex 以 `memchr::memmem` 字节预筛跳过非用量行；8 个次要源改为 `local_workers` 工作池并行、按固定源序合并。冻结日志副本实测冷扫 2.15 s → 0.17 s，artifact（去 generatedAt）逐字节一致。
+- **本地验证脚本 verify-local.sh 提速 (C104)**：17 项 Swift Harness 由 17 次串行 `swift run`（每次重解析依赖与重编译）改为 `swift build --build-tests` 一次性多核并行编译 + 经 `--show-bin-path` 直接运行二进制；`find` 剪枝由 `'./.build'` 修正为 `'*/.build'` / `'*/node_modules'` 递归排除子模块缓存。全量验证耗时 11m39s → 24.3s（约 28.7×），17 项 Harness 覆盖与输出 100% 等价。
 
 ## [0.13.0] - 2026-10-26
 

@@ -192,7 +192,7 @@ scripts/adflow-verify --card <卡号> --receipt
 
 | 命令 | 用途 |
 |---|---|
-| `zsh scripts/verify-local.sh` | **标准本地全量验证**：Rust fmt / test / clippy + JSON fixture 语法与敏感扫描 + Swift build + 全部 9 项 Harness 测试 |
+| `zsh scripts/verify-local.sh` | **标准本地全量验证**：Rust fmt / test / clippy + JSON fixture 语法与敏感扫描 + Swift build + 全部 17 项 Harness 测试 |
 | `cargo test --manifest-path core/collector/Cargo.toml --workspace` | Rust Collector 单元与集成测试 |
 | `zsh scripts/check-collector-fixtures.sh` | 测试 fixture 语法校验与敏感凭证扫描 |
 | `swift run --package-path apps/macos BruceOnboardingCoreHarness` | Onboarding Core 核心凭证、存储与门控边界测试（165 项） |
