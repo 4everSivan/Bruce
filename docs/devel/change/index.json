@@ -38,7 +38,8 @@
         "C052",
         "C055",
         "C108",
-        "C111"
+        "C111",
+        "C112"
       ]
     },
     "WindowsCompat": {
@@ -1158,6 +1159,15 @@
       "topic": "PricingEngine",
       "version": "0.13.1",
       "file": "docs/devel/change/C111.json"
+    },
+    "C112": {
+      "title": "设置窗口交互与感知升级：分段选择器高对比选中浮岛、开关状态文字居左统一对齐、Agent用量更名模型用量",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "fix/C112-settings-controls-and-naming",
+      "topic": "PricingEngine",
+      "version": "0.13.1",
+      "file": "docs/devel/change/C112.json"
     }
   }
 }
