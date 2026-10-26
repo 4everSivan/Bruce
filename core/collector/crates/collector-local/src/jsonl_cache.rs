@@ -1,12 +1,16 @@
 //! Rebuildable cache engine for local JSONL sources.
 //!
-//! Only derived observations and compact contributions cross the cache
-//! boundary. Raw JSONL lines, credentials, and source paths are never stored.
+//! Only derived usage observations cross the cache boundary. Raw JSONL lines,
+//! credentials, and source paths are never stored.
+//!
+//! C116: 条目只保存与采集窗口无关的观测值 (时间戳 + token 计数), 身份不含 `today` /
+//! 窗口天数 —— 每次运行再按当前窗口聚合。旧实现把按窗口天序号压缩的贡献写进条目并以
+//! `today` 为身份, 每天首轮刷新与改动窗口长度都会让全部条目失效、整树重新解析。
 
 use super::sources::{SourceScan, SourceScanError};
 use super::{
-    read_bounded_line, trim_line_end, CompactContribution, ScanStats, MAX_DIRECTORY_SCAN_DEPTH,
-    MAX_JSONL_RECORD_BYTES, READ_BUFFER_BYTES,
+    read_bounded_line, trim_line_end, ScanStats, MAX_DIRECTORY_SCAN_DEPTH, MAX_JSONL_RECORD_BYTES,
+    READ_BUFFER_BYTES,
 };
 use collector_domain::{CollectionWindow, UsageContribution};
 use collector_runtime::CancellationToken;
@@ -17,7 +21,8 @@ use std::io::{self, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const JSONL_CACHE_SCHEMA_VERSION: u32 = 1;
+/// v2 (C116): 条目去掉按窗口压缩的贡献与窗口身份, 只存观测值; v1 条目按版本不匹配重建一次。
+const JSONL_CACHE_SCHEMA_VERSION: u32 = 2;
 const FINGERPRINT_SEGMENT_BYTES: u64 = 64 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -59,24 +64,50 @@ fn file_identity(metadata: &fs::Metadata) -> (u64, u64) {
     }
 }
 
+/// 一条与窗口无关的用量观测 (C116)。缺省值不落盘以控制条目体积。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub(crate) struct CachedUsageObservation {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) dedupe_key: Option<String>,
     pub(crate) timestamp_millis: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) model: Option<String>,
+    #[serde(default, skip_serializing_if = "is_zero")]
     pub(crate) input: u64,
+    #[serde(default, skip_serializing_if = "is_zero")]
     pub(crate) output: u64,
+    #[serde(default, skip_serializing_if = "is_zero")]
     pub(crate) cache_read: u64,
+    #[serde(default, skip_serializing_if = "is_zero")]
     pub(crate) cache_creation: u64,
-    /// cache_creation 中按 1 小时 TTL 写入的部分 (C107); 旧缓存条目缺省为 0。
-    #[serde(default)]
+    /// cache_creation 中按 1 小时 TTL 写入的部分 (C107)。
+    #[serde(default, skip_serializing_if = "is_zero")]
     pub(crate) cache_creation_1h: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) project: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+fn is_zero(value: &u64) -> bool {
+    *value == 0
+}
+
+impl CachedUsageObservation {
+    pub(crate) fn sample(&self) -> collector_domain::UsageSample<'_> {
+        collector_domain::UsageSample {
+            timestamp_millis: self.timestamp_millis,
+            model: self.model.as_deref(),
+            input: self.input,
+            output: self.output,
+            cache_read: self.cache_read,
+            cache_creation: self.cache_creation,
+            cache_creation_1h: self.cache_creation_1h,
+            project: self.project.as_deref(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub(crate) struct CachedFilePayload {
-    pub(crate) contribution: CompactContribution,
     pub(crate) observations: Vec<CachedUsageObservation>,
 }
 
@@ -102,36 +133,23 @@ pub(crate) trait JsonlCacheAdapter {
         stats: &mut ScanStats,
     ) -> Result<CachedFilePayload, SourceScanError>;
 
+    /// 合并追加段的观测值 (默认直接拼接; Grok 以文件 mtime 为时间戳, 需整体重打)。
     fn merge_append(
         &self,
-        previous: &CachedFilePayload,
-        appended: &CachedFilePayload,
-        modified: f64,
-        window: &CollectionWindow,
-    ) -> CachedFilePayload;
+        previous: CachedFilePayload,
+        appended: CachedFilePayload,
+        _modified: f64,
+    ) -> CachedFilePayload {
+        let mut observations = previous.observations;
+        observations.extend(appended.observations);
+        CachedFilePayload { observations }
+    }
 
     fn aggregate(
         &self,
         payloads: &[CachedFilePayload],
         window: &CollectionWindow,
     ) -> Result<(UsageContribution, bool, Option<String>), SourceScanError>;
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct JsonlCacheWindow {
-    days: u32,
-    timezone: String,
-    today: String,
-}
-
-impl JsonlCacheWindow {
-    fn from_config(config: &JsonlCacheConfig) -> Self {
-        Self {
-            days: config.window.days,
-            timezone: config.window.timezone_name.clone(),
-            today: config.window.today.clone(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -141,7 +159,9 @@ struct JsonlCacheEntry {
     source_path_digest: String,
     parser_version: u32,
     aggregation_version: u32,
-    window: JsonlCacheWindow,
+    /// 解析无时区时间戳所用的时区 (C116: 仅此项与窗口相关; 天数 / today 不进身份)。
+    #[serde(default)]
+    timezone: String,
     file: JsonlFileSignature,
     safe_offset: u64,
     head_length: u64,
@@ -310,16 +330,16 @@ fn process_file<A: JsonlCacheAdapter>(
     if matches!(loaded, CacheLoad::Corrupt) {
         state.stats.cache_corruptions = state.stats.cache_corruptions.saturating_add(1);
     }
-    if let CacheLoad::Entry(entry) = loaded {
+    if let CacheLoad::Entry(mut entry) = loaded {
         if cache_identity_matches(&entry, &source_path_digest, state.config)
             && entry.file == current_file
-            && cache_payload_is_valid(&entry, &state.config.window)
+            && cache_payload_is_valid(&entry)
         {
             state.stats.cache_hits = state.stats.cache_hits.saturating_add(1);
-            return Ok(Some(entry.payload.clone()));
+            return Ok(Some(std::mem::take(&mut entry.payload)));
         }
         if cache_identity_matches(&entry, &source_path_digest, state.config)
-            && cache_payload_is_valid(&entry, &state.config.window)
+            && cache_payload_is_valid(&entry)
             && append_is_safe(path, &entry, &current_file, state.cancellation)?
         {
             let appended = match state.adapter.parse_file(
@@ -337,12 +357,10 @@ fn process_file<A: JsonlCacheAdapter>(
                     return Ok(None);
                 }
             };
-            let merged = state.adapter.merge_append(
-                &entry.payload,
-                &appended,
-                modified,
-                &state.config.window,
-            );
+            let merged =
+                state
+                    .adapter
+                    .merge_append(std::mem::take(&mut entry.payload), appended, modified);
             if let Err(error) = cache_payload_entry(
                 path,
                 &metadata,
@@ -390,11 +408,10 @@ fn process_file<A: JsonlCacheAdapter>(
     Ok(Some(payload))
 }
 
-fn cache_payload_is_valid(entry: &JsonlCacheEntry, window: &CollectionWindow) -> bool {
+fn cache_payload_is_valid(entry: &JsonlCacheEntry) -> bool {
     entry.safe_offset <= entry.file.size
         && entry.head_length <= entry.file.size
         && entry.prefix_tail_length <= entry.file.size
-        && entry.payload.contribution.to_domain(window).is_some()
 }
 
 fn cache_payload_entry(
@@ -440,7 +457,7 @@ fn cache_identity_matches(
         && entry.source_path_digest == source_path_digest
         && entry.parser_version == config.parser_version
         && entry.aggregation_version == config.aggregation_version
-        && entry.window == JsonlCacheWindow::from_config(config)
+        && entry.timezone == config.window.timezone_name
 }
 
 fn append_is_safe(
@@ -490,7 +507,7 @@ fn make_entry(
         source_path_digest: source_path_digest.to_owned(),
         parser_version: config.parser_version,
         aggregation_version: config.aggregation_version,
-        window: JsonlCacheWindow::from_config(config),
+        timezone: config.window.timezone_name.clone(),
         file,
         safe_offset,
         head_length,

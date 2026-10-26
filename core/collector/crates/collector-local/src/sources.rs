@@ -20,8 +20,8 @@ pub use codex::{
     scan_codex_with_cancellation,
 };
 pub use jsonl_adapters::{
-    scan_claude_cached, scan_codebuddy_cached, scan_grok_cached, scan_kimi_tree_cached,
-    scan_pi_cached,
+    scan_claude_cached, scan_codebuddy_cached, scan_grok_cached, scan_kimi_cli_cached,
+    scan_kimi_tree_cached, scan_pi_cached,
 };
 pub use sqlite_adapters::{
     scan_opencode, scan_opencode_cached, scan_opencode_with_cancellation, scan_zcode,

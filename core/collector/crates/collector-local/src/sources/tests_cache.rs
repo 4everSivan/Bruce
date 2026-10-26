@@ -1087,3 +1087,141 @@ fn opencode_row_cap_keeps_newest_messages() {
     );
     fs::remove_dir_all(&root).ok();
 }
+
+fn window_at(now: &str, days: u32) -> CollectionWindow {
+    let context: Map<String, Value> = serde_json::from_value(json!({
+        "now": now,
+        "timezone": "Asia/Shanghai",
+        "days": days
+    }))
+    .unwrap();
+    CollectionWindow::from_context(&context).unwrap()
+}
+
+/// C116: JSONL 缓存条目与窗口无关 —— 跨日 (today 变化) 与改窗口长度都直接命中缓存,
+/// 不再整树重新解析; 聚合结果与不走缓存的参照实现逐字段一致。
+#[test]
+fn jsonl_caches_survive_day_rollover_and_window_length_changes() {
+    let root = temp_root("c116-rollover");
+    let cache_root = root.join("cache");
+    let claude_root = root.join("claude").join("-Users-demo-project");
+    let kimi_cli_root = root.join("kimi-cli").join("session");
+    fs::create_dir_all(&claude_root).unwrap();
+    fs::create_dir_all(&kimi_cli_root).unwrap();
+    let day_27 = 1_785_124_800_000_i64; // 2026-07-27 12:00+08
+    let day_28 = 1_785_211_200_000_i64; // 2026-07-28 12:00+08
+    let claude_line = |id: &str, at: &str, input: u64| {
+        json!({"type": "assistant", "timestamp": at, "message": {"id": id, "model": "claude-opus-5-5",
+            "usage": {"input_tokens": input, "output_tokens": 2, "cache_read_input_tokens": 5}}})
+        .to_string()
+    };
+    fs::write(
+        claude_root.join("session.jsonl"),
+        format!(
+            "{}\n{}\n",
+            claude_line("m1", "2026-07-27T04:00:00Z", 10),
+            claude_line("m2", "2026-07-28T04:00:00Z", 20)
+        ),
+    )
+    .unwrap();
+    let kimi_line = |at: i64, input: u64| {
+        json!({"type": "usage.record", "time": at, "model": "kimi-k2", "usage": {"inputOther": input, "output": 1}})
+            .to_string()
+    };
+    fs::write(
+        kimi_cli_root.join("wire.jsonl"),
+        format!("{}\n{}\n", kimi_line(day_27, 3), kimi_line(day_28, 4)),
+    )
+    .unwrap();
+    let claude_dir = root.join("claude");
+    let kimi_dir = root.join("kimi-cli");
+    let token = CancellationToken::new();
+
+    let windows = [
+        ("2026-07-28T12:00:00+08:00", 3, true),
+        ("2026-07-29T09:00:00+08:00", 3, false),
+        ("2026-07-29T09:00:00+08:00", 182, false),
+        ("2026-07-30T09:00:00+08:00", 14, false),
+    ];
+    for (now, days, cold) in windows {
+        let window = window_at(now, days);
+        let claude = scan_claude_cached(&claude_dir, &window, &cache_root, &token).unwrap();
+        let kimi = super::scan_kimi_cli_cached(&kimi_dir, &window, &cache_root, &token).unwrap();
+        assert_eq!(
+            claude.contribution,
+            scan_claude(&claude_dir, &window).contribution,
+            "{now}/{days}"
+        );
+        assert_eq!(
+            kimi.contribution,
+            scan_kimi_tree(&kimi_dir, &window).contribution,
+            "{now}/{days}"
+        );
+        for (label, stats) in [("claude", &claude.stats), ("kimi-cli", &kimi.stats)] {
+            if cold {
+                assert_eq!(stats.cache_rebuilds, 1, "{label} 首次冷扫");
+            } else {
+                assert_eq!(
+                    (
+                        stats.cache_hits,
+                        stats.cache_rebuilds,
+                        stats.cache_invalidations
+                    ),
+                    (1, 0, 0),
+                    "{label} 在 {now} / {days} 天窗口必须直接命中缓存"
+                );
+                assert_eq!(stats.json_lines_parsed, 0, "{label} 命中缓存不得重新解析");
+            }
+        }
+    }
+    fs::remove_dir_all(root).ok();
+}
+
+/// C116: v1 (按窗口压缩贡献 + today 身份) 条目按版本不匹配失效并重建, 不计为缓存损坏。
+#[test]
+fn v1_jsonl_cache_entries_are_invalidated_not_counted_as_corrupt() {
+    let root = temp_root("c116-v1");
+    let cache_root = root.join("cache");
+    let project = root.join("claude").join("-Users-demo-project");
+    fs::create_dir_all(&project).unwrap();
+    fs::write(
+        project.join("session.jsonl"),
+        json!({"type": "assistant", "timestamp": "2026-07-28T04:00:00Z", "message": {"id": "m1",
+            "model": "claude-opus-5-5", "usage": {"input_tokens": 1, "output_tokens": 1}}})
+        .to_string()
+            + "\n",
+    )
+    .unwrap();
+    let claude_dir = root.join("claude");
+    let token = CancellationToken::new();
+    scan_claude_cached(&claude_dir, &window(), &cache_root, &token).unwrap();
+    // 把条目改写成 v1 形状: schema_version 1 + 窗口身份 + 压缩贡献
+    for entry in fs::read_dir(&cache_root).unwrap().flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !name.starts_with("jsonl-") {
+            continue;
+        }
+        let mut value: Value = serde_json::from_slice(&fs::read(entry.path()).unwrap()).unwrap();
+        let object = value.as_object_mut().unwrap();
+        object.insert("schema_version".into(), json!(1));
+        object.remove("timezone");
+        object.insert(
+            "window".into(),
+            json!({"days": 3, "timezone": "Asia/Shanghai", "today": "2026-07-28"}),
+        );
+        object["payload"]
+            .as_object_mut()
+            .unwrap()
+            .insert("contribution".into(), json!({"days": [], "hours": []}));
+        fs::write(entry.path(), serde_json::to_vec(&value).unwrap()).unwrap();
+    }
+    let rescanned = scan_claude_cached(&claude_dir, &window(), &cache_root, &token).unwrap();
+    assert_eq!(rescanned.stats.cache_corruptions, 0, "旧版本条目不是损坏");
+    assert_eq!(rescanned.stats.cache_invalidations, 1);
+    assert_eq!(rescanned.stats.cache_rebuilds, 1);
+    assert_eq!(
+        rescanned.contribution,
+        scan_claude(&claude_dir, &window()).contribution
+    );
+    fs::remove_dir_all(root).ok();
+}

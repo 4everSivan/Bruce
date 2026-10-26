@@ -2,7 +2,7 @@
 
 //! Shared resource budgets and cancellation primitives for collector refreshes.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::hash::Hash;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
@@ -16,7 +16,6 @@ pub struct RuntimeLimits {
     pub network_workers: usize,
     pub account_tasks: usize,
     pub response_body_bytes: usize,
-    pub aggregate_queue_capacity: usize,
 }
 
 impl Default for RuntimeLimits {
@@ -27,7 +26,6 @@ impl Default for RuntimeLimits {
             network_workers: 4,
             account_tasks: 4,
             response_body_bytes: 4 * 1024 * 1024,
-            aggregate_queue_capacity: 1_024,
         }
     }
 }
@@ -42,8 +40,6 @@ impl RuntimeLimits {
             || self.account_tasks > 16
             || self.response_body_bytes == 0
             || self.response_body_bytes > 16 * 1024 * 1024
-            || self.aggregate_queue_capacity == 0
-            || self.aggregate_queue_capacity > 100_000
         {
             return Err(RuntimeError::InvalidLimits);
         }
@@ -206,81 +202,6 @@ fn release_permit(inner: &PermitPoolInner) {
     inner.wake.notify_one();
 }
 
-pub struct BoundedQueue<T> {
-    state: Mutex<QueueState<T>>,
-    not_empty: Condvar,
-    not_full: Condvar,
-}
-
-struct QueueState<T> {
-    items: VecDeque<T>,
-    capacity: usize,
-    closed: bool,
-}
-
-impl<T> BoundedQueue<T> {
-    pub fn new(capacity: usize) -> Result<Self, RuntimeError> {
-        if capacity == 0 {
-            return Err(RuntimeError::InvalidLimits);
-        }
-        Ok(Self {
-            state: Mutex::new(QueueState {
-                items: VecDeque::with_capacity(capacity.min(4_096)),
-                capacity,
-                closed: false,
-            }),
-            not_empty: Condvar::new(),
-            not_full: Condvar::new(),
-        })
-    }
-
-    pub fn push(&self, item: T, token: &CancellationToken) -> Result<(), RuntimeError> {
-        let mut state = self.state.lock().expect("bounded queue mutex poisoned");
-        loop {
-            token.check()?;
-            if state.closed {
-                return Err(RuntimeError::Closed);
-            }
-            if state.items.len() < state.capacity {
-                state.items.push_back(item);
-                self.not_empty.notify_one();
-                return Ok(());
-            }
-            let (next_state, _) = self
-                .not_full
-                .wait_timeout(state, WAIT_SLICE)
-                .expect("bounded queue condvar poisoned");
-            state = next_state;
-        }
-    }
-
-    pub fn pop(&self, token: &CancellationToken) -> Result<Option<T>, RuntimeError> {
-        let mut state = self.state.lock().expect("bounded queue mutex poisoned");
-        loop {
-            token.check()?;
-            if let Some(item) = state.items.pop_front() {
-                self.not_full.notify_one();
-                return Ok(Some(item));
-            }
-            if state.closed {
-                return Ok(None);
-            }
-            let (next_state, _) = self
-                .not_empty
-                .wait_timeout(state, WAIT_SLICE)
-                .expect("bounded queue condvar poisoned");
-            state = next_state;
-        }
-    }
-
-    pub fn close(&self) {
-        let mut state = self.state.lock().expect("bounded queue mutex poisoned");
-        state.closed = true;
-        self.not_empty.notify_all();
-        self.not_full.notify_all();
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SingleFlightError<E> {
     Cancelled,
@@ -389,8 +310,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        AccountSingleFlight, BoundedQueue, CancellationToken, RuntimeError, RuntimeLimits,
-        SingleFlightError,
+        AccountSingleFlight, CancellationToken, RuntimeError, RuntimeLimits, SingleFlightError,
     };
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Barrier};
@@ -409,29 +329,6 @@ mod tests {
         }
         .validate()
         .is_err());
-    }
-
-    #[test]
-    fn queue_applies_capacity_and_cancellation_backpressure() {
-        let queue = BoundedQueue::new(1).unwrap();
-        let token = CancellationToken::new();
-        queue.push(1, &token).unwrap();
-        let cancelled = token.clone();
-        let queue_for_thread = Arc::new(queue);
-        let queue_for_thread_clone = Arc::clone(&queue_for_thread);
-        let handle = thread::spawn(move || queue_for_thread_clone.push(2, &cancelled));
-        thread::sleep(Duration::from_millis(20));
-        token.cancel();
-        assert_eq!(handle.join().unwrap(), Err(RuntimeError::Cancelled));
-        assert_eq!(
-            queue_for_thread.pop(&CancellationToken::new()).unwrap(),
-            Some(1)
-        );
-        queue_for_thread.close();
-        assert_eq!(
-            queue_for_thread.pop(&CancellationToken::new()).unwrap(),
-            None
-        );
     }
 
     #[test]

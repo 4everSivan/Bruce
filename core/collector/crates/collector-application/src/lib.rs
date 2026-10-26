@@ -7,13 +7,11 @@
 //! protocol seam.
 
 mod account;
-mod aggregation;
 mod context;
 mod execution;
 mod paths;
 
 use account::{build_account_plan, build_codex_account_plans, validate_account_request};
-use aggregation::{consume_source_changes, AggregationResult};
 use collector_aggregate::UsageAccumulator;
 use collector_credential::{
     validate_credential_challenges, validate_credential_updates, CredentialSource,
@@ -25,20 +23,20 @@ use collector_domain::{
     AGENT_USAGE_SCHEMA_VERSION, LOCAL_SOURCE_ROWS_CAPPED,
 };
 use collector_local::{
-    default_cache_root, scan_claude_cached, scan_codebuddy_cached,
-    scan_codex_cached_with_cancellation, scan_grok_cached, scan_kimi_tree_cached,
-    scan_opencode_cached, scan_pi_cached, scan_tree_cached_with_sink_with_cancellation,
-    scan_zcode_cached, CacheConfig, CachedScanError, ScanStats, SourceScan, SourceScanError,
+    default_cache_root, remove_legacy_kimi_cache, scan_claude_cached, scan_codebuddy_cached,
+    scan_codex_cached_with_cancellation, scan_grok_cached, scan_kimi_cli_cached,
+    scan_kimi_tree_cached, scan_opencode_cached, scan_pi_cached, scan_zcode_cached, ScanStats,
+    SourceScan, SourceScanError,
 };
 use collector_provider::{HttpClient, ProviderError, UreqHttpClient};
-use collector_runtime::{BoundedQueue, RuntimeError, RuntimeLimits};
+use collector_runtime::{RuntimeError, RuntimeLimits};
 use context::RunContext;
 use execution::{execute_quota_accounts, QuotaExecution};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use std::time::Instant;
 
 pub use collector_local::ScanStats as CollectionScanStats;
@@ -153,21 +151,6 @@ fn collect_agent_usage_with_dependencies_inner(
         .and_then(|val| serde_json::from_value(val.clone()).ok())
         .unwrap_or_default();
     let pricing_table = PricingTable::new(pricing_overrides);
-    let mut kimi_cli =
-        local
-            .accumulator
-            .finalize_with_pricing("kimi-code-cli", "Kimi Code CLI", &pricing_table);
-    if !sessions_allowed {
-        kimi_cli.status = "unavailable".to_owned();
-        kimi_cli.note = "未授权 localSessions 能力, 已跳过本机会话扫描".to_owned();
-    } else if !local.found {
-        kimi_cli.status = "not_found".to_owned();
-        kimi_cli.note = "未发现会话记录".to_owned();
-    } else {
-        kimi_cli.note = "额度见下方 Kimi 服务".to_owned();
-    }
-    let mut kimi_cli = Some(kimi_cli);
-
     let placeholder_status = if sessions_allowed {
         "not_found"
     } else {
@@ -217,10 +200,6 @@ fn collect_agent_usage_with_dependencies_inner(
     ];
     let mut agents = Vec::with_capacity(agent_specs.len());
     for (id, name, note, not_found_note) in agent_specs {
-        if id == "kimi-code-cli" {
-            agents.push(kimi_cli.take().expect("Kimi Code agent is emitted once"));
-            continue;
-        }
         let missing_note = if sessions_allowed {
             not_found_note
         } else {
@@ -334,12 +313,10 @@ fn collect_agent_usage_with_dependencies_inner(
 }
 
 struct LocalCollection {
-    accumulator: UsageAccumulator,
     agents: BTreeMap<String, LocalAgentResult>,
     diagnostics: Vec<Diagnostic>,
     scan_stats: ScanStats,
     source_metrics: Vec<SourcePerformanceMetric>,
-    found: bool,
 }
 
 struct LocalAgentResult {
@@ -352,12 +329,10 @@ struct LocalAgentResult {
 
 fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diagnostic> {
     let mut collection = LocalCollection {
-        accumulator: UsageAccumulator::new(context.window.clone()),
         agents: BTreeMap::new(),
         diagnostics: Vec::new(),
         scan_stats: ScanStats::default(),
         source_metrics: Vec::new(),
-        found: false,
     };
     if !context.capability_allowed("localSessions") {
         return Ok(collection);
@@ -372,31 +347,13 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
         ));
     };
     let home = PathBuf::from(home);
-    let kimi_cli_root = source_path(
-        context,
-        "kimi_cli_sessions",
-        home.join(".kimi-code").join("sessions"),
-    );
     let cache_root = default_cache_root(&home);
-    let jobs = secondary_source_jobs(context, &home, &cache_root);
-    // C110: 主源 (Kimi Code CLI) 在当前线程扫描, 8 个次要源同时交给 local_workers 大小的
-    // 工作池; 旧实现逐源串行, 冷扫耗时为各源之和。结果按源序合并, 诊断与指标顺序不变。
-    let (primary, secondary) = std::thread::scope(|scope| {
-        let pool = scope.spawn(|| run_secondary_sources(context, jobs));
-        let primary = scan_kimi_cli(context, &kimi_cli_root, &cache_root);
-        let secondary = pool
-            .join()
-            .unwrap_or_else(|_| Err(worker_panic_diagnostic("本机次要源扫描工作线程异常中止")));
-        (primary, secondary)
-    });
-    let primary = primary?;
-    collection.accumulator = primary.accumulator;
-    collection.diagnostics = primary.diagnostics;
-    collection.scan_stats = primary.scan_stats;
-    collection.source_metrics.push(primary.metric);
-    collection.found = primary.found;
-
-    for (source, source_metric, degradation) in secondary? {
+    // C116: Kimi Code CLI 改用共享 JSONL 缓存引擎, 清理旧版引擎遗留的条目 (缓存可再生)。
+    remove_legacy_kimi_cache(&cache_root);
+    let jobs = local_source_jobs(context, &home, &cache_root);
+    // C110 / C116: 9 个本机源交给 local_workers 大小的工作池并行扫描, 结果按源序合并,
+    // 诊断与指标顺序不变。
+    for (source, source_metric, degradation) in run_local_sources(context, jobs)? {
         let id = source_metric.source_id.clone();
         collection.source_metrics.push(source_metric);
         collection.scan_stats.merge(source.stats.clone());
@@ -429,122 +386,28 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
     Ok(collection)
 }
 
-struct PrimaryScan {
-    accumulator: UsageAccumulator,
-    diagnostics: Vec<Diagnostic>,
-    scan_stats: ScanStats,
-    metric: SourcePerformanceMetric,
-    found: bool,
-}
+type LocalScan<'a> = Box<dyn FnOnce() -> Result<SourceScan, SourceScanError> + Send + 'a>;
 
-/// Kimi Code CLI 主源: 缓存扫描经有界队列流式交给聚合线程 (语义同 C110 前)。
-fn scan_kimi_cli(
-    context: &RunContext<'_>,
-    root: &Path,
-    cache_root: &Path,
-) -> Result<PrimaryScan, Diagnostic> {
-    let _permit = context
-        .budgets
-        .acquire_local(&context.cancellation)
-        .map_err(local_source_runtime_diagnostic)?;
-    let config = CacheConfig {
-        cache_root: cache_root.to_owned(),
-        window: context.window.clone(),
-        pricing_version: 1,
-    };
-    let queue = Arc::new(
-        BoundedQueue::new(context.limits.aggregate_queue_capacity).map_err(runtime_diagnostic)?,
-    );
-    let cancellation = context.cancellation.clone();
-    let scan_started = Instant::now();
-    let (scan_result, aggregation) = std::thread::scope(|scope| {
-        let consumer_queue = Arc::clone(&queue);
-        let consumer_window = context.window.clone();
-        let consumer_cancellation = cancellation.clone();
-        let consumer = scope.spawn(move || {
-            consume_source_changes(consumer_queue, consumer_window, consumer_cancellation)
-        });
-        let scan_result = scan_tree_cached_with_sink_with_cancellation(
-            root,
-            &config,
-            &context.cancellation,
-            |change| {
-                queue.push(change, &context.cancellation).map_err(|error| {
-                    std::io::Error::new(
-                        std::io::ErrorKind::Interrupted,
-                        format!("bounded local change stream stopped: {error:?}"),
-                    )
-                })
-            },
-        );
-        queue.close();
-        // C043: 聚合线程 panic 不再拖垮主线程 —— 以空结果 + 诊断降级,
-        // 扫描侧的 scan_result 照常返回 (用量可能不全但进程存活且可解释)。
-        let aggregation = consumer.join().unwrap_or_else(|_| AggregationResult {
-            accumulator: UsageAccumulator::new(context.window.clone()),
-            diagnostics: vec![worker_panic_diagnostic("本机聚合工作线程异常中止")],
-        });
-        (scan_result, aggregation)
-    });
-    let metric = SourcePerformanceMetric {
-        source_id: "kimi-code-cli".to_owned(),
-        elapsed_ms: scan_started.elapsed().as_millis() as u64,
-        stats: scan_result.as_ref().ok().cloned().unwrap_or_default(),
-    };
-    let mut diagnostics = aggregation.diagnostics;
-    let mut scan_stats = ScanStats::default();
-    let mut found = false;
-    match scan_result {
-        Ok(stats) => {
-            found = stats.files_scanned > 0;
-            scan_stats = stats;
-            if scan_stats.io_errors > 0 {
-                diagnostics.push(Diagnostic::new(
-                    "LOCAL_SOURCE_PARTIAL",
-                    "local",
-                    "scan",
-                    "部分本机会话文件无法读取",
-                    true,
-                ));
-            }
-        }
-        Err(CachedScanError::Runtime(error)) => {
-            return Err(local_source_runtime_diagnostic(error));
-        }
-        Err(CachedScanError::Io(_)) => diagnostics.push(Diagnostic::new(
-            "LOCAL_SOURCE_ERROR",
-            "local",
-            "scan",
-            "本机会话目录无法读取",
-            true,
-        )),
-    }
-    Ok(PrimaryScan {
-        accumulator: aggregation.accumulator,
-        diagnostics,
-        scan_stats,
-        metric,
-        found,
-    })
-}
-
-type SecondaryScan<'a> = Box<dyn FnOnce() -> Result<SourceScan, SourceScanError> + Send + 'a>;
-
-struct SecondaryJob<'a> {
+struct LocalSourceJob<'a> {
     source_id: &'static str,
-    scan: SecondaryScan<'a>,
+    scan: LocalScan<'a>,
 }
 
-type SecondaryResult = (SourceScan, SourcePerformanceMetric, Option<Diagnostic>);
+type LocalSourceResult = (SourceScan, SourcePerformanceMetric, Option<Diagnostic>);
 
-/// 8 个次要源的扫描任务, 顺序即 artifact 诊断与指标顺序。
-fn secondary_source_jobs<'a>(
+/// 本机源扫描任务, 顺序即 artifact 诊断与指标顺序 (Kimi Code CLI 居首, C116 前为独立主源)。
+fn local_source_jobs<'a>(
     context: &'a RunContext<'a>,
     home: &Path,
     cache_root: &'a Path,
-) -> Vec<SecondaryJob<'a>> {
+) -> Vec<LocalSourceJob<'a>> {
     let window = &context.window;
     let cancellation = &context.cancellation;
+    let kimi_cli = source_path(
+        context,
+        "kimi_cli_sessions",
+        home.join(".kimi-code").join("sessions"),
+    );
     let kimi_work = source_path(
         context,
         "daimon_kimi_sessions",
@@ -605,63 +468,69 @@ fn secondary_source_jobs<'a>(
         paths::resolve_codebuddy_projects_path(home),
     );
     vec![
-        SecondaryJob {
+        LocalSourceJob {
+            source_id: "kimi-code-cli",
+            scan: Box::new(move || {
+                scan_kimi_cli_cached(&kimi_cli, window, cache_root, cancellation)
+            }),
+        },
+        LocalSourceJob {
             source_id: "kimi-work",
             scan: Box::new(move || {
                 scan_kimi_tree_cached(&kimi_work, window, cache_root, cancellation)
             }),
         },
-        SecondaryJob {
+        LocalSourceJob {
             source_id: "claude-code",
             scan: Box::new(move || scan_claude_cached(&claude, window, cache_root, cancellation)),
         },
-        SecondaryJob {
+        LocalSourceJob {
             source_id: "codex",
             scan: Box::new(move || {
                 scan_codex_cached_with_cancellation(&codex_roots, window, cache_root, cancellation)
             }),
         },
-        SecondaryJob {
+        LocalSourceJob {
             source_id: "codebuddy",
             scan: Box::new(move || {
                 scan_codebuddy_cached(&codebuddy, window, cache_root, cancellation)
             }),
         },
-        SecondaryJob {
+        LocalSourceJob {
             source_id: "grok",
             scan: Box::new(move || scan_grok_cached(&grok_roots, window, cache_root, cancellation)),
         },
-        SecondaryJob {
+        LocalSourceJob {
             source_id: "opencode",
             scan: Box::new(move || {
                 scan_opencode_cached(&opencode, window, cache_root, cancellation)
             }),
         },
-        SecondaryJob {
+        LocalSourceJob {
             source_id: "pi",
             scan: Box::new(move || scan_pi_cached(&pi, window, cache_root, cancellation)),
         },
-        SecondaryJob {
+        LocalSourceJob {
             source_id: "zcode",
             scan: Box::new(move || scan_zcode_cached(&zcode, window, cache_root, cancellation)),
         },
     ]
 }
 
-/// 以 `local_workers` 大小的工作池执行次要源扫描 (C110); 每个任务另需一个本机扫描
-/// 许可, 与主源合计并发不超过预算。结果按任务原序返回, 取消/超时按原序上报首个错误;
-/// 单个任务所在线程 panic 时降级为该源的空结果 + 诊断 (C043)。
-fn run_secondary_sources(
+/// 以 `local_workers` 大小的工作池执行本机源扫描 (C110); 每个任务持一个本机扫描许可。
+/// 结果按任务原序返回, 取消/超时按原序上报首个错误; 单个任务所在线程 panic 时降级为
+/// 该源的空结果 + 诊断 (C043)。
+fn run_local_sources(
     context: &RunContext<'_>,
-    jobs: Vec<SecondaryJob<'_>>,
-) -> Result<Vec<SecondaryResult>, Diagnostic> {
+    jobs: Vec<LocalSourceJob<'_>>,
+) -> Result<Vec<LocalSourceResult>, Diagnostic> {
     let source_ids = jobs.iter().map(|job| job.source_id).collect::<Vec<_>>();
     let workers = context.limits.local_workers.clamp(1, jobs.len().max(1));
     let queue = Mutex::new(jobs.into_iter().enumerate().collect::<VecDeque<_>>());
     let results = Mutex::new(
         (0..source_ids.len())
             .map(|_| None)
-            .collect::<Vec<Option<Result<SecondaryResult, Diagnostic>>>>(),
+            .collect::<Vec<Option<Result<LocalSourceResult, Diagnostic>>>>(),
     );
     std::thread::scope(|scope| {
         let handles = (0..workers)

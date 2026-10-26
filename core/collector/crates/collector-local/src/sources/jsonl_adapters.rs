@@ -16,10 +16,8 @@ use crate::jsonl_cache::{
     scan_cached_jsonl_tree, scan_jsonl_file_from_offset, CachedFilePayload, CachedUsageObservation,
     JsonlCacheAdapter, JsonlCacheConfig,
 };
-use crate::{CompactContribution, ScanStats};
-use collector_domain::{
-    CollectionWindow, UsageContribution, UsageContributionBuilder, UsageSample,
-};
+use crate::ScanStats;
+use collector_domain::{CollectionWindow, UsageContribution, UsageContributionBuilder};
 use collector_runtime::CancellationToken;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -45,76 +43,14 @@ pub(super) fn jsonl_cache_config(
     }
 }
 
-fn invalid_cached_payload() -> SourceScanError {
-    SourceScanError::Io(io::Error::new(
-        io::ErrorKind::InvalidData,
-        "jsonl cache contribution is incompatible with the collection window",
-    ))
-}
-
-fn compact_payload(
-    observations: Vec<CachedUsageObservation>,
-    contribution: UsageContribution,
-    window: &CollectionWindow,
-) -> CachedFilePayload {
-    let compact = CompactContribution::from_domain(&contribution, window)
-        .expect("usage contribution built for the same window must be compactable");
-    CachedFilePayload {
-        contribution: compact,
-        observations,
-    }
-}
-
-fn payload_from_observations(
-    observations: Vec<CachedUsageObservation>,
-    window: &CollectionWindow,
-) -> CachedFilePayload {
-    let mut builder = UsageContributionBuilder::new(window.clone());
-    for observation in &observations {
-        let _ = builder.record(UsageSample {
-            timestamp_millis: observation.timestamp_millis,
-            model: observation.model.as_deref(),
-            input: observation.input,
-            output: observation.output,
-            cache_read: observation.cache_read,
-            cache_creation: observation.cache_creation,
-            cache_creation_1h: observation.cache_creation_1h,
-            project: observation.project.as_deref(),
-        });
-    }
-    compact_payload(observations, builder.contribution(), window)
-}
-
-fn merge_additive_payloads(
-    previous: &CachedFilePayload,
-    appended: &CachedFilePayload,
-    window: &CollectionWindow,
-) -> CachedFilePayload {
-    let (Some(previous), Some(appended)) = (
-        previous.contribution.to_domain(window),
-        appended.contribution.to_domain(window),
-    ) else {
-        return appended.clone();
-    };
-    let mut builder = UsageContributionBuilder::new(window.clone());
-    if !builder.merge_contribution(&previous) || !builder.merge_contribution(&appended) {
-        return compact_payload(Vec::new(), appended, window);
-    }
-    compact_payload(Vec::new(), builder.contribution(), window)
-}
-
-fn aggregate_additive_payloads(
+/// 把观测值按当前窗口逐条聚合 (C116: 缓存条目与窗口无关, 每次运行按当前窗口重建)。
+fn aggregate_observations(
     payloads: &[CachedFilePayload],
     window: &CollectionWindow,
 ) -> Result<(UsageContribution, bool, Option<String>), SourceScanError> {
     let mut builder = UsageContributionBuilder::new(window.clone());
-    for payload in payloads {
-        let Some(contribution) = payload.contribution.to_domain(window) else {
-            return Err(invalid_cached_payload());
-        };
-        if !builder.merge_contribution(&contribution) {
-            return Err(invalid_cached_payload());
-        }
+    for observation in payloads.iter().flat_map(|payload| &payload.observations) {
+        let _ = builder.record(observation.sample());
     }
     Ok((builder.contribution(), !payloads.is_empty(), None))
 }
@@ -124,7 +60,6 @@ fn parse_cached_file<F>(
     path: &Path,
     modified: f64,
     start_offset: u64,
-    window: &CollectionWindow,
     cancellation: &CancellationToken,
     stats: &mut ScanStats,
     needles: &[&[u8]],
@@ -152,14 +87,18 @@ where
             }
         },
     )?;
-    Ok(payload_from_observations(observations, window))
+    Ok(CachedFilePayload { observations })
 }
 
-pub(super) struct KimiWorkJsonlAdapter;
+/// Kimi Work 与 Kimi Code CLI 共用的 `usage.record` 解析 (C116: Kimi Code CLI 不再走独立的
+/// 旧版缓存引擎, 两者仅缓存命名空间不同)。
+pub(super) struct KimiUsageJsonlAdapter {
+    source_id: &'static str,
+}
 
-impl JsonlCacheAdapter for KimiWorkJsonlAdapter {
+impl JsonlCacheAdapter for KimiUsageJsonlAdapter {
     fn source_id(&self) -> &'static str {
-        "kimi-work"
+        self.source_id
     }
 
     fn parse_file(
@@ -167,7 +106,7 @@ impl JsonlCacheAdapter for KimiWorkJsonlAdapter {
         path: &Path,
         modified: f64,
         start_offset: u64,
-        window: &CollectionWindow,
+        _window: &CollectionWindow,
         cancellation: &CancellationToken,
         stats: &mut ScanStats,
     ) -> Result<CachedFilePayload, SourceScanError> {
@@ -175,7 +114,6 @@ impl JsonlCacheAdapter for KimiWorkJsonlAdapter {
             path,
             modified,
             start_offset,
-            window,
             cancellation,
             stats,
             KIMI_USAGE_NEEDLES,
@@ -210,22 +148,12 @@ impl JsonlCacheAdapter for KimiWorkJsonlAdapter {
         )
     }
 
-    fn merge_append(
-        &self,
-        previous: &CachedFilePayload,
-        appended: &CachedFilePayload,
-        _modified: f64,
-        window: &CollectionWindow,
-    ) -> CachedFilePayload {
-        merge_additive_payloads(previous, appended, window)
-    }
-
     fn aggregate(
         &self,
         payloads: &[CachedFilePayload],
         window: &CollectionWindow,
     ) -> Result<(UsageContribution, bool, Option<String>), SourceScanError> {
-        aggregate_additive_payloads(payloads, window)
+        aggregate_observations(payloads, window)
     }
 }
 
@@ -238,7 +166,26 @@ pub fn scan_kimi_tree_cached(
     scan_cached_jsonl_tree(
         root,
         &jsonl_cache_config(cache_root, "kimi-work", window),
-        &KimiWorkJsonlAdapter,
+        &KimiUsageJsonlAdapter {
+            source_id: "kimi-work",
+        },
+        cancellation,
+    )
+}
+
+/// Kimi Code CLI (`~/.kimi-code/sessions`) 的缓存扫描 (C116)。
+pub fn scan_kimi_cli_cached(
+    root: &Path,
+    window: &CollectionWindow,
+    cache_root: &Path,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
+    scan_cached_jsonl_tree(
+        root,
+        &jsonl_cache_config(cache_root, "kimi-code-cli", window),
+        &KimiUsageJsonlAdapter {
+            source_id: "kimi-code-cli",
+        },
         cancellation,
     )
 }
@@ -317,9 +264,6 @@ fn aggregate_claude_payloads(
     let mut best = BTreeMap::<String, ClaudeUsage>::new();
     let mut direct = Vec::<ClaudeUsage>::new();
     for payload in payloads {
-        if payload.contribution.to_domain(window).is_none() {
-            return Err(invalid_cached_payload());
-        }
         for observation in &payload.observations {
             let usage = claude_usage_from_observation(observation);
             if let Some(key) = observation.dedupe_key.as_ref() {
@@ -362,7 +306,6 @@ impl JsonlCacheAdapter for ClaudeJsonlAdapter {
             path,
             modified,
             start_offset,
-            window,
             cancellation,
             stats,
             ASSISTANT_NEEDLES,
@@ -374,18 +317,6 @@ impl JsonlCacheAdapter for ClaudeJsonlAdapter {
                 observation
             },
         )
-    }
-
-    fn merge_append(
-        &self,
-        previous: &CachedFilePayload,
-        appended: &CachedFilePayload,
-        _modified: f64,
-        window: &CollectionWindow,
-    ) -> CachedFilePayload {
-        let mut observations = previous.observations.clone();
-        observations.extend(appended.observations.iter().cloned());
-        payload_from_observations(observations, window)
     }
 
     fn aggregate(
@@ -466,9 +397,6 @@ fn aggregate_codebuddy_payloads(
     let mut best = BTreeMap::<String, CodeBuddyUsage>::new();
     let mut direct = Vec::<CodeBuddyUsage>::new();
     for payload in payloads {
-        if payload.contribution.to_domain(window).is_none() {
-            return Err(invalid_cached_payload());
-        }
         for observation in &payload.observations {
             let usage = codebuddy_usage_from_observation(observation);
             if let Some(key) = observation.dedupe_key.as_ref() {
@@ -514,7 +442,7 @@ impl JsonlCacheAdapter for CodeBuddyJsonlAdapter {
         path: &Path,
         modified: f64,
         start_offset: u64,
-        window: &CollectionWindow,
+        _window: &CollectionWindow,
         cancellation: &CancellationToken,
         stats: &mut ScanStats,
     ) -> Result<CachedFilePayload, SourceScanError> {
@@ -522,24 +450,11 @@ impl JsonlCacheAdapter for CodeBuddyJsonlAdapter {
             path,
             modified,
             start_offset,
-            window,
             cancellation,
             stats,
             CODEBUDDY_NEEDLES,
             |path, _, value, stats| codebuddy_observation(path, &value, stats),
         )
-    }
-
-    fn merge_append(
-        &self,
-        previous: &CachedFilePayload,
-        appended: &CachedFilePayload,
-        _modified: f64,
-        window: &CollectionWindow,
-    ) -> CachedFilePayload {
-        let mut observations = previous.observations.clone();
-        observations.extend(appended.observations.iter().cloned());
-        payload_from_observations(observations, window)
     }
 
     fn aggregate(
@@ -606,7 +521,7 @@ impl JsonlCacheAdapter for GrokJsonlAdapter {
         path: &Path,
         modified: f64,
         start_offset: u64,
-        window: &CollectionWindow,
+        _window: &CollectionWindow,
         cancellation: &CancellationToken,
         stats: &mut ScanStats,
     ) -> Result<CachedFilePayload, SourceScanError> {
@@ -614,7 +529,6 @@ impl JsonlCacheAdapter for GrokJsonlAdapter {
             path,
             modified,
             start_offset,
-            window,
             cancellation,
             stats,
             GROK_NEEDLES,
@@ -630,18 +544,18 @@ impl JsonlCacheAdapter for GrokJsonlAdapter {
 
     fn merge_append(
         &self,
-        previous: &CachedFilePayload,
-        appended: &CachedFilePayload,
+        previous: CachedFilePayload,
+        appended: CachedFilePayload,
         modified: f64,
-        window: &CollectionWindow,
     ) -> CachedFilePayload {
+        // Grok 以文件 mtime 作为全部消息的时间戳: 追加后整文件重打为新 mtime
         let current_timestamp = (modified * 1000.0) as i64;
-        let mut observations = previous.observations.clone();
+        let mut observations = previous.observations;
+        observations.extend(appended.observations);
         for observation in &mut observations {
             observation.timestamp_millis = current_timestamp;
         }
-        observations.extend(appended.observations.iter().cloned());
-        payload_from_observations(observations, window)
+        CachedFilePayload { observations }
     }
 
     fn aggregate(
@@ -649,7 +563,7 @@ impl JsonlCacheAdapter for GrokJsonlAdapter {
         payloads: &[CachedFilePayload],
         window: &CollectionWindow,
     ) -> Result<(UsageContribution, bool, Option<String>), SourceScanError> {
-        aggregate_additive_payloads(payloads, window)
+        aggregate_observations(payloads, window)
     }
 }
 
@@ -678,7 +592,10 @@ pub fn scan_grok_cached(
                     diagnostic = current.diagnostic;
                 }
                 if !builder.merge_contribution(&current.contribution) {
-                    return Err(invalid_cached_payload());
+                    return Err(SourceScanError::Io(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "grok root contribution is incompatible with the collection window",
+                    )));
                 }
             }
             Err(SourceScanError::Runtime(error)) => return Err(error.into()),
@@ -759,7 +676,6 @@ impl JsonlCacheAdapter for PiJsonlAdapter {
             path,
             modified,
             start_offset,
-            window,
             cancellation,
             stats,
             ASSISTANT_NEEDLES,
@@ -773,22 +689,12 @@ impl JsonlCacheAdapter for PiJsonlAdapter {
         )
     }
 
-    fn merge_append(
-        &self,
-        previous: &CachedFilePayload,
-        appended: &CachedFilePayload,
-        _modified: f64,
-        window: &CollectionWindow,
-    ) -> CachedFilePayload {
-        merge_additive_payloads(previous, appended, window)
-    }
-
     fn aggregate(
         &self,
         payloads: &[CachedFilePayload],
         window: &CollectionWindow,
     ) -> Result<(UsageContribution, bool, Option<String>), SourceScanError> {
-        aggregate_additive_payloads(payloads, window)
+        aggregate_observations(payloads, window)
     }
 }
 

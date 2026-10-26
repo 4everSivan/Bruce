@@ -335,30 +335,6 @@ pub struct UsageContribution {
 /// 更早的历史只保留月 × 模型粒度, 以控制增量缓存与 artifact 体积。
 pub const DETAIL_DAYS: usize = 31;
 
-/// A bounded source-level replacement. It allows local adapters to describe
-/// append, rewrite, and delete without exposing raw records to aggregation.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct SourceDeltaChange {
-    pub source_id: String,
-    pub removed: Option<UsageContribution>,
-    pub added: Option<UsageContribution>,
-}
-
-impl SourceDeltaChange {
-    pub fn replace(
-        source_id: impl Into<String>,
-        removed: Option<UsageContribution>,
-        added: Option<UsageContribution>,
-    ) -> Self {
-        Self {
-            source_id: source_id.into(),
-            removed,
-            added,
-        }
-    }
-}
-
 /// Pure contribution builder used by local source adapters. The aggregate
 /// crate remains responsible for final artifact shaping and pricing.
 #[derive(Debug, Clone)]
@@ -761,8 +737,7 @@ impl BridgeResponse {
 mod tests {
     use super::{
         response_status, AgentUsageArtifact, CollectionWindow, Diagnostic, ResponseStatus,
-        SourceDeltaChange, TokenBucket, UsageContributionBuilder, UsageSample,
-        LOCAL_SOURCE_ROWS_CAPPED,
+        TokenBucket, UsageContributionBuilder, UsageSample, LOCAL_SOURCE_ROWS_CAPPED,
     };
     use serde_json::{json, Map, Value};
 
@@ -938,27 +913,5 @@ mod tests {
             ..contribution.clone()
         };
         assert!(!UsageContributionBuilder::new(window).merge_contribution(&invalid));
-    }
-
-    #[test]
-    fn source_change_serializes_identity_without_raw_payload_fields() {
-        let contribution = super::UsageContribution {
-            by_day: Default::default(),
-            models_by_month: Default::default(),
-            models_today: Vec::new(),
-            projects_today: Vec::new(),
-            hours: vec![0; 24],
-            models_by_day: Default::default(),
-            hour_models_today: Default::default(),
-        };
-        let encoded = serde_json::to_value(SourceDeltaChange::replace(
-            "source-a",
-            None,
-            Some(contribution),
-        ))
-        .unwrap();
-        assert_eq!(encoded["sourceId"], "source-a");
-        assert!(encoded.get("raw").is_none());
-        assert!(encoded.get("credential").is_none());
     }
 }

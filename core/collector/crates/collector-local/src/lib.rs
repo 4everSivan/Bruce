@@ -7,53 +7,29 @@ mod sources;
 mod sqlite_cache;
 
 use collector_domain::{
-    CollectionWindow, ModelDelta, ProjectDelta, SourceDeltaChange, TokenBucket, UsageContribution,
-    UsageContributionBuilder, UsageSample,
+    CollectionWindow, ModelDelta, ProjectDelta, TokenBucket, UsageContribution,
 };
-use collector_runtime::{CancellationToken, RuntimeError};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
-use std::collections::{BTreeMap, BTreeSet};
-use std::fs::{self, File, OpenOptions};
-use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom, Write};
+use std::collections::BTreeMap;
+use std::fs;
+use std::io::{self, BufRead};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::SyncSender;
-use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
 
-#[cfg(unix)]
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
-
-pub const KIMI_USAGE_RECORD_TYPE: &str = "usage.record";
 pub const MAX_JSONL_RECORD_BYTES: usize = 1024 * 1024;
-pub const CACHE_SCHEMA_VERSION: u32 = 1;
-pub const PARSER_VERSION: u32 = 2;
-/// v2: 缓存条目新增自然月 × 模型聚合 (modelMonths); 旧条目按版本不匹配全量重建一次.
-/// v3 (C070): 新增最近 31 天 日期 × 模型 与今日 小时 × 模型 token 桶; 旧条目全量重建一次.
+/// SQLite 缓存的压缩贡献格式版本 (`CompactContribution`)。
+/// v2: 新增自然月 × 模型聚合 (modelMonths); v3 (C070): 新增最近 31 天 日期 × 模型 与今日
+/// 小时 × 模型 token 桶。格式演进必须升级本常量令旧条目整体重建 (C072)。
 pub const AGGREGATION_VERSION: u32 = 3;
-const FINGERPRINT_SEGMENT_BYTES: u64 = 64 * 1024;
-// Cache files are small but numerous; one bounded writer avoids APFS metadata
-// contention while still overlapping serialization with the source scan.
-const CACHE_WRITERS: usize = 1;
 
 pub use sources::{
     scan_claude, scan_claude_cached, scan_claude_with_cancellation, scan_codebuddy,
     scan_codebuddy_cached, scan_codebuddy_with_cancellation, scan_codex, scan_codex_cached,
     scan_codex_cached_with_cancellation, scan_codex_with_cancellation, scan_grok, scan_grok_cached,
-    scan_grok_with_cancellation, scan_kimi_tree, scan_kimi_tree_cached,
+    scan_grok_with_cancellation, scan_kimi_cli_cached, scan_kimi_tree, scan_kimi_tree_cached,
     scan_kimi_tree_with_cancellation, scan_opencode, scan_opencode_cached,
     scan_opencode_with_cancellation, scan_pi, scan_pi_cached, scan_pi_with_cancellation,
     scan_zcode, scan_zcode_cached, scan_zcode_with_cancellation, SourceScan, SourceScanError,
 };
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LocalUsageRecord {
-    pub timestamp_millis: i64,
-    pub model: Option<String>,
-    pub input: u64,
-    pub output: u64,
-    pub cache_read: u64,
-    pub cache_creation: u64,
-}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ScanStats {
@@ -118,99 +94,6 @@ impl ScanStats {
     }
 }
 
-#[derive(Debug, Deserialize)]
-struct RawRecord {
-    #[serde(rename = "type")]
-    record_type: Option<String>,
-    time: Option<f64>,
-    model: Option<String>,
-    usage: Option<RawUsage>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct RawUsage {
-    #[serde(rename = "inputOther")]
-    input_other: Option<u64>,
-    output: Option<u64>,
-    #[serde(rename = "inputCacheRead")]
-    input_cache_read: Option<u64>,
-    #[serde(rename = "inputCacheCreation")]
-    input_cache_creation: Option<u64>,
-}
-
-/// Stream one JSONL file without retaining its records in memory.
-pub fn scan_path<F>(path: &Path, callback: F) -> io::Result<ScanStats>
-where
-    F: FnMut(LocalUsageRecord),
-{
-    let file = File::open(path)?;
-    scan_reader(BufReader::new(file), callback)
-}
-
-pub fn scan_path_from_offset<F>(path: &Path, offset: u64, callback: F) -> io::Result<ScanStats>
-where
-    F: FnMut(LocalUsageRecord),
-{
-    let mut file = File::open(path)?;
-    file.seek(SeekFrom::Start(offset))?;
-    scan_reader(BufReader::new(file), callback)
-}
-
-#[derive(Debug)]
-pub enum CachedScanError {
-    Io(io::Error),
-    Runtime(RuntimeError),
-}
-
-impl From<io::Error> for CachedScanError {
-    fn from(error: io::Error) -> Self {
-        Self::Io(error)
-    }
-}
-
-impl From<RuntimeError> for CachedScanError {
-    fn from(error: RuntimeError) -> Self {
-        Self::Runtime(error)
-    }
-}
-
-fn scan_path_with_cancellation<F>(
-    path: &Path,
-    cancellation: &CancellationToken,
-    mut callback: F,
-) -> Result<ScanStats, CachedScanError>
-where
-    F: FnMut(LocalUsageRecord),
-{
-    cancellation.check()?;
-    let file = File::open(path)?;
-    let mut reader = BufReader::with_capacity(READ_BUFFER_BYTES, file);
-    scan_reader_with_cancellation(&mut reader, cancellation, &mut callback)
-}
-
-fn scan_path_from_offset_with_cancellation<F>(
-    path: &Path,
-    offset: u64,
-    cancellation: &CancellationToken,
-    mut callback: F,
-) -> Result<ScanStats, CachedScanError>
-where
-    F: FnMut(LocalUsageRecord),
-{
-    cancellation.check()?;
-    let mut file = File::open(path)?;
-    file.seek(SeekFrom::Start(offset))?;
-    let mut reader = BufReader::with_capacity(READ_BUFFER_BYTES, file);
-    scan_reader_with_cancellation(&mut reader, cancellation, &mut callback)
-}
-
-#[derive(Debug, Clone)]
-pub struct CacheConfig {
-    pub cache_root: PathBuf,
-    pub window: CollectionWindow,
-    pub pricing_version: u32,
-}
-
 /// Resolve the default incremental cache root.
 ///
 /// macOS/Linux keep the historical `~/Library/Application Support` layout;
@@ -249,251 +132,40 @@ fn windows_cache_root(home: &Path, local_app_data: Option<&str>) -> PathBuf {
     }
 }
 
-/// Scan a source tree and emit one bounded domain-level change at a time.
+/// 清理 C116 前 Kimi Code CLI 旧版缓存引擎遗留的条目与清单 (`<64 位十六进制>.json` /
+/// `manifest-<64 位十六进制>.json`), 返回删除数。
 ///
-/// The sink is called only with derived contributions. It never receives raw
-/// JSONL records, paths, credentials, or provider responses. Returning an I/O
-/// error stops the traversal so an application-level bounded queue can apply
-/// backpressure or cancellation.
-pub fn scan_tree_cached_with_sink<F>(
-    root: &Path,
-    config: &CacheConfig,
-    sink: F,
-) -> io::Result<ScanStats>
-where
-    F: FnMut(SourceDeltaChange) -> io::Result<()>,
-{
-    scan_tree_cached_with_sink_with_cancellation(root, config, &CancellationToken::new(), sink)
-        .map_err(|error| match error {
-            CachedScanError::Io(error) => error,
-            CachedScanError::Runtime(error) => io::Error::new(
-                io::ErrorKind::Interrupted,
-                format!("cache scan stopped: {error:?}"),
-            ),
-        })
-}
-
-pub fn scan_tree_cached_with_sink_with_cancellation<F>(
-    root: &Path,
-    config: &CacheConfig,
-    cancellation: &CancellationToken,
-    mut sink: F,
-) -> Result<ScanStats, CachedScanError>
-where
-    F: FnMut(SourceDeltaChange) -> io::Result<()>,
-{
-    cancellation.check()?;
-    let mut stats = ScanStats::default();
-    let mut seen = BTreeSet::new();
-    let (cache_sender, cache_receiver) = std::sync::mpsc::sync_channel::<CacheWriteJob>(4);
-    let cache_receiver = Arc::new(Mutex::new(cache_receiver));
-    let cache_writers = (0..CACHE_WRITERS)
-        .map(|_| {
-            let cache_receiver = Arc::clone(&cache_receiver);
-            std::thread::spawn(move || {
-                let mut errors = 0u64;
-                while let Ok(job) = cache_receiver
-                    .lock()
-                    .expect("cache writer queue mutex poisoned")
-                    .recv()
-                {
-                    if write_cache(&job.path, &job.entry).is_err() {
-                        errors = errors.saturating_add(1);
-                    }
-                }
-                errors
-            })
-        })
-        .collect::<Vec<_>>();
-    let mut visited_dirs = BTreeSet::new();
-    if let Ok(canonical) = fs::canonicalize(root) {
-        visited_dirs.insert(canonical);
+/// 缓存根下其余引擎的文件都带 `jsonl-` / `manifest-jsonl-` / `sqlite-` / `codex-tree-` 前缀,
+/// 不会命中; 缓存可再生, 删除失败只影响磁盘占用, 静默忽略。
+pub fn remove_legacy_kimi_cache(cache_root: &Path) -> u64 {
+    let Ok(entries) = fs::read_dir(cache_root) else {
+        return 0;
+    };
+    let is_digest = |value: &str| value.len() == 64 && value.bytes().all(|b| b.is_ascii_hexdigit());
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        let Some(stem) = name.strip_suffix(".json") else {
+            continue;
+        };
+        let legacy = is_digest(stem) || stem.strip_prefix("manifest-").is_some_and(is_digest);
+        if legacy
+            && entry.file_type().is_ok_and(|kind| kind.is_file())
+            && fs::remove_file(entry.path()).is_ok()
+        {
+            removed += 1;
+        }
     }
-    let mut visit_ctx = VisitContext {
-        config,
-        cancellation,
-        seen: &mut seen,
-        stats: &mut stats,
-        cache_sender: &cache_sender,
-        sink: &mut sink,
-        visited_dirs,
-    };
-    let scan_result = if root.is_dir() {
-        visit_tree_cached(root, 0, &mut visit_ctx)
-    } else {
-        Ok(())
-    };
-    drop(cache_sender);
-    let cache_write_errors = cache_writers
-        .into_iter()
-        .map(|writer| {
-            writer
-                .join()
-                .map_err(|_| io::Error::other("cache writer thread panicked"))
-        })
-        .collect::<Result<Vec<_>, _>>()?
-        .into_iter()
-        .sum::<u64>();
-    stats.io_errors = stats.io_errors.saturating_add(cache_write_errors);
-    scan_result?;
-    cancellation.check()?;
-    reconcile_deleted_cache(root, config, cancellation, &seen, &mut stats, &mut sink)?;
-    cancellation.check()?;
-    Ok(stats)
+    removed
 }
 
 /// 目录递归深度上限: 全部会话目录遍历 (本文件的缓存 walker、sources.rs 的
 /// 未缓存 walker 与 codex 收集、jsonl_cache 的树遍历) 共用同一常量与
 /// 「深度上限 + canonical 已访问集合」双重护栏 (C045)。
 pub(crate) const MAX_DIRECTORY_SCAN_DEPTH: usize = 16;
-
-struct VisitContext<'a, F> {
-    config: &'a CacheConfig,
-    cancellation: &'a CancellationToken,
-    seen: &'a mut BTreeSet<String>,
-    stats: &'a mut ScanStats,
-    cache_sender: &'a SyncSender<CacheWriteJob>,
-    sink: &'a mut F,
-    visited_dirs: BTreeSet<PathBuf>,
-}
-
-fn visit_tree_cached<F>(
-    root: &Path,
-    depth: usize,
-    ctx: &mut VisitContext<'_, F>,
-) -> Result<(), CachedScanError>
-where
-    F: FnMut(SourceDeltaChange) -> io::Result<()>,
-{
-    ctx.cancellation.check()?;
-    if depth > MAX_DIRECTORY_SCAN_DEPTH {
-        return Ok(());
-    }
-    let entries = match fs::read_dir(root) {
-        Ok(entries) => entries,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
-        Err(error) if error.kind() == io::ErrorKind::PermissionDenied => {
-            ctx.stats.io_errors = ctx.stats.io_errors.saturating_add(1);
-            return Ok(());
-        }
-        Err(error) => return Err(error.into()),
-    };
-    for entry in entries {
-        ctx.cancellation.check()?;
-        let Ok(entry) = entry else {
-            ctx.stats.io_errors = ctx.stats.io_errors.saturating_add(1);
-            continue;
-        };
-        let path = entry.path();
-        let Ok(metadata) = entry.metadata() else {
-            ctx.stats.io_errors = ctx.stats.io_errors.saturating_add(1);
-            continue;
-        };
-        if metadata.is_dir() {
-            let canonical = fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
-            if ctx.visited_dirs.insert(canonical) {
-                visit_tree_cached(&path, depth + 1, ctx)?;
-            }
-            continue;
-        }
-        if !metadata.is_file() || path.extension().and_then(|value| value.to_str()) != Some("jsonl")
-        {
-            continue;
-        }
-        ctx.stats.files_visited = ctx.stats.files_visited.saturating_add(1);
-        let modified = metadata
-            .modified()
-            .ok()
-            .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
-            .map(|value| value.as_secs_f64());
-        if modified.is_some_and(|value| value < ctx.config.window.cutoff_ts) {
-            ctx.stats.files_skipped = ctx.stats.files_skipped.saturating_add(1);
-            continue;
-        }
-        ctx.stats.files_scanned = ctx.stats.files_scanned.saturating_add(1);
-        process_cached_file(
-            &path,
-            ctx.config,
-            ctx.cancellation,
-            ctx.seen,
-            ctx.stats,
-            ctx.cache_sender,
-            ctx.sink,
-        )?;
-    }
-    Ok(())
-}
-
-struct CacheWriteJob {
-    path: PathBuf,
-    entry: CacheEntry,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct FileSignature {
-    device: u64,
-    inode: u64,
-    size: u64,
-    modified_ns: u64,
-}
-
-impl FileSignature {
-    fn from_metadata(metadata: &fs::Metadata) -> Self {
-        let modified_ns = metadata
-            .modified()
-            .ok()
-            .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
-            .map(|value| value.as_nanos() as u64)
-            .unwrap_or(0);
-        #[cfg(unix)]
-        let (device, inode) = (metadata.dev(), metadata.ino());
-        #[cfg(not(unix))]
-        let (device, inode) = (0, 0);
-        Self {
-            device,
-            inode,
-            size: metadata.len(),
-            modified_ns,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct CacheWindow {
-    days: u32,
-    timezone: String,
-    today: String,
-    pricing_version: u32,
-}
-
-impl CacheWindow {
-    fn from_config(config: &CacheConfig) -> Self {
-        Self {
-            days: config.window.days,
-            timezone: config.window.timezone_name.clone(),
-            today: config.window.today.clone(),
-            pricing_version: config.pricing_version,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-struct CacheEntry {
-    schema_version: u32,
-    source_kind: String,
-    source_path_digest: String,
-    parser_version: u32,
-    aggregation_version: u32,
-    window: CacheWindow,
-    file: FileSignature,
-    safe_offset: u64,
-    head_length: u64,
-    prefix_tail_length: u64,
-    head_fingerprint: String,
-    prefix_tail_fingerprint: String,
-    delta: CompactContribution,
-}
 
 /// Compact cache-only representation. Cache entries are internal and
 /// rebuildable, so arrays are preferable to repeating JSON field names for
@@ -687,526 +359,6 @@ fn bucket_from_array(values: [u64; 5]) -> TokenBucket {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct CacheManifest {
-    schema_version: u32,
-    source_kind: String,
-    source_root_digest: String,
-    source_path_digests: BTreeSet<String>,
-}
-
-enum CacheLoad {
-    Missing,
-    Corrupt,
-    Entry(Box<CacheEntry>),
-}
-
-fn process_cached_file<F>(
-    path: &Path,
-    config: &CacheConfig,
-    cancellation: &CancellationToken,
-    seen: &mut BTreeSet<String>,
-    stats: &mut ScanStats,
-    cache_sender: &SyncSender<CacheWriteJob>,
-    sink: &mut F,
-) -> Result<(), CachedScanError>
-where
-    F: FnMut(SourceDeltaChange) -> io::Result<()>,
-{
-    cancellation.check()?;
-    let source_path_digest = digest_bytes(path.to_string_lossy().as_bytes());
-    seen.insert(source_path_digest.clone());
-    let cache_path = config.cache_root.join(format!("{source_path_digest}.json"));
-    let current_metadata = fs::metadata(path)?;
-    let current_file = FileSignature::from_metadata(&current_metadata);
-    let loaded = load_cache(&cache_path);
-    if matches!(&loaded, CacheLoad::Corrupt) {
-        stats.cache_corruptions = stats.cache_corruptions.saturating_add(1);
-    }
-    if let CacheLoad::Entry(entry) = loaded {
-        if cache_identity_matches(&entry, &source_path_digest, config) && entry.file == current_file
-        {
-            if let Some(delta) = entry.delta.to_domain(&config.window) {
-                stats.cache_hits = stats.cache_hits.saturating_add(1);
-                sink(SourceDeltaChange::replace(
-                    source_path_digest.clone(),
-                    None,
-                    Some(delta),
-                ))?;
-                return Ok(());
-            }
-            stats.cache_invalidations = stats.cache_invalidations.saturating_add(1);
-        }
-        if cache_identity_matches(&entry, &source_path_digest, config)
-            && append_is_safe(path, &entry, &current_file)?
-        {
-            if let Some(previous_delta) = entry.delta.to_domain(&config.window) {
-                if let Some(mut delta_builder) = UsageContributionBuilder::from_contribution(
-                    config.window.clone(),
-                    &previous_delta,
-                ) {
-                    let append_stats = scan_path_from_offset_with_cancellation(
-                        path,
-                        entry.safe_offset,
-                        cancellation,
-                        |record| record_into(&mut delta_builder, record),
-                    )?;
-                    cancellation.check()?;
-                    let delta = delta_builder.contribution();
-                    let current_metadata = fs::metadata(path)?;
-                    let new_entry =
-                        make_cache_entry(path, &current_metadata, config, delta.clone())?;
-                    cancellation.check()?;
-                    if cache_sender
-                        .send(CacheWriteJob {
-                            path: cache_path.clone(),
-                            entry: new_entry,
-                        })
-                        .is_err()
-                    {
-                        stats.io_errors = stats.io_errors.saturating_add(1);
-                    }
-                    sink(SourceDeltaChange::replace(
-                        source_path_digest.clone(),
-                        Some(previous_delta),
-                        Some(delta),
-                    ))?;
-                    stats.cache_appends = stats.cache_appends.saturating_add(1);
-                    stats.lines_seen = stats.lines_seen.saturating_add(append_stats.lines_seen);
-                    stats.json_lines_parsed = stats
-                        .json_lines_parsed
-                        .saturating_add(append_stats.json_lines_parsed);
-                    stats.usage_records = stats
-                        .usage_records
-                        .saturating_add(append_stats.usage_records);
-                    stats.malformed_lines = stats
-                        .malformed_lines
-                        .saturating_add(append_stats.malformed_lines);
-                    stats.ignored_lines = stats
-                        .ignored_lines
-                        .saturating_add(append_stats.ignored_lines);
-                    stats.truncated_lines = stats
-                        .truncated_lines
-                        .saturating_add(append_stats.truncated_lines);
-                    stats.bytes_read = stats.bytes_read.saturating_add(append_stats.bytes_read);
-                    return Ok(());
-                }
-            }
-        }
-        stats.cache_invalidations = stats.cache_invalidations.saturating_add(1);
-    }
-
-    let mut rebuilt = UsageContributionBuilder::new(config.window.clone());
-    let scan_stats = scan_path_with_cancellation(path, cancellation, |record| {
-        record_into(&mut rebuilt, record)
-    })?;
-    cancellation.check()?;
-    let delta = rebuilt.contribution();
-    let current_metadata = fs::metadata(path)?;
-    let entry = make_cache_entry(path, &current_metadata, config, delta.clone())?;
-    cancellation.check()?;
-    if cache_sender
-        .send(CacheWriteJob {
-            path: cache_path,
-            entry,
-        })
-        .is_err()
-    {
-        stats.io_errors = stats.io_errors.saturating_add(1);
-    }
-    sink(SourceDeltaChange::replace(
-        source_path_digest,
-        None,
-        Some(delta),
-    ))?;
-    stats.cache_rebuilds = stats.cache_rebuilds.saturating_add(1);
-    stats.lines_seen = stats.lines_seen.saturating_add(scan_stats.lines_seen);
-    stats.json_lines_parsed = stats
-        .json_lines_parsed
-        .saturating_add(scan_stats.json_lines_parsed);
-    stats.usage_records = stats.usage_records.saturating_add(scan_stats.usage_records);
-    stats.malformed_lines = stats
-        .malformed_lines
-        .saturating_add(scan_stats.malformed_lines);
-    stats.ignored_lines = stats.ignored_lines.saturating_add(scan_stats.ignored_lines);
-    stats.truncated_lines = stats
-        .truncated_lines
-        .saturating_add(scan_stats.truncated_lines);
-    stats.bytes_read = stats.bytes_read.saturating_add(scan_stats.bytes_read);
-    Ok(())
-}
-
-fn reconcile_deleted_cache<F>(
-    root: &Path,
-    config: &CacheConfig,
-    cancellation: &CancellationToken,
-    seen: &BTreeSet<String>,
-    stats: &mut ScanStats,
-    sink: &mut F,
-) -> Result<(), CachedScanError>
-where
-    F: FnMut(SourceDeltaChange) -> io::Result<()>,
-{
-    cancellation.check()?;
-    let source_root_digest = digest_bytes(root.to_string_lossy().as_bytes());
-    let manifest_path = config
-        .cache_root
-        .join(format!("manifest-{source_root_digest}.json"));
-    let previous = match fs::read(&manifest_path) {
-        Ok(data) => match serde_json::from_slice::<CacheManifest>(&data) {
-            Ok(manifest)
-                if manifest.schema_version == CACHE_SCHEMA_VERSION
-                    && manifest.source_kind == KIMI_USAGE_RECORD_TYPE
-                    && manifest.source_root_digest == source_root_digest =>
-            {
-                Some(manifest)
-            }
-            Ok(_) | Err(_) => {
-                stats.cache_corruptions = stats.cache_corruptions.saturating_add(1);
-                None
-            }
-        },
-        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
-        Err(_) => {
-            stats.cache_corruptions = stats.cache_corruptions.saturating_add(1);
-            None
-        }
-    };
-    if let Some(previous) = previous {
-        for digest in previous.source_path_digests.difference(seen) {
-            cancellation.check()?;
-            if !is_digest(digest) {
-                continue;
-            }
-            let cache_path = config.cache_root.join(format!("{digest}.json"));
-            let removed = match load_cache(&cache_path) {
-                CacheLoad::Entry(entry) if cache_identity_matches(&entry, digest, config) => {
-                    entry.delta.to_domain(&config.window)
-                }
-                CacheLoad::Missing | CacheLoad::Corrupt | CacheLoad::Entry(_) => None,
-            };
-            match fs::remove_file(cache_path) {
-                Ok(()) => {
-                    stats.cache_deletions = stats.cache_deletions.saturating_add(1);
-                    sink(SourceDeltaChange::replace(digest.clone(), removed, None))?;
-                }
-                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-                Err(_) => stats.io_errors = stats.io_errors.saturating_add(1),
-            }
-        }
-    }
-    let manifest = CacheManifest {
-        schema_version: CACHE_SCHEMA_VERSION,
-        source_kind: KIMI_USAGE_RECORD_TYPE.to_owned(),
-        source_root_digest,
-        source_path_digests: seen.clone(),
-    };
-    cancellation.check()?;
-    if write_manifest(&manifest_path, &manifest).is_err() {
-        stats.io_errors = stats.io_errors.saturating_add(1);
-    }
-    cancellation.check()?;
-    Ok(())
-}
-
-fn is_digest(value: &str) -> bool {
-    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
-}
-
-fn record_into(builder: &mut UsageContributionBuilder, record: LocalUsageRecord) {
-    let model = record.model.as_deref();
-    builder.record(UsageSample {
-        timestamp_millis: record.timestamp_millis,
-        model,
-        input: record.input,
-        output: record.output,
-        cache_read: record.cache_read,
-        cache_creation: record.cache_creation,
-        cache_creation_1h: 0,
-        project: None,
-    });
-}
-
-fn cache_identity_matches(
-    entry: &CacheEntry,
-    source_path_digest: &str,
-    config: &CacheConfig,
-) -> bool {
-    entry.schema_version == CACHE_SCHEMA_VERSION
-        && entry.source_kind == KIMI_USAGE_RECORD_TYPE
-        && entry.source_path_digest == source_path_digest
-        && entry.parser_version == PARSER_VERSION
-        && entry.aggregation_version == AGGREGATION_VERSION
-        && entry.window == CacheWindow::from_config(config)
-}
-
-fn append_is_safe(
-    path: &Path,
-    entry: &CacheEntry,
-    current_file: &FileSignature,
-) -> io::Result<bool> {
-    if entry.safe_offset != entry.file.size
-        || current_file.size <= entry.file.size
-        || current_file.device != entry.file.device
-        || current_file.inode != entry.file.inode
-    {
-        return Ok(false);
-    }
-    let head = fingerprint_range(path, 0, entry.head_length)?;
-    let prefix_tail_start = entry.safe_offset.saturating_sub(entry.prefix_tail_length);
-    let prefix_tail = fingerprint_range(path, prefix_tail_start, entry.prefix_tail_length)?;
-    Ok(head == entry.head_fingerprint && prefix_tail == entry.prefix_tail_fingerprint)
-}
-
-fn make_cache_entry(
-    path: &Path,
-    metadata: &fs::Metadata,
-    config: &CacheConfig,
-    delta: UsageContribution,
-) -> io::Result<CacheEntry> {
-    let file = FileSignature::from_metadata(metadata);
-    let head_length = file.size.min(FINGERPRINT_SEGMENT_BYTES);
-    let prefix_tail_length = file.size.min(FINGERPRINT_SEGMENT_BYTES);
-    let safe_offset = if ends_with_newline(path, file.size)? {
-        file.size
-    } else {
-        0
-    };
-    Ok(CacheEntry {
-        schema_version: CACHE_SCHEMA_VERSION,
-        source_kind: KIMI_USAGE_RECORD_TYPE.to_owned(),
-        source_path_digest: digest_bytes(path.to_string_lossy().as_bytes()),
-        parser_version: PARSER_VERSION,
-        aggregation_version: AGGREGATION_VERSION,
-        window: CacheWindow::from_config(config),
-        file,
-        safe_offset,
-        head_length,
-        prefix_tail_length,
-        head_fingerprint: fingerprint_range(path, 0, head_length)?,
-        prefix_tail_fingerprint: fingerprint_range(
-            path,
-            safe_offset.saturating_sub(prefix_tail_length),
-            prefix_tail_length,
-        )?,
-        delta: CompactContribution::from_domain(&delta, &config.window).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                "contribution day is outside cache window",
-            )
-        })?,
-    })
-}
-
-fn load_cache(path: &Path) -> CacheLoad {
-    let data = match fs::read(path) {
-        Ok(data) => data,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return CacheLoad::Missing,
-        Err(_) => return CacheLoad::Corrupt,
-    };
-    match serde_json::from_slice(&data) {
-        Ok(entry) => CacheLoad::Entry(Box::new(entry)),
-        Err(_) => CacheLoad::Corrupt,
-    }
-}
-
-fn write_cache(path: &Path, entry: &CacheEntry) -> io::Result<()> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "cache path has no parent"))?;
-    fs::create_dir_all(parent)?;
-    let temporary = parent.join(format!(
-        ".{}.tmp-{}-{}",
-        path.file_name()
-            .and_then(|value| value.to_str())
-            .unwrap_or("entry"),
-        std::process::id(),
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    let result = (|| {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temporary)?;
-        #[cfg(unix)]
-        file.set_permissions(fs::Permissions::from_mode(0o600))?;
-        // C110: 先序列化到内存再一次写入 —— 直接 to_writer 到未缓冲的 File 会把每个
-        // JSON 记号变成一次 write 系统调用 (Claude 冷扫约 0.6 s 内核态)。
-        let mut bytes = serde_json::to_vec(entry)
-            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-        bytes.push(b'\n');
-        file.write_all(&bytes)?;
-        // Cache entries are derived and rebuildable. The create-new temp file
-        // followed by rename gives readers an atomic whole-entry view; doing a
-        // durability fsync for every source file made cold refresh scale with
-        // the number of files and dominated the Rust performance gate.
-        drop(file);
-        fs::rename(&temporary, path)
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(&temporary);
-    }
-    result
-}
-
-fn write_manifest(path: &Path, manifest: &CacheManifest) -> io::Result<()> {
-    let parent = path.parent().ok_or_else(|| {
-        io::Error::new(io::ErrorKind::InvalidInput, "manifest path has no parent")
-    })?;
-    fs::create_dir_all(parent)?;
-    let temporary = parent.join(format!(
-        ".{}.tmp-{}-{}",
-        path.file_name()
-            .and_then(|value| value.to_str())
-            .unwrap_or("manifest"),
-        std::process::id(),
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    let result = (|| {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temporary)?;
-        #[cfg(unix)]
-        file.set_permissions(fs::Permissions::from_mode(0o600))?;
-        let mut bytes = serde_json::to_vec(manifest)
-            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-        bytes.push(b'\n');
-        file.write_all(&bytes)?;
-        // The manifest is derived from per-file entries and can be rebuilt
-        // after a crash. Atomic rename is sufficient here; a durability sync
-        // on every refresh adds avoidable metadata latency.
-        drop(file);
-        fs::rename(&temporary, path)
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(&temporary);
-    }
-    result
-}
-
-fn fingerprint_range(path: &Path, start: u64, length: u64) -> io::Result<String> {
-    let mut file = File::open(path)?;
-    file.seek(SeekFrom::Start(start))?;
-    let mut hasher = Sha256::new();
-    let mut remaining = length;
-    let mut buffer = [0u8; 8192];
-    while remaining > 0 {
-        let requested = remaining.min(buffer.len() as u64) as usize;
-        let read = file.read(&mut buffer[..requested])?;
-        if read == 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::UnexpectedEof,
-                "fingerprint range exceeds file size",
-            ));
-        }
-        hasher.update(&buffer[..read]);
-        remaining -= read as u64;
-    }
-    Ok(format!("{:x}", hasher.finalize()))
-}
-
-fn digest_bytes(value: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(value))
-}
-
-fn ends_with_newline(path: &Path, size: u64) -> io::Result<bool> {
-    if size == 0 {
-        return Ok(true);
-    }
-    let mut file = File::open(path)?;
-    file.seek(SeekFrom::Start(size - 1))?;
-    let mut byte = [0u8; 1];
-    file.read_exact(&mut byte)?;
-    Ok(byte[0] == b'\n')
-}
-
-/// Parse Kimi `usage.record` lines and invoke the callback as each record is
-/// decoded. Unknown JSON fields are intentionally ignored for forward
-/// compatibility; malformed or over-sized records are counted and skipped.
-pub fn scan_reader<R, F>(mut reader: R, mut callback: F) -> io::Result<ScanStats>
-where
-    R: BufRead,
-    F: FnMut(LocalUsageRecord),
-{
-    scan_reader_with_cancellation(&mut reader, &CancellationToken::new(), &mut callback).map_err(
-        |error| match error {
-            CachedScanError::Io(error) => error,
-            CachedScanError::Runtime(error) => io::Error::new(
-                io::ErrorKind::Interrupted,
-                format!("cache reader stopped: {error:?}"),
-            ),
-        },
-    )
-}
-
-fn scan_reader_with_cancellation<R, F>(
-    reader: &mut R,
-    cancellation: &CancellationToken,
-    callback: &mut F,
-) -> Result<ScanStats, CachedScanError>
-where
-    R: BufRead,
-    F: FnMut(LocalUsageRecord),
-{
-    let mut stats = ScanStats::default();
-    let mut line_buffer = Vec::new();
-    loop {
-        cancellation.check()?;
-        let Some(line) = read_bounded_line(reader, MAX_JSONL_RECORD_BYTES, &mut line_buffer)?
-        else {
-            break;
-        };
-        stats.lines_seen += 1;
-        stats.bytes_read = stats.bytes_read.saturating_add(line.bytes as u64);
-        if line.truncated {
-            stats.truncated_lines += 1;
-            continue;
-        }
-        let trimmed = trim_line_end(&line_buffer);
-        if trimmed.is_empty() {
-            continue;
-        }
-        let record: RawRecord = match serde_json::from_slice(trimmed) {
-            Ok(value) => value,
-            Err(_) => {
-                stats.malformed_lines += 1;
-                continue;
-            }
-        };
-        stats.json_lines_parsed += 1;
-        if record.record_type.as_deref() != Some(KIMI_USAGE_RECORD_TYPE) {
-            stats.ignored_lines += 1;
-            continue;
-        }
-        let Some(timestamp) = record.time.filter(|value| value.is_finite()) else {
-            stats.malformed_lines += 1;
-            continue;
-        };
-        if timestamp < i64::MIN as f64 || timestamp > i64::MAX as f64 {
-            stats.malformed_lines += 1;
-            continue;
-        }
-        let usage = record.usage.unwrap_or_default();
-        callback(LocalUsageRecord {
-            timestamp_millis: timestamp as i64,
-            model: record.model,
-            input: usage.input_other.unwrap_or(0),
-            output: usage.output.unwrap_or(0),
-            cache_read: usage.input_cache_read.unwrap_or(0),
-            cache_creation: usage.input_cache_creation.unwrap_or(0),
-        });
-        stats.usage_records += 1;
-    }
-    Ok(stats)
-}
-
 /// 会话文件读缓冲 (C110): 64 KiB 降低大文件的 read 系统调用次数 (默认 8 KiB)。
 pub(crate) const READ_BUFFER_BYTES: usize = 64 * 1024;
 
@@ -1274,16 +426,11 @@ fn trim_line_end(value: &[u8]) -> &[u8] {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        default_cache_root, scan_reader, scan_tree_cached_with_sink,
-        scan_tree_cached_with_sink_with_cancellation, CacheConfig, CachedScanError,
-        LocalUsageRecord, MAX_JSONL_RECORD_BYTES,
-    };
-    use collector_domain::{CollectionWindow, UsageContribution, UsageContributionBuilder};
-    use collector_runtime::{CancellationToken, RuntimeError};
+    use super::{read_bounded_line, MAX_JSONL_RECORD_BYTES};
+    use collector_domain::{CollectionWindow, UsageContributionBuilder};
     use serde_json::json;
-    use std::fs::{self, OpenOptions};
-    use std::io::{Cursor, Write};
+    use std::fs;
+    use std::io::Cursor;
 
     #[cfg(not(windows))]
     #[test]
@@ -1323,118 +470,58 @@ mod tests {
         );
     }
 
-    fn scan_cached(
-        root: &std::path::Path,
-        config: &CacheConfig,
-    ) -> std::io::Result<(super::ScanStats, UsageContribution)> {
-        let mut builder = UsageContributionBuilder::new(config.window.clone());
-        let stats = scan_tree_cached_with_sink(root, config, |change| {
-            if let Some(added) = change.added.as_ref() {
-                if !builder.merge_contribution(added) {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        "source contribution has invalid hour buckets",
-                    ));
-                }
-            }
-            Ok(())
-        })?;
-        Ok((stats, builder.contribution()))
-    }
-
-    fn today_total(contribution: &UsageContribution, window: &CollectionWindow) -> u64 {
-        contribution
-            .by_day
-            .get(&window.today)
-            .map(|bucket| bucket.total)
-            .unwrap_or(0)
-    }
-
-    #[test]
-    fn streams_valid_records_and_ignores_unknown_fields() {
-        let input = br#"
-{"type":"usage.record","time":1785211200000,"model":"gpt-5","usage":{"inputOther":10,"output":4,"inputCacheRead":2,"inputCacheCreation":1},"futureField":{"secret":"not-retained"}}
-{"type":"other","time":1785211200000}
-{"type":"usage.record","time":1785211201000,"usage":{}}
-"#;
-        let mut records = Vec::<LocalUsageRecord>::new();
-        let stats = scan_reader(Cursor::new(input), |record| records.push(record)).unwrap();
-        assert_eq!(stats.usage_records, 2);
-        assert_eq!(stats.ignored_lines, 1);
-        assert_eq!(records[0].input, 10);
-        assert_eq!(records[0].cache_creation, 1);
-        assert_eq!(records[1].model, None);
-    }
-
-    #[test]
-    fn malformed_and_empty_lines_do_not_abort_the_stream() {
-        let input = b"\nnot-json\n{\"type\":\"usage.record\",\"time\":null}\n";
-        let mut count = 0;
-        let stats = scan_reader(Cursor::new(input), |_| count += 1).unwrap();
-        assert_eq!(count, 0);
-        assert_eq!(stats.malformed_lines, 2);
-    }
-
     #[test]
     fn oversized_line_is_consumed_without_allocating_the_full_record() {
         let mut input = Vec::from(
             br#"{"type":"usage.record","time":1785211200000,"usage":{"inputOther":1},"padding":"#,
         );
         input.extend(std::iter::repeat_n(b'x', MAX_JSONL_RECORD_BYTES + 16));
-        input.extend_from_slice(b"\"}\n");
-        let stats =
-            scan_reader(Cursor::new(input), |_| panic!("truncated record emitted")).unwrap();
-        assert_eq!(stats.lines_seen, 1);
-        assert_eq!(stats.truncated_lines, 1);
-        assert_eq!(stats.usage_records, 0);
+        input.extend_from_slice(b"\"}\nnext\n");
+        let mut reader = Cursor::new(input);
+        let mut buffer = Vec::new();
+        let line = read_bounded_line(&mut reader, MAX_JSONL_RECORD_BYTES, &mut buffer)
+            .unwrap()
+            .unwrap();
+        assert!(line.truncated);
+        assert_eq!(
+            buffer.len(),
+            MAX_JSONL_RECORD_BYTES,
+            "超长行只保留上限内字节"
+        );
+        let next = read_bounded_line(&mut reader, MAX_JSONL_RECORD_BYTES, &mut buffer)
+            .unwrap()
+            .unwrap();
+        assert!(!next.truncated);
+        assert_eq!(super::trim_line_end(&buffer), b"next", "复用缓冲读取下一行");
     }
 
+    /// C116: 只清理旧版 Kimi 引擎遗留文件, 其余引擎的缓存与非缓存文件不动。
     #[test]
-    fn cancellation_before_manifest_publication_leaves_manifest_absent() {
-        let root = std::env::temp_dir().join(format!(
-            "bruce-cache-cancellation-test-{}",
-            std::process::id()
-        ));
+    fn legacy_kimi_cache_cleanup_only_touches_legacy_names() {
+        let root = std::env::temp_dir().join(format!("bruce-legacy-kimi-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
-        let sessions = root.join("sessions");
-        fs::create_dir_all(&sessions).unwrap();
-        fs::write(
-            sessions.join("fixture.jsonl"),
-            "{\"type\":\"usage.record\",\"time\":1785211200000,\"usage\":{\"inputOther\":1}}\n",
-        )
-        .unwrap();
-        let context = serde_json::from_value(json!({
-            "now": "2026-07-28T12:00:00+08:00",
-            "timezone": "Asia/Shanghai",
-            "days": 14
-        }))
-        .unwrap();
-        let config = CacheConfig {
-            cache_root: default_cache_root(&root),
-            window: CollectionWindow::from_context(&context).unwrap(),
-            pricing_version: 1,
-        };
-        let cancellation = CancellationToken::new();
-
-        let result =
-            scan_tree_cached_with_sink_with_cancellation(&sessions, &config, &cancellation, |_| {
-                cancellation.cancel();
-                Ok(())
-            });
-
-        assert!(matches!(
-            result,
-            Err(CachedScanError::Runtime(RuntimeError::Cancelled))
-        ));
-        let manifest = config.cache_root.join(format!(
-            "manifest-{}.json",
-            super::digest_bytes(sessions.to_string_lossy().as_bytes())
-        ));
-        assert!(
-            !manifest.exists(),
-            "cancelled reconciliation must not replace the source manifest"
-        );
-        let _ = fs::remove_dir_all(root);
+        fs::create_dir_all(&root).unwrap();
+        let digest = "a".repeat(64);
+        let keep = [
+            format!("jsonl-{digest}.json"),
+            format!("manifest-jsonl-{digest}.json"),
+            format!("sqlite-{digest}.json"),
+            "codex-tree-v1.json".to_owned(),
+            format!("{}.json", "a".repeat(63)),
+            format!("{digest}.json.tmp"),
+        ];
+        let remove = [format!("{digest}.json"), format!("manifest-{digest}.json")];
+        for name in keep.iter().chain(remove.iter()) {
+            fs::write(root.join(name), "{}").unwrap();
+        }
+        assert_eq!(super::remove_legacy_kimi_cache(&root), 2);
+        for name in &keep {
+            assert!(root.join(name).exists(), "误删 {name}");
+        }
+        for name in &remove {
+            assert!(!root.join(name).exists(), "未清理 {name}");
+        }
+        fs::remove_dir_all(&root).ok();
     }
 
     /// C070: 压缩缓存表示必须无损保留 日期×模型 与 今日 小时×模型 明细桶;
@@ -1483,97 +570,5 @@ mod tests {
             3,
             "明细结构变化须升级缓存聚合版本"
         );
-    }
-
-    #[test]
-    fn cache_reuses_unchanged_files_and_reads_only_appends() {
-        let root =
-            std::env::temp_dir().join(format!("bruce-collector-cache-test-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
-        let sessions = root.join("home/.kimi-code/sessions");
-        fs::create_dir_all(&sessions).unwrap();
-        let path = sessions.join("fixture.jsonl");
-        let first = json!({
-            "type": "usage.record",
-            "time": 1785211200000i64,
-            "model": "gpt-5",
-            "usage": {"inputOther": 10, "output": 2}
-        });
-        fs::write(&path, format!("{}\n", first)).unwrap();
-        let context = serde_json::from_value(json!({
-            "now": "2026-07-28T12:00:00+08:00",
-            "timezone": "Asia/Shanghai",
-            "days": 14
-        }))
-        .unwrap();
-        let window = CollectionWindow::from_context(&context).unwrap();
-        let config = CacheConfig {
-            // 平台默认缓存根在 Windows 下会落到真实 %LOCALAPPDATA%，测试一律
-            // 使用隔离临时目录，保证用例在所有平台 hermetic。
-            cache_root: root.join("cache"),
-            window: window.clone(),
-            pricing_version: 1,
-        };
-
-        let (cold_stats, cold_contribution) = scan_cached(&sessions, &config).unwrap();
-        assert_eq!(cold_stats.cache_rebuilds, 1);
-        assert_eq!(today_total(&cold_contribution, &window), 12);
-
-        let (warm_stats, warm_contribution) = scan_cached(&sessions, &config).unwrap();
-        assert_eq!(warm_stats.cache_hits, 1);
-        assert_eq!(warm_stats.lines_seen, 0);
-        assert_eq!(today_total(&warm_contribution, &window), 12);
-
-        let second = json!({
-            "type": "usage.record",
-            "time": 1785211201000i64,
-            "model": "gpt-5",
-            "usage": {"inputOther": 3, "output": 1}
-        });
-        let mut append = OpenOptions::new().append(true).open(&path).unwrap();
-        writeln!(append, "{}", second).unwrap();
-        // Windows 目录元数据在写句柄未关闭前可能报告陈旧文件大小, 导致增量追加
-        // 检测不到; 先关闭句柄再扫描, 与真实采集窗口间隔的观感一致。
-        drop(append);
-        let (appended_stats, appended_contribution) = scan_cached(&sessions, &config).unwrap();
-        assert_eq!(appended_stats.cache_appends, 1);
-        assert_eq!(appended_stats.lines_seen, 1);
-        assert_eq!(today_total(&appended_contribution, &window), 16);
-
-        let replacement = json!({
-            "type": "usage.record",
-            "time": 1785211200000i64,
-            "model": "gpt-5",
-            "usage": {"inputOther": 1, "output": 1}
-        });
-        fs::write(&path, format!("{}\n", replacement)).unwrap();
-        let (rebuilt_stats, rebuilt_contribution) = scan_cached(&sessions, &config).unwrap();
-        assert_eq!(rebuilt_stats.cache_rebuilds, 1);
-        assert_eq!(today_total(&rebuilt_contribution, &window), 2);
-
-        let cache_file = fs::read_dir(&config.cache_root)
-            .unwrap()
-            .filter_map(Result::ok)
-            .map(|entry| entry.path())
-            .find(|path| {
-                path.extension().and_then(|value| value.to_str()) == Some("json")
-                    && !path
-                        .file_name()
-                        .and_then(|value| value.to_str())
-                        .is_some_and(|value| value.starts_with("manifest-"))
-            })
-            .unwrap();
-        fs::write(&cache_file, b"not-json\n").unwrap();
-        let (corrupt_stats, _) = scan_cached(&sessions, &config).unwrap();
-        assert_eq!(corrupt_stats.cache_corruptions, 1);
-        assert_eq!(corrupt_stats.cache_rebuilds, 1);
-        let cache_text = fs::read_to_string(&cache_file).unwrap();
-        assert!(!cache_text.contains("inputOther"));
-        fs::remove_file(&path).unwrap();
-        let (deleted_stats, deleted_contribution) = scan_cached(&sessions, &config).unwrap();
-        assert_eq!(deleted_stats.cache_deletions, 1);
-        assert_eq!(today_total(&deleted_contribution, &config.window), 0);
-        assert!(!cache_file.exists());
-        let _ = fs::remove_dir_all(root);
     }
 }
