@@ -137,7 +137,8 @@
         "C051",
         "C055",
         "C072",
-        "C073"
+        "C073",
+        "C107"
       ]
     },
     "AgentAnalytics": {
@@ -1083,6 +1084,15 @@
       "topic": "SystemOverview",
       "version": "0.13.1",
       "file": "docs/devel/change/C106.json"
+    },
+    "C107": {
+      "title": "Claude 单价按 Anthropic 官方校正并按 TTL 计价缓存写入：Opus 5.5 费用高估约 70%",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C107-claude-pricing",
+      "topic": "TokenUsage",
+      "version": "0.13.1",
+      "file": "docs/devel/change/C107.json"
     }
   }
 }

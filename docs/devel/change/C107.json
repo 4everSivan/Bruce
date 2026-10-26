@@ -1,0 +1,116 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C107",
+  "title": "Claude 单价按 Anthropic 官方校正并按 TTL 计价缓存写入：Opus 5.5 费用高估约 70%",
+  "version": "0.13.1",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C107-claude-pricing",
+  "is_hotfix": false,
+
+  "target": {
+    "module": "core/collector collector-domain / collector-local",
+    "component": "PricingTable 价卡与 calculate_cost、Claude Code 用量解析",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+
+  "why": "2026-10-25 架构审查：价卡把 claude-opus-5-5 记为 $5/$25、缓存读取 $0.50（Opus 5 的价位），Anthropic 官方为 $4/$20、缓存读取 $0.20；真实快照中 Opus 5.5 累计报 $332.20，按官方价约 $176–195，缓存读取占报价的 73%。同时 calculate_cost 把缓存写入一律按 1.0× 输入单价计，而 Anthropic 对 5 分钟 / 1 小时 TTL 写入分别收 1.25× / 2×；实测本机 Claude Code 日志 4,377 条 assistant 用量的 16,518,423 个缓存写入 token 全部为 1 小时 TTL（usage.cache_creation.ephemeral_1h_input_tokens），采集端未读取该拆分。价卡也缺 Opus 5 / Sonnet 5.5 / Haiku 5.5 / Fable 等现行型号，claude-opus-5 会被 claude-opus-5-5 行反向前缀命中。",
+
+  "precheck": {
+    "description": "确认改动前 Opus 5.5 行为 $5/$25 且缓存写入按 1.0× 输入单价计",
+    "command": "git show b070387:core/collector/crates/collector-domain/src/pricing.rs | grep -A2 '\"claude-opus-5-5\"'; git show b070387:core/collector/crates/collector-domain/src/pricing.rs | grep -c 'cache_creation as f64) \\* pricing.input_price_per_million'",
+    "expected": "Opus 5.5 行为 5.00 / 25.00，且缓存写入按输入单价计的表达式命中 1 处（缺陷存在）",
+    "is_completed": false,
+    "evidence": "2026-10-26 预检实测：b070387 的 pricing.rs 中 \"claude-opus-5-5\" 行为 5.00 / 25.00，缓存写入按 `cache_creation as f64) * pricing.input_price_per_million` 计价的表达式命中 1 处 —— 缺陷成立，需编码修复。"
+  },
+
+  "callback": {
+    "before": [
+      "git checkout -b fix/C107-claude-pricing  # 叠加在 fix/C106-validday-formatter 之上"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all -- --check",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "cargo test --manifest-path apps/win/viewmodel/Cargo.toml",
+      "scripts/adflow-verify --card C107 --to verified --record"
+    ]
+  },
+
+  "changes": [
+    {
+      "scope": "价卡 Anthropic 行",
+      "before": "claude-opus-5-5 $5/$25/$0.50；仅 Opus 5.5 / Sonnet 5 / Haiku 4.5 与 3.x 旧型号",
+      "after": "按 Anthropic 官方单价校正：Opus 5.5 $4/$20/$0.20；新增 Fable 5.1 / Fable 5 / Mythos 5.1 / Mythos 5 / Opus 5 / Opus 4.8 / 4.7 / 4.6 / Sonnet 5.5 / Sonnet 4.6 / Haiku 5.5 行；全部 Anthropic 行声明缓存写入倍率 5 分钟 1.25× / 1 小时 2×",
+      "impact": "全部 Claude 模型的 costUsd / todayCostUsd / 工作台费用；设置页价格表中 Opus 5.5 行同步校正（mac BuiltinModelPricingCatalog 与 Windows model_catalog）"
+    },
+    {
+      "scope": "缓存写入计价（calculate_cost）",
+      "before": "cache_creation × 输入单价",
+      "after": "cache_creation 拆为 1 小时份额（TokenBucket.cache_creation_1h）与其余 5 分钟份额，分别乘价卡倍率（cache_write_1h_multiplier / cache_write_multiplier）× 输入单价；未声明倍率的模型保持 1.0×（结果与改动前一致）",
+      "impact": "Anthropic 模型费用；其他厂商不变"
+    },
+    {
+      "scope": "Claude Code 用量解析",
+      "before": "只读取 cache_creation_input_tokens",
+      "after": "额外读取 usage.cache_creation.ephemeral_1h_input_tokens，经观测值 / 去重 / 缓存追加全链路保留（CachedUsageObservation 新增可缺省字段，JSONL 缓存 parser_version 1 → 2 令旧条目全量重建一次）",
+      "impact": "artifact 各 token 桶在存在 1 小时写入时新增 cacheCreation1h 字段（为 0 时省略，旧消费方忽略未知字段）"
+    }
+  ],
+
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": true,
+    "rule_diff": {
+      "before": "规则 1 Anthropic 行仅 Sonnet 5 / Haiku 4.5 / 3.5 系；规则 2 计算式只含输入、输出、缓存读取，并称未知模型回退 $1/$3 中端基准",
+      "after": "规则 1 Anthropic 行按官方价更新并注明缓存写入倍率；规则 2 计算式补缓存写入项并按 TTL 拆分（5 分钟 1.25× / 1 小时 2×，未声明倍率按 1.0×），删除失真的中端基准回退条款（实现为未定价不估算）"
+    }
+  },
+
+  "verification": {
+    "result": null,
+    "run_id": "local-20261026-00",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "collector workspace 与 Windows viewmodel 测试全绿、fmt / clippy -D warnings 通过，含新增价卡校正、TTL 计价与 Claude 1 小时份额全路径保留用例",
+        "false_if": "任一测试失败或新增用例缺失",
+        "evidence": "2026-10-26: cargo test --manifest-path core/collector/Cargo.toml --workspace --no-fail-fast 退出码 0，163 passed / 0 failed（新增 claude_rows_match_anthropic_list_prices、cache_writes_are_priced_by_ttl、claude_keeps_one_hour_cache_write_share_across_cache_paths）；cargo fmt --check 与 cargo clippy --workspace --all-targets -D warnings 退出码 0；cargo test --manifest-path apps/win/viewmodel/Cargo.toml 58 passed / 0 failed。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "以本机真实 Claude Code 日志（临时缓存目录）跑修改后的 release collector，Opus 5.5 费用回落到官方价口径，今日桶 cacheCreation1h 与日志中 1 小时写入一致",
+        "false_if": "费用未变化或 1 小时份额丢失",
+        "evidence": "2026-10-26: 以本机 ~/.claude/projects 真实日志、临时 home（/tmp/bruce-c107，已清理）跑修改后的 release collector：status=success；claude-opus-5-5 月度桶合计 522,466,416 tokens，费用 $203.96（同期线上快照旧引擎报 $350.14）；今日桶 cacheCreation 928,851 = cacheCreation1h 928,851，与日志全部为 1 小时 TTL 写入一致。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "非 Anthropic 模型费用公式与改动前一致（用例锁定）；mac BruceOnboardingCore / PanelViewModel / PanelParity Harness 全绿",
+        "false_if": "其他厂商费用变化或 mac 侧 Harness 回归",
+        "evidence": "2026-10-26: cache_writes_are_priced_by_ttl 断言 gpt-5.4 等未声明倍率模型仍按 1.0× 输入单价计（与改动前公式一致）；SDKROOT=MacOSX26.5 下 swift build 通过，BruceOnboardingCoreHarness 168、PanelViewModelHarness 60、PanelParityHarness 双端对拍全部通过。",
+        "result": true
+      }
+    ]
+  },
+
+  "rejections": [],
+
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}
