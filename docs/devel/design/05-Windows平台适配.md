@@ -257,6 +257,7 @@ Windows Tauri 后端 (Rust)
 | C099 | 缺陷修复 | 全局热键唤出焦点保障、防抖状态机与物理键码录制 | 180ms 唤出焦点保护期、250ms 热键防抖、300ms 失焦竞态防重开；托盘多事件坐标缓存；托盘唤出贴托盘、热键唤出跟随光标所在屏；设置页录制器改基于 `event.code` 规范化（小键盘独立）并在录制期间真正注销已生效热键（见规则 30） |
 | C100 | 界面对齐 | 顶部状态牌改为四色状态灯 | 删除 `SYS.OK` 文字牌，改为绿/黄/红/中性灰四色灯 + 刷新中呼吸脉冲；聚合采集与订阅取最严重态、两端同口径；hover 显示态名与原因；品牌字统一为 `Bruce`（见规则 11 / design/03 FR-7） |
 | C101 | 界面对齐 | 看板滚动区隐藏滚动条 | 删除 `#scroll` 半透明 4px 细滚动条，与 mac 一样恒不显示；仅保留滚轮 / 触控板滚动（见规则 12） |
+| C115 | 缺陷修复 | 托盘配额环 / 预览卡读取真实面板字段 | T12 按不存在的字段（`subscriptions` / `totalCostText` / `agents` / `resetsIn` / `status`）取数，托盘恒显示剩余 100%、今日 $0.00；改由 `extract_quota_summary` 读取 `PanelViewModel` 真实字段并经 `panel.preview` 供预览卡同源渲染，golden 面板 fixture 双端对拍（见 §6.5） |
 | C109 | 缺陷修复 | 出站网络 command 移出主线程 | `codex_device_start` / `codex_device_poll` / `verify_subscription` 改为 async + `off_main_thread`，`ShellExecuteW` 派回主线程；源码级守卫用例锁定（见规则 31） |
 | 暂无增量变更 | - | 初始基线定稿 | Windows 适配初始设计（Tauri 2 / 首版全量 / Rust 视图模型+对拍） |
 
@@ -441,24 +442,24 @@ Windows Tauri 后端 (Rust)
 
 #### 6.5.1 托盘动态配额环与状态心跳渲染
 1. **动态像素图标合成**：
-   - 提取最新快照中最紧张 Provider 额度利用率百分比（`remaining_pct = 100 - max_used_pct`）及健康状态（翠绿充裕 / 琥珀预警 / 科技红紧缺 / 离线灰）；
+   - 提取最新快照中最紧张 Provider 额度利用率百分比（`remaining_pct = 100 - max_used_pct`）及健康状态（翠绿充裕 / 琥珀预警 / 科技红紧缺 / 离线灰）；**数据契约（C115）**：由 `tray_icon_renderer::extract_quota_summary` 统一从 `PanelViewModel` 的真实字段取数 —— `subscription.sections[]` 及其 `accounts[]` 的 `windows[].usedPercent` / `resetText`（跳过 `error` / `failed` 的服务与账号，与 mac 菜单栏配额环同口径）、`usage.costText` / `usage.totalTokensText`、`hourly.rows[].todayTotal > 0` 计活跃 Agent（与 HUD 同口径），状态色调与原因取 `dashboard_status_from_panel`（C100 同一判定表）；**无有效配额窗口时 `remaining_pct` 为空，托盘只画底轨，严禁以 100% 伪装**；
    - 在 Rust 后端生成 32×32 RGBA 像素缓冲区：绘制透明背景、底轨圆环、带状态色彩的动态进度弧（0°~360°）以及中心 2px 心跳状态点；
    - 调度刷新或快照更新时，调用 `tray.set_icon(Some(img))` 动态置换托盘图标；
 2. **动态系统 Tooltip**：
-   - 托盘鼠标悬停的原生系统提示文本格式化为：`Bruce · 配额剩余 {remaining_pct}% | 今日 ${total_cost} (点击展开看板)`。
+   - 托盘鼠标悬停的原生系统提示文本为 `Bruce · {状态原因} · 额度剩余 {remaining_pct}% · 今日 {costText}`，缺失项（无配额窗口 / 定价缺失）整段省略，不显示伪造的默认值（C115）。
 
 #### 6.5.2 420px 亚克力微缩预览卡 (Micro-Flyout)
 1. **窗口与几何规格**：
    - 独立轻量子窗口 `preview`，配置 `width: 420, height: 260`（自适应内部排版，固定宽度 420px，卡片级圆角 12px）；
    - 样式：无原生标题栏（`decorations: false`）、窗口半透明（`transparent: true`）、置顶（`alwaysOnTop: true`）、不进任务栏（`skipTaskbar: true`）；
    - 亚克力材质与色系：`backdrop-filter: blur(28px) saturate(180%)`，半透明深灰底色（`rgba(24, 28, 38, 0.88)`），1px 高光描边（`rgba(255, 255, 255, 0.12)`）与高质感阴影；
-2. **微缩卡内容架构**：
+2. **微缩卡内容架构**（C115：全部取自后端 `cached_panel` 附加的 `panel.preview`，即托盘同一份 `extract_quota_summary` 序列化结果；前端不按字段名自行推算，缺失值显示「—」；`tests/fixtures/viewmodel-parity/agent-usage-valid.preview.json` 由 Rust 与前端测试双端对拍）：
    - **Header 顶栏**：品牌标识 `Bruce` + 四色状态心跳点胶囊（“额度充裕”等）+ 右侧微型展开按钮 `展开看板 ↗`；
    - **配额环核心区**：42px 直径环形仪表（圆形倒计时/进度环），中心大字百分比，右侧附核心 Provider 名称与重置倒计时（如 `重置倒计时 1h 48m`）；
    - **今日用量极简行**：今日费用（如 `$1.42`）与今日 Token（如 `384.2k`）；
    - **活跃状态与快捷操作**：活跃 Agent 绿色指示点列表 + 立即刷新按钮；
 3. **交互与生命周期调度**：
-   - **悬停唤起**：监听 `TrayIconEvent::Enter`，防抖（150ms）后计算托盘图标所在屏幕边界与贴靠位置，平滑淡入呼出微缩卡；
+   - **悬停唤起**：监听 `TrayIconEvent::Enter` / `Move`，计算托盘图标所在屏幕边界与贴靠位置后呼出微缩卡；**预览卡已可见时直接返回**（C115：`Move` 随指针连续触发，不得逐次读取设置并重复定位 / 置顶）；
    - **互斥保证**：若主面板 `dashboard` 当前处于可见展开状态，托盘悬停**静默不弹出微缩卡**；
    - **平滑收起**：鼠标移出微缩卡区域且未返回托盘、或微缩卡窗口失焦（`Focused(false)`）、或按下 Escape 键时，微缩卡淡出隐藏；
    - **一键展开**：在微缩卡任意区域点击“展开看板 ↗”或点击系统托盘图标时，立即淡出隐藏微缩卡，并无缝展开主 `dashboard` 完整面板；

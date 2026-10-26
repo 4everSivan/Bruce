@@ -17,6 +17,7 @@
   - **设置中心开关联动**：设置中心「通用」面板新增「托盘实时预览」开关（状态居左、开关居右），支持自由开启/关闭悬停弹出，配置即时持久化。
 
 ### Fixed
+- **Windows 托盘配额环与悬停预览卡读取真实面板字段 (C115)**：T12 交付的托盘速览与 420px 预览卡按面板中不存在的字段（`subscriptions` / `totalCostText` / `agents` / `resetsIn` / `status`）取数，托盘恒显示「额度剩余 100% · 今日 $0.00」、预览卡恒为 100% / 0 活跃。改为读取真实字段（跳过失败服务，与 mac 菜单栏配额环同口径），无配额窗口时只画底轨并在提示中省略，预览卡改读后端 `panel.preview`（与托盘同一份数据、状态灯同 C100 判定表）；托盘指针移动不再逐次读取设置并重复定位窗口。
 - **软件更新旧版本信息残留治理 (C113)**：
   - **Windows 跳过版本追平自动清除**：修复用户跳过版本后升级至新版本时，因 `offered` 为 `None` 导致 `update_skipped_version` 在 `settings.json` 中永久残留的缺陷；`software_update.rs` 引入 `local_version` 比较，在应用启动首检与检查更新中判定本地版本追平或超过跳过版本时自动调用 `persist_update_fields` 清除跳过记录，严格对齐设计 07 §4.2 R4；
   - **macOS 启动即时比对清空**：`SoftwareUpdateService.start()` 启动时立即校验 `preferences.skippedVersion <= localVersion`，满足条件即刻清空 `UserDefaults`，无需等待 30 秒及联网请求，杜绝离线或关闭自动更新时的偏好滞留；

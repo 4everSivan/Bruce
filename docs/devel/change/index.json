@@ -95,7 +95,8 @@
         "C097",
         "C099",
         "C101",
-        "C109"
+        "C109",
+        "C115"
       ]
     },
     "SubscriptionQuota": {
@@ -1188,6 +1189,15 @@
       "topic": "SystemOverview",
       "version": "0.13.1",
       "file": "docs/devel/change/C114.json"
+    },
+    "C115": {
+      "title": "托盘配额环与悬停预览卡读取真实面板字段：修复恒显示剩余 100%、今日 $0.00",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C115-tray-preview-panel-keys",
+      "topic": "WindowsCompat",
+      "version": "0.13.1",
+      "file": "docs/devel/change/C115.json"
     }
   }
 }

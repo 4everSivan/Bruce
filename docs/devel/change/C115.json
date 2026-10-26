@@ -1,0 +1,123 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C115",
+  "title": "托盘配额环与悬停预览卡读取真实面板字段：修复恒显示剩余 100%、今日 $0.00",
+  "version": "0.13.1",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C115-tray-preview-panel-keys",
+  "is_hotfix": false,
+
+  "target": {
+    "module": "apps/win src-tauri / src",
+    "component": "tray_icon_renderer 速览提取、scheduler 托盘发布、preview.html 预览卡",
+    "design_doc": "docs/devel/design/05-Windows平台适配.md",
+    "design_topic": "WindowsCompat"
+  },
+
+  "why": "2026-10-26 复审 T12（托盘动态配额环 + 420px 悬停预览卡）：extract_quota_summary 与 preview.html 按 PanelViewModel 中并不存在的字段取数 —— panel.subscriptions（实为 subscription）、usage.totalCostText（实为 costText）、panel.agents / agents[].active（无此字段，HUD 以 hourly.rows[].todayTotal > 0 计活跃）、windows[].resetsIn（实为 resetText）、panel.status（无此字段）。全部取不到时回落默认值，托盘恒画满环并提示「额度剩余 100% | 今日 $0.00」，预览卡恒显示 100% / $0.00 / 0 活跃 / 运行正常。单测以手写的同名假字段构造面板，故未暴露。另：show_preview 挂在托盘 Move 事件上，指针在图标上移动时逐次读取 settings.json 并重复 set_size / set_position / show / set_always_on_top。",
+
+  "precheck": {
+    "description": "确认改动前托盘速览按不存在的面板字段取数",
+    "command": "git show e018e85:apps/win/src-tauri/src/tray_icon_renderer.rs | grep -c 'get(\"subscriptions\")\\|get(\"totalCostText\")\\|get(\"agents\")'; node -e 'const p=require(\"./tests/fixtures/viewmodel-parity/agent-usage-valid.panel.json\");console.log(Object.keys(p).join(\",\"), Object.keys(p.usage).includes(\"totalCostText\"))'",
+    "expected": "旧实现命中 3 处假字段；真实面板顶层仅 diagnostics,hourly,subscription,usage，且 usage 无 totalCostText（缺陷存在）",
+    "is_completed": false,
+    "evidence": "2026-10-26 预检实测：e018e85 的 tray_icon_renderer.rs 中 get(\"subscriptions\") / get(\"totalCostText\") / get(\"agents\") 命中 3 处；golden 面板顶层键为 diagnostics,hourly,subscription,usage，usage 不含 totalCostText —— 缺陷成立，需编码修复。"
+  },
+
+  "callback": {
+    "before": [
+      "git worktree add .claude/worktrees/review-fixes-2 -b fix/C115-tray-preview-panel-keys main"
+    ],
+    "after": [
+      "cargo fmt --manifest-path apps/win/src-tauri/Cargo.toml --all -- --check",
+      "cargo clippy --manifest-path apps/win/src-tauri/Cargo.toml --all-targets -- -D warnings",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "node --test apps/win/tests/*.test.mjs",
+      "node scripts/check-win-frontend.mjs",
+      "scripts/adflow-verify --card C115 --to verified --record"
+    ]
+  },
+
+  "changes": [
+    {
+      "scope": "托盘速览提取（extract_quota_summary）",
+      "before": "读取 subscriptions / totalCostText / agents[].active / resetsIn，取不到时回落为剩余 100%、Claude、5h、$0.00、0 活跃",
+      "after": "读取 subscription.sections[] 及 accounts[] 的 windows[].usedPercent / resetText（跳过 error / failed 服务与账号，与 mac 菜单栏配额环同口径）、usage.costText / totalTokensText、hourly.rows[].todayTotal > 0；缺失值为 None，无有效窗口时 remainingPct 为空、托盘只画底轨，提示文案省略缺失段",
+      "impact": "托盘图标与系统提示反映真实额度与费用"
+    },
+    {
+      "scope": "悬停预览卡数据源",
+      "before": "preview.html 内联脚本自行按假字段推算，并以 panel.status（不存在）判状态",
+      "after": "cached_panel 附加 panel.preview（与托盘同一份 QuotaSummary 序列化），预览卡只渲染该对象；状态色调与原因来自 C100 同一判定表；首屏示意数据（85% / Claude Pro / $0.00）改为「—」",
+      "impact": "预览卡与托盘、HUD 状态灯同源"
+    },
+    {
+      "scope": "托盘悬停事件",
+      "before": "TrayIconEvent::Enter / Move 每次都读取设置并重复定位、显示、置顶",
+      "after": "预览卡已可见时直接返回，仅首次唤起读取设置与定位",
+      "impact": "指针在托盘图标上移动不再产生连续磁盘读与窗口操作"
+    },
+    {
+      "scope": "测试契约",
+      "before": "单测以手写假字段面板断言，前端测试仅检查 preview.html 静态结构",
+      "after": "Rust 用例以 golden 面板（mac 产出 ≡ golden）断言速览并钉住序列化 fixture agent-usage-valid.preview.json；DOM 测试 harness 支持内联脚本，前端用例以同一 fixture 渲染预览卡并断言缺失值显示「—」",
+      "impact": "前后端字段漂移会在测试中失败"
+    }
+  ],
+
+  "design": {
+    "doc": "docs/devel/design/05-Windows平台适配.md",
+    "topic": "WindowsCompat",
+    "modified": true,
+    "rule_diff": {
+      "before": "§6.5 仅描述 remaining_pct = 100 - max_used_pct 与提示格式，未规定取数字段、缺失值与预览卡数据来源；悬停唤起写作 Enter 防抖 150ms",
+      "after": "§6.5.1 补数据契约（真实字段、跳过失败服务、无窗口不伪装 100%、提示缺失段省略）；§6.5.2 预览卡只读 panel.preview 并以 golden fixture 双端对拍；悬停唤起按实现改为 Enter / Move 且已可见时直接返回"
+    }
+  },
+
+  "verification": {
+    "result": null,
+    "run_id": "local-20261026-08",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "src-tauri fmt / clippy / cargo test 全绿（含 tray_icon_renderer 5 项新用例），Windows 前端测试与结构冒烟全绿",
+        "false_if": "任一失败",
+        "evidence": "2026-10-26: cargo fmt --check 通过；cargo clippy --manifest-path apps/win/src-tauri/Cargo.toml --all-targets -D warnings 退出码 0；cargo test --manifest-path apps/win/src-tauri/Cargo.toml 退出码 0，220 passed / 0 failed（tray_icon_renderer 5 项：dimensions、missing_quota_draws_track_without_progress_arc、summary_reads_the_real_panel_contract、summary_skips_failed_services_and_omits_missing_values、preview_fixture_matches_backend_serialization）；node --test apps/win/tests/*.test.mjs 89 + 2 + 6 全部 pass / 0 fail；node scripts/check-win-frontend.mjs 退出码 0。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "以 golden 面板计算的速览给出真实值（非 100% / $0.00）；前端新用例在改动前的 preview.html 上失败、改动后通过",
+        "false_if": "速览仍为默认值或新用例无法区分新旧实现",
+        "evidence": "2026-10-26: golden valid 面板的速览序列化为 remainingPct 30.0 / topProvider ChatGPT / topWindowLabel 每周 / resetText 78 天后 / costText ≈ ¥2.702 / tokensText 184K / activeAgents 2 / statusTone ok（改动前同一面板为 100% / Claude / $0.00 / 0）；golden empty 面板 remainingPct 为空、提示不含「额度剩余」。负向实测：以 git show main:apps/win/src/preview.html 替换后运行 C115 前端用例 1 fail（actual '100%' / expected '30%'），恢复后 1 pass。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "托盘状态色调仍来自 dashboard_status_from_panel（C100）；command_threading 守卫通过；其余 88 项前端用例不变",
+        "false_if": "状态灯与托盘分叉或其他前端行为回归",
+        "evidence": "2026-10-26: extract_quota_summary 的 statusTone / statusReason 仍取 runtime_core::dashboard_status_from_panel；cargo test --test command_threading 2 passed；DOM harness 仅新增执行内联脚本（index.html / settings.html 无内联脚本，统计 inline=0），其余前端用例全部通过。真机 WebView2 下托盘与预览卡渲染未实测。",
+        "result": true
+      }
+    ]
+  },
+
+  "rejections": [],
+
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}
