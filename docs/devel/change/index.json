@@ -12,7 +12,8 @@
         "C053",
         "C054",
         "C057",
-        "C074"
+        "C074",
+        "C106"
       ]
     },
     "MenuBarIndicator": {
@@ -1073,6 +1074,15 @@
       "topic": "MenuBarIndicator",
       "version": "0.13.0",
       "file": "docs/archive/0.13.0/change/C103.json"
+    },
+    "C106": {
+      "title": "artifact 逐日校验不再每次新建 DateFormatter：消除每轮刷新约 2 秒主线程 CPU",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C106-validday-formatter",
+      "topic": "SystemOverview",
+      "version": "0.13.1",
+      "file": "docs/devel/change/C106.json"
     }
   }
 }

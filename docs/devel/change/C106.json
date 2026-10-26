@@ -1,0 +1,108 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C106",
+  "title": "artifact 逐日校验不再每次新建 DateFormatter：消除每轮刷新约 2 秒主线程 CPU",
+  "version": "0.13.1",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C106-validday-formatter",
+  "is_hotfix": false,
+
+  "target": {
+    "module": "apps/macos BruceAppCore",
+    "component": "ArtifactValidator 逐日校验与热路径 ISO 8601 解析",
+    "design_doc": "docs/devel/design/00-系统总体设计.md",
+    "design_topic": "SystemOverview"
+  },
+
+  "why": "2026-10-25 架构审查实测：ArtifactValidator.validDay 对 artifact 每个 daily / dailyModels 日期新建并配置一次 DateFormatter（-O 构建基准 3000 次 795 ms，约 0.26 ms/次）。真实快照含 1,891 个日期，单次 validate 约 0.5 s；每轮刷新同一 artifact 在 @MainActor 上校验约 4 次（ArtifactStore.publish 3 次 + AppModel 解码 1 次），冷启动加载亦同，合计约 2 s 主线程 CPU，菜单栏常驻场景下表现为刷新时卡顿。额度节流、快照合并、调度回填等热路径同样每次调用新建 ISO8601DateFormatter。",
+
+  "precheck": {
+    "description": "确认改动前 validDay 每次调用都新建 DateFormatter",
+    "command": "git show b070387:apps/macos/Sources/BruceAppCore/ArtifactModels.swift | grep -A1 'private func validDay' | grep -c 'DateFormatter()'",
+    "expected": "1（缺陷存在）",
+    "is_completed": false,
+    "evidence": "2026-10-26 预检实测：git show b070387:apps/macos/Sources/BruceAppCore/ArtifactModels.swift | grep -A1 'private func validDay' | grep -c 'DateFormatter()' 输出 1 —— 改动前每次 validDay 调用都新建 DateFormatter，缺陷成立，需编码修复。"
+  },
+
+  "callback": {
+    "before": [
+      "git worktree add .claude/worktrees/review-fixes -b fix/C106-validday-formatter main  # 隔离工作区，避免触碰主工作区未提交的 C104 草稿"
+    ],
+    "after": [
+      "swift run --package-path apps/macos ArtifactStoreHarness .",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C106 --to verified --record"
+    ]
+  },
+
+  "changes": [
+    {
+      "scope": "ArtifactValidator 逐日校验",
+      "before": "validDay 每次调用新建 gregorian/UTC/en_US_POSIX、非宽松 DateFormatter，解析后回写比对",
+      "after": "改为纯字节的严格 yyyy-MM-dd 公历校验 CalendarDay.isValid（4 位年 ≥ 0001、01–12 月、按月与闰年的日上限），语义与旧实现一致，不分配格式器",
+      "impact": "artifact 发布、冷启动加载、AppModel 解码、诊断校验路径；接受/拒绝集合不变"
+    },
+    {
+      "scope": "热路径 ISO 8601 解析/格式化",
+      "before": "validateHeader、QuotaRefreshPolicy.parseISODate/timestamp、Scoped/Codex 快照合并、调度缓存回填、ArtifactStore 时间戳、诊断时间戳各自每次新建 ISO8601DateFormatter",
+      "after": "统一经 ISODate（共享、初始化后不再变更的格式器）解析与格式化，选项与旧调用逐一对应",
+      "impact": "额度节流判定与快照合并的时间解析，结果不变"
+    }
+  ],
+
+  "design": {
+    "doc": "docs/devel/design/00-系统总体设计.md",
+    "topic": "SystemOverview",
+    "modified": false,
+    "rule_diff": {
+      "before": "",
+      "after": ""
+    }
+  },
+
+  "verification": {
+    "result": null,
+    "run_id": "local-20261026-00",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "ArtifactStoreHarness 新增严格日期语义与满尺寸（10 agent × 182 天）校验耗时 < 250 ms 用例通过，verify-local 全量退出码 0",
+        "false_if": "任一 Harness 或 Rust 测试失败，或满尺寸校验仍需数百毫秒",
+        "evidence": "2026-10-26: zsh scripts/verify-local.sh 退出码 0（日志 local/logs/baseline-verify.log 末行 exit=0）：Rust fmt/test/clippy 全绿；BruceOnboardingCore 168、PanelViewModel 60、ArtifactStore 6（新增 validatesCalendarDaysStrictlyAndQuickly：严格日期语义 + 10 agent × 182 天满尺寸校验 < 250 ms 断言通过）、CollectorRunner 28、RefreshScheduler 104、NativeLifecycle 14、Diagnostics 8、LocalIntegration 2、SubscriptionCredentials 36、AppModelCache 3、SubscriptionRefreshControl 4、SubscriptionBrandGlyph 9、DashboardStatusTone 3、SoftwareUpdate 44 全部通过。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "对真实快照（agent-usage.json 副本）执行校验，逐日结果与旧实现一致且耗时降至毫秒级",
+        "false_if": "真实快照校验结果与旧实现不一致或耗时无明显下降",
+        "evidence": "2026-10-26: 以真实快照 ~/Library/Application Support/Bruce/snapshots/agent-usage.json 抽取的 1,891 个日期 + 8 个边界样本，用 swiftc -O 编译旧 validDay 与新 CalendarDay.isValid 对拍：mismatches=[]；单遍耗时 旧 508.8 ms → 新 0.082 ms（临时目录 /tmp/bruce-c106，已清理）。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "非法日期（2026-02-30、单位数月日、首尾空白、全角数字等）仍被拒绝；额度节流与快照合并相关 Harness 全绿",
+        "false_if": "任何旧实现拒绝的日期被接受，或 RefreshScheduler / PanelViewModel Harness 回归",
+        "evidence": "2026-10-26: 新增用例断言 2026-02-30、1900-02-29、2026-7-28、2026-07-8、2026-13-01、2026-00-10、2026-01-00、0000-01-01、首尾空白、斜杠分隔、全角数字等均被拒绝，2024-02-29 / 2000-02-29 / 0001-01-01 接受，与旧实现对拍一致；RefreshScheduler 104、PanelViewModel 60、CollectorRunner 28 Harness 全绿（额度节流 parseISODate 与快照合并时间解析改走共享 ISODate 后无回归）。",
+        "result": true
+      }
+    ]
+  },
+
+  "rejections": [],
+
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}
