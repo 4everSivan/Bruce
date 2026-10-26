@@ -140,7 +140,8 @@
         "C055",
         "C072",
         "C073",
-        "C107"
+        "C107",
+        "C110"
       ]
     },
     "AgentAnalytics": {
@@ -1113,6 +1114,15 @@
       "topic": "WindowsCompat",
       "version": "0.13.1",
       "file": "docs/devel/change/C109.json"
+    },
+    "C110": {
+      "title": "本机扫描提速：缓存一次性写盘、解析前字节预筛、次要源并行扫描（冷扫 2.15 s → 0.17 s）",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C110-scan-prefilter-parallel",
+      "topic": "TokenUsage",
+      "version": "0.13.1",
+      "file": "docs/devel/change/C110.json"
     }
   }
 }
