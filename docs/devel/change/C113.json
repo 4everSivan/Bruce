@@ -4,7 +4,7 @@
   "title": "修复软件更新旧版本信息残留：Windows跳过版本追平自动清除、macOS启动即时比对与更新残留兜底治理",
   "version": "0.13.1",
   "type": "BugFix",
-  "status": "verified",
+  "status": "closed",
   "branch": "fix/C113-software-update-cleanup",
   "is_hotfix": false,
   "target": {
@@ -93,14 +93,14 @@
   "sync": {
     "design_pinned": false,
     "changelog": true,
-    "commit": "",
+    "commit": "93dc031",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
     "ran_at": "2026-10-26",
-    "exit_code": 4,
+    "exit_code": 0,
     "from_status": "verified",
     "target_status": "closed"
   }

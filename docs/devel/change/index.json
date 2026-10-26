@@ -1173,7 +1173,7 @@
     "C113": {
       "title": "修复软件更新旧版本信息残留：Windows跳过版本追平自动清除、macOS启动即时比对与更新残留兜底治理",
       "type": "BugFix",
-      "status": "verified",
+      "status": "closed",
       "branch": "fix/C113-software-update-cleanup",
       "topic": "SoftwareUpdate",
       "version": "0.13.1",
