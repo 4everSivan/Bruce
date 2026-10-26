@@ -124,7 +124,8 @@
         "C063",
         "C064",
         "C065",
-        "C071"
+        "C071",
+        "C118"
       ]
     },
     "TokenUsage": {
@@ -1218,6 +1219,15 @@
       "topic": "TokenUsage",
       "version": "0.13.1",
       "file": "docs/devel/change/C117.json"
+    },
+    "C118": {
+      "title": "订阅服务显式下发 provider 与 failureKind：两端不再按 id 前缀推断归属、不再嗅探 note 文案判定 429",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C118-service-provider-failure-kind",
+      "topic": "SubscriptionQuota",
+      "version": "0.13.1",
+      "file": "docs/devel/change/C118.json"
     }
   }
 }

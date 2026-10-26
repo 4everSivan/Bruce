@@ -1,0 +1,120 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C118",
+  "title": "订阅服务显式下发 provider 与 failureKind：两端不再按 id 前缀推断归属、不再嗅探 note 文案判定 429",
+  "version": "0.13.1",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C118-service-provider-failure-kind",
+  "is_hotfix": false,
+
+  "target": {
+    "module": "core/collector collector-provider / collector-application；apps/macos BruceAppCore；apps/win src-tauri",
+    "component": "service_template / finalize_service / failed_service、QuotaRefreshPolicy / SubscriptionPresentationPolicy、quota_policy / runtime_core",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+
+  "why": "2026-10-25 架构审查：artifact 的 service 只有 id / app / status / note，两端的 429 冷却记账与本轮限流集合靠在 note 文案里查找「429 / 限流 / RATE_LIMIT」，provider 归属靠 service id 前缀推断（mac providerID(forServiceID:)、Windows provider_of_id）。note 是展示文案，任何含「429」字样的失败说明（如余额、错误详情）都会被误判为限流；Codex 遇 429 时 note 为通用文案「额度查询暂时失败, 请稍后重试」，旧判定从未为 Codex 记 rateLimitedAt；新增 provider 或改动 id 规则须同步三处前缀表（Jev 前缀推断直接返回原 id）。collector 已有诊断码与失败分类表，但 failureKind 只在 Codex 路径下发。",
+
+  "precheck": {
+    "description": "确认改动前 failureKind 仅 Codex 下发、service 无 provider，两端按 note 文案与 id 前缀判定",
+    "command": "git show e018e85:core/collector/crates/collector-provider/src/lib.rs | grep -n '\"failureKind\"\\|\"provider\": subscription_provider_id'; git show e018e85:apps/win/src-tauri/src/quota_policy.rs | grep -n 'is_rate_limited_note(note)'; git show e018e85:apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift | grep -n 'isRateLimitedNote(\\|providerID(forServiceID'",
+    "expected": "collector 仅 finalize_codex_outcome 写 failureKind、无 provider 字段；Windows / mac 限流判定与 provider 归属均按 note / id 前缀（缺陷存在）",
+    "is_completed": false,
+    "evidence": "2026-10-26 预检实测：e018e85 的 collector-provider lib.rs 仅第 651 / 660 行（均位于 finalize_codex_outcome）写 failureKind，`\"provider\": subscription_provider_id` 命中 0 处；Windows quota_policy.rs 第 126 / 293 行 `is_rate_limited_note(note)`，runtime_core.rs `provider_id` 直接 `provider_of_id(id)`；mac QuotaRefreshPolicy.swift 第 180 行 `providerID(forServiceID: id)`、第 208 / 416 行按 isRateLimitedNote 判定 —— 缺陷成立，需编码修复。"
+  },
+
+  "callback": {
+    "before": [
+      "git checkout -b fix/C118-service-provider-failure-kind  # 叠加在 fix/C117-codex-file-cache 之上"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all -- --check",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "cargo clippy --manifest-path apps/win/src-tauri/Cargo.toml --all-targets -- -D warnings",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "cargo test --manifest-path apps/win/viewmodel/Cargo.toml",
+      "node --test apps/win/tests/*.test.mjs",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C118 --to verified --record"
+    ]
+  },
+
+  "changes": [
+    {
+      "scope": "collector service 契约",
+      "before": "service_template 只写 id / name / app / status 等；failureKind 仅 finalize_codex_outcome 写入（codex_failure_kind）；编排层失败占位 failed_service 只写 status / note",
+      "after": "service_template 为每条 service 写 provider（subscription_provider_id(app)，即 SubscriptionProviderID rawValue，opencode-go → opencodeGo）与 failureKind: null；finalize_service 失败时按 failure_kind_for_code 归类（auth / permission / rateLimit / server / invalidResponse / credential / network，格式非法为 invalidResponse），Codex 与其余 provider 共用该表（codex_failure_kind 删除）；failed_service 同样写 failureKind；artifact schema 登记 provider / failureKind / freshness",
+      "impact": "限流与归属成为结构化字段；note 只承担展示"
+    },
+    {
+      "scope": "mac 额度策略",
+      "before": "QuotaRefreshPolicy.provider(of:) 与 AppModel / SubscriptionMapping 按 providerID(forServiceID:) 推断；rateLimitedProviders 与 annotateCurrent 按 isRateLimitedNote(note) 判定",
+      "after": "AgentServiceItem 解码 provider；SubscriptionPresentationPolicy.providerID(for:) / providerID(forServiceObject:) 优先显式 provider、缺省回退 id 前缀；QuotaRefreshPolicy.isRateLimited 在存在 failureKind 键时只认 rateLimit（显式 null 为未限流），缺键时回退 note 文案",
+      "impact": "旧 artifact（无字段）行为不变，新 artifact 不再受 note 文案影响"
+    },
+    {
+      "scope": "Windows 额度策略",
+      "before": "quota_policy 的 rate_limited_providers_in / annotate_service 按 is_rate_limited_note(note)；runtime_core::provider_id 直接 provider_of_id(id)",
+      "after": "新增 quota_policy::is_rate_limited（与 mac 同义），runtime_core::provider_id 优先 service provider、缺省回退 provider_of_id",
+      "impact": "双端判定口径一致"
+    }
+  ],
+
+  "design": {
+    "doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "topic": "SubscriptionQuota",
+    "modified": true,
+    "rule_diff": {
+      "before": "规则 12 仅说明 rateLimitedAt 记账与 30 分钟冷却，未规定限流判定依据；design/05 规则 19 写明「命中判定用 service note 的限流文案」",
+      "after": "规则 12 新增「限流与 provider 判定（C118）」：以 collector 下发的 failureKind == rateLimit 与 provider 为准，字段缺省的旧 artifact 才回退 note 文案与 id 前缀，note 不再承担判定语义；design/05 规则 19 同步改写并登记 C118 变更行"
+    }
+  },
+
+  "verification": {
+    "result": null,
+    "run_id": "local-20261026-08",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "collector workspace / Windows src-tauri / viewmodel / 前端测试全绿（含三端新增 C118 用例），fmt / clippy 通过，verify-local 退出码 0",
+        "false_if": "任一失败",
+        "evidence": "2026-10-26: cargo test --manifest-path core/collector/Cargo.toml --workspace 161 passed / 0 failed（新增 services_carry_explicit_provider_and_failure_kind：全部目录 app 与 codex 的 provider 均落在 SubscriptionProviderID rawValue 集合、429 → rateLimit、非对象响应 → invalidResponse、成功为 null、CREDENTIAL_* → credential）；collector fmt --check 与 clippy -D warnings 退出码 0；apps/win/src-tauri clippy -D warnings 退出码 0、cargo test 221 passed / 0 failed（新增 explicit_provider_and_failure_kind_take_precedence）；apps/win/viewmodel 58 passed；node --test apps/win/tests/*.test.mjs 97 pass / 0 fail；SDKROOT=MacOSX26.5 zsh scripts/verify-local.sh 退出码 0（local/logs/c118-verify.log：Refresh scheduler 105 passed 含新增 quotaPolicyPrefersExplicitProviderAndFailureKind，PanelViewModel 60、AppModelCache 3、CollectorRunner 28、Panel 视图模型 valid / partial / empty 双端对拍通过）。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "同一组 service 在改动前后 Windows 实现上得到不同的限流集合：改动前 note 含「429」的服务端错误被误判、Codex rateLimit 被漏判，改动后只认 failureKind",
+        "false_if": "新旧实现结果相同或改动后仍匹配 note",
+        "evidence": "2026-10-26: 以只调用改动前后都存在的公开 API（rate_limited_providers_in / provider_id）的临时集成用例对拍：deepseek（failureKind=server、note「查询失败: 余额 429 元以下」）+ codex（failureKind=rateLimit、note「额度查询暂时失败, 请稍后重试」）—— 以 git show HEAD 的 quota_policy.rs / runtime_core.rs 运行得 LIMITED={\"deepseek\"}（误判 + 漏判），且 provider_id 忽略显式 provider 返回原 id；恢复 C118 实现后 LIMITED={\"codex\"}、1 passed；临时用例已删除。collector 现行 Codex 429 的 note 即上述通用文案（codex_failure_note 对 PROVIDER_RATE_LIMIT 无专门文案），旧判定从未为 Codex 记 rateLimitedAt；Codex 不进入冷却跳过（规则 12 Codex 例外），实际影响限于记账。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "旧 artifact（无 provider / failureKind）沿用旧推断；Codex 既有失败分类不变；面板 section 归属不变；应用侧写入的 failureKind 仍合法",
+        "false_if": "升级后冷却状态丢失、Codex 失败分类变化或 section 归属变化",
+        "evidence": "2026-10-26: mac 与 Windows 新用例均覆盖「字段缺省回退 id 前缀与 note」；failure_kind_for_code 与已删除的 codex_failure_kind 对 auth / permission / rateLimit / server / invalidResponse / 其余 → network 逐项一致，仅新增 CREDENTIAL_* → credential（两端无按 network 分支的消费方，mac CodexQuotaRecovery 只判 auth）；Windows 第 809 / 816 行 provider_id(section) 读取 panel_json 以 provider_of_id 附加的 provider 键，结果与改动前相同；subscription_provider_id 对 jev 返回 jev（改动前前缀推断返回原 id）；schema 的 failureKind 枚举同时登记 mac CodexQuotaSnapshotMerger 在应用侧写入的 storage / tokenUnavailable；SubscriptionMapping 第 183–184 行对 SubscriptionProviderSection 排序仍按 section id（非 service）。真机 429 场景未实测。",
+        "result": true
+      }
+    ]
+  },
+
+  "rejections": [],
+
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}
