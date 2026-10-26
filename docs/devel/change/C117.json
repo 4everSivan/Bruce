@@ -42,7 +42,7 @@
     {
       "scope": "Codex 缓存",
       "before": "codex-tree-v1.json：整树签名（每轮为全部候选读头尾指纹）+ 按窗口聚合快照，身份含 days / timezone / today；任一文件变化整树重读",
-      "after": "codex-files-v1.json：会话组选择后，每个选中文件以路径摘要为键缓存与窗口无关的观测值与文件身份（size / modified / device / inode）；只重解析身份变化的文件；未再选中的条目随写回移除（cache_deletions）；身份仅 schema 与 timezone；旧 codex-tree-v1.json 自动删除；缓存文件损坏时整体重建并在 note 说明（C046）",
+      "after": "codex-files-v1.json：会话组选择后，每个选中文件以路径摘要为键缓存与窗口无关的观测值与文件身份（size / 整数纳秒 modified_ns / device / inode）；只重解析身份变化的文件；未再选中的条目随写回移除（cache_deletions）；身份仅 schema 与 timezone；旧 codex-tree-v1.json 自动删除；缓存文件损坏时整体重建并在 note 说明（C046）",
       "impact": "活动会话追加、跨日与改窗口长度只重读变化的文件；热刷新不再为全部文件读取指纹；聚合结果不变"
     },
     {
@@ -73,14 +73,14 @@
         "item": "自动化测试",
         "true_if": "collector workspace 测试全绿（含新增按文件缓存用例：跨日 / 改窗口全部命中且不读 rollout、追加只重解析该文件、删除文件移出缓存、旧整树缓存清理，结果均与 scan_codex 一致），fmt / clippy 通过，verify-local 退出码 0",
         "false_if": "任一失败",
-        "evidence": "2026-10-26: cargo test --manifest-path core/collector/Cargo.toml --workspace --no-fail-fast 退出码 0，160 passed / 0 failed（新增 codex_file_cache_reparses_only_changed_files_and_survives_rollover；codex_cached_scan_skips_unchanged_files_and_increments_on_append 改为按文件断言：热 2 命中 / 0 重建、新增文件 2 命中 / 1 重建）；fmt --check 与 clippy -D warnings 退出码 0；SDKROOT=MacOSX26.5 zsh scripts/verify-local.sh 退出码 0（local/logs/c117-verify.log）。",
+        "evidence": "2026-10-26: cargo test --manifest-path core/collector/Cargo.toml --workspace --no-fail-fast 退出码 0，160 passed / 0 failed（新增 codex_file_cache_reparses_only_changed_files_and_survives_rollover；codex_cached_scan_skips_unchanged_files_and_increments_on_append 改为按文件断言：热 2 命中 / 0 重建、新增文件 2 命中 / 1 重建）；fmt --check 与 clippy -D warnings 退出码 0；SDKROOT=MacOSX26.5 zsh scripts/verify-local.sh 退出码 0（local/logs/c117-verify.log）。复审补正：C118 期间 verify-local 偶发该新用例失败（跨日首轮 hits/rebuilds = (1, 1)，local/logs/c118-verify.log）—— 文件身份 modified 以 f64 秒经 JSON 往返，serde_json 1.0.128 默认解析约 12% 的 mtime 读回差 1 ULP（20 万个随机纳秒 mtime 实测 24,640 个失配），未变化文件被判为变化；改为整数纳秒 modified_ns，并在用例中钉住失配 mtime 1792990001.654435761：旧实现 3/3 次确定性失败（(0, 2) ≠ (2, 0)），修复后 3/3 通过；修复后 workspace 测试 161 passed / 0 failed（工作树同时含 C118 未提交改动，C118 新增 1 项），fmt / clippy 退出码 0。",
         "result": true
       },
       {
         "item": "行为实测",
         "true_if": "以冻结的本机 ~/.codex/sessions 副本对比改动前后 release collector：冷 / 热 / 活动会话追加 / 次日首轮四步 artifact（去 generatedAt）新旧一致，追加与次日首轮降至热缓存水平",
         "false_if": "任一步结果不一致或追加 / 次日仍整树重读",
-        "evidence": "2026-10-26: 冻结 ~/.codex/sessions 两份副本（cp -Rp），以 main（e018e85）与本分支 release collector 各跑：冷 D / 热 D / 最新 rollout 追加一行后 D / D+1 首轮 —— 旧 0.07 / 0.01 / 0.04 / 0.04 s，新 0.04（复测，首测 0.49 s 为新复制副本页缓存未热）/ 0.01 / 0.01 / 0.01 s；四步 artifact 去 generatedAt 后新旧逐字节一致。交替复测冷扫新旧均 0.04 s。",
+        "evidence": "2026-10-26: 冻结 ~/.codex/sessions 两份副本（cp -Rp），以 main（e018e85）与本分支 release collector 各跑：冷 D / 热 D / 最新 rollout 追加一行后 D / D+1 首轮 —— 旧 0.07 / 0.01 / 0.04 / 0.04 s，新 0.04（复测，首测 0.49 s 为新复制副本页缓存未热）/ 0.01 / 0.01 / 0.01 s；四步 artifact 去 generatedAt 后新旧逐字节一致。交替复测冷扫新旧均 0.04 s。复审补正后以只读 stat 统计本机真实 rollout：~/.codex/sessions 25 个中 0 个、archived_sessions 19 个中 2 个的 mtime 经 JSON 往返失配 —— 补正前这 2 个文件每轮刷新都会被整文件重解析（结果正确、仅失去缓存收益）。",
         "result": true
       },
       {
