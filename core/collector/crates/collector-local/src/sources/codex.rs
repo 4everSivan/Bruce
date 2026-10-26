@@ -102,6 +102,8 @@ fn update_codex_high_water(high_water: &mut CodexTokenCounters, current: &CodexT
 pub(super) struct CodexFileCandidate {
     pub(super) path: PathBuf,
     pub(super) modified: f64,
+    /// 缓存身份用的整数纳秒 mtime: f64 秒经 JSON 往返会差 1 ULP (C117)。
+    pub(super) modified_ns: u64,
     pub(super) size: u64,
     pub(super) digest: Option<String>,
     pub(super) device: u64,
@@ -184,12 +186,12 @@ pub(super) fn collect_codex_files(
             continue;
         }
         stats.files_visited = stats.files_visited.saturating_add(1);
-        let modified = metadata
+        let since_epoch = metadata
             .modified()
             .ok()
             .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
-            .map(|value| value.as_secs_f64())
-            .unwrap_or(0.0);
+            .unwrap_or_default();
+        let modified = since_epoch.as_secs_f64();
         if modified < cutoff_ts {
             stats.files_skipped = stats.files_skipped.saturating_add(1);
             continue;
@@ -222,6 +224,7 @@ pub(super) fn collect_codex_files(
             .push(CodexFileCandidate {
                 path: canonical,
                 modified,
+                modified_ns: since_epoch.as_nanos() as u64,
                 size: metadata.len(),
                 digest,
                 device,
@@ -437,7 +440,9 @@ struct CodexFileCache {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 struct CodexFileEntry {
     size: u64,
-    modified: f64,
+    /// 整数纳秒: serde_json 默认浮点解析不保证往返精确, f64 秒约 1/8 的 mtime
+    /// 读回后差 1 ULP, 会让未变化的文件每轮都判为变化 (与 JSONL / SQLite 缓存同口径)。
+    modified_ns: u64,
     device: u64,
     inode: u64,
     observations: Vec<CachedUsageObservation>,
@@ -446,7 +451,7 @@ struct CodexFileEntry {
 impl CodexFileEntry {
     fn matches(&self, candidate: &CodexFileCandidate) -> bool {
         self.size == candidate.size
-            && self.modified == candidate.modified
+            && self.modified_ns == candidate.modified_ns
             && self.device == candidate.device
             && self.inode == candidate.inode
     }
@@ -754,7 +759,7 @@ pub fn scan_codex_cached_with_cancellation(
                     changed = true;
                     CodexFileEntry {
                         size: candidate.size,
-                        modified: candidate.modified,
+                        modified_ns: candidate.modified_ns,
                         device: candidate.device,
                         inode: candidate.inode,
                         observations,

@@ -995,6 +995,17 @@ fn codex_file_cache_reparses_only_changed_files_and_survives_rollover() {
         "rollout-b.jsonl",
         &[codex_token_count("2026-07-28T04:00:00Z", 7, 1, 2)],
     );
+    // 钉住一个 f64 秒经 JSON 往返会差 1 ULP 的 mtime (1792990001.6544359 读回为
+    // 1792990001.654436): 身份若按 f64 秒比较, 未变化的文件下一轮就会被判为变化
+    let pinned = std::time::UNIX_EPOCH + std::time::Duration::new(1_792_990_001, 654_435_761);
+    for name in ["rollout-a.jsonl", "rollout-b.jsonl"] {
+        fs::File::options()
+            .write(true)
+            .open(root.join("2026/07/28").join(name))
+            .unwrap()
+            .set_modified(pinned)
+            .unwrap();
+    }
     let day = window_at("2026-07-28T12:00:00+08:00", 3);
     let cold = scan_codex_cached(std::slice::from_ref(&root), &day, &cache_dir);
     assert_eq!(cold.stats.cache_rebuilds, 2);
