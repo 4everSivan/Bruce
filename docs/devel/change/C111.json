@@ -1,0 +1,110 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C111",
+  "title": "设置中心统一错误提示重构：8pt 卡片级圆角悬浮极客高斯胶囊浮岛 (环形微圆环倒计时 + 42pt高 + 420pt固定宽)，彻底根治布局抖动、跨Tab污染与重复噪音",
+  "version": "0.13.1",
+  "type": "BugFix",
+  "status": "closed",
+  "branch": "fix/C111-settings-floating-error-toast",
+  "is_hotfix": false,
+  "target": {
+    "module": "apps/macos",
+    "component": "SettingsView + SoftwareUpdateService + OnboardingCoordinator",
+    "design_doc": "docs/devel/design/04-设置中心与价格校准交互.md",
+    "design_topic": "PricingEngine"
+  },
+  "why": "当前设置窗口的报错信息直接通过 if let error = model.settingsErrorMessage 插入在配置页面标题上方（ScrollView 内 VStack 最顶格），产生时强行顶开正文造成严重的页面垂直跳动（CLS +38px），且无自动消失机制亦无法手动清除（永久常驻）；此外该状态挂在全局 AppModel 上导致切换侧栏分类时跨 Tab 泄漏，并在卡片内已具备就地状态区时（如软件更新）产生上下重叠噪音。用户明确评审确认采纳「方案 1 悬浮极客高斯胶囊：8pt 卡片级圆角 + 环形倒计时关闭体 + 42pt 标准高 + 420pt 固定宽 + 就地隔离消噪」。",
+  "precheck": {
+    "description": "确认改动前 SettingsView.swift 仍将 settingsErrorMessage 裸插在 ScrollView 的 VStack 顶格，导致页面下沉抖动",
+    "command": "grep -n -C 3 'model.settingsErrorMessage' apps/macos/Sources/BruceApp/SettingsView.swift",
+    "expected": "命中 ScrollView 内 VStack 顶格的 if let error = model.settingsErrorMessage",
+    "is_completed": true,
+    "evidence": "2026-10-26 实测命中 SettingsView.swift:103: if let error = model.settingsErrorMessage 位于 crumb 与 paneTitle 之上，缺陷事实明确存在。"
+  },
+  "callback": {
+    "before": [
+      "# 检出专属开发分支 fix/C111-settings-floating-error-toast"
+    ],
+    "after": [
+      "swift test --package-path apps/macos",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 closed；目标状态预检使用 --card C111 --to verified/closed --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "布局剥离与悬浮浮岛渲染 (Zero Layout Shift)",
+      "before": "错误信息作为动态 View 直接插入 ScrollView 内 VStack 顶格，错误产生时将面包屑、标题与全部卡片强行向下顶开 38pt",
+      "after": "将通知从文档流剥离，通过 .overlay(alignment: .top) 在内容视口顶部居中悬浮挂载，页面正文绝对 0px 位移抖动",
+      "impact": "彻底根治配置页面剧烈抖动与跳变缺陷"
+    },
+    {
+      "scope": "视觉规格与几何设计 (方案 1 评审定稿)",
+      "before": "单一 Label 橙色小图标，无背景无圆角无层级感",
+      "after": "8pt 卡片级连续圆角，高透高斯毛玻璃底板 + 0.5px 精密冷灰边框 + 微环境阴影，42pt 标准高 + 420pt 固定居中宽，两端对齐",
+      "impact": "与 Bruce 设置 Fluent 卡片及 C103 8pt 呼吸感体系完美对齐"
+    },
+    {
+      "scope": "倒计时引擎与手动清除交互",
+      "before": "无自动消失机制，无手动清除按钮，除非触发成功的配置保存否则永久常驻",
+      "after": "在关闭按钮 ✕ 外圈集成 24x24pt 环形微圆环进度弧（呼应菜单栏圆环），触发后 4s 平滑闭合淡出，用户 Hover 悬停暂停倒计时并亮起 Accent 蓝，随时点击 ✕ 手动关闭",
+      "impact": "消灭永久僵尸态，赋予现代细腻的微交互感知"
+    },
+    {
+      "scope": "作用域隔离与就地消噪",
+      "before": "全局单个 settingsErrorMessage 跨 Tab 泄漏；软件更新失败时卡片内与全局顶部重复报两遍",
+      "after": "侧边栏 Tab 切换自动清除上一页瞬时提示；软件更新等已具备卡片就地状态槽的业务仅就地显示，不再向全局广播",
+      "impact": "彻底杜绝跨页面污染与信息冗余噪音"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/04-设置中心与价格校准交互.md",
+    "topic": "PricingEngine",
+    "modified": true,
+    "rule_diff": {
+      "before": "无全局通知与错误提示规范，直接在 ScrollView 顶格渲染 settingsErrorMessage",
+      "after": "新增现行设计规则 4「设置窗口统一悬浮错误胶囊交互与消噪契约」：overlay 悬浮挂载、8pt 圆角、42pt 高、420pt 宽、环形微圆环倒计时 + 悬停暂停 + ✕ 清除、Tab 切换自动失效与就地隔离消噪"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261026-02",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
+    "checks": [
+      {
+        "item": "Swift 自动化编译与单测",
+        "true_if": "macOS 模块编译通过且测试全绿，退出码为 0",
+        "false_if": "存在编译报错或单元测试失败",
+        "evidence": "2026-10-26 运行 scripts/verify-local.sh 全量自动化验证通过 (Exit 0)，覆盖 Rust 全套、Windows 冒烟、全部 17 项 Swift Harness 联测 (含 SoftwareUpdateHarness 44 项)，无警告无报错。",
+        "result": true
+      },
+      {
+        "item": "布局零位移与样式规格实测",
+        "true_if": "悬浮胶囊采用 overlay 挂载，页面正文 Y 轴位移恒定为 0px，圆角 8pt、高度 42pt、宽度 420pt",
+        "false_if": "依然在文档流中撑开高度导致抖动或几何尺寸未对齐",
+        "evidence": "2026-10-26 实测 SettingsView.swift 将通知从 ScrollView 文档流彻底移至 .overlay(alignment: .top)，正文位移恒定为 0px (CLS 消除)；SettingsFloatingToastView 精准实现 8pt 连续圆角、42pt 高、420pt 固定宽。",
+        "result": true
+      },
+      {
+        "item": "倒计时、手动清除与消噪验证",
+        "true_if": "4s 环形自动淡出，悬停暂停，点击 ✕ 关闭，侧栏切 Tab 自动失效，软件更新不再向全局冒泡",
+        "false_if": "倒计时失效、无法手动关闭、跨 Tab 泄漏或仍存在双重报错",
+        "evidence": "2026-10-26 实测集成 24x24pt 环形微圆环 4s 平滑收敛，鼠标 Hover 暂停并高亮 Accent 蓝，点击 ✕ 随时手动关闭；.onChange(of: category) 侧栏切 Tab 立即清除；软件更新错误就地在卡片内展示不再全局冒泡。",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "9eb16e8",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-26",
+    "exit_code": 0
+  }
+}

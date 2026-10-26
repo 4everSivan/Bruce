@@ -37,7 +37,8 @@
         "C002",
         "C052",
         "C055",
-        "C108"
+        "C108",
+        "C111"
       ]
     },
     "WindowsCompat": {
@@ -1148,6 +1149,15 @@
       "topic": "TokenUsage",
       "version": "0.13.1",
       "file": "docs/devel/change/C110.json"
+    },
+    "C111": {
+      "title": "设置中心统一错误提示重构：8pt 卡片级圆角悬浮极客高斯胶囊浮岛 (环形微圆环倒计时 + 42pt高 + 420pt固定宽)，彻底根治布局抖动、跨Tab污染与重复噪音",
+      "type": "BugFix",
+      "status": "closed",
+      "branch": "fix/C111-settings-floating-error-toast",
+      "topic": "PricingEngine",
+      "version": "0.13.1",
+      "file": "docs/devel/change/C111.json"
     }
   }
 }

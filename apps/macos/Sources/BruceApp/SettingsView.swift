@@ -54,6 +54,8 @@ struct SettingsView: View {
     @State var showsClearCacheConfirm = false
     @State var dataActionMessage: String?
     @State var accountRemovalRequest: AccountRemovalRequest?
+    /// 统一悬浮错误胶囊状态 (C111: 零抖动、4s倒计时、手动✕关闭、Tab切换自动失效)
+    @State private var activeToastMessage: String?
 
     struct AccountRemovalRequest {
         let provider: SubscriptionProviderID
@@ -100,12 +102,6 @@ struct SettingsView: View {
                 .frame(maxHeight: .infinity)
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    if let error = model.settingsErrorMessage {
-                        Label(error, systemImage: "exclamationmark.triangle.fill")
-                            .font(.callout)
-                            .foregroundStyle(.orange)
-                            .accessibilityLabel("设置错误: \(error)")
-                    }
                     crumb("设置 / \(category.title)")
                     paneTitle(category.title)
                     paneContent
@@ -116,6 +112,26 @@ struct SettingsView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(SettingsDemoTokens.window)
+            .overlay(alignment: .top) {
+                // 统一悬浮极客高斯胶囊 (C111: 绝对 0px 布局抖动，8pt圆角 + 42pt高 + 420pt固定宽)
+                if let message = activeToastMessage {
+                    SettingsFloatingToastView(
+                        message: message,
+                        tone: .warn,
+                        onDismiss: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                activeToastMessage = nil
+                                model.setSettingsError(nil)
+                            }
+                        }
+                    )
+                    .padding(.top, 14)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .top).combined(with: .opacity),
+                        removal: .opacity
+                    ))
+                }
+            }
             // P2 配置对话框: 挂在右侧内容 ScrollView 上, 与 body 根的
             // showsDiagnosticsPreview sheet 错开挂载点, 避免同视图双 sheet 冲突.
             .sheet(isPresented: Binding(
@@ -189,12 +205,33 @@ struct SettingsView: View {
         .onChange(of: model.settingsErrorMessage) { _, message in
             if let message {
                 announce(message)
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                    activeToastMessage = message
+                }
+            } else {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    activeToastMessage = nil
+                }
+            }
+        }
+        .onChange(of: category) { _, _ in
+            // Tab 切换自动清除当前页面的瞬时提示，杜绝跨 Tab 污染 (C111)
+            if activeToastMessage != nil {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    activeToastMessage = nil
+                    model.setSettingsError(nil)
+                }
             }
         }
         .sheet(isPresented: $showsKeychainAccessGuide) {
             keychainAccessGuide
         }
-        .onAppear(perform: presentKeychainAccessGuideIfNeeded)
+        .onAppear {
+            presentKeychainAccessGuideIfNeeded()
+            if let initialError = model.settingsErrorMessage {
+                activeToastMessage = initialError
+            }
+        }
     }
 
     // MARK: - 侧边栏
