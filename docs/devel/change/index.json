@@ -90,7 +90,8 @@
         "C096",
         "C097",
         "C099",
-        "C101"
+        "C101",
+        "C109"
       ]
     },
     "SubscriptionQuota": {
@@ -1103,6 +1104,15 @@
       "topic": "PricingEngine",
       "version": "0.13.1",
       "file": "docs/devel/change/C108.json"
+    },
+    "C109": {
+      "title": "Windows 出站网络 command 移出主线程：设备码登录与订阅验证不再冻结托盘与界面",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C109-win-async-network",
+      "topic": "WindowsCompat",
+      "version": "0.13.1",
+      "file": "docs/devel/change/C109.json"
     }
   }
 }

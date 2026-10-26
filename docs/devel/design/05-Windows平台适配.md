@@ -2,7 +2,7 @@
 
 <!-- @topic: WindowsCompat -->
 > **文档ID**: DESIGN-WINDOWS ｜ **状态**: 现行基线
-> **最后更新**: 2026-10-23 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `WindowsCompat`
+> **最后更新**: 2026-10-26 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `WindowsCompat`
 > 📌 **变更总账**: 参见 [变更总账 (WindowsCompat)](../change/index.json#WindowsCompat)
 
 ---
@@ -257,6 +257,7 @@ Windows Tauri 后端 (Rust)
 | C099 | 缺陷修复 | 全局热键唤出焦点保障、防抖状态机与物理键码录制 | 180ms 唤出焦点保护期、250ms 热键防抖、300ms 失焦竞态防重开；托盘多事件坐标缓存；托盘唤出贴托盘、热键唤出跟随光标所在屏；设置页录制器改基于 `event.code` 规范化（小键盘独立）并在录制期间真正注销已生效热键（见规则 30） |
 | C100 | 界面对齐 | 顶部状态牌改为四色状态灯 | 删除 `SYS.OK` 文字牌，改为绿/黄/红/中性灰四色灯 + 刷新中呼吸脉冲；聚合采集与订阅取最严重态、两端同口径；hover 显示态名与原因；品牌字统一为 `Bruce`（见规则 11 / design/03 FR-7） |
 | C101 | 界面对齐 | 看板滚动区隐藏滚动条 | 删除 `#scroll` 半透明 4px 细滚动条，与 mac 一样恒不显示；仅保留滚轮 / 触控板滚动（见规则 12） |
+| C109 | 缺陷修复 | 出站网络 command 移出主线程 | `codex_device_start` / `codex_device_poll` / `verify_subscription` 改为 async + `off_main_thread`，`ShellExecuteW` 派回主线程；源码级守卫用例锁定（见规则 31） |
 | 暂无增量变更 | - | 初始基线定稿 | Windows 适配初始设计（Tauri 2 / 首版全量 / Rust 视图模型+对拍） |
 
 #### 现行设计规则
@@ -377,6 +378,8 @@ Windows Tauri 后端 (Rust)
     - **多显示器定位与磁盘写操作收敛**：托盘 `Move` / `Enter` / `Click` 事件凡带非零 `rect` 均静默缓存 `TrayBoundsState`；弹出位置由纯函数 `select_dashboard_placement` 按唤出来源决定 —— 托盘左键 / 托盘菜单优先托盘所在屏、热键优先光标所在屏（对齐 mac 面板随活动屏菜单栏出现；悬停过托盘后热键也不再被钉在托盘屏），各自以另一方兜底，均未命中回退当前/主显示器；托盘锚点只用于托盘所在屏，别屏按该屏任务栏角落贴靠，不借用另一块屏上的托盘坐标；移除每次失焦隐藏时写 `settings.json` 的冗余 `persist_position` 调用；
     - **设置页物理键码录制与录制态挂起**：前端 `normalizeHotkeyEvent` 优先按 `event.code`（仅在无 `code` 时回退 `event.key`）映射物理主键（`KeyA~Z → A~Z`、`Digit0~9 → 0~9`、`Numpad0~9 → Numpad0~9` 与小键盘运算键原名保留（global-hotkey 中小键盘与主键盘同名键是不同的键）、`F1~F24`、`Space`、方向键、常用标点及 global-hotkey 可解析的命名键），未识别的键码直接提示「不支持」而不拼出无法解析的加速键；要求至少含 `Control` / `Alt` / `Super` 之一（纯 `Shift` 仅允许配合 `F1~F24`），并拦截系统保留组合键（`Alt+Tab`、`Alt+F4`、`Control+Escape`、`Control+Shift+Escape`）。录制入口只有「录制热键」按钮，录制中再次点击即取消（对齐 mac `GlobalHotkeyRecorder` 的切换语义；按钮 `mousedown` 阻止输入框失焦，否则 WebView2 先派发 blur 结束录制、click 又重新开始）；也可 `Escape` / `Backspace` / `Delete` 或失焦退出并恢复已生效热键回显。
     - **录制态真正注销已生效热键**：`RegisterHotKey` 注册的组合键由系统直接截走、不投递给前台窗口，仅挂起回调时设置页录不到当前热键。故 `set_hotkey_recording(true)` 在置位防误弹开关后注销已生效热键，`set_hotkey_recording(false)`（含录制中关闭设置窗口、保存设置前）重新注册；恢复失败时清空后端登记并回 `HOTKEY_RESUME_FAILED`，设置页提示「已生效的全局快捷键恢复失败，请重新录制」。注销 / 恢复的判定为纯函数 `suspend_or_resume_hotkey`。
+
+31. **出站网络不得阻塞主线程**（C109）：Tauri 2 的同步 `#[tauri::command]` 在主线程执行，期间托盘、看板与设置窗口全部失去响应。凡含出站 HTTP 的 command（设备码申请 / 轮询换码、订阅试查等）**必须声明为 `async fn`**，阻塞调用经 `off_main_thread`（`tauri::async_runtime::spawn_blocking`）执行；需 COM STA 的 Win32 调用（如 `ShellExecuteW` 打开外部浏览器）经 `run_on_main_thread` 派回主线程。采集与 Codex 令牌刷新只在调度器后台线程运行。守卫用例 `tests/command_threading.rs` 逐个解析 `lib.rs` 的 command 函数体，同步 command 一旦直接调用网络入口即失败。
 
 ### 6.1 Rust 端改动清单（收敛后）
 
