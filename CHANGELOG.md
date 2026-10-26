@@ -3,7 +3,7 @@
 所有对本项目的显著变更均记录于此文件。
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，版本号严格遵循 [语义化版本 (SemVer)](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.13.0] - 2026-10-26
 
 ### Added
 - **macOS 应用内软件更新 (T10)**：
