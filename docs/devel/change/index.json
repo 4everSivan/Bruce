@@ -1098,7 +1098,7 @@
     "C105": {
       "title": "补发版前置核实规则：签名 secrets 须以 gh secret list 实测为准（原 C104 撞号改号）",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "main",
       "topic": "SoftwareUpdate",
       "version": "0.13.1",

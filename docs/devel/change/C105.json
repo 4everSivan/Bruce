@@ -4,19 +4,16 @@
   "title": "补发版前置核实规则：签名 secrets 须以 gh secret list 实测为准（原 C104 撞号改号；T09 声称已写入但实际为空致 v0.13.0 首发失败）",
   "version": "0.13.1",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "main",
   "is_hotfix": false,
-
   "target": {
     "module": "docs",
     "component": "软件更新发版管线前置核实 (design 07 §4.2 R1.4)",
     "design_doc": "docs/devel/design/07-软件更新.md",
     "design_topic": "SoftwareUpdate"
   },
-
   "why": "2026-10-26 发布 v0.13.0 时，推 tag 后 CI 的 release-windows 作业按 fail-closed 门禁退出（Write-Error 缺少 TAURI_SIGNING_PRIVATE_KEY secret），Release 停在草稿，需补配 secret 后 gh run rerun --failed 才发出。根因是 T09 卡 check-5 声称签名密钥「已同步写入 GitHub Actions secrets 供发版使用」，而实测 gh secret list 为空——仓库从未配置任何 secret。发版前置条件（版本号一致性 / CHANGELOG 版本块 / 签名 secrets）没有一处被发版前核实，且卡片内声称被当成既成事实。本次补齐发版前置核实规则，防止同类缺口再导致首发失败。",
-
   "precheck": {
     "description": "检测设计 07 是否已含发版前置核实规则（R1.4 / gh secret list 实测条款）",
     "command": "git show HEAD:docs/devel/design/07-软件更新.md | grep -c 'R1.4 发版前置核实\\|gh secret list'",
@@ -24,7 +21,6 @@
     "is_completed": false,
     "evidence": "2026-10-26 预检实测：git show HEAD:docs/devel/design/07-软件更新.md | grep -c 命中 0 —— 改动前设计 07 无 R1.4 与任何 gh secret list 实测条款；同时 gh secret list 实测为空，事故根因成立。"
   },
-
   "callback": {
     "before": [
       "# 变更仅涉及 docs/，无分支/环境准备；直接在当前工作区修订设计 07 与 CHANGELOG"
@@ -33,7 +29,6 @@
       "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 closed；目标状态预检使用 --card C105 --to verified/closed --record"
     ]
   },
-
   "changes": [
     {
       "scope": "发版前置核实规则（设计 07 §4.2 R1.4）",
@@ -42,7 +37,6 @@
       "impact": "发版 SOP（设计 07）与后续发版实践；本次事故的留痕与预防措施入设计正文"
     }
   ],
-
   "design": {
     "doc": "docs/devel/design/07-软件更新.md",
     "topic": "SoftwareUpdate",
@@ -52,12 +46,11 @@
       "after": "§4.2 新增 R1.4「发版前置核实」：打 tag 前核实 VERSION↔tauri.conf 版本一致、CHANGELOG 版本块存在、gh secret list 实测两个签名 secret 已配置；卡内声称不作为依据"
     }
   },
-
   "verification": {
-    "result": null,
+    "result": "passed",
     "run_id": "local-20261026-04",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "签收 c105 ，然后不清理分支 fix/C110-scan-prefilter-parallel，需要清理 C104-verify-speedup 分支",
+    "signoff": "2026-10-26 人类口头确认 (AI 代签)",
     "checks": [
       {
         "item": "设计规则落地",
@@ -82,19 +75,19 @@
       }
     ]
   },
-
   "rejections": [],
-
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "0ab89ee",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-26",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }
