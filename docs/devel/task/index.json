@@ -223,7 +223,7 @@
     },
     "T12": {
       "title": "Windows 系统托盘动态配额环与 420px 亚克力微缩实时预览卡 (方案 1)",
-      "status": "in_progress",
+      "status": "completed",
       "branch": "feat/T12-win-tray-live-preview",
       "topic": "WindowsCompat",
       "milestone": "M7-Windows托盘动态配额与实时微缩预览",

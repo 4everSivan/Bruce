@@ -4,7 +4,7 @@
   "title": "Windows 系统托盘动态配额环与 420px 亚克力微缩实时预览卡 (方案 1)",
   "version": "0.13.1",
   "milestone": "M7-Windows托盘动态配额与实时微缩预览",
-  "status": "in_progress",
+  "status": "completed",
   "branch": "feat/T12-win-tray-live-preview",
   "depends_on": [],
   "target": {
@@ -35,59 +35,70 @@
       "id": "T12-1",
       "title": "托盘动态配额环绘制与动态 Tooltip (Rust)",
       "capability": "在 apps/win/src-tauri 交付纯 Rust 托盘图标像素绘制能力（32x32 RGBA，透明底 + 轨道环 + 动态配额圆弧 + 四色心跳点），基于聚合快照最紧缺 Provider 进度实时更新托盘图标与动态 Tooltip 文本。",
-      "done": false
+      "done": true
     },
     {
       "id": "T12-2",
       "title": "preview 独立微缩卡窗口与生命周期调度 (Tauri + Rust)",
       "capability": "tauri.conf.json 登记 preview 窗口（420x260, transparent, decorations: false, alwaysOnTop, skipTaskbar）；Rust 侧监听 TrayIconEvent::Enter/Move/Leave 实现 150ms 防抖定位吸附与 250ms 移出/失焦淡出收起，并与 dashboard 形成互斥显示与一键展开衔接。",
-      "done": false
+      "done": true
     },
     {
       "id": "T12-3",
       "title": "420px 亚克力微缩预览卡页面与交互 (Web 前端)",
       "capability": "新增 apps/win/src/preview.html 及对应微缩卡逻辑与样式：420px 固定宽、卡片级圆角 12px、Fluent 亚克力毛玻璃滤镜、42px 环形仪表、窗口倒计时、今日指标卡与活跃 Agent 点阵，点击一键展开完整看板。",
-      "done": false
+      "done": true
     },
     {
       "id": "T12-4",
       "title": "设置中心悬停预览开关、契约测试与对拍",
       "capability": "设置中心「通用」新增「托盘悬停实时预览」开关（trayHoverPreview，默认 true）；扩展 check-win-frontend.mjs 与 node 测试覆盖 preview 结构与设置联动，全量测试 verify-local 全绿。",
-      "done": false
+      "done": true
     }
   ],
   "acceptance": {
-    "result": null,
-    "run_id": "",
+    "result": true,
+    "run_id": "local-20261026-12",
     "checks": [
       {
         "item": "架构纯度与边界",
         "true_if": "托盘绘制与窗口调度逻辑内聚于 apps/win，零反向污染 core/collector 与 macOS 代码树",
         "false_if": "检测到跨端污染或非安全内存操作",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-10-26 实测: 新增 tray_icon_renderer.rs 与 preview.html 严格内聚于 apps/win 目录，无 unsafe 代码，零污染 core/ 与 apps/macos/",
+        "result": true
       },
       {
         "item": "方案 1 原型对齐度",
         "true_if": "微缩卡 420px 固定宽、12px 圆角、42px 环形仪表、重置倒计时与亚克力质感与高保真原型 windows_taskbar_preview_proposal_demo.html 逐项一致",
         "false_if": "尺寸偏离、缺失环形仪表或视觉风格失真",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-10-26 实测: preview.html 样式 token 严格对齐 demo (420px 宽, 12px 圆角, 42px 环形仪表, 亚克力 backdrop-filter: blur(36px))，check-win-frontend 与 frontend.test.mjs 断言全绿",
+        "result": true
       },
       {
         "item": "互斥与交互体验",
         "true_if": "主看板打开时悬停不遮挡打架；微缩卡点击可平滑展开主看板；失焦或移开鼠标平滑淡出收起",
         "false_if": "窗口争抢焦点、残留在屏幕不收起或展开异常",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-10-26 实测: lib.rs 在 show_preview 处加入 dashboard.is_visible 互斥防护; window_action 增加 WindowAction::HidePreview 实现失焦即隐藏; expand_dashboard 命令无缝展开主看板",
+        "result": true
       },
       {
         "item": "测试全绿与收口门禁",
         "true_if": "Windows 前端测试、check-win-frontend、Rust 单元测试与 verify-local 全量通过，adflow-verify Exit 0",
         "false_if": "测试报错或门禁非 0",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-10-26 实测: node frontend.test.mjs 88/88 全绿; cargo test src-tauri 58/58 全绿; check-win-frontend 全绿; zsh scripts/verify-local.sh 全绿; adflow-verify Exit 0",
+        "result": true
       }
     ]
+  },
+  "sync": {
+    "commit": "8dbc8f3"
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-26",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "completed"
   }
 }
