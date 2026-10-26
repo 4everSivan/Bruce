@@ -347,6 +347,14 @@ enum SoftwareUpdateServiceTests {
         try expectEqual(fixture.preferences.skippedVersion, nil, "本地已达跳过版本即清除记录")
     }
 
+    static func startClearsSkippedVersionImmediatelyIfLocalCatchesUp() async throws {
+        let fixture = try ServiceFixture(localVersion: "0.13.0")
+        defer { fixture.tearDown() }
+        fixture.preferences.skippedVersion = SemanticVersion("0.13.0")
+        fixture.service.start()
+        try expectEqual(fixture.preferences.skippedVersion, nil, "启动时本地版本追平立即清除跳过记录无需触网")
+    }
+
     static func downloadVerifiesAndBecomesReady() async throws {
         let fixture = try ServiceFixture()
         defer { fixture.tearDown() }

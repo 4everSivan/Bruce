@@ -156,7 +156,8 @@
     "SoftwareUpdate": {
       "design_doc": "docs/devel/design/07-软件更新.md",
       "changes": [
-        "C105"
+        "C105",
+        "C113"
       ]
     }
   },
@@ -1168,6 +1169,15 @@
       "topic": "PricingEngine",
       "version": "0.13.1",
       "file": "docs/devel/change/C112.json"
+    },
+    "C113": {
+      "title": "修复软件更新旧版本信息残留：Windows跳过版本追平自动清除、macOS启动即时比对与更新残留兜底治理",
+      "type": "BugFix",
+      "status": "verified",
+      "branch": "fix/C113-software-update-cleanup",
+      "topic": "SoftwareUpdate",
+      "version": "0.13.1",
+      "file": "docs/devel/change/C113.json"
     }
   }
 }

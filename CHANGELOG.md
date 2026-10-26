@@ -13,6 +13,10 @@
   - **设置中心开关联动**：设置中心「通用」面板新增「托盘实时预览」开关（状态居左、开关居右），支持自由开启/关闭悬停弹出，配置即时持久化。
 
 ### Fixed
+- **软件更新旧版本信息残留治理 (C113)**：
+  - **Windows 跳过版本追平自动清除**：修复用户跳过版本后升级至新版本时，因 `offered` 为 `None` 导致 `update_skipped_version` 在 `settings.json` 中永久残留的缺陷；`software_update.rs` 引入 `local_version` 比较，在应用启动首检与检查更新中判定本地版本追平或超过跳过版本时自动调用 `persist_update_fields` 清除跳过记录，严格对齐设计 07 §4.2 R4；
+  - **macOS 启动即时比对清空**：`SoftwareUpdateService.start()` 启动时立即校验 `preferences.skippedVersion <= localVersion`，满足条件即刻清空 `UserDefaults`，无需等待 30 秒及联网请求，杜绝离线或关闭自动更新时的偏好滞留；
+  - **自替换回滚安全保护**：`SoftwareUpdateInstaller` 新增 `removeWorkingArtifacts(keepBackup: true)`，在原子替换遭遇极端回滚失败时仅清理临时工作包、保护旧版完整备份目录不被误删。
 - **设置中心统一悬浮极客高斯错误胶囊浮岛与 0px 布局防抖 (C111)**：彻底移除原 `ScrollView` 顶格裸插入的 `settingsErrorMessage` 导致的面包屑与标题剧烈下沉（CLS +38px 位移彻底归零）；右侧内容视口改用 `.overlay(alignment: .top)` 悬浮挂载 8pt 卡片级连续圆角、420pt 固定宽、42pt 标准舒适高的高斯毛玻璃胶囊；集成关闭按钮外圈 24×24pt 环形微圆环 4 秒平滑倒计时闭合，支持鼠标悬停 (Hover) 自动暂停并高亮 Accent 蓝，支持中心 ✕ 随时手动清除；增加侧边栏切 Tab 瞬时错误自动清除机制，彻底消灭跨 Tab 泄漏残留。
 - **发版前置核实规则 (C105)**：`docs/devel/design/07-软件更新.md` 新增 §4.2 R1.4 —— 打 tag 前必须逐项核实 `VERSION` 与 `tauri.conf.json` 的 `version` 一致、`CHANGELOG.md` 存在 `## [<VERSION>] - <日期>` 版本块、并以 `gh secret list` **实测** `TAURI_SIGNING_PRIVATE_KEY` / `_PASSWORD` 已配置；卡片或文档内声称「已写入 secrets」不作为依据。源于 2026-10-26 v0.13.0 首发事故：T09 卡 check-5 声称密钥已同步写入 GitHub Actions secrets，实际仓库无任何 secret，导致 `release-windows` 按 fail-closed 退出、Release 停在草稿。
 - **macOS artifact 逐日校验复用 ISO 格式器 (C106)**：`ArtifactStore` 逐日校验不再每轮新建 `DateFormatter`（解析开销约为复用格式器的 100 倍），热路径 ISO 解析统一走共享格式器，消除每轮刷新约 2 秒主线程 CPU；新增满尺寸（10 agent × 182 天）校验耗时用例。

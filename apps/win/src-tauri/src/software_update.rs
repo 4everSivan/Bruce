@@ -108,6 +108,14 @@ pub fn skip_decision(offered: &str, skipped: Option<&str>) -> SkipDecision {
     }
 }
 
+/// 本地版本追平或超过跳过版本时应清除跳过记录 (07 §4.2 R4)。
+pub fn should_clear_skipped_on_catchup(local_version: &str, skipped: Option<&str>) -> bool {
+    match skipped {
+        Some(s) => compare_semver(local_version, s) != std::cmp::Ordering::Less,
+        None => false,
+    }
+}
+
 /// ureq 拉清单的失败分类: HTTP 状态码直接映射; 传输错误按 io kind 分超时/离线。
 pub fn classify_transport_failure(error: &ureq::Error) -> (UpdateFailureKind, Option<u16>) {
     match error {
@@ -223,6 +231,16 @@ pub mod desktop_impl {
         let _ = settings::save_settings(&root, &current);
     }
 
+    /// 启动或检查时清理已追平/过期的跳过版本 (07 §4.2 R4)。
+    pub fn cleanup_stale_skipped(app: &AppHandle) {
+        if let Some(lv) = local_version(app) {
+            let skipped = read_settings().update_skipped_version;
+            if should_clear_skipped_on_catchup(&lv, skipped.as_deref()) {
+                persist_update_fields(None, Some(None));
+            }
+        }
+    }
+
     fn snapshot(app: &AppHandle, inner: &mut UpdateStateInner) -> UpdateSnapshot {
         let settings = read_settings();
         UpdateSnapshot {
@@ -315,6 +333,7 @@ pub mod desktop_impl {
         let checked_at = now_rfc3339_local();
         let state = app.state::<UpdateState>();
         let mut guard = state.lock().unwrap_or_else(|p| p.into_inner());
+        cleanup_stale_skipped(app);
         match offered {
             None => {
                 guard.phase = UpdatePhase::Latest {
@@ -495,6 +514,7 @@ pub mod desktop_impl {
     /// 自动检查 (07 §4.2 R5): 启动 30 秒后首查, 此后每 24 小时一次; 失败完全静默。
     pub fn spawn_auto_check(app: AppHandle) {
         std::thread::spawn(move || {
+            cleanup_stale_skipped(&app);
             std::thread::sleep(Duration::from_secs(30));
             loop {
                 if read_settings().auto_check_update {
@@ -639,6 +659,19 @@ mod tests {
             skip_decision("0.14.0", Some("0.13.0")),
             SkipDecision::Offer { clear_skip: true }
         ));
+    }
+
+    #[test]
+    fn should_clear_skipped_when_local_catches_up_or_exceeds() {
+        // 本地版本已追平跳过版本 → 清除
+        assert!(should_clear_skipped_on_catchup("0.13.0", Some("0.13.0")));
+        // 本地版本高于跳过版本 → 清除
+        assert!(should_clear_skipped_on_catchup("0.13.1", Some("0.13.0")));
+        assert!(should_clear_skipped_on_catchup("v0.14.0", Some("0.13.0")));
+        // 本地版本低于跳过版本 → 不清除
+        assert!(!should_clear_skipped_on_catchup("0.12.2", Some("0.13.0")));
+        // 未跳过任何版本 → 不清除
+        assert!(!should_clear_skipped_on_catchup("0.13.0", None));
     }
 
     #[test]

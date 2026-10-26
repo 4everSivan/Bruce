@@ -308,6 +308,27 @@ enum SoftwareUpdateInstallerTests {
         try expect(!FileManager.default.fileExists(atPath: installer.updatesRoot.path), "updates 目录已清理")
         try expect(FileManager.default.fileExists(atPath: sibling.path), "同级配置不受影响")
     }
+
+    static func removeWorkingArtifactsPreservesBackupWhenRequested() throws {
+        let root = try TemporaryDirectories.make("cleanup-working")
+        defer { TemporaryDirectories.remove(root) }
+        let installer = UpdateInstaller(updatesRoot: root.appendingPathComponent("updates"))
+        let fileManager = FileManager.default
+        let version = SemanticVersion(major: 0, minor: 13, patch: 0)
+        let staging = installer.stagingDirectory(for: version)
+        let zip = installer.downloadURL(for: version)
+        let backupApp = installer.backupDirectory.appendingPathComponent("Bruce.app")
+
+        try fileManager.createDirectory(at: staging, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: backupApp, withIntermediateDirectories: true)
+        try Data("zip".utf8).write(to: zip)
+
+        installer.removeWorkingArtifacts(keepBackup: true)
+
+        try expect(!fileManager.fileExists(atPath: staging.path), "staging 目录应被清理")
+        try expect(!fileManager.fileExists(atPath: zip.path), "下载 zip 应被清理")
+        try expect(fileManager.fileExists(atPath: backupApp.path), "回滚失败保护时 backup 应被保留")
+    }
 }
 
 /// 线程安全计数器 (moveItem 注入闭包为 @Sendable).

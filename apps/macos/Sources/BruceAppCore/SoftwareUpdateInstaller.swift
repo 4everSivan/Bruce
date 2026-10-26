@@ -92,6 +92,22 @@ package struct UpdateInstaller: Sendable {
         try? FileManager.default.removeItem(at: updatesRoot)
     }
 
+    /// 清理工作产物 (下载包与 staging 暂存); 若 keepBackup 为 true 则保留 backup 目录 (防回滚失败时误删仅存的原版备份).
+    package func removeWorkingArtifacts(keepBackup: Bool = false) {
+        let fileManager = FileManager.default
+        if !keepBackup {
+            try? fileManager.removeItem(at: updatesRoot)
+            return
+        }
+        guard let items = try? fileManager.contentsOfDirectory(
+            at: updatesRoot,
+            includingPropertiesForKeys: nil
+        ) else { return }
+        for item in items where item.lastPathComponent != "backup" {
+            try? fileManager.removeItem(at: item)
+        }
+    }
+
     // MARK: 前置位置检查 (R6.4)
 
     /// 当前应用能否自替换: 非 App Translocation 随机只读挂载、所在卷可写、父目录与 bundle 可写,

@@ -92,11 +92,12 @@ package final class SoftwareUpdateService: ObservableObject {
 
     // MARK: 启动与自动检查
 
-    /// 应用启动时调用: 清理上一轮升级残留, 并开始自动检查调度 (启动 30 秒后首查).
+    /// 应用启动时调用: 清理上一轮升级残留与已追平跳过版本, 并开始自动检查调度 (启动 30 秒后首查).
     package func start() {
-        guard localVersion != nil, launchedAt == nil else { return }
+        guard let localVersion, launchedAt == nil else { return }
         launchedAt = now()
         installer?.removeStaleArtifacts()
+        cleanupStaleSkippedVersion(localVersion: localVersion)
         scheduleTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
@@ -108,6 +109,13 @@ package final class SoftwareUpdateService: ObservableObject {
                 }
                 await self.autoCheckTick()
             }
+        }
+    }
+
+    /// 启动时即时比对当前版本; 本地版本追平或超过跳过版本时清除记录 (07 §4.2 R4).
+    private func cleanupStaleSkippedVersion(localVersion: SemanticVersion) {
+        if let skipped = preferences.skippedVersion, skipped <= localVersion {
+            preferences.skippedVersion = nil
         }
     }
 
@@ -355,9 +363,21 @@ package final class SoftwareUpdateService: ObservableObject {
             try installer.replace(installedApp: installedApp, with: stagedApp.url)
         } catch {
             self.stagedApp = nil
-            installer.removeStaleArtifacts()
+            let failure = error as? UpdateInstallFailure ?? .replaceFailed(rolledBack: true)
+            let rolledBack: Bool
+            if case .replaceFailed(let rb) = failure {
+                rolledBack = rb
+            } else {
+                rolledBack = true
+            }
+            if rolledBack {
+                installer.removeStaleArtifacts()
+            } else {
+                // 回滚失败时保护 backup 目录, 只清理暂存包
+                installer.removeWorkingArtifacts(keepBackup: true)
+            }
             phase = .available(release)
-            postStatusLine((error as? UpdateInstallFailure ?? .replaceFailed(rolledBack: true)).statusLine)
+            postStatusLine(failure.statusLine)
             return
         }
         self.stagedApp = nil

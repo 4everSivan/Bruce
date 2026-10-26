@@ -43,6 +43,7 @@ struct SoftwareUpdateHarness {
         try await run("自替换位置前置检查") { try SoftwareUpdateInstallerTests.selfReplaceRequiresWritableSameVolumeLocation() }
         try await run("重启等待器") { try SoftwareUpdateInstallerTests.relaunchWaitsForCurrentProcessThenOpens() }
         try await run("清理只限 updates 目录") { try SoftwareUpdateInstallerTests.removeStaleArtifactsOnlyTouchesUpdatesRoot() }
+        try await run("回滚保护保留 backup 目录") { try SoftwareUpdateInstallerTests.removeWorkingArtifactsPreservesBackupWhenRequested() }
 
         // 服务状态机
         try await run("dev 构建降级") { try await SoftwareUpdateServiceTests.devBuildNeverTouchesNetwork() }
@@ -58,6 +59,7 @@ struct SoftwareUpdateHarness {
         try await run("手动接管在途自动检查") { try await SoftwareUpdateServiceTests.manualCheckJoinsInFlightAutoCheck() }
         try await run("跳过版本语义") { try await SoftwareUpdateServiceTests.skipVersionSemantics() }
         try await run("本地追平跳过版本") { try await SoftwareUpdateServiceTests.skippedVersionClearsOnceLocalCatchesUp() }
+        try await run("启动追平跳过版本") { try await SoftwareUpdateServiceTests.startClearsSkippedVersionImmediatelyIfLocalCatchesUp() }
         try await run("下载校验就绪") { try await SoftwareUpdateServiceTests.downloadVerifiesAndBecomesReady() }
         try await run("下载包校验失败") { try await SoftwareUpdateServiceTests.downloadRejectsChecksumMismatch() }
         try await run("下载失败") { try await SoftwareUpdateServiceTests.downloadFailureReturnsToAvailable() }
