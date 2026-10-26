@@ -4,19 +4,16 @@
   "title": "Windows 出站网络 command 移出主线程：设备码登录与订阅验证不再冻结托盘与界面",
   "version": "0.13.1",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C109-win-async-network",
   "is_hotfix": false,
-
   "target": {
     "module": "apps/win src-tauri",
     "component": "lib.rs Tauri IPC command（codex_device_start / codex_device_poll / verify_subscription）",
     "design_doc": "docs/devel/design/05-Windows平台适配.md",
     "design_topic": "WindowsCompat"
   },
-
   "why": "2026-10-25 架构审查：Tauri 2 中未声明 async 的 command 在主线程执行。codex_device_start（申请设备码）与 codex_device_poll（轮询 + 授权后换码）均为 ureq 阻塞 HTTP，超时 30 s，单次轮询换码最长可串行两次请求；verify_subscription 对 DeepSeek 追加一次真实余额试查，超时 8 s。网络慢或不可达时，托盘、看板与设置窗口在整个请求期间全部失去响应。同文件的 StepFun 登录 command 早已因同类原因改为 async（设计规则 24），但这三处遗漏。",
-
   "precheck": {
     "description": "确认改动前三个含网络请求的 command 均为同步 fn",
     "command": "git show b070387:apps/win/src-tauri/src/lib.rs | grep -E -A1 '#\\[tauri::command\\]' | grep -E '^    fn (codex_device_start|codex_device_poll|verify_subscription)\\('",
@@ -24,7 +21,6 @@
     "is_completed": false,
     "evidence": "2026-10-26 预检实测：b070387 的 lib.rs 中 #[tauri::command] 后紧跟 `fn codex_device_start(`、`fn codex_device_poll(`、`fn verify_subscription(` 三处同步声明 —— 缺陷成立，需编码修复。"
   },
-
   "callback": {
     "before": [
       "git checkout -b fix/C109-win-async-network  # 叠加在 fix/C108-pricing-single-source 之上"
@@ -37,7 +33,6 @@
       "scripts/adflow-verify --card C109 --to verified --record"
     ]
   },
-
   "changes": [
     {
       "scope": "网络 command 线程模型",
@@ -58,7 +53,6 @@
       "impact": "新增网络 command 若遗漏 async 会在 CI 变红"
     }
   ],
-
   "design": {
     "doc": "docs/devel/design/05-Windows平台适配.md",
     "topic": "WindowsCompat",
@@ -68,12 +62,11 @@
       "after": "新增规则 31「出站网络不得阻塞主线程」：含出站 HTTP 的 command 必须 async + off_main_thread，需 STA 的 Win32 调用派回主线程，守卫用例锁定"
     }
   },
-
   "verification": {
-    "result": null,
+    "result": "passed",
     "run_id": "local-20261026-00",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "找到 C106 → C110 的分支完成情况，我 \"确认\" 签收，fix/C110-scan-prefilter-parallel 准备提交合并到主分支",
+    "signoff": "2026-10-26 人类口头确认 (AI 代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -98,19 +91,19 @@
       }
     ]
   },
-
   "rejections": [],
-
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
-    "commit": "",
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "2ae25b4",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-26",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

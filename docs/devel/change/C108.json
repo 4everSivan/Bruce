@@ -4,19 +4,16 @@
   "title": "价卡单一事实源：设置页展示单价与采集端计费同源（消除 deepseek-v4.1-flash 展示 $0.15 而按 $0.30 计费的漂移）",
   "version": "0.13.1",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C108-pricing-single-source",
   "is_hotfix": false,
-
   "target": {
     "module": "core/collector collector-domain / apps/macos BruceOnboardingCore / apps/win viewmodel",
     "component": "PricingTable 内置价卡、BuiltinModelPricingCatalog、model_catalog",
     "design_doc": "docs/devel/design/04-设置中心与价格校准交互.md",
     "design_topic": "PricingEngine"
   },
-
   "why": "2026-10-25 架构审查：内置价卡在三处各自手写 —— 采集端 collector-domain/pricing.rs（计费口径）、mac BuiltinModelPricingCatalog.swift 与 Windows model_catalog.rs（设置页 / 工作台展示口径，后者注释自称「镜像 mac」）。三表已漂移：deepseek-v4.1-flash 设置页显示 $0.15/$0.60，采集端按 ClinePass 档 $0.30/$1.20 计费（C073 用例锁定）；采集端另有 deepseek-flash 与 4 个 Jev 别名行两端不知情。pricing.rs 中为「设置页共享事实源」预留的 builtin_catalog() 全仓零调用。mac 设置页覆盖项匹配取字典遍历首个前缀命中（gpt-5.4 / gpt-5.4-mini 等前缀族同时存在覆盖时结果随哈希种子漂移），可能展示与实际计费不同的覆盖单价。",
-
   "precheck": {
     "description": "确认改动前 deepseek-v4.1-flash 两端价卡不一致，且 builtin_catalog() 无调用方",
     "command": "git show b070387:apps/macos/Sources/BruceOnboardingCore/BuiltinModelPricingCatalog.swift | grep -A4 '\"deepseek-v4.1-flash\"'; git show b070387:core/collector/crates/collector-domain/src/pricing.rs | grep -A3 '\"deepseek-v4.1-flash\"'; git grep -n builtin_catalog b070387 -- core apps | grep -v 'pub fn' | wc -l",
@@ -24,7 +21,6 @@
     "is_completed": false,
     "evidence": "2026-10-26 预检实测：b070387 的 mac 目录 deepseek-v4.1-flash 为 inputPricePerMillion 0.15 / outputPricePerMillion 0.60，采集端 pricing.rs 为 0.30 / 1.20 / Some(0.006)（并有 C073 用例断言 0.30）；git grep builtin_catalog 除定义外 0 处调用 —— 漂移与死代码成立，需编码修复。"
   },
-
   "callback": {
     "before": [
       "git checkout -b fix/C108-pricing-single-source  # 叠加在 fix/C107-claude-pricing 之上"
@@ -38,7 +34,6 @@
       "scripts/adflow-verify --card C108 --to verified --record"
     ]
   },
-
   "changes": [
     {
       "scope": "价卡事实源",
@@ -59,7 +54,6 @@
       "impact": "设置页展示的覆盖单价即实际计费单价"
     }
   ],
-
   "design": {
     "doc": "docs/devel/design/04-设置中心与价格校准交互.md",
     "topic": "PricingEngine",
@@ -69,12 +63,11 @@
       "after": "design/04 新增规则 0「价卡单一事实源」（pricing-catalog.json 唯一事实源、三端派生方式、禁止手写副本、listed 语义、覆盖项匹配与采集端同序）；design/01 规则 1 事实源改指 JSON；design/00、README 去除失真的「43 款」计数"
     }
   },
-
   "verification": {
-    "result": null,
+    "result": "passed",
     "run_id": "local-20261026-00",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "找到 C106 → C110 的分支完成情况，我 \"确认\" 签收，fix/C110-scan-prefilter-parallel 准备提交合并到主分支",
+    "signoff": "2026-10-26 人类口头确认 (AI 代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -99,19 +92,19 @@
       }
     ]
   },
-
   "rejections": [],
-
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
-    "commit": "",
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "7067df0",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-26",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

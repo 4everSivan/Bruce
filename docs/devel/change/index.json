@@ -149,6 +149,12 @@
       "changes": [
         "C070"
       ]
+    },
+    "SoftwareUpdate": {
+      "design_doc": "docs/devel/design/07-软件更新.md",
+      "changes": [
+        "C105"
+      ]
     }
   },
   "cards": {
@@ -1079,10 +1085,19 @@
       "version": "0.13.0",
       "file": "docs/archive/0.13.0/change/C103.json"
     },
+    "C105": {
+      "title": "补发版前置核实规则：签名 secrets 须以 gh secret list 实测为准（原 C104 撞号改号）",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "main",
+      "topic": "SoftwareUpdate",
+      "version": "0.13.1",
+      "file": "docs/devel/change/C105.json"
+    },
     "C106": {
       "title": "artifact 逐日校验不再每次新建 DateFormatter：消除每轮刷新约 2 秒主线程 CPU",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C106-validday-formatter",
       "topic": "SystemOverview",
       "version": "0.13.1",
@@ -1091,7 +1106,7 @@
     "C107": {
       "title": "Claude 单价按 Anthropic 官方校正并按 TTL 计价缓存写入：Opus 5.5 费用高估约 70%",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C107-claude-pricing",
       "topic": "TokenUsage",
       "version": "0.13.1",
@@ -1100,7 +1115,7 @@
     "C108": {
       "title": "价卡单一事实源：设置页展示单价与采集端计费同源（消除 deepseek-v4.1-flash 展示 $0.15 而按 $0.30 计费的漂移）",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C108-pricing-single-source",
       "topic": "PricingEngine",
       "version": "0.13.1",
@@ -1109,7 +1124,7 @@
     "C109": {
       "title": "Windows 出站网络 command 移出主线程：设备码登录与订阅验证不再冻结托盘与界面",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C109-win-async-network",
       "topic": "WindowsCompat",
       "version": "0.13.1",
@@ -1118,7 +1133,7 @@
     "C110": {
       "title": "本机扫描提速：缓存一次性写盘、解析前字节预筛、次要源并行扫描（冷扫 2.15 s → 0.17 s）",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C110-scan-prefilter-parallel",
       "topic": "TokenUsage",
       "version": "0.13.1",

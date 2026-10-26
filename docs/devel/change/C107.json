@@ -4,19 +4,16 @@
   "title": "Claude 单价按 Anthropic 官方校正并按 TTL 计价缓存写入：Opus 5.5 费用高估约 70%",
   "version": "0.13.1",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C107-claude-pricing",
   "is_hotfix": false,
-
   "target": {
     "module": "core/collector collector-domain / collector-local",
     "component": "PricingTable 价卡与 calculate_cost、Claude Code 用量解析",
     "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
     "design_topic": "TokenUsage"
   },
-
   "why": "2026-10-25 架构审查：价卡把 claude-opus-5-5 记为 $5/$25、缓存读取 $0.50（Opus 5 的价位），Anthropic 官方为 $4/$20、缓存读取 $0.20；真实快照中 Opus 5.5 累计报 $332.20，按官方价约 $176–195，缓存读取占报价的 73%。同时 calculate_cost 把缓存写入一律按 1.0× 输入单价计，而 Anthropic 对 5 分钟 / 1 小时 TTL 写入分别收 1.25× / 2×；实测本机 Claude Code 日志 4,377 条 assistant 用量的 16,518,423 个缓存写入 token 全部为 1 小时 TTL（usage.cache_creation.ephemeral_1h_input_tokens），采集端未读取该拆分。价卡也缺 Opus 5 / Sonnet 5.5 / Haiku 5.5 / Fable 等现行型号，claude-opus-5 会被 claude-opus-5-5 行反向前缀命中。",
-
   "precheck": {
     "description": "确认改动前 Opus 5.5 行为 $5/$25 且缓存写入按 1.0× 输入单价计",
     "command": "git show b070387:core/collector/crates/collector-domain/src/pricing.rs | grep -A2 '\"claude-opus-5-5\"'; git show b070387:core/collector/crates/collector-domain/src/pricing.rs | grep -c 'cache_creation as f64) \\* pricing.input_price_per_million'",
@@ -24,7 +21,6 @@
     "is_completed": false,
     "evidence": "2026-10-26 预检实测：b070387 的 pricing.rs 中 \"claude-opus-5-5\" 行为 5.00 / 25.00，缓存写入按 `cache_creation as f64) * pricing.input_price_per_million` 计价的表达式命中 1 处 —— 缺陷成立，需编码修复。"
   },
-
   "callback": {
     "before": [
       "git checkout -b fix/C107-claude-pricing  # 叠加在 fix/C106-validday-formatter 之上"
@@ -37,7 +33,6 @@
       "scripts/adflow-verify --card C107 --to verified --record"
     ]
   },
-
   "changes": [
     {
       "scope": "价卡 Anthropic 行",
@@ -58,7 +53,6 @@
       "impact": "artifact 各 token 桶在存在 1 小时写入时新增 cacheCreation1h 字段（为 0 时省略，旧消费方忽略未知字段）"
     }
   ],
-
   "design": {
     "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
     "topic": "TokenUsage",
@@ -68,12 +62,11 @@
       "after": "规则 1 Anthropic 行按官方价更新并注明缓存写入倍率；规则 2 计算式补缓存写入项并按 TTL 拆分（5 分钟 1.25× / 1 小时 2×，未声明倍率按 1.0×），删除失真的中端基准回退条款（实现为未定价不估算）"
     }
   },
-
   "verification": {
-    "result": null,
+    "result": "passed",
     "run_id": "local-20261026-00",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "找到 C106 → C110 的分支完成情况，我 \"确认\" 签收，fix/C110-scan-prefilter-parallel 准备提交合并到主分支",
+    "signoff": "2026-10-26 人类口头确认 (AI 代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -98,19 +91,19 @@
       }
     ]
   },
-
   "rejections": [],
-
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
-    "commit": "",
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "1b73d2c",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-26",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

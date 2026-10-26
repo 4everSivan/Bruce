@@ -4,19 +4,16 @@
   "title": "本机扫描提速：缓存一次性写盘、解析前字节预筛、次要源并行扫描（冷扫 2.15 s → 0.17 s）",
   "version": "0.13.1",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C110-scan-prefilter-parallel",
   "is_hotfix": false,
-
   "target": {
     "module": "core/collector collector-local / collector-application / collector-runtime",
     "component": "缓存写盘、JSONL / Codex 行解析、本机源扫描编排",
     "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
     "design_topic": "TokenUsage"
   },
-
   "why": "2026-10-25 架构审查实测本机全量冷扫约 2–4 s（缓存按 today 失效，每日首轮必冷扫），其中 Claude 1.2 s、CodeBuddy 0.9 s，且 8 个次要源逐个串行。本卡排查时以 /usr/bin/time -l 发现真正的大头在内核态：五处缓存写盘（jsonl_cache / sqlite_cache / Kimi 条目与 manifest / Codex 树缓存）以 serde_json::to_writer 直写未缓冲的 File，每个 JSON 记号一次 write 系统调用 —— Claude 冷扫 0.15 s 用户态之外耗 0.61 s 内核态。另：Claude 日志约 90% 字节（162.6 MB 中 147 MB）是不含用量的 user / tool_result 行，却被完整解析为 serde_json::Value 后丢弃；每行新建行缓冲；设计 00 宣称的「并发扫描本地会话目录」并未实现。",
-
   "precheck": {
     "description": "确认改动前缓存以 to_writer 直写 File、次要源串行扫描",
     "command": "git show 10f0fea:core/collector/crates/collector-local/src/jsonl_cache.rs | grep -c 'serde_json::to_writer(&mut file'; git show 10f0fea:core/collector/crates/collector-application/src/lib.rs | grep -c 'let source_results = \\['",
@@ -24,7 +21,6 @@
     "is_completed": false,
     "evidence": "2026-10-26 预检实测：10f0fea 的 jsonl_cache.rs 中 `serde_json::to_writer(&mut file` 命中 1 处（另 sqlite_cache / lib.rs ×2 / codex.rs 同形），collector-application/src/lib.rs 中串行的 `let source_results = [` 命中 1 处 —— 缺陷成立，需编码修复。"
   },
-
   "callback": {
     "before": [
       "git checkout -b fix/C110-scan-prefilter-parallel  # 叠加在 fix/C109-win-async-network 之上"
@@ -37,7 +33,6 @@
       "scripts/adflow-verify --card C110 --to verified --record"
     ]
   },
-
   "changes": [
     {
       "scope": "缓存写盘",
@@ -58,7 +53,6 @@
       "impact": "冷扫耗时由各源之和变为约等于最慢源"
     }
   ],
-
   "design": {
     "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
     "topic": "TokenUsage",
@@ -68,12 +62,11 @@
       "after": "规则 3 新增「缓存写盘与解析热路径」（先序列化再单次写入、64 KiB 读缓冲复用行缓冲、预筛子串须为必要条件）与「本机源并行扫描」（local_workers 工作池、固定源序合并、panic 降级）"
     }
   },
-
   "verification": {
-    "result": null,
+    "result": "passed",
     "run_id": "local-20261026-00",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "找到 C106 → C110 的分支完成情况，我 \"确认\" 签收，fix/C110-scan-prefilter-parallel 准备提交合并到主分支",
+    "signoff": "2026-10-26 人类口头确认 (AI 代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -98,19 +91,19 @@
       }
     ]
   },
-
   "rejections": [],
-
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
-    "commit": "",
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "e689528",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-26",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

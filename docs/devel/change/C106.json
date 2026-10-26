@@ -4,19 +4,16 @@
   "title": "artifact 逐日校验不再每次新建 DateFormatter：消除每轮刷新约 2 秒主线程 CPU",
   "version": "0.13.1",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C106-validday-formatter",
   "is_hotfix": false,
-
   "target": {
     "module": "apps/macos BruceAppCore",
     "component": "ArtifactValidator 逐日校验与热路径 ISO 8601 解析",
     "design_doc": "docs/devel/design/00-系统总体设计.md",
     "design_topic": "SystemOverview"
   },
-
   "why": "2026-10-25 架构审查实测：ArtifactValidator.validDay 对 artifact 每个 daily / dailyModels 日期新建并配置一次 DateFormatter（-O 构建基准 3000 次 795 ms，约 0.26 ms/次）。真实快照含 1,891 个日期，单次 validate 约 0.5 s；每轮刷新同一 artifact 在 @MainActor 上校验约 4 次（ArtifactStore.publish 3 次 + AppModel 解码 1 次），冷启动加载亦同，合计约 2 s 主线程 CPU，菜单栏常驻场景下表现为刷新时卡顿。额度节流、快照合并、调度回填等热路径同样每次调用新建 ISO8601DateFormatter。",
-
   "precheck": {
     "description": "确认改动前 validDay 每次调用都新建 DateFormatter",
     "command": "git show b070387:apps/macos/Sources/BruceAppCore/ArtifactModels.swift | grep -A1 'private func validDay' | grep -c 'DateFormatter()'",
@@ -24,7 +21,6 @@
     "is_completed": false,
     "evidence": "2026-10-26 预检实测：git show b070387:apps/macos/Sources/BruceAppCore/ArtifactModels.swift | grep -A1 'private func validDay' | grep -c 'DateFormatter()' 输出 1 —— 改动前每次 validDay 调用都新建 DateFormatter，缺陷成立，需编码修复。"
   },
-
   "callback": {
     "before": [
       "git worktree add .claude/worktrees/review-fixes -b fix/C106-validday-formatter main  # 隔离工作区，避免触碰主工作区未提交的 C104 草稿"
@@ -35,7 +31,6 @@
       "scripts/adflow-verify --card C106 --to verified --record"
     ]
   },
-
   "changes": [
     {
       "scope": "ArtifactValidator 逐日校验",
@@ -50,7 +45,6 @@
       "impact": "额度节流判定与快照合并的时间解析，结果不变"
     }
   ],
-
   "design": {
     "doc": "docs/devel/design/00-系统总体设计.md",
     "topic": "SystemOverview",
@@ -60,12 +54,11 @@
       "after": ""
     }
   },
-
   "verification": {
-    "result": null,
+    "result": "passed",
     "run_id": "local-20261026-00",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "找到 C106 → C110 的分支完成情况，我 \"确认\" 签收，fix/C110-scan-prefilter-parallel 准备提交合并到主分支",
+    "signoff": "2026-10-26 人类口头确认 (AI 代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -90,19 +83,19 @@
       }
     ]
   },
-
   "rejections": [],
-
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
-    "commit": "",
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "605e2c7",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-26",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }
