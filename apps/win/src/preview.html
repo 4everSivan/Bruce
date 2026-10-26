@@ -324,19 +324,19 @@
             <circle class="ring-circle-bg" cx="21" cy="21" r="16" />
             <circle class="ring-circle-val" id="ringCircle" cx="21" cy="21" r="16" stroke-dasharray="100.53" stroke-dashoffset="15.0" />
           </svg>
-          <span class="ring-center-txt" id="ringPercentText">85%</span>
+          <span class="ring-center-txt" id="ringPercentText">—</span>
         </div>
         <div class="metric-info">
-          <span class="metric-title" id="topProviderName">Claude Pro</span>
-          <span class="metric-sub" id="topResetCountdown">倒计时 1h 48m</span>
+          <span class="metric-title" id="topProviderName">—</span>
+          <span class="metric-sub" id="topResetCountdown">—</span>
         </div>
       </div>
 
       <!-- 今日统计 -->
       <div class="kpi-stat-box">
         <div class="metric-title">今日模型用量</div>
-        <div class="kpi-stat-val" id="kpiCostText">$0.00</div>
-        <div class="kpi-stat-sub" id="kpiTokensText">0 Tokens</div>
+        <div class="kpi-stat-val" id="kpiCostText">—</div>
+        <div class="kpi-stat-sub" id="kpiTokensText">—</div>
       </div>
     </div>
 
@@ -350,7 +350,7 @@
         <span class="quota-strip-val" id="activeAgentCountText">0 运行中</span>
       </div>
       <div class="progress-bar-wrap">
-        <div class="progress-bar-fill" id="stripProgressFill" style="width: 85%;"></div>
+        <div class="progress-bar-fill" id="stripProgressFill" style="width: 0%;"></div>
       </div>
     </div>
 
@@ -378,68 +378,46 @@
       return Promise.resolve(null);
     }
 
-    // 渲染视图模型
+    // 渲染视图模型 (C115): 全部取自后端 `panel.preview` —— 与托盘配额环同一份
+    // extract_quota_summary 结果, 状态灯与 HUD / 托盘同一判定表 (C100); 缺失值显示「—」。
+    const TONE_TEXT = { ok: "运行正常", warn: "部分告警", error: "异常断开", neutral: "暂无数据" };
     function renderPreview(panel) {
-      if (!panel) return;
+      const preview = panel && panel.preview;
+      if (!preview) return;
 
       // 1. 状态灯
       const statusChip = document.getElementById("statusChip");
-      const statusText = document.getElementById("statusText");
-      const status = panel.status || "ok";
       statusChip.className = "status-badge-chip";
-      if (status === "warn" || status === "partial") {
-        statusChip.classList.add("warn");
-        statusText.textContent = "部分告警";
-      } else if (status === "error" || status === "failed") {
-        statusChip.classList.add("danger");
-        statusText.textContent = "异常断开";
-      } else {
-        statusText.textContent = "运行正常";
-      }
+      if (preview.statusTone === "warn") statusChip.classList.add("warn");
+      if (preview.statusTone === "error") statusChip.classList.add("danger");
+      statusChip.title = preview.statusReason || "";
+      document.getElementById("statusText").textContent =
+        TONE_TEXT[preview.statusTone] || preview.statusReason || "—";
 
-      // 2. 费用与 Token
-      if (panel.usage) {
-        if (panel.usage.totalCostText) {
-          document.getElementById("kpiCostText").textContent = panel.usage.totalCostText;
-        }
-        if (panel.usage.totalTokensText) {
-          document.getElementById("kpiTokensText").textContent = panel.usage.totalTokensText + " Tokens";
-        }
-      }
+      // 2. 今日费用与 Token
+      document.getElementById("kpiCostText").textContent = preview.costText || "—";
+      document.getElementById("kpiTokensText").textContent =
+        preview.tokensText ? preview.tokensText + " Tokens" : "—";
 
-      // 3. 活跃 Agent
-      if (panel.agents && Array.isArray(panel.agents)) {
-        const activeCount = panel.agents.filter(a => a.active).length;
-        document.getElementById("activeAgentCountText").textContent = activeCount + " 活跃";
-      }
+      // 3. 活跃 Agent (与 HUD「N AGENTS ACTIVE」同口径)
+      document.getElementById("activeAgentCountText").textContent = preview.activeAgents + " 活跃";
 
-      // 4. 配额与 42px 环形仪表
-      let highestUsed = -1;
-      let topProvider = "订阅额度";
-      let topCountdown = "--";
-      if (panel.subscriptions && panel.subscriptions.sections) {
-        for (const sec of panel.subscriptions.sections) {
-          if (sec.collapsedWindow && typeof sec.collapsedWindow.usedPercent === "number") {
-            if (sec.collapsedWindow.usedPercent > highestUsed) {
-              highestUsed = sec.collapsedWindow.usedPercent;
-              topProvider = sec.name || "Provider";
-              topCountdown = sec.collapsedWindow.resetsIn ? ("倒计时 " + sec.collapsedWindow.resetsIn) : "--";
-            }
-          }
-        }
-      }
-
-      const remainingPct = highestUsed >= 0 ? Math.max(0, Math.min(100, Math.round(100 - highestUsed))) : 100;
-      document.getElementById("ringPercentText").textContent = remainingPct + "%";
-      document.getElementById("topProviderName").textContent = topProvider;
-      document.getElementById("topResetCountdown").textContent = topCountdown;
+      // 4. 配额与 42px 环形仪表: 无有效配额窗口时不伪装为 100%
+      const hasQuota = typeof preview.remainingPct === "number";
+      const remainingPct = hasQuota ? Math.max(0, Math.min(100, Math.round(preview.remainingPct))) : 0;
+      document.getElementById("ringPercentText").textContent = hasQuota ? remainingPct + "%" : "—";
+      document.getElementById("topProviderName").textContent = preview.topProvider || "暂无订阅额度";
+      document.getElementById("topResetCountdown").textContent =
+        preview.resetText ? "重置 " + preview.resetText : (preview.topWindowLabel || "—");
 
       // SVG 周长 2 * PI * 16 = 100.53
       const circumference = 100.53;
       const offset = circumference - (remainingPct / 100) * circumference;
       const ringCircle = document.getElementById("ringCircle");
       ringCircle.style.strokeDashoffset = offset;
-      if (remainingPct < 15) {
+      if (!hasQuota) {
+        ringCircle.style.stroke = "var(--muted, #8a8a8a)";
+      } else if (remainingPct < 15) {
         ringCircle.style.stroke = "var(--danger)";
       } else if (remainingPct < 30) {
         ringCircle.style.stroke = "var(--warn)";

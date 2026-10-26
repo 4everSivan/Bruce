@@ -133,20 +133,26 @@ mod desktop {
                 return;
             }
         }
+        let Some(preview_window) = app.get_webview_window("preview") else {
+            return;
+        };
+        // C115: 托盘 Move 事件随指针移动连续触发; 预览卡已显示时直接返回,
+        // 不再逐次读取 settings.json 并重复 set_size / set_position / show / always_on_top。
+        if preview_window.is_visible().unwrap_or(false) {
+            return;
+        }
 
         let settings = settings::load_settings(&paths::data_root());
         if !settings.tray_hover_preview {
             return;
         }
 
-        if let Some(preview_window) = app.get_webview_window("preview") {
-            let tray_bounds = app
-                .try_state::<TrayBoundsState>()
-                .and_then(|s| s.0.lock().ok().and_then(|guard| *guard));
-            apply_preview_geometry(&preview_window, tray_bounds.as_ref());
-            let _ = preview_window.show();
-            let _ = preview_window.set_always_on_top(true);
-        }
+        let tray_bounds = app
+            .try_state::<TrayBoundsState>()
+            .and_then(|s| s.0.lock().ok().and_then(|guard| *guard));
+        apply_preview_geometry(&preview_window, tray_bounds.as_ref());
+        let _ = preview_window.show();
+        let _ = preview_window.set_always_on_top(true);
     }
 
     fn hide_preview(app: &tauri::AppHandle) {

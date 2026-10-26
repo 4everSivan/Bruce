@@ -2153,3 +2153,27 @@ test("tray hover preview toggle persists in settings and preview.html has 420px 
   assert.equal(app.state.settings.trayHoverPreview, false, "持久化保存为 false");
 });
 
+
+test("tray preview card renders backend panel.preview from the real panel contract (C115)", async () => {
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  // 与 Rust preview_fixture_matches_backend_serialization 同一份 fixture: 后端对 golden 面板的序列化结果
+  const preview = JSON.parse(fs.readFileSync(path.resolve("tests/fixtures/viewmodel-parity/agent-usage-valid.preview.json"), "utf8"));
+  const app = await boot({ html: "preview.html", panel: { ...fixture, preview } });
+  assert.deepEqual(app.errors, []);
+  assert.equal(app.node("ringPercentText").textContent, "30%");
+  assert.equal(app.node("topProviderName").textContent, "ChatGPT");
+  assert.equal(app.node("topResetCountdown").textContent, "重置 78 天后");
+  assert.equal(app.node("kpiCostText").textContent, "≈ ¥2.702");
+  assert.equal(app.node("kpiTokensText").textContent, "184K Tokens");
+  assert.equal(app.node("activeAgentCountText").textContent, "2 活跃");
+  assert.equal(app.node("statusText").textContent, "运行正常");
+
+  // 无有效配额窗口 / 定价缺失: 显示「—」而不是伪造的 100% 与 $0.00
+  await app.emit("dashboard-updated", { ...fixture, preview: { ...preview, remainingPct: null, topProvider: null, resetText: null, topWindowLabel: null, costText: null, statusTone: "warn" } });
+  assert.equal(app.node("ringPercentText").textContent, "—");
+  assert.equal(app.node("topProviderName").textContent, "暂无订阅额度");
+  assert.equal(app.node("kpiCostText").textContent, "—");
+  assert.equal(app.node("statusText").textContent, "部分告警");
+  assert.ok(app.node("statusChip").classList.contains("warn"));
+});

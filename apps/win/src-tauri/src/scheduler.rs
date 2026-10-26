@@ -172,6 +172,10 @@ mod desktop {
         panel["runtime"]["refreshingProviders"] =
             serde_json::json!(control.refreshing_provider_list());
         panel["runtime"]["quotaRefreshAllowed"] = Value::Bool(settings.consent_version == 1);
+        // 托盘配额环与悬停预览卡共用的速览 (C115): 预览卡只读 `panel.preview`,
+        // 不再在前端按猜测的字段名自行推算。须在 runtime 字段写入后计算 (状态灯读取 runtime)。
+        let preview = crate::tray_icon_renderer::extract_quota_summary(&panel);
+        panel["preview"] = serde_json::to_value(&preview).unwrap_or(Value::Null);
         Ok(panel)
     }
 
@@ -189,15 +193,11 @@ mod desktop {
                 let pixels = crate::tray_icon_renderer::render_tray_quota_icon(
                     32,
                     summary.remaining_pct,
-                    summary.status_tone,
+                    summary.tone,
                     is_refreshing,
                 );
                 let _ = tray.set_icon(Some(tauri::image::Image::new_owned(pixels, 32, 32)));
-                let tooltip = format!(
-                    "Bruce · 额度剩余 {:.0}% · {} | 今日 {}",
-                    summary.remaining_pct, summary.status_reason, summary.total_cost_text
-                );
-                let _ = tray.set_tooltip(Some(tooltip));
+                let _ = tray.set_tooltip(Some(crate::tray_icon_renderer::tray_tooltip(&summary)));
             }
             let _ = app.emit("dashboard-updated", panel);
         }

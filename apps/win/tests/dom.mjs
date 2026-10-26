@@ -238,6 +238,10 @@ export async function boot({ html = "index.html", panel = fixture, settings = de
   for (const [, file] of htmlSource.matchAll(/<script src="([^"]+)"/g)) {
     vm.runInContext(readFileSync(resolve("apps/win/src", file), "utf8"), context, { filename: file });
   }
+  // 内联脚本 (如 preview.html, C115) 同样按生产源码执行。
+  for (const [, inline] of htmlSource.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
+    vm.runInContext(inline, context, { filename: `${html}#inline` });
+  }
   await settle(); await settle();
   return { document, window, calls, errors, state, context, events, node: id => document.getElementById(id),
     emit: async (name, payload) => { await Promise.all((events.get(name) || []).map(callback => callback({ payload }))); await settle(); } };

@@ -1,0 +1,11 @@
+{
+  "activeAgents": 2,
+  "costText": "≈ ¥2.702",
+  "remainingPct": 30.0,
+  "resetText": "78 天后",
+  "statusReason": "运行正常",
+  "statusTone": "ok",
+  "tokensText": "184K",
+  "topProvider": "ChatGPT",
+  "topWindowLabel": "每周"
+}
