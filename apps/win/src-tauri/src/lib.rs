@@ -379,8 +379,8 @@ mod desktop {
         Ok(serde_json::json!({ "path": target }))
     }
 
-    /// 设置页「模型计费」的展示目录: 镜像 mac `BuiltinModelPricingCatalog` 的行集与元数据
-    /// (显示名 / 厂商 / 单价), 供表格与校准弹窗消费。采集侧成本口径不受影响。
+    /// 设置页「模型计费」的展示目录 (行集 / 显示名 / 厂商 / 单价), 供表格与校准弹窗消费;
+    /// 与采集端计费同源于 `pricing-catalog.json` (C108)。
     #[tauri::command]
     fn get_model_prices() -> serde_json::Value {
         model_catalog::as_json()

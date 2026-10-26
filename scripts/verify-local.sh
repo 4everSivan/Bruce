@@ -108,6 +108,9 @@ swift run --package-path "$BRUCE_SWIFT_PACKAGE" \
 echo "校验 Provider 品牌图形产物与源文件一致"
 node "$BRUCE_REPO_ROOT/scripts/gen-provider-glyphs.mjs" --check
 
+echo "校验 mac 内置价卡与采集端价卡同源 (C108)"
+node "$BRUCE_REPO_ROOT/scripts/gen-pricing-catalog.mjs" --check
+
 echo "校验变更总账一致性 (topic 归属下限与路径映射)"
 node "$BRUCE_REPO_ROOT/scripts/check-change-ledger.mjs"
 

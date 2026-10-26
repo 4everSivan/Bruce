@@ -1,11 +1,12 @@
-//! 模型展示目录 —— **镜像 mac `BuiltinModelPricingCatalog`**（唯一事实源）。
+//! 模型展示目录 —— 设置页「模型计费」（行集 / 显示名 / 厂商 / 单价）与用量工作台的模型
+//! 显示名 / 厂商（`analytics`）。
 //!
-//! 语义边界：本表只服务展示 —— 设置页「模型计费」（行集 / 显示名 / 厂商 / 单价）与
-//! 用量工作台的模型显示名 / 厂商（`analytics`，C070 起由 src-tauri 迁入本 crate）；采集侧的费用估算仍走
-//! `collector-domain::PricingTable`（成本口径，覆盖面更广）。mac 侧同样是两套目录，故不是
-//! 重复实现而是同构：新增或调整模型时，先改 mac 目录再同步本表（C033）。
+//! C108 起不再维护独立副本：行集直接派生自采集端价卡
+//! `core/collector/crates/collector-domain/pricing-catalog.json`（唯一事实源，计费同源），
+//! 新增或调整模型只改该 JSON；mac 侧目录由 `scripts/gen-pricing-catalog.mjs` 从同一文件生成。
 
 use serde_json::{json, Value};
+use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Copy)]
 pub struct CatalogEntry {
@@ -18,706 +19,31 @@ pub struct CatalogEntry {
     pub note: &'static str,
 }
 
-pub const CATALOG: &[CatalogEntry] = &[
-    CatalogEntry {
-        model_name: "k3-agent",
-        display_name: "Kimi K3 (Agent)",
-        vendor: "Moonshot Kimi",
-        input_price_per_million: 3.00,
-        output_price_per_million: 15.00,
-        cache_read_price_per_million: Some(0.30),
-        note: "Kimi 官方标准包",
-    },
-    CatalogEntry {
-        model_name: "k3",
-        display_name: "Kimi K3",
-        vendor: "Moonshot Kimi",
-        input_price_per_million: 3.00,
-        output_price_per_million: 15.00,
-        cache_read_price_per_million: Some(0.30),
-        note: "Kimi 官方标准包",
-    },
-    CatalogEntry {
-        model_name: "k3-256k",
-        display_name: "Kimi K3 (256k)",
-        vendor: "Moonshot Kimi",
-        input_price_per_million: 3.00,
-        output_price_per_million: 15.00,
-        cache_read_price_per_million: Some(0.30),
-        note: "长上下文 256k 窗口",
-    },
-    CatalogEntry {
-        model_name: "kimi-code",
-        display_name: "Kimi Code",
-        vendor: "Moonshot Kimi",
-        input_price_per_million: 3.00,
-        output_price_per_million: 15.00,
-        cache_read_price_per_million: Some(0.30),
-        note: "Kimi Code 编程补全",
-    },
-    CatalogEntry {
-        model_name: "kimi-for-coding",
-        display_name: "Kimi for Coding",
-        vendor: "Moonshot Kimi",
-        input_price_per_million: 3.00,
-        output_price_per_million: 15.00,
-        cache_read_price_per_million: Some(0.30),
-        note: "Kimi 编程增强模型",
-    },
-    CatalogEntry {
-        model_name: "kimi-k3",
-        display_name: "Kimi K3 (ClinePass)",
-        vendor: "Moonshot Kimi",
-        input_price_per_million: 3.00,
-        output_price_per_million: 15.00,
-        cache_read_price_per_million: Some(0.30),
-        note: "ClinePass 渠道包",
-    },
-    CatalogEntry {
-        model_name: "gpt-6.1-sol",
-        display_name: "GPT-6.1 Sol",
-        vendor: "OpenAI / Codex",
-        input_price_per_million: 4.50,
-        output_price_per_million: 22.50,
-        cache_read_price_per_million: Some(0.45),
-        note: "旗舰高阶代码推理",
-    },
-    CatalogEntry {
-        model_name: "gpt-6-sol",
-        display_name: "GPT-6 Sol",
-        vendor: "OpenAI / Codex",
-        input_price_per_million: 4.00,
-        output_price_per_million: 20.00,
-        cache_read_price_per_million: Some(0.40),
-        note: "旗舰代码生成大模型",
-    },
-    CatalogEntry {
-        model_name: "gpt-6-luna",
-        display_name: "GPT-6 Luna",
-        vendor: "OpenAI / Codex",
-        input_price_per_million: 0.25,
-        output_price_per_million: 1.50,
-        cache_read_price_per_million: Some(0.025),
-        note: "极速轻量代码模型",
-    },
-    CatalogEntry {
-        model_name: "gpt-5.6-luna",
-        display_name: "GPT-5.6 Luna",
-        vendor: "OpenAI / Codex",
-        input_price_per_million: 0.20,
-        output_price_per_million: 1.20,
-        cache_read_price_per_million: Some(0.02),
-        note: "高频极速轻量模型",
-    },
-    CatalogEntry {
-        model_name: "gpt-5.6-sol",
-        display_name: "GPT-5.6 Sol",
-        vendor: "OpenAI / Codex",
-        input_price_per_million: 4.00,
-        output_price_per_million: 20.00,
-        cache_read_price_per_million: Some(0.40),
-        note: "旗舰推理大模型",
-    },
-    CatalogEntry {
-        model_name: "gpt-5.6-terra",
-        display_name: "GPT-5.6 Terra",
-        vendor: "OpenAI / Codex",
-        input_price_per_million: 2.00,
-        output_price_per_million: 12.00,
-        cache_read_price_per_million: Some(0.20),
-        note: "主力平衡型编程模型",
-    },
-    CatalogEntry {
-        model_name: "gpt-5.4",
-        display_name: "GPT-5.4",
-        vendor: "OpenAI / Codex",
-        input_price_per_million: 2.50,
-        output_price_per_million: 15.00,
-        cache_read_price_per_million: Some(0.25),
-        note: "标准通用模型",
-    },
-    CatalogEntry {
-        model_name: "gpt-5.4-mini",
-        display_name: "GPT-5.4 mini",
-        vendor: "OpenAI / Codex",
-        input_price_per_million: 0.15,
-        output_price_per_million: 0.60,
-        cache_read_price_per_million: Some(0.015),
-        note: "轻量高吞吐模型",
-    },
-    CatalogEntry {
-        model_name: "gpt-5.2-codex",
-        display_name: "GPT-5.2 Codex",
-        vendor: "OpenAI / Codex",
-        input_price_per_million: 1.75,
-        output_price_per_million: 14.00,
-        cache_read_price_per_million: Some(0.175),
-        note: "经典专用代码模型",
-    },
-    CatalogEntry {
-        model_name: "codex-auto-review",
-        display_name: "Codex Auto Review",
-        vendor: "OpenAI / Codex",
-        input_price_per_million: 1.75,
-        output_price_per_million: 14.00,
-        cache_read_price_per_million: Some(0.175),
-        note: "自动化审查分析",
-    },
-    CatalogEntry {
-        model_name: "gpt-4o",
-        display_name: "GPT-4o",
-        vendor: "OpenAI",
-        input_price_per_million: 2.50,
-        output_price_per_million: 10.00,
-        cache_read_price_per_million: Some(1.25),
-        note: "多模态全能旗舰模型",
-    },
-    CatalogEntry {
-        model_name: "gpt-4o-mini",
-        display_name: "GPT-4o mini",
-        vendor: "OpenAI",
-        input_price_per_million: 0.15,
-        output_price_per_million: 0.60,
-        cache_read_price_per_million: Some(0.075),
-        note: "轻量高吞吐全能模型",
-    },
-    CatalogEntry {
-        model_name: "o1",
-        display_name: "OpenAI o1",
-        vendor: "OpenAI",
-        input_price_per_million: 15.00,
-        output_price_per_million: 60.00,
-        cache_read_price_per_million: Some(7.50),
-        note: "深度逻辑思考旗舰",
-    },
-    CatalogEntry {
-        model_name: "o1-mini",
-        display_name: "OpenAI o1-mini",
-        vendor: "OpenAI",
-        input_price_per_million: 1.10,
-        output_price_per_million: 4.40,
-        cache_read_price_per_million: Some(0.55),
-        note: "轻量代码推理模型",
-    },
-    CatalogEntry {
-        model_name: "o3-mini",
-        display_name: "OpenAI o3-mini",
-        vendor: "OpenAI",
-        input_price_per_million: 1.10,
-        output_price_per_million: 4.40,
-        cache_read_price_per_million: Some(0.55),
-        note: "最新低延迟思维推理模型",
-    },
-    CatalogEntry {
-        model_name: "deepseek-v4.1-flash",
-        display_name: "DeepSeek V4.1 Flash",
-        vendor: "DeepSeek",
-        input_price_per_million: 0.15,
-        output_price_per_million: 0.60,
-        cache_read_price_per_million: Some(0.003),
-        note: "极速高吞吐模型 (闲时基准)",
-    },
-    CatalogEntry {
-        model_name: "deepseek-v4-flash",
-        display_name: "DeepSeek V4 Flash",
-        vendor: "DeepSeek",
-        input_price_per_million: 0.15,
-        output_price_per_million: 0.60,
-        cache_read_price_per_million: Some(0.003),
-        note: "闲时基准单价 (忙时自动按两倍核算)",
-    },
-    CatalogEntry {
-        model_name: "deepseek-v4-pro",
-        display_name: "DeepSeek V4 Pro",
-        vendor: "DeepSeek",
-        input_price_per_million: 0.66,
-        output_price_per_million: 1.98,
-        cache_read_price_per_million: Some(0.022),
-        note: "深度推理主力",
-    },
-    CatalogEntry {
-        model_name: "deepseek-r1",
-        display_name: "DeepSeek R1",
-        vendor: "DeepSeek",
-        input_price_per_million: 0.55,
-        output_price_per_million: 2.19,
-        cache_read_price_per_million: Some(0.14),
-        note: "开源深度思考推理",
-    },
-    CatalogEntry {
-        model_name: "deepseek-reasoner",
-        display_name: "DeepSeek Reasoner",
-        vendor: "DeepSeek",
-        input_price_per_million: 0.55,
-        output_price_per_million: 2.19,
-        cache_read_price_per_million: Some(0.14),
-        note: "经典推理思考模型",
-    },
-    CatalogEntry {
-        model_name: "deepseek-chat",
-        display_name: "DeepSeek V3 (Chat)",
-        vendor: "DeepSeek",
-        input_price_per_million: 0.14,
-        output_price_per_million: 0.28,
-        cache_read_price_per_million: Some(0.014),
-        note: "经典通用对话",
-    },
-    CatalogEntry {
-        model_name: "claude-opus-5-5",
-        display_name: "Claude Opus 5.5",
-        vendor: "Anthropic",
-        input_price_per_million: 4.00,
-        output_price_per_million: 20.00,
-        cache_read_price_per_million: Some(0.20),
-        note: "新一代高算力旗舰",
-    },
-    CatalogEntry {
-        model_name: "claude-sonnet-5",
-        display_name: "Claude Sonnet 5",
-        vendor: "Anthropic",
-        input_price_per_million: 2.00,
-        output_price_per_million: 10.00,
-        cache_read_price_per_million: Some(0.20),
-        note: "Claude 5 代主力模型",
-    },
-    CatalogEntry {
-        model_name: "claude-haiku-4-5",
-        display_name: "Claude Haiku 4.5",
-        vendor: "Anthropic",
-        input_price_per_million: 1.00,
-        output_price_per_million: 5.00,
-        cache_read_price_per_million: Some(0.10),
-        note: "极速轻量补全模型",
-    },
-    CatalogEntry {
-        model_name: "claude-3-7-sonnet",
-        display_name: "Claude 3.7 Sonnet",
-        vendor: "Anthropic",
-        input_price_per_million: 3.00,
-        output_price_per_million: 15.00,
-        cache_read_price_per_million: Some(0.30),
-        note: "混合思维推理主力",
-    },
-    CatalogEntry {
-        model_name: "claude-3-5-sonnet",
-        display_name: "Claude 3.5 Sonnet",
-        vendor: "Anthropic",
-        input_price_per_million: 3.00,
-        output_price_per_million: 15.00,
-        cache_read_price_per_million: Some(0.30),
-        note: "经典通用编程大模型",
-    },
-    CatalogEntry {
-        model_name: "claude-3-5-haiku",
-        display_name: "Claude 3.5 Haiku",
-        vendor: "Anthropic",
-        input_price_per_million: 0.80,
-        output_price_per_million: 4.00,
-        cache_read_price_per_million: Some(0.08),
-        note: "高性价比快速响应",
-    },
-    CatalogEntry {
-        model_name: "claude-3-opus",
-        display_name: "Claude 3 Opus",
-        vendor: "Anthropic",
-        input_price_per_million: 15.00,
-        output_price_per_million: 75.00,
-        cache_read_price_per_million: Some(1.50),
-        note: "复杂推理与系统分析",
-    },
-    CatalogEntry {
-        model_name: "gemini-2.0-flash",
-        display_name: "Gemini 2.0 Flash",
-        vendor: "Google",
-        input_price_per_million: 0.10,
-        output_price_per_million: 0.40,
-        cache_read_price_per_million: Some(0.025),
-        note: "下一代高极速多模态",
-    },
-    CatalogEntry {
-        model_name: "gemini-2.0-flash-thinking",
-        display_name: "Gemini 2.0 Flash Thinking",
-        vendor: "Google",
-        input_price_per_million: 0.10,
-        output_price_per_million: 0.40,
-        cache_read_price_per_million: Some(0.025),
-        note: "实验性深度推理模型",
-    },
-    CatalogEntry {
-        model_name: "gemini-2.0-pro",
-        display_name: "Gemini 2.0 Pro",
-        vendor: "Google",
-        input_price_per_million: 1.25,
-        output_price_per_million: 5.00,
-        cache_read_price_per_million: Some(0.30),
-        note: "复杂编程与推理旗舰",
-    },
-    CatalogEntry {
-        model_name: "gemini-1.5-pro",
-        display_name: "Gemini 1.5 Pro",
-        vendor: "Google",
-        input_price_per_million: 1.25,
-        output_price_per_million: 5.00,
-        cache_read_price_per_million: Some(0.3125),
-        note: "百万上下文通用旗舰",
-    },
-    CatalogEntry {
-        model_name: "gemini-1.5-flash",
-        display_name: "Gemini 1.5 Flash",
-        vendor: "Google",
-        input_price_per_million: 0.075,
-        output_price_per_million: 0.30,
-        cache_read_price_per_million: Some(0.01875),
-        note: "轻量低成本高吞吐",
-    },
-    CatalogEntry {
-        model_name: "glm-5.3",
-        display_name: "GLM-5.3",
-        vendor: "智谱 AI (Zhipu)",
-        input_price_per_million: 1.40,
-        output_price_per_million: 4.40,
-        cache_read_price_per_million: Some(0.26),
-        note: "国产旗舰通用模型",
-    },
-    CatalogEntry {
-        model_name: "glm-5.3-flash",
-        display_name: "GLM-5.3 Flash",
-        vendor: "智谱 AI (Zhipu)",
-        input_price_per_million: 0.15,
-        output_price_per_million: 0.50,
-        cache_read_price_per_million: Some(0.015),
-        note: "高吞吐量轻量模型",
-    },
-    CatalogEntry {
-        model_name: "glm-4-plus",
-        display_name: "GLM-4 Plus",
-        vendor: "智谱 AI (Zhipu)",
-        input_price_per_million: 1.40,
-        output_price_per_million: 1.40,
-        cache_read_price_per_million: Some(0.26),
-        note: "高阶对话模型",
-    },
-    CatalogEntry {
-        model_name: "glm-4-air",
-        display_name: "GLM-4 Air",
-        vendor: "智谱 AI (Zhipu)",
-        input_price_per_million: 0.14,
-        output_price_per_million: 0.14,
-        cache_read_price_per_million: Some(0.014),
-        note: "高性价比推理模型",
-    },
-    CatalogEntry {
-        model_name: "glm-4-flash",
-        display_name: "GLM-4 Flash",
-        vendor: "智谱 AI (Zhipu)",
-        input_price_per_million: 0.01,
-        output_price_per_million: 0.01,
-        cache_read_price_per_million: Some(0.001),
-        note: "极低单价吞吐模型",
-    },
-    CatalogEntry {
-        model_name: "glm-4-long",
-        display_name: "GLM-4 Long",
-        vendor: "智谱 AI (Zhipu)",
-        input_price_per_million: 0.14,
-        output_price_per_million: 0.14,
-        cache_read_price_per_million: Some(0.014),
-        note: "百万长文本模型",
-    },
-    CatalogEntry {
-        model_name: "codegeex-4",
-        display_name: "CodeGeeX-4",
-        vendor: "智谱 AI (Zhipu)",
-        input_price_per_million: 0.14,
-        output_price_per_million: 0.14,
-        cache_read_price_per_million: None,
-        note: "多语言代码生成",
-    },
-    CatalogEntry {
-        model_name: "qwen3.8-max",
-        display_name: "Qwen3.8 Max",
-        vendor: "阿里通义千问",
-        input_price_per_million: 2.00,
-        output_price_per_million: 6.00,
-        cache_read_price_per_million: Some(0.25),
-        note: "新一代千问旗舰",
-    },
-    CatalogEntry {
-        model_name: "qwen3.7-max",
-        display_name: "Qwen3.7 Max",
-        vendor: "阿里通义千问",
-        input_price_per_million: 2.50,
-        output_price_per_million: 7.50,
-        cache_read_price_per_million: Some(0.50),
-        note: "高算力推理大模型",
-    },
-    CatalogEntry {
-        model_name: "qwen3.7-plus",
-        display_name: "Qwen3.7 Plus",
-        vendor: "阿里通义千问",
-        input_price_per_million: 0.40,
-        output_price_per_million: 1.60,
-        cache_read_price_per_million: Some(0.04),
-        note: "平衡型主力模型",
-    },
-    CatalogEntry {
-        model_name: "qwen-max",
-        display_name: "Qwen Max",
-        vendor: "阿里通义千问",
-        input_price_per_million: 2.80,
-        output_price_per_million: 8.40,
-        cache_read_price_per_million: Some(0.28),
-        note: "官方通义千问旗舰",
-    },
-    CatalogEntry {
-        model_name: "qwen-plus",
-        display_name: "Qwen Plus",
-        vendor: "阿里通义千问",
-        input_price_per_million: 0.56,
-        output_price_per_million: 1.68,
-        cache_read_price_per_million: Some(0.056),
-        note: "官方通义千问增强",
-    },
-    CatalogEntry {
-        model_name: "qwen-turbo",
-        display_name: "Qwen Turbo",
-        vendor: "阿里通义千问",
-        input_price_per_million: 0.04,
-        output_price_per_million: 0.12,
-        cache_read_price_per_million: Some(0.004),
-        note: "极速轻量对话",
-    },
-    CatalogEntry {
-        model_name: "qwen-2.5-coder-32b",
-        display_name: "Qwen 2.5 Coder 32B",
-        vendor: "阿里通义千问",
-        input_price_per_million: 0.20,
-        output_price_per_million: 0.60,
-        cache_read_price_per_million: Some(0.02),
-        note: "开源最强代码模型",
-    },
-    CatalogEntry {
-        model_name: "qwen-2.5-coder-7b",
-        display_name: "Qwen 2.5 Coder 7B",
-        vendor: "阿里通义千问",
-        input_price_per_million: 0.05,
-        output_price_per_million: 0.15,
-        cache_read_price_per_million: Some(0.005),
-        note: "轻量代码补全",
-    },
-    CatalogEntry {
-        model_name: "doubao-pro-128k",
-        display_name: "Doubao Pro 128k",
-        vendor: "字节豆包",
-        input_price_per_million: 0.70,
-        output_price_per_million: 1.40,
-        cache_read_price_per_million: Some(0.07),
-        note: "长上下文旗舰模型",
-    },
-    CatalogEntry {
-        model_name: "doubao-pro-32k",
-        display_name: "Doubao Pro 32k",
-        vendor: "字节豆包",
-        input_price_per_million: 0.11,
-        output_price_per_million: 0.28,
-        cache_read_price_per_million: Some(0.011),
-        note: "标准专业模型",
-    },
-    CatalogEntry {
-        model_name: "doubao-lite-128k",
-        display_name: "Doubao Lite 128k",
-        vendor: "字节豆包",
-        input_price_per_million: 0.04,
-        output_price_per_million: 0.14,
-        cache_read_price_per_million: Some(0.004),
-        note: "轻量长文本模型",
-    },
-    CatalogEntry {
-        model_name: "doubao-lite-32k",
-        display_name: "Doubao Lite 32k",
-        vendor: "字节豆包",
-        input_price_per_million: 0.04,
-        output_price_per_million: 0.08,
-        cache_read_price_per_million: Some(0.004),
-        note: "极速轻量模型",
-    },
-    CatalogEntry {
-        model_name: "hy4-preview",
-        display_name: "Hunyuan 4 Preview",
-        vendor: "腾讯混元",
-        input_price_per_million: 0.85,
-        output_price_per_million: 2.55,
-        cache_read_price_per_million: Some(0.08),
-        note: "新一代大语言模型 (~6.0/18.0 CNY)",
-    },
-    CatalogEntry {
-        model_name: "hy3",
-        display_name: "Hunyuan 3",
-        vendor: "腾讯混元",
-        input_price_per_million: 0.15,
-        output_price_per_million: 0.60,
-        cache_read_price_per_million: Some(0.015),
-        note: "腾讯混元基础模型 (~1.0/4.0 CNY)",
-    },
-    CatalogEntry {
-        model_name: "hy3-x",
-        display_name: "Hunyuan 3X",
-        vendor: "腾讯混元",
-        input_price_per_million: 0.25,
-        output_price_per_million: 0.75,
-        cache_read_price_per_million: Some(0.025),
-        note: "混元扩展增强模型",
-    },
-    CatalogEntry {
-        model_name: "step-5-preview",
-        display_name: "Step-5 Preview",
-        vendor: "阶跃星辰 (StepFun)",
-        input_price_per_million: 1.00,
-        output_price_per_million: 2.70,
-        cache_read_price_per_million: Some(0.05),
-        note: "阶跃新一代旗舰推理",
-    },
-    CatalogEntry {
-        model_name: "step-3.7-flash",
-        display_name: "Step-3.7 Flash",
-        vendor: "阶跃星辰 (StepFun)",
-        input_price_per_million: 0.20,
-        output_price_per_million: 1.15,
-        cache_read_price_per_million: Some(0.03),
-        note: "高性价比编程模型",
-    },
-    CatalogEntry {
-        model_name: "step-2-16k",
-        display_name: "Step-2 16k",
-        vendor: "阶跃星辰 (StepFun)",
-        input_price_per_million: 5.30,
-        output_price_per_million: 10.00,
-        cache_read_price_per_million: Some(0.50),
-        note: "阶跃万亿参数推理",
-    },
-    CatalogEntry {
-        model_name: "step-1-8k",
-        display_name: "Step-1 8k",
-        vendor: "阶跃星辰 (StepFun)",
-        input_price_per_million: 0.70,
-        output_price_per_million: 1.40,
-        cache_read_price_per_million: Some(0.07),
-        note: "阶跃通用多模态",
-    },
-    CatalogEntry {
-        model_name: "grok-3",
-        display_name: "Grok 3",
-        vendor: "xAI",
-        input_price_per_million: 3.00,
-        output_price_per_million: 15.00,
-        cache_read_price_per_million: Some(0.75),
-        note: "全功能推理模型",
-    },
-    CatalogEntry {
-        model_name: "grok-3-mini",
-        display_name: "Grok 3 Mini",
-        vendor: "xAI",
-        input_price_per_million: 0.30,
-        output_price_per_million: 1.50,
-        cache_read_price_per_million: Some(0.075),
-        note: "极速思考模型",
-    },
-    CatalogEntry {
-        model_name: "grok-2",
-        display_name: "Grok 2",
-        vendor: "xAI",
-        input_price_per_million: 2.00,
-        output_price_per_million: 10.00,
-        cache_read_price_per_million: Some(0.50),
-        note: "经典通用模型",
-    },
-    CatalogEntry {
-        model_name: "minimax-m3",
-        display_name: "MiniMax M3",
-        vendor: "MiniMax",
-        input_price_per_million: 0.30,
-        output_price_per_million: 1.20,
-        cache_read_price_per_million: Some(0.06),
-        note: "高智能推理模型",
-    },
-    CatalogEntry {
-        model_name: "abab6.5s",
-        display_name: "MiniMax Abab 6.5s",
-        vendor: "MiniMax",
-        input_price_per_million: 0.14,
-        output_price_per_million: 0.28,
-        cache_read_price_per_million: Some(0.014),
-        note: "极速对话模型",
-    },
-    CatalogEntry {
-        model_name: "mimo-v2.5",
-        display_name: "MiMo V2.5",
-        vendor: "小米 (Xiaomi)",
-        input_price_per_million: 0.14,
-        output_price_per_million: 0.28,
-        cache_read_price_per_million: Some(0.0028),
-        note: "小米高效大模型",
-    },
-    CatalogEntry {
-        model_name: "mimo-v2.5-pro",
-        display_name: "MiMo V2.5 Pro",
-        vendor: "小米 (Xiaomi)",
-        input_price_per_million: 1.74,
-        output_price_per_million: 3.48,
-        cache_read_price_per_million: Some(0.0145),
-        note: "小米旗舰推理模型",
-    },
-    CatalogEntry {
-        model_name: "yi-lightning",
-        display_name: "Yi Lightning",
-        vendor: "零一万物 (01.AI)",
-        input_price_per_million: 0.14,
-        output_price_per_million: 0.28,
-        cache_read_price_per_million: Some(0.014),
-        note: "超高性价比推理",
-    },
-    CatalogEntry {
-        model_name: "yi-large",
-        display_name: "Yi Large",
-        vendor: "零一万物 (01.AI)",
-        input_price_per_million: 2.80,
-        output_price_per_million: 2.80,
-        cache_read_price_per_million: Some(0.28),
-        note: "千亿参数旗舰模型",
-    },
-    CatalogEntry {
-        model_name: "baichuan-4",
-        display_name: "Baichuan 4",
-        vendor: "百川智能",
-        input_price_per_million: 1.40,
-        output_price_per_million: 1.40,
-        cache_read_price_per_million: Some(0.14),
-        note: "百川自研通用大模型",
-    },
-    CatalogEntry {
-        model_name: "muse-spark-1.3-contributor",
-        display_name: "Muse Spark 1.3 Contributor",
-        vendor: "ClinePass",
-        input_price_per_million: 0.10,
-        output_price_per_million: 0.20,
-        cache_read_price_per_million: Some(0.002),
-        note: "社区贡献轻量模型",
-    },
-    CatalogEntry {
-        model_name: "jev-latest",
-        display_name: "Jev Latest",
-        vendor: "TypeSafe",
-        input_price_per_million: 0.042,
-        output_price_per_million: 0.00,
-        cache_read_price_per_million: None,
-        note: "极低成本高吞吐补全",
-    },
-];
+/// 设置页 / 工作台展示的价卡行 (C108): 派生自采集端 `collector_domain::pricing::catalog()`
+/// (`pricing-catalog.json` 唯一事实源) 中 `listed` 的行, 顺序即展示顺序。
+pub fn catalog() -> &'static [CatalogEntry] {
+    static ENTRIES: OnceLock<Vec<CatalogEntry>> = OnceLock::new();
+    ENTRIES.get_or_init(|| {
+        collector_domain::pricing::catalog()
+            .iter()
+            .filter(|entry| entry.listed)
+            .map(|entry| CatalogEntry {
+                model_name: &entry.model,
+                display_name: &entry.display_name,
+                vendor: &entry.vendor,
+                input_price_per_million: entry.input,
+                output_price_per_million: entry.output,
+                cache_read_price_per_million: entry.cache_read,
+                note: &entry.note,
+            })
+            .collect()
+    })
+}
 
 /// 供设置页消费的 JSON（数组，字段名与前端约定一致）。
 pub fn as_json() -> Value {
     Value::Array(
-        CATALOG
+        catalog()
             .iter()
             .map(|entry| {
                 json!({
@@ -740,16 +66,33 @@ mod tests {
     use super::*;
     use std::collections::BTreeSet;
 
-    /// 行数与 mac `BuiltinModelPricingCatalog` 一致 (77); 若 mac 侧增删模型需同步本表。
+    /// 展示行即采集端目录中 listed 的行 (C108: 与计费同源, 不再单独计数维护)。
     #[test]
-    fn catalog_row_count_matches_mac_catalog() {
-        assert_eq!(CATALOG.len(), 77);
+    fn catalog_rows_are_the_listed_collector_rows() {
+        let listed = collector_domain::pricing::catalog()
+            .iter()
+            .filter(|entry| entry.listed)
+            .count();
+        assert_eq!(catalog().len(), listed);
+        let table = collector_domain::PricingTable::default();
+        for entry in catalog() {
+            let rule = table.resolve(entry.model_name).expect("展示行必须可计费");
+            assert_eq!(rule.input_price_per_million, entry.input_price_per_million);
+            assert_eq!(
+                rule.output_price_per_million,
+                entry.output_price_per_million
+            );
+            assert_eq!(
+                rule.cache_read_price_per_million,
+                entry.cache_read_price_per_million
+            );
+        }
     }
 
     #[test]
     fn catalog_entries_are_unique_and_complete() {
         let mut names = BTreeSet::new();
-        for entry in CATALOG {
+        for entry in catalog() {
             assert!(!entry.model_name.is_empty(), "模型名不得为空");
             assert!(!entry.display_name.is_empty(), "显示名不得为空");
             assert!(!entry.vendor.is_empty(), "厂商不得为空");
@@ -766,7 +109,7 @@ mod tests {
     fn catalog_json_uses_frontend_contract_keys() {
         let value = as_json();
         let rows = value.as_array().expect("数组");
-        assert_eq!(rows.len(), 77);
+        assert_eq!(rows.len(), catalog().len());
         let first = rows
             .iter()
             .find(|row| row["model"] == "k3-agent")

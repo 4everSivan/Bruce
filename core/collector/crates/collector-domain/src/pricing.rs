@@ -24,8 +24,49 @@ pub struct ModelPricing {
     pub cache_write_1h_multiplier: Option<f64>,
 }
 
-/// Anthropic 缓存写入计价 (C107): 5 分钟 TTL 为输入单价 1.25×, 1 小时 TTL 为 2×。
-const ANTHROPIC_CACHE_WRITE: (f64, f64) = (1.25, 2.0);
+/// 内置价卡目录行 (C108)。唯一事实源为 crate 根目录的 `pricing-catalog.json`:
+/// 采集端计费、Windows 设置页 / 工作台与 mac 设置页 (由 `scripts/gen-pricing-catalog.mjs`
+/// 生成) 均派生自同一份数据, 不再各自维护价卡副本。单位为美元 / 百万 token。
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CatalogModel {
+    pub model: String,
+    pub display_name: String,
+    pub vendor: String,
+    pub input: f64,
+    pub output: f64,
+    /// 缺省 (null) 时按输入单价 10% 计 (`calculate_cost` 兜底)。
+    pub cache_read: Option<f64>,
+    /// [5 分钟 TTL 倍率, 1 小时 TTL 倍率] (相对输入单价); 缺省按 1.0。
+    #[serde(default)]
+    pub cache_write: Option<(f64, f64)>,
+    pub note: String,
+    /// false 的行参与计费但不在设置页单列 (版本别名 / 受限型号)。
+    #[serde(default = "listed_by_default")]
+    pub listed: bool,
+}
+
+fn listed_by_default() -> bool {
+    true
+}
+
+#[derive(Deserialize)]
+struct CatalogFile {
+    models: Vec<CatalogModel>,
+}
+
+/// 全部内置价卡行, 顺序即设置页展示顺序 (C108)。
+///
+/// 数据随源码编译期嵌入; 可解析性与唯一性由 `catalog_is_well_formed` 用例锁定,
+/// 故运行期解析失败不可达。
+pub fn catalog() -> &'static [CatalogModel] {
+    static CATALOG: std::sync::OnceLock<Vec<CatalogModel>> = std::sync::OnceLock::new();
+    CATALOG.get_or_init(|| {
+        serde_json::from_str::<CatalogFile>(include_str!("../pricing-catalog.json"))
+            .expect("pricing-catalog.json 由 catalog_is_well_formed 用例保证可解析")
+            .models
+    })
+}
 
 fn default_usd() -> String {
     "USD".to_string()
@@ -60,301 +101,26 @@ impl Default for PricingTable {
 }
 
 impl PricingTable {
-    /// Sorted built-in catalog for application settings; rates share the collector source of truth.
-    pub fn builtin_catalog(&self) -> std::collections::BTreeMap<String, ModelPricing> {
-        self.builtin
-            .iter()
-            .map(|(name, price)| (name.clone(), price.clone()))
-            .collect()
-    }
     pub fn new(overrides: HashMap<String, ModelPricingOverride>) -> Self {
-        let mut builtin = HashMap::new();
-
-        let mut add_with_cache_write =
-            |name: &str,
-             input: f64,
-             output: f64,
-             cache: Option<f64>,
-             note: &str,
-             cache_write: Option<(f64, f64)>| {
-                builtin.insert(
-                    name.to_lowercase(),
+        let builtin = catalog()
+            .iter()
+            .map(|entry| {
+                (
+                    entry.model.to_lowercase(),
                     ModelPricing {
-                        input_price_per_million: input,
-                        output_price_per_million: output,
-                        cache_read_price_per_million: cache,
-                        currency: "USD".to_string(),
-                        note: Some(note.to_string()),
-                        cache_write_multiplier: cache_write.map(|(five_minutes, _)| five_minutes),
-                        cache_write_1h_multiplier: cache_write.map(|(_, one_hour)| one_hour),
+                        input_price_per_million: entry.input,
+                        output_price_per_million: entry.output,
+                        cache_read_price_per_million: entry.cache_read,
+                        currency: default_usd(),
+                        note: Some(entry.note.clone()),
+                        cache_write_multiplier: entry
+                            .cache_write
+                            .map(|(five_minutes, _)| five_minutes),
+                        cache_write_1h_multiplier: entry.cache_write.map(|(_, one_hour)| one_hour),
                     },
-                );
-            };
-        let mut add = |name: &str, input: f64, output: f64, cache: Option<f64>, note: &str| {
-            add_with_cache_write(name, input, output, cache, note, None);
-        };
-
-        // Kimi
-        add("k3-agent", 3.0, 15.0, Some(0.30), "Kimi K3 Agent");
-        add("k3", 3.0, 15.0, Some(0.30), "Kimi K3");
-        add("k3-256k", 3.0, 15.0, Some(0.30), "Kimi K3 256k");
-        add("kimi-code", 3.0, 15.0, Some(0.30), "Kimi Code");
-        add("kimi-for-coding", 3.0, 15.0, Some(0.30), "Kimi for Coding");
-
-        // OpenAI / Codex
-        add("gpt-6.1-sol", 4.50, 22.50, Some(0.45), "GPT-6.1 Sol");
-        add("gpt-6-sol", 4.00, 20.00, Some(0.40), "GPT-6 Sol");
-        add("gpt-6-luna", 0.25, 1.50, Some(0.025), "GPT-6 Luna");
-        add("gpt-5.6-luna", 0.20, 1.20, Some(0.02), "GPT-5.6 Luna");
-        add("gpt-5.6-sol", 4.00, 20.00, Some(0.40), "GPT-5.6 Sol");
-        add("gpt-5.6-terra", 2.00, 12.00, Some(0.20), "GPT-5.6 Terra");
-        add("gpt-5.4", 2.50, 15.00, Some(0.25), "GPT-5.4");
-        add("gpt-5.4-mini", 0.15, 0.60, Some(0.015), "GPT-5.4 mini");
-        add("gpt-5.2-codex", 1.75, 14.00, Some(0.175), "GPT-5.2 Codex");
-        add(
-            "codex-auto-review",
-            1.75,
-            14.00,
-            Some(0.175),
-            "Codex Auto Review",
-        );
-        add("gpt-4o", 2.50, 10.00, Some(1.25), "GPT-4o");
-        add("gpt-4o-mini", 0.15, 0.60, Some(0.075), "GPT-4o mini");
-        add("o1", 15.00, 60.00, Some(7.50), "OpenAI o1");
-        add("o1-mini", 1.10, 4.40, Some(0.55), "OpenAI o1-mini");
-        add("o3-mini", 1.10, 4.40, Some(0.55), "OpenAI o3-mini");
-
-        // DeepSeek
-        add(
-            "deepseek-v4-flash",
-            0.15,
-            0.60,
-            Some(0.003),
-            "DeepSeek V4.1 Flash",
-        );
-        add(
-            "deepseek-v4-pro",
-            0.66,
-            1.98,
-            Some(0.022),
-            "DeepSeek V4 Pro",
-        );
-        // C073: 官方 API 旧命名 (zcode 等直连 DeepSeek key 的历史 model_id),
-        // 与 V4 Flash 同档; 不并入 v4.1 (ClinePass 档单价不同, 跨型号不归并)。
-        add(
-            "deepseek-flash",
-            0.15,
-            0.60,
-            Some(0.003),
-            "DeepSeek Flash (官方 API 旧命名)",
-        );
-        add("deepseek-r1", 0.55, 2.19, Some(0.14), "DeepSeek R1");
-        add("deepseek-chat", 0.14, 0.28, Some(0.014), "DeepSeek Chat");
-        add(
-            "deepseek-reasoner",
-            0.55,
-            2.19,
-            Some(0.14),
-            "DeepSeek Reasoner",
-        );
-
-        // Zhipu GLM
-        add("glm-5.3", 1.40, 4.40, Some(0.26), "GLM-5.3");
-        add("glm-5.3-flash", 0.15, 0.50, Some(0.015), "GLM-5.3 Flash");
-        add("glm-4-plus", 1.40, 1.40, Some(0.26), "GLM-4 Plus");
-        add("glm-4-air", 0.14, 0.14, Some(0.014), "GLM-4 Air");
-        add("glm-4-flash", 0.01, 0.01, Some(0.001), "GLM-4 Flash");
-        add("glm-4-long", 0.14, 0.14, Some(0.014), "GLM-4 Long");
-        add("codegeex-4", 0.14, 0.14, None, "CodeGeeX-4");
-
-        // StepFun
-        add("step-5-preview", 1.00, 2.70, Some(0.05), "Step-5 Preview");
-        add("step-3.7-flash", 0.20, 1.15, Some(0.03), "Step-3.7 Flash");
-        add("step-2-16k", 5.30, 10.00, Some(0.50), "Step-2 16k");
-        add("step-1-8k", 0.70, 1.40, Some(0.07), "Step-1 8k");
-
-        // Tencent Hunyuan
-        add(
-            "hy4-preview",
-            0.85,
-            2.55,
-            Some(0.08),
-            "Tencent Hunyuan 4 Preview",
-        );
-        add("hy3", 0.15, 0.60, Some(0.015), "Tencent Hunyuan 3");
-        add("hy3-x", 0.25, 0.75, Some(0.025), "Hunyuan 3X");
-
-        // Google Gemini
-        add(
-            "gemini-2.0-flash",
-            0.10,
-            0.40,
-            Some(0.025),
-            "Gemini 2.0 Flash",
-        );
-        add(
-            "gemini-2.0-flash-thinking",
-            0.10,
-            0.40,
-            Some(0.025),
-            "Gemini 2.0 Flash Thinking",
-        );
-        add("gemini-2.0-pro", 1.25, 5.00, Some(0.30), "Gemini 2.0 Pro");
-        add("gemini-1.5-pro", 1.25, 5.00, Some(0.3125), "Gemini 1.5 Pro");
-        add(
-            "gemini-1.5-flash",
-            0.075,
-            0.30,
-            Some(0.01875),
-            "Gemini 1.5 Flash",
-        );
-
-        // Grok
-        add("grok-3", 3.00, 15.00, Some(0.75), "Grok 3");
-        add("grok-3-mini", 0.30, 1.50, Some(0.075), "Grok 3 Mini");
-        add("grok-2", 2.00, 10.00, Some(0.50), "Grok 2");
-
-        // Alibaba Qwen
-        add("qwen-max", 2.80, 8.40, Some(0.28), "Qwen Max");
-        add("qwen-plus", 0.56, 1.68, Some(0.056), "Qwen Plus");
-        add("qwen-turbo", 0.04, 0.12, Some(0.004), "Qwen Turbo");
-        add(
-            "qwen-2.5-coder-32b",
-            0.20,
-            0.60,
-            Some(0.02),
-            "Qwen 2.5 Coder 32B",
-        );
-        add(
-            "qwen-2.5-coder-7b",
-            0.05,
-            0.15,
-            Some(0.005),
-            "Qwen 2.5 Coder 7B",
-        );
-
-        // ByteDance Doubao
-        add("doubao-pro-128k", 0.70, 1.40, Some(0.07), "Doubao Pro 128k");
-        add("doubao-pro-32k", 0.11, 0.28, Some(0.011), "Doubao Pro 32k");
-        add(
-            "doubao-lite-128k",
-            0.04,
-            0.14,
-            Some(0.004),
-            "Doubao Lite 128k",
-        );
-        add(
-            "doubao-lite-32k",
-            0.04,
-            0.08,
-            Some(0.004),
-            "Doubao Lite 32k",
-        );
-
-        // MiniMax
-        add("abab6.5s", 0.14, 0.28, Some(0.014), "MiniMax Abab 6.5s");
-
-        // 01.AI (零一万物)
-        add("yi-lightning", 0.14, 0.28, Some(0.014), "Yi Lightning");
-        add("yi-large", 2.80, 2.80, Some(0.28), "Yi Large");
-
-        // Baichuan (百川智能)
-        add("baichuan-4", 1.40, 1.40, Some(0.14), "Baichuan 4");
-
-        // TypeSafe Jev
-        add("jev-1.13.0", 0.042, 0.0, None, "Jev 1.13.0");
-        add("jev-1.13", 0.042, 0.0, None, "Jev 1.13");
-        add("jev-latest", 0.042, 0.0, None, "Jev Latest");
-        add("jev-preview", 0.042, 0.0, None, "Jev Preview");
-        add("jev", 0.042, 0.0, None, "Jev");
-
-        // Cline Pass (官方文档订阅参考价; 峰谷/超长上下文档位暂按标准档单值建卡)
-        // 注: glm-5.3 / glm-5.3-flash 已由 Zhipu 区块建卡 (输入输出价一致), 此处不重复覆盖.
-        add("kimi-k3", 3.00, 15.00, Some(0.30), "Kimi K3 (ClinePass)");
-        add(
-            "deepseek-v4.1-flash",
-            0.30,
-            1.20,
-            Some(0.006),
-            "DeepSeek V4.1 Flash (ClinePass)",
-        );
-        add(
-            "mimo-v2.5",
-            0.14,
-            0.28,
-            Some(0.0028),
-            "MiMo V2.5 (ClinePass)",
-        );
-        add(
-            "mimo-v2.5-pro",
-            1.74,
-            3.48,
-            Some(0.0145),
-            "MiMo V2.5 Pro (ClinePass)",
-        );
-        add(
-            "minimax-m3",
-            0.30,
-            1.20,
-            Some(0.06),
-            "MiniMax M3 (ClinePass)",
-        );
-        add(
-            "muse-spark-1.3-contributor",
-            0.10,
-            0.20,
-            Some(0.002),
-            "Muse Spark 1.3 Contributor (ClinePass)",
-        );
-        add(
-            "qwen3.8-max",
-            2.00,
-            6.00,
-            Some(0.25),
-            "Qwen3.8 Max (ClinePass)",
-        );
-        add(
-            "qwen3.7-max",
-            2.50,
-            7.50,
-            Some(0.50),
-            "Qwen3.7 Max (ClinePass)",
-        );
-        add(
-            "qwen3.7-plus",
-            0.40,
-            1.60,
-            Some(0.04),
-            "Qwen3.7 Plus (ClinePass)",
-        );
-
-        // Anthropic Claude (C107: 按 Anthropic 官方单价校正; 缓存写入 5 分钟 1.25× /
-        // 1 小时 2× 输入单价; 置于末尾, 以便在 `add` 的最后一次使用之后再借用)
-        let anthropic = Some(ANTHROPIC_CACHE_WRITE);
-        for (name, input, output, cache_read, note) in [
-            ("claude-fable-5-1", 10.00, 50.00, 0.25, "Claude Fable 5.1"),
-            ("claude-fable-5", 10.00, 50.00, 1.00, "Claude Fable 5"),
-            ("claude-mythos-5-1", 10.00, 50.00, 0.25, "Claude Mythos 5.1"),
-            ("claude-mythos-5", 10.00, 50.00, 1.00, "Claude Mythos 5"),
-            ("claude-opus-5-5", 4.00, 20.00, 0.20, "Claude Opus 5.5"),
-            ("claude-opus-5", 5.00, 25.00, 0.50, "Claude Opus 5"),
-            ("claude-opus-4-8", 5.00, 25.00, 0.50, "Claude Opus 4.8"),
-            ("claude-opus-4-7", 5.00, 25.00, 0.50, "Claude Opus 4.7"),
-            ("claude-opus-4-6", 5.00, 25.00, 0.50, "Claude Opus 4.6"),
-            ("claude-sonnet-5-5", 2.00, 10.00, 0.20, "Claude Sonnet 5.5"),
-            ("claude-sonnet-5", 2.00, 10.00, 0.20, "Claude Sonnet 5"),
-            ("claude-sonnet-4-6", 3.00, 15.00, 0.30, "Claude Sonnet 4.6"),
-            // Haiku 5.5: 取 ≤100K 提示档单价 (超长提示档 $0.50 / $2.50 暂不区分)
-            ("claude-haiku-5-5", 0.10, 0.50, 0.01, "Claude Haiku 5.5"),
-            ("claude-haiku-4-5", 1.00, 5.00, 0.10, "Claude Haiku 4.5"),
-            ("claude-3-7-sonnet", 3.00, 15.00, 0.30, "Claude 3.7 Sonnet"),
-            ("claude-3-5-sonnet", 3.00, 15.00, 0.30, "Claude 3.5 Sonnet"),
-            ("claude-3-5-haiku", 0.80, 4.00, 0.08, "Claude 3.5 Haiku"),
-            ("claude-3-opus", 15.00, 75.00, 1.50, "Claude 3 Opus"),
-        ] {
-            add_with_cache_write(name, input, output, Some(cache_read), note, anthropic);
-        }
-
+                )
+            })
+            .collect();
         Self { builtin, overrides }
     }
 
@@ -760,5 +526,41 @@ mod tests {
         let rule = custom.resolve("claude-opus-5-5").unwrap();
         let cost = custom.calculate_cost(&bucket, &rule);
         assert!((cost - 17.0).abs() < 1e-9, "cost = {cost}");
+    }
+
+    /// C108: 价卡目录可解析、键唯一 (大小写不敏感)、单价非负、展示字段齐备。
+    #[test]
+    fn catalog_is_well_formed() {
+        let models = catalog();
+        assert!(models.len() >= 90, "目录行数异常: {}", models.len());
+        let mut keys = std::collections::BTreeSet::new();
+        for entry in models {
+            assert!(
+                keys.insert(entry.model.to_lowercase()),
+                "重复键 {}",
+                entry.model
+            );
+            assert!(!entry.display_name.is_empty() && !entry.vendor.is_empty());
+            assert!(entry.input >= 0.0 && entry.output >= 0.0);
+            assert!(entry.cache_read.is_none_or(|price| price >= 0.0));
+            if let Some((five_minutes, one_hour)) = entry.cache_write {
+                assert!(
+                    five_minutes >= 1.0 && one_hour >= five_minutes,
+                    "{}",
+                    entry.model
+                );
+            }
+        }
+        // 计费表与目录同源: 每一行都能按自身键解析回同一单价
+        let table = PricingTable::default();
+        for entry in models {
+            let rule = table.resolve(&entry.model).expect("目录行必须可解析");
+            assert_eq!(rule.input_price_per_million, entry.input, "{}", entry.model);
+            assert_eq!(
+                rule.output_price_per_million, entry.output,
+                "{}",
+                entry.model
+            );
+        }
     }
 }

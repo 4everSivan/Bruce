@@ -13,7 +13,7 @@ use serde_json::Value;
 
 use crate::color::PanelAgentColor;
 use crate::format::token_count;
-use crate::model_catalog::CATALOG;
+use crate::model_catalog::catalog;
 
 // MARK: - 时间范围与粒度
 
@@ -317,7 +317,7 @@ fn strip_digit_suffix(key: &str, digits: usize) -> Option<String> {
 }
 
 fn catalog_entry(key: &str) -> Option<&'static crate::model_catalog::CatalogEntry> {
-    CATALOG
+    catalog()
         .iter()
         .find(|entry| canonical_key(entry.model_name) == key)
 }
