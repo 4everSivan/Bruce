@@ -1183,7 +1183,7 @@
     "C114": {
       "title": "CI/CD 与本地构建支持生成 Bruce-<version>.dmg 磁盘镜像作为 Release 附加资产",
       "type": "Enhancement",
-      "status": "verified",
+      "status": "closed",
       "branch": "feat/C114-release-dmg",
       "topic": "SystemOverview",
       "version": "0.13.1",

@@ -4,7 +4,7 @@
   "title": "CI/CD 与本地构建支持生成 Bruce-<version>.dmg 磁盘镜像作为 Release 附加资产",
   "version": "0.13.1",
   "type": "Enhancement",
-  "status": "verified",
+  "status": "closed",
   "branch": "feat/C114-release-dmg",
   "is_hotfix": false,
   "target": {
@@ -92,7 +92,7 @@
   "sync": {
     "design_pinned": true,
     "changelog": true,
-    "commit": "",
+    "commit": "8c29e88",
     "tag": ""
   },
   "gate": {
@@ -100,7 +100,7 @@
     "version": "1.5.0",
     "ran_at": "2026-10-26",
     "exit_code": 0,
-    "from_status": "in_progress",
-    "target_status": "verified"
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }
