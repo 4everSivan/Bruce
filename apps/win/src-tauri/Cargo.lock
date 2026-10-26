@@ -658,6 +658,7 @@ version = "0.1.0"
 dependencies = [
  "collector-domain",
  "collector-runtime",
+ "memchr",
  "rusqlite",
  "serde",
  "serde_json",
