@@ -186,7 +186,7 @@
       "topic": "SoftwareUpdate",
       "milestone": "M6-软件更新",
       "depends_on": [],
-      "file": "docs/devel/task/T09.json",
+      "file": "docs/archive/0.13.0/task/T09.json",
       "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T09-release-update-manifest"
     },
     "T10": {
@@ -198,7 +198,7 @@
       "depends_on": [
         "T09"
       ],
-      "file": "docs/devel/task/T10.json",
+      "file": "docs/archive/0.13.0/task/T10.json",
       "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T10-macos-software-update"
     },
     "T11": {
@@ -210,7 +210,7 @@
       "depends_on": [
         "T09"
       ],
-      "file": "docs/devel/task/T11.json",
+      "file": "docs/archive/0.13.0/task/T11.json",
       "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T11-windows-software-update"
     }
   }

@@ -874,7 +874,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.13.0",
-      "file": "docs/devel/change/C081.json"
+      "file": "docs/archive/0.13.0/change/C081.json"
     },
     "C082": {
       "title": "Windows 订阅额度页骨架 1:1 对齐 mac：已添加行 + 配置按钮 + 拖拽重排 + 添加服务 picker + Provider 验证状态存储",
@@ -883,7 +883,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.13.0",
-      "file": "docs/devel/change/C082.json"
+      "file": "docs/archive/0.13.0/change/C082.json"
     },
     "C083": {
       "title": "Windows API Key 类五家专属配置对话框：字段标签/引导文案/外链/脚注逐字对齐，火山引擎补 CC Switch 导入，Z.ai 改站点单选",
@@ -892,7 +892,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.13.0",
-      "file": "docs/devel/change/C083.json"
+      "file": "docs/archive/0.13.0/change/C083.json"
     },
     "C084": {
       "title": "Windows Codex 设备码登录与本机账号发现：usercode/poll/exchange 三步取首次令牌，本机 CLI 与 CC Switch 账号只读元数据发现",
@@ -901,7 +901,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.13.0",
-      "file": "docs/devel/change/C084.json"
+      "file": "docs/archive/0.13.0/change/C084.json"
     },
     "C085": {
       "title": "Windows Claude / Grok / OpenCode GO 专属对话框：Claude 跟随状态行并入对话框，Grok 补本机导入与重新检测，OpenCode GO 补逐字粘贴引导",
@@ -910,7 +910,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.13.0",
-      "file": "docs/devel/change/C085.json"
+      "file": "docs/archive/0.13.0/change/C085.json"
     },
     "C086": {
       "title": "Windows StepFun 配置对话框与网页登录自动捕获：WebView2 窗口 + Oasis-Token cookie 提取 + 远程校验（含平台退路）",
@@ -919,7 +919,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.13.0",
-      "file": "docs/devel/change/C086.json"
+      "file": "docs/archive/0.13.0/change/C086.json"
     },
     "C087": {
       "title": "Windows 看板按 Provider 验证状态过滤：仅展示验证通过的订阅服务，并补双端逐项交互对拍与真机验收清单",
@@ -928,7 +928,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.13.0",
-      "file": "docs/devel/change/C087.json"
+      "file": "docs/archive/0.13.0/change/C087.json"
     },
     "C088": {
       "title": "双端仪表盘新布局：顶栏三图标 Tab 切换、角标融合、方案1水平定向滑动动效与通用设置开关",
@@ -937,7 +937,7 @@
       "branch": "main",
       "topic": "MenuBarIndicator",
       "version": "0.13.0",
-      "file": "docs/devel/change/C088.json"
+      "file": "docs/archive/0.13.0/change/C088.json"
     },
     "C089": {
       "title": "Windows「移除服务」只删已添加条目不删凭据：改为删除该 Provider 全部凭据 + 移出已添加集合 + 关闭启用，重加不复活旧账号",
@@ -946,7 +946,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.13.0",
-      "file": "docs/devel/change/C089.json"
+      "file": "docs/archive/0.13.0/change/C089.json"
     },
     "C090": {
       "title": "Windows 验证结果不驱动启用开关：验证通过即启用、失败/需重新登录即禁用，首次安装订阅集合不再默认全开",
@@ -955,7 +955,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.13.0",
-      "file": "docs/devel/change/C090.json"
+      "file": "docs/archive/0.13.0/change/C090.json"
     },
     "C091": {
       "title": "Windows 订阅行状态尾件不读验证结果与本机登录态：补「验证失败 / 需重新登录」两态，本机 CLI 只读跟随计入「已配置」",
@@ -964,7 +964,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.13.0",
-      "file": "docs/devel/change/C091.json"
+      "file": "docs/archive/0.13.0/change/C091.json"
     },
     "C092": {
       "title": "Windows 接受 mac 拒绝的密钥格式：保存前补齐 Provider 专属格式校验（禁空白字符、长度下限、Z.ai id.secret 与站点主机）",
@@ -973,7 +973,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.13.0",
-      "file": "docs/devel/change/C092.json"
+      "file": "docs/archive/0.13.0/change/C092.json"
     },
     "C093": {
       "title": "Windows StepFun 站点由对话框默认值决定而非令牌：取消隐式默认站点写入，未显式选择时由令牌推导",
@@ -982,7 +982,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.13.0",
-      "file": "docs/devel/change/C093.json"
+      "file": "docs/archive/0.13.0/change/C093.json"
     },
     "C094": {
       "title": "Windows「授权与隐私」摘要列出全部启用 Provider：改为只列「已启用且已配置」的 Provider，与 mac 一致",
@@ -991,7 +991,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.13.0",
-      "file": "docs/devel/change/C094.json"
+      "file": "docs/archive/0.13.0/change/C094.json"
     },
     "C095": {
       "title": "Windows 删除三张 mac 没有的遗留凭证卡片（添加或更新账号凭证 / 导入账号 / 高级完整字段维护），执行规则 20 已登记的移除，依赖 C084–C086",
@@ -1000,7 +1000,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.13.0",
-      "file": "docs/devel/change/C095.json"
+      "file": "docs/archive/0.13.0/change/C095.json"
     },
     "C096": {
       "title": "Windows 订阅额度页文案与交互细节对齐 mac：底部提示位置与措辞、空态提示、验证通过横幅、添加服务两步交互、保存并验证禁用态、账号移除二次确认",
@@ -1009,7 +1009,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.13.0",
-      "file": "docs/devel/change/C096.json"
+      "file": "docs/archive/0.13.0/change/C096.json"
     },
     "C097": {
       "title": "Windows 无法配置 Cline：clineQuotaAccounts 在凭证校验器中无匹配分支，保存恒返回「凭证字段不受支持」",
@@ -1018,7 +1018,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.13.0",
-      "file": "docs/devel/change/C097.json"
+      "file": "docs/archive/0.13.0/change/C097.json"
     },
     "C098": {
       "title": "面板底栏刷新按钮右侧新增外观切换按钮：单击循环「跟随系统/浅色/深色」，与设置中心共用同一持久化偏好",
@@ -1027,7 +1027,7 @@
       "branch": "main",
       "topic": "MenuBarIndicator",
       "version": "0.13.0",
-      "file": "docs/devel/change/C098.json"
+      "file": "docs/archive/0.13.0/change/C098.json"
     },
     "C099": {
       "title": "修复 Windows 全局快捷键唤出看板焦点闪退与录制器编码缺陷：唤出保护期、连发/失焦防抖、光标多屏定位与 event.code 规范化录制",
@@ -1036,7 +1036,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.13.0",
-      "file": "docs/devel/change/C099.json"
+      "file": "docs/archive/0.13.0/change/C099.json"
     },
     "C100": {
       "title": "双端仪表盘顶部状态牌改为四色状态灯：删除 SYS.OK 文字牌，触碰显示状态原因，品牌字统一为 Bruce",
@@ -1045,7 +1045,7 @@
       "branch": "main",
       "topic": "MenuBarIndicator",
       "version": "0.13.0",
-      "file": "docs/devel/change/C100.json"
+      "file": "docs/archive/0.13.0/change/C100.json"
     },
     "C101": {
       "title": "Windows 看板滚动区隐藏右侧滚动条：对齐 mac 恒不显示滚动指示条，仅保留滚轮/触控板滚动",
@@ -1054,7 +1054,7 @@
       "branch": "main",
       "topic": "WindowsCompat",
       "version": "0.13.0",
-      "file": "docs/devel/change/C101.json"
+      "file": "docs/archive/0.13.0/change/C101.json"
     },
     "C102": {
       "title": "经典风格升级高斯模糊（方案A 柔光云母高斯）并与 Nothing 风格 1:1 统一紧凑圆角体系",
@@ -1063,7 +1063,7 @@
       "branch": "feat/C102-gaussian-blur-theme",
       "topic": "MenuBarIndicator",
       "version": "0.13.0",
-      "file": "docs/devel/change/C102.json"
+      "file": "docs/archive/0.13.0/change/C102.json"
     },
     "C103": {
       "title": "浅色经典风格视觉重构（方案A 苹果纯净白）与全主题 8pt 呼吸感圆角体系升级，修复视口腰斩、坐标下沉与布局塌陷 Bug",
@@ -1072,7 +1072,7 @@
       "branch": "fix/C103-light-classic-and-radius",
       "topic": "MenuBarIndicator",
       "version": "0.13.0",
-      "file": "docs/devel/change/C103.json"
+      "file": "docs/archive/0.13.0/change/C103.json"
     }
   }
 }
