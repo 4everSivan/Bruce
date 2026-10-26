@@ -72,7 +72,7 @@ struct SettingsView: View {
         var title: String {
             switch self {
             case .general: return "通用"
-            case .agentUsage: return "Agent 用量"
+            case .agentUsage: return "模型用量"
             case .modelPricing: return "模型计费"
             case .subscription: return "订阅额度"
             case .consent: return "授权与隐私"
@@ -437,6 +437,12 @@ struct SettingsView: View {
                     divided: true
                 ) {
                     HStack(spacing: 8) {
+                        Text(coordinator.pauseSubscriptionRefreshOnScreenLock ? "已开启" : "已关闭")
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(
+                                coordinator.pauseSubscriptionRefreshOnScreenLock
+                                    ? SettingsDemoTokens.ok : SettingsDemoTokens.text3
+                            )
                         Toggle(
                             "",
                             isOn: Binding(
@@ -446,12 +452,6 @@ struct SettingsView: View {
                         )
                         .labelsHidden()
                         .toggleStyle(.switch)
-                        Text(coordinator.pauseSubscriptionRefreshOnScreenLock ? "已开启" : "已关闭")
-                            .font(.system(size: 12.5))
-                            .foregroundStyle(
-                                coordinator.pauseSubscriptionRefreshOnScreenLock
-                                    ? SettingsDemoTokens.ok : SettingsDemoTokens.text3
-                            )
                     }
                 }
                 FluentRow(
@@ -460,6 +460,12 @@ struct SettingsView: View {
                     divided: true
                 ) {
                     HStack(spacing: 8) {
+                        Text(coordinator.systemNotificationsEnabled ? "已开启" : "已关闭")
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(
+                                coordinator.systemNotificationsEnabled
+                                    ? SettingsDemoTokens.ok : SettingsDemoTokens.text3
+                            )
                         Toggle(
                             "",
                             isOn: Binding(
@@ -469,12 +475,6 @@ struct SettingsView: View {
                         )
                         .labelsHidden()
                         .toggleStyle(.switch)
-                        Text(coordinator.systemNotificationsEnabled ? "已开启" : "已关闭")
-                            .font(.system(size: 12.5))
-                            .foregroundStyle(
-                                coordinator.systemNotificationsEnabled
-                                    ? SettingsDemoTokens.ok : SettingsDemoTokens.text3
-                            )
                         if notificationDenied {
                             Button("前往系统设置") {
                                 NSWorkspace.shared.open(
@@ -990,7 +990,7 @@ struct SettingsView: View {
             FluentCard {
                 HStack {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("Agent 用量")
+                        Text("模型用量")
                             .font(.system(size: 13))
                             .foregroundStyle(SettingsDemoTokens.text)
                         Text("允许按授权范围采集本机会话用量")

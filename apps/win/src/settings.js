@@ -20,7 +20,7 @@
   ];
   const CATEGORIES = {
     general: { title: "通用", crumb: "设置 / 通用" },
-    agentUsage: { title: "Agent 用量", crumb: "设置 / Agent 用量" },
+    agentUsage: { title: "模型用量", crumb: "设置 / 模型用量" },
     modelPricing: { title: "模型计费", crumb: "设置 / 模型计费" },
     subscription: { title: "订阅额度", crumb: "设置 / 订阅额度" },
     consent: { title: "授权与隐私", crumb: "设置 / 授权与隐私" },
@@ -343,7 +343,7 @@
       cards.replaceChildren();
       cardOrder.forEach((id, index) => {
         const line = node("div", null, { class: "order-row" });
-        line.append(node("span", { usage: "Token 用量", subscription: "订阅额度", hourly: "Agent 用量" }[id] || id));
+        line.append(node("span", { usage: "Token 用量", subscription: "订阅额度", hourly: "模型用量" }[id] || id));
         const btns = node("div", null, { class: "order-btns" });
         button(btns, `card-up-${id}`, "上移", () => reorder(cardOrder, index, -1, "cardOrder"));
         button(btns, `card-down-${id}`, "下移", () => reorder(cardOrder, index, 1, "cardOrder"));
@@ -459,7 +459,7 @@
     // mac: 开关旁以「已开启 / 已关闭」状态字呈现当前值
     const notifyWrap = node("div", null, { class: "toggle-with-state" });
     const notify = input("setting-notifications", "checkbox");
-    notifyWrap.append(notify, node("span", "", { id: "setting-notifications-state", class: "toggle-state" }));
+    notifyWrap.append(node("span", "", { id: "setting-notifications-state", class: "toggle-state" }), notify);
     notify.addEventListener("change", () => {
       syncToggleState("setting-notifications");
       return persist({ notificationsEnabled: notify.checked }, {
@@ -2672,7 +2672,7 @@
     // mac 单一模块授权开关: 切换即等价于「确认授权 / 撤销全部授权」
     const consentToggle = input("setting-usage-consent", "checkbox");
     consentToggle.addEventListener("change", () => applyConsent(consentToggle.checked));
-    row(c1, "Agent 用量", consentToggle, "允许按授权范围采集本机会话用量");
+    row(c1, "模型用量", consentToggle, "允许按授权范围采集本机会话用量");
     const lines = node("div", null, { class: "auth-lines" });
     const list = node("ul", null, { id: "consent-list", class: "hint-list" });
     lines.append(node("p", "授权后应用将：", { class: "hint-title" }), list);
@@ -2693,7 +2693,7 @@
     const cu = card(host, UP.copy.caption);
     const autoWrap = node("div", null, { class: "toggle-with-state" });
     const autoBox = input("setting-auto-update", "checkbox");
-    autoWrap.append(autoBox, node("span", "", { id: "setting-auto-update-state", class: "toggle-state" }));
+    autoWrap.append(node("span", "", { id: "setting-auto-update-state", class: "toggle-state" }), autoBox);
     autoBox.addEventListener("change", () => {
       syncToggleState("setting-auto-update");
       return persist({ autoCheckUpdate: autoBox.checked }, {

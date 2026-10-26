@@ -32,7 +32,7 @@ test("settings window navigation switches categories and persists configuration"
   await app.document.querySelector('[data-category="agentUsage"]').click();
   assert.equal(app.node("pane-agentUsage").classList.contains("hidden"), false);
   assert.equal(app.node("pane-general").classList.contains("hidden"), true);
-  assert.equal(app.node("crumb").textContent, "设置 / Agent 用量");
+  assert.equal(app.node("crumb").textContent, "设置 / 模型用量");
   assert.ok(app.node("pane-agentUsage").textContent.includes("Rust Collector"));
   assert.ok(app.node("pane-agentUsage").textContent.includes("Claude Code"));
   assert.ok(app.node("pane-agentUsage").textContent.includes("未发现会话记录"));

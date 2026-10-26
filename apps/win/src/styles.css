@@ -74,6 +74,23 @@
   --danger: #E5534B;
   /* mac SettingsDemoTokens.accent (dark): 设置窗口主按钮 */
   --settings-accent: #4C9CFF;
+
+  /* 分段选择器高对比浮岛 tokens */
+  --seg-track: #17191E;
+  --seg-active-bg: #343946;
+  --seg-active-border: rgba(255, 255, 255, 0.16);
+  --seg-active-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  --seg-active-text: #FFFFFF;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --seg-track: #EAECEF;
+    --seg-active-bg: #FFFFFF;
+    --seg-active-border: rgba(0, 0, 0, 0.08);
+    --seg-active-shadow: 0 1.5px 3px rgba(0, 0, 0, 0.1);
+    --seg-active-text: #0F172A;
+  }
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1098,33 +1115,41 @@ input[type="checkbox"]:checked::after {
   background: rgba(76, 156, 255, .8);
 }
 
-/* 分段选择器 (mac FluentSegmentedPicker): 深底 + 1px 描边 + 6px 圆角, 内边距 2, 项间距 2;
-   选项 11.5pt (选中半粗), 内边距 9/3.5, 圆角 4, 选中项 surface-hover 浅底白字 */
+/* 分段选择器 (mac FluentSegmentedPicker): 轨道底 + 1px 描边 + 7px 圆角, 内边距 2.5, 项间距 2;
+   选项 11.5pt (选中半粗), 内边距 4/10, 圆角 5;
+   激活项: 浅色纯白微浮岛 / 深色高对比明亮灰阶 (#383D48) + 描边 + 软阴影, 具备极高辨识度与层级感 */
 .seg-wrap { display: inline-flex; }
 .seg-source { display: none; }
 .fluent-seg {
   display: inline-flex;
   gap: 2px;
-  padding: 2px;
-  background: var(--bg);
+  padding: 2.5px;
+  background: var(--seg-track, #17191E);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 7px;
 }
 .seg-opt {
   font: inherit;
   font-size: 11.5px;
   font-weight: 500;
   line-height: 1.2;
-  padding: 3.5px 9px;
-  border: none;
-  border-radius: 4px;
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: 5px;
   background: transparent;
   color: var(--text-2);
   white-space: nowrap;
   cursor: pointer;
+  transition: all 0.15s ease;
 }
 .seg-opt:hover { color: var(--text); }
-.seg-opt.active { background: var(--surface-hover); color: var(--text); font-weight: 600; }
+.seg-opt.active {
+  background: var(--seg-active-bg, #343946);
+  border-color: var(--seg-active-border, rgba(255, 255, 255, 0.14));
+  color: var(--seg-active-text, #FFFFFF);
+  font-weight: 600;
+  box-shadow: var(--seg-active-shadow, 0 1px 3px rgba(0, 0, 0, 0.35));
+}
 .btn.danger {
   color: var(--danger);
 }
