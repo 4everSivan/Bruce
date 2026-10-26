@@ -149,7 +149,8 @@
         "C107",
         "C110",
         "C116",
-        "C117"
+        "C117",
+        "C119"
       ]
     },
     "AgentAnalytics": {
@@ -1228,6 +1229,15 @@
       "topic": "SubscriptionQuota",
       "version": "0.13.1",
       "file": "docs/devel/change/C118.json"
+    },
+    "C119": {
+      "title": "Orca 内置 Codex 的会话计入 Orca 行：修复 Orca 行恒为「未发现会话记录」",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C119-orca-agent-attribution",
+      "topic": "TokenUsage",
+      "version": "0.13.1",
+      "file": "docs/devel/change/C119.json"
     }
   }
 }
