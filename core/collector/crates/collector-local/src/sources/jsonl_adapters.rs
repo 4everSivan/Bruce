@@ -610,6 +610,7 @@ pub fn scan_grok_cached(
         stats,
         diagnostic,
         capped: false,
+        companions: Vec::new(),
     })
 }
 

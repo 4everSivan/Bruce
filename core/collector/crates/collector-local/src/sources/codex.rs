@@ -1,6 +1,6 @@
 use super::{
-    finish, line_may_match, number_u64, parse_json_line, scan_jsonl_file, SourceScan,
-    SourceScanError,
+    finish, line_may_match, number_u64, parse_json_line, scan_jsonl_file, CompanionScan,
+    SourceScan, SourceScanError,
 };
 use crate::jsonl_cache::CachedUsageObservation;
 
@@ -108,6 +108,8 @@ pub(super) struct CodexFileCandidate {
     pub(super) digest: Option<String>,
     pub(super) device: u64,
     pub(super) inode: u64,
+    /// 发现该文件的根在调用方根列表中的下标 (C119: 按根归属 agent)。
+    pub(super) origin: usize,
 }
 
 /// 文件物理身份 (dev, inode); 非 unix 平台回落 (0, 0) 表示不可用.
@@ -131,6 +133,8 @@ fn file_identity(metadata: &fs::Metadata) -> (u64, u64) {
 #[cfg_attr(not(test), allow(dead_code))]
 pub(super) struct CodexTreeGuard {
     visited_dirs: BTreeSet<PathBuf>,
+    /// 当前遍历的根在调用方根列表中的下标 (C119: 按根归属 agent)。
+    origin: usize,
 }
 
 pub(super) fn collect_codex_files(
@@ -229,6 +233,7 @@ pub(super) fn collect_codex_files(
                 digest,
                 device,
                 inode,
+                origin: guard.origin,
             });
     }
     Ok(())
@@ -699,12 +704,42 @@ pub fn scan_codex_cached_with_cancellation(
     cache_root: &Path,
     cancellation: &CancellationToken,
 ) -> Result<SourceScan, SourceScanError> {
+    let roots = roots
+        .iter()
+        .map(|path| CodexRoot {
+            path: path.clone(),
+            companion: None,
+        })
+        .collect::<Vec<_>>();
+    scan_codex_roots_cached(&roots, window, cache_root, cancellation)
+}
+
+/// Codex 会话根及其归属 (C119): `companion` 为 None 时计入 Codex 本身, 否则计入该附属
+/// agent (Orca 内置 Codex 的运行时目录)。
+#[derive(Debug, Clone)]
+pub struct CodexRoot {
+    pub path: PathBuf,
+    pub companion: Option<&'static str>,
+}
+
+/// 多根 Codex 缓存扫描并按根归属拆分 (C119)。跨根副本去重与改动前一致 (胜出规则不变,
+/// 合计不变), 每组副本整体归属胜出文件所在根; 附属 agent 的贡献放入
+/// `SourceScan::companions`, 统计与诊断仍归 Codex。
+pub fn scan_codex_roots_cached(
+    roots: &[CodexRoot],
+    window: &CollectionWindow,
+    cache_root: &Path,
+    cancellation: &CancellationToken,
+) -> Result<SourceScan, SourceScanError> {
     let mut stats = ScanStats::default();
     let mut groups = BTreeMap::<String, Vec<CodexFileCandidate>>::new();
-    for root in roots {
-        let mut guard = CodexTreeGuard::default();
+    for (origin, root) in roots.iter().enumerate() {
+        let mut guard = CodexTreeGuard {
+            origin,
+            ..CodexTreeGuard::default()
+        };
         match collect_codex_files(
-            root,
+            &root.path,
             window.cutoff_ts,
             cancellation,
             &mut groups,
@@ -720,8 +755,20 @@ pub fn scan_codex_cached_with_cancellation(
         }
     }
     cancellation.check()?;
-    let has_selected_codex_files = groups.values().any(|candidates| !candidates.is_empty());
     let selected = resolve_codex_files(groups, cancellation, &mut stats)?;
+    let companion_of = |candidate: &CodexFileCandidate| roots[candidate.origin].companion;
+    let codex_found = selected
+        .iter()
+        .any(|candidate| companion_of(candidate).is_none());
+    let mut companions = BTreeMap::<&'static str, (bool, UsageContributionBuilder)>::new();
+    for companion in roots.iter().filter_map(|root| root.companion) {
+        let found = selected
+            .iter()
+            .any(|candidate| companion_of(candidate) == Some(companion));
+        companions
+            .entry(companion)
+            .or_insert_with(|| (found, UsageContributionBuilder::new(window.clone())));
+    }
 
     let cache_path = codex_file_cache_path(cache_root);
     let mut previous = match load_codex_file_cache(&cache_path) {
@@ -772,8 +819,14 @@ pub fn scan_codex_cached_with_cancellation(
                 }
             },
         };
+        let target = match companion_of(candidate) {
+            Some(companion) => companions
+                .get_mut(companion)
+                .map_or(&mut builder, |(_, builder)| builder),
+            None => &mut builder,
+        };
         for observation in &entry.observations {
-            let _ = builder.record(observation.sample());
+            let _ = target.record(observation.sample());
         }
         files.insert(key, entry);
     }
@@ -791,7 +844,15 @@ pub fn scan_codex_cached_with_cancellation(
     let _ = fs::remove_file(legacy_codex_tree_cache_path(cache_root));
     cancellation.check()?;
 
-    let mut result = finish(window, builder, stats.clone(), has_selected_codex_files);
+    let mut result = finish(window, builder, stats.clone(), codex_found);
+    result.companions = companions
+        .into_iter()
+        .map(|(source_id, (found, builder))| CompanionScan {
+            source_id,
+            found,
+            contribution: builder.contribution(),
+        })
+        .collect();
     let mut notes: Vec<String> = Vec::new();
     if stats.cache_corruptions > 0 {
         notes.push("Codex 缓存文件格式异常, 已整体重建".to_owned());
