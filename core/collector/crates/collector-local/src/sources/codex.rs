@@ -1,12 +1,13 @@
 use super::{
-    finish, line_may_match, number_u64, parse_json_line, record, scan_jsonl_file, SourceScan,
+    finish, line_may_match, number_u64, parse_json_line, scan_jsonl_file, SourceScan,
     SourceScanError,
 };
+use crate::jsonl_cache::CachedUsageObservation;
 
 /// Codex rollout 中参与聚合的行类型 (C110 解析前预筛)。
 const CODEX_NEEDLES: &[&[u8]] = &[b"turn_context", b"token_count"];
 use crate::{ScanStats, MAX_DIRECTORY_SCAN_DEPTH};
-use collector_domain::{CollectionWindow, UsageContribution, UsageContributionBuilder};
+use collector_domain::{CollectionWindow, UsageContributionBuilder};
 use collector_runtime::CancellationToken;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -414,137 +415,88 @@ pub fn scan_codex_with_cancellation(
     Ok(result)
 }
 
-// ---- Codex 整树聚合缓存 ----
+// ---- Codex 按文件观测缓存 (C117) ----
 //
-// Codex rollout 文件是 append-only: 同一 (path, size, mtime, dev, inode) 身份
-// 意味着同一内容, 同一内容的树聚合必然一致. 因此把整个 Codex 源树的聚合
-// 快照 + 文件集身份签名落盘; 下次刷新身份签名与窗口未变时直接复用聚合,
-// 跳过 ~GB 级 rollout 全量重读. 文件变、增、删都会改变签名 → 触发重扫.
-// 高压实际: 本机 ~/.codex 单树约 440MB, 每 30 分钟一次的全量重读是 CPU/IO 大头.
+// Codex rollout 文件是 append-only: 同一 (path, size, mtime, dev, inode) 身份即同一内容。
+// 每个选中文件缓存其解析出的、与窗口无关的用量观测; 下次刷新只重解析身份变化的文件
+// (通常只有正在进行的会话), 其余直接复用, 再按当前窗口聚合。
+// 旧实现以整树身份签名 + 按窗口聚合的快照为缓存: 任一文件追加、跨日或改窗口长度都会
+// 让整树重读, 且每轮都要为全部候选文件读取头尾指纹来计算签名。
 
-const CODEX_TREE_CACHE_SCHEMA: u32 = 1;
+/// v1 (C117): 观测值格式变化或 Codex 解析规则变化时必须升级, 令旧缓存整体重建。
+const CODEX_FILE_CACHE_SCHEMA: u32 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-struct CodexTreeCache {
+struct CodexFileCache {
     schema_version: u32,
-    window_days: u32,
+    /// 解析无时区时间戳所用的时区; 天数 / today 不进身份。
     timezone: String,
-    today: String,
-    tree_signature: String,
-    aggregate: UsageContribution,
+    files: BTreeMap<String, CodexFileEntry>,
 }
 
-impl CodexTreeCache {
-    /// 缓存仅在与当前聚合窗口完全一致时有效 (Kimi 缓存同语义).
-    fn window_matches(&self, window: &CollectionWindow) -> bool {
-        self.schema_version == CODEX_TREE_CACHE_SCHEMA
-            && self.window_days == window.days
-            && self.timezone == window.timezone_name
-            && self.today == window.today
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+struct CodexFileEntry {
+    size: u64,
+    modified: f64,
+    device: u64,
+    inode: u64,
+    observations: Vec<CachedUsageObservation>,
+}
+
+impl CodexFileEntry {
+    fn matches(&self, candidate: &CodexFileCandidate) -> bool {
+        self.size == candidate.size
+            && self.modified == candidate.modified
+            && self.device == candidate.device
+            && self.inode == candidate.inode
     }
 }
 
-/// 计算整棵树所有窗口内 rollout 候选的文件身份签名. 任何文件的增/删/
-/// 改 (path, size, mtime, dev, inode) 都会改变签名, 从而强制重扫.
-fn codex_tree_signature(
-    groups: &BTreeMap<String, Vec<CodexFileCandidate>>,
-    cancellation: &CancellationToken,
-) -> Result<String, SourceScanError> {
-    codex_tree_signature_impl(
-        groups,
-        cancellation,
-        #[cfg(test)]
-        None,
-    )
+fn codex_file_cache_path(cache_root: &Path) -> PathBuf {
+    cache_root.join("codex-files-v1.json")
 }
 
-#[cfg(test)]
-#[cfg(test)]
-pub(super) fn codex_tree_signature_with_probe<P>(
-    groups: &BTreeMap<String, Vec<CodexFileCandidate>>,
-    cancellation: &CancellationToken,
-    mut probe: P,
-) -> Result<String, SourceScanError>
-where
-    P: FnMut(),
-{
-    codex_tree_signature_impl(groups, cancellation, Some(&mut probe))
-}
-
-fn codex_tree_signature_impl(
-    groups: &BTreeMap<String, Vec<CodexFileCandidate>>,
-    cancellation: &CancellationToken,
-    #[cfg(test)] mut probe: Option<&mut dyn FnMut()>,
-) -> Result<String, SourceScanError> {
-    let mut hasher = Sha256::new();
-    hasher.update(CODEX_TREE_CACHE_SCHEMA.to_le_bytes());
-    // BTreeMap 迭代有序; 每个 group 内按可比较身份再排一次 (f64 mtime 用位表示),
-    // 保证签名稳定.
-    let mut entries = Vec::new();
-    for (group_key, candidates) in groups {
-        cancellation.check()?;
-        for candidate in candidates {
-            cancellation.check()?;
-            #[cfg(test)]
-            if let Some(probe) = probe.as_deref_mut() {
-                probe();
-            }
-            cancellation.check()?;
-            entries.push((
-                group_key.clone(),
-                candidate.path.clone(),
-                candidate.size,
-                candidate.modified.to_bits(),
-                candidate.device,
-                candidate.inode,
-            ));
-        }
-    }
-    let cancellation_error = std::cell::Cell::new(None);
-    entries.sort_by(|left, right| match cancellation.check() {
-        Ok(()) => left.cmp(right),
-        Err(error) => {
-            cancellation_error.set(Some(error));
-            Ordering::Equal
-        }
-    });
-    if let Some(error) = cancellation_error.get() {
-        return Err(error.into());
-    }
-    for (group_key, path, size, modified_bits, device, inode) in entries {
-        cancellation.check()?;
-        hasher.update(group_key.as_bytes());
-        hasher.update(path.to_string_lossy().as_bytes());
-        hasher.update(size.to_le_bytes());
-        hasher.update(modified_bits.to_le_bytes());
-        hasher.update(device.to_le_bytes());
-        hasher.update(inode.to_le_bytes());
-    }
-    Ok(format!("{:x}", hasher.finalize()))
-}
-
-fn codex_tree_cache_path(cache_root: &Path) -> PathBuf {
+/// C117 前的整树缓存文件, 迁移后删除。
+fn legacy_codex_tree_cache_path(cache_root: &Path) -> PathBuf {
     cache_root.join("codex-tree-v1.json")
 }
 
-fn load_codex_tree_cache(path: &Path) -> Option<CodexTreeCache> {
-    let data = fs::read(path).ok()?;
-    serde_json::from_slice(&data).ok()
+fn codex_path_key(path: &Path) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"bruce-codex-file-v1\0");
+    hasher.update(path.to_string_lossy().as_bytes());
+    format!("{:x}", hasher.finalize())
 }
 
-fn write_codex_tree_cache(
+enum CodexCacheLoad {
+    Missing,
+    Corrupt,
+    Loaded(CodexFileCache),
+}
+
+fn load_codex_file_cache(path: &Path) -> CodexCacheLoad {
+    match fs::read(path) {
+        Ok(data) => match serde_json::from_slice(&data) {
+            Ok(cache) => CodexCacheLoad::Loaded(cache),
+            Err(_) => CodexCacheLoad::Corrupt,
+        },
+        Err(error) if error.kind() == io::ErrorKind::NotFound => CodexCacheLoad::Missing,
+        Err(_) => CodexCacheLoad::Corrupt,
+    }
+}
+
+fn write_codex_file_cache(
     path: &Path,
-    entry: &CodexTreeCache,
+    cache: &CodexFileCache,
     cancellation: &CancellationToken,
 ) -> Result<(), SourceScanError> {
     cancellation.check()?;
-    let parent = match path.parent() {
-        Some(parent) => parent,
-        None => return Ok(()),
+    let Some(parent) = path.parent() else {
+        return Ok(());
     };
     let _ = fs::create_dir_all(parent);
     let temporary = parent.join(format!(
-        ".codex-tree-v1.tmp-{}-{}",
+        ".codex-files-v1.tmp-{}-{}",
         std::process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -552,50 +504,155 @@ fn write_codex_tree_cache(
             .as_nanos()
     ));
     let written = (|| -> io::Result<()> {
-        cancellation.check().map_err(|error| {
-            io::Error::new(
-                io::ErrorKind::Interrupted,
-                format!("cache write stopped: {error:?}"),
-            )
-        })?;
-        // C047: 与其余缓存写盘对齐 —— create_new + 显式 0600 (原实现用
-        // File::create 继承 umask, 是仓内唯一无权限约束的缓存写盘)。
-        let mut file = {
-            let mut options = std::fs::OpenOptions::new();
-            options.write(true).create_new(true);
-            let file = options.open(&temporary)?;
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                file.set_permissions(fs::Permissions::from_mode(0o600))?;
-            }
-            file
-        };
-        // C110: 序列化到内存后一次写入, 避免未缓冲 File 的逐记号 write 系统调用。
-        let mut bytes = serde_json::to_vec(entry)?;
+        // C047: create_new + 显式 0600; C110: 序列化到内存后一次写入。
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        let mut file = options.open(&temporary)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            file.set_permissions(fs::Permissions::from_mode(0o600))?;
+        }
+        let mut bytes = serde_json::to_vec(cache)?;
         bytes.push(b'\n');
         file.write_all(&bytes)?;
         drop(file);
-        cancellation.check().map_err(|error| {
-            io::Error::new(
-                io::ErrorKind::Interrupted,
-                format!("cache write stopped: {error:?}"),
-            )
-        })?;
         fs::rename(&temporary, path)
     })();
     if written.is_err() {
         let _ = fs::remove_file(&temporary);
     }
     cancellation.check()?;
-    if written.is_err() {
-        return Ok(());
-    }
+    // 缓存可再生: 写盘失败只影响下一轮命中率, 不影响本轮结果。
     Ok(())
 }
 
-/// 单个 Codex 会话文件的聚合解析 (token_count 增量 + 重复快照去重),
-/// 与 `scan_codex` 逐文件逻辑完全一致, 抽出来供缓存未命中时的全量兜底复用.
+/// 解析一个 Codex rollout 文件为与窗口无关的用量观测 (C117: 供按文件缓存复用)。
+///
+/// 解析状态 (当前模型、累计高水位、重放快照去重) 只在单个文件内有效, 故文件一旦变化
+/// 即整文件重解析; 时区仅用于无时区时间戳。
+fn parse_codex_file(
+    candidate: &CodexFileCandidate,
+    window: &CollectionWindow,
+    cancellation: &CancellationToken,
+    stats: &mut ScanStats,
+) -> Result<Vec<CachedUsageObservation>, SourceScanError> {
+    cancellation.check()?;
+    let mut current_model: Option<String> = None;
+    let mut total_high_water: Option<CodexTokenCounters> = None;
+    let mut last_signature_by_source = BTreeMap::<Option<String>, CodexTokenSignature>::new();
+    let mut previous_token_signature: Option<CodexTokenSignature> = None;
+    let mut observations = Vec::new();
+    scan_jsonl_file(
+        &candidate.path,
+        candidate.modified,
+        cancellation,
+        &mut |_, _, line, stats| {
+            // C110: 只有 turn_context (模型) 与 token_count (用量) 行参与聚合
+            if !line_may_match(line, CODEX_NEEDLES) {
+                stats.ignored_lines = stats.ignored_lines.saturating_add(1);
+                return;
+            }
+            let Some(value) = parse_json_line(line, stats) else {
+                return;
+            };
+            if value.get("type").and_then(Value::as_str) == Some("turn_context") {
+                if let Some(model) = value
+                    .get("payload")
+                    .and_then(|payload| {
+                        payload
+                            .get("model")
+                            .or_else(|| payload.get("info").and_then(|info| info.get("model")))
+                    })
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|model| !model.is_empty())
+                {
+                    current_model = Some(model.to_owned());
+                }
+                return;
+            }
+            if value
+                .get("payload")
+                .and_then(|value| value.get("type"))
+                .and_then(Value::as_str)
+                != Some("token_count")
+            {
+                return;
+            }
+            let Some(timestamp) = value
+                .get("timestamp")
+                .and_then(Value::as_str)
+                .and_then(|value| window.epoch_from_iso(value))
+                .map(|value| value.saturating_mul(1000))
+            else {
+                return;
+            };
+            let payload = value.get("payload").unwrap_or(&Value::Null);
+            let info = payload.get("info").unwrap_or(&Value::Null);
+            let model = info
+                .get("model")
+                .and_then(Value::as_str)
+                .or_else(|| info.get("model_name").and_then(Value::as_str))
+                .or_else(|| payload.get("model").and_then(Value::as_str))
+                .or_else(|| value.get("model").and_then(Value::as_str));
+            if let Some(model) = model.map(str::trim).filter(|model| !model.is_empty()) {
+                current_model = Some(model.to_owned());
+            }
+            let Some(signature) = codex_token_signature(info) else {
+                return;
+            };
+            let snapshot_source = codex_snapshot_source(payload);
+            let duplicate_snapshot = signature.total.is_some()
+                && (last_signature_by_source.get(&snapshot_source) == Some(&signature)
+                    || previous_token_signature.as_ref() == Some(&signature));
+            if signature.total.is_some() {
+                last_signature_by_source.insert(snapshot_source, signature.clone());
+            }
+            previous_token_signature = Some(signature.clone());
+            let usage = if duplicate_snapshot {
+                CodexTokenCounters {
+                    input: 0,
+                    cache_read: 0,
+                    output: 0,
+                }
+            } else if let Some(last) = signature.last {
+                last
+            } else if let Some(total) = signature.total {
+                codex_delta(total_high_water.as_ref(), &total)
+            } else {
+                return;
+            };
+            if let Some(total) = signature.total.as_ref() {
+                if let Some(high_water) = total_high_water.as_mut() {
+                    update_codex_high_water(high_water, total);
+                } else {
+                    total_high_water = Some(*total);
+                }
+            }
+            if usage.input == 0 && usage.cache_read == 0 && usage.output == 0 {
+                return;
+            }
+            observations.push(CachedUsageObservation {
+                dedupe_key: None,
+                timestamp_millis: timestamp,
+                model: current_model.clone(),
+                input: usage.input.saturating_sub(usage.cache_read),
+                output: usage.output,
+                cache_read: usage.cache_read,
+                cache_creation: 0,
+                cache_creation_1h: 0,
+                project: None,
+            });
+            stats.usage_records = stats.usage_records.saturating_add(1);
+        },
+        stats,
+        #[cfg(test)]
+        &mut None,
+    )?;
+    Ok(observations)
+}
+
 fn scan_selected_codex(
     selected: Vec<CodexFileCandidate>,
     window: &CollectionWindow,
@@ -604,118 +661,12 @@ fn scan_selected_codex(
     stats: &mut ScanStats,
 ) -> Result<(), SourceScanError> {
     for candidate in selected {
-        cancellation.check()?;
-        let mut current_model: Option<String> = None;
-        let mut total_high_water: Option<CodexTokenCounters> = None;
-        let mut last_signature_by_source = BTreeMap::<Option<String>, CodexTokenSignature>::new();
-        let mut previous_token_signature: Option<CodexTokenSignature> = None;
-        match scan_jsonl_file(
-            &candidate.path,
-            candidate.modified,
-            cancellation,
-            &mut |_, _, line, stats| {
-                // C110: 只有 turn_context (模型) 与 token_count (用量) 行参与聚合
-                if !line_may_match(line, CODEX_NEEDLES) {
-                    stats.ignored_lines = stats.ignored_lines.saturating_add(1);
-                    return;
+        match parse_codex_file(&candidate, window, cancellation, stats) {
+            Ok(observations) => {
+                for observation in &observations {
+                    let _ = builder.record(observation.sample());
                 }
-                let Some(value) = parse_json_line(line, stats) else {
-                    return;
-                };
-                if value.get("type").and_then(Value::as_str) == Some("turn_context") {
-                    if let Some(model) = value
-                        .get("payload")
-                        .and_then(|payload| {
-                            payload
-                                .get("model")
-                                .or_else(|| payload.get("info").and_then(|info| info.get("model")))
-                        })
-                        .and_then(Value::as_str)
-                        .map(str::trim)
-                        .filter(|model| !model.is_empty())
-                    {
-                        current_model = Some(model.to_owned());
-                    }
-                    return;
-                }
-                if value
-                    .get("payload")
-                    .and_then(|value| value.get("type"))
-                    .and_then(Value::as_str)
-                    != Some("token_count")
-                {
-                    return;
-                }
-                let Some(timestamp) = value
-                    .get("timestamp")
-                    .and_then(Value::as_str)
-                    .and_then(|value| window.epoch_from_iso(value))
-                    .map(|value| value.saturating_mul(1000))
-                else {
-                    return;
-                };
-                let payload = value.get("payload").unwrap_or(&Value::Null);
-                let info = payload.get("info").unwrap_or(&Value::Null);
-                let model = info
-                    .get("model")
-                    .and_then(Value::as_str)
-                    .or_else(|| info.get("model_name").and_then(Value::as_str))
-                    .or_else(|| payload.get("model").and_then(Value::as_str))
-                    .or_else(|| value.get("model").and_then(Value::as_str));
-                if let Some(model) = model.map(str::trim).filter(|model| !model.is_empty()) {
-                    current_model = Some(model.to_owned());
-                }
-                let Some(signature) = codex_token_signature(info) else {
-                    return;
-                };
-                let snapshot_source = codex_snapshot_source(payload);
-                let duplicate_snapshot = signature.total.is_some()
-                    && (last_signature_by_source.get(&snapshot_source) == Some(&signature)
-                        || previous_token_signature.as_ref() == Some(&signature));
-                if signature.total.is_some() {
-                    last_signature_by_source.insert(snapshot_source, signature.clone());
-                }
-                previous_token_signature = Some(signature.clone());
-                let usage = if duplicate_snapshot {
-                    CodexTokenCounters {
-                        input: 0,
-                        cache_read: 0,
-                        output: 0,
-                    }
-                } else if let Some(last) = signature.last {
-                    last
-                } else if let Some(total) = signature.total {
-                    codex_delta(total_high_water.as_ref(), &total)
-                } else {
-                    return;
-                };
-                if let Some(total) = signature.total.as_ref() {
-                    if let Some(high_water) = total_high_water.as_mut() {
-                        update_codex_high_water(high_water, total);
-                    } else {
-                        total_high_water = Some(*total);
-                    }
-                }
-                if usage.input == 0 && usage.cache_read == 0 && usage.output == 0 {
-                    return;
-                }
-                record(
-                    builder,
-                    timestamp,
-                    current_model.as_deref(),
-                    usage.input.saturating_sub(usage.cache_read),
-                    usage.output,
-                    usage.cache_read,
-                    0,
-                    None,
-                );
-                stats.usage_records = stats.usage_records.saturating_add(1);
-            },
-            stats,
-            #[cfg(test)]
-            &mut None,
-        ) {
-            Ok(()) => {}
+            }
             Err(SourceScanError::Runtime(error)) => return Err(error.into()),
             Err(SourceScanError::Io(_)) => {
                 stats.io_errors = stats.io_errors.saturating_add(1);
@@ -725,12 +676,9 @@ fn scan_selected_codex(
     Ok(())
 }
 
-/// 带持久整树聚合缓存的 Codex 扫描. 命中缓存 (文件集身份签名 + 窗口一致) 时
-/// 直接复用整树聚合, 跳过 ~GB 级 rollout 全量重读; 否则全量扫描并落盘.
-/// 派生与可重建, 破坏或窗口变化静默整树重扫, 不弱化为「空结果」.
-/// 注意: 命中缓存时 `collect_codex_files` 仍会为个别非 rollout jsonl 读取
-/// 指纹 (head+tail, 不进 bytes_read 统计, 见 `fingerprint_file`); 大头 rollout
-/// 体量不重读.
+/// 带按文件观测缓存的 Codex 扫描 (C117): 只重解析身份变化的文件, 跨日与改窗口长度
+/// 直接复用缓存, 再按当前窗口聚合; 结果与 `scan_codex` 一致。缓存可再生, 损坏时整体重建
+/// 并以信息级说明暴露 (C046)。
 pub fn scan_codex_cached(
     roots: &[PathBuf],
     window: &CollectionWindow,
@@ -766,69 +714,91 @@ pub fn scan_codex_cached_with_cancellation(
             }
         }
     }
-
     cancellation.check()?;
-    let signature = codex_tree_signature(&groups, cancellation)?;
     let has_selected_codex_files = groups.values().any(|candidates| !candidates.is_empty());
-    let cache_path = codex_tree_cache_path(cache_root);
-    if let Some(cached) = load_codex_tree_cache(&cache_path) {
-        if cached.window_matches(window) && cached.tree_signature == signature {
-            // 缓存命中前已执行 `collect_codex_files` 的目录遍历与元数据 syscall
-            // (非 rollout jsonl 的指纹读取不计入 bytes_read). 聚合直接复用,
-            // 不重读大头 rollout 文件体.
-            stats.cache_hits = stats.cache_hits.saturating_add(1);
-            let mut builder = UsageContributionBuilder::new(window.clone());
-            // C046: 树缓存解码异常不再静默 —— 计损坏并降级为「缓存未命中」
-            // 语义的提示 (走全量扫描会得到同样结果, 但异常必须可见)。
-            if !builder.merge_contribution(&cached.aggregate) {
-                stats.cache_corruptions = stats.cache_corruptions.saturating_add(1);
-            }
-            let mut result = finish(window, builder, stats.clone(), has_selected_codex_files);
-            let mut notes: Vec<String> = Vec::new();
-            if stats.cache_corruptions > 0 {
-                notes.push(format!(
-                    "Codex 树缓存条目格式异常 {} 次, 已按可用部分聚合",
-                    stats.cache_corruptions
-                ));
-            }
-            if stats.conflict_session_groups > 0 {
-                notes.push(format!(
-                    "Codex 会话副本内容冲突, 已保守选择单份文件 (冲突组: {})",
-                    stats.conflict_session_groups
-                ));
-            }
-            if !notes.is_empty() {
-                result.diagnostic = Some(notes.join("; "));
-            }
-            return Ok(result);
-        }
-    }
-
-    // 未命中: 全量扫描再落盘.
     let selected = resolve_codex_files(groups, cancellation, &mut stats)?;
+
+    let cache_path = codex_file_cache_path(cache_root);
+    let mut previous = match load_codex_file_cache(&cache_path) {
+        CodexCacheLoad::Loaded(cache)
+            if cache.schema_version == CODEX_FILE_CACHE_SCHEMA
+                && cache.timezone == window.timezone_name =>
+        {
+            cache.files
+        }
+        CodexCacheLoad::Loaded(_) => {
+            stats.cache_invalidations = stats.cache_invalidations.saturating_add(1);
+            BTreeMap::new()
+        }
+        CodexCacheLoad::Corrupt => {
+            stats.cache_corruptions = stats.cache_corruptions.saturating_add(1);
+            BTreeMap::new()
+        }
+        CodexCacheLoad::Missing => BTreeMap::new(),
+    };
+    let previous_count = previous.len();
+    let mut files = BTreeMap::new();
+    let mut changed = false;
     let mut builder = UsageContributionBuilder::new(window.clone());
-    scan_selected_codex(selected, window, cancellation, &mut builder, &mut stats)?;
-    let aggregate = builder.contribution();
-    cancellation.check()?;
-    write_codex_tree_cache(
-        &cache_path,
-        &CodexTreeCache {
-            schema_version: CODEX_TREE_CACHE_SCHEMA,
-            window_days: window.days,
+    for candidate in &selected {
+        cancellation.check()?;
+        let key = codex_path_key(&candidate.path);
+        let entry = match previous.remove(&key) {
+            Some(entry) if entry.matches(candidate) => {
+                stats.cache_hits = stats.cache_hits.saturating_add(1);
+                entry
+            }
+            _ => match parse_codex_file(candidate, window, cancellation, &mut stats) {
+                Ok(observations) => {
+                    stats.cache_rebuilds = stats.cache_rebuilds.saturating_add(1);
+                    changed = true;
+                    CodexFileEntry {
+                        size: candidate.size,
+                        modified: candidate.modified,
+                        device: candidate.device,
+                        inode: candidate.inode,
+                        observations,
+                    }
+                }
+                Err(SourceScanError::Runtime(error)) => return Err(error.into()),
+                Err(SourceScanError::Io(_)) => {
+                    stats.io_errors = stats.io_errors.saturating_add(1);
+                    continue;
+                }
+            },
+        };
+        for observation in &entry.observations {
+            let _ = builder.record(observation.sample());
+        }
+        files.insert(key, entry);
+    }
+    // 未再被选中的文件 (删除 / 移出窗口 / 副本落选) 从缓存移除
+    let removed = previous.len() as u64;
+    stats.cache_deletions = stats.cache_deletions.saturating_add(removed);
+    if changed || removed > 0 || files.len() != previous_count {
+        let cache = CodexFileCache {
+            schema_version: CODEX_FILE_CACHE_SCHEMA,
             timezone: window.timezone_name.clone(),
-            today: window.today.clone(),
-            tree_signature: signature,
-            aggregate: aggregate.clone(),
-        },
-        cancellation,
-    )?;
+            files,
+        };
+        write_codex_file_cache(&cache_path, &cache, cancellation)?;
+    }
+    let _ = fs::remove_file(legacy_codex_tree_cache_path(cache_root));
     cancellation.check()?;
-    let mut result = finish(window, builder, stats.clone(), stats.files_scanned > 0);
+
+    let mut result = finish(window, builder, stats.clone(), has_selected_codex_files);
+    let mut notes: Vec<String> = Vec::new();
+    if stats.cache_corruptions > 0 {
+        notes.push("Codex 缓存文件格式异常, 已整体重建".to_owned());
+    }
     if stats.conflict_session_groups > 0 {
-        result.diagnostic = Some(format!(
+        notes.push(format!(
             "Codex 会话副本内容冲突, 已保守选择单份文件 (冲突组: {})",
             stats.conflict_session_groups
         ));
+    }
+    if !notes.is_empty() {
+        result.diagnostic = Some(notes.join("; "));
     }
     Ok(result)
 }

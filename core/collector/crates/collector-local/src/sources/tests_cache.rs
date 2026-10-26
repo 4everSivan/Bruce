@@ -1,4 +1,3 @@
-use super::codex::{codex_tree_signature_with_probe, CodexFileCandidate};
 use super::{
     scan_claude, scan_claude_cached, scan_codebuddy, scan_codebuddy_cached, scan_grok,
     scan_grok_cached, scan_jsonl_tree_with_line_probe, scan_kimi_tree, scan_kimi_tree_cached,
@@ -8,7 +7,6 @@ use super::{
 use collector_domain::CollectionWindow;
 use collector_runtime::{CancellationToken, RuntimeError};
 use serde_json::{json, Map, Value};
-use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -94,38 +92,6 @@ fn cancellation_discards_mid_file_partial_result() {
         Err(super::SourceScanError::Runtime(RuntimeError::Cancelled))
     ));
     fs::remove_dir_all(root).ok();
-}
-
-#[test]
-fn codex_signature_cancellation_stops_before_all_candidates_are_hashed() {
-    let groups = (0..4_096)
-        .map(|index| {
-            (
-                format!("rollout:{index}"),
-                vec![CodexFileCandidate {
-                    path: PathBuf::from(format!("/fixture/{index}.jsonl")),
-                    modified: index as f64,
-                    size: index,
-                    digest: None,
-                    device: 0,
-                    inode: 0,
-                }],
-            )
-        })
-        .collect::<BTreeMap<_, _>>();
-    let cancellation = CancellationToken::new();
-    let mut probes = 0;
-
-    let result = codex_tree_signature_with_probe(&groups, &cancellation, || {
-        probes += 1;
-        cancellation.cancel();
-    });
-
-    assert_eq!(probes, 1);
-    assert!(matches!(
-        result,
-        Err(super::SourceScanError::Runtime(RuntimeError::Cancelled))
-    ));
 }
 
 #[test]

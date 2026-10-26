@@ -671,14 +671,16 @@ fn codex_cached_scan_skips_unchanged_files_and_increments_on_append() {
             .unwrap_or(0),
         18
     );
-    assert_eq!(warm.stats.cache_hits, 1, "未变化应命中缓存");
+    // C117: 按文件缓存 —— 两个未变化文件各命中一次, 不重新解析。
+    assert_eq!(warm.stats.cache_hits, 2, "未变化应命中缓存");
+    assert_eq!(warm.stats.cache_rebuilds, 0);
     assert_eq!(warm.stats.bytes_read, 0, "命中缓存时 bytes_read 保持 0");
     assert!(
         warm.found,
         "unchanged cached Codex files still count as found"
     );
 
-    // 追加新文件: 文件集身份变化, 重新扫描并合并新增量.
+    // 追加新文件: 只解析新文件, 其余两个文件继续命中缓存.
     write_codex_lines(
         &root,
         "rollout-cached-2.jsonl",
@@ -694,6 +696,11 @@ fn codex_cached_scan_skips_unchanged_files_and_increments_on_append() {
             .unwrap_or(0),
         25,
         "追加后聚合 = 13 + 5(会话) + (5−1)+2+1 = 25"
+    );
+    assert_eq!(
+        (appended.stats.cache_hits, appended.stats.cache_rebuilds),
+        (2, 1),
+        "只重解析新增文件"
     );
     fs::remove_dir_all(root).unwrap();
     fs::remove_dir_all(cache_dir).unwrap();
@@ -964,4 +971,90 @@ fn claude_prefilter_skips_lines_that_cannot_carry_usage() {
 
     fs::remove_dir_all(&root).ok();
     fs::remove_dir_all(&cache_root).ok();
+}
+
+/// C117: Codex 按文件缓存 —— 正在写入的会话文件追加时只重解析该文件; 跨日与改窗口长度
+/// 全部命中; 删除文件从缓存移除; 结果始终与不走缓存的 scan_codex 一致。
+#[test]
+fn codex_file_cache_reparses_only_changed_files_and_survives_rollover() {
+    let root = temp_root("codex-file-cache");
+    let cache_dir = temp_root("codex-file-cache-dir");
+    let window_at = |now: &str, days: u32| {
+        let context: serde_json::Map<String, Value> =
+            serde_json::from_value(json!({"now": now, "timezone": "Asia/Shanghai", "days": days}))
+                .unwrap();
+        collector_domain::CollectionWindow::from_context(&context).unwrap()
+    };
+    write_codex_lines(
+        &root,
+        "rollout-a.jsonl",
+        &[codex_token_count("2026-07-27T04:00:00Z", 10, 2, 3)],
+    );
+    write_codex_lines(
+        &root,
+        "rollout-b.jsonl",
+        &[codex_token_count("2026-07-28T04:00:00Z", 7, 1, 2)],
+    );
+    let day = window_at("2026-07-28T12:00:00+08:00", 3);
+    let cold = scan_codex_cached(std::slice::from_ref(&root), &day, &cache_dir);
+    assert_eq!(cold.stats.cache_rebuilds, 2);
+    assert_eq!(
+        cold.contribution,
+        scan_codex(std::slice::from_ref(&root), &day).contribution
+    );
+
+    // 跨日 + 改窗口长度: 全部命中
+    for (now, days) in [
+        ("2026-07-29T09:00:00+08:00", 3),
+        ("2026-07-29T09:00:00+08:00", 182),
+    ] {
+        let window = window_at(now, days);
+        let scan = scan_codex_cached(std::slice::from_ref(&root), &window, &cache_dir);
+        assert_eq!(
+            (scan.stats.cache_hits, scan.stats.cache_rebuilds),
+            (2, 0),
+            "{now}/{days}"
+        );
+        assert_eq!(scan.stats.bytes_read, 0, "命中缓存不读 rollout");
+        assert_eq!(
+            scan.contribution,
+            scan_codex(std::slice::from_ref(&root), &window).contribution,
+            "{now}/{days}"
+        );
+    }
+
+    // 进行中的会话追加一行: 只重解析该文件
+    let path = root.join("2026/07/28/rollout-b.jsonl");
+    let mut existing = fs::read_to_string(&path).unwrap();
+    existing.push_str(
+        &serde_json::to_string(&codex_token_count("2026-07-28T05:00:00Z", 12, 3, 4)).unwrap(),
+    );
+    existing.push('\n');
+    fs::write(&path, existing).unwrap();
+    let appended = scan_codex_cached(std::slice::from_ref(&root), &day, &cache_dir);
+    assert_eq!(
+        (appended.stats.cache_hits, appended.stats.cache_rebuilds),
+        (1, 1)
+    );
+    assert_eq!(
+        appended.contribution,
+        scan_codex(std::slice::from_ref(&root), &day).contribution
+    );
+
+    // 删除文件: 缓存移除且不再计入
+    fs::remove_file(root.join("2026/07/28/rollout-a.jsonl")).unwrap();
+    let removed = scan_codex_cached(std::slice::from_ref(&root), &day, &cache_dir);
+    assert_eq!(removed.stats.cache_deletions, 1);
+    assert_eq!(
+        removed.contribution,
+        scan_codex(std::slice::from_ref(&root), &day).contribution
+    );
+
+    // 旧整树缓存文件被清理
+    fs::write(cache_dir.join("codex-tree-v1.json"), "{}").unwrap();
+    scan_codex_cached(std::slice::from_ref(&root), &day, &cache_dir);
+    assert!(!cache_dir.join("codex-tree-v1.json").exists());
+
+    fs::remove_dir_all(root).ok();
+    fs::remove_dir_all(cache_dir).ok();
 }
