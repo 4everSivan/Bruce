@@ -146,7 +146,8 @@
         "C072",
         "C073",
         "C107",
-        "C110"
+        "C110",
+        "C116"
       ]
     },
     "AgentAnalytics": {
@@ -1198,6 +1199,15 @@
       "topic": "WindowsCompat",
       "version": "0.13.1",
       "file": "docs/devel/change/C115.json"
+    },
+    "C116": {
+      "title": "JSONL 缓存条目与采集窗口解耦并并入 Kimi Code CLI：跨日首轮刷新不再整树重解析",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C116-window-independent-jsonl-cache",
+      "topic": "TokenUsage",
+      "version": "0.13.1",
+      "file": "docs/devel/change/C116.json"
     }
   }
 }

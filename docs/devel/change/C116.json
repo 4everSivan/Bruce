@@ -1,0 +1,110 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C116",
+  "title": "JSONL 缓存条目与采集窗口解耦并并入 Kimi Code CLI：跨日首轮刷新不再整树重解析",
+  "version": "0.13.1",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C116-window-independent-jsonl-cache",
+  "is_hotfix": false,
+
+  "target": {
+    "module": "core/collector collector-local / collector-application / collector-runtime / collector-domain",
+    "component": "JSONL 源级缓存引擎、Kimi Code CLI 扫描、本机源编排",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+
+  "why": "2026-10-25 架构审查：本机缓存条目以 today 与窗口天数为身份，并把贡献按「窗口内第几天」压缩后存入条目。日期一变（每天首轮刷新）或窗口长度一变，全部条目失配，182 天窗口内的会话日志整树重新解析。Kimi Code CLI 另有一套独立的旧版缓存引擎（collector-local/src/lib.rs 约 1,000 行：逐文件增量条目 + 清单 + 写盘线程 + 有界队列流式聚合 aggregation.rs），解析的 usage.record 格式与 Kimi Work 的 JSONL 适配器完全相同。JSONL 引擎中 Claude / CodeBuddy 的聚合本就从观测值重建，条目里的压缩贡献只用于校验；Kimi Work / Pi 存了观测值却从不读取。",
+
+  "precheck": {
+    "description": "确认改动前 JSONL 条目与 Kimi 旧引擎都以 today 为缓存身份",
+    "command": "git show e018e85:core/collector/crates/collector-local/src/jsonl_cache.rs | grep -n 'today: config.window.today\\|entry.window == JsonlCacheWindow'; git show e018e85:core/collector/crates/collector-local/src/lib.rs | grep -c 'today: config.window.today'",
+    "expected": "JSONL 引擎窗口身份含 today 且参与 cache_identity_matches；Kimi 旧引擎同样以 today 为身份（缺陷存在）",
+    "is_completed": false,
+    "evidence": "2026-10-26 预检实测：e018e85 的 jsonl_cache.rs 第 132 行 `today: config.window.today.clone()` 写入窗口身份、第 443 行 `entry.window == JsonlCacheWindow::from_config(config)` 参与 cache_identity_matches；Kimi 旧引擎 lib.rs 同样以 `today: config.window.today` 为身份 —— 缺陷成立，需编码修复。"
+  },
+
+  "callback": {
+    "before": [
+      "git checkout -b fix/C116-window-independent-jsonl-cache  # 叠加在 fix/C115-tray-preview-panel-keys 之上"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all -- --check",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C116 --to verified --record"
+    ]
+  },
+
+  "changes": [
+    {
+      "scope": "JSONL 缓存条目",
+      "before": "身份含窗口 days / timezone / today；载荷 = 按窗口天序号压缩的贡献 + 观测值；追加合并按窗口重算",
+      "after": "身份只含 schema / source_id / 路径摘要 / parser / aggregation / timezone；载荷只存与窗口无关的观测值（缺省字段不落盘）；每次运行按当前窗口聚合；追加 = 观测值拼接（Grok 重打 mtime）；JSONL_CACHE_SCHEMA_VERSION 1 → 2，v1 条目计为失效重建而非损坏",
+      "impact": "跨日与改动窗口长度直接命中缓存；聚合结果不变"
+    },
+    {
+      "scope": "Kimi Code CLI 扫描",
+      "before": "独立旧版引擎（逐文件条目 / 清单 / 写盘线程 / BoundedQueue + aggregation.rs 流式聚合 / 专属 LOCAL_SOURCE_PARTIAL、LOCAL_SOURCE_ERROR 诊断）",
+      "after": "改用共享 JSONL 引擎（KimiUsageJsonlAdapter，source_id kimi-code-cli），作为本机源工作池的首个任务，诊断与 agent 状态与其他本机源同一套路径；remove_legacy_kimi_cache 清理旧引擎遗留文件（仅匹配 <64 位十六进制>.json 与 manifest-<64 位十六进制>.json）",
+      "impact": "删除 collector-local 旧引擎约 1,000 行、aggregation.rs、collector-runtime BoundedQueue 与 aggregate_queue_capacity、collector-domain SourceDeltaChange；Kimi Code CLI 的 usage 数值字段改为宽松解析（与 Kimi Work 一致）"
+    }
+  ],
+
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": true,
+    "rule_diff": {
+      "before": "§7.1 缓存分四层（含 Kimi Code CLI 专用层），各层身份均含窗口 days / timezone / today",
+      "after": "§7.1 缓存分三层（Kimi Code CLI 并入 JSONL 层）；JSONL 层身份不含 today 与窗口天数、载荷只存观测值；新增规则「缓存条目与窗口无关」与旧条目清理口径；SQLite / Codex 层仍以 today 为身份（后续卡处理）"
+    }
+  },
+
+  "verification": {
+    "result": null,
+    "run_id": "local-20261026-08",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "collector workspace 测试全绿（含新增跨日 / 改窗口命中缓存、v1 条目失效不计损坏、旧引擎遗留文件清理用例），fmt / clippy 通过，Windows viewmodel / src-tauri 测试全绿，verify-local 退出码 0",
+        "false_if": "任一失败",
+        "evidence": "2026-10-26: cargo test --manifest-path core/collector/Cargo.toml --workspace --no-fail-fast 退出码 0，160 passed / 0 failed（新增 jsonl_caches_survive_day_rollover_and_window_length_changes：07-28/3 天冷扫后 07-29/3 天、07-29/182 天、07-30/14 天三种窗口 Claude 与 Kimi CLI 均 cache_hits=1 / rebuilds=0 / invalidations=0 / json_lines_parsed=0 且逐字段等于参照实现；v1_jsonl_cache_entries_are_invalidated_not_counted_as_corrupt；legacy_kimi_cache_cleanup_only_touches_legacy_names）；fmt --check 与 clippy -D warnings 退出码 0；apps/win/viewmodel 58 passed、apps/win/src-tauri 220 passed；SDKROOT=MacOSX26.5 zsh scripts/verify-local.sh 退出码 0（local/logs/c116-verify.log）。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "以冻结的本机 Claude / CodeBuddy 日志副本对比改动前后 release collector：次日首轮刷新命中缓存、耗时降至热缓存水平，两日 artifact（去 generatedAt）新旧逐字节一致",
+        "false_if": "次日仍整树重解析或 artifact 不一致",
+        "evidence": "2026-10-26: 冻结本机 ~/.claude/projects 与 ~/.codebuddy/projects 副本（cp -Rp），以 main（e018e85）与本分支 release collector 各跑 D=10-26 冷 / 热、D+1=10-27 首轮 / 热：旧 0.28 / 0.02 / 0.18 / 0.02 s，新 0.19 / 0.02 / 0.02 / 0.02 s —— 次日首轮由重新解析变为直接命中缓存；去除 generatedAt 后 D 与 D+1 的 artifact 新旧逐字节一致；缓存目录 2.6 MB → 2.4 MB。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "被删除的测试仅覆盖已删除的旧引擎 / 队列 / 聚合模块，Kimi 解析语义由 JSONL 缓存与参照实现对拍用例覆盖；Swift CollectorRunner / LocalIntegration Harness 全绿",
+        "false_if": "删除了仍覆盖现行行为的测试或 Harness 回归",
+        "evidence": "2026-10-26: 与 main 的测试名单对比，删除 8 项均只覆盖已删除模块：aggregation.rs 2 项、collector-local 旧引擎 4 项（streams_valid_records / malformed_and_empty_lines / cancellation_before_manifest_publication / cache_reuses_unchanged_files）、collector-runtime BoundedQueue 1 项、collector-domain SourceDeltaChange 1 项；Kimi usage.record 解析由 tests_cache 中 Kimi 缓存与 scan_kimi_tree 参照实现对拍覆盖，超长行用例改为直接覆盖 read_bounded_line；verify-local 中 CollectorRunner 28、LocalIntegration 2 全绿。",
+        "result": true
+      }
+    ]
+  },
+
+  "rejections": [],
+
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}
