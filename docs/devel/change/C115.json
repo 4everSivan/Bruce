@@ -4,19 +4,16 @@
   "title": "托盘配额环与悬停预览卡读取真实面板字段：修复恒显示剩余 100%、今日 $0.00",
   "version": "0.13.1",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C115-tray-preview-panel-keys",
   "is_hotfix": false,
-
   "target": {
     "module": "apps/win src-tauri / src",
     "component": "tray_icon_renderer 速览提取、scheduler 托盘发布、preview.html 预览卡",
     "design_doc": "docs/devel/design/05-Windows平台适配.md",
     "design_topic": "WindowsCompat"
   },
-
   "why": "2026-10-26 复审 T12（托盘动态配额环 + 420px 悬停预览卡）：extract_quota_summary 与 preview.html 按 PanelViewModel 中并不存在的字段取数 —— panel.subscriptions（实为 subscription）、usage.totalCostText（实为 costText）、panel.agents / agents[].active（无此字段，HUD 以 hourly.rows[].todayTotal > 0 计活跃）、windows[].resetsIn（实为 resetText）、panel.status（无此字段）。全部取不到时回落默认值，托盘恒画满环并提示「额度剩余 100% | 今日 $0.00」，预览卡恒显示 100% / $0.00 / 0 活跃 / 运行正常。单测以手写的同名假字段构造面板，故未暴露。另：show_preview 挂在托盘 Move 事件上，指针在图标上移动时逐次读取 settings.json 并重复 set_size / set_position / show / set_always_on_top。",
-
   "precheck": {
     "description": "确认改动前托盘速览按不存在的面板字段取数",
     "command": "git show e018e85:apps/win/src-tauri/src/tray_icon_renderer.rs | grep -c 'get(\"subscriptions\")\\|get(\"totalCostText\")\\|get(\"agents\")'; node -e 'const p=require(\"./tests/fixtures/viewmodel-parity/agent-usage-valid.panel.json\");console.log(Object.keys(p).join(\",\"), Object.keys(p.usage).includes(\"totalCostText\"))'",
@@ -24,7 +21,6 @@
     "is_completed": false,
     "evidence": "2026-10-26 预检实测：e018e85 的 tray_icon_renderer.rs 中 get(\"subscriptions\") / get(\"totalCostText\") / get(\"agents\") 命中 3 处；golden 面板顶层键为 diagnostics,hourly,subscription,usage，usage 不含 totalCostText —— 缺陷成立，需编码修复。"
   },
-
   "callback": {
     "before": [
       "git worktree add .claude/worktrees/review-fixes-2 -b fix/C115-tray-preview-panel-keys main"
@@ -38,7 +34,6 @@
       "scripts/adflow-verify --card C115 --to verified --record"
     ]
   },
-
   "changes": [
     {
       "scope": "托盘速览提取（extract_quota_summary）",
@@ -65,7 +60,6 @@
       "impact": "前后端字段漂移会在测试中失败"
     }
   ],
-
   "design": {
     "doc": "docs/devel/design/05-Windows平台适配.md",
     "topic": "WindowsCompat",
@@ -75,12 +69,11 @@
       "after": "§6.5.1 补数据契约（真实字段、跳过失败服务、无窗口不伪装 100%、提示缺失段省略）；§6.5.2 预览卡只读 panel.preview 并以 golden fixture 双端对拍；悬停唤起按实现改为 Enter / Move 且已可见时直接返回"
     }
   },
-
   "verification": {
-    "result": null,
-    "run_id": "local-20261026-08",
-    "user_quote": "",
-    "signoff": "",
+    "result": true,
+    "run_id": "local-20261027-02",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -105,19 +98,19 @@
       }
     ]
   },
-
   "rejections": [],
-
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
-    "commit": "",
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "ee75116",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-27",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

@@ -4,19 +4,16 @@
   "title": "Windows runtime_core.rs 按职责拆分为 activity / geometry / status 子模块（纯移动，公开路径不变）",
   "version": "0.13.1",
   "type": "Refactor",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C128-split-runtime-core",
   "is_hotfix": false,
-
   "target": {
     "module": "apps/win src-tauri",
     "component": "runtime_core.rs",
     "design_doc": "docs/devel/design/00-系统总体设计.md",
     "design_topic": "SystemOverview"
   },
-
   "why": "2026-10-25 架构审查：design/00 C053 规定单文件超过约 1,500 行或承载 3 个以上独立职责簇时须按单一职责切分。apps/win/src-tauri/src/runtime_core.rs 已达 1,639 行，承载四个互不依赖的职责簇：刷新 / 窗口边界 / 快照合并与导出策略、看板窗口激活与全局快捷键状态机（C099）、看板与预览卡屏幕几何（任务栏边缘判定、贴托盘定位）、顶部四色状态灯判定（C100）。",
-
   "precheck": {
     "description": "确认改动前 runtime_core.rs 超出规模边界且含四个职责簇",
     "command": "git show e018e85:apps/win/src-tauri/src/runtime_core.rs | wc -l; git show HEAD:apps/win/src-tauri/src/runtime_core.rs | grep -n '^pub enum WindowAction\\|^pub struct MonitorBounds\\|^// MARK: - 顶部四色状态灯判定'",
@@ -24,7 +21,6 @@
     "is_completed": false,
     "evidence": "2026-10-26 预检实测：e018e85 的 runtime_core.rs 1,634 行、本分支拆分前 1,639 行；第 841 行 `pub enum WindowAction`（激活与快捷键簇）、第 1049 行 `pub struct MonitorBounds`（几何簇）、第 1452 行 `// MARK: - 顶部四色状态灯判定 (C100)`（状态灯簇）—— 超出 C053 边界。"
   },
-
   "callback": {
     "before": [
       "git checkout -b fix/C128-split-runtime-core  # 叠加在 fix/C127-credential-store-wording 之上"
@@ -38,7 +34,6 @@
       "scripts/adflow-verify --card C128 --to verified --record"
     ]
   },
-
   "changes": [
     {
       "scope": "runtime_core 结构",
@@ -47,7 +42,6 @@
       "impact": "单文件回到规模边界内，行为不变"
     }
   ],
-
   "design": {
     "doc": "docs/devel/design/00-系统总体设计.md",
     "topic": "SystemOverview",
@@ -57,12 +51,11 @@
       "after": "C053 规则示例补 Windows 端 runtime_core/ 的 activity.rs / geometry.rs / status.rs（父模块 pub use 保持路径）；design/00、design/05 登记 C128 变更行"
     }
   },
-
   "verification": {
-    "result": null,
-    "run_id": "local-20261026-08",
-    "user_quote": "",
-    "signoff": "",
+    "result": true,
+    "run_id": "local-20261027-14",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -87,19 +80,19 @@
       }
     ]
   },
-
   "rejections": [],
-
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
-    "commit": "",
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "5574161",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-27",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

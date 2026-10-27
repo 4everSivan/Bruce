@@ -4,19 +4,16 @@
   "title": "未授权云端额度不再输出 CC Switch / Codex partial 占位：纯本机统计不再显示部分失败，清理 CC Switch 过时文案",
   "version": "0.13.1",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C124-stale-cc-switch-text",
   "is_hotfix": false,
-
   "target": {
     "module": "core/collector collector-application / collector-bridge；apps/widget",
     "component": "agent 行说明、未授权 externalQuotas 分支、桌面小组件文案",
     "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
     "design_topic": "SubscriptionQuota"
   },
-
   "why": "2026-10-25 架构审查：CC Switch 时代的遗留输出仍在生效。(1) 请求未授予 externalQuotas（Windows 无任何订阅凭证、mac 未同意云端授权）时，collector 输出两条占位 service「CC Switch 云端额度」（app 为不存在的 cc-switch）与「Codex 账号额度」，状态为 partial —— 两端映射层按形状跳过不渲染，但它们触发 COLLECTOR_PARTIAL_RESULT，使每一轮纯本机统计的 envelope 都是 Partial：Windows 置 phase=partial，collection_tone 判为 Warn，状态灯恒为琥珀色「部分失败」（Bridge 自身用例甚至把「只授予 localSessions 的请求返回 Partial」写成了预期）。(2) Claude Code 行说明写着「当前经 CC Switch 路由」，与现状不符。(3) 桌面小组件称「云端服务经 CC Switch 查询 / 成本按 CC Switch 定价表估算 / 每 30 分钟自动刷新」，实际由 Bruce 按已配置订阅直接查询、按内置价卡计价、刷新间隔由用户设置。",
-
   "precheck": {
     "description": "确认改动前未授权分支输出 partial 占位、Bridge 用例以 Partial 为预期、文案仍指向 CC Switch",
     "command": "git show e018e85:core/collector/crates/collector-application/src/lib.rs | grep -n '当前经 CC Switch 路由\\|\"cc_switch_providers\",\\|fn denied_service'; git show e018e85:core/collector/crates/collector-bridge/src/lib.rs | grep -n 'assert_eq!(response.status, ResponseStatus::Partial);'; git show e018e85:apps/win/src-tauri/src/runtime_core.rs | grep -n '\"partial\" | \"stale\" | \"authRequired\" => StatusTone::Warn'; git show e018e85:apps/widget/index.html | grep -n '经 CC Switch 查询\\|CC Switch 配置查询'",
@@ -24,7 +21,6 @@
     "is_completed": false,
     "evidence": "2026-10-26 预检实测：e018e85 的 collector-application lib.rs 第 197 行 Claude Code 说明「当前经 CC Switch 路由, 额度见下方对应服务」、第 266 行 `\"cc_switch_providers\",`、第 921 行 `fn denied_service`（status 固定为 partial）；collector-bridge lib.rs 第 458 行对只含 localSessions 的请求断言 `ResponseStatus::Partial`；Windows runtime_core.rs 第 1508 行 collection_tone 将 partial 判为 Warn；apps/widget/index.html 第 384 / 979 行两处 CC Switch 文案 —— 缺陷成立，需编码修复。"
   },
-
   "callback": {
     "before": [
       "git checkout -b fix/C124-stale-cc-switch-text  # 叠加在 fix/C123-dead-contract-fields 之上"
@@ -38,7 +34,6 @@
       "scripts/adflow-verify --card C124 --to verified --record"
     ]
   },
-
   "changes": [
     {
       "scope": "未授权 externalQuotas 分支",
@@ -59,7 +54,6 @@
       "impact": "缺陷行为不再被测试固化"
     }
   ],
-
   "design": {
     "doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
     "topic": "SubscriptionQuota",
@@ -69,12 +63,11 @@
       "after": "规则 12 补充：C124 起未授予 externalQuotas（无订阅凭证或未同意授权）同样返回空 services、envelope 为 success，两端映射层对旧 artifact 中的占位形状仍跳过不渲染；登记 C124 变更行"
     }
   },
-
   "verification": {
-    "result": null,
-    "run_id": "local-20261026-08",
-    "user_quote": "",
-    "signoff": "",
+    "result": true,
+    "run_id": "local-20261027-10",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -99,19 +92,19 @@
       }
     ]
   },
-
   "rejections": [],
-
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
-    "commit": "",
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "97212e6",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-27",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

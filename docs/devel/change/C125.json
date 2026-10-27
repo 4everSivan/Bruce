@@ -4,19 +4,16 @@
   "title": "全景文档核对：README 版本与特性对齐 v0.13.0，设计索引日期与刷新间隔可选值去漂移",
   "version": "0.13.1",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C125-readme-drift",
   "is_hotfix": false,
-
   "target": {
     "module": "README.md；docs/devel/design",
     "component": "仓库门面 README、设计中心索引、design/02 规则 12",
     "design_doc": "docs/devel/design/00-系统总体设计.md",
     "design_topic": "SystemOverview"
   },
-
   "why": "2026-10-25 架构审查与 AGENTS.md 六.3「全景文档核对」：v0.13.0 已于 2026-10-26 发布（VERSION = 0.13.0），README 徽章与正文仍为 v0.12.2；README 两处写「15 个 Harness」，Package.swift 实际 17 个（新增 DashboardStatusTone / SoftwareUpdate）；「现行设计基线 00~05」而设计中心已有 06（用量分析工作台）、07（软件更新）；已发布的双端软件更新与用量分析工作台未出现在核心特性，软件更新的 `updates/` 目录未列入数据表。设计中心索引各文档「最后更新」停在 10-16～10-23，与正文头（多为 10-26）不一致。design/02 规则 12 写刷新间隔可选 5/10/15/30/60 分钟，两端实现均为 5/15/30/60。",
-
   "precheck": {
     "description": "确认 README 与设计索引的失真点",
     "command": "cat VERSION; git show e018e85:README.md | grep -n 'v0.12.2\\|15 个 Harness\\|00~05'; grep -c 'name: \"[A-Za-z]*Harness\"' apps/macos/Package.swift; ls docs/devel/design/0*.md | wc -l; grep -o 'allowedRefreshIntervalMinutes: \\[Int\\] = \\[[0-9, ]*\\]' apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift; grep -o 'REFRESH_PRESETS = \\[[0-9, ]*\\]' apps/win/src/settings.js",
@@ -24,7 +21,6 @@
     "is_completed": false,
     "evidence": "2026-10-26 预检实测：VERSION = 0.13.0；e018e85 的 README 第 8 / 20 行 v0.12.2、第 124 / 171 行「15 个 Harness」、第 194 行「00~05」；apps/macos/Package.swift Harness target 17 个；docs/devel/design 下 00~07 共 8 篇；mac allowedRefreshIntervalMinutes = [5, 15, 30, 60]、Windows REFRESH_PRESETS = [5, 15, 30, 60]；设计中心索引 8 行日期均早于正文头 —— 失真成立。"
   },
-
   "callback": {
     "before": [
       "git checkout -b fix/C125-readme-drift  # 叠加在 fix/C124-stale-cc-switch-text 之上"
@@ -33,7 +29,6 @@
       "scripts/adflow-verify --card C125 --to verified --record"
     ]
   },
-
   "changes": [
     {
       "scope": "README.md",
@@ -48,7 +43,6 @@
       "impact": "设计基线与实现一致"
     }
   ],
-
   "design": {
     "doc": "docs/devel/design/00-系统总体设计.md",
     "topic": "SystemOverview",
@@ -58,12 +52,11 @@
       "after": "design/00 登记 C125 全景文档核对行；design/02 规则 12 刷新间隔可选值更正为 5/15/30/60（以 allowedRefreshIntervalMinutes / REFRESH_PRESETS 为准）"
     }
   },
-
   "verification": {
-    "result": null,
-    "run_id": "local-20261026-08",
-    "user_quote": "",
-    "signoff": "",
+    "result": true,
+    "run_id": "local-20261027-11",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "文档校验",
@@ -88,19 +81,19 @@
       }
     ]
   },
-
   "rejections": [],
-
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
-    "commit": "",
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "8ed557a",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-27",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

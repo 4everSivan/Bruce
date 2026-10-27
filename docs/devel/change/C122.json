@@ -4,19 +4,16 @@
   "title": "额度账号执行去掉永不阻塞的账号许可与两层永不合并的 single-flight",
   "version": "0.13.1",
   "type": "Refactor",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C122-execution-permits",
   "is_hotfix": false,
-
   "target": {
     "module": "core/collector collector-application / collector-runtime",
     "component": "execution.rs 额度账号执行、RunContext、RuntimeBudgets / AccountSingleFlight",
     "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
     "design_topic": "TokenUsage"
   },
-
   "why": "2026-10-25 架构审查：execute_quota_accounts 已用 min(account_tasks, 计划数) 个工作线程限定并发，每个任务却再取一个账号许可（池容量同为 account_tasks，永不阻塞）；整次执行包一层按 account_key 的 AccountSingleFlight，内部解析凭证又包一层 RunContext 上同键的 AccountSingleFlight。生产固定使用 RuntimeLimits::default()，execute_quota_accounts 每轮只调用一次（普通额度或 Codex 定向重试二选一），计划键由 map 键生成且 Codex 顺序重复会被拒绝 —— 两层 single-flight 从不合并任何调用；即便出现重复键，single-flight 也只是把结果克隆进两个槽位，仍会输出两条同 id service。被包裹的 resolve_credential 只是克隆计划内凭证并查目录表。",
-
   "precheck": {
     "description": "确认改动前额度执行叠加账号许可与两层 single-flight，且生产限额固定为默认值",
     "command": "git show e018e85:core/collector/crates/collector-application/src/execution.rs | grep -n 'AccountSingleFlight::<String, ServiceExecution, Diagnostic>::default()\\|context.budgets.acquire_account\\|\\.account_single_flight'; git show e018e85:core/collector/crates/collector-application/src/lib.rs | grep -n 'RuntimeLimits::default()'; git show e018e85:core/collector/crates/collector-runtime/src/lib.rs | grep -n 'account: PermitPool::new(limits.account_tasks)'",
@@ -24,7 +21,6 @@
     "is_completed": false,
     "evidence": "2026-10-26 预检实测：e018e85 的 execution.rs 第 58 行外层 `AccountSingleFlight::<String, ServiceExecution, Diagnostic>::default()`、第 137 行 `context.budgets.acquire_account`、第 152 行内层 `.account_single_flight`；collector-application lib.rs 第 106 行 `RunContext::new(..., RuntimeLimits::default())` 为唯一生产构造；collector-runtime 第 58 行账号许可池容量 = account_tasks —— 冗余成立。"
   },
-
   "callback": {
     "before": [
       "git checkout -b fix/C122-execution-permits  # 叠加在 fix/C121-artifact-store-io 之上"
@@ -37,7 +33,6 @@
       "scripts/adflow-verify --card C122 --to verified --record"
     ]
   },
-
   "changes": [
     {
       "scope": "额度账号执行",
@@ -58,7 +53,6 @@
       "impact": "去重前提被测试固定"
     }
   ],
-
   "design": {
     "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
     "topic": "TokenUsage",
@@ -68,12 +62,11 @@
       "after": "规则 3 新增「额度账号并发 (C122)」：工作线程数即账号并发上限、每次外部请求持网络许可、每轮单次执行且计划键唯一故不叠加账号许可与 single-flight；登记将来引入多次执行或可重复计划键时须先恢复去重"
     }
   },
-
   "verification": {
-    "result": null,
-    "run_id": "local-20261026-08",
-    "user_quote": "",
-    "signoff": "",
+    "result": true,
+    "run_id": "local-20261027-08",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -98,19 +91,19 @@
       }
     ]
   },
-
   "rejections": [],
-
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
-    "commit": "",
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "a28f290",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-27",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

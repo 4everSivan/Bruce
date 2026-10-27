@@ -4,19 +4,16 @@
   "title": "退役从未被读取的请求契约字段：localPricing、subscriptionQuotaOnly / subscriptionProviders、providerEnv",
   "version": "0.13.1",
   "type": "Refactor",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C123-dead-contract-fields",
   "is_hotfix": false,
-
   "target": {
     "module": "core/collector collector-bridge / schemas；apps/macos BruceOnboardingCore / BruceAppCore；apps/win src-tauri",
     "component": "Bridge 请求白名单、request-v1.schema.json、CollectorRunInput、collector.rs / credentials.rs",
     "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
     "design_topic": "TokenUsage"
   },
-
   "why": "2026-10-25 架构审查：Bridge 白名单接受、两端也在发送，但 collector 从不读取的契约字段 —— capabilities 的 localPricing（计价恒随本机统计执行）、定向刷新的 subscriptionQuotaOnly / subscriptionProviders（定向语义实际由「只授予 externalQuotas + 只装配目标凭证」实现，schema 还为二者声明了互相依赖的 if/then 约束）、凭据字段 providerEnv（无任何写入方，mac 注释仍称 DeepSeek 经 providerEnv 注入，实际为 deepseekQuotaAccounts）。这些字段让读者误以为存在对应开关，改动它们不会有任何效果。",
-
   "precheck": {
     "description": "确认改动前四个字段在 collector 内无消费方、两端仍在发送",
     "command": "for k in localPricing subscriptionQuotaOnly subscriptionProviders providerEnv; do git grep -n \"$k\" e018e85 -- core/collector/crates | grep -v collector-bridge/src/lib.rs; done; git grep -n 'localPricing.rawValue\\|\"subscriptionQuotaOnly\": .boolean\\|\"localSessions\", \"localPricing\"\\|insert(\"subscriptionQuotaOnly\"' e018e85 -- apps/macos/Sources apps/win/src-tauri/src",
@@ -24,7 +21,6 @@
     "is_completed": false,
     "evidence": "2026-10-26 预检实测：e018e85 的 collector crates 中四个字段除 collector-bridge 白名单外仅 collector-application lib.rs 第 1182 行测试请求含 localPricing，subscriptionQuotaOnly / subscriptionProviders / providerEnv 无任何命中；发送点：mac CollectorRunInput.swift 第 283 行 subscriptionQuotaOnly、第 390 行 localPricing，Windows collector.rs 第 16 行 LOCAL_CAPABILITIES 含 localPricing、第 228 行插入 subscriptionQuotaOnly —— 冗余成立。"
   },
-
   "callback": {
     "before": [
       "git checkout -b fix/C123-dead-contract-fields  # 叠加在 fix/C122-execution-permits 之上"
@@ -40,7 +36,6 @@
       "scripts/adflow-verify --card C123 --to verified --record"
     ]
   },
-
   "changes": [
     {
       "scope": "collector 契约",
@@ -61,7 +56,6 @@
       "impact": "Windows 请求与 Bridge 契约一致；旧凭据文件不受影响"
     }
   ],
-
   "design": {
     "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
     "topic": "TokenUsage",
@@ -71,12 +65,11 @@
       "after": "规则 3 新增「请求契约只保留被消费的字段 (C123)」：capabilities 仅 localSessions / externalQuotas、白名单字段须有消费方、四个退役字段显式拒绝、新增字段须与消费方同卡交付并同步 schema；design/05 定向请求规则改写并登记 C123 变更行"
     }
   },
-
   "verification": {
-    "result": null,
-    "run_id": "local-20261026-08",
-    "user_quote": "",
-    "signoff": "",
+    "result": true,
+    "run_id": "local-20261027-09",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -101,19 +94,19 @@
       }
     ]
   },
-
   "rejections": [],
-
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
-    "commit": "",
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "83e7a7b",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-27",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

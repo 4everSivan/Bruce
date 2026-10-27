@@ -4,19 +4,16 @@
   "title": "mac 凭据存储措辞更正：自有存储统一称「本机凭据文件」，不再提示去 Keychain 查找",
   "version": "0.13.1",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C127-credential-store-wording",
   "is_hotfix": false,
-
   "target": {
     "module": "apps/macos BruceApp / BruceAppCore / BruceOnboardingCore",
     "component": "订阅凭证写入 / 删除错误提示、配置对话框说明与无障碍提示、设置页凭据存储行与引导、运行输入授权错误",
     "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
     "design_topic": "SubscriptionQuota"
   },
-
   "why": "2026-10-25 架构审查：mac 生产凭据存储为 ProtectedFileCredentialStore（~/Library/Application Support/Bruce/credentials.json，0600），旧 Keychain 仅作读时迁移的回退源，但大量用户可见文案仍称「Keychain / 钥匙串」（预检正则命中 17 处，另有设置页引导标题、官方本机区无障碍提示与两条授权配置错误未计入正则）：写入失败提示「凭证写入 Keychain 失败」、删除失败提示「请在 Keychain 中手动检查」（用户去钥匙串里找不到任何条目）、配置对话框固定说明「只保存到本应用的 Keychain」（Windows 同一说明为「本机凭据文件」，design/05 规则 20 要求两端逐字一致）、设置页「钥匙串访问」行与引导「Bruce 会把订阅凭证保存在 macOS 钥匙串中」，以及运行输入的「未配置钥匙串访问」授权错误。design/02 规则 6 的移除契约也仍按 Keychain 的 errSecItemNotFound 描述。",
-
   "precheck": {
     "description": "确认改动前生产存储为文件、界面文案仍称 Keychain",
     "command": "git grep -n 'ProtectedFileCredentialStore(' e018e85 -- apps/macos/Sources/BruceApp/BruceApp.swift; git grep -c '请在 Keychain 中手动检查\\|凭证写入 Keychain 失败\\|只保存到本应用的 Keychain\\|凭据安全保存在本机 Keychain\\|保存在 macOS 钥匙串中\\|\"钥匙串访问\"\\|保存到 Keychain 并\\|未配置钥匙串访问\\|钥匙串访问已被阻断\\|\"Keychain 存储异常\"' e018e85 -- apps/macos/Sources",
@@ -24,7 +21,6 @@
     "is_completed": false,
     "evidence": "2026-10-26 预检实测：e018e85 的 BruceApp.swift 第 55 行 `let credentialStore = ProtectedFileCredentialStore(`（fallbackKeychainStore 仅读时迁移）；预检正则在 apps/macos/Sources 命中 17 处（SubscriptionService.swift 5、SubscriptionService+VerificationAndCodex.swift 2、APIKeyProviderConfigDialog.swift 2、SettingsView.swift 2、SettingsView+SubscriptionPane.swift 1 等）—— 缺陷成立。"
   },
-
   "callback": {
     "before": [
       "git checkout -b fix/C127-credential-store-wording  # 叠加在 fix/C126-uncached-scanners-test-only 之上"
@@ -34,7 +30,6 @@
       "scripts/adflow-verify --card C127 --to verified --record"
     ]
   },
-
   "changes": [
     {
       "scope": "错误提示",
@@ -55,7 +50,6 @@
       "impact": "引导与实现一致；外部 CLI 钥匙串、外部钥匙串来源设置与系统认证框原因文案保持「钥匙串」"
     }
   ],
-
   "design": {
     "doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
     "topic": "SubscriptionQuota",
@@ -65,12 +59,11 @@
       "after": "规则 1 补「旧版钥匙串迁移」（读时迁移、后台不弹认证框）与「用户可见措辞（C127）」（自有存储称本机凭据文件、对话框说明与 Windows 逐字一致、钥匙串只用于外部 CLI 与迁移）；规则 6 移除契约按文件存储改写"
     }
   },
-
   "verification": {
-    "result": null,
-    "run_id": "local-20261026-08",
-    "user_quote": "",
-    "signoff": "",
+    "result": true,
+    "run_id": "local-20261027-13",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -95,19 +88,19 @@
       }
     ]
   },
-
   "rejections": [],
-
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
-    "commit": "",
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "7144714",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-27",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

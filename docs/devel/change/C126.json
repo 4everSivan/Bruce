@@ -4,19 +4,16 @@
   "title": "不走缓存的扫描函数降为测试专用参照实现：collector-local 对外只保留缓存扫描",
   "version": "0.13.1",
   "type": "Refactor",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C126-uncached-scanners-test-only",
   "is_hotfix": false,
-
   "target": {
     "module": "core/collector collector-local",
     "component": "lib.rs / sources.rs 对外导出、各源参照实现与遍历辅助函数",
     "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
     "design_topic": "TokenUsage"
   },
-
   "why": "2026-10-25 架构审查：collector-local 以 pub 导出 16 个不走缓存的扫描函数（scan_claude / scan_codex / scan_kimi_tree / scan_grok / scan_pi / scan_codebuddy / scan_opencode / scan_zcode 及各自 *_with_cancellation），读者会以为生产路径会调用它们；实际生产只走 scan_*_cached，这些函数只被同 crate 的对拍用例当作参照实现使用。C119 后 scan_codex_cached / scan_codex_cached_with_cancellation 也只剩用例在用（生产改走 scan_codex_roots_cached）。（2026-10-27 补记：C119 经维护者驳回返工后，Codex 生产路径恢复为 scan_codex_cached_with_cancellation，其保持 pub 导出；scan_codex_roots_cached / CodexRoot / CompanionScan 随返工删除。）",
-
   "precheck": {
     "description": "确认改动前不走缓存的扫描函数为 pub 导出且 collector-local 之外无生产调用",
     "command": "git show e018e85:core/collector/crates/collector-local/src/lib.rs | grep -n '^pub use sources::{' -A8; git grep -nwE 'scan_(claude|codex|kimi_tree|grok|pi|codebuddy|opencode|zcode)(_with_cancellation)?|scan_codex_cached(_with_cancellation)?' e018e85 -- core/collector/crates core/collector/bin apps/win | grep -v collector-local/",
@@ -24,7 +21,6 @@
     "is_completed": false,
     "evidence": "2026-10-26 预检实测：e018e85 的 collector-local lib.rs 第 39–47 行 pub use 含 scan_claude / scan_codex / scan_kimi_tree / scan_grok / scan_pi / scan_codebuddy / scan_opencode / scan_zcode 及 *_with_cancellation；collector-local 之外仅 collector-application lib.rs 第 29 / 621 行使用 scan_codex_cached_with_cancellation（C119 已改为 scan_codex_roots_cached），其余不走缓存的函数零外部调用 —— 冗余成立。"
   },
-
   "callback": {
     "before": [
       "git checkout -b fix/C126-uncached-scanners-test-only  # 叠加在 fix/C125-readme-drift 之上"
@@ -38,7 +34,6 @@
       "scripts/adflow-verify --card C126 --to verified --record"
     ]
   },
-
   "changes": [
     {
       "scope": "对外导出",
@@ -53,7 +48,6 @@
       "impact": "非测试构建零 dead_code / unused_imports 告警；对拍用例覆盖不变"
     }
   ],
-
   "design": {
     "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
     "topic": "TokenUsage",
@@ -63,12 +57,11 @@
       "after": "规则 3 新增「参照实现只在测试构建中存在 (C126)」：对外只有缓存扫描，不走缓存的扫描函数及其专用辅助以 #[cfg(test)] 只编进测试构建，逐字段对拍不变"
     }
   },
-
   "verification": {
-    "result": null,
-    "run_id": "local-20261026-08",
-    "user_quote": "",
-    "signoff": "",
+    "result": true,
+    "run_id": "local-20261027-12",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -93,19 +86,19 @@
       }
     ]
   },
-
   "rejections": [],
-
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
-    "commit": "",
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "0b7e039",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-27",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

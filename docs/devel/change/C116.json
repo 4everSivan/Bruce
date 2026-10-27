@@ -4,19 +4,16 @@
   "title": "JSONL 缓存条目与采集窗口解耦并并入 Kimi Code CLI：跨日首轮刷新不再整树重解析",
   "version": "0.13.1",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "fix/C116-window-independent-jsonl-cache",
   "is_hotfix": false,
-
   "target": {
     "module": "core/collector collector-local / collector-application / collector-runtime / collector-domain",
     "component": "JSONL 源级缓存引擎、Kimi Code CLI 扫描、本机源编排",
     "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
     "design_topic": "TokenUsage"
   },
-
   "why": "2026-10-25 架构审查：本机缓存条目以 today 与窗口天数为身份，并把贡献按「窗口内第几天」压缩后存入条目。日期一变（每天首轮刷新）或窗口长度一变，全部条目失配，182 天窗口内的会话日志整树重新解析。Kimi Code CLI 另有一套独立的旧版缓存引擎（collector-local/src/lib.rs 约 1,000 行：逐文件增量条目 + 清单 + 写盘线程 + 有界队列流式聚合 aggregation.rs），解析的 usage.record 格式与 Kimi Work 的 JSONL 适配器完全相同。JSONL 引擎中 Claude / CodeBuddy 的聚合本就从观测值重建，条目里的压缩贡献只用于校验；Kimi Work / Pi 存了观测值却从不读取。",
-
   "precheck": {
     "description": "确认改动前 JSONL 条目与 Kimi 旧引擎都以 today 为缓存身份",
     "command": "git show e018e85:core/collector/crates/collector-local/src/jsonl_cache.rs | grep -n 'today: config.window.today\\|entry.window == JsonlCacheWindow'; git show e018e85:core/collector/crates/collector-local/src/lib.rs | grep -c 'today: config.window.today'",
@@ -24,7 +21,6 @@
     "is_completed": false,
     "evidence": "2026-10-26 预检实测：e018e85 的 jsonl_cache.rs 第 132 行 `today: config.window.today.clone()` 写入窗口身份、第 443 行 `entry.window == JsonlCacheWindow::from_config(config)` 参与 cache_identity_matches；Kimi 旧引擎 lib.rs 同样以 `today: config.window.today` 为身份 —— 缺陷成立，需编码修复。"
   },
-
   "callback": {
     "before": [
       "git checkout -b fix/C116-window-independent-jsonl-cache  # 叠加在 fix/C115-tray-preview-panel-keys 之上"
@@ -37,7 +33,6 @@
       "scripts/adflow-verify --card C116 --to verified --record"
     ]
   },
-
   "changes": [
     {
       "scope": "JSONL 缓存条目",
@@ -52,7 +47,6 @@
       "impact": "删除 collector-local 旧引擎约 1,000 行、aggregation.rs、collector-runtime BoundedQueue 与 aggregate_queue_capacity、collector-domain SourceDeltaChange；Kimi Code CLI 的 usage 数值字段改为宽松解析（与 Kimi Work 一致）"
     }
   ],
-
   "design": {
     "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
     "topic": "TokenUsage",
@@ -62,12 +56,11 @@
       "after": "§7.1 缓存分三层（Kimi Code CLI 并入 JSONL 层）；JSONL 层身份不含 today 与窗口天数、载荷只存观测值；新增规则「缓存条目与窗口无关」与旧条目清理口径；SQLite / Codex 层仍以 today 为身份（后续卡处理）"
     }
   },
-
   "verification": {
-    "result": null,
-    "run_id": "local-20261026-08",
-    "user_quote": "",
-    "signoff": "",
+    "result": true,
+    "run_id": "local-20261027-03",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -92,19 +85,19 @@
       }
     ]
   },
-
   "rejections": [],
-
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
-    "commit": "",
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "d50a559",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-27",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

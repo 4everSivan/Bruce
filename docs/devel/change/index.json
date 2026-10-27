@@ -1210,7 +1210,7 @@
     "C115": {
       "title": "托盘配额环与悬停预览卡读取真实面板字段：修复恒显示剩余 100%、今日 $0.00",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C115-tray-preview-panel-keys",
       "topic": "WindowsCompat",
       "version": "0.13.1",
@@ -1219,7 +1219,7 @@
     "C116": {
       "title": "JSONL 缓存条目与采集窗口解耦并并入 Kimi Code CLI：跨日首轮刷新不再整树重解析",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C116-window-independent-jsonl-cache",
       "topic": "TokenUsage",
       "version": "0.13.1",
@@ -1228,7 +1228,7 @@
     "C117": {
       "title": "Codex 整树缓存改为按文件观测缓存：进行中会话追加与跨日不再整树重读",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C117-codex-file-cache",
       "topic": "TokenUsage",
       "version": "0.13.1",
@@ -1237,7 +1237,7 @@
     "C118": {
       "title": "订阅服务显式下发 provider 与 failureKind：两端不再按 id 前缀推断归属、不再嗅探 note 文案判定 429",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C118-service-provider-failure-kind",
       "topic": "SubscriptionQuota",
       "version": "0.13.1",
@@ -1255,7 +1255,7 @@
     "C120": {
       "title": "订阅额度查询门禁双端对齐：mac 按启用集合判定（新启用即首查），新增双端共享对拍 fixture",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C120-quota-policy-parity",
       "topic": "SubscriptionQuota",
       "version": "0.13.1",
@@ -1264,7 +1264,7 @@
     "C121": {
       "title": "macOS 快照持久化去重复解析：每轮刷新主线程耗时约 300 ms → 30 ms，停写重复的 .backup.json",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C121-artifact-store-io",
       "topic": "SystemOverview",
       "version": "0.13.1",
@@ -1273,7 +1273,7 @@
     "C122": {
       "title": "额度账号执行去掉永不阻塞的账号许可与两层永不合并的 single-flight",
       "type": "Refactor",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C122-execution-permits",
       "topic": "TokenUsage",
       "version": "0.13.1",
@@ -1282,7 +1282,7 @@
     "C123": {
       "title": "退役从未被读取的请求契约字段：localPricing、subscriptionQuotaOnly / subscriptionProviders、providerEnv",
       "type": "Refactor",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C123-dead-contract-fields",
       "topic": "TokenUsage",
       "version": "0.13.1",
@@ -1291,7 +1291,7 @@
     "C124": {
       "title": "未授权云端额度不再输出 CC Switch / Codex partial 占位：纯本机统计不再显示部分失败，清理 CC Switch 过时文案",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C124-stale-cc-switch-text",
       "topic": "SubscriptionQuota",
       "version": "0.13.1",
@@ -1300,7 +1300,7 @@
     "C125": {
       "title": "全景文档核对：README 版本与特性对齐 v0.13.0，设计索引日期与刷新间隔可选值去漂移",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C125-readme-drift",
       "topic": "SystemOverview",
       "version": "0.13.1",
@@ -1309,7 +1309,7 @@
     "C126": {
       "title": "不走缓存的扫描函数降为测试专用参照实现：collector-local 对外只保留缓存扫描",
       "type": "Refactor",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C126-uncached-scanners-test-only",
       "topic": "TokenUsage",
       "version": "0.13.1",
@@ -1318,7 +1318,7 @@
     "C127": {
       "title": "mac 凭据存储措辞更正：自有存储统一称「本机凭据文件」，不再提示去 Keychain 查找",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C127-credential-store-wording",
       "topic": "SubscriptionQuota",
       "version": "0.13.1",
@@ -1327,7 +1327,7 @@
     "C128": {
       "title": "Windows runtime_core.rs 按职责拆分为 activity / geometry / status 子模块（纯移动，公开路径不变）",
       "type": "Refactor",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C128-split-runtime-core",
       "topic": "SystemOverview",
       "version": "0.13.1",
