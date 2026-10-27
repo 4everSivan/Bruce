@@ -87,8 +87,8 @@ extension RefreshSchedulerHarness {
     }
 
     /// 纯策略: 锁屏抑制强制本地专用 run, 且 skipProviders 覆盖上一份全部
-    /// provider (含 codex), 供 QuotaCarryOverMerger 回填 (C071).
-    static func quotaPolicySuppressedOnScreenLock() throws {
+    /// provider (含 codex), 供回填原样保留 (C071); T15 起经策略子命令.
+    static func quotaPolicySuppressedOnScreenLock() async throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let captured = ISO8601DateFormatter().string(from: now.addingTimeInterval(-7200))
         let previous = JSONValue.object([
@@ -107,7 +107,7 @@ extension RefreshSchedulerHarness {
                 ])
             ])
         ])
-        let policy = QuotaRefreshPolicy.plan(
+        let policy = try await HarnessQuotaPolicy.plan(
             previous: previous,
             now: now,
             interval: 1800,
@@ -152,7 +152,7 @@ extension RefreshSchedulerHarness {
         let seeded = JSONValue.object([
             "schemaVersion": .integer(1),
             "module": .string("agent-usage"),
-            "generatedAt": .string(QuotaRefreshPolicy.timestamp(fresh)),
+            "generatedAt": .string(ISODate.string(from: fresh)),
             "agents": .array([]),
             "services": .array([
                 .object([
@@ -169,7 +169,7 @@ extension RefreshSchedulerHarness {
                             "resetsAt": .integer(0),
                         ])
                     ]),
-                    "capturedAt": .string(QuotaRefreshPolicy.timestamp(fresh)),
+                    "capturedAt": .string(ISODate.string(from: fresh)),
                 ]),
                 .object([
                     "id": .string("codex_b"),
@@ -185,7 +185,7 @@ extension RefreshSchedulerHarness {
                             "resetsAt": .integer(0),
                         ])
                     ]),
-                    "capturedAt": .string(QuotaRefreshPolicy.timestamp(fresh)),
+                    "capturedAt": .string(ISODate.string(from: fresh)),
                 ]),
             ]),
             "totalCostUsd": .double(1.0),

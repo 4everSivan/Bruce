@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bruce.local/schemas/policy/request-v1.schema.json",
+  "title": "Bruce collector policy v1 request",
+  "description": "共享策略入口的请求 (T14 定义, design/08): mac 经静态库 collector-policy-ffi 的 C ABI (bruce_policy_call, T16) 进程内调用, 实现为 collector_policy::handle_request。只含 artifact.services 与时间 / 间隔等纯数据, 不携带凭据: 任意层级出现凭据形态的键 (token / secret / password / apiKey / cookie / authorization / credential / oauth / *QuotaAccounts) 时以 POLICY_CREDENTIAL_FIELD_REJECTED 拒绝。",
+  "type": "object",
+  "required": ["schemaVersion", "operation", "now"],
+  "oneOf": [
+    {
+      "title": "quotaPlan: 本轮额度门禁",
+      "additionalProperties": false,
+      "required": ["intervalSeconds", "forceRefresh", "bypassCooldown", "suppressExternalQuotas"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "operation": { "const": "quotaPlan" },
+        "now": { "$ref": "#/$defs/timestamp" },
+        "previousServices": { "$ref": "#/$defs/servicesOrNull" },
+        "enabledProviders": {
+          "description": "本轮启用的 provider; null / 缺省表示未知, 沿用上一份中出现的 provider",
+          "type": ["array", "null"],
+          "items": { "type": "string" }
+        },
+        "intervalSeconds": { "type": "integer", "description": "额度查询周期; <= 0 表示不做新鲜度门禁" },
+        "forceRefresh": { "type": "boolean" },
+        "bypassCooldown": { "type": "boolean" },
+        "suppressExternalQuotas": { "type": "boolean", "description": "锁屏等场景强制抑制外部额度查询 (C064 / C071)" }
+      }
+    },
+    {
+      "title": "quotaMerge: 本轮额度回填",
+      "additionalProperties": false,
+      "required": ["currentServices", "policy", "intervalSeconds"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "operation": { "const": "quotaMerge" },
+        "now": { "$ref": "#/$defs/timestamp" },
+        "previousServices": { "$ref": "#/$defs/servicesOrNull" },
+        "currentServices": { "$ref": "#/$defs/services" },
+        "policy": { "$ref": "#/$defs/quotaRunPolicy" },
+        "intervalSeconds": { "type": "integer" }
+      }
+    },
+    {
+      "title": "quotaAnnotate: 定向刷新尝试时间戳",
+      "additionalProperties": false,
+      "required": ["services", "serviceIds"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "operation": { "const": "quotaAnnotate" },
+        "now": { "$ref": "#/$defs/timestamp" },
+        "services": { "$ref": "#/$defs/services" },
+        "serviceIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+      }
+    }
+  ],
+  "$defs": {
+    "timestamp": { "type": "string", "format": "date-time" },
+    "services": {
+      "description": "agent-usage artifact 的 services (见 artifacts/agent-usage-v1 的 $defs.service)",
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "servicesOrNull": {
+      "description": "上一份 artifact 的 services; null / 缺省表示无上一份",
+      "type": ["array", "null"],
+      "items": { "type": "object" }
+    },
+    "quotaRunPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["includeExternalQuotas", "skipProviders", "rateLimitedProviders"],
+      "properties": {
+        "includeExternalQuotas": { "type": "boolean" },
+        "skipProviders": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "rateLimitedProviders": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+      }
+    }
+  }
+}

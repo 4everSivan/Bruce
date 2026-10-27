@@ -75,6 +75,8 @@ struct ModuleScheduleState: Equatable, Sendable {
 @MainActor
 package final class RefreshScheduler {
     private let executor: CollectorExecuting
+    /// 额度门禁与回填: 经共享 collector-policy 计算, 默认进程内调用静态库 (T16).
+    private let quotaPolicy: any QuotaPolicyComputing
     private let store: ArtifactStore
     private let clock: RefreshClock
     private let timerScheduler: RunnerTimerScheduling
@@ -162,9 +164,11 @@ package final class RefreshScheduler {
         runInputProvider: (any CollectorRunInputProviding)? = nil,
         credentialUpdateCoordinator: CredentialUpdateCoordinator? = nil,
         networkReachability: (any NetworkReachabilityProviding)? = nil,
-        screenLockState: (any ScreenLockStateProviding)? = nil
+        screenLockState: (any ScreenLockStateProviding)? = nil,
+        quotaPolicy: (any QuotaPolicyComputing)? = nil
     ) {
         self.executor = executor
+        self.quotaPolicy = quotaPolicy ?? CollectorQuotaPolicy.inProcess()
         self.store = store
         self.clock = clock
         self.timerScheduler = timerScheduler
@@ -566,6 +570,7 @@ package final class RefreshScheduler {
     ) async {
         let pipeline = RefreshExecutionPipeline(
             executor: executor,
+            quotaPolicy: quotaPolicy,
             store: store,
             runInputProvider: runInputProvider,
             credentialUpdates: credentialUpdateCoordinator,

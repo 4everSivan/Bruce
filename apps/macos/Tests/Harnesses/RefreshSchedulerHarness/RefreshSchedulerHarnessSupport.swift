@@ -279,6 +279,55 @@ func makeErrorOutput(
     )
 }
 
+// MARK: - Shared quota policy (T15)
+
+/// 额度门禁 / 回填经进程内静态库 (共享 collector-policy) 计算, 与生产同一路径 (T16).
+@MainActor
+enum HarnessQuotaPolicy {
+    static let shared = CollectorQuotaPolicy.inProcess()
+
+    /// 原始传输 (policy-request-v1 → policy-response-v1), 供脚本化传输透传.
+    static func transport(_ input: Data) async throws -> Data {
+        InProcessQuotaPolicyTransport.call(input)
+    }
+
+    static func plan(
+        previous: JSONValue?,
+        now: Date,
+        interval: TimeInterval,
+        forceRefresh: Bool,
+        bypassCooldown: Bool,
+        suppressExternalQuotas: Bool = false,
+        enabledProviders: Set<SubscriptionProviderID>? = nil
+    ) async throws -> QuotaRunPolicy {
+        try await shared.plan(QuotaPlanInput(
+            previous: previous,
+            now: now,
+            interval: interval,
+            forceRefresh: forceRefresh,
+            bypassCooldown: bypassCooldown,
+            suppressExternalQuotas: suppressExternalQuotas,
+            enabledProviders: enabledProviders
+        ))
+    }
+
+    static func merge(
+        previous: JSONValue?,
+        current: JSONValue,
+        policy: QuotaRunPolicy,
+        now: Date,
+        interval: TimeInterval
+    ) async throws -> JSONValue {
+        try await shared.merge(
+            previous: previous,
+            current: current,
+            policy: policy,
+            now: now,
+            interval: interval
+        )
+    }
+}
+
 // MARK: - Test factory
 
 @MainActor

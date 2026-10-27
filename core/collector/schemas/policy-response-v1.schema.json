@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bruce.local/schemas/policy/response-v1.schema.json",
+  "title": "Bruce collector policy v1 response",
+  "description": "策略入口总是返回此信封 (含解析失败与已捕获的 panic); C ABI 以 bruce_policy_call 返回其 UTF-8 字节。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "status", "operation", "result", "diagnostics"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "status": { "enum": ["success", "error"] },
+    "operation": { "enum": ["quotaPlan", "quotaMerge", "quotaAnnotate", null] },
+    "result": {
+      "description": "quotaPlan → {policy}; quotaMerge / quotaAnnotate → {services}; 失败时为 null",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["policy"],
+          "properties": {
+            "policy": { "$ref": "policy-request-v1.schema.json#/$defs/quotaRunPolicy" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["services"],
+          "properties": {
+            "services": { "type": "array", "items": { "type": "object" } }
+          }
+        },
+        { "type": "null" }
+      ]
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message"],
+        "properties": {
+          "code": {
+            "enum": [
+              "POLICY_INPUT_TOO_LARGE",
+              "POLICY_INVALID_JSON",
+              "POLICY_INVALID_REQUEST",
+              "POLICY_CREDENTIAL_FIELD_REJECTED",
+              "POLICY_UNSUPPORTED_SCHEMA",
+              "POLICY_UNKNOWN_OPERATION",
+              "POLICY_INVALID_TIME",
+              "POLICY_INTERNAL_PANIC"
+            ]
+          },
+          "message": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -2,7 +2,7 @@
 
 <!-- @topic: WindowsCompat -->
 > **文档ID**: DESIGN-WINDOWS ｜ **状态**: 现行基线
-> **最后更新**: 2026-10-26 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `WindowsCompat`
+> **最后更新**: 2026-10-27 ｜ **所属总体**: [00-系统总体设计.md](00-系统总体设计.md) ｜ **对应 Topic**: `WindowsCompat`
 > 📌 **变更总账**: 参见 [变更总账 (WindowsCompat)](../change/index.json#WindowsCompat)
 
 ---
@@ -260,6 +260,7 @@ Windows Tauri 后端 (Rust)
 | C115 | 缺陷修复 | 托盘配额环 / 预览卡读取真实面板字段 | T12 按不存在的字段（`subscriptions` / `totalCostText` / `agents` / `resetsIn` / `status`）取数，托盘恒显示剩余 100%、今日 $0.00；改由 `extract_quota_summary` 读取 `PanelViewModel` 真实字段并经 `panel.preview` 供预览卡同源渲染，golden 面板 fixture 双端对拍（见 §6.5） |
 | C118 | 缺陷修复 | 限流与 provider 判定改读显式字段 | `quota_policy::is_rate_limited` 优先 service `failureKind`、`runtime_core::provider_id` 优先 service `provider`，字段缺省的旧 artifact 才回退 note 文案与 id 前缀（见规则 19） |
 | C120 | 缺陷修复 | 额度门禁双端共享对拍 | mac 改为按启用集合判定后与 `quota_policy::plan` 同口径，新增 `tests/fixtures/quota-policy-parity/cases.json` 由双端测试共同消费（见规则 19） |
+| T13 | 结构收敛 | 额度门禁与回填改调共享 crate | `quota_policy` / `runtime_core::{provider_id, provider_of_id, merge_snapshot}` 改为 `collector-policy` 的 re-export 与薄封装，删除本地实现；带门禁的整轮应用改用共享 `merge`（输出沿用上一份顺序、保留成功 service 已有 freshness、旧 `empty` 快照可借用，见规则 19） |
 | C123 | 契约清理 | 停发从未被读取的请求字段 | 本地请求 capabilities 仅 `localSessions`（+ 有凭证时 `externalQuotas`），定向请求不再标记 `subscriptionQuotaOnly` / `subscriptionProviders`，`providerEnv` 退出凭据白名单（旧文件中的该字段读取时丢弃，见 design/01 规则 3） |
 | C128 | 结构重构 | `runtime_core.rs` 按职责拆分 | 拆出 `runtime_core/activity.rs` / `geometry.rs` / `status.rs`，经 `pub use` 保持 `runtime_core::*` 公开路径，行为不变（见 design/00 C053 纪律） |
 | C109 | 缺陷修复 | 出站网络 command 移出主线程 | `codex_device_start` / `codex_device_poll` / `verify_subscription` 改为 async + `off_main_thread`，`ShellExecuteW` 派回主线程；源码级守卫用例锁定（见规则 31） |
@@ -313,11 +314,11 @@ Windows Tauri 后端 (Rust)
     - **闸门**：`ReachabilityGate` 初始视为在线（首个真实观测前 fail-open）；离线时跳过本轮自动刷新，**不累加 retries、不进入退避**，只按 30s 固定周期重探（`OFFLINE_PROBE_INTERVAL_SECS`），并把快照标为 `NETWORK_UNAVAILABLE`；
     - **补偿**：离线→在线跃迁给出 `Compensate`，本轮刷新即离线期间唯一一次补偿（不补发积压的多轮）；持续在线为 `Online`，语义与既有退避/边界唤醒不变；
     - **手动不变**：`should_skip_refresh` 只在「离线且非手动」时跳过 —— 手动刷新（含定向刷新）离线仍执行一次，不重试。
-19. **订阅额度 per-provider 门禁与 429 冷却**（C077，mac `QuotaRefreshPolicy` + `QuotaCarryOverMerger` 同语义）：
+19. **订阅额度 per-provider 门禁与 429 冷却**（C077；T13 起实现位于共享 crate `collector-policy`，`quota_policy` 只做路径保留与入参固定；mac 经 T15 子命令、T16 起静态链接同一 crate 进程内调用）：
     - **新鲜度门禁**：`quota_policy::plan` 逐 provider 判定 —— `quotaAttemptedAt`（回退 `capturedAt`，失败回退 `rateLimitedAt`）距今不足刷新间隔则跳过（多账号需全部新鲜才跳过）；无历史 service 的 provider 必须首查（C120 起 mac 同口径，双端以 `tests/fixtures/quota-policy-parity/cases.json` 对拍）；上次快照后有窗口 `resetsAt` 已过则强制重查（C037 兼容）；
     - **429 冷却**：service 带 `rateLimitedAt` 且距今不足 30 分钟（`RATE_LIMIT_COOLDOWN_SECS`）时该 provider 进入冷却（partial，仅该 provider；其余照常查询）；命中判定以 collector 下发的 `failureKind == "rateLimit"` 为准、provider 归属以 service `provider` 为准，字段缺省的旧 artifact 才回退 note 限流文案（429 / 限流 / RATE_LIMIT）与 id 前缀推断（C118，见 design/02 规则 12）；
     - **Codex 例外**：Codex 永不因新鲜度或冷却进入 `skip_providers`（四源合并/重试链路需要完整首轮结果）；全部 provider 仍新鲜时整轮退化为本地专用 run 并回填全部旧 service；
-    - **记账与回填**：本轮真实查询过的 service 写 `quotaAttemptedAt`，命中限流写 `rateLimitedAt`、成功则清除（跨重启保留节流状态）；被跳过的 provider 用上一份 service 原样回填，冷却/失败/过期标 `stale`，不丢旧值也不误标 `fresh`；
+    - **记账与回填**：本轮真实查询过的 service 写 `quotaAttemptedAt`，命中限流写 `rateLimitedAt`、成功则清除（跨重启保留节流状态）；被跳过的 provider 用上一份 service 原样回填，冷却/失败/过期标 `stale`，不丢旧值也不误标 `fresh`；带门禁的整轮应用由 `quota_policy::merge` 一次完成失败借用、时间戳与回填，输出沿用上一份 service 顺序（T13，口径见 design/02 规则 12，双端以 `tests/fixtures/quota-carry-over-parity/cases.json` 对拍）；
     - **手动绕过**：手动刷新 `forceRefresh + bypassCooldown` 直接查询全部 provider，不受新鲜度与冷却约束；定向刷新属手动操作，只写回目标 provider 的时间戳。
     - **范围说明（C065 联动）**：mac 侧额度查询周期已由 C065 与用户配置刷新间隔联动，Windows 侧同步以 `refresh_interval_secs` 作新鲜度间隔；不再存在「本地采集与额度查询周期绑定的双端差异」。
 20. **订阅 Provider 配置形态 1:1 对齐**（C081–C087，mac `SettingsView.subscriptionPane` + `APIKeyProviderConfigDialog` + `OfficialLocalProviderSettingsSection` 同形态）：
@@ -407,7 +408,7 @@ Windows Tauri 后端 (Rust)
 | `src-tauri/src/alerts.rs` | `QuotaAlertEvaluator.swift` / `SystemNotificationDeliveryPolicy` | 配额告警判定与通知去重 |
 | `src-tauri/src/scheduler.rs`、`runtime_core.rs` | `RefreshScheduler.swift` / `RefreshBackoffPolicy` / `RefreshExecutionPipeline` | 刷新调度、指数退避与可独立测试的策略 |
 | `src-tauri/src/reachability.rs` | `NetworkReachability.swift` | 网络可达性闸门状态机与可注入探针（C076，见规则 18） |
-| `src-tauri/src/quota_policy.rs` | `QuotaRefreshPolicy.swift` / `QuotaCarryOverMerger.swift` | per-provider 额度新鲜度门禁、429 冷却与旧值回填（C077，见规则 19） |
+| `src-tauri/src/quota_policy.rs` | `QuotaPolicyClient.swift`（T16 起经静态库 `collector-policy-ffi` 进程内调用同一 crate） | per-provider 额度新鲜度门禁、429 冷却与旧值回填（C077，见规则 19）；T13 起为共享 crate `core/collector/crates/collector-policy` 的薄封装 |
 | `src-tauri/src/credentials/claude_local.rs` | `SystemExternalCredentialReader.swift` / `ClaudePasteParser.swift` | 本机 Claude CLI 登录态只读跟随与规范化（C075，见规则 17） |
 | `src-tauri/src/runtime_core.rs` | `CodexQuotaSnapshotMerger` 等 | 快照持久化与 stale 合并（DeepSeek 月度账本已于 C020 双端移除） |
 | `src-tauri/src/settings.rs`、`src/settings.js` | 设置中心相关 | 价格校准、卡片排序、主题偏好的加载与持久化 |

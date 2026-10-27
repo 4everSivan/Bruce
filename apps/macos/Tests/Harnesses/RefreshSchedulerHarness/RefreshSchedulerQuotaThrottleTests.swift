@@ -7,14 +7,14 @@ import BruceOnboardingCore
 extension RefreshSchedulerHarness {
     private static let quotaBase = Date(timeIntervalSince1970: 1_800_000_000)
 
-    // MARK: Pure policy
+    // MARK: Policy via collector subcommand (T15)
 
-    static func quotaPolicyFreshServiceStaysLocalOnly() throws {
+    static func quotaPolicyFreshServiceStaysLocalOnly() async throws {
         let now = quotaBase
         let previous = quotaArtifact(services: [
             quotaService(capturedAt: now.addingTimeInterval(-300), attemptedAt: now.addingTimeInterval(-300))
         ])
-        let policy = QuotaRefreshPolicy.plan(
+        let policy = try await HarnessQuotaPolicy.plan(
             previous: previous,
             now: now,
             interval: 1800,
@@ -26,7 +26,7 @@ extension RefreshSchedulerHarness {
         try refreshExpect(policy.rateLimitedProviders.isEmpty, "正常额度不应进入冷却")
     }
 
-    static func quotaPolicyStaleServiceQueriesAll() throws {
+    static func quotaPolicyStaleServiceQueriesAll() async throws {
         let now = quotaBase
         let previous = quotaArtifact(services: [
             quotaService(
@@ -34,7 +34,7 @@ extension RefreshSchedulerHarness {
                 attemptedAt: now.addingTimeInterval(-1900)
             )
         ])
-        let policy = QuotaRefreshPolicy.plan(
+        let policy = try await HarnessQuotaPolicy.plan(
             previous: previous,
             now: now,
             interval: 1800,
@@ -46,7 +46,8 @@ extension RefreshSchedulerHarness {
     }
 
     /// C118: collector 显式下发的 provider / failureKind 优先; 旧 artifact 回退 id 前缀与 note 文案。
-    static func quotaPolicyPrefersExplicitProviderAndFailureKind() throws {
+    /// T15 起判定只在共享 collector-policy 中, 经策略子命令的回填结果回归.
+    static func quotaPolicyPrefersExplicitProviderAndFailureKind() async throws {
         func service(_ fields: [String: JSONValue]) -> JSONValue {
             var object: [String: JSONValue] = [
                 "id": .string("custom_account"), "name": .string("x"), "status": .string("error"),
@@ -55,42 +56,56 @@ extension RefreshSchedulerHarness {
             for (key, value) in fields { object[key] = value }
             return .object(object)
         }
-        // provider 字段优先于 id 前缀
-        try refreshExpect(
-            QuotaRefreshPolicy.provider(of: service(["provider": .string("deepseek")])) == .deepseek,
-            "显式 provider 应优先于 id 推断"
-        )
-        try refreshExpect(
-            QuotaRefreshPolicy.provider(of: service(["id": .string("zhipu_abc")])) == .zhipu,
-            "旧 artifact 回退 id 前缀"
-        )
-        // failureKind 优先于 note: Codex 限流 note 不含 429, 显式字段仍能识别
-        let codexRateLimited = service([
-            "provider": .string("codex"), "failureKind": .string("rateLimit"),
-            "note": .string("额度查询暂时失败, 请稍后重试"),
-        ])
-        try refreshExpect(
-            QuotaRefreshPolicy.rateLimitedProviders(in: quotaArtifact(services: [codexRateLimited])) == [.codex],
-            "failureKind=rateLimit 必须识别为限流"
-        )
-        // 显式非限流: note 偶然含 429 (如余额数字) 不得误判
-        let misleadingNote = service([
-            "provider": .string("deepseek"), "failureKind": .string("server"),
-            "note": .string("查询失败: 余额 429 元以下"),
-        ])
-        try refreshExpect(
-            QuotaRefreshPolicy.rateLimitedProviders(in: quotaArtifact(services: [misleadingNote])).isEmpty,
-            "failureKind 存在时不得再匹配 note 文案"
-        )
-        // 旧 artifact (无 failureKind 键) 仍按 note 识别
-        let legacy = service(["id": .string("kimi_coding"), "note": .string("查询失败: Provider 请求触发限流 (HTTP 429)")])
-        try refreshExpect(
-            QuotaRefreshPolicy.rateLimitedProviders(in: quotaArtifact(services: [legacy])) == [.kimi],
-            "旧 artifact 回退 note 文案"
-        )
+        func servicesByID(_ artifact: JSONValue) -> [String: [String: JSONValue]] {
+            var result: [String: [String: JSONValue]] = [:]
+            for service in artifact.objectValue?["services"]?.arrayValue ?? [] {
+                if let object = service.objectValue, let id = object["id"]?.stringIdValue {
+                    result[id] = object
+                }
+            }
+            return result
+        }
+        let now = quotaBase
+        // failureKind 优先于 note: Codex 限流 note 不含 429, 显式字段仍能识别;
+        // 显式非限流时 note 偶然含 429 (如余额数字) 不得误判; 旧 artifact (无 failureKind 键) 仍按 note 识别
+        let attempted = servicesByID(try await HarnessQuotaPolicy.merge(
+            previous: nil,
+            current: quotaArtifact(services: [
+                service([
+                    "id": .string("codex_a"), "provider": .string("codex"),
+                    "failureKind": .string("rateLimit"), "note": .string("额度查询暂时失败, 请稍后重试"),
+                ]),
+                service([
+                    "id": .string("deepseek_a"), "provider": .string("deepseek"),
+                    "failureKind": .string("server"), "note": .string("查询失败: 余额 429 元以下"),
+                ]),
+                service(["id": .string("kimi_coding"), "note": .string("查询失败: Provider 请求触发限流 (HTTP 429)")]),
+            ]),
+            policy: .includeAll,
+            now: now,
+            interval: 1800
+        ))
+        try refreshExpect(attempted["codex_a"]?["rateLimitedAt"] != nil, "failureKind=rateLimit 必须识别为限流")
+        try refreshExpect(attempted["deepseek_a"]?["rateLimitedAt"] == nil, "failureKind 存在时不得再匹配 note 文案")
+        try refreshExpect(attempted["kimi_coding"]?["rateLimitedAt"] != nil, "旧 artifact 回退 note 文案")
+
+        // provider 字段优先于 id 前缀; 旧 artifact 回退 id 前缀 —— 两者都随所属 provider 被跳过而回填
+        let captured = JSONValue.string(ISODate.string(from: now.addingTimeInterval(-60)))
+        let carried = servicesByID(try await HarnessQuotaPolicy.merge(
+            previous: quotaArtifact(services: [
+                service(["provider": .string("deepseek"), "status": .string("ok"), "capturedAt": captured]),
+                service(["id": .string("zhipu_abc"), "status": .string("ok"), "capturedAt": captured]),
+            ]),
+            current: quotaArtifact(services: []),
+            policy: QuotaRunPolicy(includeExternalQuotas: false, skipProviders: [.deepseek, .zhipu]),
+            now: now,
+            interval: 1800
+        ))
+        try refreshExpect(carried["custom_account"] != nil, "显式 provider 应优先于 id 推断")
+        try refreshExpect(carried["zhipu_abc"] != nil, "旧 artifact 回退 id 前缀")
     }
 
-    static func quotaPolicy429CooldownAndForceSemantics() throws {
+    static func quotaPolicy429CooldownAndForceSemantics() async throws {
         let now = quotaBase
         let previous = quotaArtifact(services: [
             quotaService(
@@ -101,21 +116,21 @@ extension RefreshSchedulerHarness {
                 rateLimitedAt: now.addingTimeInterval(-300)
             )
         ])
-        let automatic = QuotaRefreshPolicy.plan(
+        let automatic = try await HarnessQuotaPolicy.plan(
             previous: previous, now: now, interval: 1800,
             forceRefresh: false, bypassCooldown: false
         )
         try refreshExpect(!automatic.includeExternalQuotas, "429 冷却期内应只做本地 run")
         try refreshExpect(automatic.rateLimitedProviders == [.claude], "429 provider 应进入冷却")
 
-        let boundary = QuotaRefreshPolicy.plan(
+        let boundary = try await HarnessQuotaPolicy.plan(
             previous: previous, now: now, interval: 1800,
             forceRefresh: true, bypassCooldown: false
         )
         try refreshExpect(boundary.includeExternalQuotas, "边界唤醒强制查询")
         try refreshExpect(boundary.skipProviders == [.claude], "边界唤醒仍尊重 429 冷却")
 
-        let manual = QuotaRefreshPolicy.plan(
+        let manual = try await HarnessQuotaPolicy.plan(
             previous: previous, now: now, interval: 1800,
             forceRefresh: true, bypassCooldown: true
         )
@@ -123,7 +138,7 @@ extension RefreshSchedulerHarness {
         try refreshExpect(manual.skipProviders.isEmpty, "手动刷新绕过 429 冷却")
     }
 
-    static func quotaPolicyMultiAccountStaleForcesRefresh() throws {
+    static func quotaPolicyMultiAccountStaleForcesRefresh() async throws {
         let now = quotaBase
         let previous = quotaArtifact(services: [
             quotaService(
@@ -137,7 +152,7 @@ extension RefreshSchedulerHarness {
                 attemptedAt: now.addingTimeInterval(-3600)
             ),
         ])
-        let policy = QuotaRefreshPolicy.plan(
+        let policy = try await HarnessQuotaPolicy.plan(
             previous: previous, now: now, interval: 1800,
             forceRefresh: false, bypassCooldown: false
         )
@@ -145,7 +160,7 @@ extension RefreshSchedulerHarness {
         try refreshExpect(!policy.skipProviders.contains(.claude), "多账号不能因单账号新鲜而整体跳过")
     }
 
-    static func quotaPolicyPassedWindowBoundaryForcesRefresh() throws {
+    static func quotaPolicyPassedWindowBoundaryForcesRefresh() async throws {
         let now = quotaBase
         let captured = now.addingTimeInterval(-300)
         let reset = Int(captured.timeIntervalSince1970) + 60
@@ -156,7 +171,7 @@ extension RefreshSchedulerHarness {
                 resetsAt: reset
             )
         ])
-        let policy = QuotaRefreshPolicy.plan(
+        let policy = try await HarnessQuotaPolicy.plan(
             previous: previous, now: now, interval: 1800,
             forceRefresh: false, bypassCooldown: false
         )
@@ -164,13 +179,13 @@ extension RefreshSchedulerHarness {
         try refreshExpect(policy.skipProviders.isEmpty, "窗口重置应覆盖 30 分钟门禁")
     }
 
-    static func quotaPolicyCodexIsNeverSkippedOnQuotaRuns() throws {
+    static func quotaPolicyCodexIsNeverSkippedOnQuotaRuns() async throws {
         let now = quotaBase
         let previous = quotaArtifact(services: [
             quotaService(capturedAt: now.addingTimeInterval(-300), attemptedAt: now.addingTimeInterval(-300)),
             quotaCodexService(capturedAt: now.addingTimeInterval(-1900), attemptedAt: now.addingTimeInterval(-1900)),
         ])
-        let policy = QuotaRefreshPolicy.plan(
+        let policy = try await HarnessQuotaPolicy.plan(
             previous: previous, now: now, interval: 1800,
             forceRefresh: false, bypassCooldown: false
         )
@@ -179,7 +194,7 @@ extension RefreshSchedulerHarness {
         try refreshExpect(!policy.skipProviders.contains(.codex), "Codex 不得进入 skip 集合")
     }
 
-    static func quotaCarryOverPreservesWindowsAndMarksStale() throws {
+    static func quotaCarryOverPreservesWindowsAndMarksStale() async throws {
         let now = quotaBase
         let previousService = quotaService(
             capturedAt: now.addingTimeInterval(-3600),
@@ -195,7 +210,7 @@ extension RefreshSchedulerHarness {
             services: [currentService],
             agents: [.object(["id": .string("claude-code"), "totalTokens": .integer(7)])]
         )
-        let merged = QuotaCarryOverMerger.merge(
+        let merged = try await HarnessQuotaPolicy.merge(
             previous: previous,
             current: current,
             policy: .includeAll,
@@ -214,7 +229,7 @@ extension RefreshSchedulerHarness {
         )
     }
 
-    static func quotaCarryOverLocalOnlyKeepsFreshServices() throws {
+    static func quotaCarryOverLocalOnlyKeepsFreshServices() async throws {
         let now = quotaBase
         let previous = quotaArtifact(services: [
             quotaService(
@@ -231,7 +246,7 @@ extension RefreshSchedulerHarness {
             skipProviders: [.claude],
             rateLimitedProviders: []
         )
-        let merged = QuotaCarryOverMerger.merge(
+        let merged = try await HarnessQuotaPolicy.merge(
             previous: previous,
             current: current,
             policy: policy,
@@ -481,7 +496,7 @@ extension RefreshSchedulerHarness {
                 attemptedAt: now.addingTimeInterval(-350)
             )
         ])
-        let policy5m = QuotaRefreshPolicy.plan(
+        let policy5m = try await HarnessQuotaPolicy.plan(
             previous: expired5m,
             now: now,
             interval: scheduler.quotaRefreshInterval,
@@ -504,7 +519,7 @@ extension RefreshSchedulerHarness {
                 attemptedAt: now.addingTimeInterval(-100)
             )
         ])
-        let policyFresh = QuotaRefreshPolicy.plan(
+        let policyFresh = try await HarnessQuotaPolicy.plan(
             previous: fresh5m,
             now: now,
             interval: scheduler.quotaRefreshInterval,
@@ -543,8 +558,8 @@ extension RefreshSchedulerHarness {
         ) ?? false
     }
 
-    /// C120: 与 Windows `quota_policy::plan` 共享的门禁对拍用例.
-    static func quotaPolicyMatchesSharedParityFixture(repository: URL) throws {
+    /// C120: 与 Windows `quota_policy::plan` 共享的门禁对拍用例; T15 起经 mac 路径 (策略子命令).
+    static func quotaPolicyMatchesSharedParityFixture(repository: URL) async throws {
         let url = repository.appendingPathComponent("tests/fixtures/quota-policy-parity/cases.json")
         let fixture = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: url))
         guard let cases = fixture.objectValue?["cases"]?.arrayValue, cases.count >= 18 else {
@@ -556,7 +571,7 @@ extension RefreshSchedulerHarness {
         for item in cases {
             guard let object = item.objectValue,
                   let name = object["name"]?.stringIdValue,
-                  let now = QuotaRefreshPolicy.parseISODate(object["now"]?.stringIdValue),
+                  let now = object["now"]?.stringIdValue.flatMap(ISODate.parseAllowingFractionalSeconds),
                   let interval = object["intervalSeconds"]?.intValue,
                   let force = object["forceRefresh"]?.boolValue,
                   let bypass = object["bypassCooldown"]?.boolValue,
@@ -568,7 +583,7 @@ extension RefreshSchedulerHarness {
             guard enabled.count == enabledRaw.count else {
                 throw RefreshTestFailure.expectation("\(name): 未知 provider")
             }
-            let policy = QuotaRefreshPolicy.plan(
+            let policy = try await HarnessQuotaPolicy.plan(
                 previous: .object(["services": object["services"] ?? .array([])]),
                 now: now,
                 interval: TimeInterval(interval),
@@ -592,6 +607,57 @@ extension RefreshSchedulerHarness {
         }
     }
 
+    /// T13: 与 Windows / 共享 collector-policy 回填共用的对拍用例
+    /// (tests/fixtures/quota-carry-over-parity), 经 mac 路径 (策略子命令) 逐字段比较
+    /// 合并后的有序 services (T15).
+    static func quotaCarryOverMatchesSharedParityFixture(repository: URL) async throws {
+        let url = repository.appendingPathComponent("tests/fixtures/quota-carry-over-parity/cases.json")
+        let fixture = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: url))
+        guard let cases = fixture.objectValue?["cases"]?.arrayValue, cases.count >= 14 else {
+            throw RefreshTestFailure.expectation("carry-over parity fixture 缺少用例")
+        }
+        func providers(_ value: JSONValue?) throws -> Set<SubscriptionProviderID> {
+            let raw = (value?.arrayValue ?? []).compactMap(\.stringIdValue)
+            let parsed = Set(raw.compactMap(SubscriptionProviderID.init(rawValue:)))
+            guard parsed.count == raw.count else {
+                throw RefreshTestFailure.expectation("carry-over parity fixture 含未知 provider")
+            }
+            return parsed
+        }
+        var failures: [String] = []
+        for item in cases {
+            guard let object = item.objectValue,
+                  let name = object["name"]?.stringIdValue,
+                  let now = object["now"]?.stringIdValue.flatMap(ISODate.parseAllowingFractionalSeconds),
+                  let interval = object["intervalSeconds"]?.intValue,
+                  let policyObject = object["policy"]?.objectValue,
+                  let include = policyObject["includeExternalQuotas"]?.boolValue,
+                  let current = object["current"]?.arrayValue,
+                  let expected = object["expected"]?.arrayValue else {
+                throw RefreshTestFailure.expectation("carry-over parity fixture 用例格式无效")
+            }
+            let previous: JSONValue? = object["previous"]?.arrayValue.map {
+                .object(["services": .array($0)])
+            }
+            let policy = QuotaRunPolicy(
+                includeExternalQuotas: include,
+                skipProviders: try providers(policyObject["skipProviders"]),
+                rateLimitedProviders: try providers(policyObject["rateLimitedProviders"])
+            )
+            let merged = try await HarnessQuotaPolicy.merge(
+                previous: previous,
+                current: .object(["services": .array(current)]),
+                policy: policy,
+                now: now,
+                interval: TimeInterval(interval)
+            )
+            if merged.objectValue?["services"]?.arrayValue != expected {
+                failures.append(name)
+            }
+        }
+        try refreshExpect(failures.isEmpty, "carry-over parity 不一致: \(failures)")
+    }
+
     private static func quotaArtifact(
         services: [JSONValue],
         agents: [JSONValue] = [],
@@ -600,7 +666,7 @@ extension RefreshSchedulerHarness {
         .object([
             "schemaVersion": .integer(1),
             "module": .string("agent-usage"),
-            "generatedAt": .string(QuotaRefreshPolicy.timestamp(generatedAt)),
+            "generatedAt": .string(ISODate.string(from: generatedAt)),
             "agents": .array(agents),
             "services": .array(services),
             "totalCostUsd": .double(1.0),
@@ -634,16 +700,16 @@ extension RefreshSchedulerHarness {
             ]),
         ]
         if let capturedAt {
-            object["capturedAt"] = .string(QuotaRefreshPolicy.timestamp(capturedAt))
+            object["capturedAt"] = .string(ISODate.string(from: capturedAt))
         }
         if let freshness {
             object["freshness"] = .string(freshness)
         }
         if let attemptedAt {
-            object["quotaAttemptedAt"] = .string(QuotaRefreshPolicy.timestamp(attemptedAt))
+            object["quotaAttemptedAt"] = .string(ISODate.string(from: attemptedAt))
         }
         if let rateLimitedAt {
-            object["rateLimitedAt"] = .string(QuotaRefreshPolicy.timestamp(rateLimitedAt))
+            object["rateLimitedAt"] = .string(ISODate.string(from: rateLimitedAt))
         }
         return .object(object)
     }

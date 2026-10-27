@@ -30,6 +30,8 @@ collector-bridge = { path = "../../../core/collector/crates/collector-bridge" }
 collector-credential = { path = "../../../core/collector/crates/collector-credential" }
 collector-provider = { path = "../../../core/collector/crates/collector-provider" }
 collector-local = { path = "../../../core/collector/crates/collector-local" }
+# T13: 额度门禁与回填的跨端共享实现 (design/08)
+collector-policy = { path = "../../../core/collector/crates/collector-policy" }
 base64 = "=0.22.1"
 chrono = { version = "=0.4.38", default-features = false, features = ["clock", "std"] }
 uuid = { version = "=1.11.0", features = ["v4"] }

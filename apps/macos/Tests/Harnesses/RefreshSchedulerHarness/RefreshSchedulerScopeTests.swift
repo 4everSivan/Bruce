@@ -691,6 +691,7 @@ extension RefreshSchedulerHarness {
         executor.artifactOverride = .object(newObj)
         let pipeline = RefreshExecutionPipeline(
             executor: executor,
+            quotaPolicy: HarnessQuotaPolicy.shared,
             store: store,
             runInputProvider: nil,
             credentialUpdates: nil,
