@@ -259,7 +259,6 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
                     stats,
                     diagnostic: entry.diagnostic.clone(),
                     capped: entry.capped,
-                    companions: Vec::new(),
                 });
             }
             stats.cache_corruptions = stats.cache_corruptions.saturating_add(1);
@@ -337,7 +336,6 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
                         stats,
                         diagnostic: delta.diagnostic,
                         capped: delta.capped,
-                        companions: Vec::new(),
                     });
                 }
                 Ok(_) | Err(SourceScanError::Io(_)) => {
@@ -401,7 +399,6 @@ pub(crate) fn scan_sqlite_cached<A: SqliteIncrementalAdapter>(
         stats,
         diagnostic: result.diagnostic,
         capped: result.capped,
-        companions: Vec::new(),
     })
 }
 

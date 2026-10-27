@@ -98,12 +98,11 @@
 
   const SESSION_PROBES = [
     { id: "claude-code", name: "Claude Code", sub: "本机会话目录 (~/.claude/projects)" },
-    { id: "codex", name: "ChatGPT / Codex", sub: "本机会话目录 (~/.codex/sessions)" },
+    { id: "codex", name: "ChatGPT / Codex", sub: "本机会话目录 (~/.codex/sessions, 含 Orca 内置 Codex)" },
     { id: "kimi-code-cli", name: "Kimi Code", sub: "本机会话目录 (~/.kimi/history)" },
     { id: "opencode", name: "OpenCode", sub: "本机会话目录 (%APPDATA%\\OpenCode)" },
     { id: "grok", name: "Grok", sub: "本机会话目录 (~/.grok)" },
     { id: "volcengine", name: "火山引擎 / 豆包", sub: "本机会话目录" },
-    { id: "orca", name: "Orca", sub: "本机会话目录" },
     { id: "pi", name: "Pi", sub: "本机会话目录" },
     { id: "zcode", name: "ZCode", sub: "本机会话目录" },
     { id: "codebuddy", name: "CodeBuddy", sub: "本机会话目录" },

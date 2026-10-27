@@ -237,7 +237,6 @@ pub(crate) fn scan_cached_jsonl_tree<A: JsonlCacheAdapter>(
         stats: state.stats,
         diagnostic,
         capped: false,
-        companions: Vec::new(),
     })
 }
 

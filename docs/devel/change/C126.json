@@ -15,7 +15,7 @@
     "design_topic": "TokenUsage"
   },
 
-  "why": "2026-10-25 架构审查：collector-local 以 pub 导出 16 个不走缓存的扫描函数（scan_claude / scan_codex / scan_kimi_tree / scan_grok / scan_pi / scan_codebuddy / scan_opencode / scan_zcode 及各自 *_with_cancellation），读者会以为生产路径会调用它们；实际生产只走 scan_*_cached，这些函数只被同 crate 的对拍用例当作参照实现使用。C119 后 scan_codex_cached / scan_codex_cached_with_cancellation 也只剩用例在用（生产改走 scan_codex_roots_cached）。",
+  "why": "2026-10-25 架构审查：collector-local 以 pub 导出 16 个不走缓存的扫描函数（scan_claude / scan_codex / scan_kimi_tree / scan_grok / scan_pi / scan_codebuddy / scan_opencode / scan_zcode 及各自 *_with_cancellation），读者会以为生产路径会调用它们；实际生产只走 scan_*_cached，这些函数只被同 crate 的对拍用例当作参照实现使用。C119 后 scan_codex_cached / scan_codex_cached_with_cancellation 也只剩用例在用（生产改走 scan_codex_roots_cached）。（2026-10-27 补记：C119 经维护者驳回返工后，Codex 生产路径恢复为 scan_codex_cached_with_cancellation，其保持 pub 导出；scan_codex_roots_cached / CodexRoot / CompanionScan 随返工删除。）",
 
   "precheck": {
     "description": "确认改动前不走缓存的扫描函数为 pub 导出且 collector-local 之外无生产调用",
@@ -43,13 +43,13 @@
     {
       "scope": "对外导出",
       "before": "lib.rs / sources.rs pub use 全部缓存与不走缓存的扫描函数",
-      "after": "pub use 只保留 scan_claude_cached / scan_codebuddy_cached / scan_codex_roots_cached / scan_grok_cached / scan_kimi_cli_cached / scan_kimi_tree_cached / scan_opencode_cached / scan_pi_cached / scan_zcode_cached 与 CodexRoot / CompanionScan / SourceScan / SourceScanError；参照实现经 #[cfg(test)] pub(crate) use 供同 crate 用例使用",
+      "after": "pub use 只保留 scan_claude_cached / scan_codebuddy_cached / scan_codex_cached_with_cancellation / scan_grok_cached / scan_kimi_cli_cached / scan_kimi_tree_cached / scan_opencode_cached / scan_pi_cached / scan_zcode_cached 与 SourceScan / SourceScanError；参照实现经 #[cfg(test)] pub(crate) use 供同 crate 用例使用（C119 返工后的现状）",
       "impact": "collector-local 的公开接口只剩生产路径"
     },
     {
       "scope": "参照实现与辅助函数",
       "before": "16 个不走缓存的扫描函数与 scan_codex_cached(_with_cancellation) 为 pub fn，随生产构建编译",
-      "after": "上述函数改为 #[cfg(test)] pub(crate) fn；仅被它们使用的 scan_jsonl_tree / scan_jsonl_tree_impl / walk_jsonl_tree / scan_selected_codex / sqlite_error / open_read_only / MAX_DIRECTORY_SCAN_DEPTH 别名与相应导入同样只在测试构建中编译",
+      "after": "上述函数改为 #[cfg(test)] pub(crate) fn；仅被它们使用的 scan_jsonl_tree / scan_jsonl_tree_impl / walk_jsonl_tree / scan_selected_codex / sqlite_error / open_read_only / MAX_DIRECTORY_SCAN_DEPTH 别名与相应导入同样只在测试构建中编译；C119 返工后 scan_codex_cached_with_cancellation 恢复为生产 pub fn，仅不带取消令牌的 scan_codex_cached 仍为测试专用",
       "impact": "非测试构建零 dead_code / unused_imports 告警；对拍用例覆盖不变"
     }
   ],
@@ -81,7 +81,7 @@
         "item": "行为实测",
         "true_if": "生产调用链未变：collector-application 只调用缓存扫描",
         "false_if": "生产路径改走或丢失任一源",
-        "evidence": "2026-10-26: collector-application 的 local_source_jobs 九个任务均调用 scan_*_cached / scan_codex_roots_cached（与 C119 后一致，本卡未改该文件）；端到端用例 orca_sessions_populate_the_orca_row_instead_of_codex、codex_warm_cache_preserves_found_status、source_metrics_follow_the_stable_local_source_order 等全部通过。本卡只调整可见性与条件编译，无可观测行为差异，故不设负向对拍。",
+        "evidence": "2026-10-26: collector-application 的 local_source_jobs 九个任务均调用 scan_*_cached / scan_codex_roots_cached（与 C119 后一致，本卡未改该文件）；端到端用例 orca_sessions_populate_the_orca_row_instead_of_codex、codex_warm_cache_preserves_found_status、source_metrics_follow_the_stable_local_source_order 等全部通过。本卡只调整可见性与条件编译，无可观测行为差异，故不设负向对拍。 2026-10-27 C119 返工补记：本地源任务中的 Codex 任务改回调用 scan_codex_cached_with_cancellation，端到端用例 orca_sessions_populate_the_orca_row_instead_of_codex 随返工替换为 orca_sessions_count_toward_codex_and_no_orca_row_is_emitted；返工后 collector workspace 163 passed、clippy 测试与非测试构建均退出码 0。",
         "result": true
       },
       {

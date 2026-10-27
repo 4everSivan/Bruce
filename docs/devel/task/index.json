@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/task-index.v1.json",
   "phase": "Phase 2 - Windows 平台适配",
-  "updated_at": "2026-10-26",
+  "updated_at": "2026-10-27",
   "milestones": {
     "M1-Windows适配": {
       "title": "Windows 托盘常驻看板与采集链路全量对齐（Tauri 2 / 首版全量 / Rust 视图模型+fixture 对拍）",
@@ -56,6 +56,16 @@
       "tasks": [
         "T12"
       ]
+    },
+    "M8-跨端共享策略核心": {
+      "title": "两端重复实现的额度门禁与回填收敛为一份 Rust 实现：第一期经 collector 子命令供 mac 调用，第二期 mac 链接 Rust 静态库",
+      "design_doc": "docs/devel/design/08-跨端共享策略核心.md",
+      "tasks": [
+        "T13",
+        "T14",
+        "T15",
+        "T16"
+      ]
     }
   },
   "topics": {
@@ -89,6 +99,15 @@
         "T09",
         "T10",
         "T11"
+      ]
+    },
+    "SharedPolicyCore": {
+      "design_doc": "docs/devel/design/08-跨端共享策略核心.md",
+      "tasks": [
+        "T13",
+        "T14",
+        "T15",
+        "T16"
       ]
     }
   },
@@ -230,6 +249,52 @@
       "depends_on": [],
       "file": "docs/devel/task/T12.json",
       "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T12-win-tray-live-preview"
+    },
+    "T13": {
+      "title": "抽出共享额度策略 crate（门禁 + 回填），Windows 改为调用",
+      "status": "pending",
+      "branch": "feat/T13-shared-quota-policy-crate",
+      "topic": "SharedPolicyCore",
+      "milestone": "M8-跨端共享策略核心",
+      "depends_on": [],
+      "file": "docs/devel/task/T13.json",
+      "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T13-shared-quota-policy-crate"
+    },
+    "T14": {
+      "title": "collector 新增额度策略子命令与请求 / 响应 schema",
+      "status": "pending",
+      "branch": "feat/T14-collector-policy-subcommand",
+      "topic": "SharedPolicyCore",
+      "milestone": "M8-跨端共享策略核心",
+      "depends_on": [
+        "T13"
+      ],
+      "file": "docs/devel/task/T14.json",
+      "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T14-collector-policy-subcommand"
+    },
+    "T15": {
+      "title": "mac 刷新流水线改调额度策略子命令并删除 Swift 门禁与回填实现",
+      "status": "pending",
+      "branch": "feat/T15-mac-quota-policy-via-collector",
+      "topic": "SharedPolicyCore",
+      "milestone": "M8-跨端共享策略核心",
+      "depends_on": [
+        "T14"
+      ],
+      "file": "docs/devel/task/T15.json",
+      "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T15-mac-quota-policy-via-collector"
+    },
+    "T16": {
+      "title": "第二期：mac 链接 Rust 静态库，额度策略改为进程内调用",
+      "status": "pending",
+      "branch": "feat/T16-mac-link-rust-policy",
+      "topic": "SharedPolicyCore",
+      "milestone": "M8-跨端共享策略核心",
+      "depends_on": [
+        "T15"
+      ],
+      "file": "docs/devel/task/T16.json",
+      "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T16-mac-link-rust-policy"
     }
   }
 }

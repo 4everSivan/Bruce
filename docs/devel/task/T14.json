@@ -1,0 +1,100 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T14",
+  "title": "collector 新增额度策略子命令与请求 / 响应 schema",
+  "version": "0.14.0",
+  "milestone": "M8-跨端共享策略核心",
+  "status": "pending",
+  "branch": "feat/T14-collector-policy-subcommand",
+  "depends_on": [
+    "T13"
+  ],
+
+  "target": {
+    "module": "core/collector（Bruce-collector 二进制、schemas）",
+    "design_doc": "docs/devel/design/08-跨端共享策略核心.md",
+    "design_topic": "SharedPolicyCore"
+  },
+
+  "goal": "为 Bruce-collector 增加额度策略入口（子命令，stdin JSON → stdout JSON），调用 T13 的共享 crate，供 mac 在刷新流水线中使用；请求只含上一份 artifact（或其 services）、启用集合、时间、间隔与刷新意图等纯数据，**不携带凭据**；新增 schemas/policy-request-v1 与 policy-response-v1，入口按白名单拒绝未知字段，错误以结构化诊断返回。",
+
+  "precheck": {
+    "description": "确认 collector 尚无策略子命令",
+    "command": "grep -n 'std::env::args\\|policy' core/collector/bin/Bruce-collector/src/main.rs; ls core/collector/schemas",
+    "expected": "main.rs 不解析子命令；schemas 下无 policy 请求 / 响应定义",
+    "is_completed": false,
+    "evidence": ""
+  },
+
+  "callback": {
+    "before": [
+      "git checkout -b feat/T14-collector-policy-subcommand"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all -- --check",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 completed；目标状态预检使用 --card T14 --to completed --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card T14 --receipt 复核、输出节点回执"
+    ]
+  },
+
+  "tasks": [
+    {
+      "id": "T14-1",
+      "title": "子命令与契约",
+      "capability": "子命令读取 stdin JSON、写 stdout JSON；请求 / 响应结构与 schema 文件；白名单拒绝未知字段与任何凭据形态字段",
+      "done": false
+    },
+    {
+      "id": "T14-2",
+      "title": "进程级用例",
+      "capability": "以构建出的二进制跑 quota-policy-parity 与回填 fixture（经 stdin / stdout），结果与 T13 crate 单测一致",
+      "done": false
+    },
+    {
+      "id": "T14-3",
+      "title": "开销实测",
+      "capability": "release 二进制单次策略调用耗时实测（对照 design/08 第 3.3 节启动开销中位 5.2 ms），结果写回 design/08",
+      "done": false
+    }
+  ],
+
+  "acceptance": {
+    "result": null,
+    "run_id": "",
+    "checks": [
+      {
+        "item": "契约",
+        "true_if": "未知字段与凭据字段被拒绝，错误为结构化诊断",
+        "false_if": "接受未知字段或可携带凭据",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为等价",
+        "true_if": "经子命令的 fixture 结果与 T13 crate 完全一致",
+        "false_if": "任一用例结果不同",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "全量验证",
+        "true_if": "collector fmt / clippy / test 与 verify-local 退出码 0",
+        "false_if": "任一失败",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+
+  "sync": {
+    "commit": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

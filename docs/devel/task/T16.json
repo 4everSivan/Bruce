@@ -1,0 +1,104 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T16",
+  "title": "第二期：mac 链接 Rust 静态库，额度策略改为进程内调用",
+  "version": "0.14.0",
+  "milestone": "M8-跨端共享策略核心",
+  "status": "pending",
+  "branch": "feat/T16-mac-link-rust-policy",
+  "depends_on": [
+    "T15"
+  ],
+
+  "target": {
+    "module": "apps/macos（SwiftPM 与构建脚本）；core/collector（静态库 crate）",
+    "design_doc": "docs/devel/design/08-跨端共享策略核心.md",
+    "design_topic": "SharedPolicyCore"
+  },
+
+  "goal": "mac 构建链产出 Universal 2 Rust 静态库（aarch64 + x86_64 合并），SwiftPM 链接并以 JSON 字符串的 C ABI 调用 T13 的共享 crate，额度门禁与回填改为进程内调用；实测 App 体积与启动影响；据实测决定 T14 子命令保留或退役，并评审视图模型映射迁移范围，结论写回 design/08 第 4.2 节。视图模型映射的实际迁移不在本卡。",
+
+  "precheck": {
+    "description": "确认 mac 尚未链接任何 Rust 静态库",
+    "command": "grep -n 'staticlib\\|linkerSettings\\|unsafeFlags' apps/macos/Package.swift; grep -rn 'crate-type' core/collector/crates/*/Cargo.toml",
+    "expected": "Package.swift 无链接设置，collector crates 无 staticlib 产物",
+    "is_completed": false,
+    "evidence": ""
+  },
+
+  "callback": {
+    "before": [
+      "git checkout -b feat/T16-mac-link-rust-policy"
+    ],
+    "after": [
+      "zsh scripts/verify-local.sh",
+      "zsh scripts/build-test-app.sh --universal",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 completed；目标状态预检使用 --card T16 --to completed --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card T16 --receipt 复核、输出节点回执"
+    ]
+  },
+
+  "tasks": [
+    {
+      "id": "T16-1",
+      "title": "静态库与 C ABI",
+      "capability": "新增静态库 crate：JSON 字符串进出的 C 函数与配套释放函数，错误以 JSON 诊断返回，不跨边界 panic",
+      "done": false
+    },
+    {
+      "id": "T16-2",
+      "title": "构建链",
+      "capability": "build-test-app.sh / verify-local.sh 编译两种架构并合并静态库，产物收拢 local/；SwiftPM 链接并提供 Swift 包装",
+      "done": false
+    },
+    {
+      "id": "T16-3",
+      "title": "改为进程内调用",
+      "capability": "额度门禁与回填经静态库调用，行为与 T15 一致（共享 fixture 全绿）",
+      "done": false
+    },
+    {
+      "id": "T16-4",
+      "title": "实测与结论",
+      "capability": "App 体积增量、冷启动与单次调用耗时实测；子命令去留与视图模型迁移范围结论写回 design/08",
+      "done": false
+    }
+  ],
+
+  "acceptance": {
+    "result": null,
+    "run_id": "",
+    "checks": [
+      {
+        "item": "Universal 2",
+        "true_if": "Apple Silicon 与 Intel 两种架构的构建产物均能运行并通过 Harness",
+        "false_if": "任一架构构建或运行失败",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "行为等价",
+        "true_if": "共享 fixture 经进程内调用全部通过",
+        "false_if": "任一用例失败",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "实测记录",
+        "true_if": "体积与耗时实测数据写入 acceptance 证据与 design/08",
+        "false_if": "无实测数据",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+
+  "sync": {
+    "commit": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

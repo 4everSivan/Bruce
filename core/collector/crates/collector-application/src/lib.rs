@@ -24,9 +24,9 @@ use collector_domain::{
 };
 use collector_local::{
     default_cache_root, remove_legacy_kimi_cache, scan_claude_cached, scan_codebuddy_cached,
-    scan_codex_roots_cached, scan_grok_cached, scan_kimi_cli_cached, scan_kimi_tree_cached,
-    scan_opencode_cached, scan_pi_cached, scan_zcode_cached, CodexRoot, ScanStats, SourceScan,
-    SourceScanError,
+    scan_codex_cached_with_cancellation, scan_grok_cached, scan_kimi_cli_cached,
+    scan_kimi_tree_cached, scan_opencode_cached, scan_pi_cached, scan_zcode_cached, ScanStats,
+    SourceScan, SourceScanError,
 };
 use collector_provider::{HttpClient, ProviderError, UreqHttpClient};
 use collector_runtime::{RuntimeError, RuntimeLimits};
@@ -192,12 +192,6 @@ fn collect_agent_usage_with_dependencies_inner(
             "按消息内容估算, 非精确 token 计数",
             "未发现会话记录",
         ),
-        (
-            "orca",
-            "Orca",
-            "Orca 内置 Codex 会话, 额度见下方 Codex 账号",
-            "未发现会话记录",
-        ),
         ("pi", "Pi", "本机会话聚合", "未发现会话记录"),
         ("zcode", "ZCode", "本机会话聚合", "未发现会话记录"),
         ("codebuddy", "CodeBuddy", "本机会话聚合", "未发现会话记录"),
@@ -349,20 +343,8 @@ fn collect_local_usage(context: &RunContext<'_>) -> Result<LocalCollection, Diag
     let jobs = local_source_jobs(context, &home, &cache_root);
     // C110 / C116: 9 个本机源交给 local_workers 大小的工作池并行扫描, 结果按源序合并,
     // 诊断与指标顺序不变。
-    for (mut source, source_metric, degradation) in run_local_sources(context, jobs)? {
+    for (source, source_metric, degradation) in run_local_sources(context, jobs)? {
         let id = source_metric.source_id.clone();
-        // C119: 共享扫描拆出的附属 agent (Orca) 只带贡献; 统计与诊断归主源
-        for companion in std::mem::take(&mut source.companions) {
-            collection.agents.insert(
-                companion.source_id.to_owned(),
-                LocalAgentResult {
-                    found: companion.found,
-                    contribution: companion.contribution,
-                    diagnostic: None,
-                    capped: false,
-                },
-            );
-        }
         collection.source_metrics.push(source_metric);
         collection.scan_stats.merge(source.stats.clone());
         // C046: 源读取失败 (I/O) 以信息级诊断暴露, 不再完全静默。
@@ -445,23 +427,14 @@ fn local_source_jobs<'a>(
         "orca_codex_accounts",
         orca_home.join("codex-accounts"),
     );
-    // C119: Orca 内置 Codex 的会话与 Codex CLI 一起去重, 归属到 Orca 行
-    let orca_root = |path| CodexRoot {
-        path,
-        companion: Some("orca"),
-    };
-    let mut codex_roots = vec![
-        CodexRoot {
-            path: codex,
-            companion: None,
-        },
-        orca_root(orca_sessions),
-    ];
+    // C119: Orca 内置 Codex 的会话就是 Codex 会话, 与 Codex CLI 同一次扫描去重并计入 Codex;
+    // 不单设 Orca 行 (该行此前恒为「未发现会话记录」)。
+    let mut codex_roots = vec![codex, orca_sessions];
     if let Ok(entries) = fs::read_dir(&orca_accounts) {
         for entry in entries.flatten() {
             let sessions = entry.path().join("home").join("sessions");
             if sessions.is_dir() {
-                codex_roots.push(orca_root(sessions));
+                codex_roots.push(sessions);
             }
         }
     }
@@ -506,7 +479,7 @@ fn local_source_jobs<'a>(
         LocalSourceJob {
             source_id: "codex",
             scan: Box::new(move || {
-                scan_codex_roots_cached(&codex_roots, window, cache_root, cancellation)
+                scan_codex_cached_with_cancellation(&codex_roots, window, cache_root, cancellation)
             }),
         },
         LocalSourceJob {
@@ -1502,13 +1475,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(home);
     }
 
-    /// C119: Orca 内置 Codex 的会话计入 Orca 行 (此前并入 Codex, Orca 行恒为 not_found)。
+    /// C119: Orca 内置 Codex 的会话计入 Codex 行, artifact 不输出 Orca 行。
     #[test]
-    fn orca_sessions_populate_the_orca_row_instead_of_codex() {
-        let home = std::env::temp_dir().join(format!(
-            "bruce-orca-attribution-test-{}",
-            std::process::id()
-        ));
+    fn orca_sessions_count_toward_codex_and_no_orca_row_is_emitted() {
+        let home =
+            std::env::temp_dir().join(format!("bruce-orca-into-codex-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&home);
         let rollout = |root: &std::path::Path, name: &str, input: u64, output: u64| {
             let path = root.join("2026/07/28").join(name);
@@ -1566,21 +1537,17 @@ mod tests {
             &EmptyCredentialSource,
         )
         .unwrap();
-        let agent = |id: &str| {
-            output.artifact["agents"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .find(|agent| agent["id"] == id)
-                .unwrap()
-                .clone()
-        };
-        let (codex, orca) = (agent("codex"), agent("orca"));
+        let agents = output.artifact["agents"].as_array().unwrap();
+        assert!(
+            agents.iter().all(|agent| agent["id"] != "orca"),
+            "不再输出 Orca 行"
+        );
+        let codex = agents.iter().find(|agent| agent["id"] == "codex").unwrap();
         assert_eq!(codex["status"], "ok");
-        assert_eq!(orca["status"], "ok");
-        assert_eq!(orca["note"], "Orca 内置 Codex 会话, 额度见下方 Codex 账号");
-        assert_eq!(codex["today"]["total"], 13, "Codex 只含 CLI 会话");
-        assert_eq!(orca["today"]["total"], 9, "Orca 会话计入 Orca 行");
+        assert_eq!(
+            codex["today"]["total"], 22,
+            "Codex CLI 13 + Orca 内置 Codex 9 均计入 Codex 行"
+        );
         let _ = std::fs::remove_dir_all(home);
     }
 

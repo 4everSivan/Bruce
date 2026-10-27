@@ -14,7 +14,7 @@ mod tests_cache;
 #[cfg(test)]
 mod tests_sources;
 
-pub use codex::{scan_codex_roots_cached, CodexRoot};
+pub use codex::scan_codex_cached_with_cancellation;
 pub use jsonl_adapters::{
     scan_claude_cached, scan_codebuddy_cached, scan_grok_cached, scan_kimi_cli_cached,
     scan_kimi_tree_cached, scan_pi_cached,
@@ -64,16 +64,6 @@ pub struct SourceScan {
     /// 行数截断 (C041): 计划内降级标记, 上游据此把诊断归为信息级
     /// (LOCAL_SOURCE_ROWS_CAPPED), 不把采集 envelope 打成 Partial。
     pub capped: bool,
-    /// 同一次扫描按来源根拆出的附属 agent 用量 (C119: Orca 内置 Codex 的会话);
-    /// 统计 / 诊断仍归主源, 附属 agent 只取贡献与 found。
-    pub companions: Vec<CompanionScan>,
-}
-
-#[derive(Debug, Clone)]
-pub struct CompanionScan {
-    pub source_id: &'static str,
-    pub found: bool,
-    pub contribution: UsageContribution,
 }
 
 #[derive(Debug)]
@@ -102,7 +92,6 @@ impl SourceScan {
             stats: ScanStats::default(),
             diagnostic: None,
             capped: false,
-            companions: Vec::new(),
         }
     }
 }
@@ -119,7 +108,6 @@ pub(super) fn finish(
         stats,
         diagnostic: None,
         capped: false,
-        companions: Vec::new(),
     }
 }
 

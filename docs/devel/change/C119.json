@@ -1,10 +1,10 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C119",
-  "title": "Orca 内置 Codex 的会话计入 Orca 行：修复 Orca 行恒为「未发现会话记录」",
+  "title": "移除恒为占位的 Orca 行：Orca 内置 Codex 的会话计入 Codex",
   "version": "0.13.1",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "rejected",
   "branch": "fix/C119-orca-agent-attribution",
   "is_hotfix": false,
 
@@ -15,7 +15,7 @@
     "design_topic": "TokenUsage"
   },
 
-  "why": "2026-10-25 架构审查：artifact 恒输出 Orca agent 行（README 与 Windows 设置页 agent 列表均列出 Orca），但没有任何本机源任务写入 orca —— Orca 内置 Codex 的运行时目录（codex-runtime-home/home/sessions、codex-accounts/*/home/sessions）被并入 Codex 扫描根。Orca 用户的用量全部显示在 Codex 行，Orca 行恒为 not_found「未发现会话记录」，Windows 设置页的 Orca 开关也无从生效。",
+  "why": "2026-10-25 架构审查：artifact 恒输出 Orca agent 行（README 与 Windows 设置页 agent 列表均列出 Orca），但没有任何本机源任务写入 orca —— Orca 内置 Codex 的运行时目录（codex-runtime-home/home/sessions、codex-accounts/*/home/sessions）被并入 Codex 扫描根。Orca 用户的用量全部显示在 Codex 行，Orca 行恒为 not_found「未发现会话记录」，Windows 设置页的 Orca 开关也无从生效。 初版（2026-10-26）改为把 Orca 目录的会话拆入独立 Orca 行，维护者决定不保留 Orca 行（见 rejections），本卡返工为：删除该行，Orca 会话照旧计入 Codex。",
 
   "precheck": {
     "description": "确认改动前 Orca 根并入 Codex 扫描、无任务产出 orca agent",
@@ -41,16 +41,22 @@
 
   "changes": [
     {
-      "scope": "Codex 多根扫描",
-      "before": "scan_codex_cached_with_cancellation(roots: &[PathBuf]) 跨根去重后全部计入一份贡献",
-      "after": "新增 CodexRoot { path, companion } 与 scan_codex_roots_cached：候选文件记录发现它的根（CodexTreeGuard.origin），去重胜出规则不变，每组副本按胜出文件所在根归属；附属 agent 的贡献经 SourceScan::companions（CompanionScan { source_id, found, contribution }）返回，统计 / 诊断仍归 Codex；归属每轮重算、不进缓存（codex-files-v1.json 不变）；原 scan_codex_cached_with_cancellation 保留为全部归 Codex 的包装",
-      "impact": "合计不变，Orca 会话从 Codex 行移到 Orca 行"
+      "scope": "agent 目录",
+      "before": "agent 目录含 orca 行（note「本机会话聚合」），但没有任何本机源任务写入 orca，恒为 not_found「未发现会话记录」；Orca 内置 Codex 的会话计入 codex 行",
+      "after": "删除 orca 行；Orca 内置 Codex 目录（codex-runtime-home/home/sessions、codex-accounts/*/home/sessions）照旧与 Codex CLI 在同一次扫描中跨根去重并计入 codex 行，扫描调用与 e018e85 一致（scan_codex_cached_with_cancellation）",
+      "impact": "artifact 不再输出恒为占位的 Orca 行；Codex 行合计不变"
     },
     {
-      "scope": "本机源编排与 agent 行",
-      "before": "codex_roots = [codex, orca_sessions, orca 账号 sessions…]；Orca 行 note「本机会话聚合」且恒为占位",
-      "after": "Orca 根标记 companion = orca；collect_local_usage 把 companions 写入对应 agent（found / contribution，无诊断）；Orca 行 note 改为「Orca 内置 Codex 会话, 额度见下方 Codex 账号」",
-      "impact": "Orca 用户可见 Orca 行真实用量；无 Orca 的机器 Orca 行仍为 not_found"
+      "scope": "撤回初版实现",
+      "before": "初版（已驳回）新增 CodexRoot / scan_codex_roots_cached / SourceScan.companions / CompanionScan 与 CodexTreeGuard.origin，把 Orca 目录的会话拆入独立 Orca 行",
+      "after": "以 git apply -R --3way 反向应用初版代码提交 79fa2f2，与 C126 改写的导出块的两处冲突手工合并：Codex 生产路径恢复为 pub 的 scan_codex_cached_with_cancellation，C126 的其余测试专用门控保留；删除初版的两条用例，新增 orca_sessions_count_toward_codex_and_no_orca_row_is_emitted",
+      "impact": "collector-local 不再有附属 agent 机制"
+    },
+    {
+      "scope": "Windows 设置页会话探针",
+      "before": "SESSION_PROBES 列出 Orca 行（本机会话目录）",
+      "after": "删除 Orca 行；Codex 行说明改为「本机会话目录 (~/.codex/sessions, 含 Orca 内置 Codex)」",
+      "impact": "设置页不再展示不存在的 Orca agent"
     }
   ],
 
@@ -59,8 +65,8 @@
     "topic": "TokenUsage",
     "modified": true,
     "rule_diff": {
-      "before": "§7.1 Codex 层「codex（含 Orca 的 Codex 运行时目录）」，未规定 Orca 会话归属",
-      "after": "规则 3 新增「共享扫描按根归属 (C119)」：同一次扫描跨根去重、禁止拆成独立源重复计数、按胜出文件所在根归属、附属 agent 只带贡献；§7.1 Codex 层登记归属每轮重算不进缓存"
+      "before": "§7.1 Codex 层「codex（含 Orca 的 Codex 运行时目录）」，未规定 Orca 会话归属与是否设 Orca 行；设计 00 / 设计中心索引分别写 10 个 / 8 大 Agent",
+      "after": "规则 3 新增「Orca 内置 Codex 计入 Codex (C119)」：同一次扫描跨根去重并全部计入 codex 行、artifact 不设 Orca 行、禁止拆为独立源；§7.1 Codex 层注明计入 Codex；设计 00 与设计中心索引的 Agent 数更正为 9；README 本机会话扫描清单改为「Codex（含 Orca 内置 Codex 会话）」"
     }
   },
 
@@ -72,29 +78,36 @@
     "checks": [
       {
         "item": "自动化测试",
-        "true_if": "collector workspace 测试全绿（含新增按根归属与端到端 Orca 行用例），fmt / clippy 通过，Windows src-tauri（依赖 collector-local）测试全绿，verify-local 退出码 0",
+        "true_if": "collector workspace 测试全绿（含新增 Orca 计入 Codex 的端到端用例），clippy 测试与非测试构建均通过，Windows src-tauri 与前端测试全绿，verify-local 退出码 0",
         "false_if": "任一失败",
-        "evidence": "2026-10-26: cargo test --manifest-path core/collector/Cargo.toml --workspace --no-fail-fast 163 passed / 0 failed（新增 codex_roots_attribute_orca_sessions_by_winning_root：Codex 根 a、Orca 运行时根 b + 账号目录硬链接 b、跨根同名副本 c（Orca 份 mtime 较新）—— 冷 / 热两轮 Codex 贡献 = 仅 a 的参照扫描、Orca 贡献 = b + c 各一次的参照扫描、duplicate_files_skipped = 2、热轮 cache_hits = 3；无 Orca 会话时 companions[0].found = false；新增 orca_sessions_populate_the_orca_row_instead_of_codex：端到端 artifact Codex / Orca 均 ok、today.total 13 / 9）；fmt --check 与 clippy -D warnings 退出码 0（首轮 clippy 报 too_many_arguments，origin 改入 CodexTreeGuard 后通过）；apps/win/src-tauri clippy 退出码 0、cargo test 221 passed / 0 failed；SDKROOT=MacOSX26.5 zsh scripts/verify-local.sh 退出码 0（local/logs/c119-verify.log：CollectorRunner 28、LocalIntegration 2、Refresh scheduler 105，Panel / 工作台双端对拍通过）。",
+        "evidence": "2026-10-27（返工后）: cargo test --manifest-path core/collector/Cargo.toml --workspace --no-fail-fast 163 passed / 0 failed（删除初版的 codex_roots_attribute_orca_sessions_by_winning_root 与 orca_sessions_populate_the_orca_row_instead_of_codex，新增 orca_sessions_count_toward_codex_and_no_orca_row_is_emitted）；cargo clippy --workspace --all-targets -D warnings 与 cargo clippy --workspace -D warnings（非测试构建）均退出码 0；fmt 通过；apps/win/src-tauri cargo test 223 passed / 0 failed；node --test apps/win/tests/*.test.mjs 97 pass / 0 fail；node scripts/check-win-frontend.mjs 退出码 0；SDKROOT=MacOSX26.5 zsh scripts/verify-local.sh 退出码 0（local/logs/c119r-verify.log：PanelViewModel 60、CollectorRunner 28、LocalIntegration 2）。",
         "result": true
       },
       {
         "item": "行为实测",
-        "true_if": "端到端用例在改动前的编排代码上失败（Orca 行 not_found）、改动后通过",
-        "false_if": "新用例无法区分新旧实现",
-        "evidence": "2026-10-26: 以 git show HEAD 的 collector-application lib.rs 注入同一端到端用例运行：assertion 失败 left \"not_found\" / right \"ok\"（Orca 行仍为占位）；恢复 C119 实现后 1 passed。本机无 Orca 安装（~/Library/Application Support/orca 不存在），未以真实 Orca 数据实测。",
+        "true_if": "新用例在初版实现（单设 Orca 行）上失败、返工后通过；Orca 会话计入 Codex 行合计",
+        "false_if": "新用例无法区分初版与返工实现，或 Orca 会话丢失",
+        "evidence": "2026-10-27: 将 8 个改动文件换回 HEAD（初版实现）并注入同一用例运行：失败于「不再输出 Orca 行」；恢复返工实现后 1 passed，且 Codex 行 today.total = 22（Codex CLI 13 + Orca 内置 Codex 9），Orca 会话未丢失。本机无 Orca 安装，未以真实 Orca 数据实测。",
         "result": true
       },
       {
         "item": "反向影响排查",
-        "true_if": "去重胜出规则与合计不变、缓存格式不变、仅 Codex 根时结果与改动前一致",
-        "false_if": "合计变化、重复计数或缓存失效",
-        "evidence": "2026-10-26: resolve_codex_files / candidate_preference 未改，归属只在胜出后按 origin 分流；codex-files-v1.json 结构与 CODEX_FILE_CACHE_SCHEMA 不变（热轮 cache_hits = 3 证明归属不影响命中）；原有 Codex 缓存 / 去重 / 硬链接 / 冲突组用例（经 scan_codex_cached_with_cancellation 包装，全部归 Codex）全部通过；SourceScan 新增 companions 字段的其余 5 处构造均为空。",
+        "true_if": "Codex 扫描与去重与 e018e85 一致、不重复计数；C117 按文件缓存不受影响；仓库内无 orca agent 的其他消费方",
+        "false_if": "Orca 会话重复计入或丢失、缓存行为变化、仍有界面引用 orca agent",
+        "evidence": "2026-10-27: collector-application 的 Codex 任务恢复为 e018e85 的形态（codex_roots = [codex, orca_sessions, orca 账号 sessions…] 交给 scan_codex_cached_with_cancellation 同一次扫描去重）；codex-files-v1.json 缓存格式未改（C117 用例全部通过）；全仓 grep -w -i orca（不含归档与 .staging）只余路径解析（paths.rs）、Codex 根拼装与注释、用例中的临时路径，以及 Windows 设置页 Codex 探针说明「含 Orca 内置 Codex」；mac 无 orca agent 引用，Windows 设置页的 Orca 探针行已删除。README、design 00 / 01 / 设计中心索引、CHANGELOG 与 C126 卡已同步。",
         "result": true
       }
     ]
   },
 
-  "rejections": [],
+  "rejections": [
+    {
+      "date": "2026-10-26",
+      "user_quote": "First, my answer on orca: don't keep it.",
+      "reason": "维护者不保留 Orca 行：原方案（Orca 内置 Codex 的会话按目录拆出、计入独立的 Orca 行）被否决。",
+      "rework": "同卡返工：撤回按根归属与附属 agent（CodexRoot / CompanionScan / scan_codex_roots_cached）实现，Orca 目录照旧与 Codex CLI 同一次扫描去重并计入 Codex 行；从 agent 目录删除 Orca 行（不再输出恒为「未发现会话记录」的占位）；Windows 设置页会话探针删除 Orca 行并在 Codex 行注明含 Orca；同步 README、设计 01 / 00 / 设计中心索引、CHANGELOG 与 C126 卡相关描述；重新取证后请求人工确认。"
+    }
+  ],
 
   "sync": {
     "design_pinned": false,

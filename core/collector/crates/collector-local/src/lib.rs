@@ -22,9 +22,9 @@ pub const MAX_JSONL_RECORD_BYTES: usize = 1024 * 1024;
 pub const AGGREGATION_VERSION: u32 = 3;
 
 pub use sources::{
-    scan_claude_cached, scan_codebuddy_cached, scan_codex_roots_cached, scan_grok_cached,
-    scan_kimi_cli_cached, scan_kimi_tree_cached, scan_opencode_cached, scan_pi_cached,
-    scan_zcode_cached, CodexRoot, CompanionScan, SourceScan, SourceScanError,
+    scan_claude_cached, scan_codebuddy_cached, scan_codex_cached_with_cancellation,
+    scan_grok_cached, scan_kimi_cli_cached, scan_kimi_tree_cached, scan_opencode_cached,
+    scan_pi_cached, scan_zcode_cached, SourceScan, SourceScanError,
 };
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

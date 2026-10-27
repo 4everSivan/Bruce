@@ -1,0 +1,97 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T15",
+  "title": "mac 刷新流水线改调额度策略子命令并删除 Swift 门禁与回填实现",
+  "version": "0.14.0",
+  "milestone": "M8-跨端共享策略核心",
+  "status": "pending",
+  "branch": "feat/T15-mac-quota-policy-via-collector",
+  "depends_on": [
+    "T14"
+  ],
+
+  "target": {
+    "module": "apps/macos BruceAppCore（RefreshExecutionPipeline、QuotaRefreshPolicy、QuotaCarryOverMerger）",
+    "design_doc": "docs/devel/design/08-跨端共享策略核心.md",
+    "design_topic": "SharedPolicyCore"
+  },
+
+  "goal": "RefreshExecutionPipeline 计算额度门禁与回填时改为经 T14 的 collector 子命令调用共享 crate（async，不阻塞主线程），删除 Swift 的 QuotaRefreshPolicy.plan 与 QuotaCarryOverMerger 实现；锁屏抑制（C064 / C071）、启用集合（C120）等 mac 侧入参经请求传入。子命令不可用或失败时的降级语义由本卡确定、实现并写回 design/08 第 4.2 节。",
+
+  "precheck": {
+    "description": "确认 mac 仍以 Swift 实现门禁与回填",
+    "command": "grep -n 'QuotaRefreshPolicy.plan(\\|QuotaCarryOverMerger.merge(' apps/macos/Sources/BruceAppCore/RefreshExecutionPipeline.swift",
+    "expected": "流水线直接调用 Swift 的 QuotaRefreshPolicy.plan 与 QuotaCarryOverMerger.merge",
+    "is_completed": false,
+    "evidence": ""
+  },
+
+  "callback": {
+    "before": [
+      "git checkout -b feat/T15-mac-quota-policy-via-collector"
+    ],
+    "after": [
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 completed；目标状态预检使用 --card T15 --to completed --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card T15 --receipt 复核、输出节点回执"
+    ]
+  },
+
+  "tasks": [
+    {
+      "id": "T15-1",
+      "title": "流水线改调",
+      "capability": "经 CollectorRunner 同一套进程管理调用策略子命令，入参含上一份 artifact、启用集合、锁屏抑制、刷新意图与间隔",
+      "done": false
+    },
+    {
+      "id": "T15-2",
+      "title": "降级语义",
+      "capability": "子命令启动失败 / 超时 / 返回错误时的行为（定义、实现、用例），并写回 design/08",
+      "done": false
+    },
+    {
+      "id": "T15-3",
+      "title": "删除 Swift 实现",
+      "capability": "删除 QuotaRefreshPolicy.plan 与 QuotaCarryOverMerger；RefreshSchedulerHarness 中依赖它们的用例改为经子命令的回归或迁入共享 fixture",
+      "done": false
+    }
+  ],
+
+  "acceptance": {
+    "result": null,
+    "run_id": "",
+    "checks": [
+      {
+        "item": "行为等价",
+        "true_if": "quota-policy-parity 与回填 fixture 经 mac 路径全部通过，RefreshScheduler / CollectorRunner Harness 全绿",
+        "false_if": "任一失败",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "主线程",
+        "true_if": "策略调用在 async 流水线中完成，不在主线程同步等待进程",
+        "false_if": "主线程出现同步进程调用",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "全量验证",
+        "true_if": "verify-local 退出码 0",
+        "false_if": "失败",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+
+  "sync": {
+    "commit": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}
