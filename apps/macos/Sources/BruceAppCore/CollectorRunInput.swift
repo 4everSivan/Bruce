@@ -269,7 +269,7 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
         guard let config = configStore?.load() else {
             throw CollectorRunInputError.missingAuthorization(
                 module: module,
-                reason: "未配置钥匙串访问, 无法定向刷新订阅额度"
+                reason: "未配置凭据存储, 无法定向刷新订阅额度"
             )
         }
         guard config.consentVersion != nil else {
@@ -483,9 +483,9 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
             let reason: String
             switch keychainAccessController.policy.state {
             case .blocked:
-                reason = "钥匙串访问已被阻断, \(purpose)"
+                reason = "凭据存储访问已被阻断, \(purpose)"
             case .notConfigured, .allowed:
-                reason = "未配置钥匙串访问, \(purpose)"
+                reason = "未配置凭据存储, \(purpose)"
             }
             throw CollectorRunInputError.missingAuthorization(
                 module: module,

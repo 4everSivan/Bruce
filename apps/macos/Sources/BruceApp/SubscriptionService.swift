@@ -522,7 +522,7 @@ final class SubscriptionService {
             return true
         } catch {
             model.setSettingsError(
-                "\(provider.displayName) 凭证写入 Keychain 失败", for: provider
+                "\(provider.displayName) 凭证写入本机凭据文件失败", for: provider
             )
             return false
         }
@@ -603,7 +603,7 @@ final class SubscriptionService {
             model.setProviderAccountSummaries([], for: id)
         } catch {
             model.setSettingsError(
-                "\(id.displayName) 凭证删除失败, 请在 Keychain 中手动检查", for: id
+                "\(id.displayName) 凭证删除失败, 请检查本机凭据文件 (~/Library/Application Support/Bruce/credentials.json)", for: id
             )
             return
         }
@@ -645,7 +645,7 @@ final class SubscriptionService {
             model.setSettingsError(nil)
         } catch {
             model.setSettingsError(
-                "\(id.displayName) 账号移除失败, 请在 Keychain 中手动检查", for: id
+                "\(id.displayName) 账号移除失败, 请检查本机凭据文件 (~/Library/Application Support/Bruce/credentials.json)", for: id
             )
         }
     }
@@ -663,7 +663,7 @@ final class SubscriptionService {
             try await codexTokenManager.disconnect(accountID: accountID)
         } catch {
             model.setSettingsError(
-                "Codex 账号移除失败, 请在 Keychain 中手动检查", for: .codex
+                "Codex 账号移除失败, 请检查本机凭据文件 (~/Library/Application Support/Bruce/credentials.json)", for: .codex
             )
             return
         }
@@ -740,7 +740,7 @@ final class SubscriptionService {
             }
         } catch {
             model.setSettingsError(
-            "Codex 凭证删除失败, 请在 Keychain 中手动检查", for: .codex
+            "Codex 凭证删除失败, 请检查本机凭据文件 (~/Library/Application Support/Bruce/credentials.json)", for: .codex
             )
             return
         }

@@ -155,7 +155,7 @@ struct APIKeyProviderConfigDialog: View {
                 ForEach(fields) { field in
                     fieldGroup(field)
                 }
-                Text("只保存到本应用的 Keychain, 不会写入其他应用的数据库")
+                Text("只保存到本应用的本机凭据文件 (仅当前用户可读), 不会写入其他应用的数据库")
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
                 extraView
@@ -208,7 +208,7 @@ struct APIKeyProviderConfigDialog: View {
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
                 .disabled(busy || !allFilled)
-                .accessibilityHint("保存到 Keychain 并做本地格式校验")
+                .accessibilityHint("保存到本机凭据文件并做本地格式校验")
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
@@ -226,7 +226,7 @@ struct APIKeyProviderConfigDialog: View {
                 .textFieldStyle(.roundedBorder)
                 .disabled(busy)
                 .accessibilityLabel(field.accessibilityLabel)
-                .accessibilityHint("密钥只保存到本应用的 Keychain")
+                .accessibilityHint("密钥只保存到本应用的本机凭据文件")
         }
     }
 

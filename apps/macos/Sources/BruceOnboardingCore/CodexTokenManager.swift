@@ -46,7 +46,7 @@ public enum CodexTokenError: Error, Equatable, CustomStringConvertible {
         case .refreshFailed(_, let reason):
             return "续期失败: \(reason.description)"
         case .storageBlocked:
-            return "Keychain 存储异常"
+            return "凭据存储异常"
         case .notFound:
             return "账号未连接"
         }

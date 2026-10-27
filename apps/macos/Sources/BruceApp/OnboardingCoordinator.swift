@@ -461,7 +461,7 @@ final class OnboardingCoordinator: ObservableObject {
     /// 只有 ACL 更新成功且配置文件写入成功后才发布已配置状态.
     func configureKeychainAccess() {
         guard let configStore else {
-            model.setSettingsError("配置存储不可用, 无法保存钥匙串访问状态")
+            model.setSettingsError("配置存储不可用, 无法保存凭据存储授权状态")
             return
         }
         do {
@@ -479,7 +479,7 @@ final class OnboardingCoordinator: ObservableObject {
             model.setSettingsError(nil)
             reconcileScheduler()
         } catch {
-            model.setSettingsError("钥匙串访问配置失败, 未保存权限状态")
+            model.setSettingsError("凭据存储配置失败, 未保存授权状态")
         }
     }
 

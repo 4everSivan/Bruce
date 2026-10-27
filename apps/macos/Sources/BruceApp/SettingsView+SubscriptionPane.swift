@@ -398,7 +398,7 @@ extension SettingsView {
                     linkTitle: "打开 StepFun 控制台",
                     linkURL: URL(string: "https://platform.stepfun.com")
                 ),
-                footnote: "凭据安全保存在本机 Keychain, 支持国内站与国际站多账号混合添加",
+                footnote: "凭据安全保存在本应用的本机凭据文件 (仅当前用户可读), 支持国内站与国际站多账号混合添加",
                 extra: .stepfunWebLogin(
                     onLoginDomestic: {
                         stepfunLoginSite = .domestic

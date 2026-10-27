@@ -675,9 +675,9 @@ struct CollectorRunnerHarness {
             )
         } catch let error as CollectorRunInputError {
             guard case .missingAuthorization(_, let reason) = error,
-                  reason.contains("钥匙串") else {
+                  reason.contains("凭据存储") else {
                 throw RunnerTestFailure.expectation(
-                    "钥匙串未配置时应返回明确授权错误, got \(error)"
+                    "凭据存储未配置时应返回明确授权错误, got \(error)"
                 )
             }
         }
@@ -702,9 +702,9 @@ struct CollectorRunnerHarness {
             )
         } catch let error as CollectorRunInputError {
             guard case .missingAuthorization(_, let reason) = error,
-                  reason.contains("钥匙串") else {
+                  reason.contains("凭据存储") else {
                 throw RunnerTestFailure.expectation(
-                    "钥匙串未配置时定向刷新应返回明确授权错误, got \(error)"
+                    "凭据存储未配置时定向刷新应返回明确授权错误, got \(error)"
                 )
             }
         }

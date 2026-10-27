@@ -76,7 +76,7 @@ struct OfficialLocalProviderSettingsSection: View {
                     }
                     .disabled(pasteText
                         .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .accessibilityHint("校验后保存到本应用的 Keychain")
+                    .accessibilityHint("校验后保存到本应用的本机凭据文件")
                     if configured {
                         Button("取消") {
                             pasteText = ""

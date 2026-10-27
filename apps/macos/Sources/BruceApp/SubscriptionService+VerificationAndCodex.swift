@@ -26,7 +26,7 @@ extension SubscriptionService {
                 credentialJSON: key
             )
             if !saved {
-                model.setSettingsError("DeepSeek 凭证写入 Keychain 失败", for: .deepseek)
+                model.setSettingsError("DeepSeek 凭证写入本机凭据文件失败", for: .deepseek)
                 return
             }
             model.setSubscriptionCredentialConfigured(true, for: .deepseek)
@@ -689,7 +689,7 @@ extension SubscriptionService {
                 } catch {
                     self.codexDeviceLogin = nil
                     self.model.setSettingsError(
-                    "Codex 凭证写入 Keychain 失败, 登录未完成", for: .codex
+                    "Codex 凭证写入本机凭据文件失败, 登录未完成", for: .codex
                 )
                     return
                 }

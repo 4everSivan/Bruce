@@ -487,7 +487,7 @@ struct SettingsView: View {
                 }
                 .onAppear(perform: refreshNotificationStatus)
                 FluentRow(
-                    "钥匙串访问",
+                    "凭据存储",
                     sub: "统一管理 Bruce 保存的订阅凭证访问权限",
                     divided: true
                 ) {
@@ -601,9 +601,9 @@ struct SettingsView: View {
 
     var keychainAccessGuide: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Label("配置钥匙串访问", systemImage: "key.fill")
+            Label("配置凭据存储", systemImage: "key.fill")
                 .font(.system(size: 16, weight: .semibold))
-            Text("Bruce 会把订阅凭证保存在 macOS 钥匙串中。首次配置时系统可能要求输入一次 macOS 登录密码, 以统一授权 Bruce 访问已有凭证。")
+            Text("Bruce 把订阅凭证保存在本应用的本机凭据文件中 (仅当前用户可读)。旧版本存入 macOS 钥匙串的凭证会在读取时自动迁移到该文件; 后台读取从不弹出系统密码框, 仅在你主动操作时系统才可能要求输入一次 macOS 登录密码。")
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
             Text("Bruce 不会保存你的系统密码, 配置文件只记录访问状态。")
