@@ -93,9 +93,18 @@ protocol CollectorRunInputProviding {
     /// 本轮全部 Codex 账号 token 决议 (含成功与失败), 供四源合并器
     /// 为未出现在 collector 结果中的账号合成失败状态. 无 Codex 时为空.
     var codexTokenDecisions: [CodexTokenDecision] { get }
+
+    /// 已启用的订阅 provider (C120: 额度策略逐个判定, 新启用者必须首查);
+    /// nil 表示未知, 额度策略沿用上一份 artifact 中出现的 provider.
+    func enabledQuotaProviders(for module: CollectorModule) -> Set<SubscriptionProviderID>?
 }
 
 extension CollectorRunInputProviding {
+    /// 默认未知启用集合 (测试桩无需感知 C120).
+    func enabledQuotaProviders(for module: CollectorModule) -> Set<SubscriptionProviderID>? {
+        nil
+    }
+
     /// 默认额度策略实现: 退回旧全量输入 (测试桩无需感知 C062).
     func runInput(
         for module: CollectorModule,
@@ -213,6 +222,16 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
 
     func runInput(for module: CollectorModule) async throws -> CollectorRunInput {
         try await runInput(for: module, quotaPolicy: .includeAll)
+    }
+
+    /// 与凭证装配同一判据 (`subscriptionProviders[id].enabled == true`); 配置不可读时为 nil.
+    func enabledQuotaProviders(for module: CollectorModule) -> Set<SubscriptionProviderID>? {
+        guard module == .agentUsage, let config = configStore?.load() else {
+            return nil
+        }
+        return Set(config.subscriptionProviders.compactMap { key, configuration in
+            configuration.enabled ? SubscriptionProviderID(rawValue: key) : nil
+        })
     }
 
     func runInput(

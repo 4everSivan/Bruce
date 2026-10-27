@@ -543,6 +543,55 @@ extension RefreshSchedulerHarness {
         ) ?? false
     }
 
+    /// C120: 与 Windows `quota_policy::plan` 共享的门禁对拍用例.
+    static func quotaPolicyMatchesSharedParityFixture(repository: URL) throws {
+        let url = repository.appendingPathComponent("tests/fixtures/quota-policy-parity/cases.json")
+        let fixture = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: url))
+        guard let cases = fixture.objectValue?["cases"]?.arrayValue, cases.count >= 18 else {
+            throw RefreshTestFailure.expectation("quota parity fixture 缺少用例")
+        }
+        func strings(_ value: JSONValue?) -> [String] {
+            (value?.arrayValue ?? []).compactMap(\.stringIdValue)
+        }
+        for item in cases {
+            guard let object = item.objectValue,
+                  let name = object["name"]?.stringIdValue,
+                  let now = QuotaRefreshPolicy.parseISODate(object["now"]?.stringIdValue),
+                  let interval = object["intervalSeconds"]?.intValue,
+                  let force = object["forceRefresh"]?.boolValue,
+                  let bypass = object["bypassCooldown"]?.boolValue,
+                  let expected = object["expected"]?.objectValue else {
+                throw RefreshTestFailure.expectation("quota parity fixture 用例格式无效")
+            }
+            let enabledRaw = strings(object["enabledProviders"])
+            let enabled = Set(enabledRaw.compactMap(SubscriptionProviderID.init(rawValue:)))
+            guard enabled.count == enabledRaw.count else {
+                throw RefreshTestFailure.expectation("\(name): 未知 provider")
+            }
+            let policy = QuotaRefreshPolicy.plan(
+                previous: .object(["services": object["services"] ?? .array([])]),
+                now: now,
+                interval: TimeInterval(interval),
+                forceRefresh: force,
+                bypassCooldown: bypass,
+                enabledProviders: enabled
+            )
+            try refreshExpect(
+                policy.includeExternalQuotas == expected["includeExternalQuotas"]?.boolValue,
+                "\(name): includeExternalQuotas"
+            )
+            try refreshExpect(
+                policy.skipProviders.map(\.rawValue).sorted() == strings(expected["skipProviders"]),
+                "\(name): skipProviders \(policy.skipProviders.map(\.rawValue).sorted())"
+            )
+            try refreshExpect(
+                policy.rateLimitedProviders.map(\.rawValue).sorted()
+                    == strings(expected["rateLimitedProviders"]),
+                "\(name): rateLimitedProviders"
+            )
+        }
+    }
+
     private static func quotaArtifact(
         services: [JSONValue],
         agents: [JSONValue] = [],

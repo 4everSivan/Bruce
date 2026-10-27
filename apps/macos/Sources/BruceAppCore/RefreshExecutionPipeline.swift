@@ -158,7 +158,8 @@ struct RefreshExecutionPipeline {
                 interval: request.quotaRefreshInterval,
                 forceRefresh: request.intent.forceQuotaRefresh,
                 bypassCooldown: request.intent.reason == .manual,
-                suppressExternalQuotas: request.suppressSubscriptionRefresh
+                suppressExternalQuotas: request.suppressSubscriptionRefresh,
+                enabledProviders: runInputProvider?.enabledQuotaProviders(for: request.module)
             )
         }
 

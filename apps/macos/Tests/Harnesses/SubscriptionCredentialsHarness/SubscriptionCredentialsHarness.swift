@@ -67,7 +67,27 @@ struct SubscriptionCredentialsHarness {
         try await clineNotInjectedWithoutCredential()
         try providerAccountStoreCorruptedIndexFailsClosed()
         try providerAccountStoreCorruptedRecordFailsClosed()
-        print("Subscription credentials tests passed: 36")
+        try enabledQuotaProvidersFollowEnabledFlag()
+        print("Subscription credentials tests passed: 37")
+    }
+
+    /// C120: 额度策略的启用集合与凭证装配同一判据 (enabled == true), 停用条目不计入.
+    private static func enabledQuotaProvidersFollowEnabledFlag() throws {
+        let (provider, _, configStore) = try makeProvider(
+            enabled: [.claude, .kimi],
+            credentials: [:]
+        )
+        guard var config = configStore.load() else {
+            throw CredentialsTestFailure.expectation("配置应可读")
+        }
+        var disabled = SubscriptionProviderConfiguration()
+        disabled.enabled = false
+        config.subscriptionProviders[SubscriptionProviderID.deepseek.rawValue] = disabled
+        try configStore.save(config)
+        try credentialsExpect(
+            provider.enabledQuotaProviders(for: .agentUsage) == [.claude, .kimi],
+            "启用集合应只含 enabled 条目"
+        )
     }
 
     /// 构造 OnboardingRunInputProvider: 配置 claude 启用 + Keychain 持有 claude:oauth.

@@ -1,0 +1,551 @@
+{
+  "description": "C120 双端订阅额度查询门禁 (mac QuotaRefreshPolicy.plan / Windows quota_policy::plan) 共享对拍用例; skip / rateLimited 按字典序",
+  "cases": [
+    {
+      "name": "fresh_provider_stays_local_only",
+      "description": "唯一启用 provider 5 分钟前刚查询: 本地专用 run, 回填该 provider",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 1800,
+      "forceRefresh": false,
+      "bypassCooldown": false,
+      "enabledProviders": [
+        "kimi"
+      ],
+      "services": [
+        {
+          "id": "kimi_coding_a",
+          "provider": "kimi",
+          "app": "kimi",
+          "status": "ok",
+          "capturedAt": "2026-10-26T11:55:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:55:00Z"
+        }
+      ],
+      "expected": {
+        "includeExternalQuotas": false,
+        "skipProviders": [
+          "kimi"
+        ],
+        "rateLimitedProviders": []
+      }
+    },
+    {
+      "name": "stale_provider_queries",
+      "description": "距上次查询 40 分钟 (> 30 分钟间隔): 查询",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 1800,
+      "forceRefresh": false,
+      "bypassCooldown": false,
+      "enabledProviders": [
+        "kimi"
+      ],
+      "services": [
+        {
+          "id": "kimi_coding_a",
+          "provider": "kimi",
+          "app": "kimi",
+          "status": "ok",
+          "capturedAt": "2026-10-26T11:20:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:20:00Z"
+        }
+      ],
+      "expected": {
+        "includeExternalQuotas": true,
+        "skipProviders": [],
+        "rateLimitedProviders": []
+      }
+    },
+    {
+      "name": "newly_enabled_without_history_is_due",
+      "description": "新启用的 deepseek 无历史 service: 必须首查, 仍新鲜的 kimi 跳过 (C120 前 mac 不查询)",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 1800,
+      "forceRefresh": false,
+      "bypassCooldown": false,
+      "enabledProviders": [
+        "kimi",
+        "deepseek"
+      ],
+      "services": [
+        {
+          "id": "kimi_coding_a",
+          "provider": "kimi",
+          "app": "kimi",
+          "status": "ok",
+          "capturedAt": "2026-10-26T11:55:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:55:00Z"
+        }
+      ],
+      "expected": {
+        "includeExternalQuotas": true,
+        "skipProviders": [
+          "kimi"
+        ],
+        "rateLimitedProviders": []
+      }
+    },
+    {
+      "name": "disabled_leftover_service_is_ignored",
+      "description": "已停用 deepseek 的过期残留 service 不参与判定 (C120 前 mac 因其过期发起查询)",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 1800,
+      "forceRefresh": false,
+      "bypassCooldown": false,
+      "enabledProviders": [
+        "kimi"
+      ],
+      "services": [
+        {
+          "id": "kimi_coding_a",
+          "provider": "kimi",
+          "app": "kimi",
+          "status": "ok",
+          "capturedAt": "2026-10-26T11:55:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:55:00Z"
+        },
+        {
+          "id": "deepseek_a",
+          "provider": "deepseek",
+          "app": "deepseek",
+          "status": "ok",
+          "capturedAt": "2026-10-26T11:20:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:20:00Z"
+        }
+      ],
+      "expected": {
+        "includeExternalQuotas": false,
+        "skipProviders": [
+          "kimi"
+        ],
+        "rateLimitedProviders": []
+      }
+    },
+    {
+      "name": "no_enabled_providers_stays_local",
+      "description": "无启用 provider: 不发起额度查询 (C120 前 mac 仍请求 externalQuotas)",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 1800,
+      "forceRefresh": false,
+      "bypassCooldown": false,
+      "enabledProviders": [],
+      "services": [],
+      "expected": {
+        "includeExternalQuotas": false,
+        "skipProviders": [],
+        "rateLimitedProviders": []
+      }
+    },
+    {
+      "name": "first_run_queries_all_enabled",
+      "description": "无上一份 services: 全部启用 provider 首查",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 1800,
+      "forceRefresh": false,
+      "bypassCooldown": false,
+      "enabledProviders": [
+        "kimi",
+        "deepseek"
+      ],
+      "services": [],
+      "expected": {
+        "includeExternalQuotas": true,
+        "skipProviders": [],
+        "rateLimitedProviders": []
+      }
+    },
+    {
+      "name": "interval_zero_disables_gate",
+      "description": "interval <= 0 不做新鲜度门禁",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 0,
+      "forceRefresh": false,
+      "bypassCooldown": false,
+      "enabledProviders": [
+        "kimi"
+      ],
+      "services": [
+        {
+          "id": "kimi_coding_a",
+          "provider": "kimi",
+          "app": "kimi",
+          "status": "ok",
+          "capturedAt": "2026-10-26T11:55:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:55:00Z"
+        }
+      ],
+      "expected": {
+        "includeExternalQuotas": true,
+        "skipProviders": [],
+        "rateLimitedProviders": []
+      }
+    },
+    {
+      "name": "rate_limited_provider_cools_down",
+      "description": "kimi 10 分钟前 429: 冷却跳过, 过期的 deepseek 照常查询",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 1800,
+      "forceRefresh": false,
+      "bypassCooldown": false,
+      "enabledProviders": [
+        "kimi",
+        "deepseek"
+      ],
+      "services": [
+        {
+          "id": "kimi_coding_a",
+          "provider": "kimi",
+          "app": "kimi",
+          "status": "error",
+          "failureKind": "rateLimit",
+          "quotaAttemptedAt": "2026-10-26T11:50:00Z",
+          "rateLimitedAt": "2026-10-26T11:50:00Z"
+        },
+        {
+          "id": "deepseek_a",
+          "provider": "deepseek",
+          "app": "deepseek",
+          "status": "ok",
+          "capturedAt": "2026-10-26T11:20:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:20:00Z"
+        }
+      ],
+      "expected": {
+        "includeExternalQuotas": true,
+        "skipProviders": [
+          "kimi"
+        ],
+        "rateLimitedProviders": [
+          "kimi"
+        ]
+      }
+    },
+    {
+      "name": "cooldown_expired_queries",
+      "description": "429 已过 40 分钟: 冷却结束, 且尝试已过期, 查询",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 1800,
+      "forceRefresh": false,
+      "bypassCooldown": false,
+      "enabledProviders": [
+        "kimi"
+      ],
+      "services": [
+        {
+          "id": "kimi_coding_a",
+          "provider": "kimi",
+          "app": "kimi",
+          "status": "error",
+          "failureKind": "rateLimit",
+          "quotaAttemptedAt": "2026-10-26T11:20:00Z",
+          "rateLimitedAt": "2026-10-26T11:20:00Z"
+        }
+      ],
+      "expected": {
+        "includeExternalQuotas": true,
+        "skipProviders": [],
+        "rateLimitedProviders": []
+      }
+    },
+    {
+      "name": "codex_cooling_is_never_skipped",
+      "description": "Codex 冷却不使其进入 skip (只记入 rateLimited); 但无任何到期 provider 时整轮本地专用, skip 为全部启用 provider",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 1800,
+      "forceRefresh": false,
+      "bypassCooldown": false,
+      "enabledProviders": [
+        "codex"
+      ],
+      "services": [
+        {
+          "id": "codex_acc1",
+          "provider": "codex",
+          "app": "codex",
+          "status": "error",
+          "failureKind": "rateLimit",
+          "quotaAttemptedAt": "2026-10-26T11:50:00Z",
+          "rateLimitedAt": "2026-10-26T11:50:00Z"
+        }
+      ],
+      "expected": {
+        "includeExternalQuotas": false,
+        "skipProviders": [
+          "codex"
+        ],
+        "rateLimitedProviders": [
+          "codex"
+        ]
+      }
+    },
+    {
+      "name": "codex_fresh_not_skipped_on_quota_run",
+      "description": "额度 run 中新鲜的 Codex 也不进 skip (四源合并需要完整首轮)",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 1800,
+      "forceRefresh": false,
+      "bypassCooldown": false,
+      "enabledProviders": [
+        "codex",
+        "kimi"
+      ],
+      "services": [
+        {
+          "id": "codex_acc1",
+          "provider": "codex",
+          "app": "codex",
+          "status": "ok",
+          "capturedAt": "2026-10-26T11:55:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:55:00Z"
+        },
+        {
+          "id": "kimi_coding_a",
+          "provider": "kimi",
+          "app": "kimi",
+          "status": "ok",
+          "capturedAt": "2026-10-26T11:20:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:20:00Z"
+        }
+      ],
+      "expected": {
+        "includeExternalQuotas": true,
+        "skipProviders": [],
+        "rateLimitedProviders": []
+      }
+    },
+    {
+      "name": "codex_stale_queries",
+      "description": "Codex 过期: 查询, 新鲜的 kimi 跳过",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 1800,
+      "forceRefresh": false,
+      "bypassCooldown": false,
+      "enabledProviders": [
+        "codex",
+        "kimi"
+      ],
+      "services": [
+        {
+          "id": "codex_acc1",
+          "provider": "codex",
+          "app": "codex",
+          "status": "ok",
+          "capturedAt": "2026-10-26T11:20:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:20:00Z"
+        },
+        {
+          "id": "kimi_coding_a",
+          "provider": "kimi",
+          "app": "kimi",
+          "status": "ok",
+          "capturedAt": "2026-10-26T11:55:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:55:00Z"
+        }
+      ],
+      "expected": {
+        "includeExternalQuotas": true,
+        "skipProviders": [
+          "kimi"
+        ],
+        "rateLimitedProviders": []
+      }
+    },
+    {
+      "name": "passed_window_boundary_forces_query",
+      "description": "上次快照后已有窗口 resetsAt 过去: 未满间隔也重查 (C037)",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 1800,
+      "forceRefresh": false,
+      "bypassCooldown": false,
+      "enabledProviders": [
+        "kimi"
+      ],
+      "services": [
+        {
+          "id": "kimi_coding_a",
+          "provider": "kimi",
+          "app": "kimi",
+          "status": "ok",
+          "capturedAt": "2026-10-26T11:55:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:55:00Z",
+          "kind": "windows",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 90,
+              "resetsAt": 1793015940
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "includeExternalQuotas": true,
+        "skipProviders": [],
+        "rateLimitedProviders": []
+      }
+    },
+    {
+      "name": "multi_account_any_stale_queries",
+      "description": "多账号: 任一账号过期即重查整个 provider",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 1800,
+      "forceRefresh": false,
+      "bypassCooldown": false,
+      "enabledProviders": [
+        "claude"
+      ],
+      "services": [
+        {
+          "id": "claude_aaaa",
+          "provider": "claude",
+          "app": "claude",
+          "status": "ok",
+          "capturedAt": "2026-10-26T11:55:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:55:00Z"
+        },
+        {
+          "id": "claude_bbbb",
+          "provider": "claude",
+          "app": "claude",
+          "status": "ok",
+          "capturedAt": "2026-10-26T11:20:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:20:00Z"
+        }
+      ],
+      "expected": {
+        "includeExternalQuotas": true,
+        "skipProviders": [],
+        "rateLimitedProviders": []
+      }
+    },
+    {
+      "name": "boundary_force_respects_cooldown",
+      "description": "窗口边界唤醒 (force, 不 bypass): 新鲜者也查询, 冷却者仍跳过",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 1800,
+      "forceRefresh": true,
+      "bypassCooldown": false,
+      "enabledProviders": [
+        "kimi",
+        "deepseek"
+      ],
+      "services": [
+        {
+          "id": "kimi_coding_a",
+          "provider": "kimi",
+          "app": "kimi",
+          "status": "error",
+          "failureKind": "rateLimit",
+          "quotaAttemptedAt": "2026-10-26T11:50:00Z",
+          "rateLimitedAt": "2026-10-26T11:50:00Z"
+        },
+        {
+          "id": "deepseek_a",
+          "provider": "deepseek",
+          "app": "deepseek",
+          "status": "ok",
+          "capturedAt": "2026-10-26T11:55:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:55:00Z"
+        }
+      ],
+      "expected": {
+        "includeExternalQuotas": true,
+        "skipProviders": [
+          "kimi"
+        ],
+        "rateLimitedProviders": [
+          "kimi"
+        ]
+      }
+    },
+    {
+      "name": "manual_refresh_bypasses_everything",
+      "description": "手动刷新 (force + bypass): 绕过新鲜度与冷却",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 1800,
+      "forceRefresh": true,
+      "bypassCooldown": true,
+      "enabledProviders": [
+        "kimi",
+        "deepseek"
+      ],
+      "services": [
+        {
+          "id": "kimi_coding_a",
+          "provider": "kimi",
+          "app": "kimi",
+          "status": "error",
+          "failureKind": "rateLimit",
+          "quotaAttemptedAt": "2026-10-26T11:50:00Z",
+          "rateLimitedAt": "2026-10-26T11:50:00Z"
+        },
+        {
+          "id": "deepseek_a",
+          "provider": "deepseek",
+          "app": "deepseek",
+          "status": "ok",
+          "capturedAt": "2026-10-26T11:55:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:55:00Z"
+        }
+      ],
+      "expected": {
+        "includeExternalQuotas": true,
+        "skipProviders": [],
+        "rateLimitedProviders": []
+      }
+    },
+    {
+      "name": "unavailable_falls_back_to_rate_limited_at",
+      "description": "status=unavailable 且无 quotaAttemptedAt / capturedAt 的旧 service 以 rateLimitedAt 作为尝试时间 (C120 前 mac 视为从未尝试)",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 3600,
+      "forceRefresh": false,
+      "bypassCooldown": false,
+      "enabledProviders": [
+        "kimi"
+      ],
+      "services": [
+        {
+          "id": "kimi_coding_a",
+          "provider": "kimi",
+          "app": "kimi",
+          "status": "unavailable",
+          "rateLimitedAt": "2026-10-26T11:20:00Z"
+        }
+      ],
+      "expected": {
+        "includeExternalQuotas": false,
+        "skipProviders": [
+          "kimi"
+        ],
+        "rateLimitedProviders": []
+      }
+    },
+    {
+      "name": "legacy_service_without_attempt_uses_captured_at",
+      "description": "旧 artifact 无 quotaAttemptedAt: 回退 capturedAt 判新鲜",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 1800,
+      "forceRefresh": false,
+      "bypassCooldown": false,
+      "enabledProviders": [
+        "kimi"
+      ],
+      "services": [
+        {
+          "id": "kimi_coding_a",
+          "provider": "kimi",
+          "app": "kimi",
+          "status": "ok",
+          "capturedAt": "2026-10-26T11:55:00Z"
+        }
+      ],
+      "expected": {
+        "includeExternalQuotas": false,
+        "skipProviders": [
+          "kimi"
+        ],
+        "rateLimitedProviders": []
+      }
+    }
+  ]
+}

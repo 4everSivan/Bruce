@@ -199,6 +199,8 @@ struct RefreshSchedulerHarness {
         print("Refresh scheduler: quota policy 429 cooldown")
         try quotaPolicy429CooldownAndForceSemantics()
         try quotaPolicyPrefersExplicitProviderAndFailureKind()
+        print("Refresh scheduler: quota policy shared parity fixture")
+        try quotaPolicyMatchesSharedParityFixture(repository: repository)
         print("Refresh scheduler: quota policy passed window boundary")
         try quotaPolicyPassedWindowBoundaryForcesRefresh()
         print("Refresh scheduler: quota policy multi-account stale")
@@ -229,6 +231,6 @@ struct RefreshSchedulerHarness {
         try await screenLockSuppressedRunCarriesOverServices(repository: repository)
         print("Refresh scheduler: quota refresh interval updates with scheduler interval")
         try await quotaRefreshIntervalUpdatesWithSchedulerRefreshInterval(repository: repository)
-        print("Refresh scheduler tests passed: 105")
+        print("Refresh scheduler tests passed: 106")
     }
 }

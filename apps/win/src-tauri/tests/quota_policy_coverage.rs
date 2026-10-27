@@ -381,3 +381,65 @@ fn explicit_provider_and_failure_kind_take_precedence() {
     let limited = rate_limited_providers_in(Some(&artifact));
     assert!(limited.contains("codex") && limited.contains("kimi") && !limited.contains("deepseek"));
 }
+
+/// C120: 与 mac `QuotaRefreshPolicy.plan` 共享的门禁对拍用例 (tests/fixtures/quota-policy-parity)。
+#[test]
+fn plan_matches_shared_parity_fixture() {
+    use bruce_win_lib::quota_policy::plan;
+    use serde_json::{json, Value};
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .find(|path| path.join("core/collector").is_dir())
+        .expect("repository root")
+        .to_path_buf();
+    let fixture: Value = serde_json::from_str(
+        &std::fs::read_to_string(root.join("tests/fixtures/quota-policy-parity/cases.json"))
+            .unwrap(),
+    )
+    .unwrap();
+    let cases = fixture["cases"].as_array().unwrap();
+    assert!(cases.len() >= 18, "共享 fixture 覆盖全部判定分支");
+    let strings = |value: &Value| -> Vec<String> {
+        value
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| item.as_str().unwrap().to_owned())
+            .collect()
+    };
+    for case in cases {
+        let name = case["name"].as_str().unwrap();
+        let now_ms = chrono::DateTime::parse_from_rfc3339(case["now"].as_str().unwrap())
+            .unwrap()
+            .timestamp_millis();
+        let previous = json!({"services": case["services"].clone()});
+        let policy = plan(
+            Some(&previous),
+            &strings(&case["enabledProviders"]),
+            now_ms,
+            case["intervalSeconds"].as_i64().unwrap(),
+            case["forceRefresh"].as_bool().unwrap(),
+            case["bypassCooldown"].as_bool().unwrap(),
+        );
+        let expected = &case["expected"];
+        assert_eq!(
+            policy.include_external_quotas,
+            expected["includeExternalQuotas"].as_bool().unwrap(),
+            "{name}: includeExternalQuotas"
+        );
+        assert_eq!(
+            policy.skip_providers.into_iter().collect::<Vec<_>>(),
+            strings(&expected["skipProviders"]),
+            "{name}: skipProviders"
+        );
+        assert_eq!(
+            policy
+                .rate_limited_providers
+                .into_iter()
+                .collect::<Vec<_>>(),
+            strings(&expected["rateLimitedProviders"]),
+            "{name}: rateLimitedProviders"
+        );
+    }
+}

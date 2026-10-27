@@ -55,13 +55,16 @@ package enum QuotaRefreshPolicy {
     ///   - forceRefresh: 手动或窗口边界触发, 绕过新鲜度门禁.
     ///   - bypassCooldown: 手动刷新为 true, 连 429 冷却也绕过.
     ///   - suppressExternalQuotas: 锁屏等场景强制抑制外部额度查询 (C064).
+    ///   - enabledProviders: 本轮启用的 provider (C120); nil 表示未知 (测试桩),
+    ///     沿用上一份 artifact 中出现的 provider.
     package static func plan(
         previous: JSONValue?,
         now: Date,
         interval: TimeInterval = interval,
         forceRefresh: Bool,
         bypassCooldown: Bool,
-        suppressExternalQuotas: Bool = false
+        suppressExternalQuotas: Bool = false,
+        enabledProviders: Set<SubscriptionProviderID>? = nil
     ) -> QuotaRunPolicy {
         if suppressExternalQuotas {
             // C071: 「本轮被抑制跳过查询」等价于「全部 provider 进入 skip」,
@@ -83,25 +86,38 @@ package enum QuotaRefreshPolicy {
         }
 
 
-        let services = previous?.objectValue?["services"]?.arrayValue ?? []
-        guard !services.isEmpty, interval > 0 else {
+        guard interval > 0 else {
             return .includeAll
         }
-
+        let services = previous?.objectValue?["services"]?.arrayValue ?? []
         var byProvider: [SubscriptionProviderID: [JSONValue]] = [:]
         for service in services {
             guard let provider = provider(of: service) else { continue }
             byProvider[provider, default: []].append(service)
         }
-        guard !byProvider.isEmpty else {
-            return .includeAll
+        // C120: 已知启用集合时与 Windows `quota_policy::plan` 同口径 —— 逐个启用 provider
+        // 判定, 无历史 service 的 (新启用 / 首次采集) 必须首查; 未启用 provider 的残留
+        // service 不参与判定. 用例见 tests/fixtures/quota-policy-parity/cases.json.
+        let candidates: Set<SubscriptionProviderID>
+        if let enabledProviders {
+            candidates = enabledProviders
+        } else {
+            guard !byProvider.isEmpty else {
+                return .includeAll
+            }
+            candidates = Set(byProvider.keys)
         }
 
         var skip = Set<SubscriptionProviderID>()
         var rateLimited = Set<SubscriptionProviderID>()
         var due = Set<SubscriptionProviderID>()
 
-        for (provider, providerServices) in byProvider {
+        for provider in candidates {
+            let providerServices = byProvider[provider] ?? []
+            if providerServices.isEmpty {
+                due.insert(provider)
+                continue
+            }
             let cooling = !bypassCooldown && isCooling(
                 providerServices,
                 now: now,
@@ -159,10 +175,10 @@ package enum QuotaRefreshPolicy {
         }
 
         // Codex 不跳过; include 只需判断是否有任何 provider 需要查询.
-        let include = forceRefresh || !due.isEmpty || due.contains(.codex)
+        let include = forceRefresh || !due.isEmpty
         if !include {
             // 全部 provider 仍新鲜: 本地专用 run, 回填全部旧 service.
-            skip = Set(byProvider.keys)
+            skip = candidates
         }
         return QuotaRunPolicy(
             includeExternalQuotas: include,
@@ -246,7 +262,7 @@ package enum QuotaRefreshPolicy {
     }
 
     /// 最近一次真实额度尝试: `quotaAttemptedAt` 优先, 旧 artifact 回退到
-    /// capturedAt; 失败 service 无 capturedAt 时回退到 artifact generatedAt.
+    /// capturedAt; 失败 service 无 capturedAt 时回退到 rateLimitedAt.
     package static func attemptAt(_ service: JSONValue) -> Date? {
         guard let object = service.objectValue else { return nil }
         if let value = parseISODate(object["quotaAttemptedAt"]?.stringIdValue) {
@@ -255,8 +271,9 @@ package enum QuotaRefreshPolicy {
         if let value = parseISODate(object["capturedAt"]?.stringIdValue) {
             return value
         }
+        // C120: 与 annotateCurrent 的失败口径 (error / partial / unavailable) 一致
         let status = object["status"]?.stringIdValue
-        if status == "error" || status == "partial" {
+        if status == "error" || status == "partial" || status == "unavailable" {
             return parseISODate(object["rateLimitedAt"]?.stringIdValue)
         }
         return nil
