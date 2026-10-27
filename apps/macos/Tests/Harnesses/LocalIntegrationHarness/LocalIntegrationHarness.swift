@@ -42,12 +42,15 @@ private struct IsolatedRunInputProvider: CollectorRunInputProviding {
                 "timezone": .string("Asia/Shanghai"),
                 "capabilities": .array([
                     .string("localSessions"),
-                    .string("localPricing"),
                 ]),
             ],
+            // 未授予 externalQuotas: 凭证只随请求传入、不被查询, 用于断言秘密不外泄
             credentials: [
-                "providerEnv": .object([
-                    "BRUCE_FIXTURE_TOKEN": .string(secret),
+                "kimiQuotaAccounts": .object([
+                    "fixture": .object([
+                        "display_name": .string("Fixture"),
+                        "api_key": .string(secret),
+                    ]),
                 ]),
             ]
         )

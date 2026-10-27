@@ -12,8 +12,8 @@ use serde_json::{Map, Value};
 use crate::credentials::CredentialPayloads;
 use crate::settings::AppSettings;
 
-/// 本地会话扫描 + 本地定价; 出站额度 (externalQuotas) 仅在存在凭证时启用。
-const LOCAL_CAPABILITIES: [&str; 2] = ["localSessions", "localPricing"];
+/// 本地会话扫描 (计价随之执行); 出站额度 (externalQuotas) 仅在存在凭证时启用。
+const LOCAL_CAPABILITIES: [&str; 1] = ["localSessions"];
 const EXTERNAL_QUOTAS_CAPABILITY: &str = "externalQuotas";
 
 /// 构造一次采集请求 (窗口 182 天对齐 mac CollectorRunInput 半年口径: 14 日柱状图
@@ -193,8 +193,8 @@ pub fn run_configured_collection(
 
 /// 定向刷新单个订阅 Provider 的请求 (mac `CollectorRunInput.scopedRunInput` 同契约):
 /// 只装配目标 Provider 的凭证 (含 Claude/Grok 的 OAuth 与 providerMeta), capabilities
-/// 仅 `externalQuotas`, 并标记 `subscriptionQuotaOnly` / `subscriptionProviders`;
-/// 不携带本机会话、本地定价与 `days` —— 定向刷新不重扫会话、不重算成本。
+/// 仅 `externalQuotas`; 不携带本机会话、价格覆盖与 `days` —— 定向刷新不重扫会话、
+/// 不重算成本 (C123 起不再发送从未被读取的 subscriptionQuotaOnly / subscriptionProviders)。
 /// fail-closed: 未授权 / 未启用 / 无凭证一律返回错误, 不启动采集, 不伪造成功。
 pub fn build_scoped_request(
     now: chrono::DateTime<Local>,
@@ -223,13 +223,6 @@ pub fn build_scoped_request(
     request
         .context
         .insert("capabilities".into(), serde_json::json!(["externalQuotas"]));
-    request
-        .context
-        .insert("subscriptionQuotaOnly".into(), Value::Bool(true));
-    request.context.insert(
-        "subscriptionProviders".into(),
-        serde_json::json!([provider]),
-    );
     Ok(request)
 }
 

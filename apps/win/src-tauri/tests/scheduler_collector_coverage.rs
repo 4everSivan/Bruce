@@ -136,7 +136,7 @@ fn credentials_injection_enables_external_quotas_only_when_present() {
         .iter()
         .map(|value| value.as_str().unwrap())
         .collect();
-    assert_eq!(capabilities, vec!["localSessions", "localPricing"]);
+    assert_eq!(capabilities, vec!["localSessions"]);
     assert!(empty.credentials.is_empty());
 
     let mut credentials = bruce_win_lib::credentials::CredentialPayloads::new();
@@ -144,7 +144,10 @@ fn credentials_injection_enables_external_quotas_only_when_present() {
         "kimiQuotaAccounts".to_owned(),
         json!([{ "accountID": "a1", "apiKey": "sk-test" }]),
     );
-    credentials.insert("providerEnv".to_owned(), json!({"batchMode": true}));
+    credentials.insert(
+        "providerMeta".to_owned(),
+        json!({"claude": {"enabled": true}}),
+    );
     let request = bruce_win_lib::collector::build_local_request(chrono::Local::now(), &credentials);
     let capabilities: Vec<&str> = request.context["capabilities"]
         .as_array()
@@ -156,14 +159,14 @@ fn credentials_injection_enables_external_quotas_only_when_present() {
         capabilities.contains(&"externalQuotas"),
         "有凭证即启用出站额度"
     );
-    assert_eq!(capabilities.len(), 3, "且不重复注入本地能力");
+    assert_eq!(capabilities.len(), 2, "且不重复注入本地能力");
     assert_eq!(
         request.credentials["kimiQuotaAccounts"],
         credentials["kimiQuotaAccounts"]
     );
     assert_eq!(
-        request.credentials["providerEnv"],
-        json!({"batchMode": true})
+        request.credentials["providerMeta"],
+        json!({"claude": {"enabled": true}})
     );
 }
 

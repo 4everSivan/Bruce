@@ -7,7 +7,7 @@ import Foundation
 public enum InjectionKind: Sendable, Equatable {
     /// 顶层 `kimiQuotaAccounts` = {accountID: {api_key}} 映射
     case kimiAPIKeyEnv
-    /// `providerEnv.deepseek.ANTHROPIC_AUTH_TOKEN` = API key 字符串
+    /// 顶层 `deepseekQuotaAccounts` = {accountID: {api_key}} 映射
     case deepseekAPIKeyEnv
     /// `providerMeta.volcengine.usage_script.{accessKeyId,secretAccessKey}`
     case volcengineUsageScriptKeys

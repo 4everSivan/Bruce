@@ -30,14 +30,13 @@ const ALLOWED_CONTEXT_FIELDS: &[&str] = &[
     "capabilities",
     "codexQuotaRetryOnly",
     "codexQuotaAccountOrder",
-    "subscriptionQuotaOnly",
-    "subscriptionProviders",
     "localUsageOnly",
     "quotaSkipProviders",
     "pricingOverrides",
 ];
 
-const ALLOWED_CAPABILITIES: &[&str] = &["localSessions", "localPricing", "externalQuotas"];
+/// C123: `localPricing` 已移除 —— 计价恒随本机统计执行, 该能力从未被 collector 读取。
+const ALLOWED_CAPABILITIES: &[&str] = &["localSessions", "externalQuotas"];
 
 /// 凭证字段白名单; Windows/mac 壳注入 BridgeRequest.credentials 时共用,
 /// 暴露为公共常量避免各端复制漂移。
@@ -55,7 +54,6 @@ pub const ALLOWED_CREDENTIAL_FIELDS: &[&str] = &[
     "stepfunQuotaAccounts",
     "jevQuotaAccounts",
     "clineQuotaAccounts",
-    "providerEnv",
     "providerMeta",
 ];
 
@@ -500,6 +498,33 @@ mod tests {
         value["context"] = serde_json::json!({"capabilities": ["localSessions"]});
         value["credentials"]["access_token"] = Value::String("fixture".to_owned());
         let response = run_bytes(serde_json::to_vec(&value).unwrap().as_slice());
+        assert_eq!(response.diagnostics[0].code, "BRIDGE_CREDENTIAL_SCOPE");
+    }
+
+    /// C123: 从未被 collector 读取的契约字段已退役; 两端停止发送, Bridge 显式拒绝,
+    /// 防止再被当作有效开关 (定向刷新只靠「不带 localSessions + 只装配目标凭证」)。
+    #[test]
+    fn retired_contract_fields_are_rejected() {
+        let base: Value = serde_json::from_str(&request()).unwrap();
+        for (key, value) in [
+            ("subscriptionQuotaOnly", json!(true)),
+            ("subscriptionProviders", json!(["kimi"])),
+        ] {
+            let mut request = base.clone();
+            request["context"][key] = value;
+            let response = run_bytes(&serde_json::to_vec(&request).unwrap());
+            assert_eq!(
+                response.diagnostics[0].code, "BRIDGE_INVALID_REQUEST",
+                "{key}"
+            );
+        }
+        let mut request = base.clone();
+        request["context"]["capabilities"] = json!(["localSessions", "localPricing"]);
+        let response = run_bytes(&serde_json::to_vec(&request).unwrap());
+        assert_eq!(response.diagnostics[0].code, "BRIDGE_UNKNOWN_CAPABILITY");
+        let mut request = base;
+        request["credentials"]["providerEnv"] = json!({"deepseek": "fixture"});
+        let response = run_bytes(&serde_json::to_vec(&request).unwrap());
         assert_eq!(response.diagnostics[0].code, "BRIDGE_CREDENTIAL_SCOPE");
     }
 

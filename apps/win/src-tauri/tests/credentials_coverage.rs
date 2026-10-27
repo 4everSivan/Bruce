@@ -182,11 +182,33 @@ fn unicode_and_large_payloads_round_trip() {
         json!({"国际站账号":{"display_name":"含中文/emoji 🎉/换行\n说明","token":"fixture-token","site":"global"}}),
     );
     payloads.insert(
-        "providerEnv".to_owned(),
+        "providerMeta".to_owned(),
         json!({"largeText":"测试".repeat(200)}),
     );
     save_credentials(&root, &payloads).unwrap();
     assert_eq!(load_credentials(&root), payloads);
+}
+
+/// C123: providerEnv 已从凭据白名单退役; 旧版本落盘的该字段在读取时静默丢弃,
+/// 不牵连其它字段, 也不阻断后续保存。
+#[test]
+fn legacy_provider_env_entries_are_dropped_without_affecting_other_fields() {
+    let root = temp_root();
+    fs::write(
+        root.join("credentials.json"),
+        serde_json::to_vec(&json!({
+            "providerEnv": {"deepseek": "legacy"},
+            "kimiQuotaAccounts": {"a1": {"display_name": "Kimi", "api_key": "sk-test"}}
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let loaded = load_credentials(&root);
+    assert!(!loaded.contains_key("providerEnv"));
+    assert!(loaded.contains_key("kimiQuotaAccounts"));
+    assert!(validate_credential_payload("providerEnv", &json!({"deepseek": "x"})).is_err());
+    save_credentials(&root, &loaded).unwrap();
+    assert_eq!(load_credentials(&root), loaded);
 }
 
 #[test]

@@ -545,7 +545,6 @@ struct CollectorRunnerHarness {
                 "days": .integer(14),
                 "capabilities": .array([
                     .string("localSessions"),
-                    .string("localPricing"),
                 ]),
             ],
             credentials: [:]
@@ -722,8 +721,8 @@ struct CollectorRunnerHarness {
 
         let input = try await provider.runInput(for: .agentUsage)
         try runnerExpect(
-            capabilityStrings(input) == ["localSessions", "localPricing"],
-            "未配置 provider 时必须只有 localSessions/localPricing"
+            capabilityStrings(input) == ["localSessions"],
+            "未配置 provider 时必须只有 localSessions"
         )
         let nowParser = ISO8601DateFormatter()
         nowParser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

@@ -100,13 +100,6 @@ pub fn validate_credential_payload(field: &str, payload: &Value) -> Result<(), S
     if object.len() > 64 {
         return Err("凭证账号数量超过上限".to_owned());
     }
-    if field == "providerEnv" {
-        return if object.values().all(Value::is_string) {
-            Ok(())
-        } else {
-            Err("Provider 环境值必须为字符串".to_owned())
-        };
-    }
     if matches!(field, "providerMeta" | "claudeOAuth" | "grokOAuth") {
         return Ok(());
     }

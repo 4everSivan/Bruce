@@ -143,8 +143,8 @@ public struct DependencyProbe: Equatable, Sendable {
 // MARK: - CollectorCapability
 
 /// Collector 能力白名单. Bridge 根据已授权能力决定是否执行特定操作.
+/// C123: `localPricing` 已退役 (计价恒随本机统计执行, collector 从未读取该能力).
 public enum CollectorCapability: String, Codable, Sendable {
     case localSessions
-    case localPricing
     case externalQuotas
 }

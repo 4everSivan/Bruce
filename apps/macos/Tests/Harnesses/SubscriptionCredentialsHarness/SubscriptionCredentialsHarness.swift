@@ -68,7 +68,34 @@ struct SubscriptionCredentialsHarness {
         try providerAccountStoreCorruptedIndexFailsClosed()
         try providerAccountStoreCorruptedRecordFailsClosed()
         try enabledQuotaProvidersFollowEnabledFlag()
-        print("Subscription credentials tests passed: 37")
+        try await scopedInputCarriesOnlyLiveContractFields()
+        print("Subscription credentials tests passed: 38")
+    }
+
+    /// C123: 定向刷新输入只携带 capabilities (= externalQuotas) 与目标凭证, 不再发送
+    /// 已退役的 subscriptionQuotaOnly / subscriptionProviders (Bridge 会拒绝).
+    private static func scopedInputCarriesOnlyLiveContractFields() async throws {
+        let goJSON = #"{"auth":"Fe26.2**abc","workspaceId":"wrk_01"}"#
+        let (provider, _, _) = try makeProvider(
+            enabled: [.opencodeGo],
+            credentials: [SubscriptionCredentialAccount.opencodeGoOAuth: goJSON]
+        )
+        let input = try await provider.scopedRunInput(
+            for: .agentUsage,
+            providers: [.opencodeGo]
+        )
+        try credentialsExpect(
+            input.context.keys.sorted() == ["capabilities"],
+            "定向输入 context 只含 capabilities: \(input.context.keys.sorted())"
+        )
+        try credentialsExpect(
+            input.context["capabilities"] == .array([.string("externalQuotas")]),
+            "定向刷新只授予 externalQuotas"
+        )
+        try credentialsExpect(
+            input.credentials["opencodeGoQuotaAccounts"] != nil,
+            "目标凭证应注入"
+        )
     }
 
     /// C120: 额度策略的启用集合与凭证装配同一判据 (enabled == true), 停用条目不计入.

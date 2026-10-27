@@ -67,14 +67,18 @@ fn scoped_request_carries_only_the_target_provider_and_quota_capability() {
         build_scoped_request(chrono::Local::now(), &credentials(), &settings, "cline").unwrap();
     assert_eq!(request.schema_version, BRIDGE_SCHEMA_VERSION);
     assert_eq!(request.context["capabilities"], json!(["externalQuotas"]));
-    assert_eq!(request.context["subscriptionQuotaOnly"], json!(true));
-    assert_eq!(request.context["subscriptionProviders"], json!(["cline"]));
     assert_eq!(
         request.credentials.keys().collect::<Vec<_>>(),
         vec!["clineQuotaAccounts"],
         "只装配目标 Provider 凭证"
     );
-    for absent in ["days", "pricingOverrides", "codexQuotaAccountOrder"] {
+    for absent in [
+        "days",
+        "pricingOverrides",
+        "codexQuotaAccountOrder",
+        "subscriptionQuotaOnly",
+        "subscriptionProviders",
+    ] {
         assert!(
             request.context.get(absent).is_none(),
             "定向刷新不得携带 {absent}"

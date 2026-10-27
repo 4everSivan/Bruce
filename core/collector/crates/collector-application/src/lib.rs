@@ -1076,7 +1076,7 @@ mod tests {
     }
 
     fn local_or_skipped_request(context_extra: serde_json::Value) -> BridgeRequest {
-        let mut request = request(&["localSessions", "localPricing", "externalQuotas"]);
+        let mut request = request(&["localSessions", "externalQuotas"]);
         request.context.insert(
             "home".to_owned(),
             json!(std::env::temp_dir().to_string_lossy()),

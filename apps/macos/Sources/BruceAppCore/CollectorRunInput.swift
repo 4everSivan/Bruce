@@ -74,8 +74,8 @@ protocol CollectorRunInputProviding {
     ) async throws -> CollectorRunInput
 
     /// 定向刷新运行输入: 只注入目标 Provider 的 `*QuotaAccounts` / `providerMeta`
-    /// 与对应 Bridge 注入键, 并标记 `subscriptionQuotaOnly` / `subscriptionProviders`.
-    /// 不携带 localSessions / localPricing, 不请求 days; 目标集合非法或凭证未装配
+    /// 与对应 Bridge 注入键; 能力仅 externalQuotas, 不携带 localSessions, 不请求 days
+    /// (collector 据此只查询注入的目标 provider). 目标集合非法或凭证未装配
     /// 时抛 `missingAuthorization` (不启动 Collector, 不伪造成功).
     func scopedRunInput(
         for module: CollectorModule,
@@ -135,7 +135,7 @@ package protocol CodexMigrationExecuting: AnyObject {
 }
 
 /// 基于 Onboarding 配置和 Keychain 的运行输入提供器.
-/// Agent: 授予 localSessions/localPricing; 统一授权已确认且至少一个订阅
+/// Agent: 授予 localSessions; 统一授权已确认且至少一个订阅
 /// provider enabled 且 Keychain 凭证完整时追加 externalQuotas, 并把凭证
 /// 装配进 Rust Bridge 注入键 (对照 Rust Bridge allowlist).
 /// Codex: 只注入 token manager 决议出的短期 access token
@@ -244,9 +244,10 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
         }
     }
 
-    /// 定向刷新运行输入 (任务 1.3): 只装配目标 Provider 的凭证/ProviderMeta,
-    /// 标记 `subscriptionQuotaOnly` / `subscriptionProviders`; 不携带 localSessions
-    /// / localPricing / days. 目标非法或凭证未装配抛 missingAuthorization (fail-closed).
+    /// 定向刷新运行输入 (任务 1.3): 只装配目标 Provider 的凭证/ProviderMeta, 能力仅
+    /// externalQuotas, 不携带 localSessions / days (C123 起不再发送从未被读取的
+    /// subscriptionQuotaOnly / subscriptionProviders). 目标非法或凭证未装配抛
+    /// missingAuthorization (fail-closed).
     func scopedRunInput(
         for module: CollectorModule,
         providers: Set<SubscriptionProviderID>
@@ -299,11 +300,6 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
             "capabilities": .array([
                 .string(CollectorCapability.externalQuotas.rawValue),
             ]),
-            "subscriptionQuotaOnly": .boolean(true),
-            "subscriptionProviders": .array(
-                providers.sorted { $0.rawValue < $1.rawValue }
-                    .map { .string($0.rawValue) }
-            ),
         ]
         // codex 目标: 携带与 codexQuotaAccounts 键一致的 account order.
         if let codex = assembled["codexQuotaAccounts"],
@@ -406,7 +402,6 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
         )
         var capabilities: [JSONValue] = [
             .string(CollectorCapability.localSessions.rawValue),
-            .string(CollectorCapability.localPricing.rawValue),
         ]
         var credentials: [String: JSONValue] = [:]
         // 182 天聚合窗口: 柱状图仍取末 14 天 (映射层 suffix), 全量 daily
