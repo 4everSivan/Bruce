@@ -17,7 +17,8 @@
         "C106",
         "C114",
         "C121",
-        "C125"
+        "C125",
+        "C128"
       ]
     },
     "MenuBarIndicator": {
@@ -1318,6 +1319,15 @@
       "topic": "SubscriptionQuota",
       "version": "0.13.1",
       "file": "docs/devel/change/C127.json"
+    },
+    "C128": {
+      "title": "Windows runtime_core.rs 按职责拆分为 activity / geometry / status 子模块（纯移动，公开路径不变）",
+      "type": "Refactor",
+      "status": "in_progress",
+      "branch": "fix/C128-split-runtime-core",
+      "topic": "SystemOverview",
+      "version": "0.13.1",
+      "file": "docs/devel/change/C128.json"
     }
   }
 }

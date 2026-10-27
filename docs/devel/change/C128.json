@@ -1,0 +1,105 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C128",
+  "title": "Windows runtime_core.rs 按职责拆分为 activity / geometry / status 子模块（纯移动，公开路径不变）",
+  "version": "0.13.1",
+  "type": "Refactor",
+  "status": "in_progress",
+  "branch": "fix/C128-split-runtime-core",
+  "is_hotfix": false,
+
+  "target": {
+    "module": "apps/win src-tauri",
+    "component": "runtime_core.rs",
+    "design_doc": "docs/devel/design/00-系统总体设计.md",
+    "design_topic": "SystemOverview"
+  },
+
+  "why": "2026-10-25 架构审查：design/00 C053 规定单文件超过约 1,500 行或承载 3 个以上独立职责簇时须按单一职责切分。apps/win/src-tauri/src/runtime_core.rs 已达 1,639 行，承载四个互不依赖的职责簇：刷新 / 窗口边界 / 快照合并与导出策略、看板窗口激活与全局快捷键状态机（C099）、看板与预览卡屏幕几何（任务栏边缘判定、贴托盘定位）、顶部四色状态灯判定（C100）。",
+
+  "precheck": {
+    "description": "确认改动前 runtime_core.rs 超出规模边界且含四个职责簇",
+    "command": "git show e018e85:apps/win/src-tauri/src/runtime_core.rs | wc -l; git show HEAD:apps/win/src-tauri/src/runtime_core.rs | grep -n '^pub enum WindowAction\\|^pub struct MonitorBounds\\|^// MARK: - 顶部四色状态灯判定'",
+    "expected": "超过 1,500 行，且窗口激活、几何、状态灯三个簇各有起点（冗余结构存在）",
+    "is_completed": false,
+    "evidence": "2026-10-26 预检实测：e018e85 的 runtime_core.rs 1,634 行、本分支拆分前 1,639 行；第 841 行 `pub enum WindowAction`（激活与快捷键簇）、第 1049 行 `pub struct MonitorBounds`（几何簇）、第 1452 行 `// MARK: - 顶部四色状态灯判定 (C100)`（状态灯簇）—— 超出 C053 边界。"
+  },
+
+  "callback": {
+    "before": [
+      "git checkout -b fix/C128-split-runtime-core  # 叠加在 fix/C127-credential-store-wording 之上"
+    ],
+    "after": [
+      "cargo fmt --manifest-path apps/win/src-tauri/Cargo.toml --all -- --check",
+      "cargo clippy --manifest-path apps/win/src-tauri/Cargo.toml --all-targets -- -D warnings",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "node --test apps/win/tests/*.test.mjs",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C128 --to verified --record"
+    ]
+  },
+
+  "changes": [
+    {
+      "scope": "runtime_core 结构",
+      "before": "单文件 runtime_core.rs 1,639 行",
+      "after": "runtime_core.rs 847 行（刷新 / 窗口边界 / 快照 / 导出策略）+ runtime_core/activity.rs 208 行（WindowAction … replace_hotkey）+ runtime_core/geometry.rs 406 行（MonitorBounds … compute_preview_geometry）+ runtime_core/status.rs 192 行（StatusTone … dashboard_status_from_panel）；父模块 `mod` + `pub use` 三个子模块，crate::runtime_core::* 与 bruce_win_lib::runtime_core::* 公开路径不变；子模块只按需导入（仅 status.rs 需 serde_json::Value）",
+      "impact": "单文件回到规模边界内，行为不变"
+    }
+  ],
+
+  "design": {
+    "doc": "docs/devel/design/00-系统总体设计.md",
+    "topic": "SystemOverview",
+    "modified": true,
+    "rule_diff": {
+      "before": "C053 规则示例只列 collector 与 macOS 拆分",
+      "after": "C053 规则示例补 Windows 端 runtime_core/ 的 activity.rs / geometry.rs / status.rs（父模块 pub use 保持路径）；design/00、design/05 登记 C128 变更行"
+    }
+  },
+
+  "verification": {
+    "result": null,
+    "run_id": "local-20261026-08",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "src-tauri fmt / clippy / 全部测试与 Windows 前端测试全绿，用例数不变，verify-local 退出码 0",
+        "false_if": "任一失败或用例数变化",
+        "evidence": "2026-10-26: apps/win/src-tauri cargo fmt --check 通过、clippy --all-targets -D warnings 退出码 0、cargo test 223 passed / 0 failed（与 C127 相同）；node --test apps/win/tests/*.test.mjs 97 pass / 0 fail；cargo build 无告警；SDKROOT=MacOSX26.5 zsh scripts/verify-local.sh 退出码 0（local/logs/c128-verify.log）。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "拆分为逐字移动：三个子模块正文均逐字出现在拆分前的 runtime_core.rs 中，剩余部分与原文件去掉三段后的内容一致",
+        "false_if": "任何一段代码在移动中被改写",
+        "evidence": "2026-10-26: 以 node 脚本对比 git show HEAD 的 runtime_core.rs：activity / geometry / status 三个文件去掉新增的 //! 说明与 use 行后均逐字出现在原文件中；剩余的 runtime_core.rs 去掉新增的 mod / pub use 块后，与原文件删除三段后的内容在折叠连续空行后完全一致。纯结构重构，无可观测行为差异。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "集成测试与其他模块经原路径访问的类型 / 函数全部可用，无新增 allow",
+        "false_if": "需改动调用方路径或新增 lint 豁免",
+        "evidence": "2026-10-26: tests/ 下集成用例与 tray_icon_renderer / scheduler / lib.rs 中对 runtime_core::{resolve_dashboard_status, dashboard_status_from_panel, DashboardActivityState, compute_dashboard_geometry, compute_preview_geometry, …} 的引用未作任何修改即编译通过；子模块使用显式导入，无 #[allow] 豁免（拆分初稿的 `#[allow(unused_imports)] use super::*` 已改为显式导入）。",
+        "result": true
+      }
+    ]
+  },
+
+  "rejections": [],
+
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

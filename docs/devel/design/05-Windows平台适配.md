@@ -261,6 +261,7 @@ Windows Tauri 后端 (Rust)
 | C118 | 缺陷修复 | 限流与 provider 判定改读显式字段 | `quota_policy::is_rate_limited` 优先 service `failureKind`、`runtime_core::provider_id` 优先 service `provider`，字段缺省的旧 artifact 才回退 note 文案与 id 前缀（见规则 19） |
 | C120 | 缺陷修复 | 额度门禁双端共享对拍 | mac 改为按启用集合判定后与 `quota_policy::plan` 同口径，新增 `tests/fixtures/quota-policy-parity/cases.json` 由双端测试共同消费（见规则 19） |
 | C123 | 契约清理 | 停发从未被读取的请求字段 | 本地请求 capabilities 仅 `localSessions`（+ 有凭证时 `externalQuotas`），定向请求不再标记 `subscriptionQuotaOnly` / `subscriptionProviders`，`providerEnv` 退出凭据白名单（旧文件中的该字段读取时丢弃，见 design/01 规则 3） |
+| C128 | 结构重构 | `runtime_core.rs` 按职责拆分 | 拆出 `runtime_core/activity.rs` / `geometry.rs` / `status.rs`，经 `pub use` 保持 `runtime_core::*` 公开路径，行为不变（见 design/00 C053 纪律） |
 | C109 | 缺陷修复 | 出站网络 command 移出主线程 | `codex_device_start` / `codex_device_poll` / `verify_subscription` 改为 async + `off_main_thread`，`ShellExecuteW` 派回主线程；源码级守卫用例锁定（见规则 31） |
 | 暂无增量变更 | - | 初始基线定稿 | Windows 适配初始设计（Tauri 2 / 首版全量 / Rust 视图模型+对拍） |
 
