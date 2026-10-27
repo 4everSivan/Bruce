@@ -156,7 +156,8 @@
         "C117",
         "C119",
         "C122",
-        "C123"
+        "C123",
+        "C126"
       ]
     },
     "AgentAnalytics": {
@@ -1298,6 +1299,15 @@
       "topic": "SystemOverview",
       "version": "0.13.1",
       "file": "docs/devel/change/C125.json"
+    },
+    "C126": {
+      "title": "不走缓存的扫描函数降为测试专用参照实现：collector-local 对外只保留缓存扫描",
+      "type": "Refactor",
+      "status": "in_progress",
+      "branch": "fix/C126-uncached-scanners-test-only",
+      "topic": "TokenUsage",
+      "version": "0.13.1",
+      "file": "docs/devel/change/C126.json"
     }
   }
 }
