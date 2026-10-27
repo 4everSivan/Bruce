@@ -2,7 +2,7 @@
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C127",
   "title": "mac 凭据存储措辞更正：自有存储统一称「本机凭据文件」，不再提示去 Keychain 查找",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "type": "BugFix",
   "status": "closed",
   "branch": "fix/C127-credential-store-wording",

@@ -2,7 +2,7 @@
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C105",
   "title": "补发版前置核实规则：签名 secrets 须以 gh secret list 实测为准（原 C104 撞号改号；T09 声称已写入但实际为空致 v0.13.0 首发失败）",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "type": "BugFix",
   "status": "closed",
   "branch": "main",

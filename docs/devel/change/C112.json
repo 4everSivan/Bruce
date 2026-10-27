@@ -2,7 +2,7 @@
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C112",
   "title": "设置窗口交互与感知升级：分段选择器高对比选中浮岛、开关状态文字居左统一对齐、Agent用量更名模型用量",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "type": "BugFix",
   "status": "closed",
   "branch": "fix/C112-settings-controls-and-naming",

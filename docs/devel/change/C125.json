@@ -2,7 +2,7 @@
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C125",
   "title": "全景文档核对：README 版本与特性对齐 v0.13.0，设计索引日期与刷新间隔可选值去漂移",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "type": "BugFix",
   "status": "closed",
   "branch": "fix/C125-readme-drift",

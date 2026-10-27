@@ -2,7 +2,7 @@
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C114",
   "title": "CI/CD 与本地构建支持生成 Bruce-<version>.dmg 磁盘镜像作为 Release 附加资产",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "type": "Enhancement",
   "status": "closed",
   "branch": "feat/C114-release-dmg",

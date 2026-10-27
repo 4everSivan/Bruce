@@ -2,7 +2,7 @@
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C118",
   "title": "订阅服务显式下发 provider 与 failureKind：两端不再按 id 前缀推断归属、不再嗅探 note 文案判定 429",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "type": "BugFix",
   "status": "closed",
   "branch": "fix/C118-service-provider-failure-kind",

@@ -1115,7 +1115,7 @@
       "status": "closed",
       "branch": "fix/C104-verify-speedup",
       "topic": "SystemOverview",
-      "version": "0.13.1",
+      "version": "0.14.0",
       "file": "docs/devel/change/C104.json"
     },
     "C105": {
@@ -1124,7 +1124,7 @@
       "status": "closed",
       "branch": "main",
       "topic": "SoftwareUpdate",
-      "version": "0.13.1",
+      "version": "0.14.0",
       "file": "docs/devel/change/C105.json"
     },
     "C106": {
@@ -1133,7 +1133,7 @@
       "status": "closed",
       "branch": "fix/C106-validday-formatter",
       "topic": "SystemOverview",
-      "version": "0.13.1",
+      "version": "0.14.0",
       "file": "docs/devel/change/C106.json"
     },
     "C107": {
@@ -1142,7 +1142,7 @@
       "status": "closed",
       "branch": "fix/C107-claude-pricing",
       "topic": "TokenUsage",
-      "version": "0.13.1",
+      "version": "0.14.0",
       "file": "docs/devel/change/C107.json"
     },
     "C108": {
@@ -1151,7 +1151,7 @@
       "status": "closed",
       "branch": "fix/C108-pricing-single-source",
       "topic": "PricingEngine",
-      "version": "0.13.1",
+      "version": "0.14.0",
       "file": "docs/devel/change/C108.json"
     },
     "C109": {
@@ -1160,7 +1160,7 @@
       "status": "closed",
       "branch": "fix/C109-win-async-network",
       "topic": "WindowsCompat",
-      "version": "0.13.1",
+      "version": "0.14.0",
       "file": "docs/devel/change/C109.json"
     },
     "C110": {
@@ -1169,7 +1169,7 @@
       "status": "closed",
       "branch": "fix/C110-scan-prefilter-parallel",
       "topic": "TokenUsage",
-      "version": "0.13.1",
+      "version": "0.14.0",
       "file": "docs/devel/change/C110.json"
     },
     "C111": {
@@ -1178,7 +1178,7 @@
       "status": "closed",
       "branch": "fix/C111-settings-floating-error-toast",
       "topic": "PricingEngine",
-      "version": "0.13.1",
+      "version": "0.14.0",
       "file": "docs/devel/change/C111.json"
     },
     "C112": {
@@ -1187,7 +1187,7 @@
       "status": "closed",
       "branch": "fix/C112-settings-controls-and-naming",
       "topic": "PricingEngine",
-      "version": "0.13.1",
+      "version": "0.14.0",
       "file": "docs/devel/change/C112.json"
     },
     "C113": {
@@ -1196,7 +1196,7 @@
       "status": "closed",
       "branch": "fix/C113-software-update-cleanup",
       "topic": "SoftwareUpdate",
-      "version": "0.13.1",
+      "version": "0.14.0",
       "file": "docs/devel/change/C113.json"
     },
     "C114": {
@@ -1205,7 +1205,7 @@
       "status": "closed",
       "branch": "feat/C114-release-dmg",
       "topic": "SystemOverview",
-      "version": "0.13.1",
+      "version": "0.14.0",
       "file": "docs/devel/change/C114.json"
     },
     "C115": {
@@ -1214,7 +1214,7 @@
       "status": "closed",
       "branch": "fix/C115-tray-preview-panel-keys",
       "topic": "WindowsCompat",
-      "version": "0.13.1",
+      "version": "0.14.0",
       "file": "docs/devel/change/C115.json"
     },
     "C116": {
@@ -1223,7 +1223,7 @@
       "status": "closed",
       "branch": "fix/C116-window-independent-jsonl-cache",
       "topic": "TokenUsage",
-      "version": "0.13.1",
+      "version": "0.14.0",
       "file": "docs/devel/change/C116.json"
     },
     "C117": {
@@ -1232,7 +1232,7 @@
       "status": "closed",
       "branch": "fix/C117-codex-file-cache",
       "topic": "TokenUsage",
-      "version": "0.13.1",
+      "version": "0.14.0",
       "file": "docs/devel/change/C117.json"
     },
     "C118": {
@@ -1241,7 +1241,7 @@
       "status": "closed",
       "branch": "fix/C118-service-provider-failure-kind",
       "topic": "SubscriptionQuota",
-      "version": "0.13.1",
+      "version": "0.14.0",
       "file": "docs/devel/change/C118.json"
     },
     "C119": {
@@ -1250,7 +1250,7 @@
       "status": "closed",
       "branch": "fix/C119-orca-agent-attribution",
       "topic": "TokenUsage",
-      "version": "0.13.1",
+      "version": "0.14.0",
       "file": "docs/devel/change/C119.json"
     },
     "C120": {
@@ -1259,7 +1259,7 @@
       "status": "closed",
       "branch": "fix/C120-quota-policy-parity",
       "topic": "SubscriptionQuota",
-      "version": "0.13.1",
+      "version": "0.14.0",
       "file": "docs/devel/change/C120.json"
     },
     "C121": {
@@ -1268,7 +1268,7 @@
       "status": "closed",
       "branch": "fix/C121-artifact-store-io",
       "topic": "SystemOverview",
-      "version": "0.13.1",
+      "version": "0.14.0",
       "file": "docs/devel/change/C121.json"
     },
     "C122": {
@@ -1277,7 +1277,7 @@
       "status": "closed",
       "branch": "fix/C122-execution-permits",
       "topic": "TokenUsage",
-      "version": "0.13.1",
+      "version": "0.14.0",
       "file": "docs/devel/change/C122.json"
     },
     "C123": {
@@ -1286,7 +1286,7 @@
       "status": "closed",
       "branch": "fix/C123-dead-contract-fields",
       "topic": "TokenUsage",
-      "version": "0.13.1",
+      "version": "0.14.0",
       "file": "docs/devel/change/C123.json"
     },
     "C124": {
@@ -1295,7 +1295,7 @@
       "status": "closed",
       "branch": "fix/C124-stale-cc-switch-text",
       "topic": "SubscriptionQuota",
-      "version": "0.13.1",
+      "version": "0.14.0",
       "file": "docs/devel/change/C124.json"
     },
     "C125": {
@@ -1304,7 +1304,7 @@
       "status": "closed",
       "branch": "fix/C125-readme-drift",
       "topic": "SystemOverview",
-      "version": "0.13.1",
+      "version": "0.14.0",
       "file": "docs/devel/change/C125.json"
     },
     "C126": {
@@ -1313,7 +1313,7 @@
       "status": "closed",
       "branch": "fix/C126-uncached-scanners-test-only",
       "topic": "TokenUsage",
-      "version": "0.13.1",
+      "version": "0.14.0",
       "file": "docs/devel/change/C126.json"
     },
     "C127": {
@@ -1322,7 +1322,7 @@
       "status": "closed",
       "branch": "fix/C127-credential-store-wording",
       "topic": "SubscriptionQuota",
-      "version": "0.13.1",
+      "version": "0.14.0",
       "file": "docs/devel/change/C127.json"
     },
     "C128": {
@@ -1331,7 +1331,7 @@
       "status": "closed",
       "branch": "fix/C128-split-runtime-core",
       "topic": "SystemOverview",
-      "version": "0.13.1",
+      "version": "0.14.0",
       "file": "docs/devel/change/C128.json"
     },
     "C129": {
@@ -1340,7 +1340,7 @@
       "status": "closed",
       "branch": "fix/C129-release-smoke-cache-selector",
       "topic": "TokenUsage",
-      "version": "0.13.1",
+      "version": "0.14.0",
       "file": "docs/devel/change/C129.json"
     }
   }

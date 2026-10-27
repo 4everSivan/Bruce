@@ -2,7 +2,7 @@
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C113",
   "title": "修复软件更新旧版本信息残留：Windows跳过版本追平自动清除、macOS启动即时比对与更新残留兜底治理",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "type": "BugFix",
   "status": "closed",
   "branch": "fix/C113-software-update-cleanup",

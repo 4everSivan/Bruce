@@ -2,7 +2,7 @@
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C122",
   "title": "额度账号执行去掉永不阻塞的账号许可与两层永不合并的 single-flight",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "type": "Refactor",
   "status": "closed",
   "branch": "fix/C122-execution-permits",

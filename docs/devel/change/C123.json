@@ -2,7 +2,7 @@
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C123",
   "title": "退役从未被读取的请求契约字段：localPricing、subscriptionQuotaOnly / subscriptionProviders、providerEnv",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "type": "Refactor",
   "status": "closed",
   "branch": "fix/C123-dead-contract-fields",

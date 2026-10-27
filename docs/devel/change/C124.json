@@ -2,7 +2,7 @@
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C124",
   "title": "未授权云端额度不再输出 CC Switch / Codex partial 占位：纯本机统计不再显示部分失败，清理 CC Switch 过时文案",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "type": "BugFix",
   "status": "closed",
   "branch": "fix/C124-stale-cc-switch-text",

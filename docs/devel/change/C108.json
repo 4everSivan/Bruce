@@ -2,7 +2,7 @@
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C108",
   "title": "价卡单一事实源：设置页展示单价与采集端计费同源（消除 deepseek-v4.1-flash 展示 $0.15 而按 $0.30 计费的漂移）",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "type": "BugFix",
   "status": "closed",
   "branch": "fix/C108-pricing-single-source",

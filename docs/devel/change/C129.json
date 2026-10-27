@@ -2,7 +2,7 @@
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C129",
   "title": "发布冒烟按 C116 前的缓存格式查找 Kimi 条目，build-test-app 与 CI 测试版构建恒失败",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "type": "BugFix",
   "status": "closed",
   "branch": "fix/C129-release-smoke-cache-selector",

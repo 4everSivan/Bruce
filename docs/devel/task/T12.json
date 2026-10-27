@@ -2,7 +2,7 @@
   "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
   "id": "T12",
   "title": "Windows 系统托盘动态配额环与 420px 亚克力微缩实时预览卡 (方案 1)",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "milestone": "M7-Windows托盘动态配额与实时微缩预览",
   "status": "completed",
   "branch": "feat/T12-win-tray-live-preview",

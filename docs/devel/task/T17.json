@@ -2,7 +2,7 @@
   "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
   "id": "T17",
   "title": "窗口边界唤醒与刷新退避提为共享 Rust 实现（先补双端 fixture）",
-  "version": "0.15.0",
+  "version": "0.14.0",
   "milestone": "M8-跨端共享策略核心",
   "status": "completed",
   "branch": "feat/T17-refresh-policy-shared",

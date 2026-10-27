@@ -2,7 +2,7 @@
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C106",
   "title": "artifact 逐日校验不再每次新建 DateFormatter：消除每轮刷新约 2 秒主线程 CPU",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "type": "BugFix",
   "status": "closed",
   "branch": "fix/C106-validday-formatter",

@@ -2,7 +2,7 @@
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C126",
   "title": "不走缓存的扫描函数降为测试专用参照实现：collector-local 对外只保留缓存扫描",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "type": "Refactor",
   "status": "closed",
   "branch": "fix/C126-uncached-scanners-test-only",

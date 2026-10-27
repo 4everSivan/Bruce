@@ -2,7 +2,7 @@
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C117",
   "title": "Codex 整树缓存改为按文件观测缓存：进行中会话追加与跨日不再整树重读",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "type": "BugFix",
   "status": "closed",
   "branch": "fix/C117-codex-file-cache",

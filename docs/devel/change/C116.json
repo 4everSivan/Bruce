@@ -2,7 +2,7 @@
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C116",
   "title": "JSONL 缓存条目与采集窗口解耦并并入 Kimi Code CLI：跨日首轮刷新不再整树重解析",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "type": "BugFix",
   "status": "closed",
   "branch": "fix/C116-window-independent-jsonl-cache",

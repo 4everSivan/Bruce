@@ -2,7 +2,7 @@
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C128",
   "title": "Windows runtime_core.rs 按职责拆分为 activity / geometry / status 子模块（纯移动，公开路径不变）",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "type": "Refactor",
   "status": "closed",
   "branch": "fix/C128-split-runtime-core",

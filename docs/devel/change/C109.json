@@ -2,7 +2,7 @@
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C109",
   "title": "Windows 出站网络 command 移出主线程：设备码登录与订阅验证不再冻结托盘与界面",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "type": "BugFix",
   "status": "closed",
   "branch": "fix/C109-win-async-network",

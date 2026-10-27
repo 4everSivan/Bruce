@@ -2,7 +2,7 @@
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C121",
   "title": "macOS 快照持久化去重复解析：每轮刷新主线程耗时约 300 ms → 30 ms，停写重复的 .backup.json",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "type": "BugFix",
   "status": "closed",
   "branch": "fix/C121-artifact-store-io",

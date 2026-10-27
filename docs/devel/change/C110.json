@@ -2,7 +2,7 @@
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C110",
   "title": "本机扫描提速：缓存一次性写盘、解析前字节预筛、次要源并行扫描（冷扫 2.15 s → 0.17 s）",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "type": "BugFix",
   "status": "closed",
   "branch": "fix/C110-scan-prefilter-parallel",
