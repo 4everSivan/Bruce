@@ -16,7 +16,8 @@
         "C104",
         "C106",
         "C114",
-        "C121"
+        "C121",
+        "C125"
       ]
     },
     "MenuBarIndicator": {
@@ -1288,6 +1289,15 @@
       "topic": "SubscriptionQuota",
       "version": "0.13.1",
       "file": "docs/devel/change/C124.json"
+    },
+    "C125": {
+      "title": "全景文档核对：README 版本与特性对齐 v0.13.0，设计索引日期与刷新间隔可选值去漂移",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C125-readme-drift",
+      "topic": "SystemOverview",
+      "version": "0.13.1",
+      "file": "docs/devel/change/C125.json"
     }
   }
 }

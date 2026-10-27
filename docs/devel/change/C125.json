@@ -1,0 +1,106 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C125",
+  "title": "全景文档核对：README 版本与特性对齐 v0.13.0，设计索引日期与刷新间隔可选值去漂移",
+  "version": "0.13.1",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C125-readme-drift",
+  "is_hotfix": false,
+
+  "target": {
+    "module": "README.md；docs/devel/design",
+    "component": "仓库门面 README、设计中心索引、design/02 规则 12",
+    "design_doc": "docs/devel/design/00-系统总体设计.md",
+    "design_topic": "SystemOverview"
+  },
+
+  "why": "2026-10-25 架构审查与 AGENTS.md 六.3「全景文档核对」：v0.13.0 已于 2026-10-26 发布（VERSION = 0.13.0），README 徽章与正文仍为 v0.12.2；README 两处写「15 个 Harness」，Package.swift 实际 17 个（新增 DashboardStatusTone / SoftwareUpdate）；「现行设计基线 00~05」而设计中心已有 06（用量分析工作台）、07（软件更新）；已发布的双端软件更新与用量分析工作台未出现在核心特性，软件更新的 `updates/` 目录未列入数据表。设计中心索引各文档「最后更新」停在 10-16～10-23，与正文头（多为 10-26）不一致。design/02 规则 12 写刷新间隔可选 5/10/15/30/60 分钟，两端实现均为 5/15/30/60。",
+
+  "precheck": {
+    "description": "确认 README 与设计索引的失真点",
+    "command": "cat VERSION; git show e018e85:README.md | grep -n 'v0.12.2\\|15 个 Harness\\|00~05'; grep -c 'name: \"[A-Za-z]*Harness\"' apps/macos/Package.swift; ls docs/devel/design/0*.md | wc -l; grep -o 'allowedRefreshIntervalMinutes: \\[Int\\] = \\[[0-9, ]*\\]' apps/macos/Sources/BruceOnboardingCore/OnboardingConfiguration.swift; grep -o 'REFRESH_PRESETS = \\[[0-9, ]*\\]' apps/win/src/settings.js",
+    "expected": "VERSION 0.13.0 而 README 为 v0.12.2；Harness 17 个而 README 写 15；设计文档 8 篇（00~07）；两端刷新间隔为 5/15/30/60（失真存在）",
+    "is_completed": false,
+    "evidence": "2026-10-26 预检实测：VERSION = 0.13.0；e018e85 的 README 第 8 / 20 行 v0.12.2、第 124 / 171 行「15 个 Harness」、第 194 行「00~05」；apps/macos/Package.swift Harness target 17 个；docs/devel/design 下 00~07 共 8 篇；mac allowedRefreshIntervalMinutes = [5, 15, 30, 60]、Windows REFRESH_PRESETS = [5, 15, 30, 60]；设计中心索引 8 行日期均早于正文头 —— 失真成立。"
+  },
+
+  "callback": {
+    "before": [
+      "git checkout -b fix/C125-readme-drift  # 叠加在 fix/C124-stale-cc-switch-text 之上"
+    ],
+    "after": [
+      "scripts/adflow-verify --card C125 --to verified --record"
+    ]
+  },
+
+  "changes": [
+    {
+      "scope": "README.md",
+      "before": "版本 v0.12.2；核心特性无软件更新与用量分析工作台；Windows 段未列应用内更新；数据表无 updates/；15 个 Harness；设计基线 00~05",
+      "after": "版本 v0.13.0（徽章与正文）；新增「用量分析工作台」「软件更新」两条特性（内容取自 T07 / T08 / T10 / T11 发布说明）；Windows 段补「应用内自动更新」；数据表补 `~/Library/Application Support/Bruce/updates/`（下载包与替换时的旧版本备份）；17 个 Harness；设计基线 00~07",
+      "impact": "仓库门面与已发布版本一致"
+    },
+    {
+      "scope": "设计文档",
+      "before": "设计中心索引 8 篇的「最后更新」与正文头不一致；design/02 规则 12 刷新间隔写 5/10/15/30/60",
+      "after": "索引日期按各文档正文头同步；规则 12 改为 5/15/30/60 并注明以实现为准（C065 历史行保留原文）；design/00、design/02 登记 C125 变更行",
+      "impact": "设计基线与实现一致"
+    }
+  ],
+
+  "design": {
+    "doc": "docs/devel/design/00-系统总体设计.md",
+    "topic": "SystemOverview",
+    "modified": true,
+    "rule_diff": {
+      "before": "design/00 变更表无本次核对；design/02 规则 12 刷新间隔可选值 5/10/15/30/60",
+      "after": "design/00 登记 C125 全景文档核对行；design/02 规则 12 刷新间隔可选值更正为 5/15/30/60（以 allowedRefreshIntervalMinutes / REFRESH_PRESETS 为准）"
+    }
+  },
+
+  "verification": {
+    "result": null,
+    "run_id": "local-20261026-08",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "文档校验",
+        "true_if": "README 与设计中心索引的相对链接全部可达；adflow-verify 退出码 0",
+        "false_if": "存在失效链接或校验失败",
+        "evidence": "2026-10-26: 以 node 脚本解析 README.md 与 docs/devel/design/README.md 中的 Markdown 链接、src、href，共 30 个相对链接，缺失 0；scripts/adflow-verify --card C125 --receipt 退出码见回执。按 AGENTS.md 四.2，纯文档调整不新增行为测试。",
+        "result": true
+      },
+      {
+        "item": "事实核对",
+        "true_if": "新写入的每条事实均可在代码或已发布说明中找到依据",
+        "false_if": "任一条无依据",
+        "evidence": "2026-10-26: v0.13.0 ← VERSION 与 CHANGELOG「## [0.13.0] - 2026-10-26」；17 个 Harness ← apps/macos/Package.swift；00~07 ← docs/devel/design 文件列表；用量分析工作台四格 KPI / 五档跨度 / 归一化大盘 / 透视矩阵 ← CHANGELOG T08 条目；软件更新「启动 30 秒后首查、每 24 小时、失败静默、SHA256 与包内版本校验、失败回滚」← CHANGELOG T10 条目；Windows「Tauri updater」← task 总账 T11 标题；updates/ 含旧版本备份 ← SoftwareUpdateInstaller.swift「旧 app rename 到 updates/backup/」；索引日期 ← 各文档正文头「最后更新」；5/15/30/60 ← 两端实现常量。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "只改文档；历史变更行与已发布 CHANGELOG 版本块未被改写",
+        "false_if": "改动代码或改写历史记录",
+        "evidence": "2026-10-26: git diff 仅涉及 README.md、docs/devel/design（00 / 02 / README）、CHANGELOG [Unreleased] 与本卡；design/02 的 C065 历史行保留原文、仅在规则正文注明更正；CHANGELOG 只在 [Unreleased] ### Changed 追加一行。README 中的发布流程描述（Preview 草稿 → 公开 latest）未重新核对 ci.yml，保持原文。",
+        "result": true
+      }
+    ]
+  },
+
+  "rejections": [],
+
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

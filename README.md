@@ -5,7 +5,7 @@
   <p>一条帮你看住每个 token 的本地小狗 🐶</p>
   <p>
     <a href="https://github.com/4everSivan/Bruce/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/4everSivan/Bruce/ci.yml?branch=main&amp;style=flat-square&amp;label=CI%2FCD" alt="CI/CD" /></a>
-    <a href="https://github.com/4everSivan/Bruce/releases"><img src="https://img.shields.io/badge/version-v0.12.2-0A7EA4?style=flat-square" alt="Version v0.12.2" /></a>
+    <a href="https://github.com/4everSivan/Bruce/releases"><img src="https://img.shields.io/badge/version-v0.13.0-0A7EA4?style=flat-square" alt="Version v0.13.0" /></a>
     <a href="#环境要求"><img src="https://img.shields.io/badge/macOS-14%2B-000000?style=flat-square&amp;logo=apple&amp;logoColor=white" alt="macOS 14+" /></a>
     <a href="#windows-平台-appswin"><img src="https://img.shields.io/badge/Windows-10%2B-0078D4?style=flat-square&amp;logo=windows&amp;logoColor=white" alt="Windows 10+" /></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-4CBB17?style=flat-square" alt="MIT License" /></a>
@@ -17,7 +17,7 @@
 
 Bruce 把本机 AI Agent 的 token 用量、成本估算和订阅额度集中到一个原生 macOS 菜单栏应用里。原生层负责依赖扫描、授权门控、凭证管理、定时刷新与故障恢复，Rust Collector 负责采集，弹出面板以原生 SwiftUI 渲染。**全程本地优先，没有自有服务端。**
 
-> **当前版本 v0.12.2**。最低支持 macOS 14，液态玻璃主题需 macOS 26。发布 Universal 2 通用二进制，Apple Silicon 与 Intel Mac 均原生运行。测试版由 `scripts/build-test-app.sh` 本地打包；推送 `v*` tag 后 CI 先建未签名的 Preview 草稿 Release（附 mac 产物与发布说明），待 Windows 安装包补齐后转为公开并标记 latest。正式版（Developer ID 签名 + 公证）尚未纳入 CI/CD，`scripts/build-release-app.sh` 仅作手工预留。
+> **当前版本 v0.13.0**。最低支持 macOS 14，液态玻璃主题需 macOS 26。发布 Universal 2 通用二进制，Apple Silicon 与 Intel Mac 均原生运行。测试版由 `scripts/build-test-app.sh` 本地打包；推送 `v*` tag 后 CI 先建未签名的 Preview 草稿 Release（附 mac 产物与发布说明），待 Windows 安装包补齐后转为公开并标记 latest。正式版（Developer ID 签名 + 公证）尚未纳入 CI/CD，`scripts/build-release-app.sh` 仅作手工预留。
 
 ## 核心特性
 
@@ -26,8 +26,10 @@ Bruce 把本机 AI Agent 的 token 用量、成本估算和订阅额度集中到
 - **逐小时卡**：24 点折线与 Agent 堆叠柱状图，点击展开模型与项目明细；内置 Nothing 点阵控制台、P4 风格六格 LCD 迷你仪表与极光绿趋势线三套风格。
 - **订阅用量卡**：多 Provider 计费窗口量条与重置倒计时、Codex 多账号子卡；以余额计费的 Provider（如 DeepSeek）渲染为双槽对称流；Provider 身份统一为品牌图形徽章。
 - **菜单栏指示器**：纯图标模式、环形仪表与订阅配额弧线，指标可拖拽排序，设置中心提供实时模拟预览；原生自适应浅色 / 深色桌面。
+- **用量分析工作台**：设置中心内的全景工作台 —— 总 Token / 折算费用 / 缓存命中率 / 活跃 Agent 四格 KPI、今日 / 近 7 天 / 近 30 天 / 本月 / 全部历史五档跨度、时序分析、跨渠道模型归一化大盘与 Agent 透视矩阵（双端一致）。
 - **计费引擎**：内置主流模型基准价卡（计费与设置页展示同源），按 TTL 计价缓存写入，精确核算模型级与全局成本；设置内提供全量价格表与单模型自定义价格覆盖。
 - **凭证安全存储**：订阅凭证落盘 `~/Library/Application Support/Bruce/credentials.json`（POSIX `0600`、父目录 `0700`、临时文件 + 原子替换 + 写后重读校验），旧 Keychain 凭证首次启动静默迁移；探测外部 CLI 凭据时跳过鉴权弹窗。
+- **软件更新**：设置中心「维护」页检查与安装新版本（默认启动后与每 24 小时自动检查一次，失败静默）；下载后按清单校验 SHA256 与包内版本再替换，替换失败自动回滚。Windows 版经 Tauri updater 升级。
 - **主题**：经典与液态玻璃两档；液态玻璃仅 macOS 26+ 可选，含标准 / 通透 / 哑光三档模糊，低版本系统自动回落经典材质。
 - **调度与可靠性**：默认每 30 分钟刷新（可选 5 / 15 / 30 / 60），支持手动刷新、防重入、超时、退避与系统唤醒补采；优先展示最后成功快照，单模块失败不阻塞其他模块，快照损坏自动回退 previous。
 - **门控、隐私与可访问性**：首次启动引导 + 本机只读依赖扫描 + 统一授权摘要，未确认授权不启动任何 Collector；诊断包为白名单字段的最小 ZIP，不含 Artifact 与账号活动数据；支持键盘导航、VoiceOver 状态语义与「减少动态效果」。
@@ -92,7 +94,7 @@ zsh scripts/build-release-app.sh                     # 手工正式版：Develop
 
 ## Windows 平台 (apps/win)
 
-Windows 版基于 **Tauri 2**（Rust 后端 + WebView2）构建，与 macOS 版共享同一套 `core/collector` 引擎与 Artifact 契约，视图模型行为由双端 fixture 对拍逐字段锁定（设计基线：[05-Windows平台适配.md](docs/devel/design/05-Windows平台适配.md)）。托盘常驻、弹出看板、全局热键、配额 Toast、凭证引导、设置中心与 NSIS 安装包产线均已实现；托盘交互细节与安装冒烟仍待 Windows 真机验收。
+Windows 版基于 **Tauri 2**（Rust 后端 + WebView2）构建，与 macOS 版共享同一套 `core/collector` 引擎与 Artifact 契约，视图模型行为由双端 fixture 对拍逐字段锁定（设计基线：[05-Windows平台适配.md](docs/devel/design/05-Windows平台适配.md)）。托盘常驻、弹出看板、全局热键、配额 Toast、凭证引导、设置中心、应用内自动更新与 NSIS 安装包产线均已实现；托盘交互细节与安装冒烟仍待 Windows 真机验收。
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/build-win-app.ps1   # 产物收拢 local/dist
@@ -121,7 +123,7 @@ macOS 菜单栏应用 (LSUIElement, 最低 macOS 14)
 ```text
 Bruce/
 ├── apps/
-│   ├── macos/                   # SwiftPM 原生菜单栏应用 + 15 个 Harness
+│   ├── macos/                   # SwiftPM 原生菜单栏应用 + 17 个 Harness
 │   │   ├── Sources/BruceApp/             # 入口、状态项、设置中心、Views/ 卡片
 │   │   ├── Sources/BruceAppCore/         # AppModel、调度、PanelViewModel 映射
 │   │   ├── Sources/BruceOnboardingCore/  # 扫描、授权、Gate、凭证、主题解析
@@ -151,6 +153,7 @@ Bruce/
 | `~/Library/Application Support/Bruce/snapshots/` | 当前与 previous Artifact 快照 |
 | `~/Library/Application Support/Bruce/metadata/modules.json` | 最近成功、尝试时间与错误分类 |
 | `~/Library/Application Support/Bruce/collector-cache-v1/` | 采集增量缓存 |
+| `~/Library/Application Support/Bruce/updates/` | 软件更新下载包与替换时的旧版本备份 |
 
 - 本地优先，无项目自有服务端，不默认同步活动数据。
 - 凭证经 Bridge stdin 的单次请求传递，不进入命令行参数、Artifact 或日志。
@@ -168,7 +171,7 @@ zsh scripts/verify-local.sh   # 标准全量验证（推荐入口）
 zsh scripts/verify-rust.sh    # 跨平台 Rust 入口：fixture 扫描 + fmt + test + clippy
 ```
 
-`verify-local.sh` 覆盖 Rust workspace 的 fmt / test / clippy、fixture 语法与敏感扫描、Windows 前端结构冒烟、Swift 构建与全部 15 个 Harness、Widget 像素动画性能 Harness，以及 Provider 品牌图形产物与源文件的一致性校验。隔离集成只在随机临时 HOME 中运行 Rust Collector，关闭外部额度能力，不访问真实账号、凭证或第三方数据库。
+`verify-local.sh` 覆盖 Rust workspace 的 fmt / test / clippy、fixture 语法与敏感扫描、Windows 前端结构冒烟、Swift 构建与全部 17 个 Harness、Widget 像素动画性能 Harness，以及 Provider 品牌图形产物与源文件的一致性校验。隔离集成只在随机临时 HOME 中运行 Rust Collector，关闭外部额度能力，不访问真实账号、凭证或第三方数据库。
 
 按需运行子集：
 
@@ -191,7 +194,7 @@ CI（`.github/workflows/ci.yml`）在 push / PR 时执行 macOS 侧 `verify-loca
 ## 更多文档
 
 - [文档中心](docs/README.md) — 全库结构、编写契约与机器索引
-- [系统总体设计](docs/devel/design/00-系统总体设计.md) — 现行设计基线 00~05
+- [系统总体设计](docs/devel/design/00-系统总体设计.md) — 现行设计基线 00~07
 - [变更总账](docs/devel/change/index.json) — 全量变更卡与 Topic 映射
 - [本地部署指南](docs/guide/01-本地部署指南.md) — 环境准备、构建与联调
 - [设计资源库](docs/assets/README.md) — 架构图、截图与视觉素材
