@@ -10,8 +10,10 @@ dependencies = [
  "collector-bridge",
  "collector-credential",
  "collector-domain",
+ "collector-policy",
  "collector-provider",
  "collector-runtime",
+ "serde",
  "serde_json",
 ]
 
