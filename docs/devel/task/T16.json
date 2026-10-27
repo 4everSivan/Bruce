@@ -4,28 +4,24 @@
   "title": "第二期：mac 链接 Rust 静态库，额度策略改为进程内调用",
   "version": "0.14.0",
   "milestone": "M8-跨端共享策略核心",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "feat/T16-mac-link-rust-policy",
   "depends_on": [
     "T15"
   ],
-
   "target": {
     "module": "apps/macos（SwiftPM 与构建脚本）；core/collector（静态库 crate）",
     "design_doc": "docs/devel/design/08-跨端共享策略核心.md",
     "design_topic": "SharedPolicyCore"
   },
-
   "goal": "mac 构建链产出 Universal 2 Rust 静态库（aarch64 + x86_64 合并），SwiftPM 链接并以 JSON 字符串的 C ABI 调用 T13 的共享 crate，额度门禁与回填改为进程内调用；实测 App 体积与启动影响；据实测决定 T14 子命令保留或退役，并评审视图模型映射迁移范围，结论写回 design/08 第 4.2 节。视图模型映射的实际迁移不在本卡。",
-
   "precheck": {
     "description": "确认 mac 尚未链接任何 Rust 静态库",
     "command": "grep -n 'staticlib\\|linkerSettings\\|unsafeFlags' apps/macos/Package.swift; grep -rn 'crate-type' core/collector/crates/*/Cargo.toml",
     "expected": "Package.swift 无链接设置，collector crates 无 staticlib 产物",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "2026-10-27 开工前实测 (T15 提交之上): apps/macos/Package.swift 对 staticlib / linkerSettings / unsafeFlags 无匹配, core/collector/crates/*/Cargo.toml 无 crate-type, mac 尚未链接任何 Rust 静态库, 未完成"
   },
-
   "callback": {
     "before": [
       "git checkout -b feat/T16-mac-link-rust-policy"
@@ -36,69 +32,68 @@
       "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 completed；目标状态预检使用 --card T16 --to completed --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card T16 --receipt 复核、输出节点回执"
     ]
   },
-
   "tasks": [
     {
       "id": "T16-1",
       "title": "静态库与 C ABI",
       "capability": "新增静态库 crate：JSON 字符串进出的 C 函数与配套释放函数，错误以 JSON 诊断返回，不跨边界 panic",
-      "done": false
+      "done": true
     },
     {
       "id": "T16-2",
       "title": "构建链",
       "capability": "build-test-app.sh / verify-local.sh 编译两种架构并合并静态库，产物收拢 local/；SwiftPM 链接并提供 Swift 包装",
-      "done": false
+      "done": true
     },
     {
       "id": "T16-3",
       "title": "改为进程内调用",
       "capability": "额度门禁与回填经静态库调用，行为与 T15 一致（共享 fixture 全绿）",
-      "done": false
+      "done": true
     },
     {
       "id": "T16-4",
       "title": "实测与结论",
       "capability": "App 体积增量、冷启动与单次调用耗时实测；子命令去留与视图模型迁移范围结论写回 design/08",
-      "done": false
+      "done": true
     }
   ],
-
   "acceptance": {
     "result": null,
-    "run_id": "",
+    "run_id": "local-20261027-16",
     "checks": [
       {
         "item": "Universal 2",
         "true_if": "Apple Silicon 与 Intel 两种架构的构建产物均能运行并通过 Harness",
         "false_if": "任一架构构建或运行失败",
-        "evidence": "",
+        "evidence": "2026-10-27: 部分验证 —— Universal 2 构建与链接通过、x86_64 运行态未验证。`Bruce_build_policy_ffi` 按 BRUCE_RUST_TARGET_ARCHS 构建 aarch64 / x86_64 并 lipo 合并, `lipo -info local/build/policy-ffi/libbruce_policy.a` = x86_64 arm64; `zsh scripts/build-test-app.sh --universal` 完成 Swift arm64 / x86_64 两次 release 构建与 App 组装, `lipo -archs dist/Bruce.app/Contents/MacOS/BruceApp` = x86_64 arm64, 两个切片 `lipo -thin` 后各含策略诊断码字符串 (POLICY_INVALID_JSON / POLICY_CREDENTIAL_FIELD_REJECTED 各 1 处; T15 基线 0 处)。该脚本随后的发布冒烟在「旧 cache rebuild」步骤失败, 原因是 C116 起既有的冒烟选择器缺陷 (T15 基线同样失败, 已登记 C129 修正); 以 C129 修正后的冒烟脚本对本卡 dist/Bruce.app 运行退出码 0 (install / upgrade / rollback / 旧缓存重建均通过)。arm64: verify-local 全部 Harness 通过 (见行为等价项)。x86_64: 本机未安装 Rosetta (`arch -x86_64 /usr/bin/true` 报 Bad CPU type), 未能在 Intel 运行态执行 Harness —— 需维护者在 Intel Mac 或安装 Rosetta 后补测。与 T16-2 原表述的差异: verify-local.sh 只构建本机架构 (Harness 只在本机架构运行, CI verify 作业未安装 x86_64 target), 双架构合并由 build-test-app / build-release-app 在 Universal 2 打包时完成",
         "result": null
       },
       {
         "item": "行为等价",
         "true_if": "共享 fixture 经进程内调用全部通过",
         "false_if": "任一用例失败",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-10-27: RefreshSchedulerHarness 114 个用例函数全部通过 (local/logs/t16-sched.log; 默认调度器与 HarnessQuotaPolicy 均为进程内 C ABI), 含 quota-policy-parity 18 例与 quota-carry-over-parity 14 例经 mac 路径逐字段相等、T15 的 5 例降级用例 (改以 rejected 信封模拟入口失败), 新增进程内边界用例: 空输入 POLICY_INVALID_JSON、apiKey 字段 POLICY_CREDENTIAL_FIELD_REJECTED、门禁结果正确; collector-policy-ffi tests/c_abi.rs 4 passed —— 两份 fixture 经 bruce_policy_call 与 handle_request 逐字节一致、空 / 非 UTF-8 / 截断输入返回诊断信封、空指针请求视为空请求、out_len 为空不分配、free 接受空指针、10,000 次调用逐次释放缓冲区; cargo test --workspace 184 passed / 0 failed",
+        "result": true
       },
       {
         "item": "实测记录",
         "true_if": "体积与耗时实测数据写入 acceptance 证据与 design/08",
         "false_if": "无实测数据",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-10-27 (写入 design/08 §3.3): 进程内 quotaPlan 200 次中位 0.063 ms / p90 0.070 ms (含 Swift JSON 编解码), 子命令中位 5.3 ms; build-test-app --universal 前后 (T15 61e01b6 → T16): BruceApp 22,438,448 → 23,785,648 字节 (+1,347,200, +6.0%; arm64 +659,072, x86_64 +700,656), Bruce-collector 16,366,096 → 15,920,368 (子命令退役 −445,728), Bruce.app 41,478,599 → 42,380,071 (+2.2%), Bruce.zip 13,957,888 → 14,378,540 (+3.0%); otool -L 动态库清单前后一致 (71 项), 前后均无 __mod_init_func / __init_offsets —— 不新增动态加载与启动期初始化; GUI 冷启动未以秒表实测 (需启动真实 App 读取用户数据)。结论写回 design/08 §4.2 第 1 条与 §4.3: T14 子命令与 mac 子命令传输退役, 视图模型映射不整体迁移、建议下一批迁 Codex 快照合并与边界唤醒 / 退避 (待维护者决定)",
+        "result": true
       }
     ]
   },
-
   "sync": {
-    "commit": ""
+    "commit": "2a6775d"
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-27",
+    "exit_code": 4,
+    "from_status": "in_progress",
+    "target_status": "completed"
   }
 }

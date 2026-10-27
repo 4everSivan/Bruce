@@ -6,7 +6,7 @@
 ## [Unreleased]
 
 ### Added
-- **采集端额度策略子命令 (T14)**：`Bruce-collector policy` 从标准输入读取额度门禁 / 回填请求、向标准输出写结果（契约 `schemas/policy-request-v1` / `policy-response-v1`），供 macOS 调用与 Windows 同一份实现；只接收订阅服务列表与时间等纯数据，拒绝未知字段与任何凭据形态的字段，单次调用约 5 ms。
+- **额度策略请求 / 响应契约 (T14)**：新增 `schemas/policy-request-v1` / `policy-response-v1`，额度门禁与回填的入口只接收订阅服务列表与时间等纯数据，拒绝未知字段与任何凭据形态的字段，错误以诊断码返回。该契约先以 `Bruce-collector policy` 子命令提供给 macOS，T16 起改为 App 进程内调用，子命令在同一版本内退役。
 - **macOS DMG 磁盘镜像安装包支持与 CI/CD 自动发布 (C114)**：
   - **DMG 打包工具脚本 (package-dmg.sh)**：新增 `scripts/package-dmg.sh`，将 Universal 2 架构的 `Bruce.app` 与 `/Applications` 软链接封装为带卷名 `Bruce` 的标准 UDZO 压缩 DMG 磁盘镜像，便于用户首次下载后开箱即用、一键拖拽安装；
   - **本地构建联动**：`scripts/build-test-app.sh` 与 `scripts/build-release-app.sh` 支持 `--dmg` 参数，可在组装完成 `Bruce.app` 与 `Bruce.zip` 后同步产出 `dist/Bruce-<version>.dmg`；
@@ -39,7 +39,8 @@
 - **Windows 出站网络 command 移出主线程 (C109)**：设备码登录与订阅额度验证的阻塞式网络调用改为异步 command，不再冻结托盘与界面；设计 05 回写「主线程不得发起阻塞式出站网络」规则。
 
 ### Changed
-- **macOS 额度门禁与回填改用共享实现 (T15)**：macOS 刷新时的额度查询门禁与回填改为调用采集端的同一份实现（`Bruce-collector policy`），删除 Swift 版本，与 Windows 不再各写一份。策略计算失败时本轮不更新也不猜测查询范围，按采集失败重试，界面继续显示上一轮数据；本轮换发的登录令牌照常保存。
+- **macOS 额度策略改为进程内调用 (T16)**：macOS 链接共享策略的 Rust 静态库（Universal 2），额度门禁与回填在 App 进程内计算，单次约 0.06 ms（此前经采集端子命令约 5 ms），App 本体增大约 1.3 MB（+6%）。采集端的 `Bruce-collector policy` 子命令随之退役。直接 `swift build` 前需先运行 `zsh scripts/build-policy-ffi.sh`（验证与打包脚本已自动调用）。
+- **macOS 额度门禁与回填改用共享实现 (T15)**：macOS 刷新时的额度查询门禁与回填改为调用与 Windows 相同的 Rust 实现（T15 经采集端子命令，T16 起在 App 进程内），删除 Swift 版本，两端不再各写一份。策略计算失败时本轮不更新也不猜测查询范围，按采集失败重试，界面继续显示上一轮数据；本轮换发的登录令牌照常保存。
 - **订阅额度门禁与回填改为跨端共享的一份实现 (T13)**：额度查询门禁与回填从 Windows 端提为采集端共享 crate `collector-policy`，Windows 改为调用它；新增双端回填共享用例后发现并统一了四处分歧——macOS 查询失败时余额型订阅（如 DeepSeek）不再丢失上次的余额金额；Windows 被跳过查询的订阅卡保持原位置，不再被挪到末尾；成功结果已带的新鲜度标记不再被改写；旧版快照中「查询成功但无数据」的记录可作为失败时的回退值。
 - **Windows 运行时核心按职责拆分 (C128)**：`runtime_core.rs`（1,639 行）拆出窗口激活与快捷键、看板几何、状态灯三个子模块，代码逐字移动、对外路径不变。
 - **采集端本机扫描接口收敛 (C126)**：不走缓存的扫描函数只作为测试对拍的参照实现编入测试构建，`collector-local` 对外只保留缓存扫描接口。

@@ -286,7 +286,7 @@
     },
     "T16": {
       "title": "第二期：mac 链接 Rust 静态库，额度策略改为进程内调用",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "feat/T16-mac-link-rust-policy",
       "topic": "SharedPolicyCore",
       "milestone": "M8-跨端共享策略核心",

@@ -314,7 +314,7 @@ Windows Tauri 后端 (Rust)
     - **闸门**：`ReachabilityGate` 初始视为在线（首个真实观测前 fail-open）；离线时跳过本轮自动刷新，**不累加 retries、不进入退避**，只按 30s 固定周期重探（`OFFLINE_PROBE_INTERVAL_SECS`），并把快照标为 `NETWORK_UNAVAILABLE`；
     - **补偿**：离线→在线跃迁给出 `Compensate`，本轮刷新即离线期间唯一一次补偿（不补发积压的多轮）；持续在线为 `Online`，语义与既有退避/边界唤醒不变；
     - **手动不变**：`should_skip_refresh` 只在「离线且非手动」时跳过 —— 手动刷新（含定向刷新）离线仍执行一次，不重试。
-19. **订阅额度 per-provider 门禁与 429 冷却**（C077；T13 起实现位于共享 crate `collector-policy`，`quota_policy` 只做路径保留与入参固定；T15 起 mac 经 `Bruce-collector policy` 调用同一实现）：
+19. **订阅额度 per-provider 门禁与 429 冷却**（C077；T13 起实现位于共享 crate `collector-policy`，`quota_policy` 只做路径保留与入参固定；mac 经 T15 子命令、T16 起静态链接同一 crate 进程内调用）：
     - **新鲜度门禁**：`quota_policy::plan` 逐 provider 判定 —— `quotaAttemptedAt`（回退 `capturedAt`，失败回退 `rateLimitedAt`）距今不足刷新间隔则跳过（多账号需全部新鲜才跳过）；无历史 service 的 provider 必须首查（C120 起 mac 同口径，双端以 `tests/fixtures/quota-policy-parity/cases.json` 对拍）；上次快照后有窗口 `resetsAt` 已过则强制重查（C037 兼容）；
     - **429 冷却**：service 带 `rateLimitedAt` 且距今不足 30 分钟（`RATE_LIMIT_COOLDOWN_SECS`）时该 provider 进入冷却（partial，仅该 provider；其余照常查询）；命中判定以 collector 下发的 `failureKind == "rateLimit"` 为准、provider 归属以 service `provider` 为准，字段缺省的旧 artifact 才回退 note 限流文案（429 / 限流 / RATE_LIMIT）与 id 前缀推断（C118，见 design/02 规则 12）；
     - **Codex 例外**：Codex 永不因新鲜度或冷却进入 `skip_providers`（四源合并/重试链路需要完整首轮结果）；全部 provider 仍新鲜时整轮退化为本地专用 run 并回填全部旧 service；
@@ -408,7 +408,7 @@ Windows Tauri 后端 (Rust)
 | `src-tauri/src/alerts.rs` | `QuotaAlertEvaluator.swift` / `SystemNotificationDeliveryPolicy` | 配额告警判定与通知去重 |
 | `src-tauri/src/scheduler.rs`、`runtime_core.rs` | `RefreshScheduler.swift` / `RefreshBackoffPolicy` / `RefreshExecutionPipeline` | 刷新调度、指数退避与可独立测试的策略 |
 | `src-tauri/src/reachability.rs` | `NetworkReachability.swift` | 网络可达性闸门状态机与可注入探针（C076，见规则 18） |
-| `src-tauri/src/quota_policy.rs` | `QuotaPolicyClient.swift`（T15 起经策略子命令调用同一 crate） | per-provider 额度新鲜度门禁、429 冷却与旧值回填（C077，见规则 19）；T13 起为共享 crate `core/collector/crates/collector-policy` 的薄封装 |
+| `src-tauri/src/quota_policy.rs` | `QuotaPolicyClient.swift`（T16 起经静态库 `collector-policy-ffi` 进程内调用同一 crate） | per-provider 额度新鲜度门禁、429 冷却与旧值回填（C077，见规则 19）；T13 起为共享 crate `core/collector/crates/collector-policy` 的薄封装 |
 | `src-tauri/src/credentials/claude_local.rs` | `SystemExternalCredentialReader.swift` / `ClaudePasteParser.swift` | 本机 Claude CLI 登录态只读跟随与规范化（C075，见规则 17） |
 | `src-tauri/src/runtime_core.rs` | `CodexQuotaSnapshotMerger` 等 | 快照持久化与 stale 合并（DeepSeek 月度账本已于 C020 双端移除） |
 | `src-tauri/src/settings.rs`、`src/settings.js` | 设置中心相关 | 价格校准、卡片排序、主题偏好的加载与持久化 |
