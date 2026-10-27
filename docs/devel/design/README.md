@@ -23,11 +23,11 @@
 | 文档名称 | 对应 Topic | 文档 ID | 核心职责概述 | 状态 | 最后更新 |
 |---|---|---|---|---|---|
 | [00-系统总体设计.md](00-系统总体设计.md) | `SystemOverview` | `DESIGN-SYS` | 系统宏观架构全景、分层定义与功能矩阵 | 现行基线 | 2026-10-26 |
-| [01-数据采集与多模型计费引擎.md](01-数据采集与多模型计费引擎.md) | `TokenUsage` | `DESIGN-COLLECTOR` | 9 个 Agent 扫描、增量缓存、43 款模型定价与 Token 费用核算 | 现行基线 | 2026-10-26 |
-| [02-订阅额度与凭据安全存储.md](02-订阅额度与凭据安全存储.md) | `SubscriptionQuota` | `DESIGN-SUBSCRIPTION` | 10 家 Provider 额度适配、POSIX 0600 凭据存储、原子落盘与防扰 | 现行基线 | 2026-10-26 |
+| [01-数据采集与多模型计费引擎.md](01-数据采集与多模型计费引擎.md) | `TokenUsage` | `DESIGN-COLLECTOR` | 9 个 Agent 扫描、增量缓存、43 款模型定价与 Token 费用核算 | 现行基线 | 2026-10-27 |
+| [02-订阅额度与凭据安全存储.md](02-订阅额度与凭据安全存储.md) | `SubscriptionQuota` | `DESIGN-SUBSCRIPTION` | 10 家 Provider 额度适配、POSIX 0600 凭据存储、原子落盘与防扰 | 现行基线 | 2026-10-27 |
 | [03-菜单栏状态与多风格原生渲染.md](03-菜单栏状态与多风格原生渲染.md) | `MenuBarIndicator` | `DESIGN-DASHBOARD` | 赛博精密环形仪表、纯图标模式、液态玻璃与 Nothing 风格点阵控制台 | 现行基线 | 2026-10-26 |
 | [04-设置中心与价格校准交互.md](04-设置中心与价格校准交互.md) | `PricingEngine` | `DESIGN-SETTINGS` | 菜单栏实时预览条、卡片排序拖拽、全模型价格表与自定义覆盖校准 | 现行基线 | 2026-10-26 |
-| [05-Windows平台适配.md](05-Windows平台适配.md) | `WindowsCompat` | `DESIGN-WINDOWS` | Windows 托盘常驻看板（Tauri 2）、collector 单引擎双平台、Rust 视图模型与双端 fixture 对拍 | 现行基线 | 2026-10-26 |
+| [05-Windows平台适配.md](05-Windows平台适配.md) | `WindowsCompat` | `DESIGN-WINDOWS` | Windows 托盘常驻看板（Tauri 2）、collector 单引擎双平台、Rust 视图模型与双端 fixture 对拍 | 现行基线 | 2026-10-27 |
 | [06-Agent用量分析与Token统计工作台.md](06-Agent用量分析与Token统计工作台.md) | `AgentAnalytics` | `DESIGN-ANALYTICS` | 设置中心全景工作台、时序折线分析、多源模型自动归一化合并、多 Agent 横向对比与代码仓下钻 | 现行基线 | 2026-10-21 |
 | [07-软件更新.md](07-软件更新.md) | `SoftwareUpdate` | `DESIGN-UPDATE` | 应用内检查更新与自动升级：latest.json 清单契约、双端设置中心维护页更新卡（方案 B，demo 为规格基准）、macOS 自替换安装器与 Windows updater 插件 | 现行基线 | 2026-10-26 |
 | [08-跨端共享策略核心.md](08-跨端共享策略核心.md) | `SharedPolicyCore` | `DESIGN-POLICY-CORE` | 两端重复实现的额度门禁与回填收敛为一份 Rust 实现：第一期经 collector 子命令供 mac 调用，第二期 mac 链接 Rust 静态库 | 现行基线 | 2026-10-27 |

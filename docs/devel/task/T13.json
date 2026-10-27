@@ -4,26 +4,22 @@
   "title": "抽出共享额度策略 crate（门禁 + 回填），Windows 改为调用",
   "version": "0.14.0",
   "milestone": "M8-跨端共享策略核心",
-  "status": "pending",
+  "status": "in_progress",
   "branch": "feat/T13-shared-quota-policy-crate",
   "depends_on": [],
-
   "target": {
     "module": "core/collector（新增共享策略 crate）；apps/win src-tauri",
     "design_doc": "docs/devel/design/08-跨端共享策略核心.md",
     "design_topic": "SharedPolicyCore"
   },
-
   "goal": "把额度门禁（plan）与额度回填（carry_over_skipped、annotate_attempts、annotate_provider 及其判定助手）从 apps/win/src-tauri/src/quota_policy.rs 提为 core/collector 下无网络、无文件 I/O 的纯 Rust crate，接口以 serde_json::Value 进出；Windows src-tauri 改为调用该 crate 并删除本地实现。迁移前先为额度回填补双端对拍 fixture（mac QuotaCarryOverMerger 与 Windows carry_over_skipped 对同一组输入），确认两端口径一致后再迁移。范围只含门禁与回填（design/08 第 4.2 节）。",
-
   "precheck": {
     "description": "确认共享策略 crate 尚不存在，门禁与回填仍在两端各自实现",
     "command": "ls core/collector/crates; grep -n '^pub fn plan\\|^pub fn carry_over_skipped\\|^pub fn annotate_attempts' apps/win/src-tauri/src/quota_policy.rs; grep -n 'package enum QuotaCarryOverMerger\\|package static func plan' apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift",
     "expected": "crates 下无共享策略 crate；Windows quota_policy.rs 与 mac QuotaRefreshPolicy.swift 各有门禁与回填实现",
     "is_completed": false,
-    "evidence": ""
+    "evidence": "2026-10-27 开工前实测: core/collector/crates 下仅 aggregate / application / bridge / credential / domain / local / provider / runtime 八个 crate, 无共享策略 crate; apps/win/src-tauri/src/quota_policy.rs 第 198 / 312 / 339 行各有 plan / annotate_attempts / carry_over_skipped, mac QuotaRefreshPolicy.swift 第 60 / 341 行各有 plan 与 QuotaCarryOverMerger, 门禁与回填仍在两端各自实现, 未完成"
   },
-
   "callback": {
     "before": [
       "git checkout -b feat/T13-shared-quota-policy-crate"
@@ -37,63 +33,62 @@
       "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 completed；目标状态预检使用 --card T13 --to completed --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card T13 --receipt 复核、输出节点回执"
     ]
   },
-
   "tasks": [
     {
       "id": "T13-1",
       "title": "额度回填双端对拍 fixture",
       "capability": "新增 tests/fixtures/quota-carry-over-parity/cases.json（被跳过 provider 的回填、stale / fresh 标注、冷却与失败保留旧窗口、成功清除 rateLimitedAt、多账号），mac RefreshSchedulerHarness 与 Windows 测试共同消费；若两端结果不一致，先按 design/02 规则 12 定口径并修正一端",
-      "done": false
+      "done": true
     },
     {
       "id": "T13-2",
       "title": "共享策略 crate",
       "capability": "新 crate 承载 plan / carry_over / annotate 及判定助手（attempt_at、is_rate_limited、has_passed_boundary 等），只依赖 serde / serde_json / chrono；quota-policy-parity 与回填 fixture 由该 crate 的单测消费",
-      "done": false
+      "done": true
     },
     {
       "id": "T13-3",
       "title": "Windows 改调",
       "capability": "apps/win/src-tauri 的 quota_policy 改为对新 crate 的薄封装或直接引用，删除重复实现；scheduler 调用点与公开路径不变",
-      "done": false
+      "done": true
     }
   ],
-
   "acceptance": {
-    "result": null,
-    "run_id": "",
+    "result": true,
+    "run_id": "local-20261027-13",
     "checks": [
       {
         "item": "行为等价",
         "true_if": "quota-policy-parity 18 例与新增回填 fixture 在共享 crate 与 Windows 上全部通过，Windows 全量测试全绿",
         "false_if": "任一用例失败或需改断言",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-10-27: 先以迁移前实现跑新增 tests/fixtures/quota-carry-over-parity/cases.json (14 例): Windows (merge_snapshot + annotate_attempts + carry_over_skipped) 4 例不一致 —— skipped_fresh_provider_is_carried_in_previous_position / failure_without_qualified_history_is_unavailable (输出顺序)、legacy_empty_status_history_is_qualified (旧 empty 快照资格)、success_keeps_existing_freshness (改写已有 freshness) (local/logs/t13-win-before.log); mac QuotaCarryOverMerger 1 例 —— failed_query_borrows_previous_display_fields_including_balance (失败借用漏 balance / currency) (local/logs/t13-mac-before.log)。按 design/02 规则 12 定口径后 mac 补借两字段、Windows 改调共享 crate。迁移后: collector-policy 8 passed (quota-policy-parity 18 例与回填 14 例均逐字段相等); apps/win/src-tauri cargo test 224 passed / 0 failed (新增 merge_matches_shared_carry_over_fixture, 既有用例仅把 annotate_attempts / carry_over_skipped 调用换为 merge, 断言未改); RefreshSchedulerHarness 106 passed (新增 quota carry-over shared parity fixture)",
+        "result": true
       },
       {
         "item": "架构边界",
         "true_if": "共享 crate 不依赖 tauri、文件系统与网络，Windows 不再保留门禁 / 回填的第二份实现",
         "false_if": "出现 I/O 或 GUI 依赖，或两份实现并存",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-10-27: collector-policy 的 Cargo.toml 只依赖 chrono / serde / serde_json (workspace 钉版), 源码无 std::fs / std::net / std::process / tauri 引用, #![deny(unsafe_code)]; Windows quota_policy.rs 只剩 pub use 与固定 suppress_external_quotas=false 的 plan 薄封装, runtime_core 的 provider_id / provider_of_id 改为 re-export、merge_snapshot 委托 merge_round、qualified 删除改用 is_qualified_previous, 带门禁的整轮应用改用共享 merge; grep 确认 apps/win 不再含 carry_over_skipped / annotate_attempts / fn qualified 定义; scheduler.rs 的 quota_policy::plan 调用点与 6 参签名不变",
+        "result": true
       },
       {
         "item": "全量验证",
         "true_if": "collector 与 src-tauri 的 fmt / clippy / test 及 verify-local 退出码 0",
         "false_if": "任一失败",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-10-27: cargo fmt --check (collector 与 src-tauri) 退出码 0; cargo clippy --workspace --all-targets -D warnings 与 --workspace -D warnings (collector) 均退出码 0, src-tauri clippy --all-targets -D warnings 退出码 0; cargo test --manifest-path core/collector/Cargo.toml --workspace 171 passed / 0 failed (此前 163, 新增 collector-policy 8 例); SDKROOT=MacOSX26.5 zsh scripts/verify-local.sh 退出码 0 (local/logs/t13-verify.log: Onboarding 170、PanelViewModel 60、CollectorRunner 28、RefreshScheduler 106、LocalIntegration 2、Panel 双端对拍通过)",
+        "result": true
       }
     ]
   },
-
   "sync": {
-    "commit": ""
+    "commit": "77bb255"
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-27",
+    "exit_code": 0,
+    "from_status": "in_progress",
+    "target_status": "completed"
   }
 }

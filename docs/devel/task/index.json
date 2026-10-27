@@ -252,7 +252,7 @@
     },
     "T13": {
       "title": "抽出共享额度策略 crate（门禁 + 回填），Windows 改为调用",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "feat/T13-shared-quota-policy-crate",
       "topic": "SharedPolicyCore",
       "milestone": "M8-跨端共享策略核心",
