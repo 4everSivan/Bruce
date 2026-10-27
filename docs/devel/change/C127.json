@@ -1,0 +1,113 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C127",
+  "title": "mac 凭据存储措辞更正：自有存储统一称「本机凭据文件」，不再提示去 Keychain 查找",
+  "version": "0.13.1",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C127-credential-store-wording",
+  "is_hotfix": false,
+
+  "target": {
+    "module": "apps/macos BruceApp / BruceAppCore / BruceOnboardingCore",
+    "component": "订阅凭证写入 / 删除错误提示、配置对话框说明与无障碍提示、设置页凭据存储行与引导、运行输入授权错误",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+
+  "why": "2026-10-25 架构审查：mac 生产凭据存储为 ProtectedFileCredentialStore（~/Library/Application Support/Bruce/credentials.json，0600），旧 Keychain 仅作读时迁移的回退源，但大量用户可见文案仍称「Keychain / 钥匙串」（预检正则命中 17 处，另有设置页引导标题、官方本机区无障碍提示与两条授权配置错误未计入正则）：写入失败提示「凭证写入 Keychain 失败」、删除失败提示「请在 Keychain 中手动检查」（用户去钥匙串里找不到任何条目）、配置对话框固定说明「只保存到本应用的 Keychain」（Windows 同一说明为「本机凭据文件」，design/05 规则 20 要求两端逐字一致）、设置页「钥匙串访问」行与引导「Bruce 会把订阅凭证保存在 macOS 钥匙串中」，以及运行输入的「未配置钥匙串访问」授权错误。design/02 规则 6 的移除契约也仍按 Keychain 的 errSecItemNotFound 描述。",
+
+  "precheck": {
+    "description": "确认改动前生产存储为文件、界面文案仍称 Keychain",
+    "command": "git grep -n 'ProtectedFileCredentialStore(' e018e85 -- apps/macos/Sources/BruceApp/BruceApp.swift; git grep -c '请在 Keychain 中手动检查\\|凭证写入 Keychain 失败\\|只保存到本应用的 Keychain\\|凭据安全保存在本机 Keychain\\|保存在 macOS 钥匙串中\\|\"钥匙串访问\"\\|保存到 Keychain 并\\|未配置钥匙串访问\\|钥匙串访问已被阻断\\|\"Keychain 存储异常\"' e018e85 -- apps/macos/Sources",
+    "expected": "BruceApp 以 ProtectedFileCredentialStore 为生产存储；界面仍有多处 Keychain 措辞（缺陷存在）",
+    "is_completed": false,
+    "evidence": "2026-10-26 预检实测：e018e85 的 BruceApp.swift 第 55 行 `let credentialStore = ProtectedFileCredentialStore(`（fallbackKeychainStore 仅读时迁移）；预检正则在 apps/macos/Sources 命中 17 处（SubscriptionService.swift 5、SubscriptionService+VerificationAndCodex.swift 2、APIKeyProviderConfigDialog.swift 2、SettingsView.swift 2、SettingsView+SubscriptionPane.swift 1 等）—— 缺陷成立。"
+  },
+
+  "callback": {
+    "before": [
+      "git checkout -b fix/C127-credential-store-wording  # 叠加在 fix/C126-uncached-scanners-test-only 之上"
+    ],
+    "after": [
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C127 --to verified --record"
+    ]
+  },
+
+  "changes": [
+    {
+      "scope": "错误提示",
+      "before": "「X 凭证写入 Keychain 失败」（含 DeepSeek / Codex）；「X 凭证删除失败 / 账号移除失败, 请在 Keychain 中手动检查」；CodexTokenManager「Keychain 存储异常」；运行输入「未配置钥匙串访问 / 钥匙串访问已被阻断」",
+      "after": "「X 凭证写入本机凭据文件失败」；「…, 请检查本机凭据文件 (~/Library/Application Support/Bruce/credentials.json)」；「凭据存储异常」；「未配置凭据存储 / 凭据存储访问已被阻断」",
+      "impact": "失败时用户被指向真实存储位置"
+    },
+    {
+      "scope": "说明与无障碍",
+      "before": "API Key 配置对话框固定说明「只保存到本应用的 Keychain, 不会写入其他应用的数据库」及两条无障碍提示；StepFun 区脚注「凭据安全保存在本机 Keychain」；官方本机区无障碍提示「保存到本应用的 Keychain」",
+      "after": "固定说明与 Windows 逐字一致「只保存到本应用的本机凭据文件 (仅当前用户可读), 不会写入其他应用的数据库」；脚注「凭据安全保存在本应用的本机凭据文件 (仅当前用户可读)」；无障碍提示统一为「本机凭据文件」",
+      "impact": "双端说明一致"
+    },
+    {
+      "scope": "设置页凭据存储",
+      "before": "行标题「钥匙串访问」；引导标题「配置钥匙串访问」，正文「Bruce 会把订阅凭证保存在 macOS 钥匙串中。首次配置时系统可能要求输入一次 macOS 登录密码…」",
+      "after": "行标题「凭据存储」；引导标题「配置凭据存储」，正文如实说明凭证保存在本机凭据文件、旧版钥匙串凭证读取时自动迁移、后台读取从不弹系统密码框（仅主动操作可能出现一次）",
+      "impact": "引导与实现一致；外部 CLI 钥匙串、外部钥匙串来源设置与系统认证框原因文案保持「钥匙串」"
+    }
+  ],
+
+  "design": {
+    "doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "topic": "SubscriptionQuota",
+    "modified": true,
+    "rule_diff": {
+      "before": "规则 1 只描述文件存储规格；规则 6 移除契约按 Keychain errSecItemNotFound 描述",
+      "after": "规则 1 补「旧版钥匙串迁移」（读时迁移、后台不弹认证框）与「用户可见措辞（C127）」（自有存储称本机凭据文件、对话框说明与 Windows 逐字一致、钥匙串只用于外部 CLI 与迁移）；规则 6 移除契约按文件存储改写"
+    }
+  },
+
+  "verification": {
+    "result": null,
+    "run_id": "local-20261026-08",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "Swift 构建通过，CollectorRunner Harness（断言授权错误原因文本）与 OnboardingCore Harness 全绿，verify-local 退出码 0",
+        "false_if": "任一失败",
+        "evidence": "2026-10-26: SDKROOT=MacOSX26.5 swift build --package-path apps/macos 退出码 0；CollectorRunnerHarness 28 passed（两条授权错误用例的 reason.contains 判据由「钥匙串」改为「凭据存储」）；BruceOnboardingCoreHarness 170 passed；SDKROOT=MacOSX26.5 zsh scripts/verify-local.sh 退出码 0（local/logs/c127-verify.log：BruceOnboardingCore 170、CollectorRunner 28）。按 AGENTS.md 四.2，纯文案调整不新增行为测试。",
+        "result": true
+      },
+      {
+        "item": "文案核对",
+        "true_if": "所有指向 Bruce 自有存储的用户可见文案不再出现 Keychain / 钥匙串；保留的「钥匙串」只指外部 CLI 或迁移；对话框说明与 Windows 逐字一致；引导文案的每个说法都有实现依据",
+        "false_if": "仍有指向自有存储的 Keychain 文案或说法与实现不符",
+        "evidence": "2026-10-26: 改动后 BruceApp / BruceAppCore 字符串中的「Keychain / 钥匙串」仅剩 OnboardingCoordinator「外部钥匙串设置」两处（externalSources）、LocalCredentialProbe 与 ClaudeProviderSettingsSection 三处（Claude CLI 登录态）及新引导中的旧版迁移说明；BruceOnboardingCore 中 LAContext.localizedReason「Bruce 需要一次性配置钥匙串访问权限」属实际读取旧钥匙串时的系统认证框原因，保留。对话框说明与 apps/win/src/settings.js 第 2029 行逐字一致。引导依据：ProtectedFileCredentialStore.loadCredential 文件未命中时读 fallbackKeychainStore 并 writePayloadLocked（读时迁移）；applyAuthenticationPolicy 对 .automatic 设 interactionNotAllowed 与 kSecUseAuthenticationUISkip（后台不弹框），.userInitiated 才允许系统认证 UI。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "只改用户可见字符串与对应测试判据；存储行为、配置键与 KeychainAccess 相关类型名不变",
+        "false_if": "改动存储逻辑或持久化键",
+        "evidence": "2026-10-26: diff 仅涉及字符串字面量与 CollectorRunnerHarness 两条判据 / 失败信息；keychainAccessConfigured 等配置键、KeychainAccessController / KeychainCredentialStore 类型与存储读写流程未改。真机未逐屏核对文案换行与截断。",
+        "result": true
+      }
+    ]
+  },
+
+  "rejections": [],
+
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

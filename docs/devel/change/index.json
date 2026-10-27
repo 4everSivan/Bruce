@@ -129,7 +129,8 @@
         "C071",
         "C118",
         "C120",
-        "C124"
+        "C124",
+        "C127"
       ]
     },
     "TokenUsage": {
@@ -1308,6 +1309,15 @@
       "topic": "TokenUsage",
       "version": "0.13.1",
       "file": "docs/devel/change/C126.json"
+    },
+    "C127": {
+      "title": "mac 凭据存储措辞更正：自有存储统一称「本机凭据文件」，不再提示去 Keychain 查找",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C127-credential-store-wording",
+      "topic": "SubscriptionQuota",
+      "version": "0.13.1",
+      "file": "docs/devel/change/C127.json"
     }
   }
 }
