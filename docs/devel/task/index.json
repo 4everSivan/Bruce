@@ -249,7 +249,7 @@
       "topic": "WindowsCompat",
       "milestone": "M7-Windows托盘动态配额与实时微缩预览",
       "depends_on": [],
-      "file": "docs/devel/task/T12.json",
+      "file": "docs/archive/0.14.0/task/T12.json",
       "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T12-win-tray-live-preview"
     },
     "T13": {
@@ -259,7 +259,7 @@
       "topic": "SharedPolicyCore",
       "milestone": "M8-跨端共享策略核心",
       "depends_on": [],
-      "file": "docs/devel/task/T13.json",
+      "file": "docs/archive/0.14.0/task/T13.json",
       "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T13-shared-quota-policy-crate"
     },
     "T14": {
@@ -271,7 +271,7 @@
       "depends_on": [
         "T13"
       ],
-      "file": "docs/devel/task/T14.json",
+      "file": "docs/archive/0.14.0/task/T14.json",
       "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T14-collector-policy-subcommand"
     },
     "T15": {
@@ -283,7 +283,7 @@
       "depends_on": [
         "T14"
       ],
-      "file": "docs/devel/task/T15.json",
+      "file": "docs/archive/0.14.0/task/T15.json",
       "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T15-mac-quota-policy-via-collector"
     },
     "T16": {
@@ -295,7 +295,7 @@
       "depends_on": [
         "T15"
       ],
-      "file": "docs/devel/task/T16.json",
+      "file": "docs/archive/0.14.0/task/T16.json",
       "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T16-mac-link-rust-policy"
     },
     "T17": {
@@ -307,7 +307,7 @@
       "depends_on": [
         "T16"
       ],
-      "file": "docs/devel/task/T17.json",
+      "file": "docs/archive/0.14.0/task/T17.json",
       "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T17-refresh-policy-shared"
     }
   }

@@ -1,0 +1,45 @@
+{
+  "kind": "bruce-archive-task-snapshot",
+  "release": "0.14.0",
+  "archived_at": "2026-10-27",
+  "status": "frozen",
+  "note": "随 v0.14.0 tag 封箱。收拢本批次 completed 任务卡 T12（Windows 托盘动态配额与亚克力预览卡）与 T13–T17（M8-跨端共享策略核心）；T01–T04 未声明 version，按 SOP 留在 docs/devel/task/。",
+  "tasks": {
+    "T12": {
+      "title": "Windows 系统托盘动态配额环与 420px 亚克力微缩实时预览卡 (方案 1)",
+      "status": "completed",
+      "milestone": "M7-Windows托盘动态配额与实时微缩预览",
+      "file": "docs/archive/0.14.0/task/T12.json"
+    },
+    "T13": {
+      "title": "抽出共享额度策略 crate（门禁 + 回填），Windows 改为调用",
+      "status": "completed",
+      "milestone": "M8-跨端共享策略核心",
+      "file": "docs/archive/0.14.0/task/T13.json"
+    },
+    "T14": {
+      "title": "collector 新增额度策略子命令与请求 / 响应 schema",
+      "status": "completed",
+      "milestone": "M8-跨端共享策略核心",
+      "file": "docs/archive/0.14.0/task/T14.json"
+    },
+    "T15": {
+      "title": "mac 刷新流水线改调额度策略子命令并删除 Swift 门禁与回填实现",
+      "status": "completed",
+      "milestone": "M8-跨端共享策略核心",
+      "file": "docs/archive/0.14.0/task/T15.json"
+    },
+    "T16": {
+      "title": "第二期：mac 链接 Rust 静态库，额度策略改为进程内调用",
+      "status": "completed",
+      "milestone": "M8-跨端共享策略核心",
+      "file": "docs/archive/0.14.0/task/T16.json"
+    },
+    "T17": {
+      "title": "窗口边界唤醒与刷新退避提为共享 Rust 实现（先补双端 fixture）",
+      "status": "completed",
+      "milestone": "M8-跨端共享策略核心",
+      "file": "docs/archive/0.14.0/task/T17.json"
+    }
+  }
+}

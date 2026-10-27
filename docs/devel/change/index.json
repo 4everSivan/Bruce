@@ -1116,7 +1116,7 @@
       "branch": "fix/C104-verify-speedup",
       "topic": "SystemOverview",
       "version": "0.14.0",
-      "file": "docs/devel/change/C104.json"
+      "file": "docs/archive/0.14.0/change/C104.json"
     },
     "C105": {
       "title": "补发版前置核实规则：签名 secrets 须以 gh secret list 实测为准（原 C104 撞号改号）",
@@ -1125,7 +1125,7 @@
       "branch": "main",
       "topic": "SoftwareUpdate",
       "version": "0.14.0",
-      "file": "docs/devel/change/C105.json"
+      "file": "docs/archive/0.14.0/change/C105.json"
     },
     "C106": {
       "title": "artifact 逐日校验不再每次新建 DateFormatter：消除每轮刷新约 2 秒主线程 CPU",
@@ -1134,7 +1134,7 @@
       "branch": "fix/C106-validday-formatter",
       "topic": "SystemOverview",
       "version": "0.14.0",
-      "file": "docs/devel/change/C106.json"
+      "file": "docs/archive/0.14.0/change/C106.json"
     },
     "C107": {
       "title": "Claude 单价按 Anthropic 官方校正并按 TTL 计价缓存写入：Opus 5.5 费用高估约 70%",
@@ -1143,7 +1143,7 @@
       "branch": "fix/C107-claude-pricing",
       "topic": "TokenUsage",
       "version": "0.14.0",
-      "file": "docs/devel/change/C107.json"
+      "file": "docs/archive/0.14.0/change/C107.json"
     },
     "C108": {
       "title": "价卡单一事实源：设置页展示单价与采集端计费同源（消除 deepseek-v4.1-flash 展示 $0.15 而按 $0.30 计费的漂移）",
@@ -1152,7 +1152,7 @@
       "branch": "fix/C108-pricing-single-source",
       "topic": "PricingEngine",
       "version": "0.14.0",
-      "file": "docs/devel/change/C108.json"
+      "file": "docs/archive/0.14.0/change/C108.json"
     },
     "C109": {
       "title": "Windows 出站网络 command 移出主线程：设备码登录与订阅验证不再冻结托盘与界面",
@@ -1161,7 +1161,7 @@
       "branch": "fix/C109-win-async-network",
       "topic": "WindowsCompat",
       "version": "0.14.0",
-      "file": "docs/devel/change/C109.json"
+      "file": "docs/archive/0.14.0/change/C109.json"
     },
     "C110": {
       "title": "本机扫描提速：缓存一次性写盘、解析前字节预筛、次要源并行扫描（冷扫 2.15 s → 0.17 s）",
@@ -1170,7 +1170,7 @@
       "branch": "fix/C110-scan-prefilter-parallel",
       "topic": "TokenUsage",
       "version": "0.14.0",
-      "file": "docs/devel/change/C110.json"
+      "file": "docs/archive/0.14.0/change/C110.json"
     },
     "C111": {
       "title": "设置中心统一错误提示重构：8pt 卡片级圆角悬浮极客高斯胶囊浮岛 (环形微圆环倒计时 + 42pt高 + 420pt固定宽)，彻底根治布局抖动、跨Tab污染与重复噪音",
@@ -1179,7 +1179,7 @@
       "branch": "fix/C111-settings-floating-error-toast",
       "topic": "PricingEngine",
       "version": "0.14.0",
-      "file": "docs/devel/change/C111.json"
+      "file": "docs/archive/0.14.0/change/C111.json"
     },
     "C112": {
       "title": "设置窗口交互与感知升级：分段选择器高对比选中浮岛、开关状态文字居左统一对齐、Agent用量更名模型用量",
@@ -1188,7 +1188,7 @@
       "branch": "fix/C112-settings-controls-and-naming",
       "topic": "PricingEngine",
       "version": "0.14.0",
-      "file": "docs/devel/change/C112.json"
+      "file": "docs/archive/0.14.0/change/C112.json"
     },
     "C113": {
       "title": "修复软件更新旧版本信息残留：Windows跳过版本追平自动清除、macOS启动即时比对与更新残留兜底治理",
@@ -1197,7 +1197,7 @@
       "branch": "fix/C113-software-update-cleanup",
       "topic": "SoftwareUpdate",
       "version": "0.14.0",
-      "file": "docs/devel/change/C113.json"
+      "file": "docs/archive/0.14.0/change/C113.json"
     },
     "C114": {
       "title": "CI/CD 与本地构建支持生成 Bruce-<version>.dmg 磁盘镜像作为 Release 附加资产",
@@ -1206,7 +1206,7 @@
       "branch": "feat/C114-release-dmg",
       "topic": "SystemOverview",
       "version": "0.14.0",
-      "file": "docs/devel/change/C114.json"
+      "file": "docs/archive/0.14.0/change/C114.json"
     },
     "C115": {
       "title": "托盘配额环与悬停预览卡读取真实面板字段：修复恒显示剩余 100%、今日 $0.00",
@@ -1215,7 +1215,7 @@
       "branch": "fix/C115-tray-preview-panel-keys",
       "topic": "WindowsCompat",
       "version": "0.14.0",
-      "file": "docs/devel/change/C115.json"
+      "file": "docs/archive/0.14.0/change/C115.json"
     },
     "C116": {
       "title": "JSONL 缓存条目与采集窗口解耦并并入 Kimi Code CLI：跨日首轮刷新不再整树重解析",
@@ -1224,7 +1224,7 @@
       "branch": "fix/C116-window-independent-jsonl-cache",
       "topic": "TokenUsage",
       "version": "0.14.0",
-      "file": "docs/devel/change/C116.json"
+      "file": "docs/archive/0.14.0/change/C116.json"
     },
     "C117": {
       "title": "Codex 整树缓存改为按文件观测缓存：进行中会话追加与跨日不再整树重读",
@@ -1233,7 +1233,7 @@
       "branch": "fix/C117-codex-file-cache",
       "topic": "TokenUsage",
       "version": "0.14.0",
-      "file": "docs/devel/change/C117.json"
+      "file": "docs/archive/0.14.0/change/C117.json"
     },
     "C118": {
       "title": "订阅服务显式下发 provider 与 failureKind：两端不再按 id 前缀推断归属、不再嗅探 note 文案判定 429",
@@ -1242,7 +1242,7 @@
       "branch": "fix/C118-service-provider-failure-kind",
       "topic": "SubscriptionQuota",
       "version": "0.14.0",
-      "file": "docs/devel/change/C118.json"
+      "file": "docs/archive/0.14.0/change/C118.json"
     },
     "C119": {
       "title": "移除恒为占位的 Orca 行：Orca 内置 Codex 的会话计入 Codex",
@@ -1251,7 +1251,7 @@
       "branch": "fix/C119-orca-agent-attribution",
       "topic": "TokenUsage",
       "version": "0.14.0",
-      "file": "docs/devel/change/C119.json"
+      "file": "docs/archive/0.14.0/change/C119.json"
     },
     "C120": {
       "title": "订阅额度查询门禁双端对齐：mac 按启用集合判定（新启用即首查），新增双端共享对拍 fixture",
@@ -1260,7 +1260,7 @@
       "branch": "fix/C120-quota-policy-parity",
       "topic": "SubscriptionQuota",
       "version": "0.14.0",
-      "file": "docs/devel/change/C120.json"
+      "file": "docs/archive/0.14.0/change/C120.json"
     },
     "C121": {
       "title": "macOS 快照持久化去重复解析：每轮刷新主线程耗时约 300 ms → 30 ms，停写重复的 .backup.json",
@@ -1269,7 +1269,7 @@
       "branch": "fix/C121-artifact-store-io",
       "topic": "SystemOverview",
       "version": "0.14.0",
-      "file": "docs/devel/change/C121.json"
+      "file": "docs/archive/0.14.0/change/C121.json"
     },
     "C122": {
       "title": "额度账号执行去掉永不阻塞的账号许可与两层永不合并的 single-flight",
@@ -1278,7 +1278,7 @@
       "branch": "fix/C122-execution-permits",
       "topic": "TokenUsage",
       "version": "0.14.0",
-      "file": "docs/devel/change/C122.json"
+      "file": "docs/archive/0.14.0/change/C122.json"
     },
     "C123": {
       "title": "退役从未被读取的请求契约字段：localPricing、subscriptionQuotaOnly / subscriptionProviders、providerEnv",
@@ -1287,7 +1287,7 @@
       "branch": "fix/C123-dead-contract-fields",
       "topic": "TokenUsage",
       "version": "0.14.0",
-      "file": "docs/devel/change/C123.json"
+      "file": "docs/archive/0.14.0/change/C123.json"
     },
     "C124": {
       "title": "未授权云端额度不再输出 CC Switch / Codex partial 占位：纯本机统计不再显示部分失败，清理 CC Switch 过时文案",
@@ -1296,7 +1296,7 @@
       "branch": "fix/C124-stale-cc-switch-text",
       "topic": "SubscriptionQuota",
       "version": "0.14.0",
-      "file": "docs/devel/change/C124.json"
+      "file": "docs/archive/0.14.0/change/C124.json"
     },
     "C125": {
       "title": "全景文档核对：README 版本与特性对齐 v0.13.0，设计索引日期与刷新间隔可选值去漂移",
@@ -1305,7 +1305,7 @@
       "branch": "fix/C125-readme-drift",
       "topic": "SystemOverview",
       "version": "0.14.0",
-      "file": "docs/devel/change/C125.json"
+      "file": "docs/archive/0.14.0/change/C125.json"
     },
     "C126": {
       "title": "不走缓存的扫描函数降为测试专用参照实现：collector-local 对外只保留缓存扫描",
@@ -1314,7 +1314,7 @@
       "branch": "fix/C126-uncached-scanners-test-only",
       "topic": "TokenUsage",
       "version": "0.14.0",
-      "file": "docs/devel/change/C126.json"
+      "file": "docs/archive/0.14.0/change/C126.json"
     },
     "C127": {
       "title": "mac 凭据存储措辞更正：自有存储统一称「本机凭据文件」，不再提示去 Keychain 查找",
@@ -1323,7 +1323,7 @@
       "branch": "fix/C127-credential-store-wording",
       "topic": "SubscriptionQuota",
       "version": "0.14.0",
-      "file": "docs/devel/change/C127.json"
+      "file": "docs/archive/0.14.0/change/C127.json"
     },
     "C128": {
       "title": "Windows runtime_core.rs 按职责拆分为 activity / geometry / status 子模块（纯移动，公开路径不变）",
@@ -1332,7 +1332,7 @@
       "branch": "fix/C128-split-runtime-core",
       "topic": "SystemOverview",
       "version": "0.14.0",
-      "file": "docs/devel/change/C128.json"
+      "file": "docs/archive/0.14.0/change/C128.json"
     },
     "C129": {
       "title": "发布冒烟按 C116 前的缓存格式查找 Kimi 条目，build-test-app 与 CI 测试版构建恒失败",
@@ -1341,7 +1341,7 @@
       "branch": "fix/C129-release-smoke-cache-selector",
       "topic": "TokenUsage",
       "version": "0.14.0",
-      "file": "docs/devel/change/C129.json"
+      "file": "docs/archive/0.14.0/change/C129.json"
     }
   }
 }
