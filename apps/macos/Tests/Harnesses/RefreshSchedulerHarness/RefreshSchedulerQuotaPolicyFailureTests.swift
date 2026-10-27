@@ -257,7 +257,7 @@ extension RefreshSchedulerHarness {
                 quotaRefreshInterval: 1800,
                 wakeDedupSeconds: 0
             ),
-            jitterProvider: { _ in 0 },
+            jitterProvider: { 0 },
             registerWakeNotifications: false,
             quotaPolicy: CollectorQuotaPolicy { _ in
                 throw QuotaPolicyError.rejected(code: "POLICY_INTERNAL_PANIC")

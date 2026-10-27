@@ -9,9 +9,19 @@
   "properties": {
     "schemaVersion": { "const": 1 },
     "status": { "enum": ["success", "error"] },
-    "operation": { "enum": ["quotaPlan", "quotaMerge", "quotaAnnotate", null] },
+    "operation": {
+      "enum": [
+        "quotaPlan",
+        "quotaMerge",
+        "quotaAnnotate",
+        "boundaryIds",
+        "boundaryWake",
+        "backoff",
+        null
+      ]
+    },
     "result": {
-      "description": "quotaPlan → {policy}; quotaMerge / quotaAnnotate → {services}; 失败时为 null",
+      "description": "quotaPlan → {policy}; quotaMerge / quotaAnnotate → {services}; boundaryIds → {boundaries}; boundaryWake → {delay, consumed}; backoff → {seconds}; 失败时为 null",
       "oneOf": [
         {
           "type": "object",
@@ -27,6 +37,31 @@
           "required": ["services"],
           "properties": {
             "services": { "type": "array", "items": { "type": "object" } }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["boundaries"],
+          "properties": {
+            "boundaries": { "type": "array", "items": { "type": "integer" } }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["delay", "consumed"],
+          "properties": {
+            "delay": { "type": "number" },
+            "consumed": { "type": "array", "items": { "type": "integer" }, "uniqueItems": true }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["seconds"],
+          "properties": {
+            "seconds": { "type": "number" }
           }
         },
         { "type": "null" }

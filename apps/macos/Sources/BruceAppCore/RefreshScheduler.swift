@@ -81,7 +81,7 @@ package final class RefreshScheduler {
     private let clock: RefreshClock
     private let timerScheduler: RunnerTimerScheduling
     private var configuration: SchedulerConfiguration
-    private let jitterProvider: (Double) -> Double
+    private let jitterProvider: () -> Double
     private let registerWakeNotifications: Bool
     /// 可选运行输入提供器; nil 时保持空 context/credentials 的旧行为.
     private var runInputProvider: (any CollectorRunInputProviding)?
@@ -140,8 +140,8 @@ package final class RefreshScheduler {
             clock: SystemRefreshClock(),
             timerScheduler: DispatchRunnerTimerScheduler(),
             configuration: .default,
-            jitterProvider: { capped in
-                capped * Double.random(in: 0...0.1)
+            jitterProvider: {
+                Double.random(in: 0...0.1)
             },
             registerWakeNotifications: true,
             runInputProvider: runInputProvider,
@@ -157,8 +157,8 @@ package final class RefreshScheduler {
         clock: RefreshClock = SystemRefreshClock(),
         timerScheduler: RunnerTimerScheduling = DispatchRunnerTimerScheduler(),
         configuration: SchedulerConfiguration = .default,
-        jitterProvider: @escaping (Double) -> Double = { capped in
-            capped * Double.random(in: 0...0.1)
+        jitterProvider: @escaping () -> Double = {
+            Double.random(in: 0...0.1)
         },
         registerWakeNotifications: Bool = true,
         runInputProvider: (any CollectorRunInputProviding)? = nil,

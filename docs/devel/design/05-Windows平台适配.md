@@ -406,11 +406,11 @@ Windows Tauri 后端 (Rust)
 | `viewmodel/src/usage.rs` | `UsageMapping.swift` / `PanelViewModelMapper` | artifact → 今日总量/Agent 明细/逐小时/热力图/模型用量视图模型 |
 | `viewmodel/src/subscription.rs` | `SubscriptionMapping.swift` / `SubscriptionPresentationPolicy` | Provider 额度快照 → 订阅卡展示模型（窗口语义、进度、告警态） |
 | `src-tauri/src/alerts.rs` | `QuotaAlertEvaluator.swift` / `SystemNotificationDeliveryPolicy` | 配额告警判定与通知去重 |
-| `src-tauri/src/scheduler.rs`、`runtime_core.rs` | `RefreshScheduler.swift` / `RefreshBackoffPolicy` / `RefreshExecutionPipeline` | 刷新调度、指数退避与可独立测试的策略 |
+| `src-tauri/src/scheduler.rs`、`runtime_core.rs` | `RefreshScheduler.swift` / `RefreshBackoffPolicy` / `RefreshExecutionPipeline` | 刷新调度、指数退避与可独立测试的策略（T17 起退避与窗口边界唤醒经共享 `collector-policy::refresh`） |
 | `src-tauri/src/reachability.rs` | `NetworkReachability.swift` | 网络可达性闸门状态机与可注入探针（C076，见规则 18） |
 | `src-tauri/src/quota_policy.rs` | `QuotaPolicyClient.swift`（T16 起经静态库 `collector-policy-ffi` 进程内调用同一 crate） | per-provider 额度新鲜度门禁、429 冷却与旧值回填（C077，见规则 19）；T13 起为共享 crate `core/collector/crates/collector-policy` 的薄封装 |
 | `src-tauri/src/credentials/claude_local.rs` | `SystemExternalCredentialReader.swift` / `ClaudePasteParser.swift` | 本机 Claude CLI 登录态只读跟随与规范化（C075，见规则 17） |
-| `src-tauri/src/runtime_core.rs` | `CodexQuotaSnapshotMerger` 等 | 快照持久化与 stale 合并（DeepSeek 月度账本已于 C020 双端移除） |
+| `src-tauri/src/runtime_core.rs` | 快照状态机与 stale 合并（T13 起 merge 经 `collector-policy`） | 快照持久化、恢复与 stale 合并；Codex 四源合并为 mac 专属（Windows 无对应实现，原表格误记为 `CodexQuotaSnapshotMerger`） |
 | `src-tauri/src/settings.rs`、`src/settings.js` | 设置中心相关 | 价格校准、卡片排序、主题偏好的加载与持久化 |
 
 对拍测试位于 `apps/win/viewmodel/tests/`（`cargo test`，无需 Tauri/WebView 依赖，双平台 CI 均可执行），fixture 直接引用 `tests/fixtures/` 共享资产；mac 侧在 `verify-local.sh` 中增加对拍 invocation（Swift Harness 输出与 Rust 输出比对）。

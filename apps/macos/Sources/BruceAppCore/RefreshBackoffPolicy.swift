@@ -6,35 +6,35 @@ import BruceOnboardingCore
 /// 刷新退避与错误分类策略 (阶段 C: 从 RefreshScheduler 拆出).
 ///
 /// 纯逻辑: 计算退避时长, 不启动刷新, 不触碰 timer 或状态.
-/// 退避公式: 限流走固定退避; 其他走指数退避 (base * 2^(retry-1)) + 抖动,
-/// 上限 maxBackoffSeconds.
+/// 退避公式只在共享 `collector-policy::refresh` 中实现一份 (T17): 限流走固定退避;
+/// 其他走指数退避 (base * 2^(retry-1)) + 抖动, 上限 maxBackoffSeconds.
 @MainActor
 struct RefreshBackoffPolicy {
     let configuration: SchedulerConfiguration
-    let jitterProvider: (Double) -> Double
+    /// 抖动比例 (capped 的 0...0.1); 注入以便测试确定性.
+    let jitterProvider: () -> Double
 
     init(
         configuration: SchedulerConfiguration,
-        jitterProvider: @escaping (Double) -> Double
+        jitterProvider: @escaping () -> Double
     ) {
         self.configuration = configuration
         self.jitterProvider = jitterProvider
     }
 
-    /// 计算退避秒数. 限流走固定退避; 其他走指数退避 + 抖动.
+    /// 计算退避秒数. 共享入口不可用时回到上限 (最保守的等待), 不退回本地公式.
     func computeBackoff(
         retryCount: Int,
         category: SnapshotErrorCategory?
     ) -> Double {
-        if category == .rateLimit {
-            return configuration.rateLimitBackoffSeconds
-        }
-
-        let exponential = configuration.baseBackoffSeconds
-            * pow(2.0, Double(retryCount - 1))
-        let capped = min(exponential, configuration.maxBackoffSeconds)
-        let jitter = jitterProvider(capped)
-        return min(capped + jitter, configuration.maxBackoffSeconds)
+        SharedRefreshPolicy.backoff(
+            retryCount: retryCount,
+            rateLimited: category == .rateLimit,
+            base: configuration.baseBackoffSeconds,
+            max: configuration.maxBackoffSeconds,
+            rateLimit: configuration.rateLimitBackoffSeconds,
+            jitterFraction: jitterProvider()
+        ) ?? configuration.maxBackoffSeconds
     }
 }
 

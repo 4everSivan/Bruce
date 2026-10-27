@@ -75,24 +75,22 @@ impl SchedulerControl {
 }
 
 /// 计算退避秒数 (对齐 mac RefreshBackoffPolicy: 限流固定, 其余指数 + 抖动)。
+/// 实现位于共享 `collector-policy::backoff_seconds` (T17); 抖动比例取系统纳秒的
+/// 0..0.1 (避免引入 rand 依赖), 与两端原实现同为 capped 的 0~10%。
 pub fn compute_backoff(retry_count: u32, rate_limited: bool) -> u64 {
-    if rate_limited {
-        return RATE_LIMIT_BACKOFF_SECS;
-    }
-    // 公开 API 防御: 0 与 1 同为首个重试档 (裸 retry_count-1 在 0 输入时 u32 下溢 panic)。
-    let exponential = BASE_BACKOFF_SECS.saturating_mul(1u64 << (retry_count.max(1) - 1).min(10));
-    let capped = exponential.min(MAX_BACKOFF_SECS);
-    // 抖动: 0..capped/10 (避免引入 rand 依赖, 用系统纳秒)。
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .subsec_nanos() as u64;
-    let jitter = if capped > 10 {
-        nanos % (capped / 10)
-    } else {
-        0
-    };
-    (capped + jitter).min(MAX_BACKOFF_SECS)
+    let jitter_fraction = (nanos % 1000) as f64 / 10_000.0;
+    collector_policy::backoff_seconds(
+        retry_count,
+        rate_limited,
+        BASE_BACKOFF_SECS as f64,
+        MAX_BACKOFF_SECS as f64,
+        RATE_LIMIT_BACKOFF_SECS as f64,
+        jitter_fraction,
+    ) as u64
 }
 
 /// 诊断分类: 是否限流类失败 (决定固定退避)。

@@ -266,3 +266,104 @@ fn boundary_wake_consumes_only_the_chosen_boundary_and_prunes_past_entries() {
     );
     assert!(consumed.contains(&(now + 100)));
 }
+
+/// T17: 与 mac 共享的窗口边界唤醒 / 退避 fixture (tests/fixtures/refresh-policy-parity)。
+/// Windows 包装器 (boundary_wake / compute_backoff) 只是共享实现的薄封装; 退避包装器的
+/// 抖动取自系统纳秒, 无法逐值断言, 因此 fixture 的精确值直接验证被委托的共享函数,
+/// 包装器的随机抖动范围仍由上面的用例覆盖。
+#[test]
+fn refresh_policy_matches_shared_fixture() {
+    use std::collections::BTreeSet;
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let text =
+        std::fs::read_to_string(root.join("tests/fixtures/refresh-policy-parity/cases.json"))
+            .unwrap();
+    let fixture: serde_json::Value = serde_json::from_str(&text).unwrap();
+    let integers = |value: &serde_json::Value| -> Vec<i64> {
+        value
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| item.as_i64().unwrap())
+            .collect()
+    };
+
+    for case in fixture["boundaryIds"].as_array().unwrap() {
+        let name = case["name"].as_str().unwrap();
+        let services = case["services"].as_array().unwrap();
+        let expected = integers(&case["expected"]);
+        assert_eq!(
+            collector_policy::boundary_ids(services),
+            expected,
+            "{name} (shared)"
+        );
+        let artifact = json!({"services": services});
+        assert_eq!(
+            bruce_win_lib::runtime_core::window_boundaries(&artifact),
+            expected,
+            "{name} (windows)"
+        );
+    }
+
+    for case in fixture["boundaryWake"].as_array().unwrap() {
+        let name = case["name"].as_str().unwrap();
+        let boundaries = integers(&case["boundaries"]);
+        let initial = integers(&case["consumed"]);
+        let mut consumed: BTreeSet<i64> = initial.iter().copied().collect();
+        let delay = collector_policy::boundary_delay(
+            case["interval"].as_f64().unwrap(),
+            &boundaries,
+            case["now"].as_f64().unwrap(),
+            case["slack"].as_f64().unwrap(),
+            &mut consumed,
+        );
+        assert!(
+            (delay - case["expectedDelay"].as_f64().unwrap()).abs() < 1e-6,
+            "{name}: delay {delay}"
+        );
+        assert_eq!(
+            consumed.iter().copied().collect::<Vec<_>>(),
+            integers(&case["expectedConsumed"]),
+            "{name} (consumed)"
+        );
+
+        let now = case["now"].as_f64().unwrap();
+        if now.fract() == 0.0 {
+            let mut wrapped: BTreeSet<i64> = initial.iter().copied().collect();
+            let got = bruce_win_lib::runtime_core::boundary_wake(
+                case["interval"].as_u64().unwrap(),
+                &boundaries,
+                now as i64,
+                case["slack"].as_u64().unwrap(),
+                &mut wrapped,
+            );
+            assert_eq!(
+                got as f64,
+                case["expectedDelay"].as_f64().unwrap(),
+                "{name} (windows wrapper)"
+            );
+            assert_eq!(
+                wrapped.iter().copied().collect::<Vec<_>>(),
+                integers(&case["expectedConsumed"]),
+                "{name} (windows consumed)"
+            );
+        }
+    }
+
+    for case in fixture["backoff"].as_array().unwrap() {
+        let name = case["name"].as_str().unwrap();
+        let seconds = collector_policy::backoff_seconds(
+            case["retryCount"].as_u64().unwrap() as u32,
+            case["rateLimited"].as_bool().unwrap(),
+            case["base"].as_f64().unwrap(),
+            case["max"].as_f64().unwrap(),
+            case["rateLimit"].as_f64().unwrap(),
+            case["jitterFraction"].as_f64().unwrap(),
+        );
+        assert!(
+            (seconds - case["expectedSeconds"].as_f64().unwrap()).abs() < 1e-6,
+            "{name}: seconds {seconds}"
+        );
+    }
+}

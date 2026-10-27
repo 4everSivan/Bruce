@@ -8,33 +8,19 @@ import Foundation
 /// 三道防线杜绝刷新风暴 —— ①只认严格在未来的边界 (滚动窗口的滑出时刻前移时天然不触发);
 /// ②同一「边界值」只消费一次 (epoch 秒精确去重); ③未命中边界则回落原间隔。
 ///
-/// 纯函数, 与 Windows 侧 `runtime_core::boundary_wake` 同构 (双端同一策略)。
+/// 规则只在共享 `collector-policy::refresh` 中实现一份 (T17); 本类型只组装请求并应用结果。
 package enum SubscriptionBoundaryWakePolicy {
     /// 边界是预测值, 提前量留出刷新耗时。
     package static let slack: TimeInterval = 20
 
     /// 从 artifact 的 `services[].windows[].resetsAt` 提取重置时刻 (epoch 秒, 与卡片同源)。
+    /// 共享入口不可用时返回空集 (不提前唤醒), 不退回本地遍历。
     package static func boundaries(in artifact: JSONValue) -> [Int64] {
-        guard let services = artifact.objectValue?["services"]?.arrayValue else {
-            return []
-        }
-        var result: [Int64] = []
-        for service in services {
-            guard let object = service.objectValue,
-                  object["kind"]?.stringValue == "windows",
-                  let windows = object["windows"]?.arrayValue else { continue }
-            for window in windows {
-                guard let entry = window.objectValue,
-                      let raw = entry["resetsAt"] else { continue }
-                if let epoch = raw.intValue.map(Int64.init) ?? raw.doubleValue.map(Int64.init) {
-                    result.append(epoch)
-                }
-            }
-        }
-        return result
+        SharedRefreshPolicy.boundaries(in: artifact) ?? []
     }
 
     /// 下次唤醒间隔 (秒): min(间隔剩余, 最近一个未来边界 + slack)。命中时消费该边界。
+    /// 共享入口不可用时回落到原间隔 (宁可不提前刷新, 也不猜测)。
     package static func delay(
         intervalRemaining: TimeInterval,
         boundaries: [Int64],
@@ -42,21 +28,12 @@ package enum SubscriptionBoundaryWakePolicy {
         slack: TimeInterval = SubscriptionBoundaryWakePolicy.slack,
         consumed: inout Set<Int64>
     ) -> TimeInterval {
-        let nowEpoch = Int64(now.timeIntervalSince1970)
-        // 已进入过去的边界不再需要记忆, 顺带收敛集合规模。
-        consumed = consumed.filter { $0 > nowEpoch }
-
-        var best: (delay: TimeInterval, boundary: Int64)?
-        for boundary in boundaries where boundary > nowEpoch && !consumed.contains(boundary) {
-            let delay = max(0, Double(boundary) + slack - now.timeIntervalSince1970)
-            guard delay < intervalRemaining else { continue }
-            if best == nil || delay < best!.delay {
-                best = (delay, boundary)
-            }
-        }
-
-        guard let chosen = best else { return intervalRemaining }
-        consumed.insert(chosen.boundary)
-        return chosen.delay
+        SharedRefreshPolicy.delay(
+            intervalRemaining: intervalRemaining,
+            boundaries: boundaries,
+            now: now,
+            slack: slack,
+            consumed: &consumed
+        ) ?? intervalRemaining
     }
 }

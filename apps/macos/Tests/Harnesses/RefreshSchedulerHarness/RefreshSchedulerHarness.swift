@@ -203,6 +203,8 @@ struct RefreshSchedulerHarness {
         try await quotaPolicyMatchesSharedParityFixture(repository: repository)
         print("Refresh scheduler: quota carry-over shared parity fixture")
         try await quotaCarryOverMatchesSharedParityFixture(repository: repository)
+        print("Refresh scheduler: refresh policy shared parity fixture (T17)")
+        try refreshPolicyMatchesSharedFixture(repository: repository)
         print("Refresh scheduler: quota policy plan failure skips collection (T15)")
         try await quotaPolicyPlanFailureSkipsCollection(repository: repository)
         print("Refresh scheduler: quota policy merge rejection keeps previous artifact (T15)")
@@ -245,6 +247,6 @@ struct RefreshSchedulerHarness {
         try await screenLockSuppressedRunCarriesOverServices(repository: repository)
         print("Refresh scheduler: quota refresh interval updates with scheduler interval")
         try await quotaRefreshIntervalUpdatesWithSchedulerRefreshInterval(repository: repository)
-        print("Refresh scheduler tests passed: 114")
+        print("Refresh scheduler tests passed: 115")
     }
 }

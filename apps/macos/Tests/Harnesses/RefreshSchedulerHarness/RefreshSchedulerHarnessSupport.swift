@@ -364,7 +364,7 @@ func makeScheduler(
         clock: clock,
         timerScheduler: timers,
         configuration: config,
-        jitterProvider: { _ in 0 },
+        jitterProvider: { 0 },
         registerWakeNotifications: false,
         networkReachability: reachability,
         screenLockState: screenLock
@@ -883,7 +883,7 @@ func makeSchedulerWithError(
         clock: clock,
         timerScheduler: timers,
         configuration: config,
-        jitterProvider: { _ in 0 },
+        jitterProvider: { 0 },
         registerWakeNotifications: false,
         credentialUpdateCoordinator: credentialUpdateCoordinator,
         networkReachability: reachability

@@ -64,7 +64,8 @@
         "T13",
         "T14",
         "T15",
-        "T16"
+        "T16",
+        "T17"
       ]
     }
   },
@@ -107,7 +108,8 @@
         "T13",
         "T14",
         "T15",
-        "T16"
+        "T16",
+        "T17"
       ]
     }
   },
@@ -295,6 +297,18 @@
       ],
       "file": "docs/devel/task/T16.json",
       "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T16-mac-link-rust-policy"
+    },
+    "T17": {
+      "title": "窗口边界唤醒与刷新退避提为共享 Rust 实现（先补双端 fixture）",
+      "status": "pending",
+      "branch": "feat/T17-refresh-policy-shared",
+      "topic": "SharedPolicyCore",
+      "milestone": "M8-跨端共享策略核心",
+      "depends_on": [
+        "T16"
+      ],
+      "file": "docs/devel/task/T17.json",
+      "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T17-refresh-policy-shared"
     }
   }
 }

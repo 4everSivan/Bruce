@@ -13,12 +13,22 @@ use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
 use crate::quota::{annotate_services, merge, plan, PlanInput, QuotaRunPolicy};
+use crate::refresh::{
+    backoff_seconds, boundary_delay, boundary_ids, boundary_vec, DEFAULT_BOUNDARY_SLACK_SECS,
+};
 
 pub const POLICY_SCHEMA_VERSION: u64 = 1;
 /// 请求上限: 与采集请求同为 4 MiB (正常请求只含 services, 约数 KB)。
 pub const MAX_POLICY_REQUEST_BYTES: usize = 4 * 1024 * 1024;
 
-const OPERATIONS: [&str; 3] = ["quotaPlan", "quotaMerge", "quotaAnnotate"];
+const OPERATIONS: [&str; 6] = [
+    "quotaPlan",
+    "quotaMerge",
+    "quotaAnnotate",
+    "boundaryIds",
+    "boundaryWake",
+    "backoff",
+];
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -51,6 +61,41 @@ struct AnnotateRequest {
     now: String,
     services: Vec<Value>,
     service_ids: BTreeSet<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct BoundaryIdsRequest {
+    services: Vec<Value>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct BoundaryWakeRequest {
+    interval: f64,
+    boundaries: Vec<i64>,
+    /// epoch 秒, 可含小数 (与 mac Date 精度一致)。
+    now: f64,
+    #[serde(default = "default_boundary_slack")]
+    slack: f64,
+    #[serde(default)]
+    consumed: Vec<i64>,
+}
+
+fn default_boundary_slack() -> f64 {
+    DEFAULT_BOUNDARY_SLACK_SECS
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct BackoffRequest {
+    retry_count: u32,
+    rate_limited: bool,
+    base: f64,
+    max: f64,
+    rate_limit: f64,
+    #[serde(default)]
+    jitter_fraction: f64,
 }
 
 struct Failure {
@@ -140,7 +185,7 @@ fn validate_envelope(input: &[u8]) -> Result<(String, Value), Failure> {
         }
         _ => Err(Failure::new(
             "POLICY_UNKNOWN_OPERATION",
-            "operation 必须是 quotaPlan / quotaMerge / quotaAnnotate",
+            "operation 必须是 quotaPlan / quotaMerge / quotaAnnotate / boundaryIds / boundaryWake / backoff",
         )),
     }
 }
@@ -177,12 +222,42 @@ fn run(operation: &str, fields: Value) -> Result<Value, Failure> {
             );
             Ok(json!({"services": merged["services"]}))
         }
-        _ => {
+        "quotaAnnotate" => {
             let request: AnnotateRequest = parse(fields)?;
             let mut artifact = json!({"services": request.services});
             annotate_services(&mut artifact, &request.service_ids, now_ms(&request.now)?);
             Ok(json!({"services": artifact["services"]}))
         }
+        "boundaryIds" => {
+            let request: BoundaryIdsRequest = parse(fields)?;
+            Ok(json!({"boundaries": boundary_ids(&request.services)}))
+        }
+        "boundaryWake" => {
+            let request: BoundaryWakeRequest = parse(fields)?;
+            let mut consumed: BTreeSet<i64> = request.consumed.into_iter().collect();
+            let delay = boundary_delay(
+                request.interval,
+                &request.boundaries,
+                request.now,
+                request.slack,
+                &mut consumed,
+            );
+            Ok(json!({"delay": delay, "consumed": boundary_vec(&consumed)}))
+        }
+        "backoff" => {
+            let request: BackoffRequest = parse(fields)?;
+            Ok(json!({
+                "seconds": backoff_seconds(
+                    request.retry_count,
+                    request.rate_limited,
+                    request.base,
+                    request.max,
+                    request.rate_limit,
+                    request.jitter_fraction,
+                )
+            }))
+        }
+        _ => Err(Failure::new("POLICY_UNKNOWN_OPERATION", "未知的策略操作")),
     }
 }
 

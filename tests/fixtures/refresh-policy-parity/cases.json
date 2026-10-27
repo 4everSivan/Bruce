@@ -1,0 +1,263 @@
+{
+  "schemaVersion": 1,
+  "description": "窗口边界唤醒与刷新退避的双端裁判用例 (T17, design/08)。boundaryWake / boundaryIds 与 backoff 由 mac RefreshSchedulerHarness、Windows scheduler_collector_coverage 与 collector-policy 单测共同消费；数值均为秒。",
+  "boundaryIds": [
+    {
+      "name": "only_windows_services_and_integer_epochs",
+      "services": [
+        {
+          "id": "cline",
+          "kind": "windows",
+          "windows": [
+            { "label": "5小时窗口", "resetsAt": 1791543327 },
+            { "label": "每周窗口", "resetsAt": null },
+            { "label": "每月窗口" }
+          ]
+        },
+        { "id": "deepseek", "kind": "balance", "windows": [{ "resetsAt": 1 }] },
+        { "id": "grok", "kind": "windows" }
+      ],
+      "expected": [1791543327]
+    },
+    {
+      "name": "numeric_float_epoch_is_accepted",
+      "services": [
+        {
+          "id": "codex_a",
+          "kind": "windows",
+          "windows": [{ "resetsAt": 1791543327.0 }]
+        }
+      ],
+      "expected": [1791543327]
+    },
+    {
+      "name": "empty_services",
+      "services": [],
+      "expected": []
+    }
+  ],
+  "boundaryWake": [
+    {
+      "name": "future_boundary_shrinks_wait",
+      "interval": 1800,
+      "boundaries": [1000600],
+      "now": 1000000,
+      "slack": 20,
+      "consumed": [],
+      "expectedDelay": 620,
+      "expectedConsumed": [1000600]
+    },
+    {
+      "name": "consumed_boundary_is_not_reused",
+      "interval": 1800,
+      "boundaries": [1000600],
+      "now": 1000000,
+      "slack": 20,
+      "consumed": [1000600],
+      "expectedDelay": 1800,
+      "expectedConsumed": [1000600]
+    },
+    {
+      "name": "past_boundary_is_pruned",
+      "interval": 1800,
+      "boundaries": [999995],
+      "now": 1000000,
+      "slack": 20,
+      "consumed": [999995],
+      "expectedDelay": 1800,
+      "expectedConsumed": []
+    },
+    {
+      "name": "boundary_equal_to_current_second_is_past",
+      "interval": 1800,
+      "boundaries": [1000000],
+      "now": 1000000,
+      "slack": 20,
+      "consumed": [],
+      "expectedDelay": 1800,
+      "expectedConsumed": []
+    },
+    {
+      "name": "boundary_beyond_interval_is_ignored",
+      "interval": 1800,
+      "boundaries": [1007200],
+      "now": 1000000,
+      "slack": 20,
+      "consumed": [],
+      "expectedDelay": 1800,
+      "expectedConsumed": []
+    },
+    {
+      "name": "nearest_of_multiple_wins",
+      "interval": 1800,
+      "boundaries": [1003000, 1000900, 1005000],
+      "now": 1000000,
+      "slack": 20,
+      "consumed": [],
+      "expectedDelay": 920,
+      "expectedConsumed": [1000900]
+    },
+    {
+      "name": "no_boundaries_falls_back",
+      "interval": 1800,
+      "boundaries": [],
+      "now": 1000000,
+      "slack": 20,
+      "consumed": [],
+      "expectedDelay": 1800,
+      "expectedConsumed": []
+    },
+    {
+      "name": "fractional_now_keeps_subsecond",
+      "interval": 1800,
+      "boundaries": [1000600],
+      "now": 1000000.5,
+      "slack": 20,
+      "consumed": [],
+      "expectedDelay": 619.5,
+      "expectedConsumed": [1000600]
+    },
+    {
+      "name": "prune_past_and_keep_future_consumed",
+      "interval": 1800,
+      "boundaries": [1000600, 1005000],
+      "now": 1000000,
+      "slack": 20,
+      "consumed": [999990, 1000600],
+      "expectedDelay": 1800,
+      "expectedConsumed": [1000600]
+    },
+    {
+      "name": "slack_can_be_the_only_remaining_wait",
+      "interval": 1800,
+      "boundaries": [1000001],
+      "now": 1000000.9,
+      "slack": 20,
+      "consumed": [],
+      "expectedDelay": 20.1,
+      "expectedConsumed": [1000001]
+    }
+  ],
+  "backoff": [
+    {
+      "name": "first_retry_is_base",
+      "retryCount": 1,
+      "rateLimited": false,
+      "base": 30,
+      "max": 1800,
+      "rateLimit": 300,
+      "jitterFraction": 0,
+      "expectedSeconds": 30
+    },
+    {
+      "name": "zero_retry_is_first_attempt",
+      "retryCount": 0,
+      "rateLimited": false,
+      "base": 30,
+      "max": 1800,
+      "rateLimit": 300,
+      "jitterFraction": 0,
+      "expectedSeconds": 30
+    },
+    {
+      "name": "second_retry_doubles",
+      "retryCount": 2,
+      "rateLimited": false,
+      "base": 30,
+      "max": 1800,
+      "rateLimit": 300,
+      "jitterFraction": 0,
+      "expectedSeconds": 60
+    },
+    {
+      "name": "third_retry_doubles",
+      "retryCount": 3,
+      "rateLimited": false,
+      "base": 30,
+      "max": 1800,
+      "rateLimit": 300,
+      "jitterFraction": 0,
+      "expectedSeconds": 120
+    },
+    {
+      "name": "fourth_retry_doubles",
+      "retryCount": 4,
+      "rateLimited": false,
+      "base": 30,
+      "max": 1800,
+      "rateLimit": 300,
+      "jitterFraction": 0,
+      "expectedSeconds": 240
+    },
+    {
+      "name": "exponential_is_capped",
+      "retryCount": 8,
+      "rateLimited": false,
+      "base": 30,
+      "max": 1800,
+      "rateLimit": 300,
+      "jitterFraction": 0,
+      "expectedSeconds": 1800
+    },
+    {
+      "name": "saturating_retry_stays_capped",
+      "retryCount": 20,
+      "rateLimited": false,
+      "base": 30,
+      "max": 1800,
+      "rateLimit": 300,
+      "jitterFraction": 0,
+      "expectedSeconds": 1800
+    },
+    {
+      "name": "rate_limit_uses_fixed_delay",
+      "retryCount": 3,
+      "rateLimited": true,
+      "base": 30,
+      "max": 1800,
+      "rateLimit": 300,
+      "jitterFraction": 0.1,
+      "expectedSeconds": 300
+    },
+    {
+      "name": "jitter_is_fraction_of_capped",
+      "retryCount": 1,
+      "rateLimited": false,
+      "base": 30,
+      "max": 1800,
+      "rateLimit": 300,
+      "jitterFraction": 0.1,
+      "expectedSeconds": 33
+    },
+    {
+      "name": "jitter_cannot_exceed_max",
+      "retryCount": 1,
+      "rateLimited": false,
+      "base": 30,
+      "max": 30,
+      "rateLimit": 300,
+      "jitterFraction": 1,
+      "expectedSeconds": 30
+    },
+    {
+      "name": "jitter_with_custom_base",
+      "retryCount": 4,
+      "rateLimited": false,
+      "base": 30,
+      "max": 1000,
+      "rateLimit": 300,
+      "jitterFraction": 0.05,
+      "expectedSeconds": 252
+    },
+    {
+      "name": "custom_base_and_max",
+      "retryCount": 2,
+      "rateLimited": false,
+      "base": 50,
+      "max": 1800,
+      "rateLimit": 300,
+      "jitterFraction": 0,
+      "expectedSeconds": 100
+    }
+  ]
+}

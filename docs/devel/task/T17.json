@@ -1,0 +1,96 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T17",
+  "title": "窗口边界唤醒与刷新退避提为共享 Rust 实现（先补双端 fixture）",
+  "version": "0.15.0",
+  "milestone": "M8-跨端共享策略核心",
+  "status": "pending",
+  "branch": "feat/T17-refresh-policy-shared",
+  "depends_on": [
+    "T16"
+  ],
+  "target": {
+    "module": "core/collector（collector-policy 新增 refresh 模块）；apps/macos（RefreshBackoffPolicy / SubscriptionBoundaryWakePolicy）；apps/win src-tauri（runtime_core / scheduler）",
+    "design_doc": "docs/devel/design/08-跨端共享策略核心.md",
+    "design_topic": "SharedPolicyCore"
+  },
+  "goal": "把窗口边界唤醒（mac SubscriptionBoundaryWakePolicy / Windows runtime_core::boundary_wake）与刷新退避（mac RefreshBackoffPolicy / Windows scheduler::compute_backoff）收敛为 collector-policy 的一份纯 Rust 实现。先写 tests/fixtures/refresh-policy-parity/cases.json 并让两端现有实现跑通，确认口径一致后再迁移：Windows 进程内调用，mac 经 collector-policy-ffi 的 C ABI 进程内调用，删除两端各自的计算公式。Codex 四源合并经复核为 mac 专属（Windows 无对应实现），不在本卡范围。",
+  "precheck": {
+    "description": "确认双端仍各自实现边界唤醒与退避、且尚无共享 fixture",
+    "command": "ls tests/fixtures/refresh-policy-parity; grep -n 'static func delay' apps/macos/Sources/BruceAppCore/SubscriptionBoundaryWakePolicy.swift; grep -n 'func computeBackoff' apps/macos/Sources/BruceAppCore/RefreshBackoffPolicy.swift; grep -n 'pub fn boundary_wake' apps/win/src-tauri/src/runtime_core.rs; grep -n 'pub fn compute_backoff' apps/win/src-tauri/src/scheduler.rs; ls core/collector/crates/collector-policy/src",
+    "expected": "fixture 目录不存在；mac 与 Windows 各有本地实现；collector-policy 下无 refresh 模块",
+    "is_completed": false,
+    "evidence": "2026-10-27 开工前实测: tests/fixtures/refresh-policy-parity 不存在; mac SubscriptionBoundaryWakePolicy.swift:38 delay、RefreshBackoffPolicy.swift:25 computeBackoff; Windows runtime_core.rs:66 boundary_wake、scheduler.rs:78 compute_backoff; collector-policy/src 只有 lib.rs / quota.rs / request.rs, 无 refresh 模块, 未完成"
+  },
+  "callback": {
+    "before": [
+      "git checkout -b feat/T17-refresh-policy-shared"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all -- --check",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify  # 收口前门禁：Exit 4 禁止置 completed；目标状态预检使用 --card T17 --to completed --record，仅回写本卡 gate，Exit 0 后再同步状态，并以 --card T17 --receipt 复核、输出节点回执"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T17-1",
+      "title": "refresh-policy-parity fixture",
+      "capability": "新增 tests/fixtures/refresh-policy-parity/cases.json：边界唤醒（未来/过去/已消费/多边界/超过间隔/滚动窗口前移）与退避（首个重试、指数、上限、限流固定、抖动比例）逐例给定期望；mac RefreshSchedulerHarness 与 Windows scheduler_collector_coverage 共同消费"
+    },
+    {
+      "id": "T17-2",
+      "title": "共享 refresh 模块与契约",
+      "capability": "collector-policy 新增 refresh 模块（boundary_delay / capped_backoff / backoff_seconds），request 新增 boundaryWake 与 backoff 两个操作并更新 policy-request / response-v1 schema；纯函数、无 I/O、无凭据"
+    },
+    {
+      "id": "T17-3",
+      "title": "Windows 改调",
+      "capability": "runtime_core::boundary_wake 与 scheduler::compute_backoff 改为调用共享 refresh 模块，公开签名与调度调用点不变，删除本地公式"
+    },
+    {
+      "id": "T17-4",
+      "title": "mac 改调",
+      "capability": "SubscriptionBoundaryWakePolicy.delay 与 RefreshBackoffPolicy.computeBackoff 经进程内 C ABI 调用共享实现，删除 Swift 公式；抖动改为传入比例（0...0.1），失败时回到安全值（边界=原间隔，退避=上限）"
+    }
+  ],
+  "acceptance": {
+    "result": null,
+    "run_id": "local-20261027-17",
+    "checks": [
+      {
+        "item": "行为等价",
+        "true_if": "refresh-policy-parity 全部用例在迁移前两端实现与迁移后共享实现上结果一致；RefreshScheduler 与 Windows 调度用例全绿",
+        "false_if": "任一用例分歧且未按设计定口径",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "架构边界",
+        "true_if": "共享 refresh 模块不依赖 I/O / GUI / 凭据；mac 与 Windows 不再保留第二份计算公式",
+        "false_if": "出现重复公式或越界依赖",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "全量验证",
+        "true_if": "collector 与 src-tauri 的 fmt / clippy / test 及 verify-local 退出码 0",
+        "false_if": "任一失败",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "sync": {
+    "commit": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}
