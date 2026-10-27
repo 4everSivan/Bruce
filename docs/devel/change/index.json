@@ -1246,7 +1246,7 @@
     "C119": {
       "title": "移除恒为占位的 Orca 行：Orca 内置 Codex 的会话计入 Codex",
       "type": "BugFix",
-      "status": "rejected",
+      "status": "closed",
       "branch": "fix/C119-orca-agent-attribution",
       "topic": "TokenUsage",
       "version": "0.13.1",

@@ -4,19 +4,16 @@
   "title": "移除恒为占位的 Orca 行：Orca 内置 Codex 的会话计入 Codex",
   "version": "0.13.1",
   "type": "BugFix",
-  "status": "rejected",
+  "status": "closed",
   "branch": "fix/C119-orca-agent-attribution",
   "is_hotfix": false,
-
   "target": {
     "module": "core/collector collector-local / collector-application",
     "component": "sources/codex.rs 多根缓存扫描、本机源编排与 agent 行",
     "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
     "design_topic": "TokenUsage"
   },
-
   "why": "2026-10-25 架构审查：artifact 恒输出 Orca agent 行（README 与 Windows 设置页 agent 列表均列出 Orca），但没有任何本机源任务写入 orca —— Orca 内置 Codex 的运行时目录（codex-runtime-home/home/sessions、codex-accounts/*/home/sessions）被并入 Codex 扫描根。Orca 用户的用量全部显示在 Codex 行，Orca 行恒为 not_found「未发现会话记录」，Windows 设置页的 Orca 开关也无从生效。 初版（2026-10-26）改为把 Orca 目录的会话拆入独立 Orca 行，维护者决定不保留 Orca 行（见 rejections），本卡返工为：删除该行，Orca 会话照旧计入 Codex。",
-
   "precheck": {
     "description": "确认改动前 Orca 根并入 Codex 扫描、无任务产出 orca agent",
     "command": "git show e018e85:core/collector/crates/collector-application/src/lib.rs | grep -n 'let mut codex_roots = vec!\\[codex, orca_sessions\\]\\|(\"orca\", \"Orca\"'; git show e018e85:core/collector/crates/collector-application/src/lib.rs | grep -c 'source_id: \"orca\"'",
@@ -24,7 +21,6 @@
     "is_completed": false,
     "evidence": "2026-10-26 预检实测：e018e85 的 collector-application lib.rs 第 577 行 `let mut codex_roots = vec![codex, orca_sessions];`、第 212 行 agent 目录 `(\"orca\", \"Orca\", \"本机会话聚合\", \"未发现会话记录\")`，`source_id: \"orca\"` 命中 0 处 —— 缺陷成立，需编码修复。"
   },
-
   "callback": {
     "before": [
       "git checkout -b fix/C119-orca-agent-attribution  # 叠加在 fix/C118-service-provider-failure-kind 之上"
@@ -38,7 +34,6 @@
       "scripts/adflow-verify --card C119 --to verified --record"
     ]
   },
-
   "changes": [
     {
       "scope": "agent 目录",
@@ -59,7 +54,6 @@
       "impact": "设置页不再展示不存在的 Orca agent"
     }
   ],
-
   "design": {
     "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
     "topic": "TokenUsage",
@@ -69,12 +63,11 @@
       "after": "规则 3 新增「Orca 内置 Codex 计入 Codex (C119)」：同一次扫描跨根去重并全部计入 codex 行、artifact 不设 Orca 行、禁止拆为独立源；§7.1 Codex 层注明计入 Codex；设计 00 与设计中心索引的 Agent 数更正为 9；README 本机会话扫描清单改为「Codex（含 Orca 内置 Codex 会话）」"
     }
   },
-
   "verification": {
-    "result": null,
-    "run_id": "local-20261026-08",
-    "user_quote": "",
-    "signoff": "",
+    "result": true,
+    "run_id": "local-20261027-01",
+    "user_quote": "确认",
+    "signoff": "sivan (AI代签)",
     "checks": [
       {
         "item": "自动化测试",
@@ -99,7 +92,6 @@
       }
     ]
   },
-
   "rejections": [
     {
       "date": "2026-10-26",
@@ -108,17 +100,18 @@
       "rework": "同卡返工：撤回按根归属与附属 agent（CodexRoot / CompanionScan / scan_codex_roots_cached）实现，Orca 目录照旧与 Codex CLI 同一次扫描去重并计入 Codex 行；从 agent 目录删除 Orca 行（不再输出恒为「未发现会话记录」的占位）；Windows 设置页会话探针删除 Orca 行并在 Codex 行注明含 Orca；同步 README、设计 01 / 00 / 设计中心索引、CHANGELOG 与 C126 卡相关描述；重新取证后请求人工确认。"
     }
   ],
-
   "sync": {
-    "design_pinned": false,
-    "changelog": false,
-    "commit": "",
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "598e9d2",
     "tag": ""
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-27",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }
