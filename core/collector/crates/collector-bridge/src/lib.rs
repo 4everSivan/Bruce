@@ -449,12 +449,19 @@ mod tests {
         assert_ne!(id, again, "非法输入应回退为新的随机 runId");
     }
 
+    /// C124: 只授予 localSessions 的请求 (无订阅 / 未授权云端额度) 是完整成功的本机统计,
+    /// 不再输出 partial 占位 service, 也就不再被判为部分失败。
     #[test]
     fn valid_request_returns_one_structured_artifact_response() {
         let response = run_bytes(request().as_bytes());
         assert_eq!(response.run_id, "12345678-1234-4234-9234-123456789abc");
-        assert_eq!(response.status, ResponseStatus::Partial);
-        assert!(response.artifact.is_some());
+        assert_eq!(response.status, ResponseStatus::Success);
+        assert!(response
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.code != "COLLECTOR_PARTIAL_RESULT"));
+        let artifact = response.artifact.expect("artifact");
+        assert_eq!(artifact["services"], json!([]));
     }
 
     #[test]

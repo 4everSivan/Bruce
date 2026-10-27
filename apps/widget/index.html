@@ -381,7 +381,7 @@
     </div>
   </section>
 
-  <h2 class="sec-title" data-kimi-priority="p1">额度 · 还剩多少<span class="hint">云端服务经 CC Switch 查询</span></h2>
+  <h2 class="sec-title" data-kimi-priority="p1">额度 · 还剩多少<span class="hint">云端额度由 Bruce 按已配置订阅查询</span></h2>
   <section class="rows" data-kimi-priority="p1" data-quota aria-label="各服务与 agent 的剩余额度"></section>
 
   <h2 class="sec-title" data-kimi-priority="p1">用量 · 今日用了多少</h2>
@@ -976,7 +976,7 @@
       if (empty) empty.remove();
       listEl.innerHTML = agents.map(usageRow).join("");
     }
-    if ((el = $("[data-note]"))) el.textContent = "用量来自各 agent 本地会话记录 · 云端额度经 CC Switch 配置查询 · 成本按 CC Switch 定价表估算 · 每 30 分钟自动刷新";
+    if ((el = $("[data-note]"))) el.textContent = "用量来自各 agent 本地会话记录 · 云端额度由 Bruce 按已配置订阅查询 · 成本按 Bruce 内置价卡估算 · 随 Bruce 刷新间隔更新";
     updateField(total, total > 0 ? cache / total : 0);
   }
 

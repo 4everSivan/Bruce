@@ -177,7 +177,7 @@ fn collect_agent_usage_with_dependencies_inner(
         (
             "claude-code",
             "Claude Code",
-            "当前经 CC Switch 路由, 额度见下方对应服务",
+            "额度见下方 Claude 服务",
             "未发现会话记录",
         ),
         (
@@ -244,19 +244,10 @@ fn collect_agent_usage_with_dependencies_inner(
             quota.credential_challenges,
         )
     } else {
-        (
-            vec![
-                denied_service(
-                    "cc_switch_providers",
-                    "CC Switch 云端额度",
-                    "cc-switch",
-                    &window,
-                ),
-                denied_service("codex_accounts", "Codex 账号额度", "codex", &window),
-            ],
-            Vec::new(),
-            Vec::new(),
-        )
+        // C124: 未授予 externalQuotas (无订阅凭证 / 未同意授权) 即不涉及云端额度, 不输出
+        // 占位 service。旧版输出的「CC Switch 云端额度」/「Codex 账号额度」占位状态为
+        // partial, 会让纯本机统计的每一轮都带 COLLECTOR_PARTIAL_RESULT 而显示为部分失败。
+        (Vec::new(), Vec::new(), Vec::new())
     };
     if services.iter().any(|service| {
         matches!(
@@ -815,23 +806,6 @@ fn finalize_local_agent(
     agent
 }
 
-fn denied_service(id: &str, name: &str, app: &str, window: &CollectionWindow) -> Value {
-    json!({
-        "id": id,
-        "name": name,
-        "app": app,
-        "isCurrent": false,
-        "status": "partial",
-        "kind": null,
-        "plan": null,
-        "windows": [],
-        "balance": null,
-        "currency": null,
-        "capturedAt": window.generated_at(),
-        "note": "未授权 externalQuotas 能力, 已跳过云端额度查询",
-    })
-}
-
 fn window_diagnostic(error: WindowError) -> Diagnostic {
     Diagnostic::new(
         "BRIDGE_INVALID_REQUEST",
@@ -1072,7 +1046,8 @@ mod tests {
         let output = collect_agent_usage(&request(&[])).unwrap();
         let artifact = output.artifact.as_object().unwrap();
         assert_eq!(artifact["agents"][1]["status"], "unavailable");
-        assert_eq!(artifact["services"][0]["status"], "partial");
+        // C124: 未授权云端额度不再输出 partial 占位 service
+        assert_eq!(artifact["services"], json!([]));
     }
 
     fn local_or_skipped_request(context_extra: serde_json::Value) -> BridgeRequest {
@@ -1797,7 +1772,11 @@ mod tests {
         let credentials = EmptyCredentialSource;
         let output = collect_agent_usage_with_dependencies(&request, &http, &credentials).unwrap();
         assert_eq!(http.calls.load(Ordering::Acquire), 0);
-        assert_eq!(output.artifact["services"][0]["status"], "partial");
+        assert_eq!(output.artifact["services"], json!([]));
+        assert!(output
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.code != "COLLECTOR_PARTIAL_RESULT"));
         assert_eq!(output.metrics.http_request_count, 0);
     }
 
