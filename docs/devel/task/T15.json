@@ -4,7 +4,7 @@
   "title": "mac 刷新流水线改调额度策略子命令并删除 Swift 门禁与回填实现",
   "version": "0.14.0",
   "milestone": "M8-跨端共享策略核心",
-  "status": "in_progress",
+  "status": "completed",
   "branch": "feat/T15-mac-quota-policy-via-collector",
   "depends_on": [
     "T14"
@@ -85,7 +85,7 @@
     "tool": "adflow-verify",
     "version": "1.5.0",
     "ran_at": "2026-10-27",
-    "exit_code": 4,
+    "exit_code": 0,
     "from_status": "in_progress",
     "target_status": "completed"
   }

@@ -1337,7 +1337,7 @@
     "C129": {
       "title": "发布冒烟按 C116 前的缓存格式查找 Kimi 条目，build-test-app 与 CI 测试版构建恒失败",
       "type": "BugFix",
-      "status": "in_progress",
+      "status": "closed",
       "branch": "fix/C129-release-smoke-cache-selector",
       "topic": "TokenUsage",
       "version": "0.13.1",

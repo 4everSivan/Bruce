@@ -4,7 +4,7 @@
   "title": "抽出共享额度策略 crate（门禁 + 回填），Windows 改为调用",
   "version": "0.14.0",
   "milestone": "M8-跨端共享策略核心",
-  "status": "in_progress",
+  "status": "completed",
   "branch": "feat/T13-shared-quota-policy-crate",
   "depends_on": [],
   "target": {

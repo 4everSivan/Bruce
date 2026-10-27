@@ -4,7 +4,7 @@
   "title": "第二期：mac 链接 Rust 静态库，额度策略改为进程内调用",
   "version": "0.14.0",
   "milestone": "M8-跨端共享策略核心",
-  "status": "in_progress",
+  "status": "completed",
   "branch": "feat/T16-mac-link-rust-policy",
   "depends_on": [
     "T15"
@@ -59,15 +59,15 @@
     }
   ],
   "acceptance": {
-    "result": null,
+    "result": true,
     "run_id": "local-20261027-16",
     "checks": [
       {
         "item": "Universal 2",
         "true_if": "Apple Silicon 与 Intel 两种架构的构建产物均能运行并通过 Harness",
         "false_if": "任一架构构建或运行失败",
-        "evidence": "2026-10-27: 部分验证 —— Universal 2 构建与链接通过、x86_64 运行态未验证。`Bruce_build_policy_ffi` 按 BRUCE_RUST_TARGET_ARCHS 构建 aarch64 / x86_64 并 lipo 合并, `lipo -info local/build/policy-ffi/libbruce_policy.a` = x86_64 arm64; `zsh scripts/build-test-app.sh --universal` 完成 Swift arm64 / x86_64 两次 release 构建与 App 组装, `lipo -archs dist/Bruce.app/Contents/MacOS/BruceApp` = x86_64 arm64, 两个切片 `lipo -thin` 后各含策略诊断码字符串 (POLICY_INVALID_JSON / POLICY_CREDENTIAL_FIELD_REJECTED 各 1 处; T15 基线 0 处)。该脚本随后的发布冒烟在「旧 cache rebuild」步骤失败, 原因是 C116 起既有的冒烟选择器缺陷 (T15 基线同样失败, 已登记 C129 修正); 以 C129 修正后的冒烟脚本对本卡 dist/Bruce.app 运行退出码 0 (install / upgrade / rollback / 旧缓存重建均通过)。arm64: verify-local 全部 Harness 通过 (见行为等价项)。x86_64: 本机未安装 Rosetta (`arch -x86_64 /usr/bin/true` 报 Bad CPU type), 未能在 Intel 运行态执行 Harness —— 需维护者在 Intel Mac 或安装 Rosetta 后补测。与 T16-2 原表述的差异: verify-local.sh 只构建本机架构 (Harness 只在本机架构运行, CI verify 作业未安装 x86_64 target), 双架构合并由 build-test-app / build-release-app 在 Universal 2 打包时完成",
-        "result": null
+        "evidence": "2026-10-27: Universal 2 构建、链接与双架构运行态均通过。`Bruce_build_policy_ffi` 按 BRUCE_RUST_TARGET_ARCHS 构建 aarch64 / x86_64 并 lipo 合并, `lipo -info local/build/policy-ffi/libbruce_policy.a` = x86_64 arm64; `zsh scripts/build-test-app.sh --universal` 完成 Swift arm64 / x86_64 两次 release 构建与 App 组装, `lipo -archs dist/Bruce.app/Contents/MacOS/BruceApp` = x86_64 arm64, 两个切片 `lipo -thin` 后各含策略诊断码字符串 (POLICY_INVALID_JSON / POLICY_CREDENTIAL_FIELD_REJECTED 各 1 处; T15 基线 0 处)。该脚本随后的发布冒烟在「旧 cache rebuild」步骤失败, 原因是 C116 起既有的冒烟选择器缺陷 (T15 基线同样失败, 已由 C129 修正并合入 main); 以 C129 修正后的冒烟脚本对本卡 dist/Bruce.app 运行退出码 0 (install / upgrade / rollback / 旧缓存重建均通过)。arm64: verify-local 全部 Harness 通过 (见行为等价项)。x86_64: 2026-10-27 以 `softwareupdate --install-rosetta --agree-to-license` 安装 Rosetta 2 (`arch -x86_64 /usr/bin/true` 退出码 0) 后, 以 `swift build --package-path apps/macos --build-tests --triple x86_64-apple-macosx14.0` 交叉构建 x86_64 切片并链接同一份 Universal 2 libbruce_policy.a, `file` 确认 RefreshSchedulerHarness / BruceApp 为 Mach-O 64-bit executable x86_64, 随后在 Rosetta 下运行全部 17 个 Swift Harness 均退出码 0 (local/logs/t16-x86_64-harness.log): Onboarding 170、PanelViewModel 60、ArtifactStore 7、CollectorRunner 28、RefreshScheduler 114 (含两份共享 fixture 与进程内边界用例; 进程内 quotaPlan 200 次中位 0.157 ms / p90 0.306 ms)、NativeLifecycle 14、Diagnostics 8、LocalIntegration 2、SubscriptionCredentials 38、GlobalHotkey、AppModelCache 3、DashboardGlassSurface 10、SubscriptionRefreshControl 4、SubscriptionBrandGlyph 9、DashboardStatusTone 3、SoftwareUpdate 46、PanelParity 全部通过。与 T16-2 原表述的差异: verify-local.sh 只构建本机架构 (Harness 只在本机架构运行, CI verify 作业未安装 x86_64 target), 双架构合并由 build-test-app / build-release-app 在 Universal 2 打包时完成; x86_64 Harness 由本次补测以 --triple 交叉构建后手动运行",
+        "result": true
       },
       {
         "item": "行为等价",
@@ -92,7 +92,7 @@
     "tool": "adflow-verify",
     "version": "1.5.0",
     "ran_at": "2026-10-27",
-    "exit_code": 4,
+    "exit_code": 0,
     "from_status": "in_progress",
     "target_status": "completed"
   }
