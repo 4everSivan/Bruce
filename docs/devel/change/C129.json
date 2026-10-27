@@ -1,0 +1,96 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C129",
+  "title": "发布冒烟按 C116 前的缓存格式查找 Kimi 条目，build-test-app 与 CI 测试版构建恒失败",
+  "version": "0.13.1",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C129-release-smoke-cache-selector",
+  "is_hotfix": false,
+  "target": {
+    "module": "scripts（打包 / 发布冒烟）",
+    "component": "collector-release-smoke.sh",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+  "why": "2026-10-27 执行 T16 回调 `zsh scripts/build-test-app.sh --universal` 时发现：App 组装完成后，collector-release-smoke.sh 的「旧 cache rebuild」步骤报「没有生成 cache entry」并退出 1。C116 把 Kimi Code CLI 并入共享 JSONL 缓存层，条目改为 `jsonl-<路径摘要>.json`、字段为 snake_case（`source_id` / `parser_version`），而冒烟仍按旧格式的 `\"sourceKind\":\"usage.record\"` 查找条目、改写 `parserVersion`，永远找不到文件。该脚本由 build-test-app.sh 调用，CI 的 build-release-app 作业每次 push / PR 都运行它，即 C116 合入后测试版构建恒失败。C116 当时只跑了 verify-local（只做 `zsh -n` 语法检查），未覆盖。",
+  "precheck": {
+    "description": "复现：main 上的冒烟脚本对当前 collector 构建的 App 失败；确认新格式的条目文件与字段",
+    "command": "git show main:scripts/collector-release-smoke.sh | grep -n 'sourceKind\\|parserVersion'; zsh scripts/build-test-app.sh --universal  # 在 T15 基线工作树",
+    "expected": "冒烟按旧键查找条目并报「没有生成 cache entry」，退出码 1",
+    "is_completed": false,
+    "evidence": "2026-10-27 复现：main 版脚本第 192-199 行按 `\"sourceKind\":\"usage\\.record\"` 选文件、改写 `parserVersion`；T15 基线工作树（main + T13–T15，缓存代码与 main 相同）与 T16 工作树的 `build-test-app.sh --universal` 均在 App 组装完成后于该步骤报「没有生成 cache entry, 无法执行旧 cache rebuild smoke」退出 1（local/logs/t16-baseline-build.log、t16-app-build.log）。以 debug collector 对同样的假 home 运行一次，缓存目录只有 `jsonl-72a893df….json`（`\"source_id\":\"kimi-code-cli\"`、`\"parser_version\":2`）与 `manifest-jsonl-….json`，确认条目格式已变、冒烟选择器失效。"
+  },
+  "callback": {
+    "before": [
+      "git worktree add .claude/worktrees/c129-smoke -b fix/C129-release-smoke-cache-selector main"
+    ],
+    "after": [
+      "zsh -n scripts/collector-release-smoke.sh",
+      "zsh scripts/collector-release-smoke.sh <dist/Bruce.app> --local-preview",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C129 --to verified --record"
+    ]
+  },
+  "changes": [
+    {
+      "scope": "collector-release-smoke.sh 旧缓存重建步骤",
+      "before": "rg -l --glob '*.json' --glob '!manifest-*' '\"sourceKind\":\"usage\\.record\"' 选条目，plutil -replace parserVersion -integer 1",
+      "after": "rg -l --glob 'jsonl-*.json' '\"source_id\":\"kimi-code-cli\"' 选 Kimi Code CLI 的 JSONL 层条目，plutil -replace parser_version -integer 1；找不到时的报错改为点名 Kimi Code CLI 的 JSONL 条目；注释说明 C116 格式",
+      "impact": "build-test-app.sh / build-release-app.sh / CI build-release-app 的冒烟恢复可用；采集端代码与行为不变"
+    }
+  ],
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": true,
+    "rule_diff": {
+      "before": "规则「缓存条目与窗口无关（C116）」只说明 JSONL 条目只存观测值与旧 Kimi 专用引擎文件清理",
+      "after": "同规则补：发布冒烟按 `jsonl-*.json` + `\"source_id\":\"kimi-code-cli\"` 定位条目、把 `parser_version` 降为旧值要求下一轮忽略并重建；改动条目文件名、source_id 或字段名时必须同步该脚本；变更演进表登记 C129"
+    }
+  },
+  "verification": {
+    "result": true,
+    "run_id": "local-20261027-29",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "修正后的冒烟对当前构建的 App 退出码 0 且旧缓存重建步骤实际触发重建；脚本语法检查与 verify-local 通过",
+        "false_if": "冒烟失败或重建未发生",
+        "evidence": "2026-10-27: zsh -n scripts/collector-release-smoke.sh 通过; 修正后的冒烟以 --local-preview、BRUCE_RUST_TARGET_ARCHS=\"arm64 x86_64\" 分别对 T15 基线工作树 (main + T13–T15, 采集端缓存代码与 main 相同) 与 T16 工作树 build-test-app --universal 产出的 dist/Bruce.app 运行, 均退出码 0: initial (parsed=1, rebuilds=1)、old-cache-rebuild (parsed=1, disk=104, rebuilds=1, invalidations=1)、install / upgrade / rollback 通过 (local/logs/c129-smoke.log); SDKROOT=MacOSX26.5 zsh scripts/verify-local.sh 退出码 0 (local/logs/c129-verify.log: CollectorRunner 28、RefreshScheduler 全部用例、LocalIntegration 2)",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "同一 App 上 main 版脚本失败、修正版通过，且改写后的条目被重新写回当前 parser_version",
+        "false_if": "修正版仍失败或条目未重建",
+        "evidence": "2026-10-27: 同一 App (T15 基线 dist/Bruce.app) 上 main 版冒烟脚本 (连同 main 版 runtime-manifest.zsh 放入临时目录) 退出码 1, 报「没有生成 cache entry, 无法执行旧 cache rebuild smoke」(local/logs/c129-old.log), 修正版退出码 0; 以 debug collector 复现同一假 home: 条目 jsonl-72a893df….json 的 parser_version 改为 1 后再跑一轮, 指标 json_lines_parsed=1、cache_rebuilds=1、cache_invalidations=1, 条目被重写回 \"parser_version\":2, 证明旧版本条目被忽略并重建而非发布空结果",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "只改冒烟脚本，采集端与其余打包步骤不变",
+        "false_if": "需要改动采集端或其它脚本",
+        "evidence": "2026-10-27: 改动仅 scripts/collector-release-smoke.sh 的条目选择与改写键 (9 增 8 删); grep 确认 scripts/ 与 .github/ 中再无 sourceKind / parserVersion 引用; build-test-app.sh / build-release-app.sh 的调用方式与参数不变; 采集端 Rust 代码未改动",
+        "result": true
+      }
+    ]
+  },
+  "rejections": [],
+  "sync": {
+    "design_pinned": true,
+    "changelog": true,
+    "commit": "26e587b",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "2026-10-27",
+    "exit_code": 4,
+    "from_status": "in_progress",
+    "target_status": "verified"
+  }
+}
