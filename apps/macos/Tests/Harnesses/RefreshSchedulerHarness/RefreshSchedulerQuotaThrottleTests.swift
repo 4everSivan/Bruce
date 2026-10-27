@@ -592,6 +592,56 @@ extension RefreshSchedulerHarness {
         }
     }
 
+    /// T13: 与 Windows / 共享 collector-policy 回填共用的对拍用例
+    /// (tests/fixtures/quota-carry-over-parity), 逐字段比较合并后的有序 services.
+    static func quotaCarryOverMatchesSharedParityFixture(repository: URL) throws {
+        let url = repository.appendingPathComponent("tests/fixtures/quota-carry-over-parity/cases.json")
+        let fixture = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: url))
+        guard let cases = fixture.objectValue?["cases"]?.arrayValue, cases.count >= 14 else {
+            throw RefreshTestFailure.expectation("carry-over parity fixture 缺少用例")
+        }
+        func providers(_ value: JSONValue?) throws -> Set<SubscriptionProviderID> {
+            let raw = (value?.arrayValue ?? []).compactMap(\.stringIdValue)
+            let parsed = Set(raw.compactMap(SubscriptionProviderID.init(rawValue:)))
+            guard parsed.count == raw.count else {
+                throw RefreshTestFailure.expectation("carry-over parity fixture 含未知 provider")
+            }
+            return parsed
+        }
+        var failures: [String] = []
+        for item in cases {
+            guard let object = item.objectValue,
+                  let name = object["name"]?.stringIdValue,
+                  let now = QuotaRefreshPolicy.parseISODate(object["now"]?.stringIdValue),
+                  let interval = object["intervalSeconds"]?.intValue,
+                  let policyObject = object["policy"]?.objectValue,
+                  let include = policyObject["includeExternalQuotas"]?.boolValue,
+                  let current = object["current"]?.arrayValue,
+                  let expected = object["expected"]?.arrayValue else {
+                throw RefreshTestFailure.expectation("carry-over parity fixture 用例格式无效")
+            }
+            let previous: JSONValue? = object["previous"]?.arrayValue.map {
+                .object(["services": .array($0)])
+            }
+            let policy = QuotaRunPolicy(
+                includeExternalQuotas: include,
+                skipProviders: try providers(policyObject["skipProviders"]),
+                rateLimitedProviders: try providers(policyObject["rateLimitedProviders"])
+            )
+            let merged = QuotaCarryOverMerger.merge(
+                previous: previous,
+                current: .object(["services": .array(current)]),
+                policy: policy,
+                now: now,
+                interval: TimeInterval(interval)
+            )
+            if merged.objectValue?["services"]?.arrayValue != expected {
+                failures.append(name)
+            }
+        }
+        try refreshExpect(failures.isEmpty, "carry-over parity 不一致: \(failures)")
+    }
+
     private static func quotaArtifact(
         services: [JSONValue],
         agents: [JSONValue] = [],

@@ -205,6 +205,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "collector-policy"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "collector-provider"
 version = "0.1.0"
 dependencies = [

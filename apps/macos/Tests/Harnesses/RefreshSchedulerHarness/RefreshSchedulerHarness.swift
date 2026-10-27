@@ -201,6 +201,8 @@ struct RefreshSchedulerHarness {
         try quotaPolicyPrefersExplicitProviderAndFailureKind()
         print("Refresh scheduler: quota policy shared parity fixture")
         try quotaPolicyMatchesSharedParityFixture(repository: repository)
+        print("Refresh scheduler: quota carry-over shared parity fixture")
+        try quotaCarryOverMatchesSharedParityFixture(repository: repository)
         print("Refresh scheduler: quota policy passed window boundary")
         try quotaPolicyPassedWindowBoundaryForcesRefresh()
         print("Refresh scheduler: quota policy multi-account stale")

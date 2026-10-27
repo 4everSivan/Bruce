@@ -387,6 +387,7 @@ dependencies = [
  "collector-credential",
  "collector-domain",
  "collector-local",
+ "collector-policy",
  "collector-provider",
  "iana-time-zone",
  "rusqlite",
@@ -663,6 +664,15 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+]
+
+[[package]]
+name = "collector-policy"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

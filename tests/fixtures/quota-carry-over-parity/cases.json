@@ -1,0 +1,1088 @@
+{
+  "description": "T13 双端订阅额度回填 (mac QuotaCarryOverMerger.merge / Windows merge_snapshot + annotate_attempts + carry_over_skipped → 共享 collector-policy merge) 对拍用例; previous / current 为 artifact.services, expected 为合并后的 services (有序, 逐字段相等)",
+  "cases": [
+    {
+      "name": "skipped_fresh_provider_is_carried_in_previous_position",
+      "description": "kimi 10 分钟前成功、本轮跳过: 原样回填并保持 fresh; codex 本轮查询写 quotaAttemptedAt; 输出顺序沿用上一份 (kimi 在前)",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 1800,
+      "policy": {
+        "includeExternalQuotas": true,
+        "skipProviders": [
+          "kimi"
+        ],
+        "rateLimitedProviders": []
+      },
+      "previous": [
+        {
+          "id": "kimi_coding",
+          "name": "kimi_coding",
+          "provider": "kimi",
+          "status": "ok",
+          "kind": "windows",
+          "plan": "Pro",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 10,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T11:50:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:50:00Z",
+          "freshness": "fresh",
+          "failureKind": null
+        },
+        {
+          "id": "codex_a",
+          "name": "codex_a",
+          "provider": "codex",
+          "status": "ok",
+          "kind": "windows",
+          "plan": "Pro",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 10,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T11:20:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:20:00Z",
+          "freshness": "fresh",
+          "failureKind": null
+        }
+      ],
+      "current": [
+        {
+          "id": "codex_a",
+          "name": "codex_a",
+          "provider": "codex",
+          "status": "ok",
+          "kind": "windows",
+          "plan": "Pro",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 55,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T12:00:00Z",
+          "quotaAttemptedAt": "2026-10-26T12:00:00Z",
+          "freshness": "fresh",
+          "failureKind": null
+        }
+      ],
+      "expected": [
+        {
+          "id": "kimi_coding",
+          "name": "kimi_coding",
+          "provider": "kimi",
+          "status": "ok",
+          "kind": "windows",
+          "plan": "Pro",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 10,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T11:50:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:50:00Z",
+          "freshness": "fresh",
+          "failureKind": null
+        },
+        {
+          "id": "codex_a",
+          "name": "codex_a",
+          "provider": "codex",
+          "status": "ok",
+          "kind": "windows",
+          "plan": "Pro",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 55,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T12:00:00Z",
+          "quotaAttemptedAt": "2026-10-26T12:00:00Z",
+          "freshness": "fresh",
+          "failureKind": null
+        }
+      ]
+    },
+    {
+      "name": "skipped_aged_provider_is_carried_as_stale",
+      "description": "kimi 成功快照 60 分钟前 (≥ 间隔) 但 15 分钟前尝试过, 本轮跳过: 回填并标 stale",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 1800,
+      "policy": {
+        "includeExternalQuotas": true,
+        "skipProviders": [
+          "kimi"
+        ],
+        "rateLimitedProviders": []
+      },
+      "previous": [
+        {
+          "id": "kimi_coding",
+          "name": "kimi_coding",
+          "provider": "kimi",
+          "status": "ok",
+          "kind": "windows",
+          "plan": "Pro",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 10,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T11:00:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:45:00Z",
+          "freshness": "fresh",
+          "failureKind": null
+        }
+      ],
+      "current": [],
+      "expected": [
+        {
+          "id": "kimi_coding",
+          "name": "kimi_coding",
+          "provider": "kimi",
+          "status": "ok",
+          "kind": "windows",
+          "plan": "Pro",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 10,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T11:00:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:45:00Z",
+          "freshness": "stale",
+          "failureKind": null
+        }
+      ]
+    },
+    {
+      "name": "cooling_provider_is_carried_as_stale",
+      "description": "kimi 处于 429 冷却被跳过: 回填旧窗口并标 stale, rateLimitedAt 原样保留",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 1800,
+      "policy": {
+        "includeExternalQuotas": true,
+        "skipProviders": [
+          "kimi"
+        ],
+        "rateLimitedProviders": [
+          "kimi"
+        ]
+      },
+      "previous": [
+        {
+          "id": "kimi_coding",
+          "name": "kimi_coding",
+          "provider": "kimi",
+          "status": "partial",
+          "kind": "windows",
+          "plan": "Pro",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 10,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T11:40:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:50:00Z",
+          "rateLimitedAt": "2026-10-26T11:50:00Z",
+          "freshness": "fresh",
+          "failureKind": "rateLimit",
+          "note": "查询失败: Provider 请求触发限流 (HTTP 429)"
+        }
+      ],
+      "current": [],
+      "expected": [
+        {
+          "id": "kimi_coding",
+          "name": "kimi_coding",
+          "provider": "kimi",
+          "status": "partial",
+          "kind": "windows",
+          "plan": "Pro",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 10,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T11:40:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:50:00Z",
+          "rateLimitedAt": "2026-10-26T11:50:00Z",
+          "freshness": "stale",
+          "failureKind": "rateLimit",
+          "note": "查询失败: Provider 请求触发限流 (HTTP 429)"
+        }
+      ]
+    },
+    {
+      "name": "skipped_failed_service_without_capture_is_stale",
+      "description": "跳过的 zhipu 上次失败且无 capturedAt: 按失败口径标 stale (回填不改 status / failureKind)",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 1800,
+      "policy": {
+        "includeExternalQuotas": true,
+        "skipProviders": [
+          "zhipu"
+        ],
+        "rateLimitedProviders": []
+      },
+      "previous": [
+        {
+          "id": "zhipu_a",
+          "name": "zhipu_a",
+          "provider": "zhipu",
+          "status": "error",
+          "windows": [],
+          "quotaAttemptedAt": "2026-10-26T11:55:00Z",
+          "freshness": "unavailable",
+          "failureKind": "auth"
+        }
+      ],
+      "current": [],
+      "expected": [
+        {
+          "id": "zhipu_a",
+          "name": "zhipu_a",
+          "provider": "zhipu",
+          "status": "error",
+          "windows": [],
+          "quotaAttemptedAt": "2026-10-26T11:55:00Z",
+          "freshness": "stale",
+          "failureKind": "auth"
+        }
+      ]
+    },
+    {
+      "name": "local_only_run_carries_every_skipped_provider",
+      "description": "全部 provider 仍新鲜的本地专用 run: collector 返回空 services, 全部按原顺序回填; 缺 freshness 的补 fresh",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 1800,
+      "policy": {
+        "includeExternalQuotas": false,
+        "skipProviders": [
+          "deepseek",
+          "kimi"
+        ],
+        "rateLimitedProviders": []
+      },
+      "previous": [
+        {
+          "id": "kimi_coding",
+          "name": "kimi_coding",
+          "provider": "kimi",
+          "status": "ok",
+          "kind": "windows",
+          "plan": "Pro",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 10,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T11:55:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:55:00Z",
+          "freshness": "fresh",
+          "failureKind": null
+        },
+        {
+          "id": "deepseek",
+          "name": "deepseek",
+          "provider": "deepseek",
+          "status": "ok",
+          "kind": "balance",
+          "windows": [],
+          "balance": 12.5,
+          "currency": "CNY",
+          "capturedAt": "2026-10-26T11:58:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:58:00Z",
+          "failureKind": null
+        }
+      ],
+      "current": [],
+      "expected": [
+        {
+          "id": "kimi_coding",
+          "name": "kimi_coding",
+          "provider": "kimi",
+          "status": "ok",
+          "kind": "windows",
+          "plan": "Pro",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 10,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T11:55:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:55:00Z",
+          "freshness": "fresh",
+          "failureKind": null
+        },
+        {
+          "id": "deepseek",
+          "name": "deepseek",
+          "provider": "deepseek",
+          "status": "ok",
+          "kind": "balance",
+          "windows": [],
+          "balance": 12.5,
+          "currency": "CNY",
+          "capturedAt": "2026-10-26T11:58:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:58:00Z",
+          "failureKind": null,
+          "freshness": "fresh"
+        }
+      ]
+    },
+    {
+      "name": "failed_query_borrows_previous_display_fields_including_balance",
+      "description": "deepseek 本轮查询失败、上次成功合格: 复制旧 windows / balance / currency / plan / extra / kind / capturedAt 并标 stale; 非限流失败不写 rateLimitedAt",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 1800,
+      "policy": {
+        "includeExternalQuotas": true,
+        "skipProviders": [],
+        "rateLimitedProviders": []
+      },
+      "previous": [
+        {
+          "id": "deepseek",
+          "name": "deepseek",
+          "provider": "deepseek",
+          "status": "ok",
+          "kind": "balance",
+          "windows": [],
+          "balance": 12.5,
+          "currency": "CNY",
+          "capturedAt": "2026-10-26T11:20:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:20:00Z",
+          "freshness": "fresh",
+          "failureKind": null
+        }
+      ],
+      "current": [
+        {
+          "id": "deepseek",
+          "name": "deepseek",
+          "provider": "deepseek",
+          "status": "error",
+          "windows": [],
+          "failureKind": "server",
+          "note": "查询失败: 服务端错误"
+        }
+      ],
+      "expected": [
+        {
+          "id": "deepseek",
+          "name": "deepseek",
+          "provider": "deepseek",
+          "status": "error",
+          "windows": [],
+          "failureKind": "server",
+          "note": "查询失败: 服务端错误",
+          "kind": "balance",
+          "balance": 12.5,
+          "currency": "CNY",
+          "capturedAt": "2026-10-26T11:20:00Z",
+          "quotaAttemptedAt": "2026-10-26T12:00:00Z",
+          "freshness": "stale"
+        }
+      ]
+    },
+    {
+      "name": "rate_limited_failure_records_rate_limited_at_and_keeps_windows",
+      "description": "kimi 本轮 429: 写 quotaAttemptedAt 与 rateLimitedAt, 复制旧窗口 / plan / extra / kind / capturedAt 并标 stale",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 1800,
+      "policy": {
+        "includeExternalQuotas": true,
+        "skipProviders": [],
+        "rateLimitedProviders": []
+      },
+      "previous": [
+        {
+          "id": "kimi_coding",
+          "name": "kimi_coding",
+          "provider": "kimi",
+          "status": "ok",
+          "kind": "windows",
+          "plan": "Pro",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 10,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T11:20:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:20:00Z",
+          "freshness": "fresh",
+          "failureKind": null,
+          "extra": "加量包余额 ¥20"
+        }
+      ],
+      "current": [
+        {
+          "id": "kimi_coding",
+          "name": "kimi_coding",
+          "provider": "kimi",
+          "status": "partial",
+          "windows": [],
+          "failureKind": "rateLimit",
+          "note": "查询失败: Provider 请求触发限流 (HTTP 429)"
+        }
+      ],
+      "expected": [
+        {
+          "id": "kimi_coding",
+          "name": "kimi_coding",
+          "provider": "kimi",
+          "status": "partial",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 10,
+              "resetsAt": 1793030400
+            }
+          ],
+          "failureKind": "rateLimit",
+          "note": "查询失败: Provider 请求触发限流 (HTTP 429)",
+          "kind": "windows",
+          "plan": "Pro",
+          "extra": "加量包余额 ¥20",
+          "capturedAt": "2026-10-26T11:20:00Z",
+          "quotaAttemptedAt": "2026-10-26T12:00:00Z",
+          "rateLimitedAt": "2026-10-26T12:00:00Z",
+          "freshness": "stale"
+        }
+      ]
+    },
+    {
+      "name": "success_clears_rate_limited_at",
+      "description": "kimi 冷却期满后查询成功: 清除 rateLimitedAt, 缺 freshness 补 fresh",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 1800,
+      "policy": {
+        "includeExternalQuotas": true,
+        "skipProviders": [],
+        "rateLimitedProviders": []
+      },
+      "previous": [
+        {
+          "id": "kimi_coding",
+          "name": "kimi_coding",
+          "provider": "kimi",
+          "status": "partial",
+          "kind": "windows",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 10,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T10:50:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:00:00Z",
+          "rateLimitedAt": "2026-10-26T11:00:00Z",
+          "freshness": "stale",
+          "failureKind": "rateLimit"
+        }
+      ],
+      "current": [
+        {
+          "id": "kimi_coding",
+          "name": "kimi_coding",
+          "provider": "kimi",
+          "status": "ok",
+          "kind": "windows",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 55,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T12:00:00Z",
+          "rateLimitedAt": "2026-10-26T11:00:00Z",
+          "failureKind": null
+        }
+      ],
+      "expected": [
+        {
+          "id": "kimi_coding",
+          "name": "kimi_coding",
+          "provider": "kimi",
+          "status": "ok",
+          "kind": "windows",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 55,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T12:00:00Z",
+          "failureKind": null,
+          "quotaAttemptedAt": "2026-10-26T12:00:00Z",
+          "freshness": "fresh"
+        }
+      ]
+    },
+    {
+      "name": "failure_without_qualified_history_is_unavailable",
+      "description": "新启用的 zhipu 首查即失败: 标 unavailable 并去掉 capturedAt; 新 service 排在上一份已有 service 之后",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 1800,
+      "policy": {
+        "includeExternalQuotas": true,
+        "skipProviders": [],
+        "rateLimitedProviders": []
+      },
+      "previous": [
+        {
+          "id": "kimi_coding",
+          "name": "kimi_coding",
+          "provider": "kimi",
+          "status": "ok",
+          "kind": "windows",
+          "plan": "Pro",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 10,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T11:20:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:20:00Z",
+          "freshness": "fresh",
+          "failureKind": null
+        }
+      ],
+      "current": [
+        {
+          "id": "zhipu_a",
+          "name": "zhipu_a",
+          "provider": "zhipu",
+          "status": "error",
+          "windows": [],
+          "capturedAt": "2026-10-26T12:00:00Z",
+          "failureKind": "auth"
+        },
+        {
+          "id": "kimi_coding",
+          "name": "kimi_coding",
+          "provider": "kimi",
+          "status": "ok",
+          "kind": "windows",
+          "plan": "Pro",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 55,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T12:00:00Z",
+          "quotaAttemptedAt": "2026-10-26T12:00:00Z",
+          "freshness": "fresh",
+          "failureKind": null
+        }
+      ],
+      "expected": [
+        {
+          "id": "kimi_coding",
+          "name": "kimi_coding",
+          "provider": "kimi",
+          "status": "ok",
+          "kind": "windows",
+          "plan": "Pro",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 55,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T12:00:00Z",
+          "quotaAttemptedAt": "2026-10-26T12:00:00Z",
+          "freshness": "fresh",
+          "failureKind": null
+        },
+        {
+          "id": "zhipu_a",
+          "name": "zhipu_a",
+          "provider": "zhipu",
+          "status": "error",
+          "windows": [],
+          "failureKind": "auth",
+          "quotaAttemptedAt": "2026-10-26T12:00:00Z",
+          "freshness": "unavailable"
+        }
+      ]
+    },
+    {
+      "name": "legacy_empty_status_history_is_qualified",
+      "description": "C062 前旧 artifact (无 freshness / provider) 中 status=empty 的成功快照: 本轮失败时可借用并标 stale",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 1800,
+      "policy": {
+        "includeExternalQuotas": true,
+        "skipProviders": [],
+        "rateLimitedProviders": []
+      },
+      "previous": [
+        {
+          "id": "kimi_coding",
+          "name": "kimi_coding",
+          "status": "empty",
+          "kind": "windows",
+          "windows": [],
+          "capturedAt": "2026-10-26T11:20:00Z"
+        }
+      ],
+      "current": [
+        {
+          "id": "kimi_coding",
+          "name": "kimi_coding",
+          "provider": "kimi",
+          "status": "error",
+          "windows": [],
+          "failureKind": "network"
+        }
+      ],
+      "expected": [
+        {
+          "id": "kimi_coding",
+          "name": "kimi_coding",
+          "provider": "kimi",
+          "status": "error",
+          "windows": [],
+          "failureKind": "network",
+          "kind": "windows",
+          "capturedAt": "2026-10-26T11:20:00Z",
+          "quotaAttemptedAt": "2026-10-26T12:00:00Z",
+          "freshness": "stale"
+        }
+      ]
+    },
+    {
+      "name": "success_keeps_existing_freshness",
+      "description": "Codex 合并器把回退旧快照的成功 service 标为 stale: 回填阶段保留, 不改写为 fresh",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 1800,
+      "policy": {
+        "includeExternalQuotas": true,
+        "skipProviders": [],
+        "rateLimitedProviders": []
+      },
+      "previous": [
+        {
+          "id": "codex_a",
+          "name": "codex_a",
+          "provider": "codex",
+          "status": "ok",
+          "kind": "windows",
+          "plan": "Pro",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 10,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T11:20:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:20:00Z",
+          "freshness": "fresh",
+          "failureKind": null
+        }
+      ],
+      "current": [
+        {
+          "id": "codex_a",
+          "name": "codex_a",
+          "provider": "codex",
+          "status": "ok",
+          "kind": "windows",
+          "plan": "Pro",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 10,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T11:20:00Z",
+          "freshness": "stale",
+          "failureKind": null
+        }
+      ],
+      "expected": [
+        {
+          "id": "codex_a",
+          "name": "codex_a",
+          "provider": "codex",
+          "status": "ok",
+          "kind": "windows",
+          "plan": "Pro",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 10,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T11:20:00Z",
+          "freshness": "stale",
+          "failureKind": null,
+          "quotaAttemptedAt": "2026-10-26T12:00:00Z"
+        }
+      ]
+    },
+    {
+      "name": "absent_account_of_queried_provider_is_dropped",
+      "description": "kimi 本轮查询只返回 kimi_a: kimi_b 视为已删除账号, 不从上一份复活",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 1800,
+      "policy": {
+        "includeExternalQuotas": true,
+        "skipProviders": [],
+        "rateLimitedProviders": []
+      },
+      "previous": [
+        {
+          "id": "kimi_a",
+          "name": "kimi_a",
+          "provider": "kimi",
+          "status": "ok",
+          "kind": "windows",
+          "plan": "Pro",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 10,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T11:20:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:20:00Z",
+          "freshness": "fresh",
+          "failureKind": null
+        },
+        {
+          "id": "kimi_b",
+          "name": "kimi_b",
+          "provider": "kimi",
+          "status": "ok",
+          "kind": "windows",
+          "plan": "Pro",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 10,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T11:20:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:20:00Z",
+          "freshness": "fresh",
+          "failureKind": null
+        }
+      ],
+      "current": [
+        {
+          "id": "kimi_a",
+          "name": "kimi_a",
+          "provider": "kimi",
+          "status": "ok",
+          "kind": "windows",
+          "plan": "Pro",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 55,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T12:00:00Z",
+          "quotaAttemptedAt": "2026-10-26T12:00:00Z",
+          "freshness": "fresh",
+          "failureKind": null
+        }
+      ],
+      "expected": [
+        {
+          "id": "kimi_a",
+          "name": "kimi_a",
+          "provider": "kimi",
+          "status": "ok",
+          "kind": "windows",
+          "plan": "Pro",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 55,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T12:00:00Z",
+          "quotaAttemptedAt": "2026-10-26T12:00:00Z",
+          "freshness": "fresh",
+          "failureKind": null
+        }
+      ]
+    },
+    {
+      "name": "multi_account_mixed_outcomes",
+      "description": "codex 两账号一成功一失败 (失败账号借旧窗口标 stale, 覆盖 collector 写的 unavailable), kimi 跳过按原位回填",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 1800,
+      "policy": {
+        "includeExternalQuotas": true,
+        "skipProviders": [
+          "kimi"
+        ],
+        "rateLimitedProviders": []
+      },
+      "previous": [
+        {
+          "id": "codex_a",
+          "name": "codex_a",
+          "provider": "codex",
+          "status": "ok",
+          "kind": "windows",
+          "plan": "Pro",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 10,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T11:20:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:20:00Z",
+          "freshness": "fresh",
+          "failureKind": null
+        },
+        {
+          "id": "codex_b",
+          "name": "codex_b",
+          "provider": "codex",
+          "status": "ok",
+          "kind": "windows",
+          "plan": "Plus",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 10,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T11:20:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:20:00Z",
+          "freshness": "fresh",
+          "failureKind": null
+        },
+        {
+          "id": "kimi_coding",
+          "name": "kimi_coding",
+          "provider": "kimi",
+          "status": "ok",
+          "kind": "windows",
+          "plan": "Pro",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 10,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T11:50:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:50:00Z",
+          "freshness": "fresh",
+          "failureKind": null
+        }
+      ],
+      "current": [
+        {
+          "id": "codex_a",
+          "name": "codex_a",
+          "provider": "codex",
+          "status": "ok",
+          "kind": "windows",
+          "plan": "Pro",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 55,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T12:00:00Z",
+          "quotaAttemptedAt": "2026-10-26T12:00:00Z",
+          "freshness": "fresh",
+          "failureKind": null
+        },
+        {
+          "id": "codex_b",
+          "name": "codex_b",
+          "provider": "codex",
+          "status": "error",
+          "windows": [],
+          "freshness": "unavailable",
+          "failureKind": "network",
+          "note": "额度查询暂时失败, 请稍后重试"
+        }
+      ],
+      "expected": [
+        {
+          "id": "codex_a",
+          "name": "codex_a",
+          "provider": "codex",
+          "status": "ok",
+          "kind": "windows",
+          "plan": "Pro",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 55,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T12:00:00Z",
+          "quotaAttemptedAt": "2026-10-26T12:00:00Z",
+          "freshness": "fresh",
+          "failureKind": null
+        },
+        {
+          "id": "codex_b",
+          "name": "codex_b",
+          "provider": "codex",
+          "status": "error",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 10,
+              "resetsAt": 1793030400
+            }
+          ],
+          "freshness": "stale",
+          "failureKind": "network",
+          "note": "额度查询暂时失败, 请稍后重试",
+          "kind": "windows",
+          "plan": "Plus",
+          "capturedAt": "2026-10-26T11:20:00Z",
+          "quotaAttemptedAt": "2026-10-26T12:00:00Z"
+        },
+        {
+          "id": "kimi_coding",
+          "name": "kimi_coding",
+          "provider": "kimi",
+          "status": "ok",
+          "kind": "windows",
+          "plan": "Pro",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 10,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T11:50:00Z",
+          "quotaAttemptedAt": "2026-10-26T11:50:00Z",
+          "freshness": "fresh",
+          "failureKind": null
+        }
+      ]
+    },
+    {
+      "name": "first_run_without_previous_artifact",
+      "description": "首轮无上一份 artifact: 按本轮顺序输出, 成功补 fresh, 失败标 unavailable",
+      "now": "2026-10-26T12:00:00Z",
+      "intervalSeconds": 1800,
+      "policy": {
+        "includeExternalQuotas": true,
+        "skipProviders": [],
+        "rateLimitedProviders": []
+      },
+      "previous": null,
+      "current": [
+        {
+          "id": "kimi_coding",
+          "name": "kimi_coding",
+          "provider": "kimi",
+          "status": "ok",
+          "kind": "windows",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 10,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T12:00:00Z",
+          "failureKind": null
+        },
+        {
+          "id": "zhipu_a",
+          "name": "zhipu_a",
+          "provider": "zhipu",
+          "status": "error",
+          "windows": [],
+          "failureKind": "auth"
+        }
+      ],
+      "expected": [
+        {
+          "id": "kimi_coding",
+          "name": "kimi_coding",
+          "provider": "kimi",
+          "status": "ok",
+          "kind": "windows",
+          "windows": [
+            {
+              "label": "5h",
+              "usedPercent": 10,
+              "resetsAt": 1793030400
+            }
+          ],
+          "capturedAt": "2026-10-26T12:00:00Z",
+          "failureKind": null,
+          "quotaAttemptedAt": "2026-10-26T12:00:00Z",
+          "freshness": "fresh"
+        },
+        {
+          "id": "zhipu_a",
+          "name": "zhipu_a",
+          "provider": "zhipu",
+          "status": "error",
+          "windows": [],
+          "failureKind": "auth",
+          "quotaAttemptedAt": "2026-10-26T12:00:00Z",
+          "freshness": "unavailable"
+        }
+      ]
+    }
+  ]
+}

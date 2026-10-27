@@ -444,7 +444,9 @@ package enum QuotaCarryOverMerger {
         if applyFailureFreshness && failed {
             if let previous,
                qualifiedPreviousSuccess(previous) {
-                for key in ["windows", "plan", "extra", "kind", "capturedAt"] {
+                // T13: 余额型 (DeepSeek 等) 一并借用 balance / currency, 与 Windows
+                // 及共享 collector-policy 同口径 (quota-carry-over-parity).
+                for key in ["windows", "balance", "currency", "plan", "extra", "kind", "capturedAt"] {
                     if let value = previous.objectValue?[key] {
                         object[key] = value
                     }

@@ -2,8 +2,8 @@
 //! 跳过 provider 旧值回填、手动刷新绕过冷却。纯逻辑级 (真机行为仍以 Windows 验收为准)。
 
 use bruce_win_lib::quota_policy::{
-    annotate_attempts, annotate_provider, carry_over_skipped, plan, rate_limited_providers_in,
-    timestamp_iso, QuotaRunPolicy, RATE_LIMIT_COOLDOWN_SECS,
+    annotate_provider, merge, plan, rate_limited_providers_in, timestamp_iso, QuotaRunPolicy,
+    RATE_LIMIT_COOLDOWN_SECS,
 };
 use bruce_win_lib::runtime_core::SnapshotState;
 use collector_domain::{BridgeResponse, ResponseStatus};
@@ -193,11 +193,12 @@ fn codex_is_never_skipped_by_cooldown_or_freshness() {
 #[test]
 fn timestamps_are_written_on_success_and_cleared_after_recovery() {
     // 成功: 写 quotaAttemptedAt, 无 rateLimitedAt。
-    let mut current = artifact(vec![ok_service("kimi_a", 40)]);
-    annotate_attempts(
-        &mut current,
+    let current = merge(
+        None,
+        &artifact(vec![ok_service("kimi_a", 40)]),
         &QuotaRunPolicy::include_all(),
-        &timestamp_iso(NOW_MS),
+        NOW_MS,
+        INTERVAL_SECS,
     );
     assert_eq!(
         current["services"][0]["quotaAttemptedAt"],
@@ -206,11 +207,12 @@ fn timestamps_are_written_on_success_and_cleared_after_recovery() {
     assert!(current["services"][0].get("rateLimitedAt").is_none());
 
     // 429: 写 rateLimitedAt。
-    let mut limited = artifact(vec![rate_limited_service("claude_a", 40)]);
-    annotate_attempts(
-        &mut limited,
+    let limited = merge(
+        None,
+        &artifact(vec![rate_limited_service("claude_a", 40)]),
         &QuotaRunPolicy::include_all(),
-        &timestamp_iso(NOW_MS),
+        NOW_MS,
+        INTERVAL_SECS,
     );
     assert_eq!(
         limited["services"][0]["rateLimitedAt"],
@@ -218,14 +220,15 @@ fn timestamps_are_written_on_success_and_cleared_after_recovery() {
     );
 
     // 恢复成功: 清除 rateLimitedAt。
-    let mut recovered = artifact(vec![json!({
-        "id": "claude_a", "status": "ok", "kind": "windows",
-        "capturedAt": timestamp_iso(NOW_MS), "rateLimitedAt": ago(5),
-    })]);
-    annotate_attempts(
-        &mut recovered,
+    let recovered = merge(
+        None,
+        &artifact(vec![json!({
+            "id": "claude_a", "status": "ok", "kind": "windows",
+            "capturedAt": timestamp_iso(NOW_MS), "rateLimitedAt": ago(5),
+        })]),
         &QuotaRunPolicy::include_all(),
-        &timestamp_iso(NOW_MS),
+        NOW_MS,
+        INTERVAL_SECS,
     );
     assert!(
         recovered["services"][0].get("rateLimitedAt").is_none(),
@@ -248,11 +251,9 @@ fn skipped_provider_is_carried_over_with_stale_marking() {
         false,
     );
     // 本轮只返回了未被跳过的 service (无)。
-    let mut current = artifact(vec![]);
-    annotate_attempts(&mut current, &policy, &timestamp_iso(NOW_MS));
-    carry_over_skipped(
-        &mut current,
+    let current = merge(
         Some(&previous),
+        &artifact(vec![]),
         &policy,
         NOW_MS,
         INTERVAL_SECS,
@@ -278,7 +279,7 @@ fn rate_limit_note_detection_and_scoped_annotation() {
 
     // 定向刷新只标注目标 provider。
     let mut mixed = artifact(vec![ok_service("kimi_a", 40), ok_service("claude_a", 40)]);
-    annotate_provider(&mut mixed, "claude", &timestamp_iso(NOW_MS));
+    annotate_provider(&mut mixed, "claude", NOW_MS);
     let claude = mixed["services"]
         .as_array()
         .unwrap()
@@ -441,5 +442,41 @@ fn plan_matches_shared_parity_fixture() {
             strings(&expected["rateLimitedProviders"]),
             "{name}: rateLimitedProviders"
         );
+    }
+}
+
+/// T13: 与 mac `QuotaCarryOverMerger` / 共享 `collector-policy` 共用的回填对拍用例
+/// (tests/fixtures/quota-carry-over-parity), 逐字段比较合并后的有序 services。
+#[test]
+fn merge_matches_shared_carry_over_fixture() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .find(|path| path.join("core/collector").is_dir())
+        .expect("repository root")
+        .to_path_buf();
+    let fixture: Value = serde_json::from_str(
+        &std::fs::read_to_string(root.join("tests/fixtures/quota-carry-over-parity/cases.json"))
+            .unwrap(),
+    )
+    .unwrap();
+    let cases = fixture["cases"].as_array().unwrap();
+    assert!(cases.len() >= 14, "共享 fixture 覆盖全部回填分支");
+    for case in cases {
+        let name = case["name"].as_str().unwrap();
+        let now_ms = chrono::DateTime::parse_from_rfc3339(case["now"].as_str().unwrap())
+            .unwrap()
+            .timestamp_millis();
+        let previous = case["previous"]
+            .as_array()
+            .map(|services| json!({"services": services}));
+        let policy: QuotaRunPolicy = serde_json::from_value(case["policy"].clone()).unwrap();
+        let merged = merge(
+            previous.as_ref(),
+            &artifact(case["current"].as_array().unwrap().clone()),
+            &policy,
+            now_ms,
+            case["intervalSeconds"].as_i64().unwrap(),
+        );
+        assert_eq!(merged["services"], case["expected"], "{name}");
     }
 }

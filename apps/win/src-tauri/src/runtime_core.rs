@@ -98,118 +98,15 @@ pub fn manual_alert_reason(input: bool, retries: u32, previous: bool) -> bool {
     input || (retries > 0 && retries <= 5 && previous)
 }
 
-/// 服务所属 provider (C118): 优先 collector 显式下发的 `provider`, 旧 artifact 缺省时
-/// 回退按 service id 前缀推断 (mac `SubscriptionPresentationPolicy.providerID(for:)` 同义)。
-pub fn provider_id(service: &Value) -> &str {
-    match service.get("provider").and_then(Value::as_str) {
-        Some(provider) if !provider.is_empty() => provider,
-        _ => provider_of_id(service.get("id").and_then(Value::as_str).unwrap_or("")),
-    }
-}
-
-/// service / 订阅卡 section ID → provider rawValue。单账号 section 的 ID 是带账号后缀的
-/// service ID (如 `zhipu_9be9…`), 多账号分组 section 的 ID 即 provider 本身 (如 `cline`),
-/// 两者经同一前缀规则归一 (mac `SubscriptionPresentationPolicy.providerID` 同义)。
-pub fn provider_of_id(id: &str) -> &str {
-    if id.starts_with("codex") {
-        "codex"
-    } else if id.starts_with("claude") {
-        "claude"
-    } else if id.starts_with("kimi") {
-        "kimi"
-    } else if id.starts_with("deepseek") {
-        "deepseek"
-    } else if id.starts_with("volc") {
-        "volcengine"
-    } else if id.starts_with("zhipu") || id.starts_with("glm") {
-        "zhipu"
-    } else if id.starts_with("grok") {
-        "grok"
-    } else if id.starts_with("opencode") {
-        "opencodeGo"
-    } else if id.starts_with("step") {
-        "stepfun"
-    } else if id.starts_with("cline") {
-        "cline"
-    } else {
-        id
-    }
-}
-
-fn qualified(service: &Value) -> bool {
-    let captured = service
-        .get("capturedAt")
-        .and_then(Value::as_str)
-        .and_then(|text| DateTime::parse_from_rfc3339(text).ok())
-        .is_some();
-    if !captured {
-        return false;
-    }
-    match service.get("freshness").and_then(Value::as_str) {
-        Some("fresh" | "stale") => true,
-        Some(_) => false,
-        None => matches!(
-            service.get("status").and_then(Value::as_str),
-            Some("ok" | "")
-        ),
-    }
-}
+/// 服务所属 provider 与 section ID 归一 (C118): 实现位于共享 `collector-policy` (T13),
+/// 与额度门禁 / 回填同一份判定。
+pub use collector_policy::{provider_id, provider_of_id};
 
 /// Only IDs returned by this collection survive. Removed accounts cannot reappear
 /// from history; failed current accounts may borrow qualified old display fields.
+/// 实现位于共享 `collector-policy::merge_round` (T13)。
 pub fn merge_snapshot(previous: Option<&Value>, current: &Value) -> Value {
-    let mut result = current.clone();
-    let previous_services: BTreeMap<&str, &Value> = previous
-        .and_then(|value| value.get("services"))
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|service| {
-            service
-                .get("id")
-                .and_then(Value::as_str)
-                .map(|id| (id, service))
-        })
-        .collect();
-    if let Some(services) = result.get_mut("services").and_then(Value::as_array_mut) {
-        for service in services {
-            if !service.is_object() {
-                continue;
-            }
-            let status = service.get("status").and_then(Value::as_str).unwrap_or("");
-            if matches!(status, "ok" | "empty") {
-                service["freshness"] = json!("fresh");
-                continue;
-            }
-            let old = service
-                .get("id")
-                .and_then(Value::as_str)
-                .and_then(|id| previous_services.get(id))
-                .filter(|old| qualified(old));
-            if let Some(old) = old {
-                for field in [
-                    "windows",
-                    "balance",
-                    "currency",
-                    "plan",
-                    "extra",
-                    "kind",
-                    "capturedAt",
-                ] {
-                    if let Some(value) = old.get(field) {
-                        service[field] = value.clone();
-                    }
-                }
-                service["freshness"] = json!("stale");
-            } else {
-                service["freshness"] = json!("unavailable");
-                if let Some(object) = service.as_object_mut() {
-                    object.remove("capturedAt");
-                }
-            }
-        }
-    }
-    result
+    collector_policy::merge_round(previous, current)
 }
 
 /// 定向刷新快照合并 (mac `ScopedQuotaSnapshotMerger` 同语义): 定向运行只返回目标
@@ -596,7 +493,7 @@ impl SnapshotState {
             .and_then(Value::as_array_mut)
         {
             for service in services {
-                if qualified(service) {
+                if collector_policy::is_qualified_previous(service) {
                     service["freshness"] = json!("stale");
                 }
             }
@@ -606,12 +503,12 @@ impl SnapshotState {
     /// Validate before mutating the saved snapshot. Bridge error artifacts never
     /// replace a valid previous snapshot, and malformed JSON is a visible failure.
     pub fn apply_response(&mut self, response: &BridgeResponse) -> Result<(), String> {
-        self.apply_response_with_policy(response, None, 0, 0)
+        self.apply_response_inner(response, None)
     }
 
-    /// C077: 带 per-provider 额度门禁的响应应用 —— 在既有合并之后追加
-    /// `quotaAttemptedAt`/`rateLimitedAt` 时间戳, 并用上一份 service 回填被跳过的
-    /// provider (冷却/新鲜 provider 不丢旧值, 也不被误标 fresh)。
+    /// C077: 带 per-provider 额度门禁的响应应用 —— 由共享 `quota_policy::merge` 一次完成
+    /// 失败借用旧值、`quotaAttemptedAt`/`rateLimitedAt` 时间戳与被跳过 provider 的回填
+    /// (冷却/新鲜 provider 不丢旧值, 也不被误标 fresh); 无门禁时只做单轮合并。
     pub fn apply_response_with_policy(
         &mut self,
         response: &BridgeResponse,
@@ -619,27 +516,17 @@ impl SnapshotState {
         now_ms: i64,
         interval_secs: i64,
     ) -> Result<(), String> {
-        let previous = self.artifact.clone();
-        self.apply_response_inner(response)?;
-        if let Some(policy) = policy {
-            let now_iso = crate::quota_policy::timestamp_iso(now_ms);
-            let mut artifact = self.artifact.take();
-            if let Some(artifact) = artifact.as_mut() {
-                crate::quota_policy::annotate_attempts(artifact, policy, &now_iso);
-                crate::quota_policy::carry_over_skipped(
-                    artifact,
-                    previous.as_ref(),
-                    policy,
-                    now_ms,
-                    interval_secs,
-                );
-            }
-            self.artifact = artifact;
-        }
-        Ok(())
+        self.apply_response_inner(
+            response,
+            policy.map(|policy| (policy, now_ms, interval_secs)),
+        )
     }
 
-    fn apply_response_inner(&mut self, response: &BridgeResponse) -> Result<(), String> {
+    fn apply_response_inner(
+        &mut self,
+        response: &BridgeResponse,
+        quota: Option<(&crate::quota_policy::QuotaRunPolicy, i64, i64)>,
+    ) -> Result<(), String> {
         self.diagnostics = response
             .diagnostics
             .iter()
@@ -667,7 +554,16 @@ impl SnapshotState {
             self.fail("ARTIFACT_INVALID");
             return Err("ARTIFACT_INVALID".into());
         }
-        self.artifact = Some(merge_snapshot(self.artifact.as_ref(), current));
+        self.artifact = Some(match quota {
+            Some((policy, now_ms, interval_secs)) => crate::quota_policy::merge(
+                self.artifact.as_ref(),
+                current,
+                policy,
+                now_ms,
+                interval_secs,
+            ),
+            None => merge_snapshot(self.artifact.as_ref(), current),
+        });
         self.phase = if response.status == ResponseStatus::Partial {
             "partial"
         } else {
@@ -706,9 +602,8 @@ impl SnapshotState {
     ) -> Result<(), String> {
         let result = self.apply_scoped_response_inner(response, provider);
         if result.is_ok() {
-            let now_iso = crate::quota_policy::timestamp_iso(now_ms);
             if let Some(artifact) = self.artifact.as_mut() {
-                crate::quota_policy::annotate_provider(artifact, provider, &now_iso);
+                crate::quota_policy::annotate_provider(artifact, provider, now_ms);
             }
         }
         result
@@ -753,7 +648,9 @@ impl SnapshotState {
             .and_then(Value::as_array_mut)
         {
             for service in services {
-                if provider_id(service) == provider && qualified(service) {
+                if provider_id(service) == provider
+                    && collector_policy::is_qualified_previous(service)
+                {
                     service["freshness"] = json!("stale");
                 }
             }
