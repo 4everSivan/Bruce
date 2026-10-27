@@ -15,7 +15,8 @@
         "C074",
         "C104",
         "C106",
-        "C114"
+        "C114",
+        "C121"
       ]
     },
     "MenuBarIndicator": {
@@ -1248,6 +1249,15 @@
       "topic": "SubscriptionQuota",
       "version": "0.13.1",
       "file": "docs/devel/change/C120.json"
+    },
+    "C121": {
+      "title": "macOS 快照持久化去重复解析：每轮刷新主线程耗时约 300 ms → 30 ms，停写重复的 .backup.json",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C121-artifact-store-io",
+      "topic": "SystemOverview",
+      "version": "0.13.1",
+      "file": "docs/devel/change/C121.json"
     }
   }
 }

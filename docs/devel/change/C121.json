@@ -1,0 +1,107 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C121",
+  "title": "macOS 快照持久化去重复解析：每轮刷新主线程耗时约 300 ms → 30 ms，停写重复的 .backup.json",
+  "version": "0.13.1",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C121-artifact-store-io",
+  "is_hotfix": false,
+
+  "target": {
+    "module": "apps/macos BruceAppCore",
+    "component": "ArtifactStore 发布 / 读取、ArtifactValidator",
+    "design_doc": "docs/devel/design/00-系统总体设计.md",
+    "design_topic": "SystemOverview"
+  },
+
+  "why": "2026-10-25 架构审查：ArtifactStore（@MainActor）每轮刷新把同一份快照反复整树解析。发布：内存校验一次 → 读取磁盘当前快照解码 + 校验（只为把它轮换成 previous）→ AtomicJSONStore 先复制一份 .backup.json（内容与 previous 相同）→ 写入后重读解码 + 校验；读取（流水线每轮取上一份 artifact）：JSONSerialization 取版本号 + JSONDecoder 整树解码 + 校验。ArtifactValidator.validate 每次都把 JSONValue 整树再编码，敏感键判定对上万次键访问逐次 lowercased + filter。以本机真实 181 KB 快照、release 构建实测：publish 191.8 ms、load 70.8 ms、validate 38.7 ms（其中敏感键遍历约 27 ms、再编码 7.6 ms、类型化解码 4.1 ms）、JSONValue 整树解码 29.9 ms —— 每轮刷新约 300 ms 主线程耗时，界面可感知卡顿。审查同时提出的「AppModel 以 JSONValue 深比较做缓存键」实测仅 0.47 ms / 次，不作改动。",
+
+  "precheck": {
+    "description": "确认改动前发布重复解码校验当前快照并写 .backup.json、读取双重解析、校验整树再编码",
+    "command": "git show e018e85:apps/macos/Sources/BruceAppCore/ArtifactStore.swift | grep -n 'backupPrevious: true\\|let currentArtifact = try? JSONDecoder()\\|JSONSerialization.jsonObject(\\|_ = try validator.validate(value, for: module)'; git show e018e85:apps/macos/Sources/BruceAppCore/ArtifactModels.swift | grep -n 'data = try JSONEncoder().encode(artifact)\\|\\.lowercased()'",
+    "expected": "publish 含当前快照解码校验、写后重读解码校验与 backupPrevious；load 先 JSONSerialization；validate 整树再编码并逐键 lowercased（缺陷存在）",
+    "is_completed": false,
+    "evidence": "2026-10-26 预检实测：e018e85 的 ArtifactStore.swift 第 140 行 `let currentArtifact = try? JSONDecoder()`（轮换 previous 前整树解码）、第 159 行写后重读 `_ = try validator.validate(value, for: module)`、第 161 行 `backupPrevious: true`、第 427 行 `JSONSerialization.jsonObject(`（读取先额外解析一遍）；ArtifactModels.swift 第 265 行 `data = try JSONEncoder().encode(artifact)`、第 363 行逐键 `.lowercased()` —— 缺陷成立，需编码修复。"
+  },
+
+  "callback": {
+    "before": [
+      "git checkout -b fix/C121-artifact-store-io  # 叠加在 fix/C120-quota-policy-parity 之上"
+    ],
+    "after": [
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C121 --to verified --record"
+    ]
+  },
+
+  "changes": [
+    {
+      "scope": "ArtifactStore 发布 / 读取",
+      "before": "发布：内存校验 → 读取并整树解码校验当前快照 → 写 .backup.json → 写入后重读整树解码校验；读取：JSONSerialization + JSONDecoder 两次解析 + 校验",
+      "after": "内存保留最近一次发布 / 读取成功的当前快照（字节 + JSONValue + 解码结果），磁盘字节逐字节相同才复用：发布时当前快照字节命中缓存即视为合格直接轮换 previous（未命中仍完整校验，不合格不得成为 previous）、写后重读只比对字节；读取命中缓存直接返回，未命中只解码一次 JSONValue（v0 迁移才再用 JSONSerialization）；停写 .backup.json 并在发布时清理旧版本遗留的一份；clearSnapshotCaches 同步清空内存缓存",
+      "impact": "真实快照：publish 191.8 → 16.6 ms、热读取 70.8 → 0.16 ms、冷读取 70.8 → 33.7 ms；快照目录少一份 181 KB 副本"
+    },
+    {
+      "scope": "ArtifactValidator",
+      "before": "validate 每次整树再编码 JSONValue 后类型化解码；敏感键判定逐次 lowercased + filter",
+      "after": "新增 validate(_:encoded:for:) 复用调用方已有字节（发布时刚编码的、读取时刚读出的），原 validate 拆为信封校验 + 解码校验两段复用同一逻辑；敏感键判定按键名缓存（每次校验一份 [String: Bool]），判定规则不变",
+      "impact": "validate 38.7 → 12.1 ms（AppModel 每次 artifact 变更仍各校验一次）"
+    }
+  ],
+
+  "design": {
+    "doc": "docs/devel/design/00-系统总体设计.md",
+    "topic": "SystemOverview",
+    "modified": true,
+    "rule_diff": {
+      "before": "§5 三级快照容灾列出写入前备份 .backup.json 为旁路副本；未规定快照读写的解析次数",
+      "after": "§5 删去 .backup.json 写入（旧版遗留在下次发布时清理，读取双损坏时仍尝试回滚一次）；新增第 3 条「快照读写只解析一次（C121）」：按字节缓存已校验快照、外部改写触发重新读取、轮换 previous 前对非缓存字节完整校验、校验复用字节与敏感键缓存；登记快照读写仍在主线程、后台化单独评估"
+    }
+  },
+
+  "verification": {
+    "result": null,
+    "run_id": "local-20261026-08",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "ArtifactStore Harness 全绿（含新增缓存正确性用例），依赖快照存储的 RefreshScheduler / CollectorRunner / AppModelCache / LocalIntegration Harness 全绿，verify-local 退出码 0",
+        "false_if": "任一失败",
+        "evidence": "2026-10-26: ArtifactStoreHarness 7 passed（新增 verifiedSnapshotCacheFollowsDiskBytes：发布不写并清理 .backup.json、previous 为上一份快照、外部改写为另一份合格快照后读取返回新内容且发布时将其轮换为 previous、含深层敏感键 agents[0].nested[0].apiKey 的当前快照被校验拒绝且不轮换为 previous；原有损坏回退 / 写入失败 / v0 迁移 / 清缓存 / 满尺寸校验用例全部通过）；SDKROOT=MacOSX26.5 zsh scripts/verify-local.sh 退出码 0（local/logs/c121-verify.log：ArtifactStore 7、CollectorRunner 28、Refresh scheduler 106、LocalIntegration 2、AppModelCache 3）。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "以本机真实快照副本、release 构建对比改动前后：publish 与 load 耗时显著下降，快照目录不再出现 .backup.json；新用例在改动前实现上失败",
+        "false_if": "耗时无改善或新用例无法区分新旧实现",
+        "evidence": "2026-10-26: 复制 ~/Library/Application Support/Bruce/snapshots/agent-usage.json（181,557 字节，只读复制）至 local/scratch/bench，以临时基准（ArtifactStoreHarness release + -enable-testing，测后还原）在临时目录各跑 20 次：改动前 publish 191.81 / load 70.77 / validate 38.68 ms；改动后 publish 16.59 / load 命中 0.16 / 冷读取（新实例）33.71 / 冷发布 49.63 / validate 12.07 ms，快照目录仅 agent-usage.json 与 agent-usage.previous.json。按每轮发布 + 读取 + AppModel 校验一次计，主线程约 301 ms → 29 ms。负向实测：以 git show HEAD 的 ArtifactStore.swift / ArtifactModels.swift 运行新用例，失败于「publish should drop the redundant .backup.json」，恢复后 7 passed。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "缓存不掩盖损坏与外部改写；校验规则与错误类型不变；回退 / 迁移路径语义不变",
+        "false_if": "损坏快照被缓存返回、不合格快照成为 previous 或错误类型变化",
+        "evidence": "2026-10-26: 缓存仅在磁盘字节逐字节相同时复用，原有 fallsBackAfterCorruptionAndWriteFailure（同一实例发布后写入损坏数据，读取须回退 previous）通过；写后重读不一致抛错经 AtomicJSONStore 收敛为 storageFailure，与改动前校验失败同一错误；编码失败仍归 decodeFailed；敏感键判定规则未改，仅按键名缓存结果；v0 迁移仍走 JSONSerialization 与原写入校验；读取 current 与 previous 均损坏时的 rollback 代码路径保留，但升级后首次发布即清理遗留 .backup.json，此后双损坏不再有第三份可回滚（改动前该副本内容与 previous 相同，previous 损坏时同样无效）。未覆盖：快照读写仍在主线程；AppModel 对每次 artifact 变更仍独立校验一次（约 12 ms）。",
+        "result": true
+      }
+    ]
+  },
+
+  "rejections": [],
+
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}
