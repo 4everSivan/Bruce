@@ -40,7 +40,8 @@ struct ArtifactStoreHarness {
         try migratesAndRejectsUnknownSchemas(repository: repository)
         try clearCachesRemovesSnapshotsAndStaysUsable(repository: repository)
         try validatesCalendarDaysStrictlyAndQuickly(repository: repository)
-        print("ArtifactStore tests passed: 6")
+        try verifiedSnapshotCacheFollowsDiskBytes(repository: repository)
+        print("ArtifactStore tests passed: 7")
     }
 
     /// C106: 逐日校验语义与旧「非宽松 DateFormatter + 回写比对」一致, 且 182 天 ×
@@ -115,6 +116,70 @@ struct ArtifactStoreHarness {
             elapsed < 0.25,
             "full-size artifact validation took \(Int(elapsed * 1000)) ms (expected < 250 ms)"
         )
+    }
+
+    /// C121: 已校验快照缓存只在磁盘字节完全一致时复用; 外部改写立即重新读取,
+    /// 不合格的当前快照仍不得轮换为 previous; 不再写 .backup.json 并清理旧版遗留.
+    private static func verifiedSnapshotCacheFollowsDiskBytes(
+        repository: URL
+    ) throws {
+        let root = try temporaryRoot("verified-cache")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try ArtifactStore(rootURL: root)
+        let base = try fixture(repository: repository, module: .agentUsage)
+        func variant(_ login: String) -> JSONValue {
+            guard case .object(var object) = base else { return base }
+            object["login"] = .string(login)
+            return .object(object)
+        }
+        let currentURL = store.snapshotURL(for: .agentUsage)
+        let previousURL = store.previousSnapshotURL(for: .agentUsage)
+        let staleBackup = store.snapshotsURL
+            .appendingPathComponent("agent-usage.json.backup.json")
+
+        try store.publish(variant("a"), for: .agentUsage)
+        try Data("{}".utf8).write(to: staleBackup)
+        try store.publish(variant("b"), for: .agentUsage)
+        try storeExpect(
+            !FileManager.default.fileExists(atPath: staleBackup.path),
+            "publish should drop the redundant .backup.json"
+        )
+        let previous = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: previousURL))
+        try storeExpect(previous == variant("a"), "previous should hold the prior snapshot")
+        let cached = try store.load(.agentUsage)
+        try storeExpect(cached.artifact == variant("b"), "cached load")
+
+        // 外部改写为另一份合格快照: 字节变化, 必须重新读取
+        try JSONEncoder().encode(variant("external")).write(to: currentURL)
+        let reloaded = try store.load(.agentUsage)
+        try storeExpect(
+            reloaded.source == .current && reloaded.artifact == variant("external"),
+            "external rewrite must not be masked by the cache"
+        )
+        try store.publish(variant("c"), for: .agentUsage)
+        let rotated = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: previousURL))
+        try storeExpect(rotated == variant("external"), "verified external snapshot rotates to previous")
+
+        // 可解析但不合格 (含敏感字段) 的当前快照: 不得轮换为 previous
+        guard case .object(var tainted) = variant("tainted"),
+              case .array(var agents)? = tainted["agents"],
+              case .object(var agent)? = agents.first else {
+            throw StoreTestFailure.expectation("fixture has no agents")
+        }
+        agent["nested"] = .array([.object(["apiKey": .string("x")])])
+        agents[0] = .object(agent)
+        tainted["agents"] = .array(agents)
+        do {
+            _ = try ArtifactValidator().validate(.object(tainted), for: .agentUsage)
+            throw StoreTestFailure.expectation("nested sensitive key accepted")
+        } catch ArtifactValidationError.sensitiveField {
+        }
+        try JSONEncoder().encode(JSONValue.object(tainted)).write(to: currentURL)
+        try store.publish(variant("d"), for: .agentUsage)
+        let kept = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: previousURL))
+        try storeExpect(kept == variant("external"), "invalid current snapshot must not become previous")
+        let latest = try store.load(.agentUsage)
+        try storeExpect(latest.artifact == variant("d"), "latest publish is current")
     }
 
     private static func fixture(

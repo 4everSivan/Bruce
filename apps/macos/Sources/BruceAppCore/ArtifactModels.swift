@@ -250,6 +250,31 @@ package struct ArtifactValidator {
         _ artifact: JSONValue,
         for expectedModule: CollectorModule
     ) throws -> DecodedArtifact {
+        try validateEnvelope(artifact, for: expectedModule)
+        let data: Data
+        do {
+            data = try JSONEncoder().encode(artifact)
+        } catch {
+            throw ArtifactValidationError.decodeFailed
+        }
+        return try validateDecoded(data, for: expectedModule)
+    }
+
+    /// 同 `validate(_:for:)`, 但复用调用方已有的 JSON 字节 (C121: 刚编码待写盘的、或刚从磁盘
+    /// 读出并解码出 `artifact` 的字节), 省去一次整树再编码。`data` 必须是 `artifact` 的编码。
+    package func validate(
+        _ artifact: JSONValue,
+        encoded data: Data,
+        for expectedModule: CollectorModule
+    ) throws -> DecodedArtifact {
+        try validateEnvelope(artifact, for: expectedModule)
+        return try validateDecoded(data, for: expectedModule)
+    }
+
+    private func validateEnvelope(
+        _ artifact: JSONValue,
+        for expectedModule: CollectorModule
+    ) throws {
         guard case .object(let object) = artifact else {
             throw ArtifactValidationError.notAnObject
         }
@@ -266,13 +291,12 @@ package struct ArtifactValidator {
               moduleName == expectedModule.rawValue else {
             throw ArtifactValidationError.moduleMismatch
         }
-        let data: Data
-        do {
-            data = try JSONEncoder().encode(artifact)
-        } catch {
-            throw ArtifactValidationError.decodeFailed
-        }
+    }
 
+    private func validateDecoded(
+        _ data: Data,
+        for expectedModule: CollectorModule
+    ) throws -> DecodedArtifact {
         switch expectedModule {
         case .agentUsage:
             let decoded: AgentUsageArtifact = try decode(data)
@@ -361,34 +385,55 @@ package struct ArtifactValidator {
         CalendarDay.isValid(value)
     }
 
+    /// C121: 键名判定按键缓存 —— artifact 只有几十种键名却有上万次键访问, 逐次
+    /// lowercased + filter 曾占单次校验约 27 ms (181 KB 真实 artifact)。
     private func containsSensitiveField(_ value: JSONValue) -> Bool {
+        var verdicts: [String: Bool] = [:]
+        return containsSensitiveField(value, verdicts: &verdicts)
+    }
+
+    private func containsSensitiveField(
+        _ value: JSONValue,
+        verdicts: inout [String: Bool]
+    ) -> Bool {
         switch value {
         case .object(let object):
             for (key, child) in object {
-                let normalized = key
-                    .lowercased()
-                    .filter { $0.isLetter || $0.isNumber }
-                if [
-                    "token",
-                    "secret",
-                    "password",
-                    "authorization",
-                    "cookie",
-                    "apikey",
-                    "privatekey",
-                    "credential",
-                ].contains(where: { normalized.contains($0) }) {
-                    return true
+                let sensitive: Bool
+                if let cached = verdicts[key] {
+                    sensitive = cached
+                } else {
+                    sensitive = Self.isSensitiveKey(key)
+                    verdicts[key] = sensitive
                 }
-                if containsSensitiveField(child) {
+                if sensitive || containsSensitiveField(child, verdicts: &verdicts) {
                     return true
                 }
             }
             return false
         case .array(let values):
-            return values.contains(where: containsSensitiveField)
+            for child in values where containsSensitiveField(child, verdicts: &verdicts) {
+                return true
+            }
+            return false
         default:
             return false
         }
+    }
+
+    private static func isSensitiveKey(_ key: String) -> Bool {
+        let normalized = key
+            .lowercased()
+            .filter { $0.isLetter || $0.isNumber }
+        return [
+            "token",
+            "secret",
+            "password",
+            "authorization",
+            "cookie",
+            "apikey",
+            "privatekey",
+            "credential",
+        ].contains(where: { normalized.contains($0) })
     }
 }

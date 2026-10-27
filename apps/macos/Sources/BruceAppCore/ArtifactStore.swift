@@ -75,6 +75,16 @@ package final class ArtifactStore {
     private let faultInjector: FaultInjector?
     private let atomicStore: AtomicJSONStore
 
+    /// C121: 最近一次发布或读取成功的当前快照。磁盘字节与之逐字节相同即视为已校验,
+    /// 发布与读取均不再整树解码 + 校验 (181 KB 真实 artifact 单次约 70 ms)。
+    private struct VerifiedSnapshot {
+        let data: Data
+        let artifact: JSONValue
+        let decoded: DecodedArtifact
+    }
+
+    private var verifiedSnapshots: [CollectorModule: VerifiedSnapshot] = [:]
+
     package convenience init() throws {
         guard let applicationSupport = FileManager.default.urls(
             for: .applicationSupportDirectory,
@@ -130,36 +140,42 @@ package final class ArtifactStore {
         for module: CollectorModule,
         attemptedAt: Date = Date()
     ) throws {
-        _ = try validator.validate(artifact, for: module)
-        let data = try JSONEncoder().encode(artifact)
+        let data: Data
+        do {
+            data = try JSONEncoder().encode(artifact)
+        } catch {
+            throw ArtifactValidationError.decodeFailed
+        }
+        let decoded = try validator.validate(artifact, encoded: data, for: module)
         let currentURL = snapshotURL(for: module)
         let previousURL = previousSnapshotURL(for: module)
 
-        if fileManager.fileExists(atPath: currentURL.path),
-           let currentData = try? Data(contentsOf: currentURL),
-           let currentArtifact = try? JSONDecoder().decode(
-               JSONValue.self,
-               from: currentData
-           ),
-           (try? validator.validate(currentArtifact, for: module)) != nil {
+        // 只把合格的当前快照轮换为 previous; 与上次发布 / 读取的字节相同即已校验 (C121)
+        if let currentData = try? Data(contentsOf: currentURL),
+           isVerified(currentData, for: module) || isValidSnapshot(currentData, for: module) {
             try atomicStoreWrite(
                 currentData,
                 to: previousURL,
                 stage: .beforeReplace
             )
         }
+        // C121: 内存中已校验, 写后重读只需逐字节比对; previous 已保存上一份合格快照,
+        // 不再另写同内容的 .backup.json (并清理旧版本遗留的那份)
         try atomicStoreWrite(
             data,
             to: currentURL,
-            validate: { [validator] reread in
-                let value = try JSONDecoder().decode(
-                    JSONValue.self,
-                    from: reread
-                )
-                _ = try validator.validate(value, for: module)
+            validate: { reread in
+                guard reread == data else {
+                    throw ArtifactStoreError.corruptedSnapshot
+                }
             },
-            backupPrevious: true,
             stage: .beforeReplace
+        )
+        atomicStore.removeBackup(currentURL)
+        verifiedSnapshots[module] = VerifiedSnapshot(
+            data: data,
+            artifact: artifact,
+            decoded: decoded
         )
 
         var metadata = try readMetadata()
@@ -207,8 +223,27 @@ package final class ArtifactStore {
         staleAfter: TimeInterval = 3600
     ) throws -> StoredArtifact {
         let currentURL = snapshotURL(for: module)
+        if let verified = verifiedSnapshots[module],
+           let data = try? Data(contentsOf: currentURL),
+           data == verified.data {
+            return try storedArtifact(
+                verified.artifact,
+                decoded: verified.decoded,
+                module: module,
+                source: .current,
+                now: now,
+                staleAfter: staleAfter,
+                fallbackError: nil
+            )
+        }
+        verifiedSnapshots[module] = nil
         do {
             let loaded = try loadArtifact(at: currentURL, for: module)
+            verifiedSnapshots[module] = VerifiedSnapshot(
+                data: loaded.data,
+                artifact: loaded.artifact,
+                decoded: loaded.decoded
+            )
             return try storedArtifact(
                 loaded.artifact,
                 decoded: loaded.decoded,
@@ -315,7 +350,7 @@ package final class ArtifactStore {
                 JSONValue.self,
                 from: data
             )
-            _ = try validator.validate(artifact, for: module)
+            _ = try validator.validate(artifact, encoded: data, for: module)
             return .valid
         } catch ArtifactValidationError.unsupportedSchema {
             return .unsupportedSchema
@@ -328,6 +363,7 @@ package final class ArtifactStore {
     /// 只触碰本应用 Application Support/Bruce 下的 snapshots 与 metadata,
     /// 不影响配置, Keychain 凭证和 DeepSeek 月度账本.
     package func clearSnapshotCaches() throws {
+        verifiedSnapshots.removeAll()
         do {
             if fileManager.fileExists(atPath: snapshotsURL.path) {
                 try fileManager.removeItem(at: snapshotsURL)
@@ -362,6 +398,17 @@ package final class ArtifactStore {
         } catch is AtomicJSONStore.AtomicJSONStoreError {
             throw ArtifactStoreError.storageFailure
         }
+    }
+
+    private func isVerified(_ data: Data, for module: CollectorModule) -> Bool {
+        verifiedSnapshots[module]?.data == data
+    }
+
+    private func isValidSnapshot(_ data: Data, for module: CollectorModule) -> Bool {
+        guard let value = try? JSONDecoder().decode(JSONValue.self, from: data) else {
+            return false
+        }
+        return (try? validator.validate(value, encoded: data, for: module)) != nil
     }
 
     private func prepareDirectories() throws {
@@ -415,34 +462,45 @@ package final class ArtifactStore {
     ) throws -> (
         artifact: JSONValue,
         decoded: DecodedArtifact,
-        source: SnapshotSource
+        source: SnapshotSource,
+        data: Data
     ) {
         guard fileManager.fileExists(atPath: url.path) else {
             throw ArtifactStoreError.noSnapshot
         }
+        // C121: 只解码一次 JSONValue (此前先 JSONSerialization 取版本号再 JSONDecoder 全量解码)
         let data: Data
-        let object: [String: Any]
+        let artifact: JSONValue
         do {
             data = try Data(contentsOf: url)
-            guard let decodedObject = try JSONSerialization.jsonObject(
-                with: data
-            ) as? [String: Any] else {
-                throw ArtifactStoreError.corruptedSnapshot
-            }
-            object = decodedObject
-        } catch let error as ArtifactStoreError {
-            throw error
+            artifact = try JSONDecoder().decode(JSONValue.self, from: data)
         } catch {
             throw ArtifactStoreError.corruptedSnapshot
         }
+        guard case .object(let fields) = artifact else {
+            throw ArtifactStoreError.corruptedSnapshot
+        }
 
-        let version = object["schemaVersion"] as? Int ?? 0
+        let version: Int
+        switch fields["schemaVersion"] {
+        case .integer(let value):
+            version = value
+        case .double(let value) where value == value.rounded():
+            version = Int(value)
+        default:
+            version = 0
+        }
         if version > ArtifactValidator.currentSchemaVersion {
             throw ArtifactStoreError.unknownSchema(version)
         }
         if version == 0 {
             guard allowMigration else {
                 throw ArtifactStoreError.unknownSchema(0)
+            }
+            guard let object = try? JSONSerialization.jsonObject(
+                with: data
+            ) as? [String: Any] else {
+                throw ArtifactStoreError.corruptedSnapshot
             }
             return try migrateV0(
                 originalData: data,
@@ -455,14 +513,11 @@ package final class ArtifactStore {
             throw ArtifactStoreError.unknownSchema(version)
         }
         do {
-            let artifact = try JSONDecoder().decode(
-                JSONValue.self,
-                from: data
-            )
             return (
                 artifact,
-                try validator.validate(artifact, for: module),
-                .current
+                try validator.validate(artifact, encoded: data, for: module),
+                .current,
+                data
             )
         } catch let error as ArtifactValidationError {
             if case .unsupportedSchema(let schema) = error {
@@ -482,7 +537,8 @@ package final class ArtifactStore {
     ) throws -> (
         artifact: JSONValue,
         decoded: DecodedArtifact,
-        source: SnapshotSource
+        source: SnapshotSource,
+        data: Data
     ) {
         var migratedObject = object
         migratedObject["schemaVersion"] = 1
@@ -521,7 +577,7 @@ package final class ArtifactStore {
                 },
                 stage: .beforeMigrationReplace
             )
-            return (artifact, decoded, .migrated)
+            return (artifact, decoded, .migrated, migratedData)
         } catch let error as ArtifactStoreError {
             throw error
         } catch {
