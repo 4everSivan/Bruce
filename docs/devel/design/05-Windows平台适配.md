@@ -259,6 +259,7 @@ Windows Tauri 后端 (Rust)
 | C101 | 界面对齐 | 看板滚动区隐藏滚动条 | 删除 `#scroll` 半透明 4px 细滚动条，与 mac 一样恒不显示；仅保留滚轮 / 触控板滚动（见规则 12） |
 | C115 | 缺陷修复 | 托盘配额环 / 预览卡读取真实面板字段 | T12 按不存在的字段（`subscriptions` / `totalCostText` / `agents` / `resetsIn` / `status`）取数，托盘恒显示剩余 100%、今日 $0.00；改由 `extract_quota_summary` 读取 `PanelViewModel` 真实字段并经 `panel.preview` 供预览卡同源渲染，golden 面板 fixture 双端对拍（见 §6.5） |
 | C118 | 缺陷修复 | 限流与 provider 判定改读显式字段 | `quota_policy::is_rate_limited` 优先 service `failureKind`、`runtime_core::provider_id` 优先 service `provider`，字段缺省的旧 artifact 才回退 note 文案与 id 前缀（见规则 19） |
+| C120 | 缺陷修复 | 额度门禁双端共享对拍 | mac 改为按启用集合判定后与 `quota_policy::plan` 同口径，新增 `tests/fixtures/quota-policy-parity/cases.json` 由双端测试共同消费（见规则 19） |
 | C109 | 缺陷修复 | 出站网络 command 移出主线程 | `codex_device_start` / `codex_device_poll` / `verify_subscription` 改为 async + `off_main_thread`，`ShellExecuteW` 派回主线程；源码级守卫用例锁定（见规则 31） |
 | 暂无增量变更 | - | 初始基线定稿 | Windows 适配初始设计（Tauri 2 / 首版全量 / Rust 视图模型+对拍） |
 
@@ -311,7 +312,7 @@ Windows Tauri 后端 (Rust)
     - **补偿**：离线→在线跃迁给出 `Compensate`，本轮刷新即离线期间唯一一次补偿（不补发积压的多轮）；持续在线为 `Online`，语义与既有退避/边界唤醒不变；
     - **手动不变**：`should_skip_refresh` 只在「离线且非手动」时跳过 —— 手动刷新（含定向刷新）离线仍执行一次，不重试。
 19. **订阅额度 per-provider 门禁与 429 冷却**（C077，mac `QuotaRefreshPolicy` + `QuotaCarryOverMerger` 同语义）：
-    - **新鲜度门禁**：`quota_policy::plan` 逐 provider 判定 —— `quotaAttemptedAt`（回退 `capturedAt`，失败回退 `rateLimitedAt`）距今不足刷新间隔则跳过（多账号需全部新鲜才跳过）；无历史 service 的 provider 必须首查；上次快照后有窗口 `resetsAt` 已过则强制重查（C037 兼容）；
+    - **新鲜度门禁**：`quota_policy::plan` 逐 provider 判定 —— `quotaAttemptedAt`（回退 `capturedAt`，失败回退 `rateLimitedAt`）距今不足刷新间隔则跳过（多账号需全部新鲜才跳过）；无历史 service 的 provider 必须首查（C120 起 mac 同口径，双端以 `tests/fixtures/quota-policy-parity/cases.json` 对拍）；上次快照后有窗口 `resetsAt` 已过则强制重查（C037 兼容）；
     - **429 冷却**：service 带 `rateLimitedAt` 且距今不足 30 分钟（`RATE_LIMIT_COOLDOWN_SECS`）时该 provider 进入冷却（partial，仅该 provider；其余照常查询）；命中判定以 collector 下发的 `failureKind == "rateLimit"` 为准、provider 归属以 service `provider` 为准，字段缺省的旧 artifact 才回退 note 限流文案（429 / 限流 / RATE_LIMIT）与 id 前缀推断（C118，见 design/02 规则 12）；
     - **Codex 例外**：Codex 永不因新鲜度或冷却进入 `skip_providers`（四源合并/重试链路需要完整首轮结果）；全部 provider 仍新鲜时整轮退化为本地专用 run 并回填全部旧 service；
     - **记账与回填**：本轮真实查询过的 service 写 `quotaAttemptedAt`，命中限流写 `rateLimitedAt`、成功则清除（跨重启保留节流状态）；被跳过的 provider 用上一份 service 原样回填，冷却/失败/过期标 `stale`，不丢旧值也不误标 `fresh`；

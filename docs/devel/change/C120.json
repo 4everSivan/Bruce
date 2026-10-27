@@ -1,0 +1,116 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C120",
+  "title": "订阅额度查询门禁双端对齐：mac 按启用集合判定（新启用即首查），新增双端共享对拍 fixture",
+  "version": "0.13.1",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C120-quota-policy-parity",
+  "is_hotfix": false,
+
+  "target": {
+    "module": "apps/macos BruceAppCore；apps/win src-tauri（测试）；tests/fixtures",
+    "component": "QuotaRefreshPolicy.plan / attemptAt、CollectorRunInputProviding、RefreshExecutionPipeline；quota_policy 对拍用例",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+
+  "why": "2026-10-25 架构审查：mac 与 Windows 的额度查询门禁已分叉且无共享用例。Windows quota_policy::plan 逐个判定启用 provider，无历史 service 的必须首查；mac QuotaRefreshPolicy.plan 只遍历上一份 artifact 中出现的 provider —— 设置中重新开启已配置的订阅只保存配置、不触发查询，其余 provider 仍新鲜时该订阅要等到某个 provider 到期才首次查询（最长一个刷新间隔，最长 60 分钟）；已停用 provider 的过期残留 service 反而会触发外部查询；无任何启用 provider 时仍请求 externalQuotas。另：mac attemptAt 对 status=unavailable 不回退 rateLimitedAt，与 Windows 及 mac 自己的 annotateCurrent 失败口径（error / partial / unavailable）不一致。",
+
+  "precheck": {
+    "description": "确认改动前 mac 门禁按上一份 artifact 的 provider 遍历、unavailable 不回退，Windows 按启用集合遍历",
+    "command": "git show e018e85:apps/macos/Sources/BruceAppCore/QuotaRefreshPolicy.swift | grep -n 'for (provider, providerServices) in byProvider\\|if status == \"error\" || status == \"partial\" {\\|skip = Set(byProvider.keys)'; git show e018e85:apps/win/src-tauri/src/quota_policy.rs | grep -n 'for provider in enabled_providers\\|\"error\" | \"partial\" | \"unavailable\"'",
+    "expected": "mac 遍历 byProvider、失败回退只含 error / partial；Windows 遍历 enabled_providers、失败回退含 unavailable（分叉存在）",
+    "is_completed": false,
+    "evidence": "2026-10-26 预检实测：e018e85 的 mac QuotaRefreshPolicy.swift 第 104 行 `for (provider, providerServices) in byProvider`、第 165 行 `skip = Set(byProvider.keys)`、第 253 行 `if status == \"error\" || status == \"partial\" {`；Windows quota_policy.rs 第 222 行 `for provider in enabled_providers`、第 101 行 `matches!(status, \"error\" | \"partial\" | \"unavailable\")` —— 分叉成立，需编码修复。"
+  },
+
+  "callback": {
+    "before": [
+      "git checkout -b fix/C120-quota-policy-parity  # 叠加在 fix/C119-orca-agent-attribution 之上"
+    ],
+    "after": [
+      "cargo fmt --manifest-path apps/win/src-tauri/Cargo.toml --all -- --check",
+      "cargo clippy --manifest-path apps/win/src-tauri/Cargo.toml --all-targets -- -D warnings",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C120 --to verified --record"
+    ]
+  },
+
+  "changes": [
+    {
+      "scope": "mac 额度门禁",
+      "before": "plan 遍历上一份 artifact 中出现的 provider；无 services 时 includeAll；全部新鲜时 skip = 上一份 artifact 的 provider；attemptAt 失败回退仅 error / partial",
+      "after": "plan 新增 enabledProviders（nil = 未知，沿用旧口径供测试桩）：逐个判定启用 provider，无历史 service 的必须首查，停用 provider 的残留 service 不参与，无启用 provider 时不发起额度查询，全部新鲜时 skip = 全部启用 provider；attemptAt 失败回退含 unavailable；删除冗余条件 due.contains(.codex)；attemptAt 注释与实现对齐（回退 rateLimitedAt 而非 generatedAt）",
+      "impact": "重新开启的订阅下一轮自动刷新即查询；与 Windows quota_policy::plan 同口径"
+    },
+    {
+      "scope": "mac 启用集合来源",
+      "before": "RefreshExecutionPipeline 计算额度策略时不知道启用集合",
+      "after": "CollectorRunInputProviding 新增 enabledQuotaProviders(for:)（默认 nil）；OnboardingRunInputProvider 以 subscriptionProviders[id].enabled == true 实现（与凭证装配同一判据），流水线传入 plan",
+      "impact": "门禁与实际装配的 provider 集合一致"
+    },
+    {
+      "scope": "双端共享对拍",
+      "before": "两端各自单测，分叉无法被发现",
+      "after": "新增 tests/fixtures/quota-policy-parity/cases.json（18 例，覆盖新鲜 / 过期 / 新启用 / 停用残留 / 无启用 / 首轮 / interval=0 / 429 冷却与到期 / Codex 不跳过 / 窗口边界 / 多账号 / 边界唤醒尊重冷却 / 手动绕过 / unavailable 回退 / 旧 artifact 回退 capturedAt），mac RefreshSchedulerHarness 与 Windows quota_policy_coverage 共同消费",
+      "impact": "任一端门禁改动须同时满足共享用例"
+    }
+  ],
+
+  "design": {
+    "doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "topic": "SubscriptionQuota",
+    "modified": true,
+    "rule_diff": {
+      "before": "规则 12 未规定门禁判定的 provider 集合与 attemptAt 失败回退口径；design/05 规则 19 只描述 Windows「无历史 service 的 provider 必须首查」",
+      "after": "规则 12 新增「按启用集合判定与双端对拍（C120）」：判定对象为本轮启用 provider、无历史必须首查、停用残留不参与、无启用不查询、失败回退含 unavailable、双端以共享 fixture 对拍并登记已知限制；design/05 规则 19 注明 mac 同口径与共享 fixture"
+    }
+  },
+
+  "verification": {
+    "result": null,
+    "run_id": "local-20261026-08",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "双端共享 fixture 18 例在 mac 与 Windows 均通过；RefreshScheduler / SubscriptionCredentials Harness 全绿（含新增用例），Windows src-tauri fmt / clippy / test 全绿，verify-local 退出码 0",
+        "false_if": "任一失败",
+        "evidence": "2026-10-26: Windows cargo test --test quota_policy_coverage plan_matches_shared_parity_fixture 1 passed（18 例，未改 Windows 实现即通过 —— fixture 即 Windows 现行口径）；apps/win/src-tauri cargo fmt --check（首轮报新用例格式，cargo fmt 后通过）、clippy -D warnings 退出码 0、cargo test 222 passed / 0 failed；mac RefreshSchedulerHarness 106 passed（新增 quotaPolicyMatchesSharedParityFixture，原有 C062 / C065 / C071 等不带 enabledProviders 的门禁用例全部通过）、SubscriptionCredentialsHarness 37 passed（新增 enabledQuotaProvidersFollowEnabledFlag：enabled 的 claude / kimi 计入、enabled=false 的 deepseek 不计入）；SDKROOT=MacOSX26.5 zsh scripts/verify-local.sh 首轮退出码 1（Windows 新用例 rustfmt 差异，与上述 fmt 同一问题），cargo fmt 后重跑退出码 0（local/logs/c120-verify.log：Refresh scheduler 106、Subscription credentials 37）。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "同一共享 fixture 在改动前的 mac 门禁上恰好在预期分叉的用例失败，其余用例新旧一致",
+        "false_if": "旧实现全部通过（fixture 无法区分）或失败用例超出预期",
+        "evidence": "2026-10-26: 以 git show HEAD 的 QuotaRefreshPolicy.swift / RefreshExecutionPipeline.swift 与收集全部失配的临时用例变体（不传 enabledProviders）运行同一 fixture：PARITY_FAILURES = newly_enabled_without_history_is_due（include）、disabled_leftover_service_is_ignored（include）、no_enabled_providers_stays_local（include）、unavailable_falls_back_to_rate_limited_at（include 与 skip）—— 恰为预期的 4 个分叉，其余 14 例新旧一致；恢复 C120 实现后 18 例全部通过；临时变体已还原。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "锁屏抑制（C071）、定向刷新、手动刷新语义不变；未知启用集合（测试桩）时沿用旧口径；无启用 provider 时不再输出的 denied 占位无消费方",
+        "false_if": "抑制运行清空 services、定向 / 手动刷新受门禁影响或 UI 依赖被移除的占位",
+        "evidence": "2026-10-26: suppressExternalQuotas 分支在 enabledProviders 之前返回、实现未改（screenLockSuppressedRunCarriesOverServices 通过）；定向刷新不经 plan（RefreshExecutionPipeline isTargeted 分支未改）；手动 force + bypass 仍清空 skip / rateLimited（fixture manual_refresh_bypasses_everything）；Codex 装配同样受 subscriptionProviders[codex].enabled 门控（assembleSubscriptionCredentials 的 isEnabled 循环），启用集合覆盖实际查询的全部 provider；mac / Windows 源码中无 \"denied\"、cc_switch_providers、codex_accounts 消费方。已知限制（双端相同、本卡不处理）：启用但 collector 不返回任何 service 的 provider 每轮被判为到期。",
+        "result": true
+      }
+    ]
+  },
+
+  "rejections": [],
+
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

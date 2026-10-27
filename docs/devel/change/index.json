@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-index.v1.json",
   "version": "1.0",
-  "updated_at": "2026-10-26",
+  "updated_at": "2026-10-27",
   "topics": {
     "SystemOverview": {
       "design_doc": "docs/devel/design/00-系统总体设计.md",
@@ -125,7 +125,8 @@
         "C064",
         "C065",
         "C071",
-        "C118"
+        "C118",
+        "C120"
       ]
     },
     "TokenUsage": {
@@ -1238,6 +1239,15 @@
       "topic": "TokenUsage",
       "version": "0.13.1",
       "file": "docs/devel/change/C119.json"
+    },
+    "C120": {
+      "title": "订阅额度查询门禁双端对齐：mac 按启用集合判定（新启用即首查），新增双端共享对拍 fixture",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C120-quota-policy-parity",
+      "topic": "SubscriptionQuota",
+      "version": "0.13.1",
+      "file": "docs/devel/change/C120.json"
     }
   }
 }
