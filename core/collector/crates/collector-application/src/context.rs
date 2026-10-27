@@ -2,7 +2,7 @@ use collector_credential::CredentialSource;
 use collector_domain::{BridgeRequest, CollectionWindow, Diagnostic};
 use collector_local::ScanStats;
 use collector_provider::HttpClient;
-use collector_runtime::{AccountSingleFlight, CancellationToken, RuntimeBudgets, RuntimeLimits};
+use collector_runtime::{CancellationToken, RuntimeBudgets, RuntimeLimits};
 use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -52,7 +52,6 @@ pub(crate) struct RunContext<'a> {
     pub http: &'a dyn HttpClient,
     #[allow(dead_code)]
     pub credential_source: &'a dyn CredentialSource,
-    pub account_single_flight: Arc<AccountSingleFlight<String, Option<Value>, Diagnostic>>,
     pub metrics: Arc<RuntimeCounters>,
     #[allow(dead_code)]
     pub home: PathBuf,
@@ -95,7 +94,6 @@ impl<'a> RunContext<'a> {
             cancellation: CancellationToken::with_deadline(deadline),
             http,
             credential_source,
-            account_single_flight: Arc::new(AccountSingleFlight::default()),
             metrics: Arc::new(RuntimeCounters::default()),
             home,
             external_timeout: Duration::from_secs_f64(request.timeouts.external_request_seconds),

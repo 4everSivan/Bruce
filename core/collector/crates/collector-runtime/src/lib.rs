@@ -2,8 +2,6 @@
 
 //! Shared resource budgets and cancellation primitives for collector refreshes.
 
-use std::collections::HashMap;
-use std::hash::Hash;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
@@ -51,7 +49,6 @@ impl RuntimeLimits {
         Ok(RuntimeBudgets {
             local: PermitPool::new(limits.local_workers),
             network: PermitPool::new(limits.network_workers),
-            account: PermitPool::new(limits.account_tasks),
         })
     }
 }
@@ -120,7 +117,6 @@ impl CancellationToken {
 pub struct RuntimeBudgets {
     local: PermitPool,
     network: PermitPool,
-    account: PermitPool,
 }
 
 impl RuntimeBudgets {
@@ -130,10 +126,6 @@ impl RuntimeBudgets {
 
     pub fn acquire_network(&self, token: &CancellationToken) -> Result<Permit, RuntimeError> {
         self.network.acquire(token)
-    }
-
-    pub fn acquire_account(&self, token: &CancellationToken) -> Result<Permit, RuntimeError> {
-        self.account.acquire(token)
     }
 }
 
@@ -202,118 +194,9 @@ fn release_permit(inner: &PermitPoolInner) {
     inner.wake.notify_one();
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SingleFlightError<E> {
-    Cancelled,
-    Failed(E),
-}
-
-struct Flight<V, E> {
-    state: Mutex<FlightState<V, E>>,
-    wake: Condvar,
-}
-
-struct FlightState<V, E> {
-    started: bool,
-    result: Option<Result<Arc<V>, E>>,
-}
-
-pub struct AccountSingleFlight<K, V, E> {
-    flights: Mutex<HashMap<K, Arc<Flight<V, E>>>>,
-}
-
-impl<K, V, E> Default for AccountSingleFlight<K, V, E> {
-    fn default() -> Self {
-        Self {
-            flights: Mutex::new(HashMap::new()),
-        }
-    }
-}
-
-impl<K, V, E> AccountSingleFlight<K, V, E>
-where
-    K: Eq + Hash + Clone,
-    V: Send + Sync + 'static,
-    E: Clone + Send + Sync + 'static,
-{
-    pub fn run<F>(
-        &self,
-        key: K,
-        token: &CancellationToken,
-        operation: F,
-    ) -> Result<Arc<V>, SingleFlightError<E>>
-    where
-        F: FnOnce() -> Result<V, E>,
-    {
-        let flight = {
-            let mut flights = self.flights.lock().expect("single-flight mutex poisoned");
-            flights
-                .entry(key.clone())
-                .or_insert_with(|| {
-                    Arc::new(Flight {
-                        state: Mutex::new(FlightState {
-                            started: false,
-                            result: None,
-                        }),
-                        wake: Condvar::new(),
-                    })
-                })
-                .clone()
-        };
-        let leader = {
-            let mut state = flight.state.lock().expect("single-flight mutex poisoned");
-            if state.started {
-                false
-            } else {
-                state.started = true;
-                true
-            }
-        };
-        if leader {
-            let result = operation().map(Arc::new);
-            let returned = result.clone().map_err(SingleFlightError::Failed);
-            {
-                let mut state = flight.state.lock().expect("single-flight mutex poisoned");
-                state.result = Some(result);
-                flight.wake.notify_all();
-            }
-            let mut flights = self.flights.lock().expect("single-flight mutex poisoned");
-            if flights
-                .get(&key)
-                .is_some_and(|current| Arc::ptr_eq(current, &flight))
-            {
-                flights.remove(&key);
-            }
-            return returned;
-        }
-
-        let mut state = flight.state.lock().expect("single-flight mutex poisoned");
-        loop {
-            token.check().map_err(|error| match error {
-                RuntimeError::Cancelled | RuntimeError::DeadlineExceeded => {
-                    SingleFlightError::Cancelled
-                }
-                RuntimeError::Closed | RuntimeError::InvalidLimits => SingleFlightError::Cancelled,
-            })?;
-            if let Some(result) = &state.result {
-                return result.clone().map_err(SingleFlightError::Failed);
-            }
-            let (next_state, _) = flight
-                .wake
-                .wait_timeout(state, WAIT_SLICE)
-                .expect("single-flight condvar poisoned");
-            state = next_state;
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{
-        AccountSingleFlight, CancellationToken, RuntimeError, RuntimeLimits, SingleFlightError,
-    };
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::{Arc, Barrier};
+    use super::{CancellationToken, RuntimeError, RuntimeLimits};
     use std::thread;
     use std::time::{Duration, Instant};
 
@@ -332,38 +215,10 @@ mod tests {
     }
 
     #[test]
-    fn same_account_runs_once_and_shares_result() {
-        let flights = Arc::new(AccountSingleFlight::<String, usize, String>::default());
-        let calls = Arc::new(AtomicUsize::new(0));
-        let barrier = Arc::new(Barrier::new(8));
-        let mut handles = Vec::new();
-        for _ in 0..8 {
-            let flights = Arc::clone(&flights);
-            let calls = Arc::clone(&calls);
-            let barrier = Arc::clone(&barrier);
-            handles.push(thread::spawn(move || {
-                barrier.wait();
-                flights
-                    .run("account-a".to_owned(), &CancellationToken::new(), || {
-                        calls.fetch_add(1, Ordering::AcqRel);
-                        thread::sleep(Duration::from_millis(20));
-                        Ok::<_, String>(42)
-                    })
-                    .unwrap()
-            }));
-        }
-        for handle in handles {
-            assert_eq!(*handle.join().unwrap(), 42);
-        }
-        assert_eq!(calls.load(Ordering::Acquire), 1);
-    }
-
-    #[test]
     fn deadline_token_expires_without_busy_waiting() {
         let token = CancellationToken::with_deadline(Instant::now() + Duration::from_millis(1));
         thread::sleep(Duration::from_millis(5));
         assert_eq!(token.check(), Err(RuntimeError::DeadlineExceeded));
         assert!(token.is_cancelled());
-        let _ = SingleFlightError::<String>::Cancelled;
     }
 }

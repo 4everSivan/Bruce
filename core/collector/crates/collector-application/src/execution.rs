@@ -5,7 +5,7 @@ use collector_provider::{
     catalog_entry_for_app, failure_kind_for_code, provider_for_app, service_template, HttpClient,
     HttpRequest, HttpResponse, ProviderError, ProviderRequest,
 };
-use collector_runtime::{AccountSingleFlight, RuntimeError, SingleFlightError};
+use collector_runtime::RuntimeError;
 use serde_json::Value;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -18,7 +18,7 @@ pub(crate) struct QuotaExecution {
     pub credential_challenges: Vec<Value>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct ServiceExecution {
     service: Value,
     diagnostics: Vec<Diagnostic>,
@@ -51,23 +51,25 @@ pub(crate) fn execute_quota_accounts(
     if plans.is_empty() {
         return QuotaExecution::default();
     }
+    // C122: 工作线程数即账号并发上限 (account_tasks); 账号计划按 account id 唯一
+    // (build_account_plan / build_codex_account_plans 均由 map 键生成), 且每轮只执行一次,
+    // 不再叠加永不阻塞的账号许可与两层永不合并的 single-flight。
     let worker_count = context.limits.account_tasks.min(plans.len());
     let next = Arc::new(AtomicUsize::new(0));
-    let results = Arc::new(Mutex::new(vec![None; plans.len()]));
-    let account_flights =
-        Arc::new(AccountSingleFlight::<String, ServiceExecution, Diagnostic>::default());
+    let results = Arc::new(Mutex::new(
+        (0..plans.len()).map(|_| None).collect::<Vec<_>>(),
+    ));
 
     std::thread::scope(|scope| {
         for _ in 0..worker_count {
             let next = Arc::clone(&next);
             let results = Arc::clone(&results);
-            let account_flights = Arc::clone(&account_flights);
             scope.spawn(move || loop {
                 let index = next.fetch_add(1, Ordering::AcqRel);
                 if index >= plans.len() {
                     break;
                 }
-                let result = execute_one(context, &plans[index], &account_flights);
+                let result = execute_one(context, &plans[index]);
                 results.lock().expect("quota result mutex poisoned")[index] = Some(result);
             });
         }
@@ -89,55 +91,23 @@ pub(crate) fn execute_quota_accounts(
     output
 }
 
-fn account_key(plan: &AccountPlan) -> String {
-    format!(
-        "{}:{}",
-        plan.service.app,
-        plan.account_id.as_deref().unwrap_or(&plan.service.id)
-    )
-}
-
-fn execute_one(
-    context: &RunContext<'_>,
-    plan: &AccountPlan,
-    account_flights: &AccountSingleFlight<String, ServiceExecution, Diagnostic>,
-) -> ServiceExecution {
-    match account_flights.run(account_key(plan), &context.cancellation, || {
-        Ok(execute_one_uncached(context, plan))
-    }) {
-        Ok(result) => (*result).clone(),
-        Err(SingleFlightError::Cancelled) => {
-            let diagnostic = runtime_diagnostic(RuntimeError::Cancelled);
-            ServiceExecution {
-                service: failed_service(
-                    service_template(&plan.service, &context.captured_at),
-                    &diagnostic,
-                ),
-                diagnostics: vec![diagnostic],
-                credential_updates: Vec::new(),
-                credential_challenges: Vec::new(),
-            }
-        }
-        Err(SingleFlightError::Failed(diagnostic)) => ServiceExecution {
-            service: failed_service(
-                service_template(&plan.service, &context.captured_at),
-                &diagnostic,
-            ),
-            diagnostics: vec![diagnostic],
-            credential_updates: Vec::new(),
-            credential_challenges: Vec::new(),
-        },
-    }
-}
-
-fn execute_one_uncached(context: &RunContext<'_>, plan: &AccountPlan) -> ServiceExecution {
+fn execute_one(context: &RunContext<'_>, plan: &AccountPlan) -> ServiceExecution {
     let mut diagnostics = Vec::new();
     let service = service_template(&plan.service, &context.captured_at);
-    let account_key = account_key(plan);
-    let account_permit = match context.budgets.acquire_account(&context.cancellation) {
-        Ok(permit) => permit,
-        Err(error) => {
-            let diagnostic = runtime_diagnostic(error);
+    // 取消 / 超时先于凭证判定 (与原账号许可获取时的检查次序一致)
+    if let Err(error) = context.cancellation.check() {
+        let diagnostic = runtime_diagnostic(error);
+        diagnostics.push(diagnostic.clone());
+        return ServiceExecution {
+            service: failed_service(service, &diagnostic),
+            diagnostics,
+            credential_updates: Vec::new(),
+            credential_challenges: Vec::new(),
+        };
+    }
+    let credential = match resolve_credential(plan) {
+        Ok(credential) => credential,
+        Err(diagnostic) => {
             diagnostics.push(diagnostic.clone());
             return ServiceExecution {
                 service: failed_service(service, &diagnostic),
@@ -147,34 +117,6 @@ fn execute_one_uncached(context: &RunContext<'_>, plan: &AccountPlan) -> Service
             };
         }
     };
-    let credential =
-        match context
-            .account_single_flight
-            .run(account_key, &context.cancellation, || {
-                resolve_credential(context, plan)
-            }) {
-            Ok(value) => (*value).clone(),
-            Err(SingleFlightError::Cancelled) => {
-                let diagnostic = runtime_diagnostic(RuntimeError::Cancelled);
-                diagnostics.push(diagnostic.clone());
-                return ServiceExecution {
-                    service: failed_service(service, &diagnostic),
-                    diagnostics,
-                    credential_updates: Vec::new(),
-                    credential_challenges: Vec::new(),
-                };
-            }
-            Err(SingleFlightError::Failed(diagnostic)) => {
-                diagnostics.push(diagnostic.clone());
-                return ServiceExecution {
-                    service: failed_service(service, &diagnostic),
-                    diagnostics,
-                    credential_updates: Vec::new(),
-                    credential_challenges: Vec::new(),
-                };
-            }
-        };
-    drop(account_permit);
 
     let Some(provider) = provider_for_app(&plan.service.app) else {
         let diagnostic = Diagnostic::new(
@@ -230,10 +172,7 @@ fn execute_one_uncached(context: &RunContext<'_>, plan: &AccountPlan) -> Service
     }
 }
 
-fn resolve_credential(
-    _context: &RunContext<'_>,
-    plan: &AccountPlan,
-) -> Result<Option<Value>, Diagnostic> {
+fn resolve_credential(plan: &AccountPlan) -> Result<Option<Value>, Diagnostic> {
     if plan.credential.is_some() {
         return Ok(plan.credential.clone());
     }

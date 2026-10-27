@@ -446,6 +446,65 @@ mod tests {
         );
     }
 
+    /// C122: 额度执行不再用 single-flight 去重, 依赖「每轮账号计划键唯一」——
+    /// 目录账号来自 map 键、官方 provider 与多账号 id 不同形、Codex 顺序重复会被拒绝。
+    #[test]
+    fn account_plans_have_unique_account_keys() {
+        let request: BridgeRequest = serde_json::from_value(json!({
+            "schemaVersion": 1,
+            "runId": "12345678-1234-4234-9234-123456789abc",
+            "module": "agent-usage",
+            "timeouts": {
+                "localScanSeconds": 30,
+                "externalRequestSeconds": 10,
+                "moduleSeconds": 90
+            },
+            "context": {
+                "capabilities": ["externalQuotas"],
+                "codexQuotaAccountOrder": ["acc-a", "acc-b"]
+            },
+            "credentials": {
+                "kimiQuotaAccounts": {
+                    "a": {"display_name": "Kimi A", "api_key": "fixture"},
+                    "b": {"display_name": "Kimi B", "api_key": "fixture"}
+                },
+                "claudeQuotaAccounts": {
+                    "x": {"display_name": "Claude X", "oauth": {"accessToken": "fixture"}}
+                },
+                "providerMeta": {"claude": {"enabled": true}},
+                "codexQuotaAccounts": {
+                    "acc-a": {"display_name": "Codex · A", "access_token": "fixture-a"},
+                    "acc-b": {"display_name": "Codex · B", "access_token": "fixture-b"}
+                }
+            }
+        }))
+        .unwrap();
+        let plans = build_account_plan(&request).unwrap();
+        assert!(plans.len() >= 5, "{plans:?}");
+        let keys = plans
+            .iter()
+            .map(|plan| {
+                (
+                    plan.service.app.clone(),
+                    plan.account_id
+                        .clone()
+                        .unwrap_or_else(|| plan.service.id.clone()),
+                )
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(keys.len(), plans.len(), "账号计划键必须唯一");
+
+        let mut duplicated = request.clone();
+        duplicated.context.insert(
+            "codexQuotaAccountOrder".to_owned(),
+            json!(["acc-a", "acc-a"]),
+        );
+        assert!(
+            build_account_plan(&duplicated).is_err(),
+            "Codex 顺序重复必须拒绝"
+        );
+    }
+
     #[test]
     fn quota_skip_providers_filters_matching_apps() {
         let request: BridgeRequest = serde_json::from_value(json!({
