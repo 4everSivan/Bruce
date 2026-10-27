@@ -1,0 +1,119 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C123",
+  "title": "退役从未被读取的请求契约字段：localPricing、subscriptionQuotaOnly / subscriptionProviders、providerEnv",
+  "version": "0.13.1",
+  "type": "Refactor",
+  "status": "in_progress",
+  "branch": "fix/C123-dead-contract-fields",
+  "is_hotfix": false,
+
+  "target": {
+    "module": "core/collector collector-bridge / schemas；apps/macos BruceOnboardingCore / BruceAppCore；apps/win src-tauri",
+    "component": "Bridge 请求白名单、request-v1.schema.json、CollectorRunInput、collector.rs / credentials.rs",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+
+  "why": "2026-10-25 架构审查：Bridge 白名单接受、两端也在发送，但 collector 从不读取的契约字段 —— capabilities 的 localPricing（计价恒随本机统计执行）、定向刷新的 subscriptionQuotaOnly / subscriptionProviders（定向语义实际由「只授予 externalQuotas + 只装配目标凭证」实现，schema 还为二者声明了互相依赖的 if/then 约束）、凭据字段 providerEnv（无任何写入方，mac 注释仍称 DeepSeek 经 providerEnv 注入，实际为 deepseekQuotaAccounts）。这些字段让读者误以为存在对应开关，改动它们不会有任何效果。",
+
+  "precheck": {
+    "description": "确认改动前四个字段在 collector 内无消费方、两端仍在发送",
+    "command": "for k in localPricing subscriptionQuotaOnly subscriptionProviders providerEnv; do git grep -n \"$k\" e018e85 -- core/collector/crates | grep -v collector-bridge/src/lib.rs; done; git grep -n 'localPricing.rawValue\\|\"subscriptionQuotaOnly\": .boolean\\|\"localSessions\", \"localPricing\"\\|insert(\"subscriptionQuotaOnly\"' e018e85 -- apps/macos/Sources apps/win/src-tauri/src",
+    "expected": "collector 除 Bridge 白名单外仅测试请求提及；mac 与 Windows 均有发送点（冗余存在）",
+    "is_completed": false,
+    "evidence": "2026-10-26 预检实测：e018e85 的 collector crates 中四个字段除 collector-bridge 白名单外仅 collector-application lib.rs 第 1182 行测试请求含 localPricing，subscriptionQuotaOnly / subscriptionProviders / providerEnv 无任何命中；发送点：mac CollectorRunInput.swift 第 283 行 subscriptionQuotaOnly、第 390 行 localPricing，Windows collector.rs 第 16 行 LOCAL_CAPABILITIES 含 localPricing、第 228 行插入 subscriptionQuotaOnly —— 冗余成立。"
+  },
+
+  "callback": {
+    "before": [
+      "git checkout -b fix/C123-dead-contract-fields  # 叠加在 fix/C122-execution-permits 之上"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all -- --check",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "cargo clippy --manifest-path apps/win/src-tauri/Cargo.toml --all-targets -- -D warnings",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "node --test apps/win/tests/*.test.mjs",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C123 --to verified --record"
+    ]
+  },
+
+  "changes": [
+    {
+      "scope": "collector 契约",
+      "before": "ALLOWED_CAPABILITIES 含 localPricing；ALLOWED_CONTEXT_FIELDS 含 subscriptionQuotaOnly / subscriptionProviders；ALLOWED_CREDENTIAL_FIELDS 含 providerEnv；request-v1.schema.json 声明三者并含两条互相依赖的 if/then",
+      "after": "四个字段移出白名单与 schema（含两条 if/then）；新增 retired_contract_fields_are_rejected 锁定拒绝（BRIDGE_INVALID_REQUEST / BRIDGE_UNKNOWN_CAPABILITY / BRIDGE_CREDENTIAL_SCOPE）",
+      "impact": "白名单内每个字段都有消费方"
+    },
+    {
+      "scope": "mac",
+      "before": "CollectorCapability 含 localPricing 且本地请求发送；定向输入发送 subscriptionQuotaOnly / subscriptionProviders；ProviderRegistry 注释称 DeepSeek 经 providerEnv 注入",
+      "after": "删除 CollectorCapability.localPricing（仅用作 rawValue，未持久化）与两处发送；注释改为实际的 deepseekQuotaAccounts；新增 scopedInputCarriesOnlyLiveContractFields（定向输入 context 只含 capabilities = [externalQuotas]）；CollectorRunner / LocalIntegration Harness 的请求改用现行字段（隔离集成以未授权查询的 kimiQuotaAccounts 携带秘密，继续断言秘密不外泄）",
+      "impact": "mac 请求与 Bridge 契约一致"
+    },
+    {
+      "scope": "Windows",
+      "before": "LOCAL_CAPABILITIES = [localSessions, localPricing]；build_scoped_request 插入 subscriptionQuotaOnly / subscriptionProviders；validate_credential_payload 为 providerEnv 设专门分支",
+      "after": "LOCAL_CAPABILITIES = [localSessions]；定向请求不再插入两字段；删除 providerEnv 分支（字段退出白名单后 read_raw_credentials / load_credentials 自然丢弃旧文件中的该字段）；新增 legacy_provider_env_entries_are_dropped_without_affecting_other_fields",
+      "impact": "Windows 请求与 Bridge 契约一致；旧凭据文件不受影响"
+    }
+  ],
+
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": true,
+    "rule_diff": {
+      "before": "规则 3 未规定 Bridge 白名单字段须有消费方；design/05 定向请求规则写明「标记 subscriptionQuotaOnly / subscriptionProviders」",
+      "after": "规则 3 新增「请求契约只保留被消费的字段 (C123)」：capabilities 仅 localSessions / externalQuotas、白名单字段须有消费方、四个退役字段显式拒绝、新增字段须与消费方同卡交付并同步 schema；design/05 定向请求规则改写并登记 C123 变更行"
+    }
+  },
+
+  "verification": {
+    "result": null,
+    "run_id": "local-20261026-08",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "collector / Windows / mac 相关测试全绿（含三端新增用例），fmt / clippy 通过，verify-local 退出码 0",
+        "false_if": "任一失败",
+        "evidence": "2026-10-26: cargo test --manifest-path core/collector/Cargo.toml --workspace --no-fail-fast 164 passed / 0 failed（collector-bridge 15 passed，含新增 retired_contract_fields_are_rejected）；collector fmt --check 与 clippy -D warnings 退出码 0；apps/win/src-tauri clippy 退出码 0、cargo test 223 passed / 0 failed（新增 legacy_provider_env_entries_are_dropped_without_affecting_other_fields；scoped_refresh_coverage 改为断言两字段缺席）；node --test apps/win/tests/*.test.mjs 97 pass / 0 fail；mac SubscriptionCredentialsHarness 38 passed（新增 scopedInputCarriesOnlyLiveContractFields）、CollectorRunnerHarness 28 passed（以 Bruce-collector debug 二进制运行）；SDKROOT=MacOSX26.5 zsh scripts/verify-local.sh 退出码 0（local/logs/c123-verify.log：CollectorRunner 28、LocalIntegration 2 以真实 collector 二进制跑通、Subscription credentials 38）。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "两端真实请求经 Bridge 校验通过（LocalIntegration 以真实 collector 二进制运行），携带任一退役字段的请求被拒绝",
+        "false_if": "两端仍发送退役字段导致请求被拒，或退役字段仍被接受",
+        "evidence": "2026-10-26: retired_contract_fields_are_rejected 分别以四个退役字段构造请求，依次得到 BRIDGE_INVALID_REQUEST ×2、BRIDGE_UNKNOWN_CAPABILITY、BRIDGE_CREDENTIAL_SCOPE；mac 本地输入 capabilities == [localSessions]、定向输入 context 键仅 capabilities；Windows build_local_request 能力为 [localSessions]（有凭证时 + externalQuotas）、build_scoped_request 不含两字段；LocalIntegration Harness 以真实 collector 二进制跑通（见 verify-local）。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "旧 Windows 凭据文件中的 providerEnv 不导致读写失败；CollectorCapability 无持久化；定向刷新语义不变；无其他发送方",
+        "false_if": "旧文件导致凭据丢失或保存失败、持久化数据解码失败、定向刷新扩大查询范围",
+        "evidence": "2026-10-26: Windows read_raw_credentials 只按白名单取字段、merge_credentials 只校验补丁键 —— 新用例写入含 providerEnv 的旧文件后 load_credentials 丢弃该字段、kimiQuotaAccounts 保留、再次 save_credentials 成功且往返一致；CollectorCapability 只用于 rawValue 字符串，不进入 Codable 持久化；定向刷新仍只授予 externalQuotas 且只装配目标 provider 凭证（Windows scoped_refresh_coverage 断言凭证键仅为目标 provider；mac 新用例断言目标凭证已注入）；apps/widget、docs/guide 与 tests/fixtures 无退役字段引用。",
+        "result": true
+      }
+    ]
+  },
+
+  "rejections": [],
+
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

@@ -260,6 +260,7 @@ Windows Tauri 后端 (Rust)
 | C115 | 缺陷修复 | 托盘配额环 / 预览卡读取真实面板字段 | T12 按不存在的字段（`subscriptions` / `totalCostText` / `agents` / `resetsIn` / `status`）取数，托盘恒显示剩余 100%、今日 $0.00；改由 `extract_quota_summary` 读取 `PanelViewModel` 真实字段并经 `panel.preview` 供预览卡同源渲染，golden 面板 fixture 双端对拍（见 §6.5） |
 | C118 | 缺陷修复 | 限流与 provider 判定改读显式字段 | `quota_policy::is_rate_limited` 优先 service `failureKind`、`runtime_core::provider_id` 优先 service `provider`，字段缺省的旧 artifact 才回退 note 文案与 id 前缀（见规则 19） |
 | C120 | 缺陷修复 | 额度门禁双端共享对拍 | mac 改为按启用集合判定后与 `quota_policy::plan` 同口径，新增 `tests/fixtures/quota-policy-parity/cases.json` 由双端测试共同消费（见规则 19） |
+| C123 | 契约清理 | 停发从未被读取的请求字段 | 本地请求 capabilities 仅 `localSessions`（+ 有凭证时 `externalQuotas`），定向请求不再标记 `subscriptionQuotaOnly` / `subscriptionProviders`，`providerEnv` 退出凭据白名单（旧文件中的该字段读取时丢弃，见 design/01 规则 3） |
 | C109 | 缺陷修复 | 出站网络 command 移出主线程 | `codex_device_start` / `codex_device_poll` / `verify_subscription` 改为 async + `off_main_thread`，`ShellExecuteW` 派回主线程；源码级守卫用例锁定（见规则 31） |
 | 暂无增量变更 | - | 初始基线定稿 | Windows 适配初始设计（Tauri 2 / 首版全量 / Rust 视图模型+对拍） |
 
@@ -290,7 +291,7 @@ Windows Tauri 后端 (Rust)
     - **核验方法**：改动渲染层后，除 render-harness 自检外，可用 mac 卡片视图的 `ImageRenderer` 离屏渲染与 harness 截图在同一 artifact 上并排比对（C067 做法，脚本留存于 `local/win-mac-parity/`，不入库）。
 14. **订阅 Provider 定向刷新**（C068，mac `RefreshScheduler.refreshSubscription` 同契约）：
     - **入口**：Tauri 命令 `refresh_subscription(section_id)`；后端经 `provider_of_id` 归一并校验——未知 provider、未授权（`consentVersion != 1`）、未启用、全量刷新进行中、同一 provider 已在刷新，一律拒绝（fail-closed），不启动采集；
-    - **请求**：`collector::build_scoped_request` 只装配目标 provider 的凭证（Claude/Grok 同步装配 OAuth 与 `providerMeta`），capabilities 仅 `externalQuotas`，标记 `subscriptionQuotaOnly` / `subscriptionProviders`，不带 `days` / `pricingOverrides`——定向刷新不重扫本机会话、不重算成本；Codex 目标沿用一次刷新令牌恢复 + 一次 retry；
+    - **请求**：`collector::build_scoped_request` 只装配目标 provider 的凭证（Claude/Grok 同步装配 OAuth 与 `providerMeta`），capabilities 仅 `externalQuotas`（C123 起不再标记从未被读取的 `subscriptionQuotaOnly` / `subscriptionProviders`），不带 `days` / `pricingOverrides`——定向刷新不重扫本机会话、不重算成本；Codex 目标沿用一次刷新令牌恢复 + 一次 retry；
     - **合并**：`merge_scoped_snapshot`（mac `ScopedQuotaSnapshotMerger` 同语义）保留上一份快照的 agents / totalCostUsd 与非目标 provider 的 services；目标只取本轮返回（已断开账号不复活），成功 fresh、失败借合格旧窗口 stale、无历史 unavailable。全局 phase / lastSuccessAt / 诊断码沿用最近一次全量采集（定向刷新不代表本机会话已更新）；Bridge 整体失败只把目标降级 stale；
     - **并发**：`SchedulerControl.collection` 互斥锁令全量周期与定向刷新串行，快照写入不交错；进行中的 provider 集合经 `panel.runtime.refreshingProviders` 下发，`panel.runtime.quotaRefreshAllowed` 下发授权态；
     - **呈现**：订阅 section 头部行尾 `arrow.clockwise` 按钮（14×14，secondary）；目标刷新中为进度环并禁用（「正在刷新 X 订阅额度」），全量刷新中 / 未授权 / 未启用禁用（45% 透明）；与多账号展开开关为兄弟控件；被后端拒绝时**静默**（C080，对齐 mac `RefreshScheduler.refreshSubscription` 的静默 `return`：mac 在拒绝条件下直接返回、不产生任何用户可见提示，由 `SubscriptionRefreshControl` 的按钮禁用态预防该路径），可见反馈仅为按钮恢复可点；不把整体运行态标为失败；定向刷新属手动操作，不投递配额预警。

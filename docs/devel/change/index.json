@@ -153,7 +153,8 @@
         "C116",
         "C117",
         "C119",
-        "C122"
+        "C122",
+        "C123"
       ]
     },
     "AgentAnalytics": {
@@ -1268,6 +1269,15 @@
       "topic": "TokenUsage",
       "version": "0.13.1",
       "file": "docs/devel/change/C122.json"
+    },
+    "C123": {
+      "title": "退役从未被读取的请求契约字段：localPricing、subscriptionQuotaOnly / subscriptionProviders、providerEnv",
+      "type": "Refactor",
+      "status": "in_progress",
+      "branch": "fix/C123-dead-contract-fields",
+      "topic": "TokenUsage",
+      "version": "0.13.1",
+      "file": "docs/devel/change/C123.json"
     }
   }
 }
