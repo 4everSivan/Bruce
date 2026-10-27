@@ -4,7 +4,7 @@
   "title": "窗口边界唤醒与刷新退避提为共享 Rust 实现（先补双端 fixture）",
   "version": "0.15.0",
   "milestone": "M8-跨端共享策略核心",
-  "status": "pending",
+  "status": "completed",
   "branch": "feat/T17-refresh-policy-shared",
   "depends_on": [
     "T16"
@@ -39,58 +39,64 @@
     {
       "id": "T17-1",
       "title": "refresh-policy-parity fixture",
-      "capability": "新增 tests/fixtures/refresh-policy-parity/cases.json：边界唤醒（未来/过去/已消费/多边界/超过间隔/滚动窗口前移）与退避（首个重试、指数、上限、限流固定、抖动比例）逐例给定期望；mac RefreshSchedulerHarness 与 Windows scheduler_collector_coverage 共同消费"
+      "capability": "新增 tests/fixtures/refresh-policy-parity/cases.json：边界唤醒（未来/过去/已消费/多边界/超过间隔/滚动窗口前移）与退避（首个重试、指数、上限、限流固定、抖动比例）逐例给定期望；mac RefreshSchedulerHarness 与 Windows scheduler_collector_coverage 共同消费",
+      "done": true
     },
     {
       "id": "T17-2",
       "title": "共享 refresh 模块与契约",
-      "capability": "collector-policy 新增 refresh 模块（boundary_delay / capped_backoff / backoff_seconds），request 新增 boundaryWake 与 backoff 两个操作并更新 policy-request / response-v1 schema；纯函数、无 I/O、无凭据"
+      "capability": "collector-policy 新增 refresh 模块（boundary_delay / capped_backoff / backoff_seconds），request 新增 boundaryWake 与 backoff 两个操作并更新 policy-request / response-v1 schema；纯函数、无 I/O、无凭据",
+      "done": true
     },
     {
       "id": "T17-3",
       "title": "Windows 改调",
-      "capability": "runtime_core::boundary_wake 与 scheduler::compute_backoff 改为调用共享 refresh 模块，公开签名与调度调用点不变，删除本地公式"
+      "capability": "runtime_core::boundary_wake 与 scheduler::compute_backoff 改为调用共享 refresh 模块，公开签名与调度调用点不变，删除本地公式",
+      "done": true
     },
     {
       "id": "T17-4",
       "title": "mac 改调",
-      "capability": "SubscriptionBoundaryWakePolicy.delay 与 RefreshBackoffPolicy.computeBackoff 经进程内 C ABI 调用共享实现，删除 Swift 公式；抖动改为传入比例（0...0.1），失败时回到安全值（边界=原间隔，退避=上限）"
+      "capability": "SubscriptionBoundaryWakePolicy.delay 与 RefreshBackoffPolicy.computeBackoff 经进程内 C ABI 调用共享实现，删除 Swift 公式；抖动改为传入比例（0...0.1），失败时回到安全值（边界=原间隔，退避=上限）",
+      "done": true
     }
   ],
   "acceptance": {
-    "result": null,
+    "result": true,
     "run_id": "local-20261027-17",
     "checks": [
       {
         "item": "行为等价",
         "true_if": "refresh-policy-parity 全部用例在迁移前两端实现与迁移后共享实现上结果一致；RefreshScheduler 与 Windows 调度用例全绿",
         "false_if": "任一用例分歧且未按设计定口径",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-10-27: refresh-policy-parity 共 3 组 (boundaryIds 3 例、boundaryWake 10 例、backoff 12 例) 在迁移前两端实现与迁移后共享实现上逐例一致。迁移前复核: Windows runtime_core::boundary_wake / scheduler::compute_backoff 与 mac SubscriptionBoundaryWakePolicy.delay / RefreshBackoffPolicy.computeBackoff 的公式逐项对齐; 仅统一两处口径 —— retryCount=0 与 1 同为首个重试档 (Windows 原防御, mac 原为 base/2)、resetsAt 接受数值小数 (mac 原支持, Windows 原只收整数), 均在 fixture 里显式锁定。迁移后: collector-policy 5 例 fixture 单测 + 9 例契约单测通过 (workspace 171 passed / 0 failed); Windows scheduler_collector_coverage::refresh_policy_matches_shared_fixture 通过, 既有 boundary_wake / compute_backoff 范围用例未改; mac RefreshSchedulerHarness 115 项全绿 (新增 refresh policy shared parity fixture, 经真实 C ABI), local/logs/t17-verify.log。",
+        "result": true
       },
       {
         "item": "架构边界",
         "true_if": "共享 refresh 模块不依赖 I/O / GUI / 凭据；mac 与 Windows 不再保留第二份计算公式",
         "false_if": "出现重复公式或越界依赖",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-10-27: collector-policy/src/refresh.rs 只依赖 std::collections::BTreeSet 与 serde_json::Value, 无 std::fs / std::net / std::process / GUI 引用; Windows runtime_core::window_boundaries / boundary_wake 与 scheduler::compute_backoff 只剩对共享函数的调用 (原公式删除); mac SubscriptionBoundaryWakePolicy / RefreshBackoffPolicy 只剩请求组装与结果应用, 原 Swift 公式删除; 策略入口新增 boundaryIds / boundaryWake / backoff, 仍经凭据键白名单扫描; grep 确认两端无第二份指数 / 边界公式。",
+        "result": true
       },
       {
         "item": "全量验证",
         "true_if": "collector 与 src-tauri 的 fmt / clippy / test 及 verify-local 退出码 0",
         "false_if": "任一失败",
-        "evidence": "",
-        "result": null
+        "evidence": "2026-10-27: cargo fmt --check (collector 与 src-tauri) 退出码 0; cargo clippy --workspace --all-targets -D warnings 退出码 0; cargo test --manifest-path core/collector/Cargo.toml --workspace 171 passed / 0 failed; cargo test --manifest-path apps/win/src-tauri/Cargo.toml 全部通过 (含 refresh_policy_matches_shared_fixture); SDKROOT=MacOSX26.5 zsh scripts/verify-local.sh 退出码 0 (Onboarding 170、PanelViewModel 60、CollectorRunner 28、RefreshScheduler 115、LocalIntegration 2, local/logs/t17-verify.log)。",
+        "result": true
       }
     ]
   },
   "sync": {
-    "commit": ""
+    "commit": "e0b92a4"
   },
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-27",
+    "exit_code": 0,
+    "from_status": "pending",
+    "target_status": "completed"
   }
 }
