@@ -61,7 +61,7 @@ echo "运行 CollectorRunner Harness"
 "$BRUCE_SWIFT_BIN_DIR/CollectorRunnerHarness" "$BRUCE_RUST_BIN"
 
 echo "运行 RefreshScheduler Harness"
-"$BRUCE_SWIFT_BIN_DIR/RefreshSchedulerHarness" "$BRUCE_REPO_ROOT"
+"$BRUCE_SWIFT_BIN_DIR/RefreshSchedulerHarness" "$BRUCE_REPO_ROOT" "$BRUCE_RUST_BIN"
 
 echo "运行 NativeLifecycle Harness"
 "$BRUCE_SWIFT_BIN_DIR/NativeLifecycleHarness"

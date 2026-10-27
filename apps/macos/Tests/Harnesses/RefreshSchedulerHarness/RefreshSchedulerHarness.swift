@@ -8,13 +8,17 @@ import BruceOnboardingCore
 @MainActor
 struct RefreshSchedulerHarness {
     static func main() async throws {
-        guard CommandLine.arguments.count == 2 else {
-            throw RefreshTestFailure.expectation("expected repository root")
+        guard (2...3).contains(CommandLine.arguments.count) else {
+            throw RefreshTestFailure.expectation("expected repository root [collector binary]")
         }
         let repository = URL(
             fileURLWithPath: CommandLine.arguments[1],
             isDirectory: true
         )
+        // T15: 额度门禁 / 回填经真实 collector 策略子命令; 缺省取 repo 内 debug 构建产物.
+        HarnessQuotaPolicy.configure(collectorURL: CommandLine.arguments.count == 3
+            ? URL(fileURLWithPath: CommandLine.arguments[2])
+            : repository.appendingPathComponent("core/collector/target/debug/Bruce-collector"))
 
         print("Refresh scheduler: timer")
         try await timerFiresTriggersRefresh(repository: repository)
@@ -193,26 +197,36 @@ struct RefreshSchedulerHarness {
         print("Refresh scheduler: offline manual refresh no retry")
         try await offlineManualRefreshFailsWithoutBackoffRetry(repository: repository)
         print("Refresh scheduler: quota policy fresh local-only")
-        try quotaPolicyFreshServiceStaysLocalOnly()
+        try await quotaPolicyFreshServiceStaysLocalOnly()
         print("Refresh scheduler: quota policy stale queries")
-        try quotaPolicyStaleServiceQueriesAll()
+        try await quotaPolicyStaleServiceQueriesAll()
         print("Refresh scheduler: quota policy 429 cooldown")
-        try quotaPolicy429CooldownAndForceSemantics()
-        try quotaPolicyPrefersExplicitProviderAndFailureKind()
+        try await quotaPolicy429CooldownAndForceSemantics()
+        try await quotaPolicyPrefersExplicitProviderAndFailureKind()
         print("Refresh scheduler: quota policy shared parity fixture")
-        try quotaPolicyMatchesSharedParityFixture(repository: repository)
+        try await quotaPolicyMatchesSharedParityFixture(repository: repository)
         print("Refresh scheduler: quota carry-over shared parity fixture")
-        try quotaCarryOverMatchesSharedParityFixture(repository: repository)
+        try await quotaCarryOverMatchesSharedParityFixture(repository: repository)
+        print("Refresh scheduler: quota policy plan failure skips collection (T15)")
+        try await quotaPolicyPlanFailureSkipsCollection(repository: repository)
+        print("Refresh scheduler: quota policy merge rejection keeps previous artifact (T15)")
+        try await quotaPolicyMergeRejectionKeepsPreviousArtifact()
+        print("Refresh scheduler: quota policy invalid response fails round (T15)")
+        try await quotaPolicyInvalidResponseFailsRound(repository: repository)
+        print("Refresh scheduler: quota policy scoped annotate failure fails round (T15)")
+        try await quotaPolicyScopedAnnotateFailureFailsRound(repository: repository)
+        print("Refresh scheduler: quota policy unavailable backs off scheduler (T15)")
+        try await quotaPolicyUnavailableBacksOffScheduler(repository: repository)
         print("Refresh scheduler: quota policy passed window boundary")
-        try quotaPolicyPassedWindowBoundaryForcesRefresh()
+        try await quotaPolicyPassedWindowBoundaryForcesRefresh()
         print("Refresh scheduler: quota policy multi-account stale")
-        try quotaPolicyMultiAccountStaleForcesRefresh()
+        try await quotaPolicyMultiAccountStaleForcesRefresh()
         print("Refresh scheduler: quota policy codex never skipped")
-        try quotaPolicyCodexIsNeverSkippedOnQuotaRuns()
+        try await quotaPolicyCodexIsNeverSkippedOnQuotaRuns()
         print("Refresh scheduler: quota carry-over stale windows")
-        try quotaCarryOverPreservesWindowsAndMarksStale()
+        try await quotaCarryOverPreservesWindowsAndMarksStale()
         print("Refresh scheduler: quota carry-over local only")
-        try quotaCarryOverLocalOnlyKeepsFreshServices()
+        try await quotaCarryOverLocalOnlyKeepsFreshServices()
         print("Refresh scheduler: quota cadence decouples local runs")
         try await quotaCadenceDecouplesLocalRuns(repository: repository)
         print("Refresh scheduler: quota 429 cooldown until expiry")
@@ -228,11 +242,11 @@ struct RefreshSchedulerHarness {
         print("Refresh scheduler: screen lock suppression disabled allows query")
         try await screenLockSuppressionDisabledAllowsQuotaQuery(repository: repository)
         print("Refresh scheduler: quota policy suppressed on screen lock")
-        try quotaPolicySuppressedOnScreenLock()
+        try await quotaPolicySuppressedOnScreenLock()
         print("Refresh scheduler: screen lock suppressed run carries over services (C071)")
         try await screenLockSuppressedRunCarriesOverServices(repository: repository)
         print("Refresh scheduler: quota refresh interval updates with scheduler interval")
         try await quotaRefreshIntervalUpdatesWithSchedulerRefreshInterval(repository: repository)
-        print("Refresh scheduler tests passed: 106")
+        print("Refresh scheduler tests passed: 113")
     }
 }

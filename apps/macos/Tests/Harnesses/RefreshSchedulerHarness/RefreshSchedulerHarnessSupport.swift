@@ -279,6 +279,68 @@ func makeErrorOutput(
     )
 }
 
+// MARK: - Shared quota policy (T15)
+
+/// 额度门禁 / 回填经真实 `Bruce-collector policy` 子命令计算 (与生产同一路径).
+/// main 按命令行第 2 个参数 (缺省为 repo 内 debug 构建产物) 配置.
+@MainActor
+enum HarnessQuotaPolicy {
+    private static var runner: CollectorRunner?
+    private static var engine: CollectorQuotaPolicy?
+
+    static func configure(collectorURL: URL) {
+        runner = CollectorRunner(rustURL: collectorURL)
+        engine = CollectorQuotaPolicy { input in try await transport(input) }
+    }
+
+    /// 原始传输 (policy-request-v1 → policy-response-v1), 供脚本化传输透传.
+    static func transport(_ input: Data) async throws -> Data {
+        guard let runner else { fatalError("HarnessQuotaPolicy 未配置") }
+        return try await runner.runPolicy(input)
+    }
+
+    static var shared: CollectorQuotaPolicy {
+        guard let engine else { fatalError("HarnessQuotaPolicy 未配置") }
+        return engine
+    }
+
+    static func plan(
+        previous: JSONValue?,
+        now: Date,
+        interval: TimeInterval,
+        forceRefresh: Bool,
+        bypassCooldown: Bool,
+        suppressExternalQuotas: Bool = false,
+        enabledProviders: Set<SubscriptionProviderID>? = nil
+    ) async throws -> QuotaRunPolicy {
+        try await shared.plan(QuotaPlanInput(
+            previous: previous,
+            now: now,
+            interval: interval,
+            forceRefresh: forceRefresh,
+            bypassCooldown: bypassCooldown,
+            suppressExternalQuotas: suppressExternalQuotas,
+            enabledProviders: enabledProviders
+        ))
+    }
+
+    static func merge(
+        previous: JSONValue?,
+        current: JSONValue,
+        policy: QuotaRunPolicy,
+        now: Date,
+        interval: TimeInterval
+    ) async throws -> JSONValue {
+        try await shared.merge(
+            previous: previous,
+            current: current,
+            policy: policy,
+            now: now,
+            interval: interval
+        )
+    }
+}
+
 // MARK: - Test factory
 
 @MainActor
@@ -318,7 +380,8 @@ func makeScheduler(
         jitterProvider: { _ in 0 },
         registerWakeNotifications: false,
         networkReachability: reachability,
-        screenLockState: screenLock
+        screenLockState: screenLock,
+        quotaPolicy: HarnessQuotaPolicy.shared
     )
     return (scheduler, store, root)
 }
@@ -837,7 +900,8 @@ func makeSchedulerWithError(
         jitterProvider: { _ in 0 },
         registerWakeNotifications: false,
         credentialUpdateCoordinator: credentialUpdateCoordinator,
-        networkReachability: reachability
+        networkReachability: reachability,
+        quotaPolicy: HarnessQuotaPolicy.shared
     )
     return (scheduler, store, root)
 }

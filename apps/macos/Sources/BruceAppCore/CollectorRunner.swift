@@ -380,6 +380,27 @@ package final class CollectorRunner {
     private let timeouts: CollectorTimeouts
     private var activeRuns: [CollectorModule: ActiveRun] = [:]
 
+    /// T15: 进行中的策略子命令调用 (不占模块并发名额).
+    private final class ActivePolicyRun {
+        let handle: CollectorProcessHandling
+        var continuation: CheckedContinuation<Data, Error>?
+        var timeoutTimer: RunnerTimerToken?
+        var forceTimer: RunnerTimerToken?
+        var requestedEnd: RequestedEnd = .none
+
+        init(
+            handle: CollectorProcessHandling,
+            continuation: CheckedContinuation<Data, Error>
+        ) {
+            self.handle = handle
+            self.continuation = continuation
+        }
+    }
+
+    /// 策略子命令单次调用上限: 纯计算, 实测单次约 5 ms (design/08 §3.3).
+    private static let policyTimeoutSeconds: Double = 10
+    private var activePolicyRuns: [UUID: ActivePolicyRun] = [:]
+
     package convenience init(rustURL: URL) {
         self.init(
             rustURL: rustURL,
@@ -451,10 +472,109 @@ package final class CollectorRunner {
         for module in Array(activeRuns.keys) {
             cancel(module: module)
         }
+        for id in Array(activePolicyRuns.keys) {
+            cancelPolicyRun(id: id)
+        }
     }
 
     package func forceTerminateAll() {
         activeRuns.values.forEach { $0.handle.forceTerminate() }
+        activePolicyRuns.values.forEach { $0.handle.forceTerminate() }
+    }
+
+    // MARK: - Policy entry (T15)
+
+    /// 额度策略子命令 (`Bruce-collector policy`, design/08): 与采集共用可执行文件、进程环境、
+    /// 超时与取消宽限, 不占模块并发名额; 请求不含凭据. 返回 stdout 原始字节, 信封由
+    /// `CollectorQuotaPolicy` 解析. 调用方 await 期间不阻塞主线程.
+    package func runPolicy(_ input: Data) async throws -> Data {
+        if Task.isCancelled {
+            throw CancellationError()
+        }
+        let id = UUID()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                beginPolicyRun(id: id, input: input, continuation: continuation)
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                self?.cancelPolicyRun(id: id)
+            }
+        }
+    }
+
+    private func beginPolicyRun(
+        id: UUID,
+        input: Data,
+        continuation: CheckedContinuation<Data, Error>
+    ) {
+        do {
+            try validatePaths()
+            let handle = try launcher.launch(
+                executableURL: executableURL,
+                arguments: executableArguments + ["policy"],
+                input: input
+            ) { [weak self] result in
+                self?.completePolicyRun(id: id, result: result)
+            }
+            let active = ActivePolicyRun(handle: handle, continuation: continuation)
+            activePolicyRuns[id] = active
+            active.timeoutTimer = timerScheduler.schedule(
+                after: Self.policyTimeoutSeconds
+            ) { [weak self, weak active] in
+                guard let self, let active else { return }
+                self.endPolicyRun(id: id, active: active, reason: .timedOut)
+            }
+        } catch let error as CollectorRunnerError {
+            continuation.resume(throwing: error)
+        } catch {
+            continuation.resume(throwing: CollectorRunnerError.launchFailed)
+        }
+    }
+
+    private func cancelPolicyRun(id: UUID) {
+        guard let active = activePolicyRuns[id] else { return }
+        endPolicyRun(id: id, active: active, reason: .cancelled)
+    }
+
+    private func endPolicyRun(id: UUID, active: ActivePolicyRun, reason: RequestedEnd) {
+        guard activePolicyRuns[id] === active, active.requestedEnd == .none else { return }
+        active.requestedEnd = reason
+        active.handle.requestCancellation()
+        active.forceTimer = timerScheduler.schedule(
+            after: timeouts.cancellationGraceSeconds
+        ) { [weak self, weak active] in
+            guard let self, let active, self.activePolicyRuns[id] === active else { return }
+            active.handle.forceTerminate()
+        }
+    }
+
+    private func completePolicyRun(
+        id: UUID,
+        result: Result<CollectorProcessOutput, Error>
+    ) {
+        guard let active = activePolicyRuns.removeValue(forKey: id) else { return }
+        active.timeoutTimer?.cancel()
+        active.forceTimer?.cancel()
+        guard let continuation = active.continuation else { return }
+        active.continuation = nil
+        switch (active.requestedEnd, result) {
+        case (.cancelled, _):
+            continuation.resume(throwing: CancellationError())
+        case (.timedOut, _):
+            continuation.resume(throwing: CollectorRunnerError.timedOut)
+        case (.none, .failure):
+            continuation.resume(throwing: CollectorRunnerError.launchFailed)
+        case (.none, .success(let output)):
+            guard output.exitCode == 0 else {
+                continuation.resume(throwing: CollectorRunnerError.processFailed(
+                    exitCode: output.exitCode,
+                    diagnostic: sanitizedDiagnostic(output.stderr)?.summary
+                ))
+                return
+            }
+            continuation.resume(returning: output.stdout)
+        }
     }
 
     private func beginRun(

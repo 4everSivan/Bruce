@@ -99,6 +99,8 @@ enum RefreshPipelineResult: Sendable {
 @MainActor
 struct RefreshExecutionPipeline {
     private let executor: any CollectorExecuting
+    /// 额度门禁 / 回填 / 定向时间戳 (T15): 共享 collector-policy 的唯一实现.
+    private let quotaPolicyEngine: any QuotaPolicyComputing
     private let store: ArtifactStore
     private let runInputProvider: (any CollectorRunInputProviding)?
     private let credentialUpdates: CredentialUpdateCoordinator?
@@ -110,6 +112,7 @@ struct RefreshExecutionPipeline {
 
     init(
         executor: any CollectorExecuting,
+        quotaPolicy: any QuotaPolicyComputing,
         store: ArtifactStore,
         runInputProvider: (any CollectorRunInputProviding)?,
         credentialUpdates: CredentialUpdateCoordinator?,
@@ -118,6 +121,7 @@ struct RefreshExecutionPipeline {
         now: @escaping () -> Date = { Date() }
     ) {
         self.executor = executor
+        self.quotaPolicyEngine = quotaPolicy
         self.store = store
         self.runInputProvider = runInputProvider
         self.credentialUpdates = credentialUpdates
@@ -152,15 +156,24 @@ struct RefreshExecutionPipeline {
         if request.scope.isTargeted {
             quotaPolicy = request.suppressSubscriptionRefresh ? .localOnly : .includeAll
         } else {
-            quotaPolicy = QuotaRefreshPolicy.plan(
-                previous: previousArtifact,
-                now: request.now,
-                interval: request.quotaRefreshInterval,
-                forceRefresh: request.intent.forceQuotaRefresh,
-                bypassCooldown: request.intent.reason == .manual,
-                suppressExternalQuotas: request.suppressSubscriptionRefresh,
-                enabledProviders: runInputProvider?.enabledQuotaProviders(for: request.module)
-            )
+            do {
+                quotaPolicy = try await quotaPolicyEngine.plan(QuotaPlanInput(
+                    previous: previousArtifact,
+                    now: request.now,
+                    interval: request.quotaRefreshInterval,
+                    forceRefresh: request.intent.forceQuotaRefresh,
+                    bypassCooldown: request.intent.reason == .manual,
+                    suppressExternalQuotas: request.suppressSubscriptionRefresh,
+                    enabledProviders: runInputProvider?.enabledQuotaProviders(for: request.module)
+                ))
+            } catch {
+                // T15 降级: 门禁不可用时不猜测 (全查有 429 风暴风险, 全跳会让后续回填缺位),
+                // 本轮不采集, 按采集失败退避; 上一份 artifact 保持展示.
+                return isStopped() || error is CancellationError ? .cancelled : .collectorFailed(error)
+            }
+            if isStopped() {
+                return .cancelled
+            }
         }
 
         // 3. resolveRunInput — 取不到时不启动进程
@@ -266,11 +279,16 @@ struct RefreshExecutionPipeline {
                     ))
                 }
             }
-            let annotatedArtifact = QuotaCarryOverMerger.annotate(
-                artifact: merged.artifact,
-                currentServiceIDs: serviceIDs(in: firstArtifact),
-                now: now()
-            )
+            let annotatedArtifact: JSONValue
+            do {
+                annotatedArtifact = try await quotaPolicyEngine.annotate(
+                    artifact: merged.artifact,
+                    serviceIDs: serviceIDs(in: firstArtifact),
+                    now: now()
+                )
+            } catch {
+                return policyFailed(error, after: firstOutput)
+            }
             output = CollectorRunOutput(
                 response: BridgeResponse(
                     schemaVersion: 1,
@@ -290,14 +308,18 @@ struct RefreshExecutionPipeline {
             // 额度结果, 合成失败状态会误报); 仅把上一份 services 回填到本轮
             // 本地统计数据上.
             let firstArtifact = firstOutput.response.artifact ?? .object([:])
-            let mergedArtifact = QuotaCarryOverMerger.merge(
-                previous: previousArtifact,
-                current: firstArtifact,
-                policy: quotaPolicy,
-                now: now(),
-                interval: request.quotaRefreshInterval
-            )
-            output = replacingArtifact(in: firstOutput, with: mergedArtifact)
+            do {
+                let mergedArtifact = try await quotaPolicyEngine.merge(
+                    previous: previousArtifact,
+                    current: firstArtifact,
+                    policy: quotaPolicy,
+                    now: now(),
+                    interval: request.quotaRefreshInterval
+                )
+                output = replacingArtifact(in: firstOutput, with: mergedArtifact)
+            } catch {
+                return policyFailed(error, after: firstOutput)
+            }
         } else if request.module == .agentUsage {
             let recovery = CodexQuotaRecovery()
             let retryPhase = await recovery.handle(
@@ -325,14 +347,18 @@ struct RefreshExecutionPipeline {
                 fallbackDecisions: runInputProvider?.codexTokenDecisions ?? []
             )
             if let artifact = finalized.response.artifact {
-                let mergedArtifact = QuotaCarryOverMerger.merge(
-                    previous: previousArtifact,
-                    current: artifact,
-                    policy: quotaPolicy,
-                    now: now(),
-                    interval: request.quotaRefreshInterval
-                )
-                output = replacingArtifact(in: finalized, with: mergedArtifact)
+                do {
+                    let mergedArtifact = try await quotaPolicyEngine.merge(
+                        previous: previousArtifact,
+                        current: artifact,
+                        policy: quotaPolicy,
+                        now: now(),
+                        interval: request.quotaRefreshInterval
+                    )
+                    output = replacingArtifact(in: finalized, with: mergedArtifact)
+                } catch {
+                    return policyFailed(error, after: finalized)
+                }
             } else {
                 output = finalized
             }
@@ -342,6 +368,23 @@ struct RefreshExecutionPipeline {
 
         // 6-8. credential apply → publish → quota (仅可发布路径)
         return finishPublishablePath(output: output, request: request)
+    }
+
+    /// T15 降级: 采集已完成但回填 / 时间戳失败 —— 不发布本轮结果 (未回填的 artifact 会丢掉
+    /// 被跳过 provider 的订阅卡, 未记账的查询会在下一轮重复), 按采集失败退避, 上一份 artifact
+    /// 保持展示. 轮换令牌仍先写回 (与可发布路径同条件), 避免一次性 refresh token 随本轮丢失.
+    private func policyFailed(
+        _ error: Error,
+        after output: CollectorRunOutput
+    ) -> RefreshPipelineResult {
+        if isStopped() || error is CancellationError {
+            return .cancelled
+        }
+        let response = output.response
+        if response.status != .error, !response.credentialUpdates.isEmpty {
+            _ = credentialUpdates?.apply(credentialUpdates: response.credentialUpdates)
+        }
+        return .collectorFailed(error)
     }
 
     /// 本轮真实查询到的 service ID 集合 (用于定向刷新后补写额度尝试时间戳).

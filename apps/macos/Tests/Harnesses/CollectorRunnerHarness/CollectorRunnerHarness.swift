@@ -225,9 +225,11 @@ struct CollectorRunnerHarness {
         try await runInputDeniesQuotasWhenProviderDisabled()
         try await unavailableRustAdapterFailsClosed()
         try await runsRustCollector()
+        try await runPolicyUsesSubcommandOutsideModuleSlots()
+        try await runsRustPolicySubcommand()
         try await codexBatchResolverMaxConcurrencyIs4()
         try await codexBatchResolverOutputOrderStable()
-        print("CollectorRunner tests passed: 28")
+        print("CollectorRunner tests passed: 30")
     }
 
     private static func waitForLaunches(
@@ -557,6 +559,113 @@ struct CollectorRunnerHarness {
             output.response.artifact != nil,
             "Rust Collector returned no artifact"
         )
+    }
+
+    /// T15: 策略子命令与采集共用进程管理 —— 参数为 `policy`、stdin 原样传入、stdout 原样返回;
+    /// 不占模块并发名额; 非零退出 / 超时 / 取消与采集同口径.
+    private static func runPolicyUsesSubcommandOutsideModuleSlots() async throws {
+        let fixture = try RunnerFixture()
+        defer { fixture.remove() }
+        let launcher = FakeProcessLauncher()
+        let timers = FakeTimerScheduler()
+        let runner = CollectorRunner(
+            rustURL: fixture.rust,
+            launcher: launcher,
+            timerScheduler: timers,
+            timeouts: CollectorTimeouts(
+                localScanSeconds: 30,
+                externalRequestSeconds: 10,
+                moduleSeconds: 90,
+                cancellationGraceSeconds: 0.1
+            )
+        )
+        let request = Data(#"{"schemaVersion":1,"operation":"quotaPlan"}"#.utf8)
+        let policyTask = Task { try await runner.runPolicy(request) }
+        await waitForLaunches(launcher, count: 1)
+        try runnerExpect(launcher.launches[0].arguments == ["policy"], "policy run must pass the subcommand")
+        try runnerExpect(launcher.launches[0].input == request, "policy request must be piped verbatim")
+        try runnerExpect(runner.activeModuleCount == 0, "policy run must not occupy a module slot")
+        let moduleTask = Task { try await runner.run(module: .agentUsage) }
+        await waitForLaunches(launcher, count: 2)
+        try runnerExpect(runner.activeModuleCount == 1, "module run must start beside a policy run")
+        let envelope = Data(#"{"schemaVersion":1,"status":"success"}"#.utf8)
+        launcher.complete(0, stdout: envelope, exitCode: 0)
+        let policyOutput = try await policyTask.value
+        try runnerExpect(policyOutput == envelope, "policy stdout must be returned verbatim")
+        try launcher.succeed(1)
+        _ = try await moduleTask.value
+
+        let crashTask = Task { try await runner.runPolicy(request) }
+        await waitForLaunches(launcher, count: 3)
+        launcher.complete(2, stderr: Data("token=fixture-secret".utf8), exitCode: 3)
+        do {
+            _ = try await crashTask.value
+            throw RunnerTestFailure.expectation("crashed policy run returned output")
+        } catch let CollectorRunnerError.processFailed(code, diagnostic) {
+            try runnerExpect(code == 3, "policy exit code changed")
+            try runnerExpect(diagnostic?.contains("fixture-secret") == false, "policy diagnostic leaked stderr")
+        }
+
+        let timeoutTask = Task { try await runner.runPolicy(request) }
+        await waitForLaunches(launcher, count: 4)
+        let timeoutToken = timers.tokens.count - 1
+        try runnerExpect(timers.delays[timeoutToken] == 10, "policy timeout must be 10 s")
+        timers.tokens[timeoutToken].fire()
+        try runnerExpect(launcher.launches[3].handle.cancellationCount == 1, "policy timeout did not cancel")
+        timers.tokens[timeoutToken + 1].fire()
+        try runnerExpect(launcher.launches[3].handle.forceCount == 1, "policy timeout did not force after grace")
+        launcher.complete(3, exitCode: SIGKILL)
+        do {
+            _ = try await timeoutTask.value
+            throw RunnerTestFailure.expectation("timed out policy run returned output")
+        } catch CollectorRunnerError.timedOut {
+        }
+
+        let cancelledTask = Task { try await runner.runPolicy(request) }
+        await waitForLaunches(launcher, count: 5)
+        runner.cancelAll()
+        try runnerExpect(launcher.launches[4].handle.cancellationCount == 1, "cancelAll must cancel policy runs")
+        launcher.complete(4, exitCode: SIGTERM)
+        do {
+            _ = try await cancelledTask.value
+            throw RunnerTestFailure.expectation("cancelled policy run returned output")
+        } catch is CancellationError {
+        }
+    }
+
+    /// T15: 生产装配的 adapter 经真实 `Bruce-collector policy` 计算额度门禁.
+    private static func runsRustPolicySubcommand() async throws {
+        let rustURL = URL(fileURLWithPath: CommandLine.arguments[1])
+        let policy = CollectorQuotaPolicy(
+            transport: RustBinaryAdapter(executableURL: rustURL).runPolicy
+        )
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let fresh = ISODate.string(from: now.addingTimeInterval(-300))
+        let result = try await policy.plan(QuotaPlanInput(
+            previous: .object(["services": .array([
+                .object([
+                    "id": .string("kimi_coding"), "provider": .string("kimi"),
+                    "status": .string("ok"), "windows": .array([]),
+                    "capturedAt": .string(fresh), "quotaAttemptedAt": .string(fresh),
+                ]),
+            ])]),
+            now: now,
+            interval: 1800,
+            forceRefresh: false,
+            bypassCooldown: false,
+            enabledProviders: [.kimi, .deepseek]
+        ))
+        try runnerExpect(
+            result == QuotaRunPolicy(includeExternalQuotas: true, skipProviders: [.kimi]),
+            "real policy subcommand returned \(result)"
+        )
+        do {
+            _ = try await CollectorQuotaPolicy(transport: UnavailableCollectorAdapter().runPolicy)
+                .plan(QuotaPlanInput(previous: nil, now: now, interval: 1800, forceRefresh: false, bypassCooldown: false))
+            throw RunnerTestFailure.expectation("missing Rust binary must fail policy closed")
+        } catch let error as CollectorRunnerError {
+            try runnerExpect(error == .rustNotExecutable, "unavailable policy returned the wrong error")
+        }
     }
 
     private static func unavailableRustAdapterFailsClosed() async throws {

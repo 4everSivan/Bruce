@@ -62,7 +62,7 @@ package struct RefreshIntent: Equatable, Sendable {
     /// 刷新范围; 默认 `.all` 保持历史全量调用方源码兼容.
     package var scope: RefreshScope
     /// 本轮是否强制查询外部订阅额度 (手动刷新与窗口边界唤醒).
-    /// 为 false 时仍可能因额度周期到期而查询, 由 `QuotaRefreshPolicy` 判定.
+    /// 为 false 时仍可能因额度周期到期而查询, 由共享额度门禁 (`QuotaPolicyComputing.plan`, collector-policy) 判定.
     package var forceQuotaRefresh: Bool
 
     package init(

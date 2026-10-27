@@ -128,6 +128,7 @@ extension RefreshSchedulerHarness {
         executor.repository = repository
         let pipeline = RefreshExecutionPipeline(
             executor: executor,
+            quotaPolicy: HarnessQuotaPolicy.shared,
             store: store,
             runInputProvider: nil,
             credentialUpdates: nil,
@@ -166,6 +167,7 @@ extension RefreshSchedulerHarness {
         executor.repository = repository
         let pipeline = RefreshExecutionPipeline(
             executor: executor,
+            quotaPolicy: HarnessQuotaPolicy.shared,
             store: store,
             runInputProvider: nil,
             credentialUpdates: nil,
@@ -233,6 +235,7 @@ extension RefreshSchedulerHarness {
         let publishNow = entryNow.addingTimeInterval(120)
         let pipeline = RefreshExecutionPipeline(
             executor: executor,
+            quotaPolicy: HarnessQuotaPolicy.shared,
             store: store,
             runInputProvider: nil,
             credentialUpdates: nil,
@@ -787,6 +790,8 @@ extension RefreshSchedulerHarness {
         scheduler.refresh(.agentUsage)
         try refreshExpect(!scheduler.isStopped, "manual refresh should recover from stopped")
         await waitForRunCount({ executor.runCount[.agentUsage] ?? 0 }, count: 1)
+        // T15: 采集后回填经策略子命令异步完成, 等待本轮收尾.
+        await waitForPhase(scheduler, module: .agentUsage, phase: .idle)
         try refreshExpect(
             scheduler.moduleState(for: .agentUsage)?.phase == .idle,
             "module should return to idle after recovered refresh"
