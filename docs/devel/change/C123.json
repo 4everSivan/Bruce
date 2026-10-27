@@ -96,7 +96,7 @@
         "item": "反向影响排查",
         "true_if": "旧 Windows 凭据文件中的 providerEnv 不导致读写失败；CollectorCapability 无持久化；定向刷新语义不变；无其他发送方",
         "false_if": "旧文件导致凭据丢失或保存失败、持久化数据解码失败、定向刷新扩大查询范围",
-        "evidence": "2026-10-26: Windows read_raw_credentials 只按白名单取字段、merge_credentials 只校验补丁键 —— 新用例写入含 providerEnv 的旧文件后 load_credentials 丢弃该字段、kimiQuotaAccounts 保留、再次 save_credentials 成功且往返一致；CollectorCapability 只用于 rawValue 字符串，不进入 Codable 持久化；定向刷新仍只授予 externalQuotas 且只装配目标 provider 凭证（Windows scoped_refresh_coverage 断言凭证键仅为目标 provider；mac 新用例断言目标凭证已注入）；apps/widget、docs/guide 与 tests/fixtures 无退役字段引用。",
+        "evidence": "2026-10-26: Windows read_raw_credentials 只按白名单取字段、merge_credentials 只校验补丁键 —— 新用例写入含 providerEnv 的旧文件后 load_credentials 丢弃该字段、kimiQuotaAccounts 保留、再次 save_credentials 成功且往返一致；CollectorCapability 只用于 rawValue 字符串，不进入 Codable 持久化；定向刷新仍只授予 externalQuotas 且只装配目标 provider 凭证（Windows scoped_refresh_coverage 断言凭证键仅为目标 provider；mac 新用例断言目标凭证已注入）；apps/widget、docs/guide 与 tests/fixtures 无退役字段引用。零沉淀补正：docs/devel/todo/future.md 的 TD-007（即本卡处置的三项死协议面）建卡时漏删，已在 chore/todo-sync-c115-c128 补删。",
         "result": true
       }
     ]
