@@ -3,7 +3,7 @@
 所有对本项目的显著变更均记录于此文件。
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，版本号严格遵循 [语义化版本 (SemVer)](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.14.0] - 2026-10-27
 
 ### Added
 - **额度策略请求 / 响应契约 (T14)**：新增 `schemas/policy-request-v1` / `policy-response-v1`，额度门禁与回填的入口只接收订阅服务列表与时间等纯数据，拒绝未知字段与任何凭据形态的字段，错误以诊断码返回。该契约先以 `Bruce-collector policy` 子命令提供给 macOS，T16 起改为 App 进程内调用，子命令在同一版本内退役。
@@ -40,6 +40,7 @@
 - **Windows 出站网络 command 移出主线程 (C109)**：设备码登录与订阅额度验证的阻塞式网络调用改为异步 command，不再冻结托盘与界面；设计 05 回写「主线程不得发起阻塞式出站网络」规则。
 
 ### Changed
+- **窗口边界唤醒与刷新退避改为跨端共享 (T17)**：macOS 与 Windows 的额度窗口边界唤醒、刷新退避提为共享 `collector-policy::refresh` 的一份实现（Windows 进程内、mac 经静态库 C ABI 进程内调用），原两端公式删除；新增 `tests/fixtures/refresh-policy-parity` 双端对拍用例。行为不变，仅统一两处边界口径：重试计数 0 与 1 同为首个重试档、窗口重置时间接受数值小数。
 - **macOS 额度策略改为进程内调用 (T16)**：macOS 链接共享策略的 Rust 静态库（Universal 2），额度门禁与回填在 App 进程内计算，单次约 0.06 ms（此前经采集端子命令约 5 ms），App 本体增大约 1.3 MB（+6%）。采集端的 `Bruce-collector policy` 子命令随之退役。直接 `swift build` 前需先运行 `zsh scripts/build-policy-ffi.sh`（验证与打包脚本已自动调用）。
 - **macOS 额度门禁与回填改用共享实现 (T15)**：macOS 刷新时的额度查询门禁与回填改为调用与 Windows 相同的 Rust 实现（T15 经采集端子命令，T16 起在 App 进程内），删除 Swift 版本，两端不再各写一份。策略计算失败时本轮不更新也不猜测查询范围，按采集失败重试，界面继续显示上一轮数据；本轮换发的登录令牌照常保存。
 - **订阅额度门禁与回填改为跨端共享的一份实现 (T13)**：额度查询门禁与回填从 Windows 端提为采集端共享 crate `collector-policy`，Windows 改为调用它；新增双端回填共享用例后发现并统一了四处分歧——macOS 查询失败时余额型订阅（如 DeepSeek）不再丢失上次的余额金额；Windows 被跳过查询的订阅卡保持原位置，不再被挪到末尾；成功结果已带的新鲜度标记不再被改写；旧版快照中「查询成功但无数据」的记录可作为失败时的回退值。
