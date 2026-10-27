@@ -30,6 +30,7 @@
 | [05-Windows平台适配.md](05-Windows平台适配.md) | `WindowsCompat` | `DESIGN-WINDOWS` | Windows 托盘常驻看板（Tauri 2）、collector 单引擎双平台、Rust 视图模型与双端 fixture 对拍 | 现行基线 | 2026-10-26 |
 | [06-Agent用量分析与Token统计工作台.md](06-Agent用量分析与Token统计工作台.md) | `AgentAnalytics` | `DESIGN-ANALYTICS` | 设置中心全景工作台、时序折线分析、多源模型自动归一化合并、多 Agent 横向对比与代码仓下钻 | 现行基线 | 2026-10-21 |
 | [07-软件更新.md](07-软件更新.md) | `SoftwareUpdate` | `DESIGN-UPDATE` | 应用内检查更新与自动升级：latest.json 清单契约、双端设置中心维护页更新卡（方案 B，demo 为规格基准）、macOS 自替换安装器与 Windows updater 插件 | 现行基线 | 2026-10-26 |
+| [08-跨端共享策略核心.md](08-跨端共享策略核心.md) | `SharedPolicyCore` | `DESIGN-POLICY-CORE` | 把两端重复实现的刷新策略（额度门禁 / 回填等）收敛为一份 Rust 实现的方案评估与分期建议 | 草稿（待批准） | 2026-10-26 |
 
 只登记已生成且有真实来源的设计，同时在 [研发索引](../index.json) 登记其路由；空项目保持清单为空。状态如实区分草稿与已批准基线，不把示例登记成项目能力。
 
