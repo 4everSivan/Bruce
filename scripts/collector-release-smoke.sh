@@ -186,19 +186,20 @@ echo "校验 Rust runtime: $BRUCE_RUST_RUNTIME"
 run_runtime_smoke "$BRUCE_APP_PATH" initial 1
 
 BRUCE_CACHE_ROOT="$BRUCE_HOME/Library/Application Support/Bruce/collector-cache-v1"
-# Cache root also contains Codex's separate tree cache. Select the Kimi
-# JSONL cache entry explicitly; relying on directory order makes this smoke
-# test mutate the wrong cache and falsely report that rebuild did not parse.
-BRUCE_CACHE_FILE=$(rg -l --glob '*.json' --glob '!manifest-*' \
-    '"sourceKind":"usage\.record"' "$BRUCE_CACHE_ROOT" | head -n 1 || true)
+# Cache root also contains the source manifest and other layers. Select the
+# Kimi Code CLI entry of the shared JSONL layer explicitly (C116 format:
+# jsonl-<path digest>.json, snake_case fields); relying on directory order
+# makes this smoke mutate the wrong file and falsely report no rebuild (C129).
+BRUCE_CACHE_FILE=$(rg -l --glob 'jsonl-*.json' \
+    '"source_id":"kimi-code-cli"' "$BRUCE_CACHE_ROOT" | head -n 1 || true)
 if [[ -z "$BRUCE_CACHE_FILE" ]]; then
-    echo "没有生成 cache entry, 无法执行旧 cache rebuild smoke" >&2
+    echo "没有生成 Kimi Code CLI 的 JSONL cache entry, 无法执行旧 cache rebuild smoke" >&2
     exit 1
 fi
 
 # Simulate a supported old entry whose parser version predates the current
-# compact contribution format. The collector must rebuild, not publish empty.
-plutil -replace parserVersion -integer 1 "$BRUCE_CACHE_FILE"
+# one. The collector must ignore it and rebuild, not publish empty.
+plutil -replace parser_version -integer 1 "$BRUCE_CACHE_FILE"
 run_runtime_smoke "$BRUCE_APP_PATH" old-cache-rebuild 1
 
 BRUCE_INSTALL_ROOT="$BRUCE_SMOKE_ROOT/Applications"
