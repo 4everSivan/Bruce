@@ -274,7 +274,7 @@
     },
     "T15": {
       "title": "mac 刷新流水线改调额度策略子命令并删除 Swift 门禁与回填实现",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "feat/T15-mac-quota-policy-via-collector",
       "topic": "SharedPolicyCore",
       "milestone": "M8-跨端共享策略核心",

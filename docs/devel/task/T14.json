@@ -76,7 +76,7 @@
         "item": "全量验证",
         "true_if": "collector fmt / clippy / test 与 verify-local 退出码 0",
         "false_if": "任一失败",
-        "evidence": "2026-10-27: cargo fmt --check 退出码 0; cargo clippy --workspace --all-targets -D warnings 与 --workspace -D warnings 均退出码 0; cargo test --manifest-path core/collector/Cargo.toml --workspace 184 passed / 0 failed (T13 后 171, 新增契约 9 例与进程级 4 例); SDKROOT=MacOSX26.5 zsh scripts/verify-local.sh 退出码 0 (local/logs/t14-verify.log: Onboarding 170、PanelViewModel 60、CollectorRunner 28、RefreshScheduler 106、LocalIntegration 2)",
+        "evidence": "2026-10-27: cargo fmt --check 退出码 0; cargo clippy --workspace --all-targets -D warnings 与 --workspace -D warnings 均退出码 0; cargo test --manifest-path core/collector/Cargo.toml --workspace 184 passed / 0 failed (T13 后 171, 新增契约 9 例与进程级 4 例); SDKROOT=MacOSX26.5 zsh scripts/verify-local.sh 退出码 0 (local/logs/t14-verify.log: Onboarding 170、PanelViewModel 60、CollectorRunner 28、RefreshScheduler 全部 108 个用例函数 (末行打印的 106 为 main 上既有硬编码旧值, T15 起改为实数)、LocalIntegration 2)",
         "result": true
       }
     ]

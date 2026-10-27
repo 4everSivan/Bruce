@@ -61,7 +61,7 @@
         "item": "行为等价",
         "true_if": "quota-policy-parity 18 例与新增回填 fixture 在共享 crate 与 Windows 上全部通过，Windows 全量测试全绿",
         "false_if": "任一用例失败或需改断言",
-        "evidence": "2026-10-27: 先以迁移前实现跑新增 tests/fixtures/quota-carry-over-parity/cases.json (14 例): Windows (merge_snapshot + annotate_attempts + carry_over_skipped) 4 例不一致 —— skipped_fresh_provider_is_carried_in_previous_position / failure_without_qualified_history_is_unavailable (输出顺序)、legacy_empty_status_history_is_qualified (旧 empty 快照资格)、success_keeps_existing_freshness (改写已有 freshness) (local/logs/t13-win-before.log); mac QuotaCarryOverMerger 1 例 —— failed_query_borrows_previous_display_fields_including_balance (失败借用漏 balance / currency) (local/logs/t13-mac-before.log)。按 design/02 规则 12 定口径后 mac 补借两字段、Windows 改调共享 crate。迁移后: collector-policy 8 passed (quota-policy-parity 18 例与回填 14 例均逐字段相等); apps/win/src-tauri cargo test 224 passed / 0 failed (新增 merge_matches_shared_carry_over_fixture, 既有用例仅把 annotate_attempts / carry_over_skipped 调用换为 merge, 断言未改); RefreshSchedulerHarness 106 passed (新增 quota carry-over shared parity fixture)",
+        "evidence": "2026-10-27: 先以迁移前实现跑新增 tests/fixtures/quota-carry-over-parity/cases.json (14 例): Windows (merge_snapshot + annotate_attempts + carry_over_skipped) 4 例不一致 —— skipped_fresh_provider_is_carried_in_previous_position / failure_without_qualified_history_is_unavailable (输出顺序)、legacy_empty_status_history_is_qualified (旧 empty 快照资格)、success_keeps_existing_freshness (改写已有 freshness) (local/logs/t13-win-before.log); mac QuotaCarryOverMerger 1 例 —— failed_query_borrows_previous_display_fields_including_balance (失败借用漏 balance / currency) (local/logs/t13-mac-before.log)。按 design/02 规则 12 定口径后 mac 补借两字段、Windows 改调共享 crate。迁移后: collector-policy 8 passed (quota-policy-parity 18 例与回填 14 例均逐字段相等); apps/win/src-tauri cargo test 224 passed / 0 failed (新增 merge_matches_shared_carry_over_fixture, 既有用例仅把 annotate_attempts / carry_over_skipped 调用换为 merge, 断言未改); RefreshSchedulerHarness 全部用例通过 (108 个用例函数, 含新增 quota carry-over shared parity fixture; 脚本末行打印的「106」是 main 上既有的硬编码旧值, T15 起改为实数)",
         "result": true
       },
       {
@@ -75,7 +75,7 @@
         "item": "全量验证",
         "true_if": "collector 与 src-tauri 的 fmt / clippy / test 及 verify-local 退出码 0",
         "false_if": "任一失败",
-        "evidence": "2026-10-27: cargo fmt --check (collector 与 src-tauri) 退出码 0; cargo clippy --workspace --all-targets -D warnings 与 --workspace -D warnings (collector) 均退出码 0, src-tauri clippy --all-targets -D warnings 退出码 0; cargo test --manifest-path core/collector/Cargo.toml --workspace 171 passed / 0 failed (此前 163, 新增 collector-policy 8 例); SDKROOT=MacOSX26.5 zsh scripts/verify-local.sh 退出码 0 (local/logs/t13-verify.log: Onboarding 170、PanelViewModel 60、CollectorRunner 28、RefreshScheduler 106、LocalIntegration 2、Panel 双端对拍通过)",
+        "evidence": "2026-10-27: cargo fmt --check (collector 与 src-tauri) 退出码 0; cargo clippy --workspace --all-targets -D warnings 与 --workspace -D warnings (collector) 均退出码 0, src-tauri clippy --all-targets -D warnings 退出码 0; cargo test --manifest-path core/collector/Cargo.toml --workspace 171 passed / 0 failed (此前 163, 新增 collector-policy 8 例); SDKROOT=MacOSX26.5 zsh scripts/verify-local.sh 退出码 0 (local/logs/t13-verify.log: Onboarding 170、PanelViewModel 60、CollectorRunner 28、RefreshScheduler 全部 108 个用例函数 (末行硬编码打印 106, 见行为等价项说明)、LocalIntegration 2、Panel 双端对拍通过)",
         "result": true
       }
     ]
