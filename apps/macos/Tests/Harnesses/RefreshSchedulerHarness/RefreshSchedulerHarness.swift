@@ -8,17 +8,13 @@ import BruceOnboardingCore
 @MainActor
 struct RefreshSchedulerHarness {
     static func main() async throws {
-        guard (2...3).contains(CommandLine.arguments.count) else {
-            throw RefreshTestFailure.expectation("expected repository root [collector binary]")
+        guard CommandLine.arguments.count == 2 else {
+            throw RefreshTestFailure.expectation("expected repository root")
         }
         let repository = URL(
             fileURLWithPath: CommandLine.arguments[1],
             isDirectory: true
         )
-        // T15: 额度门禁 / 回填经真实 collector 策略子命令; 缺省取 repo 内 debug 构建产物.
-        HarnessQuotaPolicy.configure(collectorURL: CommandLine.arguments.count == 3
-            ? URL(fileURLWithPath: CommandLine.arguments[2])
-            : repository.appendingPathComponent("core/collector/target/debug/Bruce-collector"))
 
         print("Refresh scheduler: timer")
         try await timerFiresTriggersRefresh(repository: repository)
@@ -215,8 +211,10 @@ struct RefreshSchedulerHarness {
         try await quotaPolicyInvalidResponseFailsRound(repository: repository)
         print("Refresh scheduler: quota policy scoped annotate failure fails round (T15)")
         try await quotaPolicyScopedAnnotateFailureFailsRound(repository: repository)
-        print("Refresh scheduler: quota policy unavailable backs off scheduler (T15)")
-        try await quotaPolicyUnavailableBacksOffScheduler(repository: repository)
+        print("Refresh scheduler: quota policy failure backs off scheduler (T15)")
+        try await quotaPolicyFailureBacksOffScheduler(repository: repository)
+        print("Refresh scheduler: in-process quota policy boundary and latency (T16)")
+        try await inProcessQuotaPolicyBoundaryAndLatency()
         print("Refresh scheduler: quota policy passed window boundary")
         try await quotaPolicyPassedWindowBoundaryForcesRefresh()
         print("Refresh scheduler: quota policy multi-account stale")
@@ -247,6 +245,6 @@ struct RefreshSchedulerHarness {
         try await screenLockSuppressedRunCarriesOverServices(repository: repository)
         print("Refresh scheduler: quota refresh interval updates with scheduler interval")
         try await quotaRefreshIntervalUpdatesWithSchedulerRefreshInterval(repository: repository)
-        print("Refresh scheduler tests passed: 113")
+        print("Refresh scheduler tests passed: 114")
     }
 }

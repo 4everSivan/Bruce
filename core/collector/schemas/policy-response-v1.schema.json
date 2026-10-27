@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://bruce.local/schemas/policy/response-v1.schema.json",
   "title": "Bruce collector policy v1 response",
-  "description": "策略入口总是返回此信封 (含解析失败与已捕获的 panic), 进程退出码为 0。",
+  "description": "策略入口总是返回此信封 (含解析失败与已捕获的 panic); C ABI 以 bruce_policy_call 返回其 UTF-8 字节。",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "status", "operation", "result", "diagnostics"],

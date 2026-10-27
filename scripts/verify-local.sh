@@ -44,6 +44,9 @@ if [[ ! -x "$BRUCE_RUST_BIN" ]]; then
   exit 1
 fi
 
+echo "构建共享策略静态库 (T16, local/build/policy-ffi)"
+Bruce_build_policy_ffi "$BRUCE_REPO_ROOT"
+
 echo "构建 Swift 应用与全部 Harness"
 swift build --package-path "$BRUCE_SWIFT_PACKAGE" --build-tests
 BRUCE_SWIFT_BIN_DIR=$(swift build --package-path "$BRUCE_SWIFT_PACKAGE" --show-bin-path)
@@ -61,7 +64,7 @@ echo "运行 CollectorRunner Harness"
 "$BRUCE_SWIFT_BIN_DIR/CollectorRunnerHarness" "$BRUCE_RUST_BIN"
 
 echo "运行 RefreshScheduler Harness"
-"$BRUCE_SWIFT_BIN_DIR/RefreshSchedulerHarness" "$BRUCE_REPO_ROOT" "$BRUCE_RUST_BIN"
+"$BRUCE_SWIFT_BIN_DIR/RefreshSchedulerHarness" "$BRUCE_REPO_ROOT"
 
 echo "运行 NativeLifecycle Harness"
 "$BRUCE_SWIFT_BIN_DIR/NativeLifecycleHarness"

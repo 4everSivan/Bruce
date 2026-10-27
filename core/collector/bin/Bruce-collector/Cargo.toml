@@ -9,8 +9,6 @@ collector-application = { path = "../../crates/collector-application" }
 collector-bridge = { path = "../../crates/collector-bridge" }
 collector-credential = { path = "../../crates/collector-credential" }
 collector-domain = { path = "../../crates/collector-domain" }
-collector-policy = { path = "../../crates/collector-policy" }
 collector-provider = { path = "../../crates/collector-provider" }
 collector-runtime = { path = "../../crates/collector-runtime" }
-serde.workspace = true
 serde_json.workspace = true

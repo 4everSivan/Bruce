@@ -1,5 +1,6 @@
 import Foundation
 import BruceOnboardingCore
+import BrucePolicyFFI
 
 // MARK: - QuotaRunPolicy
 
@@ -40,12 +41,28 @@ package extension SubscriptionProviderID {
 // MARK: - Shared policy entry (T15, design/08)
 
 /// 策略入口传输: policy-request-v1 字节进、policy-response-v1 字节出.
-/// T15 为 collector `policy` 子命令 (`CollectorRunner.runPolicy`).
+/// 生产为进程内静态库调用 (`InProcessQuotaPolicyTransport`, T16); 测试可注入脚本化传输.
 package typealias QuotaPolicyTransport = @MainActor (Data) async throws -> Data
 
+/// 进程内传输 (T16, design/08 第二期): 经静态链接的共享策略 C ABI
+/// (`collector-policy-ffi`) 计算, 不启动进程; 返回的缓冲区当场复制并释放.
+package enum InProcessQuotaPolicyTransport {
+    package static func call(_ input: Data) -> Data {
+        var outputLength = 0
+        let buffer = input.withUnsafeBytes { raw in
+            bruce_policy_call(
+                raw.bindMemory(to: UInt8.self).baseAddress,
+                raw.count,
+                &outputLength
+            )
+        }
+        guard let buffer else { return Data() }
+        defer { bruce_policy_free(buffer, outputLength) }
+        return Data(bytes: buffer, count: outputLength)
+    }
+}
+
 package enum QuotaPolicyError: Error, Equatable {
-    /// 未接通策略入口 (无可执行的 collector).
-    case unavailable
     /// 输出不是合法的 policy-response-v1 信封.
     case invalidResponse
     /// 入口返回 error 信封 (诊断码见 policy-response-v1).
@@ -122,9 +139,9 @@ package final class CollectorQuotaPolicy: QuotaPolicyComputing {
         self.transport = transport
     }
 
-    /// 未接通 collector 时的入口: 每次调用都以 `.unavailable` 失败.
-    package static func unavailable() -> CollectorQuotaPolicy {
-        CollectorQuotaPolicy { _ in throw QuotaPolicyError.unavailable }
+    /// 生产入口: 进程内调用共享策略 (T16).
+    package static func inProcess() -> CollectorQuotaPolicy {
+        CollectorQuotaPolicy { input in InProcessQuotaPolicyTransport.call(input) }
     }
 
     package func plan(_ input: QuotaPlanInput) async throws -> QuotaRunPolicy {

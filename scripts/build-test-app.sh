@@ -64,6 +64,9 @@ else
 fi
 Bruce_build_rust_collector "$BRUCE_REPO_ROOT" release
 Bruce_validate_rust_source "$BRUCE_REPO_ROOT" release
+# T16: 共享策略静态库与 Collector 同一架构集合 (Universal 2 时为 arm64 + x86_64), swift build 前构建
+echo "编译共享策略静态库 (local/build/policy-ffi)"
+Bruce_build_policy_ffi "$BRUCE_REPO_ROOT"
 
 if [[ "$BRUCE_BUILD_UNIVERSAL" == true ]]; then
     echo "编译 Bruce Preview 可执行文件 (arm64)"

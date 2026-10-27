@@ -9,6 +9,7 @@ members = [
     "crates/collector-application",
     "crates/collector-bridge",
     "crates/collector-policy",
+    "crates/collector-policy-ffi",
     "bin/Bruce-collector",
 ]
 resolver = "2"

@@ -67,6 +67,7 @@ Bruce 把本机 AI Agent 的 token 用量、成本估算和订阅额度集中到
 ### 构建并运行
 
 ```bash
+zsh scripts/build-policy-ffi.sh   # 共享策略 Rust 静态库, 首次及改动 core/collector 策略后运行
 swift build --package-path apps/macos
 swift run   --package-path apps/macos BruceApp
 ```
@@ -179,6 +180,7 @@ zsh scripts/verify-rust.sh    # 跨平台 Rust 入口：fixture 扫描 + fmt + t
 cargo test --manifest-path core/collector/Cargo.toml --workspace
 zsh scripts/check-collector-fixtures.sh
 swift run --package-path apps/macos BruceOnboardingCoreHarness
+zsh scripts/build-policy-ffi.sh   # 链接 BruceAppCore 的 Harness 需要共享策略静态库
 swift run --package-path apps/macos PanelParityHarness "$PWD"
 ```
 

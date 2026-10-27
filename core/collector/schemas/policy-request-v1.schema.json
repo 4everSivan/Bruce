@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://bruce.local/schemas/policy/request-v1.schema.json",
   "title": "Bruce collector policy v1 request",
-  "description": "`Bruce-collector policy` 子命令与进程内策略入口的请求 (T14, design/08)。只含 artifact.services 与时间 / 间隔等纯数据, 不携带凭据: 任意层级出现凭据形态的键 (token / secret / password / apiKey / cookie / authorization / credential / oauth / *QuotaAccounts) 时以 POLICY_CREDENTIAL_FIELD_REJECTED 拒绝。",
+  "description": "共享策略入口的请求 (T14 定义, design/08): mac 经静态库 collector-policy-ffi 的 C ABI (bruce_policy_call, T16) 进程内调用, 实现为 collector_policy::handle_request。只含 artifact.services 与时间 / 间隔等纯数据, 不携带凭据: 任意层级出现凭据形态的键 (token / secret / password / apiKey / cookie / authorization / credential / oauth / *QuotaAccounts) 时以 POLICY_CREDENTIAL_FIELD_REJECTED 拒绝。",
   "type": "object",
   "required": ["schemaVersion", "operation", "now"],
   "oneOf": [

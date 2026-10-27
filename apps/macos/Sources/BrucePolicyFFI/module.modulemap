@@ -1,0 +1,5 @@
+module BrucePolicyFFI [system] {
+    header "bruce_policy.h"
+    link "bruce_policy"
+    export *
+}

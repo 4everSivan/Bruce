@@ -2,6 +2,10 @@
 
 import PackageDescription
 
+// T16: 共享策略 Rust 静态库 (design/08 第二期), 由 scripts/runtime-manifest.zsh 的
+// Bruce_build_policy_ffi 预先构建 (verify-local / build-test-app 在 swift build 前调用)。
+let policyLibraryDirectory = Context.packageDirectory + "/../../local/build/policy-ffi"
+
 let package = Package(
     name: "BruceApp",
     platforms: [
@@ -15,10 +19,15 @@ let package = Package(
             name: "BruceOnboardingCore",
             path: "Sources/BruceOnboardingCore"
         ),
+        .systemLibrary(
+            name: "BrucePolicyFFI",
+            path: "Sources/BrucePolicyFFI"
+        ),
         .target(
             name: "BruceAppCore",
-            dependencies: ["BruceOnboardingCore"],
-            path: "Sources/BruceAppCore"
+            dependencies: ["BruceOnboardingCore", "BrucePolicyFFI"],
+            path: "Sources/BruceAppCore",
+            linkerSettings: [.unsafeFlags(["-L", policyLibraryDirectory])]
         ),
         .target(
             name: "BruceGlassSurfaceCore",

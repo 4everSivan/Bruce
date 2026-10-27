@@ -97,6 +97,55 @@ Bruce_build_rust_collector() {
         --bin "$BRUCE_RUST_BINARY_NAME"
 }
 
+# T16: 共享策略静态库 (collector-policy-ffi, design/08 第二期)。mac 的 SwiftPM 以
+# -L local/build/policy-ffi 链接 libbruce_policy.a; 架构取 BRUCE_RUST_TARGET_ARCHS
+# (Universal 2 打包时为 "arm64 x86_64"), 缺省只构建本机架构。产物收拢到 local/。
+BRUCE_POLICY_FFI_PACKAGE="collector-policy-ffi"
+BRUCE_POLICY_FFI_LIBRARY="libbruce_policy.a"
+BRUCE_POLICY_FFI_OUTPUT_DIR="local/build/policy-ffi"
+
+Bruce_build_policy_ffi() {
+    local repo_root="$1"
+    Bruce_prepare_cargo_home
+    local rustflags="${RUSTFLAGS:-}"
+    if [[ -n "$rustflags" ]]; then
+        rustflags+=" "
+    fi
+    rustflags+="--remap-path-prefix=$repo_root=."
+
+    local requested_archs="${BRUCE_RUST_TARGET_ARCHS:-$(uname -m)}"
+    local output_dir="$repo_root/$BRUCE_POLICY_FFI_OUTPUT_DIR"
+    mkdir -p "$output_dir"
+    local -a input_paths=()
+    local target_arch target_triple input_path
+    for target_arch in ${(s: :)requested_archs}; do
+        case "$target_arch" in
+            arm64|aarch64)
+                target_triple="aarch64-apple-darwin"
+                ;;
+            x86_64|amd64)
+                target_triple="x86_64-apple-darwin"
+                ;;
+            *)
+                echo "不支持的策略静态库目标架构: $target_arch" >&2
+                return 1
+                ;;
+        esac
+        RUSTFLAGS="$rustflags" cargo build \
+            --manifest-path "$repo_root/$BRUCE_RUST_PACKAGE_DIR/Cargo.toml" \
+            --target "$target_triple" \
+            --release \
+            --package "$BRUCE_POLICY_FFI_PACKAGE"
+        input_path="$repo_root/$BRUCE_RUST_PACKAGE_DIR/target/$target_triple/release/$BRUCE_POLICY_FFI_LIBRARY"
+        if [[ ! -f "$input_path" ]]; then
+            echo "缺少策略静态库产物: $input_path" >&2
+            return 1
+        fi
+        input_paths+=("$input_path")
+    done
+    lipo -create "${input_paths[@]}" -output "$output_dir/$BRUCE_POLICY_FFI_LIBRARY"
+}
+
 Bruce_rust_binary_path() {
     local repo_root="$1"
     local configuration="${2:-release}"

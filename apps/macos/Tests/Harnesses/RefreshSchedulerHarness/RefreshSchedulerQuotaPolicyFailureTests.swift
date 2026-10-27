@@ -4,7 +4,7 @@ import BruceOnboardingCore
 
 // MARK: - T15 策略入口降级语义
 
-/// 按操作名脚本化策略入口: 未脚本化的操作经真实 collector 策略子命令计算.
+/// 按操作名脚本化策略入口: 未脚本化的操作经进程内共享策略计算.
 @MainActor
 final class ScriptedQuotaPolicyTransport {
     enum Behavior {
@@ -231,8 +231,8 @@ extension RefreshSchedulerHarness {
         try refreshExpect(stored.artifact == previous, "上一份 artifact 保持不变")
     }
 
-    /// 调度层: 策略入口不可用时整轮按采集失败退避, 不发布、不清空已展示的数据.
-    static func quotaPolicyUnavailableBacksOffScheduler(repository: URL) async throws {
+    /// 调度层: 策略入口失败时整轮按采集失败退避, 不发布、不清空已展示的数据.
+    static func quotaPolicyFailureBacksOffScheduler(repository: URL) async throws {
         let executor = MockCollectorExecutor()
         executor.repository = repository
         let clock = ManualClock(start: failureBase)
@@ -241,8 +241,7 @@ extension RefreshSchedulerHarness {
         defer { try? FileManager.default.removeItem(at: root) }
         let previous = failureArtifact(capturedAt: failureBase.addingTimeInterval(-60), usedPercent: 10)
         try store.publish(previous, for: .agentUsage, attemptedAt: failureBase.addingTimeInterval(-60))
-        // 不注入策略: Mock executor 不提供 policy 子命令, 调度器取「不可用」入口.
-        let unavailable = RefreshScheduler(
+        let scheduler = RefreshScheduler(
             executor: executor,
             store: store,
             clock: clock,
@@ -259,34 +258,85 @@ extension RefreshSchedulerHarness {
                 wakeDedupSeconds: 0
             ),
             jitterProvider: { _ in 0 },
-            registerWakeNotifications: false
+            registerWakeNotifications: false,
+            quotaPolicy: CollectorQuotaPolicy { _ in
+                throw QuotaPolicyError.rejected(code: "POLICY_INTERNAL_PANIC")
+            }
         )
         var published: [JSONValue?] = []
-        unavailable.onArtifactChange = { _, artifact in published.append(artifact) }
+        scheduler.onArtifactChange = { _, artifact in published.append(artifact) }
 
-        unavailable.start()
-        unavailable.enableModule(.agentUsage)
+        scheduler.start()
+        scheduler.enableModule(.agentUsage)
         timers.fireFirst()
         for _ in 0..<1_000 {
-            if unavailable.moduleState(for: .agentUsage)?.backoffRetryCount == 1 { break }
+            if scheduler.moduleState(for: .agentUsage)?.backoffRetryCount == 1 { break }
             try? await Task.sleep(for: .milliseconds(1))
         }
 
         try refreshExpect(
-            unavailable.moduleState(for: .agentUsage)?.backoffRetryCount == 1,
-            "策略入口不可用应进入退避重试"
+            scheduler.moduleState(for: .agentUsage)?.backoffRetryCount == 1,
+            "策略入口失败应进入退避重试"
         )
         try refreshExpect(
-            unavailable.moduleState(for: .agentUsage)?.lastErrorCategory == .collector,
+            scheduler.moduleState(for: .agentUsage)?.lastErrorCategory == .collector,
             "失败分类应为 collector"
         )
-        try refreshExpect((executor.runCount[.agentUsage] ?? 0) == 0, "Mock executor 无策略入口: 不得启动采集")
+        try refreshExpect((executor.runCount[.agentUsage] ?? 0) == 0, "门禁失败时不得启动采集")
         try refreshExpect(
             published.allSatisfy { $0 == nil || $0 == previous },
             "不得发布新的 artifact"
         )
         let stored = try store.load(.agentUsage, now: failureBase, staleAfter: 3600)
         try refreshExpect(stored.artifact == previous, "已展示的上一份 artifact 不被清空")
-        unavailable.stop()
+        scheduler.stop()
+    }
+
+    /// T16: 进程内 C ABI 边界 —— 非法 / 空输入与凭据字段返回结构化诊断, 门禁 fixture 结果正确;
+    /// 单次调用 (含 Swift JSON 编解码) 远低于子命令的进程启动开销 (约 5 ms).
+    static func inProcessQuotaPolicyBoundaryAndLatency() async throws {
+        func envelope(_ input: Data) throws -> [String: JSONValue] {
+            guard let object = try JSONDecoder().decode(
+                JSONValue.self,
+                from: InProcessQuotaPolicyTransport.call(input)
+            ).objectValue else {
+                throw RefreshTestFailure.expectation("进程内入口未返回 JSON 对象")
+            }
+            return object
+        }
+        func code(_ object: [String: JSONValue]) -> String? {
+            object["diagnostics"]?.arrayValue?.first?.objectValue?["code"]?.stringIdValue
+        }
+        let empty = try envelope(Data())
+        try refreshExpect(code(empty) == "POLICY_INVALID_JSON", "空输入应为 POLICY_INVALID_JSON")
+        let credential = try envelope(Data(#"{"schemaVersion":1,"operation":"quotaPlan","apiKey":"x"}"#.utf8))
+        try refreshExpect(
+            code(credential) == "POLICY_CREDENTIAL_FIELD_REJECTED",
+            "进程内入口同样拒绝凭据字段"
+        )
+
+        let previous = failureArtifact(capturedAt: failureBase.addingTimeInterval(-300), usedPercent: 10)
+        let input = QuotaPlanInput(
+            previous: previous,
+            now: failureBase,
+            interval: 1800,
+            forceRefresh: false,
+            bypassCooldown: false,
+            enabledProviders: [.claude, .kimi]
+        )
+        let engine = CollectorQuotaPolicy.inProcess()
+        let expected = QuotaRunPolicy(includeExternalQuotas: true, skipProviders: [.claude])
+        var samples: [Double] = []
+        for _ in 0..<200 {
+            let started = DispatchTime.now().uptimeNanoseconds
+            let policy = try await engine.plan(input)
+            samples.append(Double(DispatchTime.now().uptimeNanoseconds - started) / 1_000_000)
+            try refreshExpect(policy == expected, "进程内门禁结果不符: \(policy)")
+        }
+        samples.sort()
+        let median = samples[samples.count / 2]
+        let p90 = samples[samples.count * 9 / 10]
+        print(String(format: "  in-process quotaPlan median %.3f ms, p90 %.3f ms (200 次)", median, p90))
+        try refreshExpect(median < 1, "进程内单次调用中位应 < 1 ms, got \(median) ms")
     }
 }

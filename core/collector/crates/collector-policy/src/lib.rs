@@ -3,8 +3,8 @@
 //! 跨端共享的每轮刷新策略 (design/08 SharedPolicyCore)。
 //!
 //! 第一期只含订阅额度门禁 (`plan`) 与额度回填 (`merge` / `merge_round` / 尝试时间戳标注),
-//! 由 Windows 进程内调用、mac 经 collector 策略入口 (`request::handle_request`,
-//! `Bruce-collector policy` 子命令) 调用。纯函数: 不做网络、文件 I/O, 不接触凭据;
+//! 由 Windows 进程内调用、mac 经策略入口 (`request::handle_request`, 静态库
+//! `collector-policy-ffi` 的 C ABI, T16) 进程内调用。纯函数: 不做网络、文件 I/O, 不接触凭据;
 //! 输入输出均为 artifact 的 `serde_json::Value`。
 //! 双端口径由 `tests/fixtures/quota-policy-parity` 与 `tests/fixtures/quota-carry-over-parity`
 //! 两份共享用例裁判。

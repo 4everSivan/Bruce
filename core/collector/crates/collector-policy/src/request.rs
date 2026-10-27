@@ -1,6 +1,7 @@
 //! 策略入口的 JSON 契约 (`schemas/policy-request-v1` / `policy-response-v1`, T14)。
 //!
-//! collector `policy` 子命令与 mac 进程内调用共用: 字节进、JSON 信封出。入口只收
+//! mac 经静态库 `collector-policy-ffi` 的 C ABI 进程内调用 (T16; T14 的 collector
+//! `policy` 子命令已随之退役): 字节进、JSON 信封出。入口只收
 //! artifact 的 `services` 与时间、间隔等纯数据: 顶层与操作字段按白名单拒绝未知字段,
 //! 任意层级出现凭据形态的键 (token / secret / password / apiKey / cookie / authorization /
 //! credential / oauth / *QuotaAccounts) 一律拒绝; 错误以结构化诊断返回, panic 也被收敛

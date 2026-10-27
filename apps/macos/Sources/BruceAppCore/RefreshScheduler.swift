@@ -75,7 +75,7 @@ struct ModuleScheduleState: Equatable, Sendable {
 @MainActor
 package final class RefreshScheduler {
     private let executor: CollectorExecuting
-    /// 额度门禁与回填 (T15): 经共享 collector-policy 计算, 默认取 executor 的策略子命令.
+    /// 额度门禁与回填: 经共享 collector-policy 计算, 默认进程内调用静态库 (T16).
     private let quotaPolicy: any QuotaPolicyComputing
     private let store: ArtifactStore
     private let clock: RefreshClock
@@ -168,16 +168,7 @@ package final class RefreshScheduler {
         quotaPolicy: (any QuotaPolicyComputing)? = nil
     ) {
         self.executor = executor
-        if let quotaPolicy {
-            self.quotaPolicy = quotaPolicy
-        } else if let transport = executor as? CollectorPolicyRunning {
-            self.quotaPolicy = CollectorQuotaPolicy { input in
-                try await transport.runPolicy(input)
-            }
-        } else {
-            // 无策略入口: 每轮在门禁处失败并按采集失败退避 (design/08 §4.2 降级语义).
-            self.quotaPolicy = CollectorQuotaPolicy.unavailable()
-        }
+        self.quotaPolicy = quotaPolicy ?? CollectorQuotaPolicy.inProcess()
         self.store = store
         self.clock = clock
         self.timerScheduler = timerScheduler
