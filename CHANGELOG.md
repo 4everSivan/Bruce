@@ -6,6 +6,7 @@
 ## [Unreleased]
 
 ### Added
+- **采集端额度策略子命令 (T14)**：`Bruce-collector policy` 从标准输入读取额度门禁 / 回填请求、向标准输出写结果（契约 `schemas/policy-request-v1` / `policy-response-v1`），供 macOS 调用与 Windows 同一份实现；只接收订阅服务列表与时间等纯数据，拒绝未知字段与任何凭据形态的字段，单次调用约 5 ms。
 - **macOS DMG 磁盘镜像安装包支持与 CI/CD 自动发布 (C114)**：
   - **DMG 打包工具脚本 (package-dmg.sh)**：新增 `scripts/package-dmg.sh`，将 Universal 2 架构的 `Bruce.app` 与 `/Applications` 软链接封装为带卷名 `Bruce` 的标准 UDZO 压缩 DMG 磁盘镜像，便于用户首次下载后开箱即用、一键拖拽安装；
   - **本地构建联动**：`scripts/build-test-app.sh` 与 `scripts/build-release-app.sh` 支持 `--dmg` 参数，可在组装完成 `Bruce.app` 与 `Bruce.zip` 后同步产出 `dist/Bruce-<version>.dmg`；

@@ -262,7 +262,7 @@
     },
     "T14": {
       "title": "collector 新增额度策略子命令与请求 / 响应 schema",
-      "status": "pending",
+      "status": "in_progress",
       "branch": "feat/T14-collector-policy-subcommand",
       "topic": "SharedPolicyCore",
       "milestone": "M8-跨端共享策略核心",
