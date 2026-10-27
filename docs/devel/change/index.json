@@ -127,7 +127,8 @@
         "C065",
         "C071",
         "C118",
-        "C120"
+        "C120",
+        "C124"
       ]
     },
     "TokenUsage": {
@@ -1278,6 +1279,15 @@
       "topic": "TokenUsage",
       "version": "0.13.1",
       "file": "docs/devel/change/C123.json"
+    },
+    "C124": {
+      "title": "未授权云端额度不再输出 CC Switch / Codex partial 占位：纯本机统计不再显示部分失败，清理 CC Switch 过时文案",
+      "type": "BugFix",
+      "status": "in_progress",
+      "branch": "fix/C124-stale-cc-switch-text",
+      "topic": "SubscriptionQuota",
+      "version": "0.13.1",
+      "file": "docs/devel/change/C124.json"
     }
   }
 }

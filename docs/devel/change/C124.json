@@ -1,0 +1,117 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C124",
+  "title": "未授权云端额度不再输出 CC Switch / Codex partial 占位：纯本机统计不再显示部分失败，清理 CC Switch 过时文案",
+  "version": "0.13.1",
+  "type": "BugFix",
+  "status": "in_progress",
+  "branch": "fix/C124-stale-cc-switch-text",
+  "is_hotfix": false,
+
+  "target": {
+    "module": "core/collector collector-application / collector-bridge；apps/widget",
+    "component": "agent 行说明、未授权 externalQuotas 分支、桌面小组件文案",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+
+  "why": "2026-10-25 架构审查：CC Switch 时代的遗留输出仍在生效。(1) 请求未授予 externalQuotas（Windows 无任何订阅凭证、mac 未同意云端授权）时，collector 输出两条占位 service「CC Switch 云端额度」（app 为不存在的 cc-switch）与「Codex 账号额度」，状态为 partial —— 两端映射层按形状跳过不渲染，但它们触发 COLLECTOR_PARTIAL_RESULT，使每一轮纯本机统计的 envelope 都是 Partial：Windows 置 phase=partial，collection_tone 判为 Warn，状态灯恒为琥珀色「部分失败」（Bridge 自身用例甚至把「只授予 localSessions 的请求返回 Partial」写成了预期）。(2) Claude Code 行说明写着「当前经 CC Switch 路由」，与现状不符。(3) 桌面小组件称「云端服务经 CC Switch 查询 / 成本按 CC Switch 定价表估算 / 每 30 分钟自动刷新」，实际由 Bruce 按已配置订阅直接查询、按内置价卡计价、刷新间隔由用户设置。",
+
+  "precheck": {
+    "description": "确认改动前未授权分支输出 partial 占位、Bridge 用例以 Partial 为预期、文案仍指向 CC Switch",
+    "command": "git show e018e85:core/collector/crates/collector-application/src/lib.rs | grep -n '当前经 CC Switch 路由\\|\"cc_switch_providers\",\\|fn denied_service'; git show e018e85:core/collector/crates/collector-bridge/src/lib.rs | grep -n 'assert_eq!(response.status, ResponseStatus::Partial);'; git show e018e85:apps/win/src-tauri/src/runtime_core.rs | grep -n '\"partial\" | \"stale\" | \"authRequired\" => StatusTone::Warn'; git show e018e85:apps/widget/index.html | grep -n '经 CC Switch 查询\\|CC Switch 配置查询'",
+    "expected": "命中占位构造、Partial 预期、Warn 映射与小组件文案（缺陷存在）",
+    "is_completed": false,
+    "evidence": "2026-10-26 预检实测：e018e85 的 collector-application lib.rs 第 197 行 Claude Code 说明「当前经 CC Switch 路由, 额度见下方对应服务」、第 266 行 `\"cc_switch_providers\",`、第 921 行 `fn denied_service`（status 固定为 partial）；collector-bridge lib.rs 第 458 行对只含 localSessions 的请求断言 `ResponseStatus::Partial`；Windows runtime_core.rs 第 1508 行 collection_tone 将 partial 判为 Warn；apps/widget/index.html 第 384 / 979 行两处 CC Switch 文案 —— 缺陷成立，需编码修复。"
+  },
+
+  "callback": {
+    "before": [
+      "git checkout -b fix/C124-stale-cc-switch-text  # 叠加在 fix/C123-dead-contract-fields 之上"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all -- --check",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C124 --to verified --record"
+    ]
+  },
+
+  "changes": [
+    {
+      "scope": "未授权 externalQuotas 分支",
+      "before": "输出 cc_switch_providers（app cc-switch）与 codex_accounts 两条 status=partial 占位，触发 COLLECTOR_PARTIAL_RESULT，envelope 为 Partial",
+      "after": "返回空 services、不产生额度诊断（与 localUsageOnly 同口径），删除 denied_service；只授予 localSessions 的请求 envelope 为 Success",
+      "impact": "无订阅 / 未授权用户的状态灯不再恒为部分失败；两端映射层对旧 artifact 中的占位形状仍跳过"
+    },
+    {
+      "scope": "文案",
+      "before": "Claude Code 行「当前经 CC Switch 路由, 额度见下方对应服务」；小组件「云端服务经 CC Switch 查询」与「云端额度经 CC Switch 配置查询 · 成本按 CC Switch 定价表估算 · 每 30 分钟自动刷新」",
+      "after": "Claude Code 行「额度见下方 Claude 服务」（与 Kimi 行同句式）；小组件「云端额度由 Bruce 按已配置订阅查询」与「云端额度由 Bruce 按已配置订阅查询 · 成本按 Bruce 内置价卡估算 · 随 Bruce 刷新间隔更新」",
+      "impact": "说明与实际数据来源一致；从 CC Switch 只读导入火山引擎凭证等仍有效的 CC Switch 功能与对照注释不变"
+    },
+    {
+      "scope": "测试",
+      "before": "Bridge 用例断言只含 localSessions 的请求为 Partial；两条 application 用例以 services[0].status == partial 作为「未授权」判据",
+      "after": "Bridge 用例改为断言 Success、无 COLLECTOR_PARTIAL_RESULT、services 为空；两条 application 用例改为断言 services 为空（保留不发 HTTP、不读凭证等原判据）",
+      "impact": "缺陷行为不再被测试固化"
+    }
+  ],
+
+  "design": {
+    "doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "topic": "SubscriptionQuota",
+    "modified": true,
+    "rule_diff": {
+      "before": "规则 12 只规定 localUsageOnly run 不输出 denied 占位",
+      "after": "规则 12 补充：C124 起未授予 externalQuotas（无订阅凭证或未同意授权）同样返回空 services、envelope 为 success，两端映射层对旧 artifact 中的占位形状仍跳过不渲染；登记 C124 变更行"
+    }
+  },
+
+  "verification": {
+    "result": null,
+    "run_id": "local-20261026-08",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "collector workspace / Windows src-tauri 测试全绿，fmt / clippy 通过，verify-local 退出码 0（含 PanelViewModel 旧占位跳过用例与 Widget Harness）",
+        "false_if": "任一失败",
+        "evidence": "2026-10-26: cargo test --manifest-path core/collector/Cargo.toml --workspace --no-fail-fast 164 passed / 0 failed（valid_request_returns_one_structured_artifact_response 改为断言 Success / 无 COLLECTOR_PARTIAL_RESULT / services 为空；application_preserves_capability_denied_local_semantics 与 external_quota_capability_denied_skips_http_and_credential_sources 改为断言 services 为空，后者另断言无 COLLECTOR_PARTIAL_RESULT，不发 HTTP 与 http_request_count == 0 判据保留）；fmt --check 与 clippy -D warnings 退出码 0；apps/win/src-tauri cargo test 223 passed / 0 failed；SDKROOT=MacOSX26.5 zsh scripts/verify-local.sh 退出码 0（local/logs/c124-verify.log：PanelViewModel 60、LocalIntegration 2、Widget performance 5）。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "同一 Bridge 用例在改动前实现上得到 Partial、改动后得到 Success",
+        "false_if": "新旧实现结果相同",
+        "evidence": "2026-10-26: 以 git show HEAD 的 collector-application lib.rs 运行更新后的 valid_request_returns_one_structured_artifact_response：失败 left Partial / right Success（旧实现对只含 localSessions 的请求输出 partial 占位）；恢复 C124 实现后 1 passed。Windows 侧 response.status == Success 时 phase 为 fresh（runtime_core 既有映射，未改），collection_tone 判为 Ok。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "UI 不依赖占位；旧 artifact 占位仍不渲染；仍有效的 CC Switch 功能未受影响",
+        "false_if": "订阅卡出现异常空态、旧 artifact 渲染出占位或火山引擎导入受影响",
+        "evidence": "2026-10-26: mac / Windows 源码无 cc_switch_providers、codex_accounts 或「未授权 externalQuotas」消费方；两端映射层的占位跳过规则（kind 为空、无窗口无余额、partial）保留，PanelViewModel subscriptionIsNilWhenAllPlaceholders 以旧占位形状输入仍通过；CCSwitchVolcengineImporter、LocalDependencyScanner 的 CC Switch 数据库探测与 cc-switch 对照注释未改；tests/fixtures 无占位引用。真机未实测 Windows 无订阅时的状态灯。",
+        "result": true
+      }
+    ]
+  },
+
+  "rejections": [],
+
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}
