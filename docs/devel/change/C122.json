@@ -1,0 +1,116 @@
+{
+  "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
+  "id": "C122",
+  "title": "额度账号执行去掉永不阻塞的账号许可与两层永不合并的 single-flight",
+  "version": "0.13.1",
+  "type": "Refactor",
+  "status": "in_progress",
+  "branch": "fix/C122-execution-permits",
+  "is_hotfix": false,
+
+  "target": {
+    "module": "core/collector collector-application / collector-runtime",
+    "component": "execution.rs 额度账号执行、RunContext、RuntimeBudgets / AccountSingleFlight",
+    "design_doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "design_topic": "TokenUsage"
+  },
+
+  "why": "2026-10-25 架构审查：execute_quota_accounts 已用 min(account_tasks, 计划数) 个工作线程限定并发，每个任务却再取一个账号许可（池容量同为 account_tasks，永不阻塞）；整次执行包一层按 account_key 的 AccountSingleFlight，内部解析凭证又包一层 RunContext 上同键的 AccountSingleFlight。生产固定使用 RuntimeLimits::default()，execute_quota_accounts 每轮只调用一次（普通额度或 Codex 定向重试二选一），计划键由 map 键生成且 Codex 顺序重复会被拒绝 —— 两层 single-flight 从不合并任何调用；即便出现重复键，single-flight 也只是把结果克隆进两个槽位，仍会输出两条同 id service。被包裹的 resolve_credential 只是克隆计划内凭证并查目录表。",
+
+  "precheck": {
+    "description": "确认改动前额度执行叠加账号许可与两层 single-flight，且生产限额固定为默认值",
+    "command": "git show e018e85:core/collector/crates/collector-application/src/execution.rs | grep -n 'AccountSingleFlight::<String, ServiceExecution, Diagnostic>::default()\\|context.budgets.acquire_account\\|\\.account_single_flight'; git show e018e85:core/collector/crates/collector-application/src/lib.rs | grep -n 'RuntimeLimits::default()'; git show e018e85:core/collector/crates/collector-runtime/src/lib.rs | grep -n 'account: PermitPool::new(limits.account_tasks)'",
+    "expected": "命中外层 single-flight、账号许可、内层 single-flight 与默认限额（冗余存在）",
+    "is_completed": false,
+    "evidence": "2026-10-26 预检实测：e018e85 的 execution.rs 第 58 行外层 `AccountSingleFlight::<String, ServiceExecution, Diagnostic>::default()`、第 137 行 `context.budgets.acquire_account`、第 152 行内层 `.account_single_flight`；collector-application lib.rs 第 106 行 `RunContext::new(..., RuntimeLimits::default())` 为唯一生产构造；collector-runtime 第 58 行账号许可池容量 = account_tasks —— 冗余成立。"
+  },
+
+  "callback": {
+    "before": [
+      "git checkout -b fix/C122-execution-permits  # 叠加在 fix/C121-artifact-store-io 之上"
+    ],
+    "after": [
+      "cargo fmt --manifest-path core/collector/Cargo.toml --all -- --check",
+      "cargo clippy --manifest-path core/collector/Cargo.toml --workspace --all-targets -- -D warnings",
+      "cargo test --manifest-path core/collector/Cargo.toml --workspace",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card C122 --to verified --record"
+    ]
+  },
+
+  "changes": [
+    {
+      "scope": "额度账号执行",
+      "before": "工作线程（account_tasks 个）→ 外层 AccountSingleFlight → 账号许可 → 内层 RunContext.account_single_flight 包裹 resolve_credential → 网络许可 → provider 查询",
+      "after": "工作线程（account_tasks 个）→ 取消 / 超时检查（保持原账号许可获取时的检查次序）→ resolve_credential → 网络许可 → provider 查询；删除 account_key、RunContext.account_single_flight 与 ServiceExecution 的 Clone",
+      "impact": "并发上限、执行顺序、输出与诊断不变"
+    },
+    {
+      "scope": "collector-runtime",
+      "before": "RuntimeBudgets 含 account 许可池与 acquire_account；导出 AccountSingleFlight / SingleFlightError 及其 Flight 状态机与单测",
+      "after": "删除 account 许可池、acquire_account、AccountSingleFlight / SingleFlightError / Flight / FlightState 与对应单测；RuntimeLimits.account_tasks 保留为额度工作线程数",
+      "impact": "collector 代码净减约 150 行"
+    },
+    {
+      "scope": "不变量锁定",
+      "before": "「每轮账号计划键唯一」无用例",
+      "after": "新增 account_plans_have_unique_account_keys：多 provider 多账号 + 官方 provider + Codex 账号的计划键唯一，Codex 顺序重复被拒绝",
+      "impact": "去重前提被测试固定"
+    }
+  ],
+
+  "design": {
+    "doc": "docs/devel/design/01-数据采集与多模型计费引擎.md",
+    "topic": "TokenUsage",
+    "modified": true,
+    "rule_diff": {
+      "before": "规则 3 仅规定本机源工作池（local_workers），未规定额度账号的并发与去重口径",
+      "after": "规则 3 新增「额度账号并发 (C122)」：工作线程数即账号并发上限、每次外部请求持网络许可、每轮单次执行且计划键唯一故不叠加账号许可与 single-flight；登记将来引入多次执行或可重复计划键时须先恢复去重"
+    }
+  },
+
+  "verification": {
+    "result": null,
+    "run_id": "local-20261026-08",
+    "user_quote": "",
+    "signoff": "",
+    "checks": [
+      {
+        "item": "自动化测试",
+        "true_if": "collector workspace 测试全绿（含新增计划键唯一用例），fmt / clippy 通过，Windows src-tauri（经 collector-bridge 链接 collector-application）测试全绿，verify-local 退出码 0",
+        "false_if": "任一失败",
+        "evidence": "2026-10-26: cargo test --manifest-path core/collector/Cargo.toml --workspace --no-fail-fast 163 passed / 0 failed（删除 collector-runtime same_account_runs_once_and_shares_result 1 项，新增 account_plans_have_unique_account_keys 1 项）；fmt --check 与 clippy -D warnings 退出码 0；apps/win/src-tauri cargo test 222 passed / 0 failed；SDKROOT=MacOSX26.5 zsh scripts/verify-local.sh 退出码 0（local/logs/c122-verify.log）。",
+        "result": true
+      },
+      {
+        "item": "行为实测",
+        "true_if": "额度执行的既有端到端用例（注册表执行、Codex 多账号与定向重试、取消 / 超时、凭证缺失、服务失败分类）在删除前后均通过且断言未改",
+        "false_if": "任一既有额度用例需改断言或失败",
+        "evidence": "2026-10-26: collector-application 既有额度用例未改任何断言全部通过：application_executes_injected_quota_account_through_registry、application_executes_ordered_codex_accounts_with_stable_services（Codex 多账号顺序）、application_emits_codex_challenge_without_credentials_in_output（accessRejected 挑战）、codex_retry_only_skips_local_agents_and_returns_only_codex_services（定向重试）、application_does_not_fallback_to_host_credentials_for_official_providers（CREDENTIAL_MISSING 诊断）、external_quota_capability_denied_skips_http_and_credential_sources、cancelled_local_run_returns_existing_diagnostic_without_artifact 与 cancellation_after_last_source_is_fenced_before_artifact_publication（取消路径）；本卡除删除 single-flight 自身单测外未改动既有测试。由于两层 single-flight 在可达输入上从不合并调用、账号许可从不阻塞，本卡无可观测行为差异，故不设负向对拍。",
+        "result": true
+      },
+      {
+        "item": "反向影响排查",
+        "true_if": "取消 / 超时与凭证缺失的诊断次序不变；网络许可仍在；无其他 crate 使用被删除的类型",
+        "false_if": "诊断次序变化或删除了仍被引用的类型",
+        "evidence": "2026-10-26: execute_one 首先执行 cancellation.check()，与原「先取账号许可（内部即检查取消）再解析凭证」次序一致；网络许可 acquire_network 保留（network_workers 与 account_tasks 不同时仍节流）；全仓 grep AccountSingleFlight / SingleFlightError / acquire_account 仅命中已删除位置（含 apps/win 与 viewmodel）。",
+        "result": true
+      }
+    ]
+  },
+
+  "rejections": [],
+
+  "sync": {
+    "design_pinned": false,
+    "changelog": false,
+    "commit": "",
+    "tag": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}

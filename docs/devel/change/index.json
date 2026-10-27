@@ -152,7 +152,8 @@
         "C110",
         "C116",
         "C117",
-        "C119"
+        "C119",
+        "C122"
       ]
     },
     "AgentAnalytics": {
@@ -1258,6 +1259,15 @@
       "topic": "SystemOverview",
       "version": "0.13.1",
       "file": "docs/devel/change/C121.json"
+    },
+    "C122": {
+      "title": "额度账号执行去掉永不阻塞的账号许可与两层永不合并的 single-flight",
+      "type": "Refactor",
+      "status": "in_progress",
+      "branch": "fix/C122-execution-permits",
+      "topic": "TokenUsage",
+      "version": "0.13.1",
+      "file": "docs/devel/change/C122.json"
     }
   }
 }
