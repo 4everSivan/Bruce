@@ -1,5 +1,7 @@
+#[cfg(test)]
+use super::finish;
 use super::{
-    finish, number_u64, project_from_zcode, record, timestamp_number, SourceScan, SourceScanError,
+    number_u64, project_from_zcode, record, timestamp_number, SourceScan, SourceScanError,
     MAX_SOURCE_ROWS,
 };
 use crate::sqlite_cache::{
@@ -8,18 +10,22 @@ use crate::sqlite_cache::{
 use crate::ScanStats;
 use collector_domain::{CollectionWindow, UsageContribution, UsageContributionBuilder};
 use collector_runtime::CancellationToken;
-use rusqlite::{Connection, OpenFlags};
+use rusqlite::Connection;
+#[cfg(test)]
+use rusqlite::OpenFlags;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::io;
 use std::path::Path;
 
+#[cfg(test)]
 fn sqlite_error(window: &CollectionWindow, message: &str) -> SourceScan {
     let mut result = SourceScan::empty(window);
     result.diagnostic = Some(message.to_owned());
     result
 }
 
+#[cfg(test)]
 fn open_read_only(path: &Path) -> rusqlite::Result<Connection> {
     Connection::open_with_flags(
         path,
@@ -652,12 +658,14 @@ pub fn scan_zcode_cached(
     )
 }
 
-pub fn scan_opencode(path: &Path, window: &CollectionWindow) -> SourceScan {
+#[cfg(test)]
+pub(crate) fn scan_opencode(path: &Path, window: &CollectionWindow) -> SourceScan {
     scan_opencode_with_cancellation(path, window, &CancellationToken::new())
         .unwrap_or_else(|_| SourceScan::empty(window))
 }
 
-pub fn scan_opencode_with_cancellation(
+#[cfg(test)]
+pub(crate) fn scan_opencode_with_cancellation(
     path: &Path,
     window: &CollectionWindow,
     cancellation: &CancellationToken,
@@ -746,12 +754,14 @@ pub fn scan_opencode_with_cancellation(
     Ok(scan)
 }
 
-pub fn scan_zcode(path: &Path, window: &CollectionWindow) -> SourceScan {
+#[cfg(test)]
+pub(crate) fn scan_zcode(path: &Path, window: &CollectionWindow) -> SourceScan {
     scan_zcode_with_cancellation(path, window, &CancellationToken::new())
         .unwrap_or_else(|_| SourceScan::empty(window))
 }
 
-pub fn scan_zcode_with_cancellation(
+#[cfg(test)]
+pub(crate) fn scan_zcode_with_cancellation(
     path: &Path,
     window: &CollectionWindow,
     cancellation: &CancellationToken,

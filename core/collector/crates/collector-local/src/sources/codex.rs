@@ -380,12 +380,14 @@ fn fingerprint_file(
 
 /// Scan Codex CLI and Orca rollout JSONL files.  The quota snapshot remains a
 /// provider concern; this function only builds the local token contribution.
-pub fn scan_codex(roots: &[PathBuf], window: &CollectionWindow) -> SourceScan {
+#[cfg(test)]
+pub(crate) fn scan_codex(roots: &[PathBuf], window: &CollectionWindow) -> SourceScan {
     scan_codex_with_cancellation(roots, window, &CancellationToken::new())
         .unwrap_or_else(|_| SourceScan::empty(window))
 }
 
-pub fn scan_codex_with_cancellation(
+#[cfg(test)]
+pub(crate) fn scan_codex_with_cancellation(
     roots: &[PathBuf],
     window: &CollectionWindow,
     cancellation: &CancellationToken,
@@ -663,6 +665,7 @@ fn parse_codex_file(
     Ok(observations)
 }
 
+#[cfg(test)]
 fn scan_selected_codex(
     selected: Vec<CodexFileCandidate>,
     window: &CollectionWindow,
@@ -689,7 +692,8 @@ fn scan_selected_codex(
 /// 带按文件观测缓存的 Codex 扫描 (C117): 只重解析身份变化的文件, 跨日与改窗口长度
 /// 直接复用缓存, 再按当前窗口聚合; 结果与 `scan_codex` 一致。缓存可再生, 损坏时整体重建
 /// 并以信息级说明暴露 (C046)。
-pub fn scan_codex_cached(
+#[cfg(test)]
+pub(crate) fn scan_codex_cached(
     roots: &[PathBuf],
     window: &CollectionWindow,
     cache_root: &Path,
@@ -698,7 +702,8 @@ pub fn scan_codex_cached(
         .unwrap_or_else(|_| SourceScan::empty(window))
 }
 
-pub fn scan_codex_cached_with_cancellation(
+#[cfg(test)]
+pub(crate) fn scan_codex_cached_with_cancellation(
     roots: &[PathBuf],
     window: &CollectionWindow,
     cache_root: &Path,

@@ -1,11 +1,17 @@
+// C126: 以下导入只服务于不走缓存的参照实现 scan_codebuddy (仅对拍用例使用)
+#[cfg(test)]
 use super::jsonl_adapters::digest_source_key;
+#[cfg(test)]
 use super::{
     finish, parse_json_line, project_from_parent, record, scan_jsonl_tree, timestamp_number,
     SourceScan, SourceScanError,
 };
+#[cfg(test)]
 use collector_domain::{CollectionWindow, UsageContributionBuilder};
+#[cfg(test)]
 use collector_runtime::CancellationToken;
 use serde_json::Value;
+#[cfg(test)]
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -369,12 +375,14 @@ pub(super) fn codebuddy_scope(path: &Path, value: &Value) -> String {
 /// expose only `usage.total_tokens` are intentionally ignored because the
 /// artifact has no unattributed-token bucket and child records are the
 /// decomposable source of truth.
-pub fn scan_codebuddy(root: &Path, window: &CollectionWindow) -> SourceScan {
+#[cfg(test)]
+pub(crate) fn scan_codebuddy(root: &Path, window: &CollectionWindow) -> SourceScan {
     scan_codebuddy_with_cancellation(root, window, &CancellationToken::new())
         .unwrap_or_else(|_| SourceScan::empty(window))
 }
 
-pub fn scan_codebuddy_with_cancellation(
+#[cfg(test)]
+pub(crate) fn scan_codebuddy_with_cancellation(
     root: &Path,
     window: &CollectionWindow,
     cancellation: &CancellationToken,

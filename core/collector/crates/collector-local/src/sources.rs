@@ -14,31 +14,40 @@ mod tests_cache;
 #[cfg(test)]
 mod tests_sources;
 
-pub use codebuddy::{scan_codebuddy, scan_codebuddy_with_cancellation};
-pub use codex::{
-    scan_codex, scan_codex_cached, scan_codex_cached_with_cancellation, scan_codex_roots_cached,
-    scan_codex_with_cancellation, CodexRoot,
-};
+pub use codex::{scan_codex_roots_cached, CodexRoot};
 pub use jsonl_adapters::{
     scan_claude_cached, scan_codebuddy_cached, scan_grok_cached, scan_kimi_cli_cached,
     scan_kimi_tree_cached, scan_pi_cached,
 };
-pub use sqlite_adapters::{
-    scan_opencode, scan_opencode_cached, scan_opencode_with_cancellation, scan_zcode,
-    scan_zcode_cached, scan_zcode_with_cancellation,
-};
+pub use sqlite_adapters::{scan_opencode_cached, scan_zcode_cached};
+
+// C126: 不走缓存的参照实现只供对拍用例使用, 不属于 collector-local 的对外接口。
+#[cfg(test)]
+pub(crate) use codebuddy::scan_codebuddy;
+#[cfg(test)]
+pub(crate) use codex::{scan_codex, scan_codex_cached, scan_codex_with_cancellation};
+#[cfg(test)]
+pub(crate) use sqlite_adapters::{scan_opencode, scan_zcode};
 
 use super::{read_bounded_line, trim_line_end, ScanStats, READ_BUFFER_BYTES};
 use collector_domain::{
     CollectionWindow, UsageContribution, UsageContributionBuilder, UsageSample,
 };
 use collector_runtime::{CancellationToken, RuntimeError};
+#[cfg(test)]
 use jsonl_adapters::digest_source_key;
 use serde_json::Value;
+// C126: 目录遍历只剩参照实现使用
+#[cfg(test)]
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs::{self, File};
+#[cfg(test)]
+use std::fs;
+use std::fs::File;
 use std::io::{self, BufReader};
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(test)]
+use std::path::PathBuf;
+#[cfg(test)]
 use std::time::UNIX_EPOCH;
 
 /// SQLite 源单次扫描的行数上限 (C041: 1 万 → 3 万)。
@@ -243,8 +252,10 @@ pub(super) fn project_from_zcode(
 }
 
 /// 与 lib.rs 缓存 walker / jsonl_cache 树遍历共用同一深度护栏 (C045).
+#[cfg(test)]
 const MAX_DIRECTORY_SCAN_DEPTH: usize = super::MAX_DIRECTORY_SCAN_DEPTH;
 
+#[cfg(test)]
 pub(super) fn scan_jsonl_tree<F>(
     root: &Path,
     cutoff_ts: f64,
@@ -286,6 +297,7 @@ where
     )
 }
 
+#[cfg(test)]
 fn scan_jsonl_tree_impl<F>(
     root: &Path,
     cutoff_ts: f64,
@@ -317,6 +329,7 @@ where
 
 // 参数含递归状态 (depth/visited_dirs) 与测试探针, 拆分结构体收益低于可读性损失.
 #[allow(clippy::too_many_arguments)]
+#[cfg(test)]
 fn walk_jsonl_tree<F>(
     root: &Path,
     cutoff_ts: f64,
@@ -450,12 +463,14 @@ where
 /// Scan a Kimi Work or Kimi Code JSONL tree without the Kimi-specific cache.
 /// Kimi Code's primary path continues to use the cache-backed scanner in the
 /// parent module; this function is used for Kimi Work and source parity tests.
-pub fn scan_kimi_tree(root: &Path, window: &CollectionWindow) -> SourceScan {
+#[cfg(test)]
+pub(crate) fn scan_kimi_tree(root: &Path, window: &CollectionWindow) -> SourceScan {
     scan_kimi_tree_with_cancellation(root, window, &CancellationToken::new())
         .unwrap_or_else(|_| SourceScan::empty(window))
 }
 
-pub fn scan_kimi_tree_with_cancellation(
+#[cfg(test)]
+pub(crate) fn scan_kimi_tree_with_cancellation(
     root: &Path,
     window: &CollectionWindow,
     cancellation: &CancellationToken,
@@ -509,12 +524,14 @@ pub(super) struct ClaudeUsage {
 
 /// Scan Claude Code assistant messages, coalescing repeated writes of one
 /// message id so an in-progress skeleton is not counted as real usage.
-pub fn scan_claude(root: &Path, window: &CollectionWindow) -> SourceScan {
+#[cfg(test)]
+pub(crate) fn scan_claude(root: &Path, window: &CollectionWindow) -> SourceScan {
     scan_claude_with_cancellation(root, window, &CancellationToken::new())
         .unwrap_or_else(|_| SourceScan::empty(window))
 }
 
-pub fn scan_claude_with_cancellation(
+#[cfg(test)]
+pub(crate) fn scan_claude_with_cancellation(
     root: &Path,
     window: &CollectionWindow,
     cancellation: &CancellationToken,
@@ -613,12 +630,14 @@ pub(super) fn grok_content(value: Option<&Value>) -> String {
     }
 }
 
-pub fn scan_grok(roots: &[PathBuf], window: &CollectionWindow) -> SourceScan {
+#[cfg(test)]
+pub(crate) fn scan_grok(roots: &[PathBuf], window: &CollectionWindow) -> SourceScan {
     scan_grok_with_cancellation(roots, window, &CancellationToken::new())
         .unwrap_or_else(|_| SourceScan::empty(window))
 }
 
-pub fn scan_grok_with_cancellation(
+#[cfg(test)]
+pub(crate) fn scan_grok_with_cancellation(
     roots: &[PathBuf],
     window: &CollectionWindow,
     cancellation: &CancellationToken,
@@ -677,12 +696,14 @@ pub fn scan_grok_with_cancellation(
     ))
 }
 
-pub fn scan_pi(root: &Path, window: &CollectionWindow) -> SourceScan {
+#[cfg(test)]
+pub(crate) fn scan_pi(root: &Path, window: &CollectionWindow) -> SourceScan {
     scan_pi_with_cancellation(root, window, &CancellationToken::new())
         .unwrap_or_else(|_| SourceScan::empty(window))
 }
 
-pub fn scan_pi_with_cancellation(
+#[cfg(test)]
+pub(crate) fn scan_pi_with_cancellation(
     root: &Path,
     window: &CollectionWindow,
     cancellation: &CancellationToken,
