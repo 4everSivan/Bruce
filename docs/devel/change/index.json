@@ -1507,7 +1507,7 @@
     "C148": {
       "title": "消除面板高度与卡片折叠/Tab 切换的弹簧抖动（窗口单一高度动画源、内容填满窗口、显式交换态高度）",
       "type": "BugFix",
-      "status": "verified",
+      "status": "closed",
       "branch": "main",
       "topic": "MenuBarIndicator",
       "version": "0.15.0",

@@ -16,6 +16,10 @@
   - **卷轴缓动曲线修正**：展开曲线由 `cubic-bezier(0.16, 1.0, 0.3, 1.0)`（前 45ms 即走完 74.5% 行程，视觉等同瞬移）改为 `cubic-bezier(0.22, 0.61, 0.36, 1)`，起始不透明度改为 0。
 
 ### Fixed
+- **macOS 仪表盘展开/收起与 Tab 切换的弹簧抖动 (C148)**：
+  - **面板高度单一动画源**：内容高度变化统一折算成一次 0.30s `easeInOut` 窗口高度动画，同拍多条上报先经 30ms 合并成一个目标（此前每条上报各起一条 0.20s 窗口动画，反复重新起步读作弹簧回弹）；宿主视图改为四边贴合窗口、根视图去掉 `fixedSize`，视口弹性伸缩，底栏随窗口下边缘同步移动，消除「底栏先跳到位、窗口边缘追赶」的错位与底部空壳帧；
+  - **交换态显式高度**：卡片正文、多账号段与 Tab 单卡改为 `ZStack` + 实测自然高度 + 显式 `frame` 插值（新增 `DashboardSwapHeight` 裁决），Tab 切换去掉 `spring(damping 0.82)` 过冲曲线，高度不再先冲高再缩回；屏高上限收敛到 `DashboardPanelSizingPolicy` 夹取，删除视图内的 `maxStackHeight` 缓存；
+  - **标题行折叠交接**：拖拽手柄常驻、占位宽度随折叠态插值（展开 0 宽），收起摘要与「最后更新 / LIVE」改为接力淡入（退场 0.07s、入场延迟 0.06s），消除标题横向跳动与文字压在量条上的叠影。
 - **macOS 构建源码告警清零 (C140)**：
   - **跨模块主题类型导入**：`ProviderBrandBadge` 显式 `import BruceOnboardingCore`，不再依赖 `BruceAppCore` 的传递可见性引用 `ResolvedTheme`，消除 Swift 6 implementation-only 可见性告警；
   - **WebKit Cookie 清理时序**：`StepFunWebLoginView` 清空登录缓存改用 `await cookieStore.deleteCookie(_:)`，全部 Cookie 删除完成后再重载页面，消除 async 替代告警并修正清理与重载的并发竞态。

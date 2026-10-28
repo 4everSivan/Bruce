@@ -4,7 +4,7 @@
   "title": "消除面板高度与卡片折叠/Tab 切换的弹簧抖动（窗口单一高度动画源、内容填满窗口、显式交换态高度）",
   "version": "0.15.0",
   "type": "BugFix",
-  "status": "verified",
+  "status": "closed",
   "branch": "main",
   "is_hotfix": false,
   "target": {
@@ -33,7 +33,7 @@
     {
       "scope": "面板高度单一动画源与内容填满窗口",
       "before": "窗口高度跟随内容实测值逐次 setFrame；C148 上一版又改成 40ms 防抖 + 每拍一条 0.2s NSAnimationContext，窗口与 SwiftUI 内容各走一条曲线；宿主视图用显式高度约束贴顶，底栏位置由内容高度决定而非窗口下边缘",
-      "after": "内容高度变化统一折算成一次窗口高度动画（0.24s easeInEaseOut，与卡片内容动画同长），同拍多条上报先经 30ms 合并成一个目标；宿主视图四边贴合窗口、SwiftUI 根视图去掉 fixedSize，视口按窗口高度弹性伸缩，底栏随窗口下边缘同步移动；motionSuppressed 时直接 setFrame 不做动画；屏幕参数变化后按已记录尺寸重新夹取",
+      "after": "内容高度变化统一折算成一次窗口高度动画（0.30s easeInOut，与卡片内容动画同长，时长曲线统一取自 DashboardMotionTiming.contentResize），同拍多条上报先经 30ms 合并成一个目标；宿主视图四边贴合窗口、SwiftUI 根视图去掉 fixedSize，视口按窗口高度弹性伸缩，底栏随窗口下边缘同步移动；motionSuppressed 时直接 setFrame 不做动画；屏幕参数变化后按已记录尺寸重新夹取",
       "impact": "面板下边缘、底栏、卡片正文同向同步收放，消除弹簧回弹与收尾顿跳，也不再出现「底栏先跳到终位、窗口边缘随后追赶」的空壳帧"
     },
     {
@@ -116,8 +116,8 @@
   "rejections": [],
   "sync": {
     "design_pinned": true,
-    "changelog": false,
-    "commit": "",
+    "changelog": true,
+    "commit": "bd46abc",
     "tag": ""
   },
   "gate": {
@@ -125,7 +125,7 @@
     "version": "1.5.0",
     "ran_at": "2026-10-28",
     "exit_code": 0,
-    "from_status": "verified",
-    "target_status": "verified"
+    "from_status": "closed",
+    "target_status": "closed"
   }
 }
