@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/change-card.v1.json",
   "id": "C130",
-  "title": "技术债 TD-003/005/006 总账校准：确认已由既有卡落地并从 future.md 移除",
+  "title": "技术债 TD-003/006 总账校准：确认已由既有卡落地并从 future.md 移除",
   "version": "0.15.0",
   "type": "Refactor",
   "status": "in_progress",
@@ -13,7 +13,7 @@
     "design_doc": "docs/devel/design/00-系统总体设计.md",
     "design_topic": "SystemOverview"
   },
-  "why": "future.md 中的 TD-003（Windows Provider 清单落后）、TD-005（provider 专属逻辑仍在编排层）、TD-006（四处巨型文件未拆分）在 2026-10-28 复核时已被后续实现覆盖：Windows 设置页与 Rust PROVIDERS 均为 10 家（Jev 双端隐藏）；ProviderOutcome 与 finalize_provider_outcome 已存在，execution.rs 无 app 名字分支；sources.rs 754 行、collector-provider/lib.rs 1032 行、SettingsView.swift 1300 行、SubscriptionService.swift 901 行且子模块齐全。继续挂在 future.md 会误导后续排期，故校准总账。",
+  "why": "future.md 中的 TD-003（Windows Provider 清单落后）与 TD-006（四处巨型文件未拆分）在 2026-10-28 复核时已被后续实现覆盖：Windows 设置页与 Rust PROVIDERS 均为 10 家（Jev 双端隐藏）；sources.rs 754 行、collector-provider/lib.rs 1032 行、SettingsView.swift 1300 行、SubscriptionService.swift 901 行且子模块齐全。继续挂在 future.md 会误导后续排期，故校准总账。TD-005 仅部分完成（ProviderOutcome 与凭据解析已下沉，但 codexQuotaRetryOnly 短路仍在编排层），保留在 future.md 并收窄描述。",
   "precheck": {
     "description": "确认该债务在当前代码库中的真实状态（已修复 / 仍存在 / 需数据契约变更）",
     "command": "grep / wc / 对应测试套件",
@@ -31,8 +31,8 @@
   "changes": [
     {
       "scope": "技术债台账",
-      "before": "future.md 保留三条已完成债务，易被误当作待办",
-      "after": "移除 TD-003/005/006 行；证据记录在本卡与 design/00 变更记录",
+      "before": "future.md 保留 TD-003/006 两条已完成债务，易被误当作待办",
+      "after": "移除 TD-003/006 行；TD-005 保留并收窄为剩余 codex 重试短路",
       "impact": "后续排期与发版评审看到真实剩余债务"
     }
   ],
@@ -59,17 +59,17 @@
         "result": true
       },
       {
-        "item": "TD-005 provider 专属逻辑下沉",
-        "true_if": "collector-provider 提供 ProviderOutcome / finalize_provider_outcome，编排层无 app == \"codex\"/\"claude\"/\"grok\" 分支",
-        "false_if": "仍存在按 app 名字硬编码的编排/协议分支",
-        "evidence": "grep 实测 execution.rs 无 app 名字分支；collector-provider/lib.rs 定义 ProviderOutcome 与 finalize_provider_outcome；C048 提交 a69e16e",
-        "result": true
-      },
-      {
         "item": "TD-006 巨型文件已切分",
         "true_if": "四个目标文件均低于约 1,500 行且职责子模块存在",
         "false_if": "任一目标文件仍超限或子模块缺失",
-        "evidence": "wc -l: sources.rs 754 / collector-provider/lib.rs 1032 / SettingsView.swift 1300 / SubscriptionService.swift 901；sources/ 与 provider 子模块存在; 全量验证 zsh scripts/verify-local.sh exit 0 (Rust workspace + Swift 全部 Harness + Windows 前端/几何/更新对拍全绿; 日志 local/c130-c136-verify.log)",
+        "evidence": "wc -l: sources.rs 754 / collector-provider/lib.rs 1032 / SettingsView.swift 1300 / SubscriptionService.swift 901；sources/ 与 provider 子模块存在",
+        "result": true
+      },
+      {
+        "item": "TD-005 剩余范围如实保留",
+        "true_if": "future.md 保留 TD-005 且描述仅指向 codexQuotaRetryOnly 短路与 collect_codex_quota_retry_only",
+        "false_if": "总账声称 TD-005 已全部完成，或仍保留已解决的 ProviderOutcome/凭据分支描述",
+        "evidence": "grep 实测 collector-application/src/lib.rs 仍存在 codexQuotaRetryOnly 短路与 collect_codex_quota_retry_only；future.md 已收窄该行",
         "result": true
       }
     ]
