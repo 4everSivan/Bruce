@@ -4,7 +4,7 @@
   "title": "TD-009：菜单栏「最低/平均剩余额度」与仪表盘共用验证门禁",
   "version": "0.15.0",
   "type": "BugFix",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "main",
   "is_hotfix": false,
   "target": {
@@ -52,10 +52,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": "passed",
     "run_id": "local-20261028-04",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认",
+    "signoff": "2026-10-28 用户会话内确认 C130-C136 收口（原话「确认」），AI 代为签署收口",
     "checks": [
       {
         "item": "额度摘要按验证状态过滤",
@@ -83,7 +83,9 @@
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-28",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

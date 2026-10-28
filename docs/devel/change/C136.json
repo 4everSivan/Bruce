@@ -4,7 +4,7 @@
   "title": "技术债 TD-002 评估：分时/分档价卡需先改聚合数据契约，本批次暂缓",
   "version": "0.15.0",
   "type": "Refactor",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "main",
   "is_hotfix": false,
   "target": {
@@ -52,10 +52,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": "passed",
     "run_id": "local-20261028-07",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认",
+    "signoff": "2026-10-28 用户会话内确认 C130-C136 收口（原话「确认」），AI 代为签署收口",
     "checks": [
       {
         "item": "评估可复核",
@@ -83,7 +83,9 @@
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-28",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

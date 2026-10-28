@@ -4,7 +4,7 @@
   "title": "技术债 TD-003/006 总账校准：确认已由既有卡落地并从 future.md 移除",
   "version": "0.15.0",
   "type": "Refactor",
-  "status": "in_progress",
+  "status": "closed",
   "branch": "main",
   "is_hotfix": false,
   "target": {
@@ -46,10 +46,10 @@
     }
   },
   "verification": {
-    "result": null,
+    "result": "passed",
     "run_id": "local-20261028-01",
-    "user_quote": "",
-    "signoff": "",
+    "user_quote": "确认",
+    "signoff": "2026-10-28 用户会话内确认 C130-C136 收口（原话「确认」），AI 代为签署收口",
     "checks": [
       {
         "item": "TD-003 Windows Provider 清单对齐",
@@ -84,7 +84,9 @@
   "gate": {
     "tool": "adflow-verify",
     "version": "1.5.0",
-    "ran_at": "",
-    "exit_code": null
+    "ran_at": "2026-10-28",
+    "exit_code": 0,
+    "from_status": "verified",
+    "target_status": "closed"
   }
 }

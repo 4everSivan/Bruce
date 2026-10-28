@@ -1353,8 +1353,8 @@
     "C130": {
       "title": "技术债 TD-003/005/006 总账校准",
       "type": "Refactor",
-      "status": "in_progress",
-      "branch": "main",
+      "status": "closed",
+      "branch": "chore/C130-c136-tech-debt",
       "topic": "SystemOverview",
       "version": "0.15.0",
       "file": "docs/devel/change/C130.json"
@@ -1362,8 +1362,8 @@
     "C131": {
       "title": "技术债 TD-008/010 口径定稿",
       "type": "Refactor",
-      "status": "in_progress",
-      "branch": "main",
+      "status": "closed",
+      "branch": "chore/C130-c136-tech-debt",
       "topic": "SubscriptionQuota",
       "version": "0.15.0",
       "file": "docs/devel/change/C131.json"
@@ -1371,8 +1371,8 @@
     "C132": {
       "title": "TD-012：滚动条压制改为 KVO/通知事件驱动",
       "type": "Refactor",
-      "status": "in_progress",
-      "branch": "main",
+      "status": "closed",
+      "branch": "chore/C130-c136-tech-debt",
       "topic": "MenuBarIndicator",
       "version": "0.15.0",
       "file": "docs/devel/change/C132.json"
@@ -1380,8 +1380,8 @@
     "C133": {
       "title": "TD-009：菜单栏额度摘要与仪表盘共用验证门禁",
       "type": "BugFix",
-      "status": "in_progress",
-      "branch": "main",
+      "status": "closed",
+      "branch": "chore/C130-c136-tech-debt",
       "topic": "MenuBarIndicator",
       "version": "0.15.0",
       "file": "docs/devel/change/C133.json"
@@ -1389,8 +1389,8 @@
     "C134": {
       "title": "TD-004：抽取 collector-local cache_util",
       "type": "Refactor",
-      "status": "in_progress",
-      "branch": "main",
+      "status": "closed",
+      "branch": "chore/C130-c136-tech-debt",
       "topic": "TokenUsage",
       "version": "0.15.0",
       "file": "docs/devel/change/C134.json"
@@ -1398,8 +1398,8 @@
     "C135": {
       "title": "TD-011：Windows settings.js 拆分",
       "type": "Refactor",
-      "status": "in_progress",
-      "branch": "main",
+      "status": "closed",
+      "branch": "chore/C130-c136-tech-debt",
       "topic": "WindowsCompat",
       "version": "0.15.0",
       "file": "docs/devel/change/C135.json"
@@ -1407,8 +1407,8 @@
     "C136": {
       "title": "TD-002：分时/分档价卡评估与暂缓",
       "type": "Refactor",
-      "status": "in_progress",
-      "branch": "main",
+      "status": "closed",
+      "branch": "chore/C130-c136-tech-debt",
       "topic": "TokenUsage",
       "version": "0.15.0",
       "file": "docs/devel/change/C136.json"
