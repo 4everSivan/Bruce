@@ -15,6 +15,8 @@ public struct CredentialAccountState: Equatable, Sendable {
     public var updatedAt: Date?
     public var revision: Int
     public var email: String?
+    /// 用户自定义标签 (T18). 登录/刷新/重新授权都必须原样保留.
+    public var customName: String?
     public var credentialOrigin: CodexCredentialOrigin
     /// 待持久化 record; 仅当 `pendingRevision == revision` 时可落盘.
     public var pendingRecord: CodexAccountRecord?
@@ -31,6 +33,7 @@ public struct CredentialAccountState: Equatable, Sendable {
         updatedAt: Date? = nil,
         revision: Int = 0,
         email: String? = nil,
+        customName: String? = nil,
         credentialOrigin: CodexCredentialOrigin = .Bruce,
         pendingRecord: CodexAccountRecord? = nil,
         pendingRevision: Int? = nil
@@ -45,6 +48,7 @@ public struct CredentialAccountState: Equatable, Sendable {
         self.updatedAt = updatedAt
         self.revision = revision
         self.email = email
+        self.customName = customName
         self.credentialOrigin = credentialOrigin
         self.pendingRecord = pendingRecord
         self.pendingRevision = pendingRevision
@@ -63,6 +67,7 @@ public struct CredentialAccountState: Equatable, Sendable {
             updatedAt: record.updatedAt,
             revision: 0,
             email: record.email,
+            customName: record.customName,
             credentialOrigin: record.credentialOrigin,
             pendingRecord: nil,
             pendingRevision: nil
@@ -82,6 +87,7 @@ public struct CredentialAccountState: Equatable, Sendable {
             updatedAt: record.updatedAt,
             revision: 0,
             email: record.email,
+            customName: record.customName,
             credentialOrigin: record.credentialOrigin,
             pendingRecord: nil,
             pendingRevision: nil
@@ -252,6 +258,7 @@ public enum CredentialStateReducer: Sendable {
         let record = CodexAccountRecord(
             accountID: accountID,
             email: email,
+            customName: state.customName,
             accessToken: accessToken,
             refreshToken: refreshToken,
             idToken: idToken,
@@ -283,6 +290,7 @@ public enum CredentialStateReducer: Sendable {
         let record = CodexAccountRecord(
             accountID: accountID,
             email: next.email,
+            customName: next.customName,
             accessToken: nil,
             refreshToken: nil,
             idToken: nil,
@@ -396,6 +404,7 @@ public enum CredentialStateReducer: Sendable {
         let record = CodexAccountRecord(
             accountID: accountID,
             email: next.email,
+            customName: next.customName,
             accessToken: token.accessToken,
             refreshToken: newRefreshToken,
             idToken: next.idToken,

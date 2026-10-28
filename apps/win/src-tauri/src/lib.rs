@@ -544,6 +544,24 @@ mod desktop {
         Ok(())
     }
 
+    /// 重命名账号 (T18): 只改 display_name, 成功后触发定向刷新。
+    #[tauri::command]
+    fn rename_credential_account(
+        app: tauri::AppHandle,
+        field: String,
+        account_id: String,
+        display_name: String,
+    ) -> Result<(), String> {
+        credentials::rename_credential_account(
+            &paths::data_root(),
+            &field,
+            &account_id,
+            &display_name,
+        )?;
+        app.state::<SchedulerControl>().request_manual_refresh();
+        Ok(())
+    }
+
     /// 用系统默认浏览器打开外部地址 (C084)。走 Win32 `ShellExecuteW`, 不新增依赖;
     /// 非 Windows 构建下不可用 (开发机只跑测试, 真实打开由 Windows 侧承担)。
     #[cfg(windows)]
@@ -1321,6 +1339,7 @@ mod desktop {
                 get_credential_rejections,
                 remove_credential_account,
                 save_credential_account,
+                rename_credential_account,
                 import_codex_auth,
                 codex_device_start,
                 codex_device_poll,

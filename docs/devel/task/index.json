@@ -1,7 +1,7 @@
 {
   "$schema": "https://ad-flow.org/schemas/task-index.v1.json",
   "phase": "Phase 2 - Windows 平台适配",
-  "updated_at": "2026-10-27",
+  "updated_at": "2026-10-28",
   "milestones": {
     "M1-Windows适配": {
       "title": "Windows 托盘常驻看板与采集链路全量对齐（Tauri 2 / 首版全量 / Rust 视图模型+fixture 对拍）",
@@ -67,6 +67,13 @@
         "T16",
         "T17"
       ]
+    },
+    "M9-订阅多账号命名": {
+      "title": "订阅多账号默认名「账号 N」与设置页自定义重命名（mac / Windows 同步）",
+      "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+      "tasks": [
+        "T18"
+      ]
     }
   },
   "topics": {
@@ -85,7 +92,8 @@
       "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
       "tasks": [
         "T05",
-        "T06"
+        "T06",
+        "T18"
       ]
     },
     "AgentAnalytics": {
@@ -309,6 +317,16 @@
       ],
       "file": "docs/archive/0.14.0/task/T17.json",
       "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T17-refresh-policy-shared"
+    },
+    "T18": {
+      "title": "订阅多账号自定义名称：默认「账号 N」+ 设置页重命名（mac / Windows）",
+      "status": "pending",
+      "branch": "feat/T18-account-custom-names",
+      "topic": "SubscriptionQuota",
+      "milestone": "M9-订阅多账号命名",
+      "depends_on": [],
+      "file": "docs/devel/task/T18.json",
+      "branch_note": "按 AGENTS.md 第五节建专属特性分支 feat/T18-account-custom-names"
     }
   }
 }

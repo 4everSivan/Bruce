@@ -687,7 +687,8 @@ package final class OnboardingRunInputProvider: CollectorRunInputProviding {
                 for entry in index.accounts {
                     guard let record = try? store.loadRecord(for: entry.accountID),
                           !record.credentialJSON.isEmpty else { continue }
-                    let isGlobal = entry.displayName.contains("国际") || ProviderConnectionVerifier.isStepFunGlobalToken(record.credentialJSON)
+                    let isGlobal = ProviderAccountNaming.isStepFunGlobalDisplayName(entry.displayName)
+                        || ProviderConnectionVerifier.isStepFunGlobalToken(record.credentialJSON)
                     accounts[entry.accountID] = .object([
                         "display_name": .string(entry.displayName),
                         "token": .string(record.credentialJSON),

@@ -55,6 +55,54 @@
   function usableAccountsFor(id) { return accountsFor(id).filter(account => account.usable !== false); }
   /// 该 Provider 被丢弃账号的原因清单 (C092)。
   function rejectionsFor(id) { return coreState.credentialRejections.filter(item => item.field === providerDescriptor(id)[2]); }
+
+  // T18: 账号显示名固定为 "<Provider> · <标签>"; 用户只编辑标签.
+  // 默认标签 «账号 N», N 为同 Provider 内最小未占用序号 (排除正在重命名的账号自身).
+  function accountPrefix(id) { return providerDescriptor(id)[1]; }
+  function accountLabel(id, displayName) {
+    const name = (displayName || "").trim();
+    const prefix = `${accountPrefix(id)} · `;
+    return name.startsWith(prefix) ? name.slice(prefix.length) : name;
+  }
+  function nextAccountLabel(id, excludingAccountId = null) {
+    const used = new Set(
+      accountsFor(id)
+        .filter(account => account.accountId !== excludingAccountId)
+        .map(account => accountLabel(id, account.displayName || account.accountId).toLowerCase())
+    );
+    let number = 1;
+    while (used.has(`账号 ${number}`.toLowerCase())) number += 1;
+    return `账号 ${number}`;
+  }
+  function defaultAccountDisplayName(id, excludingAccountId = null) {
+    return `${accountPrefix(id)} · ${nextAccountLabel(id, excludingAccountId)}`;
+  }
+  function validateAccountLabel(id, label, accountId) {
+    const trimmed = label.trim();
+    if (!trimmed) return "账号名称不能为空";
+    if (Array.from(trimmed).length > 32) return "账号名称最多 32 个字符";
+    if (/[\u0000-\u001F\u007F]/.test(trimmed)) return "账号名称不能包含换行或控制字符";
+    const candidate = `${accountPrefix(id)} · ${trimmed}`.toLowerCase();
+    const duplicate = accountsFor(id).some(account => account.accountId !== accountId
+      && (account.displayName || account.accountId || "").trim().toLowerCase() === candidate);
+    return duplicate ? "该名称已被同 Provider 的其他账号使用" : null;
+  }
+  /// 在参考节点后插入 (DOM harness 只提供 parentElement/children, 无 insertAdjacentElement).
+  function insertAfter(reference, nodeToInsert) {
+    if (typeof reference.insertAdjacentElement === "function") {
+      reference.insertAdjacentElement("afterend", nodeToInsert);
+      return;
+    }
+    const parent = reference.parentElement;
+    if (!parent) return;
+    const index = parent.children.indexOf(reference);
+    if (index >= 0) {
+      parent.children.splice(index + 1, 0, nodeToInsert);
+      nodeToInsert.parentElement = parent;
+    } else {
+      parent.append(nodeToInsert);
+    }
+  }
   // 状态尾件 (mac subscriptionStatusTail): 未配置 / 已配置 / 验证失败 / 需重新登录
   // C081: 判据为 fail-closed —— 形状不合法的账号在读取时即被丢弃, 故
   // 「有账号」等价于「存在完整可用凭据记录」。
@@ -491,6 +539,50 @@
         const line = node("div", null, { class: "cfg-account" });
         line.append(node("span", account.displayName || account.accountId, { class: "cfg-account-name" }));
         if (account.authorizationState === "reauthRequired") line.append(node("span", "需要重新授权", { class: "auth-state warn" }));
+        // T18: 行内重命名. 只编辑标签, 前缀「<Provider> ·」由系统维护.
+        button(line, `cfg-rename-${account.accountId}`, "重命名", () => {
+          byId(`cfg-rename-editor-${account.accountId}`)?.remove();
+          const editor = node("div", null, { class: "cfg-confirm", id: `cfg-rename-editor-${account.accountId}` });
+          editor.append(node("p", `重命名 ${account.displayName || account.accountId}`, { class: "cfg-label" }));
+          const input = node("input", null, {
+            id: `cfg-rename-input-${account.accountId}`,
+            class: "cfg-input",
+            type: "text",
+            value: accountLabel(id, account.displayName || account.accountId),
+            autocomplete: "off",
+          });
+          editor.append(input);
+          editor.append(node("p", `前缀「${accountPrefix(id)} ·」由系统维护；留空保存恢复默认名`, { class: "hint" }));
+          const error = node("p", null, { class: "status-msg warn" });
+          editor.append(error);
+          const act = actions(editor);
+          button(act, `cfg-rename-save-${account.accountId}`, "保存", async () => {
+            const raw = input.value.trim();
+            if (raw) {
+              const problem = validateAccountLabel(id, raw, account.accountId);
+              if (problem) {
+                error.textContent = problem;
+                return;
+              }
+            }
+            const displayName = raw
+              ? `${accountPrefix(id)} · ${raw}`
+              : defaultAccountDisplayName(id, account.accountId);
+            try {
+              await invoke("rename_credential_account", {
+                field: account.field,
+                accountId: account.accountId,
+                displayName,
+              });
+              await loadCredentials();
+              renderProviderDialog(id);
+            } catch (err) {
+              error.textContent = `重命名失败：${err.message || err}`;
+            }
+          }, "btn primary");
+          button(act, `cfg-rename-cancel-${account.accountId}`, "取消", () => renderProviderDialog(id), "btn");
+          insertAfter(line, editor);
+        }, "btn link");
         button(line, `cfg-remove-${account.accountId}`, "移除", () => {
           // C096: 账号移除前二次确认 (对齐 mac SettingsView.swift:162 的 confirmationDialog),
           // 不再直接删除 —— 误点即丢凭据。
@@ -1096,7 +1188,7 @@
     try {
       const credential = providerCredential(id, dialogValues(id));
       const accountId = credentialAccountId(id, credential);
-      const payload = { ...credential, display_name: `${providerDescriptor(id)[1]} · ${accountId.split("-").pop()}` };
+      const payload = { ...credential };
       await invoke("save_credential_account", { field: quotaFieldOf(id), accountId, payload });
       await loadCredentials();
       await reverifyProvider(id);

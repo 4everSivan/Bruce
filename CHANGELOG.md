@@ -15,6 +15,11 @@
   - **Windows 全覆盖**：`AppSettings.motionPreference` 驱动 `<html data-motion>`，CSS 以 `html[data-motion="off"]` 全量闸门替换原 `prefers-reduced-motion` 媒体查询与 JS 判据的双重裁决，系统设置在运行中变更经 `matchMedia` change 事件重算；
   - **卷轴缓动曲线修正**：展开曲线由 `cubic-bezier(0.16, 1.0, 0.3, 1.0)`（前 45ms 即走完 74.5% 行程，视觉等同瞬移）改为 `cubic-bezier(0.22, 0.61, 0.36, 1)`，起始不透明度改为 0。
 
+- **订阅多账号自定义名称 (T18)**：
+  - **默认名**：新建账号统一使用「`<Provider> · 账号 N`」，N 为该 Provider 内最小未占用序号；Codex 优先用邮箱前缀。新名称不再写入 API Key 前 8 位，消除 Key 前缀泄漏与不可读哈希；存量账号不自动改名；
+  - **重命名**：macOS 三处账号列表（API/Kimi/DeepSeek/火山/智谱/StepFun/Jev/Cline 配置对话框、通用订阅外壳、Codex 账号区）与 Windows 账号行均提供入口，只编辑标签，Provider 前缀、accountID、凭据与 collector service ID 不变；空输入恢复默认名，同 Provider 重名就地拒绝；
+  - **保存安全**：重复粘贴同一凭证或令牌轮换不覆盖自定义名；StepFun 换站点时保留标签、仅重建站点前缀；站点判定改为名称开头的精确前缀，自定义标签里的「国际」不再误判站点。
+
 ### Fixed
 - **macOS 仪表盘展开/收起与 Tab 切换的弹簧抖动 (C148)**：
   - **面板高度单一动画源**：内容高度变化统一折算成一次 0.30s `easeInOut` 窗口高度动画，同拍多条上报先经 30ms 合并成一个目标（此前每条上报各起一条 0.20s 窗口动画，反复重新起步读作弹簧回弹）；宿主视图改为四边贴合窗口、根视图去掉 `fixedSize`，视口弹性伸缩，底栏随窗口下边缘同步移动，消除「底栏先跳到位、窗口边缘追赶」的错位与底部空壳帧；

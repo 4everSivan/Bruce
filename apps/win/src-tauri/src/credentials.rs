@@ -377,6 +377,43 @@ pub fn save_credentials_patch(
     let merged = merge_credentials(&read_raw_credentials(root), patch)?;
     save_unlocked(root, &merged)
 }
+/// Provider 在显示名里的固定前缀 (与 mac `SubscriptionProviderID.displayName` 对齐).
+fn provider_display_prefix(field: &str) -> &'static str {
+    match field {
+        "kimiQuotaAccounts" => "Kimi",
+        "deepseekQuotaAccounts" => "DeepSeek",
+        "volcengineQuotaAccounts" => "火山引擎",
+        "zhipuQuotaAccounts" => "Z.ai",
+        "codexQuotaAccounts" => "Codex",
+        "claudeQuotaAccounts" => "Claude",
+        "grokQuotaAccounts" => "Grok",
+        "opencodeGoQuotaAccounts" => "OpenCode GO",
+        "stepfunQuotaAccounts" => "StepFun",
+        "jevQuotaAccounts" => "Jev",
+        "clineQuotaAccounts" => "Cline",
+        _ => "Account",
+    }
+}
+
+/// 新建账号的默认显示名: «<Provider> · 账号 N», N 为同 Provider 内最小未占用序号 (T18).
+fn default_display_name(field: &str, accounts: &serde_json::Map<String, Value>) -> String {
+    let prefix = provider_display_prefix(field);
+    let mut number = 1;
+    loop {
+        let candidate = format!("{prefix} · 账号 {number}");
+        let used = accounts.values().any(|account| {
+            account
+                .get("display_name")
+                .and_then(Value::as_str)
+                .is_some_and(|name| name.trim().eq_ignore_ascii_case(&candidate))
+        });
+        if !used {
+            return candidate;
+        }
+        number += 1;
+    }
+}
+
 pub fn save_credential_account(
     root: &Path,
     field: &str,
@@ -390,12 +427,44 @@ pub fn save_credential_account(
         .as_object()
         .cloned()
         .ok_or("凭证账号必须是 JSON 对象")?;
+    let _guard = STORE_LOCK.lock().map_err(|_| "凭证存储事务不可用")?;
+    let mut latest = read_raw_credentials(root);
+    let existing_name = latest
+        .get(field)
+        .and_then(Value::as_object)
+        .and_then(|accounts| accounts.get(account_id))
+        .and_then(|account| account.get("display_name"))
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    if let Some(existing_name) = existing_name.filter(|name| !name.trim().is_empty()) {
+        // T18: 已存在账号保留现有 display_name —— 重新保存/令牌轮换不得覆盖
+        // 用户自定义名称.
+        payload.insert("display_name".to_owned(), json!(existing_name));
+    } else {
+        // 新建账号: 调用方给的名称若缺省或仍是原始 accountId, 统一用默认名.
+        let explicit = payload
+            .get("display_name")
+            .and_then(Value::as_str)
+            .is_some_and(|name| {
+                let trimmed = name.trim();
+                !trimmed.is_empty() && trimmed != account_id
+            });
+        if !explicit {
+            let accounts = latest
+                .get(field)
+                .and_then(Value::as_object)
+                .cloned()
+                .unwrap_or_default();
+            payload.insert(
+                "display_name".to_owned(),
+                json!(default_display_name(field, &accounts)),
+            );
+        }
+    }
     payload
         .entry("display_name")
         .or_insert_with(|| json!(account_id));
     validate_credential_payload(field, &json!({account_id: payload}))?;
-    let _guard = STORE_LOCK.lock().map_err(|_| "凭证存储事务不可用")?;
-    let mut latest = read_raw_credentials(root);
     latest
         .entry(field.to_owned())
         .or_insert_with(|| json!({}))
@@ -403,6 +472,52 @@ pub fn save_credential_account(
         .ok_or("凭证账号映射损坏")?
         .insert(account_id.to_owned(), json!(payload));
     save_unlocked(root, &latest)
+}
+/// 重命名账号 (T18): 只改目标账号的 `display_name`, 不动 token / site / 其他字段。
+///
+/// 走 `read_raw_credentials` 而非 `load_credentials`, 避免顺带丢弃形状不合规的
+/// 其他账号 (C092); 同 Provider 内不允许重名。
+pub fn rename_credential_account(
+    root: &Path,
+    field: &str,
+    account_id: &str,
+    display_name: &str,
+) -> Result<(), String> {
+    if !field.ends_with("QuotaAccounts") || !is_allowed_field(field) || !valid_id(account_id) {
+        return Err("凭证账号目标无效".to_owned());
+    }
+    let trimmed = display_name.trim();
+    if trimmed.is_empty() {
+        return Err("账号名称不能为空".to_owned());
+    }
+    if trimmed.chars().count() > 32 || trimmed.len() > 256 {
+        return Err("账号名称过长".to_owned());
+    }
+    if trimmed.chars().any(char::is_control) {
+        return Err("账号名称不能包含换行或控制字符".to_owned());
+    }
+    let _guard = STORE_LOCK.lock().map_err(|_| "凭证存储事务不可用")?;
+    let mut latest = read_raw_credentials(root);
+    let accounts = latest
+        .get_mut(field)
+        .and_then(Value::as_object_mut)
+        .ok_or("凭证账号映射不存在")?;
+    let duplicate = accounts.iter().any(|(id, account)| {
+        id != account_id
+            && account
+                .get("display_name")
+                .and_then(Value::as_str)
+                .is_some_and(|name| name.trim().to_lowercase() == trimmed.to_lowercase())
+    });
+    if duplicate {
+        return Err("该名称已被同 Provider 的其他账号使用".to_owned());
+    }
+    let account = accounts
+        .get_mut(account_id)
+        .and_then(Value::as_object_mut)
+        .ok_or("凭证账号不存在")?;
+    account.insert("display_name".to_owned(), json!(trimmed));
+    write_payloads_unchecked(root, &latest)
 }
 pub fn remove_credential_account(root: &Path, field: &str, account_id: &str) -> Result<(), String> {
     if !field.ends_with("QuotaAccounts") || !is_allowed_field(field) || !valid_id(account_id) {
@@ -491,10 +606,16 @@ pub fn import_codex_discovered(root: &Path, home: &Path) -> Result<usize, String
         if accounts.contains_key(&account.account_id) {
             continue;
         }
-        accounts.insert(
-            account.account_id.clone(),
-            codex_local::metadata_payload(account),
-        );
+        let mut payload = codex_local::metadata_payload(account);
+        let placeholder = payload
+            .get("display_name")
+            .and_then(Value::as_str)
+            .is_none_or(|name| name == account.account_id);
+        if placeholder {
+            // T18: 无邮箱的发现账号使用 «Codex · 账号 N» 默认名.
+            payload["display_name"] = json!(default_display_name("codexQuotaAccounts", &*accounts));
+        }
+        accounts.insert(account.account_id.clone(), payload);
         added += 1;
     }
     if added == 0 {
@@ -866,7 +987,7 @@ pub fn capture_stepfun_cookie_with(
         ..
     } = outcome
     {
-        let payload = stepfun_web::stepfun_account_payload(token, captured_site, account_id);
+        let payload = stepfun_web::stepfun_account_payload(token, captured_site);
         save_credential_account(root, "stepfunQuotaAccounts", account_id, &payload)?;
     }
     Ok(outcome)
@@ -902,6 +1023,14 @@ fn save_unlocked(root: &Path, payloads: &CredentialPayloads) -> Result<(), Strin
     for (field, payload) in payloads {
         validate_credential_payload(field, payload)?;
     }
+    write_payloads_unchecked(root, payloads)
+}
+
+/// 不重新校验其他账号的写入路径 (T18 重命名专用).
+///
+/// 文件里可能已有 C092 遗留的形状不合规账号; 重命名只改目标账号的
+/// display_name, 不应因此让整次写入失败或静默丢弃其他账号.
+fn write_payloads_unchecked(root: &Path, payloads: &CredentialPayloads) -> Result<(), String> {
     let body = serde_json::to_vec_pretty(payloads).map_err(|_| "凭证编码失败")?;
     if body.len() as u64 > MAX_CREDENTIAL_BYTES {
         return Err("凭证文件超过大小上限".to_owned());

@@ -30,6 +30,9 @@ public struct CodexAccountRecord: Codable, Equatable, Sendable {
     public let schemaVersion: Int
     public let accountID: String
     public var email: String?
+    /// 用户自定义标签 (T18). 只存标签本身, 显示时统一拼 «Codex · <标签>».
+    /// 可选字段不提升 schemaVersion: v2 旧记录缺失该键时按 nil 解码.
+    public var customName: String?
     public var accessToken: String?
     public var refreshToken: String?
     public var idToken: String?
@@ -42,6 +45,7 @@ public struct CodexAccountRecord: Codable, Equatable, Sendable {
         schemaVersion: Int = CodexAccountRecord.schemaVersion,
         accountID: String,
         email: String? = nil,
+        customName: String? = nil,
         accessToken: String? = nil,
         refreshToken: String? = nil,
         idToken: String? = nil,
@@ -53,6 +57,7 @@ public struct CodexAccountRecord: Codable, Equatable, Sendable {
         self.schemaVersion = schemaVersion
         self.accountID = accountID
         self.email = email
+        self.customName = customName
         self.accessToken = accessToken
         self.refreshToken = refreshToken
         self.idToken = idToken
@@ -75,8 +80,15 @@ public struct CodexAccountRecord: Codable, Equatable, Sendable {
         return .connected
     }
 
-    /// 脱敏展示值: 邮箱只保留 @ 前缀, 无邮箱时回落 account ID 前 8 位.
+    /// 脱敏展示值: 自定义标签优先, 其次邮箱只保留 @ 前缀,
+    /// 无邮箱时回落 account ID 前 8 位.
     public var displayName: String {
+        if let customName {
+            let trimmed = customName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                return "Codex · " + trimmed
+            }
+        }
         if let email, !email.isEmpty {
             return "Codex · " + (email.split(separator: "@").first.map(String.init) ?? "")
         }
@@ -94,6 +106,8 @@ public struct CodexAccountIndex: Codable, Equatable, Sendable {
         public let credentialKeyHash: String
         public let accountID: String
         public var email: String?
+        /// 用户自定义标签 (T18), 与 record.customName 同源.
+        public var customName: String?
         public var authorizationState: CodexAuthorizationState
         public var credentialOrigin: CodexCredentialOrigin
 
@@ -101,12 +115,14 @@ public struct CodexAccountIndex: Codable, Equatable, Sendable {
             credentialKeyHash: String,
             accountID: String,
             email: String? = nil,
+            customName: String? = nil,
             authorizationState: CodexAuthorizationState,
             credentialOrigin: CodexCredentialOrigin
         ) {
             self.credentialKeyHash = credentialKeyHash
             self.accountID = accountID
             self.email = email
+            self.customName = customName
             self.authorizationState = authorizationState
             self.credentialOrigin = credentialOrigin
         }

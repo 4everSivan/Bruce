@@ -58,7 +58,11 @@ public actor CodexTokenResolver {
             .sorted { $0.key < $1.key }
             .map { accountID, cache -> CodexTokenManagerState.AccountState in
                 let displayName: String
-                if let email = cache.state.email, !email.isEmpty {
+                if let customName = cache.state.customName,
+                   !customName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    displayName = "Codex · "
+                        + customName.trimmingCharacters(in: .whitespacesAndNewlines)
+                } else if let email = cache.state.email, !email.isEmpty {
                     displayName = "Codex · "
                         + (email.split(separator: "@").first.map(String.init) ?? "")
                 } else {
@@ -74,6 +78,32 @@ public actor CodexTokenResolver {
                 )
             }
         return CodexTokenManagerState(accounts: accounts)
+    }
+
+    // MARK: 重命名 (T18)
+
+    /// 更新账号自定义标签. 只改 record.customName, 不触碰 token / 授权状态.
+    /// 传 nil 表示恢复默认 (邮箱前缀 / accountID 前缀).
+    public func renameAccount(accountID: String, customName: String?) throws {
+        guard var record = try store.loadRecord(for: accountID) else {
+            throw CodexCredentialStoreError.accountNotFound
+        }
+        record.customName = customName
+        record.updatedAt = clock()
+        try store.saveRecord(record)
+        if caches[accountID] == nil {
+            caches[accountID] = AccountCache(
+                state: .seeded(from: record),
+                inFlightTask: nil,
+                storageRetryTask: nil
+            )
+        }
+        caches[accountID]?.state.customName = customName
+        caches[accountID]?.state.updatedAt = record.updatedAt
+        if var pending = caches[accountID]?.state.pendingRecord {
+            pending.customName = customName
+            caches[accountID]?.state.pendingRecord = pending
+        }
     }
 
     // MARK: 登录接入

@@ -174,6 +174,9 @@ struct BruceOnboardingCoreHarness {
         try clineStoredCredentialParserRawKey()
         try pricingCatalogMatchesCollectorRows()
         try pricingOverrideSelectionMatchesCollector()
-        print("BruceOnboardingCore tests passed: 170")
+        try providerAccountNamingDefaultsAndValidation()
+        try providerAccountStoreRenameAndUpsertPreservation()
+        try codexCustomNameOverridesAndBackwardCompatibility()
+        print("BruceOnboardingCore tests passed: 173")
     }
 }

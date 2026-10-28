@@ -65,6 +65,9 @@ final class SubscriptionService {
     /// 验证通过 (status ok) 后的回调, 由 Coordinator 绑定为定向刷新 (C020):
     /// 使新添加/重新配置的订阅无需等待定时刷新即出现在仪表盘.
     var onProviderVerified: ((SubscriptionProviderID) -> Void)?
+    /// 账号重命名后的回调, 由 Coordinator 绑定为定向刷新 (T18):
+    /// 让 collector 重新注入 display_name, 仪表盘账号子卡即时显示新名称.
+    var onAccountRenamed: ((SubscriptionProviderID) -> Void)?
 
     /// 按 provider 获取缓存的 ProviderAccountStore, 不存在时创建并缓存.
     func accountStore(for id: SubscriptionProviderID) -> ProviderAccountStore {
@@ -407,6 +410,11 @@ final class SubscriptionService {
         }
         let entries = index.accounts.sorted { $0.accountID < $1.accountID }
         let prefixes = entries.map { entry -> String in
+            if let customName = entry.customName?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+               !customName.isEmpty {
+                return customName
+            }
             if let email = entry.email, !email.isEmpty {
                 return email.split(separator: "@").first.map(String.init) ?? email
             }
@@ -501,16 +509,21 @@ final class SubscriptionService {
 
     /// 把单个账号的凭证写入 ProviderAccountStore (upsert) 并标记 connected.
     /// 所有非 Codex provider 的保存/导入都走这里, 确保账号列表可见且状态正确.
-    /// 返回 accountID; 写入失败返回 nil (调用方报错).
+    /// T18: 新建账号的默认名由 `ProviderAccountNaming` 统一生成 («账号 N»);
+    /// 已存在账号由 `upsertAccount` 保留自定义名称, 重复粘贴不会覆盖用户命名.
+    /// 返回是否写入成功 (调用方报错).
     @discardableResult
     func saveProviderAccountCredential(
         for provider: SubscriptionProviderID,
         accountID: String,
-        displayName: String,
-        credentialJSON: String
+        credentialJSON: String,
+        stepFunGlobal: Bool = false
     ) -> Bool {
         let store = accountStore(for: provider)
         do {
+            let displayName = try store.makeDefaultDisplayName(
+                stepFunGlobal: stepFunGlobal
+            )
             try store.upsertAccount(
                 accountID: accountID,
                 displayName: displayName,
@@ -648,6 +661,147 @@ final class SubscriptionService {
                 "\(id.displayName) 账号移除失败, 请检查本机凭据文件 (~/Library/Application Support/Bruce/credentials.json)", for: id
             )
         }
+    }
+
+    /// 重命名账号 (T18). 只编辑标签; Provider 前缀、accountID 与凭证保持不变.
+    /// 空标签表示恢复默认名 («账号 N», Codex 回落到邮箱前缀).
+    func renameAccount(
+        accountID: String,
+        from id: SubscriptionProviderID,
+        label rawLabel: String
+    ) {
+        if id == .codex {
+            renameCodexAccount(accountID: accountID, label: rawLabel)
+            return
+        }
+        let store = accountStore(for: id)
+        do {
+            let index = try store.loadIndex()
+            guard let entry = index.entry(for: accountID) else {
+                model.setSettingsError(
+                    "\(id.displayName) 账号不存在, 未执行重命名", for: id
+                )
+                return
+            }
+            let stepFunGlobal = id == .stepfun
+                && Self.isStepFunGlobal(
+                    displayName: entry.displayName,
+                    credentialJSON: (try? store.loadRecord(for: accountID))?.credentialJSON
+                )
+            let newDisplayName: String
+            let trimmed = rawLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty {
+                newDisplayName = ProviderAccountNaming.defaultDisplayName(
+                    for: id,
+                    existingDisplayNames: index.accounts.map(\.displayName),
+                    stepFunGlobal: stepFunGlobal,
+                    excludingDisplayName: entry.displayName
+                )
+            } else {
+                let label = try ProviderAccountNaming.validateLabel(trimmed)
+                let candidate = ProviderAccountNaming.compose(
+                    provider: id,
+                    label: label,
+                    stepFunGlobal: stepFunGlobal
+                )
+                guard ProviderAccountNaming.fitsCollectorLimit(candidate) else {
+                    throw ProviderAccountNamingError.tooLong
+                }
+                guard !ProviderAccountNaming.isDuplicate(
+                    candidate,
+                    provider: id,
+                    existingDisplayNames: index.accounts.map(\.displayName),
+                    excludingDisplayName: entry.displayName
+                ) else {
+                    throw ProviderAccountNamingError.duplicate
+                }
+                newDisplayName = candidate
+            }
+            try store.renameAccount(
+                accountID: accountID,
+                displayName: newDisplayName
+            )
+            model.setProviderAccountSummaries(try store.summaries(), for: id)
+            model.setSettingsError(nil, for: id)
+            onAccountRenamed?(id)
+        } catch let error as ProviderAccountNamingError {
+            model.setSettingsError(error.message, for: id)
+        } catch {
+            model.setSettingsError(
+                "\(id.displayName) 账号重命名失败, 请检查本机凭据文件", for: id
+            )
+        }
+    }
+
+    /// Codex 重命名: customName 为 nil 时恢复默认 (邮箱前缀 / accountID 前缀).
+    func renameCodexAccount(accountID: String, label rawLabel: String) {
+        let statuses = model.codexAccountStatuses
+        guard let status = statuses.first(where: { $0.accountID == accountID }) else {
+            model.setSettingsError("Codex 账号不存在, 未执行重命名", for: .codex)
+            return
+        }
+        let trimmed = rawLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let customName: String?
+        if trimmed.isEmpty {
+            customName = nil
+        } else {
+            do {
+                let label = try ProviderAccountNaming.validateLabel(trimmed)
+                let candidate = ProviderAccountNaming.compose(
+                    provider: .codex,
+                    label: label
+                )
+                guard ProviderAccountNaming.fitsCollectorLimit(candidate) else {
+                    throw ProviderAccountNamingError.tooLong
+                }
+                guard !ProviderAccountNaming.isDuplicate(
+                    candidate,
+                    provider: .codex,
+                    existingDisplayNames: statuses.map(\.displayName),
+                    excludingDisplayName: status.displayName
+                ) else {
+                    throw ProviderAccountNamingError.duplicate
+                }
+                customName = label
+            } catch let error as ProviderAccountNamingError {
+                model.setSettingsError(error.message, for: .codex)
+                return
+            } catch {
+                model.setSettingsError("Codex 账号重命名失败", for: .codex)
+                return
+            }
+        }
+        model.setBusySubscription(true, for: .codex)
+        Task { @MainActor in
+            defer { self.model.setBusySubscription(false, for: .codex) }
+            do {
+                try await self.codexTokenManager.renameAccount(
+                    accountID: accountID,
+                    customName: customName
+                )
+                await self.publishCodexAccountStatuses()
+                self.publishCodexSummaryFromIndex()
+                self.model.setSettingsError(nil, for: .codex)
+                self.onAccountRenamed?(.codex)
+            } catch {
+                self.model.setSettingsError(
+                    "Codex 账号重命名失败, 请检查本机凭据文件", for: .codex
+                )
+            }
+        }
+    }
+
+    /// StepFun 站点判定: 优先精确站点前缀, 其次令牌推导.
+    /// 不使用 contains("国际"), 避免自定义标签把国内账号误判成国际站 (T18).
+    private static func isStepFunGlobal(
+        displayName: String,
+        credentialJSON: String?
+    ) -> Bool {
+        if ProviderAccountNaming.isStepFunGlobalDisplayName(displayName) {
+            return true
+        }
+        guard let credentialJSON else { return false }
+        return ProviderConnectionVerifier.isStepFunGlobalToken(credentialJSON)
     }
 
     /// Codex 单账号移除: 通过 token manager 取消该账号的刷新与存储重试,

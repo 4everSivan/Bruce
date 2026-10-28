@@ -55,6 +55,7 @@ struct SettingsView: View {
     @State var showsClearCacheConfirm = false
     @State var dataActionMessage: String?
     @State var accountRemovalRequest: AccountRemovalRequest?
+    @State var accountRenameRequest: AccountRenameRequest?
     /// 统一悬浮错误胶囊状态 (C111: 零抖动、4s倒计时、手动✕关闭、Tab切换自动失效)
     @State private var activeToastMessage: String?
 

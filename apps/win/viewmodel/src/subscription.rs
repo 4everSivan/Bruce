@@ -216,7 +216,7 @@ fn account_tag(
         return None;
     }
     if provider_id == "stepfun"
-        && (display_name.contains("国际") || display_name.contains("Global"))
+        && (display_name.starts_with("StepFun (国际)") || display_name.starts_with("StepFun 国际"))
     {
         return Some("国际".to_owned());
     }

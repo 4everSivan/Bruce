@@ -10,6 +10,7 @@ struct CodexProviderSettingsSection: View {
     @Binding var showsCodexCCImportConfirm: Bool
     var onRemove: () -> Void
     var onRemoveAccount: (String, String) -> Void
+    var onRenameAccount: (String, String) -> Void
 
     var body: some View {
         let busy = model.busySubscriptionProviders.contains(.codex)
@@ -101,6 +102,14 @@ struct CodexProviderSettingsSection: View {
                         .font(.caption)
                         .accessibilityHint("在浏览器中重新完成该账号的 Codex 官方设备码登录")
                     }
+                    Button {
+                        onRenameAccount(status.accountID, status.displayName)
+                    } label: {
+                        Image(systemName: "pencil")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel("重命名账号 \(status.displayName)")
                     Button {
                         onRemoveAccount(status.accountID, status.displayName)
                     } label: {

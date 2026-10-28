@@ -235,6 +235,7 @@ public struct ProviderAccountSummary: Codable, Equatable, Sendable {
 public enum ProviderAccountStoreError: Error, Equatable {
     case indexCorrupted(provider: String)
     case recordCorrupted(provider: String, accountID: String)
+    case accountNotFound(provider: String, accountID: String)
 }
 
 /// 通用多账号凭证存储. 按 provider 实例化, 管理 index + per-account record.
@@ -394,7 +395,9 @@ public final class ProviderAccountStore: @unchecked Sendable {
 
     /// 新增或更新账号凭证 (upsert).
     /// - 账号不存在: 新增 record + index 条目.
-    /// - 账号已存在: 更新 credentialJSON / displayName, 不改变授权状态.
+    /// - 账号已存在: 更新 credentialJSON, **保留现有 displayName** (T18:
+    ///   重复粘贴同一凭证不得覆盖用户自定义名称); StepFun 例外, 换站点时
+    ///   保留标签、仅重建站点前缀.
     /// 用于"更换凭证"场景 (重新粘贴 / 重新导入).
     public func upsertAccount(
         accountID: String,
@@ -404,23 +407,32 @@ public final class ProviderAccountStore: @unchecked Sendable {
     ) throws {
         var index = try loadIndex()
         if let idx = index.accounts.firstIndex(where: { $0.accountID == accountID }) {
-            // 已存在: 更新 record 与 index 元数据, 保留授权状态.
+            // 已存在: 更新 record 与 index 元数据, 保留授权状态与用户名称.
+            let preservedName: String
+            if provider == .stepfun {
+                preservedName = ProviderAccountNaming.reconciledStepFunDisplayName(
+                    existingDisplayName: index.accounts[idx].displayName,
+                    newDisplayName: displayName
+                )
+            } else {
+                preservedName = index.accounts[idx].displayName
+            }
             if var record = try loadRecord(for: accountID) {
                 record.credentialJSON = credentialJSON
-                record.displayName = displayName
+                record.displayName = preservedName
                 record.updatedAt = now
                 try saveRecord(record)
             } else {
                 let record = ProviderAccountRecord(
                     accountID: accountID,
-                    displayName: displayName,
+                    displayName: preservedName,
                     credentialJSON: credentialJSON,
                     authorizationState: index.accounts[idx].authorizationState,
                     updatedAt: now
                 )
                 try saveRecord(record)
             }
-            index.accounts[idx].displayName = displayName
+            index.accounts[idx].displayName = preservedName
             try saveIndex(index)
         } else {
             // 不存在: 走 addAccount (新增).
@@ -431,6 +443,51 @@ public final class ProviderAccountStore: @unchecked Sendable {
                 now: now
             )
         }
+    }
+
+    /// 生成该 Provider 新建账号的默认显示名 («账号 N», 最小未占用序号).
+    public func makeDefaultDisplayName(stepFunGlobal: Bool = false) throws -> String {
+        let index = try loadIndex()
+        return ProviderAccountNaming.defaultDisplayName(
+            for: provider,
+            existingDisplayNames: index.accounts.map(\.displayName),
+            stepFunGlobal: stepFunGlobal
+        )
+    }
+
+    /// 现有账号的全部显示名, 供重名校验与默认序号计算.
+    public func displayNames() throws -> [String] {
+        try loadIndex().accounts.map(\.displayName)
+    }
+
+    /// 重命名账号 (T18): 只改显示名, 保留凭据、授权状态与 accountID.
+    /// 先写 record 再写 index; 任一步失败上抛, 调用方不得假装成功.
+    public func renameAccount(
+        accountID: String,
+        displayName: String,
+        now: Date = Date()
+    ) throws {
+        var index = try loadIndex()
+        guard let idx = index.accounts.firstIndex(where: { $0.accountID == accountID }) else {
+            throw ProviderAccountStoreError.accountNotFound(
+                provider: provider.rawValue,
+                accountID: accountID
+            )
+        }
+        let trimmed = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw ProviderAccountNamingError.empty
+        }
+        guard ProviderAccountNaming.fitsCollectorLimit(trimmed) else {
+            throw ProviderAccountNamingError.tooLong
+        }
+        if var record = try loadRecord(for: accountID) {
+            record.displayName = trimmed
+            record.updatedAt = now
+            try saveRecord(record)
+        }
+        index.accounts[idx].displayName = trimmed
+        try saveIndex(index)
     }
 
     /// 更新账号状态.
@@ -512,23 +569,31 @@ public final class ProviderAccountStore: @unchecked Sendable {
         }
 
         // 按 provider 格式组装 accountID / displayName / credentialJSON
+        // T18: 迁移产生的新账号同样使用统一默认名「账号 N」.
+        func defaultName(_ global: Bool = false) -> String {
+            ProviderAccountNaming.defaultDisplayName(
+                for: provider,
+                existingDisplayNames: [],
+                stepFunGlobal: global
+            )
+        }
         let (accountID, displayName, credentialJSON): (String, String, String)
         switch provider {
         case .kimi:
             let key = legacyValues[0]
             accountID = ProviderAccountIDGenerator.kimiAccountID(apiKey: key)
-            displayName = "Kimi · \(accountID)"
+            displayName = defaultName()
             credentialJSON = key
         case .deepseek:
             let key = legacyValues[0]
             accountID = ProviderAccountIDGenerator.deepseekAccountID(apiKey: key)
-            displayName = "DeepSeek · \(accountID)"
+            displayName = defaultName()
             credentialJSON = key
         case .volcengine:
             let ak = legacyValues[0]
             let sk = legacyValues[1]
             accountID = ProviderAccountIDGenerator.volcengineAccountID(accessKey: ak)
-            displayName = "火山引擎 · \(accountID)"
+            displayName = defaultName()
             let dict: [String: String] = ["accessKey": ak, "secretKey": sk]
             let data = (try? JSONSerialization.data(
                 withJSONObject: dict, options: [.sortedKeys]
@@ -538,7 +603,7 @@ public final class ProviderAccountStore: @unchecked Sendable {
             let apiKey = legacyValues[0]
             let baseURL = legacyValues[1]
             accountID = ProviderAccountIDGenerator.zhipuAccountID(apiKey: apiKey)
-            displayName = "Z.ai · \(accountID)"
+            displayName = defaultName()
             let dict: [String: String] = ["api_key": apiKey, "base_url": baseURL]
             let data = (try? JSONSerialization.data(
                 withJSONObject: dict, options: [.sortedKeys]
@@ -550,13 +615,13 @@ public final class ProviderAccountStore: @unchecked Sendable {
                 in: token, path: ["claudeAiOauth", "accessToken"]
             ) ?? token
             accountID = ProviderAccountIDGenerator.claudeAccountID(accessToken: access)
-            displayName = "Claude · \(String(accountID.prefix(8)))"
+            displayName = defaultName()
             credentialJSON = token
         case .grok:
             let token = legacyValues[0]
             let key = Self.grokKeyFromJSON(token) ?? token
             accountID = ProviderAccountIDGenerator.grokAccountID(key: key)
-            displayName = "Grok · \(String(accountID.prefix(8)))"
+            displayName = defaultName()
             credentialJSON = token
         case .opencodeGo:
             let token = legacyValues[0]
@@ -564,22 +629,22 @@ public final class ProviderAccountStore: @unchecked Sendable {
                 in: token, path: ["workspaceId"]
             ) ?? token
             accountID = ProviderAccountIDGenerator.opencodeGoAccountID(accessToken: workspace)
-            displayName = "OpenCode GO · \(String(accountID.prefix(8)))"
+            displayName = defaultName()
             credentialJSON = token
         case .stepfun:
             let token = legacyValues[0]
             accountID = ProviderAccountIDGenerator.stepfunAccountID(token: token)
-            displayName = "StepFun · \(String(accountID.prefix(8)))"
+            displayName = defaultName(ProviderConnectionVerifier.isStepFunGlobalToken(token))
             credentialJSON = token
         case .jev:
             let key = legacyValues[0]
             accountID = ProviderAccountIDGenerator.jevAccountID(apiKey: key)
-            displayName = "Jev · \(String(accountID.prefix(8)))"
+            displayName = defaultName()
             credentialJSON = key
         case .cline:
             let key = legacyValues[0]
             accountID = ProviderAccountIDGenerator.clineAccountID(apiKey: key)
-            displayName = "Cline · \(String(accountID.prefix(8)))"
+            displayName = defaultName()
             credentialJSON = key
         case .codex:
             return false // Codex 已有独立的多账号体系

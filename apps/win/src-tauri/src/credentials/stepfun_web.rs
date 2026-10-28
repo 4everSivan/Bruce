@@ -309,13 +309,13 @@ pub fn stepfun_account_id(token: &str) -> String {
 }
 
 /// 组装持久化至 `stepfunQuotaAccounts` 的账号载荷。
-pub fn stepfun_account_payload(token: &str, site: StepFunSite, account_id: &str) -> Value {
-    let suffix = account_id.rsplit('-').next().unwrap_or(account_id);
+/// T18: 不写 display_name, 由 `save_credential_account` 统一生成
+/// «StepFun · 账号 N» 或保留既有自定义名.
+pub fn stepfun_account_payload(token: &str, site: StepFunSite) -> Value {
     json!({
         "token": token,
         "site": site.as_str(),
         "is_global": site == StepFunSite::Global,
-        "display_name": format!("StepFun · {suffix}"),
     })
 }
 

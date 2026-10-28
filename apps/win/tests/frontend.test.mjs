@@ -2201,3 +2201,56 @@ test("tray preview card renders backend panel.preview from the real panel contra
   assert.equal(app.node("statusText").textContent, "部分告警");
   assert.ok(app.node("statusChip").classList.contains("warn"));
 });
+
+test("account rows can be renamed without touching credentials (T18)", async () => {
+  const accounts = [
+    { field: "kimiQuotaAccounts", accountId: "k1", displayName: "Kimi · 账号 1", authorizationState: "ok" },
+    { field: "kimiQuotaAccounts", accountId: "k2", displayName: "Kimi · 账号 2", authorizationState: "ok" },
+  ];
+  const app = await boot({
+    html: "settings.html",
+    accounts,
+    settings: {
+      ...defaults,
+      enabledProviders: ["kimi"],
+      subscriptionProviders: {
+        kimi: { enabled: true, lastVerifiedAt: null, verificationStatus: "ok", failureReason: null },
+      },
+    },
+  });
+  await app.node("provider-configure-kimi").click();
+  await app.node("cfg-rename-k1").click();
+  const input = app.node("cfg-rename-input-k1");
+  assert.equal(input.value, "账号 1", "编辑框只显示标签, 不包含 Provider 前缀");
+
+  input.value = "工作";
+  await app.node("cfg-rename-save-k1").click();
+  const rename = app.calls.find(call => call.command === "rename_credential_account");
+  assert.equal(rename.args.field, "kimiQuotaAccounts");
+  assert.equal(rename.args.accountId, "k1");
+  assert.equal(rename.args.displayName, "Kimi · 工作");
+  assert.equal(
+    app.calls.some(call => call.command === "save_credential_account"),
+    false,
+    "重命名不得重写凭证",
+  );
+
+  // 同 Provider 重名就地拒绝, 不发起命令.
+  const before = app.calls.filter(call => call.command === "rename_credential_account").length;
+  await app.node("cfg-rename-k1").click();
+  app.node("cfg-rename-input-k1").value = "账号 2";
+  await app.node("cfg-rename-save-k1").click();
+  assert.equal(
+    app.calls.filter(call => call.command === "rename_credential_account").length,
+    before,
+    "重名不得发起重命名",
+  );
+  assert.match(app.node("provider-dialog").textContent, /该名称已被同 Provider 的其他账号使用/);
+
+  // 留空保存恢复默认名 (排除自身后取最小未占用序号).
+  await app.node("cfg-rename-k1").click();
+  app.node("cfg-rename-input-k1").value = "";
+  await app.node("cfg-rename-save-k1").click();
+  const restores = app.calls.filter(call => call.command === "rename_credential_account");
+  assert.equal(restores.at(-1).args.displayName, "Kimi · 账号 1");
+});

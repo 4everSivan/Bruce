@@ -187,6 +187,17 @@ public actor CodexTokenManager: CodexChallengeHandling {
         await resolver.statusSnapshot()
     }
 
+    /// 更新账号自定义标签 (T18). 传 nil 恢复默认显示名.
+    public func renameAccount(
+        accountID: String,
+        customName: String?
+    ) async throws {
+        try await resolver.renameAccount(
+            accountID: accountID,
+            customName: customName
+        )
+    }
+
     // MARK: 登录接入
 
     public func storeLoginResult(

@@ -22,7 +22,6 @@ extension SubscriptionService {
             let saved = saveProviderAccountCredential(
                 for: .deepseek,
                 accountID: accountID,
-                displayName: "DeepSeek · \(accountID)",
                 credentialJSON: key
             )
             if !saved {
@@ -57,7 +56,6 @@ extension SubscriptionService {
         guard saveProviderAccountCredential(
             for: .volcengine,
             accountID: accountID,
-            displayName: "火山引擎 · \(accountID)",
             credentialJSON: credentialJSON
         ) else { return }
         model.setSubscriptionCredentialConfigured(true, for: .volcengine)
@@ -86,7 +84,6 @@ extension SubscriptionService {
         guard saveProviderAccountCredential(
             for: .zhipu,
             accountID: accountID,
-            displayName: "Z.ai · \(accountID)",
             credentialJSON: credentialJSON
         ) else { return }
         model.setSubscriptionCredentialConfigured(true, for: .zhipu)
@@ -132,7 +129,6 @@ extension SubscriptionService {
         guard saveProviderAccountCredential(
             for: .kimi,
             accountID: accountID,
-            displayName: "Kimi · \(accountID)",
             credentialJSON: key
         ) else { return }
         model.setSubscriptionCredentialConfigured(true, for: .kimi)
@@ -150,14 +146,11 @@ extension SubscriptionService {
         let store = accountStore(for: .stepfun)
         let accountID = ProviderAccountIDGenerator.stepfunAccountID(token: trimmed)
         let isGlobal = (site == .global) || ProviderConnectionVerifier.isStepFunGlobalToken(trimmed)
-        let displayName = isGlobal
-            ? "StepFun (国际) · \(String(accountID.prefix(8)))"
-            : "StepFun · \(String(accountID.prefix(8)))"
         guard saveProviderAccountCredential(
             for: .stepfun,
             accountID: accountID,
-            displayName: displayName,
-            credentialJSON: trimmed
+            credentialJSON: trimmed,
+            stepFunGlobal: isGlobal
         ) else { return }
         model.setSubscriptionCredentialConfigured(true, for: .stepfun)
         if let summaries = try? store.summaries() {
@@ -176,7 +169,6 @@ extension SubscriptionService {
         }
         let store = accountStore(for: .jev)
         let accountID = ProviderAccountIDGenerator.jevAccountID(apiKey: key)
-        let displayName = "Jev · \(String(accountID.prefix(8)))"
 
         let credentialJSON: String
         if let balance, balance >= 0 {
@@ -197,7 +189,6 @@ extension SubscriptionService {
         guard saveProviderAccountCredential(
             for: .jev,
             accountID: accountID,
-            displayName: displayName,
             credentialJSON: credentialJSON
         ) else { return }
         model.setSubscriptionCredentialConfigured(true, for: .jev)
@@ -218,11 +209,9 @@ extension SubscriptionService {
         }
         let store = accountStore(for: .cline)
         let accountID = ProviderAccountIDGenerator.clineAccountID(apiKey: key)
-        let displayName = "Cline · \(String(accountID.prefix(8)))"
         guard saveProviderAccountCredential(
             for: .cline,
             accountID: accountID,
-            displayName: displayName,
             credentialJSON: key
         ) else { return }
         model.setSubscriptionCredentialConfigured(true, for: .cline)
@@ -275,11 +264,9 @@ extension SubscriptionService {
                 // 多账号路径: 写入 ProviderAccountStore (upsert).
                 let access = Self.claudeAccessToken(from: json) ?? json
                 let accountID = ProviderAccountIDGenerator.claudeAccountID(accessToken: access)
-                let displayName = "Claude · " + String(accountID.prefix(8))
                 guard saveProviderAccountCredential(
                     for: .claude,
                     accountID: accountID,
-                    displayName: displayName,
                     credentialJSON: json
                 ) else { return }
                 model.setSubscriptionCredentialConfigured(true, for: .claude)
@@ -331,11 +318,9 @@ extension SubscriptionService {
             // 多账号路径: 写入 ProviderAccountStore (upsert).
             let key = Self.grokKey(from: json) ?? json
             let accountID = ProviderAccountIDGenerator.grokAccountID(key: key)
-            let displayName = "Grok · " + String(accountID.prefix(8))
             guard saveProviderAccountCredential(
                 for: .grok,
                 accountID: accountID,
-                displayName: displayName,
                 credentialJSON: json
             ) else { return }
             model.setSubscriptionCredentialConfigured(true, for: .grok)
@@ -383,11 +368,9 @@ extension SubscriptionService {
             let accountID = ProviderAccountIDGenerator.opencodeGoAccountID(
                 accessToken: workspace
             )
-            let displayName = "OpenCode GO · " + String(accountID.prefix(8))
             guard saveProviderAccountCredential(
                 for: .opencodeGo,
                 accountID: accountID,
-                displayName: displayName,
                 credentialJSON: json
             ) else { return }
             model.setSubscriptionCredentialConfigured(true, for: .opencodeGo)

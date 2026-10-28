@@ -39,7 +39,8 @@ enum CodexTokenManagerTests {
         try await refreshSaveReadBackFailureKeepsMetadata()
         try await missingRecordDistinctFromReadError()
         try await disconnectRemovesOnlyRequestedAccount()
-        print("CodexTokenManager tests passed: 33")
+        try await renameAccountUpdatesStatusAndPersists()
+        print("CodexTokenManager tests passed: 34")
     }
 
     private static let fixedNow = Date(timeIntervalSince1970: 1_752_000_000)
@@ -1501,6 +1502,55 @@ enum CodexTokenManagerTests {
         let state = await manager.statusSnapshot()
         guard state.accounts.map(\.accountID) == ["acc-2"] else {
             throw CodexTestFailure.expectation("token manager 状态快照仍包含已断开账号")
+        }
+    }
+
+    /// T18: 重命名只更新 customName, 不触发 OAuth; 状态快照与 record 同步.
+    private static func renameAccountUpdatesStatusAndPersists() async throws {
+        let clock = TestClock(start: fixedNow)
+        let memory = InMemoryCredentialStore()
+        let store = CodexCredentialStore(store: memory)
+        try store.saveRecord(CodexAccountRecord(
+            accountID: "acc-1",
+            email: "user@example.com",
+            accessToken: "at",
+            refreshToken: "rt",
+            accessTokenExpiresAt: fixedNow.addingTimeInterval(3600),
+            authorizationState: .connected,
+            credentialOrigin: .Bruce,
+            updatedAt: fixedNow
+        ))
+        let fake = FakeOAuthClient { _, _ in
+            .failure(.networkUnreachable)
+        }
+        let manager = makeManager(store: store, client: fake, clock: clock)
+        // 先加载缓存, 状态快照才会包含该账号.
+        guard case .success = await manager.validAccessToken(for: "acc-1") else {
+            throw CodexTestFailure.expectation("预置 token 应可用")
+        }
+        var state = await manager.statusSnapshot()
+        guard state.accounts.first?.displayName == "Codex · user" else {
+            throw CodexTestFailure.expectation("初始显示名应回落邮箱前缀")
+        }
+
+        try await manager.renameAccount(accountID: "acc-1", customName: "工作")
+        state = await manager.statusSnapshot()
+        guard state.accounts.first?.displayName == "Codex · 工作" else {
+            throw CodexTestFailure.expectation("重命名后状态快照未使用 customName")
+        }
+        guard try store.loadRecord(for: "acc-1")?.customName == "工作" else {
+            throw CodexTestFailure.expectation("重命名未持久化到 record")
+        }
+        guard fake.totalRefreshCount() == 0 else {
+            throw CodexTestFailure.expectation("重命名不得触发 OAuth 刷新")
+        }
+
+        // nil 恢复默认 (邮箱前缀).
+        try await manager.renameAccount(accountID: "acc-1", customName: nil)
+        state = await manager.statusSnapshot()
+        guard state.accounts.first?.displayName == "Codex · user",
+              try store.loadRecord(for: "acc-1")?.customName == nil else {
+            throw CodexTestFailure.expectation("恢复默认未清除 customName")
         }
     }
 }

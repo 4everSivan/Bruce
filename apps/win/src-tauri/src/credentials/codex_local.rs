@@ -116,7 +116,16 @@ pub fn discover_from_files(home: &Path) -> Result<Vec<DiscoveredAccount>, String
 /// 不含任何令牌, 采集端会因 `reauthRequired` 直接跳过该账号。
 pub fn metadata_payload(account: &DiscoveredAccount) -> Value {
     let mut record = serde_json::Map::new();
-    record.insert("display_name".to_owned(), json!(account.account_id));
+    // T18: 有邮箱时优先作为默认名; 否则保留 accountId 占位,
+    // 由导入路径统一替换为 «Codex · 账号 N»。
+    let display_name = account
+        .email
+        .as_deref()
+        .and_then(|email| email.split('@').next())
+        .filter(|local| !local.trim().is_empty())
+        .map(|local| format!("Codex · {local}"))
+        .unwrap_or_else(|| account.account_id.clone());
+    record.insert("display_name".to_owned(), json!(display_name));
     if let Some(email) = account.email.as_deref() {
         record.insert("email".to_owned(), json!(email));
     }
@@ -177,12 +186,19 @@ mod tests {
             origin: DiscoveryOrigin::CliAuth,
         };
         let payload = metadata_payload(&account);
-        assert_eq!(payload["display_name"], json!("acct-1"));
+        assert_eq!(payload["display_name"], json!("Codex · a"));
         assert_eq!(payload["email"], json!("a@b.c"));
         assert_eq!(payload["authorization_state"], json!("reauthRequired"));
         for key in ["access_token", "refresh_token", "id_token"] {
             assert!(payload.get(key).is_none(), "{key} 不得出现在发现记录中");
         }
+        // 无邮箱时保留 accountId 占位, 由导入路径替换为 «Codex · 账号 N».
+        let no_email = DiscoveredAccount {
+            account_id: "acct-2".to_owned(),
+            email: None,
+            origin: DiscoveryOrigin::CliAuth,
+        };
+        assert_eq!(metadata_payload(&no_email)["display_name"], json!("acct-2"));
     }
 
     #[test]

@@ -155,7 +155,10 @@ pub(crate) fn is_stepfun_global(token: &str, request: &ProviderRequest) -> bool 
                 return is_global;
             }
             if let Some(display_name) = obj.get("display_name").and_then(Value::as_str) {
-                if display_name.contains("国际") || display_name.contains("Global") {
+                // T18: 只认名称开头的站点前缀, 自定义标签里的 "国际" 不改变站点.
+                if display_name.starts_with("StepFun (国际)")
+                    || display_name.starts_with("StepFun 国际")
+                {
                     return true;
                 }
             }

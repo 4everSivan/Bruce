@@ -85,6 +85,8 @@ struct APIKeyProviderConfigDialog: View {
     var onSave: ([String: String]) -> Void
     var onDismiss: () -> Void
 
+    @State private var renameRequest: AccountRenameRequest?
+
     private var configured: Bool {
         model.subscriptionCredentialConfigured[id] ?? false
     }
@@ -133,6 +135,20 @@ struct APIKeyProviderConfigDialog: View {
                                     .font(.system(size: 12))
                                     .lineLimit(1)
                                 Spacer()
+                                Button {
+                                    renameRequest = AccountRenameRequest(
+                                        provider: id,
+                                        accountID: summary.accountID,
+                                        displayName: summary.displayName,
+                                        existingDisplayNames: summaries.map(\.displayName)
+                                    )
+                                } label: {
+                                    Image(systemName: "pencil")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel("重命名账号 \(summary.displayName)")
                                 Button {
                                     coordinator.removeAccount(accountID: summary.accountID, from: id)
                                 } label: {
@@ -214,6 +230,9 @@ struct APIKeyProviderConfigDialog: View {
             .padding(.vertical, 14)
         }
         .frame(width: 430)
+        .sheet(item: $renameRequest) { request in
+            AccountRenameSheet(request: request)
+        }
     }
 
     /// demo .field: label (12px semibold secondary) 在上, 全宽输入框居中.

@@ -199,6 +199,11 @@ final class OnboardingCoordinator: ObservableObject {
             self?.refreshSubscription(id)
         }
 
+        // T18: 账号重命名后定向刷新, 让 collector 重新注入 display_name.
+        service.onAccountRenamed = { [weak self] id in
+            self?.refreshSubscription(id)
+        }
+
         // C145: 系统「减弱动态效果」可能在运行中切换; 偏好为 system 时需立即重算,
         // 否则注入到视图树的环境值会停留在启动时的旧判定.
         systemMotionObserver = NSWorkspace.shared.notificationCenter.addObserver(
@@ -329,6 +334,19 @@ final class OnboardingCoordinator: ObservableObject {
 
     func removeAccount(accountID: String, from id: SubscriptionProviderID) {
         subscriptions.removeAccount(accountID: accountID, from: id)
+    }
+
+    /// 重命名账号 (T18). label 为空表示恢复默认名.
+    func renameAccount(
+        accountID: String,
+        from id: SubscriptionProviderID,
+        label: String
+    ) {
+        subscriptions.renameAccount(
+            accountID: accountID,
+            from: id,
+            label: label
+        )
     }
 
     func updateAccountAuthorizationState(

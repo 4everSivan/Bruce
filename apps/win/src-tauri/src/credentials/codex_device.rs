@@ -98,7 +98,16 @@ impl CodexLoginAccount {
     /// 采集端可消费的账号载荷 (与 `import_codex_auth` 同形)。
     pub fn to_payload(&self) -> Value {
         let mut account = serde_json::Map::new();
-        account.insert("display_name".to_owned(), json!(self.account_id));
+        // T18: 邮箱可用时优先作为默认名; 无邮箱时写原始 accountId,
+        // 由 save_credential_account 统一替换为 «Codex · 账号 N»。
+        let display_name = self
+            .email
+            .as_deref()
+            .and_then(|email| email.split('@').next())
+            .filter(|local| !local.trim().is_empty())
+            .map(|local| format!("Codex · {local}"))
+            .unwrap_or_else(|| self.account_id.clone());
+        account.insert("display_name".to_owned(), json!(display_name));
         if let Some(email) = self.email.as_deref() {
             account.insert("email".to_owned(), json!(email));
         }

@@ -11,12 +11,12 @@ use bruce_win_lib::credentials::{
     app_data_root_with, capture_stepfun_cookie_with, credential_accounts, credential_rejections,
     follow_local_claude, follow_local_grok, import_codex_discovered,
     import_volcengine_from_cc_switch, load_credentials, local_claude_status, local_grok_status,
-    merge_credentials, remove_provider_credentials, save_credential_account, save_credentials,
-    stepfun_account_id, validate_credential_payload, verify_subscription,
-    verify_subscription_following_local, verify_subscription_with, with_local_claude,
-    ClaudeLocalStatus, CredentialPayloads, DeepSeekProbe, GrokLocalStatus, StepFunCaptureOutcome,
-    StepFunCookieCandidate, StepFunRemoteTransport, StepFunSite, StepFunVerifyRequest,
-    SubscriptionVerification,
+    merge_credentials, read_raw_credentials, remove_provider_credentials,
+    rename_credential_account, save_credential_account, save_credentials, stepfun_account_id,
+    validate_credential_payload, verify_subscription, verify_subscription_following_local,
+    verify_subscription_with, with_local_claude, ClaudeLocalStatus, CredentialPayloads,
+    DeepSeekProbe, GrokLocalStatus, StepFunCaptureOutcome, StepFunCookieCandidate,
+    StepFunRemoteTransport, StepFunSite, StepFunVerifyRequest, SubscriptionVerification,
 };
 use bruce_win_lib::runtime_core::{window_action, WindowAction};
 use serde_json::json;
@@ -1395,6 +1395,171 @@ fn stepfun_cookie_capture_verifies_remotely_and_upserts_matching_manual_account_
     assert_eq!(
         window_action("stepfun-login", true, false),
         WindowAction::None
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+// MARK: - T18 多账号命名与重命名
+
+/// 重命名只改 display_name: 凭证/站点/其他账号保持不变, 且非法输入被拒绝.
+#[test]
+fn rename_credential_account_only_updates_display_name() {
+    let root = temp_root();
+    save_credential_account(
+        &root,
+        "kimiQuotaAccounts",
+        "a",
+        &json!({"api_key":"key-a","display_name":"Kimi · 账号 1"}),
+    )
+    .unwrap();
+    save_credential_account(
+        &root,
+        "kimiQuotaAccounts",
+        "b",
+        &json!({"api_key":"key-b","display_name":"Kimi · 账号 2"}),
+    )
+    .unwrap();
+    // 手工写入一个形状不合规的账号: 重命名不得顺手清掉它 (C092 同口径).
+    let path = root.join("credentials.json");
+    fs::write(
+        &path,
+        r#"{"kimiQuotaAccounts":{"a":{"api_key":"key-a","display_name":"Kimi · 账号 1"},"bad":{"display_name":""},"b":{"api_key":"key-b","display_name":"Kimi · 账号 2"}}}"#,
+    )
+    .unwrap();
+
+    rename_credential_account(&root, "kimiQuotaAccounts", "a", "Kimi · 工作").unwrap();
+    let loaded = load_credentials(&root);
+    assert_eq!(
+        loaded["kimiQuotaAccounts"]["a"]["display_name"],
+        json!("Kimi · 工作")
+    );
+    assert_eq!(
+        loaded["kimiQuotaAccounts"]["a"]["api_key"],
+        json!("key-a"),
+        "重命名不得改动凭证"
+    );
+    assert_eq!(
+        loaded["kimiQuotaAccounts"]["b"]["display_name"],
+        json!("Kimi · 账号 2"),
+        "其他账号不得被改动"
+    );
+    let raw = read_raw_credentials(&root);
+    assert!(
+        raw["kimiQuotaAccounts"]["bad"].is_object(),
+        "重命名不得丢弃形状不合规的旧账号"
+    );
+
+    assert!(
+        rename_credential_account(&root, "kimiQuotaAccounts", "b", "Kimi · 工作").is_err(),
+        "同 Provider 重名必须被拒绝"
+    );
+    assert!(
+        rename_credential_account(&root, "kimiQuotaAccounts", "a", "   ").is_err(),
+        "空名称必须被拒绝"
+    );
+    assert!(
+        rename_credential_account(&root, "kimiQuotaAccounts", "a", &"长".repeat(33)).is_err(),
+        "超长名称必须被拒绝"
+    );
+    assert!(
+        rename_credential_account(&root, "kimiQuotaAccounts", "a", "a\nb").is_err(),
+        "控制字符必须被拒绝"
+    );
+    assert!(
+        rename_credential_account(&root, "kimiQuotaAccounts", "missing", "Kimi · 工作").is_err(),
+        "不存在账号必须报错"
+    );
+
+    // StepFun 重命名不动 site/is_global (独立 root: 上面的人为坏账号会让整文件校验失败).
+    let step_root = temp_root();
+    save_credential_account(
+        &step_root,
+        "stepfunQuotaAccounts",
+        "s",
+        &json!({"token":"tok","site":"global","is_global":true}),
+    )
+    .unwrap();
+    assert_eq!(
+        load_credentials(&step_root)["stepfunQuotaAccounts"]["s"]["display_name"],
+        json!("StepFun · 账号 1")
+    );
+    rename_credential_account(&step_root, "stepfunQuotaAccounts", "s", "StepFun · 备用").unwrap();
+    let step = load_credentials(&step_root)["stepfunQuotaAccounts"]["s"].clone();
+    assert_eq!(step["display_name"], json!("StepFun · 备用"));
+    assert_eq!(step["site"], json!("global"));
+    assert_eq!(step["is_global"], json!(true));
+    let _ = fs::remove_dir_all(&step_root);
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// 新账号默认名 «Provider · 账号 N»; 重复保存保留自定义名.
+#[test]
+fn save_credential_account_defaults_and_preserves_custom_name() {
+    let root = temp_root();
+    save_credential_account(&root, "kimiQuotaAccounts", "a", &json!({"api_key":"key-a"})).unwrap();
+    save_credential_account(&root, "kimiQuotaAccounts", "b", &json!({"api_key":"key-b"})).unwrap();
+    let loaded = load_credentials(&root);
+    assert_eq!(
+        loaded["kimiQuotaAccounts"]["a"]["display_name"],
+        json!("Kimi · 账号 1")
+    );
+    assert_eq!(
+        loaded["kimiQuotaAccounts"]["b"]["display_name"],
+        json!("Kimi · 账号 2")
+    );
+
+    rename_credential_account(&root, "kimiQuotaAccounts", "a", "Kimi · 工作").unwrap();
+    // 重新保存同一账号 (含显式不同名称) 必须保留自定义名, 只更新凭证.
+    save_credential_account(
+        &root,
+        "kimiQuotaAccounts",
+        "a",
+        &json!({"api_key":"key-a2","display_name":"Kimi · 别的"}),
+    )
+    .unwrap();
+    let updated = load_credentials(&root);
+    assert_eq!(
+        updated["kimiQuotaAccounts"]["a"]["display_name"],
+        json!("Kimi · 工作")
+    );
+    assert_eq!(
+        updated["kimiQuotaAccounts"]["a"]["api_key"],
+        json!("key-a2")
+    );
+
+    // Codex: 原始 accountId 占位会被替换为默认名; 邮箱名保留.
+    save_credential_account(
+        &root,
+        "codexQuotaAccounts",
+        "acc-1",
+        &json!({
+            "display_name":"acc-1",
+            "access_token":"at",
+            "refresh_token":"rt",
+            "authorization_state":"connected"
+        }),
+    )
+    .unwrap();
+    save_credential_account(
+        &root,
+        "codexQuotaAccounts",
+        "acc-2",
+        &json!({
+            "display_name":"Codex · user",
+            "access_token":"at2",
+            "refresh_token":"rt2",
+            "authorization_state":"connected"
+        }),
+    )
+    .unwrap();
+    let codex = load_credentials(&root);
+    assert_eq!(
+        codex["codexQuotaAccounts"]["acc-1"]["display_name"],
+        json!("Codex · 账号 1")
+    );
+    assert_eq!(
+        codex["codexQuotaAccounts"]["acc-2"]["display_name"],
+        json!("Codex · user")
     );
     let _ = fs::remove_dir_all(&root);
 }

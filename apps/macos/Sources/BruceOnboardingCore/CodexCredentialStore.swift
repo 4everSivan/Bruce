@@ -31,6 +31,8 @@ public enum CodexCredentialStoreError: Error, Equatable {
     /// 旧整体库结构不受支持 (root 非对象、缺 accounts、accounts 非对象等).
     case incompatibleSchema
     case migrationFailed(reason: String)
+    /// 重命名目标账号不存在 (T18).
+    case accountNotFound
 }
 
 // MARK: - CodexDiscovery
@@ -235,6 +237,7 @@ public final class CodexCredentialStore: Sendable {
             credentialKeyHash: hash,
             accountID: record.accountID,
             email: record.email,
+            customName: record.customName,
             authorizationState: record.authorizationState,
             credentialOrigin: record.credentialOrigin
         ))
@@ -520,6 +523,7 @@ public final class CodexCredentialStore: Sendable {
             let schemaVersion: Int
             let accountID: String
             let email: String?
+            let customName: String?
             let authorizationState: CodexAuthorizationState
             let credentialOrigin: CodexCredentialOrigin
             let updatedAt: Date
@@ -590,6 +594,7 @@ public final class CodexCredentialStore: Sendable {
                 credentialKeyHash: CodexCredentialKeys.sha256Hex(record.accountID),
                 accountID: record.accountID,
                 email: record.email,
+                customName: record.customName,
                 authorizationState: record.authorizationState,
                 credentialOrigin: record.credentialOrigin
             )
@@ -631,6 +636,7 @@ public final class CodexCredentialStore: Sendable {
         guard saved.schemaVersion == expected.schemaVersion,
               saved.accountID == expected.accountID,
               saved.email == expected.email,
+              saved.customName == expected.customName,
               saved.authorizationState == expected.authorizationState,
               saved.credentialOrigin == expected.credentialOrigin,
               saved.updatedAt == expected.updatedAt else {
@@ -704,6 +710,7 @@ public final class CodexCredentialStore: Sendable {
             schemaVersion: record.schemaVersion,
             accountID: record.accountID,
             email: record.email,
+            customName: record.customName,
             authorizationState: record.authorizationState,
             credentialOrigin: record.credentialOrigin,
             updatedAt: record.updatedAt,

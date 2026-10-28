@@ -263,6 +263,9 @@ extension SettingsView {
             .padding(.vertical, 14)
         }
         .frame(width: 460, height: 420)
+        .sheet(item: $accountRenameRequest) { request in
+            AccountRenameSheet(request: request)
+        }
     }
 
     /// API key 类 provider 的 demo 版配置对话框; 保存闭包与原内联 section 一致.
@@ -512,6 +515,19 @@ extension SettingsView {
                         Spacer()
                         accountStateLabel(summary)
                         Button {
+                            accountRenameRequest = AccountRenameRequest(
+                                provider: id,
+                                accountID: summary.accountID,
+                                displayName: summary.displayName,
+                                existingDisplayNames: summaries.map(\.displayName)
+                            )
+                        } label: {
+                            Image(systemName: "pencil")
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("重命名账号 \(summary.displayName)")
+                        Button {
                             accountRemovalRequest = AccountRemovalRequest(
                                 provider: id,
                                 accountID: summary.accountID,
@@ -596,6 +612,14 @@ extension SettingsView {
                         provider: .codex,
                         accountID: accountID,
                         displayName: displayName
+                    )
+                },
+                onRenameAccount: { accountID, displayName in
+                    accountRenameRequest = AccountRenameRequest(
+                        provider: .codex,
+                        accountID: accountID,
+                        displayName: displayName,
+                        existingDisplayNames: model.codexAccountStatuses.map(\.displayName)
                     )
                 }
             )

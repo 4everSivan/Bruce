@@ -153,10 +153,9 @@ package enum SubscriptionPresentationPolicy: Sendable {
         totalAccountCount: Int
     ) -> String? {
         guard totalAccountCount > 1 else { return nil }
-        if providerID == "stepfun" {
-            if displayName.contains("国际") || displayName.contains("Global") {
-                return "国际"
-            }
+        if providerID == "stepfun",
+           ProviderAccountNaming.isStepFunGlobalDisplayName(displayName) {
+            return "国际"
         }
         return nil
     }

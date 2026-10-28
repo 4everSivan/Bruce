@@ -1,0 +1,121 @@
+{
+  "$schema": "https://ad-flow.org/schemas/task-card.v1.json",
+  "id": "T18",
+  "title": "订阅多账号自定义名称：默认「账号 N」+ 设置页重命名（mac / Windows）",
+  "version": "0.15.0",
+  "milestone": "M9-订阅多账号命名",
+  "status": "pending",
+  "branch": "feat/T18-account-custom-names",
+  "depends_on": [],
+
+  "target": {
+    "module": "apps/macos（BruceOnboardingCore 账号存储与命名工具 / BruceApp 设置页）；apps/win（settings 前端与 src-tauri 凭据命令）",
+    "design_doc": "docs/devel/design/02-订阅额度与凭据安全存储.md",
+    "design_topic": "SubscriptionQuota"
+  },
+
+  "goal": "为订阅多账号提供可读的默认名称与自定义重命名能力。默认名统一为「<Provider 前缀> · 账号 N」（N 为该 Provider 内最小未占用正整数），Codex 优先使用邮箱前缀；用户只编辑标签，Provider 前缀、accountID、凭据键与 collector service ID 保持不变。重命名必须同时落 index entry 与 record、保留凭证与授权状态，并触发该 Provider 定向刷新。保存同一凭证不得覆盖自定义名；StepFun 换站点时保留标签仅重建站点前缀。Windows 端提供等价的 rename 命令与设置页入口。存量账号不做自动改名。",
+
+  "precheck": {
+    "description": "确认当前仅支持自动生成账号名且无重命名入口",
+    "command": "grep -rn 'rename_credential_account\\|renameAccount\\|customName' apps/macos/Sources apps/win/src apps/win/src-tauri/src; grep -n 'displayName = displayName' apps/macos/Sources/BruceOnboardingCore/ProviderAccountStore.swift; grep -n 'display_name:' apps/win/src/settings-subscription.js",
+    "expected": "无 rename/customName 实现；ProviderAccountStore.upsertAccount 无条件覆盖 displayName；Windows 保存路径无条件生成 display_name",
+    "is_completed": false,
+    "evidence": "2026-10-28 开工前实测: 全仓 grep renameAccount/customName/rename_credential_account 无业务实现; ProviderAccountStore.swift:410/423 在 upsert 时覆盖 record/index 的 displayName; settings-subscription.js:1099 保存时无条件拼接 display_name。未完成"
+  },
+
+  "callback": {
+    "before": [
+      "git checkout -b feat/T18-account-custom-names"
+    ],
+    "after": [
+      "swift build --package-path apps/macos",
+      "cargo test --manifest-path apps/win/src-tauri/Cargo.toml",
+      "zsh scripts/verify-local.sh",
+      "scripts/adflow-verify --card T18 --to completed --record  # 收口前门禁：Exit 4 禁止置 completed"
+    ]
+  },
+
+  "tasks": [
+    {
+      "id": "T18-1",
+      "title": "mac 命名工具与存储契约",
+      "capability": "BruceOnboardingCore 新增 ProviderAccountNaming：默认标签「账号 N」（最小未占用）、前缀/标签拆分与重组、StepFun 站点前缀重建、标签校验（trim、1–32 字符、无控制字符、单 Provider 唯一）。ProviderAccountStore 新增 renameAccount（index+record 同步），upsertAccount 对已存在账号保留 displayName；StepFun 换站点保留标签重建前缀。",
+      "done": false
+    },
+    {
+      "id": "T18-2",
+      "title": "mac 保存路径改用统一默认名",
+      "capability": "所有非 Codex 保存/导入路径不再手写「Provider · accountID 前 8 位」，统一由命名工具生成新建账号默认名；重复保存同一凭证不覆盖自定义名。StepFun 站点判定改为精确前缀，避免自定义标签误判国际站。",
+      "done": false
+    },
+    {
+      "id": "T18-3",
+      "title": "mac Codex customName 与重命名",
+      "capability": "CodexAccountRecord / CodexAccountIndex.Entry 增加可选 customName（schemaVersion 保持 2），显示优先级 customName > 邮箱前缀 > 账号 N；token manager 缓存与状态快照透传 customName，新增重命名入口。",
+      "done": false
+    },
+    {
+      "id": "T18-4",
+      "title": "mac 设置页重命名 UI",
+      "capability": "APIKeyProviderConfigDialog、SettingsView+SubscriptionPane.providerAccountList、CodexProviderSettingsSection 三处账号行增加重命名入口（只编辑标签）；清空恢复默认；失败就地提示；成功后定向刷新。",
+      "done": false
+    },
+    {
+      "id": "T18-5",
+      "title": "Windows 对齐",
+      "capability": "src-tauri 新增 rename_credential_account（仅改 display_name）并注册命令；保存已存在账号保留自定义 display_name；设置前端默认名改为「账号 N」并增加行内重命名入口；Codex 默认名对齐。",
+      "done": false
+    },
+    {
+      "id": "T18-6",
+      "title": "双端测试与全量验证",
+      "capability": "mac Harness 覆盖重命名持久化、重复保存保留自定义名、默认序号、StepFun 站点不翻转、Codex 旧记录兼容；Windows Rust 覆盖 rename 不改其他字段、拒绝非法输入；verify-local 与 src-tauri 测试全绿。",
+      "done": false
+    }
+  ],
+
+  "acceptance": {
+    "result": null,
+    "run_id": "",
+    "checks": [
+      {
+        "item": "命名与重命名语义",
+        "true_if": "新建账号默认名为「Provider · 账号 N」；改名后 index 与 record 同步、凭证/授权状态/accountID 不变；重复保存不覆盖自定义名；清空输入恢复默认名；同 Provider 重名被拒绝",
+        "false_if": "任一场景出现名称丢失、身份变化或重复名",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "全链路生效",
+        "true_if": "改名后设置页与仪表盘多账号子卡显示新名称；collector 注入的 display_name 同步更新；Codex 状态快照与 collector 注入使用 customName",
+        "false_if": "任一展示面仍显示旧名或 Codex 忽略 customName",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "StepFun 站点安全",
+        "true_if": "自定义标签包含「国际」不会把国内账号判为国际站；国际站重命名后站点前缀与国际标签保持",
+        "false_if": "站点判定仍依赖 contains 或改名后站点翻转",
+        "evidence": "",
+        "result": null
+      },
+      {
+        "item": "双端与全量验证",
+        "true_if": "mac swift build/Harness、Windows src-tauri 测试与 verify-local 全部退出码 0",
+        "false_if": "任一失败",
+        "evidence": "",
+        "result": null
+      }
+    ]
+  },
+  "sync": {
+    "commit": ""
+  },
+  "gate": {
+    "tool": "adflow-verify",
+    "version": "1.5.0",
+    "ran_at": "",
+    "exit_code": null
+  }
+}
